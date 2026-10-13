@@ -1,0 +1,53 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
+index ffdcf14..22fa90e 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
+@@ -1290,6 +1290,14 @@ fun ListPopupContent(
+ ) {
+     val backgroundColor = popupSurfaceColor()
+     val shape = remember { RoundedCornerShape(PopupCornerRadius) }
++    //  DropShadowScope 里阴影那几档的单位是 **px**（Float / Offset），而它自己不带
++    // Density —— 转换只能在组合期先用 LocalDensity 做好，块的 lambda 里直接用。
++    val density = LocalDensity.current
++    val shadowRadiusPx = with(density) { PopupShadow.radius.toPx() }
++    val shadowSpreadPx = with(density) { PopupShadow.spread.toPx() }
++    val shadowOffsetPx = with(density) {
++        Offset(PopupShadow.offset.x.toPx(), PopupShadow.offset.y.toPx())
++    }
+ 
+     Box(
+         modifier = modifier
+@@ -1297,15 +1305,31 @@ fun ListPopupContent(
+                 val size = coordinates.size
+                 if (popupContentSize != size) onPopupContentSizeChange(size)
+             }
++            // The drop shadow must stay out of the alpha layer: a graphicsLayer carrying alpha < 1
++            // makes Android composite the subtree into an offscreen buffer sized to the node, which
++            // cuts the 26.66dp blur (and its 3.33dp downward offset) off at the node's bounds. The
++            // menu shadow then shows up as a hard-edged rectangle the whole time it is opening, and
++            // only looks right once the animation settles at alpha = 1. So the scale gets a layer of
++            // its own **without** alpha (a pure transform, no offscreen buffer), the shadow rides
++            // inside that layer so it still scales with the menu, its own alpha follows the enter /
++            // exit progress through the shadow colour, and the alpha moves to an innermost layer
++            // wrapped around the surface alone (nothing inside it reaches past the node bounds).
+             .graphicsLayer {
+                 // COUI's main menu scales a true 0 -> 1; only the small-screen sub-menu clip-reveals.
+                 val scale = fractionProgress()
+                 scaleX = scale
+                 scaleY = scale
+-                alpha = alphaProgress()
+                 transformOrigin = localTransformOrigin
+             }
+-            .dropShadow(shape = shape, shadow = PopupShadow)
++            .dropShadow(shape = shape) {
++                radius = shadowRadiusPx
++                spread = shadowSpreadPx
++                offset = shadowOffsetPx
++                color = PopupShadow.color.copy(
++                    alpha = PopupShadow.color.alpha * alphaProgress(),
++                )
++            }
++            .graphicsLayer { alpha = alphaProgress() }
+             .squircleSurface(color = backgroundColor, cornerRadius = PopupCornerRadius),
+     ) {
+         content()

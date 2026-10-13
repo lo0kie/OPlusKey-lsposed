@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标（API 26 起；本项目 minSdk 33）。放 mipmap-anydpi-v26 是为了让系统只在这条
+     API 线上取它，放 drawable 里当图标用不规范。
+
+     ⚠️ 两层分开给：底色（ic_module_background）与字形（ic_module_foreground）；改回单张满幅
+     矢量会被启动器当 legacy 图标补白底圆角并缩小。
+
+     ⚠️ 字形必须待在中间 72×72 里：遮罩会切掉外圈。
+
+     ⚠️ `<monochrome>` 是第三层（API 33 起）：主题图标模式下系统只取它的 alpha、用主题一色
+     填上，否则不参与渲染；更老的系统忽略这一行。 -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_module_background" />
+    <foreground android:drawable="@drawable/ic_module_foreground" />
+    <monochrome android:drawable="@drawable/ic_module_monochrome" />
+</adaptive-icon>

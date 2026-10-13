@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标的前景层：只有字形，底色在背景层。
+
+     字形：按下侧键 → 打开面板（照系统设置「快捷键」那一格）。
+
+     ⚠️ 自适应图标有两套坐标：画布 108×108（本文件写的都是它），启动器只取画布中央 72×72
+     铺满图标格（放大约 1.5 倍，外圈连同圆角切掉）。算余量必须按 72，按 108 会高估约三倍。
+     字形统一缩到 0.78（见下方 group），再放大就会贴边、右上角被圆角啃掉。
+
+     ⚠️ 底色不在这一层：自适应图标两层分别绘制，底色画进前景会被遮罩一起缩、边上露背景色。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.78"
+        android:scaleY="0.78"
+        android:pivotX="54"
+        android:pivotY="54">
+    <!-- 箭头：按下去那一下 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20.8,54.1H29.9Q31.9,54.1 31.9,56.1V60.5Q31.9,63.9 34.6,61.8L45.6,53.2Q48.7,50.7 45.6,48.2L34.6,39.4Q31.9,37.3 31.9,40.7V45.1Q31.9,47.1 29.9,47.1H20.8Q18.2,47.1 18.2,49.7V51.5Q18.2,54.1 20.8,54.1Z" />
+    <!-- 侧键：靠手机左边框一侧，间隙 1.5（边框本身是 7 宽纯白条，压到 0.5 会连成一片看不见）；
+         宽度 4.5、高度 6.5 保证小尺寸下可见且不成圆点。 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M51.7,47.3A2.25,2.25 0 0 1 56.2,47.3V53.8A2.25,2.25 0 0 1 51.7,53.8Z" />
+    <!-- 手机：与底同一条对角线淡出 —— 左上（深底）纯白，越往右下越淡，终点 88%。 -->
+    <path
+        android:pathData="M57.7,84.4V40.7Q57.7,23.7 74.7,23.7H90.1V30.6H76.7Q64.7,30.6 64.7,42.6V84.4Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="57.7"
+                android:startY="23.7"
+                android:endX="90.1"
+                android:endY="84.4"
+                android:startColor="#FFFFFFFF"
+                android:endColor="#E0FFFFFF" />
+        </aapt:attr>
+    </path>
+    <!-- 面板：同方向再淡一档（36% → 18%）；它是一块面而非一条线，压太淡就等于没有。 -->
+    <path
+        android:pathData="M64.7,84.4V42.6Q64.7,30.6 76.7,30.6H90.1V84.4Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="64.7"
+                android:startY="30.6"
+                android:endX="90.1"
+                android:endY="84.4"
+                android:startColor="#5CFFFFFF"
+                android:endColor="#2EFFFFFF" />
+        </aapt:attr>
+    </path>
+    </group>
+</vector>

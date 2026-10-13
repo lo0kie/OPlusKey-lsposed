@@ -1,0 +1,64 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+index e6c11c5..228f0f4 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.BlendMode
+ import androidx.compose.ui.graphics.BlendModeColorFilter
+ import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.graphics.ColorFilter
++import androidx.compose.ui.graphics.vector.ImageVector
+ import androidx.compose.ui.semantics.Role
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.style.TextOverflow
+@@ -230,8 +231,16 @@ fun DropdownImpl(
+                 BlendModeColorFilter(chevronColor, BlendMode.SrcIn)
+             }
+             Image(
+-                modifier = if (hint != null) HintedChevronIconModifier else ChevronIconBaseModifier,
+-                imageVector = COUIIcons.Basic.ArrowRight,
++                modifier = when {
++                    // A host-supplied chevron comes from an icon set drawn on a square viewport
++                    // (24dp), so it gets the check's square cell — the native arrow's 12x24 cell
++                    // would squash it horizontally.
++                    item.chevronIcon != null && hint != null -> HintedCheckIconModifier
++                    item.chevronIcon != null -> CheckIconBaseModifier
++                    hint != null -> HintedChevronIconModifier
++                    else -> ChevronIconBaseModifier
++                },
++                imageVector = item.chevronIcon ?: COUIIcons.Basic.ArrowRight,
+                 colorFilter = chevronColorFilter,
+                 contentDescription = null,
+             )
+@@ -241,7 +250,7 @@ fun DropdownImpl(
+             }
+             Image(
+                 modifier = if (hint != null) HintedCheckIconModifier else CheckIconBaseModifier,
+-                imageVector = COUIIcons.Basic.Check,
++                imageVector = item.checkIcon ?: COUIIcons.Basic.Check,
+                 colorFilter = checkColorFilter,
+                 contentDescription = null,
+             )
+@@ -431,6 +440,14 @@ data class DropdownEntry(
+  *   DefaultAdapter.setHint, hidden entirely while the row is disabled.
+  * @param alert Whether this is an alert (destructive) item. Its title is tinted with
+  *   [DropdownColors.alertContentColor] (COUI ITEM_TYPE_ALERT → couiColorError).
++ * @param checkIcon Optional override for the trailing selection indicator drawn on the selected
++ *   row, which otherwise uses [COUIIcons.Basic.Check] (COUI coui_menu_ic_checkbox_selected).
++ *   Host apps that draw the rest of their popup icons from another icon set pass their own
++ *   tick here so the whole row keeps one drawing style.
++ * @param chevronIcon Optional override for the trailing chevron on a [children]-owning row,
++ *   which otherwise uses [COUIIcons.Basic.ArrowRight] (a 12x24dp COUI glyph). A supplied icon is
++ *   drawn in the check's square 24dp cell, since icon sets drawn on a square viewport would be
++ *   squashed by the native arrow's 12x24 cell.
+  */
+ @Stable
+ data class DropdownItem(
+@@ -443,6 +460,8 @@ data class DropdownItem(
+     val children: List<DropdownItem>? = null,
+     val hint: @Composable (() -> Unit)? = null,
+     val alert: Boolean = false,
++    val checkIcon: ImageVector? = null,
++    val chevronIcon: ImageVector? = null,
+ ) {
+     /**
+      * [SpinnerEntry] compatibility

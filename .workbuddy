@@ -1,0 +1,48 @@
+此路径被有意占位成一个**普通文件**，而不是目录。
+
+目的：让本项目下的 `.workbuddy/` 无法再被创建 —— 于是任何形如 `.workbuddy/<任意名字>`
+的写入都会在系统调用层面以 ENOTDIR 直接失败，不依赖任何配置、也不依赖模型是否配合。
+
+做法同 `fret-logic`（该项目的占位文件里有完整的成因推演，2026-09-25 落地）。
+
+为什么占位在 `.workbuddy` 这一层，而不是只挡 `memory/`：
+  fret-logic 实测过只占 `.workbuddy/memory` 的形态：换文件名无效（memory 下任何名字都进不去），
+  但换路径成立 —— 写 `.workbuddy/2026-09-25.md` 会**成功**。所以占位上提到 `.workbuddy` 整层，
+  覆盖其下全部路径。
+
+本项目落地时间：2026-10-12。
+  此前这里是一个真目录，且当天被外部工具**删过至少两次**（回收站里有
+  `...\OPlusKey-lsposed\.workbuddy` 的删除记录，而且那些目录条目在读取时仍在继续消失）。
+  换成本占位文件后，即使那个工具再试图创建该目录也会失败，不会被「删了又重建」来回折腾。
+
+本层**不覆盖**（已知，且为有意保留）：
+  - 用户级 `~/.workbuddy/MEMORY.md` —— 模型每次会话都被指示写它，仍然可写；
+  - 其他项目的 `.workbuddy/`；
+  - 本项目内 `.workbuddy` 之外的任意路径（项目根、docs/、.temp/ 等）。
+  也就是说：这是**路径**封锁，不是**行为**封锁。
+
+注意：WorkBuddy 的系统提示含一句「.workbuddy 文件夹存项目数据、不是临时缓存，请勿删除」。
+本状态是用户明确要求下的有意覆盖。若宿主某次需要 `mkdir -p <项目>/.workbuddy`，那一步会失败。
+
+回滚（想恢复该目录时）：
+    rm .workbuddy && mkdir -p .workbuddy/memory
+
+────────────────────────────────────────────────────────────────────────────
+ACCEPTANCE（2026-10-12，Git Bash / NTFS，占位落地后实测）
+────────────────────────────────────────────────────────────────────────────
+  echo x > .workbuddy/memory/probe.md              → Not a directory
+  mkdir    .workbuddy/memory                       → Not a directory
+  echo x > .workbuddy/memory/2026-10-12.md         → Not a directory（与文件名无关）
+  echo x > .workbuddy/memory/MEMORY.md             → Not a directory（与文件名无关）
+  echo x > .workbuddy/memory/notes/2026-10-12.md   → Not a directory（与层级无关）
+  echo x > .workbuddy/memory/../escaped.md         → No such file or directory（走不到 ..）
+  echo x > .workbuddy/2026-10-12.md                → Not a directory
+        ↑ fret-logic 当年促成占位上提的那条绕路，在本层已被封住
+  echo x > .workbuddy/MEMORY.md                    → Not a directory
+
+未覆盖（同批实测）：
+  test -w ~/.workbuddy                             → 可写（用户级，仍在封锁之外）
+
+入库要求：本占位文件必须**被 git 跟踪**。`.gitignore` 里的 `.workbuddy/` 带斜杠、
+只匹配目录，正好放行这个同名文件；**不要**再补一条无斜杠的 `.workbuddy` —— 那会把占位
+文件一起忽略掉，克隆出来的仓库就没有这层护栏了。
