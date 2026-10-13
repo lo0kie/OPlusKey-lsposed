@@ -1,0 +1,27 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+.DS_Store
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.keystore
+*.jks
+# 正式签名的口令文件（本地生成，不入库）
+keystore.properties
+.temp/
+.workbuddy/
+.workbuddy-ai/
+.kotlin/
+.diag/
+.trae/
+
+# 根级 `.workbuddy` / `.workbuddy-ai` 都是**有意入库**的占位普通文件
+# （封锁同名目录被重建；两个文件内容里各有一份成因与验收记录，改动前先读它们）
+
+# 设备原始包（只本地留作反编译核对，不入库）
+reference/*.apk
+reference/__pycache__/

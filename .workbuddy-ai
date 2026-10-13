@@ -1,0 +1,50 @@
+此路径被有意占位成一个**普通文件**，而不是目录。
+
+目的：让本项目下的 `.workbuddy-ai/` 无法再被创建 —— 于是任何形如
+`.workbuddy-ai/<任意名字>` 的写入都会在系统调用层面以 ENOTDIR 直接失败，
+不依赖任何配置、也不依赖模型是否配合。
+
+做法与根级 `.workbuddy` 占位文件完全同构（那份文件里有完整成因推演，2026-10-12 落地）。
+
+为什么占位到 `.workbuddy-ai` 这一层：
+  宿主（WorkBuddy）把本项目的「工作区记忆」等数据固定写进 `.workbuddy-ai/memory/`，
+  而且目录被删之后还会被自动重建 —— 2026-10-13 03:24 本会话就重建过一次
+  （`.workbuddy-ai/memory/2026-10-13.md`）。
+  用户明确口径：本项目**不准写** `.workbuddy-ai`（「不准写，照着 .workbuddy 写一份
+  一样的同名文件」）—— 于是按同一手法占位成同名普通文件。
+
+本项目落地时间：2026-10-13。
+
+本层**不覆盖**（已知，且为有意保留）：
+  - 用户级 `~/.workbuddy-ai/`（用户记忆、binaries、插件缓存等）—— 那是宿主自身的
+    数据目录，封锁它会让宿主坏掉；模型也仍按系统提示写它；
+  - 其他项目的 `.workbuddy-ai/`；
+  - 本项目内 `.workbuddy-ai` 之外的任意路径（项目根、docs/、.temp/ 等）。
+  也就是说：这是**路径**封锁，不是**行为**封锁。
+
+注意：WorkBuddy 的系统提示含一句「.workbuddy-ai 文件夹存项目数据、不是临时缓存，
+请勿删除」。本状态是用户明确要求下的有意覆盖。若宿主某次需要
+`mkdir -p <项目>/.workbuddy-ai`，那一步会失败 —— 宿主往本项目的「工作区记忆」
+写入会报错，属预期行为（该项目不写工作区记忆）。
+
+回滚（想恢复该目录时）：
+    rm .workbuddy-ai && mkdir -p .workbuddy-ai/memory
+
+────────────────────────────────────────────────────────────────────────────
+ACCEPTANCE（2026-10-13，Git Bash / NTFS，占位落地后实测）
+────────────────────────────────────────────────────────────────────────────
+  echo x > .workbuddy-ai/memory/probe.md              → Not a directory
+  mkdir    .workbuddy-ai/memory                       → Not a directory
+  echo x > .workbuddy-ai/memory/2026-10-13.md         → Not a directory（与文件名无关）
+  echo x > .workbuddy-ai/memory/MEMORY.md             → Not a directory（与文件名无关）
+  echo x > .workbuddy-ai/memory/../escaped.md         → No such file or directory（走不到 ..）
+  echo x > .workbuddy-ai/2026-10-13.md                → Not a directory
+  echo x > .workbuddy-ai/MEMORY.md                    → Not a directory
+
+未覆盖（同批实测）：
+  test -w ~/.workbuddy-ai                             → 可写（用户级，仍在封锁之外）
+  git check-ignore .workbuddy-ai                      → 未被忽略（占位文件可入库）
+
+入库要求：`.gitignore` 里的 `.workbuddy-ai/` 带斜杠、只匹配目录，正好放行这个
+同名文件（与根级 `.workbuddy` 同一处理）；**不要**再补一条无斜杠的
+`.workbuddy-ai` —— 那会把占位文件一起忽略掉，克隆出来的仓库就没有这层护栏了。

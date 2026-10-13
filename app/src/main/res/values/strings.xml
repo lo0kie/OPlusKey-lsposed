@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OPlusKey</string>
+    <string name="module_description">一加 / OPPO 侧键（Plus Key）重映射，支持单击、双击与长按</string>
+</resources>

@@ -1,0 +1,14 @@
+# 目标 API 必须是 101：LSPosed 2.0（lsposed-it-7598 起）已废弃 API 100 模块，
+# targetApiVersion=100 会被判定为「与 API 101 的变更不兼容」而拒绝加载（表现为日志页空白）。
+# API 101 的行为变化只有一条：模块不再注入 zygote、只在作用域进程内加载。
+# 编译期依赖 io.github.libxposed:api:102.0.0，用到的都是 API 101 就有的能力。
+minApiVersion=101
+targetApiVersion=101
+# 作用域在构建期写死在 scope.list 里，用户无需（也不能）在管理器里改。
+# 两个作用域，各管一件事：
+#   system             → 侧键接管（system_server 里的 StrategyActionButtonKeyLaunchApp）
+#   com.oplus.gesture  → 侧键设置页换页（ActionButtonSettingsActivity）
+# ⚠️ 这里写的是**包名**，LSPosed 的作用域按包注入（它的表字段就叫 app_pkg_name）。
+#    设置页虽然跑在独立进程 com.oplus.gesture.ui 里，但进程过滤是在代码里做的
+#    （见 KeyModule.onPackageReady），不能写进这里。
+staticScope=true

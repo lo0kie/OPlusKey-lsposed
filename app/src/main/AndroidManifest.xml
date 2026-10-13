@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      清单零组件、零入口 Activity：映射统一走系统的「设置 → 快捷键」页，模块自己不带界面。
+
+      LSPosed 管理器右下角那颗「打开模块」FAB 按模块设置 category / CATEGORY_INFO /
+      CATEGORY_LAUNCHER 的顺序找入口，一个都不声明它就不显示；模块识别只看
+      META-INF/xposed/ 的元数据，与 Activity 无关。
+
+      category 全名故意不写在这里：manifest merger 会把源清单注释抄进合并清单，
+      写全名会让 CI「入口标记出现次数必须为 0」的字面检查误报。
+    -->
+
+    <!--
+      androidx 的传递依赖会经 merger 塞进 InitializationProvider 与 ProfileInstallReceiver，
+      都不是入口但违背「零组件」，用 tools:node="remove" 删掉。
+      remove 条目必须写在 <application> 里 —— 放在 <manifest> 层级会被静默忽略。
+    -->
+    <!--
+      权限按 uid 判、不是按 APK：界面代码跑在宿主进程（uid 10277），在这里声明 `INTERNET`
+      对它毫无作用（真机实证：宿主侧请求照样 `SecurityException`）。
+    -->
+
+    <!--
+      图标走自适应图标（`mipmap-anydpi-v26/ic_launcher.xml`，底色 + 字形两层）。改回单张满幅
+      矢量会被启动器当 legacy 图标补白底圆角并缩小。这只是图标属性，`<application>` 仍零 Activity。
+    -->
+    <application
+        android:allowBackup="false"
+        android:description="@string/module_description"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        tools:ignore="MissingApplicationIcon">
+
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            tools:node="remove" />
+        <receiver
+            android:name="androidx.profileinstaller.ProfileInstallReceiver"
+            tools:node="remove" />
+    </application>
+
+</manifest>
