@@ -7,7 +7,7 @@ object ConfigBroadcast {
 
     const val ACTION_CONFIG = "com.lookie.opluskey.CONFIG"
 
-    /** 配置广播里的各项（键名与 `config.conf` 对齐，方便对照）。 */
+    /** 配置广播里的各项（键名沿用旧 `config.conf` 的写法，历史对照用；文件格式现已是 JSON）。 */
     const val EXTRA_ENABLED = "enabled"
     const val EXTRA_SINGLE = "plus_single"
     const val EXTRA_DOUBLE = "plus_double"
@@ -56,6 +56,9 @@ object ConfigBroadcast {
      * 调用点在 AMS 广播入口的 hooker（热路径）：只取 extra 拼对象，不做查找与 IO。
      * 拼装不得抛异常，否则 system_server 崩溃；缺项取安全默认（不接管、单击保留原生）。
      */
+    /** 与 [ConfigCodec] 同一口径的钳制：广播值可能来自手改文件，越界值按边界处理。 */
+    private fun clampInt(v: Int, min: Int, max: Int): Int = v.coerceIn(min, max)
+
     fun parse(intent: Intent): Config {
         val enabled = intent.getBooleanExtra(EXTRA_ENABLED, false)
         return Config(
@@ -68,19 +71,22 @@ object ConfigBroadcast {
                         .let { Action.normalizeForGesture(it, Gesture.DOUBLE) },
                     long = Action.parse(intent.getStringExtra(EXTRA_LONG) ?: "none")
                         .let { Action.normalizeForGesture(it, Gesture.LONG) },
-                    longPressMs = intent.getIntExtra(
-                        EXTRA_LONG_PRESS_MS, KeyConfig.DEFAULT_LONG_PRESS_MS,
+                    longPressMs = clampInt(
+                        intent.getIntExtra(EXTRA_LONG_PRESS_MS, KeyConfig.DEFAULT_LONG_PRESS_MS),
+                        KeyConfig.MIN_LONG_PRESS_MS, KeyConfig.MAX_LONG_PRESS_MS,
                     ),
                     longRepeat = intent.getBooleanExtra(EXTRA_LONG_REPEAT, false),
-                    longRepeatIntervalMs = intent.getIntExtra(
-                        EXTRA_REPEAT_INTERVAL_MS, KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+                    longRepeatIntervalMs = clampInt(
+                        intent.getIntExtra(EXTRA_REPEAT_INTERVAL_MS, KeyConfig.DEFAULT_REPEAT_INTERVAL_MS),
+                        KeyConfig.MIN_REPEAT_INTERVAL_MS, KeyConfig.MAX_REPEAT_INTERVAL_MS,
                     ),
                     longIsSerial = intent.getBooleanExtra(EXTRA_LONG_SERIAL, false),
                 ),
             ),
             global = GlobalConfig(
-                doubleClickMs = intent.getIntExtra(
-                    EXTRA_DOUBLE_CLICK_MS, GlobalConfig.DEFAULT_DOUBLE_CLICK_MS,
+                doubleClickMs = clampInt(
+                    intent.getIntExtra(EXTRA_DOUBLE_CLICK_MS, GlobalConfig.DEFAULT_DOUBLE_CLICK_MS),
+                    GlobalConfig.MIN_DOUBLE_CLICK_MS, GlobalConfig.MAX_DOUBLE_CLICK_MS,
                 ),
                 vibrate = intent.getBooleanExtra(EXTRA_VIBRATE, false),
                 instantSingle = intent.getBooleanExtra(

@@ -1,14 +1,16 @@
 package com.lookie.opluskey.page
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.IntentFilter
 import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -38,6 +40,8 @@ import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Scaffold
+import io.github.suqi8.coui.kmp.basic.SnackbarHost
+import io.github.suqi8.coui.kmp.basic.SnackbarHostState
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.rememberTopAppBarState
 import io.github.suqi8.coui.kmp.blur.layerBackdrop
@@ -47,6 +51,7 @@ import io.github.suqi8.coui.kmp.nav.core.NavDisplay
 import io.github.suqi8.coui.kmp.nav.core.NavDisplayEffects
 import io.github.suqi8.coui.kmp.nav.core.navBackStackOf
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.XLog
 import com.lookie.opluskey.config.Action
 import com.lookie.opluskey.config.Command
@@ -254,10 +259,19 @@ internal class SettingsPage(
      *  与 [showSystemApps] 同一套账：提到类上（开关在顶栏那棵树、列表在页内容那棵树）、
      * **不随进页清空**、**落盘**在 [UiState]，进页读一次（[createView]）。
      *
-     *  判据是 [LaunchableApp.launchable]（`getLaunchIntentForPackage` 解不解得出来）——
+     *  判据是 [LaunchableApp.launchable]（[com.lookie.opluskey.hook.AppEntry.resolve] 解不解得出来）——
      *  与执行端同一把尺子，所以藏掉的正是「按下去必弹 toast」的那些。
      */
     internal val hideUnopenable = mutableStateOf(false)
+
+    /**
+     * 「选择应用」菜单里那一项「小窗打开」（见 [AppPickerMenu]）。
+     *
+     *  它不筛列表，只决定**挑中的应用写成哪个动作**：开着写 `window:<包名>`（小窗起），
+     *  关着写 `app:<包名>`。与 [showSystemApps] 同一套账：提到类上、**不随进页清空**、
+     *  **落盘**在 [UiState]，进页读一次（[createView]）。
+     */
+    internal val smallWindow = mutableStateOf(false)
 
     /**
      * 「自定义命令」页正在编辑的那条命令（草稿）。
@@ -319,8 +333,10 @@ internal class SettingsPage(
         //（顶栏菜单那一项要按它画选中态，列表也要按它决定查哪一份）。
         showSystemApps.value = UiState.readShowSystemApps()
         hideUnopenable.value = UiState.readHideUnopenable()
+        smallWindow.value = UiState.readSmallWindow()
         XLog.i(
-            "界面状态：显示全部应用=${showSystemApps.value}，隐藏不可打开=${hideUnopenable.value}",
+            "界面状态：显示全部应用=${showSystemApps.value}，隐藏失效=${hideUnopenable.value}，" +
+                "小窗打开=${smallWindow.value}",
         )
 
         // 建页时把**完整配置**主动同步一次给注入侧（判定在那一侧，见 [publishConfig]）：
@@ -330,8 +346,8 @@ internal class SettingsPage(
 
         XLog.i(
             "命令库：${commands.value.size} 条" +
-                "（单条 ${commands.value.count { it.kind == CommandKind.SINGLE }}" +
-                " / 多条 ${commands.value.count { it.kind == CommandKind.SERIAL }}）",
+                    "（单条 ${commands.value.count { it.kind == CommandKind.SINGLE }}" +
+                    " / 多条 ${commands.value.count { it.kind == CommandKind.SERIAL }}）",
         )
 
         val view = ComposeView(context).apply {
@@ -358,7 +374,7 @@ internal class SettingsPage(
 
         XLog.i(
             "设置页用 COUI（Compose）渲染：night=${dark.value}" +
-                " surface=#${Integer.toHexString(pageBackgroundColor)}",
+                    " surface=#${Integer.toHexString(pageBackgroundColor)}",
         )
         return view
     }
@@ -374,359 +390,401 @@ internal class SettingsPage(
         val navOwner = rememberNavigationEventDispatcherOwner(parent = null)
         COUITheme(colors = colorsFor(night)) {
             CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navOwner) {
-            Scaffold(
-                containerColor = COUITheme.colorScheme.surface,
-                //  整页**边到边**，insets 一概不加：状态栏那一条由页面自己画
-                //（顶栏 107dp 含状态栏 inset，底色铺到 y=0），所以顶栏的模糊、
-                // 浮层的 dim 都自然作用到它 —— 2026-10-12 之前那条盖着 hook 侧的
-                // 实心遮罩，模糊 / dim 都到不了，只能一个个单独处理（已删）。
-                contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            ) { padding ->
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .padding(padding)
-                        //  裁掉转场出画的部分：push/pop 时旧页滑出、新页滑入，
-                        .clipToBounds(),
-                ) {
-                    // 深浅变化同步给 hook 侧（只挂一次，不随子页重复挂）
-                    SyncToHost()
-                    // 换页（往深走 / 往浅走 / 清栈回首页）时**先收掉所有浮窗** ——
-                    // 浮窗渲染在根 Scaffold 的 `popupHost` 里、不跟着页面转场走
-                    //（见 [closeOverlays]），不收的话它会**钉在屏幕上**：页面滑走了它还在，
-                    // 要等那一页出栈才跟着消失。
-                    LaunchedEffect(navStack.lastOrNull()) { closeOverlays("换页 → ${navStack.lastOrNull()}") }
-                    // 调试通道（只有 debug 包注册，见 [DEBUG_CHANNEL]）：页面一组合就挂上、
-                    // 页面销毁自动摘掉 —— 让 `am broadcast` 能直接驱动这个页面，
-                    // 省掉「dump 找坐标 → 模拟点击 → 打字被输入法吃掉」那一套。
-                    // release 包里 `register` 恒返回 null，这一段是死代码。
-                    DisposableEffect(Unit) {
-                        val receiver = PageDebugChannel.register(context) { onDebugCommand(it) }
-                        onDispose { receiver?.let { runCatching { context.unregisterReceiver(it) } } }
-                    }
-                    // —— 平台返回 → 页面栈 ——
-                    //
-                    //  预测返回：hook 侧的 `OnBackAnimationCallback` 拿到系统手势的进度后调
-                    // [navBackInput] 的方法；这里把那个 input 挂到 dispatcher 上才有人接
-                    //（coui-nav 的浮层与 [NavDisplay] 也都往同一个 dispatcher 挂 handler，
-                    // 「谁先消费」由它仲裁）。页面销毁自动摘掉。
-                    DisposableEffect(navOwner) {
-                        val dispatcher = navOwner.navigationEventDispatcher
-                        dispatcher.addInput(navBackInput)
-                        onDispose { dispatcher.removeInput(navBackInput) }
-                    }
-                    // ── 页面级状态：**不随页面出栈注销**的那几样 ──
-                    //
-                    //  分页状态与全量图标表都提在这里创建，而不是各自页面里 `remember`：
-                    //   · [pagerState] / [commandPager] 各有一条**固定带**要读（带子挂在顶栏的
-                    //     `bottomContent` 里、内容在页里，两棵树只能共用同一份状态）；
-                    //   · [bindingIcons] 是全量图标表（每个手势 × 它能选的每个动作），
-                    //     `remember` 的键是 `cmds` —— 命令库不变就不重算，页面进出也不重算。
-                    val pagerState = rememberPagerState(pageCount = { Gesture.entries.size })
-                    val commandPager = rememberPagerState(pageCount = { CommandKind.entries.size })
-                    // 调试通道要切手势 tab —— `pagerState` 活在组合里，只能这样接：
-                    // 看到请求就滚过去、然后清掉（见 [debugGesture]）。
-                    LaunchedEffect(debugGesture.value) {
-                        debugGesture.value?.let {
-                            pagerState.scrollToPage(it.ordinal)
-                            debugGesture.value = null
-                        }
-                    }
-                    //  `remember` 的键是 `cmds`：命令库变了图标表必须跟着重建，
-                    // 否则新增的那几个格子取不到图标（`icons[spec]` 拿到 null，格子里空一块）。
-                    val cmds = commands.value
-                    val bindingIcons = remember(cmds) {
-                        Gesture.entries.associateWith { g ->
-                            ActionCatalog.forGesture(g, cmds).associateWith { specIcon(it) }
-                        }
-                    }
-
-                    // —— push 时把**目标页**的分页状态拨回它该在的那一档 ——
-                    //
-                    //  上面那两个分页状态是**页面级**的、不随页面出栈注销（见它们各处的注释）
-                    // ⇒「出栈的页整个销毁、重新进来是新的一份」这条栈语义得手动补上：
-                    // 退回首页再进「按键绑定」，手势 tab 会停在上次那一档（真机反馈过）。
-                    //  判据取**栈深变深** —— 那就是 push。**pop 不重置**：往回退时下面是原来
-                    // 那一页，状态本来就该原样留着（「打开应用」挑完退回「按键绑定」，
-                    // 还得停在**刚才那个手势**上）。
-                    var previousDepth by remember { mutableIntStateOf(navStack.size) }
-                    LaunchedEffect(navStack.size) {
-                        val depth = navStack.size
-                        val pushed = depth > previousDepth
-                        previousDepth = depth
-                        if (!pushed) return@LaunchedEffect
-                        when (screen) {
-                            Screen.BINDING -> pagerState.scrollToPage(0)
-                            // 「自定义命令」页**按草稿的类型**定位，不是一律回第一页：
-                            // 从「按键绑定」网格长按 / 已选中再点一下某条命令进来时，
-                            // `draft.load(cmd)` 已经把 `kind` 设成那条命令的类型 —— 一律回 0
-                            // 的话单条 / 多条那条 tab 会停在错的档上，紧接着 `draft.kind`
-                            // 还会被分页器反着覆盖回「单条」（真机反馈「长按自定义命令跳转后，
-                            // 多条命令的 tab 没有对应切换」）。
-                            //  从 FAB 进来时草稿刚 `reset()`（kind = SINGLE），等价于回第一页 ✓。
-                            Screen.COMMANDS -> commandPager.scrollToPage(
-                                CommandKind.entries.indexOf(draft.kind).coerceAtLeast(0),
-                            )
-                            else -> Unit
-                        }
-                    }
-
-                    // —— 页面栈 ——
-                    //
-                    //  一页一个 entry，但 `entry` 只注册一次：库按 key 的**运行时类**取注册
-                    //（`entry<T>` 就是拿 `T::class` 建的索引），而 `Screen` 是个枚举 ——
-                    //  五个分量的运行时类是同一个，所以注册一次就够，页与页的区别全在下面那个
-                    // `when`。每页独享的东西（`scrollBehavior`、取样层 `backdrop`）写在 entry
-                    //  的内容里：那是**每个 entry 各自一份**的组合，`remember` 天然逐页独立。
-                    NavDisplay(
-                        backStack = navStack,
-                        //  系统返回那条链在本集成方式下是断的（见 [navStack] 的注释），这个回调
-                        // 只在 dispatcher 真收到事件时兜底 —— 语义与 [goBack] 一致。
-                        onBack = { goBack() },
-                        transition = PAGE_TRANSITION,
-                        //  圆角裁剪关掉（整幅平移，没有卡片式缩放，不必跟着屏幕圆角切角）；
-                        // 压暗用库的通用开关 [NavDisplayEffects.dimAmount]：栈顶之下那一页
-                        // 垫一层黑，静止恒定压着、转场随进度渐变（见 [PAGE_COVER_DIM]）。
-                        effects = NavDisplayEffects(
-                            enableCornerClip = false,
-                            dimAmount = PAGE_COVER_DIM,
-                        ),
-                        modifier = Modifier.fillMaxSize(),
+                Scaffold(
+                    containerColor = COUITheme.colorScheme.surface,
+                    //  整页**边到边**，insets 一概不加：状态栏那一条由页面自己画
+                    //（顶栏 107dp 含状态栏 inset，底色铺到 y=0），所以顶栏的模糊、
+                    // 浮层的 dim 都自然作用到它 —— 2026-10-12 之前那条盖着 hook 侧的
+                    // 实心遮罩，模糊 / dim 都到不了，只能一个个单独处理（已删）。
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                ) { padding ->
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(padding)
+                            //  裁掉转场出画的部分：push/pop 时旧页滑出、新页滑入，
+                            .clipToBounds(),
                     ) {
-                        entry<Screen> { s ->
-                            // 大标题的滚动折叠（COUI「TopAppBar → 大标题顶部栏滚动行为」）——
-                            // 每页**各持一份**：滚动行为是「这一页的列表滚到哪」的账，
-                            // 共用一份的话翻页之后标题的折叠进度会串页。
-                            //
-                            //  顶栏与滚动容器**必须吃同一个实例**：顶栏读它的
-                            // `state` 画折叠进度，滚动容器把 `nestedScrollConnection`
-                            // 挂在链上把余量喂进来。只给一头等于没接（顶栏恒停在展开态）。
-                            //
-                            //  「首页」「关于模块」的标题**不折叠**（2026-10-13 定案）：库的
-                            // 开关是 `canScroll` —— false 时顶栏不再消费滚动事件
-                            //（`ExitUntilCollapsedScrollBehavior` 里 `if (!canScroll()) return Zero`），
-                            // 大标题钉在原位、内容照常从它底下滚过；其余三页照常折叠。
-                            //
-                            //  ⚠️ 这两页的 `TopAppBarState` **必须自己给初始 `heightOffsetLimit`**：
-                            // 库默认是 `-Float.MAX_VALUE`，而那个字段是**普通 var**（不是快照状态）
-                            // —— 顶栏在布局期把它改写成真实折叠量时**不触发重组**。于是
-                            // [currentHeaderHeight] 首帧读到 -MAX，`52dp - (-1.2e38dp)` 到
-                            // `Modifier.height(...).roundToPx()` 整型溢出成 0：顶部让位的 Spacer
-                            // 变成 0，内容整段顶到屏幕最上、被钉住的顶栏盖住（「关于模块」页
-                            // 真机实证：卡片两行全在顶栏底下）。折叠页靠频繁重组自愈，这两页
-                            // 内容是静态的、从不重组 ⇒ 必须在源头给对。钉住时顶栏高度是常量，
-                            // 初始值就给「展开 − 折叠」那一档（像素）。
-                            val scrollBehavior = when (s) {
-                                Screen.SHORTCUTS, Screen.ABOUT -> COUIScrollBehavior(
+                        // 深浅变化同步给 hook 侧（只挂一次，不随子页重复挂）
+                        SyncToHost()
+                        // 换页（往深走 / 往浅走 / 清栈回首页）时**先收掉所有浮窗** ——
+                        // 浮窗渲染在根 Scaffold 的 `popupHost` 里、不跟着页面转场走
+                        //（见 [closeOverlays]），不收的话它会**钉在屏幕上**：页面滑走了它还在，
+                        // 要等那一页出栈才跟着消失。
+                        LaunchedEffect(navStack.lastOrNull()) { closeOverlays("换页 → ${navStack.lastOrNull()}") }
+                        // 调试通道：只有 debug 源集有实现，release 是同名空壳（`register` 恒 null，
+                        // 这段是死代码）。让 `am broadcast` 能直接驱动这个页面，省掉「dump 找坐标 →
+                        // 模拟点击 → 打字被输入法吃掉」那一套。
+                        DisposableEffect(Unit) {
+                            val receiver = PageDebugChannel.register(context) { onDebugCommand(it) }
+                            onDispose { receiver?.let { runCatching { context.unregisterReceiver(it) } } }
+                        }
+                        // 宿主侧的模块加载好之后会广播一声（见 [KeyModule.ACTION_HOST_SERVICE_UP]）——
+                        // 首页据此把「模块未生效」的提示收掉、解除整页禁用。**这是正式通道，release 也有**，
+                        // 与上面那个 debug 专用口子不是一回事。
+                        DisposableEffect(Unit) {
+                            val receiver = object : BroadcastReceiver() {
+                                override fun onReceive(c: Context?, intent: android.content.Intent?) {
+                                    XLog.i("宿主侧模块报活（收到广播）⇒ 首页解除禁用")
+                                    hostServiceUp = true
+                                    hostAliveToken++
+                                }
+                            }
+                            val ok = runCatching {
+                                context.registerReceiver(
+                                    receiver,
+                                    IntentFilter(KeyModule.ACTION_HOST_SERVICE_UP),
+                                    // 同包广播，不必对外导出
+                                    Context.RECEIVER_NOT_EXPORTED,
+                                )
+                            }.isSuccess
+                            if (!ok) XLog.w("注册「宿主服务已拉起」接收器失败（首页退回只查一次）")
+                            onDispose { runCatching { context.unregisterReceiver(receiver) } }
+                        }
+                        // —— 平台返回 → 页面栈 ——
+                        //
+                        //  预测返回：hook 侧的 `OnBackAnimationCallback` 拿到系统手势的进度后调
+                        // [navBackInput] 的方法；这里把那个 input 挂到 dispatcher 上才有人接
+                        //（coui-nav 的浮层与 [NavDisplay] 也都往同一个 dispatcher 挂 handler，
+                        // 「谁先消费」由它仲裁）。页面销毁自动摘掉。
+                        DisposableEffect(navOwner) {
+                            val dispatcher = navOwner.navigationEventDispatcher
+                            dispatcher.addInput(navBackInput)
+                            onDispose { dispatcher.removeInput(navBackInput) }
+                        }
+                        // ── 页面级状态：**不随页面出栈注销**的那几样 ──
+                        //
+                        //  分页状态与全量图标表都提在这里创建，而不是各自页面里 `remember`：
+                        //   · [pagerState] / [commandPager] 各有一条**固定带**要读（带子挂在顶栏的
+                        //     `bottomContent` 里、内容在页里，两棵树只能共用同一份状态）；
+                        //   · [bindingIcons] 是全量图标表（每个手势 × 它能选的每个动作），
+                        //     `remember` 的键是 `cmds` —— 命令库不变就不重算，页面进出也不重算。
+                        val pagerState = rememberPagerState(pageCount = { Gesture.entries.size })
+                        val commandPager = rememberPagerState(pageCount = { CommandKind.entries.size })
+                        // 调试通道要切手势 tab —— `pagerState` 活在组合里，只能这样接：
+                        // 看到请求就滚过去、然后清掉（见 [debugGesture]）。
+                        LaunchedEffect(debugGesture.value) {
+                            debugGesture.value?.let {
+                                pagerState.scrollToPage(it.ordinal)
+                                debugGesture.value = null
+                            }
+                        }
+                        //  `remember` 的键是 `cmds`：命令库变了图标表必须跟着重建，
+                        // 否则新增的那几个格子取不到图标（`icons[spec]` 拿到 null，格子里空一块）。
+                        val cmds = commands.value
+                        val bindingIcons = remember(cmds) {
+                            Gesture.entries.associateWith { g ->
+                                ActionCatalog.forGesture(g, cmds).associateWith { specIcon(it) }
+                            }
+                        }
+
+                        // —— push 时把**目标页**的分页状态拨回它该在的那一档 ——
+                        //
+                        //  上面那两个分页状态是**页面级**的、不随页面出栈注销（见它们各处的注释）
+                        // ⇒「出栈的页整个销毁、重新进来是新的一份」这条栈语义得手动补上：
+                        // 退回首页再进「按键绑定」，手势 tab 会停在上次那一档（真机反馈过）。
+                        //  判据取**栈深变深** —— 那就是 push。**pop 不重置**：往回退时下面是原来
+                        // 那一页，状态本来就该原样留着（「打开应用」挑完退回「按键绑定」，
+                        // 还得停在**刚才那个手势**上）。
+                        var previousDepth by remember { mutableIntStateOf(navStack.size) }
+                        LaunchedEffect(navStack.size) {
+                            val depth = navStack.size
+                            val pushed = depth > previousDepth
+                            previousDepth = depth
+                            if (!pushed) return@LaunchedEffect
+                            when (screen) {
+                                Screen.BINDING -> pagerState.scrollToPage(0)
+                                // 「自定义命令」页**按草稿的类型**定位，不是一律回第一页：
+                                // 从「按键绑定」网格长按 / 已选中再点一下某条命令进来时，
+                                // `draft.load(cmd)` 已经把 `kind` 设成那条命令的类型 —— 一律回 0
+                                // 的话单条 / 多条那条 tab 会停在错的档上，紧接着 `draft.kind`
+                                // 还会被分页器反着覆盖回「单条」（真机反馈「长按自定义命令跳转后，
+                                // 多条命令的 tab 没有对应切换」）。
+                                //  从 FAB 进来时草稿刚 `reset()`（kind = SINGLE），等价于回第一页 ✓。
+                                Screen.COMMANDS -> commandPager.scrollToPage(
+                                    CommandKind.entries.indexOf(draft.kind).coerceAtLeast(0),
+                                )
+
+                                else -> Unit
+                            }
+                        }
+
+                        // —— 页面栈 ——
+                        //
+                        //  一页一个 entry，但 `entry` 只注册一次：库按 key 的**运行时类**取注册
+                        //（`entry<T>` 就是拿 `T::class` 建的索引），而 `Screen` 是个枚举 ——
+                        //  五个分量的运行时类是同一个，所以注册一次就够，页与页的区别全在下面那个
+                        // `when`。每页独享的东西（`scrollBehavior`、取样层 `backdrop`）写在 entry
+                        //  的内容里：那是**每个 entry 各自一份**的组合，`remember` 天然逐页独立。
+                        NavDisplay(
+                            backStack = navStack,
+                            //  系统返回那条链在本集成方式下是断的（见 [navStack] 的注释），这个回调
+                            // 只在 dispatcher 真收到事件时兜底 —— 语义与 [goBack] 一致。
+                            onBack = { goBack() },
+                            transition = PAGE_TRANSITION,
+                            //  圆角裁剪关掉（整幅平移，没有卡片式缩放，不必跟着屏幕圆角切角）；
+                            // 压暗用库的通用开关 [NavDisplayEffects.dimAmount]：栈顶之下那一页
+                            // 垫一层黑，静止恒定压着、转场随进度渐变（见 [PAGE_COVER_DIM]）。
+                            effects = NavDisplayEffects(
+                                enableCornerClip = false,
+                                dimAmount = PAGE_COVER_DIM,
+                            ),
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            entry<Screen> { s ->
+                                // 大标题的滚动折叠（COUI「TopAppBar → 大标题顶部栏滚动行为」）——
+                                // 每页**各持一份**：滚动行为是「这一页的列表滚到哪」的账，
+                                // 共用一份的话翻页之后标题的折叠进度会串页。
+                                //
+                                //  顶栏与滚动容器**必须吃同一个实例**：顶栏读它的
+                                // `state` 画折叠进度，滚动容器把 `nestedScrollConnection`
+                                // 挂在链上把余量喂进来。只给一头等于没接（顶栏恒停在展开态）。
+                                //
+                                //  「首页」「关于模块」的标题**不折叠**（2026-10-13 定案）：库的
+                                // 开关是 `canScroll` —— false 时顶栏不再消费滚动事件
+                                //（`ExitUntilCollapsedScrollBehavior` 里 `if (!canScroll()) return Zero`），
+                                // 大标题钉在原位、内容照常从它底下滚过；其余三页照常折叠。
+                                //
+                                //  ⚠️ **每页都必须自己给初始 `heightOffsetLimit`**（原来只给钉住的两页，
+                                // 折叠那三页靠「频繁重组自愈」，实测会卡在坏态）：
+                                //  库默认是 `-Float.MAX_VALUE`，而那个字段是**普通 var** —— 顶栏在布局期
+                                //  把它改写成真实折叠量时**不触发重组**。于是 [currentHeaderHeight] 首帧
+                                //  读到 -MAX，`52dp - (-1.2e38dp)` 让 `Modifier.height(...).roundToPx()`
+                                //  整型溢出成 0：顶部让位的 Spacer 变 0、内容整段顶到屏幕最上被顶栏盖住
+                                //（「关于模块」页与「按键绑定」页 2026-10-13 各实证一次）。折叠页只在
+                                //  恰好有别的重组时自愈 ⇒ 表现为「偶尔有些页面没给 Header 让位」。
+                                //  初始值给「展开 − 折叠」那一档（像素）；[currentHeaderHeight] 另有一道
+                                //  认哨兵的兜底，双保险。
+                                val scrollBehavior = COUIScrollBehavior(
                                     state = rememberTopAppBarState(
                                         initialHeightOffsetLimit = with(LocalDensity.current) {
                                             -(TopAppBarDefaults.ExpandedHeight -
-                                                TopAppBarDefaults.CollapsedHeight).roundToPx().toFloat()
+                                                    TopAppBarDefaults.CollapsedHeight).roundToPx().toFloat()
                                         },
                                     ),
-                                    canScroll = { false },
+                                    // 只有「首页」「关于模块」两页钉住标题（不折叠），其余三页照常折叠。
+                                    canScroll = { s != Screen.SHORTCUTS && s != Screen.ABOUT },
                                 )
-                                else -> COUIScrollBehavior()
-                            }
 
-                            // 顶栏模糊的背景层（COUI「模糊效果」：`layerBackdrop` 抓、
-                            // `drawBackdrop` 在顶栏上取样）。
-                            //
-                            //  `layerBackdrop` **只抓这个节点自己画的内容**，不含父级背景
-                            // —— 不铺底色的话，透明区域会让模糊把颜色扩散进去、糊成色块。
-                            val surfaceColor = COUITheme.colorScheme.surface
-                            val backdrop = rememberLayerBackdrop {
-                                drawRect(surfaceColor)
-                                drawContent()
-                            }
+                                // 顶栏模糊的背景层（COUI「模糊效果」：`layerBackdrop` 抓、
+                                // `drawBackdrop` 在顶栏上取样）。
+                                //
+                                //  `layerBackdrop` **只抓这个节点自己画的内容**，不含父级背景
+                                // —— 不铺底色的话，透明区域会让模糊把颜色扩散进去、糊成色块。
+                                val surfaceColor = COUITheme.colorScheme.surface
+                                val backdrop = rememberLayerBackdrop {
+                                    drawRect(surfaceColor)
+                                    drawContent()
+                                }
 
-                            Box(
-                                Modifier
-                                    .fillMaxSize()
-                                    // 每个页面自带不透明底：转场交叠时不透出下层残影
-                                    .background(surfaceColor),
-                            ) {
                                 Box(
                                     Modifier
                                         .fillMaxSize()
-                                        .layerBackdrop(backdrop),
+                                        // 每个页面自带不透明底：转场交叠时不透出下层残影
+                                        .background(surfaceColor),
                                 ) {
-                                    when (s) {
-                                        Screen.SHORTCUTS -> HomeScreen(scrollBehavior)
-                                        Screen.BINDING -> BindingScreen(
-                                            pagerState,
-                                            bindingIcons,
-                                            // 首页那个主开关（[KeyConfig.enabled]）—— 关掉时整页禁用
-                                            enabled = config.value.key(KeyId.PLUS).enabled,
-                                            onOpenAppPicker = { g ->
-                                                _appPickerGesture = g
-                                                _appPickerForStep = false
-                                                // 搜索词清空（页面级状态，不再随页面出栈注销，
-                                                // 见 [appFilter]；另一条入口在 [openAppPickerForStep]）
-                                                appFilter.value = ""
-                                                // 父级不用记：压它下面的是谁，返回就退到谁
-                                                navTo(Screen.APP_PICKER)
-                                            },
-                                            scrollBehavior = scrollBehavior,
-                                        )
-                                        Screen.COMMANDS -> CommandScreen(scrollBehavior, commandPager)
-                                        // 挑应用。**两个入口共用这一页**（挑中的东西不一样）：
-                                        //  · 网格里的入口格「打开应用」→ 把**当前手势**绑成
-                                        //    `app:<包名>`（走现成的 `pick()`，它同时负责
-                                        //    「选动作顺手把主开关打开」那条纪律）；
-                                        //  · 「添加命令」浮层里的「选择应用」→ 把 `app:<包名>`
-                                        //    作为**一步**加进当前多条命令（走 `addStep()`，见
-                                        //    `openAppPickerForStep`）。
-                                        Screen.APP_PICKER -> AppPickerScreen(
-                                            // 「当前已选的那个应用」：行尾点亮单选圈 + 进页滚到它眼前。
-                                            // 两条入口的来源见 [appPickerSelectedPkg] —— 网格那条读手势，
-                                            // 「自定义命令」那条读**被换掉的那一步**。
-                                            selected = appPickerSelectedPkg(),
-                                            onPick = { pkg ->
-                                                tickNow()
-                                                if (_appPickerForStep) {
-                                                    // 「加一步 / 换一步」： 这里**不用 `goBack()`** ——
-                                                    // `addStep()` / `replaceStep()` 自己会把页面切回
-                                                    // 「自定义命令」页（那才是这次挑应用的来处），
-                                                    // 从「打开应用」退到那一页就是它的 pop 转场。
+                                    Box(
+                                        Modifier
+                                            .fillMaxSize()
+                                            .layerBackdrop(backdrop),
+                                    ) {
+                                        when (s) {
+                                            Screen.SHORTCUTS -> HomeScreen(scrollBehavior)
+                                            Screen.BINDING -> BindingScreen(
+                                                pagerState,
+                                                bindingIcons,
+                                                // 首页那个主开关（[KeyConfig.enabled]）—— 关掉时整页禁用
+                                                enabled = config.value.key(KeyId.PLUS).enabled,
+                                                onOpenAppPicker = { g ->
+                                                    _appPickerGesture = g
                                                     _appPickerForStep = false
-                                                    val target = _appPickerReplaceStep
-                                                    _appPickerReplaceStep = -1
-                                                    if (target >= 0) {
-                                                        replaceStep(target, "app:$pkg")
+                                                    // 搜索词清空（页面级状态，不再随页面出栈注销，
+                                                    // 见 [appFilter]；另一条入口在 [openAppPickerForStep]）
+                                                    appFilter.value = ""
+                                                    // 父级不用记：压它下面的是谁，返回就退到谁
+                                                    navTo(Screen.APP_PICKER)
+                                                },
+                                                scrollBehavior = scrollBehavior,
+                                            )
+
+                                            Screen.COMMANDS -> CommandScreen(scrollBehavior, commandPager)
+                                            // 挑应用。**两个入口共用这一页**（挑中的东西不一样）：
+                                            //  · 网格里的入口格「打开应用」→ 把**当前手势**绑成
+                                            //    `app:<包名>`（走现成的 `pick()`，它同时负责
+                                            //    「选动作顺手把主开关打开」那条纪律）；
+                                            //  · 「添加命令」浮层里的「选择应用」→ 把 `app:<包名>`
+                                            //    作为**一步**加进当前多条命令（走 `addStep()`，见
+                                            //    `openAppPickerForStep`）。
+                                            Screen.APP_PICKER -> AppPickerScreen(
+                                                // 「当前已选的那个应用」：行尾点亮单选圈 + 进页滚到它眼前。
+                                                // 两条入口的来源见 [appPickerSelectedPkg] —— 网格那条读手势，
+                                                // 「自定义命令」那条读**被换掉的那一步**。
+                                                selected = appPickerSelectedPkg(),
+                                                onPick = { pkg, window ->
+                                                    tickNow()
+                                                    // 写成哪个动作由菜单里那项「小窗打开」定（见 [smallWindow]）
+                                                    val token = if (window) "window:$pkg" else "app:$pkg"
+                                                    if (_appPickerForStep) {
+                                                        // 「加一步 / 换一步」： 这里**不用 `goBack()`** ——
+                                                        // `addStep()` / `replaceStep()` 自己会把页面切回
+                                                        // 「自定义命令」页（那才是这次挑应用的来处），
+                                                        // 从「打开应用」退到那一页就是它的 pop 转场。
+                                                        _appPickerForStep = false
+                                                        val target = _appPickerReplaceStep
+                                                        _appPickerReplaceStep = -1
+                                                        if (target >= 0) {
+                                                            replaceStep(target, token)
+                                                        } else {
+                                                            addStep(token)
+                                                        }
                                                     } else {
-                                                        addStep("app:$pkg")
+                                                        // 写的是**进这一页时那个手势**（见 _appPickerGesture），
+                                                        // 不是 pager 的当前页 —— 这一页不属于 pager。
+                                                        _appPickerGesture?.let { g ->
+                                                            pick(
+                                                                ActionCatalog.Spec(
+                                                                    title = pkg,
+                                                                    summary = token,
+                                                                    token = token,
+                                                                ),
+                                                                g,
+                                                            )
+                                                        }
+                                                        //  挑完了要清掉：goBack() 靠它判断「是不是没挑就返回」
+                                                        _appPickerGesture = null
+                                                        goBack()
                                                     }
-                                                } else {
-                                                    // 写的是**进这一页时那个手势**（见 _appPickerGesture），
-                                                    // 不是 pager 的当前页 —— 这一页不属于 pager。
-                                                    _appPickerGesture?.let { g ->
-                                                        pick(
-                                                            ActionCatalog.Spec(
-                                                                title = pkg,
-                                                                summary = "app:$pkg",
-                                                                token = "app:$pkg",
-                                                            ),
-                                                            g,
-                                                        )
-                                                    }
-                                                    //  挑完了要清掉：goBack() 靠它判断「是不是没挑就返回」
-                                                    _appPickerGesture = null
-                                                    goBack()
-                                                }
-                                            },
-                                            scrollBehavior = scrollBehavior,
-                                        )
+                                                },
+                                                scrollBehavior = scrollBehavior,
+                                            )
 
-                                        // 「关于模块」：版本 / 仓库地址两行，从首页 ⋮ 菜单进
-                                        Screen.ABOUT -> AboutScreen(scrollBehavior)
+                                            // 「关于模块」：版本 / 仓库地址两行，从首页 ⋮ 菜单进
+                                            Screen.ABOUT -> AboutScreen(scrollBehavior)
+                                        }
                                     }
-                                }
 
-                                // —— 自定义命令页的**底部操作悬浮工具栏** ——
-                                //
-                                //  它必须挂在这里（页内、但那个模糊**记录层之外**）：
-                                // 顶栏模糊取样的就是上面那个 `layerBackdrop` 节点 ——
-                                // `drawBackdrop` 的节点**不能落进它自己取样的那一层**，
-                                // 否则记录层为了画自己得再画它、它又去取样记录层……渲染节点链
-                                // 无限增长，最终 RenderThread **栈溢出**（`RenderNode::prepareTreeImpl`
-                                // 递归 500+ 层），宿主 UI 进程当场被杀 —— 真机崩过一次，就是这个。
-                                // 所以工具栏与顶栏同一个挂法：页内、记录层外，只是贴在底部。
-                                // （它自己那层模糊暂时没上，理由见 [CommandActions] 的注释。）
-                                //
-                                // 只在这一页显示；整页 push / pop 转场时它跟着一起滑
-                                //（挂在页里，不是挂在页面之外）。
-                                if (s == Screen.COMMANDS) {
-                                    CommandActions(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .padding(bottom = COMMAND_TOOLBAR_BOTTOM),
+                                    // 首页那条「模块未生效」提示（见 [hostServiceSnackbar]）。
+                                    //  只挂在首页；**不占布局位置** —— `SnackbarHost` 内部就是底部对齐的浮层，
+                                    // 页面内容照常铺满（落点在屏幕底边，与顶部横幅的 TopTips 不是一个位置）。
+                                    if (s == Screen.SHORTCUTS) {
+                                        SnackbarHost(
+                                            state = hostServiceSnackbar,
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .fillMaxWidth(),
+                                        )
+                                    }
+
+                                    // —— 自定义命令页的**底部操作悬浮工具栏** ——
+                                    //
+                                    //  它必须挂在这里（页内、但那个模糊**记录层之外**）：
+                                    // 顶栏模糊取样的就是上面那个 `layerBackdrop` 节点 ——
+                                    // `drawBackdrop` 的节点**不能落进它自己取样的那一层**，
+                                    // 否则记录层为了画自己得再画它、它又去取样记录层……渲染节点链
+                                    // 无限增长，最终 RenderThread **栈溢出**（`RenderNode::prepareTreeImpl`
+                                    // 递归 500+ 层），宿主 UI 进程当场被杀 —— 真机崩过一次，就是这个。
+                                    // 所以工具栏与顶栏同一个挂法：页内、记录层外，只是贴在底部。
+                                    // （它自己那层模糊暂时没上，理由见 [CommandActions] 的注释。）
+                                    //
+                                    // 只在这一页显示；整页 push / pop 转场时它跟着一起滑
+                                    //（挂在页里，不是挂在页面之外）。
+                                    if (s == Screen.COMMANDS) {
+                                        CommandActions(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .padding(bottom = COMMAND_TOOLBAR_BOTTOM),
+                                        )
+                                    }
+
+                                    // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
+                                    // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
+                                    PageHeader(
+                                        title = when (s) {
+                                            Screen.SHORTCUTS -> homeTitle
+                                            Screen.BINDING -> BINDING_TITLE
+                                            Screen.COMMANDS -> COMMANDS_TITLE
+                                            Screen.APP_PICKER -> APP_PICKER_TITLE
+                                            Screen.ABOUT -> ABOUT_TITLE
+                                        },
+                                        // 大标题**下面**那行（库原本的底线副标题槽位，自己占一行）：
+                                        // 首页 = 模块版本（与「关于模块」的「版本」行同源）。
+                                        largeTitleSubtitle = when (s) {
+                                            Screen.SHORTCUTS -> remember { appVersionText() }
+                                            else -> ""
+                                        },
+                                        // 大标题**右边**那行小标题（补丁新增的槽位，折叠后保留）：
+                                        // 「自定义命令」= 已保存的命令条数（[commands] 变了跟着重组）；
+                                        // 「选择应用」= 当前已选的应用名（两条入口见
+                                        // [appPickerSelectedPkg]，查不到清单就退回包名）。
+                                        subtitle = when (s) {
+                                            Screen.COMMANDS -> "已保存${commands.value.size}条命令"
+                                            Screen.APP_PICKER -> {
+                                                val pkg = appPickerSelectedPkg()
+                                                if (pkg == null) {
+                                                    // 没选过就不摆一行「已选择: 无」—— 那种写法像是有个叫「无」的应用
+                                                    "还未选择应用"
+                                                } else {
+                                                    val label = cachedApps
+                                                        ?.firstOrNull { it.packageName == pkg }
+                                                        ?.label ?: pkg
+                                                    "已选择: $label"
+                                                }
+                                            }
+
+                                            else -> ""
+                                        },
+                                        // 菜单按页分派：**只有首页与「选择应用」页有菜单**
+                                        //（前者是打开默认界面 / 重置所有配置，后者只有一项
+                                        // 「显示系统应用」，见 [AppPickerMenu]）。
+                                        //
+                                        //  「按键绑定」页那一套「新增命令」菜单 2026-10-11 晚些时候**撤掉了**
+                                        // 不再有 ⋮。进「自定义命令」页的唯一入口现在是那一页右下角的
+                                        // 那颗 FAB（见 [BindingScreen]）。
+                                        menu = when (s) {
+                                            Screen.SHORTCUTS -> HeaderMenu.HOME
+                                            Screen.APP_PICKER -> HeaderMenu.APP_PICKER
+                                            else -> HeaderMenu.NONE
+                                        },
+                                        scrollBehavior = scrollBehavior,
+                                        backdrop = backdrop,
+                                        // 顶栏底下那条**固定带**（三条带子各归各的页）——
+                                        // 它们原先是各页自己叠的一层浮层（自带取样层 / 模糊 /
+                                        // 半透明底 / 内容里等高占位），2026-10-13 统一搬进顶栏这个
+                                        // `bottomContent` 槽位：位置、底色、模糊、下沿那条细线都由
+                                        // 顶栏那一份负责，见 [PageHeader] 与三个带子自己的 KDoc。
+                                        //  带子跨度与内容高度都各自报给页面级状态（[bindingBandHeight]
+                                        // 那三个），页内那个占位 Spacer 读 —— 带子与内容分处两棵树，
+                                        // 只有这一条路能对齐。
+                                        bottomContent = {
+                                            when (s) {
+                                                Screen.BINDING -> BindingTabBand(
+                                                    pagerState,
+                                                    // 首页那个主开关（[KeyConfig.enabled]）——
+                                                    // 关掉时带子灰掉且吃掉输入（与那颗 FAB 同款）
+                                                    enabled = config.value.key(KeyId.PLUS).enabled,
+                                                )
+
+                                                Screen.COMMANDS -> CommandKindBand(commandPager)
+                                                Screen.APP_PICKER -> AppSearchBand()
+                                                // 首页与「关于模块」没有固定带
+                                                Screen.SHORTCUTS, Screen.ABOUT -> Unit
+                                            }
+                                        },
                                     )
                                 }
-
-                                // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
-                                // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
-                                PageHeader(
-                                    title = when (s) {
-                                        Screen.SHORTCUTS -> homeTitle
-                                        Screen.BINDING -> BINDING_TITLE
-                                        Screen.COMMANDS -> COMMANDS_TITLE
-                                        Screen.APP_PICKER -> APP_PICKER_TITLE
-                                        Screen.ABOUT -> ABOUT_TITLE
-                                    },
-                                    // 副标题（折叠后保留，与小标题对齐 —— 见 [PageHeader] KDoc）：
-                                    // 首页 = 模块版本（与「关于模块」的「版本」行同源）；
-                                    // 「自定义命令」= 已保存的命令条数（[commands] 变了跟着重组）；
-                                    // 「选择应用」= 当前已选的应用名（两条入口见
-                                    // [appPickerSelectedPkg]，查不到清单就退回包名）。
-                                    subtitle = when (s) {
-                                        Screen.SHORTCUTS -> remember { appVersionText() }
-                                        Screen.COMMANDS -> "已保存${commands.value.size}条命令"
-                                        Screen.APP_PICKER -> {
-                                            val pkg = appPickerSelectedPkg()
-                                            if (pkg == null) {
-                                                // 没选过就不摆一行「已选择: 无」—— 那种写法像是有个叫「无」的应用
-                                                "还未选择应用"
-                                            } else {
-                                                val label = cachedApps
-                                                    ?.firstOrNull { it.packageName == pkg }
-                                                    ?.label ?: pkg
-                                                "已选择: $label"
-                                            }
-                                        }
-                                        else -> ""
-                                    },
-                                    // 菜单按页分派：**只有首页与「选择应用」页有菜单**
-                                    //（前者是打开默认界面 / 重置所有配置，后者只有一项
-                                    // 「显示系统应用」，见 [AppPickerMenu]）。
-                                    //
-                                    //  「按键绑定」页那一套「新增命令」菜单 2026-10-11 晚些时候**撤掉了**
-                                    // 不再有 ⋮。进「自定义命令」页的唯一入口现在是那一页右下角的
-                                    // 那颗 FAB（见 [BindingScreen]）。
-                                    menu = when (s) {
-                                        Screen.SHORTCUTS -> HeaderMenu.HOME
-                                        Screen.APP_PICKER -> HeaderMenu.APP_PICKER
-                                        else -> HeaderMenu.NONE
-                                    },
-                                    scrollBehavior = scrollBehavior,
-                                    backdrop = backdrop,
-                                    // 顶栏底下那条**固定带**（三条带子各归各的页）——
-                                    // 它们原先是各页自己叠的一层浮层（自带取样层 / 模糊 /
-                                    // 半透明底 / 内容里等高占位），2026-10-13 统一搬进顶栏这个
-                                    // `bottomContent` 槽位：位置、底色、模糊、下沿那条细线都由
-                                    // 顶栏那一份负责，见 [PageHeader] 与三个带子自己的 KDoc。
-                                    //  带子跨度与内容高度都各自报给页面级状态（[bindingBandHeight]
-                                    // 那三个），页内那个占位 Spacer 读 —— 带子与内容分处两棵树，
-                                    // 只有这一条路能对齐。
-                                    bottomContent = {
-                                        when (s) {
-                                            Screen.BINDING -> BindingTabBand(
-                                                pagerState,
-                                                // 首页那个主开关（[KeyConfig.enabled]）——
-                                                // 关掉时带子灰掉且吃掉输入（与那颗 FAB 同款）
-                                                enabled = config.value.key(KeyId.PLUS).enabled,
-                                            )
-                                            Screen.COMMANDS -> CommandKindBand(commandPager)
-                                            Screen.APP_PICKER -> AppSearchBand()
-                                            // 首页与「关于模块」没有固定带
-                                            Screen.SHORTCUTS, Screen.ABOUT -> Unit
-                                        }
-                                    },
-                                )
                             }
                         }
                     }
                 }
             }
-            }
         }
     }
 
-/**
-     * 顶栏**当前**占掉的高度（含它自己那块状态栏 inset）—— 内容顶部要留出这么多。
- */
     /**
-     * 调试通道的处理体 —— **只有 debug 包会走到这里**（见 [DEBUG_CHANNEL]）。
+     * 顶栏**当前**占掉的高度（含它自己那块状态栏 inset）—— 内容顶部要留出这么多。
+     */
+    /**
+     * 调试通道的处理体 —— **只有 debug 包会走到这里**（实现只在 `src/debug/` 源集）。
      *
      * 支持的动作见 [PageDebugChannel] 的类注释（`screen` / `gesture` / `kind` /
      * `name` / `cmd` / `steps` / `del` / `reset` / `save` / `action` / `state`，一次可以带多个）。
@@ -799,6 +857,7 @@ internal class SettingsPage(
                     XLog.i("调试：action=CONFIRM_RESET → 弹出重置确认弹窗")
                     confirmReset.value = true
                 }
+
                 else -> XLog.w(
                     "调试：认不出的 action=$raw（可用：CONFIRM_RESET）",
                 )
@@ -817,10 +876,10 @@ internal class SettingsPage(
         val key = config.value.key(KeyId.PLUS)
         XLog.i(
             "调试·状态：screen=$screen 栈=${navStack.joinToString(">")} 主开关=${key.enabled} " +
-                "单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token} | " +
-                "表单 kind=${draft.kind.id} editing=${draft.editingName} " +
-                "name='${draft.name}' cmd='${draft.single}' steps=${draft.steps.toList()} | " +
-                "命令库=${commands.value.map { it.name }}",
+                    "单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token} | " +
+                    "表单 kind=${draft.kind.id} editing=${draft.editingName} " +
+                    "name='${draft.name}' cmd='${draft.single}' steps=${draft.steps.toList()} | " +
+                    "命令库=${commands.value.map { it.name }}",
         )
     }
 
@@ -896,12 +955,40 @@ internal class SettingsPage(
     }
 
     /**
+     * 宿主的侧键服务有没有在跑 —— 也就是**模块执行侧有没有在工作**（判据见 [queryHostServiceRunning]）。
+     *
+     * 初值取 `true`：首帧还没查，先按「正常」画 —— 反过来的话每次进页面都会闪一下「未生效」的提示。
+     * 首页那个 `LaunchedEffect` 组合完立刻查一次，查完再按真实结果画。
+     */
+    internal var hostServiceUp by mutableStateOf(true)
+
+    /**
+     * 宿主侧报活的**代次** —— 每收到一条报活就自增。
+     *
+     *  首页进页时记下它、发一句「在不在」，等一档再看它有没有变：变了就是模块在，没变就是没在
+     *（见 [HOST_ALIVE_TIMEOUT_MS]）。用它而不是直接看 [hostServiceUp]，是因为后者初值必须是
+     * `true`（否则每次进页面都会闪一下提示）。
+     */
+    internal var hostAliveToken by mutableIntStateOf(0)
+
+    /**
+     * 首页那条「模块未生效」提示的宿主状态 —— COUI 的 `SnackbarHost` 用它排队 / 显隐。
+     *
+     *  提示由首页（[HomeScreen]）弹，宿主却挂在这一层：`SnackbarHost` 要的是「底部对齐、
+     * 不随内容滚动」的位置，而首页自己整个是滚动容器 —— 挂在页内就只能跟着内容滚了。
+     */
+    internal val hostServiceSnackbar = SnackbarHostState()
+
+    /**
      * 见 `SettingsPageHooks`）—— 把页面栈清回首页。
      */
     fun onHostReentered() {
         _appPickerGesture = null
         _appPickerForStep = false
         _appPickerReplaceStep = -1
+        // 栈顶没变时下面的 LaunchedEffect 不触发，浮窗要在这里主动收：
+        // 首页开着 ⋮ 菜单按 Home / 熄屏再回来，菜单不能还盖在页面上。
+        closeOverlays("从设置重进模块")
         if (navStack.size > 1) {
             val previous = navStack.last()
             XLog.i("从设置重进模块：页面栈清回首页（原 $previous）")
@@ -931,8 +1018,9 @@ internal class SettingsPage(
      * 从「设置」重进、切后台回来，菜单还开着；换页时浮窗还会**钉在屏幕上不动**，
      * 等那一页出栈才跟着消失。
      *
-     * 触发点四处（都在「页面离开」这条需求路径上）：
+     * 触发点（都在「页面离开」这条需求路径上）：
      *  · 换页 / 清栈回首页 —— [Page] 里那个看着 `screen` 的 `LaunchedEffect`；
+     *  · 从设置重进模块（栈顶未变时 LaunchedEffect 不触发）—— [onHostReentered]；
      *  · 顶栏返回键在首页（关页面）—— [PageHeader]；
      *  · 露出宿主原版界面 / 系统返回关页面 / 宿主 Activity `onStop` —— [SettingsPageHooks]。
      *
@@ -1055,8 +1143,8 @@ internal class SettingsPage(
         fallbackOwners = created
         XLog.i(
             "宿主不提供 ViewTree owner（lifecycle=${hostLifecycle != null}" +
-                " viewModel=${hostViewModel != null} savedState=${hostSavedState != null}）" +
-                "⇒ 已自建 LifecycleRegistry + ViewModelStore + SavedStateRegistry 兜底",
+                    " viewModel=${hostViewModel != null} savedState=${hostSavedState != null}）" +
+                    "⇒ 已自建 LifecycleRegistry + ViewModelStore + SavedStateRegistry 兜底",
         )
         return created
     }

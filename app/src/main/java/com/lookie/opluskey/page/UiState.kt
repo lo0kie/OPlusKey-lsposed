@@ -18,11 +18,17 @@ internal object UiState {
     /** 「选择应用」页是否把拉不起来的应用藏掉（见 [SettingsPage.hideUnopenable]）。 */
     private const val KEY_HIDE_UNOPENABLE = "hide_unopenable"
 
+    /** 「选择应用」菜单里「小窗打开」那一项（见 [SettingsPage.smallWindow]）。 */
+    private const val KEY_SMALL_WINDOW = "small_window"
+
     fun readShowSystemApps(): Boolean =
         parse(readText())[KEY_SHOW_SYSTEM_APPS]?.toBooleanStrictOrNull() ?: false
 
     fun readHideUnopenable(): Boolean =
         parse(readText())[KEY_HIDE_UNOPENABLE]?.toBooleanStrictOrNull() ?: false
+
+    fun readSmallWindow(): Boolean =
+        parse(readText())[KEY_SMALL_WINDOW]?.toBooleanStrictOrNull() ?: false
 
     /**
      * 写一条；其余键原样保留（先读出来改一个键再整份写回）。走 [ConfigStore.writeAtomically]：
@@ -38,6 +44,12 @@ internal object UiState {
     fun writeHideUnopenable(value: Boolean) {
         val map = parse(readText())
         map[KEY_HIDE_UNOPENABLE] = value.toString()
+        writeText(render(map))
+    }
+
+    fun writeSmallWindow(value: Boolean) {
+        val map = parse(readText())
+        map[KEY_SMALL_WINDOW] = value.toString()
         writeText(render(map))
     }
 

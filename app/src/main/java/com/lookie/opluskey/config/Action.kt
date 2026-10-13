@@ -48,6 +48,22 @@ sealed interface Action {
         override val token: String = "app:$target"
     }
 
+    /** 同 [App]，但用 ColorOS 的小窗起（`window:目标`）。 */
+    data class AppWindow(val target: String) : Action {
+        override val token: String = "window:$target"
+    }
+
+    /**
+     * 把**前台**那个应用收成小窗（`zoom:mini`）。
+     *
+     * 与 [AppWindow] 走同一支接口（`OplusActivityManager#startZoomWindow`），只差目标：
+     * 那条按包名解析入口，这条取当前前台活动 —— 所以小窗起不来时它不会退成普通打开
+     * （前台那个本来就占着屏，重开一次等于什么都没发生）。
+     */
+    data object MiniWindow : Action {
+        override val token: String = "zoom:mini"
+    }
+
     /** 执行 ColorOS 小布快捷指令（`com.coloros.shortcuts`），[shortcutId] 是那条指令的 ID。 */
     data class Shortcut(val shortcutId: String) : Action {
         override val token: String = "shortcut:$shortcutId"
@@ -64,6 +80,22 @@ sealed interface Action {
      */
     data class Ringer(val mode: String) : Action {
         override val token: String = "ringer:$mode"
+    }
+
+    /**
+     * 弹系统电源菜单（关机 / 重启 / 紧急呼叫）：执行侧在 system_server 里直接调
+     * `PhoneWindowManager.showGlobalActions()`，不注入电源键、没有长按等待。
+     */
+    data object PowerMenu : Action {
+        override val token: String = "power:menu"
+    }
+
+    /**
+     * ColorOS 系统能力（`oplus:功能名`），取值见 `hook/OplusFeature` —— 是不是「侧键场景表」
+     * 里的那一档、调哪个组件，都照抄系统自己的记录。
+     */
+    data class Oplus(val feature: String) : Action {
+        override val token: String = "oplus:$feature"
     }
 
     companion object {
@@ -92,10 +124,17 @@ sealed interface Action {
                 text.startsWith(Command.PREFIX) -> Custom(text.removePrefix(Command.PREFIX).trim())
                 text.startsWith("intent:") -> Intent(text.removePrefix("intent:").trim())
                 text.startsWith("app:") -> App(text.removePrefix("app:").trim())
+                // 必须排在兜底之前，否则 `window:` 会被当成 shell 命令执行
+                text.startsWith("window:") -> AppWindow(text.removePrefix("window:").trim())
                 text.startsWith("shortcut:") -> Shortcut(text.removePrefix("shortcut:").trim())
                 text == "flashlight" -> Flashlight
                 // 必须排在兜底之前，否则 `ringer:` 会被当成 shell 命令执行
                 text.startsWith("ringer:") -> Ringer(text.removePrefix("ringer:").trim())
+                // 同上：认不出的前缀会落到 shell 兜底
+                text == "power:menu" -> PowerMenu
+                // 同上：`zoom:` 也是认不出就落到 shell 兜底的那一类
+                text == "zoom:mini" -> MiniWindow
+                text.startsWith("oplus:") -> Oplus(text.removePrefix("oplus:").trim())
                 else -> Shell(text)
             }
         }

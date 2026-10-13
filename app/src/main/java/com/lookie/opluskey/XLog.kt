@@ -4,10 +4,11 @@ import android.util.Log
 import io.github.libxposed.api.XposedModule
 
 /**
- * 日志统一出口。级别约定：`system_server` 侧（`hook/`、`GestureDetector`、`ConfigBroadcast`）
- * 的判据级行（装没装上、手势判定、配置到没到）一律用 [w] —— `(system)` 侧的 `i`/`d` 会被
- * LSPosed 进程级日志级别整档丢掉，release 里更被编译期消除（见 `docs/device-findings.md` 十五）；
- * 宿主进程里 `i`/`d` 照常可读；高频路径（如「非侧键放行」）留在 `d`，避免刷屏。
+ * 日志统一出口。级别约定：
+ *  - 判据级行（装没装上、手势判定、配置到没到）一律用 [w] —— `[i]`/`[d]` 在 release 里被
+ *    `VERBOSE_LOG=false` **编译期消除（不分进程）**，debug 包里 `(system)` 侧的 `i`/`d`
+ *    又会被 LSPosed 进程级日志级别整档丢掉（见 `docs/device-findings.md` 十五）。
+ *  - debug + 宿主进程里 `i`/`d` 才真正可读；高频路径（如「非侧键放行」）留在 `d`，避免刷屏。
  */
 object XLog {
 

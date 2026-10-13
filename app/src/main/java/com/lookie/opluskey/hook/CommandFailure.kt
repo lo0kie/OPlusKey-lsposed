@@ -46,6 +46,9 @@ internal enum class CommandFailure(val hint: String) {
 
     /** 兜底：执行时抛了异常，但说不上是哪一类。 */
     UNKNOWN("这次没执行成功"),
+
+    /** shell 并发超上限被拒（上一条还没结束又来一条）。 */
+    OVERLOADED("上一条命令还没跑完，稍后再试"),
     ;
 
     companion object {

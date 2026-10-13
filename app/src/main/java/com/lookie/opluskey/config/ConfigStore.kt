@@ -59,9 +59,7 @@ object ConfigStore {
      * （命令库读方是宿主主进程、写方是设置页 `:ui` 进程，主配置同理），直接 `writeText`
      * 是「先截断再写」，读方正好落在中间就读到半截内容。三个文件统一走这一份。
      *
-     * @param openReadable true = 再把文件放开到 0644（跨 uid 读得到，方便 adb / root 排查）。
-     *   只放开读、不放开写：`setWritable(true, false)` 会把 0600 抬成 0666（全局可写），
-     *   rename 会保留该模式 —— 放开读的理由（跨 uid 读）不需要写权限。
+     * @param openReadable 请求跨 uid 可读；只有 debug 包真的放开（见 `exposeToOthers`）。
      */
     internal fun writeAtomically(target: File, text: String, openReadable: Boolean): Boolean {
         val dir = target.parentFile
@@ -72,14 +70,10 @@ object ConfigStore {
                 XLog.w("建目录失败：${dir.path}")
                 return false
             }
-            // 逐级放开可遍历权限：只放开 files/ 不够，宿主数据目录本身是 0700
-            dir.setReadable(true, false)
-            dir.setExecutable(true, false)
-            File(HOST_DIR).setExecutable(true, false)
-
             val tmp = File(dir, target.name + ".tmp")
             tmp.writeText(text, Charsets.UTF_8)
-            if (openReadable) tmp.setReadable(true, false)
+            // 放开权限只为 adb 排查方便，release 侧是空实现
+            if (openReadable) exposeToOthers(dir, tmp)
 
             // rename 在同一文件系统内是原子的，失败（跨挂载点 / 个别 FS 不支持）才退回「复制 + 删」
             if (!tmp.renameTo(target)) {

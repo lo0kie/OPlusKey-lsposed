@@ -10,7 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
@@ -109,7 +108,8 @@ internal const val COLUMNS = 2
  */
 internal const val HOME_ACTION_ROWS = 2
 
-internal const val OTHER_ROWS = 2
+/** 「关于模块」那张卡的行数 —— 版本 / 作者 / 查看地址 / 反馈问题，四行固定。 */
+internal const val ABOUT_ROWS = 4
 
 /**
  * 「已保存的命令」卡片里图标到标题的间距 —— 卡片高度至少等于宽度、步骤多时会跟着长高，
@@ -118,7 +118,7 @@ internal const val OTHER_ROWS = 2
 internal val TILE_TITLE_GAP = 8.dp
 
 /**
- * 「已保存的命令」卡片里，引用另一条命令（`cmd:<名字>`）那一步行首小图标的边长 —— 比步骤行的
+ * 「已保存的命令」卡片里，摘要行**每一步**行首小图标的边长 —— 比步骤行的
  * [INPUT_ICON_SIZE]（22dp）小一档，它跟着的是摘要那行小字（`footnote1`）。
  */
 internal val SUMMARY_REF_ICON = 14.dp
@@ -127,9 +127,28 @@ internal val SUMMARY_REF_ICON = 14.dp
 internal val SUMMARY_REF_GAP = 4.dp
 
 /**
+ * 首页问一句「宿主侧的模块在不在」之后，等回音的时长（毫秒）。
+ *
+ * 没有回音就当模块没加载（整页禁用 + 一条提示）。给得偏宽，是因为这一步可能要等**宿主进程
+ * 被这条广播拉起来**：进程启动、LSPosed 注入、模块注册接收器，都在这段时间里。
+ */
+internal const val HOST_ALIVE_TIMEOUT_MS = 3000L
+
+/**
  * 「查看地址」行点开的目标 —— 本仓库的线上地址（`AboutScreen` 那行的 `summary` 与 `onClick` 都直接引它）。
  */
 internal const val REPO_URL = "https://github.com/lo0kie/OPlusKey-lsposed"
+
+/** 「作者」行的值 —— 与仓库所有者同名。 */
+internal const val AUTHOR = "lo0kie"
+
+/** 「作者」行点开的目标 —— 作者的 GitHub 主页。 */
+internal const val PROFILE_URL = "https://github.com/$AUTHOR"
+
+/**
+ * 「反馈问题」行点开的目标 —— 本仓库的 issue 列表（`AboutScreen` 的 `summary` 与 `onClick` 都直接引它）。
+ */
+internal const val ISSUE_URL = "$REPO_URL/issues"
 
 /**
  * 「按键绑定」那张卡的行数：第 1 行主开关、第 2 行进子页 —— 主开关是独立一行，不挂在跳转行行尾。
@@ -255,9 +274,6 @@ internal val GRID_GAP = PAGE_MARGIN
 /** 网格的行距 —— 与横向间距 [GRID_GAP] 同值（改了一边另一边跟着变）。 */
 internal val GRID_ROW_GAP = GRID_GAP
 
-/** 「选择应用」页那颗 FAB 的滚动动画时长 —— 420ms，与换页转场同曲线，只是行程长、时长也长。 */
-internal const val SCROLL_FAB_MS = 420
-
 /**
  * 动态显隐的控件统一的进出场时长 —— 180ms。
  *
@@ -288,6 +304,8 @@ internal val COMMAND_FORMAT_LINES = listOf(
     CommandFormatLine("keyevent:<按键> —— 模拟按键", "keyevent:"),
     CommandFormatLine("intent:<Action> —— 发送 Intent", "intent:"),
     CommandFormatLine("app:<包名> —— 启动应用", "app:"),
+    CommandFormatLine("window:<包名> —— 以小窗启动应用", "window:"),
+    CommandFormatLine("zoom:mini —— 把前台应用收成小窗", "zoom:mini"),
     CommandFormatLine("shortcut:<ID> —— 触发快捷方式", "shortcut:"),
     CommandFormatLine("cmd:<名字> —— 调用另一条单条命令", "cmd:"),
 )

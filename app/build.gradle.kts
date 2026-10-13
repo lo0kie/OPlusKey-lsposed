@@ -118,10 +118,10 @@ dependencies {
 
     // 界面：COUI（ColorOS 16 设计语言的 Compose 实现，自带色板与组件，不依赖宿主主题）
     //
-    //  `strictly` 不能去：Gradle 版本序里纯 `1.1.0` 比 `1.1.0-subtitle2` 更高（带限定符算更低），
+    //  `strictly` 不能去：Gradle 版本序里纯 `1.1.0` 比 `1.1.0-subtitle3` 更高（带限定符算更低），
     //  而 coui-preference / coui-nav 传递依赖 `coui-ui-android:1.1.0`，不受约束时会解析回 `1.1.0`。
-    implementation("io.github.suqi8.coui.kmp:coui-ui-android:1.1.0-subtitle2") {
-        version { strictly("1.1.0-subtitle2") }
+    implementation("io.github.suqi8.coui.kmp:coui-ui-android:1.1.0-subtitle3") {
+        version { strictly("1.1.0-subtitle3") }
     }
     // Preference 整行组件（Switch/Arrow/SliderPreference），不在 coui-ui 传递依赖里
     implementation("io.github.suqi8.coui.kmp:coui-preference-android:1.1.0")
@@ -131,10 +131,10 @@ dependencies {
     // 栈用 navBackStackOf（纯内存、不要求 @Serializable）—— 页面进程死了本来也不该恢复栈。
     implementation("io.github.suqi8.coui.kmp:coui-nav-android:1.1.0")
     // Tabler 图标（lyxnx 分支，版本号跟 Tabler 本体；R8 裁掉未引用字形）。
-    // 钉 3.44.0：镜像源缺 3.45.0+ 的 AAR
-    implementation("io.github.lyxnx.compose.ui:tabler-icons-android:3.44.0")
-    // Lucide：仅补 Tabler 缺失的手电筒字形
-    implementation("com.composables:icons-lucide-android:1.1.0")
+    // 3.49.0 是下限：`circle-play` 这一批（同样还有 `circle-pause` / `circle-stop`）到 3.49 才进 Tabler，
+    // 之前拿 `player-play` 顶过 —— 那颗是**光秃秃一个三角**、不带圆圈，不是同一个字形。
+    // （旧注释里「镜像源缺 3.45.0+ 的 AAR」已不成立：3.45.0 ~ 3.49.0 的 aar 现在都在 Maven Central。）
+    implementation("io.github.lyxnx.compose.ui:tabler-icons-android:3.49.0")
     // ComposeView 需要 ViewTreeLifecycleOwner / ViewModelStoreOwner，宿主树里没有，自建挂载
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.0")

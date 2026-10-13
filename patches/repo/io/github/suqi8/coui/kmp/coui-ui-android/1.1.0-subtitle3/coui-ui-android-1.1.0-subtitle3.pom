@@ -8,7 +8,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.suqi8.coui.kmp</groupId>
   <artifactId>coui-ui-android</artifactId>
-  <version>1.1.0-subtitle2</version>
+  <version>1.1.0-subtitle3</version>
   <packaging>aar</packaging>
   <name>coui-ui</name>
   <description>A UI library for Compose Multiplatform</description>

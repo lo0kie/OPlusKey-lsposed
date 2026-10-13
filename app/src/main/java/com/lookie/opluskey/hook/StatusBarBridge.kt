@@ -18,6 +18,9 @@ internal object StatusBarBridge {
     /** 状态栏指令：切换最近任务。 */
     const val CMD_RECENTS = "recents"
 
+    /** 状态栏指令：弹系统电源菜单。 */
+    const val CMD_POWER_MENU = "power_menu"
+
     /** 上面那条广播里带指令名的 extra。 */
     const val EXTRA_CMD = "cmd"
 
@@ -59,6 +62,7 @@ internal object StatusBarBridge {
             when (cmd) {
                 CMD_NOTIFICATIONS -> toggleNotificationsLocal(loader)
                 CMD_RECENTS -> toggleRecentsLocal(loader)
+                CMD_POWER_MENU -> showPowerMenuLocal(loader)
                 else -> XLog.w("不认识的状态栏指令：$cmd")
             }
         } catch (e: Throwable) {
@@ -135,6 +139,44 @@ internal object StatusBarBridge {
             XLog.w("已在本机调 StatusBarManagerInternal.toggleRecentApps（recents）")
         } catch (e: Throwable) {
             XLog.w("切换最近任务失败：${e.javaClass.simpleName}: ${e.message}")
+        }
+    }
+
+    /**
+     * 弹系统电源菜单 —— 在 system_server 里调 `PhoneWindowManager.showGlobalActions()`。
+     *
+     * 不能走 `WindowManagerService.showGlobalActions()`：它先 `checkCallingPermission`，
+     * 而 `ContextImpl.checkCallingPermission` 对同进程调用直接判 DENIED，必抛 SecurityException。
+     * PWM 那层没有权限检查，只往自己的 handler 发一条消息，内部再懒建 `LegacyGlobalActions` 弹窗。
+     */
+    private fun showPowerMenuLocal(loader: ClassLoader?) {
+        if (loader == null) {
+            XLog.w("还没有 system_server 的 ClassLoader，电源菜单跳过")
+            return
+        }
+        try {
+            // 服务注册进去的就是 WindowManagerService 实例本身（不是代理），可以直接读它的字段
+            val wms = Reflect.findClass(loader, "android.os.ServiceManager")
+                ?.let { Reflect.callStatic(it, "getService", "window") } ?: run {
+                XLog.w("拿不到 window 服务对象，电源菜单跳过")
+                return
+            }
+            val policy = Reflect.fieldValue(wms, wms.javaClass, "mPolicy") ?: run {
+                XLog.w("window 服务（${wms.javaClass.name}）上没有 mPolicy 字段，电源菜单跳过")
+                return
+            }
+            val m = Reflect.methodByNameAndArity(policy.javaClass, "showGlobalActions", 0) ?: run {
+                XLog.w("${policy.javaClass.name} 上没有 showGlobalActions()，电源菜单跳过")
+                return
+            }
+            m.isAccessible = true
+            m.invoke(policy)
+            XLog.w("已在本机调 PhoneWindowManager.showGlobalActions（电源菜单）")
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            // 服务端抛的异常包在 InvocationTargetException 里 —— 只打外层等于没打
+            XLog.w("showGlobalActions 被拒：${e.cause?.javaClass?.name}: ${e.cause?.message}")
+        } catch (e: Throwable) {
+            XLog.w("弹电源菜单失败：${e.javaClass.simpleName}: ${e.message}")
         }
     }
 }

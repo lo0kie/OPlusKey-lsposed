@@ -3,7 +3,6 @@ package com.lookie.opluskey.config
 import com.lookie.opluskey.XLog
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 
 /** 自定义命令库的读写：JSON 编解码加文件 IO（`org.json` 平台自带，不引依赖）。 */
 object CommandLibrary {
@@ -22,11 +21,16 @@ object CommandLibrary {
     /** 执行侧缓存的存活时长（毫秒）。 */
     private const val CACHE_MS = 1000L
 
-    /** 清洗命令名：去掉换行（换行会撑开列表行），掐掉首尾空白。 */
-    fun sanitizeName(raw: String): String = raw
+    /** 清洗命令名：去掉换行（换行会撑开列表行），掐掉首尾空白。存库 / 比对用。 */
+    fun sanitizeName(raw: String): String = sanitizeNameInput(raw).trim()
+
+    /**
+     * 输入侧清洗：只把换行换成空格，**不 trim** —— 名称框边输边调它，
+     * 掐掉首尾空白的话空格就打不进去（打一个被吃一个）。
+     */
+    fun sanitizeNameInput(raw: String): String = raw
         .map { if (it == '\n' || it == '\r') ' ' else it }
         .joinToString("")
-        .trim()
 
     /** 解析命令库文本，读不懂的条目跳过，绝不抛异常。 */
     fun parse(text: String): List<Command> = try {
@@ -117,7 +121,9 @@ object CommandLibrary {
 
     /** 带缓存的读，给执行侧用：按键每次都要展开 `cmd:` 动作，不能每次读盘，缓存 1s。 */
     fun loadCached(): List<Command> {
-        val now = System.currentTimeMillis()
+        // 用 elapsedRealtime 而非 currentTimeMillis：后者会被改表 / 网络校时回拨，
+        // 回拨后 now - cacheAt 为负、缓存永不刷新。
+        val now = android.os.SystemClock.elapsedRealtime()
         val hit = cache
         if (hit != null && now - cacheAt < CACHE_MS) return hit
         val fresh = load()
@@ -149,9 +155,6 @@ object CommandLibrary {
 
     @Volatile
     private var cacheAt: Long = 0L
-
-    /** 供诊断用：命令库文件本身。 */
-    fun file(): File = ConfigStore.commandFile()
 
     /**
      * 判断 `cmd:<名字>` 指向的是不是多条命令（[CommandKind.SERIAL]），非 `cmd:` 或名字查不到一律 `false`。

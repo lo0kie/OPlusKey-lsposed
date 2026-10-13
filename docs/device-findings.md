@@ -1057,7 +1057,7 @@ D/OplusKey: 按键（策略类）：keyCode=25  不是 侧键，放行给系统 
 2. **音量键 / 电源键也会走进同一个策略回调**（日志里的 25）——所以「能进来就是侧键」这个老假设是错的，会吃掉音量键。
 
 ⇒ 正确写法是一份**白名单**：`KeyId.acceptedKeyCodes`（侧键 =
-`{735, 780, 782}`），策略类路径按它认领；PM 兜底路径**只认原始码**（735），否则同一次按键会被策略类和 PM 两条路各判一次。
+`{735, 780, 781, 782}`，781 为 §14.4 补齐），策略类路径按它认领；PM 兜底路径**只认原始码**（735），否则同一次按键会被策略类和 PM 两条路各判一次。
 
 ### 9.7.1 侧键的**原始**硬件码 = 735，来自设备自己的输入描述符（实测，2026-10-13）
 
@@ -1684,3 +1684,568 @@ $  ← (system) 一条 I/ 都没有
 
 **对策**：判断 hook 是否装上，**认 `XLog.w` 的运行时行为日志，不要认安装期的 `XLog.i`**。若确需在 `(system)`
 侧留安装痕迹，把那几行改成 `XLog.w`（或查 LSPosed 设置里的日志级别）。
+
+## 十六、「放行」的两条坏路：空转与自持循环（实测，2026-10-13，PLK110）
+
+「放行」（`native` / `passthrough`）的实现是「吞掉原始键 + 宿主侧重注入一对 735」。真机实测暴露了两条坏路：
+
+**① 空转**（`single=native`
+时的旧表现）：重注入的 735 不会被本模块认领（见下），它只走原生管线 ——而原生动作的载体是框架派给宿主的 `what=1`
+场景消息，宿主侧钩子**无条件吞掉**它 ⇒ 模块吞了原键、原生动作也没了 ⇒ 按下去什么都不发生。
+
+**② 自持循环**（本次实测复现）：物理按压 → 策略类钩子认领并吞掉原方法 → 判出单击 → 注入侧转发 `passthrough`
+→ 宿主重注入 735 →
+**重注入的 735 又一次进到策略类钩子**（只按 keyCode 认领，认不出是合成事件）→ 再判一次单击 → 再放行一次 ⇒ 每 ~110ms 一轮，日志三行一组连续刷：
+
+```
+(com.oplus.gesture) 收到 system_server 转来的手势：key=plus phase=passthrough repeat=false
+(com.oplus.gesture) 侧键：放行一次（重新注入 keyCode=735）
+(com.oplus.gesture) 场景派发放行（本次按键判为「放行」⇒ 执行原生动作）
+```
+
+实测窗口：22:47:56.579 → 22:47:58.140（`modules_*.log`，约 16 轮 /
+1.6s）。**次生现象**：每轮的场景动作把侧键设置页重新拉起，宿主 `Activity` 是 `singleInstance` ⇒ 走 `onNewIntent`
+⇒ 模块的「重进即清栈回首页」被反复触发（用户看到的是「进其他页面自动退回主页」）。停掉宿主进程（`am force-stop com.oplus.gesture`）即断环 ——环需要宿主侧的重注入才能维持。
+
+**❌ 曾用错的判别手段**：`adb shell input keyevent 735` **不会**触发本模块的钩子（注入后 `(system)`
+侧零转发行，设备也无任何原生动作），不能用它代替物理按压做「放行」实验 —— `input` 与
+`InputManager.injectInputEvent`（`KeyInjector`：`deviceId = KeyCharacterMap.VIRTUAL_KEYBOARD`(-1)、
+`scancode = 0`、`source = SOURCE_KEYBOARD`）的 deviceId / source 组合不同。
+
+**修法（2026-10-13）**：
+
+- 注入侧按
+  `keyEvent.deviceId == KeyCharacterMap.VIRTUAL_KEYBOARD`（-1）识别**合成事件**、不认领（放行给系统）⇒ 断掉 ② 的环；
+- 宿主侧的场景派发钩子改为「本次按压判为放行 ⇒ 放行**第一条** `what=1`（原生动作的载体），其余仍吞」⇒ 救回 ①；
+- 宿主侧另加兜底闸：1s 内收到 ≥3 次放行判定即判为环，暂停注入 3s（防个别 ROM 判不出合成事件）。
+
+**⚠️ 判定的到达顺序是竞态的（实测）**：宿主主线程忙时（原生动作自己就会占住它），框架那条 `what=1`
+会**排在「放行」广播前面**到达（实测 23:02:22 / 23:02:24：`what=1` 早 1ms，判据扑空、被误吞，随后补发的判定已无 `what=1`
+可放 ⇒ 原生动作丢失）。所以宿主侧的钩子不能只看「判定到没到」这一瞬间：
+
+- 判定已到（配额有余）⇒ 立即放行（正常路径）；
+- 判定未到 ⇒ **扣住**这条 `what=1`，700ms 内判定若到达就补投（补投必须**复制**一条新 `Message` ——原实例在本次
+  `handleMessage` 返回后已被 Looper 回收进复用池）；
+- 一次「放行」只放一条（配额），同一次按压的「按压自己那条」与「重注入那条」不会各放一次。
+
+实测两条路都跑通（23:04:51 正常路径 / 23:04:53 竞态路径走延迟补投），每次按压各只放一条。
+
+## 十七、电源菜单的直接入口（`services.jar` 反编译，2026-10-13，PLK110）
+
+动作 `power:menu` 走这条，全程在 system_server 内本机调用：
+
+```
+ServiceManager.getService("window")  →  WindowManagerService 实例（不是代理）
+  field mPolicy : WindowManagerPolicy  →  PhoneWindowManager
+    showGlobalActions()                →  mHandler.sendEmptyMessage(10)
+      showGlobalActionsInternal()      →  mGlobalActions ??= mGlobalActionsFactory.get()
+                                         mGlobalActions.showDialog(keyguardShowing,
+                                                                  isDeviceProvisioned())
+        LegacyGlobalActions.handleShow() →  mDialog.show()
+```
+
+- **不能调 `WindowManagerService.showGlobalActions()`**：它第一句是
+  `checkCallingPermission("android.permission.INTERNAL_SYSTEM_WINDOW")`，而 `ContextImpl.checkCallingPermission` 只处理
+  `pid != myPid()` 的情况、**同进程调用一律返回 DENIED** ——在 system_server 里本机调必抛
+  `SecurityException`。必须往下钻一层到 `mPolicy`，那层没有权限检查。
+- **ColorOS 没有自己的电源菜单类**：`oplus-services.jar` 搜 `GlobalActions` 0 命中；`services.jar` 3 个（`GlobalActions`
+  / `GlobalActionsProvider` / `LegacyGlobalActions`）。弹窗由 system_server 自渲染（`handleShow` 里直接
+  `mDialog.show()`），不转发给 SystemUI。
+- 与「长按电源键」的差别：那条要等框架的长按超时（`interceptPowerKeyDown` →
+  `powerLongPress`），本机调用是立即的，也不经过输入子系统。
+
+### 17.2 系统侧键场景表：13 个场景的调用目标（真机 `content query`，2026-10-13）
+
+`content://uri.gesturemanagerprovider/action_button`（宿主 `com.oplus.gesture` 的 `ActionButtonProvider`）。它要
+`oppo.permission.OPPO_COMPONENT_SAFE`，**shell 身份读不到**（`SecurityException`），用 `su -c 'content query …'`：
+
+| scene_name     | scene_owner                    | click_action_info                                        | type    |
+| -------------- | ------------------------------ | -------------------------------------------------------- | ------- |
+| ring_mode      | system_server                  | `getRingerMode`                                          | method  |
+| flash_light    | com.android.systemui           | `…notification.keymagicservice.KeyFlashlightService`     | service |
+| screen_shot    | com.oplus.screenshot           | `showScreenShotFluidCloud`                               | method  |
+| no_disturb     | com.android.systemui           | `…notification.keymagicservice.KeyDndService`            | service |
+| recording      | com.coloros.soundrecorder      | `com.soundrecorder.common.card.KeyMagicMessengerService` | service |
+| camera         | com.oplus.camera               | `com.oplus.camera.feature.keymagic.KeyMagicService`      | service |
+| translate      | com.coloros.translate          | `com.coloros.translate.ui.cube.KeyMessengerService`      | service |
+| quick_function | com.oplus.gesture              | `getClickActionInfo`                                     | method  |
+| start_app      | com.oplus.gesture              | `getClickActionInfo`                                     | method  |
+| flash_memory   | com.coloros.colordirectservice | `…flashnotes.business.service.DataCollectService`        | service |
+| controlcenter  | com.android.systemui           | `…qs.magickey.QsMagicKeyService`                         | service |
+| ocrscanner     | com.coloros.ocrscanner         | `com.oplus.scanner.ui.keymagic.KeyMagicService`          | service |
+| test           | com.oplus.exserviceui          | `com.oplusos.accessibilityhelper.KeyMessengerService`    | service |
+
+（`long_press_action_info` / `second_menu_*` 另有值，多数与 click 指向同一个服务；完整行见真机。）
+
+- **`type=service` 就是「起一个服务」**：模块的 `hook/OplusFeature` 只抄其中四行，不多猜。
+- **三个目标服务都带签名级权限**（`DataCollectService` → `com.oplus.permission.safe.SECURITY`； `InvokeEntranceService`
+  → `oppo.permission.OPPO_COMPONENT_SAFE`），而**宿主 `com.oplus.gesture` 本人就持有** 这些权限（另有
+  `WRITE_SECURE_SETTINGS` / `ACCESS_NOTIFICATION_POLICY`(granted) /
+  `MODIFY_AUDIO_SETTINGS`）⇒ 从宿主进程直接起即可，不需要 root，也不必绕 system_server。
+- **四道权限闸门的真机核对**（`dumpsys package`，2026-10-13，PLK110；四个服务 `exported=true`）：宿主四项全
+  `granted=true` —— `oppo.permission.OPPO_COMPONENT_SAFE`（`InvokeEntranceService`）、
+  `com.oplus.permission.KEY_MAGIC_SERVICE`（`KeyDndService`，`signature|privileged`，由 SystemUI 定义）、
+  `com.oplus.permission.safe.SECURITY`（`DataCollectService`）、`com.oplus.permission.safe.ASSISTANT`
+  （`KeyMagicMessengerService`）。**只证明「起得到」，不证明「起了会做那件事」。**
+- **诊断坑**：没有 `<intent-filter>` 的服务（`KeyDndService` 就是）**不会出现在** `dumpsys package` 的 Service Resolver
+  Table 里 —— 别据此判定「服务不存在」，要去 APK 清单里查。
+- **起法按目标清单声明分两种**：声明了 `foregroundServiceType=special_use` 的（`FLASH_MEMORY`，见 17.3）先
+  `startForegroundService`，那是它给自己定的起法；没声明的先 `startService` —— 对方不调 `startForeground`
+  时，用前台方式起会让**它的进程**抛 `ForegroundServiceDidNotStartInTimeException`。两条都失败才算失败。
+- **intent 形式**：有 action 的用
+  `Intent(action).setPackage(owner)`（系统自己的写法，走清单 filter）；场景表里只有组件名（无 action）的（`no_disturb` /
+  `recording`）才用显式组件 —— 这两个服务 `exported=true`
+  且无 filter（`KeyDndService`）或 filter 与场景表 action 不一致（`KeyMagicMessengerService` 的 action 是
+  `com.oplus.soundrecorder.keyMagicMessengerService`，场景表没写），显式组件更忠于场景表。
+
+### 17.3 小布识屏：两条入口最终都落在同一个服务上
+
+13 个侧键场景里没有它。入口是
+`com.coloros.colordirectservice/.InvokeEntranceService`（`ColorDirectService.apk`）。清单声明：`exported=true`、`android:permission=oppo.permission.OPPO_COMPONENT_SAFE`、
+`foregroundServiceType=special_use` +
+`<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="special_use_for_start_identification">`，intent-filter 共 14 条 action。系统自己用的是其中两条：
+
+- **侧边栏** —— `com.coloros.smartsidebar` 的 `BreenoScreenIdentifyTool.handle()`：
+  `Intent("oplus.intent.action.DIRECT_SIDEBAR_SERVICE").setPackage(getValidPkg())`， `getValidPkg()` 直接返回字面量
+  `"com.coloros.colordirectservice"`；extra 为
+  `extra_entrance_function=full_screen_ocr`、`triggered_app=<自己包名>`，另带可选点击坐标 `first_point_down_x` /
+  `first_point_down_y`；最后 `startForegroundService`。
+- **导航栏长按** —— `com.android.systemui` 的 `OplusOcrScreenService.getServiceIntent()`：action 用
+  `com.coloros.directui.InvokeEntranceService`，同样 `setPackage("com.coloros.colordirectservice")`，extra 多一个
+  `skip_gesture_check=true` 和 `StartUpType`（2=手势条 / 1=虚拟键 / 0=其它），但起法是
+  `bindServiceAsUser`（`BIND_AUTO_CREATE|BIND_ALMOST_PERCEPTIBLE`）+ 走
+  `com.oplus.infocollection.collection.IEntranceServiceInterface` 的 AIDL。**宿主拿不到这个接口，不采用。**
+
+结论：之前从别处推测的 `DIRECT_SIDEBAR_SERVICE` + `extra_entrance_function=full_screen_ocr`
+是对的，两条 action 只是同一 filter 里的兄弟项。据此改两处：
+
+- **起法**：`special_use` 说明它就是按前台服务设计的 ⇒ 有 action 的目标改用
+  `Intent(action).setPackage(owner)`（系统自己的写法），并按清单声明的类型决定先试
+  `startForegroundService`（`FLASH_MEMORY` 的 `DataCollectService` 同样声明了 special-use）。
+
+顺带记一条死路：`AIUNIT_OCR_SERVICE` / `OCR_SERVICE`
+看着更对口，但**不在这条 filter 里**，只是该 dex 里出现过的字符串（属它发给别人的）；侧边栏自身也没有独立识屏服务。
+
+### 17.4 场景表 `type=service` 的两种调用方式（2026-10-13，PLK110，实测教训）
+
+场景表**只有**
+`scene_name / scene_owner / click_action_info / click_action_type / long_press_* / second_menu_* / long_press_has_own_vibrator`
+这些列 —— **没有 extras，也区分不出「起服务」还是「bind 后发 Message」**。光抄表不够，得再反编译目标服务看入口：
+
+- **Messenger 绑定型**（`KeyBaseService` 族：`KeyDndService` / `KeyFlashlightService`； `KeyMagicMessengerService`；估计
+  `KeyMessengerService` / `KeyMagicService` 同理）—— **没有 `onStartCommand`**，入口是 `onBind` 返回的
+  `Messenger`。协议（`KeyBaseService$messenger$1.handleMessage`）： `what=1` 单击 →
+  `handleActionButtonClick()`；`what=2` 长按 → `handleActionButtonLongPress()`；结果经 `message.replyTo.send(...)`
+  回给调用方 ⇒ **调用方必须设 `replyTo`，否则服务端空指针**。 `startService`
+  对它们是空操作：实测（2026-10-13）`startService` / `startForegroundService`
+  都被 AMS 受理、logcat 里目标进程零动静，`settings get global zen_mode` 纹丝不动 —— 连 `su` 下
+  `am start-foreground-service` 也一样。这就是「新加的动作全都不触发」的根因。
+- **带 extras 的 startService**（`DataCollectService`，一键闪记）—— 有 `onStartCommand`，但它读
+  `triggerType`（`TriggerType.MAGIC_KEY` = **1**；UNKNOWN=0 / THREE_FINGERS_UP=2 / CUI=3 / SCREENSHOT=4 / VOICE_RECORD=5
+  / SCREENSHOT_NORMAL=6 / SCREENSHOT_LONG=7 / SCREENSHOT_AREA=8 / AUTO_PAYMENT=11 / AUTO_COLLECT=12 /
+  AUTO_PAYMENT_NOTIFICATION=14）和 `longPressEventType`（0=单击 / 1=语音 / 2=长按）。不带 `triggerType`
+  落到 UNKNOWN 分支，记 `trigger type error`
+  后什么都不做。另有前置：AI 内存（闪记）已装、`USER_SETUP_COMPLETE`、开关未关，否则 `stopSelf`。
+
+模块侧结论：`hook/OplusFeature.Target` 增加 `message`（ Messenger 型发什么码）， `hook/AppLauncher` 里 bind →
+`Messenger.send` → 立刻解绑；带 extras 的照常 start。
+
+### 17.5 三个 `oplus:` 动作的真实入口（2026-10-14 复核，PLK110）
+
+**结论：模块侧整条链路是通的，三条命令先前全失效的根因在「取了单击那档」。**
+这一族里**单击档经常只回一句提示，「长按」那档才真正干活**。
+
+证据链（`modules.log`，2026-10-14 00:34–00:36）：三条都执行到了目标、都无效果 ——
+
+```
+侧键·单击 → oplus:no_disturb（宿主进程执行） → Messenger.send(what=1)(com.android.systemui/KeyDndService)
+侧键·单击 → oplus:recording（宿主进程执行）  → Messenger.send(what=1)(com.coloros.soundrecorder/KeyMagicMessengerService)
+侧键·单击 → oplus:flash_memory（宿主进程执行）→ startForegroundService(com.coloros.colordirectservice/DataCollectService)
+```
+
+场景表实测全列（`su -c 'content query --uri content://uri.gesturemanagerprovider/action_button'`）：
+
+| scene        | click_action_info / type                         | long_press_action_info / type                                      |
+| ------------ | ------------------------------------------------ | ------------------------------------------------------------------ |
+| no_disturb   | `…keymagicservice.KeyDndService` / service       | **同上** / service                                                 |
+| recording    | `…card.KeyMagicMessengerService` / service       | **`oplus.intent.action.START_RECORD_FROM_CUBE_BUTTON` / activity** |
+| flash_memory | `…business.service.DataCollectService` / service | 同上 / service（另有 `second_menu_activity_info=tips://web/…`）    |
+
+另有一列 `long_press_has_own_vibrator`（这三个场景都是 `0`）。
+
+- **录音**：`KeyMagicMessengerService`（`NewSoundRecorder.apk`）`<init>` 里
+  `mMessenger = Messenger(Handler(mainLooper) { … })`，`onBind` 返回 `mMessenger.binder`； `handleMessage`：`what==1`
+  → 组 `side_text` / `app_name` / `fluid_cloud_text` / `icon_res_id` 回给 `msg.replyTo` + 拿一条 wakelock；`what==2`
+  → 回 `startResult=reply`。 **两条分支都不碰录音机** ⇒ 对它发 what=1 是死路（`side_text`
+  取的就是「长按开始录音」）。真入口是长按档那条界面：清单里
+  `<activity name=oplus.multimedia.soundrecorder.slidebar.TransparentActivity permission=oplus.permission.OPLUS_COMPONENT_SAFE exported=True>`，filter 里有
+  `oplus.intent.action.START_RECORD_FROM_CUBE_BUTTON`；真机
+  `cmd package resolve-activity -a oplus.intent.action.START_RECORD_FROM_CUBE_BUTTON`
+  也落它（透明界面，进去就起 / 停录音）。
+- **免打扰**：SystemUI 清单声明
+  `<service name=com.oplus.systemui.statusbar.notification.keymagicservice.KeyDndService permission=com.oplus.permission.KEY_MAGIC_SERVICE exported=True>`；实现是
+  `KeyBaseService` → `KeyBaseController`，`messenger` 的 `handleMessage` 把 `what` 分派给 `handleActionButtonClick()` /
+  `handleActionButtonLongPress()`。`KeyDndController` 里 **只有 `handleActionButtonLongPress` 读
+  `ZenModeController.getZen()` 并 `setZen(...)`** （外加 `dissmissNotificationCenter`、息屏时延迟 500ms 的 `openDnd`）；
+  `handleActionButtonClick` 只判 `isOnKeyGuard()` / `isScreenOn()`、全程不碰 zen
+  ⇒ 发 what=1 的表现就是「什么都不发生」。
+- ⚠️ **别拿「jadx 摘要里没有 `onBind` / 没有无参构造器」判它「不是 Service」**： `KeyDndService`
+  的类摘要只列到构造器，`KeyBaseService$messenger$1.handleMessage` 与 `KeyDndController.handleActionButtonClick`
+  jadx 都只给 "no decompiled body"。实测 `bindService` 能连上（`onServiceConnected` 到达且 `send`
+  成功）—— 那是**载荷**问题不是**通道**问题。这两条的结论来自本地 dex 指令级 disassembly（`.temp/rea/dexasm.py`，直接读
+  `code_item`）。
+- **一键闪记**：**表里的 `scene_owner` 过期了 —— `com.coloros.colordirectservice` 那份是死的。**
+  实测（01:00:28，模块调它）：进程起来了、`onStartCommand` 也进了，但第一道闸门就把它挡住 ——
+  `ColorDirectServiceLog: DataCollectService: Gleaner has Installed or intent is null, stop service`，紧跟
+  `onDestroy`，**连 extras 都没读**。对应代码就是 `if (c.c() || intent == null) { stopSelf(); return 2; }`
+  —— 它认「Gleaner 已安装 ⇒ 我不干」。真入口是新包
+  `com.oplus.gleanerservice`（`/product/app/Gleaner/Gleaner.apk`）里的同名服务：
+
+  ```
+  <service name=com.oplus.gleanerservice.flashnotes.business.service.DataCollectService
+           permission=com.oplus.permission.safe.SECURITY exported=True
+           foregroundServiceType=type=hex:1073741824>          <!-- SPECIAL_USE -->
+    <property name=android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE value=special_use_for_ai_memory>
+    <intent-filter><action name=oplus.gleanerservice.intent.action.COLLECT_DATA>
+  ```
+
+  它的 `onStartCommand` **没有「Gleaner 已安装就退出」那道闸门**，只读 `triggerType` （`MAGIC_KEY`=1 →
+  `CollectTaskManager.j(...)` 真正开始采集；`UNKNOWN` / `SCREENSHOT` → 记 `trigger type error`），另有一道
+  `USER_SETUP_COMPLETE` / `a.b()` / `a.a()` / `a.c()` 的组合闸门。 **实测可用**：01:02:43 用
+  `su -c 'am start-foreground-service -a oplus.gleanerservice.intent.action.COLLECT_DATA --ei triggerType 1 -n …'`
+  起它，状态栏随即出现闪记的「已记住」胶囊，服务约 15s 后自己 `onDestroy`。
+  - `longPressEventType` 只有 CDS 那份读，Gleaner 这份不读 ⇒ extras 只留 `triggerType=1`。
+  - **`uid 0` 会绕过组件权限**（`checkComponentPermission` 对 ROOT / SYSTEM_UID 直接放行），所以这一族都能用
+    `su -c 'am …'`
+    直接复现，不必真按键 —— 上一轮「起法（前台/普通）导致被回收」的猜测因此作废：**起法是对的，错的是目标**。
+
+- 三个目标都带签名级权限（`oplus.permission.OPLUS_COMPONENT_SAFE`、
+  `com.oplus.permission.KEY_MAGIC_SERVICE`、`com.oplus.permission.safe.SECURITY`），宿主 `com.oplus.gesture` 都在
+  `requested permissions` 里（`dumpsys package`）。
+
+### 17.6 小窗打开应用的接口（`oplus-framework.jar`，2026-10-14，PLK110）
+
+ColorOS 的「小窗」在框架里叫 **ZoomWindow**（同族还有 `startMiniZoomFromZoom` / `hideZoomWindow` /
+`getZoomBoundsByTaskId` / `registerZoomStateListener`）。
+
+- **客户端类 `android.app.OplusActivityManager`**（在 `/system/framework/oplus-framework.jar`，同目录有
+  `boot-oplus-framework.vdex`；它内部的 `android.app.OplusActivityTaskManager` 只是那层 AIDL 门面）：
+  ```
+  startZoomWindow(Intent, Bundle, int userId, String callPkg): int
+  startZoomWindowByPendingIntent(PendingIntent, Bundle, int, String): int
+  startActivityForFreeform(Intent, Bundle, int, String): int
+  hideZoomWindow(int) / getZoomBounds(boolean, int) / isSupportZoomWindowMode()
+  ```
+  取实例走静态 `getInstance()`。
+- **服务端**在 `oplus-services.jar`：`com.android.server.wm.OplusActivityTaskManagerService`（及 `…ServiceEx` /
+  `IOplusActivityTaskManager`），另有一支 `OplusFloatingWindowHelper` / `IOplusFloatingWindow`。
+- **权限**：宿主 `com.oplus.gesture` 的 `android.permission.MANAGE_ACTIVITY_TASKS: granted=true` （另有
+  `START_ANY_ACTIVITY`、`WRITE_SECURE_SETTINGS`，都 granted）⇒ 这族接口从宿主进程调得动。
+- **隐藏 API**：宿主 `dumpsys package` 给出
+  `hiddenApiEnforcementPolicy=0`（DISABLED）⇒ 反射这些隐藏类与成员不会被拦；清单里的 `usesNonSdkApi=false`
+  不是判据，别拿它下结论。
+- **另一条退路**（公开 API，但那一对常量 / 方法本身也是隐藏的）：`ActivityOptions.makeBasic()` +
+  `setLaunchWindowingMode(WINDOWING_MODE_FREEFORM)`；ColorOS 不认它时就是一次普通打开。
+- 模块侧：动作 `window:<包名>`（`Action.AppWindow`）→ `AppLauncher.launchAppInWindow`，入口解析与 `app:`
+  共用（17.5 那套显式组件兜底照用），起法逐层降级 `startZoomWindow` → 自由窗口 → 普通
+  `startActivity`，每层都记日志（断在哪一环看日志）。
+
+#### 17.6.1 小窗为什么「调了没反应」：`extra_window_mode` 与服务端那个 0（2026-10-14 真机实证）
+
+**现象**：真机日志里 `window:<包名> → startZoomWindow=0`，屏幕毫无变化（`zoom:mini` 也是调完没动静）。
+
+**两条调用链**（dex 反汇编逐条核过，`.temp/rea/dexasm.py`）：
+
+```
+android.app.OplusActivityManager#startZoomWindow(Intent, Bundle, int userId, String callPkg): int
+   ├─ $Stub$Proxy：writeTypedObject(Intent) → writeTypedObject(Bundle) → writeInt → writeString
+   │                → transact(14) → readException → **readInt**（返回值是服务端给的）
+   └─ OplusActivityTaskManagerServiceEnhance#startZoomWindow
+        ├─ mAmInternal.enforceCallingPermission("oplus.permission.OPLUS_COMPONENT_SAFE", "startZoomWindow")
+        └─ FlexibleWindowManagerService.startFlexibleTask(...) → FlexibleTaskController.startFlexibleTask(...)
+             ← 返回值一路原样传回客户端
+```
+
+- **返回值不是成败标志**（真机探针实测，`.temp/probe/`，app_process + root 直接调）：
+
+  | 调用                                                     | 返回  | 屏幕                                       |
+  | -------------------------------------------------------- | ----- | ------------------------------------------ |
+  | `startZoomWindow(微云盘, Bundle{})`（不带 extra）        | `0`   | 应用**全屏**打开（服务端自己退成普通启动） |
+  | `startZoomWindow(微云盘, Bundle{extra_window_mode=100})` | `0`   | **小窗**出现 ✓                             |
+  | `startZoomWindow(设置, Bundle{…=100})`                   | `0`   | **小窗**出现 ✓                             |
+  | `startZoomWindow(当前前台那个活动, Bundle{…=100})`       | `3`   | **不变**（前台转小窗走不通）               |
+  | 组件名写坏（相对类名拼成双点）                           | `-92` | 不变（错误码）                             |
+
+  结论：**0
+  = 已发起**（不管起没起成小窗），**负数 = 错误码**；模块侧只有负数才降级。「带 extra 起了小窗也返回 0」这条是关键 —— 按「0
+  = 失败」降级会把好不容易通的路径再破坏掉。
+
+- **根因：Bundle 里得带窗口模式**。空 `Bundle` 时服务端把它当普通启动。能用的调用方是 SystemUI 的
+  `com.oplus.systemui.qs.scenario.domain.model.ScenarioAssistantNavigationImpl#startActivityByZoonWindow`：
+
+  ```
+  Bundle b = ActivityOptions.makeBasic().setLaunchDisplayId(0).toBundle();
+  b.putInt("extra_window_mode", 100);   // OplusZoomWindowManager.EXTRA_WINDOW_MODE / WINDOWING_MODE_ZOOM
+  OplusZoomWindowManager.getInstance().startZoomWindow(intent, b, getCurrentUser(), ctx.getPackageName());
+  ```
+
+  常量表（`com.oplus.zoomwindow.OplusZoomWindowManager`，`ofw/classes2.dex`）：
+  `EXTRA_WINDOW_MODE = "extra_window_mode"`、`WINDOWING_MODE_ZOOM = 100`、
+  `WINDOWING_MODE_ZOOM_TO_FULLSCREEN = 101`、`WINDOWING_MODE_FULLSCREEN = 1`、`WINDOWING_MODE_ZOOM_LEGACY = 6`。
+
+- **`startMiniZoomFromZoom(int)`
+  在这台 ROM 上是废接口**：全量扫过 SystemUI（9 个 dex）、桌面（OplusLauncher，7 个 dex）、设置侧拉到的 APK 与
+  `oplus-services` —— 除了框架自己的 AIDL 门面与 SDK 封装，**没有任何调用方**；原型是 `void`，没有返回值可判。探针把
+  `startWay = 1 / 2 / 7` 各调一遍（当时屏幕上正开着一个小窗），全部无可见变化。
+- **`startZoomWindow` 的返回值就是 `ActivityStarter` 的 `START_*` 码**：`0` = `START_SUCCESS`， `3` =
+  `START_DELIVERED_TO_TOP`（intent 交给已在栈顶的那个实例消化、屏幕不变），`-92` 一类负数是错误码。服务端
+  `FlexibleTaskController.startFlexibleTaskInternal` 里 `extra_window_mode == 0x64` 时才
+  `setLaunchWindowingMode(100)`；home 正在过渡时它会**延后执行并立刻返回 0**（`Slog.d` 里有 "wait for
+  HomeTransitionFinish startFlexibleTask"）。
+- **`FLAG_ACTIVITY_MULTIPLE_TASK` 才是「前台应用也能起小窗」的那把钥匙（2026-10-14 起模块已不再用它，见 §17.6.5：它会无限多开实例）**（二次真机对照，同一台机、`设置`
+  当前正 resume，探针逐组合单调用）：
+
+  | flags                                                | 返回 | 结果                                                  |
+  | ---------------------------------------------------- | ---- | ----------------------------------------------------- |
+  | `NEW_TASK`（= `getLaunchIntentForPackage` 自带那个） | `0`  | 又开出一份**全屏**实例（`windowingMode=1`），不是小窗 |
+  | `NEW_TASK \| MULTIPLE_TASK`（`0x18000000`）          | `0`  | **小窗出现**（`windowingMode=100`，独立 task）✓       |
+
+  `NEW_TASK` 单独一个会被 `ActivityStarter` 判成「交给栈顶那个实例消化」（`3`）或者重开一份全屏实例；加上
+  `MULTIPLE_TASK` 才会真的另起一个 task，窗口模式才落得下。早先「`+MULTIPLE_TASK` 也是
+  `3`、前台转小窗走不通」那次结论**有误** —— 当时判据只有返回码 + 截图，没看 `getAllTopAppInfos()` 的
+  `windowingMode`，把「重开了一份全屏实例」误读成「没起」。
+
+- **「把前台应用收成小窗」的可用配方，已按模块的 intent 形状逐字复现**：
+  ```
+  Intent i = pm.getLaunchIntentForPackage(pkg);   // flg=0x10000000, cmp=com.android.settings/.Settings
+  i.addFlags(NEW_TASK | MULTIPLE_TASK);           // → 0x18000000
+  startZoomWindow(i, Bundle{extra_window_mode=100}, userId, ctx.packageName)  → 0
+  复核：新 task windowingMode=100（小窗 ✓），原全屏 task 仍在（= 第二份实例）
+  ```
+  返回 `3` 时先发一个 CATEGORY_HOME 的 intent 回桌面、延迟 400ms 再起一次（`MULTIPLE_TASK`
+  在场时正常走不到这一档，留着当兜底）。模块里 `window:<包名>` 与 `zoom:mini` 共用这一套（见
+  `AppLauncher.launchAppInWindow`）。**代价**：小窗里是新起的一份实例，不是把现有那扇窗挪过去。
+- **对「刚退到后台的应用」起小窗也成立**：先回桌面、再对 `设置` 调同一支接口，拿到 `0` +
+  `windowingMode=100`，且能稳定停住（+1s / +5s / +11s 三张截图核过，小窗一直浮在桌面上）。只是既然 `MULTIPLE_TASK`
+  那条在前台就通，`zoom:mini` 不必再绕「先回桌面」这一圈。
+- **桌面那条「带几何启动」配方在宿主进程里不生效**（已实测）：取 `getAllTopAppInfos()` 的 taskId/displayId/topActivity →
+  intent 带 `androidx.activity.LaunchScenario=1` + `LaunchFlexibleTaskId` →
+  `calculateFlexibleWindowBounds(intent,-2,displayId)`（这步真返回 576 字节的 Bundle）→
+  `ActivityOptions.setExtraBundle(bundle)` →
+  `startActivity`。链路全绿但屏幕不动 ——几何真进了 options（`androidx.flexible.LaunchBounds` /
+  `flexible_window_mini_rect` / `ResizeMode` / `LaunchScale` / `LaunchCornerRadius` /
+  `android:activity.mZoomLaunchFlags` 逐字核过），服务端不认这个调用方。
+- **试错记录**（都不通，别再走）：`startMiniZoomFromZoom(1/2/7)`（无人调用的废接口）、
+  `startZoomWindow(前台活动)`（返回 3 无效果，只肯收没在跑的组件）、
+  `toggleFlexibleWindow("type_toggle_to_flexible_task" / "…pocket_studio")`（返回 true 无效果，要
+  `com.oplus.permission.safe.WINDOW`，宿主持有）、 `startFlexibleWindowForRecentTasks(taskId, rect)`（走的是**分屏**）、
+  `WindowContainerTransaction.setWindowingMode(token, 100)(+bounds)`（transaction 成功但窗口不变）。
+- **手势那条路本身**（导航手势 → WM shell
+  `StageCoordinatorExt`）应用侧够不着；但桌面 quickstep 用的是上面那条「带几何启动」，可复用。
+- **task id 怎么取**：`OplusActivityManager#getAllTopAppInfos(): List<OplusAppInfo>`（要
+  `oplus.permission.OPLUS_COMPONENT_SAFE`，宿主持有）→ 字段 `taskId` / `topActivity` / `windowMode` / `displayId` /
+  `appBounds`。**判断「有没有真起成小窗」只能看 `windowingMode`**（`1` = 全屏，`100`
+  = 小窗），返回码和截图都会骗人。小窗在场时这个列表里会同时出现「小窗那份（`100`）」与「全屏那份（`1`）」。
+- **取前台活动**：`OplusActivityManager#getTopActivityComponentName(): ComponentName`（arity
+  0，同一支类）。有小窗在场时它返回的就是小窗里那个应用 —— 语义是「最前面那个」，不是「全屏那个」。
+- **同族的其它入口**（模块里没用，备查）：`hideZoomWindow(int)`（void）、 `toggleFlexibleWindow(String)` /
+  `toggleFlexibleWindowByApp(IBinder,int,boolean,boolean)`（均 boolean）、
+  `startFlexibleWindowForRecentTasks(int, Rect)`、`startActivityFromRecentsForFlexible(int, Bundle)`、
+  `splitScreenForTopApp`。
+- **侧键场景表里没有小窗档**（`action_button` 全 13 行核过），所以没有「官方侧键怎么起小窗」可抄。
+- **模块侧**：`window:<包名>`（`Action.AppWindow`）→ `AppLauncher.launchAppInWindow`；`zoom:mini`
+  （`Action.MiniWindow`）→ `AppLauncher.putForegroundInMiniWindow`（取前台包名后复用同一条）。两条都走同一个
+  `startZoomWindow` + `zoomWindowBundle()`（`extra_window_mode = 100`）+
+  `NEW_TASK | MULTIPLE_TASK`，只在返回**负数**时降级 —— `0` / `2` / `3`
+  都不是失败标志。⏭️ 「把**现有**那扇窗原地收成小窗」应用侧仍然做不到：系统自己的「交换应用」走的是「小窗 ⇄ 全屏」两份任务互换，且**明确拒绝同一个包**（见 17.6.2），抄不过来。
+
+#### 17.6.2 「交换应用」 = `notifyFlexibleTaskEvent(taskId, 2004)`（2026-10-14，真机实证可复现）
+
+小窗菜单里那一项「交换应用」（前台 ⇄ 小窗互换），整条链已核到**应用侧可调用的那一层**：
+
+```
+小窗菜单点「交换应用」
+  └─ com.oplus.flexibletask.menu.FlexibleMenuManager#lambda$initListener$2（SystemUI，classes3.dex）
+       标题 == R.string.zoom_exchange  →  i2 = FlexibleUtils.FLEXIBLE_TASK_CHANGE_EVENT(= 2004)
+       → notifySystemMenuEvent(2004, Bundle{notify_event_async = true})
+         → FlexibleUtils.notifyFlexibleTaskEvent(taskId, 2004, bundle)
+              └─ com.oplus.flexiblewindow.FlexibleWindowManager.getInstance()      ← 反射可调
+                   .notifyFlexibleTaskEvent(int taskId, int event, Bundle)
+                   └─ android.app.OplusActivityTaskManager#notifyFlexibleTaskEvent
+                        → IOplusActivityTaskManager$Stub$Proxy（Binder）
+                          └─ OplusActivityTaskManagerServiceEnhance#notifyFlexibleTaskEvent
+                               ── 这一层**没有任何 enforceCallingPermission** ✅
+                               └─ FlexibleWindowManagerService#notifyFlexibleTaskEvent
+                                    └─ FlexibleTaskController#notifyFlexibleTaskEvent
+                                         switch (event) case 2004 →
+                                         handleFlexibleExChange(task, "fromMenu")
+```
+
+- **`com.oplus.flexiblewindow.FlexibleWindowManager` 定义在 `oplus-framework.jar`（boot
+  classpath）**，不是 SystemUI 的私有类 —— 任何进程都 `Class.forName`
+  得到（真机核过：`loader = BootClassLoader`）。它是「静态单例 + AIDL 封装」，字段
+  `mOAtms = OplusActivityTaskManager.getInstance()` 就是那把 Binder。真机
+  `FlexibleWindowManager.getInstance().notifyFlexibleTaskEvent(25447, 2002, bundle)` 调用无异常返回。
+- **事件码表**（`com.oplus.flexibletask.utils.FlexibleUtils`，SystemUI `classes3.dex`）：
+
+  | 常量                                               | 值          | 服务端动作                                             |
+  | -------------------------------------------------- | ----------- | ------------------------------------------------------ |
+  | `FLEXIBLE_TASK_FULL_EVENT`                         | 2001        | `ExitFlexibleTaskToFullStrategy`（小窗 → 全屏）        |
+  | `FLEXIBLE_TASK_MINI_EVENT`                         | 2002        | `ExitFlexibleTaskToFloatStrategy`（→ 小窗）            |
+  | `FLEXIBLE_TASK_CLOSE_EVENT`                        | 2003        | `ExitFlexibleTaskToBackStrategy`（关闭）               |
+  | `FLEXIBLE_TASK_CHANGE_EVENT`                       | 2004        | `handleFlexibleExChange(task, "fromMenu")`（**交换**） |
+  | `FLEXIBLE_TASK_MENU_SHOW_EVENT` / `…DISMISS_EVENT` | 2011 / 2012 | 菜单开合的状态同步                                     |
+
+- **`handleFlexibleExChange` 的前置条件**（`FlexibleTaskController` 内逐条读过）：传进去的 `task` 是
+  **小窗**那一份，`fullTask = getFullTaskUnderFlexibleTask(task)` 是它下面压着的**全屏**那一份。要求
+  `fullTask != null`、**不是桌面**（`isActivityTypeHome` → 直接弹 toast 拒绝）、不是最小化 / canvas、支持小窗、并且
+  **`fullTask.getBasePackageName() != task.getBasePackageName()`** （同包 → `fail while package is same` +
+  toast）。全过之后：**全屏那份 → 小窗，小窗那份 → 全屏**。
+- **调用方只有菜单这一条**：全 `oplus-services` + SystemUI 扫过，`handleFlexibleExChange` 只有 `case 2004`
+  那一个调用点（`source = "fromMenu"`）；另一处 `SOURCE_FROM_MINI_DOUBLE_TAP`
+  只是它的入参分支，没有第二条可达路径 —— 所以**没有「导航手势版交换」可抄**。
+- **真机复现**（探针 `ev <taskId> <event>`，`app_process` + root）：
+
+  | 步骤                                                              | 观察（`getAllTopAppInfos().windowingMode`）                           |
+  | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
+  | 起点：`设置` 全屏 + `mark.via` 起成小窗                           | task `7` = `设置` `1`；task `25449` = `mark.via` **`100`**            |
+  | `notifyFlexibleTaskEvent(25449, 2004, {notify_event_async:true})` | —                                                                     |
+  | 截图结果                                                          | `mark.via` 铺满全屏，**`设置` 变成右上角的小窗** ✓ 与手点菜单完全一致 |
+
+  服务端日志同步印证：`FlexibleTaskController: handleFlexibleExChange FlexibleExChange handle change Event Task{…mark.via.gp}`（这行打的是
+  **fullTask**）→ `… will exchange to flexible` →
+  `FlexibleTaskTransitionHandler: start exchange full to flexibleTask anim success`。
+
+- **为什么「交换应用」抄不进
+  `zoom:mini`**：它的语义是「两份**不同包**的任务互换」，既拿不到「把某一份现有窗口原地收成小窗」，也强制要求先有**另一个应用**的小窗在场（那本身就要一次
+  `startZoomWindow`），换完还得把陪跑那个应用再关掉（对它发 2003）。为了这么一条路去挑陪跑应用，不如 17.6.1 那条「新起一份实例的小窗」直接。
+- **顺带核过**：事件 2002 对**普通全屏任务无效** —— 对 `com.oplus.gesture` 的一份普通全屏任务发 2002，服务端日志只有
+  `exitFlexibleTaskWindowInnerLocked exitTo:5` +
+  `resetWhenEndExit … fwOptMode-> 0`，屏幕不动。它是「柔性任务」专用收缩，不是「任意任务 → 小窗」。
+- **备查（模块里没用）**：同一支接口发 2003 / 2001 可以驱动**已存在的小窗**关闭 / 转全屏； `notifyFlexibleTaskEvent`
+  这层无权限闸，是这族里唯一「随便谁都能调」的写接口。
+
+#### 17.6.3 「把现有任务原地收成小窗」的正门：`startActivityFromRecentsForFlexible`（2026-10-14 真机实证）
+
+17.6.1 那条配方的代价是**新起一份实例**（`MULTIPLE_TASK`
+强制新任务）。要**原地收**（taskId 不变、界面状态全留、不用先按 Home），正门在 recents 那条：
+
+```
+android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int taskId, Bundle options)
+  └─ OplusActivityTaskManagerServiceEnhance#startActivityFromRecentsForFlexible
+       enforceCallingPermission("com.oplus.permission.safe.WINDOW")      ← 宿主持有 ✅
+       SafeActivityOptions.fromBundle(options, callingPid, callingUid)
+       → TaskSupervisor#startActivityFromRecents(...)
+            └─ FlexibleTaskController#onStartActivityFromRecents(Task, ActivityOptions)
+                 zoomLaunchFlags   = OplusZoomWindowUtil.getZoomLaunchFlag(options)   // 读 android:activity.mZoomLaunchFlags
+                 pendingLaunchZoom = adjustZoomModeIfNeed(options, null, task)
+                     ↑ isLaunchFromZoomMode(options)
+                       = OplusZoomWindowUtil.getLaunchWindowingMode(options) == 100 || hasLaunchZoomFlag(options)
+                 if (pendingLaunchZoom) startFreeFormFromRecent(task, options, zoomLaunchFlags)
+                      fullToMini = (zoomLaunchFlags == 32)
+                      → FlexibleWindowManagerService#toggleToFlexibleTask(task, record, options, info)
+```
+
+**options 里要放什么**（真机逐项试出来的）：
+
+| key                                 | 值    | 作用                                                                                                                       |
+| ----------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------- |
+| `android.activity.windowingMode`    | `100` | **必须**。`ActivityOptions#fromBundle` 只认这个（**点号**）；`extra_window_mode` 那条下划线的 key 在这条路上服务端根本不读 |
+| `android:activity.mZoomLaunchFlags` | `2`   | 决定**尺寸档**：`2` = **展开**的普通小窗；`32` = **收起**的最小化窗。见下面那张对照表 |
+| `extra_window_mode`                 | `100` | 带上无害（只有 `startZoomWindow` 那条读它）                                                                                |
+
+**真机对照**（`设置` / `mark.via` 都**在前台**，直接对前台那份任务调）：
+
+| 步骤                                                         | 观察                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 起点                                                         | task `#25503` = `com.android.settings`，`windowingMode = 1`                                                                                                                                                                                 |
+| `startActivityFromRecentsForFlexible(25503, {上面三个 key})` | 返回 `2`（`START_TASK_TO_FRONT`）                                                                                                                                                                                                           |
+| 服务端日志                                                   | `onStartActivityFromRecents … pendingLaunchZoom:true` → `startFreeFormFromRecent current pendingLaunchZoom will toggle FlexibleTask` → `toggleToFlexibleTask task:Task{#25503 …}` → `relayoutCaptionView: reason = startFreeFormFromRecent` |
+| 复核 `getAllTopAppInfos()`                                   | **还是 task `#25503`，`windowingMode` 由 `1` 变 `100`** ✅                                                                                                                                                                                  |
+
+- **taskId 不变 ⇒ 是同一份任务被原地改了窗口模式**：没有第二份实例、界面状态（滚动位置 / 输入内容 / 返回栈）全保留，也不需要先回桌面。第三方应用（`mark.via`，task
+  `#25505`）同样通过。
+- **只给 `mZoomLaunchFlags`、不给窗口模式不行**：那次 `pendingLaunchZoom:false`，钩子跑完什么都没做
+  （`windowingMode` 仍是 `1`）—— 判据是 `getLaunchWindowingMode() == 100`，不是 flags。
+- **`mZoomLaunchFlags` 决定的是「展开 / 收起」哪一档**，给错了就会开成右上角那条最小化窗：
+
+  | `mZoomLaunchFlags` | 服务端 | `windowType` | `zoomRect` / `scale` | 观感 |
+  |---|---|---|---|---|
+  | `2` | `setUserPositionInfo`（沿用用户上次的位置与尺寸） | `1` | `Rect(126,319 - 1146,2131)` / `0.8017` | **展开**的普通小窗（居中大面积）✓ |
+  | `32` | `fullToMini = zoomLaunchFlags == 32` → `getMiniFlexibleTaskInfo` | `2` | `Rect(898,168 - 1203,710)` / `0.2397` | **收起**的最小化窗（右上角一条）|
+
+  判「展开还是收起」最省事的是 `OplusZoomWindowInfo#windowType`（`1` = 展开，`2` = 收起），取值走
+  `OplusActivityManager#getCurrentZoomWindowState()`，或直接看 `notifyZoomStateChanged` 那行日志。
+- **和 17.6.2 的「交换应用」比**：那条要求「另有一份**不同包**的小窗在场」，服务端还明确拒绝同包；这条只要一个 taskId，同包完全没问题。两者都能动现有任务，这条干净得多。
+- **模块侧用的就是这一条**（`zoom:mini`）：一步到位、原地收、状态全留。它没有窗口动画，见 17.6.4。
+
+##### 附：「伪造应用不在前台」为什么不必做
+
+服务端**确实**有一处前台判定：`OplusZoomNewTaskHelper#isAppAtTop(atms, intent, userId)`，判据是「目标包是不是 top root
+task 的 root activity 的包」；它下面紧跟着 `resetActivityOption(activityOptions)`，会把 `setLaunchWindowingMode(0)` /
+`setZoomLaunchFlags(-1)` —— 这就是「应用在前台时起不成小窗」的由来。
+
+**但它在真机上是死代码**：`OplusZoomNewTaskHelper#startZoomWindowForNewTaskIfNeed` 第一句就是
+`if (FlexibleWindowManagerService.isSupportFlexibleFreeform()) return;`，而
+`isSupportFlexibleFreeform() = mIsSupportFlexibleFreeform && !mIsDisableCustomZoomWindow && isZoomSwitchOpened()`，其中
+`mIsSupportFlexibleFreeform` 取自特性 `oplus.software.flexible_freeform.support` ——该特性在本机
+`/my_stock/etc/extension/com.oplus.oplus-feature.xml` 里**是声明了的**。真机佐证：`com.android.settings` 在前台跑
+`startZoomWindow` 时，`OplusZoomNewTaskHelper` 那几行 `Slog.v` 一行都没出现（同一个 logcat 窗口里
+`FlexibleTaskController` 的 D 级日志正常在）。
+
+所以在这台 ROM 上，**伪造「不在前台」不会改变任何东西**；真正卡住的是 `ActivityStarter`
+的「目标任务是不是当前 top」以及「窗口模式选项只在建任务时生效」这两件事 ——绕开它们不是靠伪装，而是走上面那条 recents 正门（服务端拿到 taskId 后走的是
+`toggleToFlexibleTask`，跟「是不是前台」无关）。
+
+#### 17.6.4 「原地收 + 有转场动画」的四条路对比（2026-10-14 真机实测）
+
+17.6.3 那条 recents 正门能原地收，但**没有窗口动画** —— 按下侧键那一瞬窗户直接跳成小窗。把四条路摆一起量过：
+判据是 logcat 里 `animation-leash` 的条数（真有窗户动画才会刷它，伴随
+`SurfaceAnimationRunner: onAnimationStart`），再加 `getAllTopAppInfos()` 里 taskId 有没有变。
+
+| 变体 | 原地（taskId 不变） | `animation-leash` |
+|---|---|---|
+| `startZoomWindow` + `NEW_TASK \| MULTIPLE_TASK` | ✗ 另起一份实例 | 2 |
+| `startActivityFromRecentsForFlexible(taskId, {windowingMode=100, flags=2})` | ✓ | **0** |
+| 同上但 `flags=32`（`fullToMini` 档） | ✓ | **0** |
+| **挪出栈顶 → `startZoomWindow(入口, {extra_window_mode=100})`（只 `NEW_TASK`）** | **✓** | **2** |
+
+- **为什么 recents 那条没有动画**：`onStartActivityFromRecents` 走的是 `toggleToFlexibleTask` —— 直接改任务的
+  窗口模式与边界，没有「启动」这个动作，也就没有可播的窗户动画（那条路上 SystemUI 的
+  `FlexibleTaskTransitionHandler` 只把 transition 收掉，不挂 leash）。
+- **挪出栈顶那条为什么有**：它是货真价实的 `ActivityStarter.execute()` 启动，窗口模式随 options 落下去，
+  于是走标准窗口动画。目标还在栈顶时这条落不下（见 17.6.1），所以先发一个 CATEGORY_HOME 的 intent；
+  服务端 `startFlexibleTask` 自己会「等 HomeTransitionFinish」，**调用方不用 sleep**，紧接着调就行。
+- **只加 `NEW_TASK`，别加 `MULTIPLE_TASK`**：后者会强制新建任务，那就不是原地收了（回到 17.6.1 的代价）。
+- **模块侧选的是 recents 那条（无动画）**：`zoom:mini` 要的是一步到位 —— 挪出栈顶那条虽然既原地又有动画，
+  但要多回桌面一次，权衡后**否掉**了。起完 `MINI_VERIFY_MS`(350ms) 再核那份任务的 `windowingMode` 是不是 `100`，
+  不是才退回 17.6.1 那条「按包名另起一份实例」。
+  代价：会先回桌面一瞬（服务端要等桌面过渡铺开），换来的是**原地 + 动画**。
+
+#### 17.6.5 `window:` 的「多开实例」与修法（2026-10-14 真机实证）
+
+17.6.1 的配方带着 `MULTIPLE_TASK`，副作用是**同一个应用被按几次就多出几份实例**（`window:` 是「打开应用小窗」，
+对同一个目标反复按很容易触发）。真机量过：对 `com.android.settings` 连按三次，每按一次就多一份
+`windowingMode=100` 的小窗。
+
+**根因是 `MULTIPLE_TASK` 强制新建任务**，而它当初是给「目标已在前台」兜底的 —— 那个场景现在归 `zoom:mini`
+（17.6.3 / 17.6.4），`window:` 不再需要它。
+
+去掉之后（只加 `FLAG_ACTIVITY_NEW_TASK`），服务端的行为正好是想要的：
+
+| 目标当时的状态 | 服务端行为 | 实例数 |
+|---|---|---|
+| 还没跑过 | 新起一份、落在小窗（`windowingMode=100`） | 1（本来就该有）|
+| 有现成任务（在前台之外） | **复用那份任务**，`windowingMode` 1 → 100，taskId 不变 | **不变** ✓ |
+| 已是小窗 | 再按返回 `0`/`2`，没有第三份 | 不变 ✓ |
+| 就在前台 | 会被栈顶那份实例消化（返 `3`）→ 改走 17.6.3 的 recents 正门原地收 | 不变 ✓ |
+
+- **真机实证**（`设置`）：task `#25535` 全屏 → 回桌面 → 按 `window:` 那套起 → **还是 `#25535`**，
+  `windowingMode` 由 `1` 变 `100`；连按三次之后 dump 只剩这一份小窗 + 桌面，没有累积。
+- **模块侧**：`launchAppInWindow` 改成
+  ① 目标就在前台 → 直接走 17.6.3 那条原地收（`foregroundTaskFor` 判 `getAllTopAppInfos()[0]` 是不是它）；
+  ② 其余只加 `NEW_TASK` 起 `startZoomWindow`；
+  ③ 反射路不通才退自由窗口 / 普通打开。
+  `MULTIPLE_TASK` 整个删掉。原来「返 3 就回桌面再起一次」的兜底保留，但只在 ① 没接住时当保险
+  （它本身也是原地转，不新建）。
+- 判断「有没有真成小窗」照旧只看 `windowingMode`（`1` = 全屏，`100` = 小窗）。

@@ -58,10 +58,9 @@ internal class FlashlightController(
         }
     }
 
-    /** 注册一次 torch 回调（只注册一次；失败不阻断切换，只是状态可能不准）。 */
+    /** 注册一次 torch 回调（注册成功才记标记；失败下次切换时重试，只是状态可能不准）。 */
     private fun registerTorchCallbackOnce(cm: CameraManager) {
         if (torchCallbackRegistered) return
-        torchCallbackRegistered = true
         try {
             cm.registerTorchCallback(
                 object : CameraManager.TorchCallback() {
@@ -72,6 +71,9 @@ internal class FlashlightController(
                 },
                 handler,
             )
+            // 标记必须写在成功之后：写在 try 之前的话，一次失败就永不重试，
+            // torchOn 与真实状态会长期相反。
+            torchCallbackRegistered = true
             XLog.i("已注册 torch 回调（手电筒状态由系统上报）")
         } catch (e: Throwable) {
             XLog.w("注册 torch 回调失败（状态可能不准，仍会尝试切换）", e)

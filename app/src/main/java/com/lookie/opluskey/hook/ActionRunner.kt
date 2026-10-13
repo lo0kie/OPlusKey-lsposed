@@ -54,10 +54,16 @@ internal class ActionRunner(
                 is Action.Custom -> custom.run(action.name, 0)
                 is Action.Intent -> launcher.openIntent(action.action)
                 is Action.App -> launcher.launchApp(action.target)
+                is Action.AppWindow -> launcher.launchAppInWindow(action.target)
+                // 只动当前那个窗口（不新建实例）—— 与 AppWindow 是两条路
+                is Action.MiniWindow -> launcher.putForegroundInMiniWindow()
                 is Action.Shortcut -> launcher.runShortcut(action.shortcutId)
                 is Action.Flashlight -> flashlight.toggle()
                 // `ringer:normal|vibrate|silent` 切到指定一档；循环那条仍是 `keyevent:164`。
                 is Action.Ringer -> ringer.setMode(action.mode)
+                // 电源菜单同理：本机反射调用，不走按键长按
+                is Action.PowerMenu -> sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
+                is Action.Oplus -> launcher.startOplusFeature(action.feature)
             }
         } catch (e: Throwable) {
             // 必须 catch Throwable：执行环境（Runtime / 反射注入）出错可能是 Error 系，漏出去会崩系统
@@ -100,10 +106,12 @@ internal class ActionRunner(
             return
         }
         when {
-            command == KsuCompat.SCREENSHOT_CMD -> {
+            // 两个 KSU 别名都用 contains 匹配（同一口径）：命令串可能带多余参数或前后缀
+            command.contains(KsuCompat.SCREENSHOT_CMD_TOKEN) -> {
                 XLog.i("截图：注入 KEYCODE_SYSRQ（KSU 那条 service call 在这里不必走 shell）")
                 injector.inject(KeyInjector.KEYCODE_SYSRQ)
             }
+
             command.contains(KsuCompat.SIDEBAR_SERVICE) -> launcher.startSidebar()
             else -> ShellRunner.exec(command, ::notifyFailure)
         }

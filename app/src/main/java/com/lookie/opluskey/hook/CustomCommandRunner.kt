@@ -49,7 +49,13 @@ internal class CustomCommandRunner(
                 return
             }
             XLog.i("自定义命令「$name」（单条）→ ${cmd.single}")
-            execShell(cmd.single)
+            // 「执行时提示」：与多条那一路同一套（判据是全局开关 `GlobalConfig.toastOnRun`，
+            // 内容是命令名）。原来只有多条分支弹，单条这条路上按下去一直没动静
+            //（2026-10-14 实证）。配置每次现读 —— 这里跑在宿主进程，读得到配置文件。
+            if (ConfigStore.read().global.toastOnRun) onNotice(name)
+            // 与多条步骤同一套语义（Action.parse）：keyevent: / intent: / app: / shortcut: /
+            // cmd: / shell: 六种前缀写法在单条里同样成立；无前缀兜底成 shell（手写命令可省 shell:）。
+            dispatch(Action.parse(cmd.single))
             return
         }
 

@@ -161,12 +161,21 @@ internal object KeyHooks {
     private fun isFromHost(): Boolean {
         val calling = android.os.Binder.getCallingUid()
         val host = hostUid()
-        if (host <= 0 || calling == host) return true
-        XLog.w("丢弃来源不明的广播：callingUid=$calling（宿主 uid=$host）")
-        return false
+        if (host <= 0) {
+            // fail-closed：宿主 uid 拿不到时丢弃 —— 放行等于任意 App 可伪造这两条通道
+            // （翻主开关 / 以 system 身份开最近任务）。配置广播只在启动 / 解锁 / 写盘时发，
+            // 下一轮会重取 uid，不会因一次失败把通道锁死。
+            XLog.w("宿主 uid 未解析到，丢弃广播（fail-closed，下轮重取）")
+            return false
+        }
+        if (calling != host) {
+            XLog.w("丢弃来源不明的广播：callingUid=$calling（宿主 uid=$host）")
+            return false
+        }
+        return true
     }
 
-    /** 宿主包的 uid，解析成功后缓存（-1 = 还没解析到）。 */
+    /** 宿主包的 uid，解析成功后缓存（-1 = 还没解析到；失败不缓存，下一轮广播重取）。 */
     @Volatile
     private var cachedHostUid: Int = -1
 
@@ -177,7 +186,7 @@ internal object KeyHooks {
             val ctx = SystemContext.get(systemLoader ?: return -1) ?: return -1
             ctx.packageManager.getPackageUid(com.lookie.opluskey.KeyModule.PAGE_PACKAGE, 0)
         } catch (e: Throwable) {
-            XLog.w("解析宿主 uid 失败（这一次不校验来源）：${e.message}")
+            XLog.w("解析宿主 uid 失败（这次丢弃，下轮重取）：${e.message}")
             -1
         }
         if (uid > 0) {

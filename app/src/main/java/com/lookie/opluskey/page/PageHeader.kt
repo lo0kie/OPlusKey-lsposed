@@ -23,7 +23,7 @@ import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.TopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
-import io.github.suqi8.coui.kmp.basic.TopAppBarSubtitleAlignment
+import io.github.suqi8.coui.kmp.basic.TopAppBarTrailingSubtitleAlignment
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.blur.Backdrop
@@ -44,20 +44,33 @@ internal fun SettingsPage.headerStatusBarPadding(): Dp =
 /**
  * 顶栏当前高度：折叠高 + 折叠位移 + 系统栏顶边。
  *
- * 展开高不硬编码 107dp：库在测量期才把它写进 `heightOffsetLimit`，所以这里按「折叠高 − limit + offset」推；
- * 首帧 limit 还没量到（0）时 `max(…, ExpandedHeight)` 兜住（≥ 107dp）。
+ * 展开高不硬编码 107dp：库在测量期才把它写进 `heightOffsetLimit`，所以这里按「折叠高 − limit + offset」推。
+ *
+ * ⚠️ `heightOffsetLimit` 是**普通 var** —— 布局期改它**不触发重组**，而库默认值是
+ * `-Float.MAX_VALUE`。拿它直接做减法会得到天文数字，`Modifier.height(...).roundToPx()`
+ * 再整型溢出成 **0**：顶部让位的 Spacer 变 0、内容整段钻到顶栏底下（真机实证 2026-10-13，
+ * 「按键设置」卡被顶栏盖住）。所以先认这个哨兵，量到之前一律按「展开高」算。
  */
 @Composable
 internal fun SettingsPage.currentHeaderHeight(scrollBehavior: ScrollBehavior): Dp {
     val state = scrollBehavior.state
+    val limit = state.heightOffsetLimit
+    val offset = state.heightOffset
     val barHeight = with(LocalDensity.current) {
-        maxOf(
-            TopAppBarDefaults.ExpandedHeight,
-            TopAppBarDefaults.CollapsedHeight - state.heightOffsetLimit.toDp(),
-        ) + state.heightOffset.toDp()
+        val measured = limit.isFinite() && limit > SENTINEL_MIN
+        val collapsed = if (measured) {
+            TopAppBarDefaults.CollapsedHeight - limit.toDp()
+        } else {
+            TopAppBarDefaults.ExpandedHeight
+        }
+        val shift = if (offset.isFinite() && offset > SENTINEL_MIN) offset.toDp() else 0.dp
+        maxOf(TopAppBarDefaults.ExpandedHeight, collapsed) + shift
     }
     return barHeight + headerStatusBarPadding()
 }
+
+/** 认哨兵的阈值（像素）：一屏也就几千 px，比它更负的一定是库的 `-Float.MAX_VALUE` 初值。 */
+private const val SENTINEL_MIN = -1_000_000f
 
 /**
  * 顶栏折叠到底时的高度 —— [currentHeaderHeight] 的同一笔账，折叠位移取满。
@@ -92,9 +105,15 @@ internal fun Modifier.frosted(backdrop: Backdrop, shape: Shape): Modifier {
  * [scrollBehavior] 由调用方创建，同一实例必须同时挂给该页滚动容器，否则顶栏恒停在展开态。
  *
  * @param title 标题文案
- * @param subtitle 副标题文案（空 = 不显示）。已打补丁（`patches/coui/`）改成跟在大标题右边的小标题，
- *   跟着折叠一起移动、字号缩小（14dp → 12dp），折叠后保留（`hideSubtitleOnCollapse = false`）；
- *   贴上边还是下边由 `subtitleAlignment` 选。
+ * @param subtitle 大标题**右边**那行小标题（空 = 不显示）。走补丁**新增**的「大标题右侧小标题」
+ *   能力（`trailingSubtitle`，见 `patches/coui/`）——它是在库原有底线副标题之外**新增**的槽位，
+ *   不替代、也不改变库 `subtitle` 的语义。跟在大标题右边、跟着折叠一起移动、字号缩小
+ *   （14dp → 12dp），折叠后保留（`hideSubtitleOnCollapse = false`）；
+ *   贴上边还是下边由 `trailingSubtitleAlignment` 选。
+ * @param largeTitleSubtitle 大标题**下面**那行小字（空 = 不显示）。走库原本的底线副标题槽位
+ *   （`subtitle`，补丁没动它）——它与上面那个是**两个独立槽位**，可以同时给。它**自己占一行**，
+ *   所以顶栏展开高度会因此长高一行；页面内容的自让高度走 [currentHeaderHeight]（按库上报的
+ *   折叠量算），跟着一起长，不会被顶栏压住。
  * @param menu 右上角菜单，见 [HeaderMenu]
  * @param scrollBehavior 与该页滚动容器共享的折叠行为
  * @param backdrop 内容层的背景
@@ -103,6 +122,7 @@ internal fun Modifier.frosted(backdrop: Backdrop, shape: Shape): Modifier {
 internal fun SettingsPage.PageHeader(
     title: String,
     subtitle: String = "",
+    largeTitleSubtitle: String = "",
     menu: HeaderMenu,
     scrollBehavior: ScrollBehavior,
     backdrop: Backdrop,
@@ -118,10 +138,13 @@ internal fun SettingsPage.PageHeader(
     // 模糊半径按像素给（`blur` 收的是 px）—— 换算与取样都在 [frosted] 里。
     TopAppBar(
         title = title,
-        subtitle = subtitle,
+        // 库原本的底线副标题槽位：大标题**下面**单独一行（补丁没动它）
+        subtitle = largeTitleSubtitle,
+        // 补丁新增的槽位：大标题**右边**那行（与上面那个互不影响）
+        trailingSubtitle = subtitle,
         // 小标题贴大标题的哪条边 —— 补丁给的两个档（`Top` / `Bottom`），库默认 `Bottom`
-        subtitleAlignment = TopAppBarSubtitleAlignment.Bottom,
-        // 副标题折叠后保留（跟着大标题一起缩小、贴在小标题右边）
+        trailingSubtitleAlignment = TopAppBarTrailingSubtitleAlignment.Bottom,
+        // 两个槽位折叠后都保留（右边那条跟着大标题一起缩小；下面那条留在折叠态里）
         hideSubtitleOnCollapse = false,
         scrollBehavior = scrollBehavior,
         color = COUITheme.colorScheme.surface.copy(alpha = FROSTED_SURFACE_ALPHA),
@@ -159,10 +182,12 @@ internal fun SettingsPage.PageHeader(
 }
 
 /**
- * 「选择应用」页顶栏右侧的菜单按钮 + 浮层菜单 —— 两项：「显示系统应用」与「隐藏不可打开」，都是开关。
+ * 「选择应用」页顶栏右侧的菜单按钮 + 浮层菜单 —— 三项：「显示系统应用」「隐藏不可打开」「小窗打开」，
+ * 都是开关。
  *
  * 列表来自 `MAIN + CATEGORY_LAUNCHER` 查询，只给得出有启动图标的应用；没有启动图标的系统应用与第三方应用
  * （典型是 LSPosed 模块）要靠「显示系统应用」才选得到，其中多数按了会弹「找不到应用」，所以另有「隐藏不可打开」。
+ * 「小窗打开」不筛列表，只决定挑中的应用写成 `app:` 还是 `window:`。
  * 选中态交给 [MenuEntry.Row] 的 `selected`（行首图标恒为菜单各自那颗）。浮层弹在手指按下那一点（`preciseClickAnchor`）。
  */
 @Composable
@@ -204,14 +229,26 @@ internal fun SettingsPage.AppPickerMenu() {
                 // 把「按下去必弹失败提示」的那些藏起来 —— 判据 [LaunchableApp.launchable] 与执行端同一把尺子；
                 // 它是纯显示过滤，不重查列表
                 MenuEntry.Row(
-                    title = "隐藏不可打开",
+                    title = "隐藏失效应用",
                     icon = PageIcons.HideUnopenable,
                     selected = hideUnopenable.value,
                     onPick = {
                         open = false
                         hideUnopenable.value = !hideUnopenable.value
                         UiState.writeHideUnopenable(hideUnopenable.value)
-                        XLog.i("选择应用：隐藏不可打开 = ${hideUnopenable.value}（已落盘）")
+                        XLog.i("选择应用：隐藏失效 = ${hideUnopenable.value}（已落盘）")
+                    },
+                ),
+                // 开着时挑中的应用写成 `window:<包名>` —— 用小窗起，见执行侧 [AppLauncher.launchAppInWindow]
+                MenuEntry.Row(
+                    title = "以小窗口打开",
+                    icon = PageIcons.SmallWindow,
+                    selected = smallWindow.value,
+                    onPick = {
+                        open = false
+                        smallWindow.value = !smallWindow.value
+                        UiState.writeSmallWindow(smallWindow.value)
+                        XLog.i("选择应用：小窗打开 = ${smallWindow.value}（已落盘）")
                     },
                 ),
             ),
@@ -225,8 +262,10 @@ internal fun SettingsPage.ResetMenu() {
     var open by remember { mutableStateOf(false) }
     // 两层的「页面离开收起」各自登记：⋮ 菜单由 MenuPopup 管，确认弹窗由 ConfirmDialog 管（都不是本函数登记）
     val preciseClick = rememberPreciseClickState()
-    // 主开关关着时只留「默认界面」与「关于模块」可点（与模块运行状态无关）；其余三项都在动模块运行时/数据，一律置灰
-    val enabled = config.value.key(KeyId.PLUS).enabled
+    // 主开关关着、**或宿主服务没在跑**时，只留「默认界面」与「关于模块」可点（这两项与模块运行状态无关）；
+    // 其余三项都在动模块运行时 / 数据，一律置灰。
+    //  「默认界面」特意不禁用：模块没生效时它是唯一的逃生口（回宿主原版页面）。
+    val enabled = config.value.key(KeyId.PLUS).enabled && hostServiceUp
 
     Box {
         // 触发键同样是库的 IconButton，只是多挂 `preciseClickAnchor`：浮层弹在按下的那一点
@@ -253,8 +292,10 @@ internal fun SettingsPage.ResetMenu() {
                     openStockPage()
                 },
                 MenuEntry.RowLine,
-                // 第二项：重启模块 —— 跟着主开关（它动的是模块运行时那一层，配置不丢，见 [restartModule]）
-                MenuEntry.Row(title = "重启模块", icon = PageIcons.ModuleRestart, enabled = enabled) {
+                // 第二项：重启服务 —— 跟着主开关（它动的是宿主进程那一层，配置不丢，见 [restartModule]）。
+                //  叫「服务」不叫「模块」：这一步只是杀宿主主进程、让系统把页面整棵拉起，
+                // **不会**重新加载 system_server 里那份注入（那个只能整机重启）。
+                MenuEntry.Row(title = "重启服务", icon = PageIcons.ModuleRestart, enabled = enabled) {
                     open = false
                     restartModule()
                 },

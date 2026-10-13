@@ -124,7 +124,16 @@ internal fun hideIme(activity: android.app.Activity) {
  * `getResources() or getAssets() has already been called`），而新建的 wrapper 资源还没被访问过，可以改配置。
  */
 internal fun pageContext(activity: android.app.Activity): android.content.Context {
-    if (!isNight(activity) || isNight(activity.applicationContext)) return activity
+    // 宿主 Activity 自己的配置：必须直接读它的 resources，不能走 [isNight] ——
+    // 那个首选系统全局配置，两个调用恒等，「宿主 night、系统浅色」的分支永远进不去。
+    val hostNight = try {
+        (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+    } catch (e: Throwable) {
+        XLog.d("读宿主 Activity 配置失败：${e.message}")
+        return activity
+    }
+    if (!hostNight || isNight(activity)) return activity
 
     return try {
         val id = activity.resources.getIdentifier(THEME_LIGHT, "style", HOST_PACKAGE)

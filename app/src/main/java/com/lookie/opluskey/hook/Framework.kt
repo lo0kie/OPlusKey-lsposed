@@ -56,22 +56,26 @@ internal object Framework {
     fun findSideKeyPoints(loader: ClassLoader): List<InterceptionPoint> {
         val out = LinkedHashSet<InterceptionPoint>()
 
+        // 逐层降级而非全装：同一次按压若被多层各喂一次判定器，去重窗只盖得住 instantSingle
+        // 那一支，双击会变成「双击 + 单击」。找到更高一层的接管点就不再收集低层。
         for (name in STRATEGY_CANDIDATES) {
             val cls = Reflect.findClass(loader, name) ?: continue
             XLog.w("找到 ColorOS 侧键策略类：$name")
             collect(out, cls, STRATEGY_ENTRIES, InterceptionPoint.Kind.OPLUS_STRATEGY)
         }
-
-        for (name in PM_EXT_CANDIDATES) {
-            val cls = Reflect.findClass(loader, name) ?: continue
-            XLog.w("找到 ColorOS PM 覆写类：$name")
-            collect(out, cls, PM_EXT_ENTRIES, InterceptionPoint.Kind.OPLUS_PM_EXT)
+        if (out.isEmpty()) {
+            for (name in PM_EXT_CANDIDATES) {
+                val cls = Reflect.findClass(loader, name) ?: continue
+                XLog.w("找到 ColorOS PM 覆写类：$name")
+                collect(out, cls, PM_EXT_ENTRIES, InterceptionPoint.Kind.OPLUS_PM_EXT)
+            }
         }
-
-        for (name in PM_CANDIDATES) {
-            val cls = Reflect.findClass(loader, name) ?: continue
-            XLog.w("找到 AOSP PhoneWindowManager（兜底）")
-            collect(out, cls, PM_ENTRIES, InterceptionPoint.Kind.AOSP_PM)
+        if (out.isEmpty()) {
+            for (name in PM_CANDIDATES) {
+                val cls = Reflect.findClass(loader, name) ?: continue
+                XLog.w("找到 AOSP PhoneWindowManager（兜底）")
+                collect(out, cls, PM_ENTRIES, InterceptionPoint.Kind.AOSP_PM)
+            }
         }
 
         return out.toList()

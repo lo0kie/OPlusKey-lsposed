@@ -1,11 +1,8 @@
 package com.lookie.opluskey.page
 
-import android.content.Context
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -14,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.aspectRatio
@@ -32,7 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,8 +60,8 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.XLog
 import com.lookie.opluskey.config.Config
+import com.lookie.opluskey.hook.AppEntry
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** 「打开应用」页：应用列表加载 / 排序 / 选择。 */
@@ -87,7 +83,7 @@ internal data class LaunchableApp(
      */
     val xposed: Boolean,
     /**
-     * `pm.getLaunchIntentForPackage(包名)` 解得出来 —— `app:` 那一步真的拉得起来。
+     * [AppEntry.resolve] 解得出来入口 —— `app:` 那一步真的拉得起来。
      *
      * 与执行端（[AppLauncher.launchApp]）同一把尺子，拉不起来就在行尾挂「不可打开」提示。
      * 系统应用缺入口的居多，用户应用里也有（被停用 / 非导出入口 / 装了一半）。
@@ -156,7 +152,7 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
                 null
             },
             system = ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0,
-            launchable = pm.getLaunchIntentForPackage(ai.packageName) != null,
+            launchable = AppEntry.resolve(pm, ai.packageName) != null,
             xposed = xposed,
         )
         // 有启动图标的应用
@@ -456,7 +452,10 @@ internal fun SettingsPage.AppSearchBand() {
 }
 
 /**
- * 「打开应用」页 —— 列出本机可启动的应用，点一条就把当前手势绑成 `app:<包名>`。
+ * 「打开应用」页 —— 列出本机可启动的应用。
+ *
+ * 点一条只**切换选中的那个**（行尾单选圈跟着走），右下角那颗 ✓ 才把选择交出去
+ * （`app:<包名>` 或 `window:<包名>`，看 [SettingsPage.smallWindow]）。
  *
  * 用 `LazyColumn` 而不是 `verticalScroll + Card`：这一页可能有 200+ 行，`verticalScroll`
  * 会把所有行都组合一遍（每行都要 `loadIcon`，首帧直接卡住）。每行各自一张卡。
@@ -464,7 +463,7 @@ internal fun SettingsPage.AppSearchBand() {
 @Composable
 internal fun SettingsPage.AppPickerScreen(
     selected: String?,
-    onPick: (String) -> Unit,
+    onPick: (String, Boolean) -> Unit,
     scrollBehavior: ScrollBehavior,
 ) {
     // 这一页是 push 转场的目标页，首帧要把 160 个应用的 label 读出来、还要把中文名逐个转写成
@@ -482,6 +481,8 @@ internal fun SettingsPage.AppPickerScreen(
     // 上一轮查的是哪个模式（`null` = 还没查过）。只有模式真的翻转才把列表收起来走加载态：
     // 那一刻列表来源换了，旧清单留着是错的。进页那一次不收 —— 那是同一份清单的重查。
     var lastMode by remember { mutableStateOf<Boolean?>(null) }
+    // 本地选中：点行只改它，右下角那颗 ✓ 才把选择交出去。初值照当前绑定的那个（进页时先亮着它）。
+    var pending by remember(selected) { mutableStateOf(selected) }
     LaunchedEffect(withSystem) {
         // 日志放在 effect 里而不是组合体里：组合体会随每次重组重跑，那几行会被打好几遍。
         if (lastMode != null && lastMode != withSystem) {
@@ -504,7 +505,7 @@ internal fun SettingsPage.AppPickerScreen(
     // 搜索词提到页面级（[SettingsPage.appFilter]）：搜索框挂在顶栏里，与这一页的过滤逻辑分处
     // 两棵树，得共用同一份状态。它跟着进这一页清空（见 [SettingsPage.openAppPickerForStep]）。
     val filter = appFilter.value
-    // 「隐藏不可打开」：纯显示过滤 —— 判据 [LaunchableApp.launchable] 已经在手上的清单里，
+    // 「隐藏失效应用」：纯显示过滤 —— 判据 [LaunchableApp.launchable] 已经在手上的清单里，
     // 不必重查。它不随进页清空、且落盘（与「显示系统应用」同一套账）。
     val hideBroken = hideUnopenable.value
     val shown = remember(apps, filter, hideBroken) {
@@ -523,7 +524,6 @@ internal fun SettingsPage.AppPickerScreen(
     // 两者才严丝合缝。带子挂在顶栏里，量高度在那边，值走页面级的
     // [SettingsPage.appSearchBandHeight]；首帧还没量到时是 0，下一帧自纠。
     val searchBandDp = with(LocalDensity.current) { appSearchBandHeight.value.toDp() }
-    val scope = rememberCoroutineScope()
     val tick = rememberTick()
     // 列表顶上那一整段（顶栏 + 固定搜索带 + 首行上边距）—— 进场定位时目标行要落在它下面。
     // 取折叠后的顶栏高度（[collapsedHeaderHeight]）：定位会把顶栏折叠到底，按展开高度算会多
@@ -614,15 +614,18 @@ internal fun SettingsPage.AppPickerScreen(
                         ) {
                             BasicComponent(
                                 startAction = { AppIcon(app) },
-                                // 行尾单选圈：当前绑的那个应用亮着（与「按键绑定」页格子同一套语义），
+                                // 行尾单选圈跟着**本地选中**走：点一行只是把圈挪过去，交出去靠右下角那颗 ✓
                                 endActions = {
                                     RadioButton(
-                                        selected = app.packageName == selected,
+                                        selected = app.packageName == pending,
                                         onClick = null,
                                     )
                                 },
                                 cardListPosition = CardListPosition.Full,
-                                onClick = { onPick(app.packageName) },
+                                onClick = {
+                                    tick()
+                                    pending = app.packageName
+                                },
                             ) {
                                 // 标题 / 摘要自己排，不走库的 `title` / `summary` 两个参数：标题那行要在
                                 // 名字右边再挂一枚小标签，而那两个参数只吃 `String`。样式照库的默认内容来。
@@ -723,55 +726,28 @@ internal fun SettingsPage.AppPickerScreen(
                 },
             )
 
-            // 「滚到顶部」那颗 FAB，样式与「按键绑定」页那颗（新增命令）逐项对齐：尺寸 / 形状 /
-            // 阴影走库默认（56dp 见方、`CircleShape`、12dp 阴影）、容器色取库默认 `colorScheme.primary`。
-            // 图标 tint 显式给 `onPrimary`：库内部只给容器色、不给 contentColor，不显式上色会继承到
-            // `onSurface`（深色）。位置同「右 [PAGE_MARGIN]×2、下 [PAGE_BOTTOM_PADDING]×2」，点一下先
-            // 振动（[rememberTick]）。改样式两处一起改（另一处在 [BindingScreen]）。
-            // 显隐：搜索中、或已在顶部时不出现。
-            PageCornerFab(
-                visible = filter.isBlank() && listState.canScrollBackward,
-            ) {
+            // 右下角那颗 ✓ 才是「确定选择」：点行只切换。样式与「按键绑定」页那颗（新增命令）逐项
+            // 对齐：尺寸 / 形状 / 阴影走库默认（56dp 见方、`CircleShape`、12dp 阴影）、容器色取库默认
+            // `colorScheme.primary`。图标 tint 显式给 `onPrimary`：库内部只给容器色、不给 contentColor，
+            // 不显式上色会继承到 `onSurface`（深色）。位置同「右 [PAGE_MARGIN]×2、下
+            // [PAGE_BOTTOM_PADDING]×2」，点一下先振动（[rememberTick]）。
+            // 显隐：手上有选中的才出现 —— 没得确认就不占地方。
+            PageCornerFab(visible = pending != null) {
                 FloatingActionButton(
                     onClick = {
                         tick()
-                        // 一页两百来行，滑到下半截后要回顶很费劲。
-                        scope.launch { scrollToTop(listState) }
+                        pending?.let { onPick(it, smallWindow.value) }
                     },
                 ) {
                     Icon(
-                        PageIcons.ScrollToTop,
-                        contentDescription = "滚到顶部",
+                        PageIcons.Confirm,
+                        contentDescription = "确定选择",
                         tint = COUITheme.colorScheme.onPrimary,
                     )
                 }
             }
         }
     }
-}
-
-/**
- * 「选择应用」页那颗 FAB 的动作：滚到顶部 —— 走自己这条 tween + 贝塞尔，不用库的
- * `animateScrollToItem`。
- *
- * 位移按「第一个可见项之前还有多少项 × 行距 + 它在视口里的偏移」算；与库那条的区别是
- * 时长固定（[SCROLL_FAB_MS]），不受距离影响。
- */
-internal suspend fun SettingsPage.scrollToTop(listState: LazyListState) {
-    val visible = listState.layoutInfo.visibleItemsInfo
-    val first = visible.firstOrNull()
-    if (first == null || visible.size < 2) {
-        listState.animateScrollToItem(0)
-        return
-    }
-    val span = visible.last().index - first.index
-    val pitch = (visible.last().offset - first.offset).toFloat() / span
-    val distance = first.index * pitch + listState.firstVisibleItemScrollOffset
-    if (distance <= 0f) return
-    listState.animateScrollBy(
-        -distance,
-        tween(SCROLL_FAB_MS, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
-    )
 }
 
 /**
