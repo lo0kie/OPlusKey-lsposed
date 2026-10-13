@@ -70,18 +70,31 @@ jobs:
       - name: 构建 debug 与 release
         run: ./gradlew assembleDebug assembleRelease
 
+      # 三个版本值一律从源码里正则抓，抓不到就 fail —— 绝不兜底。
+      # 原先的兜底（unknown / 0.0.0 / 0）会让 job 照常跑完，再发出一个 tag 叫 `0-0.0.0` 的
+      # release；而模块仓库的机器人是从 APK 的二进制清单读真值算 tag 的，两边不一致它就再改
+      # 一次 tag，模块仓库里凭空多一个 tag，且没人会注意到版本号根本没进包。
+      # 这三行必须是字面量：改成 `versionCode = base + 1` 这类表达式，正则就抓不到了。
       - name: 整理产物
         id: dist
         run: |
           BUILD_ID=$(sed -n 's/.*BUILD_ID[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
             app/src/main/java/com/lookie/opluskey/KeyModule.kt | head -1)
-          BUILD_ID=${BUILD_ID:-unknown}
           VERSION_NAME=$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
             app/build.gradle.kts | head -1)
-          VERSION_NAME=${VERSION_NAME:-0.0.0}
           VERSION_CODE=$(sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' \
             app/build.gradle.kts | head -1)
-          VERSION_CODE=${VERSION_CODE:-0}
+
+          # 校验必须留在这一层：把它塞进抓取用的函数会在 $(…) 子 shell 里跑，
+          # 变量赋值传不出来，守卫会静默失效。
+          missing=""
+          [ -n "$BUILD_ID" ]     || missing="${missing}${missing:+、}BUILD_ID（KeyModule.kt）"
+          [ -n "$VERSION_NAME" ] || missing="${missing}${missing:+、}versionName（app/build.gradle.kts）"
+          [ -n "$VERSION_CODE" ] || missing="${missing}${missing:+、}versionCode（app/build.gradle.kts）"
+          if [ -n "$missing" ]; then
+            echo "::error::抓不到 ${missing}；不要把空的版本值发出去（会建成 0-0.0.0 的 tag）"
+            exit 1
+          fi
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk     "dist/oplus-key-${BUILD_ID}-debug.apk"
           cp app/build/outputs/apk/release/app-release.apk "dist/oplus-key-${BUILD_ID}-release.apk"
@@ -146,7 +159,9 @@ jobs:
             fi
           done
 
-          # ⑤ 注入侧不得引用 androidx / COUI —— 那些类在 system_server 里执行会在类加载期崩
+          # ⑤ 注入侧不得引用 androidx / COUI / 图标库 / page 层 —— 那些类在 system_server 里
+          #    执行会在类加载期崩。判据是「这个类会不会在 system_server 里被执行」，所以
+          #    page/（Compose + COUI）与图标库（com.composables / io.github.lyxnx）一并拦。
           #    目录先各自确认存在：路径写错时 grep 会返回 2（错误），不加这道守卫会被当成「无命中」放过
           injection_dirs=""
           for d in hook gesture config; do
@@ -157,7 +172,7 @@ jobs:
               bad "找不到注入侧目录 $p（包名挪过？这条校验会失效）"
             fi
           done
-          hits=$(grep -rn "^import \(androidx\|io\.github\.suqi8\)" $injection_dirs || true)
+          hits=$(grep -rn "^import \(androidx\|io\.github\.suqi8\|io\.github\.lyxnx\|com\.composables\|com\.lookie\.opluskey\.page\)" $injection_dirs || true)
           if [ -n "$hits" ]; then
             printf '%s\n' "$hits"
             bad "注入侧（hook/ gesture/ config/）引用了 androidx / COUI —— 见 AGENTS.md 一、1"
@@ -245,6 +260,12 @@ jobs:
           done
 
       # 只传 release 包：机器人按单个 apk URL 处理，挂两个抓不准；debug 包另以 Actions artifact 保留。
+      #
+      # beta 版本靠「预发布」这一个标记区分，没有第二套流程：
+      #   versionName 里带 `-`（如 1.1.0-beta.1）⇒ 发为预发布 ⇒ 只进管理器的「测试版」通道。
+      #   索引据此填 `latestBetaRelease`（稳定版填 `latestRelease`、快照版按 release 标题前缀填
+      #   `latestSnapshotRelease`），管理器的「稳定版」通道会把 `isPrerelease` 的条目整个滤掉。
+      # ⚠️ 版本号仍须单调递增：beta 也占一个 `versionCode`，不涨的话测试通道收不到更新提示。
       - name: 建 / 更新 Release
         if: steps.token.outputs.ready == 'true'
         uses: softprops/action-gh-release@v3
@@ -253,7 +274,9 @@ jobs:
           token: ${{ secrets.MODULES_REPO_TOKEN }}
           tag_name: ${{ env.TAG }}
           name: ${{ needs.build.outputs.version_name }}
-          make_latest: true
+          prerelease: ${{ contains(needs.build.outputs.version_name, '-') }}
+          # 预发布不能被设为 latest（GitHub 会拒），所以这一项和上面反着来。
+          make_latest: ${{ !contains(needs.build.outputs.version_name, '-') }}
           files: dist/*-release.apk
           body: |
             `versionName` = ${{ needs.build.outputs.version_name }}，`versionCode` = ${{ needs.build.outputs.version_code }}，`BUILD_ID` = ${{ needs.build.outputs.build_id }}。

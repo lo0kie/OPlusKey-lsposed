@@ -9,6 +9,3 @@ internal const val VERBOSE_LOG: Boolean = true
 
 /** 构建类型标识，界面底部会显示，便于区分手上这个包是哪种。 */
 internal const val BUILD_KIND: String = "debug"
-
-/** 调试通道（`page/PageDebugChannel`）：调试包注册一个广播接收器让 `adb` 直接驱动设置页；release 恒 `false`。 */
-internal const val DEBUG_CHANNEL: Boolean = true

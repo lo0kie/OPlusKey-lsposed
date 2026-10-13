@@ -21,20 +21,33 @@ internal object SystemContext {
     fun get(loader: ClassLoader): Context? {
         cached?.let { return it }
 
+        // 整体兜一层 catch：这条链跑在 system_server 里，任何 Throwable 都不能漏出去（开机循环）。
         // 首选：ActivityThread 里任一进程的 Application Context（mAppThread 有值）
-        fromApplicationThreads(loader)?.let {
-            cached = it
+        val direct = try {
+            fromApplicationThreads(loader)
+        } catch (e: Throwable) {
+            XLog.w("探 mAllApplicationThreads 失败：${e.message}")
+            null
+        }
+        if (direct != null) {
+            cached = direct
             XLog.w("拿到 system_server 下的可用 Context（来源：mAllApplicationThreads）")
-            return it
+            return direct
         }
 
         // 次选：getSystemContext()（降级品，只能 getSystemService）—— 不缓存
-        fromGetSystemContext(loader)?.let {
+        val degraded = try {
+            fromGetSystemContext(loader)
+        } catch (e: Throwable) {
+            XLog.w("探 getSystemContext 失败：${e.message}")
+            null
+        }
+        if (degraded != null) {
             XLog.w(
                 "只拿到 getSystemContext() 的 Context —— 它没有 mAppThread，" +
-                    "ContentResolver / startActivity 会失败（**不缓存**，下次再试第①条）",
+                        "ContentResolver / startActivity 会失败（不缓存，下次再试首选）",
             )
-            return it
+            return degraded
         }
 
         XLog.w("拿不到任何 system_server Context（依赖 Context 的功能会跳过）")

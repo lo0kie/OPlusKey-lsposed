@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -216,14 +215,15 @@ internal fun Modifier.tapSliderToSeek(
             }
             // 滑动 / 没正常抬手 ⇒ 不算轻点（拖动全归滑杆）
             if (moved || !released) continue
-            // 触点 → 值：先按轨道左右边界折到轨道上，再按步长取整
+            // 触点 → 值：先按轨道左右边界折到轨道上，再按滑杆自己的刻度取整 ——
+            // 刻度必须与上面 Slider.steps 那套同源（(max-min)/STEP_MS 格），不能直接按
+            // STEP_MS 取整：区间不整除时（如 250..800 拖动是 110ms 格）两套值对不上。
             val track = (size.width - trackStart - trackEnd).coerceAtLeast(1f)
             val frac = ((down.position.x - trackStart) / track).coerceIn(0f, 1f)
-            val v = (
-                min +
-                    ((frac * (max - min)) / STEP_MS).roundToInt() * STEP_MS
-                ).coerceIn(min, max)
-            onSeek(v)
+            val ticks = ((max - min) / STEP_MS).coerceAtLeast(1)
+            val idx = (frac * ticks).roundToInt()
+            val v = min + idx * (max - min).toDouble() / ticks
+            onSeek(v.roundToInt().coerceIn(min, max))
         }
     }
 }

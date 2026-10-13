@@ -173,7 +173,7 @@ internal object SettingsPageHooks {
         if (base == null) {
             XLog.w(
                 "没找到 $BASE_ACTIVITY —— 本机不是 ColorOS，或侧键设置页改了名。" +
-                    "模块不换页，但设置页仍是系统原版（功能正常）",
+                        "模块不换页，但设置页仍是系统原版（功能正常）",
             )
             return
         }
@@ -214,8 +214,13 @@ internal object SettingsPageHooks {
         )
         if (onNewIntent != null) {
             if (module.hookGuarded(onNewIntent) { chain ->
-                    if (chain.thisObject === currentActivity) {
-                        currentPage?.onHostReentered()
+                    // 前置动作单独兜住：它抛了也不能把宿主自己的 onNewIntent 一并跳过
+                    try {
+                        if (chain.thisObject === currentActivity) {
+                            currentPage?.onHostReentered()
+                        }
+                    } catch (e: Throwable) {
+                        XLog.w("onHostReentered 失败（onNewIntent 照常 proceed）", e)
                     }
                     chain.proceed()
                 } != null) {
@@ -230,7 +235,7 @@ internal object SettingsPageHooks {
             installed = true
             XLog.i(
                 "设置页换页 Hook 安装完成：换页 1/1 + 生命周期 ${lifecycleHooks[0]}/1" +
-                    "（$BASE_ACTIVITY）",
+                        "（$BASE_ACTIVITY）",
             )
         } else {
             XLog.w("设置页换页 Hook 装不上（见上面的失败原因）")
@@ -368,7 +373,7 @@ internal object SettingsPageHooks {
         if (container == null) {
             XLog.w(
                 "找不到 R.id.container（0x${Integer.toHexString(ID_CONTAINER)}）" +
-                    "—— 可能是 ROM 改了布局，换页放弃，页面仍是系统原版",
+                        "—— 可能是 ROM 改了布局，换页放弃，页面仍是系统原版",
             )
             return
         }
@@ -451,9 +456,14 @@ internal object SettingsPageHooks {
         // 刷底色 / 换标题 / 染图标（那些函数一并移除）。
         try {
             val appbar = activity.findViewById<android.view.View>(ID_APPBAR)
-            appbar?.visibility = android.view.View.GONE
-            hostAppbar = appbar
-            XLog.i("宿主顶栏已隐藏 —— 标题与返回键由模块页面自绘")
+            if (appbar == null) {
+                // 不伪造能力：没找到就说没找到，别打「已隐藏」（排查时会被带偏）
+                XLog.w("没找到宿主顶栏（R.id.appbar_layout）—— 顶栏可能与页面重叠")
+            } else {
+                appbar.visibility = android.view.View.GONE
+                hostAppbar = appbar
+                XLog.i("宿主顶栏已隐藏 —— 标题与返回键由模块页面自绘")
+            }
         } catch (e: Throwable) {
             XLog.w("隐藏宿主顶栏失败（顶栏可能与页面重叠，功能不受影响）", e)
         }
@@ -599,7 +609,7 @@ internal object SettingsPageHooks {
 
         XLog.w(
             "返回拦截：平台 onBackPressed=$legacyBackHooked，" +
-                "宿主 onBackPressed=$hostBackHooked，本次注册返回回调=$registered",
+                    "宿主 onBackPressed=$hostBackHooked，本次注册返回回调=$registered",
         )
         if (!legacyBackHooked && !hostBackHooked && backCallbackActivity !== activity) {
             XLog.w("返回拦截一条都没装上 —— 子页返回请用顶栏那个返回箭头")
@@ -666,10 +676,12 @@ internal object SettingsPageHooks {
                         currentPage?.closeOverlays("系统返回收浮窗")
                         null
                     }
+
                     currentPage?.goBack() == true -> {
                         XLog.i("系统返回（onBackPressed）：子页 → 首页（不关设置页）")
                         null // 不 proceed = 这一次返回被消费
                     }
+
                     restoreModuleUi() -> null // 原版界面 → 模块界面，同样消费掉
                     else -> chain.proceed()
                 }
@@ -734,12 +746,15 @@ internal object SettingsPageHooks {
                 XLog.i("系统返回：浮窗开着 ⇒ 收掉浮窗，不退页面")
                 currentPage?.closeOverlays("系统返回收浮窗")
             }
+
             currentPage?.goBack() == true -> {
                 XLog.i("系统返回（OnBackInvoked）：子页 → 首页（不关设置页）")
             }
+
             restoreModuleUi() -> {
                 // 原版界面 → 模块界面，消费掉这次返回
             }
+
             else -> {
                 XLog.i("系统返回（OnBackInvoked）：不在子页 ⇒ 交还宿主（关页面）")
                 try {
@@ -792,6 +807,7 @@ internal object SettingsPageHooks {
                     page.navBackInput.started(backEvent.toNavigationEvent())
                     SESSION_PAGE
                 }
+
                 else -> SESSION_NONE
             }
         }
@@ -828,9 +844,9 @@ internal object SettingsPageHooks {
             frameTimeMillis = frameTimeMillis,
         )
 
-/**
+    /**
      * 把「窗口的底」刷成页面底色 —— 防**首帧之前露底跳色**（**不是**那段黑的主因）。
- */
+     */
     private fun paintWindowBackdrop(
         activity: android.app.Activity,
         container: ViewGroup,
@@ -857,9 +873,9 @@ internal object SettingsPageHooks {
         }
     }
 
-/**
+    /**
      * 让状态栏区域也是页面底色（「沉浸式」）。
- */
+     */
     private fun applyStatusBarArea(
         activity: android.app.Activity,
         container: ViewGroup,
@@ -890,7 +906,7 @@ internal object SettingsPageHooks {
             appbar?.getLocationOnScreen(aLoc)
             XLog.d(
                 "状态栏区域诊断：container top=${cLoc[1]} 高=${container.height}" +
-                    "；appbar top=${aLoc[1]} 高=${appbar?.height}",
+                        "；appbar top=${aLoc[1]} 高=${appbar?.height}",
             )
         } catch (e: Throwable) {
             XLog.d("状态栏诊断日志失败（忽略）：${e.message}")
@@ -899,9 +915,9 @@ internal object SettingsPageHooks {
         XLog.d("状态栏区域底色已刷成 #${Integer.toHexString(color)}（container + window + decorView 三层背景）")
     }
 
-/**
+    /**
      * 关掉状态栏的「对比度薄纱」（contrast scrim）。
- */
+     */
     @Suppress("DEPRECATION")
     private fun disableStatusBarScrim(activity: android.app.Activity) {
         try {
@@ -912,10 +928,10 @@ internal object SettingsPageHooks {
         }
     }
 
-/**
+    /**
      * 在状态栏那块盖一层**实心 View** —— 现在**只给「露出宿主原版页面」那一档用**
      *（见 [revealStock]，配套 [removeStatusFiller] 在切回模块界面时拿掉）。
- */
+     */
     private fun coverStatusBar(activity: android.app.Activity, color: Int) {
         val decor = activity.window?.decorView as? ViewGroup
 

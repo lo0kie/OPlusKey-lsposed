@@ -33,6 +33,18 @@ internal class SideKeyInterceptor(
     /**
      * @return true = 接管（吞掉原方法）；false = 原样放行给系统
      */
+    /**
+     * 这个事件是不是我们自己重注入的合成事件。
+     *
+     * 「放行」是「吞掉原始键 + 用 `InputManager` 重注入一对 735」（见 `KeyInjector`），
+     * 而重注入的事件会**再走一遍**这条按键路径 ⇒ 再被认领、再判一次单击、再放行一次
+     * ⇒ 每 ~100ms 一轮的自持循环（真机实测 2026-10-13，见 `docs/device-findings.md`）。
+     * 合成事件带的是虚拟键盘的 `deviceId`（`KeyInjector` 显式传 -1），认它的号即可放行。
+     */
+    private fun isSynthetic(keyEvent: KeyEvent): Boolean =
+        keyEvent.deviceId == android.view.KeyCharacterMap.VIRTUAL_KEYBOARD ||
+            keyEvent.deviceId < 0
+
     fun handle(point: Framework.InterceptionPoint, chain: XposedInterface.Chain): Boolean {
         if (!ConfigChannel.takeOver) return false
 
@@ -69,6 +81,11 @@ internal class SideKeyInterceptor(
             XLog.w("${KeyId.PLUS.label}（$point）：参数里没有 KeyEvent，无法确认是侧键 → 放行给系统")
             return false
         }
+        // 合成事件（我们自己重注入的）不认领：认领就是自持循环（见 [isSynthetic]）
+        if (isSynthetic(keyEvent)) {
+            XLog.d("按键（$point）：合成事件（deviceId=${keyEvent.deviceId}），放行给系统")
+            return false
+        }
 
         // 白名单校验而非「必须等于 735」：这条路上报的是 ColorOS 注入的内部码（780/781/782），
         // 且连音量键也会进来（实测 keyCode=25），不能按「能进来就是侧键」直接吞掉。
@@ -94,6 +111,8 @@ internal class SideKeyInterceptor(
             XLog.w("按键（$point）：参数里没有 KeyEvent，这一层不做转发（放行给系统）")
             return false
         }
+        // 同上：合成事件不认领
+        if (isSynthetic(keyEvent)) return false
 
         // 这一层能收到所有按键，所以按 keyCode 认领（只认原始码 735）
         val id = KeyId.fromKeyCode(keyEvent.keyCode)
@@ -119,7 +138,11 @@ internal class SideKeyInterceptor(
         keyEvent: KeyEvent,
         keyConfig: KeyConfig,
     ): Boolean = try {
-        when (keyEvent.action) {
+        if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount > 0) {
+            // 按住不放的 repeat：不能喂判定器（会刷新 pressAt、作废已排的长按枪），
+            // 也不能放行给系统（键已被接管）—— 直接吞掉。框架自己的分支也先判 getRepeatCount()==0。
+            true
+        } else when (keyEvent.action) {
             KeyEvent.ACTION_DOWN -> {
                 // DOWN/UP 是验收判据链的第一环（AGENTS.md 二、1.2），必须是 W ——
                 // 注入侧 i/d 在 LSPosed 日志页里看不到；一次按键两行，不会刷屏。

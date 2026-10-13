@@ -1,6 +1,7 @@
 package com.lookie.opluskey.page
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -12,8 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -25,6 +25,7 @@ import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
+import io.github.suqi8.coui.kmp.basic.SnackbarDuration
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -33,6 +34,7 @@ import com.lookie.opluskey.BUILD_KIND
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.XLog
 import com.lookie.opluskey.config.KeyId
+import kotlinx.coroutines.delay
 
 /**
  * 首页（快捷键）。
@@ -46,6 +48,38 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     val key = cfg.key(KeyId.PLUS)
     // 触觉反馈入口提到页面级 —— 「按键绑定」那行的主开关也要用（它排在「按键行为」卡之前）
     val tick = rememberTick()
+
+    // 宿主侧的模块在不在 ⇒ 不在就整页禁用 + 一条提示（见 [hostServiceUp]）。
+    //  判据只能是**模块自己报活**：查宿主那支侧键服务不管用 —— 它是宿主自己的常驻服务，
+    // 系统会自己把它拉起，服务在跑 ≠ 模块在跑（真机实测：重启后没注入它照样在跑）。
+    //  进页先记下报活代次、发一句「在不在」（报活广播是一次性的，我们可能已经错过了），等一档
+    // 再看代次有没有变：没变就是没加载。之后不再轮询 —— 它什么时候起来，那声广播会告诉我们。
+    LaunchedEffect(Unit) {
+        val token = hostAliveToken
+        context.sendBroadcast(
+            Intent(KeyModule.ACTION_HOST_SERVICE_QUERY).setPackage(KeyModule.PAGE_PACKAGE),
+        )
+        delay(HOST_ALIVE_TIMEOUT_MS)
+        if (hostAliveToken == token) hostServiceUp = false
+    }
+    // 这一页所有可交互项的**总闸**：主开关开着**且**服务在跑。服务没起来时改配置不会生效，
+    // 放用户去改只会误导（提示已经写明了原因）。
+    val pageEnabled = key.enabled && hostServiceUp
+
+    // 服务没在跑 ⇒ 弹一条**常驻**提示；它起来之后 effect 重启，把这条收掉。
+    //  落点由 [hostServiceSnackbar] 那一层的 `SnackbarHost` 给（屏幕底边），这里只管弹 / 收。
+    //  `newestSnackbarData() == null` 那半句是**去重**：首页被切走再回来会重新组合，
+    // 不去重就会叠出第二条（真机反馈「弹了两个 Snackbar」）。
+    LaunchedEffect(hostServiceUp) {
+        if (hostServiceUp) {
+            hostServiceSnackbar.newestSnackbarData()?.dismiss()
+        } else if (hostServiceSnackbar.newestSnackbarData() == null) {
+            hostServiceSnackbar.showSnackbar(
+                message = "模块未被正确加载，正在等待系统启动",
+                duration = SnackbarDuration.Indefinite,
+            )
+        }
+    }
 
     Column(
         Modifier
@@ -78,8 +112,11 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         // 动态行数（`homeBindingRows`）一并删掉，别再按「静音要授权」加回来。
 
         Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-            // 主开关是这张卡的第一行，且只有它自己永远可操作：关掉之后全页（含这一页的
-            // 其它控件、「按键绑定」子页、顶栏菜单两项）都禁用，它再被禁用就再也打不开了。
+            // 主开关是这张卡的第一行，**永远不能被自己关掉**：关掉之后全页（含这一页的其它控件、
+            // 「按键绑定」子页、顶栏菜单三项）都禁用，它要是跟着一起禁用，就再也开不回来了。
+            //  所以它的 `enabled` 只吃「宿主侧的模块在不在」，**不吃 `pageEnabled`**（后者含它自己）。
+            //  模块没加载时它照样禁用 —— 那种情况下拨这个开关也不会生效，页面底部那条 Snackbar
+            // 会说明该做什么。
             //
             // 它写的是 [KeyConfig.enabled] —— 执行侧早就存在的总闸（注入侧
             // `hook/SideKeyInterceptor` 与宿主侧 `gesture/GestureReceiver` 各有一道
@@ -105,9 +142,12 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                     },
                     // 行首图标与下一行对齐用（不给的话两行的标题左边缘会差一个图标宽）。
                     // 电源符号 = 「这一行是总开关」。
-                    startAction = { Icon(PageIcons.Power, null) },
-                    cardListPosition = cardListPositionOf(0, HOME_BINDING_ROWS),
-                )
+                startAction = { Icon(PageIcons.Power, null) },
+                cardListPosition = cardListPositionOf(0, HOME_BINDING_ROWS),
+                //  **只看「宿主侧的模块在不在」，不吃 `pageEnabled`** —— 后者含它自己：
+                // 关掉主开关时这一行必须仍可点，否则就再也开不回来了。
+                enabled = hostServiceUp,
+            )
             }
 
             HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
@@ -127,7 +167,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                     //  行首图标还是得自己管：库只给**它自己画的东西**按 `enabled` 上色，
                     // `startAction` 槽位原样渲染。不给的话 `enabled = false` 会「文字灰了、
                     // 图标还亮着」。
-                    if (key.enabled) {
+                    if (pageEnabled) {
                         Icon(PageIcons.TouchApp, null)
                     } else {
                         Icon(
@@ -142,7 +182,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                         PageIcons.EnterArrow,
                         contentDescription = null,
                         modifier = Modifier.size(HOME_BINDING_ARROW_SIZE),
-                        tint = if (key.enabled) {
+                        tint = if (pageEnabled) {
                             COUITheme.colorScheme.onSurfaceVariantActions
                         } else {
                             COUITheme.colorScheme.disabledOnSecondaryVariant
@@ -150,7 +190,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                     )
                 },
                 cardListPosition = cardListPositionOf(1, HOME_BINDING_ROWS),
-                enabled = key.enabled,
+                enabled = pageEnabled,
                 onClick = {
                     navTo(Screen.BINDING)
                 },
@@ -183,7 +223,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                     //  startAction 槽位库不上色：主开关为关时得自己跟着灰
                     //（与「按键绑定」行的 TouchApp 同一条规矩）。
                     startAction = {
-                        if (key.enabled) {
+                        if (pageEnabled) {
                             Icon(PageIcons.Vibrate, null)
                         } else {
                             Icon(
@@ -196,7 +236,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                     cardListPosition = cardListPositionOf(0, HOME_ACTION_ROWS),
                     // `enabled = false` 时 COUI 不挂 `clickableModifier`、开关也跟着灰，
                     // 行点击与开关点击自然都失效。
-                    enabled = key.enabled,
+                    enabled = pageEnabled,
                 )
             }
 
@@ -219,7 +259,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                     },
                     // 与「振动反馈」同一条规矩：`startAction` 槽位库不上色，主开关为关时自己灰
                     startAction = {
-                        if (key.enabled) {
+                        if (pageEnabled) {
                             Icon(PageIcons.CommandToast, null)
                         } else {
                             Icon(
@@ -230,7 +270,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                         }
                     },
                     cardListPosition = cardListPositionOf(1, HOME_ACTION_ROWS),
-                    enabled = key.enabled,
+                    enabled = pageEnabled,
                 )
             }
         }

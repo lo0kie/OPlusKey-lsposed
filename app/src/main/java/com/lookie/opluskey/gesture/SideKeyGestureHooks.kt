@@ -6,6 +6,7 @@ import android.os.Message
 import com.lookie.opluskey.Reflect
 import com.lookie.opluskey.XLog
 import com.lookie.opluskey.config.ConfigStore
+import com.lookie.opluskey.config.KeyId
 import com.lookie.opluskey.hook.SystemActionButtonConfig
 import com.lookie.opluskey.hookGuarded
 import io.github.libxposed.api.XposedModule
@@ -29,6 +30,15 @@ internal object SideKeyGestureHooks {
      */
     private const val SCENE_DISPATCH_WHAT = 1
 
+    /** 「放行」后允许把场景派发让给原生的时长（毫秒）——要盖过 [SCENE_DECIDE_DELAY_MS]。 */
+    private const val SCENE_PASSTHROUGH_WINDOW_MS = 1500L
+
+    /** 扣住一条场景派发、等判定结果的最长时长（毫秒）——见 [deferSceneDispatch]。 */
+    private const val SCENE_DECIDE_DELAY_MS = 700L
+
+    /** 配额上限：突发兜底闸之外再压一道，避免判定侧异常刷屏时把原生动作连着放出去。 */
+    private const val SCENE_ALLOWANCE_MAX = 3
+
     @Volatile
     private var installed = false
 
@@ -36,6 +46,82 @@ internal object SideKeyGestureHooks {
     @Volatile
     var hookCount: Int = 0
         private set
+
+    /** 最近一次「放行」判定到点的时刻（[notePassthrough] 写）——0 = 还没放过。 */
+    @Volatile
+    private var passthroughAt = 0L
+
+    /** 还剩几条「放行」的场景派发配额（一次放行一条，见 [notePassthrough]）。 */
+    @Volatile
+    private var sceneAllowance = 0
+
+    /** 扣住等判定的那条场景派发（只留一条，后来的顶掉）。 */
+    private var pendingScene: android.os.Message? = null
+    private var pendingSceneHandler: android.os.Handler? = null
+
+    /** 已决定放行、正在补投的那条（按 identity 认领，别再被吞一次）。 */
+    private var allowedScene: android.os.Message? = null
+
+    /**
+     * 注入侧把一次按键判成「放行」（native / passthrough）时记一笔（`GestureReceiver` 收到即调）。
+     *
+     * 用途：这次按压在框架侧还会再派发一条 `what=1` 的场景消息（原生动作的载体），
+     * 宿主侧的钩子据此把它放过去 —— 不放的话「放行」就成了空转（模块吞了键、原生动作也没了）。
+     */
+    internal fun notePassthrough() {
+        passthroughAt = android.os.SystemClock.elapsedRealtime()
+        // 一次「放行」只允许放一条场景派发：同一次按压可能同时有「按压自己的那条」与
+        // 「重注入的 735 触发的那条」，两条都放会执行两次原生动作。
+        sceneAllowance = (sceneAllowance + 1).coerceAtMost(SCENE_ALLOWANCE_MAX)
+    }
+
+    /**
+     * 领一条「放行」配额：窗口 [SCENE_PASSTHROUGH_WINDOW_MS] 内、且还有余额才算数。
+     */
+    private fun claimSceneAllowance(): Boolean {
+        val at = passthroughAt
+        if (at == 0L) return false
+        if (android.os.SystemClock.elapsedRealtime() - at > SCENE_PASSTHROUGH_WINDOW_MS) {
+            sceneAllowance = 0
+            return false
+        }
+        if (sceneAllowance <= 0) return false
+        sceneAllowance--
+        return true
+    }
+
+    /**
+     * 判定结果还没到（宿主主线程忙时，「放行」广播会排在 `what=1` **后面**——真机实测
+     * 22:02:22 / 22:02:24 两次误吞）⇒ 先把这条扣住，[SCENE_DECIDE_DELAY_MS] 后再看：
+     * 期间判定若到了就补投给原 Handler，没到就丢弃（模块动作那条本来就该吞）。
+     */
+    private fun deferSceneDispatch(handler: android.os.Handler?, msg: android.os.Message?) {
+        if (handler == null || msg == null) return
+        pendingScene = msg
+        pendingSceneHandler = handler
+        handler.postDelayed({
+            val m = pendingScene
+            val h = pendingSceneHandler
+            pendingScene = null
+            pendingSceneHandler = null
+            if (m == null || h == null || m !== msg) return@postDelayed
+            if (!claimSceneAllowance()) {
+                XLog.d("已吞掉系统场景派发（what=${m.what}，等判定超时）—— 侧键只走模块配置的动作")
+                return@postDelayed
+            }
+            // 必须**复制**一条新 Message 再投：原实例在本次 `handleMessage` 返回后就被 Looper
+            // 回收进复用池（再拿出来就是别人的了），直接投原实例是未定义行为。
+            val copy = android.os.Message.obtain(h, m.what, m.arg1, m.arg2, m.obj)
+            runCatching {
+                m.data?.let { copy.data = android.os.Bundle(it) }
+                copy.replyTo = m.replyTo
+            }
+            allowedScene = copy
+            XLog.w("场景派发放行（判定为「放行」，延迟补投）")
+            runCatching { h.sendMessage(copy) }
+                .onFailure { XLog.w("补投场景派发失败：${it.message}") }
+        }, SCENE_DECIDE_DELAY_MS)
+    }
 
     fun install(module: XposedModule, loader: ClassLoader) {
         if (installed) {
@@ -95,12 +181,37 @@ internal object SideKeyGestureHooks {
                 XLog.d("侧键手势消息：$short\$a#handleMessage | ${describeMessage(msg)}")
 
                 // 必须吞掉系统自己的场景派发：框架除走策略类拦截外，还会给宿主这个 Handler 发一条，
-                // 宿主那套（打开设置页）会照跑 —— 与框架真正的场景路由（按场景派发给场景宿主）是两回事，
-                // 所以无条件吞；其余消息（如 what=3 开关状态）照常放行。
+                // 宿主那套（打开设置页）会照跑 —— 与框架真正的场景路由（按场景派发给场景宿主）是两回事。
+                // 例外：这次按键被判「放行」时那条要放过去，它是原生动作的载体（见 [notePassthrough]）。
                 if (what == SCENE_DISPATCH_WHAT) {
-                    // 每次按键都会走到这里，同样只能 XLog.d；「吞没吞对」靠行为验证。
-                    XLog.d("已吞掉系统场景派发（what=$what）—— 侧键只走模块配置的动作")
-                    return@hookGuarded null
+                    val sceneMsg = msg
+                    when {
+                        // 主开关关着 ⇒ 模块完全让位：场景派发放行，原生动作照常执行（行为与原生一致）。
+                        !ConfigStore.read().key(KeyId.PLUS).enabled -> {
+                            XLog.d("主开关已关，场景派发放行（原生行为）")
+                            return@hookGuarded chain.proceed()
+                        }
+                        // 补投回来的那条（我们自己的决定），直接放过去
+                        sceneMsg != null && sceneMsg === allowedScene -> {
+                            allowedScene = null
+                            return@hookGuarded chain.proceed()
+                        }
+
+                        claimSceneAllowance() -> {
+                            XLog.w("场景派发放行（本次按键判为「放行」⇒ 执行原生动作）")
+                            return@hookGuarded chain.proceed()
+                        }
+                        // 判定结果可能还在路上（主线程忙时广播排在 what=1 后面）⇒ 扣住等一会儿
+                        sceneMsg != null -> {
+                            deferSceneDispatch(
+                                chain.thisObject as? android.os.Handler,
+                                sceneMsg,
+                            )
+                            return@hookGuarded null
+                        }
+
+                        else -> return@hookGuarded null
+                    }
                 }
 
                 chain.proceed()
@@ -158,11 +269,13 @@ internal object SideKeyGestureHooks {
                 rows == null -> XLog.w("系统侧键配置读取失败（诊断项，不影响接管）")
                 rows.isEmpty() -> XLog.i("系统侧键配置为空（用户还没在「设置 → 快捷键」里配过）")
                 else -> {
-                    XLog.i("系统侧键配置共 ${rows.size} 个场景：${
+                    XLog.i(
+                        "系统侧键配置共 ${rows.size} 个场景：${
                         rows.joinToString(", ") { it.sceneName }
                     }")
                     rows.firstOrNull()?.let { r ->
-                        XLog.d("首个场景「${r.sceneName}」的列值：${
+                        XLog.d(
+                            "首个场景「${r.sceneName}」的列值：${
                             r.values.entries.joinToString(", ") { "${it.key}=${it.value}" }
                         }")
                     }
@@ -194,8 +307,8 @@ internal object SideKeyGestureHooks {
             val key = cfg.key(com.lookie.opluskey.config.KeyId.PLUS)
             XLog.w(
                 "宿主进程读到配置：接管=${key.enabled}" +
-                    " 单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token}" +
-                    "（文件 ${ConfigStore.sharedFile().path}）",
+                        " 单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token}" +
+                        "（文件 ${ConfigStore.sharedFile().path}）",
             )
         }
     }

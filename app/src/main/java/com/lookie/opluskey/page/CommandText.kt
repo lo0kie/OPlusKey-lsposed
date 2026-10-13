@@ -37,35 +37,36 @@ internal fun isCommandRef(token: String): Boolean = token.startsWith(Command.PRE
  *  - 内置动作取清单里的名字（[ActionCatalog.specOf]）；
  *  - `cmd:` 取命令名；
  *  - `app:` 显示成「打开应用:应用名」—— 这里不碰 `Context`，包名换名字由调用方经 [appLabel] 传进来；
- *  - 响铃那一组显示成「响铃状态:档位名」（循环 / 响铃 / 振动 / 静音）；
+ *  - 入口格那一组（响铃状态 / 媒体控制）显示成「组名:档位名」——
+ *    光看 [ActionCatalog.specOf] 只能拿到组名（那一格代表整组，见 [ActionCatalog.isSelected]）；
  *  - 都认不出来就原样显示取值（比如手改过的文件）。
  */
 internal fun stepTitle(token: String, appLabel: (String) -> String): String {
     if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
     val action = Action.parse(token)
     if (action is Action.App) {
-        // 裸 `app:`（手改文件写出来的）取不到包名 —— 只写「打开应用」，别显示一个空冒号
-        val pkg = action.target.substringBefore('/')
-        return if (pkg.isEmpty()) "打开应用" else "打开应用:${appLabel(pkg)}"
+        return "打开应用:${appLabel(action.target.substringBefore('/'))}"
     }
-    if (ActionCatalog.isRinger(action)) {
-        val mode = ActionCatalog.RINGER_MODES.firstOrNull { ActionCatalog.isBound(it, action) }
-        return "响铃状态:${mode?.title ?: action.token}"
-    }
+    ActionCatalog.modeGroup(action)?.let { (group, mode) -> return "$group:$mode" }
     return ActionCatalog.specOf(action)?.title ?: token
 }
 
 /**
  * 一个步骤在界面上的行首图标 —— 与 [stepTitle] 一一对应。
  *
- * `cmd:` 给命令提示符；内置动作取动作图标，认不出来时 [actionIcon] 会落到兜底字形上。
+ * `cmd:` 取**被引用那条命令**自己的类型图标（单条 → 终端，多条 → 按步数换的方框）——
+ * 光给一个通用「命令」字形的话，步骤行里看不出它引用的是哪一种。
+ * 命令库里查不到（那条被删了 / 改了名）时退回通用字形：配置里留着一条指向空气的 `cmd:` 是可能的。
+ * 其余内置动作取动作图标，认不出来时 [actionIcon] 会落到兜底字形上。
+ *
+ * @param commands 当前命令库 —— 与 [stepTitle] 的 `appLabel` 同一条规矩：查名字要用谁由调用方传进来。
  */
-internal fun stepIcon(token: String): ImageVector =
-    if (isCommandRef(token)) {
-        PageIcons.CommandSingle
-    } else {
-        actionIcon(Action.parse(token).token)
-    }
+internal fun stepIcon(token: String, commands: List<Command>): ImageVector {
+    if (!isCommandRef(token)) return actionIcon(Action.parse(token).token)
+    val name = token.removePrefix(Command.PREFIX)
+    val ref = commands.firstOrNull { it.name == name } ?: return PageIcons.CommandSingle
+    return commandIcon(ref.kind, ref.steps.size)
+}
 
 /**
  * 时长（毫秒）在界面上怎么写 —— 全局唯一一处，滑杆行尾与网格小字都走它。

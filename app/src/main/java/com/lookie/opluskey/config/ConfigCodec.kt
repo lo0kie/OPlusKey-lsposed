@@ -111,8 +111,13 @@ object ConfigCodec {
                 JSONObject()
                     .put(FIELD_ENABLED, k.enabled)
                     .put(FIELD_SINGLE, k.single.token)
-                    .put(FIELD_DOUBLE, k.double.token)
-                    .put(FIELD_LONG, k.long.token)
+                    // 写盘前重跑 normalizeForGesture：双击 / 长按上的 `native` 正常化成 `none`，
+                    // 否则文件与内存永久不等价（下次解析出不同的对象）。
+                    .put(
+                        FIELD_DOUBLE,
+                        Action.normalizeForGesture(k.double, Gesture.DOUBLE).token,
+                    )
+                    .put(FIELD_LONG, Action.normalizeForGesture(k.long, Gesture.LONG).token)
                     .put(FIELD_LONG_PRESS_MS, k.longPressMs)
                     .put(FIELD_LONG_REPEAT, k.longRepeat)
                     .put(FIELD_REPEAT_INTERVAL_MS, k.longRepeatIntervalMs),

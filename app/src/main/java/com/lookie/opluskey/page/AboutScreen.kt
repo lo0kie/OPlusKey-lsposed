@@ -44,7 +44,18 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                 summary = appVersionText(),
                 startAction = { Icon(PageIcons.Info, null) },
                 // 只读信息行，不给 onClick（给了反而像能点）
-                cardListPosition = cardListPositionOf(0, OTHER_ROWS),
+                cardListPosition = cardListPositionOf(0, ABOUT_ROWS),
+            )
+            HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+            BasicComponent(
+                title = "作者",
+                summary = AUTHOR,
+                onClick = {
+                    tick()
+                    openUrl(PROFILE_URL)
+                },
+                startAction = { Icon(PageIcons.Author, null) },
+                cardListPosition = cardListPositionOf(1, ABOUT_ROWS),
             )
             HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
             BasicComponent(
@@ -55,7 +66,18 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                     openUrl(REPO_URL)
                 },
                 startAction = { Icon(PageIcons.Address, null) },
-                cardListPosition = cardListPositionOf(1, OTHER_ROWS),
+                cardListPosition = cardListPositionOf(2, ABOUT_ROWS),
+            )
+            HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+            BasicComponent(
+                title = "反馈问题",
+                summary = ISSUE_URL,
+                onClick = {
+                    tick()
+                    openUrl(ISSUE_URL)
+                },
+                startAction = { Icon(PageIcons.Feedback, null) },
+                cardListPosition = cardListPositionOf(3, ABOUT_ROWS),
             )
         }
     }

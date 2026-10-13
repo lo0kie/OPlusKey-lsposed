@@ -12,7 +12,7 @@ UPSTREAM="https://github.com/suqi8/coui"
 UPSTREAM_TAG="v1.1.0"
 CLONE="$ROOT/.temp/coui-repo"
 VER_FROM="1.1.0-alphasubtitle2"   # 上游 -Palpha=subtitle2 的产物版本
-VER_TO="1.1.0-subtitle2"          # 本仓库对外声明并提交的版本
+VER_TO="1.1.0-subtitle3"          # 本仓库对外声明并提交的版本
 
 # 克隆（已存在则复用）
 if [ ! -d "$CLONE/.git" ]; then

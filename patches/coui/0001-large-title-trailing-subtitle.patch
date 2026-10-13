@@ -1,18 +1,19 @@
 diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
-index 74a0185..4eff5d7 100644
+index 74a0185..484bb33 100644
 --- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
 +++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
-@@ -63,6 +63,20 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
+@@ -63,6 +63,21 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  import kotlin.math.abs
  import kotlin.math.roundToInt
  
 +/**
-+ * Where a [TopAppBar] subtitle sits vertically against the large title it trails on the same line.
++ * Where a [TopAppBar] trailing subtitle sits vertically against the large title it trails on the
++ * same line.
 + *
 + * Both edges are measured on the text boxes, and the chosen edge stays glued to the large title's
-+ * matching edge through the whole collapse (the subtitle shrinks around that edge).
++ * matching edge through the whole collapse (the trailing subtitle shrinks around that edge).
 + */
-+enum class TopAppBarSubtitleAlignment {
++enum class TopAppBarTrailingSubtitleAlignment {
 +    /** Flush with the large title's top edge. */
 +    Top,
 +
@@ -23,86 +24,117 @@ index 74a0185..4eff5d7 100644
  /**
   * A [TopAppBar] with COUI style that can collapse and expand based on the
   * scroll position of the content below it.
-@@ -77,8 +91,14 @@ import kotlin.math.roundToInt
-  * @param titleColor The color of the collapsed small title text.
-  * @param largeTitle The large title of the [TopAppBar].
+@@ -79,6 +94,15 @@ import kotlin.math.roundToInt
   * @param largeTitleColor The color of the expanded large title text.
-- * @param subtitle The subtitle displayed below the title bar area.
-+ * @param subtitle The subtitle displayed as a small trailing title on the large title's line,
-+ *   right after the large title. It rides the collapse (position and text size) together with the
-+ *   large title instead of occupying a row of its own, so adding a subtitle never makes the bar
-+ *   taller.
+  * @param subtitle The subtitle displayed below the title bar area.
   * @param subtitleColor The color of the subtitle text.
-+ * @param subtitleAlignment Where the subtitle sits vertically against the large title it trails:
-+ *   flush with the top edges ([TopAppBarSubtitleAlignment.Top]) or with the bottom edges
-+ *   ([TopAppBarSubtitleAlignment.Bottom]).
++ * @param trailingSubtitle A small title shown on the large title's line, right after the large
++ *   title. It is **an addition to [subtitle], not a replacement**: [subtitle] keeps its own row
++ *   below the title bar area. The trailing subtitle rides the collapse (position and text size)
++ *   together with the large title instead of occupying a row of its own, so it never makes the bar
++ *   taller and never displaces the collapsed title.
++ * @param trailingSubtitleColor The color of the trailing subtitle text.
++ * @param trailingSubtitleAlignment Where the trailing subtitle sits vertically against the large
++ *   title it trails: flush with the top edges ([TopAppBarTrailingSubtitleAlignment.Top]) or with
++ *   the bottom edges ([TopAppBarTrailingSubtitleAlignment.Bottom]).
   * @param dividerColor The color of the hairline divider revealed at the bottom edge while collapsing.
   * @param navigationIcon The [Composable] content that represents the navigation icon.
   * @param actions The [Composable] content that represents the action icons.
-@@ -103,6 +123,7 @@ fun TopAppBar(
+@@ -87,7 +111,7 @@ import kotlin.math.roundToInt
+  * @param showDivider Whether to draw the bottom hairline divider that fades in as the bar collapses.
+  * @param hideSubtitleOnCollapse Whether the subtitle fades out while the bar collapses
+  *   (COUICollapsableAppBarLayout `subtitleHideEnable`). When false, the subtitle stays fully
+- *   opaque and slides into the collapsed bar.
++ *   opaque and slides into the collapsed bar. Applies to [trailingSubtitle] as well.
+  * @param titlePadding The horizontal padding of the [TopAppBar]'s title & large title.
+  * @param navigationIconPadding The start padding of the navigation icon.
+  * @param actionIconPadding The end padding of the action icons.
+@@ -103,6 +127,10 @@ fun TopAppBar(
      largeTitleColor: Color = COUITheme.colorScheme.onSurface,
      subtitle: String = "",
      subtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
-+    subtitleAlignment: TopAppBarSubtitleAlignment = TopAppBarSubtitleAlignment.Bottom,
++    trailingSubtitle: String = "",
++    trailingSubtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
++    trailingSubtitleAlignment: TopAppBarTrailingSubtitleAlignment =
++        TopAppBarTrailingSubtitleAlignment.Bottom,
      dividerColor: Color = COUITheme.colorScheme.dividerLine,
      navigationIcon: @Composable () -> Unit = {},
      actions: @Composable RowScope.() -> Unit = {},
-@@ -137,6 +158,7 @@ fun TopAppBar(
+@@ -137,6 +165,9 @@ fun TopAppBar(
          largeTitleColor = largeTitleColor,
          subtitle = subtitle,
          subtitleColor = subtitleColor,
-+        subtitleAlignment = subtitleAlignment,
++        trailingSubtitle = trailingSubtitle,
++        trailingSubtitleColor = trailingSubtitleColor,
++        trailingSubtitleAlignment = trailingSubtitleAlignment,
          dividerColor = dividerColor,
          navigationIcon = navigationIcon,
          actions = actionsRow,
-@@ -644,8 +666,9 @@ private suspend fun settleAppBar(
-  * @param color the background color of the [TopAppBar].
-  * @param titleColor the color of the collapsed small title text.
+@@ -646,6 +677,9 @@ private suspend fun settleAppBar(
   * @param largeTitleColor the color of the expanded large title text.
-- * @param subtitle the subtitle text displayed below the title bar area.
-+ * @param subtitle the subtitle text displayed as a small trailing title on the large title's line.
+  * @param subtitle the subtitle text displayed below the title bar area.
   * @param subtitleColor the color of the subtitle text.
-+ * @param subtitleAlignment where the subtitle sits vertically against the large title.
++ * @param trailingSubtitle the small title trailing the large title on the same line.
++ * @param trailingSubtitleColor the color of the trailing subtitle text.
++ * @param trailingSubtitleAlignment where the trailing subtitle sits vertically against the large title.
   * @param dividerColor the color of the bottom hairline divider.
   * @param navigationIcon a navigation icon [Composable].
   * @param actions actions [Composable].
-@@ -671,6 +694,7 @@ private fun TopAppBarLayout(
+@@ -671,6 +705,10 @@ private fun TopAppBarLayout(
      largeTitleColor: Color,
      subtitle: String,
      subtitleColor: Color,
-+    subtitleAlignment: TopAppBarSubtitleAlignment = TopAppBarSubtitleAlignment.Bottom,
++    trailingSubtitle: String,
++    trailingSubtitleColor: Color,
++    trailingSubtitleAlignment: TopAppBarTrailingSubtitleAlignment =
++        TopAppBarTrailingSubtitleAlignment.Bottom,
      dividerColor: Color,
      navigationIcon: @Composable () -> Unit,
      actions: @Composable () -> Unit,
-@@ -771,8 +795,9 @@ private fun TopAppBarLayout(
-                 )
+@@ -727,6 +765,10 @@ private fun TopAppBarLayout(
+         targetValue = subtitleColor,
+         animationSpec = tween(durationMillis = 50),
+     )
++    val animatedTrailingSubtitleColor by animateColorAsState(
++        targetValue = trailingSubtitleColor,
++        animationSpec = tween(durationMillis = 50),
++    )
+ 
+     Layout(
+         {
+@@ -784,6 +826,20 @@ private fun TopAppBarLayout(
+                     )
+                 }
              }
-             if (subtitle.isNotEmpty()) {
--                // Subtitle: alpha and collapsed position are driven in the placement pass
--                // (COUICollapsableAppBarLayout.adjustSubtitleIfNeed).
-+                // Subtitle as a small trailing title: it is placed on the large title's line, so
-+                // it contributes no height to the bar. Its position and its text size are both
-+                // driven by the collapse fraction in the placement pass.
-                 Box(Modifier.layoutId("subtitle")) {
-                     Text(
-                         text = subtitle,
-@@ -865,15 +890,26 @@ private fun TopAppBarLayout(
++            if (trailingSubtitle.isNotEmpty()) {
++                // Trailing subtitle: position and text size are both driven in the placement pass;
++                // it shares the large title's line and so contributes no height to the bar.
++                Box(Modifier.layoutId("trailingSubtitle")) {
++                    Text(
++                        text = trailingSubtitle,
++                        color = animatedTrailingSubtitleColor,
++                        style = COUITheme.textStyles.body2,
++                        maxLines = 1,
++                        overflow = TextOverflow.Ellipsis,
++                        softWrap = false,
++                    )
++                }
++            }
+             Box(Modifier.layoutId("bottomContent")) {
+                 bottomContent()
+             }
+@@ -865,10 +921,28 @@ private fun TopAppBarLayout(
                  .measure(constraints.copy(minWidth = 0, maxWidth = collapsedTitleMaxWidth, minHeight = 0))
  
          val largeTitleMaxWidth = (constraints.maxWidth - 2 * titlePaddingPx).coerceAtLeast(0)
--        val largeTitlePlaceable =
--            measurables
--                .fastFirst { it.layoutId == "largeTitle" }
--                .measure(constraints.copy(minWidth = 0, maxWidth = largeTitleMaxWidth, minHeight = 0))
--
-+        val subtitleStartGapPx = SubtitleStartGap.roundToPx()
-+        // The subtitle rides the large title's line, so the two split that line between them: the
-+        // subtitle may claim at most half of it, and the large title then takes what is left. That
-+        // keeps either of them from silently squeezing the other out of the bar.
-         val subtitlePlaceable =
-             measurables
-                 .firstOrNull { it.layoutId == "subtitle" }
--                ?.measure(constraints.copy(minWidth = 0, maxWidth = largeTitleMaxWidth, minHeight = 0))
++        val trailingSubtitleStartGapPx = TrailingSubtitleStartGap.roundToPx()
++        // The trailing subtitle rides the large title's line, so the two split that line between
++        // them: the trailing subtitle may claim at most half of it, and the large title then takes
++        // what is left. That keeps either of them from silently squeezing the other out of the bar.
++        // The bottom subtitle does not take part in this split — it has a row of its own.
++        val trailingSubtitlePlaceable =
++            measurables
++                .firstOrNull { it.layoutId == "trailingSubtitle" }
 +                ?.measure(
 +                    constraints.copy(
 +                        minWidth = 0,
@@ -111,118 +143,82 @@ index 74a0185..4eff5d7 100644
 +                    ),
 +                )
 +        val largeTitleWidthLimit =
-+            (largeTitleMaxWidth - (subtitlePlaceable?.width ?: 0) - subtitleStartGapPx).coerceAtLeast(0)
-+        val largeTitlePlaceable =
-+            measurables
-+                .fastFirst { it.layoutId == "largeTitle" }
++            (largeTitleMaxWidth - (trailingSubtitlePlaceable?.width ?: 0) - trailingSubtitleStartGapPx)
++                .coerceAtLeast(0)
+         val largeTitlePlaceable =
+             measurables
+                 .fastFirst { it.layoutId == "largeTitle" }
+-                .measure(constraints.copy(minWidth = 0, maxWidth = largeTitleMaxWidth, minHeight = 0))
 +                .measure(constraints.copy(minWidth = 0, maxWidth = largeTitleWidthLimit, minHeight = 0))
  
-         val bottomContentPlaceable =
+         val subtitlePlaceable =
              measurables
-@@ -882,16 +918,15 @@ private fun TopAppBarLayout(
- 
-         val collapsedHeight = TopAppBarDefaults.CollapsedHeight.roundToPx()
-         val largeTitleTop = TopAppBarDefaults.LargeTitleTopPadding.roundToPx()
--        val subtitleMarginTopPx = TopAppBarDefaults.SubtitleMarginTop.roundToPx()
-         val largeTitleBottomPaddingPx = TopAppBarDefaults.LargeTitleBottomPadding.roundToPx()
-         val subtitleHeight = subtitlePlaceable?.height ?: 0
- 
--        // Expanded bar height (COUICollapsableAppBarLayout.onMeasure): the fixed 107dp grows by
--        // the subtitle height, with the 12dp expanded bottom padding folded in.
--        val expandedContentHeight = largeTitleTop + largeTitlePlaceable.height +
--            (subtitlePlaceable?.let { subtitleMarginTopPx + it.height } ?: 0)
-+        // Expanded bar height (COUICollapsableAppBarLayout.onMeasure): a flat 107dp, with the 12dp
-+        // expanded bottom padding folded in. The subtitle sits on the large title's line and so
-+        // adds no row of its own — that is what keeps a subtitle from making the bar taller.
-+        val expandedContentHeight = largeTitleTop + largeTitlePlaceable.height
-         val expandedBarHeight = maxOf(
--            TopAppBarDefaults.ExpandedHeight.roundToPx() + subtitleHeight,
-+            TopAppBarDefaults.ExpandedHeight.roundToPx(),
-             expandedContentHeight + largeTitleBottomPaddingPx,
-         )
-         val expansion = (expandedBarHeight - collapsedHeight).coerceAtLeast(0)
-@@ -910,14 +945,9 @@ private fun TopAppBarLayout(
-         val easedFraction = CollapsingTitleEasing.transform(collapseFraction)
- 
-         val verticalCenter = collapsedHeight / 2
--        // Collapsed title: vertically centered in the toolbar area; shifted up above a subtitle
--        // that stays visible at full collapse (COUICollapsingToolbarLayout.translateTitleIfNeed).
--        val subtitleVisibleWhenCollapsed = subtitlePlaceable != null && !hideSubtitleOnCollapse
--        val collapsedTitleY = if (subtitleVisibleWhenCollapsed) {
--            (collapsedHeight - subtitleHeight - subtitleMarginTopPx - titlePlaceable.height).coerceAtLeast(0)
--        } else {
--            verticalCenter - titlePlaceable.height / 2
--        }
-+        // Collapsed title: vertically centered in the toolbar area. A trailing subtitle no longer
-+        // displaces it — the two share the line instead of stacking.
-+        val collapsedTitleY = verticalCenter - titlePlaceable.height / 2
- 
-         // Large title morph (CollapsingTextHelper.calculateOffsets): eased lerp between the
-         // expanded and collapsed slots, shifted by the raw scroll offset.
-@@ -925,6 +955,23 @@ private fun TopAppBarLayout(
+@@ -925,6 +999,26 @@ private fun TopAppBarLayout(
          val largeTitleY =
              lerp(largeTitleTop.toFloat(), (collapsedTitleY + expansion).toFloat(), easedFraction) + offsetPx
          val largeTitleScale = lerp(1f, collapsedTitleScale, easedFraction)
-+        // The subtitle trails the large title on that same line, riding the same eased curve: its
-+        // start edge is the large title's scaled end edge, and the aligned edge (see
-+        // subtitleAlignment) sits on the large title's matching scaled edge. Shrinking it by the
-+        // large title's own 0.5625 (32dp -> 18dp) would drive the 14dp subtitle down to 8dp, so it
-+        // collapses only as far as SubtitleCollapseScale (14dp -> 12dp) — smaller, still legible.
-+        val subtitleScale = lerp(1f, SubtitleCollapseScale, easedFraction)
-+        val subtitleX = largeTitleX + largeTitlePlaceable.width * largeTitleScale + subtitleStartGapPx
-+        // A bottom-aligned subtitle hangs off the large title's scaled bottom edge; a top-aligned
-+        // one sits on its top edge, which is the pivot the large title scales around. Either way
-+        // the subtitle shrinks around the edge it is aligned to, so that edge stays glued.
-+        val subtitleTopAligned = subtitleAlignment == TopAppBarSubtitleAlignment.Top
-+        val subtitlePivotY = if (subtitleTopAligned) 0f else 1f
-+        val subtitleY = if (subtitleTopAligned) {
++        // The trailing subtitle trails the large title on that same line, riding the same eased
++        // curve: its start edge is the large title's scaled end edge, and the aligned edge (see
++        // trailingSubtitleAlignment) sits on the large title's matching scaled edge. Shrinking it by
++        // the large title's own 0.5625 (32dp -> 18dp) would drive the 14dp subtitle down to 8dp, so
++        // it collapses only as far as TrailingSubtitleCollapseScale (14dp -> 12dp) — smaller, still
++        // legible.
++        val trailingSubtitleHeight = trailingSubtitlePlaceable?.height ?: 0
++        val trailingSubtitleScale = lerp(1f, TrailingSubtitleCollapseScale, easedFraction)
++        val trailingSubtitleX =
++            largeTitleX + largeTitlePlaceable.width * largeTitleScale + trailingSubtitleStartGapPx
++        // A bottom-aligned trailing subtitle hangs off the large title's scaled bottom edge; a
++        // top-aligned one sits on its top edge, which is the pivot the large title scales around.
++        // Either way it shrinks around the edge it is aligned to, so that edge stays glued.
++        val trailingSubtitleTopAligned =
++            trailingSubtitleAlignment == TopAppBarTrailingSubtitleAlignment.Top
++        val trailingSubtitleY = if (trailingSubtitleTopAligned) {
 +            largeTitleY
 +        } else {
-+            largeTitleY + largeTitlePlaceable.height * largeTitleScale - subtitleHeight
++            largeTitleY + largeTitlePlaceable.height * largeTitleScale - trailingSubtitleHeight
 +        }
          val collapsed = collapseFraction >= CollapsedTitleSwapFraction
          val pivotX = if (layoutDirection == LayoutDirection.Rtl) 1f else 0f
  
-@@ -944,13 +991,16 @@ private fun TopAppBarLayout(
-                 y = verticalCenter - actionIconsPlaceable.height / 2,
-             )
- 
--            // Subtitle (COUICollapsableAppBarLayout.adjustSubtitleIfNeed): rides the scroll 1:1,
--            // lifted by the interpolating bottom padding; fades out only when hideSubtitleOnCollapse.
-+            // Subtitle: trails the large title on its line and rides the same morph, shrinking with
-+            // it. Fades out only when hideSubtitleOnCollapse.
-             subtitlePlaceable?.placeRelativeWithLayer(
--                x = titlePaddingPx,
--                y = expandedBarHeight - subtitleHeight -
--                    (largeTitleBottomPaddingPx * (1f - collapseFraction)).roundToInt() + offsetPx,
-+                x = subtitleX.roundToInt(),
-+                y = subtitleY.roundToInt(),
-             ) {
-+                // Pivot on the aligned edge: shrinking keeps that edge glued to the large title's.
-+                transformOrigin = TransformOrigin(pivotX, subtitlePivotY)
-+                scaleX = subtitleScale
-+                scaleY = subtitleScale
+@@ -954,6 +1048,20 @@ private fun TopAppBarLayout(
                  alpha = if (hideSubtitleOnCollapse) 1f - collapseFraction else 1f
              }
  
-@@ -1225,6 +1275,21 @@ private fun SmallTopAppBarLayout(
++            // Trailing subtitle: trails the large title on its line and rides the same morph,
++            // shrinking with it. Fades out only when hideSubtitleOnCollapse.
++            trailingSubtitlePlaceable?.placeRelativeWithLayer(
++                x = trailingSubtitleX.roundToInt(),
++                y = trailingSubtitleY.roundToInt(),
++            ) {
++                // Pivot on the aligned edge: shrinking keeps that edge glued to the large title's.
++                transformOrigin =
++                    TransformOrigin(pivotX, if (trailingSubtitleTopAligned) 0f else 1f)
++                scaleX = trailingSubtitleScale
++                scaleY = trailingSubtitleScale
++                alpha = if (hideSubtitleOnCollapse) 1f - collapseFraction else 1f
++            }
++
+             // Large title: translates and scales into the collapsed title; swapped for the
+             // dedicated collapsed title only at full collapse.
+             largeTitlePlaceable.placeRelativeWithLayer(
+@@ -1225,6 +1333,21 @@ private fun SmallTopAppBarLayout(
  /** COUI `coui_appbar_title_collapsed_text_size` (18dp, sans-serif-medium). */
  private val CollapsedTitleTextSize = 18.sp
  
 +/**
-+ * The horizontal gap between the large title and the subtitle trailing it on the same line.
++ * The horizontal gap between the large title and the trailing subtitle on the same line.
 + * Held in screen pixels — it does not shrink with the collapse.
 + */
-+private val SubtitleStartGap = 8.dp
++private val TrailingSubtitleStartGap = 8.dp
 +
 +/**
 + * How far the trailing subtitle shrinks by the time the bar is fully collapsed.
 + *
-+ * The subtitle rides the same eased collapse curve as the large title, but it does not take the
-+ * large title's full 0.5625 ratio (32dp -> 18dp, `CollapsedTitleTextSize` / `title1`): applied to
-+ * the subtitle's `body2` (14dp) that would land at 8dp. 0.857 lands at 12dp instead.
++ * It rides the same eased collapse curve as the large title, but it does not take the large
++ * title's full 0.5625 ratio (32dp -> 18dp, [CollapsedTitleTextSize] / `title1`): applied to the
++ * trailing subtitle's `body2` (14dp) that would land at 8dp. 0.857 lands at 12dp instead.
 + */
-+private const val SubtitleCollapseScale = 0.857f
++private const val TrailingSubtitleCollapseScale = 0.857f
 +
  /**
   * COUIEaseInterpolator: cubic-bezier(0.33, 0, 0.67, 1), applied to the collapsing title's

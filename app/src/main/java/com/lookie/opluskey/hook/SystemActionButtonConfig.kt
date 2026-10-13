@@ -13,9 +13,6 @@ internal object SystemActionButtonConfig {
     private const val AUTHORITY = "uri.gesturemanagerprovider"
     private const val PATH = "action_button"
 
-    /** 真机确认的表名（诊断用，实际不拼 SQL）。 */
-    const val TABLE = "action_button"
-
     /** 真机确认的「场景名」列 —— 一个场景一行配置。 */
     const val COL_SCENE_NAME = "scene_name"
 
@@ -91,8 +88,4 @@ internal object SystemActionButtonConfig {
             }
         }
     }
-
-    /** 按场景名取一行。找不到返回 `null`；读失败也返回 `null`（用 readAll 区分）。 */
-    fun readScene(context: Context, sceneName: String): Row? =
-        readAll(context)?.firstOrNull { it.sceneName == sceneName }
 }

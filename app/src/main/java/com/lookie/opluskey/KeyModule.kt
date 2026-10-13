@@ -123,6 +123,22 @@ class KeyModule : XposedModule() {
         /** 手势：放行（单击 / 双击 / 长按配了 `native` / `passthrough`）—— 宿主重新注入一次按键。 */
         const val PHASE_PASSTHROUGH = "passthrough"
 
+        /**
+         * 宿主进程 → 设置页：**宿主侧的模块已经加载**（由 `gesture/GestureReceiver` 在拿到 Context 后发出，
+         * 那一步只有模块注入成功才跑得到）。
+         *
+         *  这条是首页「模块有没有生效」的**唯一可靠判据**：查宿主那支侧键服务是不行的 ——
+         * 它是宿主自己的常驻服务，**系统会自己把它拉起**，服务在跑 ≠ 模块在跑。
+         */
+        const val ACTION_HOST_SERVICE_UP = "com.lookie.opluskey.HOST_SERVICE_UP"
+
+        /**
+         * 设置页 → 宿主进程：**问一声宿主侧的模块在不在**，宿主收到就回一条 [ACTION_HOST_SERVICE_UP]。
+         *
+         *  要这一问是因为广播是**一次性**的：宿主报活时设置页可能还没起来（那声就错过了）。
+         */
+        const val ACTION_HOST_SERVICE_QUERY = "com.lookie.opluskey.HOST_SERVICE_QUERY"
+
         /** 每次出包手动更新；CI 靠它给产物命名。 */
         const val BUILD_ID = "2026-10-13-0002"
 

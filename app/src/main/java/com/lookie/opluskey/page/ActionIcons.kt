@@ -1,28 +1,37 @@
 package com.lookie.opluskey.page
 
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.composables.icons.lucide.Flashlight
-import com.composables.icons.lucide.Lucide
 import com.lookie.opluskey.config.Action
 import com.lookie.opluskey.config.CommandKind
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
+import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
+import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
-import io.github.lyxnx.compose.ui.tablericons.outline.Bell
 import io.github.lyxnx.compose.ui.tablericons.outline.BellOff
 import io.github.lyxnx.compose.ui.tablericons.outline.BellRinging
 import io.github.lyxnx.compose.ui.tablericons.outline.Bolt
+import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple1
+import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple2
+import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple3
+import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple4
+import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple5
+import io.github.lyxnx.compose.ui.tablericons.outline.BrowserPlus
+import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
 import io.github.lyxnx.compose.ui.tablericons.outline.Camera
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
 import io.github.lyxnx.compose.ui.tablericons.outline.Check
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
-import io.github.lyxnx.compose.ui.tablericons.outline.ChevronsUp
+import io.github.lyxnx.compose.ui.tablericons.outline.CirclePlay
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleStop
+import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockPause
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
+import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeOff
 import io.github.lyxnx.compose.ui.tablericons.outline.FileExport
@@ -33,11 +42,16 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Hourglass
 import io.github.lyxnx.compose.ui.tablericons.outline.InfoCircle
 import io.github.lyxnx.compose.ui.tablericons.outline.LayoutGrid
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
+import io.github.lyxnx.compose.ui.tablericons.outline.MessageCircle
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
+import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodEmpty
+import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
+import io.github.lyxnx.compose.ui.tablericons.outline.Notification
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
-import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPause
+import io.github.lyxnx.compose.ui.tablericons.outline.PlayerSkipBack
+import io.github.lyxnx.compose.ui.tablericons.outline.PlayerSkipForward
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Power
@@ -46,34 +60,51 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
 import io.github.lyxnx.compose.ui.tablericons.outline.Restore
 import io.github.lyxnx.compose.ui.tablericons.outline.Screenshot
-import io.github.lyxnx.compose.ui.tablericons.outline.Stack2
 import io.github.lyxnx.compose.ui.tablericons.outline.Tag
-import io.github.lyxnx.compose.ui.tablericons.outline.Terminal
+import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TextRecognition
+import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Trash
+import io.github.lyxnx.compose.ui.tablericons.outline.User
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume
-import io.github.lyxnx.compose.ui.tablericons.outline.Volume2
+import io.github.lyxnx.compose.ui.tablericons.outline.Volume4
+import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
 
 /** 动作 → 图标的映射（列表行首那个图标）。 */
 internal fun actionIcon(token: String): ImageVector = when (token) {
     "none" -> TablerIcons.Outline.Ban
     "native", "passthrough" -> TablerIcons.Outline.Restore
 
-    // 唯一留在 Lucide 的一处：Tabler 没有手电筒字形
-    "flashlight" -> Lucide.Flashlight
+    // 全项目只用 Tabler 一支笔，不混图标库
+    "flashlight" -> TablerIcons.Outline.Bulb
     "intent:android.media.action.STILL_IMAGE_CAMERA" -> TablerIcons.Outline.Camera
 
     // keyevent 一律是数字形态
     "keyevent:26" -> TablerIcons.Outline.Power // 电源键（⏻）
+    // 与「电源键」必须不同字形：同样一颗 ⏻ 摆在一起分不出按下的那个是按键还是菜单。
+    // 「电源菜单」= 弹出关机 / 重启那一层，用「滑杆 + 闪电」。
+    "power:menu" -> TablerIcons.Outline.AdjustmentsBolt
+
+    // 系统侧键场景表里的三档
+    "oplus:flash_memory" -> TablerIcons.Outline.Pencil // 一键闪记
+    "oplus:no_disturb" -> TablerIcons.Outline.Moon // 免打扰（月亮：勿扰/夜间的通用读法）
+    "oplus:recording" -> TablerIcons.Outline.Microphone // 录音
     "keyevent:223" -> TablerIcons.Outline.Moon // 熄屏
     "keyevent:164" -> TablerIcons.Outline.BellRinging // 响铃状态
     "keyevent:3" -> TablerIcons.Outline.Home // Home
-    "keyevent:4" -> TablerIcons.Outline.ArrowLeft // 返回
+    "keyevent:4" -> TablerIcons.Outline.ArrowBackUp // 返回
     "keyevent:187" -> TablerIcons.Outline.Cards // 最近任务
-    "keyevent:83" -> TablerIcons.Outline.Bell // 通知栏
-    "keyevent:85" -> TablerIcons.Outline.PlayerPause // 播放 / 暂停
+    "keyevent:83" -> TablerIcons.Outline.Notification // 通知栏
+    // 媒体控制那一格（= 播放 / 暂停）与它菜单里的另外四条
+    "keyevent:85" -> TablerIcons.Outline.ToggleRight // 播放 / 暂停（一个开关键，交给系统翻面）
+    "keyevent:126" -> TablerIcons.Outline.CirclePlay // 播放
+    "keyevent:127" -> TablerIcons.Outline.CircleStop // 暂停
+    "keyevent:88" -> TablerIcons.Outline.PlayerSkipBack // 上一首
+    "keyevent:87" -> TablerIcons.Outline.PlayerSkipForward // 下一首
     "keyevent:24" -> TablerIcons.Outline.Volume // 音量 +（两条声波）
-    "keyevent:25" -> TablerIcons.Outline.Volume2 // 音量 −（一条声波）
+    "keyevent:25" -> TablerIcons.Outline.Volume4 // 音量 −
+    // 把前台应用收成小窗 —— 与 `window:`（新起一个小窗）同一个字形：两件事都是「收成小窗」
+    "zoom:mini" -> TablerIcons.Outline.WindowMinimize
 
     // 响铃档位（`ringer:normal|vibrate|silent`）；「循环」那一档不在这里 ——
     // 它写的是 `keyevent:164`，就对应上面那行 `keyevent:164 -> BellRinging`。
@@ -86,10 +117,12 @@ internal fun actionIcon(token: String): ImageVector = when (token) {
         token.contains("color_screenshot") -> TablerIcons.Outline.Screenshot
         // 小布识屏那条 shell（`DIRECT_SIDEBAR_SERVICE`）—— 语义是「识屏」
         token.contains("DIRECT_SIDEBAR_SERVICE") -> TablerIcons.Outline.TextRecognition
-        token.startsWith("shell:") -> TablerIcons.Outline.Terminal
+        token.startsWith("shell:") -> TablerIcons.Outline.Terminal2
         // 区别只在内容存哪（`shell:` 是原文，`cmd:` 是名字）
-        token.startsWith("cmd:") -> TablerIcons.Outline.Terminal
+        token.startsWith("cmd:") -> TablerIcons.Outline.Terminal2
         token.startsWith("app:") -> TablerIcons.Outline.LayoutGrid
+        // 与 `zoom:mini` 同一个字形
+        token.startsWith("window:") -> TablerIcons.Outline.WindowMinimize
         else -> TablerIcons.Outline.Dots
     }
 }
@@ -100,15 +133,43 @@ internal fun actionIcon(token: String): ImageVector = when (token) {
  * 与 [actionIcon] 的唯一差别是自定义命令：两种命令 token 都是 `cmd:<名字>`，网格格子只有
  * 名字一行，单条 / 多条只能靠图标分辨，所以类型由 [ActionCatalog.Spec.commandKind] 带来。
  */
-internal fun specIcon(spec: ActionCatalog.Spec): ImageVector =
-    if (spec.commandKind == CommandKind.SERIAL) {
-        PageIcons.CommandSerial
-    } else if (spec === ActionCatalog.RINGER_CYCLE) {
-        // 「循环」与「响铃状态」格共用写法 `keyevent:164`，靠 token 分不出 —— 只能按 spec 认领字形。
-        PageIcons.RingerCycle
-    } else {
-        actionIcon(Action.parse(spec.token).token)
-    }
+internal fun specIcon(spec: ActionCatalog.Spec): ImageVector = when {
+    spec.commandKind != null -> commandIcon(spec.commandKind, spec.commandSteps)
+    // 「循环」与「响铃状态」格共用写法 `keyevent:164`，靠 token 分不出 —— 只能按 spec 认领字形。
+    spec === ActionCatalog.RINGER_CYCLE -> PageIcons.RingerCycle
+    // 两个**标记**入口格同理：token（`nav:` / `key:`）`Action.parse` 不出有意义的动作，
+    // 走 [actionIcon] 只会落到兜底字形 —— 按 spec 认领。
+    spec.token == ActionCatalog.NAV_TILE -> PageIcons.NavigationCog
+    spec.token == ActionCatalog.KEY_TILE -> PageIcons.Click
+    else -> actionIcon(Action.parse(spec.token).token)
+}
+
+/**
+ * 一条自定义命令的类型图标：单条 → [PageIcons.CommandSingle]，多条 → 按步骤数的 [commandSerialIcon]。
+ *
+ * 三个地方共用这一份：网格格子与「已保存的命令」卡片（[ActionCatalog.Spec] 带过来的类型 / 步数）、
+ * 步骤行里引用另一条命令的那枚小图标（[stepIcon] 从命令库查出被引用的那条之后转给它）。
+ */
+internal fun commandIcon(kind: CommandKind, steps: Int): ImageVector =
+    if (kind == CommandKind.SERIAL) commandSerialIcon(steps) else PageIcons.CommandSingle
+
+/**
+ * 「多条命令」的类型图标 —— 按步骤数取 `box-multiple-N`，一眼能看出这条有几步。
+ *
+ * 档位与 `Command.MAX_STEPS` 同宽（1~5）；0 步（还没加步骤的草稿）与超出上限的都以首尾两档收口，
+ * 图标只说明「几步」，不承担校验。
+ */
+internal fun commandSerialIcon(steps: Int): ImageVector =
+    SERIAL_STEP_ICONS[steps.coerceIn(1, SERIAL_STEP_ICONS.size) - 1]
+
+/** 步骤数 → 字形，下标 0 是 1 步。长度必须等于 `Command.MAX_STEPS`，否则上一步的钳位会串档。 */
+private val SERIAL_STEP_ICONS: List<ImageVector> = listOf(
+    TablerIcons.Outline.BoxMultiple1,
+    TablerIcons.Outline.BoxMultiple2,
+    TablerIcons.Outline.BoxMultiple3,
+    TablerIcons.Outline.BoxMultiple4,
+    TablerIcons.Outline.BoxMultiple5,
+)
 
 /** 页面自己的小图标（顶栏返回键 / 行尾箭头 / 「按键绑定」行首 / 浮层菜单两行）—— 同样出自 Tabler。 */
 internal object PageIcons {
@@ -125,6 +186,29 @@ internal object PageIcons {
      * 只给上面那行的话下面标题会左移一个图标宽。
      */
     val Power: ImageVector get() = TablerIcons.Outline.Power
+
+    /** 「系统导航」格的行首 —— 指北针 + 齿轮（`navigation-cog`）：这一格后面是一组导航动作。 */
+    val NavigationCog: ImageVector get() = TablerIcons.Outline.NavigationCog
+
+    /** 「系统按键」格的行首 —— 手指点击（`click`）：这一格后面是一组按键动作。 */
+    val Click: ImageVector get() = TablerIcons.Outline.Click
+
+    /**
+     * 网格里**入口格**行尾那颗「圈里三点」（`dots-circle-horizontal`）—— 点开会**弹一层菜单**。
+     *
+     * 替掉那些格子原来那枚单选圈：单选圈读作「这一格是一个可选项」，而入口格点开**还有一层**。
+     * 尺寸与配色按 COUI 的 `RadioButton` 逐档对齐（见 `BindingScreen` 的 `ActionTile`），
+     * 换掉之后占位与观感都不变。
+     */
+    val DotsCircleHorizontal: ImageVector get() = TablerIcons.Outline.DotsCircleHorizontal
+
+    /**
+     * 网格里**跳页面**那格（「打开应用」）行尾的「窗口 + 加号」（`browser-plus`）。
+     *
+     * 与 [DotsCircleHorizontal] 分两种字形：那颗表示「点开弹一层菜单」，这颗表示
+     * 「点开进另一个页面」（挑应用）。尺寸与配色同上。
+     */
+    val BrowserPlus: ImageVector get() = TablerIcons.Outline.BrowserPlus
 
     /** 顶栏右侧的菜单按钮（竖三点）。 */
     val Menu: ImageVector get() = TablerIcons.Outline.DotsVertical
@@ -144,6 +228,9 @@ internal object PageIcons {
     /** 「选择应用」页顶栏菜单的「隐藏不可打开」—— `EyeOff`（划掉的眼睛）。 */
     val HideUnopenable: ImageVector get() = TablerIcons.Outline.EyeOff
 
+    /** 「选择应用」菜单的「小窗打开」—— 与 `window:` / `zoom:mini` 两个动作同一个字形。 */
+    val SmallWindow: ImageVector get() = TablerIcons.Outline.WindowMinimize
+
     /** 「选择应用」空状态（清单本身为空：系统限制了可见列表）—— `Packages`（一摞盒子）。 */
     val EmptyApps: ImageVector get() = TablerIcons.Outline.Packages
 
@@ -153,15 +240,8 @@ internal object PageIcons {
     /** 「自定义命令」页里命令行尾的删除图标 —— `Trash`，用 `error` 色，调用点给 20dp。 */
     val CommandDelete: ImageVector get() = TablerIcons.Outline.Trash
 
-    /** 命令类型「单条命令」—— `Terminal`，当列表行首（网格里自定义命令格子也按类型取它）。 */
-    val CommandSingle: ImageVector get() = TablerIcons.Outline.Terminal
-
-    /**
-     * 命令类型「多条命令」—— `Stack2`（叠着的几条）。
-     *
-     * 画的是「数量」而非「顺序」：行首只有 22dp，顺序（`ListNumbers` / `Timeline` 那类）读不出来。
-     */
-    val CommandSerial: ImageVector get() = TablerIcons.Outline.Stack2
+    /** 命令类型「单条命令」—— `Terminal2`，当列表行首（网格里自定义命令格子也按类型取它）。 */
+    val CommandSingle: ImageVector get() = TablerIcons.Outline.Terminal2
 
     /**
      * 「按键绑定」页右下角那颗 FAB —— 进「自定义命令」页新增一条命令（`Plus`）。
@@ -202,6 +282,12 @@ internal object PageIcons {
     /** 「查看地址」行的行首 —— 链接符号。 */
     val Address: ImageVector get() = TablerIcons.Outline.Link
 
+    /** 「关于模块」的「作者」行首 —— 人形。 */
+    val Author: ImageVector get() = TablerIcons.Outline.User
+
+    /** 「反馈问题」行的行首 —— 对话气泡（issue 的读法）。 */
+    val Feedback: ImageVector get() = TablerIcons.Outline.MessageCircle
+
     /** 「响铃状态」菜单第一档「循环」—— `Repeat`（两箭头成圈，靠 [specIcon] 按 spec 认领）。 */
     val RingerCycle: ImageVector get() = TablerIcons.Outline.Repeat
 
@@ -212,9 +298,6 @@ internal object PageIcons {
      * 菜单那颗由补丁 `patches/coui/0003` 的 `chevronIcon` 覆盖口传进来按 24dp 正方形画。
      */
     val EnterArrow: ImageVector get() = TablerIcons.Outline.ChevronRight
-
-    /** 「选择应用」页那颗 FAB —— `ChevronsUp`（双人字向上），与 [StepUp] 的 `ChevronUp` 分得开。 */
-    val ScrollToTop: ImageVector get() = TablerIcons.Outline.ChevronsUp
 
     /** 命令编辑页底部工具栏的主操作（「保存 / 修改」）—— `Check`，主次靠颜色分（主操作走 `primary`）。 */
     val Confirm: ImageVector get() = TablerIcons.Outline.Check

@@ -1,10 +1,7 @@
 package com.lookie.opluskey.page
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import io.github.suqi8.coui.kmp.basic.Text
 import com.lookie.opluskey.XLog
 
 /**

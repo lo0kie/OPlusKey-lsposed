@@ -50,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
-import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.FloatingToolbar
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -151,8 +150,12 @@ internal fun SettingsPage.CommandScreen(
     val name = draft.name
     // 重名判定（提示与禁保存共用 [commandNameDuplicated]）
     val duplicated = commandNameDuplicated(name, draft.editingName)
-    // 页面滚动位置提到这里：点「已保存的命令」要把页面滚回顶部，得拿得到这份状态。
-    val scrollState = rememberScrollState()
+    //  滚动位置**每个类型页各持一份**（与「按键绑定」页那三个手势页同一套做法）。
+    //  ⚠️ 原来是两页**共用一份**，那会**切回来就滚不动**：`ScrollState` 内部只有一个
+    //  `scrollableState`，而 pager 滑动时相邻两页同时在场 ⇒ 两处 `verticalScroll` 挂
+    //  同一个 state、互相打架（「按键绑定」页 2026-10-13 踩过同一个坑）。
+    //  「点已保存的命令要滚回顶部」那几处也各自读**本页**这一份。
+    val pageScrolls = CommandKind.entries.map { rememberScrollState() }
     val scope = rememberCoroutineScope()
 
     val tabBlockDp = with(LocalDensity.current) { commandBandHeight.value.toDp() }
@@ -162,7 +165,13 @@ internal fun SettingsPage.CommandScreen(
     // 保存 / 载入 / 工具条显隐都读它。
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
-            draft.kind = CommandKind.entries[page]
+            val kind = CommandKind.entries[page]
+            //  换 tab 就把**编辑态摘掉**：`editingName` 是「正在改哪一条」的标记，而它属于**上一个
+            // tab 的那份表单** —— 留着会让新 tab 的重名判定把它当成「自己」，于是同名不判重、
+            // 一路覆盖掉另一条命令（真机反馈「保存判断应限制在当前 tab 的表单下」）。
+            //  表单内容（`single` / `steps`）照旧保留：那是两套互不干扰的字段。
+            if (kind != draft.kind) draft.editingName = null
+            draft.kind = kind
         }
     }
 
@@ -199,7 +208,7 @@ internal fun SettingsPage.CommandScreen(
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                 // 越界回弹：`overScrollVertical` 挂在滚动容器外侧，所以内容不满一屏时照样弹。
                 .overScrollVertical()
-                .verticalScroll(scrollState)
+                .verticalScroll(pageScrolls[page])
                 // 页底留白挂在滚动内容内侧（`padding` 在 `verticalScroll` 之后）——
                 // 尾部 Spacer 实测不进滚动内容高度，会让最大滚动位置少一截。
                 .padding(bottom = PAGE_BOTTOM_PADDING),
@@ -216,9 +225,9 @@ internal fun SettingsPage.CommandScreen(
             IconInputView(
                 icon = PageIcons.InputName,
                 value = name,
-                // 边输边清洗：名字会进命令库（制表符分隔）与主配置（`键=值`），
-                // 换行 / 制表符 / `;` / `=` 都是分隔符。
-                onValueChange = { draft.name = CommandLibrary.sanitizeName(it) },
+                // 边输边清洗：只换掉换行、不 trim —— 带 trim 的版本会让空格打不进去。
+                // trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做。
+                onValueChange = { draft.name = CommandLibrary.sanitizeNameInput(it) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
                 title = "名称",
                 label = "请输入名称",
@@ -293,7 +302,7 @@ internal fun SettingsPage.CommandScreen(
                                                 XLog.i("命令格式：把前缀 $prefix 填进「命令」输入框")
                                                 draft.single = prefix
                                                 // 输入框在「格式」卡上面，不滚回去看不出改没改。
-                                                scope.launch { scrollState.animateScrollTo(0) }
+                                                scope.launch { pageScrolls[page].animateScrollTo(0) }
                                             }
                                         },
                                     ),
@@ -383,7 +392,7 @@ internal fun SettingsPage.CommandScreen(
                                             tick()
                                             draft.load(cmd)
                                             // 表单在页面顶部，不滚回去看不出点开了哪一张。
-                                            scope.launch { scrollState.animateScrollTo(0) }
+                                            scope.launch { pageScrolls[page].animateScrollTo(0) }
                                         },
                                         onLongPress = {
                                             tick()
@@ -410,11 +419,7 @@ internal fun SettingsPage.CommandScreen(
                                                 verticalAlignment = Alignment.CenterVertically,
                                             ) {
                                                 Icon(
-                                                    if (cmd.kind == CommandKind.SERIAL) {
-                                                        PageIcons.CommandSerial
-                                                    } else {
-                                                        PageIcons.CommandSingle
-                                                    },
+                                                    commandIcon(cmd.kind, cmd.steps.size),
                                                     null,
                                                     Modifier.size(22.dp),
                                                     // 选中时跟着标题走主题色 —— 不给 tint 会吃 `Card` 的 `contentColor`。
@@ -429,6 +434,21 @@ internal fun SettingsPage.CommandScreen(
                                                         fontWeight = FontWeight.Medium,
                                                         // 选中时上主题色，与类型图标同色、同一动画值。
                                                         color = accentColor,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                    )
+                                                } else {
+                                                    //  多条命令的标题另起一行（见下），所以这一行图标右边空着 ——
+                                                    // 正好放这条命令的**步骤间隔**：它是多条命令独有的执行参数
+                                                    //（单条一闪而过，用不到），而卡片上原本只有步骤列表、看不到它。
+                                                    Spacer(Modifier.width(TILE_TITLE_GAP))
+                                                    Text(
+                                                        // 文案走 [durationText]（全局唯一一处）：
+                                                        // 1000ms 以上写成秒（`3 秒`），一秒以内是毫秒（`400 毫秒`）
+                                                        text = durationText(cmd.stepDelayMs),
+                                                        style = COUITheme.textStyles.footnote1,
+                                                        color = COUITheme.colorScheme
+                                                            .onSurfaceVariantSummary,
                                                         maxLines = 1,
                                                         overflow = TextOverflow.Ellipsis,
                                                     )
@@ -475,18 +495,19 @@ internal fun SettingsPage.CommandScreen(
                                                     Row(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                     ) {
-                                                        // 引用另一条命令（`cmd:<名字>`）的那一步补一枚小图标 —— 光看文字分不出两类步骤。
-                                                        if (isCommandRef(line.token)) {
-                                                            Icon(
-                                                                stepIcon(line.token),
-                                                                contentDescription = null,
-                                                                modifier = Modifier
-                                                                    .size(SUMMARY_REF_ICON),
-                                                                tint = COUITheme.colorScheme
-                                                                    .onSurfaceVariantSummary,
-                                                            )
-                                                            Spacer(Modifier.width(SUMMARY_REF_GAP))
-                                                        }
+                                                        //  每一步行首都补一枚小图标（与步骤列表同一套 [stepIcon]）：
+                                                        // 引用另一条命令（`cmd:<名字>`）的那一步用**被引用那条的真实
+                                                        // 类型图标**（单条 / 按步数的多条），其余步骤用动作图标 ——
+                                                        // 光看文字分不出两类步骤。
+                                                        Icon(
+                                                            stepIcon(line.token, commands.value),
+                                                            contentDescription = null,
+                                                            modifier = Modifier
+                                                                .size(SUMMARY_REF_ICON),
+                                                            tint = COUITheme.colorScheme
+                                                                .onSurfaceVariantSummary,
+                                                        )
+                                                        Spacer(Modifier.width(SUMMARY_REF_GAP))
                                                         Text(
                                                             text = line.title,
                                                             style = COUITheme.textStyles.footnote1,
@@ -508,7 +529,7 @@ internal fun SettingsPage.CommandScreen(
                                         show = menuFor == cmd.name,
                                         preciseClick = tilePreciseClick,
                                         // 与「轻点这一张」同一个去处：灌进表单后滚回顶部。
-                                        onEdited = { scope.launch { scrollState.animateScrollTo(0) } },
+                                        onEdited = { scope.launch { pageScrolls[page].animateScrollTo(0) } },
                                         onDelete = {
                                             menuFor = null
                                             deleting = cmd
@@ -859,10 +880,10 @@ internal fun SettingsPage.SerialSteps() {
                             XLog.i("多条命令：点第 ${stepsIndex + 1} 步（弹选择菜单，替换模式）")
                             stepPick = stepsIndex
                         },
-                        // 行首图标 = 这一步是什么（内置动作取动作图标、`cmd:` 取命令提示符）。
+                        // 行首图标 = 这一步是什么（内置动作取动作图标、`cmd:` 取**被引用那条命令**的类型图标）。
                         // 没有它标题会顶到卡片左边，与下面那行带 `+` 图标的「添加命令」差一个图标宽，
                         // 同一张卡里两行左边缘不齐。
-                        startAction = { Icon(stepIcon(item.token), null, Modifier.size(22.dp)) },
+                        startAction = { Icon(stepIcon(item.token, commands.value), null, Modifier.size(22.dp)) },
                         endActions = {
                             IconAction(PageIcons.StepUp, "上移", enabled = !item.exiting && stepsIndex > 0) {
                                 tick()
@@ -1050,6 +1071,10 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
         )
     }
 
+    // 删的就是正在编辑的那条 ⇒ 草稿一并清掉：留着的话「修改」按钮还挂着，
+    // 点一下会把刚删的命令原样写回去。
+    if (draft.editingName == cmd.name) draft.reset()
+
     val next = commands.value
         .filterNot { it.name == cmd.name }
         .map { c ->
@@ -1068,12 +1093,19 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
  * @return 是否真的落盘 —— 失败时这里已经报过「保存失败」，调用方只在 true 时报成功那一句。
  */
 internal fun SettingsPage.saveCommands(next: List<Command>, what: String): Boolean {
+    val previous = commands.value
     commands.value = next
     val saved = CommandLibrary.save(next)
     if (saved) {
         XLog.i("命令库写入：$what")
+        // 命令库变了必须重发配置广播：EXTRA_LONG_SERIAL（长按绑的是不是串行命令）是发广播
+        // 那一刻现算的，不重发的话注入侧还拿着旧判定 —— cmd:X 在单条 / 多条之间切换后，
+        // 「连续触发」的闸门会一直错下去。
+        publishConfig(config.value)
     } else {
-        XLog.w("命令库写入失败（下次进页面会回退）：$what")
+        // 落盘失败回滚状态：界面与文件必须一致，否则「界面显示删了、文件还在」
+        commands.value = previous
+        XLog.w("命令库写入失败（已回滚界面状态）：$what")
         toast("保存失败")
     }
     return saved

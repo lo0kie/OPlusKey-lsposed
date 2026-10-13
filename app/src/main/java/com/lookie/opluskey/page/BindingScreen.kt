@@ -382,8 +382,16 @@ internal fun SettingsPage.BindingList(
     val current = actionOf(cfg, g)
     // 「打开应用」格选中时标题下面那行小字 = **当前绑的应用名**
     // 名字查一次就缓存（PM 查询，入参是动作所以只在换动作时重查）。
+    //  这一格能写出来的是**两种**动作：`app:` 与 `window:`（小窗，[Action.AppWindow]，
+    // 由菜单里那项「小窗打开」定，见 [SettingsPage.smallWindow]）—— 两种都要取名字，
+    // 少认一种那一格就没有小标题（2026-10-14 实证：开着小窗挑完应用回来，标题下面是空的）。
     val boundAppLabel = remember(current) {
-        (current as? Action.App)?.target?.substringBefore('/')?.let { appLabelOf(it) }
+        val target = when (current) {
+            is Action.App -> current.target
+            is Action.AppWindow -> current.target
+            else -> null
+        }
+        target?.substringBefore('/')?.let { appLabelOf(it) }
     }
     // 图标表已在 Page 级预热（转场首帧减负），这里直接取
     val icons = iconsByGesture[g].orEmpty()
@@ -422,17 +430,26 @@ internal fun SettingsPage.BindingList(
     val tick = rememberTick()
 
     /**
-     * 「响铃状态」格点开的菜单 —— 循环 / 响铃 / 振动 / 静音
+     * 入口格点开的那一层菜单开着哪一格（`null` = 没开）—— 响铃状态是「循环 / 响铃 / 振动 /
+     * 静音」，媒体控制是「播放 / 暂停 / 上一首 / 下一首」（行本身见 `ActionCatalog.MODE_MENUS`）。
      *
-     * 与「打开应用」格一样是**入口格**（格子行尾有箭头），区别是它**不走页面转场**：
-     * 四个取值就那么几个，弹一层浮层就够，加一页反而要多一次来回。
+     * 与「打开应用」格一样是**入口格**（点了进下一层，但格子本身不画行尾箭头），
+     * 区别是它**不走页面转场**：取值就那么几个，弹一层浮层就够，加一页反而要多一次来回。
      *
      *  状态就放在本页（每个手势一份）—— 换了 tab 就是另一份，菜单跟着消失。
      */
-    var ringerMenu by remember { mutableStateOf(false) }
+    var tileMenu by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
 
-    /** 那张菜单的**手指锚点** —— 只有「响铃状态」那一格往这里写触点（见上面 `modifier`）。 */
+    /**
+     * 入口格的**手指锚点**，一格格一份。
+     *
+     * `PreciseClickState` 里除触点坐标外还存着「锚点自己的布局位置」（用来把触点换算到窗口
+     * 坐标），两格共用一份的话锚点会被算成「最后布局的那一格」—— 浮层就弹在别处了。
+     */
     val ringerAnchor = rememberPreciseClickState()
+    val mediaAnchor = rememberPreciseClickState()
+    val navAnchor = rememberPreciseClickState()
+    val keyAnchor = rememberPreciseClickState()
 
     /**
      * 选中某一项 —— 点击与确认键**共用这一个入口**，两条路的手感一致。
@@ -555,9 +572,10 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
         //  会白多一截空档（标题紧贴它下面的内容，这是全页的规矩）。
         if (g == Gesture.SINGLE) {
             SmallTitle("按键设置")
-            // 开着「立即触发单击」时抬手当场判单击、**根本不再等双击窗口** ⇒ 延迟调到多少都不生效，
-            // 所以那一行跟着置灰。副标题不动（置灰本身已经说明它当前不可用）。
-            val instant = cfg.global.instantSingle
+            // 「单击延迟」不跟着「立即触发单击」置灰：两个状态独立 ——
+            // 前者管「等多久才判双击」，后者管「双击为无操作时还要不要等」。
+            // （开着后者且双击为无操作时前者确实用不上，但那是运行期的组合，
+            // 由判定侧按配置自己走，界面不替用户把这一行锁死。）
             Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
                 SliderRow(
                     title = "单击延迟",
@@ -567,7 +585,7 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
                     min = GlobalConfig.MIN_DOUBLE_CLICK_MS,
                     max = GlobalConfig.MAX_DOUBLE_CLICK_MS,
                     value = cfg.global.doubleClickMs,
-                    enabled = enabled && !instant,
+                    enabled = enabled,
                 ) { v ->
                     write(
                         config.value.copy(
@@ -622,98 +640,107 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
             Spacer(Modifier.height(GRID_ROW_GAP))
         }
 
-        // 网格**两段**，各带自己的小标题 —— 内置命令一组、自定义命令一组
+        // 内置命令按 [ActionCatalog.GROUPS] 分组，每组一个小标题。
         //
-        // 原来插在内置命令末尾那一格跳转按钮（`CustomCommandsTile`）撤掉了，
-        // 于是**两段的分界**变成：内置段 = [ActionCatalog.ALL]（11 项，一格不多），
-        // 焦点格索引与 `specs` 下标**一一对应**（见上面「扁平焦点索引的账」）。
-        SmallTitle("内置命令")
+        // 焦点格索引仍与 `specs` 下标一一对应（见上面「扁平焦点索引的账」）—— 分组只是
+        // 展示层切分，组里的格子用的还是**全局**下标（`builtInBase` 跨组连续累计），
+        // 不能在组内从 0 数。
+        var builtInBase = 0
+        ActionCatalog.GROUPS.forEachIndexed { groupIndex, (groupTitle, group) ->
+            // 「上一段 → 这个标题」之间给一档（与网格行距同值），与下面「自定义命令」那一段同一条规矩。
+            // 第一组不加 —— 它前面那一段（按键设置卡）已经自带收尾间距，双击档则是页首、不需要。
+            if (groupIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
+            SmallTitle(groupTitle)
 
-        // 这一段用一个**内层 Column** 单独带 [PAGE_MARGIN] 横向 padding，
-        // 标题在外层不受影响（见 Column 的 modifier 注释）。
-        Column(
-            Modifier.padding(horizontal = PAGE_MARGIN),
-            verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
-        ) {
-            // `0 until builtInCount` —— 内置命令本身，尾格不再有跳转按钮
-            (0 until builtInCount).chunked(COLUMNS).forEach { rowIndices ->
-                Row(
-                    Modifier.fillMaxWidth(),
-                    // 「上下左右间距保持一致」）；不再给焦点圈留补偿（见 [GRID_GAP] 的注释）
-                    horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
-                ) {
-                    rowIndices.forEach { index ->
-                        val spec = specs.getOrNull(index) ?: return@forEach
-                        ActionTile(
-                            spec = spec,
-                            icon = icons[spec],
-                            selected = ActionCatalog.isSelected(spec, current),
-                            focused = index == focusedIndex,
-                            focusRequester = focusers[index],
-                            //  触点锚点**只挂在「响铃状态」那一格上**：`PreciseClickState`
-                            // 里存坐标的只有一格，每个挂它的节点都会往里写自己那点 ⇒
-                            // 一整片格子共用一份的话，锚点会被算成「最后布局的那一格」
-                            modifier = Modifier.weight(1f).let { m ->
-                                if (spec.token == ActionCatalog.RINGER_TILE) {
-                                    m.preciseClickAnchor(ringerAnchor)
-                                } else {
-                                    m
-                                }
-                            },
-                            enabled = enabled,
-                            // 「打开应用」格与「响铃状态」格都是**入口格**：标题下补一行
-                            // 那一格只写组名，不点开菜单根本看不出绑的是循环 / 响铃 / 振动 / 静音
-                            subtitle = when (spec.token) {
-                                ActionCatalog.APP_TILE -> boundAppLabel
-                                ActionCatalog.RINGER_TILE ->
-                                    ActionCatalog.ringerModeTitle(current)
-                                else -> null
-                            },
-                            // 这两格虽然是**入口**（点了进下一层），但**不画行尾箭头** ——
-                            // 走 [ActionTile] 的默认值 false，别顺手补回来。
-                            onClick = {
-                                //  这两格都是**入口**、不是取值 —— 靠比常量认领，
-                                // 不能交给 `select`：`app:` 本身就是一个合法的（空）App 动作，
-                                // 走 select 会把配置写成 `app:`（拉不起任何东西，2026-10-12）。
-                                if (spec.token == ActionCatalog.APP_TILE) {
-                                    if (enabled) {
-                                        tick()
-                                        //  不挪焦点圈 —— 与 [select] 同一条规矩：圈只跟随选中态。
-                                        // 挑中应用时绑定变了，圈由重定位 effect 挪过来。
-                                        onOpenAppPicker(g)
+            // 这一段用一个**内层 Column** 单独带 [PAGE_MARGIN] 横向 padding，
+            // 标题在外层不受影响（见 Column 的 modifier 注释）。
+            Column(
+                Modifier.padding(horizontal = PAGE_MARGIN),
+                verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
+            ) {
+                (builtInBase until builtInBase + group.size).chunked(COLUMNS).forEach { rowIndices ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        // 「上下左右间距保持一致」）；不再给焦点圈留补偿（见 [GRID_GAP] 的注释）
+                        horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
+                    ) {
+                        rowIndices.forEach { index ->
+                            val spec = specs.getOrNull(index) ?: return@forEach
+                            ActionTile(
+                                spec = spec,
+                                icon = icons[spec],
+                                selected = ActionCatalog.isSelected(spec, current),
+                                focused = index == focusedIndex,
+                                focusRequester = focusers[index],
+                                //  触点锚点**每格一份**（见上面 `mediaAnchor` 那段）：`PreciseClickState`
+                                // 里存坐标的只有一格，每个挂它的节点都会往里写自己那点 ⇒
+                                // 一整片格子共用一份的话，锚点会被算成「最后布局的那一格」。
+                                // 其余格子是取值，点了不弹浮层，挂上去只是白记一个坐标。
+                                modifier = Modifier.weight(1f).let { m ->
+                                    when (spec.token) {
+                                        ActionCatalog.RINGER_TILE -> m.preciseClickAnchor(ringerAnchor)
+                                        ActionCatalog.MEDIA_TILE -> m.preciseClickAnchor(mediaAnchor)
+                                        ActionCatalog.NAV_TILE -> m.preciseClickAnchor(navAnchor)
+                                        ActionCatalog.KEY_TILE -> m.preciseClickAnchor(keyAnchor)
+                                        else -> m
                                     }
-                                } else if (spec.token == ActionCatalog.RINGER_TILE) {
-                                    // 再弹菜单让你换成响铃 / 振动 / 静音 ——
-                                    // 这样「点开看一眼又关掉」也留下了一个能用的取值，
-                                    // 而不是什么都不写（菜单第一项写的就是这个值）。
-                                    //
-                                    // **这个手势已经绑着某一档时不再改写** —— 否则你刚选完「静音」，
-                                    // 再点一次格子想看菜单，那一下先把配置冲回「循环」，
-                                    // 菜单里的对勾于是指到了错行。判据用 [ActionCatalog.isRinger]
-                                    // （整组都算），与格子自己的选中态同一口径。
-                                    if (enabled) {
-                                        tick()
-                                        //  不挪焦点圈：若这次点了会改绑（下面那行 pick），圈由
-                                        // 重定位 effect 跟着 `selectedIndex` 走；没改绑圈就不动。
-                                        if (!ActionCatalog.isRinger(current)) {
-                                            pick(ActionCatalog.RINGER_CYCLE, g)
+                                },
+                                enabled = enabled,
+                                // 「打开应用」格与入口格都要补一行小字：前者是绑的应用名，
+                                // 入口格那格只写组名，不点开菜单根本看不出绑的是哪一档
+                                subtitle = when (spec.token) {
+                                    ActionCatalog.APP_TILE -> boundAppLabel
+                                    else -> ActionCatalog.modeMenu(spec.token)
+                                        ?.let { ActionCatalog.modeTitle(it, current) }
+                                },
+                                // 入口格虽然是**入口**（点了进下一层），但**不画行尾箭头** ——
+                                // 走 [ActionTile] 的默认值 false，别顺手补回来。
+                                onClick = {
+                                    //  「打开应用」是入口、不是取值 —— 靠比常量认领，
+                                    // 不能交给 `select`：`app:` 本身就是一个合法的（空）App 动作，
+                                    // 走 select 会把配置写成 `app:`（拉不起任何东西，2026-10-12）。
+                                    if (spec.token == ActionCatalog.APP_TILE) {
+                                        if (enabled) {
+                                            tick()
+                                            //  不挪焦点圈 —— 与 `select` 同一条规矩：圈只跟随选中态。
+                                            // 挑中应用时绑定变了，圈由重定位 effect 挪过来。
+                                            onOpenAppPicker(g)
                                         }
-                                        ringerMenu = true
+                                    } else if (ActionCatalog.isEntryTile(spec)) {
+                                        // 再弹菜单让你换档 ——
+                                        // 这样「点开看一眼又关掉」也留下了一个能用的取值，
+                                        // 而不是什么都不写（菜单第一项写的就是这个值）。
+                                        //
+                                        // **这个手势已经绑着这一组里某一档时不再改写** —— 否则你刚选完
+                                        // 「下一首」，再点一次格子想看菜单，那一下先把配置冲回首档
+                                        // （「播放 / 暂停」/「循环」），菜单里的对勾于是指到了错行。
+                                        // 判据比**整组**（[ActionCatalog.isSelected]），与格子自己的选中态同一口径。
+                                        if (enabled) {
+                                            tick()
+                                            //  不挪焦点圈：若这次点了会改绑（下面那行 pick），圈由
+                                            // 重定位 effect 跟着 `selectedIndex` 走；没改绑圈就不动。
+                                            if (!ActionCatalog.isSelected(spec, current)) {
+                                                ActionCatalog.modeMenu(spec.token)
+                                                    ?.firstOrNull()
+                                                    ?.let { pick(it, g) }
+                                            }
+                                            tileMenu = spec
+                                        }
+                                    } else {
+                                        select(spec)
                                     }
-                                } else {
-                                    select(spec)
-                                }
-                            },
-                        )
-                    }
-                    // 最后一行不满时补空位：不补的话剩下那格会被 weight 撑到整行宽
-                    repeat(COLUMNS - rowIndices.size) {
-                        Spacer(Modifier.weight(1f))
+                                },
+                            )
+                        }
+                        // 最后一行不满时补空位：不补的话剩下那格会被 weight 撑到整行宽
+                        repeat(COLUMNS - rowIndices.size) {
+                            Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
             }
+            builtInBase += group.size
         }
-
         // 标题空挂在那儿。进「自定义命令」页的入口**不在网格里**（是右下角那颗 FAB，
         // 见 [BindingScreen]），所以「没有自定义命令时进不去命令页」这个问题不存在。
         //  显隐走 [AnimatedColumn]：存下第一条自定义命令时这一段是**长出来**的。
@@ -766,8 +793,8 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
                                 subtitle = cmd
                                     ?.takeIf { it.kind == CommandKind.SERIAL }
                                     ?.let { durationText(it.stepDelayMs) },
-                                //  行尾那支箭头现在只给这一组格子 —— 内置的「打开应用 / 响铃状态」
-                                // 两格不再画箭头（见上面内置网格那段）。
+                                //  行尾那支箭头现在只给这一组格子 —— 内置那几个入口格
+                                // （打开应用 / 响铃状态 / 媒体控制）不画箭头（见上面内置网格那段）。
                                 enterArrow = true,
                                 // 长按与「已选中时再点一次」同一个去处（上面那个 `openEditor`）。
                                 // 长按之后那一下抬手由库的 `combinedClickable` 吞掉（不会再触发点击）。
@@ -802,19 +829,26 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
         // 滚起来时内容能钻进导航栏底下（导航栏本来就是透明的）。
         Spacer(Modifier.height(GRID_GAP))
 
-        // 「响铃状态」格的菜单（见上面 [ringerMenu]）。它**不占布局位置** ——
+        // 入口格那一层的菜单（见上面 [tileMenu]）。它**不占布局位置** ——
         // 真正的落点由那一格记下的触点决定（`DropdownPositionProvider`），
         // 挂在这里只是让它跟着这一页一起进 / 出组合。
-        RingerMenuPopup(
-            show = ringerMenu,
-            preciseClick = ringerAnchor,
+        TileMenuPopup(
+            show = tileMenu != null,
+            // 锚点按**开着的是哪一格**取（每格一份，见上面 [ringerAnchor] 那段）
+            preciseClick = when (tileMenu?.token) {
+                ActionCatalog.MEDIA_TILE -> mediaAnchor
+                ActionCatalog.NAV_TILE -> navAnchor
+                ActionCatalog.KEY_TILE -> keyAnchor
+                else -> ringerAnchor
+            },
+            modes = tileMenu?.let { ActionCatalog.modeMenu(it.token) }.orEmpty(),
             current = current,
             //  走 [pick] 而**不是** [select]：菜单里的取值不在 `specs` 里，
             // `select` 那一步的 `specs.indexOf(spec)` 会取到 −1、把焦点圈甩到第一格去。
             // 写完之后 `selectedIndex` 变了，那个「把焦点收回选中项」的 effect
-            // 自然会把圈落回「响铃状态」格（本来就是点它的那一格）。
+            // 自然会把圈落回入口格（本来就是点它的那一格）。
             onPick = { spec -> pick(spec, g) },
-            onDismiss = { ringerMenu = false },
+            onDismiss = { tileMenu = null },
         )
     }
 }
@@ -911,6 +945,14 @@ internal fun SettingsPage.LongRepeatCard(blockedReason: String?, masterEnabled: 
 }
 
 /**
+ * 入口格行尾那颗指示器的边长 —— 与 COUI `RadioButton` 的 `requiredSize(24.dp)` 同尺寸。
+ *
+ * 三种指示器在同一位置三选一（见 [ActionTile] 的 `endActions`：两种入口字形与单选圈），
+ * 尺寸不一致会让格子里的内容跟着挪。
+ */
+private val ENTRY_INDICATOR_SIZE = 24.dp
+
+/**
  * 动作网格里的一格。
  *
  * @param enabled 首页那个「按键绑定」主开关为关时传 false —— 整格置灰、不吃点击
@@ -926,14 +968,15 @@ internal fun SettingsPage.ActionTile(
     enabled: Boolean = true,
     /**
      * 标题下面那行**小字**（空则不画）：内置的「打开应用」格放绑定的应用名、
-     * 「响铃状态」格放当前档位，自定义命令那些格子放**命令间隔时长**。
+     * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。
      */
     subtitle: String? = null,
     /**
-     * 是不是**带下一层**的格子 —— 是的话在 radio 右边再画一支箭头。
+     * 是不是**带下一层**的格子 —— 是的话在行尾那枚指示器右边再画一支箭头。
      *
-     * 现在只有「自定义命令」那一组格子传 true（长按进编辑）。内置那两个入口格
-     * （打开应用 / 响铃状态）同样是入口，但**不画箭头** —— 见内置网格那段注释。
+     * 现在只有「自定义命令」那一组格子传 true（长按进编辑）。内置那几个入口格
+     * （打开应用 / 系统导航 / 系统按键 / 响铃状态 / 媒体控制）同样是入口，但**不画箭头** ——
+     * 它们的行尾已经是「圈里三点」，见内置网格那段注释。
      */
     enterArrow: Boolean = false,
     onLongClick: (() -> Unit)? = null,
@@ -955,6 +998,17 @@ internal fun SettingsPage.ActionTile(
     val tileMutedColor by animateColorAsState(
         targetValue = if (enabled) scheme.onSurfaceVariantSummary else contentColor,
         label = "TileMuted",
+    )
+    // 入口格行尾那颗「圈里三点」的配色 —— 逐档照 COUI 的 `RadioButtonDefaults.radioButtonColors()`
+    // 抄（选中 `primary`、未选中 `onSurfaceVariantActions`、禁用 `disabledPrimary` /
+    // `disabledSecondaryVariant`）：换掉单选圈之后，颜色语义与占位逐档不变。
+    val entryIndicatorColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> if (selected) scheme.disabledPrimary else scheme.disabledSecondaryVariant
+            selected -> scheme.primary
+            else -> scheme.onSurfaceVariantActions
+        },
+        label = "TileEntryIndicator",
     )
 
     // 外层 `Box` 现在**只为焦点圈**留一个浮层位置（见 [TileFocusRing]）——
@@ -1007,8 +1061,29 @@ internal fun SettingsPage.ActionTile(
                     },
                     endActions = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            // `onClick = null` ⇒ 只有 24dp 的图形、不加触达区，点击交给整行
-                            RadioButton(selected = selected, onClick = null, enabled = enabled)
+                            //  入口格不再画单选圈（那读作「这一格是一个可选项」），按**点开去哪**分两种字形：
+                            //  · 弹一层菜单（系统导航 / 系统按键 / 媒体控制 / 响铃状态）→「圈里三点」；
+                            //  · 进另一个页面（「打开应用」→ 挑应用）→「窗口 + 加号」。
+                            //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
+                            // 换掉之后占位与观感不变。
+                            when {
+                                spec.token == ActionCatalog.APP_TILE -> Icon(
+                                    PageIcons.BrowserPlus,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    tint = entryIndicatorColor,
+                                )
+
+                                ActionCatalog.modeMenu(spec.token) != null -> Icon(
+                                    PageIcons.DotsCircleHorizontal,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    tint = entryIndicatorColor,
+                                )
+
+                                // `onClick = null` ⇒ 只有 24dp 的图形、不加触达区，点击交给整行
+                                else -> RadioButton(selected = selected, onClick = null, enabled = enabled)
+                            }
                             // 「自定义命令」那些格子长按进编辑，箭头表示「这一格后面还有东西」。
                             // 见 [enterArrow] 的说明。
                             if (enterArrow) {
@@ -1039,7 +1114,7 @@ internal fun SettingsPage.ActionTile(
                         // 账见 [TILE_TEXT_OPTICAL_SHIFT]：`offset` 只挪绘制、不改测量。
                         modifier = Modifier.offset(y = TILE_TEXT_OPTICAL_SHIFT),
                     )
-                    // 只写一行标题时看不出这一格绑的是什么（应用名 / 响铃档位 / 命令间隔时长），
+                    // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
                     // 这行就是那个值。格子高 52dp、BasicComponent 最小高 48dp：两行（14sp + 12sp）装得下。
                     //  ⚠️ 这里**不能**用 [AnimatedFade]（只淡、不动高度）：那样这行字的
                     //  **布局高度是立刻占上的**，上面那行标题会**瞬间**被顶上去 ——

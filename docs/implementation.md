@@ -48,11 +48,12 @@ system_server 收到按键
 - 音量键要保组合键（上下同按 = 截屏）与长按连调。
 
 侧键 keyCode 只在 `config/KeyId` 里定义：`KeyId.keyCode` = 735（`KEYCODE_ACTION_BUTTON_CLICK`，Linux 侧是
-`BTN_TRIGGER_HAPPY32`），另有一份白名单 `KeyId.acceptedKeyCodes`（含 ColorOS 策略类路径的内部注入码 780 / 782）。
+`BTN_TRIGGER_HAPPY32`），另有一份白名单 `KeyId.acceptedKeyCodes`（= `{735, 780, 781, 782}`，含 ColorOS 策略类
+路径的内部注入码，781 的补齐记录见 `device-findings.md` §14.4）。
 
 第一层 `StrategyActionButtonKeyLaunchApp` 确实存在，落在 `oplus-services.jar`，入口是外层
-`actionInterceptKeyBeforeQueueing` 与内部回调 `StrategyActionButtonKeyLaunchApp$2#interceptKeyBeforeQueueing` ——
-**两层都挂**，
+`actionInterceptKeyBeforeQueueing` —— **只挂外层**：内部回调 `$2` 是它的纯转发（§14.2），
+挂它只会让同一次按键被回调两次（2026-10-13 起 `Framework.kt` 不再挂），
 
 （`ActionButtonProvider` + SQLite）。**完整的类名 / 方法签名 / URI / 表结构记录在
 [`docs/device-findings.md`](device-findings.md)** —— 改 Hook 面之前先读它，不要再靠猜。
@@ -62,7 +63,7 @@ system_server 收到按键
 daemon 的判定是 `poll()`
 驱动：它自己收原始事件，超时醒来就知道「这段时间没有新事件」，所以能直接判「长按到点了」「双击窗口过了」。
 
-LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，所以判定必须**改成定时器驱动**（`hook/GestureDetector.kt`）：
+LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，所以判定必须**改成定时器驱动**（`gesture/GestureDetector.kt`）：
 
 ```
 按下 → 起一个「长按计时器」(longPressMs)
@@ -84,20 +85,21 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
 `ActionRunner.injectKeyForForward()` 走的是与 `keyevent:`
 完全相同的注入通道（`InputManager.injectInputEvent`），区别只在语义。
 
-例外：如果接管点那一层的回调**本来就带 `KeyEvent` 参数**，说明这一层还有机会把事件回灌给原策略 —— 此时走
-`onStrategyCall` 的原生分支，比重新注入更贴近系统行为。
+例外：拿不到 `KeyEvent` 参数的回调无法校验是不是侧键（吞键会连带吃掉别的键），那一分支**一律放行**，
+不存在「回灌给原策略」的原生分支 —— 放行在任何情况下都走重注入。
 
-配置有**两处来源**，优先级如下：
+## 四、配置从哪来、怎么到注入侧
 
-| 来源                  | 位置                                                 | 说明             |
-| --------------------- | ---------------------------------------------------- | ---------------- |
-| 系统「设置 → 快捷键」 | `content://uri.gesturemanagerprovider/action_button` | **唯一生效来源** |
+配置的唯一生效来源是**宿主私有目录里的 JSON 文件**（`/data/data/com.oplus.gesture/files/opluskey_config.conf`，
+读写走 `config/ConfigStore`，格式见 `config/ConfigCodec`）：
 
-两者都是**进程外**的存储，所以注入侧每次按键现读 —— 天然跨进程可见，改完即时生效。
+- **宿主进程**（设置页、手势执行）每次按键 / 保存都现读文件 —— 同 uid 直接可读，改完即时生效。
+- **注入侧（system_server）读不到那份文件**（EACCES），它只信宿主广播过来的完整配置
+  （`config/ConfigBroadcast` → `hook/ConfigChannel`），启动 / 解锁 / 写盘时各发一次。
+- 系统「设置 → 快捷键」的 provider（`content://uri.gesturemanagerprovider/action_button`）
+  只是**只读诊断项**（`hook/SystemActionButtonConfig`，在宿主进程里读），不参与配置链路。
 
-不能用 `SharedPreferences`：它每个进程各缓存一份，写进去的值别的进程看不到 ——
-
-所以**系统自己也会即时响应**改动。
+不能用 `SharedPreferences`：它每个进程各缓存一份，写进去的值别的进程看不到。
 
 ## 五、注入侧引用的红线
 

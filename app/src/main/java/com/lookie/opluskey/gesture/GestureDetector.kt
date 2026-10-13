@@ -21,6 +21,12 @@ import java.util.concurrent.ConcurrentHashMap
 private const val DIRECT_BURST_MS = 50L
 
 /**
+ * 「长按连续触发」的外部终止上限（毫秒）：距按下超过它仍未见抬手，视为 UP 已丢
+ * （锁屏打断 / 非FLAG_CANCELED 的丢弃），强制停掉自循环派发链。
+ */
+private const val REPEAT_MAX_MS = 30_000L
+
+/**
  * 按键的手势判定状态机 —— 本模块的核心逻辑。
  *
  * 线程归属：`interceptKeyBeforeQueueing` 由 InputReader / Dispatcher 线程调，计时器走调用方
@@ -74,7 +80,7 @@ internal class GestureDetector(
     private val pendingByKey = ConcurrentHashMap<KeyId, Pending>()
 
     /**
-     * 最近一次直接判单击（`fireSingleDirect`）的时刻，
+     * 最近一次「当场判单击」（双击为无操作那条路）的时刻，
      * 用来压掉同一次物理按压被转发两遍造成的重复派发。
      */
     @Volatile
@@ -168,7 +174,7 @@ internal class GestureDetector(
                 return
             }
             XLog.w("${id.label}：单击（双击为无操作 ⇒ 不等双击窗口）")
-            // 与 fireSingleDirect 同一笔账：这一下已经派发过单击了，
+            // 与上面那条直判去重同一笔账：这一下已经派发过单击了，
             // 紧接着那次 DOWN/UP（同一次按压被转发两遍时）与长按计时器都要据此让路。
             lastDirectSingleAt = now
             dispatch(id, Gesture.SINGLE, config, repeat = false)
@@ -178,24 +184,6 @@ internal class GestureDetector(
         p.sawFirstRelease = true
         p.doubleWindowAt = now + doubleClickMs
         scheduleDoubleWindow(id, config)
-    }
-
-    /**
-     * 直接判一次单击（不走 DOWN/UP 状态机）—— 给策略类路径用：那条路拿到的可能只是
-     * 「执行侧键动作」的一次调用，没有成对的 DOWN/UP 事件。
-     *
-     * 有 DOWN/UP 的版本（参数里带 `KeyEvent`）不要用这个，否则一次按键会被判两次。
-     *
-     * 当前无调用方：唯一那个调用点（`SideKeyInterceptor` 拿不到 `KeyEvent` 的分支）已改为放行
-     * —— 拿不到 `KeyEvent` 无法校验是不是侧键，不该吞键。留着以防那条分支恢复。
-     */
-    fun fireSingleDirect(id: KeyId, config: KeyConfig) {
-        // 同一次物理按压可能既走 DOWN/UP、又走这条直判（策略类那条路会给出两种形态）。
-        // 先 reset 才能取消已排上的长按计时器 —— 否则 250ms 后照样触发，变成「单击 + 长按」。
-        reset(id)
-        // 记一笔：紧接着那次 DOWN/UP 若也转来了，scheduleDoubleWindow 要据此不再补一次单击
-        lastDirectSingleAt = SystemClock.uptimeMillis()
-        dispatch(id, Gesture.SINGLE, config, repeat = false)
     }
 
     /** 清空某个键的状态与计时器（含「长按连续触发」正在跑的重复任务）。 */
@@ -218,27 +206,32 @@ internal class GestureDetector(
         val downAt = pending(id).pressAt
         handler.postDelayed(
             {
-                val p = pending(id)
-                if (p.pressAt != downAt) {
-                    XLog.d("${id.label}：这一枪属于上一次按下（已作废），不判长按")
-                    return@postDelayed
-                }
-                // 到点了还没抬手 → 长按。
-                // 若转发顺序是先 SINGLE 后 DOWN，那个 DOWN 会把 `longPressAt` 重新排上，
-                // 250ms 后照样判长按 ⇒ 又是两个动作。
-                val directJustFired =
-                    SystemClock.uptimeMillis() - lastDirectSingleAt < config.longPressMs
-                if (p.longPressAt != 0L && !p.sawFirstRelease && !directJustFired) {
-                    XLog.w("${id.label}：长按")
-                    p.longPressAt = 0L
-                    p.longPressFired = true
-                    dispatch(id, Gesture.LONG, config, repeat = false)
-                    // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
-                    // 多条命令（`cmd:<名字>` 指串行命令）反复重放没意义 —— 界面长按 tab 也按同一条判定隐藏。
-                    // `longIsSerial` 来自广播：注入侧读不到命令库文件，自己算必然恒 false。
-                    if (config.longRepeat && !config.longIsSerial) {
-                        scheduleRepeat(id, config)
+                try {
+                    val p = pending(id)
+                    if (p.pressAt != downAt) {
+                        XLog.d("${id.label}：这一枪属于上一次按下（已作废），不判长按")
+                        return@postDelayed
                     }
+                    // 到点了还没抬手 → 长按。
+                    // 若转发顺序是先 SINGLE 后 DOWN，那个 DOWN 会把 `longPressAt` 重新排上，
+                    // 250ms 后照样判长按 ⇒ 又是两个动作。
+                    val directJustFired =
+                        SystemClock.uptimeMillis() - lastDirectSingleAt < config.longPressMs
+                    if (p.longPressAt != 0L && !p.sawFirstRelease && !directJustFired) {
+                        XLog.w("${id.label}：长按")
+                        p.longPressAt = 0L
+                        p.longPressFired = true
+                        dispatch(id, Gesture.LONG, config, repeat = false)
+                        // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
+                        // 多条命令（`cmd:<名字>` 指串行命令）反复重放没意义 —— 界面长按 tab 也按同一条判定隐藏。
+                        // `longIsSerial` 来自广播：注入侧读不到命令库文件，自己算必然恒 false。
+                        if (config.longRepeat && !config.longIsSerial) {
+                            scheduleRepeat(id, config)
+                        }
+                    }
+                } catch (e: Throwable) {
+                    // 计时器跑在 system_server 主线程上，抛出去就是整机崩
+                    XLog.w("长按判定失败（忽略）：${id.label}", e)
                 }
             },
             config.longPressMs.toLong(),
@@ -258,6 +251,14 @@ internal class GestureDetector(
                     p.repeatRunnable = null
                     return@Runnable
                 }
+                // 外部终止：UP 丢失（锁屏打断 / 非FLAG_CANCELED 的丢弃）时没有任何回调会停这条链，
+                // 每 interval 自循环派发 —— 距按下超过 30s 视为抬手事件已丢，强制停止。
+                if (p.pressAt != 0L && SystemClock.uptimeMillis() - p.pressAt > REPEAT_MAX_MS) {
+                    XLog.w("${id.label}：连续触发超过 ${REPEAT_MAX_MS}ms 未见抬手，强制停止（UP 可能已丢）")
+                    p.repeatRunnable = null
+                    reset(id)
+                    return@Runnable
+                }
                 dispatch(id, Gesture.LONG, config, repeat = true)
                 scheduleRepeat(id, config)
             } catch (e: Throwable) {
@@ -272,21 +273,26 @@ internal class GestureDetector(
     private fun scheduleDoubleWindow(id: KeyId, config: KeyConfig) {
         handler.postDelayed(
             {
-                val p = pending(id)
-                // 窗口到了、期间没有第二次按下 → 单击
-                if (p.sawFirstRelease && p.doubleWindowAt != 0L) {
-                    // 这次按压已经由 fireSingleDirect 直判过了（同一次按压被转发两遍）
-                    // ⇒ 不再补一次单击，否则一次按压会执行两个单击动作。
-                    if (SystemClock.uptimeMillis() - lastDirectSingleAt < doubleClickMs) {
-                        XLog.d("${id.label}：这次按压已直判过单击，跳过补判")
-                        p.sawFirstRelease = false
-                        p.doubleWindowAt = 0L
-                    } else {
-                        XLog.w("${id.label}：单击")
-                        p.sawFirstRelease = false
-                        p.doubleWindowAt = 0L
-                        dispatch(id, Gesture.SINGLE, config, repeat = false)
+                try {
+                    val p = pending(id)
+                    // 窗口到了、期间没有第二次按下 → 单击
+                    if (p.sawFirstRelease && p.doubleWindowAt != 0L) {
+                        // 这次按压已经当场判过单击（同一次按压被转发两遍）
+                        // ⇒ 不再补一次单击，否则一次按压会执行两个单击动作。
+                        if (SystemClock.uptimeMillis() - lastDirectSingleAt < doubleClickMs) {
+                            XLog.d("${id.label}：这次按压已直判过单击，跳过补判")
+                            p.sawFirstRelease = false
+                            p.doubleWindowAt = 0L
+                        } else {
+                            XLog.w("${id.label}：单击")
+                            p.sawFirstRelease = false
+                            p.doubleWindowAt = 0L
+                            dispatch(id, Gesture.SINGLE, config, repeat = false)
+                        }
                     }
+                } catch (e: Throwable) {
+                    // 计时器跑在 system_server 主线程上，抛出去就是整机崩
+                    XLog.w("双击窗口判定失败（忽略）：${id.label}", e)
                 }
             },
             doubleClickMs.toLong(),

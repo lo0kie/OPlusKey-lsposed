@@ -119,9 +119,9 @@ object Reflect {
     }
 
     /**
-     * 调用静态方法（按名字 + 参数个数查找）。查找顺序刻意「先 `methods`（public 含继承）→
-     * 再 `methodsOf`（含私有 declared）」—— framework 里大量 hidden 方法 `cls.methods`
-     * 匹配不上且静默返回 null，这里补上「没找到就记账」。
+     * 调用静态方法（按名字 + 参数个数查找）。查找走 [methodsOf]（沿类链的 declared 全集，
+     * 含私有与 hidden）—— 不用 `cls.methods`：framework 里大量 hidden 方法在那里匹配不上
+     * 且静默返回 null，这里补上「没找到就记账」。
      */
     fun callStatic(cls: Class<*>, name: String, vararg args: Any?): Any? {
         val m = methodsOf(cls).firstOrNull {
@@ -136,21 +136,6 @@ object Reflect {
             m.invoke(null, *args)
         } catch (e: Throwable) {
             XLog.w("调静态方法失败：${cls.name}#$name", e)
-            null
-        }
-    }
-
-    /**
-     * 读取静态字段（例如 framework 单例 `INSTANCE`）。失败就地吞掉、绝不向上抛：
-     * 读静态字段会触发宿主类静态初始化，而装 Hook 的时机早于 system_server 初始化顺序，
-     * 可能抛 `ExceptionInInitializerError` / `NoClassDefFoundError`，顺 `onPackageReady`
-     * 抛上去就是开机循环。
-     */
-    fun staticField(cls: Class<*>, name: String): Any? {
-        return try {
-            field(cls, name)?.get(null)
-        } catch (e: Throwable) {
-            XLog.w("读静态字段失败 ${cls.name}#$name（宿主类初始化可能失败，本次降级）", e)
             null
         }
     }

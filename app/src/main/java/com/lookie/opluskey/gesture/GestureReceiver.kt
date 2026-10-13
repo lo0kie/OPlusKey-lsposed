@@ -55,6 +55,35 @@ internal object GestureReceiver {
      */
     private const val STALE_MS = 2000L
 
+    /** 自持循环判据：窗口内收到这么多次「放行」就认为环起来了。 */
+    private const val PASSTHROUGH_BURST = 3
+    private const val PASSTHROUGH_WINDOW_MS = 1000L
+
+    /** 判出环后停掉注入的时长（毫秒）——宁可这一次原生动作拿不到，也不能让环跑起来。 */
+    private const val PASSTHROUGH_COOLDOWN_MS = 3000L
+
+    /** 「放行」突发计数（只在主线程读写，不需要额外同步）。 */
+    private var passthroughBurst = 0
+    private var passthroughBurstAt = 0L
+    private var passthroughCooldownUntil = 0L
+
+    /** 见 [PASSTHROUGH_BURST]：真环起来了就返回 true（调用方跳过注入）。 */
+    private fun tooManyPassthrough(): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now < passthroughCooldownUntil) return true
+        if (now - passthroughBurstAt > PASSTHROUGH_WINDOW_MS) {
+            passthroughBurstAt = now
+            passthroughBurst = 0
+        }
+        passthroughBurst++
+        if (passthroughBurst >= PASSTHROUGH_BURST) {
+            passthroughCooldownUntil = now + PASSTHROUGH_COOLDOWN_MS
+            passthroughBurst = 0
+            return true
+        }
+        return false
+    }
+
     fun install(loader: ClassLoader) {
         if (receiver != null) {
             XLog.i("手势接收器已经注册过，跳过")
@@ -91,6 +120,16 @@ internal object GestureReceiver {
 
         val r = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
+                // 设置页问「宿主侧的模块在不在」——回一条报活（见 [KeyModule.ACTION_HOST_SERVICE_QUERY]）。
+                //  要这一问是因为报活广播是**一次性**的：我们发出时设置页可能还没起来。
+                if (intent?.action == KeyModule.ACTION_HOST_SERVICE_QUERY) {
+                    XLog.w("设置页问宿主模块在不在 —— 回一条报活")
+                    context?.sendBroadcast(
+                        Intent(KeyModule.ACTION_HOST_SERVICE_UP)
+                            .setPackage(KeyModule.PAGE_PACKAGE),
+                    )
+                    return
+                }
                 val key = intent?.getStringExtra(KeyModule.EXTRA_KEY)
                 val phase = intent?.getStringExtra(KeyModule.EXTRA_PHASE)
                 val repeat = intent?.getBooleanExtra(KeyModule.EXTRA_REPEAT, false) ?: false
@@ -100,11 +139,15 @@ internal object GestureReceiver {
             }
         }
         try {
-            // Android 14（API 34）起动态注册必须显式声明导出性；发送方是借来的宿主 Context（uid 相同），
-            // 属应用内广播，用 NOT_EXPORTED。
+            // Android 14（API 34）起动态注册必须显式声明导出性。发送方是 system_server（uid 1000，
+            // 经 GestureForwarder 发出），不是宿主自己 —— 系统身份对 NOT_EXPORTED 接收器照样可达，
+            // 而普通 App 即便发同名广播也进不来（别按「同 uid 宿主」去改成 EXPORTED，那是伪造口子）。
             ctx.registerReceiver(
                 r,
-                IntentFilter(KeyModule.ACTION_GESTURE),
+                IntentFilter(KeyModule.ACTION_GESTURE).apply {
+                    // 同一个接收器兼收设置页那句「在不在」（见上面那个 action 分支）
+                    addAction(KeyModule.ACTION_HOST_SERVICE_QUERY)
+                },
                 Context.RECEIVER_NOT_EXPORTED,
             )
             receiver = r
@@ -142,6 +185,12 @@ internal object GestureReceiver {
                 ),
             )
             XLog.w("已启动宿主的 $KEY_SERVICE（防进程冻结，见 keepProcessAwake 注释）")
+            // 顺手给设置页报个活：**宿主侧的模块加载好了**（这一步只有模块注入成功才跑得到）。
+            //  首页据此把「模块未生效」的提示收掉、解除整页禁用。设置页与宿主同包，
+            // `setPackage` 指定包名就能送到它注册的接收器（不必轮询）。
+            ctx.sendBroadcast(
+                Intent(KeyModule.ACTION_HOST_SERVICE_UP).setPackage(KeyModule.PAGE_PACKAGE),
+            )
         } catch (e: Throwable) {
             // 兜底在 `handle` 的过期丢弃：冻结顶多让动作晚执行/被丢，不会集体炸出
             XLog.w("启动宿主服务失败（进程可能仍会被冻结）：${e.message}")
@@ -240,7 +289,18 @@ internal object GestureReceiver {
         // 放行（配了 native / passthrough）：重新注入一次侧键，让系统那套照常跑。
         // 主开关关不关都要放 —— 走到这里说明判定侧已决定放行。
         if (phaseId == KeyModule.PHASE_PASSTHROUGH) {
-            XLog.d("${key.label}：放行一次（重新注入 keyCode=${key.keyCode}）")
+            // 记一次「放行窗口」：本次按压在框架侧还有一条场景派发（原生动作的载体），
+            // 宿主侧的钩子据此放它过去（见 [SideKeyGestureHooks.notePassthrough]）。
+            SideKeyGestureHooks.notePassthrough()
+            // 自持循环的兜底闸：正常一次「放行」只注入一次；短时间内反复收到放行判定
+            // 说明重注入的事件被再认领了一次（旧行为 / 个别 ROM 的 deviceId 判不出合成事件），
+            // 这时停掉注入，宁可这一次原生动作拿不到也不能让环跑起来。
+            if (tooManyPassthrough()) {
+                XLog.w("${key.label}：放行判定 ${PASSTHROUGH_BURST} 次/${PASSTHROUGH_WINDOW_MS}ms —— " +
+                    "疑似自持循环，暂停注入 ${PASSTHROUGH_COOLDOWN_MS}ms")
+                return
+            }
+            XLog.w("${key.label}：放行一次（重新注入 keyCode=${key.keyCode}）")
             r.injectKeyForForward(key.keyCode)
             return
         }

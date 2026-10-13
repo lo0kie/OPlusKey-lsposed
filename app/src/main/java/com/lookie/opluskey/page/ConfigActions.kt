@@ -1,9 +1,5 @@
 package com.lookie.opluskey.page
 
-import android.content.Context
-import android.content.Intent
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.key
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.XLog
@@ -24,9 +20,16 @@ internal fun SettingsPage.resetAll() {
     if (write(Config.DEFAULT, "reset_all")) toast("已重置")
 }
 
-/** 重启模块：杀宿主主进程（com.oplus.gesture，不是自身 :ui）让系统把可见页面整棵拉起；AlarmManager 自启会被判后台启动拦截。点了没反应时 logcat -s OplusKey 的重启日志就是判据，页面上也会弹一条提示（2026-10-13 起）。 */
+/**
+ * 重启服务：杀宿主主进程（`com.oplus.gesture`，不是自身 `:ui`）让系统把可见页面整棵拉起；
+ * AlarmManager 自启会被判后台启动拦截。点了没反应时 `logcat -s OplusKey` 的重启日志就是判据，
+ * 页面上也会弹一条提示（2026-10-13 起）。
+ *
+ *  叫「服务」不叫「模块」：这一步只动**宿主进程**那一层，**不会**重新加载 system_server 里那份注入
+ *（那个只能整机重启）。菜单上的文案跟着这条走，别再写回「重启模块」。
+ */
 internal fun SettingsPage.restartModule() {
-    XLog.i("菜单：重新启动模块 —— 杀宿主主进程")
+    XLog.i("菜单：重启服务 —— 杀宿主主进程")
     tickNow()
     val main = hostMainPids()
     // 只打本包相关的进程（整机那张表一行几 KB，没必要）。真机上报「点了没反应」时，
@@ -49,7 +52,7 @@ internal fun SettingsPage.restartModule() {
     }
     // 杀完等系统把宿主主进程重新拉起（本页跑在 `:ui` 进程里，不受影响）。
     //  这一条是「菜单那个重启」的反馈：不带它的话，用户只能靠「过一会儿动作生效了没有」猜。
-    toast("已重启模块")
+    toast("已重启服务")
 }
 
 /** 宿主主进程 pid 列表：runningAppProcesses 与 /proc cmdline 两条路互为兜底，均排除自身 :ui 进程。 */

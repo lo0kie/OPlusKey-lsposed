@@ -9,6 +9,3 @@ internal const val VERBOSE_LOG: Boolean = false
 
 /** 构建类型标识，界面底部会显示，便于区分手上这个包是哪种。 */
 internal const val BUILD_KIND: String = "release"
-
-/** 调试通道（`page/PageDebugChannel`）：release 恒 `false`，注册死分支与接收器类被 R8 消掉。 */
-internal const val DEBUG_CHANNEL: Boolean = false

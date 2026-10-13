@@ -50,8 +50,14 @@ data class Command(
         /** 步骤间隔默认值（毫秒）：400ms 实测够广播类动作跨进程落地，又不至于让多步链太慢。 */
         const val DEFAULT_STEP_DELAY_MS = 400
 
-        /** 步骤间隔下限：0 = 不等待。 */
-        const val MIN_STEP_DELAY_MS = 0
+        /**
+         * 步骤间隔下限（毫秒）。
+         *
+         *  不给 0：`keyevent:` 是同毫秒生效的，间隔为 0 时前一步还没落地下一步就发出去了，
+         * 两步会挤在一起（多条命令里「返回 → 最近任务」这类组合尤其明显）。
+         * 读配置时也按它钳制，所以老配置里低于 200 的值会被抬上来。
+         */
+        const val MIN_STEP_DELAY_MS = 200
 
         /** 步骤间隔上限（毫秒），与连续触发间隔一致。 */
         const val MAX_STEP_DELAY_MS = 3000
