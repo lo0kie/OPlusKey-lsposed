@@ -1,5 +1,9 @@
 > 系统镜像里读出来的。实现必须对齐本文件；本文件与代码冲突时以本文件为准，并回头修代码。
 
+> ⚠️ **本文是按时间累积的实测记录。** 2026-10-14 做过一次包结构重构与配置位置迁移，早于该日的章节里包名（`hook/` `page/`
+> `gesture/` `config/`）与配置路径（CE）按**当时**的写法保留 —— 今天的对应关系见 `docs/architecture-refactor.md`
+> 的映射表，配置位置见 9.9；指向**现存文件**的引用已更新为新路径。
+
 ## 一、目标设备
 
 | 项         | 值                                                                                  |
@@ -169,6 +173,19 @@ SecurityException: ... requires oplus.permission.settings.LAUNCH_FOR_EXPORT
 OCR 扫描 ocrscanner         控制中心 control_center
 启动应用 launch_app         流体云 fluid（ring / long_press / vibrate / silent）
 ```
+
+⚠️ **`control_center` 只是资源名，没有可照抄的调用目标**：场景表（§17.4 那份实测全列）里**没有** 这一行 —— 拿不到
+`scene_owner` / `*_action_info`。模块侧的做法是自己试候选，**已真机定死**（2026-10-14 22:20， `PLK110`，重启后）：
+
+| 项            | 结论                                                                                                                                                                                                                    |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 命中          | **`IStatusBar.animateExpandSettingsPanel(String)`**（子面板传 `null`），经 `StatusBarManagerService.mBar` —— 那条 binder 通 SystemUI，**这一层没有权限检查**（同一个服务上 `togglePanel()` 一直是通的，就是同一个原因） |
+| 怎么调        | 在 system_server 里 `ServiceManager.getService("statusbar")` 拿到服务实例 → 反射读它的 `mBar` 字段 → 在这个对象上调 `animateExpandSettingsPanel(null)`                                                                  |
+| 判据行（`w`） | `已在本机调 IStatusBar.animateExpandSettingsPanel（控制中心）`                                                                                                                                                          |
+| 备用候选      | 服务那层的 `expandSettingsPanel(...)`（AOSP 在那里有 `enforceExpandStatusBar()`）—— **本次没用上**，留着当兜底；两条都落空时代码会把带 `Expand` / `Panel` 的方法名打进日志                                              |
+| 通知中心      | 同服务上的 **`IStatusBarService.togglePanel()`**（0 参，展开 / 收起），两条动作共用一条跨进程通道                                                                                                                       |
+
+代码在 `inject/system/StatusBarBridge.expandControlCenterLocal`；⚠️ 注入侧 ⇒ 改它要整机重启。
 
 ## 六、其它已确认事实
 
@@ -370,7 +387,7 @@ $ ls -Z /data/adb/OPlusKey/config.conf
 3. **`hook/ProviderAccess.kt` 与 `hook/SystemActionButtonConfig.kt` 的 AMS 反射路径删除**。它俩的唯一用途是「读
    `Settings.Global`」（通道已死）与「读系统侧键映射」（README 自认的已知限制，本来就读不到）。**想读系统侧键映射就在宿主进程里读**
    ——宿主就是 `ActionButtonProvider` 的宿主，`ContentResolver` 在那里完全可用。
-4. 保留 `hook/SystemContext.kt`：注入侧发广播 / `startService`
+4. 保留 `inject/system/SystemContext.kt`：注入侧发广播 / `startService`
    仍要一个可用的 Context（`ActivityThread.getSystemContext()` 的那个 `mAppThread` 是 null，`sendBroadcast`
    内部要它，所以必须借一个真实 App 进程的 Application Context）。
 
@@ -380,7 +397,7 @@ $ ls -Z /data/adb/OPlusKey/config.conf
 > 17）**：链路**端到端跑通**。开机 5/5 接管点全挂上；单击 / 双击 / 长按三种手势实测判定正确、动作分发正确。
 
 1. **Hook 面**：`StrategyActionButtonKeyLaunchApp#actionInterceptKeyBeforeQueueing`
-2. **配置面**：配置只放**宿主 App 私有目录**（`/data/data/com.oplus.gesture/files/`），由宿主进程（判定 + 执行）读，**热加载**、改完立即生效、**无需重启**。注入侧**不读配置**（它读不到，见六之七）；它唯一需要的主开关布尔走广播。系统侧键映射由**宿主进程**用
+2. **配置面**：配置只放**宿主 App 私有目录**（`/data/user_de/0/com.oplus.gesture/files/`），由宿主进程（判定 + 执行）读，**热加载**、改完立即生效、**无需重启**。注入侧**不读配置**（它读不到，见六之七）；它唯一需要的主开关布尔走广播。系统侧键映射由**宿主进程**用
    `ContentResolver` 读 `content://uri.gesturemanagerprovider/action_button`（见六之五 / 六之七）。
 3. **降级**：任一环失败只记日志，绝不抛给 system_server。provider 读失败（本机必然，见 六之五）与 `shell:`
    不可用（SELinux）都属已知限制， **不影响按键接管**。
@@ -667,23 +684,23 @@ COUIPageIndicator     是页码圆点，不是 tab
 圆底    action_button_oval_<f> 例：action_button_oval_screenshot
 ```
 
-⇒ `page/ActionCatalog.kt` 里**直接写全名**，不拼前缀。
+⇒ `ui/model/ActionCatalog.kt` 里**直接写全名**，不拼前缀。
 
 设置页侧（`u:r:platform_app:s0`）的结果：
 
-| 路径                                                      | 写           | 读           |
-| --------------------------------------------------------- | ------------ | ------------ |
-| `/data/data/com.oplus.gesture/files/opluskey_config.conf` | **OK**       | **OK**       |
-| `/sdcard/OPlusKey/config.conf`                            | FAIL(ENOENT) | FAIL         |
-| `/storage/emulated/0/OPlusKey/config.conf`                | FAIL(ENOENT) | FAIL         |
-| `/data/system/OPlusKey/config.conf`                       | FAIL(EACCES) | FAIL(EACCES) |
-| `/data/local/tmp/opluskey_config.conf`                    | FAIL(EACCES) | FAIL         |
-| `/data/misc/opluskey/config.conf`                         | FAIL(ENOENT) | FAIL         |
+| 路径                                                           | 写           | 读           |
+| -------------------------------------------------------------- | ------------ | ------------ |
+| `/data/user_de/0/com.oplus.gesture/files/opluskey_config.conf` | **OK**       | **OK**       |
+| `/sdcard/OPlusKey/config.conf`                                 | FAIL(ENOENT) | FAIL         |
+| `/storage/emulated/0/OPlusKey/config.conf`                     | FAIL(ENOENT) | FAIL         |
+| `/data/system/OPlusKey/config.conf`                            | FAIL(EACCES) | FAIL(EACCES) |
+| `/data/local/tmp/opluskey_config.conf`                         | FAIL(EACCES) | FAIL         |
+| `/data/misc/opluskey/config.conf`                              | FAIL(ENOENT) | FAIL         |
 
 ⇒ 只能放**宿主 App 自己的私有目录**。写入时必须**逐级放开遍历权限**：
 
 ```
-/data/data/com.oplus.gesture              0700 → 0711   ← 不放开 system uid 进不来
+/data/user_de/0/com.oplus.gesture              0700 → 0711   ← 不放开 system uid 进不来
 /data/data/com.oplus.gesture/files         0775
 …/files/opluskey_config.conf              0644
 ```
@@ -865,7 +882,7 @@ MD3 的 `RadioButton` 选中色默认是 `primary`。而我们的 `primary` 被�
   `mStatusBarContrastWhenTransparent`，对 targetSdk ≥ Q 默认开）。旁证：宿主自己的 `BaseActionActivity#onCreate`
   只对**导航栏**关了这个（`setNavigationBarContrastEnforced(false)`），漏了状态栏。
 
-**修法（两条一起上，`page/SettingsPageHooks.kt`）**：
+**修法（两条一起上，`ui/SettingsPageHooks.kt`）**：
 
 1. `Window.setStatusBarContrastEnforced(false)` —— 关掉系统那层薄纱；调用点必须在 `setContentView`
    **之后**（默认值来自主题属性 `android:enforceStatusBarContrast`，首次建 `DecorView` 时会按主题重算一遍）；
@@ -907,8 +924,8 @@ MD3 的 `RadioButton` 选中色默认是 `primary`。而我们的 `primary` 被�
   `FLAG_ACTIVITY_NEW_TASK` （`flg=0x10000000`，`mCallingPackage=com.android.settings`）拉它的，两条叠加 = 独立任务。
 - 卡片标题取的是**根 Activity 所属应用**的标签，而 `com.oplus.gesture` 的 `application-label-zh-CN`
   就是「**手势体感**」⇒ 最近任务里显示「手势体感」。
-- **与本模块无关**：模块不碰任务 / 启动模式，`page/` 下没有任何 `startActivity` /
-  `setTaskDescription`（`FLAG_ACTIVITY_NEW_TASK` 只出现在 `hook/ActionRunner.kt`，
+- **与本模块无关**：模块不碰任务 / 启动模式，`ui/` 下没有任何 `startActivity` /
+  `setTaskDescription`（`FLAG_ACTIVITY_NEW_TASK` 只出现在 `host/action/ActionRunner.kt`，
 - 真要改只能改**卡片语义**、改不了任务归属：`Activity.setTaskDescription()` 换标题与图标，或
   `AppTask.setExcludeFromRecents(true)` 从最近任务里去掉。
 
@@ -1088,6 +1105,44 @@ mDreamingLockscreen=true              ← 手机还停在锁屏
 ⇒ 首次解锁前 **CE（凭据加密）存储未挂载**，`/data/user/0/<包名>` 一律不可见，root 去 `mkdir` 会报
 `Required key not available`。 **这是无害的**：按键路径每次手势都重读配置（`GestureReceiver.handle` →
 `ConfigStore.read()`），解锁后再按就正常。只有「开机瞬间读一次」的地方（宿主进程安装时那条日志）会看到默认值。
+
+> **已被 9.9 取代（2026-10-14）**：配置后来挪到了 **DE**
+> 目录，解锁前也读得到 ——本节说的「开机到解锁之间只能读到默认值」不再成立，留作 CE 布局时期的记录。
+
+### 9.9 配置改放 DE 目录：解锁前也能读到（实测，2026-10-14）
+
+9.8 记的是「CE 存储解锁前不可见 ⇒ 开机到解锁之间配置读成默认值 ⇒ 侧键那一段走系统原生」。那不是修不掉的限制，是**位置选错了**：换成
+**DE（设备加密）** 目录即可。
+
+宿主 App 的 DE 目录本来就存在（它是 `PARTIALLY_DIRECT_BOOT_AWARE`，`dumpsys package` 里可见
+`deDataInode`），只是它自己从没用过，所以里面没有 `files/`：
+
+```
+$ ls -ld /data/user_de/0/com.oplus.gesture
+drwx------ u0_a277 u0_a277   ...    ← 在，但只有 cache/ code_cache/ databases/ shared_prefs/
+$ ls -l /data/user/0/com.oplus.gesture/files/opluskey_*
+-rw-r--r--  364  opluskey_config.conf   ← 老位置在 CE
+```
+
+改法：`ConfigStore.HOST_DIR` 换成
+`/data/user_de/0/com.oplus.gesture`，三个文件（主配置 / 命令库 / 界面状态）一起走。**没写任何兼容代码**：本模块尚未发行过，CE 上那份旧文件直接删掉即可，不做搬迁。
+
+真机复核（`kill` 宿主主进程让它带着新路径重读）：
+
+```
+13:26:42.284  侧键宿主主进程启动，开始安装手势劫持 Hook
+13:26:42.291  宿主进程读到配置：接管=true 单击=zoom:mini 双击=none 长按=power:menu（文件 /data/user_de/0/…）
+13:26:42.821  配置已更新：长按=250ms 双击窗口=200ms 立即单击=true 单击=zoom:mini
+```
+
+路径换了、读到的是真配置，注入侧那份也跟着刷新了。
+
+- 生效方式：这次只动**宿主进程那一层**（`ConfigStore` 只给 `host/` `ui/` 用，注入侧不引 `core/config`），所以 `kill`
+  宿主主进程即可，**不用整机重启**。
+- ⚠️
+  **仍未验证**：锁屏（解锁前）状态下宿主进程能否读到 DE。本机现在已解锁，这一段只能等下一次开机才看得到；现有证据只到「DE 目录本身开机即可读」（9.8 里
+  `/data/user_de/0/io.github.lo0kie.opluskey` 在锁屏时可见）。
+- ⚠️ **行为反转**：解锁前也接管 ⇒ 锁屏下侧键按模块配置走，不再是系统原生的相机 / 手电。
 
 ## 十、宿主进程里能**安全**使用哪些系统组件（离线逆向，2026-10-11）
 
@@ -1284,11 +1339,12 @@ COUI 探测：com.coui.appcompat.button.COUIButton 造出来了
 
 ⇒ 一般规律：尺寸**运行时按名字取**（`res.getIdentifier(name, "dimen", "com.oplus.gesture")`），不要把我离线量到的某个数写死进代码 —— 换个字号档就偏了。
 
-不是猜的。涉及的文件：`hook/KeyHooks.kt`（system_server 侧）、`hook/ActionRunner.kt`（宿主侧）。
+不是猜的。涉及的文件：`inject/KeyHooks.kt`（system_server 侧）、`host/action/ActionRunner.kt`（宿主侧）。
 
 ### 10.8 宿主的包可见性：声明了 `QUERY_ALL_PACKAGES`（离线核对 `reference/gesture.apk`，2026-10-13）
 
-要列**系统应用**（`page/AppPicker.kt` 里「显示系统应用」那一项）先得回答「看得见哪些包」，答案就在宿主自己的清单里：
+要列**系统应用**（`ui/screen/AppPicker.kt`
+里「显示系统应用」那一项）先得回答「看得见哪些包」，答案就在宿主自己的清单里：
 
 ```bash
 aapt2 dump xmltree --file AndroidManifest.xml reference/gesture.apk | grep -A1 QUERY_ALL_PACKAGES
@@ -1300,7 +1356,8 @@ aapt2 dump xmltree --file AndroidManifest.xml reference/gesture.apk | grep -A1 Q
   拿得到全量（含系统应用），`getLaunchIntentForPackage` / `getApplicationInfo` 对任意包都通。
 - ⇒ **模块自己的清单不要加这条权限**：权限按 uid 判，而页面代码的 uid 是宿主（同 `AndroidManifest.xml` 里 `INTERNET`
   那条注释的道理）。
-- ⚠️ 这条推翻了一处旧文案：「选择应用」页的空态写着「系统限制了本页可见的应用列表」——那个前提不成立（真出现空列表只会是别的原因）。
+- ⚠️ 这条推翻了一处旧文案：「选择应用」页的空态写着「系统限制了本页可见的应用列表」——那个前提不成立（真出现空列表只会是别的原因）。（2026-10-14 该空态已按此改成「没有找到可以打开的应用」，见
+  `changelog/2026-10-14-结构重构.md`。）
 - ⚠️ 另一笔：`getLaunchIntentForPackage` 认的入口是 `CATEGORY_INFO` /
   `CATEGORY_LAUNCHER`，对**没有这两个入口**的系统应用一律返回 null
   —— 拿它当「能不能列出来」的判据，会把追加集合筛成空集（2026-10-13 踩过：开关打开了，列表毫无变化）。要「只列拉得起来的」才用它，要「列出装着的系统应用」就别用它。
@@ -1370,7 +1427,7 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.GESTURE -p com.oplus.gestu
 步骤的落地时间差三个数量级：`keyevent:` 注入**同毫秒**生效；「最近任务 / 通知栏」跨四个进程（几百毫秒）；`shell:`
 另起进程、完全异步。 `test`（HOME → 小布识屏 → 最近任务 → BACK → 通知栏）5 步曾在 **27ms** 内全部派发完，
 
-- 实现：`hook/ActionRunner.runSteps` 用 `handler.postDelayed` 串成链（**绝不能 `Thread.sleep`**
+- 实现：`host/action/ActionRunner.runSteps` 用 `handler.postDelayed` 串成链（**绝不能 `Thread.sleep`**
   —— 这条链路在宿主主线程上，见 AGENTS.md 的 execShell 前车之鉴）；
 - 间隔**每条命令可设**：`Command.stepDelayMs`（默认 400ms、0 = 不等），命令库文件第 4 列，设置页「命令」卡最后一行滑杆。
 
@@ -1448,7 +1505,8 @@ public void setRingerModeInternal(int ringerMode) {
 }
 ```
 
-`@hide` ⇒ 只能反射调（宿主进程里隐藏 API 反射可用，同 `hook/KeyInjector` 调 `InputManager.injectInputEvent` 那条先例）。
+`@hide` ⇒ 只能反射调（宿主进程里隐藏 API 反射可用，同 `inject/input/KeyInjector` 调 `InputManager.injectInputEvent`
+那条先例）。
 
 | 做法                                                        | 结果                                                                                       |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -1687,6 +1745,10 @@ $  ← (system) 一条 I/ 都没有
 
 ## 十六、「放行」的两条坏路：空转与自持循环（实测，2026-10-13，PLK110）
 
+> ⚠️ **2026-10-14：「放行」（`native` / `passthrough`）这一档已从模块里整条删掉**
+> —— 判定手势必须先吞掉 DOWN，做不到「只交还某一个手势」，用户要的是「整键给系统」，而那正是主开关的语义。本节保留的是**当时**的实测记录（重注入、场景派发、自持循环都在这一档上踩过），不代表现在的实现；现状与取舍见
+> `docs/implementation.md` 第三节。
+
 「放行」（`native` / `passthrough`）的实现是「吞掉原始键 + 宿主侧重注入一对 735」。真机实测暴露了两条坏路：
 
 **① 空转**（`single=native`
@@ -1777,7 +1839,7 @@ ServiceManager.getService("window")  →  WindowManagerService 实例（不是�
 
 （`long_press_action_info` / `second_menu_*` 另有值，多数与 click 指向同一个服务；完整行见真机。）
 
-- **`type=service` 就是「起一个服务」**：模块的 `hook/OplusFeature` 只抄其中四行，不多猜。
+- **`type=service` 就是「起一个服务」**：模块的 `host/action/OplusFeature` 只抄其中四行，不多猜。
 - **三个目标服务都带签名级权限**（`DataCollectService` → `com.oplus.permission.safe.SECURITY`； `InvokeEntranceService`
   → `oppo.permission.OPPO_COMPONENT_SAFE`），而**宿主 `com.oplus.gesture` 本人就持有** 这些权限（另有
   `WRITE_SECURE_SETTINGS` / `ACCESS_NOTIFICATION_POLICY`(granted) /
@@ -1847,8 +1909,8 @@ ServiceManager.getService("window")  →  WindowManagerService 实例（不是�
   落到 UNKNOWN 分支，记 `trigger type error`
   后什么都不做。另有前置：AI 内存（闪记）已装、`USER_SETUP_COMPLETE`、开关未关，否则 `stopSelf`。
 
-模块侧结论：`hook/OplusFeature.Target` 增加 `message`（ Messenger 型发什么码）， `hook/AppLauncher` 里 bind →
-`Messenger.send` → 立刻解绑；带 extras 的照常 start。
+模块侧结论：`host/action/OplusFeature.Target` 增加 `message`（ Messenger 型发什么码）， `host/action/AppLauncher`
+里 bind → `Messenger.send` → 立刻解绑；带 extras 的照常 start。
 
 ### 17.5 三个 `oplus:` 动作的真实入口（2026-10-14 复核，PLK110）
 
@@ -1924,6 +1986,9 @@ ServiceManager.getService("window")  →  WindowManagerService 实例（不是�
   `requested permissions` 里（`dumpsys package`）。
 
 ### 17.6 小窗打开应用的接口（`oplus-framework.jar`，2026-10-14，PLK110）
+
+> **汇总定稿见 `docs/zoom-window.md`**
+> —— 两条命令的现行实现、所有入口配方、动画方案、反射坑都在那边；本节保留过程性取证（逐条调用链、日志原文、试错记录）。
 
 ColorOS 的「小窗」在框架里叫 **ZoomWindow**（同族还有 `startMiniZoomFromZoom` / `hideZoomWindow` /
 `getZoomBoundsByTaskId` / `registerZoomStateListener`）。
@@ -2002,7 +2067,8 @@ android.app.OplusActivityManager#startZoomWindow(Intent, Bundle, int userId, Str
   `FlexibleTaskController.startFlexibleTaskInternal` 里 `extra_window_mode == 0x64` 时才
   `setLaunchWindowingMode(100)`；home 正在过渡时它会**延后执行并立刻返回 0**（`Slog.d` 里有 "wait for
   HomeTransitionFinish startFlexibleTask"）。
-- **`FLAG_ACTIVITY_MULTIPLE_TASK` 才是「前台应用也能起小窗」的那把钥匙（2026-10-14 起模块已不再用它，见 §17.6.5：它会无限多开实例）**（二次真机对照，同一台机、`设置`
+- **`FLAG_ACTIVITY_MULTIPLE_TASK`
+  才是「前台应用也能起小窗」的那把钥匙（2026-10-14 起模块已不再用它，见 §17.6.5：它会无限多开实例）**（二次真机对照，同一台机、`设置`
   当前正 resume，探针逐组合单调用）：
 
   | flags                                                | 返回 | 结果                                                  |
@@ -2151,7 +2217,7 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
 | key                                 | 值    | 作用                                                                                                                       |
 | ----------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------- |
 | `android.activity.windowingMode`    | `100` | **必须**。`ActivityOptions#fromBundle` 只认这个（**点号**）；`extra_window_mode` 那条下划线的 key 在这条路上服务端根本不读 |
-| `android:activity.mZoomLaunchFlags` | `2`   | 决定**尺寸档**：`2` = **展开**的普通小窗；`32` = **收起**的最小化窗。见下面那张对照表 |
+| `android:activity.mZoomLaunchFlags` | `2`   | 决定**尺寸档**：`2` = **展开**的普通小窗；`32` = **收起**的最小化窗。见下面那张对照表                                      |
 | `extra_window_mode`                 | `100` | 带上无害（只有 `startZoomWindow` 那条读它）                                                                                |
 
 **真机对照**（`设置` / `mark.via` 都**在前台**，直接对前台那份任务调）：
@@ -2165,17 +2231,18 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
 
 - **taskId 不变 ⇒ 是同一份任务被原地改了窗口模式**：没有第二份实例、界面状态（滚动位置 / 输入内容 / 返回栈）全保留，也不需要先回桌面。第三方应用（`mark.via`，task
   `#25505`）同样通过。
-- **只给 `mZoomLaunchFlags`、不给窗口模式不行**：那次 `pendingLaunchZoom:false`，钩子跑完什么都没做
-  （`windowingMode` 仍是 `1`）—— 判据是 `getLaunchWindowingMode() == 100`，不是 flags。
+- **只给 `mZoomLaunchFlags`、不给窗口模式不行**：那次 `pendingLaunchZoom:false`，钩子跑完什么都没做（`windowingMode`
+  仍是 `1`）—— 判据是 `getLaunchWindowingMode() == 100`，不是 flags。
 - **`mZoomLaunchFlags` 决定的是「展开 / 收起」哪一档**，给错了就会开成右上角那条最小化窗：
 
-  | `mZoomLaunchFlags` | 服务端 | `windowType` | `zoomRect` / `scale` | 观感 |
-  |---|---|---|---|---|
-  | `2` | `setUserPositionInfo`（沿用用户上次的位置与尺寸） | `1` | `Rect(126,319 - 1146,2131)` / `0.8017` | **展开**的普通小窗（居中大面积）✓ |
-  | `32` | `fullToMini = zoomLaunchFlags == 32` → `getMiniFlexibleTaskInfo` | `2` | `Rect(898,168 - 1203,710)` / `0.2397` | **收起**的最小化窗（右上角一条）|
+  | `mZoomLaunchFlags` | 服务端                                                           | `windowType` | `zoomRect` / `scale`                   | 观感                              |
+  | ------------------ | ---------------------------------------------------------------- | ------------ | -------------------------------------- | --------------------------------- |
+  | `2`                | `setUserPositionInfo`（沿用用户上次的位置与尺寸）                | `1`          | `Rect(126,319 - 1146,2131)` / `0.8017` | **展开**的普通小窗（居中大面积）✓ |
+  | `32`               | `fullToMini = zoomLaunchFlags == 32` → `getMiniFlexibleTaskInfo` | `2`          | `Rect(898,168 - 1203,710)` / `0.2397`  | **收起**的最小化窗（右上角一条）  |
 
   判「展开还是收起」最省事的是 `OplusZoomWindowInfo#windowType`（`1` = 展开，`2` = 收起），取值走
   `OplusActivityManager#getCurrentZoomWindowState()`，或直接看 `notifyZoomStateChanged` 那行日志。
+
 - **和 17.6.2 的「交换应用」比**：那条要求「另有一份**不同包**的小窗在场」，服务端还明确拒绝同包；这条只要一个 taskId，同包完全没问题。两者都能动现有任务，这条干净得多。
 - **模块侧用的就是这一条**（`zoom:mini`）：一步到位、原地收、状态全留。它没有窗口动画，见 17.6.4。
 
@@ -2199,53 +2266,909 @@ task 的 root activity 的包」；它下面紧跟着 `resetActivityOption(activ
 
 #### 17.6.4 「原地收 + 有转场动画」的四条路对比（2026-10-14 真机实测）
 
-17.6.3 那条 recents 正门能原地收，但**没有窗口动画** —— 按下侧键那一瞬窗户直接跳成小窗。把四条路摆一起量过：
-判据是 logcat 里 `animation-leash` 的条数（真有窗户动画才会刷它，伴随
-`SurfaceAnimationRunner: onAnimationStart`），再加 `getAllTopAppInfos()` 里 taskId 有没有变。
+17.6.3 那条 recents 正门能原地收，但**没有窗口动画**
+—— 按下侧键那一瞬窗户直接跳成小窗。把四条路摆一起量过：判据是 logcat 里 `animation-leash`
+的条数（真有窗户动画才会刷它，伴随 `SurfaceAnimationRunner: onAnimationStart`），再加 `getAllTopAppInfos()`
+里 taskId 有没有变。
 
-| 变体 | 原地（taskId 不变） | `animation-leash` |
-|---|---|---|
-| `startZoomWindow` + `NEW_TASK \| MULTIPLE_TASK` | ✗ 另起一份实例 | 2 |
-| `startActivityFromRecentsForFlexible(taskId, {windowingMode=100, flags=2})` | ✓ | **0** |
-| 同上但 `flags=32`（`fullToMini` 档） | ✓ | **0** |
-| **挪出栈顶 → `startZoomWindow(入口, {extra_window_mode=100})`（只 `NEW_TASK`）** | **✓** | **2** |
+| 变体                                                                             | 原地（taskId 不变） | `animation-leash` |
+| -------------------------------------------------------------------------------- | ------------------- | ----------------- |
+| `startZoomWindow` + `NEW_TASK \| MULTIPLE_TASK`                                  | ✗ 另起一份实例      | 2                 |
+| `startActivityFromRecentsForFlexible(taskId, {windowingMode=100, flags=2})`      | ✓                   | **0**             |
+| 同上但 `flags=32`（`fullToMini` 档）                                             | ✓                   | **0**             |
+| **挪出栈顶 → `startZoomWindow(入口, {extra_window_mode=100})`（只 `NEW_TASK`）** | **✓**               | **2**             |
 
-- **为什么 recents 那条没有动画**：`onStartActivityFromRecents` 走的是 `toggleToFlexibleTask` —— 直接改任务的
-  窗口模式与边界，没有「启动」这个动作，也就没有可播的窗户动画（那条路上 SystemUI 的
+- **为什么 recents 那条没有动画**：`onStartActivityFromRecents` 走的是 `toggleToFlexibleTask`
+  —— 直接改任务的窗口模式与边界，没有「启动」这个动作，也就没有可播的窗户动画（那条路上 SystemUI 的
   `FlexibleTaskTransitionHandler` 只把 transition 收掉，不挂 leash）。
-- **挪出栈顶那条为什么有**：它是货真价实的 `ActivityStarter.execute()` 启动，窗口模式随 options 落下去，
-  于是走标准窗口动画。目标还在栈顶时这条落不下（见 17.6.1），所以先发一个 CATEGORY_HOME 的 intent；
-  服务端 `startFlexibleTask` 自己会「等 HomeTransitionFinish」，**调用方不用 sleep**，紧接着调就行。
+- **挪出栈顶那条为什么有**：它是货真价实的 `ActivityStarter.execute()`
+  启动，窗口模式随 options 落下去，于是走标准窗口动画。目标还在栈顶时这条落不下（见 17.6.1），所以先发一个 CATEGORY_HOME 的 intent；服务端
+  `startFlexibleTask` 自己会「等 HomeTransitionFinish」，**调用方不用 sleep**，紧接着调就行。
 - **只加 `NEW_TASK`，别加 `MULTIPLE_TASK`**：后者会强制新建任务，那就不是原地收了（回到 17.6.1 的代价）。
-- **模块侧选的是 recents 那条（无动画）**：`zoom:mini` 要的是一步到位 —— 挪出栈顶那条虽然既原地又有动画，
-  但要多回桌面一次，权衡后**否掉**了。起完 `MINI_VERIFY_MS`(350ms) 再核那份任务的 `windowingMode` 是不是 `100`，
-  不是才退回 17.6.1 那条「按包名另起一份实例」。
-  代价：会先回桌面一瞬（服务端要等桌面过渡铺开），换来的是**原地 + 动画**。
+- **模块侧选的是 recents 那条（无动画）**：`zoom:mini`
+  要的是一步到位 —— 挪出栈顶那条虽然既原地又有动画，但要多回桌面一次，权衡后**否掉**了。起完
+  `MINI_VERIFY_MS`（当时 350ms； **2026-10-14 改成 700ms**，因为过渡帧约 600ms 才落定，见附十三）再核那份任务的
+  `windowingMode` 是不是
+  `100`，不是才退回 17.6.1 那条「按包名另起一份实例」。代价：会先回桌面一瞬（服务端要等桌面过渡铺开），换来的是**原地 + 动画**。
 
 #### 17.6.5 `window:` 的「多开实例」与修法（2026-10-14 真机实证）
 
-17.6.1 的配方带着 `MULTIPLE_TASK`，副作用是**同一个应用被按几次就多出几份实例**（`window:` 是「打开应用小窗」，
-对同一个目标反复按很容易触发）。真机量过：对 `com.android.settings` 连按三次，每按一次就多一份
+17.6.1 的配方带着 `MULTIPLE_TASK`，副作用是**同一个应用被按几次就多出几份实例**（`window:`
+是「打开应用小窗」，对同一个目标反复按很容易触发）。真机量过：对 `com.android.settings` 连按三次，每按一次就多一份
 `windowingMode=100` 的小窗。
 
-**根因是 `MULTIPLE_TASK` 强制新建任务**，而它当初是给「目标已在前台」兜底的 —— 那个场景现在归 `zoom:mini`
-（17.6.3 / 17.6.4），`window:` 不再需要它。
+**根因是 `MULTIPLE_TASK` 强制新建任务**，而它当初是给「目标已在前台」兜底的 —— 那个场景现在归 `zoom:mini` （17.6.3 /
+17.6.4），`window:` 不再需要它。
 
 去掉之后（只加 `FLAG_ACTIVITY_NEW_TASK`），服务端的行为正好是想要的：
 
-| 目标当时的状态 | 服务端行为 | 实例数 |
-|---|---|---|
-| 还没跑过 | 新起一份、落在小窗（`windowingMode=100`） | 1（本来就该有）|
-| 有现成任务（在前台之外） | **复用那份任务**，`windowingMode` 1 → 100，taskId 不变 | **不变** ✓ |
-| 已是小窗 | 再按返回 `0`/`2`，没有第三份 | 不变 ✓ |
-| 就在前台 | 会被栈顶那份实例消化（返 `3`）→ 改走 17.6.3 的 recents 正门原地收 | 不变 ✓ |
+| 目标当时的状态           | 服务端行为                                                        | 实例数          |
+| ------------------------ | ----------------------------------------------------------------- | --------------- |
+| 还没跑过                 | 新起一份、落在小窗（`windowingMode=100`）                         | 1（本来就该有） |
+| 有现成任务（在前台之外） | **复用那份任务**，`windowingMode` 1 → 100，taskId 不变            | **不变** ✓      |
+| 已是小窗                 | 再按返回 `0`/`2`，没有第三份                                      | 不变 ✓          |
+| 就在前台                 | 会被栈顶那份实例消化（返 `3`）→ 改走 17.6.3 的 recents 正门原地收 | 不变 ✓          |
 
-- **真机实证**（`设置`）：task `#25535` 全屏 → 回桌面 → 按 `window:` 那套起 → **还是 `#25535`**，
-  `windowingMode` 由 `1` 变 `100`；连按三次之后 dump 只剩这一份小窗 + 桌面，没有累积。
-- **模块侧**：`launchAppInWindow` 改成
-  ① 目标就在前台 → 直接走 17.6.3 那条原地收（`foregroundTaskFor` 判 `getAllTopAppInfos()[0]` 是不是它）；
-  ② 其余只加 `NEW_TASK` 起 `startZoomWindow`；
-  ③ 反射路不通才退自由窗口 / 普通打开。
-  `MULTIPLE_TASK` 整个删掉。原来「返 3 就回桌面再起一次」的兜底保留，但只在 ① 没接住时当保险
-  （它本身也是原地转，不新建）。
+- **真机实证**（`设置`）：task `#25535` 全屏 → 回桌面 → 按 `window:` 那套起 → **还是 `#25535`**， `windowingMode` 由 `1`
+  变 `100`；连按三次之后 dump 只剩这一份小窗 + 桌面，没有累积。
+- **模块侧**：`launchAppInWindow` 改成 ① 目标就在前台 → 直接走 17.6.3 那条原地收（`foregroundTaskFor` 判
+  `getAllTopAppInfos()[0]` 是不是它）；② 其余只加 `NEW_TASK` 起 `startZoomWindow`；③ 反射路不通才退自由窗口 / 普通打开。
+  `MULTIPLE_TASK`
+  整个删掉。原来「返 3 就回桌面再起一次」的兜底保留，但只在 ① 没接住时当保险（它本身也是原地转，不新建）。
 - 判断「有没有真成小窗」照旧只看 `windowingMode`（`1` = 全屏，`100` = 小窗）。
+
+##### 附二：为什么 in-place 那族**结构上不可能**有动画（2026-10-14 定论）
+
+不是「参数没给对」，是过渡本身被丢掉了。in-place 那族（`startActivityFromRecentsForFlexible` 与公开的
+`ActivityStarter#startActivityFromRecents`）是在 binder 调用里**同步**把窗口模式改完的；等框架为这次调用建立过渡时，任务表面已经在新位置了，过渡里**一个可动画的 root 都没有**：
+
+```
+WindowManagerShell: No transition roots in (#127) android.os.BinderProxy@… so abort
+FlexibleTaskTransitionHandler:  onTransitionConsumed transition:… ,aborted:true
+```
+
+实测（`animation-leash` 计数，判据同 17.6.4）：in-place 那条**前台**跑 `leash=0`，**把任务放后台再跑也是 `leash=0`**
+—— 与任务在不在前台无关，它就没有过渡可播。
+
+动画只可能来自**一次带 root 的真启动**：`startZoomWindow` →
+`ActivityStarter.execute()`，窗口模式随 options 落下去，任务表面要移动 ⇒ 过渡里有 root
+⇒ 标准窗口动画开跑（`leash=2`）。注意这条动画**不是**柔性任务那支动画 —— SystemUI 的 `FlexibleTaskTransitionHandler`
+对它是 `no need handler this transitionInfo`（`consumedByThisHandler` 返回 false），跑的是普通应用开合动画。
+
+##### 附三：动画入口全表（找过一圈，2026-10-14）
+
+| 入口                                                                                                                       | 原地 | 动画                                  | 卡在哪                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `startZoomWindow`（真启动）                                                                                                | ✗    | ✓（`leash=2`，标准窗口动画）          | 目标在栈顶时启动被吞 / 窗口模式落不下，必须先挪出栈顶                                                       |
+| `startActivityFromRecentsForFlexible(taskId, opts)`                                                                        | ✓    | ✗                                     | 过渡无 root → abort（附二）                                                                                 |
+| 公开 `ATS#startActivityFromRecents(taskId, opts)`                                                                          | ✓    | ✗                                     | 同上                                                                                                        |
+| `notifyFlexibleTaskEvent(taskId, 2002)`                                                                                    | ✓    | —                                     | 只对**已经是柔性**的任务（普通全屏任务实测只打 `exitTo:5` 就结束）                                          |
+| `toggleFlexibleWindow(toType)` / `OplusFlexibleAnimationRunner`                                                            | —    | ✓                                     | 只对**已存在的柔性任务**：`ToggleTaskRunnable` 取的是 `embeddedTasks`，没有柔性任务时返回 true 但什么都不做 |
+| `notifyFlexibleTaskEvent(taskId, 2004)`「交换」                                                                            | ✓    | ✓ `performExchangeFullToFlexibleAnim` | 要求另有一份**不同包**的小窗在场，且服务端明确拒绝同包                                                      |
+| 拖拽手势（`OplusZoomWindowManager` 的 `onInputEvent` / `initializeDragZoomAnimation` → `finishDragAnimationAndStartZoom`） | ✓    | ✓                                     | 只能靠喂输入事件驱动；调用方是桌面 / SystemUI 的输入接收器，应用侧没有一步到位的调法                        |
+
+- **那支动画是按「过渡类型」选的，不是按调用方**：`FullscreenTaskOperations#handleFullscreenToFreeformAnimation( IBinder transition, TransitionInfo info, Transaction t, Transaction finishT, TransitionFinishedCallback cb)`
+  —— 签名里就带着过渡与 finish 回调，**只能在一次真实过渡里跑**，没法对着某个任务单独调用。选型在
+  `FullscreenTaskOperations$TransitionHandler`：`transitionInfo.getType() == 1106` 时才走这支（`1107`
+  = 交换）。我们的 in-place 那条产生的是普通 `TO_FRONT`，压根不是 1106。
+- **推论**：想有动画，得让这次变更落进一次**类型正确的过渡**里。应用侧造不出这种过渡（见附二）；能造的只有框架自己（真启动）或 shell 侧（桌面 /
+  SystemUI）。
+
+##### 附四：框架自己那条 full→mini 动画的正门（2026-10-14）
+
+原生那条动画的实现是 **`com.android.server.wm.FlexibleTaskController#switchState(Task, int nextState, String reason)`**
+（`public`）→
+`com.android.server.wm.FlexibleWindowAnimator#startFlexibleTaskToMiniAnimations( ArrayMap<Task, FlexibleAnimationInfo>, Handler surfaceAnimHandler, SurfaceControl.Transaction, callback, reason)`。
+`nextState`：`1` = 小窗、`2` = 全屏；每个任务配一个
+`FlexibleAnimationInfo`（startRect/finishRect/startScale/finishScale/
+alpha/时长/插值器/leash…，**构造器是 public**）。`switchState(task, 1, …)` 就是「全屏 → 小窗」那一档。
+
+`switchState(…, 1, …)` 全 ROM 只有三个调用点，逐条核过判据：
+
+| 调用点                                                                 | 判据                                                                                                                                                        | 应用侧能不能满足                                                                                                                                                                     |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `onStartActivityFromRecents`（reason `onStartActivityFromRecents`）    | `zoomLaunchFlags == 2` **且** `isFlexibleTaskAndHasCaption(task)` **且** `task.getFlexibleZoomState() == 2`（柔性任务、处于**全屏态**）                     | 实测：普通全屏任务走 recents 正门只打 `pendingLaunchZoom:true` 就转 `startFreeFormFromRecent`，**不命中**，`leash=0`；`flags=3` 也造不出「柔性 + 全屏态」（结果仍是 `state=1` 小窗） |
+| `getReusableOptionsForFreeForm`（reason `StartMiniFromLauncher`）      | `isStartFromLauncher()` = `startActivity.isLaunchSourceType(2) && mAtms.mHomeProcess.mPid == request.realCallingPid` —— **调用方 pid 必须等于桌面进程 pid** | ✗：这个 pid 是服务端在 `Binder.clearCallingIdentity()` **之前**取的**真实**调用方 pid，参数里伪造不了。要满足只能**从桌面进程里发起**（= 注入桌面）                                  |
+| `switchState(task, 2/1, "STATE_CHANGE_TO_MINI"/"STATE_CHANG_TO_ZOOM")` | 内部状态机                                                                                                                                                  | ✗                                                                                                                                                                                    |
+
+- **可复用的原语都已确认可反射**：`FlexibleWindowManagerService.getInstance(null)`（框架自己就到处这么传 null）→
+  `.getFlexibleTaskController()` → `switchState(...)`；`Task` 由
+  `ActivityTaskManagerService#mRootWindowContainer#anyTaskForId` 拿；动画器与 `FlexibleAnimationInfo` 同上。
+- **模块本来就注入 system_server**（侧键接管那一侧），所以上面这些**在模块侧够得着**
+  —— 这是最省的「一比一」：用框架自己的动画器，而不是自己拿 leash 画。
+- ⚠️ 代价：这是**注入侧**改动，一旦抛异常就是系统进程崩溃 / 开机循环，必须整包 `try/catch` 只降级；且换包后要
+  **整机重启**才生效（软重启会把框架停坏，见六之四）。
+
+##### 附五：`flexibleZoomState` 的实测取值（2026-10-14，模块经 system_server 通道读出）
+
+为这条通道新建了注入侧执行器 `inject/system/FlexibleWindowBridge.kt`（与 `StatusBarBridge`
+同款：宿主发广播、注入侧在 AMS 广播入口接住、本机执行），把一直读不到的 `TaskExtImpl#getFlexibleZoomState()` 读出来了：
+
+- **普通全屏任务（前台）**：`flexibleZoomState = 0`，`bounds = Rect(0,0-1272,2772)`；此时 `switchState(task, 1, …)`
+  第一句 `isFlexibleTaskAndHasCaption` 不满足，直接返回 —— 不会播动画。
+- **recents 正门转完之后**：同一任务 `flexibleTaskState = 1`（小窗）、`isFlexibleWindow = true`。
+- `flexibleZoomState` 的取值语义：`0` = 非柔性任务、`1` = 柔性任务在小窗态、`2` = 柔性任务最大化到全屏。
+
+所以原生动画要的 `state == 2`，从 `0` 出发**必须经过
+`1`**（先收成小窗、再最大化到全屏）—— 一次可见的中间态，应用侧跳不过去。这也把「手工复刻」的形态定死了：**不能**走
+`switchState`，只能自己构造 `FlexibleAnimationInfo`（start = 全屏 rect/scale 1.0，finish
+= 小窗 rect/scale）+ 拿任务的快照 leash，直接调 `FlexibleWindowAnimator#startFlexibleTaskToMiniAnimations`
+—— 动画器是框架的，配方是自己的。原语全部 public、全部在 system_server（模块已注入），但快照捕获（`TaskSnapshotController`）与 leash 构建需要另写，是一个 200+ 行、每轮调参都要整机重启的子系统。
+
+- **踩过的坑（记下）**：`Reflect.call(receiver, name, args)` 按**参数运行时类**找方法 —— Kotlin 的 `Int` 会被装箱成
+  `Integer`，而 `anyTaskForId(int,int)` / `switchState(Task,int,String)` 的签名是原始类型， `getDeclaredMethod`
+  匹配不上且**静默返回 null**。对原始类型参数必须走 `Reflect.method(cls, name, Integer.TYPE, …)` 拿到 `Method` 再调。
+  **结论：应用侧不存在「一步到位 + 带动画」的全屏→小窗入口。**
+  有动画的那条必须让任务先离开栈顶；一步到位的那条结构上就没有过渡可播。
+
+##### 附六：伪造态路线的两个落点缺陷（「太长」/「没有操作条」，2026-10-14 修正）
+
+伪造态 + `switchState` 跑通后剩两个缺陷，逐条挖到根：
+
+1. **落点太长**：`switchState` 收缩的 finishRect 取自 `TaskExtImpl#getRememberPosInfo()` （`getAnimationInfo(task, 1)`
+   里 `isRememberInfoValid`
+   不成立时落到「按应用比例算默认」分支，用**全屏宽高比**缩放 → 窗口被拉长）。修法：`switchState` 前调
+   `ext.setRememberPosInfo(bounds, scale)` 预置落点。注意 `setRememberPosInfo(Rect, float)` 含原始类型参数，必须显式
+   `getDeclaredMethod`（装箱坑见附五）。
+   - ⚠️ **预置值不能取
+     `controller.getMiniFlexibleTaskInfo(task, record)`**（2026-10-14 真机否掉）：它返回的是**收起档**几何（`Rect(898,168-1203,710)`
+     / `0.2397`，同 17.6.3 尺寸档表 `flags=32`
+     那一行），喂进去就把「展开」的动画落到了收起的位置 —— 真机表现是**「按一下直接变成右上角那条最小化窗」**。
+     **展开档要用 `setUserPositionInfo` 那条路的值**（17.6.3 表里 `flags=2` 那一行）。⚠️ 但**别照抄它的屏幕矩形**：喂给
+     `setRememberPosInfo` 的必须是**配置矩形** `Rect(126,319-1398,2580)`
+     —— 两者差一个 scale，抄错就「小一圈」，**见附七**。本机现在就是这么写死的（`FlexibleWindowBridge.EXPANDED_BOUNDS`）。⚠️ 这组数是 PLK110（1272×2772
+     @560dpi）实测值，与机型允许表绑定，加机型要重测。
+   - 📌 **订正**：本小节 2026-10-15 那版把上面这两个值错记成了「`getMiniFlexibleTaskInfo`
+     的真机标准值」，两个来源被混为一谈 —— 那正是这次「落点变收起」的根因。现已按真机结果分开。
+
+2. **没有操作条**：操作条视图由 `TaskExtImpl#updateFlexibleTaskParams` **内部**负责（`mHasCaption` 分支 →
+   `FlexibleWindowManagerService#createFlexibleCaptionView(task, captionName)` → `Class.forName(captionName)` 反射建
+   `FlexibleTaskCaptionView(Context, FlexibleTaskController, Task, ATMS)` → `initOrUpdateFlexibleCaptionView`
+   挂到任务上）。**captionName 不是任意字符串，是视图实现类的全名**，来自策略配置
+   `FlexibleWindowManagerService#getCaptionName(scenario)`（mini 的 scenario=1）。我们喂的 bundle 里没放
+   `androidx.activity.CaptionName` → `mCaptionName=null` → `Class.forName(null)` 抛异常被吞 → 视图建不出来。修法：反射
+   `getCaptionName(1)` 拿到真名（本机为 `com.android.server.wm.FlexibleTaskCaptionView`）塞进 bundle 的
+   `androidx.activity.CaptionName`。
+
+##### 附七：`setRememberPosInfo` 的 `Rect` 是**配置矩形**，不是屏幕矩形（2026-10-14 真机定论，PLK110）
+
+**现象**：附六那两个缺陷都修完之后，`zoom:mini`
+打出来的**是小窗、也不是收起档**，但就是「比 ColorOS 原生的小一圈」，用户一眼判「还是不对」。
+
+**取证**（可复用，别靠肉眼）：同一次按键，两条路各取一个数 ——
+
+| 来源                 | 手段                                            | 结果                                                                  |
+| -------------------- | ----------------------------------------------- | --------------------------------------------------------------------- |
+| 模块产出             | 注入侧日志                                      | 预置 `Rect(126,319-1146,2131)` / `0.8017`                             |
+| 模块产出             | 截图逐列扫亮像素（脚本 `.temp/measure_win.py`） | 窗口屏幕框 `(126,319)-(942,1770)` = **817 × 1452**，宽占比 **0.6423** |
+| 宿主判定             | `OplusAppInfo.appBounds` 宽 ÷ 屏宽              | **0.8019**（于是打了「已是展开档」的假绿灯）                          |
+| 用户手调出的正确形态 | 截图同上                                        | `(126,319)-(1145,2130)` = **1020 × 1812**，宽占比 **0.8019**          |
+| 用户手调出的正确形态 | `dumpsys activity activities` → `Task.mBounds`  | `Rect(126,319 - 1398,2580)` = **1272 × 2261**                         |
+
+**根因**：`setRememberPosInfo(Rect, float)` 的 `Rect` 是**应用配置矩形**，系统还会把它的尺寸 **再乘一次 `scale`**
+才是屏幕上的实际大小：
+
+```
+屏幕尺寸 = Rect.size × scale
+```
+
+我当时把**屏幕**矩形 `1020 × 1812` 直接喂了进去，于是又被缩了一次： `1020 × 0.8017 = 817.6` → 真机读到的 `817`；高度
+`1812 × 0.8017 = 1452.7` → 读到的 `1452`。 **两个轴都严丝合缝，比值同为 1.2485 = 1/0.8017**，不是巧合。而
+`Rect.left/top` 是**直接照搬到屏幕坐标**的、不含缩放 —— 所以两头左上角都是
+`(126,319)`：这也是「只有尺寸错、位置没错」的原因。
+
+**正确值**（本机型实测，`FlexibleWindowBridge.EXPANDED_BOUNDS`）：
+
+|        | 配置矩形（喂 API 的）                     | scale    | 屏幕落点（验收看的）                      |
+| ------ | ----------------------------------------- | -------- | ----------------------------------------- |
+| 展开档 | `Rect(126,319 - 1398,2580)` = 1272 × 2261 | `0.8017` | `Rect(126,319 - 1145,2131)` = 1020 × 1812 |
+| 收起档 | 同左（系统自算）                          | `0.2397` | `Rect(898,168 - 1203,710)` = 305 × 542    |
+
+> 口径说明：上表用**半开区间**（`right/bottom` 不含）。逐像素扫截图得到的是**闭区间**，同一个窗口记作
+> `(126,319)-(1145,2130)`，两者等价、尺寸都是 `1020 × 1812`，别当成差 1px 的异常。模块日志里 `screenBoundsOf`
+> 打的是半开形式，所以判据字符串应是 `Rect(126,319 - 1145,2131)`。
+
+**由此得到两个可复用结论**：
+
+1. **小窗的逻辑尺寸恒为 `1272 × 2261`，两档共用**，只有 scale 不同。交叉验证：收起档 `542 ÷ 0.2397 = 2261`、展开档
+   `1812 ÷ 0.8017 = 2260.4` —— 同一个 2261。所以**配置矩形分不出档位**（两档都是 1272 宽），拿 `appBounds`
+   当档位判据必然是假绿灯。
+2. **两个 API 的 Rect 语义相反**，这是最容易踩的地方：
+   - `getMiniFlexibleTaskInfo` 返回的是**屏幕矩形**（`Rect(898,168-1203,710)`，305 宽）；
+   - `setRememberPosInfo` 要的是**配置矩形**（1272 宽）。
+   - 一进一出正好差一个 scale，直接互喂就会「小一圈 / 大一圈」。
+
+> 📌 **订正**：附六里写的「展开档 `Rect(126,319-1146,2131)` / `0.8017`」是**屏幕值**，那是**验收口径**，不是能喂给
+> `setRememberPosInfo` 的参数 —— 直接照抄进代码就会得到上面那个「小一圈」。喂 API 请用本节的配置矩形
+> `Rect(126,319-1398,2580)`。
+
+##### 附八：伪造态小窗是**半成品** —— 缺「柔性任务注册」那一步（2026-10-14 真机，PLK110）
+
+附七把几何修对之后，真机（重启后）判据全绿：
+
+```
+小窗指令：已预置展开档几何（宿主下发）配置矩形=Rect(126, 319 - 1398, 2580) scale=0.8017 → 屏幕落点应为 Rect(126, 319 - 1145, 2131)
+小窗指令：caption 实现类 = com.android.server.wm.FlexibleTaskCaptionView
+小窗指令：已喂 updateFlexibleTaskParams（含 HasCaption=true）
+小窗指令：冒充柔性全屏态成功（mScenario=1 / mHasCaption=true / mFlexibleZoomState=2）
+小窗指令：switchState(#71, 1) 已调用
+宿主侧：任务 #71 已是小窗、预置几何被吃住（配置宽占比 1.0）
+```
+
+**几何确实对了**（`Requested w=1272 h=2261`、屏幕落点
+`1020 × 1812`），**但窗口不能用**。用户原话：「点击被视为拖动，也没有菜单和操作条和圆角」。逐条坐实：
+
+| 症状              | 真机所见                                                              |
+| ----------------- | --------------------------------------------------------------------- |
+| 没圆角            | 窗口是**直角**矩形，没有柔性窗那种大圆角                              |
+| 没操作条 / 没菜单 | 顶部那行 `●●●` 操作条与 `⋮` 菜单**完全不存在**                        |
+| 输入被吃掉        | **点一下会被当成拖动**，整个窗口跟着手走                              |
+| 内容叠两份        | 微信标题栏 `微信(28) 🔍 ⊕` 在窗口顶部**出现两次**（纵向相差约 160px） |
+
+**排查过程（可复用的两条）**：
+
+1. **窗口列表对比**：拿「用户手调出的正确形态」与「伪造态」两次 `dumpsys window windows` 逐行列， **窗口集合完全同构**
+   —— 都没多出操作条窗口。⇒ 操作条**不是独立窗口**，是挂在应用窗口内部的；所以「找不到操作条窗口」不等于「操作条没建」，别顺着这条路找。
+2. **`windowType` 不能当档位判据**：`dumpsys activity activities` 里 ActivityRecord 的 `windowType`
+   在展开档、伪造态、**连桌面**上都是 `2`。⚠️ 这和附六/`zoom-window.md` §五表里那个
+   `OplusZoomWindowInfo.windowType`（1=展开/2=收起） **不是同一个字段** —— 那个是 `OplusZoomWindowInfo`
+   上的，这两个名字撞车了，别再混用。
+
+**根因（推断，四条症状同一指向）**：**框架的「柔性任务注册」那一步没做**。操作条视图、圆角、拖拽与输入处理都是那一步配上去的；伪造态只捅了三个状态字段（`mScenario`
+/ `mHasCaption` / `mFlexibleZoomState`）+ `switchState`，**状态位对了、外围那层壳子没人装**
+——于是几何/档位都对，窗口却是个「只有正确大小与位置的裸窗口」。
+
+**结论与处置**：暂时**不用**伪造态这条开窗，改走 **recents 正门** （`startActivityFromRecentsForFlexible` +
+`mZoomLaunchFlags = 2`，§17.6.3，真机实证过的展开档）——它走的是框架自己的柔性窗启动链路，操作条 / 圆角 / 输入都有人配。代价是**没有原生动画**。伪造态那条留在代码里、由宿主侧开关
+`AppLauncher.USE_FORGED_ANIMATION_ROUTE` 控制（默认 `false`），哪天把注册那步补上再打开。
+
+**正门真机验证（同日 17:44，未重启整机）**：`kill` 宿主进程后用假手势触发（见 `zoom-window.md` §11.1），日志
+`走 recents 正门` → `从 recents 把任务 #72 原地收成小窗（flags=2，返回 2）`，四个症状**全好**：
+
+| 症状            | 正门开出来                                                                             |
+| --------------- | -------------------------------------------------------------------------------------- |
+| 没圆角          | ✅ 大圆角                                                                              |
+| 没操作条 / 菜单 | ✅ 顶部 `●●●`；点它弹出原生菜单（全屏 / 分屏 / 最小化 / 关闭 / 交换应用 / 透明度调节） |
+| 点击被当成拖动  | ✅ `input tap` 打操作条：菜单弹出、**窗口 frame 未变**（始终 `[126,319][1398,2580]`）  |
+| 内容叠两份      | ✅ 只有一份                                                                            |
+
+几何：截图量出 `(126,319)-(1144,2130)` = 1019 × 1812（目标 1020 × 1812，差 1px 是扫描阈值）。⇒
+**「窗口是半成品」确实是伪造态独有的问题，不是设备 / 应用的问题。**
+
+> ⚠️ 正门的落点**不是** `EXPANDED_CONFIG_BOUNDS` 给的，而是 `setUserPositionInfo` 沿用
+> **系统记住的位置**（「用户上次的落点」）。那两个常量现在只对伪造态那条有效。
+
+> 待办：要拿回动画，就得找到那条「柔性任务注册」的入口（候选：`FlexibleWindowManagerService` 上那条 `launchFlexibleTask`
+> 一类的方法，或 `FlexibleTaskController` 里建完 caption 之后还要调的那一步）。§17.6.4 附三「动画入口全表」可作为起点。
+
+##### 附九：「前台 → 小窗」的过渡为什么 abort；壳子其实是**过渡**装的（2026-10-14 三组实测对照）
+
+附八把「伪造态是半成品」的根因推成了「柔性任务注册那步没做」。**本节修正这个推断**：壳子（圆角 + 操作条）是那条**窗口过渡**装的，所以更可能只是「过渡 abort 的后果」。
+
+**三组对照**（同机型、同一天，逐行比 `logcat`）：
+
+|                          | 目标任务状态               | `onStartActivityFromRecents`               | 多出来的一步                                   | 过渡结果                                                                     |
+| ------------------------ | -------------------------- | ------------------------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------- |
+| 桌面「**近期任务浮窗**」 | 在最近任务里（**非前台**） | `isFlexibleTask:false` `zoomLaunchFlags:2` | **`skipCurrentOrAdjustChange … launchFrom=2`** | 建出 leash → `FlexibleTaskTransitionHandler` → **`MultiSpringAnimation`** ✅ |
+| 模块 recents 正门        | 普通全屏、**前台可见**     | `isFlexibleTask:false` `zoomLaunchFlags:2` | 无                                             | `No transition roots in (#62) … so abort` ❌                                 |
+| 模块 recents 正门        | 已是小窗、不可见（脏状态） | `isFlexibleTask:true` `zoomLaunchFlags:2`  | 无                                             | 同上 abort ❌                                                                |
+
+三点结论：
+
+1. **`zoomLaunchFlags=2` 两边一模一样** ⇒ 不是参数问题；**调用方身份**（桌面 vs 模块宿主）才是变量。桌面那次比我们多一条
+   `skipCurrentOrAdjustChange … launchFrom=2`，而 `launchFrom` 很可能就是 `ActivityRecord#LaunchSourceType`
+   的取值（`isLaunchSourceType` / `determineLaunchSourceType` / `LaunchSourceType` 都在 **`services.jar` 的
+   `classes4.dex`** 里，不在前两个 dex）。
+2. **壳子是过渡装的**，不是「注册」装的 —— 桌面成功那次有这两句，都只在真过渡里跑：
+   ```
+   FlexibleTaskTransitionController: adjustSurfaceForTransitionIfNeed type=3, cornerRadius=91, scale=0.8016529
+   FlexibleTaskTransitionController: finishTransition will update task's caption visible when open transit.
+   ```
+   ⚠️ 我们 abort 那次 `finishTransition` 也打了第二句，但那是在 `aborted:true` **之后**跑的，没救回来。
+3. **前台任务确实没有过渡 root**，与附二一致 —— 这不是测试脏状态造成的，清干净后复测仍然 abort。
+
+**两条可复用的查法**：
+
+- 桌面那个入口菜单项叫「**近期任务浮窗**」。按「小窗」在桌面 dex 里**一条都搜不到**
+  ——找 OEM 入口时别只搜一个词，先把 UI 上看来的原词记下来再搜。
+- 圆角 / 操作条的**归属**可以直接从日志认：谁打的 `adjustSurfaceForTransitionIfNeed` /
+  `caption visible`，就是谁装的。别从「有没有对应窗口」倒推（附八那条弯路）。
+
+**由此得到两条待试的路**（都还没做）：
+
+- **A · 从桌面进程发起**：赌 `launchFrom=2`
+  会让框架**把窗口模式变更延后进过渡**，于是前台任务也有 root。⚠️ 风险：root 也可能只是因为「桌面的画面在那儿、有东西可以从它动画出去」；若是这样，A 对前台场景不成立。
+- **C · 保留 `switchState` 的动画、自己装壳**：圆角用 `SurfaceControl.Transaction#setCornerRadius`
+  （**公开 API**），操作条用 `FlexibleWindowManagerService#createFlexibleCaptionView(task, captionName)`
+  （§7.5 已查到，`captionName` 也已反射拿到）。不赌框架分支，且"点击被当拖动"很可能随操作条一起好 ——拖拽手柄就是操作条。
+
+##### 附十：C 的前半已成立（圆角），后半卡在**线程**上（2026-10-14 真机，两轮）
+
+靠 debug 通道（`docs/debug-channel.md`）在真机上试的，**没有为试错编译过**：
+
+- **操作条视图本来就已经建出来了** —— 不是「注册没做」： `TaskExtImpl.getFlexibleCaptionView()` 返回
+  `FlexibleCaptionView{taskId=N}`，`mHasCaption=true`、
+  `mCaptionName=com.android.server.wm.FlexibleTaskCaptionView`。所以缺的是**挂载 / 显示**，不是创建。
+- **真签名（通道 `dump` 出来的，不用再猜）**：
+  `FlexibleWindowManagerService.createFlexibleCaptionView(Task, String) : FlexibleCaptionView`、
+  `FlexibleCaptionView.initCaptionViewAndAttachToTask(Task, Rect)`、`initCaptionView()`、 `showCaptionViewWithAnim()` /
+  `hideCaptionViewWithAnim()`、`updateFlexibleTaskCaptionVisible(Task, boolean)`、
+  `TaskExtImpl.getFlexibleCaptionView() / setFlexibleCaptionView(FlexibleCaptionView)`。
+- **圆角：成功**。`SurfaceControl` 取自 `WindowContainer#getSurfaceControl()`（0 参那个候选命中），
+  `Transaction#setCornerRadius(sc, 91)` + `apply()` 之后**截图四角肉眼可见圆角**（补壳前是直角）。
+- ⚠️ **操作条：卡在调用线程**。 `initCaptionView()` 与 `initCaptionViewAndAttachToTask(Task, Rect)` 都抛：
+  ```
+  android.view.ViewRootImpl$CalledFromWrongThreadException:
+    Only the original thread that created a view hierarchy can touch its views.
+    Expected: android.ui     Calling: binder:NNNN_1
+  ```
+  即这两个方法**必须在 `android.ui`
+  线程上调**，而我们是从 AMS 广播入口（binder 线程）调的。旁证：`updateFlexibleTaskCaptionVisible(task, true)`
+  **不抛**（它内部应该是自己 post 到对线程的），调完 `mCaptionViewSurfaceShow` 读出来是
+  `true`，但**截图上操作条仍然没显示**。
+- ⚠️ 两处**反射诊断本身的坑**（都踩过、已修）：
+  1. `Method.invoke` 抛的是 `InvocationTargetException`，它的 **message 恒为 null** ——只打 `e.message`
+     会得到「抛了 InvocationTargetException: null」，真实原因全丢；必须剥到最内层 `cause`。
+  2. `getDeclaredField` **只看本类**，而 `mCaptionViewSurfaceShow` 声明在父类 `FlexibleCaptionView` 上 ——字段查找要沿
+     `superclass` 往上走。
+
+**第 3 轮（把调用 post 到 `android.ui` 线程后）**：线程问题解决 ——用**视图自己的 `View.getHandler()`**
+post 过去，`initCaptionView` / `initCaptionViewAndAttachToTask` / `showCaptionViewWithAnim` /
+`updateFlexibleTaskCaptionVisible(true)` **四个调用全部无异常**， `mCaptionViewSurfaceShow = true`。
+
+**但屏幕上仍然看不到操作条**。⚠️ 别把**左边缘那个小圆条**当成它 —— 那是 ColorOS 的**窗口边缘提示**（用户指出），跟操作条无关。所以状态是：视图建出来了、挂上了、`mCaptionViewSurfaceShow=true`、`getVisibility()=0`（VISIBLE），
+**但它什么都没画出来**。
+
+**第 4 轮（量它的几何）**：
+
+```
+getLeft()=0  getTop()=0  getWidth()=1272  getHeight()=2261   ← 撑成整窗，与任务同尺寸
+getVisibility()=0（VISIBLE）
+getFlexibleCaptionViewHandleButtonRegion() = Rect(0, 0 - 0, 0)   ← 手柄区是空的
+父 0 = com.android.server.wm.FlexibleTaskCaptionView
+父 1 = android.view.ViewRootImpl                                  ← 直接就是根视图
+```
+
+⇒ **`initCaptionViewAndAttachToTask(Task, Rect)` 的第二个参数就是操作条自己的尺寸**，而我们把**任务 bounds**
+传了进去，于是它把自己撑成整窗、`handleButtonRegion` 也没算出来。这不只是「位置不对」，是**尺寸就该是顶部那条窄 rect**。
+
+**第 5 轮（显式 rect + `relayout` + `mode`）**：**操作条露出来了**
+—— 真机截图里窗口顶部中央出现那条灰色的圆角把手（`●●●` 在完整小窗里就是它）。⏹ 但它**点不动**：
+
+- `handleButtonRegion` 仍然是 `Rect(0, 0 - 0, 0)` —— **触及区域没算出来**，所以那条把手画得出来、按下去没反应。
+- ⚠️ **订正**：`initCaptionViewAndAttachToTask(Task, Rect)` 的第二个参数**不是**视图尺寸 ——传了 `(0,0 - 1272,157)` 之后
+  `getWidth/Height` 仍是 `1272 × 2261`。这个视图的设计是**整窗覆盖、只在顶部画把手**，所以它的画面位置本来就是对的。
+- 真正缺的是 **`FlexibleCaptionView.updateTouchRegion()`**（还有 `updateTouchRegionInner()`、
+  `updateTouchableRegion(Region)`）—— 触及区域由它算。
+
+**⏹ 收敛（2026-10-14 用户拍板）**：C 这条线**暂停**，`USE_FORGED_ANIMATION_ROUTE` 关回 `false`
+（默认走 recents 正门 = 完整可用但无动画）。判断依据：
+
+- 伪造态要通，就得**自己把框架「注册柔性任务」那一整套外围动作补齐**（操作条挂载顺序、圆角、触及区域、拖拽处理），而我们只能一样一样试出来，**每样隔一次整机重启**（已用 6 轮）；补完还有「点击被当拖动」「内容叠两份」两处没验。
+- 正门给的是**完整可用**的窗口（圆角 / 操作条 / 菜单 / 输入都正常），代价只是**没有动画**（纯观感）。
+- 而且伪造态依赖一堆内部状态位，ROM 一变全部重来。
+
+**要接着做的人，从这里起手**（调用面已经完备，不用再为「调某个方法」编译）： `call` op 加了
+`target=caption`（任务的操作条视图），且**视图方法会自动 post 到视图自己的线程** ——于是 `updateTouchRegion`
+一类可以直接用广播调：
+
+```bash
+adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture \
+  --es op call --es target caption --es name updateTouchRegion --ei task_id N'"
+```
+
+剩下没验的两条：**触及区域补齐后能否点击 / 拖动**、**「内容叠两份」是不是也会随之消失**。
+
+##### 附十一：**A 方案被证伪**；真正的变量是「过渡有没有 root」（2026-10-14 真机，无重启）
+
+**先说结论：A 方案（换调用方）不成立。** 用 debug 通道的 `zoom` op **从桌面进程**发起、target 是
+**前台任务**时，日志仍然是：
+
+```
+onStartActivityFromRecents task:#116 … isFlexibleTask:false ,pendingLaunchZoom:true ,zoomLaunchFlags:2
+startFreeFormFromRecent current pendingLaunchZoom will toggle FlexibleTask.
+toggleToFlexibleTask task:#116
+relayoutCaptionView: reason = startFreeFormFromRecent
+No transition roots in (#26) … so abort           ← 还是 abort
+```
+
+即：附九把「桌面那次多一条 `skipCurrentOrAdjustChange … launchFrom=2`」归因于**调用方身份**，这个归因
+**是错的**。换成桌面进程发起，`skipCurrentOrAdjustChange` 并没有出现。
+
+**但同一轮拿到了关键的正结果**：把 `zoom` op 改对之后（见文末的坑），对**在最近任务总览里展示着的任务**
+调用，产出的日志与桌面原生「浮窗」**逐行一致**，动画完整跑通：
+
+```
+onStartActivityFromRecents … taskForceMaximized:true ,isFlexibleTask:false ,pendingLaunchZoom:true ,zoomLaunchFlags:2
+collectFlexibleTaskInfo: mScale=0.8016529, mCornerRadius=91, mLaunchBounds=Rect(126,319-1398,2580)
+setVisibility(Token{…}) visible=true defer commitVisibility for transition collecting
+skipCurrentOrAdjustChange task=#116 launchFrom=2
+onTransitionReady (#31) … r=[0@Point(0, 0)]                     ← 有 root
+playTransition → FlexibleTaskTransitionHandler → MultiSpringAnimation
+startSpringFlexibleAnimation alpha=0.0 ,scale=0.0  →  alpha=1.0 ,scale=0.8016529
+Transition animation finished (aborted=false) ✅
+```
+
+两张对照（同机型、同一天、同一个 op、只改目标任务的呈现状态）：
+
+| 目标任务的呈现状态               | `taskForceMaximized` | 过渡 root                    | 结果                             |
+| -------------------------------- | -------------------- | ---------------------------- | -------------------------------- |
+| 前台、全屏（我们「就在它里面」） | `false`              | **无**                       | `No transition roots → abort` ❌ |
+| 在最近任务总览里（卡片在屏上）   | `true`               | **有**（`r=[0@Point(0,0)]`） | `MultiSpringAnimation` ✅        |
+
+⇒ **变量是「目标是不是已经在最前」**，不是「谁发起」。前台任务本来就 top，`m=TO_FRONT`
+不构成任何变化，框架收集不到 root，这次过渡直接丢。这与附九第 3 条（前台确实没有过渡 root）完全一致；A 方案的赌注（「`launchFrom=2`
+会把窗口模式变更延后进过渡，于是前台任务也有 root」）**没有兑现**。
+
+**另有一处认知订正**：原生动画的形状是 **`scale 0 → 0.8016529`、`alpha 0 → 1` 的「弹入」**，而**不是**
+「从全屏缩到小窗」。所以前台场景缺的不是「一个能缩小的起点」，而是**框架压根不打算在这个场景开过渡**。
+
+**顺带修掉一个真坑（值得单记）**：`zoom` 第一版把 options 造成了 `ActivityOptions`，而真实签名是
+
+```
+android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int, Bundle)   ← AIDL 门面直接收 Bundle
+```
+
+服务端自己 `SafeActivityOptions.fromBundle(options, callingPid, callingUid)`。两个反射陷阱叠在一起：
+
+1. `Reflect.method` 会退化成「**名字 + 参数个数**」匹配 → 把 `Bundle` 形参误配成 `ActivityOptions` 也能"找到"；
+2. `Reflect.call` 内部 `runCatching` 把 `argument type mismatch` **吞掉** → 日志上只剩一句干干净净的
+   `startActivityFromRecentsForFlexible(#116, flags=2) → null`，看起来像「调了但没反应」。
+
+⇒ 结论：**反射调用要显式打 cause，别用会吞异常的封装**（改用 `getDeclaredMethod`
+精确签名 + 自己 try/catch）。修好之后返回值是对的：`2`（`START_TASK_TO_FRONT` = 已受理）。
+
+**这一轮还顺手把迭代成本砍下来了**：注入侧改 `ProbeChannel` 后**不必整机重启** —— `assembleDebug` + `install -r` +
+`am force-stop com.android.launcher`，桌面进程重启即加载新 dex（实测一轮约 1 分钟；日志里能看到新的模块指纹）。只有
+`system_server` 那半仍需重启。
+
+**下一步的三个选项**（待拍板）：
+
+- **D1 · 自己放动画（最被看好）**：走 recents 正门拿到**完整可用**的窗口（圆角 / 操作条 / 输入都正常），然后在任务自己的
+  `SurfaceControl`
+  上跑一段与原生同形的弹入（`alpha 0→1`、`scale 0→0.8016529`，圆角 91 已验证能设）。原生动画本就是弹入而非「全屏缩下去」，所以这条**在观感上能做到一致**，且**不依赖过渡 root、也不需要伪造
+  `mScenario`**。
+- **D2 · 先回桌面再收**：同一次手势里先把桌面 / 总览置顶造出 root，再 `zoom`。代价是视觉上变成「应用先走、小窗弹入」。
+- **D3 · 接受无动画**：recents 正门，窗口完整，只付观感的代价。
+
+##### 附十二：伪造态**也**判死 —— 它压根没转换任务（2026-10-14 复测，无重启）
+
+附十一把 A 方案判死后，伪造态（`switchState`）成了唯一「有动画」的路，于是复测一次。
+**结论：它同样不成立，而且根因比「缺几个调用」更硬 —— 那个任务从来就不是小窗。**
+
+**复测怎么做的**（全程无重启）：把 `AppLauncher.USE_FORGED_ANIMATION_ROUTE` 翻成 `true` （**宿主侧**改动 = 重编 + `kill`
+宿主进程即可，几分钟内可来回翻），然后用 `ACTION_GESTURE` 广播直接触发侧键动作 —— 宿主那个接收器是
+`NOT_EXPORTED`，**root（uid 0）发得进去**，不需要真的按侧键：
+
+```bash
+NOW=$(adb shell "cat /proc/uptime" | awk '{printf "%d", $1*1000}')
+adb shell "su -c 'am broadcast -a com.lookie.opluskey.GESTURE -p com.oplus.gesture \
+  --es key plus --es phase single --el sent_at $NOW'"
+```
+
+（`sent_at` 必须是新鲜的：`GestureReceiver` 2000ms 之外一律当积压丢弃，漏了它动作会静默不执行。）
+
+**伪造态确实跑起来了，而且比历史记录里好**：
+
+```
+小窗指令：已喂 updateFlexibleTaskParams（含 HasCaption=true）
+小窗指令：冒充柔性全屏态成功（mScenario=1 / mHasCaption=true / mFlexibleZoomState=2）
+use memory rect to default:Rect(126, 319 - 1398, 2580)        ← 宿主下发的几何被吃住
+switchState will startAdjustFlexibleTask task: 125
+registerPointerEventListener success.                          ← 历史「点击被当拖动」的钩子这次装上了
+updateFlexibleTaskCaptionVisible … isVisible=true
+FlexibleCaptionView.initCaptionViewAndAttachToTask(…)          ← 框架自己把操作条挂上了
+FTIWM[Task=125]: isAnimation Running
+```
+
+再加调试通道补的 `corner`（`setCornerRadius`）之后，屏幕上确实拿到了：**几何对 + 圆角 + 一条带 `🔍 ＋` 的操作条**（见
+`build/shots/forged2.png`）。
+
+**但它根本没变成小窗。** 决定性的一行是这个（`TaskOrganizerController`）：
+
+```
+onTaskInfoChanged taskid 125 … mWindowingMode=fullscreen        ← 自始至终是全屏，不是 100
+```
+
+`switchState` 只做了一套**视觉**动作（`OplusFlexibleInfoManager#setFlexiblePositionInfo` 一路把 surface 缩到
+`scale=0.8014`、挪到小窗位置），**任务本身仍是 `fullscreen`**。也就是：**一个穿着小窗外衣的全屏任务。**
+
+后果与历史记录那三条一一对上，且都有根因：
+
+| 症状                                                                 | 根因                                                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `handleButtonRegion = Rect(0,0-0,0)`，`updateTouchRegion()` 也补不上 | 柔性任务注册那步没做（它才算把手区域）                                                                                                                                                                                                                                                                                    |
+| **点一下就成拖动**，一拖小窗就没了                                   | 把手区域空 ⇒ 框架退化成「**整个窗口都是把手**」。真机日志：`isInFlexibleWindowHandleRegion is mini … rawX=703 rawY=1440` → `initMovingFlexibleTaskState` → `beginDrag` → 窗口被拖出屏幕顶部 → `exitFlexibleTaskWindowInnerLocked exitTo:6` → 任务退回全屏（`mScenario=0` / `mHasCaption=false` / `mFlexibleZoomState=0`） |
+| 没圆角 / 没 ⋮ 菜单                                                   | 同源；圆角可以用 `setCornerRadius` 自己补，**但补了也改不了"它不是真小窗"**                                                                                                                                                                                                                                               |
+
+**⇒ 三条路到此全部判死**（`device-findings.md` 附二/附九/附十一/附十二）：
+
+| 路                           | 原地 | 窗口完整        | 动画                           | 结论                                                                         |
+| ---------------------------- | ---- | --------------- | ------------------------------ | ---------------------------------------------------------------------------- |
+| recents 正门                 | ✓    | ✓               | ✗（前台**结构上**无过渡 root） | 可用，但永远没动画                                                           |
+| A · 换调用方（桌面进程发起） | ✓    | ✓               | ✗                              | 与调用方身份无关，**附十一证伪**                                             |
+| C · 伪造态 + `switchState`   | ✓    | ✗（不是真小窗） | ✓                              | **附十二证伪**：任务始终 `mWindowingMode=fullscreen`，点一下就被当拖动并甩掉 |
+
+**⇒ 「前台应用 → 小窗 + 框架原生过渡动画」在这个 ROM 上拿不到。** 剩下的唯一办法是
+**自己放那段动画**（附十一的 D1）：走稳定的 recents 正门拿到真小窗，再在它的 `SurfaceControl`
+上复刻原生同形的弹入（`alpha 0→1`、`scale 0→0.8016529`，圆角 91 已验证能设）。原生动画本就是「弹入」而非「全屏缩下去」，所以观感可以对齐，且不依赖过渡 root、不需要伪造状态。
+
+##### 附十三：横屏应用的「收小窗」= 配置矩形被当成**横屏全屏任务**那套（2026-10-14 真机，PLK110）
+
+**现象**（用户报「横屏的应用小窗尺寸还是大」）：把横屏应用收成小窗后，窗口**比屏幕还宽**。
+
+**取证过程与硬数据**（设备 `ROTATION_90`，`tv.danmaku.bili` 任务 `#153` `…/UnitedBizDetailsActivity`，全屏
+`mBounds=Rect(141,266-2381,1526)` = **2240 × 1260**）：
+
+| #   | 证据                                                          | 值                                                                              |
+| --- | ------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| 1   | `dumpsys window` 里该窗口的请求尺寸                           | `Requested w=2240 h=1260`（= 横屏全屏任务那套）                                 |
+| 2   | 触发 `zoom:mini` 后 `notifyZoomWindowShow` 的最终态           | `zoomRect = Rect(141,266 - 1457,1007)`，`scale=0.5875`                          |
+| 3   | **截图像素级边缘检测**（判「`zoomRect` 到底是不是屏幕矩形」） | 左边界 `x=141`、下边界 `y=1006` ⇒ 与 `zoomRect` 的 `left`/`bottom` **双边吻合** |
+| 4   | 由 1+2 算                                                     | `2240 × 0.5875 = 1316` = `zoomRect` 宽 ✓                                        |
+
+⇒ **`zoomRect` 就是屏幕矩形**，横屏这次它是 **1316 × 741**，而屏宽只有 **1272** ——
+**右侧溢出 185px**（约 14.5% 的窗口在屏幕外）。中途还有一帧 `Rect(119,730-1152,1311)` /
+`scale=0.46116072`（1033×581，屏内），600ms 后被最终态覆盖。
+
+**⚠️ 附带一条时序事实（会直接决定验收怎么写）**：收小窗那一下**先落一个过渡帧**，
+**约 600ms 后**才定成最终几何。真机两次读数：
+
+```
++0ms    Rect(119, 730 - 1152, 1311)   scale=0.46116072   ← 过渡帧，在屏幕内
++591ms  Rect(141, 266 - 1457, 1007)   scale=0.5875       ← 最终态，右侧溢出
+```
+
+按 350ms 去核会读到过渡帧，把「最后会溢出」的窗口报成「落在屏幕内」——模块的 `MINI_VERIFY_MS` 因此从 `350` 改成
+`700`（2026-10-14）。 **判据教训**：小窗这类「框架自己会重新布局」的状态，验收时点必须晚于它落定，否则就是在测中间态。
+
+**根因链**（离线读 `oplus-services.jar` → `classes3.dex`）：
+
+```
+FlexibleTaskController#startFreeFormFromRecent
+  launchFlag == 32 ? getMiniFlexibleTaskInfo(task, record)                    ← 收起档
+                   : collectFlexibleTaskInfo(intent, 1, dc, actInfo, 1)      ← 展开档（flags=2 走这条）
+      └→ calcDefaultLaunchBounds(…, ActivityInfo.isFixedOrientationLandscape(actInfo), …)
+          └→ OplusFlexibleTaskLayoutPolicy#calcLaunchBounds(outBounds, list, 横屏?, info, …)
+              └→ getTaskRealSize(横屏?, info.getRatio())      ← 横屏/竖屏分档就在这里
+```
+
+`collectFlexibleTaskInfo` 又经 `fillFlexibleTaskInfo(Builder, Rect, Intent, ActivityInfo, 横屏?, DisplayContent)`
+取几何，里面两处关键读法：
+`intent.getStringExtra("calculate_bounds")`（`FlexibleTaskController.KEY_CALCULATE_BOUNDS`，等于 `"mini"` 时会改用
+`OplusZoomDisplay#getDefaultFlexibleScale(scale, true)` 那条默认档）、以及 `OplusZoomDisplay#getDefaultFlexibleScale` /
+`getScreenWidth` / `getFlexibleTaskFullScreenRatio`。
+
+⇒ **配置矩形取的是「横屏全屏任务那套 2240×1260」（宽高比 1.778 = 16:9），再乘上一份缩放**：
+`2240 × 0.5875 = 1316 > 1272`。而 0.5875 不是为 2240 宽配的 ——
+`1272 × 0.5875 = 747`，它显然是**为竖屏那套配置矩形标定的缩放**。
+**「配置矩形」与「缩放」这一对没配对**，才是溢出的直接原因。
+
+框架本身有「横屏应用」专用的一整排常量（`com.oplus.zoomwindow.OplusZoomWindowManager`）：
+`ZOOM_SCALE_FOR_LANDSCAPE_APP_DEFAULT` / `MINI_ZOOM_SCALE_FOR_LANDSCAPE_DEFAULT` / `ZOOM_LANDSCAPE_APP_RATIO` /
+`ZOOM_LANDSCAPE_RATIO`。宿主侧反射可读的入口有 `getZoomBounds(boolean,int)` / `getZoomBoundsByTaskId(int,int)` /
+`getCurrentZoomWindowState()`。⇒ 也就是说「横屏小窗该多大」系统自己有定义，我们这条 recents 路**没有对上**它。
+
+**顺带修掉的那条假绿灯**：模块原先的验收判据是
+`OplusAppInfo.appBounds.width() / Resources.getSystem().displayMetrics.widthPixels`，分母**不随旋转变**（竖屏恒 1272），横屏读到
+`1.76` 却仍然落在「≥0.95 就算好」那一边 ⇒ 把「比屏幕还宽」报成了「几何正常」。现已改为读
+`getCurrentZoomWindowState().zoomRect` 与 `Display#getRealSize` 比**是否落在屏幕内**（宿主侧，不用重启）。
+
+**竖屏那条「未定论」已解**（2026-10-14 复测）：竖屏走的不是 recents 的「current is fullscreen task」那支，几何是正常的
+`Rect(126,319-1146,2131)` = `1020×1812`、完全在屏内（`tv.danmaku.bili` `#157`
+全屏在前台实测）。原先那个「竖屏也溢出」的怀疑来自 `aweme` 那次读数，没有再复现。
+
+#### 附十三之二：**「回桌面」会把设备拽回竖屏** ⇒ 横屏小窗按竖屏比例生成（2026-10-14 真机）
+
+用户口径：「这个版本前台横屏小窗是从竖屏态的比例往横屏态的比例收的」。真机时序：
+
+```
+触发前      ROTATION_90                             ← 横屏应用全屏在前台
+发 HOME 后  ROTATION_0                              ← 桌面是竖屏 ⇒ 设备被拽回去
+            Rect(126,319-1146,2131) s=0.8016529     ← 小窗按**竖屏比例**生成（1020×1812）
+```
+
+⇒
+**小窗几何是按「起那一刻的显示帧」算的**。launch 配方要先把目标挪出栈顶才起得来，而「挪出栈顶」在这台机上的唯一手段就是回桌面 ⇒ 必然经过竖屏 ⇒ 横屏应用拿到竖屏比例。
+
+**想不走这条路，试过并否掉：**
+
+- 给 intent 加 `FLAG_ACTIVITY_RESET_TASK_IF_NEEDED` 后**原地直接起** ⇒ 仍返回 **`3`**
+  （`START_DELIVERED_TO_TOP`）。该 flag 是侧边栏的配方（见下），但它**不改「栈顶实例消化」**这条判定。
+
+**侧边栏官方配方（`com.coloros.smartsidebar` 拉 APK 反编译，`PageRoutUtils`）：**
+
+```java
+// startNormalApp：intent = ACTION_MAIN + setPackage + setClassName + CATEGORY_LAUNCHER
+b.putInt("extra_window_mode", 100);                 // ← 我们也有 ✓
+b.putInt("android.activity.splashScreenStyle", 1);  // ← 我们没带
+b.putInt("start_zoom_at_other_side", 13/14/31);     // ← 我们没带（13=左 14=右 31=第三档）
+Bundle b = ActivityOptions.makeBasic().setLaunchDisplayId(0).toBundle();   // 不是裸 Bundle()
+OplusZoomWindowManager.getInstance().startZoomWindow(intent, b, userId, pkgName);
+// flags：0x10200000 = NEW_TASK|RESET_TASK_IF_NEEDED（常规）
+//        0x18000000 = NEW_TASK|MULTIPLE_TASK + putExtra("multi_instance_source", 5)（多实例档）
+```
+
+⚠️ **订正一条历史结论**：`zoom-window.md` §6.2 曾记「侧边栏配方 = `extra_window_mode=100` +
+`NEW_TASK|CLEAR_TASK`」—— 反编译看是 **`RESET_TASK_IF_NEEDED`（`0x00200000`）**，不是 `CLEAR_TASK`
+（`0x00008000`）。`RESET_TASK_IF_NEEDED` 就是「点桌面图标」的语义，**不清后台栈**，比 `CLEAR_TASK`
+安全得多。侧边栏能用它，是因为它**只对不在栈顶的应用**起小窗（`isAlreadyOpenedInTop` 时直接放弃）。
+
+**⇒ 两条路各对一半，还没合起来**：launch 配方比例错（竖屏）但进屏；recents 正门比例对（横屏，因为不改方向）但几何溢出（见上）。**要的是「横屏帧 + 放得下的缩放」。**
+
+⚠️ 复测作业纪律：这台机上「单击」动作会被用户**随时改**（本轮实测撞到过
+`none`、`keyevent:24`，两次读数之间就被改掉）—— 借配置做实验必须用「一条命令块里 存-改-还原」，且还原值要现取、别用旧备份。
+
+#### 附十三之三：**「这个应用不支持小窗」的框架判据**（2026-10-14 真机，PLK110）
+
+用户报「有些应用不支持小窗」时的第一手判据 —— 框架自己会把这行打出来，**不用猜**：
+
+```
+I/FlexibleTaskController: current activity unsupport flexible window. Intent {… cmp=com.heytap.market/.activity.MainActivity}
+E/FlexibleTaskController: startFreeFormFromRecent invalid flexibleTaskInfo, pls check:
+    FlexibleTaskInfo{mResizeMode=0, mRatio=0.0, mScale=0.85, mLaunchBounds=Rect(0, 0 - 0, 0), mFlexibleState=0, …}
+```
+
+对照**支持**的应用（同一次实测，`com.android.settings`）：
+
+```
+D/FlexibleTaskController: collectFlexibleTaskInfo:FlexibleTaskInfo{mResizeMode=1, mRatio=1.7777778,
+    mScale=0.8016529, mLaunchBounds=Rect(126, 319 - 1398, 2580), mFlexibleState=0, …}
+```
+
+读法（**这三项是关键**）：
+
+| 字段            | 不支持           | 支持（竖屏标准）          | 含义                                                               |
+| --------------- | ---------------- | ------------------------- | ------------------------------------------------------------------ |
+| `mResizeMode`   | `0`              | `1`                       | 0 = 不可调尺寸 —— 框架在 `startFreeFormFromRecent` 里**直接 bail** |
+| `mRatio`        | `0.0`            | `1.7777778`               | 高/宽（`2261/1272`）—— `0.0` 表示没算出来                          |
+| `mLaunchBounds` | `Rect(0,0-0,0)`  | `Rect(126,319-1398,2580)` | 空表示没有可用落点                                                 |
+| `mScale`        | `0.85`（没意义） | `0.8016529`               | 与 §五 尺寸档表里展开档的 scale 一致                               |
+
+⚠️ **`ActivityInfo.resizeMode == 0` **不能**单独当判据**（这也是为什么模块里那个开关默认关着）： **游戏**（真机
+`com.tencent.tmgp.supercell.clashofclans`）也是 `resizeMode=0`，但它走 **`startZoomWindow`（launch）**那条能起成小窗 ——
+`invalid flexibleTaskInfo` 那道闸只在
+**`startFreeFormFromRecent`（recents 正门）**里。所以「不支持」要看**具体那条路**的返回。
+
+⇒ 模块侧的处置（2026-10-14 用户口径）：**什么都不做，只弹一条 Toast**。判据取「服务端受理了（`2`）却没收出窗口」或「压根没受理」，见
+`docs/zoom-window.md` §2.2。
+**不许**再退「按包名另起一份实例」—— 那条会回桌面再起，用户看到的是「一按侧键就回桌面重开」。
+
+#### 附十三之四：`isSupportZoomMode` **不是纯查询** —— 判「不支持」时框架会自己弹 toast（2026-10-14 真机，PLK110）
+
+用户报「选择应用里**一直弹**此应用不支持小窗，我还什么都没执行」。屏幕上的原话是：
+
+> 此应用尚未支持浮窗
+
+**这条 toast 不是模块发的**，是框架发的：
+
+| 项             | 实测                                                                                                                        |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| toast 的投稿方 | `pkg = android, uid = 1000`（系统进程，`NotificationService` 的 `OplusNotificationLogger-->TOAST-->showToast` 行）          |
+| 文案出处       | `reference/OplusLauncher.apk` 里有 `未支持浮窗`（本模块、`gesture.apk` 里都没有）—— 即 ColorOS 给用户按「浮窗」时的原话     |
+| 触发者         | **我们自己那一串 `isSupportZoomMode` 调用**：判 `false` 的那一行后面 ~5ms 就跟着一条 toast，一条一条按 `false` 的顺序排出来 |
+
+对照实验（同一台机、同一份 598 个应用清单，只差模块里有没有那次询问）：
+
+```
+预判开着  → 21:29:11 进页，21:29:11~14 每秒 0.7 个 toast（队列在排空）
+预判关掉  → 21:30:42 进页、清单照常列出 598 个 → showToast 计数 0
+```
+
+**不是 `Bundle` 引起的**：把 `extra_window_mode=100` 换成**空 bundle**
+再跑一遍，判据一模一样、**照样弹**（21:32:11.860 判 `false` → 21:32:11.865 弹一条）。
+
+**框架服务里也没有可替代的静默判据**（`probe` 的 `dump` 实测）：
+
+```
+probe/dump com.oplus.zoomwindow.OplusZoomWindowManager filter='isSupport' → 2 个方法
+  · isSupportZoomMode(String, int, String, Bundle) : boolean   ← 就是这个
+  · isSupportZoomWindowMode() : boolean                        ← 设备级开关，不按包判
+probe/dump com.android.server.wm.FlexibleWindowManagerService filter='Support' → 只剩
+  isSupportResize(int) / isSupportScenario(int) —— 都不按包判
+```
+
+⇒ **结论**：这个 API 自带**用户可见副作用**（它就是 launcher 按「浮窗」时用的那一个），
+**绝不能拿它当整表轮询的谓词**；只能用成「用户按下那一刻问一次」。模块侧最终落法见 `docs/zoom-window.md`
+§十（勾选态或选中项每变一次问一次，两处合起来才盖住每一条会被写成 `window:<包名>` 的路径）。
+
+#### 附十三之五：「重启服务」怎么把**页面自己**拉回来（2026-10-14 真机，PLK110）
+
+需求是「点了重启服务，UI 进程也重启、页面重进一遍」。三条路逐一试过，只有第三条通：
+
+**一、杀掉 `:ui` 进程，指望系统重建那个 Activity —— 不行。**
+
+```
+23:35:10.252 Process com.oplus.gesture.ui (pid 23276) has died: fg  TOP
+23:35:10.253 ActivityTaskManager: Force removing ActivityRecord{...ActionButtonSettingsActivity t271}:
+             app died, no saved state
+```
+
+进程死了，那条 `ActivityRecord` 是**直接抹掉**的（「没有 saved state」），任务栈塌回下面那个应用（实测前台落到桌面 /
+KernelSU 管理器）。**不会有任何东西把页面重新拉起来**，用户被丢在外面。
+
+**二、闹钟挂 `PendingIntent`（`getActivity`）预约自己回来 —— 被后台启动策略拦掉。**
+
+```
+23:35:14.784 E/ActivityTaskManager: Background activity launch blocked! goo.gle/android-bal
+  [callingPackage: com.oplus.gesture; callingUid: 10277; callingPid: -1;
+   isPendingIntent: true; originatingPendingIntent: PendingIntentRecord{363dd4d ... startActivity};
+   realCallingUid: 1000; realCallingPid: 4360;              ← 真发起方是系统（闹钟投递）
+   balAllowedByPiCreator: BSP.NONE;                         ← 我们（PI 的创建方）没开这档许可
+   resultIfPiCreatorAllowsBal: BAL_ALLOW_PERMISSION;         ← 我们一开就是「按权限放行」
+   balAllowedByPiSender: BSP.NONE; resultIfPiSenderAllowsBal: BAL_BLOCK;
+   realCallerStartMode: MODE_BACKGROUND_ACTIVITY_START_DENIED;]
+```
+
+两处「谁允许」都是空的，于是拦掉。注意 `resultIfPiCreatorAllowsBal` 写的是 `BAL_ALLOW_PERMISSION`
+—— 我方 uid 本来就**有**后台启动权限（见下），只是这条 PendingIntent 路线还额外要求「创建方声明允许」，而闹钟这一侧我们控制不了发起方的档位。**别再走这条路。**
+
+**三、交给宿主**主**进程去 `startActivity` —— 通。**
+
+本包拿着后台启动的正门权限（`dumpsys package com.oplus.gesture` 实测）：
+
+```
+android.permission.START_ACTIVITIES_FROM_BACKGROUND: granted=true
+android.permission.SYSTEM_ALERT_WINDOW: granted=true
+android.permission.SCHEDULE_EXACT_ALARM: granted=true
+```
+
+宿主**主进程自己**调 `startActivity`
+是「app 自己的后台启动」，按权限放行；而它本来就活着（收手势的接收器、设置页那句「在不在」都在它身上，「重启服务」的前置条件也正是它在跑）。落法：设置页发一条
+`ACTION_PAGE_RELAUNCH` → 宿主主进程等 900ms（**必须等页面进程死透**，否则 `singleInstance`
+只会把旧进程那一个拿到前台，一行新代码都没换）→ 拉起设置页 → 再过 500ms 自杀重来。实测一轮（23:40:4x）：
+
+```
++1.0s  :ui = 31823（新进程，页面已回来）      宿主主进程 = 30326（还是旧的）
++2.0s  :ui = 31823（1s）                     宿主主进程 = 31918（新，已重装手势 Hook）
+```
+
+全程没有一条 `Background activity launch blocked`（对照：走闹钟那条路每次都有一条）。
+
+## 十八、COUI `SnackbarHost` 的裁切边界 = **item 自己的盒子**（实测，2026-10-14，PLK110）
+
+### 18.1 现象
+
+首页那条常驻提示（`SnackbarHost`）的胶囊，**顶上那道影子被齐平整切**：不只「看着淡」，而是有一条一眼可见的直边。用户 2026-10-14 报的原文是「这个 snackbar 的阴影被裁切了」「阴影还是被切断」「切断和 padding 没关系，肯定是有容器设置了不外溢」——**最后一句是对的**。
+
+### 18.2 取证手法（可复用）：逐列扫像素、找**硬跳变**
+
+整屏截图（`adb exec-out screencap -p`）后用 PIL 逐列扫，判据不是「颜色深浅」而是**相邻像素的跳变**：
+
+- 真影子的衰减是**平滑**的：沿中心列从胶囊边往外，每 ~4px 掉 1 个灰阶（实测斜率 ≈0.2~0.27 灰阶/px）；
+- 被裁掉的地方是**一步跳变**：底色 `240` 直接到 `230`（10 个灰阶）或 `0` 直接到 `3`。
+
+实测数据（PLK110，1272×2772，density 560 —— **1dp = 3.5px**）：
+
+| 位置         | 数据                                                               | 结论                                                                        |
+| ------------ | ------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| 胶囊白底     | y ∈ [2473, 2603]，高 131px = 37.4dp                                | 单行胶囊                                                                    |
+| 胶囊**上方** | y=2459 处 240→230（**跳 10**），此后每 4px 掉 1 阶，到 2470 才 227 | **顶上被切**，可见只剩 14px = **4dp**                                       |
+| 胶囊**下方** | y=2604 起 220 → 2709 平滑回到 240，全程无跳变                      | 底下**没**被切，有 30dp 可用                                                |
+| 胶囊**左侧** | y=2500/2538/2560 三条线上，影子起点都精确落在 x=229                | 距胶囊左边 285 恰好 **56px = 16.0dp**，且起点是 0→3 的跳变 ⇒ **横向也被切** |
+
+「横切在 16.0dp、上切在 4.0dp」这两个数**正好等于库给胶囊的内边距** —— 见下。
+
+### 18.3 机制：`SnackbarHost` 是「内容多高就多高」的 `LazyColumn`，视窗 = item 盒子
+
+反编译 `coui-ui` 的 `SnackbarKt`（`javap -c`，`Snackbar.kt:272` / `Snackbar.kt:279`）得到结构：
+
+- `SnackbarHost(state, modifier, canSwipeToDismiss, content)`：外面一个 `Box`（挂调用方的 `modifier`），里面是
+  **`LazyColumn`** —— `reverseLayout = true`、`verticalArrangement = Arrangement.Top`、
+  `horizontalAlignment = CenterHorizontally`、`userScrollEnabled = false`、 **`contentPadding` 底部 28dp**；
+- item 内容 = `Snackbar(data, modifier, …)`，而 `Snackbar` 自己第一层就是
+  **`Modifier.padding(horizontal = 16.dp, vertical = 4.dp)`**，然后才
+  `dropShadow(shape, Shadow(elevation = 26.dp, offset = DpOffset(0.dp, 4.dp), alpha = 0.14f))` + `Surface`。
+
+于是几何完全对上：
+
+```
+影子需要的余量（elevation 26dp、下偏 4dp）  ： 上 ~22dp、下 ~30dp、左右 ~26dp
+库实际给的（胶囊外面）                      ： 上 4dp、下 4dp+28dp=32dp、左右 16dp
+                                              ↑ 只有这一档不够，就是被切的那条边
+```
+
+**视窗 = item 盒子向下多出 `contentPadding` 的 28dp**，所以底下 32dp 刚好够、四周只够库里给的那点。 `dropShadow`
+本身**不裁**（影子能画到胶囊下方 30dp，远超自己的 layout bounds）—— 裁的是 item 外面那层。
+
+### 18.4 试错过的那条路（别再走）
+
+给 `SnackbarHost` 自己加 `Modifier.padding(bottom = 16.dp)` —— **没用**： `padding`
+是从视窗**往里抠**，而视窗跟着内容一起缩，切痕会**跟着胶囊一起上移**（实测两次截图的切痕位置差正好等于所加的 padding）。这条也解释了为什么用户会说「和 padding 没关系」。
+
+### 18.5 正解
+
+走 `SnackbarHost` 的 `content` 槽位（签名是 `content: @Composable (SnackbarData) -> Unit`， **不带 `Modifier`
+参数**），把胶囊包进一层留白：
+
+```kotlin
+SnackbarHost(state = …, modifier = …) { data ->
+    Box(Modifier.padding(SNACKBAR_SHADOW_ROOM)) { Snackbar(data = data) }
+}
+```
+
+裁切边界是 **item 的盒子**，所以只有撑大 item 才会把边界一起撑出去。`SNACKBAR_SHADOW_ROOM = 20.dp` （配上库自己的 4dp /
+16dp ⇒ 上 24dp、下 52dp、左右 36dp，四周都够）。
+
+**改后复测（同一台机、同一判据）**：胶囊上方从「距顶 4dp 处 240→230 一步跳」变成
+**连续 77px（22dp）的平滑衰减**（每 ~4px 掉 1 阶，全程无跳变），下方仍 105px 平滑 —— 顶上那一刀没了。胶囊整体比改前高 4dp（去掉外层 16dp
+inset、补 20dp item 留白 ⇒ 净 +4dp），符合预期。
+
+### 18.6 顺带否掉的嫌疑人
+
+页面根那个 `Box(Modifier.fillMaxSize().padding(padding).clipToBounds())`（`SettingsPage.kt`） **不是**元凶：它是
+`fillMaxSize`、底边就是屏幕底边，而切痕在 `y=2459`（屏幕中部偏下），它物理上切不出这条线。那一句 `clipToBounds()`
+继续留着裁 push/pop 转场出画的部分。
+
+## 十九、「按了没反应，可它还是振了一下」：转发那一步卡在 **system_server 主 looper** 上（实测，2026-10-14，PLK110）
+
+### 19.1 现象
+
+用户报「整体服务没起来时按键不要振动，不要会误以为功能能用」。查日志发现不是「服务没起来」，而是**手势被宿主当成过期包丢掉了**，可注入侧**早就振过**了：
+
+```
+15:14:55.523 (system) 侧键：单击                      ← 判出手势（InputReader 线程）
+15:14:58.413 (system) 已把侧键手势转给宿主：single      ← 2.89s 之后才真发出去
+15:14:58.695 (host)   收到 system_server 转来的手势：key=plus phase=single
+15:14:58.696 (host)   侧键 的 single 已过期（发出于 3161ms 前），丢弃不执行
+```
+
+宿主 `STALE_MS = 2000`，3161 > 2000 ⇒ 丢弃。宿主那条「执行」日志一次都没出现，**动作没跑**。
+
+### 19.2 根因：`sentAt` 打点在前、`sendBroadcast` 却排在主 looper 后面
+
+- `GestureForwarder.forward()` 取
+  `sentAt = SystemClock.elapsedRealtime()`（这一步在**判出手势那一刻**、InputReader 线程上同步跑），随后用
+  `handler.postDelayed` 投递真正那条 `sendBroadcast`；
+- 它用的 `handler` 是 `KeyHooks.handler = Handler(Looper.getMainLooper())` ——
+  **system_server 的主 looper**。主 looper 被占住多久，广播就晚多久；而 `sentAt` 早就在那之前定死了。
+- 于是宿主算出来的 `age = 收到时刻 - sentAt` **= 真实发-收延迟 + 主 looper 的迟滞**。实测这一次：真实「发→收」只有
+  **282ms**，主 looper 迟滞 **2879ms**，合计 3161ms。
+- 因为「已把侧键手势转给宿主」这行**是在 runnable 里打**的（= 真发出的时刻），所以注入侧日志看起来一切正常 —— 单看它发现不了问题，必须拿宿主那笔
+  `age` 去对。
+
+### 19.3 判据（可复用）
+
+**同一次按压的「注入侧发出」与「宿主收到」两个时间戳之差，必须约等于宿主报出来的 `age`。**
+两者不等（这里差 2879ms），就说明卡在中间某一跳上，而不是链路真的慢。
+
+### 19.4 影响面与待办
+
+- 这次按压的**动作没执行**（用户读到的就是「按了没反应」）；旧代码还在注入侧振了一下 ⇒「振了却什么都没发生」，正是用户说的「会误以为功能能用」。
+- 触觉反馈已经挪回宿主侧（见 changelog 同日那节）⇒ **这类被丢弃的包再也不会振** ✓。
+- ⏭️ **但动作本身还是会丢**：待办是把转发那一步挪出主 looper（例如给 `GestureForwarder` 一个专用
+  `HandlerThread`，只承载那两条 `sendBroadcast`，不动 `GestureDetector`
+  的计时器线程）。⚠️ 属注入侧改动，**要整机重启才生效**；且它改的是按键热路径的线程归属，须先想清楚再动。
+
+## 二十、COUI 浮层列表：**滑动会被当成「选行」**（实测，2026-10-15，PLK110）
+
+用户报「添加命令滑动时偶尔会直接触发点击」：在「添加命令」那张长列表里滑动，偶尔会选中手指下面那一行（加了一步命令 / 开了二级菜单 / 菜单自己关了）。
+
+**取现场的办法**（这一段是新增 `ui/component/GestureProbe` 的由来）：行的点击由库在**抬指那一刻**
+派发（`PopupListGestureHost.onUp` →
+`handle.onClick()`），出问题时日志里只剩「某一行被点了」这个结果，看不出那一下其实滑了多远。给整列外面挂一层只记账、**不消费事件**的手势探针（`PointerEventPass.Initial`
+读，抢在任何消费之前），把「位移 / 峰值 / 移动次数 / 用时 / 列表内容移位」连同结果一起打出来。
+
+**现场（用户真机，00:22:29 与 00:22:51 两笔）**：
+
+```
+浮层列表：这一段是滑动 —— 位移 261px / 峰值 261px（阈值 28px），移动 64 次，用时 764ms，列表内容移位 261px
+浮层点选：创建自定义命令 —— 位移 261px / 峰值 261px（阈值 28px），移动 64 次，用时 764ms，列表内容移位 261px
+
+浮层列表：这一段是滑动 —— 位移 273px / 峰值 273px（阈值 28px），移动 32 次，用时 418ms，列表内容移位 273px
+浮层点选：截图 —— 位移 273px / …
+多条命令：加第 1 步 → shell:service call color_screenshot 1
+```
+
+判据一句话：**「点选」那一行的「位移」是 0~几 px 才是真点击；带着几百 px 就是滑动被当成了点击。**
+（两笔的列表内容也确实跟着滚了 261 / 273px —— 不是「列表没动能滚」那种，是**滚着也在选**。）
+
+**机制**：库的判据只有内部那个
+`isDynamicSelection`（源码：`!scrollState.canScrollForward && !scrollState.canScrollBackward`，等于「这一列量不出滚动范围」时才允许**拖拽选行**）。长列表显然能滚，可那一瞬间它仍被判成了「拖拽选行」⇒ 整段滑动期间按压高亮跟着手指走，抬指就选中。同一次会话里 30 次滑动只中 2 次（我这边用
+`input swipe` 复现不到，只有「点开菜单后紧接着滑」中过一次）——
+**是竞态，不是手势形状**：位移 / 时长 / 移动次数三档在有问题的与没问题的之间完全重叠。
+
+**收口（本项目侧，不动库）**：`PageWidgets.MenuRow` 在派发那一行之前，按**这一段手势自己的位移**
+兜一道 —— 越过阈值（`peak > touchSlop`）就是滑动，**吞掉这次选中**。阈值取库同一个
+`LocalViewConfiguration.touchSlop`；真点击是 0~几 px，不会误吞。副产物：滑动不再「选中」，短菜单上那套「按住滑到某行再松手＝选它」也一并没了 —— 用户要的是「滑就是滑，点就是点」。⚠️ 只挂在浮层行上：页面行（「添加命令」那一行、各步骤行）的点击是 Compose
+`clickable` 给的，拖动会被页面滚动消费掉，没有这个毛病（同一次会话的日志里它们的位移都是 0px）。

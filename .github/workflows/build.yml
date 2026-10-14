@@ -159,12 +159,13 @@ jobs:
             fi
           done
 
-          # ⑤ 注入侧不得引用 androidx / COUI / 图标库 / page 层 —— 那些类在 system_server 里
-          #    执行会在类加载期崩。判据是「这个类会不会在 system_server 里被执行」，所以
-          #    page/（Compose + COUI）与图标库（com.composables / io.github.lyxnx）一并拦。
+          # ⑤ 注入侧不得引用 androidx / COUI / 图标库 / 界面层 —— 那些类在 system_server 里
+          #    执行会在类加载期崩。判据是「这个类会不会在 system_server 里被执行」：inject/ 是
+          #    注入侧本体，core/ 是它依赖的共享层（同样在注入目标进程里执行），所以一并拦；
+          #    ui/（Compose + COUI）与图标库（com.composables / io.github.lyxnx）是禁引项。
           #    目录先各自确认存在：路径写错时 grep 会返回 2（错误），不加这道守卫会被当成「无命中」放过
           injection_dirs=""
-          for d in hook gesture config; do
+          for d in inject core; do
             p="app/src/main/java/com/lookie/opluskey/$d"
             if [ -d "$p" ]; then
               injection_dirs="$injection_dirs $p"
@@ -172,10 +173,10 @@ jobs:
               bad "找不到注入侧目录 $p（包名挪过？这条校验会失效）"
             fi
           done
-          hits=$(grep -rn "^import \(androidx\|io\.github\.suqi8\|io\.github\.lyxnx\|com\.composables\|com\.lookie\.opluskey\.page\)" $injection_dirs || true)
+          hits=$(grep -rn "^import \(androidx\|io\.github\.suqi8\|io\.github\.lyxnx\|com\.composables\|com\.lookie\.opluskey\.ui\b\|com\.lookie\.opluskey\.ui\." $injection_dirs || true)
           if [ -n "$hits" ]; then
             printf '%s\n' "$hits"
-            bad "注入侧（hook/ gesture/ config/）引用了 androidx / COUI —— 见 AGENTS.md 一、1"
+            bad "注入侧（inject/ core/）引用了 androidx / COUI —— 见 AGENTS.md 一、1"
           else
             echo "  ok  注入侧无 androidx / COUI import"
           fi
