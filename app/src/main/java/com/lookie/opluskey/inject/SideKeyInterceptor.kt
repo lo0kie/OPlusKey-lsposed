@@ -30,20 +30,17 @@ internal class SideKeyInterceptor(
     )
 
     /**
-     * @return true = 接管（吞掉原方法）；false = 原样放行给系统
-     */
-    /**
-     * 这个事件是不是我们自己重注入的合成事件。
+     * 这个事件是不是**我们自己注入的**合成事件（`KeyInjector` 干的那类按键注入）。
      *
-     * 「放行」是「吞掉原始键 + 用 `InputManager` 重注入一对 735」（见 `KeyInjector`），
-     * 而重注入的事件会**再走一遍**这条按键路径 ⇒ 再被认领、再判一次单击、再放行一次
-     * ⇒ 每 ~100ms 一轮的自持循环（真机实测 2026-10-13，见 `docs/device-findings.md`）。
-     * 合成事件带的是虚拟键盘的 `deviceId`（`KeyInjector` 显式传 -1），认它的号即可放行。
+     * 注入的键会**再走一遍**这条按键路径 ⇒ 再被认领、再判一次手势 ⇒ 每 ~100ms 一轮的自持循环
+     *（真机实测，见 `docs/device-findings.md`）。合成事件带的是虚拟键盘的 `deviceId`
+     *（`KeyInjector` 显式传 -1），认它的号即可放行。
      */
     private fun isSynthetic(keyEvent: KeyEvent): Boolean =
         keyEvent.deviceId == android.view.KeyCharacterMap.VIRTUAL_KEYBOARD ||
             keyEvent.deviceId < 0
 
+    /** @return true = 接管（吞掉原方法）；false = 原样放行给系统。 */
     fun handle(point: Framework.InterceptionPoint, chain: XposedInterface.Chain): Boolean {
         if (!ConfigChannel.takeOver) return false
 

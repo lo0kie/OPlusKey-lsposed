@@ -5,7 +5,6 @@ import android.os.Handler
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.inject.input.KeyInjector
 import com.lookie.opluskey.inject.system.FlashlightController
@@ -87,9 +86,9 @@ internal class ActionRunner(
     /** 一个 `keyevent:` 动作：大多走注入，通知中心 / 最近任务 / 静音键走特殊通道。 */
     private fun runKeyEvent(keyCode: Int) {
         when (keyCode) {
-            KEYCODE_NOTIFICATION -> sendStatusbar(StatusBarBridge.CMD_NOTIFICATIONS)
-            KEYCODE_APP_SWITCH -> sendStatusbar(StatusBarBridge.CMD_RECENTS)
-            KEYCODE_VOLUME_MUTE -> ringer.cycle()
+            KeyId.KEYCODE_NOTIFICATION -> sendStatusbar(StatusBarBridge.CMD_NOTIFICATIONS)
+            KeyId.KEYCODE_APP_SWITCH -> sendStatusbar(StatusBarBridge.CMD_RECENTS)
+            KeyId.KEYCODE_VOLUME_MUTE -> ringer.cycle()
             else -> injector.inject(keyCode)
         }
     }
@@ -117,25 +116,19 @@ internal class ActionRunner(
             notifyFailure(CommandFailure.EMPTY)
             return
         }
+        val cmd = command.trim()
         when {
-            // 两个 KSU 别名都用 contains 匹配（同一口径）：命令串可能带多余参数或前后缀
-            command.contains(KsuCompat.SCREENSHOT_CMD_TOKEN) -> {
+            // 两个 KSU 别名都按**前缀 + 没串别的命令**认领（口径收在 [KsuCompat] 一处）：
+            // 容得下参数差异，又不会把「用户命令正文里正好出现这个串」当成 KSU 那条劫持掉
+            //。
+            KsuCompat.isScreenshotAlias(cmd) -> {
                 XLog.w("截图：注入 KEYCODE_SYSRQ（KSU 那条 service call 在这里不必走 shell）")
                 injector.inject(KeyId.KEYCODE_SYSRQ)
             }
 
-            command.contains(KsuCompat.SIDEBAR_SERVICE) -> launcher.startSidebar()
+            KsuCompat.isSidebarAlias(cmd) -> launcher.startSidebar()
+            // 原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分
             else -> ShellRunner.exec(command, ::notifyFailure)
         }
-    }
-
-    private companion object {
-        /** 与 `KeyEvent.KEYCODE_NOTIFICATION` 一致（83）。 */
-        const val KEYCODE_NOTIFICATION = 83
-
-        /** 最近任务，走 `sendStatusbar`（`KEYCODE_APP_SWITCH` = 187）。 */
-        const val KEYCODE_APP_SWITCH = 187
-
-        const val KEYCODE_VOLUME_MUTE = 164
     }
 }

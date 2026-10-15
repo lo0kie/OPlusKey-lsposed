@@ -13,12 +13,18 @@ import com.lookie.opluskey.core.log.XLog
 import kotlin.math.abs
 
 /**
- * 一段手势的「位移账本」—— **只记数，不改行为**。
+ * 一段手势的「位移账本」。
  *
  *  用来抓「滑动被当成一次点击」这种偶发现场：行的点击是在**抬指那一刻**派发的，判「这是滑动还是
  * 点一下」的只有各处组件自己那点逻辑，出问题时日志里只剩一个结果（某一行被点了 / 某个菜单开了），
  * 看不出那一下其实滑了多远、列表跟着动没有。这里把按下→抬起的**竖直位移 / 峰值 / 移动次数 / 用时**
  * 与列表内容有没有跟着移位一并记下，抬指时打一行，点击那一行再打一行 —— 两行配起来就是判据。
+ *
+ *  注意：**它不只是「记数」——会改行为**：不能写成「只记数，不改行为」：
+ *  但浮层那处真的按 [isDrag] 决定要不要派发行点击（`ui/component/MenuPopup.kt` 里 `MenuRow` 的
+ *  「滑动不许选中」那道闸）。所以：
+ *   · 它**必须**在 release 里也照常工作（不是纯诊断件，别想用构建类型把它关掉）；
+ *   · 判断用的 `peak` / `slop` 在每次 [onDown] 归零 —— 读之前必须先经过一次 [onDown]。
  *
  *  [label] 只进日志前缀，用来分清是哪一块（浮层列表 / 步骤卡 / 添加命令那一行）。
  */
@@ -58,6 +64,24 @@ internal class GestureProbe(private val label: String) {
      */
     fun onContentPosition(y: Float) {
         contentY = y
+    }
+
+    /**
+     * 账本归零 —— 浮层重新打开时清掉上一次的基线（见 `MenuPopup`）。
+     *
+     *  账本对象是 `remember` 的、**跨浮层开合不重建**：上一次留在
+     *  `contentY` / `contentYAtDown` 里的位置是上一个面板的，不归零的话下一次的
+     *  「列表内容移位」就是从错误基线算出来的 —— `isDrag()` 不受影响（[onDown] 会把
+     *  `peak` 归零），但这行日志是排查时的判据，还是得对。
+     */
+    fun reset() {
+        downAtMs = 0L
+        downY = 0f
+        lastY = 0f
+        peak = 0f
+        moves = 0
+        contentY = 0f
+        contentYAtDown = 0f
     }
 
     /** 这一段该算滑动（位移越过阈值），不是点一下。 */
@@ -100,7 +124,11 @@ internal fun Modifier.gestureProbe(probe: GestureProbe): Modifier {
                     if (!change.pressed) break
                 }
                 if (probe.isDrag()) {
-                    XLog.w("${probe.logPrefix()}这一段是滑动 —— ${probe.describe()}")
+                    // 注意：用 `d` 而不是 `w`：这一段是**每一次滑动**都会打
+                    //  一行，而它只是诊断用的账本、不是判据 —— 用 `w` 会让 release 包里每次滑动
+                    //  都刷一行（反向问题：刷屏）。`d` 在 release 被编译期消除，debug 里照样看得见。
+                    //  账本本身**必须保留**：`MenuRow` 的「滑动不许选中」那道闸要读 `isDrag()`。
+                    XLog.d("${probe.logPrefix()}这一段是滑动 —— ${probe.describe()}")
                 }
             }
         }

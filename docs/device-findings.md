@@ -21,15 +21,20 @@
 实现在 **`com.android.server.policy.StrategyActionButtonKeyLaunchApp`**，位于 `oplus-services.jar`（**不在**
 `com.oplus.server.policy`，也**不在** `com.android.server.policy` 的 AOSP 部分）。
 
-### 入口方法（两种，都要挂）
+### 入口方法（**只挂外层那一个**）
+
+> ⚠️ 这一节原写「两种，都要挂」，与 `inject/Framework.kt`
+> 的实现和 §14.4 的结论相反（2026-10-15 审计 #39）。照那行做会重造幽灵长按 —— 正确口径是**只挂外层**
+> `actionInterceptKeyBeforeQueueing`；`$2` 是外层方法的**纯转发**（12 条指令、 `preCondition`
+> 恒 true），挂它 0 收益，只会让同一次按键被回调两次。
 
 ```
 com.android.server.policy.StrategyActionButtonKeyLaunchApp
-    # actionInterceptKeyBeforeQueueing(Landroid/view/KeyEvent;IIZZ)I
+    # actionInterceptKeyBeforeQueueing(Landroid/view/KeyEvent;IIZZ)I   ← 只挂这一个
 
 com.android.server.policy.StrategyActionButtonKeyLaunchApp$2
     # interceptKeyBeforeQueueing(Landroid/view/KeyEvent;IIZZ)I
-    # preCondition()Z
+    # preCondition()Z                                                  ← 不挂（见上）
 ```
 
 `$2` 是一个内部回调类（`onChange` 观察者 +
@@ -241,6 +246,8 @@ LSPosed 管理器模块列表右下角那颗「打开模块」的 FAB 由 `AppHe
 
 - 判据：库里 `select apk_path from modules where module_pkg_name='io.github.lo0kie.opluskey'` 与
   `adb shell pm path io.github.lo0kie.opluskey` 对比。
+  ⚠️ 拷这个库要**连 `-wal` 一起拷**（`modules_config.db` + `modules_config.db-wal`）：最近一次写入还在 WAL 里，
+  只拷主库会读到**旧路径**，实测能得出「库 ≠ 真机」的假警报 —— 带上 `-wal` 再查就一致了。
 - 修法：把库里该行改成 `pm path` 的当前值，再重启。
 
 ### 六之四、本机 LSPosed 版本与可用工具
@@ -882,7 +889,7 @@ MD3 的 `RadioButton` 选中色默认是 `primary`。而我们的 `primary` 被�
   `mStatusBarContrastWhenTransparent`，对 targetSdk ≥ Q 默认开）。旁证：宿主自己的 `BaseActionActivity#onCreate`
   只对**导航栏**关了这个（`setNavigationBarContrastEnforced(false)`），漏了状态栏。
 
-**修法（两条一起上，`ui/SettingsPageHooks.kt`）**：
+**修法（两条一起上，`ui/HostChrome.kt`）**：
 
 1. `Window.setStatusBarContrastEnforced(false)` —— 关掉系统那层薄纱；调用点必须在 `setContentView`
    **之后**（默认值来自主题属性 `android:enforceStatusBarContrast`，首次建 `DecorView` 时会按主题重算一遍）；
@@ -2011,7 +2018,7 @@ ColorOS 的「小窗」在框架里叫 **ZoomWindow**（同族还有 `startMiniZ
   不是判据，别拿它下结论。
 - **另一条退路**（公开 API，但那一对常量 / 方法本身也是隐藏的）：`ActivityOptions.makeBasic()` +
   `setLaunchWindowingMode(WINDOWING_MODE_FREEFORM)`；ColorOS 不认它时就是一次普通打开。
-- 模块侧：动作 `window:<包名>`（`Action.AppWindow`）→ `AppLauncher.launchAppInWindow`，入口解析与 `app:`
+- 模块侧：动作 `window:<包名>`（`Action.AppWindow`）→ `MiniWindowLauncher.launchAppInWindow`，入口解析与 `app:`
   共用（17.5 那套显式组件兜底照用），起法逐层降级 `startZoomWindow` → 自由窗口 → 普通
   `startActivity`，每层都记日志（断在哪一环看日志）。
 
@@ -2090,7 +2097,7 @@ android.app.OplusActivityManager#startZoomWindow(Intent, Bundle, int userId, Str
   ```
   返回 `3` 时先发一个 CATEGORY_HOME 的 intent 回桌面、延迟 400ms 再起一次（`MULTIPLE_TASK`
   在场时正常走不到这一档，留着当兜底）。模块里 `window:<包名>` 与 `zoom:mini` 共用这一套（见
-  `AppLauncher.launchAppInWindow`）。**代价**：小窗里是新起的一份实例，不是把现有那扇窗挪过去。
+  `MiniWindowLauncher.launchAppInWindow`）。**代价**：小窗里是新起的一份实例，不是把现有那扇窗挪过去。
 - **对「刚退到后台的应用」起小窗也成立**：先回桌面、再对 `设置` 调同一支接口，拿到 `0` +
   `windowingMode=100`，且能稳定停住（+1s / +5s / +11s 三张截图核过，小窗一直浮在桌面上）。只是既然 `MULTIPLE_TASK`
   那条在前台就通，`zoom:mini` 不必再绕「先回桌面」这一圈。
@@ -2119,8 +2126,8 @@ android.app.OplusActivityManager#startZoomWindow(Intent, Bundle, int userId, Str
   `startFlexibleWindowForRecentTasks(int, Rect)`、`startActivityFromRecentsForFlexible(int, Bundle)`、
   `splitScreenForTopApp`。
 - **侧键场景表里没有小窗档**（`action_button` 全 13 行核过），所以没有「官方侧键怎么起小窗」可抄。
-- **模块侧**：`window:<包名>`（`Action.AppWindow`）→ `AppLauncher.launchAppInWindow`；`zoom:mini`
-  （`Action.MiniWindow`）→ `AppLauncher.putForegroundInMiniWindow`（取前台包名后复用同一条）。两条都走同一个
+- **模块侧**：`window:<包名>`（`Action.AppWindow`）→ `MiniWindowLauncher.launchAppInWindow`；`zoom:mini`
+  （`Action.MiniWindow`）→ `MiniWindowLauncher.putForegroundInMiniWindow`（取前台包名后复用同一条）。两条都走同一个
   `startZoomWindow` + `zoomWindowBundle()`（`extra_window_mode = 100`）+
   `NEW_TASK | MULTIPLE_TASK`，只在返回**负数**时降级 —— `0` / `2` / `3`
   都不是失败标志。⏭️ 「把**现有**那扇窗原地收成小窗」应用侧仍然做不到：系统自己的「交换应用」走的是「小窗 ⇄ 全屏」两份任务互换，且**明确拒绝同一个包**（见 17.6.2），抄不过来。
@@ -2520,7 +2527,7 @@ alpha/时长/插值器/leash…，**构造器是 public**）。`switchState(task
 
 **结论与处置**：暂时**不用**伪造态这条开窗，改走 **recents 正门** （`startActivityFromRecentsForFlexible` +
 `mZoomLaunchFlags = 2`，§17.6.3，真机实证过的展开档）——它走的是框架自己的柔性窗启动链路，操作条 / 圆角 / 输入都有人配。代价是**没有原生动画**。伪造态那条留在代码里、由宿主侧开关
-`AppLauncher.USE_FORGED_ANIMATION_ROUTE` 控制（默认 `false`），哪天把注册那步补上再打开。
+`MiniWindowLauncher.USE_FORGED_ANIMATION_ROUTE` 控制（默认 `false`），哪天把注册那步补上再打开。
 
 **正门真机验证（同日 17:44，未重启整机）**：`kill` 宿主进程后用假手势触发（见 `zoom-window.md` §11.1），日志
 `走 recents 正门` → `从 recents 把任务 #72 原地收成小窗（flags=2，返回 2）`，四个症状**全好**：
@@ -2736,7 +2743,7 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int, Bu
 附十一把 A 方案判死后，伪造态（`switchState`）成了唯一「有动画」的路，于是复测一次。
 **结论：它同样不成立，而且根因比「缺几个调用」更硬 —— 那个任务从来就不是小窗。**
 
-**复测怎么做的**（全程无重启）：把 `AppLauncher.USE_FORGED_ANIMATION_ROUTE` 翻成 `true` （**宿主侧**改动 = 重编 + `kill`
+**复测怎么做的**（全程无重启）：把 `MiniWindowLauncher.USE_FORGED_ANIMATION_ROUTE` 翻成 `true` （**宿主侧**改动 = 重编 + `kill`
 宿主进程即可，几分钟内可来回翻），然后用 `ACTION_GESTURE` 广播直接触发侧键动作 —— 宿主那个接收器是
 `NOT_EXPORTED`，**root（uid 0）发得进去**，不需要真的按侧键：
 
@@ -2899,7 +2906,7 @@ OplusZoomWindowManager.getInstance().startZoomWindow(intent, b, userId, pkgName)
 ⚠️ 复测作业纪律：这台机上「单击」动作会被用户**随时改**（本轮实测撞到过
 `none`、`keyevent:24`，两次读数之间就被改掉）—— 借配置做实验必须用「一条命令块里 存-改-还原」，且还原值要现取、别用旧备份。
 
-#### 附十三之三：**「这个应用不支持小窗」的框架判据**（2026-10-14 真机，PLK110）
+#### 附十三之三：**「前台应用不支持小窗」的框架判据**（2026-10-14 真机，PLK110）
 
 用户报「有些应用不支持小窗」时的第一手判据 —— 框架自己会把这行打出来，**不用猜**：
 
@@ -3168,7 +3175,68 @@ inset、补 20dp item 留白 ⇒ 净 +4dp），符合预期。
 `input swipe` 复现不到，只有「点开菜单后紧接着滑」中过一次）——
 **是竞态，不是手势形状**：位移 / 时长 / 移动次数三档在有问题的与没问题的之间完全重叠。
 
-**收口（本项目侧，不动库）**：`PageWidgets.MenuRow` 在派发那一行之前，按**这一段手势自己的位移**
+**收口（本项目侧，不动库）**：`MenuPopup.kt` 的 `MenuRow` 在派发那一行之前，按**这一段手势自己的位移**
 兜一道 —— 越过阈值（`peak > touchSlop`）就是滑动，**吞掉这次选中**。阈值取库同一个
 `LocalViewConfiguration.touchSlop`；真点击是 0~几 px，不会误吞。副产物：滑动不再「选中」，短菜单上那套「按住滑到某行再松手＝选它」也一并没了 —— 用户要的是「滑就是滑，点就是点」。⚠️ 只挂在浮层行上：页面行（「添加命令」那一行、各步骤行）的点击是 Compose
 `clickable` 给的，拖动会被页面滚动消费掉，没有这个毛病（同一次会话的日志里它们的位移都是 0px）。
+
+## 二十一、改配置外皮之前该知道的两条前提（实测，2026-10-15，PLK110）
+
+### 21.1 正式包的 dex：自家包名只留入口与资源类，其余**改名 + 重打包进默认包**
+
+`app/proguard-rules.pro` 放开混淆之后（不再有 `-keepnames class com.lookie.opluskey.** { *; }`，
+它等于 `-keep,allowshrinking`：只钉名字、允许收缩），release 包的 `classes.dex` 共 3146 个类：
+
+- 留在 `Lcom/lookie/opluskey/` 下的只有 **6 个**：`KeyModule`（`META-INF/xposed/java_init.list`
+  按名字取）与 `R` / `R$drawable` / `R$mipmap` / `R$raw` / `R$string`（`Resources.getIdentifier` 按名字取）。
+- 其余 **3117 个全在默认包**（无包名），`mapping.txt` 里形如 `FileObfuscation -> t50:`。
+  `FileObfuscation` / `scramble` / `unscramble` / `unwrap` / `ConfigCodec` 在包里都搜不到了。
+
+⇒ **`core/config/FileObfuscation` 那两层只挡「打开配置文件的人」，挡不住「读 dex 的人」** ——
+异或密钥与替身字母表仍以字节形式躺在 dex 里，只是没了可以搜的名字。这不是缺陷、是有意的，
+但它划定了外皮的能力边界：任何「加了混淆就等于保密」的说法都不成立。
+
+**R8 默认就会重打包**（所以 `-repackageclasses ''` 是句废话，要关掉得写 `-keeppackagenames`），
+默认包里撞名之所以不怕：LSPosed 的 `LspModuleClassLoader` 委托顺序是 **`findClass` 先于
+`parent.loadClass`**，模块自己的类永远取自己那份；宿主那边看不到模块的类，反向也不会串。
+实测各宿主类路径的默认包类数（`a`~`d` 是与本包重名的全部）：
+
+| 类路径 | 默认包类数 | 与本包撞名 |
+| --- | --- | --- |
+| `framework.jar` | 0 | 0 |
+| `oplus-framework.jar` | 0 | 0 |
+| `services.jar` | 7（`LZMA*Demo`） | 0 |
+| `OplusGestureUI.apk`（`com.oplus.gesture`） | 4（`a`~`d`） | 4 |
+
+那 4 个撞名在**带 `-keepnames` 的在机版本上就已经一样**，模块照常工作 ⇒ 撞名字段无害。
+
+查法（两条都要）：
+
+```bash
+# 类描述符要按 dex 头部三段读：0x38 string_ids → 0x40 type_ids → 0x60 class_defs，
+# class_idx 是 type_ids 的下标、不是 string_ids 的（读错会得到一堆成员名字符串）
+unzip -p app-release.apk classes.dex > /tmp/classes.dex
+strings /tmp/classes.dex | grep -c 'Lcom/lookie/opluskey/'    # 只剩入口与 R*，粗筛够用
+adb exec-out su -c 'cat <真机 base.apk>' > local.apk && sha256sum local.apk <本地构建的包>   # 确认装的就是这个包
+```
+
+**同级的一条**：构建时刻 `resValue("string", "build_id", …)` 落在 `resources.arsc` 里、**不在 dex 里** ——
+想在包里核「手上这个包是哪一刻出的」，要读 `resources.arsc`（`unzip -p <apk> resources.arsc | grep '20..-..-.. ..:..:..'`）。
+同一份源码连编两次，**只有 `resources.arsc` 这一项会变**（就是它），其余各条含 `classes.dex` 逐字节相同 ⇒
+R8 的类名分配是可复现的，谁手上哪个包都能对上同一份 `mapping.txt`；想连这一项也定住就构建时给
+`SOURCE_DATE_EPOCH`（`build_id` 已经按它取时间）。
+
+### 21.2 工作树的**行尾不统一**：多数 CRLF，少数 LF
+
+`core.autocrlf=true` 且索引里存的是 CRLF ⇒ `git checkout` 出来的文件是 CRLF；而后来**新写**的文件
+（`docs/device-findings.md` 就是其中一个）是 LF。同一批要改的文件里混着两种行尾是**常态**。
+
+⇒ 批量改这些文件时必须**按文件原本的行尾写回**（读时按 universal newline，写时按该文件的 EOL）；
+拿 LF 去写 CRLF 文件会造出一整篇「全文件都改了」的假 diff。核法：
+
+```bash
+grep -c $'\r' <文件>     # 等于行数 ⇒ CRLF；0 ⇒ LF
+```
+
+（另：本项目的 `.workbuddy` 是**被有意占位成普通文件**的，所以 `.workbuddy/` 下任何路径都写不进去、
+工作区记忆不落盘 —— 见仓库根目录那个占位文件自身的说明。）

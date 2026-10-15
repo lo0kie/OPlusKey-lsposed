@@ -42,7 +42,7 @@ internal enum class CommandFailure(val hint: String) {
     /** `app:` 应用装着但没有可启动界面（与 [APP_MISSING] 分开，报「已卸载」会误导）。 */
     APP_NO_ENTRY("这个应用没有可启动的界面"),
 
-    /** 小布快捷指令三套 action 都没被系统接受。 */
+    /** 小布快捷指令那几个 action 都没被系统接受。 */
     SHORTCUT_FAILED("小布快捷指令没能触发"),
 
     /** 兜底：执行时抛了异常，但说不上是哪一类。 */
@@ -51,13 +51,17 @@ internal enum class CommandFailure(val hint: String) {
     /**
      * 小窗：这个应用**收不起来小窗**（服务端没受理，或收完没出窗口）。
      *
-     * 只提示、**什么都不做** —— 不再退「按包名另起一份实例」(2026-10-14 用户口径)：
+     * 只提示、**什么都不做** —— 不再退「按包名另起一份实例」( 用户口径)：
      * 那条会先回桌面再起，用户看到的是「一按侧键就回桌面重开」，比没反应更糟
      * （见 `docs/zoom-window.md` §2.2）。
      */
-    APP_NO_MINI_WINDOW("这个应用不支持小窗"),
+    APP_NO_MINI_WINDOW("前台应用不支持小窗"),
 
-    /** shell 并发超上限被拒（上一条还没结束又来一条）。 */
+    /**
+     * 上一条还没结束又来一条 —— 两种来源：
+     *  · `shell:` 并发超上限（`ShellRunner` 那一侧的闸）；
+     *  · 命令链还在跑时又触发了一条（`CustomCommandRunner` 的「一次只跑一条」闸）。
+     */
     OVERLOADED("上一条命令还没跑完，稍后再试"),
     ;
 
@@ -86,6 +90,20 @@ internal object FailureNotice {
         }
     }
 
+    /**
+     * 上一条弹过的提示与它的时刻 —— [toast] 的去重账（长按连续触发会反复派发同一句）。
+     *
+     * 注意：这两个字段**必须按同一把锁读写**：[toast] 不只从主线程进 ——
+     * `ShellRunner` 的失败回调跑在后台线程上，两条并发进来会**同时通过**「查重 → 记账」这段
+     * check-then-set，同一句话照样连弹两条。
+     */
+    private val dedupLock = Any()
+    private var lastToastText: String? = null
+    private var lastToastAt = 0L
+
+    /** 同一句话在这么久之内不重复弹（`Toast.LENGTH_SHORT` 大约 2s，取略短的一档）。 */
+    private const val TOAST_DEDUP_MS = 1500L
+
     /** 弹一条失败提示；context 为 null 时只记日志。 */
     fun show(context: Context?, failure: CommandFailure) {
         // 日志这一行带枚举名，是排查时的锚点
@@ -101,6 +119,15 @@ internal object FailureNotice {
      */
     fun toast(context: Context?, text: String) {
         if (context == null || text.isEmpty()) return
+        // 同一句话短时间内的重复派发只弹一次：长按连续触发按「触发间隔」反复执行同一条命令，
+        //  不去重就是一条接一条排队刷屏。
+        //  查重与记账在同一把锁里（跨线程，见 [dedupLock]）。
+        val now = android.os.SystemClock.elapsedRealtime()
+        synchronized(dedupLock) {
+            if (text == lastToastText && now - lastToastAt < TOAST_DEDUP_MS) return
+            lastToastText = text
+            lastToastAt = now
+        }
 
         val handler = main ?: return
         try {

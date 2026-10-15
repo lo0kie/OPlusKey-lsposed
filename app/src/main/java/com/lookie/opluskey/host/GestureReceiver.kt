@@ -14,7 +14,7 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.FailureNotice
@@ -82,7 +82,7 @@ internal object GestureReceiver {
     }
 
     private fun tryGetContext(loader: ClassLoader, attempt: Int) {
-        val ctx = applicationContext(loader)
+        val ctx = ActivityThreadCompat.currentApplication(loader)
         if (ctx == null) {
             if (attempt >= CTX_RETRY) {
                 XLog.w("拿不到 Application Context（重试 $attempt 次）—— 手势接收器没装上，" +
@@ -123,12 +123,16 @@ internal object GestureReceiver {
                     context?.let { PageRelaunch.schedule(it) }
                     return
                 }
-                val key = intent?.getStringExtra(KeyModule.EXTRA_KEY)
-                val phase = intent?.getStringExtra(KeyModule.EXTRA_PHASE)
-                val repeat = intent?.getBooleanExtra(KeyModule.EXTRA_REPEAT, false) ?: false
-                val sentAt = intent?.getLongExtra(KeyModule.EXTRA_SENT_AT, 0L) ?: 0L
-                XLog.d("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
-                XLog.guard("处理转来的手势 $key/$phase") { handle(key, phase, repeat, sentAt) }
+                // 注意：取 extra 与派发**同在一个 guard 里**：三句
+                //  `getXxxExtra` 露在 guard 外面，一旦抛出就是宿主主进程的未捕获异常。
+                XLog.guard("处理转来的手势") {
+                    val key = intent?.getStringExtra(KeyModule.EXTRA_KEY)
+                    val phase = intent?.getStringExtra(KeyModule.EXTRA_PHASE)
+                    val repeat = intent?.getBooleanExtra(KeyModule.EXTRA_REPEAT, false) ?: false
+                    val sentAt = intent?.getLongExtra(KeyModule.EXTRA_SENT_AT, 0L) ?: 0L
+                    XLog.d("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
+                    handle(key, phase, repeat, sentAt)
+                }
             }
         }
         try {
@@ -150,19 +154,6 @@ internal object GestureReceiver {
         } catch (e: Throwable) {
             XLog.w("注册手势接收器失败", e)
         }
-    }
-
-    /**
-     * 取宿主进程的 Application Context —— 宿主是普通 App 进程，
-     * `ActivityThread.currentApplication()` 在这儿有效（system_server 那边拿不到）。
-     */
-    private fun applicationContext(loader: ClassLoader): Context? = try {
-        val cls = Reflect.findClass(loader, "android.app.ActivityThread")
-        val app = if (cls == null) null else Reflect.callStatic(cls, "currentApplication")
-        app as? Context
-    } catch (e: Throwable) {
-        XLog.d("取 Application Context 失败：${e.message}")
-        null
     }
 
     /**
@@ -195,10 +186,18 @@ internal object GestureReceiver {
      * 顺带带上两个诊断字段，让首页能判「读到的配置是不是真值」与「这个键执行过没有」——
      * 光说一句「我在」判不出那两种（配置没到 / 从来没按过）的真实故障，见 `ui/state/LinkCheck.kt`。
      */
-    private fun reportAlive(ctx: Context) {
+    private fun reportAlive(ctx: Context) =
+        sendAlive(ctx, ConfigStore.read().key(KeyId.PLUS).enabled)
+
+    /**
+     * 报活的发送本身。`enabled` 由调用方给。
+     *
+     *  为什么要把这一位拆出来：每执行一次动作都会补发一条报活（见 [runAction]），而那一层
+     *  手上**已经有一份刚读出来的配置**了 —— 再让它自己去读一遍是白费一次剥外皮 + JSON 解析。
+     *  「现读」这条语义没有变：同一串同步调用里没有别人会去写那份文件。
+     */
+    private fun sendAlive(ctx: Context, enabled: Boolean) {
         try {
-            // 现读一次文件真值：开机未解锁时这里读到的是默认值 —— 正好是首页要判的那一种情况
-            val enabled = ConfigStore.read().key(KeyId.PLUS).enabled
             ctx.sendBroadcast(
                 Intent(KeyModule.ACTION_HOST_SERVICE_UP)
                     .setPackage(KeyModule.PAGE_PACKAGE)
@@ -280,10 +279,16 @@ internal object GestureReceiver {
 
         // 过期丢弃：正常送达延迟是几百毫秒；超过 STALE_MS 说明这条在系统里被压了很久
         //（进程曾被冻结）—— 一次性灌进来的那批全在这里拦掉。
-        val age = android.os.SystemClock.elapsedRealtime() - sentAt
-        if (age > STALE_MS) {
-            XLog.w("${key.label} 的 $phaseId 已过期（发出于 ${age}ms 前），丢弃不执行")
-            return
+        //  注意：`sentAt` 缺失（<= 0）时**不判过期**：`elapsedRealtime() - 0`
+        //   必然大于 STALE_MS，缺 extra 的那条会被无条件丢掉 —— 而紧接着那段去重明确写着
+        //   「sent_at 缺失时整段跳过（不能让它把后续手势全挡掉）」，两处口径相反。
+        //   统一成「缺失 = 不判」：旧版本转发侧 / 手搓的广播仍然能执行。
+        if (sentAt > 0L) {
+            val age = android.os.SystemClock.elapsedRealtime() - sentAt
+            if (age > STALE_MS) {
+                XLog.w("${key.label} 的 $phaseId 已过期（发出于 ${age}ms 前），丢弃不执行")
+                return
+            }
         }
 
         // 去重：转发侧对同一次手势会发两条（立刻 + 300ms 后补发，见 inject/input/GestureForwarder），
@@ -323,7 +328,7 @@ internal object GestureReceiver {
     /**
      * 执行一个手势对应的动作。
      *
-     * ⚠️ **触觉反馈的唯一一处就在这里**（2026-10-14 用户定稿：先说「只要不无操作立即振动」、
+     * 注意：**触觉反馈的唯一一处就在这里**（先说「只要不无操作立即振动」、
      * 又说「整体服务没起来时按键不要振动，不要会误以为功能能用」—— 后者把位置钉死在宿主侧）。
      *
      * 「振了」必须等价于「服务在跑、动作马上要执行」：
@@ -358,12 +363,12 @@ internal object GestureReceiver {
         //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
         //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。
         //  所以每执行一次动作补发一条（连续触发的重复不发：那是同一次按压，一条就够）。
-        if (!repeat) appContext?.let { reportAlive(it) }
+        if (!repeat) appContext?.let { sendAlive(it, config.key(KeyId.PLUS).enabled) }
         if (!repeat && action !is Action.None) haptic(config)
         // 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），内容是**这次执行的是哪个动作**。
         //  钉在这一处（一次手势只走一遍）而不是 `CustomCommandRunner` 里 —— 那一处只覆盖 `cmd:`
         // 自定义命令，绑的是内置动作（小布识屏 / 截图 / 手电筒 …）时按下去一直没动静
-        //（2026-10-14 用户报「执行命令时系统提示没效果」）。连续触发的重复不弹：那是同一次按压。
+        //（用户报「执行命令时系统提示没效果」）。连续触发的重复不弹：那是同一次按压。
         if (!repeat && config.global.toastOnRun) {
             val notice = actionNoticeText(appContext, action)
             if (notice.isNotEmpty()) {

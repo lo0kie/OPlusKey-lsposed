@@ -53,17 +53,40 @@ internal class CommandDraft {
      *
      *  不用 [hasContent] 当这个判据：退出时每次返回都过一遍，「点开一条已保存的命令看一眼、
      *  原样返回」也会挨一句「放弃未保存的命令」——那句话是假的。
+     *
+     *  注意：**不比 [kind]**：它是「pager 停在哪一页」的镜像、不是用户改的内容
+     *  （`CommandScreen` 那条 `snapshotFlow { currentPage }` 单向同步它）。换 tab 时它必然与
+     *  `loaded.kind` 不同，于是「只是翻了下 tab、什么都没改」也会判脏 ⇒ 退出时挨一句
+     *  「放弃未保存的命令」。而 [reset] 本来就不碰 `kind`、[hasContent] 也不含它 —— 把它从比较里
+     *  去掉，与另外两条口径一致。
      */
     val dirty: Boolean
         get() {
             val base = loaded ?: return hasContent
-            return kind != base.kind || name != base.name || single != base.single ||
+            return name != base.name || single != base.single ||
                 stepDelayMs != base.stepDelayMs || steps.toList() != base.steps
         }
 
-    /** 保存成功、或从菜单重新进来时清空。 */
+    /**
+     * 表单内容的**指纹** —— 给「重置收尾那 240ms 里用户又输入了没有」当判据（见 `CommandScreen`）。
+     *
+     *  「重置」对有多条步骤的串行命令走行级退场：先让步骤行播完 shrink，再由页面级协程真正
+     *  [reset]。那 240ms 里用户完全可能已经又开始敲字（焦点还在输入框上），此时无条件 `reset()`
+     *  会把刚敲进去的内容一起吞掉。指纹相等才收尾。
+     */
+    fun contentFingerprint(): String =
+        "$kind\u0000$name\u0000$single\u0000$stepDelayMs\u0000${steps.joinToString("\u0001")}"
+
+    /**
+     * 保存成功、或从菜单重新进来时清空。
+     *
+     * 注意：**不碰 [kind]**：`kind` 是「pager 停在哪一页」的镜像，由
+     *  `CommandScreen` 里那条 `snapshotFlow { currentPage }` **单向**同步 —— 在这里强设成
+     *  `SINGLE` 会与 pager 打架：停在「多条」页保存完一条，`kind` 已经变成单条而 pager 还在
+     *  多条 ⇒ 这一页接下来新增的步骤会按**单条**分支保存（步骤静默丢掉），直到用户手动切一次
+     *  tab 才自愈。归位交给 pager：它是这一份状态的唯一来源。
+     */
     fun reset() {
-        kind = CommandKind.SINGLE
         name = ""
         single = ""
         steps.clear()

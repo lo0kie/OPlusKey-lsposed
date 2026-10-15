@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.state
 
-import androidx.compose.ui.input.key.key
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
@@ -17,8 +16,7 @@ internal fun SettingsPage.openStockPage() {
 }
 
 /**
- * **清空配置并按默认重建** —— 主配置与命令库两份文件一起清掉（2026-10-15 用户口径：
- * 「按字面意思重置」；此前只重建主配置、命令库原样留着）。
+ * **清空配置并按默认重建** —— 主配置与命令库两份文件一起清掉（「按字面意思重置」）。
  *
  *  顺序与「导入配置」同一条纪律：主配置先落盘，**它没成功就一个字节都不再动命令库** ——
  *  否则会留下「命令全没了、绑定还是旧的」这种半份状态，而用户看到的是「已重置」。
@@ -28,8 +26,8 @@ internal fun SettingsPage.resetAll() {
     XLog.w("菜单：清空配置（主配置 + 命令库一起按默认重建）")
     // 只读态下这一项是「明说要丢掉重来」的正门：那份「读不懂」的文件本来就该被覆盖。
     //  所以先清掉只读位再写（[write] 的闸是为「不许**悄悄**固化默认值」设的，这是一处有意为之的例外）。
-    //  ⚠️ 只读态下菜单里这一项现在是**灰的**（`ResetMenu` 只留「默认界面 / 关于模块」，
-    // 2026-10-14 用户定的），所以这条放行走不到；留着是为了「读不懂」的出口**不能只有一条**
+    //  注意：只读态下菜单里这一项现在是**灰的**（`ResetMenu` 只留「默认界面 / 关于模块」，
+    // 用户定的），所以这条放行走不到；留着是为了「读不懂」的出口**不能只有一条**
     //（重进页面）——将来若把这行放出来，行为仍然是对的。
     if (configReadOnly) {
         XLog.w("清空：配置原处在只读态（读不懂）—— 明说要重来，放行写回")
@@ -46,7 +44,7 @@ internal fun SettingsPage.resetAll() {
 /**
  * 重启服务：**两层一起重来** —— 宿主主进程（[KeyModule.HOST_PROCESS]，手势劫持装在那一侧）与本页自己
  * 所在的 `:ui` 进程（[KeyModule.PAGE_PROCESS]，界面代码换了新包只有重进才加载得到）。
- * 点了没反应时 `logcat -s OplusKey` 的重启日志就是判据，页面上也会弹一条提示（2026-10-13 起）。
+ * 点了没反应时 `logcat -s OplusKey` 的重启日志就是判据，页面上也会弹一条提示（。
  *
  *  真正动手的是**宿主主进程**（`host/PageRelaunch`）：本页杀了自己就没人能把页面叫回来，
  * 而「从进程外叫」那条路走不通 —— 真机实测闹钟挂 `PendingIntent` 拉起 Activity 会被后台启动策略
@@ -161,7 +159,7 @@ internal fun SettingsPage.setInstantSingle(on: Boolean) {
 
 /**
  * 切「执行时提示」（执行命令时弹一条 Toast）—— 行点击与开关共用这一个入口。
- * 2026-10-13 起从每条命令自己的字段提成全局开关（见 `GlobalConfig.toastOnRun`）；
+ * 起从每条命令自己的字段提成全局开关（见 `GlobalConfig.toastOnRun`）；
  * 判定侧在 `host/action/CustomCommandRunner`，宿主进程每次执行现读配置，拨完立刻生效。
  */
 internal fun SettingsPage.setToastOnRun(on: Boolean) {
@@ -179,6 +177,22 @@ internal fun SettingsPage.setKeyEnabled(on: Boolean) {
     write(
         cfg.copy(keys = cfg.keys + (KeyId.PLUS to cfg.key(KeyId.PLUS).copy(enabled = on))),
         "plus_enabled=${if (on) 1 else 0}",
+    )
+}
+
+/**
+ * 用户在「风险提示与免责声明」上点了确认 —— 「记下这一笔」与「打开总闸」**同一次写盘**。
+ *
+ * 分两次写会留下「确认了却没启用 / 启用了却没记上」的半截状态，而这两样正是那道闸的两半。
+ */
+internal fun SettingsPage.acceptDisclaimerAndEnable() {
+    val cfg = config.value
+    write(
+        cfg.copy(
+            keys = cfg.keys + (KeyId.PLUS to cfg.key(KeyId.PLUS).copy(enabled = true)),
+            disclaimerAccepted = true,
+        ),
+        "disclaimer_accepted=true",
     )
 }
 
@@ -230,10 +244,14 @@ internal fun SettingsPage.write(next: Config, what: String): Boolean {
     // 用户会往「模块坏了」的方向排查。
     if (!publishConfig(next)) {
         XLog.w("设置页写入落盘成功但广播失败，注入侧仍是旧配置：$what")
-        toast("已保存，但通知注入侧失败，请重启服务")
+        //  注意：文案**不指向「重启服务」**：这一刻 `config.value` 刚换成新值、
+        //  本地指纹跟着变，而注入侧那份还是旧的 ⇒ `configSideOk=false` ⇒ `linkReady=false`
+        //  ⇒ ⋮ 菜单里的「重启服务」**正好被灰掉**，指过去等于让用户点一个点不动的入口。
+        //  真正能自愈的是「退出重进」（重进会重发配置并重问自检），所以说这个。
+        toast("已保存，但通知注入侧失败，退出重进本页即可")
         return false
     }
-    // ⚠️ 写完必须**再问一次注入侧**：上面 `config.value = next` 一换本地指纹，页面手上那份
+    // 注意：写完必须**再问一次注入侧**：上面 `config.value = next` 一换本地指纹，页面手上那份
     //  `injectStatus` 就还是写之前那份 —— 「设置生效」比的是两边指纹，不重问会一直判「未同步」，
     //  `linkReady` 跟着 false、**整页当场锁死**（写一下之后点哪一格都被拦）。
     resyncInjectStatus()
@@ -245,7 +263,12 @@ internal fun SettingsPage.write(next: Config, what: String): Boolean {
  *
  *  注入侧在 AMS 广播入口上**同步**处理这条问句，所以紧接着 [publishConfig] 发它，回包一定带新指纹；
  *  回包由设置页那个接收器收下，`injectStatus` 与链路段一起刷新。
- *  ⚠️ 别并进 [publishConfig]：重置 / 导入那些不换本地指纹的路径不需要它，多问一句只是白耗。
+ *
+ *  注意：**凡是让本地指纹变了、又发了配置广播的路径，都要跟着问这一句**（[write] 与
+ *  `saveCommands` 两处）。原注释写「重置 / 导入那些**不换本地指纹**的路径不需要它」——
+ *  那个前提是错的：指纹里含「长按绑的是不是串行命令」这一位，它读命令库，
+ *  所以**换命令库也是换指纹**；导入正是「先 `write`（问一次、按旧命令库算的）再 `saveCommands`
+ *  （只发不问）」，后一步一改命令库，刚问回来的那份又过期了。
  */
 internal fun SettingsPage.resyncInjectStatus() {
     try {

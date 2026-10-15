@@ -32,7 +32,7 @@
 
 ### 2.1 `window:<包名>` —— 用小窗打开一个应用
 
-`AppLauncher.launchAppInWindow(target)`，按目标当时的状态分三档：
+`MiniWindowLauncher.launchAppInWindow(target)`，按目标当时的状态分三档：
 
 | 目标当时的状态       | 走法                                                | 结果                      |
 | -------------------- | --------------------------------------------------- | ------------------------- |
@@ -47,7 +47,7 @@
 
 ### 2.2 `zoom:mini` —— 把前台应用收成小窗
 
-`AppLauncher.putForegroundInMiniWindow(collapsed)`，两个尺寸档走不同配方：
+`MiniWindowLauncher.putForegroundInMiniWindow(collapsed)`，两个尺寸档走不同配方：
 
 «展开档»（默认，`zoom:mini`）：
 
@@ -57,7 +57,7 @@
 ② 应用侧 recents 正门（startActivityFromRecentsForFlexible，flags=2）← **唯一一条**
    `XLog: 走 recents 正门（原地收、无动画）`
      ↓ 700ms（MINI_VERIFY_MS）后 windowingMode != 100，或服务端没受理
-③ **什么都不做 + Toast「这个应用不支持小窗」**   ← 2026-10-14 用户口径
+③ **什么都不做 + Toast「前台应用不支持小窗」**   ← 2026-10-14 用户口径
 ```
 
 «收起档»同理：`flags = 32` 收不成就 Toast，**不再**另想办法。
@@ -80,7 +80,7 @@
 switchState」**（为了拿原生动画，§七）。2026-10-14 真机验完否掉了当主路：那条开出来的窗口是**半成品**
 ——几何与档位都对，但**没圆角、没操作条 /
 ⋮ 菜单、点一下会被当成拖动**，内容还叠两份（根因是框架的「柔性任务注册」那步没做，见 `device-findings.md`
-附八）。现由宿主侧开关 `AppLauncher.USE_FORGED_ANIMATION_ROUTE`
+附八）。现由宿主侧开关 `MiniWindowLauncher.USE_FORGED_ANIMATION_ROUTE`
 控制、默认**关**：想要动画、或哪天把注册那步补上，再打开试。
 
 «收起档»（`zoom:mini:collapse`）只有一支 —— 收起是 recents 正门的 `fullToMini` 分支， `switchState` 只切
@@ -89,7 +89,7 @@ switchState」**（为了拿原生动画，§七）。2026-10-14 真机验完否
 ```
 ① 应用侧 recents 正门（flags=32）→ 服务端 fullToMini → getMiniFlexibleTaskInfo 那套几何
      ↓ 700ms（`MINI_VERIFY_MS`）后 windowingMode != 100，或服务端没受理
-② **什么都不做 + Toast「这个应用不支持小窗」**（同展开档 ③）
+② **什么都不做 + Toast「前台应用不支持小窗」**（同展开档 ③）
 ```
 
 ---
@@ -240,7 +240,7 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
 
 > **本章描述的路当前不是主路**（主路见 §2.2：应用侧 recents 正门）。2026-10-14 真机验完把它从主路撤下来了：它确实能拿到原生动画，但开出来的窗口是**半成品**
 > ——没圆角、没操作条 / ⋮ 菜单、点一下会被当成拖动、内容叠两份（`device-findings.md`
-> 附八）。代码与开关都还在（`AppLauncher.USE_FORGED_ANIMATION_ROUTE`，默认
+> 附八）。代码与开关都还在（`MiniWindowLauncher.USE_FORGED_ANIMATION_ROUTE`，默认
 > `false`），下面记的机制与坑全部有效，是「将来要拿回动画」的起点。
 >
 > ⛔ **2026-10-14 复测：本章这条路已被判死，不要再打开那个开关**（`device-findings.md`
@@ -433,17 +433,20 @@ task」分支 + 记忆缩放共同算出来的，**宿主侧改不了**（那条
 `setRememberPosInfo(Rect,float)` 预置一组放得下的值 ——
 **两处都要整机重启**，且要先核实它们是否被这条分支读到（§13.1 已经踩过一次「以为能读、其实不读」）。⏭️ 用户已判定**可接受**，所以没动。
 
-**⚠️ 排查第一格：先确认这一枪到底有没有走 `zoom:mini`。** 动作是 `native`（「交还系统」）时，日志只有这两行、**没有**
-`zoom:mini →` 开头的任何东西：
+**⚠️ 排查第一格：先确认这一枪到底有没有走 `zoom:mini`。** 看日志里有没有 `zoom:mini →` 开头的行：
 
 ```
-已把侧键手势转给宿主：passthrough
-侧键：放行一次（重新注入 keyCode=735）
+侧键·单击 → zoom:mini
+zoom:mini → 走 recents 正门（原地收、无动画）
 ```
 
-看到 `passthrough`
-就是「模块把键原样还给系统了」，屏幕上的效果是系统那一下（2026-10-14 用户报「一按侧键就回模块页了」就是它）。**别按「小窗坏了」的方向查**
-—— 先去设置页把 **侧键 → 单击 → 前台转小窗** 改回来。判据行见 `device-findings.md` §十五。
+**没有** `侧键·单击 → zoom:mini` 就说明这一下压根没派到小窗动作上 —— 先去设置页把 **侧键 → 单击 → 前台转小窗**
+确认一遍（另一档常见原因是主开关关着，那一档模块整条让位、行为与原生一致）。**别按「小窗坏了」的方向查**。判据行见
+`device-findings.md` §十五。
+
+> ⚠️ 本节原来教人去找 `passthrough` / 「放行一次」那两行 —— 那是**已删掉的**「交还系统」（`native` /
+> `passthrough`）动作的日志，现在模块里**根本产生不出这两行**
+> （2026-10-15 审计 #40）。照着旧步骤排查只会得出「日志对不上 ⇒ 模块没生效」的错误结论。
 
 **已完成**：通道打通、`switchState` 触发原生动画（`animation-leash > 0`
 真机确认）、多实例修复工作正常、「太长」「没有操作条」两根因已修（`built = installed = 95928330`）；**收起档（`zoom:mini:collapse`）已接进动作契约与执行侧**（`Action.MiniWindow(collapsed)`，配方见 §2.2 与 §五的尺寸档表）。
@@ -487,7 +490,7 @@ task」分支 + 记忆缩放共同算出来的，**宿主侧改不了**（那条
 里，于是每调一次都要整机重启，而当时那组值是错的，等于「一次重启换一个仍然错的结果」。现在改成**宿主侧下发**：
 
 ```
-AppLauncher.EXPANDED_CONFIG_BOUNDS / EXPANDED_SCALE      ← 真值（要调就改这里，不用重启）
+MiniWindowLauncher.EXPANDED_CONFIG_BOUNDS / EXPANDED_SCALE      ← 真值（要调就改这里，不用重启）
         ↓ 随 FlexibleWindowBridge.send(…, bounds, scale) 的 extra 下发
 FlexibleWindowBridge.EXPANDED_BOUNDS / EXPANDED_SCALE    ← 只是「宿主没带」时的兜底
 ```
@@ -528,7 +531,7 @@ kill 宿主进程 → 发假手势 → 截图 / 看日志** —— 全程不用�
 ### 11.2 一条同源的经验：让「路由选择」也留在宿主侧
 
 `zoom:mini` 走哪条路（recents 正门 / 伪造态）是**宿主侧的一个常量**
-（`AppLauncher.USE_FORGED_ANIMATION_ROUTE`）。所以 2026-10-14 从伪造态切回正门那次，只改了宿主代码、`kill`
+（`MiniWindowLauncher.USE_FORGED_ANIMATION_ROUTE`）。所以 2026-10-14 从伪造态切回正门那次，只改了宿主代码、`kill`
 一下宿主进程就验完了 —— 一次重启都没用。要是把这个分支写在注入侧，那次又得重启一轮。
 
 ---
@@ -818,4 +821,4 @@ OplusZoomWindowManager.getInstance().startZoomWindow(intent, b, userId, pkgName)
 
 ⏭️ **还剩一条没验**：`window:<包名>` 在**目标占着前台**时走的是 `launchAppInWindow`
 里的 recents 正门分支（同一根因、同一落点），本轮只验了「目标在后台」那条。要不要一起改，见
-`AppLauncher.launchAppInWindow` 里那段注释。
+`MiniWindowLauncher.launchAppInWindow` 里那段注释。

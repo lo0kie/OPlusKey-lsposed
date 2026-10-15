@@ -61,20 +61,36 @@ object ConfigStore {
     /**
      * 读主配置，把**三态**分开报出来（[Load]）。
      *
-     * 为什么必须分三态：原先只有「读到一份 / 退化成默认值」两条路，而「退化成默认值」这一条
+     * 为什么必须分三态：只有「读到一份 / 退化成默认值」两条路的话，「退化成默认值」这一条
      * 在写方那边会被当成真相继续用 —— 页面读失败 ⇒ 拿默认值渲染 ⇒ 用户随便改一项 ⇒
      * 整份默认值落盘，**主开关、三个手势绑定、振动开关一起被抹掉**。
-     * 真机上 2026-10-14 先丢的是「振动反馈」（只剩这一个开关被人一眼看出来），
+     * 真机上先丢的是「振动反馈」（只剩这一个开关被人一眼看出来），
      * 再往后一次就是把绑定一起抹掉。
      *
      *  只有宿主进程调得到。注入侧读这份文件必然 EACCES（也正是它不读文件、只吃配置广播的原因），
-     * 那边若真调到会拿到 [Load.Unreadable]，按不接管处理 —— 与它原来拿默认值的行为一致。
+     * 那边若真调到会拿到 [Load.Unreadable]，按不接管处理 —— 行为与原生一致。
+     *
+     * **进程内结果缓存**：这个方法在宿主进程的**按键路径**上被调好几次（手势执行一次、
+     * 顺带那次报活再一次），每次都是「读盘 + 剥两层外皮 + JSON 解析 + 建映射」。
+     * 缓存按**文件指纹**（修改时间 + 长度，两次 `stat`）命中，所以「改配置即时生效」这条语义
+     * 不变：文件一被写，指纹就变，下一次读立刻重解析。本进程自己的写盘（[write]）另外主动失效。
+     *
+     * 缓存的是**内容派生出来的结论**（[Load.Ok] 与「内容读不懂」的 [Load.Unreadable]）——
+     * 内容没变，结论就不会变。**读不出来那一路不缓存**（EACCES / IO 错）：它不是内容的性质，
+     * 缓存住会让一次偶发失败一直粘着，而写方又被 [Load.Unreadable] 闸着不让写回。
      */
     fun load(): Load {
         val f = sharedFile()
-        if (!f.isFile) return Load.Absent
+        if (!f.isFile) {
+            cached = null
+            return Load.Absent
+        }
 
-        val text = try {
+        val modified = f.lastModified()
+        val length = f.length()
+        cached?.let { if (it.modified == modified && it.length == length) return it.result }
+
+        val raw = try {
             readText(f)
         } catch (e: Throwable) {
             // EACCES / IO 错：只给 d（宿主每条按键前都要读一遍，w 会刷屏）
@@ -82,13 +98,33 @@ object ConfigStore {
             return Load.Unreadable
         }
 
-        return ConfigCodec.parseOrNull(text)?.let { Load.Ok(it) } ?: Load.Unreadable
+        // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文认不出，都算「读不懂」。
+        //  **不做旧格式兼容**：加第二层之前写下的文件、以及开发期的明文文件，判 [Load.Unreadable]
+        //  （页面只读、不接管），不退回「当它没写过」—— 那会把用户配置整份换成默认值。
+        //  正文自带 md5（[ConfigCodec]），值对不上同样走 Unreadable。
+        val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
+            ?: return Load.Unreadable
+
+        val result = ConfigCodec.parseOrNull(text)?.let { Load.Ok(it) } ?: Load.Unreadable
+        cached = Cached(modified, length, result)
+        return result
     }
+
+    /**
+     * 上一次读的结果与它对应的文件指纹。
+     *
+     * 指纹取「修改时间 + 长度」两个字段而不是合成一个数：合成会有碰撞的可能，分着比是精确的。
+     * 写盘走的是「先 `.tmp` 再 rename」，目标文件因此每次都是新 inode，修改时间必然变。
+     */
+    private class Cached(val modified: Long, val length: Long, val result: Load)
+
+    @Volatile
+    private var cached: Cached? = null
 
     /**
      * 读配置；**读不到 / 读不懂都退化成 [Config.DEFAULT]**（不抛）。
      *
-     * ⚠️ 这是**只读方**的入口（宿主侧每条按键、每次执行、每次报活都读一遍）。语义是
+     * 注意：这是**只读方**的入口（宿主侧每条按键、每次执行、每次报活都读一遍）。语义是
      * 「读不到就按不接管处理，行为与原生一致」，对只读方是对的。
      * **写方不许用这个** —— 写之前必须拿 [load] 的三态，见 [Load]。
      */
@@ -99,15 +135,32 @@ object ConfigStore {
 
     /**
      * 写配置（只有宿主进程调得到）。
-     * 先写 `.tmp` 再 rename，避免执行侧读到半截内容。
+     * 先包一层外皮（[FileObfuscation]），再走「先写 `.tmp` 再 rename」，避免执行侧读到半截内容。
+     *
+     * 写成功后**主动丢掉读缓存**（[load] 那一份）：不指望文件系统的修改时间粒度够细 ——
+     * 同一秒内「写一次、马上读」时指纹可能没变，那时读回旧内容就是实打实的 bug。
      */
-    fun write(config: Config): Boolean =
-        writeAtomically(sharedFile(), ConfigCodec.serialize(config), openReadable = true)
+    fun write(config: Config): Boolean {
+        val ok = writeAtomically(
+            sharedFile(),
+            FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, ConfigCodec.serialize(config)),
+            openReadable = true,
+        )
+        if (ok) cached = null
+        return ok
+    }
 
     /**
-     * **原子写**：先写同目录下的 `.tmp`，再 `rename` 覆盖目标。读方可能是另一个进程
+     * **原子写**：先写同目录下的 `.tmp`、`fsync` 落盘，再 `rename` 覆盖目标。读方可能是另一个进程
      * （命令库读方是宿主主进程、写方是设置页 `:ui` 进程，主配置同理），直接 `writeText`
      * 是「先截断再写」，读方正好落在中间就读到半截内容。三个文件统一走这一份。
+     *
+     *  `fsync` 那一步不能省（与 `android.util.AtomicFile` 同一步）：rename 只保证「名字换过去」这件事
+     * 原子，不保证被它盖住的内容已经在盘上 —— 掉电时可能落成「名字换了、内容还是空的」，正是
+     * [Load.Unreadable] 那一档。只 `sync` 文件、不 `sync` 目录：与 `AtomicFile` 一致，省掉一次同步。
+     *  代价是每次写盘多几毫秒，写盘都在用户动作之后（拨开关 / 松手 / 存命令），走的是 UI 线程 ——
+     *  与 `SharedPreferences.commit()` 同一条路数，不值得为它把写盘改成异步（那会打断「落盘成功才
+     *  提交状态、才广播」这条因果链）。
      *
      * DE 下的 `files/` 目录一开始并不存在（宿主自己没用过 DE），所以这里必须会建目录。
      *
@@ -123,7 +176,12 @@ object ConfigStore {
                 return false
             }
             val tmp = File(dir, target.name + ".tmp")
-            tmp.writeText(text, Charsets.UTF_8)
+            val bytes = text.toByteArray(Charsets.UTF_8)
+            java.io.FileOutputStream(tmp).use { out ->
+                out.write(bytes)
+                out.flush()
+                out.fd.sync()
+            }
             // 放开权限只为 adb 排查方便，release 侧是空实现
             if (openReadable) exposeToOthers(dir, tmp)
 
@@ -149,6 +207,11 @@ object ConfigStore {
      *   · 更糟的是**写方被闸住**（Unreadable 不允许写回），用户在界面里怎么改都「保存失败」，
      *     而他刚用记事本确认过文件内容好端端的 —— 这类「文件明明在、编辑器说没问题，模块说读不懂」
      *     是最难自查的一种，代价只是这里 `removePrefix` 一下。
+     *
+     * 注意：**配置文件的外皮**（[FileObfuscation]）在这一层之外：本函数拿到的仍是磁盘原文
+     * （首行可能是 `OPlusKey-Runtime-1`），剥外皮在 [load] / `CommandLibrary.load` 里做。
+     * 手改配置文件要连着外皮一起改（解两层、改完再包两层，配方见 [FileObfuscation]），
+     * 正文里那个 `md5` 还得一起重算（见 `ConfigCodec`）。
      *
      * 只剥**开头一个**：BOM 的语义就是「这个流的开头」，中间出现 `U+FEFF`（零宽不换行空格）是
      * 正常字符，不该动。

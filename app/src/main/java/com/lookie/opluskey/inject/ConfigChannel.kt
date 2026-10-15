@@ -41,7 +41,7 @@ internal object ConfigChannel {
      * 收到过配置没有 —— 链路自检用。
      *
      * `false` 是个真实且**静默**的故障：注入侧会拿 [Config.DEFAULT] 顶着跑（主开关按接管处理、
-     * 但动作全是 `native`），表现是「侧键被吞掉、什么都不做」，而日志里看不出缺了哪一段。
+     * 但动作全是「无操作」），表现是「侧键被吞掉、什么都不做」，而日志里看不出缺了哪一段。
      */
     val receivedConfig: Boolean
         get() = received != null

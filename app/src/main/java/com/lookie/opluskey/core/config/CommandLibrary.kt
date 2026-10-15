@@ -6,7 +6,10 @@ import com.lookie.opluskey.core.model.CommandKind
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** 自定义命令库的读写：JSON 编解码加文件 IO（`org.json` 平台自带，不引依赖）。 */
+/**
+ * 自定义命令库的读写：JSON 编解码加文件 IO（`org.json` 平台自带，不引依赖）。
+ * 磁盘上正文之外套了一层外皮（[FileObfuscation]），[load] / [save] 负责剥与包。
+ */
 object CommandLibrary {
 
     /** 当前格式版本，解析时不做版本兼容，只写进文件备查。 */
@@ -63,7 +66,7 @@ object CommandLibrary {
      *  · **有一条命令认不出 ⇒ `null`**（[parse] 是跳过那一条）。
      * 把「读不懂」当成「空表」再拿去覆盖用户的命令库，等于把用户的命令全删了。
      *
-     * ⚠️ 不要拿它替换 [parse]：文件加载那一路要的是「坏一条只丢一条」，
+     * 注意：不要拿它替换 [parse]：文件加载那一路要的是「坏一条只丢一条」，
      * 一条手改坏的条目不该让整个命令库消失。
      */
     fun parseOrNull(text: String): List<Command>? = try {
@@ -92,8 +95,16 @@ object CommandLibrary {
         val name = sanitizeName(textOf(o, FIELD_NAME))
         if (name.isEmpty()) return null
 
-        // 认不出的类型（版本比我们新）按单条处理，至少不会整条丢掉
-        val kind = CommandKind.fromId(textOf(o, FIELD_KIND)) ?: CommandKind.SINGLE
+        // 认不出的类型（版本比我们新）——**跳过这一条**，不要降级成单条：
+        //  串行命令的 `steps` / `stepDelayMs` 与 `single` 是两个字段，降级后只读 `single`
+        //  ⇒ 那些步骤当场被掏空，而用户下一次保存会把这条空单条**固化**进文件（静默丢数据）。
+        //  与「名字为空」同一档：坏一条只丢一条，日志里查得到（`parse` 的 KDoc 就是这个口径）。
+        val kindId = textOf(o, FIELD_KIND)
+        val kind = CommandKind.fromId(kindId)
+        if (kind == null) {
+            XLog.w("命令库：有一条的类型认不出（已跳过）：$name（kind=$kindId）")
+            return null
+        }
         if (kind != CommandKind.SERIAL) {
             return Command(name = name, kind = CommandKind.SINGLE, single = textOf(o, FIELD_SINGLE))
         }
@@ -140,7 +151,19 @@ object CommandLibrary {
     fun load(): List<Command> = try {
         val f = ConfigStore.commandFile()
         // 走 ConfigStore.readText：剥 BOM（记事本另存为会加），否则整份命令库在 JSONObject 那一步就抛。
-        if (f.isFile) parse(ConfigStore.readText(f)) else emptyList()
+        if (!f.isFile) {
+            emptyList()
+        } else {
+            // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文解不开，都按空表处理 —— 同一个兜底、
+            // 不抛。不做旧格式兼容（见 `FileObfuscation` 的类注释）。
+            val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, ConfigStore.readText(f))
+            if (text == null) {
+                XLog.w("读命令库：外皮解不开（文件可能被截断），按空表处理")
+                emptyList()
+            } else {
+                parse(text)
+            }
+        }
     } catch (e: Throwable) {
         XLog.w("读命令库失败（按空表处理）：${e.message}")
         emptyList()
@@ -168,7 +191,8 @@ object CommandLibrary {
     fun save(commands: List<Command>): Boolean {
         val ok = ConfigStore.writeAtomically(
             ConfigStore.commandFile(),
-            serialize(commands),
+            // 与主配置同一层外皮（[FileObfuscation]）
+            FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, serialize(commands)),
             openReadable = false,
         )
         cache = null

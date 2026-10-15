@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.screen
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -9,12 +10,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.component.currentHeaderHeight
 import com.lookie.opluskey.ui.model.ABOUT_ROWS
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.AUTHOR
 import com.lookie.opluskey.ui.model.ISSUE_URL
@@ -45,7 +48,10 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
     val tick = rememberTick()
     // 取版本号要过 PackageManager（见 [moduleVersionName]），本页每次重组都算一遍纯属白花。
     // 「运行状态」那张卡是 `@Composable` 读状态、会频繁重组，而版本号在整个进程生命里不变。
-    val version = remember { appVersionLabel() }
+    //  这一页走 [appVersionText] —— **总是带构建时刻**（含日期）：这一页本来就回答「我这个包是
+    //  哪一个」，「什么时候出的」正是它要说的事。首页那条副标题走 [appVersionLabel]，
+    //  仍按构建类型决定带不带。
+    val version = remember { appVersionText() }
     Column(
         Modifier
             .fillMaxSize()
@@ -62,7 +68,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
             BasicComponent(
                 title = "版本",
-                // 摘要里已含构建类型（在版号后面）；构建时刻 debug 有、release 没有（见 appVersionLabel）
+                // 摘要 = 版号 + 构建类型 + 构建时刻（含日期），见 [appVersionText]
                 summary = version,
                 startAction = { Icon(PageIcons.Info, null) },
                 // 只读信息行，不给 onClick（给了反而像能点）
@@ -103,7 +109,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
             )
         }
 
-        // 「配置」卡（2026-10-14 用户要求加导入 / 导出）—— 放在信息卡之后、运行状态之前：
+        // 「配置」卡（加导入 / 导出）—— 放在信息卡之后、运行状态之前：
         // 这两项是**动作**，比下面那张诊断表更常被用到；而它们又不像版本 / 作者那样只是「看一眼」。
         //  导出走系统的「保存到」、导入走系统的「打开」，两边都由 hook 侧实现
         //（`SettingsPageHooks`：SAF + `Activity#onActivityResult`），这里只负责派发。
@@ -113,8 +119,8 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
             BasicComponent(
                 title = "导出配置",
-                // 副标题只报「做什么」的一句话，不解释机制（2026-10-14 用户要求：
-                // 用户界面不要「把配置与自定义命令存成一份文件」那种交代细节的写法）
+                // 副标题只报「做什么」的一句话，不解释机制 —— 用户界面不写
+                // 「把配置与自定义命令存成一份文件」那种交代细节的写法
                 summary = "保存到本地文件",
                 onClick = {
                     tick()
@@ -138,10 +144,16 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
 
         // 「运行状态」（内部叫链路自检）—— 模块要正常工作，得**几段**都通（宿主侧的服务、
         // 注入侧的接管点、配置送达、以及宿主真读到配置），外加一段只能靠实践拿到的证据。
-        // 原先首页只看「宿主报活了没有」一个布尔，它答不了「注入侧压根没装」这种
+        // 只看「宿主报活了没有」一个布尔的话，答不了「注入侧压根没装」这种
         //（那种情况下宿主照样报活、页面全绿）。
-        //  只读信息，没有可点的行；数据在进页时现取一次（见 [linkChecks]），不轮询。
-        //  ⚠️ **这一页是「细节」的落点，措辞仍是给用户看的**（2026-10-14 用户定的）：
+        //  只读信息，没有可点的行。
+        //  注意：数据是**读缓存**、不是「进页时现取」：不能写
+        //  「进页时现取一次（见 [linkChecks]），不轮询」—— 与实际相反。`linkChecks()` 读的是
+        //  `hostServiceUp` / `injectStatus` 这些**已经缓存在页面状态里**的结论，本页**不发任何问句**；
+        //  主动报活只有首页那条自检（`HomeScreen`）会做，注入侧也只应答、不主动报
+        //  （`inject/KeyHooks` 只在收到 `ACTION_INJECT_QUERY` 时回包）。
+        //  所以进本页看到的是「最近一次自检的结论」，想刷新就回首页走一遍。
+        //  注意：**这一页是「细节」的落点，措辞仍是给用户看的**：
         // 段名与取值都不出现内部结构（不写「注入侧 / 同步 / 读取 / 就绪」），
         // 想知道「怎么坏的」去看日志（`XLog`）。
         Spacer(Modifier.height(GRID_ROW_GAP))
@@ -164,6 +176,15 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                 if (i > 0) {
                     HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
                 }
+                val statusTint by animateColorAsState(
+                    targetValue = when {
+                        row.ok -> COUITheme.colorScheme.onSurfaceContainer
+                        row.blocking -> COUITheme.colorScheme.error
+                        else -> COUITheme.colorScheme.onSurfaceVariantSummary
+                    },
+                    animationSpec = COLOR_TRANSITION_SPEC,
+                    label = "LinkStatusTint",
+                )
                 BasicComponent(
                     title = row.name,
                     summary = row.detail,
@@ -171,14 +192,8 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                         Icon(
                             if (row.ok) PageIcons.LinkOk else PageIcons.LinkBroken,
                             contentDescription = null,
-                            // 三档色：「通了」用常规色、**故障**用 error、**「还没拿到证据」用中性色**。
-                            //  最后一档很重要：`尚未使用` 不是故障（它是 `blocking = false`），
-                            // 标红会让人以为模块坏了 —— 见 [LinkCheck.blocking]。
-                            tint = when {
-                                row.ok -> COUITheme.colorScheme.onSurfaceContainer
-                                row.blocking -> COUITheme.colorScheme.error
-                                else -> COUITheme.colorScheme.onSurfaceVariantSummary
-                            },
+                            // 三档色：「通了」用常规色、故障用 error、「还没拿到证据」用中性色，带平滑色彩过渡。
+                            tint = statusTint,
                         )
                     },
                     cardListPosition = cardListPositionOf(i, rows.size),

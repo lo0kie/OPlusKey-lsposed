@@ -1,0 +1,101 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
+index 484bb33..7a3fe3a 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
+@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.displayCutout
+ import androidx.compose.foundation.layout.navigationBars
+ import androidx.compose.foundation.layout.only
+ import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.size
+ import androidx.compose.foundation.layout.systemBars
+ import androidx.compose.foundation.layout.windowInsetsPadding
+ import androidx.compose.runtime.Composable
+@@ -43,6 +44,7 @@ import androidx.compose.ui.draw.drawWithContent
+ import androidx.compose.ui.geometry.Offset
+ import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.graphics.TransformOrigin
++import androidx.compose.ui.graphics.vector.ImageVector
+ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+ import androidx.compose.ui.input.nestedscroll.nestedScroll
+@@ -131,6 +133,13 @@ fun TopAppBar(
+     trailingSubtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
+     trailingSubtitleAlignment: TopAppBarTrailingSubtitleAlignment =
+         TopAppBarTrailingSubtitleAlignment.Bottom,
++    /**
++     * An optional icon shown right after [trailingSubtitle] on the large title's line.
++     *
++     * Tinted with [trailingSubtitleColor] and placed on that same line, so it shrinks together
++     * with the trailing subtitle through the collapse. `null` = no icon.
++     */
++    trailingSubtitleIcon: ImageVector? = null,
+     dividerColor: Color = COUITheme.colorScheme.dividerLine,
+     navigationIcon: @Composable () -> Unit = {},
+     actions: @Composable RowScope.() -> Unit = {},
+@@ -168,6 +177,7 @@ fun TopAppBar(
+         trailingSubtitle = trailingSubtitle,
+         trailingSubtitleColor = trailingSubtitleColor,
+         trailingSubtitleAlignment = trailingSubtitleAlignment,
++        trailingSubtitleIcon = trailingSubtitleIcon,
+         dividerColor = dividerColor,
+         navigationIcon = navigationIcon,
+         actions = actionsRow,
+@@ -709,6 +719,7 @@ private fun TopAppBarLayout(
+     trailingSubtitleColor: Color,
+     trailingSubtitleAlignment: TopAppBarTrailingSubtitleAlignment =
+         TopAppBarTrailingSubtitleAlignment.Bottom,
++    trailingSubtitleIcon: ImageVector?,
+     dividerColor: Color,
+     navigationIcon: @Composable () -> Unit,
+     actions: @Composable () -> Unit,
+@@ -830,14 +841,28 @@ private fun TopAppBarLayout(
+                 // Trailing subtitle: position and text size are both driven in the placement pass;
+                 // it shares the large title's line and so contributes no height to the bar.
+                 Box(Modifier.layoutId("trailingSubtitle")) {
+-                    Text(
+-                        text = trailingSubtitle,
+-                        color = animatedTrailingSubtitleColor,
+-                        style = COUITheme.textStyles.body2,
+-                        maxLines = 1,
+-                        overflow = TextOverflow.Ellipsis,
+-                        softWrap = false,
+-                    )
++                    // The optional icon rides inside this box, so the placement pass (which measures
++                    // the box) keeps working unchanged — and the icon shrinks with the text.
++                    Row(verticalAlignment = Alignment.CenterVertically) {
++                        Text(
++                            text = trailingSubtitle,
++                            color = animatedTrailingSubtitleColor,
++                            style = COUITheme.textStyles.body2,
++                            maxLines = 1,
++                            overflow = TextOverflow.Ellipsis,
++                            softWrap = false,
++                        )
++                        trailingSubtitleIcon?.let { icon ->
++                            Icon(
++                                icon,
++                                contentDescription = null,
++                                modifier = Modifier
++                                    .padding(start = TrailingSubtitleIconGap)
++                                    .size(TrailingSubtitleIconSize),
++                                tint = animatedTrailingSubtitleColor,
++                            )
++                        }
++                    }
+                 }
+             }
+             Box(Modifier.layoutId("bottomContent")) {
+@@ -1339,6 +1364,13 @@ private val CollapsedTitleTextSize = 18.sp
+  */
+ private val TrailingSubtitleStartGap = 8.dp
+ 
++/**
++ * The gap between the trailing subtitle text and its optional icon, and that icon's side length.
++ * Both live in the trailing subtitle's own scale — they shrink with it.
++ */
++private val TrailingSubtitleIconGap = 4.dp
++private val TrailingSubtitleIconSize = 16.dp
++
+ /**
+  * How far the trailing subtitle shrinks by the time the bar is fully collapsed.
+  *

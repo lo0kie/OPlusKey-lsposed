@@ -17,15 +17,16 @@ internal const val BUILD_KIND: String = "debug"
  * （列方法签名、试调用、设圆角）—— 用来绕开「注入侧改一行就要整机重启，一轮试错几分钟」。
  * 用法见 `docs/debug-channel.md`。
  *
- * ⚠️ release 必须为 false：这条通道等于把「任意反射执行」开在系统进程里。
+ * 注意：release 必须为 false：这条通道等于把「任意反射执行」开在系统进程里。
  */
 internal const val DEBUG_PROBE: Boolean = true
 
 /**
- * 界面上的版本号要不要带上构建时刻（`1.0.0-debug-183000`）。
+ * 首页大标题那条副标题要不要带上构建时刻（`1.0.0-debug-2026-10-15 15:07:12`）。
  *
  * debug 打开：自用包一天里会出好几个，光看版本号分不出手上这个是哪一次出的；
- * release 关掉（参数名与用法见 `ui/screen/HomeScreen.kt` 的 `appVersionLabel`）。
+ * release 关掉（「更多选项」页的「版本」行不受它影响，那一行总是带，见
+ * `ui/screen/HomeScreen` 的 `appVersionLabel` / `appVersionText`）。
  */
 @PublishedApi
 internal const val SHOW_BUILD_TIME: Boolean = true

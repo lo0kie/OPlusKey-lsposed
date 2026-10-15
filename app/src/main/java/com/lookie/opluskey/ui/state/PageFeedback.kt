@@ -3,9 +3,7 @@ package com.lookie.opluskey.ui.state
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.host.GestureReceiver
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.theme.SyncToHost
 
 /**
  * 用户提示（一句话，底部短暂出现）。
@@ -24,8 +22,8 @@ internal fun SettingsPage.toast(text: String) {
 /**
  * UI 触觉反馈的唯一判据 —— 只看系统状态（静音不振）。
  *
- * 模块的「振动反馈」开关不参与：它管的是命令执行时的振动（判定在 `host/GestureReceiver`）。滑杆的
- * `hapticEffect` 是组合期参数，静音状态变化要等重组才反映（页面无 ticker，只有 `SyncToHost` 的 300ms 轮询）。
+ * 模块的「振动反馈」开关不参与：它管的是命令执行时的振动（判定在 `host/GestureReceiver`）。
+ * 判定在调用时现查一次（[tickNow] 每振一次查一次），系统静音一变立刻生效。
  */
 internal fun SettingsPage.hapticsAllowed(): Boolean =
     audioManager?.ringerMode != android.media.AudioManager.RINGER_MODE_SILENT

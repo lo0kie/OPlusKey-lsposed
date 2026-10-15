@@ -66,6 +66,8 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.component.AnimatedColumn
 import com.lookie.opluskey.ui.component.NoHapticFeedback
 import com.lookie.opluskey.ui.component.PageCornerFab
+import com.lookie.opluskey.ui.component.PageFabButton
+import com.lookie.opluskey.ui.component.rememberFabBackdrop
 import com.lookie.opluskey.ui.component.SliderRow
 import com.lookie.opluskey.ui.component.SwitchRow
 import com.lookie.opluskey.ui.component.TILE_HEIGHT
@@ -85,6 +87,8 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.TILE_TEXT_OPTICAL_SHIFT
+import com.lookie.opluskey.ui.model.TILE_TITLE_MARKER_GAP
+import com.lookie.opluskey.ui.model.TILE_TITLE_MARKER_SIZE
 import com.lookie.opluskey.ui.model.UNSUPPORTED_DEVICE_HINT
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
@@ -101,7 +105,6 @@ import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
-import io.github.suqi8.coui.kmp.basic.FloatingActionButton
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -113,6 +116,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
+import io.github.suqi8.coui.kmp.blur.layerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 import io.github.suqi8.coui.kmp.utils.overScrollHorizontal
@@ -131,7 +135,7 @@ private const val SINGLE_SETTING_ROWS = 2
  * 「按键绑定」页那条**分段控件带**（三个手势 tab）—— 挂在**顶栏的 `bottomContent`** 里
  *（见 [PageHeader] 的 `bottomContent` 与 [SettingsPage] 的 `Page()` 里那处分派）。
  *
- *  2026-10-13 从「页内一层浮层」搬过来：位置仍是**折叠栏底边**（顶栏自己排的），
+ * 从「页内一层浮层」搬过来：位置仍是**折叠栏底边**（顶栏自己排的），
  * 底色 / 模糊 / 下沿那条细线都由顶栏那一份负责（见 [PageHeader] 的 `bottomContent`）。
  *  它**不读滚动量** —— 位置只跟顶栏折叠走；点它去翻页（`animateScrollToPage`），
  * 反过来亮哪一个由 pager 的 `currentPage` 决定（内容才是真相）。
@@ -174,7 +178,7 @@ internal fun SettingsPage.BindingTabBand(
             modifier = Modifier
                 .fillMaxWidth()
                 // 左右与网格同一档 [PAGE_MARGIN]。纵向：**只带下边一档**（[PAGE_TOP_PADDING]）
-                // —— 上边那 8dp 去掉，带子直接贴着折叠栏下沿（2026-10-13）；
+                // —— 上边那 8dp 去掉，带子直接贴着折叠栏下沿；
                 // 下边这一档就是「带子与内容之间」的间距，与没有带子的页（首页 / 更多）
                 // 由内容 Spacer 加的是**同一档**，各页一致（见 [PAGE_TOP_PADDING]）。
                 .padding(
@@ -204,7 +208,7 @@ internal fun SettingsPage.BindingTabBand(
 /**
  * 「按键绑定」页：网格、焦点导航与绑定选择。
  *
- * 从 `SettingsPage.kt` 按职责拆出（2026-10-12 重构）：成员改为 [SettingsPage]
+ * 从 `SettingsPage.kt` 按职责拆出：成员改为 [SettingsPage]
  * 的扩展/同包顶层声明，调用点零改动。
  */
 @Composable
@@ -212,7 +216,7 @@ internal fun SettingsPage.BindingScreen(
     pagerState: androidx.compose.foundation.pager.PagerState,
     iconsByGesture: Map<Gesture, Map<ActionCatalog.Spec, ImageVector>>,
     enabled: Boolean,
-    /** 点「打开应用」那一格时跳「打开应用」页（2026-10-12 新增，见 [Screen.APP_PICKER]）；
+    /** 点「打开应用」那一格时跳「打开应用」页（新增，见 [Screen.APP_PICKER]）；
      *  带上是**哪个手势**点的 —— 挑中写哪个手势、没挑就返回回退哪个手势都靠它。 */
     onOpenAppPicker: (Gesture) -> Unit,
     scrollBehavior: ScrollBehavior,
@@ -226,8 +230,8 @@ internal fun SettingsPage.BindingScreen(
     /**
      * 进「自定义命令」页（**新增**一条）。
      *
-     * 原来那一格（`CustomCommandsTile`，插在内置命令末尾）撤掉，入口搬到这颗 FAB 上。
-     * ⚠️ 这里**不问「放弃未保存的命令」、也不清草稿**：那一问在**退出**命令页时（见 [goBack]），
+     * 「自定义命令」页的入口就只有这颗 FAB。
+     * 注意：这里**不问「放弃未保存的命令」、也不清草稿**：那一问在**退出**命令页时（见 [goBack]），
      * 进页永远直接进。
      *
      *  挂在 [BindingScreen] 而不是 [BindingList]：FAB 是**三个手势页共用**的一颗
@@ -238,6 +242,12 @@ internal fun SettingsPage.BindingScreen(
         if (!enabled) return@nav
         // 通用通道（判据只有系统状态，见 [hapticsAllowed]），与分段控件点击同一条规矩。
         tick()
+        //  注意：这是**「新增」的唯一入口**，必须先把草稿清干净：
+        //  这里必须 reset —— `goBack` 只在草稿 `dirty` 时才 reset —— 「点开一条已保存的命令
+        //  看一眼、原样返回」那种不脏的退页**不会**清 `editingName`，于是下次点这颗 FAB 进来
+        //  表单还挂着「修改命令」、保存按钮还是「修改」，一按就把刚看过的那条原样覆盖回去。
+        //  「进编辑」那条路（长按 / 再点一次）走的是 `draft.load`，不经过这里。
+        draft.reset()
         navTo(Screen.COMMANDS)
     }
 
@@ -253,17 +263,17 @@ internal fun SettingsPage.BindingScreen(
     //  它**整页只有一份**（叠在 pager 之上，不是每页一份跟着 pager 平移）⇒ 左右翻页时纹丝不动。
     //  位置固定在「顶栏底边再让出 [GRID_GAP]」那一档：顶栏折叠时它跟着往上走，
     // 但**不随内容滚动**，始终留在页面上。
-    //（2026-10-12 定案：先前那版让它与内容 1:1 滑走，实测滑到磨砂顶栏底下会透出一层
+    //（定案：先前那版让它与内容 1:1 滑走，实测滑到磨砂顶栏底下会透出一层
     // 鬼影，不如直接钉住。）
     //  它在内容里的**占位**由一个等高的 Spacer 顶着（[BindingList] 的 `tabBlock`）——
     // 那个 Spacer 属于**内容**、会随滚动走，所以滚起来之后内容会钻到它背后，
     // 靠它自己那层不透明底挡住（见下面 `background`）。
     //
     //  滚动状态**每个手势页各持一份**（递进 [BindingList] 的 `scrollState`）。
-    //  ⚠️ 原来是三页**共用一份**（图的是「翻页时内容停在同一个位置」），但那会**切回来就滚不动**：
+    //  注意：三页**共用一份**（图「翻页时内容停在同一个位置」）的话会**切回来就滚不动**：
     //  `ScrollState` 内部只有一个 `scrollableState`，而 pager 滑动时相邻两页同时在场 ⇒
     //  两处 `verticalScroll` 挂同一个 state、互相打架，回来那一页就再也滚不动了
-    //（2026-10-13 用户报的 bug）。改成每页一份，翻页时各自记各自的位置。
+    //（用户报的 bug）。改成每页一份，翻页时各自记各自的位置。
     val listScrolls = gestures.map { rememberScrollState() }
     // 分段控件那一块的高度（含自己的上下内边距）—— 内容里那个占位 Spacer 用**同一个值**，
     // 两者才严丝合缝。这条带子现在挂在**顶栏**里（见 [BindingTabBand]），量高度也在那边，
@@ -283,16 +293,21 @@ internal fun SettingsPage.BindingScreen(
         Modifier
             .fillMaxSize()
             // 这一层自带不透明底：push 转场交叠时不透出下层残影
-            //（原来这句挂在里面那个 `Column` 上，改成浮层布局后由这个 `Box` 承担）。
+            //（浮层布局下由这个 `Box` 承担）。
             .background(COUITheme.colorScheme.surface),
     ) {
         // 列表铺满整页（视口从 y=0 起）—— 内容自己能滚过分段控件那一条，见上面那段。
         //  横向也带回弹（`overScrollHorizontal`）：三个手势页来回滑到两端时弹一下，
         // 与三个页面自己的纵向回弹是同一套弹簧。
+        //  右下角那颗 FAB 的磨砂**取样层**也挂在 pager 上（FAB 是它的兄弟，见 [PageFabButton]）——
+        //  FAB 落在页面那一层**里面**，拿页面那一层取样就是自己取样自己：渲染节点链无限增长、
+        //  RenderNode 递归到栈溢出，UI 进程当场被杀（真机崩过一次）。
+        val fabBackdrop = rememberFabBackdrop()
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
+                .layerBackdrop(fabBackdrop)
                 .overScrollHorizontal(),
         ) { page ->
             BindingList(
@@ -314,10 +329,10 @@ internal fun SettingsPage.BindingScreen(
             )
         }
 
-        //  —— 手势分段控件（`TabRowWithContour`）原来就是叠在这里的那层浮层 ——
-        //  2026-10-13 搬进**顶栏的 `bottomContent`**（见 [BindingTabBand]）：
+        //  —— 手势分段控件（`TabRowWithContour`）就叠在这里 ——
+        // 搬进**顶栏的 `bottomContent`**（见 [BindingTabBand]）：
         // 带子成了顶栏这个节点的一部分，顶栏自己的半透明底与模糊连着它一起盖住，
-        // 于是原来这一整层（`clipToBounds` 的外壳 + 自己的取样层 / `frosted` /
+        // 于是这一整层（`clipToBounds` 的外壳 + 自己的取样层 / `frosted` /
         // 半透明底 + 自己画的那条下划线 + 内容里的等高占位）全部删掉 ——
         // 位置（折叠栏底边）、观感（底色 + 模糊）、下沿那条细线都由顶栏那份负责。
 
@@ -328,14 +343,15 @@ internal fun SettingsPage.BindingScreen(
         // 整页 push / pop 转场时它跟着一起滑（挂到 `Page` 那一层的话它不动，
         // 会看着像「凭空出现 / 消失」，与「每级页面自带顶栏、整页转场」的规矩不一致）。
         //
-        // 尺寸 / 形状 / 阴影全部走库的默认值（`FloatingActionButtonDefaults`：56dp 见方、
-        // `CircleShape`、12dp 阴影、按下缩到 0.92）；容器色默认取 `colorScheme.primary`，
-        // 不自己调色 —— 与「选中态只靠 radio + 文字变蓝、不动底色」那条纪律一致。
+        // 尺寸 / 形状 / 阴影走库的默认值（`FloatingActionButtonDefaults`：56dp 见方、`CircleShape`、
+        // 12dp 阴影、按下缩到 0.92）；磨砂 / 底色 / 阴影这三样收在 [PageFabButton] 那一份里
+        //（与「选择应用」页那颗共用）—— 色相仍是 `colorScheme.primary`、不自己调色（与「选中态只靠
+        // radio + 文字变蓝、不动底色」那条纪律一致），只为让磨砂透得出来按那一档压了 alpha。
         //
         //  库的 `FloatingActionButton` **没有 `enabled` 参数**（签名逐项核对过：
         // `onClick / modifier / shape / containerColor / shadowElevation / minWidth /
         // minHeight / interactionSource / content`）。主开关为关时按分段控件那条老路造禁用：
-        // ① 套 `alpha` 让它看着是灰的；② 上面压一层透明 Box 把输入全吃掉
+        // (1) 套 `alpha` 让它看着是灰的；(2) 上面压一层透明 Box 把输入全吃掉
         // —— 只把 `onClick` 换成空实现的话，它看着还能点、点了却没反应，比灰着更让人困惑。
         //  下边距取 [PAGE_BOTTOM_PADDING] 的**两倍**（64dp）、右边距取 [PAGE_MARGIN]
         //  显隐：**往下滚就藏、往上滚就露**（判据见 [rememberFabVisibleOnScroll]）——
@@ -348,12 +364,13 @@ internal fun SettingsPage.BindingScreen(
             visible = rememberFabVisibleOnScroll(listScrolls[pagerState.currentPage]),
         ) {
             Box {
-                FloatingActionButton(
+                PageFabButton(
+                    backdrop = fabBackdrop,
                     onClick = navigateToCommands,
                     modifier = Modifier.alpha(disabledAlpha),
                 ) {
-                    // 用「加号」而不是原来那一格上的命令提示符 `>_`：这颗按钮的动作是**新增**
-                    // 一条命令（见 `navigateToCommands` 的 `draft.reset()`），加号是 FAB 上
+                    // 用「加号」而不是命令提示符 `>_`：这颗按钮的动作是**新增**
+                    // 一条命令（`navigateToCommands` 会先 `draft.reset()`），加号是 FAB 上
                     // 最不会误读的字形。目标页的标题仍是「自定义命令」，身份不会丢。
                     //
                     // v1.1.0 源码：`FloatingActionButton` 内部只套一层
@@ -386,7 +403,7 @@ internal fun SettingsPage.BindingScreen(
             }
         }
 
-        // 「放弃未保存的命令」那一问**已挪到「自定义命令」页退出时**（2026-10-14 用户口径）：
+        // 「放弃未保存的命令」那一问**已挪到「自定义命令」页退出时**：
         //  这里只管进页 —— 不再看草稿、也不再清草稿（见 `CommandScreen` 里那张同名的确认窗）。
     }
 }
@@ -396,7 +413,7 @@ internal fun SettingsPage.BindingScreen(
  *
  * 锚点跟着格子走（由格子自己 `remember`、点击时随菜单一起上报），而不是在页面这一层按
  * 「哪一格用哪一支」手写一张表 —— 那种表每加一个入口格就得补一行，**漏一个菜单就弹到别人身上**
- *（2026-10-14「系统小窗」、2026-10-15「通知与控制中心」两次都是这么漏的）。
+ *（「应用转小窗」、「通知与控制中心」两次都是这么漏的）。
  *
  * @param spec 开着菜单的那一格（菜单内容按它的 token 从 [ActionCatalog.modeMenu] 取）
  * @param anchor 那一格记下的手指触点 —— 浮层就弹在那一点
@@ -435,31 +452,37 @@ internal fun SettingsPage.BindingList(
     onCreateCommand: () -> Unit,
     scrollBehavior: ScrollBehavior,
     /**
-     * 与本页共用的滚动状态 —— **三个手势页共用同一个实例**（由 [BindingScreen] 创建）。
+     * 本页的滚动状态 —— **每个手势页各持一份**（由 [BindingScreen] 用 `gestures.map { rememberScrollState() }` 建）。
      *
-     * 分段控件已经**钉在顶栏底下**、不读滚动量了（见 [BindingScreen]）；共用一份是为了
-     * 让左右翻页时内容停在同一个位置，这里只是把 `verticalScroll` 接到同一份上去。
+     * 注意：不能写「三个手势页共用同一个实例」—— 与现实相反：共用一份
+     * 会让「切回来就滚不动」（`ScrollState` 内部只有一个 `scrollableState`，pager 滑动时相邻两页
+     * 同时在场、互相打架，见 [BindingScreen] 里那段）。现在只是把**本页那一份**接上 `verticalScroll`。
      */
     scrollState: ScrollState,
     /**
      * 内容顶上要给分段控件留出的那一块 = 分段控件自己的高度（含它的上下内边距）。
      *
-     *  **必须与那个浮层一样高**（同一个值）：它让首屏第一行不被钉住的分段控件压住；
+     *  **必须与顶栏里那条分段控件一样高**（同一个值）：它让首屏第一行不被钉住的分段控件压住；
      * 滚起来之后内容会钻到控件背后，由控件自己那层不透明底挡着（见 [BindingScreen]）。
      * 值由 [BindingScreen] 量出来（`onSizeChanged`）。
      */
     tabBlock: Dp,
 ) {
     val cfg = config.value
-    //  这里每次重组都会新建一个 List，但 `remember(specs)` / `LaunchedEffect(specs, …)`
-    // 比的是**结构相等**（List 的 equals），内容不变时不会重建焦点表。
-    val specs = ActionCatalog.forGesture(g, commands.value)
+    // 记住这份清单：`forGesture` 每次都要 `ALL + commands.map { … }`（一次 concat 加一次 map），
+    //  而它在每次重组上（pager 三页同时在场 ⇒ 每帧三组）。key 用结构相等的值，
+    //  命令库没变时不重建 —— 下面 `remember(specs)` / `LaunchedEffect(specs, …)` 比的也是结构相等，
+    //  所以这份清单的**身份**稳下来只有好处。
+    val specs = remember(g, commands.value) { ActionCatalog.forGesture(g, commands.value) }
+    // `cmd:<名字>` → 命令。自定义命令那组里每个格子都要按 token 反查一次自己那条命令，
+    //  原来是在格子里 `commands.value.firstOrNull { … }` ⇒ n 条命令就是 n×O(n)。
+    val commandsByToken = remember(commands.value) { commands.value.associateBy { it.token } }
     val current = actionOf(cfg, g)
     // 「打开应用」格选中时标题下面那行小字 = **当前绑的应用名**
     // 名字查一次就缓存（PM 查询，入参是动作所以只在换动作时重查）。
     //  这一格能写出来的是**两种**动作：`app:` 与 `window:`（小窗，[Action.AppWindow]，
     // 由菜单里那项「小窗打开」定，见 [SettingsPage.smallWindow]）—— 两种都要取名字，
-    // 少认一种那一格就没有小标题（2026-10-14 实证：开着小窗挑完应用回来，标题下面是空的）。
+    // 少认一种那一格就没有小标题（实证：开着小窗挑完应用回来，标题下面是空的）。
     val boundAppLabel = remember(current) {
         val target = when (current) {
             is Action.App -> current.target
@@ -468,14 +491,19 @@ internal fun SettingsPage.BindingList(
         }
         target?.substringBefore('/')?.let { appLabelOf(it) }
     }
+    // 「打开应用」格绑的是**小窗打开**（`window:`，[Action.AppWindow]）时，标题右边补一枚「小窗起」标记
+    //—— 这一格只有一行标题 + 应用名，不点开「选择应用」菜单看不出绑的是哪一档。
+    //  判据直接看当前动作的类型：`isSelected` 对 [ActionCatalog.APP_TILE] 就是「是 App 或 AppWindow」，
+    //  所以这一条为真时选中的必然正是那一格，不用再比对 spec。
+    val appSmallWindow = current is Action.AppWindow
     // 图标表已在 Page 级预热（转场首帧减负），这里直接取
     val icons = iconsByGesture[g].orEmpty()
 
     // 当前选中的那一项（配置里是清单外的写法时为 -1 ⇒ 焦点退回第一项）
     val selectedIndex = specs.indexOfFirst { ActionCatalog.isSelected(it, current) }
 
-    // 原来插在两段之间的那一格跳转按钮（`CustomCommandsTile`）撤掉了，入口搬到
-    // [BindingScreen] 右下角那颗 FAB 上。于是**焦点格索引与 [specs] 下标重新一一对应**
+    // 入口只有 [BindingScreen] 右下角那颗 FAB（两段之间没有跳转格子）。
+    // 于是**焦点格索引与 [specs] 下标一一对应**
     // —— 早先那套「差一格」的换算（`specAtFocus` / `focusOfSpec`）随之取消，
     // 不要再把它加回来。
     val builtInCount = ActionCatalog.ALL.size
@@ -515,7 +543,7 @@ internal fun SettingsPage.BindingList(
      *  它带着**那一格自己那份触点锚点**（见 [OpenTileMenu]）：锚点由格子自己 `remember`、
      *  点的时候随这一格一起上报，不再在页面这一层一格格手写 —— 那种写法每加一个入口格就得补
      *  一份锚点、还要在一张 `when` 表里加一行，漏一个菜单就弹到别人身上
-     *（2026-10-15：「通知与控制中心」正是这么漏的，它落到了响铃格那一份上）。
+     *（「通知与控制中心」正是这么漏的，它落到了响铃格那一份上）。
      */
     var tileMenu by remember { mutableStateOf<OpenTileMenu?>(null) }
 
@@ -525,6 +553,15 @@ internal fun SettingsPage.BindingList(
      * 那段时间真正生效的是 [MenuPopup] 内部保持住的上一次那份内容与锚点，见那边的注释。
      */
     val noAnchor = remember { PreciseClickState() }
+
+    /**
+     * 每一格自己那份触点锚点，按 token 索引 —— **只给确认键那条路用**。
+     *
+     *  格子仍在自己那个 `key(spec.token)` 里 `remember` 一份（网格那段注释：不再有「哪一格用哪一支」
+     *  的表，加一个入口格不用改这里）；这张表只是把**同一份**登记下来，因为确认键不在格子的组合
+     *  作用域里、拿不到它。键是 token，所以新增入口格同样不用改这里。
+     */
+    val tileAnchors = remember { mutableMapOf<String, PreciseClickState>() }
 
     /**
      * 选中某一项 —— 点击与确认键**共用这一个入口**，两条路的手感一致。
@@ -543,11 +580,52 @@ internal fun SettingsPage.BindingList(
         }
     }
 
+    /**
+     * 点一下某一格 —— **点击与确认键共用这一个入口**。
+     *
+     *  注意：入口格必须在这里分派（「打开应用」进挑选页、其余入口格弹菜单），**不能交给 [select]**：
+     *  `app:` / `nav:` / `key:` / `panel:` / `zoom:` 这些都是**标记** token，`Action.parse` 认不出
+     *  —— `nav:` / `key:` / `zoom:` 落 `else -> Shell(...)`、`app:` 落 `App("")`、`panel:` 落 `Panel("")`，
+     *  交过去就是把垃圾写进配置再广播出去（确认键那条路当时只走 [select]，
+     *  外接键盘 / 遥控器按一下就能踩到）。
+     *
+     * @param anchor 这一格自己那份触点锚点（弹菜单要用它定位）；确认键那条路从 [tileAnchors] 取
+     */
+    val activate: (ActionCatalog.Spec, PreciseClickState) -> Unit = { spec, anchor ->
+        if (spec.token == ActionCatalog.APP_TILE) {
+            if (enabled) {
+                tick()
+                //  不挪焦点圈 —— 与 [select] 同一条规矩：圈只跟随选中态。
+                // 挑中应用时绑定变了，圈由重定位 effect 挪过来。
+                onOpenAppPicker(g)
+            }
+        } else if (ActionCatalog.isEntryTile(spec)) {
+            // 再弹菜单让你换档 ——
+            // 这样「点开看一眼又关掉」也留下了一个能用的取值，而不是什么都不写（菜单第一项写的就是这个值）。
+            //
+            // **这个手势已经绑着这一组里某一档时不再改写** —— 否则你刚选完「下一首」，
+            // 再点一次格子想看菜单，那一下先把配置冲回首档（「播放 / 暂停」/「循环」），
+            // 菜单里的对勾于是指到了错行。判据比**整组**（[ActionCatalog.isSelected]），
+            // 与格子自己的选中态同一口径。
+            if (enabled) {
+                tick()
+                //  不挪焦点圈：若这次点了会改绑（下面那行 pick），圈由重定位 effect 跟着
+                // `selectedIndex` 走；没改绑圈就不动。
+                if (!ActionCatalog.isSelected(spec, current)) {
+                    ActionCatalog.modeMenu(spec.token)?.firstOrNull()?.let { pick(it, g) }
+                }
+                tileMenu = OpenTileMenu(spec, anchor)
+            }
+        } else {
+            select(spec)
+        }
+    }
+
     // 进场把焦点放到「当前已选中的那一项」上（[focusedIndex] 的初值就是它）。
     //  必须在 LaunchedEffect 里请求：Compose 明确禁止在组合期间请求焦点
     // （`FocusRequester` 会直接打警告并忽略）。
     //
-    //  2026-10-12 补：**选中项变了就把焦点圈收回来** —— 绑定被改（点格子 / 挑应用 /
+    // 补：**选中项变了就把焦点圈收回来** —— 绑定被改（点格子 / 挑应用 /
     // 没挑回退）之后，圈跟着 `selectedIndex` 走。
     LaunchedEffect(specs, selectedIndex, active) {
         //  **只有当前页抢焦点**：pager 的相邻页同样在组合里，三页各请求一次的话
@@ -596,8 +674,13 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
         if (e.type == KeyEventType.KeyUp) {
             // 确认键在抬起时派发（与平台「按下不算、抬起才算点」一致）
             if (confirm) {
-                // 焦点格索引 == `specs` 下标（跳转按钮撤掉之后一一对应，见上面的账）
-                specs.getOrNull(focusedIndex)?.let(select)
+                // 焦点格索引 == `specs` 下标（跳转按钮撤掉之后一一对应，见上面的账）。
+                //  **与点击同一个入口**（[activate]）：入口格在那边分派（进挑选页 / 弹菜单），
+                // 直接走 [select] 会把 `app:` / `nav:` / `key:` / `panel:` / `zoom:` 这些标记 token
+                // 当取值写进配置。锚点取那一格登记的那份，拿不到就退回占位。
+                specs.getOrNull(focusedIndex)?.let { spec ->
+                    activate(spec, tileAnchors[spec.token] ?: noAnchor)
+                }
             }
             return@onKey true
         }
@@ -625,13 +708,13 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
             // 加了就让标题的左边距比首页 / 命令页的小标题多 [PAGE_MARGIN]，
             // 各段自己带横向 padding（见下），LongRepeatCard 也单独带
             //
-            //  **纵向 padding 一档都不留**（2026-10-12 顶栏改成叠在内容上之后，2026-10-13 又去掉底部那一档）：
+            //  **纵向 padding 一档都不留**（顶栏改成叠在内容上之后，又去掉底部那一档）：
             //  `padding` 落在 `verticalScroll` **之前**就等于是**滚动视口之外**的内缩 ——
             //  顶部那 12dp 会让内容永远到不了顶栏底下、模糊没东西可糊（滚起来时屏幕最上面
             //  留一条不带内容的空带）；底部那 12dp 同理：**视口比整页矮 12dp**，
             //  屏幕最底下那一条里没有内容，而手势导航栏是**透明**的 ——
             //  那一条就被露成「一块平色」，看着像导航栏不透明、把控件挡住了
-            //（2026-10-13 真机反馈「只有按键绑定页这样」，其余页的 padding 都在视口**内侧**）。
+            //（真机反馈「只有按键绑定页这样」，其余页的 padding 都在视口**内侧**）。
             //  两眼下的让位量改成内容里的 Spacer（顶 [tabBlock] 那一档、底见本函数末尾），
             //  能跟着滚动一起走。
             // 大标题随滚动折叠（见 [PageHeader]；`nestedScroll` 要在 `verticalScroll` 之前）
@@ -655,7 +738,7 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
         // 那一档已经在里面了，这里**不再另加** [PAGE_TOP_PADDING]。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + tabBlock))
 
-        // —— 按键设置：**在网格上面**（2026-10-13 从网格下面挪上来）——
+        // —— 按键设置：**在网格上面**（从网格下面挪上来）——
         //
         //  它是一张「设置项列表」（滑杆 / 开关那些行），属于**这一档手势本身**的行为，
         //  排在动作网格之前：先看到「这一档怎么判、有什么可调」，再挑「绑什么」。
@@ -665,6 +748,12 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
         //  会白多一截空档（标题紧贴它下面的内容，这是全页的规矩）。
         if (g == Gesture.SINGLE) {
             SmallTitle("按键设置")
+            //  注意：这张卡的两条**写路径**吃与网格同一套「机型」闸：
+            //  这里只看 `enabled`（主开关）的话，网格那侧的 `pick` 还会拦「机型不支持」
+            //  —— 两套口径。表外机型本来进不了这一页（`deviceSupported=false` 时链路恒不通），
+            //  所以这是兜底，不是主闸；带上它参数才不会在「不该写的机器」上落盘。
+            //  （`configReadOnly` 由 [write] 单点拦，不在这里重复。）
+            val rowsEnabled = enabled && deviceSupported
             // 「单击延迟」不跟着「立即触发单击」置灰：两个状态独立 ——
             // 前者管「等多久才判双击」，后者管「双击为无操作时还要不要等」。
             // （开着后者且双击为无操作时前者确实用不上，但那是运行期的组合，
@@ -678,7 +767,8 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
                     min = GlobalConfig.MIN_DOUBLE_CLICK_MS,
                     max = GlobalConfig.MAX_DOUBLE_CLICK_MS,
                     value = cfg.global.doubleClickMs,
-                    enabled = enabled,
+                    default = GlobalConfig.DEFAULT_DOUBLE_CLICK_MS,
+                    enabled = rowsEnabled,
                 ) { v ->
                     write(
                         config.value.copy(
@@ -698,7 +788,7 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
                     icon = PageIcons.InstantTrigger,
                     checked = cfg.global.instantSingle,
                     position = cardListPositionOf(1, SINGLE_SETTING_ROWS),
-                    enabled = enabled,
+                    enabled = rowsEnabled,
                 ) {
                     tick()
                     setInstantSingle(it)
@@ -708,7 +798,7 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
         }
 
         //
-        // （长按多久算长按、单击抬手后等多久看有没有第二下），原来摆在首页「按键行为」卡里、
+        // （长按多久算长按、单击抬手后等多久看有没有第二下），摆在首页「按键行为」卡里、
         // 与「振动反馈」并列，会被当成对三个手势都生效的全局项。
         //
         // 它现在是 [LongRepeatCard] 的首行（与「长按连续触发 / 触发间隔」同一张卡）。
@@ -766,6 +856,9 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
                             val cellModifier = Modifier.weight(1f)
                             key(spec.token) {
                                 val tileAnchor = rememberPreciseClickState()
+                                // 登记给确认键那条路用（见 [tileAnchors]）—— 写的是普通 map、不是 state，
+                                // 组合期写它不触发重组。
+                                tileAnchors[spec.token] = tileAnchor
                                 val popsMenu = ActionCatalog.modeMenu(spec.token) != null
                                 ActionTile(
                                     spec = spec,
@@ -790,43 +883,16 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
                                         else -> ActionCatalog.modeMenu(spec.token)
                                             ?.let { ActionCatalog.modeTitle(it, current) }
                                     },
+                                    // 「打开应用」格绑成小窗打开时，标题右边补一枚「小窗起」（见上面 [appSmallWindow]）。
+                                    //  注意：必须连 spec 一起判 —— 光看 `appSmallWindow` 会给**整片**格子都画上。
+                                    titleMarker = if (spec.token == ActionCatalog.APP_TILE && appSmallWindow) {
+                                        PageIcons.TileSmallWindow
+                                    } else {
+                                        null
+                                    },
                                     // 入口格虽然是**入口**（点了进下一层），但**不画行尾箭头** ——
                                     // 走 [ActionTile] 的默认值 false，别顺手补回来。
-                                    onClick = {
-                                        //  「打开应用」是入口、不是取值 —— 靠比常量认领，
-                                        // 不能交给 `select`：`app:` 本身就是一个合法的（空）App 动作，
-                                        // 走 select 会把配置写成 `app:`（拉不起任何东西，2026-10-12）。
-                                        if (spec.token == ActionCatalog.APP_TILE) {
-                                            if (enabled) {
-                                                tick()
-                                                //  不挪焦点圈 —— 与 `select` 同一条规矩：圈只跟随选中态。
-                                                // 挑中应用时绑定变了，圈由重定位 effect 挪过来。
-                                                onOpenAppPicker(g)
-                                            }
-                                        } else if (ActionCatalog.isEntryTile(spec)) {
-                                            // 再弹菜单让你换档 ——
-                                            // 这样「点开看一眼又关掉」也留下了一个能用的取值，
-                                            // 而不是什么都不写（菜单第一项写的就是这个值）。
-                                            //
-                                            // **这个手势已经绑着这一组里某一档时不再改写** —— 否则你刚选完
-                                            // 「下一首」，再点一次格子想看菜单，那一下先把配置冲回首档
-                                            // （「播放 / 暂停」/「循环」），菜单里的对勾于是指到了错行。
-                                            // 判据比**整组**（[ActionCatalog.isSelected]），与格子自己的选中态同一口径。
-                                            if (enabled) {
-                                                tick()
-                                                //  不挪焦点圈：若这次点了会改绑（下面那行 pick），圈由
-                                                // 重定位 effect 跟着 `selectedIndex` 走；没改绑圈就不动。
-                                                if (!ActionCatalog.isSelected(spec, current)) {
-                                                    ActionCatalog.modeMenu(spec.token)
-                                                        ?.firstOrNull()
-                                                        ?.let { pick(it, g) }
-                                                }
-                                                tileMenu = OpenTileMenu(spec, tileAnchor)
-                                            }
-                                        } else {
-                                            select(spec)
-                                        }
-                                    },
+                                    onClick = { activate(spec, tileAnchor) },
                                 )
                             }
                         }
@@ -839,7 +905,7 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
             }
             builtInBase += group.size
         }
-        // 「自定义命令」这一段**始终在**：没有命令时给一行「去创建自定义命令」（原来整段不出现，
+        // 「自定义命令」这一段**始终在**：没有命令时给一行「去创建自定义命令」（整段不出现的话，
         // 网格里就看不出这块地方是干什么的）。样式与网格同一套纵向节奏。
         Spacer(Modifier.height(GRID_ROW_GAP))
         SmallTitle("自定义命令")
@@ -888,18 +954,24 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
                         rowIndices.forEach { index ->
                             val spec = specs.getOrNull(index) ?: return@forEach
                             // 这条命令本身（`cmd:<名字>` 反查）—— 小字与「进编辑」两处都要用
-                            val cmd = commands.value.firstOrNull { it.token == spec.token }
+                            val cmd = commandsByToken[spec.token]
                             val selected = ActionCatalog.isSelected(spec, current)
                             // 「进这条命令的编辑页」—— 长按、以及**已选中时再点一次**，共用这一个入口。
                             //
                             //  走 `draft.load` 而**不是** FAB 那条 `navigateToCommands` ——
-                            // 后者会先 `draft.reset()`（那是「新增」的入口），
+                            // 后者会先 `draft.reset()`（那是「新增」的入口，见它的注释），
                             // 这里要的正是「把这条命令灌进表单」，
                             // 与「自定义命令」页里轻点已保存命令同一个入口。
                             val openEditor = {
                                 if (cmd != null) {
                                     tick()
                                     XLog.w("手势页打开自定义命令编辑：${cmd.name}")
+                                    // 这里直接 `load`、不走 [loadDraft] 那个「先问一句」：
+                                    //  草稿脏了必然还在「自定义命令」页 —— 退出那一页时 [goBack] 已经问过
+                                    //  并 `draft.reset()`；不脏地退出来则草稿本来就等于「没在编辑」
+                                    //  （而且每次走 [navigateToCommands] 进来都会 reset 一次）。
+                                    //  走 `loadDraft` 反而更糟：它会把确认窗挂起，而那个窗画在
+                                    //  「自定义命令」页上、此刻根本没组合 ⇒ 按下去什么都不发生。
                                     draft.load(cmd)
                                     navTo(Screen.COMMANDS)
                                 }
@@ -926,7 +998,7 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
                                 // 长按之后那一下抬手由库的 `combinedClickable` 吞掉（不会再触发点击）。
                                 onLongClick = openEditor,
                                 // **已经选中的再点一次 = 「我要改它」**，不是「重新绑一遍」，
-                                // 所以走编辑；没选中时仍是原来的「选中绑定」。
+                                // 所以走编辑；没选中时才是「选中绑定」。
                                 onClick = { if (selected) openEditor() else select(spec) },
                             )
                         }
@@ -940,14 +1012,13 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
 
         // 按键设置那两张卡（单击档 / 长按档）已挪到**网格上面**，见本函数开头那段。
         // 页面底部留白 —— 三个页面统一的那一档是 [PAGE_BOTTOM_PADDING]
-        // 原来这一页滚到底时最后一张卡直接贴着屏幕边缘，而「自定义命令」页底下有 32dp）。
+        // 不能少这一档：少了的话这一页滚到底时最后一张卡直接贴着屏幕边缘，而「自定义命令」页底下有 32dp）。
         //
-        // 内容的底部 padding**：原来这里取 `max(PAGE_BOTTOM_PADDING, FAB_SIZE + …)`
-        // （88dp，为了让滚到底时最后一行不被 FAB 压住），现在与「自定义命令」页一样
+        // 内容的底部 padding**：这里与「自定义命令」页一样
         // 只留 [PAGE_BOTTOM_PADDING]（32dp）。
         //  代价：FAB（下边距 64dp、高 56dp，占 64~120dp 那一带）滚到底时会压住
         Spacer(Modifier.height(PAGE_BOTTOM_PADDING))
-        //  再补 [GRID_GAP]：这 12dp 原来是挂在**滚动视口之外**的
+        //  再补 [GRID_GAP]：这 12dp 若挂在**滚动视口之外**
         // `.padding(bottom = GRID_GAP)`（见本函数 `Column` 那段的注释）——
         // 它让视口比整页矮 12dp，屏幕最底下那一条里没内容可画，透明的手势导航栏
         // 就把那一条露成一块平色（真机反馈「导航栏不透明、控件被颜色挡住」）。
@@ -962,7 +1033,7 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
             show = tileMenu != null,
             // 锚点就是**开着的那一格**自己那一份（点它时随菜单一起上报，见 [OpenTileMenu]）——
             // 这里不再有「哪一格用哪一支」的表：那种表漏一个入口格，菜单就弹到别人身上
-            //（2026-10-14 小窗、2026-10-15 通知与控制中心，两次都是这么漏的）。
+            //（小窗、通知与控制中心，两次都是这么漏的）。
             //  关掉之后 `tileMenu` 是 null，而退场动画期间真正生效的是 [MenuPopup] 内部保持住的
             // 上一次那份锚点（见那边的注释），所以这里给个没记过触点的占位即可。
             preciseClick = tileMenu?.anchor ?: noAnchor,
@@ -981,7 +1052,7 @@ val onKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = onKey@{ e ->
 /**
  * 「长按」tab 下**唯一**的那张卡：长按连续触发（+ 触发间隔）+ 长按延迟。
  *
- *  行序（2026-10-13 调整）：**连续触发在最上面**、触发间隔紧跟着它（只在开关打开时出现），
+ *  行序（调整）：**连续触发在最上面**、触发间隔紧跟着它（只在开关打开时出现），
  * 「长按延迟」落到最后一行 —— 前两行是一件事（按住不放要不要一直重来、隔多久来一次），
  * 而「多久算长按」是另一件事。
  *
@@ -1024,6 +1095,7 @@ internal fun SettingsPage.LongRepeatCard(blockedReason: String?, masterEnabled: 
                 min = KeyConfig.MIN_REPEAT_INTERVAL_MS,
                 max = KeyConfig.MAX_REPEAT_INTERVAL_MS,
                 value = key.longRepeatIntervalMs,
+                default = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
                 enabled = !blocked,
             ) { v ->
                 write(
@@ -1039,16 +1111,20 @@ internal fun SettingsPage.LongRepeatCard(blockedReason: String?, masterEnabled: 
         HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
         // 「长按延迟」—— 多久算长按。
         //  它的 enabled 跟着**整张卡**走（主开关 + [blockedReason]）。这个参数对多条命令其实
-        // 仍然生效（判定长按的时机与绑的是什么动作无关），但同一张卡里上面那行已经置灰、
-        // 它独自亮着，会让人以为「这行还能改 ⇒ 多条命令也许还能连续触发」（2026-10-14 用户报的）。
+        //  仍然生效（判定长按的时机与绑的是什么动作无关），但同一张卡里上面那行已经置灰、
+        //  它独自亮着，会让人以为「这行还能改 ⇒ 多条命令也许还能连续触发」（用户报的）。
+        //
+        //  说明里点一句「比它短算单击」：按不出来时用户第一个怀疑的就是这个数。到这一句为止 ——
+        //  写全「这一档已短于人一次自然按压」那种话太长，会把行撑成两行、与旁边几行的说明也不齐。
         SliderRow(
             title = "长按延迟",
             icon = PageIcons.DelayHold,
-            summary = "按住多久算长按",
+            summary = "多久算长按，比它短算单击",
             position = cardListPositionOf(if (key.longRepeat) 2 else 1, rows),
             min = KeyConfig.MIN_LONG_PRESS_MS,
             max = KeyConfig.MAX_LONG_PRESS_MS,
             value = key.longPressMs,
+            default = KeyConfig.DEFAULT_LONG_PRESS_MS,
             enabled = masterEnabled && !blocked,
         ) { v ->
             write(
@@ -1090,6 +1166,15 @@ internal fun SettingsPage.ActionTile(
      */
     subtitle: String? = null,
     /**
+     * 标题**右边**那枚小标记（`null` = 不画）。
+     *
+     * 现在只有「打开应用」格用它：绑成小窗打开时补一枚「小窗起」字形（[PageIcons.TileSmallWindow]）——
+     * 这一格只有一行标题，不点开「选择应用」菜单看不出绑的是小窗还是普通打开。
+     *  与行尾那颗指示器（[enterArrow] / 入口字形）不是一回事：那些在**行的最右边**，
+     *  这一枚紧贴标题、属于标题那一行。
+     */
+    titleMarker: ImageVector? = null,
+    /**
      * 是不是**带下一层**的格子 —— 是的话在行尾那枚指示器右边再画一支箭头。
      *
      * 现在只有「自定义命令」那一组格子传 true（长按进编辑）。内置那几个入口格
@@ -1112,7 +1197,7 @@ internal fun SettingsPage.ActionTile(
         },
         label = "TileContent",
     )
-    // 行尾箭头与选中小字共用的那档「弱化色」，可用⇄禁用切换带过渡
+    // 行尾箭头与选中小字共用的那档「弱化色」，可用/禁用切换带过渡
     val tileMutedColor by animateColorAsState(
         targetValue = if (enabled) scheme.onSurfaceVariantSummary else contentColor,
         label = "TileMuted",
@@ -1145,7 +1230,7 @@ internal fun SettingsPage.ActionTile(
                 modifier = Modifier
                     .fillMaxSize()
                     .focusRequester(focusRequester)
-                    //  **必须自己补一个焦点目标**（2026-10-11 真机定位）：
+                    //  **必须自己补一个焦点目标**（真机定位）：
                     // 这个版本的 `Modifier.combinedClickable` / `clickable` **不带 focusable** ——
                     // `androidx.compose.foundation.ClickableKt` 里对 `FocusableKt`
                     // 的引用数为 **0**，`AbstractClickableNode` 也只实现
@@ -1162,7 +1247,7 @@ internal fun SettingsPage.ActionTile(
                     pressedColor = scheme.surfaceContainerHigh,
                 ),
                 // 按压反馈**只要涟漪**：`showIndication` 让 `combinedClickable` 用
-                // `LocalIndication`，与原来 `BasicComponent` 那个 `clickable` 同一份，
+                // `LocalIndication`，与 `BasicComponent` 那个 `clickable` 同一份，
                 // 视觉与换之前逐像素一致。`Tint`（底色渐变到 `pressedColor`）显式关掉 ——
                 pressFeedbackType = PressFeedbackType.None,
                 showIndication = true,
@@ -1222,19 +1307,40 @@ internal fun SettingsPage.ActionTile(
                     // 能不能点由外层 `Card` 的两个回调（上面按 `enabled` 置 null）决定
                     enabled = enabled,
                 ) {
-                    Text(
-                        text = spec.title,
-                        style = COUITheme.textStyles.body2,
-                        fontWeight = FontWeight.Medium,
-                        color = contentColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        // 账见 [TILE_TEXT_OPTICAL_SHIFT]：`offset` 只挪绘制、不改测量。
-                        modifier = Modifier.offset(y = TILE_TEXT_OPTICAL_SHIFT),
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = spec.title,
+                            style = COUITheme.textStyles.body2,
+                            fontWeight = FontWeight.Medium,
+                            color = contentColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            // 账见 [TILE_TEXT_OPTICAL_SHIFT]：`offset` 只挪绘制、不改测量。
+                            //  `weight(fill = false)`：标记在旁边时标题只占自己要的那点宽度、
+                            //  装不下才缩到省略号；没有标记时逐像素不变。
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .offset(y = TILE_TEXT_OPTICAL_SHIFT),
+                        )
+                        // 标题右边那枚小标记（见 [titleMarker]）
+                        //  注意：**不加 [TILE_TEXT_OPTICAL_SHIFT]**：那 1.5dp 是给**文字**补的
+                        //  （行盒要给基线以下留 descent，汉字几乎不占，墨迹实测偏上 ~1.6dp），
+                        //  而图标的字形在它自己的方框里本来就居中 —— 跟着挪反而会低 1.5dp
+                        //  （用户报「图标没和标题垂直居中」就是这个）。
+                        titleMarker?.let { marker ->
+                            Icon(
+                                marker,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .padding(start = TILE_TITLE_MARKER_GAP)
+                                    .size(TILE_TITLE_MARKER_SIZE),
+                                tint = contentColor,
+                            )
+                        }
+                    }
                     // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
                     // 这行就是那个值。格子高 52dp、BasicComponent 最小高 48dp：两行（14sp + 12sp）装得下。
-                    //  ⚠️ 这里**不能**用 [AnimatedFade]（只淡、不动高度）：那样这行字的
+                    //  注意：这里**不能**用 [AnimatedFade]（只淡、不动高度）：那样这行字的
                     //  **布局高度是立刻占上的**，上面那行标题会**瞬间**被顶上去 ——
                     //  而要的正是「标题给这行字让位 / 复位」这个**位移本身滑出来**。
                     //  所以走 [VISIBILITY_ENTER] / [VISIBILITY_EXIT]（淡入 + 竖向展开，
@@ -1268,7 +1374,7 @@ internal fun SettingsPage.ActionTile(
     }
 }
 
-// TileFocusRing 已搬到 ui/component/PageWidgets.kt（与 ActionTile 共用 TILE_HEIGHT / TILE_SIDE_PADDING / 焦点圈逻辑）。
+// TileFocusRing 已搬到 ui/component/TileWidgets.kt（与 ActionTile 共用 TILE_HEIGHT / TILE_SIDE_PADDING / 焦点圈逻辑）。
 
 internal fun SettingsPage.actionOf(cfg: Config, g: Gesture): Action {
     val key = cfg.key(KeyId.PLUS)
@@ -1279,7 +1385,13 @@ internal fun SettingsPage.actionOf(cfg: Config, g: Gesture): Action {
     }
 }
 
-internal fun SettingsPage.pick(spec: ActionCatalog.Spec, g: Gesture) {
+/**
+ * 把一个动作绑到手势 [g] 上。
+ *
+ * @return **是否真的落盘了** —— 调用方（「打开应用」页挑完应用那一处）据此决定退不退页：
+ *   被拦住 / 写盘失败还照退的话，用户刚挑的那个应用**看起来选了、其实什么都没写**。
+ */
+internal fun SettingsPage.pick(spec: ActionCatalog.Spec, g: Gesture): Boolean {
     // 与首页 / ⋮ 菜单**同一套闸位**。正常路径上它们已经拦过一遍（进不了这一页），
     //  这里拦的是「绕过首页直接落到这一页」那条路 —— 调试通道的 `navTo` 就是那么进来的
     //  （release 不可达，但它证明这个入口自己没有闸）。少了这一层，未就绪时网格照样能改绑定：
@@ -1291,9 +1403,9 @@ internal fun SettingsPage.pick(spec: ActionCatalog.Spec, g: Gesture) {
                 "${g.id} → ${spec.token}",
         )
         toast(if (!deviceSupported) UNSUPPORTED_DEVICE_HINT else MODULE_UNAVAILABLE_HINT)
-        return
+        return false
     }
-    try {
+    return try {
         val cfg = config.value
         val key = cfg.key(KeyId.PLUS)
         val action = Action.parse(spec.token)
@@ -1311,12 +1423,13 @@ internal fun SettingsPage.pick(spec: ActionCatalog.Spec, g: Gesture) {
                 longRepeat = key.longRepeat && !CommandLibrary.isSerial(commands.value, action.token),
             )
         }.copy(
-            //  选动作 == 启用（2026-10-10 真机发现）：设置页读不到旧配置时会回落到
+            //  选动作 == 启用（真机发现）：设置页读不到旧配置时会回落到
             // `Config.DEFAULT`，而默认是 `plus_enabled=0`（"装上模块不改变行为" 是有意的默认值）。
             enabled = true,
         )
         write(cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)), "${g.id} → ${spec.token}")
     } catch (e: Throwable) {
         XLog.w("选动作失败（忽略）：${spec.token}", e)
+        false
     }
 }

@@ -44,7 +44,7 @@ object ConfigBroadcast {
      *  `longIsSerial` 这类由发送侧现算的字段、以及 `normalizeForGesture` 的归一化都会让
      *  同一份配置在两边的指纹不同 —— 那是假警报。指纹只回答「发出去的那条 = 收到的那条」。
      *
-     *  ⚠️ **只做同源比对，不做安全判据**（`hashCode` 有碰撞可能）：用途是让「设置生效」
+     *  注意：**只做同源比对，不做安全判据**（`hashCode` 有碰撞可能）：用途是让「设置生效」
      *  那一段说实话，不是访问控制。
      */
     fun tag(intent: Intent): String {
@@ -62,8 +62,8 @@ object ConfigBroadcast {
      * ⇒ 这里按 [intent] 里 `putExtra` 的**实际类型**分派。本广播的 extra 只有 Boolean / Int /
      * String 三类；将来加新 extra 时，类型不在这三类里的要在这里补一行。
      *
-     *  ⚠️ **不能「挨个类型试」**：类型不匹配时 `getString` 抛 `ClassCastException`（不是返回 null）。
-     *  ⚠️ 本函数在**注入侧**（system_server）也会被调到（见 `ConfigChannel`）⇒ 整体 catch 兜住，
+     *  注意：**不能「挨个类型试」**：类型不匹配时 `getString` 抛 `ClassCastException`（不是返回 null）。
+     *  注意：本函数在**注入侧**（system_server）也会被调到（见 `ConfigChannel`）⇒ 整体 catch 兜住，
      *  取值失败只当「这个键没值」（与旧的 `Bundle.get` 返回 null 同一个结果），绝不让异常越出去。
      */
     private fun rawExtra(extras: Bundle, k: String): Any? = try {
@@ -108,14 +108,14 @@ object ConfigBroadcast {
             .putExtra(EXTRA_INSTANT_SINGLE, config.global.instantSingle)
     }
 
+    /** 与 [ConfigCodec] 同一口径的钳制：广播值可能来自手改文件，越界值按边界处理。 */
+    private fun clampInt(v: Int, min: Int, max: Int): Int = v.coerceIn(min, max)
+
     /**
      * 把一条配置广播解回 [Config]。
      * 调用点在 AMS 广播入口的 hooker（热路径）：只取 extra 拼对象，不做查找与 IO。
      * 拼装不得抛异常，否则 system_server 崩溃；缺项取安全默认（不接管、单击保留原生）。
      */
-    /** 与 [ConfigCodec] 同一口径的钳制：广播值可能来自手改文件，越界值按边界处理。 */
-    private fun clampInt(v: Int, min: Int, max: Int): Int = v.coerceIn(min, max)
-
     fun parse(intent: Intent): Config {
         val enabled = intent.getBooleanExtra(EXTRA_ENABLED, false)
         return Config(

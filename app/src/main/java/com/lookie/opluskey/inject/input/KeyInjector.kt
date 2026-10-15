@@ -19,18 +19,56 @@ internal class KeyInjector(
         }
     }
 
-    /** 真正干活的那一层 —— 失败向上抛，由两个公开入口各自兜住。 */
+    /** 真正干活的那一层 —— 失败向上抛，由公开入口兜住。 */
     private fun injectOrThrow(keyCode: Int) {
-        val im = inputManager() ?: run {
-            XLog.w("拿不到 InputManager，keyevent:$keyCode 跳过")
-            return
-        }
-        val keyEventCls = Reflect.findClass(classLoader(), "android.view.KeyEvent") ?: return
+        val h = handle() ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        val down = construct(h, ACTION_DOWN, keyCode, now) ?: return
+        val up = construct(h, ACTION_UP, keyCode, now) ?: return
+        // 0 = INJECT_INPUT_EVENT_MODE_ASYNC
+        Reflect.call(h.manager, h.inject, down, INJECT_MODE_ASYNC)
+        Reflect.call(h.manager, h.inject, up, INJECT_MODE_ASYNC)
+    }
+
+    /**
+     * 按参数表造一个 `KeyEvent`；造失败返回 null（[invokeConstructor] 已经记过日志）。
+     *
+     * 三张参数表对应三档构造器，**参数个数由解析时定下来**，这里不再判断。
+     */
+    private fun construct(h: Handle, action: Int, keyCode: Int, now: Long): Any? = invokeConstructor(
+        h.ctor,
+        *when (h.argc) {
+            10 -> arrayOf<Any?>(now, now, action, keyCode, 0, 0, VIRTUAL_KEYBOARD, 0, 0, SOURCE_KEYBOARD)
+            6 -> arrayOf<Any?>(now, now, action, keyCode, 0, 0)
+            else -> arrayOf<Any?>(now, now, action, keyCode, 0)
+        },
+    )
+
+    /**
+     * 取「注入句柄」—— `IInputManager` 代理 + `KeyEvent` 构造器 + `injectInputEvent`。
+     *
+     * 这三样都是定值（框架类名、方法名、签名都不随按键变），原来每次注入都要重新解析一遍：
+     * 三次 `Class.forName`、两次静态方法扫描、一次 `constructors` 数组 + 三次按签名线性扫描、
+     * 两次 `Reflect.method`。现在只解析一次，之后是一次字段读。
+     *
+     * 两条口径：
+     *  · **只缓存成功**。失败不记住 —— 早期 `context()` 还拿不到（返回 null）时会走系统
+     *    ClassLoader，那时解析不出来是**暂时**的；把失败缓存下来会让整个进程再也不注入。
+     *  · 缓存里带上解析时用的 [ClassLoader] 身份：`context()` 后来换成宿主的 loader 时重新解析，
+     *    不让「先来的那份」一直占位。
+     */
+    private fun handle(): Handle? {
+        val loader = classLoader()
+        val cached = cachedHandle
+        if (cached != null && cached.loader === loader) return cached
+        return build(loader)?.also { cachedHandle = it }
+    }
+
+    private fun build(loader: ClassLoader): Handle? {
+        val manager = inputManager(loader) ?: return null
+        val keyEventCls = Reflect.findClass(loader, "android.view.KeyEvent") ?: return null
 
         val ctors = keyEventCls.constructors
-        val now = android.os.SystemClock.uptimeMillis()
-        val down: Any
-        val up: Any
         // 按**参数类型**挑，不能只数个数：同一个类里有第二个 10 参构造器时，
         // 按个数挑到的可能是另一个（参数序完全不同），deviceId 会静默变成 0 ——
         // 而 SideKeyInterceptor.isSynthetic 正是靠 deviceId 认自己的重注入事件，
@@ -38,48 +76,42 @@ internal class KeyInjector(
         val ctor10 = ctors.firstOrNull { it.matchesSignature(LONG, LONG, INT, INT, INT, INT, INT, INT, INT, INT) }
         val ctor6 = ctors.firstOrNull { it.matchesSignature(LONG, LONG, INT, INT, INT, INT) }
         val ctor5 = ctors.firstOrNull { it.matchesSignature(LONG, LONG, INT, INT, INT) }
+        val ctor: java.lang.reflect.Constructor<*>
+        val argc: Int
         when {
             ctor10 != null -> {
                 XLog.d("用 10 参构造器造 KeyEvent（metaState=0，source=SOURCE_KEYBOARD）")
-                down = invokeConstructor(
-                    ctor10, now, now, ACTION_DOWN, keyCode, 0, 0,
-                    VIRTUAL_KEYBOARD, 0, 0, SOURCE_KEYBOARD,
-                ) ?: return
-                up = invokeConstructor(
-                    ctor10, now, now, ACTION_UP, keyCode, 0, 0,
-                    VIRTUAL_KEYBOARD, 0, 0, SOURCE_KEYBOARD,
-                ) ?: return
+                ctor = ctor10
+                argc = 10
             }
             ctor6 != null -> {
                 XLog.d("用 6 参构造器造 KeyEvent（第 6 参按 metaState 理解，给 0）")
-                down = invokeConstructor(ctor6, now, now, ACTION_DOWN, keyCode, 0, 0) ?: return
-                up = invokeConstructor(ctor6, now, now, ACTION_UP, keyCode, 0, 0) ?: return
+                ctor = ctor6
+                argc = 6
             }
             ctor5 != null -> {
-                XLog.w("只有 5 参构造器，注入可能不生效：keyevent:$keyCode")
-                down = invokeConstructor(ctor5, now, now, ACTION_DOWN, keyCode, 0) ?: return
-                up = invokeConstructor(ctor5, now, now, ACTION_UP, keyCode, 0) ?: return
+                XLog.w("只有 5 参构造器，注入可能不生效")
+                ctor = ctor5
+                argc = 5
             }
             else -> {
-                XLog.w("KeyEvent 构造器没找到，keyevent:$keyCode 跳过")
-                return
+                XLog.w("KeyEvent 构造器没找到，keyevent 注入这条路走不通")
+                return null
             }
         }
 
         val inject = Reflect.method(
-            im.javaClass, "injectInputEvent",
-            Reflect.findClass(classLoader(), "android.view.InputEvent") ?: return,
+            manager.javaClass, "injectInputEvent",
+            Reflect.findClass(loader, "android.view.InputEvent") ?: return null,
             Int::class.javaPrimitiveType!!,
         )
-            ?: Reflect.methodByNameAndArity(im.javaClass, "injectInputEvent", 2)
+            ?: Reflect.methodByNameAndArity(manager.javaClass, "injectInputEvent", 2)
             ?: run {
-                XLog.w("InputManager.injectInputEvent 没找到，keyevent:$keyCode 跳过")
-                return
+                XLog.w("InputManager.injectInputEvent 没找到，keyevent 注入这条路走不通")
+                return null
             }
 
-        // 0 = INJECT_INPUT_EVENT_MODE_ASYNC
-        Reflect.call(im, inject, down, INJECT_MODE_ASYNC)
-        Reflect.call(im, inject, up, INJECT_MODE_ASYNC)
+        return Handle(loader, manager, inject, ctor, argc)
     }
 
     /**
@@ -87,8 +119,7 @@ internal class KeyInjector(
      * `ServiceManager.getService("input")` → `IInputManager.asInterface`；
      * 链路每个版本都可能微调，逐级降级、每级失败都写日志。
      */
-    private fun inputManager(): Any? {
-        val loader = classLoader()
+    private fun inputManager(loader: ClassLoader): Any? {
         val serviceManager = Reflect.findClass(loader, "android.os.ServiceManager") ?: run {
             XLog.w("找不到 ServiceManager")
             return null
@@ -103,6 +134,22 @@ internal class KeyInjector(
         }
         return Reflect.callStatic(stub, "asInterface", binder)
     }
+
+    /**
+     * 解析出来的注入句柄（只缓存成功的那份）。
+     *
+     * 带 [loader] 是为了「后来换成了另一个 ClassLoader 就重新解析」——见 [handle]。
+     */
+    private class Handle(
+        val loader: ClassLoader,
+        val manager: Any,
+        val inject: java.lang.reflect.Method,
+        val ctor: java.lang.reflect.Constructor<*>,
+        val argc: Int,
+    )
+
+    @Volatile
+    private var cachedHandle: Handle? = null
 
     private fun classLoader(): ClassLoader =
         context()?.classLoader ?: ClassLoader.getSystemClassLoader()
@@ -140,7 +187,7 @@ internal class KeyInjector(
          * `KeyCharacterMap.VIRTUAL_KEYBOARD`（= -1）—— 10 参构造器的 deviceId 位，
          * 与系统 `input keyevent` 造出来的事件一致。
          *
-         * ⚠️ `SideKeyInterceptor.isSynthetic` 就认这个值把「自己重注入的事件」摘出去，
+         * 注意：`SideKeyInterceptor.isSynthetic` 就认这个值把「自己重注入的事件」摘出去，
          * 换构造器时不许改这个数（改了就是自持循环）。
          */
         private const val VIRTUAL_KEYBOARD = -1

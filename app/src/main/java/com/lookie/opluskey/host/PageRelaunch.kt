@@ -20,7 +20,7 @@ import com.lookie.opluskey.ui.SettingsPageHooks
  *  它本来就活着：[GestureReceiver] 收手势的接收器与设置页那句「在不在」都在它身上，
  * 而「重启服务」的前置条件正是「宿主主进程在跑」（不在时页面直接报失败，不杀自己）。
  *
- *  顺带它也替页面把自己重来一遍（这一步原先由页面发起）—— 宿主侧的代码同样需要重新加载。
+ *  顺带它也把宿主主进程自己重来一遍 —— 宿主侧的代码同样需要重新加载。
  */
 internal object PageRelaunch {
 
@@ -42,6 +42,8 @@ internal object PageRelaunch {
      *
      *  刷新出来的新页面若又发一条（用户连点两下），这里挡掉：那条请求要的是「再重启一遍」，
      * 而本进程马上就死了，接了也执行不完 —— 让它死过一遍、由系统拉起的新进程去服务那次请求。
+     *
+     * 注意：拉起失败时这一位会**复位**（见 [schedule]）：那时本进程不自杀，得让下一次请求还能进来。
      */
     private var scheduled = false
 
@@ -54,7 +56,14 @@ internal object PageRelaunch {
         scheduled = true
         XLog.w("页面重启：${START_DELAY_MS}ms 后拉起设置页，再过 ${EXIT_DELAY_MS}ms 本进程重来一遍")
         handler.postDelayed({
-            startPage(ctx)
+            // 注意：**拉起失败就不自杀**：本进程死了、页面又没被拉起来，
+            //  用户面对的是「设置页没了、也没人再把它叫回来」，只能自己重进 —— 比留着进程糟得多。
+            //  复位 `scheduled` 让下一次请求还能被接住。
+            if (!startPage(ctx)) {
+                XLog.w("页面重启：拉起设置页失败 —— 本进程不自杀（留着服务下一次请求）")
+                scheduled = false
+                return@postDelayed
+            }
             handler.postDelayed({
                 val pid = android.os.Process.myPid()
                 XLog.w("页面重启：宿主主进程自杀重来 pid=$pid")
@@ -63,16 +72,19 @@ internal object PageRelaunch {
         }, START_DELAY_MS)
     }
 
-    private fun startPage(ctx: Context) {
-        XLog.guard("拉起设置页") {
-            ctx.startActivity(
-                Intent()
-                    .setComponent(
-                        ComponentName(KeyModule.PAGE_PACKAGE, SettingsPageHooks.SETTINGS_ACTIVITY),
-                    )
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-            XLog.w("页面重启：已发出拉起请求（${SettingsPageHooks.SETTINGS_ACTIVITY}）")
-        }
+    /** @return 拉起请求有没有发出去（见 [schedule] 里那条「失败就不自杀」的纪律）。 */
+    private fun startPage(ctx: Context): Boolean = try {
+        ctx.startActivity(
+            Intent()
+                .setComponent(
+                    ComponentName(KeyModule.PAGE_PACKAGE, SettingsPageHooks.SETTINGS_ACTIVITY),
+                )
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        XLog.w("页面重启：已发出拉起请求（${SettingsPageHooks.SETTINGS_ACTIVITY}）")
+        true
+    } catch (e: Throwable) {
+        XLog.w("页面重启：拉起设置页失败（${e.javaClass.simpleName}: ${e.message}）")
+        false
     }
 }

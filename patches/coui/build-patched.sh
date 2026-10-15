@@ -12,7 +12,7 @@ UPSTREAM="https://github.com/suqi8/coui"
 UPSTREAM_TAG="v1.1.0"
 CLONE="$ROOT/.temp/coui-repo"
 VER_FROM="1.1.0-alphasubtitle2"   # 上游 -Palpha=subtitle2 的产物版本
-VER_TO="1.1.0-subtitle3"          # 本仓库对外声明并提交的版本
+VER_TO="1.1.0-subtitle4"          # 本仓库对外声明并提交的版本
 
 # 克隆（已存在则复用）
 if [ ! -d "$CLONE/.git" ]; then
@@ -36,7 +36,19 @@ for p in "$ROOT"/patches/coui/*.patch; do
 done
 
 # 只构建 android 出版物（KMP 其它目标不碰）
-./gradlew.bat :coui-ui:publishAndroidPublicationToLocalRepository -Palpha=subtitle2
+#
+# 注意：按平台挑 wrapper：原来写死 `./gradlew.bat`（Windows 批处理），
+#   非 Windows 环境（含 CI 的 ubuntu runner）根本跑不动 —— 而脚本其余部分（`git clone` /
+#   `git apply` / `sed -i`）都是 POSIX 写法，看上去是能跨平台的。
+if [ -n "${OS:-}" ] && [ "${OS:-}" = "Windows_NT" ]; then
+  GRADLE="./gradlew.bat"
+elif [ -x "./gradlew" ]; then
+  GRADLE="./gradlew"
+else
+  GRADLE="./gradlew.bat"
+fi
+echo "用 $GRADLE 构建（当前目录 $PWD）"
+"$GRADLE" :coui-ui:publishAndroidPublicationToLocalRepository -Palpha=subtitle2
 
 # 产物搬进 patches/repo，版本改写为 $VER_TO
 SRC="coui-ui/build/repository/local/io/github/suqi8/coui/kmp/coui-ui-android/$VER_FROM"

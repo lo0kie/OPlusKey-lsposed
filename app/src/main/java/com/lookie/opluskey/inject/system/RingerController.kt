@@ -125,8 +125,17 @@ internal class RingerController(
     private fun applyMode(am: AudioManager, current: Int, next: Int, zen: Boolean): Int? {
         val note = if (zen) "（免打扰开启，写的是内部档位）" else ""
         if (setRingerModeInternal(am, next)) {
-            XLog.w("响铃模式：${modeName(current)} → ${modeName(next)}$note")
-            return next
+            //  内部通道也要**回读**：写进去不等于落定，而公共接口那条
+            //  是回读的 —— 两条路口径不一致，而且「内部通道不会被降级」只是**推断**、不是证据。
+            //  回读一次才能把 rememberedMode 记对（记错了下一次 cycle 就从错的地方起步），
+            //  也才能在真机上看见它到底落成哪一档。
+            val landed = runCatching { am.ringerMode }.getOrNull()
+            val degraded = landed != null && landed != next
+            XLog.w(
+                "响铃模式：${modeName(current)} → ${modeName(next)}" +
+                    (if (degraded) "（回读发现实际落成 ${modeName(landed)}）" else "") + "$note",
+            )
+            return landed ?: next
         }
         try {
             am.ringerMode = next

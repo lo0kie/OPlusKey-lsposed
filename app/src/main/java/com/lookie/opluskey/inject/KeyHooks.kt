@@ -78,7 +78,7 @@ internal object KeyHooks {
         val forwarder = GestureForwarder({ SystemContext.get(loader) }, handler)
         // 触觉反馈**不在这边**：它在宿主侧、动作即将执行那一刻（`host/GestureReceiver.runAction`）。
         //  判定侧振不出「服务在跑」这个事实 —— 判出手势就振，可宿主在不在、能不能执行它并不知道，
-        // 于是会出现「振了却什么都没发生」；用户 2026-10-14 明确要求把它去掉（见那边的 KDoc）。
+        // 于是会出现「振了却什么都没发生」；用户明确要求把它去掉（见那边的 KDoc）。
         val interceptor = SideKeyInterceptor(
             handler,
             forward = { id, gesture, repeat ->
@@ -150,7 +150,7 @@ internal object KeyHooks {
     /**
      * 回一条「注入侧链路状态」给设置页（应答 [KeyModule.ACTION_INJECT_QUERY]）。
      *
-     * ⚠️ **绝不能在 hooker 体内直接 `sendBroadcast`**：那是从 AMS 的广播入口内部再调一次 AMS，
+     * 注意：**绝不能在 hooker 体内直接 `sendBroadcast`**：那是从 AMS 的广播入口内部再调一次 AMS，
      * 等于在广播路径里重入广播路径。整条投递 post 到主线程去发，hooker 里只留这一次 post。
      */
     private fun reportStatus() {
@@ -167,7 +167,6 @@ internal object KeyHooks {
                         .setPackage(KeyModule.PAGE_PACKAGE)
                         .putExtra(KeyModule.EXTRA_INJECT_HOOKS, hookCount)
                         .putExtra(KeyModule.EXTRA_INJECT_CONFIG_OK, ConfigChannel.receivedConfig)
-                        .putExtra(KeyModule.EXTRA_INJECT_TAKEOVER, ConfigChannel.takeOver)
                         .putExtra(KeyModule.EXTRA_INJECT_LAST_GESTURE_AT, lastGestureAt)
                         .putExtra(
                             KeyModule.EXTRA_INJECT_CONFIG_TAG,

@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 /**
  * 主题：深浅色判定/取色与系统主题同步。
  *
- * 从 `SettingsPage.kt` 按职责拆出（2026-10-12 重构）：成员改为 [SettingsPage]
+ * 从 `SettingsPage.kt` 按职责拆出：成员改为 [SettingsPage]
  * 的扩展/同包顶层声明，调用点零改动。
  */
 /** 页面底色 —— COUI 色板的 `surface`（深色 `#000000`、浅色 `#F0F1F2`，与系统设置页一致）。 */
@@ -64,7 +64,7 @@ internal fun SettingsPage.SyncToHost() {
                 retry = scope.launch {
                     for (wait in NIGHT_RETRY_MS) {
                         if (wait > 0) kotlinx.coroutines.delay(wait)
-                        if (syncNight("ui_night_mode 变了")) break
+                        if (syncNight("$NIGHT_MODE_KEY 变了")) break
                     }
                 }
             }
@@ -90,7 +90,7 @@ internal fun SettingsPage.SyncToHost() {
 
     // 「定时 / 日落到日出」那种设置项不变的切换不会触发上面的监听，所以留着这条轮询
     // （间隔 [NIGHT_POLL_MS]，读的是系统配置上的一个字段，代价可忽略）。
-    // ⚠️ 它会常驻：露出宿主原版页面只是把 pageView 置 GONE，组合并没有被销毁，而自建的
+    // 注意：它会常驻：露出宿主原版页面只是把 pageView 置 GONE，组合并没有被销毁，而自建的
     // owner 又停在 RESUMED（规则禁推 DESTROYED）—— 别拿「不可见就停」当前提去改它。
     LaunchedEffect(Unit) {
         while (true) {
@@ -101,10 +101,10 @@ internal fun SettingsPage.SyncToHost() {
 }
 
 /**
- * 对一次「系统深浅可能变了」的账 —— ①的推送与②的轮询共用这一个入口。
+ * 对一次「系统深浅可能变了」的账 —— 推送那一路与轮询那一路共用这一个入口。
  *
  * @param from 触发来源（日志用；排查「到底哪条路先醒」时全靠它）
- * @return 这次真的翻过去了（①据此决定还要不要再查）
+ * @return 这次真的翻过去了（推送那一路据此决定还要不要再查）
  */
 internal fun SettingsPage.syncNight(from: String): Boolean {
     val now = systemNight()
