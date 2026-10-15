@@ -109,9 +109,9 @@ internal object StatusBarBridge {
     /**
      * 拉下控制中心（快捷设置那一块）。
      *
-     * ⚠️ **候选表，不是照抄来的结论**：系统侧键动作表里没有 `control_center` 这一行，调用目标是本机试的。
+     * 注意：**候选表，不是照抄来的结论**：系统侧键动作表里没有 `control_center` 这一行，调用目标是本机试的。
      * 两条候选按「有没有权限闸门」排序：
-     *  1. ✅ **经 `mBar`** 调 `IStatusBar.animateExpandSettingsPanel(String)` —— 这一层自己不做权限检查
+     *  1. **经 `mBar`** 调 `IStatusBar.animateExpandSettingsPanel(String)` —— 这一层自己不做权限检查
      *     （上面 `togglePanel()` 能通也是同一个原因），真机已定死就是它，别删；
      *  2. `svc.expandSettingsPanel(...)` —— 服务那层，AOSP 在那里有 `enforceExpandStatusBar()`，只当兜底。
      * 两条都落空时把带 `Expand` / `Panel` 的方法名打进日志，照实测补下一轮候选。

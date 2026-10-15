@@ -3,7 +3,7 @@ package com.lookie.opluskey.ui.model
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.host.action.KsuCompat
 
 /** 设置页上可选的「动作清单」（界面用的展示层数据）。 */
 internal object ActionCatalog {
@@ -12,12 +12,12 @@ internal object ActionCatalog {
      * 一个可选动作的展示信息。
      *
      * @param title 界面上的名称（与 KSU 模块的显示文本一致）
-     * @param summary 写进配置里的原始写法（界面上不显示，留着对照）
+     * @param summary 动作清单里的说明文字 —— 只有菜单里那几行读它
      * @param token `Action.parse()` 认得的那种写法
      * @param middleIcon 中央大图标的 drawable 名（宿主资源，可为空）
      * @param tabIcon 底部条图标的 drawable 名（宿主资源，可为空）
      * @param oval 圆形底的 drawable 名（宿主资源，可为空）
-     * @param appPackage `app:` 动作的目标包名 —— 宿主没给图标时取目标 App 的真图标
+     * @param appPackage `app:` 动作的目标包名
      * @param commandKind 自定义命令的类型；内置动作恒为 `null`。图标据此选字形：网格格子只有一行文字，单条 / 多条只能靠图标区分。
      * @param commandSteps 自定义命令里「多条命令」的步骤数；单条与内置动作恒为 `0`。
      *   多条命令的图标按它换 `box-multiple-N`，光靠 [commandKind] 只能分出「是多条」、分不出「有几步」。
@@ -25,6 +25,12 @@ internal object ActionCatalog {
      *   相邻两行那条细线 —— 把一组菜单切成两段。目前两处：媒体控制（「播放 / 暂停 / 播放 / 暂停」
      *   与「上一首 / 下一首」之间）、响铃状态（「循环」与那三档之间）。
      *   网格格子、步骤行、格子里那行小字都不读它 —— 只有菜单的分隔线看这个字段。
+     *
+     *  注意：**有 5 个字段全仓只写不读**（这几位 KDoc 说它们是
+     *  「drawable 名 / 写进配置里的原始写法」，读起来像在起作用，其实没有）：
+     *  `middleIcon` / `tabIcon` / `oval` / `appPackage` / `summary` —— 图标早改成 Tabler 那一套
+     *  （见 `ActionIcons`），`summary` 也不再当配置写法用（配置写法就是 [token]）。
+     *  留着它们只是因为构造点太多、删起来比留着贵；**要读之前先确认它真有值**。
      */
     data class Spec(
         val title: String,
@@ -50,7 +56,7 @@ internal object ActionCatalog {
     /** 「无操作」的取值（[STEP_GROUPS] 要把它剔掉，所以单独给个常量）。 */
     private const val NONE_TOKEN = "none"
 
-    // 「交还系统」那一格（`native` / `passthrough`）**已删**（2026-10-14 用户要求）：
+    // 「交还系统」那一格（`native` / `passthrough`）**已删**：
     //  做不到单个手势级的交还 —— 一交还就是整键，同一把键上双击 / 长按的命令也跟着被系统吞掉。
     //  取舍与依据写在 `docs/implementation.md` 的「交还系统为什么不提供」。
 
@@ -62,7 +68,7 @@ internal object ActionCatalog {
      * 而是把同一串 intent 直接 `startForegroundService`（见 `host/action/AppLauncher.startSidebar`）。
      */
     private const val SIDEBAR =
-        "shell:am start-foreground-service -a oplus.intent.action.DIRECT_SIDEBAR_SERVICE" +
+        "shell:am start-foreground-service -a ${KsuCompat.SIDEBAR_SERVICE}" +
             " -e extra_entrance_function full_screen_ocr" +
             " -e triggered_app com.coloros.smartsidebar"
 
@@ -102,7 +108,7 @@ internal object ActionCatalog {
      * 分组只是展示层切分，不影响取值与判定（选中的比法、写进配置的 token 都不变）。
      */
     val GROUPS: List<Pair<String, List<Spec>>> = listOf(
-        // 无操作在最前：它是「解除绑定」的语义，得一眼能找到（2026-10-14 用户定的）。
+        // 无操作在最前：它是「解除绑定」的语义，得一眼能找到。
         // 组名不叫「系统按键」：这一组里通知与控制中心 / 媒体控制 / 响铃状态 / 电源菜单都不是「按键」。
         "系统操作" to listOf(
             Spec(
@@ -113,17 +119,17 @@ internal object ActionCatalog {
                 tabIcon = ICON_NONE_TAB,
                 oval = ICON_NONE_OVAL,
             ),
-            // 「主屏幕 / 返回 / 最近任务」三档收进这一格：点它弹 [NAV_MODES] 菜单（2026-10-14）。
+            // 「主屏幕 / 返回 / 最近任务」三档收进这一格：点它弹 [NAV_MODES] 菜单。
             // 与 [MEDIA_TILE] / [RINGER_TILE] 不同，这三档**各不相同**，格子本身代表不了任何一个取值
             // ⇒ 与 [APP_TILE] 同类，是个**标记**：永不写进配置，也不能作为多条命令的一步。
             Spec(title = "系统导航", summary = NAV_TILE, token = NAV_TILE),
-            // 「通知与控制中心」那一格：点它弹 [PANEL_MODES] 菜单（2026-10-14 用户要求把原来的
+            // 「通知与控制中心」那一格：点它弹 [PANEL_MODES] 菜单（原来是「通知栏」一条，
             // 「通知栏」一档拆成两条）。两条各是一个真取值，格子代表不了其中任何一条
             // ⇒ 与 [NAV_TILE] / [MINI_TILE] 同类，是个**标记**格，永不写进配置。
             Spec(title = "通知与控制中心", summary = PANEL_TILE, token = PANEL_TILE),
             // 这一格与「响铃状态」同属**入口格**（点它弹 [MEDIA_MODES] 菜单，不直接写配置），
             // 与「打开应用」一起归 [isEntryTile]；但它俩是真取值，能作为多条命令的一步。
-            // 「播放 / 暂停」原来在网格里单占一格，现在收进这里 —— 同一个取值不给两个入口。
+            // 「播放 / 暂停」收进这里 —— 同一个取值不给两个入口。
             Spec(title = "媒体控制", summary = MEDIA_TILE, token = MEDIA_TILE),
             Spec(title = "响铃状态", summary = RINGER_TILE, token = RINGER_TILE),
             // 「音量 + / 音量 − / 电源键」三档收进这一格（点它弹 [KEY_MODES] 菜单），同样是标记。
@@ -144,7 +150,7 @@ internal object ActionCatalog {
             Spec(title = "录音", summary = RECORDING, token = RECORDING),
             // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
             // 两档尺寸（展开 / 收起）各不相同，格子代表不了其中任何一个 ⇒ 按 [MINI_TILE] 当入口格、弹菜单
-            Spec(title = "系统小窗", summary = MINI_TILE, token = MINI_TILE),
+            Spec(title = "应用转小窗", summary = MINI_TILE, token = MINI_TILE),
             // 这一条是入口不是取值：点它跳「打开应用」页挑应用，选完绑成 `app:<包名>`（[Action.App]）。
             // 网格点击靠比这个常量认领；不能靠「`Action.parse` 能否匹配」——`app:` 本身就是合法
             // 的空 App 动作，走 `select()` 会把配置写成 `app:`（拉不起任何应用）。
@@ -192,7 +198,7 @@ internal object ActionCatalog {
     )
 
     /**
-     * 「媒体控制」那一格的取值 —— 就是原来的「播放 / 暂停」（`keyevent:85`）。
+     * 「媒体控制」那一格的取值 —— 就是「播放 / 暂停」（`keyevent:85`）。
      *
      * 与 [RINGER_TILE] 同属**入口格**：网格里点它不直接写这个取值，而是弹 [MEDIA_MODES] 菜单。
      * 它同时是真取值（`Action.parse` 后是 `KeyEvent(85)`），能写进配置、也能作为多条命令的一步。
@@ -247,7 +253,7 @@ internal object ActionCatalog {
     const val PANEL_CONTROL = "panel:${Action.Panel.CONTROL_CENTER}"
 
     /**
-     * 「系统小窗」那一格的标记 —— 与 [NAV_TILE] / [KEY_TILE] 同类。
+     * 「应用转小窗」那一格的标记 —— 与 [NAV_TILE] / [KEY_TILE] 同类。
      *
      * 两档尺寸（展开的普通小窗 / 收起的最小化窗）各不相同，格子代表不了其中任何一个，
      * 所以是**标记**（永不写进配置），菜单里那两档才是真取值。
@@ -255,7 +261,7 @@ internal object ActionCatalog {
     const val MINI_TILE = "zoom:"
 
     /**
-     * 「系统小窗」菜单的两行，顺序即行序。两行都是真取值（见 `core/model/Action.MiniWindow`）：
+     * 「应用转小窗」菜单的两行，顺序即行序。两行都是真取值（见 `core/model/Action.MiniWindow`）：
      *  · **展开** = 居中大面积的普通小窗，服务端 `setUserPositionInfo`（`mZoomLaunchFlags = 2`）；
      *  · **收起** = 右上角一条的最小化窗，服务端 `fullToMini`（`mZoomLaunchFlags = 32`）。
      *
@@ -359,7 +365,7 @@ internal object ActionCatalog {
      * 「无操作」剔掉（它代表「吞掉按键」、不是一步动作），「打开应用」那格**就地换成** [APP_STEP]
      * （同一个 token，点它进「打开应用」页挑一个）。
      *
-     * ⚠️ 入口格在这里保持收拢：点开二级菜单，二级与网格格子弹的是同一张 [MODE_MENUS]。
+     * 注意：入口格在这里保持收拢：点开二级菜单，二级与网格格子弹的是同一张 [MODE_MENUS]。
      * 把档位平铺成独立行会让同一个清单长出两副面孔，**别这么做**。
      */
     val STEP_GROUPS: List<Pair<String, List<Spec>>> = GROUPS.map { (title, group) ->
@@ -385,13 +391,30 @@ internal object ActionCatalog {
      * 一行一行地比某一项是不是当前绑定 —— 菜单打勾用它，不用 [isSelected]。
      *
      * 两者差别只在入口格那一组：菜单必须精确到行，否则整组同时亮起对勾。
-     * 网格格子的判定也走它，规范化那套只有这一份实现。
+     * 网格格子的判定也走它，规范化那套只有这一份实现（见 [canonicalToken]）。
      */
     fun isBound(spec: Spec, action: Action): Boolean =
-        Action.parse(spec.token).token == action.token
+        canonicalToken(spec.token) == action.token
 
     /** 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。 */
     fun modeMenu(token: String): List<Spec>? = MODE_MENUS[token]
+
+    /**
+     * `token` → 规范化之后的写法（走一遍 `Action.parse` 再取回它的 `token`）。
+     *
+     *  为什么要缓存：清单里的 token 是**源码写法**（照搬 KSU 模块），与用户配置里存的不一定逐字
+     *  相同，所以判定必须比规范化那份。而这件事原来在每个格子的**每一次重组**里都重做一遍
+     *  —— 一页十几格、pager 同时在场三页、`isSelected` 对入口格还要按菜单逐行再比一轮，
+     *  合起来是每帧上百次字符串解析加等量临时对象。解析结果只由 token 决定，而 token 的取值集合
+     *  就是清单加用户自己的 `cmd:<名字>`，是个小集合 —— 按 token 记一份即可。
+     *
+     *  内存：键是 token 字符串，取值集合由「清单 + 用户建过多少条命令」封顶，不随运行时间增长
+     *  （所以这里不需要 LRU）。并发下允许重复解析一次，结果相同。
+     */
+    private val canonicalTokens = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    internal fun canonicalToken(token: String): String =
+        canonicalTokens.getOrPut(token) { Action.parse(token).token }
 
     /**
      * 当前动作落在入口格的哪一档上（行里那些标题：循环 / 静音 / 上一首 …）；不在任何一组时返回 `null`。
@@ -406,7 +429,7 @@ internal object ActionCatalog {
      * 当前动作落在入口格的**哪一档**（`主屏幕` / `上一首` / `静音` …）；不在任何一组时返回 `null`。
      *
      * 步骤标题（`ui/model/CommandText.kt`）用它 —— 只要档位名，**不带上格子名**
-     *（2026-10-15 用户要求：除「打开应用」外一律拍平，`系统导航:主屏幕` → `主屏幕`）。
+     *（除「打开应用」外一律拍平，`系统导航:主屏幕` → `主屏幕`）。
      * 档位名与格子怎么配对由这一处决定，网格里那行小字走 [modeTitle]。
      */
     fun modeName(action: Action): String? =

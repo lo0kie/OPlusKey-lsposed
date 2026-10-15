@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
@@ -15,9 +16,9 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *
  * 存在的理由是**行首图标必须自己上色**：库只给**它自己画的东西**按 `enabled` 上色，
  * `startAction` 槽位原样渲染 —— 不给的话 `enabled = false` 会「文字灰了、图标还亮着」
- * （2026-10-14 在「长按连续触发」那行复现）。
+ * （在「长按连续触发」那行复现）。
  *
- * 这条规矩原先在四个调用点各抄了一遍、第五个漏了。收进这里之后配色要变只改这一处 ——
+ * 这条规矩不许在各调用点各抄一遍 —— 抄漏一个就不一致。收进这里之后配色要变只改这一处 ——
  * 与 [SliderRow] 同一个道理，两张行挨在同一张卡里时也不会各用一种灰。
  *
  * 库 `Switch` 自己会无条件振一次，这里统一套 [NoSwitchHaptic] 掐掉，振动只走调用方的
@@ -45,6 +46,7 @@ internal fun SettingsPage.SwitchRow(
         } else {
             COUITheme.colorScheme.disabledOnSecondaryVariant
         },
+        animationSpec = COLOR_TRANSITION_SPEC,
         label = "SwitchIcon",
     )
 

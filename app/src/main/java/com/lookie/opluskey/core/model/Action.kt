@@ -13,7 +13,7 @@ sealed interface Action {
         override val token: String = "none"
     }
 
-    // 「交还系统」（`native` / `passthrough`）**整条已删**（2026-10-14 用户要求）：
+    // 「交还系统」（`native` / `passthrough`）**整条已删**：
     //  判定手势必须先吞掉 DOWN，所以「只放行某一个手势」在原理上做不到 —— 一交还就是整键，
     //  同一把键上双击 / 长按的命令也跟着被系统吞掉。
     //  依据写在 `docs/implementation.md` 的「交还系统为什么不提供」。

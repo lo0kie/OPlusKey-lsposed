@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import com.lookie.opluskey.DEBUG_PROBE
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.reflect.Reflect
 
 /**
@@ -39,7 +40,7 @@ import com.lookie.opluskey.core.reflect.Reflect
  */
 internal object ProbeChannel {
 
-    /** 调试指令的 action —— 从 adb 用 root 发（见 [send] 的注释，shell 身份过不了 NOT_EXPORTED 接收器）。 */
+    /** 调试指令的 action —— 从 adb 用 **root** 发（shell 身份过不了 NOT_EXPORTED 接收器；用法见 `docs/debug-channel.md`）。 */
     const val ACTION = "com.lookie.opluskey.PROBE"
 
     private const val OP_DUMP = "dump"
@@ -179,7 +180,7 @@ internal object ProbeChannel {
     private fun tryGetContext(loader: ClassLoader, label: String, attempt: Int) {
         // onPackageReady 时 Application 未必挂上（`currentApplication()` 可能是 null），
         // 所以拿不到就退后重试 —— 否则整条通道静默失效（同 host/GestureReceiver 的踩坑）。
-        val ctx = currentApplication(loader)
+        val ctx = ActivityThreadCompat.currentApplication(loader)
         if (ctx == null) {
             if (attempt >= CTX_RETRY) {
                 XLog.w("probe：$label 拿不到 Application Context（重试 $attempt 次），通道没装上")
@@ -206,19 +207,6 @@ internal object ProbeChannel {
 
     private const val CTX_RETRY = 40
     private const val CTX_RETRY_MS = 250L
-
-    /**
-     * `ActivityThread.currentApplication()` —— **隐藏 API**，公开 SDK 里没有，只能反射
-     * （`android.app.ActivityThread` 直接 import 会编译不过，已实测）。
-     */
-    private fun currentApplication(loader: ClassLoader): Context? = try {
-        val cls = Reflect.findClass(loader, "android.app.ActivityThread")
-        val app = cls?.let { Reflect.callStatic(it, "currentApplication") }
-        app as? Context
-    } catch (e: Throwable) {
-        XLog.w("probe：取 currentApplication 失败：${e.javaClass.simpleName}: ${e.message}")
-        null
-    }
 
     // ── op: dump ─────────────────────────────────────────────────────────────
 
@@ -303,12 +291,12 @@ internal object ProbeChannel {
                     }
                     XLog.w("${describe(OP_CALL)} $name($sig) → $r")
                 } catch (e: Throwable) {
-                    XLog.w("${describe(OP_CALL)} $name 抛了：${rootCause(e).javaClass.name}: ${rootCause(e).message}")
+                    XLog.w("${describe(OP_CALL)} $name 抛了：${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}")
                 }
                 Unit
             }
-            // ⚠️ **视图上的方法必须在视图自己的线程上跑**，否则抛 `CalledFromWrongThreadException`
-            // （2026-10-14 真机踩过：从 AMS 广播入口进来是 binder 线程，视图属于 `android.ui`）。
+            // 注意：**视图上的方法必须在视图自己的线程上跑**，否则抛 `CalledFromWrongThreadException`
+            // （真机踩过：从 AMS 广播入口进来是 binder 线程，视图属于 `android.ui`）。
             // 这里统一替调用方 post 过去 —— 有了它，`target=caption` 加上任意方法名就能调，
             // 不必再为每个方法写一个 op。
             val h = if (receiver == null) {
@@ -529,7 +517,7 @@ internal object ProbeChannel {
      * 三个开关分开传，一次重启后就能任意组合试（每一步单独打日志）：
      * `radius`（给了才做圆角）/ `caption`（挂到任务上）/ `show`（显示）。
      *
-     * 配方来自 2026-10-14 用本通道 `dump` 出来的真签名：
+     * 配方来自用本通道 `dump` 出来的真签名：
      * `FlexibleWindowManagerService.createFlexibleCaptionView(Task, String)`、
      * `FlexibleCaptionView.initCaptionViewAndAttachToTask(Task, Rect)`、`showCaptionViewWithAnim()`。
      */
@@ -558,7 +546,7 @@ internal object ProbeChannel {
         XLog.w("${describe(OP_DRESS)}：caption view = $view")
         val doInit = intent.getBooleanExtra(EXTRA_INIT, false)
         // attach 的第二个参数**就是操作条自己的尺寸**（不是任务 bounds）——
-        // 2026-10-14 真机实测：传任务 bounds 它就把视图撑成整窗（getWidth/Height == 任务尺寸）。
+        // 真机实测：传任务 bounds 它就把视图撑成整窗（getWidth/Height == 任务尺寸）。
         // 所以这里允许显式传 rect（`--ei rect_r 1272 --ei rect_b 157` 一类），不传才退回任务 bounds。
         val bounds = if (intent.hasExtra(EXTRA_RECT_R)) {
             android.graphics.Rect(
@@ -571,8 +559,8 @@ internal object ProbeChannel {
             Reflect.call(task, "getBounds")
         }
 
-        // ⚠️ **这两步必须在视图自己的线程上做**。视图属于 `android.ui` 线程，而从 AMS 广播入口进来是
-        // binder 线程 —— 直接调会抛 `CalledFromWrongThreadException`（2026-10-14 真机实测）。
+        // 注意：**这两步必须在视图自己的线程上做**。视图属于 `android.ui` 线程，而从 AMS 广播入口进来是
+        // binder 线程 —— 直接调会抛 `CalledFromWrongThreadException`（真机实测）。
         // 用**视图自己的 Handler**（`View.getHandler()`）post 过去，线程一定对，不用猜是哪个 looper。
         val work = Runnable {
             if (doCaption) {
@@ -629,7 +617,7 @@ internal object ProbeChannel {
      * 为什么必须能发到**桌面进程**（`-p com.android.launcher`）—— 这才是 A 方案的全部意义：
      * 服务端要 `realCallingPid == 桌面进程 pid`；同一个调用从别处发会被 `No transition roots` abort。
      *
-     * ⚠️ **第二个形参是 `Bundle`，不是 `ActivityOptions`**（2026-10-14 真机踩过一轮）：
+     * 注意：**第二个形参是 `Bundle`，不是 `ActivityOptions`**（真机踩过一轮）：
      * `android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int, Bundle)` 是 AIDL 门面，
      * 直接把原始 Bundle 交给服务端，服务端自己 `SafeActivityOptions.fromBundle(options, callingPid, callingUid)`。
      * 传 `ActivityOptions` 会 `argument type mismatch`，而 `Reflect.call` 内部 `runCatching` **把它吞了**
@@ -652,7 +640,7 @@ internal object ProbeChannel {
             XLog.w("${describe(OP_ZOOM)}：OplusActivityTaskManager.getInstance 拿不到")
             return
         }
-        // ⚠️ 用 getDeclaredMethod **精确签名**，不要走 Reflect.method —— 它会退化成「名字 + 参数个数」匹配，
+        // 注意：用 getDeclaredMethod **精确签名**，不要走 Reflect.method —— 它会退化成「名字 + 参数个数」匹配，
         // 把 Bundle 形参误配上，错误再被 runCatching 吞掉（这正是上一轮的空转）。
         val m = try {
             mgrCls.getDeclaredMethod(METHOD_RECENTS_FLEXIBLE, java.lang.Integer.TYPE, android.os.Bundle::class.java)
@@ -667,7 +655,7 @@ internal object ProbeChannel {
         val r = try {
             m.invoke(mgr, taskId, bundle)
         } catch (e: Throwable) {
-            XLog.w("${describe(OP_ZOOM)} 抛了：${rootCause(e).javaClass.name}: ${rootCause(e).message}")
+            XLog.w("${describe(OP_ZOOM)} 抛了：${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}")
             return
         }
         // 返回值语义：2 = START_TASK_TO_FRONT（服务端受理并已 toggle）；0 = 没做任何事
@@ -695,7 +683,7 @@ internal object ProbeChannel {
     /**
      * 按名字 + 参数个数找方法并调用，返回「结果 / 抛了什么」的可读串（通道里到处要用）。
      *
-     * ⚠️ **反射调用抛的异常会被包成 `InvocationTargetException`，而它的 message 恒为 null** ——
+     * 注意：**反射调用抛的异常会被包成 `InvocationTargetException`，而它的 message 恒为 null** ——
      * 直接打 `e.message` 只会得到「抛了 InvocationTargetException: null」，真实原因全丢。
      * 所以这里把 `cause` 链剥到最内层再打（真机上正是这么踩的）。
      */
@@ -708,19 +696,10 @@ internal object ProbeChannel {
             "${m.invoke(receiver, *args)}"
         }
     } catch (e: Throwable) {
-        "抛了 ${rootCause(e).javaClass.name}: ${rootCause(e).message}"
+        "抛了 ${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}"
     }
 
-    /** 剥到最内层的 cause —— 反射包装异常（`InvocationTargetException` 等）的 message 是 null。 */
-    private fun rootCause(e: Throwable): Throwable {
-        var cur = e
-        var guard = 0
-        while (cur.cause != null && cur.cause !== cur && guard < 8) {
-            cur = cur.cause!!
-            guard++
-        }
-        return cur
-    }
+    /** 剥到最内层 cause 的那份实现已收到 `Reflect.deepestCause`（与 `FlexibleWindowBridge` 共用一份）。 */
 
     /** 读字段：**要沿父类往上找** —— 很多状态字段声明在父类上，`getDeclaredField` 只看本类（真机踩过）。 */
     private fun fieldOf(receiver: Any, name: String): String {
@@ -747,7 +726,7 @@ internal object ProbeChannel {
     /**
      * 把操作条视图的**几何与父容器链**打出来。
      *
-     * 「挂上了、也显示了，但位置不对」时第一个要看的就这几项 —— 2026-10-14 真机第 3 轮正卡在这里：
+     * 「挂上了、也显示了，但位置不对」时第一个要看的就这几项 —— 真机第 3 轮正卡在这里：
      * `mCaptionViewSurfaceShow=true` 但操作条渲染成了左边缘一个小白条，得先知道它被摆在哪儿、谁摆的。
      */
     private fun stateOfCaptionView(view: Any) {
@@ -785,7 +764,7 @@ internal object ProbeChannel {
                 m.isAccessible = true
                 m.invoke(null, *args)
             } catch (e: Throwable) {
-                XLog.w("probe：$clsName.getInstance(${arity} 参) 抛了：${rootCause(e).javaClass.simpleName}")
+                XLog.w("probe：$clsName.getInstance(${arity} 参) 抛了：${Reflect.deepestCause(e).javaClass.simpleName}")
                 null
             }
             if (v != null) {

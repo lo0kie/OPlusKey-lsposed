@@ -1,7 +1,6 @@
 package com.lookie.opluskey.inject
 
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.reflect.Reflect
 import java.lang.reflect.Method
 
@@ -49,7 +48,7 @@ internal object Framework {
     /**
      * 宿主（`com.oplus.gesture`）侧的接管点：系统自己判好的侧键手势真正的落点。
      *
-     * ⚠️ 这两个服务名与下面那个混淆 Handler 的类名**只有本文件写**（一、7）：它们原来散在
+     * 注意：这两个服务名与下面那个混淆 Handler 的类名**只有本文件写**（一、7）：它们散在
      * `host/SideKeyGestureHooks`、`host/GestureReceiver`、`inject/input/GestureForwarder`
      * 三处各写一份，改 ROM 时漏改任何一处，表现都是「按键拦下来了但什么都不做」，
      * 而且从日志上看不出漏在哪一层。
@@ -67,6 +66,34 @@ internal object Framework {
 
     /** 那个内部 Handler 上手势消息的落点方法名。 */
     const val HOST_HANDLE_MESSAGE = "handleMessage"
+
+    /**
+     * 宿主服务内部 Handler 上「系统场景派发」那条消息的 `what`（真机实测 = 1）。
+     *
+     *  收它的时候宿主要按系统当前场景去开页面 / 起服务，模块接管侧键后必须把它吞掉。
+     *  一、7：这类取值只写在本候选表里，不许散在 Hook 实现里。
+     */
+    const val HOST_SCENE_DISPATCH_WHAT = 1
+
+    /**
+     * 宿主「设置 → 侧键」那一页的 Activity —— 换页 Hook 的候选表（一、7）。
+     *
+     *  注意：这两个类名只写在本候选表里，不许就地写在 `ui/SettingsPageHooks` 里：Hook 面
+     *  必须优先落在宿主 ROM 的专用入口上，而候选类名只写在本候选表里 —— 就地写字面量的话，
+     *  ROM 一改名就没法逐层降级，表现是「装了但页面没换」，日志上还看不出漏在哪一层。
+     */
+
+    /** 宿主侧键设置页的**基类**（页面骨架在这里，换页回调按它过滤实例）。 */
+    const val HOST_SETTINGS_BASE_ACTIVITY = "com.oplus.gesture.actionbuttonkey.BaseActionActivity"
+
+    /**
+     * 侧键设置页的**实际** Activity（基类的子类）。
+     *
+     *  「重启服务」杀掉本进程之后要靠它把页面重新拉起来：那一枪是进程死了之后由系统投递的，
+     *  拿不到当前 Activity，只能有一个写死的组件名兜底。
+     */
+    const val HOST_SETTINGS_ACTIVITY =
+        "com.oplus.gesture.actionbuttonkey.ActionButtonSettingsActivity"
 
     /**
      * AMS 的广播入口 —— 本模块「主开关 / 配置 / 状态栏指令 / 小窗指令 / 链路自检问」全从这里收。

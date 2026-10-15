@@ -23,7 +23,7 @@ class KeyModule : XposedModule() {
             module.isSystemServer -> "侧键接管（system_server）"
             module.processName == PAGE_PROCESS -> "设置页替换（$PAGE_PROCESS）"
             // 宿主主进程的角色在 [onPackageReady] 里才落地，这里也要标出来 ——
-            // 否则真机日志会把它打成「无关进程（不做任何事）」，排查时被误导（2026-10-14 实测撞到）
+            // 否则真机日志会把它打成「无关进程（不做任何事）」，排查时被误导（实测撞到）
             module.processName == HOST_PROCESS -> "宿主侧手势劫持与执行（$HOST_PROCESS）"
             else -> "无关进程（不做任何事）"
         }
@@ -136,7 +136,7 @@ class KeyModule : XposedModule() {
          *
          * 理由：「前台 → 小窗」要拿到带 root 的窗口过渡，服务端的条件是「调用方 pid == 桌面进程 pid」
          * （`isStartFromLauncher()`，见 `docs/device-findings.md` 附九），所以必须能在**桌面进程里**
-         * 执行代码。⚠️ 它不参与任何产品功能；要不要写进 `scope.list` 由调试需要决定
+         * 执行代码。注意：它不参与任何产品功能；要不要写进 `scope.list` 由调试需要决定
          * （见 `docs/debug-channel.md`）。
          */
         const val LAUNCHER_PACKAGE = "com.android.launcher"
@@ -151,7 +151,7 @@ class KeyModule : XposedModule() {
         /**
          * system_server → 宿主的手势转交广播（宿主私有目录 system_server 读不了，`/data/system`
          * 宿主写不了，广播是两端都能用的通道）。发送时必须 `setPackage(HOST_PROCESS)`：指定包名的
-         * 广播不算隐式广播，也只有宿主注册的接收器能收。带的是判好的手势（2026-10-12 起判定挪回
+         * 广播不算隐式广播，也只有宿主注册的接收器能收。带的是判好的手势（判定挪回
          * system_server —— 宿主会被冻结、广播积压到解冻才灌，原始按键判定会错乱），宿主只负责执行。
          */
         const val ACTION_GESTURE = "com.lookie.opluskey.GESTURE"
@@ -208,7 +208,7 @@ class KeyModule : XposedModule() {
         /**
          * 注入侧 → 设置页：回 [ACTION_INJECT_QUERY] 的状态包。
          *
-         *  ⚠️ **不要把这个 action 加进注入侧 `KeyHooks.readBroadcast` 的过滤表** ——
+         *  注意：**不要把这个 action 加进注入侧 `KeyHooks.readBroadcast` 的过滤表** ——
          * 那会让注入侧去处理自己发出去的包（多绕一圈，且毫无意义）。
          */
         const val ACTION_INJECT_READY = "com.lookie.opluskey.INJECT_READY"
@@ -218,9 +218,6 @@ class KeyModule : XposedModule() {
 
         /** [ACTION_INJECT_READY] 里带「注入侧收到过配置没有」（false ⇒ 注入侧还在用默认值顶着）。 */
         const val EXTRA_INJECT_CONFIG_OK = "inject_config_ok"
-
-        /** [ACTION_INJECT_READY] 里带「注入侧当前认为要不要接管」。 */
-        const val EXTRA_INJECT_TAKEOVER = "inject_takeover"
 
         /**
          * [ACTION_INJECT_READY] 里带「注入侧最后一次判出手势是什么时候」。
@@ -245,13 +242,18 @@ class KeyModule : XposedModule() {
         /** [ACTION_HOST_SERVICE_UP] 里带「宿主最后一次执行动作是什么时候」（同上，0 = 从未）。 */
         const val EXTRA_HOST_LAST_ACTION_AT = "host_last_action_at"
 
-        /** 每次出包手动更新；CI 靠它给产物命名。 */
-        const val BUILD_ID = "2026-10-13-0002"
+        /**
+         * 每次出包手动更新；CI 靠它给产物命名（`build.yml` 的 `dist` 那一步）。
+         *
+         * 它还是**构建时刻读不到时的回退值**（`ui/screen/HomeScreen` 的 `moduleBuildStamp`）
+         * —— 那时界面版本行显示的整串就是它，所以它自己带着日期。
+         */
+        const val BUILD_ID = "2026-10-15-0001"
 
         /**
          * 本机机型（`android.os.Build.MODEL`）。
          *
-         * ⚠️ 用的是 `MODEL` **不是** `ro.product.device`：真机上 `MODEL` = `PLK110`、
+         * 注意：用的是 `MODEL` **不是** `ro.product.device`：真机上 `MODEL` = `PLK110`、
          * `DEVICE` = `OP60FFL1`，允许表按前者写（见 [DeviceSupport]）。各进程读到的都一样。
          */
         private val MODEL: String = android.os.Build.MODEL

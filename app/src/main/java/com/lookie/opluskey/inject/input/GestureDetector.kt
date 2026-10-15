@@ -17,8 +17,8 @@ import java.util.concurrent.ConcurrentHashMap
  * 策略类那条路，同一次按压会给出两种形态：没有 KeyEvent 的直判与带 KeyEvent 的 DOWN/UP，
  * 两者是同一串调用、前后只差毫秒级。不能拿双击窗口（`doubleClickMs`）当这个窗口 ——
  * 那样紧接着的下一次按压会被当成同一下吞掉。而两次按压之间至少隔着一次抬手：
- * 双击窗口与长按阈值的下限都是 100ms（`GlobalConfig.MIN_DOUBLE_CLICK_MS` / `KeyConfig.MIN_LONG_PRESS_MS`）
- * —— 50ms 既盖得住同一串调用，又碰不到下一次按压。
+ * 两者的下限里更小的是 100ms（双击窗口；长按阈值是 200ms）—— 50ms 既盖得住同一串调用，
+ * 又碰不到下一次按压。
  */
 private const val DIRECT_BURST_MS = 50L
 
@@ -32,9 +32,13 @@ private const val REPEAT_MAX_MS = 30_000L
  * 按键的手势判定状态机 —— 本模块的核心逻辑。
  *
  * 线程归属：`interceptKeyBeforeQueueing` 由 InputReader / Dispatcher 线程调，计时器走调用方
- * 给的 `handler`（main looper）—— `Pending` 的字段可能被两条线程碰，无 `@Volatile` 也无锁
- * （`lastDirectSingleAt` 除外）；`pressAt != downAt` 那道栅栏可能读到陈旧值（偶发误判长按）。
- * 量清线程归属前不要乱加同步，也不能改成 `handler.post`（`onIntercept` 须同步返回是否接管）。
+ * 给的 `handler`（main looper）—— `Pending` 的字段被这两条线程**都写也都读**（输入线程写
+ * `sawFirstRelease` / `pressAt`，主 looper 那一枪写 `longPressAt` / `longPressFired`）。所以：
+ *  · 跨线程的字段一律 `@Volatile`（`doubleFired` 除外 —— 只有输入线程碰它）；
+ *  · 抬手时**摘掉**长按那一枪（[cancelLongPressShot]）：到点读一眼 `sawFirstRelease` 是「再看一眼」，
+ *    摘枪是「到点之前就没了」，后者与线程调度无关；
+ *  · 但 `check → act` 那几段仍无锁，极端竞态下「既判长按又判单击」只是变小、没消失 ——
+ *    彻底收口要把状态机归到一个线程上。也不能改用 `handler.post`（`onIntercept` 须同步返回是否接管）。
  */
 internal class GestureDetector(
     private val handler: Handler,
@@ -47,10 +51,10 @@ internal class GestureDetector(
     private val onGesture: (KeyId, Gesture, KeyConfig, Boolean) -> Unit,
 ) {
 
-    /** 一个键的待定状态。 */
+    /** 一个键的待定状态 —— 字段被两条线程读写，跨线程的一律 `@Volatile`（见类注释）。 */
     private class Pending(
-        var longPressAt: Long = 0L,
-        var doubleWindowAt: Long = 0L,
+        @Volatile var longPressAt: Long = 0L,
+        @Volatile var doubleWindowAt: Long = 0L,
         /**
          * 这一枪双击窗口的长度（`onKeyUp` 排窗时按当时的配置写死）。
          *
@@ -58,15 +62,15 @@ internal class GestureDetector(
          * 中途用户改了「单击延迟」就会让两处口径不一致 —— 判定用的窗口与排出的窗口不是同一个，
          * 300ms 内的合法新单击可能被误吞。
          */
-        var doubleWindowMs: Long = 0L,
-        var sawFirstRelease: Boolean = false,
+        @Volatile var doubleWindowMs: Long = 0L,
+        @Volatile var sawFirstRelease: Boolean = false,
         /**
          * 本次按下已经判过长按。
          *
          * 必须单独一个字段：长按定时器触发时会清零 `longPressAt`，用 `longPressAt == 0L` 当判据，
          * 抬手时那个判断恒为假，一次按键会既判长按又判单击。
          */
-        var longPressFired: Boolean = false,
+        @Volatile var longPressFired: Boolean = false,
         /**
          * 本次按下已经判过双击。
          *
@@ -80,9 +84,16 @@ internal class GestureDetector(
          * 用来判「这一下是不是已经被直判过了」—— 直判与 DOWN/UP 是同一次按压的两种形态。
          * 必须是时刻、不能只用一个布尔：布尔会被上一次按压的直判污染。
          */
-        var pressAt: Long = 0L,
+        @Volatile var pressAt: Long = 0L,
         /** 「长按连续触发」正在跑的重复任务（抬手 / 重置时取消）。 */
-        var repeatRunnable: Runnable? = null,
+        @Volatile var repeatRunnable: Runnable? = null,
+        /**
+         * 长按那一枪本身（`postDelayed` 的那个 Runnable），抬手 / 重置时摘掉（[cancelLongPressShot]）。
+         *
+         * 为什么要把 Runnable 存下来：原来只在到点时读一眼 `sawFirstRelease` 决定响不响，而那次读
+         * 跨线程 —— 读到陈旧值就是「明明抬手了还判长按」。摘枪是确定的，不依赖那次读。
+         */
+        @Volatile var longPressRunnable: Runnable? = null,
     )
 
     private val pendingByKey = ConcurrentHashMap<KeyId, Pending>()
@@ -149,6 +160,11 @@ internal class GestureDetector(
     fun onKeyUp(id: KeyId, config: KeyConfig, now: Long = SystemClock.uptimeMillis()) {
         val p = pending(id)
 
+        // 抬手 ⇒ 长按那一枪作废。**摘枪**，不是只靠到点读一眼 `sawFirstRelease`：那次读跨线程，
+        //  读到陈旧值就是「明明抬手了还判长按」。长按延迟压到 100ms 这一档时，抬手与到点只隔
+        //  几毫秒，正是这种读最容易失手的位置。
+        cancelLongPressShot(id)
+
         // 长按已在按下期间触发过 —— 抬手不再重复判单击
         //（判据是 longPressFired，不是 longPressAt：后者已被长按定时器清零）
         if (p.longPressFired) {
@@ -202,6 +218,7 @@ internal class GestureDetector(
     /** 清空某个键的状态与计时器（含「长按连续触发」正在跑的重复任务）。 */
     fun reset(id: KeyId) {
         val p = pending(id)
+        cancelLongPressShot(id)
         p.repeatRunnable?.let { handler.removeCallbacks(it) }
         p.repeatRunnable = null
         p.longPressAt = 0L
@@ -218,38 +235,50 @@ internal class GestureDetector(
         // 到点时它变了（中途又按过一次）或清零了（抬手 / 重置过）⇒ 这一枪作废；
         // 否则第 1 次排下的枪会在第 N 次按住期间醒来，凭空判出一次长按。
         val downAt = pending(id).pressAt
-        handler.postDelayed(
-            {
-                try {
-                    val p = pending(id)
-                    if (p.pressAt != downAt) {
-                        XLog.d("${id.label}：这一枪属于上一次按下（已作废），不判长按")
-                        return@postDelayed
-                    }
-                    // 到点了还没抬手 → 长按。
-                    // 若转发顺序是先 SINGLE 后 DOWN，那个 DOWN 会把 `longPressAt` 重新排上，
-                    // 一个 `longPressMs` 之后照样判长按 ⇒ 又是两个动作。
-                    val directJustFired =
-                        SystemClock.uptimeMillis() - lastDirectSingleAt < config.longPressMs
-                    if (p.longPressAt != 0L && !p.sawFirstRelease && !directJustFired) {
-                        XLog.w("${id.label}：长按")
-                        p.longPressAt = 0L
-                        p.longPressFired = true
-                        dispatch(id, Gesture.LONG, config, repeat = false)
-                        // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
-                        // 多条命令（`cmd:<名字>` 指串行命令）反复重放没意义 —— 界面长按 tab 也按同一条判定隐藏。
-                        // `longIsSerial` 来自广播：注入侧读不到命令库文件，自己算必然恒 false。
-                        if (config.longRepeat && !config.longIsSerial) {
-                            scheduleRepeat(id, config)
-                        }
-                    }
-                } catch (e: Throwable) {
-                    // 计时器跑在 system_server 主线程上，抛出去就是整机崩
-                    XLog.w("长按判定失败（忽略）：${id.label}", e)
+        val shot = Runnable {
+            try {
+                val p = pending(id)
+                p.longPressRunnable = null
+                if (p.pressAt != downAt) {
+                    XLog.d("${id.label}：这一枪属于上一次按下（已作废），不判长按")
+                    return@Runnable
                 }
-            },
-            config.longPressMs.toLong(),
-        )
+                // 到点了还没抬手 → 长按。
+                // 若转发顺序是先 SINGLE 后 DOWN，那个 DOWN 会把 `longPressAt` 重新排上，
+                // 一个 `longPressMs` 之后照样判长按 ⇒ 又是两个动作。
+                val directJustFired =
+                    SystemClock.uptimeMillis() - lastDirectSingleAt < config.longPressMs
+                if (p.longPressAt != 0L && !p.sawFirstRelease && !directJustFired) {
+                    XLog.w("${id.label}：长按")
+                    p.longPressAt = 0L
+                    p.longPressFired = true
+                    dispatch(id, Gesture.LONG, config, repeat = false)
+                    // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
+                    // 多条命令（`cmd:<名字>` 指串行命令）反复重放没意义 —— 界面长按 tab 也按同一条判定隐藏。
+                    // `longIsSerial` 来自广播：注入侧读不到命令库文件，自己算必然恒 false。
+                    if (config.longRepeat && !config.longIsSerial) {
+                        scheduleRepeat(id, config)
+                    }
+                }
+            } catch (e: Throwable) {
+                // 计时器跑在 system_server 主线程上，抛出去就是整机崩
+                XLog.w("长按判定失败（忽略）：${id.label}", e)
+            }
+        }
+        pending(id).longPressRunnable = shot
+        handler.postDelayed(shot, config.longPressMs.toLong())
+    }
+
+    /**
+     * 摘掉还挂着的那一枪长按 —— [onKeyUp] 与 [reset] 都走它。
+     *
+     * `removeCallbacks` 可以从输入线程安全地调（Handler 自己带锁），而且是**确定**的：
+     * 只要这一枪还没被 looper 取走，它就再也不会响。
+     */
+    private fun cancelLongPressShot(id: KeyId) {
+        val p = pending(id)
+        p.longPressRunnable?.let { handler.removeCallbacks(it) }
+        p.longPressRunnable = null
     }
 
     /** 「长按连续触发」（`plus_long_repeat`）的重复派发。 */
@@ -294,6 +323,16 @@ internal class GestureDetector(
                     val p = pending(id)
                     // 窗口到了、期间没有第二次按下 → 单击
                     if (p.sawFirstRelease && p.doubleWindowAt != 0L) {
+                        // 这一次按压到此为止 —— 把长按那一枪**作废**（清 `longPressAt` 与 `pressAt`）。
+                        //  不作废的后果：按住时长 < `longPressMs − doubleClickMs`
+                        //（当前默认 400 − 300 = 100ms）时，长按枪排在**本回调之后**到点，而本回调
+                        //  只清 `sawFirstRelease` 的话，长按枪的三条栅栏（`longPressAt != 0` /
+                        //  `!sawFirstRelease` / `!directJustFired`）**全部通过** ⇒ 一次短按既判单击、
+                        //  又判长按。默认配置走 `onKeyUp` 的「立即判单击」分支（那条会 `reset`），
+                        //  所以从未暴露；只有「双击绑了动作」或关了 `instantSingle` 时才走这条窗口路径。
+                        //  下面两条分支都要作废，所以在进分支时先清。
+                        p.longPressAt = 0L
+                        p.pressAt = 0L
                         // 这次按压已经当场判过单击（同一次按压被转发两遍）
                         // ⇒ 不再补一次单击，否则一次按压会执行两个单击动作。
                         // 这里的窗口同样用定格值 —— 与排窗一致。

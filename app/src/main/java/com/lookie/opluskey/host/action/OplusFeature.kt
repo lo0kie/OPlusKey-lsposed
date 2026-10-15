@@ -8,7 +8,7 @@ package com.lookie.opluskey.host.action
  * 但那张表**不带 extras，也区分不出「起普通服务」和「bind 后发 Message」**，`scene_owner` 还会过期 ——
  * 这几样都是对着目标 APK 反编译核的，见 `docs/device-findings.md` 十七。
  *
- * ⚠️ 这一族**多数是「单击档只回一句提示、长按档才真正干活」**，所以下面几行的取值不都对着 `click_*`。
+ * 注意：这一族**多数是「单击档只回一句提示、长按档才真正干活」**，所以下面几行的取值不都对着 `click_*`。
  *
  * 这些服务 / 界面都带签名级权限（`oppo.permission.OPPO_COMPONENT_SAFE` 等），宿主恰好持有，
  * 所以从宿主进程直接起即可 —— 不需要 root，也不需要绕 system_server。
@@ -83,7 +83,8 @@ internal object OplusFeature {
     val SCREEN_OCR = Target(
         owner = "com.coloros.colordirectservice",
         service = "com.coloros.colordirectservice.InvokeEntranceService",
-        action = "oplus.intent.action.DIRECT_SIDEBAR_SERVICE",
+        // 与 KSU 别名表同一份取值
+        action = KsuCompat.SIDEBAR_SERVICE,
         extras = mapOf(
             "extra_entrance_function" to "full_screen_ocr",
             "triggered_app" to "com.coloros.smartsidebar",

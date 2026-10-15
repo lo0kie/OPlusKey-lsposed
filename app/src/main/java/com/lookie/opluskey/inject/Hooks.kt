@@ -17,7 +17,7 @@ fun XposedModule.hookGuarded(
     return try {
         hook(origin)
             // hooker 运行期抛异常时由框架拦下（PASSTHROUGH 会往外抛、DEFAULT 语义不设防）——
-            // 这是「失败只降级、不拖垮宿主进程 / system_server」的最后兜底，8 个 hook 点都走这一处。
+            // 这是「失败只降级、不拖垮宿主进程 / system_server」的最后兜底，所有 hook 点都走这一处。
             .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
             .intercept(hooker)
     } catch (e: Throwable) {

@@ -18,6 +18,11 @@ internal const val BUILD_KIND: String = "release"
  */
 internal const val DEBUG_PROBE: Boolean = false
 
-/** 界面上的版本号带不带构建时刻 —— release 不带（`1.0.0-release`），理由见 debug 源集那份的注释。 */
+/**
+ * 首页大标题那条副标题带不带构建时刻 —— release 不带（`1.0.0-release`）。
+ *
+ * 注意它管不到「更多选项」页的「版本」行：那一行是模块自己的信息页，**总是**带构建时刻。
+ * 理由见 debug 源集那份的注释。
+ */
 @PublishedApi
 internal const val SHOW_BUILD_TIME: Boolean = false

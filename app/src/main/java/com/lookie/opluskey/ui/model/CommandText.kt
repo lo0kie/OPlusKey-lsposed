@@ -35,7 +35,7 @@ internal fun isCommandRef(token: String): Boolean = token.startsWith(Command.PRE
 /**
  * 一个步骤在界面上叫什么。
  *
- *  **除「打开应用」外一律拍平**（2026-10-15 用户要求）：菜单里的分组标题（`系统操作` / `快捷功能` /
+ *  **除「打开应用」外一律拍平**：菜单里的分组标题（`系统操作` / `快捷功能` /
  *  `自定义命令`）与入口格的格子名（`系统导航` / `系统按键` / `媒体控制` …）都不再进标题 ——
  *  步骤行与卡片摘要都窄，多一段前缀只剩啰嗦，「这一步是什么」靠行首图标（[stepIcon]）加名字
  *  已经说得清。`系统导航:主屏幕` → `主屏幕`、`系统按键:音量+` → `音量+`、`快捷功能:手电筒` → `手电筒`。
@@ -68,7 +68,9 @@ internal fun stepTitle(token: String, appLabel: (String) -> String): String {
  * @param commands 当前命令库 —— 与 [stepTitle] 的 `appLabel` 同一条规矩：查名字要用谁由调用方传进来。
  */
 internal fun stepIcon(token: String, commands: List<Command>): ImageVector {
-    if (!isCommandRef(token)) return actionIcon(Action.parse(token).token)
+    // 走 `ActionCatalog` 那份按 token 记忆的规范化结果，不在这里现 `Action.parse` ——
+    //  步骤行的每一次重组都会走到这一句（见 `ActionCatalog.canonicalToken`）。
+    if (!isCommandRef(token)) return actionIcon(ActionCatalog.canonicalToken(token))
     val name = token.removePrefix(Command.PREFIX)
     val ref = commands.firstOrNull { it.name == name } ?: return PageIcons.CommandSingle
     return commandIcon(ref.kind, ref.steps.size)

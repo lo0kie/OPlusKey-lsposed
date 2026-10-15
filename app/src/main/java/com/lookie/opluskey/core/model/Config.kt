@@ -40,10 +40,13 @@ data class KeyConfig(
         const val DEFAULT_LONG_PRESS_MS = 500
 
         /**
-         * 长按阈值下限 —— **100ms 已经落到人手一次自然按压（80~150ms）里面**，调到这一档就等于
-         * 「稍按久一点就变长按」（单击 / 双击会很难按出来）。台阶交给用户自己选，界面不拦。
+         * 长按阈值下限 —— **200ms 已经高于人手一次自然按压（80~150ms）**，所以任何一档下
+         * 「正常按一下」都不会被判成长按，单击 / 双击都按得出来。
+         *
+         * 原来这一档是 100ms（落在自然按压里面）：「稍按久一点就变长按」，单击基本按不出来。
+         * 下限抬到 200ms 就是为了堵掉这个组合，用户不必先踩一次才知道。
          */
-        const val MIN_LONG_PRESS_MS = 100
+        const val MIN_LONG_PRESS_MS = 200
         const val MAX_LONG_PRESS_MS = 1000
         const val DEFAULT_REPEAT_INTERVAL_MS = 300
         const val MIN_REPEAT_INTERVAL_MS = 100
@@ -53,7 +56,7 @@ data class KeyConfig(
         /**
          * 某个键的默认值：**默认不接管**（`enabled = false` ⇒ 拦截路径整条不生效，行为与原生一致）。
          *
-         * ⚠️ 单击那档的默认值是「无操作」而不是「交还系统」—— 后者已删（见 `Action` 的注释）。
+         * 注意：单击那档的默认值是「无操作」而不是「交还系统」—— 后者已删（见 `Action` 的注释）。
          * 主开关开着而这一档还没配时，按键被吞掉什么都不做；这也是「还没配」最不容易误读的表现。
          */
         fun defaultFor(id: KeyId) = KeyConfig(
@@ -78,7 +81,7 @@ data class GlobalConfig(
      * 代价：开启后连按两下会变成两次单击（关闭时第二下会被吞掉）。
      */
     val instantSingle: Boolean = DEFAULT_INSTANT_SINGLE,
-    /** 执行自定义命令时弹一条 Toast（内容是命令名）。 */
+    /** 执行**任意动作**时弹一条 Toast（内容是动作名；自定义命令取命令名）。 */
     val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
 ) {
     companion object {
@@ -105,6 +108,15 @@ data class GlobalConfig(
 data class Config(
     val keys: Map<KeyId, KeyConfig>,
     val global: GlobalConfig,
+    /**
+     * 用户是否已经确认过「风险提示与免责声明」—— 只由**本地**产生，决定「启用」之前要不要弹那一次。
+     *
+     * 存在配置里（而不是界面状态里）是**有意**的：
+     *  · 清空配置按 [DEFAULT] 重建 ⇒ 这一位跟着没了 ⇒ 下次启用照样弹（「清空之后同样弹」就是这么来的）；
+     *  · 它是**本机这一次的接受行为**，所以导出／导入一律把它丢掉（见 `ConfigBundle`）——
+     *    一份文件不该替别人说「我已经接受了风险」。
+     */
+    val disclaimerAccepted: Boolean = false,
 ) {
     fun key(id: KeyId): KeyConfig = keys[id] ?: KeyConfig.defaultFor(id)
 

@@ -1,6 +1,13 @@
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Properties
+import java.util.TimeZone
+
+/** [defaultConfig] 里 `build_id` 用的时间源：设了 `SOURCE_DATE_EPOCH` 就按它（可复现），否则取现在。 */
+fun epochMillis(): Long {
+    val epoch = System.getenv("SOURCE_DATE_EPOCH")?.toLongOrNull() ?: return Date().time
+    return epoch * 1000L
+}
 
 plugins {
     // [AGP 9] Kotlin 已内置，不挂 kotlin-android
@@ -26,8 +33,21 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        // 出包时刻的 HHmmss，界面版本行展示（BuildConfig 已关闭，走 string resource）。
-        resValue("string", "build_id", SimpleDateFormat("HHmmss").format(Date()))
+        // 出包时刻**带日期**，界面版本行展示（BuildConfig 已关闭，走 string resource）。
+        //
+        //  注意：可复现构建口径：这里取的是**配置期的本地时钟**——同一次提交
+        //  出两次包值不一样、CI（UTC）与本机（东八）也不一样。要复现时按惯例给
+        //  `SOURCE_DATE_EPOCH`（秒级 Unix 时间戳），给了就用它、不给维持原来的本地钟。
+        //  （项目没开 configuration-cache，不存在「被冻住」那一档；真开了它会自己报错，不用防。）
+        //
+        //  为什么要日期：只给 `HHmmss` 时，「手上这个包是哪天出的」根本看不出来
+        //  —— 而调试包与正式包都可能跨天留在手里（见 `ui/screen/HomeScreen` 的 `appVersionLabel`）。
+        resValue(
+            "string",
+            "build_id",
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss").apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }
+                .format(epochMillis()),
+        )
     }
 
     compileOptions {
@@ -55,11 +75,18 @@ android {
 
     buildTypes {
         debug {
-            // 与 release 同签名，避免 debug / release 包互相覆盖安装失败
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // 注意：**固定用 debug 签名**，不回落 release。
+            //  原来「与 release 同签名」是为了免掉互相覆盖安装失败，代价是：debug 包（带
+            //  `DEBUG_PROBE=true`，等于把「任意反射执行」开在 system_server 里，见 `BuildFlags`）
+            //  能直接覆盖安装到 release 包上、反之亦然 —— 手上那个包到底是哪一种，只看签名分不出来。
+            //  代价明说：debug 与 release 现在**不能互相覆盖安装**（签名冲突，要卸载重装），
+            //  这是**期望的**隔离。
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
-            // 混淆 + 资源收缩；详细日志经 const 条件被 R8 整段裁掉，告警与错误保留作降级诊断。
+            // 混淆 + 资源收缩。详细日志不是被 R8 裁的：XLog.d / i 走的是 Kotlin 常量条件
+            //（`inline` + `if (VERBOSE_LOG)`，见 `BuildFlags`），编译期就折掉了；
+            // 告警与错误保留作降级诊断。
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
@@ -88,14 +115,21 @@ android {
         resValues = true
     }
 
-    // META-INF/xposed/* 必须原样打进 APK
+    // META-INF/xposed/* 必须原样打进 APK。
+    //
+    //  注意：**不用 `pickFirsts`**：那三件套真出现重复时 `pickFirsts` 会
+    //  **静默取其一**（大概率取错的那份），构建照样全绿；不声明的话 Gradle 会直接报
+    //  「Duplicate file」—— 重复本身就是不该发生的，让它响出来。
     packaging {
         resources {
-            pickFirsts += setOf(
-                "META-INF/xposed/java_init.list",
-                "META-INF/xposed/scope.list",
-                "META-INF/xposed/module.prop",
-            )
+            // 不 pickFirsts：见上面的注释。
+        }
+        // dex 压进 zip（`classes.dex` 占全包 95%，AGP 默认**不压缩**它以便 mmap 共享）。
+        //  实测 3050 KB → 1419 KB，包体 3.34 MB → 1.72 MB。
+        //  代价：解压不再共享，改由加载它的每个进程自己解一份；LSPosed 会给模块传
+        //  `preLoadedDexes`（框架自己的那份缓存），真机上不一定走到这一步。
+        dex {
+            useLegacyPackaging = true
         }
     }
 
@@ -118,12 +152,18 @@ dependencies {
 
     // 界面：COUI（ColorOS 16 设计语言的 Compose 实现，自带色板与组件，不依赖宿主主题）
     //
-    //  `strictly` 不能去：Gradle 版本序里纯 `1.1.0` 比 `1.1.0-subtitle3` 更高（带限定符算更低），
+    //  `strictly` 不能去：Gradle 版本序里纯 `1.1.0` 比 `1.1.0-subtitle4` 更高（带限定符算更低），
     //  而 coui-preference / coui-nav 传递依赖 `coui-ui-android:1.1.0`，不受约束时会解析回 `1.1.0`。
-    implementation("io.github.suqi8.coui.kmp:coui-ui-android:1.1.0-subtitle3") {
-        version { strictly("1.1.0-subtitle3") }
+    implementation("io.github.suqi8.coui.kmp:coui-ui-android:1.1.0-subtitle4") {
+        version { strictly("1.1.0-subtitle4") }
     }
     // Preference 整行组件（Switch/Arrow/SliderPreference），不在 coui-ui 传递依赖里
+    // 弹窗正文的 markdown 渲染（`ui/component/MarkdownBody` 用它）。**只给界面层用** ——
+    //  注入侧（inject/）与宿主侧（host/）一律不许引用它（AGENTS 一、1 / 二、1.2）。
+    //  它只拖一个 markdown 解析器，不引 Material3：色板与字体由 `MarkdownBody` 按 COUI 主题
+    //  一档档映射过去，不另开一套主题。
+    implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.45.0")
+
     implementation("io.github.suqi8.coui.kmp:coui-preference-android:1.1.0")
     // 顶栏磨砂（layerBackdrop + textureBlur），同样需要显式声明；要求 minSdk 33
     implementation("io.github.suqi8.coui.kmp:coui-blur-android:1.1.0")
@@ -142,8 +182,8 @@ dependencies {
     // COUI 浮层菜单依赖 LocalNavigationEventDispatcherOwner（页面自建根 dispatcher）
     implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
 
-    // androidx 只被 page/ 界面代码引用，page/ 在 system_server 里从不执行
-    // （KeyModule 仅在 com.oplus.gesture 分支安装），惰性类解析不会触发 NoClassDefFoundError。
+    // androidx 只被 ui/ 界面代码引用，ui/ 在 system_server 里从不执行
+    //（KeyModule 只在设置页那个进程分支里装界面 hook），惰性类解析不会触发 NoClassDefFoundError。
 
     // 不声明 libxposed:service：模块零 Activity，XposedServiceHelper 从未使用，
     // 引入会往清单里合并一个多余的 XposedProvider。

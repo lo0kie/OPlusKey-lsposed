@@ -42,7 +42,9 @@ internal fun SettingsPage.CommandMenuPopup(
         entries = listOf(
             MenuEntry.Row(title = "编辑", icon = PageIcons.CommandEdit) {
                 onDismiss()
-                draft.load(cmd)
+                // 走 [SettingsPage.loadDraft] 而**不是** `draft.load`：表单里可能还有没保存的改动，
+                //  直接灌进去会把它整份覆盖掉。
+                loadDraft(cmd)
                 onEdited()
             },
             // 两项之间一条细线，与 ⋮ 菜单同一条 [PopupRowDivider]

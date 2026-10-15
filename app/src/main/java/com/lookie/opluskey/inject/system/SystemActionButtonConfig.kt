@@ -16,14 +16,6 @@ internal object SystemActionButtonConfig {
     /** 真机确认的「场景名」列 —— 一个场景一行配置。 */
     const val COL_SCENE_NAME = "scene_name"
 
-    /**
-     * 真机确认的「场景宿主」列 —— 该场景的**原生动作由谁执行**。
-     *
-     * 只有 `com.oplus.gesture`（本模块寄生的那个宿主）当宿主的场景，原生动作才经过宿主；
-     * 其余（systemui / 相机 / 截图…）由框架直接派给它们的宿主。判据在 [SideKeyGestureHooks]。
-     */
-    const val COL_SCENE_OWNER = "scene_owner"
-
     val URI: Uri = Uri.parse("content://$AUTHORITY/$PATH")
 
     /** 一行配置：列名 → 值。列名由 Cursor 现取，不是硬编码的。 */

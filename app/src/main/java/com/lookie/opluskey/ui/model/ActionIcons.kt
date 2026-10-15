@@ -37,6 +37,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
+import io.github.lyxnx.compose.ui.tablericons.outline.Eye
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeOff
 import io.github.lyxnx.compose.ui.tablericons.outline.FileExport
 import io.github.lyxnx.compose.ui.tablericons.outline.FileImport
@@ -55,6 +56,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Notification
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
+import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureTop
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerSkipBack
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerSkipForward
@@ -152,12 +154,14 @@ internal fun specIcon(spec: ActionCatalog.Spec): ImageVector = when {
     spec.token == ActionCatalog.NAV_TILE -> PageIcons.NavigationCog
     spec.token == ActionCatalog.KEY_TILE -> PageIcons.Click
     // 「通知与控制中心」同理：标记 token（`panel:`）不是任何一条真取值，按 spec 认领字形
-    //（2026-10-14 用户指定 `align-box-center-middle`：上下两块面板）。
+    //（`align-box-center-middle`：上下两块面板）。
     spec.token == ActionCatalog.PANEL_TILE -> PageIcons.Panels
-    // 「系统小窗」同理：标记 token（`zoom:`）不是任何一条真取值，按 spec 认领字形
-    //（2026-10-14 用户指定 `app-window`：入口是窗口框，菜单里那两档另有两支）。
+    // 「应用转小窗」同理：标记 token（`zoom:`）不是任何一条真取值，按 spec 认领字形
+    //（`picture-in-picture-on`：入口是画中画，菜单里那两档另有两支）。
     spec.token == ActionCatalog.MINI_TILE -> PageIcons.MiniWindow
-    else -> actionIcon(Action.parse(spec.token).token)
+    // 走 ActionCatalog 那份按 token 记忆的规范化结果，不在这里现 `Action.parse` —— 这条
+    //  在网格每个格子的每一次重组上（见 `ActionCatalog.canonicalToken`）。
+    else -> actionIcon(ActionCatalog.canonicalToken(spec.token))
 }
 
 /**
@@ -212,24 +216,24 @@ internal object PageIcons {
     /**
      * 「通知与控制中心」格的行首 —— `align-box-center-middle`（上下两块面板）。
      *
-     *  2026-10-14 用户指定。与 [NavigationCog] / [Click] 同属入口格字形：这一格后面是一组面板动作。
+     * 用户指定。与 [NavigationCog] / [Click] 同属入口格字形：这一格后面是一组面板动作。
      */
     val Panels: ImageVector get() = TablerIcons.Outline.AlignBoxCenterMiddle
 
     /**
-     * 「系统小窗」格的行首 —— 窗口框（`app-window`，2026-10-14 用户指定）。
+     * 「应用转小窗」格的行首 —— 画中画（`picture-in-picture-on`）。
      *
-     * 与 [MenuStock]（浮层菜单的「打开默认界面」）是同一个字形，但语义不同、各留一份名字 ——
-     * 以后要分开改的时候不用先拆共用。
-     *  与它菜单里那两档合起来是一组三个字形：入口 = 窗口框、展开 = 窗口 + 底部块、
-     * 收起 = 画中画（见 `actionIcon` 里 `zoom:mini` 那两行）。
+     * 与 [SmallWindow] / [TileSmallWindow] 同字形但**各留一份名字**（三处语义不同：入口格 /
+     * 「选择应用」菜单项 / 格子上的状态标记），以后要分开改的时候不用先拆共用。
+     *  它菜单里那两档仍是自己的字形（展开 = 窗口 + 底部块、收起 = 画中画挂顶，
+     * 见 `actionIcon` 里 `zoom:mini` 那两行）。
      */
-    val MiniWindow: ImageVector get() = TablerIcons.Outline.AppWindow
+    val MiniWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
 
     /**
      * 网格里**入口格**行尾那颗「圈里三点」（`dots-circle-horizontal`）—— 点开会**弹一层菜单**。
      *
-     * 替掉那些格子原来那枚单选圈：单选圈读作「这一格是一个可选项」，而入口格点开**还有一层**。
+     * 替掉格子上的单选圈：单选圈读作「这一格是一个可选项」，而入口格点开**还有一层**。
      * 尺寸与配色按 COUI 的 `RadioButton` 逐档对齐（见 `BindingScreen` 的 `ActionTile`），
      * 换掉之后占位与观感都不变。
      */
@@ -242,6 +246,16 @@ internal object PageIcons {
      * 「点开进另一个页面」（挑应用）。尺寸与配色同上。
      */
     val BrowserPlus: ImageVector get() = TablerIcons.Outline.BrowserPlus
+
+    /**
+     * 「打开应用」格绑成**小窗打开**（`window:`）时，标题右边那枚小标记 ——
+     * 画中画（`picture-in-picture-on`）。
+     *
+     *  与行尾那颗 [BrowserPlus] 分工不同：那颗说明「点开进另一个页面」，这颗说明
+     *  **这一格绑的是小窗起** —— 这一格只有一行标题，不点开「选择应用」菜单看不出绑的是哪一档。
+     *  与 [SmallWindow]（菜单项）/ [MiniWindow]（入口格）同字形，各留一份名字。
+     */
+    val TileSmallWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
 
     /** 顶栏右侧的菜单按钮（竖三点）。 */
     val Menu: ImageVector get() = TablerIcons.Outline.DotsVertical
@@ -257,7 +271,7 @@ internal object PageIcons {
 
     /**
      * 首页「其他 → 更多选项」那一行的行首 —— 圈里三点（`dots-circle-horizontal`，
-     * 2026-10-14 用户指定；先试过 `table-options`，换回这颗）。
+     * 用户指定；先试过 `table-options`，换回这颗）。
      *
      * 与网格入口格那颗 [DotsCircleHorizontal] 同字形：两处都读作「还有更多」，
      * 而这一行是「进另一个页面」（行尾另有 [EnterArrow] 说明这件事），不是弹菜单。
@@ -273,11 +287,21 @@ internal object PageIcons {
     /** 「选择应用」页顶栏菜单的「显示系统应用」—— `LayoutGrid`（应用网格）。 */
     val SystemApps: ImageVector get() = TablerIcons.Outline.LayoutGrid
 
-    /** 「选择应用」页顶栏菜单的「隐藏不可打开」—— `EyeOff`（划掉的眼睛）。 */
-    val HideUnopenable: ImageVector get() = TablerIcons.Outline.EyeOff
+    /**
+     * 「选择应用」页顶栏菜单的「显示失效应用」—— `Eye`（睁开的眼睛）。
+     *
+     *  这一档从「隐藏失效应用」翻成了「显示失效应用」（默认关），图标跟着从
+     *  `EyeOff` 换成 `Eye` —— 划掉的眼睛读作「把它藏起来」，与现在的语义正好相反。
+     */
+    val ShowUnopenable: ImageVector get() = TablerIcons.Outline.Eye
 
-    /** 「选择应用」菜单的「小窗打开」—— 与 `window:` 同一个字形（那两档 `zoom:mini` 已另有三支）。 */
-    val SmallWindow: ImageVector get() = TablerIcons.Outline.WindowMinimize
+    /**
+     * 「选择应用」菜单的「以小窗口打开」—— 画中画（`picture-in-picture-on`）。
+     *
+     *  与 [TileSmallWindow] / [MiniWindow] 同字形但**各留一份名字**（三处语义不同：菜单项 /
+     * 格子上的状态标记 / 入口格），以后要分开改的时候不用先拆共用。
+     */
+    val SmallWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
 
     /** 「选择应用」空状态（清单本身为空：系统限制了可见列表）—— `Packages`（一摞盒子）。 */
     val EmptyApps: ImageVector get() = TablerIcons.Outline.Packages
@@ -391,8 +415,8 @@ internal object PageIcons {
     /**
      * 「链路自检」里**断了**的那一段 —— `AlertHexagon`（六边警告）。
      *
-     *  别去找 `AlertTriangle`：Tabler 后来把 `alert-triangle` 改名成了 `alert-hexagon`，
-     * 本仓依赖的 3.49 里已经没有前者（2026-10-14 编译报 Unresolved reference 才发现的）。
+     *  别去找 `AlertTriangle`：库里叫 `alert-hexagon`（没有 `alert-triangle`），
+     * 本仓依赖的 3.49 里已经没有前者（编译报 Unresolved reference 才发现的）。
      */
     val LinkBroken: ImageVector get() = TablerIcons.Outline.AlertHexagon
 }

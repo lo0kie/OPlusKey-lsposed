@@ -2,12 +2,14 @@
 <!-- 自适应图标的前景层：只有字形，底色在背景层。
 
      字形：按下侧键 → 打开面板（照系统设置「快捷键」那一格）。
+     微调形状：
+     1. 箭头：收拢箭柄厚度（7.0 → 5.8），优化翼展流线与尖端曲线，消除粗笨感；
+     2. 侧键：拉长修长比（宽 4.0，总高 12.0），增强实体侧键物理质感，小尺寸下不缩成圆点；
+     3. 手机：边框由 7.0 收窄至 5.6，更具现代旗舰机窄边框质感；
+     4. 面板：左上圆角自洽贴合内边框，提升通透玻璃感。
 
-     ⚠️ 自适应图标有两套坐标：画布 108×108（本文件写的都是它），启动器只取画布中央 72×72
-     铺满图标格（放大约 1.5 倍，外圈连同圆角切掉）。算余量必须按 72，按 108 会高估约三倍。
-     字形统一缩到 0.78（见下方 group），再放大就会贴边、右上角被圆角啃掉。
-
-     ⚠️ 底色不在这一层：自适应图标两层分别绘制，底色画进前景会被遮罩一起缩、边上露背景色。 -->
+     注意：自适应图标有两套坐标：画布 108×108，启动器只取画布中央 72×72 铺满图标格。
+     字形统一缩到 0.78（见下方 group），保持原有安全区账目。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
@@ -19,18 +21,17 @@
         android:scaleY="0.78"
         android:pivotX="54"
         android:pivotY="54">
-    <!-- 箭头：按下去那一下 -->
+    <!-- 箭头：精修流线箭身与圆润尖端 -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M20.8,54.1H29.9Q31.9,54.1 31.9,56.1V60.5Q31.9,63.9 34.6,61.8L45.6,53.2Q48.7,50.7 45.6,48.2L34.6,39.4Q31.9,37.3 31.9,40.7V45.1Q31.9,47.1 29.9,47.1H20.8Q18.2,47.1 18.2,49.7V51.5Q18.2,54.1 20.8,54.1Z" />
-    <!-- 侧键：靠手机左边框一侧，间隙 1.5（边框本身是 7 宽纯白条，压到 0.5 会连成一片看不见）；
-         宽度 4.5、高度 6.5 保证小尺寸下可见且不成圆点。 -->
+        android:pathData="M21.5,53.4H29.5Q31.5,53.4 31.5,55.4V59.8Q31.5,63.0 34.2,61.0L45.4,52.8Q48.2,50.55 45.4,48.3L34.2,40.1Q31.5,38.1 31.5,41.3V45.7Q31.5,47.7 29.5,47.7H21.5Q19.0,47.7 19.0,50.55Q19.0,53.4 21.5,53.4Z" />
+    <!-- 侧键：靠手机左边框一侧，间距 1.7；宽 4.0、总高 12.0，呈修长旗舰实体按键质感 -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M51.7,47.3A2.25,2.25 0 0 1 56.2,47.3V53.8A2.25,2.25 0 0 1 51.7,53.8Z" />
-    <!-- 手机：与底同一条对角线淡出 —— 左上（深底）纯白，越往右下越淡，终点 88%。 -->
+        android:pathData="M52.0,46.5A2.0,2.0 0 0 1 56.0,46.5V54.5A2.0,2.0 0 0 1 52.0,54.5Z" />
+    <!-- 手机：厚度 5.6 现代窄边框，与底同一条对角线淡出（纯白 → 92%） -->
     <path
-        android:pathData="M57.7,84.4V40.7Q57.7,23.7 74.7,23.7H90.1V30.6H76.7Q64.7,30.6 64.7,42.6V84.4Z">
+        android:pathData="M57.7,84.4V40.7Q57.7,23.7 74.7,23.7H90.1V29.3H75.5Q63.3,29.3 63.3,41.5V84.4Z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
@@ -39,21 +40,21 @@
                 android:endX="90.1"
                 android:endY="84.4"
                 android:startColor="#FFFFFFFF"
-                android:endColor="#E0FFFFFF" />
+                android:endColor="#EBFFFFFF" />
         </aapt:attr>
     </path>
-    <!-- 面板：同方向再淡一档（36% → 18%）；它是一块面而非一条线，压太淡就等于没有。 -->
+    <!-- 面板：贴合 5.6 内边框，微调透光阶调（38% → 16%），呈现通透玻璃卡片质感 -->
     <path
-        android:pathData="M64.7,84.4V42.6Q64.7,30.6 76.7,30.6H90.1V84.4Z">
+        android:pathData="M63.3,84.4V41.5Q63.3,29.3 75.5,29.3H90.1V84.4Z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
-                android:startX="64.7"
-                android:startY="30.6"
+                android:startX="63.3"
+                android:startY="29.3"
                 android:endX="90.1"
                 android:endY="84.4"
-                android:startColor="#5CFFFFFF"
-                android:endColor="#2EFFFFFF" />
+                android:startColor="#61FFFFFF"
+                android:endColor="#29FFFFFF" />
         </aapt:attr>
     </path>
     </group>

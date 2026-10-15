@@ -27,6 +27,36 @@ internal const val ID_APPBAR = 0x7f09008d
 /** 兜底：按资源名反查 id（`getIdentifier`），数值对不上时用。 */
 internal const val NAME_CONTAINER = "container"
 
+/** [ID_APPBAR] 的资源名（与 [NAME_CONTAINER] 同一套兜底）。 */
+internal const val NAME_APPBAR = "appbar_layout"
+
+/**
+ * 拿宿主的顶栏（`R.id.appbar_layout`）：先按写死的数值、对不上再按名字反查。
+ *
+ * 注意：必须带名字兜底：`container` 那一路早就有（[NAME_CONTAINER]），
+ * 顶栏这一路不能只有写死的数值 —— ROM 重建资源表之后 `findViewById` 会查不到 ⇒
+ * 宿主顶栏藏不掉、压在模块页面上，而日志里只有一句「没找到」。与 `findContainer` 同一套口径。
+ *
+ * @return 顶栏 View；两条路都查不到时返回 null（调用方只影响「顶栏露着」，不崩）
+ */
+internal fun findAppbar(activity: android.app.Activity): android.view.View? = try {
+    activity.findViewById<android.view.View>(ID_APPBAR) ?: run {
+        val id = activity.resources.getIdentifier(NAME_APPBAR, "id", HOST_PACKAGE)
+        if (id == 0) {
+            XLog.w("按名字也查不到 id/$NAME_APPBAR（宿主资源表里没有）")
+            return null
+        }
+        XLog.w(
+            "写死的 appbar id 对不上，改用名字反查得到 0x${Integer.toHexString(id)}" +
+                "（ROM 可能升级过资源表，建议更新 ID_APPBAR）",
+        )
+        activity.findViewById<android.view.View>(id)
+    }
+} catch (e: Throwable) {
+    XLog.w("查宿主顶栏失败：${e.javaClass.simpleName}: ${e.message}")
+    null
+}
+
 /**
  * 宿主主题的浅色变体 `AppNoTitleTheme`（宿主 App 自己的主题，parent 链
  * `AppTheme → AppBaseTheme → Theme.Demo → Theme.COUI.Blue`，浅色为默认，`AppBaseTheme` 的 `(night)` 变体交给系统强制深色）。
@@ -137,8 +167,8 @@ internal fun pageContext(activity: android.app.Activity): android.content.Contex
 
     return try {
         val id = activity.resources.getIdentifier(THEME_LIGHT, "style", HOST_PACKAGE)
-        // `id == 0`（宿主没这个主题）时按默认主题构建，与原来的三目写法等价 —— 原来那句
-        // `if (id != 0) id else 0` 两个分支恒等于 `id`，是个白写的条件。
+        // `id == 0`（宿主没这个主题）时按默认主题构建：`ContextThemeWrapper(activity, 0)`
+        // 就是「不换主题」。
         val wrapper = android.view.ContextThemeWrapper(activity, id)
         val cfg = Configuration(activity.resources.configuration)
         cfg.uiMode = (cfg.uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
@@ -179,10 +209,28 @@ internal fun platformOnBackPressed(): java.lang.reflect.Method? = try {
     null
 }
 
-/** 宿主自己声明的 `onBackPressed()`；它没 override 时返回 null。 */
-internal fun hostOnBackPressed(activity: android.app.Activity): java.lang.reflect.Method? = try {
-    activity.javaClass.getDeclaredMethod("onBackPressed")
-} catch (e: Throwable) {
-    XLog.d("宿主没自己声明 onBackPressed（${activity.javaClass.name}）：${e.message}")
-    null
+/**
+ * 宿主自己声明的 `onBackPressed()`；它没 override 时返回 null。
+ *
+ * 注意：**沿父类链找** —— 只查 `activity.javaClass.getDeclaredMethod` 一层的话，
+ * 宿主把设置页实现挪到基类（`BaseSettingActivity` 之类）之后就找不到 ⇒ (3)' 那条拦截静默失效，
+ * 只剩平台类那条 (3) 兜着，而两条路的「消费」语义并不等价。
+ *
+ * 失败行用 `w`：这是「返回拦截到底装上没装上」的判据之一（`d` 在 release 被编译期消除）。
+ */
+internal fun hostOnBackPressed(activity: android.app.Activity): java.lang.reflect.Method? {
+    var cur: Class<*>? = activity.javaClass
+    while (cur != null && cur != android.app.Activity::class.java) {
+        val hit = runCatching { cur.getDeclaredMethod("onBackPressed") }.getOrNull()
+        if (hit != null) {
+            runCatching { hit.isAccessible = true }
+            if (cur != activity.javaClass) {
+                XLog.w("宿主 onBackPressed 声明在父类 ${cur.name}（${activity.javaClass.name} 自己没有）")
+            }
+            return hit
+        }
+        cur = cur.superclass
+    }
+    XLog.w("宿主没自己声明 onBackPressed（已沿父类链找到 Activity）：${activity.javaClass.name}")
+    return null
 }

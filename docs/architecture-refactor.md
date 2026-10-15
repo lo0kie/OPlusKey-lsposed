@@ -92,6 +92,8 @@ com.lookie.opluskey
 │                             ShellRunner / CustomCommandRunner / CommandFailure / KsuCompat
 └── ui/                       ← 宿主设置页进程（com.oplus.gesture.ui）
     ├── SettingsPage / SettingsPageHooks / HostWindow / PageScreens   页面骨架与挂载
+    │   SettingsPageHooks 只留换页编排；伙伴：HostSession（当前 Activity / 页面）、
+    │   HostChrome（窗口与状态栏）、BackInterception（系统返回）、ConfigTransfer（导入导出）
     ├── screen/               HomeScreen / BindingScreen / CommandScreen / AppPicker / AboutScreen
     ├── component/            PageHeader / PageWidgets / SliderRow / CommandMenus
     ├── model/                ActionCatalog / CommandText / ActionIcons / PageConst

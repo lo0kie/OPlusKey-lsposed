@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.screen
 
 import android.content.Context
 import android.content.Intent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -14,8 +15,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.BUILD_KIND
@@ -25,9 +29,13 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.component.ConfirmDialog
 import com.lookie.opluskey.ui.component.SwitchRow
 import com.lookie.opluskey.ui.component.currentHeaderHeight
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.CONFIG_READ_FAILED_HINT
+import com.lookie.opluskey.ui.model.DISCLAIMER_TEXT
+import com.lookie.opluskey.ui.model.DISCLAIMER_TITLE
 import com.lookie.opluskey.ui.model.HOME_ACTION_ROWS
 import com.lookie.opluskey.ui.model.HOME_BINDING_ARROW_SIZE
 import com.lookie.opluskey.ui.model.HOME_BINDING_ROWS
@@ -39,6 +47,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
 import com.lookie.opluskey.ui.model.UNSUPPORTED_DEVICE_HINT
+import com.lookie.opluskey.ui.state.acceptDisclaimerAndEnable
 import com.lookie.opluskey.ui.state.deviceSupported
 import com.lookie.opluskey.ui.state.linkReady
 import com.lookie.opluskey.ui.state.rememberTick
@@ -62,7 +71,7 @@ import kotlinx.coroutines.delay
 /**
  * 首页（快捷键）。
  *
- * 从 `SettingsPage.kt` 按职责拆出（2026-10-12 重构）：成员改为 [SettingsPage]
+ * 从 `SettingsPage.kt` 按职责拆出：成员改为 [SettingsPage]
  * 的扩展/同包顶层声明，调用点零改动。
  */
 @Composable
@@ -71,45 +80,60 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     val key = cfg.key(KeyId.PLUS)
     // 触觉反馈入口提到页面级 —— 「按键绑定」那行的主开关也要用（它排在「按键行为」卡之前）
     val tick = rememberTick()
+    // 「启用按键绑定」要的那次确认：true = 弹窗开着，**此时还没写盘**（点了确认才写）。
+    //  只在「打开」这一侧要；关闭直接写。弹窗在本页那张卡后面（见下面的 [ConfirmDialog]）。
+    var disclaimerPending by remember { mutableStateOf(false) }
 
     // 链路上每一段在不在 ⇒ 缺哪一段就报哪一段（见 `ui/state/LinkCheck.kt` 的 `linkChecks`）。
     //  判据只能是**模块自己报活**：查宿主那支侧键服务不管用 —— 它是宿主自己的常驻服务，
     // 系统会自己把它拉起，服务在跑 ≠ 模块在跑（真机实测：重启后没注入它照样在跑）。
     //  每轮对**两端各记一次代次**、各发一句「在不在」（报活广播是一次性的，我们可能已经错过了），
     // 等一档再看代次有没有变：没变就是没加载。
-    //  ⚠️ **一轮不够，要重问**（2026-10-14 用户报的「换 ROM 后整页一直是灰的，退出去再进来才好」）：
+    //  注意：**一轮不够，要重问**（用户报的「换 ROM 后整页一直是灰的，退出去再进来才好」）：
     //  注入侧回不了包有两种常见成因 —— 它借不到 Context、或它的宿主 uid 还没解析出来
     //  （那时 fail-closed 会把问句丢掉，见 `KeyHooks.isFromHost`）。两种都会自愈，只是**不是立刻**；
-    //  而这条 effect 原来只发一次，页面就一直停在「未就绪」上等一个再也不会来的回包。
-    //  这里改成最多问 [QUERY_ROUNDS] 轮，**两端都答上就提前收工** —— 已经就绪时与原来一样只问一次；
+    //  而这条 effect 只发一次的话，页面会一直停在「未就绪」上等一个再也不会来的回包。
+    //  这里最多问 [QUERY_ROUNDS] 轮，**两端都答上就提前收工** —— 已经就绪时只问一次；
     //  一直问不到也不会转下去：机型允许表外的机器本来就该一直禁用，无限轮询只是白耗电。
     LaunchedEffect(Unit) {
+        var hostEverAnswered = false
         repeat(QUERY_ROUNDS) { round ->
             val hostToken = hostAliveToken
             val injectToken = injectAliveToken
-            context.sendBroadcast(
-                Intent(KeyModule.ACTION_HOST_SERVICE_QUERY).setPackage(KeyModule.PAGE_PACKAGE),
-            )
+            // 发不出去（广播队列满 / 进程正在死）不该把宿主 UI 进程带走 —— 与同页 `openUrl`、
+            //  `ConfigActions` 里那几处同一口径（裸着的话异常会顺协程抛出去）。
+            runCatching {
+                context.sendBroadcast(
+                    Intent(KeyModule.ACTION_HOST_SERVICE_QUERY).setPackage(KeyModule.PAGE_PACKAGE),
+                )
+            }.onFailure { XLog.w("链路自检：宿主问句没发出去：${it.javaClass.simpleName}") }
             // 注入侧（system_server）那一段：它挂在 AMS 的广播入口上，认得出这条问句
-            context.sendBroadcast(
-                Intent(KeyModule.ACTION_INJECT_QUERY).setPackage(KeyModule.PAGE_PACKAGE),
-            )
+            runCatching {
+                context.sendBroadcast(
+                    Intent(KeyModule.ACTION_INJECT_QUERY).setPackage(KeyModule.PAGE_PACKAGE),
+                )
+            }.onFailure { XLog.w("链路自检：注入侧问句没发出去：${it.javaClass.simpleName}") }
             delay(HOST_ALIVE_TIMEOUT_MS)
             val hostAnswered = hostAliveToken != hostToken
             val injectAnswered = injectAliveToken != injectToken
-            if (!hostAnswered) hostServiceUp = false
-            // 没回音就把上一轮的回包清掉，免得拿旧结论当新结论
+            if (hostAnswered) hostEverAnswered = true
+            // 没回音就把上一轮的回包清掉，免得拿旧结论当新结论（注入侧那一档是「清成未知」）
             if (!injectAnswered) injectStatus = null
             if (hostAnswered && injectAnswered) return@LaunchedEffect
             if (round > 0) XLog.w("链路自检第 ${round + 1} 轮仍未齐（宿主=$hostAnswered 注入=$injectAnswered）")
         }
-        XLog.w("链路自检问了 $QUERY_ROUNDS 轮都没问齐，不再重问（详见「关于模块 → 运行状态」）")
+        //  注意：**只有问满所有轮都没回音才把宿主降档**：每轮超时就
+        //  `hostServiceUp = false`，一轮偶然没回音（广播被压 / 宿主正忙）就会把一个**已经确认过**
+        //  的宿主降成「没起来」；而同一段的注入侧那一档只是把结论清成「未知」（`injectStatus = null`），
+        //  两端口径还不一致。现在与注入侧对齐：单轮漏答不算数，全程没答才判它没起来。
+        if (!hostEverAnswered) hostServiceUp = false
+        XLog.w("链路自检问了 $QUERY_ROUNDS 轮都没问齐，不再重问（详见「更多选项 → 运行状态」）")
     }
     // 这一页所有可交互项的**总闸**：机型允许 + 主开关开着 + 链路齐了（见 [linkReady]，它现在等同于
     // 「运行状态里除『主开关已关闭』与『使用验证』外每一段都 ok」）+ 配置可写
     // （建页那次没读成功 ⇒ 只读，写回一律被拒，见 `SettingsPage.configReadOnly`）。
     // 有哪一条不满足时改配置不会生效，放用户去改只会误导（底部那条常驻提示会说明该怎么办）。
-    //  ⚠️ 2026-10-14 起**主开关也吃这个闸**（`linkReady` + 另两条）。顶栏 ⋮ **不吃** ——
+    //  注意：起**主开关也吃这个闸**（`linkReady` + 另两条）。顶栏 ⋮ **不吃** ——
     // 它本身永远可点，里面只有「重启服务 / 导出日志 / 清空配置」三项跟着灰，
     // 「默认界面」（逃生口）始终可用（见 `ResetMenu`；「更多选项」那一项已从菜单删掉，只留首页这一行）。
     //  机型不在允许表里时：允许表外只注入了界面层（见 `core/model/DeviceSupport`），
@@ -123,7 +147,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     //  `newestSnackbarData() == null` 那半句是**去重**：首页被切走再回来会重新组合，
     // 不去重就会叠出第二条（真机反馈「弹了两个 Snackbar」）。
     //
-    //  ⚠️ **报的是整体结论，不是缺的那一段的名字**（2026-10-14 用户定的）：具体缺哪一段
+    //  注意：**报的是整体结论，不是缺的那一段的名字**：具体缺哪一段
     // 是给「更多选项 → 运行状态」看的，首页这条只回答「现在能不能用」。
     //  三种原因各说各的，**顺序就是优先级**：
     //   · 机型不支持 ⇒ 这台机器上就是不能用（[UNSUPPORTED_DEVICE_HINT]，等也没用）；
@@ -163,7 +187,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     ) {
         //  顶栏是叠在内容上的（见 [PageHeader]），所以顶部这一块要自己让出来 ——
         // 数值是**动态**的（跟着折叠走），理由见 [currentHeaderHeight]。
-        //  ⚠️ **不再另加 [PAGE_TOP_PADDING]**（2026-10-13）：这一页没有固定带，顶栏底下
+        //  注意：**不再另加 [PAGE_TOP_PADDING]**：这一页没有固定带，顶栏底下
         // 没有看得见的边界，而顶栏自己底部就留了 12dp（库的 `LargeTitleBottomPadding`）
         // —— 再加那 8dp，首行距标题的空白明显比带子页大一截（真机反馈「首页的上边距比其他页多」）。
         //  带子页那一档来自带子自己的 8dp 下内边距，两边视觉上正好齐平。
@@ -184,7 +208,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             // `!configReadOnly` 与 `deviceSupported`，**不吃 `pageEnabled`**（后者含它自己）。
             // 这几个条件里都没有主开关的任何成分，所以「关掉它 ⇒ 它自己被禁用」这条死路不存在。
             //
-            //  ⚠️ `!configReadOnly` 这一条是被真机逼出来的（2026-10-14）：只读态下刚进页时
+            //  注意：`!configReadOnly` 这一条是被真机逼出来的：只读态下刚进页时
             // 链路还没报到（`linkReady=false`）⇒ 主开关是灰的；等注入侧回包一到、`linkReady` 变 true，
             // 它就**自己重新亮起来**了，用户当场拨了三下（每次都被 `write` 拒掉）。
             // **「拨了没反应」比「一开始就灰着」更难读**，所以这一档必须一起禁。
@@ -218,7 +242,15 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                 enabled = linkReady && !configReadOnly && deviceSupported,
             ) {
                 tick()
-                setKeyEnabled(it)
+                // 打开之前先要一次确认：没确认过就只弹窗、**不写盘**。
+                //  顺序不能反过来 —— 先写后弹等于「先启用了再问你同不同意」。
+                //  关闭不需要确认，直接写。
+                if (it && !config.value.disclaimerAccepted) {
+                    XLog.w("免责声明：还没确认过，弹窗（总闸先不打开）")
+                    disclaimerPending = true
+                } else {
+                    setKeyEnabled(it)
+                }
             }
 
             HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
@@ -226,38 +258,45 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             // 第 2 行：进「按键绑定」子页（纯跳转，行尾只有箭头）。
             // 进不去那个页面，也就不存在「关着还能改配置」。
             //
-            //  行尾箭头**自己画**：原先用库的 `ArrowPreference`，它那颗是 COUI 图标集的
+            //  行尾箭头**自己画**：库的 `ArrowPreference` 那颗是 COUI 图标集的
             // 12x24 窄箭头（描边 1.4），与页面其余 Tabler 图标（描边 2）不是一支笔。
             // 自己画就得自己管两档色 —— 照抄库那支选择器
             //（`onSurfaceVariantActions` / `disabledOnSecondaryVariant`）。
-            //  尺寸见 [HOME_BINDING_ARROW_SIZE]：24dp 下 Tabler 那一段折线正好与库原箭头一样高。
+            // 尺寸见 [HOME_BINDING_ARROW_SIZE]：24dp 下 Tabler 那一段折线正好与库原箭头一样高。
+            val bindingIconTint by animateColorAsState(
+                targetValue = if (pageEnabled) {
+                    COUITheme.colorScheme.onSurfaceContainer
+                } else {
+                    COUITheme.colorScheme.disabledOnSecondaryVariant
+                },
+                animationSpec = COLOR_TRANSITION_SPEC,
+                label = "HomeBindingIcon",
+            )
+            val bindingArrowTint by animateColorAsState(
+                targetValue = if (pageEnabled) {
+                    COUITheme.colorScheme.onSurfaceVariantActions
+                } else {
+                    COUITheme.colorScheme.disabledOnSecondaryVariant
+                },
+                animationSpec = COLOR_TRANSITION_SPEC,
+                label = "HomeBindingArrow",
+            )
             BasicComponent(
                 title = "按键绑定",
                 summary = "配置单击、双击、长按对应的动作",
                 startAction = {
-                    //  行首图标还是得自己管：库只给**它自己画的东西**按 `enabled` 上色，
-                    // `startAction` 槽位原样渲染。不给的话 `enabled = false` 会「文字灰了、
-                    // 图标还亮着」。
-                    if (pageEnabled) {
-                        Icon(PageIcons.TouchApp, null)
-                    } else {
-                        Icon(
-                            PageIcons.TouchApp,
-                            null,
-                            tint = COUITheme.colorScheme.disabledOnSecondaryVariant,
-                        )
-                    }
+                    Icon(
+                        PageIcons.TouchApp,
+                        contentDescription = null,
+                        tint = bindingIconTint,
+                    )
                 },
                 endActions = {
                     Icon(
                         PageIcons.EnterArrow,
                         contentDescription = null,
                         modifier = Modifier.size(HOME_BINDING_ARROW_SIZE),
-                        tint = if (pageEnabled) {
-                            COUITheme.colorScheme.onSurfaceVariantActions
-                        } else {
-                            COUITheme.colorScheme.disabledOnSecondaryVariant
-                        },
+                        tint = bindingArrowTint,
                     )
                 },
                 cardListPosition = cardListPositionOf(1, HOME_BINDING_ROWS),
@@ -270,6 +309,28 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             //  这张卡**只有两行**：第 1 行主开关、第 2 行进「按键绑定」子页。
             // `setRingerModeInternal` 一起删掉，理由见这张卡上方那段注释。
         }
+
+        // 首次启用（以及清空配置之后再启用）要的那一次确认 —— 归上面「启用按键绑定」那一行管，
+        //  所以摆在那张卡后面，不跟别的开关混在一起。
+        //  确认之后由 [acceptDisclaimerAndEnable] 一次写盘（记录 + 总闸）。
+        ConfirmDialog(
+            show = disclaimerPending,
+            title = DISCLAIMER_TITLE,
+            summary = DISCLAIMER_TEXT,
+            action = "我已了解",
+            // 不丢用户任何东西的确认 ⇒ 走主题色，不给红：红会读成「这个操作有危险」，
+            // 而这里只是「你点的那一下要你先看一眼说明」。
+            positiveDanger = false,
+            onDismiss = {
+                XLog.w("免责声明：没确认，不启用（总闸保持关闭）")
+                disclaimerPending = false
+            },
+            onConfirm = {
+                XLog.w("免责声明：已确认，启用按键绑定")
+                disclaimerPending = false
+                acceptDisclaimerAndEnable()
+            },
+        )
 
         // 「按键绑定」卡片与「按键行为」分组之间留一档空档
         Spacer(Modifier.height(8.dp))
@@ -297,8 +358,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
 
             // 「执行时提示」：执行命令时弹一条 Toast（内容是**命令名**）。
-            //  它原来是**每条命令自己**的开关（只在「自定义命令」页多条命令的表单里出现），
-            // 2026-10-13 搬到这一页做成**全局**项 —— 它回答的是「按下去到底有没有被触发」，
+            //  它是**全局**项，不分命令 —— 它回答的是「按下去到底有没有被触发」，
             // 与「这条命令是什么」无关，每条命令各配一次是白费力气。
             //  判定侧读它见 `host/action/CustomCommandRunner`（宿主进程里执行时**现读**配置，
             // 所以拨完开关立刻生效，不必重启）。
@@ -315,14 +375,14 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             }
         }
 
-        // 版本 / 仓库地址那两行（原来这张「其他」卡）2026-10-13 搬去**独立的「更多选项」页**
+        // 版本 / 仓库地址那两行搬去**独立的「更多选项」页**
         //（[AboutScreen]，从顶栏 ⋮ 菜单进）—— 它们是「想知道时才看一眼」的信息，
         // 摆在首页会把常用的那几张卡挤下去。
 
-        // 「其他」分组（2026-10-14 用户要求）：进「更多选项」页（[AboutScreen]：
+        // 「其他」分组：进「更多选项」页（[AboutScreen]：
         // 运行状态、配置导入导出、版本与地址）。
         //
-        // ⚠️ 这一行**不吃任何闸**（同日用户要求「首页的更多行不跟随总闸禁用」）：
+        // 注意：这一行**不吃任何闸**（同日用户要求「首页的更多行不跟随总闸禁用」）：
         // 它是进「更多选项」页的**唯一入口**（⋮ 里那一项已删），而那一页里有「运行状态」——
         // 模块整页禁用（机型不支持 / 链路没齐 / 配置只读 / 主开关关着）时，用户正需要进去看断在哪一段。
         //  行尾箭头与行首图标因此都恒用常规色，不再按 `pageEnabled` 换灰。
@@ -331,7 +391,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
             BasicComponent(
                 title = "更多选项",
-                // 副标题只报这一页有什么，不交代机制（2026-10-14 用户要求「一起改短」）
+                // 副标题只报这一页有什么，不交代机制（「一起改短」）
                 summary = "运行状态与配置备份",
                 startAction = { Icon(PageIcons.MoreOptions, null) },
                 endActions = {
@@ -425,11 +485,11 @@ private fun SettingsPage.moduleVersionName(): String? = try {
 }
 
 /**
- * 出包时注入的构建时刻（`HHmmss`，gradle 的 `resValue`，见 `build.gradle.kts` 的 `build_id`）。
+ * 出包时注入的构建时刻（`yyyy-MM-dd HH:mm:ss`，gradle 的 `resValue`，见 `build.gradle.kts` 的 `build_id`）。
  *
  *  不能写 `R.string.build_id`：页面跑在**宿主**进程里，`R` 会解析到宿主自己的资源表，取出来
  * 是别人的字符串（或 0）。必须按**模块包名**去拿我们那份资源。拿不到（没走 gradle 出的包 /
- * 宿主限制）就退回 [KeyModule.BUILD_ID] 的末段。
+ * 宿主限制）就退回 [KeyModule.BUILD_ID] **整串** —— 它本身是 `日期-序号`，也是带日期的。
  */
 private fun SettingsPage.moduleBuildStamp(): String = try {
     val res = context.packageManager
@@ -439,18 +499,20 @@ private fun SettingsPage.moduleBuildStamp(): String = try {
 } catch (e: Throwable) {
     XLog.w("读构建标识失败（退回常量）：${e.javaClass.simpleName}")
     null
-} ?: KeyModule.BUILD_ID.substringAfterLast('-')
+} ?: KeyModule.BUILD_ID
 
 /**
- * 上报用的完整版本标识：**模块自己**的版本号 + [BUILD_KIND] + 构建时刻（`1.0.0-debug-183000`）。
+ * 完整版本标识：**模块自己**的版本号 + [BUILD_KIND] + 构建时刻
+ * （`1.0.0-debug-2026-10-15 15:07:12`）。
  *
- *  只给导出的日志头用（见 `SettingsPageHooks.exportLog`）—— 排查时要据此认出是哪个包、
- * 什么时候出的。界面显示走 [appVersionLabel]（它按构建类型决定要不要带末段）。
+ *  两处用它：导出的日志头（见 `ConfigTransfer.exportLog`）与**「更多选项」页的版本行** ——
+ * 排查时要据此认出是哪个包、什么时候出的，而「什么时候」必须带日期才认得出。
+ * 首页那条副标题走 [appVersionLabel]（它按构建类型决定要不要带末段）。
  */
 internal fun SettingsPage.appVersionText(): String {
     val name = moduleVersionName()
     val build = moduleBuildStamp()
-    // 三段用 `-` 连（2026-10-13 要求「· 改成 -」）。
+    // 三段用 `-` 连（要求「· 改成 -」）。
     return if (name.isNullOrBlank()) {
         "$BUILD_KIND-$build"
     } else {
@@ -459,11 +521,11 @@ internal fun SettingsPage.appVersionText(): String {
 }
 
 /**
- * 界面上显示的版本（「更多选项」页的「版本」行与首页大标题副标题都用它）。
+ * 首页大标题那条副标题用的版本（不是「更多选项」页 —— 那一页走 [appVersionText]，见它）。
  *
  *  **debug 带构建时刻、release 不带**（[SHOW_BUILD_TIME]）：自用包一天里会出好几个，光看
- * `1.0.0-debug` 分不出手上这个是哪一次出的；release 面向用户，`HHmmss` 只是技术细节
- *（2026-10-14 用户定的「用户界面不需要技术细节 / 不报时间戳」）。读不到版本号时只显示
+ * `1.0.0-debug` 分不出手上这个是哪一次出的；release 的首页是面向用户的界面，
+ * 构建时刻对用户没意义（要看的去「更多选项」页）。读不到版本号时只显示
  * [BUILD_KIND]，不抛异常。
  */
 internal fun SettingsPage.appVersionLabel(): String {

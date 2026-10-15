@@ -8,7 +8,7 @@ targetApiVersion=101
 # 两个作用域，各管一件事：
 #   system             → 侧键接管（system_server 里的 StrategyActionButtonKeyLaunchApp）
 #   com.oplus.gesture  → 侧键设置页换页（ActionButtonSettingsActivity）
-# ⚠️ 这里写的是**包名**，LSPosed 的作用域按包注入（它的表字段就叫 app_pkg_name）。
+# 注意：这里写的是**包名**，LSPosed 的作用域按包注入（它的表字段就叫 app_pkg_name）。
 #    设置页虽然跑在独立进程 com.oplus.gesture.ui 里，但进程过滤是在代码里做的
 #    （见 KeyModule.onPackageReady），不能写进这里。
 staticScope=true

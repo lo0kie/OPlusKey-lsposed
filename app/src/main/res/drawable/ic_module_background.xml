@@ -2,9 +2,10 @@
 <!-- 自适应图标的背景层：满幅 108×108 对角渐变（直角方形，外圈会被遮罩切掉）。
 
      方向固定为左上（深）→ 右下（浅），由用户指定，不要翻转。
-     三档配色 #1540A6（左上）/ #2E6ADB（58%）/ #74A9F2（右下）；饱和度下限约 70%，再低会被读成蓝灰。
+     三档配色 #123DA8（左上）/ #2A68E3（58%）/ #6CA6F8（右下）；
+     保持蓝调基准，微调色相纯净度与明暗过渡，提升对角线通透感。
 
-     ⚠️ 用多档 <item> 而非 start/center/endColor：中间那档要精确落在 58%（浅端在右下，
+     注意：用多档 <item> 而非 start/center/endColor：中间那档要精确落在 58%（浅端在右下，
      让「深→中」吃掉对角线前 58%）；start/center/endColor 只能把中间钉在 50%。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -21,9 +22,9 @@
                 android:startY="0"
                 android:endX="108"
                 android:endY="108">
-                <item android:offset="0" android:color="#FF1540A6" />
-                <item android:offset="0.58" android:color="#FF2E6ADB" />
-                <item android:offset="1" android:color="#FF74A9F2" />
+                <item android:offset="0" android:color="#FF123DA8" />
+                <item android:offset="0.58" android:color="#FF2A68E3" />
+                <item android:offset="1" android:color="#FF6CA6F8" />
             </gradient>
         </aapt:attr>
     </path>

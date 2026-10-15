@@ -25,7 +25,7 @@ internal object FlexibleWindowBridge {
      *
      * 与 [CMD_MINI] 的分工：`mini` 是**真的转换**（改窗口模式，一步到位、无动画）；
      * 本指令只动**画面**（对 surface 做 `setPosition/setMatrix/setAlpha`），不动窗口模式。
-     * 所以两个要配合用 —— 顺序由宿主侧决定（见 `AppLauncher.MINI_ANIM_MODE`）：
+     * 所以两个要配合用 —— 顺序由宿主侧决定（见 `MiniWindowLauncher.MINI_ANIM_MODE`）：
      *
      *  · `ANIM_THEN_CONVERT`（A）：先动画、后 `mini`。动画里是**真·全屏画面**在缩，
      *    但收尾转换时窗口要重排到小窗比例，会跳一下；
@@ -284,14 +284,14 @@ internal object FlexibleWindowBridge {
         val ext = extOf(task)
         val record = if (ext != null) Reflect.call(task, "getTopNonFinishingActivity") else null
 
-        // ① 预置落点几何：`switchState` 收缩时的 finishRect 取自 `ext.getRememberPosInfo()`，
+        // (1) 预置落点几何：`switchState` 收缩时的 finishRect 取自 `ext.getRememberPosInfo()`，
         //    不预置就走「按应用比例算默认」的分支 —— 用全屏宽高比缩放，窗口被拉得很长。
         //
-        //    ⚠️ **不能用 `controller.getMiniFlexibleTaskInfo`**（2026-10-14 真机踩过）：
+        //    注意：**不能用 `controller.getMiniFlexibleTaskInfo`**（真机踩过）：
         //    它返回的是**收起档**几何（右上角一条，真机 ≈ `Rect(898,168-1203,710)` / `0.2397`），
         //    喂进去就等于把「展开」的动画落到了收起的位置 —— 真机表现是「按一下直接变成右上角
         //    那条最小化窗」。
-        //    ⚠️ 也别把**屏幕矩形**直接当参数喂 —— 它要的是应用配置矩形，尺寸还会被再乘一次 scale。
+        //    注意：也别把**屏幕矩形**直接当参数喂 —— 它要的是应用配置矩形，尺寸还会被再乘一次 scale。
         //    两个坑的取值与推算过程都写在 [EXPANDED_BOUNDS] 的注释里，改之前先读那段。
         //    `setRememberPosInfo(Rect, float)` 含原始类型参数，必须显式拿 Method（见 [findTask] 的装箱坑）。
         if (ext != null && record != null) {
@@ -319,7 +319,7 @@ internal object FlexibleWindowBridge {
         // 喂给 `TaskExtImpl#updateFlexibleTaskParams` 的能力配置 —— **操作条（caption）就是它开的**
         // （`androidx.activity.HasCaption`），缩放范围 / 圆角 / 忽略系统栏也在这里。键值抄自真机
         // 上一次真实小窗启动的 `mOplusExtraBundle`（见 docs/device-findings.md §17.6.4 附六）。
-        // ② 操作条的实现类名来自策略配置（`getCaptionName(scenario)`），不喂的话
+        // (2) 操作条的实现类名来自策略配置（`getCaptionName(scenario)`），不喂的话
         //    `mCaptionName = null` → `Class.forName(null)` 失败 → 视图建不出来。
         val getCaption = Reflect.method(serviceCls, "getCaptionName", java.lang.Integer.TYPE)
         val captionName = getCaption?.let { Reflect.call(service, it, 1) } as? String
@@ -361,14 +361,14 @@ internal object FlexibleWindowBridge {
             return
         }
         // 三个字段逐个落到日志里：任何一个没写进去，switchState 的前置就不成立，
-        // 后面那一句「已调用」也就不该当作成功来读（原来是三个 `?.set` 静默可选写
+        // 后面那一句「已调用」也就不该当作成功来读（三个 `?.set` 静默可选写
         // + 无条件打「已置 …」，失败被伪装成成功，正是降级纪律要消灭的那种）。
         if (fake.missing.isEmpty()) {
             XLog.w("小窗指令：冒充柔性全屏态成功（mScenario=1 / mHasCaption=true / mFlexibleZoomState=2）")
         } else {
             XLog.w("小窗指令：冒充柔性全屏态**只写进去一部分**，缺 ${fake.missing} —— switchState 大概率不生效")
         }
-        if (!callSwitchState(controller, task)) {
+        if (!callSwitchState(controller, task, taskId)) {
             XLog.w("小窗指令：switchState(#$taskId, 1) 没调成功 —— 小窗不会出现（上面一行写了断在哪）")
             return
         }
@@ -452,7 +452,7 @@ internal object FlexibleWindowBridge {
             return
         }
         // 回调只需要「能被框架调用」；它内部只做通知，我们不需要在结束点插动作
-        // （转换的时机由宿主侧排，见 AppLauncher.MINI_ANIM_MODE）。
+        // （转换的时机由宿主侧排，见 MiniWindowLauncher.MINI_ANIM_MODE）。
         val callback = try {
             java.lang.reflect.Proxy.newProxyInstance(
                 loader,
@@ -477,9 +477,19 @@ internal object FlexibleWindowBridge {
         // 而 `startFlexibleSpringAnimation` **没有这道过滤**（离线 smali 已核：它只做 null 检查
         // → 建 `FlexibleSpringAnimationSet` → 取 leash → 开跑），所以转换后可以立刻启动。
         val spring = Reflect.methodByNameAndArity(animator.javaClass, METHOD_SPRING_ANIM, 7)
-        if (spring != null) {
+        val bounds = if (spring == null) null else Reflect.call(task, "getBounds") as? android.graphics.Rect
+        if (spring == null) {
+            XLog.w("$CMD_MINI_ANIM：没有 $METHOD_SPRING_ANIM（7 参），改用 $METHOD_MINI_ANIM")
+        } else if (bounds == null || bounds.width() <= 0 || bounds.height() <= 0) {
+            // 注意：**不拿空 Rect 喂动画**：`getBounds` 拿不到时静默塞一个
+            //  `Rect()`（全 0）进去，动画把「任务的当前边界」当成一个空矩形 —— 起止几何对不上，
+            //  观感是画面乱跳或干脆不动，而日志里看不出任何异常。改走下面那条入口（它不需要 bounds）。
+            XLog.w(
+                "$CMD_MINI_ANIM：任务 #$taskId 的 getBounds 拿不到或为空（$bounds）" +
+                    " —— 不拿空 Rect 喂动画，改走另一条入口",
+            )
+        } else {
             spring.isAccessible = true
-            val bounds = Reflect.call(task, "getBounds") ?: android.graphics.Rect()
             val ok = try {
                 spring.invoke(animator, info, bounds, task, null, transaction, callback, REASON_MINI_ANIM)
                 XLog.w("$CMD_MINI_ANIM：已调 $METHOD_SPRING_ANIM(#$taskId)（7 参、无过渡过滤）")
@@ -487,14 +497,12 @@ internal object FlexibleWindowBridge {
             } catch (e: Throwable) {
                 XLog.w(
                     "$CMD_MINI_ANIM：$METHOD_SPRING_ANIM 抛了（降级到另一条入口）：" +
-                        "${deepestCause(e).javaClass.name}: ${deepestCause(e).message}",
+                        "${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}",
                 )
                 false
             }
             // 抛了就往下走另一条 —— 这样「换入口」不必再改注入侧（注入侧改一次要重启）。
             if (ok) return
-        } else {
-            XLog.w("$CMD_MINI_ANIM：没有 $METHOD_SPRING_ANIM（7 参），改用 $METHOD_MINI_ANIM")
         }
         val m = Reflect.methodByNameAndArity(animator.javaClass, METHOD_MINI_ANIM, 5) ?: run {
             XLog.w("$CMD_MINI_ANIM：两条入口都找不到（$METHOD_SPRING_ANIM/7、$METHOD_MINI_ANIM/5）")
@@ -503,20 +511,45 @@ internal object FlexibleWindowBridge {
         m.isAccessible = true
         try {
             m.invoke(animator, map, null, transaction, callback, REASON_MINI_ANIM)
-            XLog.w("$CMD_MINI_ANIM：已调 $METHOD_MINI_ANIM(#$taskId)（5 参，⚠️ 这条有过渡过滤）")
+            XLog.w("$CMD_MINI_ANIM：已调 $METHOD_MINI_ANIM(#$taskId)（5 参，这条有过渡过滤）")
         } catch (e: Throwable) {
             XLog.w("$CMD_MINI_ANIM：$METHOD_MINI_ANIM 抛了：${e.javaClass.simpleName}: ${e.message}")
         }
     }
 
-    /** 宿主下发的某个 rect（`isStart` 决定读 start_* 还是 finish_*）。 */
-    private fun rectOf(intent: Intent, isStart: Boolean): android.graphics.Rect =
-        android.graphics.Rect(
-            intent.getIntExtra(if (isStart) EXTRA_START_LEFT else EXTRA_FINISH_LEFT, 0),
-            intent.getIntExtra(if (isStart) EXTRA_START_TOP else EXTRA_FINISH_TOP, 0),
-            intent.getIntExtra(if (isStart) EXTRA_START_RIGHT else EXTRA_FINISH_RIGHT, 0),
-            intent.getIntExtra(if (isStart) EXTRA_START_BOTTOM else EXTRA_FINISH_BOTTOM, 0),
-        )
+    /**
+     * 宿主下发的某个 rect（`isStart` 决定读 start_* 还是 finish_*）。
+     *
+     * 注意：**缺项不能逐项默认 0**：`mini` 那一档的 `readBounds()` 是
+     * **整体兜底**（四边缺任一项就整份退回默认），而这里若对四边各自 `getIntExtra(..., 0)`
+     * —— 宿主没带参数（旧版宿主 / 手工发广播）时会喂给动画一个「半边为 0」甚至全 0 的矩形：
+     * 起止几何对不上，画面乱跳或干脆不动，日志里还看不出来。两档口径统一成
+     * **四边齐才认，缺任一项就整份退回兜底几何**。
+     */
+    private fun rectOf(intent: Intent, isStart: Boolean): android.graphics.Rect {
+        val l = intent.getIntExtra(if (isStart) EXTRA_START_LEFT else EXTRA_FINISH_LEFT, EDGE_MISSING)
+        val t = intent.getIntExtra(if (isStart) EXTRA_START_TOP else EXTRA_FINISH_TOP, EDGE_MISSING)
+        val r = intent.getIntExtra(if (isStart) EXTRA_START_RIGHT else EXTRA_FINISH_RIGHT, EDGE_MISSING)
+        val b =
+            intent.getIntExtra(if (isStart) EXTRA_START_BOTTOM else EXTRA_FINISH_BOTTOM, EDGE_MISSING)
+        if (l == EDGE_MISSING || t == EDGE_MISSING || r == EDGE_MISSING || b == EDGE_MISSING) {
+            XLog.w(
+                "$CMD_MINI_ANIM：${if (isStart) "start" else "finish"} 的四边没给齐" +
+                    "（$l,$t,$r,$b）—— 不喂半个 Rect，整份退回兜底几何",
+            )
+            return if (isStart) fullScreenRect() else EXPANDED_BOUNDS
+        }
+        return android.graphics.Rect(l, t, r, b)
+    }
+
+    /** [rectOf] 的哨位 —— 与任何合法边值都不同（`Int.MIN_VALUE` 不可能是一个屏幕坐标）。 */
+    private const val EDGE_MISSING = Int.MIN_VALUE
+
+    /** [rectOf] 兜底用的全屏矩形（起点）。 */
+    private fun fullScreenRect(): android.graphics.Rect {
+        val dm = android.content.res.Resources.getSystem().displayMetrics
+        return android.graphics.Rect(0, 0, dm.widthPixels, dm.heightPixels)
+    }
 
     /**
      * 用 `FlexibleAnimationInfo$Builder` 造一个动画参数对象。
@@ -557,7 +590,7 @@ internal object FlexibleWindowBridge {
         call("setStartAlpha", java.lang.Float.TYPE, intent.getFloatExtra(EXTRA_START_ALPHA, 1f))
         call("setFinishAlpha", java.lang.Float.TYPE, intent.getFloatExtra(EXTRA_FINISH_ALPHA, 1f))
         call("setDuration", java.lang.Long.TYPE, intent.getLongExtra(EXTRA_DURATION, DEFAULT_ANIM_DURATION))
-        // ★ 205 = 那个 TRANSIT_IME 常量，必须设（见本函数的调用方 KDoc 第 1 条）
+        // 205 = 那个 TRANSIT_IME 常量，必须设（见本函数的调用方 KDoc 第 1 条）
         call("setType", java.lang.Integer.TYPE, ANIM_TYPE_TRANSIT_IME)
         if (missing.isNotEmpty()) {
             XLog.w("$CMD_MINI_ANIM：Builder 有 ${missing.size} 个 setter 没设上：$missing —— 动画大概率不生效")
@@ -576,16 +609,9 @@ internal object FlexibleWindowBridge {
         return info
     }
 
-    /** 剥到最内层 cause —— 反射包装异常（`InvocationTargetException`）的 `message` 恒为 null。 */
-    private fun deepestCause(e: Throwable): Throwable {
-        var cur = e
-        var guard = 0
-        while (cur.cause != null && cur.cause !== cur && guard < 8) {
-            cur = cur.cause!!
-            guard++
-        }
-        return cur
-    }
+    /**
+     * 剥到最内层 cause 的那份实现已收到 `Reflect.deepestCause`（与 `ProbeChannel` 共用一份）。
+     */
 
     /** 动画器 / 参数对象的类名与常量 —— 全部来自 `oplus-services.jar` 的离线反编译（§十二）。 */
     private const val METHOD_MINI_ANIM = "startFlexibleTaskToMiniAnimations"
@@ -620,7 +646,7 @@ internal object FlexibleWindowBridge {
     /**
      * `anyTaskForId` 的三种 matchMode 逐档试：0 只找已 attach 的、1 再加 recents、2 还能顺手从 recents
      * 恢复。**不能用按「参数运行时类」找方法的 [Reflect.call] 重载** —— Kotlin 会把 Int 装箱成
-     * `Integer`，而真实签名是 `int` 原始类型，永远匹配不上、还静默返回 null（2026-10-14 实测踩过）。
+     * `Integer`，而真实签名是 `int` 原始类型，永远匹配不上、还静默返回 null（实测踩过）。
      */
     private fun findTask(root: Any, taskId: Int): Any? {
         val method = Reflect.method(root.javaClass, "anyTaskForId", java.lang.Integer.TYPE, java.lang.Integer.TYPE)
@@ -640,7 +666,17 @@ internal object FlexibleWindowBridge {
 
 
     /** 同样绕开装箱匹配：`switchState(Task, int, String)`。@return 是否真的调到了。 */
-    private fun callSwitchState(controller: Any, task: Any): Boolean {
+    /**
+     * 调 `controller.switchState(task, 1, REASON)`。
+     *
+     * @return **真的调进去了**（方法找到 **且** 调用没抛）。
+     *
+     *  注意：不能「方法找到就 `return true`」：`switchState` 不返回值，
+     *  而 `Reflect.call` 的 null 既可能是成功也可能是抛了 —— 于是「方法在、调用炸了」也会被
+     *  上游那句「已调用（应播原生动画）」当成成功来读，排查时白查一轮。
+     *  这里自己 `invoke` 一次，把「找不到方法」与「调用抛了」分开报。
+     */
+    private fun callSwitchState(controller: Any, task: Any, taskId: Int): Boolean {
         val method = Reflect.method(
             controller.javaClass, "switchState",
             task.javaClass, java.lang.Integer.TYPE, String::class.java,
@@ -648,10 +684,22 @@ internal object FlexibleWindowBridge {
             XLog.w("找不到 switchState(Task,int,String)，动画调不了")
             return false
         }
-        // Reflect.call 异常时返回 null，而 switchState 本身也不返回值 —— 不能拿返回值判成败；
-        // 只报「方法找到并调用过」，调用里抛的异常由 Reflect.call 自己打日志。
-        Reflect.call(controller, method, task, 1, REASON)
-        return true
+        return try {
+            method.isAccessible = true
+            method.invoke(controller, task, 1, REASON)
+            true
+        } catch (e: Throwable) {
+            val cause = if (e is java.lang.reflect.InvocationTargetException) {
+                e.targetException ?: e
+            } else {
+                e
+            }
+            XLog.w(
+                "switchState(#$taskId, 1) 调用抛了 —— 小窗不会出现：" +
+                    "${cause.javaClass.simpleName}: ${cause.message}",
+            )
+            false
+        }
     }
 
     /** `task.getBounds()` —— 只读来打日志。 */
@@ -693,7 +741,7 @@ internal object FlexibleWindowBridge {
         val cls = ext.javaClass
         val missing = mutableListOf<String>()
         // 字段找不到（`Reflect.field` 返回 null）与写入抛异常都要落到 missing 里：
-        // 原来是 `Reflect.field(...)?.setInt(...)` —— 字段名变了就静默不写，而调用方照样
+        // `Reflect.field(...)?.setInt(...)` 的话，字段名变了就静默不写，而调用方照样
         // 打一行「已置 mScenario=1 …」，把失败伪装成成功。
         fun put(name: String, value: Int) {
             val f = Reflect.field(cls, name)
@@ -735,17 +783,17 @@ internal object FlexibleWindowBridge {
      *
      * 正常路径下这两个值由**宿主侧下发**（见 [EXTRA_LEFT] 一段的说明），这里只是「宿主没带」
      * 时的兜底，避免退化成没有几何。要调几何请改宿主侧的
-     * `AppLauncher.EXPANDED_CONFIG_BOUNDS` / `EXPANDED_SCALE` —— 那边不用重启。
+     * `MiniWindowLauncher.EXPANDED_CONFIG_BOUNDS` / `EXPANDED_SCALE` —— 那边不用重启。
      *
-     * ⚠️ [EXPANDED_BOUNDS] 是**应用配置矩形**，不是屏幕矩形：系统会把它的尺寸
+     * 注意：[EXPANDED_BOUNDS] 是**应用配置矩形**，不是屏幕矩形：系统会把它的尺寸
      * **再乘一次 [EXPANDED_SCALE]** 才是屏幕上的实际大小，即
      *
      * ```
      * 屏幕尺寸 = Rect.size × scale
-     * 1272 × 2261  ×  0.8017  =  1020 × 1812   ✅ 与真机一致
+     * 1272 × 2261  ×  0.8017  =  1020 × 1812   与真机一致
      * ```
      *
-     * 2026-10-14 踩过的坑：这里曾经直接填**屏幕矩形** `Rect(126,319-1146,2131)`（1020×1812），
+     * 踩过的坑：这里曾经直接填**屏幕矩形** `Rect(126,319-1146,2131)`（1020×1812），
      * 结果被系统又缩了一次 —— `1020 × 0.8017 = 817`，窗口整整齐齐小了 0.8017 倍（真机实测
      * 817×1452，宽占比 0.6423 而不是 0.8019），表现为「小窗是对的，但比 ColorOS 原生的小一圈」。
      * 正确值是拿真机「原生小窗」的 `dumpsys activity activities` → `Task.mBounds` 反查出来的

@@ -9,11 +9,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,13 +26,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.key.key
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -52,7 +49,10 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.component.AnimatedFade
 import com.lookie.opluskey.ui.component.ConfirmDialog
+import com.lookie.opluskey.ui.component.escapeMarkdown
 import com.lookie.opluskey.ui.component.PageCornerFab
+import com.lookie.opluskey.ui.component.PageFabButton
+import com.lookie.opluskey.ui.component.rememberFabBackdrop
 import com.lookie.opluskey.ui.component.collapsedHeaderHeight
 import com.lookie.opluskey.ui.component.currentHeaderHeight
 import com.lookie.opluskey.ui.model.APP_ICON_BITMAP_SIZE
@@ -64,6 +64,8 @@ import com.lookie.opluskey.ui.model.APP_KIND_TAG_RAISE
 import com.lookie.opluskey.ui.model.APP_LIST_HEADER_ITEMS
 import com.lookie.opluskey.ui.model.APP_ROW_HEIGHT
 import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
+import com.lookie.opluskey.ui.model.APP_KIND_MODULE_DARK
+import com.lookie.opluskey.ui.model.APP_KIND_MODULE_LIGHT
 import com.lookie.opluskey.ui.model.APP_STATE_TEXT_GAP
 import com.lookie.opluskey.ui.model.APP_TITLE_SUMMARY_GAP
 import com.lookie.opluskey.ui.model.GRID_GAP
@@ -76,7 +78,6 @@ import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardListPosition
-import io.github.suqi8.coui.kmp.basic.FloatingActionButton
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
@@ -84,17 +85,22 @@ import io.github.suqi8.coui.kmp.basic.RadioButton
 import io.github.suqi8.coui.kmp.basic.RotatingProgressIndicator
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.blur.layerBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /** 「打开应用」页：应用列表加载 / 排序 / 选择。 */
-/** 「打开应用」页里的一条 —— 界面要用的几样。 */
+/**
+ * 「打开应用」页里的一条 —— 界面要用的几样。
+ *
+ *  **不带图标**：查列表时不预取（两百多项全量取图标就是两百多次跨进程调用、还会把一批 `Drawable`
+ *  钉在内存里），只记包名，真滚到哪一行才由 [AppIcon] 取哪一行，取到的那份记进 LRU。
+ */
 internal data class LaunchableApp(
     val packageName: String,
     val label: String,
-    val icon: android.graphics.drawable.Drawable?,
     /**
      * 是不是系统应用（`FLAG_SYSTEM`）——「显示系统应用」开着时拿去画「系统 / 用户」小标签。
      *
@@ -119,16 +125,16 @@ internal data class LaunchableApp(
 /**
  * 被「不支持以小窗口打开」拦下的那一个。
  *
- * @param fromPick 这次是从**点 ✓** 触发的那一道（三处查询里的最后一道）。它决定「确认」要不要
- *   顺手写下去：从 ✓ 来的按 `app:<包名>` 存（用户最初要的「取消勾选保存」），
+ * @param fromPick 这次是从**点确认键**触发的那一道（三处查询里的最后一道）。它决定「确认」要不要
+ *   顺手写下去：从确认键来的按 `app:<包名>` 存（用户最初要的「取消勾选保存」），
  *   从前两处（切应用 / 点菜单）来的只把开关拨回关 —— 那时还没有「这一次的选择」可存。
  */
 private data class SmallWindowBlock(val app: LaunchableApp, val fromPick: Boolean)
 
 /**
- * 问一次框架「这个包支不支持小窗」—— **三处触发点共用**（切应用 / 点菜单 / 点 ✓）。
+ * 问一次框架「这个包支不支持小窗」—— **三处触发点共用**（切应用 / 点菜单 / 点确认键）。
  *
- * ⚠️ 读 [MiniWindowSupport] 的注释再用：这个问法**自带一条系统 toast**（判 `false` 时框架弹
+ * 注意：读 [MiniWindowSupport] 的注释再用：这个问法**自带一条系统 toast**（判 `false` 时框架弹
  * 「此应用尚未支持浮窗」），所以只能一问一答地用在「用户刚做了某个动作」的时刻，
  * **绝不能**拿去整表轮询（那会一排一串 toast）。
  *
@@ -206,15 +212,10 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
                 } catch (e: Throwable) {
                     ai.packageName
                 },
-                icon = try {
-                    ai.loadIcon(pm)
-                } catch (e: Throwable) {
-                    null
-                },
                 system = ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0,
                 launchable = intent != null,
-                // ⚠️ 这里**不再**顺手问「支不支持小窗」：那个问法自带一条系统提示（见 [MiniWindowSupport]），
-                //    整表问一遍就是「进页弹一串 toast」。改到点 ✓ 那一刻只问一次。
+                // 注意：这里**不再**顺手问「支不支持小窗」：那个问法自带一条系统提示（见 [MiniWindowSupport]），
+                //    整表问一遍就是「进页弹一串 toast」。改到点确认键那一刻只问一次。
                 xposed = xposed,
             )
         }
@@ -314,23 +315,68 @@ internal fun SettingsPage.sortKeyOf(label: String, romanizer: android.icu.text.T
 }
 
 /**
+ * 应用图标的小 LRU（只给「打开应用」页用）——滚回去的项靠它免掉第二次跨进程取图标。
+ *
+ *  容量按「来回滚两三屏」给：一屏十来行，超出按最久没滚到的淘汰，淘汰只是下次滚回来多问一次
+ *  PackageManager，不是错。
+ */
+private const val APP_ICON_CACHE_SLOTS = 48
+
+/** 见 [APP_ICON_CACHE_SLOTS]。`accessOrder = true`：取用即算「刚用过」。 */
+private val appIcons = object : LinkedHashMap<String, android.graphics.drawable.Drawable>(
+    APP_ICON_CACHE_SLOTS,
+    0.75f,
+    true,
+) {
+    override fun removeEldestEntry(
+        eldest: MutableMap.MutableEntry<String, android.graphics.drawable.Drawable>?,
+    ): Boolean = size > APP_ICON_CACHE_SLOTS
+}
+
+private fun cachedAppIcon(packageName: String): android.graphics.drawable.Drawable? =
+    synchronized(appIcons) { appIcons[packageName] }
+
+private fun putAppIcon(packageName: String, icon: android.graphics.drawable.Drawable) {
+    synchronized(appIcons) { appIcons[packageName] = icon }
+}
+
+/**
  * 一条应用项的行首图标 —— 把别的应用的 `Drawable` 转成 `ImageBitmap` 才能给 Compose 的
  * `Image` 用（工程里没有 `rememberDrawablePainter` 那类桥）。
  *
- * `Drawable` 本身在查列表时就已经全量取好（见 [loadLaunchableApps] 的 `entry`，跑在后台调度器上）；
- * 这里做的**只是光栅化**（`createBitmap` + `draw`），放在每项自己的组合里、
- * 并用 `remember(app.packageName)` 缓存 —— 所以只有真的滚到的项才付这一份代价，
- * 两百个应用也不会在首帧一次性合成两百张位图。
+ * 图标**按需取**：查列表时只记包名（见 [LaunchableApp]），真滚进视口的项才在这里问一次
+ * PackageManager，取到的 `Drawable` 记进 [appIcons] —— 滚回去时命中缓存，不再跨进程问第二轮；
+ * 没拿到之前这一格先空着（一屏十来行，取图标是毫秒级）。
+ *
+ *  光栅化（`createBitmap` + `draw`）本来就只在每项自己的组合里做，两百个应用不会在首帧一次合成
+ *  两百张位图。`remember` 的键带 [icon] 而不只带包名：重查后拿到的是新一份 `Drawable`，
+ *  只按包名记的话行首图标会一直是上一批的（图标变了 / 主题图标包换了都看不出来）。
  */
 @Composable
 internal fun SettingsPage.AppIcon(app: LaunchableApp) {
+    val packageName = app.packageName
+    var icon by remember(packageName) { mutableStateOf(cachedAppIcon(packageName)) }
+    LaunchedEffect(packageName) {
+        // 缓存命中（滚回来）就不必再问一次
+        if (icon != null) return@LaunchedEffect
+        val loaded = withContext(Dispatchers.IO) {
+            try {
+                context.packageManager.getApplicationIcon(packageName)
+            } catch (e: Throwable) {
+                XLog.d("取应用图标失败：$packageName（${e.javaClass.simpleName}）")
+                null
+            }
+        } ?: return@LaunchedEffect
+        putAppIcon(packageName, loaded)
+        icon = loaded
+    }
     // 取样按 [APP_ICON_BITMAP_SIZE]（比实际渲染的 40dp 大一档，缩下来清晰）。
     val px = with(androidx.compose.ui.platform.LocalDensity.current) {
         APP_ICON_BITMAP_SIZE.roundToPx()
     }
-    val bitmap = remember(app.packageName) {
+    val bitmap = remember(packageName, icon) {
         try {
-            app.icon?.let { d ->
+            icon?.let { d ->
                 val bmp = android.graphics.Bitmap.createBitmap(
                     px,
                     px,
@@ -341,7 +387,7 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
                 bmp.asImageBitmap()
             }
         } catch (e: Throwable) {
-            XLog.d("取应用图标失败：${app.packageName}（${e.javaClass.simpleName}）")
+            XLog.d("光栅化应用图标失败：$packageName（${e.javaClass.simpleName}）")
             null
         }
     }
@@ -407,29 +453,46 @@ private fun BoxScope.PageStatePlaceholder(
 }
 
 /**
- * 应用名右边那枚小标签 —— 「系统」/「用户」，或者警告档的「不可打开」。
+ * 应用种类标签的配色 —— 用户 / 系统 / 模块三档各一个色（区分开）。
  *
- * 「系统 / 用户」只在「显示系统应用」开着时画（判据在调用点）：那一档会把没有启动图标的
+ *  · 用户 = 中性（`onSurfaceVariantSummary`）—— 大多数行都是它，不抢眼；
+ *  · 系统 = 主题色（`primary`，库那套色板里的蓝）；
+ *  · 模块 = 紫（[APP_KIND_MODULE_LIGHT] / [APP_KIND_MODULE_DARK]）—— 库色板只有蓝与红两个色相，
+ *    第三个色相得自己定一份，按背景亮度切深浅（与 `popupSurfaceColor` 同一套判据）。
+ */
+@Composable
+private fun appKindTagTint(xposed: Boolean, system: Boolean): Color = when {
+    xposed -> if (COUITheme.colorScheme.background.luminance() < 0.5f) {
+        APP_KIND_MODULE_DARK
+    } else {
+        APP_KIND_MODULE_LIGHT
+    }
+
+    system -> COUITheme.colorScheme.primary
+    else -> COUITheme.colorScheme.onSurfaceVariantSummary
+}
+
+/**
+ * 应用名右边那枚小标签 —— 「模块」/「系统」/「用户」，或者警告档的「不可打开」。
+ *
+ * 「模块 / 系统 / 用户」只在「显示系统应用」开着时画（判据在调用点）：那一档会把没有启动图标的
  * 系统应用混进来，光看名字分不出来（「设置」「信息」既有系统的也有用户装的）；关着时以
  * 用户应用为主，逐行挂标签纯属噪音。「不可打开」不看那个开关：任何一行拉不起来都该有。
  *
  * 样式是一枚胶囊（`footnote2` + 低透明度底 + 4dp 圆角）；不用库的 `Chip` —— 那是可选中
- * 的筛选控件，这里要的只是纯展示的小标记。
+ * 的筛选控件，这里要的只是纯展示的小标记。底色由**文字色的低透明度**派生，所以调用点
+ * 只需要给颜色。
  *
  * @param text 标签文字
- * @param warning 警告档：取 `error` 色（「不可打开」用），而不是次要文字色
+ * @param tint 标签色（文字与底色都由它派生）—— 三档的配色见 [appKindTagTint]，
+ *   警告档（「不可打开」）传 `error`
  */
 @Composable
 internal fun SettingsPage.AppKindTag(
     text: String,
-    warning: Boolean = false,
+    tint: Color,
     modifier: Modifier = Modifier,
 ) {
-    val tint = if (warning) {
-        COUITheme.colorScheme.error
-    } else {
-        COUITheme.colorScheme.onSurfaceVariantSummary
-    }
     Box(
         modifier = modifier
             // 往上抬半档：COUI 的 `LineHeightStyle` 把行距全塞在行的下面，行盒比字面高一截，
@@ -520,7 +583,7 @@ internal fun SettingsPage.AppSearchBand() {
 /**
  * 「打开应用」页 —— 列出本机可启动的应用。
  *
- * 点一条只**切换选中的那个**（行尾单选圈跟着走），右下角那颗 ✓ 才把选择交出去
+ * 点一条只**切换选中的那个**（行尾单选圈跟着走），右下角那颗确认键才把选择交出去
  * （`app:<包名>` 或 `window:<包名>`，看 [SettingsPage.smallWindow]）。
  *
  * 用 `LazyColumn` 而不是 `verticalScroll + Card`：这一页可能有 200+ 行，`verticalScroll`
@@ -550,13 +613,13 @@ internal fun SettingsPage.AppPickerScreen(
     // 这一次查询失败了吗（[loadLaunchableApps] 返回 null）。查失败时手里又没有缓存的话，
     // 不能一直挂着转圈 —— 那是在等一个永远不来的结果（见下面那两块 [PageStatePlaceholder]）。
     var failed by remember { mutableStateOf(false) }
-    // 本地选中：点行只改它，右下角那颗 ✓ 才把选择交出去。初值照当前绑定的那个（进页时先亮着它）。
+    // 本地选中：点行只改它，右下角那颗确认键才把选择交出去。初值照当前绑定的那个（进页时先亮着它）。
     var pending by remember(selected) { mutableStateOf(selected) }
     // 两张拦人的脸各有一个挂起项（都是 `null` = 没在弹，与别处的 `deleting` / `confirmDiscard`
     // 同一套写法；同一时刻只可能开一张）：
-    //  · [blockedUnopenable]：点 ✓ 时挑中的是个**拉不起来**的应用；
+    //  · [blockedUnopenable]：点确认键时挑中的是个**拉不起来**的应用；
     //  · [blockedSmallWindow]：在菜单里**点开「以小窗口打开」那一刻**，当前选中的应用判为不支持小窗。
-    //  ⚠️ 这两个都是**页面自己的** `remember`：页面出栈就注销，正好是「每次进页都没在弹」，
+    //  注意：这两个都是**页面自己的** `remember`：页面出栈就注销，正好是「每次进页都没在弹」，
     //    不需要像 [SettingsPage.smallWindow] 那样手动清（那个提在类上，理由见它的注释）。
     var blockedUnopenable by remember { mutableStateOf<LaunchableApp?>(null) }
     var blockedSmallWindow by remember { mutableStateOf<SmallWindowBlock?>(null) }
@@ -589,16 +652,16 @@ internal fun SettingsPage.AppPickerScreen(
     val apps = loaded.orEmpty()
 
     // 「以小窗口打开」的**勾选态 + 选中的应用**每变一次，就问一次框架「它支不支持小窗」，
-    // 判 `false` ⇒ 弹「不支持以小窗口打开」（用户口径 2026-10-14：**三处都要查** ——
-    // 切应用 / 点菜单 / 点确认；后一处在上面那颗 ✓ 的 `onClick` 里，不在这个 effect 里）。
+    // 判 `false` ⇒ 弹「不支持以小窗口打开」（用户口径：**三处都要查** ——
+    // 切应用 / 点菜单 / 点确认；后一处在上面那颗确认键的 `onClick` 里，不在这个 effect 里）。
     //
-    // ⚠️ **这个 effect 里的两个触发点都要，少一个就漏**——「点那一下」与「换应用」是同一件事的两半：
+    // 注意：**这个 effect 里的两个触发点都要，少一个就漏**——「点那一下」与「换应用」是同一件事的两半：
     //  · 先选应用、再点开开关 ⇒ 靠「开关变了」这一下问；
     //  · 先点开开关、再换应用 ⇒ 靠「选中的应用变了」这一下问。
     //  合起来才盖住**每一条会被写成 `window:<包名>` 的路径**：任何最终的「开着 + 选中某应用」
     //  组合，都必然经过这两者之一的**最后一次变化**。之所以不能只挂一处，就是因为用户按的
-    //  顺序是自由的（2026-10-14 用户指出：只挂「换应用」时，「选完再点开」仍会把不支持小窗的
-    //  应用写成 `window:`）。点 ✓ 那一道是**兜底**：前面判过不等于提交那一刻还是那个结论。
+    //  顺序是自由的（用户指出：只挂「换应用」时，「选完再点开」仍会把不支持小窗的
+    //  应用写成 `window:`）。点确认键那一道是**兜底**：前面判过不等于提交那一刻还是那个结论。
     //
     //  · **进页那一次不问**：那是「这次要编辑的动作本来就是 `window:`」，不是用户刚按下去的手
     //    —— 靠 `askedPkg` 的初值兜住（进页就直接记成「这一档已经问过了」）。
@@ -606,7 +669,7 @@ internal fun SettingsPage.AppPickerScreen(
     //  · 判不出来（`null`）放行；一个都没选中 ⇒ 什么都不做。
     //  · `apps` 也进 key：清单还没到手时问不了（拿不到 label），清单到了要补问一次
     //    —— 所以 `askedPkg` 在**真正问出去之后**才记，不能在前面就记。
-    //  · ⚠️ 别把它挪回「整表预判」：这个问法自带系统提示，整表问就是「进页弹一串 toast」
+    //  · 注意：别把它挪回「整表预判」：这个问法自带系统提示，整表问就是「进页弹一串 toast」
     //    （用户报的「选择应用里一直弹此应用不支持小窗」就是它，见 [MiniWindowSupport]）。
     var askedPkg by remember { mutableStateOf(if (smallWindow.value) pending else null) }
     LaunchedEffect(smallWindow.value, pending, apps) {
@@ -618,7 +681,12 @@ internal fun SettingsPage.AppPickerScreen(
         if (pkg == askedPkg) return@LaunchedEffect
         val app = apps.firstOrNull { it.packageName == pkg } ?: return@LaunchedEffect
         askedPkg = pkg
-        if (querySmallWindowSupport(pkg) == false) {
+        //  注意：查询是 **binder 反射**（`AppEntry.resolve` 1~3 次 + `isSupportZoomMode` 一次），不能占主线程
+        //  —— 这里挂在 `LaunchedEffect`（主线程调度器）上，包一个 `IO`。
+        //  点确认键那一道（下面 FAB 的 `onClick`）**有意留在主线程**：它要按查询结果当场决定「写还是拦」，
+        //  异步化会造出「连点两下写两次」的新洞，而那是一次性用户动作、代价有界。
+        val supported = withContext(Dispatchers.IO) { querySmallWindowSupport(pkg) }
+        if (supported == false) {
             XLog.w("选择应用：$pkg 不支持小窗（勾选态/选中项刚变过），先弹确认")
             blockedSmallWindow = SmallWindowBlock(app, fromPick = false)
         }
@@ -627,18 +695,44 @@ internal fun SettingsPage.AppPickerScreen(
     // 搜索词提到页面级（[SettingsPage.appFilter]）：搜索框挂在顶栏里，与这一页的过滤逻辑分处
     // 两棵树，得共用同一份状态。它跟着进这一页清空（见 [SettingsPage.openAppPickerForStep]）。
     val filter = appFilter.value
-    // 「隐藏失效应用」：纯显示过滤 —— 判据 [LaunchableApp.launchable] 已经在手上的清单里，
+    // 「显示失效应用」：纯显示过滤 —— 判据 [LaunchableApp.launchable] 已经在手上的清单里，
     // 不必重查。它不随进页清空、且落盘（与「显示系统应用」同一套账）。
-    val hideBroken = hideUnopenable.value
-    val shown = remember(apps, filter, hideBroken) {
+    //  **关 = 不显示失效的**（这一档的语义是「显示失效应用」，不是「隐藏失效应用」）。
+    val showBroken = showUnopenable.value
+    val shown = remember(apps, filter, showBroken) {
         apps.asSequence()
-            .filter { !hideBroken || it.launchable }
+            .filter { showBroken || it.launchable }
             .filter {
                 filter.isBlank() ||
                     it.label.contains(filter, ignoreCase = true) ||
                     it.packageName.contains(filter, ignoreCase = true)
             }
             .toList()
+    }
+
+    // —— 已选的应用被上面两个开关藏起来时，把选中清空（用户口径）——
+    //
+    //  两个开关一翻，「已选中的那一个」可能正好落进被藏起来的那一批：行没了（`shown` 里不再有它），
+    //  可右下角那颗确认键还亮着 —— 点下去就把一个**已经看不见、也不该再选**的应用写进绑定。所以这里
+    //  对一次账：已选的不在**这一档过滤之后**的清单里 ⇒ 清空选中（等于「还没选」，那颗确认键一起收起）。
+    //
+    //  注意：判据里**不含搜索词**（[appFilter]）：搜索是临时找东西用的，被它筛掉就清空选中反而莫名
+    //   其妙 —— 换个词那条又会回来。只管上面两个开关藏掉的那些。
+    //  注意：清单还没到手时**不判**（`loaded == null`，含「显示系统应用」翻转之后的加载态）：那时手里
+    //   没有清单，判了就是把「还没查完」当成「没有这个应用」。查失败时 `loaded` 仍是上一份清单、
+    //   列表画的也正是那一份，两边一致，不会误清。
+    //  注意：每次换选中的那一行也会跑一遍（`pending` 在 key 里）：那是为了让这条不变式**始终**成立，
+    //   不是多此一举 —— `pending` 会在 `selected` 变了时被重置成新的绑定值（见上面那个 `remember`）。
+    LaunchedEffect(showBroken, apps, pending) {
+        val pkg = pending ?: return@LaunchedEffect
+        if (loaded == null) return@LaunchedEffect
+        if (apps.none { it.packageName == pkg && (showBroken || it.launchable) }) {
+            XLog.w(
+                "选择应用：已选的应用被这一档藏起来了" +
+                        "（显示失效=$showBroken，显示全部应用=$withSystem）⇒ 清空选中",
+            )
+            pending = null
+        }
     }
 
     val listState = rememberLazyListState()
@@ -693,12 +787,18 @@ internal fun SettingsPage.AppPickerScreen(
         // 右下角那颗「滚到顶部」的 FAB 也挂在这个盒子里：盒子就是「页面顶 → 页面底」那一整块，
         // 它的 `BottomEnd` 正好是页面右下角，与「按键绑定」页那颗 FAB 同一个落点，不必再套 Box。
         Box(Modifier.fillMaxSize()) {
+            // 右下角那颗确认键的磨砂**取样层**：记的就是这块列表（FAB 是它的兄弟）。
+            //  注意：不能拿页面那一层（`SettingsPage.pageBackdrop`）：FAB 落在它**里面**，
+            //  那样是自己取样自己 —— 渲染节点链无限增长、RenderNode 递归到栈溢出，UI 进程当场被杀
+            //（真机崩过一次）。详见 [rememberFabBackdrop] / [PageFabButton]。
+            val fabBackdrop = rememberFabBackdrop()
             LazyColumn(
                 state = listState,
                 // `nestedScroll` 挂在 `LazyColumn` 的 `modifier` 上 = 挂在它自己那个滚动容器
                 // 外侧（`LazyColumn` 的滚动在组件内部）。
                 modifier = Modifier
                     .fillMaxSize()
+                    .layerBackdrop(fabBackdrop)
                     .nestedScroll(scrollBehavior.nestedScrollConnection)
                     // 越界回弹：COUI 自己的弹簧实现（`overScrollVertical`）。挂在这里同样是滚动
                     // 容器外侧，吃的是它没吃掉的那部分位移 —— 列表不满一屏也弹。
@@ -745,7 +845,7 @@ internal fun SettingsPage.AppPickerScreen(
                         ) {
                             BasicComponent(
                                 startAction = { AppIcon(app) },
-                                // 行尾单选圈跟着**本地选中**走：点一行只是把圈挪过去，交出去靠右下角那颗 ✓
+                                // 行尾单选圈跟着**本地选中**走：点一行只是把圈挪过去，交出去靠右下角那颗确认键
                                 endActions = {
                                     RadioButton(
                                         selected = app.packageName == pending,
@@ -775,8 +875,8 @@ internal fun SettingsPage.AppPickerScreen(
                                     // 这一行是「盒子居中」而非 `alignByBaseline`：基线对齐会把胶囊整体
                                     // 压低小半档（大标题字面比标签高一截），居中反而让两个字面的中线
                                     // 基本重合（见 [APP_KIND_TAG_RAISE]）。
-                                    // 「系统 / 用户」只在「显示系统应用」开着时画；「模块」不看那个开关
-                                    // —— 模块默认就在列表里，开关关着也得分得出来。
+                                    // 「模块 / 系统 / 用户」只在「显示系统应用」开着时画；「模块」不看那个开关
+                                    // —— 模块默认就在列表里，开关关着也得分得出来。三档各一个颜色（见 [appKindTagTint]）。
                                     if (withSystem || app.xposed) {
                                         Spacer(Modifier.width(APP_KIND_TAG_GAP))
                                         // 三选一：「模块」压过「系统」压过「用户」
@@ -786,12 +886,13 @@ internal fun SettingsPage.AppPickerScreen(
                                                 app.system -> "系统"
                                                 else -> "用户"
                                             },
+                                            tint = appKindTagTint(app.xposed, app.system),
                                         )
                                     }
                                     // 「不可打开」不看那个开关：用户应用里也有拉不起来的，每一行都该有。
                                     if (!app.launchable) {
                                         Spacer(Modifier.width(APP_KIND_TAG_GAP))
-                                        AppKindTag(text = "不可打开", warning = true)
+                                        AppKindTag(text = "不可打开", tint = COUITheme.colorScheme.error)
                                     }
                                 }
                                 Text(
@@ -837,8 +938,9 @@ internal fun SettingsPage.AppPickerScreen(
                         // 这一页的包可见性跟着宿主走，真列不出来只会是别的原因。
                         "没有找到可以打开的应用"
                     }
-                    // 措辞与菜单里那一项（「隐藏失效应用」）对齐，别让用户去猜是哪一个开关
-                    hideBroken && apps.all { !it.launchable } -> "可以打开的应用都被「隐藏失效应用」藏起来了"
+                    // 措辞与菜单里那一项（「显示失效应用」）对齐，别让用户去猜是哪一个开关
+                    !showBroken && apps.all { !it.launchable } ->
+                        "可以打开的一个都没有；开「显示失效应用」能看到打不开的那些"
                     else -> "没有匹配「$filter」的应用"
                 },
             )
@@ -864,33 +966,38 @@ internal fun SettingsPage.AppPickerScreen(
                 },
             )
 
-            // 右下角那颗 ✓ 才是「确定选择」：点行只切换。样式与「按键绑定」页那颗（新增命令）逐项
-            // 对齐：尺寸 / 形状 / 阴影走库默认（56dp 见方、`CircleShape`、12dp 阴影）、容器色取库默认
-            // `colorScheme.primary`。图标 tint 显式给 `onPrimary`：库内部只给容器色、不给 contentColor，
-            // 不显式上色会继承到 `onSurface`（深色）。位置同「右 [PAGE_MARGIN]×2、下
-            // [PAGE_BOTTOM_PADDING]×2」，点一下先振动（[rememberTick]）。
+            // 右下角那颗确认键才是「确定选择」：点行只切换。样式（磨砂 / 尺寸 / 形状 / 阴影 / 容器色）
+            // 全走 [PageFabButton] 那一份 —— 与「按键绑定」页那颗共用，两处不会走形。图标 tint 显式给
+            // `onPrimary`：库内部只给容器色、不给 contentColor，不显式上色会继承到 `onSurface`（深色）。
+            // 位置同「右 [PAGE_MARGIN]×2、下 [PAGE_BOTTOM_PADDING]×2」，点一下先振动（[rememberTick]）。
             // 显隐：手上有选中的才出现 —— 没得确认就不占地方。
-            PageCornerFab(visible = pending != null) {
-                FloatingActionButton(
+            //  注意：清单还没到手时（`loaded == null`：正在查，或查失败又没缓存）**一律不出现**
+            //  （「加载应用列表时不允许保存」）—— 那一刻 `apps` 是空的，
+            //  下面 `apps.firstOrNull { … }` 取到 null ⇒ 两道拦人的检查（不可打开 / 不支持小窗）
+            //  会因为 `app != null` 这个前提不成立而**双双跳过**，等于把「还没核对」当成「没问题」
+            //  照写下去。它是本页唯一的保存入口，藏起来就等于不允许保存。
+            PageCornerFab(visible = pending != null && loaded != null) {
+                PageFabButton(
+                    backdrop = fabBackdrop,
                     onClick = {
                         tick()
-                        val pkg = pending ?: return@FloatingActionButton
+                        val pkg = pending ?: return@PageFabButton
                         val app = apps.firstOrNull { it.packageName == pkg }
-                        // ① 拉不起来的应用（被停用 / 非导出入口 / 装了一半）先拦一句：**什么都不写**
+                        // (1) 拉不起来的应用（被停用 / 非导出入口 / 装了一半）先拦一句：**什么都不写**
                         //   （见下面那张「此应用无法打开」）。判据与行尾那枚「不可打开」标签同源，
                         //   就是清单里这一位，不必再查。
                         if (app != null && !app.launchable) {
                             XLog.w("选择应用：$pkg 拉不起来，弹「此应用无法打开」")
                             blockedUnopenable = app
-                            return@FloatingActionButton
+                            return@PageFabButton
                         }
-                        // ② 开着「以小窗口打开」⇒ 点确认这一刻**再问一次**（三处查询的最后一道）：
+                        // (2) 开着「以小窗口打开」⇒ 点确认这一刻**再问一次**（三处查询的最后一道）：
                         //   前面问过不等于这一刻还是那个结论（可能判不出来、或用户在那个框上按了取消）。
                         if (smallWindow.value && app != null) {
                             if (querySmallWindowSupport(pkg) == false) {
                                 XLog.w("选择应用：$pkg 不支持小窗，点确认时拦下（不写 window:）")
                                 blockedSmallWindow = SmallWindowBlock(app, fromPick = true)
-                                return@FloatingActionButton
+                                return@PageFabButton
                             }
                         }
                         onPick(pkg, smallWindow.value)
@@ -906,7 +1013,7 @@ internal fun SettingsPage.AppPickerScreen(
 
             // —— 两张拦人的脸，都是「留在这一页」——
             //
-            // ①「此应用无法打开」：点 ✓ 时挑中的是个拉不起来的应用（见上）。**没有正文**
+            // (1)「此应用无法打开」：点确认键时挑中的是个拉不起来的应用（见上）。**没有正文**
             //    （`summary = null`；给空串会画出一行空白），两颗按钮都只是把这句提示关掉、
             //    回选择页 —— 什么都不写、什么都不改。
             ConfirmDialog(
@@ -919,14 +1026,14 @@ internal fun SettingsPage.AppPickerScreen(
                 onConfirm = { blockedUnopenable = null },
             )
 
-            // ②「不支持以小窗口打开」：**三处触发点共用这一张脸** —— 切应用 / 点菜单里那一项
-            //    （`LaunchedEffect` 里）、点 ✓（上面那颗按钮里，`fromPick = true`）。
-            //    确认 ⇒ 菜单里那一项拨回关；从点 ✓ 来的还顺手按 `app:<包名>` 写下去并离开本页。
+            // (2)「不支持以小窗口打开」：**三处触发点共用这一张脸** —— 切应用 / 点菜单里那一项
+            //    （`LaunchedEffect` 里）、点确认键（上面那颗按钮里，`fromPick = true`）。
+            //    确认 ⇒ 菜单里那一项拨回关；从点确认键来的还顺手按 `app:<包名>` 写下去并离开本页。
             //    取消 ⇒ 什么都不做。正文里的应用名用 `「」` 夹住；动作项不上红（不丢用户的东西）。
             ConfirmDialog(
                 show = blockedSmallWindow != null,
                 title = "不支持以小窗口打开",
-                summary = "是否取消「${blockedSmallWindow?.app?.label ?: ""}」以小窗口打开？",
+                summary = "是否取消「**${escapeMarkdown(blockedSmallWindow?.app?.label ?: "")}**」以小窗口打开？",
                 action = "确定",
                 positiveDanger = false,
                 onDismiss = { blockedSmallWindow = null },
@@ -936,7 +1043,7 @@ internal fun SettingsPage.AppPickerScreen(
                     // 拨回关：菜单里那一项跟着回去，用户看得见这次选择了什么
                     smallWindow.value = false
                     XLog.w("选择应用：该应用不支持小窗，已把「以小窗口打开」拨回关")
-                    // 点 ✓ 那一路：用户要的就是「取消小窗这个勾选、照常存」—— 按普通打开写下去
+                    // 点确认键那一路：用户要的就是「取消小窗这个勾选、照常存」—— 按普通打开写下去
                     if (blocked?.fromPick == true) {
                         XLog.w("选择应用：${blocked.app.packageName} 改为普通打开并写入")
                         onPick(blocked.app.packageName, false)

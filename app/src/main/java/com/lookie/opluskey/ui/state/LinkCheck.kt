@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.state
 
 import androidx.compose.runtime.Composable
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.wire.ConfigBroadcast
@@ -14,21 +15,19 @@ import com.lookie.opluskey.ui.SettingsPage
  * @param configTag 注入侧手上那份配置的指纹（`ConfigBroadcast.tag`，空 = 没收到过）。
  *   页面拿它与**自己手上那份**比：相等才叫「设置生效」—— 只看 [configOk] 答不了
  *   「后来改的那一次到了没有」。
- * @param takeover 注入侧当前认为要不要接管（来自最后一次配置广播的主开关）
  * @param lastGestureAt 最后一次判出手势的时刻（`elapsedRealtime()`，0 = 开机以来从未）
  */
 internal data class InjectStatus(
     val hooks: Int,
     val configOk: Boolean,
     val configTag: String,
-    val takeover: Boolean,
     val lastGestureAt: Long,
 )
 
 /**
  * 链路自检里的一段（界面上叫「运行状态」，见 `AboutScreen`）。
  *
- * **文案是给用户看的，不是给开发看的**（2026-10-14 用户定的两轮）：不出现「注入侧 / 回话 /
+ * **文案是给用户看的，不是给开发看的**（两轮）：不出现「注入侧 / 回话 /
  * 接管点 / 真配置 / 就绪 / 同步 / 读取」这类词，也不报时间戳；**「哪一段断了」这件事本身
  * 也只写到段名为止**，往下怎么坏的去看日志（`XLog`）。
  *
@@ -62,14 +61,20 @@ internal val deviceSupported: Boolean = DeviceSupport.isSupported(android.os.Bui
  *  而总闸在**组合期与点按回调里都会被读到** —— 不能每次都去读盘。
  *  也因此这里是普通 `val`，不是 `@Composable`（`BindingScreen.pick()` 那种事件回调里也要读）。
  */
-private var localTagCache: Pair<Config, String>? = null
+private var localTagCache: Triple<Config, List<Command>, String>? = null
 
 internal val SettingsPage.localConfigTag: String
     get() {
         val cur = config.value
-        localTagCache?.let { if (it.first === cur) return it.second }
+        // 缓存键必须**同时**带上命令库：`ConfigBroadcast.tag` 里有一项是「长按绑的是不是串行命令」，
+        //  它读的是命令库；而保存命令库（`saveCommands`）只换 `commands` 那一份状态、**不换 Config 实例**
+        //  —— 只按 Config 失效的话，页面会一直拿着「按旧命令库算出来的」指纹，
+        //  与注入侧刚收到的那份对不上，自检就假报「未同步」。
+        //  用 `===` 比引用即可：`saveCommands` 每次都换一个新的 list 实例。
+        val cmds = commands.value
+        localTagCache?.let { if (it.first === cur && it.second === cmds) return it.third }
         val tag = ConfigBroadcast.tag(cur)
-        localTagCache = cur to tag
+        localTagCache = Triple(cur, cmds, tag)
         return tag
     }
 
@@ -93,7 +98,7 @@ internal val SettingsPage.configSideOk: Boolean
 /**
  * **整页总闸**：「运行状态」里**任何一段**不 ok 就关。
  *
- *  2026-10-14 用户定的口径：总闸不再只看「服务运行 + 按键响应」那两段 —— 「设置生效」同样是在答
+ * 用户定的口径：总闸不再只看「服务运行 + 按键响应」那两段 —— 「设置生效」同样是在答
  *  「改了会不会生效」，它不通时放用户去改就是误导。主开关与 ⋮ 菜单里那几项都吃这个闸。
  *
  *  两处**有理由的**例外，不是漏掉：
@@ -109,14 +114,14 @@ internal val SettingsPage.linkReady: Boolean
  * 把设置页手上那几路信号翻成**逐段的**链路结论，顺序就是数据要走的顺序：
  * 服务 → 按键 → 设置 → 实际使用。
  *
- * 为什么要有这个：原先只看「宿主报活了没有」一个布尔，它答不了三种真实故障 ——
+ * 为什么要有这个：只看「宿主报活了没有」一个布尔的话，答不了三种真实故障 ——
  * 按键那一侧压根没装上（作用域配错 / ROM 换了方法名）、设置没送到那一侧、以及最隐蔽的那种
  * 「装上了但这版 ROM 的侧键事件根本不走那条路」。前两种现在有判据了；
  * 第三种只能靠最后那段那笔「真的执行过没有」。
  *
  * 前一段断了，后面的就没意义（按键那侧没回话时不去猜它设置到没到）。
  *
- * ⚠️ **界面粒度是四段（+ 整体那一行），不是原始信号数**：2026-10-14 用户要求
+ * 注意：**界面粒度是四段（+ 整体那一行），不是原始信号数**：用户要求
  * 「用户界面不需要技术细节」，于是「设置同步」与「设置读取」合并成「设置生效」——
  * 两件事都还在查（判据是一个 `&&`），只是不再分开报给用户。
  */
@@ -131,6 +136,7 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
     // 本地那份指纹按配置缓存（见 [localConfigTag]），只有配置变了才重算。
     val configSynced = inj?.configTag?.isNotEmpty() == true &&
         inj.configTag == localConfigTag
+    val configSide = configSideOk
 
     return listOf(
         LinkCheck(
@@ -154,7 +160,13 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
         LinkCheck(
             name = "设置生效",
             // 与总闸**同源**：配置侧那半直接用 [configSideOk]，免得两边各写一份慢慢跑偏
-            ok = configSideOk && hostEnabled,
+            ok = configSide && hostEnabled,
+            // 「主开关已关闭」**不算故障**（见 [configSideOk] 与 [linkReady] 的注释）：
+            //  只有「配置侧没问题、单纯是用户关了主开关」这一种不 ok 时不 block。
+            //  其余（配置读不懂 / 没送到注入侧 / 两边指纹对不上）都真会让设置不生效 —— 照旧 block。
+            //  一律 block（`blocking` 走默认值）的话，用户主动关掉主开关，
+            //  整体状态就报「设置生效异常」—— 那是用户的意图，不是故障。
+            blocking = !(configSide && !hostEnabled),
             detail = when {
                 // 真因优先：文件读不懂时宿主读到的是默认值（enabled=false），
                 // 再往下会报成「主开关已关闭」—— 那会把用户引到错的方向（他根本没关）。
@@ -170,7 +182,7 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
         ),
 
         // 这一段永远不 block：还没被验证过不是故障，只是一条还没拿到的证据。
-        //  文案里**不出现「按过没按过」**——那是内部证据的说法（2026-10-14 用户点名删的）。
+        //  文案里**不出现「按过没按过」**——那是内部证据的说法（用户点名删的）。
         LinkCheck(
             name = "使用验证",
             ok = hostLastActionAt > 0,

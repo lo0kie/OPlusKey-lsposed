@@ -116,7 +116,7 @@ jobs:
             echo "校验 $apk"
             listing=$(unzip -l "$apk")
 
-            # ① META-INF/xposed 三件套齐全（LSPosed 的识别与上架校验都靠它们）
+            # (1) META-INF/xposed 三件套齐全（LSPosed 的识别与上架校验都靠它们）
             for f in java_init.list scope.list module.prop; do
               if printf '%s' "$listing" | grep -q "META-INF/xposed/$f"; then
                 echo "  ok  META-INF/xposed/$f"
@@ -125,7 +125,7 @@ jobs:
               fi
             done
 
-            # ② scope.list 首行必须是 system —— 写成 android 的话模块装了也不注入 system_server
+            # (2) scope.list 首行必须是 system —— 写成 android 的话模块装了也不注入 system_server
             scope=$(unzip -p "$apk" META-INF/xposed/scope.list | head -1 | tr -d '\r')
             if [ "$scope" = "system" ]; then
               echo "  ok  scope.list 首行 = system"
@@ -133,7 +133,7 @@ jobs:
               bad "$apk 的 scope.list 首行须为 system（实际 '$scope'）"
             fi
 
-            # ③ module.prop 同时含 minApiVersion= 与 targetApiVersion=（上架机器人按这两条校验）
+            # (3) module.prop 同时含 minApiVersion= 与 targetApiVersion=（上架机器人按这两条校验）
             prop=$(unzip -p "$apk" META-INF/xposed/module.prop | tr -d '\r')
             for k in minApiVersion targetApiVersion; do
               if printf '%s\n' "$prop" | grep -q "^${k}="; then
@@ -143,30 +143,66 @@ jobs:
               fi
             done
 
-            # ④ 编译后的清单必须零入口 Activity（有 Activity 就会让 LSPosed 管理器亮出「打开模块」FAB）。
+            # (4) 编译后的清单必须零入口 Activity（有 Activity 就会让 LSPosed 管理器亮出「打开模块」FAB）。
             #    只能查 APK 里的二进制清单：源清单的注释会被 merger 抄进合并清单，按字面查会误报。
+            #    注意：判据要盖住**所有**入口写法（一、6「一条都不能有」）：
+            #      · 模块设置入口：`MODULE_SETTINGS`
+            #      · 启动器可见：`android.intent.category.LAUNCHER` / `…category.INFO`
+            #        （`CATEGORY_INFO` 是「在启动器里露一条信息条目」，同样是入口）
+            #      · 裸 `activity` / `activity-alias` 元素名 —— 清单里只要出现这两个标签，
+            #        就说明声明了组件（AXML 的字符串池按行输出，故用整行精确匹配，
+            #        不会误伤 `MainActivity` 这种以 Activity 结尾的类名）。
             if command -v strings >/dev/null 2>&1; then
               entry=$(unzip -p "$apk" AndroidManifest.xml | strings -e l \
-                | grep -cE 'MODULE_SETTINGS|android\.intent\.category\.LAUNCHER' || true)
+                | grep -cE 'MODULE_SETTINGS|android\.intent\.category\.LAUNCHER|android\.intent\.category\.INFO|^activity$|^activity-alias$' || true)
               if [ "$entry" = "0" ]; then
-                echo "  ok  清单零入口 Activity（无 MODULE_SETTINGS / LAUNCHER）"
+                echo "  ok  清单零入口 Activity（无 MODULE_SETTINGS / LAUNCHER / INFO / activity 标签）"
               else
-                bad "$apk 的清单里出现了入口标记（${entry} 处）：MODULE_SETTINGS 或 LAUNCHER"
+                bad "$apk 的清单里出现了入口标记（${entry} 处）：MODULE_SETTINGS / LAUNCHER / INFO / activity 标签"
               fi
             else
               # 没有 strings 就查不了，必须报错而非静默放过
               bad "runner 上没有 strings（binutils），清单入口这项没法校验"
             fi
+
+            # (6) java_init.list 声明的入口类必须**真的在 dex 里**：
+            #    类改名 / 挪包之后 CI 原来照样全绿发版，而框架按名字实例化会失败 ——
+            #    现象是「模块已启用、日志一行都没有」（见 AGENTS.md 五之二、0）。
+            #    类名在 dex 里是类型描述符 `Lcom/lookie/opluskey/KeyModule;`；多 dex 时全扫。
+            entry_cls=$(unzip -p "$apk" META-INF/xposed/java_init.list | head -1 | tr -d '\r')
+            if [ -z "$entry_cls" ]; then
+              bad "$apk 的 java_init.list 是空的"
+            else
+              desc="L$(printf '%s' "$entry_cls" | tr '.' '/');"
+              if unzip -p "$apk" 'classes*.dex' 2>/dev/null | strings | grep -qF "$desc"; then
+                echo "  ok  java_init.list 的 $entry_cls 在 dex 里"
+              else
+                bad "$apk 的 java_init.list 声明了 $entry_cls，但 dex 里找不到 $desc"
+              fi
+            fi
+
+            # (7) 作用域必须是构建期写死的那一档（`staticScope=true`）—— 一、9 说的
+            #    「作用域写错 = 模块全绿但日志一行都没有」正是它守的东西。
+            if printf '%s\n' "$prop" | grep -q '^staticScope=true$'; then
+              echo "  ok  module.prop 有 staticScope=true"
+            else
+              bad "$apk 的 module.prop 缺 staticScope=true（作用域没写死 ⇒ 由用户在管理器里选）"
+            fi
           done
 
-          # ⑤ 注入侧不得引用 androidx / COUI / 图标库 / 界面层 —— 那些类在 system_server 里
+          # (5) 注入侧不得引用 androidx / COUI / 图标库 / 界面层 —— 那些类在 system_server 里
           #    执行会在类加载期崩。判据是「这个类会不会在 system_server 里被执行」：inject/ 是
           #    注入侧本体，core/ 是它依赖的共享层（同样在注入目标进程里执行），所以一并拦；
+          #    注意：debug / release 源集里也有 `core/` 的副本（`HostFilePerms`），同样在注入侧执行，
+          #    一并扫。
           #    ui/（Compose + COUI）与图标库（com.composables / io.github.lyxnx）是禁引项。
           #    目录先各自确认存在：路径写错时 grep 会返回 2（错误），不加这道守卫会被当成「无命中」放过
           injection_dirs=""
-          for d in inject core; do
-            p="app/src/main/java/com/lookie/opluskey/$d"
+          for p in \
+            app/src/main/java/com/lookie/opluskey/inject \
+            app/src/main/java/com/lookie/opluskey/core \
+            app/src/debug/java/com/lookie/opluskey/core \
+            app/src/release/java/com/lookie/opluskey/core ; do
             if [ -d "$p" ]; then
               injection_dirs="$injection_dirs $p"
             else
@@ -179,6 +215,22 @@ jobs:
             bad "注入侧（inject/ core/）引用了 androidx / COUI —— 见 AGENTS.md 一、1"
           else
             echo "  ok  注入侧无 androidx / COUI import"
+          fi
+
+          # (5)' `KeyModule.kt` 单列一档：它在注入侧会被加载，但它
+          #    **允许** import `ui/`（界面 hook 只在设置页那个进程分支里装，见它的类注释）
+          #    —— 直接并进上面那圈扫描会误报。这里只禁「一加载就崩」的那三类。
+          km="app/src/main/java/com/lookie/opluskey/KeyModule.kt"
+          if [ -f "$km" ]; then
+            kmhits=$(grep -n "^import \(androidx\|io\.github\.suqi8\|io\.github\.lyxnx\|com\.composables\)" "$km" || true)
+            if [ -n "$kmhits" ]; then
+              printf '%s\n' "$kmhits"
+              bad "KeyModule.kt 引用了 androidx / COUI / 图标库 —— 它在 system_server 里会被加载"
+            else
+              echo "  ok  KeyModule.kt 无 androidx / COUI / 图标库 import"
+            fi
+          else
+            bad "找不到 $km（包名挪过？这条校验会失效）"
           fi
 
           if [ "$fail" != "0" ]; then
@@ -204,8 +256,11 @@ jobs:
   release:
     name: 发布到 Xposed-Modules-Repo
     needs: build
-    # PR 上的 GITHUB_TOKEN 是只读的，也没必要从 PR 发版
-    if: github.event_name != 'pull_request'
+    # 注意：**只有打标签才发版**：原来只排除 PR，于是**每次推 master**
+    #    也会走这一步，而 tag 是由 `versionCode-versionName` 算出来的 —— 版本号没涨时
+    #    每次都覆盖同一个 tag（当前是 `1-1.0.0`），半成品就这么推给了用户。
+    #    tag 由人来打（`v*` 或 `<versionCode>-<versionName>`，见上面的 on.tags）。
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -266,7 +321,7 @@ jobs:
       #   versionName 里带 `-`（如 1.1.0-beta.1）⇒ 发为预发布 ⇒ 只进管理器的「测试版」通道。
       #   索引据此填 `latestBetaRelease`（稳定版填 `latestRelease`、快照版按 release 标题前缀填
       #   `latestSnapshotRelease`），管理器的「稳定版」通道会把 `isPrerelease` 的条目整个滤掉。
-      # ⚠️ 版本号仍须单调递增：beta 也占一个 `versionCode`，不涨的话测试通道收不到更新提示。
+      # 注意：版本号仍须单调递增：beta 也占一个 `versionCode`，不涨的话测试通道收不到更新提示。
       - name: 建 / 更新 Release
         if: steps.token.outputs.ready == 'true'
         uses: softprops/action-gh-release@v3

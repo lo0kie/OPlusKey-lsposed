@@ -1,6 +1,8 @@
 package com.lookie.opluskey.ui.model
 
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -8,11 +10,14 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.lookie.opluskey.core.model.Action
 import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
 import io.github.suqi8.coui.kmp.basic.SliderDefaults
 import io.github.suqi8.coui.kmp.nav.transition.NavMotion
@@ -37,16 +42,62 @@ internal const val STEP_MS = 50
 internal val HEADER_ICON_SIZE = 40.dp
 
 /**
- * 磨砂浮层的模糊半径（dp，给 `blur(radiusX, radiusY)` 之前换算成 px）—— 顶栏与工具栏共用这一个值。
+ * 磨砂浮层的模糊半径（dp，给 `blur(radiusX, radiusY)` 之前换算成 px）—— 顶栏与浮层菜单共用这一个值。
  *
  * 取 24dp：顶栏高 107dp，再大把底下滚过的文字糊成一片，再小又和没糊差不多。
  */
 internal val FROSTED_BLUR_RADIUS = 24.dp
 
 /**
- * 磨砂浮层给不透明底色降 alpha 用的那一档（现在只有顶栏在用）。
+ * 磨砂面上给不透明底色降 alpha 用的那一档（顶栏 + 底部工具条）。
+ *
+ *  注意：右下角那颗 FAB **不参与这一档** —— 它把底色调成**主题原色**（`colorScheme.primary`），
+ *  乘这一档会掺进底下的糊里、显得发白，与主题色对不上。别再照着顶栏 / 工具条给它乘回去。
+ *
+ *  一律**按比例缩**（`color.alpha * 这一档`），不要 `copy(alpha = …)` 整个换 —— 深浅两套色板里
+ *  同名色可能一个是实色、一个是半透（库深色板的 `surfaceContainer` 就是半透白），替换会把后者顶成亮色。
  */
-internal const val FROSTED_SURFACE_ALPHA = 0.82f
+internal const val FROSTED_SURFACE_ALPHA = 0.67f
+
+/**
+ * 浮层菜单面板的圆角 —— 库 `ListPopupContent` 的 `PopupCornerRadius`（12dp，对应 COUI
+ * `couiRoundCornerM`），库内是 internal，这里照抄一份只为**磨砂取样收边**：那一层圆角**不裁子级**，
+ * 不自己收边的话糊出来的方块会盖过面板的圆角。
+ */
+internal val POPUP_PANEL_RADIUS = 12.dp
+
+/**
+ * 浮层面板的本色 —— 浅色照搬库 `ListPopupContent` 那一对常量（COUI 的 `couiColorSurfaceTop`：
+ * `coui_color_surface_top` 浅色 `#FFFFFF` / 夜间 `#333333`，库内是 private，只能照抄一份）；
+ * 夜间那一档见 [POPUP_SURFACE_DARK]（比库原生的亮，与 [POPUP_FROSTED_ALPHA] 配套）。
+ *
+ *  为什么不能拿主题里那几档 `surface*` 顶替：面板要**比页面亮一档**——暗色下页面是纯黑
+ *（实测 `#000000`）、卡片是 `#1a1a1a`，而 `surfaceContainerHighest` 只有 `#252525`，
+ *  拿它当磨砂底色会比库原生面板还暗（真机反馈「暗色下底色太暗」）。
+ */
+internal val POPUP_SURFACE_LIGHT = Color.White
+
+/**
+ * [POPUP_SURFACE_LIGHT] 的夜间那一档 —— `#333333` 是库原生的值，这里取到 `#3d3d3d`、
+ *  **亮一档**：面板底色降到半透（见 [POPUP_FROSTED_ALPHA]）之后，底下的糊会透过一部分，
+ *  本色不抬这一档，落定后的面板就比库原生面板暗（真机反馈过「暗色下底色太暗」）。
+ *  两笔账合起来是把**落定亮度**钉在库原生那一档，透上来的糊才有得看。
+ */
+internal val POPUP_SURFACE_DARK = Color(0xFF3D3D3D)
+
+/**
+ * 浮层磨砂底色的 alpha（**只给浮层菜单用**）—— 这一档就是「底下的糊能透上来多少」：
+ *  越小糊越明显。它是**和 [POPUP_SURFACE_DARK] 一起调的**：糊的是底下的页面，暗色下页面接近纯黑，
+ *  透得越多面板越黑 —— 所以本色抬亮一档，把落定亮度钉在库原生面板（`#333333`）那一档上。
+ *  0.72 是比顶栏（[FROSTED_SURFACE_ALPHA]）略保一点、又明显看得见糊的位置；顶栏可以更低，
+ *  是因为它背后恒是页面自己的滚动内容，而浮层可能压在任意画面上。
+ *
+ *  注意：**确认弹窗不参与这一档**：不能写「浮层菜单与确认弹窗共用」——
+ *  但确认窗试过三版挂法在真机全不成立（进出场走图层位移、磨砂取样按布局坐标算，两者对不上），
+ *  已经**撤掉磨砂**、底色回库默认的不透明值（见 `ui/component/ConfirmDialog.kt`）。
+ *  全仓唯一的消费方是浮层菜单（`ui/component/MenuPopup.kt` 里 `MenuPopup` 那层）。
+ */
+internal const val POPUP_FROSTED_ALPHA = 0.72f
 
 /**
  * [SliderRow] 那一行的几何契约 ——「点轨道跳值」（[tapSliderToSeek]）按这几笔账圈出滑杆占的那条带子：
@@ -86,7 +137,7 @@ internal const val APP_PICKER_TITLE = "选择应用"
 /**
  * 「更多选项」页的标题（首页「其他 → 更多选项」那一行进入；这是**唯一入口**）。
  *
- * 2026-10-14 用户要求从「关于模块」改叫「更多」、随后定稿为「更多选项」：这一页早就不只是
+ * 用户要求从「关于模块」改叫「更多」、随后定稿为「更多选项」：这一页早就不只是
  * 「关于」—— 除了版本 / 作者 / 查看地址 / 反馈问题，还有**运行状态**与**配置导入导出**。
  * 内部符号仍叫 `ABOUT_*`（页面枚举 `Screen.ABOUT` 等同理），只改**给用户看的**这一处。
  */
@@ -95,7 +146,7 @@ internal const val ABOUT_TITLE = "更多选项"
 /**
  * 首页那条常驻提示的文案（模块有哪一段没就绪时弹，见 [SettingsPage.linkChecks] / `linkReady`）。
  *
- * **只说结论、不点技术细节**（2026-10-14 用户定的）：用户界面不需要知道是哪一段断了，
+ * **只说结论、不点技术细节**：用户界面不需要知道是哪一段断了，
  * 「哪一段」是给「更多选项 → 运行状态」看的；这一条只回答「现在能不能用」。
  */
 internal const val MODULE_UNAVAILABLE_HINT = "模块不可用，正在等待系统响应"
@@ -118,12 +169,27 @@ internal const val CONFIG_READ_FAILED_HINT = "配置读取失败，请重进页�
 internal const val UNSUPPORTED_DEVICE_HINT = "未知设备，此设备不可用"
 
 /**
- * 「导入配置」校验没过时的那**一句**提示（2026-10-14 用户定的）。
+ * 「导入配置」校验没过时的那**一句**提示。
  *
  * 用户界面上只给结论、不点细节：不解释「哪一段坏了 / 第几条认不出」——那是日志的事
  *（见 `XLog`）。措辞与 [UNSUPPORTED_DEVICE_HINT] 同一档：说清「怎么办」，不说内部结构。
  */
 internal const val UNKNOWN_CONFIG_FORMAT = "未知的配置格式，请检查后重试"
+
+/** 「风险提示与免责声明」那个弹窗的标题（首次启用、以及清空配置之后再启用时弹）。 */
+internal const val DISCLAIMER_TITLE = "风险提示与免责声明"
+
+/**
+ * 弹窗正文：一句风险、一句让用户自己拍板。
+ *
+ * 只说要发生什么，不写实现细节（注入哪个进程、靠什么 Hook）；「开不了机」是用户能懂的说法，
+ * 真出事时该怎么救写在 README 里 —— 那一步不放在这里（出问题时打不开这个页面）。
+ */
+internal const val DISCLAIMER_TEXT =
+    "本模块会把代码注入系统进程，属于非官方改动。可能出现：\n\n" +
+        "- 按键失灵、功能异常\n" +
+        "- 极端情况下开不了机\n\n" +
+        "请确认你已知晓并**自行承担风险**。"
 
 /**
  * 「添加命令」选择器浮层的最大高度 —— 取 320dp。
@@ -231,7 +297,7 @@ internal const val HOME_BINDING_ROWS = 2
 internal val PAGE_MARGIN = 12.dp
 
 /**
- * 各页内容区底部 padding —— 统一取 32dp（原先只有首页与「自定义命令」页有，翻页时不齐）。
+ * 各页内容区底部 padding —— 统一取 32dp（各页不统一的话翻页时会看出来）。
  */
 internal val PAGE_BOTTOM_PADDING = 32.dp
 
@@ -252,9 +318,20 @@ internal val PAGE_TOP_PADDING = 8.dp
 internal val TILE_TEXT_OPTICAL_SHIFT = 1.5.dp
 
 /**
+ * 网格格子标题**右边**那枚小标记（现在只有「打开应用」格的「小窗起」用它）的边长 —— 取 16dp。
+ *
+ * 它跟标题同一行，尺寸按 `body2`（14sp）的行高取；再大会把标题挤到省略号
+ *（格子两列、正文那一栏本来就窄，见 `TILE_SIDE_PADDING` 的宽度账）。
+ */
+internal val TILE_TITLE_MARKER_SIZE = 16.dp
+
+/** 上面那枚标记与标题之间的间距 —— 取 4dp，与 [SUMMARY_REF_GAP] 同档。 */
+internal val TILE_TITLE_MARKER_GAP = 4.dp
+
+/**
  * 首页那条链路提示（`SnackbarHost`）**内容盒外面**要留出的、给胶囊那圈影子落下的空间。
  *
- * ## 为什么必须留（2026-10-14 真机量出来的）
+ * ## 为什么必须留（真机量出来的）
  *
  *  库的 `SnackbarHost` 是「内容多高就多高」的 `LazyColumn`（内部 `reverseLayout`），
  *  items 的**外面那层盒子就是它的裁切边界** —— 影子的可见范围被卡在
@@ -268,7 +345,7 @@ internal val TILE_TEXT_OPTICAL_SHIFT = 1.5.dp
  * ## 为什么补在 item 里，而不是给 `SnackbarHost` 加 `padding`
  *
  *  加在 `SnackbarHost` 上是从**视窗里往外抠**：那个视窗跟着内容一起缩，越抠越没地方
- *  ——2026-10-14 试过（补 16dp），结果切痕跟着胶囊一起上移，一点没修好。
+ *  —— 试过（补 16dp），结果切痕跟着胶囊一起上移，一点没修好。
  *  只有撑大 **item 自己**（走 `SnackbarHost` 的 `content` 槽位）才会把裁切边界一起撑出去。
  *
  * 取 20dp：往上要 ~22dp、库已经给了 4dp，补到 24dp 有富余；横向补到 36dp（要 ~26dp）；
@@ -332,14 +409,25 @@ internal val APP_STATE_ICON_SIZE = 32.dp
 internal val APP_STATE_TEXT_GAP = 12.dp
 
 /**
- * 应用名右边那枚「系统 / 用户」小标签（[AppKindTag]）的间距与外观。
+ * 应用名右边那枚「模块 / 系统 / 用户」小标签（[AppKindTag]）的间距与外观。
  *
- * 底色走文字色的低透明度，不另取颜色：标签是纯背景件，深浅主题下都跟着内容色走。
+ * 底色走**文字色的低透明度**，所以颜色只有一处来源：三档各给一个色（见 `appKindTagTint`），
+ * 用户 = 中性、系统 = 主题蓝、模块 = 下面那对紫。
  */
 internal val APP_KIND_TAG_GAP = 6.dp
 internal val APP_KIND_TAG_RADIUS = 4.dp
 internal val APP_KIND_TAG_INSIDE = PaddingValues(horizontal = 5.dp, vertical = 1.dp)
 internal const val APP_KIND_TAG_BG_ALPHA = 0.10f
+
+/**
+ * 应用种类标签里「模块」那一档的颜色 —— 紫，两套主题各一值。
+ *
+ *  为什么不取库的色板：COUI 那套只有蓝（`primary`）与红（`error`）两个色相 —— 蓝给了「系统」、
+ *  红是「不可打开」的警告档，第三个色相只能自己定一份。判据同 `popupSurfaceColor`（按 `background`
+ *  亮度切），两档都取中等亮度：标签底是它自己的 10% 透明版，太深太浅都压不住。
+ */
+internal val APP_KIND_MODULE_LIGHT = Color(0xFF7C4DFF)
+internal val APP_KIND_MODULE_DARK = Color(0xFFB9A3FF)
 
 /**
  * 小标签相对「与大标题盒子居中」再往上抬的这一档 —— 0.5dp。
@@ -364,20 +452,70 @@ internal val GRID_GAP = PAGE_MARGIN
 /** 网格的行距 —— 与横向间距 [GRID_GAP] 同值（改了一边另一边跟着变）。 */
 internal val GRID_ROW_GAP = GRID_GAP
 
-/**
- * 动态显隐的控件统一的进出场时长 —— 180ms。
- *
- * 比整页转场快（它不是「换了一屏」），比一条提示稍慢（它要连带把卡片高度撑开 / 收起）。
- */
-internal const val VISIBILITY_MS = 180
+/** 全局统一颜色过渡曲线与时长（200ms 柔和减速，供全仓状态颜色切换）。 */
+internal val COLOR_TRANSITION_SPEC = tween<Color>(
+    durationMillis = 200,
+    easing = LinearOutSlowInEasing,
+)
 
-/** 动态显隐的控件统一的进场：淡入 + 纵向展开（只淡会跳、只展会拉，两样一起才自然）。 */
+/** 进场减速曲线：初段轻快响应、末段平滑收敛（ColorOS 系统标定减速曲线）。 */
+internal val EASING_EMPHASIZED_DECEL = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+/** 出场与收缩曲线：起步即时响应、全程平顺收拢，消灭初段停滞与末段急坠感。 */
+internal val EASING_EMPHASIZED_ACCEL = CubicBezierEasing(0.3f, 0f, 0.1f, 1f)
+
+/** 动态显隐控件进场时长（展开）。 */
+internal const val VISIBILITY_ENTER_MS = 260
+
+/** 动态显隐控件出场时长（收起）。 */
+internal const val VISIBILITY_EXIT_MS = 200
+
+/** 兼容旧引用时长（取进场时长）。 */
+internal const val VISIBILITY_MS = VISIBILITY_ENTER_MS
+
+/** 动态显隐统一进场：淡入 + 纵向柔和展开（对齐顶边缘向下推开）。 */
 internal val VISIBILITY_ENTER: EnterTransition =
-    fadeIn(tween(VISIBILITY_MS)) + expandVertically(tween(VISIBILITY_MS))
+    fadeIn(tween(180, easing = LinearOutSlowInEasing)) +
+        expandVertically(
+            animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+            expandFrom = Alignment.Top,
+        )
 
-/** 统一出场：纵向收起 + 淡出（[VISIBILITY_ENTER] 的镜像）。 */
+/** 统一出场：先快淡出（避免文字被截断挤压）+ 纵向利落收缩。 */
 internal val VISIBILITY_EXIT: ExitTransition =
-    fadeOut(tween(VISIBILITY_MS)) + shrinkVertically(tween(VISIBILITY_MS))
+    fadeOut(tween(120, easing = FastOutLinearInEasing)) +
+        shrinkVertically(
+            animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
+            shrinkTowards = Alignment.Top,
+        )
+
+/**
+ * 多条命令列表步骤专属进场动效：
+ * 展开高度 + 顶部轻微位移浮入 + 淡入，带来极其自然的“新步骤插入槽位”物理实感。
+ */
+internal val STEP_ROW_ENTER: EnterTransition =
+    fadeIn(tween(200, easing = LinearOutSlowInEasing)) +
+        expandVertically(
+            animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
+            expandFrom = Alignment.Top,
+        ) +
+        slideInVertically(
+            animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
+        ) { -it / 3 }
+
+/**
+ * 多条命令列表步骤专属退场动效：
+ * 文字先隐去 + 轻微位移离场 + 高度平滑收缩，使得后续项与底部添加行丝滑吸附上移。
+ */
+internal val STEP_ROW_EXIT: ExitTransition =
+    fadeOut(tween(120, easing = FastOutLinearInEasing)) +
+        shrinkVertically(
+            animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
+            shrinkTowards = Alignment.Top,
+        ) +
+        slideOutVertically(
+            animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
+        ) { -it / 4 }
 
 /**
  * 「支持的命令格式」卡里的一行。
@@ -391,9 +529,9 @@ internal data class CommandFormatLine(val text: String, val prefix: String? = nu
 /**
  * 「支持的命令格式」卡上的几行 —— 讲**命令输入框里能写什么**。
  *
- *  ⚠️ **收录规则：只列「没有内置入口」的格式**（2026-10-14 用户口径）。内置命令已经给了入口的那些
+ *  注意：**收录规则：只列「没有内置入口」的格式**。内置命令已经给了入口的那些
  *  不在这里重复教手写：`app:` / `window:` 有「打开应用」那一格（小窗是它菜单里的开关）、
- *  `zoom:mini[:collapse]` 有「系统小窗」那两档 —— 同一个能力摆两个入口，手写那条还更容易写错。
+ *  `zoom:mini[:collapse]` 有「应用转小窗」那两档 —— 同一个能力摆两个入口，手写那条还更容易写错。
  *  剩下的这几行是**没有图形入口**的：shell / keyevent / intent / shortcut / cmd。
  *
  *  点带 `prefix` 的那一行 = 把前缀**替换**进命令输入框（不是追加，见渲染点的注释）。
@@ -471,7 +609,7 @@ internal val MENU_ICON_SIZE = 20.dp
 
 /**
  * 首页「按键绑定」那行行尾箭头（[PageIcons.EnterArrow]）的尺寸 —— 取 24dp，
- * 与库原来那颗 `COUIIcons.Basic.ArrowRight` 同为 24dp 下折线占 12dp 的字形。
+ * 与库那颗 `COUIIcons.Basic.ArrowRight` 同为 24dp 下折线占 12dp 的字形。
  */
 internal val HOME_BINDING_ARROW_SIZE = 24.dp
 
