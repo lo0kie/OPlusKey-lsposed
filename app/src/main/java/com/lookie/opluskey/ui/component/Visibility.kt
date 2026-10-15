@@ -14,7 +14,7 @@ import androidx.compose.ui.Modifier
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
 
-/** 显隐动画包一层：进场 / 退场各自给一套动画，调用点不重复写 `AnimatedVisibility`。 */
+// 显隐动画包一层：进场 / 退场各自给一套动画，调用点不重复写 `AnimatedVisibility`。
 
 /**
  * **动态显隐的一段控件** —— 统一动画的唯一入口（规格见 [VISIBILITY_ENTER]）。

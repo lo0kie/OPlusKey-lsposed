@@ -4,12 +4,10 @@ import android.content.res.Configuration
 import android.view.ViewGroup
 import com.lookie.opluskey.core.log.XLog
 
-/**
- * 宿主窗口的读取与包装：从宿主 Activity 取换页用的容器、状态栏高度、深浅与页面 Context。
- *
- * 用到的两个 `R.id.*` 数值属于宿主 APK 的资源表（跨包资源 id 不成立），只能写死 + 按名字反查兜底；
- * 同一 ROM 内稳定，ROM 升级重建资源表时可能变。
- */
+// 宿主窗口的读取与包装：从宿主 Activity 取换页用的容器、状态栏高度、深浅与页面 Context。
+//
+// 用到的两个 `R.id.*` 数值属于宿主 APK 的资源表（跨包资源 id 不成立），只能写死 + 按名字反查兜底；
+// 同一 ROM 内稳定，ROM 升级重建资源表时可能变。
 
 /**
  * `R.id.container` 的具体数值 —— 同一 ROM 内稳定（就是 APK 资源表索引），
@@ -39,23 +37,24 @@ internal const val NAME_APPBAR = "appbar_layout"
  *
  * @return 顶栏 View；两条路都查不到时返回 null（调用方只影响「顶栏露着」，不崩）
  */
-internal fun findAppbar(activity: android.app.Activity): android.view.View? = try {
-    activity.findViewById<android.view.View>(ID_APPBAR) ?: run {
-        val id = activity.resources.getIdentifier(NAME_APPBAR, "id", HOST_PACKAGE)
-        if (id == 0) {
-            XLog.w("按名字也查不到 id/$NAME_APPBAR（宿主资源表里没有）")
-            return null
+internal fun findAppbar(activity: android.app.Activity): android.view.View? =
+    try {
+        activity.findViewById<android.view.View>(ID_APPBAR) ?: run {
+            val id = activity.resources.getIdentifier(NAME_APPBAR, "id", HOST_PACKAGE)
+            if (id == 0) {
+                XLog.w("按名字也查不到 id/$NAME_APPBAR（宿主资源表里没有）")
+                return null
+            }
+            XLog.w(
+                "写死的 appbar id 对不上，改用名字反查得到 0x${Integer.toHexString(id)}" +
+                    "（ROM 可能升级过资源表，建议更新 ID_APPBAR）",
+            )
+            activity.findViewById<android.view.View>(id)
         }
-        XLog.w(
-            "写死的 appbar id 对不上，改用名字反查得到 0x${Integer.toHexString(id)}" +
-                "（ROM 可能升级过资源表，建议更新 ID_APPBAR）",
-        )
-        activity.findViewById<android.view.View>(id)
+    } catch (e: Throwable) {
+        XLog.w("查宿主顶栏失败：${e.javaClass.simpleName}: ${e.message}")
+        null
     }
-} catch (e: Throwable) {
-    XLog.w("查宿主顶栏失败：${e.javaClass.simpleName}: ${e.message}")
-    null
-}
 
 /**
  * 宿主主题的浅色变体 `AppNoTitleTheme`（宿主 App 自己的主题，parent 链
@@ -74,7 +73,10 @@ internal const val HOST_PACKAGE = "com.oplus.gesture"
 internal fun isNight(context: android.content.Context): Boolean {
     // 首选：系统全局配置（最准）
     try {
-        val sys = android.content.res.Resources.getSystem().configuration.uiMode
+        val sys =
+            android.content.res.Resources
+                .getSystem()
+                .configuration.uiMode
         return (sys and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
     } catch (e: Throwable) {
         XLog.d("读系统全局 configuration 失败，退回 context 的值：${e.message}")
@@ -99,7 +101,12 @@ internal fun isLightColor(color: Int): Boolean {
 internal fun statusBarHeight(activity: android.app.Activity): Int {
     try {
         val insets = activity.window?.decorView?.rootWindowInsets
-        val top = insets?.getInsets(android.view.WindowInsets.Type.statusBars())?.top ?: 0
+        val top =
+            insets
+                ?.getInsets(
+                    android.view.WindowInsets.Type
+                        .statusBars(),
+                )?.top ?: 0
         if (top > 0) return top
     } catch (e: Throwable) {
         XLog.d("读状态栏 inset 失败：${e.message}")
@@ -120,13 +127,19 @@ internal fun statusBarHeight(activity: android.app.Activity): Int {
  *
  * `rootWindowInsets` 在 `onCreate` 早期还没下发，那时读到 null ⇒ 返回 false（键盘本来也不可能开着）。
  */
-internal fun isImeVisible(activity: android.app.Activity): Boolean = try {
-    activity.window?.decorView?.rootWindowInsets
-        ?.isVisible(android.view.WindowInsets.Type.ime()) == true
-} catch (e: Throwable) {
-    XLog.d("读 IME inset 失败（当作键盘没开）：${e.message}")
-    false
-}
+internal fun isImeVisible(activity: android.app.Activity): Boolean =
+    try {
+        activity.window
+            ?.decorView
+            ?.rootWindowInsets
+            ?.isVisible(
+                android.view.WindowInsets.Type
+                    .ime(),
+            ) == true
+    } catch (e: Throwable) {
+        XLog.d("读 IME inset 失败（当作键盘没开）：${e.message}")
+        false
+    }
 
 /**
  * 收起软键盘 —— 走 `InputMethodManager.hideSoftInputFromWindow` 而不是
@@ -137,8 +150,9 @@ internal fun isImeVisible(activity: android.app.Activity): Boolean = try {
  */
 internal fun hideIme(activity: android.app.Activity) {
     try {
-        val imm = activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
-            as? android.view.inputmethod.InputMethodManager ?: return
+        val imm =
+            activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                as? android.view.inputmethod.InputMethodManager ?: return
         imm.hideSoftInputFromWindow(activity.window?.decorView?.windowToken, 0)
     } catch (e: Throwable) {
         XLog.d("收键盘失败（忽略）：${e.message}")
@@ -156,13 +170,14 @@ internal fun hideIme(activity: android.app.Activity) {
 internal fun pageContext(activity: android.app.Activity): android.content.Context {
     // 宿主 Activity 自己的配置：必须直接读它的 resources，不能走 [isNight] ——
     // 那个首选系统全局配置，两个调用恒等，「宿主 night、系统浅色」的分支永远进不去。
-    val hostNight = try {
-        (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-            Configuration.UI_MODE_NIGHT_YES
-    } catch (e: Throwable) {
-        XLog.d("读宿主 Activity 配置失败：${e.message}")
-        return activity
-    }
+    val hostNight =
+        try {
+            (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+        } catch (e: Throwable) {
+            XLog.d("读宿主 Activity 配置失败：${e.message}")
+            return activity
+        }
     if (!hostNight || isNight(activity)) return activity
 
     return try {
@@ -202,12 +217,13 @@ internal fun findContainer(activity: android.app.Activity): ViewGroup? {
 }
 
 /** 平台类的 `Activity#onBackPressed()`；平台上没有它时返回 null。 */
-internal fun platformOnBackPressed(): java.lang.reflect.Method? = try {
-    android.app.Activity::class.java.getDeclaredMethod("onBackPressed")
-} catch (e: Throwable) {
-    XLog.d("平台上没有 Activity#onBackPressed：${e.message}")
-    null
-}
+internal fun platformOnBackPressed(): java.lang.reflect.Method? =
+    try {
+        android.app.Activity::class.java.getDeclaredMethod("onBackPressed")
+    } catch (e: Throwable) {
+        XLog.d("平台上没有 Activity#onBackPressed：${e.message}")
+        null
+    }
 
 /**
  * 宿主自己声明的 `onBackPressed()`；它没 override 时返回 null。

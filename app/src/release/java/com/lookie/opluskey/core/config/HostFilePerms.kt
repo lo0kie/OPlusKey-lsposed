@@ -8,4 +8,7 @@ import java.io.File
  * 这里的空实现是刻意的：release 产物里不应出现任何 `setReadable` / `setExecutable` 调用。
  */
 @Suppress("UNUSED_PARAMETER")
-internal fun exposeToOthers(dir: File, file: File) = Unit
+internal fun exposeToOthers(
+    dir: File,
+    file: File,
+) = Unit

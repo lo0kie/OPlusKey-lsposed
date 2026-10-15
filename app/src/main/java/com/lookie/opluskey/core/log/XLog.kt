@@ -12,7 +12,6 @@ import io.github.libxposed.api.XposedModule
  *  - debug + 宿主进程里 `i`/`d` 才真正可读；高频路径（如「非侧键放行」）留在 `d`，避免刷屏。
  */
 object XLog {
-
     /** LSPosed 日志页里按这个 TAG 过滤。 */
     private const val TAG = "OplusKey"
 
@@ -60,9 +59,15 @@ object XLog {
         if (VERBOSE_LOG) write(Log.INFO, msg(), null)
     }
 
-    fun w(msg: String, tr: Throwable? = null) = write(Log.WARN, msg, tr)
+    fun w(
+        msg: String,
+        tr: Throwable? = null,
+    ) = write(Log.WARN, msg, tr)
 
-    fun e(msg: String, tr: Throwable? = null) = write(Log.ERROR, msg, tr)
+    fun e(
+        msg: String,
+        tr: Throwable? = null,
+    ) = write(Log.ERROR, msg, tr)
 
     /** 导出用的内存环形缓冲：只留最近 [BUFFER_MAX] 条（**本进程**的日志）。 */
     private const val BUFFER_MAX = 2000
@@ -70,16 +75,24 @@ object XLog {
     private val buffer = java.util.concurrent.ConcurrentLinkedDeque<String>()
 
     /** 缓冲条数 —— 用计数而不是 `buffer.size`（那是 O(n) 全表遍历，而每条日志都要判一次）。 */
-    private val buffered = java.util.concurrent.atomic.AtomicInteger()
+    private val buffered =
+        java.util.concurrent.atomic
+            .AtomicInteger()
 
-    private val stamp = java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS")
+    private val stamp =
+        java.time.format.DateTimeFormatter
+            .ofPattern("MM-dd HH:mm:ss.SSS")
 
     /** 导出用：把缓冲拼成文本（宿主进程侧；注入侧在 LSPosed 的日志页里）。 */
     fun snapshot(): String = buffer.joinToString("\n")
 
     /** 日志的实际出口；`@PublishedApi internal` 是为了让 [d] / [i] 这两个内联函数能调用它。 */
     @PublishedApi
-    internal fun write(priority: Int, msg: String, tr: Throwable?) {
+    internal fun write(
+        priority: Int,
+        msg: String,
+        tr: Throwable?,
+    ) {
         val text = "$msg${tr?.let { " | " + it } ?: ""}"
         // 三处出口（缓冲 / logcat / 框架日志）都是尽力而为、失败即丢，绝不影响调用方。
         // 用 runCatching 是明确的丢弃语义，不是 AGENTS.md 五之二 2 禁的「以保护代 catch」。
@@ -103,7 +116,10 @@ object XLog {
      * 初始化，可能抛 `ExceptionInInitializerError` / `NoClassDefFoundError`，一旦顺着
      * `onPackageReady` 抛回框架就是开机循环。本函数把「模块出错」与「宿主出错」彻底隔开。
      */
-    fun guard(what: String, block: () -> Unit) {
+    fun guard(
+        what: String,
+        block: () -> Unit,
+    ) {
         try {
             block()
         } catch (e: Throwable) {
@@ -114,12 +130,13 @@ object XLog {
     }
 
     /** 缓冲里那一列级别（logcat 的数值档 → 一个字母）。 */
-    private fun level(priority: Int): String = when (priority) {
-        Log.VERBOSE -> "V"
-        Log.DEBUG -> "D"
-        Log.INFO -> "I"
-        Log.WARN -> "W"
-        Log.ERROR -> "E"
-        else -> "?"
-    }
+    private fun level(priority: Int): String =
+        when (priority) {
+            Log.VERBOSE -> "V"
+            Log.DEBUG -> "D"
+            Log.INFO -> "I"
+            Log.WARN -> "W"
+            Log.ERROR -> "E"
+            else -> "?"
+        }
 }

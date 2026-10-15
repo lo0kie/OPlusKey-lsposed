@@ -8,10 +8,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_ACCEL
-import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
-import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
-import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -29,14 +25,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_ACCEL
+import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.FAB_SCROLL_DIRECTION_THRESHOLD
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
+import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.screen.CommandScreen
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 右下角那颗 FAB 那一族：按钮本体、页面角落定位、按滚动方向显隐。 */
+// 右下角那颗 FAB 那一族：按钮本体、页面角落定位、按滚动方向显隐。
 
 /**
  * 页面右下角那颗 FAB 的**本体** —— 形状 / 底色 / 阴影收在这里，[PageCornerFab] 的两个调用点共用
@@ -101,15 +101,18 @@ internal fun BoxScope.PageCornerFab(
     val slidePx = with(LocalDensity.current) { (PAGE_BOTTOM_PADDING * 2).roundToPx() }
     AnimatedVisibility(
         visible = visible,
-        modifier = Modifier
-            .align(Alignment.BottomEnd)
-            .padding(end = PAGE_MARGIN * 2, bottom = PAGE_BOTTOM_PADDING * 2),
-        enter = slideInVertically(
-            animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
-        ) { it + slidePx } + fadeIn(tween(180, easing = LinearOutSlowInEasing)),
-        exit = slideOutVertically(
-            animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
-        ) { it + slidePx } + fadeOut(tween(140, easing = FastOutLinearInEasing)),
+        modifier =
+            Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = PAGE_MARGIN * 2, bottom = PAGE_BOTTOM_PADDING * 2),
+        enter =
+            slideInVertically(
+                animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+            ) { it + slidePx } + fadeIn(tween(180, easing = LinearOutSlowInEasing)),
+        exit =
+            slideOutVertically(
+                animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
+            ) { it + slidePx } + fadeOut(tween(140, easing = FastOutLinearInEasing)),
     ) { content() }
 }
 
@@ -130,9 +133,10 @@ internal fun BoxScope.PageCornerFab(
  */
 @Composable
 internal fun rememberFabVisibleOnScroll(scrollState: ScrollState): Boolean {
-    val thresholdPx = with(LocalDensity.current) {
-        FAB_SCROLL_DIRECTION_THRESHOLD.roundToPx()
-    }
+    val thresholdPx =
+        with(LocalDensity.current) {
+            FAB_SCROLL_DIRECTION_THRESHOLD.roundToPx()
+        }
     var visible by remember(scrollState) { mutableStateOf(true) }
     LaunchedEffect(scrollState, thresholdPx) {
         var last = scrollState.value

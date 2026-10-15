@@ -6,17 +6,19 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 
-/**
- * 命令文本的显示层：把一条命令 / 一个步骤压成界面上要显示的那几行字。
- * 与 Compose、与页面状态无关 —— 输入是 `Command` / 字符串，输出是字符串 / 图标。
- */
+// 命令文本的显示层：把一条命令 / 一个步骤压成界面上要显示的那几行字。
+// 与 Compose、与页面状态无关 —— 输入是 `Command` / 字符串，输出是字符串 / 图标。
+
 /**
  * 一条命令在卡片里的摘要行：一步一条，同时带着那一步的原始取值。
  *
  * 带 `token` 是因为行首要按它决定补不补那枚命令引用小图标 —— 光看 `title` 分不出
  * 「引用另一条命令」与「恰好同名的命令文本」。
  */
-internal data class StepLine(val token: String, val title: String)
+internal data class StepLine(
+    val token: String,
+    val title: String,
+)
 
 /**
  * 「多条命令」的摘要行：一步一条。只管多条 —— 单条那一路显示原始取值。
@@ -48,17 +50,25 @@ internal fun isCommandRef(token: String): Boolean = token.startsWith(Command.PRE
  *  - `cmd:` 只显示命令名 —— 与执行时提示（`host/action/ActionNotice`）同一个口径；
  *  - 都认不出来就原样显示取值（比如手改过的文件）。
  */
-internal fun stepTitle(token: String, appLabel: (String) -> String): String {
+internal fun stepTitle(
+    token: String,
+    appLabel: (String) -> String,
+): String {
     if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
     val action = Action.parse(token)
     return when {
-        action is Action.App -> I18n.format(
-            Strings.CATALOG_OPEN_APP_STEP_DESC,
-            appLabel(action.target.substringBefore('/'))
-        )
-        else -> ActionCatalog.modeName(action)
-            ?: ActionCatalog.specOf(action)?.label
-            ?: token
+        action is Action.App -> {
+            I18n.format(
+                Strings.CATALOG_OPEN_APP_STEP_DESC,
+                appLabel(action.target.substringBefore('/')),
+            )
+        }
+
+        else -> {
+            ActionCatalog.modeName(action)
+                ?: ActionCatalog.specOf(action)?.label
+                ?: token
+        }
     }
 }
 
@@ -72,7 +82,10 @@ internal fun stepTitle(token: String, appLabel: (String) -> String): String {
  *
  * @param commands 当前命令库 —— 与 [stepTitle] 的 `appLabel` 同一条规矩：查名字要用谁由调用方传进来。
  */
-internal fun stepIcon(token: String, commands: List<Command>): ImageVector {
+internal fun stepIcon(
+    token: String,
+    commands: List<Command>,
+): ImageVector {
     // 走 `ActionCatalog` 那份按 token 记忆的规范化结果，不在这里现 `Action.parse` ——
     //  步骤行的每一次重组都会走到这一句（见 `ActionCatalog.canonicalToken`）。
     if (!isCommandRef(token)) return actionIcon(ActionCatalog.canonicalToken(token))
@@ -92,11 +105,12 @@ internal fun durationText(ms: Int): String {
     if (ms < 1000) return I18n.format(Strings.COMMON_TIME_MS, ms)
     val seconds = ms / 1000
     val rest = ms % 1000
-    val secStr = if (rest == 0) {
-        seconds.toString()
-    } else {
-        // 余数按三位补零、再去掉末尾的零：1500 → "1.5"、1050 → "1.05"、1005 → "1.005"
-        "$seconds.${rest.toString().padStart(3, '0').trimEnd('0')}"
-    }
+    val secStr =
+        if (rest == 0) {
+            seconds.toString()
+        } else {
+            // 余数按三位补零、再去掉末尾的零：1500 → "1.5"、1050 → "1.05"、1005 → "1.005"
+            "$seconds.${rest.toString().padStart(3, '0').trimEnd('0')}"
+        }
     return I18n.format(Strings.COMMON_TIME_SEC, secStr)
 }

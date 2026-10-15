@@ -35,12 +35,22 @@
         android:supportsRtl="true"
         tools:ignore="MissingApplicationIcon">
 
+        <!--
+          这两条 `tools:node="remove"` 是**删掉**依赖合并进来的条目（模块零组件、没有自己的
+          进程，不该在谁启动时跑它们的初始化）。
+
+          `MissingClass` 这一档是**故意的**：`androidx.startup.InitializationProvider` 压根不在
+          本模块的编译类路径上 —— 依赖的清单里有它、类在 `androidx.startup:startup-runtime` 里，
+          而那个库不是本模块的直接依赖。少写这条 ignore，lint 会把它当成「清单引用了不存在的类」。
+        -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
+            tools:ignore="MissingClass"
             tools:node="remove" />
         <receiver
             android:name="androidx.profileinstaller.ProfileInstallReceiver"
+            tools:ignore="MissingClass"
             tools:node="remove" />
     </application>
 

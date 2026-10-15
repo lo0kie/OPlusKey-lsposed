@@ -12,7 +12,6 @@ import com.lookie.opluskey.ui.SettingsPage
  * 一律退默认（关），与配置同一条降级纪律。
  */
 internal object UiState {
-
     /** 「选择应用」页是否列出系统应用。 */
     private const val KEY_SHOW_SYSTEM_APPS = "show_system_apps"
 
@@ -64,7 +63,10 @@ internal object UiState {
     }
 
     /** 读失败时不写回，只报一声（判据级，用 `w`：`d` 在 release 被编译期消除）。 */
-    private fun refuseWrite(key: String, value: Boolean): Boolean {
+    private fun refuseWrite(
+        key: String,
+        value: Boolean,
+    ): Boolean {
         XLog.w("写界面状态失败：原文件读不出来，不整份覆盖（$key=$value）")
         return false
     }
@@ -75,19 +77,19 @@ internal object UiState {
      * @return **读不了返回 null**，与「文件还不存在 = 空串」分开 —— 写方靠这个区分
      *   「可以按空表重建」与「不许覆盖」（见 [writeShowSystemApps]）。
      */
-    private fun readTextOrNull(): String? = try {
-        val f = ConfigStore.uiFile()
-        // 剥 BOM：这份文件同样可能被记事本改过（见 ConfigStore.readText）
-        if (f.isFile) ConfigStore.readText(f) else ""
-    } catch (e: Throwable) {
-        // 判据级：读失败会让写回被拒（用户看到的是「没保存」），用 w 才能在 release 里看见
-        XLog.w("读界面状态失败（按默认处理、且不写回）：${e.message}")
-        null
-    }
+    private fun readTextOrNull(): String? =
+        try {
+            val f = ConfigStore.uiFile()
+            // 剥 BOM：这份文件同样可能被记事本改过（见 ConfigStore.readText）
+            if (f.isFile) ConfigStore.readText(f) else ""
+        } catch (e: Throwable) {
+            // 判据级：读失败会让写回被拒（用户看到的是「没保存」），用 w 才能在 release 里看见
+            XLog.w("读界面状态失败（按默认处理、且不写回）：${e.message}")
+            null
+        }
 
     /** @return 是否真的落盘 —— 只意味着「这次改动活过了本进程」，失败由 writeAtomically 记日志。 */
-    private fun writeText(text: String): Boolean =
-        ConfigStore.writeAtomically(ConfigStore.uiFile(), text, openReadable = false)
+    private fun writeText(text: String): Boolean = ConfigStore.writeAtomically(ConfigStore.uiFile(), text, openReadable = false)
 
     /** `key=value` 逐行解析；注释 / 空行 / 没有 `=` 的行一律跳过（半截文件也只是少几个键）。 */
     private fun parse(text: String): MutableMap<String, String> {
@@ -101,8 +103,9 @@ internal object UiState {
         return map
     }
 
-    private fun render(map: Map<String, String>): String = buildString {
-        appendLine("# OPlusKey 界面状态 —— 模块自己的显示偏好，不是用户配置（见 ui/state/UiState.kt）")
-        map.forEach { (key, value) -> appendLine("$key=$value") }
-    }
+    private fun render(map: Map<String, String>): String =
+        buildString {
+            appendLine("# OPlusKey 界面状态 —— 模块自己的显示偏好，不是用户配置（见 ui/state/UiState.kt）")
+            map.forEach { (key, value) -> appendLine("$key=$value") }
+        }
 }

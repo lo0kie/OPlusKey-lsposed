@@ -158,17 +158,23 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     //   · 机型不支持 ⇒ 这台机器上就是不能用（[UNSUPPORTED_DEVICE_HINT]，等也没用）；
     //   · 机型在、系统版本没适配 ⇒ 只能等作者适配（[PENDING_DEVICE_HINT]）；
     //   · 配置没读成功 ⇒ 用户重进页面就能解决（[CONFIG_READ_FAILED_HINT]）；
-    //   · 链路没齐 ⇒ 请稍候（[MODULE_UNAVAILABLE_HINT]）；
-    //   · 主开关关着 ⇒ 就是它关着导致的（[KEY_DISABLED_HINT]，拨回来即可）。
-    //  最后那一档排在链路之后：链路没齐时主开关**根本拨不动**，先报链路才是能动手的那一件。
-    val blockHint = when {
-        devicePending -> PENDING_DEVICE_HINT
-        !deviceSupported -> UNSUPPORTED_DEVICE_HINT
-        configReadOnly -> CONFIG_READ_FAILED_HINT
-        !linkReady -> MODULE_UNAVAILABLE_HINT
-        !key.enabled -> KEY_DISABLED_HINT
-        else -> null
-    }
+    //   · 主开关关着 ⇒ 就是它关着导致的（[KEY_DISABLED_HINT]，拨回来即可）；
+    //   · 链路没齐 ⇒ 请稍候（[MODULE_UNAVAILABLE_HINT]）。
+    //  ⚠️ 主开关那一档排在链路**之前**（2026-10-16 用户定，原来在后）：「链路没齐」有两类成因，
+    //  一类会自愈（注入侧回包还没到）、一类是用户当下就该动手的那一件。原来把主开关排在后面，
+    //  于是**清空配置**之后先报「模块暂不可用，请稍候」—— 可那个「稍候」等的是回包，用户等不出
+    //  结果，真正该做的（把主开关打开）反而被盖住。代价：链路真故障**又**恰逢主开关关着时，
+    //  报的是「模块未启用」而那一行当时是灰的（`enabled` 吃 [linkReady]）——
+    //  拨不动的人会去看「更多选项 → 运行状态」，那儿逐段说清了缺哪一段。
+    val blockHint =
+        when {
+            devicePending -> PENDING_DEVICE_HINT
+            !deviceSupported -> UNSUPPORTED_DEVICE_HINT
+            configReadOnly -> CONFIG_READ_FAILED_HINT
+            !key.enabled -> KEY_DISABLED_HINT
+            !linkReady -> MODULE_UNAVAILABLE_HINT
+            else -> null
+        }
     LaunchedEffect(blockHint) {
         if (blockHint == null) {
             hostServiceSnackbar.newestSnackbarData()?.dismiss()
@@ -225,7 +231,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             //  `deviceSupported` 同理：适配清单外的组合只注入了界面层，拨它也不会生效。
             //
             // 模块没就绪时它照样禁用 —— 那种情况下拨这个开关也不会生效，页面底部那条常驻提示
-            //（[MODULE_UNAVAILABLE_HINT] / [CONFIG_READ_FAILED_HINT] / [UNSUPPORTED_DEVICE_HINT] /
+            // （[MODULE_UNAVAILABLE_HINT] / [CONFIG_READ_FAILED_HINT] / [UNSUPPORTED_DEVICE_HINT] /
             //  [PENDING_DEVICE_HINT]）
             // 会说明该做什么。
             //
@@ -239,12 +245,13 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             SwitchRow(
                 title = I18n.get(Strings.SETTING_ENABLE_BINDING, "启用按键绑定"),
                 // 开着时说明「关掉会怎样」；关着时直接报状态 —— 光看一个灰开关不知道后果
-                summary = if (key.enabled) {
-                    // （14 字）正好一行放得下，再多一个字就折行、把这张卡撑高
-                    I18n.get(Strings.HOME_SWITCH_DESC_ENABLED, "关闭后此模块将停用")
-                } else {
-                    I18n.get(Strings.HOME_SWITCH_DESC_DISABLED, "侧键由系统处理")
-                },
+                summary =
+                    if (key.enabled) {
+                        // （14 字）正好一行放得下，再多一个字就折行、把这张卡撑高
+                        I18n.get(Strings.HOME_SWITCH_DESC_ENABLED, "关闭后此模块将停用")
+                    } else {
+                        I18n.get(Strings.HOME_SWITCH_DESC_DISABLED, "侧键由系统处理")
+                    },
                 // 行首图标与下一行对齐用（不给的话两行的标题左边缘会差一个图标宽）。
                 // 电源符号 = 「这一行是总开关」。
                 icon = PageIcons.Power,
@@ -272,23 +279,25 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             //  行尾箭头**自己画**：库的 `ArrowPreference` 那颗是 COUI 图标集的
             // 12x24 窄箭头（描边 1.4），与页面其余 Tabler 图标（描边 2）不是一支笔。
             // 自己画就得自己管两档色 —— 照抄库那支选择器
-            //（`onSurfaceVariantActions` / `disabledOnSecondaryVariant`）。
+            // （`onSurfaceVariantActions` / `disabledOnSecondaryVariant`）。
             // 尺寸见 [HOME_BINDING_ARROW_SIZE]：24dp 下 Tabler 那一段折线正好与库原箭头一样高。
             val bindingIconTint by animateColorAsState(
-                targetValue = if (pageEnabled) {
-                    COUITheme.colorScheme.onSurfaceContainer
-                } else {
-                    COUITheme.colorScheme.disabledOnSecondaryVariant
-                },
+                targetValue =
+                    if (pageEnabled) {
+                        COUITheme.colorScheme.onSurfaceContainer
+                    } else {
+                        COUITheme.colorScheme.disabledOnSecondaryVariant
+                    },
                 animationSpec = COLOR_TRANSITION_SPEC,
                 label = "HomeBindingIcon",
             )
             val bindingArrowTint by animateColorAsState(
-                targetValue = if (pageEnabled) {
-                    COUITheme.colorScheme.onSurfaceVariantActions
-                } else {
-                    COUITheme.colorScheme.disabledOnSecondaryVariant
-                },
+                targetValue =
+                    if (pageEnabled) {
+                        COUITheme.colorScheme.onSurfaceVariantActions
+                    } else {
+                        COUITheme.colorScheme.disabledOnSecondaryVariant
+                    },
                 animationSpec = COLOR_TRANSITION_SPEC,
                 label = "HomeBindingArrow",
             )
@@ -387,7 +396,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         }
 
         // 版本 / 仓库地址那两行搬去**独立的「更多选项」页**
-        //（[AboutScreen]，从顶栏 ⋮ 菜单进）—— 它们是「想知道时才看一眼」的信息，
+        // （[AboutScreen]，从顶栏 ⋮ 菜单进）—— 它们是「想知道时才看一眼」的信息，
         // 摆在首页会把常用的那几张卡挤下去。
 
         // 「其他」分组：进「更多选项」页（[AboutScreen]：
@@ -439,10 +448,11 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
  *（与这一层别处的纪律一致：页面上的动作失败绝不外抛）。
  */
 internal fun SettingsPage.openUrl(url: String) {
-    val intent = android.content.Intent(
-        android.content.Intent.ACTION_VIEW,
-        android.net.Uri.parse(url),
-    )
+    val intent =
+        android.content.Intent(
+            android.content.Intent.ACTION_VIEW,
+            android.net.Uri.parse(url),
+        )
     val host = unwrapActivity(context)
     try {
         if (host != null) {
@@ -486,14 +496,15 @@ internal fun SettingsPage.unwrapActivity(from: android.content.Context?): androi
  *  `BuildConfig` 在本工程是**关掉**的（见 `build.gradle.kts` 的 `buildFeatures`），所以只能
  * 从 `PackageManager` 读。
  */
-private fun SettingsPage.moduleVersionName(): String? = try {
-    context.packageManager
-        .getPackageInfo(KeyModule.MODULE_PACKAGE, 0)
-        .versionName
-} catch (e: Throwable) {
-    XLog.w("读模块版本号失败：${e.javaClass.simpleName}")
-    null
-}
+private fun SettingsPage.moduleVersionName(): String? =
+    try {
+        context.packageManager
+            .getPackageInfo(KeyModule.MODULE_PACKAGE, 0)
+            .versionName
+    } catch (e: Throwable) {
+        XLog.w("读模块版本号失败：${e.javaClass.simpleName}")
+        null
+    }
 
 /**
  * 出包时注入的构建时刻（`yyyy-MM-dd HH:mm:ss`，gradle 的 `resValue`，见 `build.gradle.kts` 的 `build_id`）。
@@ -502,15 +513,17 @@ private fun SettingsPage.moduleVersionName(): String? = try {
  * 是别人的字符串（或 0）。必须按**模块包名**去拿我们那份资源。拿不到（没走 gradle 出的包 /
  * 宿主限制）就退回 [KeyModule.BUILD_ID] **整串** —— 它本身是 `日期-序号`，也是带日期的。
  */
-private fun SettingsPage.moduleBuildStamp(): String = try {
-    val res = context.packageManager
-        .getResourcesForApplication(KeyModule.MODULE_PACKAGE)
-    val id = res.getIdentifier("build_id", "string", KeyModule.MODULE_PACKAGE)
-    res.getString(id).takeIf { it.isNotBlank() }
-} catch (e: Throwable) {
-    XLog.w("读构建标识失败（退回常量）：${e.javaClass.simpleName}")
-    null
-} ?: KeyModule.BUILD_ID
+private fun SettingsPage.moduleBuildStamp(): String =
+    try {
+        val res =
+            context.packageManager
+                .getResourcesForApplication(KeyModule.MODULE_PACKAGE)
+        val id = res.getIdentifier("build_id", "string", KeyModule.MODULE_PACKAGE)
+        res.getString(id).takeIf { it.isNotBlank() }
+    } catch (e: Throwable) {
+        XLog.w("读构建标识失败（退回常量）：${e.javaClass.simpleName}")
+        null
+    } ?: KeyModule.BUILD_ID
 
 /**
  * 完整版本标识：**模块自己**的版本号 + [BUILD_KIND] + 构建时刻
@@ -543,12 +556,13 @@ internal fun SettingsPage.appVersionText(): String {
  * [BUILD_KIND]，不抛异常。
  */
 internal fun SettingsPage.appVersionLabel(): String {
-    val version = if (SHOW_BUILD_TIME) {
-        appVersionText()
-    } else {
-        val name = moduleVersionName()
-        if (name.isNullOrBlank()) BUILD_KIND else "$name-$BUILD_KIND"
-    }
+    val version =
+        if (SHOW_BUILD_TIME) {
+            appVersionText()
+        } else {
+            val name = moduleVersionName()
+            if (name.isNullOrBlank()) BUILD_KIND else "$name-$BUILD_KIND"
+        }
     return "$VERSION_LABEL_PREFIX$version"
 }
 

@@ -9,7 +9,6 @@ import com.lookie.opluskey.host.action.KsuCompat
 
 /** 设置页上可选的「动作清单」（界面用的展示层数据）。 */
 internal object ActionCatalog {
-
     /**
      * 一个可选动作的展示信息。
      *
@@ -65,51 +64,52 @@ internal object ActionCatalog {
      *  将来真出现「同词不同义」，再给那个构造点单独开一个键。漏项不会报错，只是那一格固定显示中文，
      *  所以往 [GROUPS] / 各 `MODES` 表加人时**对着这张表一起加**。
      */
-    private val TITLE_KEYS: Map<String, String> = mapOf(
-        // 网格两组
-        "无操作" to Strings.ACTION_NONE,
-        "系统导航" to Strings.CATEGORY_SYSTEM_NAV,
-        "通知与控制中心" to Strings.CATEGORY_PANEL,
-        "媒体控制" to Strings.CATEGORY_MEDIA,
-        "响铃状态" to Strings.CATEGORY_RINGER,
-        "系统按键" to Strings.CATALOG_SYSTEM_KEYS,
-        "电源菜单" to Strings.PANEL_POWER_MENU,
-        "手电筒" to Strings.CATALOG_FLASHLIGHT,
-        "截图" to Strings.CATALOG_SCREENSHOT,
-        "小布识屏" to Strings.TOOL_SCREEN_RECOGNITION,
-        "一键闪记" to Strings.CATALOG_FLASH_NOTE,
-        "免打扰" to Strings.CATALOG_DND,
-        "录音" to Strings.CATALOG_RECORDING,
-        "应用转小窗" to Strings.TOOL_MINI_WINDOW,
-        "打开应用" to Strings.TOOL_OPEN_APP,
-        // 响铃状态菜单
-        "循环" to Strings.CATALOG_MODE_CYCLE,
-        "响铃" to Strings.CATALOG_MODE_RING,
-        "振动" to Strings.CATALOG_MODE_VIBRATE,
-        "静音" to Strings.CATALOG_MODE_SILENT,
-        // 媒体控制菜单
-        "播放 / 暂停" to Strings.MEDIA_PLAY_PAUSE,
-        "播放" to Strings.CATALOG_MODE_PLAY,
-        "暂停" to Strings.CATALOG_MODE_PAUSE,
-        "上一首" to Strings.MEDIA_PREV,
-        "下一首" to Strings.MEDIA_NEXT,
-        // 应用转小窗菜单
-        "展开小窗" to Strings.CATALOG_MODE_EXPAND,
-        "收起小窗" to Strings.CATALOG_MODE_COLLAPSE,
-        // 系统导航菜单
-        "主屏幕" to Strings.CATALOG_MODE_HOME,
-        "返回" to Strings.CATALOG_MODE_BACK,
-        "最近任务" to Strings.NAV_RECENTS,
-        // 通知与控制中心菜单
-        "通知中心" to Strings.CATALOG_MODE_NOTIFICATIONS,
-        "控制中心" to Strings.CATALOG_MODE_CONTROL_CENTER,
-        // 系统按键菜单
-        "音量 +" to Strings.MEDIA_VOL_UP,
-        "音量 −" to Strings.CATALOG_MODE_VOL_DOWN,
-        "电源键" to Strings.CATALOG_MODE_POWER,
-        // 「添加命令」浮层里那一行（挑应用做一步）
-        "选择应用" to Strings.APP_PICKER_TITLE,
-    )
+    private val TITLE_KEYS: Map<String, String> =
+        mapOf(
+            // 网格两组
+            "无操作" to Strings.ACTION_NONE,
+            "系统导航" to Strings.CATEGORY_SYSTEM_NAV,
+            "通知与控制中心" to Strings.CATEGORY_PANEL,
+            "媒体控制" to Strings.CATEGORY_MEDIA,
+            "响铃状态" to Strings.CATEGORY_RINGER,
+            "系统按键" to Strings.CATALOG_SYSTEM_KEYS,
+            "电源菜单" to Strings.PANEL_POWER_MENU,
+            "手电筒" to Strings.CATALOG_FLASHLIGHT,
+            "截图" to Strings.CATALOG_SCREENSHOT,
+            "小布识屏" to Strings.TOOL_SCREEN_RECOGNITION,
+            "一键闪记" to Strings.CATALOG_FLASH_NOTE,
+            "免打扰" to Strings.CATALOG_DND,
+            "录音" to Strings.CATALOG_RECORDING,
+            "应用转小窗" to Strings.TOOL_MINI_WINDOW,
+            "打开应用" to Strings.TOOL_OPEN_APP,
+            // 响铃状态菜单
+            "循环" to Strings.CATALOG_MODE_CYCLE,
+            "响铃" to Strings.CATALOG_MODE_RING,
+            "振动" to Strings.CATALOG_MODE_VIBRATE,
+            "静音" to Strings.CATALOG_MODE_SILENT,
+            // 媒体控制菜单
+            "播放 / 暂停" to Strings.MEDIA_PLAY_PAUSE,
+            "播放" to Strings.CATALOG_MODE_PLAY,
+            "暂停" to Strings.CATALOG_MODE_PAUSE,
+            "上一首" to Strings.MEDIA_PREV,
+            "下一首" to Strings.MEDIA_NEXT,
+            // 应用转小窗菜单
+            "展开小窗" to Strings.CATALOG_MODE_EXPAND,
+            "收起小窗" to Strings.CATALOG_MODE_COLLAPSE,
+            // 系统导航菜单
+            "主屏幕" to Strings.CATALOG_MODE_HOME,
+            "返回" to Strings.CATALOG_MODE_BACK,
+            "最近任务" to Strings.NAV_RECENTS,
+            // 通知与控制中心菜单
+            "通知中心" to Strings.CATALOG_MODE_NOTIFICATIONS,
+            "控制中心" to Strings.CATALOG_MODE_CONTROL_CENTER,
+            // 系统按键菜单
+            "音量 +" to Strings.MEDIA_VOL_UP,
+            "音量 −" to Strings.CATALOG_MODE_VOL_DOWN,
+            "电源键" to Strings.CATALOG_MODE_POWER,
+            // 「添加命令」浮层里那一行（挑应用做一步）
+            "选择应用" to Strings.APP_PICKER_TITLE,
+        )
 
     /** 「无操作」那套图标（宿主里就是「一个斜杠圈」）。 */
     private const val ICON_NONE_MIDDLE = "ac_no_operation_middle_icon"
@@ -184,60 +184,63 @@ internal object ActionCatalog {
      * [ALL] 是把两组按顺序拍平的**扁平表**：焦点索引、图标预热等调用方只看它，
      * 分组只是展示层切分，不影响取值与判定（选中的比法、写进配置的 token 都不变）。
      */
-    val GROUPS: List<Pair<String, List<Spec>>> = listOf(
-        // 无操作在最前：它是「解除绑定」的语义，得一眼能找到。
-        // 组名不叫「系统按键」：这一组里通知与控制中心 / 媒体控制 / 响铃状态 / 电源菜单都不是「按键」。
-        "系统操作" to listOf(
-            Spec(
-                title = "无操作",
-                summary = "按键被吞掉，什么都不做",
-                token = "none",
-                middleIcon = ICON_NONE_MIDDLE,
-                tabIcon = ICON_NONE_TAB,
-                oval = ICON_NONE_OVAL,
-            ),
-            // 「主屏幕 / 返回 / 最近任务」三档收进这一格：点它弹 [NAV_MODES] 菜单。
-            // 与 [MEDIA_TILE] / [RINGER_TILE] 不同，这三档**各不相同**，格子本身代表不了任何一个取值
-            // ⇒ 与 [APP_TILE] 同类，是个**标记**：永不写进配置，也不能作为多条命令的一步。
-            Spec(title = "系统导航", summary = NAV_TILE, token = NAV_TILE),
-            // 「通知与控制中心」那一格：点它弹 [PANEL_MODES] 菜单（原来是「通知栏」一条，
-            // 「通知栏」一档拆成两条）。两条各是一个真取值，格子代表不了其中任何一条
-            // ⇒ 与 [NAV_TILE] / [MINI_TILE] 同类，是个**标记**格，永不写进配置。
-            Spec(title = "通知与控制中心", summary = PANEL_TILE, token = PANEL_TILE),
-            // 这一格与「响铃状态」同属**入口格**（点它弹 [MEDIA_MODES] 菜单，不直接写配置），
-            // 与「打开应用」一起归 [isEntryTile]；但它俩是真取值，能作为多条命令的一步。
-            // 「播放 / 暂停」收进这里 —— 同一个取值不给两个入口。
-            MEDIA_TILE_SPEC,
-            Spec(title = "响铃状态", summary = RINGER_TILE, token = RINGER_TILE),
-            // 「音量 + / 音量 − / 电源键」三档收进这一格（点它弹 [KEY_MODES] 菜单），同样是标记。
-            Spec(title = "系统按键", summary = KEY_TILE, token = KEY_TILE),
-            // KSU 没有这项；执行侧在 system_server 里反射调 PWM，不走按键长按
-            Spec(title = "电源菜单", summary = POWER_MENU, token = POWER_MENU),
-        ),
-        // 后三项是系统侧键场景表里的档位：起的是各功能自己的 KeyMagic / 闪记服务
-        "快捷功能" to listOf(
-            // KSU 的 `flashlight:`；语义是切换，由 daemon / 模块自己判断当前状态
-            Spec(title = "手电筒", summary = FLASHLIGHT, token = FLASHLIGHT),
-            // 取值是 KSU 的 `service call`，模块侧换成注入 `KEYCODE_SYSRQ`
-            Spec(title = "截图", summary = SCREENSHOT, token = SCREENSHOT),
-            // 取值照搬 KSU 模块，但模块侧不走 shell —— 见 `host/action/AppLauncher.startSidebar`
-            Spec(title = "小布识屏", summary = SIDEBAR, token = SIDEBAR),
-            Spec(title = "一键闪记", summary = FLASH_MEMORY, token = FLASH_MEMORY),
-            Spec(title = "免打扰", summary = NO_DISTURB, token = NO_DISTURB),
-            Spec(title = "录音", summary = RECORDING, token = RECORDING),
-            // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
-            // 两档尺寸（展开 / 收起）各不相同，格子代表不了其中任何一个 ⇒ 按 [MINI_TILE] 当入口格、弹菜单
-            Spec(title = "应用转小窗", summary = MINI_TILE, token = MINI_TILE),
-            // 这一条是入口不是取值：点它跳「打开应用」页挑应用，选完绑成 `app:<包名>`（[Action.App]）。
-            // 网格点击靠比这个常量认领；不能靠「`Action.parse` 能否匹配」——`app:` 本身就是合法
-            // 的空 App 动作，走 `select()` 会把配置写成 `app:`（拉不起任何应用）。
-            Spec(
-                title = "打开应用",
-                summary = "点进去挑一个本机应用（绑成 app:<包名>）",
-                token = APP_TILE,
-            ),
-        ),
-    )
+    val GROUPS: List<Pair<String, List<Spec>>> =
+        listOf(
+            // 无操作在最前：它是「解除绑定」的语义，得一眼能找到。
+            // 组名不叫「系统按键」：这一组里通知与控制中心 / 媒体控制 / 响铃状态 / 电源菜单都不是「按键」。
+            "系统操作" to
+                listOf(
+                    Spec(
+                        title = "无操作",
+                        summary = "按键被吞掉，什么都不做",
+                        token = "none",
+                        middleIcon = ICON_NONE_MIDDLE,
+                        tabIcon = ICON_NONE_TAB,
+                        oval = ICON_NONE_OVAL,
+                    ),
+                    // 「主屏幕 / 返回 / 最近任务」三档收进这一格：点它弹 [NAV_MODES] 菜单。
+                    // 与 [MEDIA_TILE] / [RINGER_TILE] 不同，这三档**各不相同**，格子本身代表不了任何一个取值
+                    // ⇒ 与 [APP_TILE] 同类，是个**标记**：永不写进配置，也不能作为多条命令的一步。
+                    Spec(title = "系统导航", summary = NAV_TILE, token = NAV_TILE),
+                    // 「通知与控制中心」那一格：点它弹 [PANEL_MODES] 菜单（原来是「通知栏」一条，
+                    // 「通知栏」一档拆成两条）。两条各是一个真取值，格子代表不了其中任何一条
+                    // ⇒ 与 [NAV_TILE] / [MINI_TILE] 同类，是个**标记**格，永不写进配置。
+                    Spec(title = "通知与控制中心", summary = PANEL_TILE, token = PANEL_TILE),
+                    // 这一格与「响铃状态」同属**入口格**（点它弹 [MEDIA_MODES] 菜单，不直接写配置），
+                    // 与「打开应用」一起归 [isEntryTile]；但它俩是真取值，能作为多条命令的一步。
+                    // 「播放 / 暂停」收进这里 —— 同一个取值不给两个入口。
+                    MEDIA_TILE_SPEC,
+                    Spec(title = "响铃状态", summary = RINGER_TILE, token = RINGER_TILE),
+                    // 「音量 + / 音量 − / 电源键」三档收进这一格（点它弹 [KEY_MODES] 菜单），同样是标记。
+                    Spec(title = "系统按键", summary = KEY_TILE, token = KEY_TILE),
+                    // KSU 没有这项；执行侧在 system_server 里反射调 PWM，不走按键长按
+                    Spec(title = "电源菜单", summary = POWER_MENU, token = POWER_MENU),
+                ),
+            // 后三项是系统侧键场景表里的档位：起的是各功能自己的 KeyMagic / 闪记服务
+            "快捷功能" to
+                listOf(
+                    // KSU 的 `flashlight:`；语义是切换，由 daemon / 模块自己判断当前状态
+                    Spec(title = "手电筒", summary = FLASHLIGHT, token = FLASHLIGHT),
+                    // 取值是 KSU 的 `service call`，模块侧换成注入 `KEYCODE_SYSRQ`
+                    Spec(title = "截图", summary = SCREENSHOT, token = SCREENSHOT),
+                    // 取值照搬 KSU 模块，但模块侧不走 shell —— 见 `host/action/AppLauncher.startSidebar`
+                    Spec(title = "小布识屏", summary = SIDEBAR, token = SIDEBAR),
+                    Spec(title = "一键闪记", summary = FLASH_MEMORY, token = FLASH_MEMORY),
+                    Spec(title = "免打扰", summary = NO_DISTURB, token = NO_DISTURB),
+                    Spec(title = "录音", summary = RECORDING, token = RECORDING),
+                    // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
+                    // 两档尺寸（展开 / 收起）各不相同，格子代表不了其中任何一个 ⇒ 按 [MINI_TILE] 当入口格、弹菜单
+                    Spec(title = "应用转小窗", summary = MINI_TILE, token = MINI_TILE),
+                    // 这一条是入口不是取值：点它跳「打开应用」页挑应用，选完绑成 `app:<包名>`（[Action.App]）。
+                    // 网格点击靠比这个常量认领；不能靠「`Action.parse` 能否匹配」——`app:` 本身就是合法
+                    // 的空 App 动作，走 `select()` 会把配置写成 `app:`（拉不起任何应用）。
+                    Spec(
+                        title = "打开应用",
+                        summary = "点进去挑一个本机应用（绑成 app:<包名>）",
+                        token = APP_TILE,
+                    ),
+                ),
+        )
 
     /** 界面上按顺序列出的动作 —— [GROUPS] 拍平后的扁平表（以 KSU 的 `ACTION_PRESETS` 去掉 `custom` 为底）。 */
     val ALL: List<Spec> = GROUPS.flatMap { it.second }
@@ -261,18 +264,19 @@ internal object ActionCatalog {
      * 判定哪一行当前绑定要用 [isBound] 逐行比，不能用 [isSelected] —— 后者把四行都算作
      * 「响铃状态那一格选中」，打勾会让四行同时亮起来。
      */
-    val RINGER_MODES: List<Spec> = listOf(
-        RINGER_CYCLE,
-        // 加深带：上一条是 KSU 那套「按一下循环三档」，下面三条是直接指定某一档 —— 两件事，分两段
-        Spec(
-            title = "响铃",
-            summary = "ringer:normal",
-            token = "ringer:normal",
-            dividerBefore = true,
-        ),
-        Spec(title = "振动", summary = "ringer:vibrate", token = "ringer:vibrate"),
-        Spec(title = "静音", summary = "ringer:silent", token = "ringer:silent"),
-    )
+    val RINGER_MODES: List<Spec> =
+        listOf(
+            RINGER_CYCLE,
+            // 加深带：上一条是 KSU 那套「按一下循环三档」，下面三条是直接指定某一档 —— 两件事，分两段
+            Spec(
+                title = "响铃",
+                summary = "ringer:normal",
+                token = "ringer:normal",
+                dividerBefore = true,
+            ),
+            Spec(title = "振动", summary = "ringer:vibrate", token = "ringer:vibrate"),
+            Spec(title = "静音", summary = "ringer:silent", token = "ringer:silent"),
+        )
 
     /**
      * 「媒体控制」那一格的取值 —— 就是「播放 / 暂停」（`keyevent:85`）。
@@ -289,19 +293,20 @@ internal object ActionCatalog {
      * 播放暂停键：首行那个码交给系统按**当前状态**翻面（在放就停、停就放），这两条是「无论如何
      * 都要播 / 要停」—— 三者在没在播放两种情形下行为不同，不能互相代替。
      */
-    val MEDIA_MODES: List<Spec> = listOf(
-        Spec(title = "播放 / 暂停", summary = MEDIA_TILE, token = MEDIA_TILE), // KEYCODE_MEDIA_PLAY_PAUSE
-        Spec(title = "播放", summary = "keyevent:126", token = "keyevent:126"), // KEYCODE_MEDIA_PLAY
-        Spec(title = "暂停", summary = "keyevent:127", token = "keyevent:127"), // KEYCODE_MEDIA_PAUSE
-        // 加深带：上三档是「这一格自己」（按当前状态播 / 停），下两档是切歌 —— 两件事，分两段
-        Spec(
-            title = "上一首",
-            summary = "keyevent:88",
-            token = "keyevent:88",
-            dividerBefore = true,
-        ), // KEYCODE_MEDIA_PREVIOUS
-        Spec(title = "下一首", summary = "keyevent:87", token = "keyevent:87"), // KEYCODE_MEDIA_NEXT
-    )
+    val MEDIA_MODES: List<Spec> =
+        listOf(
+            Spec(title = "播放 / 暂停", summary = MEDIA_TILE, token = MEDIA_TILE), // KEYCODE_MEDIA_PLAY_PAUSE
+            Spec(title = "播放", summary = "keyevent:126", token = "keyevent:126"), // KEYCODE_MEDIA_PLAY
+            Spec(title = "暂停", summary = "keyevent:127", token = "keyevent:127"), // KEYCODE_MEDIA_PAUSE
+            // 加深带：上三档是「这一格自己」（按当前状态播 / 停），下两档是切歌 —— 两件事，分两段
+            Spec(
+                title = "上一首",
+                summary = "keyevent:88",
+                token = "keyevent:88",
+                dividerBefore = true,
+            ), // KEYCODE_MEDIA_PREVIOUS
+            Spec(title = "下一首", summary = "keyevent:87", token = "keyevent:87"), // KEYCODE_MEDIA_NEXT
+        )
 
     /**
      * 「系统导航」那一格的取值 —— 与 [APP_TILE] 一样是**标记**（永不写进配置）。
@@ -344,19 +349,21 @@ internal object ActionCatalog {
      *
      * 执行路径也不同：展开档优先走 `system_server` 的原生动画，收起档只有 recents 正门这一条。
      */
-    val MINI_MODES: List<Spec> = listOf(
-        Spec(title = "展开小窗", summary = MINI_WINDOW, token = MINI_WINDOW),
-        Spec(title = "收起小窗", summary = MINI_COLLAPSE, token = MINI_COLLAPSE),
-    )
+    val MINI_MODES: List<Spec> =
+        listOf(
+            Spec(title = "展开小窗", summary = MINI_WINDOW, token = MINI_WINDOW),
+            Spec(title = "收起小窗", summary = MINI_COLLAPSE, token = MINI_COLLAPSE),
+        )
 
     /** 「系统导航」菜单的三行，顺序即行序。 */
-    val NAV_MODES: List<Spec> = listOf(
-        Spec(title = "主屏幕", summary = "keyevent:3", token = "keyevent:3"),
-        Spec(title = "返回", summary = "keyevent:4", token = "keyevent:4"),
-        // 执行时不是注入按键：注入 KEYCODE_APP_SWITCH 在这台 ROM 上进不了 PM 的处理分支，
-        // 执行侧换成原生调用（见 `host/action/ActionRunner.runKeyEvent`）。
-        Spec(title = "最近任务", summary = "keyevent:187", token = "keyevent:187"),
-    )
+    val NAV_MODES: List<Spec> =
+        listOf(
+            Spec(title = "主屏幕", summary = "keyevent:3", token = "keyevent:3"),
+            Spec(title = "返回", summary = "keyevent:4", token = "keyevent:4"),
+            // 执行时不是注入按键：注入 KEYCODE_APP_SWITCH 在这台 ROM 上进不了 PM 的处理分支，
+            // 执行侧换成原生调用（见 `host/action/ActionRunner.runKeyEvent`）。
+            Spec(title = "最近任务", summary = "keyevent:187", token = "keyevent:187"),
+        )
 
     /**
      * 「通知与控制中心」菜单的两行，顺序即行序。两行都是真取值。
@@ -366,10 +373,11 @@ internal object ActionCatalog {
      *  · **控制中心** = `panel:control_center`（新档，见 `core/model/Action.Panel`）；
      *    同一条通道，落点是我们自己在 system_server 里试出来的候选（表里没有这一行）。
      */
-    val PANEL_MODES: List<Spec> = listOf(
-        Spec(title = "通知中心", summary = "keyevent:83", token = "keyevent:83"),
-        Spec(title = "控制中心", summary = PANEL_CONTROL, token = PANEL_CONTROL),
-    )
+    val PANEL_MODES: List<Spec> =
+        listOf(
+            Spec(title = "通知中心", summary = "keyevent:83", token = "keyevent:83"),
+            Spec(title = "控制中心", summary = PANEL_CONTROL, token = PANEL_CONTROL),
+        )
 
     /**
      * 「系统按键」菜单的三行，顺序即行序。
@@ -377,11 +385,12 @@ internal object ActionCatalog {
      *  音量键在这里是**动作**（绑给侧键后注入一次音量键），与「不接管物理音量键」那条纪律
      * 不冲突 —— 后者说的是不去拦截音量键本身（上下一同按要留给系统截屏，见 `core/model/KeyId`）。
      */
-    val KEY_MODES: List<Spec> = listOf(
-        Spec(title = "音量 +", summary = "keyevent:24", token = "keyevent:24"), // KEYCODE_VOLUME_UP
-        Spec(title = "音量 −", summary = "keyevent:25", token = "keyevent:25"), // KEYCODE_VOLUME_DOWN
-        Spec(title = "电源键", summary = "keyevent:26", token = "keyevent:26"), // KEYCODE_POWER
-    )
+    val KEY_MODES: List<Spec> =
+        listOf(
+            Spec(title = "音量 +", summary = "keyevent:24", token = "keyevent:24"), // KEYCODE_VOLUME_UP
+            Spec(title = "音量 −", summary = "keyevent:25", token = "keyevent:25"), // KEYCODE_VOLUME_DOWN
+            Spec(title = "电源键", summary = "keyevent:26", token = "keyevent:26"), // KEYCODE_POWER
+        )
 
     /**
      * 入口格表：`格子 token` → **点开后那一层菜单的行**。
@@ -394,14 +403,15 @@ internal object ActionCatalog {
      *  · **标记格**（[NAV_TILE] / [KEY_TILE] / [PANEL_TILE] / [MINI_TILE]）：菜单里没有格子那个
      *    token —— 它永不写进配置，菜单里那几档才是真取值。
      */
-    private val MODE_MENUS: Map<String, List<Spec>> = mapOf(
-        MEDIA_TILE to MEDIA_MODES,
-        RINGER_TILE to RINGER_MODES,
-        NAV_TILE to NAV_MODES,
-        KEY_TILE to KEY_MODES,
-        PANEL_TILE to PANEL_MODES,
-        MINI_TILE to MINI_MODES,
-    )
+    private val MODE_MENUS: Map<String, List<Spec>> =
+        mapOf(
+            MEDIA_TILE to MEDIA_MODES,
+            RINGER_TILE to RINGER_MODES,
+            NAV_TILE to NAV_MODES,
+            KEY_TILE to KEY_MODES,
+            PANEL_TILE to PANEL_MODES,
+            MINI_TILE to MINI_MODES,
+        )
 
     /**
      * 「添加命令」浮层里那一行入口 —— 挑一个本机应用作为多条命令的一步。
@@ -409,11 +419,12 @@ internal object ActionCatalog {
      * 取值也是 [APP_TILE]（`app:`，永不写进配置），图标自动是 `LayoutGrid`。
      * 点它要进「打开应用」页，不能交给 `addStep(spec.token)`：空 `app:` 会被当一步写进去。
      */
-    val APP_STEP: Spec = Spec(
-        title = "选择应用",
-        summary = "挑一个本机应用，作为一条步骤（绑成 app:<包名>）",
-        token = APP_TILE,
-    )
+    val APP_STEP: Spec =
+        Spec(
+            title = "选择应用",
+            summary = "挑一个本机应用，作为一条步骤（绑成 app:<包名>）",
+            token = APP_TILE,
+        )
 
     /** 保留此函数而非让调用方直接读 [ALL]：清单按手势分化随时可能回来，调用点不必跟着改。 */
     fun forGesture(
@@ -429,13 +440,14 @@ internal object ActionCatalog {
      * 带上 [Spec.commandKind]，单条与多条在网格里才分得出；多条还要带 [Command.steps] 的条数，
      * 那一格的图标才是「有几步」。
      */
-    fun commandSpec(command: Command): Spec = Spec(
-        title = command.name,
-        summary = command.token,
-        token = command.token,
-        commandKind = command.kind,
-        commandSteps = command.steps.size,
-    )
+    fun commandSpec(command: Command): Spec =
+        Spec(
+            title = command.name,
+            summary = command.token,
+            token = command.token,
+            commandKind = command.kind,
+            commandSteps = command.steps.size,
+        )
 
     /**
      * 界面处处共用的**那一条队列** —— 网格那张表（[forGesture]）、「添加命令」浮层那张表
@@ -447,12 +459,13 @@ internal object ActionCatalog {
      * 「添加命令」的行、入口格菜单的行一律从那一份里取 —— 界面层不再各自现调 [specIcon]，
      * 同一格在哪一处露面都是同一颗字形。
      */
-    fun queue(commands: List<Command> = emptyList()): List<Spec> = buildList {
-        addAll(ALL)
-        addAll(STEP_GROUPS.flatMap { it.second })
-        MODE_MENUS.values.forEach { addAll(it) }
-        commands.forEach { add(commandSpec(it)) }
-    }.distinct()
+    fun queue(commands: List<Command> = emptyList()): List<Spec> =
+        buildList {
+            addAll(ALL)
+            addAll(STEP_GROUPS.flatMap { it.second })
+            MODE_MENUS.values.forEach { addAll(it) }
+            commands.forEach { add(commandSpec(it)) }
+        }.distinct()
 
     /**
      * 「添加命令」浮层用的**分组** —— 就是网格那张 [GROUPS]，只做两处适配：
@@ -462,11 +475,13 @@ internal object ActionCatalog {
      * 注意：入口格在这里保持收拢：点开二级菜单，二级与网格格子弹的是同一张 [MODE_MENUS]。
      * 把档位平铺成独立行会让同一个清单长出两副面孔，**别这么做**。
      */
-    val STEP_GROUPS: List<Pair<String, List<Spec>>> = GROUPS.map { (title, group) ->
-        title to group
-            .filterNot { it.token == NONE_TOKEN }
-            .map { if (it.token == APP_TILE) APP_STEP else it }
-    }
+    val STEP_GROUPS: List<Pair<String, List<Spec>>> =
+        GROUPS.map { (title, group) ->
+            title to
+                group
+                    .filterNot { it.token == NONE_TOKEN }
+                    .map { if (it.token == APP_TILE) APP_STEP else it }
+        }
 
     /**
      * 某一项是不是当前选中的动作。
@@ -474,7 +489,10 @@ internal object ActionCatalog {
      * 必须比「规范化之后」的写法，不能直接比 [Spec.token]：清单里的 token 是源码写法
      * （照搬 KSU 模块），两边都过一遍 `Action.parse`，写法差异才不影响判定。
      */
-    fun isSelected(spec: Spec, action: Action): Boolean {
+    fun isSelected(
+        spec: Spec,
+        action: Action,
+    ): Boolean {
         // 「打开应用」那格是入口：只要绑任意 `app:` / `window:` 动作就算选中，否则绑完回来一个亮的都没有
         if (spec.token == APP_TILE) return action is Action.App || action is Action.AppWindow
         // 入口格代表**一整组取值**：绑其中任意一档就算选中，否则格里一个亮的都没有
@@ -487,8 +505,10 @@ internal object ActionCatalog {
      * 两者差别只在入口格那一组：菜单必须精确到行，否则整组同时亮起对勾。
      * 网格格子的判定也走它，规范化那套只有这一份实现（见 [canonicalToken]）。
      */
-    fun isBound(spec: Spec, action: Action): Boolean =
-        canonicalToken(spec.token) == action.token
+    fun isBound(
+        spec: Spec,
+        action: Action,
+    ): Boolean = canonicalToken(spec.token) == action.token
 
     /** 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。 */
     fun modeMenu(token: String): List<Spec>? = MODE_MENUS[token]
@@ -507,8 +527,7 @@ internal object ActionCatalog {
      */
     private val canonicalTokens = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    internal fun canonicalToken(token: String): String =
-        canonicalTokens.getOrPut(token) { Action.parse(token).token }
+    internal fun canonicalToken(token: String): String = canonicalTokens.getOrPut(token) { Action.parse(token).token }
 
     /**
      * 当前动作落在入口格的哪一档上（行里那些标题：循环 / 静音 / 上一首 …）；不在任何一组时返回 `null`。
@@ -516,8 +535,10 @@ internal object ActionCatalog {
      * 那几格格子只有一行组名，不点开菜单看不出绑的是哪一档，所以格子里补的这行小字要走它。
      * 算法与 `ui/model/CommandText.kt` 的 `stepTitle` 同源。
      */
-    fun modeTitle(modes: List<Spec>, action: Action): String? =
-        modes.firstOrNull { isBound(it, action) }?.label
+    fun modeTitle(
+        modes: List<Spec>,
+        action: Action,
+    ): String? = modes.firstOrNull { isBound(it, action) }?.label
 
     /**
      * 当前动作落在入口格的**哪一档**（`主屏幕` / `上一首` / `静音` …）；不在任何一组时返回 `null`。
@@ -539,6 +560,5 @@ internal object ActionCatalog {
     fun isEntryTile(spec: Spec): Boolean = spec.token == APP_TILE || modeMenu(spec.token) != null
 
     /** 按动作找展示信息；清单外一律返回 null（清单是照搬的封闭集合，不为自定义写法现造条目）。 */
-    fun specOf(action: Action): Spec? =
-        ALL.firstOrNull { isSelected(it, action) }
+    fun specOf(action: Action): Spec? = ALL.firstOrNull { isSelected(it, action) }
 }

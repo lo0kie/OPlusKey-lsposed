@@ -19,7 +19,6 @@ import java.util.concurrent.ConcurrentHashMap
  * 哪些框架类」决定，是个几十量级的固定集合，不随运行时间增长（所以这里不需要 LRU）。
  */
 object Reflect {
-
     /**
      * 缓存里代表「查过了，没有」的哨兵。
      *
@@ -73,10 +72,14 @@ object Reflect {
      *
      * 结果（含「查不到」）按 loader 身份缓存：同名类在不同 loader 下是不同的 Class，不能混用。
      */
-    fun findClass(loader: ClassLoader?, name: String): Class<*>? {
-        val bucket = synchronized(classCache) {
-            classCache.getOrPut(loader) { ConcurrentHashMap() }
-        }
+    fun findClass(
+        loader: ClassLoader?,
+        name: String,
+    ): Class<*>? {
+        val bucket =
+            synchronized(classCache) {
+                classCache.getOrPut(loader) { ConcurrentHashMap() }
+            }
         val hit = bucket[name]
         if (hit != null) {
             @Suppress("UNCHECKED_CAST")
@@ -99,7 +102,11 @@ object Reflect {
             out
         }
 
-    fun method(cls: Class<*>, name: String, vararg params: Class<*>): Method? =
+    fun method(
+        cls: Class<*>,
+        name: String,
+        vararg params: Class<*>,
+    ): Method? =
         cachedValue(exactMethodCache, cls, MethodKey(name, params)) {
             var cur: Class<*>? = cls
             var found: Method? = null
@@ -120,7 +127,10 @@ object Reflect {
                 ?.also { runCatching { it.isAccessible = true } }
         }
 
-    fun field(cls: Class<*>, name: String): Field? =
+    fun field(
+        cls: Class<*>,
+        name: String,
+    ): Field? =
         cachedValue(fieldCache, cls, name) {
             var cur: Class<*>? = cls
             var found: Field? = null
@@ -141,14 +151,19 @@ object Reflect {
      *
      * 用在参数类型拿不到、或者 ROM 把形参类型改名（framework 里参数常是内部类）的场景。
      */
-    fun methodByNameAndArity(cls: Class<*>, name: String, arity: Int): Method? =
+    fun methodByNameAndArity(
+        cls: Class<*>,
+        name: String,
+        arity: Int,
+    ): Method? =
         cachedValue(arityMethodCache, cls, ArityKey(name, arity)) {
             var cur: Class<*>? = cls
             var found: Method? = null
             while (cur != null && cur != Any::class.java) {
-                val hit = runCatching {
-                    cur.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == arity }
-                }.getOrNull()
+                val hit =
+                    runCatching {
+                        cur.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == arity }
+                    }.getOrNull()
                 if (hit != null) {
                     hit.isAccessible = true
                     found = hit
@@ -160,7 +175,11 @@ object Reflect {
         }
 
     /** 调用实例方法；任何异常都被吞掉并记录，返回 null。 */
-    fun call(receiver: Any?, method: Method?, vararg args: Any?): Any? {
+    fun call(
+        receiver: Any?,
+        method: Method?,
+        vararg args: Any?,
+    ): Any? {
         if (receiver == null || method == null) return null
         return runCatching { method.invoke(receiver, *args) }
             .onFailure { XLog.w("reflect invoke failed: ${method.name}", it) }
@@ -168,7 +187,11 @@ object Reflect {
     }
 
     /** 调用目标类上的方法（按名字查找，自动缓存）。 */
-    fun call(receiver: Any, name: String, vararg args: Any?): Any? {
+    fun call(
+        receiver: Any,
+        name: String,
+        vararg args: Any?,
+    ): Any? {
         val params = args.map { it?.javaClass ?: Any::class.java }.toTypedArray()
         val m = method(receiver.javaClass, name, *params)
         if (m == null) {
@@ -195,13 +218,20 @@ object Reflect {
      * 「没找到」那行**按 `类#方法/参数个数` 去重**：与 [call] 同一条纪律 —— 它同样可能落在
      * 注入侧热路径上，ROM 改名之后不去重就是一秒几十行刷屏。
      */
-    fun callStatic(cls: Class<*>, name: String, vararg args: Any?): Any? {
-        val m = cachedValue(staticMethodCache, cls, ArityKey(name, args.size)) {
-            methodsOf(cls).firstOrNull {
-                it.name == name && it.parameterTypes.size == args.size &&
-                    java.lang.reflect.Modifier.isStatic(it.modifiers)
-            }?.also { runCatching { it.isAccessible = true } }
-        }
+    fun callStatic(
+        cls: Class<*>,
+        name: String,
+        vararg args: Any?,
+    ): Any? {
+        val m =
+            cachedValue(staticMethodCache, cls, ArityKey(name, args.size)) {
+                methodsOf(cls)
+                    .firstOrNull {
+                        it.name == name && it.parameterTypes.size == args.size &&
+                            java.lang.reflect.Modifier
+                                .isStatic(it.modifiers)
+                    }?.also { runCatching { it.isAccessible = true } }
+            }
         if (m == null) {
             if (reportedMissing.add("${cls.name}#$name/${args.size}")) {
                 XLog.w("找不到静态方法：${cls.name}#$name（${args.size} 参数）")
@@ -217,8 +247,11 @@ object Reflect {
     }
 
     /** 读取实例字段。 */
-    fun fieldValue(receiver: Any?, cls: Class<*>, name: String): Any? =
-        runCatching { field(cls, name)?.get(receiver) }.getOrNull()
+    fun fieldValue(
+        receiver: Any?,
+        cls: Class<*>,
+        name: String,
+    ): Any? = runCatching { field(cls, name)?.get(receiver) }.getOrNull()
 
     /**
      * 剥到最内层的 cause —— 反射 `invoke()` 抛出的异常被包在 `InvocationTargetException` 里，
@@ -255,11 +288,12 @@ object Reflect {
         resolve: () -> T?,
     ): T? {
         val bucket = cache.getOrPut(cls) { ConcurrentHashMap() }
-        val hit = bucket[key] ?: run {
-            val found = resolve()
-            bucket[key] = found ?: NOT_FOUND
-            return found
-        }
+        val hit =
+            bucket[key] ?: run {
+                val found = resolve()
+                bucket[key] = found ?: NOT_FOUND
+                return found
+            }
         if (hit === NOT_FOUND) return null
         @Suppress("UNCHECKED_CAST")
         return hit as T
@@ -292,12 +326,14 @@ object Reflect {
     }
 
     /** 「方法名 + 参数个数」的键（[methodByNameAndArity] 与 [callStatic] 共用形状，各存各的桶）。 */
-    private class ArityKey(private val name: String, private val size: Int) {
+    private class ArityKey(
+        private val name: String,
+        private val size: Int,
+    ) {
         private val hash: Int = 31 * name.hashCode() + size
 
         override fun hashCode(): Int = hash
 
-        override fun equals(other: Any?): Boolean =
-            other is ArityKey && name == other.name && size == other.size
+        override fun equals(other: Any?): Boolean = other is ArityKey && name == other.name && size == other.size
     }
 }

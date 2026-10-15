@@ -17,7 +17,6 @@ import io.github.libxposed.api.XposedModule
  * 劫持系统自己判好的侧键手势（宿主主进程 `com.oplus.gesture`）。
  */
 internal object SideKeyGestureHooks {
-
     /** 「打开应用」场景的宿主服务（框架按场景表里的 `click_action_info` 绑它）。 */
     private const val START_APP_SERVICE = Framework.HOST_START_APP_SERVICE
 
@@ -46,7 +45,10 @@ internal object SideKeyGestureHooks {
     //  ⇒ 场景派发**一律吞掉**（主开关关着时除外，那一档模块完全让位）。
     //  取舍与依据见 `docs/implementation.md` 的「交还系统为什么不提供」。
 
-    fun install(module: XposedModule, loader: ClassLoader) {
+    fun install(
+        module: XposedModule,
+        loader: ClassLoader,
+    ) {
         if (installed) {
             XLog.w("手势劫持 Hook 已经装过，跳过重复安装")
             return
@@ -77,7 +79,11 @@ internal object SideKeyGestureHooks {
      *
      * @return 这次装上的 hook 数
      */
-    private fun hookService(module: XposedModule, loader: ClassLoader, className: String): Int {
+    private fun hookService(
+        module: XposedModule,
+        loader: ClassLoader,
+        className: String,
+    ): Int {
         val cls = Reflect.findClass(loader, className)
         if (cls == null) {
             XLog.w("没找到宿主服务：$className（本机可能不是 ColorOS，或服务改名了）")
@@ -94,10 +100,11 @@ internal object SideKeyGestureHooks {
             return 0
         }
         val method = Framework.HOST_HANDLE_MESSAGE
-        val m = Reflect.method(handlerCls, method, Message::class.java) ?: run {
-            XLog.w("$short\$a 上没有 $method(Message)")
-            return 0
-        }
+        val m =
+            Reflect.method(handlerCls, method, Message::class.java) ?: run {
+                XLog.w("$short\$a 上没有 $method(Message)")
+                return 0
+            }
         return if (module.hookGuarded(m) { chain ->
                 val msg = chain.args.getOrNull(0) as? Message
                 val what = msg?.what ?: -1
@@ -142,21 +149,23 @@ internal object SideKeyGestureHooks {
     /** `Bundle` 里每个键值都打出来（手势类型这种信息就在这层）。 */
     private fun describeBundle(b: Bundle?): String {
         if (b == null) return "(null)"
-        val keys = try {
-            b.keySet()
-        } catch (e: Throwable) {
-            return "(取键失败：${e.message})"
-        }
+        val keys =
+            try {
+                b.keySet()
+            } catch (e: Throwable) {
+                return "(取键失败：${e.message})"
+            }
         if (keys.isEmpty()) return "(空)"
         return keys.joinToString(prefix = "{", postfix = "}") { k ->
-            val v = try {
-                // `Bundle.get(String)` 自 API 34 起 deprecated（官方建议用 typed getter），
-                // 但这里是诊断用的键值全量 dump、键类型未知，所以照原样取 `Any?` 并压掉警告。
-                @Suppress("DEPRECATION")
-                b.get(k)
-            } catch (e: Throwable) {
-                "读取失败"
-            }
+            val v =
+                try {
+                    // `Bundle.get(String)` 自 API 34 起 deprecated（官方建议用 typed getter），
+                    // 但这里是诊断用的键值全量 dump、键类型未知，所以照原样取 `Any?` 并压掉警告。
+                    @Suppress("DEPRECATION")
+                    b.get(k)
+                } catch (e: Throwable) {
+                    "读取失败"
+                }
             "$k=$v"
         }
     }
@@ -166,25 +175,34 @@ internal object SideKeyGestureHooks {
      * 必须在宿主进程读 —— `ContentResolver` 在 system_server 里必 NPE。
      */
     private fun probeSystemConfig(loader: ClassLoader) {
-        val ctx = ActivityThreadCompat.currentApplication(loader) ?: run {
-            XLog.d("拿不到 Application Context，跳过系统侧键配置探测")
-            return
-        }
+        val ctx =
+            ActivityThreadCompat.currentApplication(loader) ?: run {
+                XLog.d("拿不到 Application Context，跳过系统侧键配置探测")
+                return
+            }
         XLog.guard("读系统侧键配置") {
             val rows = SystemActionButtonConfig.readAll(ctx)
             when {
-                rows == null -> XLog.w("系统侧键配置读取失败（诊断项，不影响接管）")
-                rows.isEmpty() -> XLog.w("系统侧键配置为空（用户还没在「设置 → 快捷键」里配过）")
+                rows == null -> {
+                    XLog.w("系统侧键配置读取失败（诊断项，不影响接管）")
+                }
+
+                rows.isEmpty() -> {
+                    XLog.w("系统侧键配置为空（用户还没在「设置 → 快捷键」里配过）")
+                }
+
                 else -> {
                     XLog.w(
                         "系统侧键配置共 ${rows.size} 个场景：${
-                        rows.joinToString(", ") { it.sceneName }
-                    }")
+                            rows.joinToString(", ") { it.sceneName }
+                        }",
+                    )
                     rows.firstOrNull()?.let { r ->
                         XLog.d(
                             "首个场景「${r.sceneName}」的列值：${
-                            r.values.entries.joinToString(", ") { "${it.key}=${it.value}" }
-                        }")
+                                r.values.entries.joinToString(", ") { "${it.key}=${it.value}" }
+                            }",
+                        )
                     }
                 }
             }
@@ -206,19 +224,23 @@ internal object SideKeyGestureHooks {
                     val key = l.config.key(com.lookie.opluskey.core.model.KeyId.PLUS)
                     XLog.w(
                         "宿主进程读到配置：接管=${key.enabled}" +
-                                " 单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token}" +
-                                "（文件 ${ConfigStore.sharedFile().path}）",
+                            " 单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token}" +
+                            "（文件 ${ConfigStore.sharedFile().path}）",
                     )
                 }
 
-                ConfigStore.Load.Absent -> XLog.w(
-                    "宿主进程读配置：文件还不存在（首装 / 刚清过数据）—— 按默认值走，这是正常的一档",
-                )
+                ConfigStore.Load.Absent -> {
+                    XLog.w(
+                        "宿主进程读配置：文件还不存在（首装 / 刚清过数据）—— 按默认值走，这是正常的一档",
+                    )
+                }
 
-                ConfigStore.Load.Unreadable -> XLog.w(
-                    "宿主进程读配置：**文件在但读不懂**（${ConfigStore.sharedFile().path}）" +
+                ConfigStore.Load.Unreadable -> {
+                    XLog.w(
+                        "宿主进程读配置：**文件在但读不懂**（${ConfigStore.sharedFile().path}）" +
                             " —— 侧键会按「不接管」处理，别把默认值当成用户的配置",
-                )
+                    )
+                }
             }
         }
     }

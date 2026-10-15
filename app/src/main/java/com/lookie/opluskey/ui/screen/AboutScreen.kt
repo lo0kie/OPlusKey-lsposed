@@ -36,13 +36,12 @@ import com.lookie.opluskey.ui.component.MenuEntry
 import com.lookie.opluskey.ui.component.MenuPopup
 import com.lookie.opluskey.ui.component.currentHeaderHeight
 import com.lookie.opluskey.ui.model.ABOUT_ROWS
+import com.lookie.opluskey.ui.model.AUTHOR
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_ACCEL
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
-import com.lookie.opluskey.ui.model.AUTHOR
 import com.lookie.opluskey.ui.model.ISSUE_URL
-import com.lookie.opluskey.ui.model.languageLabel
 import com.lookie.opluskey.ui.model.MORE_CONFIG_ROWS
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
@@ -51,6 +50,7 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.REPO_URL
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
+import com.lookie.opluskey.ui.model.languageLabel
 import com.lookie.opluskey.ui.state.LinkCheck
 import com.lookie.opluskey.ui.state.deviceModel
 import com.lookie.opluskey.ui.state.deviceSupport
@@ -63,8 +63,8 @@ import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
@@ -101,7 +101,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         // 「运行状态」（内部叫链路自检）—— 模块要正常工作，得**几段**都通（宿主侧的服务、
         // 注入侧的接管点、配置送达、以及宿主真读到配置），外加一段只能靠实践拿到的证据。
         // 只看「宿主报活了没有」一个布尔的话，答不了「注入侧压根没装」这种
-        //（那种情况下宿主照样报活、页面全绿）。
+        // （那种情况下宿主照样报活、页面全绿）。
         //  只读信息，没有可点的行；明细**只列不通的那几段**（正常的不占地方，见下面 rows 那一段），
         //  一行明细都没有时由「整体状态」那一行报「全部正常」。
         //  注意：数据是**读缓存**、不是「进页时现取」：不能写
@@ -122,26 +122,28 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
             //  「主开关已关闭」与「尚未使用」两种不 ok 不算故障（[LinkCheck.blocking] 那句），
             //  留下它们会让这一页平时也恒挂两行，还与「整体状态」那句结论打架。
             //  汇总行常留：它负责回答「到底有没有事」，一行明细都没用时靠它报「全部正常」。
-            val rows = buildList {
-                // 第 0 行是**整体结论**，缺哪一段直接点名（后面列的明细只会是故障那几段）
-                add(
-                    LinkCheck(
-                        name = I18n.get(Strings.LINK_CHECK_OVERALL_STATUS, "整体状态"),
-                        ok = broken == null,
-                        detail = if (broken == null) {
-                            I18n.get(Strings.LINK_CHECK_ALL_NORMAL, "全部正常")
-                        } else {
-                            I18n.format(Strings.LINK_CHECK_BROKEN_FORMAT, broken.name)
-                        },
-                    ),
-                )
-                addAll(checks.filter { !it.ok && it.blocking })
-            }
+            val rows =
+                buildList {
+                    // 第 0 行是**整体结论**，缺哪一段直接点名（后面列的明细只会是故障那几段）
+                    add(
+                        LinkCheck(
+                            name = I18n.get(Strings.LINK_CHECK_OVERALL_STATUS, "整体状态"),
+                            ok = broken == null,
+                            detail =
+                                if (broken == null) {
+                                    I18n.get(Strings.LINK_CHECK_ALL_NORMAL, "全部正常")
+                                } else {
+                                    I18n.format(Strings.LINK_CHECK_BROKEN_FORMAT, broken.name)
+                                },
+                        ),
+                    )
+                    addAll(checks.filter { !it.ok && it.blocking })
+                }
             // 行的增删（正常 ⟷ 出问题）走交叉过渡：容器高度由 [SizeTransform] 从旧值补到新值，
             //  观感就是故障行展开出来、恢复时收回去。
             //  注意：目标态传的是**行列表本身**，不是行数：`AnimatedContent` 把**旧值**交给退场那一侧，
             //  只传个计数的话它渲染不出那几行，半场会瞬间塌成 0 高、过渡等于没有
-            //（与 `CommandScreen` 里「已保存的命令」那处同一条）。
+            // （与 `CommandScreen` 里「已保存的命令」那处同一条）。
             //  `contentKey` 只取「段名序列」⇒ 取值变化（「正常」→「未运行」）原地更新，
             //  不把整块重播一遍。
             AnimatedContent(
@@ -151,18 +153,21 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                     // 用 `ContentTransform` 显式给尺寸动画，而不是 `using(SizeTransform(...))`：
                     // 这个 compose 版本里没有 `using` 那个中缀（`CommandScreen` 里实测 `Unresolved reference`）。
                     ContentTransform(
-                        targetContentEnter = fadeIn(
-                            tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
-                        ),
-                        initialContentExit = fadeOut(
-                            tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
-                        ),
-                        sizeTransform = SizeTransform(
-                            clip = true,
-                            sizeAnimationSpec = { _, _ ->
-                                tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)
-                            },
-                        ),
+                        targetContentEnter =
+                            fadeIn(
+                                tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+                            ),
+                        initialContentExit =
+                            fadeOut(
+                                tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
+                            ),
+                        sizeTransform =
+                            SizeTransform(
+                                clip = true,
+                                sizeAnimationSpec = { _, _ ->
+                                    tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)
+                                },
+                            ),
                     )
                 },
                 label = "LinkCheckRows",
@@ -173,11 +178,12 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                             HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
                         }
                         val statusTint by animateColorAsState(
-                            targetValue = when {
-                                row.ok -> COUITheme.colorScheme.onSurfaceContainer
-                                row.blocking -> COUITheme.colorScheme.error
-                                else -> COUITheme.colorScheme.onSurfaceVariantSummary
-                            },
+                            targetValue =
+                                when {
+                                    row.ok -> COUITheme.colorScheme.onSurfaceContainer
+                                    row.blocking -> COUITheme.colorScheme.error
+                                    else -> COUITheme.colorScheme.onSurfaceVariantSummary
+                                },
                             animationSpec = COLOR_TRANSITION_SPEC,
                             label = "LinkStatusTint",
                         )
@@ -202,7 +208,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
 
         // 「配置」卡（语言 / 导出 / 导入）：
         //  导出走系统的「保存到」、导入走系统的「打开」，两边都由 hook 侧实现
-        //（`SettingsPageHooks`：SAF + `Activity#onActivityResult`），这里只负责派发。
+        // （`SettingsPageHooks`：SAF + `Activity#onActivityResult`），这里只负责派发。
         //  两张卡的行数各算各的（见 [MORE_CONFIG_ROWS]），不能合成一个数。
         SmallTitle(I18n.get(Strings.MORE_SECTION_CONFIG, "配置"))
         Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
@@ -252,30 +258,32 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
             show = showLangMenu,
             preciseClick = langClick,
             onDismiss = { showLangMenu = false },
-            entries = buildList {
-                AppLanguage.entries.forEachIndexed { index, lang ->
-                    // 相邻两行一条细线 —— 与 ⋮ 菜单 / 长按菜单 /「添加命令」同一件（[MenuEntry.RowLine]）
-                    if (index > 0) add(MenuEntry.RowLine)
-                    add(
-                        MenuEntry.Row(
-                            title = languageLabel(lang),
-                            // 三项各自的字形（齿轮 / 汉字「文」/ abc）—— 见 [PageIcons.LanguageAuto] 那一段
-                            // 的注释：共用一颗地球的话，菜单里三行看起来一模一样。
-                            icon = when (lang) {
-                                AppLanguage.AUTO -> PageIcons.LanguageAuto
-                                AppLanguage.ZH_CN -> PageIcons.LanguageChinese
-                                AppLanguage.EN -> PageIcons.LanguageEnglish
+            entries =
+                buildList {
+                    AppLanguage.entries.forEachIndexed { index, lang ->
+                        // 相邻两行一条细线 —— 与 ⋮ 菜单 / 长按菜单 /「添加命令」同一件（[MenuEntry.RowLine]）
+                        if (index > 0) add(MenuEntry.RowLine)
+                        add(
+                            MenuEntry.Row(
+                                title = languageLabel(lang),
+                                // 三项各自的字形（齿轮 / 汉字「文」/ abc）—— 见 [PageIcons.LanguageAuto] 那一段
+                                // 的注释：共用一颗地球的话，菜单里三行看起来一模一样。
+                                icon =
+                                    when (lang) {
+                                        AppLanguage.AUTO -> PageIcons.LanguageAuto
+                                        AppLanguage.ZH_CN -> PageIcons.LanguageChinese
+                                        AppLanguage.EN -> PageIcons.LanguageEnglish
+                                    },
+                                selected = lang == currentLang,
+                            ) {
+                                showLangMenu = false
+                                if (lang != currentLang) {
+                                    setLanguage(lang.code)
+                                }
                             },
-                            selected = lang == currentLang,
-                        ) {
-                            showLangMenu = false
-                            if (lang != currentLang) {
-                                setLanguage(lang.code)
-                            }
-                        },
-                    )
-                }
-            },
+                        )
+                    }
+                },
         )
 
         // 「关于」（本机 / 版本 / 作者 / 反馈问题）—— 放在**最下面**：上面两张答的是
@@ -296,11 +304,12 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                         if (adapted) PageIcons.DeviceAdapted else PageIcons.DeviceUnsupported,
                         contentDescription = null,
                         // 与「运行状态」同一套色：命中用常规色、没命中用 error
-                        tint = if (adapted) {
-                            COUITheme.colorScheme.onSurfaceContainer
-                        } else {
-                            COUITheme.colorScheme.error
-                        },
+                        tint =
+                            if (adapted) {
+                                COUITheme.colorScheme.onSurfaceContainer
+                            } else {
+                                COUITheme.colorScheme.error
+                            },
                     )
                 },
                 cardListPosition = cardListPositionOf(0, ABOUT_ROWS),
@@ -361,7 +370,10 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
  *  画的那两行是同一层。
  */
 @Composable
-private fun TitleSummary(title: String, summary: String) {
+private fun TitleSummary(
+    title: String,
+    summary: String,
+) {
     Text(
         text = title,
         style = COUITheme.textStyles.headline1,
@@ -416,8 +428,7 @@ private fun RowEndIcon(icon: ImageVector = PageIcons.EnterArrow) {
  *  毕竟它的名字我们也不知道。代号都读不出来时给空串（标题不画）—— 读不出来是「没读到」、
  *  不是结论，副标题那句结论照常给。
  */
-private fun localDeviceTitle(): String =
-    DeviceSupport.adaptedNameOf(deviceModel).ifEmpty { deviceModel }
+private fun localDeviceTitle(): String = DeviceSupport.adaptedNameOf(deviceModel).ifEmpty { deviceModel }
 
 /**
  * 「适配清单」里「本机」那一行的结论 —— 判定三档各一句（见 `core/model/DeviceSupport`）。
@@ -425,8 +436,9 @@ private fun localDeviceTitle(): String =
  * 只有「等待适配」这一档是「等作者」而不是「本机不行」（首页那条提示分两句，见 `ui/model/PageConst`），
  * 所以三句话不合并成两档。
  */
-private fun adaptVerdict(support: DeviceSupport.Support): String = when (support) {
-    DeviceSupport.Support.ADAPTED -> I18n.get(Strings.ADAPTATION_ADAPTED, "已适配")
-    DeviceSupport.Support.PENDING -> I18n.get(Strings.ADAPTATION_PENDING, "等待适配")
-    DeviceSupport.Support.UNSUPPORTED -> I18n.get(Strings.ADAPTATION_UNSUPPORTED, "不在适配清单")
-}
+private fun adaptVerdict(support: DeviceSupport.Support): String =
+    when (support) {
+        DeviceSupport.Support.ADAPTED -> I18n.get(Strings.ADAPTATION_ADAPTED, "已适配")
+        DeviceSupport.Support.PENDING -> I18n.get(Strings.ADAPTATION_PENDING, "等待适配")
+        DeviceSupport.Support.UNSUPPORTED -> I18n.get(Strings.ADAPTATION_UNSUPPORTED, "不在适配清单")
+    }

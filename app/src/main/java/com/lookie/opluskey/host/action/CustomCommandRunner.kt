@@ -17,7 +17,6 @@ internal class CustomCommandRunner(
     /** 展开失败时的通知出口。 */
     private val onFailure: (CommandFailure) -> Unit,
 ) {
-
     /**
      * 正在跑的多条命令（按命令名）—— 顶上两道闸都看它（见 [run]）：
      *  · 顶层（`depth == 0`）**非空即挡**：一次只跑一条命令链；
@@ -25,14 +24,19 @@ internal class CustomCommandRunner(
      *
      * 用并发集合：占位与摘除不保证在同一个线程上（`postDelayed` 的续步在另一条路上）。
      */
-    private val runningSerial: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private val runningSerial: MutableSet<String> =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet()
 
     /**
      * 执行一条自定义命令。
      *
      * @param depth 递归深度（界面只允许「多条引用单条」，手改文件可能成环，故须有上限）
      */
-    fun run(name: String, depth: Int) {
+    fun run(
+        name: String,
+        depth: Int,
+    ) {
         if (name.isBlank()) {
             // 空名不是「合法但什么都不做」：配置里写了空的 `cmd:`（手改坏了 / 老版本残留）时
             //  按下去应当有反馈，而不是静默无痕。
@@ -118,7 +122,13 @@ internal class CustomCommandRunner(
      * @param gapMs 步骤间等待时长（毫秒，0 = 不等待）
      * @param name 正在跑的这条命令名 —— 跑完（含异常中止）时把它从 [runningSerial] 里摘掉
      */
-    private fun runSteps(steps: List<String>, index: Int, depth: Int, gapMs: Int, name: String) {
+    private fun runSteps(
+        steps: List<String>,
+        index: Int,
+        depth: Int,
+        gapMs: Int,
+        name: String,
+    ) {
         if (index >= steps.size) {
             finishSerial(name)
             return
@@ -174,15 +184,16 @@ internal class CustomCommandRunner(
         // `AppLauncher` 那两处 postDelayed 同一条纪律）：抛出去就是主线程未捕获异常，
         // 整页 / 整个宿主进程跟着倒。走 postDelayed 的那一步没有外层 dispatch 的
         // try/catch 兜着（`execShell` 也不是自身带壳的路径）。
-        val posted = handler.postDelayed({
-            try {
-                runSteps(steps, next, depth, gapMs, name)
-            } catch (e: Throwable) {
-                // 这一条链到这里断了：把占位还回去（否则这条命令从此永久被自己挡住）
-                XLog.w("自定义命令续步失败（已中止这条链）：$name", e)
-                finishSerial(name)
-            }
-        }, gapMs.toLong())
+        val posted =
+            handler.postDelayed({
+                try {
+                    runSteps(steps, next, depth, gapMs, name)
+                } catch (e: Throwable) {
+                    // 这一条链到这里断了：把占位还回去（否则这条命令从此永久被自己挡住）
+                    XLog.w("自定义命令续步失败（已中止这条链）：$name", e)
+                    finishSerial(name)
+                }
+            }, gapMs.toLong())
         // 排不上（主线程 Looper 正在退）⇒ 这一枪永远不会响，占位就留在 `runningSerial` 里。
         //  必须在这儿归还：闸的第一道是「非空即挡」，漏掉一个占位会锁死**所有**多条命令
         //  （只按名字挡那会儿，漏一个只死它自己）。

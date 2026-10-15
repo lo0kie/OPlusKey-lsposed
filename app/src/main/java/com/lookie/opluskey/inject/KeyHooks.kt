@@ -3,11 +3,11 @@ package com.lookie.opluskey.inject
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import com.lookie.opluskey.DEBUG_PROBE
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.inject.input.GestureForwarder
-import com.lookie.opluskey.DEBUG_PROBE
 import com.lookie.opluskey.inject.system.FlexibleWindowBridge
 import com.lookie.opluskey.inject.system.ProbeChannel
 import com.lookie.opluskey.inject.system.StatusBarBridge
@@ -17,7 +17,6 @@ import io.github.libxposed.api.XposedModule
 
 /** 侧键 Hook 的安装入口（本模块只接管侧键）。 */
 internal object KeyHooks {
-
     @Volatile
     private var installed = false
 
@@ -53,7 +52,10 @@ internal object KeyHooks {
      *
      * 每个接管点独立安装 —— 一个装不上不影响其他。
      */
-    fun install(module: XposedModule, loader: ClassLoader) {
+    fun install(
+        module: XposedModule,
+        loader: ClassLoader,
+    ) {
         if (installed) {
             XLog.w("已经装过，跳过重复安装")
             return
@@ -69,7 +71,7 @@ internal object KeyHooks {
         if (points.isEmpty()) {
             XLog.w(
                 "没找到任何侧键接管点 —— 本机 ROM 可能不是 ColorOS，或侧键实现改了名。" +
-                        "模块不生效，但不影响系统",
+                    "模块不生效，但不影响系统",
             )
             return
         }
@@ -79,23 +81,25 @@ internal object KeyHooks {
         // 触觉反馈**不在这边**：它在宿主侧、动作即将执行那一刻（`host/GestureReceiver.runAction`）。
         //  判定侧振不出「服务在跑」这个事实 —— 判出手势就振，可宿主在不在、能不能执行它并不知道，
         // 于是会出现「振了却什么都没发生」；用户明确要求把它去掉（见那边的 KDoc）。
-        val interceptor = SideKeyInterceptor(
-            handler,
-            forward = { id, gesture, repeat ->
-                forwarder.forward(id, gesture, repeat)
-            },
-        )
+        val interceptor =
+            SideKeyInterceptor(
+                handler,
+                forward = { id, gesture, repeat ->
+                    forwarder.forward(id, gesture, repeat)
+                },
+            )
 
         var ok = 0
         for (point in points) {
-            val handle = module.hookGuarded(point.method) { chain ->
-                onIntercept(interceptor, point, chain)
-            }
+            val handle =
+                module.hookGuarded(point.method) { chain ->
+                    onIntercept(interceptor, point, chain)
+                }
             if (handle != null) {
                 ok++
                 XLog.w(
                     "已 Hook 侧键接管点：$point" +
-                            "（kind=${point.kind}，参数 ${point.method.parameterTypes.size} 个）",
+                        "（kind=${point.kind}，参数 ${point.method.parameterTypes.size} 个）",
                 )
             }
         }
@@ -117,7 +121,10 @@ internal object KeyHooks {
      *
      * @return 装上几个方法（`broadcastIntentWithFeature` / `broadcastIntent` 可能各有一个重载）
      */
-    private fun installBroadcastHook(module: XposedModule, loader: ClassLoader): Int {
+    private fun installBroadcastHook(
+        module: XposedModule,
+        loader: ClassLoader,
+    ): Int {
         // 类名与方法名一律来自 `Framework` 的候选表（一、7）：这里只负责装，不认名字。
         val points = Framework.findBroadcastPoints(loader)
         if (points.isEmpty()) {
@@ -125,7 +132,7 @@ internal object KeyHooks {
             // 必须 W 级且把后果写清楚，别只写一个数字。
             XLog.w(
                 "广播入口 Hook 一个都没装上（AMS 上没有 broadcastIntent*）—— " +
-                        "「主开关」「状态栏指令」「小窗指令」三条通道整体失效：侧键被吞但没有任何动作",
+                    "「主开关」「状态栏指令」「小窗指令」三条通道整体失效：侧键被吞但没有任何动作",
             )
             return 0
         }
@@ -157,11 +164,12 @@ internal object KeyHooks {
         val loader = systemLoader ?: return
         handler.post {
             try {
-                val ctx = SystemContext.get(loader) ?: run {
-                    // 借不到 Context 就回不了包 —— 页面那边会按「注入侧未就绪」显示（宁可误报也不能乱报）
-                    XLog.w("链路自检：借不到 Context，回不了包")
-                    return@post
-                }
+                val ctx =
+                    SystemContext.get(loader) ?: run {
+                        // 借不到 Context 就回不了包 —— 页面那边会按「注入侧未就绪」显示（宁可误报也不能乱报）
+                        XLog.w("链路自检：借不到 Context，回不了包")
+                        return@post
+                    }
                 ctx.sendBroadcast(
                     Intent(KeyModule.ACTION_INJECT_READY)
                         .setPackage(KeyModule.PAGE_PACKAGE)
@@ -211,12 +219,16 @@ internal object KeyHooks {
                 if (if (isProbe) !isFromRootOrSystem() else !isFromHost()) return
                 when (action) {
                     ConfigBroadcast.ACTION_CONFIG -> XLog.guard("收配置广播") { ConfigChannel.read(intent) }
+
                     // 通知中心 / 控制中心 / 最近任务：让本机（system_server）去执行。
                     StatusBarBridge.ACTION_STATUSBAR -> StatusBarBridge.handle(intent, systemLoader)
+
                     // 小窗指令：同上，只有这边能拿到 FlexibleTaskController。
                     FlexibleWindowBridge.ACTION -> FlexibleWindowBridge.handle(intent, systemLoader)
+
                     // 链路自检：回答「注入侧那套装好没有」
                     KeyModule.ACTION_INJECT_QUERY -> XLog.guard("回链路自检包") { reportStatus() }
+
                     // debug 通道：反射 / 探针，见 docs/debug-channel.md
                     ProbeChannel.ACTION -> ProbeChannel.handle(intent, systemLoader)
                 }
@@ -272,13 +284,14 @@ internal object KeyHooks {
     private fun hostUid(): Int {
         val cached = cachedHostUid
         if (cached != -1) return cached
-        val uid = try {
-            val ctx = SystemContext.get(systemLoader ?: return -1) ?: return -1
-            ctx.packageManager.getPackageUid(com.lookie.opluskey.KeyModule.PAGE_PACKAGE, 0)
-        } catch (e: Throwable) {
-            XLog.w("解析宿主 uid 失败（这次丢弃，下轮重取）：${e.message}")
-            -1
-        }
+        val uid =
+            try {
+                val ctx = SystemContext.get(systemLoader ?: return -1) ?: return -1
+                ctx.packageManager.getPackageUid(com.lookie.opluskey.KeyModule.PAGE_PACKAGE, 0)
+            } catch (e: Throwable) {
+                XLog.w("解析宿主 uid 失败（这次丢弃，下轮重取）：${e.message}")
+                -1
+            }
         if (uid > 0) {
             cachedHostUid = uid
             XLog.w("宿主 uid = $uid（广播来源校验用）")
@@ -296,12 +309,13 @@ internal object KeyHooks {
         point: Framework.InterceptionPoint,
         chain: XposedInterface.Chain,
     ): Any? {
-        val handled: Boolean = try {
-            interceptor.handle(point, chain)
-        } catch (e: Throwable) {
-            XLog.w("侧键处理失败（放行给系统）：$point", e)
-            false
-        }
+        val handled: Boolean =
+            try {
+                interceptor.handle(point, chain)
+            } catch (e: Throwable) {
+                XLog.w("侧键处理失败（放行给系统）：$point", e)
+                false
+            }
 
         if (handled) return null // 接管：吞掉原方法
 

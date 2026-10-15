@@ -2,7 +2,6 @@ package com.lookie.opluskey.host.action
 
 /** 照搬 KSU 模块（同目录 `OPlusKey`）的那些取值 —— 配置兼容用的别名表。 */
 internal object KsuCompat {
-
     /**
      * KSU 预设里「截图」那条命令的**前缀**（预设原值是 `service call color_screenshot 1`，
      * 模块侧换成注入 `KEYCODE_SYSRQ`）—— 认领时用 `startsWith`，**不要用 `contains`**。
@@ -41,10 +40,11 @@ internal object KsuCompat {
      *  判据是裸字符（`;` / `&` / `|` / 换行）：引号里的这些字符同样会命中，但两条别名的写法里
      *  不可能出现引号，宁可靠保守的一边（多认一次 shell、少丢一条命令）。
      */
-    private fun matches(prefix: String, command: String): Boolean =
-        !hasCommandChain(command) && command.trim().startsWith(prefix)
+    private fun matches(
+        prefix: String,
+        command: String,
+    ): Boolean = !hasCommandChain(command) && command.trim().startsWith(prefix)
 
     /** 这条 shell 文本里是不是串了别的命令（`;` / `&` / `|` / 换行）。 */
-    private fun hasCommandChain(command: String): Boolean =
-        command.any { it == ';' || it == '&' || it == '|' || it == '\n' || it == '\r' }
+    private fun hasCommandChain(command: String): Boolean = command.any { it == ';' || it == '&' || it == '|' || it == '\n' || it == '\r' }
 }

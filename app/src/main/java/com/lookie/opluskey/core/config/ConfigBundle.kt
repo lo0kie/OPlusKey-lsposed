@@ -35,7 +35,6 @@ import org.json.JSONObject
  * 导出它等于把「这台机器上怎么看列表」这种本地偏好带到别的机器上）。
  */
 internal object ConfigBundle {
-
     /** 信封版本 —— 目前只有 1；将来若真要改结构，靠它认旧文件（版本对不上直接拒收）。 */
     private const val VERSION = 1
 
@@ -52,28 +51,37 @@ internal object ConfigBundle {
     private const val FIELD_COMMANDS = "commands"
 
     /** 解析结果 —— **两段都一定有值**（少一段就当整份不过关，见 [parse]）。 */
-    data class Parsed(val config: Config, val commands: List<Command>)
+    data class Parsed(
+        val config: Config,
+        val commands: List<Command>,
+    )
 
     /** 把主配置 + 命令库合成一份导出文本：先拼 JSON 信封，再套一层外皮（[FileObfuscation]）。 */
-    fun export(config: Config, commands: List<Command>): String = try {
-        // 落进文件的那份：主开关写关、确认记录写未确认（理由见类注释）——
-        //  在**写出去之前**就剥掉，别人拿到手再怎么改也改不出「一导入就是已启用」。
-        val shareable = config.copy(
-            keys = config.keys.mapValues { (_, k) -> k.copy(enabled = false) },
-            disclaimerAccepted = false,
-        )
-        val json = JSONObject()
-            .put(FIELD_VERSION, VERSION)
-            // 两份序列化结果都是 JSON 文本，原样嵌进来（不再拆一遍字段，避免两处维护同一份键名）
-            .put(FIELD_CONFIG, JSONObject(ConfigCodec.serialize(shareable)))
-            .put(FIELD_COMMANDS, JSONObject(CommandLibrary.serialize(commands)))
-            .toString(2)
-        FileObfuscation.wrap(MAGIC, json)
-    } catch (e: Throwable) {
-        // 序列化失败是「模块自己的问题」，不该让页面崩；调用方拿到空串会按「导出失败」处理
-        XLog.w("导出配置：合成失败：${e.message}")
-        ""
-    }
+    fun export(
+        config: Config,
+        commands: List<Command>,
+    ): String =
+        try {
+            // 落进文件的那份：主开关写关、确认记录写未确认（理由见类注释）——
+            //  在**写出去之前**就剥掉，别人拿到手再怎么改也改不出「一导入就是已启用」。
+            val shareable =
+                config.copy(
+                    keys = config.keys.mapValues { (_, k) -> k.copy(enabled = false) },
+                    disclaimerAccepted = false,
+                )
+            val json =
+                JSONObject()
+                    .put(FIELD_VERSION, VERSION)
+                    // 两份序列化结果都是 JSON 文本，原样嵌进来（不再拆一遍字段，避免两处维护同一份键名）
+                    .put(FIELD_CONFIG, JSONObject(ConfigCodec.serialize(shareable)))
+                    .put(FIELD_COMMANDS, JSONObject(CommandLibrary.serialize(commands)))
+                    .toString(2)
+            FileObfuscation.wrap(MAGIC, json)
+        } catch (e: Throwable) {
+            // 序列化失败是「模块自己的问题」，不该让页面崩；调用方拿到空串会按「导出失败」处理
+            XLog.w("导出配置：合成失败：${e.message}")
+            ""
+        }
 
     /**
      * 解析并**全量校验**导入的文本。
@@ -88,12 +96,13 @@ internal object ConfigBundle {
     fun parse(text: String): Parsed? {
         // 先过外皮：**认不出魔数就拒** —— 否则「随手挑个 JSON 文件来导入」会一路过到底
         val json = FileObfuscation.unwrap(MAGIC, text) ?: return null
-        val root = try {
-            JSONObject(json)
-        } catch (e: Throwable) {
-            XLog.w("导入配置：解开之后不是 JSON：${e.message}")
-            return null
-        }
+        val root =
+            try {
+                JSONObject(json)
+            } catch (e: Throwable) {
+                XLog.w("导入配置：解开之后不是 JSON：${e.message}")
+                return null
+            }
         // 版本先认：信封结构将来变了，旧版程序读新版文件是「不知道自己在读什么」，一律拒
         val version = root.optInt(FIELD_VERSION, 0)
         if (version != VERSION) {

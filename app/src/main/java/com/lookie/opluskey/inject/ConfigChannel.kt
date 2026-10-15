@@ -8,7 +8,6 @@ import com.lookie.opluskey.core.wire.ConfigBroadcast
 
 /** 注入侧持有的配置：从宿主广播过来，供按键判定使用。 */
 internal object ConfigChannel {
-
     /**
      * 主开关（`null` = 还没收到过广播）。没收到过时按「接管」处理 —— 引导条件：
      * 唤醒宿主的那次转发由注入侧发起，默认「不接管」会永久失效。

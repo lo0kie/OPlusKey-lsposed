@@ -177,18 +177,18 @@ internal fun SettingsPage.BindingTabBand(
                 tick()
                 scope.launch { pagerState.animateScrollToPage(it) }
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                // 左右与网格同一档 [PAGE_MARGIN]。纵向：**只带下边一档**（[PAGE_TOP_PADDING]）
-                // —— 上边那 8dp 去掉，带子直接贴着折叠栏下沿；
-                // 下边这一档就是「带子与内容之间」的间距，与没有带子的页（首页 / 更多）
-                // 由内容 Spacer 加的是**同一档**，各页一致（见 [PAGE_TOP_PADDING]）。
-                .padding(
-                    start = PAGE_MARGIN,
-                    end = PAGE_MARGIN,
-                    bottom = PAGE_TOP_PADDING,
-                )
-                .alpha(disabledAlpha),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    // 左右与网格同一档 [PAGE_MARGIN]。纵向：**只带下边一档**（[PAGE_TOP_PADDING]）
+                    // —— 上边那 8dp 去掉，带子直接贴着折叠栏下沿；
+                    // 下边这一档就是「带子与内容之间」的间距，与没有带子的页（首页 / 更多）
+                    // 由内容 Spacer 加的是**同一档**，各页一致（见 [PAGE_TOP_PADDING]）。
+                    .padding(
+                        start = PAGE_MARGIN,
+                        end = PAGE_MARGIN,
+                        bottom = PAGE_TOP_PADDING,
+                    ).alpha(disabledAlpha),
         )
         if (!enabled) {
             // 透明吃事件层：不给任何视觉（灰是上面那层 alpha 做的），只负责拦住输入
@@ -264,7 +264,7 @@ internal fun SettingsPage.BindingScreen(
     //  它**整页只有一份**（叠在 pager 之上，不是每页一份跟着 pager 平移）⇒ 左右翻页时纹丝不动。
     //  位置固定在「顶栏底边再让出 [GRID_GAP]」那一档：顶栏折叠时它跟着往上走，
     // 但**不随内容滚动**，始终留在页面上。
-    //（定案：先前那版让它与内容 1:1 滑走，实测滑到磨砂顶栏底下会透出一层
+    // （定案：先前那版让它与内容 1:1 滑走，实测滑到磨砂顶栏底下会透出一层
     // 鬼影，不如直接钉住。）
     //  它在内容里的**占位**由一个等高的 Spacer 顶着（[BindingList] 的 `tabBlock`）——
     // 那个 Spacer 属于**内容**、会随滚动走，所以滚起来之后内容会钻到它背后，
@@ -274,7 +274,7 @@ internal fun SettingsPage.BindingScreen(
     //  注意：三页**共用一份**（图「翻页时内容停在同一个位置」）的话会**切回来就滚不动**：
     //  `ScrollState` 内部只有一个 `scrollableState`，而 pager 滑动时相邻两页同时在场 ⇒
     //  两处 `verticalScroll` 挂同一个 state、互相打架，回来那一页就再也滚不动了
-    //（用户报的 bug）。改成每页一份，翻页时各自记各自的位置。
+    // （用户报的 bug）。改成每页一份，翻页时各自记各自的位置。
     val listScrolls = gestures.map { rememberScrollState() }
     // 分段控件那一块的高度（含自己的上下内边距）—— 内容里那个占位 Spacer 用**同一个值**，
     // 两者才严丝合缝。这条带子现在挂在**顶栏**里（见 [BindingTabBand]），量高度也在那边，
@@ -294,7 +294,7 @@ internal fun SettingsPage.BindingScreen(
         Modifier
             .fillMaxSize()
             // 这一层自带不透明底：push 转场交叠时不透出下层残影
-            //（浮层布局下由这个 `Box` 承担）。
+            // （浮层布局下由这个 `Box` 承担）。
             .background(COUITheme.colorScheme.surface),
     ) {
         // 列表铺满整页（视口从 y=0 起）—— 内容自己能滚过分段控件那一条，见上面那段。
@@ -302,9 +302,10 @@ internal fun SettingsPage.BindingScreen(
         // 与三个页面自己的纵向回弹是同一套弹簧。
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier
-                .fillMaxSize()
-                .overScrollHorizontal(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .overScrollHorizontal(),
         ) { page ->
             BindingList(
                 g = gestures[page],
@@ -317,7 +318,7 @@ internal fun SettingsPage.BindingScreen(
                 onCreateCommand = navigateToCommands,
                 scrollBehavior = scrollBehavior,
                 // 分段控件在 pager 之外、由外层驱动 —— 它要的滚动量由**当前页**那一份给
-                //（见上面 `listScrolls` 的注释）。
+                // （见上面 `listScrolls` 的注释）。
                 scrollState = listScrolls[page],
                 // 内容顶上给分段控件留出的那一块（占位高度，见 [BindingList] 的 `tabBlock`）。
                 tabBlock = tabBlockDp,
@@ -476,16 +477,18 @@ internal fun SettingsPage.BindingList(
     //  这一格能写出来的是**两种**动作：`app:` 与 `window:`（小窗，[Action.AppWindow]，
     // 由菜单里那项「小窗打开」定，见 [SettingsPage.smallWindow]）—— 两种都要取名字，
     // 少认一种那一格就没有小标题（实证：开着小窗挑完应用回来，标题下面是空的）。
-    val boundAppLabel = remember(current) {
-        val target = when (current) {
-            is Action.App -> current.target
-            is Action.AppWindow -> current.target
-            else -> null
+    val boundAppLabel =
+        remember(current) {
+            val target =
+                when (current) {
+                    is Action.App -> current.target
+                    is Action.AppWindow -> current.target
+                    else -> null
+                }
+            target?.substringBefore('/')?.let { appLabelOf(it) }
         }
-        target?.substringBefore('/')?.let { appLabelOf(it) }
-    }
     // 「打开应用」格绑的是**小窗打开**（`window:`，[Action.AppWindow]）时，标题右边补一枚「小窗起」标记
-    //—— 这一格只有一行标题 + 应用名，不点开「选择应用」菜单看不出绑的是哪一档。
+    // —— 这一格只有一行标题 + 应用名，不点开「选择应用」菜单看不出绑的是哪一档。
     //  判据直接看当前动作的类型：`isSelected` 对 [ActionCatalog.APP_TILE] 就是「是 App 或 AppWindow」，
     //  所以这一条为真时选中的必然正是那一格，不用再比对 spec。
     val appSmallWindow = current is Action.AppWindow
@@ -626,7 +629,7 @@ internal fun SettingsPage.BindingList(
         val tileFocus = focusers.getOrNull(focusedIndex)?.requestFocus() ?: false
         XLog.w(
             "按键绑定：进场请求焦点 index=$focusedIndex" +
-                    " viewFocus=$viewFocus tileFocus=$tileFocus",
+                " viewFocus=$viewFocus tileFocus=$tileFocus",
         )
     }
 
@@ -669,13 +672,14 @@ internal fun SettingsPage.BindingList(
             return@onKey true
         }
 
-        val step = when {
-            up -> -COLUMNS
-            down -> COLUMNS
-            left -> -1
-            right -> 1
-            else -> 0
-        }
+        val step =
+            when {
+                up -> -COLUMNS
+                down -> COLUMNS
+                left -> -1
+                right -> 1
+                else -> 0
+            }
         if (step != 0) {
             // 焦点范围是 [0, totalCount)；从最后一格继续按「下 / 右」就停在它自己身上。
             val target = (focusedIndex + step).coerceIn(0, totalCount - 1)
@@ -698,7 +702,7 @@ internal fun SettingsPage.BindingList(
             //  留一条不带内容的空带）；底部那 12dp 同理：**视口比整页矮 12dp**，
             //  屏幕最底下那一条里没有内容，而手势导航栏是**透明**的 ——
             //  那一条就被露成「一块平色」，看着像导航栏不透明、把控件挡住了
-            //（真机反馈「只有按键绑定页这样」，其余页的 padding 都在视口**内侧**）。
+            // （真机反馈「只有按键绑定页这样」，其余页的 padding 都在视口**内侧**）。
             //  两眼下的让位量改成内容里的 Spacer（顶 [tabBlock] 那一档、底见本函数末尾），
             //  能跟着滚动一起走。
             // 大标题随滚动折叠（见 [PageHeader]；`nestedScroll` 要在 `verticalScroll` 之前）
@@ -791,14 +795,21 @@ internal fun SettingsPage.BindingList(
         if (g == Gesture.LONG) {
             SmallTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
             LongRepeatCard(
-                blockedReason = when {
-                    // 主开关为关 ⇒ 整页禁用，这张卡也跟着置灰
-                    !enabled -> I18n.get(Strings.STATUS_DISABLED, "按键绑定已关闭")
-                    CommandLibrary.isSerial(commands.value, current.token) ->
-                        I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT, "多条命令不支持连续触发")
+                blockedReason =
+                    when {
+                        // 主开关为关 ⇒ 整页禁用，这张卡也跟着置灰
+                        !enabled -> {
+                            I18n.get(Strings.STATUS_DISABLED, "模块未启用")
+                        }
 
-                    else -> null
-                },
+                        CommandLibrary.isSerial(commands.value, current.token) -> {
+                            I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT, "多条命令不支持连续触发")
+                        }
+
+                        else -> {
+                            null
+                        }
+                    },
                 // 「长按延迟」那行只看主开关（与「是不是多条命令」无关）
                 masterEnabled = enabled,
             )
@@ -815,11 +826,12 @@ internal fun SettingsPage.BindingList(
             // 「上一段 → 这个标题」之间给一档（与网格行距同值），与下面「自定义命令」那一段同一条规矩。
             // 第一组不加 —— 它前面那一段（按键设置卡）已经自带收尾间距，双击档则是页首、不需要。
             if (groupIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
-            val localizedGroupTitle = when (groupTitle) {
-                "系统操作" -> I18n.get(Strings.CATALOG_SYSTEM_ACTIONS, groupTitle)
-                "快捷功能" -> I18n.get(Strings.CATALOG_QUICK_TOOLS, groupTitle)
-                else -> I18n.get(groupTitle, groupTitle)
-            }
+            val localizedGroupTitle =
+                when (groupTitle) {
+                    "系统操作" -> I18n.get(Strings.CATALOG_SYSTEM_ACTIONS, groupTitle)
+                    "快捷功能" -> I18n.get(Strings.CATALOG_QUICK_TOOLS, groupTitle)
+                    else -> I18n.get(groupTitle, groupTitle)
+                }
             SmallTitle(localizedGroupTitle)
 
             // 这一段用一个**内层 Column** 单独带 [PAGE_MARGIN] 横向 padding，
@@ -867,25 +879,28 @@ internal fun SettingsPage.BindingList(
                                     // 每个挂它的节点都会往里写自己那点 ⇒ 一整片格子共用一份的话，
                                     // 锚点会被算成「最后布局的那一格」。取值格点了不弹浮层，
                                     // 所以只有会弹菜单的格子才挂（`popsMenu`），其余不白记坐标。
-                                    modifier = if (popsMenu) {
-                                        cellModifier.preciseClickAnchor(tileAnchor)
-                                    } else {
-                                        cellModifier
-                                    },
+                                    modifier =
+                                        if (popsMenu) {
+                                            cellModifier.preciseClickAnchor(tileAnchor)
+                                        } else {
+                                            cellModifier
+                                        },
                                     enabled = enabled,
                                     // 「打开应用」格与入口格都要补一行小字：前者是绑的应用名，
                                     // 入口格那格只写组名，不点开菜单根本看不出绑的是哪一档
-                                    subtitle = when {
-                                        spec.token == ActionCatalog.APP_TILE -> boundAppLabel
-                                        else -> boundMode?.label
-                                    },
+                                    subtitle =
+                                        when {
+                                            spec.token == ActionCatalog.APP_TILE -> boundAppLabel
+                                            else -> boundMode?.label
+                                        },
                                     // 「打开应用」格绑成小窗打开时，标题右边补一枚「小窗起」（见上面 [appSmallWindow]）。
                                     //  注意：必须连 spec 一起判 —— 光看 `appSmallWindow` 会给**整片**格子都画上。
-                                    titleMarker = if (spec.token == ActionCatalog.APP_TILE && appSmallWindow) {
-                                        PageIcons.TileSmallWindow
-                                    } else {
-                                        null
-                                    },
+                                    titleMarker =
+                                        if (spec.token == ActionCatalog.APP_TILE && appSmallWindow) {
+                                            PageIcons.TileSmallWindow
+                                        } else {
+                                            null
+                                        },
                                     // 入口格虽然是**入口**（点了进下一层），但**不画行尾箭头** ——
                                     // 走 [ActionTile] 的默认值 false，别顺手补回来。
                                     onClick = { activate(spec, tileAnchor) },
@@ -923,11 +938,12 @@ internal fun SettingsPage.BindingList(
                                 PageIcons.EnterArrow,
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp),
-                                tint = if (enabled) {
-                                    COUITheme.colorScheme.onSurfaceVariantActions
-                                } else {
-                                    COUITheme.colorScheme.disabledOnSecondaryVariant
-                                },
+                                tint =
+                                    if (enabled) {
+                                        COUITheme.colorScheme.onSurfaceVariantActions
+                                    } else {
+                                        COUITheme.colorScheme.disabledOnSecondaryVariant
+                                    },
                             )
                         },
                         cardListPosition = cardListPositionOf(0, 1),
@@ -982,11 +998,12 @@ internal fun SettingsPage.BindingList(
                                 enabled = enabled,
                                 // 标题下面那行小字 = **命令间隔时长**（`stepDelayMs`）。
                                 // 只有多条命令有这个值 —— 单条只有一步、用不到它
-                                //（见 `core/model/Command.stepDelayMs`），所以那种格子不画。
+                                // （见 `core/model/Command.stepDelayMs`），所以那种格子不画。
                                 // 文案走 [durationText]：1000ms 以上写成秒。
-                                subtitle = cmd
-                                    ?.takeIf { it.kind == CommandKind.SERIAL }
-                                    ?.let { durationText(it.stepDelayMs) },
+                                subtitle =
+                                    cmd
+                                        ?.takeIf { it.kind == CommandKind.SERIAL }
+                                        ?.let { durationText(it.stepDelayMs) },
                                 //  行尾那支箭头现在只给这一组格子 —— 内置那几个入口格
                                 // （打开应用 / 响铃状态 / 媒体控制）不画箭头（见上面内置网格那段）。
                                 enterArrow = true,
@@ -1029,7 +1046,7 @@ internal fun SettingsPage.BindingList(
             show = tileMenu != null,
             // 锚点就是**开着的那一格**自己那一份（点它时随菜单一起上报，见 [OpenTileMenu]）——
             // 这里不再有「哪一格用哪一支」的表：那种表漏一个入口格，菜单就弹到别人身上
-            //（小窗、通知与控制中心，两次都是这么漏的）。
+            // （小窗、通知与控制中心，两次都是这么漏的）。
             //  关掉之后 `tileMenu` 是 null，而退场动画期间真正生效的是 [MenuPopup] 内部保持住的
             // 上一次那份锚点（见那边的注释），所以这里给个没记过触点的占位即可。
             preciseClick = tileMenu?.anchor ?: noAnchor,
@@ -1056,7 +1073,10 @@ internal fun SettingsPage.BindingList(
  * @param masterEnabled 首页那个「按键绑定」主开关 —— 与 [blockedReason] 一起决定「长按延迟」那行
  */
 @Composable
-internal fun SettingsPage.LongRepeatCard(blockedReason: String?, masterEnabled: Boolean) {
+internal fun SettingsPage.LongRepeatCard(
+    blockedReason: String?,
+    masterEnabled: Boolean,
+) {
     val blocked = blockedReason != null
     val cfg = config.value
     val key = cfg.key(KeyId.PLUS)
@@ -1096,9 +1116,12 @@ internal fun SettingsPage.LongRepeatCard(blockedReason: String?, masterEnabled: 
             ) { v ->
                 write(
                     config.value.copy(
-                        keys = config.value.keys +
-                                (KeyId.PLUS to
-                                        config.value.key(KeyId.PLUS).copy(longRepeatIntervalMs = v)),
+                        keys =
+                            config.value.keys +
+                                (
+                                    KeyId.PLUS to
+                                        config.value.key(KeyId.PLUS).copy(longRepeatIntervalMs = v)
+                                ),
                     ),
                     "long_repeat_interval_ms=$v",
                 )
@@ -1125,7 +1148,8 @@ internal fun SettingsPage.LongRepeatCard(blockedReason: String?, masterEnabled: 
         ) { v ->
             write(
                 config.value.copy(
-                    keys = config.value.keys +
+                    keys =
+                        config.value.keys +
                             (KeyId.PLUS to config.value.key(KeyId.PLUS).copy(longPressMs = v)),
                 ),
                 "long_press_ms=$v",
@@ -1186,11 +1210,12 @@ internal fun SettingsPage.ActionTile(
     // 外面那圈 [TileFocusRing]、以及页里其他状态色同一组参数。它同时是 `Card` 的
     // `contentColor`（标题 / 图标那一整片都吃它）⇒ 一次过渡整格同步。
     val contentColor by animateColorAsState(
-        targetValue = when {
-            !enabled -> scheme.disabledOnSecondaryVariant
-            selected -> scheme.onTertiaryContainer
-            else -> scheme.onSurfaceContainer
-        },
+        targetValue =
+            when {
+                !enabled -> scheme.disabledOnSecondaryVariant
+                selected -> scheme.onTertiaryContainer
+                else -> scheme.onSurfaceContainer
+            },
         label = "TileContent",
     )
     // 行尾箭头与选中小字共用的那档「弱化色」，可用/禁用切换带过渡
@@ -1202,11 +1227,12 @@ internal fun SettingsPage.ActionTile(
     // 抄（选中 `primary`、未选中 `onSurfaceVariantActions`、禁用 `disabledPrimary` /
     // `disabledSecondaryVariant`）：换掉单选圈之后，颜色语义与占位逐档不变。
     val entryIndicatorColor by animateColorAsState(
-        targetValue = when {
-            !enabled -> if (selected) scheme.disabledPrimary else scheme.disabledSecondaryVariant
-            selected -> scheme.primary
-            else -> scheme.onSurfaceVariantActions
-        },
+        targetValue =
+            when {
+                !enabled -> if (selected) scheme.disabledPrimary else scheme.disabledSecondaryVariant
+                selected -> scheme.primary
+                else -> scheme.onSurfaceVariantActions
+            },
         label = "TileEntryIndicator",
     )
 
@@ -1223,25 +1249,27 @@ internal fun SettingsPage.ActionTile(
         // 把这一格的局部触觉反馈换成空实现（见 [NoHapticFeedback]）。
         CompositionLocalProvider(LocalHapticFeedback provides NoHapticFeedback) {
             Card(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .focusRequester(focusRequester)
-                    //  **必须自己补一个焦点目标**（真机定位）：
-                    // 这个版本的 `Modifier.combinedClickable` / `clickable` **不带 focusable** ——
-                    // `androidx.compose.foundation.ClickableKt` 里对 `FocusableKt`
-                    // 的引用数为 **0**，`AbstractClickableNode` 也只实现
-                    // `KeyInputModifierNode`、不是 `FocusTargetModifierNode`。
-                    // 后果：格子里没有 FocusTarget ⇒ `FocusRequester.requestFocus()` 找不到目标、
-                    // ⇒ 按键事件只发给根节点（`FocusOwnerImpl.dispatchKeyEvent` 在
-                    // `findFocusTargetNode()` 为 null 时只走根节点的 key 节点）
-                    // ⇒ [BindingList] 那个 `onPreviewKeyEvent` 一次都不会被调用。
-                    // 顺序不能反：`focusRequester` 必须在这个焦点目标**之前**（链上更靠外）。
-                    .focusTarget(),
-                colors = CardDefaults.defaultColors(
-                    color = scheme.surfaceContainer,
-                    contentColor = contentColor,
-                    pressedColor = scheme.surfaceContainerHigh,
-                ),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .focusRequester(focusRequester)
+                        //  **必须自己补一个焦点目标**（真机定位）：
+                        // 这个版本的 `Modifier.combinedClickable` / `clickable` **不带 focusable** ——
+                        // `androidx.compose.foundation.ClickableKt` 里对 `FocusableKt`
+                        // 的引用数为 **0**，`AbstractClickableNode` 也只实现
+                        // `KeyInputModifierNode`、不是 `FocusTargetModifierNode`。
+                        // 后果：格子里没有 FocusTarget ⇒ `FocusRequester.requestFocus()` 找不到目标、
+                        // ⇒ 按键事件只发给根节点（`FocusOwnerImpl.dispatchKeyEvent` 在
+                        // `findFocusTargetNode()` 为 null 时只走根节点的 key 节点）
+                        // ⇒ [BindingList] 那个 `onPreviewKeyEvent` 一次都不会被调用。
+                        // 顺序不能反：`focusRequester` 必须在这个焦点目标**之前**（链上更靠外）。
+                        .focusTarget(),
+                colors =
+                    CardDefaults.defaultColors(
+                        color = scheme.surfaceContainer,
+                        contentColor = contentColor,
+                        pressedColor = scheme.surfaceContainerHigh,
+                    ),
                 // 按压反馈**只要涟漪**：`showIndication` 让 `combinedClickable` 用
                 // `LocalIndication`，与 `BasicComponent` 那个 `clickable` 同一份，
                 // 视觉与换之前逐像素一致。`Tint`（底色渐变到 `pressedColor`）显式关掉 ——
@@ -1268,28 +1296,34 @@ internal fun SettingsPage.ActionTile(
                             //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
                             // 换掉之后占位与观感不变。
                             when {
-                                spec.token == ActionCatalog.APP_TILE -> Icon(
-                                    PageIcons.BrowserPlus,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                    tint = entryIndicatorColor,
-                                )
+                                spec.token == ActionCatalog.APP_TILE -> {
+                                    Icon(
+                                        PageIcons.BrowserPlus,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                        tint = entryIndicatorColor,
+                                    )
+                                }
 
-                                ActionCatalog.modeMenu(spec.token) != null -> Icon(
-                                    PageIcons.Selector,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                    tint = entryIndicatorColor,
-                                )
+                                ActionCatalog.modeMenu(spec.token) != null -> {
+                                    Icon(
+                                        PageIcons.Selector,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                        tint = entryIndicatorColor,
+                                    )
+                                }
 
                                 //  取值格（不是入口格）的选中指示 —— 空心方框 / 带勾方框，见 [PageIcons.TileUnchecked]。
                                 //  形状与另两种字形同尺寸，不给触达区（点击交给整行）。
-                                else -> Icon(
-                                    if (selected) PageIcons.TileChecked else PageIcons.TileUnchecked,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                    tint = entryIndicatorColor,
-                                )
+                                else -> {
+                                    Icon(
+                                        if (selected) PageIcons.TileChecked else PageIcons.TileUnchecked,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                        tint = entryIndicatorColor,
+                                    )
+                                }
                             }
                             // 「自定义命令」那些格子长按进编辑，箭头表示「这一格后面还有东西」。
                             // 见 [enterArrow] 的说明。
@@ -1322,9 +1356,10 @@ internal fun SettingsPage.ActionTile(
                             // 账见 [TILE_TEXT_OPTICAL_SHIFT]：`offset` 只挪绘制、不改测量。
                             //  `weight(fill = false)`：标记在旁边时标题只占自己要的那点宽度、
                             //  装不下才缩到省略号；没有标记时逐像素不变。
-                            modifier = Modifier
-                                .weight(1f, fill = false)
-                                .offset(y = TILE_TEXT_OPTICAL_SHIFT),
+                            modifier =
+                                Modifier
+                                    .weight(1f, fill = false)
+                                    .offset(y = TILE_TEXT_OPTICAL_SHIFT),
                         )
                         // 标题右边那枚小标记（见 [titleMarker]）
                         //  注意：**不加 [TILE_TEXT_OPTICAL_SHIFT]**：那 1.5dp 是给**文字**补的
@@ -1335,9 +1370,10 @@ internal fun SettingsPage.ActionTile(
                             Icon(
                                 marker,
                                 contentDescription = null,
-                                modifier = Modifier
-                                    .padding(start = TILE_TITLE_MARKER_GAP)
-                                    .size(TILE_TITLE_MARKER_SIZE),
+                                modifier =
+                                    Modifier
+                                        .padding(start = TILE_TITLE_MARKER_GAP)
+                                        .size(TILE_TITLE_MARKER_SIZE),
                                 tint = contentColor,
                             )
                         }
@@ -1380,7 +1416,10 @@ internal fun SettingsPage.ActionTile(
 
 // TileFocusRing 已搬到 ui/component/TileWidgets.kt（与 ActionTile 共用 TILE_HEIGHT / TILE_SIDE_PADDING / 焦点圈逻辑）。
 
-internal fun SettingsPage.actionOf(cfg: Config, g: Gesture): Action {
+internal fun SettingsPage.actionOf(
+    cfg: Config,
+    g: Gesture,
+): Action {
     val key = cfg.key(KeyId.PLUS)
     return when (g) {
         Gesture.SINGLE -> key.single
@@ -1395,7 +1434,10 @@ internal fun SettingsPage.actionOf(cfg: Config, g: Gesture): Action {
  * @return **是否真的落盘了** —— 调用方（「打开应用」页挑完应用那一处）据此决定退不退页：
  *   被拦住 / 写盘失败还照退的话，用户刚挑的那个应用**看起来选了、其实什么都没写**。
  */
-internal fun SettingsPage.pick(spec: ActionCatalog.Spec, g: Gesture): Boolean {
+internal fun SettingsPage.pick(
+    spec: ActionCatalog.Spec,
+    g: Gesture,
+): Boolean {
     // 与首页 / ⋮ 菜单**同一套闸位**。正常路径上它们已经拦过一遍（进不了这一页），
     //  这里拦的是「绕过首页直接落到这一页」那条路 —— 调试通道的 `navTo` 就是那么进来的
     //  （release 不可达，但它证明这个入口自己没有闸）。少了这一层，未就绪时网格照样能改绑定：
@@ -1404,7 +1446,7 @@ internal fun SettingsPage.pick(spec: ActionCatalog.Spec, g: Gesture): Boolean {
     if (!linkReady || !deviceSupported) {
         XLog.w(
             "选动作被拦住（页面未就绪）：链路就绪=$linkReady 清单命中=$deviceSupported " +
-                    "系统版本等待适配=$devicePending ${g.id} → ${spec.token}",
+                "系统版本等待适配=$devicePending ${g.id} → ${spec.token}",
         )
         toast(
             when {
@@ -1419,24 +1461,33 @@ internal fun SettingsPage.pick(spec: ActionCatalog.Spec, g: Gesture): Boolean {
         val cfg = config.value
         val key = cfg.key(KeyId.PLUS)
         val action = Action.parse(spec.token)
-        val updated = when (g) {
-            Gesture.SINGLE -> key.copy(single = action)
-            Gesture.DOUBLE -> key.copy(double = action)
-            //  长按换成「多条命令」时必须把「连续触发」一起关掉（纯界面操作就能落进这个洞）：
-            // 先给一条单条命令开连续触发、再把长按换成多条命令 —— 换动作只写 `long`、
-            // 从不碰 `longRepeat`，界面只是把那一行置灰，而按住不放会一条条重放整个命令链。
-            //  只在这一种组合下清：换成别的动作时把用户的开关也一起抹掉没有道理，
-            // 而「动作是多条命令 + 连续触发=开」这个不一致由这里和判定侧的
-            // `KeyConfig.longIsSerial` 双重保证（判定侧那道闸门见 `GestureDetector`）。
-            Gesture.LONG -> key.copy(
-                long = action,
-                longRepeat = key.longRepeat && !CommandLibrary.isSerial(commands.value, action.token),
+        val updated =
+            when (g) {
+                Gesture.SINGLE -> {
+                    key.copy(single = action)
+                }
+
+                Gesture.DOUBLE -> {
+                    key.copy(double = action)
+                }
+
+                //  长按换成「多条命令」时必须把「连续触发」一起关掉（纯界面操作就能落进这个洞）：
+                // 先给一条单条命令开连续触发、再把长按换成多条命令 —— 换动作只写 `long`、
+                // 从不碰 `longRepeat`，界面只是把那一行置灰，而按住不放会一条条重放整个命令链。
+                //  只在这一种组合下清：换成别的动作时把用户的开关也一起抹掉没有道理，
+                // 而「动作是多条命令 + 连续触发=开」这个不一致由这里和判定侧的
+                // `KeyConfig.longIsSerial` 双重保证（判定侧那道闸门见 `GestureDetector`）。
+                Gesture.LONG -> {
+                    key.copy(
+                        long = action,
+                        longRepeat = key.longRepeat && !CommandLibrary.isSerial(commands.value, action.token),
+                    )
+                }
+            }.copy(
+                //  选动作 == 启用（真机发现）：设置页读不到旧配置时会回落到
+                // `Config.DEFAULT`，而默认是 `plus_enabled=0`（"装上模块不改变行为" 是有意的默认值）。
+                enabled = true,
             )
-        }.copy(
-            //  选动作 == 启用（真机发现）：设置页读不到旧配置时会回落到
-            // `Config.DEFAULT`，而默认是 `plus_enabled=0`（"装上模块不改变行为" 是有意的默认值）。
-            enabled = true,
-        )
         write(cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)), "${g.id} → ${spec.token}")
     } catch (e: Throwable) {
         XLog.w("选动作失败（忽略）：${spec.token}", e)

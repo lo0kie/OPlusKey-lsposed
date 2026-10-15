@@ -5,7 +5,7 @@ on:
     branches: [master, main]
     # `[0-9]*-*` 是 Xposed-Modules-Repo 的 tag 规范（<versionCode>-<versionName>）；
     # `v*` 是随手打的版本标签，两种都触发。发出去的 tag 由 build job 从版本号算出。
-    tags: ['v*', '[0-9]*-*']
+    tags: ["v*", "[0-9]*-*"]
   pull_request:
   workflow_dispatch:
 
@@ -36,13 +36,13 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
 
       # compileSdk = 37 对应 `platforms;android-37.0`（Android 17 带小版本，目录也带）。
       - name: 装 Android SDK（platform 37.0 / build-tools 36.0.0）
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platforms;android-37.0 build-tools;36.0.0'
+          packages: "platforms;android-37.0 build-tools;36.0.0"
 
       - name: 配置 Gradle 缓存
         uses: gradle/actions/setup-gradle@v6
@@ -66,6 +66,11 @@ jobs:
             echo "keyAlias=${KEY_ALIAS}"
             echo "keyPassword=${KEY_PASSWORD}"
           } > keystore.properties
+
+      # 静态检查放在出包**之前**：格式 / 静态检查 / Android Lint 三道闸不过就别往下走，
+      # 不必等到打完两个包才发现少一个空格。口径与本地同一条命令（AGENTS.md 二、1.2）。
+      - name: 静态检查（格式化 / detekt / lint）
+        run: ./gradlew spotlessCheck detekt lintDebug
 
       - name: 构建 debug 与 release
         run: ./gradlew assembleDebug assembleRelease

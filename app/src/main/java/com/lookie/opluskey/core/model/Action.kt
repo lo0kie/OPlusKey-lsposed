@@ -4,7 +4,6 @@ import com.lookie.opluskey.core.log.XLog
 
 /** 一个动作类型。 */
 sealed interface Action {
-
     /** 配置文件里的原始写法，回写配置时用。 */
     val token: String
 
@@ -19,32 +18,44 @@ sealed interface Action {
     //  依据写在 `docs/implementation.md` 的「交还系统为什么不提供」。
 
     /** 注入一个按键事件，[keyCode] 是 `KeyEvent.KEYCODE_*` 的数值。 */
-    data class KeyEvent(val keyCode: Int) : Action {
+    data class KeyEvent(
+        val keyCode: Int,
+    ) : Action {
         override val token: String = "keyevent:$keyCode"
     }
 
     /** 执行 shell 命令。 */
-    data class Shell(val command: String) : Action {
+    data class Shell(
+        val command: String,
+    ) : Action {
         override val token: String = "shell:$command"
     }
 
     /** 自定义命令动作，[name] 是命令库里的命令名。 */
-    data class Custom(val name: String) : Action {
+    data class Custom(
+        val name: String,
+    ) : Action {
         override val token: String = "${Command.PREFIX}$name"
     }
 
     /** 发出广播。 */
-    data class Intent(val action: String) : Action {
+    data class Intent(
+        val action: String,
+    ) : Action {
         override val token: String = "intent:$action"
     }
 
     /** 拉起一个界面，[target] 形如 `包名/Activity` 或 `包名`。 */
-    data class App(val target: String) : Action {
+    data class App(
+        val target: String,
+    ) : Action {
         override val token: String = "app:$target"
     }
 
     /** 同 [App]，但用 ColorOS 的小窗起（`window:目标`）。 */
-    data class AppWindow(val target: String) : Action {
+    data class AppWindow(
+        val target: String,
+    ) : Action {
         override val token: String = "window:$target"
     }
 
@@ -62,12 +73,16 @@ sealed interface Action {
      * （`inject/system/FlexibleWindowBridge` 的 `EXPANDED_BOUNDS`），拿收起档的值喂进去会把窗口
      * 缩成右上角一条。取值与判据见 `docs/device-findings.md` §17.6.3 的尺寸档对照表。
      */
-    data class MiniWindow(val collapsed: Boolean = false) : Action {
+    data class MiniWindow(
+        val collapsed: Boolean = false,
+    ) : Action {
         override val token: String = if (collapsed) "zoom:mini:collapse" else "zoom:mini"
     }
 
     /** 执行 ColorOS 小布快捷指令（`com.coloros.shortcuts`），[shortcutId] 是那条指令的 ID。 */
-    data class Shortcut(val shortcutId: String) : Action {
+    data class Shortcut(
+        val shortcutId: String,
+    ) : Action {
         override val token: String = "shortcut:$shortcutId"
     }
 
@@ -80,7 +95,9 @@ sealed interface Action {
      * 把响铃档位切到指定档（`ringer:模式`）；[mode] 取 `normal` / `vibrate` / `silent`，
      * 认不出的值执行侧只记日志、不做任何事。
      */
-    data class Ringer(val mode: String) : Action {
+    data class Ringer(
+        val mode: String,
+    ) : Action {
         override val token: String = "ringer:$mode"
     }
 
@@ -96,7 +113,9 @@ sealed interface Action {
      * ColorOS 系统能力（`oplus:功能名`），取值见 `host/action/OplusFeature` —— 是不是「侧键场景表」
      * 里的那一档、调哪个组件，都照抄系统自己的记录。
      */
-    data class Oplus(val feature: String) : Action {
+    data class Oplus(
+        val feature: String,
+    ) : Action {
         override val token: String = "oplus:$feature"
     }
 
@@ -107,7 +126,9 @@ sealed interface Action {
      *  为什么不把「通知中心」也并进这一族：它写的 `keyevent:83` 是**历史写法**，改掉会让用户
      * 配置里已有的绑定失效 —— 那边只是显示名从「通知栏」改成「通知中心」，取值不动。
      */
-    data class Panel(val mode: String) : Action {
+    data class Panel(
+        val mode: String,
+    ) : Action {
         override val token: String = "panel:$mode"
 
         companion object {
@@ -123,7 +144,6 @@ sealed interface Action {
     }
 
     companion object {
-
         /**
          * 解析一个动作字符串，认不出前缀的按 shell 命令执行（手写命令可省 `shell:`）。
          * 不兼容 KSU 的按键名写法（`keyevent:KEYCODE_HOME`），只认数值。
@@ -131,7 +151,10 @@ sealed interface Action {
         fun parse(raw: String?): Action {
             val text = raw?.trim().orEmpty()
             return when {
-                text.isEmpty() || text == "none" -> None
+                text.isEmpty() || text == "none" -> {
+                    None
+                }
+
                 text.startsWith("keyevent:") -> {
                     val code = text.removePrefix("keyevent:").trim().toIntOrNull()
                     if (code == null) {
@@ -141,29 +164,70 @@ sealed interface Action {
                         KeyEvent(code)
                     }
                 }
-                text.startsWith("shell:") -> Shell(text.removePrefix("shell:").trim())
+
+                text.startsWith("shell:") -> {
+                    Shell(text.removePrefix("shell:").trim())
+                }
+
                 // 必须排在兜底之前，否则 `cmd:` 会被当成 shell 命令执行
-                text.startsWith(Command.PREFIX) -> Custom(text.removePrefix(Command.PREFIX).trim())
-                text.startsWith("intent:") -> Intent(text.removePrefix("intent:").trim())
-                text.startsWith("app:") -> App(text.removePrefix("app:").trim())
+                text.startsWith(Command.PREFIX) -> {
+                    Custom(text.removePrefix(Command.PREFIX).trim())
+                }
+
+                text.startsWith("intent:") -> {
+                    Intent(text.removePrefix("intent:").trim())
+                }
+
+                text.startsWith("app:") -> {
+                    App(text.removePrefix("app:").trim())
+                }
+
                 // 必须排在兜底之前，否则 `window:` 会被当成 shell 命令执行
-                text.startsWith("window:") -> AppWindow(text.removePrefix("window:").trim())
-                text.startsWith("shortcut:") -> Shortcut(text.removePrefix("shortcut:").trim())
-                text == "flashlight" -> Flashlight
+                text.startsWith("window:") -> {
+                    AppWindow(text.removePrefix("window:").trim())
+                }
+
+                text.startsWith("shortcut:") -> {
+                    Shortcut(text.removePrefix("shortcut:").trim())
+                }
+
+                text == "flashlight" -> {
+                    Flashlight
+                }
+
                 // 必须排在兜底之前，否则 `ringer:` 会被当成 shell 命令执行
-                text.startsWith("ringer:") -> Ringer(text.removePrefix("ringer:").trim())
+                text.startsWith("ringer:") -> {
+                    Ringer(text.removePrefix("ringer:").trim())
+                }
+
                 // 同上：认不出的前缀会落到 shell 兜底
-                text == "power:menu" -> PowerMenu
+                text == "power:menu" -> {
+                    PowerMenu
+                }
+
                 // 同上：`zoom:` 也是认不出就落到 shell 兜底的那一类。
                 // 收起档必须排在展开档**之前** —— 前缀相同，反了会把 `zoom:mini:collapse` 判成展开档。
-                text == "zoom:mini:collapse" -> MiniWindow(collapsed = true)
-                text == "zoom:mini" -> MiniWindow(collapsed = false)
-                text.startsWith("oplus:") -> Oplus(text.removePrefix("oplus:").trim())
+                text == "zoom:mini:collapse" -> {
+                    MiniWindow(collapsed = true)
+                }
+
+                text == "zoom:mini" -> {
+                    MiniWindow(collapsed = false)
+                }
+
+                text.startsWith("oplus:") -> {
+                    Oplus(text.removePrefix("oplus:").trim())
+                }
+
                 // 同上：`panel:` 也是认不出就落到 shell 兜底的那一类
-                text.startsWith("panel:") -> Panel(text.removePrefix("panel:").trim())
-                else -> Shell(text)
+                text.startsWith("panel:") -> {
+                    Panel(text.removePrefix("panel:").trim())
+                }
+
+                else -> {
+                    Shell(text)
+                }
             }
         }
-
     }
 }

@@ -5,7 +5,6 @@ package com.lookie.opluskey.core.i18n
  * 对应多语言字典存放在 assets/locales/zh-CN.json 等 JSON 文件中。
  */
 object Strings {
-
     const val ACTION_CUSTOM_COMMAND = "action.custom_command"
     const val ACTION_NONE = "action.none"
     const val ACTION_NONE_DESC = "action.none_desc"
@@ -301,7 +300,13 @@ object Strings {
 }
 
 /** 国际化文本快捷获取扩展。 */
-fun tr(key: String, default: String = key): String = I18n.get(key, default)
+fun tr(
+    key: String,
+    default: String = key,
+): String = I18n.get(key, default)
 
 /** 带格式化参数的国际化文本快捷获取（走 [I18n.format] —— 参数不能走 `get`，见那边的说明）。 */
-fun trFormat(key: String, vararg args: Any): String = I18n.format(key, *args)
+fun trFormat(
+    key: String,
+    vararg args: Any,
+): String = I18n.format(key, *args)

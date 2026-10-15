@@ -21,8 +21,7 @@ enum class CommandKind(
 
     companion object {
         /** 带 `Locale.ROOT`：文件格式解析不能受设备语言影响。 */
-        fun fromId(id: String): CommandKind? =
-            entries.firstOrNull { it.id == id.trim().lowercase(Locale.ROOT) }
+        fun fromId(id: String): CommandKind? = entries.firstOrNull { it.id == id.trim().lowercase(Locale.ROOT) }
     }
 }
 
@@ -56,18 +55,23 @@ data class Command(
      *  时会漏改，改名之后那一步指向一条已经不在库里的命令，按下去永远 NOT_FOUND。统一走
      *  [references]，两边同一把尺子。
      */
-    fun renamedReference(from: String?, to: String): Command {
+    fun renamedReference(
+        from: String?,
+        to: String,
+    ): Command {
         if (from == null || from == to) return this
         return when (kind) {
-            CommandKind.SINGLE ->
+            CommandKind.SINGLE -> {
                 if (references(single, from)) copy(single = "$PREFIX$to") else this
+            }
 
-            CommandKind.SERIAL ->
+            CommandKind.SERIAL -> {
                 if (steps.any { references(it, from) }) {
                     copy(steps = steps.map { if (references(it, from)) "$PREFIX$to" else it })
                 } else {
                     this
                 }
+            }
         }
     }
 
@@ -77,17 +81,20 @@ data class Command(
      *
      * 判据与 [renamedReference] 同源（都过 [Action.parse]），理由见那边。
      */
-    fun dropReference(token: String): Command = when (kind) {
-        CommandKind.SINGLE ->
-            if (references(single, token.removePrefix(PREFIX))) copy(single = Action.None.token) else this
-
-        CommandKind.SERIAL ->
-            if (steps.any { references(it, token.removePrefix(PREFIX)) }) {
-                copy(steps = steps.filterNot { references(it, token.removePrefix(PREFIX)) })
-            } else {
-                this
+    fun dropReference(token: String): Command =
+        when (kind) {
+            CommandKind.SINGLE -> {
+                if (references(single, token.removePrefix(PREFIX))) copy(single = Action.None.token) else this
             }
-    }
+
+            CommandKind.SERIAL -> {
+                if (steps.any { references(it, token.removePrefix(PREFIX)) }) {
+                    copy(steps = steps.filterNot { references(it, token.removePrefix(PREFIX)) })
+                } else {
+                    this
+                }
+            }
+        }
 
     /**
      * 这一条写法引用的是哪条命令（`cmd:<名字>` 才引用，其余一律 `null`）—— 全项目唯一的判据。
@@ -98,16 +105,20 @@ data class Command(
     private fun referencedName(text: String): String? = (Action.parse(text) as? Action.Custom)?.name
 
     /** 这一条写法是不是「对 [name] 这条命令的引用」—— 见 [referencedName]。 */
-    private fun references(text: String, name: String): Boolean = referencedName(text) == name
+    private fun references(
+        text: String,
+        name: String,
+    ): Boolean = referencedName(text) == name
 
     /**
      * 这条命令引用了哪些别的命令。**两条路都看**：多条命令的步骤列表、单条命令的正文
      * （`cmd:<名字>` 在正文里同样成立）。判据与 [references] 同源 —— 都过 [referencedName]。
      */
-    fun referencedNames(): List<String> = when (kind) {
-        CommandKind.SINGLE -> listOfNotNull(referencedName(single))
-        CommandKind.SERIAL -> steps.mapNotNull(::referencedName)
-    }
+    fun referencedNames(): List<String> =
+        when (kind) {
+            CommandKind.SINGLE -> listOfNotNull(referencedName(single))
+            CommandKind.SERIAL -> steps.mapNotNull(::referencedName)
+        }
 
     companion object {
         /** 自定义命令在配置里的前缀；全项目只在这里定义一次，[Action] 一侧统一引用。 */
@@ -124,10 +135,14 @@ data class Command(
          *
          * @return 环上的名字、首尾同一个（如 `[A, B, A]`）；没有环返回 `null`
          */
-        fun cyclePath(start: Command, library: List<Command>): List<String>? {
+        fun cyclePath(
+            start: Command,
+            library: List<Command>,
+        ): List<String>? {
             val byName = HashMap<String, Command>(library.size + 1)
             for (c in library) byName[c.name] = c
             val path = ArrayList<String>()
+
             fun walk(name: String): List<String>? {
                 val at = path.indexOf(name)
                 if (at >= 0) return path.subList(at, path.size) + name

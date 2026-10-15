@@ -1,0 +1,34 @@
+# detekt 配置 —— 默认规则集**全开**（`buildUponDefaultConfig = true`），这里只改两类：
+#  1) 与本项目写法规矩冲突的（AGENTS.md 里那些「降级纪律」「协议常量集中定义」）；
+#  2) 明确不适用本项目的（这里目前没有）。
+#
+#  格式化那套规则（detekt 的 `formatting` ruleset）**不在**这里：它要另挂 `detekt-formatting`
+#  依赖，而格式化已经归 Spotless + ktlint 了，两处各报一遍没有意义 —— 所以那个 ruleset 压根
+#  没引进来，写了也会被判「属性不存在」。
+#
+#  历史存量不在这里逐条关 —— 那会把规则本身改废；存量由 `config/detekt/baseline.xml` 兜着，
+#  新代码照规则来（见 AGENTS.md 二、1.2）。
+
+naming:
+  FunctionNaming:
+    # Compose 的组件函数按惯例是大驼峰（`@Composable fun SettingsPage.HomeScreen()`）——
+    #  与 ktlint 那边 `ktlint_function_naming_ignore_when_annotated_with` 同一条口径。
+    ignoreAnnotated: ['Composable']
+
+exceptions:
+  TooGenericExceptionCaught:
+    # 本项目的降级纪律**要求**每一环都 `catch (Throwable)`：注入侧任何一环抛出去
+    #  就是开机循环（AGENTS.md 五、1 / 五之二、2），所以「别抓太宽」这条在这里正好相反。
+    active: false
+
+style:
+  MaxLineLength:
+    # 行长同样归 ktlint；.editorconfig 里是 `max_line_length = off`（长行多是注释与中文文案）
+    active: false
+  MagicNumber:
+    # 本项目里的字面量多是**协议值**（keyCode / zoom flag / 广播超时），
+    #  按 AGENTS.md 一、5 集中定义在一处（如 `KeyId`），逐条起名字只会把协议拆散
+    active: false
+  ReturnCount:
+    # 降级纪律要求「失败就 return」（AGENTS.md 五、1~5），默认上限 2 太紧
+    max: 4

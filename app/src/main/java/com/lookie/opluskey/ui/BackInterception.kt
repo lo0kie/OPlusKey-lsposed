@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui
 
+import androidx.annotation.RequiresApi
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.inject.hookGuarded
 import io.github.libxposed.api.XposedModule
@@ -12,7 +13,6 @@ import io.github.libxposed.api.XposedModule
  * 「关页收引用」，属于换页编排本身，放在 [SettingsPageHooks] 那边。
  */
 internal object BackInterception {
-
     /** 平台类 `Activity#onBackPressed` 那个 hook 装没装（**进程内只装一次**）。 */
     private var legacyBackHooked = false
 
@@ -37,7 +37,10 @@ internal object BackInterception {
     private var backCallback: android.window.OnBackInvokedCallback? = null
 
     /** 拦截「系统返回 / 返回手势」，让子页先回上一层。 */
-    internal fun installBackInterception(module: XposedModule, activity: android.app.Activity) {
+    internal fun installBackInterception(
+        module: XposedModule,
+        activity: android.app.Activity,
+    ) {
         HostSession.activity = activity
 
         // (3) 老路子：hook 平台类 `Activity#onBackPressed`
@@ -59,8 +62,8 @@ internal object BackInterception {
 
         XLog.w(
             "返回拦截：平台 onBackPressed=$legacyBackHooked，" +
-                    "宿主 onBackPressed=$hostBackHooked，" +
-                    "宿主有返回回调=$optIn，此刻挂着=${backCallbackActivity === activity}",
+                "宿主 onBackPressed=$hostBackHooked，" +
+                "宿主有返回回调=$optIn，此刻挂着=${backCallbackActivity === activity}",
         )
         if (!legacyBackHooked && !hostBackHooked && !optIn) {
             XLog.w("返回拦截一条都没装上 —— 子页返回请用顶栏那个返回箭头")
@@ -102,7 +105,10 @@ internal object BackInterception {
                 when {
                     //  键盘优先于页面栈：与 `registerBackCallback` 那条保持同一个顺序，
                     //    两条路谁先收到都不能让「键盘开着却退了页面」。
-                    consumeBackByIme() -> null
+                    consumeBackByIme() -> {
+                        null
+                    }
+
                     //  浮窗开着 ⇒ 自己消费这次返回：收掉浮窗，不退页面（同 handleDiscreteBack）
                     HostSession.page?.hasOpenOverlays() == true -> {
                         XLog.w("系统返回（onBackPressed）：浮窗开着 ⇒ 收掉浮窗，不退页面")
@@ -115,8 +121,14 @@ internal object BackInterception {
                         null // 不 proceed = 这一次返回被消费
                     }
 
-                    SettingsPageHooks.restoreModuleUi() -> null // 原版界面 → 模块界面，同样消费掉
-                    else -> chain.proceed()
+                    SettingsPageHooks.restoreModuleUi() -> {
+                        null
+                    }
+
+                    // 原版界面 → 模块界面，同样消费掉
+                    else -> {
+                        chain.proceed()
+                    }
                 }
             } else {
                 chain.proceed()
@@ -141,24 +153,26 @@ internal object BackInterception {
      *
      * @return 注册上了没有（false = 宿主没 opt-in，或平台太老）
      */
-    private fun registerBackCallback(activity: android.app.Activity): Boolean = try {
-        val callback: android.window.OnBackInvokedCallback = if (android.os.Build.VERSION.SDK_INT >= 34) {
-            PredictiveBackCallback(activity)
-        } else {
-            android.window.OnBackInvokedCallback { handleDiscreteBack(activity) }
+    private fun registerBackCallback(activity: android.app.Activity): Boolean =
+        try {
+            val callback: android.window.OnBackInvokedCallback =
+                if (android.os.Build.VERSION.SDK_INT >= 34) {
+                    PredictiveBackCallback(activity)
+                } else {
+                    android.window.OnBackInvokedCallback { handleDiscreteBack(activity) }
+                }
+            activity.onBackInvokedDispatcher.registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_OVERLAY,
+                callback,
+            )
+            backCallback = callback
+            backCallbackActivity = activity
+            true
+        } catch (e: Throwable) {
+            // 宿主没在清单里开 `android:enableOnBackInvokedCallback` 时就是这条
+            XLog.w("注册返回回调失败（宿主未 opt-in）：${e.javaClass.simpleName}: ${e.message}")
+            false
         }
-        activity.onBackInvokedDispatcher.registerOnBackInvokedCallback(
-            android.window.OnBackInvokedDispatcher.PRIORITY_OVERLAY,
-            callback,
-        )
-        backCallback = callback
-        backCallbackActivity = activity
-        true
-    } catch (e: Throwable) {
-        // 宿主没在清单里开 `android:enableOnBackInvokedCallback` 时就是这条
-        XLog.w("注册返回回调失败（宿主未 opt-in）：${e.javaClass.simpleName}: ${e.message}")
-        false
-    }
 
     /**
      * 按**此刻**的页面状态定「要不要把返回回调挂在宿主上」—— 该挂就挂、该摘就摘，别的什么都不做。
@@ -224,13 +238,16 @@ internal object BackInterception {
         // 这一整段跑在**系统回调**里（`OnBackInvokedCallback` / 预测返回的提交），抛出去就是
         //  宿主 `:ui` 进程崩；而它又不是 hooker，拿不到 `hookGuarded` 的 PROTECTIVE 兜底。
         //  只有 `unregisterBackCallback()` 自己那一层 try 的话，其余
-        //（`goBack` / `SettingsPageHooks.restoreModuleUi` / `closeOverlays` / `SettingsPageHooks.clearPageRefs` / `finish`）全裸着。
+        // （`goBack` / `SettingsPageHooks.restoreModuleUi` / `closeOverlays` / `SettingsPageHooks.clearPageRefs` / `finish`）全裸着。
         //  catch 里**只记账、不补动作**：这几步语义各不相同（收键盘 / 收浮层 / 退子页 / 切回模块界面 /
         //  关页面），随手补一个 `finish()` 会把「本该留在页内」的那几次也一起关掉。
         try {
             when {
                 // 键盘开着 ⇒ 这一次返回只用来收键盘（见 consumeBackByIme 的说明）
-                consumeBackByIme() -> Unit
+                consumeBackByIme() -> {
+                    // 收掉键盘就是这一下的全部处理
+                }
+
                 // 浮窗开着 ⇒ 自己消费这次返回：把浮窗收掉，不退页面
                 // 用户定案：不接的话，浮窗盖在上面、底下的页面却被退掉。
                 HostSession.page?.hasOpenOverlays() == true -> {
@@ -275,11 +292,15 @@ internal object BackInterception {
      *  注意：这个回调**只在「子页 / 浮层」那几档才挂在宿主上**（见 [syncBackCallback]）：
      *  首页那一退是「关掉整个设置页」，那一下的跟手动画只有系统做得出来，我们**不注册**、
      *  留空给它 —— 所以首页返回时这里根本收不到事件。
+     *
+     *  `@RequiresApi(34)`：`OnBackAnimationCallback` 是 API 34 才有的接口，这个类的**声明**
+     *  就碰到它；而实例化那一处是按 `SDK_INT` 判过的（见上面注册那段）。标上这一条之后 lint
+     *  才会去核那条判据 —— 用 `@SuppressLint` 会把这一层核对一起关掉。
      */
+    @RequiresApi(34)
     private class PredictiveBackCallback(
         private val activity: android.app.Activity,
     ) : android.window.OnBackAnimationCallback {
-
         private companion object {
             /** 还没开始 / 已结束。 */
             private const val SESSION_NONE = 0
@@ -304,7 +325,10 @@ internal object BackInterception {
          *  不补动作 —— 这几步语义各不相同（收键盘 / 喂进度 / 提交 / 取消），随手补一个
          *  `finish()` 会把「本该留在页内」的那几次也一起关掉。
          */
-        private fun guarded(what: String, block: () -> Unit) {
+        private fun guarded(
+            what: String,
+            block: () -> Unit,
+        ) {
             try {
                 block()
             } catch (e: Throwable) {
@@ -316,16 +340,22 @@ internal object BackInterception {
         override fun onBackStarted(backEvent: android.window.BackEvent) {
             guarded("手势开始") {
                 val page = HostSession.page
-                session = when {
-                    consumeBackByIme() -> SESSION_IME
-                    page != null && page.wouldConsumeBack() -> {
-                        session = SESSION_PAGE
-                        page.navBackInput.started(backEvent.toNavigationEvent())
-                        SESSION_PAGE
-                    }
+                session =
+                    when {
+                        consumeBackByIme() -> {
+                            SESSION_IME
+                        }
 
-                    else -> SESSION_NONE
-                }
+                        page != null && page.wouldConsumeBack() -> {
+                            session = SESSION_PAGE
+                            page.navBackInput.started(backEvent.toNavigationEvent())
+                            SESSION_PAGE
+                        }
+
+                        else -> {
+                            SESSION_NONE
+                        }
+                    }
             }
         }
 
@@ -341,8 +371,10 @@ internal object BackInterception {
             guarded("提交") {
                 when (session) {
                     SESSION_PAGE -> HostSession.page?.navBackInput?.completed()
+
                     // 键盘那次已经收掉了，这次提交别再走「一次性」判定（否则会把页面也退掉）
                     SESSION_IME -> Unit
+
                     // 注册还挂着、但这一退不归我们接（键盘优先 / 浮层 / 状态刚好在中途变了）⇒
                     // 走一次性判定。首页那一档正常情况下**根本没挂上回调**（见 [syncBackCallback]），
                     // 这一支只是兜底。
@@ -360,13 +392,26 @@ internal object BackInterception {
         }
     }
 
-    /** 平台手势事件 → coui-nav 的事件（两边的 `EDGE_LEFT/RIGHT` 常量取值一致）。 */
+    /**
+     * 平台手势事件 → coui-nav 的事件（两边的 `EDGE_LEFT/RIGHT` 常量取值一致）。
+     *
+     *  `@RequiresApi(34)`：入参 `BackEvent` 本身就是 API 34 的类型，用它的地方都在那条判据之内。
+     */
+    @RequiresApi(34)
     private fun android.window.BackEvent.toNavigationEvent() =
         androidx.navigationevent.NavigationEvent(
             swipeEdge = swipeEdge,
             progress = progress,
             touchX = touchX,
             touchY = touchY,
-            frameTimeMillis = frameTimeMillis,
+            // `frameTimeMillis` 是 API 36 才有的读取口 —— 34 / 35 上退回系统时钟：
+            //  它只是给这个事件打个时间戳（消费方用它算帧间隔），换一把钟不影响手势判定，
+            //  但少这一判在 34 / 35 上会 `NoSuchMethodError`。
+            frameTimeMillis =
+                if (android.os.Build.VERSION.SDK_INT >= 36) {
+                    frameTimeMillis
+                } else {
+                    android.os.SystemClock.uptimeMillis()
+                },
         )
 }

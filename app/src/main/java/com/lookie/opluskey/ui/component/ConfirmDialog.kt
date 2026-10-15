@@ -14,11 +14,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.lookie.opluskey.core.i18n.I18n
@@ -36,7 +36,7 @@ import io.github.suqi8.coui.kmp.layout.DialogDefaults
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 确认弹窗与它的按钮行。 */
+// 确认弹窗与它的按钮行。
 
 /**
  * 确认弹窗：左侧「取消」中性色、右侧动作项上色（默认 error 红）—— 与「清空配置」
@@ -116,13 +116,14 @@ internal fun SettingsPage.ConfirmDialog(
             //  `title4` 字号、Medium、居中、1.29em 行高）——那几条在库里是 private 常量，
             //  抄的是它们的值，改库时这里要跟着看。
             Text(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = DialogDefaults.insideMargin.width)
-                    .padding(
-                        top = DialogDefaults.insideMargin.height,
-                        bottom = DIALOG_TITLE_MARGIN_BOTTOM,
-                    ),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = DialogDefaults.insideMargin.width)
+                        .padding(
+                            top = DialogDefaults.insideMargin.height,
+                            bottom = DIALOG_TITLE_MARGIN_BOTTOM,
+                        ),
                 text = title,
                 fontSize = COUITheme.textStyles.title4.fontSize,
                 fontWeight = FontWeight.Medium,
@@ -137,13 +138,14 @@ internal fun SettingsPage.ConfirmDialog(
                 MarkdownBody(
                     text = text,
                     textAlign = if (isShortDialogBody(text)) TextAlign.Center else TextAlign.Start,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        // 左右留白**自己补**：库把标题与摘要按 `insideMargin.width`（24dp）内缩，
-                        //  而 `content` 槽它是不垫的 —— 不补这一步正文就贴着弹窗边（用户报的）。
-                        //  用库那个值而不是写 24.dp，正文左边缘才与标题严格对齐。
-                        .padding(horizontal = DialogDefaults.insideMargin.width)
-                        .padding(top = 4.dp, bottom = 8.dp),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            // 左右留白**自己补**：库把标题与摘要按 `insideMargin.width`（24dp）内缩，
+                            //  而 `content` 槽它是不垫的 —— 不补这一步正文就贴着弹窗边（用户报的）。
+                            //  用库那个值而不是写 24.dp，正文左边缘才与标题严格对齐。
+                            .padding(horizontal = DialogDefaults.insideMargin.width)
+                            .padding(top = 4.dp, bottom = 8.dp),
                 )
             }
             DialogButtonRow(
@@ -175,56 +177,61 @@ internal fun DialogButtonRow(
     onPositive: () -> Unit,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
     ) {
         TextButton(
             text = negative,
             onClick = onNegative,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             pressScaleEnabled = false,
             cornerRadius = DialogButtonBarDefaults.ButtonCornerRadius,
             minHeight = DialogDefaults.ButtonBarMinHeight,
-            colors = ButtonDefaults.textButtonColorsBorderless(
-                textColor = COUITheme.colorScheme.onSurfaceSecondary,
-                disabledTextColor = COUITheme.colorScheme.disabledOnSurface,
-            ),
+            colors =
+                ButtonDefaults.textButtonColorsBorderless(
+                    textColor = COUITheme.colorScheme.onSurfaceSecondary,
+                    disabledTextColor = COUITheme.colorScheme.disabledOnSurface,
+                ),
             insideMargin = DialogDefaults.ButtonBarInsideMargin,
         )
         Box(
-            modifier = Modifier
-                .padding(
-                    top = DialogDefaults.ButtonBarDividerInsetTop,
-                    bottom = DialogDefaults.ButtonBarDividerInsetBottom,
-                )
-                .width(DialogDefaults.ButtonBarDividerThickness)
-                .fillMaxHeight()
-                .background(COUITheme.colorScheme.dividerLine),
+            modifier =
+                Modifier
+                    .padding(
+                        top = DialogDefaults.ButtonBarDividerInsetTop,
+                        bottom = DialogDefaults.ButtonBarDividerInsetBottom,
+                    ).width(DialogDefaults.ButtonBarDividerThickness)
+                    .fillMaxHeight()
+                    .background(COUITheme.colorScheme.dividerLine),
         )
         TextButton(
             text = positive,
             onClick = onPositive,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             pressScaleEnabled = false,
             cornerRadius = DialogButtonBarDefaults.ButtonCornerRadius,
             minHeight = DialogDefaults.ButtonBarMinHeight,
-            colors = ButtonDefaults.textButtonColorsBorderless(
-                textColor = if (positiveDanger) {
-                    COUITheme.colorScheme.error
-                } else {
-                    COUITheme.colorScheme.primary
-                },
-            ),
+            colors =
+                ButtonDefaults.textButtonColorsBorderless(
+                    textColor =
+                        if (positiveDanger) {
+                            COUITheme.colorScheme.error
+                        } else {
+                            COUITheme.colorScheme.primary
+                        },
+                ),
             insideMargin = DialogDefaults.ButtonBarInsideMargin,
         )
     }
 }
-
 
 /** 与库 `DialogContent` 同度量：标题与正文的行高（库 `DialogLineHeight = 1.29.em`）。 */
 private val DIALOG_LINE_HEIGHT = 1.29f.em
@@ -243,8 +250,7 @@ private val DIALOG_TITLE_MARGIN_BOTTOM = 6.dp
  *    一句不断的字符串，折不折行要到渲染时按面板宽度算 —— 只按换行切的话，长到真要折行的那些
  *    （比如塞进一个长应用名的「是否取消「…」以小窗口打开？」）也会被判短，居中之后残尾吊在中间。
  */
-internal fun isShortDialogBody(text: String): Boolean =
-    !text.contains('\n') && dialogBodyDisplayWidth(text) <= DIALOG_BODY_CENTER_MAX
+internal fun isShortDialogBody(text: String): Boolean = !text.contains('\n') && dialogBodyDisplayWidth(text) <= DIALOG_BODY_CENTER_MAX
 
 /**
  * 短正文居中的**上限**（按 [dialogBodyDisplayWidth] 折算的格数）—— 面板一行放得下的量级。
@@ -264,10 +270,11 @@ private const val DIALOG_BODY_CENTER_MAX = 40
  * 只为上面那条判据服务，所以**只处理我们正文里出现的那几样记号**（`**` / 行首 `- ` / 反斜杠转义），
  * 不是通用 markdown 解析器 —— 出现没预料到的记号时只会把句子判得偏长（退回左对齐），不影响读。
  */
-private fun dialogBodyDisplayWidth(text: String): Int = displayWidth(
-    text
-        .replace("**", "")
-        .removePrefix("- ")
-        // 转义用的反斜杠不显示（正文里的命令名、应用名过 [escapeMarkdown]）
-        .replace("\\", ""),
-)
+private fun dialogBodyDisplayWidth(text: String): Int =
+    displayWidth(
+        text
+            .replace("**", "")
+            .removePrefix("- ")
+            // 转义用的反斜杠不显示（正文里的命令名、应用名过 [escapeMarkdown]）
+            .replace("\\", ""),
+    )

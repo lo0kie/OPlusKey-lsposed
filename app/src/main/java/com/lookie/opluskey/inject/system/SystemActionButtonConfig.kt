@@ -8,7 +8,6 @@ import com.lookie.opluskey.core.log.XLog
 
 /** 系统侧键配置（ColorOS「设置 → 快捷键」那一套）的只读访问。 */
 internal object SystemActionButtonConfig {
-
     /** 真机确认的 authority + path。 */
     private const val AUTHORITY = "uri.gesturemanagerprovider"
     private const val PATH = "action_button"
@@ -31,12 +30,13 @@ internal object SystemActionButtonConfig {
      *         —— 调用方要区分「没有配置」与「读不到」。
      */
     fun readAll(context: Context): List<Row>? {
-        val resolver: ContentResolver = try {
-            context.contentResolver
-        } catch (e: Throwable) {
-            XLog.w("取 ContentResolver 失败：${e.message}")
-            return null
-        }
+        val resolver: ContentResolver =
+            try {
+                context.contentResolver
+            } catch (e: Throwable) {
+                XLog.w("取 ContentResolver 失败：${e.message}")
+                return null
+            }
 
         var cursor: Cursor? = null
         return try {
@@ -63,17 +63,19 @@ internal object SystemActionButtonConfig {
             while (cursor.moveToNext()) {
                 val row = HashMap<String, String?>()
                 for (i in names.indices) {
-                    row[names[i]] = try {
-                        cursor.getString(i)
-                    } catch (e: Throwable) {
-                        // 非字符串列（BLOB / NULL）取不到就当空，不影响其它列
-                        null
-                    }
+                    row[names[i]] =
+                        try {
+                            cursor.getString(i)
+                        } catch (e: Throwable) {
+                            // 非字符串列（BLOB / NULL）取不到就当空，不影响其它列
+                            null
+                        }
                 }
-                out += Row(
-                    sceneName = cursor.getString(sceneIdx).orEmpty(),
-                    values = row,
-                )
+                out +=
+                    Row(
+                        sceneName = cursor.getString(sceneIdx).orEmpty(),
+                        values = row,
+                    )
             }
             XLog.w("读系统侧键配置成功：${out.size} 行")
             out

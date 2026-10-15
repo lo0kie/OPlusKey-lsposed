@@ -1,11 +1,12 @@
 package com.lookie.opluskey.core.model
 
-/**
- * 配置的数据结构：三种手势、单键配置、全局配置、整份配置。
- */
+// 配置的数据结构：三种手势、单键配置、全局配置、整份配置。
 
 /** 三种手势。 */
-enum class Gesture(val id: String, val label: String) {
+enum class Gesture(
+    val id: String,
+    val label: String,
+) {
     SINGLE("single", "单击"),
     DOUBLE("double", "双击"),
     LONG("long", "长按"),
@@ -30,11 +31,12 @@ data class KeyConfig(
      */
     val longIsSerial: Boolean = false,
 ) {
-    fun actionOf(gesture: Gesture): Action = when (gesture) {
-        Gesture.SINGLE -> single
-        Gesture.DOUBLE -> double
-        Gesture.LONG -> long
-    }
+    fun actionOf(gesture: Gesture): Action =
+        when (gesture) {
+            Gesture.SINGLE -> single
+            Gesture.DOUBLE -> double
+            Gesture.LONG -> long
+        }
 
     companion object {
         const val DEFAULT_LONG_PRESS_MS = 500
@@ -59,16 +61,17 @@ data class KeyConfig(
          * 注意：单击那档的默认值是「无操作」而不是「交还系统」—— 后者已删（见 `Action` 的注释）。
          * 主开关开着而这一档还没配时，按键被吞掉什么都不做；这也是「还没配」最不容易误读的表现。
          */
-        fun defaultFor(id: KeyId) = KeyConfig(
-            id = id,
-            enabled = false,
-            single = Action.None,
-            double = Action.None,
-            long = Action.None,
-            longPressMs = DEFAULT_LONG_PRESS_MS,
-            longRepeat = false,
-            longRepeatIntervalMs = DEFAULT_REPEAT_INTERVAL_MS,
-        )
+        fun defaultFor(id: KeyId) =
+            KeyConfig(
+                id = id,
+                enabled = false,
+                single = Action.None,
+                double = Action.None,
+                long = Action.None,
+                longPressMs = DEFAULT_LONG_PRESS_MS,
+                longRepeat = false,
+                longRepeatIntervalMs = DEFAULT_REPEAT_INTERVAL_MS,
+            )
     }
 }
 
@@ -102,10 +105,11 @@ data class GlobalConfig(
         /** [GlobalConfig.language] 的默认值：跟随系统。 */
         const val DEFAULT_LANGUAGE = "auto"
 
-        val DEFAULT = GlobalConfig(
-            doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,
-            vibrate = false,
-        )
+        val DEFAULT =
+            GlobalConfig(
+                doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,
+                vibrate = false,
+            )
     }
 }
 
@@ -126,9 +130,10 @@ data class Config(
     fun key(id: KeyId): KeyConfig = keys[id] ?: KeyConfig.defaultFor(id)
 
     companion object {
-        val DEFAULT = Config(
-            keys = KeyId.entries.associateWith { KeyConfig.defaultFor(it) },
-            global = GlobalConfig.DEFAULT,
-        )
+        val DEFAULT =
+            Config(
+                keys = KeyId.entries.associateWith { KeyConfig.defaultFor(it) },
+                global = GlobalConfig.DEFAULT,
+            )
     }
 }

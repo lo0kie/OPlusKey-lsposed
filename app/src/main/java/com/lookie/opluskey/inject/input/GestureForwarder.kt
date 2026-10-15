@@ -24,7 +24,6 @@ internal class GestureForwarder(
     /** 注入侧的主线程 Handler —— 延后发送走它。 */
     private val handler: Handler,
 ) {
-
     /** 宿主的服务（用来在转发前唤醒宿主进程）。 */
     private val hostService = ComponentName(KeyModule.PAGE_PACKAGE, HOST_SERVICE)
 
@@ -33,11 +32,16 @@ internal class GestureForwarder(
      *
      * @param repeat 是否「长按连续触发」的重复派发（宿主据此跳过振动反馈）
      */
-    fun forward(id: KeyId, gesture: Gesture, repeat: Boolean) {
-        val ctx = context() ?: run {
-            XLog.w("没借到 Context，无法转交 ${id.label} 的手势")
-            return
-        }
+    fun forward(
+        id: KeyId,
+        gesture: Gesture,
+        repeat: Boolean,
+    ) {
+        val ctx =
+            context() ?: run {
+                XLog.w("没借到 Context，无法转交 ${id.label} 的手势")
+                return
+            }
 
         // 动态接收器要求宿主进程活着；借来的 Context 与宿主同 uid，startService 才过得了 OPLUS_COMPONENT_SAFE。
         try {
@@ -48,14 +52,15 @@ internal class GestureForwarder(
 
         val phase = gesture.id
         val sentAt = SystemClock.elapsedRealtime()
-        val intent = Intent(KeyModule.ACTION_GESTURE)
-            .setPackage(KeyModule.PAGE_PACKAGE)
-            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-            .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
-            .putExtra(KeyModule.EXTRA_KEY, id.id)
-            .putExtra(KeyModule.EXTRA_PHASE, phase)
-            .putExtra(KeyModule.EXTRA_REPEAT, repeat)
-            .putExtra(KeyModule.EXTRA_SENT_AT, sentAt)
+        val intent =
+            Intent(KeyModule.ACTION_GESTURE)
+                .setPackage(KeyModule.PAGE_PACKAGE)
+                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
+                .putExtra(KeyModule.EXTRA_KEY, id.id)
+                .putExtra(KeyModule.EXTRA_PHASE, phase)
+                .putExtra(KeyModule.EXTRA_REPEAT, repeat)
+                .putExtra(KeyModule.EXTRA_SENT_AT, sentAt)
 
         // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
         // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。

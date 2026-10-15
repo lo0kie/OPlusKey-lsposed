@@ -2,19 +2,22 @@ package com.lookie.opluskey.core.i18n
 
 import androidx.compose.runtime.mutableStateOf
 import com.lookie.opluskey.core.log.XLog
-import org.json.JSONObject
 import java.io.InputStream
 import java.util.Locale
+import org.json.JSONObject
 
 /** 支持的界面语言档位。 */
-enum class AppLanguage(val code: String, val label: String) {
+enum class AppLanguage(
+    val code: String,
+    val label: String,
+) {
     AUTO("auto", "跟随系统"),
     ZH_CN("zh_CN", "简体中文"),
-    EN("en", "English");
+    EN("en", "English"),
+    ;
 
     companion object {
-        fun fromCode(code: String?): AppLanguage =
-            entries.firstOrNull { it.code.equals(code, ignoreCase = true) } ?: AUTO
+        fun fromCode(code: String?): AppLanguage = entries.firstOrNull { it.code.equals(code, ignoreCase = true) } ?: AUTO
     }
 }
 
@@ -26,7 +29,6 @@ enum class AppLanguage(val code: String, val label: String) {
  * 零 Context 依赖、无 Resources 跨包隔离问题，保证在 LSPosed 宿主与系统进程中稳定运行。
  */
 object I18n {
-
     @Volatile
     var currentLanguage: AppLanguage = AppLanguage.AUTO
         set(value) {
@@ -36,14 +38,17 @@ object I18n {
 
     /** 实际生效语言（AUTO 时由系统语言决出）。 */
     val effectiveLanguage: AppLanguage
-        get() = when (currentLanguage) {
-            AppLanguage.AUTO -> {
-                val loc = Locale.getDefault()
-                if (loc.language.equals("zh", ignoreCase = true)) AppLanguage.ZH_CN else AppLanguage.EN
-            }
+        get() =
+            when (currentLanguage) {
+                AppLanguage.AUTO -> {
+                    val loc = Locale.getDefault()
+                    if (loc.language.equals("zh", ignoreCase = true)) AppLanguage.ZH_CN else AppLanguage.EN
+                }
 
-                        else -> currentLanguage
-        }
+                else -> {
+                    currentLanguage
+                }
+            }
 
     /** 当前是否中文环境。 */
     val isChinese: Boolean
@@ -77,11 +82,12 @@ object I18n {
      */
     fun reload() {
         val targetLang = effectiveLanguage
-        val fileName = when (targetLang) {
-            AppLanguage.ZH_CN -> "zh-CN.json"
-            AppLanguage.EN -> "en.json"
-            AppLanguage.AUTO -> "zh-CN.json"
-        }
+        val fileName =
+            when (targetLang) {
+                AppLanguage.ZH_CN -> "zh-CN.json"
+                AppLanguage.EN -> "en.json"
+                AppLanguage.AUTO -> "zh-CN.json"
+            }
         if (fileName == loadedFile) return
         loadedFile = fileName
         strings.value = loadJson(fileName)
@@ -91,12 +97,13 @@ object I18n {
      * 从 APK 内部读取指定路径的 JSON 并解析为 Map。
      */
     private fun loadJson(fileName: String): Map<String, String> {
-        val candidates = listOf(
-            "assets/locales/$fileName",
-            "locales/$fileName",
-            "/assets/locales/$fileName",
-            "/locales/$fileName",
-        )
+        val candidates =
+            listOf(
+                "assets/locales/$fileName",
+                "locales/$fileName",
+                "/assets/locales/$fileName",
+                "/locales/$fileName",
+            )
         var stream: InputStream? = null
         for (c in candidates) {
             stream = openResourceStream(c)
@@ -139,8 +146,10 @@ object I18n {
      * @param key 字典中的键（例如 "setting.key_binding"）
      * @param default 找不到对应 key 时的兜底文案（默认返回 key 本身）
      */
-    fun get(key: String, default: String = key): String =
-        strings.value[key] ?: default
+    fun get(
+        key: String,
+        default: String = key,
+    ): String = strings.value[key] ?: default
 
     /**
      * 带格式化参数的国际化文本获取（`%s` / `%d`）。
@@ -152,7 +161,10 @@ object I18n {
      *
      *  字典里没有这个键时用 key 本身当模板（与 [get] 的兜底同一条口径）。
      */
-    fun format(key: String, vararg args: Any): String {
+    fun format(
+        key: String,
+        vararg args: Any,
+    ): String {
         val pattern = strings.value[key] ?: key
         return try {
             if (args.isEmpty()) pattern else String.format(pattern, *args)

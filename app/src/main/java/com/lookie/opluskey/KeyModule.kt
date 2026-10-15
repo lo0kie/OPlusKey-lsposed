@@ -14,23 +14,24 @@ import io.github.libxposed.api.XposedModuleInterface
 
 /** 模块入口。 */
 class KeyModule : XposedModule() {
-
-    override fun onModuleLoaded(
-        module: XposedModuleInterface.ModuleLoadedParam,
-    ) {
+    override fun onModuleLoaded(module: XposedModuleInterface.ModuleLoadedParam) {
         XLog.bind(this)
-        val role = when {
-            module.isSystemServer -> "侧键接管（system_server）"
-            module.processName == PAGE_PROCESS -> "设置页替换（$PAGE_PROCESS）"
-            // 宿主主进程的角色在 [onPackageReady] 里才落地，这里也要标出来 ——
-            // 否则真机日志会把它打成「无关进程（不做任何事）」，排查时被误导（实测撞到）
-            module.processName == HOST_PROCESS -> "宿主侧手势劫持与执行（$HOST_PROCESS）"
-            else -> "无关进程（不做任何事）"
-        }
+        val role =
+            when {
+                module.isSystemServer -> "侧键接管（system_server）"
+
+                module.processName == PAGE_PROCESS -> "设置页替换（$PAGE_PROCESS）"
+
+                // 宿主主进程的角色在 [onPackageReady] 里才落地，这里也要标出来 ——
+                // 否则真机日志会把它打成「无关进程（不做任何事）」，排查时被误导（实测撞到）
+                module.processName == HOST_PROCESS -> "宿主侧手势劫持与执行（$HOST_PROCESS）"
+
+                else -> "无关进程（不做任何事）"
+            }
         XLog.w("模块已加载：process=${module.processName} → $role")
         XLog.w(
             "本机机型：${DeviceSupport.describe(MODEL)}；系统：${DeviceSupport.systemOf(ANDROID, ROM)}" +
-                    "；允许运行=$deviceSupported",
+                "；允许运行=$deviceSupported",
         )
         if (!deviceSupported && module.processName != PAGE_PROCESS) {
             // 适配清单外的组合**只注入界面层**（见 [DeviceSupport]）——
@@ -50,9 +51,7 @@ class KeyModule : XposedModule() {
      * system_server 有专属回调，不需要（也没法）自己做进程判断；能力差异见
      * `docs/device-findings.md` 的「回调能力表」。
      */
-    override fun onSystemServerStarting(
-        param: XposedModuleInterface.SystemServerStartingParam,
-    ) {
+    override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
         if (!deviceSupported) {
             // 适配清单外的组合：一个 Hook 都不挂。挂了就等于替一台没验过的 ROM 吞掉侧键，
             //  而后面那些反射找的类/方法在这版 ROM 上是真是假我们无从判断（见 [DeviceSupport]）。
@@ -71,9 +70,7 @@ class KeyModule : XposedModule() {
      * 普通进程加载完成 —— 用来接住设置页进程与宿主主进程。判断依据用进程名而不是包名：
      * 宿主把设置页放进了独立进程 `com.oplus.gesture.ui`，与 `com.oplus.gesture` 同包不同进程。
      */
-    override fun onPackageReady(
-        param: XposedModuleInterface.PackageReadyParam,
-    ) {
+    override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         val process = currentProcessName()
         when (process) {
             PAGE_PROCESS -> {
@@ -295,20 +292,26 @@ class KeyModule : XposedModule() {
          * 「为什么没注入」那一句 —— 机型不认识、还是这一版系统没适配，两档分开说：
          * 前者是「本机用不了」，后者是「等作者适配」，用户该做的事完全不同。
          */
-        private fun whyNotInjecting(): String = when (support) {
-            DeviceSupport.Support.PENDING -> "机型在适配清单里，但系统版本不是那一档（等待适配）"
-            else -> "机型不在适配清单里"
-        }
+        private fun whyNotInjecting(): String =
+            when (support) {
+                DeviceSupport.Support.PENDING -> "机型在适配清单里，但系统版本不是那一档（等待适配）"
+                else -> "机型不在适配清单里"
+            }
 
         /**
          * 取当前进程名。不用 hidden 的 `ActivityThread.currentProcessName()`（不同版本行为不一），
          * 直接读 `/proc/self/cmdline`，对任何进程都成立。
          */
-        private fun currentProcessName(): String? = try {
-            java.io.File("/proc/self/cmdline").readText().trimEnd('\u0000').trim()
-        } catch (e: Throwable) {
-            XLog.w("读 /proc/self/cmdline 失败，无法判断进程名", e)
-            null
-        }
+        private fun currentProcessName(): String? =
+            try {
+                java.io
+                    .File("/proc/self/cmdline")
+                    .readText()
+                    .trimEnd('\u0000')
+                    .trim()
+            } catch (e: Throwable) {
+                XLog.w("读 /proc/self/cmdline 失败，无法判断进程名", e)
+                null
+            }
     }
 }

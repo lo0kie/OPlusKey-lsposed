@@ -53,8 +53,7 @@ internal enum class HeaderMenu { NONE, HOME, APP_PICKER }
 
 /** 顶栏的系统栏顶边补偿 —— [currentHeaderHeight] 与 [collapsedHeaderHeight] 共用这一笔。 */
 @Composable
-internal fun SettingsPage.headerStatusBarPadding(): Dp =
-    WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
+internal fun SettingsPage.headerStatusBarPadding(): Dp = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
 
 /**
  * 顶栏当前高度：折叠高 + 折叠位移 + 系统栏顶边。
@@ -71,16 +70,18 @@ internal fun SettingsPage.currentHeaderHeight(scrollBehavior: ScrollBehavior): D
     val state = scrollBehavior.state
     val limit = state.heightOffsetLimit
     val offset = state.heightOffset
-    val barHeight = with(LocalDensity.current) {
-        val measured = limit.isFinite() && limit > SENTINEL_MIN
-        val collapsed = if (measured) {
-            TopAppBarDefaults.CollapsedHeight - limit.toDp()
-        } else {
-            TopAppBarDefaults.ExpandedHeight
+    val barHeight =
+        with(LocalDensity.current) {
+            val measured = limit.isFinite() && limit > SENTINEL_MIN
+            val collapsed =
+                if (measured) {
+                    TopAppBarDefaults.CollapsedHeight - limit.toDp()
+                } else {
+                    TopAppBarDefaults.ExpandedHeight
+                }
+            val shift = if (offset.isFinite() && offset > SENTINEL_MIN) offset.toDp() else 0.dp
+            maxOf(TopAppBarDefaults.ExpandedHeight, collapsed) + shift
         }
-        val shift = if (offset.isFinite() && offset > SENTINEL_MIN) offset.toDp() else 0.dp
-        maxOf(TopAppBarDefaults.ExpandedHeight, collapsed) + shift
-    }
     return barHeight + headerStatusBarPadding()
 }
 
@@ -93,8 +94,7 @@ private const val SENTINEL_MIN = -1_000_000f
  * 系统栏顶边那一档不能漏，漏了目标行会被压在顶栏底下只露一半。
  */
 @Composable
-internal fun SettingsPage.collapsedHeaderHeight(): Dp =
-    TopAppBarDefaults.CollapsedHeight + headerStatusBarPadding()
+internal fun SettingsPage.collapsedHeaderHeight(): Dp = TopAppBarDefaults.CollapsedHeight + headerStatusBarPadding()
 
 /**
  * 给一个浮层挂上磨砂：从 [state] 那套取样源里按 [shape] 取一块，做 [FROSTED_BLUR_RADIUS] 的模糊。
@@ -109,9 +109,13 @@ internal fun SettingsPage.collapsedHeaderHeight(): Dp =
  * @param state 被取样的那一层的取样状态（页面那一层是 [SettingsPage.pageHazeState]）
  * @param shape 取样区形状，需与浮层自身形状一致
  */
-internal fun Modifier.frosted(state: HazeState, shape: Shape): Modifier = this
-    .clip(shape)
-    .hazeBlur(input = HazeInput.Sources(state), style = HAZE_FROSTED_STYLE)
+internal fun Modifier.frosted(
+    state: HazeState,
+    shape: Shape,
+): Modifier =
+    this
+        .clip(shape)
+        .hazeBlur(input = HazeInput.Sources(state), style = HAZE_FROSTED_STYLE)
 
 /**
  * 磨砂的模糊规格 —— 顶栏 / 浮层菜单 / 底部工具栏 / 确认弹窗共用这一份。
@@ -119,10 +123,11 @@ internal fun Modifier.frosted(state: HazeState, shape: Shape): Modifier = this
  * [FROSTED_BLUR_RADIUS] 直接就是 dp：Haze 的 `blurRadius` 收 dp，不必再按 density 换算成像素。
  * 噪点显式置 0 —— 库默认 0.15，会在糊上叠一层细颗粒，与这套观感对不上。
  */
-private val HAZE_FROSTED_STYLE: HazeBlurStyle = HazeBlurStyle {
-    blurRadius(FROSTED_BLUR_RADIUS)
-    noiseFactor(0f)
-}
+private val HAZE_FROSTED_STYLE: HazeBlurStyle =
+    HazeBlurStyle {
+        blurRadius(FROSTED_BLUR_RADIUS)
+        noiseFactor(0f)
+    }
 
 /**
  * 页面顶栏：大标题 + 返回键，随内容滚动折叠（展开 107dp / 折叠 52dp），内容滚到栏下时底边渐显分割线。
@@ -232,9 +237,10 @@ internal fun SettingsPage.AppPickerMenu() {
             minWidth = HEADER_ICON_SIZE,
             minHeight = HEADER_ICON_SIZE,
             cornerRadius = HEADER_ICON_SIZE / 2,
-            modifier = Modifier
-                .padding(end = 8.dp)
-                .preciseClickAnchor(preciseClick),
+            modifier =
+                Modifier
+                    .padding(end = 8.dp)
+                    .preciseClickAnchor(preciseClick),
         ) {
             Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
         }
@@ -243,60 +249,61 @@ internal fun SettingsPage.AppPickerMenu() {
             show = open,
             preciseClick = preciseClick,
             onDismiss = { open = false },
-            entries = listOf(
-                MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_SHOW_SYSTEM_APPS, "显示系统应用"),
-                    // 行首图标恒为「系统应用」网格，选中态由 `selected` 负责（行尾对勾 + 文字主题色）
-                    icon = PageIcons.SystemApps,
-                    selected = showSystemApps.value,
-                    // 先关菜单再派发（`open` 得自己复位，否则下次进这一页它还开着）
-                    onPick = {
-                        open = false
-                        showSystemApps.value = !showSystemApps.value
-                        // 落盘（本地持久，不进用户配置 —— 见 [UiState]）：写在翻档这一下，读在进页那一次。
-                        //  写失败就**把开关拨回去**：留着新值会让用户以为这份偏好已经存下来了，
-                        //  下次进页又变回去。
-                        if (!UiState.writeShowSystemApps(showSystemApps.value)) {
+            entries =
+                listOf(
+                    MenuEntry.Row(
+                        title = I18n.get(Strings.MENU_SHOW_SYSTEM_APPS, "显示系统应用"),
+                        // 行首图标恒为「系统应用」网格，选中态由 `selected` 负责（行尾对勾 + 文字主题色）
+                        icon = PageIcons.SystemApps,
+                        selected = showSystemApps.value,
+                        // 先关菜单再派发（`open` 得自己复位，否则下次进这一页它还开着）
+                        onPick = {
+                            open = false
                             showSystemApps.value = !showSystemApps.value
-                            XLog.w("选择应用：显示系统应用改不动（界面状态写盘失败），已拨回 ${showSystemApps.value}")
-                        } else {
-                            // 判据级（i 在 release 被编译期消除，见 XLog 注释）
-                            XLog.w("选择应用：显示系统应用 = ${showSystemApps.value}（已落盘，重查列表）")
-                        }
-                    },
-                ),
-                // 把「按下去必弹失败提示」的那些**也列出来** —— 判据 [LaunchableApp.launchable] 与执行端同一把尺子；
-                // 它是纯显示过滤，不重查列表。默认关（= 不显示），用户口径。
-                MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_SHOW_INVALID_APPS, "显示失效应用"),
-                    icon = PageIcons.ShowUnopenable,
-                    selected = showUnopenable.value,
-                    onPick = {
-                        open = false
-                        showUnopenable.value = !showUnopenable.value
-                        if (!UiState.writeShowUnopenable(showUnopenable.value)) {
+                            // 落盘（本地持久，不进用户配置 —— 见 [UiState]）：写在翻档这一下，读在进页那一次。
+                            //  写失败就**把开关拨回去**：留着新值会让用户以为这份偏好已经存下来了，
+                            //  下次进页又变回去。
+                            if (!UiState.writeShowSystemApps(showSystemApps.value)) {
+                                showSystemApps.value = !showSystemApps.value
+                                XLog.w("选择应用：显示系统应用改不动（界面状态写盘失败），已拨回 ${showSystemApps.value}")
+                            } else {
+                                // 判据级（i 在 release 被编译期消除，见 XLog 注释）
+                                XLog.w("选择应用：显示系统应用 = ${showSystemApps.value}（已落盘，重查列表）")
+                            }
+                        },
+                    ),
+                    // 把「按下去必弹失败提示」的那些**也列出来** —— 判据 [LaunchableApp.launchable] 与执行端同一把尺子；
+                    // 它是纯显示过滤，不重查列表。默认关（= 不显示），用户口径。
+                    MenuEntry.Row(
+                        title = I18n.get(Strings.MENU_SHOW_INVALID_APPS, "显示失效应用"),
+                        icon = PageIcons.ShowUnopenable,
+                        selected = showUnopenable.value,
+                        onPick = {
+                            open = false
                             showUnopenable.value = !showUnopenable.value
-                            XLog.w("选择应用：显示失效改不动（界面状态写盘失败），已拨回 ${showUnopenable.value}")
-                        } else {
-                            XLog.w("选择应用：显示失效 = ${showUnopenable.value}（已落盘）")
-                        }
-                    },
+                            if (!UiState.writeShowUnopenable(showUnopenable.value)) {
+                                showUnopenable.value = !showUnopenable.value
+                                XLog.w("选择应用：显示失效改不动（界面状态写盘失败），已拨回 ${showUnopenable.value}")
+                            } else {
+                                XLog.w("选择应用：显示失效 = ${showUnopenable.value}（已落盘）")
+                            }
+                        },
+                    ),
+                    // 开着时挑中的应用写成 `window:<包名>` —— 用小窗起，见执行侧 [MiniWindowLauncher.launchAppInWindow]。
+                    // 注意：这一项**不落盘**：它描述的是「这一趟要把动作写成哪个」，
+                    //    不是「这一页该怎么显示」—— 每次进这一页都会按正在编辑的动作重算
+                    //    （见 [SettingsPage.smallWindow] / [SettingsPage.resetSmallWindowForPicker]）。
+                    MenuEntry.Row(
+                        title = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW, "以小窗口打开"),
+                        icon = PageIcons.SmallWindow,
+                        selected = smallWindow.value,
+                        onPick = {
+                            open = false
+                            smallWindow.value = !smallWindow.value
+                            XLog.w("选择应用：以小窗口打开 = ${smallWindow.value}（临时档，不落盘）")
+                        },
+                    ),
                 ),
-                // 开着时挑中的应用写成 `window:<包名>` —— 用小窗起，见执行侧 [MiniWindowLauncher.launchAppInWindow]。
-                // 注意：这一项**不落盘**：它描述的是「这一趟要把动作写成哪个」，
-                //    不是「这一页该怎么显示」—— 每次进这一页都会按正在编辑的动作重算
-                //    （见 [SettingsPage.smallWindow] / [SettingsPage.resetSmallWindowForPicker]）。
-                MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW, "以小窗口打开"),
-                    icon = PageIcons.SmallWindow,
-                    selected = smallWindow.value,
-                    onPick = {
-                        open = false
-                        smallWindow.value = !smallWindow.value
-                        XLog.w("选择应用：以小窗口打开 = ${smallWindow.value}（临时档，不落盘）")
-                    },
-                ),
-            ),
         )
     }
 }
@@ -314,7 +321,7 @@ internal fun SettingsPage.ResetMenu() {
     //
     //  注意：「更多选项」那一项**已从菜单里删掉**（同日用户要求）：它只留首页那一行，
     // 且那一行**不吃任何闸** —— 页面整页禁用时，用户仍能从那儿进去看「运行状态」到底断在哪一段
-    //（见 [HomeScreen] 里那一行的注释）。
+    // （见 [HomeScreen] 里那一行的注释）。
     //
     //  注意：三个条件都要：`linkReady`（链路）**且** `!configReadOnly`（配置这次读成功了）**且**
     //  `deviceSupported`（本机那一组「机型 + 系统版本」在适配清单里）。只读态下**只留那两项**：
@@ -335,9 +342,10 @@ internal fun SettingsPage.ResetMenu() {
             minWidth = HEADER_ICON_SIZE,
             minHeight = HEADER_ICON_SIZE,
             cornerRadius = HEADER_ICON_SIZE / 2,
-            modifier = Modifier
-                .padding(end = 8.dp)
-                .preciseClickAnchor(preciseClick),
+            modifier =
+                Modifier
+                    .padding(end = 8.dp)
+                    .preciseClickAnchor(preciseClick),
         ) {
             Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
         }
@@ -346,57 +354,58 @@ internal fun SettingsPage.ResetMenu() {
             show = open,
             preciseClick = preciseClick,
             onDismiss = { open = false },
-            entries = listOf(
-                // 「默认界面」：打开未替换的宿主原版页面 —— **永远可用**（逃生口，见上面那段）。
-                //  写显式 `enabled = true`：多年后被「统一置灰」顺手改掉时，这一行会提醒改动者它不能吃那个闸。
-                MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_DEFAULT_PAGE, "默认界面"),
-                    icon = PageIcons.MenuStock,
-                    enabled = true,
-                ) {
-                    open = false
-                    openStockPage()
-                },
-                MenuEntry.RowLine,
-                // 第二项：重启服务 —— 跟着 [rowsEnabled]（它动的是两个进程，配置不丢，见 [restartModule]）。
-                //  叫「服务」不叫「模块」：这一步杀宿主主进程与本页进程、由系统重新拉起，
-                // **不会**重新加载 system_server 里那份注入（那个只能整机重启）。
-                MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_RESTART_SERVICE, "重启服务"),
-                    icon = PageIcons.ModuleRestart,
-                    enabled = rowsEnabled,
-                ) {
-                    open = false
-                    restartModule()
-                },
-                MenuEntry.RowLine,
-                // 第三项：导出日志 —— 同样跟着 [rowsEnabled]
-                MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_EXPORT_LOG, "导出日志"),
-                    icon = PageIcons.MenuExport,
-                    enabled = rowsEnabled,
-                ) {
-                    open = false
-                    onExportLog?.invoke()
-                },
-                // 「更多」那一项**已删**（「去掉菜单里的更多」）：
-                // 进「更多选项」页只留首页那一行，且那一行**不吃任何闸**（见 [HomeScreen]）——
-                // 它现在同时承担「日常入口」与「模块坏掉时看运行状态的地方」两个角色。
-                // 组间加深带：下面这项是破坏性动作，与上面三项不是一类，细线分不出来
-                MenuEntry.GroupLine,
-                // 第四项：跟着 [rowsEnabled] —— 未就绪时置灰且吃掉点击（由 MenuRow 那层透明吃事件 Box 兜住，菜单不关、不派发）
-                //  文案是「清空」不是「重置」：这一下**真的把两份配置都清掉**
-                //（含已保存的命令），叫「重置」会让人以为只是恢复默认、数据还在。
-                MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_CLEAR_CONFIG, "清空配置"),
-                    icon = PageIcons.MenuReset,
-                    enabled = rowsEnabled,
-                    danger = true,
-                ) {
-                    open = false
-                    confirmReset.value = true
-                },
-            ),
+            entries =
+                listOf(
+                    // 「默认界面」：打开未替换的宿主原版页面 —— **永远可用**（逃生口，见上面那段）。
+                    //  写显式 `enabled = true`：多年后被「统一置灰」顺手改掉时，这一行会提醒改动者它不能吃那个闸。
+                    MenuEntry.Row(
+                        title = I18n.get(Strings.MENU_DEFAULT_PAGE, "默认界面"),
+                        icon = PageIcons.MenuStock,
+                        enabled = true,
+                    ) {
+                        open = false
+                        openStockPage()
+                    },
+                    MenuEntry.RowLine,
+                    // 第二项：重启服务 —— 跟着 [rowsEnabled]（它动的是两个进程，配置不丢，见 [restartModule]）。
+                    //  叫「服务」不叫「模块」：这一步杀宿主主进程与本页进程、由系统重新拉起，
+                    // **不会**重新加载 system_server 里那份注入（那个只能整机重启）。
+                    MenuEntry.Row(
+                        title = I18n.get(Strings.MENU_RESTART_SERVICE, "重启服务"),
+                        icon = PageIcons.ModuleRestart,
+                        enabled = rowsEnabled,
+                    ) {
+                        open = false
+                        restartModule()
+                    },
+                    MenuEntry.RowLine,
+                    // 第三项：导出日志 —— 同样跟着 [rowsEnabled]
+                    MenuEntry.Row(
+                        title = I18n.get(Strings.MENU_EXPORT_LOG, "导出日志"),
+                        icon = PageIcons.MenuExport,
+                        enabled = rowsEnabled,
+                    ) {
+                        open = false
+                        onExportLog?.invoke()
+                    },
+                    // 「更多」那一项**已删**（「去掉菜单里的更多」）：
+                    // 进「更多选项」页只留首页那一行，且那一行**不吃任何闸**（见 [HomeScreen]）——
+                    // 它现在同时承担「日常入口」与「模块坏掉时看运行状态的地方」两个角色。
+                    // 组间加深带：下面这项是破坏性动作，与上面三项不是一类，细线分不出来
+                    MenuEntry.GroupLine,
+                    // 第四项：跟着 [rowsEnabled] —— 未就绪时置灰且吃掉点击（由 MenuRow 那层透明吃事件 Box 兜住，菜单不关、不派发）
+                    //  文案是「清空」不是「重置」：这一下**真的把两份配置都清掉**
+                    // （含已保存的命令），叫「重置」会让人以为只是恢复默认、数据还在。
+                    MenuEntry.Row(
+                        title = I18n.get(Strings.MENU_CLEAR_CONFIG, "清空配置"),
+                        icon = PageIcons.MenuReset,
+                        enabled = rowsEnabled,
+                        danger = true,
+                    ) {
+                        open = false
+                        confirmReset.value = true
+                    },
+                ),
         )
 
         ConfirmDialog(

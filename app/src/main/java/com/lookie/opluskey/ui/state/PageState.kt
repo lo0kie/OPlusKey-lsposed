@@ -8,10 +8,8 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 
-/**
- * 页面用到的两个状态容器：`CommandDraft` 是纯表单模型，`FallbackOwners` 是宿主不给 owner
- * 时的兜底实现。两者都不引用外层类的任何东西，从 `ui/SettingsPage` 原样拆出（去掉 `inner`）。
- */
+// 页面用到的两个状态容器：`CommandDraft` 是纯表单模型，`FallbackOwners` 是宿主不给 owner
+// 时的兜底实现。两者都不引用外层类的任何东西，从 `ui/SettingsPage` 原样拆出（去掉 `inner`）。
 
 /**
  * 「自定义命令」页正在编辑的那条命令（草稿）。
@@ -74,8 +72,7 @@ internal class CommandDraft {
      *  [reset]。那 240ms 里用户完全可能已经又开始敲字（焦点还在输入框上），此时无条件 `reset()`
      *  会把刚敲进去的内容一起吞掉。指纹相等才收尾。
      */
-    fun contentFingerprint(): String =
-        "$kind\u0000$name\u0000$single\u0000$stepDelayMs\u0000${steps.joinToString("\u0001")}"
+    fun contentFingerprint(): String = "$kind\u0000$name\u0000$single\u0000$stepDelayMs\u0000${steps.joinToString("\u0001")}"
 
     /**
      * 保存成功、或从菜单重新进来时清空。
@@ -129,7 +126,6 @@ internal class FallbackOwners :
     androidx.lifecycle.LifecycleOwner,
     androidx.lifecycle.ViewModelStoreOwner,
     androidx.savedstate.SavedStateRegistryOwner {
-
     private val registry = androidx.lifecycle.LifecycleRegistry(this)
 
     override val lifecycle: androidx.lifecycle.Lifecycle get() = registry

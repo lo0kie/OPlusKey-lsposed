@@ -8,7 +8,6 @@ import com.lookie.opluskey.core.reflect.Reflect
 
 /** 状态栏指令的跨进程桥：「通知中心 / 控制中心」与「最近任务」这几个动作的专用通道。 */
 internal object StatusBarBridge {
-
     /** 状态栏指令的转交广播 —— 宿主发，注入侧接住并在本机执行。 */
     const val ACTION_STATUSBAR = "com.lookie.opluskey.STATUSBAR"
 
@@ -34,7 +33,10 @@ internal object StatusBarBridge {
      * 也只有宿主进程里注册的接收器能收到。
      * 任何失败只记日志 —— 最坏是「这一下没反应」，不能影响宿主进程。
      */
-    fun send(context: Context, cmd: String) {
+    fun send(
+        context: Context,
+        cmd: String,
+    ) {
         try {
             context.sendBroadcast(
                 Intent(ACTION_STATUSBAR)
@@ -54,14 +56,18 @@ internal object StatusBarBridge {
      *
      * @param loader system_server 的 ClassLoader（本机反射用；null 则只记日志不执行）
      */
-    fun handle(intent: Intent, loader: ClassLoader?): Boolean {
+    fun handle(
+        intent: Intent,
+        loader: ClassLoader?,
+    ): Boolean {
         if (intent.action != ACTION_STATUSBAR) return false
-        val cmd = try {
-            intent.getStringExtra(EXTRA_CMD).orEmpty()
-        } catch (e: Throwable) {
-            XLog.w("读状态栏指令 extra 失败：${e.message}")
-            ""
-        }
+        val cmd =
+            try {
+                intent.getStringExtra(EXTRA_CMD).orEmpty()
+            } catch (e: Throwable) {
+                XLog.w("读状态栏指令 extra 失败：${e.message}")
+                ""
+            }
         try {
             when (cmd) {
                 CMD_NOTIFICATIONS -> toggleNotificationsLocal(loader)
@@ -85,15 +91,18 @@ internal object StatusBarBridge {
             return
         }
         try {
-            val svc = Reflect.findClass(loader, "android.os.ServiceManager")
-                ?.let { Reflect.callStatic(it, "getService", "statusbar") } ?: run {
-                XLog.w("拿不到 statusbar 服务对象，通知中心跳过")
-                return
-            }
-            val m = Reflect.methodByNameAndArity(svc.javaClass, "togglePanel", 0) ?: run {
-                XLog.w("statusbar 服务（${svc.javaClass.name}）上没有 togglePanel()，通知中心跳过")
-                return
-            }
+            val svc =
+                Reflect
+                    .findClass(loader, "android.os.ServiceManager")
+                    ?.let { Reflect.callStatic(it, "getService", "statusbar") } ?: run {
+                    XLog.w("拿不到 statusbar 服务对象，通知中心跳过")
+                    return
+                }
+            val m =
+                Reflect.methodByNameAndArity(svc.javaClass, "togglePanel", 0) ?: run {
+                    XLog.w("statusbar 服务（${svc.javaClass.name}）上没有 togglePanel()，通知中心跳过")
+                    return
+                }
             m.isAccessible = true
             m.invoke(svc)
             XLog.w("已在本机调 IStatusBarService.togglePanel（notifications）")
@@ -123,22 +132,25 @@ internal object StatusBarBridge {
             return
         }
         try {
-            val svc = Reflect.findClass(loader, "android.os.ServiceManager")
-                ?.let { Reflect.callStatic(it, "getService", "statusbar") } ?: run {
-                XLog.w("拿不到 statusbar 服务对象，控制中心跳过")
-                return
-            }
+            val svc =
+                Reflect
+                    .findClass(loader, "android.os.ServiceManager")
+                    ?.let { Reflect.callStatic(it, "getService", "statusbar") } ?: run {
+                    XLog.w("拿不到 statusbar 服务对象，控制中心跳过")
+                    return
+                }
 
             // —— 候选 1：mBar（SystemUI 的 IStatusBar），无权限闸门 ——
             val bar = Reflect.fieldValue(svc, svc.javaClass, "mBar")
-            val expanded = bar?.let { b ->
-                Reflect.methodByNameAndArity(b.javaClass, "animateExpandSettingsPanel", 1)?.let { m ->
-                    m.isAccessible = true
-                    m.invoke(b, null)
-                    XLog.w("已在本机调 IStatusBar.animateExpandSettingsPanel（控制中心）")
-                    true
+            val expanded =
+                bar?.let { b ->
+                    Reflect.methodByNameAndArity(b.javaClass, "animateExpandSettingsPanel", 1)?.let { m ->
+                        m.isAccessible = true
+                        m.invoke(b, null)
+                        XLog.w("已在本机调 IStatusBar.animateExpandSettingsPanel（控制中心）")
+                        true
+                    }
                 }
-            }
             if (expanded == true) return
             XLog.w(
                 "控制中心候选 1 落空（mBar=${bar?.javaClass?.name ?: "取不到"}）；" +
@@ -146,9 +158,10 @@ internal object StatusBarBridge {
             )
 
             // —— 候选 2：服务那一层 ——
-            val byService = listOf(1, 0).firstNotNullOfOrNull { arity ->
-                Reflect.methodByNameAndArity(svc.javaClass, "expandSettingsPanel", arity)
-            }
+            val byService =
+                listOf(1, 0).firstNotNullOfOrNull { arity ->
+                    Reflect.methodByNameAndArity(svc.javaClass, "expandSettingsPanel", arity)
+                }
             if (byService != null) {
                 byService.isAccessible = true
                 if (byService.parameterCount == 1) byService.invoke(svc, null) else byService.invoke(svc)
@@ -170,12 +183,16 @@ internal object StatusBarBridge {
     }
 
     /** 把所有带 `Expand` / `Panel` 的方法名 + 参数个数打进日志（上面那条兜底用的）。 */
-    private fun dumpPanelMethods(where: String, cls: Class<*>) {
+    private fun dumpPanelMethods(
+        where: String,
+        cls: Class<*>,
+    ) {
         try {
-            val names = cls.methods
-                .filter { it.name.contains("Expand", ignoreCase = true) || it.name.contains("Panel", ignoreCase = true) }
-                .map { "${it.name}/${it.parameterCount}" }
-                .distinct()
+            val names =
+                cls.methods
+                    .filter { it.name.contains("Expand", ignoreCase = true) || it.name.contains("Panel", ignoreCase = true) }
+                    .map { "${it.name}/${it.parameterCount}" }
+                    .distinct()
             XLog.w("$where 上与面板有关的方法（${names.size} 个）：$names")
         } catch (e: Throwable) {
             XLog.w("列 $where 的方法失败：${e.javaClass.simpleName}")
@@ -191,25 +208,30 @@ internal object StatusBarBridge {
             return
         }
         try {
-            val internalCls = Reflect.findClass(
-                loader, "com.android.server.statusbar.StatusBarManagerInternal",
-            ) ?: run {
-                XLog.w("找不到 StatusBarManagerInternal，最近任务跳过")
-                return
-            }
-            val localServices = Reflect.findClass(loader, "com.android.server.LocalServices")
-                ?: run {
-                    XLog.w("找不到 LocalServices，最近任务跳过")
+            val internalCls =
+                Reflect.findClass(
+                    loader,
+                    "com.android.server.statusbar.StatusBarManagerInternal",
+                ) ?: run {
+                    XLog.w("找不到 StatusBarManagerInternal，最近任务跳过")
                     return
                 }
-            val svc = Reflect.callStatic(localServices, "getService", internalCls) ?: run {
-                XLog.w("LocalServices 里没有 StatusBarManagerInternal（statusbar 服务没起来？）")
-                return
-            }
-            val m = Reflect.methodByNameAndArity(svc.javaClass, "toggleRecentApps", 0) ?: run {
-                XLog.w("${svc.javaClass.name} 上没有 toggleRecentApps()，最近任务跳过")
-                return
-            }
+            val localServices =
+                Reflect.findClass(loader, "com.android.server.LocalServices")
+                    ?: run {
+                        XLog.w("找不到 LocalServices，最近任务跳过")
+                        return
+                    }
+            val svc =
+                Reflect.callStatic(localServices, "getService", internalCls) ?: run {
+                    XLog.w("LocalServices 里没有 StatusBarManagerInternal（statusbar 服务没起来？）")
+                    return
+                }
+            val m =
+                Reflect.methodByNameAndArity(svc.javaClass, "toggleRecentApps", 0) ?: run {
+                    XLog.w("${svc.javaClass.name} 上没有 toggleRecentApps()，最近任务跳过")
+                    return
+                }
             val token = android.os.Binder.clearCallingIdentity()
             try {
                 Reflect.call(svc, m)
@@ -236,19 +258,23 @@ internal object StatusBarBridge {
         }
         try {
             // 服务注册进去的就是 WindowManagerService 实例本身（不是代理），可以直接读它的字段
-            val wms = Reflect.findClass(loader, "android.os.ServiceManager")
-                ?.let { Reflect.callStatic(it, "getService", "window") } ?: run {
-                XLog.w("拿不到 window 服务对象，电源菜单跳过")
-                return
-            }
-            val policy = Reflect.fieldValue(wms, wms.javaClass, "mPolicy") ?: run {
-                XLog.w("window 服务（${wms.javaClass.name}）上没有 mPolicy 字段，电源菜单跳过")
-                return
-            }
-            val m = Reflect.methodByNameAndArity(policy.javaClass, "showGlobalActions", 0) ?: run {
-                XLog.w("${policy.javaClass.name} 上没有 showGlobalActions()，电源菜单跳过")
-                return
-            }
+            val wms =
+                Reflect
+                    .findClass(loader, "android.os.ServiceManager")
+                    ?.let { Reflect.callStatic(it, "getService", "window") } ?: run {
+                    XLog.w("拿不到 window 服务对象，电源菜单跳过")
+                    return
+                }
+            val policy =
+                Reflect.fieldValue(wms, wms.javaClass, "mPolicy") ?: run {
+                    XLog.w("window 服务（${wms.javaClass.name}）上没有 mPolicy 字段，电源菜单跳过")
+                    return
+                }
+            val m =
+                Reflect.methodByNameAndArity(policy.javaClass, "showGlobalActions", 0) ?: run {
+                    XLog.w("${policy.javaClass.name} 上没有 showGlobalActions()，电源菜单跳过")
+                    return
+                }
             m.isAccessible = true
             m.invoke(policy)
             XLog.w("已在本机调 PhoneWindowManager.showGlobalActions（电源菜单）")

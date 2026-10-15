@@ -1,6 +1,6 @@
 {
   "app.name": "OPlusKey",
-  "status.disabled": "Key binding is off",
+  "status.disabled": "Module not enabled",
   "status.unavailable": "Module not ready yet, please wait",
   "status.unsupported_device": "This device is not adapted",
   "status.pending_version": "Waiting for this system version",

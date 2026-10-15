@@ -21,7 +21,7 @@ import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.squircle.squircleBorder
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 瓦片类小件：格子尺寸常量、行首图标按钮、焦点圈。 */
+// 瓦片类小件：格子尺寸常量、行首图标按钮、焦点圈。
 
 /**
  * 一个格子的高度：`BasicComponent` 的最小高度 48dp + `CardListPosition.Full`
@@ -69,14 +69,15 @@ internal fun IconAction(
 ) {
     val scheme = COUITheme.colorScheme
     //  颜色随 `enabled` / `error` / `tint` 切换，带过渡：置灰与恢复不再「啪」地跳
-    //（`tint` 那一档是调用点传进来的常量色，动画从当前值走到它，同样自然）。
+    // （`tint` 那一档是调用点传进来的常量色，动画从当前值走到它，同样自然）。
     val color by animateColorAsState(
-        targetValue = when {
-            !enabled -> scheme.disabledOnSecondaryVariant
-            tint != null -> tint
-            error -> scheme.error
-            else -> scheme.onSurfaceContainer
-        },
+        targetValue =
+            when {
+                !enabled -> scheme.disabledOnSecondaryVariant
+                tint != null -> tint
+                error -> scheme.error
+                else -> scheme.onSurfaceContainer
+            },
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "IconAction",
     )

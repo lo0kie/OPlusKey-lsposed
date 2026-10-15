@@ -88,11 +88,12 @@ internal fun SettingsPage.SliderRow(
     // 拖动触觉与「点轨道跳值」共用同一条通道（[rememberTick]）：判据只有系统静音，
     //  与模块的「振动反馈」开关无关（完整口径见 `tickNow`）。
     val sliderIconColor by animateColorAsState(
-        targetValue = if (enabled) {
-            COUITheme.colorScheme.onSurfaceContainer
-        } else {
-            COUITheme.colorScheme.disabledOnSecondaryVariant
-        },
+        targetValue =
+            if (enabled) {
+                COUITheme.colorScheme.onSurfaceContainer
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "SliderIcon",
     )
@@ -103,29 +104,32 @@ internal fun SettingsPage.SliderRow(
     //  三处都**带过渡**（与上面 [sliderIconColor] 同一组参数）：主开关一拨，
     // 行首图标与这三行字一起渐变，不会出现「图标在淡、字在跳」。
     val titleColor by animateColorAsState(
-        targetValue = if (enabled) {
-            COUITheme.colorScheme.onBackground
-        } else {
-            COUITheme.colorScheme.disabledOnSecondaryVariant
-        },
+        targetValue =
+            if (enabled) {
+                COUITheme.colorScheme.onBackground
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "SliderTitle",
     )
     val summaryColor by animateColorAsState(
-        targetValue = if (enabled) {
-            COUITheme.colorScheme.onSurfaceVariantSummary
-        } else {
-            COUITheme.colorScheme.disabledOnSecondaryVariant
-        },
+        targetValue =
+            if (enabled) {
+                COUITheme.colorScheme.onSurfaceVariantSummary
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "SliderSummary",
     )
     val valueColor by animateColorAsState(
-        targetValue = if (enabled) {
-            COUITheme.colorScheme.onSurfaceSecondary
-        } else {
-            COUITheme.colorScheme.disabledOnSecondaryVariant
-        },
+        targetValue =
+            if (enabled) {
+                COUITheme.colorScheme.onSurfaceSecondary
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "SliderValue",
     )
@@ -136,7 +140,7 @@ internal fun SettingsPage.SliderRow(
     // 改用库底下的 `BasicComponent`（自定义内容变体）+ 公开的 `Slider` 自己拼：
     // 滑杆走 [SLIDER_ICON_INSET] 左内缩，与标题文字同一个左边界。
     // 代价是标题 / 摘要 / 当前值这三处要自己画 —— 样式逐项照抄库那一版
-    //（`BasicComponent` 的 headline1 + Medium、body2、2dp 行距；`SliderPreference` 的
+    // （`BasicComponent` 的 headline1 + Medium、body2、2dp 行距；`SliderPreference` 的
     // `valueText` 走 body2 字号 + `onSurfaceSecondary` + 行尾 4dp）。
     BasicComponent(
         insideMargin = SLIDER_INSIDE_MARGIN,
@@ -171,10 +175,11 @@ internal fun SettingsPage.SliderRow(
                     if (raw.roundToInt() != dragging.floatValue.roundToInt()) tick()
                     dragging.floatValue = raw
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    // 行首图标把滑杆也挤开（见 [SLIDER_ICON_INSET]）
-                    .padding(start = SLIDER_ICON_INSET),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        // 行首图标把滑杆也挤开（见 [SLIDER_ICON_INSET]）
+                        .padding(start = SLIDER_ICON_INSET),
                 enabled = enabled,
                 valueRange = min.toFloat()..max.toFloat(),
                 // 离散刻度：两端之间分 (max-min)/STEP_MS 档（`steps` 不含两个端点）
@@ -202,9 +207,10 @@ internal fun SettingsPage.SliderRow(
         // 点轨道跳值那条路不经过滑杆自己，得自己给一次触觉（拖动那条由 Slider 的 hapticEffect 给）
         //  注意：传**稳定的那份回调**（见上面 `seekLatest` 的注释）：`tick()` / `commit()` 每次重组
         //  都是新实例，直接捕获就停在首次组合那一刻了。
-        modifier = Modifier.tapSliderToSeek(min, max, enabled) { v ->
-            seekLatest(v)
-        }
+        modifier =
+            Modifier.tapSliderToSeek(min, max, enabled) { v ->
+                seekLatest(v)
+            },
     ) {
         // 标题与摘要之间那 2dp 是库的私有常量 `MarginBetweenLine`（值取自 `Component.kt`）。
         Text(
@@ -235,53 +241,55 @@ internal fun Modifier.tapSliderToSeek(
     max: Int,
     enabled: Boolean,
     onSeek: (Int) -> Unit,
-): Modifier = pointerInput(min, max, enabled) {
-    // 禁用时这条手势也得停 —— 它是**自己挂的**、不走滑杆的 `enabled`，
-    // 不停的话置灰的滑杆照样能点着跳值（多条命令下的「触发间隔」）。
-    if (!enabled) return@pointerInput
-    val slop = viewConfiguration.touchSlop
-    // 轨道的左右边界：左边比右边多一个 [SLIDER_ICON_INSET]（行首图标把滑杆挤开的那一段）
-    val trackStart = (SLIDER_SIDE_INSET + SLIDER_ICON_INSET).toPx()
-    val trackEnd = SLIDER_SIDE_INSET.toPx()
-    val zone = SLIDER_TAP_ZONE.toPx()
-    awaitPointerEventScope {
-        while (true) {
-            val down = awaitFirstDown(
-                requireUnconsumed = false,
-                pass = PointerEventPass.Initial,
-            )
-            // 没落在滑杆那条带子里 ⇒ 这次按下不归这条手势管
-            // （不 consume、也不吞事件，滑杆 / 行自己照常处理它）
-            //  注意：**纵向与横向都要圈** —— 只判纵向的话，横向靠后面的
-            //  `coerceIn(0f, 1f)` 兜 —— 在轨道**左/右外侧**、但仍在底部那条带子里轻点会被折成 0 或 1，
-            //  也就是**写 min / max**：用户只是点了行首图标那一格或行尾空白，值却被跳到端点。
-            if (down.position.y < size.height - zone) continue
-            if (down.position.x < trackStart || down.position.x > size.width - trackEnd) continue
-            var moved = false
-            var released = false
+): Modifier =
+    pointerInput(min, max, enabled) {
+        // 禁用时这条手势也得停 —— 它是**自己挂的**、不走滑杆的 `enabled`，
+        // 不停的话置灰的滑杆照样能点着跳值（多条命令下的「触发间隔」）。
+        if (!enabled) return@pointerInput
+        val slop = viewConfiguration.touchSlop
+        // 轨道的左右边界：左边比右边多一个 [SLIDER_ICON_INSET]（行首图标把滑杆挤开的那一段）
+        val trackStart = (SLIDER_SIDE_INSET + SLIDER_ICON_INSET).toPx()
+        val trackEnd = SLIDER_SIDE_INSET.toPx()
+        val zone = SLIDER_TAP_ZONE.toPx()
+        awaitPointerEventScope {
             while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if ((change.position - down.position).getDistance() > slop) {
-                    moved = true
+                val down =
+                    awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Initial,
+                    )
+                // 没落在滑杆那条带子里 ⇒ 这次按下不归这条手势管
+                // （不 consume、也不吞事件，滑杆 / 行自己照常处理它）
+                //  注意：**纵向与横向都要圈** —— 只判纵向的话，横向靠后面的
+                //  `coerceIn(0f, 1f)` 兜 —— 在轨道**左/右外侧**、但仍在底部那条带子里轻点会被折成 0 或 1，
+                //  也就是**写 min / max**：用户只是点了行首图标那一格或行尾空白，值却被跳到端点。
+                if (down.position.y < size.height - zone) continue
+                if (down.position.x < trackStart || down.position.x > size.width - trackEnd) continue
+                var moved = false
+                var released = false
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if ((change.position - down.position).getDistance() > slop) {
+                        moved = true
+                    }
+                    if (change.changedToUpIgnoreConsumed()) {
+                        released = true
+                        break
+                    }
+                    if (!change.pressed) break
                 }
-                if (change.changedToUpIgnoreConsumed()) {
-                    released = true
-                    break
-                }
-                if (!change.pressed) break
+                // 滑动 / 没正常抬手 ⇒ 不算轻点（拖动全归滑杆）
+                if (moved || !released) continue
+                // 触点 → 值：先按轨道左右边界折到轨道上，再按滑杆自己的刻度取整 ——
+                // 刻度必须与上面 Slider.steps 那套同源（(max-min)/STEP_MS 格），不能直接按
+                // STEP_MS 取整：区间不整除时两套值对不上。
+                val track = (size.width - trackStart - trackEnd).coerceAtLeast(1f)
+                val frac = ((down.position.x - trackStart) / track).coerceIn(0f, 1f)
+                val ticks = ((max - min) / STEP_MS).coerceAtLeast(1)
+                val idx = (frac * ticks).roundToInt()
+                val v = min + idx * (max - min).toDouble() / ticks
+                onSeek(v.roundToInt().coerceIn(min, max))
             }
-            // 滑动 / 没正常抬手 ⇒ 不算轻点（拖动全归滑杆）
-            if (moved || !released) continue
-            // 触点 → 值：先按轨道左右边界折到轨道上，再按滑杆自己的刻度取整 ——
-            // 刻度必须与上面 Slider.steps 那套同源（(max-min)/STEP_MS 格），不能直接按
-            // STEP_MS 取整：区间不整除时两套值对不上。
-            val track = (size.width - trackStart - trackEnd).coerceAtLeast(1f)
-            val frac = ((down.position.x - trackStart) / track).coerceIn(0f, 1f)
-            val ticks = ((max - min) / STEP_MS).coerceAtLeast(1)
-            val idx = (frac * ticks).roundToInt()
-            val v = min + idx * (max - min).toDouble() / ticks
-            onSeek(v.roundToInt().coerceIn(min, max))
         }
     }
-}

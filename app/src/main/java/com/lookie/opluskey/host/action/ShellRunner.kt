@@ -4,14 +4,16 @@ import com.lookie.opluskey.core.log.XLog
 
 /** 执行一条 shell 命令（`shell:` 动作）。 */
 internal object ShellRunner {
-
     /**
      * 跑一条命令。
      *
      * @param onFailure 失败回调（后台线程里调 —— 实现方自己负责切线程）。
      *   两类时机：`ProcessBuilder.start()` 直接失败；子进程退出码非 0；等待超时。
      */
-    fun exec(command: String, onFailure: (CommandFailure) -> Unit = {}) {
+    fun exec(
+        command: String,
+        onFailure: (CommandFailure) -> Unit = {},
+    ) {
         if (command.isBlank()) return
 
         // 先占坑再起进程。`if (running.get() >= MAX) …` 那种**先查后加**在并发下会一起放行：两条
@@ -24,12 +26,12 @@ internal object ShellRunner {
         }
 
         try {
-            val proc = ProcessBuilder("sh", "-c", command)
-                .redirectErrorStream(true)
-                .start()
+            val proc =
+                ProcessBuilder("sh", "-c", command)
+                    .redirectErrorStream(true)
+                    .start()
             // 不给子进程留 stdin：我们从不用它，而有些命令会**等 stdin 到 EOF** 才肯退出
-            //（`sh -c "cat"` 之类）—— 管道一直开着就是一条挂到超时的 shell，每次还漏一对管道
-            //。
+            // （`sh -c "cat"` 之类）—— 管道一直开着就是一条挂到超时的 shell，每次还漏一对管道。
             runCatching { proc.outputStream.close() }
             // 后台线程等子进程结束
             Thread {
@@ -41,23 +43,28 @@ internal object ShellRunner {
                     // 一旦先读后等，这个线程就永久卡在 read 上，下面的 waitFor(超时) 与 finally
                     // 的计数回收都到不了：累计 MAX_CONCURRENT 条之后所有 shell 动作永久 OVERLOADED，
                     // 每挂一条还泄一个线程 + 一对管道。
-                    reader = Thread {
-                        runCatching {
-                            proc.inputStream.bufferedReader().forEachLine { line -> XLog.d("sh: $line") }
-                        }.onFailure { XLog.d("读 shell 输出失败：${it.message}") }
-                    }.apply { isDaemon = true; start() }
+                    reader =
+                        Thread {
+                            runCatching {
+                                proc.inputStream.bufferedReader().forEachLine { line -> XLog.d("sh: $line") }
+                            }.onFailure { XLog.d("读 shell 输出失败：${it.message}") }
+                        }.apply {
+                            isDaemon = true
+                            start()
+                        }
 
                     // 必须带超时：有些命令在这个身份下会直接挂住（真机实测 `cmd audio set-ringer-mode` 就是）；
                     // 无超时的 `waitFor()` 每按一次就永久泄一个线程 + 一对管道，反复按也拦不住。
-                    val done = try {
-                        proc.waitFor(SHELL_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    } catch (e: Throwable) {
-                        // 注意：这条路直接 `return@Thread` 的话**不 destroy 子进程**：
-                        //  进程漏在后台、读线程还挂着那对管道。与超时那条一样收掉（destroy 关管道 ⇒ 读到 EOF）。
-                        XLog.w("等 shell 结束失败，杀掉它：${e.message}")
-                        runCatching { proc.destroy() }
-                        return@Thread
-                    }
+                    val done =
+                        try {
+                            proc.waitFor(SHELL_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        } catch (e: Throwable) {
+                            // 注意：这条路直接 `return@Thread` 的话**不 destroy 子进程**：
+                            //  进程漏在后台、读线程还挂着那对管道。与超时那条一样收掉（destroy 关管道 ⇒ 读到 EOF）。
+                            XLog.w("等 shell 结束失败，杀掉它：${e.message}")
+                            runCatching { proc.destroy() }
+                            return@Thread
+                        }
                     if (!done) {
                         XLog.w("shell 超过 ${SHELL_TIMEOUT_MS}ms 没结束，杀掉它：$command")
                         try {
@@ -67,9 +74,10 @@ internal object ShellRunner {
                         }
                         // 子进程可能不理会 SIGTERM：宽限期内没退就强杀，保证管道被关掉、
                         // 读线程能收到 EOF 退出（否则每次超时都永久泄一个读线程）。
-                        val gone = runCatching {
-                            proc.waitFor(SHELL_KILL_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-                        }.getOrDefault(false)
+                        val gone =
+                            runCatching {
+                                proc.waitFor(SHELL_KILL_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                            }.getOrDefault(false)
                         if (!gone) {
                             runCatching { proc.destroyForcibly() }
                                 .onFailure { XLog.d("强杀 shell 进程失败（忽略）：${it.message}") }
@@ -113,13 +121,18 @@ internal object ShellRunner {
      * @return 槽位号；`-1` = 已满（调用方报 OVERLOADED）
      */
     private fun acquireSlot(): Int {
-        val dir = runCatching { com.lookie.opluskey.core.config.ConfigStore.filesDir() }.getOrNull()
+        val dir =
+            runCatching {
+                com.lookie.opluskey.core.config.ConfigStore
+                    .filesDir()
+            }.getOrNull()
         if (dir == null || (!dir.isDirectory && !dir.mkdirs())) return acquireLocalSlot()
         var opened = 0
         for (i in 0 until MAX_CONCURRENT) {
-            val raf = runCatching {
-                java.io.RandomAccessFile(java.io.File(dir, "$SLOT_PREFIX$i"), "rw")
-            }.getOrNull() ?: continue
+            val raf =
+                runCatching {
+                    java.io.RandomAccessFile(java.io.File(dir, "$SLOT_PREFIX$i"), "rw")
+                }.getOrNull() ?: continue
             opened++
             // 本进程已经占着这个文件时 `tryLock` 会抛 `OverlappingFileLockException`（吞掉、试下一个）
             val locked = runCatching { raf.channel.tryLock() }.getOrNull()
@@ -174,7 +187,9 @@ internal object ShellRunner {
     private const val LOCAL_SLOT = -2
 
     /** 退回本进程计数时用的计数器（见 [acquireLocalSlot]）。 */
-    private val running = java.util.concurrent.atomic.AtomicInteger(0)
+    private val running =
+        java.util.concurrent.atomic
+            .AtomicInteger(0)
 
     /** 已占住的槽位：槽号 → 那个被锁住的锁文件句柄（关掉它 = 释放 `FileLock`）。 */
     private val heldSlots = java.util.concurrent.ConcurrentHashMap<Int, java.io.RandomAccessFile>()

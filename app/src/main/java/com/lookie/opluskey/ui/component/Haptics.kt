@@ -17,7 +17,7 @@ import com.lookie.opluskey.ui.state.rememberTick
 import com.lookie.opluskey.ui.state.tickNow
 import io.github.suqi8.coui.kmp.basic.Card
 
-/** 触觉屏蔽：把库自己发出的振动反馈按住（我们的点击语义与库不一致）。 */
+// 触觉屏蔽：把库自己发出的振动反馈按住（我们的点击语义与库不一致）。
 
 /**
  * **长按的振动只走通用通道**（[rememberTick] / [tickNow]）。
@@ -29,9 +29,10 @@ import io.github.suqi8.coui.kmp.basic.Card
  * 做法：在**那一格**外面把 `LocalHapticFeedback` 换成本实现（见 [ActionTile] 与
  * 「自定义命令」页里已保存命令那组格子）。只包格子 —— 滑杆 / 浮层自己的触觉不走这里。
  */
-internal val NoHapticFeedback: HapticFeedback = object : HapticFeedback {
-    override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) = Unit
-}
+internal val NoHapticFeedback: HapticFeedback =
+    object : HapticFeedback {
+        override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) = Unit
+    }
 
 /**
  * 开关那一行的 `LocalView` —— 只为一件事：把库 `Switch` 自己那次振动吞掉。
@@ -45,10 +46,15 @@ internal val NoHapticFeedback: HapticFeedback = object : HapticFeedback {
  *  只包开关那一行：库里读 `LocalView` 的只有 `CouiHaptic` / `ListPopup` /
  * `WindowNavigationEventScope`，后两者都在这一行之外（浮层与页面级导航事件）。
  */
-internal class NoHapticView(context: Context) : View(context) {
+internal class NoHapticView(
+    context: Context,
+) : View(context) {
     override fun performHapticFeedback(feedbackConstant: Int): Boolean = false
 
-    override fun performHapticFeedback(feedbackConstant: Int, flags: Int): Boolean = false
+    override fun performHapticFeedback(
+        feedbackConstant: Int,
+        flags: Int,
+    ): Boolean = false
 }
 
 /**
