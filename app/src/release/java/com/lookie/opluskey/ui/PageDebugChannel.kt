@@ -11,5 +11,8 @@ import android.content.Intent
  * 会留在 release 产物里（R8 被 `-keep` 挡住，删不掉）。
  */
 internal object PageDebugChannel {
-    fun register(context: Context, onCommand: (Intent) -> Unit): BroadcastReceiver? = null
+    fun register(
+        context: Context,
+        onCommand: (Intent) -> Unit,
+    ): BroadcastReceiver? = null
 }

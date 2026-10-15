@@ -19,7 +19,6 @@ import io.github.libxposed.api.XposedModule
  * 所以 [installFileResultHook] 是这一族唯一的 Hook。
  */
 internal object ConfigTransfer {
-
     /** 「导出日志」的请求码 —— 本进程里区分哪个 startActivityForResult 是我们的。 */
     private const val REQ_EXPORT_LOG = 0x4F4C
 
@@ -31,11 +30,13 @@ internal object ConfigTransfer {
 
     /** 导出文件的**内容**时间戳（精确到秒，方便对齐别处的记录）。 */
     private val HEADER_STAMP: java.time.format.DateTimeFormatter =
-        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        java.time.format.DateTimeFormatter
+            .ofPattern("yyyy-MM-dd HH:mm:ss")
 
     /** 导出文件的**文件名**时间戳（精确到分，同分钟再导会由系统给「保留两者」）。 */
     private val FILE_STAMP: java.time.format.DateTimeFormatter =
-        java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")
+        java.time.format.DateTimeFormatter
+            .ofPattern("yyyyMMdd-HHmm")
 
     /**
      * 导出包的文件类型 —— 导出交给「保存到」、导入拿来过滤「打开」，两边共用这一个值。
@@ -75,20 +76,22 @@ internal object ConfigTransfer {
         }
         val now = java.time.LocalDateTime.now()
         // 文件头带版本 + 当前时间：日志发出来时不用再问「哪个版本、什么时候的」
-        val text = buildString {
-            append("OPlusKey ").append(HostSession.page?.appVersionText().orEmpty())
-            append(" | ").append(now.format(HEADER_STAMP))
-            append("\n\n").append(body).append('\n')
-        }
+        val text =
+            buildString {
+                append("OPlusKey ").append(HostSession.page?.appVersionText().orEmpty())
+                append(" | ").append(now.format(HEADER_STAMP))
+                append("\n\n").append(body).append('\n')
+            }
         //  后缀要跟下面那个 `type` 对得上：「保存到」按 MIME 决定扩展名，`text/plain` 对应 `.txt`
         // —— 写 `.log` 也会被对话框换成 `.txt`（同 [EXPORT_MIME] 注释里那条实测）。
         val name = "OPlusKey-" + now.format(FILE_STAMP) + ".txt"
         pendingExport = text
-        val intent = android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(android.content.Intent.CATEGORY_OPENABLE)
-            type = "text/plain"
-            putExtra(android.content.Intent.EXTRA_TITLE, name)
-        }
+        val intent =
+            android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_TITLE, name)
+            }
         try {
             activity.startActivityForResult(intent, REQ_EXPORT_LOG)
             XLog.w("导出日志：已弹出保存位置选择器（${body.length} 字符）")
@@ -120,14 +123,15 @@ internal object ConfigTransfer {
         }
         val now = java.time.LocalDateTime.now()
         pendingExport = text
-        val intent = android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(android.content.Intent.CATEGORY_OPENABLE)
-            type = EXPORT_MIME
-            putExtra(
-                android.content.Intent.EXTRA_TITLE,
-                "OPlusKey-" + now.format(FILE_STAMP) + ".bin",
-            )
-        }
+        val intent =
+            android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                type = EXPORT_MIME
+                putExtra(
+                    android.content.Intent.EXTRA_TITLE,
+                    "OPlusKey-" + now.format(FILE_STAMP) + ".bin",
+                )
+            }
         try {
             activity.startActivityForResult(intent, REQ_EXPORT_CONFIG)
             XLog.w("导出配置：已弹出保存位置选择器（${text.length} 字符）")
@@ -150,15 +154,16 @@ internal object ConfigTransfer {
             XLog.w("导入配置：页面没了，放弃")
             return
         }
-        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(android.content.Intent.CATEGORY_OPENABLE)
-            //  按导出包的类型过滤（[EXPORT_MIME]）：类型对不上系统直接不显示。
-            //  这一档能收窄到「二进制」这一族，但收不到「只有我们自己导的」——
-            //  `.bin` / `.data` 之类在系统眼里是同一个类型，而 SAF 不支持按扩展名或文件名过滤。
-            //  以前收 `*/*`，等于让用户在一整块存储里翻。
-            //  内容那一层的闸不动：`ConfigBundle.parse` 认不出仍然一个字节都不写。
-            type = EXPORT_MIME
-        }
+        val intent =
+            android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(android.content.Intent.CATEGORY_OPENABLE)
+                //  按导出包的类型过滤（[EXPORT_MIME]）：类型对不上系统直接不显示。
+                //  这一档能收窄到「二进制」这一族，但收不到「只有我们自己导的」——
+                //  `.bin` / `.data` 之类在系统眼里是同一个类型，而 SAF 不支持按扩展名或文件名过滤。
+                //  以前收 `*/*`，等于让用户在一整块存储里翻。
+                //  内容那一层的闸不动：`ConfigBundle.parse` 认不出仍然一个字节都不写。
+                type = EXPORT_MIME
+            }
         try {
             activity.startActivityForResult(intent, REQ_IMPORT_CONFIG)
             XLog.w("导入配置：已弹出文件选择器")
@@ -177,14 +182,15 @@ internal object ConfigTransfer {
      */
     private fun applyImportedConfig(uri: android.net.Uri) {
         val page = HostSession.page ?: return
-        val text = try {
-            page.context.contentResolver.openInputStream(uri)?.use {
-                it.readBytes().toString(Charsets.UTF_8)
+        val text =
+            try {
+                page.context.contentResolver.openInputStream(uri)?.use {
+                    it.readBytes().toString(Charsets.UTF_8)
+                }
+            } catch (e: Throwable) {
+                XLog.w("导入配置：读文件失败：${e.message}")
+                null
             }
-        } catch (e: Throwable) {
-            XLog.w("导入配置：读文件失败：${e.message}")
-            null
-        }
         val parsed = text?.let { ConfigBundle.parse(it) }
         if (parsed == null) {
             XLog.w("导入配置：校验没过，未改动任何配置（${text?.length ?: 0} 字符）")
@@ -209,17 +215,18 @@ internal object ConfigTransfer {
     /** 收「保存到 / 打开」的结果 —— 平台 `Activity#onActivityResult`，进程内只装一次。 */
     internal fun installFileResultHook(module: XposedModule) {
         if (exportResultHooked) return
-        val origin = try {
-            android.app.Activity::class.java.getDeclaredMethod(
-                "onActivityResult",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                android.content.Intent::class.java,
-            )
-        } catch (e: Throwable) {
-            XLog.w("文件选择：找不到 Activity#onActivityResult：${e.message}")
-            null
-        } ?: return
+        val origin =
+            try {
+                android.app.Activity::class.java.getDeclaredMethod(
+                    "onActivityResult",
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType,
+                    android.content.Intent::class.java,
+                )
+            } catch (e: Throwable) {
+                XLog.w("文件选择：找不到 Activity#onActivityResult：${e.message}")
+                null
+            } ?: return
         exportResultHooked = module.hookGuarded(origin) { chain ->
             val requestCode = chain.args.getOrNull(0) as? Int
             val resultCode = chain.args.getOrNull(1) as? Int
@@ -243,28 +250,35 @@ internal object ConfigTransfer {
                     null
                 }
 
-                else -> chain.proceed()
+                else -> {
+                    chain.proceed()
+                }
             }
         } != null
-        XLog.w("文件选择：结果回调 hook=${exportResultHooked}")
+        XLog.w("文件选择：结果回调 hook=$exportResultHooked")
     }
 
     /** 把 [pendingExport] 写进用户挑的位置。 */
-    private fun writeExportFile(uri: android.net.Uri?, ok: Boolean, what: String) {
+    private fun writeExportFile(
+        uri: android.net.Uri?,
+        ok: Boolean,
+        what: String,
+    ) {
         val text = pendingExport
         pendingExport = null
         if (!ok || uri == null || text == null) {
             XLog.w("$what：用户取消")
             return
         }
-        val written = try {
-            val out = HostSession.activity?.contentResolver?.openOutputStream(uri, "wt")
-            out?.use { it.write(text.toByteArray()) }
-            out != null
-        } catch (e: Throwable) {
-            XLog.w("$what：写入失败：${e.message}")
-            false
-        }
+        val written =
+            try {
+                val out = HostSession.activity?.contentResolver?.openOutputStream(uri, "wt")
+                out?.use { it.write(text.toByteArray()) }
+                out != null
+            } catch (e: Throwable) {
+                XLog.w("$what：写入失败：${e.message}")
+                false
+            }
         HostSession.page?.toast(
             if (written) {
                 I18n.get(Strings.TOAST_CONFIG_EXPORTED, "已导出配置")

@@ -17,28 +17,30 @@ import com.lookie.opluskey.core.reflect.Reflect
 internal class RingerController(
     private val context: () -> Context?,
 ) {
-
     /** 免打扰期间内部档位读不到时的兜底：自己记的上一档（只在写入成功时按**实际落到的档位**更新）。 */
     @Volatile private var rememberedMode: Int = AudioManager.RINGER_MODE_NORMAL
 
     /** 切下一档。 */
     fun cycle() {
-        val ctx = context() ?: run {
-            XLog.w("没有 Context，切换响铃模式跳过")
-            return
-        }
-        try {
-            val am = ctx.getSystemService(AudioManager::class.java) ?: run {
-                XLog.w("拿不到 AudioManager，切换响铃模式跳过")
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，切换响铃模式跳过")
                 return
             }
+        try {
+            val am =
+                ctx.getSystemService(AudioManager::class.java) ?: run {
+                    XLog.w("拿不到 AudioManager，切换响铃模式跳过")
+                    return
+                }
             val zen = isZenOn(ctx)
             val current = readCurrentMode(ctx, am, zen)
-            val next = when (current) {
-                AudioManager.RINGER_MODE_NORMAL -> AudioManager.RINGER_MODE_VIBRATE
-                AudioManager.RINGER_MODE_VIBRATE -> AudioManager.RINGER_MODE_SILENT
-                else -> AudioManager.RINGER_MODE_NORMAL // 静音（或未知）→ 响铃
-            }
+            val next =
+                when (current) {
+                    AudioManager.RINGER_MODE_NORMAL -> AudioManager.RINGER_MODE_VIBRATE
+                    AudioManager.RINGER_MODE_VIBRATE -> AudioManager.RINGER_MODE_SILENT
+                    else -> AudioManager.RINGER_MODE_NORMAL // 静音（或未知）→ 响铃
+                }
             val landed = applyMode(am, current, next, zen)
             if (landed != null) rememberedMode = landed
         } catch (e: Throwable) {
@@ -53,24 +55,36 @@ internal class RingerController(
      * 模式名认不出时只记日志、不改动系统档位，不往外抛（调用方在按键回调下游）。
      */
     fun setMode(mode: String) {
-        val ctx = context() ?: run {
-            XLog.w("没有 Context，设置响铃模式跳过")
-            return
-        }
-        val target = when (mode) {
-            "normal" -> AudioManager.RINGER_MODE_NORMAL
-            "vibrate" -> AudioManager.RINGER_MODE_VIBRATE
-            "silent" -> AudioManager.RINGER_MODE_SILENT
-            else -> {
-                XLog.w("不认识的响铃模式（忽略）：$mode")
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，设置响铃模式跳过")
                 return
             }
-        }
+        val target =
+            when (mode) {
+                "normal" -> {
+                    AudioManager.RINGER_MODE_NORMAL
+                }
+
+                "vibrate" -> {
+                    AudioManager.RINGER_MODE_VIBRATE
+                }
+
+                "silent" -> {
+                    AudioManager.RINGER_MODE_SILENT
+                }
+
+                else -> {
+                    XLog.w("不认识的响铃模式（忽略）：$mode")
+                    return
+                }
+            }
         try {
-            val am = ctx.getSystemService(AudioManager::class.java) ?: run {
-                XLog.w("拿不到 AudioManager，设置响铃模式跳过")
-                return
-            }
+            val am =
+                ctx.getSystemService(AudioManager::class.java) ?: run {
+                    XLog.w("拿不到 AudioManager，设置响铃模式跳过")
+                    return
+                }
             val zen = isZenOn(ctx)
             val current = readCurrentMode(ctx, am, zen)
             if (current == target) {
@@ -91,7 +105,11 @@ internal class RingerController(
      * 内部档位走 `AudioManager.getService()`（hidden 静态）→ binder 的 `getRingerModeInternal()`；
      * 方法不存在（ROM 差异）时退回 rememberedMode，两个都拿不到才用外部视图。
      */
-    private fun readCurrentMode(ctx: Context, am: AudioManager, zen: Boolean): Int {
+    private fun readCurrentMode(
+        ctx: Context,
+        am: AudioManager,
+        zen: Boolean,
+    ): Int {
         if (!zen) return am.ringerMode
         val service = Reflect.callStatic(AudioManager::class.java, "getService")
         if (service != null) {
@@ -122,7 +140,12 @@ internal class RingerController(
      * 返回「实际档位」而不是布尔：走公共接口时 ColorOS 会把静音档降级成振动，
      * 只看「调没调进去」会把 rememberedMode 记成与实际相反的那一档，下一次 `cycle()` 就从错的地方起步。
      */
-    private fun applyMode(am: AudioManager, current: Int, next: Int, zen: Boolean): Int? {
+    private fun applyMode(
+        am: AudioManager,
+        current: Int,
+        next: Int,
+        zen: Boolean,
+    ): Int? {
         val note = if (zen) "（免打扰开启，写的是内部档位）" else ""
         if (setRingerModeInternal(am, next)) {
             //  内部通道也要**回读**：写进去不等于落定，而公共接口那条
@@ -163,15 +186,19 @@ internal class RingerController(
      * 返回是否确实调进去了 —— 方法不存在或调用抛异常都返回 false，由 applyMode 决定是否退回公共接口。
      * 方法查找走 `Reflect.method`（自带缓存，每次按键不会重复反射）。
      */
-    private fun setRingerModeInternal(am: AudioManager, mode: Int): Boolean {
-        val method = Reflect.method(
-            AudioManager::class.java,
-            "setRingerModeInternal",
-            Int::class.javaPrimitiveType!!,
-        ) ?: run {
-            XLog.w("AudioManager.setRingerModeInternal 没找到，退回公共接口")
-            return false
-        }
+    private fun setRingerModeInternal(
+        am: AudioManager,
+        mode: Int,
+    ): Boolean {
+        val method =
+            Reflect.method(
+                AudioManager::class.java,
+                "setRingerModeInternal",
+                Int::class.javaPrimitiveType!!,
+            ) ?: run {
+                XLog.w("AudioManager.setRingerModeInternal 没找到，退回公共接口")
+                return false
+            }
         return try {
             method.invoke(am, mode)
             true
@@ -186,10 +213,11 @@ internal class RingerController(
     }
 
     /** 响铃模式的可读名（日志用）。 */
-    private fun modeName(mode: Int): String = when (mode) {
-        AudioManager.RINGER_MODE_SILENT -> "静音"
-        AudioManager.RINGER_MODE_VIBRATE -> "振动"
-        AudioManager.RINGER_MODE_NORMAL -> "响铃"
-        else -> "未知($mode)"
-    }
+    private fun modeName(mode: Int): String =
+        when (mode) {
+            AudioManager.RINGER_MODE_SILENT -> "静音"
+            AudioManager.RINGER_MODE_VIBRATE -> "振动"
+            AudioManager.RINGER_MODE_NORMAL -> "响铃"
+            else -> "未知($mode)"
+        }
 }

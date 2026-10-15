@@ -22,7 +22,6 @@ import io.github.libxposed.api.XposedModule
  * 它们的语义属于换页编排本身，搬不走。
  */
 internal object SettingsPageHooks {
-
     /**
      * 宿主 Activity 基类 —— 页面骨架在这里，见类注释。
      *
@@ -110,10 +109,8 @@ internal object SettingsPageHooks {
      */
     private var hostTitle: String = ""
 
-    /**
-     * 按键绑定子页的标题挪进了页面（`SettingsPage.BINDING_TITLE`）——
-     * 顶栏自绘后标题归页面自己渲染。
-     */
+    // 按键绑定子页的标题挪进了页面（`SettingsPage.BINDING_TITLE`）——
+    // 顶栏自绘后标题归页面自己渲染。
 
     /**
      * 调试旁路：这些路径里**任意一个存在**就跳过换页，让系统原版页面显示出来。
@@ -126,10 +123,11 @@ internal object SettingsPageHooks {
      * 两个都试，哪个能创建就用哪个。第二条跟着配置文件走（[ConfigStore.filesDir]），
      * 免得配置挪了地方、这个路径还指着旧址。
      */
-    private val BYPASS_PATHS = listOf(
-        "/data/local/tmp/opluskey_bypass",
-        ConfigStore.filesDir().resolve("opluskey_bypass").path,
-    )
+    private val BYPASS_PATHS =
+        listOf(
+            "/data/local/tmp/opluskey_bypass",
+            ConfigStore.filesDir().resolve("opluskey_bypass").path,
+        )
 
     private fun bypassed(): Boolean {
         for (p in BYPASS_PATHS) {
@@ -145,7 +143,10 @@ internal object SettingsPageHooks {
         return false
     }
 
-    fun install(module: XposedModule, loader: ClassLoader) {
+    fun install(
+        module: XposedModule,
+        loader: ClassLoader,
+    ) {
         if (bypassed()) return
         moduleRef = module
 
@@ -154,32 +155,36 @@ internal object SettingsPageHooks {
             return
         }
 
-        val base = com.lookie.opluskey.core.reflect.Reflect.findClass(loader, BASE_ACTIVITY)
+        val base =
+            com.lookie.opluskey.core.reflect.Reflect
+                .findClass(loader, BASE_ACTIVITY)
         if (base == null) {
             XLog.w(
                 "没找到 $BASE_ACTIVITY —— 本机不是 ColorOS，或侧键设置页改了名。" +
-                        "模块不换页，但设置页仍是系统原版（功能正常）",
+                    "模块不换页，但设置页仍是系统原版（功能正常）",
             )
             return
         }
 
-        val onCreate = com.lookie.opluskey.core.reflect.Reflect.method(
-            base,
-            "onCreate",
-            android.os.Bundle::class.java,
-        )
+        val onCreate =
+            com.lookie.opluskey.core.reflect.Reflect.method(
+                base,
+                "onCreate",
+                android.os.Bundle::class.java,
+            )
         if (onCreate == null) {
             XLog.w("$BASE_ACTIVITY 上没找到 onCreate(Bundle)，无法换页")
             return
         }
         baseClass = base
 
-        val handle = module.hookGuarded(onCreate) { chain ->
-            onAfterCreate(chain)
-        }
+        val handle =
+            module.hookGuarded(onCreate) { chain ->
+                onAfterCreate(chain)
+            }
 
         // 「导出日志 / 导出配置 / 导入配置」都要从宿主的 onActivityResult 收结果
-        //（宿主 Activity 不是我们的，SAF 的结果只走它）
+        // （宿主 Activity 不是我们的，SAF 的结果只走它）
         ConfigTransfer.installFileResultHook(module)
 
         // 生命周期转发：**从「设置 → 快捷键」重新进来**时把页面栈清回首页
@@ -194,18 +199,19 @@ internal object SettingsPageHooks {
         //    没重写就落到平台的 `Activity#onNewIntent` 上。与 onCreate 同一挂法；
         //    按实例过滤，不吃宿主进程里其它 Activity。
         val lifecycleHooks = intArrayOf(0)
-        val onNewIntent = com.lookie.opluskey.core.reflect.Reflect.method(
-            base,
-            "onNewIntent",
-            android.content.Intent::class.java,
-        )
+        val onNewIntent =
+            com.lookie.opluskey.core.reflect.Reflect.method(
+                base,
+                "onNewIntent",
+                android.content.Intent::class.java,
+            )
         if (onNewIntent != null) {
             if (module.hookGuarded(onNewIntent) { chain ->
                     // 前置动作单独兜住：它抛了也不能把宿主自己的 onNewIntent 一并跳过
                     try {
                         if (chain.thisObject === HostSession.activity) {
                             // 从设置重进：若上一轮停在「露出宿主原版页面」那一档
-                            //（用户从 ⋮ 菜单点过「打开自带的快捷键界面」，按 Home 走了、
+                            // （用户从 ⋮ 菜单点过「打开自带的快捷键界面」，按 Home 走了、
                             //  再从设置进来），必须先把模块页面切回来 —— 否则重进看到的
                             // 是原版页，还会以为模块坏了。宿主是 singleInstance，重进走的是
                             // 这里、`onCreate` 不会再跑，所以这条恢复只能挂在这儿。
@@ -218,7 +224,8 @@ internal object SettingsPageHooks {
                         XLog.w("onHostReentered 失败（onNewIntent 照常 proceed）", e)
                     }
                     chain.proceed()
-                } != null) {
+                } != null
+            ) {
                 lifecycleHooks[0]++
             }
         } else {
@@ -229,7 +236,7 @@ internal object SettingsPageHooks {
             installed = true
             XLog.w(
                 "设置页换页 Hook 安装完成：换页 1/1 + 生命周期 ${lifecycleHooks[0]}/1" +
-                        "（$BASE_ACTIVITY）",
+                    "（$BASE_ACTIVITY）",
             )
         } else {
             XLog.w("设置页换页 Hook 装不上（见上面的失败原因）")
@@ -299,7 +306,7 @@ internal object SettingsPageHooks {
         if (container == null) {
             XLog.w(
                 "找不到 R.id.container（0x${Integer.toHexString(ID_CONTAINER)}）" +
-                        "—— 可能是 ROM 改了布局，换页放弃，页面仍是系统原版",
+                    "—— 可能是 ROM 改了布局，换页放弃，页面仍是系统原版",
             )
             return
         }
@@ -362,6 +369,7 @@ internal object SettingsPageHooks {
             probe.viewTreeObserver.addOnDrawListener(
                 object : android.view.ViewTreeObserver.OnDrawListener {
                     private var done = false
+
                     override fun onDraw() {
                         if (done) return
                         done = true
@@ -411,12 +419,13 @@ internal object SettingsPageHooks {
         // 现在只剩「露出宿主原版页面」时才盖（那一档模块页面是 GONE 的，没人画那一条）。
 
         // 首页标题交给页面（子页标题「按键绑定」在页面里）
-        hostTitle = try {
-            activity.title?.toString().orEmpty()
-        } catch (e: Throwable) {
-            XLog.d("读宿主标题失败（忽略）：${e.message}")
-            ""
-        }
+        hostTitle =
+            try {
+                activity.title?.toString().orEmpty()
+            } catch (e: Throwable) {
+                XLog.d("读宿主标题失败（忽略）：${e.message}")
+                ""
+            }
         page.homeTitle = hostTitle
 
         // 返回：子页（按键绑定）→ 首页，首页 → 关页面。
@@ -535,5 +544,4 @@ internal object SettingsPageHooks {
 
     // `isLightColor` / `pageContext` / `findContainer` 已搬到 `ui/HostWindow.kt`
     // （纯读取与包装，与换页编排无关）。
-
 }

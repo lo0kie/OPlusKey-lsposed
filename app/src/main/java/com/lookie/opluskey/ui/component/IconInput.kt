@@ -34,7 +34,7 @@ import io.github.suqi8.coui.kmp.basic.TextFieldDefaults
 import io.github.suqi8.coui.kmp.basic.TextFieldMode
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 卡片式输入项（行首图标 + 标题 + 输入框 + 错误行）与它的尺寸 / 缓动常量。 */
+// 卡片式输入项（行首图标 + 标题 + 输入框 + 错误行）与它的尺寸 / 缓动常量。
 
 /** 「带图标的卡片输入」（[IconInputView]）里行首图标的边长 —— 与全页图标同一个 22dp 纪律。 */
 internal val INPUT_ICON_SIZE = 22.dp
@@ -90,21 +90,23 @@ internal fun SettingsPage.IconInputView(
     //  同样带过渡：打字 / 清空、主开关置灰 / 恢复时都不跳变（与 [IconAction] / `SliderRow`
     // 同一组参数）。
     val titleColor by animateColorAsState(
-        targetValue = when {
-            !enabled -> colors.disabledTitleColor
-            value.isEmpty() -> COUITheme.colorScheme.onBackground
-            else -> COUITheme.colorScheme.onSurfaceSecondary
-        },
+        targetValue =
+            when {
+                !enabled -> colors.disabledTitleColor
+                value.isEmpty() -> COUITheme.colorScheme.onBackground
+                else -> COUITheme.colorScheme.onSurfaceSecondary
+            },
         label = "InputTitle",
     )
     //  行首图标**自己一档**：与其他行的行首图标同色（`onSurfaceContainer`）。
     // 不要跟着标题走 —— 那个色比页里别的行首都暗一档。
     val iconColor by animateColorAsState(
-        targetValue = if (enabled) {
-            COUITheme.colorScheme.onSurfaceContainer
-        } else {
-            COUITheme.colorScheme.disabledOnSecondaryVariant
-        },
+        targetValue =
+            if (enabled) {
+                COUITheme.colorScheme.onSurfaceContainer
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
         label = "InputIcon",
     )
     val isError = errorMessage.isNotEmpty()
@@ -137,19 +139,20 @@ internal fun SettingsPage.IconInputView(
                         // 降到 body2（14sp）。
                         style = COUITheme.textStyles.body2,
                         color = titleColor,
-                        modifier = Modifier
-                            .padding(
-                                top = InputViewDefaults.TitlePaddingTop,
-                                bottom = InputViewDefaults.TitlePaddingBottom,
-                            )
-                            .defaultMinSize(minHeight = InputViewDefaults.TitleMinHeight),
+                        modifier =
+                            Modifier
+                                .padding(
+                                    top = InputViewDefaults.TitlePaddingTop,
+                                    bottom = InputViewDefaults.TitlePaddingBottom,
+                                ).defaultMinSize(minHeight = InputViewDefaults.TitleMinHeight),
                     )
                     TextField(
                         value = value,
                         onValueChange = onValueChange,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = InputViewDefaults.FieldPaddingBottomWithTitle),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = InputViewDefaults.FieldPaddingBottomWithTitle),
                         backgroundMode = TextFieldMode.None,
                         insideMargin = DpSize(0.dp, 0.dp),
                         label = label,
@@ -157,7 +160,7 @@ internal fun SettingsPage.IconInputView(
                         isError = isError,
                         //  库默认的 16sp（试过升到 `paragraph` 17sp 又还原）：
                         // `TextField` 会拿 `textStyle` 的字号**顺带推算浮动 label 的大小**
-                        //（源码：`labelNormalFontSize = resolvedTextStyle.fontSize`），
+                        // （源码：`labelNormalFontSize = resolvedTextStyle.fontSize`），
                         // value 一升，上面那行「请输入…」跟着变大，
                         // 标题与内容之间的空隙就被撑开了 —— 动这里必须连着 label 一起看。
                         textStyle = TextFieldDefaults.textStyle(TextFieldMode.None),
@@ -176,11 +179,12 @@ internal fun SettingsPage.IconInputView(
                 text = shownError,
                 fontSize = InputViewDefaults.ErrorFontSize,
                 color = colors.errorColor,
-                modifier = Modifier.padding(
-                    top = InputViewDefaults.ErrorPaddingTop,
-                    start = InputViewDefaults.ContentPadding,
-                    end = InputViewDefaults.ContentPadding,
-                ),
+                modifier =
+                    Modifier.padding(
+                        top = InputViewDefaults.ErrorPaddingTop,
+                        start = InputViewDefaults.ContentPadding,
+                        end = InputViewDefaults.ContentPadding,
+                    ),
             )
         }
     }

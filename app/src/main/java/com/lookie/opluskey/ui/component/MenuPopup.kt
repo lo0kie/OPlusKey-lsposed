@@ -31,8 +31,8 @@ import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.MENU_ICON_SIZE
-import com.lookie.opluskey.ui.model.POPUP_PANEL_RADIUS
 import com.lookie.opluskey.ui.model.POPUP_FROSTED_ALPHA
+import com.lookie.opluskey.ui.model.POPUP_PANEL_RADIUS
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_DARK
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_LIGHT
 import com.lookie.opluskey.ui.model.PageIcons
@@ -50,7 +50,7 @@ import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 浮层菜单那一族：分隔线、配色、菜单项模型、菜单本体与其中一行。 */
+// 浮层菜单那一族：分隔线、配色、菜单项模型、菜单本体与其中一行。
 
 /**
  * 浮层菜单两项之间的细线 —— 顶栏 ⋮ 菜单、已保存命令的长按菜单、「添加命令」选择器都用它。
@@ -64,10 +64,11 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 @Composable
 internal fun PopupRowDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(
-            start = DropdownDefaults.InsideHorizontalPadding,
-            end = DropdownDefaults.InsideHorizontalPadding,
-        ),
+        modifier =
+            Modifier.padding(
+                start = DropdownDefaults.InsideHorizontalPadding,
+                end = DropdownDefaults.InsideHorizontalPadding,
+            ),
         color = popupDividerColor(darkAlpha = 0.14f, lightAlpha = 0.10f),
     )
 }
@@ -79,7 +80,10 @@ internal fun PopupRowDivider() {
  *  库默认那一档线压在上面几乎看不见 —— 暗色下压暗只会更糊，得反过来提亮。
  */
 @Composable
-private fun popupDividerColor(darkAlpha: Float, lightAlpha: Float): Color =
+private fun popupDividerColor(
+    darkAlpha: Float,
+    lightAlpha: Float,
+): Color =
     if (COUITheme.colorScheme.background.luminance() < 0.5f) {
         Color.White.copy(alpha = darkAlpha)
     } else {
@@ -127,7 +131,9 @@ internal sealed interface MenuEntry {
     ) : MenuEntry
 
     /** 组标题（库的 `DropdownHeaderItem`）。 */
-    data class Group(val text: String) : MenuEntry
+    data class Group(
+        val text: String,
+    ) : MenuEntry
 
     /** 相邻两行之间的细线（[PopupRowDivider]）。 */
     data object RowLine : MenuEntry
@@ -177,8 +183,9 @@ internal fun ellipsizeMenuTitle(title: String): String {
  *  行高是 `heightIn(min = …)`，文本多行时会长高 ⇒ 这个常量算的是**单行**那一档；
  * 浮层里的行都是单行标题（动作名 / 命令名），够用。
  */
-private val MENU_ROW_CONTENT_HEIGHT = DropdownDefaults.PopupItemMinHeight -
-    DropdownDefaults.MiddleVerticalPadding * 2
+private val MENU_ROW_CONTENT_HEIGHT =
+    DropdownDefaults.PopupItemMinHeight -
+        DropdownDefaults.MiddleVerticalPadding * 2
 
 /**
  * [MenuPopup] 的「上一次内容」持有 —— 见那边关于退场动画的注释。
@@ -187,7 +194,10 @@ private val MENU_ROW_CONTENT_HEIGHT = DropdownDefaults.PopupItemMinHeight -
  * entries（里面还有新 lambda），用 state 存就会变成「组合期写 state → 重组 → 再写」
  * 的每帧循环；这里只要「上一次那份」这个事实。
  */
-private class MenuHold(var entries: List<MenuEntry>, var click: PreciseClickState)
+private class MenuHold(
+    var entries: List<MenuEntry>,
+    var click: PreciseClickState,
+)
 
 /**
  * **项目里唯一的浮层菜单** —— 顶栏 ⋮、命令长按、响铃档位、「添加命令」一级与二级都走它。
@@ -276,18 +286,27 @@ internal fun SettingsPage.MenuPopup(
                             )
                         }
 
-                        is MenuEntry.Group -> DropdownHeaderItem(entry.text, isFirst = position == 0)
-                        MenuEntry.RowLine -> PopupRowDivider()
-                        MenuEntry.GroupLine -> HorizontalDivider(
-                            thickness = DropdownDefaults.PopupGroupDividerThickness,
-                            // 组间那条**槽**：暗色下加深（`#333` 面板上压到 `#1f` 才看得出是一道槽），
-                            // 浅色下仍是那点灰。见 [popupDividerColor]。
-                            color = if (COUITheme.colorScheme.background.luminance() < 0.5f) {
-                                Color.Black.copy(alpha = 0.32f)
-                            } else {
-                                Color.Black.copy(alpha = 0.08f)
-                            },
-                        )
+                        is MenuEntry.Group -> {
+                            DropdownHeaderItem(entry.text, isFirst = position == 0)
+                        }
+
+                        MenuEntry.RowLine -> {
+                            PopupRowDivider()
+                        }
+
+                        MenuEntry.GroupLine -> {
+                            HorizontalDivider(
+                                thickness = DropdownDefaults.PopupGroupDividerThickness,
+                                // 组间那条**槽**：暗色下加深（`#333` 面板上压到 `#1f` 才看得出是一道槽），
+                                // 浅色下仍是那点灰。见 [popupDividerColor]。
+                                color =
+                                    if (COUITheme.colorScheme.background.luminance() < 0.5f) {
+                                        Color.Black.copy(alpha = 0.32f)
+                                    } else {
+                                        Color.Black.copy(alpha = 0.08f)
+                                    },
+                            )
+                        }
                     }
                 }
             }
@@ -307,17 +326,18 @@ internal fun SettingsPage.MenuPopup(
             frostDegradeLogged = true
             XLog.w("浮层磨砂跳过：页面取样层未就绪 ⇒ 这一轮仍用不透明底")
         }
-        val frost: Modifier = source?.let { bd ->
-            Modifier
-                .frosted(bd, panelShape)
-                .background(
-                    // 底色取**库那一对面板本色**（`POPUP_SURFACE_*`），不能取主题里那几档 `surface*`：
-                    //  暗色下页面是纯黑、`surfaceContainerHighest` 只有 `#252525`，用它当底色会比库原生
-                    //  面板（`#333333`）还暗（真机反馈「暗色下底色太暗」）。
-                    popupSurfaceColor().copy(alpha = POPUP_FROSTED_ALPHA),
-                    panelShape,
-                )
-        } ?: Modifier
+        val frost: Modifier =
+            source?.let { bd ->
+                Modifier
+                    .frosted(bd, panelShape)
+                    .background(
+                        // 底色取**库那一对面板本色**（`POPUP_SURFACE_*`），不能取主题里那几档 `surface*`：
+                        //  暗色下页面是纯黑、`surfaceContainerHighest` 只有 `#252525`，用它当底色会比库原生
+                        //  面板（`#333333`）还暗（真机反馈「暗色下底色太暗」）。
+                        popupSurfaceColor().copy(alpha = POPUP_FROSTED_ALPHA),
+                        panelShape,
+                    )
+            } ?: Modifier
         if (columnAnchor == null) {
             Box(Modifier.gestureProbe(probe).then(frost)) { column() }
         } else {
@@ -355,12 +375,13 @@ private fun SettingsPage.MenuRow(
 ) {
     val tick = rememberTick()
     val iconColor by animateColorAsState(
-        targetValue = when {
-            !row.enabled -> COUITheme.colorScheme.disabledOnSecondaryVariant
-            row.danger -> COUITheme.colorScheme.error
-            row.selected -> COUITheme.colorScheme.primary
-            else -> COUITheme.colorScheme.onSurfaceContainer
-        },
+        targetValue =
+            when {
+                !row.enabled -> COUITheme.colorScheme.disabledOnSecondaryVariant
+                row.danger -> COUITheme.colorScheme.error
+                row.selected -> COUITheme.colorScheme.primary
+                else -> COUITheme.colorScheme.onSurfaceContainer
+            },
         label = "MenuRowIcon",
     )
     // 进场定位到当前那一行：requester 挂在**整行内容区一样高**的盒子上，请求的是**上下各
@@ -369,67 +390,71 @@ private fun SettingsPage.MenuRow(
     // 行内边距有两档（中间行 8dp、首尾行 10dp），取大的那档一次覆盖。
     val bringIntoView = remember { BringIntoViewRequester() }
     if (row.selected) {
-        val rowRect = with(LocalDensity.current) {
-            val pad = DropdownDefaults.FirstLastVerticalPadding.toPx()
-            Rect(
-                left = 0f,
-                top = -pad,
-                right = MENU_ICON_SIZE.toPx(),
-                bottom = MENU_ROW_CONTENT_HEIGHT.toPx() + pad,
-            )
-        }
+        val rowRect =
+            with(LocalDensity.current) {
+                val pad = DropdownDefaults.FirstLastVerticalPadding.toPx()
+                Rect(
+                    left = 0f,
+                    top = -pad,
+                    right = MENU_ICON_SIZE.toPx(),
+                    bottom = MENU_ROW_CONTENT_HEIGHT.toPx() + pad,
+                )
+            }
         // 等一帧再请求：组合刚结束时节点还没 attach / 布局，此时 `bringIntoView()` 是空操作。
         LaunchedEffect(bringIntoView) {
             withFrameNanos { }
             runCatching { bringIntoView.bringIntoView(rowRect) }
         }
     }
-    val item = remember(
-        row.title,
-        row.icon,
-        row.enabled,
-        row.danger,
-        row.selected,
-        row.trailingIcon,
-    ) {
-        DropdownItem(
-            // 显示文本过一道截断（[ellipsizeMenuTitle]）：库里标题最多三行，长名字会撑宽整张菜单
-            text = ellipsizeMenuTitle(row.title),
-            enabled = row.enabled,
-            // 文字由库按 `alert` 走 `DropdownColors.alertContentColor` —— 与图标的红同一档
-            alert = row.danger,
-            // 行尾那颗「选中」的对勾走我们自己的 Tabler 字形：库默认那颗是 `COUIIcons.Basic.Check`
-            //（描边 1.4、又宽又扁），与行首的 Tabler 图标（描边 2）不是一支笔，见 [PageIcons.MenuCheck]。
-            // 恒传：没选中的行库本来就把这颗画成透明，只有选中行看得见。
-            checkIcon = PageIcons.MenuCheck,
-            // 进下一层那些行（「响铃状态」「选择应用」）的行尾右箭头同样换掉 —— 库默认的
-            // `COUIIcons.Basic.ArrowRight` 也是 COUI 那一套（12x24、描边 1.4），见 [PageIcons.EnterArrow]。
-            //  逐行可换（[MenuEntry.Row.trailingIcon]）：跳页面那些行用「窗口 + 加号」，与网格一致。
-            chevronIcon = row.trailingIcon ?: PageIcons.EnterArrow,
-            icon = { m ->
-                val base = m.height(MENU_ROW_CONTENT_HEIGHT).bringIntoViewRequester(bringIntoView)
-                // 第 0 行兼当「列表滚了没有」的探针：挂在行内容上 —— 滚的是列表**内层**，
-                // 外层那一圈与浮层窗口自己都不动（见 [GestureProbe.onContentPosition]）。
-                val tracked = if (index == 0 && probe != null) {
-                    base.onGloballyPositioned { c -> probe.onContentPosition(c.positionInWindow().y) }
-                } else {
-                    base
-                }
-                Box(tracked, contentAlignment = Alignment.Center) {
-                    Icon(row.icon, null, Modifier.size(MENU_ICON_SIZE), tint = iconColor)
-                }
-            },
-        )
-    }
+    val item =
+        remember(
+            row.title,
+            row.icon,
+            row.enabled,
+            row.danger,
+            row.selected,
+            row.trailingIcon,
+        ) {
+            DropdownItem(
+                // 显示文本过一道截断（[ellipsizeMenuTitle]）：库里标题最多三行，长名字会撑宽整张菜单
+                text = ellipsizeMenuTitle(row.title),
+                enabled = row.enabled,
+                // 文字由库按 `alert` 走 `DropdownColors.alertContentColor` —— 与图标的红同一档
+                alert = row.danger,
+                // 行尾那颗「选中」的对勾走我们自己的 Tabler 字形：库默认那颗是 `COUIIcons.Basic.Check`
+                // （描边 1.4、又宽又扁），与行首的 Tabler 图标（描边 2）不是一支笔，见 [PageIcons.MenuCheck]。
+                // 恒传：没选中的行库本来就把这颗画成透明，只有选中行看得见。
+                checkIcon = PageIcons.MenuCheck,
+                // 进下一层那些行（「响铃状态」「选择应用」）的行尾右箭头同样换掉 —— 库默认的
+                // `COUIIcons.Basic.ArrowRight` 也是 COUI 那一套（12x24、描边 1.4），见 [PageIcons.EnterArrow]。
+                //  逐行可换（[MenuEntry.Row.trailingIcon]）：跳页面那些行用「窗口 + 加号」，与网格一致。
+                chevronIcon = row.trailingIcon ?: PageIcons.EnterArrow,
+                icon = { m ->
+                    val base = m.height(MENU_ROW_CONTENT_HEIGHT).bringIntoViewRequester(bringIntoView)
+                    // 第 0 行兼当「列表滚了没有」的探针：挂在行内容上 —— 滚的是列表**内层**，
+                    // 外层那一圈与浮层窗口自己都不动（见 [GestureProbe.onContentPosition]）。
+                    val tracked =
+                        if (index == 0 && probe != null) {
+                            base.onGloballyPositioned { c -> probe.onContentPosition(c.positionInWindow().y) }
+                        } else {
+                            base
+                        }
+                    Box(tracked, contentAlignment = Alignment.Center) {
+                        Icon(row.icon, null, Modifier.size(MENU_ICON_SIZE), tint = iconColor)
+                    }
+                },
+            )
+        }
     //  行底交给面板那一层：把行自己的 `containerColor` 抹成透明，浮层那层磨砂才透得出来
-    //（未选中行本来就是这个色，面板自己也铺同一档 —— 抹掉不改观感，改的只是「谁能盖住谁」）。
+    // （未选中行本来就是这个色，面板自己也铺同一档 —— 抹掉不改观感，改的只是「谁能盖住谁」）。
     //  库那个 `dropdownColors()` 自己是 `remember` 的，等它一次再换掉那一格。
     //  注意：**禁用行也要同一份** —— 只给启用行传 `dropdownColors` 的话，
     //  禁用行落到库默认的**不透明** `containerColor` —— 磨砂半透明面板上会现出一块实色底。
     val baseColors = DropdownDefaults.dropdownColors()
-    val frostedColors = remember(baseColors) {
-        baseColors.copy(containerColor = Color.Transparent)
-    }
+    val frostedColors =
+        remember(baseColors) {
+            baseColors.copy(containerColor = Color.Transparent)
+        }
     if (row.enabled) {
         //  **直放**：中间套一层 `Box` 会让库收不到点击（见 [MenuPopup] 的警告）。
         DropdownImpl(
@@ -468,7 +493,7 @@ private fun SettingsPage.MenuRow(
     } else {
         //  禁用的这一行库里**根本不挂 `clickable`**，这一下没人 consume、直接穿到浮层自己的
         // 「点外面就关」那套逻辑上 —— 菜单照样会关。压一层**透明的吃事件层**把它挡住
-        //（不给任何视觉，「灰」由 `DropdownItem(enabled = false)` 自己画），
+        // （不给任何视觉，「灰」由 `DropdownItem(enabled = false)` 自己画），
         // 效果就是「点了没反应、菜单还开着」。
         Box {
             DropdownImpl(

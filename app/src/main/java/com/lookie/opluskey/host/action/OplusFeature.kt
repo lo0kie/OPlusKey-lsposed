@@ -14,7 +14,6 @@ package com.lookie.opluskey.host.action
  * 所以从宿主进程直接起即可 —— 不需要 root，也不需要绕 system_server。
  */
 internal object OplusFeature {
-
     /**
      * 一个能力的调用目标。
      *
@@ -43,32 +42,35 @@ internal object OplusFeature {
      * 落点取 Gleaner 自己那份 `DataCollectService`：场景表写的那个 `scene_owner` 已经过期，
      * 那份服务一进去就自己 `stopSelf`（它认「Gleaner 已安装 ⇒ 我不干」）。
      */
-    val FLASH_MEMORY = Target(
-        owner = "com.oplus.gleanerservice",
-        service = "com.oplus.gleanerservice.flashnotes.business.service.DataCollectService",
-        action = "oplus.gleanerservice.intent.action.COLLECT_DATA",
-        extras = mapOf("triggerType" to 1),
-        foreground = true,
-    )
+    val FLASH_MEMORY =
+        Target(
+            owner = "com.oplus.gleanerservice",
+            service = "com.oplus.gleanerservice.flashnotes.business.service.DataCollectService",
+            action = "oplus.gleanerservice.intent.action.COLLECT_DATA",
+            extras = mapOf("triggerType" to 1),
+            foreground = true,
+        )
 
     /** 切换免打扰（场景表 `no_disturb`）。KeyBaseService 族，bind 后发 what=2 —— 只有长按档碰 zen。 */
-    val NO_DISTURB = Target(
-        owner = "com.android.systemui",
-        service = "com.oplus.systemui.statusbar.notification.keymagicservice.KeyDndService",
-        message = 2,
-    )
+    val NO_DISTURB =
+        Target(
+            owner = "com.android.systemui",
+            service = "com.oplus.systemui.statusbar.notification.keymagicservice.KeyDndService",
+            message = 2,
+        )
 
     /**
      * 开始 / 结束录音（场景表 `recording`）。
      *
      * 只有长按档能录音 —— 单击档那条 `KeyMagicMessengerService` 只回一句提示文案，全程不碰录音机。
      */
-    val RECORDING = Target(
-        owner = "com.coloros.soundrecorder",
-        service = RECORD_ACTION,
-        action = RECORD_ACTION,
-        activity = true,
-    )
+    val RECORDING =
+        Target(
+            owner = "com.coloros.soundrecorder",
+            service = RECORD_ACTION,
+            action = RECORD_ACTION,
+            activity = true,
+        )
 
     /** 录音的入口 action —— 场景表 `recording` 的 `long_press_action_info` 原文。 */
     private const val RECORD_ACTION = "oplus.intent.action.START_RECORD_FROM_CUBE_BUTTON"
@@ -80,24 +82,27 @@ internal object OplusFeature {
      * `triggered_app` 报侧边栏而不是真实调用方（宿主 `com.oplus.gesture`），是为了让服务
      * 按「侧边栏入口」这条**已验证可用**的分支走。
      */
-    val SCREEN_OCR = Target(
-        owner = "com.coloros.colordirectservice",
-        service = "com.coloros.colordirectservice.InvokeEntranceService",
-        // 与 KSU 别名表同一份取值
-        action = KsuCompat.SIDEBAR_SERVICE,
-        extras = mapOf(
-            "extra_entrance_function" to "full_screen_ocr",
-            "triggered_app" to "com.coloros.smartsidebar",
-        ),
-        foreground = true,
-    )
+    val SCREEN_OCR =
+        Target(
+            owner = "com.coloros.colordirectservice",
+            service = "com.coloros.colordirectservice.InvokeEntranceService",
+            // 与 KSU 别名表同一份取值
+            action = KsuCompat.SIDEBAR_SERVICE,
+            extras =
+                mapOf(
+                    "extra_entrance_function" to "full_screen_ocr",
+                    "triggered_app" to "com.coloros.smartsidebar",
+                ),
+            foreground = true,
+        )
 
     /** 配置里的功能名 → 调用目标；认不出的返回 `null`（调用方记日志）。 */
-    fun of(feature: String): Target? = when (feature) {
-        "flash_memory" -> FLASH_MEMORY
-        "no_disturb" -> NO_DISTURB
-        "recording" -> RECORDING
-        "screen_ocr" -> SCREEN_OCR
-        else -> null
-    }
+    fun of(feature: String): Target? =
+        when (feature) {
+            "flash_memory" -> FLASH_MEMORY
+            "no_disturb" -> NO_DISTURB
+            "recording" -> RECORDING
+            "screen_ocr" -> SCREEN_OCR
+            else -> null
+        }
 }

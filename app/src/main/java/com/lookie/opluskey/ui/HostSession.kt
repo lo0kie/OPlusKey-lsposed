@@ -14,7 +14,6 @@ import android.app.Activity
  * 不认实例会把宿主进程里别的 Activity 一起拦掉）。
  */
 internal object HostSession {
-
     @Volatile
     var activity: Activity? = null
 

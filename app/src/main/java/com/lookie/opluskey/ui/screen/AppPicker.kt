@@ -2,16 +2,12 @@ package com.lookie.opluskey.ui.screen
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +16,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,12 +51,14 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.component.AnimatedFade
 import com.lookie.opluskey.ui.component.ConfirmDialog
-import com.lookie.opluskey.ui.component.escapeMarkdown
 import com.lookie.opluskey.ui.component.PageCornerFab
 import com.lookie.opluskey.ui.component.PageFabButton
 import com.lookie.opluskey.ui.component.collapsedHeaderHeight
 import com.lookie.opluskey.ui.component.currentHeaderHeight
+import com.lookie.opluskey.ui.component.escapeMarkdown
 import com.lookie.opluskey.ui.model.APP_ICON_BITMAP_SIZE
+import com.lookie.opluskey.ui.model.APP_KIND_MODULE_DARK
+import com.lookie.opluskey.ui.model.APP_KIND_MODULE_LIGHT
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_BG_ALPHA
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_GAP
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_INSIDE
@@ -65,8 +67,6 @@ import com.lookie.opluskey.ui.model.APP_KIND_TAG_RAISE
 import com.lookie.opluskey.ui.model.APP_LIST_HEADER_ITEMS
 import com.lookie.opluskey.ui.model.APP_ROW_HEIGHT
 import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
-import com.lookie.opluskey.ui.model.APP_KIND_MODULE_DARK
-import com.lookie.opluskey.ui.model.APP_KIND_MODULE_LIGHT
 import com.lookie.opluskey.ui.model.APP_STATE_TEXT_GAP
 import com.lookie.opluskey.ui.model.APP_TITLE_SUMMARY_GAP
 import com.lookie.opluskey.ui.model.GRID_GAP
@@ -92,7 +92,8 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** 「打开应用」页：应用列表加载 / 排序 / 选择。 */
+// 「打开应用」页：应用列表加载 / 排序 / 选择。
+
 /**
  * 「打开应用」页里的一条 —— 界面要用的几样。
  *
@@ -130,7 +131,10 @@ internal data class LaunchableApp(
  *   顺手写下去：从确认键来的按 `app:<包名>` 存（用户最初要的「取消勾选保存」），
  *   从前两处（切应用 / 点菜单）来的只把开关拨回关 —— 那时还没有「这一次的选择」可存。
  */
-private data class SmallWindowBlock(val app: LaunchableApp, val fromPick: Boolean)
+private data class SmallWindowBlock(
+    val app: LaunchableApp,
+    val fromPick: Boolean,
+)
 
 /**
  * 问一次框架「这个包支不支持小窗」—— **三处触发点共用**（切应用 / 点菜单 / 点确认键）。
@@ -185,34 +189,43 @@ internal var cachedAppsWithSystem = false
 internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): List<LaunchableApp>? {
     val t0 = android.os.SystemClock.uptimeMillis()
     val pm = context.packageManager
-    val intent = android.content.Intent(android.content.Intent.ACTION_MAIN)
-        .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+    val intent =
+        android.content
+            .Intent(android.content.Intent.ACTION_MAIN)
+            .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
     // 汉字 → 拼音的转写器（ICU 自带，`icudt*.dat` 里有 `Han-Latin`）
-    val romanizer = try {
-        android.icu.text.Transliterator.getInstance("Han-Latin")
-    } catch (e: Throwable) {
-        XLog.w("取不到 Han-Latin 转写器，应用列表退回原名排序：${e.javaClass.simpleName}")
-        null
-    }
+    val romanizer =
+        try {
+            android.icu.text.Transliterator
+                .getInstance("Han-Latin")
+        } catch (e: Throwable) {
+            XLog.w("取不到 Han-Latin 转写器，应用列表退回原名排序：${e.javaClass.simpleName}")
+            null
+        }
     // 兜底比较器（同键时比原名）；取不到就只按键比，仍稳定
-    val collator = try {
-        java.text.Collator.getInstance(java.util.Locale.CHINA)
-    } catch (e: Throwable) {
-        null
-    }
+    val collator =
+        try {
+            java.text.Collator.getInstance(java.util.Locale.CHINA)
+        } catch (e: Throwable) {
+            null
+        }
     return try {
         // 一条 `ApplicationInfo` → 界面要的那几样，两条来源共用；`xposed` 由调用点给。
-        fun entry(ai: android.content.pm.ApplicationInfo, xposed: Boolean): LaunchableApp {
+        fun entry(
+            ai: android.content.pm.ApplicationInfo,
+            xposed: Boolean,
+        ): LaunchableApp {
             // 入口只解一次：`AppEntry.resolve` 自己就要 1~3 次 binder，解两遍纯属浪费
-            //（这一页会有 200+ 行，几百次 binder 已经在预算里）
+            // （这一页会有 200+ 行，几百次 binder 已经在预算里）
             val intent = AppEntry.resolve(pm, ai.packageName)
             return LaunchableApp(
                 packageName = ai.packageName,
-                label = try {
-                    ai.loadLabel(pm).toString()
-                } catch (e: Throwable) {
-                    ai.packageName
-                },
+                label =
+                    try {
+                        ai.loadLabel(pm).toString()
+                    } catch (e: Throwable) {
+                        ai.packageName
+                    },
                 system = ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0,
                 launchable = intent != null,
                 // 注意：这里**不再**顺手问「支不支持小窗」：那个问法自带一条系统提示（见 [MiniWindowSupport]），
@@ -221,59 +234,64 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
             )
         }
         // 有启动图标的应用
-        val launched = pm.queryIntentActivities(intent, 0)
-            .asSequence()
-            .mapNotNull { it.activityInfo?.applicationInfo }
-            .distinctBy { it.packageName }
-            .filter { it.packageName != KeyModule.MODULE_PACKAGE }
-            .toList()
+        val launched =
+            pm
+                .queryIntentActivities(intent, 0)
+                .asSequence()
+                .mapNotNull { it.activityInfo?.applicationInfo }
+                .distinctBy { it.packageName }
+                .filter { it.packageName != KeyModule.MODULE_PACKAGE }
+                .toList()
         // Xposed 模块：默认就列，不看开关 —— 模块往往没有 launcher 图标、不在上一批里，却是最常挑的。
         // 判据是模块自带的入口 category `MODULE_SETTINGS`（`xposedminversion` 那类 metaData 在 dumpsys
         // 里不落地，翻 APK 的 `META-INF/xposed/` 太贵）。没声明该 category 的模块认不出来，行不带「模块」标签。
-        val xposedList = pm.queryIntentActivities(
-            android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(
-                XPOSED_MODULE_SETTINGS_CATEGORY,
-            ),
-            0,
-        )
-            .asSequence()
-            .mapNotNull { it.activityInfo?.applicationInfo }
-            .distinctBy { it.packageName }
-            .filter { it.packageName != KeyModule.MODULE_PACKAGE }
-            .toList()
+        val xposedList =
+            pm
+                .queryIntentActivities(
+                    android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(
+                        XPOSED_MODULE_SETTINGS_CATEGORY,
+                    ),
+                    0,
+                ).asSequence()
+                .mapNotNull { it.activityInfo?.applicationInfo }
+                .distinctBy { it.packageName }
+                .filter { it.packageName != KeyModule.MODULE_PACKAGE }
+                .toList()
         val xposedPkgs = xposedList.mapTo(HashSet()) { it.packageName }
         // 「显示系统应用」开着时再追加的一批 —— 既不在上一批、也不是模块的其余应用（主体是没有
         // launcher 图标的系统应用）。不筛「拉不拉得起来」：能拿到全量包列表靠宿主自己声明了
         // `QUERY_ALL_PACKAGES` —— 界面代码跑在宿主进程，包可见性按宿主算。
-        val others = if (!includeSystem) {
-            emptyList()
-        } else {
-            val known = (launched + xposedList).mapTo(HashSet()) { it.packageName }
-            pm.getInstalledApplications(0)
-                .asSequence()
-                .filter { it.packageName !in known }
-                .filter { it.packageName != KeyModule.MODULE_PACKAGE }
-                .toList()
-        }
+        val others =
+            if (!includeSystem) {
+                emptyList()
+            } else {
+                val known = (launched + xposedList).mapTo(HashSet()) { it.packageName }
+                pm
+                    .getInstalledApplications(0)
+                    .asSequence()
+                    .filter { it.packageName !in known }
+                    .filter { it.packageName != KeyModule.MODULE_PACKAGE }
+                    .toList()
+            }
         // 两条来源必须跨来源去重：Xposed 模块的规范写法是「一个 launcher activity + 一个挂
         // MODULE_SETTINGS 的 activity-alias」，同一个包在 launcher 与模块两批里各出现一次。
         // 不去重 ⇒ 列表两行同包名 ⇒ `items(key = ...)` 抛「Key ... was already used」，异常落在
         // 宿主 Activity 的组合里 ⇒ 打开「选择应用」页即崩宿主页面（`others` 已按 known 滤过）。
-        val apps = ((launched + xposedList).distinctBy { it.packageName } + others)
-            .map { entry(it, it.packageName in xposedPkgs) }
-            // 排序键只算一次：罗马化不便宜，不能放进比较器里每比一次算一次
-            .map { it to sortKeyOf(it.label, romanizer) }
-            .sortedWith { (a, ka), (b, kb) ->
-                val byKey = ka.compareTo(kb)
-                if (byKey != 0) {
-                    byKey
-                } else {
-                    val byName = collator?.compare(a.label, b.label) ?: 0
-                    if (byName != 0) byName else a.packageName.compareTo(b.packageName)
-                }
-            }
-            .map { it.first }
-            .toList()
+        val apps =
+            ((launched + xposedList).distinctBy { it.packageName } + others)
+                .map { entry(it, it.packageName in xposedPkgs) }
+                // 排序键只算一次：罗马化不便宜，不能放进比较器里每比一次算一次
+                .map { it to sortKeyOf(it.label, romanizer) }
+                .sortedWith { (a, ka), (b, kb) ->
+                    val byKey = ka.compareTo(kb)
+                    if (byKey != 0) {
+                        byKey
+                    } else {
+                        val byName = collator?.compare(a.label, b.label) ?: 0
+                        if (byName != 0) byName else a.packageName.compareTo(b.packageName)
+                    }
+                }.map { it.first }
+                .toList()
         // 打头几条 + 耗时便于核对（转写器是否生效、这次查了多久）
         XLog.w(
             "可启动应用：${apps.size} 个（显示系统应用=$includeSystem，模块 ${xposedList.size} 个、" +
@@ -295,16 +313,21 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
  * a-z，声调是组合符号（`ǎ` = `a` + U+030C），按字符过滤会把元音一起丢掉（`bǎi` → `bi`）。
  * 转写器为 null / 抛异常 / 结果为空时退回原名小写。
  */
-internal fun SettingsPage.sortKeyOf(label: String, romanizer: android.icu.text.Transliterator?): String {
-    val romanized = try {
-        romanizer?.transliterate(label) ?: label
-    } catch (e: Throwable) {
-        label
-    }
-    val decomposed = java.text.Normalizer.normalize(
-        romanized,
-        java.text.Normalizer.Form.NFKD,
-    )
+internal fun SettingsPage.sortKeyOf(
+    label: String,
+    romanizer: android.icu.text.Transliterator?,
+): String {
+    val romanized =
+        try {
+            romanizer?.transliterate(label) ?: label
+        } catch (e: Throwable) {
+            label
+        }
+    val decomposed =
+        java.text.Normalizer.normalize(
+            romanized,
+            java.text.Normalizer.Form.NFKD,
+        )
     val sb = StringBuilder(decomposed.length)
     for (ch in decomposed) {
         // 全角字母 / 数字经 NFKD 已折成半角，这里只剩 ASCII 判据
@@ -328,15 +351,15 @@ internal fun SettingsPage.sortKeyOf(label: String, romanizer: android.icu.text.T
 private const val APP_ICON_CACHE_SLOTS = 48
 
 /** 见 [APP_ICON_CACHE_SLOTS]。`accessOrder = true`：取用即算「刚用过」。 */
-private val appIcons = object : LinkedHashMap<String, android.graphics.drawable.Drawable>(
-    APP_ICON_CACHE_SLOTS,
-    0.75f,
-    true,
-) {
-    override fun removeEldestEntry(
-        eldest: MutableMap.MutableEntry<String, android.graphics.drawable.Drawable>?,
-    ): Boolean = size > APP_ICON_CACHE_SLOTS
-}
+private val appIcons =
+    object : LinkedHashMap<String, android.graphics.drawable.Drawable>(
+        APP_ICON_CACHE_SLOTS,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, android.graphics.drawable.Drawable>?): Boolean =
+            size > APP_ICON_CACHE_SLOTS
+    }
 
 /**
  * 缓存内容的版本号（每写一次、每清一次都 +1）。
@@ -347,10 +370,12 @@ private val appIcons = object : LinkedHashMap<String, android.graphics.drawable.
  */
 private var appIconsGeneration by mutableIntStateOf(0)
 
-private fun cachedAppIcon(packageName: String): android.graphics.drawable.Drawable? =
-    synchronized(appIcons) { appIcons[packageName] }
+private fun cachedAppIcon(packageName: String): android.graphics.drawable.Drawable? = synchronized(appIcons) { appIcons[packageName] }
 
-private fun putAppIcon(packageName: String, icon: android.graphics.drawable.Drawable) {
+private fun putAppIcon(
+    packageName: String,
+    icon: android.graphics.drawable.Drawable,
+) {
     synchronized(appIcons) { appIcons[packageName] = icon }
     appIconsGeneration++
 }
@@ -388,38 +413,42 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
     //  一张图都会把还在取的协程取消掉，一屏的行会排着队一张张来。
     LaunchedEffect(packageName, icon == null) {
         if (icon != null) return@LaunchedEffect
-        val loaded = withContext(Dispatchers.IO) {
-            try {
-                context.packageManager.getApplicationIcon(packageName)
-            } catch (e: Throwable) {
-                XLog.d("取应用图标失败：$packageName（${e.javaClass.simpleName}）")
-                null
-            }
-        } ?: return@LaunchedEffect
+        val loaded =
+            withContext(Dispatchers.IO) {
+                try {
+                    context.packageManager.getApplicationIcon(packageName)
+                } catch (e: Throwable) {
+                    XLog.d("取应用图标失败：$packageName（${e.javaClass.simpleName}）")
+                    null
+                }
+            } ?: return@LaunchedEffect
         // 写进缓存即完事：版本号一动这一行就重组、从缓存里拿到这张图（不必再存一份本行的状态）。
         putAppIcon(packageName, loaded)
     }
     // 取样按 [APP_ICON_BITMAP_SIZE]（比实际渲染的 40dp 大一档，缩下来清晰）。
-    val px = with(androidx.compose.ui.platform.LocalDensity.current) {
-        APP_ICON_BITMAP_SIZE.roundToPx()
-    }
-    val bitmap = remember(packageName, icon) {
-        try {
-            icon?.let { d ->
-                val bmp = android.graphics.Bitmap.createBitmap(
-                    px,
-                    px,
-                    android.graphics.Bitmap.Config.ARGB_8888,
-                )
-                d.setBounds(0, 0, px, px)
-                d.draw(android.graphics.Canvas(bmp))
-                bmp.asImageBitmap()
-            }
-        } catch (e: Throwable) {
-            XLog.d("光栅化应用图标失败：$packageName（${e.javaClass.simpleName}）")
-            null
+    val px =
+        with(androidx.compose.ui.platform.LocalDensity.current) {
+            APP_ICON_BITMAP_SIZE.roundToPx()
         }
-    }
+    val bitmap =
+        remember(packageName, icon) {
+            try {
+                icon?.let { d ->
+                    val bmp =
+                        android.graphics.Bitmap.createBitmap(
+                            px,
+                            px,
+                            android.graphics.Bitmap.Config.ARGB_8888,
+                        )
+                    d.setBounds(0, 0, px, px)
+                    d.draw(android.graphics.Canvas(bmp))
+                    bmp.asImageBitmap()
+                }
+            } catch (e: Throwable) {
+                XLog.d("光栅化应用图标失败：$packageName（${e.javaClass.simpleName}）")
+                null
+            }
+        }
     if (bitmap != null) {
         Image(
             bitmap = bitmap,
@@ -455,10 +484,11 @@ private fun BoxScope.PageStatePlaceholder(
     glyph: @Composable (Color) -> Unit,
 ) {
     Box(
-        modifier = Modifier
-            .align(Alignment.TopStart)
-            .fillMaxSize()
-            .padding(top = topInset),
+        modifier =
+            Modifier
+                .align(Alignment.TopStart)
+                .fillMaxSize()
+                .padding(top = topInset),
         contentAlignment = Alignment.Center,
     ) {
         AnimatedFade(visible = visible) {
@@ -490,16 +520,27 @@ private fun BoxScope.PageStatePlaceholder(
  *    第三个色相得自己定一份，按背景亮度切深浅（与 `popupSurfaceColor` 同一套判据）。
  */
 @Composable
-private fun appKindTagTint(xposed: Boolean, system: Boolean): Color = when {
-    xposed -> if (COUITheme.colorScheme.background.luminance() < 0.5f) {
-        APP_KIND_MODULE_DARK
-    } else {
-        APP_KIND_MODULE_LIGHT
-    }
+private fun appKindTagTint(
+    xposed: Boolean,
+    system: Boolean,
+): Color =
+    when {
+        xposed -> {
+            if (COUITheme.colorScheme.background.luminance() < 0.5f) {
+                APP_KIND_MODULE_DARK
+            } else {
+                APP_KIND_MODULE_LIGHT
+            }
+        }
 
-    system -> COUITheme.colorScheme.primary
-    else -> COUITheme.colorScheme.onSurfaceVariantSummary
-}
+        system -> {
+            COUITheme.colorScheme.primary
+        }
+
+        else -> {
+            COUITheme.colorScheme.onSurfaceVariantSummary
+        }
+    }
 
 /**
  * 应用名右边那枚小标签 —— 「模块」/「系统」/「用户」，或者警告档的「不可打开」。
@@ -523,15 +564,15 @@ internal fun SettingsPage.AppKindTag(
     modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = modifier
-            // 往上抬半档：COUI 的 `LineHeightStyle` 把行距全塞在行的下面，行盒比字面高一截，
-            // 与标题「盒子居中」的胶囊会被推下去小半档，抬回来两个字面的中线才重合。
-            .offset(y = -APP_KIND_TAG_RAISE)
-            .background(
-                color = tint.copy(alpha = APP_KIND_TAG_BG_ALPHA),
-                shape = RoundedCornerShape(APP_KIND_TAG_RADIUS),
-            )
-            .padding(APP_KIND_TAG_INSIDE),
+        modifier =
+            modifier
+                // 往上抬半档：COUI 的 `LineHeightStyle` 把行距全塞在行的下面，行盒比字面高一截，
+                // 与标题「盒子居中」的胶囊会被推下去小半档，抬回来两个字面的中线才重合。
+                .offset(y = -APP_KIND_TAG_RAISE)
+                .background(
+                    color = tint.copy(alpha = APP_KIND_TAG_BG_ALPHA),
+                    shape = RoundedCornerShape(APP_KIND_TAG_RADIUS),
+                ).padding(APP_KIND_TAG_INSIDE),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -558,14 +599,15 @@ internal val appLabelCache = HashMap<String, String>()
 
 internal fun SettingsPage.appLabelOf(packageName: String): String {
     appLabelCache[packageName]?.let { return it }
-    val label = try {
-        val pm = context.packageManager
-        pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
-    } catch (e: Throwable) {
-        XLog.d("取应用名失败：$packageName（${e.javaClass.simpleName}）")
-        // 失败不写缓存，下次再查一次
-        return packageName
-    }
+    val label =
+        try {
+            val pm = context.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+        } catch (e: Throwable) {
+            XLog.d("取应用名失败：$packageName（${e.javaClass.simpleName}）")
+            // 失败不写缓存，下次再查一次
+            return packageName
+        }
     appLabelCache[packageName] = label
     return label
 }
@@ -595,15 +637,16 @@ internal fun SettingsPage.AppSearchBand() {
             onSearch = { },
             expanded = false,
             onExpandedChange = { },
-            modifier = Modifier
-                .fillMaxWidth()
-                // 只让开左右。纵向只带下边一档（[PAGE_TOP_PADDING]）：带子贴着折叠栏下沿，
-                // 下边这一档就是带子与内容之间的间距，各页同一档。
-                .padding(
-                    start = PAGE_MARGIN,
-                    end = PAGE_MARGIN,
-                    bottom = PAGE_TOP_PADDING,
-                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    // 只让开左右。纵向只带下边一档（[PAGE_TOP_PADDING]）：带子贴着折叠栏下沿，
+                    // 下边这一档就是带子与内容之间的间距，各页同一档。
+                    .padding(
+                        start = PAGE_MARGIN,
+                        end = PAGE_MARGIN,
+                        bottom = PAGE_TOP_PADDING,
+                    ),
             label = I18n.get(Strings.APP_PICKER_SEARCH_APP, "搜索应用"),
         )
     }
@@ -742,16 +785,17 @@ internal fun SettingsPage.AppPickerScreen(
     // 不必重查。它不随进页清空、且落盘（与「显示系统应用」同一套账）。
     //  **关 = 不显示失效的**（这一档的语义是「显示失效应用」，不是「隐藏失效应用」）。
     val showBroken = showUnopenable.value
-    val shown = remember(apps, filter, showBroken) {
-        apps.asSequence()
-            .filter { showBroken || it.launchable }
-            .filter {
-                filter.isBlank() ||
-                    it.label.contains(filter, ignoreCase = true) ||
-                    it.packageName.contains(filter, ignoreCase = true)
-            }
-            .toList()
-    }
+    val shown =
+        remember(apps, filter, showBroken) {
+            apps
+                .asSequence()
+                .filter { showBroken || it.launchable }
+                .filter {
+                    filter.isBlank() ||
+                        it.label.contains(filter, ignoreCase = true) ||
+                        it.packageName.contains(filter, ignoreCase = true)
+                }.toList()
+        }
 
     // —— 已选的应用被上面两个开关藏起来时，把选中清空（用户口径）——
     //
@@ -772,7 +816,7 @@ internal fun SettingsPage.AppPickerScreen(
         if (apps.none { it.packageName == pkg && (showBroken || it.launchable) }) {
             XLog.w(
                 "选择应用：已选的应用被这一档藏起来了" +
-                        "（显示失效=$showBroken，显示全部应用=$withSystem）⇒ 清空选中",
+                    "（显示失效=$showBroken，显示全部应用=$withSystem）⇒ 清空选中",
             )
             pending = null
         }
@@ -790,9 +834,10 @@ internal fun SettingsPage.AppPickerScreen(
     // 再补半个行距（[GRID_GAP] / 2）：行距挂在每一行下边，目标行顶到带子下沿时上面那半个间距
     // 正好被带子吃掉，补一半上下两行的间距才均匀。
     // `scrollToItem` 收的是 px，而 `LocalDensity.current` 只能在组合期读，不能挪进 `LaunchedEffect`。
-    val listTopInsetPx = with(LocalDensity.current) {
-        (collapsedHeaderHeight() + searchBandDp + PAGE_TOP_PADDING + GRID_GAP / 2).roundToPx()
-    }
+    val listTopInsetPx =
+        with(LocalDensity.current) {
+            (collapsedHeaderHeight() + searchBandDp + PAGE_TOP_PADDING + GRID_GAP / 2).roundToPx()
+        }
     // 只在没在过滤、且不在第一项时才滚（第一项本就在眼前，滚了反而多一次位移）。
     // 下标要加 [APP_LIST_HEADER_ITEMS]（列表头是「顶栏让位 + 搜索带」那一项）。
     // 还必须带一段负偏移：`scrollToItem` 把目标顶到视窗顶部，而顶部被固定搜索带盖着，不加
@@ -847,24 +892,27 @@ internal fun SettingsPage.AppPickerScreen(
                 //  固定浮层，指示器默认画在屏幕最顶上 ⇒ 整个被它们盖住（2026-10-15 用户报）。
                 //  库把这个参数直接当指示器那一层的 `offset(y = …)` 用（见 `RefreshHeader` 的调用处），
                 //  所以这里给的正是「让出固定层」的同一笔账。
-                contentPadding = PaddingValues(
-                    top = currentHeaderHeight(scrollBehavior) + searchBandDp,
-                ),
+                contentPadding =
+                    PaddingValues(
+                        top = currentHeaderHeight(scrollBehavior) + searchBandDp,
+                    ),
                 // 库默认那四条是英文（"Pull down to refresh" …），这一页是中文界面
-                refreshTexts = listOf(
-                    I18n.get(Strings.APP_PICKER_PULL_REFRESH, "下拉刷新"),
-                    I18n.get(Strings.APP_PICKER_RELEASE_REFRESH, "松开刷新"),
-                    I18n.get(Strings.APP_PICKER_REFRESHING, "正在刷新"),
-                    I18n.get(Strings.APP_PICKER_REFRESH_DONE, "刷新完成"),
-                ),
+                refreshTexts =
+                    listOf(
+                        I18n.get(Strings.APP_PICKER_PULL_REFRESH, "下拉刷新"),
+                        I18n.get(Strings.APP_PICKER_RELEASE_REFRESH, "松开刷新"),
+                        I18n.get(Strings.APP_PICKER_REFRESHING, "正在刷新"),
+                        I18n.get(Strings.APP_PICKER_REFRESH_DONE, "刷新完成"),
+                    ),
             ) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        // 越界回弹：COUI 自己的弹簧实现（`overScrollVertical`）。挂在这里同样是滚动
-                        // 容器外侧，吃的是它没吃掉的那部分位移 —— 列表不满一屏也弹。
-                        .overScrollVertical(),
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            // 越界回弹：COUI 自己的弹簧实现（`overScrollVertical`）。挂在这里同样是滚动
+                            // 容器外侧，吃的是它没吃掉的那部分位移 —— 列表不满一屏也弹。
+                            .overScrollVertical(),
                     // 底部留白与别页一模一样（[PAGE_BOTTOM_PADDING]，32dp）——
                     // 与「按键绑定」页那种「最后一行被 FAB 压住」的取舍保持一致。
                     contentPadding = PaddingValues(bottom = PAGE_BOTTOM_PADDING),
@@ -917,11 +965,12 @@ internal fun SettingsPage.AppPickerScreen(
                                             contentDescription = null,
                                             // 与网格那颗同尺寸：24dp，即原先 COUI `RadioButton` 的 `requiredSize`
                                             modifier = Modifier.size(24.dp),
-                                            tint = if (picked) {
-                                                COUITheme.colorScheme.primary
-                                            } else {
-                                                COUITheme.colorScheme.onSurfaceVariantActions
-                                            },
+                                            tint =
+                                                if (picked) {
+                                                    COUITheme.colorScheme.primary
+                                                } else {
+                                                    COUITheme.colorScheme.onSurfaceVariantActions
+                                                },
                                         )
                                     },
                                     cardListPosition = CardListPosition.Full,
@@ -936,7 +985,7 @@ internal fun SettingsPage.AppPickerScreen(
                                         Text(
                                             text = app.label,
                                             // `weight` 让长名字先缩，标签始终留在行内可见
-                                            //（`fill = false`：名字短时不去撑满，标签紧跟在右边）
+                                            // （`fill = false`：名字短时不去撑满，标签紧跟在右边）
                                             modifier = Modifier.weight(1f, fill = false),
                                             style = COUITheme.textStyles.headline1,
                                             fontWeight = FontWeight.Medium,
@@ -951,13 +1000,14 @@ internal fun SettingsPage.AppPickerScreen(
                                         // —— 模块默认就在列表里，开关关着也得分得出来。三档各一个颜色（见 [appKindTagTint]）。
                                         if (withSystem || app.xposed) {
                                             Spacer(Modifier.width(APP_KIND_TAG_GAP))
-                                             // 三选一：「模块」压过「系统」压过「用户」
+                                            // 三选一：「模块」压过「系统」压过「用户」
                                             AppKindTag(
-                                                text = when {
-                                                    app.xposed -> I18n.get(Strings.APP_PICKER_TAB_XPOSED, "模块")
-                                                    app.system -> I18n.get(Strings.APP_PICKER_TAB_SYSTEM, "系统")
-                                                    else -> I18n.get(Strings.APP_PICKER_TAB_USER, "用户")
-                                                },
+                                                text =
+                                                    when {
+                                                        app.xposed -> I18n.get(Strings.APP_PICKER_TAB_XPOSED, "模块")
+                                                        app.system -> I18n.get(Strings.APP_PICKER_TAB_SYSTEM, "系统")
+                                                        else -> I18n.get(Strings.APP_PICKER_TAB_USER, "用户")
+                                                    },
                                                 tint = appKindTagTint(app.xposed, app.system),
                                             )
                                         }
@@ -996,29 +1046,39 @@ internal fun SettingsPage.AppPickerScreen(
                 // —— 那道斜杠与「无操作」那颗 `Ban` 长得像，摆这儿读起来像「禁止搜索」。
                 glyph = { tint ->
                     Icon(
-                        imageVector = if (apps.isEmpty()) {
-                            PageIcons.EmptyApps
-                        } else {
-                            PageIcons.NoMatch
-                        },
+                        imageVector =
+                            if (apps.isEmpty()) {
+                                PageIcons.EmptyApps
+                            } else {
+                                PageIcons.NoMatch
+                            },
                         contentDescription = null,
                         modifier = Modifier.fillMaxSize(),
                         tint = tint,
                     )
                 },
-                text = when {
-                    // 真因优先：这次是**没查出来**，不是「一个都没有」（后者是有效结论）
-                    failed && apps.isEmpty() -> I18n.get(Strings.APP_PICKER_LOAD_FAILED, "应用列表没读出来，退回上一页再进来试一次")
-                    apps.isEmpty() -> {
-                        // 不再说「系统限制了本页可见的应用列表」：那个前提不成立（见 docs/device-findings.md 10.8），
-                        // 这一页的包可见性跟着宿主走，真列不出来只会是别的原因。
-                        I18n.get(Strings.APP_PICKER_EMPTY_OPENABLE, "没有找到可以打开的应用")
-                    }
-                    // 措辞与菜单里那一项（「显示失效应用」）对齐，别让用户去猜是哪一个开关
-                    !showBroken && apps.all { !it.launchable } ->
-                        I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN, "可以打开的一个都没有；开「显示失效应用」能看到打不开的那些")
-                    else -> I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, filter)
-                },
+                text =
+                    when {
+                        // 真因优先：这次是**没查出来**，不是「一个都没有」（后者是有效结论）
+                        failed && apps.isEmpty() -> {
+                            I18n.get(Strings.APP_PICKER_LOAD_FAILED, "应用列表没读出来，退回上一页再进来试一次")
+                        }
+
+                        apps.isEmpty() -> {
+                            // 不再说「系统限制了本页可见的应用列表」：那个前提不成立（见 docs/device-findings.md 10.8），
+                            // 这一页的包可见性跟着宿主走，真列不出来只会是别的原因。
+                            I18n.get(Strings.APP_PICKER_EMPTY_OPENABLE, "没有找到可以打开的应用")
+                        }
+
+                        // 措辞与菜单里那一项（「显示失效应用」）对齐，别让用户去猜是哪一个开关
+                        !showBroken && apps.all { !it.launchable } -> {
+                            I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN, "可以打开的一个都没有；开「显示失效应用」能看到打不开的那些")
+                        }
+
+                        else -> {
+                            I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, filter)
+                        }
+                    },
             )
 
             // 转圈用 COUI 的 `RotatingProgressIndicator`（ColorOS 默认加载态）。
@@ -1029,15 +1089,18 @@ internal fun SettingsPage.AppPickerScreen(
                 glyph = { tint ->
                     // 库那套三个数是按 26dp 画布算出来的，只把 `size` 换成 32dp 等于只多留白、
                     // 圈没变大 —— 三个数要按同一比例一起放大（比例由 `APP_STATE_ICON_SIZE` 现算）。
-                    val spinnerScale = APP_STATE_ICON_SIZE.value /
-                        ProgressIndicatorDefaults.DefaultRotatingProgressIndicatorSize.value
+                    val spinnerScale =
+                        APP_STATE_ICON_SIZE.value /
+                            ProgressIndicatorDefaults.DefaultRotatingProgressIndicatorSize.value
                     RotatingProgressIndicator(
                         color = tint,
                         size = APP_STATE_ICON_SIZE,
-                        ringDiameter = ProgressIndicatorDefaults
-                            .DefaultRotatingProgressIndicatorRingDiameter * spinnerScale,
-                        strokeWidth = ProgressIndicatorDefaults
-                            .DefaultRotatingProgressIndicatorStrokeWidth * spinnerScale,
+                        ringDiameter =
+                            ProgressIndicatorDefaults
+                                .DefaultRotatingProgressIndicatorRingDiameter * spinnerScale,
+                        strokeWidth =
+                            ProgressIndicatorDefaults
+                                .DefaultRotatingProgressIndicatorStrokeWidth * spinnerScale,
                     )
                 },
             )
@@ -1108,10 +1171,11 @@ internal fun SettingsPage.AppPickerScreen(
             ConfirmDialog(
                 show = blockedSmallWindow != null,
                 title = I18n.get(Strings.DIALOG_APP_UNSUPPORTED_MINI_WINDOW_TITLE, "不支持以小窗口打开"),
-                summary = I18n.format(
-                    Strings.DIALOG_APP_UNSUPPORTED_MINI_WINDOW_MESSAGE,
-                    escapeMarkdown(blockedSmallWindow?.app?.label ?: "")
-                ),
+                summary =
+                    I18n.format(
+                        Strings.DIALOG_APP_UNSUPPORTED_MINI_WINDOW_MESSAGE,
+                        escapeMarkdown(blockedSmallWindow?.app?.label ?: ""),
+                    ),
                 action = I18n.get(Strings.COMMON_CONFIRM, "确定"),
                 positiveDanger = false,
                 onDismiss = { blockedSmallWindow = null },
@@ -1136,14 +1200,14 @@ internal fun SettingsPage.AppPickerScreen(
  * 从「添加命令」浮层（或点已添加那一步弹出的同一张选择菜单）进「打开应用」页 ——
  * 挑中的应用作为一步写进当前多条命令：[replaceIndex] < 0 时追加，`>= 0` 时把那一步换成它。
  *
- * 与网格那条入口的区别只有两处：不记手势（[_appPickerGesture] = null），以及调用点在
+ * 与网格那条入口的区别只有两处：不记手势（[appPickerGesture] = null），以及调用点在
  * 「自定义命令」页上 —— 压进栈之后「打开应用」下面那一页就是「自定义命令」，返回自然退到它。
  */
 internal fun SettingsPage.openAppPickerForStep(replaceIndex: Int = -1) {
     XLog.w("添加命令：进「打开应用」页挑一步（替换行=$replaceIndex）")
-    _appPickerGesture = null
-    _appPickerForStep = true
-    _appPickerReplaceStep = replaceIndex
+    appPickerGesture = null
+    appPickerForStep = true
+    appPickerReplaceStep = replaceIndex
     // 搜索词清空：它是页面级状态，不随页面出栈注销 —— 留着的话下次进来就是一份被过滤过的列表。
     appFilter.value = ""
     // 「以小窗口打开」按**这次要编辑的那一步**重算（不落盘、不跨次记忆，见 [smallWindow]；

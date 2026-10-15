@@ -17,7 +17,6 @@ internal class ActionRunner(
     @Volatile var context: Context?,
     handler: Handler,
 ) {
-
     private val injector = KeyInjector { context }
     private val flashlight = FlashlightController({ context }, handler)
     private val ringer = RingerController { context }
@@ -28,7 +27,10 @@ internal class ActionRunner(
     private fun notifyFailure(failure: CommandFailure) = FailureNotice.show(context, failure)
 
     /** 执行一个手势对应的动作。 */
-    fun run(action: Action, gestureLabel: String) {
+    fun run(
+        action: Action,
+        gestureLabel: String,
+    ) {
         XLog.w("侧键·$gestureLabel → ${action.token}")
         dispatch(action)
     }
@@ -48,32 +50,80 @@ internal class ActionRunner(
      * @param depth 当前自定义命令的嵌套深度，只为 `cmd:` 自引 / 互引兜底 ——
      *   单条命令正文里再写 `cmd:` 就是一次同步重入，必须把深度带下去（见 `CustomCommandRunner`）。
      */
-    private fun dispatch(action: Action, depth: Int = 0) {
+    private fun dispatch(
+        action: Action,
+        depth: Int = 0,
+    ) {
         try {
             when (action) {
-                is Action.None -> Unit // 拦截，什么都不做
-                is Action.KeyEvent -> runKeyEvent(action.keyCode)
-                is Action.Shell -> runShell(action.command)
-                is Action.Custom -> custom.run(action.name, depth)
-                is Action.Intent -> launcher.openIntent(action.action)
-                is Action.App -> launcher.launchApp(action.target)
-                is Action.AppWindow -> launcher.launchAppInWindow(action.target)
+                is Action.None -> {
+                    // 拦截，什么都不做
+                }
+
+                is Action.KeyEvent -> {
+                    runKeyEvent(action.keyCode)
+                }
+
+                is Action.Shell -> {
+                    runShell(action.command)
+                }
+
+                is Action.Custom -> {
+                    custom.run(action.name, depth)
+                }
+
+                is Action.Intent -> {
+                    launcher.openIntent(action.action)
+                }
+
+                is Action.App -> {
+                    launcher.launchApp(action.target)
+                }
+
+                is Action.AppWindow -> {
+                    launcher.launchAppInWindow(action.target)
+                }
+
                 // 只动当前那个窗口（不新建实例）—— 与 AppWindow 是两条路；
                 // 尺寸档（展开 / 收起）由动作自己带，执行侧据此走不同配方
-                is Action.MiniWindow -> launcher.putForegroundInMiniWindow(action.collapsed)
-                is Action.Shortcut -> launcher.runShortcut(action.shortcutId)
-                is Action.Flashlight -> flashlight.toggle()
+                is Action.MiniWindow -> {
+                    launcher.putForegroundInMiniWindow(action.collapsed)
+                }
+
+                is Action.Shortcut -> {
+                    launcher.runShortcut(action.shortcutId)
+                }
+
+                is Action.Flashlight -> {
+                    flashlight.toggle()
+                }
+
                 // `ringer:normal|vibrate|silent` 切到指定一档；循环那条仍是 `keyevent:164`。
-                is Action.Ringer -> ringer.setMode(action.mode)
+                is Action.Ringer -> {
+                    ringer.setMode(action.mode)
+                }
+
                 // 电源菜单同理：本机反射调用，不走按键长按
-                is Action.PowerMenu -> sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
-                is Action.Oplus -> launcher.startOplusFeature(action.feature)
+                is Action.PowerMenu -> {
+                    sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
+                }
+
+                is Action.Oplus -> {
+                    launcher.startOplusFeature(action.feature)
+                }
+
                 // 控制中心与「通知中心」（`keyevent:83`）同一条通道：发广播让 system_server 去调状态栏服务。
                 //  只有一档；认不出的档位只记日志（不猜一个调用目标去凑，见 AGENTS.md 五、4）。
-                is Action.Panel -> when (action.mode) {
-                    Action.Panel.CONTROL_CENTER ->
-                        sendStatusbar(StatusBarBridge.CMD_CONTROL_CENTER)
-                    else -> XLog.w("不认识的系统面板档位（已忽略）：${action.mode}")
+                is Action.Panel -> {
+                    when (action.mode) {
+                        Action.Panel.CONTROL_CENTER -> {
+                            sendStatusbar(StatusBarBridge.CMD_CONTROL_CENTER)
+                        }
+
+                        else -> {
+                            XLog.w("不认识的系统面板档位（已忽略）：${action.mode}")
+                        }
+                    }
                 }
             }
         } catch (e: Throwable) {
@@ -99,10 +149,11 @@ internal class ActionRunner(
      * 注入那两个码也打不通，只能走广播。
      */
     private fun sendStatusbar(cmd: String) {
-        val ctx = context ?: run {
-            XLog.w("没有 Context，statusbar:$cmd 跳过")
-            return
-        }
+        val ctx =
+            context ?: run {
+                XLog.w("没有 Context，statusbar:$cmd 跳过")
+                return
+            }
         StatusBarBridge.send(ctx, cmd)
     }
 
@@ -119,16 +170,20 @@ internal class ActionRunner(
         val cmd = command.trim()
         when {
             // 两个 KSU 别名都按**前缀 + 没串别的命令**认领（口径收在 [KsuCompat] 一处）：
-            // 容得下参数差异，又不会把「用户命令正文里正好出现这个串」当成 KSU 那条劫持掉
-            //。
+            // 容得下参数差异，又不会把「用户命令正文里正好出现这个串」当成 KSU 那条劫持掉。
             KsuCompat.isScreenshotAlias(cmd) -> {
                 XLog.w("截图：注入 KEYCODE_SYSRQ（KSU 那条 service call 在这里不必走 shell）")
                 injector.inject(KeyId.KEYCODE_SYSRQ)
             }
 
-            KsuCompat.isSidebarAlias(cmd) -> launcher.startSidebar()
+            KsuCompat.isSidebarAlias(cmd) -> {
+                launcher.startSidebar()
+            }
+
             // 原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分
-            else -> ShellRunner.exec(command, ::notifyFailure)
+            else -> {
+                ShellRunner.exec(command, ::notifyFailure)
+            }
         }
     }
 }

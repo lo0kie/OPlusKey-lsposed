@@ -6,7 +6,6 @@ import java.io.File
 
 /** 配置文件的位置与读写，全项目只有这一处。 */
 object ConfigStore {
-
     /**
      * 宿主 App（`com.oplus.gesture`）私有目录 —— 用的是 **DE（设备加密）** 那一份。
      *
@@ -44,7 +43,9 @@ object ConfigStore {
     /** 主配置的读取结果 —— 「还没写过」与「读不懂」必须分开，理由见 [load]。 */
     sealed interface Load {
         /** 正常读到一份配置。 */
-        data class Ok(val config: Config) : Load
+        data class Ok(
+            val config: Config,
+        ) : Load
 
         /** 文件还不存在（首装 / 刚清过数据）—— 用默认值，**允许写回**。 */
         data object Absent : Load
@@ -90,20 +91,22 @@ object ConfigStore {
         val length = f.length()
         cached?.let { if (it.modified == modified && it.length == length) return it.result }
 
-        val raw = try {
-            readText(f)
-        } catch (e: Throwable) {
-            // EACCES / IO 错：只给 d（宿主每条按键前都要读一遍，w 会刷屏）
-            XLog.d("读配置失败（文件在但读不出来）：${f.path} | ${e.message}")
-            return Load.Unreadable
-        }
+        val raw =
+            try {
+                readText(f)
+            } catch (e: Throwable) {
+                // EACCES / IO 错：只给 d（宿主每条按键前都要读一遍，w 会刷屏）
+                XLog.d("读配置失败（文件在但读不出来）：${f.path} | ${e.message}")
+                return Load.Unreadable
+            }
 
         // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文认不出，都算「读不懂」。
         //  **不做旧格式兼容**：加第二层之前写下的文件、以及开发期的明文文件，判 [Load.Unreadable]
         //  （页面只读、不接管），不退回「当它没写过」—— 那会把用户配置整份换成默认值。
         //  正文自带 md5（[ConfigCodec]），值对不上同样走 Unreadable。
-        val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
-            ?: return Load.Unreadable
+        val text =
+            FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
+                ?: return Load.Unreadable
 
         val result = ConfigCodec.parseOrNull(text)?.let { Load.Ok(it) } ?: Load.Unreadable
         cached = Cached(modified, length, result)
@@ -116,7 +119,11 @@ object ConfigStore {
      * 指纹取「修改时间 + 长度」两个字段而不是合成一个数：合成会有碰撞的可能，分着比是精确的。
      * 写盘走的是「先 `.tmp` 再 rename」，目标文件因此每次都是新 inode，修改时间必然变。
      */
-    private class Cached(val modified: Long, val length: Long, val result: Load)
+    private class Cached(
+        val modified: Long,
+        val length: Long,
+        val result: Load,
+    )
 
     @Volatile
     private var cached: Cached? = null
@@ -128,10 +135,11 @@ object ConfigStore {
      * 「读不到就按不接管处理，行为与原生一致」，对只读方是对的。
      * **写方不许用这个** —— 写之前必须拿 [load] 的三态，见 [Load]。
      */
-    fun read(): Config = when (val l = load()) {
-        is Load.Ok -> l.config
-        Load.Absent, Load.Unreadable -> Config.DEFAULT
-    }
+    fun read(): Config =
+        when (val l = load()) {
+            is Load.Ok -> l.config
+            Load.Absent, Load.Unreadable -> Config.DEFAULT
+        }
 
     /**
      * 写配置（只有宿主进程调得到）。
@@ -141,11 +149,12 @@ object ConfigStore {
      * 同一秒内「写一次、马上读」时指纹可能没变，那时读回旧内容就是实打实的 bug。
      */
     fun write(config: Config): Boolean {
-        val ok = writeAtomically(
-            sharedFile(),
-            FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, ConfigCodec.serialize(config)),
-            openReadable = true,
-        )
+        val ok =
+            writeAtomically(
+                sharedFile(),
+                FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, ConfigCodec.serialize(config)),
+                openReadable = true,
+            )
         if (ok) cached = null
         return ok
     }
@@ -166,7 +175,11 @@ object ConfigStore {
      *
      * @param openReadable 请求跨 uid 可读；只有 debug 包真的放开（见 `exposeToOthers`）。
      */
-    internal fun writeAtomically(target: File, text: String, openReadable: Boolean): Boolean {
+    internal fun writeAtomically(
+        target: File,
+        text: String,
+        openReadable: Boolean,
+    ): Boolean {
         val dir = target.parentFile
         if (dir == null) return false
 
@@ -222,8 +235,7 @@ object ConfigStore {
     }
 
     /** 真正的剥离（纯函数，便于命令行 / 单测核对；只认开头那一个）。 */
-    internal fun stripBom(text: String): String =
-        if (text.startsWith(BOM)) text.substring(1) else text
+    internal fun stripBom(text: String): String = if (text.startsWith(BOM)) text.substring(1) else text
 
     /** UTF-8 文本流开头的 BOM（一个 `U+FEFF` 码元）。 */
     private const val BOM = '\uFEFF'

@@ -9,7 +9,6 @@ internal class KeyInjector(
     /** 借来的宿主 Context —— 注入接口从它的 ClassLoader 里解析，权限也靠它的 uid。 */
     private val context: () -> Context?,
 ) {
-
     /** 注入一个按键（DOWN + UP 成对）；任何失败只记日志 —— 最坏是这一次没注入成功。 */
     fun inject(keyCode: Int) {
         try {
@@ -35,14 +34,20 @@ internal class KeyInjector(
      *
      * 三张参数表对应三档构造器，**参数个数由解析时定下来**，这里不再判断。
      */
-    private fun construct(h: Handle, action: Int, keyCode: Int, now: Long): Any? = invokeConstructor(
-        h.ctor,
-        *when (h.argc) {
-            10 -> arrayOf<Any?>(now, now, action, keyCode, 0, 0, VIRTUAL_KEYBOARD, 0, 0, SOURCE_KEYBOARD)
-            6 -> arrayOf<Any?>(now, now, action, keyCode, 0, 0)
-            else -> arrayOf<Any?>(now, now, action, keyCode, 0)
-        },
-    )
+    private fun construct(
+        h: Handle,
+        action: Int,
+        keyCode: Int,
+        now: Long,
+    ): Any? =
+        invokeConstructor(
+            h.ctor,
+            *when (h.argc) {
+                10 -> arrayOf<Any?>(now, now, action, keyCode, 0, 0, VIRTUAL_KEYBOARD, 0, 0, SOURCE_KEYBOARD)
+                6 -> arrayOf<Any?>(now, now, action, keyCode, 0, 0)
+                else -> arrayOf<Any?>(now, now, action, keyCode, 0)
+            },
+        )
 
     /**
      * 取「注入句柄」—— `IInputManager` 代理 + `KeyEvent` 构造器 + `injectInputEvent`。
@@ -84,32 +89,37 @@ internal class KeyInjector(
                 ctor = ctor10
                 argc = 10
             }
+
             ctor6 != null -> {
                 XLog.d("用 6 参构造器造 KeyEvent（第 6 参按 metaState 理解，给 0）")
                 ctor = ctor6
                 argc = 6
             }
+
             ctor5 != null -> {
                 XLog.w("只有 5 参构造器，注入可能不生效")
                 ctor = ctor5
                 argc = 5
             }
+
             else -> {
                 XLog.w("KeyEvent 构造器没找到，keyevent 注入这条路走不通")
                 return null
             }
         }
 
-        val inject = Reflect.method(
-            manager.javaClass, "injectInputEvent",
-            Reflect.findClass(loader, "android.view.InputEvent") ?: return null,
-            Int::class.javaPrimitiveType!!,
-        )
-            ?: Reflect.methodByNameAndArity(manager.javaClass, "injectInputEvent", 2)
-            ?: run {
-                XLog.w("InputManager.injectInputEvent 没找到，keyevent 注入这条路走不通")
-                return null
-            }
+        val inject =
+            Reflect.method(
+                manager.javaClass,
+                "injectInputEvent",
+                Reflect.findClass(loader, "android.view.InputEvent") ?: return null,
+                Int::class.javaPrimitiveType!!,
+            )
+                ?: Reflect.methodByNameAndArity(manager.javaClass, "injectInputEvent", 2)
+                ?: run {
+                    XLog.w("InputManager.injectInputEvent 没找到，keyevent 注入这条路走不通")
+                    return null
+                }
 
         return Handle(loader, manager, inject, ctor, argc)
     }
@@ -120,18 +130,21 @@ internal class KeyInjector(
      * 链路每个版本都可能微调，逐级降级、每级失败都写日志。
      */
     private fun inputManager(loader: ClassLoader): Any? {
-        val serviceManager = Reflect.findClass(loader, "android.os.ServiceManager") ?: run {
-            XLog.w("找不到 ServiceManager")
-            return null
-        }
-        val binder = Reflect.callStatic(serviceManager, "getService", "input") ?: run {
-            XLog.w("ServiceManager 里没有 input 服务")
-            return null
-        }
-        val stub = Reflect.findClass(loader, "android.hardware.input.IInputManager\$Stub") ?: run {
-            XLog.w("找不到 IInputManager\$Stub")
-            return null
-        }
+        val serviceManager =
+            Reflect.findClass(loader, "android.os.ServiceManager") ?: run {
+                XLog.w("找不到 ServiceManager")
+                return null
+            }
+        val binder =
+            Reflect.callStatic(serviceManager, "getService", "input") ?: run {
+                XLog.w("ServiceManager 里没有 input 服务")
+                return null
+            }
+        val stub =
+            Reflect.findClass(loader, "android.hardware.input.IInputManager\$Stub") ?: run {
+                XLog.w("找不到 IInputManager\$Stub")
+                return null
+            }
         return Reflect.callStatic(stub, "asInterface", binder)
     }
 
@@ -151,8 +164,7 @@ internal class KeyInjector(
     @Volatile
     private var cachedHandle: Handle? = null
 
-    private fun classLoader(): ClassLoader =
-        context()?.classLoader ?: ClassLoader.getSystemClassLoader()
+    private fun classLoader(): ClassLoader = context()?.classLoader ?: ClassLoader.getSystemClassLoader()
 
     /**
      * 调一个构造器。
@@ -163,12 +175,13 @@ internal class KeyInjector(
     private fun invokeConstructor(
         ctor: java.lang.reflect.Constructor<*>,
         vararg args: Any?,
-    ): Any? = try {
-        ctor.newInstance(*args)
-    } catch (e: Throwable) {
-        XLog.w("构造 KeyEvent 失败", e)
-        null
-    }
+    ): Any? =
+        try {
+            ctor.newInstance(*args)
+        } catch (e: Throwable) {
+            XLog.w("构造 KeyEvent 失败", e)
+            null
+        }
 
     companion object {
         // 截图那个按键码（`KEYCODE_SYSRQ`）不在这儿：键码只定义在 `core/model/KeyId` 一处（一、5），

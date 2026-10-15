@@ -1,5 +1,6 @@
 package com.lookie.opluskey.host
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -23,7 +24,6 @@ import com.lookie.opluskey.inject.Framework
 
 /** 接收 `system_server` 转来的判好的侧键手势，按配置执行动作。 */
 internal object GestureReceiver {
-
     /** 已注册的接收器 —— 永不移除（注册后随宿主主进程一直活着，`install` 里用非空判断挡住重复注册）。 */
     private var receiver: BroadcastReceiver? = null
 
@@ -81,12 +81,17 @@ internal object GestureReceiver {
         tryGetContext(loader, attempt = 0)
     }
 
-    private fun tryGetContext(loader: ClassLoader, attempt: Int) {
+    private fun tryGetContext(
+        loader: ClassLoader,
+        attempt: Int,
+    ) {
         val ctx = ActivityThreadCompat.currentApplication(loader)
         if (ctx == null) {
             if (attempt >= CTX_RETRY) {
-                XLog.w("拿不到 Application Context（重试 $attempt 次）—— 手势接收器没装上，" +
-                    "侧键会「拦下来但什么都不做」")
+                XLog.w(
+                    "拿不到 Application Context（重试 $attempt 次）—— 手势接收器没装上，" +
+                        "侧键会「拦下来但什么都不做」",
+                )
                 return
             }
             handler.postDelayed({
@@ -107,34 +112,38 @@ internal object GestureReceiver {
         // 报活放在配置之后：这一条要带上「读到的 enabled」，先发就读不到真值
         reportAlive(ctx)
 
-        val r = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                // 设置页问「宿主侧的模块在不在」——回一条报活（见 [KeyModule.ACTION_HOST_SERVICE_QUERY]）。
-                //  要这一问是因为报活广播是**一次性**的：我们发出时设置页可能还没起来。
-                if (intent?.action == KeyModule.ACTION_HOST_SERVICE_QUERY) {
-                    XLog.w("设置页问宿主模块在不在 —— 回一条报活")
-                    context?.let { reportAlive(it) }
-                    return
-                }
-                // 设置页按了「重启服务」：那边马上要杀自己，由我们（宿主主进程）等一下把页面拉回来，
-                //  拉起之后本进程也重来一遍（见 [PageRelaunch]）。
-                if (intent?.action == KeyModule.ACTION_PAGE_RELAUNCH) {
-                    XLog.w("设置页请求重启服务 —— 由本进程稍后把页面拉回来")
-                    context?.let { PageRelaunch.schedule(it) }
-                    return
-                }
-                // 注意：取 extra 与派发**同在一个 guard 里**：三句
-                //  `getXxxExtra` 露在 guard 外面，一旦抛出就是宿主主进程的未捕获异常。
-                XLog.guard("处理转来的手势") {
-                    val key = intent?.getStringExtra(KeyModule.EXTRA_KEY)
-                    val phase = intent?.getStringExtra(KeyModule.EXTRA_PHASE)
-                    val repeat = intent?.getBooleanExtra(KeyModule.EXTRA_REPEAT, false) ?: false
-                    val sentAt = intent?.getLongExtra(KeyModule.EXTRA_SENT_AT, 0L) ?: 0L
-                    XLog.d("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
-                    handle(key, phase, repeat, sentAt)
+        val r =
+            object : BroadcastReceiver() {
+                override fun onReceive(
+                    context: Context?,
+                    intent: Intent?,
+                ) {
+                    // 设置页问「宿主侧的模块在不在」——回一条报活（见 [KeyModule.ACTION_HOST_SERVICE_QUERY]）。
+                    //  要这一问是因为报活广播是**一次性**的：我们发出时设置页可能还没起来。
+                    if (intent?.action == KeyModule.ACTION_HOST_SERVICE_QUERY) {
+                        XLog.w("设置页问宿主模块在不在 —— 回一条报活")
+                        context?.let { reportAlive(it) }
+                        return
+                    }
+                    // 设置页按了「重启服务」：那边马上要杀自己，由我们（宿主主进程）等一下把页面拉回来，
+                    //  拉起之后本进程也重来一遍（见 [PageRelaunch]）。
+                    if (intent?.action == KeyModule.ACTION_PAGE_RELAUNCH) {
+                        XLog.w("设置页请求重启服务 —— 由本进程稍后把页面拉回来")
+                        context?.let { PageRelaunch.schedule(it) }
+                        return
+                    }
+                    // 注意：取 extra 与派发**同在一个 guard 里**：三句
+                    //  `getXxxExtra` 露在 guard 外面，一旦抛出就是宿主主进程的未捕获异常。
+                    XLog.guard("处理转来的手势") {
+                        val key = intent?.getStringExtra(KeyModule.EXTRA_KEY)
+                        val phase = intent?.getStringExtra(KeyModule.EXTRA_PHASE)
+                        val repeat = intent?.getBooleanExtra(KeyModule.EXTRA_REPEAT, false) ?: false
+                        val sentAt = intent?.getLongExtra(KeyModule.EXTRA_SENT_AT, 0L) ?: 0L
+                        XLog.d("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
+                        handle(key, phase, repeat, sentAt)
+                    }
                 }
             }
-        }
         try {
             // Android 14（API 34）起动态注册必须显式声明导出性。发送方是 system_server（uid 1000，
             // 经 GestureForwarder 发出），不是宿主自己 —— 系统身份对 NOT_EXPORTED 接收器照样可达，
@@ -186,8 +195,7 @@ internal object GestureReceiver {
      * 顺带带上两个诊断字段，让首页能判「读到的配置是不是真值」与「这个键执行过没有」——
      * 光说一句「我在」判不出那两种（配置没到 / 从来没按过）的真实故障，见 `ui/state/LinkCheck.kt`。
      */
-    private fun reportAlive(ctx: Context) =
-        sendAlive(ctx, ConfigStore.read().key(KeyId.PLUS).enabled)
+    private fun reportAlive(ctx: Context) = sendAlive(ctx, ConfigStore.read().key(KeyId.PLUS).enabled)
 
     /**
      * 报活的发送本身。`enabled` 由调用方给。
@@ -196,7 +204,10 @@ internal object GestureReceiver {
      *  手上**已经有一份刚读出来的配置**了 —— 再让它自己去读一遍是白费一次剥外皮 + JSON 解析。
      *  「现读」这条语义没有变：同一串同步调用里没有别人会去写那份文件。
      */
-    private fun sendAlive(ctx: Context, enabled: Boolean) {
+    private fun sendAlive(
+        ctx: Context,
+        enabled: Boolean,
+    ) {
         try {
             ctx.sendBroadcast(
                 Intent(KeyModule.ACTION_HOST_SERVICE_UP)
@@ -219,7 +230,8 @@ internal object GestureReceiver {
     private fun publishConfigState(ctx: Context) {
         XLog.guard("广播配置给注入侧") {
             ctx.sendBroadcast(
-                ConfigBroadcast.intent(ConfigStore.read())
+                ConfigBroadcast
+                    .intent(ConfigStore.read())
                     .setPackage(KeyModule.PAGE_PACKAGE),
             )
             XLog.w("已广播配置给注入侧（用户已解锁=${isUserUnlocked(ctx)}）")
@@ -235,12 +247,16 @@ internal object GestureReceiver {
      */
     private fun registerUnlockListener(ctx: Context) {
         if (isUserUnlocked(ctx)) return
-        val r = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                XLog.w("用户已解锁（action=${intent?.action}）—— 重读配置并广播给注入侧")
-                context?.let { publishConfigState(it) }
+        val r =
+            object : BroadcastReceiver() {
+                override fun onReceive(
+                    context: Context?,
+                    intent: Intent?,
+                ) {
+                    XLog.w("用户已解锁（action=${intent?.action}）—— 重读配置并广播给注入侧")
+                    context?.let { publishConfigState(it) }
+                }
             }
-        }
         try {
             val filter = IntentFilter()
             filter.addAction(Intent.ACTION_USER_UNLOCKED)
@@ -253,11 +269,12 @@ internal object GestureReceiver {
         }
     }
 
-    private fun isUserUnlocked(ctx: Context): Boolean = try {
-        ctx.getSystemService(android.os.UserManager::class.java)?.isUserUnlocked ?: true
-    } catch (e: Throwable) {
-        true
-    }
+    private fun isUserUnlocked(ctx: Context): Boolean =
+        try {
+            ctx.getSystemService(android.os.UserManager::class.java)?.isUserUnlocked ?: true
+        } catch (e: Throwable) {
+            true
+        }
 
     /**
      * 一个判好的手势：读配置 → 执行动作。
@@ -267,18 +284,25 @@ internal object GestureReceiver {
      * 主开关（`KeyConfig.enabled`）的执行侧闸门：判定在 system_server、配置来自广播，
      * 这里再按文件真值拦一道，两边不会各说各话。
      */
-    private fun handle(keyId: String?, phaseId: String?, repeat: Boolean, sentAt: Long) {
-        val key = KeyId.fromId(keyId.orEmpty()) ?: run {
-            XLog.w("不认识的键 id：$keyId")
-            return
-        }
-        val r = runner ?: run {
-            XLog.w("ActionRunner 还没建好，忽略 ${key.label} 的 $phaseId")
-            return
-        }
+    private fun handle(
+        keyId: String?,
+        phaseId: String?,
+        repeat: Boolean,
+        sentAt: Long,
+    ) {
+        val key =
+            KeyId.fromId(keyId.orEmpty()) ?: run {
+                XLog.w("不认识的键 id：$keyId")
+                return
+            }
+        val r =
+            runner ?: run {
+                XLog.w("ActionRunner 还没建好，忽略 ${key.label} 的 $phaseId")
+                return
+            }
 
         // 过期丢弃：正常送达延迟是几百毫秒；超过 STALE_MS 说明这条在系统里被压了很久
-        //（进程曾被冻结）—— 一次性灌进来的那批全在这里拦掉。
+        // （进程曾被冻结）—— 一次性灌进来的那批全在这里拦掉。
         //  注意：`sentAt` 缺失（<= 0）时**不判过期**：`elapsedRealtime() - 0`
         //   必然大于 STALE_MS，缺 extra 的那条会被无条件丢掉 —— 而紧接着那段去重明确写着
         //   「sent_at 缺失时整段跳过（不能让它把后续手势全挡掉）」，两处口径相反。
@@ -305,15 +329,25 @@ internal object GestureReceiver {
             lastHandledAt[token] = sentAt
         }
 
-        val gesture = when (phaseId) {
-            Gesture.SINGLE.id -> Gesture.SINGLE
-            Gesture.DOUBLE.id -> Gesture.DOUBLE
-            Gesture.LONG.id -> Gesture.LONG
-            else -> {
-                XLog.w("不认识的手势：$phaseId")
-                return
+        val gesture =
+            when (phaseId) {
+                Gesture.SINGLE.id -> {
+                    Gesture.SINGLE
+                }
+
+                Gesture.DOUBLE.id -> {
+                    Gesture.DOUBLE
+                }
+
+                Gesture.LONG.id -> {
+                    Gesture.LONG
+                }
+
+                else -> {
+                    XLog.w("不认识的手势：$phaseId")
+                    return
+                }
             }
-        }
 
         val config = ConfigStore.read()
         val keyConfig = config.key(key)
@@ -350,13 +384,15 @@ internal object GestureReceiver {
         config: Config,
     ) {
         val action = keyConfig.actionOf(gesture)
-        val r = runner ?: run {
-            XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${gesture.id}")
-            return
-        }
+        val r =
+            runner ?: run {
+                XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${gesture.id}")
+                return
+            }
         // 这条是按键的可见证据（release 里也保留），所以只在第一次执行时打 W；
-        val log = "${id.label}·${gesture.label}${if (repeat) "（连续触发）" else ""} → ${action.token}" +
-            "（宿主进程执行）"
+        val log =
+            "${id.label}·${gesture.label}${if (repeat) "（连续触发）" else ""} → ${action.token}" +
+                "（宿主进程执行）"
         if (repeat) XLog.d(log) else XLog.w(log)
         // 链路自检：这一笔是「动作真的执行了」的凭证（与注入侧那笔 lastGestureAt 配对）
         lastActionAt = android.os.SystemClock.elapsedRealtime()
@@ -368,7 +404,7 @@ internal object GestureReceiver {
         // 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），内容是**这次执行的是哪个动作**。
         //  钉在这一处（一次手势只走一遍）而不是 `CustomCommandRunner` 里 —— 那一处只覆盖 `cmd:`
         // 自定义命令，绑的是内置动作（小布识屏 / 截图 / 手电筒 …）时按下去一直没动静
-        //（用户报「执行命令时系统提示没效果」）。连续触发的重复不弹：那是同一次按压。
+        // （用户报「执行命令时系统提示没效果」）。连续触发的重复不弹：那是同一次按压。
         if (!repeat && config.global.toastOnRun) {
             val notice = actionNoticeText(appContext, action)
             if (notice.isNotEmpty()) {
@@ -383,7 +419,13 @@ internal object GestureReceiver {
      * 动作即将执行前那一下触觉反馈 —— 位置与判据见 [runAction] 的 KDoc。
      *
      * 跑在主线程上，一切异常就地吞掉：振不动不该影响动作执行，更不该让宿主进程崩。
+     *
+     *  `MissingPermission` 这一条按「谁在执行」判：这段跑在**宿主**（`com.oplus.gesture`）里，
+     *  而它自己声明并被授予了 `android.permission.VIBRATE`（真机 `dumpsys package` 核对过）。
+     *  模块清单里**不**声明这一条 —— 写上它也管不到宿主那个 UID，只会让人以为模块自己有个
+     *  进程在振。
      */
+    @SuppressLint("MissingPermission")
     private fun haptic(config: Config) {
         if (!config.global.vibrate) return
         try {
@@ -399,5 +441,4 @@ internal object GestureReceiver {
             XLog.w("触觉反馈失败（忽略）：${e.message}")
         }
     }
-
 }

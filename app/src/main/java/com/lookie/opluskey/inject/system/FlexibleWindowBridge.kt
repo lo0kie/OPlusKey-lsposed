@@ -13,7 +13,6 @@ import com.lookie.opluskey.core.reflect.Reflect
  * 与 [StatusBarBridge] 同一套：宿主发一条限定包名的广播，注入侧在 AMS 广播入口接住、在本机执行。
  */
 internal object FlexibleWindowBridge {
-
     /** 小窗指令的转交广播 —— 宿主发，注入侧接住并在本机执行。 */
     const val ACTION = "com.lookie.opluskey.FLEXIBLE"
 
@@ -97,11 +96,12 @@ internal object FlexibleWindowBridge {
         scale: Float? = null,
     ) {
         try {
-            val intent = Intent(ACTION)
-                .setPackage(KeyModule.PAGE_PACKAGE)
-                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                .putExtra(EXTRA_CMD, cmd)
-                .putExtra(EXTRA_TASK_ID, taskId)
+            val intent =
+                Intent(ACTION)
+                    .setPackage(KeyModule.PAGE_PACKAGE)
+                    .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                    .putExtra(EXTRA_CMD, cmd)
+                    .putExtra(EXTRA_TASK_ID, taskId)
             if (bounds != null) {
                 intent.putExtra(EXTRA_LEFT, bounds.left)
                 intent.putExtra(EXTRA_TOP, bounds.top)
@@ -131,31 +131,36 @@ internal object FlexibleWindowBridge {
     )
 
     /** 宿主进程调：让注入侧用框架自己的动画器把任务从「全屏外观」缩到「小窗外观」。 */
-    fun sendMiniAnim(context: Context, taskId: Int, p: MiniAnimParams) {
+    fun sendMiniAnim(
+        context: Context,
+        taskId: Int,
+        p: MiniAnimParams,
+    ) {
         try {
-            val intent = Intent(ACTION)
-                .setPackage(KeyModule.PAGE_PACKAGE)
-                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                .putExtra(EXTRA_CMD, CMD_MINI_ANIM)
-                .putExtra(EXTRA_TASK_ID, taskId)
-                .putExtra(EXTRA_START_LEFT, p.startRect.left)
-                .putExtra(EXTRA_START_TOP, p.startRect.top)
-                .putExtra(EXTRA_START_RIGHT, p.startRect.right)
-                .putExtra(EXTRA_START_BOTTOM, p.startRect.bottom)
-                .putExtra(EXTRA_FINISH_LEFT, p.finishRect.left)
-                .putExtra(EXTRA_FINISH_TOP, p.finishRect.top)
-                .putExtra(EXTRA_FINISH_RIGHT, p.finishRect.right)
-                .putExtra(EXTRA_FINISH_BOTTOM, p.finishRect.bottom)
-                .putExtra(EXTRA_START_SCALE, p.startScale)
-                .putExtra(EXTRA_FINISH_SCALE, p.finishScale)
-                .putExtra(EXTRA_START_ALPHA, p.startAlpha)
-                .putExtra(EXTRA_FINISH_ALPHA, p.finishAlpha)
-                .putExtra(EXTRA_DURATION, p.durationMs)
+            val intent =
+                Intent(ACTION)
+                    .setPackage(KeyModule.PAGE_PACKAGE)
+                    .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                    .putExtra(EXTRA_CMD, CMD_MINI_ANIM)
+                    .putExtra(EXTRA_TASK_ID, taskId)
+                    .putExtra(EXTRA_START_LEFT, p.startRect.left)
+                    .putExtra(EXTRA_START_TOP, p.startRect.top)
+                    .putExtra(EXTRA_START_RIGHT, p.startRect.right)
+                    .putExtra(EXTRA_START_BOTTOM, p.startRect.bottom)
+                    .putExtra(EXTRA_FINISH_LEFT, p.finishRect.left)
+                    .putExtra(EXTRA_FINISH_TOP, p.finishRect.top)
+                    .putExtra(EXTRA_FINISH_RIGHT, p.finishRect.right)
+                    .putExtra(EXTRA_FINISH_BOTTOM, p.finishRect.bottom)
+                    .putExtra(EXTRA_START_SCALE, p.startScale)
+                    .putExtra(EXTRA_FINISH_SCALE, p.finishScale)
+                    .putExtra(EXTRA_START_ALPHA, p.startAlpha)
+                    .putExtra(EXTRA_FINISH_ALPHA, p.finishAlpha)
+                    .putExtra(EXTRA_DURATION, p.durationMs)
             context.sendBroadcast(intent)
             XLog.w(
                 "flexible:$CMD_MINI_ANIM(#$taskId) 已转给 system_server" +
-                        "（start=${p.startRect}@${p.startScale}a${p.startAlpha}" +
-                        " → finish=${p.finishRect}@${p.finishScale}a${p.finishAlpha}）",
+                    "（start=${p.startRect}@${p.startScale}a${p.startAlpha}" +
+                    " → finish=${p.finishRect}@${p.finishScale}a${p.finishAlpha}）",
             )
         } catch (e: Throwable) {
             XLog.w("发 flexible 广播失败：$CMD_MINI_ANIM", e)
@@ -168,27 +173,33 @@ internal object FlexibleWindowBridge {
      *
      * @param loader system_server 的 ClassLoader（本机反射用；null 则只记日志不执行）
      */
-    fun handle(intent: Intent, loader: ClassLoader?): Boolean {
+    fun handle(
+        intent: Intent,
+        loader: ClassLoader?,
+    ): Boolean {
         if (intent.action != ACTION) return false
-        val cmd = try {
-            intent.getStringExtra(EXTRA_CMD).orEmpty()
-        } catch (e: Throwable) {
-            XLog.w("读小窗指令 extra 失败：${e.message}")
-            ""
-        }
-        val taskId = try {
-            intent.getIntExtra(EXTRA_TASK_ID, -1)
-        } catch (e: Throwable) {
-            -1
-        }
+        val cmd =
+            try {
+                intent.getStringExtra(EXTRA_CMD).orEmpty()
+            } catch (e: Throwable) {
+                XLog.w("读小窗指令 extra 失败：${e.message}")
+                ""
+            }
+        val taskId =
+            try {
+                intent.getIntExtra(EXTRA_TASK_ID, -1)
+            } catch (e: Throwable) {
+                -1
+            }
         // 落点几何随指令一起来（宿主侧下发）。读不到就走注入侧的兜底默认值 ——
         // 这样「宿主是新版、注入侧是旧版」时也不会退化成没有几何。
         val bounds = readBounds(intent)
-        val scale = try {
-            if (intent.hasExtra(EXTRA_SCALE)) intent.getFloatExtra(EXTRA_SCALE, EXPANDED_SCALE) else null
-        } catch (e: Throwable) {
-            null
-        }
+        val scale =
+            try {
+                if (intent.hasExtra(EXTRA_SCALE)) intent.getFloatExtra(EXTRA_SCALE, EXPANDED_SCALE) else null
+            } catch (e: Throwable) {
+                null
+            }
         try {
             when (cmd) {
                 CMD_MINI -> switchToMiniLocal(loader, taskId, bounds, scale)
@@ -209,23 +220,24 @@ internal object FlexibleWindowBridge {
      *
      * 和 [handle] 同理整体包 catch：调用点在 AMS 广播入口，漏一个异常出去就是系统崩。
      */
-    private fun readBounds(intent: Intent): android.graphics.Rect? = try {
-        if (intent.hasExtra(EXTRA_LEFT) && intent.hasExtra(EXTRA_TOP) &&
-            intent.hasExtra(EXTRA_RIGHT) && intent.hasExtra(EXTRA_BOTTOM)
-        ) {
-            android.graphics.Rect(
-                intent.getIntExtra(EXTRA_LEFT, 0),
-                intent.getIntExtra(EXTRA_TOP, 0),
-                intent.getIntExtra(EXTRA_RIGHT, 0),
-                intent.getIntExtra(EXTRA_BOTTOM, 0),
-            )
-        } else {
+    private fun readBounds(intent: Intent): android.graphics.Rect? =
+        try {
+            if (intent.hasExtra(EXTRA_LEFT) && intent.hasExtra(EXTRA_TOP) &&
+                intent.hasExtra(EXTRA_RIGHT) && intent.hasExtra(EXTRA_BOTTOM)
+            ) {
+                android.graphics.Rect(
+                    intent.getIntExtra(EXTRA_LEFT, 0),
+                    intent.getIntExtra(EXTRA_TOP, 0),
+                    intent.getIntExtra(EXTRA_RIGHT, 0),
+                    intent.getIntExtra(EXTRA_BOTTOM, 0),
+                )
+            } else {
+                null
+            }
+        } catch (e: Throwable) {
+            XLog.w("读宿主下发的落点几何失败：${e.message}")
             null
         }
-    } catch (e: Throwable) {
-        XLog.w("读宿主下发的落点几何失败：${e.message}")
-        null
-    }
 
     /**
      * 把任务切到小窗态 —— 调框架自己的 `FlexibleTaskController#switchState(task, 1, reason)`。
@@ -251,33 +263,39 @@ internal object FlexibleWindowBridge {
             XLog.w("小窗指令没带 taskId，跳过")
             return
         }
-        val serviceCls = Reflect.findClass(loader, SERVICE) ?: run {
-            XLog.w("找不到 $SERVICE，小窗指令跳过")
-            return
-        }
-        val service = Reflect.callStatic(serviceCls, "getInstance", null) ?: run {
-            XLog.w("$SERVICE.getInstance() 拿不到实例，小窗指令跳过")
-            return
-        }
-        val controller = Reflect.call(service, "getFlexibleTaskController") ?: run {
-            XLog.w("$SERVICE.getFlexibleTaskController() 拿不到控制器，小窗指令跳过")
-            return
-        }
-        val atms = Reflect.fieldValue(controller, controller.javaClass, FIELD_ATMS) ?: run {
-            XLog.w("读不到 $SERVICE 的 $FIELD_ATMS，小窗指令跳过")
-            return
-        }
-        val root = Reflect.fieldValue(atms, atms.javaClass, FIELD_ROOT) ?: run {
-            XLog.w("读不到 $FIELD_ROOT，小窗指令跳过")
-            return
-        }
-        val task = findTask(root, taskId) ?: run {
-            XLog.w("任务 #$taskId 三种 matchMode 都找不到，小窗指令跳过")
-            return
-        }
+        val serviceCls =
+            Reflect.findClass(loader, SERVICE) ?: run {
+                XLog.w("找不到 $SERVICE，小窗指令跳过")
+                return
+            }
+        val service =
+            Reflect.callStatic(serviceCls, "getInstance", null) ?: run {
+                XLog.w("$SERVICE.getInstance() 拿不到实例，小窗指令跳过")
+                return
+            }
+        val controller =
+            Reflect.call(service, "getFlexibleTaskController") ?: run {
+                XLog.w("$SERVICE.getFlexibleTaskController() 拿不到控制器，小窗指令跳过")
+                return
+            }
+        val atms =
+            Reflect.fieldValue(controller, controller.javaClass, FIELD_ATMS) ?: run {
+                XLog.w("读不到 $SERVICE 的 $FIELD_ATMS，小窗指令跳过")
+                return
+            }
+        val root =
+            Reflect.fieldValue(atms, atms.javaClass, FIELD_ROOT) ?: run {
+                XLog.w("读不到 $FIELD_ROOT，小窗指令跳过")
+                return
+            }
+        val task =
+            findTask(root, taskId) ?: run {
+                XLog.w("任务 #$taskId 三种 matchMode 都找不到，小窗指令跳过")
+                return
+            }
         XLog.w(
             "小窗指令：任务 #$taskId bounds=${taskBounds(task)} " +
-                    "flexibleZoomState=${flexibleZoomState(task)}",
+                "flexibleZoomState=${flexibleZoomState(task)}",
         )
 
         // 让普通全屏任务「冒充」柔性全屏态：`switchState` 的前置只看 TaskExt 上这三个字段。
@@ -297,10 +315,13 @@ internal object FlexibleWindowBridge {
         //    两个坑的取值与推算过程都写在 [EXPANDED_BOUNDS] 的注释里，改之前先读那段。
         //    `setRememberPosInfo(Rect, float)` 含原始类型参数，必须显式拿 Method（见 [findTask] 的装箱坑）。
         if (ext != null && record != null) {
-            val setPos = Reflect.method(
-                ext.javaClass, "setRememberPosInfo",
-                android.graphics.Rect::class.java, java.lang.Float.TYPE,
-            )
+            val setPos =
+                Reflect.method(
+                    ext.javaClass,
+                    "setRememberPosInfo",
+                    android.graphics.Rect::class.java,
+                    java.lang.Float.TYPE,
+                )
             if (setPos != null) {
                 // 宿主下发优先，缺了才用本文件的兜底默认值。
                 val bounds = requestedBounds ?: EXPANDED_BOUNDS
@@ -311,7 +332,7 @@ internal object FlexibleWindowBridge {
                 // 真机上它打的屏幕落点应当是 Rect(126, 319 - 1145, 2131)（宽 1019、高 1812）。
                 XLog.w(
                     "小窗指令：已预置展开档几何（$from）配置矩形=$bounds scale=$scale" +
-                            " → 屏幕落点应为 ${screenBoundsOf(bounds, scale)}",
+                        " → 屏幕落点应为 ${screenBoundsOf(bounds, scale)}",
                 )
             } else {
                 XLog.w("小窗指令：找不到 setRememberPosInfo(Rect,float)，落点会走默认比例（会偏长）")
@@ -326,29 +347,34 @@ internal object FlexibleWindowBridge {
         val getCaption = Reflect.method(serviceCls, "getCaptionName", java.lang.Integer.TYPE)
         val captionName = getCaption?.let { Reflect.call(service, it, 1) } as? String
         XLog.w("小窗指令：caption 实现类 = $captionName")
-        val bundle = android.os.Bundle().apply {
-            putBoolean("androidx.activity.HasCaption", true)
-            if (captionName != null) putString("androidx.activity.CaptionName", captionName)
-            putInt("androidx.activity.LaunchInsensible", 0)
-            putInt("androidx.activity.task.attach.blur", 0)
-            putInt("androidx.activity.LaunchCornerRadius", 91)
-            putInt("androidx.activity.LaunchShadowRadius", 200)
-            putInt("androidx.activity.LaunchScenario", 1)
-            putFloat("androidx.activity.LaunchScale", 0.8016529f)
-            putFloat("androidx.activity.flexibleTaskCaptionViewMaxScale", 0.8083333f)
-            putFloat("androidx.flexible.Alpha", 1.0f)
-            putInt("androidx.flexible.task_snapshot_mode", 0)
-            putBoolean("flexible.floatwindow.is_multi_instance", false)
-            putBoolean("flexible_super_mini_state", false)
-            putInt("androidx.activity.key_flexible_task_pending_exit_to", 0)
-        }
+        val bundle =
+            android.os.Bundle().apply {
+                putBoolean("androidx.activity.HasCaption", true)
+                if (captionName != null) putString("androidx.activity.CaptionName", captionName)
+                putInt("androidx.activity.LaunchInsensible", 0)
+                putInt("androidx.activity.task.attach.blur", 0)
+                putInt("androidx.activity.LaunchCornerRadius", 91)
+                putInt("androidx.activity.LaunchShadowRadius", 200)
+                putInt("androidx.activity.LaunchScenario", 1)
+                putFloat("androidx.activity.LaunchScale", 0.8016529f)
+                putFloat("androidx.activity.flexibleTaskCaptionViewMaxScale", 0.8083333f)
+                putFloat("androidx.flexible.Alpha", 1.0f)
+                putInt("androidx.flexible.task_snapshot_mode", 0)
+                putBoolean("flexible.floatwindow.is_multi_instance", false)
+                putBoolean("flexible_super_mini_state", false)
+                putInt("androidx.activity.key_flexible_task_pending_exit_to", 0)
+            }
         val optionsCls = Reflect.findClass(loader, "android.app.ActivityOptions")
         val options = optionsCls?.let { Reflect.callStatic(it, "makeBasic") }
         if (ext != null && record != null && optionsCls != null && options != null) {
-            val upd = Reflect.method(
-                ext.javaClass, "updateFlexibleTaskParams",
-                android.os.Bundle::class.java, optionsCls, record.javaClass,
-            )
+            val upd =
+                Reflect.method(
+                    ext.javaClass,
+                    "updateFlexibleTaskParams",
+                    android.os.Bundle::class.java,
+                    optionsCls,
+                    record.javaClass,
+                )
             if (upd != null) {
                 Reflect.call(ext, upd, bundle, options, record)
                 XLog.w("小窗指令：已喂 updateFlexibleTaskParams（含 HasCaption=true）")
@@ -402,7 +428,11 @@ internal object FlexibleWindowBridge {
      *
      * `handler` 传 `null`：动画器内部对 null 会回退到 `ATMS.mUiHandler`，比我们自己造一个 looper 稳。
      */
-    private fun miniAnimLocal(loader: ClassLoader?, taskId: Int, intent: Intent) {
+    private fun miniAnimLocal(
+        loader: ClassLoader?,
+        taskId: Int,
+        intent: Intent,
+    ) {
         if (loader == null) {
             XLog.w("$CMD_MINI_ANIM：还没有 system_server 的 ClassLoader，跳过")
             return
@@ -411,70 +441,79 @@ internal object FlexibleWindowBridge {
             XLog.w("$CMD_MINI_ANIM：没带 taskId，跳过")
             return
         }
-        val serviceCls = Reflect.findClass(loader, SERVICE) ?: run {
-            XLog.w("$CMD_MINI_ANIM：找不到 $SERVICE，跳过")
-            return
-        }
-        val service = Reflect.callStatic(serviceCls, "getInstance", null) ?: run {
-            XLog.w("$CMD_MINI_ANIM：$SERVICE.getInstance() 拿不到，跳过")
-            return
-        }
-        val controller = Reflect.call(service, "getFlexibleTaskController") ?: run {
-            XLog.w("$CMD_MINI_ANIM：拿不到 FlexibleTaskController，跳过")
-            return
-        }
+        val serviceCls =
+            Reflect.findClass(loader, SERVICE) ?: run {
+                XLog.w("$CMD_MINI_ANIM：找不到 $SERVICE，跳过")
+                return
+            }
+        val service =
+            Reflect.callStatic(serviceCls, "getInstance", null) ?: run {
+                XLog.w("$CMD_MINI_ANIM：$SERVICE.getInstance() 拿不到，跳过")
+                return
+            }
+        val controller =
+            Reflect.call(service, "getFlexibleTaskController") ?: run {
+                XLog.w("$CMD_MINI_ANIM：拿不到 FlexibleTaskController，跳过")
+                return
+            }
         // 动画器就在 controller 上（`mAnimator` 字段，且有 `getAnimator()`）—— 不用自己去 new。
-        val animator = Reflect.call(controller, "getAnimator") ?: run {
-            XLog.w("$CMD_MINI_ANIM：FlexibleTaskController.getAnimator() 拿不到，跳过")
-            return
-        }
-        val atms = Reflect.fieldValue(controller, controller.javaClass, FIELD_ATMS) ?: run {
-            XLog.w("$CMD_MINI_ANIM：读不到 $FIELD_ATMS，跳过")
-            return
-        }
-        val root = Reflect.fieldValue(atms, atms.javaClass, FIELD_ROOT) ?: run {
-            XLog.w("$CMD_MINI_ANIM：读不到 $FIELD_ROOT，跳过")
-            return
-        }
-        val task = findTask(root, taskId) ?: run {
-            XLog.w("$CMD_MINI_ANIM：任务 #$taskId 找不到，跳过")
-            return
-        }
+        val animator =
+            Reflect.call(controller, "getAnimator") ?: run {
+                XLog.w("$CMD_MINI_ANIM：FlexibleTaskController.getAnimator() 拿不到，跳过")
+                return
+            }
+        val atms =
+            Reflect.fieldValue(controller, controller.javaClass, FIELD_ATMS) ?: run {
+                XLog.w("$CMD_MINI_ANIM：读不到 $FIELD_ATMS，跳过")
+                return
+            }
+        val root =
+            Reflect.fieldValue(atms, atms.javaClass, FIELD_ROOT) ?: run {
+                XLog.w("$CMD_MINI_ANIM：读不到 $FIELD_ROOT，跳过")
+                return
+            }
+        val task =
+            findTask(root, taskId) ?: run {
+                XLog.w("$CMD_MINI_ANIM：任务 #$taskId 找不到，跳过")
+                return
+            }
 
         val info = buildAnimInfo(loader, intent) ?: return
         XLog.w(
             "$CMD_MINI_ANIM：起止参数 " +
-                    "start=${rectOf(intent, true)}@${
-                        intent.getFloatExtra(
-                            EXTRA_START_SCALE,
-                            1f
-                        )
-                    }a${intent.getFloatExtra(EXTRA_START_ALPHA, 1f)} " +
-                    "finish=${rectOf(intent, false)}@${
-                        intent.getFloatExtra(
-                            EXTRA_FINISH_SCALE,
-                            1f
-                        )
-                    }a${intent.getFloatExtra(EXTRA_FINISH_ALPHA, 1f)} " +
-                    "duration=${intent.getLongExtra(EXTRA_DURATION, 0L)}",
+                "start=${rectOf(intent, true)}@${
+                    intent.getFloatExtra(
+                        EXTRA_START_SCALE,
+                        1f,
+                    )
+                }a${intent.getFloatExtra(EXTRA_START_ALPHA, 1f)} " +
+                "finish=${rectOf(intent, false)}@${
+                    intent.getFloatExtra(
+                        EXTRA_FINISH_SCALE,
+                        1f,
+                    )
+                }a${intent.getFloatExtra(EXTRA_FINISH_ALPHA, 1f)} " +
+                "duration=${intent.getLongExtra(EXTRA_DURATION, 0L)}",
         )
 
-        val cbCls = Reflect.findClass(loader, CALLBACK_CLS) ?: run {
-            XLog.w("$CMD_MINI_ANIM：找不到 $CALLBACK_CLS，跳过")
-            return
-        }
+        val cbCls =
+            Reflect.findClass(loader, CALLBACK_CLS) ?: run {
+                XLog.w("$CMD_MINI_ANIM：找不到 $CALLBACK_CLS，跳过")
+                return
+            }
         // 回调只需要「能被框架调用」；它内部只做通知，我们不需要在结束点插动作
         // （转换的时机由宿主侧排，见 MiniWindowLauncher.MINI_ANIM_MODE）。
-        val callback = try {
-            java.lang.reflect.Proxy.newProxyInstance(
-                loader,
-                arrayOf(cbCls),
-                java.lang.reflect.InvocationHandler { _, _, _ -> null },
-            )
-        } catch (e: Throwable) {
-            XLog.w("$CMD_MINI_ANIM：给回调建 Proxy 失败：${e.javaClass.simpleName}: ${e.message}")
-            return
-        }
+        val callback =
+            try {
+                java.lang.reflect.Proxy.newProxyInstance(
+                    loader,
+                    arrayOf(cbCls),
+                    java.lang.reflect.InvocationHandler { _, _, _ -> null },
+                )
+            } catch (e: Throwable) {
+                XLog.w("$CMD_MINI_ANIM：给回调建 Proxy 失败：${e.javaClass.simpleName}: ${e.message}")
+                return
+            }
 
         val map = android.util.ArrayMap<Any, Any>()
         map.put(task, info)
@@ -498,28 +537,30 @@ internal object FlexibleWindowBridge {
             //  观感是画面乱跳或干脆不动，而日志里看不出任何异常。改走下面那条入口（它不需要 bounds）。
             XLog.w(
                 "$CMD_MINI_ANIM：任务 #$taskId 的 getBounds 拿不到或为空（$bounds）" +
-                        " —— 不拿空 Rect 喂动画，改走另一条入口",
+                    " —— 不拿空 Rect 喂动画，改走另一条入口",
             )
         } else {
             spring.isAccessible = true
-            val ok = try {
-                spring.invoke(animator, info, bounds, task, null, transaction, callback, REASON_MINI_ANIM)
-                XLog.w("$CMD_MINI_ANIM：已调 $METHOD_SPRING_ANIM(#$taskId)（7 参、无过渡过滤）")
-                true
-            } catch (e: Throwable) {
-                XLog.w(
-                    "$CMD_MINI_ANIM：$METHOD_SPRING_ANIM 抛了（降级到另一条入口）：" +
+            val ok =
+                try {
+                    spring.invoke(animator, info, bounds, task, null, transaction, callback, REASON_MINI_ANIM)
+                    XLog.w("$CMD_MINI_ANIM：已调 $METHOD_SPRING_ANIM(#$taskId)（7 参、无过渡过滤）")
+                    true
+                } catch (e: Throwable) {
+                    XLog.w(
+                        "$CMD_MINI_ANIM：$METHOD_SPRING_ANIM 抛了（降级到另一条入口）：" +
                             "${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}",
-                )
-                false
-            }
+                    )
+                    false
+                }
             // 抛了就往下走另一条 —— 这样「换入口」不必再改注入侧（注入侧改一次要重启）。
             if (ok) return
         }
-        val m = Reflect.methodByNameAndArity(animator.javaClass, METHOD_MINI_ANIM, 5) ?: run {
-            XLog.w("$CMD_MINI_ANIM：两条入口都找不到（$METHOD_SPRING_ANIM/7、$METHOD_MINI_ANIM/5）")
-            return
-        }
+        val m =
+            Reflect.methodByNameAndArity(animator.javaClass, METHOD_MINI_ANIM, 5) ?: run {
+                XLog.w("$CMD_MINI_ANIM：两条入口都找不到（$METHOD_SPRING_ANIM/7、$METHOD_MINI_ANIM/5）")
+                return
+            }
         m.isAccessible = true
         try {
             m.invoke(animator, map, null, transaction, callback, REASON_MINI_ANIM)
@@ -538,7 +579,10 @@ internal object FlexibleWindowBridge {
      * 起止几何对不上，画面乱跳或干脆不动，日志里还看不出来。两档口径统一成
      * **四边齐才认，缺任一项就整份退回兜底几何**。
      */
-    private fun rectOf(intent: Intent, isStart: Boolean): android.graphics.Rect {
+    private fun rectOf(
+        intent: Intent,
+        isStart: Boolean,
+    ): android.graphics.Rect {
         val l = intent.getIntExtra(if (isStart) EXTRA_START_LEFT else EXTRA_FINISH_LEFT, EDGE_MISSING)
         val t = intent.getIntExtra(if (isStart) EXTRA_START_TOP else EXTRA_FINISH_TOP, EDGE_MISSING)
         val r = intent.getIntExtra(if (isStart) EXTRA_START_RIGHT else EXTRA_FINISH_RIGHT, EDGE_MISSING)
@@ -547,7 +591,7 @@ internal object FlexibleWindowBridge {
         if (l == EDGE_MISSING || t == EDGE_MISSING || r == EDGE_MISSING || b == EDGE_MISSING) {
             XLog.w(
                 "$CMD_MINI_ANIM：${if (isStart) "start" else "finish"} 的四边没给齐" +
-                        "（$l,$t,$r,$b）—— 不喂半个 Rect，整份退回兜底几何",
+                    "（$l,$t,$r,$b）—— 不喂半个 Rect，整份退回兜底几何",
             )
             return if (isStart) fullScreenRect() else EXPANDED_BOUNDS
         }
@@ -559,7 +603,10 @@ internal object FlexibleWindowBridge {
 
     /** [rectOf] 兜底用的全屏矩形（起点）。 */
     private fun fullScreenRect(): android.graphics.Rect {
-        val dm = android.content.res.Resources.getSystem().displayMetrics
+        val dm =
+            android.content.res.Resources
+                .getSystem()
+                .displayMetrics
         return android.graphics.Rect(0, 0, dm.widthPixels, dm.heightPixels)
     }
 
@@ -569,22 +616,31 @@ internal object FlexibleWindowBridge {
      * 反射取 Builder 的实例：`Reflect` 里没有 newInstance，直接走
      * `getDeclaredConstructor()`（Builder 的构造器是公开的，但仍显式 setAccessible —— hidden API）。
      */
-    private fun buildAnimInfo(loader: ClassLoader, intent: Intent): Any? {
-        val cls = Reflect.findClass(loader, INFO_BUILDER_CLS) ?: run {
-            XLog.w("$CMD_MINI_ANIM：找不到 $INFO_BUILDER_CLS，跳过")
-            return null
-        }
-        val builder = try {
-            cls.getDeclaredConstructor().also { it.isAccessible = true }.newInstance()
-        } catch (e: Throwable) {
-            XLog.w("$CMD_MINI_ANIM：造 Builder 失败：${e.javaClass.simpleName}: ${e.message}")
-            return null
-        }
+    private fun buildAnimInfo(
+        loader: ClassLoader,
+        intent: Intent,
+    ): Any? {
+        val cls =
+            Reflect.findClass(loader, INFO_BUILDER_CLS) ?: run {
+                XLog.w("$CMD_MINI_ANIM：找不到 $INFO_BUILDER_CLS，跳过")
+                return null
+            }
+        val builder =
+            try {
+                cls.getDeclaredConstructor().also { it.isAccessible = true }.newInstance()
+            } catch (e: Throwable) {
+                XLog.w("$CMD_MINI_ANIM：造 Builder 失败：${e.javaClass.simpleName}: ${e.message}")
+                return null
+            }
         val missing = mutableListOf<String>()
 
         // 每个 setter 都单独记账：少设一个就是给框架喂半个参数，而它不会报错、只会行为怪
         // （这正是 §7 里「三个 `?.set` 静默可选写」那一类降级纪律问题）。
-        fun call(name: String, type: Class<*>, value: Any) {
+        fun call(
+            name: String,
+            type: Class<*>,
+            value: Any,
+        ) {
             val m = Reflect.method(cls, name, type)
             if (m == null) {
                 missing += "$name(找不到)"
@@ -608,23 +664,23 @@ internal object FlexibleWindowBridge {
         if (missing.isNotEmpty()) {
             XLog.w("$CMD_MINI_ANIM：Builder 有 ${missing.size} 个 setter 没设上：$missing —— 动画大概率不生效")
         }
-        val info = try {
-            val build = Reflect.method(cls, "build") ?: run {
-                XLog.w("$CMD_MINI_ANIM：Builder 上没有 build()")
+        val info =
+            try {
+                val build =
+                    Reflect.method(cls, "build") ?: run {
+                        XLog.w("$CMD_MINI_ANIM：Builder 上没有 build()")
+                        return null
+                    }
+                build.invoke(builder)
+            } catch (e: Throwable) {
+                XLog.w("$CMD_MINI_ANIM：build() 抛了：${e.javaClass.simpleName}: ${e.message}")
                 return null
             }
-            build.invoke(builder)
-        } catch (e: Throwable) {
-            XLog.w("$CMD_MINI_ANIM：build() 抛了：${e.javaClass.simpleName}: ${e.message}")
-            return null
-        }
         if (info == null) XLog.w("$CMD_MINI_ANIM：build() 返回 null")
         return info
     }
 
-    /**
-     * 剥到最内层 cause 的那份实现已收到 `Reflect.deepestCause`（与 `ProbeChannel` 共用一份）。
-     */
+    // 剥到最内层 cause 的那份实现已收到 `Reflect.deepestCause`（与 `ProbeChannel` 共用一份）。
 
     /** 动画器 / 参数对象的类名与常量 —— 全部来自 `oplus-services.jar` 的离线反编译（§十二）。 */
     private const val METHOD_MINI_ANIM = "startFlexibleTaskToMiniAnimations"
@@ -655,18 +711,21 @@ internal object FlexibleWindowBridge {
     /** 动画时长兜底（宿主会下发；spring 的实际收敛时长由阻尼/刚度决定，这个值主要用于日志与 A 档的排期）。 */
     private const val DEFAULT_ANIM_DURATION = 400L
 
-
     /**
      * `anyTaskForId` 的三种 matchMode 逐档试：0 只找已 attach 的、1 再加 recents、2 还能顺手从 recents
      * 恢复。**不能用按「参数运行时类」找方法的 [Reflect.call] 重载** —— Kotlin 会把 Int 装箱成
      * `Integer`，而真实签名是 `int` 原始类型，永远匹配不上、还静默返回 null（实测踩过）。
      */
-    private fun findTask(root: Any, taskId: Int): Any? {
-        val method = Reflect.method(root.javaClass, "anyTaskForId", java.lang.Integer.TYPE, java.lang.Integer.TYPE)
-            ?: run {
-                XLog.w("找不到 anyTaskForId(int,int)，小窗指令跳过")
-                return null
-            }
+    private fun findTask(
+        root: Any,
+        taskId: Int,
+    ): Any? {
+        val method =
+            Reflect.method(root.javaClass, "anyTaskForId", java.lang.Integer.TYPE, java.lang.Integer.TYPE)
+                ?: run {
+                    XLog.w("找不到 anyTaskForId(int,int)，小窗指令跳过")
+                    return null
+                }
         for (mode in listOf(0, 1, 2)) {
             val t = Reflect.call(root, method, taskId, mode)
             if (t != null) {
@@ -677,8 +736,8 @@ internal object FlexibleWindowBridge {
         return null
     }
 
+    // 同样绕开装箱匹配：`switchState(Task, int, String)`。@return 是否真的调到了。
 
-    /** 同样绕开装箱匹配：`switchState(Task, int, String)`。@return 是否真的调到了。 */
     /**
      * 调 `controller.switchState(task, 1, REASON)`。
      *
@@ -689,53 +748,65 @@ internal object FlexibleWindowBridge {
      *  上游那句「已调用（应播原生动画）」当成成功来读，排查时白查一轮。
      *  这里自己 `invoke` 一次，把「找不到方法」与「调用抛了」分开报。
      */
-    private fun callSwitchState(controller: Any, task: Any, taskId: Int): Boolean {
-        val method = Reflect.method(
-            controller.javaClass, "switchState",
-            task.javaClass, java.lang.Integer.TYPE, String::class.java,
-        ) ?: run {
-            XLog.w("找不到 switchState(Task,int,String)，动画调不了")
-            return false
-        }
+    private fun callSwitchState(
+        controller: Any,
+        task: Any,
+        taskId: Int,
+    ): Boolean {
+        val method =
+            Reflect.method(
+                controller.javaClass,
+                "switchState",
+                task.javaClass,
+                java.lang.Integer.TYPE,
+                String::class.java,
+            ) ?: run {
+                XLog.w("找不到 switchState(Task,int,String)，动画调不了")
+                return false
+            }
         return try {
             method.isAccessible = true
             method.invoke(controller, task, 1, REASON)
             true
         } catch (e: Throwable) {
-            val cause = if (e is java.lang.reflect.InvocationTargetException) {
-                e.targetException ?: e
-            } else {
-                e
-            }
+            val cause =
+                if (e is java.lang.reflect.InvocationTargetException) {
+                    e.targetException ?: e
+                } else {
+                    e
+                }
             XLog.w(
                 "switchState(#$taskId, 1) 调用抛了 —— 小窗不会出现：" +
-                        "${cause.javaClass.simpleName}: ${cause.message}",
+                    "${cause.javaClass.simpleName}: ${cause.message}",
             )
             false
         }
     }
 
     /** `task.getBounds()` —— 只读来打日志。 */
-    private fun taskBounds(task: Any): Any? = try {
-        Reflect.call(task, "getBounds")
-    } catch (e: Throwable) {
-        null
-    }
+    private fun taskBounds(task: Any): Any? =
+        try {
+            Reflect.call(task, "getBounds")
+        } catch (e: Throwable) {
+            null
+        }
 
     /** `task.getWrapper().getExtImpl()`。 */
-    private fun extOf(task: Any): Any? = try {
-        val wrapper = Reflect.call(task, "getWrapper") ?: return null
-        Reflect.call(wrapper, "getExtImpl")
-    } catch (e: Throwable) {
-        null
-    }
+    private fun extOf(task: Any): Any? =
+        try {
+            val wrapper = Reflect.call(task, "getWrapper") ?: return null
+            Reflect.call(wrapper, "getExtImpl")
+        } catch (e: Throwable) {
+            null
+        }
 
     /** `TaskExtImpl#getFlexibleZoomState()` —— 只读来打日志，读不到就 null。 */
-    private fun flexibleZoomState(task: Any): Any? = try {
-        extOf(task)?.let { Reflect.call(it, "getFlexibleZoomState") }
-    } catch (e: Throwable) {
-        null
-    }
+    private fun flexibleZoomState(task: Any): Any? =
+        try {
+            extOf(task)?.let { Reflect.call(it, "getFlexibleZoomState") }
+        } catch (e: Throwable) {
+            null
+        }
 
     /**
      * 把普通全屏任务「冒充」成柔性任务、且处于**全屏态**：
@@ -757,7 +828,10 @@ internal object FlexibleWindowBridge {
         // 字段找不到（`Reflect.field` 返回 null）与写入抛异常都要落到 missing 里：
         // `Reflect.field(...)?.setInt(...)` 的话，字段名变了就静默不写，而调用方照样
         // 打一行「已置 mScenario=1 …」，把失败伪装成成功。
-        fun put(name: String, value: Int) {
+        fun put(
+            name: String,
+            value: Int,
+        ) {
             val f = Reflect.field(cls, name)
             if (f == null) {
                 missing += "$name(找不到字段)"
@@ -767,7 +841,10 @@ internal object FlexibleWindowBridge {
                 .onFailure { missing += "$name(${it.javaClass.simpleName})" }
         }
 
-        fun put(name: String, value: Boolean) {
+        fun put(
+            name: String,
+            value: Boolean,
+        ) {
             val f = Reflect.field(cls, name)
             if (f == null) {
                 missing += "$name(找不到字段)"
@@ -783,7 +860,10 @@ internal object FlexibleWindowBridge {
     }
 
     /** [fakeFlexibleFullScreen] 的结果：ext 非 null 但 [missing] 非空 = 只写进去一部分。 */
-    private class FakeResult(val ext: Any?, val missing: List<String>)
+    private class FakeResult(
+        val ext: Any?,
+        val missing: List<String>,
+    )
 
     /** 按名字反射，不直接引用（注入侧不许碰宿主框架的私有类型）。 */
     private const val SERVICE = "com.android.server.wm.FlexibleWindowManagerService"
@@ -831,10 +911,11 @@ internal object FlexibleWindowBridge {
     private fun screenBoundsOf(
         bounds: android.graphics.Rect,
         scale: Float,
-    ): android.graphics.Rect = android.graphics.Rect(
-        bounds.left,
-        bounds.top,
-        bounds.left + (bounds.width() * scale).toInt(),
-        bounds.top + (bounds.height() * scale).toInt(),
-    )
+    ): android.graphics.Rect =
+        android.graphics.Rect(
+            bounds.left,
+            bounds.top,
+            bounds.left + (bounds.width() * scale).toInt(),
+            bounds.top + (bounds.height() * scale).toInt(),
+        )
 }

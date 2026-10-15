@@ -29,34 +29,36 @@ internal fun MarkdownBody(
     textAlign: TextAlign,
     modifier: Modifier = Modifier,
 ) {
-    val colors = DefaultMarkdownColors(
-        text = COUITheme.colorScheme.onBackgroundVariant,
-        codeBackground = COUITheme.colorScheme.surfaceContainerHigh,
-        inlineCodeBackground = COUITheme.colorScheme.surfaceContainerHigh,
-        dividerColor = COUITheme.colorScheme.dividerLine,
-        tableBackground = COUITheme.colorScheme.surfaceContainer,
-    )
+    val colors =
+        DefaultMarkdownColors(
+            text = COUITheme.colorScheme.onBackgroundVariant,
+            codeBackground = COUITheme.colorScheme.surfaceContainerHigh,
+            inlineCodeBackground = COUITheme.colorScheme.surfaceContainerHigh,
+            dividerColor = COUITheme.colorScheme.dividerLine,
+            tableBackground = COUITheme.colorScheme.surfaceContainer,
+        )
     val base = COUITheme.textStyles.body2.copy(textAlign = textAlign)
-    val typography = DefaultMarkdownTypography(
-        // 弹窗正文里不该出现真正的标题层级（它只有强调与列表），所以 `#` 也只给一档加粗正文 ——
-        //  万一有人写了 `#`，不至于突然放出一个撑破弹窗的大字。
-        h1 = base.copy(fontWeight = FontWeight.Bold),
-        h2 = base,
-        h3 = base,
-        h4 = base,
-        h5 = base,
-        h6 = base,
-        text = base,
-        code = COUITheme.textStyles.footnote1.copy(textAlign = textAlign),
-        inlineCode = base,
-        quote = base,
-        paragraph = base,
-        ordered = base,
-        bullet = base,
-        list = base,
-        textLink = TextLinkStyles(style = SpanStyle(color = COUITheme.colorScheme.primary)),
-        table = COUITheme.textStyles.footnote2.copy(textAlign = textAlign),
-    )
+    val typography =
+        DefaultMarkdownTypography(
+            // 弹窗正文里不该出现真正的标题层级（它只有强调与列表），所以 `#` 也只给一档加粗正文 ——
+            //  万一有人写了 `#`，不至于突然放出一个撑破弹窗的大字。
+            h1 = base.copy(fontWeight = FontWeight.Bold),
+            h2 = base,
+            h3 = base,
+            h4 = base,
+            h5 = base,
+            h6 = base,
+            text = base,
+            code = COUITheme.textStyles.footnote1.copy(textAlign = textAlign),
+            inlineCode = base,
+            quote = base,
+            paragraph = base,
+            ordered = base,
+            bullet = base,
+            list = base,
+            textLink = TextLinkStyles(style = SpanStyle(color = COUITheme.colorScheme.primary)),
+            table = COUITheme.textStyles.footnote2.copy(textAlign = textAlign),
+        )
     Markdown(
         content = text,
         colors = colors,
@@ -74,12 +76,13 @@ internal fun MarkdownBody(
  * 正文整体走 markdown，所以不转义的话，一个叫 `2*3` 的命令会让后半句变成斜体、
  * 名字里带 `[` 会让后面整段被当成链接。转法就是每个记号前面加一个反斜杠（CommonMark 的写法）。
  */
-internal fun escapeMarkdown(text: String): String = buildString(text.length) {
-    for (c in text) {
-        if (c in MARKDOWN_SPECIALS) append('\\')
-        append(c)
+internal fun escapeMarkdown(text: String): String =
+    buildString(text.length) {
+        for (c in text) {
+            if (c in MARKDOWN_SPECIALS) append('\\')
+            append(c)
+        }
     }
-}
 
 /** CommonMark 里有含义的那些字符（在这个项目的正文里只会出现这些）。 */
 private const val MARKDOWN_SPECIALS = "\\`*_~{}[]()#+-.!|>"

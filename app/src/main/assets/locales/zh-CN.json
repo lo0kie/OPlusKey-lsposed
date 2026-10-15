@@ -1,6 +1,6 @@
 {
   "app.name": "OPlusKey",
-  "status.disabled": "按键绑定已关闭",
+  "status.disabled": "模块未启用",
   "status.unavailable": "模块暂不可用，请稍候",
   "status.unsupported_device": "此机型不适配",
   "status.pending_version": "系统版本等待适配",

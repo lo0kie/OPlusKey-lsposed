@@ -9,11 +9,36 @@ fun epochMillis(): Long {
     return epoch * 1000L
 }
 
+/**
+ * 格式化用的 ktlint 版本。
+ *
+ *  刻意**写死**而不是跟插件默认那版：格式化的结果要能复现 —— 换一版 ktlint 就是换一套规则，
+ *  升级它时那个 diff 必须是一次显式的提交，而不是某次顺手跑构建带出来的。
+ */
+val ktlintVersion = "1.8.0"
+
+/** ktlint 规则 —— 写 Kotlin 就按 Kotlin 自己的规范来（`ktlint_official` 那一档）。 */
+val ktlintRules =
+    mapOf(
+        // 语言自己的规范，不套 Android Studio 那套（4 空格缩进、一个符号一行 import 都是它的默认）
+        "ktlint_code_style" to "ktlint_official",
+        // Compose 的组件函数按惯例是大驼峰（`@Composable fun SettingsPage.HomeScreen()`），而
+        //  `function-naming` 默认只认小驼峰 —— 这是 ktlint 官方给这条规则留的口子（按注解放行），
+        //  不是「我们放宽了规则」。
+        "ktlint_function_naming_ignore_when_annotated_with" to "Composable",
+        // 行长：ktlint 自己**没有**默认档，不写这条它整个规则都不跑
+        "max_line_length" to "140",
+    )
+
 plugins {
     // [AGP 9] Kotlin 已内置，不挂 kotlin-android
     id("com.android.application")
     // Compose 编译器
     id("org.jetbrains.kotlin.plugin.compose")
+    // 格式化（引擎 ktlint，规则见根目录 .editorconfig）
+    id("com.diffplug.spotless")
+    // 静态检查（规则见 config/detekt/detekt.yml，存量见同目录 baseline.xml）
+    id("io.gitlab.arturbosch.detekt")
 }
 
 android {
@@ -45,7 +70,8 @@ android {
         resValue(
             "string",
             "build_id",
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss").apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
+                .apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }
                 .format(epochMillis()),
         )
     }
@@ -85,7 +111,7 @@ android {
         }
         release {
             // 混淆 + 资源收缩。详细日志不是被 R8 裁的：XLog.d / i 走的是 Kotlin 常量条件
-            //（`inline` + `if (VERBOSE_LOG)`，见 `BuildFlags`），编译期就折掉了；
+            // （`inline` + `if (VERBOSE_LOG)`，见 `BuildFlags`），编译期就折掉了；
             // 告警与错误保留作降级诊断。
             isMinifyEnabled = true
             isShrinkResources = true
@@ -94,16 +120,17 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig = if (signingConfigs.findByName("release") != null) {
-                signingConfigs.getByName("release")
-            } else {
-                logger.warn(
-                    "没有 keystore.properties，release 包使用 debug 签名，仅限本机测试" +
-                        "（keytool -genkeypair -keystore release.jks -alias opluskey " +
-                        "-keyalg RSA -keysize 2048 -validity 10000）",
-                )
-                signingConfigs.getByName("debug")
-            }
+            signingConfig =
+                if (signingConfigs.findByName("release") != null) {
+                    signingConfigs.getByName("release")
+                } else {
+                    logger.warn(
+                        "没有 keystore.properties，release 包使用 debug 签名，仅限本机测试" +
+                            "（keytool -genkeypair -keystore release.jks -alias opluskey " +
+                            "-keyalg RSA -keysize 2048 -validity 10000）",
+                    )
+                    signingConfigs.getByName("debug")
+                }
         }
     }
 
@@ -134,7 +161,22 @@ android {
     }
 
     lint {
-        abortOnError = false
+        // 检查不通过就**构建失败**：这一档是给 CI 与本地「提交前」用的闸，
+        //  红灯留着不修等于没有检查。存量问题全部写进基线（`lint-baseline.xml`），
+        //  新代码不许再进（改基线得在提交里显式说明）。
+        abortOnError = true
+        // 报全量（含非致命档），CI 的 HTML 报告才看得出全貌
+        checkDependencies = true
+        warningsAsErrors = false
+        // 与本项目无关的检查：
+        //  · `GradleDependency` / `NewerVersionAvailable` 是「有新版可升」，不是缺陷
+        //  · `AndroidGradlePluginVersion` 同上（AGP 版本由 compileSdk 37 这条硬约束钉着）
+        disable +=
+            setOf(
+                "GradleDependency",
+                "NewerVersionAvailable",
+                "AndroidGradlePluginVersion",
+            )
     }
 }
 
@@ -142,7 +184,54 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        // 警告即编译失败：新增的告警（弃用 API、多余判空、未用变量…）当场拦住，
+        //  不让它们攒成「反正一直红着」的背景噪音。当前**零告警**，加这一条不必先还债。
+        allWarningsAsErrors = true
+        // 注入侧大量与 Java / 反射打交道：按 JSR-305 注解判可空性（平台类型不再一律「随你」）
+        freeCompilerArgs.add("-Xjsr305=strict")
         freeCompilerArgs.add("-Xno-param-assertions")
+    }
+}
+
+// 格式化：Spotless 管「仓库形态」（缩进 / 换行 / 尾随空格 / 导入顺序），引擎 ktlint。
+//
+//  注意：**Spotless 不会去读仓库根那份 `.editorconfig`**（它跑的是 ktlint 的默认档，
+//  那份文件里写的东西一条都不生效 —— 这条踩过：改了风格却毫无变化）。所以规则写在下面这个
+//  `editorConfigOverride` 里；`.editorconfig` 留给 IDE 与 detekt（只放「编辑器约定」那几条，
+//  不放 ktlint 规则，免得两处各说一套）。
+spotless {
+    kotlin {
+        target("src/**/*.kt")
+        ktlint(ktlintVersion).editorConfigOverride(ktlintRules)
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+    kotlinGradle {
+        target("*.gradle.kts")
+        ktlint(ktlintVersion).editorConfigOverride(ktlintRules)
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+// 静态检查：detekt。规则文件与基线都放在仓库根的 `config/detekt/`（detekt 的惯例位置）。
+detekt {
+    // 默认规则集全开，`detekt.yml` 只做少量覆盖（见那份文件的说明）
+    buildUponDefaultConfig = true
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    baseline = rootProject.file("config/detekt/baseline.xml")
+    parallel = true
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    jvmTarget = "21"
+    // 扫源码与构建脚本；`build/` 之类的产物本来就在 target 之外
+    reports {
+        html.required.set(true)
+        sarif.required.set(true)
+        md.required.set(false)
+        xml.required.set(false)
+        txt.required.set(false)
     }
 }
 
@@ -193,7 +282,7 @@ dependencies {
     implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
 
     // androidx 只被 ui/ 界面代码引用，ui/ 在 system_server 里从不执行
-    //（KeyModule 只在设置页那个进程分支里装界面 hook），惰性类解析不会触发 NoClassDefFoundError。
+    // （KeyModule 只在设置页那个进程分支里装界面 hook），惰性类解析不会触发 NoClassDefFoundError。
 
     // 不声明 libxposed:service：模块零 Activity，XposedServiceHelper 从未使用，
     // 引入会往清单里合并一个多余的 XposedProvider。

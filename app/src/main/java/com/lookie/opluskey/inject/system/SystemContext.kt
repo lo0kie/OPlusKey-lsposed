@@ -6,7 +6,6 @@ import com.lookie.opluskey.core.reflect.Reflect
 
 /** 在 `system_server` 里拿一个真正可用的 `Context`。 */
 internal object SystemContext {
-
     /**
      * 缓存「真正可用」的那一份（来自 `mAllApplicationThreads`，`mAppThread` 有值）；
      * `getSystemContext()` 那份是降级品（`ContentResolver` 一用就 NPE），每次现取、不缓存。
@@ -31,12 +30,13 @@ internal object SystemContext {
         if (held != null) {
             // 注意：缓存这一支也要自己兜：验「那份 Context 的进程还在不在」
             //  要走反射，抛出来就是 system_server 里的未捕获异常。
-            val stillThere = try {
-                stillHeldByItsProcess(loader, held)
-            } catch (e: Throwable) {
-                XLog.w("验缓存 Context 失败（按「还在」处理）：${e.message}")
-                true
-            }
+            val stillThere =
+                try {
+                    stillHeldByItsProcess(loader, held)
+                } catch (e: Throwable) {
+                    XLog.w("验缓存 Context 失败（按「还在」处理）：${e.message}")
+                    true
+                }
             if (stillThere) return held
             cached = null
             XLog.w("缓存的那个 Context 所属进程已经不在了，丢弃重取（否则后续广播 / 起服务全部失败）")
@@ -45,12 +45,13 @@ internal object SystemContext {
         // 这条链跑在 system_server 里，每一段都**自己兜住 Throwable**（见下面两处 `try`）——
         // 不是「整体兜一层」：取 Context 的两条路各包一次，`stillHeldByItsProcess` 内部再包一次。
         // 首选：ActivityThread 里任一进程的 Application Context（mAppThread 有值）
-        val direct = try {
-            fromApplicationThreads(loader)
-        } catch (e: Throwable) {
-            XLog.w("探 mAllApplicationThreads 失败：${e.message}")
-            null
-        }
+        val direct =
+            try {
+                fromApplicationThreads(loader)
+            } catch (e: Throwable) {
+                XLog.w("探 mAllApplicationThreads 失败：${e.message}")
+                null
+            }
         if (direct != null) {
             cached = direct
             XLog.w("拿到 system_server 下的可用 Context（来源：mAllApplicationThreads）")
@@ -58,16 +59,17 @@ internal object SystemContext {
         }
 
         // 次选：getSystemContext()（降级品，只能 getSystemService）—— 不缓存
-        val degraded = try {
-            fromGetSystemContext(loader)
-        } catch (e: Throwable) {
-            XLog.w("探 getSystemContext 失败：${e.message}")
-            null
-        }
+        val degraded =
+            try {
+                fromGetSystemContext(loader)
+            } catch (e: Throwable) {
+                XLog.w("探 getSystemContext 失败：${e.message}")
+                null
+            }
         if (degraded != null) {
             XLog.w(
                 "只拿到 getSystemContext() 的 Context —— 它没有 mAppThread，" +
-                        "ContentResolver / startActivity 会失败（不缓存，下次再试首选）",
+                    "ContentResolver / startActivity 会失败（不缓存，下次再试首选）",
             )
             return degraded
         }
@@ -83,38 +85,43 @@ internal object SystemContext {
      * 探不出容器（反射失败 / 字段改名）时**按「还在」算** —— 那说明我们连事实都拿不到，
      * 这时每次丢弃重取只会得到同一份 Context，白白多跑一次反射，不会更安全。
      */
-    private fun stillHeldByItsProcess(loader: ClassLoader, held: Context): Boolean = try {
-        val atCls = Reflect.findClass(loader, "android.app.ActivityThread") ?: return true
-        val thread = Reflect.callStatic(atCls, "currentActivityThread") ?: return true
-        var container: Any? = null
-        for (fieldName in listOf("mAllApplicationThreads", "mAllApplications")) {
-            container = Reflect.fieldValue(thread, atCls, fieldName)
-            if (container != null) break
-        }
-        val values: Iterable<*> = when (container) {
-            is Map<*, *> -> container.values
-            is Collection<*> -> container
-            else -> return true
-        }
-        // 注意：迭代与 `appContextOf` 的反射调用**也在 try 里** —— 这一段
-        //  在 try 之外，`appContextOf` 一抛就从 [get] 的缓存分支直接漏进 system_server。
-        var hit = false
-        for (v in values) {
-            if (v == null) continue
-            if (v === held) {
-                hit = true
-                break
+    private fun stillHeldByItsProcess(
+        loader: ClassLoader,
+        held: Context,
+    ): Boolean =
+        try {
+            val atCls = Reflect.findClass(loader, "android.app.ActivityThread") ?: return true
+            val thread = Reflect.callStatic(atCls, "currentActivityThread") ?: return true
+            var container: Any? = null
+            for (fieldName in listOf("mAllApplicationThreads", "mAllApplications")) {
+                container = Reflect.fieldValue(thread, atCls, fieldName)
+                if (container != null) break
             }
-            if (appContextOf(v) === held) {
-                hit = true
-                break
+            val values: Iterable<*> =
+                when (container) {
+                    is Map<*, *> -> container.values
+                    is Collection<*> -> container
+                    else -> return true
+                }
+            // 注意：迭代与 `appContextOf` 的反射调用**也在 try 里** —— 这一段
+            //  在 try 之外，`appContextOf` 一抛就从 [get] 的缓存分支直接漏进 system_server。
+            var hit = false
+            for (v in values) {
+                if (v == null) continue
+                if (v === held) {
+                    hit = true
+                    break
+                }
+                if (appContextOf(v) === held) {
+                    hit = true
+                    break
+                }
             }
+            hit
+        } catch (e: Throwable) {
+            XLog.w("验缓存的 Context 还在不在失败（按「还在」处理）：${e.message}")
+            true
         }
-        hit
-    } catch (e: Throwable) {
-        XLog.w("验缓存的 Context 还在不在失败（按「还在」处理）：${e.message}")
-        true
-    }
 
     /**
      * 从 `ActivityThread.mAllApplicationThreads` 里挑一个进程取 Application Context。
@@ -138,11 +145,12 @@ internal object SystemContext {
 
     /** 从一个容器（ArrayMap / List）里找出第一个能取到 Context 的元素。 */
     private fun contextsFromContainer(container: Any): Context? {
-        val values: Collection<*> = when (container) {
-            is Map<*, *> -> container.values
-            is Collection<*> -> container
-            else -> return null
-        }
+        val values: Collection<*> =
+            when (container) {
+                is Map<*, *> -> container.values
+                is Collection<*> -> container
+                else -> return null
+            }
 
         // 容器里存的可能是 ActivityClientRecord（有 mAppContext），也可能直接是 Context
         for (v in values) {

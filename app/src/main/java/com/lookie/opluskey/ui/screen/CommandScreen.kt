@@ -27,10 +27,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -51,12 +51,12 @@ import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.i18n.I18n
@@ -69,11 +69,8 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.hideIme
-import com.lookie.opluskey.ui.isImeVisible
 import com.lookie.opluskey.ui.component.CommandMenuPopup
 import com.lookie.opluskey.ui.component.ConfirmDialog
-import com.lookie.opluskey.ui.component.escapeMarkdown
 import com.lookie.opluskey.ui.component.ICON_ACTION_ICON
 import com.lookie.opluskey.ui.component.ICON_ACTION_SIZE
 import com.lookie.opluskey.ui.component.IconAction
@@ -83,14 +80,17 @@ import com.lookie.opluskey.ui.component.SliderRow
 import com.lookie.opluskey.ui.component.StepPickerPopup
 import com.lookie.opluskey.ui.component.TileFocusRing
 import com.lookie.opluskey.ui.component.currentHeaderHeight
+import com.lookie.opluskey.ui.component.escapeMarkdown
 import com.lookie.opluskey.ui.component.frosted
 import com.lookie.opluskey.ui.component.gestureProbe
 import com.lookie.opluskey.ui.component.rememberGestureProbe
+import com.lookie.opluskey.ui.hideIme
+import com.lookie.opluskey.ui.isImeVisible
 import com.lookie.opluskey.ui.model.APP_STATE_TEXT_GAP
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.model.COMMAND_FORMAT_LINES
 import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_ACCEL
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
@@ -146,9 +146,9 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 import io.github.suqi8.coui.kmp.utils.overScrollHorizontal
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /** 多条命令表单那张卡的行数（现在只剩「命令间隔时长」一行）。 */
 private const val SERIAL_CARD_ROWS = 1
@@ -184,9 +184,7 @@ private val FORMAT_ROW_TOUCH = 32.dp
  * [SettingsPage.commandBandHeight]，内容顶上那个占位 Spacer 读它。
  */
 @Composable
-internal fun SettingsPage.CommandKindBand(
-    pagerState: androidx.compose.foundation.pager.PagerState,
-) {
+internal fun SettingsPage.CommandKindBand(pagerState: androidx.compose.foundation.pager.PagerState) {
     val tick = rememberTick()
     val scope = rememberCoroutineScope()
     Box(
@@ -202,14 +200,15 @@ internal fun SettingsPage.CommandKindBand(
                 tick()
                 scope.launch { pagerState.animateScrollToPage(it) }
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                // 左右与卡片同一个 [PAGE_MARGIN]；纵向只带下边一档（[PAGE_TOP_PADDING]）。
-                .padding(
-                    start = PAGE_MARGIN,
-                    end = PAGE_MARGIN,
-                    bottom = PAGE_TOP_PADDING,
-                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    // 左右与卡片同一个 [PAGE_MARGIN]；纵向只带下边一档（[PAGE_TOP_PADDING]）。
+                    .padding(
+                        start = PAGE_MARGIN,
+                        end = PAGE_MARGIN,
+                        bottom = PAGE_TOP_PADDING,
+                    ),
         )
     }
 }
@@ -290,10 +289,11 @@ internal fun SettingsPage.CommandScreen(
         // 两页：单条 / 多条 —— 可左右滑动，顶栏里那条类型选择器带驱动它
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier
-                .fillMaxSize()
-                // 横向越界回弹：与「按键绑定」页那三个手势页同一套弹簧
-                .overScrollHorizontal(),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    // 横向越界回弹：与「按键绑定」页那三个手势页同一套弹簧
+                    .overScrollHorizontal(),
         ) { page ->
             // 这一页是哪一类 —— 页内所有 `kind` 判断都指它，不是 `draft.kind`
             val kind = CommandKind.entries[page]
@@ -337,11 +337,12 @@ internal fun SettingsPage.CommandScreen(
                         //  连续的换行折成一个空格（shell 的行分隔），再掐掉粘贴带进来的尾随空白；
                         //  名称框走的是 `sanitizeNameInput`，同一套「输入必须过清洗」的纪律。
                         onValueChange = { raw ->
-                            draft.single = if (raw.any { it == '\n' || it == '\r' }) {
-                                raw.replace(Regex("[\\r\\n]+"), " ").trimEnd()
-                            } else {
-                                raw
-                            }
+                            draft.single =
+                                if (raw.any { it == '\n' || it == '\r' }) {
+                                    raw.replace(Regex("[\\r\\n]+"), " ").trimEnd()
+                                } else {
+                                    raw
+                                }
                         },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
                         title = I18n.get(Strings.COMMAND_CMD_LABEL, "命令"),
@@ -463,10 +464,11 @@ internal fun SettingsPage.CommandScreen(
                         ContentTransform(
                             targetContentEnter = fadeIn(tween(TAB_PAGE_SWITCH_MS)),
                             initialContentExit = fadeOut(tween(TAB_PAGE_SWITCH_MS)),
-                            sizeTransform = SizeTransform(
-                                clip = true,
-                                sizeAnimationSpec = { _, _ -> tween(TAB_PAGE_SWITCH_MS) },
-                            ),
+                            sizeTransform =
+                                SizeTransform(
+                                    clip = true,
+                                    sizeAnimationSpec = { _, _ -> tween(TAB_PAGE_SWITCH_MS) },
+                                ),
                         )
                     },
                     label = "SavedCommands",
@@ -484,11 +486,12 @@ internal fun SettingsPage.CommandScreen(
                             if (rowIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
                             CommandTileRow(
                                 tileCount = row.size,
-                                minHeightRatio = if (draft.kind == CommandKind.SINGLE) {
-                                    SINGLE_CARD_MIN_HEIGHT_RATIO
-                                } else {
-                                    1f
-                                },
+                                minHeightRatio =
+                                    if (draft.kind == CommandKind.SINGLE) {
+                                        SINGLE_CARD_MIN_HEIGHT_RATIO
+                                    } else {
+                                        1f
+                                    },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
                             ) { tileIndex ->
                                 val cmd = row[tileIndex]
@@ -499,11 +502,12 @@ internal fun SettingsPage.CommandScreen(
                                 val editing = draft.editingName == cmd.name
                                 // 选中时类型图标与标题一起上主题色，带过渡（一处动画喂两个组件）。
                                 val accentColor by animateColorAsState(
-                                    targetValue = if (editing) {
-                                        COUITheme.colorScheme.primary
-                                    } else {
-                                        COUITheme.colorScheme.onSurfaceContainer
-                                    },
+                                    targetValue =
+                                        if (editing) {
+                                            COUITheme.colorScheme.primary
+                                        } else {
+                                            COUITheme.colorScheme.onSurfaceContainer
+                                        },
                                     animationSpec = COLOR_TRANSITION_SPEC,
                                     label = "CommandTileAccent",
                                 )
@@ -512,16 +516,18 @@ internal fun SettingsPage.CommandScreen(
                                     // 那条不看系统静音 —— 这里把局部触觉反馈换成空实现。
                                     CompositionLocalProvider(LocalHapticFeedback provides NoHapticFeedback) {
                                         Card(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                // 行高由 [CommandTileRow] 统一定，这里填满行高即可。
-                                                .fillMaxHeight()
-                                                .preciseClickAnchor(tilePreciseClick),
-                                            colors = CardDefaults.defaultColors(
-                                                color = COUITheme.colorScheme.surfaceContainer,
-                                                contentColor = COUITheme.colorScheme.onSurfaceContainer,
-                                                pressedColor = COUITheme.colorScheme.surfaceContainerHigh,
-                                            ),
+                                            modifier =
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    // 行高由 [CommandTileRow] 统一定，这里填满行高即可。
+                                                    .fillMaxHeight()
+                                                    .preciseClickAnchor(tilePreciseClick),
+                                            colors =
+                                                CardDefaults.defaultColors(
+                                                    color = COUITheme.colorScheme.surfaceContainer,
+                                                    contentColor = COUITheme.colorScheme.onSurfaceContainer,
+                                                    pressedColor = COUITheme.colorScheme.surfaceContainerHigh,
+                                                ),
                                             pressFeedbackType = PressFeedbackType.None,
                                             showIndication = true,
                                             onClick = {
@@ -577,15 +583,16 @@ internal fun SettingsPage.CommandScreen(
                                                         } else {
                                                             //  多条命令的标题另起一行（见下），所以这一行图标右边空着 ——
                                                             // 正好放这条命令的**步骤间隔**：它是多条命令独有的执行参数
-                                                            //（单条一闪而过，用不到），而卡片上原本只有步骤列表、看不到它。
+                                                            // （单条一闪而过，用不到），而卡片上原本只有步骤列表、看不到它。
                                                             Spacer(Modifier.width(TILE_TITLE_GAP))
                                                             Text(
                                                                 // 文案走 [durationText]（全局唯一一处）：
                                                                 // 1000ms 以上写成秒（`3 秒`），一秒以内是毫秒（`400 毫秒`）
                                                                 text = durationText(cmd.stepDelayMs),
                                                                 style = COUITheme.textStyles.footnote1,
-                                                                color = COUITheme.colorScheme
-                                                                    .onSurfaceVariantSummary,
+                                                                color =
+                                                                    COUITheme.colorScheme
+                                                                        .onSurfaceVariantSummary,
                                                                 maxLines = 1,
                                                                 overflow = TextOverflow.Ellipsis,
                                                             )
@@ -620,41 +627,48 @@ internal fun SettingsPage.CommandScreen(
 
                                                 // 摘要一行一条全部列出（卡会跟着长高）；每行截断交给 `Text`，这层不估宽度。
                                                 when (cmd.kind) {
-                                                    CommandKind.SINGLE -> Text(
-                                                        text = cmd.single,
-                                                        style = COUITheme.textStyles.footnote1,
-                                                        color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                    )
+                                                    CommandKind.SINGLE -> {
+                                                        Text(
+                                                            text = cmd.single,
+                                                            style = COUITheme.textStyles.footnote1,
+                                                            color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                        )
+                                                    }
 
-                                                    CommandKind.SERIAL -> serialSummarySteps(cmd.steps, ::appLabelOf)
-                                                        .forEach { line ->
-                                                            Row(
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                            ) {
-                                                                //  每一步行首都补一枚小图标（与步骤列表同一套 [stepIcon]）：
-                                                                // 引用另一条命令（`cmd:<名字>`）的那一步用**被引用那条的真实
-                                                                // 类型图标**（单条 / 按步数的多条），其余步骤用动作图标 ——
-                                                                // 光看文字分不出两类步骤。
-                                                                Icon(
-                                                                    stepIcon(line.token, commands.value),
-                                                                    contentDescription = null,
-                                                                    modifier = Modifier
-                                                                        .size(SUMMARY_REF_ICON),
-                                                                    tint = COUITheme.colorScheme
-                                                                        .onSurfaceVariantSummary,
-                                                                )
-                                                                Spacer(Modifier.width(SUMMARY_REF_GAP))
-                                                                Text(
-                                                                    text = line.title,
-                                                                    style = COUITheme.textStyles.footnote1,
-                                                                    color = COUITheme.colorScheme
-                                                                        .onSurfaceVariantSummary,
-                                                                    maxLines = 1,
-                                                                    overflow = TextOverflow.Ellipsis,
-                                                                )
+                                                    CommandKind.SERIAL -> {
+                                                        serialSummarySteps(cmd.steps, ::appLabelOf)
+                                                            .forEach { line ->
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                ) {
+                                                                    //  每一步行首都补一枚小图标（与步骤列表同一套 [stepIcon]）：
+                                                                    // 引用另一条命令（`cmd:<名字>`）的那一步用**被引用那条的真实
+                                                                    // 类型图标**（单条 / 按步数的多条），其余步骤用动作图标 ——
+                                                                    // 光看文字分不出两类步骤。
+                                                                    Icon(
+                                                                        stepIcon(line.token, commands.value),
+                                                                        contentDescription = null,
+                                                                        modifier =
+                                                                            Modifier
+                                                                                .size(SUMMARY_REF_ICON),
+                                                                        tint =
+                                                                            COUITheme.colorScheme
+                                                                                .onSurfaceVariantSummary,
+                                                                    )
+                                                                    Spacer(Modifier.width(SUMMARY_REF_GAP))
+                                                                    Text(
+                                                                        text = line.title,
+                                                                        style = COUITheme.textStyles.footnote1,
+                                                                        color =
+                                                                            COUITheme.colorScheme
+                                                                                .onSurfaceVariantSummary,
+                                                                        maxLines = 1,
+                                                                        overflow = TextOverflow.Ellipsis,
+                                                                    )
+                                                                }
                                                             }
-                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -707,10 +721,11 @@ internal fun SettingsPage.CommandScreen(
         ConfirmDialog(
             show = pendingDraftLoad != null,
             title = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
-            summary = I18n.format(
-                Strings.DIALOG_DISCARD_COMMAND_EDIT_MESSAGE,
-                escapeMarkdown(pendingDraftLoad?.name ?: ""),
-            ),
+            summary =
+                I18n.format(
+                    Strings.DIALOG_DISCARD_COMMAND_EDIT_MESSAGE,
+                    escapeMarkdown(pendingDraftLoad?.name ?: ""),
+                ),
             action = I18n.get(Strings.COMMON_DISCARD, "放弃"),
             onDismiss = { pendingDraftLoad = null },
             onConfirm = {
@@ -726,17 +741,18 @@ internal fun SettingsPage.CommandScreen(
             title = I18n.get(Strings.DIALOG_DELETE_COMMAND_TITLE, "删除命令"),
             // 文案分两种：多条命令不会被别的命令引用（浮层里只能挑单条），只提按键绑定那一条路。
             // （`deleting` 是委托属性、智能转换用不了，两边都带 `?: ""`。）
-            summary = if (deleting?.kind == CommandKind.SERIAL) {
-                I18n.format(
-                    Strings.DIALOG_DELETE_COMMAND_SERIAL_MESSAGE,
-                    escapeMarkdown(deleting?.name ?: ""),
-                )
-            } else {
-                I18n.format(
-                    Strings.DIALOG_DELETE_COMMAND_SINGLE_MESSAGE,
-                    escapeMarkdown(deleting?.name ?: ""),
-                )
-            },
+            summary =
+                if (deleting?.kind == CommandKind.SERIAL) {
+                    I18n.format(
+                        Strings.DIALOG_DELETE_COMMAND_SERIAL_MESSAGE,
+                        escapeMarkdown(deleting?.name ?: ""),
+                    )
+                } else {
+                    I18n.format(
+                        Strings.DIALOG_DELETE_COMMAND_SINGLE_MESSAGE,
+                        escapeMarkdown(deleting?.name ?: ""),
+                    )
+                },
             action = I18n.get(Strings.COMMON_DELETE, "删除"),
             onDismiss = { deleting = null },
             onConfirm = {
@@ -770,13 +786,18 @@ private fun SettingsPage.CommandNameField() {
         title = I18n.get(Strings.COMMAND_NAME_LABEL, "名称"),
         label = I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"),
         // 同名冲突与 `cmd:` 成环提示都交给组件画（都只在打字 / 改步骤时才有意义，结果只喂这一个输入框）
-        errorMessage = when {
-            commandNameDuplicated(draft.name, draft.editingName) ->
-                I18n.get(Strings.COMMAND_NAME_DUPLICATE, "与已有命令重名，请换个名字")
-            else -> commandReferenceCycle()?.let {
-                I18n.format(Strings.COMMAND_CYCLE_ERROR, it.joinToString(" → "))
-            } ?: ""
-        },
+        errorMessage =
+            when {
+                commandNameDuplicated(draft.name, draft.editingName) -> {
+                    I18n.get(Strings.COMMAND_NAME_DUPLICATE, "与已有命令重名，请换个名字")
+                }
+
+                else -> {
+                    commandReferenceCycle()?.let {
+                        I18n.format(Strings.COMMAND_CYCLE_ERROR, it.joinToString(" → "))
+                    } ?: ""
+                }
+            },
     )
 }
 
@@ -790,9 +811,10 @@ private fun SettingsPage.CommandNameField() {
 @Composable
 private fun SavedCommandEmptyState() {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = EMPTY_STATE_VERTICAL_PADDING),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = EMPTY_STATE_VERTICAL_PADDING),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
@@ -854,7 +876,10 @@ private fun testRunner(context: android.content.Context): ActionRunner =
  * 所以「前后各打一个空格」的那份草稿在库里与已有命令**同名** —— 按未 trim 的原样比会判成不重复、
  * 放它写下去，结果静默覆盖掉同名命令（用户只看到一句「已覆盖」）。
  */
-internal fun SettingsPage.commandNameDuplicated(name: String, editingName: String?): Boolean {
+internal fun SettingsPage.commandNameDuplicated(
+    name: String,
+    editingName: String?,
+): Boolean {
     val n = CommandLibrary.sanitizeName(name)
     if (n.isEmpty()) return false
     val editing = editingName?.let { CommandLibrary.sanitizeName(it) }
@@ -884,10 +909,11 @@ internal fun SettingsPage.commandReferenceCycle(): List<String>? {
  * 出现，内容必须一直让得开它。
  */
 private fun SettingsPage.commandToolbarVisible(): Boolean {
-    val payloadReady = when (draft.kind) {
-        CommandKind.SINGLE -> draft.single.isNotBlank()
-        CommandKind.SERIAL -> draft.steps.isNotEmpty()
-    }
+    val payloadReady =
+        when (draft.kind) {
+            CommandKind.SINGLE -> draft.single.isNotBlank()
+            CommandKind.SERIAL -> draft.steps.isNotEmpty()
+        }
     return draft.editingName != null || draft.name.isNotBlank() || payloadReady
 }
 
@@ -896,14 +922,16 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
     val tick = rememberTick()
     val editing = draft.editingName != null
     val name = draft.name
-    val payloadReady = when (draft.kind) {
-        CommandKind.SINGLE -> draft.single.isNotBlank()
-        CommandKind.SERIAL -> draft.steps.isNotEmpty()
-    }
+    val payloadReady =
+        when (draft.kind) {
+            CommandKind.SINGLE -> draft.single.isNotBlank()
+            CommandKind.SERIAL -> draft.steps.isNotEmpty()
+        }
 
     val canReset = commandToolbarVisible()
     // 重名（且不是编辑它自己）时按钮直接禁用；`cmd:` 引用成环时同样禁用（提示落在名称那格里）。
-    val canSave = name.isNotBlank() && payloadReady &&
+    val canSave =
+        name.isNotBlank() && payloadReady &&
             !commandNameDuplicated(name, draft.editingName) &&
             commandReferenceCycle() == null
 
@@ -916,12 +944,14 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
         visible = visible,
         modifier = modifier,
         // 从底边滑入 / 滑出，带柔和减速与淡入淡出
-        enter = slideInVertically(
-            animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
-        ) { it + bottomGapPx } + fadeIn(tween(180, easing = LinearOutSlowInEasing)),
-        exit = slideOutVertically(
-            animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
-        ) { it + bottomGapPx } + fadeOut(tween(140, easing = FastOutLinearInEasing)),
+        enter =
+            slideInVertically(
+                animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+            ) { it + bottomGapPx } + fadeIn(tween(180, easing = LinearOutSlowInEasing)),
+        exit =
+            slideOutVertically(
+                animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
+            ) { it + bottomGapPx } + fadeOut(tween(140, easing = FastOutLinearInEasing)),
     ) {
         // 磨砂：与顶栏、浮层菜单同一个挂法 —— 从**页面内容层**取样（[frosted]）。
         //  取样方在本页那个取样源**之外**（工具栏挂在页内、`hazeSource` 那个 Box 外面，
@@ -945,12 +975,13 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
             XLog.w("底部工具栏磨砂跳过：页面取样层未就绪 ⇒ 这一轮仍用不透明底")
         }
         val capsule = remember { RoundedCornerShape(FloatingToolbarDefaults.CornerRadius) }
-        val gap = Modifier
-            .padding(FloatingToolbarDefaults.OutSidePadding)
-            .dropShadow(
-                shape = capsule,
-                shadow = Shadow(radius = 10.dp, color = Color.Black, alpha = 0.1f),
-            )
+        val gap =
+            Modifier
+                .padding(FloatingToolbarDefaults.OutSidePadding)
+                .dropShadow(
+                    shape = capsule,
+                    shadow = Shadow(radius = 10.dp, color = Color.Black, alpha = 0.1f),
+                )
         val frost: Modifier = state?.let { gap.frosted(it, capsule) } ?: gap
         FloatingToolbar(
             modifier = frost,
@@ -961,9 +992,10 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
             //  整个换成 0.82 就成了「白 82%」的亮胶囊：真机反馈「暗色下工具条还是亮色的」正是它。
             //  浅色板里它是实色白，替换恰好看不出来，所以之前没暴露。顶栏没这毛病是因为它取
             //  `surface`（两档都是实色）。
-            color = COUITheme.colorScheme.surfaceContainer.let {
-                it.copy(alpha = it.alpha * FROSTED_SURFACE_ALPHA)
-            },
+            color =
+                COUITheme.colorScheme.surfaceContainer.let {
+                    it.copy(alpha = it.alpha * FROSTED_SURFACE_ALPHA)
+                },
             // 留白已由上面那段 `padding` 顶掉，这里置零 —— 不置会**再**缩一圈
             outSidePadding = PaddingValues(0.dp),
             // 库那层阴影画在磨砂的裁剪层**里面**、必定被裁光（见上面那段注释），改由我们自己在外面补
@@ -975,32 +1007,35 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
             // 按钮 40dp、高亮圆角一半，外留白与按钮间距都是 [TOOLBAR_EDGE_GAP]。
             // 底色 / 字形的可用 / 禁用切换走统一的 [COLOR_TRANSITION_SPEC]。
             val resetIconColor by animateColorAsState(
-                targetValue = if (canReset) {
-                    COUITheme.colorScheme.onSurfaceContainer
-                } else {
-                    COUITheme.colorScheme.disabledOnSecondaryVariant
-                },
+                targetValue =
+                    if (canReset) {
+                        COUITheme.colorScheme.onSurfaceContainer
+                    } else {
+                        COUITheme.colorScheme.disabledOnSecondaryVariant
+                    },
                 animationSpec = COLOR_TRANSITION_SPEC,
                 label = "ToolbarResetIcon",
             )
             val saveBackgroundColor by animateColorAsState(
-                targetValue = if (canSave) {
-                    // 底色走**主题原色**（透明度导致颜色和主题色有偏差，
-                    //  指的是**这颗按钮**，不是整条工具条）：不再单独降 alpha，字形（`onPrimary`，白）
-                    //  压在实色 `primary` 上对比度也最足。代价是实色底把糊盖住，这颗圆里看不到磨砂。
-                    COUITheme.colorScheme.primary
-                } else {
-                    COUITheme.colorScheme.surfaceContainerHigh
-                },
+                targetValue =
+                    if (canSave) {
+                        // 底色走**主题原色**（透明度导致颜色和主题色有偏差，
+                        //  指的是**这颗按钮**，不是整条工具条）：不再单独降 alpha，字形（`onPrimary`，白）
+                        //  压在实色 `primary` 上对比度也最足。代价是实色底把糊盖住，这颗圆里看不到磨砂。
+                        COUITheme.colorScheme.primary
+                    } else {
+                        COUITheme.colorScheme.surfaceContainerHigh
+                    },
                 animationSpec = COLOR_TRANSITION_SPEC,
                 label = "ToolbarSaveBackground",
             )
             val saveIconColor by animateColorAsState(
-                targetValue = if (canSave) {
-                    COUITheme.colorScheme.onPrimary
-                } else {
-                    COUITheme.colorScheme.disabledOnSecondaryVariant
-                },
+                targetValue =
+                    if (canSave) {
+                        COUITheme.colorScheme.onPrimary
+                    } else {
+                        COUITheme.colorScheme.disabledOnSecondaryVariant
+                    },
                 animationSpec = COLOR_TRANSITION_SPEC,
                 label = "ToolbarSaveIcon",
             )
@@ -1014,8 +1049,7 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
                         tick()
                         // 多条命令带步骤时走行级退场：步骤行 shrink 完才真正 reset，否则整批行瞬时消失。
                         if (draft.kind == CommandKind.SERIAL && draft.steps.isNotEmpty()) {
-                            // 记下这一刻的内容指纹：收尾时对一次账，这期间用户又输入了就放弃 reset
-                            //。
+                            // 记下这一刻的内容指纹：收尾时对一次账，这期间用户又输入了就放弃 reset。
                             draftResetBaseline = draft.contentFingerprint()
                             draftResetPending = true
                         } else {
@@ -1029,11 +1063,12 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
                 ) {
                     Icon(
                         PageIcons.MenuReset,
-                        contentDescription = if (editing) {
-                            I18n.get(Strings.COMMON_CANCEL, "取消")
-                        } else {
-                            I18n.get(Strings.COMMON_RESET, "重置")
-                        },
+                        contentDescription =
+                            if (editing) {
+                                I18n.get(Strings.COMMON_CANCEL, "取消")
+                            } else {
+                                I18n.get(Strings.COMMON_RESET, "重置")
+                            },
                         // 禁用时跟着置灰（库不给图标上色）
                         tint = resetIconColor,
                     )
@@ -1052,11 +1087,12 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
                 ) {
                     Icon(
                         PageIcons.Confirm,
-                        contentDescription = if (editing) {
-                            I18n.get(Strings.COMMON_MODIFY, "修改")
-                        } else {
-                            I18n.get(Strings.COMMON_SAVE, "保存")
-                        },
+                        contentDescription =
+                            if (editing) {
+                                I18n.get(Strings.COMMON_MODIFY, "修改")
+                            } else {
+                                I18n.get(Strings.COMMON_SAVE, "保存")
+                            },
                         tint = saveIconColor,
                     )
                 }
@@ -1093,9 +1129,10 @@ private fun CommandTileRow(
         val contentHeights = measurables.map { it.minIntrinsicHeight(tileWidth) }
         val rowHeight = maxOf((tileWidth * minHeightRatio).roundToInt(), contentHeights.max())
         // 唯一一次 measure：按行高定量 —— 同行等高、不矮于下限
-        val placeables = measurables.map {
-            it.measure(Constraints.fixed(tileWidth, rowHeight))
-        }
+        val placeables =
+            measurables.map {
+                it.measure(Constraints.fixed(tileWidth, rowHeight))
+            }
         layout(constraints.maxWidth, rowHeight) {
             placeables.forEachIndexed { index, p -> p.place(index * (tileWidth + gapPx), 0) }
         }
@@ -1111,7 +1148,10 @@ private fun CommandTileRow(
  * @param anchorId 退场行专用：收缩期间插在「前面最近的保留行」（其 id）之下，
  *   没有就是 -1（列表最前）—— 顺序重建时按它插回原邻位。
  */
-private class StepRowItem(val id: Int, val token: String) {
+private class StepRowItem(
+    val id: Int,
+    val token: String,
+) {
     val state = MutableTransitionState(false).apply { targetState = true }
 
     /** 退场中：target 已切 false，播完 shrink+fade 就从展示层摘除。 */
@@ -1170,8 +1210,11 @@ internal fun SettingsPage.SerialSteps() {
         newOrder += exitingByAnchor[-1].orEmpty().sortedBy { it.id }
         stepsNow.forEachIndexed { si, token ->
             val m = matched[si]
-            if (m == null) newOrder += StepRowItem(nextId++, token).also(display::add)
-            else newOrder += m
+            if (m == null) {
+                newOrder += StepRowItem(nextId++, token).also(display::add)
+            } else {
+                newOrder += m
+            }
             newOrder += exitingByAnchor[m?.id].orEmpty().sortedBy { it.id }
         }
         display.clear()
@@ -1184,9 +1227,11 @@ internal fun SettingsPage.SerialSteps() {
         //  但摘除那道闸（下面 `if (item.exiting && …)`）永远不成立 —— 而摘除 effect 的 key 是
         //  `item.state.currentState`，它在这里已经变成 false、之后再不会变 ⇒ 那些行**永留展示层**：
         //  分隔线一直画着、`cardListPositionOf(index, display.size + 1)` 一直按旧行数算。
-        if (draftResetPending) display.forEach {
-            it.exiting = true
-            it.state.targetState = false
+        if (draftResetPending) {
+            display.forEach {
+                it.exiting = true
+                it.state.targetState = false
+            }
         }
     }
 
@@ -1270,7 +1315,7 @@ internal fun SettingsPage.SerialSteps() {
                                     // 全项目最弱的一档（`onSurfaceVariantActions`，库给 chevron 用的那档）——
                                     //  它是「这一行可点」的指示、不是动作，不该跟上移 / 下移 / 删除那三个按钮抢眼。
                                     //  不给退场另开一档：这一档与 `disabledOnSecondaryVariant` **恰好同值**
-                                    //（浅色 0x42 / 深色 0x4D），分了也是同一个颜色。
+                                    // （浅色 0x42 / 深色 0x4D），分了也是同一个颜色。
                                     tint = COUITheme.colorScheme.onSurfaceVariantActions,
                                 )
                             }
@@ -1318,29 +1363,32 @@ internal fun SettingsPage.SerialSteps() {
     // 行首那颗 `+` 的颜色随「满没满」切换、带过渡 —— 否则第 5 步一加它是「啪」地灰下去的。
     // 正常态那一档就是外层的 `onSurfaceContainer`（`contentColor`）；要给过渡就得把两档都写出来。
     val addIconTint by animateColorAsState(
-        targetValue = if (stepsFull) {
-            COUITheme.colorScheme.disabledOnSecondaryVariant
-        } else {
-            COUITheme.colorScheme.onSurfaceContainer
-        },
+        targetValue =
+            if (stepsFull) {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            } else {
+                COUITheme.colorScheme.onSurfaceContainer
+            },
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "StepAddIcon",
     )
     val addTitleColor by animateColorAsState(
-        targetValue = if (stepsFull) {
-            COUITheme.colorScheme.disabledOnSecondaryVariant
-        } else {
-            COUITheme.colorScheme.onBackground
-        },
+        targetValue =
+            if (stepsFull) {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            } else {
+                COUITheme.colorScheme.onBackground
+            },
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "StepAddTitle",
     )
     val addSummaryColor by animateColorAsState(
-        targetValue = if (stepsFull) {
-            COUITheme.colorScheme.disabledOnSecondaryVariant
-        } else {
-            COUITheme.colorScheme.onSurfaceVariantSummary
-        },
+        targetValue =
+            if (stepsFull) {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            } else {
+                COUITheme.colorScheme.onSurfaceVariantSummary
+            },
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "StepAddSummary",
     )
@@ -1355,11 +1403,12 @@ internal fun SettingsPage.SerialSteps() {
             //  又跳 4dp。真机逐帧量过：底边从 2058 一路收到 1847 后**又弹回 1854**，就是这一跳，
             //  看着像「加号行先移过头、再被拉回来」。
             //  按数据算 ⇒ 翻档发生在过渡**开始**那一帧，与行高动画同时进行，看不出来。
-            cardListPosition = if (steps.isEmpty()) {
-                CardListPosition.Full
-            } else {
-                CardListPosition.Tail
-            },
+            cardListPosition =
+                if (steps.isEmpty()) {
+                    CardListPosition.Full
+                } else {
+                    CardListPosition.Tail
+                },
             // 行首 `+` 的 tint 由上面 `addIconTint` 给（两档都显式写出来，为了过渡）：禁用态取
             // `disabledOnSecondaryVariant`（库 `disabledColor` 的取值，与 `IconAction` 禁用色一致），
             // 正常态取 `onSurfaceContainer`（外层 `contentColor`）。正常态不能用 `Color.Unspecified`
@@ -1429,24 +1478,31 @@ internal fun SettingsPage.SerialSteps() {
 private fun SettingsPage.draftToLibrary(): Pair<Command, List<Command>>? {
     val name = CommandLibrary.sanitizeName(draft.name)
     if (name.isEmpty()) return null
-    val cmd = when (draft.kind) {
-        CommandKind.SINGLE -> Command(name, CommandKind.SINGLE, single = draft.single.trim())
-        CommandKind.SERIAL -> Command(
-            name = name,
-            kind = CommandKind.SERIAL,
-            steps = draft.steps.toList(),
-            stepDelayMs = draft.stepDelayMs,
-        )
-    }
+    val cmd =
+        when (draft.kind) {
+            CommandKind.SINGLE -> {
+                Command(name, CommandKind.SINGLE, single = draft.single.trim())
+            }
+
+            CommandKind.SERIAL -> {
+                Command(
+                    name = name,
+                    kind = CommandKind.SERIAL,
+                    steps = draft.steps.toList(),
+                    stepDelayMs = draft.stepDelayMs,
+                )
+            }
+        }
     // (1) 改名保存必须把**原名那条一起摘掉**：只 `filterNot { it.name == name }` 的话旧名与新名
     //   两条并存在命令库里（列表凭空 +1 条），而手势上绑的仍是旧那条 `cmd:旧名` —— 用户以为改了，
     //   侧键行为一点没变。编辑态下 `editingFrom == name` 时两个条件指同一条，去重天然成立。
     // (2) 其余命令里对旧名字的引用（多条命令的步骤 / 单条正文里的 `cmd:旧名`）也要跟着挪，
     //   否则它们指向一条已经不在库里的命令，按下去永远 NOT_FOUND。
     val editingFrom = draft.editingName
-    val next = commands.value
-        .filterNot { it.name == name || it.name == editingFrom }
-        .map { it.renamedReference(editingFrom, name) } + cmd
+    val next =
+        commands.value
+            .filterNot { it.name == name || it.name == editingFrom }
+            .map { it.renamedReference(editingFrom, name) } + cmd
     return cmd to next
 }
 
@@ -1463,21 +1519,26 @@ internal fun SettingsPage.addCommand() {
     val editingFrom = draft.editingName
     val replaced = commands.value.any { it.name == name }
     // 结果一句话（改 / 覆盖 / 新增各一条；失败由 [saveCommands] 自己报）
-    val tip = when {
-        editingFrom != null -> I18n.get(Strings.TOAST_COMMAND_MODIFIED, "已修改")
-        replaced -> I18n.get(Strings.TOAST_COMMAND_OVERWRITTEN, "已覆盖")
-        else -> I18n.get(Strings.TOAST_COMMAND_SAVED, "已保存")
-    }
-    val saved = saveCommands(
-        next,
+    val tip =
         when {
-            // 编辑态：提交的是修改（名字没变 = 原地更新；改了名 = 挪到新名字下）
-            editingFrom != null && editingFrom != name -> "改名保存：$editingFrom → $name（${cmd.kind.id}）"
-            editingFrom != null -> "修改命令：$name（${cmd.kind.id}）"
-            replaced -> "覆盖命令：$name（${cmd.kind.id}）"
-            else -> "新增命令：$name（${cmd.kind.id}）"
-        },
-    )
+            editingFrom != null -> I18n.get(Strings.TOAST_COMMAND_MODIFIED, "已修改")
+            replaced -> I18n.get(Strings.TOAST_COMMAND_OVERWRITTEN, "已覆盖")
+            else -> I18n.get(Strings.TOAST_COMMAND_SAVED, "已保存")
+        }
+    val saved =
+        saveCommands(
+            next,
+            when {
+                // 编辑态：提交的是修改（名字没变 = 原地更新；改了名 = 挪到新名字下）
+                editingFrom != null && editingFrom != name -> "改名保存：$editingFrom → $name（${cmd.kind.id}）"
+
+                editingFrom != null -> "修改命令：$name（${cmd.kind.id}）"
+
+                replaced -> "覆盖命令：$name（${cmd.kind.id}）"
+
+                else -> "新增命令：$name（${cmd.kind.id}）"
+            },
+        )
     // 没落盘就**到此为止**：下面那套 `reset` + 退出会把用户刚编的整份内容丢掉，
     //  而文件里一个字节都没变（失败原因 [saveCommands] 已经报过「保存失败」）。
     //  必须看返回值：写盘失败 / 只读态**不能**照样清表单并退出。
@@ -1492,17 +1553,20 @@ internal fun SettingsPage.addCommand() {
         val cfg = config.value
         val key = cfg.key(KeyId.PLUS)
         val oldToken = Command.PREFIX + editingFrom
+
         fun move(a: Action) = if (a.token == oldToken) Action.Custom(name) else a
-        val updated = key.copy(
-            single = move(key.single),
-            double = move(key.double),
-            long = move(key.long),
-        )
-        if (updated != key) {
-            bindingMoved = write(
-                cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)),
-                "改名后把绑定挪到新名字：$editingFrom → $name",
+        val updated =
+            key.copy(
+                single = move(key.single),
+                double = move(key.double),
+                long = move(key.long),
             )
+        if (updated != key) {
+            bindingMoved =
+                write(
+                    cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)),
+                    "改名后把绑定挪到新名字：$editingFrom → $name",
+                )
         }
     }
     // 绑定没挪成时不再报「已修改」：那句会让用户以为侧键行为也跟过来了（write 自己已报过失败）。
@@ -1511,7 +1575,7 @@ internal fun SettingsPage.addCommand() {
     val editing = editingFrom != null
     draft.reset()
     // 只在「新增」这条路上退（从「按键绑定」页右下角那颗 FAB 进来的那条）；编辑态
-    //（从「已保存的命令」列表点进来改）留在原地 —— 改完要能立刻在下面那张列表里看到结果。
+    // （从「已保存的命令」列表点进来改）留在原地 —— 改完要能立刻在下面那张列表里看到结果。
     if (!editing) goBack()
 }
 
@@ -1525,7 +1589,10 @@ internal fun SettingsPage.addStep(token: String) {
 /**
  * 多条命令把第 [index] 步换成 [token] —— 点已添加的那一行弹出的选择菜单里挑完时调。
  */
-internal fun SettingsPage.replaceStep(index: Int, token: String) {
+internal fun SettingsPage.replaceStep(
+    index: Int,
+    token: String,
+) {
     if (index !in draft.steps.indices) {
         // 越界不能静默 return：调用方已经 tick / 关了菜单，用户看不到任何反应也无从判断。
         XLog.w("多条命令：第 ${index + 1} 步不存在（当前 ${draft.steps.size} 步），换步已忽略")
@@ -1539,7 +1606,10 @@ internal fun SettingsPage.replaceStep(index: Int, token: String) {
 }
 
 /** 步骤上移 / 下移一位（[delta] 为 -1 / +1）；越界不动。 */
-internal fun SettingsPage.moveStep(index: Int, delta: Int) {
+internal fun SettingsPage.moveStep(
+    index: Int,
+    delta: Int,
+) {
     val target = index + delta
     if (index !in draft.steps.indices || target !in draft.steps.indices) return
     draft.steps.add(target, draft.steps.removeAt(index))
@@ -1555,20 +1625,23 @@ internal fun SettingsPage.moveStep(index: Int, delta: Int) {
 internal fun SettingsPage.removeCommand(cmd: Command) {
     val cfg = config.value
     val key = cfg.key(KeyId.PLUS)
+
     fun clean(a: Action) = if (a.token == cmd.token) Action.None else a
-    val updated = key.copy(
-        single = clean(key.single),
-        double = clean(key.double),
-        long = clean(key.long),
-    )
+    val updated =
+        key.copy(
+            single = clean(key.single),
+            double = clean(key.double),
+            long = clean(key.long),
+        )
     val bindingsCleared = updated != key
     if (bindingsCleared) {
         // 只读态下这次写会被拒（返回值不能丢）：命令库那份照删，配置里就留下悬空的
         //  `cmd:` —— 按下去永远 NOT_FOUND。所以绑定没清掉时**不能**继续删命令，先告诉用户。
-        val ok = write(
-            cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)),
-            "删除命令时清掉绑定：${cmd.name}",
-        )
+        val ok =
+            write(
+                cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)),
+                "删除命令时清掉绑定：${cmd.name}",
+            )
         if (!ok) {
             XLog.w("删除命令中止：绑定没能清掉（配置只读），命令库保持原样：${cmd.name}")
             return
@@ -1578,15 +1651,16 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
     // 删的就是正在编辑的那条 ⇒ 草稿一并清掉：留着的话「修改」按钮还挂着，
     // 点一下会把刚删的命令原样写回去。注意：这一步挪到**命令库真删掉之后**（见下）：
     // 库没删成时草稿要留着，否则用户正在编的那条被清空、而库里那条还在。
-    val next = commands.value
-        .filterNot { it.name == cmd.name }
-        .map { it.dropReference(cmd.token) }
+    val next =
+        commands.value
+            .filterNot { it.name == cmd.name }
+            .map { it.dropReference(cmd.token) }
     if (saveCommands(next, "删除命令：${cmd.name}")) {
         if (draft.editingName == cmd.name) draft.reset()
         toast(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除"))
     } else if (bindingsCleared) {
         // 注意：命令库没删成、绑定却已经清了 ⇒ 会留下「手势=无操作 + 命令仍在库」这种半份状态
-        //：把绑定**写回原样**，两边一起保持原状。
+        // ：把绑定**写回原样**，两边一起保持原状。
         //  失败原因 [saveCommands] 已经报过（「保存失败」），这里只补回滚与它的判据行。
         val rolled = write(cfg, "删除命令失败，回滚绑定：${cmd.name}")
         XLog.w("删除命令：命令库写入失败，已把绑定回滚（回滚成功=$rolled）：${cmd.name}")
@@ -1598,7 +1672,10 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
  *
  * @return 是否真的落盘 —— 失败时这里已经报过「保存失败」，调用方只在 true 时报成功那一句。
  */
-internal fun SettingsPage.saveCommands(next: List<Command>, what: String): Boolean {
+internal fun SettingsPage.saveCommands(
+    next: List<Command>,
+    what: String,
+): Boolean {
     val previous = commands.value
     commands.value = next
     val saved = CommandLibrary.save(next)

@@ -31,7 +31,7 @@ internal fun SettingsPage.resetAll() {
     //  所以先清掉只读位再写（[write] 的闸是为「不许**悄悄**固化默认值」设的，这是一处有意为之的例外）。
     //  注意：只读态下菜单里这一项现在是**灰的**（`ResetMenu` 只留「默认界面 / 关于模块」，
     // 用户定的），所以这条放行走不到；留着是为了「读不懂」的出口**不能只有一条**
-    //（重进页面）——将来若把这行放出来，行为仍然是对的。
+    // （重进页面）——将来若把这行放出来，行为仍然是对的。
     if (configReadOnly) {
         XLog.w("清空：配置原处在只读态（读不懂）—— 明说要重来，放行写回")
         configReadOnly = false
@@ -70,11 +70,13 @@ internal fun SettingsPage.restartModule() {
     val main = hostMainPids()
     // 只打本包相关的进程（整机那张表一行几 KB，没必要）。真机上报「点了没反应」时，
     // 这三行就是判据：`main` 为空 ⇒ [hostMainPids] 两条路都没摸着。
-    val mine = context.getSystemService(android.app.ActivityManager::class.java)
-        ?.runningAppProcesses
-        ?.filter { it.processName == KeyModule.PAGE_PACKAGE }
-        ?.joinToString(prefix = "[", postfix = "]") { "${it.processName}:${it.pid}" }
-        ?: "null"
+    val mine =
+        context
+            .getSystemService(android.app.ActivityManager::class.java)
+            ?.runningAppProcesses
+            ?.filter { it.processName == KeyModule.PAGE_PACKAGE }
+            ?.joinToString(prefix = "[", postfix = "]") { "${it.processName}:${it.pid}" }
+            ?: "null"
     XLog.w("重启：宿主主进程 pid=$main（本进程 ${android.os.Process.myPid()}） 本包进程=$mine")
     if (main.isEmpty()) {
         XLog.w("重启：宿主主进程不在，没人能把页面拉回来，放弃")
@@ -85,12 +87,14 @@ internal fun SettingsPage.restartModule() {
     }
     // 把「把页面拉回来 + 自己重来一遍」整个交给宿主主进程（见 host/PageRelaunch）。
     //  请求发不出去时**不能**杀自己：那样页面没了、也没人再把它叫回来。
-    val asked = runCatching {
-        context.sendBroadcast(
-            android.content.Intent(KeyModule.ACTION_PAGE_RELAUNCH)
-                .setPackage(KeyModule.PAGE_PACKAGE),
-        )
-    }.onFailure { XLog.w("重启：请宿主主进程拉起页面失败：${it.javaClass.simpleName}", it) }.isSuccess
+    val asked =
+        runCatching {
+            context.sendBroadcast(
+                android.content
+                    .Intent(KeyModule.ACTION_PAGE_RELAUNCH)
+                    .setPackage(KeyModule.PAGE_PACKAGE),
+            )
+        }.onFailure { XLog.w("重启：请宿主主进程拉起页面失败：${it.javaClass.simpleName}", it) }.isSuccess
     if (!asked) {
         toast(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败，请稍后重试"))
         return
@@ -128,20 +132,24 @@ private fun SettingsPage.hostMainPids(): List<Int> {
     val out = LinkedHashSet<Int>()
 
     runCatching {
-        context.getSystemService(android.app.ActivityManager::class.java)
+        context
+            .getSystemService(android.app.ActivityManager::class.java)
             ?.runningAppProcesses
             ?.forEach { if (it.processName == pkg && it.pid != me) out += it.pid }
     }.onFailure { XLog.w("重启：runningAppProcesses 失败：${it.javaClass.simpleName}") }
 
     runCatching {
-        java.io.File("/proc").listFiles { f ->
-            f.isDirectory && f.name.isNotEmpty() && f.name.all { ch -> ch.isDigit() }
-        }?.forEach { dir ->
-            val cmdline = java.io.File(dir, "cmdline").let { f ->
-                if (f.canRead()) f.readText().trim('\u0000', ' ', '\n') else ""
+        java.io
+            .File("/proc")
+            .listFiles { f ->
+                f.isDirectory && f.name.isNotEmpty() && f.name.all { ch -> ch.isDigit() }
+            }?.forEach { dir ->
+                val cmdline =
+                    java.io.File(dir, "cmdline").let { f ->
+                        if (f.canRead()) f.readText().trim('\u0000', ' ', '\n') else ""
+                    }
+                if (cmdline == pkg && dir.name.toInt() != me) out += dir.name.toInt()
             }
-            if (cmdline == pkg && dir.name.toInt() != me) out += dir.name.toInt()
-        }
     }.onFailure { XLog.w("重启：扫 /proc 失败：${it.javaClass.simpleName}") }
 
     return out.toList()
@@ -188,7 +196,6 @@ internal fun SettingsPage.setLanguage(code: String) {
     )
 }
 
-
 /** 写 [KeyConfig.enabled] 总闸：关闭后绑定页控件置灰，侧键不再被接管。 */
 internal fun SettingsPage.setKeyEnabled(on: Boolean) {
     val cfg = config.value
@@ -232,7 +239,10 @@ internal fun SettingsPage.setLongRepeat(on: Boolean) {
  *
  * @return 是否真的落盘 —— 调用方据此决定要不要报「已…」（失败时这里已报过「保存失败」）。
  */
-internal fun SettingsPage.write(next: Config, what: String): Boolean {
+internal fun SettingsPage.write(
+    next: Config,
+    what: String,
+): Boolean {
     // 只读态：建页那次配置压根没读成功（见 [SettingsPage.configReadOnly]），
     //  此时 [SettingsPage.config] 里那份是**默认值**、不是用户的真相 —— 写回等于把它固化，
     // 会把用户配的绑定 / 开关整份抹掉。一律拒，并明确告诉用户「没保存」。
@@ -294,7 +304,8 @@ internal fun SettingsPage.write(next: Config, what: String): Boolean {
 internal fun SettingsPage.resyncInjectStatus() {
     try {
         context.sendBroadcast(
-            android.content.Intent(KeyModule.ACTION_INJECT_QUERY)
+            android.content
+                .Intent(KeyModule.ACTION_INJECT_QUERY)
                 .setPackage(KeyModule.PAGE_PACKAGE),
         )
         XLog.w("配置已变：向注入侧重问一次自检（把新指纹带回来）")

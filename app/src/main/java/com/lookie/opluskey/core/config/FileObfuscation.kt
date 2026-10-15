@@ -35,7 +35,6 @@ import java.util.Base64
  * 另外正文那份 JSON 自带 `md5` 字段（见 `ConfigCodec`），改完内容还得把这个数一起重算。
  */
 internal object FileObfuscation {
-
     /** 运行时配置（`ConfigStore.sharedFile` 与 `commandFile`）的外皮首行。 */
     const val MAGIC_RUNTIME = "OPlusKey-Runtime-1"
 
@@ -46,13 +45,38 @@ internal object FileObfuscation {
      * 数值数组也一样（那 27 个字节本身就是可打印 ASCII），变换一下才不至于一眼捞出来。
      * 密钥始终在包里，拦不住真正的逆向。
      */
-    private val MASK: ByteArray = byteArrayOf(
-        80, 81, 109, 118, 116, 76, 102, 122, 46,
-        68, 112, 111, 103, 106, 104, 46, 80, 99,
-        103, 118, 116, 100, 98, 117, 106, 112, 111,
-    ).also { a ->
-        for (i in a.indices) a[i] = (a[i] - 1).toByte()
-    }
+    private val MASK: ByteArray =
+        byteArrayOf(
+            80,
+            81,
+            109,
+            118,
+            116,
+            76,
+            102,
+            122,
+            46,
+            68,
+            112,
+            111,
+            103,
+            106,
+            104,
+            46,
+            80,
+            99,
+            103,
+            118,
+            116,
+            100,
+            98,
+            117,
+            106,
+            112,
+            111,
+        ).also { a ->
+            for (i in a.indices) a[i] = (a[i] - 1).toByte()
+        }
 
     /** 第一层用的标准 Base64 字母表 —— 第二层要从这张表里取回原始下标。 */
     private const val STD_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -80,20 +104,25 @@ internal object FileObfuscation {
      * 一声捞走（与 [MASK] 同一个考虑）。跳取是让它看着无序；规则本身一读就懂、也不依赖任何库的
      * 洗牌实现，所以跨版本稳定 —— 这张表一乱，盘上的文件就全读不出来了。
      */
-    private val SCRAMBLE: CharArray = run {
-        val pool = ('!'..'~').filter { it !in POOL_EXCLUDED }.toCharArray()
-        CharArray(ALPHABET_SIZE) { i -> pool[(i * POOL_STEP + POOL_OFFSET) % pool.size] }
-    }
+    private val SCRAMBLE: CharArray =
+        run {
+            val pool = ('!'..'~').filter { it !in POOL_EXCLUDED }.toCharArray()
+            CharArray(ALPHABET_SIZE) { i -> pool[(i * POOL_STEP + POOL_OFFSET) % pool.size] }
+        }
 
     /** 第二层的位置偏移（按下标循环用）：同一个字符落在不同位置，换出来的替身也不同。 */
     private val ROT = intArrayOf(17, 0, 43, 8, 61, 25, 3, 54, 31, 12)
 
     /** 把明文包成 [magic] + 一行两层变换过的正文。 */
-    fun wrap(magic: String, plain: String): String {
+    fun wrap(
+        magic: String,
+        plain: String,
+    ): String {
         val raw = plain.toByteArray(Charsets.UTF_8)
-        val masked = ByteArray(raw.size) { i ->
-            (raw[i].toInt() xor MASK[i % MASK.size].toInt()).toByte()
-        }
+        val masked =
+            ByteArray(raw.size) { i ->
+                (raw[i].toInt() xor MASK[i % MASK.size].toInt()).toByte()
+            }
         // 第一层：异或之后的字节走标准 Base64。不带折行 —— 折行本身就是个「这是一段 Base64」的标记
         val b64 = Base64.getEncoder().encodeToString(masked)
         // 第二层：换替身字母表 + 按位置错开，收成一行
@@ -106,7 +135,10 @@ internal object FileObfuscation {
      * @return 明文；**首行不是 [magic]（不是本模块这一档的文件）或正文解不开（Base64 坏了 / 被截断）
      *   时都返回 `null`**。传进来的两家（运行时配置、导出包）由调用方各自决定怎么报这句失败。
      */
-    fun unwrap(magic: String, text: String): String? {
+    fun unwrap(
+        magic: String,
+        text: String,
+    ): String? {
         // 剥 BOM：文件被第三方编辑器另存一次就会多出 BOM，不剥的话首行匹配不上
         val lines = text.removePrefix("\uFEFF").lines()
         val head = lines.firstOrNull()?.trim()
@@ -122,9 +154,10 @@ internal object FileObfuscation {
         }
         return try {
             val masked = Base64.getDecoder().decode(b64)
-            val raw = ByteArray(masked.size) { i ->
-                (masked[i].toInt() xor MASK[i % MASK.size].toInt()).toByte()
-            }
+            val raw =
+                ByteArray(masked.size) { i ->
+                    (masked[i].toInt() xor MASK[i % MASK.size].toInt()).toByte()
+                }
             String(raw, Charsets.UTF_8).ifBlank {
                 // 解出来是空串：包得起来就说明本来有内容，空的那份是坏的（不是「空配置」）
                 XLog.w("解混淆：正文解出来是空的（文件可能被截断了）")

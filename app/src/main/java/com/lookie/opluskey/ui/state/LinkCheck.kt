@@ -54,12 +54,13 @@ internal data class LinkCheck(
  *  进程内算一次就够：机型与系统版本都不会中途变。**只读 `Build`**，判定本体在 core 里
  *（那边不碰 Android API）。
  */
-internal val deviceSupport: DeviceSupport.Support = DeviceSupport.check(
-    android.os.Build.MODEL,
-    android.os.Build.VERSION.RELEASE,
-    // ROM 版本从 `Build.DISPLAY` 取（`ro.build.version.oplusrom` 是 hidden 接口，界面进程读不到）
-    DeviceSupport.romSeriesOf(android.os.Build.DISPLAY),
-)
+internal val deviceSupport: DeviceSupport.Support =
+    DeviceSupport.check(
+        android.os.Build.MODEL,
+        android.os.Build.VERSION.RELEASE,
+        // ROM 版本从 `Build.DISPLAY` 取（`ro.build.version.oplusrom` 是 hidden 接口，界面进程读不到）
+        DeviceSupport.romSeriesOf(android.os.Build.DISPLAY),
+    )
 
 /**
  * 清单命中的简写（判定本体是 [deviceSupport]）—— 决定整页能不能改。
@@ -78,7 +79,10 @@ internal val devicePending: Boolean = deviceSupport == DeviceSupport.Support.PEN
  * 与 [deviceSupport] 同一个来路（进程内不变的 `Build` 值）：那边只投出判定档位，拿不到原串，
  * 所以这里单独存一份。
  */
-internal val deviceModel: String = android.os.Build.MODEL?.trim().orEmpty()
+internal val deviceModel: String =
+    android.os.Build.MODEL
+        ?.trim()
+        .orEmpty()
 
 /**
  * 本地那份配置的指纹（与发送侧 `ConfigBroadcast.tag` 同口径）。
@@ -161,31 +165,32 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
     //  后者答不了「后来改的那一次到了没有」—— 开机收到过之后哪条广播丢了，
     //  注入侧还按旧配置吞键，界面却照样报「正常」。指纹不同 = 明确知道它手上不是这份。
     // 本地那份指纹按配置缓存（见 [localConfigTag]），只有配置变了才重算。
-    val configSynced = inj?.configTag?.isNotEmpty() == true &&
-        inj.configTag == localConfigTag
+    val configSynced =
+        inj?.configTag?.isNotEmpty() == true &&
+            inj.configTag == localConfigTag
     val configSide = configSideOk
 
     return listOf(
         LinkCheck(
             name = I18n.get(Strings.LINK_CHECK_SERVICE_STATUS, "服务运行"),
             ok = hostOk,
-            detail = if (hostOk) {
-                I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
-            } else {
-                I18n.get(Strings.LINK_CHECK_NOT_RUNNING, "未运行")
-            },
+            detail =
+                if (hostOk) {
+                    I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+                } else {
+                    I18n.get(Strings.LINK_CHECK_NOT_RUNNING, "未运行")
+                },
         ),
-
         LinkCheck(
             name = I18n.get(Strings.LINK_CHECK_KEY_RESPONSE, "按键响应"),
             ok = respondOk,
-            detail = when {
-                inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
-                inj.hooks <= 0 -> I18n.get(Strings.LINK_CHECK_NOT_RESPONDING, "未响应")
-                else -> I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
-            },
+            detail =
+                when {
+                    inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
+                    inj.hooks <= 0 -> I18n.get(Strings.LINK_CHECK_NOT_RESPONDING, "未响应")
+                    else -> I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+                },
         ),
-
         // 「设置同步」（配置送到注入侧没有）与「设置读取」（宿主读到的不是默认值）
         // 合成一段：对用户来说都是「设置到底生效了没有」，分开报只是把内部结构摆到脸上。
         LinkCheck(
@@ -198,31 +203,37 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
             //  一律 block（`blocking` 走默认值）的话，用户主动关掉主开关，
             //  整体状态就报「设置生效异常」—— 那是用户的意图，不是故障。
             blocking = !(configSide && !hostEnabled),
-            detail = when {
-                // 真因优先：文件读不懂时宿主读到的是默认值（enabled=false），
-                // 再往下会报成「主开关已关闭」—— 那会把用户引到错的方向（他根本没关）。
-                configReadOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
-                inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
-                !inj.configOk -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
-                // 收到过、但指纹对不上：改过的那一次没送到它手上（日志里能看到两边指纹）
-                !configSynced -> I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
-                // 读到默认值只有两种来路：主开关被关了，或者开机还没解锁
-                !hostEnabled -> I18n.get(Strings.LINK_CHECK_SWITCH_OFF, "主开关已关闭")
-                else -> I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
-            },
-        ),
+            detail =
+                when {
+                    // 真因优先：文件读不懂时宿主读到的是默认值（enabled=false），
+                    // 再往下会报成「主开关已关闭」—— 那会把用户引到错的方向（他根本没关）。
+                    configReadOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
 
+                    inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
+
+                    !inj.configOk -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
+
+                    // 收到过、但指纹对不上：改过的那一次没送到它手上（日志里能看到两边指纹）
+                    !configSynced -> I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
+
+                    // 读到默认值只有两种来路：主开关被关了，或者开机还没解锁
+                    !hostEnabled -> I18n.get(Strings.LINK_CHECK_SWITCH_OFF, "主开关已关闭")
+
+                    else -> I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+                },
+        ),
         // 这一段永远不 block：还没被验证过不是故障，只是一条还没拿到的证据。
         //  文案里**不出现「按过没按过」**——那是内部证据的说法（用户点名删的）。
         LinkCheck(
             name = I18n.get(Strings.LINK_CHECK_USAGE_VERIFIED, "使用验证"),
             ok = hostLastActionAt > 0,
             // 判到过手势、却一次都没执行 —— 多半是这一档绑的是「无操作」
-            detail = when {
-                hostLastActionAt > 0 -> I18n.get(Strings.LINK_CHECK_VERIFIED, "已生效")
-                inj != null && inj.lastGestureAt > 0 -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
-                else -> I18n.get(Strings.LINK_CHECK_NOT_USED_YET, "尚未使用")
-            },
+            detail =
+                when {
+                    hostLastActionAt > 0 -> I18n.get(Strings.LINK_CHECK_VERIFIED, "已生效")
+                    inj != null && inj.lastGestureAt > 0 -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
+                    else -> I18n.get(Strings.LINK_CHECK_NOT_USED_YET, "尚未使用")
+                },
             blocking = false,
         ),
     )

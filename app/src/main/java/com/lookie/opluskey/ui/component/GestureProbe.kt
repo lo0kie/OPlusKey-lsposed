@@ -29,8 +29,9 @@ import kotlin.math.abs
  *  [label] 只进日志前缀，用来分清是哪一块（浮层列表 / 步骤卡 / 添加命令那一行）。
  */
 @Stable
-internal class GestureProbe(private val label: String) {
-
+internal class GestureProbe(
+    private val label: String,
+) {
     private var downAtMs = 0L
     private var downY = 0f
     private var lastY = 0f
@@ -40,7 +41,10 @@ internal class GestureProbe(private val label: String) {
     private var contentY = 0f
     private var contentYAtDown = 0f
 
-    fun onDown(y: Float, slopPx: Float) {
+    fun onDown(
+        y: Float,
+        slopPx: Float,
+    ) {
         downAtMs = android.os.SystemClock.uptimeMillis()
         downY = y
         lastY = y

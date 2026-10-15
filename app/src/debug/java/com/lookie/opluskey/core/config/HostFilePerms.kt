@@ -9,7 +9,10 @@ import java.io.File
  * 死代码消除，常量挡完 `setReadable(true, false)` 这些调用照样留在 release 产物里。
  * 放开的是**宿主 App 的数据目录**，`false` 参数还是「不限于 owner」——静态扫描里这是提权特征。
  */
-internal fun exposeToOthers(dir: File, file: File) {
+internal fun exposeToOthers(
+    dir: File,
+    file: File,
+) {
     // 只放开可读与可遍历：写权限一律不动（`setWritable(true, false)` 会把 0600 抬成 0666）
     dir.setReadable(true, false)
     dir.setExecutable(true, false)

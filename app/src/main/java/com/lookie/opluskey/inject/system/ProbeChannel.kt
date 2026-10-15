@@ -39,7 +39,6 @@ import com.lookie.opluskey.core.reflect.Reflect
  * 3. **每个 op 整体包 catch** —— 调用点在 AMS 广播入口，漏一个异常出去就是系统崩 / 开机循环。
  */
 internal object ProbeChannel {
-
     /** 调试指令的 action —— 从 adb 用 **root** 发（shell 身份过不了 NOT_EXPORTED 接收器；用法见 `docs/debug-channel.md`）。 */
     const val ACTION = "com.lookie.opluskey.PROBE"
 
@@ -130,14 +129,18 @@ internal object ProbeChannel {
      * @param loader system_server / 桌面进程的 ClassLoader
      * @return 是否吃掉了这条广播（action 不匹配返回 false）
      */
-    fun handle(intent: Intent, loader: ClassLoader?): Boolean {
+    fun handle(
+        intent: Intent,
+        loader: ClassLoader?,
+    ): Boolean {
         if (!DEBUG_PROBE) return false
         if (intent.action != ACTION) return false
-        val op = try {
-            intent.getStringExtra(EXTRA_OP).orEmpty()
-        } catch (e: Throwable) {
-            ""
-        }
+        val op =
+            try {
+                intent.getStringExtra(EXTRA_OP).orEmpty()
+            } catch (e: Throwable) {
+                ""
+            }
         if (loader == null) {
             XLog.w("${describe(op)}：还没有本进程的 ClassLoader，跳过")
             return true
@@ -170,14 +173,21 @@ internal object ProbeChannel {
      *
      * 用 `RECEIVER_NOT_EXPORTED`：只有 root / 系统的广播进得来，普通 App 发同名广播进不来。
      */
-    fun installInProcess(loader: ClassLoader?, label: String) {
+    fun installInProcess(
+        loader: ClassLoader?,
+        label: String,
+    ) {
         if (!DEBUG_PROBE) return
         if (loader == null) return
         if (launcherReceiver != null) return
         tryGetContext(loader, label, attempt = 0)
     }
 
-    private fun tryGetContext(loader: ClassLoader, label: String, attempt: Int) {
+    private fun tryGetContext(
+        loader: ClassLoader,
+        label: String,
+        attempt: Int,
+    ) {
         // onPackageReady 时 Application 未必挂上（`currentApplication()` 可能是 null），
         // 所以拿不到就退后重试 —— 否则整条通道静默失效（同 host/GestureReceiver 的踩坑）。
         val ctx = ActivityThreadCompat.currentApplication(loader)
@@ -190,13 +200,17 @@ internal object ProbeChannel {
             return
         }
         try {
-            val r = object : BroadcastReceiver() {
-                override fun onReceive(c: Context?, intent: Intent?) {
-                    if (intent == null) return
-                    // 桌面进程里 ClassLoader 就是本进程的，直接用
-                    XLog.guard("probe/$label 执行") { handle(intent, loader) }
+            val r =
+                object : BroadcastReceiver() {
+                    override fun onReceive(
+                        c: Context?,
+                        intent: Intent?,
+                    ) {
+                        if (intent == null) return
+                        // 桌面进程里 ClassLoader 就是本进程的，直接用
+                        XLog.guard("probe/$label 执行") { handle(intent, loader) }
+                    }
                 }
-            }
             ctx.registerReceiver(r, android.content.IntentFilter(ACTION), Context.RECEIVER_NOT_EXPORTED)
             launcherReceiver = r
             XLog.w("probe：调试通道已装在 $label（package=${ctx.packageName}）")
@@ -211,7 +225,10 @@ internal object ProbeChannel {
     // ── op: dump ─────────────────────────────────────────────────────────────
 
     /** 把声明方法和字段连**参数类型**一起打出来 —— 这条通道最大的用处就是消掉「签名靠猜」。 */
-    private fun dump(loader: ClassLoader, intent: Intent) {
+    private fun dump(
+        loader: ClassLoader,
+        intent: Intent,
+    ) {
         val clsName = intent.getStringExtra(EXTRA_CLS).orEmpty()
         val filter = intent.getStringExtra(EXTRA_FILTER).orEmpty()
         if (clsName.isEmpty()) {
@@ -223,9 +240,10 @@ internal object ProbeChannel {
             XLog.w("probe/dump：找不到类 $clsName")
             return
         }
-        val methods = cls.declaredMethods
-            .filter { filter.isEmpty() || it.name.contains(filter) }
-            .sortedWith(compareBy({ it.name }, { it.parameterCount }))
+        val methods =
+            cls.declaredMethods
+                .filter { filter.isEmpty() || it.name.contains(filter) }
+                .sortedWith(compareBy({ it.name }, { it.parameterCount }))
         XLog.w("probe/dump $clsName filter='$filter' → ${methods.size} 个方法")
         methods.take(DUMP_LIMIT).forEach { m ->
             XLog.w(
@@ -233,9 +251,10 @@ internal object ProbeChannel {
                     " : ${m.returnType.simpleName}",
             )
         }
-        val fields = cls.declaredFields
-            .filter { filter.isEmpty() || it.name.contains(filter) }
-            .sortedBy { it.name }
+        val fields =
+            cls.declaredFields
+                .filter { filter.isEmpty() || it.name.contains(filter) }
+                .sortedBy { it.name }
         if (fields.isNotEmpty()) {
             XLog.w("probe/dump $clsName filter='$filter' → ${fields.size} 个字段")
             fields.take(DUMP_LIMIT).forEach { f ->
@@ -252,7 +271,10 @@ internal object ProbeChannel {
      * `args` 是字符串数组（`--esa args a,b,c`），按方法的形参类型就地转换：
      * int/long/float/boolean/String 直接转，其余类型传 null 并把形参名字打出来提示。
      */
-    private fun call(loader: ClassLoader, intent: Intent) {
+    private fun call(
+        loader: ClassLoader,
+        intent: Intent,
+    ) {
         val clsName = intent.getStringExtra(EXTRA_CLS).orEmpty()
         val name = intent.getStringExtra(EXTRA_NAME).orEmpty()
         val target = intent.getStringExtra(EXTRA_TARGET) ?: TARGET_SERVICE
@@ -263,11 +285,12 @@ internal object ProbeChannel {
         }
 
         val receiver = resolveReceiver(loader, target, intent)
-        val cls = when {
-            receiver != null -> receiver.javaClass
-            clsName.isNotEmpty() -> Reflect.findClass(loader, clsName)
-            else -> null
-        }
+        val cls =
+            when {
+                receiver != null -> receiver.javaClass
+                clsName.isNotEmpty() -> Reflect.findClass(loader, clsName)
+                else -> null
+            }
         if (cls == null) {
             XLog.w("probe/call：既拿不到 target=$target 的接收者，也没给 cls")
             return
@@ -284,11 +307,15 @@ internal object ProbeChannel {
             val doInvoke = {
                 try {
                     m.isAccessible = true
-                    val r = if (receiver != null && !java.lang.reflect.Modifier.isStatic(m.modifiers)) {
-                        m.invoke(receiver, *converted)
-                    } else {
-                        m.invoke(null, *converted)
-                    }
+                    val r =
+                        if (receiver != null &&
+                            !java.lang.reflect.Modifier
+                                .isStatic(m.modifiers)
+                        ) {
+                            m.invoke(receiver, *converted)
+                        } else {
+                            m.invoke(null, *converted)
+                        }
                     XLog.w("${describe(OP_CALL)} $name($sig) → $r")
                 } catch (e: Throwable) {
                     XLog.w("${describe(OP_CALL)} $name 抛了：${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}")
@@ -299,15 +326,16 @@ internal object ProbeChannel {
             // （真机踩过：从 AMS 广播入口进来是 binder 线程，视图属于 `android.ui`）。
             // 这里统一替调用方 post 过去 —— 有了它，`target=caption` 加上任意方法名就能调，
             // 不必再为每个方法写一个 op。
-            val h = if (receiver == null) {
-                null
-            } else {
-                try {
-                    Reflect.call(receiver, "getHandler") as? Handler
-                } catch (e: Throwable) {
+            val h =
+                if (receiver == null) {
                     null
+                } else {
+                    try {
+                        Reflect.call(receiver, "getHandler") as? Handler
+                    } catch (e: Throwable) {
+                        null
+                    }
                 }
-            }
             if (h != null) {
                 XLog.w("${describe(OP_CALL)}：$name 是视图方法，post 到 ${h.looper.thread.name}")
                 h.post(doInvoke)
@@ -328,7 +356,10 @@ internal object ProbeChannel {
      *  · `bundle:k=v;k=v` —— 现构一个 `android.os.Bundle`（值按 int / boolean / String 猜；
      *    分隔符用 `;` 与 `=`，避开 `--esal` 的逗号）
      */
-    private fun coerce(args: List<String>, types: Array<Class<*>>): Array<Any?>? {
+    private fun coerce(
+        args: List<String>,
+        types: Array<Class<*>>,
+    ): Array<Any?>? {
         if (args.size != types.size) return null
         return Array(types.size) { i ->
             val s = args[i]
@@ -348,18 +379,37 @@ internal object ProbeChannel {
             // `Xxx::class.java` 是原始类型 int/long/…，`javaObjectType` 是装箱的 Integer/Long/…
             // （形参两种都可能出现）；写法上按 Kotlin 的类写，`java.lang.*::class.java` 会吃警告。
             when (types[i]) {
-                Int::class.java, Int::class.javaObjectType -> s.toIntOrNull() ?: return null
-                Long::class.java, Long::class.javaObjectType -> s.toLongOrNull() ?: return null
-                Float::class.java, Float::class.javaObjectType -> s.toFloatOrNull() ?: return null
-                Double::class.java, Double::class.javaObjectType -> s.toDoubleOrNull() ?: return null
-                Boolean::class.java, Boolean::class.javaObjectType ->
+                Int::class.java, Int::class.javaObjectType -> {
+                    s.toIntOrNull() ?: return null
+                }
+
+                Long::class.java, Long::class.javaObjectType -> {
+                    s.toLongOrNull() ?: return null
+                }
+
+                Float::class.java, Float::class.javaObjectType -> {
+                    s.toFloatOrNull() ?: return null
+                }
+
+                Double::class.java, Double::class.javaObjectType -> {
+                    s.toDoubleOrNull() ?: return null
+                }
+
+                Boolean::class.java, Boolean::class.javaObjectType -> {
                     when (s.lowercase()) {
                         "true", "1" -> true
                         "false", "0" -> false
                         else -> return null
                     }
-                String::class.java -> s
-                else -> null // 复杂类型不硬转；调用点会看到「接不住」并提示
+                }
+
+                String::class.java -> {
+                    s
+                }
+
+                else -> {
+                    null
+                } // 复杂类型不硬转；调用点会看到「接不住」并提示
             }
         }
     }
@@ -378,11 +428,12 @@ internal object ProbeChannel {
             val k = kv.substring(0, eq)
             val v = kv.substring(eq + 1)
             val i = v.toIntOrNull()
-            val bool = when (v.lowercase()) {
-                "true" -> true
-                "false" -> false
-                else -> null
-            }
+            val bool =
+                when (v.lowercase()) {
+                    "true" -> true
+                    "false" -> false
+                    else -> null
+                }
             when {
                 i != null -> b.putInt(k, i)
                 bool != null -> b.putBoolean(k, bool)
@@ -392,38 +443,63 @@ internal object ProbeChannel {
         return b
     }
 
-    private fun resolveReceiver(loader: ClassLoader, target: String, intent: Intent): Any? = try {
-        when (target) {
-            TARGET_STATIC -> null
-            // 拿任务 / TaskExt 当接收者 —— 探状态时最常用的两个（否则只能退成静态调用）
-            TARGET_TASK -> taskOf(loader, intent.getIntExtra(EXTRA_TASK_ID, -1))
-            TARGET_EXT -> taskOf(loader, intent.getIntExtra(EXTRA_TASK_ID, -1))?.let { extOf(it) }
-            TARGET_CAPTION -> taskOf(loader, intent.getIntExtra(EXTRA_TASK_ID, -1))
-                ?.let { captionViewOf(loader, it) }
-            TARGET_SINGLETON -> singletonOf(loader, intent.getStringExtra(EXTRA_CLS).orEmpty())
-            TARGET_SERVICE -> {
-                val cls = Reflect.findClass(loader, SERVICE_CLASS)
-                val instance = cls?.let { Reflect.callStatic(it, "getInstance", null) }
-                    ?: cls?.let { Reflect.callStatic(it, "getInstance") }
-                instance ?: run {
-                    XLog.w("probe：$SERVICE_CLASS.getInstance(...) 拿不到，退成静态路径")
+    private fun resolveReceiver(
+        loader: ClassLoader,
+        target: String,
+        intent: Intent,
+    ): Any? =
+        try {
+            when (target) {
+                TARGET_STATIC -> {
+                    null
+                }
+
+                // 拿任务 / TaskExt 当接收者 —— 探状态时最常用的两个（否则只能退成静态调用）
+                TARGET_TASK -> {
+                    taskOf(loader, intent.getIntExtra(EXTRA_TASK_ID, -1))
+                }
+
+                TARGET_EXT -> {
+                    taskOf(loader, intent.getIntExtra(EXTRA_TASK_ID, -1))?.let { extOf(it) }
+                }
+
+                TARGET_CAPTION -> {
+                    taskOf(loader, intent.getIntExtra(EXTRA_TASK_ID, -1))
+                        ?.let { captionViewOf(loader, it) }
+                }
+
+                TARGET_SINGLETON -> {
+                    singletonOf(loader, intent.getStringExtra(EXTRA_CLS).orEmpty())
+                }
+
+                TARGET_SERVICE -> {
+                    val cls = Reflect.findClass(loader, SERVICE_CLASS)
+                    val instance =
+                        cls?.let { Reflect.callStatic(it, "getInstance", null) }
+                            ?: cls?.let { Reflect.callStatic(it, "getInstance") }
+                    instance ?: run {
+                        XLog.w("probe：$SERVICE_CLASS.getInstance(...) 拿不到，退成静态路径")
+                        null
+                    }
+                }
+
+                else -> {
+                    XLog.w("probe/call：target=$target 目前只有 static / service / task / ext / caption / singleton")
                     null
                 }
             }
-            else -> {
-                XLog.w("probe/call：target=$target 目前只有 static / service / task / ext / caption / singleton")
-                null
-            }
+        } catch (e: Throwable) {
+            XLog.w("probe：拿 target=$target 的接收者失败：${e.message}")
+            null
         }
-    } catch (e: Throwable) {
-        XLog.w("probe：拿 target=$target 的接收者失败：${e.message}")
-        null
-    }
 
     // ── op: state ────────────────────────────────────────────────────────────
 
     /** 只读打印：目标任务的三样东西 —— 窗口模式、几何、以及 TaskExt 上那组柔性状态字段。 */
-    private fun state(loader: ClassLoader, intent: Intent) {
+    private fun state(
+        loader: ClassLoader,
+        intent: Intent,
+    ) {
         val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
         val task = taskOf(loader, taskId)
         if (task == null) {
@@ -438,20 +514,22 @@ internal object ProbeChannel {
         }
         listOf("mScenario", "mHasCaption", "mFlexibleZoomState", "mCaptionName", "mFlexibleWindowState")
             .forEach { f ->
-                val v = try {
-                    Reflect.fieldValue(ext, ext.javaClass, f) ?: "（没有这个字段）"
-                } catch (e: Throwable) {
-                    "（读失败 ${e.javaClass.simpleName}）"
-                }
+                val v =
+                    try {
+                        Reflect.fieldValue(ext, ext.javaClass, f) ?: "（没有这个字段）"
+                    } catch (e: Throwable) {
+                        "（读失败 ${e.javaClass.simpleName}）"
+                    }
                 XLog.w("probe/state  ext.$f = $v")
             }
         // 操作条视图到底建出来了没有 —— 这是 C 方案要回答的第一个问题
         listOf("getFlexibleCaptionView", "getCaptionView", "mCaptionView").forEach { n ->
-            val v = try {
-                Reflect.call(ext, n) ?: Reflect.fieldValue(ext, ext.javaClass, n)
-            } catch (e: Throwable) {
-                null
-            }
+            val v =
+                try {
+                    Reflect.call(ext, n) ?: Reflect.fieldValue(ext, ext.javaClass, n)
+                } catch (e: Throwable) {
+                    null
+                }
             if (v != null) {
                 XLog.w("probe/state  ext.$n → $v")
                 // 视图在不在是一回事，它有没有真的显示出来是另一回事 —— 这一位就是「挂上/显示了没有」
@@ -469,13 +547,17 @@ internal object ProbeChannel {
      * `SurfaceControl.Transaction#setCornerRadius` 是**公开 API**，所以这一半不依赖任何私有签名；
      * 困难只在「从 Task 拿到 SurfaceControl」，候选名逐个试并把命中的写进日志。
      */
-    private fun corner(loader: ClassLoader, intent: Intent) {
+    private fun corner(
+        loader: ClassLoader,
+        intent: Intent,
+    ) {
         val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
-        val radius = if (intent.hasExtra(EXTRA_RADIUS)) {
-            intent.getFloatExtra(EXTRA_RADIUS, DEFAULT_CORNER_RADIUS)
-        } else {
-            DEFAULT_CORNER_RADIUS
-        }
+        val radius =
+            if (intent.hasExtra(EXTRA_RADIUS)) {
+                intent.getFloatExtra(EXTRA_RADIUS, DEFAULT_CORNER_RADIUS)
+            } else {
+                DEFAULT_CORNER_RADIUS
+            }
         val task = taskOf(loader, taskId)
         if (task == null) {
             XLog.w("${describe(OP_CORNER)}：拿不到任务 #$taskId")
@@ -485,7 +567,11 @@ internal object ProbeChannel {
     }
 
     /** 给一个任务的窗口 surface 设圆角（`corner` 与 `dress` 共用）。 */
-    private fun cornerOn(task: Any, radius: Float, taskId: Int) {
+    private fun cornerOn(
+        task: Any,
+        radius: Float,
+        taskId: Int,
+    ) {
         val sc = surfaceControlOf(task)
         if (sc == null) {
             XLog.w("${describe(OP_CORNER)}：从任务 #$taskId 上拿不到 SurfaceControl（候选名都没命中）")
@@ -495,10 +581,13 @@ internal object ProbeChannel {
         try {
             // `setCornerRadius(SurfaceControl, float)` 在公开 SDK 里没有（`SurfaceControl` 类本身有），
             // 所以这里也得走反射 —— 同样按**原始类型**取 Method（Float 装箱坑）。
-            val m = Reflect.method(
-                tx.javaClass, "setCornerRadius",
-                android.view.SurfaceControl::class.java, java.lang.Float.TYPE,
-            )
+            val m =
+                Reflect.method(
+                    tx.javaClass,
+                    "setCornerRadius",
+                    android.view.SurfaceControl::class.java,
+                    java.lang.Float.TYPE,
+                )
             if (m == null) {
                 XLog.w("${describe(OP_CORNER)}：这个 ROM 的 Transaction 上没有 setCornerRadius(SurfaceControl,float)")
                 return
@@ -521,7 +610,10 @@ internal object ProbeChannel {
      * `FlexibleWindowManagerService.createFlexibleCaptionView(Task, String)`、
      * `FlexibleCaptionView.initCaptionViewAndAttachToTask(Task, Rect)`、`showCaptionViewWithAnim()`。
      */
-    private fun dress(loader: ClassLoader, intent: Intent) {
+    private fun dress(
+        loader: ClassLoader,
+        intent: Intent,
+    ) {
         val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
         val task = taskOf(loader, taskId)
         if (task == null) {
@@ -548,57 +640,60 @@ internal object ProbeChannel {
         // attach 的第二个参数**就是操作条自己的尺寸**（不是任务 bounds）——
         // 真机实测：传任务 bounds 它就把视图撑成整窗（getWidth/Height == 任务尺寸）。
         // 所以这里允许显式传 rect（`--ei rect_r 1272 --ei rect_b 157` 一类），不传才退回任务 bounds。
-        val bounds = if (intent.hasExtra(EXTRA_RECT_R)) {
-            android.graphics.Rect(
-                intent.getIntExtra(EXTRA_RECT_L, 0),
-                intent.getIntExtra(EXTRA_RECT_T, 0),
-                intent.getIntExtra(EXTRA_RECT_R, 0),
-                intent.getIntExtra(EXTRA_RECT_B, 0),
-            )
-        } else {
-            Reflect.call(task, "getBounds")
-        }
+        val bounds =
+            if (intent.hasExtra(EXTRA_RECT_R)) {
+                android.graphics.Rect(
+                    intent.getIntExtra(EXTRA_RECT_L, 0),
+                    intent.getIntExtra(EXTRA_RECT_T, 0),
+                    intent.getIntExtra(EXTRA_RECT_R, 0),
+                    intent.getIntExtra(EXTRA_RECT_B, 0),
+                )
+            } else {
+                Reflect.call(task, "getBounds")
+            }
 
         // 注意：**这两步必须在视图自己的线程上做**。视图属于 `android.ui` 线程，而从 AMS 广播入口进来是
         // binder 线程 —— 直接调会抛 `CalledFromWrongThreadException`（真机实测）。
         // 用**视图自己的 Handler**（`View.getHandler()`）post 过去，线程一定对，不用猜是哪个 looper。
-        val work = Runnable {
-            if (doCaption) {
-                // 先 init 再 attach：attach 假定视图已经初始化过
-                if (doInit) {
-                    XLog.w("${describe(OP_DRESS)}：initCaptionView → ${invokeOn(view, "initCaptionView")}")
+        val work =
+            Runnable {
+                if (doCaption) {
+                    // 先 init 再 attach：attach 假定视图已经初始化过
+                    if (doInit) {
+                        XLog.w("${describe(OP_DRESS)}：initCaptionView → ${invokeOn(view, "initCaptionView")}")
+                    }
+                    XLog.w(
+                        "${describe(OP_DRESS)}：initCaptionViewAndAttachToTask($bounds) → " +
+                            invokeOn(view, "initCaptionViewAndAttachToTask", task, bounds),
+                    )
                 }
-                XLog.w(
-                    "${describe(OP_DRESS)}：initCaptionViewAndAttachToTask($bounds) → " +
-                        invokeOn(view, "initCaptionViewAndAttachToTask", task, bounds),
-                )
+                if (doShow) {
+                    XLog.w("${describe(OP_DRESS)}：showCaptionViewWithAnim → ${invokeOn(view, "showCaptionViewWithAnim")}")
+                    XLog.w(
+                        "${describe(OP_DRESS)}：updateFlexibleTaskCaptionVisible(true) → " +
+                            invokeOn(view, "updateFlexibleTaskCaptionVisible", task, true),
+                    )
+                }
+                // 尺寸对了之后还得让它重排 / 换模式：`handleButtonRegion` 空着说明手柄区没算出来
+                if (intent.getBooleanExtra(EXTRA_RELAYOUT, false)) {
+                    XLog.w("${describe(OP_DRESS)}：onRelayoutCaptionView → ${invokeOn(view, "onRelayoutCaptionView")}")
+                }
+                if (intent.getBooleanExtra(EXTRA_MODE, false)) {
+                    XLog.w("${describe(OP_DRESS)}：updateCaptionViewMode(true) → ${invokeOn(view, "updateCaptionViewMode", true)}")
+                }
+                if (intent.getBooleanExtra(EXTRA_TOUCH, false)) {
+                    // 触及区域是它算的：不算就没有 handleButtonRegion，操作条画得出来但点不动
+                    XLog.w("${describe(OP_DRESS)}：updateTouchRegion → ${invokeOn(view, "updateTouchRegion")}")
+                }
+                XLog.w("${describe(OP_DRESS)}：mCaptionViewSurfaceShow = ${fieldOf(view, "mCaptionViewSurfaceShow")}")
+                stateOfCaptionView(view)
             }
-            if (doShow) {
-                XLog.w("${describe(OP_DRESS)}：showCaptionViewWithAnim → ${invokeOn(view, "showCaptionViewWithAnim")}")
-                XLog.w(
-                    "${describe(OP_DRESS)}：updateFlexibleTaskCaptionVisible(true) → " +
-                        invokeOn(view, "updateFlexibleTaskCaptionVisible", task, true),
-                )
+        val viewHandler =
+            try {
+                Reflect.call(view, "getHandler") as? Handler
+            } catch (e: Throwable) {
+                null
             }
-            // 尺寸对了之后还得让它重排 / 换模式：`handleButtonRegion` 空着说明手柄区没算出来
-            if (intent.getBooleanExtra(EXTRA_RELAYOUT, false)) {
-                XLog.w("${describe(OP_DRESS)}：onRelayoutCaptionView → ${invokeOn(view, "onRelayoutCaptionView")}")
-            }
-            if (intent.getBooleanExtra(EXTRA_MODE, false)) {
-                XLog.w("${describe(OP_DRESS)}：updateCaptionViewMode(true) → ${invokeOn(view, "updateCaptionViewMode", true)}")
-            }
-            if (intent.getBooleanExtra(EXTRA_TOUCH, false)) {
-                // 触及区域是它算的：不算就没有 handleButtonRegion，操作条画得出来但点不动
-                XLog.w("${describe(OP_DRESS)}：updateTouchRegion → ${invokeOn(view, "updateTouchRegion")}")
-            }
-            XLog.w("${describe(OP_DRESS)}：mCaptionViewSurfaceShow = ${fieldOf(view, "mCaptionViewSurfaceShow")}")
-            stateOfCaptionView(view)
-        }
-        val viewHandler = try {
-            Reflect.call(view, "getHandler") as? Handler
-        } catch (e: Throwable) {
-            null
-        }
         if (viewHandler != null) {
             XLog.w("${describe(OP_DRESS)}：把补壳两步 post 到视图自己的线程（${viewHandler.looper.thread.name}）")
             viewHandler.post(work)
@@ -623,17 +718,21 @@ internal object ProbeChannel {
      * 传 `ActivityOptions` 会 `argument type mismatch`，而 `Reflect.call` 内部 `runCatching` **把它吞了**
      * ——日志上只看到干干净净的 `→ null`，像「调了但没反应」。所以这里改成**直接 invoke + 显式打 cause**。
      */
-    private fun zoomFromHere(loader: ClassLoader, intent: Intent) {
+    private fun zoomFromHere(
+        loader: ClassLoader,
+        intent: Intent,
+    ) {
         val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
         val flags = intent.getIntExtra(EXTRA_FLAGS, DEFAULT_ZOOM_LAUNCH_FLAGS)
         if (taskId <= 0) {
             XLog.w("${describe(OP_ZOOM)}：要带 task_id")
             return
         }
-        val bundle = android.os.Bundle().apply {
-            putInt(KEY_WINDOWING_MODE, WINDOWING_MODE_ZOOM)
-            putInt(KEY_ZOOM_LAUNCH_FLAGS, flags)
-        }
+        val bundle =
+            android.os.Bundle().apply {
+                putInt(KEY_WINDOWING_MODE, WINDOWING_MODE_ZOOM)
+                putInt(KEY_ZOOM_LAUNCH_FLAGS, flags)
+            }
         val mgrCls = Reflect.findClass(loader, "android.app.OplusActivityTaskManager")
         val mgr = mgrCls?.let { Reflect.callStatic(it, "getInstance") }
         if (mgrCls == null || mgr == null) {
@@ -642,41 +741,48 @@ internal object ProbeChannel {
         }
         // 注意：用 getDeclaredMethod **精确签名**，不要走 Reflect.method —— 它会退化成「名字 + 参数个数」匹配，
         // 把 Bundle 形参误配上，错误再被 runCatching 吞掉（这正是上一轮的空转）。
-        val m = try {
-            mgrCls.getDeclaredMethod(METHOD_RECENTS_FLEXIBLE, java.lang.Integer.TYPE, android.os.Bundle::class.java)
-        } catch (e: NoSuchMethodException) {
-            null
-        }
+        val m =
+            try {
+                mgrCls.getDeclaredMethod(METHOD_RECENTS_FLEXIBLE, java.lang.Integer.TYPE, android.os.Bundle::class.java)
+            } catch (e: NoSuchMethodException) {
+                null
+            }
         if (m == null) {
             XLog.w("${describe(OP_ZOOM)}：没有 $METHOD_RECENTS_FLEXIBLE(int, Bundle)")
             return
         }
         m.isAccessible = true
-        val r = try {
-            m.invoke(mgr, taskId, bundle)
-        } catch (e: Throwable) {
-            XLog.w("${describe(OP_ZOOM)} 抛了：${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}")
-            return
-        }
+        val r =
+            try {
+                m.invoke(mgr, taskId, bundle)
+            } catch (e: Throwable) {
+                XLog.w("${describe(OP_ZOOM)} 抛了：${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}")
+                return
+            }
         // 返回值语义：2 = START_TASK_TO_FRONT（服务端受理并已 toggle）；0 = 没做任何事
         XLog.w("${describe(OP_ZOOM)}：$METHOD_RECENTS_FLEXIBLE(#$taskId, flags=$flags) → $r（2=已受理）")
     }
 
     /** 取任务的 caption view：先看 TaskExt 上有没有（通常已经有了），没有再让服务建一个。 */
-    private fun captionViewOf(loader: ClassLoader, task: Any): Any? {
+    private fun captionViewOf(
+        loader: ClassLoader,
+        task: Any,
+    ): Any? {
         val ext = extOf(task)
-        val existing = try {
-            ext?.let { Reflect.call(it, "getFlexibleCaptionView") }
-        } catch (e: Throwable) {
-            null
-        }
+        val existing =
+            try {
+                ext?.let { Reflect.call(it, "getFlexibleCaptionView") }
+            } catch (e: Throwable) {
+                null
+            }
         if (existing != null) return existing
         val service = serviceOf(loader) ?: return null
-        val name = try {
-            ext?.let { Reflect.call(it, "getCaptionName") } as? String
-        } catch (e: Throwable) {
-            null
-        }
+        val name =
+            try {
+                ext?.let { Reflect.call(it, "getCaptionName") } as? String
+            } catch (e: Throwable) {
+                null
+            }
         return invokeOn(service, "createFlexibleCaptionView", task, name)
     }
 
@@ -687,29 +793,38 @@ internal object ProbeChannel {
      * 直接打 `e.message` 只会得到「抛了 InvocationTargetException: null」，真实原因全丢。
      * 所以这里把 `cause` 链剥到最内层再打（真机上正是这么踩的）。
      */
-    private fun invokeOn(receiver: Any, name: String, vararg args: Any?): String = try {
-        val m = receiver.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == args.size }
-        if (m == null) {
-            "（$name/${args.size} 参不存在）"
-        } else {
-            m.isAccessible = true
-            "${m.invoke(receiver, *args)}"
+    private fun invokeOn(
+        receiver: Any,
+        name: String,
+        vararg args: Any?,
+    ): String =
+        try {
+            val m = receiver.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == args.size }
+            if (m == null) {
+                "（$name/${args.size} 参不存在）"
+            } else {
+                m.isAccessible = true
+                "${m.invoke(receiver, *args)}"
+            }
+        } catch (e: Throwable) {
+            "抛了 ${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}"
         }
-    } catch (e: Throwable) {
-        "抛了 ${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}"
-    }
 
-    /** 剥到最内层 cause 的那份实现已收到 `Reflect.deepestCause`（与 `FlexibleWindowBridge` 共用一份）。 */
+    // 剥到最内层 cause 的那份实现已收到 `Reflect.deepestCause`（与 `FlexibleWindowBridge` 共用一份）。
 
     /** 读字段：**要沿父类往上找** —— 很多状态字段声明在父类上，`getDeclaredField` 只看本类（真机踩过）。 */
-    private fun fieldOf(receiver: Any, name: String): String {
+    private fun fieldOf(
+        receiver: Any,
+        name: String,
+    ): String {
         var cls: Class<*>? = receiver.javaClass
         while (cls != null) {
-            val f = try {
-                cls.getDeclaredField(name)
-            } catch (e: NoSuchFieldException) {
-                null
-            }
+            val f =
+                try {
+                    cls.getDeclaredField(name)
+                } catch (e: NoSuchFieldException) {
+                    null
+                }
             if (f != null) {
                 return try {
                     f.isAccessible = true
@@ -737,11 +852,12 @@ internal object ProbeChannel {
         var depth = 0
         while (cur != null && depth < 6) {
             XLog.w("probe/state  ·父 $depth = ${cur.javaClass.name}")
-            cur = try {
-                Reflect.call(cur, "getParent")
-            } catch (e: Throwable) {
-                null
-            }
+            cur =
+                try {
+                    Reflect.call(cur, "getParent")
+                } catch (e: Throwable) {
+                    null
+                }
             depth++
         }
     }
@@ -751,7 +867,10 @@ internal object ProbeChannel {
      *
      * 每一步都打日志 —— 「哪一步拿到的」比「拿到了」更重要（拿不到时才判得出是方法名不对还是签名不对）。
      */
-    private fun singletonOf(loader: ClassLoader, clsName: String): Any? {
+    private fun singletonOf(
+        loader: ClassLoader,
+        clsName: String,
+    ): Any? {
         val cls = Reflect.findClass(loader, clsName)
         if (cls == null) {
             XLog.w("probe：singleton 找不到类 $clsName")
@@ -760,15 +879,16 @@ internal object ProbeChannel {
         for (arity in listOf(0, 1)) {
             val m = compatMethod(cls, "getInstance", arity) ?: continue
             val args = if (arity == 0) arrayOf<Any?>() else arrayOf<Any?>(null)
-            val v = try {
-                m.isAccessible = true
-                m.invoke(null, *args)
-            } catch (e: Throwable) {
-                XLog.w("probe：$clsName.getInstance(${arity} 参) 抛了：${Reflect.deepestCause(e).javaClass.simpleName}")
-                null
-            }
+            val v =
+                try {
+                    m.isAccessible = true
+                    m.invoke(null, *args)
+                } catch (e: Throwable) {
+                    XLog.w("probe：$clsName.getInstance($arity 参) 抛了：${Reflect.deepestCause(e).javaClass.simpleName}")
+                    null
+                }
             if (v != null) {
-                XLog.w("probe：$clsName 的单例来自 getInstance(${arity} 参) → ${v.javaClass.simpleName}")
+                XLog.w("probe：$clsName 的单例来自 getInstance($arity 参) → ${v.javaClass.simpleName}")
                 return v
             }
         }
@@ -777,35 +897,43 @@ internal object ProbeChannel {
     }
 
     /** 找一个静态、参数个数匹配的 `getInstance`（不挑参数类型，够用）。 */
-    private fun compatMethod(cls: Class<*>, name: String, arity: Int): java.lang.reflect.Method? =
+    private fun compatMethod(
+        cls: Class<*>,
+        name: String,
+        arity: Int,
+    ): java.lang.reflect.Method? =
         cls.methods.firstOrNull {
             it.name == name && it.parameterCount == arity &&
-                java.lang.reflect.Modifier.isStatic(it.modifiers)
+                java.lang.reflect.Modifier
+                    .isStatic(it.modifiers)
         }
 
-    private fun serviceOf(loader: ClassLoader): Any? = try {
-        val cls = Reflect.findClass(loader, SERVICE_CLASS)
-        cls?.let { Reflect.callStatic(it, "getInstance", null) }
-            ?: cls?.let { Reflect.callStatic(it, "getInstance") }
-    } catch (e: Throwable) {
-        null
-    }
+    private fun serviceOf(loader: ClassLoader): Any? =
+        try {
+            val cls = Reflect.findClass(loader, SERVICE_CLASS)
+            cls?.let { Reflect.callStatic(it, "getInstance", null) }
+                ?: cls?.let { Reflect.callStatic(it, "getInstance") }
+        } catch (e: Throwable) {
+            null
+        }
 
     /** 候选名逐个试 —— 不同 ColorOS 版本这里的方法名不一样。 */
     private fun surfaceControlOf(task: Any): android.view.SurfaceControl? {
-        val candidates = listOf<Pair<String, Array<Any?>>>(
-            "getSurfaceControl" to arrayOf(),
-            "getSurfaceControl" to arrayOf(false),
-            "getSurfaceControl" to arrayOf(true),
-        )
+        val candidates =
+            listOf<Pair<String, Array<Any?>>>(
+                "getSurfaceControl" to arrayOf(),
+                "getSurfaceControl" to arrayOf(false),
+                "getSurfaceControl" to arrayOf(true),
+            )
         for ((name, args) in candidates) {
-            val v = try {
-                val m = Reflect.methodByNameAndArity(task.javaClass, name, args.size) ?: continue
-                m.isAccessible = true
-                m.invoke(task, *args)
-            } catch (e: Throwable) {
-                null
-            }
+            val v =
+                try {
+                    val m = Reflect.methodByNameAndArity(task.javaClass, name, args.size) ?: continue
+                    m.isAccessible = true
+                    m.invoke(task, *args)
+                } catch (e: Throwable) {
+                    null
+                }
             if (v is android.view.SurfaceControl) {
                 XLog.w("probe/corner：SurfaceControl 来自 $name(${args.size} 参)")
                 return v
@@ -820,36 +948,45 @@ internal object ProbeChannel {
     private const val FIELD_ATMS = "mAtms"
     private const val FIELD_ROOT = "mRootWindowContainer"
 
-    private fun taskOf(loader: ClassLoader, taskId: Int): Any? = try {
-        if (taskId <= 0) {
-            null
-        } else {
-            val cls = Reflect.findClass(loader, SERVICE_CLASS)
-            val service = cls?.let { Reflect.callStatic(it, "getInstance", null) }
-                ?: cls?.let { Reflect.callStatic(it, "getInstance") }
-            val controller = service?.let { Reflect.call(it, "getFlexibleTaskController") }
-            val atms = controller?.let { Reflect.fieldValue(it, it.javaClass, FIELD_ATMS) }
-            val root = atms?.let { Reflect.fieldValue(it, it.javaClass, FIELD_ROOT) }
-            if (root == null) {
+    private fun taskOf(
+        loader: ClassLoader,
+        taskId: Int,
+    ): Any? =
+        try {
+            if (taskId <= 0) {
                 null
             } else {
-                // Int 会被装箱成 Integer，必须显式按原始类型取 Method（见 FlexibleWindowBridge 的装箱坑）
-                val m = Reflect.method(
-                    root.javaClass, "anyTaskForId",
-                    java.lang.Integer.TYPE, java.lang.Integer.TYPE,
-                )
-                m?.let { Reflect.call(root, it, taskId, 0) }
+                val cls = Reflect.findClass(loader, SERVICE_CLASS)
+                val service =
+                    cls?.let { Reflect.callStatic(it, "getInstance", null) }
+                        ?: cls?.let { Reflect.callStatic(it, "getInstance") }
+                val controller = service?.let { Reflect.call(it, "getFlexibleTaskController") }
+                val atms = controller?.let { Reflect.fieldValue(it, it.javaClass, FIELD_ATMS) }
+                val root = atms?.let { Reflect.fieldValue(it, it.javaClass, FIELD_ROOT) }
+                if (root == null) {
+                    null
+                } else {
+                    // Int 会被装箱成 Integer，必须显式按原始类型取 Method（见 FlexibleWindowBridge 的装箱坑）
+                    val m =
+                        Reflect.method(
+                            root.javaClass,
+                            "anyTaskForId",
+                            java.lang.Integer.TYPE,
+                            java.lang.Integer.TYPE,
+                        )
+                    m?.let { Reflect.call(root, it, taskId, 0) }
+                }
             }
+        } catch (e: Throwable) {
+            XLog.w("probe：拿任务 #$taskId 失败：${e.message}")
+            null
         }
-    } catch (e: Throwable) {
-        XLog.w("probe：拿任务 #$taskId 失败：${e.message}")
-        null
-    }
 
-    private fun extOf(task: Any): Any? = try {
-        val wrapper = Reflect.call(task, "getWrapper") ?: return null
-        Reflect.call(wrapper, "getExtImpl")
-    } catch (e: Throwable) {
-        null
-    }
+    private fun extOf(task: Any): Any? =
+        try {
+            val wrapper = Reflect.call(task, "getWrapper") ?: return null
+            Reflect.call(wrapper, "getExtImpl")
+        } catch (e: Throwable) {
+            null
+        }
 }

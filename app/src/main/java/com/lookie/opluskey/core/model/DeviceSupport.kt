@@ -29,7 +29,6 @@ import com.lookie.opluskey.ENFORCE_DEVICE_GATE
  * —— 判定照算、日志照打，只是不据此拒绝注入（理由见 `BuildFlags` 里那一份的注释）。release 必须打开。
  */
 object DeviceSupport {
-
     /**
      * 清单里的一台机器。
      *
@@ -52,9 +51,10 @@ object DeviceSupport {
      * 加机型、加一版 ROM 都在这里加一行（同一机型多版 ROM 就多行），**并在真机上把接管点重新验一遍**
      * —— 那些类与方法都是 ROM 私有的，没验过就写进来等于赌用户来做实验。
      */
-    private val ADAPTED = listOf(
-        Adapted(model = "PLK110", name = "一加 15（PLK110）", android = "17", rom = "17.0.0"),
-    )
+    private val ADAPTED =
+        listOf(
+            Adapted(model = "PLK110", name = "一加 15（PLK110）", android = "17", rom = "17.0.0"),
+        )
 
     /** 判定结果（三档的口径见文件头）。 */
     enum class Support {
@@ -79,7 +79,11 @@ object DeviceSupport {
      * 版本**读不出来时不拦**（按 [Support.ADAPTED] 走）：读不出来是「我们没读到」，不是「用户版本
      * 不对」—— 拿它去锁，一台版本其实正常的机器会被整页禁用（要拦的是「读到了、且不是那一档」）。
      */
-    fun check(model: String?, android: String?, rom: String?): Support {
+    fun check(
+        model: String?,
+        android: String?,
+        rom: String?,
+    ): Support {
         if (!ENFORCE_DEVICE_GATE) return Support.ADAPTED
         val m = model?.trim()?.uppercase().orEmpty()
         if (m.isEmpty()) return Support.UNSUPPORTED
@@ -103,11 +107,14 @@ object DeviceSupport {
      * 交给 [check] 按「读不出来不拦」处理。
      */
     fun romSeriesOf(display: String?): String {
-        val parts = display?.substringBefore('(')?.trim()
-            ?.substringAfter('_', "")
-            ?.split('.')
-            ?.filter { it.isNotEmpty() }
-            ?: return ""
+        val parts =
+            display
+                ?.substringBefore('(')
+                ?.trim()
+                ?.substringAfter('_', "")
+                ?.split('.')
+                ?.filter { it.isNotEmpty() }
+                ?: return ""
         if (parts.size < 3) return ""
         val head = parts.take(3)
         return if (head.all { seg -> seg.all { c -> c.isDigit() } }) head.joinToString(".") else ""
@@ -137,7 +144,10 @@ object DeviceSupport {
     }
 
     /** 日志用：把系统版本拼成一句；哪一半读不出来就省哪一半。 */
-    fun systemOf(android: String?, rom: String?): String {
+    fun systemOf(
+        android: String?,
+        rom: String?,
+    ): String {
         val a = android?.trim().orEmpty()
         val r = rom?.trim().orEmpty()
         return when {

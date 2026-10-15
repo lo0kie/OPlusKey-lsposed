@@ -1,10 +1,10 @@
 package com.lookie.opluskey.ui.model
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -127,10 +127,11 @@ internal val SLIDER_BOTTOM_INSET = 10.dp
  */
 internal val SLIDER_ICON_INSET = 30.dp
 
-internal val SLIDER_INSIDE_MARGIN = PaddingValues(
-    horizontal = SLIDER_SIDE_INSET,
-    vertical = SLIDER_BOTTOM_INSET,
-)
+internal val SLIDER_INSIDE_MARGIN =
+    PaddingValues(
+        horizontal = SLIDER_SIDE_INSET,
+        vertical = SLIDER_BOTTOM_INSET,
+    )
 
 /** 卡片组首尾行在 `BasicComponent` 里额外补的上下边距（`coui_list_card_head_or_tail_padding`）。 */
 internal val CARD_EDGE_PADDING = 2.dp
@@ -156,27 +157,30 @@ internal val APP_PICKER_TITLE: String
  *  [Gesture.label] 是枚举里的中文原文，注入侧与宿主侧也读它（那些地方不引界面层），
  *  所以译文在界面这一层过 —— 别去改枚举。
  */
-internal fun gestureLabel(gesture: Gesture): String = when (gesture) {
-    Gesture.SINGLE -> I18n.get(Strings.GESTURE_SINGLE, "单击")
-    Gesture.DOUBLE -> I18n.get(Strings.GESTURE_DOUBLE, "双击")
-    Gesture.LONG -> I18n.get(Strings.GESTURE_LONG, "长按")
-}
+internal fun gestureLabel(gesture: Gesture): String =
+    when (gesture) {
+        Gesture.SINGLE -> I18n.get(Strings.GESTURE_SINGLE, "单击")
+        Gesture.DOUBLE -> I18n.get(Strings.GESTURE_DOUBLE, "双击")
+        Gesture.LONG -> I18n.get(Strings.GESTURE_LONG, "长按")
+    }
 
 /** 「单条命令 / 多条命令」两个分段标题，理由同上。 */
-internal fun commandKindLabel(kind: CommandKind): String = when (kind) {
-    CommandKind.SINGLE -> I18n.get(Strings.COMMAND_TYPE_SINGLE, "单条命令")
-    CommandKind.SERIAL -> I18n.get(Strings.COMMAND_TYPE_SERIAL, "多条命令")
-}
+internal fun commandKindLabel(kind: CommandKind): String =
+    when (kind) {
+        CommandKind.SINGLE -> I18n.get(Strings.COMMAND_TYPE_SINGLE, "单条命令")
+        CommandKind.SERIAL -> I18n.get(Strings.COMMAND_TYPE_SERIAL, "多条命令")
+    }
 
 /**
  * 语言档位在界面上叫什么 —— 「语言」那一行的副标题与它那一层菜单共用这一份
  *（[AppLanguage.label] 是枚举里的中文原文）。
  */
-internal fun languageLabel(lang: AppLanguage): String = when (lang) {
-    AppLanguage.AUTO -> I18n.get(Strings.MORE_LANGUAGE_AUTO, "跟随系统")
-    AppLanguage.ZH_CN -> I18n.get(Strings.MORE_LANGUAGE_ZH, "简体中文")
-    AppLanguage.EN -> I18n.get(Strings.MORE_LANGUAGE_EN, "English")
-}
+internal fun languageLabel(lang: AppLanguage): String =
+    when (lang) {
+        AppLanguage.AUTO -> I18n.get(Strings.MORE_LANGUAGE_AUTO, "跟随系统")
+        AppLanguage.ZH_CN -> I18n.get(Strings.MORE_LANGUAGE_ZH, "简体中文")
+        AppLanguage.EN -> I18n.get(Strings.MORE_LANGUAGE_EN, "English")
+    }
 
 /**
  * 「更多选项」页的标题（首页「其他 → 更多选项」那一行进入；这是**唯一入口**）。
@@ -259,13 +263,14 @@ internal val DISCLAIMER_TITLE: String
  * 真出事时该怎么救写在 README 里 —— 那一步不放在这里（出问题时打不开这个页面）。
  */
 internal val DISCLAIMER_TEXT: String
-    get() = I18n.get(
-        Strings.DIALOG_DISCLAIMER_CONTENT,
-        "本模块会把代码注入系统进程，属于非官方改动。可能出现：\n\n" +
+    get() =
+        I18n.get(
+            Strings.DIALOG_DISCLAIMER_CONTENT,
+            "本模块会将代码注入系统进程，属于非官方改动。可能出现：\n\n" +
                 "- 按键失灵、功能异常\n" +
-                "- 极端情况下开不了机\n\n" +
+                "- 极端情况下无法开机\n\n" +
                 "请确认你已知晓并**自行承担风险**。",
-    )
+        )
 
 /**
  * 「添加命令」选择器浮层的最大高度 —— 取 320dp。
@@ -529,10 +534,11 @@ internal val GRID_GAP = PAGE_MARGIN
 internal val GRID_ROW_GAP = GRID_GAP
 
 /** 全局统一颜色过渡曲线与时长（200ms 柔和减速，供全仓状态颜色切换）。 */
-internal val COLOR_TRANSITION_SPEC = tween<Color>(
-    durationMillis = 200,
-    easing = LinearOutSlowInEasing,
-)
+internal val COLOR_TRANSITION_SPEC =
+    tween<Color>(
+        durationMillis = 200,
+        easing = LinearOutSlowInEasing,
+    )
 
 /** 进场减速曲线：初段轻快响应、末段平滑收敛（ColorOS 系统标定减速曲线）。 */
 internal val EASING_EMPHASIZED_DECEL = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -557,18 +563,18 @@ internal const val TAB_PAGE_SWITCH_MS = 260
 /** 动态显隐统一进场：淡入 + 纵向柔和展开（对齐顶边缘向下推开）。 */
 internal val VISIBILITY_ENTER: EnterTransition =
     fadeIn(tween(180, easing = LinearOutSlowInEasing)) +
-            expandVertically(
-                animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
-                expandFrom = Alignment.Top,
-            )
+        expandVertically(
+            animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+            expandFrom = Alignment.Top,
+        )
 
 /** 统一出场：先快淡出（避免文字被截断挤压）+ 纵向利落收缩。 */
 internal val VISIBILITY_EXIT: ExitTransition =
     fadeOut(tween(120, easing = FastOutLinearInEasing)) +
-            shrinkVertically(
-                animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
-                shrinkTowards = Alignment.Top,
-            )
+        shrinkVertically(
+            animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
+            shrinkTowards = Alignment.Top,
+        )
 
 /**
  * 多条命令列表步骤专属进场动效：
@@ -576,13 +582,13 @@ internal val VISIBILITY_EXIT: ExitTransition =
  */
 internal val STEP_ROW_ENTER: EnterTransition =
     fadeIn(tween(200, easing = LinearOutSlowInEasing)) +
-            expandVertically(
-                animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
-                expandFrom = Alignment.Top,
-            ) +
-            slideInVertically(
-                animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
-            ) { -it / 3 }
+        expandVertically(
+            animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
+            expandFrom = Alignment.Top,
+        ) +
+        slideInVertically(
+            animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
+        ) { -it / 3 }
 
 /**
  * 多条命令列表步骤专属退场动效：
@@ -590,13 +596,13 @@ internal val STEP_ROW_ENTER: EnterTransition =
  */
 internal val STEP_ROW_EXIT: ExitTransition =
     fadeOut(tween(120, easing = FastOutLinearInEasing)) +
-            shrinkVertically(
-                animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
-                shrinkTowards = Alignment.Top,
-            ) +
-            slideOutVertically(
-                animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
-            ) { -it / 4 }
+        shrinkVertically(
+            animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
+            shrinkTowards = Alignment.Top,
+        ) +
+        slideOutVertically(
+            animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
+        ) { -it / 4 }
 
 /**
  * 「支持的命令格式」卡里的一行。
@@ -605,7 +611,10 @@ internal val STEP_ROW_EXIT: ExitTransition =
  * @param prefix 行尾那颗小 `+` 往「命令」输入框里填的前缀（`shell:` / `keyevent:` …）；
  *   `null` = 这一行没有可填的前缀，行尾不画 `+`。
  */
-internal data class CommandFormatLine(val text: String, val prefix: String? = null)
+internal data class CommandFormatLine(
+    val text: String,
+    val prefix: String? = null,
+)
 
 /**
  * 「支持的命令格式」卡上的几行 —— 讲**命令输入框里能写什么**。
@@ -618,14 +627,15 @@ internal data class CommandFormatLine(val text: String, val prefix: String? = nu
  *  点带 `prefix` 的那一行 = 把前缀**替换**进命令输入框（不是追加，见渲染点的注释）。
  */
 internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
-    get() = listOf(
-        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_DEFAULT_SHELL, "默认为 shell 命令")),
-        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令> —— 执行 shell 命令"), "shell:"),
-        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键> —— 模拟按键"), "keyevent:"),
-        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action> —— 发送 Intent"), "intent:"),
-        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID> —— 触发快捷方式"), "shortcut:"),
-        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_CMD, "cmd:<名字> —— 调用另一条单条命令"), "cmd:"),
-    )
+    get() =
+        listOf(
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_DEFAULT_SHELL, "默认为 shell 命令")),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令> —— 执行 shell 命令"), "shell:"),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键> —— 模拟按键"), "keyevent:"),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action> —— 发送 Intent"), "intent:"),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID> —— 触发快捷方式"), "shortcut:"),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_CMD, "cmd:<名字> —— 调用另一条单条命令"), "cmd:"),
+        )
 
 /**
  * 「按键绑定」主开关为关时分段控件的不透明度 —— 0.4。
@@ -668,16 +678,18 @@ internal const val PAGE_SETTLE_STIFFNESS = 293f
  */
 internal val PAGE_TRANSITION: NavTransition by lazy {
     object : NavTransition by NavTransitions.COUIDefault {
-        override val motion: NavMotion = NavMotion(
-            programmatic = NavSettleSpec.Tween(
-                durationMillis = PAGE_TRANSITION_MS,
-                easing = CubicBezierEasing(0.2f, 0f, 0f, 1f),
-            ),
-            //  手势提交 / 取消必须是弹簧：带速度的 settle 不吃 programmatic 曲线（Tween 带不上速度，库退回默认弹簧 ≈500ms）；
-            // 刚度抬到 [PAGE_SETTLE_STIFFNESS]，让点返回与手势松手都收敛在 ~350ms。
-            commit = NavSettleSpec.Spring(stiffness = PAGE_SETTLE_STIFFNESS),
-            cancel = NavSettleSpec.Spring(stiffness = PAGE_SETTLE_STIFFNESS),
-        )
+        override val motion: NavMotion =
+            NavMotion(
+                programmatic =
+                    NavSettleSpec.Tween(
+                        durationMillis = PAGE_TRANSITION_MS,
+                        easing = CubicBezierEasing(0.2f, 0f, 0f, 1f),
+                    ),
+                //  手势提交 / 取消必须是弹簧：带速度的 settle 不吃 programmatic 曲线（Tween 带不上速度，库退回默认弹簧 ≈500ms）；
+                // 刚度抬到 [PAGE_SETTLE_STIFFNESS]，让点返回与手势松手都收敛在 ~350ms。
+                commit = NavSettleSpec.Spring(stiffness = PAGE_SETTLE_STIFFNESS),
+                cancel = NavSettleSpec.Spring(stiffness = PAGE_SETTLE_STIFFNESS),
+            )
     }
 }
 

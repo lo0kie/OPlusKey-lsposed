@@ -23,7 +23,6 @@ import com.lookie.opluskey.ui.SettingsPageHooks
  *  顺带它也把宿主主进程自己重来一遍 —— 宿主侧的代码同样需要重新加载。
  */
 internal object PageRelaunch {
-
     /**
      * 等页面进程**死透**再叫它。
      *
@@ -73,18 +72,18 @@ internal object PageRelaunch {
     }
 
     /** @return 拉起请求有没有发出去（见 [schedule] 里那条「失败就不自杀」的纪律）。 */
-    private fun startPage(ctx: Context): Boolean = try {
-        ctx.startActivity(
-            Intent()
-                .setComponent(
-                    ComponentName(KeyModule.PAGE_PACKAGE, SettingsPageHooks.SETTINGS_ACTIVITY),
-                )
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
-        XLog.w("页面重启：已发出拉起请求（${SettingsPageHooks.SETTINGS_ACTIVITY}）")
-        true
-    } catch (e: Throwable) {
-        XLog.w("页面重启：拉起设置页失败（${e.javaClass.simpleName}: ${e.message}）")
-        false
-    }
+    private fun startPage(ctx: Context): Boolean =
+        try {
+            ctx.startActivity(
+                Intent()
+                    .setComponent(
+                        ComponentName(KeyModule.PAGE_PACKAGE, SettingsPageHooks.SETTINGS_ACTIVITY),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            XLog.w("页面重启：已发出拉起请求（${SettingsPageHooks.SETTINGS_ACTIVITY}）")
+            true
+        } catch (e: Throwable) {
+            XLog.w("页面重启：拉起设置页失败（${e.javaClass.simpleName}: ${e.message}）")
+            false
+        }
 }

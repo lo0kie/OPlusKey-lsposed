@@ -21,30 +21,29 @@ import com.lookie.opluskey.ui.model.NIGHT_POLL_MS
 import com.lookie.opluskey.ui.model.NIGHT_RETRY_MS
 import kotlinx.coroutines.launch
 
-/**
- * 主题：深浅色判定/取色与系统主题同步。
- *
- * 从 `SettingsPage.kt` 按职责拆出：成员改为 [SettingsPage]
- * 的扩展/同包顶层声明，调用点零改动。
- */
+// 主题：深浅色判定/取色与系统主题同步。
+//
+// 从 `SettingsPage.kt` 按职责拆出：成员改为 [SettingsPage]
+// 的扩展/同包顶层声明，调用点零改动。
+
 /** 页面底色 —— COUI 色板的 `surface`（深色 `#000000`、浅色 `#F0F1F2`，与系统设置页一致）。 */
 internal val SettingsPage.pageBackgroundColor: Int
     get() = colorsFor(dark.value).surface.toArgb()
 
-internal fun SettingsPage.colorsFor(night: Boolean) =
-    if (night) DARK_SCHEME else LIGHT_SCHEME
+internal fun SettingsPage.colorsFor(night: Boolean) = if (night) DARK_SCHEME else LIGHT_SCHEME
 
 /**
  * 系统当前是不是深色 —— 读系统全局配置；不能用 Activity / Application 的 `configuration`
  * （宿主声明了 `configChanges=uiMode`）。
  */
-internal fun SettingsPage.systemNight(): Boolean = try {
-    val uiMode = Resources.getSystem().configuration.uiMode
-    (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-} catch (e: Throwable) {
-    XLog.d("读系统深浅失败：${e.message}")
-    dark.value
-}
+internal fun SettingsPage.systemNight(): Boolean =
+    try {
+        val uiMode = Resources.getSystem().configuration.uiMode
+        (uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    } catch (e: Throwable) {
+        XLog.d("读系统深浅失败：${e.message}")
+        dark.value
+    }
 
 /** 系统切深浅时同步给 hook 侧（顶栏与状态栏配色）。 */
 @Composable
@@ -57,29 +56,32 @@ internal fun SettingsPage.SyncToHost() {
     val scope = rememberCoroutineScope()
     DisposableEffect(Unit) {
         var retry: kotlinx.coroutines.Job? = null
-        val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean) {
-                XLog.d("推送：$NIGHT_MODE_KEY 变了（连查 ${NIGHT_RETRY_MS.size} 次）")
-                retry?.cancel()
-                retry = scope.launch {
-                    for (wait in NIGHT_RETRY_MS) {
-                        if (wait > 0) kotlinx.coroutines.delay(wait)
-                        if (syncNight("$NIGHT_MODE_KEY 变了")) break
-                    }
+        val observer =
+            object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) {
+                    XLog.d("推送：$NIGHT_MODE_KEY 变了（连查 ${NIGHT_RETRY_MS.size} 次）")
+                    retry?.cancel()
+                    retry =
+                        scope.launch {
+                            for (wait in NIGHT_RETRY_MS) {
+                                if (wait > 0) kotlinx.coroutines.delay(wait)
+                                if (syncNight("$NIGHT_MODE_KEY 变了")) break
+                            }
+                        }
                 }
             }
-        }
-        val registered = try {
-            context.contentResolver.registerContentObserver(
-                Settings.Secure.getUriFor(NIGHT_MODE_KEY),
-                false,
-                observer,
-            )
-            true
-        } catch (e: Throwable) {
-            XLog.w("监听系统深浅设置失败（只剩轮询）：${e.message}")
-            false
-        }
+        val registered =
+            try {
+                context.contentResolver.registerContentObserver(
+                    Settings.Secure.getUriFor(NIGHT_MODE_KEY),
+                    false,
+                    observer,
+                )
+                true
+            } catch (e: Throwable) {
+                XLog.w("监听系统深浅设置失败（只剩轮询）：${e.message}")
+                false
+            }
         onDispose {
             retry?.cancel()
             if (registered) {

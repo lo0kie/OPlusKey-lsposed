@@ -24,7 +24,6 @@ import com.lookie.opluskey.core.reflect.Reflect
  * （见 `docs/device-findings.md` 附十三之三）。
  */
 internal object MiniWindowSupport {
-
     /**
      * 小窗状态门面（`oplus-framework.jar`，宿主 boot classpath 上反射可及）。
      *
@@ -50,25 +49,36 @@ internal object MiniWindowSupport {
      *   真机核对过：传空串照样判得准（`com.heytap.market` 也返回 `false`）。
      * @return `true` = 支持；`false` = 不支持；`null` = **不知道**（反射不通 / 调用抛了）
      */
-    fun isSupported(pm: PackageManager, pkg: String, cls: String?): Boolean? = try {
-        val managerCls = Reflect.findClass(javaClass.classLoader, MANAGER)
-        val manager = managerCls?.let { Reflect.callStatic(it, "getInstance") }
-        val method = managerCls?.let { Reflect.methodByNameAndArity(it, METHOD, ARITY) }
-        if (manager == null || method == null) {
-            XLog.d("小窗支持性：$pkg 判不出来（找不到 $MANAGER#$METHOD/$ARITY）")
+    fun isSupported(
+        pm: PackageManager,
+        pkg: String,
+        cls: String?,
+    ): Boolean? =
+        try {
+            val managerCls = Reflect.findClass(javaClass.classLoader, MANAGER)
+            val manager = managerCls?.let { Reflect.callStatic(it, "getInstance") }
+            val method = managerCls?.let { Reflect.methodByNameAndArity(it, METHOD, ARITY) }
+            if (manager == null || method == null) {
+                XLog.d("小窗支持性：$pkg 判不出来（找不到 $MANAGER#$METHOD/$ARITY）")
+                null
+            } else {
+                val bundled = Bundle().apply { putInt(EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM) }
+                val result =
+                    Reflect.call(
+                        manager,
+                        method,
+                        pkg,
+                        currentUserId(),
+                        cls.orEmpty(),
+                        bundled,
+                    ) as? Boolean
+                XLog.d("小窗支持性：$pkg（$METHOD）→ $result")
+                result
+            }
+        } catch (e: Throwable) {
+            XLog.d("小窗支持性：$pkg 判不出来（${e.javaClass.simpleName}: ${e.message}）")
             null
-        } else {
-            val bundled = Bundle().apply { putInt(EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM) }
-            val result = Reflect.call(
-                manager, method, pkg, currentUserId(), cls.orEmpty(), bundled,
-            ) as? Boolean
-            XLog.d("小窗支持性：$pkg（$METHOD）→ $result")
-            result
         }
-    } catch (e: Throwable) {
-        XLog.d("小窗支持性：$pkg 判不出来（${e.javaClass.simpleName}: ${e.message}）")
-        null
-    }
 
     /** `Process.myUid()` 里一个用户占的区间（`UserHandle.PER_USER_RANGE` 的等价常量）。 */
     private const val PER_USER_RANGE = 100000

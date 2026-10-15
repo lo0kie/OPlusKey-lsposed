@@ -25,7 +25,6 @@ internal class MiniWindowLauncher(
     private val context: () -> Context?,
     private val onFailure: (CommandFailure) -> Unit,
 ) {
-
     /**
      * `window:包名` —— 用小窗打开，**有现成任务就复用**（原地转小窗），没有才新建一份。
      *
@@ -35,20 +34,22 @@ internal class MiniWindowLauncher(
      * 宿主持有 `MANAGE_ACTIVITY_TASKS` 与 `oplus.permission.OPLUS_COMPONENT_SAFE`，服务端两道闸门都过得去。
      */
     fun launchAppInWindow(target: String) {
-        val ctx = context() ?: run {
-            XLog.w("没有 Context，window:$target 跳过")
-            return
-        }
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，window:$target 跳过")
+                return
+            }
         val pm = ctx.packageManager
         val intent = AppEntry.intentOf(pm, target)
         if (intent == null) {
             val pkg = target.substringBefore('/')
-            val installed = try {
-                pm.getApplicationInfo(pkg, 0)
-                true
-            } catch (e: Throwable) {
-                false
-            }
+            val installed =
+                try {
+                    pm.getApplicationInfo(pkg, 0)
+                    true
+                } catch (e: Throwable) {
+                    false
+                }
             XLog.w("解析不到界面：$target（这个包还在=$installed）")
             onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
             return
@@ -86,7 +87,11 @@ internal class MiniWindowLauncher(
     }
 
     /** 这次启动被栈顶那份实例消化了：先把任务挪出栈顶，再起一次（仍是原地转，不新建）。 */
-    private fun retryAfterHome(ctx: Context, intent: Intent, target: String) {
+    private fun retryAfterHome(
+        ctx: Context,
+        intent: Intent,
+        target: String,
+    ) {
         XLog.w("window:$target 的界面占着前台，先回桌面再起小窗")
         try {
             ctx.startActivity(homeIntent())
@@ -113,7 +118,11 @@ internal class MiniWindowLauncher(
      * 都有 `try/catch` 兜底，异步路径同样必须有 —— 这不是「保护宿主系统进程」那种 guard，
      * 丢的只是这一下没做成的收尾动作（[what] 会写清是哪一环）。
      */
-    private fun postDelayedGuarded(what: String, delayMs: Long, block: () -> Unit) {
+    private fun postDelayedGuarded(
+        what: String,
+        delayMs: Long,
+        block: () -> Unit,
+    ) {
         Handler(Looper.getMainLooper()).postDelayed(
             {
                 try {
@@ -145,10 +154,11 @@ internal class MiniWindowLauncher(
      * `startFlexibleFromRecents`（真机日志里能看到连续两条 `从 recents … 原地收成小窗`）。
      */
     fun putForegroundInMiniWindow(collapsed: Boolean = false) {
-        val ctx = context() ?: run {
-            XLog.w("没有 Context，zoom:mini 跳过")
-            return
-        }
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，zoom:mini 跳过")
+                return
+            }
         val taskId = foregroundTaskId()
         if (taskId <= 0) {
             // 连前台任务都读不到 ⇒ 无从下手。以前退「按包名另起一份实例」（= 回桌面重开），现在只提示。
@@ -200,25 +210,29 @@ internal class MiniWindowLauncher(
      *
      * @return 是否已经接手（`OFF` 返回 false，交给调用方走无动画的正门）
      */
-    private fun putInMiniWithNativeAnim(ctx: Context, taskId: Int): Boolean {
+    private fun putInMiniWithNativeAnim(
+        ctx: Context,
+        taskId: Int,
+    ): Boolean {
         val mode = MINI_ANIM_MODE
         if (mode == MiniAnimMode.OFF) return false
         if (!animGeometryMatchesOrientation(ctx)) {
             XLog.w(
                 "zoom:mini → 当前不是竖屏，动画的终点几何（竖屏标定值）对不上 —— " +
-                        "这一下只做真转换、不播动画",
+                    "这一下只做真转换、不播动画",
             )
             return false
         }
-        val params = FlexibleWindowBridge.MiniAnimParams(
-            startRect = fullScreenRect(ctx),
-            finishRect = EXPANDED_CONFIG_BOUNDS,
-            startScale = MINI_ANIM_START_SCALE,
-            finishScale = EXPANDED_SCALE,
-            startAlpha = MINI_ANIM_START_ALPHA,
-            finishAlpha = MINI_ANIM_FINISH_ALPHA,
-            durationMs = MINI_ANIM_DURATION_MS,
-        )
+        val params =
+            FlexibleWindowBridge.MiniAnimParams(
+                startRect = fullScreenRect(ctx),
+                finishRect = EXPANDED_CONFIG_BOUNDS,
+                startScale = MINI_ANIM_START_SCALE,
+                finishScale = EXPANDED_SCALE,
+                startAlpha = MINI_ANIM_START_ALPHA,
+                finishAlpha = MINI_ANIM_FINISH_ALPHA,
+                durationMs = MINI_ANIM_DURATION_MS,
+            )
         when (mode) {
             MiniAnimMode.ANIM_THEN_CONVERT -> {
                 val delay = MINI_ANIM_DURATION_MS + MINI_ANIM_SETTLE_MS
@@ -243,7 +257,9 @@ internal class MiniWindowLauncher(
                 }
             }
 
-            MiniAnimMode.OFF -> return false
+            MiniAnimMode.OFF -> {
+                return false
+            }
         }
         return true
     }
@@ -266,7 +282,7 @@ internal class MiniWindowLauncher(
     private fun animGeometryMatchesOrientation(ctx: Context): Boolean {
         val cfg = ctx.resources.configuration
         return cfg.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT ||
-                cfg.screenWidthDp == cfg.screenHeightDp
+            cfg.screenWidthDp == cfg.screenHeightDp
     }
 
     /**
@@ -293,7 +309,10 @@ internal class MiniWindowLauncher(
      *
      * 落点几何一并下发：调 [EXPANDED_CONFIG_BOUNDS] / [EXPANDED_SCALE] 只改宿主侧，不用重启。
      */
-    private fun putInMiniViaForgedAnimation(ctx: Context, taskId: Int) {
+    private fun putInMiniViaForgedAnimation(
+        ctx: Context,
+        taskId: Int,
+    ) {
         FlexibleWindowBridge.send(
             ctx,
             FlexibleWindowBridge.CMD_MINI,
@@ -317,15 +336,17 @@ internal class MiniWindowLauncher(
                 in 0f..ZOOM_CONFIG_WIDTH_MIN_RATIO -> {
                     XLog.w(
                         "zoom:mini → 任务 #$taskId 的预置几何没被吃住（配置宽占比 $ratio，应 ≈1.0），" +
-                                "用 recents 正门重收一次",
+                            "用 recents 正门重收一次",
                     )
                     retryViaRecents(taskId)
                 }
 
-                else -> XLog.w(
-                    "zoom:mini → 任务 #$taskId 已是小窗、预置几何被吃住（配置宽占比 $ratio）；" +
+                else -> {
+                    XLog.w(
+                        "zoom:mini → 任务 #$taskId 已是小窗、预置几何被吃住（配置宽占比 $ratio）；" +
                             "档位以截图为准",
-                )
+                    )
+                }
             }
         }
     }
@@ -355,7 +376,10 @@ internal class MiniWindowLauncher(
      * 用 `getMiniFlexibleTaskInfo` 那套几何（真机约 `Rect(898,168-1203,710)` / scale `0.2397`）。
      * 收不起就退「按包名另起一份实例」，与展开档同一层兜底。
      */
-    private fun putInCollapsedMini(ctx: Context, taskId: Int) {
+    private fun putInCollapsedMini(
+        ctx: Context,
+        taskId: Int,
+    ) {
         if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_FULL_TO_MINI)) {
             postDelayedGuarded("zoom:mini:collapse 的验收", MINI_VERIFY_MS) {
                 if (isTaskInZoomWindow(taskId)) {
@@ -424,12 +448,16 @@ internal class MiniWindowLauncher(
      * 与 [packageOf] 的区别：这里**包名与类名都要**才返回 —— 因为要用它去查 `ActivityInfo.resizeMode`，
      * 只有包名是查不到的（`resizeMode` 是 activity 级的属性）。
      */
-    private fun componentOf(top: Any, cls: Class<*>): android.content.ComponentName? {
+    private fun componentOf(
+        top: Any,
+        cls: Class<*>,
+    ): android.content.ComponentName? {
         (top as? android.content.ComponentName)?.let { return it }
         val pkg = packageOf(top, cls) ?: return null
-        val name = Reflect.call(top, "getClassName") as? String
-            ?: Reflect.fieldValue(top, cls, TOP_APP_CLASS_FIELD) as? String
-            ?: return null
+        val name =
+            Reflect.call(top, "getClassName") as? String
+                ?: Reflect.fieldValue(top, cls, TOP_APP_CLASS_FIELD) as? String
+                ?: return null
         return android.content.ComponentName(pkg, name)
     }
 
@@ -443,7 +471,10 @@ internal class MiniWindowLauncher(
     }
 
     /** `OplusAppInfo.topActivity` 的包名 —— `ComponentName` 与 `ComponentInfo` 两种形状都认。 */
-    private fun packageOf(top: Any, cls: Class<*>): String? =
+    private fun packageOf(
+        top: Any,
+        cls: Class<*>,
+    ): String? =
         Reflect.call(top, "getPackageName") as? String
             ?: Reflect.fieldValue(top, cls, TOP_APP_PACKAGE_FIELD) as? String
 
@@ -451,10 +482,11 @@ internal class MiniWindowLauncher(
     private fun topAppInfos(): List<*>? {
         val cls = Reflect.findClass(javaClass.classLoader, ZOOM_MANAGER) ?: return null
         val manager = Reflect.callStatic(cls, "getInstance") ?: return null
-        val method = Reflect.methodByNameAndArity(cls, TOP_APP_INFOS_METHOD, 0) ?: run {
-            XLog.d("$ZOOM_MANAGER 上没有 $TOP_APP_INFOS_METHOD/0")
-            return null
-        }
+        val method =
+            Reflect.methodByNameAndArity(cls, TOP_APP_INFOS_METHOD, 0) ?: run {
+                XLog.d("$ZOOM_MANAGER 上没有 $TOP_APP_INFOS_METHOD/0")
+                return null
+            }
         return Reflect.call(manager, method) as? List<*>
     }
 
@@ -465,21 +497,27 @@ internal class MiniWindowLauncher(
      * `2` = 展开的普通小窗（`setUserPositionInfo`）、`32` = 收起的最小化窗（`fullToMini`）。
      * 窗口模式那个 key 必须给：服务端的判据是 `getLaunchWindowingMode(options) == 100`，不是 flags。
      */
-    private fun startFlexibleFromRecents(taskId: Int, zoomLaunchFlags: Int): Boolean {
-        val cls = Reflect.findClass(javaClass.classLoader, ZOOM_TASK_MANAGER) ?: run {
-            XLog.d("没有 $ZOOM_TASK_MANAGER，跳过 recents 那条")
-            return false
-        }
+    private fun startFlexibleFromRecents(
+        taskId: Int,
+        zoomLaunchFlags: Int,
+    ): Boolean {
+        val cls =
+            Reflect.findClass(javaClass.classLoader, ZOOM_TASK_MANAGER) ?: run {
+                XLog.d("没有 $ZOOM_TASK_MANAGER，跳过 recents 那条")
+                return false
+            }
         val manager = Reflect.callStatic(cls, "getInstance") ?: return false
-        val method = Reflect.methodByNameAndArity(cls, RECENTS_FLEXIBLE_METHOD, RECENTS_FLEXIBLE_ARGS) ?: run {
-            XLog.d("$ZOOM_TASK_MANAGER 上没有 $RECENTS_FLEXIBLE_METHOD/$RECENTS_FLEXIBLE_ARGS")
-            return false
-        }
-        val options = Bundle().apply {
-            putInt(OPT_LAUNCH_WINDOWING_MODE, WINDOWING_MODE_ZOOM)
-            putInt(OPT_ZOOM_LAUNCH_FLAGS, zoomLaunchFlags)
-            putInt(ZOOM_EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM)
-        }
+        val method =
+            Reflect.methodByNameAndArity(cls, RECENTS_FLEXIBLE_METHOD, RECENTS_FLEXIBLE_ARGS) ?: run {
+                XLog.d("$ZOOM_TASK_MANAGER 上没有 $RECENTS_FLEXIBLE_METHOD/$RECENTS_FLEXIBLE_ARGS")
+                return false
+            }
+        val options =
+            Bundle().apply {
+                putInt(OPT_LAUNCH_WINDOWING_MODE, WINDOWING_MODE_ZOOM)
+                putInt(OPT_ZOOM_LAUNCH_FLAGS, zoomLaunchFlags)
+                putInt(ZOOM_EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM)
+            }
         val code = Reflect.call(manager, method, taskId, options) as? Int
         if (code == null || code < 0) {
             XLog.d("$RECENTS_FLEXIBLE_METHOD($taskId, flags=$zoomLaunchFlags) 被拒（返回 $code），退下一层")
@@ -533,13 +571,20 @@ internal class MiniWindowLauncher(
         val rect = zoomScreenRect()
         val display = displaySize()
         when (zoomFitsOnScreen(rect, display)) {
-            false -> XLog.w(
-                "zoom:mini → 任务 #$taskId 已是小窗，但**窗口超出屏幕**：屏幕矩形 $rect > 显示 $display" +
+            false -> {
+                XLog.w(
+                    "zoom:mini → 任务 #$taskId 已是小窗，但**窗口超出屏幕**：屏幕矩形 $rect > 显示 $display" +
                         "（横屏应用走 recents 正门时会这样，见 docs/device-findings.md 附十三）",
-            )
+                )
+            }
 
-            true -> XLog.w("zoom:mini → 任务 #$taskId 已是小窗、窗口落在屏幕内（屏幕矩形 $rect）")
-            null -> XLog.w("zoom:mini → 任务 #$taskId 已是小窗，但读不到屏幕矩形 / 显示尺寸，跳过几何验收")
+            true -> {
+                XLog.w("zoom:mini → 任务 #$taskId 已是小窗、窗口落在屏幕内（屏幕矩形 $rect）")
+            }
+
+            null -> {
+                XLog.w("zoom:mini → 任务 #$taskId 已是小窗，但读不到屏幕矩形 / 显示尺寸，跳过几何验收")
+            }
         }
     }
 
@@ -554,16 +599,17 @@ internal class MiniWindowLauncher(
      * 用**截图像素级边缘检测**核对过它就是屏幕上那块矩形：真机左边界 `x=141`、
      * 下边界 `y=1006`，与日志里的 `zoomRect = Rect(141, 266 - 1457, 1007)` 对得上。
      */
-    private fun zoomScreenRect(): android.graphics.Rect? = try {
-        val cls = Reflect.findClass(javaClass.classLoader, MiniWindowSupport.MANAGER)
-        val manager = cls?.let { Reflect.callStatic(it, "getInstance") }
-        val method = cls?.let { Reflect.methodByNameAndArity(it, CURRENT_ZOOM_STATE_METHOD, 0) }
-        val state = if (manager != null && method != null) Reflect.call(manager, method) else null
-        state?.let { Reflect.fieldValue(it, it.javaClass, ZOOM_STATE_RECT_FIELD) as? android.graphics.Rect }
-    } catch (e: Throwable) {
-        XLog.d("读小窗屏幕矩形失败：${e.message}")
-        null
-    }
+    private fun zoomScreenRect(): android.graphics.Rect? =
+        try {
+            val cls = Reflect.findClass(javaClass.classLoader, MiniWindowSupport.MANAGER)
+            val manager = cls?.let { Reflect.callStatic(it, "getInstance") }
+            val method = cls?.let { Reflect.methodByNameAndArity(it, CURRENT_ZOOM_STATE_METHOD, 0) }
+            val state = if (manager != null && method != null) Reflect.call(manager, method) else null
+            state?.let { Reflect.fieldValue(it, it.javaClass, ZOOM_STATE_RECT_FIELD) as? android.graphics.Rect }
+        } catch (e: Throwable) {
+            XLog.d("读小窗屏幕矩形失败：${e.message}")
+            null
+        }
 
     /**
      * 当前显示的**真实像素尺寸**（**随旋转变**）。
@@ -577,18 +623,19 @@ internal class MiniWindowLauncher(
      * 而且**不受当前窗口大小影响** —— 用 `currentWindowMetrics` 会被分屏 / 小窗裁小，
      * 那会把「小窗有没有超出屏幕」这个验收项误判成超出。取不到就返回 null（跳过验收），不猜。
      */
-    private fun displaySize(): android.graphics.Point? = try {
-        val wm = context()?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
-        val bounds = wm?.maximumWindowMetrics?.bounds
-        if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
-            android.graphics.Point(bounds.width(), bounds.height())
-        } else {
+    private fun displaySize(): android.graphics.Point? =
+        try {
+            val wm = context()?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
+            val bounds = wm?.maximumWindowMetrics?.bounds
+            if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
+                android.graphics.Point(bounds.width(), bounds.height())
+            } else {
+                null
+            }
+        } catch (e: Throwable) {
+            XLog.d("读显示尺寸失败：${e.message}")
             null
         }
-    } catch (e: Throwable) {
-        XLog.d("读显示尺寸失败：${e.message}")
-        null
-    }
 
     /** 小窗的屏幕矩形有没有落在屏幕内。`null` = 读不到（跳过验收）。 */
     private fun zoomFitsOnScreen(
@@ -597,7 +644,7 @@ internal class MiniWindowLauncher(
     ): Boolean? {
         if (rect == null || display == null) return null
         return rect.left >= 0 && rect.top >= 0 &&
-                rect.right <= display.x && rect.bottom <= display.y
+            rect.right <= display.x && rect.bottom <= display.y
     }
 
     /** 那个任务现在是不是小窗 —— 只看 `windowingMode`（返回码和截图都会骗人）。 */
@@ -625,9 +672,13 @@ internal class MiniWindowLauncher(
         val info = zoomInfoOf(taskId) ?: return null
         val mode = Reflect.fieldValue(info, info.javaClass, TOP_APP_WINDOWING_MODE_FIELD) as? Int
         if (mode != WINDOWING_MODE_ZOOM) return null
-        val bounds = Reflect.fieldValue(info, info.javaClass, TOP_APP_BOUNDS_FIELD)
+        val bounds =
+            Reflect.fieldValue(info, info.javaClass, TOP_APP_BOUNDS_FIELD)
                 as? android.graphics.Rect ?: return null
-        val screen = android.content.res.Resources.getSystem().displayMetrics.widthPixels
+        val screen =
+            android.content.res.Resources
+                .getSystem()
+                .displayMetrics.widthPixels
         if (screen <= 0 || bounds.width() <= 0) return null
         return bounds.width().toFloat() / screen
     }
@@ -648,7 +699,10 @@ internal class MiniWindowLauncher(
      *
      * Bundle 必须带 `extra_window_mode`（见 [zoomWindowBundle]），否则服务端当普通启动处理。
      */
-    private fun startZoomWindow(ctx: Context, intent: Intent): Boolean {
+    private fun startZoomWindow(
+        ctx: Context,
+        intent: Intent,
+    ): Boolean {
         val code = startZoomWindowCode(ctx, intent)
         return code != null && code >= 0
     }
@@ -658,22 +712,33 @@ internal class MiniWindowLauncher(
      * `0` 成功 / `2` 已有任务提到前台 / `3` 交给栈顶那个实例消化（屏幕不变）/ 负数是错误码；
      * `null` = 反射这条路没走通。返回码判不了「有没有真起成小窗」，详见 `docs/device-findings.md` §17.6.1。
      */
-    private fun startZoomWindowCode(ctx: Context, intent: Intent): Int? {
-        val cls = Reflect.findClass(javaClass.classLoader, ZOOM_MANAGER) ?: run {
-            // 判据级（`d` 在 release 被编译期消除）：ROM 上没这个类 = 小窗这条路整条不通，
-            //  用 w 才看得见。
-            XLog.w("没有 $ZOOM_MANAGER，跳过 ColorOS 小窗接口")
-            return null
-        }
+    private fun startZoomWindowCode(
+        ctx: Context,
+        intent: Intent,
+    ): Int? {
+        val cls =
+            Reflect.findClass(javaClass.classLoader, ZOOM_MANAGER) ?: run {
+                // 判据级（`d` 在 release 被编译期消除）：ROM 上没这个类 = 小窗这条路整条不通，
+                //  用 w 才看得见。
+                XLog.w("没有 $ZOOM_MANAGER，跳过 ColorOS 小窗接口")
+                return null
+            }
         val manager = Reflect.callStatic(cls, "getInstance") ?: return null
-        val method = Reflect.methodByNameAndArity(cls, "startZoomWindow", ZOOM_ARGS) ?: run {
-            XLog.w("$ZOOM_MANAGER 上没有 startZoomWindow/$ZOOM_ARGS")
-            return null
-        }
+        val method =
+            Reflect.methodByNameAndArity(cls, "startZoomWindow", ZOOM_ARGS) ?: run {
+                XLog.w("$ZOOM_MANAGER 上没有 startZoomWindow/$ZOOM_ARGS")
+                return null
+            }
         val userId = MiniWindowSupport.currentUserId()
-        val result = Reflect.call(
-            manager, method, intent, zoomWindowBundle(), userId, ctx.packageName,
-        ) as? Int
+        val result =
+            Reflect.call(
+                manager,
+                method,
+                intent,
+                zoomWindowBundle(),
+                userId,
+                ctx.packageName,
+            ) as? Int
         if (result == null || result < 0) {
             XLog.w("startZoomWindow 被拒（返回 $result），退下一层")
             return result
@@ -696,31 +761,35 @@ internal class MiniWindowLauncher(
      * （`ScenarioAssistantNavigationImpl.startActivityByZoonWindow`）与 SDK 的常量表
      * （`com.oplus.zoomwindow.OplusZoomWindowManager`）。
      */
-    private fun zoomWindowBundle(): Bundle =
-        Bundle().apply { putInt(ZOOM_EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM) }
+    private fun zoomWindowBundle(): Bundle = Bundle().apply { putInt(ZOOM_EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM) }
 
     /** 公开的退路：`ActivityOptions` 的自由窗口（本机不认它的话就是一次普通打开）。 */
-    private fun startFreeform(ctx: Context, intent: Intent): Boolean = try {
-        val options = android.app.ActivityOptions.makeBasic()
-        // 窗口模式那一对也都是隐藏 API：常量按字段取，设值按方法名调
-        val mode = Reflect.field(android.app.ActivityOptions::class.java, "WINDOWING_MODE_FREEFORM")
-            ?.getInt(null)
-        if (mode == null) {
-            XLog.w("取不到 WINDOWING_MODE_FREEFORM，放弃自由窗口这条")
-            return false
+    private fun startFreeform(
+        ctx: Context,
+        intent: Intent,
+    ): Boolean =
+        try {
+            val options = android.app.ActivityOptions.makeBasic()
+            // 窗口模式那一对也都是隐藏 API：常量按字段取，设值按方法名调
+            val mode =
+                Reflect
+                    .field(android.app.ActivityOptions::class.java, "WINDOWING_MODE_FREEFORM")
+                    ?.getInt(null)
+            if (mode == null) {
+                XLog.w("取不到 WINDOWING_MODE_FREEFORM，放弃自由窗口这条")
+                return false
+            }
+            Reflect.call(options, "setLaunchWindowingMode", mode) ?: return false
+            ctx.startActivity(intent, options.toBundle())
+            XLog.w("window:${intent.component?.packageName} → ActivityOptions 自由窗口（mode=$mode）")
+            true
+        } catch (e: Throwable) {
+            // 判据级：这是「小窗两条路都不通、退成普通打开」的原因行，用 w
+            XLog.w("自由窗口起法被拒：${e.javaClass.simpleName}: ${e.message}")
+            false
         }
-        Reflect.call(options, "setLaunchWindowingMode", mode) ?: return false
-        ctx.startActivity(intent, options.toBundle())
-        XLog.w("window:${intent.component?.packageName} → ActivityOptions 自由窗口（mode=$mode）")
-        true
-    } catch (e: Throwable) {
-        // 判据级：这是「小窗两条路都不通、退成普通打开」的原因行，用 w
-        XLog.w("自由窗口起法被拒：${e.javaClass.simpleName}: ${e.message}")
-        false
-    }
 
     private companion object {
-
         /** ColorOS 小窗接口的类名 —— 按名字反射，不直接引用（注入侧不许碰宿主框架的私有类型）。 */
         const val ZOOM_MANAGER = "android.app.OplusActivityManager"
 

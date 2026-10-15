@@ -6,17 +6,17 @@ import java.lang.reflect.Method
 
 /** ColorOS 侧键的接管点。 */
 internal object Framework {
-
     /**
      * ColorOS 侧键专用策略类（外层 `actionInterceptKeyBeforeQueueing`）。
      *
      * 不挂 `...$2`：它是外层方法的纯转发（12 条指令，恒 `preCondition` 为 true），
      * 挂它 0 收益，只会让同一次按键被回调两次（见 `docs/device-findings.md` §14.2）。
      */
-    private val STRATEGY_CANDIDATES = listOf(
-        "com.android.server.policy.StrategyActionButtonKeyLaunchApp",
-        "com.oplus.server.policy.StrategyActionButtonKeyLaunchApp",
-    )
+    private val STRATEGY_CANDIDATES =
+        listOf(
+            "com.android.server.policy.StrategyActionButtonKeyLaunchApp",
+            "com.oplus.server.policy.StrategyActionButtonKeyLaunchApp",
+        )
 
     /**
      * 各层唯一要挂的入口方法名（精确匹配，见 `docs/device-findings.md` §2 / §14）。
@@ -27,32 +27,33 @@ internal object Framework {
     private val STRATEGY_ENTRIES = setOf("actionInterceptKeyBeforeQueueing")
 
     /** ColorOS 对 PhoneWindowManager 的覆写入口（`override` 前缀那套命名）。 */
-    private val PM_EXT_ENTRIES = setOf(
-        "overrideInterceptKeyBeforeQueueing",
-        "interceptKeyBeforeQueueing",
-    )
+    private val PM_EXT_ENTRIES =
+        setOf(
+            "overrideInterceptKeyBeforeQueueing",
+            "interceptKeyBeforeQueueing",
+        )
 
     /** AOSP 原生入口。 */
     private val PM_ENTRIES = setOf("interceptKeyBeforeQueueing")
 
     /** ColorOS 的 PhoneWindowManager 覆写实现（方法名带 `override` 前缀）。 */
-    private val PM_EXT_CANDIDATES = listOf(
-        "com.android.server.policy.PhoneWindowManagerExtImpl",
-    )
+    private val PM_EXT_CANDIDATES =
+        listOf(
+            "com.android.server.policy.PhoneWindowManagerExtImpl",
+        )
 
     /** AOSP 原生 PhoneWindowManager（兜底）。 */
-    private val PM_CANDIDATES = listOf(
-        "com.android.server.policy.PhoneWindowManager",
-    )
+    private val PM_CANDIDATES =
+        listOf(
+            "com.android.server.policy.PhoneWindowManager",
+        )
 
-    /**
-     * 宿主（`com.oplus.gesture`）侧的接管点：系统自己判好的侧键手势真正的落点。
-     *
-     * 注意：这两个服务名与下面那个混淆 Handler 的类名**只有本文件写**（一、7）：它们散在
-     * `host/SideKeyGestureHooks`、`host/GestureReceiver`、`inject/input/GestureForwarder`
-     * 三处各写一份，改 ROM 时漏改任何一处，表现都是「按键拦下来了但什么都不做」，
-     * 而且从日志上看不出漏在哪一层。
-     */
+    // 宿主（`com.oplus.gesture`）侧的接管点：系统自己判好的侧键手势真正的落点。
+    //
+    // 注意：这两个服务名与下面那个混淆 Handler 的类名**只有本文件写**（一、7）：它们散在
+    // `host/SideKeyGestureHooks`、`host/GestureReceiver`、`inject/input/GestureForwarder`
+    // 三处各写一份，改 ROM 时漏改任何一处，表现都是「按键拦下来了但什么都不做」，
+    // 而且从日志上看不出漏在哪一层。
 
     /** 其余场景的宿主服务 —— 也是「启动它把宿主抬出可冻结范围」用的那个服务。 */
     const val HOST_KEY_SERVICE = "com.oplus.gesture.server.ActionButtonKeyService"
@@ -75,13 +76,11 @@ internal object Framework {
      */
     const val HOST_SCENE_DISPATCH_WHAT = 1
 
-    /**
-     * 宿主「设置 → 侧键」那一页的 Activity —— 换页 Hook 的候选表（一、7）。
-     *
-     *  注意：这两个类名只写在本候选表里，不许就地写在 `ui/SettingsPageHooks` 里：Hook 面
-     *  必须优先落在宿主 ROM 的专用入口上，而候选类名只写在本候选表里 —— 就地写字面量的话，
-     *  ROM 一改名就没法逐层降级，表现是「装了但页面没换」，日志上还看不出漏在哪一层。
-     */
+    // 宿主「设置 → 侧键」那一页的 Activity —— 换页 Hook 的候选表（一、7）。
+    //
+    //  注意：这两个类名只写在本候选表里，不许就地写在 `ui/SettingsPageHooks` 里：Hook 面
+    //  必须优先落在宿主 ROM 的专用入口上，而候选类名只写在本候选表里 —— 就地写字面量的话，
+    //  ROM 一改名就没法逐层降级，表现是「装了但页面没换」，日志上还看不出漏在哪一层。
 
     /** 宿主侧键设置页的**基类**（页面骨架在这里，换页回调按它过滤实例）。 */
     const val HOST_SETTINGS_BASE_ACTIVITY = "com.oplus.gesture.actionbuttonkey.BaseActionActivity"
@@ -129,9 +128,11 @@ internal object Framework {
         val all = Reflect.methodsOf(cls).filter { !it.isSynthetic && !it.name.startsWith("access$") }
         val hit = all.filter { it.name in AMS_BROADCAST_ENTRIES }
         if (hit.isEmpty()) {
-            val near = all.map { it.name }
-                .filter { it.contains("broadcastIntent") }
-                .distinct()
+            val near =
+                all
+                    .map { it.name }
+                    .filter { it.contains("broadcastIntent") }
+                    .distinct()
             XLog.w(
                 "$AMS_CANDIDATE 上没有 ${AMS_BROADCAST_ENTRIES.joinToString("/")}()" +
                     "（同族方法：${near.joinToString(", ").ifEmpty { "一个都没有" }}）",

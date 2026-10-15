@@ -11,7 +11,6 @@ internal class FlashlightController(
     /** 注册 torch 回调用的 Handler（回调要在有 Looper 的线程上）。 */
     private val handler: Handler,
 ) {
-
     /** 当前手电筒是否亮着（靠 torch 回调跟踪，不猜）。 */
     @Volatile
     private var torchOn = false
@@ -25,16 +24,18 @@ internal class FlashlightController(
 
     /** 切换一次手电筒。 */
     fun toggle() {
-        val ctx = context() ?: run {
-            XLog.w("没有 Context，flashlight: 跳过")
-            return
-        }
-        val cm = try {
-            ctx.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
-        } catch (e: Throwable) {
-            XLog.w("取 CameraManager 失败", e)
-            null
-        }
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，flashlight: 跳过")
+                return
+            }
+        val cm =
+            try {
+                ctx.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+            } catch (e: Throwable) {
+                XLog.w("取 CameraManager 失败", e)
+                null
+            }
         if (cm == null) {
             XLog.w("拿不到 CameraManager，flashlight: 跳过")
             return
@@ -79,7 +80,10 @@ internal class FlashlightController(
         try {
             cm.registerTorchCallback(
                 object : CameraManager.TorchCallback() {
-                    override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
+                    override fun onTorchModeChanged(
+                        cameraId: String,
+                        enabled: Boolean,
+                    ) {
                         torchOn = enabled
                         torchCameraId = cameraId
                     }
@@ -96,13 +100,15 @@ internal class FlashlightController(
     }
 
     /** 兜底：自己找一颗带闪光灯的摄像头。 */
-    private fun firstTorchCamera(cm: CameraManager): String? = try {
-        cm.cameraIdList.firstOrNull { id ->
-            cm.getCameraCharacteristics(id)
-                .get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+    private fun firstTorchCamera(cm: CameraManager): String? =
+        try {
+            cm.cameraIdList.firstOrNull { id ->
+                cm
+                    .getCameraCharacteristics(id)
+                    .get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            }
+        } catch (e: Throwable) {
+            XLog.w("枚举摄像头失败", e)
+            null
         }
-    } catch (e: Throwable) {
-        XLog.w("枚举摄像头失败", e)
-        null
-    }
 }

@@ -17,7 +17,6 @@ import com.lookie.opluskey.core.log.XLog
  *  跟着变 —— 这正是该抽成一处的重复。
  */
 internal object ActivityThreadCompat {
-
     /** `android.app.ActivityThread` 的类名 —— 全项目只在这里写一次。 */
     private const val ACTIVITY_THREAD = "android.app.ActivityThread"
 
@@ -30,12 +29,13 @@ internal object ActivityThreadCompat {
      * 这里**只记 `d` 级**：真正「为什么拿不到」由 [Reflect] 那边按 `w` 报（类 / 方法找不到会记账），
      * 本行只是补一句自家前缀，不需要在 release 里留痕。
      */
-    fun currentApplication(loader: ClassLoader): Context? = try {
-        val cls = Reflect.findClass(loader, ACTIVITY_THREAD)
-        val app = if (cls == null) null else Reflect.callStatic(cls, "currentApplication")
-        app as? Context
-    } catch (e: Throwable) {
-        XLog.d("取 Application Context 失败：${e.message}")
-        null
-    }
+    fun currentApplication(loader: ClassLoader): Context? =
+        try {
+            val cls = Reflect.findClass(loader, ACTIVITY_THREAD)
+            val app = if (cls == null) null else Reflect.callStatic(cls, "currentApplication")
+            app as? Context
+        } catch (e: Throwable) {
+            XLog.d("取 Application Context 失败：${e.message}")
+            null
+        }
 }

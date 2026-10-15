@@ -1,0 +1,22 @@
+# 编辑器约定 —— 只放「不管哪台机器、哪个编辑器上都该一样」的那几条。
+#
+#  注意：**ktlint 的规则不在这里**。Spotless 不读本文件（它只认 `app/build.gradle.kts` 里的
+#  `KTLINT_RULES`），把规则写两处必然走形。本文件的作用是给 IDE / 编辑器一个统一的缩进与
+#  换行口径，与那边保持一致。
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml}]
+indent_size = 2
+
+# 本地化字典与 Markdown 是给人读的、且要贴进界面：行尾空格与折行都可能是有意为之。
+[*.md]
+trim_trailing_whitespace = false

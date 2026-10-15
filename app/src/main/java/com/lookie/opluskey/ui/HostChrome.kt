@@ -11,7 +11,6 @@ import com.lookie.opluskey.core.log.XLog
  * 宿主可能持有引用，`remove` 等于埋雷。
  */
 internal object HostChrome {
-
     /**
      * 状态栏那块实心遮罩（见 [coverStatusBar]）。
      *
@@ -48,12 +47,13 @@ internal object HostChrome {
         // 改配置这件事挪到 [pageContext]（用一个资源还没被访问过的 ContextThemeWrapper）。
 
         // 把主题换成宿主自带的浅色无标题主题
-        val id = try {
-            activity.resources.getIdentifier(THEME_LIGHT, "style", HOST_PACKAGE)
-        } catch (e: Throwable) {
-            XLog.w("查 $THEME_LIGHT 失败（忽略）", e)
-            0
-        }
+        val id =
+            try {
+                activity.resources.getIdentifier(THEME_LIGHT, "style", HOST_PACKAGE)
+            } catch (e: Throwable) {
+                XLog.w("查 $THEME_LIGHT 失败（忽略）", e)
+                0
+            }
         if (id == 0) {
             XLog.w("宿主里没有 $THEME_LIGHT —— 保持宿主的深色主题（页面会是深色）")
             return
@@ -78,11 +78,12 @@ internal object HostChrome {
             // 窗口自身动画置 0：不淡入不滑动，直接出现
             window.setWindowAnimations(0)
             // 不看读回值就分不清「设上了」和「又空转了一次」。
-            val now = try {
-                window.attributes.windowAnimations
-            } catch (e: Throwable) {
-                -1
-            }
+            val now =
+                try {
+                    window.attributes.windowAnimations
+                } catch (e: Throwable) {
+                    -1
+                }
             XLog.w("窗口转场动画已置 0（读回 wanim=$now，0 = 生效）")
         } catch (e: Throwable) {
             XLog.w("关闭窗口转场动画失败（忽略）：${e.message}")
@@ -176,7 +177,7 @@ internal object HostChrome {
             appbar?.getLocationOnScreen(aLoc)
             XLog.d(
                 "状态栏区域诊断：container top=${cLoc[1]} 高=${container.height}" +
-                        "；appbar top=${aLoc[1]} 高=${appbar?.height}",
+                    "；appbar top=${aLoc[1]} 高=${appbar?.height}",
             )
         } catch (e: Throwable) {
             XLog.d("状态栏诊断日志失败（忽略）：${e.message}")
@@ -202,7 +203,10 @@ internal object HostChrome {
      * 在状态栏那块盖一层**实心 View** —— 现在**只给「露出宿主原版页面」那一档用**
      *（见 [SettingsPageHooks.revealStock]，配套 [removeStatusFiller] 在切回模块界面时拿掉）。
      */
-    internal fun coverStatusBar(activity: android.app.Activity, color: Int) {
+    internal fun coverStatusBar(
+        activity: android.app.Activity,
+        color: Int,
+    ) {
         val decor = activity.window?.decorView as? ViewGroup
 
         //  已经盖过、而且还挂在**当前这个** decorView 上 → 只改颜色，并且**重新放到最上层**。
@@ -257,7 +261,12 @@ internal object HostChrome {
 
         filler.setOnApplyWindowInsetsListener { v, insets ->
             try {
-                val h = insets.getInsets(android.view.WindowInsets.Type.statusBars()).top
+                val h =
+                    insets
+                        .getInsets(
+                            android.view.WindowInsets.Type
+                                .statusBars(),
+                        ).top
                 val lp = v.layoutParams
                 if (h > 0 && lp != null && lp.height != h) {
                     lp.height = h
@@ -311,12 +320,16 @@ internal object HostChrome {
      *  「**注入侧**不引 androidx」（AGENTS 一、1 与 CI 那道扫描）；`ui/` 里只在设置页那个进程跑、
      *  不在此列（同包的 `BackInterception` 就引了 androidx 的 `NavigationEvent`）。
      */
-    private fun setStatusBarIconAppearance(activity: android.app.Activity, light: Boolean) {
+    private fun setStatusBarIconAppearance(
+        activity: android.app.Activity,
+        light: Boolean,
+    ) {
         try {
-            val controller = activity.window?.decorView?.windowInsetsController ?: run {
-                XLog.d("拿不到 WindowInsetsController，跳过状态栏图标外观")
-                return
-            }
+            val controller =
+                activity.window?.decorView?.windowInsetsController ?: run {
+                    XLog.d("拿不到 WindowInsetsController，跳过状态栏图标外观")
+                    return
+                }
             if (light) {
                 controller.setSystemBarsAppearance(
                     android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,

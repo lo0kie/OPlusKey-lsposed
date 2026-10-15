@@ -1,0 +1,165 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:BindingScreen.kt$!up &amp;&amp; !down &amp;&amp; !left &amp;&amp; !right &amp;&amp; !confirm</ID>
+    <ID>ComplexCondition:FlexibleWindowBridge.kt$FlexibleWindowBridge$ext != null &amp;&amp; record != null &amp;&amp; optionsCls != null &amp;&amp; options != null</ID>
+    <ID>ComplexCondition:FlexibleWindowBridge.kt$FlexibleWindowBridge$intent.hasExtra(EXTRA_LEFT) &amp;&amp; intent.hasExtra(EXTRA_TOP) &amp;&amp; intent.hasExtra(EXTRA_RIGHT) &amp;&amp; intent.hasExtra(EXTRA_BOTTOM)</ID>
+    <ID>ComplexCondition:FlexibleWindowBridge.kt$FlexibleWindowBridge$l == EDGE_MISSING || t == EDGE_MISSING || r == EDGE_MISSING || b == EDGE_MISSING</ID>
+    <ID>ComplexCondition:KeyHooks.kt$KeyHooks$!isProbe &amp;&amp; action != ConfigBroadcast.ACTION_CONFIG &amp;&amp; action != StatusBarBridge.ACTION_STATUSBAR &amp;&amp; action != FlexibleWindowBridge.ACTION &amp;&amp; // 链路自检的「问」；注意**不含** ACTION_INJECT_READY —— // 那是我们自己发出去的答，认它只会多绕一圈（见 KeyModule 那两条常量） action != KeyModule.ACTION_INJECT_QUERY</ID>
+    <ID>CyclomaticComplexMethod:AboutScreen.kt$@Composable internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior)</ID>
+    <ID>CyclomaticComplexMethod:Action.kt$Action.Companion$fun parse(raw: String?): Action</ID>
+    <ID>CyclomaticComplexMethod:ActionIcons.kt$internal fun actionIcon(token: String): ImageVector</ID>
+    <ID>CyclomaticComplexMethod:ActionRunner.kt$ActionRunner$private fun dispatch( action: Action, depth: Int = 0, )</ID>
+    <ID>CyclomaticComplexMethod:AppLauncher.kt$AppLauncher$fun startOplusFeature(feature: String)</ID>
+    <ID>CyclomaticComplexMethod:AppPicker.kt$@Composable internal fun SettingsPage.AppPickerScreen( selected: String?, onPick: (String, Boolean) -&gt; Unit, scrollBehavior: ScrollBehavior, )</ID>
+    <ID>CyclomaticComplexMethod:BindingScreen.kt$@Composable internal fun SettingsPage.ActionTile( spec: ActionCatalog.Spec, icon: ImageVector?, selected: Boolean, focused: Boolean, focusRequester: FocusRequester, modifier: Modifier = Modifier, enabled: Boolean = true, /** * 标题下面那行**小字**（空则不画）：内置的「打开应用」格放绑定的应用名、 * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。 */ subtitle: String? = null, /** * 标题**右边**那枚小标记（`null` = 不画）。 * * 现在只有「打开应用」格用它：绑成小窗打开时补一枚「小窗起」字形（[PageIcons.TileSmallWindow]）—— * 这一格只有一行标题，不点开「选择应用」菜单看不出绑的是小窗还是普通打开。 * 与行尾那颗指示器（[enterArrow] / 入口字形）不是一回事：那些在**行的最右边**， * 这一枚紧贴标题、属于标题那一行。 */ titleMarker: ImageVector? = null, /** * 是不是**带下一层**的格子 —— 是的话在行尾那枚指示器右边再画一支箭头。 * * 现在只有「自定义命令」那一组格子传 true（长按进编辑）。内置那几个入口格 * （打开应用 / 系统导航 / 系统按键 / 响铃状态 / 媒体控制）同样是入口，但**不画箭头** —— * 它们的行尾已经是选择器字形，见内置网格那段注释。 */ enterArrow: Boolean = false, onLongClick: (() -&gt; Unit)? = null, onClick: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:BindingScreen.kt$@Composable internal fun SettingsPage.BindingList( g: Gesture, enabled: Boolean, /** * 这一页是不是 pager 的**当前页**。 * * pager 会把相邻页一起留在组合里（滑动转场要它），于是三页的 * [LaunchedEffect] / `onPreviewKeyEvent` / 浮层状态全都活着。三个东西必须由它把住： * · 进场请求焦点 —— 否则三页同时 `requestFocus()`，最后请求到的说了算， * 真机表现是「翻到第二页，方向键却在动第一页的圈」； * · [tileMenu] —— 上一页开着入口菜单时翻页，浮层会跟着这一页一起活到下一帧， * 而它的锚点属于上一页那一格； * · 方向键 / 确认键 —— 非当前页不能吃键，否则按键被它抢先消费掉。 */ active: Boolean, /** 点「打开应用」那一格时跳「打开应用」页（它是**入口**，不是取值）；把本页的手势带上。 */ onOpenAppPicker: (Gesture) -&gt; Unit, /** * 点「自定义命令」那一段里那行「去创建自定义命令」时进「自定义命令」页——**新增**一条。 * 与右下角那颗 FAB 同一个去处（都是 [navigateToCommands]），那一行只在还没保存过命令时出现。 */ onCreateCommand: () -&gt; Unit, scrollBehavior: ScrollBehavior, /** * 本页的滚动状态 —— **每个手势页各持一份**（由 [BindingScreen] 用 `gestures.map { rememberScrollState() }` 建）。 * * 注意：不能写「三个手势页共用同一个实例」—— 与现实相反：共用一份 * 会让「切回来就滚不动」（`ScrollState` 内部只有一个 `scrollableState`，pager 滑动时相邻两页 * 同时在场、互相打架，见 [BindingScreen] 里那段）。现在只是把**本页那一份**接上 `verticalScroll`。 */ scrollState: ScrollState, /** * 内容顶上要给分段控件留出的那一块 = 分段控件自己的高度（含它的上下内边距）。 * * **必须与顶栏里那条分段控件一样高**（同一个值）：它让首屏第一行不被钉住的分段控件压住； * 滚起来之后内容会钻到控件背后，由控件自己那层不透明底挡着（见 [BindingScreen]）。 * 值由 [BindingScreen] 量出来（`onSizeChanged`）。 */ tabBlock: Dp, )</ID>
+    <ID>CyclomaticComplexMethod:CommandMenus.kt$@Composable internal fun SettingsPage.StepPickerPopup( show: Boolean, preciseClick: PreciseClickState, /** `-1` = 挑中的追加为一步；`&gt;= 0` = 挑中的替换这一行（点已添加的步骤时传行号）。 */ replaceIndex: Int = -1, onDismiss: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:CommandScreen.kt$@Composable internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier)</ID>
+    <ID>CyclomaticComplexMethod:CommandScreen.kt$@Composable internal fun SettingsPage.CommandScreen( scrollBehavior: ScrollBehavior, pagerState: androidx.compose.foundation.pager.PagerState, )</ID>
+    <ID>CyclomaticComplexMethod:CommandScreen.kt$@Composable internal fun SettingsPage.SerialSteps()</ID>
+    <ID>CyclomaticComplexMethod:CommandScreen.kt$internal fun SettingsPage.addCommand()</ID>
+    <ID>CyclomaticComplexMethod:CustomCommandRunner.kt$CustomCommandRunner$private fun runSteps( steps: List&lt;String&gt;, index: Int, depth: Int, gapMs: Int, name: String, )</ID>
+    <ID>CyclomaticComplexMethod:FlexibleWindowBridge.kt$FlexibleWindowBridge$private fun miniAnimLocal( loader: ClassLoader?, taskId: Int, intent: Intent, )</ID>
+    <ID>CyclomaticComplexMethod:FlexibleWindowBridge.kt$FlexibleWindowBridge$private fun switchToMiniLocal( loader: ClassLoader?, taskId: Int, requestedBounds: android.graphics.Rect?, requestedScale: Float?, )</ID>
+    <ID>CyclomaticComplexMethod:GestureReceiver.kt$GestureReceiver$private fun handle( keyId: String?, phaseId: String?, repeat: Boolean, sentAt: Long, )</ID>
+    <ID>CyclomaticComplexMethod:HomeScreen.kt$@Composable internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior)</ID>
+    <ID>CyclomaticComplexMethod:KeyHooks.kt$KeyHooks$private fun readBroadcast(args: List&lt;Any?&gt;)</ID>
+    <ID>CyclomaticComplexMethod:LinkCheck.kt$@Composable internal fun SettingsPage.linkChecks(): List&lt;LinkCheck&gt;</ID>
+    <ID>CyclomaticComplexMethod:MenuPopup.kt$@Composable private fun SettingsPage.MenuRow( row: MenuEntry.Row, index: Int, optionSize: Int, isFirst: Boolean, isLast: Boolean, /** 浮层是不是真开着（见上面的 `@param`）。 */ interactive: Boolean, /** 整列的手势账本（见 [GestureProbe]）：点击日志要带上「这一段滑了多远」。 */ probe: GestureProbe?, )</ID>
+    <ID>CyclomaticComplexMethod:MiniWindowLauncher.kt$MiniWindowLauncher$fun launchAppInWindow(target: String)</ID>
+    <ID>CyclomaticComplexMethod:ProbeChannel.kt$ProbeChannel$private fun call( loader: ClassLoader, intent: Intent, )</ID>
+    <ID>CyclomaticComplexMethod:ProbeChannel.kt$ProbeChannel$private fun coerce( args: List&lt;String&gt;, types: Array&lt;Class&lt;*&gt;&gt;, ): Array&lt;Any?&gt;?</ID>
+    <ID>CyclomaticComplexMethod:ProbeChannel.kt$ProbeChannel$private fun dress( loader: ClassLoader, intent: Intent, )</ID>
+    <ID>CyclomaticComplexMethod:ProbeChannel.kt$ProbeChannel$private fun resolveReceiver( loader: ClassLoader, target: String, intent: Intent, ): Any?</ID>
+    <ID>CyclomaticComplexMethod:SettingsPage.kt$SettingsPage$@Composable private fun Page()</ID>
+    <ID>CyclomaticComplexMethod:SettingsPage.kt$SettingsPage$private fun onDebugCommand(intent: android.content.Intent)</ID>
+    <ID>CyclomaticComplexMethod:SliderRow.kt$internal fun Modifier.tapSliderToSeek( min: Int, max: Int, enabled: Boolean, onSeek: (Int) -&gt; Unit, ): Modifier</ID>
+    <ID>CyclomaticComplexMethod:SystemContext.kt$SystemContext$private fun stillHeldByItsProcess( loader: ClassLoader, held: Context, ): Boolean</ID>
+    <ID>EmptyFunctionBlock:AppLauncher.kt$AppLauncher.&lt;no name provided&gt;${}</ID>
+    <ID>ForEachOnRange:BindingScreen.kt$(builtInBase until builtInBase + group.size).chunked(COLUMNS)</ID>
+    <ID>ForEachOnRange:BindingScreen.kt$(builtInCount until totalCount).chunked(COLUMNS)</ID>
+    <ID>InstanceOfCheckForException:FlexibleWindowBridge.kt$FlexibleWindowBridge$e is java.lang.reflect.InvocationTargetException</ID>
+    <ID>LargeClass:FlexibleWindowBridge.kt$FlexibleWindowBridge</ID>
+    <ID>LargeClass:ProbeChannel.kt$ProbeChannel</ID>
+    <ID>LargeClass:SettingsPage.kt$SettingsPage</ID>
+    <ID>LongMethod:AboutScreen.kt$@Composable internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior)</ID>
+    <ID>LongMethod:ActionIcons.kt$internal fun actionIcon(token: String): ImageVector</ID>
+    <ID>LongMethod:AppPicker.kt$@Composable internal fun SettingsPage.AppPickerScreen( selected: String?, onPick: (String, Boolean) -&gt; Unit, scrollBehavior: ScrollBehavior, )</ID>
+    <ID>LongMethod:AppPicker.kt$internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): List&lt;LaunchableApp&gt;?</ID>
+    <ID>LongMethod:BindingScreen.kt$@Composable internal fun SettingsPage.ActionTile( spec: ActionCatalog.Spec, icon: ImageVector?, selected: Boolean, focused: Boolean, focusRequester: FocusRequester, modifier: Modifier = Modifier, enabled: Boolean = true, /** * 标题下面那行**小字**（空则不画）：内置的「打开应用」格放绑定的应用名、 * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。 */ subtitle: String? = null, /** * 标题**右边**那枚小标记（`null` = 不画）。 * * 现在只有「打开应用」格用它：绑成小窗打开时补一枚「小窗起」字形（[PageIcons.TileSmallWindow]）—— * 这一格只有一行标题，不点开「选择应用」菜单看不出绑的是小窗还是普通打开。 * 与行尾那颗指示器（[enterArrow] / 入口字形）不是一回事：那些在**行的最右边**， * 这一枚紧贴标题、属于标题那一行。 */ titleMarker: ImageVector? = null, /** * 是不是**带下一层**的格子 —— 是的话在行尾那枚指示器右边再画一支箭头。 * * 现在只有「自定义命令」那一组格子传 true（长按进编辑）。内置那几个入口格 * （打开应用 / 系统导航 / 系统按键 / 响铃状态 / 媒体控制）同样是入口，但**不画箭头** —— * 它们的行尾已经是选择器字形，见内置网格那段注释。 */ enterArrow: Boolean = false, onLongClick: (() -&gt; Unit)? = null, onClick: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BindingScreen.kt$@Composable internal fun SettingsPage.BindingList( g: Gesture, enabled: Boolean, /** * 这一页是不是 pager 的**当前页**。 * * pager 会把相邻页一起留在组合里（滑动转场要它），于是三页的 * [LaunchedEffect] / `onPreviewKeyEvent` / 浮层状态全都活着。三个东西必须由它把住： * · 进场请求焦点 —— 否则三页同时 `requestFocus()`，最后请求到的说了算， * 真机表现是「翻到第二页，方向键却在动第一页的圈」； * · [tileMenu] —— 上一页开着入口菜单时翻页，浮层会跟着这一页一起活到下一帧， * 而它的锚点属于上一页那一格； * · 方向键 / 确认键 —— 非当前页不能吃键，否则按键被它抢先消费掉。 */ active: Boolean, /** 点「打开应用」那一格时跳「打开应用」页（它是**入口**，不是取值）；把本页的手势带上。 */ onOpenAppPicker: (Gesture) -&gt; Unit, /** * 点「自定义命令」那一段里那行「去创建自定义命令」时进「自定义命令」页——**新增**一条。 * 与右下角那颗 FAB 同一个去处（都是 [navigateToCommands]），那一行只在还没保存过命令时出现。 */ onCreateCommand: () -&gt; Unit, scrollBehavior: ScrollBehavior, /** * 本页的滚动状态 —— **每个手势页各持一份**（由 [BindingScreen] 用 `gestures.map { rememberScrollState() }` 建）。 * * 注意：不能写「三个手势页共用同一个实例」—— 与现实相反：共用一份 * 会让「切回来就滚不动」（`ScrollState` 内部只有一个 `scrollableState`，pager 滑动时相邻两页 * 同时在场、互相打架，见 [BindingScreen] 里那段）。现在只是把**本页那一份**接上 `verticalScroll`。 */ scrollState: ScrollState, /** * 内容顶上要给分段控件留出的那一块 = 分段控件自己的高度（含它的上下内边距）。 * * **必须与顶栏里那条分段控件一样高**（同一个值）：它让首屏第一行不被钉住的分段控件压住； * 滚起来之后内容会钻到控件背后，由控件自己那层不透明底挡着（见 [BindingScreen]）。 * 值由 [BindingScreen] 量出来（`onSizeChanged`）。 */ tabBlock: Dp, )</ID>
+    <ID>LongMethod:BindingScreen.kt$@Composable internal fun SettingsPage.BindingScreen( pagerState: androidx.compose.foundation.pager.PagerState, enabled: Boolean, /** 点「打开应用」那一格时跳「打开应用」页（新增，见 [Screen.APP_PICKER]）； * 带上是**哪个手势**点的 —— 挑中写哪个手势、没挑就返回回退哪个手势都靠它。 */ onOpenAppPicker: (Gesture) -&gt; Unit, scrollBehavior: ScrollBehavior, )</ID>
+    <ID>LongMethod:BindingScreen.kt$@Composable internal fun SettingsPage.LongRepeatCard( blockedReason: String?, masterEnabled: Boolean, )</ID>
+    <ID>LongMethod:CommandMenus.kt$@Composable internal fun SettingsPage.StepPickerPopup( show: Boolean, preciseClick: PreciseClickState, /** `-1` = 挑中的追加为一步；`&gt;= 0` = 挑中的替换这一行（点已添加的步骤时传行号）。 */ replaceIndex: Int = -1, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:CommandScreen.kt$@Composable internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier)</ID>
+    <ID>LongMethod:CommandScreen.kt$@Composable internal fun SettingsPage.CommandScreen( scrollBehavior: ScrollBehavior, pagerState: androidx.compose.foundation.pager.PagerState, )</ID>
+    <ID>LongMethod:CommandScreen.kt$@Composable internal fun SettingsPage.SerialSteps()</ID>
+    <ID>LongMethod:FlexibleWindowBridge.kt$FlexibleWindowBridge$private fun miniAnimLocal( loader: ClassLoader?, taskId: Int, intent: Intent, )</ID>
+    <ID>LongMethod:FlexibleWindowBridge.kt$FlexibleWindowBridge$private fun switchToMiniLocal( loader: ClassLoader?, taskId: Int, requestedBounds: android.graphics.Rect?, requestedScale: Float?, )</ID>
+    <ID>LongMethod:HomeScreen.kt$@Composable internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior)</ID>
+    <ID>LongMethod:HostChrome.kt$HostChrome$internal fun coverStatusBar( activity: android.app.Activity, color: Int, )</ID>
+    <ID>LongMethod:IconInput.kt$@Composable internal fun SettingsPage.IconInputView( icon: ImageVector, value: String, onValueChange: (String) -&gt; Unit, title: String, label: String, modifier: Modifier = Modifier, errorMessage: String = "", enabled: Boolean = true, )</ID>
+    <ID>LongMethod:MenuPopup.kt$@Composable internal fun SettingsPage.MenuPopup( show: Boolean, preciseClick: PreciseClickState, entries: List&lt;MenuEntry&gt;, onDismiss: () -&gt; Unit, maxHeight: Dp? = null, enableWindowDim: Boolean = false, columnAnchor: PreciseClickState? = null, onLeave: (() -&gt; Unit)? = null, )</ID>
+    <ID>LongMethod:MenuPopup.kt$@Composable private fun SettingsPage.MenuRow( row: MenuEntry.Row, index: Int, optionSize: Int, isFirst: Boolean, isLast: Boolean, /** 浮层是不是真开着（见上面的 `@param`）。 */ interactive: Boolean, /** 整列的手势账本（见 [GestureProbe]）：点击日志要带上「这一段滑了多远」。 */ probe: GestureProbe?, )</ID>
+    <ID>LongMethod:PageHeader.kt$@Composable internal fun SettingsPage.AppPickerMenu()</ID>
+    <ID>LongMethod:PageHeader.kt$@Composable internal fun SettingsPage.ResetMenu()</ID>
+    <ID>LongMethod:ProbeChannel.kt$ProbeChannel$private fun call( loader: ClassLoader, intent: Intent, )</ID>
+    <ID>LongMethod:ProbeChannel.kt$ProbeChannel$private fun dress( loader: ClassLoader, intent: Intent, )</ID>
+    <ID>LongMethod:SettingsPage.kt$SettingsPage$@Composable private fun Page()</ID>
+    <ID>LongMethod:SettingsPage.kt$SettingsPage$private fun onDebugCommand(intent: android.content.Intent)</ID>
+    <ID>LongMethod:SettingsPageHooks.kt$SettingsPageHooks$fun install( module: XposedModule, loader: ClassLoader, )</ID>
+    <ID>LongMethod:SettingsPageHooks.kt$SettingsPageHooks$private fun replaceContent(activity: android.app.Activity)</ID>
+    <ID>LongMethod:ShellRunner.kt$ShellRunner$fun exec( command: String, onFailure: (CommandFailure) -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:SliderRow.kt$@Composable internal fun SettingsPage.SliderRow( title: String, summary: String, icon: ImageVector, position: CardListPosition, min: Int, max: Int, value: Int, default: Int, enabled: Boolean = true, onCommit: (Int) -&gt; Boolean, )</ID>
+    <ID>LongParameterList:BindingScreen.kt$( g: Gesture, enabled: Boolean, /** * 这一页是不是 pager 的**当前页**。 * * pager 会把相邻页一起留在组合里（滑动转场要它），于是三页的 * [LaunchedEffect] / `onPreviewKeyEvent` / 浮层状态全都活着。三个东西必须由它把住： * · 进场请求焦点 —— 否则三页同时 `requestFocus()`，最后请求到的说了算， * 真机表现是「翻到第二页，方向键却在动第一页的圈」； * · [tileMenu] —— 上一页开着入口菜单时翻页，浮层会跟着这一页一起活到下一帧， * 而它的锚点属于上一页那一格； * · 方向键 / 确认键 —— 非当前页不能吃键，否则按键被它抢先消费掉。 */ active: Boolean, /** 点「打开应用」那一格时跳「打开应用」页（它是**入口**，不是取值）；把本页的手势带上。 */ onOpenAppPicker: (Gesture) -&gt; Unit, /** * 点「自定义命令」那一段里那行「去创建自定义命令」时进「自定义命令」页——**新增**一条。 * 与右下角那颗 FAB 同一个去处（都是 [navigateToCommands]），那一行只在还没保存过命令时出现。 */ onCreateCommand: () -&gt; Unit, scrollBehavior: ScrollBehavior, /** * 本页的滚动状态 —— **每个手势页各持一份**（由 [BindingScreen] 用 `gestures.map { rememberScrollState() }` 建）。 * * 注意：不能写「三个手势页共用同一个实例」—— 与现实相反：共用一份 * 会让「切回来就滚不动」（`ScrollState` 内部只有一个 `scrollableState`，pager 滑动时相邻两页 * 同时在场、互相打架，见 [BindingScreen] 里那段）。现在只是把**本页那一份**接上 `verticalScroll`。 */ scrollState: ScrollState, /** * 内容顶上要给分段控件留出的那一块 = 分段控件自己的高度（含它的上下内边距）。 * * **必须与顶栏里那条分段控件一样高**（同一个值）：它让首屏第一行不被钉住的分段控件压住； * 滚起来之后内容会钻到控件背后，由控件自己那层不透明底挡着（见 [BindingScreen]）。 * 值由 [BindingScreen] 量出来（`onSizeChanged`）。 */ tabBlock: Dp, )</ID>
+    <ID>LongParameterList:BindingScreen.kt$( spec: ActionCatalog.Spec, icon: ImageVector?, selected: Boolean, focused: Boolean, focusRequester: FocusRequester, modifier: Modifier = Modifier, enabled: Boolean = true, /** * 标题下面那行**小字**（空则不画）：内置的「打开应用」格放绑定的应用名、 * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。 */ subtitle: String? = null, /** * 标题**右边**那枚小标记（`null` = 不画）。 * * 现在只有「打开应用」格用它：绑成小窗打开时补一枚「小窗起」字形（[PageIcons.TileSmallWindow]）—— * 这一格只有一行标题，不点开「选择应用」菜单看不出绑的是小窗还是普通打开。 * 与行尾那颗指示器（[enterArrow] / 入口字形）不是一回事：那些在**行的最右边**， * 这一枚紧贴标题、属于标题那一行。 */ titleMarker: ImageVector? = null, /** * 是不是**带下一层**的格子 —— 是的话在行尾那枚指示器右边再画一支箭头。 * * 现在只有「自定义命令」那一组格子传 true（长按进编辑）。内置那几个入口格 * （打开应用 / 系统导航 / 系统按键 / 响铃状态 / 媒体控制）同样是入口，但**不画箭头** —— * 它们的行尾已经是选择器字形，见内置网格那段注释。 */ enterArrow: Boolean = false, onLongClick: (() -&gt; Unit)? = null, onClick: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:CommandMenus.kt$( cmd: Command, show: Boolean, preciseClick: PreciseClickState, /** 进编辑态之后调 —— 调用方借此把页面滚回顶部（表单在页面最上面）。 */ onEdited: () -&gt; Unit = {}, /** 「删除」：交给调用点弹确认窗（真删在确认之后）。 */ onDelete: () -&gt; Unit = {}, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:CommandMenus.kt$( show: Boolean, preciseClick: PreciseClickState, /** 要列的行（[ActionCatalog.modeMenu] 取出来的那一层）。 */ modes: List&lt;ActionCatalog.Spec&gt;, current: Action, onPick: (ActionCatalog.Spec) -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:ConfirmDialog.kt$( show: Boolean, title: String, summary: String? = null, /** 动作项文案（「重置」/「删除」…）。 */ action: String, positiveDanger: Boolean = true, onDismiss: () -&gt; Unit, onConfirm: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:FlexibleWindowBridge.kt$FlexibleWindowBridge.MiniAnimParams$( val startRect: android.graphics.Rect, val finishRect: android.graphics.Rect, val startScale: Float, val finishScale: Float, val startAlpha: Float, val finishAlpha: Float, val durationMs: Long, )</ID>
+    <ID>LongParameterList:GestureDetector.kt$GestureDetector.Pending$( @Volatile var longPressAt: Long = 0L, @Volatile var doubleWindowAt: Long = 0L, /** * 这一枪双击窗口的长度（`onKeyUp` 排窗时按当时的配置写死）。 * * 必须在排窗那一刻**定格**：`doubleClickMs` 是 volatile，排窗时读一次、到点再读一次， * 中途用户改了「单击延迟」就会让两处口径不一致 —— 判定用的窗口与排出的窗口不是同一个， * 300ms 内的合法新单击可能被误吞。 */ @Volatile var doubleWindowMs: Long = 0L, @Volatile var sawFirstRelease: Boolean = false, /** * 本次按下已经判过长按。 * * 必须单独一个字段：长按定时器触发时会清零 `longPressAt`，用 `longPressAt == 0L` 当判据， * 抬手时那个判断恒为假，一次按键会既判长按又判单击。 */ @Volatile var longPressFired: Boolean = false, /** * 本次按下已经判过双击。 * * 与 longPressFired 同理、也是必须的：判双击发生在第二次按下那一刻，而第二次抬手照样会走 * `onKeyUp`，没有这个标记就会再开一个单击窗口、把双击变成「双击 + 单击」。 */ var doubleFired: Boolean = false, /** * 本次按下的时刻（`onKeyDown` 里写、`reset` 里清）。 * * 用来判「这一下是不是已经被直判过了」—— 直判与 DOWN/UP 是同一次按压的两种形态。 * 必须是时刻、不能只用一个布尔：布尔会被上一次按压的直判污染。 */ @Volatile var pressAt: Long = 0L, /** 「长按连续触发」正在跑的重复任务（抬手 / 重置时取消）。 */ @Volatile var repeatRunnable: Runnable? = null, /** * 长按那一枪本身（`postDelayed` 的那个 Runnable），抬手 / 重置时摘掉（[cancelLongPressShot]）。 * * 为什么要把 Runnable 存下来：原来只在到点时读一眼 `sawFirstRelease` 决定响不响，而那次读 * 跨线程 —— 读到陈旧值就是「明明抬手了还判长按」。摘枪是确定的，不依赖那次读。 */ @Volatile var longPressRunnable: Runnable? = null, )</ID>
+    <ID>LongParameterList:GestureForwarder.kt$GestureForwarder$( ctx: Context, intent: Intent, phase: String, repeat: Boolean, delayMs: Long, retry: Boolean, )</ID>
+    <ID>LongParameterList:IconInput.kt$( icon: ImageVector, value: String, onValueChange: (String) -&gt; Unit, title: String, label: String, modifier: Modifier = Modifier, errorMessage: String = "", enabled: Boolean = true, )</ID>
+    <ID>LongParameterList:MenuPopup.kt$( row: MenuEntry.Row, index: Int, optionSize: Int, isFirst: Boolean, isLast: Boolean, /** 浮层是不是真开着（见上面的 `@param`）。 */ interactive: Boolean, /** 整列的手势账本（见 [GestureProbe]）：点击日志要带上「这一段滑了多远」。 */ probe: GestureProbe?, )</ID>
+    <ID>LongParameterList:MenuPopup.kt$( show: Boolean, preciseClick: PreciseClickState, entries: List&lt;MenuEntry&gt;, onDismiss: () -&gt; Unit, maxHeight: Dp? = null, enableWindowDim: Boolean = false, columnAnchor: PreciseClickState? = null, onLeave: (() -&gt; Unit)? = null, )</ID>
+    <ID>LongParameterList:OplusFeature.kt$OplusFeature.Target$( val owner: String, val service: String, val action: String? = null, val extras: Map&lt;String, Any&gt; = emptyMap(), val foreground: Boolean = false, val activity: Boolean = false, val message: Int? = null, )</ID>
+    <ID>LongParameterList:PageHeader.kt$( title: String, subtitle: String = "", trailingSubtitleIcon: ImageVector? = null, largeTitleSubtitle: String = "", menu: HeaderMenu, scrollBehavior: ScrollBehavior, state: HazeState, /** * 顶栏底下那一块（库 `TopAppBar` 的 `bottomContent` 槽位）——「按键绑定」的分段控件、 * 「自定义命令」的类型选择器、「选择应用」的搜索框这三条固定带都走这里。 * * 带子成了顶栏这个节点的一部分 ⇒ 顶栏的半透明底与模糊一起盖住它，顶栏底边那条细线也落在带子下沿； * 带子高度由它自己 `onSizeChanged` 报给页面级状态。 */ bottomContent: @Composable () -&gt; Unit = {}, )</ID>
+    <ID>LongParameterList:SliderRow.kt$( title: String, summary: String, icon: ImageVector, position: CardListPosition, min: Int, max: Int, value: Int, default: Int, enabled: Boolean = true, onCommit: (Int) -&gt; Boolean, )</ID>
+    <ID>LongParameterList:SwitchRow.kt$( title: String, summary: String, icon: ImageVector, checked: Boolean, position: CardListPosition, enabled: Boolean = true, onCheckedChange: (Boolean) -&gt; Unit, )</ID>
+    <ID>LongParameterList:TileWidgets.kt$( icon: ImageVector, description: String, enabled: Boolean = true, error: Boolean = false, tint: Color? = null, onClick: () -&gt; Unit, )</ID>
+    <ID>LoopWithTooManyJumpStatements:CustomCommandRunner.kt$CustomCommandRunner$while</ID>
+    <ID>LoopWithTooManyJumpStatements:FileObfuscation.kt$FileObfuscation$for</ID>
+    <ID>LoopWithTooManyJumpStatements:GestureProbe.kt$while</ID>
+    <ID>LoopWithTooManyJumpStatements:KeyHooks.kt$KeyHooks$for</ID>
+    <ID>LoopWithTooManyJumpStatements:MiniWindowLauncher.kt$MiniWindowLauncher$for</ID>
+    <ID>LoopWithTooManyJumpStatements:ShellRunner.kt$ShellRunner$for</ID>
+    <ID>LoopWithTooManyJumpStatements:SliderRow.kt$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SystemContext.kt$SystemContext$for</ID>
+    <ID>MatchingDeclarationName:AppPicker.kt$LaunchableApp</ID>
+    <ID>MatchingDeclarationName:CommandText.kt$StepLine</ID>
+    <ID>MatchingDeclarationName:PageHeader.kt$HeaderMenu</ID>
+    <ID>NestedBlockDepth:KeyHooks.kt$KeyHooks$private fun readBroadcast(args: List&lt;Any?&gt;)</ID>
+    <ID>NestedBlockDepth:ProbeChannel.kt$ProbeChannel$private fun taskOf( loader: ClassLoader, taskId: Int, ): Any?</ID>
+    <ID>NestedBlockDepth:SideKeyInterceptor.kt$SideKeyInterceptor$private fun feedDetector( id: KeyId, point: Framework.InterceptionPoint, keyEvent: KeyEvent, keyConfig: KeyConfig, ): Boolean</ID>
+    <ID>NestedBlockDepth:SystemActionButtonConfig.kt$SystemActionButtonConfig$fun readAll(context: Context): List&lt;Row&gt;?</ID>
+    <ID>ReturnCount:AppEntry.kt$AppEntry$fun resolve( pm: PackageManager, pkg: String, ): Intent?</ID>
+    <ID>ReturnCount:AppLauncher.kt$AppLauncher$fun startOplusFeature(feature: String)</ID>
+    <ID>ReturnCount:ConfigBundle.kt$ConfigBundle$fun parse(text: String): Parsed?</ID>
+    <ID>ReturnCount:ConfigStore.kt$ConfigStore$fun load(): Load</ID>
+    <ID>ReturnCount:CustomCommandRunner.kt$CustomCommandRunner$fun run( name: String, depth: Int, )</ID>
+    <ID>ReturnCount:DeviceSupport.kt$DeviceSupport$fun check( model: String?, android: String?, rom: String?, ): Support</ID>
+    <ID>ReturnCount:FlexibleWindowBridge.kt$FlexibleWindowBridge$private fun buildAnimInfo( loader: ClassLoader, intent: Intent, ): Any?</ID>
+    <ID>ReturnCount:FlexibleWindowBridge.kt$FlexibleWindowBridge$private fun miniAnimLocal( loader: ClassLoader?, taskId: Int, intent: Intent, )</ID>
+    <ID>ReturnCount:FlexibleWindowBridge.kt$FlexibleWindowBridge$private fun switchToMiniLocal( loader: ClassLoader?, taskId: Int, requestedBounds: android.graphics.Rect?, requestedScale: Float?, )</ID>
+    <ID>ReturnCount:GestureReceiver.kt$GestureReceiver$private fun handle( keyId: String?, phaseId: String?, repeat: Boolean, sentAt: Long, )</ID>
+    <ID>ReturnCount:KeyInjector.kt$KeyInjector$private fun build(loader: ClassLoader): Handle?</ID>
+    <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$fun launchAppInWindow(target: String)</ID>
+    <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$fun putForegroundInMiniWindow(collapsed: Boolean = false)</ID>
+    <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$private fun canEnterMiniWindow(taskId: Int): Boolean</ID>
+    <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$private fun foregroundTaskFor(pkg: String): Int</ID>
+    <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$private fun startFlexibleFromRecents( taskId: Int, zoomLaunchFlags: Int, ): Boolean</ID>
+    <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$private fun startZoomWindowCode( ctx: Context, intent: Intent, ): Int?</ID>
+    <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$private fun taskZoomConfigRatio(taskId: Int): Float?</ID>
+    <ID>ReturnCount:ProbeChannel.kt$ProbeChannel$private fun coerce( args: List&lt;String&gt;, types: Array&lt;Class&lt;*&gt;&gt;, ): Array&lt;Any?&gt;?</ID>
+    <ID>ReturnCount:StatusBarBridge.kt$StatusBarBridge$private fun toggleRecentsLocal(loader: ClassLoader?)</ID>
+    <ID>ReturnCount:SystemActionButtonConfig.kt$SystemActionButtonConfig$fun readAll(context: Context): List&lt;Row&gt;?</ID>
+    <ID>SpreadOperator:KeyInjector.kt$KeyInjector$( h.ctor, *when (h.argc) { 10 -&gt; arrayOf&lt;Any?&gt;(now, now, action, keyCode, 0, 0, VIRTUAL_KEYBOARD, 0, 0, SOURCE_KEYBOARD) 6 -&gt; arrayOf&lt;Any?&gt;(now, now, action, keyCode, 0, 0) else -&gt; arrayOf&lt;Any?&gt;(now, now, action, keyCode, 0) }, )</ID>
+    <ID>SpreadOperator:ProbeChannel.kt$ProbeChannel$(null, *args)</ID>
+    <ID>SpreadOperator:ProbeChannel.kt$ProbeChannel$(null, *converted)</ID>
+    <ID>SpreadOperator:ProbeChannel.kt$ProbeChannel$(receiver, *converted)</ID>
+    <ID>SpreadOperator:ProbeChannel.kt$ProbeChannel$(task, *args)</ID>
+    <ID>SpreadOperator:Reflect.kt$Reflect$(receiver.javaClass, name, *params)</ID>
+    <ID>SwallowedException:AppLauncher.kt$AppLauncher$e2: Throwable</ID>
+    <ID>SwallowedException:AppLauncher.kt$AppLauncher$e: Throwable</ID>
+    <ID>SwallowedException:AppPicker.kt$e: Throwable</ID>
+    <ID>SwallowedException:ConfigBroadcast.kt$ConfigBroadcast$e: Throwable</ID>
+    <ID>SwallowedException:FlexibleWindowBridge.kt$FlexibleWindowBridge$e: Throwable</ID>
+    <ID>SwallowedException:GestureReceiver.kt$GestureReceiver$e: Throwable</ID>
+    <ID>SwallowedException:HostChrome.kt$HostChrome$e: Throwable</ID>
+    <ID>SwallowedException:I18n.kt$I18n$e: Throwable</ID>
+    <ID>SwallowedException:MiniWindowLauncher.kt$MiniWindowLauncher$e: Throwable</ID>
+    <ID>SwallowedException:ProbeChannel.kt$ProbeChannel$e: NoSuchFieldException</ID>
+    <ID>SwallowedException:ProbeChannel.kt$ProbeChannel$e: NoSuchMethodException</ID>
+    <ID>SwallowedException:ProbeChannel.kt$ProbeChannel$e: Throwable</ID>
+    <ID>SwallowedException:SideKeyGestureHooks.kt$SideKeyGestureHooks$e: Throwable</ID>
+    <ID>SwallowedException:SystemActionButtonConfig.kt$SystemActionButtonConfig$e: Throwable</ID>
+    <ID>TooManyFunctions:ActionCatalog.kt$ActionCatalog</ID>
+    <ID>TooManyFunctions:AppPicker.kt$com.lookie.opluskey.ui.screen.AppPicker.kt</ID>
+    <ID>TooManyFunctions:CommandLibrary.kt$CommandLibrary</ID>
+    <ID>TooManyFunctions:CommandScreen.kt$com.lookie.opluskey.ui.screen.CommandScreen.kt</ID>
+    <ID>TooManyFunctions:ConfigActions.kt$com.lookie.opluskey.ui.state.ConfigActions.kt</ID>
+    <ID>TooManyFunctions:FlexibleWindowBridge.kt$FlexibleWindowBridge</ID>
+    <ID>TooManyFunctions:GestureReceiver.kt$GestureReceiver</ID>
+    <ID>TooManyFunctions:HostChrome.kt$HostChrome</ID>
+    <ID>TooManyFunctions:MiniWindowLauncher.kt$MiniWindowLauncher</ID>
+    <ID>TooManyFunctions:ProbeChannel.kt$ProbeChannel</ID>
+    <ID>TooManyFunctions:Reflect.kt$Reflect</ID>
+    <ID>TooManyFunctions:SettingsPage.kt$SettingsPage</ID>
+    <ID>TooManyFunctions:XLog.kt$XLog</ID>
+    <ID>UnusedParameter:MiniWindowLauncher.kt$MiniWindowLauncher$ctx: Context</ID>
+    <ID>UnusedParameter:MiniWindowSupport.kt$MiniWindowSupport$pm: PackageManager</ID>
+    <ID>UnusedParameter:RingerController.kt$RingerController$ctx: Context</ID>
+  </CurrentIssues>
+</SmellBaseline>

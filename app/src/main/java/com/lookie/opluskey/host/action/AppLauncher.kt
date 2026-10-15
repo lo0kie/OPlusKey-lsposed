@@ -17,7 +17,6 @@ internal class AppLauncher(
     /** 失败通知出口。 */
     private val onFailure: (CommandFailure) -> Unit,
 ) {
-
     /** 小窗那一族动作的执行器（`window:` 起法与「把前台收成小窗」共用一套反射降级，见 [MiniWindowLauncher]）。 */
     private val mini = MiniWindowLauncher(context, onFailure)
 
@@ -26,10 +25,11 @@ internal class AppLauncher(
      * 清单里打开相机那条就是个界面 Intent，只发广播相机不会开。
      */
     fun openIntent(action: String) {
-        val ctx = context() ?: run {
-            XLog.w("没有 Context，intent:$action 跳过")
-            return
-        }
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，intent:$action 跳过")
+                return
+            }
         try {
             ctx.startActivity(Intent(action).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             XLog.w("intent:$action → 已作为界面拉起")
@@ -49,21 +49,23 @@ internal class AppLauncher(
 
     /** `app:包名/Activity` 或 `app:包名` —— 拉起一个界面。 */
     fun launchApp(target: String) {
-        val ctx = context() ?: run {
-            XLog.w("没有 Context，app:$target 跳过")
-            return
-        }
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，app:$target 跳过")
+                return
+            }
         val pm = ctx.packageManager
         val intent = AppEntry.intentOf(pm, target)
         if (intent == null) {
             // 区分「包还在但没有可启动界面」与「包已不在」，前者提示「已卸载」会误导
             val pkg = target.substringBefore('/')
-            val installed = try {
-                pm.getApplicationInfo(pkg, 0)
-                true
-            } catch (e: Throwable) {
-                false
-            }
+            val installed =
+                try {
+                    pm.getApplicationInfo(pkg, 0)
+                    true
+                } catch (e: Throwable) {
+                    false
+                }
             XLog.w("解析不到界面：$target（这个包还在=$installed）")
             onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
             return
@@ -77,12 +79,13 @@ internal class AppLauncher(
             //  一律报 APP_MISSING（「可能已经卸载了」）会把用户带偏 —— 包明明还在。
             //  判据与上面 `intent == null` 那一支同源（`getApplicationInfo` 查得到就是还在）。
             val pkg = target.substringBefore('/')
-            val installed = try {
-                pm.getApplicationInfo(pkg, 0)
-                true
-            } catch (e2: Throwable) {
-                false
-            }
+            val installed =
+                try {
+                    pm.getApplicationInfo(pkg, 0)
+                    true
+                } catch (e2: Throwable) {
+                    false
+                }
             XLog.w("拉起界面失败：$target（这个包还在=$installed）", e)
             onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
         } catch (e: Throwable) {
@@ -115,10 +118,11 @@ internal class AppLauncher(
      */
     fun runShortcut(shortcutId: String) {
         if (shortcutId.isBlank()) return
-        val ctx = context() ?: run {
-            XLog.w("没有 Context，shortcut:$shortcutId 跳过")
-            return
-        }
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，shortcut:$shortcutId 跳过")
+                return
+            }
 
         //  注意：**只发一条**：两条 action 都命中时会各发一遍，而同一个
         //  接收器往往同时监听这两条 action ⇒ 指令被执行两次（注释里「避免同一条指令被执行两次」
@@ -126,18 +130,20 @@ internal class AppLauncher(
         //  一条都没查到（非导出接收器对跨 uid 查询不可见）时退回「全部各试一次」——
         //  那种情况下不知道哪条才对，宁可重复也不能不发。
         val resolved = SHORTCUT_ACTIONS.filter { hasReceiver(ctx, it) }
-        val channels = if (resolved.isNotEmpty()) {
-            listOf(resolved.first())
-        } else {
-            XLog.w("小布快捷指令：没查到任何接收者（可能是非导出接收器），按全部通道各试一次")
-            SHORTCUT_ACTIONS
-        }
+        val channels =
+            if (resolved.isNotEmpty()) {
+                listOf(resolved.first())
+            } else {
+                XLog.w("小布快捷指令：没查到任何接收者（可能是非导出接收器），按全部通道各试一次")
+                SHORTCUT_ACTIONS
+            }
 
         var sent = 0
         for (action in channels) {
-            val intent = Intent(action)
-                .setPackage(SHORTCUT_PKG)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent =
+                Intent(action)
+                    .setPackage(SHORTCUT_PKG)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             // 各版本用过不同的 extra key 名，**两条都带上** —— 实现方读哪个都能拿到。
             for (key in SHORTCUT_ID_KEYS) intent.putExtra(key, shortcutId)
             try {
@@ -152,29 +158,36 @@ internal class AppLauncher(
     }
 
     /** 这条 action 在 `com.coloros.shortcuts` 里有没有接收者（查不到 / 抛异常都按「没有」）。 */
-    private fun hasReceiver(ctx: Context, action: String): Boolean = try {
-        ctx.packageManager.queryBroadcastReceivers(
-            Intent(action).setPackage(SHORTCUT_PKG),
-            0,
-        ).isNotEmpty()
-    } catch (e: Throwable) {
-        XLog.d("查小布快捷指令接收者失败（按没有处理）：$action | ${e.message}")
-        false
-    }
+    private fun hasReceiver(
+        ctx: Context,
+        action: String,
+    ): Boolean =
+        try {
+            ctx.packageManager
+                .queryBroadcastReceivers(
+                    Intent(action).setPackage(SHORTCUT_PKG),
+                    0,
+                ).isNotEmpty()
+        } catch (e: Throwable) {
+            XLog.d("查小布快捷指令接收者失败（按没有处理）：$action | ${e.message}")
+            false
+        }
 
     /**
      * 起一个 ColorOS 系统能力（`oplus:` 动作）；目标组件与 action 见 [OplusFeature]。
      */
     fun startOplusFeature(feature: String) {
-        val target = OplusFeature.of(feature) ?: run {
-            XLog.w("不认识的 oplus 能力：$feature")
-            onFailure(CommandFailure.UNKNOWN)
-            return
-        }
-        val ctx = context() ?: run {
-            XLog.w("没有 Context，oplus:$feature 跳过")
-            return
-        }
+        val target =
+            OplusFeature.of(feature) ?: run {
+                XLog.w("不认识的 oplus 能力：$feature")
+                onFailure(CommandFailure.UNKNOWN)
+                return
+            }
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，oplus:$feature 跳过")
+                return
+            }
         // Messenger 绑定型（场景表 type=service 的大部分）必须 bind 后发 Message
         if (target.message != null) {
             sendMessengerMessage(ctx, feature, target)
@@ -227,31 +240,39 @@ internal class AppLauncher(
      * 调用成功、AMS 也受理，但目标进程毫无动静）。发完立刻解绑 —— `send` 是单向
      * binder 调用，消息已经进了对方的 Handler 队列。
      */
-    private fun sendMessengerMessage(ctx: Context, feature: String, target: OplusFeature.Target) {
+    private fun sendMessengerMessage(
+        ctx: Context,
+        feature: String,
+        target: OplusFeature.Target,
+    ) {
         val what = target.message ?: return
         val intent = Intent().setComponent(ComponentName(target.owner, target.service))
         val short = "${target.owner}/${target.service.substringAfterLast('.')}"
         val main = Handler(Looper.getMainLooper())
         var handled = false
-        val connection = object : ServiceConnection {
-            override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-                handled = true
-                try {
-                    val message = Message.obtain(null, what)
-                    // 服务端会向 replyTo 回执，不设会在它那边空指针
-                    message.replyTo = Messenger(Handler(Looper.getMainLooper()))
-                    Messenger(binder).send(message)
-                    XLog.w("oplus:$feature → Messenger.send(what=$what)($short)")
-                } catch (e: Throwable) {
-                    XLog.w("oplus:$feature 的 Messenger 消息发不出去：${e.javaClass.simpleName}: ${e.message}")
-                    onFailure(CommandFailure.UNKNOWN)
-                } finally {
-                    runCatching { ctx.unbindService(this) }
+        val connection =
+            object : ServiceConnection {
+                override fun onServiceConnected(
+                    name: ComponentName,
+                    binder: IBinder,
+                ) {
+                    handled = true
+                    try {
+                        val message = Message.obtain(null, what)
+                        // 服务端会向 replyTo 回执，不设会在它那边空指针
+                        message.replyTo = Messenger(Handler(Looper.getMainLooper()))
+                        Messenger(binder).send(message)
+                        XLog.w("oplus:$feature → Messenger.send(what=$what)($short)")
+                    } catch (e: Throwable) {
+                        XLog.w("oplus:$feature 的 Messenger 消息发不出去：${e.javaClass.simpleName}: ${e.message}")
+                        onFailure(CommandFailure.UNKNOWN)
+                    } finally {
+                        runCatching { ctx.unbindService(this) }
+                    }
                 }
-            }
 
-            override fun onServiceDisconnected(name: ComponentName) {}
-        }
+                override fun onServiceDisconnected(name: ComponentName) {}
+            }
         try {
             ctx.bindService(intent, connection, Context.BIND_AUTO_CREATE)
             main.postDelayed({
@@ -289,7 +310,6 @@ internal class AppLauncher(
     fun startSidebar() = startOplusFeature("screen_ocr")
 
     private companion object {
-
         /** 小布快捷指令的包名。 */
         const val SHORTCUT_PKG = "com.coloros.shortcuts"
 
@@ -297,10 +317,11 @@ internal class AppLauncher(
          * ColorOS 快捷指令的触发 action —— 各版本用过好几套名字（旧的是 `oplus` 命名空间）。
          * 见 [runShortcut]：先按「有接收者」筛，筛不出来才全部各发一次。
          */
-        val SHORTCUT_ACTIONS = listOf(
-            "com.coloros.shortcuts.action.EXECUTE_SHORTCUT",
-            "com.oplus.shortcuts.action.EXECUTE_SHORTCUT",
-        )
+        val SHORTCUT_ACTIONS =
+            listOf(
+                "com.coloros.shortcuts.action.EXECUTE_SHORTCUT",
+                "com.oplus.shortcuts.action.EXECUTE_SHORTCUT",
+            )
 
         /** 指令 id 在广播里的 extra key —— 各版本用过这两个名字，两条都带。 */
         val SHORTCUT_ID_KEYS = listOf("shortcut_id", "shortcutId")

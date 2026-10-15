@@ -24,17 +24,17 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple3
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple4
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple5
 import io.github.lyxnx.compose.ui.tablericons.outline.BrowserPlus
-import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
 import io.github.lyxnx.compose.ui.tablericons.outline.Bug
+import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
 import io.github.lyxnx.compose.ui.tablericons.outline.Check
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
-import io.github.lyxnx.compose.ui.tablericons.outline.Command
+import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
-import io.github.lyxnx.compose.ui.tablericons.outline.Circle
+import io.github.lyxnx.compose.ui.tablericons.outline.Command
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobilePause
@@ -56,9 +56,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.InputX
 import io.github.lyxnx.compose.ui.tablericons.outline.LayoutGrid
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
-import io.github.lyxnx.compose.ui.tablericons.outline.Moon
 import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodEmpty
+import io.github.lyxnx.compose.ui.tablericons.outline.Moon
 import io.github.lyxnx.compose.ui.tablericons.outline.Music
 import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Notification
@@ -93,64 +93,159 @@ import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
 import io.github.lyxnx.compose.ui.tablericons.outline.World
 
 /** 动作 → 图标的映射（列表行首那个图标）。 */
-internal fun actionIcon(token: String): ImageVector = when (token) {
-    "none" -> TablerIcons.Outline.Ban
+internal fun actionIcon(token: String): ImageVector =
+    when (token) {
+        "none" -> {
+            TablerIcons.Outline.Ban
+        }
 
-    // 全项目只用 Tabler 一支笔，不混图标库
-    "flashlight" -> TablerIcons.Outline.Bulb
+        // 全项目只用 Tabler 一支笔，不混图标库
+        "flashlight" -> {
+            TablerIcons.Outline.Bulb
+        }
 
-    // keyevent 一律是数字形态
-    "keyevent:26" -> TablerIcons.Outline.Power // 电源键（⏻）
-    // 与「电源键」必须不同字形：同样一颗 ⏻ 摆在一起分不出按下的那个是按键还是菜单。
-    // 「电源菜单」= 弹出关机 / 重启那一层，用「滑杆 + 闪电」。
-    "power:menu" -> TablerIcons.Outline.AdjustmentsBolt
+        // keyevent 一律是数字形态
+        "keyevent:26" -> {
+            TablerIcons.Outline.Power
+        }
 
-    // 系统侧键场景表里的三档
-    "oplus:flash_memory" -> TablerIcons.Outline.Pencil // 一键闪记
-    "oplus:no_disturb" -> TablerIcons.Outline.Moon // 免打扰（月亮：勿扰/夜间的通用读法）
-    "oplus:recording" -> TablerIcons.Outline.Microphone // 录音
-    "keyevent:164" -> TablerIcons.Outline.Bell // 响铃状态（那一格；菜单里的「循环」见 [specIcon]）
-    "keyevent:3" -> TablerIcons.Outline.Home // Home
-    "keyevent:4" -> TablerIcons.Outline.ArrowBackUp // 返回
-    "keyevent:187" -> TablerIcons.Outline.Cards // 最近任务
-    "keyevent:83" -> TablerIcons.Outline.Notification // 通知中心（改名不改字形）
-    // 控制中心（`panel:control_center`）—— 用「⌘」那颗：它是系统里「控制」那一类的通用读法
-    "panel:${Action.Panel.CONTROL_CENTER}" -> TablerIcons.Outline.Command
-    // 媒体控制菜单的五条。**格子**那枚不走这里 —— 它跟首行共用同一串 token，由 [specIcon]
-    // 按 spec 认领成音符（那是「一类东西」），这里的开关键说的是「那一个具体取值」。
-    "keyevent:85" -> TablerIcons.Outline.Switch3 // 播放 / 暂停（交给系统按当前状态翻面）
-    "keyevent:126" -> TablerIcons.Outline.PlayerPlay // 播放
-    "keyevent:127" -> TablerIcons.Outline.PlayerStop // 暂停
-    "keyevent:88" -> TablerIcons.Outline.PlayerTrackPrev // 上一首
-    "keyevent:87" -> TablerIcons.Outline.PlayerTrackNext // 下一首
-    "keyevent:24" -> TablerIcons.Outline.Volume // 音量 +（两条声波）
-    "keyevent:25" -> TablerIcons.Outline.Volume4 // 音量 −
-    // 把前台应用收成小窗 —— 展开档用「窗口 + 底部块」（`app-window-bottom`）
-    "zoom:mini" -> TablerIcons.Outline.AppWindowBottom
-    // 收起档（右上角一条）—— 用画中画那颗（画面挂在**顶部**），与展开档一眼分得开
-    "zoom:mini:collapse" -> TablerIcons.Outline.PictureInPictureTop
+        // 电源键（⏻）
+        // 与「电源键」必须不同字形：同样一颗 ⏻ 摆在一起分不出按下的那个是按键还是菜单。
+        // 「电源菜单」= 弹出关机 / 重启那一层，用「滑杆 + 闪电」。
+        "power:menu" -> {
+            TablerIcons.Outline.AdjustmentsBolt
+        }
 
-    // 响铃档位（`ringer:normal|vibrate|silent`）；「循环」那一档不在这里 ——
-    // 它写的是 `keyevent:164`，由 [specIcon] 按 spec 认领 [PageIcons.RingerCycle]（铃铛 + 一圈箭头）。
-    "ringer:normal" -> TablerIcons.Outline.BellRinging
-    "ringer:vibrate" -> TablerIcons.Outline.DeviceMobileVibration
-    "ringer:silent" -> TablerIcons.Outline.BellOff
+        // 系统侧键场景表里的三档
+        "oplus:flash_memory" -> {
+            TablerIcons.Outline.Pencil
+        }
 
-    else -> when {
-        // 截图那条 shell（清单里是 `service call color_screenshot 1`）
-        token.contains("color_screenshot") -> TablerIcons.Outline.Screenshot
-        // 小布识屏那条 shell（`DIRECT_SIDEBAR_SERVICE`）—— 语义是「识屏」
-        token.contains("DIRECT_SIDEBAR_SERVICE") -> TablerIcons.Outline.TextRecognition
-        token.startsWith("shell:") -> TablerIcons.Outline.Terminal2
-        // 区别只在内容存哪（`shell:` 是原文，`cmd:` 是名字）
-        token.startsWith("cmd:") -> TablerIcons.Outline.Terminal2
-        token.startsWith("app:") -> TablerIcons.Outline.LayoutGrid
-        // 「以小窗口打开」（`window:目标`）：新起一个窗口 —— 与「把前台的收成小窗」那两档
-        // （`zoom:mini` / `zoom:mini:collapse`，见上面）是**三支不同字形**，别顺手并回来。
-        token.startsWith("window:") -> TablerIcons.Outline.WindowMinimize
-        else -> TablerIcons.Outline.Dots
+        // 一键闪记
+        "oplus:no_disturb" -> {
+            TablerIcons.Outline.Moon
+        }
+
+        // 免打扰（月亮：勿扰/夜间的通用读法）
+        "oplus:recording" -> {
+            TablerIcons.Outline.Microphone
+        }
+
+        // 录音
+        "keyevent:164" -> {
+            TablerIcons.Outline.Bell
+        }
+
+        // 响铃状态（那一格；菜单里的「循环」见 [specIcon]）
+        "keyevent:3" -> {
+            TablerIcons.Outline.Home
+        }
+
+        // Home
+        "keyevent:4" -> {
+            TablerIcons.Outline.ArrowBackUp
+        }
+
+        // 返回
+        "keyevent:187" -> {
+            TablerIcons.Outline.Cards
+        }
+
+        // 最近任务
+        "keyevent:83" -> {
+            TablerIcons.Outline.Notification
+        }
+
+        // 通知中心（改名不改字形）
+        // 控制中心（`panel:control_center`）—— 用「⌘」那颗：它是系统里「控制」那一类的通用读法
+        "panel:${Action.Panel.CONTROL_CENTER}" -> {
+            TablerIcons.Outline.Command
+        }
+
+        // 媒体控制菜单的五条。**格子**那枚不走这里 —— 它跟首行共用同一串 token，由 [specIcon]
+        // 按 spec 认领成音符（那是「一类东西」），这里的开关键说的是「那一个具体取值」。
+        "keyevent:85" -> {
+            TablerIcons.Outline.Switch3
+        }
+
+        // 播放 / 暂停（交给系统按当前状态翻面）
+        "keyevent:126" -> {
+            TablerIcons.Outline.PlayerPlay
+        }
+
+        // 播放
+        "keyevent:127" -> {
+            TablerIcons.Outline.PlayerStop
+        }
+
+        // 暂停
+        "keyevent:88" -> {
+            TablerIcons.Outline.PlayerTrackPrev
+        }
+
+        // 上一首
+        "keyevent:87" -> {
+            TablerIcons.Outline.PlayerTrackNext
+        }
+
+        // 下一首
+        "keyevent:24" -> {
+            TablerIcons.Outline.Volume
+        }
+
+        // 音量 +（两条声波）
+        "keyevent:25" -> {
+            TablerIcons.Outline.Volume4
+        }
+
+        // 音量 −
+        // 把前台应用收成小窗 —— 展开档用「窗口 + 底部块」（`app-window-bottom`）
+        "zoom:mini" -> {
+            TablerIcons.Outline.AppWindowBottom
+        }
+
+        // 收起档（右上角一条）—— 用画中画那颗（画面挂在**顶部**），与展开档一眼分得开
+        "zoom:mini:collapse" -> {
+            TablerIcons.Outline.PictureInPictureTop
+        }
+
+        // 响铃档位（`ringer:normal|vibrate|silent`）；「循环」那一档不在这里 ——
+        // 它写的是 `keyevent:164`，由 [specIcon] 按 spec 认领 [PageIcons.RingerCycle]（铃铛 + 一圈箭头）。
+        "ringer:normal" -> {
+            TablerIcons.Outline.BellRinging
+        }
+
+        "ringer:vibrate" -> {
+            TablerIcons.Outline.DeviceMobileVibration
+        }
+
+        "ringer:silent" -> {
+            TablerIcons.Outline.BellOff
+        }
+
+        else -> {
+            when {
+                // 截图那条 shell（清单里是 `service call color_screenshot 1`）
+                token.contains("color_screenshot") -> TablerIcons.Outline.Screenshot
+
+                // 小布识屏那条 shell（`DIRECT_SIDEBAR_SERVICE`）—— 语义是「识屏」
+                token.contains("DIRECT_SIDEBAR_SERVICE") -> TablerIcons.Outline.TextRecognition
+
+                token.startsWith("shell:") -> TablerIcons.Outline.Terminal2
+
+                // 区别只在内容存哪（`shell:` 是原文，`cmd:` 是名字）
+                token.startsWith("cmd:") -> TablerIcons.Outline.Terminal2
+
+                token.startsWith("app:") -> TablerIcons.Outline.LayoutGrid
+
+                // 「以小窗口打开」（`window:目标`）：新起一个窗口 —— 与「把前台的收成小窗」那两档
+                // （`zoom:mini` / `zoom:mini:collapse`，见上面）是**三支不同字形**，别顺手并回来。
+                token.startsWith("window:") -> TablerIcons.Outline.WindowMinimize
+
+                else -> TablerIcons.Outline.Dots
+            }
+        }
     }
-}
 
 /**
  * 一条清单条目（[ActionCatalog.Spec]）的图标 —— **只有一处该调它**：界面按
@@ -162,29 +257,37 @@ internal fun actionIcon(token: String): ImageVector = when (token) {
  * 其二是 token 认不出取值的条目 —— [ActionCatalog.RINGER_CYCLE]（与「响铃状态」格共用写法）
  * 和几个标记入口格（`nav:` / `key:` / `panel:` / `zoom:`）。
  */
-internal fun specIcon(spec: ActionCatalog.Spec): ImageVector = when {
-    spec.commandKind != null -> commandIcon(spec.commandKind, spec.commandSteps)
-    // 「循环」与「响铃状态」格共用写法 `keyevent:164`，靠 token 分不出 —— 只能按 spec 认领字形。
-    spec === ActionCatalog.RINGER_CYCLE -> PageIcons.RingerCycle
-    // 「媒体控制」那一格与菜单首行共用 `keyevent:85`（`Action.parse` 出来的取值一模一样）——
-    //  只能按 spec 认领：**格子**用音符（它是一类东西，入口），**菜单首行**落到下面 `actionIcon`
-    //  的开关键那颗（那是一个具体取值）。这两处**要不一样**：入口是「媒体控制」这件事，
-    //  首行是「播放 / 暂停」这个取值。
-    spec === ActionCatalog.MEDIA_TILE_SPEC -> TablerIcons.Outline.Music
-    // 两个**标记**入口格同理：token（`nav:` / `key:`）`Action.parse` 不出有意义的动作，
-    // 走 [actionIcon] 只会落到兜底字形 —— 按 spec 认领。
-    spec.token == ActionCatalog.NAV_TILE -> PageIcons.NavigationCog
-    spec.token == ActionCatalog.KEY_TILE -> PageIcons.Click
-    // 「通知与控制中心」同理：标记 token（`panel:`）不是任何一条真取值，按 spec 认领字形
-    //（`align-box-center-middle`：上下两块面板）。
-    spec.token == ActionCatalog.PANEL_TILE -> PageIcons.Panels
-    // 「应用转小窗」同理：标记 token（`zoom:`）不是任何一条真取值，按 spec 认领字形
-    //（`picture-in-picture-on`：入口是画中画，菜单里那两档另有两支）。
-    spec.token == ActionCatalog.MINI_TILE -> PageIcons.MiniWindow
-    // 走 ActionCatalog 那份按 token 记忆的规范化结果，不在这里现 `Action.parse` —— 这条
-    //  在网格每个格子的每一次重组上（见 `ActionCatalog.canonicalToken`）。
-    else -> actionIcon(ActionCatalog.canonicalToken(spec.token))
-}
+internal fun specIcon(spec: ActionCatalog.Spec): ImageVector =
+    when {
+        spec.commandKind != null -> commandIcon(spec.commandKind, spec.commandSteps)
+
+        // 「循环」与「响铃状态」格共用写法 `keyevent:164`，靠 token 分不出 —— 只能按 spec 认领字形。
+        spec === ActionCatalog.RINGER_CYCLE -> PageIcons.RingerCycle
+
+        // 「媒体控制」那一格与菜单首行共用 `keyevent:85`（`Action.parse` 出来的取值一模一样）——
+        //  只能按 spec 认领：**格子**用音符（它是一类东西，入口），**菜单首行**落到下面 `actionIcon`
+        //  的开关键那颗（那是一个具体取值）。这两处**要不一样**：入口是「媒体控制」这件事，
+        //  首行是「播放 / 暂停」这个取值。
+        spec === ActionCatalog.MEDIA_TILE_SPEC -> TablerIcons.Outline.Music
+
+        // 两个**标记**入口格同理：token（`nav:` / `key:`）`Action.parse` 不出有意义的动作，
+        // 走 [actionIcon] 只会落到兜底字形 —— 按 spec 认领。
+        spec.token == ActionCatalog.NAV_TILE -> PageIcons.NavigationCog
+
+        spec.token == ActionCatalog.KEY_TILE -> PageIcons.Click
+
+        // 「通知与控制中心」同理：标记 token（`panel:`）不是任何一条真取值，按 spec 认领字形
+        // （`align-box-center-middle`：上下两块面板）。
+        spec.token == ActionCatalog.PANEL_TILE -> PageIcons.Panels
+
+        // 「应用转小窗」同理：标记 token（`zoom:`）不是任何一条真取值，按 spec 认领字形
+        // （`picture-in-picture-on`：入口是画中画，菜单里那两档另有两支）。
+        spec.token == ActionCatalog.MINI_TILE -> PageIcons.MiniWindow
+
+        // 走 ActionCatalog 那份按 token 记忆的规范化结果，不在这里现 `Action.parse` —— 这条
+        //  在网格每个格子的每一次重组上（见 `ActionCatalog.canonicalToken`）。
+        else -> actionIcon(ActionCatalog.canonicalToken(spec.token))
+    }
 
 /**
  * 一条自定义命令的类型图标：单条 → [PageIcons.CommandSingle]，多条 → 按步骤数的 [commandSerialIcon]。
@@ -192,8 +295,17 @@ internal fun specIcon(spec: ActionCatalog.Spec): ImageVector = when {
  * 三个地方共用这一份：网格格子与「已保存的命令」卡片（[ActionCatalog.Spec] 带过来的类型 / 步数）、
  * 步骤行里引用另一条命令的那枚小图标（[stepIcon] 从命令库查出被引用的那条之后转给它）。
  */
-internal fun commandIcon(kind: CommandKind, steps: Int): ImageVector =
-    if (kind == CommandKind.SERIAL) commandSerialIcon(steps) else PageIcons.CommandSingle
+internal fun commandIcon(
+    kind: CommandKind,
+    steps: Int,
+): ImageVector =
+    if (kind ==
+        CommandKind.SERIAL
+    ) {
+        commandSerialIcon(steps)
+    } else {
+        PageIcons.CommandSingle
+    }
 
 /**
  * 「多条命令」的类型图标 —— 按步骤数取 `box-multiple-N`，一眼能看出这条有几步。
@@ -201,17 +313,17 @@ internal fun commandIcon(kind: CommandKind, steps: Int): ImageVector =
  * 档位与 `Command.MAX_STEPS` 同宽（1~5）；0 步（还没加步骤的草稿）与超出上限的都以首尾两档收口，
  * 图标只说明「几步」，不承担校验。
  */
-internal fun commandSerialIcon(steps: Int): ImageVector =
-    SERIAL_STEP_ICONS[steps.coerceIn(1, SERIAL_STEP_ICONS.size) - 1]
+internal fun commandSerialIcon(steps: Int): ImageVector = SERIAL_STEP_ICONS[steps.coerceIn(1, SERIAL_STEP_ICONS.size) - 1]
 
 /** 步骤数 → 字形，下标 0 是 1 步。长度必须等于 `Command.MAX_STEPS`，否则上一步的钳位会串档。 */
-private val SERIAL_STEP_ICONS: List<ImageVector> = listOf(
-    TablerIcons.Outline.BoxMultiple1,
-    TablerIcons.Outline.BoxMultiple2,
-    TablerIcons.Outline.BoxMultiple3,
-    TablerIcons.Outline.BoxMultiple4,
-    TablerIcons.Outline.BoxMultiple5,
-)
+private val SERIAL_STEP_ICONS: List<ImageVector> =
+    listOf(
+        TablerIcons.Outline.BoxMultiple1,
+        TablerIcons.Outline.BoxMultiple2,
+        TablerIcons.Outline.BoxMultiple3,
+        TablerIcons.Outline.BoxMultiple4,
+        TablerIcons.Outline.BoxMultiple5,
+    )
 
 /** 页面自己的小图标（顶栏返回键 / 行尾箭头 / 「按键绑定」行首 / 浮层菜单两行）—— 同样出自 Tabler。 */
 internal object PageIcons {

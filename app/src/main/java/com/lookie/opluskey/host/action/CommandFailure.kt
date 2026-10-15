@@ -13,7 +13,10 @@ import com.lookie.opluskey.core.model.GlobalConfig
  * 失败提示表：Toast 里只出现 [hint]（说清哪里不对 + 怎么办），原始信息照旧进日志
  * （按枚举名 grep）。新增一类失败就加一个分量，要按数值分流时才加映射函数。
  */
-internal enum class CommandFailure(val key: String, val fallback: String) {
+internal enum class CommandFailure(
+    val key: String,
+    val fallback: String,
+) {
     /** `cmd:<名字>` 在命令库里找不到（被删了 / 改名了 / 文件被手改坏）。 */
     NOT_FOUND(Strings.COMMAND_FAILURE_NOT_FOUND, "这条命令已经不在了，去「自定义命令」里看看"),
 
@@ -74,17 +77,17 @@ internal enum class CommandFailure(val key: String, val fallback: String) {
         /**
          * shell 退出码 → 提示：只认 126 / 127（`sh` 的约定），其余非 0 一律归 [SHELL_FAILED]。
          */
-        fun ofShellExit(code: Int): CommandFailure = when (code) {
-            126 -> SHELL_NO_PERMISSION
-            127 -> SHELL_MISSING
-            else -> SHELL_FAILED
-        }
+        fun ofShellExit(code: Int): CommandFailure =
+            when (code) {
+                126 -> SHELL_NO_PERMISSION
+                127 -> SHELL_MISSING
+                else -> SHELL_FAILED
+            }
     }
 }
 
 /** 把失败提示弹成 Toast。 */
 internal object FailureNotice {
-
     /** 主线程 Handler；取不到（理论上不会）就是 null ⇒ 不弹。 */
     private val main: Handler? by lazy {
         try {
@@ -110,7 +113,10 @@ internal object FailureNotice {
     private const val TOAST_DEDUP_MS = 1500L
 
     /** 弹一条失败提示；context 为 null 时只记日志。 */
-    fun show(context: Context?, failure: CommandFailure) {
+    fun show(
+        context: Context?,
+        failure: CommandFailure,
+    ) {
         // 日志这一行带枚举名，是排查时的锚点
         XLog.w("执行失败：${failure.name} —— ${failure.hint}")
         toast(context, failure.hint)
@@ -122,7 +128,10 @@ internal object FailureNotice {
      *
      * @param context 宿主 Context；null 或空串时什么都不做。
      */
-    fun toast(context: Context?, text: String) {
+    fun toast(
+        context: Context?,
+        text: String,
+    ) {
         if (context == null || text.isEmpty()) return
         // 同一句话短时间内的重复派发只弹一次：长按连续触发按「触发间隔」反复执行同一条命令，
         //  不去重就是一条接一条排队刷屏。
