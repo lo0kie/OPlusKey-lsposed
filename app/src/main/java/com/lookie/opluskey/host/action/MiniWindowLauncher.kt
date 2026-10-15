@@ -206,7 +206,7 @@ internal class MiniWindowLauncher(
         if (!animGeometryMatchesOrientation(ctx)) {
             XLog.w(
                 "zoom:mini → 当前不是竖屏，动画的终点几何（竖屏标定值）对不上 —— " +
-                    "这一下只做真转换、不播动画",
+                        "这一下只做真转换、不播动画",
             )
             return false
         }
@@ -226,6 +226,7 @@ internal class MiniWindowLauncher(
                 FlexibleWindowBridge.sendMiniAnim(ctx, taskId, params)
                 postDelayedGuarded("A 档：动画结束后的真转换", delay) { retryViaRecents(taskId) }
             }
+
             MiniAnimMode.CONVERT_THEN_ANIM -> {
                 // 转换是同步的 binder 调用，返回时任务已经是柔性任务；但那一瞬可能还有过渡在收，
                 // 而动画器开头的 `isInTransition` 过滤会把「在过渡中」的任务**静默剔掉**
@@ -241,6 +242,7 @@ internal class MiniWindowLauncher(
                     }
                 }
             }
+
             MiniAnimMode.OFF -> return false
         }
         return true
@@ -264,7 +266,7 @@ internal class MiniWindowLauncher(
     private fun animGeometryMatchesOrientation(ctx: Context): Boolean {
         val cfg = ctx.resources.configuration
         return cfg.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT ||
-            cfg.screenWidthDp == cfg.screenHeightDp
+                cfg.screenWidthDp == cfg.screenHeightDp
     }
 
     /**
@@ -311,16 +313,18 @@ internal class MiniWindowLauncher(
                     XLog.w("zoom:mini → system_server 那条没走通，退回应用侧 recents 正门")
                     retryViaRecents(taskId)
                 }
+
                 in 0f..ZOOM_CONFIG_WIDTH_MIN_RATIO -> {
                     XLog.w(
                         "zoom:mini → 任务 #$taskId 的预置几何没被吃住（配置宽占比 $ratio，应 ≈1.0），" +
-                            "用 recents 正门重收一次",
+                                "用 recents 正门重收一次",
                     )
                     retryViaRecents(taskId)
                 }
+
                 else -> XLog.w(
                     "zoom:mini → 任务 #$taskId 已是小窗、预置几何被吃住（配置宽占比 $ratio）；" +
-                        "档位以截图为准",
+                            "档位以截图为准",
                 )
             }
         }
@@ -531,8 +535,9 @@ internal class MiniWindowLauncher(
         when (zoomFitsOnScreen(rect, display)) {
             false -> XLog.w(
                 "zoom:mini → 任务 #$taskId 已是小窗，但**窗口超出屏幕**：屏幕矩形 $rect > 显示 $display" +
-                    "（横屏应用走 recents 正门时会这样，见 docs/device-findings.md 附十三）",
+                        "（横屏应用走 recents 正门时会这样，见 docs/device-findings.md 附十三）",
             )
+
             true -> XLog.w("zoom:mini → 任务 #$taskId 已是小窗、窗口落在屏幕内（屏幕矩形 $rect）")
             null -> XLog.w("zoom:mini → 任务 #$taskId 已是小窗，但读不到屏幕矩形 / 显示尺寸，跳过几何验收")
         }
@@ -592,7 +597,7 @@ internal class MiniWindowLauncher(
     ): Boolean? {
         if (rect == null || display == null) return null
         return rect.left >= 0 && rect.top >= 0 &&
-            rect.right <= display.x && rect.bottom <= display.y
+                rect.right <= display.x && rect.bottom <= display.y
     }
 
     /** 那个任务现在是不是小窗 —— 只看 `windowingMode`（返回码和截图都会骗人）。 */
@@ -621,7 +626,7 @@ internal class MiniWindowLauncher(
         val mode = Reflect.fieldValue(info, info.javaClass, TOP_APP_WINDOWING_MODE_FIELD) as? Int
         if (mode != WINDOWING_MODE_ZOOM) return null
         val bounds = Reflect.fieldValue(info, info.javaClass, TOP_APP_BOUNDS_FIELD)
-            as? android.graphics.Rect ?: return null
+                as? android.graphics.Rect ?: return null
         val screen = android.content.res.Resources.getSystem().displayMetrics.widthPixels
         if (screen <= 0 || bounds.width() <= 0) return null
         return bounds.width().toFloat() / screen
@@ -811,7 +816,7 @@ internal class MiniWindowLauncher(
          * 语义（真机实测，`docs/device-findings.md` 附七）：
          * 这是**配置矩形**不是屏幕矩形，`屏幕尺寸 = Rect.size × scale`：
          * `1272 × 2261 × 0.8017 = 1020 × 1812`；`left/top` 不参与缩放、直接照搬屏幕坐标。
-         * 与机型允许表绑定（PLK110 / 1272×2772 @560dpi），加机型要连同它们重测。
+         * 与适配清单绑定（PLK110 / 1272×2772 @560dpi），加机型要连同它们重测。
          */
         val EXPANDED_CONFIG_BOUNDS = android.graphics.Rect(126, 319, 1398, 2580) // 1272 × 2261
 

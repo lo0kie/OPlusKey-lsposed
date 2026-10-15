@@ -99,6 +99,7 @@ internal object FlexibleWindowBridge {
         try {
             val intent = Intent(ACTION)
                 .setPackage(KeyModule.PAGE_PACKAGE)
+                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                 .putExtra(EXTRA_CMD, cmd)
                 .putExtra(EXTRA_TASK_ID, taskId)
             if (bounds != null) {
@@ -134,6 +135,7 @@ internal object FlexibleWindowBridge {
         try {
             val intent = Intent(ACTION)
                 .setPackage(KeyModule.PAGE_PACKAGE)
+                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                 .putExtra(EXTRA_CMD, CMD_MINI_ANIM)
                 .putExtra(EXTRA_TASK_ID, taskId)
                 .putExtra(EXTRA_START_LEFT, p.startRect.left)
@@ -152,8 +154,8 @@ internal object FlexibleWindowBridge {
             context.sendBroadcast(intent)
             XLog.w(
                 "flexible:$CMD_MINI_ANIM(#$taskId) 已转给 system_server" +
-                    "（start=${p.startRect}@${p.startScale}a${p.startAlpha}" +
-                    " → finish=${p.finishRect}@${p.finishScale}a${p.finishAlpha}）",
+                        "（start=${p.startRect}@${p.startScale}a${p.startAlpha}" +
+                        " → finish=${p.finishRect}@${p.finishScale}a${p.finishAlpha}）",
             )
         } catch (e: Throwable) {
             XLog.w("发 flexible 广播失败：$CMD_MINI_ANIM", e)
@@ -309,7 +311,7 @@ internal object FlexibleWindowBridge {
                 // 真机上它打的屏幕落点应当是 Rect(126, 319 - 1145, 2131)（宽 1019、高 1812）。
                 XLog.w(
                     "小窗指令：已预置展开档几何（$from）配置矩形=$bounds scale=$scale" +
-                        " → 屏幕落点应为 ${screenBoundsOf(bounds, scale)}",
+                            " → 屏幕落点应为 ${screenBoundsOf(bounds, scale)}",
                 )
             } else {
                 XLog.w("小窗指令：找不到 setRememberPosInfo(Rect,float)，落点会走默认比例（会偏长）")
@@ -442,9 +444,19 @@ internal object FlexibleWindowBridge {
         val info = buildAnimInfo(loader, intent) ?: return
         XLog.w(
             "$CMD_MINI_ANIM：起止参数 " +
-                "start=${rectOf(intent, true)}@${intent.getFloatExtra(EXTRA_START_SCALE, 1f)}a${intent.getFloatExtra(EXTRA_START_ALPHA, 1f)} " +
-                "finish=${rectOf(intent, false)}@${intent.getFloatExtra(EXTRA_FINISH_SCALE, 1f)}a${intent.getFloatExtra(EXTRA_FINISH_ALPHA, 1f)} " +
-                "duration=${intent.getLongExtra(EXTRA_DURATION, 0L)}",
+                    "start=${rectOf(intent, true)}@${
+                        intent.getFloatExtra(
+                            EXTRA_START_SCALE,
+                            1f
+                        )
+                    }a${intent.getFloatExtra(EXTRA_START_ALPHA, 1f)} " +
+                    "finish=${rectOf(intent, false)}@${
+                        intent.getFloatExtra(
+                            EXTRA_FINISH_SCALE,
+                            1f
+                        )
+                    }a${intent.getFloatExtra(EXTRA_FINISH_ALPHA, 1f)} " +
+                    "duration=${intent.getLongExtra(EXTRA_DURATION, 0L)}",
         )
 
         val cbCls = Reflect.findClass(loader, CALLBACK_CLS) ?: run {
@@ -486,7 +498,7 @@ internal object FlexibleWindowBridge {
             //  观感是画面乱跳或干脆不动，而日志里看不出任何异常。改走下面那条入口（它不需要 bounds）。
             XLog.w(
                 "$CMD_MINI_ANIM：任务 #$taskId 的 getBounds 拿不到或为空（$bounds）" +
-                    " —— 不拿空 Rect 喂动画，改走另一条入口",
+                        " —— 不拿空 Rect 喂动画，改走另一条入口",
             )
         } else {
             spring.isAccessible = true
@@ -497,7 +509,7 @@ internal object FlexibleWindowBridge {
             } catch (e: Throwable) {
                 XLog.w(
                     "$CMD_MINI_ANIM：$METHOD_SPRING_ANIM 抛了（降级到另一条入口）：" +
-                        "${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}",
+                            "${Reflect.deepestCause(e).javaClass.name}: ${Reflect.deepestCause(e).message}",
                 )
                 false
             }
@@ -535,7 +547,7 @@ internal object FlexibleWindowBridge {
         if (l == EDGE_MISSING || t == EDGE_MISSING || r == EDGE_MISSING || b == EDGE_MISSING) {
             XLog.w(
                 "$CMD_MINI_ANIM：${if (isStart) "start" else "finish"} 的四边没给齐" +
-                    "（$l,$t,$r,$b）—— 不喂半个 Rect，整份退回兜底几何",
+                        "（$l,$t,$r,$b）—— 不喂半个 Rect，整份退回兜底几何",
             )
             return if (isStart) fullScreenRect() else EXPANDED_BOUNDS
         }
@@ -569,6 +581,7 @@ internal object FlexibleWindowBridge {
             return null
         }
         val missing = mutableListOf<String>()
+
         // 每个 setter 都单独记账：少设一个就是给框架喂半个参数，而它不会报错、只会行为怪
         // （这正是 §7 里「三个 `?.set` 静默可选写」那一类降级纪律问题）。
         fun call(name: String, type: Class<*>, value: Any) {
@@ -696,7 +709,7 @@ internal object FlexibleWindowBridge {
             }
             XLog.w(
                 "switchState(#$taskId, 1) 调用抛了 —— 小窗不会出现：" +
-                    "${cause.javaClass.simpleName}: ${cause.message}",
+                        "${cause.javaClass.simpleName}: ${cause.message}",
             )
             false
         }
@@ -740,6 +753,7 @@ internal object FlexibleWindowBridge {
         val ext = extOf(task) ?: return FakeResult(null, listOf("TaskExt 读不出（getExtImpl）"))
         val cls = ext.javaClass
         val missing = mutableListOf<String>()
+
         // 字段找不到（`Reflect.field` 返回 null）与写入抛异常都要落到 missing 里：
         // `Reflect.field(...)?.setInt(...)` 的话，字段名变了就静默不写，而调用方照样
         // 打一行「已置 mScenario=1 …」，把失败伪装成成功。
@@ -752,6 +766,7 @@ internal object FlexibleWindowBridge {
             runCatching { f.setInt(ext, value) }
                 .onFailure { missing += "$name(${it.javaClass.simpleName})" }
         }
+
         fun put(name: String, value: Boolean) {
             val f = Reflect.field(cls, name)
             if (f == null) {
@@ -803,7 +818,7 @@ internal object FlexibleWindowBridge {
      *
      * **不要**拿 `getMiniFlexibleTaskInfo` 的值代替 —— 那是收起档的几何
      * （约 `Rect(898,168-1203,710)` / `0.2397`），会把窗口缩成右上角一条。
-     * 这几个数与机型允许表绑定：加机型要连同它们重测（见 `docs/zoom-window.md` §五）。
+     * 这几个数与适配清单绑定：加机型要连同它们重测（见 `docs/zoom-window.md` §五）。
      */
     private val EXPANDED_BOUNDS = android.graphics.Rect(126, 319, 1398, 2580) // 1272 × 2261
     private const val EXPANDED_SCALE = 0.8017f

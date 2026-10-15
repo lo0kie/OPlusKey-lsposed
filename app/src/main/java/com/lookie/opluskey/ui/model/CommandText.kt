@@ -1,6 +1,8 @@
 package com.lookie.opluskey.ui.model
 
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 
@@ -50,9 +52,12 @@ internal fun stepTitle(token: String, appLabel: (String) -> String): String {
     if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
     val action = Action.parse(token)
     return when {
-        action is Action.App -> "打开应用:${appLabel(action.target.substringBefore('/'))}"
+        action is Action.App -> I18n.format(
+            Strings.CATALOG_OPEN_APP_STEP_DESC,
+            appLabel(action.target.substringBefore('/'))
+        )
         else -> ActionCatalog.modeName(action)
-            ?: ActionCatalog.specOf(action)?.title
+            ?: ActionCatalog.specOf(action)?.label
             ?: token
     }
 }
@@ -84,10 +89,14 @@ internal fun stepIcon(token: String, commands: List<Command>): ImageVector {
  *（`1050 → 1.05 秒`）。
  */
 internal fun durationText(ms: Int): String {
-    if (ms < 1000) return "$ms 毫秒"
+    if (ms < 1000) return I18n.format(Strings.COMMON_TIME_MS, ms)
     val seconds = ms / 1000
     val rest = ms % 1000
-    if (rest == 0) return "$seconds 秒"
-    // 余数按三位补零、再去掉末尾的零：1500 → "1.5"、1050 → "1.05"、1005 → "1.005"
-    return "$seconds.${rest.toString().padStart(3, '0').trimEnd('0')} 秒"
+    val secStr = if (rest == 0) {
+        seconds.toString()
+    } else {
+        // 余数按三位补零、再去掉末尾的零：1500 → "1.5"、1050 → "1.05"、1005 → "1.005"
+        "$seconds.${rest.toString().padStart(3, '0').trimEnd('0')}"
+    }
+    return I18n.format(Strings.COMMON_TIME_SEC, secStr)
 }

@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.BUILD_KIND
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.SHOW_BUILD_TIME
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.Screen
@@ -41,13 +43,16 @@ import com.lookie.opluskey.ui.model.HOME_BINDING_ARROW_SIZE
 import com.lookie.opluskey.ui.model.HOME_BINDING_ROWS
 import com.lookie.opluskey.ui.model.HOME_MORE_ROWS
 import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
+import com.lookie.opluskey.ui.model.KEY_DISABLED_HINT
 import com.lookie.opluskey.ui.model.MODULE_UNAVAILABLE_HINT
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.PENDING_DEVICE_HINT
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
 import com.lookie.opluskey.ui.model.UNSUPPORTED_DEVICE_HINT
 import com.lookie.opluskey.ui.state.acceptDisclaimerAndEnable
+import com.lookie.opluskey.ui.state.devicePending
 import com.lookie.opluskey.ui.state.deviceSupported
 import com.lookie.opluskey.ui.state.linkReady
 import com.lookie.opluskey.ui.state.rememberTick
@@ -94,7 +99,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     //  （那时 fail-closed 会把问句丢掉，见 `KeyHooks.isFromHost`）。两种都会自愈，只是**不是立刻**；
     //  而这条 effect 只发一次的话，页面会一直停在「未就绪」上等一个再也不会来的回包。
     //  这里最多问 [QUERY_ROUNDS] 轮，**两端都答上就提前收工** —— 已经就绪时只问一次；
-    //  一直问不到也不会转下去：机型允许表外的机器本来就该一直禁用，无限轮询只是白耗电。
+    //  一直问不到也不会转下去：适配清单外的机器本来就该一直禁用，无限轮询只是白耗电。
     LaunchedEffect(Unit) {
         var hostEverAnswered = false
         repeat(QUERY_ROUNDS) { round ->
@@ -136,7 +141,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     //  注意：起**主开关也吃这个闸**（`linkReady` + 另两条）。顶栏 ⋮ **不吃** ——
     // 它本身永远可点，里面只有「重启服务 / 导出日志 / 清空配置」三项跟着灰，
     // 「默认界面」（逃生口）始终可用（见 `ResetMenu`；「更多选项」那一项已从菜单删掉，只留首页这一行）。
-    //  机型不在允许表里时：允许表外只注入了界面层（见 `core/model/DeviceSupport`），
+    //  适配清单外的组合：只注入了界面层（见 `core/model/DeviceSupport`），
     // 链路永远不通 ⇒ 本来就整页禁用；`deviceSupported` 只是让**原因**说得清。
     val pageEnabled = key.enabled && linkReady && !configReadOnly && deviceSupported
 
@@ -149,14 +154,19 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     //
     //  注意：**报的是整体结论，不是缺的那一段的名字**：具体缺哪一段
     // 是给「更多选项 → 运行状态」看的，首页这条只回答「现在能不能用」。
-    //  三种原因各说各的，**顺序就是优先级**：
+    //  让页面变灰的每一条原因**各说各的**，**顺序就是优先级**（与 [pageEnabled] 那几项一一对应）：
     //   · 机型不支持 ⇒ 这台机器上就是不能用（[UNSUPPORTED_DEVICE_HINT]，等也没用）；
+    //   · 机型在、系统版本没适配 ⇒ 只能等作者适配（[PENDING_DEVICE_HINT]）；
     //   · 配置没读成功 ⇒ 用户重进页面就能解决（[CONFIG_READ_FAILED_HINT]）；
-    //   · 链路没齐 ⇒ 等系统响应（[MODULE_UNAVAILABLE_HINT]）。
+    //   · 链路没齐 ⇒ 请稍候（[MODULE_UNAVAILABLE_HINT]）；
+    //   · 主开关关着 ⇒ 就是它关着导致的（[KEY_DISABLED_HINT]，拨回来即可）。
+    //  最后那一档排在链路之后：链路没齐时主开关**根本拨不动**，先报链路才是能动手的那一件。
     val blockHint = when {
+        devicePending -> PENDING_DEVICE_HINT
         !deviceSupported -> UNSUPPORTED_DEVICE_HINT
         configReadOnly -> CONFIG_READ_FAILED_HINT
         !linkReady -> MODULE_UNAVAILABLE_HINT
+        !key.enabled -> KEY_DISABLED_HINT
         else -> null
     }
     LaunchedEffect(blockHint) {
@@ -193,7 +203,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         //  带子页那一档来自带子自己的 8dp 下内边距，两边视觉上正好齐平。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
-        SmallTitle("按键绑定")
+        SmallTitle(I18n.get(Strings.BINDING_TITLE, "按键绑定"))
 
         // 「响铃状态」走的是公共 `AudioManager.setRingerMode`，ColorOS 的 ringer
         // delegate 会把外来的静音请求改写成振动，于是要靠「勿扰访问」权限绕。
@@ -212,10 +222,11 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             // 链路还没报到（`linkReady=false`）⇒ 主开关是灰的；等注入侧回包一到、`linkReady` 变 true，
             // 它就**自己重新亮起来**了，用户当场拨了三下（每次都被 `write` 拒掉）。
             // **「拨了没反应」比「一开始就灰着」更难读**，所以这一档必须一起禁。
-            //  `deviceSupported` 同理：允许表外机型只注入了界面层，拨它也不会生效。
+            //  `deviceSupported` 同理：适配清单外的组合只注入了界面层，拨它也不会生效。
             //
-            // 模块没就绪时它照样禁用 —— 那种情况下拨这个开关也不会生效，页面底部那条
-            // 常驻提示（[MODULE_UNAVAILABLE_HINT] / [CONFIG_READ_FAILED_HINT] / [UNSUPPORTED_DEVICE_HINT]）
+            // 模块没就绪时它照样禁用 —— 那种情况下拨这个开关也不会生效，页面底部那条常驻提示
+            //（[MODULE_UNAVAILABLE_HINT] / [CONFIG_READ_FAILED_HINT] / [UNSUPPORTED_DEVICE_HINT] /
+            //  [PENDING_DEVICE_HINT]）
             // 会说明该做什么。
             //
             // 它写的是 [KeyConfig.enabled] —— 执行侧早就存在的总闸（注入侧
@@ -226,13 +237,13 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             // （行与开关各切一次会「闪一下又变回去」）。库 `Switch` 自己那次无条件振动由
             // [SwitchRow] 统一掐掉，只留 `tick()` 这条通用通道。
             SwitchRow(
-                title = "启用按键绑定",
+                title = I18n.get(Strings.SETTING_ENABLE_BINDING, "启用按键绑定"),
                 // 开着时说明「关掉会怎样」；关着时直接报状态 —— 光看一个灰开关不知道后果
                 summary = if (key.enabled) {
                     // （14 字）正好一行放得下，再多一个字就折行、把这张卡撑高
-                    "关闭后此模块将停用"
+                    I18n.get(Strings.HOME_SWITCH_DESC_ENABLED, "关闭后此模块将停用")
                 } else {
-                    "侧键由系统处理"
+                    I18n.get(Strings.HOME_SWITCH_DESC_DISABLED, "侧键由系统处理")
                 },
                 // 行首图标与下一行对齐用（不给的话两行的标题左边缘会差一个图标宽）。
                 // 电源符号 = 「这一行是总开关」。
@@ -282,8 +293,8 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                 label = "HomeBindingArrow",
             )
             BasicComponent(
-                title = "按键绑定",
-                summary = "配置单击、双击、长按对应的动作",
+                title = I18n.get(Strings.SETTING_KEY_BINDING, "按键绑定"),
+                summary = I18n.get(Strings.HOME_BINDING_CARD_SUMMARY, "配置单击、双击、长按对应的动作"),
                 startAction = {
                     Icon(
                         PageIcons.TouchApp,
@@ -317,7 +328,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             show = disclaimerPending,
             title = DISCLAIMER_TITLE,
             summary = DISCLAIMER_TEXT,
-            action = "我已了解",
+            action = I18n.get(Strings.DIALOG_DISCLAIMER_ACKNOWLEDGE, "我已了解"),
             // 不丢用户任何东西的确认 ⇒ 走主题色，不给红：红会读成「这个操作有危险」，
             // 而这里只是「你点的那一下要你先看一眼说明」。
             positiveDanger = false,
@@ -335,15 +346,15 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         // 「按键绑定」卡片与「按键行为」分组之间留一档空档
         Spacer(Modifier.height(8.dp))
 
-        SmallTitle("按键行为")
+        SmallTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"))
 
         // （见 [LongRepeatCard]）—— 它们只管长按那一个手势，摆在这一页会让人以为对三个手势都生效。
         // 搬去长按 tab 是同一个理由：它们只管自己那一个手势，
         // 摆在这一页与「振动反馈」并列，会被当成对三个手势都生效的全局项。
         Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
             SwitchRow(
-                title = "振动反馈",
-                summary = "命令触发时振动",
+                title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
+                summary = I18n.get(Strings.HOME_VIBRATE_DESC, "命令触发时振动"),
                 icon = PageIcons.Vibrate,
                 checked = cfg.global.vibrate,
                 position = cardListPositionOf(0, HOME_ACTION_ROWS),
@@ -363,8 +374,8 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             //  判定侧读它见 `host/action/CustomCommandRunner`（宿主进程里执行时**现读**配置，
             // 所以拨完开关立刻生效，不必重启）。
             SwitchRow(
-                title = "执行时提示",
-                summary = "执行命令时系统提示",
+                title = I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"),
+                summary = I18n.get(Strings.HOME_TOAST_DESC, "执行命令时系统提示"),
                 icon = PageIcons.CommandToast,
                 checked = cfg.global.toastOnRun,
                 position = cardListPositionOf(1, HOME_ACTION_ROWS),
@@ -387,12 +398,12 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         // 模块整页禁用（机型不支持 / 链路没齐 / 配置只读 / 主开关关着）时，用户正需要进去看断在哪一段。
         //  行尾箭头与行首图标因此都恒用常规色，不再按 `pageEnabled` 换灰。
         Spacer(Modifier.height(8.dp))
-        SmallTitle("其他")
+        SmallTitle(I18n.get(Strings.HOME_OTHER_SECTION, "其他"))
         Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
             BasicComponent(
-                title = "更多选项",
+                title = I18n.get(Strings.MORE_OPTIONS_TITLE, "更多选项"),
                 // 副标题只报这一页有什么，不交代机制（「一起改短」）
-                summary = "运行状态与配置备份",
+                summary = I18n.get(Strings.HOME_MORE_OPTIONS_SUMMARY, "运行状态与配置备份"),
                 startAction = { Icon(PageIcons.MoreOptions, null) },
                 endActions = {
                     Icon(
@@ -523,13 +534,23 @@ internal fun SettingsPage.appVersionText(): String {
 /**
  * 首页大标题那条副标题用的版本（不是「更多选项」页 —— 那一页走 [appVersionText]，见它）。
  *
+ *  前面带一截 `version-`：这串东西摆在大标题底下、没有标签，光一个 `1.0.0-release`
+ *  看不出它是什么（页面上别处也没有「版本」两个字给它托底）。
+ *
  *  **debug 带构建时刻、release 不带**（[SHOW_BUILD_TIME]）：自用包一天里会出好几个，光看
  * `1.0.0-debug` 分不出手上这个是哪一次出的；release 的首页是面向用户的界面，
  * 构建时刻对用户没意义（要看的去「更多选项」页）。读不到版本号时只显示
  * [BUILD_KIND]，不抛异常。
  */
 internal fun SettingsPage.appVersionLabel(): String {
-    if (SHOW_BUILD_TIME) return appVersionText()
-    val name = moduleVersionName()
-    return if (name.isNullOrBlank()) BUILD_KIND else "$name-$BUILD_KIND"
+    val version = if (SHOW_BUILD_TIME) {
+        appVersionText()
+    } else {
+        val name = moduleVersionName()
+        if (name.isNullOrBlank()) BUILD_KIND else "$name-$BUILD_KIND"
+    }
+    return "$VERSION_LABEL_PREFIX$version"
 }
+
+/** 首页副标题那串版本前面的前缀（见 [appVersionLabel]）。 */
+private const val VERSION_LABEL_PREFIX = "version-"

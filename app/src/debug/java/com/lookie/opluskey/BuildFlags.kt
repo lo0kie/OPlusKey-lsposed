@@ -22,6 +22,20 @@ internal const val BUILD_KIND: String = "debug"
 internal const val DEBUG_PROBE: Boolean = true
 
 /**
+ * 适配清单（机型 + 系统版本）这道闸要不要**据此拒绝注入** —— debug 关掉。
+ *
+ * 判定的代码路径留着（`DeviceSupport.check` 照样算，日志里机型 / 系统那两段照打），
+ * 只是不再拿它拒绝注入 —— 开发时机型 / 系统版本随时在变（手边换台机器、ROM 升一版），
+ * 开机先被这道闸拦下来只会让人以为模块坏了。
+ *
+ * 注意：关掉之后「更多选项 → 适配清单」里「本机」那一行也会跟着报「已适配」——
+ * 那是**行为**的如实反映（这一包确实不拦），不是判定错了。
+ *
+ * release 必须打开：清单外注入正是要防的事（见 `core/model/DeviceSupport` 的文件头）。
+ */
+internal const val ENFORCE_DEVICE_GATE: Boolean = false
+
+/**
  * 首页大标题那条副标题要不要带上构建时刻（`1.0.0-debug-2026-10-15 15:07:12`）。
  *
  * debug 打开：自用包一天里会出好几个，光看版本号分不出手上这个是哪一次出的；

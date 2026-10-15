@@ -39,6 +39,7 @@ object ConfigCodec {
     private const val FIELD_VIBRATE = "vibrate"
     private const val FIELD_INSTANT_SINGLE = "instantSingle"
     private const val FIELD_TOAST_ON_RUN = "toastOnRun"
+    private const val FIELD_LANGUAGE = "language"
 
     /**
      * 正文自带的完整性字段，见 [serialize] / [digestMatches]。
@@ -134,6 +135,8 @@ object ConfigCodec {
             // 执行时提示缺省不弹
             toastOnRun = g?.optBoolean(FIELD_TOAST_ON_RUN)
                 ?: GlobalConfig.DEFAULT_TOAST_ON_RUN,
+            language = g?.optString(FIELD_LANGUAGE, GlobalConfig.DEFAULT_LANGUAGE)
+                ?: GlobalConfig.DEFAULT_LANGUAGE,
         )
 
         // 缺这一格一律按「没确认过」（老文件 / 手写的文件）—— 那是安全的那一侧：多弹一次不吃亏。
@@ -171,6 +174,7 @@ object ConfigCodec {
             .put(FIELD_VIBRATE, config.global.vibrate)
             .put(FIELD_INSTANT_SINGLE, config.global.instantSingle)
             .put(FIELD_TOAST_ON_RUN, config.global.toastOnRun)
+            .put(FIELD_LANGUAGE, config.global.language)
 
         val root = JSONObject()
             .put(FIELD_VERSION, VERSION)

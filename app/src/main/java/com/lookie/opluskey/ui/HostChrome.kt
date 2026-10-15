@@ -342,7 +342,6 @@ internal object HostChrome {
      */
     internal fun paintChrome(
         activity: android.app.Activity,
-        pageCtx: android.content.Context,
         container: ViewGroup,
         pageBg: Int,
     ) {

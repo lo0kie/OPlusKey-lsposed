@@ -20,8 +20,8 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * 主题不走库的 m3 那套（本项目用 COUI，再引一层 Material3 只会多一套色板），所以颜色与字体
  * 在这里一档档映射过去 —— 库的 `Markdown(...)` 把 `colors` / `typography` 定成**必填**，正是留给这种接法。
  *
- * @param textAlign 单行正文居中、多行左对齐，由调用方按正文自己判 —— 与库 `DialogContentLayout`
- *   自己那条口径一致（它按实测行数切，这里按有没有换行切：弹窗正文都是我们自己写的，两种切法结果一样）。
+ * @param textAlign 短正文居中、长正文左对齐，由调用方按正文自己判 —— 与库 `DialogContentLayout`
+ *   自己那条口径一致（它按实测行数切，这里按「有没有换行 + 折算宽度」估，见 `isShortDialogBody`）。
  */
 @Composable
 internal fun MarkdownBody(

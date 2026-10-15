@@ -32,6 +32,7 @@ object ConfigBroadcast {
     const val EXTRA_DOUBLE_CLICK_MS = "double_click_ms"
     const val EXTRA_VIBRATE = "vibrate"
     const val EXTRA_INSTANT_SINGLE = "instant_single"
+    const val EXTRA_LANGUAGE = "language"
 
     /**
      * 一条配置广播的**内容指纹**（仅用于「设置页手上这份」与「注入侧那份」是不是同一个）。
@@ -92,6 +93,7 @@ object ConfigBroadcast {
     fun intent(config: Config): Intent {
         val key = config.key(KeyId.PLUS)
         return Intent(ACTION_CONFIG)
+            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
             .putExtra(EXTRA_ENABLED, key.enabled)
             .putExtra(EXTRA_SINGLE, key.single.token)
             .putExtra(EXTRA_DOUBLE, key.double.token)
@@ -106,6 +108,7 @@ object ConfigBroadcast {
             .putExtra(EXTRA_DOUBLE_CLICK_MS, config.global.doubleClickMs)
             .putExtra(EXTRA_VIBRATE, config.global.vibrate)
             .putExtra(EXTRA_INSTANT_SINGLE, config.global.instantSingle)
+            .putExtra(EXTRA_LANGUAGE, config.global.language)
     }
 
     /** 与 [ConfigCodec] 同一口径的钳制：广播值可能来自手改文件，越界值按边界处理。 */
@@ -147,6 +150,7 @@ object ConfigBroadcast {
                 instantSingle = intent.getBooleanExtra(
                     EXTRA_INSTANT_SINGLE, GlobalConfig.DEFAULT_INSTANT_SINGLE,
                 ),
+                language = intent.getStringExtra(EXTRA_LANGUAGE) ?: GlobalConfig.DEFAULT_LANGUAGE,
             ),
         )
     }

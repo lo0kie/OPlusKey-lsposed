@@ -16,6 +16,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -26,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.navigationevent.NavigationEvent
@@ -41,6 +44,9 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.ConfigStore
+import com.lookie.opluskey.core.i18n.AppLanguage
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
@@ -88,6 +94,9 @@ import com.lookie.opluskey.ui.theme.SyncToHost
 import com.lookie.opluskey.ui.theme.colorsFor
 import com.lookie.opluskey.ui.theme.pageBackgroundColor
 import com.lookie.opluskey.ui.theme.systemNight
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Scaffold
 import io.github.suqi8.coui.kmp.basic.Snackbar
@@ -95,9 +104,6 @@ import io.github.suqi8.coui.kmp.basic.SnackbarHost
 import io.github.suqi8.coui.kmp.basic.SnackbarHostState
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.rememberTopAppBarState
-import io.github.suqi8.coui.kmp.blur.Backdrop
-import io.github.suqi8.coui.kmp.blur.layerBackdrop
-import io.github.suqi8.coui.kmp.blur.rememberLayerBackdrop
 import io.github.suqi8.coui.kmp.nav.core.NavBackStack
 import io.github.suqi8.coui.kmp.nav.core.NavDisplay
 import io.github.suqi8.coui.kmp.nav.core.NavDisplayEffects
@@ -144,21 +150,32 @@ internal class SettingsPage(
     internal val dark = mutableStateOf(false)
 
     /**
-     * 页面内容那一层的取样器（`layerBackdrop` 记录出来的 [Backdrop]）——**顶栏与浮层菜单的磨砂
-     * 都从它取样**。
+     * **当前栈顶页**内容那一层的取样状态 —— 顶栏 / 浮层菜单 / 底部工具栏的磨砂都从它取样。
      *
      *  记在页面上而不是一路当参数传：浮层菜单是 [SettingsPage] 的扩展（`ui/component/CommandMenus`
-     *  里那五处菜单入口），再多穿一个参数不值当。由页面根在组合时写入（记录层只能在组合里建）。
+     *  里那五处菜单入口），再多穿一个参数不值当。
      *
-     *  注意：取样方**不能落进它自己取样的那一层** —— 落进去就是渲染节点链无限增长、RenderThread
-     *  递归到栈溢出（真机崩过一次）。浮层菜单画在 Scaffold 的 `COUIPopupHost` 里（页面那层之外）
-     *  才是安全的，见 `ui/component/MenuPopup.kt` 里 `MenuPopup` 的注释。
+     *  注意：**必须按「谁在栈顶」来选，不能按「谁最后组合」**。旧写法是
+     *  `if (pageBackdrop !== backdrop) pageBackdrop = backdrop` —— 最后组合的那一页说了算；
+     *  而深度 2 往返还栈时，被 cull 的首页会重新组合、时机晚于栈顶页，于是取样源被它抢走：
+     *  浮层菜单取到的是**另一页**的内容（真机：「磨砂处似乎是取样的两个 switch，但菜单底下
+     *  并没有 switch」）。选法见 [Page] 里那个 `LaunchedEffect(navStack.lastOrNull())`。
+     *
+     *  注意：取样方**不能落进它自己取样的那个 `hazeSource`** —— 落进去就是渲染节点链无限增长、
+     *  RenderThread 递归到栈溢出（真机崩过一次）。浮层菜单画在 Scaffold 的 `COUIPopupHost` 里
+     *（页面那层之外）才是安全的，见 `ui/component/MenuPopup.kt` 里 `MenuPopup` 的注释。
      */
-    internal var pageBackdrop: Backdrop? = null
+    internal var pageHazeState: HazeState? by mutableStateOf(null)
+
+    /**
+     * 每页各一份取样状态（键是页）—— 各页在组合时把自己那份登记进来（见 [Page] 里 `NavDisplay`
+     *  的 entry）。页被 cull 后重建会换一份新的进来，旧的那份随之作废（它的源节点已 detach）。
+     */
+    private val hazeStatesByPage = mutableMapOf<Screen, HazeState>()
 
     /**
      * 「取样层没就绪 ⇒ 这次用不透明底」那一条日志的闸 —— 建页期只报一次，免得每个消费方各刷一行。
-     * 见 [pageBackdrop] 与 `ui/component/MenuPopup.kt` / `ui/screen/CommandScreen` 里那两处判定。
+     * 见 [pageHazeState] 与 `ui/component/MenuPopup.kt` / `ui/screen/CommandScreen` 里那两处判定。
      */
     internal var frostDegradeLogged = false
 
@@ -320,9 +337,23 @@ internal class SettingsPage(
      * 命令的**内容**存在命令库里，绑定到手势时写进主配置的只是 `cmd:<名字>` 这个引用
      * （与别的动作一样只是 `plus_single` 里的一个取值，注入侧不需要知道名字背后是什么）。
      * 这份列表变了要重组的是 [ActionCatalog.forGesture] 的调用点
-     * （见 [Page] 里的 `bindingIcons` 与 [BindingList]）。
+     * （见 [tileIcons] 与 [BindingList]）。
      */
     internal val commands = mutableStateOf<List<Command>>(emptyList())
+
+    /**
+     * **界面处处共用的那一份图标表** —— [ActionCatalog.queue] 那条队列 → 图标。
+     *
+     * 队列与图标都只有这一个来源：网格格子、格子里那行小字、「添加命令」浮层的行、入口格菜单
+     * 的行，一律读这一张表 —— 同一格在哪一处露面都是同一颗字形，也不再各自现调 [specIcon]。
+     *
+     * 放在类上而不是组合里：读它的几处在**不同的树**里（网格在 [BindingScreen]、「添加命令」
+     * 浮层在 [CommandScreen]），各自 `remember` 会各建一份、还可能对不上。
+     * 随 [commands] 重算（命令库变了，新增的格子才有图标），`derivedStateOf` 只在有人读它时才算。
+     */
+    internal val tileIcons: State<Map<ActionCatalog.Spec, ImageVector>> = derivedStateOf {
+        ActionCatalog.queue(commands.value).associateWith { specIcon(it) }
+    }
 
     /**
      * 三条**固定带**的高度（px）—— 分段控件带 / 类型选择器带 / 搜索带。
@@ -501,12 +532,14 @@ internal class SettingsPage(
         when (val l = ConfigStore.load()) {
             is ConfigStore.Load.Ok -> {
                 config.value = l.config
+                I18n.currentLanguage = AppLanguage.fromCode(l.config.global.language)
                 configReadOnly = false
             }
 
             ConfigStore.Load.Absent -> {
                 XLog.w("还没有配置文件（首装 / 刚清过数据）—— 用默认值，可以写回")
                 config.value = Config.DEFAULT
+                I18n.currentLanguage = AppLanguage.fromCode(Config.DEFAULT.global.language)
                 configReadOnly = false
             }
 
@@ -514,6 +547,7 @@ internal class SettingsPage(
                 // 这条必须是 w：它是「页面为什么变只读」的唯一判据行
                 XLog.w("配置读不懂 ⇒ 页面进只读，本次不许写回（否则会把默认值当真相固化）")
                 config.value = Config.DEFAULT
+                I18n.currentLanguage = AppLanguage.fromCode(Config.DEFAULT.global.language)
                 configReadOnly = true
             }
         }
@@ -612,6 +646,25 @@ internal class SettingsPage(
                         //（见 [closeOverlays]），不收的话它会**钉在屏幕上**：页面滑走了它还在，
                         // 要等那一页出栈才跟着消失。
                         LaunchedEffect(navStack.lastOrNull()) { closeOverlays("换页 → ${navStack.lastOrNull()}") }
+                        //  磨砂取样源跟着**栈顶页**走（理由见 [pageHazeState]）：往回退（pop）时下面
+                        //  那一页不会重新组合，只有这个 effect 能把取样源摆回去。
+                        //
+                        //  但它**单独用不够**：新页的 entry 可能比它晚一帧才组合，那一刻 [hazeStatesByPage]
+                        //  里还没有那一页 ⇒ 取样源被摆成 null，紧接着打开的浮层菜单就没有磨砂
+                        //（真机反馈「所有带菜单的页首次进入、开菜单都没糊」，日志里那一行是
+                        //  「浮层磨砂跳过：页面取样层未就绪」）。所以各页组合时还各自兜一次底，
+                        //  见 entry 里那个 `LaunchedEffect(s)`。
+                        LaunchedEffect(navStack.lastOrNull()) {
+                            val top = navStack.lastOrNull() as? Screen
+                            val picked = top?.let { hazeStatesByPage[it] }
+                            if (picked != null) {
+                                pageHazeState = picked
+                            } else {
+                                // 正常路径不会走到（那一页组合时自己会兜一次底，见 entry 里那段）。
+                                // 真走到这里说明取样源还是空的 —— 接着开的浮层不会有磨砂，留一行凭据。
+                                XLog.w("磨砂取样源查不到：${top?.name ?: "无"} 那一页还没登记取样状态")
+                            }
+                        }
                         // 调试通道：只有 debug 源集有实现，release 是同名空壳（`register` 恒 null，
                         // 这段是死代码）。让 `am broadcast` 能直接驱动这个页面，省掉「dump 找坐标 →
                         // 模拟点击 → 打字被输入法吃掉」那一套。
@@ -705,8 +758,8 @@ internal class SettingsPage(
                         //  分页状态与全量图标表都提在这里创建，而不是各自页面里 `remember`：
                         //   · [pagerState] / [commandPager] 各有一条**固定带**要读（带子挂在顶栏的
                         //     `bottomContent` 里、内容在页里，两棵树只能共用同一份状态）；
-                        //   · [bindingIcons] 是全量图标表（每个手势 × 它能选的每个动作），
-                        //     `remember` 的键是 `cmds` —— 命令库不变就不重算，页面进出也不重算。
+                        //  [tileIcons] 那张图标表也在类上（见它自己的注释）：读它的两处在不同的树里，
+                        //  各自 `remember` 会各建一份。这里不再重复建表。
                         val pagerState = rememberPagerState(pageCount = { Gesture.entries.size })
                         val commandPager = rememberPagerState(pageCount = { CommandKind.entries.size })
                         // 调试通道要切手势 tab —— `pagerState` 活在组合里，只能这样接：
@@ -717,14 +770,7 @@ internal class SettingsPage(
                                 debugGesture.value = null
                             }
                         }
-                        //  `remember` 的键是 `cmds`：命令库变了图标表必须跟着重建，
-                        // 否则新增的那几个格子取不到图标（`icons[spec]` 拿到 null，格子里空一块）。
-                        val cmds = commands.value
-                        val bindingIcons = remember(cmds) {
-                            Gesture.entries.associateWith { g ->
-                                ActionCatalog.forGesture(g, cmds).associateWith { specIcon(it) }
-                            }
-                        }
+                        //  图标表不在这里建：[tileIcons] 是类上的那一份（随 `commands` 重算）。
 
                         // —— push 时把**目标页**的分页状态拨回它该在的那一档 ——
                         //
@@ -762,7 +808,7 @@ internal class SettingsPage(
                         //  一页一个 entry，但 `entry` 只注册一次：库按 key 的**运行时类**取注册
                         //（`entry<T>` 就是拿 `T::class` 建的索引），而 `Screen` 是个枚举 ——
                         //  五个分量的运行时类是同一个，所以注册一次就够，页与页的区别全在下面那个
-                        // `when`。每页独享的东西（`scrollBehavior`、取样层 `backdrop`）写在 entry
+                        // `when`。每页独享的东西（`scrollBehavior`、取样状态 `hazeState`）写在 entry
                         //  的内容里：那是**每个 entry 各自一份**的组合，`remember` 天然逐页独立。
                         NavDisplay(
                             backStack = navStack,
@@ -814,22 +860,20 @@ internal class SettingsPage(
                                     canScroll = { s != Screen.SHORTCUTS && s != Screen.ABOUT },
                                 )
 
-                                // 顶栏模糊的背景层（COUI「模糊效果」：`layerBackdrop` 抓、
-                                // `drawBackdrop` 在顶栏上取样）。
+                                // 顶栏 / 浮层菜单 / 底部工具栏的磨砂**取样源**（Haze 的 `hazeSource`）。
                                 //
-                                //  `layerBackdrop` **只抓这个节点自己画的内容**，不含父级背景
-                                // —— 不铺底色的话，透明区域会让模糊把颜色扩散进去、糊成色块。
+                                //  `hazeSource` **只抓这个节点往里的那一串**，不含父级背景 ——
+                                //  所以底色得挂在它**之后**（见下面那句 `background`）：写在它前面
+                                //  就成了记录层外的另一笔，透明区域照样把颜色扩散进去、糊成色块。
                                 val surfaceColor = COUITheme.colorScheme.surface
-                                val backdrop = rememberLayerBackdrop {
-                                    drawRect(surfaceColor)
-                                    drawContent()
-                                }
-                                // 浮层菜单 / 底部工具栏的磨砂也从这一层取样（见 [pageBackdrop]）。
-                                //  只在**换了一个记录层**时记一行（不是每帧）：真机上「磨砂糊没糊」
-                                //  只有这一行能回答源头在不在。
-                                if (pageBackdrop !== backdrop) {
-                                    pageBackdrop = backdrop
-                                    XLog.w("磨砂取样层已就绪（页面内容层）：顶栏 / 底部工具栏 / 浮层菜单都从它取样")
+                                val hazeState = rememberHazeState()
+                                //  登记给页面级：浮层菜单 / 底部工具栏按**栈顶页**取用（见 [pageHazeState]）。
+                                hazeStatesByPage[s] = hazeState
+                                //  这一页组合完成时若它正是栈顶，就把取样源摆过来 —— 与页面级那个
+                                //  `LaunchedEffect(navStack.lastOrNull())` 互为兜底（那边可能早一帧，
+                                //  见它自己的注释）。幂等：同一个实例写回去不会触发重组。
+                                LaunchedEffect(s) {
+                                    if (navStack.lastOrNull() == s) pageHazeState = hazeState
                                 }
 
                                 Box(
@@ -841,13 +885,14 @@ internal class SettingsPage(
                                     Box(
                                         Modifier
                                             .fillMaxSize()
-                                            .layerBackdrop(backdrop),
+                                            .hazeSource(hazeState)
+                                            //  采集层的底色（挂在 `hazeSource` **之后**，见上）
+                                            .background(surfaceColor),
                                     ) {
                                         when (s) {
                                             Screen.SHORTCUTS -> HomeScreen(scrollBehavior)
                                             Screen.BINDING -> BindingScreen(
                                                 pagerState,
-                                                bindingIcons,
                                                 // 首页那个主开关（[KeyConfig.enabled]）—— 关掉时整页禁用
                                                 enabled = config.value.key(KeyId.PLUS).enabled,
                                                 onOpenAppPicker = { g ->
@@ -951,13 +996,13 @@ internal class SettingsPage(
 
                                     // —— 自定义命令页的**底部操作悬浮工具栏** ——
                                     //
-                                    //  它必须挂在这里（页内、但那个模糊**记录层之外**）：
-                                    // 顶栏模糊取样的就是上面那个 `layerBackdrop` 节点 ——
-                                    // `drawBackdrop` 的节点**不能落进它自己取样的那一层**，
+                                    //  它必须挂在这里（页内、但那个取样源**之外**）：
+                                    // 顶栏取样的就是上面那个 `hazeSource` 节点 ——
+                                    // 取样的节点**不能落进它自己取样那一份**，
                                     // 否则记录层为了画自己得再画它、它又去取样记录层……渲染节点链
                                     // 无限增长，最终 RenderThread **栈溢出**（`RenderNode::prepareTreeImpl`
                                     // 递归 500+ 层），宿主 UI 进程当场被杀 —— 真机崩过一次，就是这个。
-                                    // 所以工具栏与顶栏同一个挂法：页内、记录层外，只是贴在底部。
+                                    // 所以工具栏与顶栏同一个挂法：页内、取样源外，只是贴在底部。
                                     // （它自己那层模糊挂上了，与顶栏同一个取样层。）
                                     //
                                     // 只在这一页显示；整页 push / pop 转场时它跟着一起滑
@@ -974,7 +1019,9 @@ internal class SettingsPage(
                                     // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
                                     PageHeader(
                                         title = when (s) {
-                                            Screen.SHORTCUTS -> homeTitle
+                                            // 首页标题平时是**宿主 Activity 自己的标题**（hook 侧读来的，
+                                            //  见 SettingsPageHooks）；字典里有这一档时按语言来，没有才用宿主那串。
+                                            Screen.SHORTCUTS -> I18n.get(Strings.HOME_TITLE, homeTitle)
                                             Screen.BINDING -> BINDING_TITLE
                                             Screen.COMMANDS -> COMMANDS_TITLE
                                             Screen.APP_PICKER -> APP_PICKER_TITLE
@@ -995,20 +1042,20 @@ internal class SettingsPage(
                                             // 一条都没保存时不报数（「已保存0条命令」读起来像统计，也不成句）——
                                             // 直接说「没有保存的命令」，与页内那块空态同一句话。
                                             Screen.COMMANDS -> if (commands.value.isEmpty()) {
-                                                "没有保存的命令"
+                                                I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令")
                                             } else {
-                                                "已保存${commands.value.size}条命令"
+                                                I18n.format(Strings.COMMAND_SAVED_COUNT, commands.value.size)
                                             }
                                             Screen.APP_PICKER -> {
                                                 val pkg = appPickerSelectedPkg()
                                                 if (pkg == null) {
                                                     // 没选过就不摆一行「已选择: 无」—— 那种写法像是有个叫「无」的应用
-                                                    "还未选择应用"
+                                                    I18n.get(Strings.APP_PICKER_UNSELECTED, "还未选择应用")
                                                 } else {
                                                     val label = cachedApps
                                                         ?.firstOrNull { it.packageName == pkg }
                                                         ?.label ?: pkg
-                                                    "已选择: $label"
+                                                    I18n.format(Strings.APP_PICKER_SELECTED_FORMAT, label)
                                                 }
                                             }
 
@@ -1038,7 +1085,7 @@ internal class SettingsPage(
                                             else -> HeaderMenu.NONE
                                         },
                                         scrollBehavior = scrollBehavior,
-                                        backdrop = backdrop,
+                                        state = hazeState,
                                         // 顶栏底下那条**固定带**（三条带子各归各的页）——
                                         // 不能各页各叠一层浮层（自带取样层 / 模糊 /
                                         // 半透明底 / 内容里等高占位），统一搬进顶栏这个

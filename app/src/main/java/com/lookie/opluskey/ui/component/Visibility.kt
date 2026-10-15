@@ -10,12 +10,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
-import com.lookie.opluskey.ui.model.VISIBILITY_MS
 
 /** 显隐动画包一层：进场 / 退场各自给一套动画，调用点不重复写 `AnimatedVisibility`。 */
 

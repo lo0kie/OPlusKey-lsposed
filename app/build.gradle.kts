@@ -165,8 +165,18 @@ dependencies {
     implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.45.0")
 
     implementation("io.github.suqi8.coui.kmp:coui-preference-android:1.1.0")
-    // 顶栏磨砂（layerBackdrop + textureBlur），同样需要显式声明；要求 minSdk 33
-    implementation("io.github.suqi8.coui.kmp:coui-blur-android:1.1.0")
+    // 磨砂（顶栏 / 浮层菜单 / 底部工具栏 / FAB）—— Haze。
+    //
+    //  为什么不用 coui 自带的 `coui-blur`：它把取样层坐标在 `onGloballyPositioned` 里**存一次**，
+    //  而页面转场（`coui-nav` 的连续深度转场）给「被盖页」施加的 `translationX = -0.25 × 宽 = -318px`
+    //  是**绘制期**改的、不触发布局 ⇒ 那个快照再也不更新（实测：真机日志里 `live == cached == -318`，
+    //  连「读实时值」都救不了）。于是浮层磨砂整块横向错 318px、右边缘露底。
+    //
+    //  Haze 的做法不一样：`hazeSource` 记下 `positionInRoot` 与 `positionOnScreen` **两套**坐标，
+    //  并在每帧 `OnPreDrawListener` 里重算；源与效果不在同一个 window 时（浮层菜单就在宿主
+    //  `COUIPopupHost` 里）由 `HazePositionStrategy.Auto` 自动升级成屏幕坐标。
+    implementation("dev.chrisbanes.haze:haze:2.0.1")
+    implementation("dev.chrisbanes.haze:haze-blur:2.0.1")
     // 页面栈：NavDisplay + 连续深度转场，与 coui-ui 同版本，零依赖 androidx.navigation。
     // 栈用 navBackStackOf（纯内存、不要求 @Serializable）—— 页面进程死了本来也不该恢复栈。
     implementation("io.github.suqi8.coui.kmp:coui-nav-android:1.1.0")

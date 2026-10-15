@@ -59,6 +59,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.config.CommandLibrary
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
@@ -72,6 +74,8 @@ import com.lookie.opluskey.ui.isImeVisible
 import com.lookie.opluskey.ui.component.CommandMenuPopup
 import com.lookie.opluskey.ui.component.ConfirmDialog
 import com.lookie.opluskey.ui.component.escapeMarkdown
+import com.lookie.opluskey.ui.component.ICON_ACTION_ICON
+import com.lookie.opluskey.ui.component.ICON_ACTION_SIZE
 import com.lookie.opluskey.ui.component.IconAction
 import com.lookie.opluskey.ui.component.IconInputView
 import com.lookie.opluskey.ui.component.NoHapticFeedback
@@ -100,15 +104,14 @@ import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
 import com.lookie.opluskey.ui.model.SUMMARY_REF_GAP
 import com.lookie.opluskey.ui.model.SUMMARY_REF_ICON
+import com.lookie.opluskey.ui.model.TAB_PAGE_SWITCH_MS
 import com.lookie.opluskey.ui.model.TILE_TITLE_GAP
 import com.lookie.opluskey.ui.model.TOOLBAR_EDGE_GAP
 import com.lookie.opluskey.ui.model.TOOLBAR_ICON_SIZE
-import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
-import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
-import com.lookie.opluskey.ui.model.VISIBILITY_MS
 import com.lookie.opluskey.ui.model.commandIcon
+import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.model.serialSummarySteps
 import com.lookie.opluskey.ui.model.stepIcon
@@ -120,7 +123,7 @@ import com.lookie.opluskey.ui.state.tickNow
 import com.lookie.opluskey.ui.state.toast
 import com.lookie.opluskey.ui.state.write
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
-import io.github.lyxnx.compose.ui.tablericons.outline.CommandOff
+import io.github.lyxnx.compose.ui.tablericons.outline.SquareRoundedMinus
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
@@ -192,7 +195,7 @@ internal fun SettingsPage.CommandKindBand(
             .onSizeChanged { commandBandHeight.value = it.height },
     ) {
         TabRowWithContour(
-            tabs = CommandKind.entries.map { it.label },
+            tabs = CommandKind.entries.map { commandKindLabel(it) },
             // 亮哪一个只看分页器停在哪一页（`currentPage`）。
             selectedTabIndex = pagerState.currentPage,
             onTabSelected = {
@@ -266,7 +269,7 @@ internal fun SettingsPage.CommandScreen(
     // 「重置」收尾：行级退场播完才真正 reset —— 放 SerialSteps 里会因步骤卡隐藏而永远挂起。
     LaunchedEffect(draftResetPending) {
         if (draftResetPending) {
-            delay(VISIBILITY_MS + 60L)
+            delay(TAB_PAGE_SWITCH_MS + 60L)
             //  注意：这 240ms 里用户可能已经在输入框里敲字了（点「重置」之后焦点还在名称 / 命令框上），
             //  无条件 `reset()` 会把刚敲进去的内容一起吞掉。
             //  指纹一致才收尾；不一致说明用户已经在写新的了，重置的意图已被覆盖，把表单留给他。
@@ -315,7 +318,7 @@ internal fun SettingsPage.CommandScreen(
 
                 // 编辑态：editingName 非 null 即正在改某条已存在的命令。
                 val editing = draft.editingName != null
-                SmallTitle(if (editing) "修改命令" else "新增命令")
+                SmallTitle(if (editing) I18n.get(Strings.COMMAND_TITLE_EDIT, "修改命令") else I18n.get(Strings.COMMAND_TITLE_NEW, "新增命令"))
 
                 // 输入项用 COUI 的「卡片输入」形态（[IconInputView]）：一个输入项一张卡、无边框，
                 // 行首图标会把标题与输入框一起挤开 —— 库的 `InputView` 做不到，所以自己拼。
@@ -341,8 +344,8 @@ internal fun SettingsPage.CommandScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
-                        title = "命令",
-                        label = "请输入命令",
+                        title = I18n.get(Strings.COMMAND_CMD_LABEL, "命令"),
+                        label = I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令"),
                     )
                 }
 
@@ -353,9 +356,9 @@ internal fun SettingsPage.CommandScreen(
                     // 这张卡只有一行：「等多久再派发下一条」。
                     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
                         SliderRow(
-                            title = "命令间隔时长",
+                            title = I18n.get(Strings.COMMAND_DELAY_LABEL, "命令间隔时长"),
                             icon = PageIcons.DelayStep,
-                            summary = "等多久再执行下一条",
+                            summary = I18n.get(Strings.COMMAND_DELAY_DESC, "等多久再执行下一条"),
                             position = cardListPositionOf(0, SERIAL_CARD_ROWS),
                             min = Command.MIN_STEP_DELAY_MS,
                             max = Command.MAX_STEP_DELAY_MS,
@@ -374,7 +377,7 @@ internal fun SettingsPage.CommandScreen(
                 // 输入框，所以只在单条那一栏出现。
                 if (kind == CommandKind.SINGLE) {
                     Spacer(Modifier.height(12.dp))
-                    SmallTitle("支持的命令格式")
+                    SmallTitle(I18n.get(Strings.COMMAND_FORMATS_TITLE, "支持的命令格式"))
                     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
                         Column(
                             // 上下只给 8dp：每行固定 [FORMAT_ROW_TOUCH]（32dp）高，小字本身约 17dp，
@@ -398,7 +401,7 @@ internal fun SettingsPage.CommandScreen(
                                                 Modifier
                                             } else {
                                                 // 涟漪走 `LocalIndication`（与库可点组件同一份）
-                                                Modifier.clickable(onClickLabel = "填入 $prefix 前缀") {
+                                                Modifier.clickable(onClickLabel = I18n.format(Strings.COMMAND_PREFIX_FILL, prefix)) {
                                                     tick()
                                                     XLog.w("命令格式：把前缀 $prefix 填进「命令」输入框")
                                                     draft.single = prefix
@@ -425,7 +428,7 @@ internal fun SettingsPage.CommandScreen(
                 // 多条命令的步骤单独一张卡：它是一串行，塞进上面那张卡会多嵌两层内边距。
                 if (kind == CommandKind.SERIAL) {
                     Spacer(Modifier.height(12.dp))
-                    SmallTitle("命令列表")
+                    SmallTitle(I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"))
                     //  加 / 删步骤的过渡不在这里：行让位 / 回位由 SerialSteps 每行的 expand / shrink 驱动，
                     // 两层高度动画叠在一起会让卡片背景慢半拍。
                     Card(
@@ -441,7 +444,7 @@ internal fun SettingsPage.CommandScreen(
                 //  以前是 `if (saved.isNotEmpty())` 整段不出现，用户看不出这块地方该有东西、也分不清
                 //  「还没保存过」与「这块地方根本不存在」。
                 Spacer(Modifier.height(12.dp))
-                SmallTitle("已保存的命令")
+                SmallTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
 
                 //  「一条都没有」与「有若干条」之间走**交叉过渡**：原来是
                 //  `if / else` 硬切 —— 删掉最后一条时整片网格「啪」地消失、空状态「啪」地出现，
@@ -458,11 +461,11 @@ internal fun SettingsPage.CommandScreen(
                         // 用 `ContentTransform` 显式给尺寸动画，而不是 `using(SizeTransform(...))`：
                         // 这个 compose 版本里没有 `using` 那个中缀（实测 `Unresolved reference`）。
                         ContentTransform(
-                            targetContentEnter = fadeIn(tween(VISIBILITY_MS)),
-                            initialContentExit = fadeOut(tween(VISIBILITY_MS)),
+                            targetContentEnter = fadeIn(tween(TAB_PAGE_SWITCH_MS)),
+                            initialContentExit = fadeOut(tween(TAB_PAGE_SWITCH_MS)),
                             sizeTransform = SizeTransform(
                                 clip = true,
-                                sizeAnimationSpec = { _, _ -> tween(VISIBILITY_MS) },
+                                sizeAnimationSpec = { _, _ -> tween(TAB_PAGE_SWITCH_MS) },
                             ),
                         )
                     },
@@ -592,7 +595,7 @@ internal fun SettingsPage.CommandScreen(
                                                     // 它自己吃掉这一下，不会触发整张卡的 `onClick` 或长按菜单。
                                                     IconAction(
                                                         PageIcons.TestCommand,
-                                                        "测试命令",
+                                                        I18n.get(Strings.COMMAND_TEST_BUTTON, "测试命令"),
                                                         tint = COUITheme.colorScheme.primary,
                                                     ) {
                                                         testCommand(cmd)
@@ -688,8 +691,8 @@ internal fun SettingsPage.CommandScreen(
         //  取消 ⇒ 关掉窗，留在页里继续编。
         ConfirmDialog(
             show = confirmLeaveCommands,
-            title = "放弃未保存的命令",
-            action = "放弃",
+            title = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
+            action = I18n.get(Strings.COMMON_DISCARD, "放弃"),
             onDismiss = { confirmLeaveCommands = false },
             onConfirm = {
                 confirmLeaveCommands = false
@@ -703,9 +706,12 @@ internal fun SettingsPage.CommandScreen(
         //  会因为它此刻仍是脏的而**再问一遍**）；取消 ⇒ 关掉窗，表单原样留着继续编。
         ConfirmDialog(
             show = pendingDraftLoad != null,
-            title = "放弃未保存的命令",
-            summary = "编辑「**${escapeMarkdown(pendingDraftLoad?.name ?: "")}**」将放弃当前变动。",
-            action = "放弃",
+            title = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
+            summary = I18n.format(
+                Strings.DIALOG_DISCARD_COMMAND_EDIT_MESSAGE,
+                escapeMarkdown(pendingDraftLoad?.name ?: ""),
+            ),
+            action = I18n.get(Strings.COMMON_DISCARD, "放弃"),
             onDismiss = { pendingDraftLoad = null },
             onConfirm = {
                 val next = pendingDraftLoad
@@ -717,15 +723,21 @@ internal fun SettingsPage.CommandScreen(
         // 删除确认：与「清空配置」同一套控件（取消中性色 + 动作项红）
         ConfirmDialog(
             show = deleting != null,
-            title = "删除命令",
+            title = I18n.get(Strings.DIALOG_DELETE_COMMAND_TITLE, "删除命令"),
             // 文案分两种：多条命令不会被别的命令引用（浮层里只能挑单条），只提按键绑定那一条路。
             // （`deleting` 是委托属性、智能转换用不了，两边都带 `?: ""`。）
             summary = if (deleting?.kind == CommandKind.SERIAL) {
-                "「**${escapeMarkdown(deleting?.name ?: "")}**」与按键上的绑定。"
+                I18n.format(
+                    Strings.DIALOG_DELETE_COMMAND_SERIAL_MESSAGE,
+                    escapeMarkdown(deleting?.name ?: ""),
+                )
             } else {
-                "「**${escapeMarkdown(deleting?.name ?: "")}**」与按键上的绑定、命令对它的引用。"
+                I18n.format(
+                    Strings.DIALOG_DELETE_COMMAND_SINGLE_MESSAGE,
+                    escapeMarkdown(deleting?.name ?: ""),
+                )
             },
-            action = "删除",
+            action = I18n.get(Strings.COMMON_DELETE, "删除"),
             onDismiss = { deleting = null },
             onConfirm = {
                 deleting?.let { removeCommand(it) }
@@ -755,12 +767,15 @@ private fun SettingsPage.CommandNameField() {
         // trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做。
         onValueChange = { draft.name = CommandLibrary.sanitizeNameInput(it) },
         modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
-        title = "名称",
-        label = "请输入名称",
+        title = I18n.get(Strings.COMMAND_NAME_LABEL, "名称"),
+        label = I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"),
         // 同名冲突与 `cmd:` 成环提示都交给组件画（都只在打字 / 改步骤时才有意义，结果只喂这一个输入框）
         errorMessage = when {
-            commandNameDuplicated(draft.name, draft.editingName) -> "与已有命令重名，请换个名字"
-            else -> commandReferenceCycle()?.let { "命令引用成环：${it.joinToString(" → ")}" } ?: ""
+            commandNameDuplicated(draft.name, draft.editingName) ->
+                I18n.get(Strings.COMMAND_NAME_DUPLICATE, "与已有命令重名，请换个名字")
+            else -> commandReferenceCycle()?.let {
+                I18n.format(Strings.COMMAND_CYCLE_ERROR, it.joinToString(" → "))
+            } ?: ""
         },
     )
 }
@@ -781,14 +796,14 @@ private fun SavedCommandEmptyState() {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
-            TablerIcons.Outline.CommandOff,
+            TablerIcons.Outline.SquareRoundedMinus,
             contentDescription = null,
             modifier = Modifier.size(EMPTY_STATE_ICON_SIZE),
             tint = COUITheme.colorScheme.onSurfaceVariantSummary,
         )
         Spacer(Modifier.height(APP_STATE_TEXT_GAP))
         Text(
-            text = "没有保存的命令",
+            text = I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令"),
             style = COUITheme.textStyles.footnote1,
             color = COUITheme.colorScheme.onSurfaceVariantSummary,
             textAlign = TextAlign.Center,
@@ -813,7 +828,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     //  （`postDelayed` 续步）的**完成**晚于这一行 —— 说「已执行」是把派发说成了完成。
     //  命令可能一点可见动静都没有，没有这句分不清「发了」和「没反应」，所以保留提示、改口径
     //  （失败仍会由 `CommandFailure` 那条另弹一句）。
-    toast("已触发")
+    toast(I18n.get(Strings.TOAST_COMMAND_TRIGGERED, "已触发"))
 }
 
 /**
@@ -909,7 +924,7 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
         ) { it + bottomGapPx } + fadeOut(tween(140, easing = FastOutLinearInEasing)),
     ) {
         // 磨砂：与顶栏、浮层菜单同一个挂法 —— 从**页面内容层**取样（[frosted]）。
-        //  取样方在本页那个记录层**之外**（工具栏挂在页内、`layerBackdrop` 那个 Box 外面，
+        //  取样方在本页那个取样源**之外**（工具栏挂在页内、`hazeSource` 那个 Box 外面，
         //  见 `SettingsPage` 的调用点），不会落进自己取样的那一层（落了就是 RenderThread 栈溢出）。
         //
         //  注意：**留白必须自己先加**（拉过 `FloatingToolbar.kt` 才看明白）：库内部那串链是
@@ -919,13 +934,13 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
         //   改成：我们自己 `padding(outSidePadding)` 再挂磨砂（画在留白以内 ⇒ 正好等于胶囊那一块），
         //   并把库的 `outSidePadding` 置零 —— 总占位、点击范围都不变（都是 12dp / 8dp）。
         //
-        //  注意：**阴影得自己补，且补在磨砂外面**（拉过 `DrawBackdropModifier.kt`）：磨砂内部是
-        //   `placeWithLayer(clip = true, shape = 圆角矩形)`，挂在它里面的东西全被裁进胶囊那个形状；
+        //  注意：**阴影得自己补，且补在磨砂外面**：磨砂链上有个 `clip(胶囊)`（见 [frosted]），
+        //  挂在它里面的东西全被裁进胶囊那个形状；
         //   库自己的 `dropShadow` 就挂在那里，而阴影本来画在形状**外面** ⇒ 被裁得一干二净
         //  （真机反馈「工具条阴影怎么没了」就是它）。所以把库的 `shadowElevation` 置零、按库原样
         //   （`radius = 10dp / 黑 10%`）在被裁的那一层**外面**补一层同样的阴影。
-        val backdrop = pageBackdrop
-        if (backdrop == null && !frostDegradeLogged) {
+        val state = pageHazeState
+        if (state == null && !frostDegradeLogged) {
             frostDegradeLogged = true
             XLog.w("底部工具栏磨砂跳过：页面取样层未就绪 ⇒ 这一轮仍用不透明底")
         }
@@ -936,7 +951,7 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
                 shape = capsule,
                 shadow = Shadow(radius = 10.dp, color = Color.Black, alpha = 0.1f),
             )
-        val frost: Modifier = backdrop?.let { gap.frosted(it, capsule) } ?: gap
+        val frost: Modifier = state?.let { gap.frosted(it, capsule) } ?: gap
         FloatingToolbar(
             modifier = frost,
             // 底色要**半透明**才透得出磨砂：`compositeOver(surface)` 会把它压成不透明实心，
@@ -1014,7 +1029,11 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
                 ) {
                     Icon(
                         PageIcons.MenuReset,
-                        contentDescription = if (editing) "取消" else "重置",
+                        contentDescription = if (editing) {
+                            I18n.get(Strings.COMMON_CANCEL, "取消")
+                        } else {
+                            I18n.get(Strings.COMMON_RESET, "重置")
+                        },
                         // 禁用时跟着置灰（库不给图标上色）
                         tint = resetIconColor,
                     )
@@ -1033,7 +1052,11 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
                 ) {
                     Icon(
                         PageIcons.Confirm,
-                        contentDescription = if (editing) "修改" else "保存",
+                        contentDescription = if (editing) {
+                            I18n.get(Strings.COMMON_MODIFY, "修改")
+                        } else {
+                            I18n.get(Strings.COMMON_SAVE, "保存")
+                        },
                         tint = saveIconColor,
                     )
                 }
@@ -1206,22 +1229,50 @@ internal fun SettingsPage.SerialSteps() {
                         // 同一张卡里两行左边缘不齐。
                         startAction = { Icon(stepIcon(item.token, commands.value), null, Modifier.size(22.dp)) },
                         endActions = {
-                            IconAction(PageIcons.StepUp, "上移", enabled = !item.exiting && stepsIndex > 0) {
+                            IconAction(
+                                PageIcons.StepUp,
+                                I18n.get(Strings.COMMON_MOVE_UP, "上移"),
+                                enabled = !item.exiting && stepsIndex > 0,
+                            ) {
                                 tick()
                                 moveStep(stepsIndex, -1)
                             }
                             IconAction(
                                 PageIcons.StepDown,
-                                "下移",
-                                enabled = !item.exiting && stepsIndex < steps.lastIndex
+                                I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
+                                enabled = !item.exiting && stepsIndex < steps.lastIndex,
                             ) {
                                 tick()
                                 moveStep(stepsIndex, 1)
                             }
-                            IconAction(PageIcons.CommandDelete, "删除", error = true, enabled = !item.exiting) {
+                            IconAction(
+                                PageIcons.CommandDelete,
+                                I18n.get(Strings.COMMON_DELETE, "删除"),
+                                error = true,
+                                enabled = !item.exiting,
+                            ) {
                                 tick()
                                 // 从 steps 里立即移除（数据层马上正确）；展示层这一行由差分同步标成退场，shrink 完自己摘除。
                                 steps.removeAt(stepsIndex)
+                            }
+                            // 行尾收一颗选择器指示 —— 这一行点了会弹选择器把这一步换掉（见 [PageIcons.Selector]）。
+                            //  给的是**纯图标**、不是 [IconAction]：它不吃点击（弹选择器的是整行自己）。
+                            //  外面套 `ICON_ACTION_SIZE` 的盒子，与前三个按钮的间距才一致 —— 那三个是可点按钮、
+                            //  自带这么大一块触达区，只放 20dp 的图标会挤在一起。
+                            Box(
+                                Modifier.size(ICON_ACTION_SIZE),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    PageIcons.Selector,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ICON_ACTION_ICON),
+                                    // 全项目最弱的一档（`onSurfaceVariantActions`，库给 chevron 用的那档）——
+                                    //  它是「这一行可点」的指示、不是动作，不该跟上移 / 下移 / 删除那三个按钮抢眼。
+                                    //  不给退场另开一档：这一档与 `disabledOnSecondaryVariant` **恰好同值**
+                                    //（浅色 0x42 / 深色 0x4D），分了也是同一个颜色。
+                                    tint = COUITheme.colorScheme.onSurfaceVariantActions,
+                                )
                             }
                         },
                     ) {
@@ -1238,7 +1289,7 @@ internal fun SettingsPage.SerialSteps() {
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = "第 ${stepsIndex + 1} 步",
+                            text = I18n.format(Strings.COMMON_STEP_INDEX, stepsIndex + 1),
                             modifier = Modifier.padding(top = 2.dp),
                             style = COUITheme.textStyles.body2,
                             color = COUITheme.colorScheme.onSurfaceVariantSummary,
@@ -1316,6 +1367,22 @@ internal fun SettingsPage.SerialSteps() {
             startAction = {
                 Icon(PageIcons.StepAdd, null, Modifier.size(22.dp), tint = addIconTint)
             },
+            // 行尾同样收一颗选择器指示（见 [PageIcons.Selector]）—— 这一行点了也弹选择器。
+            //   tint 走最弱那一档（`onSurfaceVariantActions`），比行首那颗 `+` 弱；不给满员另开一档，
+            //   与 `disabledOnSecondaryVariant` 同值（见上面步骤行那处注释）。
+            endActions = {
+                Box(
+                    Modifier.size(ICON_ACTION_SIZE),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        PageIcons.Selector,
+                        contentDescription = null,
+                        modifier = Modifier.size(ICON_ACTION_ICON),
+                        tint = COUITheme.colorScheme.onSurfaceVariantActions,
+                    )
+                }
+            },
             // `enabled = false` 时 COUI 不挂 `clickableModifier` ⇒ 点不进去，浮层也就打不开。
             enabled = !stepsFull,
             onClick = {
@@ -1326,7 +1393,7 @@ internal fun SettingsPage.SerialSteps() {
             },
         ) {
             Text(
-                text = "添加命令",
+                text = I18n.get(Strings.COMMAND_ADD, "添加命令"),
                 style = COUITheme.textStyles.headline1,
                 fontWeight = FontWeight.Medium,
                 color = addTitleColor,
@@ -1334,7 +1401,7 @@ internal fun SettingsPage.SerialSteps() {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "从内置命令与自定义命令里选择",
+                text = I18n.get(Strings.COMMAND_STEP_SELECT_TITLE, "从内置命令与自定义命令里选择"),
                 modifier = Modifier.padding(top = 2.dp),
                 style = COUITheme.textStyles.body2,
                 color = addSummaryColor,
@@ -1397,9 +1464,9 @@ internal fun SettingsPage.addCommand() {
     val replaced = commands.value.any { it.name == name }
     // 结果一句话（改 / 覆盖 / 新增各一条；失败由 [saveCommands] 自己报）
     val tip = when {
-        editingFrom != null -> "已修改"
-        replaced -> "已覆盖"
-        else -> "已保存"
+        editingFrom != null -> I18n.get(Strings.TOAST_COMMAND_MODIFIED, "已修改")
+        replaced -> I18n.get(Strings.TOAST_COMMAND_OVERWRITTEN, "已覆盖")
+        else -> I18n.get(Strings.TOAST_COMMAND_SAVED, "已保存")
     }
     val saved = saveCommands(
         next,
@@ -1462,7 +1529,7 @@ internal fun SettingsPage.replaceStep(index: Int, token: String) {
     if (index !in draft.steps.indices) {
         // 越界不能静默 return：调用方已经 tick / 关了菜单，用户看不到任何反应也无从判断。
         XLog.w("多条命令：第 ${index + 1} 步不存在（当前 ${draft.steps.size} 步），换步已忽略")
-        toast("这一步已经不在列表里了")
+        toast(I18n.get(Strings.TOAST_COMMAND_STEP_MISSING, "这一步已经不在列表里了"))
         navTo(Screen.COMMANDS)
         return
     }
@@ -1516,7 +1583,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
         .map { it.dropReference(cmd.token) }
     if (saveCommands(next, "删除命令：${cmd.name}")) {
         if (draft.editingName == cmd.name) draft.reset()
-        toast("已删除")
+        toast(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除"))
     } else if (bindingsCleared) {
         // 注意：命令库没删成、绑定却已经清了 ⇒ 会留下「手势=无操作 + 命令仍在库」这种半份状态
         //：把绑定**写回原样**，两边一起保持原状。
@@ -1551,7 +1618,7 @@ internal fun SettingsPage.saveCommands(next: List<Command>, what: String): Boole
         // 落盘失败回滚状态：界面与文件必须一致，否则「界面显示删了、文件还在」
         commands.value = previous
         XLog.w("命令库写入失败（已回滚界面状态）：$what")
-        toast("保存失败")
+        toast(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
     }
     return saved
 }

@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.GlobalConfig
 
@@ -11,42 +13,42 @@ import com.lookie.opluskey.core.model.GlobalConfig
  * 失败提示表：Toast 里只出现 [hint]（说清哪里不对 + 怎么办），原始信息照旧进日志
  * （按枚举名 grep）。新增一类失败就加一个分量，要按数值分流时才加映射函数。
  */
-internal enum class CommandFailure(val hint: String) {
+internal enum class CommandFailure(val key: String, val fallback: String) {
     /** `cmd:<名字>` 在命令库里找不到（被删了 / 改名了 / 文件被手改坏）。 */
-    NOT_FOUND("这条命令已经不在了，去「自定义命令」里看看"),
+    NOT_FOUND(Strings.COMMAND_FAILURE_NOT_FOUND, "这条命令已经不在了，去「自定义命令」里看看"),
 
     /** 命令是空的（单条没填内容，或多条一步都没有）。 */
-    EMPTY("这条命令是空的，补上内容再试"),
+    EMPTY(Strings.COMMAND_FAILURE_EMPTY, "这条命令是空的，补上内容再试"),
 
     /** `cmd:` 嵌套超过 [CustomCommandRunner] 的上限（手改出来的环）。 */
-    TOO_DEEP("命令之间引用得太绕了，检查一下"),
+    TOO_DEEP(Strings.COMMAND_FAILURE_TOO_DEEP, "命令之间引用得太绕了，检查一下"),
 
     /** `ProcessBuilder` 直接起不来（SELinux / 进程数上限 …）。 */
-    SHELL_REJECTED("系统不让执行这条命令"),
+    SHELL_REJECTED(Strings.COMMAND_FAILURE_SHELL_REJECTED, "系统不让执行这条命令"),
 
     /** shell 命令超时还没结束（在这个身份下挂住了）—— 进程已被杀掉。 */
-    SHELL_TIMEOUT("这条命令卡住了，已经中止"),
+    SHELL_TIMEOUT(Strings.COMMAND_FAILURE_SHELL_TIMEOUT, "这条命令卡住了，已经中止"),
 
     /** shell 退出码 127 —— 命令本身不存在。 */
-    SHELL_MISSING("找不到这个命令，检查一下拼写"),
+    SHELL_MISSING(Strings.COMMAND_FAILURE_SHELL_MISSING, "找不到这个命令，检查一下拼写"),
 
     /** shell 退出码 126 —— 找到了但没有执行权限。 */
-    SHELL_NO_PERMISSION("这条命令没有执行权限"),
+    SHELL_NO_PERMISSION(Strings.COMMAND_FAILURE_SHELL_NO_PERMISSION, "这条命令没有执行权限"),
 
     /** 其它非 0 退出码 —— 命令跑起来了但自己报错。 */
-    SHELL_FAILED("命令没跑成功，检查一下内容"),
+    SHELL_FAILED(Strings.COMMAND_FAILURE_SHELL_FAILED, "命令没跑成功，检查一下内容"),
 
     /** `app:` 解析不到界面（包名错 / 应用已卸载）。 */
-    APP_MISSING("找不到这个应用，可能已经卸载了"),
+    APP_MISSING(Strings.COMMAND_FAILURE_APP_MISSING, "找不到这个应用，可能已经卸载了"),
 
     /** `app:` 应用装着但没有可启动界面（与 [APP_MISSING] 分开，报「已卸载」会误导）。 */
-    APP_NO_ENTRY("这个应用没有可启动的界面"),
+    APP_NO_ENTRY(Strings.COMMAND_FAILURE_APP_NO_ENTRY, "这个应用没有可启动的界面"),
 
     /** 小布快捷指令那几个 action 都没被系统接受。 */
-    SHORTCUT_FAILED("小布快捷指令没能触发"),
+    SHORTCUT_FAILED(Strings.COMMAND_FAILURE_SHORTCUT_FAILED, "小布快捷指令没能触发"),
 
     /** 兜底：执行时抛了异常，但说不上是哪一类。 */
-    UNKNOWN("这次没执行成功"),
+    UNKNOWN(Strings.COMMAND_FAILURE_UNKNOWN, "这次没执行成功"),
 
     /**
      * 小窗：这个应用**收不起来小窗**（服务端没受理，或收完没出窗口）。
@@ -55,15 +57,18 @@ internal enum class CommandFailure(val hint: String) {
      * 那条会先回桌面再起，用户看到的是「一按侧键就回桌面重开」，比没反应更糟
      * （见 `docs/zoom-window.md` §2.2）。
      */
-    APP_NO_MINI_WINDOW("前台应用不支持小窗"),
+    APP_NO_MINI_WINDOW(Strings.COMMAND_FAILURE_APP_NO_MINI_WINDOW, "前台应用不支持小窗"),
 
     /**
      * 上一条还没结束又来一条 —— 两种来源：
      *  · `shell:` 并发超上限（`ShellRunner` 那一侧的闸）；
      *  · 命令链还在跑时又触发了一条（`CustomCommandRunner` 的「一次只跑一条」闸）。
      */
-    OVERLOADED("上一条命令还没跑完，稍后再试"),
+    OVERLOADED(Strings.COMMAND_FAILURE_OVERLOADED, "上一条命令还没跑完，稍后再试"),
     ;
+
+    val hint: String
+        get() = I18n.get(key, fallback)
 
     companion object {
         /**
