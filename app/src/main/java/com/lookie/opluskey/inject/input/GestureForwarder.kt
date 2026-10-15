@@ -50,6 +50,8 @@ internal class GestureForwarder(
         val sentAt = SystemClock.elapsedRealtime()
         val intent = Intent(KeyModule.ACTION_GESTURE)
             .setPackage(KeyModule.PAGE_PACKAGE)
+            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
             .putExtra(KeyModule.EXTRA_KEY, id.id)
             .putExtra(KeyModule.EXTRA_PHASE, phase)
             .putExtra(KeyModule.EXTRA_REPEAT, repeat)
@@ -75,16 +77,23 @@ internal class GestureForwarder(
         retry: Boolean,
     ) {
         try {
-            handler.postDelayed({
+            if (delayMs <= 0L) {
                 XLog.guard("发送侧键手势广播 $phase") {
                     ctx.sendBroadcast(intent)
-                    if (retry) {
-                        XLog.d("侧键手势已补发：$phase（① 被丢掉时才需要它）")
-                    } else {
-                        XLog.w("已把侧键手势转给宿主：$phase${if (repeat) "（连续触发）" else ""}")
-                    }
+                    XLog.w("已把侧键手势转给宿主：$phase${if (repeat) "（连续触发）" else ""}")
                 }
-            }, delayMs)
+            } else {
+                handler.postDelayed({
+                    XLog.guard("发送侧键手势广播 $phase") {
+                        ctx.sendBroadcast(intent)
+                        if (retry) {
+                            XLog.d("侧键手势已补发：$phase（① 被丢掉时才需要它）")
+                        } else {
+                            XLog.w("已把侧键手势转给宿主：$phase${if (repeat) "（连续触发）" else ""}")
+                        }
+                    }
+                }, delayMs)
+            }
         } catch (e: Throwable) {
             XLog.w("转交手势失败：$phase", e)
         }

@@ -2,6 +2,9 @@ package com.lookie.opluskey.ui.state
 
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.core.config.ConfigStore
+import com.lookie.opluskey.core.i18n.AppLanguage
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
@@ -38,7 +41,13 @@ internal fun SettingsPage.resetAll() {
     // 下次读取走的是「文件不存在」那条分支，与写一份空表不是同一条路，排查时对不上）。
     val cleared = saveCommands(emptyList(), "reset_all")
     XLog.w("清空：主配置已重建，命令库清空=$cleared")
-    toast(if (cleared) "已清空配置" else "配置已清空，命令库清理失败")
+    toast(
+        if (cleared) {
+            I18n.get(Strings.TOAST_CONFIG_CLEARED, "已清空配置")
+        } else {
+            I18n.get(Strings.TOAST_CONFIG_CLEAR_FAILED, "配置已清空，命令库清理失败")
+        },
+    )
 }
 
 /**
@@ -71,7 +80,7 @@ internal fun SettingsPage.restartModule() {
         XLog.w("重启：宿主主进程不在，没人能把页面拉回来，放弃")
         // 点了没反应最容易被当成「按钮坏了」—— 这一句把「没找到进程」与「杀掉了」分开。
         //  文案里不提「宿主进程」：那是内部结构（用户界面不需要技术细节），只回答成没成。
-        toast("重启失败，请稍后重试")
+        toast(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败，请稍后重试"))
         return
     }
     // 把「把页面拉回来 + 自己重来一遍」整个交给宿主主进程（见 host/PageRelaunch）。
@@ -83,12 +92,12 @@ internal fun SettingsPage.restartModule() {
         )
     }.onFailure { XLog.w("重启：请宿主主进程拉起页面失败：${it.javaClass.simpleName}", it) }.isSuccess
     if (!asked) {
-        toast("重启失败，请稍后重试")
+        toast(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败，请稍后重试"))
         return
     }
     XLog.w("重启：已请宿主主进程稍后拉起页面")
     // 这一条是「菜单那个重启」的反馈：不带它的话，用户只能靠「过一会儿动作生效了没有」猜。
-    toast("已重启服务")
+    toast(I18n.get(Strings.TOAST_SERVICE_RESTARTED, "已重启服务"))
     killPageProcess()
 }
 
@@ -170,6 +179,15 @@ internal fun SettingsPage.setToastOnRun(on: Boolean) {
     )
 }
 
+/** 切换界面语言。 */
+internal fun SettingsPage.setLanguage(code: String) {
+    val cfg = config.value
+    write(
+        cfg.copy(global = cfg.global.copy(language = code)),
+        "language=$code",
+    )
+}
+
 
 /** 写 [KeyConfig.enabled] 总闸：关闭后绑定页控件置灰，侧键不再被接管。 */
 internal fun SettingsPage.setKeyEnabled(on: Boolean) {
@@ -220,7 +238,7 @@ internal fun SettingsPage.write(next: Config, what: String): Boolean {
     // 会把用户配的绑定 / 开关整份抹掉。一律拒，并明确告诉用户「没保存」。
     if (configReadOnly) {
         XLog.w("配置处在只读态（这次没读成功），拒绝写回：$what")
-        toast("配置读取失败，未保存")
+        toast(I18n.get(Strings.TOAST_CONFIG_READ_FAILED, "配置读取失败，未保存"))
         return false
     }
     var saved = false
@@ -235,10 +253,13 @@ internal fun SettingsPage.write(next: Config, what: String): Boolean {
         XLog.w("设置页写配置失败：$what", e)
     }
     if (!saved) {
-        toast("保存失败")
+        toast(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
         return false
     }
     config.value = next
+    // 语言跟着配置走：落盘这一下就把新档位落到 [I18n] —— 切「语言」当场换（含导入配置带进来的
+    //  那一档、以及「清空配置」退回默认档），不必退出页面再进来。字典本身是组合状态，页面随即重画。
+    I18n.currentLanguage = AppLanguage.fromCode(next.global.language)
     // 落盘成功 ≠ 生效：注入侧只认广播（它读不到配置文件）。广播没发出去时注入侧继续按旧配置
     // 吞键，所以这里必须把结果并进返回值 —— 否则界面报「已保存」而实际行为一点没变，
     // 用户会往「模块坏了」的方向排查。
@@ -248,7 +269,7 @@ internal fun SettingsPage.write(next: Config, what: String): Boolean {
         //  本地指纹跟着变，而注入侧那份还是旧的 ⇒ `configSideOk=false` ⇒ `linkReady=false`
         //  ⇒ ⋮ 菜单里的「重启服务」**正好被灰掉**，指过去等于让用户点一个点不动的入口。
         //  真正能自愈的是「退出重进」（重进会重发配置并重问自检），所以说这个。
-        toast("已保存，但通知注入侧失败，退出重进本页即可")
+        toast(I18n.get(Strings.TOAST_CONFIG_SAVE_BROADCAST_FAILED, "已保存，但通知注入侧失败，退出重进本页即可"))
         return false
     }
     // 注意：写完必须**再问一次注入侧**：上面 `config.value = next` 一换本地指纹，页面手上那份

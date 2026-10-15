@@ -15,7 +15,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,8 +31,8 @@ import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.MENU_ICON_SIZE
-import com.lookie.opluskey.ui.model.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_PANEL_RADIUS
+import com.lookie.opluskey.ui.model.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_DARK
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_LIGHT
 import com.lookie.opluskey.ui.model.PageIcons
@@ -74,18 +73,6 @@ internal fun PopupRowDivider() {
 }
 
 /**
- * 浮层面板的本色（[POPUP_SURFACE_LIGHT] / [POPUP_SURFACE_DARK]）—— 分档照抄库
- * `ListPopupContent` 的 `popupSurfaceColor()`：按主题背景亮度切。
- */
-@Composable
-private fun popupSurfaceColor(): Color =
-    if (COUITheme.colorScheme.background.luminance() < 0.5f) {
-        POPUP_SURFACE_DARK
-    } else {
-        POPUP_SURFACE_LIGHT
-    }
-
-/**
  * 浮层里分隔的颜色：暗色走**亮**线、浅色走黑线。
  *
  *  「暗色下看不清，加深分隔条」（真机反馈）：面板磨砂后是半透明的深灰（`#2e` 附近），
@@ -100,6 +87,20 @@ private fun popupDividerColor(darkAlpha: Float, lightAlpha: Float): Color =
     }
 
 /**
+ * 面板本色（[POPUP_SURFACE_LIGHT] / [POPUP_SURFACE_DARK]）—— 分档照抄库 `ListPopupContent`
+ * 的 `popupSurfaceColor()`：按主题背景亮度切。
+ *
+ *  浮层菜单与确认弹窗**共用这一份**：两处都要「半透本色压在糊上」，色号分家迟早走形。
+ */
+@Composable
+internal fun popupSurfaceColor(): Color =
+    if (COUITheme.colorScheme.background.luminance() < 0.5f) {
+        POPUP_SURFACE_DARK
+    } else {
+        POPUP_SURFACE_LIGHT
+    }
+
+/**
  * 浮层菜单的**一行**（[MenuPopup] 的入参模型）—— 四处菜单（顶栏 ⋮ / 命令长按 / 响铃档位 /
  * 「添加命令」一级与二级）共用这一张小表。
  *
@@ -109,6 +110,9 @@ private fun popupDividerColor(darkAlpha: Float, lightAlpha: Float): Color =
  *    （「换一步」时当前那一步常在第 7 项之后，不滚就看不见自己选的是哪个）；
  *  - [danger]：删除 / 重置这类破坏性动作（红）；
  *  - [submenu]：行尾画右箭头（这一行会进下一层）。
+ *  - [trailingIcon]：换掉 [submenu] 那支右箭头（`null` = 用它）。用途是「进下一层」的两种形态分开：
+ *    弹一层菜单的行用右箭头，跳**另一个页面**的行用别处那一套（网格里「打开应用」那一格用的是
+ *    「窗口 + 加号」，见 `PageIcons.BrowserPlus`）。
  */
 internal sealed interface MenuEntry {
     data class Row(
@@ -118,6 +122,7 @@ internal sealed interface MenuEntry {
         val selected: Boolean = false,
         val danger: Boolean = false,
         val submenu: Boolean = false,
+        val trailingIcon: ImageVector? = null,
         val onPick: () -> Unit,
     ) : MenuEntry
 
@@ -129,6 +134,36 @@ internal sealed interface MenuEntry {
 
     /** 组与组之间的**加深带**（颜色 / 厚度取库常量）。 */
     data object GroupLine : MenuEntry
+}
+
+/**
+ * 菜单行标题的**格数上限** —— 五个汉字（[displayWidth] 折算的 10 格）。
+ *
+ *  浮层的宽度由最长那一行决定，而库里给标题的行数上限是 `DropdownDefaults.TitleMaxLines`（3 行）：
+ *  不截的话，一条长命令名会先把那一行撑成两三行、再把整张菜单拉宽，同一份菜单在不同命令下宽度还不一样。
+ *
+ *  按**格**算而不是按 `length` 算：`English`（7 字符 / 7 格）本来就放得下，按字符数判会把它砍成
+ *  `Engli…`；汉字两格，所以这一档对中文就是「五个字」。
+ */
+private const val MENU_TITLE_MAX_WIDTH = 10
+
+/**
+ * 菜单行标题的**显示文本**：超过 [MENU_TITLE_MAX_WIDTH] 就从尾部砍掉、补一个省略号。
+ *
+ * 只改**画出来的那一份** —— 功能不受影响，日志（[MenuRow] 里的点选那一行）仍写全名，
+ * 否则截断后的名字在日志里认不出是哪一条命令。
+ */
+internal fun ellipsizeMenuTitle(title: String): String {
+    if (displayWidth(title) <= MENU_TITLE_MAX_WIDTH) return title
+    var width = 0
+    var chars = 0
+    for (c in title) {
+        val next = width + if (isFullWidth(c)) 2 else 1
+        if (next > MENU_TITLE_MAX_WIDTH) break
+        width = next
+        chars++
+    }
+    return title.take(chars) + "…"
 }
 
 /**
@@ -267,7 +302,7 @@ internal fun SettingsPage.MenuPopup(
         //  注意：取样的是页面那一层，本节点画在 Scaffold 的 `COUIPopupHost` 里（页面那层之外）——
         //  落进自己取样的那一层就是渲染节点链无限增长、RenderThread 栈溢出（真机崩过一次）。
         val panelShape = remember { RoundedCornerShape(POPUP_PANEL_RADIUS) }
-        val source = pageBackdrop
+        val source = pageHazeState
         if (source == null && !frostDegradeLogged) {
             frostDegradeLogged = true
             XLog.w("浮层磨砂跳过：页面取样层未就绪 ⇒ 这一轮仍用不透明底")
@@ -349,9 +384,17 @@ private fun SettingsPage.MenuRow(
             runCatching { bringIntoView.bringIntoView(rowRect) }
         }
     }
-    val item = remember(row.title, row.icon, row.enabled, row.danger, row.selected) {
+    val item = remember(
+        row.title,
+        row.icon,
+        row.enabled,
+        row.danger,
+        row.selected,
+        row.trailingIcon,
+    ) {
         DropdownItem(
-            text = row.title,
+            // 显示文本过一道截断（[ellipsizeMenuTitle]）：库里标题最多三行，长名字会撑宽整张菜单
+            text = ellipsizeMenuTitle(row.title),
             enabled = row.enabled,
             // 文字由库按 `alert` 走 `DropdownColors.alertContentColor` —— 与图标的红同一档
             alert = row.danger,
@@ -361,7 +404,8 @@ private fun SettingsPage.MenuRow(
             checkIcon = PageIcons.MenuCheck,
             // 进下一层那些行（「响铃状态」「选择应用」）的行尾右箭头同样换掉 —— 库默认的
             // `COUIIcons.Basic.ArrowRight` 也是 COUI 那一套（12x24、描边 1.4），见 [PageIcons.EnterArrow]。
-            chevronIcon = PageIcons.EnterArrow,
+            //  逐行可换（[MenuEntry.Row.trailingIcon]）：跳页面那些行用「窗口 + 加号」，与网格一致。
+            chevronIcon = row.trailingIcon ?: PageIcons.EnterArrow,
             icon = { m ->
                 val base = m.height(MENU_ROW_CONTENT_HEIGHT).bringIntoViewRequester(bringIntoView)
                 // 第 0 行兼当「列表滚了没有」的探针：挂在行内容上 —— 滚的是列表**内层**，

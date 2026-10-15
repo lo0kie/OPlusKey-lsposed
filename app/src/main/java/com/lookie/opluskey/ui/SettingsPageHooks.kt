@@ -430,14 +430,14 @@ internal object SettingsPageHooks {
         // 不会跟着变 —— 不重刷就会出现「页面已经变深色、状态栏还是浅色」的割裂。
         page.onSystemThemeChanged = {
             XLog.w("系统深浅变了：重刷状态栏配色")
-            HostChrome.paintChrome(activity, pageCtx, container, page.pageBackgroundColor)
+            HostChrome.paintChrome(activity, container, page.pageBackgroundColor)
         }
 
         // 状态栏的配色统一走 HostChrome.paintChrome（见上面那条回调）。
         //  先拆掉可能残留在窗上的状态栏遮罩（上一档「露出宿主原版页面」盖的）：
         // 这一步之后那一条就完全归模块页面自己画，见 [HostChrome.coverStatusBar] 的注释。
         HostChrome.removeStatusFiller()
-        HostChrome.paintChrome(activity, pageCtx, container, pageBg)
+        HostChrome.paintChrome(activity, container, pageBg)
 
         //  深浅切换只靠页面里的每秒轮询（读系统全局配置）。
         // 抓到它是「亮色进页先黑 1 秒再变白」的元凶：宿主声明了 `configChanges=uiMode`，

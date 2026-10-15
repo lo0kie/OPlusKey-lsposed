@@ -1,5 +1,7 @@
 package com.lookie.opluskey.ui.model
 
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
@@ -11,7 +13,7 @@ internal object ActionCatalog {
     /**
      * 一个可选动作的展示信息。
      *
-     * @param title 界面上的名称（与 KSU 模块的显示文本一致）
+     * @param title 界面上的名称（与 KSU 模块的显示文本一致）—— **中文原文兼兜底**，界面上一律读 [Spec.label]
      * @param summary 动作清单里的说明文字 —— 只有菜单里那几行读它
      * @param token `Action.parse()` 认得的那种写法
      * @param middleIcon 中央大图标的 drawable 名（宿主资源，可为空）
@@ -43,6 +45,70 @@ internal object ActionCatalog {
         val commandKind: CommandKind? = null,
         val commandSteps: Int = 0,
         val dividerBefore: Boolean = false,
+    ) {
+        /**
+         * 界面上的叫法 —— [title] 过一遍字典（键见 [TITLE_KEYS]）。
+         *
+         *  取值 [token] 与所有判定都不受影响：写进配置的永远是 token，标题只出现在界面与日志里，
+         *  日志那几处仍读 [title]（中文更能对上本文件里那张表）。
+         */
+        val label: String get() = I18n.get(TITLE_KEYS[title] ?: title, title)
+    }
+
+    /**
+     * 内置动作标题的字典键 —— 按 [Spec.title] 的中文原文索引。
+     *
+     *  标题是 [GROUPS] 与各 `MODES` 表的构造参数（静态表），要让它们分语言就得把「原文 → 键」
+     *  对上一次：放在这里一张表里，比给几十个构造点各补一个键参数短，也一眼数得出覆盖率。
+     *
+     *  表里的中文**互不相同**（同一段文字若在两张表里出现，含义也相同，如「上一首」）；
+     *  将来真出现「同词不同义」，再给那个构造点单独开一个键。漏项不会报错，只是那一格固定显示中文，
+     *  所以往 [GROUPS] / 各 `MODES` 表加人时**对着这张表一起加**。
+     */
+    private val TITLE_KEYS: Map<String, String> = mapOf(
+        // 网格两组
+        "无操作" to Strings.ACTION_NONE,
+        "系统导航" to Strings.CATEGORY_SYSTEM_NAV,
+        "通知与控制中心" to Strings.CATEGORY_PANEL,
+        "媒体控制" to Strings.CATEGORY_MEDIA,
+        "响铃状态" to Strings.CATEGORY_RINGER,
+        "系统按键" to Strings.CATALOG_SYSTEM_KEYS,
+        "电源菜单" to Strings.PANEL_POWER_MENU,
+        "手电筒" to Strings.CATALOG_FLASHLIGHT,
+        "截图" to Strings.CATALOG_SCREENSHOT,
+        "小布识屏" to Strings.TOOL_SCREEN_RECOGNITION,
+        "一键闪记" to Strings.CATALOG_FLASH_NOTE,
+        "免打扰" to Strings.CATALOG_DND,
+        "录音" to Strings.CATALOG_RECORDING,
+        "应用转小窗" to Strings.TOOL_MINI_WINDOW,
+        "打开应用" to Strings.TOOL_OPEN_APP,
+        // 响铃状态菜单
+        "循环" to Strings.CATALOG_MODE_CYCLE,
+        "响铃" to Strings.CATALOG_MODE_RING,
+        "振动" to Strings.CATALOG_MODE_VIBRATE,
+        "静音" to Strings.CATALOG_MODE_SILENT,
+        // 媒体控制菜单
+        "播放 / 暂停" to Strings.MEDIA_PLAY_PAUSE,
+        "播放" to Strings.CATALOG_MODE_PLAY,
+        "暂停" to Strings.CATALOG_MODE_PAUSE,
+        "上一首" to Strings.MEDIA_PREV,
+        "下一首" to Strings.MEDIA_NEXT,
+        // 应用转小窗菜单
+        "展开小窗" to Strings.CATALOG_MODE_EXPAND,
+        "收起小窗" to Strings.CATALOG_MODE_COLLAPSE,
+        // 系统导航菜单
+        "主屏幕" to Strings.CATALOG_MODE_HOME,
+        "返回" to Strings.CATALOG_MODE_BACK,
+        "最近任务" to Strings.NAV_RECENTS,
+        // 通知与控制中心菜单
+        "通知中心" to Strings.CATALOG_MODE_NOTIFICATIONS,
+        "控制中心" to Strings.CATALOG_MODE_CONTROL_CENTER,
+        // 系统按键菜单
+        "音量 +" to Strings.MEDIA_VOL_UP,
+        "音量 −" to Strings.CATALOG_MODE_VOL_DOWN,
+        "电源键" to Strings.CATALOG_MODE_POWER,
+        // 「添加命令」浮层里那一行（挑应用做一步）
+        "选择应用" to Strings.APP_PICKER_TITLE,
     )
 
     /** 「无操作」那套图标（宿主里就是「一个斜杠圈」）。 */
@@ -102,6 +168,17 @@ internal object ActionCatalog {
     private const val RECORDING = "oplus:recording"
 
     /**
+     * 「媒体控制」那一格**本身**（[GROUPS] 里那一行）—— 与菜单首行（[MEDIA_MODES] 的第一条）
+     * 共用同一串 token（[MEDIA_TILE]），但两者**字形不同**：这一格是「一类东西」（音符，入口），
+     * 菜单首行是「一个具体取值」（开关键）。认领只能靠 `spec ===`，见 `ui/model/ActionIcons.kt`
+     * 的 [specIcon] —— 别顺手并成同一个。
+     *
+     * 声明在 [GROUPS] **之前**：`GROUPS` 的初始化会读它，而放在 companion 里会让先初始化
+     * companion、那里的 `STEP_GROUPS` 又要回头读还没初始化完的 `GROUPS`。
+     */
+    val MEDIA_TILE_SPEC: Spec = Spec(title = "媒体控制", summary = MEDIA_TILE, token = MEDIA_TILE)
+
+    /**
      * 内置命令分成两类 —— 界面上各一个小标题，组内顺序即显示顺序。
      *
      * [ALL] 是把两组按顺序拍平的**扁平表**：焦点索引、图标预热等调用方只看它，
@@ -130,7 +207,7 @@ internal object ActionCatalog {
             // 这一格与「响铃状态」同属**入口格**（点它弹 [MEDIA_MODES] 菜单，不直接写配置），
             // 与「打开应用」一起归 [isEntryTile]；但它俩是真取值，能作为多条命令的一步。
             // 「播放 / 暂停」收进这里 —— 同一个取值不给两个入口。
-            Spec(title = "媒体控制", summary = MEDIA_TILE, token = MEDIA_TILE),
+            MEDIA_TILE_SPEC,
             Spec(title = "响铃状态", summary = RINGER_TILE, token = RINGER_TILE),
             // 「音量 + / 音量 − / 电源键」三档收进这一格（点它弹 [KEY_MODES] 菜单），同样是标记。
             Spec(title = "系统按键", summary = KEY_TILE, token = KEY_TILE),
@@ -361,6 +438,23 @@ internal object ActionCatalog {
     )
 
     /**
+     * 界面处处共用的**那一条队列** —— 网格那张表（[forGesture]）、「添加命令」浮层那张表
+     * （[STEP_GROUPS]）、入口格点开的各层菜单（[MODE_MENUS]）、自定义命令，本来就是同一批
+     * [Spec] 的不同投影（「打开应用」那格在浮层里换成 [APP_STEP]、「无操作」被剔掉，其余是
+     * 同一批对象）；这里给出并集，`distinct` 按结构去重。
+     *
+     * 图标表按它建**一次**（见 `SettingsPage` 的 `tileIcons`）：网格格子、格子里那行小字、
+     * 「添加命令」的行、入口格菜单的行一律从那一份里取 —— 界面层不再各自现调 [specIcon]，
+     * 同一格在哪一处露面都是同一颗字形。
+     */
+    fun queue(commands: List<Command> = emptyList()): List<Spec> = buildList {
+        addAll(ALL)
+        addAll(STEP_GROUPS.flatMap { it.second })
+        MODE_MENUS.values.forEach { addAll(it) }
+        commands.forEach { add(commandSpec(it)) }
+    }.distinct()
+
+    /**
      * 「添加命令」浮层用的**分组** —— 就是网格那张 [GROUPS]，只做两处适配：
      * 「无操作」剔掉（它代表「吞掉按键」、不是一步动作），「打开应用」那格**就地换成** [APP_STEP]
      * （同一个 token，点它进「打开应用」页挑一个）。
@@ -423,7 +517,7 @@ internal object ActionCatalog {
      * 算法与 `ui/model/CommandText.kt` 的 `stepTitle` 同源。
      */
     fun modeTitle(modes: List<Spec>, action: Action): String? =
-        modes.firstOrNull { isBound(it, action) }?.title
+        modes.firstOrNull { isBound(it, action) }?.label
 
     /**
      * 当前动作落在入口格的**哪一档**（`主屏幕` / `上一首` / `静音` …）；不在任何一组时返回 `null`。

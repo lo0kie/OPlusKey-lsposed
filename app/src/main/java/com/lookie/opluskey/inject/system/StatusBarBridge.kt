@@ -39,6 +39,7 @@ internal object StatusBarBridge {
             context.sendBroadcast(
                 Intent(ACTION_STATUSBAR)
                     .setPackage(KeyModule.PAGE_PACKAGE)
+                    .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                     .putExtra(EXTRA_CMD, cmd),
             )
             XLog.w("statusbar:$cmd 已转给 system_server 执行")

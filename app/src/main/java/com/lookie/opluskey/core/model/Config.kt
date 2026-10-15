@@ -83,6 +83,8 @@ data class GlobalConfig(
     val instantSingle: Boolean = DEFAULT_INSTANT_SINGLE,
     /** 执行**任意动作**时弹一条 Toast（内容是动作名；自定义命令取命令名）。 */
     val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
+    /** 界面语言（auto = 跟随系统，zh_CN = 简体中文，en = English）。 */
+    val language: String = DEFAULT_LANGUAGE,
 ) {
     companion object {
         const val DEFAULT_DOUBLE_CLICK_MS = 300
@@ -96,6 +98,9 @@ data class GlobalConfig(
 
         /** [GlobalConfig.toastOnRun] 的默认值：默认不弹。 */
         const val DEFAULT_TOAST_ON_RUN = false
+
+        /** [GlobalConfig.language] 的默认值：跟随系统。 */
+        const val DEFAULT_LANGUAGE = "auto"
 
         val DEFAULT = GlobalConfig(
             doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,

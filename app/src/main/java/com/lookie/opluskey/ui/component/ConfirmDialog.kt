@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.component
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -11,17 +12,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.hideIme
 import com.lookie.opluskey.ui.isImeVisible
+import com.lookie.opluskey.ui.model.DIALOG_FROSTED_ALPHA
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.layout.DialogButtonBarDefaults
 import io.github.suqi8.coui.kmp.layout.DialogDefaults
@@ -76,45 +84,76 @@ internal fun SettingsPage.ConfirmDialog(
     // 页面离开时跟着一起收（见 [SettingsPage.closeOverlays]）—— 确认窗是**模态**的，
     // 留着它比留着菜单更糟：页面都走了它还在那儿等一个不会来的点击。
     OverlayCloser(show = show, onDismiss = onDismiss)
-    // 注意：确认窗**不加磨砂**（试了三版挂法、全部撤掉，别再往回加）：
-    //  库的进出场是**图层位移**（`graphicsLayer` 平移），而磨砂取样的偏移按**布局坐标**算 ——
-    //   (1) 挂在面板上：动画期间糊的内容钉死在面板落定的位置，跟着窗滑走就错位
-    //    （真机反馈「没有跟着面板走」「滑出后生硬消失」）；
-    //   (2) 滑入期间不挂、落定后再淡入：动画期间没有糊、落定后突然出现
-    //    （真机反馈「滑入时透明，结束后瞬变模糊」）；
-    //   (3) 铺到**页面**那层（整页、静止）：压不过库自带的压暗（60% 黑把糊盖没），关压暗又得自己补。
-    //  面板底色回库默认（不透明），不取样、不动 `enableWindowDim`。
+    // —— 面板与标题**自己画**（`title = null` + 透明底）——
+    //
+    //  糊必须落在库那个**进出场图层里面**：库的进出场是 `DialogContentLayout` 里
+    //  `contentModifier = modifier.graphicsLayer { … }` 加在 Column 上的，而 `OverlayDialog`
+    //  的 `modifier` 参数在它**外面** —— 挂在那儿就落在动画图层外面：开是一下子出现、
+    //  关是一下子消失、全程钉住不动。所以把面板那一串绘制挪进 `content` 槽（它在 Column 里面）。
+    //  库仍然负责宿主、压暗、进出场、返回与圆角 —— `squircleSurface` 走的是 shader mask，
+    //  会把我们这个盒子一并裁成面板那个圆角，所以这里不必自己裁形状。
+    //  代价：标题得自己画，度量照抄库 `DialogContent` 那一份（见本文件末尾两个常量）。
+    val frostSource = pageHazeState
     OverlayDialog(
         show = show,
-        title = title,
-        // 库默认把标题与摘要都上 `onBackground`（同一档，主次分不出来）—— 正文那一档在
-        //  [MarkdownBody] 里给（它自己映射 COUI 色板），所以这里不再传库的 `summaryColor` / `summary`
-        titleColor = COUITheme.colorScheme.onBackground,
-        backgroundColor = DialogDefaults.backgroundColor(),
+        title = null,
+        // 面板底色也由我们画（压在糊上），所以库那一层给它透明。
+        backgroundColor = Color.Transparent,
         onDismissRequest = onDismiss,
     ) {
-        // 正文（原来是交给库的 `summary` 槽 —— 那个槽只收纯文本，标题与正文会被染成同一档色）。
-        //  单行居中、多行左对齐：与库 `DialogContentLayout` 自己那条口径一致（见 [MarkdownBody]）。
-        summary?.let { text ->
-            MarkdownBody(
-                text = text,
-                textAlign = if (text.contains('\n')) TextAlign.Start else TextAlign.Center,
+        Column(
+            Modifier
+                .fillMaxWidth()
+                // 糊 → 半透本色 → 内容。本色与浮层菜单共用（[popupSurfaceColor]），alpha 走弹窗
+                //  自己那一档（[DIALOG_FROSTED_ALPHA]，比菜单更透 —— 面板大、底下平，同档看不出糊）
+                // ——暗色下不能拿 `background`（纯黑）：糊的是接近纯黑的页面，纯黑底会把糊盖成一片黑，
+                //  与菜单那边同一条教训。
+                //  第二参数给矩形：形状交给库的圆角 mask（见上）。
+                .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
+                .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
+        ) {
+            // 标题：与库 `DialogContent` 里那一份同度量（`insideMargin` 24dp 内缩、下边距 6dp、
+            //  `title4` 字号、Medium、居中、1.29em 行高）——那几条在库里是 private 常量，
+            //  抄的是它们的值，改库时这里要跟着看。
+            Text(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // 左右留白**自己补**：库把标题与摘要按 `insideMargin.width`（24dp）内缩，
-                    //  而 `content` 槽它是不垫的 —— 不补这一步正文就贴着弹窗边（用户报的）。
-                    //  用库那个值而不是写 24.dp，正文左边缘才与标题严格对齐。
                     .padding(horizontal = DialogDefaults.insideMargin.width)
-                    .padding(top = 4.dp, bottom = 8.dp),
+                    .padding(
+                        top = DialogDefaults.insideMargin.height,
+                        bottom = DIALOG_TITLE_MARGIN_BOTTOM,
+                    ),
+                text = title,
+                fontSize = COUITheme.textStyles.title4.fontSize,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                lineHeight = DIALOG_LINE_HEIGHT,
+                color = COUITheme.colorScheme.onBackground,
+            )
+            // 正文走 [MarkdownBody] 而不是库那个 `summary` 槽：那个槽只收纯文本，且标题与正文会
+            //  被染成同一档色。
+            //  短正文居中、长正文左对齐：与库 `DialogContentLayout` 自己那条口径一致（见 [isShortDialogBody]）。
+            summary?.let { text ->
+                MarkdownBody(
+                    text = text,
+                    textAlign = if (isShortDialogBody(text)) TextAlign.Center else TextAlign.Start,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // 左右留白**自己补**：库把标题与摘要按 `insideMargin.width`（24dp）内缩，
+                        //  而 `content` 槽它是不垫的 —— 不补这一步正文就贴着弹窗边（用户报的）。
+                        //  用库那个值而不是写 24.dp，正文左边缘才与标题严格对齐。
+                        .padding(horizontal = DialogDefaults.insideMargin.width)
+                        .padding(top = 4.dp, bottom = 8.dp),
+                )
+            }
+            DialogButtonRow(
+                negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
+                positive = action,
+                positiveDanger = positiveDanger,
+                onNegative = onDismiss,
+                onPositive = onConfirm,
             )
         }
-        DialogButtonRow(
-            negative = "取消",
-            positive = action,
-            positiveDanger = positiveDanger,
-            onNegative = onDismiss,
-            onPositive = onConfirm,
-        )
     }
 }
 
@@ -185,3 +224,50 @@ internal fun DialogButtonRow(
         )
     }
 }
+
+
+/** 与库 `DialogContent` 同度量：标题与正文的行高（库 `DialogLineHeight = 1.29.em`）。 */
+private val DIALOG_LINE_HEIGHT = 1.29f.em
+
+/** 与库 `DialogContent` 同度量：标题的下边距（库 `TitleMarginBottom = 6.dp`）。 */
+private val DIALOG_TITLE_MARGIN_BOTTOM = 6.dp
+
+/**
+ * 弹窗正文算不算「短」—— 短则**整段居中**，长的左对齐。
+ *
+ * 两个判据，任一成立就算长：
+ *
+ *  1. **正文自己带换行**（`\n`）。显式分行 = 作者要的是「段落 / 列表」那种版式，左对齐才读得顺；
+ *    风险提示那一篇（两段 + 一条两项列表）就是这一档。
+ *  2. **按宽度折算后超过 [DIALOG_BODY_CENTER_MAX]**。为什么不能只靠换行：正文在源码里是
+ *    一句不断的字符串，折不折行要到渲染时按面板宽度算 —— 只按换行切的话，长到真要折行的那些
+ *    （比如塞进一个长应用名的「是否取消「…」以小窗口打开？」）也会被判短，居中之后残尾吊在中间。
+ */
+internal fun isShortDialogBody(text: String): Boolean =
+    !text.contains('\n') && dialogBodyDisplayWidth(text) <= DIALOG_BODY_CENTER_MAX
+
+/**
+ * 短正文居中的**上限**（按 [dialogBodyDisplayWidth] 折算的格数）—— 面板一行放得下的量级。
+ *
+ *  按一行算：屏宽 360dp 减掉面板两侧各 24dp 内缩 = 312dp，除以 `body2` 那个字号，一行约
+ *  22 个汉字 = 44 格；取 40 留一点余量。
+ *
+ *  这一档要罩住的是弹窗里最常见的两句：`是否取消「X」以小窗口打开？`（X 两个字时 30 格）、
+ *  `编辑「X」将放弃当前变动。`（X 三个字时 32 格）—— 都是**一行放得下**的短句。
+ *  先前取 26（估得偏保守），这两句都够不着、只能左对齐，与「短正文居中」那条口径对不上。
+ */
+private const val DIALOG_BODY_CENTER_MAX = 40
+
+/**
+ * 去标记之后的**显示宽度**：全角（中日韩、全角标点）算两格，其余算一格；markdown 记号不占位。
+ *
+ * 只为上面那条判据服务，所以**只处理我们正文里出现的那几样记号**（`**` / 行首 `- ` / 反斜杠转义），
+ * 不是通用 markdown 解析器 —— 出现没预料到的记号时只会把句子判得偏长（退回左对齐），不影响读。
+ */
+private fun dialogBodyDisplayWidth(text: String): Int = displayWidth(
+    text
+        .replace("**", "")
+        .removePrefix("- ")
+        // 转义用的反斜杠不显示（正文里的命令名、应用名过 [escapeMarkdown]）
+        .replace("\\", ""),
+)

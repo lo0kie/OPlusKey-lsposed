@@ -1,6 +1,8 @@
 package com.lookie.opluskey.host.action
 
 import android.content.Context
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.ui.model.ActionCatalog
@@ -18,8 +20,8 @@ internal fun actionNoticeText(context: Context?, action: Action): String = when 
     // 自定义命令取命令名 —— 界面（「已保存的命令」卡片）也是这么叫的
     is Action.Custom -> action.name
     // 这两格是**入口**，清单只给到「打开应用」这个组名，带上应用名才说得清是哪一条
-    is Action.App -> "打开应用:${appLabel(context, action.target)}"
-    is Action.AppWindow -> "以小窗口打开:${appLabel(context, action.target)}"
+    is Action.App -> I18n.format(Strings.COMMON_OPEN_APP_FORMAT, appLabel(context, action.target))
+    is Action.AppWindow -> I18n.format(Strings.COMMON_OPEN_MINI_WINDOW_FORMAT, appLabel(context, action.target))
     else -> ActionCatalog.specOf(action)?.title ?: action.token
 }
 

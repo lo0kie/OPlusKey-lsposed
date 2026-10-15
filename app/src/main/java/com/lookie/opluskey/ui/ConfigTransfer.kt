@@ -1,6 +1,8 @@
 package com.lookie.opluskey.ui
 
 import com.lookie.opluskey.core.config.ConfigBundle
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.inject.hookGuarded
 import com.lookie.opluskey.ui.model.UNKNOWN_CONFIG_FORMAT
@@ -68,7 +70,7 @@ internal object ConfigTransfer {
     internal fun exportLog(activity: android.app.Activity) {
         val body = XLog.snapshot()
         if (body.isEmpty()) {
-            HostSession.page?.toast("暂无日志")
+            HostSession.page?.toast(I18n.get(Strings.TOAST_LOG_EMPTY, "暂无日志"))
             return
         }
         val now = java.time.LocalDateTime.now()
@@ -93,7 +95,7 @@ internal object ConfigTransfer {
         } catch (e: Throwable) {
             pendingExport = null
             XLog.w("导出日志：拉不起选择器：${e.message}")
-            HostSession.page?.toast("导出失败")
+            HostSession.page?.toast(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败"))
         }
     }
 
@@ -113,7 +115,7 @@ internal object ConfigTransfer {
         // 而页面这份已经过 `configReadOnly` 那道闸 —— 读不懂的状态下压根进不来这一页。
         val text = ConfigBundle.export(page.config.value, page.commands.value)
         if (text.isEmpty()) {
-            page.toast("导出失败")
+            page.toast(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败"))
             return
         }
         val now = java.time.LocalDateTime.now()
@@ -132,7 +134,7 @@ internal object ConfigTransfer {
         } catch (e: Throwable) {
             pendingExport = null
             XLog.w("导出配置：拉不起选择器：${e.message}")
-            page.toast("导出失败")
+            page.toast(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败"))
         }
     }
 
@@ -162,7 +164,7 @@ internal object ConfigTransfer {
             XLog.w("导入配置：已弹出文件选择器")
         } catch (e: Throwable) {
             XLog.w("导入配置：拉不起选择器：${e.message}")
-            HostSession.page?.toast("导入失败")
+            HostSession.page?.toast(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED, "导入失败"))
         }
     }
 
@@ -201,7 +203,7 @@ internal object ConfigTransfer {
         XLog.w("导入配置：配置=true 命令库=$commandsOk")
         // 文案点一句「主开关保持关闭」：导入**不带**主开关状态（见 `ConfigBundle`），不说的话
         //  用户会以为「导入完就该生效」，实际还得自己去首页打开、并在那一步确认风险提示。
-        if (commandsOk) page.toast("已导入配置，主开关保持关闭")
+        if (commandsOk) page.toast(I18n.get(Strings.TOAST_CONFIG_IMPORTED, "已导入配置，主开关保持关闭"))
     }
 
     /** 收「保存到 / 打开」的结果 —— 平台 `Activity#onActivityResult`，进程内只装一次。 */
@@ -263,7 +265,13 @@ internal object ConfigTransfer {
             XLog.w("$what：写入失败：${e.message}")
             false
         }
-        HostSession.page?.toast(if (written) "已导出配置" else "导出配置失败")
+        HostSession.page?.toast(
+            if (written) {
+                I18n.get(Strings.TOAST_CONFIG_EXPORTED, "已导出配置")
+            } else {
+                I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败")
+            },
+        )
         if (written) XLog.w("$what：已写入（${text.length} 字符）")
     }
 }

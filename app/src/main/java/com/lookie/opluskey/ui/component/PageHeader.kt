@@ -12,14 +12,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.host.action.AppLauncher
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.FROSTED_BLUR_RADIUS
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
@@ -32,6 +34,10 @@ import com.lookie.opluskey.ui.state.linkReady
 import com.lookie.opluskey.ui.state.openStockPage
 import com.lookie.opluskey.ui.state.resetAll
 import com.lookie.opluskey.ui.state.restartModule
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.hazeBlur
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -40,9 +46,6 @@ import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.TopAppBarTrailingSubtitleAlignment
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
-import io.github.suqi8.coui.kmp.blur.Backdrop
-import io.github.suqi8.coui.kmp.blur.blur
-import io.github.suqi8.coui.kmp.blur.drawBackdrop
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 顶栏右上角的菜单集合。 */
@@ -94,25 +97,31 @@ internal fun SettingsPage.collapsedHeaderHeight(): Dp =
     TopAppBarDefaults.CollapsedHeight + headerStatusBarPadding()
 
 /**
- * 给一个浮层挂上磨砂：从 `layerBackdrop` 记录的内容层里按 [shape] 取样，做 [FROSTED_BLUR_RADIUS] 半径的模糊。
+ * 给一个浮层挂上磨砂：从 [state] 那套取样源里按 [shape] 取一块，做 [FROSTED_BLUR_RADIUS] 的模糊。
  *
- * 取样的节点不能落进它自己取样那一层，否则渲染节点链无限增长、RenderThread 栈溢出（真机崩过一次）。
+ *  前提：取样方不能落进它自己取样的那个 `hazeSource` 里面，否则渲染节点链无限增长、
+ *  RenderThread 栈溢出（真机崩过一次）—— 页面内容那层**里面**的节点都不满足这条。
  *
- *  偏移是按**布局坐标**算的（库 `LayerBackdrop.drawBackdrop`：`layerCoordinates.localPositionOf(...)`），
- *  所以取样方在屏幕上移动时糊的内容跟着走 —— 不必（也不该）给「会在动画里移动的取样方」做落定门控：
- *  那只会让动画期间没有糊、落定后突然出现（真机反馈「滑入时透明，结束后瞬变模糊」）。
+ *  形状得自己裁：Haze 2 的模糊 API 里没有 `shape`（1.x 的 `HazeEffectScope.shape` 已去掉），
+ *  官方示例靠容器自己的 `shape` 裁 —— 我们这几处容器都没形状，所以在链上补一个 `clip`。
+ *  注意 `clip` 只裁**它之后**的链：底部工具栏那处特意把阴影留在更外层，正是为了不被裁掉。
  *
- * @param backdrop 被取样的那一层的 [Backdrop]
+ * @param state 被取样的那一层的取样状态（页面那一层是 [SettingsPage.pageHazeState]）
  * @param shape 取样区形状，需与浮层自身形状一致
  */
-@Composable
-internal fun Modifier.frosted(backdrop: Backdrop, shape: Shape): Modifier {
-    val blurRadiusPx = with(LocalDensity.current) { FROSTED_BLUR_RADIUS.toPx() }
-    return drawBackdrop(
-        backdrop = backdrop,
-        shape = { shape },
-        effects = { blur(blurRadiusPx) },
-    )
+internal fun Modifier.frosted(state: HazeState, shape: Shape): Modifier = this
+    .clip(shape)
+    .hazeBlur(input = HazeInput.Sources(state), style = HAZE_FROSTED_STYLE)
+
+/**
+ * 磨砂的模糊规格 —— 顶栏 / 浮层菜单 / 底部工具栏 / 确认弹窗共用这一份。
+ *
+ * [FROSTED_BLUR_RADIUS] 直接就是 dp：Haze 的 `blurRadius` 收 dp，不必再按 density 换算成像素。
+ * 噪点显式置 0 —— 库默认 0.15，会在糊上叠一层细颗粒，与这套观感对不上。
+ */
+private val HAZE_FROSTED_STYLE: HazeBlurStyle = HazeBlurStyle {
+    blurRadius(FROSTED_BLUR_RADIUS)
+    noiseFactor(0f)
 }
 
 /**
@@ -136,7 +145,7 @@ internal fun Modifier.frosted(backdrop: Backdrop, shape: Shape): Modifier {
  *   折叠量算），跟着一起长，不会被顶栏压住。
  * @param menu 右上角菜单，见 [HeaderMenu]
  * @param scrollBehavior 与该页滚动容器共享的折叠行为
- * @param backdrop 内容层的背景
+ * @param state 本页内容层的取样状态（见 `SettingsPage` 的 `pageHazeState`）
  */
 @Composable
 internal fun SettingsPage.PageHeader(
@@ -146,7 +155,7 @@ internal fun SettingsPage.PageHeader(
     largeTitleSubtitle: String = "",
     menu: HeaderMenu,
     scrollBehavior: ScrollBehavior,
-    backdrop: Backdrop,
+    state: HazeState,
     /**
      * 顶栏底下那一块（库 `TopAppBar` 的 `bottomContent` 槽位）——「按键绑定」的分段控件、
      * 「自定义命令」的类型选择器、「选择应用」的搜索框这三条固定带都走这里。
@@ -172,7 +181,7 @@ internal fun SettingsPage.PageHeader(
         scrollBehavior = scrollBehavior,
         color = COUITheme.colorScheme.surface.copy(alpha = FROSTED_SURFACE_ALPHA),
         // 顶栏是整条矩形，不切圆角
-        modifier = Modifier.frosted(backdrop, RectangleShape),
+        modifier = Modifier.frosted(state, RectangleShape),
         navigationIcon = {
             // 用库的 `IconButton`：尺寸走它的 `minWidth/minHeight`、圆角给一半，按压高亮（squircle）就落在 40dp 圆内；
             // 尺寸必须自己给，库默认 48dp / 圆角 24dp。
@@ -190,7 +199,7 @@ internal fun SettingsPage.PageHeader(
                 cornerRadius = HEADER_ICON_SIZE / 2,
                 modifier = Modifier.padding(start = 8.dp),
             ) {
-                Icon(PageIcons.Back, contentDescription = "返回")
+                Icon(PageIcons.Back, contentDescription = I18n.get(Strings.COMMON_BACK, "返回"))
             }
         },
         actions = {
@@ -227,7 +236,7 @@ internal fun SettingsPage.AppPickerMenu() {
                 .padding(end = 8.dp)
                 .preciseClickAnchor(preciseClick),
         ) {
-            Icon(PageIcons.Menu, contentDescription = "菜单")
+            Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
         }
 
         MenuPopup(
@@ -236,7 +245,7 @@ internal fun SettingsPage.AppPickerMenu() {
             onDismiss = { open = false },
             entries = listOf(
                 MenuEntry.Row(
-                    title = "显示系统应用",
+                    title = I18n.get(Strings.MENU_SHOW_SYSTEM_APPS, "显示系统应用"),
                     // 行首图标恒为「系统应用」网格，选中态由 `selected` 负责（行尾对勾 + 文字主题色）
                     icon = PageIcons.SystemApps,
                     selected = showSystemApps.value,
@@ -259,7 +268,7 @@ internal fun SettingsPage.AppPickerMenu() {
                 // 把「按下去必弹失败提示」的那些**也列出来** —— 判据 [LaunchableApp.launchable] 与执行端同一把尺子；
                 // 它是纯显示过滤，不重查列表。默认关（= 不显示），用户口径。
                 MenuEntry.Row(
-                    title = "显示失效应用",
+                    title = I18n.get(Strings.MENU_SHOW_INVALID_APPS, "显示失效应用"),
                     icon = PageIcons.ShowUnopenable,
                     selected = showUnopenable.value,
                     onPick = {
@@ -278,7 +287,7 @@ internal fun SettingsPage.AppPickerMenu() {
                 //    不是「这一页该怎么显示」—— 每次进这一页都会按正在编辑的动作重算
                 //    （见 [SettingsPage.smallWindow] / [SettingsPage.resetSmallWindowForPicker]）。
                 MenuEntry.Row(
-                    title = "以小窗口打开",
+                    title = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW, "以小窗口打开"),
                     icon = PageIcons.SmallWindow,
                     selected = smallWindow.value,
                     onPick = {
@@ -308,9 +317,9 @@ internal fun SettingsPage.ResetMenu() {
     //（见 [HomeScreen] 里那一行的注释）。
     //
     //  注意：三个条件都要：`linkReady`（链路）**且** `!configReadOnly`（配置这次读成功了）**且**
-    //  `deviceSupported`（本机机型在允许表里）。只读态下**只留那两项**：
+    //  `deviceSupported`（本机那一组「机型 + 系统版本」在适配清单里）。只读态下**只留那两项**：
     //  那时什么都写不进去，放「清空配置」出来点，正好会把「读不懂的那份」当成用户的意图覆盖掉。
-    //  机型不在允许表里时同理（只注入了界面层，那三项一个都做不成）。
+    //  清单外的组合同理（只注入了界面层，那三项一个都做不成）。
     //  这两种状态的退出方式都是重进页面（会重读一次）或走「默认界面」。
     //
     //  注意：中途试过「整颗 ⋮ 一起禁用」，被用户否掉 —— 那会把上面那两条命脉一起锁掉。
@@ -330,7 +339,7 @@ internal fun SettingsPage.ResetMenu() {
                 .padding(end = 8.dp)
                 .preciseClickAnchor(preciseClick),
         ) {
-            Icon(PageIcons.Menu, contentDescription = "菜单")
+            Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
         }
 
         MenuPopup(
@@ -340,7 +349,11 @@ internal fun SettingsPage.ResetMenu() {
             entries = listOf(
                 // 「默认界面」：打开未替换的宿主原版页面 —— **永远可用**（逃生口，见上面那段）。
                 //  写显式 `enabled = true`：多年后被「统一置灰」顺手改掉时，这一行会提醒改动者它不能吃那个闸。
-                MenuEntry.Row(title = "默认界面", icon = PageIcons.MenuStock, enabled = true) {
+                MenuEntry.Row(
+                    title = I18n.get(Strings.MENU_DEFAULT_PAGE, "默认界面"),
+                    icon = PageIcons.MenuStock,
+                    enabled = true,
+                ) {
                     open = false
                     openStockPage()
                 },
@@ -348,13 +361,21 @@ internal fun SettingsPage.ResetMenu() {
                 // 第二项：重启服务 —— 跟着 [rowsEnabled]（它动的是两个进程，配置不丢，见 [restartModule]）。
                 //  叫「服务」不叫「模块」：这一步杀宿主主进程与本页进程、由系统重新拉起，
                 // **不会**重新加载 system_server 里那份注入（那个只能整机重启）。
-                MenuEntry.Row(title = "重启服务", icon = PageIcons.ModuleRestart, enabled = rowsEnabled) {
+                MenuEntry.Row(
+                    title = I18n.get(Strings.MENU_RESTART_SERVICE, "重启服务"),
+                    icon = PageIcons.ModuleRestart,
+                    enabled = rowsEnabled,
+                ) {
                     open = false
                     restartModule()
                 },
                 MenuEntry.RowLine,
                 // 第三项：导出日志 —— 同样跟着 [rowsEnabled]
-                MenuEntry.Row(title = "导出日志", icon = PageIcons.MenuExport, enabled = rowsEnabled) {
+                MenuEntry.Row(
+                    title = I18n.get(Strings.MENU_EXPORT_LOG, "导出日志"),
+                    icon = PageIcons.MenuExport,
+                    enabled = rowsEnabled,
+                ) {
                     open = false
                     onExportLog?.invoke()
                 },
@@ -367,7 +388,7 @@ internal fun SettingsPage.ResetMenu() {
                 //  文案是「清空」不是「重置」：这一下**真的把两份配置都清掉**
                 //（含已保存的命令），叫「重置」会让人以为只是恢复默认、数据还在。
                 MenuEntry.Row(
-                    title = "清空配置",
+                    title = I18n.get(Strings.MENU_CLEAR_CONFIG, "清空配置"),
                     icon = PageIcons.MenuReset,
                     enabled = rowsEnabled,
                     danger = true,
@@ -380,9 +401,9 @@ internal fun SettingsPage.ResetMenu() {
 
         ConfirmDialog(
             show = confirmReset.value,
-            title = "清空配置",
-            summary = "设置与已保存的命令都会被清空，**不可恢复**。",
-            action = "清空",
+            title = I18n.get(Strings.DIALOG_CLEAR_CONFIG_TITLE, "清空配置"),
+            summary = I18n.get(Strings.DIALOG_CLEAR_CONFIG_MESSAGE, "设置与已保存的命令都会被清空，**不可恢复**。"),
+            action = I18n.get(Strings.DIALOG_CLEAR_CONFIG_CONFIRM, "清空"),
             onDismiss = { confirmReset.value = false },
             onConfirm = {
                 confirmReset.value = false

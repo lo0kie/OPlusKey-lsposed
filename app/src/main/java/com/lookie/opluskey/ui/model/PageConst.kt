@@ -13,11 +13,15 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.core.i18n.AppLanguage
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.Gesture
 import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
 import io.github.suqi8.coui.kmp.basic.SliderDefaults
 import io.github.suqi8.coui.kmp.nav.transition.NavMotion
@@ -92,12 +96,21 @@ internal val POPUP_SURFACE_DARK = Color(0xFF3D3D3D)
  *  0.72 是比顶栏（[FROSTED_SURFACE_ALPHA]）略保一点、又明显看得见糊的位置；顶栏可以更低，
  *  是因为它背后恒是页面自己的滚动内容，而浮层可能压在任意画面上。
  *
- *  注意：**确认弹窗不参与这一档**：不能写「浮层菜单与确认弹窗共用」——
- *  但确认窗试过三版挂法在真机全不成立（进出场走图层位移、磨砂取样按布局坐标算，两者对不上），
- *  已经**撤掉磨砂**、底色回库默认的不透明值（见 `ui/component/ConfirmDialog.kt`）。
- *  全仓唯一的消费方是浮层菜单（`ui/component/MenuPopup.kt` 里 `MenuPopup` 那层）。
+ *  消费方只有浮层菜单（`ui/component/MenuPopup.kt` 里 `MenuPopup` 那层）。确认弹窗的面板走**另一档**
+ *  [DIALOG_FROSTED_ALPHA]：同一门账，只是它面板大、底下更平，要更透才看得见糊。
  */
 internal const val POPUP_FROSTED_ALPHA = 0.72f
+
+/**
+ * 确认弹窗面板底色的 alpha —— 比浮层菜单那一档（[POPUP_FROSTED_ALPHA]）**更透**。
+ *
+ *  这一档就是「底下的糊能透上来多少」：0.72 时糊只占 28%，而弹窗面板比菜单大得多、底下的页面又平
+ *（一张卡片加一片空白），同一档看下来只剩一层底色、看不出背后糊过（真机反馈「生效了但不太明显」）。
+ *  0.6 把糊的占比提到 40%，面板底下是糊过的内容一眼能认出来；再低正文压在花底上就发虚，到头了。
+ *
+ *  底色本色与浮层菜单共用（[popupSurfaceColor]），只有这一档分家。
+ */
+internal const val DIALOG_FROSTED_ALPHA = 0.6f
 
 /**
  * [SliderRow] 那一行的几何契约 ——「点轨道跳值」（[tapSliderToSeek]）按这几笔账圈出滑杆占的那条带子：
@@ -126,47 +139,105 @@ internal val CARD_EDGE_PADDING = 2.dp
 internal val SLIDER_TAP_ZONE = SliderDefaults.MinHeight + SLIDER_BOTTOM_INSET + CARD_EDGE_PADDING
 
 /** 「按键绑定」子页的标题。 */
-internal const val BINDING_TITLE = "按键绑定"
+internal val BINDING_TITLE: String
+    get() = I18n.get(Strings.BINDING_TITLE, "按键绑定")
 
 /** 「自定义命令」子页的标题（第三级页面，从「按键绑定」页尾部网格进入）。 */
-internal const val COMMANDS_TITLE = "自定义命令"
+internal val COMMANDS_TITLE: String
+    get() = I18n.get(Strings.ACTION_CUSTOM_COMMAND, "自定义命令")
 
 /** 「选择应用」页的标题。 */
-internal const val APP_PICKER_TITLE = "选择应用"
+internal val APP_PICKER_TITLE: String
+    get() = I18n.get(Strings.APP_PICKER_TITLE, "选择应用")
+
+/**
+ * 「单击 / 双击 / 长按」三个分段标题 —— 分段控件（`TabRowWithContour`）只收字符串。
+ *
+ *  [Gesture.label] 是枚举里的中文原文，注入侧与宿主侧也读它（那些地方不引界面层），
+ *  所以译文在界面这一层过 —— 别去改枚举。
+ */
+internal fun gestureLabel(gesture: Gesture): String = when (gesture) {
+    Gesture.SINGLE -> I18n.get(Strings.GESTURE_SINGLE, "单击")
+    Gesture.DOUBLE -> I18n.get(Strings.GESTURE_DOUBLE, "双击")
+    Gesture.LONG -> I18n.get(Strings.GESTURE_LONG, "长按")
+}
+
+/** 「单条命令 / 多条命令」两个分段标题，理由同上。 */
+internal fun commandKindLabel(kind: CommandKind): String = when (kind) {
+    CommandKind.SINGLE -> I18n.get(Strings.COMMAND_TYPE_SINGLE, "单条命令")
+    CommandKind.SERIAL -> I18n.get(Strings.COMMAND_TYPE_SERIAL, "多条命令")
+}
+
+/**
+ * 语言档位在界面上叫什么 —— 「语言」那一行的副标题与它那一层菜单共用这一份
+ *（[AppLanguage.label] 是枚举里的中文原文）。
+ */
+internal fun languageLabel(lang: AppLanguage): String = when (lang) {
+    AppLanguage.AUTO -> I18n.get(Strings.MORE_LANGUAGE_AUTO, "跟随系统")
+    AppLanguage.ZH_CN -> I18n.get(Strings.MORE_LANGUAGE_ZH, "简体中文")
+    AppLanguage.EN -> I18n.get(Strings.MORE_LANGUAGE_EN, "English")
+}
 
 /**
  * 「更多选项」页的标题（首页「其他 → 更多选项」那一行进入；这是**唯一入口**）。
  *
  * 用户要求从「关于模块」改叫「更多」、随后定稿为「更多选项」：这一页早就不只是
- * 「关于」—— 除了版本 / 作者 / 查看地址 / 反馈问题，还有**运行状态**与**配置导入导出**。
+ * 「关于」—— 除了最下面「关于」那张卡（版本 / 作者 / 查看地址 / 反馈问题），还有**运行状态**、
+ * **适配清单**与**配置导入导出**。
  * 内部符号仍叫 `ABOUT_*`（页面枚举 `Screen.ABOUT` 等同理），只改**给用户看的**这一处。
  */
-internal const val ABOUT_TITLE = "更多选项"
+internal val ABOUT_TITLE: String
+    get() = I18n.get(Strings.MORE_OPTIONS_TITLE, "更多选项")
 
 /**
- * 首页那条常驻提示的文案（模块有哪一段没就绪时弹，见 [SettingsPage.linkChecks] / `linkReady`）。
+ * 首页那条常驻提示的文案（页面被闸住时弹，见 [HomeScreen] 的 `blockHint`）。
  *
- * **只说结论、不点技术细节**：用户界面不需要知道是哪一段断了，
- * 「哪一段」是给「更多选项 → 运行状态」看的；这一条只回答「现在能不能用」。
+ * **一档一句、只说结论、不点技术细节**：用户界面不需要知道是哪一段断了，
+ * 「哪一段」是给「更多选项 → 运行状态」看的；这一条只回答「现在能不能用、要我做什么」。
+ * 五句一句话说清一件事，逐条见下面各条自己的说明。
  */
-internal const val MODULE_UNAVAILABLE_HINT = "模块不可用，正在等待系统响应"
+internal val MODULE_UNAVAILABLE_HINT: String
+    get() = I18n.get(Strings.STATUS_UNAVAILABLE, "模块暂不可用，请稍候")
 
 /**
  * 首页那条常驻提示的**另一种**文案：这次**配置没读成功**（文件在、但读不了 / 读不懂）。
  *
  * 与 [MODULE_UNAVAILABLE_HINT] 分开写，是因为两者要用户做的事不同：
- * 这一种用户自己就能解决 —— **重进页面**会重读一次；说「等待系统响应」会把人引到错方向
+ * 这一种用户自己就能解决 —— **重进页面**会重读一次；说「请稍候」会把人引到错方向
  *（等多久都没用）。此时页面整页只读（见 `SettingsPage.configReadOnly`）。
  */
-internal const val CONFIG_READ_FAILED_HINT = "配置读取失败，请重进页面"
+internal val CONFIG_READ_FAILED_HINT: String
+    get() = I18n.get(Strings.STATUS_CONFIG_FAILED, "配置读取失败，请重进页面")
 
 /**
- * 首页那条常驻提示的第三种文案：**本机机型不在允许运行表里**（见 `core/model/DeviceSupport`）。
+ * 首页那条常驻提示的第三种文案：**本机机型不在适配清单里**（见 `core/model/DeviceSupport`）。
  *
  *  这一种与前两种都不同：不是「等一等会好」，而是**这台机器上就是不能用**（模块只注入了界面层）。
- * 所以既不写「等待系统响应」也不写「重进页面」—— 那两句都会把人引去做没用的事。
+ * 所以既不写「请稍候」也不写「重进页面」—— 那两句都会把人引去做没用的事。
  */
-internal const val UNSUPPORTED_DEVICE_HINT = "未知设备，此设备不可用"
+internal val UNSUPPORTED_DEVICE_HINT: String
+    get() = I18n.get(Strings.STATUS_UNSUPPORTED_DEVICE, "此机型不适配")
+
+/**
+ * 首页那条常驻提示的第四种文案：**机型在清单里、但这一版系统没适配**
+ *（见 `core/model/DeviceSupport` 的 `Support.PENDING`）。
+ *
+ *  与 [UNSUPPORTED_DEVICE_HINT] 分开：那一种是「等也没用」，这一种恰恰是「**只能等作者适配**」
+ * —— 同一版 ROM 里那些私有类可能换了形，得重新验过接管点才敢注入（见 `docs/device-findings.md` 十九）。
+ * 两句都短，用户扫一眼就知道该不该等。
+ */
+internal val PENDING_DEVICE_HINT: String
+    get() = I18n.get(Strings.STATUS_PENDING_VERSION, "系统版本等待适配")
+
+/**
+ * 首页那条常驻提示的第五种文案：**主开关关着**（`KeyConfig.enabled = false`）。
+ *
+ *  这一档不是故障、也不该让人等：**页面整片灰就是它关着导致的**，说清这一点用户自己拨回去即可
+ *（所以与 [MODULE_UNAVAILABLE_HINT] 分开 —— 那一句会让人以为要等）。主开关那一行本身不吃这个闸，
+ * 拨得回来（见 [HomeScreen] 主开关那段注释）。
+ */
+internal val KEY_DISABLED_HINT: String
+    get() = I18n.get(Strings.STATUS_DISABLED, "按键绑定已关闭")
 
 /**
  * 「导入配置」校验没过时的那**一句**提示。
@@ -174,10 +245,12 @@ internal const val UNSUPPORTED_DEVICE_HINT = "未知设备，此设备不可用"
  * 用户界面上只给结论、不点细节：不解释「哪一段坏了 / 第几条认不出」——那是日志的事
  *（见 `XLog`）。措辞与 [UNSUPPORTED_DEVICE_HINT] 同一档：说清「怎么办」，不说内部结构。
  */
-internal const val UNKNOWN_CONFIG_FORMAT = "未知的配置格式，请检查后重试"
+internal val UNKNOWN_CONFIG_FORMAT: String
+    get() = I18n.get(Strings.CONFIG_UNKNOWN_FORMAT, "未知的配置格式，请检查后重试")
 
 /** 「风险提示与免责声明」那个弹窗的标题（首次启用、以及清空配置之后再启用时弹）。 */
-internal const val DISCLAIMER_TITLE = "风险提示与免责声明"
+internal val DISCLAIMER_TITLE: String
+    get() = I18n.get(Strings.DIALOG_DISCLAIMER_TITLE, "风险提示与免责声明")
 
 /**
  * 弹窗正文：一句风险、一句让用户自己拍板。
@@ -185,11 +258,14 @@ internal const val DISCLAIMER_TITLE = "风险提示与免责声明"
  * 只说要发生什么，不写实现细节（注入哪个进程、靠什么 Hook）；「开不了机」是用户能懂的说法，
  * 真出事时该怎么救写在 README 里 —— 那一步不放在这里（出问题时打不开这个页面）。
  */
-internal const val DISCLAIMER_TEXT =
-    "本模块会把代码注入系统进程，属于非官方改动。可能出现：\n\n" +
-        "- 按键失灵、功能异常\n" +
-        "- 极端情况下开不了机\n\n" +
-        "请确认你已知晓并**自行承担风险**。"
+internal val DISCLAIMER_TEXT: String
+    get() = I18n.get(
+        Strings.DIALOG_DISCLAIMER_CONTENT,
+        "本模块会把代码注入系统进程，属于非官方改动。可能出现：\n\n" +
+                "- 按键失灵、功能异常\n" +
+                "- 极端情况下开不了机\n\n" +
+                "请确认你已知晓并**自行承担风险**。",
+    )
 
 /**
  * 「添加命令」选择器浮层的最大高度 —— 取 320dp。
@@ -212,16 +288,16 @@ internal const val COLUMNS = 2
  */
 internal const val HOME_ACTION_ROWS = 2
 
-/** 「更多选项」页信息卡的行数 —— 版本 / 作者 / 查看地址 / 反馈问题，四行固定。 */
+/** 「更多选项」页「关于」那张卡的行数 —— 本机 / 版本 / 作者 / 反馈问题，四行固定。 */
 internal const val ABOUT_ROWS = 4
 
 /**
- * 「更多选项」页「配置」那张卡的行数 —— 导入配置 / 导出配置，两行固定。
+ * 「更多选项」页「配置」那张卡的行数 —— 语言 / 导出配置 / 导入配置，三行固定。
  *
  * 与 [ABOUT_ROWS] 分开：两张卡各算各的圆角（`cardListPositionOf` 的首尾各补 2dp），
  * 合成一个数会让上面那张卡的最后一行被当成「中间行」。
  */
-internal const val MORE_CONFIG_ROWS = 2
+internal const val MORE_CONFIG_ROWS = 3
 
 /**
  * 首页「其他」卡的行数 —— 只有「更多选项」一行。
@@ -261,7 +337,7 @@ internal const val HOST_ALIVE_TIMEOUT_MS = 3000L
  * 所以要多问几轮，免得用户看着一个灰页面无从下手。
  *
  *  两端都答上就提前收工（正常机器上仍然只问一轮）；一直问不齐也会停：
- * 机型允许表外的机器本来就该整页禁用，无限轮询只是白耗电。
+ * 适配清单外的机器本来就该整页禁用，无限轮询只是白耗电。
  */
 internal const val QUERY_ROUNDS = 3
 
@@ -304,8 +380,8 @@ internal val PAGE_BOTTOM_PADDING = 32.dp
 /**
  * 内容区距顶栏底边的那一档 —— 8dp。
  *
- * 补不补看首行是什么：首行是卡片的两页（「更多选项」、「选择应用」）要补一档，因为它们没有
- * `SmallTitle` 自带的上内边距；首行是 `SmallTitle` 的三页不补。两条固定带只带下边这一档。
+ * 补不补看首行是什么：首行是卡片的那一页（「选择应用」）要补一档，因为它没有
+ * `SmallTitle` 自带的上内边距；首行是 `SmallTitle` 的那几页不补。两条固定带只带下边这一档。
  */
 internal val PAGE_TOP_PADDING = 8.dp
 
@@ -470,24 +546,29 @@ internal const val VISIBILITY_ENTER_MS = 260
 /** 动态显隐控件出场时长（收起）。 */
 internal const val VISIBILITY_EXIT_MS = 200
 
-/** 兼容旧引用时长（取进场时长）。 */
-internal const val VISIBILITY_MS = VISIBILITY_ENTER_MS
+/**
+ * 命令页「单条 / 多条」两栏切换的时长。
+ *
+ *  与上面那两档分开：Tab 翻页是**整块内容的淡入淡出 + 分页器尺寸动画**，不是「控件从有到无的
+ *  展开 / 收缩」。共用一个数会让「调显隐时长」顺手改掉翻页观感，两件事本来各量各的。
+ */
+internal const val TAB_PAGE_SWITCH_MS = 260
 
 /** 动态显隐统一进场：淡入 + 纵向柔和展开（对齐顶边缘向下推开）。 */
 internal val VISIBILITY_ENTER: EnterTransition =
     fadeIn(tween(180, easing = LinearOutSlowInEasing)) +
-        expandVertically(
-            animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
-            expandFrom = Alignment.Top,
-        )
+            expandVertically(
+                animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+                expandFrom = Alignment.Top,
+            )
 
 /** 统一出场：先快淡出（避免文字被截断挤压）+ 纵向利落收缩。 */
 internal val VISIBILITY_EXIT: ExitTransition =
     fadeOut(tween(120, easing = FastOutLinearInEasing)) +
-        shrinkVertically(
-            animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
-            shrinkTowards = Alignment.Top,
-        )
+            shrinkVertically(
+                animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
+                shrinkTowards = Alignment.Top,
+            )
 
 /**
  * 多条命令列表步骤专属进场动效：
@@ -495,13 +576,13 @@ internal val VISIBILITY_EXIT: ExitTransition =
  */
 internal val STEP_ROW_ENTER: EnterTransition =
     fadeIn(tween(200, easing = LinearOutSlowInEasing)) +
-        expandVertically(
-            animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
-            expandFrom = Alignment.Top,
-        ) +
-        slideInVertically(
-            animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
-        ) { -it / 3 }
+            expandVertically(
+                animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
+                expandFrom = Alignment.Top,
+            ) +
+            slideInVertically(
+                animationSpec = tween(280, easing = EASING_EMPHASIZED_DECEL),
+            ) { -it / 3 }
 
 /**
  * 多条命令列表步骤专属退场动效：
@@ -509,13 +590,13 @@ internal val STEP_ROW_ENTER: EnterTransition =
  */
 internal val STEP_ROW_EXIT: ExitTransition =
     fadeOut(tween(120, easing = FastOutLinearInEasing)) +
-        shrinkVertically(
-            animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
-            shrinkTowards = Alignment.Top,
-        ) +
-        slideOutVertically(
-            animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
-        ) { -it / 4 }
+            shrinkVertically(
+                animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
+                shrinkTowards = Alignment.Top,
+            ) +
+            slideOutVertically(
+                animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
+            ) { -it / 4 }
 
 /**
  * 「支持的命令格式」卡里的一行。
@@ -536,14 +617,15 @@ internal data class CommandFormatLine(val text: String, val prefix: String? = nu
  *
  *  点带 `prefix` 的那一行 = 把前缀**替换**进命令输入框（不是追加，见渲染点的注释）。
  */
-internal val COMMAND_FORMAT_LINES = listOf(
-    CommandFormatLine("默认为 shell 命令"),
-    CommandFormatLine("shell:<命令> —— 执行 shell 命令", "shell:"),
-    CommandFormatLine("keyevent:<按键> —— 模拟按键", "keyevent:"),
-    CommandFormatLine("intent:<Action> —— 发送 Intent", "intent:"),
-    CommandFormatLine("shortcut:<ID> —— 触发快捷方式", "shortcut:"),
-    CommandFormatLine("cmd:<名字> —— 调用另一条单条命令", "cmd:"),
-)
+internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
+    get() = listOf(
+        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_DEFAULT_SHELL, "默认为 shell 命令")),
+        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令> —— 执行 shell 命令"), "shell:"),
+        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键> —— 模拟按键"), "keyevent:"),
+        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action> —— 发送 Intent"), "intent:"),
+        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID> —— 触发快捷方式"), "shortcut:"),
+        CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_CMD, "cmd:<名字> —— 调用另一条单条命令"), "cmd:"),
+    )
 
 /**
  * 「按键绑定」主开关为关时分段控件的不透明度 —— 0.4。

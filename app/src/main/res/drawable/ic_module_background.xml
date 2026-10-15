@@ -2,11 +2,11 @@
 <!-- 自适应图标的背景层：满幅 108×108 对角渐变（直角方形，外圈会被遮罩切掉）。
 
      方向固定为左上（深）→ 右下（浅），由用户指定，不要翻转。
-     三档配色 #123DA8（左上）/ #2A68E3（58%）/ #6CA6F8（右下）；
-     保持蓝调基准，微调色相纯净度与明暗过渡，提升对角线通透感。
+     三档配色 #1E55D3（左上）/ #3072EC（55%）/ #6EA8F8（右下）；
+     提亮左上角起始基调，避免原深色偏暗偏沉，渐变过渡更柔和通透。
 
-     注意：用多档 <item> 而非 start/center/endColor：中间那档要精确落在 58%（浅端在右下，
-     让「深→中」吃掉对角线前 58%）；start/center/endColor 只能把中间钉在 50%。 -->
+     注意：用多档 <item> 而非 start/center/endColor：中间那档要精确落在 55%（浅端在右下，
+     让「深→中」吃掉对角线前 55%）；start/center/endColor 只能把中间钉在 50%。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
@@ -22,9 +22,9 @@
                 android:startY="0"
                 android:endX="108"
                 android:endY="108">
-                <item android:offset="0" android:color="#FF123DA8" />
-                <item android:offset="0.58" android:color="#FF2A68E3" />
-                <item android:offset="1" android:color="#FF6CA6F8" />
+                <item android:offset="0" android:color="#FF1E55D3" />
+                <item android:offset="0.55" android:color="#FF3072EC" />
+                <item android:offset="1" android:color="#FF6EA8F8" />
             </gradient>
         </aapt:attr>
     </path>

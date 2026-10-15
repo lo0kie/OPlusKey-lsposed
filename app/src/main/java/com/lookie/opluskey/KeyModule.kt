@@ -28,11 +28,20 @@ class KeyModule : XposedModule() {
             else -> "无关进程（不做任何事）"
         }
         XLog.w("模块已加载：process=${module.processName} → $role")
-        XLog.w("本机机型：${DeviceSupport.describe(MODEL)}；允许运行=${deviceSupported}")
+        XLog.w(
+            "本机机型：${DeviceSupport.describe(MODEL)}；系统：${DeviceSupport.systemOf(ANDROID, ROM)}" +
+                    "；允许运行=$deviceSupported",
+        )
         if (!deviceSupported && module.processName != PAGE_PROCESS) {
-            // 允许表外的机型**只注入界面层**（见 [DeviceSupport]）——
+            // 适配清单外的组合**只注入界面层**（见 [DeviceSupport]）——
             // 这一条是「为什么按了没反应」的第一判据行，必须是 w
-            XLog.w("机型不在允许表里 ⇒ 本进程不注入（只保留界面层 $PAGE_PROCESS）")
+            XLog.w("${whyNotInjecting()} ⇒ 本进程不注入（只保留界面层 $PAGE_PROCESS）")
+        }
+        if (!ENFORCE_DEVICE_GATE) {
+            // 本包不做适配清单这道闸（只有 debug 会这样，见 `BuildFlags`）：上面那行照样打机型与
+            //  系统版本，这里补一句为什么清单外的机器也「允许运行」—— 免得对着图排查时对不上。
+            //  编译期常量 ⇒ release 里这一整块（含这条日志的字面量）都被折掉。
+            XLog.w("本包不做适配清单这道闸 ⇒ 任何机型 / 系统版本都照常注入")
         }
     }
 
@@ -45,9 +54,9 @@ class KeyModule : XposedModule() {
         param: XposedModuleInterface.SystemServerStartingParam,
     ) {
         if (!deviceSupported) {
-            // 允许表外的机型：一个 Hook 都不挂。挂了就等于替一台不认识的 ROM 吞掉侧键，
+            // 适配清单外的组合：一个 Hook 都不挂。挂了就等于替一台没验过的 ROM 吞掉侧键，
             //  而后面那些反射找的类/方法在这版 ROM 上是真是假我们无从判断（见 [DeviceSupport]）。
-            XLog.w("机型不在允许表里 ⇒ 不装按键 Hook（侧键不接管，只保留界面层）")
+            XLog.w("${whyNotInjecting()} ⇒ 不装按键 Hook（侧键不接管，只保留界面层）")
             return
         }
         XLog.w("system_server 启动，开始安装按键 Hook")
@@ -68,8 +77,8 @@ class KeyModule : XposedModule() {
         val process = currentProcessName()
         when (process) {
             PAGE_PROCESS -> {
-                // 界面层**无论什么机型都装**：这是「不允许运行」时留给用户的唯一窗口
-                // （页面会整页禁用并说明「未知设备，此设备不可用」）。
+                // 界面层**无论什么机型都装**：这是「不在适配清单里」时留给用户的唯一窗口
+                // （页面会整页禁用，并说清是不认识的机型、还是这一版系统还没适配）。
                 XLog.w("侧键设置页进程启动，开始安装换页 Hook")
 
                 // 设置页进程崩了只死一个页面，但同样不把异常抛回宿主，最坏是页面回到系统原版。
@@ -80,7 +89,7 @@ class KeyModule : XposedModule() {
 
             HOST_PROCESS -> {
                 if (!deviceSupported) {
-                    XLog.w("机型不在允许表里 ⇒ 不装宿主侧手势劫持与接收器（只保留界面层）")
+                    XLog.w("${whyNotInjecting()} ⇒ 不装宿主侧手势劫持与接收器（只保留界面层）")
                     return
                 }
                 // 宿主主进程：框架判好的侧键手势派发到这里，执行也放这一侧（配置同 uid 直接读得到）。
@@ -254,17 +263,42 @@ class KeyModule : XposedModule() {
          * 本机机型（`android.os.Build.MODEL`）。
          *
          * 注意：用的是 `MODEL` **不是** `ro.product.device`：真机上 `MODEL` = `PLK110`、
-         * `DEVICE` = `OP60FFL1`，允许表按前者写（见 [DeviceSupport]）。各进程读到的都一样。
+         * `DEVICE` = `OP60FFL1`，适配清单按前者写（见 [DeviceSupport]）。各进程读到的都一样。
          */
         private val MODEL: String = android.os.Build.MODEL
 
+        /** 本机 Android 版本（`android.os.Build.VERSION.RELEASE`，真机是 `17`）。 */
+        private val ANDROID: String = android.os.Build.VERSION.RELEASE
+
         /**
-         * 本机机型在不在允许表里 —— **决定「注入整套」还是「只注入界面层」**（见 [DeviceSupport]）。
+         * 本机 ROM 版本号 —— 从 `android.os.Build.DISPLAY`（`ro.build.display.id`）里取。
          *
-         * 只在进程启动时算一次：机型不会中途变。允许表外的机型，注入侧与宿主侧的 Hook
+         * 不读 `ro.build.version.oplusrom`：那是 hidden 的 `SystemProperties`，宿主进程里会被
+         * 非 SDK 接口限制拦下（界面层与注入侧都要判这一项），而 `Build.DISPLAY` 是公开 API。
+         * 取法见 [DeviceSupport.romSeriesOf]。
+         */
+        private val ROM: String = DeviceSupport.romSeriesOf(android.os.Build.DISPLAY)
+
+        /**
+         * 本机「机型 + 系统版本」这一组在不在**适配清单**里（见 [DeviceSupport]）——
+         * **决定「注入整套」还是「只注入界面层」**。
+         *
+         * 只在进程启动时算一次：机型与系统版本都不会中途变。清单外的组合，注入侧与宿主侧的 Hook
          * 一个都不挂，只保留设置页替换（[PAGE_PROCESS]）。
          */
-        private val deviceSupported: Boolean = DeviceSupport.isSupported(MODEL)
+        private val support: DeviceSupport.Support = DeviceSupport.check(MODEL, ANDROID, ROM)
+
+        /** 清单命中的简写（判定本体是 [support]，这里只是省掉各处比枚举）。 */
+        private val deviceSupported: Boolean = support == DeviceSupport.Support.ADAPTED
+
+        /**
+         * 「为什么没注入」那一句 —— 机型不认识、还是这一版系统没适配，两档分开说：
+         * 前者是「本机用不了」，后者是「等作者适配」，用户该做的事完全不同。
+         */
+        private fun whyNotInjecting(): String = when (support) {
+            DeviceSupport.Support.PENDING -> "机型在适配清单里，但系统版本不是那一档（等待适配）"
+            else -> "机型不在适配清单里"
+        }
 
         /**
          * 取当前进程名。不用 hidden 的 `ActivityThread.currentProcessName()`（不同版本行为不一），
