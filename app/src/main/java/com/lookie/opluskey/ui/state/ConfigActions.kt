@@ -9,7 +9,9 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ConfigBroadcast
+import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.screen.CommandsSave
 import com.lookie.opluskey.ui.screen.saveCommands
 
 /** 就地露出宿主原版快捷键页面：宿主 Activity 是 singleInstance（真机 aapt 核对过），再 start 只走 onNewIntent、hook 没机会跳过换页，只能藏掉模块页面就地切换、切回靠系统返回拦截。 */
@@ -32,14 +34,26 @@ internal fun SettingsPage.resetAll() {
     //  注意：只读态下菜单里这一项现在是**灰的**（`ResetMenu` 只留「默认界面 / 关于模块」，
     // 用户定的），所以这条放行走不到；留着是为了「读不懂」的出口**不能只有一条**
     // （重进页面）——将来若把这行放出来，行为仍然是对的。
+    val wasConfigReadOnly = configReadOnly
     if (configReadOnly) {
         XLog.w("清空：配置原处在只读态（读不懂）—— 明说要重来，放行写回")
         configReadOnly = false
     }
-    if (!write(Config.DEFAULT, "reset_all")) return
+    if (!write(Config.DEFAULT, "reset_all")) {
+        // 没写成 ⇒ 把只读位**还原**：它是「手上这份不是用户的真相」的判据，清着不放的话，
+        //  之后任何一次普通写入都会以这份默认值落盘，把用户配置抹掉（比原样留着更糟）。
+        configReadOnly = wasConfigReadOnly
+        return
+    }
+    // 命令库是**另一份文件**、另有自己的只读位（[commandsReadOnly]），清空前一起放开；
+    //  这里不还原：主配置已经重建，再退回只读态自相矛盾 —— 失败由下面那句 toast 报出去。
+    if (commandsReadOnly) {
+        XLog.w("清空：命令库原处在只读态（读不懂）—— 明说要重来，放行写回")
+        commandsReadOnly = false
+    }
     // 命令库清空：空表就是重建后的状态，文件仍按同一份 JSON 格式写一份（不删文件 —— 删了
     // 下次读取走的是「文件不存在」那条分支，与写一份空表不是同一条路，排查时对不上）。
-    val cleared = saveCommands(emptyList(), "reset_all")
+    val cleared = saveCommands(emptyList(), "reset_all") != CommandsSave.Failed
     XLog.w("清空：主配置已重建，命令库清空=$cleared")
     toast(
         if (cleared) {
@@ -88,13 +102,11 @@ internal fun SettingsPage.restartModule() {
     // 把「把页面拉回来 + 自己重来一遍」整个交给宿主主进程（见 host/PageRelaunch）。
     //  请求发不出去时**不能**杀自己：那样页面没了、也没人再把它叫回来。
     val asked =
-        runCatching {
-            context.sendBroadcast(
-                android.content
-                    .Intent(KeyModule.ACTION_PAGE_RELAUNCH)
-                    .setPackage(KeyModule.PAGE_PACKAGE),
-            )
-        }.onFailure { XLog.w("重启：请宿主主进程拉起页面失败：${it.javaClass.simpleName}", it) }.isSuccess
+        PageWire.send(
+            context,
+            KeyModule.PAGE_PACKAGE,
+            android.content.Intent(KeyModule.ACTION_PAGE_RELAUNCH),
+        )
     if (!asked) {
         toast(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败，请稍后重试"))
         return
@@ -221,6 +233,20 @@ internal fun SettingsPage.acceptDisclaimerAndEnable() {
     )
 }
 
+/**
+ * 用户在「自定义命令」那一份风险提示上点了确认 —— 记下这一笔（`commandDisclaimerAccepted`）。
+ *
+ * 与 [acceptDisclaimerAndEnable] **不是同一份记录**：那个管「打开主开关」，这个只管
+ * 「自定义命令」这一页。两者的共同点是「清空配置按 `Config.DEFAULT` 重建 ⇒ 这一位跟着没了 ⇒
+ * 下次照样弹」。
+ */
+internal fun SettingsPage.acceptCommandDisclaimer() {
+    write(
+        config.value.copy(commandDisclaimerAccepted = true),
+        "command_disclaimer_accepted=true",
+    )
+}
+
 /** 切「长按连续触发」—— 行点击与开关共用这一个入口。 */
 internal fun SettingsPage.setLongRepeat(on: Boolean) {
     val cfg = config.value
@@ -302,28 +328,18 @@ internal fun SettingsPage.write(
  *  （只发不问）」，后一步一改命令库，刚问回来的那份又过期了。
  */
 internal fun SettingsPage.resyncInjectStatus() {
-    try {
-        context.sendBroadcast(
-            android.content
-                .Intent(KeyModule.ACTION_INJECT_QUERY)
-                .setPackage(KeyModule.PAGE_PACKAGE),
+    val sent =
+        PageWire.send(
+            context,
+            KeyModule.PAGE_PACKAGE,
+            android.content.Intent(KeyModule.ACTION_INJECT_QUERY),
         )
-        XLog.w("配置已变：向注入侧重问一次自检（把新指纹带回来）")
-    } catch (e: Throwable) {
-        XLog.w("重问注入侧自检失败：${e.message}")
-    }
+    if (sent) XLog.w("配置已变：向注入侧重问一次自检（把新指纹带回来）")
 }
 
 /** 把完整配置广播给注入侧（inject/ConfigChannel，跑在 system_server）。@return 广播是否真的发出去了。 */
 internal fun SettingsPage.publishConfig(config: Config): Boolean {
-    try {
-        context.sendBroadcast(
-            ConfigBroadcast.intent(config).setPackage(context.packageName),
-        )
-        XLog.w("配置广播已发出（enabled=${config.key(KeyId.PLUS).enabled}）")
-        return true
-    } catch (e: Throwable) {
-        XLog.w("发配置广播失败：${e.message}")
-        return false
-    }
+    if (!PageWire.send(context, KeyModule.PAGE_PACKAGE, ConfigBroadcast.intent(config))) return false
+    XLog.w("配置广播已发出（enabled=${config.key(KeyId.PLUS).enabled}）")
+    return true
 }

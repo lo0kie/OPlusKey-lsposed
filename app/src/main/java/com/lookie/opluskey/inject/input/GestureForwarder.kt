@@ -28,6 +28,16 @@ internal class GestureForwarder(
     private val hostService = ComponentName(KeyModule.PAGE_PACKAGE, HOST_SERVICE)
 
     /**
+     * 「唤醒宿主失败」是否已经报过（见 [forward] 里那条日志）。
+     *
+     *  为什么分档：唤醒失败是个真实故障（宿主起不来 ⇒ 这次手势可能被丢），而 `d` 在 release 里被
+     *  编译期消除 —— 只留 `d` 时一直失败也完全无痕；但这条路径**每个手势**都走一次，用 `w` 常报会把
+     *  日志刷满。故只让**首次**失败按判据级 `w` 报出来，之后压回 `d`。
+     */
+    @Volatile
+    private var wakeWarned = false
+
+    /**
      * 转交一次手势。
      *
      * @param repeat 是否「长按连续触发」的重复派发（宿主据此跳过振动反馈）
@@ -47,7 +57,14 @@ internal class GestureForwarder(
         try {
             ctx.startService(Intent().setComponent(hostService))
         } catch (e: Throwable) {
-            XLog.d("唤醒宿主进程失败（若它已在跑就无所谓）：${e.message}")
+            // 唤醒失败 ⇒ 宿主进程可能没起来、这次手势可能被丢：首次用 w 报出来（`d` 在 release 里
+            //  被编译期消除，只留 `d` 会让「一直失败、手势静默丢失」完全无痕），之后压回 `d` 免刷屏。
+            if (!wakeWarned) {
+                wakeWarned = true
+                XLog.w("唤醒宿主进程失败，手势可能被丢：${e.message}")
+            } else {
+                XLog.d("唤醒宿主进程失败（若它已在跑就无所谓）：${e.message}")
+            }
         }
 
         val phase = gesture.id
@@ -113,6 +130,6 @@ internal class GestureForwarder(
         const val FORWARD_DELAY_MS = 300L
 
         /** 宿主的侧键服务（`onBind` 型，启动它只为抬高进程级别）；名字只在 `Framework` 里写一次。 */
-        const val HOST_SERVICE = Framework.HOST_KEY_SERVICE
+        val HOST_SERVICE = Framework.HOST_KEY_SERVICE
     }
 }

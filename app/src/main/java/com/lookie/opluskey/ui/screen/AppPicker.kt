@@ -74,6 +74,7 @@ import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.state.rememberTick
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
@@ -122,6 +123,14 @@ internal data class LaunchableApp(
      * 系统应用缺入口的居多，用户应用里也有（被停用 / 非导出入口 / 装了一半）。
      */
     val launchable: Boolean,
+    /**
+     * 这个名字的**排序键**（罗马化之后的小写 ASCII 字母数字串，见 [sortKeyOf]）。
+     *
+     *  随模型一起带出来、只算一次：列表按它排序，搜索也按它比（只比原名 / 包名的话，
+     *  输入 `shezhi` 搜不到「设置」——名字与包名里都没有这串字母）。
+     *  罗马化不便宜，所以既不能放进比较器里每比一次算一次，也不能在过滤时逐条现算。
+     */
+    val sortKey: String,
 )
 
 /**
@@ -147,7 +156,6 @@ private data class SmallWindowBlock(
  */
 private fun SettingsPage.querySmallWindowSupport(pkg: String): Boolean? =
     MiniWindowSupport.isSupported(
-        context.packageManager,
         pkg,
         AppEntry.resolve(context.packageManager, pkg)?.component?.className,
     )
@@ -218,19 +226,22 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
             // 入口只解一次：`AppEntry.resolve` 自己就要 1~3 次 binder，解两遍纯属浪费
             // （这一页会有 200+ 行，几百次 binder 已经在预算里）
             val intent = AppEntry.resolve(pm, ai.packageName)
+            val label =
+                try {
+                    ai.loadLabel(pm).toString()
+                } catch (e: Throwable) {
+                    ai.packageName
+                }
             return LaunchableApp(
                 packageName = ai.packageName,
-                label =
-                    try {
-                        ai.loadLabel(pm).toString()
-                    } catch (e: Throwable) {
-                        ai.packageName
-                    },
+                label = label,
                 system = ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0,
                 launchable = intent != null,
                 // 注意：这里**不再**顺手问「支不支持小窗」：那个问法自带一条系统提示（见 [MiniWindowSupport]），
                 //    整表问一遍就是「进页弹一串 toast」。改到点确认键那一刻只问一次。
                 xposed = xposed,
+                // 排序键在这里算一次（罗马化不便宜）：排序与搜索共用它，见 [LaunchableApp.sortKey]
+                sortKey = sortKeyOf(label, romanizer),
             )
         }
         // 有启动图标的应用
@@ -280,18 +291,16 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
         val apps =
             ((launched + xposedList).distinctBy { it.packageName } + others)
                 .map { entry(it, it.packageName in xposedPkgs) }
-                // 排序键只算一次：罗马化不便宜，不能放进比较器里每比一次算一次
-                .map { it to sortKeyOf(it.label, romanizer) }
-                .sortedWith { (a, ka), (b, kb) ->
-                    val byKey = ka.compareTo(kb)
+                // 排序键在 `entry` 里就算好了（罗马化不便宜）：这里只比，不重算
+                .sortedWith { a, b ->
+                    val byKey = a.sortKey.compareTo(b.sortKey)
                     if (byKey != 0) {
                         byKey
                     } else {
                         val byName = collator?.compare(a.label, b.label) ?: 0
                         if (byName != 0) byName else a.packageName.compareTo(b.packageName)
                     }
-                }.map { it.first }
-                .toList()
+                }.toList()
         // 打头几条 + 耗时便于核对（转写器是否生效、这次查了多久）
         XLog.w(
             "可启动应用：${apps.size} 个（显示系统应用=$includeSystem，模块 ${xposedList.size} 个、" +
@@ -362,22 +371,30 @@ private val appIcons =
     }
 
 /**
- * 缓存内容的版本号（每写一次、每清一次都 +1）。
+ * 缓存内容的版本号 —— **只在「清缓存」时 +1**（[clearAppIcons]）。
  *
- *  它是 Compose 状态：[AppIcon] 在组合里读它，于是「清缓存」与「别的行补进新图标」都能让**已经
- *  组合出来的行**重新取一次。不读它不行 —— 那些行的键是包名，清单换了照样不重组、`LaunchedEffect`
- *  也不重跑，清缓存对它们等于没清（换图标包后要滚出去再滚回来才换）。
+ *  它是 Compose 状态：[AppIcon] 在组合里读它，于是清缓存能让**已经组合出来的行**重新取一次。
+ *  不读它不行 —— 那些行的键是包名，清单换了照样不重组、`LaunchedEffect` 也不重跑，清缓存对它们
+ *  等于没清（换图标包后要滚出去再滚回来才换）。
+ *
+ *  「某一行取到了图」**不走这里**（见 [putAppIcon]）：那一档由那一行自己的状态驱动 ——
+ *  走全局版本号的话，一屏十来行依次到位就是十来次全表重组（每行各自那一份图与位图都得重跑一遍）。
  */
 private var appIconsGeneration by mutableIntStateOf(0)
 
 private fun cachedAppIcon(packageName: String): android.graphics.drawable.Drawable? = synchronized(appIcons) { appIcons[packageName] }
 
+/**
+ * 往缓存里补一份图（只为「滚回去不再跨进程问第二轮」）。
+ *
+ *  注意**不动** [appIconsGeneration]：这一份是给**滚回来那一行**用的；当下这一行由它自己那份状态
+ *  画出来（见 [AppIcon]），不需要惊动全表。
+ */
 private fun putAppIcon(
     packageName: String,
     icon: android.graphics.drawable.Drawable,
 ) {
     synchronized(appIcons) { appIcons[packageName] = icon }
-    appIconsGeneration++
 }
 
 /** 清单重查完就清空（理由见 [APP_ICON_CACHE_SLOTS]）：让图标跟着那份新清单重新取。 */
@@ -394,24 +411,28 @@ private fun clearAppIcons() {
  * PackageManager，取到的 `Drawable` 记进 [appIcons] —— 滚回去时命中缓存，不再跨进程问第二轮；
  * 没拿到之前这一格先空着（一屏十来行，取图标是毫秒级）。
  *
- *  光栅化（`createBitmap` + `draw`）本来就只在每项自己的组合里做，两百个应用不会在首帧一次合成
- *  两百张位图。位图的 `remember` 键带 [icon] 而不只带包名：清过缓存之后同一个包名会取到新一份
- *  `Drawable`，键里不带它就重画不出来。
+ *  光栅化（`createBitmap` + `draw`）只在每项自己的组合里做，两百个应用不会在首帧一次合成两百张位图。
+ *
+ *  取回来的图进**这一行自己的状态**（下面那个 `icon`）：到位只重组这一行。发一份全局版本号去通知
+ *  所有行「我这张到了」是错的 —— 一屏十来行依次到位就是十来次全表重组，而别的行除了重跑一遍查表
+ *  什么也没得到。版本号只留「清缓存」那一档（见 [appIconsGeneration]）。
+ *
+ *  位图的 `remember` 键带 [icon] 而不只带包名：清过缓存之后同一个包名会取到新一份 `Drawable`，
+ *  键里不带它就重画不出来。
  *
  *  图标换了（换主题 / 图标包）由 [clearAppIcons] 跟着清单一起失效，**已经在视口里的那几行也算**
- *  —— 行显示的那份就是现从缓存里查的（见 [appIconsGeneration]）。
+ *  —— 版本号一动，下面那个 `remember` 就重新取值（缓存这时是空的 ⇒ 重新取）。
  */
 @Composable
 internal fun SettingsPage.AppIcon(app: LaunchableApp) {
     val packageName = app.packageName
-    // 读一次版本号就是订阅缓存（理由见 [appIconsGeneration]）：清缓存、别的行补图都会让这一行重组，
-    //  重组时现查这一包有没有图。**不存进自己的一份状态** —— 那会多出一份要单独维护的失效路径。
-    val version = appIconsGeneration
-    val icon = remember(version, packageName) { cachedAppIcon(packageName) }
-    // 键里的 `icon == null` 就是「取过没有」：取到了从 true 变 false，重跑一次也只是早退；清过缓存
-    //  又变回 true ⇒ 重新取。这条判据必须是**这一行自己**的，不能用全局版本号 —— 那样别的行每补
-    //  一张图都会把还在取的协程取消掉，一屏的行会排着队一张张来。
-    LaunchedEffect(packageName, icon == null) {
+    // 读一次版本号 = 订阅「清缓存」（理由见 [appIconsGeneration]）
+    val generation = appIconsGeneration
+    // 这一行自己那份图：初值先看缓存（滚回来那一轮就命中），清过缓存则变回 null ⇒ 重新取。
+    //  它留在这里不随缓存淘汰而消失 —— 视口里的行不该因为别人补图 / 缓存淘汰而退回通用字形。
+    var icon by remember(packageName, generation) { mutableStateOf(cachedAppIcon(packageName)) }
+    // 键只用（包名 + 版本号）：别的行补图不再打断这一行还在取的那一张。
+    LaunchedEffect(packageName, generation) {
         if (icon != null) return@LaunchedEffect
         val loaded =
             withContext(Dispatchers.IO) {
@@ -422,8 +443,9 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
                     null
                 }
             } ?: return@LaunchedEffect
-        // 写进缓存即完事：版本号一动这一行就重组、从缓存里拿到这张图（不必再存一份本行的状态）。
+        // 写进缓存是为了「滚回去不再跨进程问第二轮」，写进自己这一份是为了当场画出来
         putAppIcon(packageName, loaded)
+        icon = loaded
     }
     // 取样按 [APP_ICON_BITMAP_SIZE]（比实际渲染的 40dp 大一档，缩下来清晰）。
     val px =
@@ -431,7 +453,8 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
             APP_ICON_BITMAP_SIZE.roundToPx()
         }
     val bitmap =
-        remember(packageName, icon) {
+        // 尺寸跟着密度走：`px` 不进 key 的话，显示大小 / 密度一变，位图还是按老尺寸建的那张（发虚）
+        remember(packageName, icon, px) {
             try {
                 icon?.let { d ->
                     val bmp =
@@ -787,13 +810,18 @@ internal fun SettingsPage.AppPickerScreen(
     val showBroken = showUnopenable.value
     val shown =
         remember(apps, filter, showBroken) {
+            // 拼音那一档要小写比：排序键是罗马化后的小写串（见 [LaunchableApp.sortKey]）
+            val needle = filter.lowercase()
             apps
                 .asSequence()
                 .filter { showBroken || it.launchable }
                 .filter {
                     filter.isBlank() ||
                         it.label.contains(filter, ignoreCase = true) ||
-                        it.packageName.contains(filter, ignoreCase = true)
+                        it.packageName.contains(filter, ignoreCase = true) ||
+                        // 输拼音也认（`shezhi` → 设置）：名字与包名里都没有那串字母，
+                        //  只比前两项等于把「按读音找」这条路整个关掉。
+                        (needle.isNotEmpty() && it.sortKey.contains(needle))
                 }.toList()
         }
 
@@ -875,7 +903,7 @@ internal fun SettingsPage.AppPickerScreen(
         // 右下角那颗「滚到顶部」的 FAB 也挂在这个盒子里：盒子就是「页面顶 → 页面底」那一整块，
         // 它的 `BottomEnd` 正好是页面右下角，与「按键绑定」页那颗 FAB 同一个落点，不必再套 Box。
         Box(Modifier.fillMaxSize()) {
-            // 下拉刷新（2026-10-15 用户要求）：重查一次应用清单。
+            // 下拉刷新：重查一次应用清单。
             //  ⚠️ 顶栏折叠那条 connection **交给它**（`topAppBarScrollBehavior`）：库内部会把它
             //  串进自己那条链（`createPullToRefreshConnection`：Idle 时先喂顶栏、再喂刷新），
             //  所以 `LazyColumn` 上原来那份 `nestedScroll` 必须撤掉 —— 留着同一段位移会喂两遍。
@@ -889,7 +917,7 @@ internal fun SettingsPage.AppPickerScreen(
                 topAppBarScrollBehavior = scrollBehavior,
                 modifier = Modifier.fillMaxSize(),
                 // ⚠️ 指示器要**下移到「顶栏 + 搜索框那条带子」之下**：这两块是叠在列表之上的
-                //  固定浮层，指示器默认画在屏幕最顶上 ⇒ 整个被它们盖住（2026-10-15 用户报）。
+                //  固定浮层，指示器默认画在屏幕最顶上 ⇒ 整个被它们盖住。
                 //  库把这个参数直接当指示器那一层的 `offset(y = …)` 用（见 `RefreshHeader` 的调用处），
                 //  所以这里给的正是「让出固定层」的同一笔账。
                 contentPadding =
@@ -964,7 +992,7 @@ internal fun SettingsPage.AppPickerScreen(
                                             if (picked) PageIcons.TileChecked else PageIcons.TileUnchecked,
                                             contentDescription = null,
                                             // 与网格那颗同尺寸：24dp，即原先 COUI `RadioButton` 的 `requiredSize`
-                                            modifier = Modifier.size(24.dp),
+                                            modifier = Modifier.size(ROW_END_ICON_SIZE),
                                             tint =
                                                 if (picked) {
                                                     COUITheme.colorScheme.primary
@@ -1076,7 +1104,8 @@ internal fun SettingsPage.AppPickerScreen(
                         }
 
                         else -> {
-                            I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, filter)
+                            // 用户输入整体走 markdown 渲染，与下面那条空态同一条纪律：先转义
+                            I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, escapeMarkdown(filter))
                         }
                     },
             )

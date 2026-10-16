@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.inject.input.KeyInjector
 import com.lookie.opluskey.inject.system.FlashlightController
 import com.lookie.opluskey.inject.system.RingerController
@@ -26,12 +27,23 @@ internal class ActionRunner(
     /** 失败提示的唯一出口，转成 Toast；只有这里碰 Context 与 UI。 */
     private fun notifyFailure(failure: CommandFailure) = FailureNotice.show(context, failure)
 
-    /** 执行一个手势对应的动作。 */
+    /**
+     * 执行一个手势对应的动作。
+     *
+     *  @param gestureLabel 形如 `侧键·长按`（**键名 · 手势名**）—— 由 `host/GestureReceiver`
+     *    用 [KeyId.label] 与手势名拼好传进来。**这里不写死键名**：本类只服务侧键，但「有几个键、
+     *    各叫什么」是模型（[KeyId]）的事，在日志里另抄一份字面量，等第二个键出现时就会对不上
+     *    （真机踩到过：两边各拼一次，日志成了 `侧键·侧键·长按`）。
+     *
+     *  下面这行与 `GestureReceiver` 里那行（带「（宿主进程执行）」后缀）**是刻意的一对，不要合并**：
+     *  调用点在那两行之间还夹着报活广播、触觉、执行时提示，所以「前一行有、后一行没有」正好定位到
+     *  那一段出的问题。本行才是「动作真的开始派发」的判据，与 [runTest] 的「测试命令 →」相对。
+     */
     fun run(
         action: Action,
         gestureLabel: String,
     ) {
-        XLog.w("侧键·$gestureLabel → ${action.token}")
+        XLog.w("$gestureLabel → ${XLog.redactToken(action.token)}")
         dispatch(action)
     }
 
@@ -128,7 +140,7 @@ internal class ActionRunner(
             }
         } catch (e: Throwable) {
             // 必须 catch Throwable：执行环境（Runtime / 反射注入）出错可能是 Error 系，漏出去会崩系统
-            XLog.w("执行动作失败（已忽略）：${action.token}", e)
+            XLog.w("执行动作失败（已忽略）：${XLog.redactToken(action.token)}", e)
             notifyFailure(CommandFailure.UNKNOWN)
         }
     }

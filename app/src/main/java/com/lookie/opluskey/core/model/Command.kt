@@ -39,7 +39,12 @@ data class Command(
      */
     val stepDelayMs: Int = DEFAULT_STEP_DELAY_MS,
 ) {
-    /** 写进配置文件 `single` / `double` / `long` 那一档的取值（`plus_*` 是广播 extra 名）。 */
+    /**
+     * 写进配置文件 `single` / `double` / `long` 那一档的取值。
+     *
+     *  这几个 `id` 与 `ConfigFields.SINGLE_JSON` 那三个键**同字面量但无关**：那三个是「手势相位」
+     *  的键名，这三个是「命令类型」。别顺手并成一个 —— 它们各自会变。
+     */
     val token: String get() = "$PREFIX$name"
 
     /**

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,6 +58,10 @@ internal val ICON_ACTION_ICON = 20.dp
  * @param error true 时用 `error` 色 —— 有破坏性的操作按 COUI 的 `couiColorError` 上色
  * @param tint 非 null 时**覆盖**上面那两档配色 —— 给「这颗是主题色的主操作」用
  *   （已保存命令卡片右上角那颗「测试命令」）。`enabled = false` 仍然优先，照样上灰。
+ *
+ *  注：**不给 `modifier` 参数** —— `IconAction` 是「尺寸自己定死的行尾按钮」（触达区由
+ *  [ICON_ACTION_SIZE] 说了算），调用方要的是位置而不是尺寸；加了它只会把参数个数顶到 detekt
+ *  的 `LongParameterList` 之上，而本仓不许往基线里添条目。要挪位置在调用点用 `Box` 包一层。
  */
 @Composable
 internal fun IconAction(
@@ -91,6 +96,34 @@ internal fun IconAction(
         Icon(icon, contentDescription = description, Modifier.size(ICON_ACTION_ICON), tint = color)
     }
 }
+
+/**
+ * 行首 / 行内图标「可用 / 禁用」两档配色 —— 全项目一处。
+ *
+ *  这一对色（`onSurfaceContainer` / `disabledOnSecondaryVariant`）在开关行、滑杆行、输入框行首
+ *  各写了一遍，值还一样：同一页里几个行首图标一拨主开关就该一起变，分散写时改一处就漏一处。
+ *
+ *  ⚠️ **不是所有图标都走这一对**：行尾那几颗（`onSurfaceVariantActions` 起头）、
+ *  选中态那几颗（`onTertiaryContainer`）、以及带 `error` / `tint` 覆盖的那几档各有自己的调色，
+ *  它们**不**并到这里来 —— 只有「行首图标 + 只有可用/禁用两态」才是这一对。
+ *
+ *  @param label 动画标签，便于在 Studio 的动画检查器里分辨是哪一个调用点
+ */
+@Composable
+internal fun rememberRowIconColor(
+    enabled: Boolean,
+    label: String = "RowIcon",
+): State<Color> =
+    animateColorAsState(
+        targetValue =
+            if (enabled) {
+                COUITheme.colorScheme.onSurfaceContainer
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = label,
+    )
 
 /**
  * 格子外面的**焦点圈**（键盘 / 遥控走焦点时那一圈高亮）。

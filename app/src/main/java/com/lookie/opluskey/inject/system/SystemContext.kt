@@ -7,8 +7,12 @@ import com.lookie.opluskey.core.reflect.Reflect
 /** 在 `system_server` 里拿一个真正可用的 `Context`。 */
 internal object SystemContext {
     /**
-     * 缓存「真正可用」的那一份（来自 `mAllApplicationThreads`，`mAppThread` 有值）；
-     * `getSystemContext()` 那份是降级品（`ContentResolver` 一用就 NPE），每次现取、不缓存。
+     * 缓存的那份是**别的 App 进程的 Application Context**（来自 `mAllApplicationThreads`），只保证
+     * `sendBroadcast` / `startService` / `getSystemService` / `packageManager` 可用；`ContentResolver`
+     * （query / insert / update / delete）在 `system_server` 里**必 NPE，与拿的是哪一份 Context 无关**
+     * —— 借来的 Context 其 `mMainThread` 仍指向 `system_server` 自己的 `ActivityThread`，那个的
+     * `mAppThread` 恒 null（见 `docs/device-findings.md` 六之五）。`getSystemContext()` 那份连
+     * `mAppThread` 都没有，只够 `getSystemService`；每次现取、不缓存。
      *
      * 注意：**缓存的那份是别的 App 进程的 Application Context**：那个进程一死，这份 Context 里的
      * binder / `ContentResolver` 就跟着失效，之后 `sendBroadcast` / `startService` 全部抛异常，
@@ -23,6 +27,17 @@ internal object SystemContext {
      */
     @Volatile
     private var cached: Context? = null
+
+    /**
+     * 降级品那条 W 是否已经报过。
+     *
+     * 为什么留这一条：只拿到 `getSystemContext()` 的降级 Context 是个真实且会持续的状态
+     * （拿不到好 Context 的机器上一直如此），它是「依赖 Context 的功能为什么会跳过」的判据。
+     * 为什么每进程只打一次：这条 W 会被**每一个手势**打到，那种机器上会把日志刷满；
+     * 而它的信息量是恒定的（第一次打过就够），后续重复没有新内容。
+     */
+    @Volatile
+    private var degradedWarned = false
 
     /** 拿一个可用 Context。拿不到返回 null（调用方要能容忍）。 */
     fun get(loader: ClassLoader): Context? {
@@ -44,7 +59,11 @@ internal object SystemContext {
 
         // 这条链跑在 system_server 里，每一段都**自己兜住 Throwable**（见下面两处 `try`）——
         // 不是「整体兜一层」：取 Context 的两条路各包一次，`stillHeldByItsProcess` 内部再包一次。
-        // 首选：ActivityThread 里任一进程的 Application Context（mAppThread 有值）
+        // 首选：ActivityThread 里任一 App 进程的 Application Context。
+        // 这一份只对 sendBroadcast / startService / getSystemService / packageManager 负责；
+        // ContentResolver 在 system_server 里必 NPE，与拿的是哪一份 Context 无关（借来的 Context
+        // 其 mMainThread 仍指向 system_server 自己的 ActivityThread，那个的 mAppThread 恒 null，
+        // 见 docs/device-findings.md 六之五）。
         val direct =
             try {
                 fromApplicationThreads(loader)
@@ -67,10 +86,14 @@ internal object SystemContext {
                 null
             }
         if (degraded != null) {
-            XLog.w(
-                "只拿到 getSystemContext() 的 Context —— 它没有 mAppThread，" +
-                    "ContentResolver / startActivity 会失败（不缓存，下次再试首选）",
-            )
+            // 只报一次（见 [degradedWarned]）：这条会被每个手势打到。
+            if (!degradedWarned) {
+                degradedWarned = true
+                XLog.w(
+                    "只拿到 getSystemContext() 的 Context —— 它没有 mAppThread，" +
+                        "ContentResolver / startActivity 会失败（不缓存，下次再试首选）",
+                )
+            }
             return degraded
         }
 

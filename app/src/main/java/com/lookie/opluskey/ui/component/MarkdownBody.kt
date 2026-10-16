@@ -1,6 +1,8 @@
 package com.lookie.opluskey.ui.component
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -59,15 +61,30 @@ internal fun MarkdownBody(
             textLink = TextLinkStyles(style = SpanStyle(color = COUITheme.colorScheme.primary)),
             table = COUITheme.textStyles.footnote2.copy(textAlign = textAlign),
         )
-    Markdown(
-        content = text,
-        colors = colors,
-        typography = typography,
-        // 库的默认是 `fillMaxSize()` —— 弹窗里要按内容高，不能占满
+    // ⚠️ 库的段落渲染器**不撑满宽度** —— 整个库里只有代码块顶栏与分割线用了 `fillMaxWidth`，
+    //  段落的 `Text` 因此是 wrapContent，而 `textAlign` 只在「Text 比内容宽」时才有地方可居：
+    //  直接给长正文设 `Center` 会**毫无效果**。
+    //  居中这一档自己拆段：每段作为整体摆在一个 `CenterHorizontally` 的 Column 里 ——
+    //  短段整段居中；长段（要折行的）宽度本来就顶满，段内再按 `textAlign` 居中。
+    //  左对齐那一档不拆，原样交给库，免得白白多一层 Column。
+    val centered = textAlign == TextAlign.Center
+    Column(
         modifier = modifier,
-        // 同步解析：默认那条是异步的（走 `rememberMarkdownState`），弹窗会先闪一帧空的
-        immediate = true,
-    )
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+    ) {
+        val paragraphs = if (centered) text.split("\n\n") else listOf(text)
+        paragraphs.forEach { para ->
+            Markdown(
+                content = para,
+                colors = colors,
+                typography = typography,
+                // 库的默认是 `fillMaxSize()` —— 弹窗里要按内容高，不能占满
+                modifier = Modifier,
+                // 同步解析：默认那条是异步的（走 `rememberMarkdownState`），弹窗会先闪一帧空的
+                immediate = true,
+            )
+        }
+    }
 }
 
 /**
@@ -84,5 +101,11 @@ internal fun escapeMarkdown(text: String): String =
         }
     }
 
-/** CommonMark 里有含义的那些字符（在这个项目的正文里只会出现这些）。 */
-private const val MARKDOWN_SPECIALS = "\\`*_~{}[]()#+-.!|>"
+/**
+ * CommonMark 里有含义的那些字符（在这个项目的正文里只会出现这些）。
+ *
+ * `<` 与 `>` 都在里面：`>` 是引用块的记号，`<` 是 HTML 标签 / 自动链接的起点 ——
+ * 正文里那些名字（命令名、应用名、搜索词）是**用户写的东西**，一个 `a<b` 或 `<b>` 不转义
+ * 就会被当成标签吞掉、或把后面半句连成链接。两个方向对称地堵。
+ */
+private const val MARKDOWN_SPECIALS = "\\`*_~{}[]()#+-.!|<>"

@@ -9,6 +9,8 @@ import android.os.Handler
 import android.os.Looper
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.core.config.ConfigStore
+import com.lookie.opluskey.core.i18n.AppLanguage
+import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Config
@@ -16,7 +18,10 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
+import com.lookie.opluskey.core.seal.Seal
+import com.lookie.opluskey.core.seal.Verdict
 import com.lookie.opluskey.core.wire.ConfigBroadcast
+import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.FailureNotice
 import com.lookie.opluskey.host.action.actionNoticeText
@@ -58,7 +63,7 @@ internal object GestureReceiver {
     private const val CTX_RETRY_DELAY_MS = 500L
 
     /** 宿主自己的侧键服务 —— keepProcessAwake 启动它以抬高进程级别（名字只在 `Framework` 里写一次）。 */
-    private const val KEY_SERVICE = Framework.HOST_KEY_SERVICE
+    private val KEY_SERVICE = Framework.HOST_KEY_SERVICE
 
     /**
      * 手势的「保质期」（毫秒）：超过它视为冻结期间积压的过期手势，丢弃不执行。
@@ -97,6 +102,14 @@ internal object GestureReceiver {
             handler.postDelayed({
                 XLog.guard("重试取 Application Context") { tryGetContext(loader, attempt + 1) }
             }, CTX_RETRY_DELAY_MS)
+            return
+        }
+
+        // 签名闸：包被改过并重签时**不装接收器** —— 侧键从此「拦下来但什么都不做」。
+        //  判据与核心防线同一处（`core/seal/Seal`）；判在这里是因为**此刻才拿得到 Context**
+        //  （`KeyModule.onPackageReady` 那一刻 `currentApplication()` 往往还是 null，见那边的说明）。
+        if (Seal.verdict(ctx) == Verdict.UNOFFICIAL) {
+            XLog.e("本包签名与出厂指纹不符 ⇒ 不装手势接收器（见「关于 → 签名」；换回官方包即恢复）")
             return
         }
 
@@ -208,16 +221,13 @@ internal object GestureReceiver {
         ctx: Context,
         enabled: Boolean,
     ) {
-        try {
-            ctx.sendBroadcast(
-                Intent(KeyModule.ACTION_HOST_SERVICE_UP)
-                    .setPackage(KeyModule.PAGE_PACKAGE)
-                    .putExtra(KeyModule.EXTRA_HOST_ENABLED, enabled)
-                    .putExtra(KeyModule.EXTRA_HOST_LAST_ACTION_AT, lastActionAt),
-            )
-        } catch (e: Throwable) {
-            XLog.w("给设置页报活失败：${e.message}")
-        }
+        PageWire.send(
+            ctx,
+            KeyModule.PAGE_PACKAGE,
+            Intent(KeyModule.ACTION_HOST_SERVICE_UP)
+                .putExtra(KeyModule.EXTRA_HOST_ENABLED, enabled)
+                .putExtra(KeyModule.EXTRA_HOST_LAST_ACTION_AT, lastActionAt),
+        )
     }
 
     /**
@@ -229,12 +239,10 @@ internal object GestureReceiver {
      */
     private fun publishConfigState(ctx: Context) {
         XLog.guard("广播配置给注入侧") {
-            ctx.sendBroadcast(
-                ConfigBroadcast
-                    .intent(ConfigStore.read())
-                    .setPackage(KeyModule.PAGE_PACKAGE),
-            )
-            XLog.w("已广播配置给注入侧（用户已解锁=${isUserUnlocked(ctx)}）")
+            val config = ConfigStore.read()
+            if (PageWire.send(ctx, KeyModule.PAGE_PACKAGE, ConfigBroadcast.intent(config))) {
+                XLog.w("已广播配置给注入侧（用户已解锁=${isUserUnlocked(ctx)}）")
+            }
         }
     }
 
@@ -391,7 +399,7 @@ internal object GestureReceiver {
             }
         // 这条是按键的可见证据（release 里也保留），所以只在第一次执行时打 W；
         val log =
-            "${id.label}·${gesture.label}${if (repeat) "（连续触发）" else ""} → ${action.token}" +
+            "${id.label}·${gesture.label}${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}" +
                 "（宿主进程执行）"
         if (repeat) XLog.d(log) else XLog.w(log)
         // 链路自检：这一笔是「动作真的执行了」的凭证（与注入侧那笔 lastGestureAt 配对）
@@ -406,6 +414,11 @@ internal object GestureReceiver {
         // 自定义命令，绑的是内置动作（小布识屏 / 截图 / 手电筒 …）时按下去一直没动静
         // （用户报「执行命令时系统提示没效果」）。连续触发的重复不弹：那是同一次按压。
         if (!repeat && config.global.toastOnRun) {
+            // 语言档跟配置走：设置页那边建页时设过一次，但那是**另一个进程**（`:ui`）里的实例，
+            //  宿主主进程这份一直停在 AUTO（跟系统语言）。配置里选了 English 而系统是中文时，
+            //  界面英文、提示中文 —— 这里每次执行前对一次，两边同一个口径。
+            //  同一个文件不重读（`reload` 里按文件名早返回），所以这一行在按键路径上是白给的。
+            I18n.currentLanguage = AppLanguage.fromCode(config.global.language)
             val notice = actionNoticeText(appContext, action)
             if (notice.isNotEmpty()) {
                 XLog.w("执行时提示：$notice")

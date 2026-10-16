@@ -75,10 +75,17 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture
 ### `call` —— 反射调一个方法
 
 ```bash
+# 注意 --ez unsafe true：这个 op 会直接 invoke 宿主类，没有这一步一律被拒（日志里有判据行）
 adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture \
-  --es op call --es target service --es name getCaptionName --esa args 1'"
+  --es op call --es target service --es name getCaptionName --esa args 1 --ez unsafe true'"
 ```
 
+- `unsafe`：**必带**（`--ez unsafe true`）。`call` 会对广播指定的类直接 `invoke`，而 **`invoke` 会触发
+  那个宿主类的 `<clinit>`** —— 顺序不对就把类标成 erroneous，之后系统真用到它的地方
+  `NoClassDefFoundError`（AGENTS.md 五之二、1 那条红线）。所以它只在「广播显式要求」**且**「`cls` 命中
+  白名单」时才执行；白名单是 `com.android.server.wm.` 与 `android.app.OplusActivityTaskManager`
+  （就是本模块真要用到的那两族）。其余情况一律拒绝，并在日志里留一条 W 级判据行写明卡在哪一条。
+- `cls`：目标类的完整类名（`target=static` 必填；`target=service` 可不填，由服务自身推出来）
 - `target`：`static`（静态调用）/ `service`（拿 `FlexibleWindowManagerService.getInstance(...)` 当接收者）
 - `name`：方法名；同名多载时按**参数个数 + 能否把 `args` 转成形参类型**自动挑
 - `args`：字符串数组（`--esa`），只支持 int / long / float / double / boolean /

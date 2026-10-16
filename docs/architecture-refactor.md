@@ -1,9 +1,11 @@
 # 项目结构重构方案
 
 > 本文只谈**代码怎么摆**，不动任何行为契约。重构后的产物必须逐条满足 `AGENTS.md`
+>
 > 里的红线，那是验收的硬指标（见「四」）。
 
 > ⚠️ 文中 `hook/` `page/` `gesture/` `config/`
+>
 > 是**重构前**的包名 —— 「三」的映射表左列就是它们，右列是重构后的位置，也就是今天的结构。
 
 ## 一、现状与问题
@@ -31,15 +33,17 @@
    `ConfigStore.read()` 就能编过、到真机上才炸。
 3. **`gesture/` 跨了两个进程**。`GestureDetector` 在注入侧判定手势，`GestureReceiver` / `SideKeyGestureHooks`
    在宿主主进程执行 —— 这是本项目最核心的一条架构分界，却被塞进同一个包。
-4. **`page/`
-   单包 22 个文件**。页面、通用组件、展示层数据（动作清单 / 文案 / 图标 / 常量）、界面状态四类东西平铺在一起，找一个页面要在 22 个名字里翻。
+4. \*\*`page/`
+   单包 22 个文件\*\*。页面、通用组件、展示层数据（动作清单 / 文案 / 图标 / 常量）、界面状态四类东西平铺在一起，找一个页面要在 22 个名字里翻。
 
 ## 二、目标结构
 
 ### 划分依据：进程边界，不是「层」
 
 本项目不是一个常规 App
+
 —— 没有 Activity、没有 ViewModel、没有网络与数据库，它是由 LSPosed 注入到**三个进程**里、各自只干自己能干的那部分（`AGENTS.md`
+
 一、6）。所以「最流行的架构」在这里的正确形态是：**先按进程切开，再在每个进程内部按职责分层，并用依赖方向把「谁能用谁」钉死**。
 
 ### 依赖方向
@@ -59,12 +63,12 @@
 四条硬规矩：
 
 - **`core/` 不依赖任何上层**（它不认识进程、不认识界面）；
-- **`inject/` 只准依赖 `core/model`、`core/log`、`core/reflect`、`core/wire`**， **不准碰
-  `core/config`**（落盘那包）—— 这样「注入侧读不到配置文件」在**编译期**就成立；
+- **`inject/` 只准依赖 `core/model`、`core/log`、`core/reflect`、`core/wire`**， \*\*不准碰
+  `core/config`**（落盘那包）—— 这样「注入侧读不到配置文件」在**编译期\*\*就成立；
 - **`inject/` 也不准依赖 `ui/` 与 `host/`**：它跑在 `system_server`，与宿主那份 APK 不是同一个类加载器，引用上面两类必然
   `NoClassDefFoundError`（把系统进程拖死）；
-- **`ui/` 与 `host/`
-  互相引用代码是允许的，但运行期不许假设共享状态**：二者是宿主**同一个包的两个进程**（`com.oplus.gesture.ui` 与
+- \*\*`ui/` 与 `host/`
+  互相引用代码是允许的，但运行期不许假设共享状态**：二者是宿主**同一个包的两个进程\*\*（`com.oplus.gesture.ui` 与
   `com.oplus.gesture`，`KeyModule.PAGE_PROCESS` / `HOST_PROCESS`），类都来自同一份 APK
   —— 同一个执行器（`host/action/ActionRunner`）就是被两边共用的：`ui/` 里跑「试一下」、`host/`
   里跑真实手势。但**两个进程的静态状态各自独立**，需要跨进程传的东西只能走广播，或走那份同 uid 的配置文件。
@@ -77,7 +81,9 @@ com.lookie.opluskey
 ├── core/
 │   ├── log/                  XLog
 │   ├── reflect/              Reflect
-│   ├── model/                纯数据：Action / Command / Config / KeyId / Gesture / KeyConfig
+│   ├── model/                纯数据与适配表：Action / Command / Config / KeyId / Gesture / KeyConfig /
+│   │                         RomProfile（各版本档位表） / ConfigFields / HostApp / ModuleInfo /
+│   │                         KsuCompat
 │   ├── config/               落盘：ConfigStore / ConfigCodec / CommandLibrary      ← 只给 host / ui
 │   └── wire/                 跨进程线格式：ConfigBroadcast                        ← 给 inject / host / ui
 ├── inject/                   ← 注入侧（system_server）：拦按键、判手势、注入按键、调系统服务
@@ -88,7 +94,7 @@ com.lookie.opluskey
 │                             FlashlightController / SystemActionButtonConfig
 ├── host/                     ← 宿主主进程：接手势、跑动作
 │   ├── GestureReceiver / SideKeyGestureHooks
-│   └── action/               ActionRunner / AppLauncher / AppEntry / OplusFeature /
+│   └── action/               ActionRunner / AppLauncher / AppEntry /
 │                             ShellRunner / CustomCommandRunner / CommandFailure / KsuCompat
 └── ui/                       ← 宿主设置页进程（com.oplus.gesture.ui）
     ├── SettingsPage / SettingsPageHooks / HostWindow / Screen   页面骨架与挂载
@@ -146,7 +152,7 @@ com.lookie.opluskey
 | `hook/ActionRunner.kt`           | `host/action/ActionRunner.kt`        |
 | `hook/AppLauncher.kt`            | `host/action/AppLauncher.kt`         |
 | `hook/AppEntry.kt`               | `host/action/AppEntry.kt`            |
-| `hook/OplusFeature.kt`           | `host/action/OplusFeature.kt`        |
+| `hook/OplusFeature.kt`           | `core/model/RomProfile.kt`           |
 | `hook/ShellRunner.kt`            | `host/action/ShellRunner.kt`         |
 | `hook/CustomCommandRunner.kt`    | `host/action/CustomCommandRunner.kt` |
 | `hook/CommandFailure.kt`         | `host/action/CommandFailure.kt`      |
@@ -159,7 +165,7 @@ com.lookie.opluskey
 | `page/SettingsPage.kt`      | `ui/SettingsPage.kt`           |
 | `page/SettingsPageHooks.kt` | `ui/SettingsPageHooks.kt`      |
 | `page/HostWindow.kt`        | `ui/HostWindow.kt`             |
-| `page/PageScreens.kt`       | `ui/Screen.kt`            |
+| `page/PageScreens.kt`       | `ui/Screen.kt`                 |
 | `page/HomeScreen.kt`        | `ui/screen/HomeScreen.kt`      |
 | `page/BindingScreen.kt`     | `ui/screen/BindingScreen.kt`   |
 | `page/CommandScreen.kt`     | `ui/screen/CommandScreen.kt`   |
@@ -182,7 +188,9 @@ com.lookie.opluskey
 ### 源集变体
 
 `app/src/debug/` 与 `app/src/release/` 下的三个同名文件（`BuildFlags` / `HostFilePerms` /
+
 `PageDebugChannel`）跟着主源集一起挪：`config/HostFilePerms` → `core/config/`、 `page/PageDebugChannel` →
+
 `ui/`。**两个源集必须同步改**，否则 release 包会缺同名空壳。
 
 ## 四、重构后仍须成立的契约

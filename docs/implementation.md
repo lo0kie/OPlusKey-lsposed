@@ -132,7 +132,11 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
   JSON 解析」。文件一被写，指纹就变，下一次读立刻重解析；本进程自己的写盘另外主动失效。
 - **注入侧（system_server）读不到那份文件**（EACCES），它只信宿主广播过来的完整配置（`core/wire/ConfigBroadcast` →
   `inject/ConfigChannel`），启动 / 解锁 / 写盘时各发一次。
-- 系统「设置 → 快捷键」的 provider（`content://uri.gesturemanagerprovider/action_button`）只是**只读诊断项**（`inject/system/SystemActionButtonConfig`，在宿主进程里读），不参与配置链路。
+- 系统「设置 → 快捷键」的 provider（`content://uri.gesturemanagerprovider/action_button`）只是**只读诊断项**
+  （`inject/system/SystemActionButtonConfig`，在宿主进程里读），不参与配置链路。两条纪律：
+  **列名一律先读 Cursor 拿**（随 ROM 版本变过，不许硬编码）；**只能在宿主进程里调** ——
+  注入侧用它必 NPE（见 `device-findings.md` 六之五）。写接口**已删**（零调用方），真要用的时候直接
+  `ContentResolver.update/insert` 三行就够；不要再往回加绕开 `ContentResolver` 的重反射。
 
 不能用 `SharedPreferences`：它每个进程各缓存一份，写进去的值别的进程看不到。
 
@@ -195,3 +199,79 @@ framework 私有类**一律按字符串名解析**：它们会被 ROM 改名，�
 
 判据一句话：**同一个能力已经有图形入口的，这张卡不再重复教手写**
 —— 两个入口并存时，手写那条更容易写错（前缀拼错、包名写错都只会得到一条跑不通或行为不同的命令）。
+
+## 八、适配闸：机型 + 系统版本
+
+注入只在**适配清单**内的组合上发生。清单本体是 `core/model/DeviceSupport` 的 `ADAPTED`，判定是一个**纯函数**：
+只吃 `model` / `android` / `rom` 三个字符串，`Build` 那三个值由各调用点自己传（`KeyModule` 与 `ui/state/LinkCheck`）。
+
+- **ROM 版本从 `Build.DISPLAY` 取**，不读 `ro.build.version.oplusrom` —— 后者是 hidden 接口，
+  界面进程会被非 SDK 限制拦下（与 `ro.vendor.oplus.market.enname` 同一类）。
+- 机型名照抄真机属性 `ro.vendor.oplus.market.enname`（`OnePlus 15`），同样不在运行时读。
+- 当前清单只有一档：`PLK110` + `Android 17` / `ColorOS 17.0.0`。
+- 清单外的组合**一个 Hook 都不装**：system_server 里的按键接管、宿主侧的手势劫持与接收器全部跳过，
+  **只保留设置页替换**。页面按「不可用」整页禁用，两档各说各的：机型不认识 ⇒「此机型不适配」；
+  机型对而系统版本没适配 ⇒「系统版本等待适配」。
+- 判据行是 `本机机型：…；系统：…；允许运行=false`，紧随其后一句 `机型不在适配清单里 ⇒ …` 或
+  `机型在适配清单里，但系统版本不是那一档（等待适配）⇒ …`。
+- **debug 包不做这道检查**（`BuildFlags.ENFORCE_DEVICE_GATE = false`，release 必须 true）：`check`
+  一律返回「已适配」，判定照算、日志照打，只是不据此拒绝注入 —— 开发时机型 / 系统版本随时在变，
+  被拦下会让人以为模块坏了。关掉后「更多选项 → 适配清单」的「本机」行会跟着报「已适配」，
+  那是行为的如实反映，不是判定错了。
+- **要加机型或加一版 ROM**：加一行 + **在真机上把接管点重新验一遍**。那些类与方法都是 ROM 私有的，
+  换机型 / 换 ROM 版本会整体换名换形，那种情况下模块会「拦下来但什么都不做」，比直接不支持更难排查
+  （见 `device-findings.md` 十九）。
+
+## 八之二、多版本适配：档位表
+
+ROM 私有的东西分三类，**各自按 ROM 系列（`17.0.0` 这种）分档**，「适配一版新 ROM」= 加档。
+键与口径都取 `DeviceSupport.currentRomSeries`（一处读 `Build.DISPLAY`，见「八、适配闸」）。
+
+| 那一类                                                                        | 表在哪                                    | 加一档加什么   |
+| ----------------------------------------------------------------------------- | ----------------------------------------- | -------------- |
+| 接管点候选（Hook 面类名 / 方法名 / 宿主侧服务与 Activity）                    | `inject/Framework.kt` 的 `HookSet`        | 一个 `HookSet` |
+| 执行落点 + 反射面（内置命令落到哪个组件、ColorOS 私有类名 / 方法名 / 字段名） | `core/model/RomProfile` 的 `Profile`      | 一个 `Profile` |
+| 小窗几何（展开档的落点矩形与缩放）                                            | `core/model/MiniWindowGeometry` 的 `Slot` | 一个 `Slot`    |
+
+**前两张表的键是 ROM 系列、第三张的键是机型**，别并成一张：落点由 ROM 决定（同一版 ROM 在不同机型上相同），而几何由**屏幕尺寸与 dpi** 决定（换一块屏就得重新量）。
+
+一、7 要求接管点候选只写 `inject/Framework.kt`，所以那张表留在那边；`RomProfile` 里另有一个
+`Reflection` 装执行侧要反射的名字。两张表**都以 `romSeries` 为键**，加档时一起加。
+
+- **按 ROM 系列分档，不按机型**：这些名字由 ROM 决定，机型只在适配闸里起作用。
+- **加档之后要在真机上把每一层重新验一遍**：那些类与方法都是 ROM 私有的，换版本会整体换名换形。
+  每档带一个 `verified` 字段（机型 + 日期）记「这一档是谁在哪台机器上验的」，安装期判据行会打出来。
+
+- **猜错的代价不同，兜底也不同**（`RomProfile` 的类注释里也写了）：
+    - **内置命令落点**：猜错会真去起别的服务，有害 ⇒ 本机没有对应档时 `builtIn()` 返回 `null`，
+      执行侧记 `oplus:<功能> 没有落点 —— 内置命令档位：未适配（本机 ROM …）` 后跳过，**不退回任何一档**；
+    - **接管点候选 / 反射面**：猜错只表现为查找落空（记 `w` 后逐层降级），无害 ⇒ 本机没有对应档时
+      **照最后一档试**并打一行 `w`。这条是给开发留的路：debug 包关掉了适配闸，要在任意 ROM 上能试。
+- **那几条「没有落点」的命令在界面上是锁住的**：网格格子与「添加命令」的选择行都置灰、不吃点击
+  （判据 `ui/model/ActionCatalog.isLocked`，取的就是上面那个 `builtIn()`），口径是「灰着的正是
+  按下去不会有事发生的」；debug 包会照最后一档猜 ⇒ 那个包里不灰，与执行侧一致。落在这一档的是
+  「一键闪记 / 免打扰 / 录音」（`oplus:` 族）与「小布识屏」（清单里写作 KSU 那条 shell 别名，
+  执行侧实际走 `AppLauncher.startSidebar` → 同一个落点表）。小窗 / 电源菜单 / 通知与控制中心那几族
+  走的是 `effective`（猜）、不是这张落点表，所以**不算锁住**，仍是「待验」。
+- 安装期在适配闸那两行旁边多打一行 `适配档位：内置命令=…；小窗几何=…`：
+  适配闸管「能不能注入」、档位表管「注入之后那些落点认不认得」，真机报「按了没反应」时两句一起看
+  就知道断在哪一环。
+- **同一层的多个接管点候选「第一个命中就停」**：那一层的几个候选是同一个类的两种包名写法
+  （AOSP / OPLUS），两个都存在时各装一个接管点，会把一次按压喂判定器两遍（双击变「双击 + 单击」）。
+  层与层之间本来就是逐层降级，同层这道闸原来漏了。
+- **没进档的东西**：小窗 bundle 的 key 与枚举值（`extra_window_mode` / `WINDOWING_MODE_ZOOM` /
+  `mZoomLaunchFlags`）—— 它们是协议值，改了要在真机上重新验，留在实现里并在注释里写明。
+
+## 九、提交前检查（三道闸）
+
+| 闸       | 命令                      | 规则落在哪                                          |
+| -------- | ------------------------- | --------------------------------------------------- |
+| 格式     | `./gradlew spotlessApply` | `app/build.gradle.kts` 的 `spotless` 段（ktlint）   |
+| 静态检查 | `./gradlew detekt`        | `config/detekt/detekt.yml`                          |
+| Lint     | `./gradlew lintDebug`     | `app/build.gradle.kts` 的 lint 段（`abortOnError`） |
+
+- 历史存量进的是 detekt 的 `config/detekt/baseline.xml` 与 lint 的 `@Suppress` 注解（**没有** lint
+  baseline 文件 —— 那个名字并不存在）。
+- **新代码不许再往基线里加条目**；加了要在提交信息里说明为什么。
+- 行长上限的值写在 `app/build.gradle.kts` 的 `ktlintRules` 里。
+- 「注入侧不得引用界面层依赖」的复核命令见 `architecture-refactor.md` §六。

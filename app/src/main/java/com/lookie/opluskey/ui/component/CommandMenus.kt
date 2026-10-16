@@ -17,6 +17,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.ActionCatalog
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_PICKER_MAX_HEIGHT
+import com.lookie.opluskey.ui.model.specIcon
 import com.lookie.opluskey.ui.screen.addStep
 import com.lookie.opluskey.ui.screen.openAppPickerForStep
 import com.lookie.opluskey.ui.screen.replaceStep
@@ -24,6 +25,10 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
 /**
  * 各处下拉/浮层选择菜单（添加命令、响铃状态、长按菜单）。
+ *
+ * 注：`onEdited` / `onDelete` 的 `= {}` 默认值**看起来是死的**（唯一调用点两个都显式传了），
+ *  但它撑住的是参数个数这条线 —— 去掉默认值会让 detekt 的 `LongParameterList` 判据换成另一个
+ *  签名匹配（基线里那条按**带默认值的签名**记着），而本仓不许往基线里添条目。留着。
  */
 @Composable
 internal fun SettingsPage.CommandMenuPopup(
@@ -162,12 +167,7 @@ internal fun SettingsPage.StepPickerPopup(
                 // 分组与网格同一张表（[ActionCatalog.STEP_GROUPS]）—— 组名与组内顺序逐项一致。
                 ActionCatalog.STEP_GROUPS.forEachIndexed { groupIndex, (groupTitle, group) ->
                     if (groupIndex > 0) add(MenuEntry.GroupLine)
-                    val localizedGroupTitle =
-                        when (groupTitle) {
-                            "系统操作" -> I18n.get(Strings.CATALOG_SYSTEM_ACTIONS, groupTitle)
-                            "快捷功能" -> I18n.get(Strings.CATALOG_QUICK_TOOLS, groupTitle)
-                            else -> I18n.get(groupTitle, groupTitle)
-                        }
+                    val localizedGroupTitle = ActionCatalog.groupTitleLabel(groupTitle)
                     add(MenuEntry.Group(localizedGroupTitle))
                     group.forEachIndexed { index, spec ->
                         // 相邻两行一条细线，与 ⋮ 菜单 / 长按菜单同一条 [PopupRowDivider]
@@ -175,7 +175,14 @@ internal fun SettingsPage.StepPickerPopup(
                         add(
                             MenuEntry.Row(
                                 title = spec.label,
-                                icon = icons.getValue(spec),
+                                //  用 `getOrElse` 兜底而不是 `getValue`：新增一族菜单 / 条目时，若它的 spec
+                                //  没被 [ActionCatalog.queue] 收进图标表，`getValue` 会在**宿主的组合期**
+                                //  直接抛异常（用户手机上）。漏项退回建表那支 [specIcon]，并留一行 W 凭据。
+                                icon =
+                                    icons.getOrElse(spec) {
+                                        XLog.w("图标表缺项：${spec.token} 用兜底字形")
+                                        specIcon(spec)
+                                    },
                                 // 入口格会进下一层（二级菜单）
                                 submenu = ActionCatalog.isEntryTile(spec),
                                 // 行尾那颗按「点开去哪」分：跳另一个页面的「选择应用」用网格里同一颗
@@ -190,6 +197,10 @@ internal fun SettingsPage.StepPickerPopup(
                                     },
                                 // 当前那一步就是这一行时标出来（入口行也认）。
                                 selected = isCurrentStep(spec),
+                                // 被锁住的命令**置灰 + 吃掉点击**（[MenuEntry.Row.enabled]）——
+                                //  判据与网格格子同一个（[ActionCatalog.isLocked]）：这几条在本机
+                                //  没有落点，选了也跑不起来（执行侧会跳过）。
+                                enabled = !ActionCatalog.isLocked(spec),
                             ) {
                                 when (spec.token) {
                                     // 「选择应用」→ 进「打开应用」页挑一个；不能交给 `landStep`，
@@ -206,7 +217,7 @@ internal fun SettingsPage.StepPickerPopup(
                                             landStep(spec.token)
                                         } else {
                                             // 入口格 → 开二级浮层（一级面板原地留着）。
-                                            XLog.w("添加命令浮层：点 ${spec.title} → 开二级")
+                                            XLog.w("添加命令浮层：点 ${spec.label} → 开二级")
                                             subTile = spec
                                         }
                                     }
@@ -234,7 +245,11 @@ internal fun SettingsPage.StepPickerPopup(
                         add(
                             MenuEntry.Row(
                                 title = spec.label,
-                                icon = icons.getValue(spec),
+                                icon =
+                                    icons.getOrElse(spec) {
+                                        XLog.w("图标表缺项：${spec.token} 用兜底字形")
+                                        specIcon(spec)
+                                    },
                                 selected = isCurrentStep(spec),
                             ) {
                                 onDismiss()
@@ -259,7 +274,7 @@ internal fun SettingsPage.StepPickerPopup(
                 ?.let { ActionCatalog.modeMenu(it.token) }
                 ?.let { modes ->
                     modeEntries(modes, icons, currentStepAction) { spec ->
-                        XLog.w("二级浮层：选中 ${spec.title}（替换行=$replaceIndex）")
+                        XLog.w("二级浮层：选中 ${spec.label}（替换行=$replaceIndex）")
                         onDismiss()
                         landStep(spec.token)
                     }
@@ -292,7 +307,11 @@ internal fun modeEntries(
             add(
                 MenuEntry.Row(
                     title = spec.label,
-                    icon = icons.getValue(spec),
+                    icon =
+                        icons.getOrElse(spec) {
+                            XLog.w("图标表缺项：${spec.token} 用兜底字形")
+                            specIcon(spec)
+                        },
                     //  必须用 [ActionCatalog.isBound]（一行一行比），不能用 `isSelected` ——
                     // 后者对整组都算选中，会让二级菜单同时勾上多项。
                     selected = current?.let { ActionCatalog.isBound(spec, it) } ?: false,

@@ -20,7 +20,7 @@ internal object ShellRunner {
         //  会同时看到「没满」一起放行。占坑本身见 [acquireSlot]。
         val slot = acquireSlot()
         if (slot < 0) {
-            XLog.w("已有 $MAX_CONCURRENT 条 shell 在跑（上限 $MAX_CONCURRENT），拒绝：$command")
+            XLog.w("已有 $MAX_CONCURRENT 条 shell 在跑（上限 $MAX_CONCURRENT），拒绝：${XLog.redactCommand(command)}")
             onFailure(CommandFailure.OVERLOADED)
             return
         }
@@ -46,7 +46,11 @@ internal object ShellRunner {
                     reader =
                         Thread {
                             runCatching {
-                                proc.inputStream.bufferedReader().forEachLine { line -> XLog.d("sh: $line") }
+                                // `use`：进程退出后那对管道要真正关掉（`sh -c "... &"` 这类会把 stdout
+                                //  留给子进程继承，EOF 可能来得很晚）—— 不关就是每挂一条泄一个 FD。
+                                proc.inputStream.bufferedReader().use { r ->
+                                    r.forEachLine { line -> XLog.d("sh: $line") }
+                                }
                             }.onFailure { XLog.d("读 shell 输出失败：${it.message}") }
                         }.apply {
                             isDaemon = true
@@ -61,12 +65,14 @@ internal object ShellRunner {
                         } catch (e: Throwable) {
                             // 注意：这条路直接 `return@Thread` 的话**不 destroy 子进程**：
                             //  进程漏在后台、读线程还挂着那对管道。与超时那条一样收掉（destroy 关管道 ⇒ 读到 EOF）。
+                            //  也要报一句给用户：这一条原来静默返回，命令既没跑完、用户又什么都不知道。
                             XLog.w("等 shell 结束失败，杀掉它：${e.message}")
                             runCatching { proc.destroy() }
+                            onFailure(CommandFailure.UNKNOWN)
                             return@Thread
                         }
                     if (!done) {
-                        XLog.w("shell 超过 ${SHELL_TIMEOUT_MS}ms 没结束，杀掉它：$command")
+                        XLog.w("shell 超过 ${SHELL_TIMEOUT_MS}ms 没结束，杀掉它：${XLog.redactCommand(command)}")
                         try {
                             proc.destroy()
                         } catch (e: Throwable) {
@@ -91,7 +97,7 @@ internal object ShellRunner {
                     // 只有非 0 才算失败：0 是常规路径，不该有任何提示。
                     // 合并成一条 `a; b` 的步骤取的是最后一条的退出码（`sh` 的规矩）。
                     if (proc.exitValue() != 0) {
-                        XLog.w("shell 退出码 ${proc.exitValue()}：$command")
+                        XLog.w("shell 退出码 ${proc.exitValue()}：${XLog.redactCommand(command)}")
                         onFailure(CommandFailure.ofShellExit(proc.exitValue()))
                     }
                 } finally {
@@ -99,11 +105,11 @@ internal object ShellRunner {
                 }
             }.apply { isDaemon = true }.start()
             // 判据级：这条是「动作到底有没有发出去」的唯一凭证，用 w（i/d 在 release 被编译期消除）
-            XLog.w("shell 命令已在后台启动：$command")
+            XLog.w("shell 命令已在后台启动：${XLog.redactCommand(command)}")
         } catch (e: Throwable) {
             // 起进程这一步就失败 ⇒ 把刚占的槽位还回去（否则每被拒一次就永久吃掉一个名额）
             releaseSlot(slot)
-            XLog.w("执行 shell 失败：$command", e)
+            XLog.w("执行 shell 失败：${XLog.redactCommand(command)}", e)
             onFailure(CommandFailure.SHELL_REJECTED)
         }
     }

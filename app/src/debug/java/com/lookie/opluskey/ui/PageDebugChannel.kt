@@ -10,8 +10,8 @@ import com.lookie.opluskey.core.log.XLog
  * 设置页的调试通道 —— 本文件只存在于 debug 源集，release 包里没有它。
  *
  * 用 `RECEIVER_EXPORTED` 是为了让 `adb shell am broadcast` 发得进来；因此**绝不能让这段代码
- * 进 release 包**（`-keep class com.lookie.opluskey.**` 会挡住 R8 的死代码消除，靠编译期常量
- * 兜底只能留下形迹）。release 侧由 `src/release/` 的同名文件提供空实现。
+ * 进 release 包**。靠的是源集物理隔离：release 侧由 `src/release/` 的同名文件提供空实现，
+ * 产物里根本没有这个 receiver。
  */
 internal object PageDebugChannel {
     /** 广播的 action。 */

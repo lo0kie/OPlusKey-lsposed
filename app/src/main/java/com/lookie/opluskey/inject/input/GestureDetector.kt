@@ -50,7 +50,14 @@ internal class GestureDetector(
      */
     private val onGesture: (KeyId, Gesture, KeyConfig, Boolean) -> Unit,
 ) {
-    /** 一个键的待定状态 —— 字段被两条线程读写，跨线程的一律 `@Volatile`（见类注释）。 */
+    /**
+     * 一个键的待定状态 —— 字段被两条线程读写，跨线程的一律 `@Volatile`（见类注释）。
+     *
+     *  `@Suppress("LongParameterList")`：这不是「参数太多、该拆对象」那种函数，而是一份**状态表**
+     *  ——每一格都是独立的一个状态位 / 一个待摘的定时器句柄，拆成子对象只是把它们挪个地方，
+     *  判定处还得一层层解引用。参数个数就是状态位数。
+     */
+    @Suppress("LongParameterList")
     private class Pending(
         @Volatile var longPressAt: Long = 0L,
         @Volatile var doubleWindowAt: Long = 0L,
@@ -93,6 +100,14 @@ internal class GestureDetector(
          * 跨线程 —— 读到陈旧值就是「明明抬手了还判长按」。摘枪是确定的，不依赖那次读。
          */
         @Volatile var longPressRunnable: Runnable? = null,
+        /**
+         * 双击窗口那一枪（`postDelayed` 的那个 Runnable），抬手 / 重置 / 排新枪时摘掉。
+         *
+         * 与 [longPressRunnable] 同一个道理，原来它**没存**（只在到点时读状态），于是
+         *  `reset()` 摘不掉它、也没法判「这一枪属于哪一次按压」—— 迟到的旧窗口会读到后来那次
+         *  按压的 `sawFirstRelease` / `doubleWindowAt`，抢先补一次单击并把标志清掉。
+         */
+        @Volatile var doubleWindowRunnable: Runnable? = null,
     )
 
     private val pendingByKey = ConcurrentHashMap<KeyId, Pending>()
@@ -228,6 +243,9 @@ internal class GestureDetector(
         cancelLongPressShot(id)
         p.repeatRunnable?.let { handler.removeCallbacks(it) }
         p.repeatRunnable = null
+        // 双击窗口那一枪也要摘：它与长按枪一样是「到点才读状态」，留着会在下一次按压期间醒来
+        p.doubleWindowRunnable?.let { handler.removeCallbacks(it) }
+        p.doubleWindowRunnable = null
         p.longPressAt = 0L
         p.doubleWindowAt = 0L
         p.doubleWindowMs = 0L
@@ -335,11 +353,24 @@ internal class GestureDetector(
     ) {
         // 排窗用的窗口长度在排窗这一刻定格，不再到点重读 `doubleClickMs`
         // （那一读会读到用户中途改过的新值，与 `p.doubleWindowAt` 的口径对不上）。
-        val window = pending(id).doubleWindowMs
-        handler.postDelayed(
-            {
+        //
+        // 这一枪属于哪一次按下：与长按枪同一条身份判据（见 [scheduleLongPress] 的 `downAt`）——
+        //  `pressAt` 在 `onKeyDown` 写、`reset` 清。不判的话，迟到的旧窗口会在**后来那次**按压
+        //  期间醒来，读到它的 `sawFirstRelease` / `doubleWindowAt` 而抢先补一次单击并清掉标志，
+        //  真正该补的那次单击（本次按压排的枪）反而落空。
+        val p0 = pending(id)
+        val pressAt = p0.pressAt
+        val window = p0.doubleWindowMs
+        p0.doubleWindowRunnable?.let { handler.removeCallbacks(it) }
+        val shot =
+            Runnable {
                 try {
                     val p = pending(id)
+                    p.doubleWindowRunnable = null
+                    if (p.pressAt != pressAt) {
+                        XLog.d("${id.label}：双击窗口属于上一次按压（已作废），不补单击")
+                        return@Runnable
+                    }
                     // 窗口到了、期间没有第二次按下 → 单击
                     if (p.sawFirstRelease && p.doubleWindowAt != 0L) {
                         // 这一次按压到此为止 —— 把长按那一枪**作废**（清 `longPressAt` 与 `pressAt`）。
@@ -370,9 +401,9 @@ internal class GestureDetector(
                     // 计时器跑在 system_server 主线程上，抛出去就是整机崩
                     XLog.w("双击窗口判定失败（忽略）：${id.label}", e)
                 }
-            },
-            window,
-        )
+            }
+        p0.doubleWindowRunnable = shot
+        handler.postDelayed(shot, window)
     }
 
     /**

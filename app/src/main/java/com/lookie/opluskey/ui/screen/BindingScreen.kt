@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -88,6 +89,8 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PENDING_DEVICE_HINT
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.TILE_TEXT_OPTICAL_SHIFT
 import com.lookie.opluskey.ui.model.TILE_TITLE_MARKER_GAP
 import com.lookie.opluskey.ui.model.TILE_TITLE_MARKER_SIZE
@@ -306,6 +309,9 @@ internal fun SettingsPage.BindingScreen(
                 Modifier
                     .fillMaxSize()
                     .overScrollHorizontal(),
+            // 主开关为关时整页禁用：分段控件 / FAB / 方向键都停了，pager 也得停 ——
+            //  否则还能横滑到下一页，滑完灰着的指示条还会跟着走。判据与那三处同一档（主开关）。
+            userScrollEnabled = enabled,
         ) { page ->
             BindingList(
                 g = gestures[page],
@@ -481,8 +487,7 @@ internal fun SettingsPage.BindingList(
         remember(current) {
             val target =
                 when (current) {
-                    is Action.App -> current.target
-                    is Action.AppWindow -> current.target
+                    is Action.App, is Action.AppWindow -> current.appTarget
                     else -> null
                 }
             target?.substringBefore('/')?.let { appLabelOf(it) }
@@ -588,7 +593,12 @@ internal fun SettingsPage.BindingList(
      * @param anchor 这一格自己那份触点锚点（弹菜单要用它定位）；确认键那条路从 [tileAnchors] 取
      */
     val activate: (ActionCatalog.Spec, PreciseClickState) -> Unit = { spec, anchor ->
-        if (spec.token == ActionCatalog.APP_TILE) {
+        //  被锁住的命令一概不派发（[ActionCatalog.isLocked]，与格子那个 `enabled` 同一判据）：
+        //  格子那边已经不可点、库也不给回调，这里兜的是**确认键**那条路 —— 它自己派发。
+        //  不弹提示：灰着本身就是那句话（要说原因的是「整页禁用」那一档，见 [pick]）。
+        if (ActionCatalog.isLocked(spec)) {
+            XLog.w("按键绑定：${spec.token} 在本机没有落点（已锁住），确认键不派发")
+        } else if (spec.token == ActionCatalog.APP_TILE) {
             if (enabled) {
                 tick()
                 //  不挪焦点圈 —— 与 [select] 同一条规矩：圈只跟随选中态。
@@ -640,6 +650,13 @@ internal fun SettingsPage.BindingList(
     //  这里在 `active` 变 false 的那一帧关掉它，用户看到的就是「翻页即收」。
     LaunchedEffect(active) {
         if (!active) tileMenu = null
+    }
+
+    // 滚动时把入口浮层收掉。锚点是**按压那一点**换算出来的窗口坐标（见 [OpenTileMenu]）：
+    //  行一滚走，那一格就不在锚点处了 —— 菜单留在原地会指着一格已经滚走的内容。
+    //  库那层「点外面关」只认 tap、拖动不算，所以这一口得自己收。
+    LaunchedEffect(scrollState) {
+        snapshotFlow { scrollState.value }.collect { tileMenu = null }
     }
 
 // 方向键 / 确认键自己接管。
@@ -741,6 +758,12 @@ internal fun SettingsPage.BindingList(
             //  —— 两套口径。清单外的组合本来进不了这一页（`deviceSupported=false` 时链路恒不通），
             //  所以这是兜底，不是主闸；带上它参数才不会在「不该写的机器」上落盘。
             //  （`configReadOnly` 由 [write] 单点拦，不在这里重复。）
+            //
+            //  这里**故意比网格格子少判一道 `linkReady`**（网格那边是
+            //  `enabled && linkReady && deviceSupported`，与 [pick] 同一判据）：这张卡写的是
+            //  **参数**（延迟 / 立即触发 / 连续触发 / 间隔），写了就落盘，注入侧恢复后照样生效，
+            //  不需要注入侧回话；网格格子点了要写动作、拿去执行，未就绪时写了也是白写。
+            //  这是有意的不一致，不要再把两边「统一」。
             val rowsEnabled = enabled && deviceSupported
             // 「单击延迟」不跟着「立即触发单击」置灰：两个状态独立 ——
             // 前者管「等多久才判双击」，后者管「双击为无操作时还要不要等」。
@@ -826,12 +849,7 @@ internal fun SettingsPage.BindingList(
             // 「上一段 → 这个标题」之间给一档（与网格行距同值），与下面「自定义命令」那一段同一条规矩。
             // 第一组不加 —— 它前面那一段（按键设置卡）已经自带收尾间距，双击档则是页首、不需要。
             if (groupIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
-            val localizedGroupTitle =
-                when (groupTitle) {
-                    "系统操作" -> I18n.get(Strings.CATALOG_SYSTEM_ACTIONS, groupTitle)
-                    "快捷功能" -> I18n.get(Strings.CATALOG_QUICK_TOOLS, groupTitle)
-                    else -> I18n.get(groupTitle, groupTitle)
-                }
+            val localizedGroupTitle = ActionCatalog.groupTitleLabel(groupTitle)
             SmallTitle(localizedGroupTitle)
 
             // 这一段用一个**内层 Column** 单独带 [PAGE_MARGIN] 横向 padding，
@@ -885,7 +903,13 @@ internal fun SettingsPage.BindingList(
                                         } else {
                                             cellModifier
                                         },
-                                    enabled = enabled,
+                                    //  可用性与 [pick] 同一判据（主开关 + 链路就绪 + 清单命中）：
+                                    //  少判一道就会「亮着、点了被拦」—— 点了只弹一句提示，不如先灰着。
+                                    //  按键设置那张卡**故意**不同（它只吃主开关 + 清单，见 `rowsEnabled`）。
+                                    //  再叠一道「这一条在本机有没有落点」（[ActionCatalog.isLocked]）：
+                                    //  本机 ROM 不在落点档位表里、而本包又不猜时，那几条按下去不会有事发生
+                                    //  ⇒ 置灰、不吃点击（执行侧会跳过它们）。
+                                    enabled = enabled && linkReady && deviceSupported && !ActionCatalog.isLocked(spec),
                                     // 「打开应用」格与入口格都要补一行小字：前者是绑的应用名，
                                     // 入口格那格只写组名，不点开菜单根本看不出绑的是哪一档
                                     subtitle =
@@ -937,7 +961,7 @@ internal fun SettingsPage.BindingList(
                             Icon(
                                 PageIcons.EnterArrow,
                                 contentDescription = null,
-                                modifier = Modifier.size(24.dp),
+                                modifier = Modifier.size(ROW_END_ICON_SIZE),
                                 tint =
                                     if (enabled) {
                                         COUITheme.colorScheme.onSurfaceVariantActions
@@ -965,55 +989,62 @@ internal fun SettingsPage.BindingList(
                     ) {
                         rowIndices.forEach { index ->
                             val spec = specs.getOrNull(index) ?: return@forEach
-                            // 这条命令本身（`cmd:<名字>` 反查）—— 小字与「进编辑」两处都要用
-                            val cmd = commandsByToken[spec.token]
-                            val selected = ActionCatalog.isSelected(spec, current)
-                            // 「进这条命令的编辑页」—— 长按、以及**已选中时再点一次**，共用这一个入口。
-                            //
-                            //  走 `draft.load` 而**不是** FAB 那条 `navigateToCommands` ——
-                            // 后者会先 `draft.reset()`（那是「新增」的入口，见它的注释），
-                            // 这里要的正是「把这条命令灌进表单」，
-                            // 与「自定义命令」页里轻点已保存命令同一个入口。
-                            val openEditor = {
-                                if (cmd != null) {
-                                    tick()
-                                    XLog.w("手势页打开自定义命令编辑：${cmd.name}")
-                                    // 这里直接 `load`、不走 [loadDraft] 那个「先问一句」：
-                                    //  草稿脏了必然还在「自定义命令」页 —— 退出那一页时 [goBack] 已经问过
-                                    //  并 `draft.reset()`；不脏地退出来则草稿本来就等于「没在编辑」
-                                    //  （而且每次走 [navigateToCommands] 进来都会 reset 一次）。
-                                    //  走 `loadDraft` 反而更糟：它会把确认窗挂起，而那个窗画在
-                                    //  「自定义命令」页上、此刻根本没组合 ⇒ 按下去什么都不发生。
-                                    draft.load(cmd)
-                                    navTo(Screen.COMMANDS)
+                            // 每格按 `key(spec.token)` 认身份 —— 与上面内置那一组同一写法。
+                            //  这一段是按**位次**排出来的（`chunked(COLUMNS)` 之后按下标取），
+                            //  而自定义命令会增删、会改名重排：不按 token 认身份，格子里的状态
+                            //  （焦点圈、进出场）就跟着位次挪到下一条命令身上。
+                            key(spec.token) {
+                                // 这条命令本身（`cmd:<名字>` 反查）—— 小字与「进编辑」两处都要用
+                                val cmd = commandsByToken[spec.token]
+                                val selected = ActionCatalog.isSelected(spec, current)
+                                // 「进这条命令的编辑页」—— 长按、以及**已选中时再点一次**，共用这一个入口。
+                                //
+                                //  走 `draft.load` 而**不是** FAB 那条 `navigateToCommands` ——
+                                // 后者会先 `draft.reset()`（那是「新增」的入口，见它的注释），
+                                // 这里要的正是「把这条命令灌进表单」，
+                                // 与「自定义命令」页里轻点已保存命令同一个入口。
+                                val openEditor = {
+                                    if (cmd != null) {
+                                        tick()
+                                        XLog.w("手势页打开自定义命令编辑：${cmd.name}")
+                                        // 这里直接 `load`、不走 [loadDraft] 那个「先问一句」：
+                                        //  草稿脏了必然还在「自定义命令」页 —— 退出那一页时 [goBack] 已经问过
+                                        //  并 `draft.reset()`；不脏地退出来则草稿本来就等于「没在编辑」
+                                        //  （而且每次走 [navigateToCommands] 进来都会 reset 一次）。
+                                        //  走 `loadDraft` 反而更糟：它会把确认窗挂起，而那个窗画在
+                                        //  「自定义命令」页上、此刻根本没组合 ⇒ 按下去什么都不发生。
+                                        draft.load(cmd)
+                                        navTo(Screen.COMMANDS)
+                                    }
                                 }
+                                ActionTile(
+                                    spec = spec,
+                                    icon = icons[spec],
+                                    selected = selected,
+                                    focused = index == focusedIndex,
+                                    focusRequester = focusers[index],
+                                    modifier = Modifier.weight(1f),
+                                    // 与上面内置网格同一判据（见那处注释）。
+                                    enabled = enabled && linkReady && deviceSupported,
+                                    // 标题下面那行小字 = **命令间隔时长**（`stepDelayMs`）。
+                                    // 只有多条命令有这个值 —— 单条只有一步、用不到它
+                                    // （见 `core/model/Command.stepDelayMs`），所以那种格子不画。
+                                    // 文案走 [durationText]：1000ms 以上写成秒。
+                                    subtitle =
+                                        cmd
+                                            ?.takeIf { it.kind == CommandKind.SERIAL }
+                                            ?.let { durationText(it.stepDelayMs) },
+                                    //  行尾那支箭头现在只给这一组格子 —— 内置那几个入口格
+                                    // （打开应用 / 响铃状态 / 媒体控制）不画箭头（见上面内置网格那段）。
+                                    enterArrow = true,
+                                    // 长按与「已选中时再点一次」同一个去处（上面那个 `openEditor`）。
+                                    // 长按之后那一下抬手由库的 `combinedClickable` 吞掉（不会再触发点击）。
+                                    onLongClick = openEditor,
+                                    // **已经选中的再点一次 = 「我要改它」**，不是「重新绑一遍」，
+                                    // 所以走编辑；没选中时才是「选中绑定」。
+                                    onClick = { if (selected) openEditor() else select(spec) },
+                                )
                             }
-                            ActionTile(
-                                spec = spec,
-                                icon = icons[spec],
-                                selected = selected,
-                                focused = index == focusedIndex,
-                                focusRequester = focusers[index],
-                                modifier = Modifier.weight(1f),
-                                enabled = enabled,
-                                // 标题下面那行小字 = **命令间隔时长**（`stepDelayMs`）。
-                                // 只有多条命令有这个值 —— 单条只有一步、用不到它
-                                // （见 `core/model/Command.stepDelayMs`），所以那种格子不画。
-                                // 文案走 [durationText]：1000ms 以上写成秒。
-                                subtitle =
-                                    cmd
-                                        ?.takeIf { it.kind == CommandKind.SERIAL }
-                                        ?.let { durationText(it.stepDelayMs) },
-                                //  行尾那支箭头现在只给这一组格子 —— 内置那几个入口格
-                                // （打开应用 / 响铃状态 / 媒体控制）不画箭头（见上面内置网格那段）。
-                                enterArrow = true,
-                                // 长按与「已选中时再点一次」同一个去处（上面那个 `openEditor`）。
-                                // 长按之后那一下抬手由库的 `combinedClickable` 吞掉（不会再触发点击）。
-                                onLongClick = openEditor,
-                                // **已经选中的再点一次 = 「我要改它」**，不是「重新绑一遍」，
-                                // 所以走编辑；没选中时才是「选中绑定」。
-                                onClick = { if (selected) openEditor() else select(spec) },
-                            )
                         }
                         repeat(COLUMNS - rowIndices.size) {
                             Spacer(Modifier.weight(1f))
@@ -1164,7 +1195,7 @@ internal fun SettingsPage.LongRepeatCard(
  * 三种指示器在同一位置三选一（见 [ActionTile] 的 `endActions`：两种入口字形与单选圈），
  * 尺寸不一致会让格子里的内容跟着挪。
  */
-private val ENTRY_INDICATOR_SIZE = 24.dp
+private val ENTRY_INDICATOR_SIZE = ROW_END_ICON_SIZE
 
 /**
  * 动作网格里的一格。
@@ -1285,7 +1316,7 @@ internal fun SettingsPage.ActionTile(
                     startAction = {
                         // 图标列只有这一枚 22dp（尺寸沿用全页的 22dp 纪律，见 ActionIcons 的注释）。
                         //  入口格的行首随档位变，见网格里 `icon = boundMode ?: spec` 那一句。
-                        icon?.let { Icon(it, null, Modifier.size(22.dp)) }
+                        icon?.let { Icon(it, null, Modifier.size(ROW_ICON_SIZE)) }
                     },
                     endActions = {
                         Row(verticalAlignment = Alignment.CenterVertically) {

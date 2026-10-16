@@ -25,6 +25,7 @@ jobs:
       version_code: ${{ steps.dist.outputs.version_code }}
       build_id: ${{ steps.dist.outputs.build_id }}
       tag: ${{ steps.dist.outputs.tag }}
+      signed: ${{ steps.sign.outputs.signed }}
 
     steps:
       - name: 检出代码
@@ -47,8 +48,11 @@ jobs:
       - name: 配置 Gradle 缓存
         uses: gradle/actions/setup-gradle@v6
 
-      # 没配签名密钥也能跑通：release 自动退回 debug 签名，那种包不可发布。
+      # 没配签名密钥时**只出 debug**：release 的收款码与名单是**封存**的（见 `app/build.gradle.kts`
+      # 的 `SealReleaseAssets`），密钥由签名证书派生、且没有明文回退 —— 拿不到 keystore 那一步
+      # 必然失败。与其让构建去撞墙，不如这里就说清「这一轮不出 release」。
       - name: 写入正式签名
+        id: sign
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -56,7 +60,8 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -z "${KEYSTORE_BASE64:-}" ]; then
-            echo "::notice title=未配置签名密钥::release 包退回 debug 签名，只能本机测试、不可发布"
+            echo "::notice title=未配置签名密钥::只构建 debug；release 需要正式签名（封存层没有明文回退）"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.jks
@@ -66,6 +71,7 @@ jobs:
             echo "keyAlias=${KEY_ALIAS}"
             echo "keyPassword=${KEY_PASSWORD}"
           } > keystore.properties
+          echo "signed=true" >> "$GITHUB_OUTPUT"
 
       # 静态检查放在出包**之前**：格式 / 静态检查 / Android Lint 三道闸不过就别往下走，
       # 不必等到打完两个包才发现少一个空格。口径与本地同一条命令（AGENTS.md 二、1.2）。
@@ -73,7 +79,12 @@ jobs:
         run: ./gradlew spotlessCheck detekt lintDebug
 
       - name: 构建 debug 与 release
-        run: ./gradlew assembleDebug assembleRelease
+        run: |
+          if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
+            ./gradlew assembleDebug assembleRelease
+          else
+            ./gradlew assembleDebug
+          fi
 
       # 三个版本值一律从源码里正则抓，抓不到就 fail —— 绝不兜底。
       # 原先的兜底（unknown / 0.0.0 / 0）会让 job 照常跑完，再发出一个 tag 叫 `0-0.0.0` 的
@@ -102,7 +113,10 @@ jobs:
           fi
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk     "dist/oplus-key-${BUILD_ID}-debug.apk"
-          cp app/build/outputs/apk/release/app-release.apk "dist/oplus-key-${BUILD_ID}-release.apk"
+          # 没签名那一轮没有 release 产物，别在这儿报错（封存那一步已经挡在前面了）
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk "dist/oplus-key-${BUILD_ID}-release.apk"
+          fi
           echo "build_id=${BUILD_ID}" >> "$GITHUB_OUTPUT"
           echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
           echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
@@ -193,6 +207,43 @@ jobs:
             else
               bad "$apk 的 module.prop 缺 staticScope=true（作用域没写死 ⇒ 由用户在管理器里选）"
             fi
+
+            # (8) scope.list 里的宿主包名必须与 `core/model/HostApp.kt` 的 `PACKAGE` 一致。
+            #    scope.list 是资源文件，读不到 Kotlin 常量（那边用 `HostApp` 一处定义、代码全引它），
+            #    所以只能在这里对一次账：两处不一致时模块装了、启用了、状态全绿，
+            #    而设置页那一段**一行日志都没有**（一、9），从日志上看不出漏在哪一层。
+            hostapp="app/src/main/java/com/lookie/opluskey/core/model/HostApp.kt"
+            scope_host=$(unzip -p "$apk" META-INF/xposed/scope.list | sed -n '2p' | tr -d '\r')
+            if [ -f "$hostapp" ]; then
+              src_host=$(grep -oE 'const val PACKAGE = "[^"]+"' "$hostapp" | head -1 | sed 's/.*"\(.*\)"/\1/')
+              if [ -z "$src_host" ]; then
+                bad "从 $hostapp 里没读到 const val PACKAGE（这条校验会失效）"
+              elif [ "$scope_host" = "$src_host" ]; then
+                echo "  ok  scope.list 的宿主包名 = HostApp.PACKAGE（$src_host）"
+              else
+                bad "$apk 的 scope.list 第 2 行 '$scope_host' ≠ HostApp.PACKAGE '$src_host'"
+              fi
+            else
+              bad "找不到 $hostapp（包名挪过？这条校验会失效）"
+            fi
+
+            # (9) 模块自己的包名也是两处硬编码：`core/model/ModuleInfo.PACKAGE` 与 `applicationId`。
+            #    写错的表现是「按包名查自己的 APK」落空 —— 版本行空着、字典退回键名（宿主侧文案
+            #    显示成 `catalog.flashlight` 这种），而两处互不相识、编译期不会报错。
+            mi="app/src/main/java/com/lookie/opluskey/core/model/ModuleInfo.kt"
+            appid=$(grep -oE 'applicationId = "[^"]+"' app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)"/\1/')
+            if [ -f "$mi" ]; then
+              mi_pkg=$(grep -oE 'const val PACKAGE = "[^"]+"' "$mi" | head -1 | sed 's/.*"\(.*\)"/\1/')
+              if [ -z "$appid" ] || [ -z "$mi_pkg" ]; then
+                bad "没读到 applicationId（'$appid'）或 ModuleInfo.PACKAGE（'$mi_pkg'），这条校验会失效"
+              elif [ "$appid" = "$mi_pkg" ]; then
+                echo "  ok  ModuleInfo.PACKAGE = applicationId（$appid）"
+              else
+                bad "ModuleInfo.PACKAGE '$mi_pkg' ≠ applicationId '$appid'"
+              fi
+            else
+              bad "找不到 $mi（包名挪过？这条校验会失效）"
+            fi
           done
 
           # (5) 注入侧不得引用 androidx / COUI / 图标库 / 界面层 —— 那些类在 system_server 里
@@ -238,6 +289,66 @@ jobs:
             bad "找不到 $km（包名挪过？这条校验会失效）"
           fi
 
+          # (6) 字典覆盖：`Strings.kt` 里的每个键必须在**两份**字典里各有一条，且两份的键集合相同。
+          #    为什么这条要卡在 CI：界面上的兜底是「查不到就显示键本身」（见 `I18n.get` 与
+          #    `ActionCatalog.Spec.label`）—— 漏一条键，界面上就是一行 `catalog.xxx`，
+          #    只在切到那种语言时才看得见；两份字典不一致时，另一种语言下露键名。
+          strings_kt="app/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt"
+          zh="app/src/main/assets/locales/zh-CN.json"
+          en="app/src/main/assets/locales/en.json"
+          missing_file=""
+          for f in "$strings_kt" "$zh" "$en"; do
+            [ -f "$f" ] || missing_file="$missing_file $f"
+          done
+          if [ -n "$missing_file" ]; then
+            bad "找不到字典文件：$missing_file（路径挪过？这条校验会失效）"
+          else
+            # 键的形态是 `小写字母 / 数字 / 点 / 下划线`，所以这一条正则只会抽到键，不会抽到 KDoc 里的散文
+            k_src=$(grep -oE '"[a-z0-9_.]+"' "$strings_kt" | tr -d '"' | sort -u)
+            k_zh=$(grep -oE '"[a-z0-9_.]+":' "$zh" | tr -d '":' | sort -u)
+            k_en=$(grep -oE '"[a-z0-9_.]+":' "$en" | tr -d '":' | sort -u)
+            miss_zh=$(comm -23 <(printf '%s\n' "$k_src") <(printf '%s\n' "$k_zh") || true)
+            miss_en=$(comm -23 <(printf '%s\n' "$k_src") <(printf '%s\n' "$k_en") || true)
+            extra_zh=$(comm -13 <(printf '%s\n' "$k_src") <(printf '%s\n' "$k_zh") || true)
+            if [ -n "$miss_zh" ] || [ -n "$miss_en" ] || [ -n "$extra_zh" ]; then
+              [ -n "$miss_zh" ] && printf 'zh-CN.json 缺键：\n%s\n' "$miss_zh"
+              [ -n "$miss_en" ] && printf 'en.json 缺键：\n%s\n' "$miss_en"
+              [ -n "$extra_zh" ] && printf '字典里有而 Strings.kt 没有的键：\n%s\n' "$extra_zh"
+              bad "字典与 Strings.kt 对不上（界面会直接显示键名）"
+            else
+              echo "  ok  字典覆盖：Strings.kt / zh-CN.json / en.json 三边键一致（$(printf '%s\n' "$k_src" | wc -l | tr -d ' ') 条）"
+            fi
+          fi
+
+          # (10) 封存：release 包里**不许**出现明文收款码 / 名单，且必须有容器；debug 反过来
+          #    （它的图就是明文，靠 `app/seal` 那条 assets 目录进的包）。
+          #    守的是「封存任务没跑起来 / 被绕过」——那种包照样能出、能装，只有把包解开才看得出来。
+          for apk in dist/*-release.apk; do
+            [ -f "$apk" ] || continue
+            echo "校验封存 $apk"
+            listing=$(unzip -l "$apk")
+            if printf '%s' "$listing" | grep -qE 'assets/donate/|assets/donors\.json'; then
+              printf '%s\n' "$listing" | grep -E 'assets/donate/|assets/donors\.json'
+              bad "$apk 里有明文收款码 / 名单 —— 封存没生效"
+            else
+              echo "  ok  release 包里没有明文收款码 / 名单"
+            fi
+            if printf '%s' "$listing" | grep -q 'assets/sealed.bin'; then
+              echo "  ok  release 包里有 assets/sealed.bin"
+            else
+              bad "$apk 缺 assets/sealed.bin（封存容器没生成）"
+            fi
+          done
+
+          for apk in dist/*-debug.apk; do
+            [ -f "$apk" ] || continue
+            if unzip -l "$apk" | grep -q 'assets/donate/wechat.png'; then
+              echo "  ok  debug 包里是明文收款码（app/seal 那条资产目录接上了）"
+            else
+              bad "$apk 里没有 assets/donate/wechat.png —— debug 的明文资产没接上"
+            fi
+          done
+
           if [ "$fail" != "0" ]; then
             echo "::error::验收底线未通过 —— 见上面的 ::error:: 条目"
             exit 1
@@ -252,6 +363,8 @@ jobs:
           if-no-files-found: error
 
       - name: 上传 release 产物
+        # 没签名那一轮压根没有 release 包（见上面 `signed` 那条），这时上传会空手报错
+        if: steps.sign.outputs.signed == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: oplus-key-release-${{ steps.dist.outputs.build_id }}
@@ -265,7 +378,9 @@ jobs:
     #    也会走这一步，而 tag 是由 `versionCode-versionName` 算出来的 —— 版本号没涨时
     #    每次都覆盖同一个 tag（当前是 `1-1.0.0`），半成品就这么推给了用户。
     #    tag 由人来打（`v*` 或 `<versionCode>-<versionName>`，见上面的 on.tags）。
-    if: startsWith(github.ref, 'refs/tags/')
+    #  也要 `signed`：没配签名密钥那一轮压根没有 release 包（见 build job 的 `写入正式签名`），
+    #    没有产物就没得发 —— 与其让下载那几步空手报错，不如整个 job 跳过。
+    if: startsWith(github.ref, 'refs/tags/') && needs.build.outputs.signed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

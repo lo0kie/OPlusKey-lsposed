@@ -56,10 +56,10 @@ internal data class LinkCheck(
  */
 internal val deviceSupport: DeviceSupport.Support =
     DeviceSupport.check(
-        android.os.Build.MODEL,
+        DeviceSupport.currentModel,
         android.os.Build.VERSION.RELEASE,
-        // ROM 版本从 `Build.DISPLAY` 取（`ro.build.version.oplusrom` 是 hidden 接口，界面进程读不到）
-        DeviceSupport.romSeriesOf(android.os.Build.DISPLAY),
+        // ROM 版本取法与判定同源（见 DeviceSupport.currentRomSeries）
+        DeviceSupport.currentRomSeries,
     )
 
 /**

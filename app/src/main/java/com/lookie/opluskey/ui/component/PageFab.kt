@@ -32,6 +32,8 @@ import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
+import com.lookie.opluskey.ui.model.edgeSlideIn
+import com.lookie.opluskey.ui.model.edgeSlideOut
 import com.lookie.opluskey.ui.screen.CommandScreen
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -105,14 +107,9 @@ internal fun BoxScope.PageCornerFab(
             Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = PAGE_MARGIN * 2, bottom = PAGE_BOTTOM_PADDING * 2),
-        enter =
-            slideInVertically(
-                animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
-            ) { it + slidePx } + fadeIn(tween(180, easing = LinearOutSlowInEasing)),
-        exit =
-            slideOutVertically(
-                animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
-            ) { it + slidePx } + fadeOut(tween(140, easing = FastOutLinearInEasing)),
+        // 与底部工具栏同一份规格（见 [edgeSlideIn]）：差别只在多滑的距离
+        enter = edgeSlideIn(slidePx),
+        exit = edgeSlideOut(slidePx),
     ) { content() }
 }
 

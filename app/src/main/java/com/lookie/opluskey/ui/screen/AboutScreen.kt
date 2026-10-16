@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.screen
 
+import android.content.Context
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
@@ -24,30 +25,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.DeviceSupport
+import com.lookie.opluskey.core.seal.SEAL_ENABLED
+import com.lookie.opluskey.core.seal.Seal
+import com.lookie.opluskey.core.seal.Verdict
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.component.MenuEntry
 import com.lookie.opluskey.ui.component.MenuPopup
 import com.lookie.opluskey.ui.component.currentHeaderHeight
 import com.lookie.opluskey.ui.model.ABOUT_ROWS
 import com.lookie.opluskey.ui.model.AUTHOR
+import com.lookie.opluskey.ui.model.AuthorTarget
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_ACCEL
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
+import com.lookie.opluskey.ui.model.FeedbackTarget
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
-import com.lookie.opluskey.ui.model.ISSUE_URL
 import com.lookie.opluskey.ui.model.MORE_CONFIG_ROWS
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.PROFILE_URL
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.REPO_URL
+import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.languageLabel
@@ -65,7 +68,6 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -81,6 +83,11 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
     //  哪一个」，「什么时候出的」正是它要说的事。首页那条副标题走 [appVersionLabel]，
     //  仍按构建类型决定带不带。
     val version = remember { appVersionText() }
+    // 「签名」那一行：也要跨进程问 PMS，同样进页算一次。
+    //  判据读的是**本包**（`ModuleInfo.PACKAGE`）而不是当前进程所属的宿主，见 `core/seal/Seal`。
+    val context = LocalContext.current
+    val signature = remember(context) { signatureSummary(context) }
+    val signatureOfficial = remember(context) { Seal.verdict(context) == Verdict.OFFICIAL }
     Column(
         Modifier
             .fillMaxSize()
@@ -97,6 +104,14 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         val langClick = remember { PreciseClickState() }
         var showLangMenu by remember { mutableStateOf(false) }
         val currentLang = AppLanguage.fromCode(config.value.global.language)
+
+        // 「反馈问题」那一行：锚点 + 菜单开关（三个反馈渠道）
+        val feedbackClick = remember { PreciseClickState() }
+        var showFeedbackMenu by remember { mutableStateOf(false) }
+
+        // 「作者」那一行：锚点 + 菜单开关（GitHub / 酷安两个去处，见 [AuthorTarget]）
+        val authorClick = remember { PreciseClickState() }
+        var showAuthorMenu by remember { mutableStateOf(false) }
 
         // 「运行状态」（内部叫链路自检）—— 模块要正常工作，得**几段**都通（宿主侧的服务、
         // 注入侧的接管点、配置送达、以及宿主真读到配置），外加一段只能靠实践拿到的证据。
@@ -255,6 +270,57 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         }
 
         MenuPopup(
+            show = showFeedbackMenu,
+            preciseClick = feedbackClick,
+            onDismiss = { showFeedbackMenu = false },
+            entries =
+                buildList {
+                    // 三条**都列出来**（未配地址的档置灰、点了不派发，见 [MenuEntry.Row.enabled]）
+                    //  —— 「有这个渠道、只是还没接上」比「菜单里少一项」说得清。
+                    FeedbackTarget.entries.forEachIndexed { index, target ->
+                        if (index > 0) add(MenuEntry.RowLine)
+                        add(
+                            MenuEntry.Row(
+                                title = target.label,
+                                icon = target.icon,
+                                // 行尾要那颗链接字形 —— 得**自己声明** `submenu` 把那一格打开
+                                //  （本组件不替调用点猜，见 [MenuEntry.Row.submenu] 的说明）
+                                submenu = true,
+                                trailingIcon = PageIcons.Link,
+                            ) {
+                                showFeedbackMenu = false
+                                openUrl(target.url)
+                            },
+                        )
+                    }
+                },
+        )
+
+        MenuPopup(
+            show = showAuthorMenu,
+            preciseClick = authorClick,
+            onDismiss = { showAuthorMenu = false },
+            entries =
+                buildList {
+                    // 两处**一律可点** —— 菜单里不留灰行，与「反馈问题」那三档同一条口径
+                    AuthorTarget.entries.forEachIndexed { index, target ->
+                        if (index > 0) add(MenuEntry.RowLine)
+                        add(
+                            MenuEntry.Row(
+                                title = target.label,
+                                icon = target.icon,
+                                submenu = true,
+                                trailingIcon = PageIcons.Link,
+                            ) {
+                                showAuthorMenu = false
+                                openUrl(target.url)
+                            },
+                        )
+                    }
+                },
+        )
+
+        MenuPopup(
             show = showLangMenu,
             preciseClick = langClick,
             onDismiss = { showLangMenu = false },
@@ -330,66 +396,59 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
             )
             HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
             BasicComponent(
-                title = I18n.get(Strings.MORE_ABOUT_AUTHOR, "作者"),
-                summary = AUTHOR,
-                onClick = {
-                    tick()
-                    openUrl(PROFILE_URL)
+                title = I18n.get(Strings.MORE_ABOUT_SIGNATURE, "签名"),
+                // 结论 + 指纹两行：结论是「是不是官方包」，指纹是拿去和发布页对账的那串
+                //  （见 [signatureSummary]）。要跨进程问 PMS，所以进页算一次。
+                summary = signature,
+                startAction = {
+                    Icon(
+                        PageIcons.Signature,
+                        contentDescription = null,
+                        // 与「关于本机」同一套色：官方用常规色、「不是这包」用 error
+                        tint =
+                            if (signatureOfficial) {
+                                COUITheme.colorScheme.onSurfaceContainer
+                            } else {
+                                COUITheme.colorScheme.error
+                            },
+                    )
                 },
-                startAction = { Icon(PageIcons.UserScreen, null) },
-                endActions = { RowEndIcon(PageIcons.Link) },
                 cardListPosition = cardListPositionOf(2, ABOUT_ROWS),
             )
             HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-            //  摘要是一条 URL（长），所以不用库那个 `summary` 槽 —— 它那个 `Text` 不限行，
-            //  URL 会把卡片折成两行顶高。改成自己画：单行 + 超出省略，见 [TitleSummary]。
             BasicComponent(
+                title = I18n.get(Strings.MORE_ABOUT_AUTHOR, "作者"),
+                summary = AUTHOR,
+                // 这一行点开的是**一层菜单**（GitHub / 酷安两个去处），不直接跳外部 ——
+                //  与「反馈问题」那一行同一件（见 [AuthorTarget]）。
                 onClick = {
                     tick()
-                    openUrl(ISSUE_URL)
+                    showAuthorMenu = true
+                },
+                startAction = { Icon(PageIcons.UserScreen, null) },
+                // 行尾给选择器字形（不是链接符号）：链接符号留给菜单里那两行。
+                endActions = { RowEndIcon(PageIcons.Selector) },
+                cardListPosition = cardListPositionOf(3, ABOUT_ROWS),
+                modifier = Modifier.preciseClickAnchor(authorClick),
+            )
+            HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+            BasicComponent(
+                title = I18n.get(Strings.MORE_ABOUT_FEEDBACK, "反馈问题"),
+                // 不给副标题：渠道名已经在菜单里逐条列着（三个去处各一行），
+                //  再在这儿串一遍只是重复占一行高。
+                onClick = {
+                    tick()
+                    showFeedbackMenu = true
                 },
                 startAction = { Icon(PageIcons.Bug, null) },
-                endActions = { RowEndIcon(PageIcons.Link) },
-                cardListPosition = cardListPositionOf(3, ABOUT_ROWS),
-            ) {
-                TitleSummary(I18n.get(Strings.MORE_ABOUT_FEEDBACK, "反馈问题"), ISSUE_URL)
-            }
+                // 行尾给选择器字形（不是链接符号）：这一行点开的是**一层菜单**，
+                //  与「语言」那一行同一件（链接符号留给菜单里那三行）。
+                endActions = { RowEndIcon(PageIcons.Selector) },
+                cardListPosition = cardListPositionOf(4, ABOUT_ROWS),
+                modifier = Modifier.preciseClickAnchor(feedbackClick),
+            )
         }
     }
-}
-
-/**
- * 「关于」卡里「反馈问题」那一行的标题与摘要 —— **单行 + 超出省略**。
- *
- *  为什么不用库的 `summary` 槽：那一槽的 `Text` **不限行**（`Component.kt` 里没给 `maxLines`），
- *  而这一行的摘要是一条 URL，长起来会折成两行、把卡片顶高。
- *  度量照库那一份抄：标题 `headline1` + Medium + `onBackground`、摘要 `body2` +
- *  `onSurfaceVariantSummary`、与标题隔 2dp（库那边是 private 的 `MarginBetweenLine`）。
- *
- *  两个 `Text` 直接摆进调用点的 `Column` —— composable 函数不引入布局节点，所以它们与库自己
- *  画的那两行是同一层。
- */
-@Composable
-private fun TitleSummary(
-    title: String,
-    summary: String,
-) {
-    Text(
-        text = title,
-        style = COUITheme.textStyles.headline1,
-        fontWeight = FontWeight.Medium,
-        color = COUITheme.colorScheme.onBackground,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-    Text(
-        text = summary,
-        modifier = Modifier.padding(top = 2.dp),
-        style = COUITheme.textStyles.body2,
-        color = COUITheme.colorScheme.onSurfaceVariantSummary,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
 }
 
 /**
@@ -401,9 +460,9 @@ private fun TitleSummary(
  *  只读的行（适配清单、运行状态、版本那一行）一律不给。
  *
  *  两种例外（字形见 [icon]）：
- *   · 「语言」那一行给 [PageIcons.Selector]：它点开的是**一层菜单**，选择器字形比右箭头更贴
- *     「点了要选点什么」；
- *   · 「关于」卡那三行（作者 / 查看地址 / 反馈问题）给 [PageIcons.Link]：它们点了都是**跳出去**
+ *   · 「语言」与「反馈问题」那两行给 [PageIcons.Selector]：它们点开的都是**一层菜单**，
+ *     选择器字形比右箭头更贴「点了要选点什么」；
+ *   · 「关于」卡里「版本 / 作者」那两行给 [PageIcons.Link]：它们点了都是**跳出去**
  *     （开外部链接），链接字形比箭头具体。
  *
  *  尺寸与取色照「按键绑定」页那处（24dp、`onSurfaceVariantActions`）：行尾图标是同一个东西，
@@ -416,7 +475,7 @@ private fun RowEndIcon(icon: ImageVector = PageIcons.EnterArrow) {
     Icon(
         icon,
         contentDescription = null,
-        modifier = Modifier.size(24.dp),
+        modifier = Modifier.size(ROW_END_ICON_SIZE),
         tint = COUITheme.colorScheme.onSurfaceVariantActions,
     )
 }
@@ -424,7 +483,7 @@ private fun RowEndIcon(icon: ImageVector = PageIcons.EnterArrow) {
 /**
  * 「关于」卡里本机那一行的主标题 —— 机型号与代号都摆出来。
  *
- *  清单里那台机器用清单上那份名字（自带代号，「一加 15（PLK110）」）；不在清单里就只有代号，
+ *  清单里那台机器用清单上那份名字（自带代号，「OnePlus 15（PLK110）」）；不在清单里就只有代号，
  *  毕竟它的名字我们也不知道。代号都读不出来时给空串（标题不画）—— 读不出来是「没读到」、
  *  不是结论，副标题那句结论照常给。
  */
@@ -442,3 +501,38 @@ private fun adaptVerdict(support: DeviceSupport.Support): String =
         DeviceSupport.Support.PENDING -> I18n.get(Strings.ADAPTATION_PENDING, "等待适配")
         DeviceSupport.Support.UNSUPPORTED -> I18n.get(Strings.ADAPTATION_UNSUPPORTED, "不在适配清单")
     }
+
+/**
+ * 「关于」卡里「签名」那一行的摘要 —— 结论一行 + 指纹一行。
+ *
+ *  为什么要有这一行：封存那一层（`core/seal/Seal`）能挡住「换图重打包」，但**挡不住**
+ *  「把比对与派生一起 patch 掉」的人；而**签名指纹他改不了** —— 改包必然重签，指纹就变。
+ *  所以「一眼分真假」这件事靠的是这一行：用户拿它与发布页上那串对一遍即可。
+ *
+ *  为什么分三档说而不是「是 / 不是」：读不到签名（PMS 拒绝 / 包不在）既不是「官方」也不是
+ *  「被改过」，混进任何一边都会误导（见 [Verdict]）。
+ */
+private fun signatureSummary(context: Context): String {
+    val fingerprint = Seal.ownFingerprint(context) ?: return I18n.get(Strings.MORE_SIGNATURE_UNKNOWN, "读不到本包签名")
+    val verdict =
+        when (Seal.verdict(context)) {
+            Verdict.UNOFFICIAL -> {
+                I18n.get(Strings.MORE_SIGNATURE_UNOFFICIAL, "非官方版本（签名与本包不符）")
+            }
+
+            Verdict.UNKNOWN -> {
+                I18n.get(Strings.MORE_SIGNATURE_UNKNOWN, "读不到本包签名")
+            }
+
+            // debug 包的结论也是 OFFICIAL，但那一侧**根本没校验**（`SealPin` 那份里 SEAL_ENABLED=false），
+            //  措辞必须与 release 分开 —— 否则调试包看起来像「已验过的正版」。
+            Verdict.OFFICIAL -> {
+                if (SEAL_ENABLED) {
+                    I18n.get(Strings.MORE_SIGNATURE_OFFICIAL, "官方正版")
+                } else {
+                    I18n.get(Strings.MORE_SIGNATURE_DEBUG, "调试版本（不校验签名）")
+                }
+            }
+        }
+    return "$verdict\n$fingerprint"
+}

@@ -30,7 +30,7 @@ internal fun actionNoticeText(
 
         is Action.AppWindow -> I18n.format(Strings.COMMON_OPEN_MINI_WINDOW_FORMAT, appLabel(context, action.target))
 
-        else -> ActionCatalog.specOf(action)?.title ?: action.token
+        else -> ActionCatalog.specOf(action)?.label ?: action.token
     }
 
 /** 包名 → 应用名；取不到原样回包名（`app:` 的目标可能写成 `包名/Activity`，只取前半段）。 */

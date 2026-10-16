@@ -2,7 +2,11 @@ package com.lookie.opluskey.ui.model
 
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.KsuCompat
+import com.lookie.opluskey.core.model.RomProfile
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
@@ -23,6 +27,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple2
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple3
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple4
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple5
+import io.github.lyxnx.compose.ui.tablericons.outline.BrandAlipay
+import io.github.lyxnx.compose.ui.tablericons.outline.BrandAppstore
+import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
+import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
+import io.github.lyxnx.compose.ui.tablericons.outline.BrandTelegram
+import io.github.lyxnx.compose.ui.tablericons.outline.BrandWechat
 import io.github.lyxnx.compose.ui.tablericons.outline.BrowserPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Bug
 import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
@@ -43,9 +53,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
-import io.github.lyxnx.compose.ui.tablericons.outline.EyeOff
 import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowRight
+import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
@@ -58,9 +68,11 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
 import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodEmpty
+import io.github.lyxnx.compose.ui.tablericons.outline.MoodHeart
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
 import io.github.lyxnx.compose.ui.tablericons.outline.Music
 import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
+import io.github.lyxnx.compose.ui.tablericons.outline.Notes
 import io.github.lyxnx.compose.ui.tablericons.outline.Notification
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
@@ -86,6 +98,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.TextRecognition
 import io.github.lyxnx.compose.ui.tablericons.outline.Tooltip
 import io.github.lyxnx.compose.ui.tablericons.outline.Trash
 import io.github.lyxnx.compose.ui.tablericons.outline.UserScreen
+import io.github.lyxnx.compose.ui.tablericons.outline.UsersGroup
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume4
@@ -95,152 +108,152 @@ import io.github.lyxnx.compose.ui.tablericons.outline.World
 /** 动作 → 图标的映射（列表行首那个图标）。 */
 internal fun actionIcon(token: String): ImageVector =
     when (token) {
-        "none" -> {
+        Action.NONE -> {
             TablerIcons.Outline.Ban
         }
 
         // 全项目只用 Tabler 一支笔，不混图标库
-        "flashlight" -> {
+        Action.FLASHLIGHT -> {
             TablerIcons.Outline.Bulb
         }
 
         // keyevent 一律是数字形态
-        "keyevent:26" -> {
+        Action.keyToken(KeyId.KEYCODE_POWER) -> {
             TablerIcons.Outline.Power
         }
 
         // 电源键（⏻）
         // 与「电源键」必须不同字形：同样一颗 ⏻ 摆在一起分不出按下的那个是按键还是菜单。
         // 「电源菜单」= 弹出关机 / 重启那一层，用「滑杆 + 闪电」。
-        "power:menu" -> {
+        Action.POWER_MENU -> {
             TablerIcons.Outline.AdjustmentsBolt
         }
 
         // 系统侧键场景表里的三档
-        "oplus:flash_memory" -> {
+        Action.OPLUS_PREFIX + RomProfile.NAME_FLASH_MEMORY -> {
             TablerIcons.Outline.Pencil
         }
 
         // 一键闪记
-        "oplus:no_disturb" -> {
+        Action.OPLUS_PREFIX + RomProfile.NAME_NO_DISTURB -> {
             TablerIcons.Outline.Moon
         }
 
         // 免打扰（月亮：勿扰/夜间的通用读法）
-        "oplus:recording" -> {
+        Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING -> {
             TablerIcons.Outline.Microphone
         }
 
         // 录音
-        "keyevent:164" -> {
+        ActionCatalog.RINGER_TILE -> {
             TablerIcons.Outline.Bell
         }
 
         // 响铃状态（那一格；菜单里的「循环」见 [specIcon]）
-        "keyevent:3" -> {
+        Action.keyToken(KeyId.KEYCODE_HOME) -> {
             TablerIcons.Outline.Home
         }
 
         // Home
-        "keyevent:4" -> {
+        Action.keyToken(KeyId.KEYCODE_BACK) -> {
             TablerIcons.Outline.ArrowBackUp
         }
 
         // 返回
-        "keyevent:187" -> {
+        Action.keyToken(KeyId.KEYCODE_APP_SWITCH) -> {
             TablerIcons.Outline.Cards
         }
 
         // 最近任务
-        "keyevent:83" -> {
+        Action.keyToken(KeyId.KEYCODE_NOTIFICATION) -> {
             TablerIcons.Outline.Notification
         }
 
         // 通知中心（改名不改字形）
         // 控制中心（`panel:control_center`）—— 用「⌘」那颗：它是系统里「控制」那一类的通用读法
-        "panel:${Action.Panel.CONTROL_CENTER}" -> {
+        ActionCatalog.PANEL_CONTROL -> {
             TablerIcons.Outline.Command
         }
 
         // 媒体控制菜单的五条。**格子**那枚不走这里 —— 它跟首行共用同一串 token，由 [specIcon]
         // 按 spec 认领成音符（那是「一类东西」），这里的开关键说的是「那一个具体取值」。
-        "keyevent:85" -> {
+        ActionCatalog.MEDIA_TILE -> {
             TablerIcons.Outline.Switch3
         }
 
         // 播放 / 暂停（交给系统按当前状态翻面）
-        "keyevent:126" -> {
+        Action.keyToken(KeyId.KEYCODE_MEDIA_PLAY) -> {
             TablerIcons.Outline.PlayerPlay
         }
 
         // 播放
-        "keyevent:127" -> {
+        Action.keyToken(KeyId.KEYCODE_MEDIA_PAUSE) -> {
             TablerIcons.Outline.PlayerStop
         }
 
         // 暂停
-        "keyevent:88" -> {
+        Action.keyToken(KeyId.KEYCODE_MEDIA_PREVIOUS) -> {
             TablerIcons.Outline.PlayerTrackPrev
         }
 
         // 上一首
-        "keyevent:87" -> {
+        Action.keyToken(KeyId.KEYCODE_MEDIA_NEXT) -> {
             TablerIcons.Outline.PlayerTrackNext
         }
 
         // 下一首
-        "keyevent:24" -> {
+        Action.keyToken(KeyId.KEYCODE_VOLUME_UP) -> {
             TablerIcons.Outline.Volume
         }
 
         // 音量 +（两条声波）
-        "keyevent:25" -> {
+        Action.keyToken(KeyId.KEYCODE_VOLUME_DOWN) -> {
             TablerIcons.Outline.Volume4
         }
 
         // 音量 −
         // 把前台应用收成小窗 —— 展开档用「窗口 + 底部块」（`app-window-bottom`）
-        "zoom:mini" -> {
+        Action.ZOOM_MINI -> {
             TablerIcons.Outline.AppWindowBottom
         }
 
         // 收起档（右上角一条）—— 用画中画那颗（画面挂在**顶部**），与展开档一眼分得开
-        "zoom:mini:collapse" -> {
+        Action.ZOOM_MINI_COLLAPSE -> {
             TablerIcons.Outline.PictureInPictureTop
         }
 
         // 响铃档位（`ringer:normal|vibrate|silent`）；「循环」那一档不在这里 ——
         // 它写的是 `keyevent:164`，由 [specIcon] 按 spec 认领 [PageIcons.RingerCycle]（铃铛 + 一圈箭头）。
-        "ringer:normal" -> {
+        Action.RINGER_PREFIX + Action.Ringer.NORMAL -> {
             TablerIcons.Outline.BellRinging
         }
 
-        "ringer:vibrate" -> {
+        Action.RINGER_PREFIX + Action.Ringer.VIBRATE -> {
             TablerIcons.Outline.DeviceMobileVibration
         }
 
-        "ringer:silent" -> {
+        Action.RINGER_PREFIX + Action.Ringer.SILENT -> {
             TablerIcons.Outline.BellOff
         }
 
         else -> {
             when {
                 // 截图那条 shell（清单里是 `service call color_screenshot 1`）
-                token.contains("color_screenshot") -> TablerIcons.Outline.Screenshot
+                token.contains(KsuCompat.SCREENSHOT_CMD_PREFIX) -> TablerIcons.Outline.Screenshot
 
                 // 小布识屏那条 shell（`DIRECT_SIDEBAR_SERVICE`）—— 语义是「识屏」
-                token.contains("DIRECT_SIDEBAR_SERVICE") -> TablerIcons.Outline.TextRecognition
+                token.contains(KsuCompat.SIDEBAR_SERVICE) -> TablerIcons.Outline.TextRecognition
 
-                token.startsWith("shell:") -> TablerIcons.Outline.Terminal2
+                token.startsWith(Action.SHELL_PREFIX) -> TablerIcons.Outline.Terminal2
 
                 // 区别只在内容存哪（`shell:` 是原文，`cmd:` 是名字）
-                token.startsWith("cmd:") -> TablerIcons.Outline.Terminal2
+                token.startsWith(Command.PREFIX) -> TablerIcons.Outline.Terminal2
 
-                token.startsWith("app:") -> TablerIcons.Outline.LayoutGrid
+                token.startsWith(Action.APP_PREFIX) -> TablerIcons.Outline.LayoutGrid
 
                 // 「以小窗口打开」（`window:目标`）：新起一个窗口 —— 与「把前台的收成小窗」那两档
                 // （`zoom:mini` / `zoom:mini:collapse`，见上面）是**三支不同字形**，别顺手并回来。
-                token.startsWith("window:") -> TablerIcons.Outline.WindowMinimize
+                token.startsWith(Action.WINDOW_PREFIX) -> TablerIcons.Outline.WindowMinimize
 
                 else -> TablerIcons.Outline.Dots
             }
@@ -403,6 +416,53 @@ internal object PageIcons {
      */
     val MoreOptions: ImageVector get() = TablerIcons.Outline.DotsCircleHorizontal
 
+    /**
+     * 「反馈问题」菜单三行的字形 —— 菜单里三行都是「一个去处」，只有各自的字形能一眼分清。
+     *
+     *  「频道」没有品牌字形，用「一群人」（`users-group`）；另两支是品牌字形。三支各留一份名字。
+     */
+    val FeedbackChannel: ImageVector get() = TablerIcons.Outline.UsersGroup
+
+    val BrandTelegram: ImageVector get() = TablerIcons.Outline.BrandTelegram
+
+    val BrandGithub: ImageVector get() = TablerIcons.Outline.BrandGithub
+
+    /**
+     * 「捐赠打赏」那一行的行首 —— `mood-heart`（笑脸 + 爱心）。
+     *
+     *  与 [Language] 那一族分开：同卡相邻几行各是各的语义，共用字形会分不出哪行是哪行。
+     */
+    val Donate: ImageVector get() = TablerIcons.Outline.MoodHeart
+
+    /**
+     * 「捐赠列表」那一行的行首 —— `notes`（一页写满字的纸）。
+     *
+     *  与 [Donate] 那颗心分开：那一行是「怎么给」、这一行是「谢谢谁」—— 名单与金额排成一张表，
+     *  `notes` 就是「一张记着事的单子」的记号。
+     */
+    val DonateList: ImageVector get() = TablerIcons.Outline.Notes
+
+    /**
+     * 「作者」菜单里「酷安」那一项的字形。
+     *
+     *  **Tabler 没有酷安的品牌字形**（品牌那一族里只有 `alipay` / `github` / `qq` / `telegram` /
+     *  `wechat` 这几个），暂时借 `brand-appstore`（一个通用的「应用商店」标记，语义上对得上 ——
+     *  酷安本来就是应用分发站）。**不要**去借 `brand-google-play` / `brand-appgallery` 这类
+     *  **具体品牌**：那会把用户导去认另一个牌子。将来有酷安自己的字形时只改这一行。
+     */
+    val BrandCoolapk: ImageVector get() = TablerIcons.Outline.BrandAppstore
+
+    /**
+     * 捐赠菜单三行的品牌字形 —— 菜单里三行都是「一个去处」，只有品牌图能一眼分清。
+     *
+     *  三支同族、各留一份名字（以后要分开改时不用先拆共用）。
+     */
+    val BrandQq: ImageVector get() = TablerIcons.Outline.BrandQq
+
+    val BrandWechat: ImageVector get() = TablerIcons.Outline.BrandWechat
+
+    val BrandAlipay: ImageVector get() = TablerIcons.Outline.BrandAlipay
+
     /** 「更多选项」页「语言」—— `world`（地球：用地球表示语言）。 */
     val Language: ImageVector get() = TablerIcons.Outline.World
 
@@ -483,6 +543,14 @@ internal object PageIcons {
 
     /** 「版本」行的行首 —— `versions`（版本 / 分支符号，比通用信息符号更具体）。 */
     val Versions: ImageVector get() = TablerIcons.Outline.Versions
+
+    /**
+     * 「签名」行的行首 —— `fingerprint`（指纹）。
+     *
+     *  「签名」在这里指的就是**指纹**：给用户拿去和官方发布页上那串对一遍（见 `core/seal/Seal`
+     *  的 `ownFingerprint`）。指纹字形比证书 / 印章更贴这件事本身。
+     */
+    val Signature: ImageVector get() = TablerIcons.Outline.Fingerprint
 
     /** 「执行时提示」行的行首 —— `tooltip`（气泡提示）。 */
     val CommandToast: ImageVector get() = TablerIcons.Outline.Tooltip

@@ -235,14 +235,14 @@ LSPosed 管理器模块列表右下角那颗「打开模块」的 FAB 由 `AppHe
 - **Android 每次重装 APK 都会分配新的 `/data/app/~~随机==/` 目录**，目录名与 APK 内容无关，纯随机。
 - LSPosed 在 `modules_config.db` 的 `modules` 表里缓存 `apk_path`。若还指向旧目录，开机加载时就是：
 
-  ```
-  W/ziparchive : Unable to open '/data/app/~~旧==/.../base.apk': No such file or directory
-  E/app_process: Failed to open APK '...': I/O error
-  W/LSPosedService: Failure to parse package archive ...
-      PackageParserException → IOException: Failed to load asset path ...
-  ```
+    ```
+    W/ziparchive : Unable to open '/data/app/~~旧==/.../base.apk': No such file or directory
+    E/app_process: Failed to open APK '...': I/O error
+    W/LSPosedService: Failure to parse package archive ...
+        PackageParserException → IOException: Failed to load asset path ...
+    ```
 
-  结果：**本次开机跳过该模块**（之后 LSPosed 会把库刷新成新路径，但这一轮已错过）。
+    结果：**本次开机跳过该模块**（之后 LSPosed 会把库刷新成新路径，但这一轮已错过）。
 
 - 判据：库里 `select apk_path from modules where module_pkg_name='io.github.lo0kie.opluskey'` 与
   `adb shell pm path io.github.lo0kie.opluskey` 对比。
@@ -646,11 +646,11 @@ Decelerate 落位、110ms 做按下缩放，其余数值全部照上表。
 - 后果：`coui_color_label_primary` / `coui_color_card_background` 这类 **DayNight 颜色资源**
   按配置取到夜间值 ⇒ 只换主题会得到「白底 + 白字 + 深色卡片」的混合体。
 - 解法（两条并用）：
-  1. `onCreate` **之前** `setTheme("AppNoTitleTheme")`（宿主自带、浅色、`windowActionBar=false`）；不能用
-     `Theme.COUI.Main.Light`：它 `windowActionBar=true`，宿主 `BaseActionActivity#f0()` 的 `setSupportActionBar` 会抛
-     `IllegalStateException` ⇒ 页面打不开；
-  2. 页面用**强制浅色的 `ContextThemeWrapper`** 来建（Activity 上 `applyOverrideConfiguration` 已太晚，抛
-     `getResources() or getAssets() has already been called`）。
+    1. `onCreate` **之前** `setTheme("AppNoTitleTheme")`（宿主自带、浅色、`windowActionBar=false`）；不能用
+       `Theme.COUI.Main.Light`：它 `windowActionBar=true`，宿主 `BaseActionActivity#f0()` 的 `setSupportActionBar` 会抛
+       `IllegalStateException` ⇒ 页面打不开；
+    2. 页面用**强制浅色的 `ContextThemeWrapper`** 来建（Activity 上 `applyOverrideConfiguration` 已太晚，抛
+       `getResources() or getAssets() has already been called`）。
 - 顶栏标题要在浅色下重新上色：顶栏是宿主在 night 配置下建的（标题取到夜间白字），而顶栏底色 `couiColorBackground`
   **没有 night 变体、恒为 #ffffffff** ⇒ 白底白字。
 
@@ -1562,10 +1562,10 @@ slideInHorizontally(spec) { -it / 4 } togetherWith slideOutHorizontally(spec) { 
 2. 设备端起连拍：`for i in …; do screencap -p /data/local/tmp/fr/t$i.png; done &` 然后
    `sleep 1; input tap <x> <y>`（`screencap` ≈330ms/帧，3.5s 转场约 10 帧）。
 3. 本地按**列签名**（`mean over rows`）对 `ref_before` / `ref_after` 做一维交叉相关，求每帧的最佳平移量：
-   - 新页位移 `o`：`F[x] ≈ ref_after[x - o]`
-   - 旧页位移 `s`：`F[x] ≈ ref_before[x + s]`
+    - 新页位移 `o`：`F[x] ≈ ref_after[x - o]`
+    - 旧页位移 `s`：`F[x] ≈ ref_before[x + s]`
 
-   残差 ≈ 0.00 表示**完美刚体平移**（不是裁剪、不是淡入）。
+    残差 ≈ 0.00 表示**完美刚体平移**（不是裁剪、不是淡入）。
 
 ### 13.4 实测数据（PLK110，1272×2772，density 560）
 
@@ -1707,8 +1707,14 @@ InputReader/InputDispatcher
 2. **`KeyId.acceptedKeyCodes` 补齐 781**：dexdump 证明 780/781/**782** 三个码都进这条方法（781 走
    `pokeUserActivity` + 单击统计）。旧集 `{735, 780, 782}`
    **漏了 781**，若某场景它作为原始码出现会被误判「不是侧键」而放行。
-3. **接管点去重**：`findSideKeyPoints` 用 `LinkedHashSet` 按 `owner#method`
-   去重，防止候选类名重复 / 同方法多入口导致的重复安装。
+3. **接管点去重**：`findSideKeyPoints` 用 `LinkedHashSet` 按 `owner` + `Method` 对象 + `kind`
+   去重（`InterceptionPoint` 是 data class，相等即这三项相同），防止候选类名重复 / 同方法多入口
+   导致的重复安装。同名的**不同** `Method`（重载，或父子类各声明一个）不在这条去重里：
+   策略族只有一个名字、没有这个问题；`PM_EXT_ENTRIES` 那一族是「覆盖写法 + 父类实现」两个名字，
+   同一个类上同时命中时会在 `collect` 里做一次**同层互斥**（只留靠前的那个，其余打 W），
+   否则一次按压会被判定器喂两遍（双击被吃成两次单击、长按枪反复作废）。
+   `AMS_BROADCAST_ENTRIES`（`broadcastIntent` 的多个重载）**必须个个都装**，不能按名字去砍 ——
+   漏一个就等于收不到配置广播。
 
 ### 14.5 返回值语义（模块 `onIntercept` 的 `true/false` 对接点）
 
@@ -1846,7 +1852,7 @@ ServiceManager.getService("window")  →  WindowManagerService 实例（不是�
 
 （`long_press_action_info` / `second_menu_*` 另有值，多数与 click 指向同一个服务；完整行见真机。）
 
-- **`type=service` 就是「起一个服务」**：模块的 `host/action/OplusFeature` 只抄其中四行，不多猜。
+- **`type=service` 就是「起一个服务」**：模块的 `core/model/RomProfile` 只抄其中四行，不多猜。
 - **三个目标服务都带签名级权限**（`DataCollectService` → `com.oplus.permission.safe.SECURITY`； `InvokeEntranceService`
   → `oppo.permission.OPPO_COMPONENT_SAFE`），而**宿主 `com.oplus.gesture` 本人就持有** 这些权限（另有
   `WRITE_SECURE_SETTINGS` / `ACCESS_NOTIFICATION_POLICY`(granted) /
@@ -1916,7 +1922,7 @@ ServiceManager.getService("window")  →  WindowManagerService 实例（不是�
   落到 UNKNOWN 分支，记 `trigger type error`
   后什么都不做。另有前置：AI 内存（闪记）已装、`USER_SETUP_COMPLETE`、开关未关，否则 `stopSelf`。
 
-模块侧结论：`host/action/OplusFeature.Target` 增加 `message`（ Messenger 型发什么码）， `host/action/AppLauncher`
+模块侧结论：`core/model/RomProfile.BuiltIn` 增加 `message`（ Messenger 型发什么码）， `host/action/AppLauncher`
 里 bind → `Messenger.send` → 立刻解绑；带 extras 的照常 start。
 
 ### 17.5 三个 `oplus:` 动作的真实入口（2026-10-14 复核，PLK110）
@@ -1970,23 +1976,23 @@ ServiceManager.getService("window")  →  WindowManagerService 实例（不是�
   —— 它认「Gleaner 已安装 ⇒ 我不干」。真入口是新包
   `com.oplus.gleanerservice`（`/product/app/Gleaner/Gleaner.apk`）里的同名服务：
 
-  ```
-  <service name=com.oplus.gleanerservice.flashnotes.business.service.DataCollectService
-           permission=com.oplus.permission.safe.SECURITY exported=True
-           foregroundServiceType=type=hex:1073741824>          <!-- SPECIAL_USE -->
-    <property name=android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE value=special_use_for_ai_memory>
-    <intent-filter><action name=oplus.gleanerservice.intent.action.COLLECT_DATA>
-  ```
+    ```
+    <service name=com.oplus.gleanerservice.flashnotes.business.service.DataCollectService
+             permission=com.oplus.permission.safe.SECURITY exported=True
+             foregroundServiceType=type=hex:1073741824>          <!-- SPECIAL_USE -->
+      <property name=android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE value=special_use_for_ai_memory>
+      <intent-filter><action name=oplus.gleanerservice.intent.action.COLLECT_DATA>
+    ```
 
-  它的 `onStartCommand` **没有「Gleaner 已安装就退出」那道闸门**，只读 `triggerType` （`MAGIC_KEY`=1 →
-  `CollectTaskManager.j(...)` 真正开始采集；`UNKNOWN` / `SCREENSHOT` → 记 `trigger type error`），另有一道
-  `USER_SETUP_COMPLETE` / `a.b()` / `a.a()` / `a.c()` 的组合闸门。 **实测可用**：01:02:43 用
-  `su -c 'am start-foreground-service -a oplus.gleanerservice.intent.action.COLLECT_DATA --ei triggerType 1 -n …'`
-  起它，状态栏随即出现闪记的「已记住」胶囊，服务约 15s 后自己 `onDestroy`。
-  - `longPressEventType` 只有 CDS 那份读，Gleaner 这份不读 ⇒ extras 只留 `triggerType=1`。
-  - **`uid 0` 会绕过组件权限**（`checkComponentPermission` 对 ROOT / SYSTEM_UID 直接放行），所以这一族都能用
-    `su -c 'am …'`
-    直接复现，不必真按键 —— 上一轮「起法（前台/普通）导致被回收」的猜测因此作废：**起法是对的，错的是目标**。
+    它的 `onStartCommand` **没有「Gleaner 已安装就退出」那道闸门**，只读 `triggerType` （`MAGIC_KEY`=1 →
+    `CollectTaskManager.j(...)` 真正开始采集；`UNKNOWN` / `SCREENSHOT` → 记 `trigger type error`），另有一道
+    `USER_SETUP_COMPLETE` / `a.b()` / `a.a()` / `a.c()` 的组合闸门。 **实测可用**：01:02:43 用
+    `su -c 'am start-foreground-service -a oplus.gleanerservice.intent.action.COLLECT_DATA --ei triggerType 1 -n …'`
+    起它，状态栏随即出现闪记的「已记住」胶囊，服务约 15s 后自己 `onDestroy`。
+    - `longPressEventType` 只有 CDS 那份读，Gleaner 这份不读 ⇒ extras 只留 `triggerType=1`。
+    - **`uid 0` 会绕过组件权限**（`checkComponentPermission` 对 ROOT / SYSTEM_UID 直接放行），所以这一族都能用
+      `su -c 'am …'`
+      直接复现，不必真按键 —— 上一轮「起法（前台/普通）导致被回收」的猜测因此作废：**起法是对的，错的是目标**。
 
 - 三个目标都带签名级权限（`oplus.permission.OPLUS_COMPONENT_SAFE`、
   `com.oplus.permission.KEY_MAGIC_SERVICE`、`com.oplus.permission.safe.SECURITY`），宿主 `com.oplus.gesture` 都在
@@ -2002,13 +2008,13 @@ ColorOS 的「小窗」在框架里叫 **ZoomWindow**（同族还有 `startMiniZ
 
 - **客户端类 `android.app.OplusActivityManager`**（在 `/system/framework/oplus-framework.jar`，同目录有
   `boot-oplus-framework.vdex`；它内部的 `android.app.OplusActivityTaskManager` 只是那层 AIDL 门面）：
-  ```
-  startZoomWindow(Intent, Bundle, int userId, String callPkg): int
-  startZoomWindowByPendingIntent(PendingIntent, Bundle, int, String): int
-  startActivityForFreeform(Intent, Bundle, int, String): int
-  hideZoomWindow(int) / getZoomBounds(boolean, int) / isSupportZoomWindowMode()
-  ```
-  取实例走静态 `getInstance()`。
+    ```
+    startZoomWindow(Intent, Bundle, int userId, String callPkg): int
+    startZoomWindowByPendingIntent(PendingIntent, Bundle, int, String): int
+    startActivityForFreeform(Intent, Bundle, int, String): int
+    hideZoomWindow(int) / getZoomBounds(boolean, int) / isSupportZoomWindowMode()
+    ```
+    取实例走静态 `getInstance()`。
 - **服务端**在 `oplus-services.jar`：`com.android.server.wm.OplusActivityTaskManagerService`（及 `…ServiceEx` /
   `IOplusActivityTaskManager`），另有一支 `OplusFloatingWindowHelper` / `IOplusFloatingWindow`。
 - **权限**：宿主 `com.oplus.gesture` 的 `android.permission.MANAGE_ACTIVITY_TASKS: granted=true` （另有
@@ -2040,30 +2046,30 @@ android.app.OplusActivityManager#startZoomWindow(Intent, Bundle, int userId, Str
 
 - **返回值不是成败标志**（真机探针实测，`.temp/probe/`，app_process + root 直接调）：
 
-  | 调用                                                     | 返回  | 屏幕                                       |
-  | -------------------------------------------------------- | ----- | ------------------------------------------ |
-  | `startZoomWindow(微云盘, Bundle{})`（不带 extra）        | `0`   | 应用**全屏**打开（服务端自己退成普通启动） |
-  | `startZoomWindow(微云盘, Bundle{extra_window_mode=100})` | `0`   | **小窗**出现 ✓                             |
-  | `startZoomWindow(设置, Bundle{…=100})`                   | `0`   | **小窗**出现 ✓                             |
-  | `startZoomWindow(当前前台那个活动, Bundle{…=100})`       | `3`   | **不变**（前台转小窗走不通）               |
-  | 组件名写坏（相对类名拼成双点）                           | `-92` | 不变（错误码）                             |
+    | 调用                                                     | 返回  | 屏幕                                       |
+    | -------------------------------------------------------- | ----- | ------------------------------------------ |
+    | `startZoomWindow(微云盘, Bundle{})`（不带 extra）        | `0`   | 应用**全屏**打开（服务端自己退成普通启动） |
+    | `startZoomWindow(微云盘, Bundle{extra_window_mode=100})` | `0`   | **小窗**出现 ✓                             |
+    | `startZoomWindow(设置, Bundle{…=100})`                   | `0`   | **小窗**出现 ✓                             |
+    | `startZoomWindow(当前前台那个活动, Bundle{…=100})`       | `3`   | **不变**（前台转小窗走不通）               |
+    | 组件名写坏（相对类名拼成双点）                           | `-92` | 不变（错误码）                             |
 
-  结论：**0
-  = 已发起**（不管起没起成小窗），**负数 = 错误码**；模块侧只有负数才降级。「带 extra 起了小窗也返回 0」这条是关键 —— 按「0
-  = 失败」降级会把好不容易通的路径再破坏掉。
+    结论：**0
+    = 已发起**（不管起没起成小窗），**负数 = 错误码**；模块侧只有负数才降级。「带 extra 起了小窗也返回 0」这条是关键 —— 按「0
+    = 失败」降级会把好不容易通的路径再破坏掉。
 
 - **根因：Bundle 里得带窗口模式**。空 `Bundle` 时服务端把它当普通启动。能用的调用方是 SystemUI 的
   `com.oplus.systemui.qs.scenario.domain.model.ScenarioAssistantNavigationImpl#startActivityByZoonWindow`：
 
-  ```
-  Bundle b = ActivityOptions.makeBasic().setLaunchDisplayId(0).toBundle();
-  b.putInt("extra_window_mode", 100);   // OplusZoomWindowManager.EXTRA_WINDOW_MODE / WINDOWING_MODE_ZOOM
-  OplusZoomWindowManager.getInstance().startZoomWindow(intent, b, getCurrentUser(), ctx.getPackageName());
-  ```
+    ```
+    Bundle b = ActivityOptions.makeBasic().setLaunchDisplayId(0).toBundle();
+    b.putInt("extra_window_mode", 100);   // OplusZoomWindowManager.EXTRA_WINDOW_MODE / WINDOWING_MODE_ZOOM
+    OplusZoomWindowManager.getInstance().startZoomWindow(intent, b, getCurrentUser(), ctx.getPackageName());
+    ```
 
-  常量表（`com.oplus.zoomwindow.OplusZoomWindowManager`，`ofw/classes2.dex`）：
-  `EXTRA_WINDOW_MODE = "extra_window_mode"`、`WINDOWING_MODE_ZOOM = 100`、
-  `WINDOWING_MODE_ZOOM_TO_FULLSCREEN = 101`、`WINDOWING_MODE_FULLSCREEN = 1`、`WINDOWING_MODE_ZOOM_LEGACY = 6`。
+    常量表（`com.oplus.zoomwindow.OplusZoomWindowManager`，`ofw/classes2.dex`）：
+    `EXTRA_WINDOW_MODE = "extra_window_mode"`、`WINDOWING_MODE_ZOOM = 100`、
+    `WINDOWING_MODE_ZOOM_TO_FULLSCREEN = 101`、`WINDOWING_MODE_FULLSCREEN = 1`、`WINDOWING_MODE_ZOOM_LEGACY = 6`。
 
 - **`startMiniZoomFromZoom(int)`
   在这台 ROM 上是废接口**：全量扫过 SystemUI（9 个 dex）、桌面（OplusLauncher，7 个 dex）、设置侧拉到的 APK 与
@@ -2078,26 +2084,26 @@ android.app.OplusActivityManager#startZoomWindow(Intent, Bundle, int userId, Str
   才是「前台应用也能起小窗」的那把钥匙（2026-10-14 起模块已不再用它，见 §17.6.5：它会无限多开实例）**（二次真机对照，同一台机、`设置`
   当前正 resume，探针逐组合单调用）：
 
-  | flags                                                | 返回 | 结果                                                  |
-  | ---------------------------------------------------- | ---- | ----------------------------------------------------- |
-  | `NEW_TASK`（= `getLaunchIntentForPackage` 自带那个） | `0`  | 又开出一份**全屏**实例（`windowingMode=1`），不是小窗 |
-  | `NEW_TASK \| MULTIPLE_TASK`（`0x18000000`）          | `0`  | **小窗出现**（`windowingMode=100`，独立 task）✓       |
+    | flags                                                | 返回 | 结果                                                  |
+    | ---------------------------------------------------- | ---- | ----------------------------------------------------- |
+    | `NEW_TASK`（= `getLaunchIntentForPackage` 自带那个） | `0`  | 又开出一份**全屏**实例（`windowingMode=1`），不是小窗 |
+    | `NEW_TASK \| MULTIPLE_TASK`（`0x18000000`）          | `0`  | **小窗出现**（`windowingMode=100`，独立 task）✓       |
 
-  `NEW_TASK` 单独一个会被 `ActivityStarter` 判成「交给栈顶那个实例消化」（`3`）或者重开一份全屏实例；加上
-  `MULTIPLE_TASK` 才会真的另起一个 task，窗口模式才落得下。早先「`+MULTIPLE_TASK` 也是
-  `3`、前台转小窗走不通」那次结论**有误** —— 当时判据只有返回码 + 截图，没看 `getAllTopAppInfos()` 的
-  `windowingMode`，把「重开了一份全屏实例」误读成「没起」。
+    `NEW_TASK` 单独一个会被 `ActivityStarter` 判成「交给栈顶那个实例消化」（`3`）或者重开一份全屏实例；加上
+    `MULTIPLE_TASK` 才会真的另起一个 task，窗口模式才落得下。早先「`+MULTIPLE_TASK` 也是
+    `3`、前台转小窗走不通」那次结论**有误** —— 当时判据只有返回码 + 截图，没看 `getAllTopAppInfos()` 的
+    `windowingMode`，把「重开了一份全屏实例」误读成「没起」。
 
 - **「把前台应用收成小窗」的可用配方，已按模块的 intent 形状逐字复现**：
-  ```
-  Intent i = pm.getLaunchIntentForPackage(pkg);   // flg=0x10000000, cmp=com.android.settings/.Settings
-  i.addFlags(NEW_TASK | MULTIPLE_TASK);           // → 0x18000000
-  startZoomWindow(i, Bundle{extra_window_mode=100}, userId, ctx.packageName)  → 0
-  复核：新 task windowingMode=100（小窗 ✓），原全屏 task 仍在（= 第二份实例）
-  ```
-  返回 `3` 时先发一个 CATEGORY_HOME 的 intent 回桌面、延迟 400ms 再起一次（`MULTIPLE_TASK`
-  在场时正常走不到这一档，留着当兜底）。模块里 `window:<包名>` 与 `zoom:mini` 共用这一套（见
-  `MiniWindowLauncher.launchAppInWindow`）。**代价**：小窗里是新起的一份实例，不是把现有那扇窗挪过去。
+    ```
+    Intent i = pm.getLaunchIntentForPackage(pkg);   // flg=0x10000000, cmp=com.android.settings/.Settings
+    i.addFlags(NEW_TASK | MULTIPLE_TASK);           // → 0x18000000
+    startZoomWindow(i, Bundle{extra_window_mode=100}, userId, ctx.packageName)  → 0
+    复核：新 task windowingMode=100（小窗 ✓），原全屏 task 仍在（= 第二份实例）
+    ```
+    返回 `3` 时先发一个 CATEGORY_HOME 的 intent 回桌面、延迟 400ms 再起一次（`MULTIPLE_TASK`
+    在场时正常走不到这一档，留着当兜底）。模块里 `window:<包名>` 与 `zoom:mini` 共用这一套（见
+    `MiniWindowLauncher.launchAppInWindow`）。**代价**：小窗里是新起的一份实例，不是把现有那扇窗挪过去。
 - **对「刚退到后台的应用」起小窗也成立**：先回桌面、再对 `设置` 调同一支接口，拿到 `0` +
   `windowingMode=100`，且能稳定停住（+1s / +5s / +11s 三张截图核过，小窗一直浮在桌面上）。只是既然 `MULTIPLE_TASK`
   那条在前台就通，`zoom:mini` 不必再绕「先回桌面」这一圈。
@@ -2161,13 +2167,13 @@ android.app.OplusActivityManager#startZoomWindow(Intent, Bundle, int userId, Str
   `FlexibleWindowManager.getInstance().notifyFlexibleTaskEvent(25447, 2002, bundle)` 调用无异常返回。
 - **事件码表**（`com.oplus.flexibletask.utils.FlexibleUtils`，SystemUI `classes3.dex`）：
 
-  | 常量                                               | 值          | 服务端动作                                             |
-  | -------------------------------------------------- | ----------- | ------------------------------------------------------ |
-  | `FLEXIBLE_TASK_FULL_EVENT`                         | 2001        | `ExitFlexibleTaskToFullStrategy`（小窗 → 全屏）        |
-  | `FLEXIBLE_TASK_MINI_EVENT`                         | 2002        | `ExitFlexibleTaskToFloatStrategy`（→ 小窗）            |
-  | `FLEXIBLE_TASK_CLOSE_EVENT`                        | 2003        | `ExitFlexibleTaskToBackStrategy`（关闭）               |
-  | `FLEXIBLE_TASK_CHANGE_EVENT`                       | 2004        | `handleFlexibleExChange(task, "fromMenu")`（**交换**） |
-  | `FLEXIBLE_TASK_MENU_SHOW_EVENT` / `…DISMISS_EVENT` | 2011 / 2012 | 菜单开合的状态同步                                     |
+    | 常量                                               | 值          | 服务端动作                                             |
+    | -------------------------------------------------- | ----------- | ------------------------------------------------------ |
+    | `FLEXIBLE_TASK_FULL_EVENT`                         | 2001        | `ExitFlexibleTaskToFullStrategy`（小窗 → 全屏）        |
+    | `FLEXIBLE_TASK_MINI_EVENT`                         | 2002        | `ExitFlexibleTaskToFloatStrategy`（→ 小窗）            |
+    | `FLEXIBLE_TASK_CLOSE_EVENT`                        | 2003        | `ExitFlexibleTaskToBackStrategy`（关闭）               |
+    | `FLEXIBLE_TASK_CHANGE_EVENT`                       | 2004        | `handleFlexibleExChange(task, "fromMenu")`（**交换**） |
+    | `FLEXIBLE_TASK_MENU_SHOW_EVENT` / `…DISMISS_EVENT` | 2011 / 2012 | 菜单开合的状态同步                                     |
 
 - **`handleFlexibleExChange` 的前置条件**（`FlexibleTaskController` 内逐条读过）：传进去的 `task` 是
   **小窗**那一份，`fullTask = getFullTaskUnderFlexibleTask(task)` 是它下面压着的**全屏**那一份。要求
@@ -2179,15 +2185,15 @@ android.app.OplusActivityManager#startZoomWindow(Intent, Bundle, int userId, Str
   只是它的入参分支，没有第二条可达路径 —— 所以**没有「导航手势版交换」可抄**。
 - **真机复现**（探针 `ev <taskId> <event>`，`app_process` + root）：
 
-  | 步骤                                                              | 观察（`getAllTopAppInfos().windowingMode`）                           |
-  | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
-  | 起点：`设置` 全屏 + `mark.via` 起成小窗                           | task `7` = `设置` `1`；task `25449` = `mark.via` **`100`**            |
-  | `notifyFlexibleTaskEvent(25449, 2004, {notify_event_async:true})` | —                                                                     |
-  | 截图结果                                                          | `mark.via` 铺满全屏，**`设置` 变成右上角的小窗** ✓ 与手点菜单完全一致 |
+    | 步骤                                                              | 观察（`getAllTopAppInfos().windowingMode`）                           |
+    | ----------------------------------------------------------------- | --------------------------------------------------------------------- |
+    | 起点：`设置` 全屏 + `mark.via` 起成小窗                           | task `7` = `设置` `1`；task `25449` = `mark.via` **`100`**            |
+    | `notifyFlexibleTaskEvent(25449, 2004, {notify_event_async:true})` | —                                                                     |
+    | 截图结果                                                          | `mark.via` 铺满全屏，**`设置` 变成右上角的小窗** ✓ 与手点菜单完全一致 |
 
-  服务端日志同步印证：`FlexibleTaskController: handleFlexibleExChange FlexibleExChange handle change Event Task{…mark.via.gp}`（这行打的是
-  **fullTask**）→ `… will exchange to flexible` →
-  `FlexibleTaskTransitionHandler: start exchange full to flexibleTask anim success`。
+    服务端日志同步印证：`FlexibleTaskController: handleFlexibleExChange FlexibleExChange handle change Event Task{…mark.via.gp}`（这行打的是
+    **fullTask**）→ `… will exchange to flexible` →
+    `FlexibleTaskTransitionHandler: start exchange full to flexibleTask anim success`。
 
 - **为什么「交换应用」抄不进
   `zoom:mini`**：它的语义是「两份**不同包**的任务互换」，既拿不到「把某一份现有窗口原地收成小窗」，也强制要求先有**另一个应用**的小窗在场（那本身就要一次
@@ -2242,13 +2248,13 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
   仍是 `1`）—— 判据是 `getLaunchWindowingMode() == 100`，不是 flags。
 - **`mZoomLaunchFlags` 决定的是「展开 / 收起」哪一档**，给错了就会开成右上角那条最小化窗：
 
-  | `mZoomLaunchFlags` | 服务端                                                           | `windowType` | `zoomRect` / `scale`                   | 观感                              |
-  | ------------------ | ---------------------------------------------------------------- | ------------ | -------------------------------------- | --------------------------------- |
-  | `2`                | `setUserPositionInfo`（沿用用户上次的位置与尺寸）                | `1`          | `Rect(126,319 - 1146,2131)` / `0.8017` | **展开**的普通小窗（居中大面积）✓ |
-  | `32`               | `fullToMini = zoomLaunchFlags == 32` → `getMiniFlexibleTaskInfo` | `2`          | `Rect(898,168 - 1203,710)` / `0.2397`  | **收起**的最小化窗（右上角一条）  |
+    | `mZoomLaunchFlags` | 服务端                                                           | `windowType` | `zoomRect` / `scale`                   | 观感                              |
+    | ------------------ | ---------------------------------------------------------------- | ------------ | -------------------------------------- | --------------------------------- |
+    | `2`                | `setUserPositionInfo`（沿用用户上次的位置与尺寸）                | `1`          | `Rect(126,319 - 1146,2131)` / `0.8017` | **展开**的普通小窗（居中大面积）✓ |
+    | `32`               | `fullToMini = zoomLaunchFlags == 32` → `getMiniFlexibleTaskInfo` | `2`          | `Rect(898,168 - 1203,710)` / `0.2397`  | **收起**的最小化窗（右上角一条）  |
 
-  判「展开还是收起」最省事的是 `OplusZoomWindowInfo#windowType`（`1` = 展开，`2` = 收起），取值走
-  `OplusActivityManager#getCurrentZoomWindowState()`，或直接看 `notifyZoomStateChanged` 那行日志。
+    判「展开还是收起」最省事的是 `OplusZoomWindowInfo#windowType`（`1` = 展开，`2` = 收起），取值走
+    `OplusActivityManager#getCurrentZoomWindowState()`，或直接看 `notifyZoomStateChanged` 那行日志。
 
 - **和 17.6.2 的「交换应用」比**：那条要求「另有一份**不同包**的小窗在场」，服务端还明确拒绝同包；这条只要一个 taskId，同包完全没问题。两者都能动现有任务，这条干净得多。
 - **模块侧用的就是这一条**（`zoom:mini`）：一步到位、原地收、状态全留。它没有窗口动画，见 17.6.4。
@@ -2417,16 +2423,16 @@ alpha/时长/插值器/leash…，**构造器是 public**）。`switchState(task
    不成立时落到「按应用比例算默认」分支，用**全屏宽高比**缩放 → 窗口被拉长）。修法：`switchState` 前调
    `ext.setRememberPosInfo(bounds, scale)` 预置落点。注意 `setRememberPosInfo(Rect, float)` 含原始类型参数，必须显式
    `getDeclaredMethod`（装箱坑见附五）。
-   - ⚠️ **预置值不能取
-     `controller.getMiniFlexibleTaskInfo(task, record)`**（2026-10-14 真机否掉）：它返回的是**收起档**几何（`Rect(898,168-1203,710)`
-     / `0.2397`，同 17.6.3 尺寸档表 `flags=32`
-     那一行），喂进去就把「展开」的动画落到了收起的位置 —— 真机表现是**「按一下直接变成右上角那条最小化窗」**。
-     **展开档要用 `setUserPositionInfo` 那条路的值**（17.6.3 表里 `flags=2` 那一行）。⚠️ 但**别照抄它的屏幕矩形**：喂给
-     `setRememberPosInfo` 的必须是**配置矩形** `Rect(126,319-1398,2580)`
-     —— 两者差一个 scale，抄错就「小一圈」，**见附七**。本机现在就是这么写死的（`FlexibleWindowBridge.EXPANDED_BOUNDS`）。⚠️ 这组数是 PLK110（1272×2772
-     @560dpi）实测值，与机型允许表绑定，加机型要重测。
-   - 📌 **订正**：本小节 2026-10-15 那版把上面这两个值错记成了「`getMiniFlexibleTaskInfo`
-     的真机标准值」，两个来源被混为一谈 —— 那正是这次「落点变收起」的根因。现已按真机结果分开。
+    - ⚠️ **预置值不能取
+      `controller.getMiniFlexibleTaskInfo(task, record)`**（2026-10-14 真机否掉）：它返回的是**收起档**几何（`Rect(898,168-1203,710)`
+      / `0.2397`，同 17.6.3 尺寸档表 `flags=32`
+      那一行），喂进去就把「展开」的动画落到了收起的位置 —— 真机表现是**「按一下直接变成右上角那条最小化窗」**。
+      **展开档要用 `setUserPositionInfo` 那条路的值**（17.6.3 表里 `flags=2` 那一行）。⚠️ 但**别照抄它的屏幕矩形**：喂给
+      `setRememberPosInfo` 的必须是**配置矩形** `Rect(126,319-1398,2580)`
+      —— 两者差一个 scale，抄错就「小一圈」，**见附七**。本机现在就是这么写死的（`core/model/MiniWindowGeometry`）。⚠️ 这组数是 PLK110（1272×2772
+      @560dpi）实测值，与机型允许表绑定，加机型要重测。
+    - 📌 **订正**：本小节 2026-10-15 那版把上面这两个值错记成了「`getMiniFlexibleTaskInfo`
+      的真机标准值」，两个来源被混为一谈 —— 那正是这次「落点变收起」的根因。现已按真机结果分开。
 
 2. **没有操作条**：操作条视图由 `TaskExtImpl#updateFlexibleTaskParams` **内部**负责（`mHasCaption` 分支 →
    `FlexibleWindowManagerService#createFlexibleCaptionView(task, captionName)` → `Class.forName(captionName)` 反射建
@@ -2464,7 +2470,7 @@ alpha/时长/插值器/leash…，**构造器是 public**）。`switchState(task
 `Rect.left/top` 是**直接照搬到屏幕坐标**的、不含缩放 —— 所以两头左上角都是
 `(126,319)`：这也是「只有尺寸错、位置没错」的原因。
 
-**正确值**（本机型实测，`FlexibleWindowBridge.EXPANDED_BOUNDS`）：
+**正确值**（本机型实测，落在 `core/model/MiniWindowGeometry`）：
 
 |        | 配置矩形（喂 API 的）                     | scale    | 屏幕落点（验收看的）                      |
 | ------ | ----------------------------------------- | -------- | ----------------------------------------- |
@@ -2481,9 +2487,9 @@ alpha/时长/插值器/leash…，**构造器是 public**）。`switchState(task
    `1812 ÷ 0.8017 = 2260.4` —— 同一个 2261。所以**配置矩形分不出档位**（两档都是 1272 宽），拿 `appBounds`
    当档位判据必然是假绿灯。
 2. **两个 API 的 Rect 语义相反**，这是最容易踩的地方：
-   - `getMiniFlexibleTaskInfo` 返回的是**屏幕矩形**（`Rect(898,168-1203,710)`，305 宽）；
-   - `setRememberPosInfo` 要的是**配置矩形**（1272 宽）。
-   - 一进一出正好差一个 scale，直接互喂就会「小一圈 / 大一圈」。
+    - `getMiniFlexibleTaskInfo` 返回的是**屏幕矩形**（`Rect(898,168-1203,710)`，305 宽）；
+    - `setRememberPosInfo` 要的是**配置矩形**（1272 宽）。
+    - 一进一出正好差一个 scale，直接互喂就会「小一圈 / 大一圈」。
 
 > 📌 **订正**：附六里写的「展开档 `Rect(126,319-1146,2131)` / `0.8017`」是**屏幕值**，那是**验收口径**，不是能喂给
 > `setRememberPosInfo` 的参数 —— 直接照抄进代码就会得到上面那个「小一圈」。喂 API 请用本节的配置矩形
@@ -2567,11 +2573,11 @@ alpha/时长/插值器/leash…，**构造器是 public**）。`switchState(task
    的取值（`isLaunchSourceType` / `determineLaunchSourceType` / `LaunchSourceType` 都在 **`services.jar` 的
    `classes4.dex`** 里，不在前两个 dex）。
 2. **壳子是过渡装的**，不是「注册」装的 —— 桌面成功那次有这两句，都只在真过渡里跑：
-   ```
-   FlexibleTaskTransitionController: adjustSurfaceForTransitionIfNeed type=3, cornerRadius=91, scale=0.8016529
-   FlexibleTaskTransitionController: finishTransition will update task's caption visible when open transit.
-   ```
-   ⚠️ 我们 abort 那次 `finishTransition` 也打了第二句，但那是在 `aborted:true` **之后**跑的，没救回来。
+    ```
+    FlexibleTaskTransitionController: adjustSurfaceForTransitionIfNeed type=3, cornerRadius=91, scale=0.8016529
+    FlexibleTaskTransitionController: finishTransition will update task's caption visible when open transit.
+    ```
+    ⚠️ 我们 abort 那次 `finishTransition` 也打了第二句，但那是在 `aborted:true` **之后**跑的，没救回来。
 3. **前台任务确实没有过渡 root**，与附二一致 —— 这不是测试脏状态造成的，清干净后复测仍然 abort。
 
 **两条可复用的查法**：
@@ -2604,20 +2610,20 @@ alpha/时长/插值器/leash…，**构造器是 public**）。`switchState(task
 - **圆角：成功**。`SurfaceControl` 取自 `WindowContainer#getSurfaceControl()`（0 参那个候选命中），
   `Transaction#setCornerRadius(sc, 91)` + `apply()` 之后**截图四角肉眼可见圆角**（补壳前是直角）。
 - ⚠️ **操作条：卡在调用线程**。 `initCaptionView()` 与 `initCaptionViewAndAttachToTask(Task, Rect)` 都抛：
-  ```
-  android.view.ViewRootImpl$CalledFromWrongThreadException:
-    Only the original thread that created a view hierarchy can touch its views.
-    Expected: android.ui     Calling: binder:NNNN_1
-  ```
-  即这两个方法**必须在 `android.ui`
-  线程上调**，而我们是从 AMS 广播入口（binder 线程）调的。旁证：`updateFlexibleTaskCaptionVisible(task, true)`
-  **不抛**（它内部应该是自己 post 到对线程的），调完 `mCaptionViewSurfaceShow` 读出来是
-  `true`，但**截图上操作条仍然没显示**。
+    ```
+    android.view.ViewRootImpl$CalledFromWrongThreadException:
+      Only the original thread that created a view hierarchy can touch its views.
+      Expected: android.ui     Calling: binder:NNNN_1
+    ```
+    即这两个方法**必须在 `android.ui`
+    线程上调**，而我们是从 AMS 广播入口（binder 线程）调的。旁证：`updateFlexibleTaskCaptionVisible(task, true)`
+    **不抛**（它内部应该是自己 post 到对线程的），调完 `mCaptionViewSurfaceShow` 读出来是
+    `true`，但**截图上操作条仍然没显示**。
 - ⚠️ 两处**反射诊断本身的坑**（都踩过、已修）：
-  1. `Method.invoke` 抛的是 `InvocationTargetException`，它的 **message 恒为 null** ——只打 `e.message`
-     会得到「抛了 InvocationTargetException: null」，真实原因全丢；必须剥到最内层 `cause`。
-  2. `getDeclaredField` **只看本类**，而 `mCaptionViewSurfaceShow` 声明在父类 `FlexibleCaptionView` 上 ——字段查找要沿
-     `superclass` 往上走。
+    1. `Method.invoke` 抛的是 `InvocationTargetException`，它的 **message 恒为 null** ——只打 `e.message`
+       会得到「抛了 InvocationTargetException: null」，真实原因全丢；必须剥到最内层 `cause`。
+    2. `getDeclaredField` **只看本类**，而 `mCaptionViewSurfaceShow` 声明在父类 `FlexibleCaptionView` 上 ——字段查找要沿
+       `superclass` 往上走。
 
 **第 3 轮（把调用 post 到 `android.ui` 线程后）**：线程问题解决 ——用**视图自己的 `View.getHandler()`**
 post 过去，`initCaptionView` / `initCaptionViewAndAttachToTask` / `showCaptionViewWithAnim` /
@@ -3201,12 +3207,12 @@ inset、补 20dp item 留白 ⇒ 净 +4dp），符合预期。
 `parent.loadClass`**，模块自己的类永远取自己那份；宿主那边看不到模块的类，反向也不会串。
 实测各宿主类路径的默认包类数（`a`~`d` 是与本包重名的全部）：
 
-| 类路径 | 默认包类数 | 与本包撞名 |
-| --- | --- | --- |
-| `framework.jar` | 0 | 0 |
-| `oplus-framework.jar` | 0 | 0 |
-| `services.jar` | 7（`LZMA*Demo`） | 0 |
-| `OplusGestureUI.apk`（`com.oplus.gesture`） | 4（`a`~`d`） | 4 |
+| 类路径                                      | 默认包类数       | 与本包撞名 |
+| ------------------------------------------- | ---------------- | ---------- |
+| `framework.jar`                             | 0                | 0          |
+| `oplus-framework.jar`                       | 0                | 0          |
+| `services.jar`                              | 7（`LZMA*Demo`） | 0          |
+| `OplusGestureUI.apk`（`com.oplus.gesture`） | 4（`a`~`d`）     | 4          |
 
 那 4 个撞名在**带 `-keepnames` 的在机版本上就已经一样**，模块照常工作 ⇒ 撞名字段无害。
 

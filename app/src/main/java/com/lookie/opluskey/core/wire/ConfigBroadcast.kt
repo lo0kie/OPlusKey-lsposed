@@ -5,6 +5,7 @@ import android.os.Bundle
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
@@ -13,25 +14,9 @@ import com.lookie.opluskey.core.model.KeyId
 object ConfigBroadcast {
     const val ACTION_CONFIG = "com.lookie.opluskey.CONFIG"
 
-    /** 配置广播里的各项（键名沿用旧 `config.conf` 的写法，历史对照用；文件格式现已是 JSON）。 */
-    const val EXTRA_ENABLED = "enabled"
-    const val EXTRA_SINGLE = "plus_single"
-    const val EXTRA_DOUBLE = "plus_double"
-    const val EXTRA_LONG = "plus_long"
-    const val EXTRA_LONG_PRESS_MS = "long_press_ms"
-    const val EXTRA_LONG_REPEAT = "long_repeat"
-    const val EXTRA_REPEAT_INTERVAL_MS = "long_repeat_interval_ms"
-
-    /**
-     * 长按绑的是不是「多条命令」（`KeyConfig.longIsSerial`）。必须随广播过来：注入侧算不出来
-     * （算它要读命令库文件，那个目录 system_server 进不去，见 `KeyConfig.longIsSerial` 注释），
-     * 不带这一位「多条命令不支持连续触发」的闸门在真正判定路径上恒失效。
-     */
-    const val EXTRA_LONG_SERIAL = "long_is_serial"
-    const val EXTRA_DOUBLE_CLICK_MS = "double_click_ms"
-    const val EXTRA_VIBRATE = "vibrate"
-    const val EXTRA_INSTANT_SINGLE = "instant_single"
-    const val EXTRA_LANGUAGE = "language"
+    // 各项 extra 的名字**不在这里写**：同一个逻辑字段的两套名字（落盘 JSON 的键 + 本广播的 extra 名）
+    //  成对收在 `core/model/ConfigFields` 一处，这里只引用 `*_EXTRA` 那一列。两列的取值不一样
+    //  （`longPressMs` 对 `long_press_ms`），分开放时改一边编译器不会提醒另一边。
 
     /**
      * 一条配置广播的**内容指纹**（仅用于「设置页手上这份」与「注入侧那份」是不是同一个）。
@@ -82,13 +67,22 @@ object ConfigBroadcast {
     ): Any? =
         try {
             when (k) {
-                EXTRA_ENABLED, EXTRA_LONG_REPEAT, EXTRA_LONG_SERIAL,
-                EXTRA_VIBRATE, EXTRA_INSTANT_SINGLE,
-                -> extras.getBoolean(k)
+                ConfigFields.ENABLED_EXTRA, ConfigFields.LONG_REPEAT_EXTRA, ConfigFields.LONG_SERIAL_EXTRA,
+                ConfigFields.VIBRATE_EXTRA, ConfigFields.INSTANT_SINGLE_EXTRA,
+                -> {
+                    extras.getBoolean(k)
+                }
 
-                EXTRA_LONG_PRESS_MS, EXTRA_REPEAT_INTERVAL_MS, EXTRA_DOUBLE_CLICK_MS -> extras.getInt(k)
+                ConfigFields.LONG_PRESS_MS_EXTRA, ConfigFields.REPEAT_INTERVAL_MS_EXTRA, ConfigFields.DOUBLE_CLICK_MS_EXTRA -> {
+                    extras
+                        .getInt(
+                            k,
+                        )
+                }
 
-                else -> extras.getString(k)
+                else -> {
+                    extras.getString(k)
+                }
             }
         } catch (e: Throwable) {
             null
@@ -99,7 +93,7 @@ object ConfigBroadcast {
 
     /**
      * 把一份配置编成广播；宿主与设置页共用此构造器，格式只在这里写一次。
-     * [EXTRA_LONG_SERIAL] 在这里现算：两个调用方（宿主主进程 / 设置页 `:ui` 进程）都与宿主
+     * [ConfigFields.LONG_SERIAL_EXTRA] 在这里现算：两个调用方（宿主主进程 / 设置页 `:ui` 进程）都与宿主
      * 同 uid、读得到命令库，判定与界面共用 [CommandLibrary.isSerial] 同一份口径；此路径不在
      * 按键热路径上（只在启动 / 解锁 / 写盘时走），读一次文件的代价可接受。
      */
@@ -107,20 +101,20 @@ object ConfigBroadcast {
         val key = config.key(KeyId.PLUS)
         return Intent(ACTION_CONFIG)
             .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-            .putExtra(EXTRA_ENABLED, key.enabled)
-            .putExtra(EXTRA_SINGLE, key.single.token)
-            .putExtra(EXTRA_DOUBLE, key.double.token)
-            .putExtra(EXTRA_LONG, key.long.token)
-            .putExtra(EXTRA_LONG_PRESS_MS, key.longPressMs)
-            .putExtra(EXTRA_LONG_REPEAT, key.longRepeat)
-            .putExtra(EXTRA_REPEAT_INTERVAL_MS, key.longRepeatIntervalMs)
+            .putExtra(ConfigFields.ENABLED_EXTRA, key.enabled)
+            .putExtra(ConfigFields.SINGLE_EXTRA, key.single.token)
+            .putExtra(ConfigFields.DOUBLE_EXTRA, key.double.token)
+            .putExtra(ConfigFields.LONG_EXTRA, key.long.token)
+            .putExtra(ConfigFields.LONG_PRESS_MS_EXTRA, key.longPressMs)
+            .putExtra(ConfigFields.LONG_REPEAT_EXTRA, key.longRepeat)
+            .putExtra(ConfigFields.REPEAT_INTERVAL_MS_EXTRA, key.longRepeatIntervalMs)
             .putExtra(
-                EXTRA_LONG_SERIAL,
+                ConfigFields.LONG_SERIAL_EXTRA,
                 CommandLibrary.isSerial(CommandLibrary.loadCached(), key.long.token),
-            ).putExtra(EXTRA_DOUBLE_CLICK_MS, config.global.doubleClickMs)
-            .putExtra(EXTRA_VIBRATE, config.global.vibrate)
-            .putExtra(EXTRA_INSTANT_SINGLE, config.global.instantSingle)
-            .putExtra(EXTRA_LANGUAGE, config.global.language)
+            ).putExtra(ConfigFields.DOUBLE_CLICK_MS_EXTRA, config.global.doubleClickMs)
+            .putExtra(ConfigFields.VIBRATE_EXTRA, config.global.vibrate)
+            .putExtra(ConfigFields.INSTANT_SINGLE_EXTRA, config.global.instantSingle)
+            .putExtra(ConfigFields.LANGUAGE_EXTRA, config.global.language)
     }
 
     /** 与 [ConfigCodec] 同一口径的钳制：广播值可能来自手改文件，越界值按边界处理。 */
@@ -136,7 +130,7 @@ object ConfigBroadcast {
      * 拼装不得抛异常，否则 system_server 崩溃；缺项取安全默认（不接管、单击保留原生）。
      */
     fun parse(intent: Intent): Config {
-        val enabled = intent.getBooleanExtra(EXTRA_ENABLED, false)
+        val enabled = intent.getBooleanExtra(ConfigFields.ENABLED_EXTRA, false)
         return Config(
             keys =
                 mapOf(
@@ -144,40 +138,40 @@ object ConfigBroadcast {
                         KeyConfig(
                             id = KeyId.PLUS,
                             enabled = enabled,
-                            single = Action.parse(intent.getStringExtra(EXTRA_SINGLE) ?: "none"),
-                            double = Action.parse(intent.getStringExtra(EXTRA_DOUBLE) ?: "none"),
-                            long = Action.parse(intent.getStringExtra(EXTRA_LONG) ?: "none"),
+                            single = Action.parse(intent.getStringExtra(ConfigFields.SINGLE_EXTRA) ?: "none"),
+                            double = Action.parse(intent.getStringExtra(ConfigFields.DOUBLE_EXTRA) ?: "none"),
+                            long = Action.parse(intent.getStringExtra(ConfigFields.LONG_EXTRA) ?: "none"),
                             longPressMs =
                                 clampInt(
-                                    intent.getIntExtra(EXTRA_LONG_PRESS_MS, KeyConfig.DEFAULT_LONG_PRESS_MS),
+                                    intent.getIntExtra(ConfigFields.LONG_PRESS_MS_EXTRA, KeyConfig.DEFAULT_LONG_PRESS_MS),
                                     KeyConfig.MIN_LONG_PRESS_MS,
                                     KeyConfig.MAX_LONG_PRESS_MS,
                                 ),
-                            longRepeat = intent.getBooleanExtra(EXTRA_LONG_REPEAT, false),
+                            longRepeat = intent.getBooleanExtra(ConfigFields.LONG_REPEAT_EXTRA, false),
                             longRepeatIntervalMs =
                                 clampInt(
-                                    intent.getIntExtra(EXTRA_REPEAT_INTERVAL_MS, KeyConfig.DEFAULT_REPEAT_INTERVAL_MS),
+                                    intent.getIntExtra(ConfigFields.REPEAT_INTERVAL_MS_EXTRA, KeyConfig.DEFAULT_REPEAT_INTERVAL_MS),
                                     KeyConfig.MIN_REPEAT_INTERVAL_MS,
                                     KeyConfig.MAX_REPEAT_INTERVAL_MS,
                                 ),
-                            longIsSerial = intent.getBooleanExtra(EXTRA_LONG_SERIAL, false),
+                            longIsSerial = intent.getBooleanExtra(ConfigFields.LONG_SERIAL_EXTRA, false),
                         ),
                 ),
             global =
                 GlobalConfig(
                     doubleClickMs =
                         clampInt(
-                            intent.getIntExtra(EXTRA_DOUBLE_CLICK_MS, GlobalConfig.DEFAULT_DOUBLE_CLICK_MS),
+                            intent.getIntExtra(ConfigFields.DOUBLE_CLICK_MS_EXTRA, GlobalConfig.DEFAULT_DOUBLE_CLICK_MS),
                             GlobalConfig.MIN_DOUBLE_CLICK_MS,
                             GlobalConfig.MAX_DOUBLE_CLICK_MS,
                         ),
-                    vibrate = intent.getBooleanExtra(EXTRA_VIBRATE, false),
+                    vibrate = intent.getBooleanExtra(ConfigFields.VIBRATE_EXTRA, false),
                     instantSingle =
                         intent.getBooleanExtra(
-                            EXTRA_INSTANT_SINGLE,
+                            ConfigFields.INSTANT_SINGLE_EXTRA,
                             GlobalConfig.DEFAULT_INSTANT_SINGLE,
                         ),
-                    language = intent.getStringExtra(EXTRA_LANGUAGE) ?: GlobalConfig.DEFAULT_LANGUAGE,
+                    language = intent.getStringExtra(ConfigFields.LANGUAGE_EXTRA) ?: GlobalConfig.DEFAULT_LANGUAGE,
                 ),
         )
     }

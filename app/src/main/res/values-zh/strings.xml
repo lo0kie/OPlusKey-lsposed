@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  中文档 —— 系统语言是中文（`zh` 的任意变体）时，模块在系统界面上露出的那两串字走这里。
+  为什么中文单独一档、英文放默认档：见 `values/strings.xml` 顶部的说明。
+
+  注意：这一档**不是**应用内那套字典（`assets/locales/zh-CN.json`）—— 那份由 `I18n` 读、
+  跟着模块自己的语言档走；这份由系统读、跟着设备语言走。改文案时两边都要想着：
+  它们说的是同一件事，但服务的是两个不同的地方（管理器里那行说明 vs 页面里的文案）。
+-->
+<resources>
+    <string name="app_name">OPlusKey</string>
+    <string name="module_description">一加 / OPPO 侧键（Plus Key）重映射，支持单击、双击与长按，模块入口：设置 - 快捷键</string>
+</resources>

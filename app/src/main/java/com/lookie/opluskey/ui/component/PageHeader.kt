@@ -40,6 +40,7 @@ import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.hazeBlur
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
+import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.TopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
@@ -73,14 +74,16 @@ internal fun SettingsPage.currentHeaderHeight(scrollBehavior: ScrollBehavior): D
     val barHeight =
         with(LocalDensity.current) {
             val measured = limit.isFinite() && limit > SENTINEL_MIN
-            val collapsed =
+            // 名字按**它算出来是什么**取：`limit` 是负数（= 展开高 − 折叠高），`CollapsedHeight - limit`
+            //  比折叠高**大**，正是当前这一档的展开高 —— 叫 `collapsed` 会读成「折叠高」，与实际相反。
+            val expanded =
                 if (measured) {
                     TopAppBarDefaults.CollapsedHeight - limit.toDp()
                 } else {
                     TopAppBarDefaults.ExpandedHeight
                 }
             val shift = if (offset.isFinite() && offset > SENTINEL_MIN) offset.toDp() else 0.dp
-            maxOf(TopAppBarDefaults.ExpandedHeight, collapsed) + shift
+            maxOf(TopAppBarDefaults.ExpandedHeight, expanded) + shift
         }
     return barHeight + headerStatusBarPadding()
 }
@@ -170,7 +173,7 @@ internal fun SettingsPage.PageHeader(
      */
     bottomContent: @Composable () -> Unit = {},
 ) {
-    // 模糊半径按像素给（`blur` 收的是 px）—— 换算与取样都在 [frosted] 里。
+    // 磨砂规格（含模糊半径）统一由 [frosted] 挂，见 [HAZE_FROSTED_STYLE]。
     TopAppBar(
         title = title,
         // 库原本的底线副标题槽位：大标题**下面**单独一行（补丁没动它）
@@ -184,7 +187,12 @@ internal fun SettingsPage.PageHeader(
         // 两个槽位折叠后都保留（右边那条跟着大标题一起缩小；下面那条留在折叠态里）
         hideSubtitleOnCollapse = false,
         scrollBehavior = scrollBehavior,
-        color = COUITheme.colorScheme.surface.copy(alpha = FROSTED_SURFACE_ALPHA),
+        // 按**比例**缩这一档，不整个换 alpha（口径见 [PageConst.FROSTED_SURFACE_ALPHA]：
+        //  深浅两套色板里同名色可能一个是实色、一个是半透，替换会把后者顶成亮色）。
+        color =
+            COUITheme.colorScheme.surface.copy(
+                alpha = COUITheme.colorScheme.surface.alpha * FROSTED_SURFACE_ALPHA,
+            ),
         // 顶栏是整条矩形，不切圆角
         modifier = Modifier.frosted(state, RectangleShape),
         navigationIcon = {
@@ -232,18 +240,7 @@ internal fun SettingsPage.AppPickerMenu() {
     var open by remember { mutableStateOf(false) }
     val preciseClick = rememberPreciseClickState()
     Box {
-        IconButton(
-            onClick = { open = true },
-            minWidth = HEADER_ICON_SIZE,
-            minHeight = HEADER_ICON_SIZE,
-            cornerRadius = HEADER_ICON_SIZE / 2,
-            modifier =
-                Modifier
-                    .padding(end = 8.dp)
-                    .preciseClickAnchor(preciseClick),
-        ) {
-            Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
-        }
+        HeaderMenuButton(preciseClick) { open = true }
 
         MenuPopup(
             show = open,
@@ -272,6 +269,8 @@ internal fun SettingsPage.AppPickerMenu() {
                             }
                         },
                     ),
+                    // 相邻两行一条细线 —— 与全项目其它菜单同一件（[MenuEntry.RowLine]）
+                    MenuEntry.RowLine,
                     // 把「按下去必弹失败提示」的那些**也列出来** —— 判据 [LaunchableApp.launchable] 与执行端同一把尺子；
                     // 它是纯显示过滤，不重查列表。默认关（= 不显示），用户口径。
                     MenuEntry.Row(
@@ -289,6 +288,7 @@ internal fun SettingsPage.AppPickerMenu() {
                             }
                         },
                     ),
+                    MenuEntry.RowLine,
                     // 开着时挑中的应用写成 `window:<包名>` —— 用小窗起，见执行侧 [MiniWindowLauncher.launchAppInWindow]。
                     // 注意：这一项**不落盘**：它描述的是「这一趟要把动作写成哪个」，
                     //    不是「这一页该怎么显示」—— 每次进这一页都会按正在编辑的动作重算
@@ -337,18 +337,7 @@ internal fun SettingsPage.ResetMenu() {
 
     Box {
         // 触发键同样是库的 IconButton，只是多挂 `preciseClickAnchor`：浮层弹在按下的那一点
-        IconButton(
-            onClick = { open = true },
-            minWidth = HEADER_ICON_SIZE,
-            minHeight = HEADER_ICON_SIZE,
-            cornerRadius = HEADER_ICON_SIZE / 2,
-            modifier =
-                Modifier
-                    .padding(end = 8.dp)
-                    .preciseClickAnchor(preciseClick),
-        ) {
-            Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
-        }
+        HeaderMenuButton(preciseClick) { open = true }
 
         MenuPopup(
             show = open,
@@ -419,5 +408,28 @@ internal fun SettingsPage.ResetMenu() {
                 resetAll()
             },
         )
+    }
+}
+
+/**
+ * 顶栏右侧那颗 ⋮ ——「选择应用」与「重置」两处菜单的触发键**逐字相同**（同一颗图标、同一个
+ * 按压槽位、浮层都锚在按下的那一点），收在这里一处。
+ */
+@Composable
+private fun SettingsPage.HeaderMenuButton(
+    preciseClick: PreciseClickState,
+    onOpen: () -> Unit,
+) {
+    IconButton(
+        onClick = onOpen,
+        minWidth = HEADER_ICON_SIZE,
+        minHeight = HEADER_ICON_SIZE,
+        cornerRadius = HEADER_ICON_SIZE / 2,
+        modifier =
+            Modifier
+                .padding(end = 8.dp)
+                .preciseClickAnchor(preciseClick),
+    ) {
+        Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
     }
 }

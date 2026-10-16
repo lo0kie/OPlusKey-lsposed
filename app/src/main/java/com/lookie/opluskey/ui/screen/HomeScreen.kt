@@ -29,17 +29,24 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.component.ConfirmDialog
+import com.lookie.opluskey.ui.component.DonateDialog
+import com.lookie.opluskey.ui.component.MenuEntry
+import com.lookie.opluskey.ui.component.MenuPopup
 import com.lookie.opluskey.ui.component.SwitchRow
 import com.lookie.opluskey.ui.component.currentHeaderHeight
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.CONFIG_READ_FAILED_HINT
 import com.lookie.opluskey.ui.model.DISCLAIMER_TEXT
 import com.lookie.opluskey.ui.model.DISCLAIMER_TITLE
+import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
+import com.lookie.opluskey.ui.model.DonateTarget
+import com.lookie.opluskey.ui.model.FREE_NOTICE_TEXT
+import com.lookie.opluskey.ui.model.FREE_NOTICE_TITLE
 import com.lookie.opluskey.ui.model.HOME_ACTION_ROWS
-import com.lookie.opluskey.ui.model.HOME_BINDING_ARROW_SIZE
 import com.lookie.opluskey.ui.model.HOME_BINDING_ROWS
 import com.lookie.opluskey.ui.model.HOME_MORE_ROWS
 import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
@@ -50,6 +57,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PENDING_DEVICE_HINT
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
+import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.UNSUPPORTED_DEVICE_HINT
 import com.lookie.opluskey.ui.state.acceptDisclaimerAndEnable
 import com.lookie.opluskey.ui.state.devicePending
@@ -65,10 +73,12 @@ import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.SnackbarDuration
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 import kotlinx.coroutines.delay
@@ -89,6 +99,17 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     //  只在「打开」这一侧要；关闭直接写。弹窗在本页那张卡后面（见下面的 [ConfirmDialog]）。
     var disclaimerPending by remember { mutableStateOf(false) }
 
+    // 免责声明**确认之后**接着弹的那一个「温馨提醒」（模块免费、认准官方正版）。
+    //  与上面那次确认分开两个开关：这一条**不写盘、不拦任何操作**，两个按钮都只是关掉它；
+    //  合成一个开关会让「关掉它」和「没确认免责声明」变成同一件事，总闸就跟着被卡住了。
+    var freeNoticePending by remember { mutableStateOf(false) }
+
+    // 「捐赠打赏」那一行：锚点、菜单开关、选中的去处（非 null = 收款码窗口开着）。
+    //  菜单与收款码窗口都是**浮层**，调用点在本页末尾（与「更多选项」那张卡同一段之后）。
+    val donateClick = remember { PreciseClickState() }
+    var showDonateMenu by remember { mutableStateOf(false) }
+    var donateTarget by remember { mutableStateOf<DonateTarget?>(null) }
+
     // 链路上每一段在不在 ⇒ 缺哪一段就报哪一段（见 `ui/state/LinkCheck.kt` 的 `linkChecks`）。
     //  判据只能是**模块自己报活**：查宿主那支侧键服务不管用 —— 它是宿主自己的常驻服务，
     // 系统会自己把它拉起，服务在跑 ≠ 模块在跑（真机实测：重启后没注入它照样在跑）。
@@ -105,19 +126,15 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         repeat(QUERY_ROUNDS) { round ->
             val hostToken = hostAliveToken
             val injectToken = injectAliveToken
-            // 发不出去（广播队列满 / 进程正在死）不该把宿主 UI 进程带走 —— 与同页 `openUrl`、
-            //  `ConfigActions` 里那几处同一口径（裸着的话异常会顺协程抛出去）。
-            runCatching {
-                context.sendBroadcast(
-                    Intent(KeyModule.ACTION_HOST_SERVICE_QUERY).setPackage(KeyModule.PAGE_PACKAGE),
-                )
-            }.onFailure { XLog.w("链路自检：宿主问句没发出去：${it.javaClass.simpleName}") }
+            // 发不出去（广播队列满 / 进程正在死）不该把宿主 UI 进程带走
+            //  —— 裸着的话异常会顺协程抛出去（保护在 `PageWire.send` 里一处）
+            PageWire.send(
+                context,
+                KeyModule.PAGE_PACKAGE,
+                Intent(KeyModule.ACTION_HOST_SERVICE_QUERY),
+            )
             // 注入侧（system_server）那一段：它挂在 AMS 的广播入口上，认得出这条问句
-            runCatching {
-                context.sendBroadcast(
-                    Intent(KeyModule.ACTION_INJECT_QUERY).setPackage(KeyModule.PAGE_PACKAGE),
-                )
-            }.onFailure { XLog.w("链路自检：注入侧问句没发出去：${it.javaClass.simpleName}") }
+            PageWire.send(context, KeyModule.PAGE_PACKAGE, Intent(KeyModule.ACTION_INJECT_QUERY))
             delay(HOST_ALIVE_TIMEOUT_MS)
             val hostAnswered = hostAliveToken != hostToken
             val injectAnswered = injectAliveToken != injectToken
@@ -160,10 +177,10 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     //   · 配置没读成功 ⇒ 用户重进页面就能解决（[CONFIG_READ_FAILED_HINT]）；
     //   · 主开关关着 ⇒ 就是它关着导致的（[KEY_DISABLED_HINT]，拨回来即可）；
     //   · 链路没齐 ⇒ 请稍候（[MODULE_UNAVAILABLE_HINT]）。
-    //  ⚠️ 主开关那一档排在链路**之前**（2026-10-16 用户定，原来在后）：「链路没齐」有两类成因，
-    //  一类会自愈（注入侧回包还没到）、一类是用户当下就该动手的那一件。原来把主开关排在后面，
-    //  于是**清空配置**之后先报「模块暂不可用，请稍候」—— 可那个「稍候」等的是回包，用户等不出
-    //  结果，真正该做的（把主开关打开）反而被盖住。代价：链路真故障**又**恰逢主开关关着时，
+    //  ⚠️ 主开关那一档排在链路**之前**：「链路没齐」有两类成因 —— 一类会自愈（注入侧回包还没到），
+    //  一类是用户当下就该动手的那一件（主开关关着）。把主开关排在后面，**清空配置**之后会先报
+    //  「模块暂不可用，请稍候」：那个「稍候」等的是回包，用户等不出结果，真正该做的（把主开关
+    //  打开）反而被盖住。代价：链路真故障**又**恰逢主开关关着时，
     //  报的是「模块未启用」而那一行当时是灰的（`enabled` 吃 [linkReady]）——
     //  拨不动的人会去看「更多选项 → 运行状态」，那儿逐段说清了缺哪一段。
     val blockHint =
@@ -176,9 +193,14 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             else -> null
         }
     LaunchedEffect(blockHint) {
+        // 去重判据是**原因本身**，不是「当前有没有东西」：那条提示是 `Indefinite`（不会自己走），
+        //  只判 newest 是否为 null 的话，原因从 A 变成 B 时旧条还在、新条被跳过 ——
+        //  底部一直停在已经不成立的那条原因上，用户照着它排查会被带偏。
+        val shown = hostServiceSnackbar.newestSnackbarData()
         if (blockHint == null) {
-            hostServiceSnackbar.newestSnackbarData()?.dismiss()
-        } else if (hostServiceSnackbar.newestSnackbarData() == null) {
+            shown?.dismiss()
+        } else if (shown?.visuals?.message != blockHint) {
+            shown?.dismiss()
             XLog.w("首页提示：$blockHint")
             hostServiceSnackbar.showSnackbar(
                 message = blockHint,
@@ -280,7 +302,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             // 12x24 窄箭头（描边 1.4），与页面其余 Tabler 图标（描边 2）不是一支笔。
             // 自己画就得自己管两档色 —— 照抄库那支选择器
             // （`onSurfaceVariantActions` / `disabledOnSecondaryVariant`）。
-            // 尺寸见 [HOME_BINDING_ARROW_SIZE]：24dp 下 Tabler 那一段折线正好与库原箭头一样高。
+            // 尺寸见 [ROW_END_ICON_SIZE]：24dp 下 Tabler 那一段折线正好与库原箭头一样高。
             val bindingIconTint by animateColorAsState(
                 targetValue =
                     if (pageEnabled) {
@@ -315,7 +337,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                     Icon(
                         PageIcons.EnterArrow,
                         contentDescription = null,
-                        modifier = Modifier.size(HOME_BINDING_ARROW_SIZE),
+                        modifier = Modifier.size(ROW_END_ICON_SIZE),
                         tint = bindingArrowTint,
                     )
                 },
@@ -349,7 +371,24 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                 XLog.w("免责声明：已确认，启用按键绑定")
                 disclaimerPending = false
                 acceptDisclaimerAndEnable()
+                // 接着弹「温馨提醒」：确认免责声明的人正是最该被告知「这模块不收费」的那个人。
+                //  两个弹窗同一帧切换（上一个在退场、这一个在进场）—— 这是控件给的样子，
+                //  要等前者退净得用库里那个 `onDismissFinished`，而 [ConfirmDialog] 没往外露。
+                freeNoticePending = true
             },
+        )
+
+        // 紧接着那个「温馨提醒」：模块完全免费、认准官方正版。
+        //  按口径，两颗按钮（确认 / 取消）**都只是关掉它** —— 它不写盘、不拦操作，
+        //  所以两个回调是同一件事；分两个入口只是把「看过了」和「划走」分成两种按法。
+        ConfirmDialog(
+            show = freeNoticePending,
+            title = FREE_NOTICE_TITLE,
+            summary = FREE_NOTICE_TEXT,
+            action = I18n.get(Strings.DIALOG_CONFIRM, "确认"),
+            positiveDanger = false,
+            onDismiss = { freeNoticePending = false },
+            onConfirm = { freeNoticePending = false },
         )
 
         // 「按键绑定」卡片与「按键行为」分组之间留一档空档
@@ -418,7 +457,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                     Icon(
                         PageIcons.EnterArrow,
                         contentDescription = null,
-                        modifier = Modifier.size(HOME_BINDING_ARROW_SIZE),
+                        modifier = Modifier.size(ROW_END_ICON_SIZE),
                         tint = COUITheme.colorScheme.onSurfaceVariantActions,
                     )
                 },
@@ -427,7 +466,78 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
                     navTo(Screen.ABOUT)
                 },
             )
+
+            HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+
+            // 「捐赠打赏」：点开一层菜单（三个去处），选中一个再弹**居中**的收款码窗口。
+            //  与「更多选项」并排在这一张卡里 —— 两行都是「偶尔才点一次」的去处。
+            //  行尾给选择器字形（读作「点了要选点什么」），不是进下一页的箭头，与「语言」那一行同一套。
+            //  这一行同样**不吃任何闸**：打赏与模块启没启用无关，整页禁用时它照样该能点。
+            BasicComponent(
+                title = I18n.get(Strings.HOME_DONATE, "捐赠打赏"),
+                summary = I18n.get(Strings.HOME_DONATE_SUMMARY, "您的慷慨将帮助此项目持续发展"),
+                startAction = { Icon(PageIcons.Donate, null) },
+                endActions = {
+                    Icon(
+                        PageIcons.Selector,
+                        contentDescription = null,
+                        modifier = Modifier.size(ROW_END_ICON_SIZE),
+                        tint = COUITheme.colorScheme.onSurfaceVariantActions,
+                    )
+                },
+                cardListPosition = cardListPositionOf(1, HOME_MORE_ROWS),
+                modifier = Modifier.preciseClickAnchor(donateClick),
+                onClick = {
+                    tick()
+                    showDonateMenu = true
+                },
+            )
         }
+
+        MenuPopup(
+            show = showDonateMenu,
+            preciseClick = donateClick,
+            onDismiss = { showDonateMenu = false },
+            entries =
+                buildList {
+                    DonateTarget.entries.forEachIndexed { index, target ->
+                        // 相邻两行一条细线 —— 与全项目其它菜单同一件（[MenuEntry.RowLine]）
+                        if (index > 0) add(MenuEntry.RowLine)
+                        add(
+                            MenuEntry.Row(
+                                title = target.label,
+                                // 三行各一个品牌字形：都是「一个去处」，只有品牌图能一眼分清
+                                icon = target.icon,
+                            ) {
+                                showDonateMenu = false
+                                donateTarget = target
+                            },
+                        )
+                    }
+                    // 加深分隔：上面三行是「怎么给」，下面这一行是「谢谢谁」—— 两件事，
+                    //  用组间那条**槽**分开（[MenuEntry.GroupLine]），不是行与行之间那种细线。
+                    add(MenuEntry.GroupLine)
+                    add(
+                        MenuEntry.Row(
+                            title = DONATE_LIST_TITLE,
+                            // 这一行是「一份带金额的清单」，与上面三行「怎么给」的品牌字形分开
+                            icon = PageIcons.DonateList,
+                            // 行尾那一格：这一行点了是**进下一层页面**
+                            submenu = true,
+                            // 字形用「打开新页面」那一颗（与网格里「打开应用」进「选择应用」页同一颗，
+                            //  见 [PageIcons.BrowserPlus]）—— 默认那支右箭头是「弹一层菜单」的记号，
+                            //  放在这儿读不出「会离开这一层」。
+                            trailingIcon = PageIcons.BrowserPlus,
+                        ) {
+                            showDonateMenu = false
+                            navTo(Screen.DONATE_LIST)
+                        },
+                    )
+                },
+        )
+
+        // 收款码窗口（居中）：内容是那张图，图还没进包时退成品牌字形（见 [DonateDialog]）
+        DonateDialog(target = donateTarget, onDismiss = { donateTarget = null })
 
         Spacer(Modifier.height(PAGE_BOTTOM_PADDING))
     }

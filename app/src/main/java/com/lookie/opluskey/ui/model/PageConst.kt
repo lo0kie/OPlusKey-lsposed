@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
 import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
@@ -172,8 +174,10 @@ internal fun commandKindLabel(kind: CommandKind): String =
     }
 
 /**
- * 语言档位在界面上叫什么 —— 「语言」那一行的副标题与它那一层菜单共用这一份
- *（[AppLanguage.label] 是枚举里的中文原文）。
+ * 语言档位在界面上叫什么 —— 「语言」那一行的副标题与它那一层菜单共用这一份。
+ *
+ * 显示名只从这里出：[AppLanguage] 枚举上只留 `code`（那是原样进配置文件、注入侧与宿主侧也读它
+ * 的字段），没有可以直接摆到界面上的文案字段。
  */
 internal fun languageLabel(lang: AppLanguage): String =
     when (lang) {
@@ -192,6 +196,14 @@ internal fun languageLabel(lang: AppLanguage): String =
  */
 internal val ABOUT_TITLE: String
     get() = I18n.get(Strings.MORE_OPTIONS_TITLE, "更多选项")
+
+/**
+ * 「捐赠列表」页的标题（首页「其他 → 捐赠打赏」那层菜单的最后一项进入；这是**唯一入口**）。
+ *
+ *  与那一行菜单项**共用同一个键**：菜单里写什么、进去之后顶上就写什么，两处串了没有意义。
+ */
+internal val DONATE_LIST_TITLE: String
+    get() = I18n.get(Strings.DONATE_LIST_TITLE, "捐赠列表")
 
 /**
  * 首页那条常驻提示的文案（页面被闸住时弹，见 [HomeScreen] 的 `blockHint`）。
@@ -272,6 +284,46 @@ internal val DISCLAIMER_TEXT: String
                 "请确认你已知晓并**自行承担风险**。",
         )
 
+/** 「温馨提醒」那个弹窗的标题 —— 免责声明**确认之后**接着弹（见 `ui/screen/HomeScreen`）。 */
+internal val FREE_NOTICE_TITLE: String
+    get() = I18n.get(Strings.DIALOG_FREE_NOTICE_TITLE, "温馨提醒")
+
+/**
+ * 「温馨提醒」的正文：模块免费、认准官方正版。
+ *
+ *  与上面那份免责声明**分开**：那一份讲「这件事有风险」，这一份讲「别为它付钱」——
+ *  两件事，硬拼成一段会让人以为风险可以用钱解决。
+ *  关键那两句加粗（正文按 markdown 渲染，见 `ConfirmDialog` 的 `summary`）。
+ */
+internal val FREE_NOTICE_TEXT: String
+    get() =
+        I18n.get(
+            Strings.DIALOG_FREE_NOTICE_CONTENT,
+            "此模块**完全免费**，所有功能都不需要收费，请确认你使用的是**官方正版**。",
+        )
+
+/** 「自定义命令」那一页的风险提示标题（首次进那一页弹；不确认就退出那一页）。 */
+internal val COMMAND_DISCLAIMER_TITLE: String
+    get() = I18n.get(Strings.DIALOG_COMMAND_DISCLAIMER_TITLE, "自定义命令风险提示")
+
+/**
+ * 「自定义命令」那一份的正文 —— **自成一段**，不复用首页那份免责声明（[DISCLAIMER_TEXT]）。
+ *
+ *  两份说的是两件事：那一份讲的是「注入系统进程」这件事本身（极端情况开不了机那类），
+ *  这一份讲的是「你写的命令不受任何约束」—— 把前者抄过来只会稀释后者，读起来像通用模板。
+ *  风险承担那句话仍要自己说一遍，但用自己的措辞。
+ *
+ *  正文按 markdown 渲染（`ConfirmDialog` 的 `summary` 走 [MarkdownBody]）—— 关键那两句加粗。
+ */
+internal val COMMAND_DISCLAIMER_TEXT: String
+    get() =
+        I18n.get(
+            Strings.DIALOG_COMMAND_DISCLAIMER_CONTENT,
+            "自定义命令是**高度危险**的功能。\n\n" +
+                "本模块**不会对的命令做任何检验或保护**。\n\n" +
+                "请自行确认命令安全并承担相应后果。",
+        )
+
 /**
  * 「添加命令」选择器浮层的最大高度 —— 取 320dp。
  *
@@ -293,8 +345,8 @@ internal const val COLUMNS = 2
  */
 internal const val HOME_ACTION_ROWS = 2
 
-/** 「更多选项」页「关于」那张卡的行数 —— 本机 / 版本 / 作者 / 反馈问题，四行固定。 */
-internal const val ABOUT_ROWS = 4
+/** 「更多选项」页「关于」那张卡的行数 —— 本机 / 版本 / 签名 / 作者 / 反馈问题，五行固定。 */
+internal const val ABOUT_ROWS = 5
 
 /**
  * 「更多选项」页「配置」那张卡的行数 —— 语言 / 导出配置 / 导入配置，三行固定。
@@ -305,11 +357,11 @@ internal const val ABOUT_ROWS = 4
 internal const val MORE_CONFIG_ROWS = 3
 
 /**
- * 首页「其他」卡的行数 —— 只有「更多选项」一行。
+ * 首页「其他」卡的行数 —— 「更多选项」与「捐赠打赏」两行。
  *
  * 与 [HOME_ACTION_ROWS] 分开同样是圆角账：两张卡的首尾各自算。
  */
-internal const val HOME_MORE_ROWS = 1
+internal const val HOME_MORE_ROWS = 2
 
 /**
  * 「已保存的命令」卡片里图标到标题的间距 —— 卡片高度至少等于宽度、步骤多时会跟着长高，
@@ -319,7 +371,7 @@ internal val TILE_TITLE_GAP = 8.dp
 
 /**
  * 「已保存的命令」卡片里，摘要行**每一步**行首小图标的边长 —— 比步骤行的
- * [INPUT_ICON_SIZE]（22dp）小一档，它跟着的是摘要那行小字（`footnote1`）。
+ * [ROW_ICON_SIZE]（22dp）小一档，它跟着的是摘要那行小字（`footnote1`）。
  */
 internal val SUMMARY_REF_ICON = 14.dp
 
@@ -354,13 +406,37 @@ internal const val REPO_URL = "https://github.com/lo0kie/OPlusKey-lsposed"
 /** 「作者」行的值 —— 与仓库所有者同名。 */
 internal const val AUTHOR = "lo0kie"
 
-/** 「作者」行点开的目标 —— 作者的 GitHub 主页。 */
+/** 「作者」菜单里「GitHub」那一项的目标 —— 作者的 GitHub 主页。 */
 internal const val PROFILE_URL = "https://github.com/$AUTHOR"
 
 /**
- * 「反馈问题」行点开的目标 —— 本仓库的 issue 列表（`AboutScreen` 的 `summary` 与 `onClick` 都直接引它）。
+ * 「作者」菜单里「酷安」那一项的目标 —— 作者的酷安主页。
+ *
+ *  `AuthorTarget.configured` 判的是「地址空不空」（空串会让那一行置灰、点了不派发），
+ *  所以这一行有值就等于菜单里那一项是亮的。
+ */
+internal const val COOLAPK_URL = "https://www.coolapk.com/u/1014357"
+
+/**
+ * 「反馈问题」菜单里「GitHub Issue」那一项的目标 —— 本仓库的 issue 列表。
  */
 internal const val ISSUE_URL = "$REPO_URL/issues"
+
+/**
+ * 「反馈问题」菜单里「QQ 频道」那一项的目标 —— 频道的分享链接。
+ *
+ *  `pd.qq.com/s/<id>?b=<数字>` 是 QQ 频道的分享短链形式（`b` 那段是分享来源标记），
+ *  点开会拉起 QQ 进频道卡片。
+ */
+internal const val QQ_CHANNEL_URL = "https://pd.qq.com/s/5q8sgrlx5?b=5"
+
+/**
+ * 「反馈问题」菜单里「Telegram」那一项的频道地址。
+ *
+ *  这一串是 Telegram 那种 `+` 开头的**邀请链接**（不是 `t.me/<频道名>` 的公开频道形式），
+ *  点开会先过一个「加入」确认页 —— 正常，不用改。
+ */
+internal const val TELEGRAM_URL = "https://t.me/+u3I5kFTb25BkMjA1"
 
 /**
  * 「按键绑定」那张卡的行数：第 1 行主开关、第 2 行进子页 —— 主开关是独立一行，不挂在跳转行行尾。
@@ -552,6 +628,10 @@ internal const val VISIBILITY_ENTER_MS = 260
 /** 动态显隐控件出场时长（收起）。 */
 internal const val VISIBILITY_EXIT_MS = 200
 
+/** 贴边控件进场时那一下淡入 / 出场时那一下淡出的时长。 */
+internal const val VISIBILITY_FADE_IN_MS = 180
+internal const val VISIBILITY_FADE_OUT_MS = 140
+
 /**
  * 命令页「单条 / 多条」两栏切换的时长。
  *
@@ -575,6 +655,25 @@ internal val VISIBILITY_EXIT: ExitTransition =
             animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
             shrinkTowards = Alignment.Top,
         )
+
+/**
+ * 「贴边控件」的进场 / 出场 —— 从自身高度之外（再加 [extraPx] 那一档留白）滑上来 / 滑下去。
+ *
+ *  右下角那颗 FAB 与底部那条工具栏共用这一份：两者的差别只在 [extraPx]
+ *  （FAB 多算一档底边距、工具栏要滑过它浮在底边上方的那段距离），时长与缓动必须一致 ——
+ *  同页两个贴边控件一前一后地动，看着像卡了一下。
+ *
+ *  @param extraPx 自身高度之外还要多滑的距离（像素），由调用点按自己的贴边留白算
+ */
+internal fun edgeSlideIn(extraPx: Int): EnterTransition =
+    slideInVertically(
+        animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+    ) { it + extraPx } + fadeIn(tween(VISIBILITY_FADE_IN_MS, easing = LinearOutSlowInEasing))
+
+internal fun edgeSlideOut(extraPx: Int): ExitTransition =
+    slideOutVertically(
+        animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
+    ) { it + extraPx } + fadeOut(tween(VISIBILITY_FADE_OUT_MS, easing = FastOutLinearInEasing))
 
 /**
  * 多条命令列表步骤专属进场动效：
@@ -630,11 +729,11 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
     get() =
         listOf(
             CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_DEFAULT_SHELL, "默认为 shell 命令")),
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令> —— 执行 shell 命令"), "shell:"),
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键> —— 模拟按键"), "keyevent:"),
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action> —— 发送 Intent"), "intent:"),
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID> —— 触发快捷方式"), "shortcut:"),
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_CMD, "cmd:<名字> —— 调用另一条单条命令"), "cmd:"),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令> —— 执行 shell 命令"), Action.SHELL_PREFIX),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键> —— 模拟按键"), Action.KEYEVENT_PREFIX),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action> —— 发送 Intent"), Action.INTENT_PREFIX),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID> —— 触发快捷方式"), Action.SHORTCUT_PREFIX),
+            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_CMD, "cmd:<名字> —— 调用另一条单条命令"), Command.PREFIX),
         )
 
 /**
@@ -702,10 +801,42 @@ internal val PAGE_TRANSITION: NavTransition by lazy {
 internal val MENU_ICON_SIZE = 20.dp
 
 /**
- * 首页「按键绑定」那行行尾箭头（[PageIcons.EnterArrow]）的尺寸 —— 取 24dp，
- * 与库那颗 `COUIIcons.Basic.ArrowRight` 同为 24dp 下折线占 12dp 的字形。
+ * 浮层菜单里两种分隔的 alpha。
+ *
+ *  库默认那一档在磨砂面板上几乎看不见，所以自己给：**细线**暗色走亮线、浅色走黑线；
+ *  **组间那条槽**暗色要压得更重（`#333` 面板上压到 `#1f` 才看得出是一道槽）。
  */
-internal val HOME_BINDING_ARROW_SIZE = 24.dp
+internal const val MENU_ROW_LINE_DARK_ALPHA = 0.14f
+internal const val MENU_ROW_LINE_LIGHT_ALPHA = 0.10f
+internal const val MENU_GROUP_LINE_DARK_ALPHA = 0.32f
+internal const val MENU_GROUP_LINE_LIGHT_ALPHA = 0.08f
+
+/** 底部工具栏那颗胶囊的阴影 alpha（[CommandScreen] 的工具栏）。 */
+internal const val TOOLBAR_SHADOW_ALPHA = 0.1f
+
+/**
+ * 行尾那颗指示图标（右箭头 / 选中圈 / 入口字形）的边长 —— 取 24dp，
+ * 与库那颗 `COUIIcons.Basic.ArrowRight` 同为 24dp 下折线占 12dp 的字形。
+ *
+ *  全页凡是「行尾摆一颗图标」的地方都取它（首页按键绑定、按键绑定网格的入口指示、
+ *  选择应用的选中指示、关于页行尾箭头）。原来这几处各写一遍 `24.dp`，改一处不联动。
+ */
+internal val ROW_END_ICON_SIZE = 24.dp
+
+/**
+ * 「捐赠打赏」窗口里那张收款码的边长 —— 二维码要够大才扫得动（也是那个窗口的主要面积）。
+ *
+ *  图还没有时（`assets/donate/<id>.png` 不在包里）退成品牌字形，用的是同一个尺寸。
+ */
+internal val DONATE_CODE_SIZE = 220.dp
+
+/**
+ * 行首图标的边长 —— 全页「22dp 图标纪律」。
+ *
+ *  网格格子、步骤行、输入框行首、空状态那一枚都取它：同一个页面里行首图标忽大忽小，
+ *  比整体偏大偏小更明显。原来几处各写一遍 `22.dp`（或各留一个私有常量）。
+ */
+internal val ROW_ICON_SIZE = 22.dp
 
 /** 只用来注册监听，不读它的值 —— 见 [SyncToHost]。 */
 internal const val NIGHT_MODE_KEY = "ui_night_mode"

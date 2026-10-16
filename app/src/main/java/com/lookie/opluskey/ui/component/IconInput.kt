@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputViewDefaults
@@ -35,9 +37,6 @@ import io.github.suqi8.coui.kmp.basic.TextFieldMode
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 卡片式输入项（行首图标 + 标题 + 输入框 + 错误行）与它的尺寸 / 缓动常量。
-
-/** 「带图标的卡片输入」（[IconInputView]）里行首图标的边长 —— 与全页图标同一个 22dp 纪律。 */
-internal val INPUT_ICON_SIZE = 22.dp
 
 /** 行首图标与右侧内容之间的间距。 */
 internal val INPUT_ICON_GAP = 8.dp
@@ -61,10 +60,14 @@ private val INPUT_ERROR_EASE = CubicBezierEasing(0.33f, 0f, 0.67f, 1f)
  *  · 标题：`body2`（14sp，由库的 16sp `titleTextStyle()` 降一档）+ 上下 12 / 4dp + 最小高 22dp；
  *  · 输入框：[TextField]，`textStyle` 用库默认（16sp）+ `TextFieldMode.None` + `insideMargin = DpSize(0, 0)`；
  *  · 错误提示：卡片**外**那行 10sp 红字，淡入 217ms / 淡出 283ms（库文档给的那组数值）。
- * 差别只有一处：**行首图标占左侧一格，标题与输入框都从它右边起**（图标 [INPUT_ICON_SIZE]
+ * 差别只有一处：**行首图标占左侧一格，标题与输入框都从它右边起**（图标 [ROW_ICON_SIZE]
  * + 间距 [INPUT_ICON_GAP]）。
  *
- * @param icon 行首图标（按 [INPUT_ICON_SIZE] 画，与全页图标同一个尺寸纪律）
+ * @param icon 行首图标（按 [ROW_ICON_SIZE] 画，与全页图标同一个尺寸纪律）
+ *
+ *  注：`SettingsPage.` 这个接收者**在函数体里一次都没用到**（体内不读任何页面级成员）——
+ *  留着它是为了与同目录那批「页面组件」（[SwitchRow] / [SliderRow] …）保持同一种写法，
+ *  也免得调用点从页面扩展里挪出去时得跟着改。要删时连 [SettingsPage] 那个 import 一起清。
  */
 @Composable
 internal fun SettingsPage.IconInputView(
@@ -100,19 +103,14 @@ internal fun SettingsPage.IconInputView(
     )
     //  行首图标**自己一档**：与其他行的行首图标同色（`onSurfaceContainer`）。
     // 不要跟着标题走 —— 那个色比页里别的行首都暗一档。
-    val iconColor by animateColorAsState(
-        targetValue =
-            if (enabled) {
-                COUITheme.colorScheme.onSurfaceContainer
-            } else {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            },
-        label = "InputIcon",
-    )
+    val iconColor by rememberRowIconColor(enabled, label = "InputIcon")
     val isError = errorMessage.isNotEmpty()
     // 淡出期间要**留着最后那条非空消息**，否则红字先消失、再走淡出（库同此做法）
     var shownError by remember { mutableStateOf(errorMessage) }
-    if (isError && shownError != errorMessage) shownError = errorMessage
+    // 组合期**不写状态**（写它会让本次组合再跑一轮）：挪到副作用里做同一件事。
+    LaunchedEffect(isError, errorMessage) {
+        if (isError && shownError != errorMessage) shownError = errorMessage
+    }
 
     Column(modifier = modifier) {
         Card(
@@ -126,7 +124,7 @@ internal fun SettingsPage.IconInputView(
                 Icon(
                     icon,
                     contentDescription = null,
-                    modifier = Modifier.size(INPUT_ICON_SIZE),
+                    modifier = Modifier.size(ROW_ICON_SIZE),
                     tint = iconColor,
                 )
                 Spacer(Modifier.width(INPUT_ICON_GAP))
@@ -165,7 +163,6 @@ internal fun SettingsPage.IconInputView(
                         // 标题与内容之间的空隙就被撑开了 —— 动这里必须连着 label 一起看。
                         textStyle = TextFieldDefaults.textStyle(TextFieldMode.None),
                         singleLine = true,
-                        maxLines = 1,
                     )
                 }
             }

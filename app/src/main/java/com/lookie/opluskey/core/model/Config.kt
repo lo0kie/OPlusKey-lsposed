@@ -24,7 +24,7 @@ data class KeyConfig(
     val longRepeatIntervalMs: Int,
     /**
      * 长按绑的是不是「多条命令」（`cmd:<名字>` 且命令库里那条是串行命令）。
-     * 只由宿主算好、随配置广播带过来（`ConfigBroadcast.EXTRA_LONG_SERIAL`），注入侧不自己算：
+     * 只由宿主算好、随配置广播带过来（`ConfigFields.LONG_SERIAL_EXTRA`），注入侧不自己算：
      * 算它要读宿主私有目录的命令库，system_server 进不去带 MCS 分类的目录
      * （`docs/device-findings.md` 六之五 / 九之一），读不到就恒 false，闸门失效。
      * 默认 false = 与早先行为一致（配置文件里没有这一位，不回写）。
@@ -126,6 +126,17 @@ data class Config(
      *    一份文件不该替别人说「我已经接受了风险」。
      */
     val disclaimerAccepted: Boolean = false,
+    /**
+     * 用户是否已经确认过「自定义命令」那一页的风险提示 —— 与 [disclaimerAccepted] **分开记**。
+     *
+     *  两者说的是两件事：那一份讲的是「注入系统进程」这件事本身，这一份讲的是
+     *  「自定义命令**不做任何检验或保护**，写什么就跑什么」。在首页确认过前者，不等于知道后者，
+     *  所以不能共用一位。
+     *
+     *  同样存在配置里（理由与 [disclaimerAccepted] 一样）：清空配置按 [DEFAULT] 重建
+     *  ⇒ 这一位跟着没了 ⇒ 下次进那一页照样弹；导出／导入也一律丢掉（见 `ConfigBundle`）。
+     */
+    val commandDisclaimerAccepted: Boolean = false,
 ) {
     fun key(id: KeyId): KeyConfig = keys[id] ?: KeyConfig.defaultFor(id)
 

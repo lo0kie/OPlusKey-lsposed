@@ -2,20 +2,26 @@ package com.lookie.opluskey.core.config
 
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.HostApp
 import java.io.File
 
 /** 配置文件的位置与读写，全项目只有这一处。 */
 object ConfigStore {
     /**
-     * 宿主 App（`com.oplus.gesture`）私有目录 —— 用的是 **DE（设备加密）** 那一份。
+     * 宿主 App（[HostApp.PACKAGE]）私有目录 —— 用的是 **DE（设备加密）** 那一份，路径按**当前用户**拼。
      *
      * 为什么不用 CE（`/data/data/…`）：CE 在**首次解锁前不可见**，开机到解锁之间配置只能读到
      * 默认值（`enabled=false`），注入侧据此按「不接管」处理、侧键那一段只能走系统原生。
      * DE 与设备加密同源、开机即可读，解锁前也能按真配置接管。
+     *
+     * 为什么用户 id 不能写死成 0：`/data/user_de/<uid>/…` 里的 `<uid>` 是**当前用户**的用户 id
+     * （`android.os.Process.myUid() / 100000`，与 `UserHandle.getUserId()` 同口径）。副用户 / 工作资料
+     * 下用户 id 不是 0，写死 0 会一直去读主用户那份 —— 那些用户改配置怎么都不生效（读到的是别的
+     * 用户的配置，或干脆读不到而退回默认值）。
      */
-    private const val HOST_DIR = "/data/user_de/0/com.oplus.gesture"
+    private val HOST_DIR: String = "/data/user_de/${android.os.Process.myUid() / 100000}/${HostApp.PACKAGE}"
 
-    private const val HOST_FILES = "$HOST_DIR/files"
+    private val HOST_FILES: String = "$HOST_DIR/files"
 
     private const val SHARED_NAME = "opluskey_config.conf"
 
@@ -73,8 +79,8 @@ object ConfigStore {
      *
      * **进程内结果缓存**：这个方法在宿主进程的**按键路径**上被调好几次（手势执行一次、
      * 顺带那次报活再一次），每次都是「读盘 + 剥两层外皮 + JSON 解析 + 建映射」。
-     * 缓存按**文件指纹**（修改时间 + 长度，两次 `stat`）命中，所以「改配置即时生效」这条语义
-     * 不变：文件一被写，指纹就变，下一次读立刻重解析。本进程自己的写盘（[write]）另外主动失效。
+     * 缓存按**文件指纹**（修改时间 + 长度 + inode，见 [Cached]）命中，所以「改配置即时生效」这条
+     * 语义不变：文件一被写，指纹就变，下一次读立刻重解析。本进程自己的写盘（[write]）另外主动失效。
      *
      * 缓存的是**内容派生出来的结论**（[Load.Ok] 与「内容读不懂」的 [Load.Unreadable]）——
      * 内容没变，结论就不会变。**读不出来那一路不缓存**（EACCES / IO 错）：它不是内容的性质，
@@ -89,7 +95,10 @@ object ConfigStore {
 
         val modified = f.lastModified()
         val length = f.length()
-        cached?.let { if (it.modified == modified && it.length == length) return it.result }
+        val inode = inodeOf(f)
+        cached?.let {
+            if (it.modified == modified && it.length == length && it.inode == inode) return it.result
+        }
 
         val raw =
             try {
@@ -109,19 +118,23 @@ object ConfigStore {
                 ?: return Load.Unreadable
 
         val result = ConfigCodec.parseOrNull(text)?.let { Load.Ok(it) } ?: Load.Unreadable
-        cached = Cached(modified, length, result)
+        cached = Cached(modified, length, inode, result)
         return result
     }
 
     /**
      * 上一次读的结果与它对应的文件指纹。
      *
-     * 指纹取「修改时间 + 长度」两个字段而不是合成一个数：合成会有碰撞的可能，分着比是精确的。
-     * 写盘走的是「先 `.tmp` 再 rename」，目标文件因此每次都是新 inode，修改时间必然变。
+     * 指纹是「修改时间 + 长度 + inode」三个字段，不合成一个数：合成会有碰撞的可能，分着比是精确的。
+     * 为什么还要带上 inode：写方是设置页 `:ui` 进程、读方是宿主主进程，**写方清缓存清不到读方**，
+     * 读方只能靠指纹自己发现「文件换了」——若新内容**长度恰好相同**、又落在同一个 mtime 粒度内，
+     * 只看（修改时间, 长度）就会把陈值当命中。写盘走的是「先 `.tmp` 再 rename」，目标文件因此
+     * 每次都是**新 inode**，inode 必变，能天然区分出每一次写。
      */
     private class Cached(
         val modified: Long,
         val length: Long,
+        val inode: Long,
         val result: Load,
     )
 
@@ -145,8 +158,9 @@ object ConfigStore {
      * 写配置（只有宿主进程调得到）。
      * 先包一层外皮（[FileObfuscation]），再走「先写 `.tmp` 再 rename」，避免执行侧读到半截内容。
      *
-     * 写成功后**主动丢掉读缓存**（[load] 那一份）：不指望文件系统的修改时间粒度够细 ——
-     * 同一秒内「写一次、马上读」时指纹可能没变，那时读回旧内容就是实打实的 bug。
+     * 写成功后**主动丢掉读缓存**（[load] 那一份）：本进程自己的写盘最清楚「刚换过内容」，
+     * 主动失效省掉一次多余的 `stat` 比对，不依赖指纹去发现。
+     * 跨进程的写方（设置页 `:ui`）清不到这里的缓存，那种情况由指纹里的 inode 兜住（见 [Cached]）。
      */
     fun write(config: Config): Boolean {
         val ok =
@@ -188,7 +202,10 @@ object ConfigStore {
                 XLog.w("建目录失败：${dir.path}")
                 return false
             }
-            val tmp = File(dir, target.name + ".tmp")
+            // 临时名带上 pid 与时间戳：当前只有一个写方且串行，定名不会撞；这里只是防御 ——
+            //  将来多一个并发写方（或同进程重入）时，定名会让两处共用同一个 tmp，
+            //  互相把对方没写完的内容 rename 成目标文件。带上进程与时刻就从命名上错开。
+            val tmp = File(dir, "${target.name}.${android.os.Process.myPid()}.${System.currentTimeMillis()}.tmp")
             val bytes = text.toByteArray(Charsets.UTF_8)
             java.io.FileOutputStream(tmp).use { out ->
                 out.write(bytes)
@@ -240,3 +257,22 @@ object ConfigStore {
     /** UTF-8 文本流开头的 BOM（一个 `U+FEFF` 码元）。 */
     private const val BOM = '\uFEFF'
 }
+
+/**
+ * 取文件 inode（`android.system.Os.stat`，本地 syscall，很便宜）。
+ *
+ *  文件已不在 / stat 失败时返回 0：那与「取不到」同值，最多让缓存多失效一次（多读一遍盘），
+ *  不会把陈值当命中 —— 方向是安全的那一侧。
+ *
+ *  写成**顶层**函数而不是对象成员：它是纯函数、不吃对象状态，而 [ConfigStore] 的函数条数已经贴着
+ *  detekt `TooManyFunctions` 那一档，再往里放一个就把闸口顶红。
+ */
+private fun inodeOf(f: File): Long =
+    try {
+        android.system.Os
+            .stat(f.path)
+            .st_ino
+    } catch (e: Throwable) {
+        XLog.d("取文件 inode 失败（缓存指纹退化为修改时间 + 长度）：${f.path} | ${e.message}")
+        0L
+    }
