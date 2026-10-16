@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  模块在**系统界面**上露出的那两串字（LSPosed 管理器里的模块名与说明、启动器里的应用名）。
+
+  注意：这一份是**默认档（兜底）**，与项目自己的语言策略同一条口径 —— 只有系统语言是中文时
+  才走 `values-zh/`，其余一律走这里（见 `core/i18n/I18n.kt` 的 `AppLanguage.AUTO`）。
+  所以这里的文案是**英文**，不是中文。
+
+  注意：这两串**不在** `assets/locales/*.json` 那套字典里，也**不能**放进去 ——
+  它们是 `AndroidManifest.xml` 的 `android:label` / `android:description` 引用的资源，
+  由**系统**按设备语言解析，管理器读的也是系统解析后的那一份；
+  应用内的文案走 `I18n`（跟着模块自己的语言档走）。两者是两件东西、各有各的用途。
+
+  两档都要写全（含 `app_name`）：只在一档里写会被 lint 的 `MissingTranslation` 拦下。
+-->
 <resources>
     <string name="app_name">OPlusKey</string>
-    <string name="module_description">一加 / OPPO 侧键（Plus Key）重映射，支持单击、双击与长按，模块入口：设置 - 快捷键</string>
+    <string name="module_description">Remap the OnePlus / OPPO side key (Plus Key) with single tap,
+        double tap and long press. Entry: Settings - Shortcuts</string>
 </resources>

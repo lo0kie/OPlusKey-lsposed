@@ -30,7 +30,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_DARK_ALPHA
+import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.MENU_ICON_SIZE
+import com.lookie.opluskey.ui.model.MENU_ROW_LINE_DARK_ALPHA
+import com.lookie.opluskey.ui.model.MENU_ROW_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_PANEL_RADIUS
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_DARK
@@ -60,16 +64,18 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * 右端仍让出行尾那一格（对勾 / 右箭头 / 提示），与左端同取库的内边距。
  *
  * 颜色自己给（见 [popupDividerColor]）：面板磨砂后半透明，库默认那一档暗色下几乎看不见。
+ *
+ * @param modifier 透给库的 `HorizontalDivider`，与这里自己的左右内边距叠加（默认无）。
  */
 @Composable
-internal fun PopupRowDivider() {
+internal fun PopupRowDivider(modifier: Modifier = Modifier) {
     HorizontalDivider(
         modifier =
-            Modifier.padding(
+            modifier.padding(
                 start = DropdownDefaults.InsideHorizontalPadding,
                 end = DropdownDefaults.InsideHorizontalPadding,
             ),
-        color = popupDividerColor(darkAlpha = 0.14f, lightAlpha = 0.10f),
+        color = popupDividerColor(darkAlpha = MENU_ROW_LINE_DARK_ALPHA, lightAlpha = MENU_ROW_LINE_LIGHT_ALPHA),
     )
 }
 
@@ -113,10 +119,16 @@ internal fun popupSurfaceColor(): Color =
  *  - [selected]：单选组那一档（行尾对勾 + 文字/图标走 `primary`），进场时还会**滚进视窗**
  *    （「换一步」时当前那一步常在第 7 项之后，不滚就看不见自己选的是哪个）；
  *  - [danger]：删除 / 重置这类破坏性动作（红）；
- *  - [submenu]：行尾画右箭头（这一行会进下一层）。
- *  - [trailingIcon]：换掉 [submenu] 那支右箭头（`null` = 用它）。用途是「进下一层」的两种形态分开：
- *    弹一层菜单的行用右箭头，跳**另一个页面**的行用别处那一套（网格里「打开应用」那一格用的是
- *    「窗口 + 加号」，见 `PageIcons.BrowserPlus`）。
+ *  - [submenu]：行尾**留出那一格**（库里就是 `DropdownImpl(hasSubmenu = …)`），不置时那一格不画。
+ *  - [trailingIcon]：换掉那一格里的字形（`null` = 用默认的右箭头）。
+ *    **注意：两位是分开的 —— 要行尾图标的行必须自己置上 [submenu]**。本组件只把 [submenu] 原样
+ *    交给库，不替调用点猜「给了图标就顺手把那一格打开」。库里那一位是**唯一的开关**，只给
+ *    [trailingIcon] 的话一个像素都不画（真机踩到过：「反馈问题」菜单三行只传了图标，行尾全空）。
+ *    置上之后字形怎么选：
+ *     · 进下一层的行 → 不传 [trailingIcon]，用默认右箭头；
+ *     · 跳**另一个页面**的行 → 换别处那一套（网格里「打开应用」那一格用的是「窗口 + 加号」，
+ *       见 `PageIcons.BrowserPlus`）；
+ *     · 弹一层菜单的行 → `PageIcons.Selector`；开外部链接的行 → `PageIcons.Link`。
  */
 internal sealed interface MenuEntry {
     data class Row(
@@ -143,15 +155,15 @@ internal sealed interface MenuEntry {
 }
 
 /**
- * 菜单行标题的**格数上限** —— 五个汉字（[displayWidth] 折算的 10 格）。
+ * 菜单行标题的**格数上限** —— 六个汉字（[displayWidth] 折算的 12 格）。
  *
  *  浮层的宽度由最长那一行决定，而库里给标题的行数上限是 `DropdownDefaults.TitleMaxLines`（3 行）：
  *  不截的话，一条长命令名会先把那一行撑成两三行、再把整张菜单拉宽，同一份菜单在不同命令下宽度还不一样。
  *
  *  按**格**算而不是按 `length` 算：`English`（7 字符 / 7 格）本来就放得下，按字符数判会把它砍成
- *  `Engli…`；汉字两格，所以这一档对中文就是「五个字」。
+ *  `Engli…`；汉字两格，所以这一档对中文就是「六个字」。
  */
-private const val MENU_TITLE_MAX_WIDTH = 10
+private const val MENU_TITLE_MAX_WIDTH = 12
 
 /**
  * 菜单行标题的**显示文本**：超过 [MENU_TITLE_MAX_WIDTH] 就从尾部砍掉、补一个省略号。
@@ -162,14 +174,20 @@ private const val MENU_TITLE_MAX_WIDTH = 10
 internal fun ellipsizeMenuTitle(title: String): String {
     if (displayWidth(title) <= MENU_TITLE_MAX_WIDTH) return title
     var width = 0
-    var chars = 0
-    for (c in title) {
-        val next = width + if (isFullWidth(c)) 2 else 1
+    // 按**码点**前进、只在码点边界上记可截位置：按 `Char` 数再 `take(chars)` 会把代理对
+    //  （emoji）从中间切开，留下半个代理字符（画出来是乱码）。
+    var cut = 0
+    var i = 0
+    while (i < title.length) {
+        val cp = title.codePointAt(i)
+        val step = Character.charCount(cp)
+        val next = width + if (isFullWidth(title[i])) 2 else 1
         if (next > MENU_TITLE_MAX_WIDTH) break
         width = next
-        chars++
+        i += step
+        cut = i
     }
-    return title.take(chars) + "…"
+    return title.take(cut) + "…"
 }
 
 /**
@@ -301,9 +319,9 @@ internal fun SettingsPage.MenuPopup(
                                 // 浅色下仍是那点灰。见 [popupDividerColor]。
                                 color =
                                     if (COUITheme.colorScheme.background.luminance() < 0.5f) {
-                                        Color.Black.copy(alpha = 0.32f)
+                                        Color.Black.copy(alpha = MENU_GROUP_LINE_DARK_ALPHA)
                                     } else {
-                                        Color.Black.copy(alpha = 0.08f)
+                                        Color.Black.copy(alpha = MENU_GROUP_LINE_LIGHT_ALPHA)
                                     },
                             )
                         }
@@ -495,7 +513,11 @@ private fun SettingsPage.MenuRow(
         // 「点外面就关」那套逻辑上 —— 菜单照样会关。压一层**透明的吃事件层**把它挡住
         // （不给任何视觉，「灰」由 `DropdownItem(enabled = false)` 自己画），
         // 效果就是「点了没反应、菜单还开着」。
-        Box {
+        //  `propagateMinConstraints = true`：这一层只是**吃事件**用的，不该改变行的尺寸 ——
+        //  `Box` 默认把进来的 min 约束**放松成 0** 再交给子级，而行的宽度正是靠那一条 min 约束撑满面板的
+        //  （库的 `ListPopupColumn` 按 `minWidth = listWidth` 量每一行）⇒ 少传这一位，同一个
+        //  `MenuEntry.Row` 启用时行尾图标贴边、一禁用就缩到文字后面。
+        Box(propagateMinConstraints = true) {
             DropdownImpl(
                 item = item,
                 optionSize = optionSize,
@@ -503,6 +525,9 @@ private fun SettingsPage.MenuRow(
                 index = index,
                 isFirst = isFirst,
                 isLast = isLast,
+                //  与启用行**同值**：库里这一位决定「行尾那一格画不画」，不传就落到默认的 `false`
+                //  —— 于是同一个 `MenuEntry.Row`，启用时行尾有图标、一禁用整格消失。
+                hasSubmenu = row.submenu,
                 //  禁用行也用磨砂那一档：不传的话落到库默认不透明底，
                 //  半透明面板上会现出一块实色。
                 dropdownColors = frostedColors,

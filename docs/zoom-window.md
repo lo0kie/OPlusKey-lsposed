@@ -490,10 +490,13 @@ zoom:mini → 走 recents 正门（原地收、无动画）
 里，于是每调一次都要整机重启，而当时那组值是错的，等于「一次重启换一个仍然错的结果」。现在改成**宿主侧下发**：
 
 ```
-MiniWindowLauncher.EXPANDED_CONFIG_BOUNDS / EXPANDED_SCALE      ← 真值（要调就改这里，不用重启）
-        ↓ 随 FlexibleWindowBridge.send(…, bounds, scale) 的 extra 下发
-FlexibleWindowBridge.EXPANDED_BOUNDS / EXPANDED_SCALE    ← 只是「宿主没带」时的兜底
+core/model/MiniWindowGeometry（按机型标定，一台机器一个 Slot）   ← 真值只有这一份
+        ├─ MiniWindowLauncher.EXPANDED_CONFIG_BOUNDS / EXPANDED_SCALE  ← 读它，宿主侧下发（不用重启）
+        └─ FlexibleWindowBridge.EXPANDED_BOUNDS / EXPANDED_SCALE       ← 读它，只是「宿主没带」时的兜底
 ```
+
+（这两个数原来在宿主侧与注入侧各写一份**同一组值**：改一处漏一处时，表现是「下发的与兜底的对不上」，
+而兜底那条路只在宿主没带参数时才走得到 —— 平时完全看不出来。现在两侧都从那张表取。）
 
 几何经 4 个 int + 1 个 float 传（不传 `Rect`）：跨进程传 Parcelable 要管类加载器，广播这条路上多一事不如少一事。
 

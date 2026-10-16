@@ -27,6 +27,9 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * @param icon 行首图标。同一张卡里几行都给图标，标题才会对齐（见 `ActionIcons` 里那条账）
  * @param enabled false ⇒ 整行置灰、不吃点击。标题 / 副标题 / 开关由库负责，**行首图标由这里负责**
  * @param position 卡片内的行位置（首行 / 中间 / 末行），决定圆角与分隔线
+ *
+ *  注：`SettingsPage.` 这个接收者**在函数体里一次都没用到**（体内只碰库件与 [NoSwitchHaptic]，
+ *  都是顶层声明）—— 留着是为了与同目录那批「页面组件」保持同一种写法。要删时连 import 一起清。
  */
 @Composable
 internal fun SettingsPage.SwitchRow(
@@ -40,16 +43,7 @@ internal fun SettingsPage.SwitchRow(
 ) {
     // 颜色带过渡，与 [SliderRow] 同一套参数：主开关一拨，这个图标与库里那些标题一起渐变。
     //  硬切会出现「图标在淡、字在跳」——长按那张卡里 SwitchRow 与 SliderRow 就是挨着的。
-    val iconColor by animateColorAsState(
-        targetValue =
-            if (enabled) {
-                COUITheme.colorScheme.onSurfaceContainer
-            } else {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "SwitchIcon",
-    )
+    val iconColor by rememberRowIconColor(enabled, label = "SwitchIcon")
 
     NoSwitchHaptic {
         SwitchPreference(

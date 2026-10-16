@@ -10,6 +10,7 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.RomProfile
 
 /** 拉界面 / 发广播 / 触发外部能力这一族动作的执行器（小窗那一族见 [MiniWindowLauncher]）。 */
 internal class AppLauncher(
@@ -35,7 +36,12 @@ internal class AppLauncher(
             XLog.w("intent:$action → 已作为界面拉起")
             return
         } catch (e: Throwable) {
-            XLog.d("intent:$action 当界面拉不起来（${e.message}），改发广播")
+            // 回落这一档是一次隐式广播：Intent 既没 `setPackage` 也没组件，API 26+ 打不到
+            //  清单里登记的接收器，**只可能命中动态注册者**；而且没人接收时 `sendBroadcast`
+            //  也不抛异常 —— 所以「发出去了」绝不等于「有人收」，本文件里也**没有**一条「已发广播」
+            //  的成功日志（正是为了让这一档不显得比实际更可靠）。
+            //  留着它的理由：动态注册者那一档仍然有效，去掉等于把这一档一起关掉。
+            XLog.w("intent:$action 当界面拉不起来（${e.message}），改发隐式广播（没带包名，多半无人接收）")
         }
         try {
             // 注意：广播上**不挂** `FLAG_ACTIVITY_NEW_TASK`：那是给
@@ -43,7 +49,9 @@ internal class AppLauncher(
             //  上面那条 startActivity 的写法）。无害但误导，去掉。
             ctx.sendBroadcast(Intent(action))
         } catch (e: Throwable) {
+            // 界面与广播两条路都没成 ⇒ 这一下确实什么都没发生。原来只记日志，用户侧一片静默。
             XLog.w("发广播失败：$action", e)
+            onFailure(CommandFailure.UNKNOWN)
         }
     }
 
@@ -155,6 +163,12 @@ internal class AppLauncher(
             }
         }
         if (sent == 0) onFailure(CommandFailure.SHORTCUT_FAILED)
+        // 兜底：`sendBroadcast` 在没有接收者时**不抛异常**，所以「发出去了」不等于「有人收」——
+        //  查不到任何接收者（`resolved` 为空）时上面会按全部通道各发一次，而结果**无从确认**
+        //  （收方不回执）。这条 w 是留给排查的：用户在「快捷指令没反应」时能看到是这一档。
+        if (resolved.isEmpty()) {
+            XLog.w("小布快捷指令：查不到接收者，已按全部通道各发一次（结果无法确认，id=$shortcutId）")
+        }
     }
 
     /** 这条 action 在 `com.coloros.shortcuts` 里有没有接收者（查不到 / 抛异常都按「没有」）。 */
@@ -174,12 +188,14 @@ internal class AppLauncher(
         }
 
     /**
-     * 起一个 ColorOS 系统能力（`oplus:` 动作）；目标组件与 action 见 [OplusFeature]。
+     * 起一个 ColorOS 系统能力（`oplus:` 动作）；目标组件与 action 见 [RomProfile]。
      */
     fun startOplusFeature(feature: String) {
         val target =
-            OplusFeature.of(feature) ?: run {
-                XLog.w("不认识的 oplus 能力：$feature")
+            RomProfile.builtIn(feature) ?: run {
+                // 一句话说清落空的三种情形：本机这一档没适配（表里没有它）、功能名写错了、
+                //  或（debug 包）已按最后一档试过仍查不到这个名字 —— 后两种由 describeCurrent 那句报出
+                XLog.w("oplus:$feature 没有落点 —— 内置命令档位：${RomProfile.describeCurrent()}")
                 onFailure(CommandFailure.UNKNOWN)
                 return
             }
@@ -230,7 +246,11 @@ internal class AppLauncher(
                 XLog.d("oplus:$feature 的 ${if (foreground) "前台" else "普通"}起法被拒：${e.message}")
             }
         }
-        XLog.w("起 oplus:$feature 失败：${last?.javaClass?.simpleName}: ${last?.message}")
+
+        // 两种起法都被拒 ⇒ 退一层显式组件（口径与边界见 [tryComponentFallback]）。
+        // 退路成功（返回 null）就在这里收手；否则拿最后那个错误报失败。
+        val finalError = tryComponentFallback(ctx, feature, target, last) ?: return
+        XLog.w("起 oplus:$feature 失败：${finalError.javaClass.simpleName}: ${finalError.message}")
         onFailure(CommandFailure.UNKNOWN)
     }
 
@@ -243,7 +263,7 @@ internal class AppLauncher(
     private fun sendMessengerMessage(
         ctx: Context,
         feature: String,
-        target: OplusFeature.Target,
+        target: RomProfile.BuiltIn,
     ) {
         val what = target.message ?: return
         val intent = Intent().setComponent(ComponentName(target.owner, target.service))
@@ -295,8 +315,11 @@ internal class AppLauncher(
      * 有 action 的按系统自己的写法发 —— `action + setPackage`，由清单 intent-filter 解析；
      * 场景表里 `scene_owner` + action 本来就是系统发给该服务的原样。只有组件名（无 action）
      * 的才用显式组件。
+     *
+     * 这一支失败之后的退路不在这里，在 [startOplusFeature]（试 [tryComponentFallback] 的显式组件）
+     * —— 本函数只负责造出「第一次」那个 Intent。
      */
-    private fun buildFeatureIntent(target: OplusFeature.Target): Intent =
+    private fun buildFeatureIntent(target: RomProfile.BuiltIn): Intent =
         if (target.action != null) {
             Intent(target.action).setPackage(target.owner)
         } else {
@@ -307,7 +330,7 @@ internal class AppLauncher(
      * 小布识屏：配置里仍写 KSU 那串 shell 命令（老配置不能失效），执行换成
      * [startOplusFeature] 的精确调用。
      */
-    fun startSidebar() = startOplusFeature("screen_ocr")
+    fun startSidebar() = startOplusFeature(RomProfile.NAME_SCREEN_OCR)
 
     private companion object {
         /** 小布快捷指令的包名。 */
@@ -332,5 +355,51 @@ internal class AppLauncher(
 
         /** [sendMessengerMessage] 等服务连上的上限，超时就自己解绑。 */
         const val MESSAGE_TIMEOUT_MS = 3000L
+    }
+}
+
+/**
+ * `action` 起法失败之后试一次**显式组件**，返回这一次的错误（成功返回 `null`）；试不了就把 [last]
+ * 原样退回去。
+ *
+ *  为什么要有这一层：两次起法走的是 `action + setPackage`（由清单 intent-filter 解析），清单对不上 /
+ *  组件被停用时它必然失败，而显式组件能直接命中 —— 与「逐层降级」同一条纪律。
+ *
+ *  为什么不能无脑退：[RomProfile.BuiltIn] 的 `service` **不总是类名**（有的档把 action 串写在同一格
+ *  里，见 `RomProfile` 的 `RECORDING`），拿它去拼 [`ComponentName`] 只会得到一个永远解析不到的组件，
+ *  退路就成了「只会多打一条失败日志」的空动作。所以先判它像不像类名：含 `.` 且每一段都是合法 Java
+ *  标识符；只有 `action` 那一支才需要退路，`action` 为空时第一次起法本就是显式组件。
+ *
+ *  写成**顶层**函数而不是 `AppLauncher` 的成员：它只吃入参、不吃对象状态，而那个对象的函数条数已经
+ *  贴着 detekt `TooManyFunctions` 那一档。
+ */
+private fun tryComponentFallback(
+    ctx: Context,
+    feature: String,
+    target: RomProfile.BuiltIn,
+    last: Throwable?,
+): Throwable? {
+    val service = target.service
+    val looksLikeClassName =
+        target.action != null &&
+            service.contains('.') &&
+            service.split('.').all { part ->
+                part.isNotEmpty() &&
+                    Character.isJavaIdentifierStart(part[0]) &&
+                    part.drop(1).all { Character.isJavaIdentifierPart(it) }
+            }
+    if (!looksLikeClassName) return last
+    XLog.w(
+        "oplus:$feature 的 action 起法失败（${last?.javaClass?.simpleName}: ${last?.message}），" +
+            "改退显式组件 ${target.owner}/$service 再试",
+    )
+    return try {
+        val explicit = Intent().setComponent(ComponentName(target.owner, service))
+        if (target.foreground) ctx.startForegroundService(explicit) else ctx.startService(explicit)
+        XLog.w("oplus:$feature → 显式组件退路成功（${target.owner}/${service.substringAfterLast('.')}）")
+        null
+    } catch (e: Throwable) {
+        XLog.w("oplus:$feature 的显式组件退路也失败：${e.javaClass.simpleName}: ${e.message}")
+        e
     }
 }

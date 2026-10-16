@@ -2,6 +2,8 @@ package com.lookie.opluskey.host
 
 import android.content.Context
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Message
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
@@ -18,10 +20,10 @@ import io.github.libxposed.api.XposedModule
  */
 internal object SideKeyGestureHooks {
     /** 「打开应用」场景的宿主服务（框架按场景表里的 `click_action_info` 绑它）。 */
-    private const val START_APP_SERVICE = Framework.HOST_START_APP_SERVICE
+    private val START_APP_SERVICE = Framework.HOST_START_APP_SERVICE
 
     /** 其余场景的宿主服务。 */
-    private const val KEY_SERVICE = Framework.HOST_KEY_SERVICE
+    private val KEY_SERVICE = Framework.HOST_KEY_SERVICE
 
     /**
      * 收到它时宿主要按系统当前场景去开页面 / 起服务；模块接管侧键后必须把它吞掉，
@@ -29,15 +31,13 @@ internal object SideKeyGestureHooks {
      *
      * 注意：取值本体在 `inject/Framework.kt` 的候选表里（一、7），这里只是别名。
      */
-    private const val SCENE_DISPATCH_WHAT = Framework.HOST_SCENE_DISPATCH_WHAT
+    private val SCENE_DISPATCH_WHAT = Framework.HOST_SCENE_DISPATCH_WHAT
 
     @Volatile
     private var installed = false
 
-    /** 装上的 hook 数，供日志与验收用。 */
-    @Volatile
-    var hookCount: Int = 0
-        private set
+    /** 主线程队列 —— 把诊断探测挪出安装回调用（见 [install]）。 */
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     // 「放行」（`native` / `passthrough`）那一档**整条已删**，
     //  随之删掉的还有这一整套「放行配额 + 场景派发扣留补投」的机器：
@@ -57,14 +57,15 @@ internal object SideKeyGestureHooks {
         // 先在宿主进程读一遍设置页写的那份配置（同 uid，理应读得到）—— 判「配置通道通不通」。
         logConfig()
 
-        // 再读一次系统侧键配置（纯诊断）。只能在宿主进程读 —— system_server 里 ContentResolver 必 NPE。
-        probeSystemConfig(loader)
+        // 再读一次系统侧键配置（纯诊断）。它要 `ContentResolver.query`，而 install 跑在目标进程的
+        //  **包加载主线程**上 —— 同步查会把这条线程占住、拖慢安装，所以丢给主线程队列延后做：
+        //  安装回调先返回，探测在随后一条主线程消息里跑。读不到不影响任何功能（见 [probeSystemConfig]）。
+        mainHandler.post { probeSystemConfig(loader) }
 
         var n = 0
         n += hookService(module, loader, START_APP_SERVICE)
         n += hookService(module, loader, KEY_SERVICE)
 
-        hookCount = n
         installed = n > 0
         if (n > 0) {
             XLog.w("侧键手势劫持 Hook 安装完成：$n 个接管点（宿主主进程）")

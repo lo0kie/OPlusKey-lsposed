@@ -3,6 +3,7 @@ package com.lookie.opluskey.inject
 import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 
@@ -32,6 +33,17 @@ internal object ConfigChannel {
     val takeOver: Boolean
         get() = switchFromBroadcast ?: true
 
+    /**
+     * 主开关**翻到「不接管」**那一刻要执行的撤销动作，由 `KeyHooks.install` 装配上
+     * （实现是 `SideKeyInterceptor.cancelPending`）。
+     *
+     *  落点只能在这里：按住不放时不会再有按键事件走进 `SideKeyInterceptor.handle`，撤销若是写在
+     *  那条 `if (!ConfigChannel.takeOver) return false` 里就永远不会执行；而已经排下的长按枪 /
+     *  双击窗到点会自己响、连发任务又从不看 `takeOver`，不撤就会一路派发到 `REPEAT_MAX_MS`。
+     */
+    @Volatile
+    var onTakeOverOff: (() -> Unit)? = null
+
     /** 当前配置；还没收到过广播时用 [Config.DEFAULT] 顶着。 */
     val config: Config
         get() = received ?: Config.DEFAULT
@@ -58,9 +70,23 @@ internal object ConfigChannel {
         val fresh = ConfigBroadcast.parse(intent)
         val key = fresh.key(KeyId.PLUS)
 
-        if (switchFromBroadcast != key.enabled) {
+        // 只有这条广播**带** enabled 这一项时才用它改主开关：`ConfigBroadcast.parse` 对缺项兜底成
+        //  false，而本对象「没收到过 = 接管」的方向相反 —— 一条缺 enabled 的畸形广播会把主开关静默
+        //  设成关闭，还会触发下面那段撤销回调。缺项视为「这条不是一份权威配置」，保持现值不动。
+        if (intent.hasExtra(ConfigFields.ENABLED_EXTRA) && switchFromBroadcast != key.enabled) {
             switchFromBroadcast = key.enabled
             XLog.w("收到主开关广播：侧键接管=${key.enabled}（注入侧立即生效）")
+            // 翻到「不接管」这一刻撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。
+            //  为什么不能写在拦截点那条 early return 里：那条只在有新按键事件时才走到，
+            //  而按住不放期间没有新事件进来 —— 撤销写在那边等于永不执行。
+            //  本回调跑在 AMS 广播 hook 内，异常一律吞掉，绝不外抛。
+            if (!key.enabled) {
+                try {
+                    onTakeOverOff?.invoke()
+                } catch (e: Throwable) {
+                    XLog.w("主开关关闭时撤销待定手势失败（已忽略）：${e.javaClass.simpleName}", e)
+                }
+            }
         }
 
         received = fresh

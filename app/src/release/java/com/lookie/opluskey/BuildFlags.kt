@@ -27,6 +27,19 @@ internal const val DEBUG_PROBE: Boolean = false
 internal const val ENFORCE_DEVICE_GATE: Boolean = true
 
 /**
+ * 未适配的机器上**内置命令落点**要不要照最后一档试 —— release **必须** false。
+ *
+ * 关掉时：本机 ROM 不在档位表里 ⇒ 落点返回 `null`，执行侧记 `w` 后跳过。理由是这一边猜错会
+ * **真去起别的服务**（闪记 / 免打扰 / 录音都是系统能力），与「接管点 / 反射面猜错只表现为查找落空」
+ * 不是一件事（见 `core/model/RomProfile` 的文件头）。
+ *
+ * 注意它会与清单**各自独立**地生效：清单命中、而档位表里没有这一版 ROM（落点还没验过）时，
+ * 注入照做（清单那道闸管的是这个），这四条命令则落空 —— 宁可一条命令不动，也不去起一个没验过的服务。
+ * 要在那种机器上把这几条试出来，用 debug 包（那边这一条是打开的）。
+ */
+internal const val GUESS_UNVERIFIED_LANDING: Boolean = false
+
+/**
  * 首页大标题那条副标题带不带构建时刻 —— release 不带（`1.0.0-release`）。
  *
  * 注意它管不到「更多选项」页的「版本」行：那一行是模块自己的信息页，**总是**带构建时刻。

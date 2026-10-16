@@ -43,7 +43,17 @@ internal object AppEntry {
         if (target.contains('/')) {
             val pkg = target.substringBefore('/')
             val raw = target.substringAfter('/')
-            val cls = if (raw.startsWith(".") || '.' !in raw) "$pkg.$raw" else raw
+            // 短横线写法（`app:pkg/.MainActivity`）按 `ComponentName.unflattenFromString` 的口径
+            //  拼：点开头就是「类名相对包名」，直接接在包名后面 —— 写成 `"$pkg.$raw"` 会拼出
+            //  `pkg..MainActivity`（两个点），那个类永远不存在，表现为「应用起不来」。
+            val cls =
+                if (raw.startsWith(".")) {
+                    pkg + raw
+                } else if ('.' !in raw) {
+                    "$pkg.$raw"
+                } else {
+                    raw
+                }
             Intent().setClassName(pkg, cls)
         } else {
             resolve(pm, target)

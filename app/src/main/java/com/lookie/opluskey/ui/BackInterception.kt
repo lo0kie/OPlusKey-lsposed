@@ -193,7 +193,11 @@ internal object BackInterception {
             if (backCallbackActivity !== activity && registerBackCallback(activity)) {
                 XLog.w("返回回调：已挂上（这一退是子页 / 浮层 / 原版页 —— 归模块接）")
             }
-        } else if (backCallbackActivity === activity) {
+        } else {
+            // 不再需要自己接 ⇒ 把手上的回调摘掉。判据**不能**只看「是不是当前这个 activity」：
+            //  静态引用可能指着**另一个（旧的）实例**（宿主换了 Activity、旧页还没走完），那时两个
+            //  分支都不成立，旧实例上的回调与这份引用就永远留着 —— 钉住一个已销毁的 Activity。
+            //  摘的时候不挑实例：`unregisterBackCallback` 用的就是当初注册的那一份。
             unregisterBackCallback()
             XLog.w("返回回调：已摘掉（首页、无浮层 ⇒ 交给系统，关页才有跟手动画）")
         }

@@ -43,8 +43,11 @@ internal val NoHapticFeedback: HapticFeedback =
  *
  *  它走的是 **`LocalView.performHapticFeedback`**、不是 `LocalHapticFeedback`，
  * 所以 [NoHapticFeedback] 拦不住，必须连 `LocalView` 一起换。
- *  只包开关那一行：库里读 `LocalView` 的只有 `CouiHaptic` / `ListPopup` /
- * `WindowNavigationEventScope`，后两者都在这一行之外（浮层与页面级导航事件）。
+ *  库里读 `LocalView` 的有三处：`CouiHaptic`（就是本行开关那次振动）、coui-core 的
+ * `Utils.android.kt`（`getSystemCornerRadius` / `RemovePlatformDialogDefaultEffects`）、
+ * coui-nav 的 `NavSystemCornerRadius`。后两处在页面 / 弹窗 / 导航层，**都在这条开关这一行
+ * 作用域之外** —— 所以拿 [NoHapticView] 顶替整行的 `LocalView` 仍是安全的。
+ *  库的 `ListPopup` 读的是 `LocalViewConfiguration` 而不是 `LocalView`，不在这一列。
  */
 internal class NoHapticView(
     context: Context,

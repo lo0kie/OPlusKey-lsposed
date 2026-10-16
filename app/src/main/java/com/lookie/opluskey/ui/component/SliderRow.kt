@@ -87,16 +87,7 @@ internal fun SettingsPage.SliderRow(
     }
     // 拖动触觉与「点轨道跳值」共用同一条通道（[rememberTick]）：判据只有系统静音，
     //  与模块的「振动反馈」开关无关（完整口径见 `tickNow`）。
-    val sliderIconColor by animateColorAsState(
-        targetValue =
-            if (enabled) {
-                COUITheme.colorScheme.onSurfaceContainer
-            } else {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "SliderIcon",
-    )
+    val sliderIconColor by rememberRowIconColor(enabled, label = "SliderIcon")
 
     // 文字三档色，与库的 `BasicComponentDefaults.titleColor()` / `summaryColor()`、
     // 以及 `SliderPreference` 里给当前值用的那一档**同源**（它们那个 `color(enabled)`

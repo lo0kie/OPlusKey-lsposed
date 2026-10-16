@@ -43,8 +43,10 @@ internal fun isCommandRef(token: String): Boolean = token.startsWith(Command.PRE
  *  `自定义命令`）与入口格的格子名（`系统导航` / `系统按键` / `媒体控制` …）都不再进标题 ——
  *  步骤行与卡片摘要都窄，多一段前缀只剩啰嗦，「这一步是什么」靠行首图标（[stepIcon]）加名字
  *  已经说得清。`系统导航:主屏幕` → `主屏幕`、`系统按键:音量+` → `音量+`、`快捷功能:手电筒` → `手电筒`。
- *  唯一的例外是 `app:`，它显示成「打开应用:应用名」—— 那一段不是分类，是动作本身：
- *  少了它就只剩一个应用名，看不出这一步是「打开某个应用」。
+ *  唯一的例外是「打开应用」那两档（`app:` 与 `window:`），它们显示成「打开应用:应用名」/
+ *  「以小窗口打开:应用名」—— 那一段不是分类，是动作本身：少了它就只剩一个应用名，
+ *  看不出这一步是「打开某个应用」，也看不出是小窗那一档。口径与执行时提示
+ *  （`host/action/ActionNotice`）逐字一致。
  *  - 内置动作取清单里的名字（[ActionCatalog.specOf]）；
  *  - 入口格取那一档的档位名（[ActionCatalog.modeName]）；
  *  - `cmd:` 只显示命令名 —— 与执行时提示（`host/action/ActionNotice`）同一个口径；
@@ -56,10 +58,16 @@ internal fun stepTitle(
 ): String {
     if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
     val action = Action.parse(token)
-    return when {
-        action is Action.App -> {
+    return when (action) {
+        // 这两档走的是**带 `%s` 的**格式键，不是清单里那条说明文案（后者值里没有格式符，
+        //  拿它去 format 等于把应用名丢掉，界面上只会显示一句「挑一个本机应用…」）。
+        is Action.App -> {
+            I18n.format(Strings.COMMON_OPEN_APP_FORMAT, appLabel(action.target.substringBefore('/')))
+        }
+
+        is Action.AppWindow -> {
             I18n.format(
-                Strings.CATALOG_OPEN_APP_STEP_DESC,
+                Strings.COMMON_OPEN_MINI_WINDOW_FORMAT,
                 appLabel(action.target.substringBefore('/')),
             )
         }

@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.KsuCompat
 
 internal class CustomCommandRunner(
     /** 主线程 Handler，步骤间等待走它（不能用 `Thread.sleep`）。 */
@@ -64,7 +65,7 @@ internal class CustomCommandRunner(
                 onFailure(CommandFailure.EMPTY)
                 return
             }
-            XLog.w("自定义命令「$name」（单条）→ ${cmd.single}")
+            XLog.w("自定义命令「$name」（单条）→ ${XLog.redactCommand(cmd.single)}")
             // 与多条步骤同一套语义（Action.parse）：keyevent: / intent: / app: / shortcut: /
             // cmd: / shell: 六种前缀写法在单条里同样成立；无前缀兜底成 shell（手写命令可省 shell:）。
             // 注意：这里必须 `depth + 1`（与 `runSteps` 里那条 `cmd:` 步骤同口径）：单条正文里的
@@ -155,12 +156,12 @@ internal class CustomCommandRunner(
                 cursor++
             }
             val joined = merged.joinToString("; ")
-            XLog.w("  第 ${index + 1}~$cursor 步（shell，合并成一条）→ $joined")
+            XLog.w("  第 ${index + 1}~$cursor 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
             execShell(joined)
             next = cursor
         } else {
             val action = Action.parse(steps[index])
-            XLog.w("  第 ${index + 1} 步 → ${action.token}")
+            XLog.w("  第 ${index + 1} 步 → ${XLog.redactToken(action.token)}")
             if (action is Action.Custom) {
                 // 引用的若是**多条命令**，它那条链靠自己 `postDelayed` 续步 ⇒ 这一步不等它跑完
                 //  就往下走（已知行为，不是漏写 await）。步骤菜单只给内置动作、写不出这种一步，

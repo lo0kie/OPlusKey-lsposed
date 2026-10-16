@@ -1,10 +1,10 @@
 package com.lookie.opluskey.host.action
 
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Process
 import android.os.UserHandle
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.Reflect
 
 /**
@@ -24,16 +24,19 @@ import com.lookie.opluskey.core.reflect.Reflect
  * （见 `docs/device-findings.md` 附十三之三）。
  */
 internal object MiniWindowSupport {
+    /** 本机这一档 ROM 的反射面 —— 未适配的 ROM 照最后一档试（见 [RomProfile]）。 */
+    private val ROM = RomProfile.effective.reflection
+
     /**
      * 小窗状态门面（`oplus-framework.jar`，宿主 boot classpath 上反射可及）。
      *
      *  **同包的唯一一份**：[AppLauncher] 取 `zoomRect`（判「窗口多大」）也走它
      *（同包只留一份）。
      */
-    internal const val MANAGER = "com.oplus.zoomwindow.OplusZoomWindowManager"
+    internal val MANAGER = ROM.zoomSupportManager
 
     /** 框架判「这个应用支不支持小窗」的方法名。 */
-    private const val METHOD = "isSupportZoomMode"
+    private val METHOD = ROM.zoomSupportMethod
 
     /** `extra_window_mode` 的取值 —— 与 `startZoomWindow` 那份 bundle 一致（`WINDOWING_MODE_ZOOM`）。 */
     private const val WINDOWING_MODE_ZOOM = 100
@@ -50,7 +53,6 @@ internal object MiniWindowSupport {
      * @return `true` = 支持；`false` = 不支持；`null` = **不知道**（反射不通 / 调用抛了）
      */
     fun isSupported(
-        pm: PackageManager,
         pkg: String,
         cls: String?,
     ): Boolean? =

@@ -23,7 +23,8 @@ exceptions:
 
 style:
   MaxLineLength:
-    # 行长同样归 ktlint；.editorconfig 里是 `max_line_length = off`（长行多是注释与中文文案）
+    # 行长同样归 ktlint：值写在 `app/build.gradle.kts` 的 `ktlintRules` 里
+    #  （`max_line_length = 140`），这里不再重复判一遍（长行多是注释与中文文案）
     active: false
   MagicNumber:
     # 本项目里的字面量多是**协议值**（keyCode / zoom flag / 广播超时），

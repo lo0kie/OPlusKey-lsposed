@@ -185,7 +185,14 @@ internal object FileObfuscation {
                 out.append(PAD)
             } else {
                 val idx = STD_ALPHABET.indexOf(c)
-                if (idx >= 0) out.append(SCRAMBLE[(idx + ROT[at % ROT.size]) and 63])
+                if (idx >= 0) {
+                    out.append(SCRAMBLE[(idx + ROT[at % ROT.size]) and 63])
+                } else {
+                    // 字母表外的字符（正常路径不会出现）：**别静默丢** —— 丢了以后
+                    //  `unscramble` 那边只会看到「解不开」，看不出是打包时就少了一个字节。
+                    XLog.w("命令库外皮：正文里有非 Base64 字符（已原样保留）：${c.code}")
+                    out.append(c)
+                }
             }
         }
         return out.toString()

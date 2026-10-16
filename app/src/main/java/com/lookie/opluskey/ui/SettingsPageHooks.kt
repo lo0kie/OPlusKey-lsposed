@@ -27,7 +27,7 @@ internal object SettingsPageHooks {
      *
      * 注意：类名本体在 `inject/Framework.kt` 的候选表里（一、7），这里只是别名。
      */
-    private const val BASE_ACTIVITY = Framework.HOST_SETTINGS_BASE_ACTIVITY
+    private val BASE_ACTIVITY = Framework.HOST_SETTINGS_BASE_ACTIVITY
 
     /**
      * 侧键设置页的**实际** Activity（[BASE_ACTIVITY] 的子类）。
@@ -40,7 +40,7 @@ internal object SettingsPageHooks {
      *
      * 注意：类名本体在 `inject/Framework.kt` 的候选表里（一、7），这里只是别名。
      */
-    internal const val SETTINGS_ACTIVITY = Framework.HOST_SETTINGS_ACTIVITY
+    internal val SETTINGS_ACTIVITY = Framework.HOST_SETTINGS_ACTIVITY
 
     /**
      * `R.id.container` / `R.id.appbar_layout` 的数值、宿主包名、浅色主题名 ——
@@ -97,6 +97,9 @@ internal object SettingsPageHooks {
      */
     private const val STOCK_BACKDROP = 0xFF000000.toInt()
 
+    //  刻意**不**引用色板里那个页面底色：这一档说的是「宿主原版页面本来就写死深色」，
+    //  与模块自己的深浅主题无关 —— 将来色板换了，这里也不该跟着变。
+
     /** 现在露的是不是宿主原版页面（true 时系统返回 = 切回模块界面）。 */
     @Volatile
     internal var stockRevealed = false
@@ -112,6 +115,9 @@ internal object SettingsPageHooks {
     // 按键绑定子页的标题挪进了页面（`SettingsPage.BINDING_TITLE`）——
     // 顶栏自绘后标题归页面自己渲染。
 
+    // 旁路标记的文件名 —— 两条候选路径共用一个名字。
+    private const val BYPASS_NAME = "opluskey_bypass"
+
     /**
      * 调试旁路：这些路径里**任意一个存在**就跳过换页，让系统原版页面显示出来。
      *
@@ -125,8 +131,8 @@ internal object SettingsPageHooks {
      */
     private val BYPASS_PATHS =
         listOf(
-            "/data/local/tmp/opluskey_bypass",
-            ConfigStore.filesDir().resolve("opluskey_bypass").path,
+            "/data/local/tmp/$BYPASS_NAME",
+            ConfigStore.filesDir().resolve(BYPASS_NAME).path,
         )
 
     private fun bypassed(): Boolean {
@@ -389,7 +395,10 @@ internal object SettingsPageHooks {
         // 藏掉之后也就不需要避让（`reserveAppbarSpace` 那套）、不需要给宿主顶栏
         // 刷底色 / 换标题 / 染图标（那些函数一并移除）。
         try {
-            val appbar = activity.findViewById<android.view.View>(ID_APPBAR)
+            // 走 [findAppbar] 而不是裸 `findViewById(ID_APPBAR)`：宿主 ROM 升级重建资源表之后
+            //  写死的数值会失配，那条路会静默查不到 ⇒ 顶栏藏不掉、压在模块页面上。带名字反查的
+            //  兜底早就在 [findAppbar] 里，只有经它才执行得到。
+            val appbar = findAppbar(activity)
             if (appbar == null) {
                 // 不伪造能力：没找到就说没找到，别打「已隐藏」（排查时会被带偏）
                 XLog.w("没找到宿主顶栏（R.id.appbar_layout）—— 顶栏可能与页面重叠")

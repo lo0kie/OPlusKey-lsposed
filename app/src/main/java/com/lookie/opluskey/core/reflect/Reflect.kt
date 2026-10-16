@@ -40,6 +40,17 @@ object Reflect {
     private val classCache: MutableMap<ClassLoader?, ConcurrentHashMap<String, Any>> =
         java.util.Collections.synchronizedMap(IdentityHashMap())
 
+    /**
+     * 「这个名字查不到」的记时（键同 [classCache] 里那一把：就是一个类名）—— 负命中**会过期**。
+     *
+     *  类可能只是**这一刻**还加载不了（挂点太早 / loader 还没就绪），永久记住「没有」会让那个
+     *  注入点一直失效到重启。出窗后再查一遍，查到了就把负命中覆盖掉。
+     */
+    private val missAt: ConcurrentHashMap<String, Long> = ConcurrentHashMap()
+
+    /** 负命中的重试窗口（毫秒）。 */
+    private const val MISS_RETRY_MS = 30_000L
+
     /** `method()` 的缓存 —— key 按「名字 + 参数类型**身份**」，不再拼字符串（见 [MethodKey]）。 */
     private val exactMethodCache: ConcurrentHashMap<Class<*>, ConcurrentHashMap<Any, Any>> = ConcurrentHashMap()
 
@@ -82,11 +93,23 @@ object Reflect {
             }
         val hit = bucket[name]
         if (hit != null) {
-            @Suppress("UNCHECKED_CAST")
-            return if (hit === NOT_FOUND) null else hit as Class<*>
+            if (hit !== NOT_FOUND) {
+                @Suppress("UNCHECKED_CAST")
+                return hit as Class<*>
+            }
+            // 负命中要**会过期**：这个类可能只是「这会儿还加载不了」（挂点太早 / loader 还没就绪），
+            //  永久记住「没有」会让那个注入点一直失效到重启。窗口内直接返回 null（省一次慢查找），
+            //  出窗再查一遍 —— 查到了就把负命中覆盖掉。
+            val at = missAt[name] ?: 0L
+            if (System.nanoTime() / 1_000_000 - at < MISS_RETRY_MS) return null
         }
         val cls = runCatching { Class.forName(name, false, loader) }.getOrNull()
         bucket[name] = (cls ?: NOT_FOUND)
+        if (cls == null) {
+            missAt[name] = System.nanoTime() / 1_000_000
+        } else {
+            missAt.remove(name)
+        }
         return cls
     }
 
@@ -113,7 +136,7 @@ object Reflect {
             while (cur != null && cur != Any::class.java) {
                 val hit = runCatching { cur.getDeclaredMethod(name, *params) }.getOrNull()
                 if (hit != null) {
-                    hit.isAccessible = true
+                    runCatching { hit.isAccessible = true }
                     found = hit
                     break
                 }
@@ -137,7 +160,7 @@ object Reflect {
             while (cur != null && cur != Any::class.java) {
                 val hit = runCatching { cur.getDeclaredField(name) }.getOrNull()
                 if (hit != null) {
-                    hit.isAccessible = true
+                    runCatching { hit.isAccessible = true }
                     found = hit
                     break
                 }
@@ -165,7 +188,7 @@ object Reflect {
                         cur.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == arity }
                     }.getOrNull()
                 if (hit != null) {
-                    hit.isAccessible = true
+                    runCatching { hit.isAccessible = true }
                     found = hit
                     break
                 }

@@ -84,7 +84,6 @@
     <ID>LongParameterList:IconInput.kt$( icon: ImageVector, value: String, onValueChange: (String) -&gt; Unit, title: String, label: String, modifier: Modifier = Modifier, errorMessage: String = "", enabled: Boolean = true, )</ID>
     <ID>LongParameterList:MenuPopup.kt$( row: MenuEntry.Row, index: Int, optionSize: Int, isFirst: Boolean, isLast: Boolean, /** 浮层是不是真开着（见上面的 `@param`）。 */ interactive: Boolean, /** 整列的手势账本（见 [GestureProbe]）：点击日志要带上「这一段滑了多远」。 */ probe: GestureProbe?, )</ID>
     <ID>LongParameterList:MenuPopup.kt$( show: Boolean, preciseClick: PreciseClickState, entries: List&lt;MenuEntry&gt;, onDismiss: () -&gt; Unit, maxHeight: Dp? = null, enableWindowDim: Boolean = false, columnAnchor: PreciseClickState? = null, onLeave: (() -&gt; Unit)? = null, )</ID>
-    <ID>LongParameterList:OplusFeature.kt$OplusFeature.Target$( val owner: String, val service: String, val action: String? = null, val extras: Map&lt;String, Any&gt; = emptyMap(), val foreground: Boolean = false, val activity: Boolean = false, val message: Int? = null, )</ID>
     <ID>LongParameterList:PageHeader.kt$( title: String, subtitle: String = "", trailingSubtitleIcon: ImageVector? = null, largeTitleSubtitle: String = "", menu: HeaderMenu, scrollBehavior: ScrollBehavior, state: HazeState, /** * 顶栏底下那一块（库 `TopAppBar` 的 `bottomContent` 槽位）——「按键绑定」的分段控件、 * 「自定义命令」的类型选择器、「选择应用」的搜索框这三条固定带都走这里。 * * 带子成了顶栏这个节点的一部分 ⇒ 顶栏的半透明底与模糊一起盖住它，顶栏底边那条细线也落在带子下沿； * 带子高度由它自己 `onSizeChanged` 报给页面级状态。 */ bottomContent: @Composable () -&gt; Unit = {}, )</ID>
     <ID>LongParameterList:SliderRow.kt$( title: String, summary: String, icon: ImageVector, position: CardListPosition, min: Int, max: Int, value: Int, default: Int, enabled: Boolean = true, onCommit: (Int) -&gt; Boolean, )</ID>
     <ID>LongParameterList:SwitchRow.kt$( title: String, summary: String, icon: ImageVector, checked: Boolean, position: CardListPosition, enabled: Boolean = true, onCheckedChange: (Boolean) -&gt; Unit, )</ID>
@@ -158,8 +157,5 @@
     <ID>TooManyFunctions:Reflect.kt$Reflect</ID>
     <ID>TooManyFunctions:SettingsPage.kt$SettingsPage</ID>
     <ID>TooManyFunctions:XLog.kt$XLog</ID>
-    <ID>UnusedParameter:MiniWindowLauncher.kt$MiniWindowLauncher$ctx: Context</ID>
-    <ID>UnusedParameter:MiniWindowSupport.kt$MiniWindowSupport$pm: PackageManager</ID>
-    <ID>UnusedParameter:RingerController.kt$RingerController$ctx: Context</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -51,5 +51,40 @@ enum class KeyId(
 
         /** 静音键（`KEYCODE_VOLUME_MUTE`）—— 「响铃循环」那条动作注入的就是它。 */
         const val KEYCODE_VOLUME_MUTE = 164
+
+        // 下面这一批是「系统导航」/「系统按键」/「媒体控制」三张菜单里的档位取值。
+        //  它们是**动作**（绑给侧键之后注入一次），与「不接管物理音量键 / 电源键」那条纪律
+        //  不冲突 —— 后者说的是不去拦截那几个键本身（见本枚举顶部的说明）。
+        //  与上面几条同一口径：一、5 要求键码只定义在本枚举一处，取值由 `Action.keyToken` 拼。
+
+        /** 主屏幕（`KEYCODE_HOME`）—— 「系统导航」菜单的一档。 */
+        const val KEYCODE_HOME = 3
+
+        /** 返回（`KEYCODE_BACK`）。 */
+        const val KEYCODE_BACK = 4
+
+        /** 音量 +（`KEYCODE_VOLUME_UP`）。 */
+        const val KEYCODE_VOLUME_UP = 24
+
+        /** 音量 −（`KEYCODE_VOLUME_DOWN`）。 */
+        const val KEYCODE_VOLUME_DOWN = 25
+
+        /** 电源键（`KEYCODE_POWER`）。 */
+        const val KEYCODE_POWER = 26
+
+        /** 播放 / 暂停（`KEYCODE_MEDIA_PLAY_PAUSE`）—— 「媒体控制」那一格的取值。 */
+        const val KEYCODE_MEDIA_PLAY_PAUSE = 85
+
+        /** 下一首（`KEYCODE_MEDIA_NEXT`）。 */
+        const val KEYCODE_MEDIA_NEXT = 87
+
+        /** 上一首（`KEYCODE_MEDIA_PREVIOUS`）。 */
+        const val KEYCODE_MEDIA_PREVIOUS = 88
+
+        /** 播放（`KEYCODE_MEDIA_PLAY`）—— 「无论如何都要播」。 */
+        const val KEYCODE_MEDIA_PLAY = 126
+
+        /** 暂停（`KEYCODE_MEDIA_PAUSE`）—— 「无论如何都要停」。 */
+        const val KEYCODE_MEDIA_PAUSE = 127
     }
 }

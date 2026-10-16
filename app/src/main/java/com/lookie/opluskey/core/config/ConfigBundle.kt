@@ -46,9 +46,11 @@ internal object ConfigBundle {
      */
     private const val MAGIC = "OPlusKey-Config-$VERSION"
 
-    private const val FIELD_VERSION = "version"
-    private const val FIELD_CONFIG = "config"
-    private const val FIELD_COMMANDS = "commands"
+    // 信封自己的三个键。与 `CommandLibrary.LIB_VERSION` / `ConfigFields.VERSION_JSON` **同字面量
+    //  不同义**（信封版本 / 命令库版本 / 主配置版本各一个），所以名字带 `ENVELOPE` 区分。
+    private const val ENVELOPE_VERSION = "version"
+    private const val ENVELOPE_CONFIG = "config"
+    private const val ENVELOPE_COMMANDS = "commands"
 
     /** 解析结果 —— **两段都一定有值**（少一段就当整份不过关，见 [parse]）。 */
     data class Parsed(
@@ -68,13 +70,14 @@ internal object ConfigBundle {
                 config.copy(
                     keys = config.keys.mapValues { (_, k) -> k.copy(enabled = false) },
                     disclaimerAccepted = false,
+                    commandDisclaimerAccepted = false,
                 )
             val json =
                 JSONObject()
-                    .put(FIELD_VERSION, VERSION)
+                    .put(ENVELOPE_VERSION, VERSION)
                     // 两份序列化结果都是 JSON 文本，原样嵌进来（不再拆一遍字段，避免两处维护同一份键名）
-                    .put(FIELD_CONFIG, JSONObject(ConfigCodec.serialize(shareable)))
-                    .put(FIELD_COMMANDS, JSONObject(CommandLibrary.serialize(commands)))
+                    .put(ENVELOPE_CONFIG, JSONObject(ConfigCodec.serialize(shareable)))
+                    .put(ENVELOPE_COMMANDS, JSONObject(CommandLibrary.serialize(commands)))
                     .toString(2)
             FileObfuscation.wrap(MAGIC, json)
         } catch (e: Throwable) {
@@ -104,15 +107,15 @@ internal object ConfigBundle {
                 return null
             }
         // 版本先认：信封结构将来变了，旧版程序读新版文件是「不知道自己在读什么」，一律拒
-        val version = root.optInt(FIELD_VERSION, 0)
+        val version = root.optInt(ENVELOPE_VERSION, 0)
         if (version != VERSION) {
             XLog.w("导入配置：信封版本 $version ≠ 本版 $VERSION，拒收")
             return null
         }
 
-        val configObj = root.optJSONObject(FIELD_CONFIG)
+        val configObj = root.optJSONObject(ENVELOPE_CONFIG)
         if (configObj == null) {
-            XLog.w("导入配置：没有 $FIELD_CONFIG 段")
+            XLog.w("导入配置：没有 $ENVELOPE_CONFIG 段")
             return null
         }
         val config = ConfigCodec.parseOrNull(configObj.toString())
@@ -121,9 +124,9 @@ internal object ConfigBundle {
             return null
         }
 
-        val commandsObj = root.optJSONObject(FIELD_COMMANDS)
+        val commandsObj = root.optJSONObject(ENVELOPE_COMMANDS)
         if (commandsObj == null) {
-            XLog.w("导入配置：没有 $FIELD_COMMANDS 段")
+            XLog.w("导入配置：没有 $ENVELOPE_COMMANDS 段")
             return null
         }
         // 用 parseOrNull：**空表是合法值**（用户的命令库本来就可以是空的），
@@ -141,6 +144,7 @@ internal object ConfigBundle {
             config.copy(
                 keys = config.keys.mapValues { (_, k) -> k.copy(enabled = false) },
                 disclaimerAccepted = false,
+                commandDisclaimerAccepted = false,
             ),
             commands,
         )

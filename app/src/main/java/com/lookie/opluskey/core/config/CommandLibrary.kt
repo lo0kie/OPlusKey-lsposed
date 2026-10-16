@@ -8,22 +8,45 @@ import org.json.JSONObject
 
 /**
  * 自定义命令库的读写：JSON 编解码加文件 IO（`org.json` 平台自带，不引依赖）。
- * 磁盘上正文之外套了一层外皮（[FileObfuscation]），[load] / [save] 负责剥与包。
+ * 磁盘上正文之外套了一层外皮（[FileObfuscation]），[loadState] / [save] 负责剥与包。
  */
 object CommandLibrary {
     /** 当前格式版本，解析时不做版本兼容，只写进文件备查。 */
     const val VERSION = 1
 
-    private const val FIELD_VERSION = "version"
-    private const val KEY_COMMANDS = "commands"
+    /**
+     * 读命令库的结果 —— 与 [ConfigStore.Load] **同一条口径**：「读不懂」必须与「空」分两态。
+     *
+     *  为什么这条纪律在命令库上更要紧：界面把空表当真相之后，用户**随便改一条命令**就会
+     *  把这份空表写回盘（[save]），那份读不懂的文件被彻底覆盖 —— 用户的命令就这么没了。
+     *  主配置那边靠这三态 + `configReadOnly` 挡住同一件事，命令库原来没有，只有个空表兜底。
+     */
+    sealed interface Load {
+        /** 读到了（可能是空表 —— 用户确实一条都没建）。 */
+        data class Ok(
+            val commands: List<Command>,
+        ) : Load
+
+        /** 文件不存在（首装 / 刚清过数据）—— 空表就是真相，可以写回。 */
+        data object Absent : Load
+
+        /** 文件在、但读不懂（外皮解不开 / 被截断 / 解析失败）—— **不许**把它当空表写回。 */
+        data object Unreadable : Load
+    }
+
+    // 这一张表是**命令库自己那份文件**的格式（`opluskey_commands.conf`），与主配置的
+    //  `core/model/ConfigFields` 各管一份文件。三个 `"version"` 与两个 `"commands"` 是
+    //  **同字面量不同义**（命令库版本 / 主配置版本 / 导出信封版本各一个），所以常量名带上前缀
+    //  区分 —— 别把它们并成一个：它们的版本号各涨各的。
+    private const val LIB_VERSION = "version"
+    private const val KEY_LIBRARY_COMMANDS = "commands"
     private const val FIELD_NAME = "name"
     private const val FIELD_KIND = "kind"
     private const val FIELD_STEPS = "steps"
     private const val FIELD_DELAY = "stepDelayMs"
-    private const val FIELD_SINGLE = "single"
 
-    /** 执行侧缓存的存活时长（毫秒）。 */
-    private const val CACHE_MS = 1000L
+    /** 单条命令的正文。与主配置里的 `"single"`（手势相位）同字面量但无关。 */
+    private const val FIELD_SINGLE = "single"
 
     /** 清洗命令名：去掉换行（换行会撑开列表行），掐掉首尾空白。存库 / 比对用。 */
     fun sanitizeName(raw: String): String = sanitizeNameInput(raw).trim()
@@ -40,7 +63,7 @@ object CommandLibrary {
     /** 解析命令库文本，读不懂的条目跳过，绝不抛异常。 */
     fun parse(text: String): List<Command> =
         try {
-            val arr = JSONObject(text).optJSONArray(KEY_COMMANDS)
+            val arr = JSONObject(text).optJSONArray(KEY_LIBRARY_COMMANDS)
             if (arr == null) {
                 emptyList()
             } else {
@@ -72,7 +95,7 @@ object CommandLibrary {
      */
     fun parseOrNull(text: String): List<Command>? =
         try {
-            val arr = JSONObject(text).optJSONArray(KEY_COMMANDS) ?: return null
+            val arr = JSONObject(text).optJSONArray(KEY_LIBRARY_COMMANDS) ?: return null
             for (i in 0 until arr.length()) {
                 val o = arr.optJSONObject(i) ?: return null
                 if (commandOf(o) == null) return null
@@ -151,44 +174,74 @@ object CommandLibrary {
             arr.put(o)
         }
         return JSONObject()
-            .put(FIELD_VERSION, VERSION)
-            .put(KEY_COMMANDS, arr)
+            .put(LIB_VERSION, VERSION)
+            .put(KEY_LIBRARY_COMMANDS, arr)
             .toString(2) + "\n"
     }
 
-    /** 读命令库；文件不存在或读不了都返回空表（不抛）。 */
-    fun load(): List<Command> =
+    /**
+     * 读命令库（三态）。文件不存在 ⇒ [Load.Absent]；外皮解不开 / 被截断 / 解析抛异常 ⇒
+     * [Load.Unreadable]（**不是**空表）；正常 ⇒ [Load.Ok]。全程不抛。
+     */
+    fun loadState(): Load =
         try {
             val f = ConfigStore.commandFile()
             // 走 ConfigStore.readText：剥 BOM（记事本另存为会加），否则整份命令库在 JSONObject 那一步就抛。
             if (!f.isFile) {
-                emptyList()
+                Load.Absent
             } else {
-                // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文解不开，都按空表处理 —— 同一个兜底、
-                // 不抛。不做旧格式兼容（见 `FileObfuscation` 的类注释）。
+                // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文解不开，都算「读不懂」——
+                //  同一个判据、不抛。不做旧格式兼容（见 `FileObfuscation` 的类注释）。
                 val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, ConfigStore.readText(f))
                 if (text == null) {
-                    XLog.w("读命令库：外皮解不开（文件可能被截断），按空表处理")
-                    emptyList()
+                    XLog.w("读命令库：外皮解不开（文件可能被截断）⇒ 按读不懂处理")
+                    Load.Unreadable
                 } else {
-                    parse(text)
+                    // 解析这一层也分「读得懂」与「读不懂」：`parse` 兜底成空表，但外皮剥开了、
+                    //  正文却不是合法 JSON，那同样是「文件坏了」而不是「用户没有命令」。
+                    parseState(text)
                 }
             }
         } catch (e: Throwable) {
-            XLog.w("读命令库失败（按空表处理）：${e.message}")
-            emptyList()
+            XLog.w("读命令库失败（按读不懂处理）：${e.message}")
+            Load.Unreadable
         }
 
-    /** 带缓存的读，给执行侧用：按键每次都要展开 `cmd:` 动作，不能每次读盘，缓存 1s。 */
+    /** 读命令库；读不到 / 读不懂都返回空表（不抛）—— 只给「空表就够用」的调用方（执行侧、导出包）。 */
+    fun load(): List<Command> = (loadState() as? Load.Ok)?.commands ?: emptyList()
+
+    private fun parseState(text: String): Load =
+        try {
+            val json = JSONObject(text)
+            val arr = json.optJSONArray(KEY_LIBRARY_COMMANDS)
+            if (arr == null) {
+                // `commands` 那一段都不在 ⇒ 不是我们写的文件（或写坏了）
+                XLog.w("读命令库：正文里没有 $KEY_LIBRARY_COMMANDS 这一段 ⇒ 按读不懂处理")
+                Load.Unreadable
+            } else {
+                Load.Ok(parse(text))
+            }
+        } catch (e: Throwable) {
+            XLog.w("读命令库：正文不是合法 JSON ⇒ 按读不懂处理（${e.message}）")
+            Load.Unreadable
+        }
+
+    /**
+     * 带缓存的读，给执行侧用：按键每次都要展开 `cmd:` 动作，不能每次读盘。
+     *
+     * 缓存按**文件指纹**命中（修改时间 + 长度，两次 `stat`），与 [ConfigStore.load] 同口径，
+     * 不是按「距上次读过了多久」。为什么不能只按时刻算：写方是设置页 `:ui` 进程、读方是宿主
+     * 主进程，**写方清缓存清不到读方**——若只按「未满一秒」判命中，「改完命令库立刻按键」会在
+     * 那一秒里读到上一版。指纹比对让「文件一被写、下一次读立刻重解析」这条语义成立。
+     * 本进程自己的写盘（[save]）另外主动失效。
+     */
     fun loadCached(): List<Command> {
-        // 用 elapsedRealtime 而非 currentTimeMillis：后者会被改表 / 网络校时回拨，
-        // 回拨后 now - cacheAt 为负、缓存永不刷新。
-        val now = android.os.SystemClock.elapsedRealtime()
-        val hit = cache
-        if (hit != null && now - cacheAt < CACHE_MS) return hit
+        val f = ConfigStore.commandFile()
+        val modified = f.lastModified()
+        val length = f.length()
+        cache?.let { if (it.modified == modified && it.length == length) return it.commands }
         val fresh = load()
-        cache = fresh
-        cacheAt = now
+        cache = Cached(modified, length, fresh)
         return fresh
     }
 
@@ -207,16 +260,20 @@ object CommandLibrary {
                 openReadable = false,
             )
         cache = null
-        cacheAt = 0L
         return ok
     }
 
-    /** 执行侧的缓存。 */
-    @Volatile
-    private var cache: List<Command>? = null
+    /**
+     * 执行侧的缓存：上一次读的结果与它对应的文件指纹（修改时间 + 长度），与 [ConfigStore] 同口径。
+     */
+    private class Cached(
+        val modified: Long,
+        val length: Long,
+        val commands: List<Command>,
+    )
 
     @Volatile
-    private var cacheAt: Long = 0L
+    private var cache: Cached? = null
 
     /**
      * 判断 `cmd:<名字>` 指向的是不是多条命令（[CommandKind.SERIAL]），非 `cmd:` 或名字查不到一律 `false`。

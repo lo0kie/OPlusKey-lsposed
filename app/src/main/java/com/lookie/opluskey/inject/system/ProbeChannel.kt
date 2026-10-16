@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import com.lookie.opluskey.DEBUG_PROBE
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.reflect.Reflect
 
@@ -23,7 +24,7 @@ import com.lookie.opluskey.core.reflect.Reflect
  * | op | 作用 | 关键 extra |
  * |---|---|---|
  * | `dump` | 列出某类的声明方法与字段，**连参数类型一起打**（消掉「签名靠猜」） | `cls` `filter` |
- * | `call` | 反射调一个方法并打出返回值 / 异常 | `cls` `name` `target` `args` |
+ * | `call` | 反射调一个方法并打出返回值 / 异常 | `cls` `name` `target` `args` `unsafe` |
  * | `state` | 只读打印目标任务的状态字段（含操作条视图到底建出来没有） | `task_id` |
  * | `corner` | 给目标任务的窗口 surface 设圆角（`SurfaceControl.Transaction`，公开 API） | `radius` `task_id` |
  * | `dress` | 「补壳」：圆角 + 操作条挂载 / 显示，三个开关分开试 | `task_id` `radius` `caption` `show` |
@@ -32,11 +33,16 @@ import com.lookie.opluskey.core.reflect.Reflect
  * **两个落点**：`system_server`（经 `KeyHooks` 的 AMS 广播入口接住）与**桌面进程**
  * （[installInProcess]）。桌面那个落点是「调用方 pid == 桌面进程 pid」那条路的前提。
  *
- * **安全边界（三条，缺一条都不能上）**：
+ * **安全边界（四条，缺一条都不能上）**：
  * 1. **只在 debug 包存在** —— [DEBUG_PROBE] 是编译期常量，release 里这些代码连同调用点一起被折掉；
  * 2. **只收 root / system 发的** —— 发送方不是宿主，所以来源校验单列一条
  *    （`KeyHooks.isFromRootOrSystem`），普通 App（uid ≥ 10000）进不来；
  * 3. **每个 op 整体包 catch** —— 调用点在 AMS 广播入口，漏一个异常出去就是系统崩 / 开机循环。
+ * 4. **`call` 另有一道准入闸** —— 它会对广播指定的类直接 `invoke`，而 **`invoke` 会触发宿主类的
+ *    `<clinit>`**：system_server 类初始化顺序极早，静态块里的单例那时往往还是 null →
+ *    `ExceptionInInitializerError` → 类被标 erroneous → 之后真用到它的地方 `NoClassDefFoundError`
+ *    → **开机循环**（AGENTS.md 五之二、1）。故只有 `cls` 命中 [UNSAFE_CLASS_PREFIXES] **且**
+ *    广播带了 [EXTRA_UNSAFE]=true 才放行，否则打 W 判据行拒绝（见 [allowUnsafe]）。
  */
 internal object ProbeChannel {
     /** 调试指令的 action —— 从 adb 用 **root** 发（shell 身份过不了 NOT_EXPORTED 接收器；用法见 `docs/debug-channel.md`）。 */
@@ -69,6 +75,15 @@ internal object ProbeChannel {
     private const val EXTRA_RECT_B = "rect_b"
     private const val EXTRA_FLAGS = "flags"
 
+    /**
+     * [OP_CALL] 的显式 opt-in extra —— 不带它，这个 op 一律拒绝执行。
+     *
+     * `call` 会对广播指定的类直接 `invoke`，而 **`invoke` 会触发宿主类的 `<clinit>`**（见
+     * [UNSAFE_CLASS_PREFIXES]）：所以「这一把确实要碰宿主类」必须由调用方在广播里**显式选一次**，
+     * 而不是默认发生。
+     */
+    private const val EXTRA_UNSAFE = "unsafe"
+
     /** `call` 的 `target`：从哪儿拿方法接收者。 */
     private const val TARGET_STATIC = "static"
     private const val TARGET_SERVICE = "service"
@@ -91,6 +106,26 @@ internal object ProbeChannel {
      * 一问「这方法静态吗」就得再重启一次。
      */
     private const val TARGET_SINGLETON = "singleton"
+
+    /**
+     * [OP_CALL] 允许触碰的宿主类前缀白名单 —— 「`cls` 命中它**且**广播带了 [EXTRA_UNSAFE]=true」才放行。
+     *
+     * 为什么收口：[OP_CALL] 按广播里的 `cls` + 方法名取 `cls.methods` 后直接 `m.invoke(...)`，
+     * `target=static` 时 `cls` 就是**任意 system_server 类**，`target=singleton` 还会先走一次
+     * `getInstance()`。而 **`invoke` 会触发宿主类的 `<clinit>`** —— system_server 的类初始化顺序
+     * 极早，静态块里依赖的单例那时往往还是 null → `ExceptionInInitializerError` → 类被标 erroneous
+     * → 之后真用到它的地方 `NoClassDefFoundError` → **开机循环**（AGENTS.md 五之二、1 的红线）。
+     *
+     * 每个前缀的来由（都是本文件里实际出现过的目标类，不是凭空圈的范围）：
+     * - `com.android.server.wm.` —— [SERVICE_CLASS]（`FlexibleWindowManagerService`）以及它
+     *   `getInstance()` 出来的任务 / `TaskExt` / caption view 全在这个包；
+     * - `android.app.OplusActivityTaskManager` —— `zoom` op 的门面类（`getInstance()` + 精确签名调用）。
+     */
+    private val UNSAFE_CLASS_PREFIXES =
+        listOf(
+            "com.android.server.wm.",
+            RomProfile.effective.reflection.zoomTaskManager,
+        )
 
     /** 圆角 / 阴影半径的默认值 —— 与真机那次成功过渡用的 bundle 值一致（`LaunchCornerRadius=91`）。 */
     private const val DEFAULT_CORNER_RADIUS = 91f
@@ -115,7 +150,7 @@ internal object ProbeChannel {
     private const val KEY_ZOOM_LAUNCH_FLAGS = "android:activity.mZoomLaunchFlags"
     private const val WINDOWING_MODE_ZOOM = 100
     private const val DEFAULT_ZOOM_LAUNCH_FLAGS = 2
-    private const val METHOD_RECENTS_FLEXIBLE = "startActivityFromRecentsForFlexible"
+    private val METHOD_RECENTS_FLEXIBLE = RomProfile.effective.reflection.zoomRecentsMethod
 
     /**
      * 日志前缀统一 `probe/<op>`，grep 这一个词就能把这条通道的输出捞干净。
@@ -266,6 +301,78 @@ internal object ProbeChannel {
     // ── op: call ─────────────────────────────────────────────────────────────
 
     /**
+     * [OP_CALL] 的准入闸：`clsName` 命中 [UNSAFE_CLASS_PREFIXES] **且**广播带了 [EXTRA_UNSAFE]=true
+     * 才返回 true；否则打一条 W 判据行并拒绝。
+     *
+     * 判据行必须 W：注入侧的 `i` / `d` 在日志页里整档看不到（AGENTS.md 二、1.2），而这一行正是
+     * 「这次为什么没执行」的唯一答案 —— 不许静默 return，也不许只说一句「拒绝」了事，必须写清
+     * 哪条 op、哪个类、卡在哪一条。
+     */
+    private fun allowUnsafe(
+        clsName: String,
+        target: String,
+        intent: Intent,
+    ): Boolean {
+        val shown = clsName.ifEmpty { "（空类名）" }
+        val optedIn =
+            try {
+                intent.getBooleanExtra(EXTRA_UNSAFE, false)
+            } catch (e: Throwable) {
+                false
+            }
+        if (!optedIn) {
+            XLog.w(
+                "${describe(OP_CALL)}（target=$target）：拒绝执行 —— $shown 要显式 opt-in，" +
+                    "广播带 extra $EXTRA_UNSAFE=true 才放行",
+            )
+            return false
+        }
+        if (UNSAFE_CLASS_PREFIXES.none { clsName.startsWith(it) }) {
+            XLog.w(
+                "${describe(OP_CALL)}（target=$target）：拒绝执行 —— $shown 不在白名单里，" +
+                    "只允许 ${UNSAFE_CLASS_PREFIXES.joinToString(" / ")}",
+            )
+            return false
+        }
+        return true
+    }
+
+    /**
+     * 解析目标类的接收者，并在**正确的时机**过 [allowUnsafe] 准入闸；过不了闸 / 解析不出来都返回
+     * `null`（原因由里面的日志给出）。
+     *
+     *  顺序就是这里的关键，不能合成一次判：`target=singleton` 的接收者本身取自广播里的 `cls`，而
+     *  `getInstance()` 那一步**就会触发宿主类 `<clinit>`** —— 所以它必须**先按广播里的类名**过闸，
+     *  再去取接收者；其余 target 要等类定下来才知道该拿哪个名字判，只能放在解析之后。也正因为两个
+     *  判点分处一前一后，才把它整个收进这一个函数（`call` 里那两个 return 本来会顶到 detekt 的
+     *  出口数上限）。
+     */
+    private fun resolveGatedTarget(
+        loader: ClassLoader,
+        target: String,
+        clsName: String,
+        intent: Intent,
+    ): Pair<Any?, Class<*>>? {
+        if (target == TARGET_SINGLETON && !allowUnsafe(clsName, target, intent)) return null
+
+        val receiver = resolveReceiver(loader, target, intent)
+        val cls =
+            when {
+                receiver != null -> receiver.javaClass
+                clsName.isNotEmpty() -> Reflect.findClass(loader, clsName)
+                else -> null
+            }
+        if (cls == null) {
+            XLog.w("probe/call：既拿不到 target=$target 的接收者，也没给 cls")
+            return null
+        }
+        // `singleton` 已在上面按 `clsName` 判过，这里不重判 —— 单例的实现类名与 `cls` 未必同名，
+        //  重判会把它误拒。
+        if (target != TARGET_SINGLETON && !allowUnsafe(cls.name, target, intent)) return null
+        return receiver to cls
+    }
+
+    /**
      * 按名字找方法（同名多载时按参数个数 + 能不能把 `args` 转过去筛），调完把返回值/异常打出来。
      *
      * `args` 是字符串数组（`--esa args a,b,c`），按方法的形参类型就地转换：
@@ -284,17 +391,9 @@ internal object ProbeChannel {
             return
         }
 
-        val receiver = resolveReceiver(loader, target, intent)
-        val cls =
-            when {
-                receiver != null -> receiver.javaClass
-                clsName.isNotEmpty() -> Reflect.findClass(loader, clsName)
-                else -> null
-            }
-        if (cls == null) {
-            XLog.w("probe/call：既拿不到 target=$target 的接收者，也没给 cls")
-            return
-        }
+        // 过闸与解析合成一步（见 [resolveGatedTarget] 里那条顺序的理由），这里只留一条出口
+        val gated = resolveGatedTarget(loader, target, clsName, intent) ?: return
+        val (receiver, cls) = gated
 
         val candidates = cls.methods.filter { it.name == name }
         if (candidates.isEmpty()) {
@@ -597,6 +696,10 @@ internal object ProbeChannel {
             XLog.w("${describe(OP_CORNER)}：任务 #$taskId 的 surface 圆角已设为 $radius")
         } catch (e: Throwable) {
             XLog.w("${describe(OP_CORNER)} setCornerRadius 失败：${e.javaClass.simpleName}: ${e.message}")
+        } finally {
+            // 这条 Transaction 是**自己建、自己 apply** 的：不关就泄一个 native 对象
+            //  （每一个提前 return 的分支都会漏一份）。
+            runCatching { tx.close() }
         }
     }
 
@@ -733,7 +836,7 @@ internal object ProbeChannel {
                 putInt(KEY_WINDOWING_MODE, WINDOWING_MODE_ZOOM)
                 putInt(KEY_ZOOM_LAUNCH_FLAGS, flags)
             }
-        val mgrCls = Reflect.findClass(loader, "android.app.OplusActivityTaskManager")
+        val mgrCls = Reflect.findClass(loader, RomProfile.effective.reflection.zoomTaskManager)
         val mgr = mgrCls?.let { Reflect.callStatic(it, "getInstance") }
         if (mgrCls == null || mgr == null) {
             XLog.w("${describe(OP_ZOOM)}：OplusActivityTaskManager.getInstance 拿不到")
@@ -812,30 +915,20 @@ internal object ProbeChannel {
 
     // 剥到最内层 cause 的那份实现已收到 `Reflect.deepestCause`（与 `FlexibleWindowBridge` 共用一份）。
 
-    /** 读字段：**要沿父类往上找** —— 很多状态字段声明在父类上，`getDeclaredField` 只看本类（真机踩过）。 */
+    /**
+     * 读字段并格式化成一句诊断 —— **要沿父类往上找**（很多状态字段声明在父类上，
+     * `getDeclaredField` 只看本类，真机踩过），那一层由 `Reflect.field` 一处负责。
+     */
     private fun fieldOf(
         receiver: Any,
         name: String,
     ): String {
-        var cls: Class<*>? = receiver.javaClass
-        while (cls != null) {
-            val f =
-                try {
-                    cls.getDeclaredField(name)
-                } catch (e: NoSuchFieldException) {
-                    null
-                }
-            if (f != null) {
-                return try {
-                    f.isAccessible = true
-                    "${f.get(receiver)}"
-                } catch (e: Throwable) {
-                    "（读到但取值失败：${e.javaClass.simpleName}）"
-                }
-            }
-            cls = cls.superclass
+        val f = Reflect.field(receiver.javaClass, name) ?: return "（读不到 $name）"
+        return try {
+            "${f.get(receiver)}"
+        } catch (e: Throwable) {
+            "（读到但取值失败：${e.javaClass.simpleName}）"
         }
-        return "（读不到 $name）"
     }
 
     /**
@@ -944,7 +1037,7 @@ internal object ProbeChannel {
 
     // ── 小工具：拿任务 / TaskExt（与 FlexibleWindowBridge 同源，避免跨对象耦合） ──
 
-    private const val SERVICE_CLASS = "com.android.server.wm.FlexibleWindowManagerService"
+    private val SERVICE_CLASS = RomProfile.effective.reflection.flexibleWindowService
     private const val FIELD_ATMS = "mAtms"
     private const val FIELD_ROOT = "mRootWindowContainer"
 

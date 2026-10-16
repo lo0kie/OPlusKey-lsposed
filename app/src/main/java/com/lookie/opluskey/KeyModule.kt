@@ -3,7 +3,14 @@ package com.lookie.opluskey
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.MiniWindowGeometry
+import com.lookie.opluskey.core.model.ModuleInfo
+import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.reflect.ActivityThreadCompat
+import com.lookie.opluskey.core.seal.Seal
+import com.lookie.opluskey.core.seal.Verdict
 import com.lookie.opluskey.host.GestureReceiver
 import com.lookie.opluskey.host.SideKeyGestureHooks
 import com.lookie.opluskey.inject.KeyHooks
@@ -38,6 +45,12 @@ class KeyModule : XposedModule() {
             // 这一条是「为什么按了没反应」的第一判据行，必须是 w
             XLog.w("${whyNotInjecting()} ⇒ 本进程不注入（只保留界面层 $PAGE_PROCESS）")
         }
+        // 档位 —— 与上面那行**分开报**：适配闸管「能不能注入」，档位表管「注入之后那些落点
+        //  认不认得」。真机报「按了没反应」时，这几句一起看就知道断在哪一环。
+        XLog.w(
+            "适配档位：内置命令=${RomProfile.describeCurrent()}；" +
+                "小窗几何=${MiniWindowGeometry.describeCurrent()}",
+        )
         if (!ENFORCE_DEVICE_GATE) {
             // 本包不做适配清单这道闸（只有 debug 会这样，见 `BuildFlags`）：上面那行照样打机型与
             //  系统版本，这里补一句为什么清单外的机器也「允许运行」—— 免得对着图排查时对不上。
@@ -89,6 +102,7 @@ class KeyModule : XposedModule() {
                     XLog.w("${whyNotInjecting()} ⇒ 不装宿主侧手势劫持与接收器（只保留界面层）")
                     return
                 }
+                if (sealRejected(param.classLoader)) return
                 // 宿主主进程：框架判好的侧键手势派发到这里，执行也放这一侧（配置同 uid 直接读得到）。
                 XLog.w("侧键宿主主进程启动，开始安装手势劫持 Hook")
                 XLog.guard("安装手势劫持 Hook") {
@@ -120,22 +134,43 @@ class KeyModule : XposedModule() {
         }
     }
 
+    /**
+     * 签名闸：本包签名与**出厂指纹**不符（= 被改过并重签）⇒ **不装 Hook**。
+     *
+     *  拦的是「改包再发」那条路：换掉收款码 / 换掉别的东西重签名，包就再也解不开自己那份封存资产
+     *  （见 `core/seal/Seal`），这里再把功能一并停掉 —— 一个被改过的包，装上去也只是块砖。
+     *
+     *  **只在这一处（宿主主进程）判**：`system_server` 那次注入（[onSystemServerStarting]）此刻拿不到
+     *  可用的 Context —— `SystemContext.get` 明说了「安装阶段不要调」（那时还没有别的 App attach 过，
+     *  借不到真的那份，调了只会把降级品缓存下来，反而把广播弄坏）。而宿主进程这里 `currentApplication`
+     *  可能还是 null（Application 尚未挂上），那时**不拦** —— 交给 `host/GestureReceiver` 那一道：
+     *  它在重试到 Context 之后判，必得着。**宁可晚一步，也不把「读不到」当成「被改过」。**
+     *
+     *  debug 包里这一整段是死代码（[Seal.verdict] 直接返回 OFFICIAL，见 debug 源集那份 `SealPin`）。
+     */
+    private fun sealRejected(loader: ClassLoader): Boolean {
+        val context = ActivityThreadCompat.currentApplication(loader) ?: return false
+        if (Seal.verdict(context) != Verdict.UNOFFICIAL) return false
+        XLog.e("本包签名与出厂指纹不符 ⇒ 不装 Hook（见「关于 → 签名」；换回官方包即恢复）")
+        return true
+    }
+
     companion object {
         /**
          * 侧键设置页实际所在的进程名（`ActionButtonSettingsActivity` 的 `android:process` 属性）。
          * 是进程名不是包名，**不要**写进 `scope.list`；用于 [onPackageReady] 从同包多进程中挑出设置页。
          */
-        const val PAGE_PROCESS = "com.oplus.gesture.ui"
+        const val PAGE_PROCESS = HostApp.PAGE_PROCESS
 
         /**
          * 侧键手势的落点进程：宿主 App 主进程。框架把判好的手势 bind 给场景宿主，而宿主的
          * 两个服务（`quicklaunch.StartAppService` / `server.ActionButtonKeyService`）都声明在
          * 默认进程里 —— 手势劫持装在这一侧（见 [SideKeyGestureHooks]）。
          */
-        const val HOST_PROCESS = "com.oplus.gesture"
+        const val HOST_PROCESS = HostApp.PACKAGE
 
-        /** 设置页宿主包名（`scope.list` 里写的就是它）。 */
-        const val PAGE_PACKAGE = "com.oplus.gesture"
+        /** 设置页宿主包名（`scope.list` 里写的就是它）—— 与 [HOST_PROCESS] 同值，但那是「进程」、这是「包」。 */
+        const val PAGE_PACKAGE = HostApp.PACKAGE
 
         /**
          * 桌面（`com.android.launcher`）—— **只为 debug 通道**而接的第二个落点。
@@ -150,9 +185,10 @@ class KeyModule : XposedModule() {
         /**
          * 模块自己的包名（= `build.gradle.kts` 的 `applicationId`），与 [PAGE_PACKAGE] 不是一回事：
          * 设置页跑在宿主进程里，`context.packageName` 拿到的是宿主包名，显示模块版本必须用这个
-         * 包名去 `PackageManager` 查。硬编码是因为本工程关了 `BuildConfig`，拿不到 `APPLICATION_ID`。
+         * 包名去 `PackageManager` 查。取值本体在 `core/model/ModuleInfo`（`core/` 不许依赖本文件，
+         * 而 `core/i18n/I18n` 也要它去 APK 里抠字典，所以只能放在那边）。
          */
-        const val MODULE_PACKAGE = "io.github.lo0kie.opluskey"
+        const val MODULE_PACKAGE = ModuleInfo.PACKAGE
 
         /**
          * system_server → 宿主的手势转交广播（宿主私有目录 system_server 读不了，`/data/system`
@@ -262,7 +298,7 @@ class KeyModule : XposedModule() {
          * 注意：用的是 `MODEL` **不是** `ro.product.device`：真机上 `MODEL` = `PLK110`、
          * `DEVICE` = `OP60FFL1`，适配清单按前者写（见 [DeviceSupport]）。各进程读到的都一样。
          */
-        private val MODEL: String = android.os.Build.MODEL
+        private val MODEL: String = DeviceSupport.currentModel
 
         /** 本机 Android 版本（`android.os.Build.VERSION.RELEASE`，真机是 `17`）。 */
         private val ANDROID: String = android.os.Build.VERSION.RELEASE
@@ -270,11 +306,10 @@ class KeyModule : XposedModule() {
         /**
          * 本机 ROM 版本号 —— 从 `android.os.Build.DISPLAY`（`ro.build.display.id`）里取。
          *
-         * 不读 `ro.build.version.oplusrom`：那是 hidden 的 `SystemProperties`，宿主进程里会被
-         * 非 SDK 接口限制拦下（界面层与注入侧都要判这一项），而 `Build.DISPLAY` 是公开 API。
-         * 取法见 [DeviceSupport.romSeriesOf]。
+         * 取法收在 [DeviceSupport.currentRomSeries] 一处（读 `Build.DISPLAY` 是公开 API；
+         * `ro.build.version.oplusrom` 是 hidden 的，界面进程读不到）。
          */
-        private val ROM: String = DeviceSupport.romSeriesOf(android.os.Build.DISPLAY)
+        private val ROM: String = DeviceSupport.currentRomSeries
 
         /**
          * 本机「机型 + 系统版本」这一组在不在**适配清单**里（见 [DeviceSupport]）——

@@ -2,6 +2,7 @@ package com.lookie.opluskey.core.log
 
 import android.util.Log
 import com.lookie.opluskey.VERBOSE_LOG
+import com.lookie.opluskey.core.model.Action
 import io.github.libxposed.api.XposedModule
 
 /**
@@ -127,6 +128,47 @@ object XLog {
             // guard 也包着运行期动作，不能把排查方向带偏到「hook 没装上」。
             e("「$what」失败（已忽略，不影响系统）：${e.javaClass.simpleName}", e)
         }
+    }
+
+    /**
+     * 命令正文的脱敏形式 —— 正文一律不进日志，只留「长度 + 指纹」。
+     *
+     * 为什么：命令正文可能内嵌 token / 密码（`curl -H "Authorization: ..."` 这类），而打这几条
+     * 日志的地方都是 `w` 级 —— 正文既会进 logcat，也会进「导出日志」那份文件，等于把凭据抄了一份。
+     *
+     * 为什么保留长度与指纹：同一条命令两次执行的指纹一致，仍能把「同一处、前后两次」的日志对上；
+     * 而「哪一步、哪条命令（名字）、退出码」这些判据不依赖正文本身。指纹取 `hashCode()` 的十六进制：
+     * 够稳定、够便宜，不必为此引加密库（它只用于对照，不是凭据）。
+     *
+     * 空串单独给一个可读形式：打成 `<0字符 指纹0>` 看不出那是「空」。
+     */
+    internal fun redactCommand(command: String): String =
+        if (command.isEmpty()) {
+            "<空命令>"
+        } else {
+            "<${command.length}字符 指纹${Integer.toHexString(command.hashCode())}>"
+        }
+
+    /**
+     * token 的脱敏形式 —— 只对**带正文的那几族**脱敏，其余原样返回。
+     *
+     *  `shell:` 后面跟的是整条命令全文、`intent:` 后面跟的是 action 串，都可能内嵌 token / 密码
+     *  （理由同 [redactCommand]），所以只把冒号后面那段换成 [redactCommand] 的结果。
+     *  其余 token（`keyevent:` / `app:` / `cmd:` / `window:` / `shortcut:` / `ringer:` / `oplus:` /
+     *  `panel:` / `zoom:` / `power:menu` / `flashlight` / `none`）本身就是判据 —— 按下的是哪个键、
+     *  开哪个 App、引哪条命令 —— 必须原样看得见，脱敏等于把判据抹掉。
+     *
+     *  判据只看冒号前那段前缀：认不出的前缀（会被 `Action.parse` 兜底成 shell）不在此列，
+     *  那条正文由调用点自己用 [redactCommand] 收口。
+     */
+    internal fun redactToken(token: String): String {
+        val prefix =
+            when {
+                token.startsWith(Action.SHELL_PREFIX) -> Action.SHELL_PREFIX
+                token.startsWith(Action.INTENT_PREFIX) -> Action.INTENT_PREFIX
+                else -> return token
+            }
+        return prefix + redactCommand(token.removePrefix(prefix))
     }
 
     /** 缓冲里那一列级别（logcat 的数值档 → 一个字母）。 */

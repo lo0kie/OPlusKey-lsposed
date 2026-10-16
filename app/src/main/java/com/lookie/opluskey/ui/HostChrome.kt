@@ -1,7 +1,10 @@
 package com.lookie.opluskey.ui
 
 import android.view.ViewGroup
+import androidx.compose.ui.graphics.toArgb
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.model.DARK_SCHEME
+import com.lookie.opluskey.ui.model.LIGHT_SCHEME
 
 /**
  * 宿主窗口 / 状态栏的绘制 —— 换页时把宿主的主题、窗口底色与状态栏那一条刷成我们需要的样式。
@@ -36,7 +39,10 @@ internal object HostChrome {
         // 但 window 背景仍要按深色刷一遍 —— 理由见下（转场黑底）。
         if (night) {
             XLog.w("系统是深色模式，沿用宿主自带的深色主题")
-            paintWindowBeforeContent(activity, 0xFF000000.toInt(), "深色页面底 #ff000000")
+            // 底色取自色板（[DARK_SCHEME] / [LIGHT_SCHEME]）而不是就地写十六进制：
+            //  模块页面的底色（`ui/theme/PageTheme.pageBackgroundColor`）用的是同一份色板，
+            //  两处各写一遍时换了色板只有一边跟着变。
+            paintWindowBeforeContent(activity, DARK_SCHEME.surface.toArgb(), "深色页面底")
             return
         }
 
@@ -68,7 +74,7 @@ internal object HostChrome {
             XLog.w("切浅色主题失败（保留宿主深色主题）", e)
         }
 
-        paintWindowBeforeContent(activity, 0xFFF0F1F2.toInt(), "浅色页面底 #fff0f1f2")
+        paintWindowBeforeContent(activity, LIGHT_SCHEME.surface.toArgb(), "浅色页面底")
     }
 
     /** 关掉本 Activity 的窗口转场动画 —— 试过，但对「从设置进来黑一下」实测无效。 */
@@ -169,10 +175,13 @@ internal object HostChrome {
         }
 
         // 诊断：状态栏那块到底归谁管 —— 把关键坐标打出来（ROM 改版时对照用）
+        // 顶栏同样走 [findAppbar]：它带按名字反查的兜底，裸 `findViewById(ID_APPBAR)` 在 ROM
+        //  重建资源表之后就查不到了 —— 而这条日志正是留着对照 ROM 改版的，走裸查找会让它
+        //  恰好在最需要它的场合失去参照。
         try {
             val cLoc = IntArray(2)
             container.getLocationOnScreen(cLoc)
-            val appbar = activity.findViewById<android.view.View>(ID_APPBAR)
+            val appbar = findAppbar(activity)
             val aLoc = IntArray(2)
             appbar?.getLocationOnScreen(aLoc)
             XLog.d(

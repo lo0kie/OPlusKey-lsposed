@@ -40,6 +40,22 @@ internal class SideKeyInterceptor(
         keyEvent.deviceId == android.view.KeyCharacterMap.VIRTUAL_KEYBOARD ||
             keyEvent.deviceId < 0
 
+    /**
+     * 撤掉已经排下的手势 —— 长按枪、双击窗、连发任务（`GestureDetector.reset` 三者都会摘）。
+     *
+     * 调用点只有一处：收到「主开关关掉」的配置广播那一刻（`ConfigChannel.read` → 回调 →
+     * 装配在 `KeyHooks.install`）。**不能**改在 [handle] 开头那条
+     * `if (!ConfigChannel.takeOver) return false`：那条只在有按键事件走进来时才会执行，
+     * 而按住不放期间没有新事件进来，撤销就永远不会发生，计时器与连发任务会继续响下去。
+     */
+    internal fun cancelPending() {
+        try {
+            detector.reset(KeyId.PLUS)
+        } catch (e: Throwable) {
+            XLog.w("撤销待定手势失败（已忽略）：${e.javaClass.simpleName}", e)
+        }
+    }
+
     /** @return true = 接管（吞掉原方法）；false = 原样放行给系统。 */
     fun handle(
         point: Framework.InterceptionPoint,

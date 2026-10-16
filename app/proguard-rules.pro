@@ -2,9 +2,10 @@
 # 本模块自己的类：**改名 + 收缩都放开** —— 本文件不给自家类写 `-keepnames`：
 # 那种写法（`-keep,allowshrinking`）只钉名字、允许收缩，等于 release 只剪枝、**一个符号都不改**。
 #
-# 敢放开的前提：本项目**没有任何一处按名字找自家类** —— `Class.forName` 只有
-#  `inject/Framework.kt` 的候选表在用，查的全是宿主 / 框架的类（见 `core/reflect/Reflect.kt`）；
-# 真正要被框架按名字取到的只有入口类（上面那条 `-keep`）与资源 id 类（下面两条）。
+# 敢放开的前提：本项目**没有任何一处按名字找自家类** —— 全仓唯一的 `Class.forName`
+#  在 `core/reflect/Reflect.kt`（`findClass`，查的全是宿主 / 框架的类）；`inject/Framework.kt`
+#  的候选表不自己写，走的就是 `Reflect.findClass`。真正要被框架按名字取到的只有入口类
+#  （上面那条 `-keep`）与资源 id 类（下面两条）。
 #  放开之后 `FileObfuscation` / `scramble` 这类名字在 dex 里就捞不到了 —— 配置外皮的
 #  「搜一眼就会」这个口子跟着收掉。
 #

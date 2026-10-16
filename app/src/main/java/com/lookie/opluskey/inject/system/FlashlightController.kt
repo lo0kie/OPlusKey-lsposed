@@ -84,8 +84,18 @@ internal class FlashlightController(
                         cameraId: String,
                         enabled: Boolean,
                     ) {
-                        torchOn = enabled
-                        torchCameraId = cameraId
+                        //  一台机器可能有多颗带闪光灯的摄像头（主摄 / 超广 / 长焦），注册时会**逐个**回调
+                        // 一次，于是「最后回调的那颗」会决定 `torchCameraId` —— 若它恰好不是正在亮的那颗，
+                        // 下一次 `applyToggle` 就会去切一颗没亮的镜头（原状态读反、表现是按一下没反应）。
+                        //  规矩：**亮着的那颗优先**（`enabled == true` 时认它）；都没亮时才按回调次序记一颗当兜底。
+                        if (enabled) {
+                            torchCameraId = cameraId
+                            torchOn = true
+                        } else if (torchCameraId == null) {
+                            // 还没认过任何一颗、这一颗也没亮 —— 只是给 `firstTorchCamera` 之外留个候选，
+                            //  **不改 `torchOn`**：多颗里绝大多数回调是 `false`，跟着它走会把「亮着」覆盖成「灭」。
+                            torchCameraId = cameraId
+                        }
                     }
                 },
                 handler,

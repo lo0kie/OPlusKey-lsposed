@@ -14,24 +14,25 @@ package com.lookie.opluskey.ui.component
  */
 internal fun isFullWidth(c: Char): Boolean =
     when (c.code) {
+        // 谚文字母
         in 0x1100..0x115F -> true
 
-        // 谚文字母
+        // 中日韩部首、假名、汉字、注音
         in 0x2E80..0xA4CF -> true
 
-        // 中日韩部首、假名、汉字、注音
+        // 谚文音节
         in 0xAC00..0xD7A3 -> true
 
-        // 谚文音节
+        // 中日韩兼容汉字
         in 0xF900..0xFAFF -> true
 
-        // 中日韩兼容汉字
+        // 中日韩兼容形式
         in 0xFE30..0xFE6F -> true
 
-        // 中日韩兼容形式
+        // 全角形式
         in 0xFF00..0xFF60 -> true
 
-        // 全角形式
+        // 全角符号
         in 0xFFE0..0xFFE6 -> true
 
         else -> false

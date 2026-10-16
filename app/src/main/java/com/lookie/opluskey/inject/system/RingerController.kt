@@ -34,7 +34,7 @@ internal class RingerController(
                     return
                 }
             val zen = isZenOn(ctx)
-            val current = readCurrentMode(ctx, am, zen)
+            val current = readCurrentMode(am, zen)
             val next =
                 when (current) {
                     AudioManager.RINGER_MODE_NORMAL -> AudioManager.RINGER_MODE_VIBRATE
@@ -86,7 +86,7 @@ internal class RingerController(
                     return
                 }
             val zen = isZenOn(ctx)
-            val current = readCurrentMode(ctx, am, zen)
+            val current = readCurrentMode(am, zen)
             if (current == target) {
                 XLog.w("响铃模式：已经是${modeName(target)}，不动")
                 return
@@ -106,7 +106,6 @@ internal class RingerController(
      * 方法不存在（ROM 差异）时退回 rememberedMode，两个都拿不到才用外部视图。
      */
     private fun readCurrentMode(
-        ctx: Context,
         am: AudioManager,
         zen: Boolean,
     ): Int {
@@ -152,7 +151,11 @@ internal class RingerController(
             //  是回读的 —— 两条路口径不一致，而且「内部通道不会被降级」只是**推断**、不是证据。
             //  回读一次才能把 rememberedMode 记对（记错了下一次 cycle 就从错的地方起步），
             //  也才能在真机上看见它到底落成哪一档。
-            val landed = runCatching { am.ringerMode }.getOrNull()
+            //
+            //  **回读必须走与写入同一条通道**（[readCurrentMode]）：免打扰开着时公共 `am.ringerMode`
+            //  按本文件开头的口径恒读静音，拿它回读会把 `landed` 记成错的、`rememberedMode` 跟着错
+            //  —— 免打扰期间循环就从错档起步（真机反馈过「切不动」）。
+            val landed = runCatching { readCurrentMode(am, zen) }.getOrNull()
             val degraded = landed != null && landed != next
             XLog.w(
                 "响铃模式：${modeName(current)} → ${modeName(next)}" +

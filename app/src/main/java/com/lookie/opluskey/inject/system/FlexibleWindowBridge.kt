@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.MiniWindowGeometry
+import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.Reflect
 
 /**
@@ -274,7 +276,7 @@ internal object FlexibleWindowBridge {
                 return
             }
         val controller =
-            Reflect.call(service, "getFlexibleTaskController") ?: run {
+            Reflect.call(service, ROM.flexibleControllerGetter) ?: run {
                 XLog.w("$SERVICE.getFlexibleTaskController() 拿不到控制器，小窗指令跳过")
                 return
             }
@@ -312,7 +314,8 @@ internal object FlexibleWindowBridge {
         //    喂进去就等于把「展开」的动画落到了收起的位置 —— 真机表现是「按一下直接变成右上角
         //    那条最小化窗」。
         //    注意：也别把**屏幕矩形**直接当参数喂 —— 它要的是应用配置矩形，尺寸还会被再乘一次 scale。
-        //    两个坑的取值与推算过程都写在 [EXPANDED_BOUNDS] 的注释里，改之前先读那段。
+        //    两个坑的取值与推算过程都写在 `core/model/MiniWindowGeometry` 的 [Slot.bounds] 注释里，
+        //    改之前先读那段。
         //    `setRememberPosInfo(Rect, float)` 含原始类型参数，必须显式拿 Method（见 [findTask] 的装箱坑）。
         if (ext != null && record != null) {
             val setPos =
@@ -327,16 +330,31 @@ internal object FlexibleWindowBridge {
                 val bounds = requestedBounds ?: EXPANDED_BOUNDS
                 val scale = requestedScale ?: EXPANDED_SCALE
                 val from = if (requestedBounds != null || requestedScale != null) "宿主下发" else "注入侧兜底默认"
-                Reflect.call(ext, setPos, bounds, scale)
-                // 这条日志要能独立验收：配置矩形 → 乘 scale → 屏幕落点，一眼可核对。
-                // 真机上它打的屏幕落点应当是 Rect(126, 319 - 1145, 2131)（宽 1019、高 1812）。
-                XLog.w(
-                    "小窗指令：已预置展开档几何（$from）配置矩形=$bounds scale=$scale" +
-                        " → 屏幕落点应为 ${screenBoundsOf(bounds, scale)}",
-                )
+                // `setRememberPosInfo` 不返回值，而 `Reflect.call` 会把「方法在、调用抛了」吞成 null ——
+                // 于是「已预置」无论成败都照打。这里自己 invoke：**成功才打**，抛了就把断点如实报出来。
+                try {
+                    setPos.invoke(ext, bounds, scale)
+                    // 这条日志要能独立验收：配置矩形 → 乘 scale → 屏幕落点，一眼可核对。
+                    // 真机上它打的屏幕落点应当是 Rect(126, 319 - 1145, 2131)（宽 1019、高 1812）。
+                    XLog.w(
+                        "小窗指令：已预置展开档几何（$from）配置矩形=$bounds scale=$scale" +
+                            " → 屏幕落点应为 ${screenBoundsOf(bounds, scale)}",
+                    )
+                } catch (e: Throwable) {
+                    val cause = Reflect.deepestCause(e)
+                    XLog.w(
+                        "小窗指令：预置展开档几何失败（setRememberPosInfo(Rect,float) 调用抛了）" +
+                            " —— 落点会走默认比例（会偏长）：${cause.javaClass.name}: ${cause.message}",
+                    )
+                }
             } else {
                 XLog.w("小窗指令：找不到 setRememberPosInfo(Rect,float)，落点会走默认比例（会偏长）")
             }
+        } else {
+            val missing = mutableListOf<String>()
+            if (ext == null) missing += "TaskExt"
+            if (record == null) missing += "getTopNonFinishingActivity"
+            XLog.w("小窗指令：没预置展开档几何（缺 $missing）—— 落点会走默认比例（会偏长）")
         }
 
         // 喂给 `TaskExtImpl#updateFlexibleTaskParams` 的能力配置 —— **操作条（caption）就是它开的**
@@ -370,17 +388,33 @@ internal object FlexibleWindowBridge {
             val upd =
                 Reflect.method(
                     ext.javaClass,
-                    "updateFlexibleTaskParams",
+                    ROM.flexibleTaskParamsMethod,
                     android.os.Bundle::class.java,
                     optionsCls,
                     record.javaClass,
                 )
             if (upd != null) {
-                Reflect.call(ext, upd, bundle, options, record)
-                XLog.w("小窗指令：已喂 updateFlexibleTaskParams（含 HasCaption=true）")
+                // 同 setRememberPosInfo：无返回值，自己 invoke 才能把「方法在、调用抛了」与成功分开。
+                try {
+                    upd.invoke(ext, bundle, options, record)
+                    XLog.w("小窗指令：已喂 updateFlexibleTaskParams（含 HasCaption=true）")
+                } catch (e: Throwable) {
+                    val cause = Reflect.deepestCause(e)
+                    XLog.w(
+                        "小窗指令：喂 updateFlexibleTaskParams 失败（调用抛了）" +
+                            " —— 操作条（caption）建不出来：${cause.javaClass.name}: ${cause.message}",
+                    )
+                }
             } else {
                 XLog.w("小窗指令：找不到 updateFlexibleTaskParams(Bundle,ActivityOptions,ActivityRecord)")
             }
+        } else {
+            val missing = mutableListOf<String>()
+            if (ext == null) missing += "TaskExt"
+            if (record == null) missing += "getTopNonFinishingActivity"
+            if (optionsCls == null) missing += "ActivityOptions"
+            if (options == null) missing += "ActivityOptions.makeBasic()"
+            XLog.w("小窗指令：没喂 updateFlexibleTaskParams（缺 $missing）—— 操作条（caption）建不出来")
         }
 
         val fake = fakeFlexibleFullScreen(task)
@@ -397,7 +431,10 @@ internal object FlexibleWindowBridge {
             XLog.w("小窗指令：冒充柔性全屏态**只写进去一部分**，缺 ${fake.missing} —— switchState 大概率不生效")
         }
         if (!callSwitchState(controller, task, taskId)) {
-            XLog.w("小窗指令：switchState(#$taskId, 1) 没调成功 —— 小窗不会出现（上面一行写了断在哪）")
+            XLog.w(
+                "小窗指令：switchState(#$taskId, 1) 没调成功 —— 小窗不会出现（上面一行写了断在哪）；" +
+                    rollbackFake(fake),
+            )
             return
         }
         XLog.w("小窗指令：switchState(#$taskId, 1) 已调用（应播「全屏 → 小窗」原生动画）")
@@ -559,6 +596,9 @@ internal object FlexibleWindowBridge {
         val m =
             Reflect.methodByNameAndArity(animator.javaClass, METHOD_MINI_ANIM, 5) ?: run {
                 XLog.w("$CMD_MINI_ANIM：两条入口都找不到（$METHOD_SPRING_ANIM/7、$METHOD_MINI_ANIM/5）")
+                // 这一份 Transaction 还没交出去（下面那条入口会把它交给框架，由框架自己 apply/close）
+                //  —— 这条出口上得自己收掉，否则每失败一次漏一个 native 对象。
+                runCatching { transaction.close() }
                 return
             }
         m.isAccessible = true
@@ -682,8 +722,11 @@ internal object FlexibleWindowBridge {
 
     // 剥到最内层 cause 的那份实现已收到 `Reflect.deepestCause`（与 `ProbeChannel` 共用一份）。
 
+    /** 本机这一档 ROM 的反射面 —— 未适配的 ROM 照最后一档试（见 [RomProfile]）。 */
+    private val ROM = RomProfile.effective.reflection
+
     /** 动画器 / 参数对象的类名与常量 —— 全部来自 `oplus-services.jar` 的离线反编译（§十二）。 */
-    private const val METHOD_MINI_ANIM = "startFlexibleTaskToMiniAnimations"
+    private val METHOD_MINI_ANIM = ROM.miniAnimMethod
 
     /**
      * 首选入口：`startFlexibleSpringAnimation(info, Rect, Task, Handler, Transaction, callback, String)`。
@@ -693,20 +736,19 @@ internal object FlexibleWindowBridge {
      * 于是可以「转换完立刻播」，不会先露出一个静止的小窗。它自带的 spring 是 `0.87 / 261`
      * （[METHOD_MINI_ANIM] 是 `0.86 / 250`）。
      */
-    private const val METHOD_SPRING_ANIM = "startFlexibleSpringAnimation"
+    private val METHOD_SPRING_ANIM = ROM.springAnimMethod
 
-    private const val CALLBACK_CLS = "com.android.server.wm.floatwindow.FlexibleAnimationCallback"
-    private const val INFO_BUILDER_CLS =
-        "com.android.server.wm.floatwindow.FlexibleAnimationInfo\$Builder"
+    private val CALLBACK_CLS = ROM.animCallbackClass
+    private val INFO_BUILDER_CLS = ROM.animInfoBuilderClass
 
     /** `FlexibleAnimationInfo.type` 要等于这个值，`endAnimation(205)` 才会走「结束上一段」分支。 */
-    private const val ANIM_TYPE_TRANSIT_IME = 205
+    private val ANIM_TYPE_TRANSIT_IME = ROM.animTypeTransitIme
 
     /**
      * `reason` 用框架自己那个字符串 —— 动画器开头用它选
      * `isInTransition(task, reason.equals("maySwitchStateToMini"))` 这一档过滤。
      */
-    private const val REASON_MINI_ANIM = "maySwitchStateToMini"
+    private val REASON_MINI_ANIM = ROM.reasonMiniAnim
 
     /** 动画时长兜底（宿主会下发；spring 的实际收敛时长由阻尼/刚度决定，这个值主要用于日志与 A 档的排期）。 */
     private const val DEFAULT_ANIM_DURATION = 400L
@@ -756,7 +798,7 @@ internal object FlexibleWindowBridge {
         val method =
             Reflect.method(
                 controller.javaClass,
-                "switchState",
+                ROM.flexibleSwitchStateMethod,
                 task.javaClass,
                 java.lang.Integer.TYPE,
                 String::class.java,
@@ -825,6 +867,12 @@ internal object FlexibleWindowBridge {
         val cls = ext.javaClass
         val missing = mutableListOf<String>()
 
+        // 已写入字段的回滚动作（字段名 → 写回原值，返回 null 表示写回成功）。每个 put 都**在写入前**
+        // 先抓一份原值登记进来，`switchState` 失败时按它复位：那三个字段是**假值**（任务其实不是柔性
+        // 任务），留在任务上会让它长期对外声称自己是「带 operation bar 的柔性任务」。
+        // 字段本来就找不到、或写入抛异常的，不进这里 —— 那些字段没被动过，无需回滚。
+        val rollback = mutableListOf<Pair<String, () -> Throwable?>>()
+
         // 字段找不到（`Reflect.field` 返回 null）与写入抛异常都要落到 missing 里：
         // `Reflect.field(...)?.setInt(...)` 的话，字段名变了就静默不写，而调用方照样
         // 打一行「已置 mScenario=1 …」，把失败伪装成成功。
@@ -837,7 +885,9 @@ internal object FlexibleWindowBridge {
                 missing += "$name(找不到字段)"
                 return
             }
+            val original = runCatching { f.get(ext) }.getOrNull()
             runCatching { f.setInt(ext, value) }
+                .onSuccess { rollback += name to { runCatching { f.set(ext, original) }.exceptionOrNull() } }
                 .onFailure { missing += "$name(${it.javaClass.simpleName})" }
         }
 
@@ -850,23 +900,50 @@ internal object FlexibleWindowBridge {
                 missing += "$name(找不到字段)"
                 return
             }
+            val original = runCatching { f.get(ext) }.getOrNull()
             runCatching { f.setBoolean(ext, value) }
+                .onSuccess { rollback += name to { runCatching { f.set(ext, original) }.exceptionOrNull() } }
                 .onFailure { missing += "$name(${it.javaClass.simpleName})" }
         }
-        put("mScenario", 1)
-        put("mHasCaption", true)
-        put("mFlexibleZoomState", 2)
-        return FakeResult(ext, missing)
+        put(ROM.taskExtScenarioField, 1)
+        put(ROM.taskExtCaptionField, true)
+        put(ROM.taskExtZoomStateField, 2)
+        return FakeResult(ext, missing, rollback)
     }
 
-    /** [fakeFlexibleFullScreen] 的结果：ext 非 null 但 [missing] 非空 = 只写进去一部分。 */
+    /**
+     * 把 [fakeFlexibleFullScreen] 改过的字段写回原值，返回日志里那句结论。
+     *
+     * `switchState` 失败时必须调：那三个字段是**假值**，任务其实不是柔性任务；留着它会长期对外
+     * 声称自己是「带 operation bar 的柔性任务」。写回失败的字段名列进返回值，不静默。
+     */
+    private fun rollbackFake(fake: FakeResult): String {
+        val failed = mutableListOf<String>()
+        for ((name, undo) in fake.rollback) {
+            undo()?.let { failed += "$name(${it.javaClass.simpleName})" }
+        }
+        return when {
+            fake.rollback.isEmpty() -> "三个假字段一个都没写进去，无需回滚"
+            failed.isEmpty() -> "已把 ${fake.rollback.size} 个假字段写回原值"
+            else -> "假字段回滚不完全，没写回 $failed —— 任务会留着假状态"
+        }
+    }
+
+    /**
+     * [fakeFlexibleFullScreen] 的结果。
+     *
+     * @param ext TaskExt；null 表示任务本身读不出来（连 `getExtImpl()` 都没有）。
+     * @param missing 没能写进去的字段名；`ext != null` **不等于**冒充成功，见调用点的日志。
+     * @param rollback 已经写进去的字段的回滚动作，`switchState` 失败时按它写回原值。
+     */
     private class FakeResult(
         val ext: Any?,
         val missing: List<String>,
+        val rollback: List<Pair<String, () -> Throwable?>> = emptyList(),
     )
 
     /** 按名字反射，不直接引用（注入侧不许碰宿主框架的私有类型）。 */
-    private const val SERVICE = "com.android.server.wm.FlexibleWindowManagerService"
+    private val SERVICE = ROM.flexibleWindowService
     private const val FIELD_ATMS = "mAtms"
     private const val FIELD_ROOT = "mRootWindowContainer"
 
@@ -877,8 +954,8 @@ internal object FlexibleWindowBridge {
      * 展开档小窗的**兜底默认**几何与缩放 —— PLK110（1272×2772 @560dpi）的真机实测值。
      *
      * 正常路径下这两个值由**宿主侧下发**（见 [EXTRA_LEFT] 一段的说明），这里只是「宿主没带」
-     * 时的兜底，避免退化成没有几何。要调几何请改宿主侧的
-     * `MiniWindowLauncher.EXPANDED_CONFIG_BOUNDS` / `EXPANDED_SCALE` —— 那边不用重启。
+     * 时的兜底，避免退化成没有几何。要调几何请改 `core/model/MiniWindowGeometry`（按机型标定
+     * 的那张表，两侧都从它取）—— 宿主侧改完不用重启。
      *
      * 注意：[EXPANDED_BOUNDS] 是**应用配置矩形**，不是屏幕矩形：系统会把它的尺寸
      * **再乘一次 [EXPANDED_SCALE]** 才是屏幕上的实际大小，即
@@ -900,8 +977,8 @@ internal object FlexibleWindowBridge {
      * （约 `Rect(898,168-1203,710)` / `0.2397`），会把窗口缩成右上角一条。
      * 这几个数与适配清单绑定：加机型要连同它们重测（见 `docs/zoom-window.md` §五）。
      */
-    private val EXPANDED_BOUNDS = android.graphics.Rect(126, 319, 1398, 2580) // 1272 × 2261
-    private const val EXPANDED_SCALE = 0.8017f
+    private val EXPANDED_BOUNDS: android.graphics.Rect get() = MiniWindowGeometry.effective.bounds
+    private val EXPANDED_SCALE: Float get() = MiniWindowGeometry.effective.scale
 
     /**
      * 配置矩形 × scale = 屏幕落点，只为打印验收日志用（`left/top` 不参与缩放）。

@@ -2,7 +2,9 @@ package com.lookie.opluskey.ui
 
 import android.content.res.Configuration
 import android.view.ViewGroup
+import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.reflect.Reflect
 
 // 宿主窗口的读取与包装：从宿主 Activity 取换页用的容器、状态栏高度、深浅与页面 Context。
 //
@@ -66,8 +68,13 @@ internal fun findAppbar(activity: android.app.Activity): android.view.View? =
  */
 internal const val THEME_LIGHT = "AppNoTitleTheme"
 
-/** 宿主包名（`Resources.getIdentifier` 要用）。 */
-internal const val HOST_PACKAGE = "com.oplus.gesture"
+/**
+ * 宿主包名 —— 跨包资源查找（`getIdentifier` 的第三个参数）要它。
+ *
+ *  取值只有一处（`KeyModule.PAGE_PACKAGE` 背后那个常量），这里不再写一份字面量：
+ *  原来两处各写一遍，改包名时漏一处只会表现为「资源 id 反查落空」。
+ */
+internal val HOST_PACKAGE: String get() = KeyModule.PAGE_PACKAGE
 
 /** 当前是不是深色（night）模式。 */
 internal fun isNight(context: android.content.Context): Boolean {
@@ -218,10 +225,8 @@ internal fun findContainer(activity: android.app.Activity): ViewGroup? {
 
 /** 平台类的 `Activity#onBackPressed()`；平台上没有它时返回 null。 */
 internal fun platformOnBackPressed(): java.lang.reflect.Method? =
-    try {
-        android.app.Activity::class.java.getDeclaredMethod("onBackPressed")
-    } catch (e: Throwable) {
-        XLog.d("平台上没有 Activity#onBackPressed：${e.message}")
+    Reflect.method(android.app.Activity::class.java, "onBackPressed") ?: run {
+        XLog.d("平台上没有 Activity#onBackPressed")
         null
     }
 

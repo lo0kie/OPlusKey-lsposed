@@ -62,6 +62,7 @@ import com.lookie.opluskey.ui.model.ActionCatalog
 import com.lookie.opluskey.ui.model.BINDING_TITLE
 import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
+import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION
 import com.lookie.opluskey.ui.model.PageIcons
@@ -75,6 +76,7 @@ import com.lookie.opluskey.ui.screen.BindingTabBand
 import com.lookie.opluskey.ui.screen.CommandActions
 import com.lookie.opluskey.ui.screen.CommandKindBand
 import com.lookie.opluskey.ui.screen.CommandScreen
+import com.lookie.opluskey.ui.screen.DonateListScreen
 import com.lookie.opluskey.ui.screen.HomeScreen
 import com.lookie.opluskey.ui.screen.actionOf
 import com.lookie.opluskey.ui.screen.addCommand
@@ -88,6 +90,7 @@ import com.lookie.opluskey.ui.state.CommandDraft
 import com.lookie.opluskey.ui.state.FallbackOwners
 import com.lookie.opluskey.ui.state.InjectStatus
 import com.lookie.opluskey.ui.state.UiState
+import com.lookie.opluskey.ui.state.installI18nBridge
 import com.lookie.opluskey.ui.state.publishConfig
 import com.lookie.opluskey.ui.state.tickNow
 import com.lookie.opluskey.ui.theme.SyncToHost
@@ -169,8 +172,9 @@ internal class SettingsPage(
     internal var pageHazeState: HazeState? by mutableStateOf(null)
 
     /**
-     * 每页各一份取样状态（键是页）—— 各页在组合时把自己那份登记进来（见 [Page] 里 `NavDisplay`
-     *  的 entry）。页被 cull 后重建会换一份新的进来，旧的那份随之作废（它的源节点已 detach）。
+     * 每页各一份取样状态（键是页）—— 各页在 `DisposableEffect(s)` 里把自己那份登记进来、并在
+     *  `onDispose` 摘掉（见 [Page] 里 `NavDisplay` 的 entry）。页被 cull 后重建会换一份新的进来，
+     *  旧的那份随 `onDispose` 出表（它的源节点已 detach）。
      */
     private val hazeStatesByPage = mutableMapOf<Screen, HazeState>()
 
@@ -333,6 +337,17 @@ internal class SettingsPage(
     internal var configReadOnly by mutableStateOf(false)
 
     /**
+     * 命令库的只读位 —— 与 [configReadOnly] 同一条纪律，管的是**另一份文件**（`CommandLibrary`）。
+     *
+     *  建页那次读命令库读不懂（外皮解不开 / 被截断 / 正文不是合法 JSON）时置 true：手上那份
+     *  空表不是用户的真相，[saveCommands] 一律拒写。少这一位的话，用户随手改一条命令就会把
+     *  「读不懂」的那份文件覆盖成只有这一条 —— 用户的命令没了，而且没有任何一步提示过他。
+     *
+     *  写它的地方与 [configReadOnly] 对称：[createView] 按读到的那一态赋值，以及 [resetAll] 的放行。
+     */
+    internal var commandsReadOnly by mutableStateOf(false)
+
+    /**
      * **自定义命令库**（`core/config/CommandLibrary` 里那一串）—— 界面自己的状态，与 [config] 分开。
      *
      * 命令的**内容**存在命令库里，绑定到手势时写进主配置的只是 `cmd:<名字>` 这个引用
@@ -480,6 +495,16 @@ internal class SettingsPage(
     internal var draftResetPending by mutableStateOf(false)
 
     /**
+     * 「重置」收尾**被放弃**的那一次（收尾协程发现退场期间用户又改了表单）。
+     *
+     *  为什么要单独一位：[SerialSteps] 在 [draftResetPending] 置位那一刻就把每一行标了退场
+     *  （`exiting = true`），而退场行会被摘除、重建那道闸的 key 是 `draft.steps` 的内容
+     *  —— 内容没变就不会重跑 ⇒ 步骤在界面上凭空消失，数据还在（看不到也删不掉）。
+     *  置这一位让 [SerialSteps] 把那些行收回来，处理完它自己清掉。
+     */
+    internal var draftResetAborted by mutableStateOf(false)
+
+    /**
      * 「重置」收尾那 240ms 的**基线指纹**（[draftResetPending] 置位那一刻记下）。
      *
      *  收尾时只有指纹没变才真正 [CommandDraft.reset] —— 这段时间用户可能已经在输入框里敲字了，
@@ -528,8 +553,41 @@ internal class SettingsPage(
     /** 「更多 → 导入配置」—— hook 侧实现：弹系统的「打开」选择器，读回文件再写进配置与命令库。 */
     var onImportConfig: (() -> Unit)? = null
 
+    /**
+     * 建页期读一次命令库（三态，与主配置的 [configReadOnly] 对称）。
+     *
+     *  「读不懂」这一档必须与「空表」分开：界面把空表当真相之后，用户随便改一条命令就会把它
+     *  写回盘、把那份读不懂的文件覆盖掉 —— 用户的命令这就没了。所以读不懂时置 [commandsReadOnly]，
+     *  由 [saveCommands] 拒绝一切写回。
+     */
+    private fun readCommands() {
+        when (val l = CommandLibrary.loadState()) {
+            is CommandLibrary.Load.Ok -> {
+                commands.value = l.commands
+                commandsReadOnly = false
+            }
+
+            CommandLibrary.Load.Absent -> {
+                XLog.w("还没有命令库文件（首装 / 刚清过数据）—— 用空表，可以写回")
+                commands.value = emptyList()
+                commandsReadOnly = false
+            }
+
+            CommandLibrary.Load.Unreadable -> {
+                // 这条必须是 w：它是「命令库为什么进只读」的唯一判据行
+                XLog.w("命令库读不懂 ⇒ 命令库进只读，本次不许写回（否则会把用户的命令覆盖掉）")
+                commands.value = emptyList()
+                commandsReadOnly = true
+            }
+        }
+    }
+
     /** 页面底色 —— COUI 色板的 `surface`（深色 `#000000`、浅色 `#F0F1F2`，与系统设置页一致）。 */
     fun createView(): View? {
+        // 先把字典订阅装上，再读配置（下面几行会按配置里的语言档重设 `I18n.currentLanguage`）：
+        //  装晚了的话，那一次换档发生在界面层那份状态接上之前，首帧就会停在上一个语言的文案上。
+        //  字典本体在 core（普通 Map），订阅这一半必须在界面层 —— 见 `ui/state/I18nBridge.kt`。
+        installI18nBridge()
         dark.value = systemNight()
         // 配置读成**三态**：只有「读到过正常文件」与「还没写过」才允许之后写回。
         //  读不懂 ⇒ 只读（[configReadOnly]）：手上那份默认值不是用户的真相，不能让它落盘。
@@ -556,8 +614,10 @@ internal class SettingsPage(
             }
         }
 
-        // 命令库与配置一起在建页期读好（读不到按空表，见 CommandLibrary 的降级纪律）
-        commands.value = CommandLibrary.load()
+        // 命令库与配置一起在建页期读好。与主配置**同一条纪律**（见上面那三态）：
+        //  读不懂 ⇒ 命令库也进只读（[commandsReadOnly]），否则用户随手改一条命令就会把那份
+        //  读不懂的文件覆盖成「只有这一条」。拆成 [readCommands] 只是为了让 [createView] 别太长。
+        readCommands()
 
         // 界面状态（本地持久，**不是用户配置** —— 见 [UiState]）与上面两份一起读一次：
         // 读不到 / 解析不了都退默认（关）。放这里是因为它同样只读一次、且必须早于首帧
@@ -891,8 +951,14 @@ internal class SettingsPage(
                                                         ).roundToPx().toFloat()
                                                     },
                                             ),
-                                        // 只有「首页」「关于模块」两页钉住标题（不折叠），其余三页照常折叠。
-                                        canScroll = { s != Screen.SHORTCUTS && s != Screen.ABOUT },
+                                        // 「首页」「关于模块」「捐赠列表」三页钉住标题（不折叠），
+                                        // 其余几页照常折叠 —— 后两页都是「短内容」页，没什么可折的
+                                        // （名单长起来之后要放开折叠，改的就是这一行）。
+                                        canScroll = {
+                                            s != Screen.SHORTCUTS &&
+                                                s != Screen.ABOUT &&
+                                                s != Screen.DONATE_LIST
+                                        },
                                     )
 
                                 // 顶栏 / 浮层菜单 / 底部工具栏的磨砂**取样源**（Haze 的 `hazeSource`）。
@@ -903,7 +969,13 @@ internal class SettingsPage(
                                 val surfaceColor = COUITheme.colorScheme.surface
                                 val hazeState = rememberHazeState()
                                 //  登记给页面级：浮层菜单 / 底部工具栏按**栈顶页**取用（见 [pageHazeState]）。
-                                hazeStatesByPage[s] = hazeState
+                                //  写在 effect 里而不是组合期：组合期写共享可变结构是反模式（写普通 Map
+                                //  不触发重组，读到的是不是这一帧说不准）；页被 cull / 出栈时由 `onDispose`
+                                //  把本条摘掉，旧实例（源节点已 detach）不会一直留在表里。
+                                DisposableEffect(s) {
+                                    hazeStatesByPage[s] = hazeState
+                                    onDispose { hazeStatesByPage.remove(s) }
+                                }
                                 //  这一页组合完成时若它正是栈顶，就把取样源摆过来 —— 与页面级那个
                                 //  `LaunchedEffect(navStack.lastOrNull())` 互为兜底（那边可能早一帧，
                                 //  见它自己的注释）。幂等：同一个实例写回去不会触发重组。
@@ -970,7 +1042,7 @@ internal class SettingsPage(
                                                     onPick = { pkg, window ->
                                                         tickNow()
                                                         // 写成哪个动作由菜单里那项「小窗打开」定（见 [smallWindow]）
-                                                        val token = if (window) "window:$pkg" else "app:$pkg"
+                                                        val token = if (window) Action.AppWindow(pkg).token else Action.App(pkg).token
                                                         if (appPickerForStep) {
                                                             // 「加一步 / 换一步」：这里**不用 `goBack()`** ——
                                                             // `addStep()` / `replaceStep()` 自己会把页面切回
@@ -991,11 +1063,9 @@ internal class SettingsPage(
                                                             val ok =
                                                                 g != null &&
                                                                     pick(
-                                                                        ActionCatalog.Spec(
-                                                                            title = pkg,
-                                                                            summary = token,
-                                                                            token = token,
-                                                                        ),
+                                                                        // 只为把取值交给 `pick`（它读的是 token），
+                                                                        //  name 这一位在这条路上不参与显示。
+                                                                        ActionCatalog.Spec(name = pkg, token = token),
                                                                         g,
                                                                     )
                                                             //  注意：**写成了才退页、才清手势**：
@@ -1020,6 +1090,11 @@ internal class SettingsPage(
                                             // 「关于模块」：版本 / 仓库地址两行，从首页 ⋮ 菜单进
                                             Screen.ABOUT -> {
                                                 AboutScreen(scrollBehavior)
+                                            }
+
+                                            // 「捐赠列表」：名单是手写常量（见 `ui/model/Donors.kt`）
+                                            Screen.DONATE_LIST -> {
+                                                DonateListScreen(scrollBehavior)
                                             }
                                         }
                                     }
@@ -1082,6 +1157,8 @@ internal class SettingsPage(
                                                 Screen.APP_PICKER -> APP_PICKER_TITLE
 
                                                 Screen.ABOUT -> ABOUT_TITLE
+
+                                                Screen.DONATE_LIST -> DONATE_LIST_TITLE
                                             },
                                         // 大标题**下面**那行（库原本的底线副标题槽位，自己占一行）：
                                         // 首页 = 模块版本。与「更多选项」页的「版本」行**同源但不同串**：
@@ -1179,9 +1256,10 @@ internal class SettingsPage(
                                                     AppSearchBand()
                                                 }
 
-                                                // 首页与「关于模块」没有固定带
-                                                Screen.SHORTCUTS, Screen.ABOUT -> {
-                                                    // 这两页不摆固定带
+                                                // 首页 / 「关于模块」/「捐赠列表」都没有固定带
+                                                //  （后两页都是「短内容」页，见 [canScroll] 那一档）
+                                                Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST -> {
+                                                    // 这几页不摆固定带
                                                 }
                                             }
                                         },
@@ -1414,8 +1492,7 @@ internal class SettingsPage(
         //  来源与「以小窗口打开」的重算同源（[editingAction]）—— 两处判据必须一致。
         val target =
             when (val action = editingAction()) {
-                is Action.App -> action.target
-                is Action.AppWindow -> action.target
+                is Action.App, is Action.AppWindow -> action.appTarget
                 else -> null
             }
         return target?.substringBefore('/')

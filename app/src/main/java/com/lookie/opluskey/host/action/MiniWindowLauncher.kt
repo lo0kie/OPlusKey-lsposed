@@ -7,6 +7,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.MiniWindowGeometry
+import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.inject.system.FlexibleWindowBridge
 
@@ -172,7 +174,7 @@ internal class MiniWindowLauncher(
             return
         }
         if (collapsed) {
-            putInCollapsedMini(ctx, taskId)
+            putInCollapsedMini(taskId)
             return
         }
         if (!USE_FORGED_ANIMATION_ROUTE) {
@@ -307,7 +309,8 @@ internal class MiniWindowLauncher(
      * 拖拽与输入处理都是那一步配上去的，而伪造态只捅了三个状态字段 + `switchState` ——
      * 状态位对了，外围那层壳子没人装。所以默认关掉（见 [USE_FORGED_ANIMATION_ROUTE]）。
      *
-     * 落点几何一并下发：调 [EXPANDED_CONFIG_BOUNDS] / [EXPANDED_SCALE] 只改宿主侧，不用重启。
+     * 落点几何一并下发：值在 `core/model/MiniWindowGeometry`（按机型标定），改完 `kill` 掉宿主进程
+     * 就生效 —— 注入侧不用重编，也不用整机重启。
      */
     private fun putInMiniViaForgedAnimation(
         ctx: Context,
@@ -376,10 +379,7 @@ internal class MiniWindowLauncher(
      * 用 `getMiniFlexibleTaskInfo` 那套几何（真机约 `Rect(898,168-1203,710)` / scale `0.2397`）。
      * 收不起就退「按包名另起一份实例」，与展开档同一层兜底。
      */
-    private fun putInCollapsedMini(
-        ctx: Context,
-        taskId: Int,
-    ) {
+    private fun putInCollapsedMini(taskId: Int) {
         if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_FULL_TO_MINI)) {
             postDelayedGuarded("zoom:mini:collapse 的验收", MINI_VERIFY_MS) {
                 if (isTaskInZoomWindow(taskId)) {
@@ -725,7 +725,7 @@ internal class MiniWindowLauncher(
             }
         val manager = Reflect.callStatic(cls, "getInstance") ?: return null
         val method =
-            Reflect.methodByNameAndArity(cls, "startZoomWindow", ZOOM_ARGS) ?: run {
+            Reflect.methodByNameAndArity(cls, ROM.zoomStartMethod, ZOOM_ARGS) ?: run {
                 XLog.w("$ZOOM_MANAGER 上没有 startZoomWindow/$ZOOM_ARGS")
                 return null
             }
@@ -790,14 +790,17 @@ internal class MiniWindowLauncher(
         }
 
     private companion object {
+        /** 本机这一档 ROM 的反射面 —— 未适配的 ROM 照最后一档试（见 [RomProfile]）。 */
+        val ROM = RomProfile.effective.reflection
+
         /** ColorOS 小窗接口的类名 —— 按名字反射，不直接引用（注入侧不许碰宿主框架的私有类型）。 */
-        const val ZOOM_MANAGER = "android.app.OplusActivityManager"
+        val ZOOM_MANAGER = ROM.zoomManager
 
         /** `OplusZoomWindowManager#getCurrentZoomWindowState()` → `OplusZoomWindowInfo`。 */
-        const val CURRENT_ZOOM_STATE_METHOD = "getCurrentZoomWindowState"
+        val CURRENT_ZOOM_STATE_METHOD = ROM.zoomStateMethod
 
         /** `OplusZoomWindowInfo` 上那个**屏幕矩形**字段（乘过 scale 的；不是 `appBounds`）。 */
-        const val ZOOM_STATE_RECT_FIELD = "zoomRect"
+        val ZOOM_STATE_RECT_FIELD = ROM.zoomStateRectField
 
         /** `startZoomWindow` 的形参个数：`Intent, Bundle, int, String`。 */
         const val ZOOM_ARGS = 4
@@ -809,7 +812,7 @@ internal class MiniWindowLauncher(
         const val WINDOWING_MODE_ZOOM = 100
 
         /** 取各屏前台应用信息：`OplusActivityManager#getAllTopAppInfos()` → `List<OplusAppInfo>`。 */
-        const val TOP_APP_INFOS_METHOD = "getAllTopAppInfos"
+        val TOP_APP_INFOS_METHOD = ROM.zoomTopAppInfosMethod
 
         /** `OplusAppInfo` 的字段名（按名字取，不引宿主框架的类）。 */
         const val TOP_APP_ACTIVITY_FIELD = "topActivity"
@@ -827,7 +830,7 @@ internal class MiniWindowLauncher(
         const val TOP_APP_CLASS_FIELD = "className"
 
         /** `ActivityInfo` 上的尺寸可调性字段 —— 编译期 stub 里没有，只能按名字反射读。 */
-        const val RESIZE_MODE_FIELD = "resizeMode"
+        val RESIZE_MODE_FIELD = ROM.resizeModeField
 
         /**
          * `ActivityInfo.RESIZE_MODE_UNRESIZEABLE` 的值（= 0）。不引常量是因为它和 [RESIZE_MODE_FIELD]
@@ -878,18 +881,18 @@ internal class MiniWindowLauncher(
          * **系统记住的位置**（= 用户上次的落点）。所以别以为改这里能挪默认路径的窗口。
          *
          *
-         * 注意：要调几何就改这里：宿主侧的改动 `kill` 掉 `com.oplus.gesture` 就生效，
-         * **不需要整机重启**（注入侧那份同名值只是「宿主没带」时的兜底）。
-         * 这正是把它们从注入侧搬过来的原因 —— 见 `FlexibleWindowBridge.EXTRA_LEFT` 一段的说明。
+         * 注意：**要调几何去改 `core/model/MiniWindowGeometry`**（按机型标定那张表，宿主与注入两侧
+         * 都从它取）—— 宿主侧改完 `kill` 掉 `com.oplus.gesture` 就生效、**不需要整机重启**，
+         * 这正是把它们从注入侧搬出来的原因（见 `FlexibleWindowBridge.EXTRA_LEFT` 一段的说明）。
          *
          * 语义（真机实测，`docs/device-findings.md` 附七）：
          * 这是**配置矩形**不是屏幕矩形，`屏幕尺寸 = Rect.size × scale`：
          * `1272 × 2261 × 0.8017 = 1020 × 1812`；`left/top` 不参与缩放、直接照搬屏幕坐标。
-         * 与适配清单绑定（PLK110 / 1272×2772 @560dpi），加机型要连同它们重测。
+         * 值随机型走（表里一台机器一个 `Slot`），加机型要在真机上重新量。
          */
-        val EXPANDED_CONFIG_BOUNDS = android.graphics.Rect(126, 319, 1398, 2580) // 1272 × 2261
+        val EXPANDED_CONFIG_BOUNDS: android.graphics.Rect get() = MiniWindowGeometry.effective.bounds
 
-        const val EXPANDED_SCALE = 0.8017f
+        val EXPANDED_SCALE: Float get() = MiniWindowGeometry.effective.scale
 
         /**
          * 「缩小动画」走哪一档。**这是宿主侧常量 ⇒ 切档只要 `kill` 宿主，不用整机重启**
@@ -988,12 +991,12 @@ internal class MiniWindowLauncher(
         const val USE_FORGED_ANIMATION_ROUTE = false
 
         /** 「原地收成小窗」那支挂在 AIDL 门面 `OplusActivityTaskManager` 上，不在 `OplusActivityManager`。 */
-        const val ZOOM_TASK_MANAGER = "android.app.OplusActivityTaskManager"
+        val ZOOM_TASK_MANAGER = ROM.zoomTaskManager
 
         /** `startActivityFromRecentsForFlexible(int taskId, Bundle options)` 及其形参个数。 */
-        const val RECENTS_FLEXIBLE_METHOD = "startActivityFromRecentsForFlexible"
+        val RECENTS_FLEXIBLE_METHOD = ROM.zoomRecentsMethod
 
-        const val RECENTS_FLEXIBLE_ARGS = 2
+        val RECENTS_FLEXIBLE_ARGS = ROM.zoomRecentsArgs
 
         /** `ActivityOptions#fromBundle` 认的窗口模式 key —— **点号**，与 `extra_window_mode` 不同。 */
         const val OPT_LAUNCH_WINDOWING_MODE = "android.activity.windowingMode"

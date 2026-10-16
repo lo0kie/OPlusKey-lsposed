@@ -11,11 +11,17 @@
 判「能不能调」看方法体（`method`），判「谁在用这个 key / 谁在调这个方法」就得全 dex 扫 ——
 单看一个类的成员列表看不出来。两档都只打命中那一行，不打整个方法体。
 
+匹配口径：`uses` 与 `refs` 都按**方法名精确匹配**（`invoke-*` 那一行里的 `->名字(` 定界），
+不是子串 —— 子串会让 `refs dispatch` 连 `dispatchThing` 一起命中，读 ROM 时最容易骗人。
+`find` 与 `uses` 的「类名 / 字符串子串」是**有意**按子串的（那一档本来就是模糊找料）。
+
 注意：**退出码**：命中 0 条 / 找不到类或方法 ⇒ 打到 stderr 并 **exit 1**。
 「ROM 里真没有」与「这份 dex 没解析成功」从此可以用退出码分开 —— 原来一律 exit 0，
 脚本没法区分，而 `docs/device-findings.md` 里那些结论正依赖这个工具。
+用法写错（参数个数不够 / 档位名不认识）⇒ 打用法到 stderr 并 exit 2。
 """
 
+import re
 import sys
 
 from loguru import logger
@@ -30,6 +36,14 @@ logger.add(sys.stderr, level="WARNING")
 from androguard.core.dex import DEX
 
 
+USAGE = """用法:
+  python dexdump.py <dex> class <类名>
+  python dexdump.py <dex> method <类名> <方法名>
+  python dexdump.py <dex> find <子串>
+  python dexdump.py <dex> uses <子串> [<子串> ...]
+  python dexdump.py <dex> refs <方法名> [<方法名> ...]"""
+
+
 def fail(msg):
     """
     没命中 / 解析不出来 —— **打到 stderr 并以非 0 退出**。
@@ -40,6 +54,13 @@ def fail(msg):
     """
     print(msg, file=sys.stderr)
     sys.exit(1)
+
+
+def usage_fail(msg):
+    """用法写错（缺参数 / 档位名不认识）—— 与「没命中」分开：exit 2。"""
+    print(msg, file=sys.stderr)
+    print(USAGE, file=sys.stderr)
+    sys.exit(2)
 
 
 def norm(name):
@@ -126,8 +147,25 @@ def smali_of(m):
     return "\n".join(out)
 
 
+MODES = ("class", "method", "find", "uses", "refs")
+
+# `invoke-*` 那一行里的被调方法名：`invoke-virtual {v0}, Lcom/foo/Bar;->baz(I)V`
+# 定界 `->` 与 `(` 之间的就是方法名 —— 取它来做**精确**比对，而不是在整段 smali 里子串找。
+CALL_RE = re.compile(r"->([\w$<>]+)\(")
+
+
 def main():
+    if len(sys.argv) < 3:
+        usage_fail("参数不够：至少要 <dex> <档位>")
     path, mode = sys.argv[1], sys.argv[2]
+    if mode not in MODES:
+        usage_fail(f"不认识的档位: {mode!r}（可选 {', '.join(MODES)}）")
+    if len(sys.argv) < 4:
+        usage_fail(f"档位 {mode} 还要接一个参数")
+    # 每档再要第 4 个参数（方法名 / 类名后面的那一个）的，在看 dex 之前先拦住 ——
+    # 否则参数写漏会先去 `open(path)`，报出来的是「dex 打不开」而不是「少给了方法名」。
+    if mode == "method" and len(sys.argv) < 5:
+        usage_fail("档位 method 还要接方法名")
     dx = load(path)
     classes = list(dx.get_classes())
 
@@ -140,7 +178,9 @@ def main():
             fail(f"没有类名含 {needle!r} 的类")
         return
 
-    # 全 dex 扫的两档：只打命中那一行（不打整个方法体，否则输出会被刷爆）
+    # 全 dex 扫的两档：只打命中那一行（不打整个方法体，否则输出会被刷爆）。
+    #  `uses` 按**字符串常量子串**（模糊找料，有意如此）；`refs` 按**被调方法名精确**匹配
+    #  —— 两者混用会把 `refs dispatch` 连 `dispatchThing` 一起命中，读 ROM 时最容易骗人。
     if mode in ("uses", "refs"):
         needles = sys.argv[3:]
         hits = 0
@@ -150,12 +190,16 @@ def main():
                 body = smali_of(m)
                 if not body:
                     continue
+                lines = body.splitlines()
                 for n in needles:
-                    if n in body:
+                    if mode == "uses":
+                        matched = [line for line in lines if n in line]
+                    else:
+                        matched = [line for line in lines if n in CALL_RE.findall(line)]
+                    if matched:
                         print(f"### {cn} :: {mname(m)}   <- {n}")
-                        for line in body.splitlines():
-                            if n in line:
-                                print(f"      {line.strip()}")
+                        for line in matched:
+                            print(f"      {line.strip()}")
                         hits += 1
                         break
         if hits == 0:
@@ -190,6 +234,8 @@ def main():
             print("  方法:", mname(m), "  ", mdesc(m))
         return
 
+    if len(sys.argv) < 5:
+        usage_fail("档位 method 还要接方法名")
     want = sys.argv[4]
     hit = [m for m in iter_methods(cls) if mname(m) == want]
     if not hit:

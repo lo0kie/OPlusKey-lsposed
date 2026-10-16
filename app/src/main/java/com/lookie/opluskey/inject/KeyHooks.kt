@@ -88,6 +88,10 @@ internal object KeyHooks {
                     forwarder.forward(id, gesture, repeat)
                 },
             )
+        // 主开关翻到「不接管」时撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。
+        //  撤销只能由「收到配置广播」触发，不能挂在拦截点那条 early return 上（按住不放时
+        //  没有新事件进来）—— 回调在 AMS 广播 hook 内跑，其内部已包 catch（见 ConfigChannel.read）。
+        ConfigChannel.onTakeOverOff = { interceptor.cancelPending() }
 
         var ok = 0
         for (point in points) {
@@ -217,20 +221,53 @@ internal object KeyHooks {
                 // 功能通道：只有宿主（与同 uid 的设置页）有资格发 —— 其余来源一律丢弃。
                 // debug 通道：只放行 root / system（调试从 adb 发，没有宿主身份）。
                 if (if (isProbe) !isFromRootOrSystem() else !isFromHost()) return
+                // 「本机执行」那三条 handler 里是反射 + `ServiceManager.getService` / `m.invoke`
+                // 的 binder 往返，全都不该占着触发这条广播的 binder 线程（AMS 的调用线程）。
+                // 所以只把**执行**post 到主线程；来源校验（要读 `Binder.getCallingUid()`，post 之后
+                // 就失效了，不能在主线程补做）与 `chain.proceed()` 留在原线程 —— 两者与 post
+                // 出去的动作之间没有依赖，不会引入顺序问题。
                 when (action) {
-                    ConfigBroadcast.ACTION_CONFIG -> XLog.guard("收配置广播") { ConfigChannel.read(intent) }
+                    ConfigBroadcast.ACTION_CONFIG -> {
+                        XLog.guard("收配置广播") { ConfigChannel.read(intent) }
+                    }
 
                     // 通知中心 / 控制中心 / 最近任务：让本机（system_server）去执行。
-                    StatusBarBridge.ACTION_STATUSBAR -> StatusBarBridge.handle(intent, systemLoader)
+                    StatusBarBridge.ACTION_STATUSBAR -> {
+                        handler.post {
+                            try {
+                                StatusBarBridge.handle(intent, systemLoader)
+                            } catch (e: Throwable) {
+                                XLog.w("状态栏指令执行失败（已忽略）：${e.javaClass.simpleName}", e)
+                            }
+                        }
+                    }
 
                     // 小窗指令：同上，只有这边能拿到 FlexibleTaskController。
-                    FlexibleWindowBridge.ACTION -> FlexibleWindowBridge.handle(intent, systemLoader)
+                    FlexibleWindowBridge.ACTION -> {
+                        handler.post {
+                            try {
+                                FlexibleWindowBridge.handle(intent, systemLoader)
+                            } catch (e: Throwable) {
+                                XLog.w("小窗指令执行失败（已忽略）：${e.javaClass.simpleName}", e)
+                            }
+                        }
+                    }
 
                     // 链路自检：回答「注入侧那套装好没有」
-                    KeyModule.ACTION_INJECT_QUERY -> XLog.guard("回链路自检包") { reportStatus() }
+                    KeyModule.ACTION_INJECT_QUERY -> {
+                        XLog.guard("回链路自检包") { reportStatus() }
+                    }
 
                     // debug 通道：反射 / 探针，见 docs/debug-channel.md
-                    ProbeChannel.ACTION -> ProbeChannel.handle(intent, systemLoader)
+                    ProbeChannel.ACTION -> {
+                        handler.post {
+                            try {
+                                ProbeChannel.handle(intent, systemLoader)
+                            } catch (e: Throwable) {
+                                XLog.w("探针指令执行失败（已忽略）：${e.javaClass.simpleName}", e)
+                            }
+                        }
+                    }
                 }
                 return
             }
