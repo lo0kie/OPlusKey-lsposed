@@ -5,6 +5,7 @@ import android.os.Process
 import android.os.UserHandle
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.model.ZoomWindowWire
 import com.lookie.opluskey.core.reflect.Reflect
 
 /**
@@ -39,9 +40,9 @@ internal object MiniWindowSupport {
     private val METHOD = ROM.zoomSupportMethod
 
     /** `extra_window_mode` 的取值 —— 与 `startZoomWindow` 那份 bundle 一致（`WINDOWING_MODE_ZOOM`）。 */
-    private const val WINDOWING_MODE_ZOOM = 100
+    private const val WINDOWING_MODE_ZOOM = ZoomWindowWire.WINDOWING_MODE_ZOOM
 
-    private const val EXTRA_WINDOW_MODE = "extra_window_mode"
+    private const val EXTRA_WINDOW_MODE = ZoomWindowWire.EXTRA_WINDOW_MODE_KEY
 
     /** `isSupportZoomMode` 的形参个数（包名 / userId / 活动类名 / bundle）。 */
     private const val ARITY = 4

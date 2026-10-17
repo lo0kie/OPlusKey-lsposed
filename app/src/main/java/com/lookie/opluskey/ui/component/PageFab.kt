@@ -34,7 +34,6 @@ import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.edgeSlideIn
 import com.lookie.opluskey.ui.model.edgeSlideOut
-import com.lookie.opluskey.ui.screen.CommandScreen
 import io.github.suqi8.coui.kmp.basic.FloatingActionButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
 

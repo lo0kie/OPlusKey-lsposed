@@ -38,6 +38,26 @@ data class KeyConfig(
             Gesture.LONG -> long
         }
 
+    /**
+     * 本对象在每个配置字段上的取值 —— **「字段 → 属性」的映射只有这一处**。
+     *
+     *  落盘（`ConfigCodec`）与广播（`ConfigBroadcast`）两条通道都按它取值，配合 `ConfigFields`
+     *  那张字段表生成读写 —— 于是加一个字段不必再去那两条通道里各写一遍（判据见 `docs/decoupling.md`）。
+     */
+    internal fun fieldValues(): ConfigFields.Values =
+        ConfigFields.Values(
+            mapOf(
+                ConfigFields.F_ENABLED to enabled,
+                ConfigFields.F_SINGLE to single.token,
+                ConfigFields.F_DOUBLE to double.token,
+                ConfigFields.F_LONG to long.token,
+                ConfigFields.F_LONG_PRESS_MS to longPressMs,
+                ConfigFields.F_LONG_REPEAT to longRepeat,
+                ConfigFields.F_REPEAT_INTERVAL_MS to longRepeatIntervalMs,
+                ConfigFields.F_LONG_SERIAL to longIsSerial,
+            ),
+        )
+
     companion object {
         const val DEFAULT_LONG_PRESS_MS = 500
 
@@ -72,6 +92,28 @@ data class KeyConfig(
                 longRepeat = false,
                 longRepeatIntervalMs = DEFAULT_REPEAT_INTERVAL_MS,
             )
+
+        /**
+         * 从取值表还原一个键的配置 —— 与 [KeyConfig.fieldValues] 成对，两条通道共用。
+         *
+         *  这里**不再钳制区间**：钳制是读取方对「外来文本」做的事（上下限就在
+         *  `ConfigFields` 的字段表里），走到这里时值已经收口过。
+         */
+        internal fun ofFields(
+            id: KeyId,
+            v: ConfigFields.Values,
+        ): KeyConfig =
+            KeyConfig(
+                id = id,
+                enabled = v.bool(ConfigFields.F_ENABLED),
+                single = Action.parse(v.text(ConfigFields.F_SINGLE)),
+                double = Action.parse(v.text(ConfigFields.F_DOUBLE)),
+                long = Action.parse(v.text(ConfigFields.F_LONG)),
+                longPressMs = v.number(ConfigFields.F_LONG_PRESS_MS),
+                longRepeat = v.bool(ConfigFields.F_LONG_REPEAT),
+                longRepeatIntervalMs = v.number(ConfigFields.F_REPEAT_INTERVAL_MS),
+                longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
+            )
     }
 }
 
@@ -89,6 +131,18 @@ data class GlobalConfig(
     /** 界面语言（auto = 跟随系统，zh_CN = 简体中文，en = English）。 */
     val language: String = DEFAULT_LANGUAGE,
 ) {
+    /** 本对象在每个配置字段上的取值 —— 与 `KeyConfig.fieldValues` 同一套（见那边的说明）。 */
+    internal fun fieldValues(): ConfigFields.Values =
+        ConfigFields.Values(
+            mapOf(
+                ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
+                ConfigFields.F_VIBRATE to vibrate,
+                ConfigFields.F_INSTANT_SINGLE to instantSingle,
+                ConfigFields.F_TOAST_ON_RUN to toastOnRun,
+                ConfigFields.F_LANGUAGE to language,
+            ),
+        )
+
     companion object {
         const val DEFAULT_DOUBLE_CLICK_MS = 300
 
@@ -109,6 +163,16 @@ data class GlobalConfig(
             GlobalConfig(
                 doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,
                 vibrate = false,
+            )
+
+        /** 从取值表还原全局配置 —— 与 [GlobalConfig.fieldValues] 成对，两条通道共用。 */
+        internal fun ofFields(v: ConfigFields.Values): GlobalConfig =
+            GlobalConfig(
+                doubleClickMs = v.number(ConfigFields.F_DOUBLE_CLICK_MS),
+                vibrate = v.bool(ConfigFields.F_VIBRATE),
+                instantSingle = v.bool(ConfigFields.F_INSTANT_SINGLE),
+                toastOnRun = v.bool(ConfigFields.F_TOAST_ON_RUN),
+                language = v.text(ConfigFields.F_LANGUAGE),
             )
     }
 }
@@ -140,11 +204,37 @@ data class Config(
 ) {
     fun key(id: KeyId): KeyConfig = keys[id] ?: KeyConfig.defaultFor(id)
 
+    /** 顶层那两位的取值 —— 与另两段同一套（见 `KeyConfig.fieldValues` 的说明）。 */
+    internal fun fieldValues(): ConfigFields.Values =
+        ConfigFields.Values(
+            mapOf(
+                ConfigFields.F_DISCLAIMER to disclaimerAccepted,
+                ConfigFields.F_COMMAND_DISCLAIMER to commandDisclaimerAccepted,
+            ),
+        )
+
     companion object {
         val DEFAULT =
             Config(
                 keys = KeyId.entries.associateWith { KeyConfig.defaultFor(it) },
                 global = GlobalConfig.DEFAULT,
+            )
+
+        /**
+         * 拼一份配置 —— 顶层那两位（两个「已确认」标记）从取值表来，与另外两段同一套读法。
+         *
+         *  [keys] / [global] 由调用方各自按 [KeyConfig.ofFields] / [GlobalConfig.ofFields] 建好。
+         */
+        internal fun ofFields(
+            keys: Map<KeyId, KeyConfig>,
+            global: GlobalConfig,
+            v: ConfigFields.Values,
+        ): Config =
+            Config(
+                keys = keys,
+                global = global,
+                disclaimerAccepted = v.bool(ConfigFields.F_DISCLAIMER),
+                commandDisclaimerAccepted = v.bool(ConfigFields.F_COMMAND_DISCLAIMER),
             )
     }
 }

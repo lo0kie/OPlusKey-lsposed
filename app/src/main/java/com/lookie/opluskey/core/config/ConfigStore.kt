@@ -264,10 +264,13 @@ object ConfigStore {
  *  文件已不在 / stat 失败时返回 0：那与「取不到」同值，最多让缓存多失效一次（多读一遍盘），
  *  不会把陈值当命中 —— 方向是安全的那一侧。
  *
- *  写成**顶层**函数而不是对象成员：它是纯函数、不吃对象状态，而 [ConfigStore] 的函数条数已经贴着
- *  detekt `TooManyFunctions` 那一档，再往里放一个就把闸口顶红。
+ *  写成**顶层**函数而不是对象成员，而且是 `internal`：它是纯函数、不吃对象状态 ——
+ *  而 [ConfigStore] 与 [CommandLibrary] **两处**都要按它算缓存指纹（同一场景：写方 `:ui` 进程、
+ *  读方宿主主进程），各自写一份就会演进成两份不一样的实现。放 [ConfigStore] 当对象成员的话
+ *  [CommandLibrary] 拿不到，而且 [ConfigStore] 的函数条数已经贴着 detekt `TooManyFunctions`
+ *  那一档，再往里放一个就把闸口顶红。
  */
-private fun inodeOf(f: File): Long =
+internal fun inodeOf(f: File): Long =
     try {
         android.system.Os
             .stat(f.path)

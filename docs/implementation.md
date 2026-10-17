@@ -24,7 +24,7 @@ system_server 收到按键
         →  启用了 → 记按下/抬起 → 判定手势 → 执行动作
 ```
 
-接管点是**按候选表逐层降级**挑出来的（`inject/Framework.kt`）：
+接管点是**按候选表逐层降级**挑出来的（`bridge/Framework.kt`）：
 
 ```
 1. StrategyActionButtonKeyLaunchApp      ← ColorOS 专为侧键写的策略类，首选
@@ -133,7 +133,7 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
 - **注入侧（system_server）读不到那份文件**（EACCES），它只信宿主广播过来的完整配置（`core/wire/ConfigBroadcast` →
   `inject/ConfigChannel`），启动 / 解锁 / 写盘时各发一次。
 - 系统「设置 → 快捷键」的 provider（`content://uri.gesturemanagerprovider/action_button`）只是**只读诊断项**
-  （`inject/system/SystemActionButtonConfig`，在宿主进程里读），不参与配置链路。两条纪律：
+  （`bridge/host/SystemActionButtonConfig`，在宿主进程里读），不参与配置链路。两条纪律：
   **列名一律先读 Cursor 拿**（随 ROM 版本变过，不许硬编码）；**只能在宿主进程里调** ——
   注入侧用它必 NPE（见 `device-findings.md` 六之五）。写接口**已删**（零调用方），真要用的时候直接
   `ContentResolver.update/insert` 三行就够；不要再往回加绕开 `ContentResolver` 的重反射。
@@ -149,8 +149,8 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
 | Android framework **公开** API（`KeyEvent` / `Context` / `Handler` / `Cursor`） | `com.android.server.*` / `android.hardware.input.*` 的**直接引用**                      |
 | 按字符串名反射找类（`Reflect.findClass`）                                       | `import androidx.*` / Compose / COUI（判据是「这个类会不会在 system_server 里被执行」） |
 | `core/`（model/log/reflect/wire）+ `KeyModule`（只依赖公开 API）                | `inject/` 下引用 `androidx.*` / COUI，或引用 `core/config` / `host/` / `ui/`            |
-| 候选类名只写在 `inject/Framework.kt` 的候选表里                                 | 在 `inject/KeyHooks.kt` 里就地写类名字符串                                              |
-| 系统配置只经 `inject/system/SystemActionButtonConfig.kt`                        | 在别处自己拼 `content://` 或硬编码列名                                                  |
+| 候选类名只写在 `bridge/Framework.kt` 的候选表里                                 | 在 `inject/KeyHooks.kt` 里就地写类名字符串                                              |
+| 系统配置只经 `bridge/host/SystemActionButtonConfig.kt`                        | 在别处自己拼 `content://` 或硬编码列名                                                  |
 
 framework 私有类**一律按字符串名解析**：它们会被 ROM 改名，写死引用等于「换一个 ROM 版本就 `NoClassDefFoundError`
 → 开机循环」。 `StrategyActionButtonKeyLaunchApp` 就是这一类 —— 它在 `com.android.server.policy` 与
@@ -229,13 +229,13 @@ ROM 私有的东西分三类，**各自按 ROM 系列（`17.0.0` 这种）分档
 
 | 那一类                                                                        | 表在哪                                    | 加一档加什么   |
 | ----------------------------------------------------------------------------- | ----------------------------------------- | -------------- |
-| 接管点候选（Hook 面类名 / 方法名 / 宿主侧服务与 Activity）                    | `inject/Framework.kt` 的 `HookSet`        | 一个 `HookSet` |
+| 接管点候选（Hook 面类名 / 方法名 / 宿主侧服务与 Activity）                    | `bridge/Framework.kt` 的 `HookSet`        | 一个 `HookSet` |
 | 执行落点 + 反射面（内置命令落到哪个组件、ColorOS 私有类名 / 方法名 / 字段名） | `core/model/RomProfile` 的 `Profile`      | 一个 `Profile` |
 | 小窗几何（展开档的落点矩形与缩放）                                            | `core/model/MiniWindowGeometry` 的 `Slot` | 一个 `Slot`    |
 
 **前两张表的键是 ROM 系列、第三张的键是机型**，别并成一张：落点由 ROM 决定（同一版 ROM 在不同机型上相同），而几何由**屏幕尺寸与 dpi** 决定（换一块屏就得重新量）。
 
-一、7 要求接管点候选只写 `inject/Framework.kt`，所以那张表留在那边；`RomProfile` 里另有一个
+一、7 要求接管点候选只写 `bridge/Framework.kt`，所以那张表留在那边；`RomProfile` 里另有一个
 `Reflection` 装执行侧要反射的名字。两张表**都以 `romSeries` 为键**，加档时一起加。
 
 - **按 ROM 系列分档，不按机型**：这些名字由 ROM 决定，机型只在适配闸里起作用。

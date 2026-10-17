@@ -5,14 +5,14 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import com.lookie.opluskey.bridge.Framework
+import com.lookie.opluskey.bridge.hookGuarded
+import com.lookie.opluskey.bridge.host.SystemActionButtonConfig
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.reflect.Reflect
-import com.lookie.opluskey.inject.Framework
-import com.lookie.opluskey.inject.hookGuarded
-import com.lookie.opluskey.inject.system.SystemActionButtonConfig
 import io.github.libxposed.api.XposedModule
 
 /**
@@ -29,7 +29,7 @@ internal object SideKeyGestureHooks {
      * 收到它时宿主要按系统当前场景去开页面 / 起服务；模块接管侧键后必须把它吞掉，
      * 否则系统那套动作会和模块的动作一起执行。
      *
-     * 注意：取值本体在 `inject/Framework.kt` 的候选表里（一、7），这里只是别名。
+     * 注意：取值本体在 `bridge/Framework.kt` 的候选表里（一、7），这里只是别名。
      */
     private val SCENE_DISPATCH_WHAT = Framework.HOST_SCENE_DISPATCH_WHAT
 
@@ -91,19 +91,18 @@ internal object SideKeyGestureHooks {
             return 0
         }
 
-        val short = className.substringAfterLast('.')
+        // 内部 Handler：`XxxService$后缀`。类名是混淆后的（后缀按候选试，见 `Framework` 的候选表，
+        // 一、7），命中哪一个由那一层打日志 —— 找不到就只记日志，别硬猜一个名字去挂。
+        val handlerCls = Framework.findHostHandlerClass(loader, className) ?: return 0
 
-        // 内部 Handler：`XxxService$a`。类名是混淆后的，但同一个 ROM 内稳定，
-        // 找不到就只记日志 —— 说明 ROM 改版了，别硬猜。名字来自 `Framework` 的候选表（一、7）。
-        val handlerCls = Reflect.findClass(loader, "$className\$${Framework.HOST_HANDLER_SUFFIX}")
-        if (handlerCls == null) {
-            XLog.w("没找到 $short 的内部 Handler 类（$className\$${Framework.HOST_HANDLER_SUFFIX}）")
-            return 0
-        }
+        // 日志里用**实际命中**的那个 Handler 类名（不是服务名）——后缀是候选试出来的，
+        //  写死一个后缀的话换 ROM 之后日志会指着一个不存在的类。
+        val handlerSimple = handlerCls.name.substringAfterLast('.')
+
         val method = Framework.HOST_HANDLE_MESSAGE
         val m =
             Reflect.method(handlerCls, method, Message::class.java) ?: run {
-                XLog.w("$short\$a 上没有 $method(Message)")
+                XLog.w("${handlerCls.name} 上没有 $method(Message) —— 这个方法名也随 ROM 变")
                 return 0
             }
         return if (module.hookGuarded(m) { chain ->
@@ -112,7 +111,7 @@ internal object SideKeyGestureHooks {
                 // 这条是每次 Message 都打的（含每条按键消息），只能 XLog.d ——
                 //  并且**必须用惰性重载**：`describeMessage` 会把整个 Bundle 摊平成一个字符串，
                 //  参数若在调用点先求值，release 下（`if (VERBOSE_LOG)` 把函数体消掉）也照跑一遍。
-                XLog.d { "侧键手势消息：$short\$a#handleMessage | ${describeMessage(msg)}" }
+                XLog.d { "侧键手势消息：$handlerSimple#handleMessage | ${describeMessage(msg)}" }
 
                 // 必须吞掉系统自己的场景派发：框架除走策略类拦截外，还会给宿主这个 Handler 发一条，
                 // 宿主那套（打开设置页）会照跑 —— 与框架真正的场景路由（按场景派发给场景宿主）是两回事。

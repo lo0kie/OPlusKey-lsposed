@@ -41,7 +41,6 @@ import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import androidx.savedstate.findViewTreeSavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import com.lookie.opluskey.KeyModule
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.i18n.AppLanguage
@@ -49,49 +48,58 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.ui.component.HeaderMenu
+import com.lookie.opluskey.ui.component.MenuPopup
 import com.lookie.opluskey.ui.component.PageHeader
+import com.lookie.opluskey.ui.component.currentHeaderHeight
 import com.lookie.opluskey.ui.model.ABOUT_TITLE
 import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
-import com.lookie.opluskey.ui.model.ActionCatalog
 import com.lookie.opluskey.ui.model.BINDING_TITLE
 import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
+import com.lookie.opluskey.ui.model.LaunchableApp
+import com.lookie.opluskey.ui.model.NIGHT_POLL_MS
 import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SNACKBAR_SHADOW_ROOM
 import com.lookie.opluskey.ui.model.specIcon
-import com.lookie.opluskey.ui.screen.AboutScreen
-import com.lookie.opluskey.ui.screen.AppPickerScreen
-import com.lookie.opluskey.ui.screen.AppSearchBand
-import com.lookie.opluskey.ui.screen.BindingScreen
-import com.lookie.opluskey.ui.screen.BindingTabBand
-import com.lookie.opluskey.ui.screen.CommandActions
-import com.lookie.opluskey.ui.screen.CommandKindBand
-import com.lookie.opluskey.ui.screen.CommandScreen
-import com.lookie.opluskey.ui.screen.DonateListScreen
-import com.lookie.opluskey.ui.screen.HomeScreen
-import com.lookie.opluskey.ui.screen.actionOf
-import com.lookie.opluskey.ui.screen.addCommand
-import com.lookie.opluskey.ui.screen.addStep
-import com.lookie.opluskey.ui.screen.appVersionLabel
-import com.lookie.opluskey.ui.screen.cachedApps
-import com.lookie.opluskey.ui.screen.pick
-import com.lookie.opluskey.ui.screen.replaceStep
-import com.lookie.opluskey.ui.screen.saveCommands
+import com.lookie.opluskey.ui.screen.about.AboutScreen
+import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
+import com.lookie.opluskey.ui.screen.binding.ActionTile
+import com.lookie.opluskey.ui.screen.binding.BindingScreen
+import com.lookie.opluskey.ui.screen.binding.BindingTabBand
+import com.lookie.opluskey.ui.screen.binding.actionOf
+import com.lookie.opluskey.ui.screen.binding.pick
+import com.lookie.opluskey.ui.screen.command.CommandActions
+import com.lookie.opluskey.ui.screen.command.CommandKindBand
+import com.lookie.opluskey.ui.screen.command.CommandScreen
+import com.lookie.opluskey.ui.screen.command.addCommand
+import com.lookie.opluskey.ui.screen.donate.DonateListScreen
+import com.lookie.opluskey.ui.screen.home.HomeScreen
+import com.lookie.opluskey.ui.screen.home.appVersionLabel
+import com.lookie.opluskey.ui.screen.home.appVersionText
+import com.lookie.opluskey.ui.state.AppPickerState
+import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.CommandDraft
+import com.lookie.opluskey.ui.state.CommandDraftState
+import com.lookie.opluskey.ui.state.ConfigState
 import com.lookie.opluskey.ui.state.FallbackOwners
+import com.lookie.opluskey.ui.state.HostLinkState
 import com.lookie.opluskey.ui.state.InjectStatus
 import com.lookie.opluskey.ui.state.UiState
+import com.lookie.opluskey.ui.state.addStep
 import com.lookie.opluskey.ui.state.installI18nBridge
+import com.lookie.opluskey.ui.state.openAppPickerForStep
 import com.lookie.opluskey.ui.state.publishConfig
+import com.lookie.opluskey.ui.state.replaceStep
+import com.lookie.opluskey.ui.state.saveCommands
 import com.lookie.opluskey.ui.state.tickNow
 import com.lookie.opluskey.ui.theme.SyncToHost
 import com.lookie.opluskey.ui.theme.colorsFor
@@ -176,11 +184,11 @@ internal class SettingsPage(
      *  `onDispose` 摘掉（见 [Page] 里 `NavDisplay` 的 entry）。页被 cull 后重建会换一份新的进来，
      *  旧的那份随 `onDispose` 出表（它的源节点已 detach）。
      */
-    private val hazeStatesByPage = mutableMapOf<Screen, HazeState>()
+    internal val hazeStatesByPage = mutableMapOf<Screen, HazeState>()
 
     /**
      * 「取样层没就绪 ⇒ 这次用不透明底」那一条日志的闸 —— 建页期只报一次，免得每个消费方各刷一行。
-     * 见 [pageHazeState] 与 `ui/component/MenuPopup.kt` / `ui/screen/CommandScreen` 里那两处判定。
+     * 见 [pageHazeState] 与 `ui/component/MenuPopup.kt` / `ui/screen/command/CommandScreen` 里那两处判定。
      */
     internal var frostDegradeLogged = false
 
@@ -263,7 +271,7 @@ internal class SettingsPage(
     internal val navBackInput = NavBackInput()
 
     /** 此刻开着几个浮层（`OverlayCloser` 组合期维护；返回的接管判定与它自己的 handler 都读它）。 */
-    private val openOverlays = mutableIntStateOf(0)
+    internal val openOverlays = mutableIntStateOf(0)
 
     /**
      * 系统返回要交给**页面栈**处理吗 —— **只判断，不动手**（`onBackStarted` 那一刻不能有副作用，
@@ -279,7 +287,7 @@ internal class SettingsPage(
     internal fun wouldConsumeBack(): Boolean =
         navStack.size > 1 &&
             openOverlays.intValue == 0 &&
-            !(screen == Screen.COMMANDS && draft.dirty)
+            !(screen == Screen.COMMANDS && commandDraft.draft.dirty)
 
     /** 此刻有浮窗开着吗 —— 开着时系统返回**整个吞掉**（见 `BackInterception.handleDiscreteBack`）。 */
     internal fun hasOpenOverlays(): Boolean = openOverlays.intValue > 0
@@ -317,45 +325,13 @@ internal class SettingsPage(
      */
     internal var rootView: View? = null
 
-    /** 当前配置（页面自己读自己写）。 */
-    internal val config = mutableStateOf(Config.DEFAULT)
-
     /**
-     * 建页那次**没读成功**（文件在、但读不了 / 读不懂）⇒ 页面进**只读**：任何写回都被拒。
+     * 配置与命令库（主配置 / 命令库 / 两个只读位）—— 见 [ConfigState]。
      *
-     * 为什么要有这个开关：默认值长这样 —— 主开关**关**、三个手势全是「无操作」、**不振动**。
-     * 读失败时若照常拿它渲染、又照常写回，用户配的东西就被整份替换成这份默认值。
-     * 真机上真的发生过（先丢的是「振动反馈」，只剩这一个开关被人一眼看出来），
-     * 根因是读失败只有「退化成默认值」一条路、写方那边没有再拦一道（见 `ConfigStore.Load`）。
-     *
-     * 退出方式：**重进页面**（[createView] 会重读一次）；或走 ⋮ 菜单的「默认界面」离开；
-     * 或点「清空配置」——那是用户明说要丢掉重来，`ui/state/ConfigActions.resetAll` 会先把这一位清掉再写。
-     *
-     *  全项目只有两处写它：[createView] 按读到的那一态赋值，以及 [resetAll] 的放行。
-     * 所以没加 `private set`（同文件的扩展函数要写）—— 别在别处顺手置 false，那正是这道闸要防的事。
+     *  一域一个对象：这一域的读写原来摊在本类上，分布在好几个文件里；收进来之后
+     *  「谁改过这一项」一眼可列（见 `docs/decoupling.md` 动作 5 的写入者清单）。
      */
-    internal var configReadOnly by mutableStateOf(false)
-
-    /**
-     * 命令库的只读位 —— 与 [configReadOnly] 同一条纪律，管的是**另一份文件**（`CommandLibrary`）。
-     *
-     *  建页那次读命令库读不懂（外皮解不开 / 被截断 / 正文不是合法 JSON）时置 true：手上那份
-     *  空表不是用户的真相，[saveCommands] 一律拒写。少这一位的话，用户随手改一条命令就会把
-     *  「读不懂」的那份文件覆盖成只有这一条 —— 用户的命令没了，而且没有任何一步提示过他。
-     *
-     *  写它的地方与 [configReadOnly] 对称：[createView] 按读到的那一态赋值，以及 [resetAll] 的放行。
-     */
-    internal var commandsReadOnly by mutableStateOf(false)
-
-    /**
-     * **自定义命令库**（`core/config/CommandLibrary` 里那一串）—— 界面自己的状态，与 [config] 分开。
-     *
-     * 命令的**内容**存在命令库里，绑定到手势时写进主配置的只是 `cmd:<名字>` 这个引用
-     * （与别的动作一样只是 `plus_single` 里的一个取值，注入侧不需要知道名字背后是什么）。
-     * 这份列表变了要重组的是 [ActionCatalog.forGesture] 的调用点
-     * （见 [tileIcons] 与 [BindingList]）。
-     */
-    internal val commands = mutableStateOf<List<Command>>(emptyList())
+    internal val configState = ConfigState()
 
     /**
      * **界面处处共用的那一份图标表** —— [ActionCatalog.queue] 那条队列 → 图标。
@@ -365,102 +341,48 @@ internal class SettingsPage(
      *
      * 放在类上而不是组合里：读它的几处在**不同的树**里（网格在 [BindingScreen]、「添加命令」
      * 浮层在 [CommandScreen]），各自 `remember` 会各建一份、还可能对不上。
-     * 随 [commands] 重算（命令库变了，新增的格子才有图标），`derivedStateOf` 只在有人读它时才算。
+     * 随 [ConfigState.commands] 重算（命令库变了，新增的格子才有图标），`derivedStateOf` 只在有人读它时才算。
      */
     internal val tileIcons: State<Map<ActionCatalog.Spec, ImageVector>> =
         derivedStateOf {
-            ActionCatalog.queue(commands.value).associateWith { specIcon(it) }
+            ActionCatalog.queue(configState.commands.value).associateWith { specIcon(it) }
         }
 
     /**
-     * 三条**固定带**的高度（px）—— 分段控件带 / 类型选择器带 / 搜索带。
+     * 三条**固定带**的高度 —— 分段控件带 / 类型选择器带 / 搜索带，各一页一份。
      *
-     *  带子挂在**顶栏的 `bottomContent`** 里自己 `onSizeChanged` 量，页内那个等高的占位
-     * Spacer 读（见 [PageHeader] 的 `bottomContent`）。两者分处两棵树（顶栏 / 页内容），
-     * 只能走页面级状态；首帧还没量到时是 0（占位少一截），下一帧自纠。
+     *  量（顶栏那棵树）与读（页内容那棵树）分处两棵树，走 [BandHeight] 这条通道，
+     *  它自己带量测上报与 dp 读取两端（口径见那边的类注释）。
      */
-    internal val bindingBandHeight = mutableStateOf(0)
-    internal val commandBandHeight = mutableStateOf(0)
-    internal val appSearchBandHeight = mutableStateOf(0)
+    internal val bindingBandHeight = BandHeight()
+    internal val commandBandHeight = BandHeight()
+    internal val appSearchBandHeight = BandHeight()
 
     /**
-     * 「选择应用」页的搜索词。
+     * 「选择应用」页那一域的状态（搜索词 / 两个落盘的筛选开关 / 小窗开关 / 这趟为谁挑）。
      *
-     *  放在类上（而不是那一页里 `remember`）：搜索框现在挂在**顶栏**里（[AppSearchBand]），
-     * 页面里的过滤逻辑与它读同一份 —— 两棵树共用，只能提上来。
-     *  注意：随之多一笔账：那份 `remember` **不随页面出栈注销**（提在类上，见它的注释），
-     * 提到类上就得**手动清** —— 两个入口（「按键绑定」页的「打开应用」格、添加命令浮层的
-     * 「选择应用」）都补了 `appFilter.value = ""`。
+     *  收在一个对象里而不是摊在页面上：读写它的人分布在四处（顶栏那棵树、页内容那棵树、
+     *  两个入口），摊开时「谁改过这一项」得把四个文件翻一遍 —— 见 [AppPickerState] 的类注释。
+     *  各字段为什么提到页面对象上（而不是留在页面里 `remember`）写在各自那里。
      */
-    internal val appFilter = mutableStateOf("")
-
-    /**
-     * 「选择应用」页顶栏菜单里那一项「显示全部应用」（见 [AppPickerMenu]）。
-     *
-     *  开关在**顶栏那棵树**上、列表在页内容那棵树里，所以同样提到类上（与 [appFilter] 一个理由）。
-     *  注意：与 [appFilter] 相反：它**不随进页清空** —— 那是「我想看到全部应用」这个**意图**，
-     * 不是一次输入。而且它**会落盘**：本地持久化在 [UiState]（**不进用户配置**，见那边的注释），
-     * 进页时读一次（[createView]），所以页面重建 / 宿主 Activity 重建之后仍是上次那一档。
-     *
-     *  注意：叫 `showSystemApps` 是**历史包袱**：菜单叫「显示系统应用」，而这一档
-     * 并不按 `FLAG_SYSTEM` 筛，而是把没有启动图标的第三方应用
-     * （典型是各个 LSPosed 模块）一并列出来，菜单名改了，变量名没跟着改 —— 落盘的键
-     * `show_system_apps` 也保持原名，改名会让用户的这一档回默认。
-     */
-    internal val showSystemApps = mutableStateOf(false)
-
-    /**
-     * 「选择应用」页顶栏菜单里那一项「显示失效应用」（见 [AppPickerMenu]）。
-     *
-     *  与 [showSystemApps] 同一套账：提到类上（开关在顶栏那棵树、列表在页内容那棵树）、
-     * **不随进页清空**、**落盘**在 [UiState]，进页读一次（[createView]）。
-     *
-     *  判据是 [LaunchableApp.launchable]（[com.lookie.opluskey.host.action.AppEntry.resolve] 解不解得出来）——
-     *  与执行端同一把尺子，关着时藏掉的正是「按下去必弹 toast」的那些。
-     *  注意：**默认关 = 不显示失效应用**。落盘的键就叫 `show_unopenable`（与开关的语义同向），
-     *  改语义必须换键名 —— 旧键直接作废，不做迁移。
-     */
-    internal val showUnopenable = mutableStateOf(false)
-
-    /**
-     * 「选择应用」菜单里那一项「以小窗口打开」（见 [AppPickerMenu]）。
-     *
-     *  它不筛列表，只决定**挑中的应用写成哪个动作**：开着写 `window:<包名>`（小窗起），
-     *  关着写 `app:<包名>`。
-     *
-     * 注意：**它是临时的，不是偏好**：**不落盘**、**没有跨次记忆** ——
-     * 每次进「选择应用」页都由 [resetSmallWindowForPicker] 按**正在编辑的那个动作**重算
-     *（本来就是 `window:` 就开着、`app:` 或新绑就关着）。与 [showSystemApps] / [hideUnopenable]
-     * 那两项**相反**（那两项是显示偏好，落在 [UiState] 里）。
-     *  理由：这一项描述的是「这一次要往哪个动作上写」，不是「这一页该怎么显示」——
-     *  留着上一次的 `true` 会让下一次挑应用**静默**变成小窗，用户看不出自己什么时候开的。
-     *
-     * 注意：**为什么不能像页面自己那样随出栈销毁**（与 [appFilter] 同一笔账）：这一项是**顶栏菜单**里
-     * 的一项，而顶栏（`PageHeader` → [AppPickerMenu]）与页内容是本文件同一层 `Box` 里的**两棵并列树**
-     * —— 页面本体挂在 `when (s)` 的分支里、出栈即注销，顶栏不走。所以：
-     *  · 页面那棵树的 `remember` 顶栏**读不到**（`AppPickerScreen` 不是顶栏的祖先）；
-     *  · 状态只能提到两棵树共同的祖先（本类）上，于是**不会**随页面出栈销毁，
-     *    也就必须像 [appFilter] 那样在进页时**自己初始化** —— 这就是 [resetSmallWindowForPicker] 那笔账。
-     * 页面里凡是真的只归页面自己用的（比如那句确认窗的挂起项），照旧用 `remember`、随出栈注销。
-     */
-    internal val smallWindow = mutableStateOf(false)
+    internal val picker = AppPickerState()
 
     /**
      * 这一趟「选择应用」页在**编辑哪个动作** —— 两个入口各有来源（都在进页那一刻记下）：
-     *  · 网格入口（「按键绑定」页的「打开应用」格）→ [appPickerGesture] 那个手势绑的动作；
-     *  · 「自定义命令」页那条路 → 被**换掉**的那一步（[appPickerReplaceStep]）。
+     *  · 网格入口（「按键绑定」页的「打开应用」格）→ [AppPickerState.gesture] 那个手势绑的动作；
+     *  · 「自定义命令」页那条路 → 被**换掉**的那一步（[AppPickerState.replaceStep]）。
      *
      * `null` = 新绑（没在编辑任何动作）。[appPickerSelectedPkg] 与 [resetSmallWindowForPicker]
      * 都要它，两处必须同源 —— 否则会出现「行点亮了、开关却是关的」这种自相矛盾的界面。
      */
-    private fun editingAction(): Action? =
-        if (appPickerForStep) {
-            appPickerReplaceStep
+    internal fun editingAction(): Action? =
+        if (picker.forStep) {
+            picker.replaceStep
                 .takeIf { it >= 0 }
-                ?.let { draft.steps.getOrNull(it) }
+                ?.let { commandDraft.draft.steps.getOrNull(it) }
                 ?.let { runCatching { Action.parse(it) }.getOrNull() }
         } else {
-            appPickerGesture?.let { actionOf(config.value, it) }
+            picker.gesture?.let { actionOf(configState.config.value, it) }
         }
 
     /**
@@ -471,46 +393,9 @@ internal class SettingsPage(
      */
     internal fun resetSmallWindowForPicker() {
         val on = editingAction() is Action.AppWindow
-        smallWindow.value = on
+        picker.smallWindow.value = on
         XLog.w("选择应用：以小窗口打开按正在编辑的动作重算 = $on")
     }
-
-    /**
-     * 「自定义命令」页正在编辑的那条命令（草稿）。
-     *
-     *  **提到类上、而不是放在 [CommandScreen] 里**：它要**跨重组**活着。
-     * 「添加命令」现在是页内浮层（[StepPickerPopup]），不再是单独一级页面，
-     * 但草稿仍然属于整个「自定义命令」页 —— 从别的页面回来时不该被重新组合清掉；
-     * 每次进这一页由 [BindingList] 的跳转按钮显式 [CommandDraft.reset]。
-     */
-    internal val draft = CommandDraft()
-
-    /**
-     * 「重置」走**行级退场**时的挂起标记。
-     *
-     *  工具条的重置对「有多条步骤的多条命令」不直接 [CommandDraft.reset]：
-     * 整批清空会让所有步骤行瞬时消失。先置这里，[SerialSteps] 里每一行播完
-     * 自己的 shrink 退场之后，由它真正 reset（见 CommandScreen 的收尾协程）。
-     */
-    internal var draftResetPending by mutableStateOf(false)
-
-    /**
-     * 「重置」收尾**被放弃**的那一次（收尾协程发现退场期间用户又改了表单）。
-     *
-     *  为什么要单独一位：[SerialSteps] 在 [draftResetPending] 置位那一刻就把每一行标了退场
-     *  （`exiting = true`），而退场行会被摘除、重建那道闸的 key 是 `draft.steps` 的内容
-     *  —— 内容没变就不会重跑 ⇒ 步骤在界面上凭空消失，数据还在（看不到也删不掉）。
-     *  置这一位让 [SerialSteps] 把那些行收回来，处理完它自己清掉。
-     */
-    internal var draftResetAborted by mutableStateOf(false)
-
-    /**
-     * 「重置」收尾那 240ms 的**基线指纹**（[draftResetPending] 置位那一刻记下）。
-     *
-     *  收尾时只有指纹没变才真正 [CommandDraft.reset] —— 这段时间用户可能已经在输入框里敲字了，
-     *  无条件 reset 会把刚敲的内容一起吞掉（见 `CommandDraft.contentFingerprint`）。
-     */
-    internal var draftResetBaseline: String = ""
 
     /**
      * **调试通道**要切手势 tab 时往这里放一个请求（见 [onDebugCommand]）。
@@ -519,6 +404,11 @@ internal class SettingsPage(
      * release 包里没人写它（那条注册是死分支），恒为 `null`。
      */
     internal val debugGesture = mutableStateOf<Gesture?>(null)
+
+    /**
+     * 「自定义命令」页的草稿与「重置」那套行级退场标记 —— 见 [CommandDraftState]。
+     */
+    internal val commandDraft = CommandDraftState()
 
     /** 「清空配置」确认弹窗（调试通道经 `action=CONFIRM_RESET` 置 true 弹出）。 */
     internal val confirmReset = mutableStateOf(false)
@@ -554,30 +444,30 @@ internal class SettingsPage(
     var onImportConfig: (() -> Unit)? = null
 
     /**
-     * 建页期读一次命令库（三态，与主配置的 [configReadOnly] 对称）。
+     * 建页期读一次命令库（三态，与主配置的 [ConfigState.readOnly] 对称）。
      *
      *  「读不懂」这一档必须与「空表」分开：界面把空表当真相之后，用户随便改一条命令就会把它
-     *  写回盘、把那份读不懂的文件覆盖掉 —— 用户的命令这就没了。所以读不懂时置 [commandsReadOnly]，
+     *  写回盘、把那份读不懂的文件覆盖掉 —— 用户的命令这就没了。所以读不懂时置 [ConfigState.commandsReadOnly]，
      *  由 [saveCommands] 拒绝一切写回。
      */
-    private fun readCommands() {
+    internal fun readCommands() {
         when (val l = CommandLibrary.loadState()) {
             is CommandLibrary.Load.Ok -> {
-                commands.value = l.commands
-                commandsReadOnly = false
+                configState.commands.value = l.commands
+                configState.commandsReadOnly = false
             }
 
             CommandLibrary.Load.Absent -> {
                 XLog.w("还没有命令库文件（首装 / 刚清过数据）—— 用空表，可以写回")
-                commands.value = emptyList()
-                commandsReadOnly = false
+                configState.commands.value = emptyList()
+                configState.commandsReadOnly = false
             }
 
             CommandLibrary.Load.Unreadable -> {
                 // 这条必须是 w：它是「命令库为什么进只读」的唯一判据行
                 XLog.w("命令库读不懂 ⇒ 命令库进只读，本次不许写回（否则会把用户的命令覆盖掉）")
-                commands.value = emptyList()
-                commandsReadOnly = true
+                configState.commands.value = emptyList()
+                configState.commandsReadOnly = true
             }
         }
     }
@@ -590,32 +480,32 @@ internal class SettingsPage(
         installI18nBridge()
         dark.value = systemNight()
         // 配置读成**三态**：只有「读到过正常文件」与「还没写过」才允许之后写回。
-        //  读不懂 ⇒ 只读（[configReadOnly]）：手上那份默认值不是用户的真相，不能让它落盘。
+        //  读不懂 ⇒ 只读（[ConfigState.readOnly]）：手上那份默认值不是用户的真相，不能让它落盘。
         when (val l = ConfigStore.load()) {
             is ConfigStore.Load.Ok -> {
-                config.value = l.config
+                configState.config.value = l.config
                 I18n.currentLanguage = AppLanguage.fromCode(l.config.global.language)
-                configReadOnly = false
+                configState.readOnly = false
             }
 
             ConfigStore.Load.Absent -> {
                 XLog.w("还没有配置文件（首装 / 刚清过数据）—— 用默认值，可以写回")
-                config.value = Config.DEFAULT
+                configState.config.value = Config.DEFAULT
                 I18n.currentLanguage = AppLanguage.fromCode(Config.DEFAULT.global.language)
-                configReadOnly = false
+                configState.readOnly = false
             }
 
             ConfigStore.Load.Unreadable -> {
                 // 这条必须是 w：它是「页面为什么变只读」的唯一判据行
                 XLog.w("配置读不懂 ⇒ 页面进只读，本次不许写回（否则会把默认值当真相固化）")
-                config.value = Config.DEFAULT
+                configState.config.value = Config.DEFAULT
                 I18n.currentLanguage = AppLanguage.fromCode(Config.DEFAULT.global.language)
-                configReadOnly = true
+                configState.readOnly = true
             }
         }
 
         // 命令库与配置一起在建页期读好。与主配置**同一条纪律**（见上面那三态）：
-        //  读不懂 ⇒ 命令库也进只读（[commandsReadOnly]），否则用户随手改一条命令就会把那份
+        //  读不懂 ⇒ 命令库也进只读（[ConfigState.commandsReadOnly]），否则用户随手改一条命令就会把那份
         //  读不懂的文件覆盖成「只有这一条」。拆成 [readCommands] 只是为了让 [createView] 别太长。
         readCommands()
 
@@ -623,23 +513,23 @@ internal class SettingsPage(
         // 读不到 / 解析不了都退默认（关）。放这里是因为它同样只读一次、且必须早于首帧
         // （顶栏菜单那两项要按它画选中态，列表也要按它决定查哪一份）。
         //  一次读全（readAll）：两项各读一遍会把同一个文件 open + parse 两遍，而这跑在主线程上。
-        //  只读两项 —— 「以小窗口打开」**不落盘**（见 [smallWindow]），不在这一份里。
+        //  只读两项 —— 「以小窗口打开」**不落盘**（见 [AppPickerState.smallWindow]），不在这一份里。
         val ui = UiState.readAll()
-        showSystemApps.value = ui.first
-        showUnopenable.value = ui.second
+        picker.showSystemApps.value = ui.first
+        picker.showUnopenable.value = ui.second
         XLog.w(
-            "界面状态：显示全部应用=${showSystemApps.value}，显示失效=${showUnopenable.value}",
+            "界面状态：显示全部应用=${picker.showSystemApps.value}，显示失效=${picker.showUnopenable.value}",
         )
 
         // 建页时把**完整配置**主动同步一次给注入侧（判定在那一侧，见 [publishConfig]）：
         // 「装好后没动过任何设置」的状态下，注入侧只能等宿主进程的解锁广播，
         // 打开这一页就立刻同步一次，作为兜底。
-        publishConfig(config.value)
+        publishConfig(configState.config.value)
 
         XLog.w(
-            "命令库：${commands.value.size} 条" +
-                "（单条 ${commands.value.count { it.kind == CommandKind.SINGLE }}" +
-                " / 多条 ${commands.value.count { it.kind == CommandKind.SERIAL }}）",
+            "命令库：${configState.commands.value.size} 条" +
+                "（单条 ${configState.commands.value.count { it.kind == CommandKind.SINGLE }}" +
+                " / 多条 ${configState.commands.value.count { it.kind == CommandKind.SERIAL }}）",
         )
 
         val view =
@@ -679,704 +569,6 @@ internal class SettingsPage(
         return view
     }
 
-    @Composable
-    private fun Page() {
-        val night = dark.value
-        //  COUI 的浮层菜单（`OverlayListPopup`）内部走 `NavigationBackHandler`，
-        // 而后者要求 composition 里有 `LocalNavigationEventDispatcherOwner` ——
-        // 宿主那棵树上没有（我们只补了 Lifecycle / ViewModelStore / SavedState）。
-        // 缺了会当场 `IllegalStateException: No NavigationEventDispatcher was provided`（真机崩溃实证）。
-        // `parent = null` 是官方指定的「自建根 dispatcher」用法（见其 KDoc）。
-        val navOwner = rememberNavigationEventDispatcherOwner(parent = null)
-        COUITheme(colors = colorsFor(night)) {
-            CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navOwner) {
-                Scaffold(
-                    containerColor = COUITheme.colorScheme.surface,
-                    //  整页**边到边**，insets 一概不加：状态栏那一条由页面自己画
-                    // （顶栏 107dp 含状态栏 inset，底色铺到 y=0），所以顶栏的模糊、
-                    // 浮层的 dim 都自然作用到它 —— 之前那条盖着 hook 侧的
-                    // 实心遮罩，模糊 / dim 都到不了，只能一个个单独处理（已删）。
-                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                ) { padding ->
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .padding(padding)
-                            //  裁掉转场出画的部分：push/pop 时旧页滑出、新页滑入，
-                            .clipToBounds(),
-                    ) {
-                        // 深浅变化同步给 hook 侧（只挂一次，不随子页重复挂）
-                        SyncToHost()
-                        // 换页（往深走 / 往浅走 / 清栈回首页）时**先收掉所有浮窗** ——
-                        // 浮窗渲染在根 Scaffold 的 `popupHost` 里、不跟着页面转场走
-                        // （见 [closeOverlays]），不收的话它会**钉在屏幕上**：页面滑走了它还在，
-                        // 要等那一页出栈才跟着消失。
-                        LaunchedEffect(navStack.lastOrNull()) { closeOverlays("换页 → ${navStack.lastOrNull()}") }
-                        //  磨砂取样源跟着**栈顶页**走（理由见 [pageHazeState]）：往回退（pop）时下面
-                        //  那一页不会重新组合，只有这个 effect 能把取样源摆回去。
-                        //
-                        //  但它**单独用不够**：新页的 entry 可能比它晚一帧才组合，那一刻 [hazeStatesByPage]
-                        //  里还没有那一页 ⇒ 取样源被摆成 null，紧接着打开的浮层菜单就没有磨砂
-                        // （真机反馈「所有带菜单的页首次进入、开菜单都没糊」，日志里那一行是
-                        //  「浮层磨砂跳过：页面取样层未就绪」）。所以各页组合时还各自兜一次底，
-                        //  见 entry 里那个 `LaunchedEffect(s)`。
-                        LaunchedEffect(navStack.lastOrNull()) {
-                            val top = navStack.lastOrNull() as? Screen
-                            val picked = top?.let { hazeStatesByPage[it] }
-                            if (picked != null) {
-                                pageHazeState = picked
-                            } else {
-                                // 正常路径不会走到（那一页组合时自己会兜一次底，见 entry 里那段）。
-                                // 真走到这里说明取样源还是空的 —— 接着开的浮层不会有磨砂，留一行凭据。
-                                XLog.w("磨砂取样源查不到：${top?.name ?: "无"} 那一页还没登记取样状态")
-                            }
-                        }
-                        // 调试通道：只有 debug 源集有实现，release 是同名空壳（`register` 恒 null，
-                        // 这段是死代码）。让 `am broadcast` 能直接驱动这个页面，省掉「dump 找坐标 →
-                        // 模拟点击 → 打字被输入法吃掉」那一套。
-                        DisposableEffect(Unit) {
-                            val receiver = PageDebugChannel.register(context) { onDebugCommand(it) }
-                            onDispose { receiver?.let { runCatching { context.unregisterReceiver(it) } } }
-                        }
-                        // 两条「链路自检」的回音 —— 一个接收器兼收，省一份注册 / 注销的壳：
-                        //  · 宿主侧报活（[KeyModule.ACTION_HOST_SERVICE_UP]）：模块加载好了。
-                        //    首页据此把「模块未生效」的提示收掉、解除整页禁用。**正式通道，release 也有**。
-                        //  · 注入侧回包（[KeyModule.ACTION_INJECT_READY]）：注入侧那套装上没、配置到没到。
-                        //    发送方是 system_server（uid 1000），`NOT_EXPORTED` 照样可达。
-                        DisposableEffect(Unit) {
-                            val receiver =
-                                object : BroadcastReceiver() {
-                                    override fun onReceive(
-                                        c: Context?,
-                                        intent: android.content.Intent?,
-                                    ) {
-                                        when (intent?.action) {
-                                            KeyModule.ACTION_HOST_SERVICE_UP -> {
-                                                XLog.w("宿主侧模块报活（收到广播）⇒ 首页解除禁用")
-                                                hostServiceUp = true
-                                                hostAliveToken++
-                                                // 报活里带的两条诊断字段（链路自检用）
-                                                hostEnabled =
-                                                    intent.getBooleanExtra(
-                                                        KeyModule.EXTRA_HOST_ENABLED,
-                                                        true,
-                                                    )
-                                                hostLastActionAt =
-                                                    intent.getLongExtra(
-                                                        KeyModule.EXTRA_HOST_LAST_ACTION_AT,
-                                                        0L,
-                                                    )
-                                            }
-
-                                            KeyModule.ACTION_INJECT_READY -> {
-                                                val status =
-                                                    InjectStatus(
-                                                        hooks = intent.getIntExtra(KeyModule.EXTRA_INJECT_HOOKS, 0),
-                                                        configOk =
-                                                            intent.getBooleanExtra(
-                                                                KeyModule.EXTRA_INJECT_CONFIG_OK,
-                                                                false,
-                                                            ),
-                                                        configTag =
-                                                            intent
-                                                                .getStringExtra(
-                                                                    KeyModule.EXTRA_INJECT_CONFIG_TAG,
-                                                                ).orEmpty(),
-                                                        lastGestureAt =
-                                                            intent.getLongExtra(
-                                                                KeyModule.EXTRA_INJECT_LAST_GESTURE_AT,
-                                                                0L,
-                                                            ),
-                                                    )
-                                                XLog.w(
-                                                    "注入侧自检回包：接管点=${status.hooks} " +
-                                                        "配置已送达=${status.configOk} " +
-                                                        "指纹=${status.configTag.ifEmpty { "无" }}",
-                                                )
-                                                injectStatus = status
-                                                injectAliveToken++
-                                            }
-                                        }
-                                    }
-                                }
-                            val ok =
-                                runCatching {
-                                    context.registerReceiver(
-                                        receiver,
-                                        IntentFilter().apply {
-                                            addAction(KeyModule.ACTION_HOST_SERVICE_UP)
-                                            addAction(KeyModule.ACTION_INJECT_READY)
-                                        },
-                                        // 同包广播，不必对外导出
-                                        Context.RECEIVER_NOT_EXPORTED,
-                                    )
-                                }.isSuccess
-                            if (!ok) XLog.w("注册链路自检接收器失败（链路自检会一直显示未就绪）")
-                            onDispose { runCatching { context.unregisterReceiver(receiver) } }
-                        }
-                        // —— 平台返回 → 页面栈 ——
-                        //
-                        //  预测返回：hook 侧的 `OnBackAnimationCallback` 拿到系统手势的进度后调
-                        // [navBackInput] 的方法；这里把那个 input 挂到 dispatcher 上才有人接
-                        // （coui-nav 的浮层与 [NavDisplay] 也都往同一个 dispatcher 挂 handler，
-                        // 「谁先消费」由它仲裁）。页面销毁自动摘掉。
-                        DisposableEffect(navOwner) {
-                            val dispatcher = navOwner.navigationEventDispatcher
-                            dispatcher.addInput(navBackInput)
-                            onDispose { dispatcher.removeInput(navBackInput) }
-                        }
-                        // —— 「这一退还要不要自己接」回报给 hook 侧 ——
-                        //
-                        //  进 / 出子页、浮层开合都会改这个答案（见 [needsBackInterception]），
-                        //  hook 侧据此在宿主上注册 / 注销返回回调：首页那一档**不注册**，系统才会
-                        //  给「关掉整个设置页」那一下做跟手动画。首帧也会跑一次（重同步，无害）。
-                        //  注意：浮层那个计数是在 `DisposableEffect` 里加减的、与这里差一帧，所以「刚开 /
-                        //  刚关浮层那一瞬」的注册时机晚一帧 —— 手速到不了那一帧，不必额外对账。
-                        LaunchedEffect(navStack.size, openOverlays.intValue) {
-                            onBackInterceptionChanged?.invoke()
-                        }
-                        // ── 页面级状态：**不随页面出栈注销**的那几样 ──
-                        //
-                        //  分页状态与全量图标表都提在这里创建，而不是各自页面里 `remember`：
-                        //   · [pagerState] / [commandPager] 各有一条**固定带**要读（带子挂在顶栏的
-                        //     `bottomContent` 里、内容在页里，两棵树只能共用同一份状态）；
-                        //  [tileIcons] 那张图标表也在类上（见它自己的注释）：读它的两处在不同的树里，
-                        //  各自 `remember` 会各建一份。这里不再重复建表。
-                        val pagerState = rememberPagerState(pageCount = { Gesture.entries.size })
-                        val commandPager = rememberPagerState(pageCount = { CommandKind.entries.size })
-                        // 调试通道要切手势 tab —— `pagerState` 活在组合里，只能这样接：
-                        // 看到请求就滚过去、然后清掉（见 [debugGesture]）。
-                        LaunchedEffect(debugGesture.value) {
-                            debugGesture.value?.let {
-                                pagerState.scrollToPage(it.ordinal)
-                                debugGesture.value = null
-                            }
-                        }
-                        //  图标表不在这里建：[tileIcons] 是类上的那一份（随 `commands` 重算）。
-
-                        // —— push 时把**目标页**的分页状态拨回它该在的那一档 ——
-                        //
-                        //  上面那两个分页状态是**页面级**的、不随页面出栈注销（见它们各处的注释）
-                        // ⇒「出栈的页整个销毁、重新进来是新的一份」这条栈语义得手动补上：
-                        // 退回首页再进「按键绑定」，手势 tab 会停在上次那一档（真机反馈过）。
-                        //  判据取**栈深变深** —— 那就是 push。**pop 不重置**：往回退时下面是原来
-                        // 那一页，状态本来就该原样留着（「打开应用」挑完退回「按键绑定」，
-                        // 还得停在**刚才那个手势**上）。
-                        var previousDepth by remember { mutableIntStateOf(navStack.size) }
-                        LaunchedEffect(navStack.size) {
-                            val depth = navStack.size
-                            val pushed = depth > previousDepth
-                            previousDepth = depth
-                            if (!pushed) return@LaunchedEffect
-                            when (screen) {
-                                Screen.BINDING -> {
-                                    pagerState.scrollToPage(0)
-                                }
-
-                                // 「自定义命令」页**按草稿的类型**定位，不是一律回第一页：
-                                // 从「按键绑定」网格长按 / 已选中再点一下某条命令进来时，
-                                // `draft.load(cmd)` 已经把 `kind` 设成那条命令的类型 —— 一律回 0
-                                // 的话单条 / 多条那条 tab 会停在错的档上，紧接着 `draft.kind`
-                                // 还会被分页器反着覆盖回「单条」（真机反馈「长按自定义命令跳转后，
-                                // 多条命令的 tab 没有对应切换」）。
-                                //  从 FAB 进来时草稿刚 `reset()`（kind = SINGLE），等价于回第一页。
-                                Screen.COMMANDS -> {
-                                    commandPager.scrollToPage(
-                                        CommandKind.entries.indexOf(draft.kind).coerceAtLeast(0),
-                                    )
-                                }
-
-                                else -> {
-                                    // 其余页不归这个分页器管
-                                }
-                            }
-                        }
-
-                        // —— 页面栈 ——
-                        //
-                        //  一页一个 entry，但 `entry` 只注册一次：库按 key 的**运行时类**取注册
-                        // （`entry<T>` 就是拿 `T::class` 建的索引），而 `Screen` 是个枚举 ——
-                        //  五个分量的运行时类是同一个，所以注册一次就够，页与页的区别全在下面那个
-                        // `when`。每页独享的东西（`scrollBehavior`、取样状态 `hazeState`）写在 entry
-                        //  的内容里：那是**每个 entry 各自一份**的组合，`remember` 天然逐页独立。
-                        NavDisplay(
-                            backStack = navStack,
-                            //  系统返回那条链在本集成方式下是断的（见 [navStack] 的注释），这个回调
-                            // 只在 dispatcher 真收到事件时兜底 —— 语义与 [goBack] 一致。
-                            onBack = { goBack() },
-                            transition = PAGE_TRANSITION,
-                            //  圆角裁剪关掉（整幅平移，没有卡片式缩放，不必跟着屏幕圆角切角）；
-                            // 压暗用库的通用开关 [NavDisplayEffects.dimAmount]：栈顶之下那一页
-                            // 垫一层黑，静止恒定压着、转场随进度渐变（见 [PAGE_COVER_DIM]）。
-                            effects =
-                                NavDisplayEffects(
-                                    enableCornerClip = false,
-                                    dimAmount = PAGE_COVER_DIM,
-                                ),
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            entry<Screen> { s ->
-                                // 大标题的滚动折叠（COUI「TopAppBar → 大标题顶部栏滚动行为」）——
-                                // 每页**各持一份**：滚动行为是「这一页的列表滚到哪」的账，
-                                // 共用一份的话翻页之后标题的折叠进度会串页。
-                                //
-                                //  顶栏与滚动容器**必须吃同一个实例**：顶栏读它的
-                                // `state` 画折叠进度，滚动容器把 `nestedScrollConnection`
-                                // 挂在链上把余量喂进来。只给一头等于没接（顶栏恒停在展开态）。
-                                //
-                                //  「首页」「更多选项」的标题**不折叠**（定案）：库的
-                                // 开关是 `canScroll` —— false 时顶栏不再消费滚动事件
-                                // （`ExitUntilCollapsedScrollBehavior` 里 `if (!canScroll()) return Zero`），
-                                // 大标题钉在原位、内容照常从它底下滚过；其余三页照常折叠。
-                                //
-                                //  注意：**每页都必须自己给初始 `heightOffsetLimit`**（只给钉住的两页的话，
-                                // 折叠那三页靠「频繁重组自愈」，实测会卡在坏态）：
-                                //  库默认是 `-Float.MAX_VALUE`，而那个字段是**普通 var** —— 顶栏在布局期
-                                //  把它改写成真实折叠量时**不触发重组**。于是 [currentHeaderHeight] 首帧
-                                //  读到 -MAX，`52dp - (-1.2e38dp)` 让 `Modifier.height(...).roundToPx()`
-                                //  整型溢出成 0：顶部让位的 Spacer 变 0、内容整段顶到屏幕最上被顶栏盖住
-                                // （「关于模块」页与「按键绑定」页各实证一次）。折叠页只在
-                                //  恰好有别的重组时自愈 ⇒ 表现为「偶尔有些页面没给 Header 让位」。
-                                //  初始值给「展开 − 折叠」那一档（像素）；[currentHeaderHeight] 另有一道
-                                //  认哨兵的兜底，双保险。
-                                val scrollBehavior =
-                                    COUIScrollBehavior(
-                                        state =
-                                            rememberTopAppBarState(
-                                                initialHeightOffsetLimit =
-                                                    with(LocalDensity.current) {
-                                                        -(
-                                                            TopAppBarDefaults.ExpandedHeight -
-                                                                TopAppBarDefaults.CollapsedHeight
-                                                        ).roundToPx().toFloat()
-                                                    },
-                                            ),
-                                        // 「首页」「关于模块」「捐赠列表」三页钉住标题（不折叠），
-                                        // 其余几页照常折叠 —— 后两页都是「短内容」页，没什么可折的
-                                        // （名单长起来之后要放开折叠，改的就是这一行）。
-                                        canScroll = {
-                                            s != Screen.SHORTCUTS &&
-                                                s != Screen.ABOUT &&
-                                                s != Screen.DONATE_LIST
-                                        },
-                                    )
-
-                                // 顶栏 / 浮层菜单 / 底部工具栏的磨砂**取样源**（Haze 的 `hazeSource`）。
-                                //
-                                //  `hazeSource` **只抓这个节点往里的那一串**，不含父级背景 ——
-                                //  所以底色得挂在它**之后**（见下面那句 `background`）：写在它前面
-                                //  就成了记录层外的另一笔，透明区域照样把颜色扩散进去、糊成色块。
-                                val surfaceColor = COUITheme.colorScheme.surface
-                                val hazeState = rememberHazeState()
-                                //  登记给页面级：浮层菜单 / 底部工具栏按**栈顶页**取用（见 [pageHazeState]）。
-                                //  写在 effect 里而不是组合期：组合期写共享可变结构是反模式（写普通 Map
-                                //  不触发重组，读到的是不是这一帧说不准）；页被 cull / 出栈时由 `onDispose`
-                                //  把本条摘掉，旧实例（源节点已 detach）不会一直留在表里。
-                                DisposableEffect(s) {
-                                    hazeStatesByPage[s] = hazeState
-                                    onDispose { hazeStatesByPage.remove(s) }
-                                }
-                                //  这一页组合完成时若它正是栈顶，就把取样源摆过来 —— 与页面级那个
-                                //  `LaunchedEffect(navStack.lastOrNull())` 互为兜底（那边可能早一帧，
-                                //  见它自己的注释）。幂等：同一个实例写回去不会触发重组。
-                                LaunchedEffect(s) {
-                                    if (navStack.lastOrNull() == s) pageHazeState = hazeState
-                                }
-
-                                Box(
-                                    Modifier
-                                        .fillMaxSize()
-                                        // 每个页面自带不透明底：转场交叠时不透出下层残影
-                                        .background(surfaceColor),
-                                ) {
-                                    Box(
-                                        Modifier
-                                            .fillMaxSize()
-                                            .hazeSource(hazeState)
-                                            //  采集层的底色（挂在 `hazeSource` **之后**，见上）
-                                            .background(surfaceColor),
-                                    ) {
-                                        when (s) {
-                                            Screen.SHORTCUTS -> {
-                                                HomeScreen(scrollBehavior)
-                                            }
-
-                                            Screen.BINDING -> {
-                                                BindingScreen(
-                                                    pagerState,
-                                                    // 首页那个主开关（[KeyConfig.enabled]）—— 关掉时整页禁用
-                                                    enabled = config.value.key(KeyId.PLUS).enabled,
-                                                    onOpenAppPicker = { g ->
-                                                        appPickerGesture = g
-                                                        appPickerForStep = false
-                                                        // 搜索词清空（页面级状态，不再随页面出栈注销，
-                                                        // 见 [appFilter]；另一条入口在 [openAppPickerForStep]）
-                                                        appFilter.value = ""
-                                                        // 「以小窗口打开」按**这次要编辑的动作**重算
-                                                        // （不落盘、不跨次记忆，必须在两个入口都调）
-                                                        resetSmallWindowForPicker()
-                                                        // 父级不用记：压它下面的是谁，返回就退到谁
-                                                        navTo(Screen.APP_PICKER)
-                                                    },
-                                                    scrollBehavior = scrollBehavior,
-                                                )
-                                            }
-
-                                            Screen.COMMANDS -> {
-                                                CommandScreen(scrollBehavior, commandPager)
-                                            }
-
-                                            // 挑应用。**两个入口共用这一页**（挑中的东西不一样）：
-                                            //  · 网格里的入口格「打开应用」→ 把**当前手势**绑成
-                                            //    `app:<包名>`（走现成的 `pick()`，它同时负责
-                                            //    「选动作顺手把主开关打开」那条纪律）；
-                                            //  · 「添加命令」浮层里的「选择应用」→ 把 `app:<包名>`
-                                            //    作为**一步**加进当前多条命令（走 `addStep()`，见
-                                            //    `openAppPickerForStep`）。
-                                            Screen.APP_PICKER -> {
-                                                AppPickerScreen(
-                                                    // 「当前已选的那个应用」：行尾点亮单选圈 + 进页滚到它眼前。
-                                                    // 两条入口的来源见 [appPickerSelectedPkg] —— 网格那条读手势，
-                                                    // 「自定义命令」那条读**被换掉的那一步**。
-                                                    selected = appPickerSelectedPkg(),
-                                                    onPick = { pkg, window ->
-                                                        tickNow()
-                                                        // 写成哪个动作由菜单里那项「小窗打开」定（见 [smallWindow]）
-                                                        val token = if (window) Action.AppWindow(pkg).token else Action.App(pkg).token
-                                                        if (appPickerForStep) {
-                                                            // 「加一步 / 换一步」：这里**不用 `goBack()`** ——
-                                                            // `addStep()` / `replaceStep()` 自己会把页面切回
-                                                            // 「自定义命令」页（那才是这次挑应用的来处），
-                                                            // 从「打开应用」退到那一页就是它的 pop 转场。
-                                                            appPickerForStep = false
-                                                            val target = appPickerReplaceStep
-                                                            appPickerReplaceStep = -1
-                                                            if (target >= 0) {
-                                                                replaceStep(target, token)
-                                                            } else {
-                                                                addStep(token)
-                                                            }
-                                                        } else {
-                                                            // 写的是**进这一页时那个手势**（见 appPickerGesture），
-                                                            // 不是 pager 的当前页 —— 这一页不属于 pager。
-                                                            val g = appPickerGesture
-                                                            val ok =
-                                                                g != null &&
-                                                                    pick(
-                                                                        // 只为把取值交给 `pick`（它读的是 token），
-                                                                        //  name 这一位在这条路上不参与显示。
-                                                                        ActionCatalog.Spec(name = pkg, token = token),
-                                                                        g,
-                                                                    )
-                                                            //  注意：**写成了才退页、才清手势**：
-                                                            //  不看 `pick` 的结果的话，被拦（链路未就绪 / 机型不支持）
-                                                            //  或写盘失败时照样 `goBack()` 并把 `appPickerGesture`
-                                                            //  清掉 —— 用户挑的那个应用就这么丢了（页面退回去了，
-                                                            //  看起来像选好了，其实一个字节都没写，而且连"再试一次"
-                                                            //  都做不到：手势来源已经清空）。
-                                                            //  失败原因 `pick` 自己已经报过，这里只负责留在原地。
-                                                            if (ok) {
-                                                                appPickerGesture = null
-                                                                goBack()
-                                                            } else {
-                                                                XLog.w("选择应用：$pkg 没写进绑定，留在本页（不 goBack）")
-                                                            }
-                                                        }
-                                                    },
-                                                    scrollBehavior = scrollBehavior,
-                                                )
-                                            }
-
-                                            // 「关于模块」：版本 / 仓库地址两行，从首页 ⋮ 菜单进
-                                            Screen.ABOUT -> {
-                                                AboutScreen(scrollBehavior)
-                                            }
-
-                                            // 「捐赠列表」：名单是手写常量（见 `ui/model/Donors.kt`）
-                                            Screen.DONATE_LIST -> {
-                                                DonateListScreen(scrollBehavior)
-                                            }
-                                        }
-                                    }
-
-                                    // 首页那条「模块未生效」提示（见 [hostServiceSnackbar]）。
-                                    //  只挂在首页；**不占布局位置** —— `SnackbarHost` 内部就是底部对齐的浮层，
-                                    // 页面内容照常铺满（落点在屏幕底边，与顶部横幅的 TopTips 不是一个位置）。
-                                    if (s == Screen.SHORTCUTS) {
-                                        SnackbarHost(
-                                            state = hostServiceSnackbar,
-                                            modifier =
-                                                Modifier
-                                                    .align(Alignment.BottomCenter)
-                                                    .fillMaxWidth(),
-                                            //  胶囊外面要自己撑出一圈空档，否则它那圈影子被库的视窗裁掉
-                                            // ——为什么、以及为什么必须撑在这里，见 [SNACKBAR_SHADOW_ROOM]。
-                                            content = { data ->
-                                                Box(Modifier.padding(SNACKBAR_SHADOW_ROOM)) {
-                                                    Snackbar(data = data)
-                                                }
-                                            },
-                                        )
-                                    }
-
-                                    // —— 自定义命令页的**底部操作悬浮工具栏** ——
-                                    //
-                                    //  它必须挂在这里（页内、但那个取样源**之外**）：
-                                    // 顶栏取样的就是上面那个 `hazeSource` 节点 ——
-                                    // 取样的节点**不能落进它自己取样那一份**，
-                                    // 否则记录层为了画自己得再画它、它又去取样记录层……渲染节点链
-                                    // 无限增长，最终 RenderThread **栈溢出**（`RenderNode::prepareTreeImpl`
-                                    // 递归 500+ 层），宿主 UI 进程当场被杀 —— 真机崩过一次，就是这个。
-                                    // 所以工具栏与顶栏同一个挂法：页内、取样源外，只是贴在底部。
-                                    // （它自己那层模糊挂上了，与顶栏同一个取样层。）
-                                    //
-                                    // 只在这一页显示；整页 push / pop 转场时它跟着一起滑
-                                    // （挂在页里，不是挂在页面之外）。
-                                    if (s == Screen.COMMANDS) {
-                                        CommandActions(
-                                            modifier =
-                                                Modifier
-                                                    .align(Alignment.BottomCenter)
-                                                    .padding(bottom = COMMAND_TOOLBAR_BOTTOM),
-                                        )
-                                    }
-
-                                    // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
-                                    // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
-                                    PageHeader(
-                                        title =
-                                            when (s) {
-                                                // 首页标题平时是**宿主 Activity 自己的标题**（hook 侧读来的，
-                                                //  见 SettingsPageHooks）；字典里有这一档时按语言来，没有才用宿主那串。
-                                                Screen.SHORTCUTS -> I18n.get(Strings.HOME_TITLE, homeTitle)
-
-                                                Screen.BINDING -> BINDING_TITLE
-
-                                                Screen.COMMANDS -> COMMANDS_TITLE
-
-                                                Screen.APP_PICKER -> APP_PICKER_TITLE
-
-                                                Screen.ABOUT -> ABOUT_TITLE
-
-                                                Screen.DONATE_LIST -> DONATE_LIST_TITLE
-                                            },
-                                        // 大标题**下面**那行（库原本的底线副标题槽位，自己占一行）：
-                                        // 首页 = 模块版本。与「更多选项」页的「版本」行**同源但不同串**：
-                                        // 那边总是带构建时刻，这边按构建类型决定（见 appVersionLabel / appVersionText）。
-                                        largeTitleSubtitle =
-                                            when (s) {
-                                                Screen.SHORTCUTS -> remember { appVersionLabel() }
-                                                else -> ""
-                                            },
-                                        // 大标题**右边**那行小标题（补丁新增的槽位，折叠后保留）：
-                                        // 「自定义命令」= 已保存的命令条数（[commands] 变了跟着重组）；
-                                        // 「选择应用」= 当前已选的应用名（两条入口见
-                                        // [appPickerSelectedPkg]，查不到清单就退回包名）。
-                                        subtitle =
-                                            when (s) {
-                                                // 一条都没保存时不报数（「已保存0条命令」读起来像统计，也不成句）——
-                                                // 直接说「没有保存的命令」，与页内那块空态同一句话。
-                                                Screen.COMMANDS -> {
-                                                    if (commands.value.isEmpty()) {
-                                                        I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令")
-                                                    } else {
-                                                        I18n.format(Strings.COMMAND_SAVED_COUNT, commands.value.size)
-                                                    }
-                                                }
-
-                                                Screen.APP_PICKER -> {
-                                                    val pkg = appPickerSelectedPkg()
-                                                    if (pkg == null) {
-                                                        // 没选过就不摆一行「已选择: 无」—— 那种写法像是有个叫「无」的应用
-                                                        I18n.get(Strings.APP_PICKER_UNSELECTED, "还未选择应用")
-                                                    } else {
-                                                        val label =
-                                                            cachedApps
-                                                                ?.firstOrNull { it.packageName == pkg }
-                                                                ?.label ?: pkg
-                                                        I18n.format(Strings.APP_PICKER_SELECTED_FORMAT, label)
-                                                    }
-                                                }
-
-                                                else -> {
-                                                    ""
-                                                }
-                                            },
-                                        // 「选择应用」页开着小窗打开时，那行小字后面补一枚「小窗起」
-                                        // —— 与网格里「打开应用」那格同一口径
-                                        // （见 `BindingScreen` 的 `appSmallWindow`）：那一行字只说明
-                                        // 「选了哪个应用」，看不出这一趟是要普通打开还是小窗起。
-                                        trailingSubtitleIcon =
-                                            if (
-                                                s == Screen.APP_PICKER && smallWindow.value
-                                            ) {
-                                                PageIcons.TileSmallWindow
-                                            } else {
-                                                null
-                                            },
-                                        // 菜单按页分派：**只有首页与「选择应用」页有菜单**
-                                        // （前者是打开默认界面 / 清空配置，后者只有一项
-                                        // 「显示系统应用」，见 [AppPickerMenu]）。
-                                        //
-                                        //  「按键绑定」页那一套「新增命令」菜单晚些时候**撤掉了**
-                                        // 不再有 ⋮。进「自定义命令」页的唯一入口现在是那一页右下角的
-                                        // 那颗 FAB（见 [BindingScreen]）。
-                                        menu =
-                                            when (s) {
-                                                Screen.SHORTCUTS -> HeaderMenu.HOME
-                                                Screen.APP_PICKER -> HeaderMenu.APP_PICKER
-                                                else -> HeaderMenu.NONE
-                                            },
-                                        scrollBehavior = scrollBehavior,
-                                        state = hazeState,
-                                        // 顶栏底下那条**固定带**（三条带子各归各的页）——
-                                        // 不能各页各叠一层浮层（自带取样层 / 模糊 /
-                                        // 半透明底 / 内容里等高占位），统一搬进顶栏这个
-                                        // `bottomContent` 槽位：位置、底色、模糊、下沿那条细线都由
-                                        // 顶栏那一份负责，见 [PageHeader] 与三个带子自己的 KDoc。
-                                        //  带子跨度与内容高度都各自报给页面级状态（[bindingBandHeight]
-                                        // 那三个），页内那个占位 Spacer 读 —— 带子与内容分处两棵树，
-                                        // 只有这一条路能对齐。
-                                        bottomContent = {
-                                            when (s) {
-                                                Screen.BINDING -> {
-                                                    BindingTabBand(
-                                                        pagerState,
-                                                        // 首页那个主开关（[KeyConfig.enabled]）——
-                                                        // 关掉时带子灰掉且吃掉输入（与那颗 FAB 同款）
-                                                        enabled = config.value.key(KeyId.PLUS).enabled,
-                                                    )
-                                                }
-
-                                                Screen.COMMANDS -> {
-                                                    CommandKindBand(commandPager)
-                                                }
-
-                                                Screen.APP_PICKER -> {
-                                                    AppSearchBand()
-                                                }
-
-                                                // 首页 / 「关于模块」/「捐赠列表」都没有固定带
-                                                //  （后两页都是「短内容」页，见 [canScroll] 那一档）
-                                                Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST -> {
-                                                    // 这几页不摆固定带
-                                                }
-                                            }
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // 顶栏**当前**占掉的高度（含它自己那块状态栏 inset）—— 内容顶部要留出这么多。
-
-    /**
-     * 调试通道的处理体 —— **只有 debug 包会走到这里**（实现只在 `src/debug/` 源集）。
-     *
-     * 支持的动作见 [PageDebugChannel] 的类注释（`screen` / `gesture` / `kind` /
-     * `name` / `cmd` / `steps` / `del` / `reset` / `save` / `action` / `state`，一次可以带多个）。
-     *
-     * 执行顺序是**固定的**：先跳页、再切 tab、再填字段、最后才 reset / save —— 这样
-     * 「`--es screen COMMANDS --es kind SERIAL --es name X --ez save true`」这一条广播
-     * 就是一个完整的用例。认不出的取值只记日志、不抛异常。
-     */
-    private fun onDebugCommand(intent: android.content.Intent) {
-        intent.getStringExtra("screen")?.let { raw ->
-            val target = Screen.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
-            if (target != null) {
-                XLog.w("调试：跳页 → $target")
-                // 走 [navTo]（不是「压一层」）：目标已经在栈里就直接回到它，否则压上去。
-                // 于是 `--es screen COMMANDS` 从首页一步落到「自定义命令」页，
-                // 上面那条「push 时拨分页状态」的 effect 照样会跑到（栈深变深了）。
-                navTo(target)
-            } else {
-                XLog.w("调试：认不出的 screen=$raw（可用：${Screen.entries.joinToString()}）")
-            }
-        }
-        intent.getStringExtra("gesture")?.let { raw ->
-            val target = Gesture.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
-            if (target != null) {
-                XLog.w("调试：手势 tab → $target")
-                debugGesture.value = target
-            } else {
-                XLog.w("调试：认不出的 gesture=$raw（可用：${Gesture.entries.joinToString()}）")
-            }
-        }
-        intent.getStringExtra("kind")?.let { raw ->
-            val target = CommandKind.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
-            if (target != null) {
-                XLog.w("调试：命令类型 → ${target.id}")
-                draft.kind = target
-            } else {
-                XLog.w("调试：认不出的 kind=$raw（可用：${CommandKind.entries.joinToString()}）")
-            }
-        }
-        // 字段一律走**与界面同一条清洗**（名称过 `sanitizeName`），否则填进去的值
-        // 与手敲的不是一回事，验出来的结论就不作数
-        intent.getStringExtra("name")?.let { draft.name = CommandLibrary.sanitizeName(it) }
-        intent.getStringExtra("cmd")?.let { draft.single = it }
-        intent.getStringExtra("steps")?.let { raw ->
-            draft.steps.clear()
-            draft.steps.addAll(raw.split(';').map { it.trim() }.filter { it.isNotEmpty() })
-        }
-        if (intent.getBooleanExtra("reset", false)) {
-            XLog.w("调试：重置表单（等于点「重置 / 取消」）")
-            draft.reset()
-        }
-        // 删一条命令 —— 给「填进去 → 保存 → 验完 → 清掉」这种自测收尾用，
-        intent.getStringExtra("del")?.let { raw ->
-            val name = CommandLibrary.sanitizeName(raw)
-            if (commands.value.none { it.name == name }) {
-                XLog.w("调试：没有叫 '$name' 的命令，不用删")
-            } else {
-                XLog.w("调试：删除命令 '$name'")
-                saveCommands(commands.value.filterNot { it.name == name }, "调试删除：$name")
-            }
-        }
-        if (intent.getBooleanExtra("save", false)) {
-            XLog.w("调试：触发保存（等于点「保存 / 修改」）")
-            addCommand()
-        }
-        // 通用动作派发：`--es action NAME` —— 页面级调试动作统一走这张表，加新动作只动这里
-        intent.getStringExtra("action")?.let { raw ->
-            when (raw.uppercase()) {
-                "CONFIRM_RESET" -> {
-                    XLog.w("调试：action=CONFIRM_RESET → 弹出清空确认弹窗")
-                    confirmReset.value = true
-                }
-
-                else -> {
-                    XLog.w(
-                        "调试：认不出的 action=$raw（可用：CONFIRM_RESET）",
-                    )
-                }
-            }
-        }
-        if (intent.getBooleanExtra("state", false)) logDebugState()
-    }
-
-    /**
-     * 把当前状态打进日志（TAG `OplusKey`）—— 省掉「`uiautomator dump` 一遍再看」。
-     *
-     * 打的是**配置里的真值**（三个手势各绑了什么、主开关）与**表单草稿**，
-     * 验「保存后到底写进去没有」「返回时有没有把绑定冲掉」这类问题时直接看这一行。
-     */
-    private fun logDebugState() {
-        val key = config.value.key(KeyId.PLUS)
-        XLog.w(
-            "调试·状态：screen=$screen 栈=${navStack.joinToString(">")} 主开关=${key.enabled} " +
-                "单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token} | " +
-                "表单 kind=${draft.kind.id} editing=${draft.editingName} " +
-                "name='${draft.name}' cmd='${draft.single}' steps=${draft.steps.toList()} | " +
-                "命令库=${commands.value.map { it.name }}",
-        )
-    }
-
     /**
      * 从子页返回上一级 —— 把**栈顶弹掉**。上一级就是压在当前页下面的那一页（不查表）。
      *
@@ -1388,14 +580,12 @@ internal class SettingsPage(
         // 「打开应用」页返回：**原样保留进页前的选择** —— 挑中了写新值（那边自己 `pick`），
         // 没挑就什么都不动，蓝框本来就在选中项上。
         if (current == Screen.APP_PICKER) {
-            appPickerGesture = null
-            // 「给多条命令加一步 / 换一步」那些标记也清掉 —— 不管这次是挑完了、还是没挑就退出来
-            appPickerForStep = false
-            appPickerReplaceStep = -1
+            // 「为谁挑」整组一并清掉 —— 不管这次是挑完了、还是没挑就退出来
+            picker.clearTarget()
         }
         // 「自定义命令」页：表单里改过还没保存 ⇒ 不退，先弹一句确认。判据用 `draft.dirty`
         // （与载入时的快照比），不是 `hasContent` —— 后者会把「点开一条看一眼、原样返回」也算成有改动。
-        if (current == Screen.COMMANDS && draft.dirty) {
+        if (current == Screen.COMMANDS && commandDraft.draft.dirty) {
             if (!confirmLeaveCommands) {
                 XLog.w("退出自定义命令页：表单改过还没保存，先弹确认")
                 confirmLeaveCommands = true
@@ -1416,28 +606,6 @@ internal class SettingsPage(
         navStack.removeAt(navStack.lastIndex)
         return true
     }
-
-    /**
-     * 进「打开应用」页时对应的**手势**（null = 没在挑应用，或者不是给手势挑的）。
-     *
-     *  用途：挑中应用时知道该写哪个手势。不能靠 pager 的当前页 —— 那一页不属于 pager。
-     *  没挑就返回**什么都不动**（见 [goBack]），所以这个字段只服务「挑中了」那一条路。
-     *
-     *  从「添加命令」浮层的「选择应用」进来时这个字段是 **null**（挑中的应用是**一步**、
-     * 不绑手势）—— 给多条命令加一步却没挑，本来就该什么都不发生。
-     */
-    internal var appPickerGesture: Gesture? = null
-
-    /**
-     * 也加一个选择应用，同样打开这个界面」）—— 挑中的包名走 [addStep]，不写手势绑定。
-     */
-    internal var appPickerForStep = false
-
-    /**
-     * 这次进「打开应用」页是**替换多条命令的第几步**（点「已添加的那一行」弹出的选择菜单
-     * `-1` = 追加为一步（走 [addStep]）。与 [appPickerForStep] 同生共死。
-     */
-    internal var appPickerReplaceStep = -1
 
     /**
      * 退出「自定义命令」页时的「放弃未保存的命令」确认 —— 该弹没弹。
@@ -1465,27 +633,27 @@ internal class SettingsPage(
      *  `draft.reset()`，所以窗画在那一页就够。
      */
     internal fun loadDraft(cmd: Command) {
-        if (draft.dirty) {
+        if (commandDraft.draft.dirty) {
             XLog.w("载入命令前先问：表单里有未保存的改动（要换成「${cmd.name}」）")
             pendingDraftLoad = cmd
             return
         }
-        draft.load(cmd)
+        commandDraft.draft.load(cmd)
     }
 
     /**
      * 「打开应用」页该**点亮哪一行**（[AppPickerScreen] 的 `selected`，同时决定进页滚到谁眼前）。
      *
      * 两个入口各有来源，读的都是**进这一页时**记下来的东西（这一页不属于 pager，不能读当前页）：
-     *  · 网格入口（「按键绑定」页的「打开应用」格）→ [appPickerGesture] 那个手势绑的
+     *  · 网格入口（「按键绑定」页的「打开应用」格）→ [AppPickerState.gesture] 那个手势绑的
      *    `app:` 动作的包名；
-     *  · 「自定义命令」页那条路 → 被**换掉**的那一步自己（[appPickerReplaceStep]）：
+     *  · 「自定义命令」页那条路 → 被**换掉**的那一步自己（[AppPickerState.replaceStep]）：
      *    它本来就是 `app:<包名>` 时才算数；「加一步」没有目标 ⇒ null。
      *
      * 之前第二条恒为 null，于是「换一步」进这一页时看不出当前选的是哪个应用
      *（行尾单选圈不亮、也不滚到它眼前）—— 与网格入口那套提示不是一回事。
      */
-    private fun appPickerSelectedPkg(): String? {
+    internal fun appPickerSelectedPkg(): String? {
         // 两种动作都要认：`app:`（普通打开）与 `window:`（小窗，[Action.AppWindow]）——
         // 与「按键绑定」页那一格取应用名同口径。少认一种时，开着「以小窗口打开」挑完应用回来
         // 这页一行都不点亮、也不滚过去，看起来像没选过。
@@ -1499,61 +667,15 @@ internal class SettingsPage(
     }
 
     /**
-     * 宿主侧的模块有没有在跑 —— 也就是**模块执行侧有没有在工作**。
-     *
-     *  判据与流程都在首页那个 `LaunchedEffect` 里：进页发一句「在不在」、等 `HOST_ALIVE_TIMEOUT_MS`、
-     * 再看 [hostAliveToken] 有没有变（变了才有回音）。注意它**只看宿主那一侧** ——
-     * 注入侧那一段是 [injectStatus]，两者再加上「设置生效」的配置侧那半才是整页总闸
-     *（`ui/state/LinkCheck.kt` 的 `linkReady`）。
-     *
-     * 初值取 `true`：首帧还没查，先按「正常」画 —— 反过来的话每次进页面都会闪一下「未生效」的提示。
-     * 首页那个 `LaunchedEffect` 组合完立刻查一次，查完再按真实结果画。
+     * 「链路 / 报活」那几项结论（宿主在不在、注入侧回没回包）—— 见 [HostLinkState]。
      */
-    internal var hostServiceUp by mutableStateOf(true)
+    internal val link = HostLinkState()
 
     /**
-     * 宿主侧报活的**代次** —— 每收到一条报活就自增。
-     *
-     *  首页进页时记下它、发一句「在不在」，等一档再看它有没有变：变了就是模块在，没变就是没在
-     *（见 [HOST_ALIVE_TIMEOUT_MS]）。用它而不是直接看 [hostServiceUp]，是因为后者初值必须是
-     * `true`（否则每次进页面都会闪一下提示）。
-     */
-    internal var hostAliveToken by mutableIntStateOf(0)
-
-    /**
-     * 注入侧（system_server）回包的内容 —— `null` = 问过但**没回音**（注入侧没装上，
-     * 或它那支 AMS 广播入口没挂上）。
-     *
-     *  初值就是 `null`：没问到之前一律按「未就绪」算。它、[hostServiceUp] 与配置侧那半一起构成
-     * 整页总闸（见 `ui/state/LinkCheck.kt` 的 `linkReady`）—— 注入侧那半只没装时页面整体禁用，
-     * 逃生口是 ⋮ 菜单里那颗「默认界面」。
-     */
-    internal var injectStatus by mutableStateOf<InjectStatus?>(null)
-
-    /** 注入侧回包的**代次** —— 与 [hostAliveToken] 同一个道理：初值不能当判据，只看有没有新回音。 */
-    internal var injectAliveToken by mutableIntStateOf(0)
-
-    /** 宿主报活带回来的「它读到的主开关真值」—— `false` ⇒ 它读到的是默认值（主开关关着 / 还没解锁）。 */
-    internal var hostEnabled by mutableStateOf(true)
-
-    /** 宿主报活带回来的「最后一次执行动作」（`elapsedRealtime()`，0 = 从未）。 */
-    internal var hostLastActionAt by mutableLongStateOf(0L)
-
-    /**
-     * 首页那条「模块未生效」提示的宿主状态 —— COUI 的 `SnackbarHost` 用它排队 / 显隐。
-     *
-     *  提示由首页（[HomeScreen]）弹，宿主却挂在这一层：`SnackbarHost` 要的是「底部对齐、
-     * 不随内容滚动」的位置，而首页自己整个是滚动容器 —— 挂在页内就只能跟着内容滚了。
-     */
-    internal val hostServiceSnackbar = SnackbarHostState()
-
-    /**
-     * 见 `SettingsPageHooks`）—— 把页面栈清回首页。
+     * 从设置页重进模块时（`SettingsPageHooks`）—— 把页面栈清回首页。
      */
     fun onHostReentered() {
-        appPickerGesture = null
-        appPickerForStep = false
-        appPickerReplaceStep = -1
+        picker.clearTarget()
         // 栈顶没变时下面的 LaunchedEffect 不触发，浮窗要在这里主动收：
         // 首页开着 ⋮ 菜单按 Home / 熄屏再回来，菜单不能还盖在页面上。
         closeOverlays("从设置重进模块")
@@ -1574,7 +696,7 @@ internal class SettingsPage(
      * （`mutableStateOf` 写同值不触发重组），所以收的时候不必先判在不在。
      * 返回值 = 这一层刚才**真的开着**（只用来把日志写准）。
      */
-    private val overlayClosers = mutableListOf<() -> Boolean>()
+    internal val overlayClosers = mutableListOf<() -> Boolean>()
 
     /**
      * 页面离开时**主动收掉所有浮窗**。
@@ -1681,7 +803,7 @@ internal class SettingsPage(
     }
 
     /** 往单个 View 挂三个 owner（**只挂不覆盖**）。 */
-    private fun attachOne(
+    internal fun attachOne(
         target: View,
         own: FallbackOwners,
     ) {
@@ -1706,7 +828,7 @@ internal class SettingsPage(
      * [attachOne] 钉进 ViewTree（`attachOne` 只挂不覆盖），后面就再也换不掉，Compose
      * 会拿到那份停在 `INITIALIZED` 的 lifecycle —— 页面一片空白（见本文件里的调用点注释）。
      */
-    private fun ownOwners(
+    internal fun ownOwners(
         hostLifecycle: androidx.lifecycle.LifecycleOwner?,
         hostViewModel: androidx.lifecycle.ViewModelStoreOwner?,
         hostSavedState: androidx.savedstate.SavedStateRegistryOwner?,

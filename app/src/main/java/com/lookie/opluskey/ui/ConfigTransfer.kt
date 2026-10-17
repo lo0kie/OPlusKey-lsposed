@@ -1,15 +1,15 @@
 package com.lookie.opluskey.ui
 
+import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.core.config.ConfigBundle
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.reflect.Reflect
-import com.lookie.opluskey.inject.hookGuarded
 import com.lookie.opluskey.ui.model.UNKNOWN_CONFIG_FORMAT
-import com.lookie.opluskey.ui.screen.CommandsSave
-import com.lookie.opluskey.ui.screen.appVersionText
-import com.lookie.opluskey.ui.screen.saveCommands
+import com.lookie.opluskey.ui.screen.home.appVersionText
+import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.state.saveCommands
 import com.lookie.opluskey.ui.state.toast
 import com.lookie.opluskey.ui.state.write
 import io.github.libxposed.api.XposedModule
@@ -180,7 +180,7 @@ internal object ConfigTransfer {
         }
         // 导出**页面手上这份**（= 用户看到的），不是重读一遍文件：两边正常时等价，
         // 而页面这份已经过 `configReadOnly` 那道闸 —— 读不懂的状态下压根进不来这一页。
-        val text = ConfigBundle.export(page.config.value, page.commands.value)
+        val text = ConfigBundle.export(page.configState.config.value, page.configState.commands.value)
         if (text.isEmpty()) {
             page.toast(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败"))
             return
@@ -278,7 +278,7 @@ internal object ConfigTransfer {
                 //  反过来那一半也要防：命令库**写失败**时主配置已经生效，那份新配置里的手势会绑到
                 //  库里不存在的命令上（两个只读位是分开的，「配置能写、命令库只读」这种组合可达）。
                 //  所以这里留一份旧配置，命令库没落盘就把它写回去 —— 两段一起成、或一起不动。
-                val previousConfig = page.config.value
+                val previousConfig = page.configState.config.value
                 if (!page.write(parsed.config, "导入配置")) {
                     XLog.w("导入配置：配置未落盘（只读态 / 写失败），命令库保持不动")
                     return@post

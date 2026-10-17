@@ -35,9 +35,9 @@ import com.lookie.opluskey.core.log.XLog
  *
  * ## 接管点候选不在这张表里
  *
- * Hook 面的候选类名 / 方法名写在 `inject/Framework.kt` 的候选表里（一、7 要求），那边**也是按
+ * Hook 面的候选类名 / 方法名写在 `bridge/Framework.kt` 的候选表里（一、7 要求），那边**也是按
  * `romSeries` 分档的**（见它的 `HookSet`）。所以「适配一版新 ROM」要碰的表一共**两张**：
- * 本文件（执行落点 + 反射面）与 `inject/Framework.kt`（接管点候选），两张都用同一个 ROM 键。
+ * 本文件（执行落点 + 反射面）与 `bridge/Framework.kt`（接管点候选），两张都用同一个 ROM 键。
  */
 object RomProfile {
     /**
@@ -291,6 +291,17 @@ object RomProfile {
         val rom = DeviceSupport.currentRomSeries
         PROFILES.firstOrNull { it.romSeries == rom }
     }
+
+    /**
+     * 这张表登记过的 ROM 系列 —— **另外两张表（适配清单 / 接管点候选）的对账基准**。
+     *
+     *  从这里取而不是各自再列一遍：一档 ROM 的「档位名 + 验证记录」只有这一处是权威
+     *  （接管点候选表按 `romSeries` 反查本表取名字，见 `bridge/Framework.HookSet`）。
+     */
+    val series: Set<String> get() = PROFILES.map { it.romSeries }.toSet()
+
+    /** 按 ROM 系列取那一档（没登记返回 `null`）—— 供另一张表反查档位名 / 验证记录。 */
+    fun bySeries(series: String): Profile? = PROFILES.firstOrNull { it.romSeries == series }
 
     /**
      * 反射面 / 接管点候选用的那一档 —— 本机没适配时**照最后一档试**（理由见类注释），并打一行 `w`。

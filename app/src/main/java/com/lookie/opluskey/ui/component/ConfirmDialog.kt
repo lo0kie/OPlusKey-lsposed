@@ -50,9 +50,8 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * 见下面那段 `LaunchedEffect`。注意：数量随调用点变（现在六处）——
  * 加调用点不必回来改这句话，但**别把它当成「只覆盖前四个」**。
  *
- * @param summary 正文，**按 markdown 渲染**（见 [MarkdownBody]）。弹窗正文短、一处一句，
- *   所以常用到的只有 `**加粗**` 与 `- 列表` 这两样；**用户写的东西要塞进来时先过
- *   [escapeMarkdown]**（命令名、应用名），否则名字里的记号会被当成排版。
+ * @param summary 正文，**认两种记号**（见 [EmphasisText]）：`**加粗**`，以及行首的 `- `（项目符号）。
+ *   **用户写的东西要塞进来时先过 [escapeEmphasis]**（命令名、应用名），否则名字里的记号会被当成排版。
  *   **给 `null` 就是「没有正文」**；给空串会画出一行空白，别这么用。
  * @param positiveDanger 动作项是否按破坏性上色（红）。默认 `true`（重置 / 删除 / 放弃）；
  *   **不丢用户任何东西**的确认传 `false`，走主题色 —— 「选择应用」页那两句
@@ -150,7 +149,7 @@ internal fun SettingsPage.ConfirmDialog(
 /**
  * 弹窗正文那一块 —— **可滚、可收缩**，由调用方把按钮栏钉在它下面。
  *
- *  正文走 [MarkdownBody] 而不是库那个 `summary` 槽：那个槽只收纯文本，且标题与正文会被染成同一档色。
+ *  正文走 [EmphasisText] 而不是库那个 `summary` 槽：那个槽只收纯文本，且标题与正文会被染成同一档色。
  *  短正文居中、长正文左对齐：与库 `DialogContentLayout` 自己那条口径一致（见 [isShortDialogBody]）。
  *
  *  为什么必须能滚能收：[ConfirmDialog] 那一层 `Column` 的高度是有界的（居中档被库限到窗口高的
@@ -166,7 +165,7 @@ private fun ColumnScope.DialogBody(text: String) {
             .weight(1f, fill = false)
             .verticalScroll(rememberScrollState()),
     ) {
-        MarkdownBody(
+        EmphasisText(
             text = text,
             textAlign = if (isShortDialogBody(text)) TextAlign.Center else TextAlign.Start,
             modifier =
@@ -286,16 +285,16 @@ internal fun isShortDialogBody(text: String): Boolean = text.lines().all { dialo
 private const val DIALOG_BODY_CENTER_MAX = 44
 
 /**
- * 去标记之后的**显示宽度**：全角（中日韩、全角标点）算两格，其余算一格；markdown 记号不占位。
+ * 去标记之后的**显示宽度**：全角（中日韩、全角标点）算两格，其余算一格；加粗记号不占位。
  *
  * 只为上面那条判据服务，所以**只处理我们正文里出现的那几样记号**（`**` / 行首 `- ` / 反斜杠转义），
- * 不是通用 markdown 解析器 —— 出现没预料到的记号时只会把句子判得偏长（退回左对齐），不影响读。
+ * 不是通用解析器 —— 出现没预料到的记号时只会把句子判得偏长（退回左对齐），不影响读。
  */
 private fun dialogBodyDisplayWidth(text: String): Int =
     displayWidth(
         text
             .replace("**", "")
             .removePrefix("- ")
-            // 转义用的反斜杠不显示（正文里的命令名、应用名过 [escapeMarkdown]）
+            // 转义用的反斜杠不显示（正文里的命令名、应用名过 [escapeEmphasis]）
             .replace("\\", ""),
     )

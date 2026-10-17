@@ -16,4 +16,15 @@ package com.lookie.opluskey.core.model
 object ModuleInfo {
     /** 模块自己的包名（= `app/build.gradle.kts` 的 `applicationId`）。 */
     const val PACKAGE = "io.github.lo0kie.opluskey"
+
+    /**
+     * 每次出包手动更新；CI 靠它给产物命名（`build.yml` 的 `dist` 那一步）。
+     *
+     * 它还是**构建时刻读不到时的回退值**（`ui/screen/HomeScreen` 的 `moduleBuildStamp`）
+     * —— 那时界面版本行显示的整串就是它，所以它自己带着日期。
+     *
+     *  原来挂在 `KeyModule` 上：那是「版本身份」，不是「入口派发」——而挂在那里会让
+     *  界面为了一个版本号去 import 注入入口那个类（`ui → root` 也是审计要清的边）。
+     */
+    const val BUILD_ID = "2026-10-15-0001"
 }

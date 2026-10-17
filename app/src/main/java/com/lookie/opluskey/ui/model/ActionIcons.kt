@@ -2,11 +2,14 @@ package com.lookie.opluskey.ui.model
 
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.screen.binding.BindingScreen
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
@@ -239,23 +242,37 @@ internal fun actionIcon(token: String): ImageVector =
         else -> {
             when {
                 // 截图那条 shell（清单里是 `service call color_screenshot 1`）
-                token.contains(KsuCompat.SCREENSHOT_CMD_PREFIX) -> TablerIcons.Outline.Screenshot
+                token.contains(KsuCompat.SCREENSHOT_CMD_PREFIX) -> {
+                    TablerIcons.Outline.Screenshot
+                }
 
                 // 小布识屏那条 shell（`DIRECT_SIDEBAR_SERVICE`）—— 语义是「识屏」
-                token.contains(KsuCompat.SIDEBAR_SERVICE) -> TablerIcons.Outline.TextRecognition
+                token.contains(KsuCompat.SIDEBAR_SERVICE) -> {
+                    TablerIcons.Outline.TextRecognition
+                }
 
-                token.startsWith(Action.SHELL_PREFIX) -> TablerIcons.Outline.Terminal2
+                token.startsWith(Action.SHELL_PREFIX) -> {
+                    TablerIcons.Outline.Terminal2
+                }
 
                 // 区别只在内容存哪（`shell:` 是原文，`cmd:` 是名字）
-                token.startsWith(Command.PREFIX) -> TablerIcons.Outline.Terminal2
+                token.startsWith(Command.PREFIX) -> {
+                    TablerIcons.Outline.Terminal2
+                }
 
-                token.startsWith(Action.APP_PREFIX) -> TablerIcons.Outline.LayoutGrid
+                token.startsWith(Action.APP_PREFIX) -> {
+                    TablerIcons.Outline.LayoutGrid
+                }
 
                 // 「以小窗口打开」（`window:目标`）：新起一个窗口 —— 与「把前台的收成小窗」那两档
                 // （`zoom:mini` / `zoom:mini:collapse`，见上面）是**三支不同字形**，别顺手并回来。
-                token.startsWith(Action.WINDOW_PREFIX) -> TablerIcons.Outline.WindowMinimize
+                token.startsWith(Action.WINDOW_PREFIX) -> {
+                    TablerIcons.Outline.WindowMinimize
+                }
 
-                else -> TablerIcons.Outline.Dots
+                else -> {
+                    TablerIcons.Outline.Dots
+                }
             }
         }
     }
@@ -274,32 +291,27 @@ internal fun specIcon(spec: ActionCatalog.Spec): ImageVector =
     when {
         spec.commandKind != null -> commandIcon(spec.commandKind, spec.commandSteps)
 
-        // 「循环」与「响铃状态」格共用写法 `keyevent:164`，靠 token 分不出 —— 只能按 spec 认领字形。
-        spec === ActionCatalog.RINGER_CYCLE -> PageIcons.RingerCycle
+        // 注册时声明过字形的（入口格 / 标记格 / 一处 token 两支字形那几种），按声明给
+        spec.glyph != null -> glyphIcon(spec.glyph)
 
-        // 「媒体控制」那一格与菜单首行共用 `keyevent:85`（`Action.parse` 出来的取值一模一样）——
-        //  只能按 spec 认领：**格子**用音符（它是一类东西，入口），**菜单首行**落到下面 `actionIcon`
-        //  的开关键那颗（那是一个具体取值）。这两处**要不一样**：入口是「媒体控制」这件事，
-        //  首行是「播放 / 暂停」这个取值。
-        spec === ActionCatalog.MEDIA_TILE_SPEC -> TablerIcons.Outline.Music
-
-        // 两个**标记**入口格同理：token（`nav:` / `key:`）`Action.parse` 不出有意义的动作，
-        // 走 [actionIcon] 只会落到兜底字形 —— 按 spec 认领。
-        spec.token == ActionCatalog.NAV_TILE -> PageIcons.NavigationCog
-
-        spec.token == ActionCatalog.KEY_TILE -> PageIcons.Click
-
-        // 「通知与控制中心」同理：标记 token（`panel:`）不是任何一条真取值，按 spec 认领字形
-        // （`align-box-center-middle`：上下两块面板）。
-        spec.token == ActionCatalog.PANEL_TILE -> PageIcons.Panels
-
-        // 「应用转小窗」同理：标记 token（`zoom:`）不是任何一条真取值，按 spec 认领字形
-        // （`picture-in-picture-on`：入口是画中画，菜单里那两档另有两支）。
-        spec.token == ActionCatalog.MINI_TILE -> PageIcons.MiniWindow
-
-        // 走 ActionCatalog 那份按 token 记忆的规范化结果，不在这里现 `Action.parse` —— 这条
-        //  在网格每个格子的每一次重组上（见 `ActionCatalog.canonicalToken`）。
+        // 其余按 token 推 —— 与配置里那一串写法同一套（`Action.parse` 的规范化结果）
         else -> actionIcon(ActionCatalog.canonicalToken(spec.token))
+    }
+
+/**
+ * 字形名 → 图标 —— **全项目唯一一处映射**（[ActionCatalog.Glyph] 是封闭枚举，加一档字形才碰它）。
+ * 这几种「一个 token 两支字形」和「标记格」原来散在 [specIcon] 里用 `spec ===` / `token ==` 认领，
+ * 那等于把注册信息漏在渲染层；现在字形随条目一起注册、这里只翻译。
+ */
+internal fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
+    when (glyph) {
+        ActionCatalog.Glyph.Bell -> TablerIcons.Outline.Bell
+        ActionCatalog.Glyph.Repeat -> PageIcons.RingerCycle
+        ActionCatalog.Glyph.Music -> TablerIcons.Outline.Music
+        ActionCatalog.Glyph.NavigationCog -> PageIcons.NavigationCog
+        ActionCatalog.Glyph.Click -> PageIcons.Click
+        ActionCatalog.Glyph.Panels -> PageIcons.Panels
+        ActionCatalog.Glyph.MiniWindow -> PageIcons.MiniWindow
     }
 
 /**

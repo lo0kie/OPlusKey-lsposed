@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OPlusKey 捐赠名单（donors.json）",
+  "description": "「捐赠列表」页的数据，文件是 app/seal/donors.json。\n顶层必须是数组：一项 = 一位捐赠者，数组顺序就是页面上的顺序（页面不排序、也不合并同名的行）。\n空数组 [] 是合法状态 —— 页面走「还没有捐赠记录」那一档。\n读法见 ui/model/Donor.kt：读不到、解不开都退成空表并记一行 w。",
+  "type": "array",
+  "default": [],
+  "examples": [
+    [],
+    [
+      { "name": "张老板", "amount": 30 },
+      { "name": "Lookie", "amount": 100 }
+    ]
+  ],
+  "items": {
+    "title": "一位捐赠者",
+    "description": "一行 = 一个人。表头不是数据（页面自己画、跟随界面语言），不要在这里写表头行；\n规则之外的键会被忽略，不会报错。",
+    "type": "object",
+    "properties": {
+      "name": {
+        "title": "称谓（昵称）",
+        "description": "表格左格。两端的空白会被去掉；去掉之后为空的行会被丢掉（不报错、也不显示）。\n写昵称，不要写真实姓名或手机号 —— 这份名单跟着包走，封存只算混淆（密钥由公开的签名证书派生，拿得到证书就解得开）。",
+        "type": "string",
+        "minLength": 1,
+        "pattern": "\\S",
+        "examples": ["张老板", "Lookie"]
+      },
+      "amount": {
+        "title": "金额（整数元）",
+        "description": "表格右格，显示成 ¥ 加金额。整数元：小数会被截断（30.5 读成 30）；带千分位或货币符号的字符串读出来是 0。\n不写这一项等于 0。",
+        "type": "integer",
+        "minimum": 0,
+        "default": 0,
+        "examples": [30, 100]
+      }
+    },
+    "required": ["name"],
+    "additionalProperties": true,
+    "examples": [{ "name": "张老板", "amount": 30 }]
+  }
+}

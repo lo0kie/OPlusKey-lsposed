@@ -78,6 +78,13 @@ jobs:
       - name: 静态检查（格式化 / detekt / lint）
         run: ./gradlew spotlessCheck detekt lintDebug
 
+      # 耦合审计（docs/decoupling.md 七）：包级导入图 + 禁止边 + 环检测。
+      # 这道闸补的是上面那三步看不见的东西 —— detekt / lint 管单文件，管不了
+      # 「注入侧 import 了界面层」「core 反过来引 ui」这类**跨包越界**。
+      # 脚本是纯标准库的，ubuntu 上装好的 python3 直接能跑。
+      - name: 耦合审计（禁止边 / 包级环）
+        run: python3 tools/audit-coupling.py
+
       - name: 构建 debug 与 release
         run: |
           if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
@@ -95,7 +102,7 @@ jobs:
         id: dist
         run: |
           BUILD_ID=$(sed -n 's/.*BUILD_ID[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
-            app/src/main/java/com/lookie/opluskey/KeyModule.kt | head -1)
+            app/src/main/java/com/lookie/opluskey/core/model/ModuleInfo.kt | head -1)
           VERSION_NAME=$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
             app/build.gradle.kts | head -1)
           VERSION_CODE=$(sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' \
@@ -104,7 +111,7 @@ jobs:
           # 校验必须留在这一层：把它塞进抓取用的函数会在 $(…) 子 shell 里跑，
           # 变量赋值传不出来，守卫会静默失效。
           missing=""
-          [ -n "$BUILD_ID" ]     || missing="${missing}${missing:+、}BUILD_ID（KeyModule.kt）"
+          [ -n "$BUILD_ID" ]     || missing="${missing}${missing:+、}BUILD_ID（core/model/ModuleInfo.kt）"
           [ -n "$VERSION_NAME" ] || missing="${missing}${missing:+、}versionName（app/build.gradle.kts）"
           [ -n "$VERSION_CODE" ] || missing="${missing}${missing:+、}versionCode（app/build.gradle.kts）"
           if [ -n "$missing" ]; then
@@ -252,10 +259,17 @@ jobs:
           #    注意：debug / release 源集里也有 `core/` 的副本（`HostFilePerms`），同样在注入侧执行，
           #    一并扫。
           #    ui/（Compose + COUI）与图标库（com.composables / io.github.lyxnx）是禁引项。
+          #    bridge/ 是 2026-10-16 从 inject/ 拆出的「两进程共用的平台层」（系统桥 / 事实表 /
+          #    按键注入）：两侧共用、也在 system_server 里被加载，所以与 core/ 同待遇，一并拦。
+          #    ⚠️ 2026-10-17 起 bridge/ 又按**进程归属**分了三档：`bridge/`（两侧共用）、
+          #    `bridge/host/`（只有宿主侧引用）、`bridge/inject/`（只有注入侧引用）。
+          #    `bridge/host/` **不在这条扫描范围内** —— 它只在宿主 App 进程里跑，与 `host/` 同待遇
+          #    （拿它跟 system_server 一起拦会把宿主侧也当成注入侧，判据就错了）。
           #    目录先各自确认存在：路径写错时 grep 会返回 2（错误），不加这道守卫会被当成「无命中」放过
           injection_dirs=""
           for p in \
             app/src/main/java/com/lookie/opluskey/inject \
+            app/src/main/java/com/lookie/opluskey/bridge \
             app/src/main/java/com/lookie/opluskey/core \
             app/src/debug/java/com/lookie/opluskey/core \
             app/src/release/java/com/lookie/opluskey/core ; do
@@ -265,10 +279,13 @@ jobs:
               bad "找不到注入侧目录 $p（包名挪过？这条校验会失效）"
             fi
           done
-          hits=$(grep -rn "^import \(androidx\|io\.github\.suqi8\|io\.github\.lyxnx\|com\.composables\|com\.lookie\.opluskey\.ui\b\|com\.lookie\.opluskey\.ui\." $injection_dirs || true)
+          if [ ! -d app/src/main/java/com/lookie/opluskey/bridge/host ]; then
+            bad "找不到 bridge/host/（进程归属分过档？这条 --exclude-dir=host 的排除会失效）"
+          fi
+          hits=$(grep -rn --exclude-dir=host "^import \(androidx\|io\.github\.suqi8\|io\.github\.lyxnx\|com\.composables\|com\.lookie\.opluskey\.ui\b\|com\.lookie\.opluskey\.ui\." $injection_dirs || true)
           if [ -n "$hits" ]; then
             printf '%s\n' "$hits"
-            bad "注入侧（inject/ core/）引用了 androidx / COUI —— 见 AGENTS.md 一、1"
+            bad "注入侧（inject/ bridge/ core/，不含 bridge/host/）引用了 androidx / COUI —— 见 AGENTS.md 一、1"
           else
             echo "  ok  注入侧无 androidx / COUI import"
           fi
@@ -342,10 +359,10 @@ jobs:
 
           for apk in dist/*-debug.apk; do
             [ -f "$apk" ] || continue
-            if unzip -l "$apk" | grep -q 'assets/donate/wechat.png'; then
+            if unzip -l "$apk" | grep -q 'assets/donate/wechat.webp'; then
               echo "  ok  debug 包里是明文收款码（app/seal 那条资产目录接上了）"
             else
-              bad "$apk 里没有 assets/donate/wechat.png —— debug 的明文资产没接上"
+              bad "$apk 里没有 assets/donate/wechat.webp —— debug 的明文资产没接上"
             fi
           done
 

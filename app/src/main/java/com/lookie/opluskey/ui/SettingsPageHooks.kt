@@ -1,11 +1,10 @@
 package com.lookie.opluskey.ui
 
 import android.view.ViewGroup
+import com.lookie.opluskey.bridge.Framework
+import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.reflect.Reflect
-import com.lookie.opluskey.inject.Framework
-import com.lookie.opluskey.inject.hookGuarded
 import com.lookie.opluskey.ui.theme.pageBackgroundColor
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -25,20 +24,20 @@ internal object SettingsPageHooks {
     /**
      * 宿主 Activity 基类 —— 页面骨架在这里，见类注释。
      *
-     * 注意：类名本体在 `inject/Framework.kt` 的候选表里（一、7），这里只是别名。
+     * 注意：类名本体在 `bridge/Framework.kt` 的候选表里（一、7），这里只是别名。
      */
     private val BASE_ACTIVITY = Framework.HOST_SETTINGS_BASE_ACTIVITY
 
     /**
      * 侧键设置页的**实际** Activity（[BASE_ACTIVITY] 的子类）。
      *
-     *  「重启服务」杀掉本进程之后要靠它把页面重新拉起来（见 `ui/state/ConfigActions`
+     *  「重启服务」杀掉本进程之后要靠它把页面重新拉起来（见 `ui/state/PageControl`
      * 的 `schedulePageRelaunch`）：那一枪是进程死了之后由系统投递的，拿不到当前 Activity，
      * 只能有一个写死的组件名兜底。照旧保守取 `activity?.componentName`，取到就不用它。
      *  真机 `dumpsys package com.oplus.gesture` 核对（它的 intent-filter 里带着
      * `com.oplus.gesture.StartActionButtonSettingsActivity` 这个 action）。
      *
-     * 注意：类名本体在 `inject/Framework.kt` 的候选表里（一、7），这里只是别名。
+     * 注意：类名本体在 `bridge/Framework.kt` 的候选表里（一、7），这里只是别名。
      */
     internal val SETTINGS_ACTIVITY = Framework.HOST_SETTINGS_ACTIVITY
 

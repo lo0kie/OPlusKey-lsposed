@@ -116,11 +116,12 @@ abstract class SealReleaseAssets : DefaultTask() {
         val fingerprint = MessageDigest.getInstance("SHA-256").digest(certDer)
 
         // 明文清单：源目录下**全部**文件，条目名 = 相对路径（`/` 分隔）
+        //  例外：`*.schema.json` 是给编辑器看的**规则**（躺在数据文件旁边那份），不是资产 —— 不进包。
         val root = sourceRoot.get().asFile
         val entries =
             root
                 .walkTopDown()
-                .filter { it.isFile }
+                .filter { it.isFile && !it.name.endsWith(".schema.json") }
                 .sortedBy { it.relativeTo(root).invariantSeparatorsPath }
                 .map { it.relativeTo(root).invariantSeparatorsPath to it.readBytes() }
                 .toList()
@@ -229,6 +230,15 @@ android {
                 .apply { timeZone = TimeZone.getTimeZone("Asia/Shanghai") }
                 .format(epochMillis()),
         )
+
+        // 只留 arm64-v8a。包里那份 `libandroidx.graphics.path.so` 是 Compose 画矢量路径带来的，
+        //  而**本模块没有自己的进程**（零组件，界面跑在宿主进程里）⇒ 它只会被**注入目标的那个进程**
+        //  加载：目标机型上宿主与 system_server 都是 64 位。另外三份副本（armeabi-v7a / x86 / x86_64）
+        //  纯属白带，占 27 KiB。
+        //  代价：真碰上 32 位 ROM 会 `UnsatisfiedLinkError` —— 那类机型没有侧键，不在适配清单里。
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     compileOptions {
@@ -236,6 +246,24 @@ android {
         // Kotlin 不许把高阶 target 的字节码内联进低阶目标，所以这里与 Kotlin 一起抬到 21
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+    }
+
+    // 语言资源只留中英两档。
+    //
+    //  这**不是**本模块自己的文案：界面字典是 `assets/locales/*.json`（走 `core/i18n`，
+    //  与 Android 资源无关），所以这一刀动不了模块的一个字。它砍的是**依赖**带进来的字符串 ——
+    //  androidx（Compose 文本选择工具条那几颗「复制 / 粘贴 / 全选」）、COUI、Haze 这些 AAR
+    //  各自带了一整套本地化，实测合并后 **89 种语言配置**全进了 `resources.arsc`。
+    //
+    //  为什么留 `zh` 与 `zh-rCN` 两条：`zh` 是简体/繁体/港台的公共回退档，`zh-rCN` 是部分库
+    //  单独写的那份；只留 `zh` 会让少数库在国行机（`zh-rCN`）上退到 `zh`——大概率逐字相同，
+    //  但这一档没有收益可比（省下的是**空的**，见下），不留着才是白改。
+    //  `en` 必须留：它是所有缺档语言的最终回退，砍了会让一批库的字符串直接消失。
+    //
+    //  注意用的是 `androidResources.localeFilters` 而**不是** `defaultConfig.resourceConfigurations`：
+    //  后者自 AGP 8.1 起已废弃，AGP 9 里没有它。
+    androidResources {
+        localeFilters += listOf("zh", "en", "zh-rCN")
     }
 
     // 正式签名从根目录 keystore.properties 读取（不入库）；文件不存在则跳过。
@@ -301,7 +329,7 @@ android {
         resValues = true
     }
 
-    // 明文资产（`app/seal/donate/*.png` 与 `app/seal/donors.json`）**只接给 debug**：
+    // 明文资产（`app/seal/donate/*.webp` 与 `app/seal/donors.json`）**只接给 debug**：
     //  开发时要能随手换图，走的就是明文这条路。
     //  release 不接这一条 —— 它的收款码与名单由 [SealReleaseAssets] 封成 `assets/sealed.bin`，
     //  明文一律不进包（这是「换图重打包」那条路被卡住的地方，见那个任务的说明）。
@@ -322,6 +350,26 @@ android {
         //  `preLoadedDexes`（框架自己的那份缓存），真机上不一定走到这一步。
         dex {
             useLegacyPackaging = true
+        }
+        resources {
+            excludes +=
+                setOf(
+                    // 协程的调试探针资源：只在主动装 `DebugProbes.install()` 时读，
+                    //   release 里没人走那条路（它是数据不是代码，删了不改动行为）。
+                    "DebugProbesKt.bin",
+                    // 依赖的版本清单（`META-INF/androidx.*.version` 那一类）：四十来份，各 6~9 字节，
+                    //  是给构建期的「依赖版本对齐报告」看的，设备上没有任何代码读它。
+                    "META-INF/*.version",
+                    // AGP 写进去的构建元数据：只在排查构建本身时有用，运行期无人读取。
+                    "META-INF/com/android/build/gradle/app-metadata.properties",
+                    "META-INF/version-control-info.textproto",
+                    // kotlin 编译器的工具元数据：打给**构建工具**看的，不在运行期用。
+                    "kotlin-tooling-metadata.json",
+                )
+            //  上面**没有**排除许可证文件（原本是 5 份逐字节相同的 Apache-2.0 LICENSE.txt，
+            //  共 17.4 KiB）。它们确实互相重复，但那是依赖的许可证正文 —— 本项目是 GPL-3.0，
+            //  README 里也专节列了第三方归属，为十几 KB 把许可证正文从产物里拿掉不合适。
+            //  真要省这 17.4 KiB，就在这条 `excludes` 里再加 `"META-INF/*/LICENSE.txt"` 即可。
         }
     }
 
@@ -432,12 +480,6 @@ dependencies {
         version { strictly("1.1.0-subtitle4") }
     }
     // Preference 整行组件（Switch/Arrow/SliderPreference），不在 coui-ui 传递依赖里
-    // 弹窗正文的 markdown 渲染（`ui/component/MarkdownBody` 用它）。**只给界面层用** ——
-    //  注入侧（inject/）与宿主侧（host/）一律不许引用它（AGENTS 一、1 / 二、1.2）。
-    //  它只拖一个 markdown 解析器，不引 Material3：色板与字体由 `MarkdownBody` 按 COUI 主题
-    //  一档档映射过去，不另开一套主题。
-    implementation("com.mikepenz:multiplatform-markdown-renderer-android:0.45.0")
-
     implementation("io.github.suqi8.coui.kmp:coui-preference-android:1.1.0")
     // 磨砂（顶栏 / 浮层菜单 / 底部工具栏 / FAB）—— Haze。
     //

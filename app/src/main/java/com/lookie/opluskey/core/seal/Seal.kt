@@ -13,7 +13,7 @@ import javax.crypto.spec.SecretKeySpec
  *
  * ## 它在防什么
  *
- *  这两样东西都以明文进过包，`unzip` 一下就能换掉：把 `donate/wechat.png` 换成自己的收款码重打包，
+ *  这两样东西都以明文进过包，`unzip` 一下就能换掉：把 `donate/wechat.webp` 换成自己的收款码重打包，
  *  再签个名发出去，用户看不出来。**只有 release 走加密**（见 [SEAL_ENABLED]）：明文在包里不存在，
  *  想换就得重新封一份；而密钥是从**签名证书**派生的（见 [SealCertificate]），重签之后指纹变了，
  *  密钥跟着变 —— 拿旧密文解不开，只见到兜底字形。
@@ -54,7 +54,7 @@ internal object Seal {
     private var judgement: Verdict? = null
 
     /**
-     * 读一份受保护的资产（条目名 = 明文时期在 `assets/` 下的路径，如 `donate/qq.png`）。
+     * 读一份受保护的资产（条目名 = 明文时期在 `assets/` 下的路径，如 `donate/qq.webp`）。
      *
      *  读不到返回 `null` —— 与「文件没进包」同一个结果，调用方各自退成兜底形态
      *  （收款码退成品牌字形、名单退成空态），并留一句 `w` 当判据。

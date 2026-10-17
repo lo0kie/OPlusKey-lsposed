@@ -7,7 +7,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
-import com.lookie.opluskey.KeyModule
+import com.lookie.opluskey.bridge.Framework
+import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
@@ -15,17 +16,18 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.core.seal.Verdict
 import com.lookie.opluskey.core.wire.ConfigBroadcast
+import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.FailureNotice
 import com.lookie.opluskey.host.action.actionNoticeText
-import com.lookie.opluskey.inject.Framework
 
 /** 接收 `system_server` 转来的判好的侧键手势，按配置执行动作。 */
 internal object GestureReceiver {
@@ -131,16 +133,16 @@ internal object GestureReceiver {
                     context: Context?,
                     intent: Intent?,
                 ) {
-                    // 设置页问「宿主侧的模块在不在」——回一条报活（见 [KeyModule.ACTION_HOST_SERVICE_QUERY]）。
+                    // 设置页问「宿主侧的模块在不在」——回一条报活（见 [ModuleWire.ACTION_HOST_SERVICE_QUERY]）。
                     //  要这一问是因为报活广播是**一次性**的：我们发出时设置页可能还没起来。
-                    if (intent?.action == KeyModule.ACTION_HOST_SERVICE_QUERY) {
+                    if (intent?.action == ModuleWire.ACTION_HOST_SERVICE_QUERY) {
                         XLog.w("设置页问宿主模块在不在 —— 回一条报活")
                         context?.let { reportAlive(it) }
                         return
                     }
                     // 设置页按了「重启服务」：那边马上要杀自己，由我们（宿主主进程）等一下把页面拉回来，
                     //  拉起之后本进程也重来一遍（见 [PageRelaunch]）。
-                    if (intent?.action == KeyModule.ACTION_PAGE_RELAUNCH) {
+                    if (intent?.action == ModuleWire.ACTION_PAGE_RELAUNCH) {
                         XLog.w("设置页请求重启服务 —— 由本进程稍后把页面拉回来")
                         context?.let { PageRelaunch.schedule(it) }
                         return
@@ -148,10 +150,10 @@ internal object GestureReceiver {
                     // 注意：取 extra 与派发**同在一个 guard 里**：三句
                     //  `getXxxExtra` 露在 guard 外面，一旦抛出就是宿主主进程的未捕获异常。
                     XLog.guard("处理转来的手势") {
-                        val key = intent?.getStringExtra(KeyModule.EXTRA_KEY)
-                        val phase = intent?.getStringExtra(KeyModule.EXTRA_PHASE)
-                        val repeat = intent?.getBooleanExtra(KeyModule.EXTRA_REPEAT, false) ?: false
-                        val sentAt = intent?.getLongExtra(KeyModule.EXTRA_SENT_AT, 0L) ?: 0L
+                        val key = intent?.getStringExtra(ModuleWire.EXTRA_KEY)
+                        val phase = intent?.getStringExtra(ModuleWire.EXTRA_PHASE)
+                        val repeat = intent?.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false) ?: false
+                        val sentAt = intent?.getLongExtra(ModuleWire.EXTRA_SENT_AT, 0L) ?: 0L
                         XLog.d("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
                         handle(key, phase, repeat, sentAt)
                     }
@@ -163,11 +165,11 @@ internal object GestureReceiver {
             // 而普通 App 即便发同名广播也进不来（别按「同 uid 宿主」去改成 EXPORTED，那是伪造口子）。
             ctx.registerReceiver(
                 r,
-                IntentFilter(KeyModule.ACTION_GESTURE).apply {
+                IntentFilter(ModuleWire.ACTION_GESTURE).apply {
                     // 同一个接收器兼收设置页那句「在不在」（见上面那个 action 分支）
-                    addAction(KeyModule.ACTION_HOST_SERVICE_QUERY)
+                    addAction(ModuleWire.ACTION_HOST_SERVICE_QUERY)
                     // 以及「重启服务」那句「请你把页面拉回来」（同上）
-                    addAction(KeyModule.ACTION_PAGE_RELAUNCH)
+                    addAction(ModuleWire.ACTION_PAGE_RELAUNCH)
                 },
                 Context.RECEIVER_NOT_EXPORTED,
             )
@@ -223,10 +225,10 @@ internal object GestureReceiver {
     ) {
         PageWire.send(
             ctx,
-            KeyModule.PAGE_PACKAGE,
-            Intent(KeyModule.ACTION_HOST_SERVICE_UP)
-                .putExtra(KeyModule.EXTRA_HOST_ENABLED, enabled)
-                .putExtra(KeyModule.EXTRA_HOST_LAST_ACTION_AT, lastActionAt),
+            HostApp.PACKAGE,
+            Intent(ModuleWire.ACTION_HOST_SERVICE_UP)
+                .putExtra(ModuleWire.EXTRA_HOST_ENABLED, enabled)
+                .putExtra(ModuleWire.EXTRA_HOST_LAST_ACTION_AT, lastActionAt),
         )
     }
 
@@ -240,7 +242,7 @@ internal object GestureReceiver {
     private fun publishConfigState(ctx: Context) {
         XLog.guard("广播配置给注入侧") {
             val config = ConfigStore.read()
-            if (PageWire.send(ctx, KeyModule.PAGE_PACKAGE, ConfigBroadcast.intent(config))) {
+            if (PageWire.send(ctx, HostApp.PACKAGE, ConfigBroadcast.intent(config, CommandLibrary.longIsSerial(config)))) {
                 XLog.w("已广播配置给注入侧（用户已解锁=${isUserUnlocked(ctx)}）")
             }
         }
