@@ -4,14 +4,19 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import com.lookie.opluskey.DEBUG_PROBE
-import com.lookie.opluskey.KeyModule
+import com.lookie.opluskey.bridge.FlexibleWindowBridge
+import com.lookie.opluskey.bridge.Framework
+import com.lookie.opluskey.bridge.StatusBarBridge
+import com.lookie.opluskey.bridge.hookGuarded
+import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.HostApp
+import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ConfigBroadcast
+import com.lookie.opluskey.core.wire.ModuleWire
+import com.lookie.opluskey.inject.ProbeChannel
 import com.lookie.opluskey.inject.input.GestureForwarder
-import com.lookie.opluskey.inject.system.FlexibleWindowBridge
-import com.lookie.opluskey.inject.system.ProbeChannel
-import com.lookie.opluskey.inject.system.StatusBarBridge
-import com.lookie.opluskey.inject.system.SystemContext
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 
@@ -64,6 +69,11 @@ internal object KeyHooks {
         systemLoader = loader
 
         XLog.w("主开关：等宿主上报（上报前按「接管」处理，见 ConfigChannel 类注释）")
+
+        // 三张表（适配清单 / 接管点候选 / 落点表）的对账 —— 判据级，装没装对不上时先看这一行。
+        //  加一版 ROM 要往三处各加一行，漏一处不会编译报错，表现为三种都不好查的故障（见那边的说明）。
+        //  包一层 guard：它跑在安装路径上，任何一环出错都只能记日志，绝不许连带把安装整条打断（五、1）。
+        XLog.guard("ROM 档位对账") { XLog.w(Framework.describeTables()) }
 
         XLog.guard("挂广播入口") { installBroadcastHook(module, loader) }
 
@@ -159,7 +169,7 @@ internal object KeyHooks {
     }
 
     /**
-     * 回一条「注入侧链路状态」给设置页（应答 [KeyModule.ACTION_INJECT_QUERY]）。
+     * 回一条「注入侧链路状态」给设置页（应答 [ModuleWire.ACTION_INJECT_QUERY]）。
      *
      * 注意：**绝不能在 hooker 体内直接 `sendBroadcast`**：那是从 AMS 的广播入口内部再调一次 AMS，
      * 等于在广播路径里重入广播路径。整条投递 post 到主线程去发，hooker 里只留这一次 post。
@@ -175,13 +185,13 @@ internal object KeyHooks {
                         return@post
                     }
                 ctx.sendBroadcast(
-                    Intent(KeyModule.ACTION_INJECT_READY)
-                        .setPackage(KeyModule.PAGE_PACKAGE)
-                        .putExtra(KeyModule.EXTRA_INJECT_HOOKS, hookCount)
-                        .putExtra(KeyModule.EXTRA_INJECT_CONFIG_OK, ConfigChannel.receivedConfig)
-                        .putExtra(KeyModule.EXTRA_INJECT_LAST_GESTURE_AT, lastGestureAt)
+                    Intent(ModuleWire.ACTION_INJECT_READY)
+                        .setPackage(HostApp.PACKAGE)
+                        .putExtra(ModuleWire.EXTRA_INJECT_HOOKS, hookCount)
+                        .putExtra(ModuleWire.EXTRA_INJECT_CONFIG_OK, ConfigChannel.receivedConfig)
+                        .putExtra(ModuleWire.EXTRA_INJECT_LAST_GESTURE_AT, lastGestureAt)
                         .putExtra(
-                            KeyModule.EXTRA_INJECT_CONFIG_TAG,
+                            ModuleWire.EXTRA_INJECT_CONFIG_TAG,
                             ConfigChannel.configTag ?: "",
                         ),
                 )
@@ -208,14 +218,14 @@ internal object KeyHooks {
                 val action = intent.action ?: continue
                 // debug 通道（只 debug 包存在）单独一路：它的发送方**不是宿主**，来源校验也不同。
                 val isProbe = DEBUG_PROBE && action == ProbeChannel.ACTION
-                if (!isProbe &&
-                    action != ConfigBroadcast.ACTION_CONFIG &&
-                    action != StatusBarBridge.ACTION_STATUSBAR &&
-                    action != FlexibleWindowBridge.ACTION &&
-                    // 链路自检的「问」；注意**不含** ACTION_INJECT_READY ——
-                    // 那是我们自己发出去的答，认它只会多绕一圈（见 KeyModule 那两条常量）
-                    action != KeyModule.ACTION_INJECT_QUERY
-                ) {
+                // 我们认识的广播就这四条 —— 不在表里的直接丢。注意**不含** ACTION_INJECT_READY：
+                // 那是我们自己发出去的答，认它只会多绕一圈（见 `core/wire/ModuleWire` 那两条常量）。
+                val isOurs =
+                    action == ConfigBroadcast.ACTION_CONFIG ||
+                        action == StatusBarBridge.ACTION_STATUSBAR ||
+                        action == FlexibleWindowBridge.ACTION ||
+                        action == ModuleWire.ACTION_INJECT_QUERY
+                if (!isProbe && !isOurs) {
                     continue
                 }
                 // 功能通道：只有宿主（与同 uid 的设置页）有资格发 —— 其余来源一律丢弃。
@@ -254,7 +264,7 @@ internal object KeyHooks {
                     }
 
                     // 链路自检：回答「注入侧那套装好没有」
-                    KeyModule.ACTION_INJECT_QUERY -> {
+                    ModuleWire.ACTION_INJECT_QUERY -> {
                         XLog.guard("回链路自检包") { reportStatus() }
                     }
 
@@ -324,7 +334,7 @@ internal object KeyHooks {
         val uid =
             try {
                 val ctx = SystemContext.get(systemLoader ?: return -1) ?: return -1
-                ctx.packageManager.getPackageUid(com.lookie.opluskey.KeyModule.PAGE_PACKAGE, 0)
+                ctx.packageManager.getPackageUid(HostApp.PACKAGE, 0)
             } catch (e: Throwable) {
                 XLog.w("解析宿主 uid 失败（这次丢弃，下轮重取）：${e.message}")
                 -1

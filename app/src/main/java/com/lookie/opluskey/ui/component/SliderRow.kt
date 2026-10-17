@@ -29,6 +29,7 @@ import com.lookie.opluskey.ui.model.SLIDER_TAP_ZONE
 import com.lookie.opluskey.ui.model.STEP_MS
 import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.state.rememberTick
+import com.lookie.opluskey.ui.state.tickNow
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon

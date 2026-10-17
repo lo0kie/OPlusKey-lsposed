@@ -2,15 +2,15 @@ package com.lookie.opluskey.host.action
 
 import android.content.Context
 import android.os.Handler
+import com.lookie.opluskey.bridge.StatusBarBridge
+import com.lookie.opluskey.bridge.host.FlashlightController
+import com.lookie.opluskey.bridge.host.KeyInjector
+import com.lookie.opluskey.bridge.host.RingerController
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
-import com.lookie.opluskey.inject.input.KeyInjector
-import com.lookie.opluskey.inject.system.FlashlightController
-import com.lookie.opluskey.inject.system.RingerController
-import com.lookie.opluskey.inject.system.StatusBarBridge
 
 /** 动作派发器，只服务侧键。 */
 internal class ActionRunner(

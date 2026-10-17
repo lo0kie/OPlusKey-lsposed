@@ -3,6 +3,9 @@ package com.lookie.opluskey.core.config
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.isSerialCommand
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -229,19 +232,24 @@ object CommandLibrary {
     /**
      * 带缓存的读，给执行侧用：按键每次都要展开 `cmd:` 动作，不能每次读盘。
      *
-     * 缓存按**文件指纹**命中（修改时间 + 长度，两次 `stat`），与 [ConfigStore.load] 同口径，
-     * 不是按「距上次读过了多久」。为什么不能只按时刻算：写方是设置页 `:ui` 进程、读方是宿主
-     * 主进程，**写方清缓存清不到读方**——若只按「未满一秒」判命中，「改完命令库立刻按键」会在
-     * 那一秒里读到上一版。指纹比对让「文件一被写、下一次读立刻重解析」这条语义成立。
-     * 本进程自己的写盘（[save]）另外主动失效。
+     * 缓存按**文件指纹**命中（修改时间 + 长度 + inode，见 [Cached]），与 [ConfigStore.load]
+     * 同口径 —— 也**必须**同口径：这是同一个场景（写方 `:ui` 进程、读方宿主主进程）的同一份判据，
+     * 两处各写一份就会演进成两版，漏掉 inode 那一版会在「等长 + 同秒改写」时把陈值当命中。
+     *
+     * 为什么不按「距上次读过了多久」算：写方清缓存清不到读方 —— 若只按「未满一秒」判命中，
+     * 「改完命令库立刻按键」会在那一秒里读到上一版。指纹比对让「文件一被写、下一次读立刻重解析」
+     * 这条语义成立。本进程自己的写盘（[save]）另外主动失效。
      */
     fun loadCached(): List<Command> {
         val f = ConfigStore.commandFile()
         val modified = f.lastModified()
         val length = f.length()
-        cache?.let { if (it.modified == modified && it.length == length) return it.commands }
+        val inode = inodeOf(f)
+        cache?.let {
+            if (it.modified == modified && it.length == length && it.inode == inode) return it.commands
+        }
         val fresh = load()
-        cache = Cached(modified, length, fresh)
+        cache = Cached(modified, length, inode, fresh)
         return fresh
     }
 
@@ -264,11 +272,23 @@ object CommandLibrary {
     }
 
     /**
-     * 执行侧的缓存：上一次读的结果与它对应的文件指纹（修改时间 + 长度），与 [ConfigStore] 同口径。
+     * 执行侧的缓存：上一次读的结果与它对应的文件指纹。
+     *
+     *  指纹是「修改时间 + 长度 + inode」三个字段，分着比、不合成一个数（合成会有碰撞的可能）。
+     *  为什么必须带上 inode：与 [ConfigStore.Cached] **同一个场景** —— 写方是设置页 `:ui` 进程、
+     *  读方是宿主主进程，**写方清缓存清不到读方**，读方只能靠指纹自己发现「文件换了」。
+     *  若新内容**长度恰好相同**、又落在同一个 mtime 粒度内，只看（修改时间, 长度）就会把陈值
+     *  当命中，于是宿主永久读旧表 —— 而日志完全自洽，看不出问题。
+     *  写盘走的是「先 `.tmp` 再 rename」（[ConfigStore.writeAtomically]），目标文件因此每次都是
+     *  **新 inode**，inode 必变，能天然区分出每一次写。
+     *
+     *  取法统一走 [inodeOf]（在 [ConfigStore] 那份里）：两份指纹各自实现过一次，
+     *  结果是这一份没跟上，别再分叉。
      */
     private class Cached(
         val modified: Long,
         val length: Long,
+        val inode: Long,
         val commands: List<Command>,
     )
 
@@ -276,16 +296,11 @@ object CommandLibrary {
     private var cache: Cached? = null
 
     /**
-     * 判断 `cmd:<名字>` 指向的是不是多条命令（[CommandKind.SERIAL]），非 `cmd:` 或名字查不到一律 `false`。
-     * 两个调用方都在宿主进程侧：界面（长按 tab 要不要显示连续触发）与 [ConfigBroadcast.intent]
-     * （把这一位随配置广播带给注入侧）；判定侧（system_server）用广播来的 `KeyConfig.longIsSerial`。
+     * 广播发送侧要的那一位：[config] 的长按动作是不是「多条命令」。
+     *
+     *  合在这里是为了**把读盘这一步留在 `core/config`** —— [isSerialCommand] 那条规则本身是纯的
+     *  （在 `core/model`），而「读命令库」只有落盘包会做；广播构造器因此不必认识本包，
+     *  注入侧那条「不许碰 `core/config`」的编译期保证才成立（见 `docs/decoupling.md` 动作 3）。
      */
-    fun isSerial(
-        commands: List<Command>,
-        token: String,
-    ): Boolean {
-        if (!token.startsWith(Command.PREFIX)) return false
-        val name = token.removePrefix(Command.PREFIX)
-        return commands.firstOrNull { it.name == name }?.kind == CommandKind.SERIAL
-    }
+    fun longIsSerial(config: Config): Boolean = isSerialCommand(loadCached(), config.key(KeyId.PLUS).long.token)
 }

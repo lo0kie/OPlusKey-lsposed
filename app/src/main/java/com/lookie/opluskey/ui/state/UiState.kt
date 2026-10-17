@@ -15,7 +15,7 @@ internal object UiState {
     /** 「选择应用」页是否列出系统应用。 */
     private const val KEY_SHOW_SYSTEM_APPS = "show_system_apps"
 
-    /** 「选择应用」页是否把**拉不起来**的应用也列出来（见 [SettingsPage.showUnopenable]）。 */
+    /** 「选择应用」页是否把**拉不起来**的应用也列出来（见 [SettingsPage.picker]）。 */
     private const val KEY_SHOW_UNOPENABLE = "show_unopenable"
 
     /**
@@ -25,7 +25,7 @@ internal object UiState {
      * 主线程上（见 `SettingsPage.createView`）—— 两项一起读只开一次盘，行为完全一样。
      *
      * 注意：这里**没有**「以小窗口打开」—— 那一项**不落盘**：
-     * 它默认关、每次进「选择应用」页按「正在编辑的那个动作」重算，见 `SettingsPage.smallWindow`。
+     * 它默认关、每次进「选择应用」页按「正在编辑的那个动作」重算，见 `SettingsPage.picker`。
      */
     fun readAll(): Pair<Boolean, Boolean> {
         val map = parse(readTextOrNull().orEmpty())

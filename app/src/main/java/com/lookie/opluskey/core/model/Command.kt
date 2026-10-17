@@ -181,3 +181,19 @@ data class Command(
         const val MAX_STEPS = 5
     }
 }
+
+/**
+ * `cmd:<名字>` 指向的是不是多条命令（[CommandKind.SERIAL]）；非 `cmd:` 或名字查不到一律 `false`。
+ *
+ *  这是一条**纯规则**（只吃 [Command] 列表、不碰磁盘），所以放在领域层：界面、广播发送侧、
+ *  执行侧共用同一份口径。读盘那一步归 `core/config` 的 `CommandLibrary` ——
+ *  分开之后 `core/wire` 与注入侧都不必再认识落盘那包（见 `docs/decoupling.md` 动作 3）。
+ */
+fun isSerialCommand(
+    commands: List<Command>,
+    token: String,
+): Boolean {
+    if (!token.startsWith(Command.PREFIX)) return false
+    val name = token.removePrefix(Command.PREFIX)
+    return commands.firstOrNull { it.name == name }?.kind == CommandKind.SERIAL
+}

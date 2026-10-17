@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.model
 import android.content.Context
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.seal.Seal
+import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import org.json.JSONArray
 
 /**
@@ -28,6 +29,7 @@ internal data class Donor(
  *
  *  **仓库里现在带的是空表**（`[]`）：真名单还没到，页面就走空态那一档；
  *  要上真数据就往这份文件里加行 —— 一行一个 `{ "name": …, "amount": … }`，顺序即显示顺序。
+ *  写成什么样由旁边那份 `donors.schema.json` 定（编辑器照它给提示与报错），加行前先看它。
  *
  *  读法走 `core/seal` 的 [Seal]：**release 包里这份文件是封着的**（明文不落地，见那边的说明），
  *  debug 才直接读明文。不管哪一侧，都**不能用 `context.assets`** —— 那是**宿主** APK 的资源，

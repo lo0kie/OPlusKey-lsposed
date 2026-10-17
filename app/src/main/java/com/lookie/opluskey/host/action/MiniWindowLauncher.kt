@@ -6,11 +6,12 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import com.lookie.opluskey.bridge.FlexibleWindowBridge
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.MiniWindowGeometry
 import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.model.ZoomWindowWire
 import com.lookie.opluskey.core.reflect.Reflect
-import com.lookie.opluskey.inject.system.FlexibleWindowBridge
 
 /**
  * 「小窗」这一族动作的执行器 —— 从 [AppLauncher] 按职责分出来的（原来混在那边，一个类里装了四件事）。
@@ -24,8 +25,8 @@ import com.lookie.opluskey.inject.system.FlexibleWindowBridge
  *  companion 里 —— 调它们不用改注入侧，`kill` 掉宿主进程即生效。
  */
 internal class MiniWindowLauncher(
-    private val context: () -> Context?,
-    private val onFailure: (CommandFailure) -> Unit,
+    internal val context: () -> Context?,
+    internal val onFailure: (CommandFailure) -> Unit,
 ) {
     /**
      * `window:包名` —— 用小窗打开，**有现成任务就复用**（原地转小窗），没有才新建一份。
@@ -89,7 +90,7 @@ internal class MiniWindowLauncher(
     }
 
     /** 这次启动被栈顶那份实例消化了：先把任务挪出栈顶，再起一次（仍是原地转，不新建）。 */
-    private fun retryAfterHome(
+    internal fun retryAfterHome(
         ctx: Context,
         intent: Intent,
         target: String,
@@ -120,7 +121,7 @@ internal class MiniWindowLauncher(
      * 都有 `try/catch` 兜底，异步路径同样必须有 —— 这不是「保护宿主系统进程」那种 guard，
      * 丢的只是这一下没做成的收尾动作（[what] 会写清是哪一环）。
      */
-    private fun postDelayedGuarded(
+    internal fun postDelayedGuarded(
         what: String,
         delayMs: Long,
         block: () -> Unit,
@@ -212,7 +213,7 @@ internal class MiniWindowLauncher(
      *
      * @return 是否已经接手（`OFF` 返回 false，交给调用方走无动画的正门）
      */
-    private fun putInMiniWithNativeAnim(
+    internal fun putInMiniWithNativeAnim(
         ctx: Context,
         taskId: Int,
     ): Boolean {
@@ -281,7 +282,7 @@ internal class MiniWindowLauncher(
      * `FlexibleTaskController#getAnimationInfo(task, 1)` —— 那是按当前方向算好的。
      * 代价是改注入侧、要重启。记在 `docs/zoom-window.md` §12.4。
      */
-    private fun animGeometryMatchesOrientation(ctx: Context): Boolean {
+    internal fun animGeometryMatchesOrientation(ctx: Context): Boolean {
         val cfg = ctx.resources.configuration
         return cfg.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT ||
             cfg.screenWidthDp == cfg.screenHeightDp
@@ -291,7 +292,7 @@ internal class MiniWindowLauncher(
      * 全屏态的任务矩形 —— 动画的**起点**。框架的 `updateAnimationLayer` 只读 `left/top`，
      * 所以这里真正有用的是 `(0,0)`；宽高带上只是不让 Rect 是半个（见 §十二）。
      */
-    private fun fullScreenRect(ctx: Context): android.graphics.Rect {
+    internal fun fullScreenRect(ctx: Context): android.graphics.Rect {
         val dm = ctx.resources.displayMetrics
         return android.graphics.Rect(0, 0, dm.widthPixels, dm.heightPixels)
     }
@@ -312,7 +313,7 @@ internal class MiniWindowLauncher(
      * 落点几何一并下发：值在 `core/model/MiniWindowGeometry`（按机型标定），改完 `kill` 掉宿主进程
      * 就生效 —— 注入侧不用重编，也不用整机重启。
      */
-    private fun putInMiniViaForgedAnimation(
+    internal fun putInMiniViaForgedAnimation(
         ctx: Context,
         taskId: Int,
     ) {
@@ -363,7 +364,7 @@ internal class MiniWindowLauncher(
      * **服务端没受理就往回收手**（返回负数）—— 只提示、什么都不做。
      * 以前这里退「按包名另起一份实例」，用户看到的是「一按侧键就回桌面重开」（见 [putForegroundInMiniWindow]）。
      */
-    private fun retryViaRecents(taskId: Int) {
+    internal fun retryViaRecents(taskId: Int) {
         if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_USER_POSITION)) {
             postDelayedGuarded("recents 正门收小窗的验收", MINI_VERIFY_MS) { verifyMiniOrFallback(taskId) }
         } else {
@@ -379,7 +380,7 @@ internal class MiniWindowLauncher(
      * 用 `getMiniFlexibleTaskInfo` 那套几何（真机约 `Rect(898,168-1203,710)` / scale `0.2397`）。
      * 收不起就退「按包名另起一份实例」，与展开档同一层兜底。
      */
-    private fun putInCollapsedMini(taskId: Int) {
+    internal fun putInCollapsedMini(taskId: Int) {
         if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_FULL_TO_MINI)) {
             postDelayedGuarded("zoom:mini:collapse 的验收", MINI_VERIFY_MS) {
                 if (isTaskInZoomWindow(taskId)) {
@@ -396,7 +397,7 @@ internal class MiniWindowLauncher(
     }
 
     /** 前台那份任务的 taskId —— `getAllTopAppInfos()` 按「最前面」排序，取第 0 项。 */
-    private fun foregroundTaskId(): Int {
+    internal fun foregroundTaskId(): Int {
         val infos = topAppInfos() ?: return -1
         val info = infos.firstOrNull() ?: return -1
         val id = Reflect.fieldValue(info, info.javaClass, TOP_APP_TASK_ID_FIELD) as? Int ?: return -1
@@ -417,7 +418,7 @@ internal class MiniWindowLauncher(
      * 宁可保持原行为。这是「少做一件本来就不该做的事」，不是「拦住一个本来能做的」——
      * 判错的代价不对称，所以往宽的一边倒。
      */
-    private fun canEnterMiniWindow(taskId: Int): Boolean {
+    internal fun canEnterMiniWindow(taskId: Int): Boolean {
         val ctx = context() ?: return true
         val info = zoomInfoOf(taskId) ?: return true
         val top = Reflect.fieldValue(info, info.javaClass, TOP_APP_ACTIVITY_FIELD) ?: return true
@@ -448,7 +449,7 @@ internal class MiniWindowLauncher(
      * 与 [packageOf] 的区别：这里**包名与类名都要**才返回 —— 因为要用它去查 `ActivityInfo.resizeMode`，
      * 只有包名是查不到的（`resizeMode` 是 activity 级的属性）。
      */
-    private fun componentOf(
+    internal fun componentOf(
         top: Any,
         cls: Class<*>,
     ): android.content.ComponentName? {
@@ -462,7 +463,7 @@ internal class MiniWindowLauncher(
     }
 
     /** 前台上如果是这个包，返回它那份任务的 taskId；不是就 -1。 */
-    private fun foregroundTaskFor(pkg: String): Int {
+    internal fun foregroundTaskFor(pkg: String): Int {
         val infos = topAppInfos() ?: return -1
         val info = infos.firstOrNull() ?: return -1
         val top = Reflect.fieldValue(info, info.javaClass, TOP_APP_ACTIVITY_FIELD) ?: return -1
@@ -471,7 +472,7 @@ internal class MiniWindowLauncher(
     }
 
     /** `OplusAppInfo.topActivity` 的包名 —— `ComponentName` 与 `ComponentInfo` 两种形状都认。 */
-    private fun packageOf(
+    internal fun packageOf(
         top: Any,
         cls: Class<*>,
     ): String? =
@@ -479,7 +480,7 @@ internal class MiniWindowLauncher(
             ?: Reflect.fieldValue(top, cls, TOP_APP_PACKAGE_FIELD) as? String
 
     /** `OplusActivityManager#getAllTopAppInfos()` 的原始列表；拿不到一律返回 null（调用方据此降级）。 */
-    private fun topAppInfos(): List<*>? {
+    internal fun topAppInfos(): List<*>? {
         val cls = Reflect.findClass(javaClass.classLoader, ZOOM_MANAGER) ?: return null
         val manager = Reflect.callStatic(cls, "getInstance") ?: return null
         val method =
@@ -497,7 +498,7 @@ internal class MiniWindowLauncher(
      * `2` = 展开的普通小窗（`setUserPositionInfo`）、`32` = 收起的最小化窗（`fullToMini`）。
      * 窗口模式那个 key 必须给：服务端的判据是 `getLaunchWindowingMode(options) == 100`，不是 flags。
      */
-    private fun startFlexibleFromRecents(
+    internal fun startFlexibleFromRecents(
         taskId: Int,
         zoomLaunchFlags: Int,
     ): Boolean {
@@ -528,178 +529,11 @@ internal class MiniWindowLauncher(
     }
 
     /**
-     * 等 transition 跑完核一眼；没成小窗就退回「按包名另起一份实例」。
-     *
-     * 判据是**窗口的屏幕矩形有没有落在屏幕内**，不是「配置宽占比」——
-     * 后者在横屏下会**给出假绿灯**：分母 `Resources.getSystem().displayMetrics.widthPixels`
-     * 不随旋转变（恒 1272），而横屏应用的配置矩形宽是 **2240**（= 横屏全屏任务的宽），
-     * 比值读到 `1.76`，落在「≥0.95 就算好」那一边。
-     *
-     * 真机症状（用户报「横屏小窗尺寸大」）：屏幕矩形 `1316 × 741`，
-     * **宽 1316 > 屏宽 1272、右侧溢出 185px**。取证与根因见 `docs/device-findings.md` 附十三。
-     */
-    private fun verifyMiniOrFallback(taskId: Int) {
-        //  注意：「读不到任务信息」**不是**「没变成小窗」：
-        //  `isTaskInZoomWindow` 在 `zoomInfoOf` 为 null（ROM 改了字段名 / 任务列表读不到）时
-        //  也返回 false —— 会被折成「服务端受理了但没收起来」，弹一句「这个应用不支持小窗」，
-        //  把一个读不到的事实说成了应用的锅。这里先把这两种情形分开。
-        if (zoomInfoOf(taskId) == null) {
-            XLog.w("zoom:mini → 读不到任务 #$taskId 的信息，无法验收（不报「不支持小窗」）")
-            return
-        }
-        if (!isTaskInZoomWindow(taskId)) {
-            // **什么都不做**：服务端受理了（返回 `2`）却没收出窗口，
-            // 就是「这个应用不支持小窗」（真机：`com.heytap.market`）。以前这里退
-            // 「按包名另起一份实例」⇒ 回桌面 + 重新起一份，用户看到「一按侧键就回桌面重开」，
-            // 比没反应更糟。而且那条还会**重复调一次** `startFlexibleFromRecents`。
-            XLog.w("zoom:mini → 任务 #$taskId 没变成小窗（服务端受理了但没收起来），什么都不做")
-            onFailure(CommandFailure.APP_NO_MINI_WINDOW)
-            return
-        }
-        logZoomGeometry(taskId)
-    }
-
-    /**
-     * 只报事实：小窗在**屏幕上**的矩形、以及它有没有超出屏幕。
-     *
-     * 注意：「超出屏幕」这一档**只记日志、不换路**（定的）：横屏应用走 recents 正门时
-     * 比例是对的、几何偏大；换路（launch 配方）会变成竖屏比例但进屏 —— 两者取舍还没收敛，
-     * 自动换路会让屏幕上变成「横屏比例一闪 → 竖屏比例」，反而看不出比例对不对。
-     * 要顺着这条路继续调时，把这里的 `false` 分支接到降级上即可。
-     */
-    private fun logZoomGeometry(taskId: Int) {
-        val rect = zoomScreenRect()
-        val display = displaySize()
-        when (zoomFitsOnScreen(rect, display)) {
-            false -> {
-                XLog.w(
-                    "zoom:mini → 任务 #$taskId 已是小窗，但**窗口超出屏幕**：屏幕矩形 $rect > 显示 $display" +
-                        "（横屏应用走 recents 正门时会这样，见 docs/device-findings.md 附十三）",
-                )
-            }
-
-            true -> {
-                XLog.w("zoom:mini → 任务 #$taskId 已是小窗、窗口落在屏幕内（屏幕矩形 $rect）")
-            }
-
-            null -> {
-                XLog.w("zoom:mini → 任务 #$taskId 已是小窗，但读不到屏幕矩形 / 显示尺寸，跳过几何验收")
-            }
-        }
-    }
-
-    /**
-     * 小窗**在屏幕上的**矩形 —— 取自框架
-     * `com.oplus.zoomwindow.OplusZoomWindowManager#getCurrentZoomWindowState()` 的 `zoomRect`。
-     *
-     * 注意：它和 [taskZoomConfigRatio] 读的 `OplusAppInfo.appBounds` **不是一回事**：
-     * `appBounds` 是**配置矩形**（不含显示缩放），这个才是**乘过 scale 的屏幕矩形** ——
-     * 判「窗口多大 / 装不装得下」只能用它。
-     *
-     * 用**截图像素级边缘检测**核对过它就是屏幕上那块矩形：真机左边界 `x=141`、
-     * 下边界 `y=1006`，与日志里的 `zoomRect = Rect(141, 266 - 1457, 1007)` 对得上。
-     */
-    private fun zoomScreenRect(): android.graphics.Rect? =
-        try {
-            val cls = Reflect.findClass(javaClass.classLoader, MiniWindowSupport.MANAGER)
-            val manager = cls?.let { Reflect.callStatic(it, "getInstance") }
-            val method = cls?.let { Reflect.methodByNameAndArity(it, CURRENT_ZOOM_STATE_METHOD, 0) }
-            val state = if (manager != null && method != null) Reflect.call(manager, method) else null
-            state?.let { Reflect.fieldValue(it, it.javaClass, ZOOM_STATE_RECT_FIELD) as? android.graphics.Rect }
-        } catch (e: Throwable) {
-            XLog.d("读小窗屏幕矩形失败：${e.message}")
-            null
-        }
-
-    /**
-     * 当前显示的**真实像素尺寸**（**随旋转变**）。
-     *
-     * 不拿 `Resources.getSystem().displayMetrics` —— 那套**不跟旋转**，横屏下仍是竖屏值，
-     * 正是上面那个假绿灯的来源。
-     *
-     * 取 `maximumWindowMetrics`（API 30+，本项目 minSdk 33 ⇒ 恒可用）而不是旧的
-     * `defaultDisplay.getRealSize`（编译期 deprecated）：在**非 Activity 的 Context** 上，
-     * 前者给的正是「默认显示的最大窗口区域」，与后者（默认显示的真实尺寸）是同一个东西，
-     * 而且**不受当前窗口大小影响** —— 用 `currentWindowMetrics` 会被分屏 / 小窗裁小，
-     * 那会把「小窗有没有超出屏幕」这个验收项误判成超出。取不到就返回 null（跳过验收），不猜。
-     */
-    private fun displaySize(): android.graphics.Point? =
-        try {
-            val wm = context()?.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
-            val bounds = wm?.maximumWindowMetrics?.bounds
-            if (bounds != null && bounds.width() > 0 && bounds.height() > 0) {
-                android.graphics.Point(bounds.width(), bounds.height())
-            } else {
-                null
-            }
-        } catch (e: Throwable) {
-            XLog.d("读显示尺寸失败：${e.message}")
-            null
-        }
-
-    /** 小窗的屏幕矩形有没有落在屏幕内。`null` = 读不到（跳过验收）。 */
-    private fun zoomFitsOnScreen(
-        rect: android.graphics.Rect?,
-        display: android.graphics.Point?,
-    ): Boolean? {
-        if (rect == null || display == null) return null
-        return rect.left >= 0 && rect.top >= 0 &&
-            rect.right <= display.x && rect.bottom <= display.y
-    }
-
-    /** 那个任务现在是不是小窗 —— 只看 `windowingMode`（返回码和截图都会骗人）。 */
-    private fun isTaskInZoomWindow(taskId: Int): Boolean {
-        val info = zoomInfoOf(taskId) ?: return false
-        val mode = Reflect.fieldValue(info, info.javaClass, TOP_APP_WINDOWING_MODE_FIELD) as? Int
-        return mode == WINDOWING_MODE_ZOOM
-    }
-
-    /**
-     * 那个任务小窗的**应用配置矩形宽 / 屏宽**（`null` = 它不是小窗 / 读不到）。
-     *
-     * 注意：这个比值**分不出「展开 / 收起」两档**，别拿它当档位判据 —— 那版就是把它
-     * 当成档位判据用的，结果给了假绿灯：小窗两档的**配置矩形是同一个** `1272×2261`
-     * （屏幕上的大小再由 scale 决定：展开 `0.8017` → `1020×1812`、收起 `0.2397` → `305×542`），
-     * 所以两档读出来都是 `1272/1272 ≈ 1.0`，谁也分不出来。
-     *
-     * 它能验的是另一件事：**system_server 有没有把我们预置的几何吃住**。配置宽应当 ≈ 满屏宽
-     * （见 [ZOOM_CONFIG_WIDTH_MIN_RATIO]）—— 若读到明显偏小，就是「屏幕矩形被当成配置矩形喂进去、
-     * 又被多缩一次」那个 bug 的签名（真机读到过 `1020`，对应屏幕上只剩 `817`）。
-     *
-     * 读不到时返回 `null` 而**不是**猜一个值 —— 调用方据此走「没走通」那条降级。
-     */
-    private fun taskZoomConfigRatio(taskId: Int): Float? {
-        val info = zoomInfoOf(taskId) ?: return null
-        val mode = Reflect.fieldValue(info, info.javaClass, TOP_APP_WINDOWING_MODE_FIELD) as? Int
-        if (mode != WINDOWING_MODE_ZOOM) return null
-        val bounds =
-            Reflect.fieldValue(info, info.javaClass, TOP_APP_BOUNDS_FIELD)
-                as? android.graphics.Rect ?: return null
-        val screen =
-            android.content.res.Resources
-                .getSystem()
-                .displayMetrics.widthPixels
-        if (screen <= 0 || bounds.width() <= 0) return null
-        return bounds.width().toFloat() / screen
-    }
-
-    /** `getAllTopAppInfos()` 里那个 taskId 对应的 `OplusAppInfo`；没有就 null。 */
-    private fun zoomInfoOf(taskId: Int): Any? {
-        val infos = topAppInfos() ?: return null
-        for (item in infos) {
-            val info = item ?: continue
-            val id = Reflect.fieldValue(info, info.javaClass, TOP_APP_TASK_ID_FIELD) as? Int ?: continue
-            if (id == taskId) return info
-        }
-        return null
-    }
-
-    /**
      * ColorOS 小窗：`OplusActivityManager#startZoomWindow(Intent, Bundle, int, String)`。
      *
      * Bundle 必须带 `extra_window_mode`（见 [zoomWindowBundle]），否则服务端当普通启动处理。
      */
-    private fun startZoomWindow(
+    internal fun startZoomWindow(
         ctx: Context,
         intent: Intent,
     ): Boolean {
@@ -712,7 +546,7 @@ internal class MiniWindowLauncher(
      * `0` 成功 / `2` 已有任务提到前台 / `3` 交给栈顶那个实例消化（屏幕不变）/ 负数是错误码；
      * `null` = 反射这条路没走通。返回码判不了「有没有真起成小窗」，详见 `docs/device-findings.md` §17.6.1。
      */
-    private fun startZoomWindowCode(
+    internal fun startZoomWindowCode(
         ctx: Context,
         intent: Intent,
     ): Int? {
@@ -748,7 +582,7 @@ internal class MiniWindowLauncher(
     }
 
     /** 回桌面：某个界面占着前台时，先把它挪出栈顶，小窗才起得来（见 [launchAppInWindow]）。 */
-    private fun homeIntent(): Intent =
+    internal fun homeIntent(): Intent =
         Intent(Intent.ACTION_MAIN)
             .addCategory(Intent.CATEGORY_HOME)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -761,10 +595,10 @@ internal class MiniWindowLauncher(
      * （`ScenarioAssistantNavigationImpl.startActivityByZoonWindow`）与 SDK 的常量表
      * （`com.oplus.zoomwindow.OplusZoomWindowManager`）。
      */
-    private fun zoomWindowBundle(): Bundle = Bundle().apply { putInt(ZOOM_EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM) }
+    internal fun zoomWindowBundle(): Bundle = Bundle().apply { putInt(ZOOM_EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM) }
 
     /** 公开的退路：`ActivityOptions` 的自由窗口（本机不认它的话就是一次普通打开）。 */
-    private fun startFreeform(
+    internal fun startFreeform(
         ctx: Context,
         intent: Intent,
     ): Boolean =
@@ -789,7 +623,7 @@ internal class MiniWindowLauncher(
             false
         }
 
-    private companion object {
+    internal companion object {
         /** 本机这一档 ROM 的反射面 —— 未适配的 ROM 照最后一档试（见 [RomProfile]）。 */
         val ROM = RomProfile.effective.reflection
 
@@ -805,11 +639,17 @@ internal class MiniWindowLauncher(
         /** `startZoomWindow` 的形参个数：`Intent, Bundle, int, String`。 */
         const val ZOOM_ARGS = 4
 
-        /** Bundle 里指定窗口模式的 key —— `OplusZoomWindowManager.EXTRA_WINDOW_MODE`。 */
-        const val ZOOM_EXTRA_WINDOW_MODE = "extra_window_mode"
+        /**
+         * Bundle 里指定窗口模式的 key —— `OplusZoomWindowManager.EXTRA_WINDOW_MODE`。
+         *
+         *  取值收在 `core/model/ZoomWindowWire` 一处：同一个 key 还在诊断探针（`inject/ProbeChannel`）
+         *  与状态门面（[MiniWindowSupport]）里用，各写一遍时改一处漏一处只会表现为「探针试出来能行、
+         *  真正执行时不行」。
+         */
+        const val ZOOM_EXTRA_WINDOW_MODE = ZoomWindowWire.EXTRA_WINDOW_MODE_KEY
 
         /** 上面那个 key 取这个值才是小窗 —— `OplusZoomWindowManager.WINDOWING_MODE_ZOOM`。 */
-        const val WINDOWING_MODE_ZOOM = 100
+        const val WINDOWING_MODE_ZOOM = ZoomWindowWire.WINDOWING_MODE_ZOOM
 
         /** 取各屏前台应用信息：`OplusActivityManager#getAllTopAppInfos()` → `List<OplusAppInfo>`。 */
         val TOP_APP_INFOS_METHOD = ROM.zoomTopAppInfosMethod
@@ -999,19 +839,19 @@ internal class MiniWindowLauncher(
         val RECENTS_FLEXIBLE_ARGS = ROM.zoomRecentsArgs
 
         /** `ActivityOptions#fromBundle` 认的窗口模式 key —— **点号**，与 `extra_window_mode` 不同。 */
-        const val OPT_LAUNCH_WINDOWING_MODE = "android.activity.windowingMode"
+        const val OPT_LAUNCH_WINDOWING_MODE = ZoomWindowWire.LAUNCH_WINDOWING_MODE_KEY
 
         /** `mZoomLaunchFlags` 在 options 里的 key。 */
-        const val OPT_ZOOM_LAUNCH_FLAGS = "android:activity.mZoomLaunchFlags"
+        const val OPT_ZOOM_LAUNCH_FLAGS = ZoomWindowWire.ZOOM_LAUNCH_FLAGS_KEY
 
         /** `mZoomLaunchFlags = 2`（服务端 `setUserPositionInfo`）：展开的普通小窗，沿用上次的位置与尺寸。 */
-        const val ZOOM_LAUNCH_FLAG_USER_POSITION = 2
+        const val ZOOM_LAUNCH_FLAG_USER_POSITION = ZoomWindowWire.LAUNCH_FLAG_EXPANDED
 
         /**
          * `mZoomLaunchFlags = 32`（服务端 `fullToMini` → `getMiniFlexibleTaskInfo`）：
          * 收起的最小化窗（右上角一条）。取值见 `docs/device-findings.md` §17.6.3 的尺寸档对照表。
          */
-        const val ZOOM_LAUNCH_FLAG_FULL_TO_MINI = 32
+        const val ZOOM_LAUNCH_FLAG_FULL_TO_MINI = ZoomWindowWire.LAUNCH_FLAG_COLLAPSED
 
         /**
          * 起完等多久再核「有没有真变成小窗」+「窗口落在屏幕内」。

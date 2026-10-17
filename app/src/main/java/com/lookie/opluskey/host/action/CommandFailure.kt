@@ -7,7 +7,6 @@ import android.widget.Toast
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.GlobalConfig
 
 /**
  * 失败提示表：Toast 里只出现 [hint]（说清哪里不对 + 怎么办），原始信息照旧进日志

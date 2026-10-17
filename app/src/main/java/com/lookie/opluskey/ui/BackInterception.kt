@@ -1,8 +1,8 @@
 package com.lookie.opluskey.ui
 
 import androidx.annotation.RequiresApi
+import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.inject.hookGuarded
 import io.github.libxposed.api.XposedModule
 
 /**

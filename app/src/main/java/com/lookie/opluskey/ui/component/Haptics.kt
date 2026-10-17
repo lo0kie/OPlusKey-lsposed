@@ -12,7 +12,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
-import com.lookie.opluskey.ui.screen.ActionTile
 import com.lookie.opluskey.ui.state.rememberTick
 import com.lookie.opluskey.ui.state.tickNow
 import io.github.suqi8.coui.kmp.basic.Card
@@ -26,7 +25,7 @@ import io.github.suqi8.coui.kmp.basic.Card
  * `HapticFeedbackType.LongPress`（经 `LocalHapticFeedback` → 宿主 `View.performHapticFeedback`）——
  * 那条路不看系统静音，于是长按会比单击多出一次不受系统状态约束的振动。
  *
- * 做法：在**那一格**外面把 `LocalHapticFeedback` 换成本实现（见 [ActionTile] 与
+ * 做法：在**那一格**外面把 `LocalHapticFeedback` 换成本实现（见「按键绑定」页的那些格子与
  * 「自定义命令」页里已保存命令那组格子）。只包格子 —— 滑杆 / 浮层自己的触觉不走这里。
  */
 internal val NoHapticFeedback: HapticFeedback =

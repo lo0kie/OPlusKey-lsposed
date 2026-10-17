@@ -4,8 +4,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.state.tickNow
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
@@ -28,11 +28,14 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * @param enabled false ⇒ 整行置灰、不吃点击。标题 / 副标题 / 开关由库负责，**行首图标由这里负责**
  * @param position 卡片内的行位置（首行 / 中间 / 末行），决定圆角与分隔线
  *
- *  注：`SettingsPage.` 这个接收者**在函数体里一次都没用到**（体内只碰库件与 [NoSwitchHaptic]，
- *  都是顶层声明）—— 留着是为了与同目录那批「页面组件」保持同一种写法。要删时连 import 一起清。
+ *  **没有 `SettingsPage.` 接收者**：体内只碰库件与 [NoSwitchHaptic] / [rememberRowIconColor]，
+ *  都是顶层声明 —— 接收者一次都用不到。原先挂着它只是为了「与同目录那批页面组件写法一致」，
+ *  而那正是「component/ 名不副实」的一部分：**通用控件不该背页面类型**（它会白白把
+ *  `SettingsPage` 拉进每个使用者的依赖里）。这是这一批里第一个去掉接收者的，同目录其余
+ *  真的用不到接收者的也照此办理。
  */
 @Composable
-internal fun SettingsPage.SwitchRow(
+internal fun SwitchRow(
     title: String,
     summary: String,
     icon: ImageVector,

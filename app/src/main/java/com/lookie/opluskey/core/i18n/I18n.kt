@@ -141,7 +141,7 @@ object I18n {
      * 重载语言字典。
      *
      *  同一份文件不重读：语言是**跟着配置**走的（每次配置落盘都会重设一遍，见
-     *  `ui/state/ConfigActions.write`），不设这道闸，拨任何一个开关都要把 JSON 再解一遍。
+     *  `ui/state/ConfigWrite.write`），不设这道闸，拨任何一个开关都要把 JSON 再解一遍。
      */
     fun reload() {
         val targetLang = effectiveLanguage

@@ -5,12 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.SystemClock
-import com.lookie.opluskey.KeyModule
+import com.lookie.opluskey.bridge.Framework
+import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.inject.Framework
-import com.lookie.opluskey.inject.system.SystemContext
+import com.lookie.opluskey.core.wire.ModuleWire
 
 /** 把判好的手势从 `system_server` 转给宿主进程执行。 */
 internal class GestureForwarder(
@@ -25,7 +26,7 @@ internal class GestureForwarder(
     private val handler: Handler,
 ) {
     /** 宿主的服务（用来在转发前唤醒宿主进程）。 */
-    private val hostService = ComponentName(KeyModule.PAGE_PACKAGE, HOST_SERVICE)
+    private val hostService = ComponentName(HostApp.PACKAGE, HOST_SERVICE)
 
     /**
      * 「唤醒宿主失败」是否已经报过（见 [forward] 里那条日志）。
@@ -70,14 +71,14 @@ internal class GestureForwarder(
         val phase = gesture.id
         val sentAt = SystemClock.elapsedRealtime()
         val intent =
-            Intent(KeyModule.ACTION_GESTURE)
-                .setPackage(KeyModule.PAGE_PACKAGE)
+            Intent(ModuleWire.ACTION_GESTURE)
+                .setPackage(HostApp.PACKAGE)
                 .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                 .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
-                .putExtra(KeyModule.EXTRA_KEY, id.id)
-                .putExtra(KeyModule.EXTRA_PHASE, phase)
-                .putExtra(KeyModule.EXTRA_REPEAT, repeat)
-                .putExtra(KeyModule.EXTRA_SENT_AT, sentAt)
+                .putExtra(ModuleWire.EXTRA_KEY, id.id)
+                .putExtra(ModuleWire.EXTRA_PHASE, phase)
+                .putExtra(ModuleWire.EXTRA_REPEAT, repeat)
+                .putExtra(ModuleWire.EXTRA_SENT_AT, sentAt)
 
         // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
         // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。

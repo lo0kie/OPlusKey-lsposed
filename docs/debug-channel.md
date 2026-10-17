@@ -1,7 +1,7 @@
 # debug 通道（注入侧反射通道）
 
 > 只在
-> **debug 包**存在（`BuildFlags.DEBUG_PROBE`）。实现：`inject/system/ProbeChannel.kt`。2026-10-14 落地；同日起成为本工程的固定调试能力。
+> **debug 包**存在（`BuildFlags.DEBUG_PROBE`）。实现：`inject/ProbeChannel.kt`。2026-10-14 落地；同日起成为本工程的固定调试能力。
 
 ## 一、它解决什么
 

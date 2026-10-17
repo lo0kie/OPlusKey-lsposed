@@ -12,7 +12,7 @@ internal const val VERBOSE_LOG: Boolean = true
 internal const val BUILD_KIND: String = "debug"
 
 /**
- * 模块 **debug 通道**（`inject/system/ProbeChannel.kt`）的总闸。
+ * 模块 **debug 通道**（`inject/ProbeChannel.kt`）的总闸。
  *
  * 打开后，一条 root 广播就能让注入侧在 `system_server` / 桌面进程里跑任意反射
  * （列方法签名、试调用、设圆角）—— 用来绕开「注入侧改一行就要整机重启，一轮试错几分钟」。

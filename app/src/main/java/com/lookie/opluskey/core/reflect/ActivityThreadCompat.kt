@@ -38,4 +38,26 @@ internal object ActivityThreadCompat {
             XLog.d("取 Application Context 失败：${e.message}")
             null
         }
+
+    /**
+     * `ActivityThread` 那个类本身 —— 拿不到返回 null。
+     *
+     *  给需要**自己读它的字段**的调用方用（如 `SystemContext` 要从 `mAllApplicationThreads`
+     *  里挑进程）。类名 [ACTIVITY_THREAD] 只在本文件里出现，调用方不必再写一遍字符串。
+     */
+    fun classOf(loader: ClassLoader): Class<*>? = Reflect.findClass(loader, ACTIVITY_THREAD)
+
+    /**
+     * `ActivityThread.currentActivityThread()` —— 当前进程的那个实例；拿不到返回 null。
+     *
+     *  `SystemContext` 里原来三处各自跑了一遍「查类 + 调这个静态方法」，**逐字相同**
+     *  （这一类不是平凡代码：多了 loader、返回 `Any?`、异常要兜底），任一处改错另两处不会跟着变。
+     */
+    fun currentActivityThread(loader: ClassLoader): Any? =
+        try {
+            classOf(loader)?.let { Reflect.callStatic(it, "currentActivityThread") }
+        } catch (e: Throwable) {
+            XLog.w("取 ActivityThread 实例失败：${e.message}")
+            null
+        }
 }

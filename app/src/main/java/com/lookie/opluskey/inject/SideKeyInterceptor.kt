@@ -2,6 +2,7 @@ package com.lookie.opluskey.inject
 
 import android.os.Handler
 import android.view.KeyEvent
+import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyConfig

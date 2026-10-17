@@ -1,7 +1,6 @@
 package com.lookie.opluskey.core.config
 
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.GlobalConfig
@@ -85,68 +84,54 @@ object ConfigCodec {
             o.optString(key, fallback)
         }
 
-    /** 从 JSON 构造配置。缺失的项一律走默认值（整段缺、单个字段缺都算）。 */
+    /**
+     * 从 JSON 构造配置。缺失的项一律走 `ConfigFields` 那张**字段表**里的默认值（整段缺、单个字段缺都算）。
+     *
+     *  字段 → 属性的映射不在这里：那在 `core/model/Config.kt` 的 `ofFields` 一处（本层只负责
+     *  「按类型把 JSON 里的值取出来」）。
+     */
     private fun fromJson(root: JSONObject): Config {
         val keysJson = root.optJSONObject(ConfigFields.KEYS_JSON)
         val keys =
             KeyId.entries.associateWith { id ->
-                val o = keysJson?.optJSONObject(id.id)
-                KeyConfig(
-                    id = id,
-                    enabled = o?.optBoolean(ConfigFields.ENABLED_JSON) ?: false,
-                    // 缺省 `none`：这一档没写就是「无操作」（`Config.DEFAULT` 同值）
-                    single = Action.parse(textOf(o, ConfigFields.SINGLE_JSON, "none")),
-                    double = Action.parse(textOf(o, ConfigFields.DOUBLE_JSON, "none")),
-                    long = Action.parse(textOf(o, ConfigFields.LONG_JSON, "none")),
-                    longPressMs =
-                        clamp(
-                            o?.optInt(ConfigFields.LONG_PRESS_MS_JSON, KeyConfig.DEFAULT_LONG_PRESS_MS)
-                                ?: KeyConfig.DEFAULT_LONG_PRESS_MS,
-                            KeyConfig.MIN_LONG_PRESS_MS,
-                            KeyConfig.MAX_LONG_PRESS_MS,
-                        ),
-                    longRepeat = o?.optBoolean(ConfigFields.LONG_REPEAT_JSON) ?: false,
-                    longRepeatIntervalMs =
-                        clamp(
-                            o?.optInt(ConfigFields.REPEAT_INTERVAL_MS_JSON, KeyConfig.DEFAULT_REPEAT_INTERVAL_MS)
-                                ?: KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-                            KeyConfig.MIN_REPEAT_INTERVAL_MS,
-                            KeyConfig.MAX_REPEAT_INTERVAL_MS,
-                        ),
-                )
+                KeyConfig.ofFields(id, readFields(keysJson?.optJSONObject(id.id), ConfigFields.KEY_FIELDS))
             }
-
-        val g = root.optJSONObject(ConfigFields.GLOBAL_JSON)
         val global =
-            GlobalConfig(
-                doubleClickMs =
-                    clamp(
-                        g?.optInt(ConfigFields.DOUBLE_CLICK_MS_JSON, GlobalConfig.DEFAULT_DOUBLE_CLICK_MS)
-                            ?: GlobalConfig.DEFAULT_DOUBLE_CLICK_MS,
-                        GlobalConfig.MIN_DOUBLE_CLICK_MS,
-                        GlobalConfig.MAX_DOUBLE_CLICK_MS,
-                    ),
-                vibrate = g?.optBoolean(ConfigFields.VIBRATE_JSON) ?: false,
-                instantSingle =
-                    g?.optBoolean(ConfigFields.INSTANT_SINGLE_JSON)
-                        ?: GlobalConfig.DEFAULT_INSTANT_SINGLE,
-                // 执行时提示缺省不弹
-                toastOnRun =
-                    g?.optBoolean(ConfigFields.TOAST_ON_RUN_JSON)
-                        ?: GlobalConfig.DEFAULT_TOAST_ON_RUN,
-                // 与同文件其它文本字段同一条口径（[textOf]）：裸 `optString` 遇到手写的
-                //  `"language": null` 会得到字符串 "null"，被当成有效值一路存下去。
-                language =
-                    textOf(g, ConfigFields.LANGUAGE_JSON, GlobalConfig.DEFAULT_LANGUAGE),
-            )
+            GlobalConfig.ofFields(readFields(root.optJSONObject(ConfigFields.GLOBAL_JSON), ConfigFields.GLOBAL_FIELDS))
+        return Config.ofFields(keys, global, readFields(root, ConfigFields.ROOT_FIELDS))
+    }
 
-        // 缺这一格一律按「没确认过」（老文件 / 手写的文件）—— 那是安全的那一侧：多弹一次不吃亏。
-        return Config(
-            keys = keys,
-            global = global,
-            disclaimerAccepted = root.optBoolean(ConfigFields.DISCLAIMER_JSON),
-            commandDisclaimerAccepted = root.optBoolean(ConfigFields.COMMAND_DISCLAIMER_JSON),
-        )
+    /**
+     * 按字段表从 JSON 里取值 —— 缺项走字段表里登记的默认值（老文件 / 手写文件的兼容）。
+     *
+     *  布尔这一列有一个**从旧实现原样带过来的坑，故意不动**：`JSONObject.optBoolean(key)` 在键缺失时
+     *  返回 `false` 而不是默认值 ⇒「有 `global` 段、但段里没写 `instantSingle`」的文件读出来是
+     *  `false`，而它登记的默认值是 `true`。改成「缺项补默认值」会让这类文件的这一档静默翻面 ——
+     *  那是**行为变更**，不混在结构改动里做（要改就单独一笔，并在 `changelog/` 里说清影响面）。
+     */
+    private fun readFields(
+        o: JSONObject?,
+        fields: List<ConfigFields.Field>,
+    ): ConfigFields.Values {
+        val values = mutableMapOf<ConfigFields.Field, Any>()
+        for (f in fields) {
+            val key = f.json ?: continue
+            when (val kind = f.kind) {
+                is ConfigFields.Kind.Bool -> {
+                    values[f] = o?.optBoolean(key) ?: kind.default
+                }
+
+                is ConfigFields.Kind.Number -> {
+                    val raw = o?.optInt(key, kind.default) ?: kind.default
+                    values[f] = raw.coerceIn(kind.min, kind.max)
+                }
+
+                is ConfigFields.Kind.Text -> {
+                    values[f] = textOf(o, key, kind.default)
+                }
+            }
+        }
+        return ConfigFields.Values(values)
     }
 
     /**
@@ -154,40 +139,43 @@ object ConfigCodec {
      *
      * 顺序是**先算再写**：把不含 `md5` 的那份算一个 MD5，再把这一格加到最后 ——
      * 所以它不覆盖它自己，校验时才有得比（[digestMatches]）。
+     *
+     * 键序由 `ConfigFields` 的字段表给出（表序 = 键序），本层不再逐字段抄一遍。
      */
     fun serialize(config: Config): String {
         val keys = JSONObject()
         for (id in KeyId.entries) {
-            val k = config.key(id)
-            keys.put(
-                id.id,
-                JSONObject()
-                    .put(ConfigFields.ENABLED_JSON, k.enabled)
-                    .put(ConfigFields.SINGLE_JSON, k.single.token)
-                    .put(ConfigFields.DOUBLE_JSON, k.double.token)
-                    .put(ConfigFields.LONG_JSON, k.long.token)
-                    .put(ConfigFields.LONG_PRESS_MS_JSON, k.longPressMs)
-                    .put(ConfigFields.LONG_REPEAT_JSON, k.longRepeat)
-                    .put(ConfigFields.REPEAT_INTERVAL_MS_JSON, k.longRepeatIntervalMs),
-            )
+            val one = JSONObject()
+            writeFields(one, config.key(id).fieldValues(), ConfigFields.KEY_FIELDS)
+            keys.put(id.id, one)
         }
-        val global =
-            JSONObject()
-                .put(ConfigFields.DOUBLE_CLICK_MS_JSON, config.global.doubleClickMs)
-                .put(ConfigFields.VIBRATE_JSON, config.global.vibrate)
-                .put(ConfigFields.INSTANT_SINGLE_JSON, config.global.instantSingle)
-                .put(ConfigFields.TOAST_ON_RUN_JSON, config.global.toastOnRun)
-                .put(ConfigFields.LANGUAGE_JSON, config.global.language)
+        val global = JSONObject()
+        writeFields(global, config.global.fieldValues(), ConfigFields.GLOBAL_FIELDS)
 
         val root =
             JSONObject()
                 .put(ConfigFields.VERSION_JSON, VERSION)
                 .put(ConfigFields.KEYS_JSON, keys)
                 .put(ConfigFields.GLOBAL_JSON, global)
-                .put(ConfigFields.DISCLAIMER_JSON, config.disclaimerAccepted)
-                .put(ConfigFields.COMMAND_DISCLAIMER_JSON, config.commandDisclaimerAccepted)
+        writeFields(root, config.fieldValues(), ConfigFields.ROOT_FIELDS)
         val digest = md5Hex(textWithoutDigest(root))
         return root.put(ConfigFields.MD5_JSON, digest).toString(2) + "\n"
+    }
+
+    /** 按字段表把一份取值写进一个 JSON 对象（[ConfigFields.Field.json] 为 `null` 的项跳过）。 */
+    private fun writeFields(
+        o: JSONObject,
+        v: ConfigFields.Values,
+        fields: List<ConfigFields.Field>,
+    ) {
+        for (f in fields) {
+            val key = f.json ?: continue
+            when (f.kind) {
+                is ConfigFields.Kind.Bool -> o.put(key, v.bool(f))
+                is ConfigFields.Kind.Number -> o.put(key, v.number(f))
+                is ConfigFields.Kind.Text -> o.put(key, v.text(f))
+            }
+        }
     }
 
     /**
@@ -235,10 +223,4 @@ object ConfigCodec {
         }
         return out.toString()
     }
-
-    private fun clamp(
-        value: Int,
-        min: Int,
-        max: Int,
-    ): Int = value.coerceIn(min, max)
 }

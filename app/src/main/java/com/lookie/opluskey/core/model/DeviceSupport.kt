@@ -30,7 +30,7 @@ import java.util.Locale
  *  各读一遍再各解析一遍，口径迟早会分叉，而那是「本机判成哪一档」这种最不该出错的地方。
  *
  * 加机型时：这里加一行 [Adapted]（**同一台机器多验一版 ROM 就在它那行的 `systems` 里加一项，
- * 不再多写一行**），**并且**去 `core/model/RomProfile` 与 `inject/Framework` 各加一档
+ * 不再多写一行**），**并且**去 `core/model/RomProfile` 与 `bridge/Framework` 各加一档
  * （内置命令的落点随 ROM 变，是另一张表；两道闸各管一件事）。
  *
  * **debug 包不做这道闸**：`ENFORCE_DEVICE_GATE = false` 的包里 [check] 一律返回 [Support.ADAPTED]
@@ -85,6 +85,14 @@ object DeviceSupport {
      * **不上**清单的一台：OnePlus 12 = `PJD110`（2026-10-16 实测）—— 这台是**三段式按键、没有侧键**，
      * 模块的核心（接管侧键）对它本就不适用；当时拿它验的是**版本锁**（判定三档）与那套口径，
      * 与「能不能用」是两件事。往这里加机型之前先确认那条键在。
+     *
+     * **没量过就不许进这张表**（一、13）：猜进来的那一档会让本机判成 [Support.ADAPTED]，
+     * 于是注入照做、而接管点其实没验过 —— 表现正是文件头说的「拦下来但什么都不做」，
+     * 用户读到的是「按了没反应，可它还振了一下」，比直接不支持更难查。
+     * 已经撤掉的一条：PLK110 在 Android 16 上的 `16.0.0` —— 那是按「一加 15 出厂系列」猜的，
+     * 而这个猜法**本身已被证伪过一次**（OnePlus 12 / Android 16 实测到的是 `16.0.10`，不是 `16.0.0`）。
+     * ⇒ 真到了 PLK110 跑 Android 16 的机器上，先量一次 `getprop ro.build.display.id`，
+     *  把拿到的那一串**逐字**补进 `systems`；在那之前 PLK110 + Android 16 走「等待适配」那一档。
      */
     private val ADAPTED =
         listOf(
@@ -93,16 +101,22 @@ object DeviceSupport {
                 name = "OnePlus 15（PLK110）",
                 systems =
                     listOf(
+                        // 本机实测：PLK110 / ColorOS 17.0.0（`Build.DISPLAY` 里取出的系列串）。
+                        // 这台机器再验一版 ROM，就在这一行的 `systems` 里加一项，不要多写一行 [Adapted]。
                         SystemVersion(android = "17", rom = "17.0.0"),
-                        // 注意：这一项是**按「一加 15 出厂系列」猜的**，没在真机上量过（本机 PLK110 跑的是
-                        //  17.0.0，读不到它在 Android 16 上的 `Build.DISPLAY`）。而且这个猜法已经被
-                        //  证伪过一次：在 OnePlus 12 上实测到的是 `16.0.10`，不是 `16.0.0`。
-                        //  ⇒ 这台机子上 Android 16 时，量一次 `getprop ro.build.display.id`
-                        //  把这一项换掉（对不上的表现是「等待适配」）。
-                        SystemVersion(android = "16", rom = "16.0.0"),
                     ),
             ),
         )
+
+    /**
+     * 清单里登记过的 ROM 系列 —— **与另外两张表（`RomProfile.PROFILES` / `Framework.HOOK_SETS`）
+     * 对账用**。
+     *
+     *  加一版 ROM 要往三处各加一行（能注入 / 有落点 / 接管点候选），漏一处不会编译报错，
+     *  表现是「等待适配」「接管点一个都没找到」「照别版的落点去起服务」三种难查的故障
+     *  —— 所以这里把清单读出来，供安装期那行对账日志比一遍。
+     */
+    fun adaptedSeries(): Set<String> = ADAPTED.flatMap { it.systems }.map { it.rom }.toSet()
 
     /** 判定结果（三档的口径见文件头）。 */
     enum class Support {
@@ -195,6 +209,33 @@ object DeviceSupport {
         android.os.Build.MODEL
             .orEmpty()
     }
+
+    /** 本机 Android 版本（`android.os.Build.VERSION.RELEASE`，真机是 `17`）。 */
+    val currentAndroid: String = android.os.Build.VERSION.RELEASE
+
+    /**
+     * 本机那一组（机型 + Android + ROM）过这道闸的结果 —— **进程内算一次**。
+     *
+     *  机型与系统版本都不会中途变，算一次就够。
+     *
+     *  为什么收在这里：这三样（机型 / Android / ROM）与判定结果原来都挂在 `KeyModule` 的 companion
+     *  上，而那是**入口**类 —— 机型身份不是它的职责（审计项「`KeyModule` 一个类装了三件事」里的
+     *  第三件）。收进本对象之后，「本机是哪一档」全项目只有这一处能回答。
+     */
+    val verdict: Support by lazy { check(currentModel, currentAndroid, currentRomSeries) }
+
+    /** 清单命中的简写（判定本体是 [verdict]）—— 「注入整套」还是「只注入界面层」看它。 */
+    val isAdapted: Boolean get() = verdict == Support.ADAPTED
+
+    /**
+     * 「为什么没注入」那一句 —— 机型不认识、还是这一版系统没适配，两档分开说：
+     * 前者是「本机用不了」，后者是「等作者适配」，用户该做的事完全不同。
+     */
+    fun whyNotInjecting(): String =
+        when (verdict) {
+            Support.PENDING -> "机型在适配清单里，但系统版本不是那一档（等待适配）"
+            else -> "机型不在适配清单里"
+        }
 
     /** 日志用：把机型翻成人看得懂的名字；不在清单里就这样打出来，方便照抄进 [ADAPTED]。 */
     fun describe(model: String?): String {

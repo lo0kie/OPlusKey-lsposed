@@ -88,7 +88,7 @@ sealed interface Action {
      *  · `true`  = **收起**的最小化窗（右上角一条，`windowType=2`，flags=`32`）。
      *
      * 收起档的几何由服务端自己算；展开档走 system_server 那条时要**由我们预置**展开档几何
-     * （`inject/system/FlexibleWindowBridge` 的 `EXPANDED_BOUNDS`），拿收起档的值喂进去会把窗口
+     * （`bridge/FlexibleWindowBridge` 的 `EXPANDED_BOUNDS`），拿收起档的值喂进去会把窗口
      * 缩成右上角一条。取值与判据见 `docs/device-findings.md` §17.6.3 的尺寸档对照表。
      */
     data class MiniWindow(
@@ -120,7 +120,7 @@ sealed interface Action {
 
         companion object {
             /**
-             * 三个档位名 —— 配置里 `ringer:<名>` 的 `<名>`，与执行侧（`inject/system/RingerController`）
+             * 三个档位名 —— 配置里 `ringer:<名>` 的 `<名>`，与执行侧（`bridge/RingerController`）
              * 认的档位一一对应。清单表与图标表都从这一处取，不再各写一遍字符串。
              */
             const val NORMAL = "normal"
@@ -149,7 +149,7 @@ sealed interface Action {
 
     /**
      * 拉下系统面板（`panel:control_center`）：在 system_server 里调 `IStatusBarService`
-     * （见 `inject/system/StatusBarBridge`），与「通知中心」（`keyevent:83`）同一条通道。
+     * （见 `bridge/StatusBarBridge`），与「通知中心」（`keyevent:83`）同一条通道。
      *
      *  为什么不把「通知中心」也并进这一族：它写的 `keyevent:83` 是**历史写法**，改掉会让用户
      * 配置里已有的绑定失效 —— 那边只是显示名从「通知栏」改成「通知中心」，取值不动。
@@ -288,7 +288,8 @@ sealed interface Action {
                 }
 
                 // 同上：`zoom:` 也是认不出就落到 shell 兜底的那一类。
-                // 收起档必须排在展开档**之前** —— 前缀相同，反了会把收起档判成展开档。
+                // 两档都是**精确比较**（`zoom:mini` 与 `zoom:mini:collapse` 互不相等），所以这两支
+                // 之间**没有顺序要求**；这里真正要守的是它们都排在 `else -> Shell` 兜底之前。
                 text == ZOOM_MINI_COLLAPSE -> {
                     MiniWindow(collapsed = true)
                 }

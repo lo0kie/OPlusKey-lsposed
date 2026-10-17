@@ -202,10 +202,11 @@ com.lookie.opluskey
 2. **注入侧不引用界面层依赖**（二、1.2）：`inject/` 下不得出现 COUI /
    androidx.compose 的 import。重构后这条**更容易守**：`ui/` 独立成一个顶层包，扫一眼依赖图就能验。
 3. **键码只定义在 `KeyId` 一处**（一、5）：迁到 `core/model/KeyId.kt` 后仍是唯一处， `inject/` 与 `host/` 都从那里取。
-4. **Hook 面候选表只在 `Framework.kt`**（一、7）：随 `inject/Framework.kt` 一起走。
-5. **系统侧配置读写只有一个出口**（一、8）：`SystemActionButtonConfig.kt` 随 `inject/system/`
-   走，且仍然**只在宿主进程**调 —— 注意它现在放在 `inject/`
-   里是因为它是「系统侧配置」的读取器、由注入侧代码定义，但**调用点必须仍在宿主侧**；若迁移中发现调用点跑到 `inject/`
+4. **Hook 面候选表只在 `Framework.kt`**（一、7）：随 `bridge/Framework.kt` 一起走
+   （⚠️ 本文写的是 `inject/Framework.kt` —— 那是当时的位置，这一批后来又迁到了 `bridge/`，见 `decoupling.md` 动作 1）。
+5. **系统侧配置读写只有一个出口**（一、8）：`SystemActionButtonConfig.kt` 现在在 `bridge/`
+   （⚠️ 同上，本文写的是 `inject/system/`），且仍然**只在宿主进程**调 —— 注意它放在 `bridge/`
+   里是因为它是「系统侧配置」的读取器、由注入侧代码定义，但**调用点必须仍在宿主侧**；若发现调用点跑到注入侧
    内部，说明原结构本来就错了，要单独记一笔。
 6. **零界面入口**（一、6）：`AndroidManifest.xml` 不动，`ui/` 只是包名变化。
 7. **作用域声明**（一、9）与 `scope.list` 不动。

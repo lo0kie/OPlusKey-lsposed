@@ -1,3 +1,9 @@
 {
-  "java.configuration.updateBuildConfiguration": "disabled"
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "json.schemas": [
+    {
+      "fileMatch": ["/app/seal/donors.json"],
+      "url": "./app/seal/donors.schema.json"
+    }
+  ]
 }

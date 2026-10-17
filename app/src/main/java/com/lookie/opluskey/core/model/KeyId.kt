@@ -35,7 +35,7 @@ enum class KeyId(
          * 截图按键码（`KEYCODE_SYSRQ`）—— 内置「截图」动作注入的就是它，**不是侧键**、不参与认领。
          *
          * 放在这里只因为一、5 要求「键码只定义在 [KeyId] 一处」：执行侧不许在
-         * `inject/input/KeyInjector` 的伴生对象里另留一份字面量 —— 那正是这条规矩要禁止的写法。
+         * `bridge/KeyInjector` 的伴生对象里另留一份字面量 —— 那正是这条规矩要禁止的写法。
          */
         const val KEYCODE_SYSRQ = 120
 

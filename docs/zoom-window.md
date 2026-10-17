@@ -278,7 +278,7 @@ FlexibleTaskController#switchState(Task task, int nextState, String reason)   //
 ### 7.2 跨进程通道
 
 动作执行在宿主 `com.oplus.gesture`，`FlexibleTaskController` 只在 system_server —— 新增
-`inject/system/FlexibleWindowBridge.kt`（与 `StatusBarBridge` 同款：宿主发限定包名广播
+`bridge/FlexibleWindowBridge.kt`（与 `StatusBarBridge` 同款：宿主发限定包名广播
 `com.lookie.opluskey.FLEXIBLE`，注入侧在 AMS 广播入口 hook 接住、本机执行）。
 
 宿主侧：先发广播（system_server 优先）→ 700ms（`MINI_VERIFY_MS`）核 `windowingMode==100`
@@ -386,7 +386,7 @@ mHasCaption 分支
 
 | 文件                                    | 职责                                                                                                                                                                                                                                                          |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `inject/system/FlexibleWindowBridge.kt` | 小窗指令通道（注入侧执行器）：`handle()` 派发 + `switchToMiniLocal()` 全流程；落点几何由宿主经 extra 下发，文件内那份只是兜底（为什么这么放见 §十一）                                                                                                         |
+| `bridge/FlexibleWindowBridge.kt` | 小窗指令通道（注入侧执行器）：`handle()` 派发 + `switchToMiniLocal()` 全流程；落点几何由宿主经 extra 下发，文件内那份只是兜底（为什么这么放见 §十一）                                                                                                         |
 | `inject/KeyHooks.kt`                    | AMS 广播入口 hook，把 `ACTION` 分派给 `FlexibleWindowBridge.handle`                                                                                                                                                                                           |
 | `host/action/AppLauncher.kt`            | `launchAppInWindow` / `putForegroundInMiniWindow(collapsed)`（宿主侧发广播 + 验收 + 尺寸档分流 + 降级）                                                                                                                                                       |
 | `host/action/MiniWindowSupport.kt`      | **「这个应用支不支持小窗」的唯一判据**：反射框架 `OplusZoomWindowManager#isSupportZoomMode`，执行侧与界面共用；三态，判不出来时界面不提示也不拦。⚠️ 它**自带系统 toast**（判 `false` 时框架弹「此应用尚未支持浮窗」）⇒ 只能「按下那一刻问一次」，见附十三之四 |

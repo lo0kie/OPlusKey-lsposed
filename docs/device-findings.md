@@ -23,7 +23,7 @@
 
 ### 入口方法（**只挂外层那一个**）
 
-> ⚠️ 这一节原写「两种，都要挂」，与 `inject/Framework.kt`
+> ⚠️ 这一节原写「两种，都要挂」，与 `bridge/Framework.kt`
 > 的实现和 §14.4 的结论相反（2026-10-15 审计 #39）。照那行做会重造幽灵长按 —— 正确口径是**只挂外层**
 > `actionInterceptKeyBeforeQueueing`；`$2` 是外层方法的**纯转发**（12 条指令、 `preCondition`
 > 恒 true），挂它 0 收益，只会让同一次按键被回调两次。
@@ -190,7 +190,7 @@ OCR 扫描 ocrscanner         控制中心 control_center
 | 备用候选      | 服务那层的 `expandSettingsPanel(...)`（AOSP 在那里有 `enforceExpandStatusBar()`）—— **本次没用上**，留着当兜底；两条都落空时代码会把带 `Expand` / `Panel` 的方法名打进日志                                              |
 | 通知中心      | 同服务上的 **`IStatusBarService.togglePanel()`**（0 参，展开 / 收起），两条动作共用一条跨进程通道                                                                                                                       |
 
-代码在 `inject/system/StatusBarBridge.expandControlCenterLocal`；⚠️ 注入侧 ⇒ 改它要整机重启。
+代码在 `bridge/StatusBarBridge.expandControlCenterLocal`；⚠️ 注入侧 ⇒ 改它要整机重启。
 
 ## 六、其它已确认事实
 
@@ -249,6 +249,26 @@ LSPosed 管理器模块列表右下角那颗「打开模块」的 FAB 由 `AppHe
   ⚠️ 拷这个库要**连 `-wal` 一起拷**（`modules_config.db` + `modules_config.db-wal`）：最近一次写入还在 WAL 里，
   只拷主库会读到**旧路径**，实测能得出「库 ≠ 真机」的假警报 —— 带上 `-wal` 再查就一致了。
 - 修法：把库里该行改成 `pm path` 的当前值，再重启。
+
+### 六之三之一、同样的报错还有第二种来路：增量安装（实测）
+
+- 报错三行与六之三**一字不差**（`Failed to open APK … I/O error` → `Failure to parse package archive`），
+  但库里 `apk_path` 是**对的**（刚装完，LSPosed 已自己刷成新路径）。这时别再去比路径 —— 看**安装方式**：
+
+    ```
+    adb install -r app.apk                    → Performing Incremental Install   ← 就是这个
+    adb install --no-incremental -r app.apk   → Performing Streamed Install
+    ```
+
+- 增量安装（Android 12+ 的 `--incremental`）把 APK 留在增量会话里**按需取页**，开机早期 LSPosed 读不到整份文件，
+  于是**那个进程整条跳过**。实测表现很误导：`system_server` 侧一行日志都没有（连「模块已加载」都没有），
+  而开机更晚的 `com.oplus.gesture` 正常注入 —— 看起来像「只装了半边」，其实是启动时序 + 读不到包。
+- 判据：`dumpsys package <pkg>` 拿到 `codePath` 后 `wc -c < base.apk`，大小必须**等于本地产物**；
+  不等就是还没落盘。
+- 修法：`adb install --no-incremental -r <apk>` 重装一次（新路径同样由 LSPosed 自己刷进库）。
+- 同一次重装还实测到：**卸载重装不需要重勾作用域** —— LSPosed 会按包里的
+  `META-INF/xposed/scope.list` 把 `enabled=1` 与作用域（`system` / `com.oplus.gesture`）写回库里；
+  只有六之三那一档（路径过期）才需要手工改库。
 
 ### 六之四、本机 LSPosed 版本与可用工具
 
@@ -394,9 +414,71 @@ $ ls -Z /data/adb/OPlusKey/config.conf
 3. **`hook/ProviderAccess.kt` 与 `hook/SystemActionButtonConfig.kt` 的 AMS 反射路径删除**。它俩的唯一用途是「读
    `Settings.Global`」（通道已死）与「读系统侧键映射」（README 自认的已知限制，本来就读不到）。**想读系统侧键映射就在宿主进程里读**
    ——宿主就是 `ActionButtonProvider` 的宿主，`ContentResolver` 在那里完全可用。
-4. 保留 `inject/system/SystemContext.kt`：注入侧发广播 / `startService`
+4. 保留 `bridge/inject/SystemContext.kt`：注入侧发广播 / `startService`
    仍要一个可用的 Context（`ActivityThread.getSystemContext()` 的那个 `mAppThread` 是 null，`sendBroadcast`
    内部要它，所以必须借一个真实 App 进程的 Application Context）。
+
+### 六之八、手电筒：`flashlight` 能用，**亮度档位做不了**（实测，2026-10-17）
+
+> 结论先说：**只保留开 / 关（`flashlight`）**。试过「按档位开灯」（`torch:1..4`）并**已撤销** —— 它在真机上
+> 做不到「一次按对」，见下面第三条。别再往回加。
+
+**一、这颗 LED 的归属：V4L2 flash 设备，不是 lights HAL**（`adb shell su -c ls /sys/class/leds/`）
+
+```
+white:flash-1   ← 手电筒（相机闪光灯）；带 flash_brightness / flash_strobe /
+                   flash_timeout / max_flash_brightness / max_flash_timeout
+yellow:flash-0、amber:flash-2
+red / green / blue ← 通知灯，这套才归 lights HAL（vendor.qti.hardware.lights.service）
+```
+
+`flash_strobe` / `flash_timeout` / `max_flash_brightness` 这一组是 **V4L2 flash class** 的属性 ⇒ 闪光灯**归相机驱动管**。
+所以两条旁路都不通：
+
+- 走 lights HAL（`android.hardware.light.ILights`）设亮度 —— 它不认这颗灯，只管 `red` / `green` / `blue` / `amber`；
+- 直接写 `/sys/class/leds/white:flash-1/brightness` —— 节点是通用 `sysfs` 标签、属主 root；宿主进程在
+  `platform_app` 域，注入侧在 `system_server` 域，两边都写不了（真去写还是跟相机抢设备，会让 HAL 以为灯是灭的）。
+
+**二、硬件有 256 档，相机 HAL 只暴露 4 档**（`adb shell dumpsys media.camera`）
+
+```
+android.flash.info.available (50000)              → TRUE
+android.flash.info.strengthMaximumLevel (50002)   → 4   ← 公开 API 用的就是这个，默认档 2
+android.flash.info.strengthDefaultLevel (50003)   → 2
+android.flash.singleStrengthMaxLevel (40007)      → 5   ← OPPO / QTI 私有 tag
+android.flash.singleStrengthDefaultLevel (40008)  → 5
+android.flash.torchStrengthMaxLevel (40009)       → 5
+android.flash.torchStrengthDefaultLevel (4000a)   → 5
+```
+
+`max_brightness` 是 **255**（硬件层面 0..255），那 4 档是相机 HAL 自己映射的。私有那一路比公开 API 多一档（5 vs 4），
+厂商默认值 5 被公开上限钳到 4 —— 这正是「只有第 4 档不用按第二次」的成因（它跟默认值撞上了）。
+
+**三、为什么档位做不了：点亮那一下会把请求的档位丢掉**
+
+`CameraManager.turnOnTorchWithStrengthLevel(cameraId, level)`（**API 34 起**，与 `setTorchMode` 同一条轻量路径，
+不用开相机）在**灯本来灭着**时调用，HAL 会先按**默认档**把 LED 点亮、把这一次请求的档位丢掉。真机实测：
+
+- 同一批按压里，2 档、4 档第一次就成，3 档得按第二次（日志里第二次仍是「第 3 档」而不是「关」，说明读回来不是 3）；
+- 同一次调用里**连设两次**——无效；
+- 隔 300ms 再补一次——**有效**，但肉眼能看到「先亮到默认档再回落」；
+- 由 torch 回调报「亮了」时再补——也一样，只是窗口短些。
+
+判「档位到底吃进去没有」用 `getTorchStrengthLevel(cameraId)`（API 34 起）读回来比，这个值**可用**（「同档再按一次 = 关」
+那条逻辑就是靠它验证过的）。
+
+**四、系统自己怎么做**（`SystemUI.apk` → `classes7.dex`，用 `tools/dexdump.py refs` 按被调方法名找调用点）
+
+系统用的**也是同一个公开 API**，差别只在调用时机：
+
+- `com.android.systemui.flashlight.data.repository.FlashlightRepositoryImpl.setLevel`：
+  先 `connectToCameraLoadFlashlightInfo()`，再 `waitForStateToBecomeAvailableOrPermanentlyUnavailable()`，
+  **状态可用了才调**，方法体里还有一条「请求的档位 != 当前档才调」的判断；
+- `com.android.systemui.statusbar.policy.FlashlightControllerImpl`：调之前先查 `mCameraId`（`AtomicReference`），
+  **为空直接跳过**。
+
+而且系统的交互是「**先把灯点亮，再在亮着的状态下调档**」—— 它从不「灯灭着的时候直接设档」，也就绕开了上面那个现象。
+所以系统里**没有**可参考的「一次按对」的做法。
 
 ## 七、由此确定的实现方案
 
@@ -1512,7 +1594,7 @@ public void setRingerModeInternal(int ringerMode) {
 }
 ```
 
-`@hide` ⇒ 只能反射调（宿主进程里隐藏 API 反射可用，同 `inject/input/KeyInjector` 调 `InputManager.injectInputEvent`
+`@hide` ⇒ 只能反射调（宿主进程里隐藏 API 反射可用，同 `bridge/host/KeyInjector` 调 `InputManager.injectInputEvent`
 那条先例）。
 
 | 做法                                                        | 结果                                                                                       |
@@ -2394,7 +2476,7 @@ alpha/时长/插值器/leash…，**构造器是 public**）。`switchState(task
 
 ##### 附五：`flexibleZoomState` 的实测取值（2026-10-14，模块经 system_server 通道读出）
 
-为这条通道新建了注入侧执行器 `inject/system/FlexibleWindowBridge.kt`（与 `StatusBarBridge`
+为这条通道新建了注入侧执行器 `bridge/FlexibleWindowBridge.kt`（与 `StatusBarBridge`
 同款：宿主发广播、注入侧在 AMS 广播入口接住、本机执行），把一直读不到的 `TaskExtImpl#getFlexibleZoomState()` 读出来了：
 
 - **普通全屏任务（前台）**：`flexibleZoomState = 0`，`bounds = Rect(0,0-1272,2772)`；此时 `switchState(task, 1, …)`
