@@ -24,12 +24,14 @@ internal data class StepLine(
 /**
  * 「多条命令」的摘要行：一步一条。只管多条 —— 单条那一路显示原始取值。
  *
- * @param appLabel 透传给 [stepTitle]：步骤里可能有 `app:<包名>`，那一步要显示应用名。
+ * @param appName 透传给 [stepTitle]：步骤里可能有 `app:` / `window:` / `appshortcut:`，
+ *   那一步要显示名字。入参是**目标写法**（`999@包名/类名`），不是包名 —— 分身与具体界面都要认，
+ *   名字的优先级收在 `appNameOf` 一处。
  */
 internal fun serialSummarySteps(
     steps: List<String>,
-    appLabel: (String) -> String,
-): List<StepLine> = steps.map { StepLine(it, stepTitle(it, appLabel)) }
+    appName: (String) -> String,
+): List<StepLine> = steps.map { StepLine(it, stepTitle(it, appName)) }
 
 /**
  * 这一步是不是引用另一条命令（`cmd:<名字>`）。
@@ -55,22 +57,31 @@ internal fun isCommandRef(token: String): Boolean = token.startsWith(Command.PRE
  */
 internal fun stepTitle(
     token: String,
-    appLabel: (String) -> String,
+    appName: (String) -> String,
 ): String {
     if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
     val action = Action.parse(token)
     return when (action) {
         // 这两档走的是**带 `%s` 的**格式键，不是清单里那条说明文案（后者值里没有格式符，
         //  拿它去 format 等于把应用名丢掉，界面上只会显示一句「挑一个本机应用…」）。
+        //  交给 [appName] 的是**完整目标**：以前传 `substringBefore('/')`，分身会带着 `999@`
+        //  去查（必然查不到）、结果就显示成包名。
         is Action.App -> {
-            I18n.format(Strings.COMMON_OPEN_APP_FORMAT, appLabel(action.target.substringBefore('/')))
+            I18n.format(Strings.COMMON_OPEN_APP_FORMAT, appName(action.target))
         }
 
         is Action.AppWindow -> {
             I18n.format(
                 Strings.COMMON_OPEN_MINI_WINDOW_FORMAT,
-                appLabel(action.target.substringBefore('/')),
+                appName(action.target),
             )
+        }
+
+        // 快捷方式（`appshortcut:`）：显示它自己的名字（「扫一扫」，存在 `Config.appNames` 里），
+        //  没记过就退回应用名 / 包名。不与上面两档合并：那两档说的是「打开这个应用」，
+        //  这一档是「打开它的某个快捷方式」。
+        is Action.AppShortcut -> {
+            I18n.format(Strings.COMMON_OPEN_SHORTCUT_FORMAT, appName(action.appTarget.orEmpty()))
         }
 
         else -> {

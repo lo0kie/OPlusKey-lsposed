@@ -10,20 +10,21 @@
 
 ---
 
-## 零、2026-10-17 实测基线（本页正文的旧数字以此为界失效）
+## 零、2026-10-18 实测基线（本页正文的旧数字以此为界失效）
 
 正文各节的 `43 字段 / 15 文件 / ui/component / 18 个环` 是**改造前**的口径。改造后的可复核值：
 
-| 项 | 值 | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行） |
-| --- | --- | --- |
-| 包级 2-cycle / 3-cycle | **0** | `.temp/graph.py` 的 `CYCLES` 段无输出 |
-| `SettingsPage` 状态字段 | 35（21 val + 14 var） | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt` |
-| `SettingsPage.xxx` 扩展 | 87 个，散在 32 文件 | `grep -rcE 'fun SettingsPage\.' --include=*.kt .` |
-| `ui/SettingsPage.kt` 行数 | 699（原 879） | `wc -l ui/SettingsPage.kt` |
-| `inject/ProbeChannel.kt` 行数 | 338（原 868；`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`） | `wc -l inject/Probe*.kt` |
-| `host/action/MiniWindowLauncher.kt` 行数 | 658（原 877；常量与反射面在 `MiniWindowFacts.kt`） | `wc -l host/action/MiniWindow*.kt` |
-| 屏文件 import 页面 | 21 个（20 个屏 + 装配层 `ui/screen/PageRoot.kt`） | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/` |
-| 零引用 import | 0，且由 detekt 拦下 | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
+| 项                                       | 值                                                                    | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
+| ---------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 包级环 / 边                              | **0 / 142**（包 27 个）                                               | 包级导入图 + DFS 环检测（见「七」）                                                 |
+| `SettingsPage` 状态字段                  | **21**                                                                | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
+| `SettingsPage.xxx` 扩展                  | 195 个，散在 62 文件                                                  | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
+| `ui/SettingsPage.kt` 行数                | **497**（879 → 699 → 497）                                            | `wc -l ui/SettingsPage.kt`                                                          |
+| `inject/ProbeChannel.kt` 行数            | 338（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）         | `wc -l inject/Probe*.kt`                                                            |
+| `host/action/MiniWindowLauncher.kt` 行数 | 672（常量与反射面在 `MiniWindowFacts.kt`）                            | `wc -l host/action/MiniWindow*.kt`                                                  |
+| 单文件最大行数                           | **714**（`ui/model/ActionIcons.kt`）；全仓**无 > 1000 行**的文件      | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
+| 屏文件 import 页面                       | 45 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线 | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
+| 零引用 import                            | 0，且由 detekt 拦下                                                   | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
 新的分层（方向是单向的，`ui.screen`/`ui.hook` 都只往 `ui` 与 `ui.state` 走）：
 
@@ -176,14 +177,14 @@ core/wire/ConfigBroadcast.kt:5 → core.config.CommandLibrary
 
 ### F. 巨型文件与「常量垃圾抽屉」
 
-| 文件                                                        | 字符数         | 顶层声明 | 主要东西                                                                       |
-| ----------------------------------------------------------- | -------------- | -------- | ------------------------------------------------------------------------------ |
-| `ui/screen/CommandScreen.kt`                                | ~88k           | 27       | 自定义命令页全屏 + 工具栏 + 步骤卡 + 表单 + 保存/试运行/增删步骤               |
-| `ui/SettingsPage.kt`                                        | ~113k（字节）  | —        | 页面骨架 + 43 字段 + 挂载 + 转场 + 覆盖层编排                                  |
-| `ui/screen/BindingScreen.kt`                                | ~67k           | 10       | 手势页 + pager + 分段控件 + FAB                                                |
-| `ui/screen/AppPicker.kt`                                    | ~53k           | 23       | 选择应用页 + 列表 + 两张拦人窗                                                 |
-| `ui/model/PageConst.kt`                                     | ~26k           | **115**  | 几何 / 颜色与 alpha / **17 条硬编码文案** / 7 条外链 / 行数常量 / 3 个标签函数 |
-| `host/action/MiniWindowLauncher.kt`                         | ~58k（字节）   | —        | 小窗启动整套                                                                   |
+| 文件                                                 | 字符数         | 顶层声明 | 主要东西                                                                       |
+| ---------------------------------------------------- | -------------- | -------- | ------------------------------------------------------------------------------ |
+| `ui/screen/CommandScreen.kt`                         | ~88k           | 27       | 自定义命令页全屏 + 工具栏 + 步骤卡 + 表单 + 保存/试运行/增删步骤               |
+| `ui/SettingsPage.kt`                                 | ~113k（字节）  | —        | 页面骨架 + 43 字段 + 挂载 + 转场 + 覆盖层编排                                  |
+| `ui/screen/BindingScreen.kt`                         | ~67k           | 10       | 手势页 + pager + 分段控件 + FAB                                                |
+| `ui/screen/AppPicker.kt`                             | ~53k           | 23       | 选择应用页 + 列表 + 两张拦人窗                                                 |
+| `ui/model/PageConst.kt`                              | ~26k           | **115**  | 几何 / 颜色与 alpha / **17 条硬编码文案** / 7 条外链 / 行数常量 / 3 个标签函数 |
+| `host/action/MiniWindowLauncher.kt`                  | ~58k（字节）   | —        | 小窗启动整套                                                                   |
 | `bridge/FlexibleWindowBridge.kt` / `ProbeChannel.kt` | ~51k（字节）各 | —        | 小窗桥 / 诊断探针通道                                                          |
 
 `PageConst.kt` 的 115 个声明聚了六类毫不相干的东西（`STEP_MS` 与 `DISCLAIMER_TEXT` 是邻居），是典型的**垃圾抽屉**：任何一个页面改一个边距，diff 都落在这个文件上。
@@ -346,7 +347,8 @@ ui/model/PageLabels.kt    3 个标签函数（gestureLabel / commandKindLabel / 
 com.lookie.opluskey
 ├── KeyModule.kt                 入口（java_init.list 写死，不许动）
 ├── core/                        model · log · reflect · config · wire · seal · i18n
-├── bridge/                      ← 新增：宿主进程也会跑的系统桥（状态栏/铃声/手电筒/小窗桥/按键注入）
+├── bridge/                      ← 宿主进程也会跑的系统桥（状态栏/铃声/手电筒/小窗桥/按键注入）
+│                                 + 两侧都读的**查询与解析**：分身目录 / 入口解析 / 小窗支持判定
 │   ├── host/                    ← 只有宿主侧引用（包名 = 进程归属，2026-10-17 分）
 │   └── inject/                  ← 只有注入侧引用
 ├── inject/                      只在 system_server 执行：拦截 · 手势判定 · 配置接收 · 候选表
@@ -362,8 +364,10 @@ com.lookie.opluskey
 | `host/`         | `inject.*` · `ui.*`                                                                          | 本文动作 1、2                                                 |
 | `ui/component/` | `ui/screen.*`                                                                                | 本文动作 4                                                    |
 | `ui/state/`     | `ui/screen.*`                                                                                | 同向（状态不许反过来认识屏）                                  |
+| `ui/`           | `host/action.ActionRunner`（`CommandLibrary` / `TestRunnerCache` 两处除外）                  | 执行器归宿主；页面只借它跑一次「测试命令」                    |
 | `core/`         | 任何上层包                                                                                   | 已有事实（唯一例外是 `core/wire → core/config`，动作 3 收掉） |
-| `KeyModule.kt`  | 除 `core/*` 之外的一切                                                                       | 它在注入侧被加载（CI 已单列一档）                             |
+| `KeyModule.kt`  | 除 `core/*` 之外的一切 —— **例外**：`host.GestureReceiver` / `host.SideKeyGestureHooks` /    |
+|                 | `inject.*` / `ui.hook.SettingsPageHooks`                                                     | 它在两侧都被加载，入口必须按进程分派（CI 已单列一档）         |
 
 ---
 
@@ -394,7 +398,10 @@ com.lookie.opluskey
 正是本文目标形态里要留在页面上的那些）；动作 6 的六个屏目录已就位（`command/` `binding/` `apppicker/` `home/`
 `about/` `donate/`），其中命令页已切成四块。三道闸 + `assembleDebug` 全过。
 **界面层已完成**：`ui/` 下不再有 > 1000 行的文件（`SettingsPage.kt` 1591 → 887，另出 `SettingsPageView.kt` / `SettingsPageDebug.kt`；六个屏各自成目录并切成 3~4 块）。
-**未做**：注入侧 / 宿主侧那三个 > 1000 行的文件（`ProbeChannel` 1091 · `MiniWindowLauncher` 1044 · `FlexibleWindowBridge` 1032 —— 本文「九、已知局限」第 3 条说要先单独审）；8 的**图标**那一项（见下）。
+**已拆（2026-10-18 复核）**：注入侧 / 宿主侧那三个 > 1000 行的文件都拆完了 —— `ProbeChannel`
+（`ProbeCall` / `ProbeOps`）、`MiniWindowLauncher`（`MiniWindowFacts`）、`FlexibleWindowBridge`
+（`FlexibleAnim`）。全仓现在没有 > 1000 行的文件，最大的是 `ui/model/ActionIcons.kt` 714 行。
+**未做**只剩动作 8 的**图标**那一项（见下）。
 
 动作 8 剩下那一项为什么不动：执行分支已经是**穷尽 `when`**（漏一档在编译期就报错），「定义 + 注册」
 里的注册也已经落在 `ActionCatalog.Spec` 一处；唯一还在 `ui/model/ActionIcons` 里按 token 分派的是**图标**。
@@ -402,6 +409,40 @@ com.lookie.opluskey
 `AGENTS.md` 一、1「注入侧零界面依赖」的判据来源 —— `core` 是注入侧会加载的包）；2) 只放一个「字形名」
 枚举进 `Spec`，那就得同时把 `CommandText.stepIcon` 的取值也改走清单 —— 那会**换掉步骤行现在显示的字形**
 （入口格那几档：步骤行从具体取值那颗变成格子那颗），是可见的行为变化，不属于「结构收敛」。
+
+**进度（2026-10-17 深夜，分身那一批）**：把「应用多开」的**执行面**从 `core/model` 挪到
+`host/action`（`AppCloneCatalog` / `AppLaunchAsUser`）—— 列分身用户、按用户查包、按用户起界面三件事
+都要 `Context` 与 hidden API，属平台适配与执行，不再让 `:core`（注入侧也加载的那一层）编得到它们。
+同一批把界面层那两条私有面也收了：`ui/screen/apppicker` 不再调 `IPackageManager` 与
+`createContextAsUser`，只从 `AppCloneCatalog` 拿「包名 / 名字 / 槽号」。
+槽号与分身显示名各收成一处（`AppCloneCatalog.slotOf` · `ui/model.cloneLabel`），
+快捷方式的目标写法也只剩 `Action.AppShortcut.plainTarget` 一处。
+（`AppCloneCatalog` 在 2026-10-18 那一批又进了 `bridge/`：它是**查询**，不是执行 —— 见下。）
+
+**进度（2026-10-18 凌晨，降耦合收口）**：包级环 **1 → 0**、包级边 **144 → 142**、`ui → host` **5 → 2**。
+三处搬家，全部是「类型放错层」，没有改任何行为：
+
+1. `AppPickerUiState`（连同 `SmallWindowBlock`）从 `ui/screen/apppicker` 进 `ui/state` —— 它与
+   `ui → ui.screen.apppicker` 是同一个环的两条边。`rememberAppPickerUiState` 留在页面层
+   （`SettingsPage.kt` 末尾），不跟着进 `ui/state`：它是 `SettingsPage` 扩展，跟进去会让
+   `ui.state → ui` 把环换个方向长回来。
+2. `appNameOf` / `appLabelOf` 从 `ui/screen/apppicker/AppNames.kt` 进 `ui/AppNaming.kt` —— 前者被
+   `binding` / `command` 两处 / 顶栏 / 页面分派共 5 处引用，挂在某一个屏的包里等于让其余屏反向依赖那个屏。
+3. `AppCloneCatalog` / `AppEntry` / `MiniWindowSupport` 从 `host/action` 进 `bridge/` —— 三者都是
+   **查询与解析**（列分身、包名 → 入口、支不支持小窗），两个进程都读。搁在执行层时页面层只能
+   `ui → host`。顺带给 `cloneUsersInDisplayOrder` 加了一份「只记非空结果」的进程内缓存：拼名字那条路
+   是逐行调的，每次重列用户都要走 `UserManager#getUsers` 的反射 + binder。
+
+余下 `ui → host.action.ActionRunner` 两处（`CommandLibrary` / `TestRunnerCache`）**不搬**：那是
+「测试命令」按钮在页面进程里跑一次动作，执行器本身归宿主，见禁边表里新加的那一行。
+
+**动作 8 的实际成本（`appshortcut:` 那一档的实测）**：加一档动作动了 6 个文件 ——
+`core/model/Action.kt`（定义 + 解析）、`host/action/ActionRunner`（穷尽 `when` + 执行器）、
+`host/action/ActionNotice`（执行提示文案）、`ui/model/ActionIcons`（字形）、
+`ui/model/CommandText`（步骤名）、`ui/screen/binding/BindingGrids`（小窗标记与小字）。
+菜单与目录（`ActionCatalog`）没动 —— 这一档被当成「打开应用」族的更具体形态，不是独立菜单项。
+所以判据 5 的「2 处」仍差 3 处 `when` 分派，**不是只有上面说的「图标」一项**；
+估下一档动作的改动面时按这 6 处算，别按「定义 + 注册」算。
 
 每个阶段=一次提交=一个 `changelog/` 片段（`AGENTS.md` 一、三）；每阶段结束都跑：
 
@@ -457,13 +498,13 @@ grep -rn '^import com.lookie.opluskey.ui.screen' app/src/main/java/com/lookie/op
 
 ## 八、明确不做（与 `architecture-refactor.md` 五 保持一致）
 
-| 做法                         | 为什么不做                                                                                                         |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| 做法                         | 为什么不做                                                                                                                            |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | 拆 Gradle 多模块             | **已有例外**：`core/` 已独立成 `:core`（两进程共用的那一层，值得编译期约束）。其余各包仍留 `:app` —— 拆它们要重排可见性，风险大于收益 |
-| MVVM / ViewModel / StateFlow | 本模块没有自己的 Activity，ViewModel 的宿主得自己伪造；加一层壳换不来东西                                          |
-| DI（Hilt / Koin）            | 注入侧零依赖与注解处理器冲突（system_server 类加载期可达性）                                                       |
-| Repository / DataSource 抽象 | 数据源只有宿主私有目录里两份文件，抽象即空壳                                                                       |
-| 为「好看着更整齐」的目录搬家 | `AGENTS.md` 一、1：挪目录 / 文件属**大幅重构**，拿不出可量理由的须用户明确要求 —— 本文每条动作都对应一个可量的判据 |
+| MVVM / ViewModel / StateFlow | 本模块没有自己的 Activity，ViewModel 的宿主得自己伪造；加一层壳换不来东西                                                             |
+| DI（Hilt / Koin）            | 注入侧零依赖与注解处理器冲突（system_server 类加载期可达性）                                                                          |
+| Repository / DataSource 抽象 | 数据源只有宿主私有目录里两份文件，抽象即空壳                                                                                          |
+| 为「好看着更整齐」的目录搬家 | `AGENTS.md` 一、1：挪目录 / 文件属**大幅重构**，拿不出可量理由的须用户明确要求 —— 本文每条动作都对应一个可量的判据                    |
 
 ---
 

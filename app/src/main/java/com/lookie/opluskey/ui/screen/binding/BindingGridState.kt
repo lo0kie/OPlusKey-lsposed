@@ -12,7 +12,6 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.SettingsPage
@@ -43,8 +42,14 @@ internal class BindingGridState(
     /** 焦点格总数 —— 与 [specs] 下标一一对应（见 `BindingList` 里「扁平焦点索引的账」）。 */
     val totalCount: Int get() = specs.size
 
-    /** 内置格子的个数 —— 下标 `[0, builtInCount)` 是内置那一组，之后是自定义命令。 */
-    val builtInCount: Int get() = ActionCatalog.ALL.size
+    /**
+     * 内置格子的个数 —— 下标 `[0, builtInCount)` 是内置那一组，之后是自定义命令。
+     *
+     *  按**这一档手势**算（`ActionCatalog.builtInCount`），不是按 `ALL.size`：清单按手势剔过条目
+     *  （「灵感语音」只在长按），用 `ALL.size` 会让切点后移一位 —— 第一条自定义命令就跑到
+     *  「快捷功能」那一组里去了。切分与清单必须同源。
+     */
+    val builtInCount: Int = ActionCatalog.builtInCount(g)
 
     /**
      * 每个格子一个 `FocusRequester`。
@@ -157,13 +162,6 @@ internal fun SettingsPage.bindingActivate(
     anchor: PreciseClickState,
     enabled: Boolean,
 ) {
-    //  被锁住的命令一概不派发（`ActionCatalog.isLocked`，与格子那个 `enabled` 同一判据）：
-    //  格子那边已经不可点、库也不给回调，这里兜的是**确认键**那条路 —— 它自己派发。
-    //  不弹提示：灰着本身就是那句话（要说原因的是「整页禁用」那一档，见 `pick`）。
-    if (ActionCatalog.isLocked(spec)) {
-        XLog.w("按键绑定：${spec.token} 在本机没有落点（已锁住），确认键不派发")
-        return
-    }
     if (spec.token == ActionCatalog.APP_TILE) {
         if (enabled) {
             tickNow()
@@ -173,7 +171,7 @@ internal fun SettingsPage.bindingActivate(
         return
     }
     if (ActionCatalog.isEntryTile(spec)) {
-        // 入口格（系统导航 / 系统按键 / 媒体控制 / 响铃状态 / 应用转小窗）：
+        // 入口格（系统导航 / 系统按键 / 媒体控制 / 响铃状态 / 前台转小窗）：
         // 只弹二级菜单供选择，不直接改绑第一项；只有在弹出的菜单里真正点了某一项才改绑。
         if (enabled) {
             tickNow()

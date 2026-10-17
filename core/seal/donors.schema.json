@@ -1,13 +1,13 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "OPlusKey 捐赠名单（donors.json）",
-  "description": "「捐赠列表」页的数据，文件是 app/seal/donors.json。\n顶层必须是数组：一项 = 一位捐赠者，数组顺序就是页面上的顺序（页面不排序、也不合并同名的行）。\n空数组 [] 是合法状态 —— 页面走「还没有捐赠记录」那一档。\n读法见 ui/model/Donor.kt：读不到、解不开都退成空表并记一行 w。",
+  "description": "「捐赠列表」页的数据，文件是 core/seal/donors.json。\n顶层必须是数组：一项 = 一位捐赠者，数组顺序就是页面上的顺序（页面不排序、也不合并同名的行）。\n空数组 [] 是合法状态 —— 页面走「还没有捐赠记录」那一档。\n读法见 ui/model/Donor.kt：读不到、解不开都退成空表并记一行 w。",
   "type": "array",
   "default": [],
   "examples": [
     [],
     [
-      { "name": "张老板", "amount": 30 },
+      { "name": "张老板", "amount": 30, "at": "2026-10-17 19:36" },
       { "name": "Lookie", "amount": 100 }
     ]
   ],
@@ -25,12 +25,19 @@
         "examples": ["张老板", "Lookie"]
       },
       "amount": {
-        "title": "金额（整数元）",
-        "description": "表格右格，显示成 ¥ 加金额。整数元：小数会被截断（30.5 读成 30）；带千分位或货币符号的字符串读出来是 0。\n不写这一项等于 0。",
-        "type": "integer",
+        "title": "金额（元，可到分）",
+        "description": "表格右格，显示成 ¥ 加金额，**始终两位小数**（5.20 → ¥5.20、30 → ¥30.00）。\n写的是**元**：可以带小数（最多两位，多的按分四舍五入）；带千分位或货币符号的字符串读出来是 0。\n不写这一项等于 0。",
+        "type": "number",
         "minimum": 0,
         "default": 0,
-        "examples": [30, 100]
+        "examples": [5.2, 30, 100]
+      },
+      "at": {
+        "title": "到账时间（只记录，不上屏）",
+        "description": "给维护者看的记录：这笔什么时候到的。**页面不显示它，也不用它排序**（顺序仍以数组先后为准）。\n格式固定 `YYYY-MM-DD HH:mm`（本地时间，与收款通知一致）；省略就是空串，不报错。",
+        "type": "string",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}$",
+        "examples": ["2026-10-17 19:36"]
       }
     },
     "required": ["name"],

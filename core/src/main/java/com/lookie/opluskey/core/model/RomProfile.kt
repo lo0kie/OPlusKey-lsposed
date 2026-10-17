@@ -1,13 +1,12 @@
 package com.lookie.opluskey.core.model
 
-import com.lookie.opluskey.core.GUESS_UNVERIFIED_LANDING
 import com.lookie.opluskey.core.log.XLog
 
 /**
  * **一档 ROM 的适配事实** —— 内置命令的落点 + 反射面（ColorOS 私有类名 / 方法名 / 字段名）。
  *
  * 一版 ROM 一个 [Profile]，适配新版本 / 新机型时**只加一个条目**。表在 [PROFILES]，选档按
- * [DeviceSupport.currentRomSeries]（`17.0.0` 这种，与适配闸同一个口径、同一个输入）。
+ * [DeviceSupport.currentRomSeries]（`17.0.0` 这种，与适配清单同一个口径、同一个输入）。
  *
  * ## 为什么按 ROM 系列分档，不按机型
  *
@@ -22,16 +21,12 @@ import com.lookie.opluskey.core.log.XLog
  *
  * 第 1、2 步是「加表」，第 3 步本来就免不掉。
  *
- * ## 猜错的代价不同，所以两类的兜底也不同
+ * ## 没验过的 ROM 照「基准实现」跑
  *
- *  · **内置命令落点**（[builtIn]，选档见 [landing]）：猜错会**真去起别的服务**，属于有害 ⇒
- *    本机没有对应档时默认一律返回 `null`，执行侧记 `w` 后跳过，**不退回任何一档**
- *    （与适配闸「清单外不注入」同一条哲学）。
- *    **例外**：`GUESS_UNVERIFIED_LANDING` 打开的包（debug，见 `BuildFlags`）照最后一档试并打一行
- *    `w` —— 开发要在任意机器上把这四条命令都试一遍，而 release 里这条不变。
- *  · **反射面 / 接管点候选**（[effective]）：猜错只表现为**查找落空**（找不到类 / 方法 / 字段 ⇒
- *    记 `w` 后跳过），无害 ⇒ 本机没有对应档时**照最后一档试**并打一行 `w` 说清。
- *    这一条是给开发留的路：debug 包关掉了适配闸，要在任意 ROM 上能试。
+ * [PROFILES] 末尾那一档就是**基准实现**：本机 ROM 不在表里时，落点与反射面都照它试，各打一行 `w`
+ * 说清「现在照哪一档跑」。这条路上**不拦、不灰** —— 起不来由执行侧收尾（toast 一句「这次没执行成功」），
+ * 反射落空则逐处记 `w` 后跳过（与接管点候选同一条降级纪律）。
+ * 验过一版新 ROM 之后再往 [PROFILES] 里加一档，把那一版的落点与反射面钉住。
  *
  * ## 接管点候选不在这张表里
  *
@@ -51,6 +46,8 @@ object RomProfile {
      * @param activity 目标是**界面**（场景表 `*_action_type=activity`）—— 用 `startActivity` 起
      * @param message Messenger 绑定型服务要发的 `Message.what`（1=单击 / 2=长按）；
      *   `null` = 走 `startService`。这类服务没有 `onStartCommand`，起服务对它们是空操作
+     * @param stopExtras 「按下开始、松手结束」那类能力**结束**时要改带的 extra
+     *   （与 [extras] 合并后发出）；空 = 这一档没有结束形态，按一下就完事
      *
      *  参数多正是「一个落点要说清的那些事」：拆成几个小类只会让「加一档」从「填一个条目」
      *  变成「改好几处」，正是本文件要消灭的东西（`LongParameterList` 因此就地抑制）。
@@ -64,6 +61,7 @@ object RomProfile {
         val foreground: Boolean = false,
         val activity: Boolean = false,
         val message: Int? = null,
+        val stopExtras: Map<String, Any> = emptyMap(),
     )
 
     /**
@@ -157,6 +155,14 @@ object RomProfile {
     /** 一键闪记。 */
     const val NAME_FLASH_MEMORY = "flash_memory"
 
+    /**
+     * 灵感语音（AI 记忆的「长按录音」）。
+     *
+     *  **只在长按档出现**：它起的是一个**前台采集服务**（麦克风），短按 / 双击拨它等于「按一下就开录」，
+     *  不是这个能力的语义。过滤在 `ActionCatalog.forGesture`，见那里的说明。
+     */
+    const val NAME_VOICE_MEMORY = "voice_memory"
+
     /** 免打扰。 */
     const val NAME_NO_DISTURB = "no_disturb"
 
@@ -165,6 +171,9 @@ object RomProfile {
 
     /** 小布识屏（**不在侧键场景表里**，见下面那一档的说明）。 */
     const val NAME_SCREEN_OCR = "screen_ocr"
+
+    /** 侧键专属手电筒服务。 */
+    const val NAME_KEY_FLASHLIGHT = "key_flashlight"
 
     /**
      * 一键闪记（场景表 `flash_memory`）。`triggerType=1` 是它的 `TriggerType.MAGIC_KEY`。
@@ -181,11 +190,44 @@ object RomProfile {
             foreground = true,
         )
 
+    /**
+     * 灵感语音（长按记忆）。
+     *
+     * 真机实测（2026-10-18，PLK110 / ColorOS 17）：`com.oplus.aimemory` 的
+     * `voicecollect.service.DataCollectService` 读 `triggerType` 与 `longPressEventType`；
+     * `triggerType=1`（MAGIC_KEY）+ `longPressEventType=1` 起服务后它进前台、FGS 类型里带上
+     * 麦克风那一位（`SPECIAL_USE | MICROPHONE`），即开始采集。
+     *
+     * 落点**不是**闪记那两个包：CDS 那份一进去就因「Gleaner 已安装」自停，Gleaner 那份根本不读
+     * `longPressEventType`（它的 dex 里连 `VoiceCollectTask` 都没有）—— 这个能力已经搬到 AI 记忆包里。
+     *
+     * 它是唯一**「按下开始、松手结束」**的能力：`longPressEventType=2` 是同一条服务的**结束**档
+     * （真机实测：发完采集用的 FGS 类型退回去、卡片收掉），所以 [stopExtras] 只改这一位、
+     * 其余 extra 与起采集时一致。
+     */
+    private val VOICE_MEMORY =
+        BuiltIn(
+            owner = "com.oplus.aimemory",
+            service = "com.oplus.aimemory.voicecollect.service.DataCollectService",
+            action = "oplus.aimemory.intent.action.COLLECT_DATA",
+            extras = mapOf("triggerType" to 1, "longPressEventType" to 1),
+            foreground = true,
+            stopExtras = mapOf("longPressEventType" to 2),
+        )
+
     /** 切换免打扰（场景表 `no_disturb`）。KeyBaseService 族，bind 后发 what=2 —— 只有长按档碰 zen。 */
     private val NO_DISTURB =
         BuiltIn(
             owner = "com.android.systemui",
             service = "com.oplus.systemui.statusbar.notification.keymagicservice.KeyDndService",
+            message = 2,
+        )
+
+    /** 切换手电筒（侧键专属 KeyFlashlightService）。KeyBaseService 族，bind 后发 what=2 开关手电。 */
+    private val KEY_FLASHLIGHT =
+        BuiltIn(
+            owner = "com.android.systemui",
+            service = "com.oplus.systemui.statusbar.notification.keymagicservice.KeyFlashlightService",
             message = 2,
         )
 
@@ -248,9 +290,11 @@ object RomProfile {
                 builtIns =
                     mapOf(
                         NAME_FLASH_MEMORY to FLASH_MEMORY,
+                        NAME_VOICE_MEMORY to VOICE_MEMORY,
                         NAME_NO_DISTURB to NO_DISTURB,
                         NAME_RECORDING to RECORDING,
                         NAME_SCREEN_OCR to SCREEN_OCR,
+                        NAME_KEY_FLASHLIGHT to KEY_FLASHLIGHT,
                     ),
                 reflection =
                     Reflection(
@@ -285,12 +329,11 @@ object RomProfile {
     /**
      * 本机 ROM 精确命中的那一档；`null` = 这一版 ROM 还没适配。
      *
-     * 进程内算一次：ROM 版本不会中途变，而这张表在**每次执行动作 / 每次反射**时都要问一次。
+     *  现算而不是缓存：ROM 系列可以被调试通道覆盖（见 `DeviceSupport.romSeriesOverride`），
+     *  而这张表只有一两档，扫一遍的代价可以忽略。
      */
-    val matched: Profile? by lazy {
-        val rom = DeviceSupport.currentRomSeries
-        PROFILES.firstOrNull { it.romSeries == rom }
-    }
+    val matched: Profile?
+        get() = PROFILES.firstOrNull { it.romSeries == DeviceSupport.currentRomSeries }
 
     /**
      * 这张表登记过的 ROM 系列 —— **另外两张表（适配清单 / 接管点候选）的对账基准**。
@@ -318,61 +361,47 @@ object RomProfile {
         Profile(romSeries = "", label = "（档位表为空）", verified = "", builtIns = emptyMap(), reflection = Reflection())
 
     /**
-     * **内置命令落点**这一件事用的那一档。
+     * **内置命令落点**这一件事用的那一档 —— 本机没适配时照 [PROFILES] 末尾那一档（**基准实现**）试。
      *
-     *  与 [effective]（接管点 / 反射面用）分开，因为**猜错的代价不同**（见类注释）：这一边猜错会
-     *  真去起别的服务，所以默认**不猜**（`null`），只有 [GUESS_UNVERIFIED_LANDING] 的包才照最后
-     *  一档试 —— 那是 debug 包（理由见 `BuildFlags`），release 里这条不变。
-     *
-     *  猜的那一次打一行 `w`，且 `by lazy` ⇒ **一个进程只打一行**：`builtIn` 每按一次键都要问一次，
-     *  每问一次打一行就是刷屏。
+     *  猜错的代价由执行侧兜：落点换成别的服务、或者那服务在别的 ROM 上起不来，表现就是起不来，
+     *  执行侧会 toast 一句（`CommandFailure.UNKNOWN`）并把实际试过的组件写进日志。
+     *  这一行只打一次（[landingWarned]）：`builtIn` 每按一次键都要问一次，每问一次打一行就是刷屏。
      */
-    private val landing: Profile? by lazy {
-        matched ?: if (GUESS_UNVERIFIED_LANDING) {
-            PROFILES.lastOrNull()?.also {
+    private val landing: Profile?
+        get() {
+            matched?.let { return it }
+            val baseline = PROFILES.lastOrNull() ?: return null
+            if (!landingWarned) {
+                landingWarned = true
                 XLog.w(
                     "本机 ROM ${DeviceSupport.currentRomSeries} 不在内置命令档位表里 ⇒ " +
-                        "按 ${it.label} 的落点试（本包不做这道闸，见 BuildFlags）",
+                        "照基准实现（${baseline.label}）的落点试；起不来会 toast",
                 )
             }
-        } else {
-            null
+            return baseline
         }
-    }
+
+    /** 「照基准实现跑」那行日志只打一次。 */
+    @Volatile
+    private var landingWarned = false
 
     /**
      * 配置里的功能名 → 调用目标。**功能名认不出**一律返回 `null`（调用方记日志）；
-     * 本机 ROM 没适配时按 [landing] 的口径 —— release 也是 `null`，debug 照最后一档试。
+     * 本机 ROM 没适配时按 [landing] 的口径 —— 照基准实现试。
      */
     fun builtIn(feature: String): BuiltIn? = landing?.builtIns?.get(feature)
 
     /**
-     * 这一条内置功能在本机**有没有落点**（[builtIn] 非空）。
-     *
-     *  界面拿它当「命令有没有被锁住」的判据（`ui/model/ActionCatalog.isLocked`）：这一族的落点
-     *  在一张**按 ROM 系列分档**的表里（[PROFILES]），本机那一档没有、而本包又不猜时，执行侧只会
-     *  记一行 `w` 后跳过 —— 界面灰着的正是这几条，两边同一个判据、「灰着的就是不会发生的事」。
-     *  [GUESS_UNVERIFIED_LANDING] 的包里照最后一档猜 ⇒ 那时它们不灰，与执行侧一致。
-     */
-    fun hasLanding(feature: String): Boolean = builtIn(feature) != null
-
-    /**
      * 本机档位的**一句话描述** —— 安装期判据行与「没有落点」那句日志都用它。
      *
-     * 命中报档位名、内置命令条数与验证记录；没命中报「未适配 + 本机 ROM」——
-     * 这两句的区别正是「该等作者适配」与「功能名写错了」的分界。
-     *  [GUESS_UNVERIFIED_LANDING] 的包里还有第三种情形：没命中但落点已按最后一档试过
-     *  ⇒ 那一档名一并报出来，「查不到」就只可能是功能名在那档里也没有。
+     * 命中报档位名、内置命令条数与验证记录；没命中报「未适配 + 本机 ROM + 照哪一档跑」——
+     * 后两种情形由这一句分开：**「这一版没验过」不是「没有落点」**，执行侧照样会去起基准实现。
      */
     fun describeCurrent(): String {
         val rom = DeviceSupport.currentRomSeries
         val exact = matched
         if (exact != null) return "${exact.label}（内置命令 ${exact.builtIns.size} 条；验证：${exact.verified}）"
         val unadapted = "未适配（本机 ROM ${rom.ifEmpty { "读不出来" }}）"
-        // 提前按常量分开写，而不是去问 `landing` 是不是非空：后者成立与否只有运行时知道，
-        //  这段死码于是就留在 release 包里了（同一件事按常量写，编译期就能整段折掉）
-        if (!GUESS_UNVERIFIED_LANDING) return unadapted
-        // 这一个分支里 [landing] 必与最后一档同值（`PROFILES` 是常量表、非空）
-        return "$unadapted，落点已按 ${landing?.label.orEmpty()} 试过"
+        return "$unadapted，落点照基准实现 ${landing?.label.orEmpty()} 试"
     }
 }

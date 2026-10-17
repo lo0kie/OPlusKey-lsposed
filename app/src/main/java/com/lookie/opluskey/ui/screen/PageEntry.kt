@@ -7,25 +7,32 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.ui.LocalHeaderBoxHeight
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
+import com.lookie.opluskey.ui.appNameOf
+import com.lookie.opluskey.ui.headerReady
 import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
-import com.lookie.opluskey.ui.model.SNACKBAR_SHADOW_ROOM
 import com.lookie.opluskey.ui.replaceStep
 import com.lookie.opluskey.ui.screen.about.AboutScreen
+import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingScreen
 import com.lookie.opluskey.ui.screen.binding.pick
@@ -33,13 +40,13 @@ import com.lookie.opluskey.ui.screen.command.CommandActions
 import com.lookie.opluskey.ui.screen.command.CommandScreen
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
+import com.lookie.opluskey.ui.state.BandHeight
+import com.lookie.opluskey.ui.state.PickedDetail
 import com.lookie.opluskey.ui.tickNow
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.Snackbar
-import io.github.suqi8.coui.kmp.basic.SnackbarHost
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.rememberTopAppBarState
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -79,68 +86,56 @@ internal fun SettingsPage.PageEntry(
     LaunchedEffect(s) {
         if (navStack.lastOrNull() == s) chrome.pageHazeState = hazeState
     }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            // 每个页面自带不透明底：转场交叠时不透出下层残影
-            .background(surfaceColor),
-    ) {
+    val headerBand = remember { BandHeight() }
+    CompositionLocalProvider(LocalHeaderBoxHeight provides headerBand) {
         Box(
             Modifier
                 .fillMaxSize()
-                .hazeSource(hazeState)
-                //  采集层的底色（挂在 `hazeSource` **之后**，见上）
-                .background(surfaceColor),
+                // 每个页面自带不透明底：转场交叠时不透出下层残影
+                .background(surfaceColor)
+                .alpha(if (headerReady(headerBand)) 1f else 0f),
         ) {
-            PageBody(s, scrollBehavior, pagerState, commandPager)
-        }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .hazeSource(hazeState)
+                    //  采集层的底色（挂在 `hazeSource` **之后**，见上）
+                    .background(surfaceColor),
+            ) {
+                PageBody(s, scrollBehavior, pagerState, commandPager)
+            }
 
-        // 首页那条「模块未生效」提示（见 `HostLinkState.snackbar`）。
-        //  只挂在首页；**不占布局位置** —— `SnackbarHost` 内部就是底部对齐的浮层，
-        // 页面内容照常铺满（落点在屏幕底边，与顶部横幅的 TopTips 不是一个位置）。
-        if (s == Screen.SHORTCUTS) {
-            SnackbarHost(
-                state = link.snackbar,
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth(),
-                //  胶囊外面要自己撑出一圈空档，否则它那圈影子被库的视窗裁掉
-                // ——为什么、以及为什么必须撑在这里，见 [SNACKBAR_SHADOW_ROOM]。
-                content = { data ->
-                    Box(Modifier.padding(SNACKBAR_SHADOW_ROOM)) {
-                        Snackbar(data = data)
-                    }
-                },
-            )
-        }
+            // 首页那条「模块未生效」提示（见 [HomeSnackbar]）
+            if (s == Screen.SHORTCUTS) {
+                HomeSnackbar(Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+            }
 
-        // —— 自定义命令页的**底部操作悬浮工具栏** ——
-        //
-        //  它必须挂在这里（页内、但那个取样源**之外**）：
-        // 顶栏取样的就是上面那个 `hazeSource` 节点 ——
-        // 取样的节点**不能落进它自己取样那一份**，
-        // 否则记录层为了画自己得再画它、它又去取样记录层……渲染节点链
-        // 无限增长，最终 RenderThread **栈溢出**（`RenderNode::prepareTreeImpl`
-        // 递归 500+ 层），宿主 UI 进程当场被杀 —— 真机崩过一次，就是这个。
-        // 所以工具栏与顶栏同一个挂法：页内、取样源外，只是贴在底部。
-        // （它自己那层模糊挂上了，与顶栏同一个取样层。）
-        //
-        // 只在这一页显示；整页 push / pop 转场时它跟着一起滑
-        // （挂在页里，不是挂在页面之外）。
-        if (s == Screen.COMMANDS) {
-            CommandActions(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = COMMAND_TOOLBAR_BOTTOM),
-            )
-        }
+            // —— 自定义命令页的**底部操作悬浮工具栏** ——
+            //
+            //  它必须挂在这里（页内、但那个取样源**之外**）：
+            // 顶栏取样的就是上面那个 `hazeSource` 节点 ——
+            // 取样的节点**不能落进它自己取样那一份**，
+            // 否则记录层为了画自己得再画它、它又去取样记录层……渲染节点链
+            // 无限增长，最终 RenderThread **栈溢出**（`RenderNode::prepareTreeImpl`
+            // 递归 500+ 层），宿主 UI 进程当场被杀 —— 真机崩过一次，就是这个。
+            // 所以工具栏与顶栏同一个挂法：页内、取样源外，只是贴在底部。
+            // （它自己那层模糊挂上了，与顶栏同一个取样层。）
+            //
+            // 只在这一页显示；整页 push / pop 转场时它跟着一起滑
+            // （挂在页里，不是挂在页面之外）。
+            if (s == Screen.COMMANDS) {
+                CommandActions(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = COMMAND_TOOLBAR_BOTTOM),
+                )
+            }
 
-        // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
-        // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
-        PageTopBar(s, scrollBehavior, hazeState, pagerState, commandPager)
+            // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
+            // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
+            PageTopBar(s, scrollBehavior, hazeState, pagerState, commandPager)
+        }
     }
 }
 
@@ -190,7 +185,7 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
  * 内容区 —— 「当前屏是哪一页」那一棵 `when`，每支只做一件事：把参数喂给那一页。
  *
  *  六页里只有「按键绑定」与「选择应用」两支带接线（各自的回调写在
- *  [openAppPickerForGesture] / [onAppPicked] 里），其余四支是一行。
+ *  [openAppPickerForGesture] / [onDraftPicked] 里），其余四支是一行。
  */
 @Composable
 private fun SettingsPage.PageBody(
@@ -218,16 +213,15 @@ private fun SettingsPage.PageBody(
             CommandScreen(scrollBehavior, commandPager)
         }
 
-        // 挑应用。**两个入口共用这一页**（挑中的东西不一样），接线见 [onAppPicked]。
+        // 挑应用。**两个入口共用这一页**（挑中的东西不一样）；点一行进下一级，
+        // 二级页只记草稿（[onDraftPicked]），落盘在我们这一支的 FAB 上（[onAppPicked]）。
         Screen.APP_PICKER -> {
-            AppPickerScreen(
-                // 「当前已选的那个应用」：行尾点亮单选圈 + 进页滚到它眼前。
-                // 两条入口的来源见 [appPickerSelectedPkg] —— 网格那条读手势，
-                // 「自定义命令」那条读**被换掉的那一步**。
-                selected = appPickerSelectedPkg(),
-                onPick = { pkg, window -> onAppPicked(pkg, window) },
-                scrollBehavior = scrollBehavior,
-            )
+            AppPickerPage(scrollBehavior)
+        }
+
+        // 挑具体界面（二级页）：从「选择应用」页点某一行进来，接线见 [onDraftPicked]。
+        Screen.ACTIVITY_PICKER -> {
+            ActivityPickerPage(scrollBehavior)
         }
 
         // 「关于模块」：版本 / 仓库地址两行，从首页 ⋮ 菜单进
@@ -249,6 +243,70 @@ internal fun SettingsPage.plusKeyEnabled(): Boolean =
         .enabled
 
 /**
+ * 「选择应用」页 —— 两个入口共用（挑中的东西写到哪儿去由 `picker` 那一组标记决定）。
+ *
+ * 「当前已选的那个应用」= 行尾那枚图标（箭头 / 勾 / 一块屏）+ 进页滚到它眼前，来源见
+ * [appPickerSelectedTarget]：网格那条读手势，「自定义命令」那条读**被换掉的那一步**。
+ */
+@Composable
+private fun SettingsPage.AppPickerPage(scrollBehavior: ScrollBehavior) {
+    AppPickerScreen(
+        // 点 FAB：把这个应用整体写下去（不指定界面）
+        onPick = { target, window -> onAppPicked(target, window) },
+        // 点某一行 → 记下在看哪个应用，再压一页挑它的界面（振动由那一行自己给，这里不再补）
+        onOpenActivities = { target ->
+            // 搜索词清空（页面级状态，不随页面出栈注销，见 `AppPickerState.activityFilter`）
+            picker.activityFilter.value = ""
+            picker.openActivities(target)
+            navTo(Screen.ACTIVITY_PICKER)
+        },
+        scrollBehavior = scrollBehavior,
+    )
+}
+
+/**
+ * 「选择界面」页（二级）—— 看 `picker.activityTarget` 那个应用能打开哪些界面。
+ *
+ *  `selected` 给的是**完整**目标（可能带 `/类名`），二级页靠它点亮「自动」或某一个界面那一行。
+ *  这一页自带搜索框，顶栏那条「搜索应用」的带子不挂（见 `PageBottomBand`）。
+ */
+@Composable
+private fun SettingsPage.ActivityPickerPage(scrollBehavior: ScrollBehavior) {
+    // 「在看哪个应用」**不在这里清**。
+    //
+    //  这里原来挂着一个 `DisposableEffect { onDispose { clearActivities() } }`，本意是「离开
+    //  这一页就把记账收掉」。但退场动画期间这一页还活着，而用户可能已经回到上一级、点了另一个
+    //  应用 —— 旧实例的 `onDispose` 于是把**新设的**目标抹掉，新页读到 null 就落进下面那个
+    //  「状态丢了」分支、自己再退一次。真机日志（手快时必现）：
+    //      openActivities(同一个应用) → navTo(ACTIVITY_PICKER) → clearActivities → 退回上一页
+    //  按值相等去判也救不了：两次看的是同一个应用时，值天然相等。
+    //
+    //  现在这一位只由 `openActivities` 写（每次进页都会覆盖），宿主重进模块时由
+    //  `forgetActivities` 无条件清 —— 退页时什么都不做，竞态从根上没有了。
+    val target = picker.activityTarget
+    if (target == null) {
+        // 真丢了状态（宿主 Activity 重建后栈还在，而这一位不落盘）：别摆一个空壳页，
+        // 直接退回上一页。只在**本页确实是栈顶**时才退 —— 退场途中不再补一刀。
+        LaunchedEffect(Unit) {
+            XLog.w("ActivityPickerPage：activityTarget 丢了，栈=$navStack → 退回上一页")
+            if (navStack.lastOrNull() == Screen.ACTIVITY_PICKER) goBack()
+        }
+        return
+    }
+    LaunchedEffect(target) { XLog.w("ActivityPickerPage：进页看 $target，栈=$navStack") }
+    // 该点亮哪一行：**这一趟的草稿优先**（只在看的是同一个应用时才算），否则按当前绑定反推。
+    //  草稿不落盘，所以配置里还是「进来之前那一条」—— 只按配置取的话，刚挑完退回一级、
+    //  再点进同一个应用，高亮会退回成首次打开时的样子（用户挑的那条看着像没记住）。
+    val draft = picker.draft
+    ActivityPickerScreen(
+        target = target,
+        selected = if (draft != null && AppTarget.sameApp(draft.target, target)) draft.target else appPickerSelectedTarget(),
+        onPick = { picked, shortcutId, label -> onDraftPicked(picked, shortcutId, label) },
+        scrollBehavior = scrollBehavior,
+    )
+}
+
+/**
  * 网格里点「打开应用」那一格 → 进「选择应用」页（**为当前手势**挑）。
  *
  *  三件事都得在进页那一刻做掉：记下为谁挑、清掉上一次的搜索词、「以小窗口打开」按这次要
@@ -261,50 +319,100 @@ private fun SettingsPage.openAppPickerForGesture(g: Gesture) {
     picker.filter.value = ""
     // 「以小窗口打开」按**这次要编辑的动作**重算（不落盘、不跨次记忆，必须在两个入口都调）
     resetSmallWindowForPicker()
+    // 进页唯一复位点：点过的行回到当前绑定，定位 / 拦人窗 / 刷新指示器归零（清单不清）
+    appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
     navTo(Screen.APP_PICKER)
 }
 
 /**
- * 「选择应用」页挑中一个应用 —— 两条入口的**唯一**落点。
+ * 把一个**已经拼好的 token** 写成本次挑应用的取值 —— **不负责退页**。
  *
- *   · 「加一步 / 换一步」（`picker.forStep`）：换成 `app:<包名>` 这一**步**，进的是当前多条命令；
- *   · 网格入口：把**进这一页时那个手势**绑成 `app:<包名>`（走现成的 `pick()`，它同时负责
- *     「选动作顺手把主开关打开」那条纪律）。
+ *  两页（应用 / 界面）最后都落到这里：应用那页拼 `app:` / `window:`，界面那页还可能拼
+ *  `appshortcut:`。拼 token 的地方只剩调用点，这一层只管「写到哪儿去」。
  *
- *  写成哪个动作由菜单里那项「小窗打开」定（见 [AppPickerState.smallWindow]）：
- *  `app:` 普通打开、`window:` 小窗起。
+ * @return true = 写下去了；false = 没地方写（手势那条入口没记下来）或被拦
+ *   （链路未就绪 / 机型不支持 / 写盘失败）。调用方据此决定留在原地。
  */
-private fun SettingsPage.onAppPicked(
-    pkg: String,
-    window: Boolean,
-) {
-    tickNow()
-    val token = if (window) Action.AppWindow(pkg).token else Action.App(pkg).token
+private fun SettingsPage.writeToken(
+    token: String,
+    appName: String?,
+): Boolean {
     if (picker.forStep) {
-        // 「加一步 / 换一步」：这里**不用 `goBack()`** —— `addStep()` / `replaceStep()` 自己会把
-        // 页面切回「自定义命令」页（那才是这次挑应用的来处），从「选择应用」退到那一页
-        // 就是它的 pop 转场。
-        val target = picker.takeStepTarget()
-        if (target >= 0) replaceStep(target, token) else addStep(token)
-        return
+        // 「加一步 / 换一步」：`addStep()` / `replaceStep()` 自己会把页面切回「自定义命令」
+        // （那才是这次挑应用的来处），所以这条路上调用方**不再退页**。
+        val index = picker.takeStepTarget()
+        if (index >= 0) replaceStep(index, token) else addStep(token)
+        return true
     }
     // 写的是**进这一页时那个手势**（见 picker.gesture），不是 pager 的当前页
     // —— 这一页不属于 pager。
-    val g = picker.gesture ?: return
-    val ok =
-        pick(
-            // 只为把取值交给 `pick`（它读的是 token），name 这一位在这条路上不参与显示。
-            ActionCatalog.Spec(name = pkg, token = token),
-            g,
-        )
-    //  注意：**写成了才退页、才清手势**：不看 `pick` 的结果的话，被拦（链路未就绪 / 机型
-    //  不支持）或写盘失败时照样 `goBack()` 并把 `picker.gesture` 清掉 —— 用户挑的那个应用
-    //  就这么丢了（页面退回去了，看起来像选好了，其实一个字节都没写，而且连「再试一次」
-    //  都做不到：手势来源已经清空）。失败原因 `pick` 自己已经报过，这里只负责留在原地。
-    if (ok) {
-        picker.clearTarget()
-        goBack()
-    } else {
-        XLog.w("选择应用：$pkg 没写进绑定，留在本页（不 goBack）")
+    val g = picker.gesture ?: return false
+    return pick(
+        // 只为把取值交给 `pick`（它读的是 token），name 这一位在这条路上不参与显示。
+        ActionCatalog.Spec(name = token, token = token),
+        g,
+        appName,
+    )
+}
+
+/**
+ * 「选择应用」页点 FAB —— 把**当前选中**的那一条写下去。
+ *
+ *  **这是整趟挑应用唯一的落盘点**：二级页点确认只写 [AppPickerState.draft]（草稿），
+ *  到这一颗才真正写配置。所以 token 优先取草稿 —— 有草稿说明用户刚在二级页挑过，
+ *  照它写 `app:包名/类名` / `appshortcut:`；没有草稿才是「就绑这个应用」（`app:包名`）。
+ *
+ *  写成了才退页：被拦（链路未就绪 / 机型不支持）或写盘失败时留在原地，
+ *  否则用户挑的东西看起来像存好了，其实一个字节都没写。
+ */
+private fun SettingsPage.onAppPicked(
+    target: String,
+    window: Boolean,
+) {
+    tickNow()
+    // `forStep` 必须在写之前读：`writeToken` 里那个 `takeStepTarget()` 会把它清掉
+    val forStep = picker.forStep
+    // 刚在「选择界面」页确认过就照那一条写（`app:包名/类名` / `appshortcut:`）；
+    // 没确认过才是「就绑这个应用」这一档
+    val token =
+        picker.draft?.token(picker.smallWindow.value)
+            ?: if (window) {
+                Action.AppWindow(target).token
+            } else {
+                Action.App(target).token
+            }
+    // 名字与绑定**同一次写盘**（`Config.appNames`）—— 分两次写要多落一次盘 + 一次广播，
+    //  而中间那一下读到的配置只有新绑定、没有名字，顶栏会当场闪一下包名。
+    //  快捷方式带的是它自己的名字（「扫一扫」），其余按目标现取应用名。
+    val name = picker.draft?.label ?: appNameOf(target)
+    if (!writeToken(token, name)) {
+        XLog.w("选择应用：$target 没写进绑定，留在本页（不 goBack）")
+        return
     }
+    if (forStep) return
+    picker.clearTarget()
+    goBack()
+}
+
+/**
+ * 「选择界面」页点确认 —— **只记草稿，不写配置**。
+ *
+ *  这一页是「挑」，落盘在上一级（「选择应用」页那颗 FAB）。所以这里做两件事：
+ *   · 把挑中的那一条存进 [AppPickerState.draft]（连同「以小窗口打开」那一档，等提交时再拼 token）；
+ *   · 退回一级页，并把那一页的选中也挪过来 —— 行尾图标要立刻显示成「一块屏」。
+ *
+ *  用户在这之后按返回走人，配置一个字节都不会动（草稿随这一趟结束一起作废，
+ *  见 [AppPickerState.clearTarget]）。
+ */
+private fun SettingsPage.onDraftPicked(
+    target: String,
+    shortcutId: String?,
+    label: String?,
+) {
+    tickNow()
+    val detail = PickedDetail(target, shortcutId, label)
+    // 草稿与「选中位」装同一份：行尾靠它的 shortcutId 画 table-shortcut，FAB 靠它取目标
+    picker.draft = detail
+    appPickerUi.pending = detail
+    goBack()
 }

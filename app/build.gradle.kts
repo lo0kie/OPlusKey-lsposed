@@ -103,8 +103,8 @@ android {
         applicationId = "io.github.lo0kie.opluskey"
         minSdk = 33 // ColorOS 13（Android 13）起才有侧键派发
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.0.1"
+        versionCode = 2
+        versionName = "0.2.0"
 
         // `build_id`（出包时刻，界面版本行展示）**不在这里**声明：
         //  它是 [GenerateBuildId] 这个任务的产物，由 `androidComponents.onVariants` 挂进各变体的
@@ -164,6 +164,20 @@ android {
         }
     }
 
+    // 发布签名只有本机有 keystore.properties 时才建得出来（见上面那段）。没有时 **release 退回
+    //  debug 签名** —— 走到那一步时真正会让构建失败的是 `:core` 的封存层（它要签名派生密钥，
+    //  见 `SealReleaseAssets`），那条错误才说得清是「缺签名」；不给回落的话，配置期会先抛一句
+    //  `SigningConfig with name 'release' not found`，与真因无关（CI 上没有那份文件）。
+    val publishSigning =
+        signingConfigs.findByName("release") ?: run {
+            logger.warn(
+                "没有 keystore.properties：release 构建会失败（封存层需要签名派生密钥）。" +
+                    "本机生成一份：keytool -genkeypair -keystore release.jks -alias opluskey " +
+                    "-keyalg RSA -keysize 2048 -validity 10000",
+            )
+            signingConfigs.getByName("debug")
+        }
+
     buildTypes {
         debug {
             // 注意：**固定用 debug 签名**，不回落 release。
@@ -188,43 +202,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            signingConfig =
-                if (signingConfigs.findByName("release") != null) {
-                    signingConfigs.getByName("release")
-                } else {
-                    // 走到这里说明没有 keystore.properties —— release **注定构建不成**
-                    //  （`:core` 的 `SealReleaseAssets` 会直接失败：封存层没有明文回退，见那边的说明）。
-                    //  这里仍给 debug 签名只是为了配置期能过，好让那条错误信息是「缺签名」而不是
-                    //  一句与真因无关的 signingConfig 缺失。
-                    logger.warn(
-                        "没有 keystore.properties：release 构建会失败（封存层需要签名派生密钥）。" +
-                            "本机生成一份：keytool -genkeypair -keystore release.jks -alias opluskey " +
-                            "-keyalg RSA -keysize 2048 -validity 10000",
-                    )
-                    signingConfigs.getByName("debug")
-                }
-        }
-
-        // 「发布用 debug」：给**适配清单外的机型**用的发布包。
-        //
-        //  与 release 的唯一区别是机型闸放宽（`ENFORCE_DEVICE_GATE=false`，落点也允许猜）——
-        //  其余一律照 release：同一份签名、同样的资产封存与签名指纹校验、不开调试通道。
-        //  日志则是**完全版**（`VERBOSE_LOG=true`，与 debug 同档）：这一档存在的意义一半就是
-        //  「装不上正式包的人把日志交回来」，折掉日志等于白做。
-        //
-        //  所以它**不是** debug 包：`DEBUG_PROBE` 必须为 false（那条通道等于把「任意反射执行」
-        //  开在系统进程里）。三档的差别只在 `src/<variant>/.../BuildFlags.kt` 那几行常量上，
-        //  由源集物理隔离保证「打包时根本不存在」而不是「运行时判断」。
-        //
-        //  **必须写在 `release { }` 之后**：`initWith` 复制的是「此刻」的配置，写在前面会复制到
-        //  一份还没设 `isMinifyEnabled` 的默认值 —— 产物会从 1.6 MB 变 10 MB。
-        create("beta") {
-            initWith(getByName("release"))
-            // 与 release **同一份签名**：防篡改（`:core` 的 `Seal` 按签名指纹打开封存资产）靠的就是它
-            signingConfig = signingConfigs.getByName("release")
-            // 版本号自己已经带阶段标记（`0.0.2-beta.1`）时不再叠一层，否则会变成 `…-beta-beta`
-            versionNameSuffix = if (defaultConfig.versionName?.contains("-") == true) "" else "-beta"
-            matchingFallbacks += listOf("release")
+            signingConfig = publishSigning
         }
     }
 

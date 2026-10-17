@@ -32,6 +32,6 @@ internal const val HOST_ALIVE_TIMEOUT_MS = 3000L
  * 所以要多问几轮，免得用户看着一个灰页面无从下手。
  *
  *  两端都答上就提前收工（正常机器上仍然只问一轮）；一直问不齐也会停：
- * 适配清单外的机器本来就该整页禁用，无限轮询只是白耗电。
+ * 一直问不到就该停：无限轮询只是白耗电。
  */
 internal const val QUERY_ROUNDS = 3

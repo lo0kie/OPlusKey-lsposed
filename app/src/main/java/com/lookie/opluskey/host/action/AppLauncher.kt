@@ -3,13 +3,11 @@ package com.lookie.opluskey.host.action
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
-import android.os.Handler
-import android.os.IBinder
-import android.os.Looper
-import android.os.Message
-import android.os.Messenger
+import com.lookie.opluskey.bridge.AppCloneCatalog
+import com.lookie.opluskey.bridge.AppEntry
+import com.lookie.opluskey.bridge.host.BuiltInMessenger
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.RomProfile
 
 /** 拉界面 / 发广播 / 触发外部能力这一族动作的执行器（小窗那一族见 [MiniWindowLauncher]）。 */
@@ -19,7 +17,7 @@ internal class AppLauncher(
     private val onFailure: (CommandFailure) -> Unit,
 ) {
     /** 小窗那一族动作的执行器（`window:` 起法与「把前台收成小窗」共用一套反射降级，见 [MiniWindowLauncher]）。 */
-    private val mini = MiniWindowLauncher(context, onFailure)
+    internal val mini = MiniWindowLauncher(context, onFailure)
 
     /**
      * `intent:ACTION`：先按界面拉起，拉不起来再当广播发。顺序不能反 ——
@@ -55,18 +53,25 @@ internal class AppLauncher(
         }
     }
 
-    /** `app:包名/Activity` 或 `app:包名` —— 拉起一个界面。 */
+    /**
+     * `app:包名/Activity` 或 `app:包名` —— 拉起一个界面。
+     *
+     * 目标可以带多开前缀（`999@包名/Activity`，见 `AppTarget`）：那时**解析与启动都必须换成那个
+     * 用户的视角** —— 主用户的 `PackageManager` 看不见分身里的包，直接 `ctx.startActivity`
+     * 也会在主用户里找组件（表现为「解析不到界面」）。
+     */
     fun launchApp(target: String) {
         val ctx =
             context() ?: run {
                 XLog.w("没有 Context，app:$target 跳过")
                 return
             }
-        val pm = ctx.packageManager
+        val userId = AppTarget.userId(target)
+        val pkg = AppTarget.pkg(target)
+        val pm = AppCloneCatalog.packageManagerFor(ctx, userId) ?: ctx.packageManager
         val intent = AppEntry.intentOf(pm, target)
         if (intent == null) {
             // 区分「包还在但没有可启动界面」与「包已不在」，前者提示「已卸载」会误导
-            val pkg = target.substringBefore('/')
             val installed =
                 try {
                     pm.getApplicationInfo(pkg, 0)
@@ -74,19 +79,26 @@ internal class AppLauncher(
                 } catch (e: Throwable) {
                     false
                 }
-            XLog.w("解析不到界面：$target（这个包还在=$installed）")
+            XLog.w("解析不到界面：$target（这个包还在=$installed，user=$userId）")
             onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
             return
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
-            ctx.startActivity(intent)
+            // 主用户与分身**都走** ATMS 的 `startActivityAsUser`：只有这条路能在下发前统一给
+            //  intent 挂 `OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER`。不挂的话，**装了分身的应用在主
+            //  用户下启动照样会被 ColorOS 问「用哪一份」**（同名包在 0 与 998/999 里各有一份）。
+            //  `createContextAsUser` 那条为什么不行见 `AppCloneCatalog`。
+            if (!AppLaunchAsUser.start(ctx, intent, userId)) {
+                XLog.w("启动被拒：$target（user=$userId）")
+                onFailure(CommandFailure.UNKNOWN)
+                return
+            }
         } catch (e: android.content.ActivityNotFoundException) {
             //  注意：报「已卸载」之前先看一眼包还在不在：显式组件
             //  （`app:包名/Activity`）**被停用 / 组件不存在**时抛的也是 ANFE，
             //  一律报 APP_MISSING（「可能已经卸载了」）会把用户带偏 —— 包明明还在。
             //  判据与上面 `intent == null` 那一支同源（`getApplicationInfo` 查得到就是还在）。
-            val pkg = target.substringBefore('/')
             val installed =
                 try {
                     pm.getApplicationInfo(pkg, 0)
@@ -94,11 +106,11 @@ internal class AppLauncher(
                 } catch (e2: Throwable) {
                     false
                 }
-            XLog.w("拉起界面失败：$target（这个包还在=$installed）", e)
+            XLog.w("拉起界面失败：$target（这个包还在=$installed，user=$userId）", e)
             onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
         } catch (e: Throwable) {
             // 最常见的是后台启动限制 / 安全异常，不是「已卸载」—— 报「没执行成功」别误导
-            XLog.w("拉起界面失败：$target", e)
+            XLog.w("拉起界面失败：$target（user=$userId）", e)
             onFailure(CommandFailure.UNKNOWN)
         }
     }
@@ -193,8 +205,8 @@ internal class AppLauncher(
     fun startOplusFeature(feature: String) {
         val target =
             RomProfile.builtIn(feature) ?: run {
-                // 一句话说清落空的三种情形：本机这一档没适配（表里没有它）、功能名写错了、
-                //  或（debug 包）已按最后一档试过仍查不到这个名字 —— 后两种由 describeCurrent 那句报出
+                // 本机 ROM 没验过时落点会照基准实现试（见 `RomProfile.landing`），所以走到这里只剩
+                //  两种情形：功能名写错了，或者那一档里根本没登记这个名字 —— 由下面那句日志报出来
                 XLog.w("oplus:$feature 没有落点 —— 内置命令档位：${RomProfile.describeCurrent()}")
                 onFailure(CommandFailure.UNKNOWN)
                 return
@@ -210,12 +222,7 @@ internal class AppLauncher(
             return
         }
         val intent = buildFeatureIntent(target)
-        for ((key, value) in target.extras) {
-            when (value) {
-                is Int -> intent.putExtra(key, value)
-                else -> intent.putExtra(key, value.toString())
-            }
-        }
+        fillExtras(intent, target.extras)
 
         val short = "${target.owner}/${target.service.substringAfterLast('.')}"
         // 界面型目标：非 Activity 的 Context 起界面必须带 NEW_TASK，否则 ActivityNotFoundException
@@ -255,86 +262,57 @@ internal class AppLauncher(
     }
 
     /**
+     * 结束一个「按下开始、松手结束」的 ColorOS 能力（此刻只有灵感语音，见 [RomProfile.BuiltIn.stopExtras]）。
+     *
+     *  落点表里没登记结束形态的能力直接返回 —— 这类动作按一下就完事、没有「结束」这回事，
+     *  所以这个函数的空转是**正常**的，不是配置写错。
+     *
+     *  失败**不弹提示**（与起采集相反）：收尾是尽力而为，弹一句「结束失败」只会让人以为
+     *  刚才那一段也没录上。退路也只有「换一种起法」，不走 `tryComponentFallback` —— 那一步是
+     *  为「起不来」准备的，而结束的目标此刻还在跑，显式组件反而容易命中不到它的 action 分支。
+     */
+    fun stopOplusFeature(feature: String) {
+        val target = RomProfile.builtIn(feature)?.takeIf { it.stopExtras.isNotEmpty() } ?: return
+        if (target.message != null || target.activity) {
+            // 绑定型 / 界面型没有「再发一条就是结束」的形态；表里登记错了只记一行，不去猜
+            XLog.w("oplus:$feature 有 stopExtras 但落点是绑定 / 界面型，结束这一步跳过")
+            return
+        }
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，结束 oplus:$feature 跳过")
+                return
+            }
+        val intent = buildFeatureIntent(target)
+        // 与起采集时同一套 extra，只把 stopExtras 盖上（灵感语音 = `longPressEventType` 改成 2）
+        fillExtras(intent, target.extras + target.stopExtras)
+        val short = "${target.owner}/${target.service.substringAfterLast('.')}"
+        for (foreground in if (target.foreground) FOREGROUND_FIRST else SERVICE_FIRST) {
+            try {
+                if (foreground) ctx.startForegroundService(intent) else ctx.startService(intent)
+                XLog.w("结束 oplus:$feature → ${if (foreground) "startForegroundService" else "startService"}($short)")
+                return
+            } catch (e: Throwable) {
+                XLog.d("结束 oplus:$feature 的 ${if (foreground) "前台" else "普通"}起法被拒：${e.message}")
+            }
+        }
+        // 两种都被拒：这一段可能还在录 —— 值得一行 w（不弹提示，理由见上）
+        XLog.w("结束 oplus:$feature 失败：两种起法都被拒（那一段可能还在采集）")
+    }
+
+    /**
      * Messenger 绑定型服务：**bind 后发一条 `Message`**（`what=1` 单击 / `2` 长按）。
-     * 这类服务没有 `onStartCommand`，`startService` 对它们是空操作（实测：
-     * 调用成功、AMS 也受理，但目标进程毫无动静）。发完立刻解绑 —— `send` 是单向
-     * binder 调用，消息已经进了对方的 Handler 队列。
+     *
+     * 实现在 `bridge/host/BuiltInMessenger` —— 手电筒那条也走它，两边各写一份时先漂的
+     * 一定是边界处理（超时 / bind 被拒 / 失败上报），见那边的说明。
      */
     private fun sendMessengerMessage(
         ctx: Context,
         feature: String,
         target: RomProfile.BuiltIn,
     ) {
-        val what = target.message ?: return
-        val intent = Intent().setComponent(ComponentName(target.owner, target.service))
-        val short = "${target.owner}/${target.service.substringAfterLast('.')}"
-        val main = Handler(Looper.getMainLooper())
-        var handled = false
-        val connection =
-            object : ServiceConnection {
-                override fun onServiceConnected(
-                    name: ComponentName,
-                    binder: IBinder,
-                ) {
-                    handled = true
-                    try {
-                        val message = Message.obtain(null, what)
-                        // 服务端会向 replyTo 回执，不设会在它那边空指针
-                        message.replyTo = Messenger(Handler(Looper.getMainLooper()))
-                        Messenger(binder).send(message)
-                        XLog.w("oplus:$feature → Messenger.send(what=$what)($short)")
-                    } catch (e: Throwable) {
-                        XLog.w("oplus:$feature 的 Messenger 消息发不出去：${e.javaClass.simpleName}: ${e.message}")
-                        onFailure(CommandFailure.UNKNOWN)
-                    } finally {
-                        runCatching { ctx.unbindService(this) }
-                    }
-                }
-
-                override fun onServiceDisconnected(name: ComponentName) {}
-            }
-        val bound =
-            try {
-                ctx.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-            } catch (e: Throwable) {
-                XLog.w("bind oplus:$feature 失败：${e.javaClass.simpleName}: ${e.message}")
-                onFailure(CommandFailure.UNKNOWN)
-                return
-            }
-        if (!bound) {
-            // 同步返回 false = 这次绑定根本没成立（组件不存在 / 权限不够），
-            // `onServiceConnected` 永远不会来。不能还等那 3 秒：反馈会白白迟到，
-            // 而且超时那条日志会把原因说成「没连上」，掩盖真正的错。
-            XLog.w("oplus:$feature 的 Messenger 服务绑不上（bindService 返回 false）：$short")
-            onFailure(CommandFailure.UNKNOWN)
-            return
-        }
-        main.postDelayed({
-            // 服务一直连不上就自己收尾，别把连接挂着。
-            //  注意：还要**说出来**：只 `unbindService` 的话既不记日志
-            //  也不报失败 —— 用户看到的是「按下去什么都没发生」，而日志里一个字都没有。
-            if (!handled) {
-                XLog.w("oplus:$feature 的 Messenger 服务 ${MESSAGE_TIMEOUT_MS}ms 没连上，解绑放弃")
-                runCatching { ctx.unbindService(connection) }
-                onFailure(CommandFailure.UNKNOWN)
-            }
-        }, MESSAGE_TIMEOUT_MS)
+        BuiltInMessenger.send(ctx, target, "oplus:$feature") { onFailure(CommandFailure.UNKNOWN) }
     }
-
-    /**
-     * 有 action 的按系统自己的写法发 —— `action + setPackage`，由清单 intent-filter 解析；
-     * 场景表里 `scene_owner` + action 本来就是系统发给该服务的原样。只有组件名（无 action）
-     * 的才用显式组件。
-     *
-     * 这一支失败之后的退路不在这里，在 [startOplusFeature]（试 [tryComponentFallback] 的显式组件）
-     * —— 本函数只负责造出「第一次」那个 Intent。
-     */
-    private fun buildFeatureIntent(target: RomProfile.BuiltIn): Intent =
-        if (target.action != null) {
-            Intent(target.action).setPackage(target.owner)
-        } else {
-            Intent().setComponent(ComponentName(target.owner, target.service))
-        }
 
     /**
      * 小布识屏：配置里仍写 KSU 那串 shell 命令（老配置不能失效），执行换成
@@ -363,8 +341,8 @@ internal class AppLauncher(
         val FOREGROUND_FIRST = listOf(true, false)
         val SERVICE_FIRST = listOf(false, true)
 
-        /** [sendMessengerMessage] 等服务连上的上限，超时就自己解绑。 */
-        const val MESSAGE_TIMEOUT_MS = 3000L
+        // 「等服务连上的上限」不在本类的 companion 里：它跟着 `BuiltInMessenger.TIMEOUT_MS` 走
+        // （手电筒那条也吃同一个值），别在这儿再存一份。
     }
 }
 
@@ -411,5 +389,41 @@ private fun tryComponentFallback(
     } catch (e: Throwable) {
         XLog.w("oplus:$feature 的显式组件退路也失败：${e.javaClass.simpleName}: ${e.message}")
         e
+    }
+}
+
+/**
+ * 造出「第一次」要发的那个 Intent（起采集与结束两条路共用）。
+ *
+ *  有 action 的按系统自己的写法发 —— `action + setPackage`，由清单 intent-filter 解析；
+ *  场景表里 `scene_owner` + action 本来就是系统发给该服务的原样。只有组件名（无 action）
+ *  的才用显式组件。失败之后的退路不在这里，在 [AppLauncher.startOplusFeature]
+ *  （试 [tryComponentFallback] 的显式组件）。
+ *
+ *  提成顶层函数只为让 [AppLauncher] 的函数数别顶破 detekt；本函数不吃对象状态。
+ */
+private fun buildFeatureIntent(target: RomProfile.BuiltIn): Intent =
+    if (target.action != null) {
+        Intent(target.action).setPackage(target.owner)
+    } else {
+        Intent().setComponent(ComponentName(target.owner, target.service))
+    }
+
+/**
+ * 把落点表里登记的 extra 写进 Intent（`Int` 原样、其余转字符串）。
+ *
+ *  提成顶层函数是因为**起 / 停两条路都要它**（[AppLauncher.startOplusFeature] 与
+ *  [AppLauncher.stopOplusFeature]）—— 各写一遍时先漂的必然是类型判断那一档，
+ *  而那个类的函数条数已经贴着 detekt `TooManyFunctions` 那一档。
+ */
+private fun fillExtras(
+    intent: Intent,
+    extras: Map<String, Any>,
+) {
+    for ((key, value) in extras) {
+        when (value) {
+            is Int -> intent.putExtra(key, value)
+            else -> intent.putExtra(key, value.toString())
+        }
     }
 }

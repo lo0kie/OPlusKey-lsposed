@@ -14,13 +14,9 @@ import com.lookie.opluskey.ui.model.CONFIG_NOT_SYNCED_HINT
 import com.lookie.opluskey.ui.model.CONFIG_READ_FAILED_HINT
 import com.lookie.opluskey.ui.model.INJECT_NOT_LOADED_HINT
 import com.lookie.opluskey.ui.model.KEY_DISABLED_HINT
-import com.lookie.opluskey.ui.model.PENDING_DEVICE_HINT
 import com.lookie.opluskey.ui.model.RESTART_REQUIRED_HINT
 import com.lookie.opluskey.ui.model.SERVICE_NOT_RUNNING_HINT
-import com.lookie.opluskey.ui.model.UNSUPPORTED_DEVICE_HINT
 import com.lookie.opluskey.ui.state.LinkCheck
-import com.lookie.opluskey.ui.state.devicePending
-import com.lookie.opluskey.ui.state.deviceSupported
 
 /**
  * 本地那份配置的指纹（与发送侧 `ConfigBroadcast.tag` 同口径）。
@@ -61,7 +57,11 @@ internal val SettingsPage.configSideOk: Boolean
         if (configState.readOnly) return false
         val inj = link.injectStatus ?: return false
         if (!inj.configOk) return false
-        return inj.configTag == localConfigTag
+        val tag = localConfigTag
+        if (inj.configTag == tag) return true
+        // 这一份是我们自己刚写下去、注入侧还没回包的 ⇒ 不判「没送到」（见 `configPending`）。
+        //  少了这一档，每次拨开关都会有一两帧被判成未同步 —— 整页控件打灰再亮回来，就是全页闪。
+        return link.configPending(tag)
     }
 
 /**
@@ -103,10 +103,6 @@ internal val SettingsPage.linkReady: Boolean
 internal fun SettingsPage.blockedReason(): String? {
     val injectStatus = link.injectStatus
     return when {
-        devicePending -> PENDING_DEVICE_HINT
-
-        !deviceSupported -> UNSUPPORTED_DEVICE_HINT
-
         configState.readOnly -> CONFIG_READ_FAILED_HINT
 
         !configState.config.value
@@ -153,10 +149,12 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
     //  后者答不了「后来改的那一次到了没有」—— 开机收到过之后哪条广播丢了，
     //  注入侧还按旧配置吞键，界面却照样报「正常」。指纹不同 = 明确知道它手上不是这份。
     // 本地那份指纹按配置缓存（见 [localConfigTag]），只有配置变了才重算。
-    val configSynced =
-        inj?.configTag?.isNotEmpty() == true &&
-            inj.configTag == localConfigTag
     val configSide = configSideOk
+    // 换过包没重启：两边**必然**对不上（连配置字段表都可能不是同一份），这时报「未同步」
+    //  会把人引去「重进本页」，而真正该做的是重启 —— 与首页那条横幅（[blockedReason]）
+    //  同一个优先级、同一句话。这一档以前只写在横幅里，逐段行照样报「未同步」。
+    val buildStale =
+        inj != null && inj.buildId.isNotEmpty() && inj.buildId != ModuleInfo.BUILD_ID
 
     return listOf(
         LinkCheck(
@@ -201,8 +199,12 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
 
                     !inj.configOk -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
 
-                    // 收到过、但指纹对不上：改过的那一次没送到它手上（日志里能看到两边指纹）
-                    !configSynced -> I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
+                    buildStale -> I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需重启")
+
+                    // 收到过、但指纹对不上（且不是换包没重启造成的）：改过的那一次没送到它手上
+                    //  判据与上面 `ok` **同源**（[configSideOk]）—— 这里原来另算了一遍，两处条件
+                    //  还差一个 `isNotEmpty()`，于是「横幅说重启、这一行说未同步」。
+                    !configSide -> I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
 
                     // 读到默认值只有两种来路：主开关被关了，或者开机还没解锁
                     !link.hostEnabled -> I18n.get(Strings.LINK_CHECK_SWITCH_OFF, "主开关已关闭")

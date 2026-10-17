@@ -9,23 +9,26 @@ import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.state.AppPickerUiState
+import com.lookie.opluskey.ui.state.SmallWindowBlock
+import com.lookie.opluskey.ui.toast
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
 import io.github.suqi8.coui.kmp.basic.RotatingProgressIndicator
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-// 「选择应用」页那三块**浮在列表上**的东西：两句空态 / 转圈，以及右下角那颗确认键。
+// 「选择应用」页那三块**浮在列表上**的东西：两句空态 / 转圈、那句话「为什么一条都没有」，
+// 以及右下角那颗确认键。
 //
-// 它们都要 `BoxScope`（对齐靠 `.align(...)`），而确认键还要读 `SettingsPage` 的东西 ——
-// Kotlin 一个函数只能有一个显式接收者，所以这里按「需不需要页面」分成两组：
-//  · 两块空态是 `BoxScope.` 扩展，页面侧那点东西（文案）由调用点算好传进来；
-//  · 确认键是 `SettingsPage.` 扩展 —— 它不自己 `align`，位置由外层 [CompactFabSlot] 给。
+// 两块空态是 `BoxScope.` 扩展（对齐靠 `.align(...)`），页面侧那点东西（文案）由调用点算好传进来；
+// `emptyHint` 要在 `SettingsPage` 上算，确认键要读页面状态，所以这两支都是 `SettingsPage.` 扩展。
 
 /**
  * 「查得到但没有匹配项 / 一条都没查到」那一句 + 一颗字形。
@@ -109,18 +112,20 @@ internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
 
         else -> {
             // 用户输入会整体过一遍正文记号：先转义
-            I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, escapeEmphasis(picker.filter.value))
+            I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, escapeEmphasis(picker.filter.value.trim()))
         }
     }
 }
 
 /**
- * 右下角那颗「确定选择」—— 本页**唯一的保存入口**。
+ * 右下角那颗「确定选择」—— 本页**唯一的写入入口**。
  *
- *  点行只切换选中，交出去靠这一颗。三个判据依次是：
+ *  点行只进下一级去挑界面（**不写任何东西**），要「就绑这个应用、不挑界面」就走这一颗；
+ *  二级页那颗 FAB 是另一个入口（挑到具体界面 / 快捷方式）。**点 FAB 才走确认流程**：
+ *
  *  1. 拉不起来的应用（被停用 / 非导出入口 / 装了一半）先拦一句，**什么都不写**；
- *  2. 开着「以小窗口打开」⇒ 点这一下**再问一次**（三处查询的最后一道）：前面问过不等于这一刻
- *     还是那个结论（可能判不出来、或用户在那个框上按了取消）；
+ *  2. 开着「以小窗口打开」⇒ 点这一下问一次框架（全流程只问这一次）：不支持就拦下，
+ *     免得写一个执行时必弹 toast 的 `window:`；
  *  3. 都过了才 `onPick(pkg, 小窗开关)`。
  *
  *  样式（尺寸 / 形状 / 阴影 / 容器色）全走 [PageFabButton] 那一份 —— 与「按键绑定」页那颗共用。
@@ -135,21 +140,35 @@ internal fun SettingsPage.AppConfirmFab(
     PageFabButton(
         onClick = {
             tick()
-            val pkg = ui.pending ?: return@PageFabButton
-            val app = ui.apps.firstOrNull { it.packageName == pkg }
+            // 交出去的是**完整目标**：从二级页挑完退回来时，`pending` 可能已经是
+            // `包名/类名`（含快捷方式的 `包名/id`）—— 那时候按 FAB 要照它重写一遍，
+            // 不能降级成纯包名（那会把刚挑的界面 / 快捷方式抹掉）
+            //
+            // 这颗按钮是**常驻**的（不与选中项联动），所以新手进页、还没点过任何一行时
+            // 它就在那儿 —— 这时按下去给一句提示，而不是默默什么都不做。
+            val target =
+                ui.pending?.target ?: run {
+                    toast(I18n.get(Strings.APP_PICKER_PICK_APP_FIRST, "先从列表里选一个应用"))
+                    return@PageFabButton
+                }
+            val pkg = AppTarget.pkg(target)
+            // 一行一个应用：`pending` 可能带 `/类名`，所以按「同一个应用」找，不能按 `same`
+            val app = ui.apps.firstOrNull { AppTarget.sameApp(it.target, target) }
             if (app != null && !app.launchable) {
                 XLog.w("选择应用：$pkg 拉不起来，弹「此应用无法打开」")
                 ui.blockedUnopenable = app
                 return@PageFabButton
             }
             if (picker.smallWindow.value && app != null) {
+                // 主线程问一次：这里要按结果当场决定「写还是拦」，异步化会造出
+                // 「连点两下写两次」的新洞，而这是一次性用户动作、代价有界。
                 if (querySmallWindowSupport(pkg) == false) {
                     XLog.w("选择应用：$pkg 不支持小窗，点确认时拦下（不写 window:）")
                     ui.blockedSmallWindow = SmallWindowBlock(app, fromPick = true)
                     return@PageFabButton
                 }
             }
-            onPick(pkg, picker.smallWindow.value)
+            onPick(target, picker.smallWindow.value)
         },
     ) {
         Icon(

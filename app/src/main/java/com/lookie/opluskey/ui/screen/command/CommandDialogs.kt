@@ -7,11 +7,11 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.acceptCommandDisclaimer
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.model.COMMAND_DISCLAIMER_TEXT
 import com.lookie.opluskey.ui.model.COMMAND_DISCLAIMER_TITLE
 import com.lookie.opluskey.ui.state.CommandUiState
+import com.lookie.opluskey.ui.write
 
 // 「自定义命令」页那五个确认窗 —— 从 `CommandScreen.kt` 拆出来。
 //
@@ -62,6 +62,13 @@ private fun SettingsPage.DisclaimerDialog(ui: CommandUiState) {
             ui.disclaimerPending = false
             acceptCommandDisclaimer()
         },
+    )
+}
+
+private fun SettingsPage.acceptCommandDisclaimer() {
+    write(
+        configState.config.value.copy(commandDisclaimerAccepted = true),
+        "command_disclaimer_accepted=true",
     )
 }
 

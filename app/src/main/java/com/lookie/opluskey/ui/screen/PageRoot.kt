@@ -3,18 +3,28 @@ package com.lookie.opluskey.ui.screen
 import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.loadPageState
 import com.lookie.opluskey.ui.pageBackgroundColor
 import com.lookie.opluskey.ui.state.installI18nBridge
 import com.lookie.opluskey.ui.systemNight
+import kotlinx.coroutines.delay
 
 // 建页 → 首帧，以及把页面 View 交出去。
 //
@@ -32,7 +42,21 @@ import com.lookie.opluskey.ui.systemNight
 internal fun SettingsPage.Page() {
     // 键是 Unit：整页只跑一次。`loaded` 翻 true 会重跑本函数，但这里不会重启。
     LaunchedEffect(Unit) { loadPageState() }
-    if (configState.loaded) {
+    // 系统栏顶边在**首帧是 0**（注入进来的 ComposeView 还没收到 insets），而顶栏与内容的顶部
+    //  让位都按它算 ⇒ 那一帧内容整体偏上约 40dp，下一帧才落回（真机录屏：让位 107dp → 165dp）。
+    //  所以这一帧先只铺底色（与页面底色同值，看不出来），等 inset 到了再画整棵树。
+    //  兜底：某些全屏 / 无状态栏场景它恒为 0，不能因此一直不画 —— 150ms 后无论如何都画。
+    val barTop = with(LocalDensity.current) { WindowInsets.systemBars.getTop(this).toDp() }
+    var insetsReady by remember { mutableStateOf(false) }
+    var forced by remember { mutableStateOf(false) }
+    SideEffect {
+        if (barTop > 0.dp) insetsReady = true
+    }
+    LaunchedEffect(Unit) {
+        delay(150)
+        forced = true
+    }
+    if (configState.loaded && (insetsReady || forced)) {
         PageContent()
     } else {
         PageSplash()

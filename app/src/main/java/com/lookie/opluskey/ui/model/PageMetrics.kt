@@ -119,11 +119,12 @@ internal val SUMMARY_REF_ICON = 14.dp
 internal val SUMMARY_REF_GAP = 4.dp
 
 /**
- * 「按键绑定」那张卡的行数：第 1 行主开关、第 2 行进子页 —— 主开关是独立一行，不挂在跳转行行尾。
+ * 「按键绑定」那张卡的行数：第 1 行主开关、第 2 行接口选择、第 3 行进子页 ——
+ * 主开关是独立一行，不挂在跳转行行尾。
  *
  * 行数不再随状态变，所以写成常量。
  */
-internal const val HOME_BINDING_ROWS = 2
+internal const val HOME_BINDING_ROWS = 3
 
 /**
  * 页面左右边距 —— 取 12dp，网格列距与分段控件共用同一值。
@@ -155,17 +156,6 @@ internal val PAGE_TOP_PADDING = 8.dp
 internal val TILE_TEXT_OPTICAL_SHIFT = 1.5.dp
 
 /**
- * 网格格子标题**右边**那枚小标记（现在只有「打开应用」格的「小窗起」用它）的边长 —— 取 16dp。
- *
- * 它跟标题同一行，尺寸按 `body2`（14sp）的行高取；再大会把标题挤到省略号
- *（格子两列、正文那一栏本来就窄，见 `TILE_SIDE_PADDING` 的宽度账）。
- */
-internal val TILE_TITLE_MARKER_SIZE = 16.dp
-
-/** 上面那枚标记与标题之间的间距 —— 取 4dp，与 [SUMMARY_REF_GAP] 同档。 */
-internal val TILE_TITLE_MARKER_GAP = 4.dp
-
-/**
  * 首页那条链路提示（`SnackbarHost`）**内容盒外面**要留出的、给胶囊那圈影子落下的空间。
  *
  * ## 为什么必须留（真机量出来的）
@@ -185,8 +175,14 @@ internal val TILE_TITLE_MARKER_GAP = 4.dp
  *  —— 试过（补 16dp），结果切痕跟着胶囊一起上移，一点没修好。
  *  只有撑大 **item 自己**（走 `SnackbarHost` 的 `content` 槽位）才会把裁切边界一起撑出去。
  *
- * 取 20dp：往上要 ~22dp、库已经给了 4dp，补到 24dp 有富余；横向补到 36dp（要 ~26dp）；
- * 往下 20 + 4 + 28 = 52dp（要 ~30dp）。四周都够，且 item 总宽还放得下那行提示。
+ * 取 20dp：往上要 ~22dp、库已经给了 4dp，补到 24dp 有富余；横向补到 36dp（要 ~26dp）。
+ * 四周都够，且 item 总宽还放得下那行提示。
+ *
+ * ## 底部为什么不补（也别再补回去）
+ *
+ *  往下要 ~30dp，而库自己那份 `LazyColumn` 的 `contentPadding` 底部就留了 28dp ⇒
+ *  4 + 28 = 32dp，本来就够。我们那 20dp 补上去只会把胶囊顶离底边 52dp —— 比库的默认落点高出
+ *  一大截，看着像「这条提示悬在屏幕中间偏下」。所以底部按**库的默认值**来，本常量只管另外三边。
  */
 internal val SNACKBAR_SHADOW_ROOM = 20.dp
 

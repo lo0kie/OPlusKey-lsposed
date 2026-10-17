@@ -1,31 +1,114 @@
 package com.lookie.opluskey.host.action
 
+import android.app.NotificationManager
 import android.content.Context
 import android.os.Handler
 import com.lookie.opluskey.bridge.StatusBarBridge
 import com.lookie.opluskey.bridge.host.FlashlightController
 import com.lookie.opluskey.bridge.host.KeyInjector
 import com.lookie.opluskey.bridge.host.RingerController
+import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
+import com.lookie.opluskey.core.model.RomProfile
 
 /** 动作派发器，只服务侧键。 */
 internal class ActionRunner(
     /** 借来的宿主 Context（`host/GestureReceiver` 从 `ActivityThread` 反射取）。 */
     @Volatile var context: Context?,
     handler: Handler,
+    /**
+     * 「使用 ColorOS 接口」这一档 —— **全项目只有这一处读它**，再往下（手电筒 / 响铃）都是
+     * 构造参数传进来的。
+     *
+     *  为什么收在这里：它同时被三个执行器用（手电筒、响铃、免打扰），而这三个各自都
+     *  `ConfigStore.read()` 一遍的话，「默认值」这件事就有三份副本 —— 改其中一处不知另两处。
+     *  宿主进程每次按键都重读配置是这个仓的既定口径（见 `GestureReceiver` 那段说明），
+     *  所以这一层直接读盘、不缓存。
+     */
+    private val isColorOsApi: () -> Boolean = { ConfigStore.read().global.colorOsApi },
 ) {
     private val injector = KeyInjector { context }
-    private val flashlight = FlashlightController({ context }, handler)
-    private val ringer = RingerController { context }
+    private val flashlight = FlashlightController({ context }, handler, isColorOsApi)
+    private val ringer = RingerController({ context }, isColorOsApi)
     private val launcher = AppLauncher({ context }, ::notifyFailure)
+    private val shortcut = AppShortcutLaunch({ context }, launcher.mini, ::notifyFailure)
     private val custom = CustomCommandRunner(handler, ::runShell, ::dispatch, ::notifyFailure)
+
+    /**
+     * 「灵感语音」上一次触发的时间（`uptimeMillis`）—— 连按不重复起采集。
+     *
+     *  它起的是一个**前台麦克风采集服务**：重复拨只会把正在录的那一段打断重来，用户看到的是
+     *  「按了两下，第一段没了」。所以这里直接挡：`VOICE_MEMORY_GAP_MS` 内的第二次当没按。
+     */
+    private var lastVoiceMemoryAt = 0L
+
+    /**
+     * 「灵感语音」这一段是不是**我们起的**（= 还没收尾）。
+     *
+     *  松手要不要发结束，只能按它判，不能按「长按绑的是不是灵感语音」判：
+     *  `VOICE_MEMORY_GAP_MS` 内的第二次按下**不会**起采集（见 [startOplusOrVoice]），
+     *  那一下松手若照样发结束，掐断的是**上一段**正在录的。状态只归执行侧所有。
+     */
+    private var voiceMemoryOn = false
+
+    /**
+     * 起一条 ColorOS 落点 —— 灵感语音单独有「连按窗口」，其余照旧。
+     *
+     *  写成 lambda 字段而不是方法：这个类的函数数已经贴着 detekt 的上限。
+     */
+    private val startOplusOrVoice: (String) -> Unit = { feature ->
+        val now = android.os.SystemClock.uptimeMillis()
+        val gap = now - lastVoiceMemoryAt
+        if (feature == RomProfile.NAME_VOICE_MEMORY && gap in 0 until VOICE_MEMORY_GAP_MS) {
+            XLog.w("灵感语音：${gap}ms 内又按了一次，忽略（上一段还在采集）")
+        } else {
+            if (feature == RomProfile.NAME_VOICE_MEMORY) {
+                lastVoiceMemoryAt = now
+                voiceMemoryOn = true
+            }
+            launcher.startOplusFeature(feature)
+        }
+    }
+
+    /**
+     * 松手 —— 给「按下开始、松手结束」的动作收尾（此刻只有灵感语音）。
+     *
+     *  判据是 [voiceMemoryOn] 而不是配置：这一下松手有没有东西要停，只有执行侧知道
+     *  （见那个字段的说明）。绑定变了、主开关关了都由调用方先判过 —— 到这里只管停。
+     *
+     *  与 [startOplusOrVoice] 同理写成 lambda 字段：这个类的函数数贴着 detekt 的上限。
+     */
+    val release: () -> Unit = {
+        if (!voiceMemoryOn) {
+            XLog.d("松手：这一段灵感语音不是本进程起的，不收尾")
+        } else {
+            voiceMemoryOn = false
+            XLog.w("灵感语音：松手 → 结束采集")
+            launcher.stopOplusFeature(RomProfile.NAME_VOICE_MEMORY)
+        }
+    }
 
     /** 失败提示的唯一出口，转成 Toast；只有这里碰 Context 与 UI。 */
     private fun notifyFailure(failure: CommandFailure) = FailureNotice.show(context, failure)
+
+    /**
+     * `appshortcut:` 那一支 —— 单独一支只为让 [dispatch] 别顶破 detekt 的长度上限
+     * （那五个实参一行放不下，折行要占三行）。
+     */
+    private fun runAppShortcut(action: Action.AppShortcut) = shortcut.launch(action.pkg, action.shortcutId, action.userId, action.window)
+
+    /** 系统面板那一档：目前只有控制中心一条通道，认不出的档位只记日志、不猜目标。 */
+    private fun runPanel(mode: String) {
+        if (mode == Action.Panel.CONTROL_CENTER) {
+            sendStatusbar(StatusBarBridge.CMD_CONTROL_CENTER)
+        } else {
+            XLog.w("不认识的系统面板档位（已忽略）：$mode")
+        }
+    }
 
     /**
      * 执行一个手势对应的动作。
@@ -96,6 +179,10 @@ internal class ActionRunner(
                     launcher.launchAppInWindow(action.target)
                 }
 
+                is Action.AppShortcut -> {
+                    runAppShortcut(action)
+                }
+
                 // 只动当前那个窗口（不新建实例）—— 与 AppWindow 是两条路；
                 // 尺寸档（展开 / 收起）由动作自己带，执行侧据此走不同配方
                 is Action.MiniWindow -> {
@@ -121,21 +208,19 @@ internal class ActionRunner(
                 }
 
                 is Action.Oplus -> {
-                    launcher.startOplusFeature(action.feature)
+                    // 「使用 ColorOS 接口」只影响**有 AOSP 替代实现**的那几条（免打扰 / 手电筒 / 响铃），
+                    // 其余照旧走 ColorOS 落点 —— 就是界面那句「关闭后**部分命令**将使用 AOSP 标准接口」。
+                    if (action.feature == RomProfile.NAME_NO_DISTURB && !isColorOsApi()) {
+                        XLog.w("oplus:${action.feature} → AOSP 标准接口（ColorOS 接口已关闭）")
+                        runAospDnd()
+                    } else {
+                        startOplusOrVoice(action.feature)
+                    }
                 }
 
-                // 控制中心与「通知中心」（`keyevent:83`）同一条通道：发广播让 system_server 去调状态栏服务。
-                //  只有一档；认不出的档位只记日志（不猜一个调用目标去凑，见 AGENTS.md 五、4）。
+                // 控制中心与「通知中心」（`keyevent:83`）同一条通道；认不出的档位只记日志（见 AGENTS.md 五、4）
                 is Action.Panel -> {
-                    when (action.mode) {
-                        Action.Panel.CONTROL_CENTER -> {
-                            sendStatusbar(StatusBarBridge.CMD_CONTROL_CENTER)
-                        }
-
-                        else -> {
-                            XLog.w("不认识的系统面板档位（已忽略）：${action.mode}")
-                        }
-                    }
+                    runPanel(action.mode)
                 }
             }
         } catch (e: Throwable) {
@@ -198,4 +283,54 @@ internal class ActionRunner(
             }
         }
     }
+
+    /** AOSP 标准免打扰切换（使用 NotificationManager 标准接口）。 */
+    private fun runAospDnd() {
+        val ctx =
+            context ?: run {
+                XLog.w("没有 Context，AOSP 免打扰跳过")
+                return
+            }
+        val nm =
+            try {
+                ctx.getSystemService(NotificationManager::class.java)
+            } catch (e: Throwable) {
+                XLog.w("拿不到 NotificationManager，AOSP 免打扰跳过", e)
+                null
+            } ?: run {
+                XLog.w("拿不到 NotificationManager，AOSP 免打扰跳过")
+                return
+            }
+        try {
+            val currentFilter = nm.currentInterruptionFilter
+            val targetFilter =
+                if (currentFilter == NotificationManager.INTERRUPTION_FILTER_ALL ||
+                    currentFilter == NotificationManager.INTERRUPTION_FILTER_UNKNOWN
+                ) {
+                    NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                } else {
+                    NotificationManager.INTERRUPTION_FILTER_ALL
+                }
+            nm.setInterruptionFilter(targetFilter)
+            XLog.w("免打扰（AOSP 接口）：filter $currentFilter → $targetFilter")
+        } catch (e: Throwable) {
+            // 「勿扰访问」是 appop、不是装了就有（真机实测：`ACCESS_NOTIFICATION_POLICY`
+            //  的 granted 是 true，而 `enabled_notification_policy_access_packages` 是空的）。
+            //  没授时**只在失败分支里**点破 —— 不预先拦：判据本身也可能在别的 ROM 上失准，
+            //  而这条路能成的时候不该被一句检查挡住。
+            if (!nm.isNotificationPolicyAccessGranted) {
+                XLog.w(
+                    "免打扰（AOSP 接口）失败：宿主没有「勿扰访问」授权" +
+                        "（设置 → 通知 → 勿扰权限），这条命令在这台机器上不会生效",
+                )
+                notifyFailure(CommandFailure.DND_NOT_GRANTED)
+                return
+            }
+            XLog.w("切换 AOSP 免打扰失败：${e.javaClass.simpleName}: ${e.message}")
+            notifyFailure(CommandFailure.UNKNOWN)
+        }
+    }
 }
+
+/** 「灵感语音」的连按窗口（毫秒）：这段时间内的第二次触发当没按。 */
+private const val VOICE_MEMORY_GAP_MS = 3_000L

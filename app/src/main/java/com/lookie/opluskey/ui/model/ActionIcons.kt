@@ -16,20 +16,19 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AlignBoxCenterMiddle
 import io.github.lyxnx.compose.ui.tablericons.outline.AlphabetChinese
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindowBottom
+import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
 import io.github.lyxnx.compose.ui.tablericons.outline.Bell
 import io.github.lyxnx.compose.ui.tablericons.outline.BellOff
 import io.github.lyxnx.compose.ui.tablericons.outline.BellRinging
-import io.github.lyxnx.compose.ui.tablericons.outline.Bolt
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple1
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple2
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple3
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple4
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple5
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandAlipay
-import io.github.lyxnx.compose.ui.tablericons.outline.BrandAppstore
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandTelegram
@@ -43,17 +42,21 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleX
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
+import io.github.lyxnx.compose.ui.tablericons.outline.DeviceAudioTape
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobilePause
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
+import io.github.lyxnx.compose.ui.tablericons.outline.DeviceScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
+import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
@@ -67,7 +70,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.InputX
 import io.github.lyxnx.compose.ui.tablericons.outline.LayoutGrid
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
-import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodEmpty
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodHeart
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
@@ -83,9 +85,11 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerStop
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackNext
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackPrev
+import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Power
+import io.github.lyxnx.compose.ui.tablericons.outline.RecordMail
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
 import io.github.lyxnx.compose.ui.tablericons.outline.Screenshot
@@ -93,6 +97,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
+import io.github.lyxnx.compose.ui.tablericons.outline.TableShortcut
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TextOutline
 import io.github.lyxnx.compose.ui.tablericons.outline.TextRecognition
@@ -141,8 +146,12 @@ internal fun actionIcon(token: String): ImageVector =
         }
 
         // 免打扰（月亮：勿扰/夜间的通用读法）
+        Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY -> {
+            TablerIcons.Outline.DeviceAudioTape
+        }
+
         Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING -> {
-            TablerIcons.Outline.Microphone
+            TablerIcons.Outline.RecordMail
         }
 
         // 录音
@@ -258,7 +267,8 @@ internal fun actionIcon(token: String): ImageVector =
                     TablerIcons.Outline.Terminal2
                 }
 
-                token.startsWith(Action.APP_PREFIX) -> {
+                // 快捷方式（`appshortcut:`）与「打开应用」共用一颗字形：都是「把某个东西叫起来」
+                token.startsWith(Action.APP_PREFIX) || token.startsWith(Action.APP_SHORTCUT_PREFIX) -> {
                     TablerIcons.Outline.LayoutGrid
                 }
 
@@ -358,6 +368,14 @@ internal object PageIcons {
     /** 顶栏返回键。 */
     val Back: ImageVector get() = TablerIcons.Outline.ArrowLeft
 
+    /**
+     * 输入框右侧的清除键 —— 圆圈 + 叉（`circle-x`）。
+     *
+     *  与库自带那个清除按钮同一读法（实心圆 + 叉），但这里用描边版：本组件的输入框是
+     *  「卡片里一行字」，实心圆比文字还重。
+     */
+    val Clear: ImageVector get() = TablerIcons.Outline.CircleX
+
     /** 「按键绑定」行首 —— 箭头光标 `Pointer`，读作「按下去那一下」。 */
     val TouchApp: ImageVector get() = TablerIcons.Outline.Pointer
 
@@ -383,7 +401,7 @@ internal object PageIcons {
     val Panels: ImageVector get() = TablerIcons.Outline.AlignBoxCenterMiddle
 
     /**
-     * 「应用转小窗」格的行首 —— 画中画（`picture-in-picture-on`）。
+     * 「前台转小窗」格的行首 —— 画中画（`picture-in-picture-on`）。
      *
      * 与 [SmallWindow] / [TileSmallWindow] 同字形但**各留一份名字**（三处语义不同：入口格 /
      * 「选择应用」菜单项 / 格子上的状态标记），以后要分开改的时候不用先拆共用。
@@ -409,6 +427,14 @@ internal object PageIcons {
      *  与 [SmallWindow]（菜单项）/ [MiniWindow]（入口格）同字形，各留一份名字。
      */
     val TileSmallWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
+
+    /**
+     * 「用哪条接口接管侧键」—— 首页那行开关的行首图标（Tabler 的 `plug-connected`）。
+     *
+     *  一根插进插座的线，读作「从哪条口子接进来」；比 `arrows-exchange`（两条箭头）少一层
+     * 「来回换」的误读 —— 这里选的是**一条**通道，不是两条之间同步。
+     */
+    val ColorOsLink: ImageVector get() = TablerIcons.Outline.PlugConnected
 
     /** 顶栏右侧的菜单按钮（竖三点）。 */
     val Menu: ImageVector get() = TablerIcons.Outline.DotsVertical
@@ -458,14 +484,12 @@ internal object PageIcons {
     val DonateList: ImageVector get() = TablerIcons.Outline.Notes
 
     /**
-     * 「作者」菜单里「酷安」那一项的字形。
+     * 「作者」菜单里「酷安」那一项的字形 —— `apps`（九宫格）。
      *
-     *  **Tabler 没有酷安的品牌字形**（品牌那一族里只有 `alipay` / `github` / `qq` / `telegram` /
-     *  `wechat` 这几个），暂时借 `brand-appstore`（一个通用的「应用商店」标记，语义上对得上 ——
-     *  酷安本来就是应用分发站）。**不要**去借 `brand-google-play` / `brand-appgallery` 这类
-     *  **具体品牌**：那会把用户导去认另一个牌子。将来有酷安自己的字形时只改这一行。
+     *  Tabler 没有酷安的品牌字形，用通用的「应用集合」标记；**不要**借
+     *  `brand-google-play` / `brand-appgallery` 这类**具体品牌**（会把用户导去认另一个牌子）。
      */
-    val BrandCoolapk: ImageVector get() = TablerIcons.Outline.BrandAppstore
+    val BrandCoolapk: ImageVector get() = TablerIcons.Outline.Apps
 
     /**
      * 捐赠菜单三行的品牌字形 —— 菜单里三行都是「一个去处」，只有品牌图能一眼分清。
@@ -627,6 +651,22 @@ internal object PageIcons {
     /** 同上，选中态 —— **实心**的 `circle-check`（实心圆里一个勾；与上面那枚空心的一实一虚成对）。 */
     val TileChecked: ImageVector get() = TablerIcons.Filled.CircleCheck
 
+    /**
+     * 「这一行绑的是某个**具体界面**」—— 行尾那枚提示（Tabler 的 `device-screen`）。
+     *
+     *  与 [TileChecked] 二选一：绑的是 `app:包名/类名` 时用它，一眼看出「不是打开首页，
+     *  是打开里面某一页」；绑的是纯包名 / 快捷方式时仍是那颗勾。
+     */
+    val ActivityScreen: ImageVector get() = TablerIcons.Outline.DeviceScreen
+
+    /**
+     * 「这一行绑的是某个**快捷方式**」—— 行尾那枚提示（Tabler 的 `table-shortcut`）。
+     *
+     *  与 [ActivityScreen] 二选一：两者在配置里都写成长度相近的 `包名/xxx`，光看字符串分不出来
+     *  （一边是类名、一边是快捷方式 id），只能靠 `PickedDetail.shortcutId` 判断。
+     */
+    val ShortcutMark: ImageVector get() = TablerIcons.Outline.TableShortcut
+
     /** 命令编辑页底部工具栏的主操作（「保存 / 修改」）—— `Check`，主次靠颜色分（主操作走 `primary`）。 */
     val Confirm: ImageVector get() = TablerIcons.Outline.Check
 
@@ -654,8 +694,14 @@ internal object PageIcons {
     /** 「命令间隔时长」—— `clock-hour-4`（指到四点的钟：等一段时间再走下一步）。 */
     val DelayStep: ImageVector get() = TablerIcons.Outline.ClockHour4
 
-    /** 「立即触发单击」行的行首 —— `Bolt`（闪电，读作「不等了，立刻」）。 */
-    val InstantTrigger: ImageVector get() = TablerIcons.Outline.Bolt
+    /**
+     * 「忽视无操作双击手势」行的行首 —— `eye-cancel`（眼睛带叉，读作「不认这次双击」；
+     *  这套 Tabler 里没有 `eye-x`，`eye-cancel` 是同一颗字形）。
+     *
+     *  原来用的是 `Bolt`（闪电），读起来像「立刻触发 / 加速」，而这一行管的是**不承认**那个手势，
+     *  语义正好反了。
+     */
+    val IgnoreDouble: ImageVector get() = TablerIcons.Outline.EyeCancel
 
     /** 模块重启 —— `Reload`（回转箭头 + 竖线），读作「重新来一遍」。 */
     val ModuleRestart: ImageVector get() = TablerIcons.Outline.Reload

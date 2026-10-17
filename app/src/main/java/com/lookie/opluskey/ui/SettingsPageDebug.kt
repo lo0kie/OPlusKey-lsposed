@@ -3,8 +3,13 @@ package com.lookie.opluskey.ui
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.ui.state.deviceModel
+import com.lookie.opluskey.ui.state.deviceSupport
+import com.lookie.opluskey.ui.state.fakeModel
 
 // 调试通道（`debug` 广播）那两条 —— 与页面骨架无关，单独一个文件。
 
@@ -14,7 +19,9 @@ import com.lookie.opluskey.core.model.KeyId
  * 调试通道的处理体 —— **只有 debug 包会走到这里**（实现只在 `src/debug/` 源集）。
  *
  * 支持的动作见 [PageDebugChannel] 的类注释（`screen` / `gesture` / `kind` /
- * `name` / `cmd` / `steps` / `del` / `reset` / `save` / `action` / `state`，一次可以带多个）。
+ * `name` / `cmd` / `steps` / `del` / `reset` / `save` / `action` / `state` / `model` / `rom`，
+ * 一次可以带多个）。`model` / `rom` 是**伪装本机身份**（只动判定与显示，不碰注入），
+ * 传空串即恢复真机值。
  *
  * 执行顺序是**固定的**：先跳页、再切 tab、再填字段、最后才 reset / save —— 这样
  * 「`--es screen COMMANDS --es kind SERIAL --es name X --ez save true`」这一条广播
@@ -92,6 +99,24 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
             }
         }
     }
+    // 伪装机型 —— 只看「更多选项 → 适配清单」那一行（清单不参与任何闸，不换机也能验另外两档）：
+    //   am broadcast -a com.lookie.opluskey.DEBUG --es model CPH9999
+    //   am broadcast -a com.lookie.opluskey.DEBUG --es model ""        ← 恢复真机
+    intent.getStringExtra("model")?.let { raw ->
+        fakeModel = raw.trim().ifEmpty { null }
+        XLog.w("调试：伪装机型 → ${fakeModel ?: "（恢复真机）"}；清单判定=$deviceSupport")
+    }
+    // 伪装 ROM 系列 —— **整条链路**都跟着变：适配清单那一行、内置命令落点（照基准实现试）、
+    //  安装期那句「适配档位」。验「另一版 ROM 上那几条内置命令还跑不跑」用这个。
+    //   am broadcast -a com.lookie.opluskey.DEBUG --es rom 16.0.10
+    //   am broadcast -a com.lookie.opluskey.DEBUG --es rom ""            ← 恢复真机
+    intent.getStringExtra("rom")?.let { raw ->
+        DeviceSupport.romSeriesOverride = raw.trim().ifEmpty { null }
+        XLog.w(
+            "调试：伪装 ROM → ${DeviceSupport.currentRomSeries.ifEmpty { "（读不出来）" }}" +
+                "；清单判定=${DeviceSupport.verdict}；内置命令档位=${RomProfile.describeCurrent()}",
+        )
+    }
     if (intent.getBooleanExtra("state", false)) logDebugState()
 }
 
@@ -105,6 +130,7 @@ internal fun SettingsPage.logDebugState() {
     val key = configState.config.value.key(KeyId.PLUS)
     XLog.w(
         "调试·状态：screen=$screen 栈=${navStack.joinToString(">")} 主开关=${key.enabled} " +
+            "机型=$deviceModel 清单=$deviceSupport " +
             "单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token} | " +
             "表单 kind=${commandDraft.draft.kind.id} editing=${commandDraft.draft.editingName} " +
             "name='${commandDraft.draft.name}' cmd='${commandDraft.draft.single}' steps=${commandDraft.draft.steps.toList()} | " +

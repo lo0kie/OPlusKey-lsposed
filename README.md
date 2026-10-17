@@ -35,13 +35,11 @@ LSPosed 模块：把一加 / OPPO 的侧键重映射成单击、双击、长按�
 
 ## 编译
 
-JDK 21 + Android SDK；release / beta 签名读根目录 `keystore.properties`（不入库）。
-三档签名：`debug` 用自己的调试签名，`release` 与 `beta` 用同一份发布签名 ——
-所以 **debug 与另外两个不能互相覆盖安装**（要换档先卸载）。
+JDK 21 + Android SDK；release 签名读根目录 `keystore.properties`（不入库）。
+`debug` 用自己的调试签名、`release` 用发布签名 —— **两者不能互相覆盖安装**（要换档先卸载）。
 
 ```bash
-./gradlew assembleRelease   # 正式版：过适配清单这道闸
-./gradlew assembleBeta      # 发布用：防篡改与 release 相同，但放宽机型校验；日志是完整版
+./gradlew assembleRelease   # 正式版：防篡改 + 封存资产
 ./gradlew assembleDebug     # 开发自用：另有调试通道（可在系统进程里跑任意反射），别装到别人机上
 ```
 

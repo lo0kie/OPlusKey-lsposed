@@ -58,5 +58,7 @@ internal fun SettingsPage.openAppPickerForStep(replaceIndex: Int = -1) {
     // 「以小窗口打开」按**这次要编辑的那一步**重算（不落盘、不跨次记忆，见 [AppPickerState.smallWindow]；
     // 另一条入口在 SettingsPage 的「打开应用」格）
     resetSmallWindowForPicker()
+    // 进页唯一复位点：点过的行回到当前绑定，定位 / 拦人窗 / 刷新指示器归零（清单不清）
+    appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
     navTo(Screen.APP_PICKER)
 }

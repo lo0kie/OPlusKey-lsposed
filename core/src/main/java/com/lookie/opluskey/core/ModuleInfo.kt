@@ -18,13 +18,17 @@ object ModuleInfo {
     const val PACKAGE = "io.github.lo0kie.opluskey"
 
     /**
-     * 每次出包手动更新；CI 靠它给产物命名（`build.yml` 的 `dist` 那一步）。
+     * 每次出包手动更新 —— 它是**注入侧与界面之间那把「是不是同一次构建」的尺子**
+     * （`LinkCheck` 的「换包没重启」那一档比的就是它）。
      *
-     * 它还是**构建时刻读不到时的回退值**（`ui/screen/HomeScreen` 的 `moduleBuildStamp`）
+     *  不更新的话那把尺子量不出差别：换了包、system_server 里还是旧的，界面照样判「同一次构建」。
+     *  产物命名**不看它**（`build.yml` 按 `versionName` 命名，见那一步的注释）。
+     *
+     * 它还是**构建时刻读不到时的回退值**（`ui/screen/PageText.kt` 的 `moduleBuildStamp`）
      * —— 那时界面版本行显示的整串就是它，所以它自己带着日期。
      *
      *  原来挂在 `KeyModule` 上：那是「版本身份」，不是「入口派发」——而挂在那里会让
      *  界面为了一个版本号去 import 注入入口那个类（`ui → root` 也是审计要清的边）。
      */
-    const val BUILD_ID = "2026-10-15-0001"
+    const val BUILD_ID = "2026-10-18-0001"
 }

@@ -31,7 +31,7 @@ object ActionCatalog {
         /** 「通知与控制中心」标记格。 */
         Panels,
 
-        /** 「应用转小窗」标记格。 */
+        /** 「前台转小窗」标记格。 */
         MiniWindow,
     }
 
@@ -132,6 +132,12 @@ object ActionCatalog {
     private val RECORDING = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING
 
     /**
+     * 灵感语音（AI 记忆的长按录音）。**只在长按格子出现**，也不能作为多条命令的一步 ——
+     * 它起的是麦克风采集，短按一下、或排在命令链中间都没有语义（见 [forGesture] / [STEP_GROUPS]）。
+     */
+    private val VOICE_MEMORY = Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY
+
+    /**
      * 「媒体控制」那一格**本身**（[GROUPS] 里那一行）—— 与菜单首行（[MEDIA_MODES] 的第一条）
      * 共用同一串 token（[MEDIA_TILE]），但两者**字形不同**：这一格是「一类东西」（音符，入口），
      * 菜单首行是「一个具体取值」（开关键）。认领只能靠 `spec ===`，见 `ui/model/ActionIcons.kt`
@@ -184,6 +190,8 @@ object ActionCatalog {
                     // 取值照搬 KSU 模块，但模块侧不走 shell —— 见 `host/action/AppLauncher.startSidebar`
                     Spec(name = Strings.TOOL_SCREEN_RECOGNITION, token = SIDEBAR),
                     Spec(name = Strings.CATALOG_FLASH_NOTE, token = FLASH_MEMORY),
+                    // 灵感语音：只在长按那张网格里出现（[forGesture] 过滤），见 [VOICE_MEMORY] 的说明
+                    Spec(name = Strings.CATALOG_VOICE_MEMORY, token = VOICE_MEMORY),
                     Spec(name = Strings.CATALOG_DND, token = NO_DISTURB),
                     Spec(name = Strings.CATALOG_RECORDING, token = RECORDING),
                     // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
@@ -288,7 +296,7 @@ object ActionCatalog {
     val PANEL_CONTROL = Action.PANEL_PREFIX + Action.Panel.CONTROL_CENTER
 
     /**
-     * 「应用转小窗」那一格的标记 —— 与 [NAV_TILE] / [KEY_TILE] 同类。
+     * 「前台转小窗」那一格的标记 —— 与 [NAV_TILE] / [KEY_TILE] 同类。
      *
      * 两档尺寸（展开的普通小窗 / 收起的最小化窗）各不相同，格子代表不了其中任何一个，
      * 所以是**标记**（永不写进配置），菜单里那两档才是真取值。
@@ -296,7 +304,7 @@ object ActionCatalog {
     const val MINI_TILE = "zoom:"
 
     /**
-     * 「应用转小窗」菜单的两行，顺序即行序。两行都是真取值（见 `core/model/Action.MiniWindow`）：
+     * 「前台转小窗」菜单的两行，顺序即行序。两行都是真取值（见 `core/model/Action.MiniWindow`）：
      *  · **展开** = 居中大面积的普通小窗，服务端 `setUserPositionInfo`（`mZoomLaunchFlags = 2`）；
      *  · **收起** = 右上角一条的最小化窗，服务端 `fullToMini`（`mZoomLaunchFlags = 32`）。
      *
@@ -383,11 +391,34 @@ object ActionCatalog {
      */
     fun groupTitleLabel(groupTitle: String): String = I18n.get(groupTitle)
 
+    /**
+     * 这一档手势的**内置动作分组** —— [GROUPS] 按手势剔掉在这一档不成立的条目（此刻只有「灵感语音」）。
+     *
+     *  为什么网格必须用这一份、而不是继续按 [GROUPS] 的组大小切 [forGesture] 的结果：
+     *  `forGesture` 少了「灵感语音」那一格，而组大小没少 ⇒ 最后一组（「快捷功能」）会多吃进
+     *  **第一条自定义命令**（真机反馈「单击 / 双击的自定义命令跑到快捷功能里了」）。
+     *  清单与切分必须同源：谁剔条目，就由谁给出分组。
+     */
+    fun groupsFor(gesture: Gesture): List<Pair<String, List<Spec>>> =
+        if (gesture == Gesture.LONG) {
+            GROUPS
+        } else {
+            GROUPS.map { (title, group) -> title to group.filterNot { it.token == VOICE_MEMORY } }
+        }
+
+    /** 这一档手势**内置动作的条数** —— 「自定义命令」那一段从它开始（见 `BindingGridState.builtInCount`）。 */
+    fun builtInCount(gesture: Gesture): Int = groupsFor(gesture).sumOf { it.second.size }
+
     /** 保留此函数而非让调用方直接读 [ALL]：清单按手势分化随时可能回来，调用点不必跟着改。 */
     fun forGesture(
-        @Suppress("UNUSED_PARAMETER") gesture: com.lookie.opluskey.core.model.Gesture,
+        gesture: Gesture,
         commands: List<Command> = emptyList(),
-    ): List<Spec> = ALL + commands.map { commandSpec(it) }
+    ): List<Spec> {
+        // 「灵感语音」只挂在长按上：短按 / 双击拨它等于「按一下就开录」，那不是这个能力的语义。
+        //  网格按手势各建一份（`rememberBindingGridState` 按 g 取），所以只在这里挡一次就够。
+        val base = groupsFor(gesture).flatMap { it.second }
+        return base + commands.map { commandSpec(it) }
+    }
 
     /**
      * 一条自定义命令的展示条目。
@@ -435,7 +466,8 @@ object ActionCatalog {
         GROUPS.map { (title, group) ->
             title to
                 group
-                    .filterNot { it.token == NONE_TOKEN }
+                    // 「无操作」代表吞掉按键、不是一步动作；「灵感语音」是长按才成立的采集，排进命令链没有语义
+                    .filterNot { it.token == NONE_TOKEN || it.token == VOICE_MEMORY }
                     .map { if (it.token == APP_TILE) APP_STEP else it }
         }
 
@@ -468,40 +500,6 @@ object ActionCatalog {
 
     /** 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。 */
     fun modeMenu(token: String): List<Spec>? = MODE_MENUS[token]
-
-    /**
-     * 这一格是不是**被锁住的** —— 本机 ROM 没有它的落点，点了什么都不会发生。
-     *
-     *  网格格子与「添加命令」按它置灰、不吃点击。判据与执行侧**同一个**（[RomProfile.hasLanding]）：
-     *  这一族的落点表按 ROM 系列分档（`RomProfile.PROFILES`，每条 ROM 一档），本机那一档没有、
-     *  而本包又不猜时，执行侧记一行 `w` 后跳过 —— 灰着的正是按下去不会有反应的那几条。
-     *  debug 包会照最后一档猜（`GUESS_UNVERIFIED_LANDING`），那个包里不灰，与执行侧一致
-     *  （那正是「在任意机器上把这几条试一遍」的前提）。
-     *
-     *  **不在此列的**：小窗 / 电源菜单 / 通知与控制中心那几族走 `RomProfile.effective` ——
-     *  猜错只表现为查找落空、按最后一档试就是，它们是「待验」不是「锁住」。
-     */
-    fun isLocked(spec: Spec): Boolean {
-        val feature = builtInFeatureOf(canonicalToken(spec.token)) ?: return false
-        return !RomProfile.hasLanding(feature)
-    }
-
-    /**
-     * 一条 token 跑起来要哪个内置落点 —— 判据与执行侧同源。
-     *
-     *  · `oplus:<功能名>`（[Action.Oplus]）：执行侧按这个名字查 [RomProfile.builtIn]；
-     *  · 「小布识屏」那条 KSU 别名（清单里写作 `shell:am start-foreground-service …`）：
-     *    执行侧**不走 shell**，走 `host/action/AppLauncher.startSidebar` → 同一个落点表的
-     *    [RomProfile.NAME_SCREEN_OCR]（见 `host/action/ActionRunner.runShell`）。
-     *
-     *  其余一律 `null`（不需要落点，或不是这一族）。
-     */
-    private fun builtInFeatureOf(token: String): String? =
-        when {
-            token.startsWith(Action.OPLUS_PREFIX) -> token.removePrefix(Action.OPLUS_PREFIX)
-            KsuCompat.isSidebarAlias(token.removePrefix(Action.SHELL_PREFIX)) -> RomProfile.NAME_SCREEN_OCR
-            else -> null
-        }
 
     /**
      * `token` → 规范化之后的写法（走一遍 `Action.parse` 再取回它的 `token`）。

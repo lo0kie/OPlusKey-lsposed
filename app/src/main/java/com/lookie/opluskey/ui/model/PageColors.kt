@@ -97,7 +97,19 @@ internal val APP_KIND_MODULE_LIGHT = Color(0xFF7C4DFF)
 
 internal val APP_KIND_MODULE_DARK = Color(0xFFB9A3FF)
 
-/** COUI 的浅色 / 深色色板（值来自库，写死在这里只是为了不必每次重建）。 */
+/**
+ * 应用名旁边那枚「分身」标签的颜色 —— 明暗各一值。
+ *
+ *  **只有一档**：槽位已经写在名字里了（`微信 1` / `微信 2`），标签只负责说「这一行是分身」，
+ *  不需要再用五种颜色去区分第几个 —— 那会让同一屏里出现五六种标签色，反而更难读。
+ *
+ *  色相避开库里的两支与模块紫：蓝（`primary`）是「系统」、红（`error`）是「不可打开」、
+ *  紫是「模块」。判据与 [APP_KIND_MODULE_LIGHT] 同一套（按 `background` 亮度切）。
+ */
+internal val CLONE_TAG_LIGHT = Color(0xFF00897B)
+
+internal val CLONE_TAG_DARK = Color(0xFF4DD0B1)
+
 internal val LIGHT_SCHEME = lightColorScheme()
 
 internal val DARK_SCHEME = darkColorScheme()

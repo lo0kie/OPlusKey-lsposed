@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build:
-    name: debug + release + beta
+    name: debug + release
     runs-on: ubuntu-latest
     outputs:
       version_name: ${{ steps.dist.outputs.version_name }}
@@ -105,10 +105,10 @@ jobs:
       - name: 耦合审计（禁止边 / 包级环）
         run: python3 tools/audit-coupling.py
 
-      - name: 构建 debug / release / beta
+      - name: 构建 debug / release
         run: |
           if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
-            ./gradlew assembleDebug assembleRelease assembleBeta
+            ./gradlew assembleDebug assembleRelease
           else
             ./gradlew assembleDebug
           fi
@@ -139,14 +139,12 @@ jobs:
             exit 1
           fi
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk     "dist/oplus-key-${BUILD_ID}-debug.apk"
-          # 没签名那一轮没有 release / beta 产物，别在这儿报错（封存那一步已经挡在前面了）
+          # 文件名按 **versionName**（用户认的是这个），不按 BUILD_ID —— 后者是源码里那个
+          #  手写常量，忘了更新时产物名会停在上一版（`oplus-key-2026-10-15-0001-release.apk` 就是这么来的）。
+          cp app/build/outputs/apk/debug/app-debug.apk     "dist/oplus-key-${VERSION_NAME}-debug.apk"
+          # 没签名那一轮没有 release 产物，别在这儿报错（封存那一步已经挡在前面了）
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
-            cp app/build/outputs/apk/release/app-release.apk "dist/oplus-key-${BUILD_ID}-release.apk"
-          fi
-          # beta = 发布用 debug：防篡改与 release 同款，但放宽机型校验（见 app/build.gradle.kts）
-          if [ -f app/build/outputs/apk/beta/app-beta.apk ]; then
-            cp app/build/outputs/apk/beta/app-beta.apk       "dist/oplus-key-${BUILD_ID}-beta.apk"
+            cp app/build/outputs/apk/release/app-release.apk "dist/oplus-key-${VERSION_NAME}-release.apk"
           fi
           echo "build_id=${BUILD_ID}" >> "$GITHUB_OUTPUT"
           echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
@@ -361,10 +359,10 @@ jobs:
             fi
           fi
 
-          # (10) 封存：release 与 beta 都是「发布形态」—— 都不许出现明文收款码 / 名单，且必须有容器；
+          # (10) 封存：release 是「发布形态」—— 不许出现明文收款码 / 名单，且必须有容器；
           #    debug 反过来（它的图就是明文，靠 `app/seal` 那条 assets 目录进的包）。
           #    守的是「封存任务没跑起来 / 被绕过」——那种包照样能出、能装，只有把包解开才看得出来。
-          for apk in dist/*-release.apk dist/*-beta.apk; do
+          for apk in dist/*-release.apk; do
             [ -f "$apk" ] || continue
             echo "校验封存 $apk"
             listing=$(unzip -l "$apk")
@@ -399,7 +397,7 @@ jobs:
       - name: 上传 debug 产物
         uses: actions/upload-artifact@v7
         with:
-          name: oplus-key-debug-${{ steps.dist.outputs.build_id }}
+          name: oplus-key-debug-${{ steps.dist.outputs.version_name }}
           path: dist/*-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -409,32 +407,20 @@ jobs:
         if: steps.sign.outputs.signed == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: oplus-key-release-${{ steps.dist.outputs.build_id }}
+          name: oplus-key-release-${{ steps.dist.outputs.version_name }}
           path: dist/*-release.apk
           if-no-files-found: error
           retention-days: 90
 
-      - name: 上传 beta 产物
-        # beta 与 release 同签名，同样只在配了密钥时才有产物
-        if: steps.sign.outputs.signed == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: oplus-key-beta-${{ steps.dist.outputs.build_id }}
-          path: dist/*-beta.apk
-          if-no-files-found: error
-          retention-days: 30
-
-      # 崩溃栈还原全靠它：release / beta 都开了 R8，抓到的栈是 `a.a.b` 这种，
+      # 崩溃栈还原全靠它：release 开了 R8，抓到的栈是 `a.a.b` 这种，
       # 没有 mapping 只能靠猜。与 APK 分开存、保留更久（90 天），
-      # 按 BUILD_ID 对齐 —— 用户报的那一版能不能还原，就看这份文件在不在。
+      # 按版本号对齐 —— 用户报的那一版能不能还原，就看这份文件在不在。
       - name: 上传混淆映射
         if: steps.sign.outputs.signed == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: oplus-key-mapping-${{ steps.dist.outputs.build_id }}
-          path: |
-            app/build/outputs/mapping/release/mapping.txt
-            app/build/outputs/mapping/beta/mapping.txt
+          name: oplus-key-mapping-${{ steps.dist.outputs.version_name }}
+          path: app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: warn
           retention-days: 90
 
@@ -488,8 +474,8 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # 资产名带 BUILD_ID，重传不会覆盖同名文件 —— 先清掉这一版已有资产，
-      # 否则同一 versionName 下每构建一次就多攒一个 APK。
+      # 资产名按版本号，同一版重传会撞同名 —— 先清掉这一版已有资产再传，
+      # 免得 `gh` 报「文件已存在」，也免得同一条 release 下攒出两个同名包。
       - name: 清掉这一版里的旧资产
         if: steps.token.outputs.ready == 'true'
         env:
@@ -504,11 +490,11 @@ jobs:
 
       # 只传 release 包：机器人按单个 apk URL 处理，挂两个抓不准；debug 包另以 Actions artifact 保留。
       #
-      # beta 版本靠「预发布」这一个标记区分，没有第二套流程：
+      # 预发布版本靠「预发布」这一个标记区分，没有第二套构建：
       #   versionName 里带 `-`（如 1.1.0-beta.1）⇒ 发为预发布 ⇒ 只进管理器的「测试版」通道。
       #   索引据此填 `latestBetaRelease`（稳定版填 `latestRelease`、快照版按 release 标题前缀填
       #   `latestSnapshotRelease`），管理器的「稳定版」通道会把 `isPrerelease` 的条目整个滤掉。
-      # 注意：版本号仍须单调递增：beta 也占一个 `versionCode`，不涨的话测试通道收不到更新提示。
+      # 注意：版本号仍须单调递增：预发布也占一个 `versionCode`，不涨的话测试通道收不到更新提示。
       - name: 建 / 更新 Release
         if: steps.token.outputs.ready == 'true'
         uses: softprops/action-gh-release@v3
@@ -520,12 +506,9 @@ jobs:
           prerelease: ${{ contains(needs.build.outputs.version_name, '-') }}
           # 预发布不能被设为 latest（GitHub 会拒），所以这一项和上面反着来。
           make_latest: ${{ !contains(needs.build.outputs.version_name, '-') }}
-          # 发哪个**档位**的包，跟这一版的性质走：
-          #   versionName 带 `-`（如 `0.0.1-beta.1`）⇒ 预发布 ⇒ 发 beta 档
-          #     （放宽机型校验 + 防篡改 + 完整日志，给清单外机型的用户）
-          #   不带 ⇒ 正式 ⇒ 发 release 档（过适配清单这道闸）
-          # 两个档位的包体在 `app/build.gradle.kts` 的 buildTypes 里定义，判据见 docs/implementation.md「八、适配闸」。
-          files: ${{ contains(needs.build.outputs.version_name, '-') && 'dist/*-beta.apk' || 'dist/*-release.apk' }}
+          # 只有一档包体（release，见 `app/build.gradle.kts` 的 buildTypes）：预发布与正式
+          #   发的是同一个包，区别只在 `prerelease` 那个标记上。
+          files: dist/*-release.apk
           body: |
             `versionName` = ${{ needs.build.outputs.version_name }}，`versionCode` = ${{ needs.build.outputs.version_code }}，`BUILD_ID` = ${{ needs.build.outputs.build_id }}。
             由 GitHub Actions 自动构建。

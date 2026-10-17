@@ -23,10 +23,10 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.setColorOsApi
 import com.lookie.opluskey.ui.setKeyEnabled
 import com.lookie.opluskey.ui.setToastOnRun
 import com.lookie.opluskey.ui.setVibrate
-import com.lookie.opluskey.ui.state.deviceSupported
 import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
@@ -44,7 +44,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 // 卡里的人只管自己那几行。
 
 /**
- * 「按键绑定」那张卡 —— 第 1 行主开关、第 2 行进「按键绑定」子页。
+ * 「按键绑定」那张卡 —— 第 1 行主开关、第 2 行接口选择、第 3 行进「按键绑定」子页。
  *
  * @param pageEnabled 整页总闸（含主开关自己）—— 只给第 2 行用
  */
@@ -66,7 +66,6 @@ internal fun SettingsPage.HomeBindingCard(
         // 链路还没报到（`linkReady=false`）⇒ 主开关是灰的；等注入侧回包一到、`linkReady` 变 true，
         // 它就**自己重新亮起来**了，用户当场拨了三下（每次都被 `write` 拒掉）。
         // **「拨了没反应」比「一开始就灰着」更难读**，所以这一档必须一起禁。
-        //  `deviceSupported` 同理：适配清单外的组合只注入了界面层，拨它也不会生效。
         //
         // 它写的是 [KeyConfig.enabled] —— 执行侧早就存在的总闸（注入侧与宿主侧各有一道
         // `if (!…enabled) return`），所以这一开关不只是界面置灰，是真的把功能关掉。
@@ -88,7 +87,7 @@ internal fun SettingsPage.HomeBindingCard(
             icon = PageIcons.Power,
             checked = key.enabled,
             position = cardListPositionOf(0, HOME_BINDING_ROWS),
-            enabled = linkReady && !configState.readOnly && deviceSupported,
+            enabled = linkReady && !configState.readOnly,
         ) {
             tick()
             // 打开之前先要一次确认：没确认过就只弹窗、**不写盘**。
@@ -103,8 +102,24 @@ internal fun SettingsPage.HomeBindingCard(
         }
 
         HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+        // 第 2 行：接口选择 —— 走 ColorOS 专属系统接口，还是 AOSP 标准接口。
+        SwitchRow(
+            title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
+            // 11 字：与上一行那两句同档，一行放得下，不把卡片撑高
+            summary = I18n.get(Strings.HOME_COLOROS_DESC, "关闭后部分命令将使用 AOSP 标准接口"),
+            icon = PageIcons.ColorOsLink,
+            checked = configState.config.value.global.colorOsApi,
+            position = cardListPositionOf(1, HOME_BINDING_ROWS),
+            // 吃整页总闸（含主开关自己）：主开关一关，这一行跟着灰
+            enabled = pageEnabled,
+        ) {
+            tick()
+            setColorOsApi(it)
+        }
+
+        HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
         BindingEntryRow(pageEnabled)
-        //  这张卡**只有两行**：第 1 行主开关、第 2 行进「按键绑定」子页。
+        //  这张卡**三行**：第 1 行主开关、第 2 行接口选择、第 3 行进「按键绑定」子页。
         // 「响铃状态」那两档（`setRingerModeInternal`）已删，理由见「按键绑定」小标题上方那段注释。
     }
 }
@@ -220,7 +235,7 @@ internal fun SettingsPage.HomeOtherCard(ui: HomeUiState) {
  */
 @Composable
 private fun SettingsPage.BindingEntryRow(pageEnabled: Boolean) {
-    // 第 2 行：进「按键绑定」子页（纯跳转，行尾只有箭头）。
+    // 第 3 行：进「按键绑定」子页（纯跳转，行尾只有箭头）。
     // 进不去那个页面，也就不存在「关着还能改配置」。
     //
     //  行尾箭头**自己画**：库的 `ArrowPreference` 那颗是 COUI 图标集的 12x24 窄箭头（描边 1.4），
@@ -265,7 +280,7 @@ private fun SettingsPage.BindingEntryRow(pageEnabled: Boolean) {
                 tint = bindingArrowTint,
             )
         },
-        cardListPosition = cardListPositionOf(1, HOME_BINDING_ROWS),
+        cardListPosition = cardListPositionOf(2, HOME_BINDING_ROWS),
         enabled = pageEnabled,
         onClick = {
             navTo(Screen.BINDING)

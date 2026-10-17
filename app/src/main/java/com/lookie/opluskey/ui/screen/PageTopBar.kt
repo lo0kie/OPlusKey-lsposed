@@ -10,13 +10,16 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.PageHeader
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.appVersionLabel
 import com.lookie.opluskey.ui.model.ABOUT_TITLE
+import com.lookie.opluskey.ui.model.ACTIVITY_PICKER_TITLE
 import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
 import com.lookie.opluskey.ui.model.BINDING_TITLE
 import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
 import com.lookie.opluskey.ui.screen.binding.BindingTabBand
@@ -79,6 +82,8 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         Screen.APP_PICKER -> APP_PICKER_TITLE
 
+        Screen.ACTIVITY_PICKER -> ACTIVITY_PICKER_TITLE
+
         Screen.ABOUT -> ABOUT_TITLE
 
         Screen.DONATE_LIST -> DONATE_LIST_TITLE
@@ -102,23 +107,35 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         }
 
         Screen.APP_PICKER -> {
-            val pkg = appPickerSelectedPkg()
-            if (pkg == null) {
+            val target = appPickerSelectedPkg()
+            if (target == null) {
                 // 没选过就不摆一行「已选择: 无」—— 那种写法像是有个叫「无」的应用
                 I18n.get(Strings.APP_PICKER_UNSELECTED, "还未选择应用")
             } else {
-                val label =
-                    picker.cachedApps.value
-                        ?.firstOrNull { it.packageName == pkg }
-                        ?.label ?: pkg
-                I18n.format(Strings.APP_PICKER_SELECTED_FORMAT, label)
+                I18n.format(Strings.APP_PICKER_SELECTED_FORMAT, selectedLabel(target))
             }
+        }
+
+        // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
+        Screen.ACTIVITY_PICKER -> {
+            picker.activityTarget?.let { selectedLabel(it) }.orEmpty()
         }
 
         else -> {
             ""
         }
     }
+
+/**
+ * 「已选择」那一行要显示的名字 —— 优先级只有一处（[appNameOf]）：
+ * 配置里单独存的名字 → 老配置 token 里的 `|名字` → 现查 → 包名。
+ *
+ *  以前这里是「存下的名字 → 本次清单 → 包名」，而**清单那一步用的是 `AppTarget.same`**
+ *  （连 `/类名` 一起比）：绑了具体界面 / 快捷方式时，清单里那一行是纯包名，永远匹配不上
+ *  ⇒ 落到包名兜底（真机反馈的「选完快捷方式 / 界面，再进来显示的是包名」就是这个）。
+ *  现在名字随绑定一起落盘，这一位不再需要清单参与。
+ */
+private fun SettingsPage.selectedLabel(target: String): String = appNameOf(target)
 
 /** 顶栏右上角那几颗动作键 —— 只有首页与「选择应用」页有。 */
 @Composable
@@ -160,6 +177,11 @@ private fun SettingsPage.PageBottomBand(
 
         Screen.APP_PICKER -> {
             AppSearchBand()
+        }
+
+        // 二级页那条搜索带与上面那条**同一份**（同一个位置、同一档边距），只是搜索词各归各的
+        Screen.ACTIVITY_PICKER -> {
+            ActivitySearchBand()
         }
 
         // 首页 / 「关于模块」/「捐赠列表」都没有固定带（后两页都是「短内容」页，见 [pageScrollBehavior]）

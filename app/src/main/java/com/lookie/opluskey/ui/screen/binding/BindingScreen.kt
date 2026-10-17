@@ -40,12 +40,16 @@ import io.github.suqi8.coui.kmp.utils.overScrollHorizontal
 import kotlinx.coroutines.launch
 
 /**
- * 单击档「按键设置」那张卡的**行数** —— 单击延迟 + 立即触发单击。
+ * 单击档「按键设置」那张卡的**行数** —— 只剩「单击延迟」一行。
  *
- * 两行都走 `cardListPositionOf`：首尾行各补 2dp（COUI 的 `coui_list_card_head_or_tail_padding`），
+ * 走 `cardListPositionOf`：首尾行各补 2dp（COUI 的 `coui_list_card_head_or_tail_padding`），
  * 与「多条命令」那张卡同一套账（见 `CommandScreen` 的 `SERIAL_CARD_ROWS`）。
+ * 只有一行时它同时是首行与尾行，`cardListPositionOf` 自己认得这一档（圆角四角都收）。
  */
-internal const val SINGLE_SETTING_ROWS = 2
+internal const val SINGLE_SETTING_ROWS = 1
+
+/** 双击档「按键设置」那张卡的行数 —— 只有「忽视无操作双击手势」一行。 */
+internal const val DOUBLE_SETTING_ROWS = 1
 
 /**
  * 「按键绑定」页那条**分段控件带**（三个手势 tab）—— 挂在**顶栏的 `bottomContent`** 里
@@ -321,7 +325,7 @@ internal fun SettingsPage.BindingScreen(
  *
  * 锚点跟着格子走（由格子自己 `remember`、点击时随菜单一起上报），而不是在页面这一层按
  * 「哪一格用哪一支」手写一张表 —— 那种表每加一个入口格就得补一行，**漏一个菜单就弹到别人身上**
- *（「应用转小窗」、「通知与控制中心」两次都是这么漏的）。
+ *（「前台转小窗」、「通知与控制中心」两次都是这么漏的）。
  *
  * @param spec 开着菜单的那一格（菜单内容按它的 token 从 [ActionCatalog.modeMenu] 取）
  * @param anchor 那一格记下的手指触点 —— 浮层就弹在那一点

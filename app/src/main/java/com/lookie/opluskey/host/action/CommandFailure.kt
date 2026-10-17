@@ -37,6 +37,16 @@ internal enum class CommandFailure(
     /** shell 退出码 126 —— 找到了但没有执行权限。 */
     SHELL_NO_PERMISSION(Strings.COMMAND_FAILURE_SHELL_NO_PERMISSION, "这条命令没有执行权限"),
 
+    /**
+     * 起不了任何 shell 解释器 —— 最常见的原因是**没有 root 授权**。
+     *
+     *  未授权时 KernelSU 直接让 `/system/bin/su` **不可见**（`sh` 报 `inaccessible or not found`），
+     *  而宿主所在的 `platform_app` 域又没有 `/system/bin/sh` 的执行权 ⇒ 两条路同时断。
+     *  这一档原来并进 [SHELL_REJECTED]（「系统不让执行这条命令」），会把人往 SELinux 方向带，
+     *  而实际该做的是去 root 管理器给宿主授权。
+     */
+    SHELL_NO_ROOT(Strings.COMMAND_FAILURE_SHELL_NO_ROOT, "权限不够：这条命令要 root"),
+
     /** 其它非 0 退出码 —— 命令跑起来了但自己报错。 */
     SHELL_FAILED(Strings.COMMAND_FAILURE_SHELL_FAILED, "命令没跑成功，检查一下内容"),
 
@@ -67,6 +77,16 @@ internal enum class CommandFailure(
      *  · 命令链还在跑时又触发了一条（`CustomCommandRunner` 的「一次只跑一条」闸）。
      */
     OVERLOADED(Strings.COMMAND_FAILURE_OVERLOADED, "上一条命令还没跑完，稍后再试"),
+
+    /**
+     * 免打扰（AOSP 接口那一档）：宿主没有「勿扰访问」授权。
+     *
+     *  `ACCESS_NOTIFICATION_POLICY` 装包时就 granted，但那只是权限位；真正管用的是
+     *  appop（真机上 `enabled_notification_policy_access_packages` 是空的 ⇒ 没授）。
+     *  没授时 `setZenMode` 抛 `SecurityException`，并进 [UNKNOWN] 只会说「这次没执行成功」，
+     *  用户不知道要去哪儿开。这一档专门说清「缺的是哪一项授权」。
+     */
+    DND_NOT_GRANTED(Strings.COMMAND_FAILURE_DND_NOT_GRANTED, "免打扰要「勿扰权限」：去系统设置里给宿主授权"),
     ;
 
     val hint: String

@@ -39,6 +39,21 @@ data class KeyConfig(
         }
 
     /**
+     * 长按绑的是不是「灵感语音」（`oplus:voice_memory`）。
+     *
+     *  它是唯一**「按下开始、松手结束」**的动作，两处判据必须是同一个口径：
+     *   · 判定侧（`inject/input/GestureDetector`）：不排「长按连续触发」—— 连发等于把正在录的那段
+     *     掐断重来，系统自己的侧键长按也没有这个语义；
+     *   · 执行侧（`host/GestureReceiver`）：收到「松手」（[com.lookie.opluskey.core.wire.ModuleWire.PHASE_RELEASE]）
+     *     才去发结束。
+     *
+     *  写成计算属性、不落成字段：它是 [long] 的投影，落字段就要在 `ConfigFields` 那条链上
+     *  多存一份**可以和 [long] 不一致**的真值。
+     */
+    val longIsVoiceMemory: Boolean
+        get() = (long as? Action.Oplus)?.feature == RomProfile.NAME_VOICE_MEMORY
+
+    /**
      * 本对象在每个配置字段上的取值 —— **「字段 → 属性」的映射只有这一处**。
      *
      *  落盘（`ConfigCodec`）与广播（`ConfigBroadcast`）两条通道都按它取值，配合 `ConfigFields`
@@ -130,6 +145,8 @@ data class GlobalConfig(
     val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
     /** 界面语言（auto = 跟随系统，zh_CN = 简体中文，en = English）。 */
     val language: String = DEFAULT_LANGUAGE,
+    /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
+    val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
 ) {
     /** 本对象在每个配置字段上的取值 —— 与 `KeyConfig.fieldValues` 同一套（见那边的说明）。 */
     fun fieldValues(): ConfigFields.Values =
@@ -140,6 +157,7 @@ data class GlobalConfig(
                 ConfigFields.F_INSTANT_SINGLE to instantSingle,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_LANGUAGE to language,
+                ConfigFields.F_COLOR_OS_API to colorOsApi,
             ),
         )
 
@@ -159,10 +177,14 @@ data class GlobalConfig(
         /** [GlobalConfig.language] 的默认值：跟随系统。 */
         const val DEFAULT_LANGUAGE = "auto"
 
+        /** [GlobalConfig.colorOsApi] 的默认值：默认开启。 */
+        const val DEFAULT_COLOR_OS_API = true
+
         val DEFAULT =
             GlobalConfig(
                 doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,
                 vibrate = false,
+                colorOsApi = DEFAULT_COLOR_OS_API,
             )
 
         /** 从取值表还原全局配置 —— 与 [GlobalConfig.fieldValues] 成对，两条通道共用。 */
@@ -173,6 +195,7 @@ data class GlobalConfig(
                 instantSingle = v.bool(ConfigFields.F_INSTANT_SINGLE),
                 toastOnRun = v.bool(ConfigFields.F_TOAST_ON_RUN),
                 language = v.text(ConfigFields.F_LANGUAGE),
+                colorOsApi = v.bool(ConfigFields.F_COLOR_OS_API),
             )
     }
 }
@@ -201,8 +224,50 @@ data class Config(
      *  ⇒ 这一位跟着没了 ⇒ 下次进那一页照样弹；导出／导入也一律丢掉（见 `ConfigBundle`）。
      */
     val commandDisclaimerAccepted: Boolean = false,
+    /**
+     * 「打开应用」那一族的**显示名**：键是绑定的**身份**（`AppTarget.identity` —— `999@包名/类名`、
+     * `999@包名/快捷方式id`），值是界面上那个名字（`微信 2` / `扫一扫`）。
+     *
+     * ## 为什么是单独一张表、不再塞进 token
+     *
+     *  早先名字是跟在目标后面写进 token 的（`app:999@包名/类名|微信 2`），每个读它的地方都得先
+     *  切一刀 —— 漏切一处就退化成包名（真机：「选完快捷方式 / 界面，再进来显示的是包名」）。
+     *  名字不是目标的一部分，是**显示信息**，所以单独存。
+     *
+     * ## 为什么不放进 `ConfigFields` 的字段表
+     *
+     *  那张表是**扁平**的（一个字段一个值），而且两条通道共用它 —— 这张表是映射，又只有界面
+     *  读（执行侧只需要「起哪个组件」），进字段表就等于每次按键都把整张表广播给 `system_server`。
+     *  所以它只走落盘这一条路：JSON 里单独一段（`ConfigFields.APP_NAMES_JSON`），
+     *  `ConfigCodec` 单独读写。注入侧读到的 `Config` 里这一项恒为空，没人读它。
+     *
+     *  与应用改名无关：名字只是显示，身份是 `AppTarget.identity`。改过名之后旧名字还在表里，
+     *  界面优先用「这次清单里的新名字」（见 `ui/...` 的名字优先级），表只是冷启动时的兜底。
+     */
+    val appNames: Map<String, String> = emptyMap(),
 ) {
     fun key(id: KeyId): KeyConfig = keys[id] ?: KeyConfig.defaultFor(id)
+
+    /** 某个目标该显示的名字（按 [AppTarget.identity] 查）；没记过返回 `null`。 */
+    fun appName(target: String): String? = appNames[AppTarget.identity(target)]
+
+    /**
+     * 记下（或覆盖）一个目标的名字；[name] 为空时**删掉**这一条。
+     *
+     *  写成「返回新对象」而不是改字段：配置是 `data class`、写盘走 [copy]，改字段那一套在这里
+     *  没有先例（`write` 那一层按整份 `Config` 落盘并发广播）。
+     */
+    fun withAppName(
+        target: String,
+        name: String?,
+    ): Config {
+        val id = AppTarget.identity(target)
+        return when {
+            name.isNullOrBlank() -> if (id in appNames) copy(appNames = appNames - id) else this
+            appNames[id] == name -> this
+            else -> copy(appNames = appNames + (id to name))
+        }
+    }
 
     /** 顶层那两位的取值 —— 与另两段同一套（见 `KeyConfig.fieldValues` 的说明）。 */
     fun fieldValues(): ConfigFields.Values =
@@ -229,12 +294,15 @@ data class Config(
             keys: Map<KeyId, KeyConfig>,
             global: GlobalConfig,
             v: ConfigFields.Values,
+            /** 名字表（`app_names` 那一段）—— 不在字段表里，由 [ConfigCodec] 单独读出来传进来。 */
+            appNames: Map<String, String> = emptyMap(),
         ): Config =
             Config(
                 keys = keys,
                 global = global,
                 disclaimerAccepted = v.bool(ConfigFields.F_DISCLAIMER),
                 commandDisclaimerAccepted = v.bool(ConfigFields.F_COMMAND_DISCLAIMER),
+                appNames = appNames,
             )
     }
 }

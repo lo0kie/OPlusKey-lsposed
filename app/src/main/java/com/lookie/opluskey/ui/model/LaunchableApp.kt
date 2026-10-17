@@ -36,4 +36,35 @@ internal data class LaunchableApp(
      *  罗马化不便宜，所以既不能放进比较器里每比一次算一次，也不能在过滤时逐条现算。
      */
     val sortKey: String,
-)
+    /**
+     * 这一份属于哪个用户 —— `0` 是主用户，其余是多开（分身）的 user id。
+     *
+     *  同一行在列表里的**身份**由 [target] 决定，不是 [packageName]：主用户的微信与分身微信
+     *  包名相同，只按包名比会让两行互相顶上（选中态、去重、写回都是）。
+     */
+    val userId: Int = 0,
+) {
+    /** 是不是分身（多开槽里的那一份）—— 列表行据此挂那枚「分身」标签。 */
+    val clone: Boolean get() = userId != 0
+
+    /**
+     * 这一份的**目标写法**（`999@com.tencent.mm`，见 `AppTarget`）—— 选中态与写回都用它。
+     *
+     *  **不带名字**：名字是显示信息、单独存在配置里（`Config.appNames`），不再拼进目标。
+     *  以前拼进来，每个读它的地方都得先按 `|` 切一刀，漏一处就退化成包名。
+     */
+    val target: String get() =
+        com.lookie.opluskey.core.model.AppTarget
+            .format(packageName, userId)
+}
+
+/**
+ * 分身那一份的显示名 —— `微信 1`（`slot` 由 `AppCloneCatalog.slotOf` 给，`0` = 主用户，不加编号）。
+ *
+ *  选择应用页的行名与「打开应用」格的小标题**都调这一处**：两处各拼一套的话，网格里的
+ *  「微信 1」与列表里的「微信 1」可能指向不同用户。
+ */
+internal fun cloneLabel(
+    base: String,
+    slot: Int,
+): String = if (slot > 0) "$base $slot" else base

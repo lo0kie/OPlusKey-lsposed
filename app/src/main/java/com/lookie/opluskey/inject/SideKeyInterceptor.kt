@@ -19,6 +19,8 @@ internal class SideKeyInterceptor(
     private val forward: (KeyId, Gesture, Boolean) -> Unit,
     /** 每判出一个手势记一笔（`KeyHooks.noteGesture`）—— 链路自检用，由装配方注入。 */
     private val onGestureNoted: () -> Unit,
+    /** 判过长按的这一按松手了（去处与 [forward] 同一处，见 `GestureDetector.onLongReleased`）。 */
+    private val onRelease: (KeyId) -> Unit,
 ) {
     /**
      * 手势判定器 —— 拿到的是 hook 回调里的原始事件，时序是真的，不会被「解冻灌包」搅乱。
@@ -31,6 +33,7 @@ internal class SideKeyInterceptor(
             handler,
             onGestureNoted = onGestureNoted,
             onGesture = { id, gesture, _, repeat -> forward(id, gesture, repeat) },
+            onLongReleased = onRelease,
         )
 
     /**
@@ -181,8 +184,10 @@ internal class SideKeyInterceptor(
                         // KeyEvent 没有 ACTION_CANCEL（那是 MotionEvent 的），取消是 FLAG_CANCELED 位，
                         // 只能从 isCanceled 读；不认它的话已排下的长按照样触发（凭空长按）。
                         if (keyEvent.isCanceled) {
+                            // 取消也是「这一按结束了」：长按若已判过，那一段采集还在跑 ⇒ 一样要收尾
+                            // （`finish` 里才判「有没有东西要收尾」，这里不重复判一次）。
                             XLog.w("${id.label}（$point）：这一按被取消（FLAG_CANCELED）→ 撤掉判定")
-                            detector.reset(id)
+                            detector.finish(id)
                             true
                         } else {
                             XLog.w("${id.label}（$point）：UP keyCode=${keyEvent.keyCode}")

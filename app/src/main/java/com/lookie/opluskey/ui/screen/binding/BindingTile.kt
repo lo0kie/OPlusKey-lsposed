@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -35,8 +34,6 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.TILE_TEXT_OPTICAL_SHIFT
-import com.lookie.opluskey.ui.model.TILE_TITLE_MARKER_GAP
-import com.lookie.opluskey.ui.model.TILE_TITLE_MARKER_SIZE
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
 import io.github.suqi8.coui.kmp.basic.BasicComponent
@@ -75,15 +72,6 @@ internal fun SettingsPage.ActionTile(
      * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。
      */
     subtitle: String? = null,
-    /**
-     * 标题**右边**那枚小标记（`null` = 不画）。
-     *
-     * 现在只有「打开应用」格用它：绑成小窗打开时补一枚「小窗起」字形（[PageIcons.TileSmallWindow]）——
-     * 这一格只有一行标题，不点开「选择应用」菜单看不出绑的是小窗还是普通打开。
-     *  与行尾那颗指示器（[enterArrow] / 入口字形）不是一回事：那些在**行的最右边**，
-     *  这一枚紧贴标题、属于标题那一行。
-     */
-    titleMarker: ImageVector? = null,
     /**
      * 是不是**带下一层**的格子 —— 是的话在行尾那枚指示器右边再画一支箭头。
      *
@@ -244,29 +232,13 @@ internal fun SettingsPage.ActionTile(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             // 账见 [TILE_TEXT_OPTICAL_SHIFT]：`offset` 只挪绘制、不改测量。
-                            //  `weight(fill = false)`：标记在旁边时标题只占自己要的那点宽度、
-                            //  装不下才缩到省略号；没有标记时逐像素不变。
+                            //  `weight(fill = false)`：标题只占自己要的那点宽度、装不下才缩到
+                            //  省略号（标题右边不再有标记，这个权重仍按「只占自己那点」算）。
                             modifier =
                                 Modifier
                                     .weight(1f, fill = false)
                                     .offset(y = TILE_TEXT_OPTICAL_SHIFT),
                         )
-                        // 标题右边那枚小标记（见 [titleMarker]）
-                        //  注意：**不加 [TILE_TEXT_OPTICAL_SHIFT]**：那 1.5dp 是给**文字**补的
-                        //  （行盒要给基线以下留 descent，汉字几乎不占，墨迹实测偏上 ~1.6dp），
-                        //  而图标的字形在它自己的方框里本来就居中 —— 跟着挪反而会低 1.5dp
-                        //  （用户报「图标没和标题垂直居中」就是这个）。
-                        titleMarker?.let { marker ->
-                            Icon(
-                                marker,
-                                contentDescription = null,
-                                modifier =
-                                    Modifier
-                                        .padding(start = TILE_TITLE_MARKER_GAP)
-                                        .size(TILE_TITLE_MARKER_SIZE),
-                                tint = contentColor,
-                            )
-                        }
                     }
                     // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
                     // 这行就是那个值。格子高 52dp、BasicComponent 最小高 48dp：两行（14sp + 12sp）装得下。

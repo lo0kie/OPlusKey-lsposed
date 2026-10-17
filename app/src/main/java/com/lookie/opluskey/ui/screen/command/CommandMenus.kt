@@ -168,10 +168,6 @@ internal fun SettingsPage.StepPickerPopup(
                                     },
                                 // 当前那一步就是这一行时标出来（入口行也认）。
                                 selected = isCurrentStep(spec),
-                                // 被锁住的命令**置灰 + 吃掉点击**（[MenuEntry.Row.enabled]）——
-                                //  判据与网格格子同一个（[ActionCatalog.isLocked]）：这几条在本机
-                                //  没有落点，选了也跑不起来（执行侧会跳过）。
-                                enabled = !ActionCatalog.isLocked(spec),
                             ) {
                                 when (spec.token) {
                                     // 「选择应用」→ 进「打开应用」页挑一个；不能交给 `landStep`，
@@ -242,12 +238,13 @@ internal fun SettingsPage.StepPickerPopup(
         onDismiss = { subTile = null },
         entries =
             subTile
-                ?.let { ActionCatalog.modeMenu(it.token) }
-                ?.let { modes ->
-                    modeEntries(modes, icons, currentStepAction) { spec ->
-                        XLog.w("二级浮层：选中 ${spec.label}（替换行=$replaceIndex）")
-                        onDismiss()
-                        landStep(spec.token)
+                ?.let { tile ->
+                    ActionCatalog.modeMenu(tile.token)?.let { modes ->
+                        modeEntries(tile.label, modes, icons, currentStepAction) { spec ->
+                            XLog.w("二级浮层：选中 ${spec.label}（替换行=$replaceIndex）")
+                            onDismiss()
+                            landStep(spec.token)
+                        }
                     }
                 }.orEmpty(),
     )
@@ -257,21 +254,28 @@ internal fun SettingsPage.StepPickerPopup(
  * 入口格那一层菜单的行（响铃四档 / 媒体五档）—— 格子上直接弹的那张菜单与「添加命令」的
  * 二级浮层共用这一份。
  *
+ * 第一行是**小标题**（库的 `DropdownHeaderItem`），写的是**父标题** —— 也就是一级菜单里
+ * 那一行的标题（响铃状态 / 媒体控制 / 系统导航 / 系统按键）。二级是另一张浮层、会把一级压暗，
+ * 没有这行小标题时只看得到「静音 / 振动」这几项，认不出自己是点哪个入口进来的。
+ *
  * 行之间的分隔线按行自己带的那一档给（[ActionCatalog.Spec.dividerBefore]）：标了的用**加深带**
  * 把菜单切成两段（媒体控制的「播放 / 暂停 / 播放 / 暂停」与「上一首 / 下一首」、响铃状态的
  * 「循环」与那三档），其余仍是相邻两行那条细线。
  *
+ * @param parentTitle 父标题（一级菜单里那一行的标题）
  * @param icons 页面级那一份图标表（[SettingsPage.tileIcons]）—— 各层的行都从它取字形。
  * @param current 正在替换的那一步解析出来的动作（`null` = 不是替换模式），用来把那一档标出来。
  */
 internal fun modeEntries(
+    parentTitle: String,
     modes: List<ActionCatalog.Spec>,
     icons: Map<ActionCatalog.Spec, ImageVector>,
     current: Action?,
     onPick: (ActionCatalog.Spec) -> Unit,
 ): List<MenuEntry> =
-    modes.flatMapIndexed { index, spec ->
-        buildList {
+    buildList {
+        add(MenuEntry.Group(parentTitle))
+        modes.forEachIndexed { index, spec ->
             if (index > 0) {
                 add(if (spec.dividerBefore) MenuEntry.GroupLine else MenuEntry.RowLine)
             }

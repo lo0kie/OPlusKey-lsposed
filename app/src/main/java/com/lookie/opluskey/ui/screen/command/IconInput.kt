@@ -6,6 +6,10 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,10 +27,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.rememberRowIconColor
 import io.github.suqi8.coui.kmp.basic.Card
@@ -36,11 +43,29 @@ import io.github.suqi8.coui.kmp.basic.TextField
 import io.github.suqi8.coui.kmp.basic.TextFieldDefaults
 import io.github.suqi8.coui.kmp.basic.TextFieldMode
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.COUIIndication
 
 // 卡片式输入项（行首图标 + 标题 + 输入框 + 错误行）与它的尺寸 / 缓动常量。
 
 /** 行首图标与右侧内容之间的间距。 */
 internal val INPUT_ICON_GAP = 8.dp
+
+/**
+ * 清除键的尺寸（也是输入框内容区的最低高度）。
+ *
+ *  高度必须钉死：清除键「出现 / 消失」不能改变输入框高度，否则用户每打一个字、每聚焦一次，
+ *  整张卡片都跟着弹一下。所以按钮的尺寸同时写进 `defaultMinSize` —— 有没有按钮都是这一档。
+ */
+private val INPUT_CLEAR_SIZE = 24.dp
+
+/** 清除键里那颗字形（比按钮小一圈，留出触摸余量）。 */
+private val INPUT_CLEAR_GLYPH = 16.dp
+
+/** 清除键出现 / 消失的淡入淡出时长（毫秒）—— 只用来看得见那一下。 */
+private const val CLEAR_FADE_MS = 90
+
+/** 多行档最多长到几行（再多就内部滚动，卡片不能无限长）。 */
+private const val MULTILINE_MAX_LINES = 6
 
 /** 错误提示淡入 / 淡出的时长（毫秒）与缓动 —— 与库的 `InputView` 同一组值（其文档给出）。 */
 private const val ERROR_FADE_IN_MS = 217
@@ -80,6 +105,12 @@ internal fun SettingsPage.IconInputView(
     modifier: Modifier = Modifier,
     errorMessage: String = "",
     enabled: Boolean = true,
+    /**
+     * 多行（textarea）—— 命令正文那一栏用它：一条命令可能很长，多行粘贴也不该被揉成一行。
+     *
+     *  单行档（命令名）保持原样；两档的排版、图标、清除键、错误行都是同一套，只差行数与换行。
+     */
+    multiline: Boolean = false,
 ) {
     val colors = InputViewDefaults.inputViewColors()
     // 注意：标题**不能**用 `colors.titleColor`：它是 `onSurface`，而输入内容的颜色走
@@ -105,6 +136,10 @@ internal fun SettingsPage.IconInputView(
     //  行首图标**自己一档**：与其他行的行首图标同色（`onSurfaceContainer`）。
     // 不要跟着标题走 —— 那个色比页里别的行首都暗一档。
     val iconColor by rememberRowIconColor(enabled, label = "InputIcon")
+    // 清除键的显示判据与库自带那个一致：聚焦且非空。交互源由本组件自己建，
+    //  于是「有没有焦点」这一位在自绘版里也拿得到（库的 `showClearButton` 不给回调，只能用它的）。
+    val fieldInteraction = remember { MutableInteractionSource() }
+    val fieldFocused by fieldInteraction.collectIsFocusedAsState()
     val isError = errorMessage.isNotEmpty()
     // 淡出期间要**留着最后那条非空消息**，否则红字先消失、再走淡出（库同此做法）
     var shownError by remember { mutableStateOf(errorMessage) }
@@ -151,7 +186,9 @@ internal fun SettingsPage.IconInputView(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = InputViewDefaults.FieldPaddingBottomWithTitle),
+                                .padding(bottom = InputViewDefaults.FieldPaddingBottomWithTitle)
+                                // 内容区最低高度 = 清除键那一档：按钮来去都不再改高度
+                                .defaultMinSize(minHeight = INPUT_CLEAR_SIZE),
                         backgroundMode = TextFieldMode.None,
                         insideMargin = DpSize(0.dp, 0.dp),
                         label = label,
@@ -163,7 +200,30 @@ internal fun SettingsPage.IconInputView(
                         // value 一升，上面那行「请输入…」跟着变大，
                         // 标题与内容之间的空隙就被撑开了 —— 动这里必须连着 label 一起看。
                         textStyle = TextFieldDefaults.textStyle(TextFieldMode.None),
-                        singleLine = true,
+                        singleLine = !multiline,
+                        minLines = 1,
+                        maxLines = if (multiline) MULTILINE_MAX_LINES else 1,
+                        interactionSource = fieldInteraction,
+                        // 清除键**不用**库的 `showClearButton`：它按 36dp 的触摸目标排，
+                        //  而这一行的文字只有二十来 dp 高 —— 按钮一出现就把输入框顶高十几 dp，
+                        //  表现为「打第一个字时卡片弹一下」。自绘一个 24dp 的，高度与内容区同档。
+                        // 淡入淡出而不是「一清空就整个消失」：点下去那一下要看得见（否则按钮在
+                        //  手指抬起的同一帧就没了，反馈等于不存在）。高度由上面那条 `defaultMinSize`
+                        //  兜着，淡出期间也不改布局。
+                        trailingIcon =
+                            if (enabled) {
+                                {
+                                    AnimatedVisibility(
+                                        visible = fieldFocused && value.isNotEmpty(),
+                                        enter = fadeIn(tween(CLEAR_FADE_MS)),
+                                        exit = fadeOut(tween(CLEAR_FADE_MS)),
+                                    ) {
+                                        ClearFieldButton(onClick = { onValueChange("") })
+                                    }
+                                }
+                            } else {
+                                null
+                            },
                     )
                 }
             }
@@ -185,5 +245,36 @@ internal fun SettingsPage.IconInputView(
                     ),
             )
         }
+    }
+}
+
+/**
+ * 输入框右侧的清除键 —— 圆形底 + 叉，点一下把内容清空。
+ *
+ *  只负责画与点：显不显示由调用点判（聚焦且非空），清空动作走 `onValueChange("")`。
+ */
+@Composable
+private fun ClearFieldButton(onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier =
+            Modifier
+                .size(INPUT_CLEAR_SIZE)
+                .clip(CircleShape)
+                // 反馈显式给库自己那一份（`COUIIndication`）：默认走 `LocalIndication` 时
+                //  在宿主页里不一定被供上，按下去就一点反应都没有。
+                .clickable(
+                    interactionSource = interaction,
+                    indication = COUIIndication(COUITheme.colorScheme.onSurface),
+                    onClick = onClick,
+                ),
+    ) {
+        Icon(
+            PageIcons.Clear,
+            contentDescription = null,
+            modifier = Modifier.size(INPUT_CLEAR_GLYPH),
+            tint = COUITheme.colorScheme.onSurfaceSecondary,
+        )
     }
 }
