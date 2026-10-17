@@ -6,7 +6,6 @@ import android.content.Intent
 import android.os.Handler
 import android.os.SystemClock
 import com.lookie.opluskey.bridge.Framework
-import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.HostApp
@@ -82,8 +81,10 @@ internal class GestureForwarder(
 
         // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
         // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。
+        //  补发只对「一次按压」有意义：长按连发（repeat）期间宿主早就在跑，每 100ms 再排一条
+        //  300ms 后到期的补发，松手后队列里会积一串废消息（且每条都要过一遍接收侧的去重）。
         send(ctx, intent, phase, repeat, delayMs = 0L, retry = false)
-        send(ctx, intent, phase, repeat, delayMs = FORWARD_DELAY_MS, retry = true)
+        if (!repeat) send(ctx, intent, phase, repeat, delayMs = FORWARD_DELAY_MS, retry = true)
     }
 
     /**
@@ -110,7 +111,7 @@ internal class GestureForwarder(
                     XLog.guard("发送侧键手势广播 $phase") {
                         ctx.sendBroadcast(intent)
                         if (retry) {
-                            XLog.d("侧键手势已补发：$phase（① 被丢掉时才需要它）")
+                            XLog.d("侧键手势已补发：$phase（(1) 被丢掉时才需要它）")
                         } else {
                             XLog.w("已把侧键手势转给宿主：$phase${if (repeat) "（连续触发）" else ""}")
                         }

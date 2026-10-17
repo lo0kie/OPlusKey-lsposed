@@ -89,7 +89,51 @@ internal val PENDING_DEVICE_HINT: String
  * 拨得回来（见 [HomeScreen] 主开关那段注释）。
  */
 internal val KEY_DISABLED_HINT: String
-    get() = I18n.get(Strings.STATUS_DISABLED, "按键绑定已关闭")
+    get() = I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭")
+
+/**
+ * 首页那条常驻提示的第六种文案：**宿主那一路服务没起来**（`link.hostServiceUp = false`）。
+ *
+ *  与「模块未启用」分开：这一档说明模块**在这个进程里是加载了的**（否则连提示都不该出现），
+ *  只是宿主主进程没报活 —— 要么它被杀了，要么它那一侧的手势劫持没装上。用户能做的是重进页面 / 重启。
+ */
+internal val SERVICE_NOT_RUNNING_HINT: String
+    get() = I18n.get(Strings.STATUS_SERVICE_NOT_RUNNING, "后台服务未运行")
+
+/**
+ * 首页那条常驻提示的第七种文案：**注入侧没回音** —— 两种来路，动作是同一句：
+ * LSPosed 作用域里漏了 `system`，或者换过包但没整机重启（system_server 里那份还是旧代码）。
+ *
+ *  能走到这一档说明**模块本身是启用的**（否则界面根本替换不出来），所以措辞不写「装没装上」，
+ *  只写这两件要做的事。
+ */
+internal val INJECT_NOT_LOADED_HINT: String
+    get() = I18n.get(Strings.STATUS_DISABLED, "模块未生效：确认作用域含 system，换包后需重启")
+
+/**
+ * 首页那条常驻提示的第八种文案：**换过包但没重启** —— 系统那一侧回了包，可它报的构建标识不是本包。
+ *
+ *  这一档与「没回音」分开是因为要做的事不同：这里**只有一件**（重启手机），
+ *  作用域是对的、模块也是启用的，别让人去 LSPosed 里乱翻。
+ */
+internal val RESTART_REQUIRED_HINT: String
+    get() = I18n.get(Strings.STATUS_RESTART_REQUIRED, "模块已更新，重启手机后生效")
+
+/**
+ * 首页那条常驻提示的第九种文案：回包了、但**一个接管点都没装上** —— 这一版 ROM 把那些私有类改了形。
+ *
+ *  用户什么也做不了（只能等适配），所以不写任何「请重试」。
+ */
+internal val API_MISMATCH_HINT: String
+    get() = I18n.get(Strings.STATUS_API_MISMATCH, "系统接口不匹配，等待适配")
+
+/**
+ * 首页那条常驻提示的第十种文案：**设置没同步到系统那一侧**（两边指纹对不上）。
+ *
+ *  这一档重进页面就会重发一遍配置，所以写的动作是「重进本页」，不是「等」。
+ */
+internal val CONFIG_NOT_SYNCED_HINT: String
+    get() = I18n.get(Strings.STATUS_CONFIG_NOT_SYNCED, "设置未同步，重进本页即可")
 
 /**
  * 「导入配置」校验没过时的那**一句**提示。

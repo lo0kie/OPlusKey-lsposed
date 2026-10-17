@@ -23,11 +23,22 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-# 三个源集都要扫：debug / release 里各有一份 core/ 的副本（HostFilePerms），同样在注入侧执行。
+# 两个 Gradle 模块、每个模块的三个源集都要扫：
+#   · `:app`  —— 界面 / 宿主侧 / 注入侧（debug / release 里各有一份 ui 的变体副本）；
+#   · `:core` —— 两个进程共用的那一层（debug / beta / release 里各有一份 BuildFlags 与
+#     HostFilePerms 的副本，同样在注入侧执行）。
+#   注意：`:core` 自成一个**编译单元**之后，「它不许引 `ui/`」已经是编译期约束（它的 classpath
+#   里没有 `:app`）；这里再扫一遍是因为这条脚本还管着「包级环」与「注入侧禁引 androidx」，
+#   而那两条编译期管不了。
 SOURCE_ROOTS = [
     REPO / "app/src/main/java/com/lookie/opluskey",
     REPO / "app/src/debug/java/com/lookie/opluskey",
+    REPO / "app/src/beta/java/com/lookie/opluskey",
     REPO / "app/src/release/java/com/lookie/opluskey",
+    REPO / "core/src/main/java/com/lookie/opluskey",
+    REPO / "core/src/debug/java/com/lookie/opluskey",
+    REPO / "core/src/beta/java/com/lookie/opluskey",
+    REPO / "core/src/release/java/com/lookie/opluskey",
 ]
 PACKAGE_ROOT = "com.lookie.opluskey"
 IMPORT_RE = re.compile(r"^import\s+", re.M)

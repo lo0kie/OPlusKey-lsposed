@@ -2,8 +2,6 @@ package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -22,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -30,12 +27,11 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.ui.ICON_ACTION_ICON
+import com.lookie.opluskey.ui.ICON_ACTION_SIZE
+import com.lookie.opluskey.ui.IconAction
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.component.ICON_ACTION_ICON
-import com.lookie.opluskey.ui.component.ICON_ACTION_SIZE
-import com.lookie.opluskey.ui.component.IconAction
-import com.lookie.opluskey.ui.component.gestureProbe
-import com.lookie.opluskey.ui.component.rememberGestureProbe
+import com.lookie.opluskey.ui.gestureProbe
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
@@ -43,10 +39,9 @@ import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
 import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.model.stepTitle
+import com.lookie.opluskey.ui.rememberGestureProbe
+import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.apppicker.appLabelOf
-import com.lookie.opluskey.ui.screen.binding.BindingScreen
-import com.lookie.opluskey.ui.screen.command.StepPickerPopup
-import com.lookie.opluskey.ui.state.rememberTick
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults

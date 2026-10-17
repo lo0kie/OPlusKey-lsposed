@@ -14,6 +14,24 @@ import com.lookie.opluskey.core.model.Config
  *  （读不懂就整份拒写，绝不拿默认值覆盖用户的东西）。
  */
 internal class ConfigState {
+    /**
+     * 建页那次读盘**回来了没有** —— 页面里的内容一律等这一位翻 true 才组合。
+     *
+     *  为什么要有这一位：[config] / [commands] 的初值都是「安全的默认值」（主开关关、
+     *  三个手势全是无操作、命令库空），而真正的值要读三份文件才拿得到。那三趟读以前是
+     *  `SettingsPage.createView()` 里**同步**做的 —— 跑在宿主 Activity 的主线程上。
+     *  现在挪到组合期、在 IO 线程上跑（见 `ui/PageLoad.kt` 的 `loadPageState`），于是
+     *  「数据还没到」这一档真实存在了：不拦住的话首帧会先按默认值把「模块未开、全无操作」
+     *  的界面画出来，几十毫秒后再翻成真值 —— 用户看到的是开关自己弹一下。
+     *
+     *  所以 [SettingsPage.Page] 在 false 时**整棵页面树都不组合**（只铺一屏底色），
+     *  副作用也就一个都不会跑（接收器注册、链路自检、换页收浮窗）。
+     *
+     *  另一位用途是写闸：这一位为 false 时 [readOnly] / [commandsReadOnly] 还是初值 false，
+     *  而 [config] 只是默认值 —— 这时候任何写回都会把用户的文件覆盖成默认值。
+     */
+    var loaded by mutableStateOf(false)
+
     /** 当前配置（页面自己读自己写）。 */
     val config = mutableStateOf(Config.DEFAULT)
 

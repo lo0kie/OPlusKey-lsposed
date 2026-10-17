@@ -3308,11 +3308,14 @@ strings /tmp/classes.dex | grep -c 'Lcom/lookie/opluskey/'    # 只剩入口与 
 adb exec-out su -c 'cat <真机 base.apk>' > local.apk && sha256sum local.apk <本地构建的包>   # 确认装的就是这个包
 ```
 
-**同级的一条**：构建时刻 `resValue("string", "build_id", …)` 落在 `resources.arsc` 里、**不在 dex 里** ——
+**同级的一条**：构建时刻（`build_id` 字符串资源）落在 `resources.arsc` 里、**不在 dex 里** ——
 想在包里核「手上这个包是哪一刻出的」，要读 `resources.arsc`（`unzip -p <apk> resources.arsc | grep '20..-..-.. ..:..:..'`）。
 同一份源码连编两次，**只有 `resources.arsc` 这一项会变**（就是它），其余各条含 `classes.dex` 逐字节相同 ⇒
 R8 的类名分配是可复现的，谁手上哪个包都能对上同一份 `mapping.txt`；想连这一项也定住就构建时给
 `SOURCE_DATE_EPOCH`（`build_id` 已经按它取时间）。
+
+注意它**不再是** `resValue`：那个值在配置期就固定，开了 configuration cache 会被冻住成第一次的时刻。
+现在由 `GenerateBuildId` 任务在执行期生成 `values/build_id.xml`（见 `app/build.gradle.kts`）。
 
 ### 21.2 工作树的**行尾不统一**：多数 CRLF，少数 LF
 

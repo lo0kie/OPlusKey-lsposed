@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build:
-    name: debug + release
+    name: debug + release + beta
     runs-on: ubuntu-latest
     outputs:
       version_name: ${{ steps.dist.outputs.version_name }}
@@ -74,9 +74,29 @@ jobs:
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       # 静态检查放在出包**之前**：格式 / 静态检查 / Android Lint 三道闸不过就别往下走，
-      # 不必等到打完两个包才发现少一个空格。口径与本地同一条命令（AGENTS.md 二、1.2）。
+      # 不必等到打完两个包才发现少一个空格。`gate` 是根脚本注册的聚合任务
+      # （= `spotlessCheck detekt lintDebug`，两个模块一起算），与本地同一条命令（AGENTS.md 二、1.2）。
       - name: 静态检查（格式化 / detekt / lint）
-        run: ./gradlew spotlessCheck detekt lintDebug
+        run: ./gradlew gate
+
+      # 依赖锁定（`app/gradle.lockfile` 已入库，开关见根目录 `build.gradle.kts`）。
+      #
+      #  为什么这道闸要卡在 CI：改了 `dependencies { }` 却忘了重新锁时，**本地照样编得过**
+      #  —— Gradle 对「没进锁文件的那条配置」是宽松的（按解析结果走），只有把锁文件重写一遍
+      #  才看得出来版本变了。于是同一份源码、下周出出来的包，传递依赖可能换了个补丁版本，
+      #  而这个模块的界面跑在别人的进程里，线上只看得到行为差异、看不到依赖表。
+      #
+      #  判据是「重写一遍锁文件，然后看它有没有变」—— 不是「有没有锁」。
+      - name: 校验依赖锁定
+        run: |
+          ./gradlew :app:dependencies :core:dependencies --write-locks -q > /dev/null
+          if ! git diff --quiet -- app/gradle.lockfile core/gradle.lockfile; then
+            git --no-pager diff -- app/gradle.lockfile core/gradle.lockfile | head -80
+            echo "::error::app/gradle.lockfile 或 core/gradle.lockfile 与声明的依赖不一致 ——"\
+                 "本地跑 ./gradlew :app:dependencies :core:dependencies --write-locks 后把锁文件一起提交"
+            exit 1
+          fi
+          echo "锁文件与声明的依赖一致（app $(grep -c '=' app/gradle.lockfile) 条 / core $(grep -c '=' core/gradle.lockfile) 条）"
 
       # 耦合审计（docs/decoupling.md 七）：包级导入图 + 禁止边 + 环检测。
       # 这道闸补的是上面那三步看不见的东西 —— detekt / lint 管单文件，管不了
@@ -85,10 +105,10 @@ jobs:
       - name: 耦合审计（禁止边 / 包级环）
         run: python3 tools/audit-coupling.py
 
-      - name: 构建 debug 与 release
+      - name: 构建 debug / release / beta
         run: |
           if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
-            ./gradlew assembleDebug assembleRelease
+            ./gradlew assembleDebug assembleRelease assembleBeta
           else
             ./gradlew assembleDebug
           fi
@@ -102,7 +122,7 @@ jobs:
         id: dist
         run: |
           BUILD_ID=$(sed -n 's/.*BUILD_ID[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
-            app/src/main/java/com/lookie/opluskey/core/model/ModuleInfo.kt | head -1)
+            core/src/main/java/com/lookie/opluskey/core/ModuleInfo.kt | head -1)
           VERSION_NAME=$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
             app/build.gradle.kts | head -1)
           VERSION_CODE=$(sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' \
@@ -111,7 +131,7 @@ jobs:
           # 校验必须留在这一层：把它塞进抓取用的函数会在 $(…) 子 shell 里跑，
           # 变量赋值传不出来，守卫会静默失效。
           missing=""
-          [ -n "$BUILD_ID" ]     || missing="${missing}${missing:+、}BUILD_ID（core/model/ModuleInfo.kt）"
+          [ -n "$BUILD_ID" ]     || missing="${missing}${missing:+、}BUILD_ID（core/src/main/java/com/lookie/opluskey/core/ModuleInfo.kt）"
           [ -n "$VERSION_NAME" ] || missing="${missing}${missing:+、}versionName（app/build.gradle.kts）"
           [ -n "$VERSION_CODE" ] || missing="${missing}${missing:+、}versionCode（app/build.gradle.kts）"
           if [ -n "$missing" ]; then
@@ -120,9 +140,13 @@ jobs:
           fi
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk     "dist/oplus-key-${BUILD_ID}-debug.apk"
-          # 没签名那一轮没有 release 产物，别在这儿报错（封存那一步已经挡在前面了）
+          # 没签名那一轮没有 release / beta 产物，别在这儿报错（封存那一步已经挡在前面了）
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             cp app/build/outputs/apk/release/app-release.apk "dist/oplus-key-${BUILD_ID}-release.apk"
+          fi
+          # beta = 发布用 debug：防篡改与 release 同款，但放宽机型校验（见 app/build.gradle.kts）
+          if [ -f app/build/outputs/apk/beta/app-beta.apk ]; then
+            cp app/build/outputs/apk/beta/app-beta.apk       "dist/oplus-key-${BUILD_ID}-beta.apk"
           fi
           echo "build_id=${BUILD_ID}" >> "$GITHUB_OUTPUT"
           echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
@@ -219,7 +243,7 @@ jobs:
             #    scope.list 是资源文件，读不到 Kotlin 常量（那边用 `HostApp` 一处定义、代码全引它），
             #    所以只能在这里对一次账：两处不一致时模块装了、启用了、状态全绿，
             #    而设置页那一段**一行日志都没有**（一、9），从日志上看不出漏在哪一层。
-            hostapp="app/src/main/java/com/lookie/opluskey/core/model/HostApp.kt"
+            hostapp="core/src/main/java/com/lookie/opluskey/core/model/HostApp.kt"
             scope_host=$(unzip -p "$apk" META-INF/xposed/scope.list | sed -n '2p' | tr -d '\r')
             if [ -f "$hostapp" ]; then
               src_host=$(grep -oE 'const val PACKAGE = "[^"]+"' "$hostapp" | head -1 | sed 's/.*"\(.*\)"/\1/')
@@ -237,7 +261,7 @@ jobs:
             # (9) 模块自己的包名也是两处硬编码：`core/model/ModuleInfo.PACKAGE` 与 `applicationId`。
             #    写错的表现是「按包名查自己的 APK」落空 —— 版本行空着、字典退回键名（宿主侧文案
             #    显示成 `catalog.flashlight` 这种），而两处互不相识、编译期不会报错。
-            mi="app/src/main/java/com/lookie/opluskey/core/model/ModuleInfo.kt"
+            mi="core/src/main/java/com/lookie/opluskey/core/ModuleInfo.kt"
             appid=$(grep -oE 'applicationId = "[^"]+"' app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)"/\1/')
             if [ -f "$mi" ]; then
               mi_pkg=$(grep -oE 'const val PACKAGE = "[^"]+"' "$mi" | head -1 | sed 's/.*"\(.*\)"/\1/')
@@ -270,9 +294,9 @@ jobs:
           for p in \
             app/src/main/java/com/lookie/opluskey/inject \
             app/src/main/java/com/lookie/opluskey/bridge \
-            app/src/main/java/com/lookie/opluskey/core \
-            app/src/debug/java/com/lookie/opluskey/core \
-            app/src/release/java/com/lookie/opluskey/core ; do
+            core/src/main/java/com/lookie/opluskey \
+            core/src/debug/java/com/lookie/opluskey \
+            core/src/release/java/com/lookie/opluskey ; do
             if [ -d "$p" ]; then
               injection_dirs="$injection_dirs $p"
             else
@@ -310,7 +334,7 @@ jobs:
           #    为什么这条要卡在 CI：界面上的兜底是「查不到就显示键本身」（见 `I18n.get` 与
           #    `ActionCatalog.Spec.label`）—— 漏一条键，界面上就是一行 `catalog.xxx`，
           #    只在切到那种语言时才看得见；两份字典不一致时，另一种语言下露键名。
-          strings_kt="app/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt"
+          strings_kt="core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt"
           zh="app/src/main/assets/locales/zh-CN.json"
           en="app/src/main/assets/locales/en.json"
           missing_file=""
@@ -337,10 +361,10 @@ jobs:
             fi
           fi
 
-          # (10) 封存：release 包里**不许**出现明文收款码 / 名单，且必须有容器；debug 反过来
-          #    （它的图就是明文，靠 `app/seal` 那条 assets 目录进的包）。
+          # (10) 封存：release 与 beta 都是「发布形态」—— 都不许出现明文收款码 / 名单，且必须有容器；
+          #    debug 反过来（它的图就是明文，靠 `app/seal` 那条 assets 目录进的包）。
           #    守的是「封存任务没跑起来 / 被绕过」——那种包照样能出、能装，只有把包解开才看得出来。
-          for apk in dist/*-release.apk; do
+          for apk in dist/*-release.apk dist/*-beta.apk; do
             [ -f "$apk" ] || continue
             echo "校验封存 $apk"
             listing=$(unzip -l "$apk")
@@ -348,10 +372,10 @@ jobs:
               printf '%s\n' "$listing" | grep -E 'assets/donate/|assets/donors\.json'
               bad "$apk 里有明文收款码 / 名单 —— 封存没生效"
             else
-              echo "  ok  release 包里没有明文收款码 / 名单"
+              echo "  ok  发布包里没有明文收款码 / 名单"
             fi
             if printf '%s' "$listing" | grep -q 'assets/sealed.bin'; then
-              echo "  ok  release 包里有 assets/sealed.bin"
+              echo "  ok  发布包里有 assets/sealed.bin"
             else
               bad "$apk 缺 assets/sealed.bin（封存容器没生成）"
             fi
@@ -378,6 +402,7 @@ jobs:
           name: oplus-key-debug-${{ steps.dist.outputs.build_id }}
           path: dist/*-debug.apk
           if-no-files-found: error
+          retention-days: 14
 
       - name: 上传 release 产物
         # 没签名那一轮压根没有 release 包（见上面 `signed` 那条），这时上传会空手报错
@@ -387,6 +412,31 @@ jobs:
           name: oplus-key-release-${{ steps.dist.outputs.build_id }}
           path: dist/*-release.apk
           if-no-files-found: error
+          retention-days: 90
+
+      - name: 上传 beta 产物
+        # beta 与 release 同签名，同样只在配了密钥时才有产物
+        if: steps.sign.outputs.signed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: oplus-key-beta-${{ steps.dist.outputs.build_id }}
+          path: dist/*-beta.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      # 崩溃栈还原全靠它：release / beta 都开了 R8，抓到的栈是 `a.a.b` 这种，
+      # 没有 mapping 只能靠猜。与 APK 分开存、保留更久（90 天），
+      # 按 BUILD_ID 对齐 —— 用户报的那一版能不能还原，就看这份文件在不在。
+      - name: 上传混淆映射
+        if: steps.sign.outputs.signed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: oplus-key-mapping-${{ steps.dist.outputs.build_id }}
+          path: |
+            app/build/outputs/mapping/release/mapping.txt
+            app/build/outputs/mapping/beta/mapping.txt
+          if-no-files-found: warn
+          retention-days: 90
 
   release:
     name: 发布到 Xposed-Modules-Repo
@@ -470,7 +520,12 @@ jobs:
           prerelease: ${{ contains(needs.build.outputs.version_name, '-') }}
           # 预发布不能被设为 latest（GitHub 会拒），所以这一项和上面反着来。
           make_latest: ${{ !contains(needs.build.outputs.version_name, '-') }}
-          files: dist/*-release.apk
+          # 发哪个**档位**的包，跟这一版的性质走：
+          #   versionName 带 `-`（如 `0.0.1-beta.1`）⇒ 预发布 ⇒ 发 beta 档
+          #     （放宽机型校验 + 防篡改 + 完整日志，给清单外机型的用户）
+          #   不带 ⇒ 正式 ⇒ 发 release 档（过适配清单这道闸）
+          # 两个档位的包体在 `app/build.gradle.kts` 的 buildTypes 里定义，判据见 docs/implementation.md「八、适配闸」。
+          files: ${{ contains(needs.build.outputs.version_name, '-') && 'dist/*-beta.apk' || 'dist/*-release.apk' }}
           body: |
             `versionName` = ${{ needs.build.outputs.version_name }}，`versionCode` = ${{ needs.build.outputs.version_code }}，`BUILD_ID` = ${{ needs.build.outputs.build_id }}。
             由 GitHub Actions 自动构建。

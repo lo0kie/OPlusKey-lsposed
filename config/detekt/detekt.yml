@@ -22,6 +22,11 @@ exceptions:
     active: false
 
 style:
+  UnusedImports:
+    # 死 import 的判据就在这一条：`UnusedImports` 不在 detekt 默认开的那批里（默认配置里它是
+    #  formatting 侧的事，本项目没引 formatting ruleset），所以必须在这里显式打开 ——
+    #  否则「零引用的 import」只会在编译期变成一条谁也看不见的警告。
+    active: true
   MaxLineLength:
     # 行长同样归 ktlint：值写在 `app/build.gradle.kts` 的 `ktlintRules` 里
     #  （`max_line_length = 140`），这里不再重复判一遍（长行多是注释与中文文案）

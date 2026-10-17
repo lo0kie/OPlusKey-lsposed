@@ -14,15 +14,15 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.ui.MenuEntry
+import com.lookie.opluskey.ui.MenuPopup
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.component.MenuEntry
-import com.lookie.opluskey.ui.component.MenuPopup
+import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_PICKER_MAX_HEIGHT
 import com.lookie.opluskey.ui.model.specIcon
-import com.lookie.opluskey.ui.state.addStep
-import com.lookie.opluskey.ui.state.openAppPickerForStep
-import com.lookie.opluskey.ui.state.replaceStep
+import com.lookie.opluskey.ui.openAppPickerForStep
+import com.lookie.opluskey.ui.replaceStep
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
 /**
@@ -200,7 +200,7 @@ internal fun SettingsPage.StepPickerPopup(
                 // 「自定义命令」这一段始终在：一条都没保存时给一行「去创建」——点它只关菜单即可，
                 // 用户本来就在「自定义命令」页上。
                 add(MenuEntry.GroupLine)
-                add(MenuEntry.Group(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令")))
+                add(MenuEntry.Group(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令")))
                 if (singles.isEmpty()) {
                     add(
                         MenuEntry.Row(

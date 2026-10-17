@@ -41,9 +41,9 @@ internal const val VISIBILITY_ENTER_MS = 260
 internal const val VISIBILITY_EXIT_MS = 200
 
 /** 贴边控件进场时那一下淡入 / 出场时那一下淡出的时长。 */
-internal const val VISIBILITY_FADE_IN_MS = 180
+private const val VISIBILITY_FADE_IN_MS = 180
 
-internal const val VISIBILITY_FADE_OUT_MS = 140
+private const val VISIBILITY_FADE_OUT_MS = 140
 
 /**
  * 命令页「单条 / 多条」两栏切换的时长。
@@ -131,7 +131,7 @@ internal data class CommandFormatLine(
 /**
  * 整页转场（push / pop）的时长 —— 350ms（真机录屏逐帧拟合定下来的，不跟库默认的 500ms 走）。
  */
-internal const val PAGE_TRANSITION_MS = 350
+private const val PAGE_TRANSITION_MS = 350
 
 /**
  * 手势提交 / 取消那两档弹簧的刚度 —— 293f（按收敛包络反推：350ms ⇒ k = (5.9915/0.35)² ≈ 293）。

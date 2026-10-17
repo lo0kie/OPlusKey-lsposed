@@ -59,7 +59,7 @@ internal val SLIDER_INSIDE_MARGIN =
     )
 
 /** 卡片组首尾行在 `BasicComponent` 里额外补的上下边距（`coui_list_card_head_or_tail_padding`）。 */
-internal val CARD_EDGE_PADDING = 2.dp
+private val CARD_EDGE_PADDING = 2.dp
 
 /** 「点轨道跳值」认作滑杆的那条带子的高度。 */
 internal val SLIDER_TAP_ZONE = SliderDefaults.MinHeight + SLIDER_BOTTOM_INSET + CARD_EDGE_PADDING

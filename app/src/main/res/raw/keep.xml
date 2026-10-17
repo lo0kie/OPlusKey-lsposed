@@ -3,8 +3,8 @@
   按名字取的资源（`Resources.getIdentifier`）—— 资源收缩器看不见这种引用，
   必须在这里显式声明，否则 `shrinkResources` 会把它们当「没人引用」删掉。
 
-  只有 `build_id` 属于这一档：它由 `app/build.gradle.kts` 的 `resValue("string", …)`
-  生成，代码里按名字取（`ui/screen/HomeScreen.kt` 的 `appVersionLabel`），
+  只有 `build_id` 属于这一档：它由 `app/build.gradle.kts` 的 `GenerateBuildId` 任务生成
+  （`values/build_id.xml`），代码里按名字取（`ui/PageText.kt` 的 `moduleBuildStamp`），
   而不是走 `R.string.build_id` —— 页面跑在宿主进程里，`R` 会解析到宿主自己的资源表。
 
   `app_name` / `module_description` 由清单引用，收缩器自己看得见，写在这里只是不依赖那条路径。

@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.model
 import android.content.Context
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.seal.Seal
-import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import org.json.JSONArray
 
 /**

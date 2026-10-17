@@ -6,7 +6,6 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.MiniWindowGeometry
 import com.lookie.opluskey.core.model.RomProfile
-import com.lookie.opluskey.core.reflect.Reflect
 
 /**
  * 小窗指令的跨进程桥：把前台任务收成小窗这件事，除了应用侧那条路，还有一条要在 `system_server` 里做 ——
@@ -26,7 +25,7 @@ internal object FlexibleWindowBridge {
      *
      * 与 [CMD_MINI] 的分工：`mini` 是**真的转换**（改窗口模式，一步到位、无动画）；
      * 本指令只动**画面**（对 surface 做 `setPosition/setMatrix/setAlpha`），不动窗口模式。
-     * 所以两个要配合用 —— 顺序由宿主侧决定（见 `MiniWindowLauncher.MINI_ANIM_MODE`）：
+     * 所以两个要配合用 —— 顺序由宿主侧决定（见 `MiniWindowFacts.MINI_ANIM_MODE`）：
      *
      *  · `ANIM_THEN_CONVERT`（A）：先动画、后 `mini`。动画里是**真·全屏画面**在缩，
      *    但收尾转换时窗口要重排到小窗比例，会跳一下；

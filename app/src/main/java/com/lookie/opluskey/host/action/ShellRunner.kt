@@ -101,6 +101,12 @@ internal object ShellRunner {
                         onFailure(CommandFailure.ofShellExit(proc.exitValue()))
                     }
                 } finally {
+                    // 收尾时**强关管道**：脚本派生的常驻子进程（`cmd &` / 没有 `nohup` 解除 stdout）
+                    //  会继承写端，`destroy()` 之后 `inputStream` 未必 EOF —— 读线程就一直卡在 read 上
+                    //  （daemon 线程同样算泄漏，且占着一对 FD）。close 会让那次 read 抛 IOException 退出。
+                    //  正常路径上 `use` 已经关过，重复关无害。
+                    runCatching { proc.inputStream.close() }
+                    runCatching { proc.errorStream.close() }
                     releaseSlot(slot)
                 }
             }.apply { isDaemon = true }.start()

@@ -1,16 +1,9 @@
 package com.lookie.opluskey.inject
 
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
 import android.os.Handler
-import android.os.Looper
-import com.lookie.opluskey.DEBUG_PROBE
 import com.lookie.opluskey.bridge.extOf
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.RomProfile
-import com.lookie.opluskey.core.model.ZoomWindowWire
-import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.reflect.Reflect
 
 // 探针的四个 op：看任务状态（`state`）、给窗口设圆角（`corner`）、「补壳」（`dress`）与其内部动作。

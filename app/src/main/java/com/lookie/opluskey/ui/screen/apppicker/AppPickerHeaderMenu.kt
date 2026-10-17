@@ -9,11 +9,10 @@ import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.HeaderMenuButton
+import com.lookie.opluskey.ui.MenuEntry
+import com.lookie.opluskey.ui.MenuPopup
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.component.HeaderMenuButton
-import com.lookie.opluskey.ui.component.MenuEntry
-import com.lookie.opluskey.ui.component.MenuPopup
-import com.lookie.opluskey.ui.model.LaunchableApp
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.state.UiState
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
@@ -23,7 +22,7 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  * 都是开关（行标题以本文件里的 `title` 为准）。
  *
  *  只服务**「选择应用」页**那一条顶栏，所以跟着这一屏放 —— 原先它长在
- *  `ui/component/PageHeader.kt` 里（那个文件因此装了两块业务菜单）。顶栏现在只提供
+ *  `ui/PageHeader.kt` 里（那个文件因此装了两块业务菜单）。顶栏现在只提供
  *  `actions` 槽位，菜单由各页自己摆（口径见 [PageHeader]）。
  *
  * 列表来自 `MAIN + CATEGORY_LAUNCHER` 查询，只给得出有启动图标的应用；没有启动图标的系统应用与第三方应用

@@ -11,7 +11,7 @@ import com.lookie.opluskey.ui.model.LaunchableApp
  *
  * 为什么这一域要单独拎出来：这一页的状态原来直接摊在 `SettingsPage` 上（7 个字段），而**读写它的人
  * 分布在四处** —— 顶栏那棵树（`ui/screen/apppicker/AppPickerHeaderMenu.kt` 里那三项菜单）、页内容那棵树
- * （`ui/screen/AppPicker.kt`）、两个入口（`ui/state/StepActions.kt` 与网格那格）。摊在页面上时
+ * （`ui/screen/AppPicker.kt`）、两个入口（`ui/StepActions.kt` 与网格那格）。摊在页面上时
  * 「谁改过 appFilter」得把四个文件翻一遍；收进一个对象之后，改它的入口一眼可列。
  *
  * 与页面级状态**同生共死的那几位仍留在页面里**（比如确认窗的挂起项），这一域只装

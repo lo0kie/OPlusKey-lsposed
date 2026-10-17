@@ -3,19 +3,17 @@ package com.lookie.opluskey.inject
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
-import com.lookie.opluskey.DEBUG_PROBE
 import com.lookie.opluskey.bridge.FlexibleWindowBridge
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.bridge.StatusBarBridge
 import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.bridge.inject.SystemContext
+import com.lookie.opluskey.core.DEBUG_PROBE
+import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.HostApp
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.core.wire.ModuleWire
-import com.lookie.opluskey.inject.ProbeChannel
 import com.lookie.opluskey.inject.input.GestureForwarder
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -44,7 +42,7 @@ internal object KeyHooks {
     var lastGestureAt: Long = 0L
         private set
 
-    /** 判定侧每判出一个手势记一笔（`GestureDetector.dispatch` 调）。 */
+    /** 判定侧每判出一个手势记一笔（装配时以回调注入判定器，见 `SideKeyInterceptor`）。 */
     fun noteGesture() {
         lastGestureAt = android.os.SystemClock.elapsedRealtime()
     }
@@ -97,6 +95,7 @@ internal object KeyHooks {
                 forward = { id, gesture, repeat ->
                     forwarder.forward(id, gesture, repeat)
                 },
+                onGestureNoted = ::noteGesture,
             )
         // 主开关翻到「不接管」时撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。
         //  撤销只能由「收到配置广播」触发，不能挂在拦截点那条 early return 上（按住不放时
@@ -193,7 +192,9 @@ internal object KeyHooks {
                         .putExtra(
                             ModuleWire.EXTRA_INJECT_CONFIG_TAG,
                             ConfigChannel.configTag ?: "",
-                        ),
+                        )
+                        // 「我跑的是哪一次构建」—— 页面拿它判「换包后没重启」（见那个常量的说明）
+                        .putExtra(ModuleWire.EXTRA_INJECT_BUILD_ID, ModuleInfo.BUILD_ID),
                 )
                 XLog.w(
                     "链路自检：已回包（接管点=$hookCount 配置=${ConfigChannel.receivedConfig}" +

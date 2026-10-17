@@ -1,123 +1,10 @@
 package com.lookie.opluskey.ui
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.IntentFilter
-import android.view.View
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalDensity
-import androidx.lifecycle.findViewTreeLifecycleOwner
-import androidx.lifecycle.findViewTreeViewModelStoreOwner
-import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.lifecycle.setViewTreeViewModelStoreOwner
-import androidx.navigationevent.NavigationEvent
-import androidx.navigationevent.NavigationEventInput
-import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
-import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
-import androidx.savedstate.findViewTreeSavedStateRegistryOwner
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.lookie.opluskey.core.config.CommandLibrary
-import com.lookie.opluskey.core.config.ConfigStore
-import com.lookie.opluskey.core.i18n.AppLanguage
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
-import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.ui.component.MenuPopup
-import com.lookie.opluskey.ui.component.PageHeader
-import com.lookie.opluskey.ui.component.currentHeaderHeight
-import com.lookie.opluskey.ui.model.ABOUT_TITLE
-import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
-import com.lookie.opluskey.ui.model.BINDING_TITLE
-import com.lookie.opluskey.ui.model.COMMANDS_TITLE
-import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
-import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
-import com.lookie.opluskey.ui.model.LaunchableApp
-import com.lookie.opluskey.ui.model.NIGHT_POLL_MS
-import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
-import com.lookie.opluskey.ui.model.PAGE_TRANSITION
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.SNACKBAR_SHADOW_ROOM
-import com.lookie.opluskey.ui.model.specIcon
-import com.lookie.opluskey.ui.screen.about.AboutScreen
-import com.lookie.opluskey.ui.screen.binding.ActionTile
-import com.lookie.opluskey.ui.screen.binding.BindingScreen
-import com.lookie.opluskey.ui.screen.binding.BindingTabBand
-import com.lookie.opluskey.ui.screen.binding.actionOf
-import com.lookie.opluskey.ui.screen.binding.pick
-import com.lookie.opluskey.ui.screen.command.CommandActions
-import com.lookie.opluskey.ui.screen.command.CommandKindBand
-import com.lookie.opluskey.ui.screen.command.CommandScreen
-import com.lookie.opluskey.ui.screen.command.addCommand
-import com.lookie.opluskey.ui.screen.donate.DonateListScreen
-import com.lookie.opluskey.ui.screen.home.HomeScreen
-import com.lookie.opluskey.ui.screen.home.appVersionLabel
-import com.lookie.opluskey.ui.screen.home.appVersionText
-import com.lookie.opluskey.ui.state.AppPickerState
-import com.lookie.opluskey.ui.state.CommandDraft
-import com.lookie.opluskey.ui.state.CommandDraftState
-import com.lookie.opluskey.ui.state.ConfigState
-import com.lookie.opluskey.ui.state.FallbackOwners
-import com.lookie.opluskey.ui.state.HostLinkState
-import com.lookie.opluskey.ui.state.InjectStatus
-import com.lookie.opluskey.ui.state.UiState
-import com.lookie.opluskey.ui.state.addStep
-import com.lookie.opluskey.ui.state.installI18nBridge
-import com.lookie.opluskey.ui.state.openAppPickerForStep
-import com.lookie.opluskey.ui.state.publishConfig
-import com.lookie.opluskey.ui.state.replaceStep
-import com.lookie.opluskey.ui.state.saveCommands
-import com.lookie.opluskey.ui.state.tickNow
-import com.lookie.opluskey.ui.theme.SyncToHost
-import com.lookie.opluskey.ui.theme.colorsFor
-import com.lookie.opluskey.ui.theme.pageBackgroundColor
-import com.lookie.opluskey.ui.theme.systemNight
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
-import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
-import io.github.suqi8.coui.kmp.basic.Scaffold
-import io.github.suqi8.coui.kmp.basic.Snackbar
-import io.github.suqi8.coui.kmp.basic.SnackbarHost
-import io.github.suqi8.coui.kmp.basic.SnackbarHostState
-import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
-import io.github.suqi8.coui.kmp.basic.rememberTopAppBarState
-import io.github.suqi8.coui.kmp.nav.core.NavBackStack
-import io.github.suqi8.coui.kmp.nav.core.NavDisplay
-import io.github.suqi8.coui.kmp.nav.core.NavDisplayEffects
-import io.github.suqi8.coui.kmp.nav.core.navBackStackOf
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 调试通道（`debug` 广播）那两条 —— 与页面骨架无关，单独一个文件。
 
@@ -195,7 +82,7 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
         when (raw.uppercase()) {
             "CONFIRM_RESET" -> {
                 XLog.w("调试：action=CONFIRM_RESET → 弹出清空确认弹窗")
-                confirmReset.value = true
+                overlays.confirmReset = true
             }
 
             else -> {

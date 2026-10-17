@@ -1,125 +1,27 @@
 package com.lookie.opluskey.ui
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.IntentFilter
-import android.view.View
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalDensity
-import androidx.lifecycle.findViewTreeLifecycleOwner
-import androidx.lifecycle.findViewTreeViewModelStoreOwner
-import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.navigationevent.NavigationEvent
 import androidx.navigationevent.NavigationEventInput
-import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
-import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
-import androidx.savedstate.findViewTreeSavedStateRegistryOwner
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import com.lookie.opluskey.core.config.CommandLibrary
-import com.lookie.opluskey.core.config.ConfigStore
-import com.lookie.opluskey.core.i18n.AppLanguage
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
-import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.ui.component.MenuPopup
-import com.lookie.opluskey.ui.component.PageHeader
-import com.lookie.opluskey.ui.component.currentHeaderHeight
-import com.lookie.opluskey.ui.model.ABOUT_TITLE
-import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
-import com.lookie.opluskey.ui.model.BINDING_TITLE
-import com.lookie.opluskey.ui.model.COMMANDS_TITLE
-import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
-import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
-import com.lookie.opluskey.ui.model.LaunchableApp
-import com.lookie.opluskey.ui.model.NIGHT_POLL_MS
-import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
-import com.lookie.opluskey.ui.model.PAGE_TRANSITION
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.SNACKBAR_SHADOW_ROOM
 import com.lookie.opluskey.ui.model.specIcon
-import com.lookie.opluskey.ui.screen.about.AboutScreen
-import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
-import com.lookie.opluskey.ui.screen.binding.ActionTile
-import com.lookie.opluskey.ui.screen.binding.BindingScreen
-import com.lookie.opluskey.ui.screen.binding.BindingTabBand
-import com.lookie.opluskey.ui.screen.binding.actionOf
-import com.lookie.opluskey.ui.screen.binding.pick
-import com.lookie.opluskey.ui.screen.command.CommandActions
-import com.lookie.opluskey.ui.screen.command.CommandKindBand
-import com.lookie.opluskey.ui.screen.command.CommandScreen
-import com.lookie.opluskey.ui.screen.command.addCommand
-import com.lookie.opluskey.ui.screen.donate.DonateListScreen
-import com.lookie.opluskey.ui.screen.home.HomeScreen
-import com.lookie.opluskey.ui.screen.home.appVersionLabel
-import com.lookie.opluskey.ui.screen.home.appVersionText
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.BandHeight
-import com.lookie.opluskey.ui.state.CommandDraft
 import com.lookie.opluskey.ui.state.CommandDraftState
 import com.lookie.opluskey.ui.state.ConfigState
-import com.lookie.opluskey.ui.state.FallbackOwners
 import com.lookie.opluskey.ui.state.HostLinkState
-import com.lookie.opluskey.ui.state.InjectStatus
-import com.lookie.opluskey.ui.state.UiState
-import com.lookie.opluskey.ui.state.addStep
-import com.lookie.opluskey.ui.state.installI18nBridge
-import com.lookie.opluskey.ui.state.openAppPickerForStep
-import com.lookie.opluskey.ui.state.publishConfig
-import com.lookie.opluskey.ui.state.replaceStep
-import com.lookie.opluskey.ui.state.saveCommands
-import com.lookie.opluskey.ui.state.tickNow
-import com.lookie.opluskey.ui.theme.SyncToHost
-import com.lookie.opluskey.ui.theme.colorsFor
-import com.lookie.opluskey.ui.theme.pageBackgroundColor
-import com.lookie.opluskey.ui.theme.systemNight
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
-import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
-import io.github.suqi8.coui.kmp.basic.Scaffold
-import io.github.suqi8.coui.kmp.basic.Snackbar
-import io.github.suqi8.coui.kmp.basic.SnackbarHost
-import io.github.suqi8.coui.kmp.basic.SnackbarHostState
-import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
-import io.github.suqi8.coui.kmp.basic.rememberTopAppBarState
 import io.github.suqi8.coui.kmp.nav.core.NavBackStack
-import io.github.suqi8.coui.kmp.nav.core.NavDisplay
-import io.github.suqi8.coui.kmp.nav.core.NavDisplayEffects
 import io.github.suqi8.coui.kmp.nav.core.navBackStackOf
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 模块自己的侧键设置页 —— **整套用 COUI（Compose）渲染，不再依赖宿主的任何样式**。
@@ -134,63 +36,15 @@ internal class SettingsPage(
             .firstOrNull()
 
     /**
-     * 第一次 `View.performHapticFeedback` 会同步走 `SystemVibrator Created`
-     * （binder + 服务查询），砸在 push 动画第一帧上，就是「进子页偶发卡顿」；
-     * 提前到页面构建期创建，点击时只剩一次 `vibrate` 调用。
-     * 宿主已持有 `android.permission.VIBRATE`（dumpsys 确认过，模块跑在宿主进程里共用）。
-     */
-    internal val vibrator: android.os.Vibrator? =
-        try {
-            context.getSystemService(android.os.Vibrator::class.java)
-        } catch (e: Throwable) {
-            XLog.w("拿 Vibrator 失败（触觉反馈不可用）：${e.message}")
-            null
-        }
-
-    /**
-     * 静音（`RINGER_MODE_SILENT`）时不振，跟随系统礼节。
-     * 与 [vibrator] 同样建页期拿好，点击路径上只剩一次 getter。
-     */
-    internal val audioManager: android.media.AudioManager? =
-        try {
-            context.getSystemService(android.media.AudioManager::class.java)
-        } catch (e: Throwable) {
-            XLog.w("拿 AudioManager 失败（响铃状态不可读）：${e.message}")
-            null
-        }
-
-    internal val dark = mutableStateOf(false)
-
-    /**
-     * **当前栈顶页**内容那一层的取样状态 —— 顶栏 / 浮层菜单 / 底部工具栏的磨砂都从它取样。
+     * 触觉反馈那一域（Vibrator / AudioManager 两个服务 + 「该不该振」的判据）。
      *
-     *  记在页面上而不是一路当参数传：浮层菜单是 [SettingsPage] 的扩展（`ui/component/CommandMenus`
-     *  里那五处菜单入口），再多穿一个参数不值当。
-     *
-     *  注意：**必须按「谁在栈顶」来选，不能按「谁最后组合」**。旧写法是
-     *  `if (pageBackdrop !== backdrop) pageBackdrop = backdrop` —— 最后组合的那一页说了算；
-     *  而深度 2 往返还栈时，被 cull 的首页会重新组合、时机晚于栈顶页，于是取样源被它抢走：
-     *  浮层菜单取到的是**另一页**的内容（真机：「磨砂处似乎是取样的两个 switch，但菜单底下
-     *  并没有 switch」）。选法见 [Page] 里那个 `LaunchedEffect(navStack.lastOrNull())`。
-     *
-     *  注意：取样方**不能落进它自己取样的那个 `hazeSource`** —— 落进去就是渲染节点链无限增长、
-     *  RenderThread 递归到栈溢出（真机崩过一次）。浮层菜单画在 Scaffold 的 `COUIPopupHost` 里
-     *（页面那层之外）才是安全的，见 `ui/component/MenuPopup.kt` 里 `MenuPopup` 的注释。
+     *  两个服务在建页期就拿好：第一次 `performHapticFeedback` 会同步创建 `SystemVibrator`，
+     *  砸在 push 动画第一帧上。口径见 [PageHaptics]。
      */
-    internal var pageHazeState: HazeState? by mutableStateOf(null)
+    internal val haptics = PageHaptics(context)
 
-    /**
-     * 每页各一份取样状态（键是页）—— 各页在 `DisposableEffect(s)` 里把自己那份登记进来、并在
-     *  `onDispose` 摘掉（见 [Page] 里 `NavDisplay` 的 entry）。页被 cull 后重建会换一份新的进来，
-     *  旧的那份随 `onDispose` 出表（它的源节点已 detach）。
-     */
-    internal val hazeStatesByPage = mutableMapOf<Screen, HazeState>()
-
-    /**
-     * 「取样层没就绪 ⇒ 这次用不透明底」那一条日志的闸 —— 建页期只报一次，免得每个消费方各刷一行。
-     * 见 [pageHazeState] 与 `ui/component/MenuPopup.kt` / `ui/screen/command/CommandScreen` 里那两处判定。
-     */
-    internal var frostDegradeLogged = false
+    /** 深浅色 / 磨砂取样那一域（建页期定一次、之后跟着系统与栈顶页走）。 */
+    internal val chrome = PageChrome()
 
     /**
      * **页面栈**（coui-nav 的返回栈）。
@@ -270,8 +124,13 @@ internal class SettingsPage(
      */
     internal val navBackInput = NavBackInput()
 
-    /** 此刻开着几个浮层（`OverlayCloser` 组合期维护；返回的接管判定与它自己的 handler 都读它）。 */
-    internal val openOverlays = mutableIntStateOf(0)
+    /**
+     * 浮层与「问一句」那一域（浮层计数 / 统一收起 / 三个确认开关）。
+     *
+     *  判据（要不要接管返回）留在这里，因为它还要看 [navStack] 与草稿是否脏 —— 那是页面
+     *  自己的账，见 [wouldConsumeBack]。口径见 [PageOverlays]。
+     */
+    internal val overlays = PageOverlays()
 
     /**
      * 系统返回要交给**页面栈**处理吗 —— **只判断，不动手**（`onBackStarted` 那一刻不能有副作用，
@@ -286,11 +145,11 @@ internal class SettingsPage(
      */
     internal fun wouldConsumeBack(): Boolean =
         navStack.size > 1 &&
-            openOverlays.intValue == 0 &&
+            overlays.openCount.intValue == 0 &&
             !(screen == Screen.COMMANDS && commandDraft.draft.dirty)
 
     /** 此刻有浮窗开着吗 —— 开着时系统返回**整个吞掉**（见 `BackInterception.handleDiscreteBack`）。 */
-    internal fun hasOpenOverlays(): Boolean = openOverlays.intValue > 0
+    internal fun hasOpenOverlays(): Boolean = overlays.hasOpen()
 
     /**
      * 这一档「系统返回」**必须由模块自己接**吗 —— hook 侧据此决定要不要在宿主上
@@ -317,13 +176,8 @@ internal class SettingsPage(
      */
     internal fun needsBackInterception(): Boolean = hasOpenOverlays() || navStack.size > 1
 
-    /**
-     * 建好的页面 View（[createView] 里赋值）。
-     *
-     * 只为一件事：进「按键绑定」子页时把 **Android 层的焦点**抢到这个 View 上
-     * —— 方向键事件按焦点派发，没焦点就收不到（见 [ActionTile] 的注释）。
-     */
-    internal var rootView: View? = null
+    /** View 树那三样：根 View 与兜底 owner（见 [PageViewTree]）。 */
+    internal val viewTree = PageViewTree()
 
     /**
      * 配置与命令库（主配置 / 命令库 / 两个只读位）—— 见 [ConfigState]。
@@ -339,8 +193,8 @@ internal class SettingsPage(
      * 队列与图标都只有这一个来源：网格格子、格子里那行小字、「添加命令」浮层的行、入口格菜单
      * 的行，一律读这一张表 —— 同一格在哪一处露面都是同一颗字形，也不再各自现调 [specIcon]。
      *
-     * 放在类上而不是组合里：读它的几处在**不同的树**里（网格在 [BindingScreen]、「添加命令」
-     * 浮层在 [CommandScreen]），各自 `remember` 会各建一份、还可能对不上。
+     * 放在类上而不是组合里：读它的几处在**不同的树**里（网格在 `BindingScreen`、「添加命令」
+     * 浮层在 `CommandScreen`），各自 `remember` 会各建一份、还可能对不上。
      * 随 [ConfigState.commands] 重算（命令库变了，新增的格子才有图标），`derivedStateOf` 只在有人读它时才算。
      */
     internal val tileIcons: State<Map<ActionCatalog.Spec, ImageVector>> =
@@ -410,170 +264,16 @@ internal class SettingsPage(
      */
     internal val commandDraft = CommandDraftState()
 
-    /** 「清空配置」确认弹窗（调试通道经 `action=CONFIRM_RESET` 置 true 弹出）。 */
-    internal val confirmReset = mutableStateOf(false)
+    // 「清空配置」确认弹窗的置位在 [overlays] 那一域（[PageOverlays.confirmReset]）。
 
-    /** 首页标题 —— 宿主 Activity 的原文，hook 侧在 [createView] 之前赋值。 */
-    var homeTitle: String = "快捷键"
-
-    /** 系统深浅变化回调（给 hook 重刷状态栏配色）。 */
-    var onSystemThemeChanged: (() -> Unit)? = null
-
-    /**
-     * 「这一刻还要不要自己接返回」变了（进出子页 / 浮层开合）—— 由 [Page] 在组合期回报，
-     * hook 侧据此在宿主上注册 / 注销返回回调（见 [needsBackInterception]）。
-     *
-     *  **只有需要时的那一档才值得注册**：注册了系统就不做关页动画了，而首页那一退正需要它。
-     */
-    var onBackInterceptionChanged: (() -> Unit)? = null
-
-    /** 菜单里「打开自带的快捷键界面」——由 hook 侧实现（藏模块页面、露出宿主原版页面）。 */
-    var onOpenStock: (() -> Unit)? = null
-
-    /** 「导出日志」—— hook 侧实现：弹系统的「保存到」选择器，写完再回报（见 [SettingsPageHooks]）。 */
-    var onExportLog: (() -> Unit)? = null
-
-    /**
-     * 「更多 → 导出配置」—— hook 侧实现：弹系统的「保存到」选择器，把主配置 + 命令库写成一份文件。
-     *
-     * 与 [onExportLog] 同一条 SAF 路（结果只能从宿主的 `onActivityResult` 收，见 [SettingsPageHooks]）。
-     */
-    var onExportConfig: (() -> Unit)? = null
-
-    /** 「更多 → 导入配置」—— hook 侧实现：弹系统的「打开」选择器，读回文件再写进配置与命令库。 */
-    var onImportConfig: (() -> Unit)? = null
-
-    /**
-     * 建页期读一次命令库（三态，与主配置的 [ConfigState.readOnly] 对称）。
-     *
-     *  「读不懂」这一档必须与「空表」分开：界面把空表当真相之后，用户随便改一条命令就会把它
-     *  写回盘、把那份读不懂的文件覆盖掉 —— 用户的命令这就没了。所以读不懂时置 [ConfigState.commandsReadOnly]，
-     *  由 [saveCommands] 拒绝一切写回。
-     */
-    internal fun readCommands() {
-        when (val l = CommandLibrary.loadState()) {
-            is CommandLibrary.Load.Ok -> {
-                configState.commands.value = l.commands
-                configState.commandsReadOnly = false
-            }
-
-            CommandLibrary.Load.Absent -> {
-                XLog.w("还没有命令库文件（首装 / 刚清过数据）—— 用空表，可以写回")
-                configState.commands.value = emptyList()
-                configState.commandsReadOnly = false
-            }
-
-            CommandLibrary.Load.Unreadable -> {
-                // 这条必须是 w：它是「命令库为什么进只读」的唯一判据行
-                XLog.w("命令库读不懂 ⇒ 命令库进只读，本次不许写回（否则会把用户的命令覆盖掉）")
-                configState.commands.value = emptyList()
-                configState.commandsReadOnly = true
-            }
-        }
-    }
-
-    /** 页面底色 —— COUI 色板的 `surface`（深色 `#000000`、浅色 `#F0F1F2`，与系统设置页一致）。 */
-    fun createView(): View? {
-        // 先把字典订阅装上，再读配置（下面几行会按配置里的语言档重设 `I18n.currentLanguage`）：
-        //  装晚了的话，那一次换档发生在界面层那份状态接上之前，首帧就会停在上一个语言的文案上。
-        //  字典本体在 core（普通 Map），订阅这一半必须在界面层 —— 见 `ui/state/I18nBridge.kt`。
-        installI18nBridge()
-        dark.value = systemNight()
-        // 配置读成**三态**：只有「读到过正常文件」与「还没写过」才允许之后写回。
-        //  读不懂 ⇒ 只读（[ConfigState.readOnly]）：手上那份默认值不是用户的真相，不能让它落盘。
-        when (val l = ConfigStore.load()) {
-            is ConfigStore.Load.Ok -> {
-                configState.config.value = l.config
-                I18n.currentLanguage = AppLanguage.fromCode(l.config.global.language)
-                configState.readOnly = false
-            }
-
-            ConfigStore.Load.Absent -> {
-                XLog.w("还没有配置文件（首装 / 刚清过数据）—— 用默认值，可以写回")
-                configState.config.value = Config.DEFAULT
-                I18n.currentLanguage = AppLanguage.fromCode(Config.DEFAULT.global.language)
-                configState.readOnly = false
-            }
-
-            ConfigStore.Load.Unreadable -> {
-                // 这条必须是 w：它是「页面为什么变只读」的唯一判据行
-                XLog.w("配置读不懂 ⇒ 页面进只读，本次不许写回（否则会把默认值当真相固化）")
-                configState.config.value = Config.DEFAULT
-                I18n.currentLanguage = AppLanguage.fromCode(Config.DEFAULT.global.language)
-                configState.readOnly = true
-            }
-        }
-
-        // 命令库与配置一起在建页期读好。与主配置**同一条纪律**（见上面那三态）：
-        //  读不懂 ⇒ 命令库也进只读（[ConfigState.commandsReadOnly]），否则用户随手改一条命令就会把那份
-        //  读不懂的文件覆盖成「只有这一条」。拆成 [readCommands] 只是为了让 [createView] 别太长。
-        readCommands()
-
-        // 界面状态（本地持久，**不是用户配置** —— 见 [UiState]）与上面两份一起读一次：
-        // 读不到 / 解析不了都退默认（关）。放这里是因为它同样只读一次、且必须早于首帧
-        // （顶栏菜单那两项要按它画选中态，列表也要按它决定查哪一份）。
-        //  一次读全（readAll）：两项各读一遍会把同一个文件 open + parse 两遍，而这跑在主线程上。
-        //  只读两项 —— 「以小窗口打开」**不落盘**（见 [AppPickerState.smallWindow]），不在这一份里。
-        val ui = UiState.readAll()
-        picker.showSystemApps.value = ui.first
-        picker.showUnopenable.value = ui.second
-        XLog.w(
-            "界面状态：显示全部应用=${picker.showSystemApps.value}，显示失效=${picker.showUnopenable.value}",
-        )
-
-        // 建页时把**完整配置**主动同步一次给注入侧（判定在那一侧，见 [publishConfig]）：
-        // 「装好后没动过任何设置」的状态下，注入侧只能等宿主进程的解锁广播，
-        // 打开这一页就立刻同步一次，作为兜底。
-        publishConfig(configState.config.value)
-
-        XLog.w(
-            "命令库：${configState.commands.value.size} 条" +
-                "（单条 ${configState.commands.value.count { it.kind == CommandKind.SINGLE }}" +
-                " / 多条 ${configState.commands.value.count { it.kind == CommandKind.SERIAL }}）",
-        )
-
-        val view =
-            ComposeView(context).apply {
-                // 首帧之前先把底色铺成页面底色，避免「先黑一下再画出来」
-                setBackgroundColor(pageBackgroundColor or 0xFF000000.toInt())
-                // 当前有焦点的 View** —— 手机是触摸模式，一个没打开 `isFocusableInTouchMode`
-                // 的 View 拿不到 Android 焦点，事件就永远到不了 Compose（Compose 的按键处理挂在
-                // `AndroidComposeView.dispatchKeyEvent` 上，见 [ActionTile] 的注释）。
-                isFocusable = true
-                isFocusableInTouchMode = true
-                setContent { Page() }
-            }
-        rootView = view
-
-        // 自建 owner（宿主那棵树一个都没有）并先挂到自己身上；
-        // 祖先链由 hook 侧在 `container.addView` **之后**回调 [attachOwnersUpward] 挂。
-        //
-        //  宿主三件套齐全时 [ownOwners] 返回 null —— **绝不能用占位实例去挂**：`attachOne`
-        //  是「只挂不覆盖」，此刻 `view` 还没进树（`parent == null`），占位实例会被钉在
-        //  `ComposeView` 自身上，之后 `attachOwnersUpward` 换不掉它，Compose 于是拿到那份
-        //  停在 `INITIALIZED` 的 lifecycle ⇒ 页面一片空白。挂了 null 就让 Compose 沿
-        //  parent 链自己去宿主那棵树上找（那正是它该走的路）。
-        val own =
-            ownOwners(
-                activity as? androidx.lifecycle.LifecycleOwner,
-                activity as? androidx.lifecycle.ViewModelStoreOwner,
-                activity as? androidx.savedstate.SavedStateRegistryOwner,
-            )
-        pendingOwners = own
-        if (own != null) attachOne(view, own)
-
-        XLog.w(
-            "设置页用 COUI（Compose）渲染：night=${dark.value}" +
-                " surface=#${Integer.toHexString(pageBackgroundColor)}",
-        )
-        return view
-    }
+    /** hook 侧塞进来的那条标题与六个回调（见 [PageHooks]）。 */
+    internal val hooks = PageHooks()
 
     /**
      * 从子页返回上一级 —— 把**栈顶弹掉**。上一级就是压在当前页下面的那一页（不查表）。
      *
      * 注意：两处**拦住不让退**（都返回 true = 这次返回已被消费）：「自定义命令」页草稿有改动
-     * （先问一句，见 [confirmLeaveCommands]）；栈里只剩首页（交给宿主关页面）。
+     * （先问一句，见 [PageOverlays.confirmLeaveCommands]）；栈里只剩首页（交给宿主关页面）。
      */
     internal fun goBack(): Boolean {
         val current = screen
@@ -586,9 +286,9 @@ internal class SettingsPage(
         // 「自定义命令」页：表单里改过还没保存 ⇒ 不退，先弹一句确认。判据用 `draft.dirty`
         // （与载入时的快照比），不是 `hasContent` —— 后者会把「点开一条看一眼、原样返回」也算成有改动。
         if (current == Screen.COMMANDS && commandDraft.draft.dirty) {
-            if (!confirmLeaveCommands) {
+            if (!overlays.confirmLeaveCommands) {
                 XLog.w("退出自定义命令页：表单改过还没保存，先弹确认")
-                confirmLeaveCommands = true
+                overlays.confirmLeaveCommands = true
             }
             return true
         }
@@ -607,20 +307,7 @@ internal class SettingsPage(
         return true
     }
 
-    /**
-     * 退出「自定义命令」页时的「放弃未保存的命令」确认 —— 该弹没弹。
-     * 触发点在 [goBack]（草稿 `draft.dirty` 时置位并**拦住不退**），窗由 `CommandScreen` 自己画。
-     * 放类上而不是页面内 `remember`：置位的是 [goBack]，两处必须同一份。
-     */
-    internal var confirmLeaveCommands by mutableStateOf(false)
-
-    /**
-     * 「表单里有没保存的改动，但用户要换成另一条命令」—— 待确认的那一条（`null` = 没在弹）。
-     *
-     *  触发点是 [loadDraft]（草稿 [CommandDraft.dirty] 时置位、**先问一句**），窗由 `CommandScreen` 画。
-     *  与 [confirmLeaveCommands] 分开：那个问的是「退不退页」，这个问的是「换不换内容」。
-     */
-    internal var pendingDraftLoad by mutableStateOf<Command?>(null)
+    // 两个确认开关都在 [overlays] 那一域（[PageOverlays.confirmLeaveCommands] / [PageOverlays.pendingDraftLoad]）。
 
     /**
      * 把已保存的 [cmd] 灌进表单 —— **载入前先看草稿脏不脏**。
@@ -635,14 +322,14 @@ internal class SettingsPage(
     internal fun loadDraft(cmd: Command) {
         if (commandDraft.draft.dirty) {
             XLog.w("载入命令前先问：表单里有未保存的改动（要换成「${cmd.name}」）")
-            pendingDraftLoad = cmd
+            overlays.pendingDraftLoad = cmd
             return
         }
         commandDraft.draft.load(cmd)
     }
 
     /**
-     * 「打开应用」页该**点亮哪一行**（[AppPickerScreen] 的 `selected`，同时决定进页滚到谁眼前）。
+     * 「打开应用」页该**点亮哪一行**（`AppPickerScreen` 的 `selected`，同时决定进页滚到谁眼前）。
      *
      * 两个入口各有来源，读的都是**进这一页时**记下来的东西（这一页不属于 pager，不能读当前页）：
      *  · 网格入口（「按键绑定」页的「打开应用」格）→ [AppPickerState.gesture] 那个手势绑的
@@ -690,81 +377,22 @@ internal class SettingsPage(
     }
 
     /**
-     * 页面里**所有浮窗**的「统一收起」通道（见 [closeOverlays]）。
+     * 页面离开时**主动收掉所有浮窗** —— 实现与理由都在 [PageOverlays.closeAll]。
      *
-     * 只存「怎么把我关掉」，不存「谁开着」—— 关一个本来就关着的浮窗是一次**无副作用的空写**
-     * （`mutableStateOf` 写同值不触发重组），所以收的时候不必先判在不在。
-     * 返回值 = 这一层刚才**真的开着**（只用来把日志写准）。
+     *  留这一层转发而不是让调用点直接写 `overlays.closeAll(...)`：调用点有十来处
+     *  （换页 / 关页 / 露出原版界面 / 从设置重进 …），它们说的是「这一页要离开了」，
+     *  不该各自知道「离开时要收浮层」这个细节。
      */
-    internal val overlayClosers = mutableListOf<() -> Boolean>()
+    internal fun closeOverlays(reason: String) = overlays.closeAll(reason)
 
     /**
-     * 页面离开时**主动收掉所有浮窗**。
-     *
-     * 为什么必须「主动」：COUI 的 `OverlayListPopup` / `OverlayDialog` 都渲染在
-     * **根 Scaffold 的 `popupHost`** 那一层（见库的 `Scaffold` 文档），它**不属于任何一页**
-     * —— 既不跟着页面转场走，也不随「那一页出栈」以外的任何事消失；而首页顶栏那颗菜单
-     * 更是**永远在栈里**（首页常驻），它的浮窗状态永远不会被组合释放。于是不主动收的话：
-     * 从「设置」重进、切后台回来，菜单还开着；换页时浮窗还会**钉在屏幕上不动**，
-     * 等那一页出栈才跟着消失。
-     *
-     * 触发点（都在「页面离开」这条需求路径上）：
-     *  · 换页 / 清栈回首页 —— [Page] 里那个看着 `screen` 的 `LaunchedEffect`；
-     *  · 从设置重进模块（栈顶未变时 LaunchedEffect 不触发）—— [onHostReentered]；
-     *  · 顶栏返回键在首页（关页面）—— [PageHeader]；
-     *  · 露出宿主原版界面 / 系统返回关页面 / 宿主 Activity `onStop` —— [SettingsPageHooks]。
-     *
-     * @param reason 只进日志，便于真机上核对「是哪条路把它收掉的」
-     */
-    internal fun closeOverlays(reason: String) {
-        if (overlayClosers.isEmpty()) return
-        // 复制一份再遍历：关闭过程中会触发重组，进而增删注册表
-        val closers = overlayClosers.toList()
-        val closed = closers.count { runCatching { it() }.getOrDefault(false) }
-        // 一层都没开着时不写日志：页面离开是高频动作，每次都留一行「收掉 0 个」只会淹掉别的
-        if (closed > 0) XLog.w("页面离开（$reason）：已收起 $closed 个浮窗")
-    }
-
-    /**
-     * 浮窗在**组合期**把自己登记进 [overlayClosers] —— 各浮窗调用点只需要加一行：
-     * `OverlayCloser(show = open) { open = false }`。
-     *
-     * 登记时机是「宿主组件进组合」，**不是**「浮窗弹出来」：`show` 只是浮窗自己的一个参数，
-     * 组件一直挂着（`show = false` 时只是不渲染内容）—— 所以收起时那一下写的是「本来就该是
-     * 的值」，不判空也不会误伤。
-     *
-     * `rememberUpdatedState` 是为了拿到**最新**的 `show` / `onDismiss`：那些值每次重组都会变，
-     * 而注册只在第一次组合时做一次。
-     *
-     * @param show 这一层此刻开着没有 —— 只决定「这一层算不算被收掉了一个」（日志用）
+     * 浮窗在组合期登记自己（见 [PageOverlays.Closer]）—— 同样只留一层转发，调用点写法不变。
      */
     @Composable
     internal fun OverlayCloser(
         show: Boolean,
         onDismiss: () -> Unit,
-    ) {
-        val latestShow by rememberUpdatedState(show)
-        val latestDismiss by rememberUpdatedState(onDismiss)
-        // 「有没有浮层开着」的计数 —— 预测返回的 onBackStarted 要用它决定接不接管
-        // （见 [wouldConsumeBack]）。键是 `show`：翻转时旧的 effect 收尾、新的进来，
-        // 一次翻转恰好各加减一次；组件出组合时若还开着也会补减。
-        DisposableEffect(show) {
-            if (show) openOverlays.intValue++
-            onDispose { if (show) openOverlays.intValue-- }
-        }
-        DisposableEffect(Unit) {
-            val closer = {
-                if (latestShow) {
-                    latestDismiss()
-                    true
-                } else {
-                    false
-                }
-            }
-            overlayClosers += closer
-            onDispose { overlayClosers -= closer }
-        }
-    }
+    ) = overlays.Closer(show, onDismiss)
 
     // 深浅切换有两条路，都收在 [SyncToHost] 里：(1) `Settings.Secure.ui_night_mode` 的
     // `ContentObserver`（手动切走这条，即时）＋ (2) 每 [NIGHT_POLL_MS] 对一次账的轮询（定时切换兜底）。
@@ -773,79 +401,6 @@ internal class SettingsPage(
     // 真机抓到它把宿主**过期的 night 配置**（宿主声明了
     // `configChanges=uiMode`，配置停在旧值）喂进来，亮色进页先黑一秒再被轮询纠正。
     // 那条路已删：**回调只能当信号，值一律自己重新读系统全局配置**。
-
-    /** 建好的 owner 集合，等 [attachOwnersUpward] 在 addView 之后往祖先链上挂。 */
-    internal var pendingOwners: FallbackOwners? = null
-
-    /** 已自建的兜底 owner（同一页面实例内复用，见 [ownOwners]）。 */
-    internal var fallbackOwners: FallbackOwners? = null
-
-    /**
-     * 把 owner 挂到 [root] 的**整条祖先链**上（含 `root` 自己）。
-     *
-     *  **必须在 `container.addView(view)` 之后调用** —— 在那之前 `parent` 还是 null。
-     * 真机第三轮崩溃换来的：`resolveParentCompositionContext` 只沿 **parent 链**找
-     * （报错原文点名宿主布局根 `androidx.constraintlayout.widget.ConstraintLayout`）。
-     *
-     * @return 挂到了几层（日志用）
-     */
-    fun attachOwnersUpward(root: View): Int {
-        val own = pendingOwners ?: return 0
-        var node: View? = root
-        var depth = 0
-        while (node != null) {
-            attachOne(node, own)
-            node = node.parent as? View
-            depth++
-        }
-        XLog.w("ViewTree owner 已挂满祖先链 $depth 层（ComposeView → decorView）")
-        return depth
-    }
-
-    /** 往单个 View 挂三个 owner（**只挂不覆盖**）。 */
-    internal fun attachOne(
-        target: View,
-        own: FallbackOwners,
-    ) {
-        try {
-            if (target.findViewTreeLifecycleOwner() == null) target.setViewTreeLifecycleOwner(own)
-            if (target.findViewTreeViewModelStoreOwner() == null) target.setViewTreeViewModelStoreOwner(own)
-            if (target.findViewTreeSavedStateRegistryOwner() == null) {
-                target.setViewTreeSavedStateRegistryOwner(own)
-            }
-        } catch (e: Throwable) {
-            XLog.w("挂 ViewTree owner 失败（${target.javaClass.simpleName}）", e)
-        }
-    }
-
-    /**
-     * 自建的「三合一 owner」。
-     *
-     * 只在宿主确实缺 owner 时才创建；已创建过就复用（同一 Activity 反复进设置页时
-     * 不自建第二份 —— 两份 `LifecycleRegistry` 会让 Compose 的 `Recomposer` 状态错乱）。
-     *
-     * **宿主三件套齐全时返回 `null`，而不是一个「用不上」的占位实例**：占位实例一旦被
-     * [attachOne] 钉进 ViewTree（`attachOne` 只挂不覆盖），后面就再也换不掉，Compose
-     * 会拿到那份停在 `INITIALIZED` 的 lifecycle —— 页面一片空白（见本文件里的调用点注释）。
-     */
-    internal fun ownOwners(
-        hostLifecycle: androidx.lifecycle.LifecycleOwner?,
-        hostViewModel: androidx.lifecycle.ViewModelStoreOwner?,
-        hostSavedState: androidx.savedstate.SavedStateRegistryOwner?,
-    ): FallbackOwners? {
-        if (hostLifecycle != null && hostViewModel != null && hostSavedState != null) {
-            return null
-        }
-        fallbackOwners?.let { return it }
-        val created = FallbackOwners()
-        fallbackOwners = created
-        XLog.w(
-            "宿主不提供 ViewTree owner（lifecycle=${hostLifecycle != null}" +
-                " viewModel=${hostViewModel != null} savedState=${hostSavedState != null}）" +
-                "⇒ 已自建 LifecycleRegistry + ViewModelStore + SavedStateRegistry 兜底",
-        )
-        return created
-    }
 
     // FallbackOwners（宿主不提供 ViewTree owner 时的兜底三件套）与 CommandDraft
     // （「自定义命令」页的表单草稿）已搬到 `ui/state/PageState.kt` —— 两者都不引用本类的任何东西。

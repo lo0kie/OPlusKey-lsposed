@@ -1,9 +1,8 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
+import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.ModuleInfo
 import com.lookie.opluskey.host.action.AppEntry
-import com.lookie.opluskey.host.action.MiniWindowSupport
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.LaunchableApp
 

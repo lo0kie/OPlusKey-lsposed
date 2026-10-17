@@ -1,0 +1,356 @@
+package com.lookie.opluskey.ui.screen.binding
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.ui.Screen
+import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.actionOf
+import com.lookie.opluskey.ui.linkReady
+import com.lookie.opluskey.ui.model.COLUMNS
+import com.lookie.opluskey.ui.model.GRID_GAP
+import com.lookie.opluskey.ui.model.GRID_ROW_GAP
+import com.lookie.opluskey.ui.model.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.model.durationText
+import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.screen.apppicker.appLabelOf
+import com.lookie.opluskey.ui.state.deviceSupported
+import io.github.suqi8.coui.kmp.basic.BasicComponent
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.SmallTitle
+import io.github.suqi8.coui.kmp.basic.cardListPositionOf
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
+import io.github.suqi8.coui.kmp.theme.COUITheme
+
+// 「按键绑定」页的两张网格 —— 内置动作一组组排下来，再加最下面「已保存的命令」那一组。
+//
+// 从 `BindingList.kt` 拆出来：那一段原本占了一个 666 行函数的后三分之一，而且缩进已经到 36 列
+// （`Column → forEach → Column → forEach → Row → forEach → key → ActionTile`）。
+// 现在一格一个函数（[BuiltInTile] / [CustomTile]），排布的那三层只负责**计数与让位**。
+
+/**
+ * 内置动作网格 —— 按 [ActionCatalog.GROUPS] 分组，每组一个小标题。
+ *
+ * 焦点格索引仍与 `st.specs` 下标一一对应（见 `BindingList` 里「扁平焦点索引的账」）——
+ * 分组只是展示层切分，组里的格子用的还是**全局**下标（`builtInBase` 跨组连续累计），
+ * 不能在组内从 0 数。
+ */
+@Composable
+internal fun SettingsPage.BuiltInGrid(
+    st: BindingGridState,
+    enabled: Boolean,
+) {
+    var builtInBase = 0
+    ActionCatalog.GROUPS.forEachIndexed { groupIndex, (groupTitle, group) ->
+        // 「上一段 → 这个标题」之间给一档（与网格行距同值），与下面「自定义命令」那一段同一条规矩。
+        // 第一组不加 —— 它前面那一段（按键设置卡）已经自带收尾间距，双击档则是页首、不需要。
+        if (groupIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
+        SmallTitle(ActionCatalog.groupTitleLabel(groupTitle))
+
+        // 这一段用一个**内层 Column** 单独带 `PAGE_MARGIN` 横向 padding，
+        // 标题在外层不受影响。
+        Column(
+            Modifier.padding(horizontal = PAGE_MARGIN),
+            verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
+        ) {
+            for (rowIndices in (builtInBase until builtInBase + group.size).chunked(COLUMNS)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    // 上下左右间距保持一致；不再给焦点圈留补偿（见 `GRID_GAP` 的注释）
+                    horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
+                ) {
+                    rowIndices.forEach { index ->
+                        BuiltInTile(st, index, enabled, Modifier.weight(1f))
+                    }
+                    // 最后一行不满时补空位：不补的话剩下那格会被 weight 撑到整行宽
+                    repeat(COLUMNS - rowIndices.size) {
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        builtInBase += group.size
+    }
+}
+
+/**
+ * 内置网格里的一格。
+ *
+ *  `Modifier.weight` 由调用点在 `Row` 里取好传进来 —— 它是 `RowScope` 的扩展，
+ *  而 `key { }` 的 lambda 已经不在那个作用域里了。
+ */
+@Composable
+private fun SettingsPage.BuiltInTile(
+    st: BindingGridState,
+    index: Int,
+    enabled: Boolean,
+    cellModifier: Modifier,
+) {
+    val spec = st.specs.getOrNull(index)
+    if (spec == null) {
+        Spacer(cellModifier)
+        return
+    }
+    // 会弹菜单的那几格各自 remember 一份触点锚点（键是 token）——
+    // `PreciseClickState` 里除触点坐标外还存着「锚点自己的布局位置」，
+    // 两格共用一份就会被算成「最后布局的那一格」，浮层弹到别人身上。
+    //  写在 `key(spec.token)` 里、而不是在页面这一层一格格手写：新增一个入口格
+    //  不用再补一份锚点、也不用改一张 `when` 表（判据就是「这格点了弹不弹菜单」）。
+    key(spec.token) {
+        val tileAnchor = rememberPreciseClickState()
+        // 登记给确认键那条路用（见 `BindingGridState.tileAnchors`）—— 写的是普通 map、不是 state。
+        st.tileAnchors[spec.token] = tileAnchor
+        val current = actionOf(configState.config.value, st.g)
+        val icons = tileIcons.value
+        //  入口格（点了弹二级菜单的那几格）：`modes` 非空。这一格绑在哪一档也从这里算一次
+        //  —— **小字与小字前面那枚图标共用它**，同源就不会各说各的。
+        val modes = ActionCatalog.modeMenu(spec.token)
+        val popsMenu = modes != null
+        val boundMode = modes?.firstOrNull { ActionCatalog.isBound(it, current) }
+        val boundAppLabel = rememberBoundAppLabel(current)
+        // 绑的是**小窗打开**时，标题右边补一枚「小窗起」标记 —— 这一格只有一行标题 + 应用名，
+        //  不点开「选择应用」菜单看不出绑的是哪一档。
+        val appSmallWindow = current is Action.AppWindow
+        ActionTile(
+            spec = spec,
+            //  入口格的行首**随当前档位变**（主屏幕 / 静音 / 上一首 …）；
+            //  一档都没绑时退回这一格自己的大类字形（媒体控制 → 音符、响铃状态 → 铃铛…）。
+            icon = boundMode?.let { icons[it] } ?: icons[spec],
+            selected = ActionCatalog.isSelected(spec, current),
+            focused = index == st.focusedIndex,
+            focusRequester = st.focusers[index],
+            //  锚点**每格一份**：取值格点了不弹浮层，所以只有会弹菜单的格子才挂（`popsMenu`），
+            //  其余不白记坐标。
+            modifier = if (popsMenu) cellModifier.preciseClickAnchor(tileAnchor) else cellModifier,
+            //  可用性与 `pick` 同一判据（主开关 + 链路就绪 + 清单命中）：少判一道就会
+            //  「亮着、点了被拦」—— 点了只弹一句提示，不如先灰着。
+            //  再叠一道「这一条在本机有没有落点」（`ActionCatalog.isLocked`）。
+            enabled = enabled && linkReady && deviceSupported && !ActionCatalog.isLocked(spec),
+            // 「打开应用」格与入口格都要补一行小字：前者是绑的应用名，
+            // 入口格那格只写组名，不点开菜单根本看不出绑的是哪一档
+            subtitle =
+                when {
+                    spec.token == ActionCatalog.APP_TILE -> boundAppLabel
+                    else -> boundMode?.label
+                },
+            // 「打开应用」格绑成小窗打开时，标题右边补一枚「小窗起」。
+            //  注意：必须连 spec 一起判 —— 光看 `appSmallWindow` 会给**整片**格子都画上。
+            titleMarker =
+                if (spec.token == ActionCatalog.APP_TILE && appSmallWindow) {
+                    PageIcons.TileSmallWindow
+                } else {
+                    null
+                },
+            // 入口格虽然是**入口**（点了进下一层），但**不画行尾箭头** ——
+            // 走 `ActionTile` 的默认值 false，别顺手补回来。
+            onClick = { bindingActivate(st, spec, tileAnchor, enabled) },
+        )
+    }
+}
+
+/**
+ * 「自定义命令」那一段 —— **始终在**：没有命令时给一行「去创建自定义命令」
+ * （整段不出现的话，网格里就看不出这块地方是干什么的）。样式与网格同一套纵向节奏。
+ */
+@Composable
+internal fun SettingsPage.CustomCommandsGrid(
+    st: BindingGridState,
+    enabled: Boolean,
+    onCreateCommand: () -> Unit,
+) {
+    val commandsByToken =
+        remember(configState.commands.value) {
+            configState.commands.value.associateBy { it.token }
+        }
+    Column(
+        Modifier.padding(horizontal = PAGE_MARGIN),
+        verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
+    ) {
+        if (st.specs.size <= st.builtInCount) {
+            CreateCommandRow(enabled, onCreateCommand)
+        } else {
+            // 焦点索引 `[builtInCount, totalCount)` —— 与 `specs` 下标一一对应
+            for (rowIndices in (st.builtInCount until st.totalCount).chunked(COLUMNS)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
+                ) {
+                    rowIndices.forEach { index ->
+                        CustomTile(st, index, enabled, commandsByToken, Modifier.weight(1f))
+                    }
+                    repeat(COLUMNS - rowIndices.size) {
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 还没保存过任何命令时那一行 —— 整行可点，进「自定义命令」页新增一条（与 FAB 同一个去处）。 */
+@Composable
+private fun SettingsPage.CreateCommandRow(
+    enabled: Boolean,
+    onCreateCommand: () -> Unit,
+) {
+    val tick = rememberTick()
+    Card(Modifier.fillMaxWidth()) {
+        BasicComponent(
+            title = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND, "自定义命令"),
+            summary = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND_DESC, "一条命令或多个动作"),
+            startAction = { Icon(PageIcons.CommandAdd, null) },
+            // 行尾箭头：「这一行后面还有一页」（与首页「按键绑定」那行同尺寸 24dp、
+            // 同两档取色 —— 它不是弹浮层的入口格，所以不画那颗选择器字形）。
+            endActions = {
+                Icon(
+                    PageIcons.EnterArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(ROW_END_ICON_SIZE),
+                    tint =
+                        if (enabled) {
+                            COUITheme.colorScheme.onSurfaceVariantActions
+                        } else {
+                            COUITheme.colorScheme.disabledOnSecondaryVariant
+                        },
+                )
+            },
+            cardListPosition = cardListPositionOf(0, 1),
+            enabled = enabled,
+            onClick = {
+                if (enabled) {
+                    tick()
+                    onCreateCommand()
+                }
+            },
+        )
+    }
+}
+
+/** 自定义命令网格里的一格。 */
+@Composable
+private fun SettingsPage.CustomTile(
+    st: BindingGridState,
+    index: Int,
+    enabled: Boolean,
+    commandsByToken: Map<String, Command>,
+    cellModifier: Modifier,
+) {
+    val spec = st.specs.getOrNull(index)
+    if (spec == null) {
+        Spacer(cellModifier)
+        return
+    }
+    // 每格按 `key(spec.token)` 认身份 —— 与内置那组同一写法。
+    //  这一段是按**位次**排出来的（`chunked(COLUMNS)` 之后按下标取），而自定义命令会增删、
+    //  会改名重排：不按 token 认身份，格子里的状态（焦点圈、进出场）就跟着位次挪到下一条命令身上。
+    key(spec.token) {
+        val tick = rememberTick()
+        // 这条命令本身（`cmd:<名字>` 反查）—— 小字与「进编辑」两处都要用
+        val cmd = commandsByToken[spec.token]
+        val current = actionOf(configState.config.value, st.g)
+        val selected = ActionCatalog.isSelected(spec, current)
+        // 「进这条命令的编辑页」—— 长按、以及**已选中时再点一次**，共用这一个入口。
+        //
+        //  走 `draft.load` 而**不是** FAB 那条 `navigateToCommands` —— 后者会先 `draft.reset()`
+        //  （那是「新增」的入口），这里要的正是「把这条命令灌进表单」，
+        //  与「自定义命令」页里轻点已保存命令同一个入口。
+        val openEditor = {
+            if (cmd != null) {
+                tick()
+                XLog.w("手势页打开自定义命令编辑：${cmd.name}")
+                // 这里直接 `load`、不走 `loadDraft` 那个「先问一句」：草稿脏了必然还在
+                // 「自定义命令」页 —— 退出那一页时 `goBack` 已经问过并 `draft.reset()`。
+                //  走 `loadDraft` 反而更糟：它会把确认窗挂起，而那个窗画在「自定义命令」页上、
+                //  此刻根本没组合 ⇒ 按下去什么都不发生。
+                commandDraft.draft.load(cmd)
+                navTo(Screen.COMMANDS)
+            }
+        }
+        ActionTile(
+            spec = spec,
+            icon = tileIcons.value[spec],
+            selected = selected,
+            focused = index == st.focusedIndex,
+            focusRequester = st.focusers[index],
+            modifier = cellModifier,
+            // 与内置网格同一判据。
+            enabled = enabled && linkReady && deviceSupported,
+            // 标题下面那行小字 = **命令间隔时长**（`stepDelayMs`）。
+            // 只有多条命令有这个值 —— 单条只有一步、用不到它，所以那种格子不画。
+            subtitle =
+                cmd
+                    ?.takeIf { it.kind == CommandKind.SERIAL }
+                    ?.let { durationText(it.stepDelayMs) },
+            //  行尾那支箭头现在只给这一组格子 —— 内置那几个入口格不画箭头。
+            enterArrow = true,
+            // 长按与「已选中时再点一次」同一个去处（上面那个 `openEditor`）。
+            // 长按之后那一下抬手由库的 `combinedClickable` 吞掉（不会再触发点击）。
+            onLongClick = openEditor,
+            // **已经选中的再点一次 = 「我要改它」**，不是「重新绑一遍」，
+            // 所以走编辑；没选中时才是「选中绑定」。
+            onClick = { if (selected) openEditor() else bindingSelect(st, spec, enabled) },
+        )
+    }
+}
+
+/**
+ * 入口格那一层的菜单。它**不占布局位置** —— 真正的落点由那一格记下的触点决定，
+ * 挂在这里只是让它跟着这一页一起进 / 出组合。
+ */
+@Composable
+internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
+    val current = actionOf(configState.config.value, st.g)
+    TileMenuPopup(
+        show = st.tileMenu != null,
+        // 锚点就是**开着的那一格**自己那一份 —— 这里不再有「哪一格用哪一支」的表：
+        // 那种表漏一个入口格，菜单就弹到别人身上（小窗、通知与控制中心，两次都是这么漏的）。
+        //  关掉之后 `tileMenu` 是 null，而退场动画期间真正生效的是 `MenuPopup` 内部保持住的
+        // 上一次那份锚点，所以这里给个没记过触点的占位即可。
+        preciseClick = st.tileMenu?.anchor ?: st.noAnchor,
+        modes = st.tileMenu?.let { ActionCatalog.modeMenu(it.spec.token) }.orEmpty(),
+        current = current,
+        //  走 `pick` 而**不是** `bindingSelect`：菜单里的取值不在 `specs` 里，
+        //  `select` 那一步的 `specs.indexOf(spec)` 会取到 −1、把焦点圈甩到第一格去。
+        // 写完之后 `selectedIndex` 变了，那个「把焦点收回选中项」的 effect 自然会把圈落回
+        // 入口格（本来就是点它的那一格）。
+        onPick = { spec -> pick(spec, st.g) },
+        onDismiss = { st.tileMenu = null },
+    )
+}
+
+/**
+ * 「打开应用」格选中时标题下面那行小字 = **当前绑的应用名**（两种动作都要认：`app:` 与 `window:`）。
+ *
+ *  名字查一次就缓存（PM 查询，入参是动作所以只在换动作时重查）。
+ *  少认一种时那一格就没有小标题（实证：开着小窗挑完应用回来，标题下面是空的）。
+ */
+@Composable
+private fun SettingsPage.rememberBoundAppLabel(current: Action): String? =
+    remember(current) {
+        val target =
+            when (current) {
+                is Action.App, is Action.AppWindow -> current.appTarget
+                else -> null
+            }
+        target?.substringBefore('/')?.let { appLabelOf(it) }
+    }

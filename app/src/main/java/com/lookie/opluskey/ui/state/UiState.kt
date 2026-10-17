@@ -2,27 +2,27 @@ package com.lookie.opluskey.ui.state
 
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.ui.SettingsPage
 
 /**
  * 「界面状态」的本地持久化 —— 不走用户配置（那份文件是执行侧要读的契约，落在
  * `ConfigStore.uiFile()` 那种「只有本进程看」的文件里）。存的是「这一页怎么显示」的偏好，格式为 `key=value`
  * 若干行（`#` 开头为注释）。读写两端都在本进程（设置页与宿主同 uid），不需要跨域权限；
- * 读在 [SettingsPage.createView]、写在「选择应用」菜单翻档那一下，读不了 / 解析不了
- * 一律退默认（关），与配置同一条降级纪律。
+ * 读在 `readPageLoadSnapshot`（建页那一刻、**IO 线程**上，见 `ui/state/PageLoadSnapshot.kt`）、
+ * 写在「选择应用」菜单翻档那一下，读不了 / 解析不了一律退默认（关），与配置同一条降级纪律。
  */
 internal object UiState {
     /** 「选择应用」页是否列出系统应用。 */
     private const val KEY_SHOW_SYSTEM_APPS = "show_system_apps"
 
-    /** 「选择应用」页是否把**拉不起来**的应用也列出来（见 [SettingsPage.picker]）。 */
+    /** 「选择应用」页是否把**拉不起来**的应用也列出来（见 `SettingsPage.picker`）。 */
     private const val KEY_SHOW_UNOPENABLE = "show_unopenable"
 
     /**
      * 一次把两项读出来（**建页那次用的唯一入口**）。
      *
-     * 两项各读一遍的话会把同一个文件 open + parse **两遍**，而建页跑在
-     * 主线程上（见 `SettingsPage.createView`）—— 两项一起读只开一次盘，行为完全一样。
+     * 两项各读一遍的话会把同一个文件 open + parse **两遍**；建页那一次读现在整个挪到了
+     * IO 线程上（见 `ui/state/PageLoadSnapshot.kt`），但「一次开一次盘」这件事本身仍然成立
+     * —— 少一趟就少一趟，行为完全一样。
      *
      * 注意：这里**没有**「以小窗口打开」—— 那一项**不落盘**：
      * 它默认关、每次进「选择应用」页按「正在编辑的那个动作」重算，见 `SettingsPage.picker`。

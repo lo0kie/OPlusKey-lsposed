@@ -293,22 +293,32 @@ internal class AppLauncher(
 
                 override fun onServiceDisconnected(name: ComponentName) {}
             }
-        try {
-            ctx.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-            main.postDelayed({
-                // 服务一直连不上就自己收尾，别把连接挂着。
-                //  注意：还要**说出来**：只 `unbindService` 的话既不记日志
-                //  也不报失败 —— 用户看到的是「按下去什么都没发生」，而日志里一个字都没有。
-                if (!handled) {
-                    XLog.w("oplus:$feature 的 Messenger 服务 ${MESSAGE_TIMEOUT_MS}ms 没连上，解绑放弃")
-                    runCatching { ctx.unbindService(connection) }
-                    onFailure(CommandFailure.UNKNOWN)
-                }
-            }, MESSAGE_TIMEOUT_MS)
-        } catch (e: Throwable) {
-            XLog.w("bind oplus:$feature 失败：${e.javaClass.simpleName}: ${e.message}")
+        val bound =
+            try {
+                ctx.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            } catch (e: Throwable) {
+                XLog.w("bind oplus:$feature 失败：${e.javaClass.simpleName}: ${e.message}")
+                onFailure(CommandFailure.UNKNOWN)
+                return
+            }
+        if (!bound) {
+            // 同步返回 false = 这次绑定根本没成立（组件不存在 / 权限不够），
+            // `onServiceConnected` 永远不会来。不能还等那 3 秒：反馈会白白迟到，
+            // 而且超时那条日志会把原因说成「没连上」，掩盖真正的错。
+            XLog.w("oplus:$feature 的 Messenger 服务绑不上（bindService 返回 false）：$short")
             onFailure(CommandFailure.UNKNOWN)
+            return
         }
+        main.postDelayed({
+            // 服务一直连不上就自己收尾，别把连接挂着。
+            //  注意：还要**说出来**：只 `unbindService` 的话既不记日志
+            //  也不报失败 —— 用户看到的是「按下去什么都没发生」，而日志里一个字都没有。
+            if (!handled) {
+                XLog.w("oplus:$feature 的 Messenger 服务 ${MESSAGE_TIMEOUT_MS}ms 没连上，解绑放弃")
+                runCatching { ctx.unbindService(connection) }
+                onFailure(CommandFailure.UNKNOWN)
+            }
+        }, MESSAGE_TIMEOUT_MS)
     }
 
     /**

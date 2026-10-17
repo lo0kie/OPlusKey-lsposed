@@ -1,11 +1,7 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
@@ -15,19 +11,18 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.draftToLibrary
 import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.model.GRID_GAP
-import com.lookie.opluskey.ui.screen.apppicker.appLabelOf
-import com.lookie.opluskey.ui.screen.binding.BindingScreen
+import com.lookie.opluskey.ui.saveCommands
 import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.saveCommands
-import com.lookie.opluskey.ui.state.tickNow
-import com.lookie.opluskey.ui.state.toast
-import com.lookie.opluskey.ui.state.write
+import com.lookie.opluskey.ui.state.TestRunnerCache
+import com.lookie.opluskey.ui.tickNow
+import com.lookie.opluskey.ui.toast
+import com.lookie.opluskey.ui.write
 import kotlin.math.roundToInt
 
 internal fun SettingsPage.testCommand(cmd: Command) {
@@ -52,19 +47,10 @@ internal fun SettingsPage.testCommand(cmd: Command) {
 }
 
 /**
- * 测试命令用的执行器 —— 本进程只建一份：内部执行器持进程级的东西（Handler、系统服务），
- * 每点一次新建会平白多出注册（如手电筒 `TorchCallback`）。
- *
- * 必须传 Application Context：`ActionRunner` 会把传进来的 Context 一直拿着，而这里又是
- * 进程级缓存 —— 传 Activity Context 等于永久钉住一个已销毁的 Activity 及其整棵 View 树。
+ * 测试命令用的执行器 —— 见 [TestRunnerCache]：本进程只建一份（内部执行器持进程级的
+ * Handler、系统服务与手电筒回调注册，每点一次新建会平白多出注册），页面关掉时释放。
  */
-private var testRunnerCache: ActionRunner? = null
-
-internal fun testRunner(context: android.content.Context): ActionRunner =
-    testRunnerCache ?: ActionRunner(
-        context.applicationContext,
-        android.os.Handler(android.os.Looper.getMainLooper()),
-    ).also { testRunnerCache = it }
+private fun testRunner(context: android.content.Context): ActionRunner = TestRunnerCache.acquire(context)
 
 /**
  * 「名称与某条已有命令重名」的判定（单一来源）：编辑态下与原命令同名不算重复，
@@ -135,128 +121,6 @@ internal fun CommandTileRow(
             placeables.forEachIndexed { index, p -> p.place(index * (tileWidth + gapPx), 0) }
         }
     }
-}
-
-/**
- * 草稿 → 「存下去之后的那条命令」与「存下去之后的那份命令库」。
- *
- * **单一来源**：[addCommand] 存的就是它、[commandReferenceCycle] 判的也是它 —— 两处各写一遍的话，
- * 判的与存的就不是同一件事（改了名字、挪了引用之后，环也可能跟着变）。
- *
- * @return 名字为空（草稿还没填名字）时返回 `null`
- */
-internal fun SettingsPage.draftToLibrary(): Pair<Command, List<Command>>? {
-    val name = CommandLibrary.sanitizeName(commandDraft.draft.name)
-    if (name.isEmpty()) return null
-    val cmd =
-        when (commandDraft.draft.kind) {
-            CommandKind.SINGLE -> {
-                Command(name, CommandKind.SINGLE, single = commandDraft.draft.single.trim())
-            }
-
-            CommandKind.SERIAL -> {
-                Command(
-                    name = name,
-                    kind = CommandKind.SERIAL,
-                    steps = commandDraft.draft.steps.toList(),
-                    stepDelayMs = commandDraft.draft.stepDelayMs,
-                )
-            }
-        }
-    // (1) 改名保存必须把**原名那条一起摘掉**：只 `filterNot { it.name == name }` 的话旧名与新名
-    //   两条并存在命令库里（列表凭空 +1 条），而手势上绑的仍是旧那条 `cmd:旧名` —— 用户以为改了，
-    //   侧键行为一点没变。编辑态下 `editingFrom == name` 时两个条件指同一条，去重天然成立。
-    // (2) 其余命令里对旧名字的引用（多条命令的步骤 / 单条正文里的 `cmd:旧名`）也要跟着挪，
-    //   否则它们指向一条已经不在库里的命令，按下去永远 NOT_FOUND。
-    val editingFrom = commandDraft.draft.editingName
-    val next =
-        configState.commands.value
-            .filterNot { it.name == name || it.name == editingFrom }
-            .map { it.renamedReference(editingFrom, name) } + cmd
-    return cmd to next
-}
-
-/**
- * 把草稿里的那条命令存进命令库（不是立刻绑到某个手势上）。
- *
- * 重名时表单保存按钮已被 [commandNameDuplicated] 禁掉、成环时被 [commandReferenceCycle] 禁掉；
- * 本函数保留「按名字写入」的语义，是给编辑态（名字没变 = 它自己）兜底的。多条命令按名字引用单条命令
- * （步骤里存 `cmd:<名字>`），所以改名 / 删命令只能走编辑页，别在库层面直接动名字。
- */
-internal fun SettingsPage.addCommand() {
-    val (cmd, next) = draftToLibrary() ?: return
-    val name = cmd.name
-    val editingFrom = commandDraft.draft.editingName
-    val replaced = configState.commands.value.any { it.name == name }
-    // 结果一句话（改 / 覆盖 / 新增各一条；失败由 [saveCommands] 自己报）
-    val tip =
-        when {
-            editingFrom != null -> I18n.get(Strings.TOAST_COMMAND_MODIFIED, "已修改")
-            replaced -> I18n.get(Strings.TOAST_COMMAND_OVERWRITTEN, "已覆盖")
-            else -> I18n.get(Strings.TOAST_COMMAND_SAVED, "已保存")
-        }
-    // 改名回滚要用它：库先落盘、绑定后挪，绑定没挪成时得把库退回改名前的样子（见下面那条）。
-    val previousLibrary = configState.commands.value
-    val saveResult =
-        saveCommands(
-            next,
-            when {
-                // 编辑态：提交的是修改（名字没变 = 原地更新；改了名 = 挪到新名字下）
-                editingFrom != null && editingFrom != name -> "改名保存：$editingFrom → $name（${cmd.kind.id}）"
-
-                editingFrom != null -> "修改命令：$name（${cmd.kind.id}）"
-
-                replaced -> "覆盖命令：$name（${cmd.kind.id}）"
-
-                else -> "新增命令：$name（${cmd.kind.id}）"
-            },
-        )
-    // 没落盘就**到此为止**：下面那套 `reset` + 退出会把用户刚编的整份内容丢掉，
-    //  而文件里一个字节都没变（失败原因 [saveCommands] 已经报过「保存失败」）。
-    //  必须看返回值：写盘失败 / 只读态**不能**照样清表单并退出。
-    if (saveResult == CommandsSave.Failed) {
-        XLog.w("保存命令失败：表单保持原样，不 reset、不退出（$name）")
-        return
-    }
-    // (3) 手势上绑的还是 `cmd:旧名`，旧那条已经不在库里 —— 跟 [removeCommand] 同一套做法，
-    //   把绑定一起挪到新名字下，否则那句「已修改」是句空话。
-    var bindingMoved = true
-    if (editingFrom != null && editingFrom != name) {
-        val cfg = configState.config.value
-        val key = cfg.key(KeyId.PLUS)
-        val oldToken = Command.PREFIX + editingFrom
-
-        fun move(a: Action) = if (a.token == oldToken) Action.Custom(name) else a
-        val updated =
-            key.copy(
-                single = move(key.single),
-                double = move(key.double),
-                long = move(key.long),
-            )
-        if (updated != key) {
-            bindingMoved =
-                write(
-                    cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)),
-                    "改名后把绑定挪到新名字：$editingFrom → $name",
-                )
-        }
-    }
-    // 绑定没挪成 ⇒ 把命令库**退回改名前的样子**：库里是新名、手势上还指着 `cmd:旧名` 的话，
-    //  那只手按下去就是「这条命令已经不在了」（NOT_FOUND），而用户看到的却是「已修改」。
-    //  与 [removeCommand] 同一条纪律 —— 两边要么一起变、要么都不变。
-    // 绑定挪成了、但上面广播没发出去（[CommandsSave.BroadcastFailed]）时不报「已修改」：
-    //  那句会让用户以为侧键行为也跟过来了，而 saveCommands 已经报过「通知注入侧失败」。
-    if (!bindingMoved) {
-        saveCommands(previousLibrary, "改名失败，回滚命令库：$editingFrom → $name")
-    } else if (saveResult == CommandsSave.Ok) {
-        toast(tip)
-    }
-    // `editing` 必须在 `draft.reset()` 之前读 —— reset 会把 `editingName` 清掉。
-    val editing = editingFrom != null
-    commandDraft.draft.reset()
-    // 只在「新增」这条路上退（从「按键绑定」页右下角那颗 FAB 进来的那条）；编辑态
-    // （从「已保存的命令」列表点进来改）留在原地 —— 改完要能立刻在下面那张列表里看到结果。
-    if (!editing) goBack()
 }
 
 /**

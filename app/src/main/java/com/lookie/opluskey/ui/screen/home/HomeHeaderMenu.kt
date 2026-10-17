@@ -8,24 +8,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.ui.ConfirmDialog
+import com.lookie.opluskey.ui.HeaderMenuButton
+import com.lookie.opluskey.ui.MenuEntry
+import com.lookie.opluskey.ui.MenuPopup
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.component.ConfirmDialog
-import com.lookie.opluskey.ui.component.HeaderMenuButton
-import com.lookie.opluskey.ui.component.MenuEntry
-import com.lookie.opluskey.ui.component.MenuPopup
+import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.openStockPage
+import com.lookie.opluskey.ui.resetAll
+import com.lookie.opluskey.ui.restartModule
 import com.lookie.opluskey.ui.state.deviceSupported
-import com.lookie.opluskey.ui.state.linkReady
-import com.lookie.opluskey.ui.state.openStockPage
-import com.lookie.opluskey.ui.state.resetAll
-import com.lookie.opluskey.ui.state.restartModule
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
 /**
  * 首页顶栏右侧的菜单按钮 + 浮层菜单 —— 四项：「默认界面」「重启服务」「导出日志」「清空配置」。
  *
  *  只服务**首页**（`Screen.SHORTCUTS`）那一条顶栏，所以跟着这一屏放 ——
- *  原先它和「选择应用」页那份菜单一起长在 `ui/component/PageHeader.kt` 里，
+ *  原先它和「选择应用」页那份菜单一起长在 `ui/PageHeader.kt` 里，
  *  于是那个「公共组件」文件里躺着两块业务菜单、约 30 处页面字段触点。
  *  现在顶栏只提供 `actions` 槽位，菜单由各页自己摆（口径见 [PageHeader]）。
  *
@@ -96,7 +96,7 @@ internal fun SettingsPage.ResetMenu() {
                         enabled = rowsEnabled,
                     ) {
                         open = false
-                        onExportLog?.invoke()
+                        hooks.onExportLog?.invoke()
                     },
                     // 「更多」那一项**已删**（「去掉菜单里的更多」）：
                     // 进「更多选项」页只留首页那一行，且那一行**不吃任何闸**（见 [HomeScreen]）——
@@ -113,19 +113,19 @@ internal fun SettingsPage.ResetMenu() {
                         danger = true,
                     ) {
                         open = false
-                        confirmReset.value = true
+                        overlays.confirmReset = true
                     },
                 ),
         )
 
         ConfirmDialog(
-            show = confirmReset.value,
+            show = overlays.confirmReset,
             title = I18n.get(Strings.DIALOG_CLEAR_CONFIG_TITLE, "清空配置"),
             summary = I18n.get(Strings.DIALOG_CLEAR_CONFIG_MESSAGE, "设置与已保存的命令都会被清空，**不可恢复**。"),
             action = I18n.get(Strings.DIALOG_CLEAR_CONFIG_CONFIRM, "清空"),
-            onDismiss = { confirmReset.value = false },
+            onDismiss = { overlays.confirmReset = false },
             onConfirm = {
-                confirmReset.value = false
+                overlays.confirmReset = false
                 resetAll()
             },
         )
