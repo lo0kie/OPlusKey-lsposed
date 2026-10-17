@@ -1,10 +1,7 @@
 package com.lookie.opluskey.bridge
 
-import android.content.Context
 import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.MiniWindowGeometry
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.Reflect
 
 // 原生动画器直调（`CMD_MINI_ANIM`）：建动画参数、算起止矩形、调框架那两支动画入口。
@@ -109,7 +106,7 @@ internal fun FlexibleWindowBridge.miniAnimLocal(
             return
         }
     // 回调只需要「能被框架调用」；它内部只做通知，我们不需要在结束点插动作
-    // （转换的时机由宿主侧排，见 MiniWindowLauncher.MINI_ANIM_MODE）。
+    // （转换的时机由宿主侧排，见 MiniWindowFacts.MINI_ANIM_MODE）。
     val callback =
         try {
             java.lang.reflect.Proxy.newProxyInstance(
@@ -177,6 +174,9 @@ internal fun FlexibleWindowBridge.miniAnimLocal(
         XLog.w("$CMD_MINI_ANIM：已调 $METHOD_MINI_ANIM(#$taskId)（5 参，这条有过渡过滤）")
     } catch (e: Throwable) {
         XLog.w("$CMD_MINI_ANIM：$METHOD_MINI_ANIM 抛了：${e.javaClass.simpleName}: ${e.message}")
+        // invoke 抛了 = 框架**没**接管这份 Transaction（拿到了才会由它 apply/close）：
+        //  这条出口上得自己收掉，否则每失败一次漏一个 native 对象（与上面找不到方法那条出口同理）。
+        runCatching { transaction.close() }
     }
 }
 

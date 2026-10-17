@@ -31,7 +31,6 @@ import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.DONATE_CODE_SIZE
 import com.lookie.opluskey.ui.model.DonateTarget
-import com.lookie.opluskey.ui.model.PageIcons
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog

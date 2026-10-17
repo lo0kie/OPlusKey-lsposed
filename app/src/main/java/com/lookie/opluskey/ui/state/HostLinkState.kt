@@ -12,7 +12,7 @@ import io.github.suqi8.coui.kmp.basic.SnackbarHostState
  *
  *  两处判据都在这几个字段上：宿主侧有没有在跑（[hostServiceUp] + [hostAliveToken]）、
  *  注入侧回没回包（[injectStatus] + [injectAliveToken]）、以及「设置生效」的配置侧那半
- *  （见 `ui/state/LinkCheck.kt` 的 `linkReady`）。
+ *  （见 `ui/LinkCheck.kt` 的 `linkReady`）。
  *
  *  为什么**代次**（`*AliveToken`）单独立字段：那几个「在不在」的布尔初值必须是「正常」
  *  （否则每次进页面都会闪一下「未生效」），于是它们不能当判据用；代次初值是 0，

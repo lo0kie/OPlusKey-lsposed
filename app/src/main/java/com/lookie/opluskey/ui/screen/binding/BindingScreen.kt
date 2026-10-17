@@ -12,7 +12,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
@@ -21,20 +20,17 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.PageCornerFab
+import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.component.PageCornerFab
-import com.lookie.opluskey.ui.component.PageFabButton
-import com.lookie.opluskey.ui.component.rememberFabVisibleOnScroll
 import com.lookie.opluskey.ui.model.DISABLED_ALPHA
-import com.lookie.opluskey.ui.model.GRID_GAP
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.gestureLabel
-import com.lookie.opluskey.ui.state.BandHeight
-import com.lookie.opluskey.ui.state.rememberTick
+import com.lookie.opluskey.ui.rememberFabVisibleOnScroll
+import com.lookie.opluskey.ui.rememberTick
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -229,19 +225,16 @@ internal fun SettingsPage.BindingScreen(
         ) { page ->
             BindingList(
                 g = gestures[page],
-                enabled = enabled,
                 //  三个手势页**同时在场**（pager 会预组合相邻页）—— 只有当前那一页该抢焦点、
-                // 该收浮层、该吃方向键。不传这个的话进场三页各自 requestFocus，谁最后请求到
+                // 该收浮层、该吃方向键。不给 `active` 的话进场三页各自 requestFocus，谁最后请求到
                 // 谁说了算（真机上表现为「翻页后方向键在动上一页的圈」）。
-                active = pagerState.currentPage == page,
+                page = BindingPageState(enabled = enabled, active = pagerState.currentPage == page),
                 onOpenAppPicker = onOpenAppPicker,
                 onCreateCommand = navigateToCommands,
-                scrollBehavior = scrollBehavior,
                 // 分段控件在 pager 之外、由外层驱动 —— 它要的滚动量由**当前页**那一份给
                 // （见上面 `listScrolls` 的注释）。
-                scrollState = listScrolls[page],
-                // 内容顶上给分段控件留出的那一块（占位高度，见 [BindingList] 的 `tabBlock`）。
-                tabBlock = tabBlockDp,
+                // 内容顶上给分段控件留出的那一块（占位高度，见 [BindingScroll] 的 `tabBlock`）。
+                scroll = BindingScroll(scrollBehavior, listScrolls[page], tabBlockDp),
             )
         }
 
@@ -297,7 +290,7 @@ internal fun SettingsPage.BindingScreen(
                     // 「**完全不上色**」（用矢量图自带的填充色），不是「用 LocalContentColor」。
                     Icon(
                         PageIcons.CommandAdd,
-                        contentDescription = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"),
+                        contentDescription = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"),
                         tint = COUITheme.colorScheme.onPrimary,
                     )
                 }

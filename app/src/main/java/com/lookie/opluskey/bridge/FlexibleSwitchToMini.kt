@@ -1,10 +1,6 @@
 package com.lookie.opluskey.bridge
 
-import android.content.Context
-import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.MiniWindowGeometry
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.Reflect
 
 // 本地那条「全屏 → 小窗」：`switchState(task, 1, reason)` + 冒充柔性全屏态与失败回滚。

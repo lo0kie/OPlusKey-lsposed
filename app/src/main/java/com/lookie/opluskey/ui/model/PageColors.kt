@@ -43,7 +43,7 @@ internal val POPUP_SURFACE_DARK = Color(0xFF3D3D3D)
  *  0.72 是比顶栏（[FROSTED_SURFACE_ALPHA]）略保一点、又明显看得见糊的位置；顶栏可以更低，
  *  是因为它背后恒是页面自己的滚动内容，而浮层可能压在任意画面上。
  *
- *  消费方只有浮层菜单（`ui/component/MenuPopup.kt` 里 `MenuPopup` 那层）。确认弹窗的面板走**另一档**
+ *  消费方只有浮层菜单（`ui/MenuPopup.kt` 里 `MenuPopup` 那层）。确认弹窗的面板走**另一档**
  *  [DIALOG_FROSTED_ALPHA]：同一门账，只是它面板大、底下更平，要更透才看得见糊。
  */
 internal const val POPUP_FROSTED_ALPHA = 0.72f

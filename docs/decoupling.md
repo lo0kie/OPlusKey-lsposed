@@ -10,6 +10,38 @@
 
 ---
 
+## 零、2026-10-17 实测基线（本页正文的旧数字以此为界失效）
+
+正文各节的 `43 字段 / 15 文件 / ui/component / 18 个环` 是**改造前**的口径。改造后的可复核值：
+
+| 项 | 值 | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行） |
+| --- | --- | --- |
+| 包级 2-cycle / 3-cycle | **0** | `.temp/graph.py` 的 `CYCLES` 段无输出 |
+| `SettingsPage` 状态字段 | 35（21 val + 14 var） | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt` |
+| `SettingsPage.xxx` 扩展 | 87 个，散在 32 文件 | `grep -rcE 'fun SettingsPage\.' --include=*.kt .` |
+| `ui/SettingsPage.kt` 行数 | 699（原 879） | `wc -l ui/SettingsPage.kt` |
+| `inject/ProbeChannel.kt` 行数 | 338（原 868；`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`） | `wc -l inject/Probe*.kt` |
+| `host/action/MiniWindowLauncher.kt` 行数 | 658（原 877；常量与反射面在 `MiniWindowFacts.kt`） | `wc -l host/action/MiniWindow*.kt` |
+| 屏文件 import 页面 | 21 个（20 个屏 + 装配层 `ui/screen/PageRoot.kt`） | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/` |
+| 零引用 import | 0，且由 detekt 拦下 | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
+
+新的分层（方向是单向的，`ui.screen`/`ui.hook` 都只往 `ui` 与 `ui.state` 走）：
+
+```
+ui.hook  宿主页注入（换页 / 返回拦截 / 配置导入导出 / 窗口色）
+   ↓
+ui.screen 屏 + 装配（PageRoot 建页）
+   ↓
+ui       页面模型与页面行为（SettingsPage、Screen、页面组件、主题）
+   ↓
+ui.state 纯状态类（不扩展页面）      ui.model 纯展示数据
+```
+
+「页面行为」原先散在 `ui/state`，与「纯状态类」混住；现在 `fun SettingsPage.*` 一律在 `ui` 或
+`ui.screen`，`ui/state` 里只剩不反持页面的状态类 —— 这是 `ui ↔ ui.state` 环消失的原因。
+
+---
+
 ## 一、判据：什么叫「降耦合、高内聚」，怎么量
 
 不定判据的重构 = 想清楚之前先动手 —— `AGENTS.md` 一、1 只放行**拿得出可量理由**的重构（说不出理由的大幅重构须用户明确要求）。所以先立六条**可 grep / 可脚本化**的判据（每条都给出当前值与目标值）：
@@ -199,7 +231,7 @@ core/wire/ConfigBroadcast.kt:5 → core.config.CommandLibrary
 ### 动作 3：打断 `core/wire → core/config`
 
 - **怎么做**：`ConfigBroadcast` 需要的只是「命令库怎么序列化/反序列化」，把那份编解码从 `core/config/CommandLibrary.kt` 里**下沉到 `core/model`**（`CommandLibrary` 自身留在 `core/config` 做文件读写），或让线格式只传原始字符串、由接收侧自己解析。
-- **判据**：`grep -rn '^import com.lookie.opluskey.core.config' app/src/main/java/com/lookie/opluskey/inject/ app/src/main/java/com/lookie/opluskey/core/wire/` 为空 —— 这才让「注入侧读不到配置文件」重新变成**编译期**事实。
+- **判据**：`grep -rn '^import com.lookie.opluskey.core.config' app/src/main/java/com/lookie/opluskey/inject/ core/src/main/java/com/lookie/opluskey/core/wire/` 为空 —— 这才让「注入侧读不到配置文件」重新变成**编译期**事实。
 - **风险**：线格式一动就是跨进程协议，必须三处同步（发送方 / 接收方 / 判据日志），并且**待真机验证**（`AGENTS.md` 二、1.2）。
 
 ### 动作 4：`ui/` 破裂环（component 不许依赖 screen）
@@ -397,7 +429,7 @@ com.lookie.opluskey
 ```bash
 # 注入侧：已有 CI 项，另补一条「不许碰落盘那包」
 grep -rn '^import com.lookie.opluskey.core.config' app/src/main/java/com/lookie/opluskey/inject/
-grep -rn '^import com.lookie.opluskey.core.config' app/src/main/java/com/lookie/opluskey/core/wire/
+grep -rn '^import com.lookie.opluskey.core.config' core/src/main/java/com/lookie/opluskey/core/wire/
 # host 不许依赖注入侧与界面层
 grep -rn '^import com.lookie.opluskey.inject' app/src/main/java/com/lookie/opluskey/host/
 grep -rn '^import com.lookie.opluskey.ui'     app/src/main/java/com/lookie/opluskey/host/
@@ -427,7 +459,7 @@ grep -rn '^import com.lookie.opluskey.ui.screen' app/src/main/java/com/lookie/op
 
 | 做法                         | 为什么不做                                                                                                         |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| 拆 Gradle 多模块             | 单模块 + `implementation` 依赖是**故意**的（误加引用要变成编译错误）；拆模块要重排可见性，风险大于收益             |
+| 拆 Gradle 多模块             | **已有例外**：`core/` 已独立成 `:core`（两进程共用的那一层，值得编译期约束）。其余各包仍留 `:app` —— 拆它们要重排可见性，风险大于收益 |
 | MVVM / ViewModel / StateFlow | 本模块没有自己的 Activity，ViewModel 的宿主得自己伪造；加一层壳换不来东西                                          |
 | DI（Hilt / Koin）            | 注入侧零依赖与注解处理器冲突（system_server 类加载期可达性）                                                       |
 | Repository / DataSource 抽象 | 数据源只有宿主私有目录里两份文件，抽象即空壳                                                                       |

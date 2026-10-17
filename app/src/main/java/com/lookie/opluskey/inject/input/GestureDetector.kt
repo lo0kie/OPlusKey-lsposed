@@ -8,7 +8,6 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.inject.KeyHooks
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -34,7 +33,10 @@ private const val REPEAT_MAX_MS = 30_000L
  * 线程归属：`interceptKeyBeforeQueueing` 由 InputReader / Dispatcher 线程调，计时器走调用方
  * 给的 `handler`（main looper）—— `Pending` 的字段被这两条线程**都写也都读**（输入线程写
  * `sawFirstRelease` / `pressAt`，主 looper 那一枪写 `longPressAt` / `longPressFired`）。所以：
- *  · 跨线程的字段一律 `@Volatile`（`doubleFired` 除外 —— 只有输入线程碰它）；
+ *  · 跨线程的字段一律 `@Volatile`，**没有例外**：`doubleFired` 的写者除了输入线程，
+ *    还有 [reset] 的两条外部调用路径 —— 主 looper 的连发任务、以及配置广播线程
+ *    （`SideKeyInterceptor.cancelPending`）。它不参与「先判长按还是先判双击」那种读改写竞态，
+ *    但清零必须让输入线程看得见，否则上一按的标记会漏到下一按。
  *  · 抬手时**摘掉**长按那一枪（[cancelLongPressShot]）：到点读一眼 `sawFirstRelease` 是「再看一眼」，
  *    摘枪是「到点之前就没了」，后者与线程调度无关；
  *  · 但 `check → act` 那几段仍无锁，极端竞态下「既判长按又判单击」只是变小、没消失 ——
@@ -42,6 +44,13 @@ private const val REPEAT_MAX_MS = 30_000L
  */
 internal class GestureDetector(
     private val handler: Handler,
+    /**
+     * 每判出一个手势回调一次（链路自检记「最后一次判出手势的时刻」）。
+     *
+     * 由装配方注入（`KeyHooks` 装配时传 `noteGesture`），判定器自己不认识 `KeyHooks` ——
+     * 直接回写那个单例会形成 `inject.input` 与 `inject` 的包级环。
+     */
+    private val onGestureNoted: () -> Unit,
     /**
      * 判定出一个手势就回调一次。
      *
@@ -83,7 +92,7 @@ internal class GestureDetector(
          * 与 longPressFired 同理、也是必须的：判双击发生在第二次按下那一刻，而第二次抬手照样会走
          * `onKeyUp`，没有这个标记就会再开一个单击窗口、把双击变成「双击 + 单击」。
          */
-        var doubleFired: Boolean = false,
+        @Volatile var doubleFired: Boolean = false,
         /**
          * 本次按下的时刻（`onKeyDown` 里写、`reset` 里清）。
          *
@@ -419,8 +428,8 @@ internal class GestureDetector(
     ) {
         // 链路自检的**端到端实证**：真判出一个手势就记一笔。
         //  接管点装上只说明反射找对了类与方法，说明不了这版 ROM 的侧键事件真的走到这里 ——
-        //  只有这一笔能证明整条链通了（页面见 `ui/state/LinkCheck.kt`）。
-        KeyHooks.noteGesture()
+        //  只有这一笔能证明整条链通了（页面见 `ui/LinkCheck.kt`）。
+        onGestureNoted()
         // 触觉反馈**不在这里**：它已经挪回宿主侧、动作即将执行那一刻
         // （`host/GestureReceiver.runAction`）。理由见那边的 KDoc —— 一句话：
         // 判定侧振不出「服务在跑」这个事实（它判出手势就振，可宿主在不在它不知道），

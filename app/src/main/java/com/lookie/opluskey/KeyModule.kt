@@ -1,10 +1,11 @@
 package com.lookie.opluskey
 
+import com.lookie.opluskey.core.DEBUG_PROBE
+import com.lookie.opluskey.core.ENFORCE_DEVICE_GATE
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.MiniWindowGeometry
-import com.lookie.opluskey.core.model.ModuleInfo
 import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.seal.Seal
@@ -13,7 +14,7 @@ import com.lookie.opluskey.host.GestureReceiver
 import com.lookie.opluskey.host.SideKeyGestureHooks
 import com.lookie.opluskey.inject.KeyHooks
 import com.lookie.opluskey.inject.ProbeChannel
-import com.lookie.opluskey.ui.SettingsPageHooks
+import com.lookie.opluskey.ui.hook.SettingsPageHooks
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
 
@@ -38,7 +39,7 @@ class KeyModule : XposedModule() {
             "本机机型：${DeviceSupport.describe(
                 DeviceSupport.currentModel,
             )}；系统：${DeviceSupport.systemOf(DeviceSupport.currentAndroid, DeviceSupport.currentRomSeries)}" +
-                "；允许运行=$DeviceSupport.isAdapted",
+                "；允许运行=${DeviceSupport.isAdapted}",
         )
         if (!DeviceSupport.isAdapted && module.processName != HostApp.PAGE_PROCESS) {
             // 适配清单外的组合**只注入界面层**（见 [DeviceSupport]）——
@@ -169,13 +170,21 @@ class KeyModule : XposedModule() {
         /**
          * 取当前进程名。不用 hidden 的 `ActivityThread.currentProcessName()`（不同版本行为不一），
          * 直接读 `/proc/self/cmdline`，对任何进程都成立。
+         *
+         * `/proc/<pid>/cmdline` 的格式是**参数逐个用 `\0` 隔开、末尾再补一个 `\0`**。进程名只是第一段，
+         * 后面的 argv 与它无关。所以必须**截到第一个 `\0` 为止**，不能只削尾部：以
+         * `com.oplus.gesture\0--some-arg\0` 为例，削尾会留下 `com.oplus.gesture\0--some-arg`，
+         * 与包名比对永远不相等 —— 表现是「进程明明在，却一个 Hook 都没装」，且不报错。
+         *
+         * 用 `takeWhile` 而不是 `split('\0').first()`：后者会为整段 argv 建一个 List，
+         * 而这里只要前缀。空 cmdline（内核线程）得到空串，调用方走 `else ->` 分支，符合预期。
          */
         private fun currentProcessName(): String? =
             try {
                 java.io
                     .File("/proc/self/cmdline")
                     .readText()
-                    .trimEnd('\u0000')
+                    .takeWhile { it != '\u0000' }
                     .trim()
             } catch (e: Throwable) {
                 XLog.w("读 /proc/self/cmdline 失败，无法判断进程名", e)

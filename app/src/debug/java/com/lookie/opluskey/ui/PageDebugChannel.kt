@@ -42,7 +42,7 @@ internal object PageDebugChannel {
                 }
             }
         context.registerReceiver(receiver, IntentFilter(ACTION), Context.RECEIVER_EXPORTED)
-        XLog.i("调试通道已注册：am broadcast -a $ACTION --es screen …")
+        XLog.d("调试通道已注册：am broadcast -a $ACTION --es screen …")
         return receiver
     }
 }

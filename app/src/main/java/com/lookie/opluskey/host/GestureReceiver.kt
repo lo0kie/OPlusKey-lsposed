@@ -208,7 +208,7 @@ internal object GestureReceiver {
      * `setPackage` 指定包名就能送到它注册的接收器（不必轮询）。
      *
      * 顺带带上两个诊断字段，让首页能判「读到的配置是不是真值」与「这个键执行过没有」——
-     * 光说一句「我在」判不出那两种（配置没到 / 从来没按过）的真实故障，见 `ui/state/LinkCheck.kt`。
+     * 光说一句「我在」判不出那两种（配置没到 / 从来没按过）的真实故障，见 `ui/LinkCheck.kt`。
      */
     private fun reportAlive(ctx: Context) = sendAlive(ctx, ConfigStore.read().key(KeyId.PLUS).enabled)
 
@@ -319,8 +319,11 @@ internal object GestureReceiver {
         //   统一成「缺失 = 不判」：旧版本转发侧 / 手搓的广播仍然能执行。
         if (sentAt > 0L) {
             val age = android.os.SystemClock.elapsedRealtime() - sentAt
-            if (age > STALE_MS) {
-                XLog.w("${key.label} 的 $phaseId 已过期（发出于 ${age}ms 前），丢弃不执行")
+            // `age < 0` = 上游给了个未来的时间戳（时钟跳变 / 手搓广播）。必须一并当过期丢弃：
+            //  它会以「最新时刻」写进下面的 lastHandledAt，之后所有正常手势都满足 sentAt <= prev，
+            //  被当成补发永久吞掉 —— 一次脏数据就把这个手势锁死到宿主进程重启。
+            if (age > STALE_MS || age < 0L) {
+                XLog.w("${key.label} 的 $phaseId 已过期或时间戳异常（age=${age}ms），丢弃不执行")
                 return
             }
         }

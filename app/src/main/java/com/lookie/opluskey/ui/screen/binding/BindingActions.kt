@@ -1,35 +1,19 @@
 package com.lookie.opluskey.ui.screen.binding
 
-import androidx.compose.runtime.key
-import androidx.compose.ui.input.key.key
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
-import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.blockedReason
+import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.MODULE_UNAVAILABLE_HINT
-import com.lookie.opluskey.ui.model.PENDING_DEVICE_HINT
-import com.lookie.opluskey.ui.model.UNSUPPORTED_DEVICE_HINT
 import com.lookie.opluskey.ui.state.devicePending
 import com.lookie.opluskey.ui.state.deviceSupported
-import com.lookie.opluskey.ui.state.linkReady
-import com.lookie.opluskey.ui.state.toast
-import com.lookie.opluskey.ui.state.write
-
-internal fun SettingsPage.actionOf(
-    cfg: Config,
-    g: Gesture,
-): Action {
-    val key = cfg.key(KeyId.PLUS)
-    return when (g) {
-        Gesture.SINGLE -> key.single
-        Gesture.DOUBLE -> key.double
-        Gesture.LONG -> key.long
-    }
-}
+import com.lookie.opluskey.ui.toast
+import com.lookie.opluskey.ui.write
 
 /**
  * 把一个动作绑到手势 [g] 上。
@@ -51,13 +35,9 @@ internal fun SettingsPage.pick(
             "选动作被拦住（页面未就绪）：链路就绪=$linkReady 清单命中=$deviceSupported " +
                 "系统版本等待适配=$devicePending ${g.id} → ${spec.token}",
         )
-        toast(
-            when {
-                devicePending -> PENDING_DEVICE_HINT
-                !deviceSupported -> UNSUPPORTED_DEVICE_HINT
-                else -> MODULE_UNAVAILABLE_HINT
-            },
-        )
+        // 与首页那条常驻提示**同一句话**（判据见 [blockedReason]）：被拦住时看到的原因
+        //  不该因为你从哪条路点进来而不同。
+        toast(blockedReason() ?: MODULE_UNAVAILABLE_HINT)
         return false
     }
     return try {

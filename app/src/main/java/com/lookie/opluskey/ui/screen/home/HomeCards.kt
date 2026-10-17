@@ -1,0 +1,274 @@
+package com.lookie.opluskey.ui.screen.home
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.ui.Screen
+import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.SwitchRow
+import com.lookie.opluskey.ui.linkReady
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.HOME_ACTION_ROWS
+import com.lookie.opluskey.ui.model.HOME_BINDING_ROWS
+import com.lookie.opluskey.ui.model.HOME_MORE_ROWS
+import com.lookie.opluskey.ui.model.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.setKeyEnabled
+import com.lookie.opluskey.ui.setToastOnRun
+import com.lookie.opluskey.ui.setVibrate
+import com.lookie.opluskey.ui.state.deviceSupported
+import com.lookie.opluskey.ui.tickNow
+import io.github.suqi8.coui.kmp.basic.BasicComponent
+import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.DividerDefaults
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.cardListPositionOf
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.theme.COUITheme
+
+// 首页那三张卡 —— 从 `HomeScreen.kt` 拆出来。
+//
+// `HomeScreen` 原来是一个 434 行的函数：状态、链路自检、提示条、三张卡、两个确认窗、
+// 一个菜单全平铺在一起。按**一张卡**切开之后，页面只剩「铺顺序 + 那两条 effect」，
+// 卡里的人只管自己那几行。
+
+/**
+ * 「按键绑定」那张卡 —— 第 1 行主开关、第 2 行进「按键绑定」子页。
+ *
+ * @param pageEnabled 整页总闸（含主开关自己）—— 只给第 2 行用
+ */
+@Composable
+internal fun SettingsPage.HomeBindingCard(
+    pageEnabled: Boolean,
+    ui: HomeUiState,
+) {
+    val tick = rememberTick()
+    val key = configState.config.value.key(KeyId.PLUS)
+    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
+        // 主开关是这张卡的第一行，**不能被自己锁死**：它一旦关掉，全页（含这一页其它控件、
+        // 「按键绑定」子页、顶栏菜单三项）都禁用 —— 它要是跟着一起禁用，就再也开不回来了。
+        //  所以它的 `enabled` 吃的是 [linkReady]（宿主侧在跑 **且** 注入侧报到了）**外加**
+        // `!configReadOnly` 与 `deviceSupported`，**不吃 `pageEnabled`**（后者含它自己）。
+        // 这几个条件里都没有主开关的任何成分，所以「关掉它 ⇒ 它自己被禁用」这条死路不存在。
+        //
+        //  注意：`!configReadOnly` 这一条是被真机逼出来的：只读态下刚进页时
+        // 链路还没报到（`linkReady=false`）⇒ 主开关是灰的；等注入侧回包一到、`linkReady` 变 true，
+        // 它就**自己重新亮起来**了，用户当场拨了三下（每次都被 `write` 拒掉）。
+        // **「拨了没反应」比「一开始就灰着」更难读**，所以这一档必须一起禁。
+        //  `deviceSupported` 同理：适配清单外的组合只注入了界面层，拨它也不会生效。
+        //
+        // 它写的是 [KeyConfig.enabled] —— 执行侧早就存在的总闸（注入侧与宿主侧各有一道
+        // `if (!…enabled) return`），所以这一开关不只是界面置灰，是真的把功能关掉。
+        //
+        // 开关切换交给整行点击 —— 与「振动反馈」行同一条规矩（行与开关各切一次会「闪一下又变回去」）。
+        // 库 `Switch` 自己那次无条件振动由 [SwitchRow] 统一掐掉，只留 `tick()` 这条通用通道。
+        SwitchRow(
+            title = I18n.get(Strings.SETTING_ENABLE_BINDING, "启用按键绑定"),
+            // 开着时说明「关掉会怎样」；关着时直接报状态 —— 光看一个灰开关不知道后果
+            summary =
+                if (key.enabled) {
+                    // （14 字）正好一行放得下，再多一个字就折行、把这张卡撑高
+                    I18n.get(Strings.HOME_SWITCH_DESC_ENABLED, "关闭后此模块将停用")
+                } else {
+                    I18n.get(Strings.HOME_SWITCH_DESC_DISABLED, "侧键由系统处理")
+                },
+            // 行首图标与下一行对齐用（不给的话两行的标题左边缘会差一个图标宽）。
+            // 电源符号 = 「这一行是总开关」。
+            icon = PageIcons.Power,
+            checked = key.enabled,
+            position = cardListPositionOf(0, HOME_BINDING_ROWS),
+            enabled = linkReady && !configState.readOnly && deviceSupported,
+        ) {
+            tick()
+            // 打开之前先要一次确认：没确认过就只弹窗、**不写盘**。
+            //  顺序不能反过来 —— 先写后弹等于「先启用了再问你同不同意」。
+            //  关闭不需要确认，直接写。
+            if (it && !configState.config.value.disclaimerAccepted) {
+                XLog.w("免责声明：还没确认过，弹窗（总闸先不打开）")
+                ui.disclaimerPending = true
+            } else {
+                setKeyEnabled(it)
+            }
+        }
+
+        HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+        BindingEntryRow(pageEnabled)
+        //  这张卡**只有两行**：第 1 行主开关、第 2 行进「按键绑定」子页。
+        // 「响铃状态」那两档（`setRingerModeInternal`）已删，理由见「按键绑定」小标题上方那段注释。
+    }
+}
+
+/**
+ * 「按键行为」那张卡 —— 振动反馈 / 执行时提示（两个**全局**项，不分手势）。
+ *
+ *  「长按连发」那几个设置不在这张卡里（它们只管长按那一个手势，摆在首页会让人以为对三个手势
+ *  都生效，见 `LongRepeatCard`）。
+ */
+@Composable
+internal fun SettingsPage.HomeActionsCard(pageEnabled: Boolean) {
+    val tick = rememberTick()
+    val cfg = configState.config.value
+    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
+        SwitchRow(
+            title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
+            summary = I18n.get(Strings.HOME_VIBRATE_DESC, "命令触发时振动"),
+            icon = PageIcons.Vibrate,
+            checked = cfg.global.vibrate,
+            position = cardListPositionOf(0, HOME_ACTION_ROWS),
+            // `enabled = false` 时 COUI 不挂 `clickableModifier`、开关也跟着灰，
+            // 行点击与开关点击自然都失效。
+            enabled = pageEnabled,
+        ) {
+            tickNow()
+            setVibrate(it)
+        }
+
+        HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+
+        // 「执行时提示」：执行命令时弹一条 Toast（内容是**命令名**）。
+        //  它是**全局**项，不分命令 —— 它回答的是「按下去到底有没有被触发」，与「这条命令是什么」无关。
+        //  判定侧读它见 `host/action/CustomCommandRunner`（宿主进程里执行时**现读**配置，
+        // 所以拨完开关立刻生效，不必重启）。
+        SwitchRow(
+            title = I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"),
+            summary = I18n.get(Strings.HOME_TOAST_DESC, "执行命令时系统提示"),
+            icon = PageIcons.CommandToast,
+            checked = cfg.global.toastOnRun,
+            position = cardListPositionOf(1, HOME_ACTION_ROWS),
+            enabled = pageEnabled,
+        ) {
+            tick()
+            setToastOnRun(it)
+        }
+    }
+}
+
+/**
+ * 「其他」那张卡 —— 进「更多选项」页 + 捐赠打赏。
+ *
+ *  两行都**不吃任何闸**（用户要求「首页的更多行不跟随总闸禁用」）：
+ *   · 「更多选项」是进那一页的**唯一入口**，而那一页里有「运行状态」—— 模块整页禁用
+ *  （机型不支持 / 链路没齐 / 配置只读 / 主开关关着）时，用户正需要进去看断在哪一段；
+ *   · 打赏与模块启没启用无关，整页禁用时它照样该能点。
+ *  所以行尾箭头与行首图标恒用常规色，不按 `pageEnabled` 换灰。
+ */
+@Composable
+internal fun SettingsPage.HomeOtherCard(ui: HomeUiState) {
+    val tick = rememberTick()
+    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
+        BasicComponent(
+            title = I18n.get(Strings.MORE_OPTIONS_TITLE, "更多选项"),
+            // 副标题只报这一页有什么，不交代机制（「一起改短」）
+            summary = I18n.get(Strings.HOME_MORE_OPTIONS_SUMMARY, "运行状态与配置备份"),
+            startAction = { Icon(PageIcons.MoreOptions, null) },
+            endActions = {
+                Icon(
+                    PageIcons.EnterArrow,
+                    contentDescription = null,
+                    modifier = Modifier.size(ROW_END_ICON_SIZE),
+                    tint = COUITheme.colorScheme.onSurfaceVariantActions,
+                )
+            },
+            cardListPosition = cardListPositionOf(0, HOME_MORE_ROWS),
+            onClick = {
+                navTo(Screen.ABOUT)
+            },
+        )
+
+        HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+
+        // 「捐赠打赏」：点开一层菜单（三个去处），选中一个再弹**居中**的收款码窗口。
+        //  与「更多选项」并排在这一张卡里 —— 两行都是「偶尔才点一次」的去处。
+        //  行尾给选择器字形（读作「点了要选点什么」），不是进下一页的箭头，与「语言」那一行同一套。
+        BasicComponent(
+            title = I18n.get(Strings.HOME_DONATE, "捐赠打赏"),
+            summary = I18n.get(Strings.HOME_DONATE_SUMMARY, "您的慷慨将帮助此项目持续发展"),
+            startAction = { Icon(PageIcons.Donate, null) },
+            endActions = {
+                Icon(
+                    PageIcons.Selector,
+                    contentDescription = null,
+                    modifier = Modifier.size(ROW_END_ICON_SIZE),
+                    tint = COUITheme.colorScheme.onSurfaceVariantActions,
+                )
+            },
+            cardListPosition = cardListPositionOf(1, HOME_MORE_ROWS),
+            modifier = Modifier.preciseClickAnchor(ui.donateClick),
+            onClick = {
+                tick()
+                ui.showDonateMenu = true
+            },
+        )
+    }
+}
+
+/**
+ * 「按键绑定」那张卡的第 2 行 —— 进「按键绑定」子页（纯跳转，行尾只有箭头）。
+ *
+ * 进不去那个页面，也就不存在「关着还能改配置」。
+ */
+@Composable
+private fun SettingsPage.BindingEntryRow(pageEnabled: Boolean) {
+    // 第 2 行：进「按键绑定」子页（纯跳转，行尾只有箭头）。
+    // 进不去那个页面，也就不存在「关着还能改配置」。
+    //
+    //  行尾箭头**自己画**：库的 `ArrowPreference` 那颗是 COUI 图标集的 12x24 窄箭头（描边 1.4），
+    // 与页面其余 Tabler 图标（描边 2）不是一支笔。自己画就得自己管两档色 —— 照抄库那支选择器
+    // （`onSurfaceVariantActions` / `disabledOnSecondaryVariant`）。
+    // 尺寸见 [ROW_END_ICON_SIZE]：24dp 下 Tabler 那一段折线正好与库原箭头一样高。
+    val bindingIconTint by animateColorAsState(
+        targetValue =
+            if (pageEnabled) {
+                COUITheme.colorScheme.onSurfaceContainer
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "HomeBindingIcon",
+    )
+    val bindingArrowTint by animateColorAsState(
+        targetValue =
+            if (pageEnabled) {
+                COUITheme.colorScheme.onSurfaceVariantActions
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "HomeBindingArrow",
+    )
+    BasicComponent(
+        title = I18n.get(Strings.SETTING_KEY_BINDING, "按键绑定"),
+        summary = I18n.get(Strings.HOME_BINDING_CARD_SUMMARY, "配置单击、双击、长按对应的动作"),
+        startAction = {
+            Icon(
+                PageIcons.TouchApp,
+                contentDescription = null,
+                tint = bindingIconTint,
+            )
+        },
+        endActions = {
+            Icon(
+                PageIcons.EnterArrow,
+                contentDescription = null,
+                modifier = Modifier.size(ROW_END_ICON_SIZE),
+                tint = bindingArrowTint,
+            )
+        },
+        cardListPosition = cardListPositionOf(1, HOME_BINDING_ROWS),
+        enabled = pageEnabled,
+        onClick = {
+            navTo(Screen.BINDING)
+        },
+    )
+}

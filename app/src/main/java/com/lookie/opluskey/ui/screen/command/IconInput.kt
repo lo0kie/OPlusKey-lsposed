@@ -26,8 +26,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.component.rememberRowIconColor
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
+import com.lookie.opluskey.ui.rememberRowIconColor
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputViewDefaults

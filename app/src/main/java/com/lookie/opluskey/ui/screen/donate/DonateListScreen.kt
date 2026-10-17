@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.component.currentHeaderHeight
+import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.Donor
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
@@ -57,7 +57,7 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
  *  排成什么样全在这一页 —— 就是一张**两列的表**（名字、金额），格子居中、行列之间有线、
  *  外面一圈框，表头那一行只靠字加深（加粗 + 主文字色，不铺底色）。
  *
- *  **这张表是手写的，不走正文记号那套**：`ui/component/EmphasisText` 只认**加粗**与
+ *  **这张表是手写的，不走正文记号那套**：`ui/EmphasisText` 只认**加粗**与
  *  **行首 `- `** 两种记号，是给弹窗正文用的 —— 它根本没有表格，硬上也画不出这张表要的
  *  东西（格子居中、行列都画线、外圈一圈框）。一张两列静态表要的这里全有现成的
  *  （`Row` / `Text` / `HorizontalDivider` / `VerticalDivider`），手写比硬套省事。

@@ -30,8 +30,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.AnimatedFade
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.component.AnimatedFade
 import com.lookie.opluskey.ui.model.APP_ICON_BITMAP_SIZE
 import com.lookie.opluskey.ui.model.APP_KIND_MODULE_DARK
 import com.lookie.opluskey.ui.model.APP_KIND_MODULE_LIGHT
@@ -39,7 +39,6 @@ import com.lookie.opluskey.ui.model.APP_KIND_TAG_BG_ALPHA
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_INSIDE
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_RADIUS
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_RAISE
-import com.lookie.opluskey.ui.model.APP_ROW_HEIGHT
 import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.APP_STATE_TEXT_GAP
 import com.lookie.opluskey.ui.model.LaunchableApp

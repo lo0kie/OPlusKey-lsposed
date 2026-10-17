@@ -144,21 +144,18 @@ internal class CustomCommandRunner(
             XLog.w("  第 ${index + 1} 步（KSU 别名）→ $shell")
             execShell(shell)
             next = index + 1
-        } else if (shell != null) {
-            // 连续的 shell 步骤合并成一条（串行由 sh 自己保证）；**遇到别名就断开**，
-            // 让别名那一步走上面那条单独派发的路（同上）。
-            val merged = ArrayList<String>()
-            var cursor = index
-            while (cursor < steps.size) {
-                val text = shellStepText(steps[cursor]) ?: break
-                if (KsuCompat.isAlias(text)) break
-                merged.add(text)
-                cursor++
-            }
-            val joined = merged.joinToString("; ")
-            XLog.w("  第 ${index + 1}~$cursor 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
+        } else if (shell != null && gapMs <= 0) {
+            // 只有「没有步骤间隔」时才合并：`a; b` 是零延迟，合并等于把用户配的 stepDelayMs 抹掉。
+            val (joined, nextIndex) = collectShellRun(steps, index)
+            XLog.w("  第 ${index + 1}~$nextIndex 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
             execShell(joined)
-            next = cursor
+            next = nextIndex
+        } else if (shell != null) {
+            // 有步骤间隔（gapMs > 0）：这一步单独派发，间隔由末尾那次 postDelayed 撑住。
+            // 与别名那条同理 —— 间隔是配置的一部分，不能靠 `;` 的零延迟糊过去。
+            XLog.w("  第 ${index + 1} 步（shell，按间隔单独派发）→ ${XLog.redactCommand(shell)}")
+            execShell(shell)
+            next = index + 1
         } else {
             val action = Action.parse(steps[index])
             XLog.w("  第 ${index + 1} 步 → ${XLog.redactToken(action.token)}")
@@ -215,6 +212,27 @@ internal class CustomCommandRunner(
      */
     private fun shellStepText(step: String): String? =
         if (step.startsWith(Command.PREFIX)) null else (Action.parse(step) as? Action.Shell)?.command
+
+    /**
+     * 从 [index] 起收集**连续的** shell 步骤，返回（用 `; ` 拼好的一条, 下一个下标）。
+     *
+     *  遇到非 shell 步骤、或 KSU 别名就断开：别名会被翻译成原生调用（不是真 shell），
+     *  并进拼接串会让 `runShell` 的前缀认领把整串认成别名，后面那些步骤随整串被吞掉。
+     */
+    private fun collectShellRun(
+        steps: List<String>,
+        index: Int,
+    ): Pair<String, Int> {
+        val merged = ArrayList<String>()
+        var cursor = index
+        while (cursor < steps.size) {
+            val text = shellStepText(steps[cursor]) ?: break
+            if (KsuCompat.isAlias(text)) break
+            merged.add(text)
+            cursor++
+        }
+        return merged.joinToString("; ") to cursor
+    }
 
     private companion object {
         /** 自定义命令展开最大深度 —— 界面不成环，但命令库是纯文本、可能被手改出环。 */

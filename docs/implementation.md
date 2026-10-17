@@ -150,7 +150,7 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
 | 按字符串名反射找类（`Reflect.findClass`）                                       | `import androidx.*` / Compose / COUI（判据是「这个类会不会在 system_server 里被执行」） |
 | `core/`（model/log/reflect/wire）+ `KeyModule`（只依赖公开 API）                | `inject/` 下引用 `androidx.*` / COUI，或引用 `core/config` / `host/` / `ui/`            |
 | 候选类名只写在 `bridge/Framework.kt` 的候选表里                                 | 在 `inject/KeyHooks.kt` 里就地写类名字符串                                              |
-| 系统配置只经 `bridge/host/SystemActionButtonConfig.kt`                        | 在别处自己拼 `content://` 或硬编码列名                                                  |
+| 系统配置只经 `bridge/host/SystemActionButtonConfig.kt`                          | 在别处自己拼 `content://` 或硬编码列名                                                  |
 
 framework 私有类**一律按字符串名解析**：它们会被 ROM 改名，写死引用等于「换一个 ROM 版本就 `NoClassDefFoundError`
 → 开机循环」。 `StrategyActionButtonKeyLaunchApp` 就是这一类 —— 它在 `com.android.server.policy` 与
@@ -218,6 +218,27 @@ framework 私有类**一律按字符串名解析**：它们会被 ROM 改名，�
   一律返回「已适配」，判定照算、日志照打，只是不据此拒绝注入 —— 开发时机型 / 系统版本随时在变，
   被拦下会让人以为模块坏了。关掉后「更多选项 → 适配清单」的「本机」行会跟着报「已适配」，
   那是行为的如实反映，不是判定错了。
+- **`beta` 档是「发布用 debug」**：同样是这道闸关掉（`src/beta/.../BuildFlags.kt`），但其余一律照
+  release —— 同一份发布签名、同样的封存资产与签名指纹校验、`DEBUG_PROBE=false`，日志则是完整版
+  （`VERBOSE_LOG=true`）。给清单外机型的用户用，同时保留防篡改。
+
+    | 档      | 机型闸 | 落点允许猜 | 调试通道 | 详细日志 | 防篡改 | 签名 |
+    | ------- | ------ | ---------- | -------- | -------- | ------ | ---- |
+    | debug   | 关     | 开         | 开       | 开       | 无     | 调试 |
+    | beta    | 关     | 开         | 关       | 开       | 有     | 发布 |
+    | release | 开     | 关         | 关       | 关       | 有     | 发布 |
+
+    判据不是「运行时判断」而是**源集文件是否存在**：`core/src/{debug,beta,release}/java/com/lookie/opluskey/core/BuildFlags.kt`
+    各一份同名常量，打包时只有一份进产物；`SealPin` 由 `:core` 的 `SealReleaseAssets` 为 `release` 与
+    `beta` 两个变体各生成一份（`core/src/debug` 那份是 `SEAL_ENABLED=false` 的明文直通）。
+    复核：`ls core/src/{debug,beta,release}/java/com/lookie/opluskey/core/BuildFlags.kt` 三份都在；
+    三档区分是否真的生效，`python tools/check_variants.py` 一次跑完（它按「该串只应出现在哪几档」
+    逐项判定：详细日志、机型闸、调试通道、明文/封存资产）。
+
+- **CI 也出三档**（`.github/workflows/build.yml`），但**发到模块仓库的只有一个**：
+  `versionName` 带 `-` 的预发布发 `beta` 档（给清单外机型），正式版发 `release` 档。
+  没配签名密钥时只出 debug —— 封存层依赖签名派生密钥，没有明文回退。
+
 - **要加机型或加一版 ROM**：加一行 + **在真机上把接管点重新验一遍**。那些类与方法都是 ROM 私有的，
   换机型 / 换 ROM 版本会整体换名换形，那种情况下模块会「拦下来但什么都不做」，比直接不支持更难排查
   （见 `device-findings.md` 十九）。
@@ -262,16 +283,66 @@ ROM 私有的东西分三类，**各自按 ROM 系列（`17.0.0` 这种）分档
 - **没进档的东西**：小窗 bundle 的 key 与枚举值（`extra_window_mode` / `WINDOWING_MODE_ZOOM` /
   `mZoomLaunchFlags`）—— 它们是协议值，改了要在真机上重新验，留在实现里并在注释里写明。
 
-## 九、提交前检查（三道闸）
+## 九、提交前检查（三道闸 + 一道锁定校验）
 
-| 闸       | 命令                      | 规则落在哪                                          |
-| -------- | ------------------------- | --------------------------------------------------- |
-| 格式     | `./gradlew spotlessApply` | `app/build.gradle.kts` 的 `spotless` 段（ktlint）   |
-| 静态检查 | `./gradlew detekt`        | `config/detekt/detekt.yml`                          |
-| Lint     | `./gradlew lintDebug`     | `app/build.gradle.kts` 的 lint 段（`abortOnError`） |
+| 闸       | 命令                      | 规则落在哪                                           |
+| -------- | ------------------------- | ---------------------------------------------------- |
+| 格式     | `./gradlew spotlessApply` | 根 `build.gradle.kts` 的 `spotless` 段（ktlint）     |
+| 静态检查 | `./gradlew detekt`        | `config/detekt/detekt.yml`                           |
+| Lint     | `./gradlew lintDebug`     | 根 `build.gradle.kts` 的 `Lint.applyProjectPolicy()` |
 
+三道闸一起跑用 `./gradlew gate`（根脚本注册的聚合任务，两个模块 × 三个任务）。
+
+- **`gate` 与打包分开跑**：`assemble*` 会带两遍 R8（release 与 beta 各一遍）。把它们串在一条命令里，
+  构建时间就是三道闸的好几倍 —— 而绝大多数「改完看一眼」根本不需要包。
+
+- **三个闸的配置都在根脚本里，一处定义、两个模块共用**（`:app` 与 `:core` 的 `build.gradle.kts`
+  **不再各写一份**）。重复的规则等于没有规则：改一边另一边不会红，只会静默地跑在两套标准上 ——
+  拆模块那一轮就踩过（detekt 阈值只在 `:app` 调过，`:core` 仍是默认值）。
+  挂法是 `subprojects { plugins.withId("…") { extensions.configure<…> } }`：`subprojects` 段在根脚本
+  求值时先跑，那时子项目的 `plugins { }` 还没执行，直接 configure 会当场失败。
 - 历史存量进的是 detekt 的 `config/detekt/baseline.xml` 与 lint 的 `@Suppress` 注解（**没有** lint
-  baseline 文件 —— 那个名字并不存在）。
-- **新代码不许再往基线里加条目**；加了要在提交信息里说明为什么。
-- 行长上限的值写在 `app/build.gradle.kts` 的 `ktlintRules` 里。
+  baseline 文件 —— 那个名字并不存在）。基线是**两个模块共用一份**：detekt 按「本模块扫到的文件」
+  去匹配，匹配不上就静默忽略，所以共用不会互相污染。
+- **新代码不许再往基线里加条目**；加了要在提交信息里说明为什么。拆得动的存量要顺手**减**条目
+  —— `PageRoot.kt` 那两条（`LongMethod` / `CyclomaticComplexMethod`）是拆完整页之后删掉的，
+  这类「基线变短」的 diff 比「挪签名」有价值得多。
+- 行长上限的值写在根 `build.gradle.kts` 的 `ktlintRules` 里。
+- **死 import 由 ktlint 的 `no-unused-imports` 管**（`ktlintRules` 里显式 `enabled` —— ktlint 1.8 默认
+  不跑它，实测「完全无引用的 import」也原地不动）。它按 PSI 引用判，比 detekt 的 `UnusedImports` 准；
+  detekt 那条留着兜底。
+- **两道闸都判不了「同名遮蔽」**：`val key = cfg.key(...)` 这种，短名在文件里出现过，两个工具都当成
+  「还在用」。`tools/find_shadowed_imports.py` 只把「import 短名与文件内声明同名」的文件列出来
+  （十来行，人工扫一眼即可）；它**不做判定**，因为文本层分不清 `Modifier.padding()`（扩展调用，import
+  有用）与 `cfg.key()`（成员调用，import 无用）。
 - 「注入侧不得引用界面层依赖」的复核命令见 `architecture-refactor.md` §六。
+
+### 依赖锁定（`app/gradle.lockfile`）
+
+- 开关在根目录 `build.gradle.kts` 的 `subprojects { dependencyLocking { lockAllConfigurations() } }`；
+  锁文件是 `app/gradle.lockfile`（**入库**，258~414 条，一条 = 一个 `group:artifact:version` + 用到它的配置）。
+- 改了 `dependencies { }` 之后：`./gradlew :app:dependencies --write-locks`，把锁文件的 diff 一起提交
+  —— 那份 diff 就是「这次升了什么」的清单。
+- **忘了锁的那次本地照样编得过**：Gradle 对「没进锁文件的配置」是宽松的（按解析结果走，只有 STRICT
+  模式才当场失败）。所以 CI 里有一道「校验依赖锁定」：重写一遍锁文件再和库里那份比对，变了就红灯。
+- 插件（AGP / Kotlin / detekt / spotless）与它们的工具链**不在锁定范围**：那些版本写在 `plugins { }`
+  与根脚本的 `ktlintVersion` / detekt 插件版本里，改版本本来就得动手改文件。
+- 生成锁文件要在**联网**状态下跑：`--offline` 时解析不到的配置会被标 `(n)`、不进锁文件，
+  于是本地锁出来的那份比 CI 里的小一圈，比对必然对不上。
+
+### 配置缓存（`gradle.properties` 的 `org.gradle.configuration-cache`）
+
+- 开着。收益是**每次调用**省掉配置阶段 —— 本项目两个模块 × 三档变体 = 6 套任务图，
+  实测 `./gradlew gate` 从 41 秒降到 3 秒（第二次起）。
+- **它有一个前提，不是加一行开关就行**：配置阶段不许出现「只在这 一次成立」的取值。
+  这条以前不成立 —— `build_id` 原本是 `resValue("string", "build_id", 格式化(当前时间))`，
+  取的是**配置期**的时钟，一开缓存就被冻成第一次那个时刻（一天里出十个包，版本行都是同一个时）。
+  现在改成 `GenerateBuildId` 任务的产物（执行期取时间、`SOURCE_DATE_EPOCH` 走 `@Input`）。
+- `GenerateBuildId` 还写了 `outputs.upToDateWhen { false }`：**每次构建都重新取时间**。
+  因为「现在几点」不是任务输入，默认的增量判定会让它在源码变了、包也变了的情况下仍停在更早那一次
+  —— 实测踩到：改一行注释重新出包，包里还是 6 分钟前那个时刻。代价只是资源重新合并 + 重新打包，
+  R8 不受影响（字符串资源不进混淆）。
+- **它没有降级成警告**（不设 `configuration-cache.problems=warn`）：那条会让「缓存不可用」
+  悄悄退回普通构建，性能白丢而 CI 仍然绿。现在有人在配置期引入读时钟 / 读随机数，
+  Gradle 会当场报错并指出行号。
+- 要临时关掉：`./gradlew --no-configuration-cache <task>`，或删掉 `gradle.properties` 那一行。

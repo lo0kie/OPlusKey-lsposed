@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen.command
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -11,7 +10,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
@@ -24,7 +22,8 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.component.frosted
+import com.lookie.opluskey.ui.addCommand
+import com.lookie.opluskey.ui.frosted
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
@@ -34,9 +33,7 @@ import com.lookie.opluskey.ui.model.TOOLBAR_ICON_SIZE
 import com.lookie.opluskey.ui.model.TOOLBAR_SHADOW_ALPHA
 import com.lookie.opluskey.ui.model.edgeSlideIn
 import com.lookie.opluskey.ui.model.edgeSlideOut
-import com.lookie.opluskey.ui.screen.apppicker.appLabelOf
-import com.lookie.opluskey.ui.screen.binding.BindingScreen
-import com.lookie.opluskey.ui.state.rememberTick
+import com.lookie.opluskey.ui.rememberTick
 import io.github.suqi8.coui.kmp.basic.FloatingToolbar
 import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -98,9 +95,9 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
         //   库自己的 `dropShadow` 就挂在那里，而阴影本来画在形状**外面** ⇒ 被裁得一干二净
         //  （真机反馈「工具条阴影怎么没了」就是它）。所以把库的 `shadowElevation` 置零、按库原样
         //   （`radius = 10dp / 黑 10%`）在被裁的那一层**外面**补一层同样的阴影。
-        val state = pageHazeState
-        if (state == null && !frostDegradeLogged) {
-            frostDegradeLogged = true
+        val state = chrome.pageHazeState
+        if (state == null && !chrome.frostDegradeLogged) {
+            chrome.frostDegradeLogged = true
             XLog.w("底部工具栏磨砂跳过：页面取样层未就绪 ⇒ 这一轮仍用不透明底")
         }
         val capsule = remember { RoundedCornerShape(FloatingToolbarDefaults.CornerRadius) }

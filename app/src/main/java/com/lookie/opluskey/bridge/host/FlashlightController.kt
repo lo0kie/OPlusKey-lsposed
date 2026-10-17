@@ -87,8 +87,14 @@ internal class FlashlightController(
                         //  一台机器可能有多颗带闪光灯的摄像头（主摄 / 超广 / 长焦），注册时会**逐个**回调
                         // 一次，于是「最后回调的那颗」会决定 `torchCameraId` —— 若它恰好不是正在亮的那颗，
                         // 下一次 `applyToggle` 就会去切一颗没亮的镜头（原状态读反、表现是按一下没反应）。
-                        //  规矩：**亮着的那颗优先**（`enabled == true` 时认它）；都没亮时才按回调次序记一颗当兜底。
-                        if (enabled) {
+                        //  规矩：**认下的那颗状态是权威**，只有它变了才改 `torchOn`；其余镜头只在「亮了」时顶替。
+                        if (cameraId == torchCameraId) {
+                            //  用户从控制中心 / 锁屏磁贴 / 别的应用关灯时走的也是这里。不跟随 `enabled`
+                            //  的话 `torchOn` 会一直停在 true，下一次按侧键就成了「去关一个已经关着的
+                            //  手电筒」—— 表现为按一下没反应，得连按两次。
+                            torchOn = enabled
+                        } else if (enabled) {
+                            //  另一颗亮了：以它为准（亮的优先于回调次序）。
                             torchCameraId = cameraId
                             torchOn = true
                         } else if (torchCameraId == null) {

@@ -1,0 +1,61 @@
+version: 2
+
+# 依赖与 Action 的更新提醒。
+#
+#  两个生态分开配：Gradle 依赖（COUI / haze / libxposed / 图标库）按周看，
+#  GitHub Actions 的版本按周看 —— 后者常因为「用旧版 action」被静默弃用。
+#
+#  分组（groups）是关键：不分组的 dependabot 会为每个依赖开一个 PR，
+#  这个仓库一共 11 个依赖，一周能堆出十来个 PR 没人看。分组后一个 PR 一次升完，
+#  真跑不动就整体回退，不会出现「升了 A 结果要配 B」的半吊子状态。
+#
+#  注意：本项目开了 Gradle 依赖锁定（`app/gradle.lockfile`）。dependabot 改
+#  build.gradle.kts 里的版本时**会一并更新锁文件**；如果它只改了版本号而锁文件没动，
+#  CI 的 `--write-locks` 校验会直接失败 —— 这是故意的，别把校验放宽成 warn。
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      gradle-plugins:
+        patterns:
+          - "*gradle*"
+          - "com.android.*"
+          - "org.jetbrains.kotlin*"
+        update-types:
+          - minor
+          - patch
+      gradle-libraries:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "com.android.*"
+          - "org.jetbrains.kotlin*"
+        update-types:
+          - minor
+          - patch
+    # 大版本单独放行：AGP / Kotlin 的 major 升级必然带契约变化（比如 AGP 9 内置 Kotlin），
+    # 不能混在「顺手升一下」那批里。
+    ignore:
+      - dependency-name: "com.android.tools.build:gradle"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns:
+          - "*"

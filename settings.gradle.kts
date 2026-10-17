@@ -17,4 +17,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "oplus-key-lsposed"
+// `:core` —— 两个进程共用的那一层（见 core/build.gradle.kts 的说明）
+include(":core")
 include(":app")

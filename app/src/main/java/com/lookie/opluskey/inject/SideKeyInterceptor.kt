@@ -17,6 +17,8 @@ internal class SideKeyInterceptor(
     handler: Handler,
     /** 判出手势后的去向（由 `KeyHooks` 注入，实现是 `GestureForwarder`）。 */
     private val forward: (KeyId, Gesture, Boolean) -> Unit,
+    /** 每判出一个手势记一笔（`KeyHooks.noteGesture`）—— 链路自检用，由装配方注入。 */
+    private val onGestureNoted: () -> Unit,
 ) {
     /**
      * 手势判定器 —— 拿到的是 hook 回调里的原始事件，时序是真的，不会被「解冻灌包」搅乱。
@@ -27,6 +29,7 @@ internal class SideKeyInterceptor(
     private val detector =
         GestureDetector(
             handler,
+            onGestureNoted = onGestureNoted,
             onGesture = { id, gesture, _, repeat -> forward(id, gesture, repeat) },
         )
 

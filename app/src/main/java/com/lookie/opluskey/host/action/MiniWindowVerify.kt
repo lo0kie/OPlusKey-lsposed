@@ -1,16 +1,7 @@
 package com.lookie.opluskey.host.action
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import com.lookie.opluskey.bridge.FlexibleWindowBridge
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.MiniWindowGeometry
-import com.lookie.opluskey.core.model.RomProfile
-import com.lookie.opluskey.core.model.ZoomWindowWire
 import com.lookie.opluskey.core.reflect.Reflect
 
 // 「小窗」那一族的**验收与几何** —— 从 MiniWindowLauncher 分出来（类不能用两个文件装，走扩展）。
@@ -29,7 +20,7 @@ import com.lookie.opluskey.core.reflect.Reflect
  */
 internal fun MiniWindowLauncher.verifyMiniOrFallback(taskId: Int) {
     //  注意：「读不到任务信息」**不是**「没变成小窗」：
-    //  `isTaskInZoomWindow` 在 `zoomInfoOf` 为 null（MiniWindowLauncher.ROM 改了字段名 / 任务列表读不到）时
+    //  `isTaskInZoomWindow` 在 `zoomInfoOf` 为 null（MiniWindowFacts.ROM 改了字段名 / 任务列表读不到）时
     //  也返回 false —— 会被折成「服务端受理了但没收起来」，弹一句「这个应用不支持小窗」，
     //  把一个读不到的事实说成了应用的锅。这里先把这两种情形分开。
     if (zoomInfoOf(taskId) == null) {
@@ -92,9 +83,9 @@ internal fun MiniWindowLauncher.zoomScreenRect(): android.graphics.Rect? =
     try {
         val cls = Reflect.findClass(javaClass.classLoader, MiniWindowSupport.MANAGER)
         val manager = cls?.let { Reflect.callStatic(it, "getInstance") }
-        val method = cls?.let { Reflect.methodByNameAndArity(it, MiniWindowLauncher.CURRENT_ZOOM_STATE_METHOD, 0) }
+        val method = cls?.let { Reflect.methodByNameAndArity(it, MiniWindowFacts.CURRENT_ZOOM_STATE_METHOD, 0) }
         val state = if (manager != null && method != null) Reflect.call(manager, method) else null
-        state?.let { Reflect.fieldValue(it, it.javaClass, MiniWindowLauncher.ZOOM_STATE_RECT_FIELD) as? android.graphics.Rect }
+        state?.let { Reflect.fieldValue(it, it.javaClass, MiniWindowFacts.ZOOM_STATE_RECT_FIELD) as? android.graphics.Rect }
     } catch (e: Throwable) {
         XLog.d("读小窗屏幕矩形失败：${e.message}")
         null
@@ -139,8 +130,8 @@ internal fun MiniWindowLauncher.zoomFitsOnScreen(
 /** 那个任务现在是不是小窗 —— 只看 `windowingMode`（返回码和截图都会骗人）。 */
 internal fun MiniWindowLauncher.isTaskInZoomWindow(taskId: Int): Boolean {
     val info = zoomInfoOf(taskId) ?: return false
-    val mode = Reflect.fieldValue(info, info.javaClass, MiniWindowLauncher.TOP_APP_WINDOWING_MODE_FIELD) as? Int
-    return mode == MiniWindowLauncher.WINDOWING_MODE_ZOOM
+    val mode = Reflect.fieldValue(info, info.javaClass, MiniWindowFacts.TOP_APP_WINDOWING_MODE_FIELD) as? Int
+    return mode == MiniWindowFacts.WINDOWING_MODE_ZOOM
 }
 
 /**
@@ -152,17 +143,17 @@ internal fun MiniWindowLauncher.isTaskInZoomWindow(taskId: Int): Boolean {
  * 所以两档读出来都是 `1272/1272 ≈ 1.0`，谁也分不出来。
  *
  * 它能验的是另一件事：**system_server 有没有把我们预置的几何吃住**。配置宽应当 ≈ 满屏宽
- * （见 [MiniWindowLauncher.ZOOM_CONFIG_WIDTH_MIN_RATIO]）—— 若读到明显偏小，就是「屏幕矩形被当成配置矩形喂进去、
+ * （见 [MiniWindowFacts.ZOOM_CONFIG_WIDTH_MIN_RATIO]）—— 若读到明显偏小，就是「屏幕矩形被当成配置矩形喂进去、
  * 又被多缩一次」那个 bug 的签名（真机读到过 `1020`，对应屏幕上只剩 `817`）。
  *
  * 读不到时返回 `null` 而**不是**猜一个值 —— 调用方据此走「没走通」那条降级。
  */
 internal fun MiniWindowLauncher.taskZoomConfigRatio(taskId: Int): Float? {
     val info = zoomInfoOf(taskId) ?: return null
-    val mode = Reflect.fieldValue(info, info.javaClass, MiniWindowLauncher.TOP_APP_WINDOWING_MODE_FIELD) as? Int
-    if (mode != MiniWindowLauncher.WINDOWING_MODE_ZOOM) return null
+    val mode = Reflect.fieldValue(info, info.javaClass, MiniWindowFacts.TOP_APP_WINDOWING_MODE_FIELD) as? Int
+    if (mode != MiniWindowFacts.WINDOWING_MODE_ZOOM) return null
     val bounds =
-        Reflect.fieldValue(info, info.javaClass, MiniWindowLauncher.TOP_APP_BOUNDS_FIELD)
+        Reflect.fieldValue(info, info.javaClass, MiniWindowFacts.TOP_APP_BOUNDS_FIELD)
             as? android.graphics.Rect ?: return null
     val screen =
         android.content.res.Resources
@@ -177,7 +168,7 @@ internal fun MiniWindowLauncher.zoomInfoOf(taskId: Int): Any? {
     val infos = topAppInfos() ?: return null
     for (item in infos) {
         val info = item ?: continue
-        val id = Reflect.fieldValue(info, info.javaClass, MiniWindowLauncher.TOP_APP_TASK_ID_FIELD) as? Int ?: continue
+        val id = Reflect.fieldValue(info, info.javaClass, MiniWindowFacts.TOP_APP_TASK_ID_FIELD) as? Int ?: continue
         if (id == taskId) return info
     }
     return null

@@ -8,8 +8,6 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.RomProfile
-import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.screen.binding.BindingScreen
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
@@ -287,23 +285,28 @@ internal fun actionIcon(token: String): ImageVector =
  * 其二是 token 认不出取值的条目 —— [ActionCatalog.RINGER_CYCLE]（与「响铃状态」格共用写法）
  * 和几个标记入口格（`nav:` / `key:` / `panel:` / `zoom:`）。
  */
-internal fun specIcon(spec: ActionCatalog.Spec): ImageVector =
-    when {
-        spec.commandKind != null -> commandIcon(spec.commandKind, spec.commandSteps)
+internal fun specIcon(spec: ActionCatalog.Spec): ImageVector {
+    // 先落到局部 val 再判空：`spec` 来自 `:core` 模块，而那两位是**另一个模块**里的
+    //  public 属性 —— Kotlin 不给跨模块的属性做智能转换（理论上可能被 override）。
+    val commandKind = spec.commandKind
+    val glyph = spec.glyph
+    return when {
+        commandKind != null -> commandIcon(commandKind, spec.commandSteps)
 
         // 注册时声明过字形的（入口格 / 标记格 / 一处 token 两支字形那几种），按声明给
-        spec.glyph != null -> glyphIcon(spec.glyph)
+        glyph != null -> glyphIcon(glyph)
 
         // 其余按 token 推 —— 与配置里那一串写法同一套（`Action.parse` 的规范化结果）
         else -> actionIcon(ActionCatalog.canonicalToken(spec.token))
     }
+}
 
 /**
  * 字形名 → 图标 —— **全项目唯一一处映射**（[ActionCatalog.Glyph] 是封闭枚举，加一档字形才碰它）。
  * 这几种「一个 token 两支字形」和「标记格」原来散在 [specIcon] 里用 `spec ===` / `token ==` 认领，
  * 那等于把注册信息漏在渲染层；现在字形随条目一起注册、这里只翻译。
  */
-internal fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
+private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
     when (glyph) {
         ActionCatalog.Glyph.Bell -> TablerIcons.Outline.Bell
         ActionCatalog.Glyph.Repeat -> PageIcons.RingerCycle
