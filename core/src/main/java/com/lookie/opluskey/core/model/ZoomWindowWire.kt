@@ -6,7 +6,7 @@ package com.lookie.opluskey.core.model
  * 为什么必须收在一处：这几个名字与数字要在**不同的进程**里逐字对得上 ——
  *
  * ```
- *   宿主主进程（发送）  host/action/MiniWindowLauncher · host/action/MiniWindowSupport
+ *   宿主主进程（发送）  host/action/MiniWindowLauncher · bridge/MiniWindowSupport
  *   诊断探针           inject/ProbeChannel
  *   system_server      bridge/FlexibleWindowBridge
  * ```

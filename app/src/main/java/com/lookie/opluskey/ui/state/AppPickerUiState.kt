@@ -1,14 +1,10 @@
-package com.lookie.opluskey.ui.screen.apppicker
+package com.lookie.opluskey.ui.state
 
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.LaunchableApp
-import com.lookie.opluskey.ui.state.AppPickerState
 
 /**
  * 「选择应用」页这一趟的**加载与选择状态** —— 从 `AppPickerScreen` 的函数体里搬出来。
@@ -24,7 +20,6 @@ import com.lookie.opluskey.ui.state.AppPickerState
  */
 internal class AppPickerUiState(
     private val picker: AppPickerState,
-    initialSelection: String?,
 ) {
     /**
      * 手上的应用清单；`null` = 还没查到（正在查 / 查失败且没有缓存）。
@@ -50,30 +45,50 @@ internal class AppPickerUiState(
     var refreshTick by mutableStateOf(0)
 
     /**
-     * **本地选中**：点行只改它，右下角那颗确认键才把选择交出去。
-     * 初值照当前绑定的那个（进页时先亮着它）。
+     * **当前选中**的那一条（装 [PickedDetail]：行尾要靠 `shortcutId` 分开画两种字形）。
+     *
+     *  存在页面级（[AppPickerState.pending]）：被二级页盖住时组合会被销毁，放在这里就会丢
+     *  （挑过的行退回来变成「已绑定的那个」）。
      */
-    var pending by mutableStateOf(initialSelection)
+    var pending: PickedDetail?
+        get() = picker.pending.value
+        set(value) {
+            picker.pending.value = value
+        }
 
     /**
      * 两张拦人的脸（都是 `null` = 没在弹，同一时刻只可能开一张）：
-     *  · [blockedUnopenable]：点确认键时挑中的是个**拉不起来**的应用；
-     *  · [blockedSmallWindow]：在菜单里**点开「以小窗口打开」那一刻**，或点确认键时，
-     *    当前选中的应用判为不支持小窗。
+     *  · [blockedUnopenable]：点 FAB 时选中的是个**拉不起来**的应用；
+     *  · [blockedSmallWindow]：点 FAB 时判出这个应用**不支持小窗**，而「以小窗口打开」开着。
      *
-     *  注意：这两个是**这一趟**的（页面出栈就没了），与页面级那些手动清的位不是一回事。
+     *  两张都只在**点 FAB** 那一刻弹 —— 点行不校验：那一趟只是往下一级走，
+     *  真正会写进配置的是 FAB。
      */
     var blockedUnopenable by mutableStateOf<LaunchableApp?>(null)
 
     var blockedSmallWindow by mutableStateOf<SmallWindowBlock?>(null)
 
     /**
-     * 小窗支持性已经问过哪个包（`null` = 没问过）。
+     * 进页那一刻的**唯一**复位点 —— 与 [AppPickerState.clearTarget] 一起，是这一份状态仅有的两处清空。
      *
-     *  进页那一次**不问**（那是「这次要编辑的动作本来就是 `window:`」，不是用户刚按下去的手）：
-     *  初值在「小窗开关开着」时就直接记成「已经问过进页那个选中项」。
+     *  · 点过的行回到「当前绑定的那个」（[selection]）；
+     *  · 进场定位、两张拦人的脸、刷新指示器归零；
+     *  · **清单不清**（[loaded] 留着）：进页第一帧就有内容，后台照常重查一遍。
      */
-    var askedPkg by mutableStateOf(if (picker.smallWindow.value) initialSelection else null)
+    fun beginVisit(
+        selection: String?,
+        /** 当前绑定是不是一条**快捷方式**；是就带上它的 id，行尾据此画 `table-shortcut`。 */
+        shortcutId: String? = null,
+    ) {
+        pending = selection?.let { PickedDetail(it, shortcutId) }
+        // 上一趟的草稿不带到这一趟来（它是「等着被提交」的东西，跨趟存在只会误提交）
+        picker.draft = null
+        located = false
+        blockedUnopenable = null
+        blockedSmallWindow = null
+        failed = false
+        refreshing = false
+    }
 
     /** 「进场滚到已选中那一行」做过了没有 —— 一次性闸，之后用户滚到别处不再被拽回来。 */
     var located by mutableStateOf(false)
@@ -88,7 +103,8 @@ internal class AppPickerUiState(
      *  各自 `remember` 会各算一份，而「哪些行该出现」必须三处一致。
      */
     val shown: List<LaunchableApp> by derivedStateOf {
-        val filter = picker.filter.value
+        // 首尾空格要去掉：粘贴 / 输入法回车常带一个尾空格，那时整表会「什么都没搜到」
+        val filter = picker.filter.value.trim()
         val showBroken = picker.showUnopenable.value
         // 拼音那一档要小写比：排序键是罗马化后的小写串（见 `LaunchableApp.sortKey`）
         val needle = filter.lowercase()
@@ -108,14 +124,13 @@ internal class AppPickerUiState(
 }
 
 /**
- * 取出（或建出）这一趟的状态。
+ * 被「不支持以小窗口打开」拦下的那一个 —— [AppPickerUiState] 的两张拦人的脸之一。
  *
- *  **一个页面实例只建一份**：用 `remember(picker)` 而不是 `remember(picker, selected)` ——
- *  后者会在「已选中那一项」变化时整份重建，把已经查到的清单一起丢掉（看起来像「选完又回到加载态」）。
- *  `pending` 的跟随由调用点那个 `LaunchedEffect(selected)` 负责。
+ * @param fromPick 这次是从**点 FAB** 触发的那一道。它决定「确定」要不要顺手写下去：
+ *   从 FAB 来的按 `app:<包名>` 存（用户最初要的「取消勾选保存」），
+ *   从别处来的只把开关拨回关 —— 那时还没有「这一次的选择」可存。
  */
-@Composable
-internal fun SettingsPage.rememberAppPickerUiState(selected: String?): AppPickerUiState {
-    val pagePicker = picker
-    return remember(pagePicker) { AppPickerUiState(pagePicker, selected) }
-}
+internal data class SmallWindowBlock(
+    val app: LaunchableApp,
+    val fromPick: Boolean,
+)

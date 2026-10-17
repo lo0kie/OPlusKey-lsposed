@@ -3331,3 +3331,148 @@ grep -c $'\r' <文件>     # 等于行数 ⇒ CRLF；0 ⇒ LF
 
 （另：本项目的 `.workbuddy` 是**被有意占位成普通文件**的，所以 `.workbuddy/` 下任何路径都写不进去、
 工作区记忆不落盘 —— 见仓库根目录那个占位文件自身的说明。）
+
+## 二十二、ColorOS 多开选择器「弹不弹」只看 **intent 上的 oplus flag**，与调用方是谁无关（实测，2026-10-17，PLK110）
+
+### 22.1 现象
+
+模块里「打开分身」走 `IActivityTaskManager#startActivityAsUser(intent, userId)`，分身**确实起得来**，
+但每次都先弹出 `com.oplus.multiapp/…chooser.MultiAppResolverActivity` 让人选「用哪一份」。
+目标 userId 已经在 `startActivityAsUser` 里指定了，选择器纯属多余的一次确认。
+
+### 22.2 先排除的错方向
+
+第一轮从 `MultiAppResolverActivity` 的 dex 字符串池里扒出两个 extra 塞进 intent：
+
+```
+android.intent.extra.user_handle        ← UserHandle
+oplus.intent.extra.chooser_finish_self  ← boolean
+```
+
+**没用**，选择器照弹。原因很简单：这两个键是**选择器自己**读的（决定它弹出来之后默认选谁），
+而我们连「要不要弹」那一步都还没过 —— 塞给它的东西它压根没机会看。
+
+### 22.3 对照实验：`am start --user 998` 不弹
+
+同样一个分身 target，用 shell 起就不弹：
+
+```bash
+adb shell am start --user 998 -n com.tencent.mm/.ui.LauncherUI
+```
+
+```
+D MultiApp-CMAService: replaceIntentForMultiApp, callingPackage=com.android.shell/0 targetPackage=com.tencent.mm/998
+D MultiApp-CMAService: Don't show ResolverActivity, special callingPackage= com.android.shell/0 ...
+D MultiApp-CMAService: resolveActivityForMultiApp, has cached userId: 998
+```
+
+⇒ 判定在 **system_server**（`com.android.server.am`），日志 TAG 是 `MultiApp-CMAService`，
+和 `com.oplus.multiapp` 那个应用自己的 UI 无关。
+
+### 22.4 定位：`OplusMultiAppManagerService#shouldShowResolverActivity`
+
+实现体在 `/system/framework/oplus-services.jar`（`classes.dex`，三个 dex 均 STORED，可直接 grep）。
+按 TAG 字符串定位到 `com.android.server.am.OplusMultiAppManagerService`，再用「字符串 → 引用它的方法」
+反查出判定函数：
+
+```
+shouldShowResolverActivity(Landroid/content/Intent;Lcom/android/server/wm/SafeActivityOptions;
+                           Ljava/lang/String;Ljava/lang/String;II)Z
+```
+
+字节码（`const/16` + `hasOplusFlag` 两连）：
+
+```
+0031: const/16  0x0800
+0033: hasOplusFlag(0x800)    → 成立 → 0082 "has OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER or isFromGameSpace"
+003a: const/16  0x1000
+003c: hasOplusFlag(0x1000)   → 成立 → 0042 "has OPLUS_FLAG_MULTI_APP_DIRECT_MULTI_APP, go to multi app"
+```
+
+`hasOplusFlag` 的读取路径：
+
+```
+Intent.getIntentExt() → IIntentExt.getOplusFlags() & flag != 0
+```
+
+**即：只看 intent 自己带的 oplus flags，不看 callingPackage。** `com.android.shell` 只是更早在
+「special callingPackage」那一条分支就被放行，不是唯一的路。
+
+### 22.5 正解
+
+```kotlin
+// com.oplus.content.OplusIntent.OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER
+private const val OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER = 0x800
+
+Intent::class.java.getMethod("addOplusFlags", Int::class.javaPrimitiveType)
+    .invoke(intent, OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER)
+```
+
+`Intent#addOplusFlags` / `setOplusFlags` / `removeOplusFlags` / `getOplusFlags` 都是 OPPO 往
+AOSP `Intent` 上加的，编译期不存在，只能反射。加不上**不阻断启动**（顶多多点一次选择器）。
+
+实测日志（`oflg` 就是 oplus flags）：
+
+```
+Intent { act=MAIN cat=[LAUNCHER] flg=0x10000000 pkg=com.tencent.mm cmp=…/.ui.LauncherUI
+         oflg=0x800 mCallingUid=10277 }
+Don't show ResolverActivity, has OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER or isFromGameSpace
+resolveActivityForMultiApp, has cached userId: 998
+```
+
+`com.tencent.mm/998` 与 `com.autonavi.minimap/999` 都直接进了目标用户，选择器不再出现。
+
+### 22.6 可复用的取证手法
+
+1. `ls -l /system/framework/*.jar` 里挨个 `grep -c <日志TAG>` —— dex 若是 STORED 就能直接命中，
+   省掉解压。本次 `oplus-services.jar` 一击即中。
+2. 拉文件：`adb exec-out cat <路径> > 本地`。`adb pull` 读不了 `system_ext`；
+   `adb shell base64` 传 30 MB 会断（`base64: invalid input`）。
+3. 手写 DEX 解析足够用：`string_ids` / `type_ids` / `method_ids` / `class_defs` → `class_data`
+   里 `method_idx` 反查类名；再按 opcode → format 长度表逐条走 `code_item`，
+   就能拿到「某方法引用了哪些字符串 / 方法」与 `const` 的值。比配 JADX 快得多。
+4. **别在字节里盲扫 opcode**：`0x1a` / `0x6e` 这种单字节在指令流里到处都是，
+   不按长度表跳会扫出海量噪声（本次第一版就栽在这，结果 101 条调用全是假的）。
+
+---
+
+## 二十三、ColorOS 底层接口取证：手电筒、免打扰与响铃模式（实测，2026-10-17）
+
+> 反编译取证目标：OnePlus 15（PLK110 / ColorOS 15 / Android 15）真机上的
+> `/system_ext/priv-app/SystemUI/SystemUI.apk`、`/system/framework/oplus-framework.jar`、
+> `/system/framework/oplus-services.jar`。
+
+### 23.1 手电筒状态与专属通道
+
+1. **Settings 状态同步**：
+   SystemUI 的 `FlashlightControllerImpl` 监听底层的 `TorchCallback` 时，
+   会主动同步状态到 `Settings.Secure`：
+   - `Settings.Secure.flashlight_enabled`（`"flashlight_enabled"`）：`1` 开启，`0` 关闭。
+     可同步读取，无需等待异步相机回调落地。
+   - `Settings.Secure.flashlight_available`（`"flashlight_available"`）：`1` 可用，`0` 不可用。
+2. **ColorOS 侧键专属入口**：
+   - 目标组件：`com.android.systemui/com.oplus.systemui.statusbar.notification.keymagicservice.KeyFlashlightService`。
+   - 机制：`KeyBaseService` 族，通过 Messenger IPC 绑定后发 `Message(what=2)`（长按），
+     由 `KeyFlashlightController` 调用 `FlashlightControllerImpl` 切换状态。
+3. **遗留空桩**：
+   `android.os.OplusFlashLightManager`（调用 Binder `additionald`）在 ColorOS 15 上方法体已返回固定假值/空值，已废弃。
+
+### 23.2 免打扰状态与专属通道
+
+1. **Settings 状态位**：
+   - `Settings.Global.zen_mode`（`"zen_mode"`）：`0` 关闭，`1` 重要通知，`2` 完全静音，`3` 仅闹钟。
+2. **ColorOS 侧键专属入口**：
+   - 目标组件：`com.android.systemui/com.oplus.systemui.statusbar.notification.keymagicservice.KeyDndService`。
+   - 机制：通过 Messenger IPC 绑定后发 `Message(what=2)`，内部调用 `ZenModeControllerImpl.setZen` 切换。
+3. **AOSP 标准接口**：
+   `NotificationManager.getCurrentInterruptionFilter()` 读取档位（1=全部通过，2/3/4=免打扰），
+   `NotificationManager.setInterruptionFilter(...)` 写入。
+
+### 23.3 响铃模式通道与 ColorOS 拦截陷阱
+
+1. **免打扰压制外部视图**：
+   开启免打扰（Zen Mode）时，AudioService 将公共接口 `AudioManager.getRingerMode()` 强行压制为 `0`（静音）。
+   读取真实物理档位必须走隐藏 API `AudioManager.getRingerModeInternal()`（或读 `Settings.Global.mode_ringer`）。
+2. **ColorOS Ringer Delegate 拦截静音写入**：
+   调用公共 API `AudioManager.setRingerMode(0)` 时，ColorOS 的 `mRingerModeDelegate` 会将其拦截并降级改写为 `1`（振动）。
+   写入必须走 `@hide` 内部通道 `AudioManager.setRingerModeInternal(int mode)`（宿主进程具备 `STATUS_BAR_SERVICE` 权限）。

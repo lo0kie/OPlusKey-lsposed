@@ -12,16 +12,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.actionOf
+import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.model.GRID_GAP
@@ -31,8 +34,6 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.screen.apppicker.appLabelOf
-import com.lookie.opluskey.ui.state.deviceSupported
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -49,7 +50,11 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 // 现在一格一个函数（[BuiltInTile] / [CustomTile]），排布的那三层只负责**计数与让位**。
 
 /**
- * 内置动作网格 —— 按 [ActionCatalog.GROUPS] 分组，每组一个小标题。
+ * 内置动作网格 —— 按 [ActionCatalog.groupsFor] 分组，每组一个小标题。
+ *
+ *  **不能按 [ActionCatalog.GROUPS] 排**：清单按手势剔过条目（「灵感语音」只在长按），组大小
+ *  却没少 ⇒ 最后一组会多吃进第一条自定义命令（真机反馈「单击 / 双击的自定义命令跑到快捷功能
+ *  里了」）。分组与清单必须同源，见 `ActionCatalog.groupsFor`。
  *
  * 焦点格索引仍与 `st.specs` 下标一一对应（见 `BindingList` 里「扁平焦点索引的账」）——
  * 分组只是展示层切分，组里的格子用的还是**全局**下标（`builtInBase` 跨组连续累计），
@@ -60,8 +65,9 @@ internal fun SettingsPage.BuiltInGrid(
     st: BindingGridState,
     enabled: Boolean,
 ) {
+    val groups = remember(st.g) { ActionCatalog.groupsFor(st.g) }
     var builtInBase = 0
-    ActionCatalog.GROUPS.forEachIndexed { groupIndex, (groupTitle, group) ->
+    groups.forEachIndexed { groupIndex, (groupTitle, group) ->
         // 「上一段 → 这个标题」之间给一档（与网格行距同值），与下面「自定义命令」那一段同一条规矩。
         // 第一组不加 —— 它前面那一段（按键设置卡）已经自带收尾间距，双击档则是页首、不需要。
         if (groupIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
@@ -128,38 +134,34 @@ private fun SettingsPage.BuiltInTile(
         val popsMenu = modes != null
         val boundMode = modes?.firstOrNull { ActionCatalog.isBound(it, current) }
         val boundAppLabel = rememberBoundAppLabel(current)
-        // 绑的是**小窗打开**时，标题右边补一枚「小窗起」标记 —— 这一格只有一行标题 + 应用名，
-        //  不点开「选择应用」菜单看不出绑的是哪一档。
-        val appSmallWindow = current is Action.AppWindow
         ActionTile(
             spec = spec,
             //  入口格的行首**随当前档位变**（主屏幕 / 静音 / 上一首 …）；
             //  一档都没绑时退回这一格自己的大类字形（媒体控制 → 音符、响铃状态 → 铃铛…）。
-            icon = boundMode?.let { icons[it] } ?: icons[spec],
+            //  「打开应用」格再细一档：绑成什么样就画什么（小窗 / 快捷方式 / 某个界面 / 整个应用）——
+            //  这一格以前靠标题右边那枚「小窗起」标记，现在标记没了，信息全在这一颗图标上。
+            //  只对「打开应用」那一格生效：`appTileIcon` 看的是**当前绑定**，而每格的
+            //  `current` 都是同一个动作 —— 不判格子就会让整片网格（导航 / 响铃 / 媒体…）
+            //  全画成「打开应用」那一族的字形。
+            icon =
+                (if (spec.token == ActionCatalog.APP_TILE) appTileIcon(current) else null)
+                    ?: boundMode?.let { icons[it] }
+                    ?: icons[spec],
             selected = ActionCatalog.isSelected(spec, current),
             focused = index == st.focusedIndex,
             focusRequester = st.focusers[index],
             //  锚点**每格一份**：取值格点了不弹浮层，所以只有会弹菜单的格子才挂（`popsMenu`），
             //  其余不白记坐标。
             modifier = if (popsMenu) cellModifier.preciseClickAnchor(tileAnchor) else cellModifier,
-            //  可用性与 `pick` 同一判据（主开关 + 链路就绪 + 清单命中）：少判一道就会
+            //  可用性与 `pick` 同一判据（主开关 + 链路就绪）：少判一道就会
             //  「亮着、点了被拦」—— 点了只弹一句提示，不如先灰着。
-            //  再叠一道「这一条在本机有没有落点」（`ActionCatalog.isLocked`）。
-            enabled = enabled && linkReady && deviceSupported && !ActionCatalog.isLocked(spec),
+            enabled = enabled && linkReady,
             // 「打开应用」格与入口格都要补一行小字：前者是绑的应用名，
             // 入口格那格只写组名，不点开菜单根本看不出绑的是哪一档
             subtitle =
                 when {
                     spec.token == ActionCatalog.APP_TILE -> boundAppLabel
                     else -> boundMode?.label
-                },
-            // 「打开应用」格绑成小窗打开时，标题右边补一枚「小窗起」。
-            //  注意：必须连 spec 一起判 —— 光看 `appSmallWindow` 会给**整片**格子都画上。
-            titleMarker =
-                if (spec.token == ActionCatalog.APP_TILE && appSmallWindow) {
-                    PageIcons.TileSmallWindow
-                } else {
-                    null
                 },
             // 入口格虽然是**入口**（点了进下一层），但**不画行尾箭头** ——
             // 走 `ActionTile` 的默认值 false，别顺手补回来。
@@ -294,7 +296,7 @@ private fun SettingsPage.CustomTile(
             focusRequester = st.focusers[index],
             modifier = cellModifier,
             // 与内置网格同一判据。
-            enabled = enabled && linkReady && deviceSupported,
+            enabled = enabled && linkReady,
             // 标题下面那行小字 = **命令间隔时长**（`stepDelayMs`）。
             // 只有多条命令有这个值 —— 单条只有一步、用不到它，所以那种格子不画。
             subtitle =
@@ -321,13 +323,13 @@ private fun SettingsPage.CustomTile(
 internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
     val current = actionOf(configState.config.value, st.g)
     TileMenuPopup(
-        show = st.tileMenu != null,
         // 锚点就是**开着的那一格**自己那一份 —— 这里不再有「哪一格用哪一支」的表：
         // 那种表漏一个入口格，菜单就弹到别人身上（小窗、通知与控制中心，两次都是这么漏的）。
         //  关掉之后 `tileMenu` 是 null，而退场动画期间真正生效的是 `MenuPopup` 内部保持住的
         // 上一次那份锚点，所以这里给个没记过触点的占位即可。
         preciseClick = st.tileMenu?.anchor ?: st.noAnchor,
-        modes = st.tileMenu?.let { ActionCatalog.modeMenu(it.spec.token) }.orEmpty(),
+        // 行与顶上那行小标题都由这一格算（见 `TileMenuPopup`）：不再各传一份。
+        spec = st.tileMenu?.spec,
         current = current,
         //  走 `pick` 而**不是** `bindingSelect`：菜单里的取值不在 `specs` 里，
         //  `select` 那一步的 `specs.indexOf(spec)` 会取到 −1、把焦点圈甩到第一格去。
@@ -337,6 +339,34 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
         onDismiss = { st.tileMenu = null },
     )
 }
+
+/**
+ * 一个绑定目标在网格里显示的那行字（`微信 1` / `扫一扫`）。
+ *
+ *  优先级只有一处（`appNameOf`）：存下来的名字 → 老配置 token 里的 `|名字` → 现查 → 包名。
+ *  这里只留一个转发，是因为调用点读起来要的是「这格该写什么字」，不是「名字怎么来的」。
+ */
+private fun SettingsPage.boundAppText(target: String): String = appNameOf(target)
+
+/**
+ * 「打开应用」格的行首字形 —— 绑成哪一档就画哪一颗；不是这一族（或绑的是纯应用）返回 `null`，
+ * 由调用点退回格子自己的默认字形。
+ *
+ *  四档互斥：
+ *  · 小窗打开（`window:` / `appshortcut:w:…`）→ 小窗；
+ *  · 快捷方式（`appshortcut:`）→ 表格 + 箭头那颗；
+ *  · 应用里某个具体界面（`app:包名/类名`）→ 屏幕；
+ *  · 整个应用（`app:包名`）→ 不覆盖，用默认那颗。
+ *
+ *  单独一支只为让 `BuiltInTile` 别顶破 detekt 的圈复杂度上限。
+ */
+private fun appTileIcon(action: Action): ImageVector? =
+    when (action) {
+        is Action.AppWindow -> PageIcons.TileSmallWindow
+        is Action.AppShortcut -> if (action.window) PageIcons.TileSmallWindow else PageIcons.ShortcutMark
+        is Action.App -> if (AppTarget.activity(action.target) != null) PageIcons.ActivityScreen else null
+        else -> null
+    }
 
 /**
  * 「打开应用」格选中时标题下面那行小字 = **当前绑的应用名**（两种动作都要认：`app:` 与 `window:`）。
@@ -350,7 +380,14 @@ private fun SettingsPage.rememberBoundAppLabel(current: Action): String? =
         val target =
             when (current) {
                 is Action.App, is Action.AppWindow -> current.appTarget
+
+                // 快捷方式（`appshortcut:`）也算「打开应用」那一族：这一格的小字同样要显示应用名
+                is Action.AppShortcut -> current.pkg
+
                 else -> null
             }
-        target?.substringBefore('/')?.let { appLabelOf(it) }
+        // 先看绑定里**存下来的名字**（`app:999@包名/Activity|微信 2` 的 `|` 之后）：
+        //  那是选的时候一并落盘的，包被卸载 / 改名之后仍然显示当时那个名字，
+        //  也省掉「每次重组都查一次包信息」。没有才退回现查（老配置 / 手写绑定）。
+        target?.let { boundAppText(it) }
     }

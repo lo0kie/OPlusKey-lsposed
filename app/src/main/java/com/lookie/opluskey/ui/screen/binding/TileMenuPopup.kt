@@ -21,22 +21,32 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
  */
 @Composable
 internal fun SettingsPage.TileMenuPopup(
-    show: Boolean,
     preciseClick: PreciseClickState,
-    /** 要列的行（[ActionCatalog.modeMenu] 取出来的那一层）。 */
-    modes: List<ActionCatalog.Spec>,
+    /**
+     * 开菜单的那一格（`null` = 退场动画期间 —— 那时 `MenuPopup` 用的是它自己保住的那一份内容）。
+     *
+     *  行（[ActionCatalog.modeMenu]）与顶上那行小标题（这一格的标题）都从这里算：三者同源，
+     *  不会出现「标题写响铃状态、列出来的是媒体控制」。
+     */
+    spec: ActionCatalog.Spec?,
     current: Action,
     onPick: (ActionCatalog.Spec) -> Unit,
     onDismiss: () -> Unit,
 ) {
     MenuPopup(
-        show = show,
+        //  开不开由 `spec` 决定：关掉那一刻调用点传的就是 null（退场期间内容由 `MenuPopup` 自己保住）。
+        show = spec != null,
         preciseClick = preciseClick,
         onDismiss = onDismiss,
         entries =
-            modeEntries(modes, tileIcons.value, current) { spec ->
-                onDismiss()
-                onPick(spec)
-            },
+            spec
+                ?.let { tile ->
+                    ActionCatalog.modeMenu(tile.token)?.let { modes ->
+                        modeEntries(tile.label, modes, tileIcons.value, current) { picked ->
+                            onDismiss()
+                            onPick(picked)
+                        }
+                    }
+                }.orEmpty(),
     )
 }

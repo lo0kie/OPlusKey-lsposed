@@ -125,7 +125,7 @@ internal object Framework {
      * 本机这一档 —— 未适配时**照最后一档试**并打一行 `w`。
      *
      * 为什么这里可以「猜」：候选落空只表现为**查找不到类 / 方法**（记 `w` 后逐层降级），
-     * 不会去动任何东西；而 debug 包关掉了适配闸，开发要在任意 ROM 上能试。
+     * 不会去动任何东西；适配清单不拦注入，所以任何 ROM 上都照这一档试。
      * 与内置命令落点那条「不猜」的区别就在这（那边猜错会真去起别的服务），见 `core/model/RomProfile`。
      *
      * `HOOK_SETS` 是常量表、不会是空的；真为空时这一档全落空、各层各记一行 `w`（五、3 的口径）。
@@ -134,7 +134,9 @@ internal object Framework {
         val rom = DeviceSupport.currentRomSeries
         HOOK_SETS.firstOrNull { it.romSeries == rom }
             ?: HOOK_SETS.last().also {
-                XLog.w("本机 ROM $rom 不在接管点档位表里 ⇒ 按 ${it.label} 的候选试（适配闸仍会拦住清单外的机器）")
+                // 落空只表现为「找不到类 / 方法」（各层各记一行 w 后降级），不会去动别的东西 ——
+                //  这一行是排查「按了没反应」时要看的，所以写清「照哪一档试」。
+                XLog.w("本机 ROM $rom 不在接管点档位表里 ⇒ 按 ${it.label} 的候选试（落空只表现为找不到类 / 方法）")
             }
     }
 

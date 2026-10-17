@@ -1,8 +1,13 @@
 package com.lookie.opluskey.ui.state
 
 import android.graphics.drawable.Drawable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.model.LaunchableApp
 
@@ -29,6 +34,14 @@ internal class AppPickerState {
      *  两个入口（「按键绑定」页的「打开应用」格、添加命令浮层的「选择应用」）都要清一次。
      */
     val filter = mutableStateOf("")
+
+    /**
+     * 「选择界面」页的搜索词 —— 与 [filter] 各归各的：两页是两条独立的搜索。
+     *
+     *  与 [filter] 同一笔账：搜索框挂在**顶栏**那条带子里，页内容是另一棵树，所以只能提到页面级；
+     *  进页时清一次（见 `PageEntry` 里长按那一支）。
+     */
+    val activityFilter = mutableStateOf("")
 
     /**
      * 顶栏菜单里那一项「显示全部应用」。
@@ -111,6 +124,9 @@ internal class AppPickerState {
         gesture = null
         forStep = false
         replaceStep = -1
+        // 本地选中与草稿一并作废：这一趟挑应用的账到此为止
+        pending.value = null
+        draft = null
     }
 
     /** 这一趟「加一步 / 换一步」挑完了 —— 返回要替换的那一步（`-1` = 追加），标记一并收掉。 */
@@ -120,6 +136,79 @@ internal class AppPickerState {
         replaceStep = -1
         return index
     }
+
+    // ── 二级页「选择界面」在看哪个应用 ──
+
+    /**
+     * 「选择应用」页点某一行之后，二级页正在看的是**哪一个应用**（`null` = 不在那一页）。
+     *
+     *  与 [gesture] / [forStep] 那一组**分开存**：那组回答「挑中的应用写到哪儿去」，
+     *  这一位只回答「二级页在看谁」。两者在二级页同时有效 —— 挑中界面之后仍然按那一组
+     *  写回（见 `PageEntry.onDraftPicked`），所以不能合并。
+     *
+     *  与 [filter] 同一笔账：二级页的顶栏与内容也是两棵树，状态得提到页面级。
+     *
+     *  **只由 [openActivities] 写、[forgetActivities] 清**：退页时一概不动它。
+     *  原来在二级页的  里清，结果退场动画没收完、用户已经点了下一个应用时，
+     *  旧实例会把新目标抹掉，新页当场退回上一级（真机日志里那一串就是这么来的）。
+     *  每次进页都会覆盖它，所以「不清」不会串到下一次。
+     */
+    var activityTarget: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * 点某个应用 → 进二级页看它的界面。
+     *
+     *  **不动 [draft]**：进这一页只是「看看」，用户可能什么都不确认就返回 —— 那时上一次
+     *  （别的应用）确认过的那一条仍然应当留着，等他回上一级按 FAB 提交。
+     *  真在那页确认了别的东西，会由页面层的写入点（`PageEntry.onDraftPicked`）直接覆盖。
+     */
+    fun openActivities(target: String) {
+        XLog.w("openActivities：看 $target（原来是 $activityTarget）")
+        activityTarget = target
+    }
+
+    /**
+     * 无条件清空「在看谁」—— 只给**整个页面栈被清掉**那一档用（宿主重进模块）。
+     *
+     *  那一档连「选择应用」一起弹掉了，不存在「另一份新的目标正在用」的情况。
+     *  **普通退页不需要清**：这一位每次进页都会被 [openActivities] 覆盖，
+     *  在退页时清反而会误伤「退场动画还没收完、用户已经点了下一个应用」那一瞬（见字段说明）。
+     */
+    fun forgetActivities() {
+        XLog.w("forgetActivities：无条件清掉 $activityTarget")
+        activityTarget = null
+    }
+
+    /**
+     * 本次编辑的**草稿** —— 在「选择界面」页点了确认之后放在这里，**不写配置**。
+     *
+     *  写盘只发生在「选择应用」页那颗 FAB 上（见 `PageEntry.onAppPicked`）：那一级才是
+     *  「这一趟挑完了」的地方。二级页点确认只是把「打算绑哪个」记下来并退回上一级 ——
+     *  用户还可以换个应用、或者干脆返回走人，那时候配置里一个字节都不该动。
+     *
+     *  与 [pending] 分工：[pending] 是「界面上亮着哪一条」（含进页时那个已绑定的），
+     *  这一位是「本次真正改动过、等着被提交的那一条」—— 没有它，一级页只能把「当前绑定」
+     *  重写一遍，分不清「用户刚挑了个新的」与「什么都没改」。
+     */
+    var draft: PickedDetail? by mutableStateOf(null)
+
+    // ── 两级各自的「本次选中」──
+
+    /**
+     * 「选择应用」页里**当前选中的**那一条 —— 行尾那枚图标照它画，右下角那颗 FAB 照它写。
+     *
+     *  装的是 [PickedDetail] 而不只是一个目标字符串：行尾要在「具体界面」与「快捷方式」之间
+     *  分开画（`device-screen` / `table-shortcut`），而这两者在配置里都长成 `包名/xxx`，
+     *  光看字符串分不出来 —— 那一位 `shortcutId` 是唯一的判据。
+     *
+     *  进页时按**当前绑定**重置一次（见 `AppPickerUiState.beginVisit`）；在二级页点了确认会被
+     *  换成刚挑的那一条（草稿），点行本身不改它（点行只是往下一级走）。
+     *
+     *  放在页面级而不是页面里 `remember`：被二级页盖住时那一份组合会被销毁，退回来就退回成
+     *  「已绑定的那个」—— 用户明明挑过 A，回来却亮着 B。
+     */
+    val pending = mutableStateOf<PickedDetail?>(null)
 
     // ── 屏级缓存：清单 + 图标 ──
     //
@@ -200,3 +289,46 @@ internal class AppPickerState {
  *  清单没变时缓存照旧生效，滚动来回不走第二次 binder。
  */
 internal const val APP_ICON_CACHE_SLOTS = 48
+
+/**
+ * 二级页挑中的一行 —— 「选择应用」页那颗确认键据此拼 token。
+ *
+ * @property target 那一行的完整目标写法（`包名/类名` 或 `包名/快捷方式id`，都带用户前缀）
+ * @property shortcutId 非空 = 这是快捷方式那一节的行，拼 `appshortcut:` 而不是 `app:` / `window:`
+ * @property label 这一行**自己的名字**（快捷方式的「扫一扫」）。落盘时它进 `Config.appNames`
+ *   （按 [target] 的身份索引），**不拼进 token** —— 名字是显示信息，不是目标的一部分。
+ *  界面那两节留空：它们的名字是**应用名**，由落盘那一侧按目标现取（见 `appNameOf`）。
+ */
+internal data class PickedDetail(
+    val target: String,
+    val shortcutId: String?,
+    val label: String? = null,
+) {
+    /**
+     * 拼成要写进配置的 token。
+     *
+     * @param window 「以小窗口打开」那一档 —— 只对「打开界面」有意义；快捷方式没有小窗起法，
+     *   传什么都不影响。
+     */
+    fun token(window: Boolean): String =
+        when {
+            shortcutId != null -> {
+                Action
+                    .AppShortcut(
+                        pkg = AppTarget.pkg(target),
+                        shortcutId = shortcutId,
+                        userId = AppTarget.userId(target),
+                        // 小窗那一档对快捷方式同样有效：`appshortcut:w:…`（执行侧取它那条 intent 走小窗配方）
+                        window = window,
+                    ).token
+            }
+
+            window -> {
+                Action.AppWindow(target).token
+            }
+
+            else -> {
+                Action.App(target).token
+            }
+        }
+}

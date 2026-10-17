@@ -53,7 +53,46 @@ internal class GestureForwarder(
                 return
             }
 
-        // 动态接收器要求宿主进程活着；借来的 Context 与宿主同 uid，startService 才过得了 OPLUS_COMPONENT_SAFE。
+        wakeHost(ctx)
+
+        val phase = gesture.id
+        // 补发那条**复用同一个 Intent**：两条必须带同一个 sent_at，宿主才认得出是一件事
+        val intent = gestureIntent(id, phase, repeat)
+
+        // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
+        // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。
+        //  补发只对「一次按压」有意义：长按连发（repeat）期间宿主早就在跑，每 100ms 再排一条
+        //  300ms 后到期的补发，松手后队列里会积一串废消息（且每条都要过一遍接收侧的去重）。
+        send(ctx, intent, delayMs = 0L, retry = false)
+        if (!repeat) send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+    }
+
+    /**
+     * 转交一次「松手」（[ModuleWire.PHASE_RELEASE]）。
+     *
+     *  **只发一条、不补发**：能走到这里说明长按那条已经送到并被宿主执行过了 —— 宿主当时是活的，
+     *  这条晚到几毫秒无所谓；而漏掉它的代价只是「那一段采集多录一会儿」。
+     *
+     *  松手本身不带动作、只带「这一按结束了」，要不要收尾由宿主按配置判（见
+     *  `host/GestureReceiver.onRelease`）—— 判定侧不替它判，两边就不会各有一套「哪些动作要收尾」。
+     */
+    fun release(id: KeyId) {
+        val ctx =
+            context() ?: run {
+                // 这里不用 w：手势那条已经报过一次「没借到 Context」，每个松手再报一遍是刷屏
+                XLog.d("没借到 Context，无法转交 ${id.label} 的松手")
+                return
+            }
+
+        // 也唤醒一次：宿主万一在这几十毫秒里被回收，startService 会把它拉起来（它一起来就注册接收器）
+        wakeHost(ctx)
+        val intent = gestureIntent(id, ModuleWire.PHASE_RELEASE, repeat = false)
+        XLog.d("转交松手：${id.label}")
+        send(ctx, intent, delayMs = 0L, retry = false)
+    }
+
+    /** 唤醒宿主进程（动态接收器要求它活着；借来的 Context 与宿主同 uid，`startService` 才过得了 OPLUS_COMPONENT_SAFE）。 */
+    private fun wakeHost(ctx: Context) {
         try {
             ctx.startService(Intent().setComponent(hostService))
         } catch (e: Throwable) {
@@ -66,40 +105,40 @@ internal class GestureForwarder(
                 XLog.d("唤醒宿主进程失败（若它已在跑就无所谓）：${e.message}")
             }
         }
-
-        val phase = gesture.id
-        val sentAt = SystemClock.elapsedRealtime()
-        val intent =
-            Intent(ModuleWire.ACTION_GESTURE)
-                .setPackage(HostApp.PACKAGE)
-                .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-                .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
-                .putExtra(ModuleWire.EXTRA_KEY, id.id)
-                .putExtra(ModuleWire.EXTRA_PHASE, phase)
-                .putExtra(ModuleWire.EXTRA_REPEAT, repeat)
-                .putExtra(ModuleWire.EXTRA_SENT_AT, sentAt)
-
-        // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
-        // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。
-        //  补发只对「一次按压」有意义：长按连发（repeat）期间宿主早就在跑，每 100ms 再排一条
-        //  300ms 后到期的补发，松手后队列里会积一串废消息（且每条都要过一遍接收侧的去重）。
-        send(ctx, intent, phase, repeat, delayMs = 0L, retry = false)
-        if (!repeat) send(ctx, intent, phase, repeat, delayMs = FORWARD_DELAY_MS, retry = true)
     }
+
+    /** 造一条手势广播（松手与手势共用同一套 extra，见 [ModuleWire.PHASE_RELEASE]）。 */
+    private fun gestureIntent(
+        id: KeyId,
+        phase: String,
+        repeat: Boolean,
+    ): Intent =
+        Intent(ModuleWire.ACTION_GESTURE)
+            .setPackage(HostApp.PACKAGE)
+            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
+            .putExtra(ModuleWire.EXTRA_KEY, id.id)
+            .putExtra(ModuleWire.EXTRA_PHASE, phase)
+            .putExtra(ModuleWire.EXTRA_REPEAT, repeat)
+            .putExtra(ModuleWire.EXTRA_SENT_AT, SystemClock.elapsedRealtime())
 
     /**
      * 投一条手势广播（发送抛异常只记日志 —— 这条在按键热路径上）。
      *
+     * `phase` / `repeat` 从 [intent] 自己读（刚 put 进去的那两个 extra）：参数表已经贴着
+     *  detekt 的上限，再收两个实参只是把同一份数据传两遍。
+     *
+     * @param delayMs > 0 = 排一条延后投递（补发那条）
      * @param retry true = 补发那条，日志压到 `d`（release 裁掉），免得淹掉日志。
      */
     private fun send(
         ctx: Context,
         intent: Intent,
-        phase: String,
-        repeat: Boolean,
         delayMs: Long,
         retry: Boolean,
     ) {
+        val phase = intent.getStringExtra(ModuleWire.EXTRA_PHASE).orEmpty()
+        val repeat = intent.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false)
         try {
             if (delayMs <= 0L) {
                 XLog.guard("发送侧键手势广播 $phase") {

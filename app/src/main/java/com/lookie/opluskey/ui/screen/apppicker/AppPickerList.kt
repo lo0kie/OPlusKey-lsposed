@@ -15,8 +15,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -25,7 +28,9 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.collapseHeader
 import com.lookie.opluskey.ui.collapsedHeaderHeight
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_GAP
@@ -40,6 +45,8 @@ import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.state.AppPickerUiState
+import com.lookie.opluskey.ui.state.PickedDetail
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.Card
@@ -50,6 +57,7 @@ import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.rememberPullToRefreshState
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「选择应用」页的列表 —— 下拉刷新、行、以及进场的「滚到已选中那一行」。
@@ -60,22 +68,28 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 /**
  * 列表本体 —— 下拉刷新包着 `LazyColumn`。
  *
- *  ⚠️ 顶栏折叠那条 connection **交给 [PullToRefresh]**（`topAppBarScrollBehavior`）：库内部会把它
+ *  注意：顶栏折叠那条 connection **交给 [PullToRefresh]**（`topAppBarScrollBehavior`）：库内部会把它
  *  串进自己那条链（Idle 时先喂顶栏、再喂刷新），所以 `LazyColumn` 上**不能**再挂 `nestedScroll`
  *  —— 留着同一段位移会喂两遍。
  *
- * @param selected 「当前绑定的是哪个包」—— 只用于进场定位；点行改的是 [AppPickerUiState.pending]。
  */
 @Composable
 internal fun SettingsPage.AppPickerList(
     ui: AppPickerUiState,
-    selected: String?,
+    /** 点某一行 → 进二级页挑这个应用里的具体界面。 */
+    onOpenActivities: (String) -> Unit,
     scrollBehavior: ScrollBehavior,
 ) {
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState()
     val searchBandDp = appSearchBandHeight.dp()
-    LocateSelected(ui, selected, scrollBehavior, listState, searchBandDp)
+    // 行尾那枚图标画的是**当前选中的那个**（[AppPickerUiState.pending]）：进页时它是已绑定的
+    // 那一档，在二级页点了确认之后换成刚挑的那一档。
+    val pending = ui.pending
+    // 行状态只跟「选中」变：不 remember 的话，每次重组都给每一行做一个新实例
+    //  ⇒ 行永远跳不过重组（`RowState` 是普通 class，只有引用相等）
+    val row = remember(pending) { RowState(pending) }
+    LocateSelected(ui, scrollBehavior, listState, searchBandDp)
 
     PullToRefresh(
         isRefreshing = ui.refreshing,
@@ -88,16 +102,17 @@ internal fun SettingsPage.AppPickerList(
         modifier = Modifier.fillMaxSize(),
         // ⚠️ 指示器要**下移到「顶栏 + 搜索框那条带子」之下**：这两块是叠在列表之上的
         //  固定浮层，指示器默认画在屏幕最顶上 ⇒ 整个被它们盖住。
-        //  库把这个参数直接当指示器那一层的 `offset(y = …)` 用，所以这里给的正是「让出固定层」的同一笔账。
-        contentPadding = PaddingValues(top = currentHeaderHeight(scrollBehavior) + searchBandDp),
-        // 库默认那四条是英文（"Pull down to refresh" …），这一页是中文界面
-        refreshTexts =
-            listOf(
-                I18n.get(Strings.APP_PICKER_PULL_REFRESH, "下拉刷新"),
-                I18n.get(Strings.APP_PICKER_RELEASE_REFRESH, "松开刷新"),
-                I18n.get(Strings.APP_PICKER_REFRESHING, "正在刷新"),
-                I18n.get(Strings.APP_PICKER_REFRESH_DONE, "刷新完成"),
+        //  库把这个参数直接当指示器那一层的 `offset(y = …)` 用（`calculateTopPadding` → `offset`，
+        //  见 `PullToRefreshKt`），并且**只取 top、不看 bottom** —— 所以下面那个 bottom 恒为 0。
+        //
+        //  末尾这额外一档 [PAGE_TOP_PADDING] 是为了**上下对称**：只让到「带子下沿」的话，
+        //  指示器上边紧贴搜索框（0），下边却离第一行有一整档 [PAGE_TOP_PADDING]，
+        //  看起来是「贴在搜索框上」。多让一档之后两边各占一份。
+        contentPadding =
+            PaddingValues(
+                top = currentHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING,
             ),
+        refreshTexts = pickerRefreshTexts(),
     ) {
         LazyColumn(
             state = listState,
@@ -133,24 +148,86 @@ internal fun SettingsPage.AppPickerList(
                 // 「查得到但没有匹配项」那句提示不在这个列表里：它一进来就会占掉一个下标，
                 // 而按下标滚到当前绑定应用的偏移 [APP_LIST_HEADER_ITEMS] 只算了顶上那个占位项
                 // —— 多一项就错一行。
-                items(ui.shown, key = { it.packageName }) { app ->
+                items(ui.shown, key = { it.target }) { app ->
                     // `animateItem()` 是 `LazyItemScope` 的成员 —— 只能在 `items { }` 里取到，
                     // 所以由调用点建好递进去（`AppRow` 自己没有那个作用域）。
-                    AppRow(app, ui.pending, Modifier.animateItem()) { ui.pending = it }
+                    //
+                    // **只留换位、不留淡入淡出**：`fadeInSpec` / `fadeOutSpec` 默认都在，于是
+                    // 清单查完那一刻整屏行从透明渐显（220ms）—— 读起来就是「行尾那枚图标闪了一下」
+                    // （图标小、又正好是深色背景上最显眼的一笔）。过滤时行增删的位移仍然带动画。
+                    AppRow(
+                        app = app,
+                        row = row,
+                        itemModifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
+                        onClick = {
+                            // **点行不产生「选中」**：这一页的选中位（[AppPickerUiState.pending]）
+                            // 只表示「当前已绑定的那个」，进页时由 `beginVisit` 放进去。
+                            // 点一行只是往下一级走 —— 真正的选择发生在那一页，点那颗 FAB 才落盘；
+                            // 在那一页直接返回，这里什么都不会变（新绑时仍是「无选中」）。
+                            onOpenActivities(app.target)
+                        },
+                    )
                 }
             }
         }
     }
 }
 
-/** 一行应用：图标 + 名字（带「模块 / 系统 / 用户」「不可打开」标签）+ 包名 + 单选圈。 */
+/** 下拉刷新那四句 —— 库默认是英文（"Pull down to refresh" …），这一页是中文界面。 */
+private fun pickerRefreshTexts(): List<String> =
+    listOf(
+        I18n.get(Strings.APP_PICKER_PULL_REFRESH, "下拉刷新"),
+        I18n.get(Strings.APP_PICKER_RELEASE_REFRESH, "松开刷新"),
+        I18n.get(Strings.APP_PICKER_REFRESHING, "正在刷新"),
+        I18n.get(Strings.APP_PICKER_REFRESH_DONE, "刷新完成"),
+    )
+
+/**
+ * 一行要用的那一个值 —— 打包递进去，省得 [AppRow] 多一个参数（detekt 上限是 6）。
+ */
+private class RowState(
+    /** **当前选中**的那一条（进页时等于已绑定的那一档；二级页确认后是刚挑的那一条）。 */
+    val pending: PickedDetail?,
+) {
+    /** 这一行（[target] 是应用那一级的 `包名` / `999@包名`）是不是当前选中的那个应用。 */
+    fun pickedBy(target: String): Boolean = pending != null && AppTarget.sameApp(target, pending.target)
+
+    /**
+     * 行尾那枚图标 —— 四档：没选中 / 整个应用 / 里面某个界面 / 某个快捷方式。
+     *
+     *  后两者在配置里都长成 `包名/xxx`（一边是类名、一边是快捷方式 id），光看字符串分不出来，
+     *  只能靠 [PickedDetail.shortcutId] 判：有 id ⇒ 快捷方式（`table-shortcut`），
+     *  没有 ⇒ 具体界面（`device-screen`）。
+     */
+    fun iconFor(target: String): ImageVector {
+        // 先排除「没选中 / 选的是别的应用」——`pending` 收窄成非空之后才看它装的是哪一档
+        val picked = pending ?: return PageIcons.EnterArrow
+        if (!AppTarget.sameApp(target, picked.target)) return PageIcons.EnterArrow
+        return when {
+            // 有快捷方式 id ⇒ 快捷方式；否则目标里带 `/类名` 就是某个具体界面
+            picked.shortcutId != null -> PageIcons.ShortcutMark
+
+            AppTarget.activity(picked.target) != null -> PageIcons.ActivityScreen
+
+            else -> PageIcons.TileChecked
+        }
+    }
+}
+
+/**
+ * 一行应用：图标 + 名字（带「模块 / 系统 / 用户」「不可打开」标签）+ 包名 + 行尾指示。
+ *
+ *  **点一行即进下一级**（挑这个应用里的具体界面 / 快捷方式），所以行尾那枚图标画的是**当前选中**
+ *  的四档之一（箭头 = 没选中 / 勾 = 整个应用 / 一块屏 = 里面某个界面 / 表格+箭头 = 某个快捷方式）。
+ */
 @Composable
 private fun SettingsPage.AppRow(
     app: LaunchableApp,
-    pending: String?,
+    row: RowState,
     /** 由调用点给的 `Modifier.animateItem()` —— 出现 / 消失 / 换位都带动画。 */
     itemModifier: Modifier,
-    onSelect: (String) -> Unit,
+    /** 点这一行：进二级页挑具体界面（拉不起来的应用由调用点拦下）。 */
+    onClick: () -> Unit,
 ) {
     val tick = rememberTick()
     val withSystem = picker.showSystemApps.value
@@ -163,16 +240,26 @@ private fun SettingsPage.AppRow(
             .padding(bottom = GRID_GAP)
             // 行高定死 ⇒ 行首那枚图标才能整高（见 [APP_ROW_HEIGHT]）
             .height(APP_ROW_HEIGHT),
+        // 按压反馈只要涟漪，与换之前 `BasicComponent` 那份同一套。
+        // 不再有长按：点一下就是进下一级，「轻点 = 选中」那套已经没有了。
+        pressFeedbackType = PressFeedbackType.None,
+        showIndication = true,
+        onClick = {
+            tick()
+            onClick()
+        },
     ) {
         BasicComponent(
             startAction = { AppIcon(app) },
-            // 行尾选中指示跟着**本地选中**走：点一行只是把标记挪过去，交出去靠右下角那颗确认键。
-            //  字形与网格同一套（空心 `circle` / 实心 `circle-check`），不用 COUI 的单选圈 ——
-            //  那颗圆点与全页那套 Tabler 线性图标不是一支笔。
+            // 行尾四档（判据见 [RowState.iconFor]）：
+            //  · 里面某个**快捷方式** ⇒ 表格 + 箭头；
+            //  · 里面某个**界面** ⇒ 一块屏；
+            //  · 这个应用本身 ⇒ 一颗勾；
+            //  · 没选中 ⇒ 箭头（点下去能看到里面有什么）。
             endActions = {
-                val picked = app.packageName == pending
+                val picked = row.pickedBy(app.target)
                 Icon(
-                    if (picked) PageIcons.TileChecked else PageIcons.TileUnchecked,
+                    row.iconFor(app.target),
                     contentDescription = null,
                     // 与网格那颗同尺寸：24dp，即原先 COUI `RadioButton` 的 `requiredSize`
                     modifier = Modifier.size(ROW_END_ICON_SIZE),
@@ -185,10 +272,7 @@ private fun SettingsPage.AppRow(
                 )
             },
             cardListPosition = CardListPosition.Full,
-            onClick = {
-                tick()
-                onSelect(app.packageName)
-            },
+            // 不给 `onClick` —— 点击在外面那个 `Card` 上（理由见那里的注释）
         ) {
             AppRowTitle(app, withSystem)
             Text(
@@ -218,13 +302,15 @@ private fun SettingsPage.AppRow(
 @Composable
 private fun SettingsPage.LocateSelected(
     ui: AppPickerUiState,
-    selected: String?,
     scrollBehavior: ScrollBehavior,
     listState: LazyListState,
     searchBandDp: Dp,
 ) {
+    // 「已选中的那个」= 本次选中；进页那一刻它被复位成当前绑定（见 `beginVisit`）
+    val selected = ui.pending?.target
     val shown = ui.shown
-    val filter = picker.filter.value
+    // 与 `ui.shown` 的过滤同口径：这里只用来判「有没有搜索词」，不去空格会把 `" "` 当成有词
+    val filter = picker.filter.value.trim()
     // 列表顶上那一整段（顶栏 + 固定搜索带 + 首行上边距）—— 进场定位时目标行要落在它下面。
     // 取折叠后的顶栏高度（[collapsedHeaderHeight]）：定位会把顶栏折叠到底，按展开高度算会多
     // 让出一整段。带子高度含它自己那 8dp 下内边距，再加列表头那个占位项补的 [PAGE_TOP_PADDING]。
@@ -233,19 +319,22 @@ private fun SettingsPage.LocateSelected(
     // `scrollToItem` 收的是 px，而 `LocalDensity.current` 只能在组合期读，不能挪进 `LaunchedEffect`。
     val listTopInsetPx =
         with(LocalDensity.current) {
-            (collapsedHeaderHeight() + searchBandDp + PAGE_TOP_PADDING + GRID_GAP / 2).roundToPx()
+            (collapsedHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING + GRID_GAP / 2).roundToPx()
         }
     LaunchedEffect(selected, shown, searchBandDp) {
         if (ui.located) return@LaunchedEffect
         if (selected == null || filter.isNotBlank()) return@LaunchedEffect
         if (searchBandDp <= 0.dp) return@LaunchedEffect
-        val index = shown.indexOfFirst { it.packageName == selected }
+        // 一行一个包：绑定里可能带着 `/类名`，所以按「同一个应用」比，不按整串比
+        // 等一帧：折叠量在布局期才量得出来，进页那一次组合读到的是 0。
+        withFrameNanos { }
+        val index = shown.indexOfFirst { AppTarget.sameApp(it.target, selected) }
         // 清单还没到（`shown` 空）不算定位过：等它到了再走这一次
         if (shown.isEmpty()) return@LaunchedEffect
         if (index > 0) {
             // `scrollToItem` 是程序性跳转，不走嵌套滚动那条路 ⇒ 顶栏不会自己折叠，跳完还是
             // 展开的、把目标行压在下面，因此直接把折叠量拉满。
-            scrollBehavior.state.heightOffset = scrollBehavior.state.heightOffsetLimit
+            collapseHeader(scrollBehavior)
             XLog.w(
                 "定位到已选：index=$index 顶栏 offset=${scrollBehavior.state.heightOffset}" +
                     "/limit=${scrollBehavior.state.heightOffsetLimit} inset=$listTopInsetPx",
@@ -254,6 +343,24 @@ private fun SettingsPage.LocateSelected(
         }
         ui.located = true
     }
+}
+
+/**
+ * [index] 那一行此刻是不是**已经完整落在挡板下面** —— 是的话进页就不用滚（也不折顶栏）。
+ *
+ *  「挡板」= 顶栏 + 固定搜索带（`coveredPx`）：它们叠在列表之上，落进这一段的行看着像被切掉半截。
+ *  `offset` 是行顶到视窗顶的距离（`LazyListState` 的口径），所以上下两个边界都得比。
+ *
+ *  放在这一页是因为**两级共用**：一级的 [LocateSelected] 与二级的 `LocateActivitySelected`
+ *  都要判「目标行是不是已经看得见」。二级那页自己的函数数已经贴上限，所以落在这一边。
+ */
+internal fun LazyListState.rowFullyVisible(
+    index: Int,
+    coveredPx: Int,
+): Boolean {
+    val info = layoutInfo
+    val row = info.visibleItemsInfo.firstOrNull { it.index == index } ?: return false
+    return row.offset >= coveredPx && row.offset + row.size <= info.viewportEndOffset
 }
 
 /**
@@ -279,6 +386,16 @@ private fun SettingsPage.AppRowTitle(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // 分身：一枚固定色的「分身」标签，**紧贴名字** —— 它回答的是「这一行是不是多开的那一份」，
+        //  比「模块 / 系统 / 用户」更该靠近名字（那几枚排在它后面）。
+        //  第几个不看标签：名字里已经写着（`微信 1`），标签再用五种颜色区分只会让整屏更花。
+        if (app.clone) {
+            Spacer(Modifier.width(APP_KIND_TAG_GAP))
+            AppKindTag(
+                text = I18n.get(Strings.APP_PICKER_CLONE_TAG, "分身"),
+                tint = cloneTagTint(),
+            )
+        }
         // 这一行是「盒子居中」而非 `alignByBaseline`：基线对齐会把胶囊整体
         // 压低小半档（大标题字面比标签高一截），居中反而让两个字面的中线基本重合。
         // 「模块 / 系统 / 用户」只在「显示系统应用」开着时画；「模块」不看那个开关

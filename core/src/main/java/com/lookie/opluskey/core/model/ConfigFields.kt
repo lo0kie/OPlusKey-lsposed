@@ -42,6 +42,15 @@ object ConfigFields {
      */
     const val MD5_JSON = "md5"
 
+    /**
+     * 「打开应用」那一族的显示名（`{ "999@包名/类名": "微信 2" }`）。
+     *
+     *  **不在下面那张字段表里**：那张表是扁平的「一个字段一个值」，而这是映射；而且它只有界面读
+     *  （执行侧只要「起哪个组件」），进字段表就等于每次按键把整张表广播给 `system_server`。
+     *  所以这一项只由 `ConfigCodec` 单独读写，**没有 `*_EXTRA`**（不广播）。
+     */
+    const val APP_NAMES_JSON = "app_names"
+
     /** 风险提示的确认记录 —— 与 `keys` / `global` 同一层，不在它们里面。 */
     const val DISCLAIMER_JSON = "disclaimerAccepted"
 
@@ -88,6 +97,8 @@ object ConfigFields {
 
     const val LANGUAGE_JSON = "language"
     const val LANGUAGE_EXTRA = "language"
+    const val COLOR_OS_API_JSON = "colorOsApi"
+    const val COLOR_OS_API_EXTRA = "color_os_api"
 
     /**
      * 字段的取值类型 —— 两条通道各自按它选 getter / setter，**默认值也在这里**。
@@ -208,8 +219,12 @@ object ConfigFields {
     /** 界面语言。 */
     val F_LANGUAGE = Field(LANGUAGE_JSON, LANGUAGE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_LANGUAGE))
 
+    /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
+    val F_COLOR_OS_API = Field(COLOR_OS_API_JSON, COLOR_OS_API_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COLOR_OS_API))
+
     /** `GlobalConfig` 的全部字段。 */
-    val GLOBAL_FIELDS: List<Field> = listOf(F_DOUBLE_CLICK_MS, F_VIBRATE, F_INSTANT_SINGLE, F_TOAST_ON_RUN, F_LANGUAGE)
+    val GLOBAL_FIELDS: List<Field> =
+        listOf(F_DOUBLE_CLICK_MS, F_VIBRATE, F_INSTANT_SINGLE, F_TOAST_ON_RUN, F_LANGUAGE, F_COLOR_OS_API)
 
     // ── `Config` 自己那两位（都在正文顶层、都只落盘）
 

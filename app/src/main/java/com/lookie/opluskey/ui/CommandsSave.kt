@@ -46,10 +46,15 @@ internal fun SettingsPage.saveCommands(
         return CommandsSave.Failed
     }
     XLog.w("命令库写入：$what")
+    // 命令库一改，`ConfigBroadcast.tag` 就可能跟着变（「长按绑的是不是串行命令」读的正是它）——
+    //  与 `write()` 同一条账：先记成「在路上」，否则这一小段会被判成未同步，整页闪一下。
+    link.markConfigPending(localConfigTag)
     // 命令库变了必须重发配置广播：ConfigFields.LONG_SERIAL_EXTRA（长按绑的是不是串行命令）是发广播
     // 那一刻现算的，不重发的话注入侧还拿着旧判定 —— cmd:X 在单条 / 多条之间切换后，
     // 「连续触发」的闸门会一直错下去。
     if (!publishConfig(configState.config.value)) {
+        // 广播没发出去 ⇒ 注入侧手上确实不是这一份，撤掉上面那笔乐观态
+        link.clearConfigPending()
         XLog.w("命令库写入落盘成功但广播失败，注入侧仍是旧配置：$what")
         // 与 [write] 同一句口径：这一刻 config.value 刚换成新值、本地指纹跟着变，
         //  而注入侧那份还是旧的 ⇒ 页面判「未同步」、⋮ 里那一项会被灰掉，

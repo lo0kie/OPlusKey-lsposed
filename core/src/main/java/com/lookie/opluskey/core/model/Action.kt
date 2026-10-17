@@ -9,9 +9,12 @@ sealed interface Action {
     val token: String
 
     /**
-     * 「打开应用」那一族的目标（[App] 与 [AppWindow] 两档都是），其余为 `null`。
+     * 「打开应用」那一族的目标（[App] / [AppWindow] / [AppShortcut] 三档都是），其余为 `null`。
      *
-     *  这两档的目标写法完全一样（`包名/Activity` 或 `包名`），差别只在「用哪种方式起」——
+     *  前两档的目标写法完全一样（`包名/Activity` 或 `包名`），差别只在「用哪种方式起」；
+     *  [AppShortcut] 是「比应用更具体的一档」（`包名/快捷方式id`），它**也算这一族** ——
+     *  否则绑定页那格「打开应用」认不出它（`isSelected` 为 false），焦点会退回第一格「无操作」。
+     *
      *  界面上凡是「取一下目标」的地方都走这里，不再各写一遍 `when`。
      */
     val appTarget: String?
@@ -19,6 +22,7 @@ sealed interface Action {
             when (this) {
                 is App -> target
                 is AppWindow -> target
+                is AppShortcut -> AppTarget.format("$pkg/$shortcutId", userId)
                 else -> null
             }
 
@@ -76,6 +80,40 @@ sealed interface Action {
         val target: String,
     ) : Action {
         override val token: String = Action.WINDOW_PREFIX + target
+    }
+
+    /**
+     * 应用的**快捷方式**（长按桌面图标弹出来的那几个：扫一扫 / 收付款）。
+     *
+     *  与 [Shortcut] **不是一回事**：那条是 ColorOS 的小布快捷指令（`com.coloros.shortcuts`），
+     *  这条是某个应用自己注册的 `ShortcutInfo`，执行时走 `LauncherApps.startShortcut` ——
+     *  那条 intent 里往往只有 action + `PersistableBundle`，按普通 intent 起会把参数丢掉、
+     *  退化成「打开应用」。
+     *
+     *  **不带显示名**：名字单独存在 `Config.appNames`（见 `AppTarget` 的类注释）。这条动作的
+     *  名字是「扫一扫」这类**快捷方式自己的名字**，与应用的显示名不是一回事，所以由落盘那一侧
+     *  按这一条的身份（`999@包名/id`）分别记。
+     */
+    data class AppShortcut(
+        val pkg: String,
+        val shortcutId: String,
+        val userId: Int = 0,
+        /** 用小窗起（`appshortcut:w:…`）—— 与 [AppWindow] 同一档意思，只是目标是快捷方式。 */
+        val window: Boolean = false,
+    ) : Action {
+        /**
+         * 目标那一段（**不带**动作前缀）：`999@包名/id`。
+         *
+         *  界面要拿它跟「选择界面」二级页的行做身份比较（`AppTarget.same`）—— 与 [token] 同源，
+         *  拼两套的话，改了一处另一处就对不上，那一行会永远不点亮。
+         */
+        val plainTarget: String =
+            AppTarget.format("$pkg/$shortcutId", userId)
+
+        override val token: String =
+            Action.APP_SHORTCUT_PREFIX +
+                (if (window) WINDOW_MARK else "") +
+                plainTarget
     }
 
     /**
@@ -200,6 +238,17 @@ sealed interface Action {
         /** 小布快捷指令。 */
         const val SHORTCUT_PREFIX = "shortcut:"
 
+        /**
+         * 应用的快捷方式（长按桌面图标那几个）。
+         *
+         *  与 [SHORTCUT_PREFIX] **只差开头四个字母**，`startsWith` 判定时谁先谁后都行
+         *  （`appshortcut:` 不以 `shortcut:` 开头），但两支含义完全不同，别顺手合并。
+         */
+        const val APP_SHORTCUT_PREFIX = "appshortcut:"
+
+        /** 快捷方式用小窗起 —— 紧跟在 [APP_SHORTCUT_PREFIX] 之后（`appshortcut:w:…`）。 */
+        const val WINDOW_MARK = "w:"
+
         /** 切换手电筒。 */
         const val FLASHLIGHT = "flashlight"
 
@@ -239,13 +288,7 @@ sealed interface Action {
                 }
 
                 text.startsWith(KEYEVENT_PREFIX) -> {
-                    val code = text.removePrefix(KEYEVENT_PREFIX).trim().toIntOrNull()
-                    if (code == null) {
-                        XLog.w("动作 keyevent: 的按键无法识别（按 none 处理）：$text")
-                        None
-                    } else {
-                        KeyEvent(code)
-                    }
+                    parseKeyEvent(text)
                 }
 
                 text.startsWith(SHELL_PREFIX) -> {
@@ -268,6 +311,11 @@ sealed interface Action {
                 // 必须排在兜底之前，否则 `window:` 会被当成 shell 命令执行
                 text.startsWith(WINDOW_PREFIX) -> {
                     AppWindow(text.removePrefix(WINDOW_PREFIX).trim())
+                }
+
+                // 同理：`appshortcut:` 认不出也得先落在这里，别掉进 shell 兜底
+                text.startsWith(APP_SHORTCUT_PREFIX) -> {
+                    parseAppShortcut(text)
                 }
 
                 text.startsWith(SHORTCUT_PREFIX) -> {
@@ -312,6 +360,43 @@ sealed interface Action {
                     Shell(text)
                 }
             }
+        }
+
+        /**
+         * `keyevent:<码>` 那一支 —— 与 [parseAppShortcut] 拆出来的理由相同（[parse] 贴着长度上限）。
+         */
+        private fun parseKeyEvent(text: String): Action {
+            val code = text.removePrefix(KEYEVENT_PREFIX).trim().toIntOrNull()
+            return if (code == null) {
+                XLog.w("动作 keyevent: 的按键无法识别（按 none 处理）：$text")
+                None
+            } else {
+                KeyEvent(code)
+            }
+        }
+
+        /**
+         * `appshortcut:包名/快捷方式id` 那一支。
+         *
+         *  写法与 [AppShortcut] 的 token 同源：`AppTarget.format("包名/id", userId)` ——
+         *  用户前缀按 `AppTarget` 的口径剥。老配置里可能还跟在 `|名字` 后面（那时名字是塞在
+         *  token 里的），`withoutUser` 会一并剥掉，所以那些值照读。
+         *
+         *  缺包名或 id 的一律按「认不出」处理（[None]），不猜。
+         */
+        private fun parseAppShortcut(text: String): Action {
+            val raw = text.removePrefix(APP_SHORTCUT_PREFIX).trim()
+            // `w:` 紧跟前缀：小窗那一档。剥掉之后再按 `包名/id|名字` 解析
+            val window = raw.startsWith(WINDOW_MARK)
+            val body = if (window) raw.removePrefix(WINDOW_MARK) else raw
+            val plain = AppTarget.withoutUser(body)
+            val pkg = plain.substringBefore('/')
+            val id = plain.substringAfter('/', "")
+            if (pkg.isEmpty() || id.isEmpty()) {
+                XLog.w("动作 appshortcut: 缺包名或快捷方式 id（按 none 处理）：$text")
+                return None
+            }
+            return AppShortcut(pkg, id, AppTarget.userId(body), window)
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.lookie.opluskey
 
 import com.lookie.opluskey.core.DEBUG_PROBE
-import com.lookie.opluskey.core.ENFORCE_DEVICE_GATE
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.model.HostApp
@@ -41,23 +40,17 @@ class KeyModule : XposedModule() {
             )}；系统：${DeviceSupport.systemOf(DeviceSupport.currentAndroid, DeviceSupport.currentRomSeries)}" +
                 "；允许运行=${DeviceSupport.isAdapted}",
         )
-        if (!DeviceSupport.isAdapted && module.processName != HostApp.PAGE_PROCESS) {
-            // 适配清单外的组合**只注入界面层**（见 [DeviceSupport]）——
-            // 这一条是「为什么按了没反应」的第一判据行，必须是 w
-            XLog.w("${DeviceSupport.whyNotInjecting()} ⇒ 本进程不注入（只保留界面层 ${HostApp.PAGE_PROCESS}）")
+        if (!DeviceSupport.isAdapted) {
+            // **不再据此拒绝注入**（适配清单现在只是「验过没有」的提示）：这一行留给排查 ——
+            //  清单外的机器上「按了没反应」时，先看这里是不是它。
+            XLog.w("${DeviceSupport.whyNotInjecting()} ⇒ 照常注入（清单外的机器可能不生效）")
         }
-        // 档位 —— 与上面那行**分开报**：适配闸管「能不能注入」，档位表管「注入之后那些落点
+        // 档位 —— 与上面那行**分开报**：清单管「这一组验过没有」，档位表管「注入之后那些落点
         //  认不认得」。真机报「按了没反应」时，这几句一起看就知道断在哪一环。
         XLog.w(
             "适配档位：内置命令=${RomProfile.describeCurrent()}；" +
                 "小窗几何=${MiniWindowGeometry.describeCurrent()}",
         )
-        if (!ENFORCE_DEVICE_GATE) {
-            // 本包不做适配清单这道闸（只有 debug 会这样，见 `BuildFlags`）：上面那行照样打机型与
-            //  系统版本，这里补一句为什么清单外的机器也「允许运行」—— 免得对着图排查时对不上。
-            //  编译期常量 ⇒ release 里这一整块（含这条日志的字面量）都被折掉。
-            XLog.w("本包不做适配清单这道闸 ⇒ 任何机型 / 系统版本都照常注入")
-        }
     }
 
     /**
@@ -66,12 +59,6 @@ class KeyModule : XposedModule() {
      * `docs/device-findings.md` 的「回调能力表」。
      */
     override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
-        if (!DeviceSupport.isAdapted) {
-            // 适配清单外的组合：一个 Hook 都不挂。挂了就等于替一台没验过的 ROM 吞掉侧键，
-            //  而后面那些反射找的类/方法在这版 ROM 上是真是假我们无从判断（见 [DeviceSupport]）。
-            XLog.w("${DeviceSupport.whyNotInjecting()} ⇒ 不装按键 Hook（侧键不接管，只保留界面层）")
-            return
-        }
         XLog.w("system_server 启动，开始安装按键 Hook")
 
         // 最后一道保险：任何 Throwable（含 Error 系）都不能漏出去 —— 漏出去就是开机循环。
@@ -88,8 +75,8 @@ class KeyModule : XposedModule() {
         val process = currentProcessName()
         when (process) {
             HostApp.PAGE_PROCESS -> {
-                // 界面层**无论什么机型都装**：这是「不在适配清单里」时留给用户的唯一窗口
-                // （页面会整页禁用，并说清是不认识的机型、还是这一版系统还没适配）。
+                // 界面层**无论什么机型都装**：清单外的机器也照常进来改配置（页面不再整页禁用，
+                //  只会在「更多选项」里提示这一组没验过）。
                 XLog.w("侧键设置页进程启动，开始安装换页 Hook")
 
                 // 设置页进程崩了只死一个页面，但同样不把异常抛回宿主，最坏是页面回到系统原版。
@@ -99,10 +86,6 @@ class KeyModule : XposedModule() {
             }
 
             HostApp.PACKAGE -> {
-                if (!DeviceSupport.isAdapted) {
-                    XLog.w("${DeviceSupport.whyNotInjecting()} ⇒ 不装宿主侧手势劫持与接收器（只保留界面层）")
-                    return
-                }
                 if (sealRejected(param.classLoader)) return
                 // 宿主主进程：框架判好的侧键手势派发到这里，执行也放这一侧（配置同 uid 直接读得到）。
                 XLog.w("侧键宿主主进程启动，开始安装手势劫持 Hook")

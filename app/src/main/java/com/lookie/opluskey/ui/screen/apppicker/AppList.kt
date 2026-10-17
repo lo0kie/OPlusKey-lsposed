@@ -1,10 +1,12 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
+import com.lookie.opluskey.bridge.AppCloneCatalog
+import com.lookie.opluskey.bridge.AppEntry
 import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.host.action.AppEntry
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.LaunchableApp
+import com.lookie.opluskey.ui.model.cloneLabel
 
 /**
  * 本机可启动的应用，按名字排序。
@@ -78,7 +80,7 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
                 .toList()
         // Xposed 模块：默认就列，不看开关 —— 模块往往没有 launcher 图标、不在上一批里，却是最常挑的。
         // 判据是模块自带的入口 category `MODULE_SETTINGS`（`xposedminversion` 那类 metaData 在 dumpsys
-        // 里不落地，翻 APK 的 `META-INF/xposed/` 太贵）。没声明该 category 的模块认不出来，行不带「模块」标签。
+        // 里不落地，翻 APK 的 `META-INF/xposed/` 太贵）。
         val xposedList =
             pm
                 .queryIntentActivities(
@@ -91,7 +93,37 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
                 .distinctBy { it.packageName }
                 .filter { it.packageName != ModuleInfo.PACKAGE }
                 .toList()
-        val xposedPkgs = xposedList.mapTo(HashSet()) { it.packageName }
+        // —— 再加一条判据：**新式 libxposed 模块**——
+        //
+        //  这一类**不声明** `MODULE_SETTINGS`，而是在清单里挂一个名叫
+        //  `io.github.libxposed.service.XposedProvider` 的 provider（签名里那个
+        //  `io.github.libxposed.service` 包就是它的身份）。真机上 `com.wizpizz.reddidnt` 2.0.0
+        //  即此：`query-activities -c …MODULE_SETTINGS` 查不到它，于是列表里一行「模块」标签都没有。
+        //
+        //  为什么不逐包翻 APK 里的 `META-INF/xposed/module.prop`：那是这个类注释一开始就否掉的贵路子
+        //  （200+ 次开 zip）。而 `queryContentProviders(null, 0, 0)` 是**一次** binder 调用拿回全机
+        //  provider，筛个名字就够了 —— 与上面那次 `queryIntentActivities` 同量级。
+        val libXposedPkgs =
+            runCatching { pm.queryContentProviders(null, 0, 0) }
+                .onFailure { XLog.w("查 provider 失败，新式 libxposed 模块认不出来", it) }
+                .getOrNull()
+                ?.asSequence()
+                ?.filter { it.name == LIBXPOSED_PROVIDER }
+                ?.mapNotNull { it.packageName }
+                ?.filter { it != ModuleInfo.PACKAGE }
+                ?.toSet()
+                .orEmpty()
+        // 新式模块里**没有 launcher 图标**的那些，也要像旧式模块一样默认出现在列表里
+        // （有图标的本就在 `launched` 那一批）。拿不到 `ApplicationInfo` 的跳过。
+        val libXposedList =
+            libXposedPkgs
+                .filter { pkg -> (launched + xposedList).none { it.packageName == pkg } }
+                .mapNotNull { pkg -> runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull() }
+        val xposedPkgs =
+            (xposedList.map { it.packageName } + libXposedPkgs).toCollection(HashSet())
+        if (libXposedPkgs.isNotEmpty()) {
+            XLog.w("新式 libxposed 模块：${libXposedPkgs.joinToString()}")
+        }
         // 「显示系统应用」开着时再追加的一批 —— 既不在上一批、也不是模块的其余应用（主体是没有
         // launcher 图标的系统应用）。不筛「拉不拉得起来」：能拿到全量包列表靠宿主自己声明了
         // `QUERY_ALL_PACKAGES` —— 界面代码跑在宿主进程，包可见性按宿主算。
@@ -99,7 +131,8 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
             if (!includeSystem) {
                 emptyList()
             } else {
-                val known = (launched + xposedList).mapTo(HashSet()) { it.packageName }
+                val known =
+                    (launched + xposedList + libXposedList).mapTo(HashSet()) { it.packageName }
                 pm
                     .getInstalledApplications(0)
                     .asSequence()
@@ -111,27 +144,52 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
         // MODULE_SETTINGS 的 activity-alias」，同一个包在 launcher 与模块两批里各出现一次。
         // 不去重 ⇒ 列表两行同包名 ⇒ `items(key = ...)` 抛「Key ... was already used」，异常落在
         // 宿主 Activity 的组合里 ⇒ 打开「选择应用」页即崩宿主页面（`others` 已按 known 滤过）。
+        // 排序键在 `entry` 里就算好了（罗马化不便宜）：这里只比，不重算
+        // 抽成变量是因为**分身也要按同一把尺子排**（见函数末尾的 `all`）。
+        val order =
+            Comparator<LaunchableApp> { a, b ->
+                val byKey = a.sortKey.compareTo(b.sortKey)
+                if (byKey != 0) {
+                    byKey
+                } else {
+                    val byName = collator?.compare(a.label, b.label) ?: 0
+                    if (byName != 0) byName else a.packageName.compareTo(b.packageName)
+                }
+            }
         val apps =
-            ((launched + xposedList).distinctBy { it.packageName } + others)
+            ((launched + xposedList + libXposedList).distinctBy { it.packageName } + others)
                 .map { entry(it, it.packageName in xposedPkgs) }
-                // 排序键在 `entry` 里就算好了（罗马化不便宜）：这里只比，不重算
-                .sortedWith { a, b ->
-                    val byKey = a.sortKey.compareTo(b.sortKey)
-                    if (byKey != 0) {
-                        byKey
-                    } else {
-                        val byName = collator?.compare(a.label, b.label) ?: 0
-                        if (byName != 0) byName else a.packageName.compareTo(b.packageName)
-                    }
-                }.toList()
+        // —— 分身：同一个应用在**别的用户**里的那一份 ——
+        //
+        //  分身是另一个 Android 用户，所以在主用户的清单里**根本看不到**：换用户查包、槽号、
+        //  名字都由 `AppCloneCatalog` 那边给（它认识 `UserManager` / `IPackageManager` 那些
+        //  私有面，见那个类的注释）。这一层只拿到「包名 + 名字 + 槽号」，剩下的与普通应用一样。
+        val clones =
+            AppCloneCatalog.entries(context).map { entry ->
+                val label = cloneLabel(entry.label, entry.slot)
+                LaunchableApp(
+                    packageName = entry.packageName,
+                    label = label,
+                    system = entry.system,
+                    launchable = true,
+                    xposed = false,
+                    sortKey = sortKeyOf(label, romanizer),
+                    userId = entry.userId,
+                )
+            }
+        // 分身行**并进主清单再统一排序** —— 上一版是 `apps + clones`（分身一律吊在末尾），
+        //  于是「微信 1」跑到「支付宝」后面去了；用户要的是按名字混排。
+        val all = (apps + clones).sortedWith(order)
+        XLog.w("可启动应用：分身 ${clones.size} 行")
+
         // 打头几条 + 耗时便于核对（转写器是否生效、这次查了多久）
         XLog.w(
-            "可启动应用：${apps.size} 个（显示系统应用=$includeSystem，模块 ${xposedList.size} 个、" +
+            "可启动应用：${all.size} 个（显示系统应用=$includeSystem，模块 ${xposedList.size} 个、" +
                 "额外追加 ${others.size} 个），" +
                 "耗时 ${android.os.SystemClock.uptimeMillis() - t0}ms，" +
-                "排序（前 10）：" + apps.take(10).joinToString(" / ") { it.label },
+                "排序（前 10）：" + all.take(10).joinToString(" / ") { it.label },
         )
-        apps
+        all
     } catch (e: Throwable) {
         XLog.w("查可启动应用失败（本页保留上一次的清单 / 显示空提示）", e)
         null
@@ -169,15 +227,3 @@ internal fun SettingsPage.sortKeyOf(
     }
     return sb.toString().ifEmpty { label.lowercase(java.util.Locale.ROOT) }
 }
-
-/**
- * 被「不支持以小窗口打开」拦下的那一个 —— 列表侧的临时状态，所以与清单那几条放在同一文件。
- *
- * @param fromPick 这次是从**点确认键**触发的那一道（三处查询里的最后一道）。它决定「确认」要不要
- *   顺手写下去：从确认键来的按 `app:<包名>` 存（用户最初要的「取消勾选保存」），
- *   从前两处（切应用 / 点菜单）来的只把开关拨回关 —— 那时还没有「这一次的选择」可存。
- */
-internal data class SmallWindowBlock(
-    val app: LaunchableApp,
-    val fromPick: Boolean,
-)

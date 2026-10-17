@@ -1,10 +1,11 @@
-package com.lookie.opluskey.host.action
+package com.lookie.opluskey.bridge
 
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import com.lookie.opluskey.core.model.AppTarget
 
 /**
  * 把一个包名解析成「能打开的入口」。
@@ -39,10 +40,13 @@ internal object AppEntry {
     fun intentOf(
         pm: PackageManager,
         target: String,
-    ): Intent? =
-        if (target.contains('/')) {
-            val pkg = target.substringBefore('/')
-            val raw = target.substringAfter('/')
+    ): Intent? {
+        // 目标里可能带多开前缀（`999@com.tencent.mm/.ui.LauncherUI`，见 `AppTarget`）——
+        //  解析组件之前先剥掉：包名与类名都不含 `@`，带着它去 setClassName 只会拼出个不存在的组件。
+        val plain = AppTarget.withoutUser(target)
+        return if (plain.contains('/')) {
+            val pkg = plain.substringBefore('/')
+            val raw = plain.substringAfter('/')
             // 短横线写法（`app:pkg/.MainActivity`）按 `ComponentName.unflattenFromString` 的口径
             //  拼：点开头就是「类名相对包名」，直接接在包名后面 —— 写成 `"$pkg.$raw"` 会拼出
             //  `pkg..MainActivity`（两个点），那个类永远不存在，表现为「应用起不来」。
@@ -56,8 +60,9 @@ internal object AppEntry {
                 }
             Intent().setClassName(pkg, cls)
         } else {
-            resolve(pm, target)
+            resolve(pm, plain)
         }
+    }
 
     /** 解析不出入口就返回 `null` —— 调用方据此标「不可打开」。 */
     fun resolve(

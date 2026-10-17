@@ -3,13 +3,17 @@ package com.lookie.opluskey.bridge.host
 import android.content.Context
 import android.hardware.camera2.CameraManager
 import android.os.Handler
+import android.provider.Settings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.RomProfile
 
 /** 手电筒开关（`flashlight:`）：语义是切换（开着的关掉、关着的打开）。 */
 internal class FlashlightController(
     private val context: () -> Context?,
     /** 注册 torch 回调用的 Handler（回调要在有 Looper 的线程上）。 */
     private val handler: Handler,
+    /** 「使用 ColorOS 接口」这一档由装配处传入（见 `ActionRunner`）—— 本类不自己去读配置。 */
+    private val isColorOsApi: () -> Boolean,
 ) {
     /** 当前手电筒是否亮着（靠 torch 回调跟踪，不猜）。 */
     @Volatile
@@ -29,6 +33,21 @@ internal class FlashlightController(
                 XLog.w("没有 Context，flashlight: 跳过")
                 return
             }
+
+        // 「ColorOS 那侧读到了真值没有」是要一路带到下面那个判断的：读一次就够，
+        //  以前这里分两个函数各读一遍同一个 Secure 键（同一个事实两条路径）。
+        var colorOsStateKnown = false
+        val viaColorOs = isColorOsApi()
+        XLog.w("手电筒：接口档=${if (viaColorOs) "ColorOS" else "AOSP"}")
+        if (viaColorOs) {
+            if (tryToggleViaColorOsService(ctx)) {
+                XLog.w("手电筒：已交 ColorOS 服务（切换结果由它决定，不再走 CameraManager）")
+                return
+            }
+            // ColorOS 专属服务未成功，从 Settings.Secure 同步当前真值后再切
+            colorOsStateKnown = syncStateFromSettings(ctx)
+        }
+
         val cm =
             try {
                 ctx.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
@@ -43,22 +62,69 @@ internal class FlashlightController(
 
         registerTorchCallbackOnce(cm)
 
-        if (torchCameraId != null) {
-            // 回调落地过 ⇒ torchOn 是系统上报的真值，直接切。
-            applyToggle(cm)
+        if (torchCameraId != null || colorOsStateKnown) {
+            // 回调落地过，或者已从 ColorOS Settings 读到真值 ⇒ 直接切。
+            applyToggle(cm, viaColorOs)
             return
         }
         // 回调还没落地（首次切换）：`registerTorchCallback` 会立刻以当前状态回调一次，
         // 但那一次排在 handler 队列里，本帧读到的仍是初值 false —— 手电已经开着时
         // 第一下就按成了「继续开」。把切换排到它后面，读到的就是真状态。
-        if (!handler.post { applyToggle(cm) }) {
+        if (!handler.post { applyToggle(cm, viaColorOs) }) {
             XLog.w("手电筒：状态回调还没落地且排不进队列，这次按下的状态可能反（仍会尝试切换）")
-            applyToggle(cm)
+            applyToggle(cm, viaColorOs)
         }
     }
 
+    /**
+     * 通过 ColorOS 原生侧键服务（`RomProfile.NAME_KEY_FLASHLIGHT`，`what=2`）切换手电筒。
+     *
+     * 发消息这一步交给 [BuiltInMessenger] —— 侧键场景动作那条用的也是它，边界处理（超时 /
+     * bind 被拒 / 失败上报）只该有一份。这里**只借用通道**：失败不报 `CommandFailure`，
+     * 因为下面还有 CameraManager 那条兜底（`onFail` 为 `null`，失败仍有日志）。
+     *
+     * @return true = 请求已受理（**不等于手电筒真的动了** —— 连接是异步的）
+     */
+    private fun tryToggleViaColorOsService(ctx: Context): Boolean {
+        val target =
+            RomProfile.builtIn(RomProfile.NAME_KEY_FLASHLIGHT) ?: run {
+                // 本机 ROM 档位表里没有这一条（或 release 包在本机没适配）—— 说出来，
+                //  否则「为什么关了 ColorOS 接口还是一样」在日志里没有依据
+                XLog.w("手电筒：本机 ROM 档位里没有 ${RomProfile.NAME_KEY_FLASHLIGHT} 的落点，走 CameraManager")
+                return false
+            }
+        val accepted = BuiltInMessenger.send(ctx, target, "手电筒（ColorOS 接口）")
+        if (!accepted) XLog.w("手电筒：ColorOS 服务那条没受理，退 CameraManager")
+        return accepted
+    }
+
+    /**
+     * 从 ColorOS 的 `Settings.Secure` 读手电筒状态；读到就写进 [torchOn]。
+     *
+     * 同一个键原先被两个函数各读一次（一个写状态、一个只判「读到没」）—— 同一件事的两条路径，
+     * 合并成「读一次、把读到了没有返回出去」：ColorOS 那条失败后调用一次，结果留给后面那个判断复用。
+     *
+     * @return 读到了没有。`false` = 这台机器不写这个键，**不能**拿它当「手电筒关着」
+     */
+    private fun syncStateFromSettings(ctx: Context): Boolean {
+        val enabled =
+            runCatching {
+                Settings.Secure.getInt(ctx.contentResolver, FLASHLIGHT_ENABLED_KEY, -1)
+            }.getOrDefault(-1)
+        if (enabled == -1) {
+            XLog.w("手电筒：读不到 Settings.Secure.$FLASHLIGHT_ENABLED_KEY，按 torch 回调推状态")
+            return false
+        }
+        torchOn = (enabled == 1)
+        XLog.w("手电筒：从 Settings.Secure.$FLASHLIGHT_ENABLED_KEY 读到状态=${if (enabled == 1) "开" else "关"}")
+        return true
+    }
+
     /** 真正那一下切换 —— 调用时 `torchOn` 必须是可信值（见 [toggle] 的排序说明）。 */
-    private fun applyToggle(cm: CameraManager) {
+    private fun applyToggle(
+        cm: CameraManager,
+        viaColorOs: Boolean,
+    ) {
         val id = torchCameraId ?: firstTorchCamera(cm)
         if (id == null) {
             XLog.w("找不到带闪光灯的摄像头，flashlight: 跳过")
@@ -68,7 +134,8 @@ internal class FlashlightController(
         try {
             cm.setTorchMode(id, target)
             torchOn = target
-            XLog.w("手电筒 → ${if (target) "开" else "关"}（camera=$id）")
+            val mode = if (viaColorOs) "ColorOS" else "AOSP"
+            XLog.w("手电筒（$mode 接口）→ ${if (target) "开" else "关"}（camera=$id）")
         } catch (e: Throwable) {
             XLog.w("切换手电筒失败（相机被占用时 torch 不可用，见异常）", e)
         }
@@ -127,4 +194,14 @@ internal class FlashlightController(
             XLog.w("枚举摄像头失败", e)
             null
         }
+
+    private companion object {
+        /**
+         * ColorOS 在 `Settings.Secure` 里记手电筒开关用的键（**平台事实**，不是本模块的选择）。
+         *
+         *  它是「ColorOS 那条绑定通道失败之后，还能不能拿到真状态」的唯一判据：读不到就该退回
+         *  「按 torch 回调推」，而不是把「读不到」当成「手电筒关着」。换 ROM 时先回查它。
+         */
+        const val FLASHLIGHT_ENABLED_KEY = "flashlight_enabled"
+    }
 }

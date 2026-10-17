@@ -58,6 +58,14 @@ internal class GestureDetector(
      * 重复那几次不能当新的一次按键（据此跳过振动反馈）。
      */
     private val onGesture: (KeyId, Gesture, KeyConfig, Boolean) -> Unit,
+    /**
+     * 「这一按松手了」——只对**已判过长按**的那一次回调（`oplus:voice_memory` 靠它停下来）。
+     *
+     * 与 [onGesture] 分开：松手不是手势（`Gesture` 那三档里没有它），执行侧要的也不是
+     * 「再执行一次动作」，而是「把刚才那一段收尾」。走同一条通道、用
+     * `ModuleWire.PHASE_RELEASE` 这个独立 phase 转过去。
+     */
+    private val onLongReleased: (KeyId) -> Unit,
 ) {
     /**
      * 一个键的待定状态 —— 字段被两条线程读写，跨线程的一律 `@Volatile`（见类注释）。
@@ -198,7 +206,7 @@ internal class GestureDetector(
         // 长按已在按下期间触发过 —— 抬手不再重复判单击
         // （判据是 longPressFired，不是 longPressAt：后者已被长按定时器清零）
         if (p.longPressFired) {
-            reset(id)
+            finish(id)
             return
         }
 
@@ -244,6 +252,28 @@ internal class GestureDetector(
         p.doubleWindowMs = window
         p.doubleWindowAt = now + window
         scheduleDoubleWindow(id, config)
+    }
+
+    /**
+     * 这一按结束（抬手，或被 `FLAG_CANCELED` 取消）：**长按已经判过就先通知执行侧收尾**，再清状态。
+     *
+     *  为什么「松手」只能在这里报：`oplus:voice_memory` 起的是一个前台采集服务，判定侧不告诉
+     *  执行侧「手松了」，那边就一直在录 —— 卡片不会消失，麦克风一直亮着。
+     *  取消（窗口失焦 / 按压被打断）也算结束：那一段同样还在录，一样得收尾。
+     *
+     *  判据用 `longPressFired`：只有真判过长按的那一次才有东西要收尾。短按 / 双击走到这里
+     *  `longPressFired` 是假，收尾回调不响（否则每次按键都会多一条广播）。
+     */
+    fun finish(id: KeyId) {
+        if (pending(id).longPressFired) {
+            try {
+                onLongReleased(id)
+            } catch (e: Throwable) {
+                // 这一行跑在输入线程 / 配置广播线程上，抛出去就是 system_server 崩
+                XLog.w("通知「松手」失败（已忽略）：${id.label}", e)
+            }
+        }
+        reset(id)
     }
 
     /** 清空某个键的状态与计时器（含「长按连续触发」正在跑的重复任务）。 */
@@ -294,7 +324,9 @@ internal class GestureDetector(
                         // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
                         // 多条命令（`cmd:<名字>` 指串行命令）反复重放没意义 —— 界面长按 tab 也按同一条判定隐藏。
                         // `longIsSerial` 来自广播：注入侧读不到命令库文件，自己算必然恒 false。
-                        if (config.longRepeat && !config.longIsSerial) {
+                        // 灵感语音同理不连发（`longIsVoiceMemory`）：它连的是麦克风，重复拨等于把
+                        //  正在录的那一段掐掉重来 —— 系统自己的侧键长按也只有「松手结束」这一种语义。
+                        if (config.longRepeat && !config.longIsSerial && !config.longIsVoiceMemory) {
                             scheduleRepeat(id, config)
                         }
                     }

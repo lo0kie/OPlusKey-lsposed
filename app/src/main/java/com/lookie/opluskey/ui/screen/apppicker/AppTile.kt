@@ -41,6 +41,8 @@ import com.lookie.opluskey.ui.model.APP_KIND_TAG_RADIUS
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_RAISE
 import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.APP_STATE_TEXT_GAP
+import com.lookie.opluskey.ui.model.CLONE_TAG_DARK
+import com.lookie.opluskey.ui.model.CLONE_TAG_LIGHT
 import com.lookie.opluskey.ui.model.LaunchableApp
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
@@ -75,24 +77,31 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
     val packageName = app.packageName
     // 读一次版本号 = 订阅「清缓存」（理由见 `AppPickerState.iconsGeneration`）
     val generation = picker.iconsGeneration.intValue
-    // 这一行自己那份图：初值先看缓存（滚回来那一轮就命中），清过缓存则变回 null ⇒ 重新取。
-    //  它留在这里不随缓存淘汰而消失 —— 视口里的行不该因为别人补图 / 缓存淘汰而退回通用字形。
-    var icon by remember(packageName, generation) { mutableStateOf(picker.cachedIcon(packageName)) }
-    // 键只用（包名 + 版本号）：别的行补图不再打断这一行还在取的那一张。
+    // 这一行自己那份图：初值先看缓存（滚回来那一轮就命中）。
+    //  **key 里只有包名，没有 `generation`**：清缓存（`generation +1`）只该让下面那个 effect
+    //  重新取一张来覆盖，不该把已经在屏幕上的这张图丢掉 —— 带上 `generation` 就会在每次重查
+    //  清单之后把整屏图标重置回空白再重新填，看起来就是「进页后图标闪一下」。
+    var icon by remember(packageName) { mutableStateOf(picker.cachedIcon(packageName)) }
+    // 「这一行问过一轮了没有」—— 决定那张通用字形到底该不该出现。
+    //  缓存命中就算问过（`icon != null`）；否则要等这一轮 IO 回来才算。
+    var resolved by remember(packageName) { mutableStateOf(icon != null) }
+    // 键里带 `generation`：清过缓存就重取一张**覆盖**（换图标包 / 换主题后能换过来），
+    //  但在新图到手之前，屏幕上那张旧图留着不动。
     LaunchedEffect(packageName, generation) {
-        if (icon != null) return@LaunchedEffect
-        val loaded =
-            withContext(Dispatchers.IO) {
-                try {
-                    context.packageManager.getApplicationIcon(packageName)
-                } catch (e: Throwable) {
-                    XLog.d("取应用图标失败：$packageName（${e.javaClass.simpleName}）")
-                    null
-                }
-            } ?: return@LaunchedEffect
-        // 写进缓存是为了「滚回去不再跨进程问第二轮」，写进自己这一份是为了当场画出来
-        picker.putIcon(packageName, loaded)
-        icon = loaded
+        // 缓存里已有就直接用，不再跨进程问
+        picker.cachedIcon(packageName)?.let {
+            icon = it
+            resolved = true
+            return@LaunchedEffect
+        }
+        val loaded = loadIconOnce(packageName)
+        // 取不到也要记「问过了」：下面据此决定画通用字形还是留白
+        if (loaded != null) {
+            // 写进缓存是为了「滚回去不再跨进程问第二轮」，写进自己这一份是为了当场画出来
+            picker.putIcon(packageName, loaded)
+            icon = loaded
+        }
+        resolved = true
     }
     // 取样按 [APP_ICON_BITMAP_SIZE]（比实际渲染的 40dp 大一档，缩下来清晰）。
     val px =
@@ -127,11 +136,32 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
             // 再按高度算宽度。顺序不能反：先 `aspectRatio` 会拿宽度当基准。
             modifier = Modifier.fillMaxHeight().aspectRatio(1f),
         )
+    } else if (!resolved) {
+        // **还在取**：留一块同尺寸的空白，不要画通用字形。
+        //  否则每一行都会走「通用字形 → 真图标」那一下跳变，进页/滚动时满屏都在闪
+        //  （真机反馈：「选择应用的图标进去后会闪一下」）。
+        Spacer(Modifier.fillMaxHeight().aspectRatio(1f))
     } else {
-        // 取不到图标退回通用「应用」字形
+        // 问过一轮、确实没有（包已删 / 取图标抛异常）—— 这时才退回通用「应用」字形
         Icon(PageIcons.MenuStock, null, Modifier.fillMaxHeight().aspectRatio(1f))
     }
 }
+
+/**
+ * 取一次应用图标 —— **跨进程**，只能在 IO 上跑；取不到返回 `null` 并记一行 `d`。
+ *
+ *  从 [AppIcon] 里抽出来：那段 try/catch 加上后面几行会把那个组合函数顶过 detekt 的长度上限，
+ *  而它本身与「画什么」无关，只是把 `Drawable` 拿回来。
+ */
+private suspend fun SettingsPage.loadIconOnce(packageName: String): android.graphics.drawable.Drawable? =
+    withContext(Dispatchers.IO) {
+        try {
+            context.packageManager.getApplicationIcon(packageName)
+        } catch (e: Throwable) {
+            XLog.d("取应用图标失败：$packageName（${e.javaClass.simpleName}）")
+            null
+        }
+    }
 
 /**
  * 「选择应用」页除列表外那三种形态（加载中 / 一条都没查到 / 搜索无结果）共用的一块 ——
@@ -212,6 +242,15 @@ internal fun appKindTagTint(
         }
     }
 
+/** 「分身」标签色（明暗各一值，见 `CLONE_TAG_*`）—— 与 [appKindTagTint] 同一套切色判据。 */
+@Composable
+internal fun cloneTagTint(): Color =
+    if (COUITheme.colorScheme.background.luminance() < 0.5f) {
+        CLONE_TAG_DARK
+    } else {
+        CLONE_TAG_LIGHT
+    }
+
 /**
  * 应用名右边那枚小标签 —— 「模块」/「系统」/「用户」，或者警告档的「不可打开」。
  *
@@ -252,32 +291,4 @@ internal fun SettingsPage.AppKindTag(
             maxLines = 1,
         )
     }
-}
-
-/**
- * 包名 → 应用名（取不到就退回包名本身）—— 「打开应用」格那行小字，以及多条命令里
- * `app:` 那一步的标题。
- *
- * 走宿主的 `PackageManager`：包可见性按宿主算，绑过的应用本就在 [loadLaunchableApps]
- * 那份可见清单里，正常查得到。
- *
- * 带一层缓存（步骤行标题每次重组都要算，名称框里每敲一个字就重组一遍）。它是进程级顶层
- * `val`（活到 `:ui` 进程结束），且只缓存查成功的 —— 把失败写进去（值 = 包名）会让暂时的
- * 查失败永久固化成包名。
- */
-internal val appLabelCache = HashMap<String, String>()
-
-internal fun SettingsPage.appLabelOf(packageName: String): String {
-    appLabelCache[packageName]?.let { return it }
-    val label =
-        try {
-            val pm = context.packageManager
-            pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
-        } catch (e: Throwable) {
-            XLog.d("取应用名失败：$packageName（${e.javaClass.simpleName}）")
-            // 失败不写缓存，下次再查一次
-            return packageName
-        }
-    appLabelCache[packageName] = label
-    return label
 }

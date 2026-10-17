@@ -257,6 +257,17 @@ internal object MiniWindowFacts {
      */
     const val MINI_VERIFY_MS = 700L
 
+    /**
+     * **冷启动**时验收最多再等几轮（每轮 [MINI_VERIFY_MS]）。
+     *
+     *  只有一种情形会用到它：到点时目标包**连任务都还没有**（`foregroundTaskFor` 读到 -1）。
+     *  最近任务里根本没这个包，说明应用正在冷启动，判「options 没被吃住」是误判 ——
+     *  照原样降级会在 700ms 后再起一次全屏，把刚开好的小窗顶掉（真机症状：小窗闪一下就没了）。
+     *
+     *  两轮（合计 ≈2.1s）够微信用冷启动起一个界面；再多就是「真的不会成」了，降级反而拖时间。
+     */
+    const val SHORTCUT_VERIFY_RETRIES = 2
+
     /** `START_DELIVERED_TO_TOP`：intent 被交给栈顶那个活动消化，屏幕不会有任何变化。 */
     const val START_DELIVERED_TO_TOP = 3
 

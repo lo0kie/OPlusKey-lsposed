@@ -96,6 +96,9 @@ internal object KeyHooks {
                     forwarder.forward(id, gesture, repeat)
                 },
                 onGestureNoted = ::noteGesture,
+                onRelease = { id ->
+                    forwarder.release(id)
+                },
             )
         // 主开关翻到「不接管」时撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。
         //  撤销只能由「收到配置广播」触发，不能挂在拦截点那条 early return 上（按住不放时

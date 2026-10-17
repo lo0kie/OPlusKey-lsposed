@@ -33,19 +33,29 @@ internal fun SettingsPage.BindingGroups(
 
     // —— 按键设置：**在网格上面** ——
     //  它属于**这一档手势本身**的行为，排在动作网格之前：先看到「这一档怎么判、有什么可调」，
-    //  再挑「绑什么」。只有单击 / 长按两档有（双击那档的两个可调项都在单击档里）。
+    //  再挑「绑什么」。**三档各有一张**，各写自己那一档：
+    //   · 单击档 → `BindingSettingsCard`（单击延迟）
+    //   · 双击档 → `InstantSingleCard`（忽视无操作双击手势）
+    //   · 长按档 → `LongRepeatCard`（长按延迟 / 连续触发及其间隔）
     //
-    //  它下面那一档间距只在**真有这张卡**时给 —— 否则双击档的「内置命令」标题
-    //  会白多一截空档（标题紧贴它下面的内容，这是全页的规矩）。
+    //  同一张卡里不放别的档的设置项：用户找它们时带着「我在调哪一档」这个前提，
+    //  「双击窗口」也只有一个值，两档各放一个入口就是同一个配置项的第二个入口。
+    //
+    //  下面那一档间距只在**真有这张卡**时给 —— 否则没有这张卡的那一档，
+    //  「内置命令」标题会白多一截空档（标题紧贴它下面的内容，这是全页的规矩）。
     if (g == Gesture.SINGLE) {
         SmallTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
         BindingSettingsCard(enabled)
         Spacer(Modifier.height(GRID_ROW_GAP))
     }
 
+    if (g == Gesture.DOUBLE) {
+        SmallTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
+        InstantSingleCard(enabled)
+        Spacer(Modifier.height(GRID_ROW_GAP))
+    }
+
     // 「长按多久算长按」与「长按连续触发 / 触发间隔」同属长按这一档的行为，摆在同一张卡里。
-    // 双击档下**没有**这张卡：双击窗口就是「单击延迟」那一个值，两边都放会是同一个配置项的
-    // 第二个入口。单击档的「单击延迟」同理只留在单击档。
     if (g == Gesture.LONG) {
         SmallTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
         LongRepeatCard(

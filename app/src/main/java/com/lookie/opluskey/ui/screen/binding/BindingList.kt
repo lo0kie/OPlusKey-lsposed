@@ -29,7 +29,7 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 //   · 本文件               —— 参数、三条 effect、滚动骨架；
 //   · `BindingGridState.kt` —— 焦点账本 + 点击 / 确认键的派发入口 + 方向键处理器；
 //   · `BindingGrids.kt`     —— 内置网格 / 自定义命令网格 / 入口菜单；
-//   · `BindingSettings.kt` / `LongRepeatCard.kt` —— 单击档与长按档的两张设置卡；
+//   · `BindingSettings.kt` / `InstantSingleCard.kt` / `LongRepeatCard.kt` —— 三档各一张设置卡；
 //   · `BindingSections.kt`  —— 纵向顺序（哪一段之间该给间距）。
 
 /**

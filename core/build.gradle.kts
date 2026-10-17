@@ -195,20 +195,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    buildTypes {
-        // `beta` 必须在这个库里也建一份：`:app` 的 beta 变体消费一个**没有** beta 变体的库时，
-        //  要么靠 `:app` 侧写 `matchingFallbacks`，要么这儿直接提供同名的 —— 后者更直白，
-        //  而且 beta 与 release 的源码集在这里本来就一样（差异只在 `BuildFlags`，见 `src/beta`）。
-        //
-        //  `SealPin` 也一样：beta 与 release 都由封存任务生成（beta 同样做防篡改，见
-        //  `app/build.gradle.kts` 的 buildTypes 说明），debug 用 `src/debug` 那份手写桩。
-        create("beta") {
-            matchingFallbacks += listOf("release")
-        }
-    }
-
     // 明文资产**只接给 debug**：开发时要能随手换图，走的就是明文这条路。
-    //  release / beta 不接这一条 —— 收款码与名单由 [SealReleaseAssets] 封成 `assets/sealed.bin`，
+    //  release 不接这一条 —— 收款码与名单由 [SealReleaseAssets] 封成 `assets/sealed.bin`，
     //  明文一律不进包（这是「换图重打包」那条路被卡住的地方，见那个任务的说明）。
     //  注意路径相对本模块目录，写 `seal` 就是 `core/seal`。
     sourceSets {
@@ -225,8 +213,8 @@ android {
 //  「先跑任务、再打包」这条依赖。
 androidComponents {
     onVariants { variant ->
-        // 只有「发布形态」的两个变体需要封存：`release` 与 `beta`。
-        if (variant.buildType !in setOf("release", "beta")) return@onVariants
+        // 只有「发布形态」那一个变体需要封存：`release`。
+        if (variant.buildType != "release") return@onVariants
         val taskName = "seal" + variant.name.replaceFirstChar(Char::uppercase) + "Assets"
         val seal =
             tasks.register<SealReleaseAssets>(taskName) {

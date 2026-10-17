@@ -35,11 +35,13 @@ import com.lookie.opluskey.ui.colorsFor
 import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION
 import com.lookie.opluskey.ui.onDebugCommand
+import com.lookie.opluskey.ui.state.CONFIG_IN_FLIGHT_GRACE_MS
 import com.lookie.opluskey.ui.state.InjectStatus
 import io.github.suqi8.coui.kmp.basic.Scaffold
 import io.github.suqi8.coui.kmp.nav.core.NavDisplay
 import io.github.suqi8.coui.kmp.nav.core.NavDisplayEffects
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.delay
 
 // 整页渲染 —— 主题、根 Scaffold、页面栈的壳，以及页面级的**副作用**。
 //
@@ -135,6 +137,15 @@ private fun SettingsPage.PageEffects(
     }
     DebugChannelBridge()
     LinkCheckBridge()
+    // 「自己刚写下去的那一份还在路上」的**到期**：回包一到就提前结束（见 `onInjectReady`），
+    //  一直等不到就在宽限期满时摘掉这一位 —— 页面随即按真实结论判「未同步」。
+    //  少了这条到期，乐观态会一直挂着，注入侧真出问题时页面上看不出来。
+    LaunchedEffect(link.pendingConfigSince) {
+        val since = link.pendingConfigSince
+        if (since == 0L) return@LaunchedEffect
+        delay(CONFIG_IN_FLIGHT_GRACE_MS)
+        if (link.pendingConfigSince == since) link.clearConfigPending()
+    }
     // —— 平台返回 → 页面栈 ——
     //
     //  预测返回：hook 侧的 `OnBackAnimationCallback` 拿到系统手势的进度后调
@@ -241,6 +252,8 @@ private fun SettingsPage.onInjectReady(intent: Intent) {
             "指纹=${status.configTag.ifEmpty { "无" }}",
     )
     link.injectStatus = status
+    // 回包带回来的正是我们刚写下去的那一份 ⇒ 「在途」到此结束（见 `HostLinkState.configPending`）
+    if (status.configTag == link.pendingConfigTag) link.clearConfigPending()
     link.injectAliveToken++
 }
 

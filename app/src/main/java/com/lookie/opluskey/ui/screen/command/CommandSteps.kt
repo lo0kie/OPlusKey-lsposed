@@ -31,6 +31,7 @@ import com.lookie.opluskey.ui.ICON_ACTION_ICON
 import com.lookie.opluskey.ui.ICON_ACTION_SIZE
 import com.lookie.opluskey.ui.IconAction
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.gestureProbe
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
@@ -41,7 +42,6 @@ import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.rememberGestureProbe
 import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.screen.apppicker.appLabelOf
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
@@ -240,7 +240,7 @@ internal fun SettingsPage.SerialSteps() {
                             // 标题 `headline1` + Medium + `onBackground`，摘要 `body2` + `onSurfaceVariantSummary`，
                             // 与标题隔 2dp。
                             Text(
-                                text = stepTitle(item.token, ::appLabelOf),
+                                text = stepTitle(item.token, ::appNameOf),
                                 style = COUITheme.textStyles.headline1,
                                 fontWeight = FontWeight.Medium,
                                 color = COUITheme.colorScheme.onBackground,

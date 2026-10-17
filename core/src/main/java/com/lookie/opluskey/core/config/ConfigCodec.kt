@@ -98,7 +98,29 @@ object ConfigCodec {
             }
         val global =
             GlobalConfig.ofFields(readFields(root.optJSONObject(ConfigFields.GLOBAL_JSON), ConfigFields.GLOBAL_FIELDS))
-        return Config.ofFields(keys, global, readFields(root, ConfigFields.ROOT_FIELDS))
+        return Config.ofFields(keys, global, readFields(root, ConfigFields.ROOT_FIELDS), readNames(root))
+    }
+
+    /**
+     * 读「打开应用」那一族显示名的表（`app_names` 那一段）；缺整段 / 不是对象时返回空表。
+     *
+     *  这是配置里**唯一一段映射**，所以不走 `readFields`（那张表是扁平的）。容错口径与其它段一致：
+     *  读不懂的条目**跳过**，不让一个手改坏的行把整份配置判成读不懂 —— 名字只是显示，
+     *  丢了最坏也就是退回包名。
+     */
+    private fun readNames(root: JSONObject): Map<String, String> {
+        val o = root.optJSONObject(ConfigFields.APP_NAMES_JSON) ?: return emptyMap()
+        val out = mutableMapOf<String, String>()
+        val it = o.keys()
+        while (it.hasNext()) {
+            val key = it.next()
+            if (o.isNull(key)) continue
+            // **不 trim**：这里读出来的必须与文件里逐字一致，否则重新序列化会算出另一个
+            //  md5（`digestMatches` 判「被改过」而整份配置作废）。空值只跳过、不改写。
+            val name = o.optString(key, "")
+            if (key.isNotEmpty() && name.isNotEmpty()) out[key] = name
+        }
+        return out
     }
 
     /**
@@ -158,6 +180,13 @@ object ConfigCodec {
                 .put(ConfigFields.KEYS_JSON, keys)
                 .put(ConfigFields.GLOBAL_JSON, global)
         writeFields(root, config.fieldValues(), ConfigFields.ROOT_FIELDS)
+        // 名字表：按身份 → 名字。**空表不写这一段**（从没绑过应用的人，文件格式与从前逐字相同），
+        //  键按字典序写 —— md5 算的是文本字节，键序会进它，而这张表的来源是 `Map`（无序）。
+        if (config.appNames.isNotEmpty()) {
+            val names = JSONObject()
+            for ((key, name) in config.appNames.toSortedMap()) names.put(key, name)
+            root.put(ConfigFields.APP_NAMES_JSON, names)
+        }
         val digest = md5Hex(textWithoutDigest(root))
         return root.put(ConfigFields.MD5_JSON, digest).toString(2) + "\n"
     }

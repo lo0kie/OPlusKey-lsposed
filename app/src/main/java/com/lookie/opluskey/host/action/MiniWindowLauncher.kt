@@ -6,8 +6,12 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import com.lookie.opluskey.bridge.AppCloneCatalog
+import com.lookie.opluskey.bridge.AppEntry
 import com.lookie.opluskey.bridge.FlexibleWindowBridge
+import com.lookie.opluskey.bridge.MiniWindowSupport
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.host.action.MiniWindowFacts.EXPANDED_CONFIG_BOUNDS
 import com.lookie.opluskey.host.action.MiniWindowFacts.EXPANDED_SCALE
@@ -74,10 +78,11 @@ internal class MiniWindowLauncher(
                 XLog.w("没有 Context，window:$target 跳过")
                 return
             }
-        val pm = ctx.packageManager
+        val userId = AppTarget.userId(target)
+        val pm = AppCloneCatalog.packageManagerFor(ctx, userId) ?: ctx.packageManager
         val intent = AppEntry.intentOf(pm, target)
         if (intent == null) {
-            val pkg = target.substringBefore('/')
+            val pkg = AppTarget.pkg(target)
             val installed =
                 try {
                     pm.getApplicationInfo(pkg, 0)
@@ -85,16 +90,24 @@ internal class MiniWindowLauncher(
                 } catch (e: Throwable) {
                     false
                 }
-            XLog.w("解析不到界面：$target（这个包还在=$installed）")
+            XLog.w("解析不到界面：$target（这个包还在=$installed，user=$userId）")
             onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
             return
         }
-        val pkg = intent.component?.packageName ?: target.substringBefore('/')
+        val pkg = intent.component?.packageName ?: AppTarget.pkg(target)
 
         //  目标就在前台时**不能起**：这次启动会被栈顶那份实例自己消化（`START_DELIVERED_TO_TOP`），
         //  硬起只会多出一份全屏实例。改成走 recents 那条，把它那份任务**原地**收成小窗。
         //  `window:` 要的是普通小窗（展开档），尺寸档固定给 [ZOOM_LAUNCH_FLAG_USER_POSITION]。
-        val foregroundTask = foregroundTaskFor(pkg)
+        //
+        //  分身**不做这一档**：`foregroundTaskFor(pkg)` 按包名比，而主用户与分身**同包名**
+        //  —— 分身开着时按侧键，它会把主用户那份任务当成「目标已在后台的任务」收成小窗。
+        //  宁可直接起一次（服务端自己会复用该用户下已有的任务），也不要收错人。
+        //  真要做对得给 `OplusAppInfo` 找一个 userId 字段，那个没在真机上验过（见 `MiniWindowFacts`）。
+        val foregroundTask = if (userId == 0) foregroundTaskFor(pkg) else -1
+        if (userId != 0) {
+            XLog.w("window:$target 是分身（user=$userId）⇒ 跳过「原地收成小窗」那一档，直接起")
+        }
         if (foregroundTask > 0 && startFlexibleFromRecents(foregroundTask, ZOOM_LAUNCH_FLAG_USER_POSITION)) {
             XLog.w("window:$target 已在前台，原地收成小窗（不新起实例）")
             postDelayedGuarded("window:$target 的小窗验收", MINI_VERIFY_MS) {
@@ -114,9 +127,11 @@ internal class MiniWindowLauncher(
         if (startFreeform(ctx, intent)) return
         XLog.w("window:$target 的小窗两条路都没走通，退成普通打开")
         try {
-            ctx.startActivity(intent)
+            // 主用户与分身都走 ATMS（理由同 `AppLauncher.launchApp`：装了分身的应用在主用户下
+            //  也会被问「用哪一份」，只有这条路上能挂 skip-chooser 位）。
+            if (!AppLaunchAsUser.start(ctx, intent, userId)) error("启动被拒")
         } catch (e: Throwable) {
-            XLog.w("小窗与普通打开都失败：$target", e)
+            XLog.w("小窗与普通打开都失败：$target（user=$userId）", e)
             onFailure(CommandFailure.UNKNOWN)
         }
     }

@@ -1,11 +1,20 @@
 package com.lookie.opluskey.ui.state
 
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.github.suqi8.coui.kmp.basic.SnackbarHostState
+
+/**
+ * 「我们自己刚写下去的那一份配置还在路上」的宽限 —— 见 [HostLinkState.configPending]。
+ *
+ *  取 2 秒：真机实测这一趟（落盘 → 广播 → 注入侧回包）在 10~20ms 量级，2 秒是给忙碌 / 刚解冻
+ *  留的余量。它只影响「乐观」这一小段 —— 回包一到就提前结束，等不到也会自己过期。
+ */
+internal const val CONFIG_IN_FLIGHT_GRACE_MS = 2_000L
 
 /**
  * 「链路 / 报活」那一域的状态 —— 首页那条提示与「更多选项 → 运行状态」共用的那几项结论。
@@ -44,6 +53,43 @@ internal class HostLinkState {
 
     /** 宿主报活带回来的「最后一次执行动作」（`elapsedRealtime()`，0 = 从未）。 */
     var hostLastActionAt by mutableLongStateOf(0L)
+
+    /**
+     * 我们自己**刚写下去**的那一份配置的指纹（`ConfigBroadcast.tag`），`null` = 没有在途的写入。
+     *
+     *  从「写盘成功」到「注入侧回包」之间，本地指纹已经换了、注入侧手上还是旧的 ——
+     *  这一段两边**必然**对不上，见 [configPending]。
+     */
+    var pendingConfigTag by mutableStateOf<String?>(null)
+        private set
+
+    /** 上面那一份写下去的时刻（`SystemClock.uptimeMillis()`），0 = 没有在途的写入。 */
+    var pendingConfigSince by mutableLongStateOf(0L)
+        private set
+
+    /** 记下「[tag] 这一份刚写下去、注入侧还没回包」。 */
+    fun markConfigPending(tag: String) {
+        pendingConfigTag = tag
+        pendingConfigSince = SystemClock.uptimeMillis()
+    }
+
+    /** 结束「在途」—— 回包对上了，或宽限到期。 */
+    fun clearConfigPending() {
+        pendingConfigTag = null
+        pendingConfigSince = 0L
+    }
+
+    /**
+     * [tag] 这一份是不是**我们自己刚写下去、还在路上**的那一份（且在 [CONFIG_IN_FLIGHT_GRACE_MS] 内）。
+     *
+     *  为什么需要这一位：`configSideOk` 比的是「注入侧手上那份的指纹」与本地指纹，而写完到回包
+     *  之间它们**必然**不相等。不把这一段认成「在途」的话，每拨一个开关都会有一两帧被判成
+     *  「设置没送到」—— 整页控件跟着打灰、底部提示被换掉再换回来，看到的就是全页文字闪一下。
+     */
+    fun configPending(tag: String): Boolean =
+        pendingConfigTag == tag &&
+            pendingConfigSince > 0 &&
+            SystemClock.uptimeMillis() - pendingConfigSince < CONFIG_IN_FLIGHT_GRACE_MS
 
     /**
      * 首页那条「模块未生效」提示的宿主状态 —— COUI 的 `SnackbarHost` 用它排队 / 显隐。

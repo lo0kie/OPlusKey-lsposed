@@ -311,6 +311,14 @@ internal object GestureReceiver {
                 return
             }
 
+        // 松手不是手势：它只给「按下开始、松手结束」的动作收尾（此刻只有灵感语音）。
+        //  放在过期 / 去重两道闸**之前**：那两道是给「冻结期间积压的手势」用的，松手即使晚到
+        //  也只会被 `ActionRunner.release` 那道 `voiceMemoryOn` 闸挡住（两处判据不重叠）。
+        if (phaseId == ModuleWire.PHASE_RELEASE) {
+            onRelease(key)
+            return
+        }
+
         // 过期丢弃：正常送达延迟是几百毫秒；超过 STALE_MS 说明这条在系统里被压了很久
         // （进程曾被冻结）—— 一次性灌进来的那批全在这里拦掉。
         //  注意：`sentAt` 缺失（<= 0）时**不判过期**：`elapsedRealtime() - 0`
@@ -373,6 +381,27 @@ internal object GestureReceiver {
     }
 
     /**
+     * 「松手」 —— 给「按下开始、松手结束」的动作收尾。
+     *
+     *  判据是 [KeyConfig.longIsVoiceMemory]：判定侧边也用它（不许连续触发），两处同一个口径 ——
+     *  「长按绑了灵感语音」就等于「这一按松手要收尾」，没有第二种组合。
+     *
+     *  主开关照旧拦一道：关掉模块之后不该再替用户去动别人的麦克风。
+     */
+    private fun onRelease(key: KeyId) {
+        val keyConfig = ConfigStore.read().key(key)
+        if (!keyConfig.enabled) {
+            XLog.d("${key.label}：主开关已关，忽略这一下松手")
+            return
+        }
+        if (!keyConfig.longIsVoiceMemory) {
+            XLog.d("${key.label}·${Gesture.LONG.label} 松手：绑的不是灵感语音，没有要收尾的东西")
+            return
+        }
+        runner?.release()
+    }
+
+    /**
      * 执行一个手势对应的动作。
      *
      * 注意：**触觉反馈的唯一一处就在这里**（先说「只要不无操作立即振动」、
@@ -424,7 +453,8 @@ internal object GestureReceiver {
             //  界面英文、提示中文 —— 这里每次执行前对一次，两边同一个口径。
             //  同一个文件不重读（`reload` 里按文件名早返回），所以这一行在按键路径上是白给的。
             I18n.currentLanguage = AppLanguage.fromCode(config.global.language)
-            val notice = actionNoticeText(appContext, action)
+            // 名字表随配置来（`Config.appNames`）：快捷方式那档的名字只存在那里，token 里没有
+            val notice = actionNoticeText(appContext, action, config.appNames)
             if (notice.isNotEmpty()) {
                 XLog.w("执行时提示：$notice")
                 FailureNotice.toast(appContext, notice)

@@ -1,40 +1,33 @@
 package com.lookie.opluskey.core.model
 
-import com.lookie.opluskey.core.ENFORCE_DEVICE_GATE
 import java.util.Locale
 
 /**
- * **适配清单**：机型 + 系统版本。清单外的组合「注入不进行，只注入界面层」。
+ * **适配清单**：机型 + 系统版本。它只回答「这一组验过没有」，**不拦任何东西**。
  *
  * 为什么要这张表：本模块靠**反射**挂进 ColorOS 的侧键实现（`StrategyActionButtonKeyLaunchApp`
  * 那几个接管点、`SystemActionButtonConfig` 的场景表、`FlexibleTaskController` 的小窗入口都是
  * ROM 私有的）。换一个机型、换一版 ROM，这些类与方法可能整体换名换形 —— 那时模块会「拦下来但
- * 什么都不做」，用户读到的是「按了没反应，可它还振了一下」，比直接不支持更糟
- * （见 `docs/device-findings.md` 十九）。所以清单外的组合一律不注入：注入侧那一套
- * （system_server 里的按键 Hook、宿主侧的手势劫持与接收器）全部跳过，**只保留界面层**
- * （设置页替换）—— 页面按「不可用」整页禁用，并说清是哪一档不对。
+ * 什么都不做」，用户读到的是「按了没反应，可它还振了一下」（见 `docs/device-findings.md` 十九）。
+ * 所以这张表是**给排查用的先验**：不在表里的机器照样注入、照样能用，只是不保证 ——
+ * 出问题时先看「更多选项 → 适配清单」里那一行。
  *
- * **为什么要连系统版本一起锁**：机型不变、ROM 升一版，接管点照样可能换形（同一台机器换 ROM 与
- * 换机型是同一类风险）。所以判定不是「机型对不对」，而是「这一组（机型 + 系统版本）验没验过」：
- *  1) 机型与版本都在清单里 ⇒ 正常注入；
- *  2) 机型在清单里、系统版本不是这一行 `systems` 里验过的**任何一项** ⇒ **等待适配**
- *     （等作者针对这一版重新验接管点）；
- *  3) 机型不在清单里 ⇒ 本机用不了（等也没用）。
- * 第 2 档与第 3 档在界面上各说各的话，见 `ui/model/PageConst` 的两句提示。
+ * 判定不是「机型对不对」，而是「这一组（机型 + 系统版本）验没验过」：
+ *  1) 机型与版本都在清单里 ⇒ [Support.ADAPTED]；
+ *  2) 机型在清单里、系统版本不是这一行 `systems` 里验过的**任何一项** ⇒ [Support.PENDING]；
+ *  3) 机型不在清单里 ⇒ [Support.UNSUPPORTED]。
+ * 三档都只影响「更多选项」里那一行的措辞，**不影响注入，也不禁用任何控件**。
  *
  * 注意：**判定本体是纯函数**：只吃三个字符串（机型 / Android 版本 / ROM 版本），`Build` 那三个值
  * 由各自的调用点自己传进来。这样它才能被注入侧（只准依赖 `core/model` + `core/log` +
  * `core/reflect` + `core/wire`）和界面层同时引用。
  *  唯一的例外是 [currentRomSeries]：它自己读一次 `Build.DISPLAY`（公开 API，注入侧同样可用）——
- *  「本机是哪一档 ROM」这个输入被三处要用（适配闸、内置命令档位表、安装期判据行），
+ *  「本机是哪一档 ROM」这个输入被三处要用（这张清单、内置命令档位表、安装期判据行），
  *  各读一遍再各解析一遍，口径迟早会分叉，而那是「本机判成哪一档」这种最不该出错的地方。
  *
  * 加机型时：这里加一行 [Adapted]（**同一台机器多验一版 ROM 就在它那行的 `systems` 里加一项，
  * 不再多写一行**），**并且**去 `core/model/RomProfile` 与 `bridge/Framework` 各加一档
- * （内置命令的落点随 ROM 变，是另一张表；两道闸各管一件事）。
- *
- * **debug 包不做这道闸**：`ENFORCE_DEVICE_GATE = false` 的包里 [check] 一律返回 [Support.ADAPTED]
- * —— 判定照算、日志照打，只是不据此拒绝注入（理由见 `BuildFlags` 里那一份的注释）。release 必须打开。
+ * （内置命令的落点随 ROM 变，是另一张表）。
  */
 object DeviceSupport {
     /**
@@ -133,10 +126,6 @@ object DeviceSupport {
     /**
      * 本机这一组（机型 + 系统版本）在不在清单里。
      *
-     * **这道闸在 debug 包里不生效**：`ENFORCE_DEVICE_GATE = false` 的包一律按 [Support.ADAPTED]
-     * 返回（判定本身照算、日志照打，只是不据此拒绝注入）—— 开发时机型 / 系统版本随时在变，
-     * 开机先被这道闸拦住会让人以为模块坏了（见 `BuildFlags`）。release 必须打开。
-     *
      * 机型大小写与首尾空白都容错（`Build.MODEL` 各 ROM 写法偶有出入），空值一律不支持。
      * 大小写转换**显式给 `Locale.ROOT`**：不带 Locale 的 `uppercase()` 吃系统区域设置，
      * 土耳其语环境里 `i` → `İ`，同一个机型在那种环境就会被判成「不在清单里」。
@@ -148,7 +137,6 @@ object DeviceSupport {
         android: String?,
         rom: String?,
     ): Support {
-        if (!ENFORCE_DEVICE_GATE) return Support.ADAPTED
         val m = model?.trim()?.uppercase(Locale.ROOT).orEmpty()
         if (m.isEmpty()) return Support.UNSUPPORTED
         val hits = ADAPTED.filter { it.model.uppercase(Locale.ROOT) == m }
@@ -190,20 +178,32 @@ object DeviceSupport {
     }
 
     /**
-     * 本机 ROM 系列（`Build.DISPLAY` → [romSeriesOf]），**进程内算一次**。
+     * 调试通道塞进来的 ROM 系列（`--es rom 16.0.10`，见 `SettingsPageDebug`）—— `null` = 用真机值。
      *
-     *  收在这里的理由见文件头：适配闸、内置命令档位表、安装期判据行都要它。
+     *  给「不刷机也能量另一版 ROM 的分支」用：适配清单、内置命令档位表、接管点候选表全都按
+     *  [currentRomSeries] 走，改这一处就够了。只有 debug 包设得了（那条广播的接收器只在
+     *  `src/debug/` 源集里存在）。
+     */
+    @Volatile
+    var romSeriesOverride: String? = null
+
+    /** 真机那一档（`Build.DISPLAY` → [romSeriesOf]），进程内算一次：`Build` 的值不会中途变。 */
+    private val actualRomSeries: String by lazy { romSeriesOf(android.os.Build.DISPLAY) }
+
+    /**
+     * 本机 ROM 系列 —— 被调试覆盖时用覆盖值（见 [romSeriesOverride]）。
+     *
      *  `Build.DISPLAY` 是公开 API（`ro.build.version.oplusrom` 是 hidden 的，界面进程读不到），
      *  取法与判据同 [romSeriesOf]。
      */
-    val currentRomSeries: String by lazy { romSeriesOf(android.os.Build.DISPLAY) }
+    val currentRomSeries: String get() = romSeriesOverride ?: actualRomSeries
 
     /**
      * 本机机型（`Build.MODEL`）—— 同样是**进程内算一次**。
      *
      *  用 `MODEL` 而不是 `ro.product.device`：真机上 `MODEL` = `PLK110`、`DEVICE` = `OP60FFL1`，
      *  本文件那张清单按前者写（各进程读到的都一样）。
-     *  与 [currentRomSeries] 收在一处的理由相同：适配闸、小窗几何表、安装期判据行都要它。
+     *  与 [currentRomSeries] 收在一处的理由相同：适配清单、小窗几何表、安装期判据行都要它。
      */
     val currentModel: String by lazy {
         android.os.Build.MODEL
@@ -214,15 +214,17 @@ object DeviceSupport {
     val currentAndroid: String = android.os.Build.VERSION.RELEASE
 
     /**
-     * 本机那一组（机型 + Android + ROM）过这道闸的结果 —— **进程内算一次**。
+     * 本机那一组（机型 + Android + ROM）过这道闸的结果 —— 现算。
      *
-     *  机型与系统版本都不会中途变，算一次就够。
+     *  不缓存的原因：ROM 系列可以被调试通道覆盖（见 [romSeriesOverride]），而 [check] 只是扫一遍
+     *  清单、比几个字符串，按一次键问几次也够便宜。
      *
      *  为什么收在这里：这三样（机型 / Android / ROM）与判定结果原来都挂在 `KeyModule` 的 companion
      *  上，而那是**入口**类 —— 机型身份不是它的职责（审计项「`KeyModule` 一个类装了三件事」里的
      *  第三件）。收进本对象之后，「本机是哪一档」全项目只有这一处能回答。
      */
-    val verdict: Support by lazy { check(currentModel, currentAndroid, currentRomSeries) }
+    val verdict: Support
+        get() = check(currentModel, currentAndroid, currentRomSeries)
 
     /** 清单命中的简写（判定本体是 [verdict]）—— 「注入整套」还是「只注入界面层」看它。 */
     val isAdapted: Boolean get() = verdict == Support.ADAPTED

@@ -18,7 +18,6 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.openStockPage
 import com.lookie.opluskey.ui.resetAll
 import com.lookie.opluskey.ui.restartModule
-import com.lookie.opluskey.ui.state.deviceSupported
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
 /**
@@ -54,7 +53,7 @@ internal fun SettingsPage.ResetMenu() {
     var open by remember { mutableStateOf(false) }
     // 两层的「页面离开收起」各自登记：⋮ 菜单由 MenuPopup 管，确认弹窗由 ConfirmDialog 管（都不是本函数登记）
     val preciseClick = rememberPreciseClickState()
-    val rowsEnabled = linkReady && !configState.readOnly && deviceSupported
+    val rowsEnabled = linkReady && !configState.readOnly
 
     Box {
         // 触发键同样是库的 IconButton，只是多挂 `preciseClickAnchor`：浮层弹在按下的那一点

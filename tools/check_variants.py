@@ -1,4 +1,4 @@
-"""三档 APK 的区分度检查：每个判别项都必须只在它该出现的档里出现。"""
+"""两档 APK 的区分度检查：每个判别项都必须只在它该出现的档里出现。"""
 
 import os
 import re
@@ -6,15 +6,14 @@ import subprocess
 import sys
 
 OUT = 'app/build/outputs/apk'
-VARIANTS = ['debug', 'beta', 'release']
+VARIANTS = ['debug', 'release']
 
 # (说明, 只该在这些档里出现)
 PROBES = [
-    ('详细日志 VERBOSE_LOG', '侧键手势已补发', {'debug', 'beta'}),
-    ('机型闸关 ENFORCE_DEVICE_GATE', '本包不做适配清单这道闸', {'debug', 'beta'}),
+    ('详细日志 VERBOSE_LOG', '侧键手势已补发', {'debug'}),
     ('调试通道 DEBUG_PROBE', 'probe/state：拿不到任务', {'debug'}),
     ('明文资产（未封存）', 'assets/donate/alipay.webp', {'debug'}),
-    ('封存资产 sealed.bin', 'assets/sealed.bin', {'beta', 'release'}),
+    ('封存资产 sealed.bin', 'assets/sealed.bin', {'release'}),
 ]
 
 
@@ -48,7 +47,7 @@ def main():
             pass
         apks[v] = {'blob': blob, 'dexes': n, 'size': size, 'listing': listing}
 
-    print('%-30s %-8s %-8s %-8s' % ('判据', 'debug', 'beta', 'release'))
+    print('%-30s ' % '判据' + ' '.join('%-8s' % v for v in VARIANTS))
     ok = True
     for title, needle, expect in PROBES:
         row = []
@@ -60,7 +59,7 @@ def main():
                 mark += ' ✗'
                 ok = False
             row.append(mark)
-        print('%-30s %-8s %-8s %-8s' % (title, row[0], row[1], row[2]))
+        print('%-30s ' % title + ' '.join('%-8s' % c for c in row))
 
     print()
     for v in VARIANTS:

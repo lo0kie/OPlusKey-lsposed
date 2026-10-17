@@ -28,7 +28,6 @@ import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
-import com.lookie.opluskey.ui.state.deviceSupported
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.SnackbarDuration
@@ -59,9 +58,9 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     //  注意：**主开关也吃这个闸**（`linkReady` + 另两条，见 [HomeBindingCard]）。顶栏 ⋮ **不吃** ——
     // 它本身永远可点，里面只有「重启服务 / 导出日志 / 清空配置」三项跟着灰，
     // 「默认界面」（逃生口）始终可用。
-    //  适配清单外的组合：只注入了界面层（见 `core/model/DeviceSupport`），链路永远不通 ⇒ 本来就
-    // 整页禁用；`deviceSupported` 只是让**原因**说得清。
-    val pageEnabled = key.enabled && linkReady && !configState.readOnly && deviceSupported
+    //  适配清单**不再参与**这道闸：清单外的机器照样能改（见 `core/model/DeviceSupport`），
+    //  验没验过只在「更多选项」里提示。
+    val pageEnabled = key.enabled && linkReady && !configState.readOnly
 
     Column(
         Modifier

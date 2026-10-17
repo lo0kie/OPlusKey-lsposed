@@ -40,6 +40,7 @@ import com.lookie.opluskey.ui.IconAction
 import com.lookie.opluskey.ui.NoHapticFeedback
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TileFocusRing
+import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.APP_STATE_TEXT_GAP
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.COLUMNS
@@ -55,7 +56,6 @@ import com.lookie.opluskey.ui.model.commandIcon
 import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.model.serialSummarySteps
 import com.lookie.opluskey.ui.model.stepIcon
-import com.lookie.opluskey.ui.screen.apppicker.appLabelOf
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareRoundedMinus
@@ -341,7 +341,7 @@ private fun SettingsPage.CommandTileSummary(cmd: Command) {
         }
 
         CommandKind.SERIAL -> {
-            serialSummarySteps(cmd.steps, ::appLabelOf).forEach { line ->
+            serialSummarySteps(cmd.steps, ::appNameOf).forEach { line ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     //  每一步行首都补一枚小图标（与步骤列表同一套 [stepIcon]）：
                     // 引用另一条命令（`cmd:<名字>`）的那一步用**被引用那条的真实类型图标**

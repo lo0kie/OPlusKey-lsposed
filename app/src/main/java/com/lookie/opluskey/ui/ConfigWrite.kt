@@ -56,6 +56,15 @@ internal fun SettingsPage.setLanguage(code: String) {
     )
 }
 
+/** 切「使用 ColorOS 接口」—— 行点击与开关共用这一个入口。 */
+internal fun SettingsPage.setColorOsApi(on: Boolean) {
+    val cfg = configState.config.value
+    write(
+        cfg.copy(global = cfg.global.copy(colorOsApi = on)),
+        "color_os_api=${if (on) 1 else 0}",
+    )
+}
+
 /** 写 [KeyConfig.enabled] 总闸：关闭后绑定页控件置灰，侧键不再被接管。 */
 internal fun SettingsPage.setKeyEnabled(on: Boolean) {
     val cfg = configState.config.value
@@ -78,20 +87,6 @@ internal fun SettingsPage.acceptDisclaimerAndEnable() {
             disclaimerAccepted = true,
         ),
         "disclaimer_accepted=true",
-    )
-}
-
-/**
- * 用户在「自定义命令」那一份风险提示上点了确认 —— 记下这一笔（`commandDisclaimerAccepted`）。
- *
- * 与 [acceptDisclaimerAndEnable] **不是同一份记录**：那个管「打开主开关」，这个只管
- * 「自定义命令」这一页。两者的共同点是「清空配置按 `Config.DEFAULT` 重建 ⇒ 这一位跟着没了 ⇒
- * 下次照样弹」。
- */
-internal fun SettingsPage.acceptCommandDisclaimer() {
-    write(
-        configState.config.value.copy(commandDisclaimerAccepted = true),
-        "command_disclaimer_accepted=true",
     )
 }
 
@@ -185,6 +180,9 @@ internal fun SettingsPage.write(
         return false
     }
     configState.config.value = next
+    // 记一笔「这一份在路上」：从落盘到注入侧回包之间，两边指纹必然不同（见 `HostLinkState.configPending`）。
+    //  不记的话那一小段会被判成「没送到」，整页控件打灰、底部提示换一遍 —— 每拨一个开关都闪一次。
+    link.markConfigPending(localConfigTag)
     // 语言跟着配置走：落盘这一下就把新档位落到 [I18n] —— 切「语言」当场换（含导入配置带进来的
     //  那一档、以及「清空配置」退回默认档），不必退出页面再进来。字典本身是组合状态，页面随即重画。
     I18n.currentLanguage = AppLanguage.fromCode(next.global.language)
@@ -192,6 +190,8 @@ internal fun SettingsPage.write(
     // 吞键，所以这里必须把结果并进返回值 —— 否则界面报「已保存」而实际行为一点没变，
     // 用户会往「模块坏了」的方向排查。
     if (!publishConfig(next)) {
+        // 广播都没发出去 ⇒ 注入侧手上确实不是这一份，别把它算成「在途」的乐观态
+        link.clearConfigPending()
         XLog.w("设置页写入落盘成功但广播失败，注入侧仍是旧配置：$what")
         //  注意：文案**不指向「重启服务」**：这一刻 `config.value` 刚换成新值、
         //  本地指纹跟着变，而注入侧那份还是旧的 ⇒ `configSideOk=false` ⇒ `linkReady=false`

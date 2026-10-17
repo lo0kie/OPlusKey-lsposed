@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -26,7 +27,10 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.SmallTitle
+import io.github.suqi8.coui.kmp.basic.SmallTitleDefaults
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「自定义命令」页的一页（单条 / 多条各一份）—— 从 `CommandScreen.kt` 拆出来。
@@ -129,33 +133,47 @@ internal fun SettingsPage.CommandPage(
 }
 
 /**
- * 单条命令的正文输入（「命令」那一栏）。
+ * 单条命令的正文输入（「命令」那一栏）—— **多行**（textarea）。
  *
- *  多行粘贴要先洗掉换行：这个输入框是单行的（`IconInputView` 内部 `singleLine = true`），
- *  多行粘进来的换行**显示不出来**，存下去的却带着 —— 界面看着对、跑起来那条命令跑不通。
+ *  以前是单行，多行粘贴得先把换行揉成 `; `：那时换行显示不出来、存下去却带着，
+ *  界面看着对、跑起来跑不通。现在输入框本身就是多行，换行原样留着 —— 它就是 shell 的
+ *  命令分隔符，`sh -c` 会按行依次执行。
  *
- *  折成 `; ` 而**不是空格**：shell 里换行是命令分隔符（等价 `;`），当空白处理会把
- *  `setenforce 0` + 换行 + `getenforce` 折成一条带多余参数的命令 —— 解析得出、执行跑不通
- *  （被当成 `setenforce` 的第二个参数），而界面上看不出任何异常。
- *  再掐掉粘贴带进来的尾随空白；名称框走的是 `sanitizeNameInput`，同一套纪律。
+ *  只归一换行符：粘贴来的多半是 CRLF，混着两种会让「看着多了一行空行」。
  */
 @Composable
 private fun SettingsPage.SingleCommandField() {
-    IconInputView(
-        icon = PageIcons.CommandSingle,
-        value = commandDraft.draft.single,
-        onValueChange = { raw ->
-            commandDraft.draft.single =
-                if (raw.any { it == '\n' || it == '\r' }) {
-                    raw.replace(Regex("[\\r\\n]+"), "; ").trimEnd()
-                } else {
-                    raw
-                }
-        },
-        modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
-        title = I18n.get(Strings.COMMAND_CMD_LABEL, "命令"),
-        label = I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令"),
-    )
+    Column {
+        IconInputView(
+            icon = PageIcons.CommandSingle,
+            value = commandDraft.draft.single,
+            onValueChange = { raw ->
+                // 粘贴来的多半是 CRLF：只归一，不动内容（换行就是 shell 的分隔符）
+                commandDraft.draft.single = raw.replace("\r\n", "\n").replace('\r', '\n')
+            },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
+            title = I18n.get(Strings.COMMAND_CMD_LABEL, "命令"),
+            label = I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令"),
+            multiline = true,
+        )
+        // 权限边界的提示：这一栏写的是 shell 命令，而它跑在宿主进程里、身份是「手势体感」这个 App ——
+        // `am` / `cmd` / `settings` 这类要 shell 身份的命令会失败，得提权（root）才跑得起来。
+        // 放在输入框下面一行小字：不占卡片、也不挡输入。
+        //  左右缩进取 `SmallTitleDefaults.InsideMargin`（32dp），但**文字在这条带子里居中**
+        //  —— 与输入框那边对齐的是**边界**，不是第一个字（用户口径：像 CSS 的
+        //  `padding: 0 32px` + `text-align: center`）。所以要先铺满再居中，只给 padding 的话
+        //  Text 的宽度就是文字本身，居中没有可居的余量。
+        Text(
+            text = I18n.get(Strings.COMMAND_SINGLE_HINT, "am / cmd 等需 root 给「手势体感」授权"),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(SmallTitleDefaults.InsideMargin),
+            textAlign = TextAlign.Center,
+            style = COUITheme.textStyles.footnote1,
+            color = COUITheme.colorScheme.onSurfaceVariantSummary,
+        )
+    }
 }
 
 /** 多条命令的「命令间隔时长」卡 —— 只有一行：等多久再派发下一条。 */

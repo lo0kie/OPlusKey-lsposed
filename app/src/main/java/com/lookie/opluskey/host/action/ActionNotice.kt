@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.model.AppTarget
 
 /**
  * 「执行时提示」（`GlobalConfig.toastOnRun`）里那行字：**这次执行的是哪个动作**。
@@ -17,28 +18,59 @@ import com.lookie.opluskey.core.model.ActionCatalog
 internal fun actionNoticeText(
     context: Context?,
     action: Action,
+    /**
+     * 「打开应用」那一族的显示名（`Config.appNames`，键是 `AppTarget.identity`）——
+     * 快捷方式的「扫一扫」这类名字**只在配置里**，token 里不再带（见 `AppTarget` 的类注释）。
+     * 应用名不靠它：那一条现查 `PackageManager` 更准。
+     */
+    appNames: Map<String, String> = emptyMap(),
 ): String =
     when (action) {
         // 「无操作」不是「执行了某条命令」，调用点已排除，这里给空串兜底
-        is Action.None -> ""
+        is Action.None -> {
+            ""
+        }
 
         // 自定义命令取命令名 —— 界面（「已保存的命令」卡片）也是这么叫的
-        is Action.Custom -> action.name
+        is Action.Custom -> {
+            action.name
+        }
 
         // 这两格是**入口**，清单只给到「打开应用」这个组名，带上应用名才说得清是哪一条
-        is Action.App -> I18n.format(Strings.COMMON_OPEN_APP_FORMAT, appLabel(context, action.target))
+        is Action.App -> {
+            I18n.format(Strings.COMMON_OPEN_APP_FORMAT, appLabel(context, action.target))
+        }
 
-        is Action.AppWindow -> I18n.format(Strings.COMMON_OPEN_MINI_WINDOW_FORMAT, appLabel(context, action.target))
+        is Action.AppWindow -> {
+            I18n.format(Strings.COMMON_OPEN_MINI_WINDOW_FORMAT, appLabel(context, action.target))
+        }
 
-        else -> ActionCatalog.specOf(action)?.label ?: action.token
+        // 快捷方式：显示它自己的名字（「扫一扫」，落盘时记在 `appNames` 里），
+        //  没记过就退回应用名、再退回包名
+        is Action.AppShortcut -> {
+            val target = action.appTarget.orEmpty()
+            I18n.format(
+                Strings.COMMON_OPEN_SHORTCUT_FORMAT,
+                appNames[AppTarget.identity(target)] ?: appLabel(context, target),
+            )
+        }
+
+        else -> {
+            ActionCatalog.specOf(action)?.label ?: action.token
+        }
     }
 
-/** 包名 → 应用名；取不到原样回包名（`app:` 的目标可能写成 `包名/Activity`，只取前半段）。 */
+/**
+ * 目标 → 应用名；取不到原样回包名。
+ *
+ *  包名走 [AppTarget.pkg] 而不是 `substringBefore('/')`：分身的写法是 `999@包名/Activity`，
+ *  直接切会剩下 `999@包名`，`getApplicationInfo` 必然查不到、提示里就成了包名。
+ */
 private fun appLabel(
     context: Context?,
     target: String,
 ): String {
-    val pkg = target.substringBefore('/')
+    val pkg = AppTarget.pkg(target)
     val ctx = context ?: return pkg
     return try {
         val pm = ctx.packageManager

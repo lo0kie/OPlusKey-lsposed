@@ -41,6 +41,22 @@ object ModuleWire {
     /** 广播里携带的**手势**（`Gesture.id`：`single` / `double` / `long`）。 */
     const val EXTRA_PHASE = "phase"
 
+    /**
+     * [EXTRA_PHASE] 的一个特殊取值：**这一按松手了**（它不是手势，是「按压结束」）。
+     *
+     *  为什么必须单独占一格而不是复用 `long`：宿主侧的 `handle` 按 (键, phase) 去重、按 phase
+     *  映射手势，松手既不是手势、也不能和判长按那一条互相去重 —— 它是一条**独立的信号**，
+     *  而且晚于长按那条到达（长按到点先发，松手才后发）。
+     *
+     *  为什么由判定侧发、而不是让宿主自己收尾：松手发生在 `system_server` 的按键路径上
+     *  （`SideKeyInterceptor.feedDetector` 的 ACTION_UP），宿主根本看不到原始按键 ——
+     *  它只收「判好的东西」。所以「松手」也得像手势一样转过来。
+     *
+     *  只有**「按下开始、松手结束」**的动作在乎它（此刻只有 `oplus:voice_memory`）：
+     *  其余动作按一下就完事，没有结束形态，宿主收到这个 phase 直接忽略。
+     */
+    const val PHASE_RELEASE = "release"
+
     /** 广播里携带的「是否长按连续触发的重复派发」（执行侧据此跳过振动）。 */
     const val EXTRA_REPEAT = "repeat"
 

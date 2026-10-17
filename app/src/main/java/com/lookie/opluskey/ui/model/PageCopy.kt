@@ -23,6 +23,14 @@ internal val APP_PICKER_TITLE: String
     get() = I18n.get(Strings.APP_PICKER_TITLE, "选择应用")
 
 /**
+ * 「选择界面」页的标题 —— 「选择应用」页上**长按**某个应用进来（二级页）。
+ *
+ *  不叫「选择 Activity」：这一页列的是「这个应用能打开的界面」，用户不需要知道 Activity 这个词。
+ */
+internal val ACTIVITY_PICKER_TITLE: String
+    get() = I18n.get(Strings.APP_PICKER_ACTIVITY_TITLE, "Activity")
+
+/**
  * 「更多选项」页的标题（首页「其他 → 更多选项」那一行进入；这是**唯一入口**）。
  *
  * 用户要求从「关于模块」改叫「更多」、随后定稿为「更多选项」：这一页早就不只是
@@ -60,26 +68,6 @@ internal val MODULE_UNAVAILABLE_HINT: String
  */
 internal val CONFIG_READ_FAILED_HINT: String
     get() = I18n.get(Strings.STATUS_CONFIG_FAILED, "配置读取失败，请重进页面")
-
-/**
- * 首页那条常驻提示的第三种文案：**本机机型不在适配清单里**（见 `core/model/DeviceSupport`）。
- *
- *  这一种与前两种都不同：不是「等一等会好」，而是**这台机器上就是不能用**（模块只注入了界面层）。
- * 所以既不写「请稍候」也不写「重进页面」—— 那两句都会把人引去做没用的事。
- */
-internal val UNSUPPORTED_DEVICE_HINT: String
-    get() = I18n.get(Strings.STATUS_UNSUPPORTED_DEVICE, "此机型不适配")
-
-/**
- * 首页那条常驻提示的第四种文案：**机型在清单里、但这一版系统没适配**
- *（见 `core/model/DeviceSupport` 的 `Support.PENDING`）。
- *
- *  与 [UNSUPPORTED_DEVICE_HINT] 分开：那一种是「等也没用」，这一种恰恰是「**只能等作者适配**」
- * —— 同一版 ROM 里那些私有类可能换了形，得重新验过接管点才敢注入（见 `docs/device-findings.md` 十九）。
- * 两句都短，用户扫一眼就知道该不该等。
- */
-internal val PENDING_DEVICE_HINT: String
-    get() = I18n.get(Strings.STATUS_PENDING_VERSION, "系统版本等待适配")
 
 /**
  * 首页那条常驻提示的第五种文案：**主开关关着**（`KeyConfig.enabled = false`）。
@@ -139,7 +127,7 @@ internal val CONFIG_NOT_SYNCED_HINT: String
  * 「导入配置」校验没过时的那**一句**提示。
  *
  * 用户界面上只给结论、不点细节：不解释「哪一段坏了 / 第几条认不出」——那是日志的事
- *（见 `XLog`）。措辞与 [UNSUPPORTED_DEVICE_HINT] 同一档：说清「怎么办」，不说内部结构。
+ *（见 `XLog`）。措辞说清「怎么办」，不说内部结构。
  */
 internal val UNKNOWN_CONFIG_FORMAT: String
     get() = I18n.get(Strings.CONFIG_UNKNOWN_FORMAT, "未知的配置格式，请检查后重试")
@@ -209,7 +197,7 @@ internal val COMMAND_DISCLAIMER_TEXT: String
  *
  *  注意：**收录规则：只列「没有内置入口」的格式**。内置命令已经给了入口的那些
  *  不在这里重复教手写：`app:` / `window:` 有「打开应用」那一格（小窗是它菜单里的开关）、
- *  `zoom:mini[:collapse]` 有「应用转小窗」那两档 —— 同一个能力摆两个入口，手写那条还更容易写错。
+ *  `zoom:mini[:collapse]` 有「前台转小窗」那两档 —— 同一个能力摆两个入口，手写那条还更容易写错。
  *  剩下的这几行是**没有图形入口**的：shell / keyevent / intent / shortcut / cmd。
  *
  *  点带 `prefix` 的那一行 = 把前缀**替换**进命令输入框（不是追加，见渲染点的注释）。

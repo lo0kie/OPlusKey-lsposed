@@ -1,4 +1,4 @@
-package com.lookie.opluskey.host.action
+package com.lookie.opluskey.bridge
 
 import android.os.Bundle
 import android.os.Process
@@ -31,8 +31,7 @@ internal object MiniWindowSupport {
     /**
      * 小窗状态门面（`oplus-framework.jar`，宿主 boot classpath 上反射可及）。
      *
-     *  **同包的唯一一份**：[AppLauncher] 取 `zoomRect`（判「窗口多大」）也走它
-     *（同包只留一份）。
+     *  **全项目唯一一份**：宿主侧取 `zoomRect`（判「窗口多大」）也走它。
      */
     internal val MANAGER = ROM.zoomSupportManager
 

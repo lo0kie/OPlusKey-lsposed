@@ -16,6 +16,7 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.model.specIcon
 import com.lookie.opluskey.ui.state.AppPickerState
+import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.CommandDraftState
 import com.lookie.opluskey.ui.state.ConfigState
@@ -109,11 +110,13 @@ internal class SettingsPage(
     internal fun navTo(target: Screen) {
         if (navStack.lastOrNull() == target) return
         val index = navStack.indexOf(target)
-        if (index >= 0) {
-            while (navStack.size > index + 1) navStack.removeAt(navStack.lastIndex)
-        } else {
+        if (index < 0) {
             navStack.add(target)
+            return
         }
+        // 一次删到底（含栈顶）—— 库把「一次组合里少 N 个 entry」当成**一次多级 pop**：整叠一起
+        //  滑回目标页。与 [onHostReentered] 清栈那条同一口径。
+        while (navStack.size > index + 1) navStack.removeAt(navStack.lastIndex)
     }
 
     /**
@@ -212,6 +215,9 @@ internal class SettingsPage(
     internal val commandBandHeight = BandHeight()
     internal val appSearchBandHeight = BandHeight()
 
+    /** 「选择界面」页那条搜索带 —— 与「选择应用」那条同一套版式，高度各量各的。 */
+    internal val activitySearchBandHeight = BandHeight()
+
     /**
      * 「选择应用」页那一域的状态（搜索词 / 两个落盘的筛选开关 / 小窗开关 / 这趟为谁挑）。
      *
@@ -220,6 +226,17 @@ internal class SettingsPage(
      *  各字段为什么提到页面对象上（而不是留在页面里 `remember`）写在各自那里。
      */
     internal val picker = AppPickerState()
+
+    /**
+     * 「选择应用」页那一趟的加载与选择状态 —— **页面级**，不随页面组合销毁。
+     *
+     *  为什么不能 `remember` 在页面里：进「选择界面」时栈顶换成那一页，被盖住的「选择应用」
+     *  会退出组合 —— `remember` 的那一份随之销毁，退回来就是新的一份：清单重查、点过的行没了、
+     *  `askedPkg` 归零（于是「此应用不支持小窗」再弹一次，用户一关就把「以小窗口打开」也关了）。
+     *  提到页面级之后，只有 [AppPickerState.clearTarget] 与 `AppPickerUiState.beginVisit` 这两个
+     *  **明确时机**才会清它 —— 页面之间来回不再丢。
+     */
+    internal val appPickerUi = AppPickerUiState(picker)
 
     /**
      * 这一趟「选择应用」页在**编辑哪个动作** —— 两个入口各有来源（都在进页那一刻记下）：
@@ -242,11 +259,17 @@ internal class SettingsPage(
     /**
      * 进「选择应用」页时把「以小窗口打开」**重算**一遍（入口两处各调一次）。
      *
-     * 判据就是 [editingAction]：正在编辑的那个动作本来就是 `window:<包名>` ⇒ 开；
-     * `app:<包名>` / 别的动作 / 新绑（`null`）⇒ 关。
+     * 判据就是 [editingAction]：正在编辑的那个动作本来就是小窗那一档 ⇒ 开 ——
+     *  `window:<目标>` 与 `appshortcut:w:…` **两档都算**（后者是「用小窗起快捷方式」）；
+     * `app:<目标>` / 不带 `w:` 的快捷方式 / 别的动作 / 新绑（`null`）⇒ 关。
      */
     internal fun resetSmallWindowForPicker() {
-        val on = editingAction() is Action.AppWindow
+        val on =
+            when (val action = editingAction()) {
+                is Action.AppWindow -> true
+                is Action.AppShortcut -> action.window
+                else -> false
+            }
         picker.smallWindow.value = on
         XLog.w("选择应用：以小窗口打开按正在编辑的动作重算 = $on")
     }
@@ -283,6 +306,9 @@ internal class SettingsPage(
             // 「为谁挑」整组一并清掉 —— 不管这次是挑完了、还是没挑就退出来
             picker.clearTarget()
         }
+        // 注意：「选择界面」那一页的「在看哪个应用」**不在这里清** —— 这里清掉之后，那一页
+        // 会在**退场动画**期间重组成「状态丢了」的分支，那一支自己还会再退一页（一次返回退两层）。
+        // 它由 `ActivityPickerPage` 的 `onDispose` 负责（离开组合时清，退场动画照常画完）。
         // 「自定义命令」页：表单里改过还没保存 ⇒ 不退，先弹一句确认。判据用 `draft.dirty`
         // （与载入时的快照比），不是 `hasContent` —— 后者会把「点开一条看一眼、原样返回」也算成有改动。
         if (current == Screen.COMMANDS && commandDraft.draft.dirty) {
@@ -329,7 +355,8 @@ internal class SettingsPage(
     }
 
     /**
-     * 「打开应用」页该**点亮哪一行**（`AppPickerScreen` 的 `selected`，同时决定进页滚到谁眼前）。
+     * 「打开应用」页哪一行是**当前绑定的那个**（`AppPickerScreen` 的 `selected`：行尾图标据此画，
+     *  同时决定进页滚到谁眼前）。
      *
      * 两个入口各有来源，读的都是**进这一页时**记下来的东西（这一页不属于 pager，不能读当前页）：
      *  · 网格入口（「按键绑定」页的「打开应用」格）→ [AppPickerState.gesture] 那个手势绑的
@@ -338,20 +365,45 @@ internal class SettingsPage(
      *    它本来就是 `app:<包名>` 时才算数；「加一步」没有目标 ⇒ null。
      *
      * 之前第二条恒为 null，于是「换一步」进这一页时看不出当前选的是哪个应用
-     *（行尾单选圈不亮、也不滚到它眼前）—— 与网格入口那套提示不是一回事。
+     *（行尾那枚图标不亮、也不滚到它眼前）—— 与网格入口那套提示不是一回事。
      */
-    internal fun appPickerSelectedPkg(): String? {
+    internal fun appPickerSelectedPkg(): String? = appPickerSelectedTarget()?.substringBefore('/')
+
+    /**
+     * 二级页「选择界面」该点亮哪一行 —— **完整**目标（含 `/类名`），与 [appPickerSelectedPkg] 同源。
+     *
+     *  与它分开是因为两级要认的东西不一样：应用那一级只认到包名（一行一个包），
+     *  界面那一级要认到类名 —— 否则挑完某个界面再进来，那一行永远不亮，看着像没选过。
+     */
+    internal fun appPickerSelectedTarget(): String? =
         // 两种动作都要认：`app:`（普通打开）与 `window:`（小窗，[Action.AppWindow]）——
         // 与「按键绑定」页那一格取应用名同口径。少认一种时，开着「以小窗口打开」挑完应用回来
         // 这页一行都不点亮、也不滚过去，看起来像没选过。
         //  来源与「以小窗口打开」的重算同源（[editingAction]）—— 两处判据必须一致。
-        val target =
-            when (val action = editingAction()) {
-                is Action.App, is Action.AppWindow -> action.appTarget
-                else -> null
+        when (val action = editingAction()) {
+            is Action.App, is Action.AppWindow -> {
+                action.appTarget
             }
-        return target?.substringBefore('/')
-    }
+
+            // 绑的是快捷方式时给出完整写法（`包名/id|名字`）—— 二级页靠它把那一行滚到眼前；
+            //  应用那一级取 `substringBefore('/')`，仍然是包名
+            is Action.AppShortcut -> {
+                action.plainTarget
+            }
+
+            else -> {
+                null
+            }
+        }
+
+    /**
+     * 当前绑定如果是**快捷方式**，返回它的 id；否则 `null`。
+     *
+     *  「选择应用」页的行尾要在「里面某个界面」与「某个快捷方式」之间分开画（`device-screen` /
+     *  `table-shortcut`），而这两者在配置里都长成 `包名/xxx`（一边是类名、一边是快捷方式 id），
+     *  只有这一位分得出来。
+     */
+    internal fun bindingShortcutId(): String? = (editingAction() as? Action.AppShortcut)?.shortcutId
 
     /**
      * 「链路 / 报活」那几项结论（宿主在不在、注入侧回没回包）—— 见 [HostLinkState]。
@@ -363,6 +415,8 @@ internal class SettingsPage(
      */
     fun onHostReentered() {
         picker.clearTarget()
+        // 二级页那一位也要清：栈被清回首页之后，再进「选择应用」不该还记着上次在看谁
+        picker.forgetActivities()
         // 栈顶没变时下面的 LaunchedEffect 不触发，浮窗要在这里主动收：
         // 首页开着 ⋮ 菜单按 Home / 熄屏再回来，菜单不能还盖在页面上。
         closeOverlays("从设置重进模块")
@@ -431,3 +485,13 @@ internal class NavBackInput : NavigationEventInput() {
     /** 手势取消（松手时没过判定线 ⇒ 库把页面弹回原位）。 */
     internal fun cancelled() = dispatchOnBackCancelled()
 }
+
+/**
+ * 取出这一趟「选择应用」的状态 —— [appPickerUi] 的唯一访问口。
+ *
+ *  它挂在**页面对象**上，不是 `remember` 出来的：清单、加载态、刷新指示器都要跨
+ *  「进页 → 二级页 → 退回来」活着 —— 每次进页都重建一次的话，退回来会先闪一屏加载态
+ *  （清单还在后台重查）。
+ */
+@Composable
+internal fun SettingsPage.rememberAppPickerUiState(): AppPickerUiState = appPickerUi
