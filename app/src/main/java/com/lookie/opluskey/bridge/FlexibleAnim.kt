@@ -106,13 +106,19 @@ internal fun FlexibleWindowBridge.miniAnimLocal(
             return
         }
     // 回调只需要「能被框架调用」；它内部只做通知，我们不需要在结束点插动作
-    // （转换的时机由宿主侧排，见 MiniWindowFacts.MINI_ANIM_MODE）。
+    // （转换的时机由宿主侧排：它先真转换、转换成功才发这条指令）。
     val callback =
         try {
             java.lang.reflect.Proxy.newProxyInstance(
                 loader,
                 arrayOf(cbCls),
-                java.lang.reflect.InvocationHandler { _, _, _ -> null },
+                java.lang.reflect.InvocationHandler { _, method, _ ->
+                    // 这个 Proxy 是交给**框架**回调用的：接口里只要有返回原始类型的方法，回 null
+                    // 就会在框架那边拆箱时 NPE，并顺着调用栈抛回 system_server。
+                    //  零值映射只有一处（`Reflect.zeroOf`：与 `KeyHooks` 那条 proceed 失败同源），
+                    //  取值本身也兜一层。
+                    runCatching { Reflect.zeroOf(method.returnType) }.getOrNull()
+                },
             )
         } catch (e: Throwable) {
             XLog.w("$CMD_MINI_ANIM：给回调建 Proxy 失败：${e.javaClass.simpleName}: ${e.message}")

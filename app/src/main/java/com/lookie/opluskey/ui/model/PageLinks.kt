@@ -27,12 +27,12 @@ internal const val COOLAPK_URL = "https://www.coolapk.com/u/1014357"
 internal const val ISSUE_URL = "$REPO_URL/issues"
 
 /**
- * 「反馈问题」菜单里「QQ 频道」那一项的目标 —— 频道的分享链接。
+ * 「反馈问题」菜单里「QQ 群」那一项的目标 —— 群的分享链接。
  *
- *  `pd.qq.com/s/<id>?b=<数字>` 是 QQ 频道的分享短链形式（`b` 那段是分享来源标记），
- *  点开会拉起 QQ 进频道卡片。
+ *  `qm.qq.com/q/<短码>` 是 QQ 群的分享短链形式，点开会拉起 QQ 进群卡片。
+ *  短码由服务端分配、没法由群号拼出来，所以换群时要整串换掉（群号 `1059327071`）。
  */
-internal const val QQ_CHANNEL_URL = "https://pd.qq.com/s/5q8sgrlx5?b=5"
+internal const val QQ_GROUP_URL = "https://qm.qq.com/q/UV86g8pjGe"
 
 /**
  * 「反馈问题」菜单里「Telegram」那一项的频道地址。

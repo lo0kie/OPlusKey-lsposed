@@ -93,6 +93,19 @@ object ModuleWire {
      */
     const val ACTION_PAGE_RELAUNCH = "com.lookie.opluskey.PAGE_RELAUNCH"
 
+    /**
+     * 模块入口（管理器那颗 FAB 背后的 `EntryActivity`）→ 宿主主进程：**把侧键设置页拉到前台**。
+     *
+     *  为什么绕这一趟：那个 Activity 在宿主清单里带
+     *  `android:permission="oplus.permission.OPLUS_COMPONENT_SAFE"`，普通 app 直接 `startActivity`
+     *  必被 `SecurityException` 拦；而宿主起**自己包**的页面没有这道检查。
+     *
+     *  这一条的接收器必须是 `RECEIVER_EXPORTED`：发送方是**另一个 uid** 的普通 app（模块自己的包），
+     *  与 [ACTION_HOST_SERVICE_QUERY] / [ACTION_PAGE_RELAUNCH] 那几条「同 uid 的设置页进程」不同。
+     *  它只做「把设置页拉到前台」一件事，不读配置、不改状态。
+     */
+    const val ACTION_OPEN_SETTINGS = "com.lookie.opluskey.OPEN_SETTINGS"
+
     // ── 链路自检：设置页 ↔ 注入侧（system_server） ──
     //  这一对是**问 / 答**，只为「首页能不能说清是哪一段断了」而存在（见 `ui/LinkCheck.kt`）。
     //  注入侧不必为它额外挂 Hook：它已经挂在 AMS 的广播入口上，全系统每条广播都过那里；

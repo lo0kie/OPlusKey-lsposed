@@ -17,6 +17,7 @@ import com.lookie.opluskey.ui.model.cloneLabel
  *  4. 包名兜底（手写配置 / 包被卸载）。
  *
  *  第 3 档还要补分身槽号：主用户的微信与分身微信包名相同，只查名字两行都叫「微信」。
+ *  槽号查不到（那一份已经删了）时挂 user id（`微信 · 998`），见 [cloneLabel]。
  *
  *  @param target 绑定的目标写法（`999@包名/类名`、`999@包名/快捷方式id` 或纯包名）
  */
@@ -26,8 +27,8 @@ internal fun SettingsPage.appNameOf(target: String): String {
         ?.let { return it }
     AppTarget.label(target)?.let { return it }
     val base = appLabelOf(AppTarget.pkg(target))
-    val slot = AppCloneCatalog.slotOf(context, AppTarget.userId(target))
-    return cloneLabel(base, slot)
+    val userId = AppTarget.userId(target)
+    return cloneLabel(base, AppCloneCatalog.slotOf(context, userId), userId)
 }
 
 /**

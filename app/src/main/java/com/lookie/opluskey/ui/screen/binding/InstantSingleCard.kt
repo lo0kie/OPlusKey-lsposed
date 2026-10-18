@@ -35,8 +35,9 @@ import io.github.suqi8.coui.kmp.basic.cardListPositionOf
  *
  * ## 写路径
  *
- *  与单击档那张卡同一条纪律：只吃「适配清单」闸、**不判 `linkReady`**（写的是参数不是动作，
- *  落盘就生效，不需要注入侧回话）。理由写全在 `BindingSettingsCard` 的类注释里。
+ *  与单击档那张卡同一条纪律：**不判 `linkReady`**（写的是参数不是动作，落盘就生效，
+ *  不需要注入侧回话）。理由写全在 `BindingSettingsCard` 的类注释里。
+ *  「适配清单」不参与任何闸，这里当然也不判它（AGENTS 一、13）。
  */
 @Composable
 internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {

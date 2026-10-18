@@ -10,14 +10,14 @@ import com.lookie.opluskey.core.i18n.Strings
  *  与 [DonateTarget] 同一套：菜单行首的字形与目标地址都写在这一处，界面只负责摆出来。
  *
  *  **三档一律可点** —— 菜单里不留灰行：没配就置灰，用户读到的不是「还没接上」而是
- *  「这个功能坏了」。三档地址现在都是真的（QQ 频道 / Telegram / Issue）。
+ *  「这个功能坏了」。三档地址现在都是真的（QQ 群 / Telegram / Issue）。
  */
 internal enum class FeedbackTarget(
     val id: String,
     val labelKey: String,
     val url: String,
 ) {
-    QQ_CHANNEL("qq_channel", Strings.FEEDBACK_QQ_CHANNEL, QQ_CHANNEL_URL),
+    QQ_GROUP("qq_group", Strings.FEEDBACK_QQ_GROUP, QQ_GROUP_URL),
     TELEGRAM("telegram", Strings.FEEDBACK_TELEGRAM, TELEGRAM_URL),
     ISSUE("issue", Strings.FEEDBACK_ISSUE, ISSUE_URL),
     ;
@@ -26,8 +26,8 @@ internal enum class FeedbackTarget(
     val icon: ImageVector
         get() =
             when (this) {
-                // 「频道」没有品牌字形，用「一群人」那颗
-                QQ_CHANNEL -> PageIcons.FeedbackChannel
+                // 「群」没有品牌字形，用「一群人」那颗
+                QQ_GROUP -> PageIcons.FeedbackGroup
 
                 TELEGRAM -> PageIcons.BrandTelegram
 

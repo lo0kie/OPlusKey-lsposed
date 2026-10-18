@@ -1,7 +1,9 @@
 package com.lookie.opluskey.host
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -33,6 +35,9 @@ import com.lookie.opluskey.host.action.actionNoticeText
 internal object GestureReceiver {
     /** 已注册的接收器 —— 永不移除（注册后随宿主主进程一直活着，`install` 里用非空判断挡住重复注册）。 */
     private var receiver: BroadcastReceiver? = null
+
+    /** [ModuleWire.ACTION_OPEN_SETTINGS] 那条广播的接收器（EXPORTED，见 [registerOpener]）。 */
+    private var opener: BroadcastReceiver? = null
 
     private var runner: ActionRunner? = null
 
@@ -85,7 +90,9 @@ internal object GestureReceiver {
         }
         // `onPackageReady` 时 Application 未必已经挂上（`currentApplication()` 可能是 null），
         // 所以拿不到就退后重试，而不是直接放弃 —— 否则整条链路静默失效。
-        tryGetContext(loader, attempt = 0)
+        // 首次这条也要包：重试那条（下面）已经包了，首发这次原先露在外面 ——
+        //  `currentApplication()` 在安装期抛出来会顺接收器回调外溢。
+        XLog.guard("取 Application Context") { tryGetContext(loader, attempt = 0) }
     }
 
     private fun tryGetContext(
@@ -154,7 +161,9 @@ internal object GestureReceiver {
                         val phase = intent?.getStringExtra(ModuleWire.EXTRA_PHASE)
                         val repeat = intent?.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false) ?: false
                         val sentAt = intent?.getLongExtra(ModuleWire.EXTRA_SENT_AT, 0L) ?: 0L
-                        XLog.d("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
+                        // 「宿主到底收没收到这一下」是排查链路的**第一道判据**，只能写 W
+                        //  （注入侧 / 宿主侧的 i、d 口径见 `XLog` 类注释与 `docs/device-findings.md` 十五）
+                        XLog.w("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
                         handle(key, phase, repeat, sentAt)
                     }
                 }
@@ -178,7 +187,60 @@ internal object GestureReceiver {
         } catch (e: Throwable) {
             XLog.w("注册手势接收器失败", e)
         }
+
+        registerOpener(ctx)
     }
+
+    /**
+     * 「把侧键设置页拉到前台」那条广播的接收器 —— **必须是 EXPORTED**。
+     *
+     *  发送方是模块自己的包（`EntryActivity`，另一个 uid），不是设置页那个同 uid 进程，
+     *  所以 [ModuleWire.ACTION_HOST_SERVICE_QUERY] 那几条的 `RECEIVER_NOT_EXPORTED` 收不到它。
+     *  它只做一件事：起宿主自己的设置页（[Framework.HOST_SETTINGS_ACTIVITY]）；不读配置、不改状态 ——
+     *  任何应用发这条，最多把设置页调到前台一次。这是「管理器那颗按钮不依赖 root」的代价。
+     *
+     *  ⚠️ 发起方用的是**有序广播**：起页成败写进 `resultCode`，那边据此决定要不要提示。
+     */
+    private fun registerOpener(ctx: Context) {
+        if (opener != null) return
+        val o =
+            object : BroadcastReceiver() {
+                override fun onReceive(
+                    context: Context?,
+                    intent: Intent?,
+                ) {
+                    if (intent?.action != ModuleWire.ACTION_OPEN_SETTINGS) return
+                    val ok = openSettingsPage(context ?: ctx)
+                    runCatching { setResultCode(if (ok) Activity.RESULT_OK else Activity.RESULT_CANCELED) }
+                }
+            }
+        runCatching {
+            ctx.registerReceiver(o, IntentFilter(ModuleWire.ACTION_OPEN_SETTINGS), Context.RECEIVER_EXPORTED)
+            opener = o
+            XLog.w("模块入口接收器已注册（可被模块自己的包唤醒）")
+        }.onFailure { XLog.w("注册模块入口接收器失败", it) }
+    }
+
+    /**
+     * 起**宿主自己的**侧键设置页。
+     *
+     *  同包起自己的 Activity 不走 `android:permission` 那道跨应用检查，所以这里不需要
+     *  `OPLUS_COMPONENT_SAFE` —— 这就是「为什么绕宿主一趟」的全部理由（见
+     *  [ModuleWire.ACTION_OPEN_SETTINGS]）。
+     */
+    private fun openSettingsPage(ctx: Context): Boolean =
+        runCatching {
+            ctx.startActivity(
+                Intent()
+                    .setComponent(ComponentName(ctx.packageName, Framework.HOST_SETTINGS_ACTIVITY))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            XLog.w("模块入口：已把侧键设置页拉到前台")
+            true
+        }.getOrElse {
+            XLog.w("模块入口：打开侧键设置页失败（${it.javaClass.simpleName}: ${it.message}）")
+            false
+        }
 
     /**
      * 把宿主进程从「缓存」提到「持有已启动服务」的级别 —— 防冻结。
@@ -344,7 +406,9 @@ internal object GestureReceiver {
             val token = "${key.id}/$phaseId"
             val prev = lastHandledAt[token]
             if (prev != null && sentAt <= prev) {
-                XLog.d("${key.label} 的 $phaseId 这一条已经处理过（补发的那条），忽略")
+                // 「按了没反应」有一整类是这个去重干的：补发那条被当成第二次手势时，
+                //  日志里得有这一行，否则与「压根没收到」分不开。
+                XLog.w("${key.label} 的 $phaseId 这一条已经处理过（补发的那条），忽略")
                 return
             }
             lastHandledAt[token] = sentAt
@@ -373,7 +437,7 @@ internal object GestureReceiver {
         val config = ConfigStore.read()
         val keyConfig = config.key(key)
         if (!keyConfig.enabled) {
-            XLog.d("${key.label}：主开关已关，忽略这次 ${gesture.label}（模块不生效）")
+            XLog.w("${key.label}：主开关已关，忽略这次 ${gesture.label}（模块不生效）")
             return
         }
 
@@ -391,7 +455,7 @@ internal object GestureReceiver {
     private fun onRelease(key: KeyId) {
         val keyConfig = ConfigStore.read().key(key)
         if (!keyConfig.enabled) {
-            XLog.d("${key.label}：主开关已关，忽略这一下松手")
+            XLog.w("${key.label}：主开关已关，忽略这一下松手")
             return
         }
         if (!keyConfig.longIsVoiceMemory) {

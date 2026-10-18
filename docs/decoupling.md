@@ -14,17 +14,17 @@
 
 正文各节的 `43 字段 / 15 文件 / ui/component / 18 个环` 是**改造前**的口径。改造后的可复核值：
 
-| 项                                       | 值                                                                    | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
-| ---------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 包级环 / 边                              | **0 / 142**（包 27 个）                                               | 包级导入图 + DFS 环检测（见「七」）                                                 |
-| `SettingsPage` 状态字段                  | **21**                                                                | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
-| `SettingsPage.xxx` 扩展                  | 195 个，散在 62 文件                                                  | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
-| `ui/SettingsPage.kt` 行数                | **497**（879 → 699 → 497）                                            | `wc -l ui/SettingsPage.kt`                                                          |
-| `inject/ProbeChannel.kt` 行数            | 338（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）         | `wc -l inject/Probe*.kt`                                                            |
-| `host/action/MiniWindowLauncher.kt` 行数 | 672（常量与反射面在 `MiniWindowFacts.kt`）                            | `wc -l host/action/MiniWindow*.kt`                                                  |
-| 单文件最大行数                           | **714**（`ui/model/ActionIcons.kt`）；全仓**无 > 1000 行**的文件      | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
-| 屏文件 import 页面                       | 45 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线 | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
-| 零引用 import                            | 0，且由 detekt 拦下                                                   | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
+| 项                                       | 值                                                                       | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
+| ---------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| 包级环 / 边                              | **0 / 27**（细分档位口径）                                               | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
+| `SettingsPage` 状态字段                  | **21**                                                                   | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
+| `SettingsPage.xxx` 扩展                  | 198 个，散在 63 文件                                                     | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
+| `ui/SettingsPage.kt` 行数                | **497**（879 → 699 → 497）                                               | `wc -l ui/SettingsPage.kt`                                                          |
+| `inject/ProbeChannel.kt` 行数            | 337（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）            | `wc -l inject/Probe*.kt`                                                            |
+| `host/action/MiniWindowLauncher.kt` 行数 | 695（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`） | `wc -l host/action/MiniWindow*.kt`                                                  |
+| 单文件最大行数                           | **725**（`ui/model/ActionIcons.kt`）；全仓**无 > 1000 行**的文件         | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
+| 屏文件 import 页面                       | 45 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线    | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
+| 零引用 import                            | 0，且由 detekt 拦下                                                      | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
 新的分层（方向是单向的，`ui.screen`/`ui.hook` 都只往 `ui` 与 `ui.state` 走）：
 
@@ -92,7 +92,7 @@ ui.state 纯状态类（不扩展页面）      ui.model 纯展示数据
 
 **合格项**（继续保持，别在收敛时碰坏）：
 
-1. **注入侧零界面依赖**：`inject/` 下 grep `androidx` / `io.github.suqi8` / `io.github.lyxnx` / `ui.` 全空 —— 而且 CI 已经把这条钉死了（`.github/workflows/build.yml` 的「(5) 注入侧不得引用 …」那一项，含 `KeyModule.kt` 单列一档）。
+1. **注入侧零界面依赖**：`inject/` 下 grep `androidx` / `io.github.suqi8` / `io.github.lyxnx` / `ui.` 全空 —— 而且 CI 已经把这条钉死了（`tools/verify-apk.sh` 里「(5) 注入侧不得引用 …」那一段，含 `KeyModule.kt` 单列一档；`ci.yml` 与 `release.yml` 都调这个脚本）。
 2. **`core/` 不认识进程、不认识界面**：`core/*` 全部导入都落在 `core/` 内 + 标准库（`core/wire → core/config` 那一条是唯一的例外，见三、C）。
 3. **`core/seal`、`ui/component/*` 的单职责已经很干净**：`Seal` / `SealAssets` / `SealCertificate` 一包三件、各管一件事；`component/` 已从早先的「PageWidgets 一个文件装所有控件」拆成 15 个文件（`MenuPopup` / `ConfirmDialog` / `PageFab` / `SliderRow` / `SwitchRow` / `TileWidgets` / `Haptics` / `Visibility` / `TextMetrics` / `IconInput` / `MarkdownBody` …）。
 

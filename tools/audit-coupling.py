@@ -22,10 +22,19 @@ import re
 import sys
 from pathlib import Path
 
+# Windows 控制台默认按 GBK 编码：结尾那几个 `✓` / `✗` / `⚠` 一写就 UnicodeEncodeError，
+# 于是一次**全部通过**的审计在最后一行崩掉、退出码非零 —— 看起来像「审计失败」。
+# 把两个流钉成 UTF-8（写不出来的字符退化成 `?`），不让一个符号决定审计结论。
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
 REPO = Path(__file__).resolve().parent.parent
-# 两个 Gradle 模块、每个模块的三个源集都要扫：
+# 两个 Gradle 模块、每个模块的**两个**源集都要扫（构建类型只有 debug / release）：
 #   · `:app`  —— 界面 / 宿主侧 / 注入侧（debug / release 里各有一份 ui 的变体副本）；
-#   · `:core` —— 两个进程共用的那一层（debug / beta / release 里各有一份 BuildFlags 与
+#   · `:core` —— 两个进程共用的那一层（debug / release 里各有一份 BuildFlags 与
 #     HostFilePerms 的副本，同样在注入侧执行）。
 #   注意：`:core` 自成一个**编译单元**之后，「它不许引 `ui/`」已经是编译期约束（它的 classpath
 #   里没有 `:app`）；这里再扫一遍是因为这条脚本还管着「包级环」与「注入侧禁引 androidx」，
@@ -33,11 +42,9 @@ REPO = Path(__file__).resolve().parent.parent
 SOURCE_ROOTS = [
     REPO / "app/src/main/java/com/lookie/opluskey",
     REPO / "app/src/debug/java/com/lookie/opluskey",
-    REPO / "app/src/beta/java/com/lookie/opluskey",
     REPO / "app/src/release/java/com/lookie/opluskey",
     REPO / "core/src/main/java/com/lookie/opluskey",
     REPO / "core/src/debug/java/com/lookie/opluskey",
-    REPO / "core/src/beta/java/com/lookie/opluskey",
     REPO / "core/src/release/java/com/lookie/opluskey",
 ]
 PACKAGE_ROOT = "com.lookie.opluskey"
@@ -188,6 +195,10 @@ def main() -> int:
 
     violations: list[str] = []
     edges: dict[tuple[str, str], list[str]] = {}
+    # **包级边**：细分档位 → 细分档位（同一个包内的 import 不算），去重后计数。
+    #  docs/decoupling.md 零节那张表的「包级环 / 边」就是这一行打印出来的数，
+    #  别在文档里另算一套 —— 两套口径各算一次，先漂的一定是文档。
+    pkg_edges: set[tuple[str, str]] = set()
     oversized: list[str] = []
 
     for path in files:
@@ -203,6 +214,9 @@ def main() -> int:
             target = src[match.end() :].split("\n", 1)[0].strip()
             if target.startswith(PACKAGE_ROOT + "."):
                 edges.setdefault((here, target), []).append(f"{rel}:{line_no}")
+                pkg_target = bucket_of_target(target)
+                if pkg_target != here:
+                    pkg_edges.add((here, pkg_target))
             elif EXTERNAL_BANNED.match(target):
                 edges.setdefault((here, target), []).append(f"{rel}:{line_no}")
 
@@ -239,7 +253,7 @@ def main() -> int:
         )
 
     # ---- 报告 ----
-    print(f"扫了 {len(files)} 个 Kotlin 文件")
+    print(f"扫了 {len(files)} 个 Kotlin 文件；包级依赖 {len(pkg_edges)} 条边（细分档位口径）")
     if violations:
         print(f"\n✗ 越界 {len(violations)} 条：")
         for v in violations:

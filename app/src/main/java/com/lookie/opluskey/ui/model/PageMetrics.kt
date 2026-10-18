@@ -79,11 +79,22 @@ internal val STEP_PICKER_MAX_HEIGHT = 320.dp
 internal const val COLUMNS = 2
 
 /**
- * 「快捷键」首页「按键行为」卡的行数 —— 两行（振动反馈 + 执行时提示）。
+ * 首页「按键行为」卡里「前台转小窗时使用动画」那一行**是否露出来** —— 现行 `false`（先隐藏）。
  *
- * 行不再随状态增减，所以写成常量而不是 `buildList`。
+ *  收起来的理由是这一档还没收敛：动画终点几何是竖屏标定值、横屏播不了，竖屏落点也还没定。
+ *  只收**入口**：配置字段（`GlobalConfig.miniWindowAnim`）与执行侧（`MiniWindowLauncher`）
+ *  都原样留着，默认值本来就是关 —— 改回 `true` 那一行立刻回来，不必动别处。
  */
-internal const val HOME_ACTION_ROWS = 2
+internal const val SHOW_HOME_MINI_ANIM = false
+
+/**
+ * 「快捷键」首页「按键行为」卡的行数 —— 振动反馈 / 执行时提示 /
+ * 前台转小窗动画（那一行见 [SHOW_HOME_MINI_ANIM]）。
+ *
+ * 行不再随状态增减，所以写成常量而不是 `buildList`；但**行数要跟着可见性走** ——
+ * `cardListPositionOf` 靠它算首尾圆角，多算一行会让最后那一行被当成「中间行」、卡片底角变成直角。
+ */
+internal val HOME_ACTION_ROWS = if (SHOW_HOME_MINI_ANIM) 3 else 2
 
 /** 「更多选项」页「关于」那张卡的行数 —— 本机 / 版本 / 签名 / 作者 / 反馈问题，五行固定。 */
 internal const val ABOUT_ROWS = 5

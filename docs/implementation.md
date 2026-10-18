@@ -232,9 +232,59 @@ framework 私有类**一律按字符串名解析**：它们会被 ROM 改名，�
 复核：`ls core/src/{debug,release}/java/com/lookie/opluskey/core/BuildFlags.kt` 两份都在；
 两档区分是否真的生效，`python tools/check_variants.py` 一次跑完（它按「该串只应出现在哪一档」逐项判定）。
 
-- **CI 出 debug + release**（`.github/workflows/build.yml`），发到模块仓库的只有 `release`：
-  `versionName` 带 `-` 的按预发布发，包体不变。没配签名密钥时只出 debug —— 封存层依赖签名派生密钥，
-  没有明文回退。
+- **两条 workflow，各管一段**：`.github/workflows/ci.yml`（推 master / PR）只做「构建 + 验证 +
+  留产物」，里面没有任何发布步骤；`.github/workflows/release.yml`（打 tag）只做「取 + 验 + 发」。
+    - `release.yml` 按**提交 SHA** 去 `ci.yml` 在 master 上那条 run 取产物（`gh run download`），
+      本 job 里再用 `tools/verify-apk.sh` 把两个包解一遍才发 —— 同一份提交不构建两遍。
+    - tag 常紧跟 master 推，两条 run 并发，所以取产物前先等，最多 10 分钟；等不到、那条 run 失败、
+      或产物过保留期（release 包留 90 天）—— 一律**红**，不退回自己构建（构建只归 `ci.yml`）。
+    - 查询带 `branch=master`：推 tag 本身也是 push 事件，不带它会把别的 ref 的 run 捞进来。
+  - `release.yml` 的 `concurrency` 是 `cancel-in-progress: false`：发布半路被掐会留下
+    「tag 推了、Release 没建」。
+  - 版本号由 `tools/read-version.sh` 读（两条 workflow 共用一份，抓不到就 fail）；取完产物先判
+    「必须有本版的 `*-release.apk`」—— 缺了就直接说「多半是 `signed=false`（Secrets 缺
+    `KEYSTORE_*`）」，别等到建 Release 那一步才抛一句含糊的 `no files found`。
+- 发到模块仓库的只有 `release`：`versionName` 带 `-` 的按预发布发，包体不变。没配签名密钥时只出
+  debug —— 封存层依赖签名派生密钥，没有明文回退（这一档 `release.yml` 取不到 release 包，发不出去）。
+
+### 发版：版本号与 tag
+
+版本号只有两处手写，其余全由 CI 读出来：
+
+| 位置                                                    | 写什么                          | 什么时候动                             |
+| ------------------------------------------------------- | ------------------------------- | -------------------------------------- |
+| `app/build.gradle.kts` 的 `versionCode` / `versionName` | 用户看到的版本 + 单调递增的整数 | 每次发版                               |
+| `core/ModuleInfo.kt` 的 `BUILD_ID`                      | `yyyy-MM-dd-NNNN`               | 每次出包（它是「换了包没重启」的尺子） |
+
+**tag 必须是 `<versionCode>-<versionName>`（如 `3-1.0.0`）。** 不是为了好看，是因为管理器要拿它算更新：
+
+`RepoLoader.updateLatestVersion()` 对模块仓库里那条 Release 的 tag 做 `split("-", 2)`，
+第一段 `Long.parseLong` 当 **versionCode**、第二段当 **versionName**，再和手机上已装的比
+（`upgradable()` 要求**严格大于**）。切不出两段或第一段不是数字时，那一行直接 `continue` ——
+**模块能装，但管理器永远不会提示有新版本**。所以 `v1.0.0` / `1.0.0` 这种写法不要用。
+
+- **推 tag 才发版**，推 master 不发（`release` job 的 `if` 卡 `refs/tags/`）。推上去之前确认
+  版本号已经提交：Release 的 `tag_name` 是 CI 从版本号算出来的，与手推的 tag 名字不一致就会分叉。
+- 两道前置，缺了只是**静默跳过**、日志里不报错：Secrets 里 `KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` /
+  `KEY_ALIAS` / `KEY_PASSWORD`（缺则只出 debug，`signed != true` 整段跳过）；`MODULES_REPO_TOKEN`
+  对 `Xposed-Modules-Repo/io.github.lo0kie.opluskey` 有 `contents: write`（缺则「检查发布前置条件」跳过）。
+- **一次发版发两条 Release，分工不同**：
+    - `Xposed-Modules-Repo/io.github.lo0kie.opluskey` 那条是**更新通道** —— 管理器只读它，
+      只放 `release` 包，tag 固定 `<versionCode>-<versionName>`。
+    - **本仓库**那条是**历史存档** —— 两个包都放（`release` + `debug`），tag 用**这次推上来的那个**
+      （`github.ref_name`），不拿版本号重算：否则推 `v1.0.0` 时本仓库会凭空多出一条 `3-1.0.0`
+      指着同一个提交。它用 `GITHUB_TOKEN`（job 里 `permissions: contents: write`），**没有**模块仓库
+      令牌时照样发 —— 缺令牌只让模块仓库那半段跳过。
+- **推的 tag 必须与源码里的版本号对上**（`<versionCode>-<versionName>` 或 `v<versionName>`），
+  对不上时 `校验 tag 与版本号一致` 这一步直接红。放宽的后果是「Release 挂在另一个名字上 ⇒
+  发了新版而管理器不提示更新」，且流水线全绿、看日志看不出来。
+- **`versionCode` 只增不减**，预发布也占号（不涨号测试通道收不到更新提示）；`versionName` 带 `-`
+  （如 `1.1.0-beta.1`）会被自动标成 prerelease、不抢 latest。
+- **tag 推上去就不再移动**：`git tag -f` + 强推会让历史版本指向漂移。打错了删远端 tag 重打
+  （`git push origin :refs/tags/<tag>`），并把那两条 Release 一并处理。
+- 当前基线（2026-10-18）：模块仓库与本仓库此前都是 **0 条 release**；`0.1.0` 是**手动**发的、
+  没走模块仓库，`0.2.0` 没发过。所以 `1.0.0`（tag `3-1.0.0`）是两边各自的第一条，
+  `versionCode` 取 3（1 / 2 已被历史包占用）。此后每涨一次版本，两边各多一条、一一对应。
 
 ## 八之二、多版本适配：档位表
 
@@ -281,7 +331,7 @@ ROM 私有的东西分三类，**各自按 ROM 系列（`17.0.0` 这种）分档
 
 三道闸一起跑用 `./gradlew gate`（根脚本注册的聚合任务，两个模块 × 三个任务）。
 
-- **`gate` 与打包分开跑**：`assemble*` 会带两遍 R8（release 与 beta 各一遍）。把它们串在一条命令里，
+- **`gate` 与打包分开跑**：`assemble*` 会带 R8（release 那一遍）。把它们串在一条命令里，
   构建时间就是三道闸的好几倍 —— 而绝大多数「改完看一眼」根本不需要包。
 
 - **三个闸的配置都在根脚本里，一处定义、两个模块共用**（`:app` 与 `:core` 的 `build.gradle.kts`
@@ -299,6 +349,13 @@ ROM 私有的东西分三类，**各自按 ROM 系列（`17.0.0` 这种）分档
 - **死 import 由 ktlint 的 `no-unused-imports` 管**（`ktlintRules` 里显式 `enabled` —— ktlint 1.8 默认
   不跑它，实测「完全无引用的 import」也原地不动）。它按 PSI 引用判，比 detekt 的 `UnusedImports` 准；
   detekt 那条留着兜底。
+- **`remember` 里缓存字典文案**两道闸都看不见（`AppLanguage` 是运行期状态，lint / detekt 都表达不了）：
+  切语言不会重建页面，键里没有语言档的 `remember` 会把旧语言的字符串留在界面上 —— 真机上就是
+  「关于」页那两行（`签名` / `调试版本（不校验签名）`）在 English 下还是中文。
+  `tools/check-i18n-cache.py` 判这一条：`remember` 的块体**直接读** `I18n.get` / `I18n.format`，
+  或调了**本文件里读字典的函数**（折行写法也算），而键里没有 `Lang` / `lang` / `language` ⇒ 命中。
+  它**给退出码**（0 通过 / 1 命中）；确实与语言无关的一份在语句行尾加注释 `i18n-locked` 放行。
+  ⚠️ 它现在是**手动跑的第四道**，没有并进 `./gradlew gate` —— 并进去要改 AGENTS 二、1.2 的口径。
 - **两道闸都判不了「同名遮蔽」**：`val key = cfg.key(...)` 这种，短名在文件里出现过，两个工具都当成
   「还在用」。`tools/find_shadowed_imports.py` 只把「import 短名与文件内声明同名」的文件列出来
   （十来行，人工扫一眼即可）；它**不做判定**，因为文本层分不清 `Modifier.padding()`（扩展调用，import

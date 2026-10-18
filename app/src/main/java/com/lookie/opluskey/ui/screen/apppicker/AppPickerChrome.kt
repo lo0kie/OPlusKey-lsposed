@@ -162,7 +162,7 @@ internal fun SettingsPage.AppConfirmFab(
             if (picker.smallWindow.value && app != null) {
                 // 主线程问一次：这里要按结果当场决定「写还是拦」，异步化会造出
                 // 「连点两下写两次」的新洞，而这是一次性用户动作、代价有界。
-                if (querySmallWindowSupport(pkg) == false) {
+                if (querySmallWindowSupport(pkg, AppTarget.userId(target)) == false) {
                     XLog.w("选择应用：$pkg 不支持小窗，点确认时拦下（不写 window:）")
                     ui.blockedSmallWindow = SmallWindowBlock(app, fromPick = true)
                     return@PageFabButton

@@ -166,7 +166,7 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
         //  私有面，见那个类的注释）。这一层只拿到「包名 + 名字 + 槽号」，剩下的与普通应用一样。
         val clones =
             AppCloneCatalog.entries(context).map { entry ->
-                val label = cloneLabel(entry.label, entry.slot)
+                val label = cloneLabel(entry.label, entry.slot, entry.userId)
                 LaunchableApp(
                     packageName = entry.packageName,
                     label = label,

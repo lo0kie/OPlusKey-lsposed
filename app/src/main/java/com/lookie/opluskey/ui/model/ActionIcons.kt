@@ -34,7 +34,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandTelegram
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandWechat
 import io.github.lyxnx.compose.ui.tablericons.outline.BrowserPlus
-import io.github.lyxnx.compose.ui.tablericons.outline.Bug
 import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
 import io.github.lyxnx.compose.ui.tablericons.outline.Check
@@ -70,6 +69,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.InputX
 import io.github.lyxnx.compose.ui.tablericons.outline.LayoutGrid
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
+import io.github.lyxnx.compose.ui.tablericons.outline.Message2
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodEmpty
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodHeart
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
@@ -247,14 +247,20 @@ internal fun actionIcon(token: String): ImageVector =
         }
 
         else -> {
+            //  shell 正文（去掉 `shell:` 前缀）—— 两条 KSU 别名的认领看的是正文那一层
+            val shell = token.removePrefix(Action.SHELL_PREFIX)
             when {
-                // 截图那条 shell（清单里是 `service call color_screenshot 1`）
-                token.contains(KsuCompat.SCREENSHOT_CMD_PREFIX) -> {
+                // 截图那条 shell（清单里是 `service call color_screenshot 1`）。
+                //  判据走 [KsuCompat.isScreenshotAlias]，也就是执行侧那一把尺子（前缀匹配 +
+                //  这一条里没串别的命令），**不能**用 `token.contains(...)`：
+                //  写 `shell:echo oplus.intent.action.DIRECT_SIDEBAR_SERVICE` 这种只是**提到**它的
+                //  命令也会被认成「识屏」—— 图标与执行侧的实际行为对不上（那边根本不认）。
+                KsuCompat.isScreenshotAlias(shell) -> {
                     TablerIcons.Outline.Screenshot
                 }
 
-                // 小布识屏那条 shell（`DIRECT_SIDEBAR_SERVICE`）—— 语义是「识屏」
-                token.contains(KsuCompat.SIDEBAR_SERVICE) -> {
+                // 小布识屏那条 shell（`DIRECT_SIDEBAR_SERVICE`）—— 语义是「识屏」。判据同上
+                KsuCompat.isSidebarAlias(shell) -> {
                     TablerIcons.Outline.TextRecognition
                 }
 
@@ -460,9 +466,9 @@ internal object PageIcons {
     /**
      * 「反馈问题」菜单三行的字形 —— 菜单里三行都是「一个去处」，只有各自的字形能一眼分清。
      *
-     *  「频道」没有品牌字形，用「一群人」（`users-group`）；另两支是品牌字形。三支各留一份名字。
+     *  「群」没有品牌字形，用「一群人」（`users-group`）；另两支是品牌字形。三支各留一份名字。
      */
-    val FeedbackChannel: ImageVector get() = TablerIcons.Outline.UsersGroup
+    val FeedbackGroup: ImageVector get() = TablerIcons.Outline.UsersGroup
 
     val BrandTelegram: ImageVector get() = TablerIcons.Outline.BrandTelegram
 
@@ -614,8 +620,13 @@ internal object PageIcons {
     /** 「关于本机」那一行：**没命中**（等待适配 / 不在清单）—— `device-ipad-cancel`。 */
     val DeviceUnsupported: ImageVector get() = TablerIcons.Outline.DeviceIpadCancel
 
-    /** 「关于」卡里「反馈问题」那一行的行首 —— `bug`（提 issue 就是报 bug）。 */
-    val Bug: ImageVector get() = TablerIcons.Outline.Bug
+    /**
+     * 「关于」卡里「反馈与交流」那一行的行首 —— `message-2`（对话气泡）。
+     *
+     *  这一行不再是「报 bug」那一件事：点开是**三个去处**（issue / 群 / 频道），
+     *  底下既有反馈也有交流，所以用**对话气泡**而不是 `bug`。
+     */
+    val Feedback: ImageVector get() = TablerIcons.Outline.Message2
 
     /** 「响铃状态」菜单第一档「循环」—— `Repeat`（两箭头成圈，靠 [specIcon] 按 spec 认领）。 */
     val RingerCycle: ImageVector get() = TablerIcons.Outline.Repeat

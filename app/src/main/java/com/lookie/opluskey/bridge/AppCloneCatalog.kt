@@ -2,6 +2,7 @@ package com.lookie.opluskey.bridge
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.UserHandle
 import android.os.UserManager
@@ -70,6 +71,15 @@ internal object AppCloneCatalog {
     /** [cloneUsersInDisplayOrder] 记下的那一份用户表（只记非空的那次，见那边的注释）。 */
     private var cachedUsers: List<Int>? = null
 
+    /**
+     * [slotOf] 已经**确认**不在用户表里的那些 user id。
+     *
+     *  查不到要重列一次用户（缓存是进程级的，新装的分身还没进表），但**不能每次查不到都重列** ——
+     *  拼名字那条路是逐行调的，一个已删除的分身会让每一行都跑一次 `getUsers` 的反射 + binder。
+     *  这份备忘录在 [entries] 作废用户表时一起清（那里是唯一会「重新认识这台机器」的地方）。
+     */
+    private val unresolvedUsers = HashSet<Int>()
+
     /** 分身那一份里的一个可启动应用 —— 界面层要的那几样，外加它属于哪个槽。 */
     data class Entry(
         val packageName: String,
@@ -127,11 +137,40 @@ internal object AppCloneCatalog {
      *
      *  规则只有这一处：选择应用页拼行名、「打开应用」格拼绑定的小标题都调它。各算一套的话，
      *  网格里的「微信 1」与列表里的「微信 1」可能指向不同用户。
+     *
+     *  查不到那个 user（缓存里没有、重列也没有：分身刚删掉，或者那个 user 根本不是分身类型）
+     *  返回 [UNKNOWN_SLOT]（负数），**绝不返回 0** —— 0 是主用户的编号，返 0 就是把「不知道」
+     *  画成「这是主用户那一份」（撞号）。
      */
     fun slotOf(
         context: Context,
         userId: Int,
-    ): Int = if (userId == 0) 0 else cloneUsersInDisplayOrder(context).indexOf(userId) + 1
+    ): Int {
+        if (userId == 0) return 0
+        val known = cloneUsersInDisplayOrder(context)
+        val hit = known.indexOf(userId)
+        if (hit >= 0) return hit + 1
+        // 缓存里没有 ⇒ 要么这一份才装上（缓存只记非空的那一次），要么那个分身已经删了。
+        //  重列一次；已经记过「查无此人」的就不再重列（拼名字那条路是逐行调的）。
+        val already = userId in unresolvedUsers
+        val fresh = if (already) known else users(context).sortedDescending().ifEmpty { known }
+        if (fresh !== known) cachedUsers = fresh
+        val idx = fresh.indexOf(userId)
+        if (idx >= 0) {
+            unresolvedUsers -= userId
+            return idx + 1
+        }
+        //  以前这里是 `indexOf(userId) + 1` ⇒ 查不到得 **0**，而那正是**主用户**的编号 ⇒
+        //  界面上「微信 1」被画成「微信」，与真主用户那一行同名（撞号）。
+        if (!already) {
+            unresolvedUsers += userId
+            XLog.w("槽号：user=$userId 不在分身用户表里（${known.joinToString()}），按 user id 显示")
+        }
+        return UNKNOWN_SLOT
+    }
+
+    /** [slotOf] 的「查不到槽号」—— 负数，不可能与真槽号（从 1 起）撞上。 */
+    const val UNKNOWN_SLOT: Int = -1
 
     /**
      * 分身槽里那些**可启动的应用**，按槽分组摊平（主用户的不在这里，见 `AppList`）。
@@ -149,11 +188,19 @@ internal object AppCloneCatalog {
                 AppClonePackages.queryLaunchablesAsUser(intent, uid) ?: run {
                     // 断点由 `AppClonePackages` 那边说（哪一个反射环节落空）；这里补的是**后果**：
                     //  这一槽在界面上会整块消失，看着像「这个分身一份应用都没装」。
+                    //  同时作废用户表：这一槽多半是**已经删掉的分身**，那份缓存还留着它就会
+                    //  每次刷新都白查一遍（槽号也还按它算）。作废 = 清掉这一份，下一问重新列；
+                    //  「已确认查无此人」的备忘录也一起清（新装的分身可能正是那个 id）。
                     XLog.w("分身槽（user=$uid）的可启动列表拿不到，这一槽不列")
+                    cachedUsers = null
+                    unresolvedUsers.clear()
                     return@flatMapIndexed emptyList()
                 }
             resolved
                 .asSequence()
+                // `applicationInfo?.flags?.and(..) != 0` 在它为 null 时得到的是 `null != 0`
+                //  ⇒ **true**，会把一个读不到信息的应用标成「系统应用」（小标签画错，且
+                //  「只显示用户应用」那类筛选会把它漏掉）。读不到就当不知道 —— 不是系统应用。
                 .filter { it.activityInfo?.packageName != ModuleInfo.PACKAGE }
                 .distinctBy { it.activityInfo?.packageName }
                 .mapNotNull { ri ->
@@ -166,7 +213,7 @@ internal object AppCloneCatalog {
                     Entry(
                         packageName = info.packageName,
                         label = label,
-                        system = info.applicationInfo?.flags?.and(android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0,
+                        system = info.applicationInfo?.let { it.flags and ApplicationInfo.FLAG_SYSTEM != 0 } == true,
                         userId = uid,
                         slot = index + 1,
                     )

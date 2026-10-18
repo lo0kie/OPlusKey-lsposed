@@ -549,4 +549,14 @@ object ActionCatalog {
 
     /** 按动作找展示信息；清单外一律返回 null（清单是照搬的封闭集合，不为自定义写法现造条目）。 */
     fun specOf(action: Action): Spec? = ALL.firstOrNull { isSelected(it, action) }
+
+    /**
+     * 这个动作在**人前**叫什么 —— 优先级只有一处：档位名（入口格那些 `nav:` / `key:` / `panel:` /
+     * `zoom:` 的「主屏幕」「音量+」）→ 清单里的标题 → `null`（认不出来，交给调用方的兜底写法）。
+     *
+     *  兜底**不在这里定**：界面那一侧显示配置里的**原样 token**（手改过的文件要看得见），
+     *  执行时提示那一侧显示 `action.token`（规范化后的写法）。两处以前各写一遍 `?:` 链 ——
+     *  真机踩过「界面上叫主屏幕、提示里蹦出 `nav:home`」，就是其中一处少判了档位名那一档。
+     */
+    fun label(action: Action): String? = modeName(action) ?: specOf(action)?.label
 }

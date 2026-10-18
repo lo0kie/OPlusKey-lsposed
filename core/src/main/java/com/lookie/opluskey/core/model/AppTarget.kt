@@ -79,7 +79,10 @@ object AppTarget {
         val at = plain.indexOf(SEPARATOR)
         if (at <= 0) return 0
         val head = plain.substring(0, at)
-        return if (head.all { it.isDigit() }) head.toIntOrNull() ?: 0 else 0
+        //  **只认 ASCII 数字**：`Char.isDigit()` 把全角 `０-９` 也算数字，而 `toIntOrNull()` 不认 ——
+        //  那样「９９９@包名」会被判成 0，却仍被 [withoutUser] 剥掉前缀，坏前缀静默变成
+        //  「主用户 + 合法目标」。
+        return if (isAsciiDigits(head)) head.toIntOrNull() ?: 0 else 0
     }
 
     /** 去掉用户前缀与（老配置的）显示名之后的那一段（`pkg` 或 `pkg/activity`）—— 解析组件、查包都用它。 */
@@ -87,7 +90,7 @@ object AppTarget {
         val plain = identity(target)
         val at = plain.indexOf(SEPARATOR)
         if (at <= 0) return plain
-        return if (plain.substring(0, at).all { it.isDigit() }) plain.substring(at + 1) else plain
+        return if (isAsciiDigits(plain.substring(0, at))) plain.substring(at + 1) else plain
     }
 
     /** 只要包名（给 `getPackageInfo` / 图标 / 名字用）。 */
@@ -133,3 +136,13 @@ object AppTarget {
         a != null && b != null &&
             pkg(a) == pkg(b) && userId(a) == userId(b)
 }
+
+/**
+ * 全是 ASCII `0-9` 且非空 —— 与 `toIntOrNull()` 同一套口径。
+ *
+ *  别用 `Char.isDigit()`：它认 Unicode 的十进制数字（全角 `０-９`、阿拉伯-印度数字等），
+ *  而 `toIntOrNull()` 只解析 ASCII ⇒ 两者口径不一致时，前缀会被剥掉却解析成 0。
+ *
+ *  放在文件级而不是 object 里：`AppTarget` 的函数数已经顶到 detekt 的阈值。
+ */
+private fun isAsciiDigits(s: String): Boolean = s.isNotEmpty() && s.all { it in '0'..'9' }

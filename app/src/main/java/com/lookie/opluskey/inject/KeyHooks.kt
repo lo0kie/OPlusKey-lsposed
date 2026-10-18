@@ -12,6 +12,7 @@ import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
+import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.inject.input.GestureForwarder
@@ -352,8 +353,10 @@ internal object KeyHooks {
 
     /**
      * 一个接管点的处理。不可能抛异常 —— 它是 Hook 回调本体，抛出去就是 system_server 崩。
+     *
      * 返回 `chain.proceed()` 的原值 = 不接管，系统照常处理（主开关关着时走这条）；
-     * 返回 `null` = 接管，系统原本的侧键功能不执行。
+     * 返回 `null` = 接管，系统原本的侧键功能不执行；**原方法自己抛了**时按它的声明返回类型
+     * 给一个零值（`boolean` ⇒ `false`），那是「我们没接管、系统自己也没成」的那一档。
      */
     private fun onIntercept(
         interceptor: SideKeyInterceptor,
@@ -373,8 +376,13 @@ internal object KeyHooks {
         return try {
             chain.proceed()
         } catch (e: Throwable) {
-            XLog.w("原方法执行失败：$point", e)
-            null
+            //  原方法（系统自己的那个）抛了。**不能回 `null`**：
+            //   1) 这个文件里 `null` 的含义是「接管」，而这一档我们什么都没做；
+            //   2) 声明成 `boolean` 的那些接管点拿到 null，框架侧拆箱就是 NPE ——
+            //      把「系统自己出错」升级成 system_server 崩。
+            //  按声明返回类型的零值回填：`false` = 不消费，系统那套走到它自己的异常路径上。
+            XLog.w("原方法执行失败（按「不接管」返回零值）：$point", e)
+            Reflect.zeroOf((chain.executable as? java.lang.reflect.Method)?.returnType)
         }
     }
 }

@@ -86,19 +86,49 @@ internal class PageViewTree {
         return created
     }
 
-    /** 往单个 View 挂三个 owner（**只挂不覆盖**）。 */
+    /**
+     * 往单个 View 挂三个 owner。
+     *
+     *  **宿主已经给了就不覆盖**；但**上一页自建的**要换成这一页的 —— 那个「不覆盖」原本把
+     *  上一页的也一起保住了：兜底 owner 一旦挂到宿主那棵树上，页面关掉之后它还留在那儿，
+     *  于是下一次进设置页时，祖先链上挂的是**上一页**那套（lifecycle 停在 RESUMED、ViewModelStore
+     *  没人清）。真机日志里每开一次页多一套「已自建 …」，而**只有第一次**挂满了 8 层 ——
+     *  后面几次的 owner 全被 `findViewTree*Owner() == null` 这一道跳过了。
+     *
+     *  判据靠 [attachedTo] 这份账（我们挂过哪几个 View），而不是 `findViewTree*Owner()`：
+     *  后者是**沿 parent 链找**的，分不清「这个 View 自己挂了一个」与「它上面那层有」。
+     */
     internal fun attachOne(
         target: View,
         own: FallbackOwners,
     ) {
         try {
-            if (target.findViewTreeLifecycleOwner() == null) target.setViewTreeLifecycleOwner(own)
-            if (target.findViewTreeViewModelStoreOwner() == null) target.setViewTreeViewModelStoreOwner(own)
-            if (target.findViewTreeSavedStateRegistryOwner() == null) {
+            val prev = attachedTo[target]
+            val replace = prev != null && prev !== own
+            if (replace) {
+                XLog.w("ViewTree owner：${target.javaClass.simpleName} 上挂着上一页留下的兜底 owner，换成本页的")
+                // 旧那套的 ViewModel 不该跟着宿主活到进程结束；registry 不强行置 DESTROYED ——
+                //  上一页的 View 可能还在退场动画里被引用着，半路把它销毁反而会炸在组合里。
+                prev.dispose()
+            }
+            if (replace || target.findViewTreeLifecycleOwner() == null) target.setViewTreeLifecycleOwner(own)
+            if (replace || target.findViewTreeViewModelStoreOwner() == null) target.setViewTreeViewModelStoreOwner(own)
+            if (replace || target.findViewTreeSavedStateRegistryOwner() == null) {
                 target.setViewTreeSavedStateRegistryOwner(own)
             }
+            attachedTo[target] = own
         } catch (e: Throwable) {
             XLog.w("挂 ViewTree owner 失败（${target.javaClass.simpleName}）", e)
         }
+    }
+
+    private companion object {
+        /**
+         * 我们挂过兜底 owner 的那些 View → 挂的是哪一套（**弱引用**，宿主那棵树的寿命比页长）。
+         *
+         *  只用来分清「这个 View 上的 owner 是我们挂的」还是「宿主本来就有」——
+         *  见 [attachOne]：前者可以换，后者一律不碰。
+         */
+        private val attachedTo = java.util.WeakHashMap<View, FallbackOwners>()
     }
 }

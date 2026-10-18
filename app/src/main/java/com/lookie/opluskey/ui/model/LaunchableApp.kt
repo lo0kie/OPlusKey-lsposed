@@ -63,8 +63,19 @@ internal data class LaunchableApp(
  *
  *  选择应用页的行名与「打开应用」格的小标题**都调这一处**：两处各拼一套的话，网格里的
  *  「微信 1」与列表里的「微信 1」可能指向不同用户。
+ *
+ *  @param slot 槽号：`> 0` 就是它，`0` = 主用户；
+ *    [AppCloneCatalog.UNKNOWN_SLOT]（负数）= **查不到槽号**（那个分身已经删了，或者那个 user
+ *    根本不是分身类型）—— 这时改用 `· user id`（`微信 · 998`），**不能**退回不带编号的
+ *    `微信`：那与真·主用户那一行同名，一眼分不出是谁。
  */
 internal fun cloneLabel(
     base: String,
     slot: Int,
-): String = if (slot > 0) "$base $slot" else base
+    userId: Int,
+): String =
+    when {
+        slot > 0 -> "$base $slot"
+        userId != 0 -> "$base · $userId"
+        else -> base
+    }

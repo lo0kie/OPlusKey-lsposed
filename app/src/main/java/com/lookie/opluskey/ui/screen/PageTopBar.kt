@@ -92,7 +92,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 /**
  * 顶栏右侧那行小标题按页分派：
  * 「自定义命令」= 已保存的命令条数（[ConfigState.commands] 变了跟着重组）；
- * 「选择应用」= 当前已选的应用名（两条入口见 [appPickerSelectedPkg]，查不到清单就退回包名）。
+ * 「选择应用」= 这一趟要绑的应用名（先看本次草稿，再看 [appPickerSelectedPkg]；名字怎么取见 [appNameOf]）。
  */
 private fun SettingsPage.pageSubtitle(s: Screen): String =
     when (s) {
@@ -107,7 +107,11 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         }
 
         Screen.APP_PICKER -> {
-            val target = appPickerSelectedPkg()
+            //  **先看本次草稿**（二级页刚挑完、还没提交的那一条），没有才退回「当前绑定」：
+            //  这一行说的是「这一趟将要绑成什么」，草稿才是那个答案。只看当前绑定的话，
+            //  挑完某个具体界面 / 快捷方式退回来，顶栏仍写着上一个应用的名字（而页里已经亮了新的）。
+            //  草稿在每次进页时由 `AppPickerUiState.beginVisit` 清掉，不会跨趟残留在这一行上。
+            val target = picker.draft?.target ?: appPickerSelectedPkg()
             if (target == null) {
                 // 没选过就不摆一行「已选择: 无」—— 那种写法像是有个叫「无」的应用
                 I18n.get(Strings.APP_PICKER_UNSELECTED, "还未选择应用")

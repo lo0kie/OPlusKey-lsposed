@@ -94,11 +94,13 @@ internal object ConfigChannel {
         receivedTag = ConfigBroadcast.tag(intent)
         // 这一行（及上面主开关）必须是 W：注入侧 i/d 在 LSPosed 日志页整档看不到（docs/device-findings.md 十五），
         // 它们是「配置到没到注入侧」的唯一判据；只在启动 / 解锁 / 写盘时机各来一条，不刷屏。
+        //  token 要过 [XLog.redactToken]：`shell:` / `intent:` 后面是整条正文（可能带 token、密码），
+        //  而这一行是 W —— 既进 logcat 也进「导出日志」那份文件。
         XLog.w(
             "配置已更新：长按=${key.longPressMs}ms" +
                 " 双击窗口=${fresh.global.doubleClickMs}ms" +
                 " 立即单击=${fresh.global.instantSingle}" +
-                " 单击=${key.single.token}",
+                " 单击=${XLog.redactToken(key.single.token)}",
         )
     }
 }

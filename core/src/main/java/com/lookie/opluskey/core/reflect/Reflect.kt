@@ -292,10 +292,11 @@ object Reflect {
             var cur: Class<*>? = cls
             var found: Method? = null
             while (cur != null && cur != Any::class.java) {
-                val hit =
+                val candidates =
                     runCatching {
-                        cur.declaredMethods.firstOrNull { it.name == name && it.parameterTypes.size == arity }
-                    }.getOrNull()
+                        cur.declaredMethods.filter { it.name == name && it.parameterTypes.size == arity }
+                    }.getOrNull().orEmpty()
+                val hit = pickOverload(cur, name, arity, candidates)
                 if (hit != null) {
                     runCatching { hit.isAccessible = true }
                     found = hit
@@ -304,6 +305,28 @@ object Reflect {
                 cur = cur.superclass
             }
             found
+        }
+
+    /**
+     * 某个**返回类型**的零值 —— 代理 / 钩子里「原方法没返回值可用」时回填用。
+     *
+     *  为什么必须有这一档：Kotlin 的 `null` 喂给声明了**原始类型**返回值的框架方法，等于在框架侧
+     *  拆箱时 NPE（`Boolean b = (Boolean) null` 直接抛）。一个「我们没拿到结果」被升级成
+     *  「系统进程崩」，比什么都不做糟得多。
+     *
+     *  `null` 返回类型的入参（Constructor / 取不到声明）一律给 `null`：那两种情况原本就允许 null。
+     */
+    fun zeroOf(type: Class<*>?): Any? =
+        when (type) {
+            java.lang.Boolean.TYPE -> false
+            java.lang.Byte.TYPE -> 0.toByte()
+            java.lang.Character.TYPE -> ' '
+            java.lang.Short.TYPE -> 0.toShort()
+            java.lang.Integer.TYPE -> 0
+            java.lang.Long.TYPE -> 0L
+            java.lang.Float.TYPE -> 0f
+            java.lang.Double.TYPE -> 0.0
+            else -> null
         }
 
     /** 调用实例方法；任何异常都被吞掉并记录，返回 null。 */
@@ -357,12 +380,13 @@ object Reflect {
     ): Any? {
         val m =
             cachedValue(staticMethodCache, cls, ArityKey(name, args.size)) {
-                methodsOf(cls)
-                    .firstOrNull {
+                val candidates =
+                    methodsOf(cls).filter {
                         it.name == name && it.parameterTypes.size == args.size &&
                             java.lang.reflect.Modifier
                                 .isStatic(it.modifiers)
-                    }?.also { runCatching { it.isAccessible = true } }
+                    }
+                pickOverload(cls, name, args.size, candidates)?.also { runCatching { it.isAccessible = true } }
             }
         if (m == null) {
             if (reportedMissing.add("${cls.name}#$name/${args.size}")) {
@@ -455,6 +479,32 @@ object Reflect {
             for (i in params.indices) if (params[i] !== other.params[i]) return false
             return true
         }
+    }
+
+    /**
+     * 「名字 + 参数个数」命中**多个重载**时确定地挑一个，并把候选全打进日志。
+     *
+     *  `declaredMethods` 的顺序在 JVM / ART 上是**未定义**的（同一份代码换个编译版本都可能变），
+     *  而这条结果会进缓存、活到进程结束 —— 按「第一个」挑等于把进程的行为绑在一个未定义的顺序上：
+     *  这台机器挑到的是对的那个，换台机器可能是另一个签名，表现成「同一个功能时好时坏」。
+     *
+     *  按「参数类型名」排序后取第一个：至少**同一台机器上稳定、跨版本可比**；候选全打出来，
+     *  真挑错时日志里有据可查（AGENTS 五、2 的「说清断在哪一环」）。
+     */
+    private fun pickOverload(
+        owner: Class<*>,
+        name: String,
+        arity: Int,
+        candidates: List<Method>,
+    ): Method? {
+        if (candidates.size <= 1) return candidates.firstOrNull()
+        val sorted = candidates.sortedBy { m -> m.parameterTypes.joinToString(",") { it.name } }
+        XLog.w(
+            "重载有歧义：${owner.name}#$name（$arity 参数）命中 ${candidates.size} 个，" +
+                "按参数类型排序取第一个：${sorted.first().parameterTypes.joinToString(",") { it.name }}" +
+                "；候选：${sorted.joinToString(" | ") { m -> m.parameterTypes.joinToString(",") { it.name } }}",
+        )
+        return sorted.first()
     }
 
     /** 「方法名 + 参数个数」的键（[methodByNameAndArity] 与 [callStatic] 共用形状，各存各的桶）。 */

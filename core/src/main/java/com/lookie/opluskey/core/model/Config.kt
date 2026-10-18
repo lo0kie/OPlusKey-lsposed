@@ -147,6 +147,15 @@ data class GlobalConfig(
     val language: String = DEFAULT_LANGUAGE,
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
+    /**
+     * 「前台转小窗」要不要播**缩小动画**。
+     *
+     *  关（默认）：原地收（recents 正门），一步到位、没有窗口动画。
+     *  开：同样原地收成小窗，紧接着让框架自己的动画器播那一段（`alpha 1→1`、`scale 1→0.8017`）——
+     *  插值 / 矩阵 / spring 全是框架在跑，模块只交起止参数。**只对竖屏生效**：动画终点用的是
+     *  竖屏标定的那组落点，横屏时不播、照旧原地收。配方与坑见 `docs/zoom-window.md` §十二。
+     */
+    val miniWindowAnim: Boolean = DEFAULT_MINI_WINDOW_ANIM,
 ) {
     /** 本对象在每个配置字段上的取值 —— 与 `KeyConfig.fieldValues` 同一套（见那边的说明）。 */
     fun fieldValues(): ConfigFields.Values =
@@ -158,6 +167,7 @@ data class GlobalConfig(
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_LANGUAGE to language,
                 ConfigFields.F_COLOR_OS_API to colorOsApi,
+                ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
             ),
         )
 
@@ -180,6 +190,9 @@ data class GlobalConfig(
         /** [GlobalConfig.colorOsApi] 的默认值：默认开启。 */
         const val DEFAULT_COLOR_OS_API = true
 
+        /** [GlobalConfig.miniWindowAnim] 的默认值：默认关闭（原地收、无动画）。 */
+        const val DEFAULT_MINI_WINDOW_ANIM = false
+
         val DEFAULT =
             GlobalConfig(
                 doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,
@@ -196,6 +209,7 @@ data class GlobalConfig(
                 toastOnRun = v.bool(ConfigFields.F_TOAST_ON_RUN),
                 language = v.text(ConfigFields.F_LANGUAGE),
                 colorOsApi = v.bool(ConfigFields.F_COLOR_OS_API),
+                miniWindowAnim = v.bool(ConfigFields.F_MINI_WINDOW_ANIM),
             )
     }
 }

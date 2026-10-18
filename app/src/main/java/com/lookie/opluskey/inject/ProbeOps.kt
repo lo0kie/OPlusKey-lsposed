@@ -177,36 +177,41 @@ internal fun ProbeChannel.dress(
     // 用**视图自己的 Handler**（`View.getHandler()`）post 过去，线程一定对，不用猜是哪个 looper。
     val work =
         Runnable {
-            if (doCaption) {
-                // 先 init 再 attach：attach 假定视图已经初始化过
-                if (doInit) {
-                    XLog.w("${describe(OP_DRESS)}：initCaptionView → ${invokeOn(view, "initCaptionView")}")
+            //  这一段可能被 post 到 **system_server 的 `android.ui` 线程**（见上），而里面每一行
+            //  都是一次反射调用 —— 任何一条抛出来都是那个线程上的未捕获异常，代价是整个
+            //  system_server 崩掉（开机循环）。所以整段过 guard。
+            XLog.guard("${describe(OP_DRESS)}：操作条补壳") {
+                if (doCaption) {
+                    // 先 init 再 attach：attach 假定视图已经初始化过
+                    if (doInit) {
+                        XLog.w("${describe(OP_DRESS)}：initCaptionView → ${invokeOn(view, "initCaptionView")}")
+                    }
+                    XLog.w(
+                        "${describe(OP_DRESS)}：initCaptionViewAndAttachToTask($bounds) → " +
+                            invokeOn(view, "initCaptionViewAndAttachToTask", task, bounds),
+                    )
                 }
-                XLog.w(
-                    "${describe(OP_DRESS)}：initCaptionViewAndAttachToTask($bounds) → " +
-                        invokeOn(view, "initCaptionViewAndAttachToTask", task, bounds),
-                )
+                if (doShow) {
+                    XLog.w("${describe(OP_DRESS)}：showCaptionViewWithAnim → ${invokeOn(view, "showCaptionViewWithAnim")}")
+                    XLog.w(
+                        "${describe(OP_DRESS)}：updateFlexibleTaskCaptionVisible(true) → " +
+                            invokeOn(view, "updateFlexibleTaskCaptionVisible", task, true),
+                    )
+                }
+                // 尺寸对了之后还得让它重排 / 换模式：`handleButtonRegion` 空着说明手柄区没算出来
+                if (intent.getBooleanExtra(EXTRA_RELAYOUT, false)) {
+                    XLog.w("${describe(OP_DRESS)}：onRelayoutCaptionView → ${invokeOn(view, "onRelayoutCaptionView")}")
+                }
+                if (intent.getBooleanExtra(EXTRA_MODE, false)) {
+                    XLog.w("${describe(OP_DRESS)}：updateCaptionViewMode(true) → ${invokeOn(view, "updateCaptionViewMode", true)}")
+                }
+                if (intent.getBooleanExtra(EXTRA_TOUCH, false)) {
+                    // 触及区域是它算的：不算就没有 handleButtonRegion，操作条画得出来但点不动
+                    XLog.w("${describe(OP_DRESS)}：updateTouchRegion → ${invokeOn(view, "updateTouchRegion")}")
+                }
+                XLog.w("${describe(OP_DRESS)}：mCaptionViewSurfaceShow = ${fieldOf(view, "mCaptionViewSurfaceShow")}")
+                stateOfCaptionView(view)
             }
-            if (doShow) {
-                XLog.w("${describe(OP_DRESS)}：showCaptionViewWithAnim → ${invokeOn(view, "showCaptionViewWithAnim")}")
-                XLog.w(
-                    "${describe(OP_DRESS)}：updateFlexibleTaskCaptionVisible(true) → " +
-                        invokeOn(view, "updateFlexibleTaskCaptionVisible", task, true),
-                )
-            }
-            // 尺寸对了之后还得让它重排 / 换模式：`handleButtonRegion` 空着说明手柄区没算出来
-            if (intent.getBooleanExtra(EXTRA_RELAYOUT, false)) {
-                XLog.w("${describe(OP_DRESS)}：onRelayoutCaptionView → ${invokeOn(view, "onRelayoutCaptionView")}")
-            }
-            if (intent.getBooleanExtra(EXTRA_MODE, false)) {
-                XLog.w("${describe(OP_DRESS)}：updateCaptionViewMode(true) → ${invokeOn(view, "updateCaptionViewMode", true)}")
-            }
-            if (intent.getBooleanExtra(EXTRA_TOUCH, false)) {
-                // 触及区域是它算的：不算就没有 handleButtonRegion，操作条画得出来但点不动
-                XLog.w("${describe(OP_DRESS)}：updateTouchRegion → ${invokeOn(view, "updateTouchRegion")}")
-            }
-            XLog.w("${describe(OP_DRESS)}：mCaptionViewSurfaceShow = ${fieldOf(view, "mCaptionViewSurfaceShow")}")
-            stateOfCaptionView(view)
         }
     val viewHandler =
         try {

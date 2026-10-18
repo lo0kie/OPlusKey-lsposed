@@ -20,6 +20,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setLongRepeat
+import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
@@ -92,7 +93,7 @@ internal fun SettingsPage.LongRepeatCard(
                                 ),
                     ),
                     "long_repeat_interval_ms=$v",
-                )
+                ) != CommandsSave.Failed
             }
         }
         HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
@@ -143,6 +144,6 @@ private fun SettingsPage.LongPressDelayRow(
                         ),
             ),
             "long_press_ms=$v",
-        )
+        ) != CommandsSave.Failed
     }
 }

@@ -106,6 +106,34 @@ internal object AppEntry {
         return Intent(Intent.ACTION_MAIN).setComponent(ComponentName(pkg, activity.name))
     }
 
+    /**
+     * 分身材质的一条路：主用户的 `PackageManager` **看不见**分身里的包，所以按 userId 走 binder 查
+     * （[AppClonePackages.queryLaunchablesAsUser]，与「列分身清单」是同一条路）。
+     *
+     *  判据与 [resolve] 最后那层一致：只认导出的、没有 `permission` 要求的、没被排除在最近任务外的活动。
+     *
+     * @return 解析不出入口返回 `null`（调用方据此提示「没有可启动界面」而不是「已卸载」）
+     */
+    fun resolveAsUser(
+        pkg: String,
+        userId: Int,
+    ): Intent? {
+        val resolved =
+            AppClonePackages.queryLaunchablesAsUser(
+                Intent(Intent.ACTION_MAIN).setPackage(pkg),
+                userId,
+            ) ?: return null
+        val activity =
+            resolved
+                .mapNotNull { it.activityInfo }
+                .filter {
+                    it.packageName == pkg && it.exported && it.permission == null &&
+                        it.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS == 0
+                }.minWithOrNull(compareBy({ hintRank(it.name) }, { it.name }))
+                ?: return null
+        return Intent(Intent.ACTION_MAIN).setComponent(ComponentName(pkg, activity.name))
+    }
+
     /** 名字里第一个命中的提示词的下标；一个都没命中排最后。 */
     private fun hintRank(name: String): Int {
         val lower = name.lowercase()

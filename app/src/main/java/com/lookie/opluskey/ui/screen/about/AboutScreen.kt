@@ -55,11 +55,16 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
     // 「签名」那一行：也要跨进程问 PMS，同样进页算一次。
     //  判据读的是**本包**（`ModuleInfo.PACKAGE`）而不是当前进程所属的宿主，见 `core/seal/Seal`。
     val context = LocalContext.current
-    val signature = remember(context) { signatureSummary(context) }
-    // 标题平时是「签名」；签名与本包不符时**标题自己改口**（结论上移，摘要只剩指纹）
-    val signatureTitle = remember(context) { signatureTitle(context) }
-    val signatureOfficial = remember(context) { Seal.verdict(context) == Verdict.OFFICIAL }
     val currentLang = AppLanguage.fromCode(configState.config.value.global.language)
+    //  **语言档也是这两行的缓存键**：`signatureSummary` / `signatureTitle` 里都嵌着字典文案
+    //  （「签名」/「调试版本（不校验签名）」），只按 `context` 记的话切档不会重算 ——
+    //  真机实测（2026-10-18）：切到 English 后整页都跟着变了，**只有「签名」那两行还是中文**。
+    //  指纹本身与语言无关，切档时多算一次的代价只是一次 PackageManager 查询。
+    val signature = remember(context, currentLang) { signatureSummary(context) }
+    // 标题平时是「签名」；签名与本包不符时**标题自己改口**（结论上移，摘要只剩指纹）
+    val signatureTitle = remember(context, currentLang) { signatureTitle(context) }
+    // 这只是个布尔（与语言无关），不必跟着语言重算
+    val signatureOfficial = remember(context) { Seal.verdict(context) == Verdict.OFFICIAL }
     // 三行菜单的锚点与开关（语言 / 反馈问题 / 作者）—— 行与菜单共用一份，见 [AboutUiState]。
     val ui = remember { AboutUiState() }
 

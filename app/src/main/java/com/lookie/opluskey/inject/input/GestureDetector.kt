@@ -197,6 +197,13 @@ internal class GestureDetector(
         now: Long = SystemClock.uptimeMillis(),
     ) {
         val p = pending(id)
+        //  **孤立抬手**（只看到 UP、没看到 DOWN）：`pressAt` 只在 `onKeyDown` 里写。
+        //  常见来路是「模块在按下之后才装好」或者上一次按压的 DOWN 被别的接管点吞了。
+        //  照旧判：用户确实按了这一下，宁可补一次单击，也别让他觉得「按了没反应」；
+        //  但这一行必须留着 —— 否则日志里只有 UP、没有 DOWN，看起来像判定器漏了一条。
+        if (p.pressAt == 0L) {
+            XLog.w("${id.label}：只收到抬手（没见到按下）⇒ 按孤立 UP 处理（补判一次单击）")
+        }
 
         // 抬手 ⇒ 长按那一枪作废。**摘枪**，不是只靠到点读一眼 `sawFirstRelease`：那次读跨线程，
         //  读到陈旧值就是「明明抬手了还判长按」。长按延迟压到 100ms 这一档时，抬手与到点只隔
@@ -234,7 +241,10 @@ internal class GestureDetector(
             // reset 会取消那个还挂着的长按计时器 —— 不取消的话它到点还会再判一次长按
             reset(id)
             if (alreadyDispatched) {
-                XLog.d("${id.label}：这次按压已直判过单击，不再补判（双击为无操作）")
+                // 这一档与紧跟着那句 `单击` 是同一笔判据的两面（判 / 不判），级别必须一致：
+                //  注入侧 i/d 在 LSPosed 日志页整档看不到、release 里还被消除，写成 d 就等于
+                //  「按下去没反应」时日志里一片空白，分不清是没判还是判了没执行。
+                XLog.w("${id.label}：这次按压已直判过单击，不再补判（双击为无操作）")
                 return
             }
             XLog.w("${id.label}：单击（双击为无操作 ⇒ 不等双击窗口）")
@@ -308,7 +318,7 @@ internal class GestureDetector(
                     val p = pending(id)
                     p.longPressRunnable = null
                     if (p.pressAt != downAt) {
-                        XLog.d("${id.label}：这一枪属于上一次按下（已作废），不判长按")
+                        XLog.w("${id.label}：这一枪属于上一次按下（已作废），不判长按")
                         return@Runnable
                     }
                     // 到点了还没抬手 → 长按。
@@ -409,7 +419,7 @@ internal class GestureDetector(
                     val p = pending(id)
                     p.doubleWindowRunnable = null
                     if (p.pressAt != pressAt) {
-                        XLog.d("${id.label}：双击窗口属于上一次按压（已作废），不补单击")
+                        XLog.w("${id.label}：双击窗口属于上一次按压（已作废），不补单击")
                         return@Runnable
                     }
                     // 窗口到了、期间没有第二次按下 → 单击
@@ -428,7 +438,7 @@ internal class GestureDetector(
                         // ⇒ 不再补一次单击，否则一次按压会执行两个单击动作。
                         // 这里的窗口同样用定格值 —— 与排窗一致。
                         if (SystemClock.uptimeMillis() - lastDirectSingleAt < p.doubleWindowMs) {
-                            XLog.d("${id.label}：这次按压已直判过单击，跳过补判")
+                            XLog.w("${id.label}：这次按压已直判过单击，跳过补判")
                             p.sawFirstRelease = false
                             p.doubleWindowAt = 0L
                         } else {

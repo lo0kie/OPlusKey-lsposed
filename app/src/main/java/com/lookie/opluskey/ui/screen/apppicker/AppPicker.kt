@@ -50,10 +50,15 @@ import kotlinx.coroutines.withContext
  *
  * `cls` 现解一次：`AppEntry.resolve` 就 1~3 次 binder，而这里一次只问一个包。
  */
-internal fun SettingsPage.querySmallWindowSupport(pkg: String): Boolean? =
+internal fun SettingsPage.querySmallWindowSupport(
+    pkg: String,
+    userId: Int,
+): Boolean? =
     MiniWindowSupport.isSupported(
         pkg,
         AppEntry.resolve(context.packageManager, pkg)?.component?.className,
+        //  分身那一份要问那个用户：框架按 (包, userId) 判，传 0 会拿到主用户的结论。
+        userId,
     )
 
 /** Xposed 模块自带的模块设置入口 category —— 「选择应用」页认模块的判据。 */

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addCommand
@@ -40,25 +41,28 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-internal fun SettingsPage.commandToolbarVisible(): Boolean {
-    val payloadReady =
-        when (commandDraft.draft.kind) {
-            CommandKind.SINGLE -> commandDraft.draft.single.isNotBlank()
-            CommandKind.SERIAL -> commandDraft.draft.steps.isNotEmpty()
-        }
-    return commandDraft.draft.editingName != null || commandDraft.draft.name.isNotBlank() || payloadReady
-}
+/**
+ * 草稿里**到底有没有内容** —— 「保存」按钮和工具条的显隐都问这一处。
+ *
+ *  单条那一档不能只看 `isNotBlank()`：`cmd:` / `app:` / `shell:` 这种**只有前缀**的写法也不是空串，
+ *  存下去就是一条注定失败的命令（`cmd:` ⇒ 永远 NOT_FOUND、`app:` ⇒ 解析不到界面）。
+ *  判据取 [Action.isBarePrefix]，一处说清「什么算有载荷」。
+ */
+internal fun SettingsPage.commandPayloadReady(): Boolean =
+    when (commandDraft.draft.kind) {
+        CommandKind.SINGLE -> commandDraft.draft.single.isNotBlank() && !Action.parse(commandDraft.draft.single).isBarePrefix
+        CommandKind.SERIAL -> commandDraft.draft.steps.isNotEmpty()
+    }
+
+internal fun SettingsPage.commandToolbarVisible(): Boolean =
+    commandDraft.draft.editingName != null || commandDraft.draft.name.isNotBlank() || commandPayloadReady()
 
 @Composable
 internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
     val tick = rememberTick()
     val editing = commandDraft.draft.editingName != null
     val name = commandDraft.draft.name
-    val payloadReady =
-        when (commandDraft.draft.kind) {
-            CommandKind.SINGLE -> commandDraft.draft.single.isNotBlank()
-            CommandKind.SERIAL -> commandDraft.draft.steps.isNotEmpty()
-        }
+    val payloadReady = commandPayloadReady()
 
     val canReset = commandToolbarVisible()
     // 重名（且不是编辑它自己）时按钮直接禁用；`cmd:` 引用成环时同样禁用（提示落在名称那格里）。

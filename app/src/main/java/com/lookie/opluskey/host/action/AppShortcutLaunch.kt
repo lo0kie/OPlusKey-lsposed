@@ -149,12 +149,15 @@ internal class AppShortcutLaunch(
      * 交出去之后的一次验收 —— **窗口模式只能这样判**：`startShortcut` 返回 `void`，
      * 「调用没抛」只说明请求发出去了。
      *
-     * 三档，区别在「读到 -1」这一档：
+     * 四档，区别全在「读不到」：
      *
      *  · 任务在、且是小窗 ⇒ 成；
      *  · **连任务都没有** ⇒ 应用还在冷启动，再等一轮（[SHORTCUT_VERIFY_RETRIES]）——
      *    这时候判失败会让下面再起一次全屏，把刚开好的小窗顶掉（真机症状：小窗闪一下就没了）；
-     *  · 任务在、但不是小窗 ⇒ 服务端确实没吃这份 options，退普通起法。
+     *  · 任务在、但**读不到它的窗口信息**（[zoomStateOf] 为 `null`）⇒ **什么都不做**：
+     *    那是「不知道」，不是「options 没吃住」。以前这两档折在一起，读不到就再起一次全屏 ——
+     *    典型的「小窗已经开好了，一闪变成全屏」，还多出一次启动；
+     *  · 任务在、确认不是小窗 ⇒ 服务端确实没吃这份 options，退普通起法。
      *
      * 代价是「真的不支持小窗」时要多等那几轮；换的是不会把已经开好的小窗顶掉。
      */
@@ -167,14 +170,25 @@ internal class AppShortcutLaunch(
     ) {
         mini.postDelayedGuarded("appshortcut:$pkg/$shortcutId 的小窗验收（第 ${attempt + 1} 次）", MINI_VERIFY_MS) {
             val taskId = mini.foregroundTaskFor(pkg)
-            if (taskId > 0 && mini.isTaskInZoomWindow(taskId)) {
-                XLog.w("快捷方式 → 小窗 $pkg/$shortcutId（user=$userId，任务 #$taskId）")
-            } else if (taskId <= 0 && attempt < SHORTCUT_VERIFY_RETRIES) {
-                XLog.w("小窗验收：$pkg 还没有任务（冷启动中），再等一轮")
-                verifyThenFallback(ctx, pkg, shortcutId, userId, attempt + 1)
-            } else {
-                XLog.w("小窗 options 没被吃住（任务 #$taskId），退普通起法：$pkg/$shortcutId")
-                startPlain(ctx, pkg, shortcutId, userId)
+            when {
+                taskId > 0 && mini.zoomStateOf(taskId) == true -> {
+                    XLog.w("快捷方式 → 小窗 $pkg/$shortcutId（user=$userId，任务 #$taskId）")
+                }
+
+                taskId <= 0 && attempt < SHORTCUT_VERIFY_RETRIES -> {
+                    XLog.w("小窗验收：$pkg 还没有任务（冷启动中），再等一轮")
+                    verifyThenFallback(ctx, pkg, shortcutId, userId, attempt + 1)
+                }
+
+                // 任务在、但读不到它的窗口信息 ⇒ **不动它**（读不到不是「没吃住」）
+                taskId > 0 && mini.zoomStateOf(taskId) == null -> {
+                    XLog.w("小窗验收：读不到任务 #$taskId 的窗口信息，不重起（$pkg/$shortcutId）")
+                }
+
+                else -> {
+                    XLog.w("小窗 options 没被吃住（任务 #$taskId），退普通起法：$pkg/$shortcutId")
+                    startPlain(ctx, pkg, shortcutId, userId)
+                }
             }
         }
     }

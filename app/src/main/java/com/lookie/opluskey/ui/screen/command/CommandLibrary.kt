@@ -149,7 +149,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
             write(
                 cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)),
                 "删除命令时清掉绑定：${cmd.name}",
-            )
+            ) != CommandsSave.Failed
         if (!ok) {
             XLog.w("删除命令中止：绑定没能清掉（配置只读），命令库保持原样：${cmd.name}")
             return
@@ -195,7 +195,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
                 // 注意：命令库没删成、绑定却已经清了 ⇒ 会留下「手势=无操作 + 命令仍在库」这种半份状态
                 // ：把绑定**写回原样**，两边一起保持原状。
                 //  失败原因 [saveCommands] 已经报过（「保存失败」），这里只补回滚与它的判据行。
-                val rolled = write(cfg, "删除命令失败，回滚绑定：${cmd.name}")
+                val rolled = write(cfg, "删除命令失败，回滚绑定：${cmd.name}") != CommandsSave.Failed
                 XLog.w("删除命令：命令库写入失败，已把绑定回滚（回滚成功=$rolled）：${cmd.name}")
             }
         }

@@ -9,7 +9,7 @@ import android.os.Looper
 import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.bridge.AppEntry
 import com.lookie.opluskey.bridge.FlexibleWindowBridge
-import com.lookie.opluskey.bridge.MiniWindowSupport
+import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.reflect.Reflect
@@ -19,13 +19,10 @@ import com.lookie.opluskey.host.action.MiniWindowFacts.HOME_SETTLE_MS
 import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_ANIM_AFTER_CONVERT_DELAY_MS
 import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_ANIM_DURATION_MS
 import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_ANIM_FINISH_ALPHA
-import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_ANIM_MODE
-import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_ANIM_SETTLE_MS
 import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_ANIM_START_ALPHA
 import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_ANIM_START_SCALE
 import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_SKIP_UNRESIZEABLE
 import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_VERIFY_MS
-import com.lookie.opluskey.host.action.MiniWindowFacts.MiniAnimMode
 import com.lookie.opluskey.host.action.MiniWindowFacts.OPT_LAUNCH_WINDOWING_MODE
 import com.lookie.opluskey.host.action.MiniWindowFacts.OPT_ZOOM_LAUNCH_FLAGS
 import com.lookie.opluskey.host.action.MiniWindowFacts.RECENTS_FLEXIBLE_ARGS
@@ -57,12 +54,17 @@ import com.lookie.opluskey.host.action.MiniWindowFacts.ZOOM_TASK_MANAGER
  *  · `zoom:mini` / `zoom:mini:collapse`（[putForegroundInMiniWindow]）：把**前台**应用收成小窗。
  *
  *  反射面全在这里（`OplusActivityManager` / `OplusActivityTaskManager` / `OplusZoomWindowManager`，
- *  都按**名字**取类，不直接引用宿主框架的私有类型）。它专用的常量与 `MiniAnimMode` 就在本文件的
- *  companion 里 —— 调它们不用改注入侧，`kill` 掉宿主进程即生效。
+ *  都按**名字**取类，不直接引用宿主框架的私有类型）。它专用的常量在 `MiniWindowFacts` 里 ——
+ *  调它们不用改注入侧，`kill` 掉宿主进程即生效。
  */
 internal class MiniWindowLauncher(
     internal val context: () -> Context?,
     internal val onFailure: (CommandFailure) -> Unit,
+    /**
+     * 「前台转小窗时使用动画」（`GlobalConfig.miniWindowAnim`）—— 宿主进程执行时现读配置
+     * （与 `ActionRunner` 读 `colorOsApi` 同一条口径：拨完开关立刻生效，不必重启）。
+     */
+    private val isMiniAnim: () -> Boolean = { ConfigStore.read().global.miniWindowAnim },
 ) {
     /**
      * `window:包名` —— 用小窗打开，**有现成任务就复用**（原地转小窗），没有才新建一份。
@@ -111,7 +113,13 @@ internal class MiniWindowLauncher(
         if (foregroundTask > 0 && startFlexibleFromRecents(foregroundTask, ZOOM_LAUNCH_FLAG_USER_POSITION)) {
             XLog.w("window:$target 已在前台，原地收成小窗（不新起实例）")
             postDelayedGuarded("window:$target 的小窗验收", MINI_VERIFY_MS) {
-                if (!isTaskInZoomWindow(foregroundTask)) retryAfterHome(ctx, intent, target)
+                // 只有**确认没成小窗**才回桌面重起。读不到窗口信息时重起，会把刚刚收好的
+                //  小窗顶掉（还多跑一趟「回桌面」，屏幕上就是「闪一下换了一份」）。
+                when (zoomStateOf(foregroundTask)) {
+                    true -> XLog.w("window:$target 原地收成小窗成功（任务 #$foregroundTask）")
+                    null -> XLog.w("window:$target 读不到任务 #$foregroundTask 的窗口信息，不动它")
+                    false -> retryAfterHome(ctx, intent, target)
+                }
             }
             return
         }
@@ -119,7 +127,7 @@ internal class MiniWindowLauncher(
         //  其余情况只加 `NEW_TASK`：目标已有任务会被服务端**复用**并原地转成小窗，没有才新建一份。
         //  别加 `MULTIPLE_TASK` —— 那会强制新建，同一个应用被按几次就多出几份实例。
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val code = startZoomWindowCode(ctx, intent)
+        val code = startZoomWindowCode(ctx, intent, userId)
         if (code != null && code >= 0) {
             if (code == START_DELIVERED_TO_TOP) retryAfterHome(ctx, intent, target)
             return
@@ -153,7 +161,7 @@ internal class MiniWindowLauncher(
         postDelayedGuarded("window:$target 的回桌面后重起", HOME_SETTLE_MS) {
             // 注意：这一步的成败**必须看**：回桌面重起没成功时用户看到的是
             //  「按下去先回了桌面、然后什么都没发生」，而日志里一句都没有 —— 只能靠猜。
-            if (!startZoomWindow(ctx, intent)) {
+            if (!startZoomWindow(ctx, intent, AppTarget.userId(target))) {
                 XLog.w("window:$target 回桌面后重起小窗也没成功（放弃，不再退）")
                 onFailure(CommandFailure.APP_NO_MINI_WINDOW)
             }
@@ -190,9 +198,11 @@ internal class MiniWindowLauncher(
      *
      * 尺寸档（[Action.MiniWindow.collapsed]）决定走哪条：
      *
-     *  · **展开档**（默认）：**原地收**（应用侧 recents 正门 + `mZoomLaunchFlags = 2`，无动画、
-     *    **不改显示方向** ⇒ 横屏应用拿到横屏帧的比例）。另有一条「伪造成柔性全屏态 + `switchState`」
-     *    的路能拿到原生动画，但窗口只是个半成品，默认关着 —— 见 [USE_FORGED_ANIMATION_ROUTE]。
+     *  · **展开档**（默认）：**原地收**（应用侧 recents 正门 + `mZoomLaunchFlags = 2`、
+     *    **不改显示方向** ⇒ 横屏应用拿到横屏帧的比例）。「前台转小窗时使用动画」打开时，
+     *    收成之后紧接着让框架自己的动画器播那一段缩小动画（[animateIntoMini]）。
+     *    另有一条「伪造成柔性全屏态 + `switchState`」的路，窗口只是个半成品，默认关着 ——
+     *    见 [USE_FORGED_ANIMATION_ROUTE]。
      *  · **收起档**：recents 正门配 `mZoomLaunchFlags = 32`（服务端 `fullToMini` 分支）——
      *    直接开成右上角那条最小化窗。这条**不**走 system_server：`switchState` 只会切成
      *    `setUserPositionInfo` 那档（展开），没有收起档的入口。
@@ -222,17 +232,16 @@ internal class MiniWindowLauncher(
             return
         }
         if (collapsed) {
+            // 收起档没有动画那条配方：框架那支动画只有「展开档」的落点与缩放
             putInCollapsedMini(taskId)
             return
         }
         if (!USE_FORGED_ANIMATION_ROUTE) {
-            // 原生动画档优先。注意它**不是「自己画动画」** —— 插值 / 矩阵 / apply / spring
-            // 全是框架的 `FlexibleWindowAnimator` 在跑，我们只交起止参数
-            // （`FlexibleWindowBridge.CMD_MINI_ANIM`，配方见 `docs/zoom-window.md` §十二）。
-            if (putInMiniWithNativeAnim(ctx, taskId)) return
-            // 主路：**recents 正门原地收**（`startActivityFromRecentsForFlexible` + flags=2）。
-            // 这是「进得去小窗」的那条 —— 它不改显示方向，窗口完整，代价只是没有动画
-            // （动画要开就切 [MINI_ANIM_MODE]，现行是 `OFF`）。
+            // 「前台转小窗时使用动画」打开时走**先真转换、再播框架动画**那条（[animateIntoMini]）。
+            // 它没接手（当前不是竖屏）就落到下面的原地收 —— 用户至少还能进小窗。
+            if (isMiniAnim() && animateIntoMini(ctx, taskId)) return
+            // 默认档：**recents 正门原地收**（`startActivityFromRecentsForFlexible` + flags=2）。
+            // 这是「进得去小窗」的那条 —— 它不改显示方向，窗口完整，代价只是没有动画。
             // 注意：它有一个已知的几何缺陷：目标本身是全屏任务时，服务端会走
             // `calcDefaultLaunchBounds` 里那条「current is fullscreen task」分支，把全屏那套尺寸
             // 当成小窗配置矩形，横屏应用会因此**撑出屏幕**（`device-findings.md` 附十三）。
@@ -247,25 +256,26 @@ internal class MiniWindowLauncher(
     }
 
     /**
-     * A / B 两档的落地：**同一个动画器、同一组参数，只差「谁先」**。
+     * 「前台转小窗时使用动画」那一档：**先真转换、再播框架自己的缩小动画**。
      *
-     * 两条路的取舍是几何决定的（`docs/zoom-window.md` §十二）：小窗在屏上是 `1020×1812`（比例 0.563），
-     * 全屏是 `1272×2772`（0.459）—— **小窗不是全屏的等比缩小**，而原生动画器只做等比 `setMatrix`。
-     * 所以「全屏外观」和「小窗落点」**不可能同时精确**，只能选一头：
+     * 这里**不是「自己画动画」** —— 插值、矩阵、`apply()`、以及那条 spring 全是框架的
+     * `FlexibleWindowAnimator` 在跑，我们只交起止参数（`FlexibleWindowBridge.CMD_MINI_ANIM`，
+     * 配方与三道坑见 `docs/zoom-window.md` §十二）。
      *
-     *  · **[MiniAnimMode.ANIM_THEN_CONVERT]（A）先动画后转换** —— 动画里是**真·全屏画面**在缩，
-     *    第一帧和用户按下去前看到的完全一致；代价是收尾转换时窗口要重排到小窗比例，会跳一下。
-     *  · **[MiniAnimMode.CONVERT_THEN_ANIM]（B）先转换后动画** —— **落点精确**、无跳变；
-     *    代价是动画第一帧就是「小窗布局被等比放大」，和按下去前的画面不同。
+     * 为什么顺序只能是「先转换、后动画」：动画器每帧第一句是
+     * `isFlexibleTaskAndHasCaption(task)`，普通全屏任务**每帧都被挡回去** ——
+     * spring 在跑、画面纹丝不动（§12.3 ②）。
      *
-     * @return 是否已经接手（`OFF` 返回 false，交给调用方走无动画的正门）
+     * 为什么不是「回桌面 + 真启动一次」：那条要先把界面挪出栈顶，而桌面是竖屏 ⇒
+     * 设备被拽回竖屏、横屏应用拿到竖屏比例的落点，目标在前台时还常常压根起不来
+     * （§13.1）。现行主路原地收、不改显示方向。
+     *
+     * @return true = 已经接手（转换没成也已在 [retryViaRecents] 里按失败报过，调用方不要再退别的路）
      */
-    internal fun putInMiniWithNativeAnim(
+    internal fun animateIntoMini(
         ctx: Context,
         taskId: Int,
     ): Boolean {
-        val mode = MINI_ANIM_MODE
-        if (mode == MiniAnimMode.OFF) return false
         if (!animGeometryMatchesOrientation(ctx)) {
             XLog.w(
                 "zoom:mini → 当前不是竖屏，动画的终点几何（竖屏标定值）对不上 —— " +
@@ -273,6 +283,7 @@ internal class MiniWindowLauncher(
             )
             return false
         }
+        if (!retryViaRecents(taskId)) return true
         val params =
             FlexibleWindowBridge.MiniAnimParams(
                 startRect = fullScreenRect(ctx),
@@ -283,32 +294,15 @@ internal class MiniWindowLauncher(
                 finishAlpha = MINI_ANIM_FINISH_ALPHA,
                 durationMs = MINI_ANIM_DURATION_MS,
             )
-        when (mode) {
-            MiniAnimMode.ANIM_THEN_CONVERT -> {
-                val delay = MINI_ANIM_DURATION_MS + MINI_ANIM_SETTLE_MS
-                XLog.w("zoom:mini → A 档：先播原生缩小动画，${delay}ms 后再真转换（收尾会跳一下）")
+        // 转换是同步的 binder 调用，返回时任务已经是柔性任务；而动画器那条 spring 入口
+        // **没有** `isInTransition` 过滤，所以可以立刻播，不必先让用户看到一个静止的小窗。
+        val delay = MINI_ANIM_AFTER_CONVERT_DELAY_MS
+        XLog.w("zoom:mini → 已真转换，${delay}ms 后播框架的缩小动画（起点全屏、终点小窗）")
+        if (delay <= 0L) {
+            FlexibleWindowBridge.sendMiniAnim(ctx, taskId, params)
+        } else {
+            postDelayedGuarded("动画档：转换后的动画", delay) {
                 FlexibleWindowBridge.sendMiniAnim(ctx, taskId, params)
-                postDelayedGuarded("A 档：动画结束后的真转换", delay) { retryViaRecents(taskId) }
-            }
-
-            MiniAnimMode.CONVERT_THEN_ANIM -> {
-                // 转换是同步的 binder 调用，返回时任务已经是柔性任务；但那一瞬可能还有过渡在收，
-                // 而动画器开头的 `isInTransition` 过滤会把「在过渡中」的任务**静默剔掉**
-                // （日志里只有一句 `no animation or leash.`）。所以留一个可调的间隔。
-                val delay = MINI_ANIM_AFTER_CONVERT_DELAY_MS
-                XLog.w("zoom:mini → B 档：先真转换（落点精确），${delay}ms 后播原生缩小动画（第一帧会跳一下）")
-                retryViaRecents(taskId)
-                if (delay <= 0L) {
-                    FlexibleWindowBridge.sendMiniAnim(ctx, taskId, params)
-                } else {
-                    postDelayedGuarded("B 档：转换后的动画", delay) {
-                        FlexibleWindowBridge.sendMiniAnim(ctx, taskId, params)
-                    }
-                }
-            }
-
-            MiniAnimMode.OFF -> {
-                return false
             }
         }
         return true
@@ -410,14 +404,17 @@ internal class MiniWindowLauncher(
      *
      * **服务端没受理就往回收手**（返回负数）—— 只提示、什么都不做。
      * 以前这里退「按包名另起一份实例」，用户看到的是「一按侧键就回桌面重开」（见 [putForegroundInMiniWindow]）。
+     *
+     * @return 服务端有没有受理 —— 动画档据此决定要不要接着播；失败已经在这里报过，调用方不必再报一次
      */
-    internal fun retryViaRecents(taskId: Int) {
+    internal fun retryViaRecents(taskId: Int): Boolean {
         if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_USER_POSITION)) {
             postDelayedGuarded("recents 正门收小窗的验收", MINI_VERIFY_MS) { verifyMiniOrFallback(taskId) }
-        } else {
-            XLog.w("zoom:mini → recents 正门没受理（服务端拒了），什么都不做")
-            onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+            return true
         }
+        XLog.w("zoom:mini → recents 正门没受理（服务端拒了），什么都不做")
+        onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+        return false
     }
 
     /**
@@ -430,11 +427,20 @@ internal class MiniWindowLauncher(
     internal fun putInCollapsedMini(taskId: Int) {
         if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_FULL_TO_MINI)) {
             postDelayedGuarded("zoom:mini:collapse 的验收", MINI_VERIFY_MS) {
-                if (isTaskInZoomWindow(taskId)) {
-                    XLog.w("zoom:mini:collapse → 任务 #$taskId 已进入小窗态（收起/展开以截图为准）")
-                } else {
-                    XLog.w("zoom:mini:collapse → 任务 #$taskId 没变成小窗，什么都不做")
-                    onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+                when (zoomStateOf(taskId)) {
+                    true -> {
+                        XLog.w("zoom:mini:collapse → 任务 #$taskId 已进入小窗态（收起/展开以截图为准）")
+                    }
+
+                    // 读不到 ≠ 没收起来：报「不支持小窗」就是拿一个读不到的事实怪应用
+                    null -> {
+                        XLog.w("zoom:mini:collapse → 读不到任务 #$taskId 的窗口信息，无法验收")
+                    }
+
+                    false -> {
+                        XLog.w("zoom:mini:collapse → 任务 #$taskId 没变成小窗，什么都不做")
+                        onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+                    }
                 }
             }
             return
@@ -528,11 +534,20 @@ internal class MiniWindowLauncher(
 
     /** `OplusActivityManager#getAllTopAppInfos()` 的原始列表；拿不到一律返回 null（调用方据此降级）。 */
     internal fun topAppInfos(): List<*>? {
-        val cls = Reflect.findClass(javaClass.classLoader, ZOOM_MANAGER) ?: return null
-        val manager = Reflect.callStatic(cls, "getInstance") ?: return null
+        val cls =
+            Reflect.findClass(javaClass.classLoader, ZOOM_MANAGER) ?: run {
+                XLog.w("没有 $ZOOM_MANAGER，topAppInfos 取不到")
+                return null
+            }
+        val manager =
+            Reflect.callStatic(cls, "getInstance") ?: run {
+                XLog.w("$ZOOM_MANAGER#getInstance 返回 null，topAppInfos 取不到")
+                return null
+            }
         val method =
             Reflect.methodByNameAndArity(cls, TOP_APP_INFOS_METHOD, 0) ?: run {
-                XLog.d("$ZOOM_MANAGER 上没有 $TOP_APP_INFOS_METHOD/0")
+                //  判据级（`d` 在 release 被编译期消除）：这一环断了 recents 那条整条降级。
+                XLog.w("$ZOOM_MANAGER 上没有 $TOP_APP_INFOS_METHOD/0")
                 return null
             }
         return Reflect.call(manager, method) as? List<*>
@@ -551,13 +566,17 @@ internal class MiniWindowLauncher(
     ): Boolean {
         val cls =
             Reflect.findClass(javaClass.classLoader, ZOOM_TASK_MANAGER) ?: run {
-                XLog.d("没有 $ZOOM_TASK_MANAGER，跳过 recents 那条")
+                XLog.w("没有 $ZOOM_TASK_MANAGER，跳过 recents 那条")
                 return false
             }
-        val manager = Reflect.callStatic(cls, "getInstance") ?: return false
+        val manager =
+            Reflect.callStatic(cls, "getInstance") ?: run {
+                XLog.w("$ZOOM_TASK_MANAGER#getInstance 返回 null，recents 那条走不通")
+                return false
+            }
         val method =
             Reflect.methodByNameAndArity(cls, RECENTS_FLEXIBLE_METHOD, RECENTS_FLEXIBLE_ARGS) ?: run {
-                XLog.d("$ZOOM_TASK_MANAGER 上没有 $RECENTS_FLEXIBLE_METHOD/$RECENTS_FLEXIBLE_ARGS")
+                XLog.w("$ZOOM_TASK_MANAGER 上没有 $RECENTS_FLEXIBLE_METHOD/$RECENTS_FLEXIBLE_ARGS")
                 return false
             }
         val options =
@@ -583,8 +602,9 @@ internal class MiniWindowLauncher(
     internal fun startZoomWindow(
         ctx: Context,
         intent: Intent,
+        userId: Int,
     ): Boolean {
-        val code = startZoomWindowCode(ctx, intent)
+        val code = startZoomWindowCode(ctx, intent, userId)
         return code != null && code >= 0
     }
 
@@ -596,6 +616,7 @@ internal class MiniWindowLauncher(
     internal fun startZoomWindowCode(
         ctx: Context,
         intent: Intent,
+        userId: Int,
     ): Int? {
         val cls =
             Reflect.findClass(javaClass.classLoader, ZOOM_MANAGER) ?: run {
@@ -610,7 +631,9 @@ internal class MiniWindowLauncher(
                 XLog.w("$ZOOM_MANAGER 上没有 startZoomWindow/$ZOOM_ARGS")
                 return null
             }
-        val userId = MiniWindowSupport.currentUserId()
+        //  **不能取 `MiniWindowSupport.currentUserId()`**：那是宿主自己的用户（恒 0）。
+        //  目标带 `999@` 时小窗会开到主用户上，与 `app:` 那条路的分身语义正好相反 ——
+        //  userId 由调用方按 `AppTarget.userId(target)` 传进来。
         val result =
             Reflect.call(
                 manager,

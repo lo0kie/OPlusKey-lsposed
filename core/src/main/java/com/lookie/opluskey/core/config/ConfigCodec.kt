@@ -126,10 +126,9 @@ object ConfigCodec {
     /**
      * 按字段表从 JSON 里取值 —— 缺项走字段表里登记的默认值（老文件 / 手写文件的兼容）。
      *
-     *  布尔这一列有一个**从旧实现原样带过来的坑，故意不动**：`JSONObject.optBoolean(key)` 在键缺失时
-     *  返回 `false` 而不是默认值 ⇒「有 `global` 段、但段里没写 `instantSingle`」的文件读出来是
-     *  `false`，而它登记的默认值是 `true`。改成「缺项补默认值」会让这类文件的这一档静默翻面 ——
-     *  那是**行为变更**，不混在结构改动里做（要改就单独一笔，并在 `changelog/` 里说清影响面）。
+     *  布尔这一列**必须自己判「键在不在」**：`JSONObject.optBoolean(key)` 在键缺失时返回 `false`
+     *  而不是默认值 —— 而字段表里 `instantSingle` / `colorOsApi` 登记的默认值是 `true`。照旧写法
+     *  「有 `global` 段但没写这一格」的文件读出来就翻面，且**读 → 渲染 → 写回**一次就把它固化下来。
      */
     private fun readFields(
         o: JSONObject?,
@@ -140,7 +139,7 @@ object ConfigCodec {
             val key = f.json ?: continue
             when (val kind = f.kind) {
                 is ConfigFields.Kind.Bool -> {
-                    values[f] = o?.optBoolean(key) ?: kind.default
+                    values[f] = if (o != null && o.has(key)) o.optBoolean(key) else kind.default
                 }
 
                 is ConfigFields.Kind.Number -> {

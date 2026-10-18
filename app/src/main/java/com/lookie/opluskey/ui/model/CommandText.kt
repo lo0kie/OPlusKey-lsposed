@@ -84,10 +84,10 @@ internal fun stepTitle(
             I18n.format(Strings.COMMON_OPEN_SHORTCUT_FORMAT, appName(action.appTarget.orEmpty()))
         }
 
+        //  与执行时提示（`host/action/ActionNotice`）共用同一份优先级（`ActionCatalog.label`）；
+        //  兜底用**配置里的原样 token**：手改过的文件要看得见原始写法。
         else -> {
-            ActionCatalog.modeName(action)
-                ?: ActionCatalog.specOf(action)?.label
-                ?: token
+            ActionCatalog.label(action) ?: token
         }
     }
 }

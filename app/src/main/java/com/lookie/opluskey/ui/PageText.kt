@@ -61,7 +61,10 @@ internal fun SettingsPage.addCommand() {
     }
     // (3) 手势上绑的还是 `cmd:旧名`，旧那条已经不在库里 —— 跟 [removeCommand] 同一套做法，
     //   把绑定一起挪到新名字下，否则那句「已修改」是句空话。
-    var bindingMoved = true
+    //  三态：只有**没落盘**才算「绑定没挪成」。落盘成功、只是广播没发出去时，
+    //  文件里的绑定已经是新名字 —— 这时把命令库退回旧名，就变成「主配置写新名、库里只有旧名」，
+    //  那只手按下去是 NOT_FOUND（命令已经不在了）。
+    var bindingMoved = CommandsSave.Ok
     if (editingFrom != null && editingFrom != name) {
         val cfg = configState.config.value
         val key = cfg.key(KeyId.PLUS)
@@ -87,7 +90,7 @@ internal fun SettingsPage.addCommand() {
     //  与 [removeCommand] 同一条纪律 —— 两边要么一起变、要么都不变。
     // 绑定挪成了、但上面广播没发出去（[CommandsSave.BroadcastFailed]）时不报「已修改」：
     //  那句会让用户以为侧键行为也跟过来了，而 saveCommands 已经报过「通知注入侧失败」。
-    if (!bindingMoved) {
+    if (bindingMoved == CommandsSave.Failed) {
         saveCommands(previousLibrary, "改名失败，回滚命令库：$editingFrom → $name")
     } else if (saveResult == CommandsSave.Ok) {
         toast(tip)
@@ -113,7 +116,7 @@ internal fun SettingsPage.appVersionText(): String {
     val build = moduleBuildStamp()
     val suffix = "-$BUILD_KIND"
     // 三档的 `versionName` 已经带了后缀（`versionNameSuffix`，见 `build.gradle.kts`）——
-    //  已经带过就不再拼一次，否则 debug / beta 会显示成 `0.0.1-beta-beta-…`。
+    //  已经带过就不再拼一次，否则会显示成 `0.0.1-beta-beta-…` 那种。
     return when {
         name.isNullOrBlank() -> "$BUILD_KIND-$build"
         name.endsWith(suffix) -> "$name-$build"

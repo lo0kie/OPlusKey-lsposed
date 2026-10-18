@@ -103,17 +103,25 @@ internal val STEP_ROW_ENTER: EnterTransition =
         ) { -it / 3 }
 
 /**
+ * 步骤行退场**最长那一条**的时长（高度收缩 / 位移动画）—— 谁要「等退场播完」就等这一个数。
+ *
+ *  以前「重置」的收尾协程等的是 `TAB_PAGE_SWITCH_MS + 60`（320ms），那是**换 tab** 的时长，
+ *  与这里没关系：多等的那 100ms 里步骤行早已收完，表单却还杵着不动。
+ */
+internal const val STEP_ROW_EXIT_MS = 220
+
+/**
  * 多条命令列表步骤专属退场动效：
  * 文字先隐去 + 轻微位移离场 + 高度平滑收缩，使得后续项与底部添加行丝滑吸附上移。
  */
 internal val STEP_ROW_EXIT: ExitTransition =
     fadeOut(tween(120, easing = FastOutLinearInEasing)) +
         shrinkVertically(
-            animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
+            animationSpec = tween(STEP_ROW_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
             shrinkTowards = Alignment.Top,
         ) +
         slideOutVertically(
-            animationSpec = tween(220, easing = EASING_EMPHASIZED_ACCEL),
+            animationSpec = tween(STEP_ROW_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
         ) { -it / 4 }
 
 /**

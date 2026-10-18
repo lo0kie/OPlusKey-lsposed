@@ -21,36 +21,41 @@ import io.github.libxposed.api.XposedModuleInterface
 class KeyModule : XposedModule() {
     override fun onModuleLoaded(module: XposedModuleInterface.ModuleLoadedParam) {
         XLog.bind(this)
-        val role =
-            when {
-                module.isSystemServer -> "侧键接管（system_server）"
+        // 这一支原先没包 guard，而它首次触发 DeviceSupport / RomProfile / MiniWindowGeometry
+        //  的 object 初始化并拼串 —— 任何 Error 都会顺回调抛回框架（system_server 那条路径上
+        //  就是开机循环）。与其余三个回调同口径。
+        XLog.guard("模块加载日志") {
+            val role =
+                when {
+                    module.isSystemServer -> "侧键接管（system_server）"
 
-                module.processName == HostApp.PAGE_PROCESS -> "设置页替换（${HostApp.PAGE_PROCESS}）"
+                    module.processName == HostApp.PAGE_PROCESS -> "设置页替换（${HostApp.PAGE_PROCESS}）"
 
-                // 宿主主进程的角色在 [onPackageReady] 里才落地，这里也要标出来 ——
-                // 否则真机日志会把它打成「无关进程（不做任何事）」，排查时被误导（实测撞到）
-                module.processName == HostApp.PACKAGE -> "宿主侧手势劫持与执行（${HostApp.PACKAGE}）"
+                    // 宿主主进程的角色在 [onPackageReady] 里才落地，这里也要标出来 ——
+                    // 否则真机日志会把它打成「无关进程（不做任何事）」，排查时被误导（实测撞到）
+                    module.processName == HostApp.PACKAGE -> "宿主侧手势劫持与执行（${HostApp.PACKAGE}）"
 
-                else -> "无关进程（不做任何事）"
+                    else -> "无关进程（不做任何事）"
+                }
+            XLog.w("模块已加载：process=${module.processName} → $role")
+            XLog.w(
+                "本机机型：${DeviceSupport.describe(
+                    DeviceSupport.currentModel,
+                )}；系统：${DeviceSupport.systemOf(DeviceSupport.currentAndroid, DeviceSupport.currentRomSeries)}" +
+                    "；允许运行=${DeviceSupport.isAdapted}",
+            )
+            if (!DeviceSupport.isAdapted) {
+                // **不再据此拒绝注入**（适配清单现在只是「验过没有」的提示）：这一行留给排查 ——
+                //  清单外的机器上「按了没反应」时，先看这里是不是它。
+                XLog.w("${DeviceSupport.whyNotInjecting()} ⇒ 照常注入（清单外的机器可能不生效）")
             }
-        XLog.w("模块已加载：process=${module.processName} → $role")
-        XLog.w(
-            "本机机型：${DeviceSupport.describe(
-                DeviceSupport.currentModel,
-            )}；系统：${DeviceSupport.systemOf(DeviceSupport.currentAndroid, DeviceSupport.currentRomSeries)}" +
-                "；允许运行=${DeviceSupport.isAdapted}",
-        )
-        if (!DeviceSupport.isAdapted) {
-            // **不再据此拒绝注入**（适配清单现在只是「验过没有」的提示）：这一行留给排查 ——
-            //  清单外的机器上「按了没反应」时，先看这里是不是它。
-            XLog.w("${DeviceSupport.whyNotInjecting()} ⇒ 照常注入（清单外的机器可能不生效）")
+            // 档位 —— 与上面那行**分开报**：清单管「这一组验过没有」，档位表管「注入之后那些落点
+            //  认不认得」。真机报「按了没反应」时，这几句一起看就知道断在哪一环。
+            XLog.w(
+                "适配档位：内置命令=${RomProfile.describeCurrent()}；" +
+                    "小窗几何=${MiniWindowGeometry.describeCurrent()}",
+            )
         }
-        // 档位 —— 与上面那行**分开报**：清单管「这一组验过没有」，档位表管「注入之后那些落点
-        //  认不认得」。真机报「按了没反应」时，这几句一起看就知道断在哪一环。
-        XLog.w(
-            "适配档位：内置命令=${RomProfile.describeCurrent()}；" +
-                "小窗几何=${MiniWindowGeometry.describeCurrent()}",
-        )
     }
 
     /**

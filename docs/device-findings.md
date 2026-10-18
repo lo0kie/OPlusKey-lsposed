@@ -227,8 +227,22 @@ LSPosed 管理器模块列表右下角那颗「打开模块」的 FAB 由 `AppHe
 2. `ACTION_MAIN` + `CATEGORY_INFO`
 3. `ACTION_MAIN` + `CATEGORY_LAUNCHER`
 
-**只要命中任一条就显示那颗按钮。** 因此「让按钮消失」的唯一办法是这与模块能否被加载无关 —— LSPosed 只读
-`META-INF/xposed/` 元数据。
+**只要命中任一条就显示那颗按钮。**「让按钮消失」的唯一办法是一条都不声明；模块能否被加载与它无关 ——
+LSPosed 只读 `META-INF/xposed/` 元数据。
+
+**本模块的选择（2026-10-18 改）**：只声明**一个** `EntryActivity`（`MODULE_SETTINGS`；透明主题、
+`noHistory`、不渲染任何东西），命中第 1 条 ⇒ 那颗 FAB 出现，点了由它 `su -c am start` 打开宿主的
+`com.oplus.gesture/.actionbuttonkey.ActionButtonSettingsActivity`。
+
+- 为什么不能直接 `startActivity`：那个 Activity 在宿主清单里带
+  `android:permission="oplus.permission.OPLUS_COMPONENT_SAFE"`（`aapt2 dump xmltree` 核过）——
+  privapp 级权限，普通 app 拿不到，直接起必是 `SecurityException`（`am start` 报的就是这一条）。
+- 怎么绕过去：跳板发 `ModuleWire.ACTION_OPEN_SETTINGS` 给宿主主进程，由它起**自己包**的页面
+  （同包自起动不查那道权限）。那条接收器是 `RECEIVER_EXPORTED`（发送方是另一个 uid 的普通 app），
+  只做「调到前台」一件事，不读配置不改状态 —— 整条链路不碰 root。
+- 之前的口径是「一条都不声明、让 FAB 消失」，代价是用户装完找不到入口（真机反馈：第一反应就是点那颗 FAB）。
+- 判据落在 CI 第 (4) 项：`MODULE_SETTINGS` / `activity` / `activity-alias` / `LAUNCHER·INFO` / 跳板类名
+  必须恰好是 `1/1/0/0/1`，多一个少一个都红。
 
 ### 六之三、重装后开机不加载：库里 `apk_path` 过期（实测）
 
@@ -796,10 +810,10 @@ COUIPageIndicator     是页码圆点，不是 tab
 
 `system_server` 能否读（SELinux 的 `app_data_file` 权限）**待重启后验证**。
 
-| 入口                                     | 结果                                                                                                                                                                |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `XposedServiceHelper.registerListener`   | binder **永远不来**。它靠**模块自己 App 进程**里的 `XposedProvider` 接收（`call("SendBinder")`），而本模块**零组件** ⇒ App 进程永远不起来。日志里一条相关记录都没有 |
-| `XposedInterface.getRemotePreferences()` | 能拿到（日志 `远端配置通道已就绪`），但**注入侧是只读的** —— 写入抛 `UnsupportedOperationException: Read only implementation`                                       |
+| 入口                                     | 结果                                                                                                                                                                                                                |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `XposedServiceHelper.registerListener`   | binder **永远不来**。它靠**模块自己 App 进程**里的 `XposedProvider` 接收（`call("SendBinder")`），而本模块平时没有 App 进程（唯一组件是那颗跳板 Activity，用户不点就不起）⇒ binder 等不到。日志里一条相关记录都没有 |
+| `XposedInterface.getRemotePreferences()` | 能拿到（日志 `远端配置通道已就绪`），但**注入侧是只读的** —— 写入抛 `UnsupportedOperationException: Read only implementation`                                                                                       |
 
 libxposed 的设计前提是「**模块 App 写、注入侧读**」；我们的界面在**宿主 App 进程**里，既不是模块 App、也不是注入侧读的那一方 ⇒ 两条都不成立。
 
@@ -3447,23 +3461,23 @@ resolveActivityForMultiApp, has cached userId: 998
 1. **Settings 状态同步**：
    SystemUI 的 `FlashlightControllerImpl` 监听底层的 `TorchCallback` 时，
    会主动同步状态到 `Settings.Secure`：
-   - `Settings.Secure.flashlight_enabled`（`"flashlight_enabled"`）：`1` 开启，`0` 关闭。
-     可同步读取，无需等待异步相机回调落地。
-   - `Settings.Secure.flashlight_available`（`"flashlight_available"`）：`1` 可用，`0` 不可用。
+    - `Settings.Secure.flashlight_enabled`（`"flashlight_enabled"`）：`1` 开启，`0` 关闭。
+      可同步读取，无需等待异步相机回调落地。
+    - `Settings.Secure.flashlight_available`（`"flashlight_available"`）：`1` 可用，`0` 不可用。
 2. **ColorOS 侧键专属入口**：
-   - 目标组件：`com.android.systemui/com.oplus.systemui.statusbar.notification.keymagicservice.KeyFlashlightService`。
-   - 机制：`KeyBaseService` 族，通过 Messenger IPC 绑定后发 `Message(what=2)`（长按），
-     由 `KeyFlashlightController` 调用 `FlashlightControllerImpl` 切换状态。
+    - 目标组件：`com.android.systemui/com.oplus.systemui.statusbar.notification.keymagicservice.KeyFlashlightService`。
+    - 机制：`KeyBaseService` 族，通过 Messenger IPC 绑定后发 `Message(what=2)`（长按），
+      由 `KeyFlashlightController` 调用 `FlashlightControllerImpl` 切换状态。
 3. **遗留空桩**：
    `android.os.OplusFlashLightManager`（调用 Binder `additionald`）在 ColorOS 15 上方法体已返回固定假值/空值，已废弃。
 
 ### 23.2 免打扰状态与专属通道
 
 1. **Settings 状态位**：
-   - `Settings.Global.zen_mode`（`"zen_mode"`）：`0` 关闭，`1` 重要通知，`2` 完全静音，`3` 仅闹钟。
+    - `Settings.Global.zen_mode`（`"zen_mode"`）：`0` 关闭，`1` 重要通知，`2` 完全静音，`3` 仅闹钟。
 2. **ColorOS 侧键专属入口**：
-   - 目标组件：`com.android.systemui/com.oplus.systemui.statusbar.notification.keymagicservice.KeyDndService`。
-   - 机制：通过 Messenger IPC 绑定后发 `Message(what=2)`，内部调用 `ZenModeControllerImpl.setZen` 切换。
+    - 目标组件：`com.android.systemui/com.oplus.systemui.statusbar.notification.keymagicservice.KeyDndService`。
+    - 机制：通过 Messenger IPC 绑定后发 `Message(what=2)`，内部调用 `ZenModeControllerImpl.setZen` 切换。
 3. **AOSP 标准接口**：
    `NotificationManager.getCurrentInterruptionFilter()` 读取档位（1=全部通过，2/3/4=免打扰），
    `NotificationManager.setInterruptionFilter(...)` 写入。

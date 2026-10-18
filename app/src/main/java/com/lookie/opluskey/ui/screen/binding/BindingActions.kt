@@ -10,6 +10,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.MODULE_UNAVAILABLE_HINT
+import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.toast
 import com.lookie.opluskey.ui.write
 
@@ -81,7 +82,7 @@ internal fun SettingsPage.pick(
             cfg
                 .copy(keys = cfg.keys + (KeyId.PLUS to updated))
                 .let { c -> if (appName != null && appTarget != null) c.withAppName(appTarget, appName) else c }
-        write(next, "${g.id} → ${spec.token}")
+        write(next, "${g.id} → ${spec.token}") != CommandsSave.Failed
     } catch (e: Throwable) {
         XLog.w("选动作失败（忽略）：${spec.token}", e)
         false
