@@ -119,7 +119,7 @@ internal fun SettingsPage.ActivitySearchBand() {
  *  尺寸与边距都写死在这里。
  */
 @Composable
-private fun SettingsPage.PickerSearchBand(
+internal fun SettingsPage.PickerSearchBand(
     query: String,
     onQueryChange: (String) -> Unit,
     label: String,

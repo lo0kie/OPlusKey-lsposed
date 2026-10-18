@@ -72,16 +72,16 @@ internal fun SettingsPage.pick(
                 // `Config.DEFAULT`，而默认是 `plus_enabled=0`（"装上模块不改变行为" 是有意的默认值）。
                 enabled = true,
             )
-        // 名字按**这次要绑的那个目标**记（`action.appTarget`，不是 `spec.token`）：
-        //  token 里带着 `app:` / `window:` / `appshortcut:w:` 这些前缀与写法差异，
-        //  而名字表的键是「身份」（`AppTarget.identity`）—— 与界面查名字用的那一把完全一致。
+        // 名字按**这次要绑的那个目标**记（应用/快捷方式/磁贴）：
+        //  token 里带着 `app:` / `window:` / `setting:` 这些前缀与写法差异，
+        //  而名字表的键是「身份」（`AppTarget.identity` 或磁贴组件名）—— 与界面查名字用的那一把完全一致。
         //  名字为空时**不动表**：`withAppName(…, null)` 是「删这一条」，那是「重新挑失败」的语义，
         //  不该被一次普通的重新绑定（绑内置动作、绑别的应用）顺手触发。
-        val appTarget = action.appTarget
+        val targetKey = action.appTarget
         val next =
             cfg
                 .copy(keys = cfg.keys + (KeyId.PLUS to updated))
-                .let { c -> if (appName != null && appTarget != null) c.withAppName(appTarget, appName) else c }
+                .let { c -> if (appName != null && targetKey != null) c.withAppName(targetKey, appName) else c }
         write(next, "${g.id} → ${spec.token}") != CommandsSave.Failed
     } catch (e: Throwable) {
         XLog.w("选动作失败（忽略）：${spec.token}", e)

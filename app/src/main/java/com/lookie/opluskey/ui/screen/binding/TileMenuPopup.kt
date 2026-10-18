@@ -5,6 +5,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.ui.MenuPopup
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.STEP_PICKER_MAX_HEIGHT
 import com.lookie.opluskey.ui.screen.command.modeEntries
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
@@ -37,6 +38,10 @@ internal fun SettingsPage.TileMenuPopup(
         //  开不开由 `spec` 决定：关掉那一刻调用点传的就是 null（退场期间内容由 `MenuPopup` 自己保住）。
         show = spec != null,
         preciseClick = preciseClick,
+        // 与「添加命令」浮层**同一档**最大高度：超过就滚动。
+        //  不传的话面板按内容长，十个开关（系统开关那一格）会顶到屏幕外、而且滚不动
+        //  —— 真机反馈「这个菜单太长了让它滚动」。
+        maxHeight = STEP_PICKER_MAX_HEIGHT,
         onDismiss = onDismiss,
         entries =
             spec

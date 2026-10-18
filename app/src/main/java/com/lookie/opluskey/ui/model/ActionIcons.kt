@@ -20,9 +20,11 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
+import io.github.lyxnx.compose.ui.tablericons.outline.BatteryEco
 import io.github.lyxnx.compose.ui.tablericons.outline.Bell
 import io.github.lyxnx.compose.ui.tablericons.outline.BellOff
 import io.github.lyxnx.compose.ui.tablericons.outline.BellRinging
+import io.github.lyxnx.compose.ui.tablericons.outline.Bluetooth
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple1
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple2
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple3
@@ -36,6 +38,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BrandWechat
 import io.github.lyxnx.compose.ui.tablericons.outline.BrowserPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
+import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
 import io.github.lyxnx.compose.ui.tablericons.outline.Check
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
@@ -45,7 +48,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.CircleX
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
-import io.github.lyxnx.compose.ui.tablericons.outline.DeviceAudioTape
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobilePause
@@ -66,21 +68,26 @@ import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
 import io.github.lyxnx.compose.ui.tablericons.outline.InputX
+import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
 import io.github.lyxnx.compose.ui.tablericons.outline.LayoutGrid
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
 import io.github.lyxnx.compose.ui.tablericons.outline.Message2
+import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodEmpty
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodHeart
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
+import io.github.lyxnx.compose.ui.tablericons.outline.MoonStars
 import io.github.lyxnx.compose.ui.tablericons.outline.Music
 import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
+import io.github.lyxnx.compose.ui.tablericons.outline.Nfc
 import io.github.lyxnx.compose.ui.tablericons.outline.Notes
 import io.github.lyxnx.compose.ui.tablericons.outline.Notification
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureTop
+import io.github.lyxnx.compose.ui.tablericons.outline.Plane
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerStop
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackNext
@@ -88,10 +95,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackPrev
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Power
 import io.github.lyxnx.compose.ui.tablericons.outline.RecordMail
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
+import io.github.lyxnx.compose.ui.tablericons.outline.RotateRectangle
 import io.github.lyxnx.compose.ui.tablericons.outline.Screenshot
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
@@ -108,6 +117,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.UsersGroup
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume4
+import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
 import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
 import io.github.lyxnx.compose.ui.tablericons.outline.World
 
@@ -147,11 +157,11 @@ internal fun actionIcon(token: String): ImageVector =
 
         // 免打扰（月亮：勿扰/夜间的通用读法）
         Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY -> {
-            TablerIcons.Outline.DeviceAudioTape
+            TablerIcons.Outline.RecordMail
         }
 
         Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING -> {
-            TablerIcons.Outline.RecordMail
+            TablerIcons.Outline.Microphone
         }
 
         // 录音
@@ -278,6 +288,12 @@ internal fun actionIcon(token: String): ImageVector =
                     TablerIcons.Outline.LayoutGrid
                 }
 
+                // 系统开关（`setting:<id>`）—— 每一条都有自己的字形，从清单里一眼分得开
+                //  （清单本体见 `core/model/SystemSwitches`）
+                token.startsWith(Action.SETTING_PREFIX) -> {
+                    systemSettingIcon(token.removePrefix(Action.SETTING_PREFIX))
+                }
+
                 // 「以小窗口打开」（`window:目标`）：新起一个窗口 —— 与「把前台的收成小窗」那两档
                 // （`zoom:mini` / `zoom:mini:collapse`，见上面）是**三支不同字形**，别顺手并回来。
                 token.startsWith(Action.WINDOW_PREFIX) -> {
@@ -289,6 +305,27 @@ internal fun actionIcon(token: String): ImageVector =
                 }
             }
         }
+    }
+
+/**
+ * 「系统开关」里那几条开关的字形 —— `setting:<id>` 里 `<id>` 那一节在这里翻译成图标。
+ *
+ *  **全项目唯一一处**（与 [actionIcon] 里那条前缀判断配套）：清单本身在
+ *  `core/model/SystemSwitches`，那层没有 Compose，字形只能落在这里。加一条开关 = 在那个清单里
+ * 加一行 + 这里加一支 —— 漏了这里会掉到 [TablerIcons.Outline.Dots]，看着像「没配图标」。
+ */
+private fun systemSettingIcon(id: String): ImageVector =
+    when (id) {
+        "bt" -> TablerIcons.Outline.Bluetooth
+        "wifi" -> TablerIcons.Outline.Wifi
+        "cell" -> TablerIcons.Outline.CellSignal4
+        "rotation" -> TablerIcons.Outline.RotateRectangle
+        "nfc" -> TablerIcons.Outline.Nfc
+        "airplane" -> TablerIcons.Outline.Plane
+        "dnd" -> TablerIcons.Outline.Moon
+        "darkmode" -> TablerIcons.Outline.MoonStars
+        "powersave" -> TablerIcons.Outline.BatteryEco
+        else -> TablerIcons.Outline.Dots
     }
 
 /**
@@ -325,12 +362,21 @@ internal fun specIcon(spec: ActionCatalog.Spec): ImageVector {
 private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
     when (glyph) {
         ActionCatalog.Glyph.Bell -> TablerIcons.Outline.Bell
+
         ActionCatalog.Glyph.Repeat -> PageIcons.RingerCycle
+
         ActionCatalog.Glyph.Music -> TablerIcons.Outline.Music
+
         ActionCatalog.Glyph.NavigationCog -> PageIcons.NavigationCog
+
         ActionCatalog.Glyph.Click -> PageIcons.Click
+
         ActionCatalog.Glyph.Panels -> PageIcons.Panels
+
         ActionCatalog.Glyph.MiniWindow -> PageIcons.MiniWindow
+
+        // 「系统开关」入口格：齿轮（这一格进的是清单，不是某个取值）
+        ActionCatalog.Glyph.SystemSwitch -> TablerIcons.Outline.Settings
     }
 
 /**
@@ -453,6 +499,22 @@ internal object PageIcons {
 
     /** 浮层菜单「导出日志」—— `logs`（一叠日志行）。 */
     val MenuExport: ImageVector get() = TablerIcons.Outline.Logs
+
+    /**
+     * 「按键绑定」页顶栏菜单的「快捷键」—— `keyboard`（一块键盘）。
+     *
+     *  这一项说的是「**现在这一组**是快捷键」，点它只收菜单（见 `BindingKeyMenu`）。
+     *  与 [MenuCustomKey] 必须不同字形：菜单里两行都是「一组按键」，只靠行首这一颗分谁是谁。
+     */
+    val MenuKeys: ImageVector get() = TablerIcons.Outline.Keyboard
+
+    /**
+     * 「按键绑定」页顶栏菜单的「自定义按键」—— `pointer-plus`（光标 + 加号）。
+     *
+     *  这一项是**去把新键加进清单**（弹收集弹窗），所以带那个加号；
+     *  与 [TouchApp]（「按键绑定」行的光标，不带加号）同族不同义，各留一份名字。
+     */
+    val MenuCustomKey: ImageVector get() = TablerIcons.Outline.PointerPlus
 
     /**
      * 首页「其他 → 更多选项」那一行的行首 —— 圈里三点（`dots-circle-horizontal`，
@@ -682,11 +744,15 @@ internal object PageIcons {
     val Confirm: ImageVector get() = TablerIcons.Outline.Check
 
     /**
-     * 浮层菜单行尾那颗「这一档就是当前值」的对勾。
+     * 浮层菜单里「这一档就是当前值」的对勾 —— 画在**行首**（选中那一行的图标位换成它）。
      *
-     * 库 `DropdownImpl` 的行尾对勾是写死的 `COUIIcons.Basic.Check`（描边 1.4，与页面其余
-     * Tabler 图标不同一支笔），补丁 `patches/coui/0003-overridable-trailing-icons.patch`
-     * 给 `DropdownItem` 开了 `checkIcon` 覆盖口，菜单行统一传 Tabler 这颗 `Check`。
+     *  以前它在**行尾**（补丁 `0003` 给 `DropdownItem` 开的 `checkIcon` 覆盖口）：那一格是恒画的
+     *  —— 一颗 24dp 字形 + 起始间距，未选中时只是画成透明，**布局上照样占着**，每行右边都挂着
+     *  一块永远空着的位子。补丁 `0006` 加了 `showCheck = false` 之后连那一格都不占，选中态改由
+     *  行首这颗表示（见 `PageMenuPopup` 的 `MenuRow`）。
+     *
+     *  字形仍是 Tabler 这颗 `Check`：库自带的 `COUIIcons.Basic.Check` 描边 1.4，与页面其余
+     *  Tabler 图标（描边 2）不是一支笔。
      */
     val MenuCheck: ImageVector get() = TablerIcons.Outline.Check
 

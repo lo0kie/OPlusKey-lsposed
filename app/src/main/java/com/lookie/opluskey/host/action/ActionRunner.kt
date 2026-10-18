@@ -92,6 +92,16 @@ internal class ActionRunner(
         }
     }
 
+    /** 执行 oplus 动作：免打扰走 AOSP 或 ColorOS，其余走落点。 */
+    private val runOplus: (String) -> Unit = { feature ->
+        if (feature == RomProfile.NAME_NO_DISTURB && !isColorOsApi()) {
+            XLog.w("oplus:$feature → AOSP 标准接口（ColorOS 接口已关闭）")
+            runAospDnd()
+        } else {
+            startOplusOrVoice(feature)
+        }
+    }
+
     /** 失败提示的唯一出口，转成 Toast；只有这里碰 Context 与 UI。 */
     private fun notifyFailure(failure: CommandFailure) = FailureNotice.show(context, failure)
 
@@ -151,77 +161,22 @@ internal class ActionRunner(
     ) {
         try {
             when (action) {
-                is Action.None -> {
-                    // 拦截，什么都不做
-                }
-
-                is Action.KeyEvent -> {
-                    runKeyEvent(action.keyCode)
-                }
-
-                is Action.Shell -> {
-                    runShell(action.command)
-                }
-
-                is Action.Custom -> {
-                    custom.run(action.name, depth)
-                }
-
-                is Action.Intent -> {
-                    launcher.openIntent(action.action)
-                }
-
-                is Action.App -> {
-                    launcher.launchApp(action.target)
-                }
-
-                is Action.AppWindow -> {
-                    launcher.launchAppInWindow(action.target)
-                }
-
-                is Action.AppShortcut -> {
-                    runAppShortcut(action)
-                }
-
-                // 只动当前那个窗口（不新建实例）—— 与 AppWindow 是两条路；
-                // 尺寸档（展开 / 收起）由动作自己带，执行侧据此走不同配方
-                is Action.MiniWindow -> {
-                    launcher.putForegroundInMiniWindow(action.collapsed)
-                }
-
-                is Action.Shortcut -> {
-                    launcher.runShortcut(action.shortcutId)
-                }
-
-                is Action.Flashlight -> {
-                    flashlight.toggle()
-                }
-
-                // `ringer:normal|vibrate|silent` 切到指定一档；循环那条仍是 `keyevent:164`。
-                is Action.Ringer -> {
-                    ringer.setMode(action.mode)
-                }
-
-                // 电源菜单同理：本机反射调用，不走按键长按
-                is Action.PowerMenu -> {
-                    sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
-                }
-
-                is Action.Oplus -> {
-                    // 「使用 ColorOS 接口」只影响**有 AOSP 替代实现**的那几条（免打扰 / 手电筒 / 响铃），
-                    // 其余照旧走 ColorOS 落点 —— 就是界面那句「关闭后**部分命令**将使用 AOSP 标准接口」。
-                    if (action.feature == RomProfile.NAME_NO_DISTURB && !isColorOsApi()) {
-                        XLog.w("oplus:${action.feature} → AOSP 标准接口（ColorOS 接口已关闭）")
-                        runAospDnd()
-                    } else {
-                        startOplusOrVoice(action.feature)
-                    }
-                }
-
-                // 控制中心与「通知中心」（`keyevent:83`）同一条通道；认不出的档位只记日志（见 AGENTS.md 五、4）
-                is Action.Panel -> {
-                    runPanel(action.mode)
-                }
+                is Action.None -> Unit
+                is Action.KeyEvent -> runKeyEvent(action.keyCode)
+                is Action.Shell -> runShell(action.command)
+                is Action.Custom -> custom.run(action.name, depth)
+                is Action.Intent -> launcher.openIntent(action.action)
+                is Action.App -> launcher.launchApp(action.target)
+                is Action.AppWindow -> launcher.launchAppInWindow(action.target)
+                is Action.AppShortcut -> runAppShortcut(action)
+                is Action.MiniWindow -> launcher.putForegroundInMiniWindow(action.collapsed)
+                is Action.Shortcut -> launcher.runShortcut(action.shortcutId)
+                is Action.Flashlight -> flashlight.toggle()
+                is Action.Ringer -> ringer.setMode(action.mode)
+                is Action.PowerMenu -> sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
+                is Action.Oplus -> runOplus(action.feature)
+                is Action.Panel -> runPanel(action.mode)
+                is Action.Setting -> SettingSwitch.toggle(context, action.id, ::notifyFailure)
             }
         } catch (e: Throwable) {
             // 必须 catch Throwable：执行环境（Runtime / 反射注入）出错可能是 Error 系，漏出去会崩系统
@@ -320,8 +275,8 @@ internal class ActionRunner(
             //  而这条路能成的时候不该被一句检查挡住。
             if (!nm.isNotificationPolicyAccessGranted) {
                 XLog.w(
-                    "免打扰（AOSP 接口）失败：宿主没有「勿扰访问」授权" +
-                        "（设置 → 通知 → 勿扰权限），这条命令在这台机器上不会生效",
+                    "免打扰（AOSP 接口）失败：本模块没有「勿扰访问」授权" +
+                        "（设置 → 通知与状态栏 → 勿扰，允许「手势体感」），这条命令在这台机器上不会生效",
                 )
                 notifyFailure(CommandFailure.DND_NOT_GRANTED)
                 return

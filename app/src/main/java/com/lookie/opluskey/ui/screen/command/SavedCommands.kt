@@ -135,6 +135,14 @@ internal fun SettingsPage.SavedCommandsSection(
                         } else {
                             SINGLE_CARD_MIN_HEIGHT_RATIO
                         },
+                    // 上限只压单条那一档（= 卡宽，正方形）；混排与多条都不封顶 —— 多条卡的步骤是
+                    //  逐条列出来的，截掉就把「有几步」藏了。
+                    maxHeightRatio =
+                        if (row.any { it.kind != CommandKind.SINGLE }) {
+                            0f
+                        } else {
+                            1f
+                        },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
                 ) { tileIndex ->
                     val cmd = row[tileIndex]
@@ -340,6 +348,9 @@ private fun SettingsPage.CommandTileSummary(cmd: Command) {
                 text = cmd.single,
                 style = COUITheme.textStyles.footnote1,
                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                // 卡片高度封顶在正方形（见 `CommandTileRow` 的 `maxHeightRatio`），摘要再长也画不下：
+                //  三行封顶 + 省略号，好过被父级的高度约束**从中间裁断**（那连省略号都没有）。
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
         }

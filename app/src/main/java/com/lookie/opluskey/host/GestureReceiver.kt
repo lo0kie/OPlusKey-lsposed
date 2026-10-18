@@ -25,6 +25,7 @@ import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.core.seal.Verdict
 import com.lookie.opluskey.core.wire.ConfigBroadcast
+import com.lookie.opluskey.core.wire.LogWire
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.host.action.ActionRunner
@@ -149,6 +150,12 @@ internal object GestureReceiver {
                     }
                     // 设置页按了「重启服务」：那边马上要杀自己，由我们（宿主主进程）等一下把页面拉回来，
                     //  拉起之后本进程也重来一遍（见 [PageRelaunch]）。
+                    // 设置页要导出日志：把本进程（宿主主进程）那份缓冲回给它。
+                    //  与本文件其他分支同一纪律：只做广播与取 extra，不碰配置、不改状态。
+                    if (intent?.action == ModuleWire.ACTION_LOG_PULL) {
+                        context?.let { LogWire.reply(it, HostApp.PACKAGE, "host") }
+                        return
+                    }
                     if (intent?.action == ModuleWire.ACTION_PAGE_RELAUNCH) {
                         XLog.w("设置页请求重启服务 —— 由本进程稍后把页面拉回来")
                         context?.let { PageRelaunch.schedule(it) }

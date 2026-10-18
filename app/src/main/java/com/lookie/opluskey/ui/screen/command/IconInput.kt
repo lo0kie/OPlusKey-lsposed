@@ -1,71 +1,31 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
-import com.lookie.opluskey.ui.rememberRowIconColor
-import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.InputViewDefaults
+import io.github.suqi8.coui.kmp.basic.SearchBarDefaults
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.basic.TextField
-import io.github.suqi8.coui.kmp.basic.TextFieldDefaults
-import io.github.suqi8.coui.kmp.basic.TextFieldMode
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.COUIIndication
 
-// 卡片式输入项（行首图标 + 标题 + 输入框 + 错误行）与它的尺寸 / 缓动常量。
-
-/** 行首图标与右侧内容之间的间距。 */
-internal val INPUT_ICON_GAP = 8.dp
-
-/**
- * 清除键的尺寸（也是输入框内容区的最低高度）。
- *
- *  高度必须钉死：清除键「出现 / 消失」不能改变输入框高度，否则用户每打一个字、每聚焦一次，
- *  整张卡片都跟着弹一下。所以按钮的尺寸同时写进 `defaultMinSize` —— 有没有按钮都是这一档。
- */
-private val INPUT_CLEAR_SIZE = 24.dp
-
-/** 清除键里那颗字形（比按钮小一圈，留出触摸余量）。 */
-private val INPUT_CLEAR_GLYPH = 16.dp
-
-/** 清除键出现 / 消失的淡入淡出时长（毫秒）—— 只用来看得见那一下。 */
-private const val CLEAR_FADE_MS = 90
-
-/** 多行档最多长到几行（再多就内部滚动，卡片不能无限长）。 */
-private const val MULTILINE_MAX_LINES = 6
+// 卡片里那种「行首图标 + 输入」的行 —— 底子是库的搜索输入框（`InputField`）。
 
 /** 错误提示淡入 / 淡出的时长（毫秒）与缓动 —— 与库的 `InputView` 同一组值（其文档给出）。 */
 private const val ERROR_FADE_IN_MS = 217
@@ -75,71 +35,49 @@ private const val ERROR_FADE_OUT_MS = 283
 private val INPUT_ERROR_EASE = CubicBezierEasing(0.33f, 0f, 0.67f, 1f)
 
 /**
- * **带行首图标的卡片输入** —— 库的 `InputView` 做不到这件事，所以在这里拼一个同款的。
+ * 一条输入项的**静态那几样**：行首图标、占位文案、长度上限。
  *
- * `InputView` 的 `leadingIcon` 是**直接透传给内部 `TextField`** 的（见库的 `InputView.kt`）：
- * 它只把输入框里的文字挤开，而卡片里那行 `title` 是库在内容左边界自己画的，**不跟着让位**；
- * `insideMargin` 之类的参数又会让两者**一起**平移，分不开。
+ *  打成一个参数只为把 [IconInputView] 的参数个数留在 detekt 之上限以内（那三样天然是一组：
+ *  它们说的是「这一栏是什么」，与「这一栏现在是什么值」无关）。
  *
- * 于是这里用库的公开件自己拼，排版逐项照抄 `InputView`：
- *  · 卡片：[Card]（12dp 圆角 + `surfaceContainer`，与 `InputViewDefaults` 同值）；
- *  · 标题：`body2`（14sp，由库的 16sp `titleTextStyle()` 降一档）+ 上下 12 / 4dp + 最小高 22dp；
- *  · 输入框：[TextField]，`textStyle` 用库默认（16sp）+ `TextFieldMode.None` + `insideMargin = DpSize(0, 0)`；
- *  · 错误提示：卡片**外**那行 10sp 红字，淡入 217ms / 淡出 283ms（库文档给的那组数值）。
- * 差别只有一处：**行首图标占左侧一格，标题与输入框都从它右边起**（图标 [ROW_ICON_SIZE]
- * + 间距 [INPUT_ICON_GAP]）。
+ * @param maxLength 能输入多少字 —— 超出的部分在组件里直接截掉（**不显示计数**，用户口径）
+ */
+internal class InputSpec(
+    val icon: ImageVector,
+    val label: String,
+    val maxLength: Int,
+)
+
+/**
+ * **带行首图标的输入项** —— 底子换成库的 `InputField`（搜索框那一副长相）。
+ *
+ * ## 为什么不再自己拼卡片
+ *
+ *  先前这一层是「`Card` + `title` + `TextField`」手拼的：`InputView` 的 `leadingIcon` 是直接
+ *  透传给内部 `TextField` 的，卡片里那行 `title` 不跟着让位，只好自己拼一份同款。现在这里
+ *  不再有独立的标题行 —— 字段名走 [label]（占位文案），于是 `InputField` 一个组件就够了，
+ *  与「选择应用 / 选择界面」那两页的搜索框也是同一副长相。
+ *
+ * ## 行首图标是**原来那颗**
+ *
+ *  `InputField` 不给 `leadingIcon` 时画的是放大镜 —— 这里是「命令 / 名称」这些具体字段，
+ *  所以把原来卡片行首那颗图标原样递进去（[ROW_ICON_SIZE] + 与其他行首同一档的颜色）。
+ *
+ * ## 只有单行
+ *
+ *  多行（textarea）那一档**已撤**：命令正文也是一个输入框，换行不再由这里保留。
  *
  * @param icon 行首图标（按 [ROW_ICON_SIZE] 画，与全页图标同一个尺寸纪律）
- *
- *  注：`SettingsPage.` 这个接收者**在函数体里一次都没用到**（体内不读任何页面级成员）——
- *  留着它是为了与同目录那批「页面组件」（[SwitchRow] / [SliderRow] …）保持同一种写法，
- *  也免得调用点从页面扩展里挪出去时得跟着改。要删时连 [SettingsPage] 那个 import 一起清。
+ * @param label 占位文案（`请输入名称` 这种）—— 现在也是这一栏唯一的文字说明
  */
 @Composable
 internal fun SettingsPage.IconInputView(
-    icon: ImageVector,
+    spec: InputSpec,
     value: String,
     onValueChange: (String) -> Unit,
-    title: String,
-    label: String,
     modifier: Modifier = Modifier,
     errorMessage: String = "",
-    enabled: Boolean = true,
-    /**
-     * 多行（textarea）—— 命令正文那一栏用它：一条命令可能很长，多行粘贴也不该被揉成一行。
-     *
-     *  单行档（命令名）保持原样；两档的排版、图标、清除键、错误行都是同一套，只差行数与换行。
-     */
-    multiline: Boolean = false,
 ) {
-    val colors = InputViewDefaults.inputViewColors()
-    // 注意：标题**不能**用 `colors.titleColor`：它是 `onSurface`，而输入内容的颜色走
-    // `TextField` 的 `LocalContentColor`（本组件里就是 `Card` 的 `contentColor` =
-    // `onSurfaceContainer`）—— **这两个色值完全相同**（`0xE6000000` / `0xE6FFFFFF`），
-    // 撞在一起卡片里就分不出「字段名」和「输入内容」。
-    //  于是标题分两档，按**有没有内容**切：
-    //  · **空值时**：输入框里什么都没有，标题就替它站那一位 ⇒ 用其他行主标题那一档
-    //    （`onBackground`，与 `BasicComponentDefaults.titleColor()` 同色）；
-    //  · **有内容时**：退回 `onSurfaceSecondary`（与输入框自己的 label / 占位符同色）——
-    //    层级变成「弱标题 + 强内容」，字段名不会跟内容抢。
-    //  同样带过渡：打字 / 清空、主开关置灰 / 恢复时都不跳变（与 [IconAction] / `SliderRow`
-    // 同一组参数）。
-    val titleColor by animateColorAsState(
-        targetValue =
-            when {
-                !enabled -> colors.disabledTitleColor
-                value.isEmpty() -> COUITheme.colorScheme.onBackground
-                else -> COUITheme.colorScheme.onSurfaceSecondary
-            },
-        label = "InputTitle",
-    )
-    //  行首图标**自己一档**：与其他行的行首图标同色（`onSurfaceContainer`）。
-    // 不要跟着标题走 —— 那个色比页里别的行首都暗一档。
-    val iconColor by rememberRowIconColor(enabled, label = "InputIcon")
-    // 清除键的显示判据与库自带那个一致：聚焦且非空。交互源由本组件自己建，
-    //  于是「有没有焦点」这一位在自绘版里也拿得到（库的 `showClearButton` 不给回调，只能用它的）。
-    val fieldInteraction = remember { MutableInteractionSource() }
-    val fieldFocused by fieldInteraction.collectIsFocusedAsState()
     val isError = errorMessage.isNotEmpty()
     // 淡出期间要**留着最后那条非空消息**，否则红字先消失、再走淡出（库同此做法）
     var shownError by remember { mutableStateOf(errorMessage) }
@@ -149,85 +87,20 @@ internal fun SettingsPage.IconInputView(
     }
 
     Column(modifier = modifier) {
-        Card(
+        InputField(
+            query = value,
+            // **长度上限在这一层兜**（不靠各调用点自己截）：超出的部分直接吃掉，
+            //  于是右下的计数永远与真正存下去的值一致。
+            onQueryChange = { raw -> onValueChange(raw.take(spec.maxLength)) },
+            // 键盘上的「搜索」键不做额外动作：这一栏不是搜索，输入即生效
+            onSearch = { },
+            // 展开态那套是「点搜索框撑开一页结果」用的，这里不展开
+            expanded = false,
+            onExpandedChange = { },
             modifier = Modifier.fillMaxWidth(),
-            cornerRadius = InputViewDefaults.CornerRadius,
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = InputViewDefaults.ContentPadding),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(ROW_ICON_SIZE),
-                    tint = iconColor,
-                )
-                Spacer(Modifier.width(INPUT_ICON_GAP))
-                // 标题 + 输入框：**这一列**整体让出图标那一格，所以两者不用各自再加左内缩
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        //  标题**降一档**：库的 `titleTextStyle()` 是 16sp Medium，
-                        // 压过下面的输入内容 —— 输入框应该是「内容大、字段名小」。
-                        // 降到 body2（14sp）。
-                        style = COUITheme.textStyles.body2,
-                        color = titleColor,
-                        modifier =
-                            Modifier
-                                .padding(
-                                    top = InputViewDefaults.TitlePaddingTop,
-                                    bottom = InputViewDefaults.TitlePaddingBottom,
-                                ).defaultMinSize(minHeight = InputViewDefaults.TitleMinHeight),
-                    )
-                    TextField(
-                        value = value,
-                        onValueChange = onValueChange,
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = InputViewDefaults.FieldPaddingBottomWithTitle)
-                                // 内容区最低高度 = 清除键那一档：按钮来去都不再改高度
-                                .defaultMinSize(minHeight = INPUT_CLEAR_SIZE),
-                        backgroundMode = TextFieldMode.None,
-                        insideMargin = DpSize(0.dp, 0.dp),
-                        label = label,
-                        enabled = enabled,
-                        isError = isError,
-                        //  库默认的 16sp（试过升到 `paragraph` 17sp 又还原）：
-                        // `TextField` 会拿 `textStyle` 的字号**顺带推算浮动 label 的大小**
-                        // （源码：`labelNormalFontSize = resolvedTextStyle.fontSize`），
-                        // value 一升，上面那行「请输入…」跟着变大，
-                        // 标题与内容之间的空隙就被撑开了 —— 动这里必须连着 label 一起看。
-                        textStyle = TextFieldDefaults.textStyle(TextFieldMode.None),
-                        singleLine = !multiline,
-                        minLines = 1,
-                        maxLines = if (multiline) MULTILINE_MAX_LINES else 1,
-                        interactionSource = fieldInteraction,
-                        // 清除键**不用**库的 `showClearButton`：它按 36dp 的触摸目标排，
-                        //  而这一行的文字只有二十来 dp 高 —— 按钮一出现就把输入框顶高十几 dp，
-                        //  表现为「打第一个字时卡片弹一下」。自绘一个 24dp 的，高度与内容区同档。
-                        // 淡入淡出而不是「一清空就整个消失」：点下去那一下要看得见（否则按钮在
-                        //  手指抬起的同一帧就没了，反馈等于不存在）。高度由上面那条 `defaultMinSize`
-                        //  兜着，淡出期间也不改布局。
-                        trailingIcon =
-                            if (enabled) {
-                                {
-                                    AnimatedVisibility(
-                                        visible = fieldFocused && value.isNotEmpty(),
-                                        enter = fadeIn(tween(CLEAR_FADE_MS)),
-                                        exit = fadeOut(tween(CLEAR_FADE_MS)),
-                                    ) {
-                                        ClearFieldButton(onClick = { onValueChange("") })
-                                    }
-                                }
-                            } else {
-                                null
-                            },
-                    )
-                }
-            }
-        }
+            label = spec.label,
+            leadingIcon = { InputLeadingIcon(spec.icon) },
+        )
         AnimatedVisibility(
             visible = isError,
             enter = fadeIn(tween(ERROR_FADE_IN_MS, easing = INPUT_ERROR_EASE)),
@@ -236,7 +109,7 @@ internal fun SettingsPage.IconInputView(
             Text(
                 text = shownError,
                 fontSize = InputViewDefaults.ErrorFontSize,
-                color = colors.errorColor,
+                color = InputViewDefaults.inputViewColors().errorColor,
                 modifier =
                     Modifier.padding(
                         top = InputViewDefaults.ErrorPaddingTop,
@@ -249,32 +122,33 @@ internal fun SettingsPage.IconInputView(
 }
 
 /**
- * 输入框右侧的清除键 —— 圆形底 + 叉，点一下把内容清空。
+ * 输入框行首那一格图标。
  *
- *  只负责画与点：显不显示由调用点判（聚焦且非空），清空动作走 `onValueChange("")`。
+ * ## 内外边距必须自己补
+ *
+ *  库里自带那颗放大镜是这么画的（`SearchBar.kt` 的默认 `leadingIcon`）：
+ *  `Icon(Search, Modifier.padding(start = LeadingIconStartPadding, end = LeadingIconEndPadding))`。
+ *  换成自己的图标时**这两档不能省** —— 省了图标就贴着输入框左边缘、跟文字挤在一起
+ *  （真机上就是「很诡异」那种观感）。库那两个常量是 public 的，直接用。
+ *
+ *  尺寸仍取 [ROW_ICON_SIZE]（22dp）：比其他行首图标是同一档，比库自带的 24dp 小一点点，
+ *  肉眼看不出来，但全页口径一致。
  */
 @Composable
-private fun ClearFieldButton(onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    Box(
-        contentAlignment = Alignment.Center,
+internal fun InputLeadingIcon(icon: ImageVector) {
+    // 颜色**取库自己的那一档**（`SearchBarColors.IconColor`）：页面里其他行首用的
+    //  `onSurfaceContainer` 在输入框这块底色上偏亮（用户口径「太亮」），与旁边的占位文字
+    //  一比就更突兀。用同一个 `searchBarColors()`，将来库调色我们跟着变。
+    val colors = SearchBarDefaults.searchBarColors()
+    Icon(
+        icon,
+        contentDescription = null,
         modifier =
             Modifier
-                .size(INPUT_CLEAR_SIZE)
-                .clip(CircleShape)
-                // 反馈显式给库自己那一份（`COUIIndication`）：默认走 `LocalIndication` 时
-                //  在宿主页里不一定被供上，按下去就一点反应都没有。
-                .clickable(
-                    interactionSource = interaction,
-                    indication = COUIIndication(COUITheme.colorScheme.onSurface),
-                    onClick = onClick,
-                ),
-    ) {
-        Icon(
-            PageIcons.Clear,
-            contentDescription = null,
-            modifier = Modifier.size(INPUT_CLEAR_GLYPH),
-            tint = COUITheme.colorScheme.onSurfaceSecondary,
-        )
-    }
+                .padding(
+                    start = SearchBarDefaults.LeadingIconStartPadding,
+                    end = SearchBarDefaults.LeadingIconEndPadding,
+                ).size(ROW_ICON_SIZE),
+        tint = colors.iconColor,
+    )
 }

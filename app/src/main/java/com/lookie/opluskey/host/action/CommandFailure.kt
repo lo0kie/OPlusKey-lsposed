@@ -7,6 +7,7 @@ import android.widget.Toast
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.HostApp
 
 /**
  * 失败提示表：Toast 里只出现 [hint]（说清哪里不对 + 怎么办），原始信息照旧进日志
@@ -32,10 +33,10 @@ internal enum class CommandFailure(
     SHELL_TIMEOUT(Strings.COMMAND_FAILURE_SHELL_TIMEOUT, "这条命令卡住了，已经中止"),
 
     /** shell 退出码 127 —— 命令本身不存在。 */
-    SHELL_MISSING(Strings.COMMAND_FAILURE_SHELL_MISSING, "找不到这个命令，检查一下拼写"),
+    SHELL_MISSING(Strings.COMMAND_FAILURE_SHELL_MISSING, "系统里找不到这条命令（检查拼写或路径）"),
 
     /** shell 退出码 126 —— 找到了但没有执行权限。 */
-    SHELL_NO_PERMISSION(Strings.COMMAND_FAILURE_SHELL_NO_PERMISSION, "这条命令没有执行权限"),
+    SHELL_NO_PERMISSION(Strings.COMMAND_FAILURE_SHELL_NO_PERMISSION, "这条命令要更高权限：检查文件执行位，或给「手势体感」授权"),
 
     /**
      * 起不了任何 shell 解释器 —— 最常见的原因是**没有 root 授权**。
@@ -45,7 +46,17 @@ internal enum class CommandFailure(
      *  这一档原来并进 [SHELL_REJECTED]（「系统不让执行这条命令」），会把人往 SELinux 方向带，
      *  而实际该做的是去 root 管理器给宿主授权。
      */
-    SHELL_NO_ROOT(Strings.COMMAND_FAILURE_SHELL_NO_ROOT, "权限不够：这条命令要 root"),
+    SHELL_NO_ROOT(
+        Strings.COMMAND_FAILURE_SHELL_NO_ROOT,
+        "权限不够：root 要授给「手势体感」（%1\$s），不是本模块",
+    ) {
+        /**
+         * 这一档必须说出**授给谁**：「这条命令要 root」对「我已经授权了」的人等于没说 ——
+         *  他多半授给了模块自己的包（`io.github.lo0kie.opluskey`），而命令其实跑在**宿主进程**
+         *  （`com.oplus.gesture` / `:ui`）里，那是另一个 uid。
+         */
+        override val hint: String get() = I18n.format(key, HostApp.PACKAGE)
+    },
 
     /** 其它非 0 退出码 —— 命令跑起来了但自己报错。 */
     SHELL_FAILED(Strings.COMMAND_FAILURE_SHELL_FAILED, "命令没跑成功，检查一下内容"),
@@ -86,10 +97,10 @@ internal enum class CommandFailure(
      *  没授时 `setZenMode` 抛 `SecurityException`，并进 [UNKNOWN] 只会说「这次没执行成功」，
      *  用户不知道要去哪儿开。这一档专门说清「缺的是哪一项授权」。
      */
-    DND_NOT_GRANTED(Strings.COMMAND_FAILURE_DND_NOT_GRANTED, "免打扰要「勿扰权限」：去系统设置里给宿主授权"),
+    DND_NOT_GRANTED(Strings.COMMAND_FAILURE_DND_NOT_GRANTED, "免打扰缺「勿扰权限」：设置 → 通知与状态栏 → 勿扰，允许「手势体感」"),
     ;
 
-    val hint: String
+    open val hint: String
         get() = I18n.get(key, fallback)
 
     companion object {

@@ -98,6 +98,14 @@ internal fun CommandTileRow(
     tileCount: Int,
     /** 行高下限 = 卡宽 × 本值（单条给 [SINGLE_CARD_MIN_HEIGHT_RATIO]，多条给 `1f`）。 */
     minHeightRatio: Float,
+    /**
+     * 行高上限 = 卡宽 × 本值；`0f` 表示不封顶。
+     *
+     *  单条命令那一行封在 `1f`（正方形）：一条命令的摘要长短差得很远，长的那几条能把卡片撑到
+     *  两三个正方形高，一列里只剩它一张，网格看着像断了。多条命令不封顶 —— 它的步骤是逐条列的，
+     *  截掉就等于把「有几步」这件事藏了。
+     */
+    maxHeightRatio: Float = 0f,
     modifier: Modifier = Modifier,
     tile: @Composable (Int) -> Unit,
 ) {
@@ -111,7 +119,13 @@ internal fun CommandTileRow(
         // 各卡自然高度用固有测量（`minIntrinsicHeight`）拿，不能 `measure()` 两次 —— 真机 R8 包会
         // `IllegalStateException` 崩掉宿主进程；固有测量不占那次唯一的 measure 配额。
         val contentHeights = measurables.map { it.minIntrinsicHeight(tileWidth) }
-        val rowHeight = maxOf((tileWidth * minHeightRatio).roundToInt(), contentHeights.max())
+        val natural = maxOf((tileWidth * minHeightRatio).roundToInt(), contentHeights.max())
+        val rowHeight =
+            if (maxHeightRatio > 0f) {
+                minOf(natural, (tileWidth * maxHeightRatio).roundToInt())
+            } else {
+                natural
+            }
         // 唯一一次 measure：按行高定量 —— 同行等高、不矮于下限
         val placeables =
             measurables.map {

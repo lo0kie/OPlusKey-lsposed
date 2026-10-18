@@ -245,10 +245,10 @@ private fun SettingsPage.MenuRow(
                 enabled = row.enabled,
                 // 文字由库按 `alert` 走 `DropdownColors.alertContentColor` —— 与图标的红同一档
                 alert = row.danger,
-                // 行尾那颗「选中」的对勾走我们自己的 Tabler 字形：库默认那颗是 `COUIIcons.Basic.Check`
-                // （描边 1.4、又宽又扁），与行首的 Tabler 图标（描边 2）不是一支笔，见 [PageIcons.MenuCheck]。
-                // 恒传：没选中的行库本来就把这颗画成透明，只有选中行看得见。
-                checkIcon = PageIcons.MenuCheck,
+                // **行尾那一格不画**（`showCheck = false`）：选中态改由**行首图标**换成对勾来表示
+                //  （见下面的 `icon`）。库里那一格是恒画的 —— 一颗 24dp 字形 + 起始间距，未选中时
+                //  只是把它画成透明，**布局上照样占着**，于是每一行右边都挂着一块永远空着的位子。
+                showCheck = false,
                 // 进下一层那些行（「响铃状态」「选择应用」）的行尾右箭头同样换掉 —— 库默认的
                 // `COUIIcons.Basic.ArrowRight` 也是 COUI 那一套（12x24、描边 1.4），见 [PageIcons.EnterArrow]。
                 //  逐行可换（[MenuEntry.Row.trailingIcon]）：跳页面那些行用「窗口 + 加号」，与网格一致。
@@ -264,7 +264,13 @@ private fun SettingsPage.MenuRow(
                             base
                         }
                     Box(tracked, contentAlignment = Alignment.Center) {
-                        Icon(row.icon, null, Modifier.size(MENU_ICON_SIZE), tint = iconColor)
+                        Icon(
+                            // 选中那一行：行首这颗直接换成对勾（行尾那颗已经关掉了，见上面的 `showCheck`）
+                            if (row.selected) PageIcons.MenuCheck else row.icon,
+                            null,
+                            Modifier.size(MENU_ICON_SIZE),
+                            tint = iconColor,
+                        )
                     }
                 },
             )

@@ -7,6 +7,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.SystemSwitches
 
 /**
  * 「执行时提示」（`GlobalConfig.toastOnRun`）里那行字：**这次执行的是哪个动作**。
@@ -54,6 +55,14 @@ internal fun actionNoticeText(
             I18n.format(
                 Strings.COMMON_OPEN_SHORTCUT_FORMAT,
                 appNames[AppTarget.identity(target)] ?: AppTarget.label(target) ?: appLabel(context, target),
+            )
+        }
+
+        // 系统开关（`setting:<id>`）：名字在清单里，认不出就退回 id
+        is Action.Setting -> {
+            I18n.format(
+                Strings.COMMON_TOGGLE_SETTING_FORMAT,
+                SystemSwitches.titleOf(action.token) ?: action.id,
             )
         }
 

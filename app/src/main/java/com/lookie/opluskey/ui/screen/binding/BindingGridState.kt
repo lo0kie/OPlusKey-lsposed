@@ -38,6 +38,7 @@ internal class BindingGridState(
     val specs: List<ActionCatalog.Spec>,
     /** 入口格被点开时进「选择应用」页（为**这一档手势**挑）。 */
     val onOpenAppPicker: (Gesture) -> Unit,
+    /** 入口格被点开时进「控制中心磁贴」页（为**这一档手势**挑）。 */
     initialFocus: Int,
 ) {
     /** 焦点格总数 —— 与 [specs] 下标一一对应（见 `BindingList` 里「扁平焦点索引的账」）。 */

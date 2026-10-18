@@ -45,23 +45,32 @@ object Strings {
     const val APP_PICKER_UNSELECTED = "app_picker.unselected"
     const val BINDING_CREATE_CUSTOM_COMMAND = "binding.create_custom_command"
     const val BINDING_CREATE_CUSTOM_COMMAND_DESC = "binding.create_custom_command_desc"
+    const val BINDING_DELETE_KEY = "binding.delete_key"
+    const val BINDING_DELETE_KEY_CONFIRM = "binding.delete_key_confirm"
+    const val BINDING_ADD_KEY = "binding.add_key"
+    const val BINDING_CUSTOM_KEY_NAME = "binding.custom_key_name"
+    const val BINDING_KEY_NAME = "binding.key_name"
+    const val BINDING_RENAME_KEY = "binding.rename_key"
+    const val BINDING_RESET_KEY = "binding.reset_key"
+    const val BINDING_RESET_KEY_CONFIRM = "binding.reset_key_confirm"
     const val BINDING_DOUBLE_CLICK_WAIT = "binding.double_click_wait"
     const val BINDING_INSTANT_SINGLE = "binding.instant_single"
     const val BINDING_LONG_PRESS_DELAY_DESC = "binding.long_press_delay_desc"
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
     const val BINDING_LONG_PRESS_REPEAT_DESC = "binding.long_press_repeat_desc"
     const val BINDING_LONG_PRESS_REPEAT_TITLE = "binding.long_press_repeat_title"
+
+    /** 「按键绑定」页大标题下面那行小标题：当前这一组是「快捷键」。 */
+    const val BINDING_SECTION_KEYS = "binding.section_keys"
     const val BINDING_REPEAT_INTERVAL_DESC = "binding.repeat_interval_desc"
     const val BINDING_REPEAT_INTERVAL_TITLE = "binding.repeat_interval_title"
     const val BINDING_SERIAL_UNSUPPORTED_REPEAT = "binding.serial_unsupported_repeat"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
     const val BINDING_TITLE = "binding.title"
-    const val CATALOG_DND = "catalog.dnd"
     const val CATALOG_FLASH_NOTE = "catalog.flash_note"
 
     /** 灵感语音 —— 一键闪记的「长按录音」那一档（只在长按网格出现）。 */
     const val CATALOG_VOICE_MEMORY = "catalog.voice_memory"
-    const val CATALOG_FLASHLIGHT = "catalog.flashlight"
     const val CATALOG_MODE_BACK = "catalog.mode_back"
     const val CATALOG_MODE_COLLAPSE = "catalog.mode_collapse"
     const val CATALOG_MODE_CONTROL_CENTER = "catalog.mode_control_center"
@@ -110,8 +119,15 @@ object Strings {
     const val COMMAND_SINGLE_HINT = "command.single_hint"
     const val COMMAND_STEP_SELECT_TITLE = "command.step_select_title"
     const val COMMAND_TEST_BUTTON = "command.test_button"
-    const val COMMAND_TITLE_EDIT = "command.title_edit"
-    const val COMMAND_TITLE_NEW = "command.title_new"
+
+    /** 表单第一条小标题：名称输入框（原先这里写的是「修改命令 / 新增命令」）。 */
+    const val COMMAND_NAME_TITLE = "command.name_title"
+
+    /** 多条命令那条小标题：命令间隔时长那张卡（这一组是「跑这条命令时的设置」）。 */
+    const val COMMAND_SETTINGS_TITLE = "command.settings_title"
+
+    /** 表单第二条小标题：命令正文（单条命令那个输入框）。 */
+    const val COMMAND_DETAIL_TITLE = "command.detail_title"
     const val COMMAND_TYPE_SERIAL = "command.type_serial"
     const val COMMAND_TYPE_SINGLE = "command.type_single"
     const val COMMAND_FAILURE_APP_MISSING = "command_failure.app_missing"
@@ -143,6 +159,9 @@ object Strings {
     const val COMMON_OPEN_APP_FORMAT = "common.open_app_format"
     const val COMMON_OPEN_MINI_WINDOW_FORMAT = "common.open_mini_window_format"
     const val COMMON_OPEN_SHORTCUT_FORMAT = "common.open_shortcut_format"
+
+    /** 「系统开关」里那几颗在执行提示 / 步骤行里的写法（`切换 WLAN`）。 */
+    const val COMMON_TOGGLE_SETTING_FORMAT = "common.toggle_setting_format"
     const val COMMON_REPLACE = "common.replace"
     const val COMMON_RESET = "common.reset"
     const val COMMON_SAVE = "common.save"
@@ -303,10 +322,34 @@ object Strings {
     const val TOAST_COMMANDS_READ_FAILED = "toast.commands_read_failed"
     const val TOAST_LOG_EMPTY = "toast.log_empty"
     const val TOAST_LOG_EXPORTED = "toast.log_exported"
+    const val TOAST_KEY_RESET = "toast.key_reset"
     const val TOAST_LOG_EXPORT_FAILED = "toast.log_export_failed"
     const val TOAST_SERVICE_RESTART_FAILED = "toast.service_restart_failed"
     const val TOAST_SERVICE_RESTARTED = "toast.service_restarted"
     const val TOOL_MINI_WINDOW = "tool.mini_window"
     const val TOOL_OPEN_APP = "tool.open_app"
+    const val TOOL_SYSTEM_SWITCHES = "tool.system_switches"
     const val TOOL_SCREEN_RECOGNITION = "tool.screen_recognition"
+
+    /** 「自定义按键」页（监听按键后添加）—— 标题 / 说明 / 等待 / 添加 / 空态。 */
+    const val KEY_WATCH_TITLE = "key_watch.title"
+    const val KEY_WATCH_HINT = "key_watch.hint"
+    const val KEY_WATCH_WAITING = "key_watch.waiting"
+    const val KEY_WATCH_ADD = "key_watch.add"
+    const val KEY_WATCH_EMPTY = "key_watch.empty"
+
+    /**
+     * 「系统开关」那一格点开的菜单里那十条的名字 ——
+     * 与 `core/model/SystemSwitches.ITEMS` 一一对应（加一条时两边一起改）。
+     */
+    const val SYS_SETTING_BT = "system_setting.bt"
+    const val SYS_SETTING_WIFI = "system_setting.wifi"
+    const val SYS_SETTING_CELL = "system_setting.cell"
+    const val SYS_SETTING_ROTATION = "system_setting.rotation"
+    const val SYS_SETTING_NFC = "system_setting.nfc"
+    const val SYS_SETTING_AIRPLANE = "system_setting.airplane"
+    const val SYS_SETTING_DND = "system_setting.dnd"
+    const val SYS_SETTING_FLASHLIGHT = "system_setting.flashlight"
+    const val SYS_SETTING_DARKMODE = "system_setting.darkmode"
+    const val SYS_SETTING_POWERSAVE = "system_setting.powersave"
 }

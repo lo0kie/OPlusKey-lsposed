@@ -349,45 +349,66 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
 private fun SettingsPage.boundAppText(target: String): String = appNameOf(target)
 
 /**
- * 「打开应用」格的行首字形 —— 绑成哪一档就画哪一颗；不是这一族（或绑的是纯应用）返回 `null`，
+ * 「打开应用」格的行首字形 —— 绑成哪一档就画哪一颗；绑的是**整个应用**时返回 `null`，
  * 由调用点退回格子自己的默认字形。
  *
- *  四档互斥：
- *  · 小窗打开（`window:` / `appshortcut:w:…`）→ 小窗；
- *  · 快捷方式（`appshortcut:`）→ 表格 + 箭头那颗；
- *  · 应用里某个具体界面（`app:包名/类名`）→ 屏幕；
- *  · 整个应用（`app:包名`）→ 不覆盖，用默认那颗。
+ *  **只有三档**（「小窗」不参与：它只说明「用哪种方式起」，不是「绑到了什么」——
+ *  以前它单独占一档，于是 `window:包名/类名` 会被画成小窗、看不出绑的是某个界面）：
+ *  · 快捷方式（`appshortcut:`，带不带 `w:` 都一样）→ 表格 + 箭头那颗；
+ *  · 应用里某个具体界面（`包名/类名`，`app:` 与 `window:` 都算）→ 屏幕；
+ *  · 整个应用（纯包名）→ 不覆盖，用默认那颗。
  *
  *  单独一支只为让 `BuiltInTile` 别顶破 detekt 的圈复杂度上限。
  */
 private fun appTileIcon(action: Action): ImageVector? =
     when (action) {
-        is Action.AppWindow -> PageIcons.TileSmallWindow
-        is Action.AppShortcut -> if (action.window) PageIcons.TileSmallWindow else PageIcons.ShortcutMark
-        is Action.App -> if (AppTarget.activity(action.target) != null) PageIcons.ActivityScreen else null
-        else -> null
+        is Action.AppShortcut -> {
+            PageIcons.ShortcutMark
+        }
+
+        is Action.App, is Action.AppWindow -> {
+            if (AppTarget.activity(action.appTarget.orEmpty()) != null) PageIcons.ActivityScreen else null
+        }
+
+        else -> {
+            null
+        }
     }
 
 /**
- * 「打开应用」格选中时标题下面那行小字 = **当前绑的应用名**（两种动作都要认：`app:` 与 `window:`）。
+ * 「打开应用」格选中时标题下面那行小字 = **当前绑的是哪一个**。
  *
- *  名字查一次就缓存（PM 查询，入参是动作所以只在换动作时重查）。
+ *  · 应用 / 某个界面：应用名（`微信`）；
+ *  · 快捷方式：`应用名: 快捷方式名`（`微信: 扫一扫`）—— 光写应用名的话，
+ *    绑的是扫一扫还是收付款在网格里看不出来。
+ *
+ *  名字查一次就缓存（PM 查询，入参是动作所以只在换动作 / 名字表变了时重查）。
  *  少认一种时那一格就没有小标题（实证：开着小窗挑完应用回来，标题下面是空的）。
  */
 @Composable
 private fun SettingsPage.rememberBoundAppLabel(current: Action): String? =
-    remember(current) {
-        val target =
-            when (current) {
-                is Action.App, is Action.AppWindow -> current.appTarget
+    remember(current, configState.config.value.appNames) {
+        when (current) {
+            is Action.App, is Action.AppWindow -> current.appTarget?.let { boundAppText(it) }
 
-                // 快捷方式（`appshortcut:`）也算「打开应用」那一族：这一格的小字同样要显示应用名
-                is Action.AppShortcut -> current.pkg
+            // 快捷方式（`appshortcut:`）也算「打开应用」那一族，小字写「应用: 快捷方式」
+            is Action.AppShortcut -> shortcutTitle(current)
 
-                else -> null
-            }
-        // 先看绑定里**存下来的名字**（`app:999@包名/Activity|微信 2` 的 `|` 之后）：
-        //  那是选的时候一并落盘的，包被卸载 / 改名之后仍然显示当时那个名字，
-        //  也省掉「每次重组都查一次包信息」。没有才退回现查（老配置 / 手写绑定）。
-        target?.let { boundAppText(it) }
+            else -> null
+        }
     }
+
+/**
+ * 快捷方式那一档的小字：`微信: 扫一扫`。
+ *
+ *  快捷方式**自己的名字**只存在 `Config.appNames`（键是身份，挑的时候与绑定同一次落盘）——
+ *  token 里没有它，现查也查不到（`appNameOf` 对快捷方式目标会退回**应用名**）。
+ *  所以拿不到名字、或者拿到的就是应用名时**只写应用名**，别写成「微信: 微信」。
+ *
+ *  应用名那一边带上用户前缀：分身（`999@`）要在名字后面缀「2」，走 `appNameOf` 才认得出。
+ */
+private fun SettingsPage.shortcutTitle(action: Action.AppShortcut): String {
+    val app = boundAppText(AppTarget.format(action.pkg, action.userId))
+    val own = configState.config.value.appName(action.plainTarget)
+    return if (own.isNullOrBlank() || own == app) app else "$app: $own"
+}

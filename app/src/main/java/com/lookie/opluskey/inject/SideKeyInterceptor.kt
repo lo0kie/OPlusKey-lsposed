@@ -11,6 +11,20 @@ import com.lookie.opluskey.inject.input.GestureDetector
 import io.github.libxposed.api.XposedInterface
 
 /**
+ * 「不在白名单」那条日志**不报**的几个键码 —— 音量 / 电源。
+ *
+ *  它们同样会走进策略回调（实测音量键 keyCode=25 也会进来），每按一次音量打一行 W 会把日志刷满；
+ *  而「用户按的是侧键、模块却不认识」这种情况本来就不该被它们淹没。
+ */
+private val QUIET_KEY_CODES =
+    setOf(
+        KeyEvent.KEYCODE_VOLUME_UP,
+        KeyEvent.KEYCODE_VOLUME_DOWN,
+        KeyEvent.KEYCODE_VOLUME_MUTE,
+        KeyEvent.KEYCODE_POWER,
+    )
+
+/**
  * 一次按键的判定：这个键是不是侧键、该判成什么手势。
  */
 internal class SideKeyInterceptor(
@@ -46,10 +60,23 @@ internal class SideKeyInterceptor(
      * 注入的键会**再走一遍**这条按键路径 ⇒ 再被认领、再判一次手势 ⇒ 每 ~100ms 一轮的自持循环
      *（真机实测，见 `docs/device-findings.md`）。合成事件带的是虚拟键盘的 `deviceId`
      *（`KeyInjector` 显式传 -1），认它的号即可放行。
+     *
+     * ## 判据必须**只作用在我们可能注入的键**上
+     *
+     *  有 ROM 的**真实**侧键事件同样是 `deviceId = -1`（实测 PLQ110 / ColorOS 17：一次按压的
+     *  DOWN、UP 两条都带 -1）。只看 deviceId 会把它们整条当合成事件放行，表现是「单独按没反应、
+     *  偶尔凑出一个孤立 UP 才补判一次单击」。
+     *
+     *  而 `KeyInjector` 下发的永远是**动作里的 keyCode**（主屏幕 / 返回 / 音量 / 媒体 / 截图这类），
+     *  侧键那几个码（735 / 780 / 781 / 782）**从不由我们自己注入** —— 所以这几个码即便 deviceId
+     *  是 -1 也是真按键。将来若加了「注入侧键码」的动作，这条判据要跟着重看，否则会重新自持。
      */
     private fun isSynthetic(keyEvent: KeyEvent): Boolean =
-        keyEvent.deviceId == android.view.KeyCharacterMap.VIRTUAL_KEYBOARD ||
-            keyEvent.deviceId < 0
+        KeyId.fromAnyKeyCode(keyEvent.keyCode) == null &&
+            (
+                keyEvent.deviceId == android.view.KeyCharacterMap.VIRTUAL_KEYBOARD ||
+                    keyEvent.deviceId < 0
+            )
 
     /**
      * 撤掉已经排下的手势 —— 长按枪、双击窗、连发任务（`GestureDetector.reset` 三者都会摘）。
@@ -112,18 +139,29 @@ internal class SideKeyInterceptor(
         }
         // 合成事件（我们自己重注入的）不认领：认领就是自持循环（见 [isSynthetic]）
         if (isSynthetic(keyEvent)) {
-            XLog.d("按键（$point）：合成事件（deviceId=${keyEvent.deviceId}），放行给系统")
+            // 提成 W：这条在 release 里也要能看到 —— 「遥控器式的真事件被当合成丢了」正是
+            //   这次 PLQ110 那种故障唯一的一行证据（d 级在正式包里被编译期消灭）。
+            XLog.w("按键（$point）：合成事件（deviceId=${keyEvent.deviceId} keyCode=${keyEvent.keyCode}），放行给系统")
             return false
         }
+
+        // 「自定义按键」页开着监听时，把这一下**旁路**报回去（只读，不改认领 / 放行）。
+        //  刻意摆在 keyCode 白名单**之前**：那一页要的是「用户按了哪些键」，
+        //  摆到白名单后面就只剩侧键自己那份码，别的键一个都听不到。
+        KeyWatch.report(keyEvent)
 
         // 白名单校验而非「必须等于 735」：这条路上报的是 ColorOS 注入的内部码（780/781/782），
         // 且连音量键也会进来（实测 keyCode=25），不能按「能进来就是侧键」直接吞掉。
         // 判据只有一处：KeyId.acceptedKeyCodes（经 KeyId.fromAnyKeyCode 查询）。
         val id =
             KeyId.fromAnyKeyCode(keyEvent.keyCode) ?: run {
-                // 留在 d：这条路上音量键也会进来，改 W 会被连调音量刷屏；
-                // 排查「侧键为什么没被接管」看 feedDetector 的 DOWN/UP 两行 W。
-                XLog.d("按键（$point）：keyCode=${keyEvent.keyCode} 不是侧键，放行给系统")
+                // 只对**不是音量 / 电源**的键、且只在按下那一下打 W：那几个键也走这条回调，每次都打
+                // 会把日志刷满。留 `d` 的话在 release 里会被编译期消灭 —— 「按了键但模块没认领」
+                // 于是**一行都没有**，而这正是排查「侧键没反应」最缺的一条
+                // （ROM 换了内部码 / 换了键码时，用户日志里得能看见那个数）。
+                if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.keyCode !in QUIET_KEY_CODES) {
+                    XLog.w("按键（$point）：keyCode=${keyEvent.keyCode} 不在认领白名单，放行给系统")
+                }
                 return false
             }
 
@@ -143,6 +181,9 @@ internal class SideKeyInterceptor(
         }
         // 同上：合成事件不认领
         if (isSynthetic(keyEvent)) return false
+
+        // 同上：白名单之前先旁路报一声（那一页要听的是**所有**键）
+        KeyWatch.report(keyEvent)
 
         // 这一层能收到所有按键，所以按 keyCode 认领（只认原始码 735）
         val id = KeyId.fromKeyCode(keyEvent.keyCode)

@@ -149,16 +149,11 @@ internal fun SettingsPage.AppPickerList(
                 // 而按下标滚到当前绑定应用的偏移 [APP_LIST_HEADER_ITEMS] 只算了顶上那个占位项
                 // —— 多一项就错一行。
                 items(ui.shown, key = { it.target }) { app ->
-                    // `animateItem()` 是 `LazyItemScope` 的成员 —— 只能在 `items { }` 里取到，
-                    // 所以由调用点建好递进去（`AppRow` 自己没有那个作用域）。
-                    //
-                    // **只留换位、不留淡入淡出**：`fadeInSpec` / `fadeOutSpec` 默认都在，于是
-                    // 清单查完那一刻整屏行从透明渐显（220ms）—— 读起来就是「行尾那枚图标闪了一下」
-                    // （图标小、又正好是深色背景上最显眼的一笔）。过滤时行增删的位移仍然带动画。
+                    // **不给 `Modifier.animateItem()`** —— 理由写在 [AppRow] 的 KDoc 里：
+                    // 它把「过滤之后下标变了」当成「这一行换位了」。
                     AppRow(
                         app = app,
                         row = row,
-                        itemModifier = Modifier.animateItem(fadeInSpec = null, fadeOutSpec = null),
                         onClick = {
                             // **点行不产生「选中」**：这一页的选中位（[AppPickerUiState.pending]）
                             // 只表示「当前已绑定的那个」，进页时由 `beginVisit` 放进去。
@@ -219,20 +214,30 @@ private class RowState(
  *
  *  **点一行即进下一级**（挑这个应用里的具体界面 / 快捷方式），所以行尾那枚图标画的是**当前选中**
  *  的四档之一（箭头 = 没选中 / 勾 = 整个应用 / 一块屏 = 里面某个界面 / 表格+箭头 = 某个快捷方式）。
+ *
+ * ## 为什么这一行**不给** `Modifier.animateItem()`
+ *
+ *  `animateItem` 按**下标**记位置：过滤一次（搜「微信」把列表收窄），后面每一行的下标都变了，
+ *  它把这种变化当成「这一行**换位**了」，于是给每一行走一遍换位 spring —— 真机上的表现就是
+ *  「末行（企业微信）从屏幕**底部**滑进来」，清空搜索时又从底部滑出去。滚动同理：顶栏逐步折叠时
+ *  每一项的 placement 每帧都在变，行会一直追着手指跑。
+ *
+ *  「选择界面」那一页（`ActivityRow`）更早就撤掉了同一件，那边量过滚动帧耗时是干净的
+ *  （UI 线程 traversals 中位 0.02ms、RenderThread 1.85ms）—— 说明这不是掉帧，是位移被动画化的滞后。
+ *
+ *  代价：过滤时行是瞬切，不再淡入淡出。滚动是高频动作、过滤是低频动作，取舍往滚动这边偏。
  */
 @Composable
 private fun SettingsPage.AppRow(
     app: LaunchableApp,
     row: RowState,
-    /** 由调用点给的 `Modifier.animateItem()` —— 出现 / 消失 / 换位都带动画。 */
-    itemModifier: Modifier,
     /** 点这一行：进二级页挑具体界面（拉不起来的应用由调用点拦下）。 */
     onClick: () -> Unit,
 ) {
     val tick = rememberTick()
     val withSystem = picker.showSystemApps.value
     Card(
-        itemModifier
+        Modifier
             .fillMaxWidth()
             .padding(horizontal = PAGE_MARGIN)
             // 间距在高度之前给：这样 [APP_ROW_HEIGHT] 量的是卡片自己，那 12dp
@@ -321,6 +326,12 @@ private fun SettingsPage.LocateSelected(
         with(LocalDensity.current) {
             (collapsedHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING + GRID_GAP / 2).roundToPx()
         }
+    // 「现在」被顶栏 + 搜索带挡住的那一段：此刻顶栏还是**展开**的，判「看不看得见」要用展开高
+    //  （与上面那个「滚过去之后该落在哪」是两笔账）。
+    val coveredPx =
+        with(LocalDensity.current) {
+            (currentHeaderHeight(scrollBehavior) + searchBandDp).roundToPx()
+        }
     LaunchedEffect(selected, shown, searchBandDp) {
         if (ui.located) return@LaunchedEffect
         if (selected == null || filter.isNotBlank()) return@LaunchedEffect
@@ -331,16 +342,22 @@ private fun SettingsPage.LocateSelected(
         val index = shown.indexOfFirst { AppTarget.sameApp(it.target, selected) }
         // 清单还没到（`shown` 空）不算定位过：等它到了再走这一次
         if (shown.isEmpty()) return@LaunchedEffect
-        if (index > 0) {
-            // `scrollToItem` 是程序性跳转，不走嵌套滚动那条路 ⇒ 顶栏不会自己折叠，跳完还是
-            // 展开的、把目标行压在下面，因此直接把折叠量拉满。
-            collapseHeader(scrollBehavior)
-            XLog.w(
-                "定位到已选：index=$index 顶栏 offset=${scrollBehavior.state.heightOffset}" +
-                    "/limit=${scrollBehavior.state.heightOffsetLimit} inset=$listTopInsetPx",
-            )
-            listState.scrollToItem(index + APP_LIST_HEADER_ITEMS, scrollOffset = -listTopInsetPx)
+        // **已经完整可见就一动不动**（连顶栏都不折）—— 目标挤在头两三行时，硬按「落到挡板
+        //  下面」去滚只会把它顶上去半截：先折顶栏（列表整体上移一截）再按展开时的高度补偿，
+        //  两边对不上，表现出来就是「选中第二、第三行时那一行被 header 压掉一半多」。
+        //  二级页（`LocateActivitySelected`）一直是这么判的，一级页这边原先漏了。
+        if (index <= 0 || listState.rowFullyVisible(index + APP_LIST_HEADER_ITEMS, coveredPx)) {
+            ui.located = true
+            return@LaunchedEffect
         }
+        // `scrollToItem` 是程序性跳转，不走嵌套滚动那条路 ⇒ 顶栏不会自己折叠，跳完还是
+        // 展开的、把目标行压在下面，因此直接把折叠量拉满。
+        collapseHeader(scrollBehavior)
+        XLog.w(
+            "定位到已选：index=$index 顶栏 offset=${scrollBehavior.state.heightOffset}" +
+                "/limit=${scrollBehavior.state.heightOffsetLimit} inset=$listTopInsetPx",
+        )
+        listState.scrollToItem(index + APP_LIST_HEADER_ITEMS, scrollOffset = -listTopInsetPx)
         ui.located = true
     }
 }
