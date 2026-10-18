@@ -1,6 +1,5 @@
 package com.lookie.opluskey.host.action
 
-import com.lookie.opluskey.bridge.FlexibleWindowBridge
 import com.lookie.opluskey.core.model.MiniWindowGeometry
 import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.ZoomWindowWire
@@ -124,28 +123,6 @@ internal object MiniWindowFacts {
     val EXPANDED_SCALE: Float get() = MiniWindowGeometry.effective.scale
 
     /**
-     * 「缩小动画」走哪一档。**这是宿主侧常量 ⇒ 切档只要 `kill` 宿主，不用整机重启**
-     * （注入侧那份实现是档位无关的，见 [FlexibleWindowBridge.sendMiniAnim]）。
-     *
-     * - [MiniAnimMode.OFF]（**现行**）：不播动画，走 recents 正门（原地收、窗口完整、无动画）。
-     * 定回来当现行档的原因有两条：(1) 动画每帧的守卫要求任务是「带标题栏的柔性任务」，
-     *   普通全屏任务**每帧直接 bail**，所以只有「先真转换」之后才播得动；(2) 转换与动画叠在一起时，
-     *   **横屏应用**（守卫按显示方向判定，判定与事实不一致时会被带进动画档）屡次表现为
-     *   「收不成小窗」。**进得去**优先于有动画。
-     * - [MiniAnimMode.CONVERT_THEN_ANIM]（B）：先真转换、再播动画。落点精确；留着备选。
-     * - [MiniAnimMode.ANIM_THEN_CONVERT]（A）：先动画后转换 —— ** 实测此档结构上不成立**：
-     *   动画器每帧的守卫是 `FlexibleWindowUtils.isFlexibleTaskAndHasCaption(task)`，
-     *   普通全屏任务**每帧直接 bail**（真机日志刷满 `updateAnimationLayer task is not flexible task`，
-     *   画面纹丝不动）。所以**必须先真转换**，A 档只在动画期间"看起来"是任务；留着它只为留档。
-     *
-     * A / B 的几何取舍（见 `docs/zoom-window.md` §十二）：小窗在屏上是 `1020×1812`（0.563）、
-     * 全屏是 `1272×2772`（0.459），**小窗不是全屏的等比缩小**（纵向被缩短），
-     * 而动画器只做等比 `setMatrix` ⇒ 两头必有一头对不齐。B 档保的是**落点**，
-     * 代价是动画第一帧就是「小窗布局被等比放大」，和按下去前看到的画面不同。
-     */
-    val MINI_ANIM_MODE = MiniAnimMode.OFF
-
-    /**
      * 动画起点：**全屏外观** —— `startScale=1.0` 配 `startRect` 的 `(0,0)` 就是恒等变换，
      * 起来那一帧和用户按下去前看到的画面完全一致。
      *
@@ -160,40 +137,24 @@ internal object MiniWindowFacts {
     const val MINI_ANIM_START_ALPHA = 1.0f
 
     /**
-     * 动画终点的不透明度。设成 0 就是「边缩边淡出」，用来把 A 档收尾那次跳变盖掉；
-     * 先给 1.0（不淡出），看真机观感再决定要不要淡。
+     * 动画终点的不透明度。设成 0 就是「边缩边淡出」；现行给 1.0（不淡出）——
+     * 落点精确（先真转换再播），收尾没有跳变要盖。
      */
     const val MINI_ANIM_FINISH_ALPHA = 1.0f
 
     /**
      * 交给框架的时长。注意：spring 档位的实际收敛时长由**阻尼比 / 刚度**决定
-     * （框架写死 `0.86 / 250`），这个值主要进日志、以及给 A 档排期用。
+     * （框架写死 `0.86 / 250`），这个值主要进日志。
      */
     const val MINI_ANIM_DURATION_MS = 400L
 
     /**
-     * A 档「动画播完 → 真转换」之间的等待余量。
+     * 真转换之后等多久再启动动画。**0 = 立刻**。
      *
-     * spring 收敛（`dampingRatio=0.86 / stiffness=250`）比 [MINI_ANIM_DURATION_MS] 长，
-     * 真机实测同一族动画约 `660ms` 收尾。等短了会在动画中途触发转换（内容当场重排，很难看）。
-     */
-    const val MINI_ANIM_SETTLE_MS = 450L
-
-    /**
-     * B 档：真转换之后等多久再启动动画。**0 = 立刻**。
-     *
-     * 留这个旋钮是因为动画器开头有一道 `isInTransition` 过滤，会把「正在过渡中」的任务
-     * **静默剔掉**（`no animation or leash.`）。刚转换完那一瞬可能正好处在过渡里 ——
-     * 若真机日志出现那句，把这个值往上调（100 / 200）再试，**不用重启**。
+     * 现在用的那条入口（`startFlexibleSpringAnimation`）**没有** `isInTransition` 过滤，所以
+     * 转换完立刻播是安全的；留这个旋钮只是给「真机上观感不对」时一个不用改注入侧的退路。
      */
     const val MINI_ANIM_AFTER_CONVERT_DELAY_MS = 0L
-
-    /** 见 [MINI_ANIM_MODE]。 */
-    enum class MiniAnimMode {
-        OFF,
-        ANIM_THEN_CONVERT,
-        CONVERT_THEN_ANIM,
-    }
 
     /**
      * 展开档走哪条路：`false`（默认）= 应用侧 **recents 正门**；`true` = `system_server` 伪造态。

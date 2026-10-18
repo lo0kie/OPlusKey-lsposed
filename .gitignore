@@ -24,4 +24,5 @@ keystore.properties
 
 # 设备原始包（只本地留作反编译核对，不入库）
 reference/*.apk
-reference/__pycache__/
+# `tools/` 下的校验脚本会留下字节码缓存（跑一次就出现在 git status 里）
+__pycache__/

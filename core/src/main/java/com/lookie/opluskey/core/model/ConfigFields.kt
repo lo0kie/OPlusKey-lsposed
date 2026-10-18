@@ -97,6 +97,8 @@ object ConfigFields {
 
     const val LANGUAGE_JSON = "language"
     const val LANGUAGE_EXTRA = "language"
+    const val MINI_WINDOW_ANIM_JSON = "miniWindowAnim"
+
     const val COLOR_OS_API_JSON = "colorOsApi"
     const val COLOR_OS_API_EXTRA = "color_os_api"
 
@@ -222,9 +224,23 @@ object ConfigFields {
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     val F_COLOR_OS_API = Field(COLOR_OS_API_JSON, COLOR_OS_API_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COLOR_OS_API))
 
+    /**
+     * 「前台转小窗」走带动画那条路 —— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：
+     * 读它的是宿主进程里的执行器，它本来就读配置文件。
+     */
+    val F_MINI_WINDOW_ANIM = Field(MINI_WINDOW_ANIM_JSON, null, Kind.Bool(GlobalConfig.DEFAULT_MINI_WINDOW_ANIM))
+
     /** `GlobalConfig` 的全部字段。 */
     val GLOBAL_FIELDS: List<Field> =
-        listOf(F_DOUBLE_CLICK_MS, F_VIBRATE, F_INSTANT_SINGLE, F_TOAST_ON_RUN, F_LANGUAGE, F_COLOR_OS_API)
+        listOf(
+            F_DOUBLE_CLICK_MS,
+            F_VIBRATE,
+            F_INSTANT_SINGLE,
+            F_TOAST_ON_RUN,
+            F_LANGUAGE,
+            F_COLOR_OS_API,
+            F_MINI_WINDOW_ANIM,
+        )
 
     // ── `Config` 自己那两位（都在正文顶层、都只落盘）
 

@@ -217,10 +217,14 @@ object ConfigStore {
             // 放开权限只为 adb 排查方便，release 侧是空实现
             if (openReadable) exposeToOthers(dir, tmp)
 
-            // rename 在同一文件系统内是原子的，失败（跨挂载点 / 个别 FS 不支持）才退回「复制 + 删」
+            // rename 在同一文件系统内是原子的。失败（跨挂载点 / 个别 FS 不支持）**不退回「复制 + 删」**：
+            //  `copyTo(overwrite = true)` 是先清空目标再写，半途失败会把一份坏 JSON 留在目标上，
+            //  而读方一旦把它记成 `Unreadable` 就永不再写（写方被闸）—— 一次退路失败比「这次不写」更糟。
+            //  所以删掉 tmp、返回 false，让调用方按「没写进去」处理。
             if (!tmp.renameTo(target)) {
-                tmp.copyTo(target, overwrite = true)
-                tmp.delete()
+                runCatching { tmp.delete() }
+                XLog.w("落盘失败：rename 没成功（${target.path}），这次不写")
+                return false
             }
             true
         } catch (e: Throwable) {

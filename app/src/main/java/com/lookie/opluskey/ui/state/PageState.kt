@@ -150,4 +150,18 @@ internal class FallbackOwners :
             XLog.w("推进兜底 Lifecycle 到 RESUMED 失败", e)
         }
     }
+
+    /**
+     * 放掉这一套 —— 换页时被 [com.lookie.opluskey.ui.PageViewTree.attachOne] 调（那一页已经不在）。
+     *
+     *  只清 `ViewModelStore`：里面的 ViewModel 不该跟着宿主活到进程结束。**不动 lifecycle**：
+     *  上一页的 View 可能还在退场动画里被引用着，把它置成 DESTROYED 会让还在组合里的东西当场抛。
+     */
+    fun dispose() {
+        try {
+            viewModelStore.clear()
+        } catch (e: Throwable) {
+            XLog.w("清兜底 ViewModelStore 失败（已忽略）", e)
+        }
+    }
 }

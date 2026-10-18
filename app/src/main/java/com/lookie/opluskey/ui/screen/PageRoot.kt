@@ -41,7 +41,17 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun SettingsPage.Page() {
     // 键是 Unit：整页只跑一次。`loaded` 翻 true 会重跑本函数，但这里不会重启。
-    LaunchedEffect(Unit) { loadPageState() }
+    //  载入失败不能把宿主 `:ui` 进程带走（在组合协程里抛出去就是未捕获异常）：兜住并留一行 w，
+    //  页面会停在启动底色上，排查时看得到这句话。
+    LaunchedEffect(Unit) {
+        try {
+            loadPageState()
+        } catch (e: Throwable) {
+            //  载入失败不能把宿主 `:ui` 进程带走（组合协程里的未捕获异常会直接崩）。
+            //  页面停在启动底色上，排查时看这一行。
+            XLog.w("载入页面状态失败（页面停在启动底色）：${e.javaClass.simpleName}", e)
+        }
+    }
     // 系统栏顶边在**首帧是 0**（注入进来的 ComposeView 还没收到 insets），而顶栏与内容的顶部
     //  让位都按它算 ⇒ 那一帧内容整体偏上约 40dp，下一帧才落回（真机录屏：让位 107dp → 165dp）。
     //  所以这一帧先只铺底色（与页面底色同值，看不出来），等 inset 到了再画整棵树。

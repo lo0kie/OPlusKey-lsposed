@@ -31,7 +31,7 @@ import com.lookie.opluskey.ui.isImeVisible
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.TAB_PAGE_SWITCH_MS
+import com.lookie.opluskey.ui.model.STEP_ROW_EXIT_MS
 import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.CommandUiState
@@ -208,8 +208,10 @@ private fun SettingsPage.CommandTabSync(pagerState: PagerState) {
 private fun SettingsPage.CommandResetTail() {
     LaunchedEffect(commandDraft.resetPending) {
         if (commandDraft.resetPending) {
-            delay(TAB_PAGE_SWITCH_MS + 60L)
-            //  注意：这 240ms 里用户可能已经在输入框里敲字了（点「重置」之后焦点还在名称 / 命令框上），
+            // 等的是**步骤行退场**（`STEP_ROW_EXIT_MS`）播完，留 40ms 余量收尾；不是换 tab 的时长
+            //  （那是另一件事，多等 100ms 只会让表单在原地干等）。
+            delay(STEP_ROW_EXIT_MS + 40L)
+            //  注意：这段等待里用户可能已经在输入栏里敲字了（点「重置」之后焦点还在名称 / 命令框上），
             //  无条件 `reset()` 会把刚敲进去的内容一起吞掉。
             //  指纹一致才收尾；不一致说明用户已经在写新的了，重置的意图已被覆盖，把表单留给他。
             if (commandDraft.draft.contentFingerprint() == commandDraft.resetBaseline) {

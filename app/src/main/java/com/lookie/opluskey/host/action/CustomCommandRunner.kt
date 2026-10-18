@@ -231,7 +231,10 @@ internal class CustomCommandRunner(
             merged.add(text)
             cursor++
         }
-        return merged.joinToString("; ") to cursor
+        //  用 `&&` 而不是 `;`：`sh -c "a; b"` 的退出码只取**最后一条**，前一步失败既不报错、
+        //  也不会拦住后一步 —— 用户看到的是「没跑成却当成功」。`&&` 让失败当场停下、退出码非 0。
+        //  （用户命令里自带分号/后台符的老问题两种写法都一样，不是这里新引入的。）
+        return merged.joinToString(" && ") to cursor
     }
 
     private companion object {

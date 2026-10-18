@@ -1,0 +1,175 @@
+name: 构建 APK
+
+# 列表里那条 run 的标题。不写的话 GitHub 默认取**触发它的提交信息** —— 推 master 与推 tag 是同一个
+# 提交，两条 run 的标题就会一模一样（一个构建一个发布），分不出谁是谁。
+run-name: 构建 · ${{ github.ref_name }}
+
+# 这一条只管「构建 + 验证 + 留产物」，**没有任何发布步骤** —— 发版在 `release.yml`（tag 触发），
+# 它按提交 SHA 取这里的产物去发。两条 workflow 各管一段，于是推 master 的 run 图里不会再挂着
+# 一个恒为 skipped 的 release job。
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: debug + release
+    runs-on: ubuntu-latest
+    outputs:
+      version_name: ${{ steps.dist.outputs.version_name }}
+      version_code: ${{ steps.dist.outputs.version_code }}
+      build_id: ${{ steps.dist.outputs.build_id }}
+      tag: ${{ steps.dist.outputs.tag }}
+      signed: ${{ steps.sign.outputs.signed }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      # 必须 21：compileOptions 与 jvmTarget 都是 21；本机能过是靠 Gradle 自动下发 21 toolchain，
+      # CI 里别赌那次下载。
+      - name: 装 JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # compileSdk = 37 对应 `platforms;android-37.0`（Android 17 带小版本，目录也带）。
+      - name: 装 Android SDK（platform 37.0 / build-tools 36.0.0）
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platforms;android-37.0 build-tools;36.0.0"
+
+      - name: 配置 Gradle 缓存
+        uses: gradle/actions/setup-gradle@v6
+
+      # 没配签名密钥时**只出 debug**：release 的收款码与名单是**封存**的（见 `app/build.gradle.kts`
+      # 的 `SealReleaseAssets`），密钥由签名证书派生、且没有明文回退 —— 拿不到 keystore 那一步
+      # 必然失败。与其让构建去撞墙，不如这里就说清「这一轮不出 release」。
+      - name: 写入正式签名
+        id: sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::notice title=未配置签名密钥::只构建 debug；release 需要正式签名（封存层没有明文回退）"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.jks
+          {
+            echo "storeFile=release.jks"
+            echo "storePassword=${KEYSTORE_PASSWORD}"
+            echo "keyAlias=${KEY_ALIAS}"
+            echo "keyPassword=${KEY_PASSWORD}"
+          } > keystore.properties
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      # 静态检查放在出包**之前**：格式 / 静态检查 / Android Lint 三道闸不过就别往下走，
+      # 不必等到打完两个包才发现少一个空格。`gate` 是根脚本注册的聚合任务
+      # （= `spotlessCheck detekt lintDebug`，两个模块一起算），与本地同一条命令（AGENTS.md 二、1.2）。
+      - name: 静态检查（格式化 / detekt / lint）
+        run: ./gradlew gate
+
+      # 依赖锁定（`app/gradle.lockfile` 已入库，开关见根目录 `build.gradle.kts`）。
+      #
+      #  为什么这道闸要卡在 CI：改了 `dependencies { }` 却忘了重新锁时，**本地照样编得过**
+      #  —— Gradle 对「没进锁文件的那条配置」是宽松的（按解析结果走），只有把锁文件重写一遍
+      #  才看得出来版本变了。于是同一份源码、下周出出来的包，传递依赖可能换了个补丁版本，
+      #  而这个模块的界面跑在别人的进程里，线上只看得到行为差异、看不到依赖表。
+      #
+      #  判据是「重写一遍锁文件，然后看它有没有变」—— 不是「有没有锁」。
+      - name: 校验依赖锁定
+        run: |
+          ./gradlew :app:dependencies :core:dependencies --write-locks -q > /dev/null
+          if ! git diff --quiet -- app/gradle.lockfile core/gradle.lockfile; then
+            git --no-pager diff -- app/gradle.lockfile core/gradle.lockfile | head -80
+            echo "::error::app/gradle.lockfile 或 core/gradle.lockfile 与声明的依赖不一致 ——"\
+                 "本地跑 ./gradlew :app:dependencies :core:dependencies --write-locks 后把锁文件一起提交"
+            exit 1
+          fi
+          echo "锁文件与声明的依赖一致（app $(grep -c '=' app/gradle.lockfile) 条 / core $(grep -c '=' core/gradle.lockfile) 条）"
+
+      # 耦合审计（docs/decoupling.md 七）：包级导入图 + 禁止边 + 环检测。
+      # 这道闸补的是上面那三步看不见的东西 —— detekt / lint 管单文件，管不了
+      # 「注入侧 import 了界面层」「core 反过来引 ui」这类**跨包越界**。
+      # 脚本是纯标准库的，ubuntu 上装好的 python3 直接能跑。
+      - name: 耦合审计（禁止边 / 包级环）
+        run: python3 tools/audit-coupling.py
+
+      # 每一轮都打整包（debug + release）：这两个包既是验证对象，也是 `release.yml` 发版时
+      #   要取的那一份，还是出问题时能直接下来复现的那一份。
+      - name: 构建 debug / release
+        run: |
+          if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
+            ./gradlew assembleDebug assembleRelease
+          else
+            ./gradlew assembleDebug
+          fi
+
+      # 三个版本值由 `tools/read-version.sh` 读（`release.yml` 调的是同一个脚本 —— 一处实现，
+      #   不会两边漂）。抓不到就 fail，绝不兜底：兜底会发出一个 tag 叫 `0-0.0.0` 的 release，
+      #   而模块仓库的机器人是从 APK 的二进制清单读真值算 tag 的，两边不一致时它会再改一次 tag。
+      - name: 抓版本号
+        id: dist
+        run: bash tools/read-version.sh
+
+      - name: 收产物到 dist
+        run: |
+          mkdir -p dist
+          # 文件名按 **versionName**（用户认的是这个），不按 BUILD_ID —— 后者是源码里那个
+          #  手写常量，忘了更新时产物名会停在上一版（`oplus-key-2026-10-15-0001-release.apk` 就是这么来的）。
+          cp app/build/outputs/apk/debug/app-debug.apk     "dist/oplus-key-${{ steps.dist.outputs.version_name }}-debug.apk"
+          # 没签名那一轮没有 release 产物，别在这儿报错（封存那一步已经挡在前面了）
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk "dist/oplus-key-${{ steps.dist.outputs.version_name }}-release.apk"
+          fi
+          ls -l dist
+
+      # 验收底线：脚本在 `tools/verify-apk.sh`，`release.yml` 发版前也调它 —— 一套判据一处实现。
+      - name: 校验验收底线（AGENTS.md 二、1.2）
+        run: bash tools/verify-apk.sh dist
+
+      - name: 上传 debug 产物
+        uses: actions/upload-artifact@v7
+        with:
+          name: oplus-key-debug-${{ steps.dist.outputs.version_name }}
+          path: dist/*-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 上传 release 产物
+        # 这份产物是 `release.yml` 发版时按 SHA 取的（保留 90 天）；没签名那一轮压根没有 release
+        # 包（见 `signed` 那一步），这时上传会空手报错，故仍需这个条件。
+        if: steps.sign.outputs.signed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: oplus-key-release-${{ steps.dist.outputs.version_name }}
+          path: dist/*-release.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      # 崩溃栈还原全靠它：release 开了 R8，抓到的栈是 `a.a.b` 这种，
+      # 没有 mapping 只能靠猜。与 APK 分开存、保留更久（90 天），
+      # 按版本号对齐 —— 用户报的那一版能不能还原，就看这份文件在不在。
+      - name: 上传混淆映射
+        if: steps.sign.outputs.signed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: oplus-key-mapping-${{ steps.dist.outputs.version_name }}
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: warn
+          retention-days: 90

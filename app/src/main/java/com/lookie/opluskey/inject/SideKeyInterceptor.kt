@@ -25,8 +25,12 @@ internal class SideKeyInterceptor(
     /**
      * 手势判定器 —— 拿到的是 hook 回调里的原始事件，时序是真的，不会被「解冻灌包」搅乱。
      *
-     * 线程归属：`interceptKeyBeforeQueueing` 由 InputReader / Dispatcher 线程调，只有那几个计时器
-     * 在 main looper 上；线程归属尚未在真机上量清，不要按主线程的假设改这里的同步方式。
+     * 线程归属（**真机实测**，2026-10-18，PLK110 / ColorOS 17）：按键回调跑在 **`InputReader` 线程**
+     * 上 —— 量的时候给 DOWN/UP 两行**临时**加了线程名（判据行的字面量量完即还原），9 次按压、
+     * 18 条日志无一例外；而判定器排的那几枪计时器落在装配方给的 `Handler`（**main looper**）上。
+     * 所以这是**两条线程 + 共享状态**的结构：
+     * `Pending` 的每个字段都必须是 `@Volatile`（见 `GestureDetector` 里那份字段表），
+     * 摘枪一律走 `removeCallbacks`（确定），不要退化成「到点读一眼状态」。
      */
     private val detector =
         GestureDetector(
@@ -155,7 +159,8 @@ internal class SideKeyInterceptor(
     /**
      * 把一条原始按键事件喂给判定器。
      *
-     * 判定器本体也包一层 catch：它跑在 system_server 主线程上，抛出去就是整机崩。
+     * 判定器本体也包一层 catch：它跑在 **InputReader 线程**上（实测，见 `detector` 的注释），
+     * 抛出去会顺着输入读取线程把 system_server 带崩。
      * 失败按「这一下不接管」处理（返回 false，放行给系统）。
      */
     private fun feedDetector(
@@ -174,6 +179,7 @@ internal class SideKeyInterceptor(
                     KeyEvent.ACTION_DOWN -> {
                         // DOWN/UP 是验收判据链的第一环（AGENTS.md 二、1.2），必须是 W ——
                         // 注入侧 i/d 在 LSPosed 日志页里看不到；一次按键两行，不会刷屏。
+                        //  字面量**不要动**（六、2：判据级日志的字面量是接口，改它等于改判据）。
                         XLog.w("${id.label}（$point）：DOWN keyCode=${keyEvent.keyCode}")
                         detector.onKeyDown(id, keyConfig)
                         true

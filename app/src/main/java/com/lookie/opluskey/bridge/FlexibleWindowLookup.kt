@@ -6,7 +6,7 @@ import com.lookie.opluskey.core.reflect.Reflect
 // 「柔性窗口」那一族共用的反射查找 —— **生产路径（小窗指令 / 原生动画）与调试探针走同一份**。
 //
 //  为什么单列这一个文件：探针存在的意义就是「在真机上问出生产路径会看到什么」。两边各写一份时
-//  先漂的一定是探针（它取任务时只试 `matchMode=0`，而生产路径逐档试 0/1/2）—— 于是同一台机器上
+//  先漂的一定是探针（它取任务时只试 `matchMode=0`，而生产路径逐档试 0/1）—— 于是同一台机器上
 //  探针报「任务找不到」、生产却能照常干，日志给出一条**与事实相反**的结论，比没有探针更坏。
 //  所以这一族只此一份：改任一档的行为，探针跟着一起变（见 `docs/decoupling.md`）。
 
@@ -42,8 +42,11 @@ internal fun instanceOf(cls: Class<*>?): Any? =
         ?: cls?.let { Reflect.callStatic(it, "getInstance") }
 
 /**
- * `anyTaskForId` 的三种 matchMode 逐档试（[FlexibleWindowBridge.TASK_MATCH_MODES]）：`0` 只找已
- * attach 的、`1` 再加 recents、`2` 还能顺手从 recents 恢复。**先命中先返回**。
+ * `anyTaskForId` 的 matchMode 逐档试（[FlexibleWindowBridge.TASK_MATCH_MODES]）：`0` 只找已
+ * attach 的、`1` 再加 recents。**先命中先返回**。
+ *
+ *  `2`（`…AND_RESTORE`）**故意不试**：它会把只剩 recents 记录的任务**恢复出来**，而这里只是「查」——
+ *  理由写在 [FlexibleWindowBridge.TASK_MATCH_MODES] 的注释里（生产与探针同一份档位）。
  *
  *  **不能用按「参数运行时类」找方法的 [Reflect.call] 重载** —— Kotlin 会把 Int 装箱成 `Integer`，
  *  而真实签名是 `int` 原始类型，永远匹配不上、还静默返回 null（实测踩过）。
@@ -72,5 +75,10 @@ internal fun anyTask(
             return task
         }
     }
+    // 说清「没试哪一档」，否则看日志的人会以为「三种都试过、任务真没了」—— 那是两回事
+    XLog.w(
+        "$tag：anyTaskForId(#$taskId) 在 mode=${FlexibleWindowBridge.TASK_MATCH_MODES.joinToString()} 都没命中" +
+            "（没试 mode=2：那档会从 recents 把任务恢复出来，是一次状态改变）",
+    )
     return null
 }

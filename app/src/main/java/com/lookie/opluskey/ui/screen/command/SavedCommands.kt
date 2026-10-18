@@ -125,11 +125,15 @@ internal fun SettingsPage.SavedCommandsSection(
                 if (rowIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
                 CommandTileRow(
                     tileCount = row.size,
+                    // 行高下限按**这一行里那些命令自己的类型**算，不按「当前正在编辑的草稿」是什么：
+                    //  网格与草稿是两件事 —— 以前取 `commandDraft.draft.kind`，于是翻到「单条」那栏
+                    //  时整片网格的多条命令卡都被压成半个正方形（反过来也一样）。
+                    //  一行里两种类型混着时取高的那一档（`1f`）：宁可单条卡偏高，不能把多条卡压扁。
                     minHeightRatio =
-                        if (commandDraft.draft.kind == CommandKind.SINGLE) {
-                            SINGLE_CARD_MIN_HEIGHT_RATIO
-                        } else {
+                        if (row.any { it.kind != CommandKind.SINGLE }) {
                             1f
+                        } else {
+                            SINGLE_CARD_MIN_HEIGHT_RATIO
                         },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
                 ) { tileIndex ->

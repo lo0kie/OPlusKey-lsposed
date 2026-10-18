@@ -131,9 +131,16 @@ internal fun SettingsPage.logDebugState() {
     XLog.w(
         "调试·状态：screen=$screen 栈=${navStack.joinToString(">")} 主开关=${key.enabled} " +
             "机型=$deviceModel 清单=$deviceSupport " +
-            "单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token} | " +
+            //  token 与**命令正文**一律过脱敏：`shell:` / `intent:` 的正文可能内嵌 token、密码，
+            //  而这一行是 W 级 —— 既进 logcat 也进「导出日志」那份文件（口径见 `XLog.redactCommand`）。
+            //  时长 / 指纹仍能把「同一处、前后两次」对上，判据不受影响。
+            "单击=${XLog.redactToken(key.single.token)}" +
+            " 双击=${XLog.redactToken(key.double.token)}" +
+            " 长按=${XLog.redactToken(key.long.token)} | " +
             "表单 kind=${commandDraft.draft.kind.id} editing=${commandDraft.draft.editingName} " +
-            "name='${commandDraft.draft.name}' cmd='${commandDraft.draft.single}' steps=${commandDraft.draft.steps.toList()} | " +
+            "name='${commandDraft.draft.name}'" +
+            " cmd=${XLog.redactToken(commandDraft.draft.single)}" +
+            " steps=${commandDraft.draft.steps.map { XLog.redactToken(it) }} | " +
             "命令库=${configState.commands.value.map { it.name }}",
     )
 }

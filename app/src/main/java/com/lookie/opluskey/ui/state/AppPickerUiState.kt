@@ -106,8 +106,11 @@ internal class AppPickerUiState(
         // 首尾空格要去掉：粘贴 / 输入法回车常带一个尾空格，那时整表会「什么都没搜到」
         val filter = picker.filter.value.trim()
         val showBroken = picker.showUnopenable.value
-        // 拼音那一档要小写比：排序键是罗马化后的小写串（见 `LaunchableApp.sortKey`）
-        val needle = filter.lowercase()
+        // 拼音那一档要小写比：排序键是罗马化后的小写串（见 `LaunchableApp.sortKey`）。
+        //  **必须钉 `Locale.ROOT`**：默认 locale 会把字母改成当地写法（土耳其语里 `I` → `ı`、
+        //  `i` 的大写是 `İ`），而排序键是固定 ASCII 小写 —— 那台机器上按读音就搜不到东西。
+        //  与 `ActivityPickerRules` 里那一处同一份口径。
+        val needle = filter.lowercase(java.util.Locale.ROOT)
         loaded
             .orEmpty()
             .asSequence()

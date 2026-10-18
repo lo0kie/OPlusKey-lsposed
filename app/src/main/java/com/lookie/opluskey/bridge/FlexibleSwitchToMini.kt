@@ -187,17 +187,19 @@ internal fun FlexibleWindowBridge.switchToMiniLocal(
         XLog.w("小窗指令：读不到任务的 TaskExt，跳过 switchState")
         return
     }
-    // 三个字段逐个落到日志里：任何一个没写进去，switchState 的前置就不成立，
-    // 后面那一句「已调用」也就不该当作成功来读（三个 `?.set` 静默可选写
-    // + 无条件打「已置 …」，失败被伪装成成功，正是降级纪律要消灭的那种）。
-    if (fake.missing.isEmpty()) {
-        XLog.w(
-            "小窗指令：冒充柔性全屏态成功（mScenario=$SCENARIO_FULL_SCREEN / mHasCaption=true" +
-                " / mFlexibleZoomState=$ZOOM_STATE_FULL_SCREEN）",
-        )
-    } else {
+    // 三个字段逐个落到日志里：任何一个没写进去，switchState 的前置就不成立（它第一句就早退、
+    // **不抛异常**）—— 那种情况下再调它，「没抛」会被读成「已调用 / 成功了」。
+    // 所以这里干脆不调：报出缺的字段、把已写进去的假字段回滚掉。判据行沿用原样（缺字段时的
+    // 结论「小窗不会出现」并没有变），「这次没调」是新加的一行 —— 判据级日志的字面量是接口。
+    if (fake.missing.isNotEmpty()) {
         XLog.w("小窗指令：冒充柔性全屏态**只写进去一部分**，缺 ${fake.missing} —— switchState 大概率不生效")
+        XLog.w("小窗指令：前置不成立，这次不调 switchState；" + rollbackFake(fake))
+        return
     }
+    XLog.w(
+        "小窗指令：冒充柔性全屏态成功（mScenario=$SCENARIO_FULL_SCREEN / mHasCaption=true" +
+            " / mFlexibleZoomState=$ZOOM_STATE_FULL_SCREEN）",
+    )
     if (!callSwitchState(controller, task, taskId)) {
         XLog.w(
             "小窗指令：switchState(#$taskId, $STATE_MINI) 没调成功 —— 小窗不会出现（上面一行写了断在哪）；" +
@@ -205,6 +207,10 @@ internal fun FlexibleWindowBridge.switchToMiniLocal(
         )
         return
     }
+    // 这一行只说「方法调进去了」，**不是成功**：`switchState` 不返回值，任务不是带标题栏的
+    //  柔性任务、或本来就处在目标态时，它第一句就早退，同样不抛异常。窗口到底成没成，由宿主侧
+    //  `MINI_VERIFY_MS` 之后那次 `zoomStateOf` 验收说话（读不到就报「无法验收」，不猜）。
+    //  字面量沿用原样（判据级日志的字面量是接口，六、2）；这条语义写在注释里，不改日志。
     XLog.w("小窗指令：switchState(#$taskId, $STATE_MINI) 已调用（应播「全屏 → 小窗」原生动画）")
 }
 
@@ -217,11 +223,14 @@ internal fun FlexibleWindowBridge.switchToMiniLocal(
  * 调 `controller.switchState(task, 1, REASON)`。
  *
  * @return **真的调进去了**（方法找到 **且** 调用没抛）。
+ *  这个名字是故意的：它**不表示小窗成了**。`switchState` 是 `void`，前置不满足时它第一句就
+ *  早退 —— 早退同样「没抛」。
  *
  *  注意：不能「方法找到就 `return true`」：`switchState` 不返回值，
  *  而 `Reflect.call` 的 null 既可能是成功也可能是抛了 —— 于是「方法在、调用炸了」也会被
- *  上游那句「已调用（应播原生动画）」当成成功来读，排查时白查一轮。
+ *  上游那句「已调用」当成成功来读，排查时白查一轮。
  *  这里自己 `invoke` 一次，把「找不到方法」与「调用抛了」分开报。
+ *  「前置不满足」那一档由调用方按 [FakeResult.missing] 拦在调用之前。
  */
 internal fun FlexibleWindowBridge.callSwitchState(
     controller: Any,

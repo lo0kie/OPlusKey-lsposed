@@ -72,7 +72,12 @@ internal class KeyInjector(
 
     private fun build(loader: ClassLoader): Handle? {
         val manager = inputManager(loader) ?: return null
-        val keyEventCls = Reflect.findClass(loader, Framework.Calls.KEY_EVENT) ?: return null
+        val keyEventCls =
+            Reflect.findClass(loader, Framework.Calls.KEY_EVENT) ?: run {
+                //  静默 return null 的话，「按了没反应」时根本看不出断在这一环（五、2）。
+                XLog.w("找不到 ${Framework.Calls.KEY_EVENT}，keyevent 注入这条路走不通")
+                return null
+            }
 
         val ctors = keyEventCls.constructors
         // 按**参数类型**挑，不能只数个数：同一个类里有第二个 10 参构造器时，
@@ -113,7 +118,10 @@ internal class KeyInjector(
             Reflect.method(
                 manager.javaClass,
                 Framework.Calls.INJECT_INPUT_EVENT,
-                Reflect.findClass(loader, Framework.Calls.INPUT_EVENT) ?: return null,
+                Reflect.findClass(loader, Framework.Calls.INPUT_EVENT) ?: run {
+                    XLog.w("找不到 ${Framework.Calls.INPUT_EVENT}，keyevent 注入这条路走不通")
+                    return null
+                },
                 Int::class.javaPrimitiveType!!,
             )
                 ?: Reflect.methodByNameAndArity(manager.javaClass, Framework.Calls.INJECT_INPUT_EVENT, 2)

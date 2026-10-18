@@ -222,7 +222,9 @@ object CommandLibrary {
                 XLog.w("读命令库：正文里没有 $KEY_LIBRARY_COMMANDS 这一段 ⇒ 按读不懂处理")
                 Load.Unreadable
             } else {
-                Load.Ok(parse(text))
+                val commands = parse(text)
+                reportDanglingRefs(commands)
+                Load.Ok(commands)
             }
         } catch (e: Throwable) {
             XLog.w("读命令库：正文不是合法 JSON ⇒ 按读不懂处理（${e.message}）")
@@ -248,9 +250,16 @@ object CommandLibrary {
         cache?.let {
             if (it.modified == modified && it.length == length && it.inode == inode) return it.commands
         }
-        val fresh = load()
-        cache = Cached(modified, length, inode, fresh)
-        return fresh
+        //  **只缓存 Load.Ok**：读不懂（半截文件 / IO 抖动）塌成的空表一旦按指纹记下来，
+        //  指纹不变就一直命中 —— 一次抖动被记成「命令库为空」，要等到下次写盘才恢复。
+        val state = loadState()
+        return if (state is Load.Ok) {
+            cache = Cached(modified, length, inode, state.commands)
+            state.commands
+        } else {
+            cache = null
+            emptyList()
+        }
     }
 
     /**
@@ -269,6 +278,31 @@ object CommandLibrary {
             )
         cache = null
         return ok
+    }
+
+    /**
+     * 报一次**悬空引用** —— 某条命令引用了库里根本不存在的 `cmd:<名字>`。
+     *
+     *  这种条目执行时必然是 `NOT_FOUND`（按下去只弹一句「命令不存在」），可它在界面上好好列着。
+     *  来路是手改文件，或删命令时别处被漏清（正常删除路径会顺手摘掉引用，见
+     *  `ui/screen/command/CommandLibrary.removeCommand`）。
+     *
+     *  **只报不改**：替用户清掉那一步、或者改成「无操作」，都是在动他的配置；而这一行日志能让
+     *  「按下去没反应」当场有答案。判据与改名 / 删引用同源（[Command.referencedNames]）。
+     */
+    private fun reportDanglingRefs(commands: List<Command>) {
+        if (commands.isEmpty()) return
+        val names = commands.mapTo(HashSet(commands.size)) { it.name }
+        val missing = LinkedHashSet<String>()
+        for (c in commands) {
+            for (ref in c.referencedNames()) if (ref !in names) missing += ref
+        }
+        if (missing.isNotEmpty()) {
+            XLog.w(
+                "命令库有悬空引用（cmd:<名字> 指向不存在的命令）：${missing.joinToString()} —— " +
+                    "执行到那一步会是 NOT_FOUND，界面上仍会列着",
+            )
+        }
     }
 
     /**

@@ -36,8 +36,6 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.collapseHeader
 import com.lookie.opluskey.ui.collapsedHeaderHeight
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.escapeEmphasis
-import com.lookie.opluskey.ui.model.APP_ROW_HEIGHT
 import com.lookie.opluskey.ui.model.APP_TITLE_SUMMARY_GAP
 import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.model.LaunchableActivity
@@ -57,6 +55,7 @@ import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -115,18 +114,19 @@ internal fun SettingsPage.ActivityPickerScreen(
     //  实例 ⇒ [ActivityRows] 那一整棵（含列表 content lambda 与每一行的 `animateItem`）全都跳不过重组。
     val data =
         remember(loaded, term, target, selected) {
+            val all = loaded.orEmpty()
             val shown = shownActivities(loaded, term)
-            // 两节：快捷方式（`shortcutId` 非空）与界面。顺序固定为「界面在前」——
-            //  用户多半是来找某个页面的，快捷方式是补充。
-            val interfaces = shown.filter { it.shortcutId == null }
-            val shortcuts = shown.filter { it.shortcutId != null }
+            // 「当前绑的是哪一行」一律按**完整清单**判（`all`），不按过滤后的 `shown`：
+            //  搜索词只决定显示什么，不决定绑的是什么。
+            val normalized = resolveSelection(selected, target, all)
             PickerListData(
                 target = target,
-                selected = resolveSelection(selected, target, shown),
+                selected = normalized,
                 bound = selected != null,
                 filterActive = term.isNotEmpty(),
-                interfaces = interfaces,
-                shortcuts = shortcuts,
+                // 两节（快捷方式 / 界面）由它自己切，顺序固定「界面在前」
+                shown = shown,
+                defaultPick = defaultPickOf(all, normalized, target),
             )
         }
     // 带子高度由顶栏那一侧量（`ActivitySearchBand`），这里只读 —— 与「选择应用」页同一条通道
@@ -153,8 +153,8 @@ internal fun SettingsPage.ActivityPickerScreen(
             scrollBehavior = scrollBehavior,
             searchBandDp = searchBandDp,
         )
-        // 这一页唯一的写入入口：进页就有一颗（默认选着「自动」），点它才算挑了。
-        PageCornerFab(visible = current != null) {
+        // 这一页唯一的写入入口：**常驻**（`current` 一定有值 —— 最差也是「自动」）。
+        PageCornerFab(visible = true) {
             ActivityConfirmFab(current, onPick)
         }
     }
@@ -204,19 +204,18 @@ private fun SettingsPage.ActivityEmptyState(
  *  点行只把标记挪过去（[PickedDetail]），点它才写配置。与一级页那颗是同一套手势与样式
  *  （`PageFabButton`），只是这一页交出去的是「具体界面 / 快捷方式」。
  *
- *  @param detail 当前选中；`null` 时按钮不可见（理论上不会 —— 进页默认选中「自动」）
+ *  @param detail 当前选中（一定有值 —— 进页默认选中「自动」）
  */
 @Composable
 private fun SettingsPage.ActivityConfirmFab(
-    detail: PickedDetail?,
+    detail: PickedDetail,
     onPick: (picked: String, shortcutId: String?, label: String?) -> Unit,
 ) {
     val tick = rememberTick()
     PageFabButton(
         onClick = {
             tick()
-            val picked = detail ?: return@PageFabButton
-            onPick(picked.target, picked.shortcutId, picked.label)
+            onPick(detail.target, detail.shortcutId, detail.label)
         },
     ) {
         Icon(
@@ -242,52 +241,25 @@ private class PickerListData(
     val bound: Boolean,
     /** 有搜索词时不定位：过滤后的下标与定位用的下标对不上，滚过去只会滚错。 */
     val filterActive: Boolean,
-    /** 界面那一节（不含「自动」）。 */
-    val interfaces: List<LaunchableActivity>,
-    /** 快捷方式那一节；空的时候整节不画。 */
-    val shortcuts: List<LaunchableActivity>,
-) {
-    /** 两节都空 —— 空态与「还在查」都靠它判（`loaded == null` 时这个值没有意义）。 */
-    val isEmpty: Boolean get() = interfaces.isEmpty() && shortcuts.isEmpty()
-
+    /** 过滤之后**要显示**的那些行（两节都从它切出来，见 [interfaces] / [shortcuts]）。 */
+    shown: List<LaunchableActivity>,
     /**
      * 进页时**默认选中的那一条**：绑定里记着的具体项（界面 / 快捷方式），否则「自动」。
      *
-     *  在构造时就查好（而不是每次组合再 `firstOrNull` 一遍）：它只在 [selected] 变化时变。
-     *  [selected] 已经过 [resolveSelection] 规范化 —— 一定落在「自动」或列表里某一项上，
-     *  所以最后那条兜底分支拿到的就是「自动」。
+     *  由调用点按**完整清单**算好（[defaultPickOf]）再传进来 —— 它是「当前绑的是什么」，
+     *  与「这次搜索显示出哪几行」是两件事，不能在这两节（已过滤）里找。
      */
-    val defaultPick: PickedDetail? =
-        shortcuts.firstOrNull { AppTarget.same(it.target, selected) }?.let { PickedDetail(it.target, it.shortcutId) }
-            ?: interfaces.firstOrNull { AppTarget.same(it.target, selected) }?.let { PickedDetail(it.target, null) }
-            ?: PickedDetail(target, null)
+    val defaultPick: PickedDetail,
+) {
+    /** 界面那一节（不含「自动」）。 */
+    val interfaces: List<LaunchableActivity> = shown.filter { it.shortcutId == null }
+
+    /** 快捷方式那一节；空的时候整节不画。 */
+    val shortcuts: List<LaunchableActivity> = shown.filter { it.shortcutId != null }
+
+    /** 两节都空 —— 空态与「还在查」都靠它判（`loaded == null` 时这个值没有意义）。 */
+    val isEmpty: Boolean get() = interfaces.isEmpty() && shortcuts.isEmpty()
 }
-
-/**
- * 把「当前绑定」规范成**列表里确实存在的某一行** —— 找不到就退回「自动」。
- *
- *  默认选中「自动」是这一页的起点：用户从应用那一级点进来，多半就是要绑整个应用；
- *  绑定里若记着某个具体界面 / 快捷方式，且这次清单里还有它，才点亮那一行。
- *
- *  为什么要判「在不在列表里」：卸载重装、应用改版删掉某个活动、或者换成另一个应用进来 ——
- *  那时绑定里的那条在这份清单里根本不存在。不兜这一下，整页一行都不亮，看起来像从没绑过；
- *  兜成「自动」则始终有一行亮着，用户一眼知道当前是什么档。
- */
-private fun resolveSelection(
-    selected: String?,
-    target: String,
-    shown: List<LaunchableActivity>,
-): String? =
-    when {
-        // 没绑过 / 绑的就是这个应用 ⇒ 「自动」
-        selected == null || AppTarget.same(selected, target) -> target
-
-        // 绑的是具体某一项，且它还在这次清单里 ⇒ 用它
-        shown.any { AppTarget.same(it.target, selected) } -> selected
-
-        // 那一项已经不在清单里（界面被删 / 换了应用）⇒ 退回「自动」
-        else -> target
-    }
 
 /**
  * 列表本体 —— 两节：界面（含「自动」）与快捷方式。
@@ -470,46 +442,6 @@ private fun SettingsPage.LocateActivitySelected(
 }
 
 /**
- * 搜索命中 —— 名字、类名、拼音三者任一包含即算。
- *
- *  · 名字：活动自己声明了 label 的那些（「扫一扫」这类）；
- *  · 类名：绝大多数活动没有 label，只能靠类名认（`ui.LauncherUI`）；
- *  · 拼音：名字是汉字时，用户会打 `saoyisao` 而不是 `扫一扫`（键见 [LaunchableActivity.sortKey]）。
- *
- *  单独一支是因为上面那个组合函数已经贴着 detekt 的长度上限；命中判据并在这里而不是再拆
- *  一个 `hit()` —— 文件里的函数数量也贴上限了。
- */
-private fun shownActivities(
-    all: List<LaunchableActivity>?,
-    term: String,
-): List<LaunchableActivity> {
-    val list = all ?: return emptyList()
-    if (term.isEmpty()) return list
-    val needle = term.lowercase(java.util.Locale.ROOT)
-    return list.filter {
-        it.label.contains(term, ignoreCase = true) ||
-            it.summary.contains(term, ignoreCase = true) ||
-            it.name.contains(term, ignoreCase = true) ||
-            it.sortKey.contains(needle)
-    }
-}
-
-/** 空态那句话 —— 真因优先：**没查出来**不是「一个都没有」。 */
-private fun emptyText(
-    failed: Boolean,
-    all: List<LaunchableActivity>?,
-    term: String,
-): String =
-    when {
-        failed -> I18n.get(Strings.APP_PICKER_ACTIVITY_LOAD_FAILED, "界面列表没读出来，退回上一页再进来试一次")
-
-        all.isNullOrEmpty() -> I18n.get(Strings.APP_PICKER_ACTIVITY_EMPTY, "这个应用没有可从外部打开的界面")
-
-        // 用户输入会整体过一遍正文记号：先转义
-        else -> I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT_ACTIVITY, escapeEmphasis(term))
-    }
-
-/**
  * 一行界面：名字 + 去包名的类名 + 单选圈。与一级那一行（`AppRow`）同一套版式。
  *
  * ## 为什么这一页**不给** `Modifier.animateItem()`
@@ -537,9 +469,17 @@ private fun SettingsPage.ActivityRow(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = PAGE_MARGIN)
-            // 间距在高度之前给：行高量的是卡片自己，这 12dp 是卡片外面的行距
-            .padding(bottom = GRID_GAP)
-            .height(APP_ROW_HEIGHT),
+            // 行距给在卡片外面。这一行**没有行首图标**，高度交给内容 —— `BasicComponent`
+            // 自己的内边距上下对称，定死行高只会把两行字顶到上沿、底部空一截。
+            .padding(bottom = GRID_GAP),
+        // 点击与涟漪挂在卡片上：`BasicComponent` 只包住内容，点击若挂在它身上，
+        // 涟漪画到内容底边就停了，卡片底部那一截摸不到反馈。
+        pressFeedbackType = PressFeedbackType.None,
+        showIndication = true,
+        onClick = {
+            tick()
+            onClick()
+        },
     ) {
         BasicComponent(
             // 行尾选中指示与一级同一套字形（空心 / 实心圈），不用 COUI 的单选圈
@@ -557,10 +497,7 @@ private fun SettingsPage.ActivityRow(
                 )
             },
             cardListPosition = CardListPosition.Full,
-            onClick = {
-                tick()
-                onClick()
-            },
+            // 不给 `onClick` —— 点击在外面那个 `Card` 上（理由见那里的注释）
         ) {
             Text(
                 text = title,

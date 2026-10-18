@@ -31,7 +31,7 @@ const val DEBUG_PROBE: Boolean = true
 const val SHOW_BUILD_TIME: Boolean = true
 
 /**
- * 开发期把「界面契约写错」直接抛出来（release / beta 关）。
+ * 开发期把「界面契约写错」直接抛出来（release 关）。
  *
  *  现在只有一处：页面骨架那条「顶栏高度」通道没被提供时 —— 静默兜底会让内容偏上一截，
  *  而这正是这段时间反复出现的那类问题，所以宁可让 debug 包当场崩。

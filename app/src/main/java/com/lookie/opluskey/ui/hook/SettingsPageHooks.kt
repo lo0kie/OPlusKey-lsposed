@@ -310,7 +310,13 @@ internal object SettingsPageHooks {
         if (baseClass?.isInstance(chain.thisObject) != true) {
             return chain.proceed()
         }
-        (chain.thisObject as? android.app.Activity)?.let { HostChrome.applyHostTheme(it) }
+        //  主题这一步是**前置动作**：它抛了会让下面的 `chain.proceed()` 整条不执行，
+        //  宿主 onCreate / setContentView 就此跳过、设置页直接建不起来。所以单独兜住，
+        //  `proceed()` 无论如何都跑（与本文件另一处「前置动作单独 try、proceed 无条件」同口径）。
+        (chain.thisObject as? android.app.Activity)?.let {
+            runCatching { HostChrome.applyHostTheme(it) }
+                .onFailure { e -> XLog.w("应用宿主主题失败（继续建页）：${e.javaClass.simpleName}", e) }
+        }
 
         // 再把宿主自己的 onCreate 跑完。这一步失败是宿主的 bug，让它照常崩。
         val result = chain.proceed()

@@ -162,7 +162,7 @@ object Strings {
     const val DONATE_WECHAT = "donate.wechat"
 
     const val FEEDBACK_ISSUE = "feedback.issue"
-    const val FEEDBACK_QQ_CHANNEL = "feedback.qq_channel"
+    const val FEEDBACK_QQ_GROUP = "feedback.qq_group"
     const val FEEDBACK_TELEGRAM = "feedback.telegram"
 
     const val AUTHOR_GITHUB = "author.github"
@@ -215,6 +215,8 @@ object Strings {
 
     const val HOME_COLOROS_DESC = "home.coloros_desc"
     const val HOME_TITLE = "home.title"
+    const val HOME_MINI_ANIM_DESC = "home.mini_anim_desc"
+    const val HOME_MINI_ANIM_TITLE = "home.mini_anim_title"
     const val HOME_TOAST_DESC = "home.toast_desc"
     const val HOME_TOAST_TITLE = "home.toast_title"
     const val HOME_VIBRATE_DESC = "home.vibrate_desc"

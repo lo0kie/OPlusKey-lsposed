@@ -221,9 +221,12 @@ internal object SideKeyGestureHooks {
             when (val l = ConfigStore.load()) {
                 is ConfigStore.Load.Ok -> {
                     val key = l.config.key(com.lookie.opluskey.core.model.KeyId.PLUS)
+                    //  三个 token 都过 [XLog.redactToken]（`shell:` / `intent:` 的正文可能带凭据）
                     XLog.w(
                         "宿主进程读到配置：接管=${key.enabled}" +
-                            " 单击=${key.single.token} 双击=${key.double.token} 长按=${key.long.token}" +
+                            " 单击=${XLog.redactToken(key.single.token)}" +
+                            " 双击=${XLog.redactToken(key.double.token)}" +
+                            " 长按=${XLog.redactToken(key.long.token)}" +
                             "（文件 ${ConfigStore.sharedFile().path}）",
                     )
                 }

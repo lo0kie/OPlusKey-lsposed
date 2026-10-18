@@ -103,8 +103,12 @@ android {
         applicationId = "io.github.lo0kie.opluskey"
         minSdk = 33 // ColorOS 13（Android 13）起才有侧键派发
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        // 第一个进 LSPosed 模块仓库的版本是 1.0.0（仓库里此前 0 条 release —— `0.1.0` 是手动发的，
+        // 没走模块仓库；`0.2.0` 没发过）。`versionCode` 仍取 3 而不是 1：1 / 2 都被历史包用掉了
+        // （手动发的 0.1.0 与本地出的 0.2.0），而管理器判「有没有新版本」是**严格大于**
+        // （`RepoLoader.upgradable`），安装器也不接受比已装版本小的包 —— 只增不减。
+        versionCode = 3
+        versionName = "1.0.0"
 
         // `build_id`（出包时刻，界面版本行展示）**不在这里**声明：
         //  它是 [GenerateBuildId] 这个任务的产物，由 `androidComponents.onVariants` 挂进各变体的
@@ -187,7 +191,7 @@ android {
             //  代价明说：debug 与 release 现在**不能互相覆盖安装**（签名冲突，要卸载重装），
             //  这是**期望的**隔离。
             signingConfig = signingConfigs.getByName("debug")
-            // 系统「应用信息」里也分得清三档（页面上的版本串另有 `BUILD_KIND`）
+            // 系统「应用信息」里也分得清两档 debug / release（页面上的版本串另有 `BUILD_KIND`）
             versionNameSuffix = "-debug"
         }
 

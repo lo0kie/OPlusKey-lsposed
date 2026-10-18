@@ -11,6 +11,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
@@ -25,10 +26,13 @@ import io.github.suqi8.coui.kmp.basic.cardListPositionOf
  *  （见 `InstantSingleCard`）。两者都定义在 `doubleClickMs` 附近，但用户找它们时是带着
  *  「我在调哪一档」这个前提来的，所以按档分。
  *
- *  注意：这张卡的**写路径**吃与网格同一套「适配清单」闸，但**故意比格子少判一道 `linkReady`**
- *  （格子那边是 `enabled && linkReady && deviceSupported`，与 `pick` 同一判据）：
- *  这张卡写的是**参数**（延迟），写了就落盘，注入侧恢复后照样生效，不需要注入侧回话；
- *  格子点了要写动作、拿去执行，未就绪时写了也是白写。这是有意的不一致，不要再把两边「统一」。
+ *  注意：这张卡的**写路径**与网格**故意少判一道 `linkReady`**（格子那边是 `enabled && linkReady`，
+ *  与 `pick` 同一判据）：这张卡写的是**参数**（延迟），写了就落盘，注入侧恢复后照样生效，
+ *  不需要注入侧回话；格子点了要写动作、拿去执行，未就绪时写了也是白写。
+ *  这是有意的不一致，不要再把两边「统一」。
+ *
+ *  判据里**没有**「适配清单」那一道：清单只回答「这一组验过没有」，不参与任何闸
+ *  （AGENTS 一、13）—— 别照着旧注释把它加回来，那会让清单外的机器整页变灰。
  */
 @Composable
 internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
@@ -53,7 +57,7 @@ internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
                             .copy(doubleClickMs = v),
                 ),
                 "double_click_ms=$v",
-            )
+            ) != CommandsSave.Failed
         }
     }
 }

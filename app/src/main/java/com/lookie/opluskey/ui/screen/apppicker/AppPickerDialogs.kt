@@ -49,8 +49,12 @@ private fun SettingsPage.UnopenableDialog(ui: AppPickerUiState) {
 /**
  * (2)「不支持以小窗口打开」：**只有点 FAB 这一个触发点**（`AppConfirmFab` 里，`fromPick = true`）。
  *
- *  确认 ⇒ 菜单里那一项拨回关，并按 `app:<包名>` 普通打开写下去（用户要的就是「取消勾选、照常存」）；
- *  取消 ⇒ 什么都不做。正文里的应用名用 `「」` 夹住；动作项不上红（不丢用户的东西）。
+ *  确认 ⇒ 菜单里那一项拨回关，并按**原来那个完整目标**普通打开写下去（用户要的就是「取消勾选、
+ *  照常存」）；取消 ⇒ 什么都不做。正文里的应用名用 `「」` 夹住；动作项不上红（不丢用户的东西）。
+ *
+ *  「完整」这三个字是重点：`999@包名/类名` 里的用户前缀是分身的身份，`/类名` 是用户在二级页
+ *  刚挑好的具体界面 —— 早先这里交的是 `app.packageName`，写回去就成了「主用户、自动入口」，
+ *  用户看到的是「我就关了个小窗开关，绑的东西怎么变了」。
  */
 @Composable
 private fun SettingsPage.SmallWindowUnsupportedDialog(
@@ -75,8 +79,11 @@ private fun SettingsPage.SmallWindowUnsupportedDialog(
             picker.smallWindow.value = false
             XLog.w("选择应用：该应用不支持小窗，已把「以小窗口打开」拨回关")
             if (blocked?.fromPick == true) {
-                XLog.w("选择应用：${blocked.app.packageName} 改为普通打开并写入")
-                onPick(blocked.app.packageName, false)
+                //  优先用 `pending`（可能带 `/类名`、`/快捷方式id`，也可能带 `999@`）——
+                //  这一页的 FAB 就是按它弹的这张窗；`app.target` 只是「这个应用」那一档。
+                val target = ui.pending?.target ?: blocked.app.target
+                XLog.w("选择应用：$target 改为普通打开并写入")
+                onPick(target, false)
             }
         },
     )

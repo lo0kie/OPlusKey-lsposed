@@ -16,6 +16,7 @@ import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.actionOf
+import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -50,6 +51,24 @@ internal class BindingGridState(
      *  「快捷功能」那一组里去了。切分与清单必须同源。
      */
     val builtInCount: Int = ActionCatalog.builtInCount(g)
+
+    /**
+     * 格子在界面上的**分行表**（每行是若干个扁平下标）—— 方向键按它挪，不按下标加减。
+     *
+     *  排布是**按组分行**的：内置那一组组各自 `chunked(COLUMNS)`（末行不满就补空位），自定义命令
+     *  再从 `builtInCount` 接着排（见 `BuiltInGrid` / `CustomCommandsGrid`）。所以「下一行」不等于
+     *  `index + COLUMNS` —— 跨过组边界时那个式子会落到别的组里（真机表现：按一次下，焦点跳两行、
+     *  或者干脆跳到左边去）。这里与界面同源：同一份 `groupsFor` + 同一个 [COLUMNS]。
+     */
+    val rows: List<List<Int>> =
+        buildList {
+            var base = 0
+            for ((_, group) in ActionCatalog.groupsFor(g)) {
+                for (row in (base until base + group.size).chunked(COLUMNS)) add(row)
+                base += group.size
+            }
+            for (row in (builtInCount until specs.size).chunked(COLUMNS)) add(row)
+        }
 
     /**
      * 每个格子一个 `FocusRequester`。
@@ -186,6 +205,7 @@ internal fun SettingsPage.bindingActivate(
  * 方向键 / 确认键的接管 —— 预览阶段就吃掉（`onPreviewKeyEvent`），免得被里层的滚动容器先消费。
  *
  *  三条前置判据（任一不满足就整个放行）：主开关关着、非当前页、入口浮层开着。
+ *  确认键另有一条：**链路未就绪时不派发** —— 与格子的 `enabled`（`enabled && linkReady`）同一把尺子。
  */
 @Composable
 internal fun SettingsPage.rememberBindingKeyHandler(
@@ -204,27 +224,55 @@ internal fun SettingsPage.rememberBindingKeyHandler(
 
         if (e.type == KeyEventType.KeyUp) {
             // 确认键在抬起时派发（与平台「按下不算、抬起才算点」一致）
-            if (intent == KeyIntent.CONFIRM) {
-                // 焦点格索引 == `specs` 下标（跳转按钮撤掉之后一一对应）。
-                //  **与点击同一个入口**（[bindingActivate]）：入口格在那边分派（进挑选页 / 弹菜单），
-                // 直接走 `select` 会把 `app:` / `nav:` / `key:` / `panel:` / `zoom:` 这些标记 token
-                // 当取值写进配置。锚点取那一格登记的那份，拿不到就退回占位。
-                st.specs.getOrNull(st.focusedIndex)?.let { spec ->
-                    bindingActivate(st, spec, st.tileAnchors[spec.token] ?: st.noAnchor, enabled)
-                }
-            }
+            if (intent == KeyIntent.CONFIRM) bindingConfirm(st, enabled)
             return@onKey true
         }
+        // 按下那一半的确认键也吃掉（否则里层的滚动容器会当成「滚动 / 激活」再处理一遍）
+        if (intent == KeyIntent.CONFIRM) return@onKey true
 
-        val step = intent.step
-        if (step != 0) {
-            // 焦点范围是 [0, totalCount)；从最后一格继续按「下 / 右」就停在它自己身上。
-            val target = (st.focusedIndex + step).coerceIn(0, st.totalCount - 1)
-            st.focusedIndex = target
-            st.focusers.getOrNull(target)?.requestFocus()
-        }
+        val target = st.moveFocus(st.focusedIndex, intent)
+        st.focusedIndex = target
+        st.focusers.getOrNull(target)?.requestFocus()
         true
     }
+
+/**
+ * 确认键那一下 —— **与点击同一个入口**（[bindingActivate]）。
+ *
+ *  入口格必须由 `activate` 分派（进挑选页 / 弹菜单）：直接走 `bindingSelect` 会把
+ *  `app:` / `nav:` / `key:` / `panel:` / `zoom:` 这些标记 token 当取值写进配置。
+ *  锚点取那一格登记的那份，拿不到就退回占位。
+ *
+ *  判据与格子**同一把尺子**（`enabled && linkReady`，见 `BindingGrids` 里 `ActionTile` 的
+ *  `enabled`）：链路没就绪时格子是灰的、点了不动，而这条路是自己派发的 —— 少判 `linkReady`
+ *  就会出现「灰着的格子，按确认键却进了挑选页 / 弹出了菜单」，进去之后每一步都被 `pick` 拦下。
+ */
+private fun SettingsPage.bindingConfirm(
+    st: BindingGridState,
+    enabled: Boolean,
+) {
+    if (!linkReady) return
+    // 焦点格索引 == `specs` 下标（跳转按钮撤掉之后一一对应）
+    val spec = st.specs.getOrNull(st.focusedIndex) ?: return
+    bindingActivate(st, spec, st.tileAnchors[spec.token] ?: st.noAnchor, enabled)
+}
+
+/**
+ * 从 [from] 往 [intent] 那个方向挪一格 —— **按界面上真实的排布挪**（[BindingGridState.rows]）。
+ *
+ *  上下换行、左右换列；落点落在更短的那一行之外时收到该行最后一格；到头就停在原地
+ *  （「从最后一格继续按下」不动，与原来的钳制同一个手感）。
+ */
+private fun BindingGridState.moveFocus(
+    from: Int,
+    intent: KeyIntent,
+): Int {
+    val row = rows.indexOfFirst { from in it }
+    if (row < 0) return from
+    val col = rows[row].indexOf(from)
+    val line = rows[(row + intent.rowStep).coerceIn(0, rows.lastIndex)]
+    return line[(col + intent.colStep).coerceIn(0, line.lastIndex)]
+}
 
 /**
  * 这一下按键在我们这套网格里是什么意思 —— `null` = 与我们无关，整个放行。
@@ -233,13 +281,16 @@ internal fun SettingsPage.rememberBindingKeyHandler(
  *  「往哪个方向挪」两处判断里，处理器一屏写不完、复杂度也一路顶到阈值。
  */
 private enum class KeyIntent(
-    val step: Int,
+    /** 换几行（上下），左右是 0。 */
+    val rowStep: Int,
+    /** 行内挪几格（左右），上下是 0 —— 换行时保持同一列。 */
+    val colStep: Int,
 ) {
-    UP(-COLUMNS),
-    DOWN(COLUMNS),
-    LEFT(-1),
-    RIGHT(1),
-    CONFIRM(0),
+    UP(-1, 0),
+    DOWN(1, 0),
+    LEFT(0, -1),
+    RIGHT(0, 1),
+    CONFIRM(0, 0),
     ;
 
     companion object {

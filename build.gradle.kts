@@ -66,7 +66,7 @@ fun com.android.build.api.dsl.Lint.applyProjectPolicy() {
  *
  *  提交前要跑的是「格式 / 静态检查 / lint」这三样，**与打包无关**。而过去的口令是
  *  `./gradlew spotlessCheck detekt lintDebug assembleDebug assembleRelease` 一把梭：
- *  那会顺带把**两遍 R8**（release 与 beta 各一遍，见 `app/build.gradle.kts` 的 beta 段）也跑掉，
+ *  那会顺带把 R8（release 那一遍，见 `app/build.gradle.kts` 的 buildTypes）也跑掉，
  *  在某些机器上是三道闸本身的好几倍时间。
  *
  *  分成两条口令之后：改代码时反复跑 `gate`（几十秒量级），真要出包时才 `assemble<X>`。

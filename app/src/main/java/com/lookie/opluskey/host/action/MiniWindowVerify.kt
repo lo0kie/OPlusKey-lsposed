@@ -20,11 +20,10 @@ import com.lookie.opluskey.core.reflect.Reflect
  * **宽 1316 > 屏宽 1272、右侧溢出 185px**。取证与根因见 `docs/device-findings.md` 附十三。
  */
 internal fun MiniWindowLauncher.verifyMiniOrFallback(taskId: Int) {
-    //  注意：「读不到任务信息」**不是**「没变成小窗」：
-    //  `isTaskInZoomWindow` 在 `zoomInfoOf` 为 null（MiniWindowFacts.ROM 改了字段名 / 任务列表读不到）时
-    //  也返回 false —— 会被折成「服务端受理了但没收起来」，弹一句「这个应用不支持小窗」，
-    //  把一个读不到的事实说成了应用的锅。这里先把这两种情形分开。
-    if (zoomInfoOf(taskId) == null) {
+    //  注意：「读不到任务信息」**不是**「没变成小窗」—— 折成后者就等于把「不知道」说成
+    //  「服务端受理了但没收起来」，弹一句「这个应用不支持小窗」，把一个读不到的事实说成应用的锅。
+    //  三态见 [zoomStateOf]。
+    if (zoomStateOf(taskId) == null) {
         XLog.w("zoom:mini → 读不到任务 #$taskId 的信息，无法验收（不报「不支持小窗」）")
         return
     }
@@ -128,12 +127,24 @@ internal fun MiniWindowLauncher.zoomFitsOnScreen(
         rect.right <= display.x && rect.bottom <= display.y
 }
 
-/** 那个任务现在是不是小窗 —— 只看 `windowingMode`（返回码和截图都会骗人）。 */
-internal fun MiniWindowLauncher.isTaskInZoomWindow(taskId: Int): Boolean {
-    val info = zoomInfoOf(taskId) ?: return false
-    val mode = Reflect.fieldValue(info, info.javaClass, MiniWindowFacts.TOP_APP_WINDOWING_MODE_FIELD) as? Int
+/**
+ * 那个任务现在是不是小窗 —— 只看 `windowingMode`（返回码和截图都会骗人）。
+ *
+ *  **三态**：`true` / `false` / `null` = **读不到**（任务信息取不到、或者那个字段名在这个 ROM
+ *  上对不上）。调用方必须把 `null` 与 `false` 分开处理 —— 折成 `false` 就把「不知道」说成了
+ *  「不是小窗」，于是一条已经收好的小窗会被当成失败：重起一次全屏把它顶掉（
+ *  `verifyMiniOrFallback` 的注释里记着这个坑，AppShortcut / 收起档 / 原地收三处也同一个道理）。
+ */
+internal fun MiniWindowLauncher.zoomStateOf(taskId: Int): Boolean? {
+    val info = zoomInfoOf(taskId) ?: return null
+    val mode =
+        Reflect.fieldValue(info, info.javaClass, MiniWindowFacts.TOP_APP_WINDOWING_MODE_FIELD) as? Int
+            ?: return null
     return mode == MiniWindowFacts.WINDOWING_MODE_ZOOM
 }
+
+/** 同上，但把「读不到」折成 `false` —— **只给「读不到也不影响判断」的写日志用**。 */
+internal fun MiniWindowLauncher.isTaskInZoomWindow(taskId: Int): Boolean = zoomStateOf(taskId) == true
 
 /**
  * 那个任务小窗的**应用配置矩形宽 / 屏宽**（`null` = 它不是小窗 / 读不到）。

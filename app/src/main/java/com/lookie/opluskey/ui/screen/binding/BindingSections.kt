@@ -63,7 +63,10 @@ internal fun SettingsPage.BindingGroups(
                 when {
                     // 主开关为关 ⇒ 整页禁用，这张卡也跟着置灰
                     !enabled -> {
-                        I18n.get(Strings.STATUS_DISABLED, "模块未启用")
+                        // 这里是**主开关自己关着**，不是「模块没生效」：`STATUS_DISABLED` 的正文是
+                        //  「确认作用域含 system，换包后需重启」—— 拿它来报这一档，等于把用户赶去
+                        //  LSPosed 里翻一圈，而他要做的只是把开关拨回来。
+                        I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭")
                     }
 
                     isSerialCommand(configState.commands.value, current.token) -> {

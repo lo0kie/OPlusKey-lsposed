@@ -52,11 +52,12 @@
 «展开档»（默认，`zoom:mini`）：
 
 ```
-① 原生缩小动画 —— 现行 `MINI_ANIM_MODE = OFF`，**不播**（见 §13.1；要开就切档）
-     ↓ 未启用
-② 应用侧 recents 正门（startActivityFromRecentsForFlexible，flags=2）← **唯一一条**
+① 应用侧 recents 正门（startActivityFromRecentsForFlexible，flags=2）← **唯一一条**
    `XLog: 走 recents 正门（原地收、无动画）`
-     ↓ 700ms（MINI_VERIFY_MS）后 windowingMode != 100，或服务端没受理
+     ↓ 服务端受理、设置里「前台转小窗时使用动画」开着、且当前是竖屏
+② 原生缩小动画：宿主发 `CMD_MINI_ANIM` → 注入侧调 `startFlexibleSpringAnimation`（§十二）
+     转换是同步的 binder 调用，返回时任务已是柔性任务 ⇒ 立刻播，不必先露出一个静止的小窗
+     ↓ 700ms（MINI_VERIFY_MS）后 windowingMode != 100，或 ① 那一步服务端没受理
 ③ **什么都不做 + Toast「前台应用不支持小窗」**   ← 2026-10-14 用户口径
 ```
 
@@ -287,7 +288,7 @@ FlexibleTaskController#switchState(Task task, int nextState, String reason)   //
 ### 7.3 `switchToMiniLocal` 的完整步骤
 
 ```kotlin
-// 1. 找任务：RootWindowContainer#anyTaskForId(int,int)，matchMode 0/1/2 逐档试（见 §九）
+// 1. 找任务：RootWindowContainer#anyTaskForId(int,int)，matchMode 0/1 逐档试（见 §九；不用 2 = AND_RESTORE）
 // 2. 预置落点几何（修「太长」，7.4）：
 //    ⚠️ 喂**展开档**的几何，绝不能拿 getMiniFlexibleTaskInfo 的值 —— 那是收起档的
 //    ⚠️ 也别喂屏幕矩形 —— 这个 API 要的是**应用配置矩形**（见 7.4）
@@ -372,8 +373,12 @@ mHasCaption 分支
    `getDeclaredMethod` 永远匹配不上、**静默返回 null** （连日志都不打）。对原始参数一律
    `Reflect.method(cls, name, Integer.TYPE, Float.TYPE, …)` 拿 `Method` 再调。
 2. **matchMode**：`anyTaskForId(taskId, matchMode)` 的 `0`
-   只在根任务里找；ColorOS 把任务嵌在根任务底下，要 0/1/2 逐档试（ROM 常量 `MATCH_ATTACHED_TASK_ONLY=0` /
+   只在根任务里找；ColorOS 把任务嵌在根任务底下，要 0/1 逐档试（ROM 常量 `MATCH_ATTACHED_TASK_ONLY=0` /
    `…OR_RECENT_TASKS=1` / `…AND_RESTORE=2`）。
+   **`2` 不用**：那个 `AND_RESTORE` 是真恢复 —— 任务已销毁、只剩 recents 里一条记录时，它会把任务
+   **重新建出来**。生产路径（`switchToMiniLocal` / `CMD_MINI_ANIM`）以为自己在「查一个任务」，
+   实际会顺手把一个已经关掉的应用复活再收成小窗（「按一下侧键，我刚关掉的应用以小窗弹出来」）。
+   探针跟生产**同一份档位**：两边不一致时探针给出的就是与事实相反的结论。
 3. **private 可调**：`Reflect.method` 走 `getDeclaredMethod` + `isAccessible=true`，
    `getMiniFlexibleTaskInfo`（private）可用。
 4. **模块日志在 LSPosed 文件里**：system*server / 宿主侧 `XLog`
@@ -417,8 +422,8 @@ mHasCaption 分支
 5. ⚠️ 每次询问都可能顺带弹一条系统 toast（判 `false`
    时）—— 那是框架的行为，不去压它。所以同一档（同一个包、同一个勾选态）只问一次；真正提交那一下再问一次，多出来的那条 toast 是「用户正按下 ✓」时该说的话。
 
-**⚠️ 2026-10-14 收口状态（`zoom:mini` 展开档）**：主路 = **recents 正门原地收 + `MINI_ANIM_MODE = OFF`**
-（不播动画）。真机用户口径：**进得去小窗**，尺寸「**稍大了一点，但还能接受**」。
+**⚠️ 收口状态（`zoom:mini` 展开档）**：主路 = **recents 正门原地收**；设置里「前台转小窗时使用动画」
+打开时，收成之后再播框架自己的那一段（§十二，**仅竖屏**）。真机用户口径：**进得去小窗**，尺寸「**稍大了一点，但还能接受**」。
 
 残留量与它的来源（都可直接核对）：
 
@@ -700,8 +705,10 @@ python tools/dexdump.py .temp/sidebar/x/classes2.dex method \
 `inspect_android_class`，能拿到字段/方法签名与内部类清单，但**拿不到方法体**）。所以「要方法体」的活优先找
 `oplus-services.jar`（能读）里的那份实现。
 
-⚠️ **§十二 那套动画当前没在用**：`MINI_ANIM_MODE = OFF`（见 §2.2 /
-§13.1）。本章记的机制、签名、坑全部有效，是「要把动画拿回来」时的起点 —— 但**主路已经不走它**。
+⚠️ **§十二 那套动画现在由设置里的开关驱动**（「前台转小窗时使用动画」，`GlobalConfig.miniWindowAnim`）：
+开着时 `zoom:mini` 走「recents 正门收 + 立刻播这一段」，关着时只有原地收。落地顺序只有一种 ——
+**先真转换、再播**（§12.3 ②：动画器每帧的守卫要求任务已是柔性任务）；原先的 A 档（先动画后转换）
+与 `MINI_ANIM_MODE` 那个档位常量**已删**，它们只留档在本章。回调与几何参数仍由宿主侧下发。
 
 ---
 
@@ -793,14 +800,17 @@ OplusActivityManager#startZoomWindow(intent, bundle{extra_window_mode=100}, user
 ⚠️ 复测时注意：**这台机上的单个「单击」动作会被用户随时改**（实测撞到过 `none` / `keyevent:24` /
 `native`），借配置做实验要用「一条命令块内存-改-还原」的方式，别留下改动。
 
-**后续处置（2026-10-14 同日定了下来）**：把主路换回 **recents 正门 + `MINI_ANIM_MODE = OFF`**
+**后续处置（2026-10-14 同日定了下来）**：把主路换回 **recents 正门**
 （= 用户记忆里「进得去小窗、所有状态都对，只是没动画」的那版）。对调 ②/③ 那次实测**横屏进不去小窗** ——
 **「进得去」优先**。随后连 `launch 配方`
 本身也**删了**：它的两个失败分支都通到「回桌面重开」，而用户口径是**收不起来就什么都不做**（§2.2）。想再拿回来，配方与坑都在 §十三 里留着。
 
 ⇒ **§13.1 这个取舍（横屏该是哪种比例）仍然是开着的题**：`recents 正门` 比例对但可能撑出屏幕（真机 `1316×741`
-vs 屏宽 1272，宽方向多约 3.5%），而**能进屏的那条已经被否掉**（横屏进不去）。 `MINI_ANIM_MODE = OFF`
-的另一个理由：转换与动画叠在一起时，横屏应用（守卫按显示方向判定，判定与事实不一致时会被带进动画档）屡次表现为「收不成小窗」。
+vs 屏宽 1272，宽方向多约 3.5%），而**能进屏的那条已经被否掉**（横屏进不去）。
+
+⇒ **动画这一半已经收口**：转场那一段现在只在**竖屏**播（终点几何是竖屏标定值，横屏照样只做原地收）——
+所以「转换与动画叠在一起导致横屏收不成小窗」这条不再会发生。要横屏也有动画，得把终点几何换成框架按当前
+方向算好的那套（`FlexibleTaskController#getAnimationInfo(task, 1)`，注入侧，见 §12.4）。
 
 **侧边栏的官方配方**（`com.coloros.smartsidebar` →
 `PageRoutUtils$startActivityAsZoomWindow$3`，2026-10-14 拉 APK 反编译）：我们这条与它**同一支

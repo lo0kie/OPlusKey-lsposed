@@ -72,12 +72,19 @@ internal class AppLauncher(
         val intent = AppEntry.intentOf(pm, target)
         if (intent == null) {
             // 区分「包还在但没有可启动界面」与「包已不在」，前者提示「已卸载」会误导
+            //  分身目标：主用户的 PM 问不出那个包在不在（`getApplicationInfo` 必抛），
+            //  这一支**不报「可能已卸载」**—— 上面 `resolveAsUser` 已经按 userId 问过 binder，
+            //  拿不到就是「没有可用入口」。误报「已卸载」正是「列表点得动、按下报找不到」的成因之一。
             val installed =
-                try {
-                    pm.getApplicationInfo(pkg, 0)
+                if (userId != 0) {
                     true
-                } catch (e: Throwable) {
-                    false
+                } else {
+                    try {
+                        pm.getApplicationInfo(pkg, 0)
+                        true
+                    } catch (e: Throwable) {
+                        false
+                    }
                 }
             XLog.w("解析不到界面：$target（这个包还在=$installed，user=$userId）")
             onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
@@ -100,11 +107,15 @@ internal class AppLauncher(
             //  一律报 APP_MISSING（「可能已经卸载了」）会把用户带偏 —— 包明明还在。
             //  判据与上面 `intent == null` 那一支同源（`getApplicationInfo` 查得到就是还在）。
             val installed =
-                try {
-                    pm.getApplicationInfo(pkg, 0)
+                if (userId != 0) {
                     true
-                } catch (e2: Throwable) {
-                    false
+                } else {
+                    try {
+                        pm.getApplicationInfo(pkg, 0)
+                        true
+                    } catch (e2: Throwable) {
+                        false
+                    }
                 }
             XLog.w("拉起界面失败：$target（这个包还在=$installed，user=$userId）", e)
             onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
@@ -119,7 +130,7 @@ internal class AppLauncher(
      * `window:包名` —— 用小窗打开（有现成任务就复用，没有才新建一份）。
      *
      *  实现整族搬到了 [MiniWindowLauncher]（`window:` 起法、`zoom:mini` 的两档、ColorOS 小窗反射、
-     *  几何验收与动画路线，连同它专用的常量与 `MiniAnimMode`）。本类只留转发口。
+     *  几何验收与动画路线，连同它专用的常量）。本类只留转发口。
      */
     fun launchAppInWindow(target: String) = mini.launchAppInWindow(target)
 
@@ -382,7 +393,16 @@ private fun tryComponentFallback(
             "改退显式组件 ${target.owner}/$service 再试",
     )
     return try {
-        val explicit = Intent().setComponent(ComponentName(target.owner, service))
+        val explicit =
+            Intent()
+                .setComponent(ComponentName(target.owner, service))
+                .apply {
+                    //  退路只换「怎么定位这个服务」，**载荷不能丢**：少了 triggerType /
+                    //  longPressEventType 这类 extra，服务照样被起、但已经不是用户要的那一下，
+                    //  而日志还写着「退路成功」。
+                    target.action?.let { action = it }
+                    putExtrasOf(target.extras, feature)
+                }
         if (target.foreground) ctx.startForegroundService(explicit) else ctx.startService(explicit)
         XLog.w("oplus:$feature → 显式组件退路成功（${target.owner}/${service.substringAfterLast('.')}）")
         null
@@ -391,6 +411,31 @@ private fun tryComponentFallback(
         e
     }
 }
+
+/**
+ * 把场景表里那几样 extras 原样搬进 Intent。
+ *
+ *  正路（action + setPackage）与退路（显式组件）共用同一份载荷 —— 少了 `triggerType` /
+ *  `longPressEventType` 这类项，服务照样被起、但已经不是用户要的那一下。
+ *
+ *  抽成顶层函数只为让 [tryComponentFallback] 的圈复杂度别顶破 detekt 那一档。
+ */
+private fun Intent.putExtrasOf(
+    extras: Map<String, Any>,
+    feature: String,
+): Intent =
+    apply {
+        extras.forEach { (k, v) ->
+            when (v) {
+                is String -> putExtra(k, v)
+                is Int -> putExtra(k, v)
+                is Long -> putExtra(k, v)
+                is Boolean -> putExtra(k, v)
+                is Float -> putExtra(k, v)
+                else -> XLog.w("oplus:$feature 的 extra $k 类型 ${v.javaClass.simpleName} 搬不过去")
+            }
+        }
+    }
 
 /**
  * 造出「第一次」要发的那个 Intent（起采集与结束两条路共用）。

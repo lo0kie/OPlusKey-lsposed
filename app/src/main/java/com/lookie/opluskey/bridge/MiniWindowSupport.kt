@@ -55,6 +55,7 @@ internal object MiniWindowSupport {
     fun isSupported(
         pkg: String,
         cls: String?,
+        userId: Int,
     ): Boolean? =
         try {
             val managerCls = Reflect.findClass(javaClass.classLoader, MANAGER)
@@ -70,7 +71,8 @@ internal object MiniWindowSupport {
                         manager,
                         method,
                         pkg,
-                        currentUserId(),
+                        //  **按目标的用户问**：传宿主自己的恒 0，问分身那一份会拿到主用户的结论。
+                        userId,
                         cls.orEmpty(),
                         bundled,
                     ) as? Boolean

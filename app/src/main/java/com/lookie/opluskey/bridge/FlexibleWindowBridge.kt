@@ -25,14 +25,9 @@ internal object FlexibleWindowBridge {
      *
      * 与 [CMD_MINI] 的分工：`mini` 是**真的转换**（改窗口模式，一步到位、无动画）；
      * 本指令只动**画面**（对 surface 做 `setPosition/setMatrix/setAlpha`），不动窗口模式。
-     * 所以两个要配合用 —— 顺序由宿主侧决定（见 `MiniWindowFacts.MINI_ANIM_MODE`）：
-     *
-     *  · `ANIM_THEN_CONVERT`（A）：先动画、后 `mini`。动画里是**真·全屏画面**在缩，
-     *    但收尾转换时窗口要重排到小窗比例，会跳一下；
-     *  · `CONVERT_THEN_ANIM`（B）：先 `mini`、后动画。**落点精确**，
-     *    但动画第一帧就是「小窗布局被等比放大」，和你按下去前看到的画面不同。
-     *
-     * 两条都做了 —— 因为起止状态全是参数，切档不用重启（详见 `docs/zoom-window.md` §十二）。
+     * 所以两个要配合用，顺序由宿主侧排，且**只能是「先转换、后动画」**：
+     * 动画器每帧的守卫要求任务已经是「带标题栏的柔性任务」，普通全屏任务**每帧都被挡回去**
+     * （先动画后转换那条已证伪，见 `docs/zoom-window.md` §12.3）。
      */
     const val CMD_MINI_ANIM = "mini_anim"
 
@@ -304,10 +299,24 @@ internal object FlexibleWindowBridge {
     internal const val CAPTION_SCENARIO_FULL_SCREEN = 1
 
     /**
-     * `anyTaskForId(taskId, matchMode)` 的三档，依次放宽：`0` 只找已 attach 的、`1` 再加 recents、
-     * `2` 还能顺手从 recents 恢复。**顺序是语义的一部分**：从最窄的一档开始试，先命中先返回。
+     * `anyTaskForId(taskId, matchMode)` 的**允许档位**，依次放宽：`0` 只找已 attach 的、
+     * `1` 再加 recents（只读）。**顺序是语义的一部分**：从最窄的一档开始试，先命中先返回。
+     *
+     * ## 为什么不含 `2`
+     *
+     *  `2` 是 `MATCH_TASK_IN_STACKS_OR_RECENT_TASKS_AND_RESTORE` —— 那个 `AND_RESTORE` 是**真恢复**：
+     *  任务已被销毁、只剩 recents 里一条记录时，它会把任务**重新建出来**。这是一次状态改变，
+     *  而调用方（`switchToMiniLocal` / `CMD_MINI_ANIM`，还有跟着一起走的探针）以为只是在**查**一个
+     *  任务 —— 语义上「查」变成「顺手把它拉起来」。
+     *
+     *  真机上的后果：宿主刚看到前台任务、发命令，命令执行时任务已被销毁（用户按了返回 / 应用崩了），
+     *  带 `2` 的查找会把这个已经关掉的应用**从 recents 恢复出来再收成小窗** —— 用户看到的是
+     *  「按一下侧键，一个我刚关掉的应用以小窗弹出来」。宁可「找不到 ⇒ 命令落空」，也不要凭空复活。
+     *
+     *  探针跟生产**同一份**（本文件的整个理由，见 `FlexibleWindowLookup.kt` 头注释）：探针要问的是
+     *  「生产路径会看到什么」，两边档位不一致时日志给出的就是与事实相反的结论。
      */
-    internal val TASK_MATCH_MODES = intArrayOf(0, 1, 2)
+    internal val TASK_MATCH_MODES = intArrayOf(0, 1)
 
     /** `switchState` 的 reason 参数，会进服务端日志，用来分辨是不是本模块调的。 */
     internal const val REASON = "OplusKey"

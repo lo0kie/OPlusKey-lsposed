@@ -150,17 +150,17 @@ private fun SettingsPage.AuthorRow(ui: AboutUiState) {
     )
 }
 
-/** 反馈问题那一行 —— 同样是一层菜单；不给副标题（渠道名在菜单里逐条列着）。 */
+/** 反馈与交流那一行 —— 同样是一层菜单；不给副标题（渠道名在菜单里逐条列着）。 */
 @Composable
 private fun SettingsPage.FeedbackRow(ui: AboutUiState) {
     val tick = rememberTick()
     BasicComponent(
-        title = I18n.get(Strings.MORE_ABOUT_FEEDBACK, "反馈问题"),
+        title = I18n.get(Strings.MORE_ABOUT_FEEDBACK, "反馈与交流"),
         onClick = {
             tick()
             ui.showFeedbackMenu = true
         },
-        startAction = { Icon(PageIcons.Bug, null) },
+        startAction = { Icon(PageIcons.Feedback, null) },
         // 行尾给选择器字形（不是链接符号）：这一行点开的是**一层菜单**，
         //  与「语言」那一行同一件（链接符号留给菜单里那三行）。
         endActions = { RowEndIcon(PageIcons.Selector) },

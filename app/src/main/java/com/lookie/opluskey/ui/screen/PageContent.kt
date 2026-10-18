@@ -172,7 +172,7 @@ private fun SettingsPage.PageEffects(
 }
 
 /**
- * 调试通道的接收器 —— 只有 debug 源集有实现，release / beta 是同名空壳（`register` 恒 null，
+ * 调试通道的接收器 —— 只有 debug 源集有实现，release 是同名空壳（`register` 恒 null，
  * 这里就是死代码）。让 `am broadcast` 能直接驱动这个页面，省掉「dump 找坐标 → 模拟点击 →
  * 打字被输入法吃掉」那一套。
  */

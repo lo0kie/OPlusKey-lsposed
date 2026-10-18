@@ -3,14 +3,17 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-      清单零组件、零入口 Activity：映射统一走系统的「设置 → 快捷键」页，模块自己不带界面。
+      清单只有**一个** Activity：`EntryActivity` —— 无界面的跳板，不画任何东西。
 
       LSPosed 管理器右下角那颗「打开模块」FAB 按模块设置 category / CATEGORY_INFO /
-      CATEGORY_LAUNCHER 的顺序找入口，一个都不声明它就不显示；模块识别只看
-      META-INF/xposed/ 的元数据，与 Activity 无关。
+      CATEGORY_LAUNCHER 的顺序找入口，命中任一条才显示。用户装完第一反应就是点那颗按钮，
+      它不出现就等于「找不到入口」（真机反馈），所以声明这一个，点它转到宿主自己的侧键设置页。
 
-      category 全名故意不写在这里：manifest merger 会把源清单注释抄进合并清单，
-      写全名会让 CI「入口标记出现次数必须为 0」的字面检查误报。
+      除它之外仍然一条都不许有：CATEGORY_INFO / LAUNCHER / activity-alias 全禁，
+      CI 按「恰好一个 MODULE_SETTINGS + 恰好一个 activity 标签」核。
+
+      下面这段注释里故意不写 category 全名：manifest merger 会把源清单注释抄进合并清单，
+      写全名会让 CI 的计数从 1 变成 2。全名只出现在那个 intent-filter 里。
     -->
 
     <!--
@@ -25,7 +28,7 @@
 
     <!--
       图标走自适应图标（`mipmap-anydpi-v26/ic_launcher.xml`，底色 + 字形两层）。改回单张满幅
-      矢量会被启动器当 legacy 图标补白底圆角并缩小。这只是图标属性，`<application>` 仍零 Activity。
+      矢量会被启动器当 legacy 图标补白底圆角并缩小。这只是图标属性，与入口无关。
     -->
     <application
         android:allowBackup="false"
@@ -52,6 +55,22 @@
             android:name="androidx.profileinstaller.ProfileInstallReceiver"
             tools:ignore="MissingClass"
             tools:node="remove" />
+
+        <!--
+          唯一一个界面组件：无界面的跳板。透明主题 + `noHistory`，起完自己就退场，
+          用户看到的是宿主那一页 —— 见 `EntryActivity` 的类注释。
+        -->
+        <activity
+            android:name=".EntryActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="de.robv.android.xposed.category.MODULE_SETTINGS" />
+            </intent-filter>
+        </activity>
     </application>
 
 </manifest>

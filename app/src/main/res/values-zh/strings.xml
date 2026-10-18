@@ -10,4 +10,5 @@
 <resources>
     <string name="app_name">OPlusKey</string>
     <string name="module_description">一加 / OPPO 侧键（Plus Key）重映射，支持单击、双击与长按，模块入口：系统设置 - 快捷键</string>
+    <string name="entry_open_failed">无法打开，去 系统设置 › 快捷键</string>
 </resources>

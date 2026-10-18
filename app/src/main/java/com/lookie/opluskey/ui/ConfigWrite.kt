@@ -56,6 +56,19 @@ internal fun SettingsPage.setLanguage(code: String) {
     )
 }
 
+/**
+ * 切「前台转小窗时使用动画」—— 行点击与开关共用这一个入口。
+ *
+ *  判定侧在 `host/action/MiniWindowLauncher`（宿主进程里执行时现读配置，拨完立刻生效）。
+ */
+internal fun SettingsPage.setMiniWindowAnim(on: Boolean) {
+    val cfg = configState.config.value
+    write(
+        cfg.copy(global = cfg.global.copy(miniWindowAnim = on)),
+        "mini_window_anim=${if (on) 1 else 0}",
+    )
+}
+
 /** 切「使用 ColorOS 接口」—— 行点击与开关共用这一个入口。 */
 internal fun SettingsPage.setColorOsApi(on: Boolean) {
     val cfg = configState.config.value
@@ -102,67 +115,26 @@ internal fun SettingsPage.setLongRepeat(on: Boolean) {
 }
 
 /**
- * **清空配置并按默认重建** —— 主配置与命令库两份文件一起清掉（「按字面意思重置」）。
- *
- *  顺序与「导入配置」同一条纪律：主配置先落盘，**它没成功就一个字节都不再动命令库** ——
- *  否则会留下「命令全没了、绑定还是旧的」这种半份状态，而用户看到的是「已重置」。
- *  命令库清空走 [saveCommands]（它自己会把新配置重播一遍，长按那位串行判定跟着重算）。
- */
-internal fun SettingsPage.resetAll() {
-    XLog.w("菜单：清空配置（主配置 + 命令库一起按默认重建）")
-    // 只读态下这一项是「明说要丢掉重来」的正门：那份「读不懂」的文件本来就该被覆盖。
-    //  所以先清掉只读位再写（[write] 的闸是为「不许**悄悄**固化默认值」设的，这是一处有意为之的例外）。
-    //  注意：只读态下菜单里这一项现在是**灰的**（`ResetMenu` 只留「默认界面 / 关于模块」，
-    // 用户定的），所以这条放行走不到；留着是为了「读不懂」的出口**不能只有一条**
-    // （重进页面）——将来若把这行放出来，行为仍然是对的。
-    val wasConfigReadOnly = configState.readOnly
-    if (configState.readOnly) {
-        XLog.w("清空：配置原处在只读态（读不懂）—— 明说要重来，放行写回")
-        configState.readOnly = false
-    }
-    if (!write(Config.DEFAULT, "reset_all")) {
-        // 没写成 ⇒ 把只读位**还原**：它是「手上这份不是用户的真相」的判据，清着不放的话，
-        //  之后任何一次普通写入都会以这份默认值落盘，把用户配置抹掉（比原样留着更糟）。
-        configState.readOnly = wasConfigReadOnly
-        return
-    }
-    // 命令库是**另一份文件**、另有自己的只读位（[ConfigState.commandsReadOnly]），清空前一起放开；
-    //  这里不还原：主配置已经重建，再退回只读态自相矛盾 —— 失败由下面那句 toast 报出去。
-    if (configState.commandsReadOnly) {
-        XLog.w("清空：命令库原处在只读态（读不懂）—— 明说要重来，放行写回")
-        configState.commandsReadOnly = false
-    }
-    // 命令库清空：空表就是重建后的状态，文件仍按同一份 JSON 格式写一份（不删文件 —— 删了
-    // 下次读取走的是「文件不存在」那条分支，与写一份空表不是同一条路，排查时对不上）。
-    val cleared = saveCommands(emptyList(), "reset_all") != CommandsSave.Failed
-    XLog.w("清空：主配置已重建，命令库清空=$cleared")
-    toast(
-        if (cleared) {
-            I18n.get(Strings.TOAST_CONFIG_CLEARED, "已清空配置")
-        } else {
-            I18n.get(Strings.TOAST_CONFIG_CLEAR_FAILED, "配置已清空，命令库清理失败")
-        },
-    )
-}
-
-/**
  * 写配置并同步 [ConfigState.config] 状态；每次写盘把完整配置广播给注入侧，让参数改动立即生效。
  * 落盘失败就什么都不提交（不更新 [ConfigState.config]、不发广播）—— 早先「先更新状态、失败也照发广播」
  * 会三条腿各说各话（界面新值、文件旧值、注入侧按新广播吞键）。
  *
- * @return 是否真的落盘 —— 调用方据此决定要不要报「已…」（失败时这里已报过「保存失败」）。
+ * @return **三态**（与 [CommandsSave] 同一套）：[CommandsSave.Failed] = 没落盘（什么都没变）；
+ *   [CommandsSave.BroadcastFailed] = 落盘成了、但注入侧没收到；[CommandsSave.Ok] = 都成。
+ *   调用方**只能**在 [CommandsSave.Failed] 时按「什么都没变」处理 —— 广播失败时文件与本地状态
+ *   都已经是新值，照旧值回滚会让两边对不上（命令库与 `cmd:` 引用那条就是这么坏的）。
  */
 internal fun SettingsPage.write(
     next: Config,
     what: String,
-): Boolean {
+): CommandsSave {
     // 只读态：建页那次配置压根没读成功（见 [SettingsPage.configState]），
     //  此时 [SettingsPage.configState] 里那份是**默认值**、不是用户的真相 —— 写回等于把它固化，
     // 会把用户配的绑定 / 开关整份抹掉。一律拒，并明确告诉用户「没保存」。
     if (configState.readOnly) {
         XLog.w("配置处在只读态（这次没读成功），拒绝写回：$what")
         toast(I18n.get(Strings.TOAST_CONFIG_READ_FAILED, "配置读取失败，未保存"))
-        return false
+        return CommandsSave.Failed
     }
     var saved = false
     try {
@@ -177,7 +149,7 @@ internal fun SettingsPage.write(
     }
     if (!saved) {
         toast(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
-        return false
+        return CommandsSave.Failed
     }
     configState.config.value = next
     // 记一笔「这一份在路上」：从落盘到注入侧回包之间，两边指纹必然不同（见 `HostLinkState.configPending`）。
@@ -198,11 +170,11 @@ internal fun SettingsPage.write(
         //  ⇒ ⋮ 菜单里的「重启服务」**正好被灰掉**，指过去等于让用户点一个点不动的入口。
         //  真正能自愈的是「退出重进」（重进会重发配置并重问自检），所以说这个。
         toast(I18n.get(Strings.TOAST_CONFIG_SAVE_BROADCAST_FAILED, "已保存，但通知注入侧失败，退出重进本页即可"))
-        return false
+        return CommandsSave.BroadcastFailed
     }
     // 注意：写完必须**再问一次注入侧**：上面 `config.value = next` 一换本地指纹，页面手上那份
     //  `injectStatus` 就还是写之前那份 —— 「设置生效」比的是两边指纹，不重问会一直判「未同步」，
     //  `linkReady` 跟着 false、**整页当场锁死**（写一下之后点哪一格都被拦）。
     resyncInjectStatus()
-    return true
+    return CommandsSave.Ok
 }

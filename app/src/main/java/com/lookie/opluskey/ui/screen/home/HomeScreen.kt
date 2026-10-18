@@ -21,6 +21,7 @@ import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.currentHeaderHeight
@@ -124,11 +125,17 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
  *  （那时 fail-closed 会把问句丢掉）。两种都会自愈，只是**不是立刻**；而这条 effect 只发一次的话，
  *  页面会一直停在「未就绪」上等一个再也不会来的回包。
  *  这里最多问 [QUERY_ROUNDS] 轮，**两端都答上就提前收工** —— 已经就绪时只问一次；
- *  一直问不到也不会转下去：适配清单外的机器本来就该一直禁用，无限轮询只是白耗电。
+ *  一直问不到也不会转下去：链路一直不通的机器本来就该一直禁用，无限轮询只是白耗电。
  */
 @Composable
 private fun SettingsPage.HomeLinkSelfCheck() {
-    LaunchedEffect(Unit) {
+    //  键是**当前屏**，不是 `Unit`：`LaunchedEffect(Unit)` 只在这一棵进组合时跑一次，而首页被
+    //  子页盖住、再露回来时组合并不重建 —— 真机实测（2026-10-18）：退到「自定义命令」再回首页，
+    //  「设置页问宿主模块在不在」还是原来那 13 条，一条没多。后果是「链路后来自己好了（注入侧
+    //  补上了 Context / uid），页面却一直停在未就绪」，用户唯一的出路是关掉整个设置页重进。
+    //  每回到首页重问一遍，代价是每次进页最多 [QUERY_ROUNDS] 轮广播。
+    LaunchedEffect(screen) {
+        if (screen != Screen.SHORTCUTS) return@LaunchedEffect
         var hostEverAnswered = false
         repeat(QUERY_ROUNDS) { round ->
             val hostToken = link.hostAliveToken

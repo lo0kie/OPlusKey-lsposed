@@ -30,6 +30,30 @@ sealed interface Action {
     val isAppOpen: Boolean
         get() = appTarget != null
 
+    /**
+     * 这份动作**只有前缀、载荷是空的**（`cmd:` / `app:` / `shell:` 后面什么都没写）。
+     *
+     *  这种写法解析得出一个动作对象，但执行时必然落空：`cmd:` 变成 [Custom] 空名字 ⇒ 永远
+     *  `NOT_FOUND`；`app:` / `window:` 变成空目标 ⇒ 解析不到界面；`shell:` 变成一条空命令；
+     *  `intent:` 变成一个空 action 的广播。界面据此判断「这行字算不算一行能存的命令」
+     *  （保存按钮不该为它亮），执行侧不必各自再猜一遍。
+     */
+    val isBarePrefix: Boolean
+        get() =
+            when (this) {
+                None, is KeyEvent, is MiniWindow, Flashlight, PowerMenu -> false
+                is Shell -> command.isBlank()
+                is Custom -> name.isBlank()
+                is Intent -> action.isBlank()
+                is App -> target.isBlank()
+                is AppWindow -> target.isBlank()
+                is AppShortcut -> pkg.isBlank() || shortcutId.isBlank()
+                is Shortcut -> shortcutId.isBlank()
+                is Ringer -> mode.isBlank()
+                is Oplus -> feature.isBlank()
+                is Panel -> mode.isBlank()
+            }
+
     /** 拦截按键，什么都不做。 */
     data object None : Action {
         override val token: String = Action.NONE

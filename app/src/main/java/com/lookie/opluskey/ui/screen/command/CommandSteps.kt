@@ -54,6 +54,9 @@ import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
+/** [SerialSteps] 里「开着的是添加命令那一行」的哨兵值（步骤下标从 0 起，撞不上）。 */
+private const val STEP_PICK_APPEND = -1
+
 /**
  * 多条命令的步骤列表（「步骤」那张卡的内容）。
  */
@@ -61,9 +64,12 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 internal fun SettingsPage.SerialSteps() {
     val tick = rememberTick()
     val steps = commandDraft.draft.steps
-    var picking by remember { mutableStateOf(false) }
+    // 这一刻开着的是哪一张选择器：`null` = 都没开、[STEP_PICK_APPEND] = 「添加命令」那一行、
+    //  其余 = 替换第 n 步。**两份状态合成一份**是因为两张浮层不能同开：以前是
+    //  `picking: Boolean` + `stepPick: Int` 两个互不知情的变量，点开某一步的选择器、再去点
+    //  「添加命令」，两张就叠在一起了（行里那句 `show = stepPick == stepsIndex` 还成立）。
+    var stepPicker by remember { mutableStateOf<Int?>(null) }
     val preciseClick = rememberPreciseClickState()
-    var stepPick by remember { mutableStateOf(-1) }
     // 这张卡的手势账本：抓「滑动时行上的点击照样派发」那种偶发现场（见 [GestureProbe]）。
     //  挂整张卡而不是每一行 —— 卡里的行都在这条手势范围里，且它比行的 `clickable` 更早拿到事件。
     val probe = rememberGestureProbe("步骤卡")
@@ -78,6 +84,9 @@ internal fun SettingsPage.SerialSteps() {
     //  原来 key 与函数体各算一遍 —— 每遍都要读完整张 `SnapshotStateList` 再新建一个 List。
     val stepsNow = commandDraft.draft.steps.toList()
     LaunchedEffect(stepsNow) {
+        // 列表一变，行下标就不一定还落在原来那一行上（插入 / 删除 / 上移下移都挪位）——
+        //  替换型的浮层先收掉，别让它挂到另一条步骤上去。「添加」那张与下标无关，留着。
+        if (stepPicker != null && stepPicker != STEP_PICK_APPEND) stepPicker = null
         // 未退场的展示行，按展示顺序与 steps 做多重集匹配（同 token 按先后配对）
         val kept = display.filter { !it.exiting }
         val matched = arrayOfNulls<StepRowItem>(stepsNow.size)
@@ -181,7 +190,7 @@ internal fun SettingsPage.SerialSteps() {
                                 XLog.w(
                                     "多条命令：点第 ${stepsIndex + 1} 步（弹选择菜单，替换模式）—— ${probe.describe()}",
                                 )
-                                stepPick = stepsIndex
+                                stepPicker = stepsIndex
                             },
                             // 行首图标 = 这一步是什么（内置动作取动作图标、`cmd:` 取**被引用那条命令**的类型图标）。
                             // 没有它标题会顶到卡片左边，与下面那行带 `+` 图标的「添加命令」差一个图标宽，
@@ -212,7 +221,18 @@ internal fun SettingsPage.SerialSteps() {
                                 ) {
                                     tick()
                                     // 从 steps 里立即移除（数据层马上正确）；展示层这一行由差分同步标成退场，shrink 完自己摘除。
-                                    steps.removeAt(stepsIndex)
+                                    //
+                                    //  `stepsIndex` 是**这一次组合**算出来的下标：连点两下时第二下用的还是旧下标
+                                    //  （数据已经短了一格），`removeAt` 会直接抛 IndexOutOfBounds —— 而抛在点击回调里
+                                    //  就是宿主页面崩掉。越界就当场忽略，说清是哪一步。
+                                    if (stepsIndex in steps.indices) {
+                                        steps.removeAt(stepsIndex)
+                                    } else {
+                                        XLog.w(
+                                            "多条命令：要删的第 ${stepsIndex + 1} 步已经不在" +
+                                                "（现在共 ${steps.size} 步），这次点击忽略",
+                                        )
+                                    }
                                 }
                                 // 行尾收一颗选择器指示 —— 这一行点了会弹选择器把这一步换掉（见 [PageIcons.Selector]）。
                                 //  给的是**纯图标**、不是 [IconAction]：它不吃点击（弹选择器的是整行自己）。
@@ -257,10 +277,10 @@ internal fun SettingsPage.SerialSteps() {
                         // 浮层挂在零宽内层盒子里（落点由触点决定，这里只是它的宿主）。
                         Box(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(0.dp)) {
                             StepPickerPopup(
-                                show = stepPick == stepsIndex,
+                                show = stepPicker == stepsIndex,
                                 preciseClick = rowPreciseClick,
                                 replaceIndex = stepsIndex,
-                            ) { stepPick = -1 }
+                            ) { stepPicker = null }
                         }
                     }
                 }
@@ -353,7 +373,7 @@ internal fun SettingsPage.SerialSteps() {
                 tick()
                 // 诊断：这一下是点出来的还是滑出来的（见 [GestureProbe]）
                 XLog.w("添加命令：行被点开 —— ${probe.describe()}")
-                picking = true
+                stepPicker = STEP_PICK_APPEND
             },
         ) {
             Text(
@@ -375,9 +395,9 @@ internal fun SettingsPage.SerialSteps() {
         // 触点没记到（如无障碍点击）时，浮层落在这一条竖边的下方，仍是可见的位置。
         Box(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(0.dp)) {
             StepPickerPopup(
-                show = picking,
+                show = stepPicker == STEP_PICK_APPEND,
                 preciseClick = preciseClick,
-            ) { picking = false }
+            ) { stepPicker = null }
         }
     }
 }

@@ -89,7 +89,7 @@
     <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$internal fun canEnterMiniWindow(taskId: Int): Boolean</ID>
     <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$internal fun foregroundTaskFor(pkg: String): Int</ID>
     <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$internal fun startFlexibleFromRecents( taskId: Int, zoomLaunchFlags: Int, ): Boolean</ID>
-    <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$internal fun startZoomWindowCode( ctx: Context, intent: Intent, ): Int?</ID>
+    <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$internal fun startZoomWindowCode( ctx: Context, intent: Intent, userId: Int, ): Int?</ID>
     <ID>ReturnCount:MiniWindowVerify.kt$internal fun MiniWindowLauncher.taskZoomConfigRatio(taskId: Int): Float?</ID>
     <ID>ReturnCount:ProbeCall.kt$internal fun ProbeChannel.coerce( args: List&lt;String&gt;, types: Array&lt;Class&lt;*&gt;&gt;, ): Array&lt;Any?&gt;?</ID>
     <ID>ReturnCount:StatusBarBridge.kt$StatusBarBridge$private fun toggleRecentsLocal(loader: ClassLoader?)</ID>

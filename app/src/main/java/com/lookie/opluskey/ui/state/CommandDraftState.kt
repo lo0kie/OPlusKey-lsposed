@@ -34,7 +34,7 @@ internal class CommandDraftState {
     var resetAborted by mutableStateOf(false)
 
     /**
-     * 「重置」收尾那 240ms 的**基线指纹**（[resetPending] 置位那一刻记下）。
+     * 「重置」收尾那段等待（步骤行退场 + 一点余量）的**基线指纹**（[resetPending] 置位那一刻记下）。
      *
      *  收尾时只有指纹没变才真正 reset —— 这段时间用户可能已经在输入框里敲字了，
      *  无条件 reset 会把刚敲的内容一起吞掉（见 `CommandDraft.contentFingerprint`）。

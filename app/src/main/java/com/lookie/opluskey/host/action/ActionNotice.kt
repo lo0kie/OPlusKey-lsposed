@@ -46,17 +46,21 @@ internal fun actionNoticeText(
         }
 
         // 快捷方式：显示它自己的名字（「扫一扫」，落盘时记在 `appNames` 里），
-        //  没记过就退回应用名、再退回包名
+        //  没记过就退回**老配置 token 里那一段 `|名字`**、再退回应用名 / 包名 ——
+        //  与界面 `ui/appNameOf` 的优先级逐档对齐（少这一档时，老配置里绑的快捷方式在
+        //  提示里显示成应用名，而界面上显示的是快捷方式名）。
         is Action.AppShortcut -> {
             val target = action.appTarget.orEmpty()
             I18n.format(
                 Strings.COMMON_OPEN_SHORTCUT_FORMAT,
-                appNames[AppTarget.identity(target)] ?: appLabel(context, target),
+                appNames[AppTarget.identity(target)] ?: AppTarget.label(target) ?: appLabel(context, target),
             )
         }
 
+        // 与界面 `ui/model/CommandText.stepTitle` 共用同一份优先级（`ActionCatalog.label`）：
+        //  档位名 → 清单标题 → 认不出来。兜底各写各的（这里用规范化后的 token）。
         else -> {
-            ActionCatalog.specOf(action)?.label ?: action.token
+            ActionCatalog.label(action) ?: action.token
         }
     }
 

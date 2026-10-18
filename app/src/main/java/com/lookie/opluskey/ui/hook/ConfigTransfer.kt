@@ -279,7 +279,7 @@ internal object ConfigTransfer {
                 //  库里不存在的命令上（两个只读位是分开的，「配置能写、命令库只读」这种组合可达）。
                 //  所以这里留一份旧配置，命令库没落盘就把它写回去 —— 两段一起成、或一起不动。
                 val previousConfig = page.configState.config.value
-                if (!page.write(parsed.config, "导入配置")) {
+                if (page.write(parsed.config, "导入配置") == CommandsSave.Failed) {
                     XLog.w("导入配置：配置未落盘（只读态 / 写失败），命令库保持不动")
                     return@post
                 }
@@ -297,7 +297,7 @@ internal object ConfigTransfer {
 
                     CommandsSave.Failed -> {
                         XLog.w("导入配置：命令库未落盘 ⇒ 把主配置写回导入前那份（不留半份状态）")
-                        if (!page.write(previousConfig, "导入配置失败：回滚主配置")) {
+                        if (page.write(previousConfig, "导入配置失败：回滚主配置") == CommandsSave.Failed) {
                             XLog.w("导入配置：回滚也没写成 —— 主配置是新那份、命令库是旧的，需退出重进再看")
                         }
                     }
