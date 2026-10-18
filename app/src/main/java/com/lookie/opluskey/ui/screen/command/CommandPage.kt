@@ -20,14 +20,12 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.SmallTitle
-import io.github.suqi8.coui.kmp.basic.SmallTitleDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -76,15 +74,11 @@ internal fun SettingsPage.CommandPage(
         // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带（`tabBlockDp`）一起让出。
         Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp))
 
-        // 编辑态：editingName 非 null 即正在改某条已存在的命令。
-        val editing = commandDraft.draft.editingName != null
-        SmallTitle(
-            if (editing) {
-                I18n.get(Strings.COMMAND_TITLE_EDIT, "修改命令")
-            } else {
-                I18n.get(Strings.COMMAND_TITLE_NEW, "新增命令")
-            },
-        )
+        // 表单的每一栏都带一条小标题（「命令名称」「命令详细」）：输入框里的字是**占位文案**
+        //  （「请输入名称」），滚到这一屏时那行字可能已经被填满，光看框分不清哪个是名字、
+        //  哪个是命令本体。原先这一条写的是「修改命令 / 新增命令」—— 那说的是**这一页在干什么**，
+        //  而顶栏已经写着「自定义命令」、工具栏那颗键写着「保存 / 修改」，这里该说的是**这一栏是什么**。
+        SmallTitle(I18n.get(Strings.COMMAND_NAME_TITLE, "命令名称"))
 
         // 输入项用 COUI 的「卡片输入」形态（[IconInputView]）：一个输入项一张卡、无边框，
         // 行首图标会把标题与输入框一起挤开 —— 库的 `InputView` 做不到，所以自己拼。
@@ -93,14 +87,18 @@ internal fun SettingsPage.CommandPage(
 
         // 单条命令的正文 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
         if (kind == CommandKind.SINGLE) {
-            Spacer(Modifier.height(GRID_GAP))
+            Spacer(Modifier.height(12.dp))
+            SmallTitle(I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详细"))
             SingleCommandField()
         }
 
         // `keyevent:` 注入同毫秒生效，而「最近任务 / 通知中心 / 控制中心」要跨四个进程、`shell:` 更
         // 是另起进程 —— 不等待的话连续几步会乱。只有多条命令有这个值，所以只在这一栏显示。
+        //  它自己那条行标题（「命令间隔时长」）说的是**这一行是什么**，小标题说的是**这一组是什么**
+        //  —— 以后这一组还会长（比如「失败后停止」），先按「命令设置」归拢。
         if (kind == CommandKind.SERIAL) {
-            Spacer(Modifier.height(GRID_GAP))
+            Spacer(Modifier.height(12.dp))
+            SmallTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
             StepDelayCard(tick)
         }
 
@@ -133,28 +131,29 @@ internal fun SettingsPage.CommandPage(
 }
 
 /**
- * 单条命令的正文输入（「命令」那一栏）—— **多行**（textarea）。
+ * 单条命令的正文输入（「命令」那一栏）—— **单行**（多行那一档已按用户口径撤掉）。
  *
- *  以前是单行，多行粘贴得先把换行揉成 `; `：那时换行显示不出来、存下去却带着，
- *  界面看着对、跑起来跑不通。现在输入框本身就是多行，换行原样留着 —— 它就是 shell 的
- *  命令分隔符，`sh -c` 会按行依次执行。
+ *  输入框本体是库的搜索框样式（见 `IconInputView`），一行就够：命令本身不该带换行 ——
+ *  带换行的那串以前还得靠 `sh -c` 按行依次执行，语义反而更难说清；要串两步请用「多条命令」。
  *
- *  只归一换行符：粘贴来的多半是 CRLF，混着两种会让「看着多了一行空行」。
+ *  仍然只归一换行符：粘贴来的多半是 CRLF，混着两种会让存下去的值里夹进不可见的 `\r`。
  */
 @Composable
 private fun SettingsPage.SingleCommandField() {
     Column {
         IconInputView(
-            icon = PageIcons.CommandSingle,
+            spec =
+                InputSpec(
+                    PageIcons.CommandSingle,
+                    I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令"),
+                    MAX_SINGLE_LENGTH,
+                ),
             value = commandDraft.draft.single,
             onValueChange = { raw ->
-                // 粘贴来的多半是 CRLF：只归一，不动内容（换行就是 shell 的分隔符）
+                // 粘贴来的多半是 CRLF：只归一，不动内容
                 commandDraft.draft.single = raw.replace("\r\n", "\n").replace('\r', '\n')
             },
             modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
-            title = I18n.get(Strings.COMMAND_CMD_LABEL, "命令"),
-            label = I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令"),
-            multiline = true,
         )
         // 权限边界的提示：这一栏写的是 shell 命令，而它跑在宿主进程里、身份是「手势体感」这个 App ——
         // `am` / `cmd` / `settings` 这类要 shell 身份的命令会失败，得提权（root）才跑得起来。
@@ -163,18 +162,25 @@ private fun SettingsPage.SingleCommandField() {
         //  —— 与输入框那边对齐的是**边界**，不是第一个字（用户口径：像 CSS 的
         //  `padding: 0 32px` + `text-align: center`）。所以要先铺满再居中，只给 padding 的话
         //  Text 的宽度就是文字本身，居中没有可居的余量。
+        //  上下**不取那一档**（32dp 会把提示推得离输入框很远）：只留 6dp，贴着输入框说话。
         Text(
-            text = I18n.get(Strings.COMMAND_SINGLE_HINT, "am / cmd 等需 root 给「手势体感」授权"),
+            text = I18n.get(Strings.COMMAND_SINGLE_HINT, "am / cmd 等命令需 root 给「手势体感」授权"),
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(SmallTitleDefaults.InsideMargin),
+                    .padding(start = HINT_SIDE_PADDING, end = HINT_SIDE_PADDING, top = 6.dp),
             textAlign = TextAlign.Center,
             style = COUITheme.textStyles.footnote1,
             color = COUITheme.colorScheme.onSurfaceVariantSummary,
         )
     }
 }
+
+/** 单条命令能输入多少字（超出的部分在输入框里直接吃掉）。 */
+private const val MAX_SINGLE_LENGTH = 512
+
+/** 权限提示那行字的左右缩进 —— 与 `SmallTitleDefaults.InsideMargin` 同值（32dp）。 */
+private val HINT_SIDE_PADDING = 32.dp
 
 /** 多条命令的「命令间隔时长」卡 —— 只有一行：等多久再派发下一条。 */
 @Composable

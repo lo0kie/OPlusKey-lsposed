@@ -32,6 +32,11 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 //   · `BindingSettings.kt` / `InstantSingleCard.kt` / `LongRepeatCard.kt` —— 三档各一张设置卡；
 //   · `BindingSections.kt`  —— 纵向顺序（哪一段之间该给间距）。
 
+/** 选择器入口回调（应用 / 磁贴）。 */
+internal data class BindingPickers(
+    val onOpenAppPicker: (Gesture) -> Unit,
+)
+
 /**
  * 一页手势绑定。
  *
@@ -45,7 +50,7 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
  *   · 入口浮层 —— 上一页开着菜单时翻页，浮层会跟着这一页一起活到下一帧，而它的锚点属于上一页那一格；
  *   · 方向键 / 确认键 —— 非当前页不能吃键，否则按键被它抢先消费掉。
  *
- * @param onOpenAppPicker 点「打开应用」那一格时跳「打开应用」页（它是**入口**，不是取值）。
+ * @param pickers 选择器入口回调（打开应用 / 控制中心磁贴）。
  * @param onCreateCommand 点「已保存的命令」那段里那行「去创建自定义命令」时进「自定义命令」页。
  * @param scroll 本页的滚动骨架（见 [BindingScroll]）。
  */
@@ -53,11 +58,11 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 internal fun SettingsPage.BindingList(
     g: Gesture,
     page: BindingPageState,
-    onOpenAppPicker: (Gesture) -> Unit,
+    pickers: BindingPickers,
     onCreateCommand: () -> Unit,
     scroll: BindingScroll,
 ) {
-    val st = rememberBindingGridState(g, onOpenAppPicker)
+    val st = rememberBindingGridState(g, pickers.onOpenAppPicker)
     val current = actionOf(configState.config.value, g)
     // 当前选中的那一项（配置里是清单外的写法时为 -1 ⇒ 焦点退回第一项）
     val selectedIndex = st.specs.indexOfFirst { ActionCatalog.isSelected(it, current) }

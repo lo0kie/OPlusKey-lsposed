@@ -218,7 +218,16 @@ internal object ShellRunner {
             XLog.w("shell 输出里认出权限拒绝（$deniedHint），按「权限不够」报（走的是 $via）")
             return if (via == SU) CommandFailure.SHELL_NO_PERMISSION else CommandFailure.SHELL_NO_ROOT
         }
-        return CommandFailure.ofShellExit(code)
+        val byCode = CommandFailure.ofShellExit(code)
+        // 退出码落在「泛型失败」那一档、而这次**压根没拿到 root**（`su` 起不来才退回 `sh`）：
+        //   报「命令没跑成功，检查一下内容」等于让用户去改一条本来就是对的命令。
+        //   `am` / `cmd` / `settings` 这类没有 root 基本都失败，所以这一档按「要 root」报。
+        //   126 / 127 不在这里改口 —— 那两档说的是命令本身（不存在 / 没有执行位），比「要 root」更准。
+        if (via != SU && byCode == CommandFailure.SHELL_FAILED) {
+            XLog.w("shell 退出码 $code、且走的是 sh（没拿到 root）⇒ 按「权限不够」报")
+            return CommandFailure.SHELL_NO_ROOT
+        }
+        return byCode
     }
 
     /**

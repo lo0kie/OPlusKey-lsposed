@@ -23,6 +23,15 @@ internal object StatusBarBridge {
     /** 状态栏指令：弹系统电源菜单。 */
     const val CMD_POWER_MENU = "power_menu"
 
+    /** 状态栏指令：切一个系统开关（`setting:<id>`，见 [SettingBridge]）。 */
+    const val CMD_SETTING = "setting"
+
+    /** [CMD_SETTING] 里带「哪一条」（`wifi` / `rotation` …）。 */
+    const val EXTRA_SETTING_ID = "setting_id"
+
+    /** [CMD_SETTING] 里带「切成什么」（没有这一项 = 由执行侧自己读状态取反）。 */
+    const val EXTRA_SETTING_ON = "setting_on"
+
     /** 上面那条广播里带指令名的 extra。 */
     const val EXTRA_CMD = "cmd"
 
@@ -70,11 +79,29 @@ internal object StatusBarBridge {
             }
         try {
             when (cmd) {
-                CMD_NOTIFICATIONS -> toggleNotificationsLocal(loader)
-                CMD_CONTROL_CENTER -> expandControlCenterLocal(loader)
-                CMD_RECENTS -> toggleRecentsLocal(loader)
-                CMD_POWER_MENU -> showPowerMenuLocal(loader)
-                else -> XLog.w("不认识的状态栏指令：$cmd")
+                CMD_NOTIFICATIONS -> {
+                    toggleNotificationsLocal(loader)
+                }
+
+                CMD_CONTROL_CENTER -> {
+                    expandControlCenterLocal(loader)
+                }
+
+                CMD_RECENTS -> {
+                    toggleRecentsLocal(loader)
+                }
+
+                CMD_POWER_MENU -> {
+                    showPowerMenuLocal(loader)
+                }
+
+                CMD_SETTING -> {
+                    SettingBridge.handle(intent, loader)
+                }
+
+                else -> {
+                    XLog.w("不认识的状态栏指令：$cmd")
+                }
             }
         } catch (e: Throwable) {
             XLog.w("执行状态栏指令失败（忽略）：$cmd", e)

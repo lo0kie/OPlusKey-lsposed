@@ -109,6 +109,8 @@ internal class SettingsPage(
      */
     internal fun navTo(target: Screen) {
         if (navStack.lastOrNull() == target) return
+        // 换页就把软键盘收掉（理由见 [dismissIme]）
+        dismissIme()
         val index = navStack.indexOf(target)
         if (index < 0) {
             navStack.add(target)
@@ -329,8 +331,26 @@ internal class SettingsPage(
      */
     internal fun popBackStack(): Boolean {
         if (navStack.size <= 1) return false
+        // 退页同样收键盘（理由见 [dismissIme]）：两条动栈的路都堵上，
+        // 以后谁再新开一条压 / 弹栈的路，也不必记得补这一句。
+        dismissIme()
         navStack.removeAt(navStack.lastIndex)
         return true
+    }
+
+    /**
+     * 切页 / 退页时把软键盘收掉。
+     *
+     *  宿主设置页里的搜索框（「选择应用」「控制中心磁贴」「选择界面」）一旦露出键盘，切页时
+     *  转场会**带着键盘一起过去**：新页面上根本没有输入框，半块屏幕却被键盘占着，用户得先
+     *  按一下返回把键盘收掉，才看得见「这次退的是键盘还是页面」。
+     *
+     *  只在**真的动栈**时调（[navTo] / [popBackStack]），不动栈的早退（已经在目标页）不碰 ——
+     *  那种情况用户还在原地打字。收键盘不清焦点（见 [hideIme]），退回上一页时搜索框的内容与
+     *  光标都还在。
+     */
+    private fun dismissIme() {
+        activity?.let { hideIme(it) }
     }
 
     // 两个确认开关都在 [overlays] 那一域（[PageOverlays.confirmLeaveCommands] / [PageOverlays.pendingDraftLoad]）。

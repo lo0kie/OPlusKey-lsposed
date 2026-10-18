@@ -4,6 +4,8 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.KeyConfig
+import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.state.CommandsSave
 
 // 「清空配置」单独一个文件：它是**两份文件一起重建**的一条路（主配置 + 命令库），
@@ -51,4 +53,22 @@ internal fun SettingsPage.resetAll() {
             I18n.get(Strings.TOAST_CONFIG_CLEAR_FAILED, "配置已清空，命令库清理失败")
         },
     )
+}
+
+/**
+ * **重置当前按键的绑定** —— 三个手势与按键设置全部回到默认，**主开关不动**。
+ *
+ *  主开关（`enabled`）说的是「这颗键归不归模块管」，不是一条绑定；把它一起关掉的话，
+ *  用户点「重置绑定」会顺手把整颗键停用，看起来像模块坏了。
+ *
+ *  目前只有侧键有配置段（`KeyId` 还是枚举），所以这里写死的也是侧键。
+ *
+ *  与 [resetAll] 分开：那条是「两份文件一起按默认重建」，这条只动一个键的那一段。
+ */
+internal fun SettingsPage.resetKeyBindings() {
+    val cfg = configState.config.value
+    val keep = cfg.key(KeyId.PLUS).enabled
+    val reset = KeyConfig.defaultFor(KeyId.PLUS).copy(enabled = keep)
+    if (write(cfg.copy(keys = cfg.keys + (KeyId.PLUS to reset)), "reset_key") == CommandsSave.Failed) return
+    toast(I18n.get(Strings.TOAST_KEY_RESET, "已重置当前按键的绑定"))
 }

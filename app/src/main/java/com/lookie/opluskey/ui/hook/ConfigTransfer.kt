@@ -5,6 +5,7 @@ import com.lookie.opluskey.core.config.ConfigBundle
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.ui.appVersionText
 import com.lookie.opluskey.ui.model.UNKNOWN_CONFIG_FORMAT
@@ -131,7 +132,27 @@ internal object ConfigTransfer {
      * 所以那条路要挂 hook（见 [installFileResultHook]）；文本先存 [pendingExport]。
      */
     internal fun exportLog(activity: android.app.Activity) {
-        val body = XLog.snapshot()
+        // 先把另外两个进程的缓冲收上来（最多等 `LogPull.WAIT_MS`），再落盘：
+        //  以前只导本进程，用户交回来的日志里连一条按键行都没有（见 `LogPull` 的说明）。
+        //  收的过程要等广播，不能在主线程上做，所以整条导出挪到 IO 作用域，拼好再回主线程弹选择器。
+        val ctx = activity.applicationContext ?: activity
+        fileScope.launch {
+            val remote = LogPull.collect(ctx, HostApp.PACKAGE)
+            mainHandler.post {
+                openExportPicker(activity, LogPull.compose(XLog.snapshot(), remote))
+            }
+        }
+    }
+
+    /**
+     * 文本拼好了，弹「保存到」选择器（必须在主线程上）。
+     *
+     *  与导出配置共用 [pendingExport]：结果回来时按请求码分辨是哪一份。
+     */
+    private fun openExportPicker(
+        activity: android.app.Activity,
+        body: String,
+    ) {
         if (body.isEmpty()) {
             HostSession.page?.toast(I18n.get(Strings.TOAST_LOG_EMPTY, "暂无日志"))
             return

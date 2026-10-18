@@ -8,7 +8,7 @@ r"""耦合审计 —— 把 docs/decoupling.md 的判据做成可跑的脚本（
 1. **包级导入图**：包 = ``com/lookie/opluskey`` 下的相对目录（``ui/component`` 这类两级也算一档），
    对 ``com.lookie.opluskey.*`` 的 import 记一条边；androidx / COUI / 图标库记成「外部依赖」。
 2. **禁止边**：按 docs/decoupling.md 五 的清单逐条比，越界即失败。
-   目前三条**已知**的越界挂在 [WHITELIST] 上（都是「通用组件反过来认识具体屏」），
+   [WHITELIST] 现在是**空集**（原先挂的三条已清掉，见那边的注释）。
    按七的原则白名单只许缩短、不许把新的越界当既成事实抄进来。
 3. **环检测**：包级图上 DFS，有环即失败并给出成环的那几条边。
 4. **单元规模**：单文件 > 1500 行只是**警告**（不阻断，先看趋势）。
@@ -78,6 +78,13 @@ RULES: list[tuple[str, tuple[str, ...], str]] = [
     ),
     ("ui.component", (r"^com\.lookie\.opluskey\.ui\.screen",), "通用组件不许依赖具体屏（decoupling 动作 4）"),
     ("ui.state", (r"^com\.lookie\.opluskey\.ui\.screen",), "状态不许反过来认识屏（decoupling 动作 5）"),
+    # `ui/hook` 是 ui 内部的**顶层**，只该往下走。反向的三条（屏 / 状态 / 页面模型 认识 hook）
+    # 都会把分层图倒过来变成环 —— `layer_of` 把 ui* 折成一层，环检测看不见它们，只能靠这三条。
+    # 注意 `root`（KeyModule）**不在**禁令里：它在两侧都被加载，必须按进程分派到
+    # `ui.hook.SettingsPageHooks`，那是 decoupling.md 五 给 KeyModule 明写的例外。
+    ("ui.screen", (r"^com\.lookie\.opluskey\.ui\.hook\.",), "屏不许反向依赖 ui.hook（分层图是单向的）"),
+    ("ui.state", (r"^com\.lookie\.opluskey\.ui\.hook\.",), "状态不许反向依赖 ui.hook（分层图是单向的）"),
+    ("ui", (r"^com\.lookie\.opluskey\.ui\.hook\.",), "页面模型 / 页面行为不许反向依赖 ui.hook（分层图是单向的）"),
     ("core", (r"^com\.lookie\.opluskey\.(inject|bridge|host|ui)\.",), "core 是最底层，不引任何上层包"),
     # KeyModule 在注入侧被加载，但它**允许** import ui/（界面 hook 只在设置页进程分支里装，
     # 见它的类注释）—— 所以这里只拦「一加载就崩」的那几样，与 CI 的 (5)' 同口径。
@@ -112,7 +119,11 @@ def bucket_of(rel: str) -> str:
     # 注入侧用 —— 拿错档位判「这段会不会在 system_server 里跑」就会判错。
     if parts[0] == "bridge" and len(parts) >= 2 and parts[1] in ("host", "inject"):
         return "bridge." + parts[1]
-    if parts[0] == "ui" and len(parts) >= 2 and parts[1] in ("component", "state", "screen"):
+    if parts[0] == "ui" and len(parts) >= 2 and parts[1] in ("component", "hook", "state", "screen"):
+        # `ui/hook` 单独成档（2026-10-19）：它是 ui 内部的**顶层**（宿主页注入：换页 / 返回拦截 /
+        #   配置导入导出 / 窗口色），分层图上 `ui.hook → ui.screen → ui → ui.state / ui.model` 是单向的。
+        #   不拆出来的话它会被折进 `ui` 档，于是「`ui.screen` 反过来认识 `ui.hook`」这种事脚本抓不到 ——
+        #   实测当时那条 `ui → ui.screen` 边正是 `ui/hook/SettingsPageHooks.kt` 贡献的，看不出方向对不对。
         return "ui." + parts[1]
     return parts[0]
 
@@ -120,7 +131,7 @@ def bucket_of(rel: str) -> str:
 def layer_of(bucket: str) -> str:
     """细分档位 → **分层** —— 环检测按它判。
 
-    `ui/` 的四个档位（`ui` / `ui.component` / `ui.state` / `ui.screen`）折成同一层：
+    `ui/` 的五个档位（`ui` / `ui.component` / `ui.hook` / `ui.state` / `ui.screen`）折成同一层：
     `SettingsPage` 是个 **DSL 接收者**（页面构件写成它的扩展函数，与 Compose 的
     `ColumnScope` 同一种做法），所以「`SettingsPage.kt` 用构件」与「构件是它的扩展」
     本来就互相 import —— 那是这套 UI 写法的固有形状，不是耦合缺陷。

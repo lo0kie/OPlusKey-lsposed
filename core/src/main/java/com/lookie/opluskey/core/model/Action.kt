@@ -52,6 +52,7 @@ sealed interface Action {
                 is Ringer -> mode.isBlank()
                 is Oplus -> feature.isBlank()
                 is Panel -> mode.isBlank()
+                is Setting -> id.isBlank()
             }
 
     /** 拦截按键，什么都不做。 */
@@ -234,6 +235,20 @@ sealed interface Action {
         }
     }
 
+    /**
+     * 切一个**系统开关**（`setting:wifi` / `setting:rotation` / `setting:powersave` …）。
+     *
+     *  `id` 就是清单里那一节的短名，清单本体见 [SystemSwitches]。执行**不走 shell**：宿主读状态
+     *  算目标值（`host/action/SettingSwitch`），写状态要么直接落 `Settings.Global`，要么交给
+     *  system_server 反射调服务（`bridge/SettingCalls`）。模块不碰 SystemUI，也不需要
+     *  把这些开关先加进控制中心。
+     */
+    data class Setting(
+        val id: String,
+    ) : Action {
+        override val token: String = Action.SETTING_PREFIX + id
+    }
+
     companion object {
         // 各 token 的前缀与整串取值 —— **全项目只在这里写**。别处（`Action.parse`、界面层的
         //  图标表 / 文案表 / 清单表、日志脱敏）一律引用这些常量，不许再写字面量：同一个前缀散在
@@ -293,6 +308,9 @@ sealed interface Action {
 
         /** 拉下系统面板，后接面板名。 */
         const val PANEL_PREFIX = "panel:"
+
+        /** 系统开关（`setting:wifi`）—— 与「系统开关」那一格的清单一一对应。 */
+        const val SETTING_PREFIX = "setting:"
 
         /**
          * `keyevent:<码>` 的拼法 —— 键码本体在 [KeyId] 一处（一、5），这里只负责拼成 token。
@@ -378,6 +396,11 @@ sealed interface Action {
                 // 同上：`panel:` 也是认不出就落到 shell 兜底的那一类
                 text.startsWith(PANEL_PREFIX) -> {
                     Panel(text.removePrefix(PANEL_PREFIX).trim())
+                }
+
+                // 系统开关（`setting:<id>`）：`id` 认不出时交给执行侧报「没接执行」，不落 shell
+                text.startsWith(SETTING_PREFIX) -> {
+                    Setting(text.removePrefix(SETTING_PREFIX).trim())
                 }
 
                 else -> {

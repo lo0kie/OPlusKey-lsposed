@@ -161,4 +161,54 @@ object ModuleWire {
 
     /** [ACTION_HOST_SERVICE_UP] 里带「宿主最后一次执行动作是什么时候」（同上，0 = 从未）。 */
     const val EXTRA_HOST_LAST_ACTION_AT = "host_last_action_at"
+
+    // ── 「自定义按键」页：监听按键（设置页 ↔ 注入侧） ──
+    //
+    //  一对「开 / 关」+ 一对「听见了」。设置页进页时开、出页时关；注入侧在监听期间把每一颗
+    //  按下的键原样报回来（见 `inject/KeyWatch`，**只读旁路**，不改认领与放行）。
+    //
+    //  注意：[ACTION_KEY_SEEN] 的接收方是**设置页自己**注册的接收器（与设置页同进程），
+    //  不经 `GestureReceiver` —— 那边属 `host/`，而 host/ 不许认识界面层
+    //  （`docs/decoupling.md` 动作 1、2 与 `tools/audit-coupling.py`）。
+
+    /** 设置页 → 注入侧：开 / 关那条旁路监听（开关在 [EXTRA_WATCH_ON]）。 */
+    const val ACTION_KEY_WATCH = "com.lookie.opluskey.KEY_WATCH"
+
+    /** [ACTION_KEY_WATCH] 里带「开还是关」。 */
+    const val EXTRA_WATCH_ON = "watch_on"
+
+    /** 注入侧 → 设置页：听见一颗键（**只报按下那一下**）。 */
+    const val ACTION_KEY_SEEN = "com.lookie.opluskey.KEY_SEEN"
+
+    /** [ACTION_KEY_SEEN] 里带「键码」。 */
+    const val EXTRA_SEEN_CODE = "seen_code"
+
+    /** [ACTION_KEY_SEEN] 里带「键码的名字」（`KeyEvent.keyCodeToString`，如 `KEYCODE_VOLUME_UP`）。 */
+    const val EXTRA_SEEN_NAME = "seen_name"
+    // ── 导出日志：把另外两个进程的日志一起收上来 ──
+    //
+    //  设置页那格「导出」只导**本进程**的缓冲（见 `XLog.snapshot`），而判据行散在三个进程里：
+    //  `system`（system_server 的接管与按键判定）、`host`（宿主主进程的抓取与执行）、
+    //  `ui`（设置页自己）。用户抓回来的日志因此常常「一条按键行都没有」—— 排查时等于瞎。
+    //
+    //  一问多答：[ACTION_LOG_PULL] 由设置页发出，另外两个进程各自把缓冲切片回 [ACTION_LOG_CHUNK]；
+    //  设置页收几百毫秒、拼起来再落盘。**分片**是必需的：一次广播塞几百 KB 会撞事务上限。
+
+    /** 设置页 → 注入侧 / 宿主主进程：把你的日志缓冲回给我。 */
+    const val ACTION_LOG_PULL = "com.lookie.opluskey.LOG_PULL"
+
+    /** 任一进程 → 设置页：一段日志（分片，序号与总数见下面两个 extra）。 */
+    const val ACTION_LOG_CHUNK = "com.lookie.opluskey.LOG_CHUNK"
+
+    /** [ACTION_LOG_CHUNK] 里带「这一段是哪个进程的」（`system` / `host` / `ui`）。 */
+    const val EXTRA_LOG_PROC = "log_proc"
+
+    /** [ACTION_LOG_CHUNK] 里带「第几片」（从 0 起）。 */
+    const val EXTRA_LOG_INDEX = "log_index"
+
+    /** [ACTION_LOG_CHUNK] 里带「一共几片」。 */
+    const val EXTRA_LOG_TOTAL = "log_total"
+
+    /** [ACTION_LOG_CHUNK] 里带「这一段的正文」。 */
+    const val EXTRA_LOG_TEXT = "log_text"
 }

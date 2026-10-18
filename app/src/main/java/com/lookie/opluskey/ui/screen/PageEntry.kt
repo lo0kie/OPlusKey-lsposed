@@ -41,6 +41,7 @@ import com.lookie.opluskey.ui.screen.command.CommandScreen
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
 import com.lookie.opluskey.ui.state.BandHeight
+import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.PickedDetail
 import com.lookie.opluskey.ui.tickNow
 import dev.chrisbanes.haze.hazeSource
@@ -172,8 +173,9 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
                         ).roundToPx().toFloat()
                     },
             ),
-        // 「首页」「关于模块」「捐赠列表」三页钉住标题（不折叠），其余几页照常折叠
-        // —— 后两页都是「短内容」页，没什么可折的（名单长起来之后要放开折叠，改的就是这一行）。
+        // 「首页」「关于模块」「捐赠列表」三页钉住标题（不折叠），其余几页照常折叠。
+        //  后两页本来就是「短内容」页，没什么可折的。
+        //  （名单长起来之后要放开折叠，改的就是这一行。）
         canScroll = {
             s != Screen.SHORTCUTS &&
                 s != Screen.ABOUT &&
@@ -202,8 +204,13 @@ private fun SettingsPage.PageBody(
         Screen.BINDING -> {
             BindingScreen(
                 pagerState,
-                // 首页那个主开关（[KeyConfig.enabled]）—— 关掉时整页禁用
-                enabled = plusKeyEnabled(),
+                // 首页那个主开关（[KeyConfig.enabled]）关掉时整页禁用；停在一颗**收集来的键**
+                //  上也禁用 —— 那颗键还没有自己的配置（`KeyId` 还是枚举，`Config.keys` 里只有侧键），
+                //  这时放开的网格改的是侧键、看起来却像在改那颗键，比灰着更容易误操作。
+                // 主开关开着、且停在**侧键**那一组才放开：停在一颗收集来的键上时页面是灰的
+                //  —— 那颗键还没有自己的配置段，放开网格等于把改动写进侧键，看起来却像在改
+                //  那颗键。等 `KeyId` 从枚举改成动态、配置按键存之后，这一行缩回 `plusKeyEnabled()`。
+                enabled = KeyWatchState.selected == null && plusKeyEnabled(),
                 onOpenAppPicker = { g -> openAppPickerForGesture(g) },
                 scrollBehavior = scrollBehavior,
             )
@@ -223,6 +230,9 @@ private fun SettingsPage.PageBody(
         Screen.ACTIVITY_PICKER -> {
             ActivityPickerPage(scrollBehavior)
         }
+
+        // 「自定义按键」：**已不是一页** —— 收集改成「按键绑定」页顶栏 ⋮ 里那一项弹的
+        //  对话框（见 `BindingKeyMenu` / `CollectKeyDialog`），这里不再有分支。
 
         // 「关于模块」：版本 / 仓库地址两行，从首页 ⋮ 菜单进
         Screen.ABOUT -> {

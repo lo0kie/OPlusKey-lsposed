@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.screen.binding
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -57,8 +58,11 @@ internal const val DOUBLE_SETTING_ROWS = 1
  *
  * 从「页内一层浮层」搬过来：位置仍是**折叠栏底边**（顶栏自己排的），
  * 底色 / 模糊 / 下沿那条细线都由顶栏那一份负责（见 [PageHeader] 的 `bottomContent`）。
- *  它**不读滚动量** —— 位置只跟顶栏折叠走；点它去翻页（`animateScrollToPage`），
+ *  它**不读纵向滚动量** —— 位置只跟顶栏折叠走；点它去翻页（`animateScrollToPage`），
  * 反过来亮哪一个由 pager 的 `currentPage` 决定（内容才是真相）。
+ *
+ *  但**滑块是跟手的**：横向滑动页面时按 `currentPage + currentPageOffsetFraction` 实时插值，
+ * 滑块与页面同进同出（细节见下面 `selectedTabPosition` 那一段）。
  *
  *  分段控件**没有 `enabled` 参数**（`TabRowKt` 的 `TabRowWithContour` 签名里没有，
  * 反编译核对过）—— 主开关为关时只能自己造禁用：
@@ -88,9 +92,20 @@ internal fun SettingsPage.BindingTabBand(
     ) {
         TabRowWithContour(
             tabs = Gesture.entries.map { gestureLabel(it) },
-            // 亮哪一个只看**分页器停在哪一页**（`currentPage`）—— 曾按连续拖动页码做过
-            // 一版「跟手」，真机手感不好（滑块跟页面对不上拍），已撤掉。
+            // 亮哪一个只看**分页器停在哪一页**（`currentPage`）—— 标签的粗细与颜色仍按整页切，
+            // 只有滑块（下面那条 `selectedTabPosition`）是连续跟手的。
             selectedTabIndex = pagerState.currentPage,
+            // 滑块位置按**浮点页码**实时算，滑动时 1:1 跟着页面走。
+            //
+            //  `currentPage + currentPageOffsetFraction` 是连续量：拖到一半时前者已翻到下一页、
+            //  后者恰好变成负数补回来（0.5 附近两段接得上），所以它不会跳。
+            //
+            //  滑块**不能**只喂 `selectedTabIndex` 让库自己弹过去 —— 库内部是阻尼比 1 的弹簧
+            //  （stiffness≈439），起步慢、落点还带余量：手指已经滑过一格，滑块才走到一半，
+            //  读起来就是「跟页面对不上拍」。这条路以前走过一次、当时撤掉了，原因就在这。
+            //  这次给库加了浮点入参（`patches/coui/0007-fractional-tab-position.patch`）：
+            //  浮点位置非空时库跳过弹簧、直接照它画滑块，才真正做到跟手。
+            selectedTabPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
             onTabSelected = {
                 tick()
                 scope.launch { pagerState.animateScrollToPage(it) }
@@ -138,6 +153,7 @@ internal fun SettingsPage.BindingScreen(
     /** 点「打开应用」那一格时跳「打开应用」页（新增，见 [Screen.APP_PICKER]）；
      *  带上是**哪个手势**点的 —— 挑中写哪个手势、没挑就返回回退哪个手势都靠它。 */
     onOpenAppPicker: (Gesture) -> Unit,
+    /** 点「控制中心磁贴」那一格时跳「控制中心磁贴」页。 */
     scrollBehavior: ScrollBehavior,
 ) {
     // tab 与页互相同步。
@@ -158,7 +174,6 @@ internal fun SettingsPage.BindingScreen(
      * 里面的话每翻一页都会重放一次进/出场，看着像闪。
      */
     val navigateToCommands: () -> Unit = nav@{
-        if (!enabled) return@nav
         // 通用通道（判据只有系统状态，见 [hapticsAllowed]），与分段控件点击同一条规矩。
         tick()
         //  注意：这是**「新增」的唯一入口**，必须先把草稿清干净：
@@ -198,14 +213,6 @@ internal fun SettingsPage.BindingScreen(
     // 两者才严丝合缝。这条带子现在挂在**顶栏**里（见 [BindingTabBand]），量高度也在那边，
     // 值走页面级的 [SettingsPage.bindingBandHeight]（见 [BandHeight]）。
     val tabBlockDp = bindingBandHeight.dp()
-    // 主开关为关时，分段控件与右下那颗 FAB 都靠**套 alpha** 造禁用（两者都没有
-    // `enabled` 参数，见下面各自那两段）。分段控件带搬进顶栏之后两份 alpha 分处两棵树，
-    // 但**参数与目标值完全一致**、又在同一帧被同一个开关作废 ⇒ 淡入淡出仍然同步。
-    // 过渡参数与页里其他状态色（[ActionTile] 的 `contentColor` 等）同一组。
-    val disabledAlpha by animateFloatAsState(
-        targetValue = if (enabled) 1f else DISABLED_ALPHA,
-        label = "BindingDisabledAlpha",
-    )
 
     Box(
         Modifier
@@ -233,7 +240,7 @@ internal fun SettingsPage.BindingScreen(
                 // 该收浮层、该吃方向键。不给 `active` 的话进场三页各自 requestFocus，谁最后请求到
                 // 谁说了算（真机上表现为「翻页后方向键在动上一页的圈」）。
                 page = BindingPageState(enabled = enabled, active = pagerState.currentPage == page),
-                onOpenAppPicker = onOpenAppPicker,
+                pickers = BindingPickers(onOpenAppPicker),
                 onCreateCommand = navigateToCommands,
                 // 分段控件在 pager 之外、由外层驱动 —— 它要的滚动量由**当前页**那一份给
                 // （见上面 `listScrolls` 的注释）。
@@ -242,81 +249,33 @@ internal fun SettingsPage.BindingScreen(
             )
         }
 
-        //  —— 手势分段控件（`TabRowWithContour`）就叠在这里 ——
-        // 搬进**顶栏的 `bottomContent`**（见 [BindingTabBand]）：
-        // 带子成了顶栏这个节点的一部分，顶栏自己的半透明底与模糊连着它一起盖住，
-        // 于是这一整层（`clipToBounds` 的外壳 + 自己的取样层 / `frosted` /
-        // 半透明底 + 自己画的那条下划线 + 内容里的等高占位）全部删掉 ——
-        // 位置（折叠栏底边）、观感（底色 + 模糊）、下沿那条细线都由顶栏那份负责。
-
-        // —— 进「自定义命令」页的**唯一入口** ——
-        //
-        //  放在 **pager 之外、Box 之内**：它不随某个手势页滚动 / 翻页（否则每翻一页
-        // 都会重放一次进/出场，看着像闪），但仍然属于「按键绑定」这一页 ——
-        // 整页 push / pop 转场时它跟着一起滑（挂到 `Page` 那一层的话它不动，
-        // 会看着像「凭空出现 / 消失」，与「每级页面自带顶栏、整页转场」的规矩不一致）。
-        //
-        // 尺寸 / 形状 / 阴影走库的默认值（`FloatingActionButtonDefaults`：56dp 见方、`CircleShape`、
-        // 12dp 阴影、按下缩到 0.92）；这三样收在 [PageFabButton] 那一份里（与「选择应用」页那颗
-        // 共用）—— 色相是 `colorScheme.primary`、不自己调色（与「选中态只靠 radio + 文字变蓝、
-        // 不动底色」那条纪律一致）。
-        //
-        //  库的 `FloatingActionButton` **没有 `enabled` 参数**（签名逐项核对过：
-        // `onClick / modifier / shape / containerColor / shadowElevation / minWidth /
-        // minHeight / interactionSource / content`）。主开关为关时按分段控件那条老路造禁用：
-        // (1) 套 `alpha` 让它看着是灰的；(2) 上面压一层透明 Box 把输入全吃掉
-        // —— 只把 `onClick` 换成空实现的话，它看着还能点、点了却没反应，比灰着更让人困惑。
-        //  下边距取 [PAGE_BOTTOM_PADDING] 的**两倍**（64dp）、右边距取 [PAGE_MARGIN]
-        //  显隐：**往下滚就藏、往上滚就露**（判据见 [rememberFabVisibleOnScroll]）——
-        //  它压着列表最后几行，而往下滚的时候要看的是内容；往回滚（想找回上面那几格）时
-        //  它才该露出来。
-        //  滚动状态取**当前那一页**的那一份：三个手势页各持一份（见上面 `listScrolls`），
-        //  换页时它变了，[rememberFabVisibleOnScroll] 内部的显隐跟着重置成「露」。
-        //  动画与位置走 [PageCornerFab] 那一份（与「选择应用」那颗同一套滑入 / 滑出）。
-        PageCornerFab(
+        // —— 进「自定义命令」页的唯一入口 FAB ——
+        BindingFab(
             visible = rememberFabVisibleOnScroll(listScrolls[pagerState.currentPage]),
-        ) {
-            Box {
-                PageFabButton(
-                    onClick = navigateToCommands,
-                    modifier = Modifier.alpha(disabledAlpha),
-                ) {
-                    // 用「加号」而不是命令提示符 `>_`：这颗按钮的动作是**新增**
-                    // 一条命令（`navigateToCommands` 会先 `draft.reset()`），加号是 FAB 上
-                    // 最不会误读的字形。目标页的标题仍是「自定义命令」，身份不会丢。
-                    //
-                    // v1.1.0 源码：`FloatingActionButton` 内部只套一层
-                    // `Surface(color = containerColor)`，**没给 contentColor** ——
-                    // 而 `Surface` 自己的默认是 `contentColor = onSurface`（`Surface.kt`），
-                    // 于是图标继承到 `onSurface`（深色），画在 `primary`（蓝）底上就是一坨深色。
-                    // `onPrimary` 才是「画在 primary 上的内容色」，深浅两套色板都取白。
-                    //  不要用 `Color.Unspecified` 顶替「不给」—— 那个值在 `Icon` 里是
-                    // 「**完全不上色**」（用矢量图自带的填充色），不是「用 LocalContentColor」。
-                    Icon(
-                        PageIcons.CommandAdd,
-                        contentDescription = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"),
-                        tint = COUITheme.colorScheme.onPrimary,
-                    )
-                }
-                if (!enabled) {
-                    // 透明吃事件层（与分段控件那条同一个做法）：不给任何视觉，只负责拦住输入
-                    Box(
-                        Modifier
-                            .matchParentSize()
-                            .pointerInput(Unit) {
-                                awaitPointerEventScope {
-                                    while (true) {
-                                        awaitPointerEvent().changes.forEach { it.consume() }
-                                    }
-                                }
-                            },
-                    )
-                }
-            }
-        }
+            onClick = navigateToCommands,
+        )
+    }
+}
 
-        // 「放弃未保存的命令」那一问**已挪到「自定义命令」页退出时**：
-        //  这里只管进页 —— 不再看草稿、也不再清草稿（见 `CommandScreen` 里那张同名的确认窗）。
+/** 进「自定义命令」页的浮动操作按钮。
+ *
+ *  **不跟整页的禁用态一起灰掉**（用户口径）：这一颗进的是「自定义命令」页 —— 那一页管的是
+ *  命令库，不挂在某颗键的绑定上，主开关关着、或停在收集来的键上时它照样有意义。
+ *  灰着却还留着（或灰着又拦点击）比直接放着更难解释。
+ */
+@Composable
+private fun BoxScope.BindingFab(
+    visible: Boolean,
+    onClick: () -> Unit,
+) {
+    PageCornerFab(visible = visible) {
+        PageFabButton(onClick = onClick) {
+            Icon(
+                PageIcons.CommandAdd,
+                contentDescription = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"),
+                tint = COUITheme.colorScheme.onPrimary,
+            )
+        }
     }
 }
 

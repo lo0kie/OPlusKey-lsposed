@@ -288,12 +288,19 @@ internal val GRID_GAP = PAGE_MARGIN
 internal val GRID_ROW_GAP = GRID_GAP
 
 /**
- * 浮层菜单每项图标的尺寸 —— 取 20dp。
+ * 浮层菜单每项图标的尺寸 —— 取 22dp，与全页行首图标 [ROW_ICON_SIZE] 同一档。
  *
- * 库的规格 24dp（`DropdownDefaults.IconMinSize`）是给两行菜单项配的，这里两行都是单行 16sp 正文，24dp 比字还高。
+ * 库的规格 24dp（`DropdownDefaults.IconMinSize`）是给两行菜单项配的，这里两行都是单行 16sp 正文，
+ * 24dp 比字还高。曾经取 20dp，但菜单图标比网格格子 / 步骤行 / 输入框行首那一档（22dp）小一格，
+ * 同一页里来回看是「菜单的图标偏小」（用户口径：放大 2dp）。库的图标槽本身按 24dp 留位，
+ * 22dp 仍在格里，不挤标题。
+ *
+ *  仍留一个独立常量而不是直接引用 [ROW_ICON_SIZE]：浮层行高比网格格子矮得多，将来若要单独
+ *  回调这一档，有名字可改。
+ *
  * 库没有「每项图标尺寸」参数，只能从 `DropdownItem.icon` 的 `(Modifier) -> Unit` 槽位补（见 [ResetMenu]）。
  */
-internal val MENU_ICON_SIZE = 20.dp
+internal val MENU_ICON_SIZE = 22.dp
 
 /**
  * 行尾那颗指示图标（右箭头 / 选中圈 / 入口字形）的边长 —— 取 24dp，

@@ -66,16 +66,17 @@ internal fun ColumnScope.DialogBody(text: String) {
  * 库的 `DialogButtonBar` 只能给 negative / neutral / positive **同一套** `TextButtonColors`，
  * 分不出「取消是中性色、动作项是红/主题色」，所以整条自己拼（见其 KDoc 里的实测记录）。
  *
- * @param positiveDanger 动作项是否按破坏性上色（红）。非破坏性动作走主题色 ——
- *   「前往下载」这类给红会读成「这是危险操作」。
+ * @param positiveStyle 动作项那一格怎么画：是否按破坏性上色（红）、能不能点。
+ *   两件都是「动作项自己的状态」，打成一个类只是为了让这个函数的参数个数留在
+ *   detekt 的 `LongParameterList` 之下。
  */
 @Composable
 internal fun DialogButtonRow(
     negative: String,
     positive: String,
-    positiveDanger: Boolean,
     onNegative: () -> Unit,
     onPositive: () -> Unit,
+    positiveStyle: DialogPositiveStyle = DialogPositiveStyle(),
 ) {
     Row(
         modifier =
@@ -117,22 +118,35 @@ internal fun DialogButtonRow(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight(),
+            enabled = positiveStyle.enabled,
             pressScaleEnabled = false,
             cornerRadius = DialogButtonBarDefaults.ButtonCornerRadius,
             minHeight = DialogDefaults.ButtonBarMinHeight,
             colors =
                 ButtonDefaults.textButtonColorsBorderless(
                     textColor =
-                        if (positiveDanger) {
+                        if (positiveStyle.danger) {
                             COUITheme.colorScheme.error
                         } else {
                             COUITheme.colorScheme.primary
                         },
+                    disabledTextColor = COUITheme.colorScheme.disabledOnSurface,
                 ),
             insideMargin = DialogDefaults.ButtonBarInsideMargin,
         )
     }
 }
+
+/**
+ * 弹窗动作项（右半边那颗按钮）的两种状态。
+ *
+ * @param danger 按破坏性上色（红）—— 非破坏性动作给红会被读成「这是危险操作」
+ * @param enabled false 时灰掉且不吃点击（「名字为空不让确定」这类判据用）
+ */
+internal data class DialogPositiveStyle(
+    val danger: Boolean = false,
+    val enabled: Boolean = true,
+)
 
 /** 与库 `DialogContent` 同度量：标题与正文的行高（库 `DialogLineHeight = 1.29.em`）。 */
 internal val DIALOG_LINE_HEIGHT = 1.29f.em

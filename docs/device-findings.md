@@ -3490,3 +3490,59 @@ resolveActivityForMultiApp, has cached userId: 998
 2. **ColorOS Ringer Delegate 拦截静音写入**：
    调用公共 API `AudioManager.setRingerMode(0)` 时，ColorOS 的 `mRingerModeDelegate` 会将其拦截并降级改写为 `1`（振动）。
    写入必须走 `@hide` 内部通道 `AudioManager.setRingerModeInternal(int mode)`（宿主进程具备 `STATUS_BAR_SERVICE` 权限）。
+
+## 二十四、系统开关的读写分工（实测，2026-10-18，ColorOS 16）
+
+「系统开关」那十条里，手电筒走 §23 那条专属通道，其余九条是**宿主读状态 + system_server 写状态**：
+`Settings` 里那几个键公开可读（宿主 `platform_app` 用 ContentResolver 读得到），而 `setWifiEnabled` /
+`setAirplaneMode` 这些要 `NETWORK_SETTINGS` / `MODIFY_PHONE_STATE` 一类特权（宿主没有、system_server
+的 uid 1000 有）；反过来 system_server 里借来的 Context 用 ContentResolver **必 NPE**（六之五）——
+两边各做一件自己做得来的事，谁都不需要 root。
+
+| 开关 | 读（宿主，`Settings`） | 写（system_server，binder） |
+| --- | --- | --- |
+| WLAN | `Global.wifi_on` | `wifi` · `setWifiEnabled`（`(bool)` / `(String,bool)`） |
+| 蓝牙 | `Global.bluetooth_on` | `bluetooth_manager` · `enable(AttributionSource)` / `disable(AttributionSource, persist=true)` |
+| 移动数据 | `Global.mobile_data` | `phone` · `setDataEnabled`（或 `setDataEnabledForReason`） |
+| 飞行模式 | `Global.airplane_mode_on` | `connectivity` · `setAirplaneMode` |
+| 免打扰 | —— （走既有实现，见 §23） | `Action.Oplus` → 宿主侧 `AppLauncher` |
+| 暗色模式 | `Secure.ui_night_mode`（`2` = 开） | `uimode` · `setNightMode` |
+| 省电模式 | `Global.low_power` | `power` · `setPowerMode`（1 = 开、0 = 关） |
+| 自动旋转 | —（见下） | `window` · `freezeDisplayRotation` / `thawDisplayRotation` |
+| NFC | —（`nfc_on` 读不到，见下） | `nfc` · `isEnabled` 读、`enable` / `disable` 写 |
+
+几个容易走错的方向：
+
+1. **自动旋转没有可读的键**：`Settings.System.accelerometer_rotation` 在宿主里读得到，但我们直接调
+   `window` 冻结时**不会**写这个键，两边会各说各的 —— 所以这一条的「锁没锁」由 system_server 自己用
+   `IWindowManager.isRotationFrozen()` 读、再用 `thawDisplayRotation` / `freezeDisplayRotation` 切。
+2. **`clickTile` 对系统磁贴无效**：控制中心里的 `wifi` / `bt` / `nfc` 是 SystemUI 内置的简写 token，
+   **没有 `ComponentName`**，`IStatusBarService.clickTile` 与 `cmd statusbar click-tile nfc` 都静默无操作。
+   （这条通道已随 `tile:` 动作一起删掉，现在系统开关是 `setting:<id>`。）
+3. **`svc nfc` 会被系统杀掉**（`exit=137`）—— 上一版用 shell 时只能走 `cmd nfc enable-nfc`；
+   现在 NFC 也按同一张表走 binder（`nfc` 服务的 `enable` / `disable`，与 `cmd nfc` 同一对方法）。
+4. **热点没有可用的开关入口**：`cmd wifi start-softap` 存在但必须现给 SSID 与安全类型 / 密码
+   （照它开等于把用户配好的热点名改掉）；`TetheringManager.startTethering` 要 `TETHER_PRIVILEGED`
+   （宿主是 `platform_app`，只有 `WRITE_SECURE_SETTINGS`）。界面因此不列热点。
+5. **`setAirplaneMode` 不在 framework.jar 里**（Android 14+ 把 connectivity 挪进了大模块），
+   所以「framework 里 grep 不到」不等于运行时没有 —— 按名字反射仍然打得到，验证要在真机上做。
+
+## 二十五、真实侧键事件的 deviceId 可以是 -1（实测，2026-10-18，PLQ110 / ColorOS 17.0.0）
+
+一份 PLQ110 的模块日志（`1.0.0-release`）里，策略回调收到的**真实**按压是这样的：
+
+```
+按键（…StrategyActionButtonKeyLaunchApp#actionInterceptKeyBeforeQueueing）：合成事件（deviceId=-1），放行给系统
+按键（…）：合成事件（deviceId=-1），放行给系统          ← 一次按压的 DOWN + UP，两条都是 -1
+侧键（…）：UP keyCode=780                              ← 偶尔从另一条路径漏进来一条真 deviceId 的抬手
+侧键：只收到抬手（没见到按下）⇒ 按孤立 UP 处理（补判一次单击）
+```
+
+- 同一版代码在 OnePlus 15（PLK110）上，真实事件的 `deviceId` 是正常值，DOWN 能直接认领。
+- 所以**不能拿 `deviceId < 0` 当「我们自己注入的合成事件」的判据**：`KeyInjector` 下发的确实是
+  `deviceId = -1`（`KeyCharacterMap.VIRTUAL_KEYBOARD`），但有的 ROM 自己的按键事件也带 -1。
+- 判据改成「`deviceId < 0` **且** keyCode 不在认领白名单里」：`KeyInjector` 只会下发动作里的
+  那几颗码（主屏幕 / 返回 / 音量 / 媒体 / 截图 / 通知），侧键的 735 / 780 / 781 / 782 从不由我们自己注入，
+  于是这几个码即便 -1 也是真按键。
+- 症状对得上用户反馈：单独按侧键几乎无反应，某些按法（比如电源键 + 侧键改走另一条派发路径）凑出
+  一个孤立抬手才「偶尔触发一次」。

@@ -1,0 +1,31 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+@@ -244,7 +244,7 @@
+                 colorFilter = chevronColorFilter,
+                 contentDescription = null,
+             )
+-        } else {
++        } else if (item.showCheck) {
+             val checkColorFilter = remember(checkColor) {
+                 BlendModeColorFilter(checkColor, BlendMode.SrcIn)
+             }
+@@ -448,6 +448,10 @@
+  *   which otherwise uses [COUIIcons.Basic.ArrowRight] (a 12x24dp COUI glyph). A supplied icon is
+  *   drawn in the check's square 24dp cell, since icon sets drawn on a square viewport would be
+  *   squashed by the native arrow's 12x24 cell.
++ * @param showCheck Whether the trailing selection indicator is drawn at all. Host apps that mark
++ *   the selected row some other way (e.g. by swapping the leading icon) pass false: the check's
++ *   cell — its start padding plus the 24dp glyph — is then not reserved either, so the row keeps
++ *   that width for its title instead of carrying an always-empty placeholder on every row.
+  */
+ @Stable
+ data class DropdownItem(
+@@ -462,6 +466,7 @@
+     val alert: Boolean = false,
+     val checkIcon: ImageVector? = null,
+     val chevronIcon: ImageVector? = null,
++    val showCheck: Boolean = true,
+ ) {
+     /**
+      * [SpinnerEntry] compatibility

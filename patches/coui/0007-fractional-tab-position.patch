@@ -1,0 +1,147 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TabRow.kt
+@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.TextUnit
+ import androidx.compose.ui.unit.dp
+ import io.github.suqi8.coui.kmp.theme.COUITheme
+ import kotlinx.coroutines.launch
++import kotlin.math.floor
+ import kotlin.math.max
+ import kotlin.math.min
+ import kotlin.math.roundToInt
+@@ -85,6 +86,11 @@ import kotlin.math.roundToInt
+  * @param maxWidth The maximum width of the tab in [TabRow].
+  * @param height The height of the [TabRow].
+  * @param cornerRadius The corner radius of the sliding indicator in [TabRow].
++ * @param selectedTabPosition Fractional selection position, e.g. `1.4` for "40% of the way from
++ *   segment 1 to segment 2" (the same convention as
++ *   `PagerState.currentPage + PagerState.currentPageOffsetFraction`). When non-null the indicator
++ *   follows it directly instead of springing between the integer indices, so it tracks a dragging
++ *   pager frame by frame. Out-of-range values clamp to the first / last segment.
+  * @param itemSpacing The spacing between tabs in [TabRow].
+  * @param contentAlignment The content alignment of the tab in [TabRow].
+  * @param listState The [LazyListState] to be used for the [TabRow].
+@@ -97,6 +103,7 @@ fun TabRow(
+     tabs: List<String>,
+     selectedTabIndex: Int,
+     onTabSelected: (Int) -> Unit,
++    selectedTabPosition: Float? = null,
+     modifier: Modifier = Modifier,
+     colors: TabRowColors = TabRowDefaults.tabRowColors(backgroundColor = Color.Transparent),
+     minWidth: Dp = TabRowDefaults.TabRowMinWidth,
+@@ -112,6 +119,7 @@ fun TabRow(
+     SegmentButtonRow(
+         tabs = tabs,
+         selectedTabIndex = selectedTabIndex,
++        selectedTabPosition = selectedTabPosition,
+         onTabSelected = onTabSelected,
+         modifier = modifier,
+         colors = colors,
+@@ -146,6 +154,11 @@ fun TabRow(
+  * @param height The height of the [TabRow].
+  * @param cornerRadius The corner radius of the sliding indicator in [TabRow].
+  * @param contourPadding The inset between the container capsule and the sliding indicator.
++ * @param selectedTabPosition Fractional selection position, e.g. `1.4` for "40% of the way from
++ *   segment 1 to segment 2" (the same convention as
++ *   `PagerState.currentPage + PagerState.currentPageOffsetFraction`). When non-null the indicator
++ *   follows it directly instead of springing between the integer indices, so it tracks a dragging
++ *   pager frame by frame. Out-of-range values clamp to the first / last segment.
+  * @param itemSpacing The spacing between tabs in [TabRow].
+  * @param contentAlignment The content alignment of the tab in [TabRow].
+  * @param listState The [LazyListState] to be used for the [TabRow].
+@@ -158,6 +171,7 @@ fun TabRowWithContour(
+     tabs: List<String>,
+     selectedTabIndex: Int,
+     onTabSelected: (Int) -> Unit,
++    selectedTabPosition: Float? = null,
+     modifier: Modifier = Modifier,
+     colors: TabRowColors = TabRowDefaults.tabRowColors(),
+     minWidth: Dp = TabRowDefaults.TabRowWithContourMinWidth,
+@@ -174,6 +188,7 @@ fun TabRowWithContour(
+     SegmentButtonRow(
+         tabs = tabs,
+         selectedTabIndex = selectedTabIndex,
++        selectedTabPosition = selectedTabPosition,
+         onTabSelected = onTabSelected,
+         modifier = modifier,
+         colors = colors,
+@@ -197,6 +212,7 @@ fun TabRowWithContour(
+ private fun SegmentButtonRow(
+     tabs: List<String>,
+     selectedTabIndex: Int,
++    selectedTabPosition: Float?,
+     onTabSelected: (Int) -> Unit,
+     colors: TabRowColors,
+     minWidth: Dp,
+@@ -282,8 +298,15 @@ private fun SegmentButtonRow(
+         var selectedSegmentPressed by remember { mutableStateOf(false) }
+         var lastSettledSelectedTabIndex by remember(resolvedListState) { mutableIntStateOf(-1) }
+ 
++        // A fractional position (a dragging pager) takes the indicator over entirely: the settle
++        //   springs below are skipped so the capsule follows the finger frame by frame instead of
++        //   chasing it with a critically damped spring — the spring version lags visibly behind the
++        //   content, which reads as "the indicator is out of sync with the page".
++        val livePosition = selectedTabPosition
++
+         // COUI animateIndicatorToPosition: independent position and width springs.
+-        LaunchedEffect(selectedTabIndex, segmentWidthsPx, segmentLeftsPx) {
++        LaunchedEffect(selectedTabIndex, segmentWidthsPx, segmentLeftsPx, livePosition == null) {
++            if (livePosition != null) return@LaunchedEffect
+             if (segmentWidthsPx.isEmpty()) return@LaunchedEffect
+             val index = selectedTabIndex.coerceIn(0, segmentWidthsPx.lastIndex)
+             val targetWidth = segmentWidthsPx[index].toFloat()
+@@ -348,10 +371,17 @@ private fun SegmentButtonRow(
+                     if (segmentWidthsPx.isEmpty()) return@drawBehind
+                     val pad = contourPadding.toPx()
+                     val scale = indicatorScale.value
+-                    val indicatorW = indicatorWidth.value * scale
++                    // A live (fractional) position overrides both settled springs.
++                    val rest =
++                        if (livePosition != null) {
++                            interpolateIndicator(livePosition, segmentLeftsPx, segmentWidthsPx)
++                        } else {
++                            indicatorCenterX.value to indicatorWidth.value
++                        }
++                    val indicatorW = rest.second * scale
+                     val indicatorH = (size.height - 2f * pad) * scale
+                     if (indicatorW <= 0f || indicatorH <= 0f) return@drawBehind
+-                    val centerX = pad + indicatorCenterX.value - scrollOffset
++                    val centerX = pad + rest.first - scrollOffset
+                     val centerY = size.height / 2f
+                     val rect = Rect(
+                         centerX - indicatorW / 2f,
+@@ -488,6 +518,34 @@ private fun SegmentTab(
+     }
+ }
+ 
++/**
++ * Interpolate the indicator centre (first) and width (second) for a fractional [position].
++ *
++ * [position] follows the `PagerState.currentPage + PagerState.currentPageOffsetFraction`
++ * convention: `1.4` means 40% of the way from segment 1 to segment 2. Out-of-range values clamp to
++ * the first / last segment, so overscrolling holds the capsule against the edge instead of pushing
++ * it outside the row. Widths interpolate as well: with unequal segments the capsule should not jump
++ * in size at the halfway point.
++ */
++private fun interpolateIndicator(
++    position: Float,
++    lefts: List<Int>,
++    widths: List<Int>,
++): Pair<Float, Float> {
++    if (widths.isEmpty()) return 0f to 0f
++    val lastIndex = widths.lastIndex
++    val clamped = position.coerceIn(0f, lastIndex.toFloat())
++    val from = floor(clamped).toInt()
++    val to = min(from + 1, lastIndex)
++    val fraction = clamped - from
++    val fromCenter = lefts[from] + widths[from] / 2f
++    val toCenter = lefts[to] + widths[to] / 2f
++    val fromWidth = widths[from].toFloat()
++    val toWidth = widths[to].toFloat()
++    return (fromCenter + (toCenter - fromCenter) * fraction) to
++        (fromWidth + (toWidth - fromWidth) * fraction)
++}
++
+ /**
+  * Resolve the widths of all segments (COUISegmentButtonLayout.onMeasure).
+  *

@@ -57,7 +57,7 @@ internal val DONATE_LIST_TITLE: String
  * 五句一句话说清一件事，逐条见下面各条自己的说明。
  */
 internal val MODULE_UNAVAILABLE_HINT: String
-    get() = I18n.get(Strings.STATUS_UNAVAILABLE, "模块暂不可用，请稍候")
+    get() = I18n.get(Strings.STATUS_UNAVAILABLE, "页面还没就绪，重进本页试试")
 
 /**
  * 首页那条常驻提示的**另一种**文案：这次**配置没读成功**（文件在、但读不了 / 读不懂）。
@@ -96,7 +96,7 @@ internal val SERVICE_NOT_RUNNING_HINT: String
  *  只写这两件要做的事。
  */
 internal val INJECT_NOT_LOADED_HINT: String
-    get() = I18n.get(Strings.STATUS_DISABLED, "模块未生效：确认作用域含 system，换包后需重启")
+    get() = I18n.get(Strings.STATUS_DISABLED, "模块没生效：在 LSPosed 里把本模块的作用域勾上「系统」")
 
 /**
  * 首页那条常驻提示的第八种文案：**换过包但没重启** —— 系统那一侧回了包，可它报的构建标识不是本包。

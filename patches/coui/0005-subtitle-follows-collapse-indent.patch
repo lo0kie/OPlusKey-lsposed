@@ -1,0 +1,16 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
+@@ -1065,8 +1065,11 @@
+ 
+             // Subtitle (COUICollapsableAppBarLayout.adjustSubtitleIfNeed): rides the scroll 1:1,
+             // lifted by the interpolating bottom padding; fades out only when hideSubtitleOnCollapse.
++            // Its start edge follows the large title's, so the two stay flush once the bar is fully
++            // collapsed and the title has moved to its own indent (`collapsedTitleX`);
++            // at the expanded end the lerp still starts at `titlePaddingPx` — nothing moves.
+             subtitlePlaceable?.placeRelativeWithLayer(
+-                x = titlePaddingPx,
++                x = largeTitleX.roundToInt(),
+                 y = expandedBarHeight - subtitleHeight -
+                     (largeTitleBottomPaddingPx * (1f - collapseFraction)).roundToInt() + offsetPx,
+             ) {

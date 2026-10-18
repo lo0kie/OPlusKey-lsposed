@@ -104,9 +104,9 @@ internal fun SettingsPage.ConfirmDialog(
             DialogButtonRow(
                 negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
                 positive = action,
-                positiveDanger = positiveDanger,
                 onNegative = onDismiss,
                 onPositive = onConfirm,
+                positiveStyle = DialogPositiveStyle(danger = positiveDanger),
             )
         }
     }

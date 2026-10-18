@@ -275,6 +275,10 @@ internal fun modeEntries(
 ): List<MenuEntry> =
     buildList {
         add(MenuEntry.Group(parentTitle))
+        // 小标题与下面这张列表之间是**一条细线**（用户口径，试过加深带、改回来了）：这一层只有
+        //  「标题 + 一组选项」，加深带读起来像「下面还有一组」；同一组内相邻行也是这条细线。
+        //  真要在列表内部分组，靠 `spec.dividerBefore` 那几处（它们仍然给 [MenuEntry.GroupLine]）。
+        add(MenuEntry.RowLine)
         modes.forEachIndexed { index, spec ->
             if (index > 0) {
                 add(if (spec.dividerBefore) MenuEntry.GroupLine else MenuEntry.RowLine)

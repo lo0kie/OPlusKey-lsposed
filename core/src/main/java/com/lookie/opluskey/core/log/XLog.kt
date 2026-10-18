@@ -72,8 +72,17 @@ object XLog {
         java.time.format.DateTimeFormatter
             .ofPattern("MM-dd HH:mm:ss.SSS")
 
-    /** 导出用：把缓冲拼成文本（宿主进程侧；注入侧在 LSPosed 的日志页里）。 */
+    /** 导出用：把缓冲拼成文本（**本进程**）。另外两个进程那份由 `wire/LogWire` 一问一答收上来。 */
     fun snapshot(): String = buffer.joinToString("\n")
+
+    /**
+     * 缓冲里的每一行（拷贝一份快照）。
+     *
+     *  分片回给设置页时按**行**切：切在行中间会把时间戳劈开，拼回去也对不齐。
+     *  拷贝而不是直接遍历 `buffer`（并发队列）：边读边有人在后面写，会把「这次导出的行数」
+     *  与「实际拼出来的行数」弄成两个值。
+     */
+    fun lines(): List<String> = ArrayList(buffer)
 
     /** 日志的实际出口；`@PublishedApi internal` 是为了让 [d] 这个内联函数能调用它。 */
     fun write(

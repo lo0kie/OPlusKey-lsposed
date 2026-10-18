@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.SystemSwitches
 
 // 命令文本的显示层：把一条命令 / 一个步骤压成界面上要显示的那几行字。
 // 与 Compose、与页面状态无关 —— 输入是 `Command` / 字符串，输出是字符串 / 图标。
@@ -82,6 +83,14 @@ internal fun stepTitle(
         //  这一档是「打开它的某个快捷方式」。
         is Action.AppShortcut -> {
             I18n.format(Strings.COMMON_OPEN_SHORTCUT_FORMAT, appName(action.appTarget.orEmpty()))
+        }
+
+        // 系统开关（`setting:<id>`）：读作「切换:WLAN」—— 名字在清单里，认不出就退回 id
+        is Action.Setting -> {
+            I18n.format(
+                Strings.COMMON_TOGGLE_SETTING_FORMAT,
+                SystemSwitches.titleOf(action.token) ?: action.id,
+            )
         }
 
         //  与执行时提示（`host/action/ActionNotice`）共用同一份优先级（`ActionCatalog.label`）；

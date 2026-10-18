@@ -10,23 +10,29 @@
 
 ---
 
-## 零、2026-10-18 实测基线（本页正文的旧数字以此为界失效）
+## 零、实测基线（2026-10-19 复核）
 
 正文各节的 `43 字段 / 15 文件 / ui/component / 18 个环` 是**改造前**的口径。改造后的可复核值：
 
 | 项                                       | 值                                                                       | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
 | ---------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| 包级环 / 边                              | **0 / 27**（细分档位口径）                                               | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
+| 包级环 / 边                              | **0 / 31**（细分档位口径；`ui/hook` 单独成档后由 27 变 31，见下）        | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
 | `SettingsPage` 状态字段                  | **21**                                                                   | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
-| `SettingsPage.xxx` 扩展                  | 198 个，散在 63 文件                                                     | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
-| `ui/SettingsPage.kt` 行数                | **497**（879 → 699 → 497）                                               | `wc -l ui/SettingsPage.kt`                                                          |
+| `SettingsPage.xxx` 扩展                  | 204 个，散在 65 文件                                                     | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
+| `ui/SettingsPage.kt` 行数                | **517**（879 → 699 → 497 → 517）                                         | `wc -l ui/SettingsPage.kt`                                                          |
 | `inject/ProbeChannel.kt` 行数            | 337（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）            | `wc -l inject/Probe*.kt`                                                            |
 | `host/action/MiniWindowLauncher.kt` 行数 | 695（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`） | `wc -l host/action/MiniWindow*.kt`                                                  |
-| 单文件最大行数                           | **725**（`ui/model/ActionIcons.kt`）；全仓**无 > 1000 行**的文件         | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
-| 屏文件 import 页面                       | 45 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线    | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
+| 单文件最大行数                           | **791**（`ui/model/ActionIcons.kt`）；全仓**无 > 1000 行**的文件         | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
+| 屏文件 import 页面                       | 47 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线    | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
 | 零引用 import                            | 0，且由 detekt 拦下                                                      | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
-新的分层（方向是单向的，`ui.screen`/`ui.hook` 都只往 `ui` 与 `ui.state` 走）：
+**边数 27 → 31 是量具变细，不是新增耦合**：`ui/hook` 原先被折进 `ui` 档，它自己的五条外连
+（`→ bridge / core / ui / ui.screen / ui.state`）和 `root` 那一条都被记在别的档上，方向看不出来。
+拆开之后 `root` 的依赖也从含糊的 `root → ui` 变成准确的 `root → ui.hook`，同时腾出位置新增三条
+「不许反向依赖 `ui.hook`」的禁止边（见五）。
+
+新的分层（方向是单向的，`ui.hook` 在最上层，只往 `ui.screen` → `ui` → `ui.state` / `ui.model` 走；
+2026-10-19 起「下层反向引 `ui.hook`」由 `audit-coupling.py` 逐条禁止，不再只靠人守）：
 
 ```
 ui.hook  宿主页注入（换页 / 返回拦截 / 配置导入导出 / 窗口色）
@@ -364,6 +370,9 @@ com.lookie.opluskey
 | `host/`         | `inject.*` · `ui.*`                                                                          | 本文动作 1、2                                                 |
 | `ui/component/` | `ui/screen.*`                                                                                | 本文动作 4                                                    |
 | `ui/state/`     | `ui/screen.*`                                                                                | 同向（状态不许反过来认识屏）                                  |
+| `ui/screen/`    | `ui.hook.*`                                                                                  | 分层图单向：hook 装页面，页面不认识 hook（2026-10-19 补）     |
+| `ui/state/`     | `ui.hook.*`                                                                                  | 同上                                                          |
+| `ui/`           | `ui.hook.*`                                                                                  | 同上（`SettingsPage` / `Screen` / 页面模型都不认识 hook）     |
 | `ui/`           | `host/action.ActionRunner`（`CommandLibrary` / `TestRunnerCache` 两处除外）                  | 执行器归宿主；页面只借它跑一次「测试命令」                    |
 | `core/`         | 任何上层包                                                                                   | 已有事实（唯一例外是 `core/wire → core/config`，动作 3 收掉） |
 | `KeyModule.kt`  | 除 `core/*` 之外的一切 —— **例外**：`host.GestureReceiver` / `host.SideKeyGestureHooks` /    |

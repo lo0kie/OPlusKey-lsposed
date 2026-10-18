@@ -79,7 +79,8 @@ internal fun popupSurfaceColor(): Color =
  *
  * 一行能表达现状的全部形态：
  *  - [enabled] `false`：置灰 + **吃掉点击**（菜单不关、也不派发）；
- *  - [selected]：单选组那一档（行尾对勾 + 文字/图标走 `primary`），进场时还会**滚进视窗**
+ *  - [selected]：单选组那一档（**行首图标换成对勾** + 文字/图标走 `primary`；行尾不再有对勾那一格，
+ *    见 `showCheck` 的说明），进场时还会**滚进视窗**
  *    （「换一步」时当前那一步常在第 7 项之后，不滚就看不见自己选的是哪个）；
  *  - [danger]：删除 / 重置这类破坏性动作（红）；
  *  - [submenu]：行尾**留出那一格**（库里就是 `DropdownImpl(hasSubmenu = …)`），不置时那一格不画。

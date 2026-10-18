@@ -82,7 +82,7 @@ internal fun SettingsPage.HomeBindingCard(
                     // （14 字）正好一行放得下，再多一个字就折行、把这张卡撑高
                     I18n.get(Strings.HOME_SWITCH_DESC_ENABLED, "关闭后此模块将停用")
                 } else {
-                    I18n.get(Strings.HOME_SWITCH_DESC_DISABLED, "侧键由系统处理")
+                    I18n.get(Strings.HOME_SWITCH_DESC_DISABLED, "关闭后侧键交还系统，立即生效")
                 },
             // 行首图标与下一行对齐用（不给的话两行的标题左边缘会差一个图标宽）。
             // 电源符号 = 「这一行是总开关」。
@@ -177,7 +177,7 @@ internal fun SettingsPage.HomeActionsCard(pageEnabled: Boolean) {
         if (SHOW_HOME_MINI_ANIM) {
             HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
             SwitchRow(
-                title = I18n.get(Strings.HOME_MINI_ANIM_TITLE, "前台转小窗时使用动画"),
+                title = I18n.get(Strings.HOME_MINI_ANIM_TITLE, "前台应用转小窗时使用动画"),
                 summary = I18n.get(Strings.HOME_MINI_ANIM_DESC, "全屏应用缩成小窗时播放动画（仅竖屏）"),
                 icon = PageIcons.MiniWindow,
                 checked = cfg.global.miniWindowAnim,

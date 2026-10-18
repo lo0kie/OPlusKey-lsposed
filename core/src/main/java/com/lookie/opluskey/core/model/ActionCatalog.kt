@@ -33,6 +33,9 @@ object ActionCatalog {
 
         /** 「前台转小窗」标记格。 */
         MiniWindow,
+
+        /** 「系统开关」标记格。 */
+        SystemSwitch,
     }
 
     /**
@@ -90,6 +93,9 @@ object ActionCatalog {
     /** 「打开应用」这一格的取值 —— 永不写进配置，只是「点它去挑应用」的关卡标记。 */
     const val APP_TILE = Action.APP_PREFIX
 
+    /** 「系统开关」这一格的取值 —— 永不写进配置，只是「点它去挑一个开关」的关卡标记。 */
+    const val SWITCH_TILE = Action.SETTING_PREFIX
+
     /**
      * 小布识屏那条 shell 命令 —— 取值照搬 KSU 模块，但模块侧不走 shell，
      * 而是把同一串 intent 直接 `startForegroundService`（见 `host/action/AppLauncher.startSidebar`）。
@@ -117,9 +123,6 @@ object ActionCatalog {
      */
     private val MINI_COLLAPSE = Action.ZOOM_MINI_COLLAPSE
 
-    /** 手电筒（KSU 的 `flashlight:`；语义是切换，由模块自己判断当前状态）。 */
-    private val FLASHLIGHT = Action.FLASHLIGHT
-
     /** 「无操作」的取值（[STEP_GROUPS] 要把它剔掉，所以单独给个常量）。 */
     private val NONE_TOKEN = Action.NONE
 
@@ -128,7 +131,6 @@ object ActionCatalog {
      * 系统自己的侧键设置里就是这三项，调用目标逐字抄自它的场景表。
      */
     private val FLASH_MEMORY = Action.OPLUS_PREFIX + RomProfile.NAME_FLASH_MEMORY
-    private val NO_DISTURB = Action.OPLUS_PREFIX + RomProfile.NAME_NO_DISTURB
     private val RECORDING = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING
 
     /**
@@ -148,6 +150,15 @@ object ActionCatalog {
      */
     val MEDIA_TILE_SPEC: Spec =
         Spec(name = Strings.CATEGORY_MEDIA, token = MEDIA_TILE, glyph = Glyph.Music)
+
+    /**
+     * 「系统开关」那一格 —— 与 [MEDIA_TILE_SPEC] 同类：**入口格**，点它弹 [SWITCH_MODES]。
+     *
+     *  格子本身不代表任何取值（[SWITCH_TILE] 是标记 token，永不写进配置）。
+     *  声明在 [GROUPS] 之前：那张表要读它。
+     */
+    val SWITCH_TILE_SPEC: Spec =
+        Spec(name = Strings.TOOL_SYSTEM_SWITCHES, token = SWITCH_TILE, glyph = Glyph.SystemSwitch)
 
     /**
      * 内置命令分成两类 —— 界面上各一个小标题，组内顺序即显示顺序。
@@ -183,8 +194,6 @@ object ActionCatalog {
             // 后三项是系统侧键场景表里的档位：起的是各功能自己的 KeyMagic / 闪记服务
             Strings.CATALOG_QUICK_TOOLS to
                 listOf(
-                    // KSU 的 `flashlight:`；语义是切换，由 daemon / 模块自己判断当前状态
-                    Spec(name = Strings.CATALOG_FLASHLIGHT, token = FLASHLIGHT),
                     // 取值是 KSU 的 `service call`，模块侧换成注入 `KEYCODE_SYSRQ`
                     Spec(name = Strings.CATALOG_SCREENSHOT, token = SCREENSHOT),
                     // 取值照搬 KSU 模块，但模块侧不走 shell —— 见 `host/action/AppLauncher.startSidebar`
@@ -192,11 +201,13 @@ object ActionCatalog {
                     Spec(name = Strings.CATALOG_FLASH_NOTE, token = FLASH_MEMORY),
                     // 灵感语音：只在长按那张网格里出现（[forGesture] 过滤），见 [VOICE_MEMORY] 的说明
                     Spec(name = Strings.CATALOG_VOICE_MEMORY, token = VOICE_MEMORY),
-                    Spec(name = Strings.CATALOG_DND, token = NO_DISTURB),
                     Spec(name = Strings.CATALOG_RECORDING, token = RECORDING),
                     // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
                     // 两档尺寸（展开 / 收起）各不相同，格子代表不了其中任何一个 ⇒ 按 [MINI_TILE] 当入口格、弹菜单
                     Spec(name = Strings.TOOL_MINI_WINDOW, token = MINI_TILE, glyph = Glyph.MiniWindow),
+                    // 系统开关入口：点它弹 [SWITCH_MODES] 菜单（WLAN / 蓝牙 / 手电筒 …），
+                    // 选完绑成 `setting:<id>` 或那条动作本身的 token（见 [SystemSwitches]）。
+                    SWITCH_TILE_SPEC,
                     // 这一条是入口不是取值：点它跳「打开应用」页挑应用，选完绑成 `app:<包名>`（[Action.App]）。
                     // 网格点击靠比这个常量认领；不能靠「`Action.parse` 能否匹配」——`app:` 本身就是合法
                     // 的空 App 动作，走 `select()` 会把配置写成 `app:`（拉不起任何应用）。
@@ -316,6 +327,15 @@ object ActionCatalog {
             Spec(name = Strings.CATALOG_MODE_COLLAPSE, token = MINI_COLLAPSE),
         )
 
+    /**
+     * 「系统开关」那一格的二级菜单 —— 十条开关，名字与顺序都跟着 [SystemSwitches.ITEMS]。
+     *
+     *  与别的入口格同一套：一格代表不了十个取值，就不在网格里摊成十格；
+     *  菜单里的行**本身就是真取值**（`setting:<id>` / `flashlight`），点中即写配置。
+     */
+    val SWITCH_MODES: List<Spec> =
+        SystemSwitches.ITEMS.map { Spec(name = it.labelKey, token = it.token) }
+
     /** 「系统导航」菜单的三行，顺序即行序。 */
     val NAV_MODES: List<Spec> =
         listOf(
@@ -372,6 +392,7 @@ object ActionCatalog {
             KEY_TILE to KEY_MODES,
             PANEL_TILE to PANEL_MODES,
             MINI_TILE to MINI_MODES,
+            SWITCH_TILE to SWITCH_MODES,
         )
 
     /**
@@ -468,7 +489,12 @@ object ActionCatalog {
                 group
                     // 「无操作」代表吞掉按键、不是一步动作；「灵感语音」是长按才成立的采集，排进命令链没有语义
                     .filterNot { it.token == NONE_TOKEN || it.token == VOICE_MEMORY }
-                    .map { if (it.token == APP_TILE) APP_STEP else it }
+                    .map {
+                        when (it.token) {
+                            APP_TILE -> APP_STEP
+                            else -> it
+                        }
+                    }
         }
 
     /**
@@ -541,7 +567,7 @@ object ActionCatalog {
         }
 
     /**
-     * 这一格点了会进下一层（跳「打开应用」页 / 弹一格菜单）。
+     * 这一格点了会进下一层（跳「打开应用」页 / 跳「控制中心磁贴」页 / 弹一格菜单）。
      *
      * 只有「添加命令」浮层拿它标 `hasSubmenu` —— 网格里的格子不画行尾箭头。
      */

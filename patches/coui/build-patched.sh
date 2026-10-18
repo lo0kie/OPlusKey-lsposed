@@ -11,8 +11,8 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 UPSTREAM="https://github.com/suqi8/coui"
 UPSTREAM_TAG="v1.1.0"
 CLONE="$ROOT/.temp/coui-repo"
-VER_FROM="1.1.0-alphasubtitle2"   # 上游 -Palpha=subtitle2 的产物版本
-VER_TO="1.1.0-subtitle4"          # 本仓库对外声明并提交的版本
+VER_FROM="1.1.0-alphasubtitle5"   # 上游 -Palpha=subtitle5 的产物版本
+VER_TO="1.1.0-subtitle7"          # 本仓库对外声明并提交的版本
 
 # 克隆（已存在则复用）
 if [ ! -d "$CLONE/.git" ]; then
@@ -21,18 +21,23 @@ if [ ! -d "$CLONE/.git" ]; then
 fi
 cd "$CLONE"
 
-# 应用补丁（逐份；已应用过就跳过，脚本可重入；打不上则直接退出，不产出没补丁的包）
+# 先把工作区还原到干净的 tag 上。
+#
+#   补丁是**顺序叠加**的：同一份文件若被两份补丁先后改过，「反向能打上」这个判据就不成立
+#   —— 逆推 0001 的时候 0005 的上下文已经在树里，必然失败。
+#   `0001` 与 `0005` 都改 `TopAppBar.kt`，于是原来那句「已应用就跳过」其实一直在误报
+#   *「补丁无法应用（上下文对不上）」*，脚本自述的「可重入」并不成立。
+#   改成每次从干净树重放：补丁文件才是唯一真相，克隆里的手改一律丢弃（它只是构建脚手架）。
+git checkout -- .
+
+# 应用补丁（逐份；打不上则直接退出，不产出没补丁的包）
 for p in "$ROOT"/patches/coui/*.patch; do
   name="$(basename "$p")"
-  if git apply --check "$p" 2>/dev/null; then
-    git apply "$p"
-    echo "已应用：$name"
-  elif git apply --check --reverse "$p" 2>/dev/null; then
-    echo "已在树里，跳过：$name"
-  else
+  if ! git apply "$p"; then
     echo "补丁无法应用（上下文对不上）：$name" >&2
     exit 1
   fi
+  echo "已应用：$name"
 done
 
 # 只构建 android 出版物（KMP 其它目标不碰）
@@ -48,7 +53,7 @@ else
   GRADLE="./gradlew.bat"
 fi
 echo "用 $GRADLE 构建（当前目录 $PWD）"
-"$GRADLE" :coui-ui:publishAndroidPublicationToLocalRepository -Palpha=subtitle2
+"$GRADLE" :coui-ui:publishAndroidPublicationToLocalRepository -Palpha=subtitle5
 
 # 产物搬进 patches/repo，版本改写为 $VER_TO
 SRC="coui-ui/build/repository/local/io/github/suqi8/coui/kmp/coui-ui-android/$VER_FROM"

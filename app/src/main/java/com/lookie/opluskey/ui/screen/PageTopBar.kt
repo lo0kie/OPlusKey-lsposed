@@ -22,9 +22,11 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
+import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
 import com.lookie.opluskey.ui.screen.binding.BindingTabBand
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.home.ResetMenu
+import com.lookie.opluskey.ui.state.KeyWatchState
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
@@ -46,7 +48,7 @@ internal fun SettingsPage.PageTopBar(
         // 大标题**下面**那行（库原本的底线副标题槽位，自己占一行）：首页 = 模块版本。
         // 与「更多选项」页的「版本」行**同源但不同串**：那边总是带构建时刻，这边按构建类型决定
         // （见 appVersionLabel / appVersionText）。
-        largeTitleSubtitle = if (s == Screen.SHORTCUTS) remember { appVersionLabel() } else "",
+        largeTitleSubtitle = largeTitleSubtitle(s),
         // 大标题**右边**那行小标题（补丁新增的槽位，折叠后保留），内容见 [pageSubtitle]。
         subtitle = pageSubtitle(s),
         // 「选择应用」页开着小窗打开时，那行小字后面补一枚「小窗起」—— 与网格里「打开应用」
@@ -54,8 +56,9 @@ internal fun SettingsPage.PageTopBar(
         // 应用」，看不出这一趟是要普通打开还是小窗起。
         trailingSubtitleIcon =
             if (s == Screen.APP_PICKER && picker.smallWindow.value) PageIcons.TileSmallWindow else null,
-        // 右上角那几颗动作键按页分派：**只有首页与「选择应用」页有**
-        // （前者是打开默认界面 / 清空配置，后者是「显示系统应用」那三项）。
+        // 右上角那几颗动作键按页分派：**首页 / 「按键绑定」/「选择应用」三页有**
+        // （首页是打开默认界面 / 清空配置，「按键绑定」是「快捷键」「自定义按键」两组，
+        // 「选择应用」是「显示系统应用」那三项）。
         // 顶栏只留一个 `actions` 槽位、不认识页面（见 [PageHeader]），
         // 两份菜单各自跟着自己那一屏走（[ResetMenu] / [AppPickerMenu]）。
         //
@@ -90,12 +93,33 @@ private fun SettingsPage.pageTitle(s: Screen): String =
     }
 
 /**
- * 顶栏右侧那行小标题按页分派：
+ * 大标题**下面**那行小标题按页分派（库原本那个槽位，折叠后跟着标题缩）：
+ *  · 首页 = 模块版本 —— **只读一次**：它要读包信息，首页每重组一帧都重读一遍没有意义；
+ *  · 其余页都不占这一槽（「按键绑定」那一组名挪去了大标题右边的尾随标题，见 [pageSubtitle]）。
+ */
+@Composable
+private fun SettingsPage.largeTitleSubtitle(s: Screen): String =
+    when (s) {
+        Screen.SHORTCUTS -> remember { appVersionLabel() }
+        else -> ""
+    }
+
+/**
+ * 顶栏右侧那行小标题（大标题右边的尾随标题）按页分派：
+ * 「按键绑定」= **现在这一组**叫什么（「快捷键」或收集来的那颗键的名字）；
  * 「自定义命令」= 已保存的命令条数（[ConfigState.commands] 变了跟着重组）；
  * 「选择应用」= 这一趟要绑的应用名（先看本次草稿，再看 [appPickerSelectedPkg]；名字怎么取见 [appNameOf]）。
  */
 private fun SettingsPage.pageSubtitle(s: Screen): String =
     when (s) {
+        // 停在哪一颗就写哪一颗：侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。
+        //  与顶栏 ⋮ 那份菜单（[BindingKeyMenu]）同一个口径：菜单第一项就是这句话 ——
+        //  这一行是菜单里那个「当前值」在大标题右边的复述，不进菜单也知道自己在哪一组。
+        //  以前它挂在大标题**下面**（`largeTitleSubtitle`），会平白多占一行高度。
+        Screen.BINDING -> {
+            KeyWatchState.selected?.label ?: I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键")
+        }
+
         // 一条都没保存时不报数（「已保存0条命令」读起来像统计，也不成句）——
         // 直接说「没有保存的命令」，与页内那块空态同一句话。
         Screen.COMMANDS -> {
@@ -141,12 +165,18 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
  */
 private fun SettingsPage.selectedLabel(target: String): String = appNameOf(target)
 
-/** 顶栏右上角那几颗动作键 —— 只有首页与「选择应用」页有。 */
+/** 顶栏右上角那几颗动作键 —— 首页 / 「按键绑定」/「选择应用」三页各一颗。 */
 @Composable
 private fun SettingsPage.PageActions(s: Screen) {
     when (s) {
         Screen.SHORTCUTS -> ResetMenu()
+
+        // 「按键绑定」页的 ⋮ 只管**分组**（快捷键 / 自定义按键），不发命令 ——
+        // 进「自定义命令」页的唯一入口仍是那一页右下角那颗 FAB（见 [BindingScreen]）。
+        Screen.BINDING -> BindingKeyMenu()
+
         Screen.APP_PICKER -> AppPickerMenu()
+
         else -> Unit
     }
 }

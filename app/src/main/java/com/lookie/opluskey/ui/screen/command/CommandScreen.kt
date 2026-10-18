@@ -66,8 +66,8 @@ internal val FORMAT_ROW_TOUCH = 32.dp
 /**
  * 「自定义命令」页那条类型选择器带（单条 / 多条）—— 挂在顶栏的 `bottomContent` 里。
  *
- * 亮哪一个由 `pagerState.currentPage` 说了算，点它则去翻页；高度报给
- * [SettingsPage.commandBandHeight]，内容顶上那个占位 Spacer 读它。
+ * 亮哪一个由 `pagerState.currentPage` 说了算，点它则去翻页；滑块位置另按浮点页码实时插值
+ * （横向滑动时跟手）；高度报给 [SettingsPage.commandBandHeight]，内容顶上那个占位 Spacer 读它。
  */
 @Composable
 internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
@@ -82,6 +82,9 @@ internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
             tabs = CommandKind.entries.map { commandKindLabel(it) },
             // 亮哪一个只看分页器停在哪一页（`currentPage`）。
             selectedTabIndex = pagerState.currentPage,
+            // 滑块按浮点页码实时插值，跟手（与「按键绑定」页同一套做法，取舍见
+            // `BindingTabBand` 里 `selectedTabPosition` 那段注释）。
+            selectedTabPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
             onTabSelected = {
                 tick()
                 scope.launch { pagerState.animateScrollToPage(it) }
@@ -227,6 +230,9 @@ private fun SettingsPage.CommandResetTail() {
     }
 }
 
+/** 命令名能输入多少字（超出的部分在输入框里直接吃掉）。 */
+private const val MAX_NAME_LENGTH = 24
+
 /**
  * 「名称」那一张卡片输入（连同重名提示）。
  *
@@ -241,14 +247,12 @@ private fun SettingsPage.CommandResetTail() {
 @Composable
 internal fun SettingsPage.CommandNameField() {
     IconInputView(
-        icon = PageIcons.InputName,
+        spec = InputSpec(PageIcons.InputName, I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"), MAX_NAME_LENGTH),
         value = commandDraft.draft.name,
         // 边输边清洗：只换掉换行、不 trim —— 带 trim 的版本会让空格打不进去。
         // trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做。
         onValueChange = { commandDraft.draft.name = CommandLibrary.sanitizeNameInput(it) },
         modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
-        title = I18n.get(Strings.COMMAND_NAME_LABEL, "名称"),
-        label = I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"),
         // 同名冲突与 `cmd:` 成环提示都交给组件画（都只在打字 / 改步骤时才有意义，结果只喂这一个输入框）
         errorMessage =
             when {
