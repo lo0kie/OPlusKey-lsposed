@@ -21,6 +21,7 @@ import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.CommandDraftState
 import com.lookie.opluskey.ui.state.ConfigState
 import com.lookie.opluskey.ui.state.HostLinkState
+import com.lookie.opluskey.ui.state.KeyWatchState
 import io.github.suqi8.coui.kmp.nav.core.NavBackStack
 import io.github.suqi8.coui.kmp.nav.core.navBackStackOf
 
@@ -437,6 +438,9 @@ internal class SettingsPage(
         picker.clearTarget()
         // 二级页那一位也要清：栈被清回首页之后，再进「选择应用」不该还记着上次在看谁
         picker.forgetActivities()
+        // 「在编辑哪一颗键」同样只在这一次停留里有效：栈被清回首页 = 这一趟结束，
+        //  下次进来该从侧键开始（否则用户以为在改侧键，写的却是上次那颗自定义键）。
+        KeyWatchState.select(null)
         // 栈顶没变时下面的 LaunchedEffect 不触发，浮窗要在这里主动收：
         // 首页开着 ⋮ 菜单按 Home / 熄屏再回来，菜单不能还盖在页面上。
         closeOverlays("从设置重进模块")

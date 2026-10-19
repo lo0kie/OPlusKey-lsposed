@@ -164,12 +164,12 @@ internal object HostChrome {
             XLog.w("刷 container 背景失败（忽略）", e)
         }
         try {
-            activity.window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(color))
+            activity.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(color))
         } catch (e: Throwable) {
             XLog.w("刷 window 背景失败（忽略）", e)
         }
         try {
-            activity.window.decorView.setBackgroundColor(color)
+            activity.window?.decorView?.setBackgroundColor(color)
         } catch (e: Throwable) {
             XLog.w("刷 decorView 背景失败（忽略）", e)
         }

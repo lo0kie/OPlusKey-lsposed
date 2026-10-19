@@ -71,11 +71,19 @@ internal object SettingSwitch {
         //  都有 ContentObserver），宿主有 WRITE_SECURE_SETTINGS，写一下就够了
         val key = SETTINGS_KEYS[id]
         if (key != null) {
+            // `putInt` 自己返回布尔：false = 写入被拒（权限 / 只读档），它与「抛异常」是两件事，
+            //  只看 `isSuccess` 会把被拒报成成功。
             val wrote =
-                runCatching {
+                try {
                     Settings.Global.putInt(context.contentResolver, key, if (target) 1 else 0)
-                }.onFailure { XLog.w("系统开关：写 $key 失败：${it.javaClass.simpleName}") }.isSuccess
-            if (!wrote) onFailure(CommandFailure.UNKNOWN)
+                } catch (e: Throwable) {
+                    XLog.w("系统开关：写 $key 失败：${e.javaClass.simpleName}")
+                    false
+                }
+            if (!wrote) {
+                XLog.w("系统开关：写 $key 被拒（putInt=false），这次没切成")
+                onFailure(CommandFailure.UNKNOWN)
+            }
             return
         }
         SettingBridge.send(context, id, target)

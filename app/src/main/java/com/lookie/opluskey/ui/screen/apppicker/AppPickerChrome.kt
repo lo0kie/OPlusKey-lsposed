@@ -13,12 +13,13 @@ import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.escapeEmphasis
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.AppPickerUiState
+import com.lookie.opluskey.ui.state.PickedDetail
 import com.lookie.opluskey.ui.state.SmallWindowBlock
-import com.lookie.opluskey.ui.toast
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
 import io.github.suqi8.coui.kmp.basic.RotatingProgressIndicator
@@ -134,23 +135,24 @@ internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
 @Composable
 internal fun SettingsPage.AppConfirmFab(
     ui: AppPickerUiState,
-    onPick: (String, Boolean) -> Unit,
+    onPick: (PickedDetail, Boolean) -> Unit,
 ) {
     val tick = rememberTick()
     PageFabButton(
         onClick = {
             tick()
-            // 交出去的是**完整目标**：从二级页挑完退回来时，`pending` 可能已经是
-            // `包名/类名`（含快捷方式的 `包名/id`）—— 那时候按 FAB 要照它重写一遍，
-            // 不能降级成纯包名（那会把刚挑的界面 / 快捷方式抹掉）
+            // 交出去的是**整个 pending**，不是一个 target 字符串：快捷方式的身份是
+            // `shortcutId` 而不是 `包名/id`，只传 target 会让落盘那边退回 `app:包名/id`
+            // （那是一条跑不通的 token）。
             //
             // 这颗按钮是**常驻**的（不与选中项联动），所以新手进页、还没点过任何一行时
             // 它就在那儿 —— 这时按下去给一句提示，而不是默默什么都不做。
-            val target =
-                ui.pending?.target ?: run {
-                    toast(I18n.get(Strings.APP_PICKER_PICK_APP_FIRST, "先从列表里选一个应用"))
+            val picked =
+                ui.pending ?: run {
+                    hint(I18n.get(Strings.APP_PICKER_PICK_APP_FIRST, "先从列表里选一个应用"))
                     return@PageFabButton
                 }
+            val target = picked.target
             val pkg = AppTarget.pkg(target)
             // 一行一个应用：`pending` 可能带 `/类名`，所以按「同一个应用」找，不能按 `same`
             val app = ui.apps.firstOrNull { AppTarget.sameApp(it.target, target) }
@@ -168,7 +170,7 @@ internal fun SettingsPage.AppConfirmFab(
                     return@PageFabButton
                 }
             }
-            onPick(target, picker.smallWindow.value)
+            onPick(picked, picker.smallWindow.value)
         },
     ) {
         Icon(

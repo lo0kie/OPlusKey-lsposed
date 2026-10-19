@@ -100,7 +100,7 @@ internal fun SettingsPage.AppPickerList(
         pullToRefreshState = pullToRefreshState,
         topAppBarScrollBehavior = scrollBehavior,
         modifier = Modifier.fillMaxSize(),
-        // ⚠️ 指示器要**下移到「顶栏 + 搜索框那条带子」之下**：这两块是叠在列表之上的
+        // 注意：指示器要**下移到「顶栏 + 搜索框那条带子」之下**：这两块是叠在列表之上的
         //  固定浮层，指示器默认画在屏幕最顶上 ⇒ 整个被它们盖住。
         //  库把这个参数直接当指示器那一层的 `offset(y = …)` 用（`calculateTopPadding` → `offset`，
         //  见 `PullToRefreshKt`），并且**只取 top、不看 bottom** —— 所以下面那个 bottom 恒为 0。

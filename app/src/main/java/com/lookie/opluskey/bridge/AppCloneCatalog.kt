@@ -68,7 +68,13 @@ internal object AppCloneCatalog {
     /** uid ↔ userId 的进制：Android 的 uid = `userId * 100000 + appId`。 */
     private const val UID_PER_USER = 100_000
 
-    /** [cloneUsersInDisplayOrder] 记下的那一份用户表（只记非空的那次，见那边的注释）。 */
+    /**
+     * [cloneUsersInDisplayOrder] 记下的那一份用户表（只记非空的那次，见那边的注释）。
+     *
+     *  `@Volatile`：写它的是后台协程（[entries]），读它的是界面线程（[slotOf]）——
+     *  没有它，界面可能一直看着「还没列出来」那份，逐行去重列用户表。
+     */
+    @Volatile
     private var cachedUsers: List<Int>? = null
 
     /**
@@ -78,7 +84,9 @@ internal object AppCloneCatalog {
      *  拼名字那条路是逐行调的，一个已删除的分身会让每一行都跑一次 `getUsers` 的反射 + binder。
      *  这份备忘录在 [entries] 作废用户表时一起清（那里是唯一会「重新认识这台机器」的地方）。
      */
-    private val unresolvedUsers = HashSet<Int>()
+    private val unresolvedUsers =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet<Int>()
 
     /** 分身那一份里的一个可启动应用 —— 界面层要的那几样，外加它属于哪个槽。 */
     data class Entry(
@@ -358,19 +366,33 @@ internal object AppClonePackages {
         userId: Int,
     ): List<android.content.pm.ResolveInfo>? {
         val binder = ipm() ?: return null
-        val method =
+        // flags 的类型跟着 AIDL 走：**Android 13 起是 `long`**（`ResolveInfoFlags`），之前是 `int`。
+        //  只按 int 找的话，新 ROM 上这里恒为 null —— 分身那一槽整块消失，日志却只说「没有这个方法」。
+        val withLongFlags =
             Reflect.method(
                 binder.javaClass,
                 "queryIntentActivities",
                 Intent::class.java,
                 String::class.java,
+                java.lang.Long.TYPE,
                 Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-            ) ?: run {
-                XLog.w("IPackageManager 上没有 queryIntentActivities(Intent,String,int,int)")
+            )
+        val method =
+            withLongFlags
+                ?: Reflect.method(
+                    binder.javaClass,
+                    "queryIntentActivities",
+                    Intent::class.java,
+                    String::class.java,
+                    Int::class.javaPrimitiveType!!,
+                    Int::class.javaPrimitiveType!!,
+                ) ?: run {
+                XLog.w("IPackageManager 上没有 queryIntentActivities(Intent,String,long|int,int)")
                 return null
             }
-        val thrown = runCatching { method.invoke(binder, intent, null, 0, userId) }
+        // 参数值也得跟着签名给：long 那一档传 `0`（Int）会 `IllegalArgumentException`
+        val flags: Any = if (withLongFlags != null) 0L else 0
+        val thrown = runCatching { method.invoke(binder, intent, null, flags, userId) }
         val raw = thrown.getOrNull()
         if (raw == null) {
             val cause = thrown.exceptionOrNull()?.let { Reflect.deepestCause(it) }

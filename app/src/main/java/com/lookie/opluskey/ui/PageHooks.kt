@@ -1,5 +1,8 @@
 package com.lookie.opluskey.ui
 
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
+
 /**
  * hook 侧（`ui/hook/`）在**建页之前 / 建页之后**塞给页面的那几件东西 —— 一条宿主标题 + 六个回调。
  *
@@ -11,7 +14,7 @@ package com.lookie.opluskey.ui
  */
 internal class PageHooks {
     /** 首页标题 —— 宿主 Activity 的原文，hook 侧在建页之前赋值。 */
-    var homeTitle: String = "快捷键"
+    var homeTitle: String = I18n.get(Strings.HOME_TITLE, "快捷键")
 
     /** 系统深浅变化回调（给 hook 重刷状态栏配色）。 */
     var onSystemThemeChanged: (() -> Unit)? = null

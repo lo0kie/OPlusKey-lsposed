@@ -193,7 +193,7 @@ object RomProfile {
     /**
      * 灵感语音（长按记忆）。
      *
-     * 真机实测（2026-10-18，PLK110 / ColorOS 17）：`com.oplus.aimemory` 的
+     * 真机实测（PLK110 / ColorOS 17）：`com.oplus.aimemory` 的
      * `voicecollect.service.DataCollectService` 读 `triggerType` 与 `longPressEventType`；
      * `triggerType=1`（MAGIC_KEY）+ `longPressEventType=1` 起服务后它进前台、FGS 类型里带上
      * 麦克风那一位（`SPECIAL_USE | MICROPHONE`），即开始采集。
@@ -353,8 +353,24 @@ object RomProfile {
      * 不抛异常 —— 注入侧抛异常就是开机循环（五之二）。
      */
     val effective: Profile
-        get() =
-            matched ?: PROFILES.lastOrNull() ?: EMPTY
+        get() {
+            matched?.let { return it }
+            val baseline = PROFILES.lastOrNull() ?: return EMPTY
+            //  与 [landing] 同一条纪律：照基准档跑要说出来，否则「拦下来了但什么都不做」
+            //  在日志里没有任何依据。只打一次 —— 这条 getter 会落在反射查找的热路径上。
+            if (!effectiveWarned) {
+                effectiveWarned = true
+                XLog.w(
+                    "本机 ROM ${DeviceSupport.currentRomSeries} 不在档位表里 ⇒ " +
+                        "反射面与接管点候选照基准档（${baseline.label}）试",
+                )
+            }
+            return baseline
+        }
+
+    /** 与 [landingWarned] 同一笔：只打一次，多个线程可能同时进来，漏了 `@Volatile` 会多打一行。 */
+    @Volatile
+    private var effectiveWarned = false
 
     /** 全空的兜底档（只在 [PROFILES] 被清空时用到）。 */
     private val EMPTY =

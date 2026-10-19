@@ -3,7 +3,12 @@ package com.lookie.opluskey.ui.model
 import android.content.Context
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.seal.Seal
-import org.json.JSONArray
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 
 /**
  * 「捐赠列表」的那个**人**：一个名字 + 一笔金额（+ 一笔到账时间）。
@@ -26,7 +31,10 @@ internal data class Donor(
      * 界面上显示的那一格 —— `¥` 是人民币记号（中英两档都一样），**始终两位小数**（显示到分）。
      */
     val amountText: String
-        get() = "¥${amountCents / 100}.${(amountCents % 100).toString().padStart(2, '0')}"
+        get() {
+            val cents = amountCents.coerceAtLeast(0)
+            return "¥${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
+        }
 }
 
 /**
@@ -65,14 +73,22 @@ private var cache: List<Donor>? = null
 /** 读出名单（进程内只读一次）。读不到时是空表，不抛。 */
 internal fun donors(context: Context): List<Donor> = cache ?: readDonors(context).also { cache = it }
 
+/**
+ * 取出一个字段的文本；缺项 / 不是标量 / 是 JSON `null` 都算空串。
+ *
+ *  `JsonNull` 也是 `JsonPrimitive`，它的 `content` 是字符串 `"null"` —— 不排掉它，
+ *  一条手写成 `{"name": null}` 的记录会变成一颗叫「null」的捐赠者。
+ */
+private fun JsonElement?.text(): String = (this as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty()
+
 /** 真读一次：`assets/donors.json` → 对象数组 → 名字非空的行。 */
 private fun readDonors(context: Context): List<Donor> {
     val bytes = Seal.open(context, DONORS_ASSET) ?: return emptyList()
     return try {
-        val array = JSONArray(String(bytes, Charsets.UTF_8))
-        (0 until array.length()).mapNotNull { index ->
-            val row = array.optJSONObject(index) ?: return@mapNotNull null
-            val name = row.optString("name", "").trim()
+        val rows = Json.parseToJsonElement(String(bytes, Charsets.UTF_8)).jsonArray
+        rows.mapNotNull { row ->
+            val o = row as? JsonObject ?: return@mapNotNull null
+            val name = o["name"].text().trim()
             // 没有名字的行画不出来（表格的第一个格子会空在那里），直接丢
             if (name.isEmpty()) {
                 null
@@ -81,9 +97,14 @@ private fun readDonors(context: Context): List<Donor> {
                     name = name,
                     // 文件里写的是**元**（可以带两位小数），这里换算成**分**存。
                     //  `round` 是为了吃掉二进制浮点那点误差：`5.20 * 100 = 519.9999…`。
-                    amountCents = Math.round(row.optDouble("amount", 0.0) * 100).toInt(),
+                    //  负数在这里就夹掉：文件里写错一个负号，界面上会画成「¥-5.-20」
+                    amountCents =
+                        Math
+                            .round((o["amount"].text().toDoubleOrNull() ?: 0.0) * 100)
+                            .toInt()
+                            .coerceAtLeast(0),
                     // 只记录、不上屏（见 [Donor.at]）；缺了就是空串，不报错
-                    at = row.optString("at", "").trim(),
+                    at = o["at"].text().trim(),
                 )
             }
         }

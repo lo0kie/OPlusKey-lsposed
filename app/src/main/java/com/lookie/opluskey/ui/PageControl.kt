@@ -49,7 +49,7 @@ internal fun SettingsPage.restartModule() {
         XLog.w("重启：宿主主进程不在，没人能把页面拉回来，放弃")
         // 点了没反应最容易被当成「按钮坏了」—— 这一句把「没找到进程」与「杀掉了」分开。
         //  文案里不提「宿主进程」：那是内部结构（用户界面不需要技术细节），只回答成没成。
-        toast(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
+        hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
         return
     }
     // 把「把页面拉回来 + 自己重来一遍」整个交给宿主主进程（见 host/PageRelaunch）。
@@ -61,12 +61,12 @@ internal fun SettingsPage.restartModule() {
             android.content.Intent(ModuleWire.ACTION_PAGE_RELAUNCH),
         )
     if (!asked) {
-        toast(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
+        hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
         return
     }
     XLog.w("重启：已请宿主主进程稍后拉起页面")
     // 这一条是「菜单那个重启」的反馈：不带它的话，用户只能靠「过一会儿动作生效了没有」猜。
-    toast(I18n.get(Strings.TOAST_SERVICE_RESTARTED, "已重启服务"))
+    hint(I18n.get(Strings.TOAST_SERVICE_RESTARTED, "已重启服务"))
     killPageProcess()
 }
 

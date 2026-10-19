@@ -1,17 +1,21 @@
 package com.lookie.opluskey.ui.screen.binding
 
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.actionOf
 import com.lookie.opluskey.ui.blockedReason
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.MODULE_UNAVAILABLE_HINT
 import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.toast
+import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
 
 /**
@@ -38,13 +42,21 @@ internal fun SettingsPage.pick(
         XLog.w("选动作被拦住（页面未就绪）：链路就绪=$linkReady ${g.id} → ${spec.token}")
         // 与首页那条常驻提示**同一句话**（判据见 [blockedReason]）：被拦住时看到的原因
         //  不该因为你从哪条路点进来而不同。
-        toast(blockedReason() ?: MODULE_UNAVAILABLE_HINT)
+        hint(blockedReason() ?: MODULE_UNAVAILABLE_HINT)
         return false
     }
     return try {
         val cfg = configState.config.value
-        val key = cfg.key(KeyId.PLUS)
+        // 绑到**当前在编辑的那颗键**上：侧键与自定义键各有一份 `KeyConfig`，
+        //  以前这里写死 `KeyId.PLUS`，等于在任何一颗键上选动作都改侧键。
+        val keyId = KeyWatchState.editing(cfg)
+        val key = cfg.key(keyId)
         val action = Action.parse(spec.token)
+        // 已经绑的就是它 ⇒ 直接返回（判据见 [bindingUnchanged]）
+        if (bindingUnchanged(cfg, g, action, appName)) {
+            XLog.w("选动作：${g.id} 已经是 ${spec.token}，不重复写")
+            return true
+        }
         val updated =
             when (g) {
                 Gesture.SINGLE -> {
@@ -80,11 +92,60 @@ internal fun SettingsPage.pick(
         val targetKey = action.appTarget
         val next =
             cfg
-                .copy(keys = cfg.keys + (KeyId.PLUS to updated))
+                .copy(keys = cfg.keys + (keyId to updated))
                 .let { c -> if (appName != null && targetKey != null) c.withAppName(targetKey, appName) else c }
-        write(next, "${g.id} → ${spec.token}") != CommandsSave.Failed
+        val written = write(next, "${g.id} → ${spec.token}") != CommandsSave.Failed
+        // 绑成了才报：被拦 / 写盘失败时 [write] 自己已经报过原因，这里再来一句会把它顶掉
+        if (written) hint(boundNotice(spec, action, appName))
+        written
     } catch (e: Throwable) {
         XLog.w("选动作失败（忽略）：${spec.token}", e)
+        //  点了格子必须有个说法：只记日志的话用户看到的就是「点了一下没反应」。
+        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
         false
     }
 }
+
+/**
+ * 这次「选动作」是不是**等于现状**（点的就是已经打着勾那一档 / 那一格）。
+ *
+ *  **去重是为了「点了没变的事，别落盘、也别报回执」**：网格里点一下当前选中那格、或入口格菜单里
+ *  点一下已经打勾那档，是最常见的误触；这时候还落一次盘、再弹一句「已绑定「…」」，
+ *  读起来像「刚刚改了什么」。
+ *
+ *  三条判据，缺一不可：
+ *   · 主开关得是开着的 —— 关着时 [pick] 那一下还会顺手 `enabled = true`，那是真变化；
+ *   · 规范写法要一样（比 `token`，不比对象：`Action.parse` 出来的取值就是这个串）；
+ *   · **显示名也没变** —— 挑应用那条路会把名字带进来，同一个应用也可能换了名字
+ *    （分身 / 快捷方式），那时候不写就等于把用户刚挑的名字丢了。
+ */
+private fun SettingsPage.bindingUnchanged(
+    cfg: Config,
+    g: Gesture,
+    action: Action,
+    appName: String?,
+): Boolean {
+    if (!cfg.key(KeyWatchState.editing(cfg)).enabled) return false
+    if (actionOf(cfg, g).token != action.token) return false
+    val nameDiffers = appName != null && action.appTarget?.let { cfg.appName(it) != appName } == true
+    return !nameDiffers
+}
+
+/**
+ * 「已绑定「录音」」—— 绑成功之后那一句话。
+ *
+ *  名字按「谁更具体」取：挑应用那条路把名字当参数带进来（[pick] 的 `appName`，那是
+ *  `微信 2` 这种口令表里的写法）→ 清单里的名字（内置动作与入口格那些档位，`ActionCatalog.label`）
+ *  → 格子自己的名字（自定义命令 —— `label` 只认清单里那一批，认不出来）。
+ *
+ *  **不能直接用 `spec.label`**：挑应用那条路传进来的 `spec` 只有 token（`name = token`），
+ *  打出来会是「已绑定「app:com.tencent.mm」」。
+ */
+private fun boundNotice(
+    spec: ActionCatalog.Spec,
+    action: Action,
+    appName: String?,
+): String =
+    I18n
+        .get(Strings.TOAST_BOUND, "已绑定「%s」")
+        .format(appName ?: ActionCatalog.label(action) ?: spec.label)

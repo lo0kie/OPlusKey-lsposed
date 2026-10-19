@@ -41,10 +41,11 @@ import com.lookie.opluskey.core.reflect.Reflect
  * 2. **只收 root / system 发的** —— 发送方不是宿主，所以来源校验单列一条
  *    （`KeyHooks.isFromRootOrSystem`），普通 App（uid ≥ 10000）进不来；
  * 3. **每个 op 整体包 catch** —— 调用点在 AMS 广播入口，漏一个异常出去就是系统崩 / 开机循环。
- * 4. **`call` 另有一道准入闸** —— 它会对广播指定的类直接 `invoke`，而 **`invoke` 会触发宿主类的
- *    `<clinit>`**：system_server 类初始化顺序极早，静态块里的单例那时往往还是 null →
+ * 4. **凡是要实例化宿主类的 op 都有一道准入闸** —— `call` 会对广播指定的类直接 `invoke`，
+ *    `state` / `corner` / `dress` / `zoom` 则经 `FlexibleWindowManagerService.getInstance()`；两者都会
+ *    触发宿主类的 `<clinit>`：system_server 类初始化顺序极早，静态块里的单例那时往往还是 null →
  *    `ExceptionInInitializerError` → 类被标 erroneous → 之后真用到它的地方 `NoClassDefFoundError`
- *    → **开机循环**（AGENTS.md 五之二、1）。故只有 `cls` 命中 [UNSAFE_CLASS_PREFIXES] **且**
+ *    → **开机循环**（AGENTS.md 五之二、1）。故只有类名命中 [UNSAFE_CLASS_PREFIXES] **且**
  *    广播带了 [EXTRA_UNSAFE]=true 才放行，否则打 W 判据行拒绝（见 [allowUnsafe]）。
  */
 internal object ProbeChannel {
@@ -79,11 +80,11 @@ internal object ProbeChannel {
     internal const val EXTRA_FLAGS = "flags"
 
     /**
-     * [OP_CALL] 的显式 opt-in extra —— 不带它，这个 op 一律拒绝执行。
+     * 「这一把要碰宿主类」的显式 opt-in extra —— 不带它，凡是要实例化宿主类的 op 一律拒绝执行
+     * （`call` 的 `invoke`、`state` / `corner` / `dress` / `zoom` 的 `getInstance()`）。
      *
-     * `call` 会对广播指定的类直接 `invoke`，而 **`invoke` 会触发宿主类的 `<clinit>`**（见
-     * [UNSAFE_CLASS_PREFIXES]）：所以「这一把确实要碰宿主类」必须由调用方在广播里**显式选一次**，
-     * 而不是默认发生。
+     * 两者都会触发宿主类的 `<clinit>`（见 [UNSAFE_CLASS_PREFIXES]）：所以「这一把确实要碰宿主类」
+     * 必须由调用方在广播里**显式选一次**，而不是默认发生。
      */
     internal const val EXTRA_UNSAFE = "unsafe"
 

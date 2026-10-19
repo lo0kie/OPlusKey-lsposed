@@ -6,8 +6,12 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 
 /**
  * 自定义命令库的读写：JSON 编解码加文件 IO（`org.json` 平台自带，不引依赖）。
@@ -41,15 +45,7 @@ object CommandLibrary {
     //  `core/model/ConfigFields` 各管一份文件。三个 `"version"` 与两个 `"commands"` 是
     //  **同字面量不同义**（命令库版本 / 主配置版本 / 导出信封版本各一个），所以常量名带上前缀
     //  区分 —— 别把它们并成一个：它们的版本号各涨各的。
-    private const val LIB_VERSION = "version"
     private const val KEY_LIBRARY_COMMANDS = "commands"
-    private const val FIELD_NAME = "name"
-    private const val FIELD_KIND = "kind"
-    private const val FIELD_STEPS = "steps"
-    private const val FIELD_DELAY = "stepDelayMs"
-
-    /** 单条命令的正文。与主配置里的 `"single"`（手势相位）同字面量但无关。 */
-    private const val FIELD_SINGLE = "single"
 
     /** 清洗命令名：去掉换行（换行会撑开列表行），掐掉首尾空白。存库 / 比对用。 */
     fun sanitizeName(raw: String): String = sanitizeNameInput(raw).trim()
@@ -63,22 +59,70 @@ object CommandLibrary {
             .map { if (it == '\n' || it == '\r') ' ' else it }
             .joinToString("")
 
+    /**
+     * 唯一的编解码器 —— 写与读必须用同一份配置，否则「自己写的文件自己读不出来」。
+     *
+     * `encodeDefaults = true`：`commands` 那一段即使是空表也要写出来 —— [parseOrNull] 把
+     * 「没有 commands 这一段」判成读不懂，省略它就等于让「空命令库」变成「文件坏了」。
+     */
+    private val json =
+        Json {
+            prettyPrint = true
+            prettyPrintIndent = "  "
+            encodeDefaults = true
+            ignoreUnknownKeys = true
+        }
+
+    /**
+     * 取 `commands` 那一段的原始元素；不是合法 JSON / 没有这一段 ⇒ `null`。
+     *
+     * 先拿元素、再逐条解码，而不是整份 `decodeFromString`：命令库的纪律是**坏一条只丢一条**
+     * （见 [parse] 的 KDoc），整份解码会让一条手改坏的条目带走整个命令库。
+     */
+    private fun commandElements(text: String): JsonArray? =
+        runCatching { json.parseToJsonElement(text).jsonObject[KEY_LIBRARY_COMMANDS]?.jsonArray }.getOrNull()
+
+    /** 解一条命令；类型不对 / 认不出 → `null`（调用方决定是跳过还是整份判坏）。 */
+    private fun decodeCommand(e: JsonElement): Command? = runCatching { toCommand(json.decodeFromJsonElement<CommandDto>(e)) }.getOrNull()
+
+    /**
+     * 线格式 → 领域模型；名字为空 / 类型认不出都返回 `null`（跳过它）。
+     *
+     * 认不出的类型（版本比我们新）**跳过这一条**，不要降级成单条：串行命令的 `steps` /
+     * `stepDelayMs` 与 `single` 是两个字段，降级后只读 `single` ⇒ 那些步骤当场被掏空，
+     * 而用户下一次保存会把这条空单条**固化**进文件（静默丢数据）。
+     */
+    private fun toCommand(dto: CommandDto): Command? {
+        val name = sanitizeName(dto.name)
+        if (name.isEmpty()) return null
+        val kind = CommandKind.fromId(dto.kind)
+        if (kind == null) {
+            XLog.w("命令库：有一条的类型认不出（已跳过）：$name（kind=${dto.kind}）")
+            return null
+        }
+        if (kind != CommandKind.SERIAL) {
+            return Command(name = name, kind = CommandKind.SINGLE, single = dto.single)
+        }
+        return Command(
+            name = name,
+            kind = CommandKind.SERIAL,
+            steps = dto.steps.map { it?.trim().orEmpty() }.filter { it.isNotEmpty() },
+            stepDelayMs = dto.stepDelayMs.coerceIn(Command.MIN_STEP_DELAY_MS, Command.MAX_STEP_DELAY_MS),
+        )
+    }
+
     /** 解析命令库文本，读不懂的条目跳过，绝不抛异常。 */
     fun parse(text: String): List<Command> =
         try {
-            val arr = JSONObject(text).optJSONArray(KEY_LIBRARY_COMMANDS)
-            if (arr == null) {
-                emptyList()
-            } else {
-                // 名字是主键：同一名字出现多次时**后写的覆盖先写的**
-                //  —— 必须显式这么写：`distinctBy { it.name }` 留的是**第一个**，与上面这句话相反。
-                val byName = LinkedHashMap<String, Command>()
-                for (i in 0 until arr.length()) {
-                    val cmd = arr.optJSONObject(i)?.let(::commandOf) ?: continue
-                    byName[cmd.name] = cmd
-                }
-                byName.values.toList()
+            val arr = commandElements(text) ?: return emptyList()
+            // 名字是主键：同一名字出现多次时**后写的覆盖先写的**
+            //  —— 必须显式这么写：`distinctBy { it.name }` 留的是**第一个**，与上面这句话相反。
+            val byName = LinkedHashMap<String, Command>()
+            for (e in arr) {
+                val cmd = decodeCommand(e) ?: continue
+                byName[cmd.name] = cmd
             }
+            byName.values.toList()
         } catch (e: Throwable) {
             XLog.w("命令库解析失败（按空表处理）：${e.message}")
             emptyList()
@@ -96,91 +140,17 @@ object CommandLibrary {
      * 注意：不要拿它替换 [parse]：文件加载那一路要的是「坏一条只丢一条」，
      * 一条手改坏的条目不该让整个命令库消失。
      */
-    fun parseOrNull(text: String): List<Command>? =
-        try {
-            val arr = JSONObject(text).optJSONArray(KEY_LIBRARY_COMMANDS) ?: return null
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: return null
-                if (commandOf(o) == null) return null
-            }
-            parse(text)
-        } catch (e: Throwable) {
-            XLog.w("命令库解析失败（判为读不懂）：${e.message}")
-            null
+    fun parseOrNull(text: String): List<Command>? {
+        val arr = commandElements(text) ?: return null
+        for (e in arr) {
+            if (decodeCommand(e) == null) return null
         }
-
-    /**
-     * 取一个字符串字段。不能直接用 `optString(key, fallback)`：键不存在才走 fallback，
-     * 显式写成 `"single": null` 的 JSON 会返回字符串 "null"（`JSONObject.NULL.toString()`），
-     * `Action.parse("null")` 兜底成 `Shell("null")`，按那个手势就真去跑 `sh -c null` 而非「无操作」。
-     * 这些 KDoc 恰恰邀请手改文件（缩进两格），所以显式挡掉 isNull。
-     */
-    private fun textOf(
-        o: JSONObject,
-        key: String,
-        fallback: String = "",
-    ): String = if (o.isNull(key)) fallback else o.optString(key, fallback)
-
-    /** 一条命令；名字为空 / 对象坏了都返回 null（跳过它）。 */
-    private fun commandOf(o: JSONObject): Command? {
-        val name = sanitizeName(textOf(o, FIELD_NAME))
-        if (name.isEmpty()) return null
-
-        // 认不出的类型（版本比我们新）——**跳过这一条**，不要降级成单条：
-        //  串行命令的 `steps` / `stepDelayMs` 与 `single` 是两个字段，降级后只读 `single`
-        //  ⇒ 那些步骤当场被掏空，而用户下一次保存会把这条空单条**固化**进文件（静默丢数据）。
-        //  与「名字为空」同一档：坏一条只丢一条，日志里查得到（`parse` 的 KDoc 就是这个口径）。
-        val kindId = textOf(o, FIELD_KIND)
-        val kind = CommandKind.fromId(kindId)
-        if (kind == null) {
-            XLog.w("命令库：有一条的类型认不出（已跳过）：$name（kind=$kindId）")
-            return null
-        }
-        if (kind != CommandKind.SERIAL) {
-            return Command(name = name, kind = CommandKind.SINGLE, single = textOf(o, FIELD_SINGLE))
-        }
-
-        val steps = o.optJSONArray(FIELD_STEPS)
-        val stepList =
-            if (steps == null) {
-                emptyList()
-            } else {
-                (0 until steps.length())
-                    .map { if (steps.isNull(it)) "" else steps.optString(it).trim() }
-                    .filter { it.isNotEmpty() }
-            }
-        return Command(
-            name = name,
-            kind = CommandKind.SERIAL,
-            steps = stepList,
-            stepDelayMs =
-                o
-                    .optInt(FIELD_DELAY, Command.DEFAULT_STEP_DELAY_MS)
-                    .coerceIn(Command.MIN_STEP_DELAY_MS, Command.MAX_STEP_DELAY_MS),
-        )
+        return parse(text)
     }
 
-    /** 序列化成命令库文本，缩进两格。 */
-    fun serialize(commands: List<Command>): String {
-        val arr = JSONArray()
-        commands.forEach { c ->
-            val o =
-                JSONObject()
-                    .put(FIELD_NAME, c.name)
-                    .put(FIELD_KIND, c.kind.id)
-            if (c.kind == CommandKind.SERIAL) {
-                o.put(FIELD_STEPS, JSONArray(c.steps))
-                o.put(FIELD_DELAY, c.stepDelayMs)
-            } else {
-                o.put(FIELD_SINGLE, c.single)
-            }
-            arr.put(o)
-        }
-        return JSONObject()
-            .put(LIB_VERSION, VERSION)
-            .put(KEY_LIBRARY_COMMANDS, arr)
-            .toString(2) + "\n"
-    }
+    /** 序列化成命令库文本，缩进两格、末尾一个换行（与老格式一致）。 */
+    fun serialize(commands: List<Command>): String =
+        json.encodeToString(CommandLibraryDto(VERSION, commands.map { CommandDto.of(it) })) + "\n"
 
     /**
      * 读命令库（三态）。文件不存在 ⇒ [Load.Absent]；外皮解不开 / 被截断 / 解析抛异常 ⇒
@@ -189,21 +159,25 @@ object CommandLibrary {
     fun loadState(): Load =
         try {
             val f = ConfigStore.commandFile()
-            // 走 ConfigStore.readText：剥 BOM（记事本另存为会加），否则整份命令库在 JSONObject 那一步就抛。
-            if (!f.isFile) {
-                Load.Absent
-            } else {
-                // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文解不开，都算「读不懂」——
-                //  同一个判据、不抛。不做旧格式兼容（见 `FileObfuscation` 的类注释）。
-                val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, ConfigStore.readText(f))
-                if (text == null) {
-                    XLog.w("读命令库：外皮解不开（文件可能被截断）⇒ 按读不懂处理")
-                    Load.Unreadable
-                } else {
-                    // 解析这一层也分「读得懂」与「读不懂」：`parse` 兜底成空表，但外皮剥开了、
-                    //  正文却不是合法 JSON，那同样是「文件坏了」而不是「用户没有命令」。
-                    parseState(text)
+            // 走 ConfigStore.readText：剥 BOM（记事本另存为会加），否则整份命令库在 JSONObject 那一步就抛；
+            //  它同时负责「只剩 `.bak` 时先还原」——所以**不能**先判 `f.isFile`（那会把还原机会跳过去）。
+            val raw =
+                try {
+                    ConfigStore.readText(f)
+                } catch (e: java.io.FileNotFoundException) {
+                    XLog.d("读命令库：主文件与 .bak 都不在，按没有命令处理 | ${e.message}")
+                    return Load.Absent
                 }
+            // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文解不开，都算「读不懂」——
+            //  同一个判据、不抛。不做旧格式兼容（见 `FileObfuscation` 的类注释）。
+            val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
+            if (text == null) {
+                XLog.w("读命令库：外皮解不开（文件可能被截断）⇒ 按读不懂处理")
+                Load.Unreadable
+            } else {
+                // 解析这一层也分「读得懂」与「读不懂」：`parse` 兜底成空表，但外皮剥开了、
+                //  正文却不是合法 JSON，那同样是「文件坏了」而不是「用户没有命令」。
+                parseState(text)
             }
         } catch (e: Throwable) {
             XLog.w("读命令库失败（按读不懂处理）：${e.message}")
@@ -213,23 +187,23 @@ object CommandLibrary {
     /** 读命令库；读不到 / 读不懂都返回空表（不抛）—— 只给「空表就够用」的调用方（执行侧、导出包）。 */
     fun load(): List<Command> = (loadState() as? Load.Ok)?.commands ?: emptyList()
 
-    private fun parseState(text: String): Load =
-        try {
-            val json = JSONObject(text)
-            val arr = json.optJSONArray(KEY_LIBRARY_COMMANDS)
-            if (arr == null) {
-                // `commands` 那一段都不在 ⇒ 不是我们写的文件（或写坏了）
-                XLog.w("读命令库：正文里没有 $KEY_LIBRARY_COMMANDS 这一段 ⇒ 按读不懂处理")
-                Load.Unreadable
-            } else {
-                val commands = parse(text)
-                reportDanglingRefs(commands)
-                Load.Ok(commands)
+    private fun parseState(text: String): Load {
+        val elements =
+            commandElements(text) ?: run {
+                // 外皮剥开了、正文却不是合法 JSON，或正文里没有那一段 ⇒ 文件坏了，不是「用户没有命令」
+                XLog.w("读命令库：正文不是合法 JSON 或没有 $KEY_LIBRARY_COMMANDS 这一段 ⇒ 按读不懂处理")
+                return Load.Unreadable
             }
-        } catch (e: Throwable) {
-            XLog.w("读命令库：正文不是合法 JSON ⇒ 按读不懂处理（${e.message}）")
-            Load.Unreadable
+        val commands = parse(text)
+        // 「有元素、但一条都认不出」不是空表：那是整份格式变了解析不了。当 Ok(empty) 交出去，
+        //  界面下一次保存就会把这张空表写回、把用户的命令全删掉。
+        if (elements.isNotEmpty() && commands.isEmpty()) {
+            XLog.w("读命令库：${elements.size} 条一条都认不出 ⇒ 按读不懂处理（不拿空表覆盖）")
+            return Load.Unreadable
         }
+        reportDanglingRefs(commands)
+        return Load.Ok(commands)
+    }
 
     /**
      * 带缓存的读，给执行侧用：按键每次都要展开 `cmd:` 动作，不能每次读盘。
@@ -263,7 +237,7 @@ object CommandLibrary {
     }
 
     /**
-     * 写命令库；失败只记日志。必须走 [ConfigStore.writeAtomically]（先 `.tmp` 再 rename）：
+     * 写命令库；失败只记日志。必须走 [ConfigStore.writeAtomically]（`AtomicFile` 原子写，见那边的说明）：
      * 写方是设置页 `:ui` 进程、读方是宿主主进程（`host/action/CustomCommandRunner` 按键时现读），
      * 同 uid 不同进程 —— 直接 `writeText`（先截断再写）撞上读方就会读到半截 JSON，那一下
      * 按键的所有 `cmd:` 都报「命令库里没有」；写盘中途抛异常更会把命令库永久留在坏文件上。
@@ -313,7 +287,7 @@ object CommandLibrary {
      *  读方是宿主主进程，**写方清缓存清不到读方**，读方只能靠指纹自己发现「文件换了」。
      *  若新内容**长度恰好相同**、又落在同一个 mtime 粒度内，只看（修改时间, 长度）就会把陈值
      *  当命中，于是宿主永久读旧表 —— 而日志完全自洽，看不出问题。
-     *  写盘走的是「先 `.tmp` 再 rename」（[ConfigStore.writeAtomically]），目标文件因此每次都是
+     *  写盘走的是 `AtomicFile`（同目录改名换文件）（[ConfigStore.writeAtomically]），目标文件因此每次都是
      *  **新 inode**，inode 必变，能天然区分出每一次写。
      *
      *  取法统一走 [inodeOf]（在 [ConfigStore] 那份里）：两份指纹各自实现过一次，
@@ -336,5 +310,8 @@ object CommandLibrary {
      *  （在 `core/model`），而「读命令库」只有落盘包会做；广播构造器因此不必认识本包，
      *  注入侧那条「不许碰 `core/config`」的编译期保证才成立（见 `docs/decoupling.md` 动作 3）。
      */
-    fun longIsSerial(config: Config): Boolean = isSerialCommand(loadCached(), config.key(KeyId.PLUS).long.token)
+    fun longIsSerial(
+        config: Config,
+        key: KeyId,
+    ): Boolean = isSerialCommand(loadCached(), config.key(key).long.token)
 }

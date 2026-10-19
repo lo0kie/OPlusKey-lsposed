@@ -16,6 +16,7 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.state.KeyWatchState
 
 /**
  * 把草稿里的那条命令存进命令库（不是立刻绑到某个手势上）。
@@ -67,20 +68,26 @@ internal fun SettingsPage.addCommand() {
     var bindingMoved = CommandsSave.Ok
     if (editingFrom != null && editingFrom != name) {
         val cfg = configState.config.value
-        val key = cfg.key(KeyId.PLUS)
         val oldToken = Command.PREFIX + editingFrom
 
         fun move(a: Action) = if (a.token == oldToken) Action.Custom(name) else a
-        val updated =
-            key.copy(
-                single = move(key.single),
-                double = move(key.double),
-                long = move(key.long),
-            )
-        if (updated != key) {
+        // **每一颗键**都要挪：自定义键同样能绑 `cmd:名字`，只改侧键的话那些键按下去就是
+        //  「命令已不存在」（NOT_FOUND），而用户看到的是「改名成功」。
+        val moved = mutableMapOf<KeyId, com.lookie.opluskey.core.model.KeyConfig>()
+        for (k in cfg.allKeys) {
+            val key = cfg.key(k)
+            val updated =
+                key.copy(
+                    single = move(key.single),
+                    double = move(key.double),
+                    long = move(key.long),
+                )
+            if (updated != key) moved[k] = updated
+        }
+        if (moved.isNotEmpty()) {
             bindingMoved =
                 write(
-                    cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)),
+                    cfg.copy(keys = cfg.keys + moved),
                     "改名后把绑定挪到新名字：$editingFrom → $name",
                 )
         }
@@ -93,14 +100,12 @@ internal fun SettingsPage.addCommand() {
     if (bindingMoved == CommandsSave.Failed) {
         saveCommands(previousLibrary, "改名失败，回滚命令库：$editingFrom → $name")
     } else if (saveResult == CommandsSave.Ok) {
-        toast(tip)
+        hint(tip)
     }
-    // `editing` 必须在 `draft.reset()` 之前读 —— reset 会把 `editingName` 清掉。
-    val editing = editingFrom != null
+    // 存完**留在本页**（以前新增那条会退回「按键绑定」）：接着编下一条是常事，
+    //  每存一条就被弹回去一次纯属添乱；这条命令已经在那张「已保存的命令」列表里了，
+    //  想看结果当场就能看到。
     commandDraft.draft.reset()
-    // 只在「新增」这条路上退（从「按键绑定」页右下角那颗 FAB 进来的那条）；编辑态
-    // （从「已保存的命令」列表点进来改）留在原地 —— 改完要能立刻在下面那张列表里看到结果。
-    if (!editing) goBack()
 }
 
 /**
@@ -239,7 +244,9 @@ internal fun SettingsPage.actionOf(
     cfg: Config,
     g: Gesture,
 ): Action {
-    val key = cfg.key(KeyId.PLUS)
+    // 取**当前在编辑的那一颗**（`KeyWatchState`）：写死侧键的话，切到自定义键之后
+    //  网格高亮、打勾项、小标题、长按串行判定全都还按侧键的配置算（真机反馈「改了看不出来」）。
+    val key = cfg.key(KeyWatchState.editing(cfg))
     return when (g) {
         Gesture.SINGLE -> key.single
         Gesture.DOUBLE -> key.double

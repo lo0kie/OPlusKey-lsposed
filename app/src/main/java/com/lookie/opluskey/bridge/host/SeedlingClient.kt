@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import com.lookie.opluskey.core.log.XLog
@@ -32,6 +34,11 @@ internal object SeedlingClient {
 
     @Volatile
     private var isConnecting = false
+
+    /** 「绑上了但一直没连上」的复位闸（见 [send]）。 */
+    private const val CONNECT_TIMEOUT_MS = 3_000L
+
+    private val handler = Handler(Looper.getMainLooper())
     private val pendingMessages = mutableListOf<Bundle>()
     private val lock = Any()
 
@@ -111,11 +118,27 @@ internal object SeedlingClient {
                         Intent(ACTION_SEEDLING_SERVICE).apply {
                             setPackage(SYSTEMUI_PACKAGE)
                         }
-                    val bound = context.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+                    // 用 Application 去绑：传进来的可能是 Activity，绑住的连接会把它一起钉住。
+                    val app = context.applicationContext ?: context
+                    val bound = app.bindService(intent, connection, Context.BIND_AUTO_CREATE)
                     XLog.w("绑定流体云服务结果: $bound")
                     if (!bound) {
                         isConnecting = false
                         pendingMessages.clear()
+                    } else {
+                        // **绑上 ≠ 连上**：SystemUI 卡住 / 服务没起来时 `onServiceConnected` 永远不来，
+                        //  `isConnecting` 就一直是 true ⇒ 之后所有消息只往队列里堆、再也不发起重绑。
+                        handler.postDelayed(
+                            {
+                                synchronized(lock) {
+                                    if (isConnecting && serverMessenger == null) {
+                                        isConnecting = false
+                                        XLog.w("流体云服务 ${CONNECT_TIMEOUT_MS}ms 未连上 ⇒ 复位，下一条消息重新绑定")
+                                    }
+                                }
+                            },
+                            CONNECT_TIMEOUT_MS,
+                        )
                     }
                 } catch (e: Throwable) {
                     XLog.w("绑定流体云服务异常：${e.javaClass.simpleName}: ${e.message}")

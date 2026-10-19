@@ -14,10 +14,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.lookie.opluskey.core.log.XLog
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.TextButton
 import io.github.suqi8.coui.kmp.layout.DialogButtonBarDefaults
@@ -54,7 +59,7 @@ internal fun ColumnScope.DialogBody(text: String) {
                     // 左右留白**自己补**：库把标题与摘要按 `insideMargin.width`（24dp）内缩，
                     //  而 `content` 槽它是不垫的 —— 不补这一步正文就贴着弹窗边（用户报的）。
                     //  用库那个值而不是写 24.dp，正文左边缘才与标题严格对齐。
-                    .padding(horizontal = DialogDefaults.insideMargin.width)
+                    .dialogSideMargin()
                     .padding(top = 4.dp, bottom = 8.dp),
         )
     }
@@ -153,6 +158,85 @@ internal val DIALOG_LINE_HEIGHT = 1.29f.em
 
 /** 与库 `DialogContent` 同度量：标题的下边距（库 `TitleMarginBottom = 6.dp`）。 */
 internal val DIALOG_TITLE_MARGIN_BOTTOM = 6.dp
+
+/**
+ * 弹窗正文的左右内缩 —— 用库自己那一档，正文才与标题左缘对齐。
+ *
+ *  库把 `content` 槽留空（好让按钮条横跨整个面板），左右要靠调用方自己让开。
+ */
+internal fun Modifier.dialogSideMargin(): Modifier =
+    padding(
+        start = DialogDefaults.insideMargin.width,
+        end = DialogDefaults.insideMargin.width,
+    )
+
+/**
+ * 弹窗正文的**底部**内缩 —— 只给「没有底部按钮」的那一档用。
+ *
+ *  库把 `content` 槽留空，而标题上边距是 `insideMargin.height`：没有按钮条时正文会直接贴到
+ *  面板底边，比标题上边距紧一大截。这里补同一档，上下才对称。
+ */
+internal fun Modifier.dialogBottomMargin(): Modifier = padding(bottom = DialogDefaults.insideMargin.height)
+
+/** [FocusOnShow] 最多试几帧 —— 浮层通常一两帧就挂好，十帧是给慢机器留的余量。 */
+private const val FOCUS_ATTEMPTS = 10
+
+/**
+ * 弹窗一打开就把焦点交给 [focus]（输入框那一栏）。
+ *
+ * ## 为什么不能只等一帧
+ *
+ *  弹窗正文要等浮层挂上去才进组合树，`requestFocus()` 早几帧会因为「还没挂到可聚焦节点上」
+ *  直接抛 `IllegalStateException`；挂上之后也可能**返回 false**（这一帧没抢到焦点）。
+ *  两种情况都得再试，所以判据必须是**返回值**而不是「有没有抛异常」——
+ *  先前那版只看异常、外层套 `runCatching`，于是「返回 false」被当成成功、第一帧就收工，
+ *  用户看到的是「弹窗开了，光标没进去，还得再点一下输入框」。
+ *
+ * ## 键盘不在这里管
+ *
+ *  这里只负责**把焦点交过去**；「叫键盘 / 键盘被人收走后补回来」归输入框那一侧
+ *  （`IconInputView` 的 `ImeGuard`）—— 那里能读到 IME 的实际高度，也拿得到 `show`。
+ *
+ * ## 窗口焦点要一起看
+ *
+ *  弹窗刚露出时这一位还是 false，此时 `requestFocus()` 抢到的是「窗口还没焦点时的那份焦点」，
+ *  窗口焦点一到它就没了。把这一位放进 key：它一翻 true 就重跑一遍、重新抢焦点。
+ *  （`isWindowFocused` 不是 `State`，不能 `by` —— 但在组合里读它就订阅了它。）
+ *
+ * ## 为什么要 `ready` 这一道闸
+ *
+ *  「收集按键 → 添加按键」是两个**独立**的 `OverlayDialog` 交替：听到键的那一刻，
+ *  收集窗开始退场、命名窗同时进场。而库的弹窗在**退场动画跑完**（250ms）时会
+ *  `keyboardController.hide()` —— 那一刻正好是命名窗把键盘弹出来的时候，键盘当场被收掉。
+ *  真机录屏逐帧对得上：键盘完整显示一帧之后消失，再被 `ImeGuard` 补回来。
+ *
+ *  所以命名的聚焦要等收集窗**真的收场**（`onDismissFinished`）再开始。`ready = false` 时
+ *  这个 effect 直接返回、什么都不做；`ready` 一翻 true 才进去抢焦点 —— 那时退场动画已经
+ *  走完、那声 `hide()` 也早执行过了（当时键盘还没开，收了个空）。
+ *
+ * @param ready 前置条件（缺省 `true` = 没有前置）。见上。
+ */
+@Composable
+internal fun FocusOnShow(
+    show: Boolean,
+    focus: FocusRequester,
+    ready: Boolean = true,
+) {
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+    LaunchedEffect(show, windowFocused, ready) {
+        if (!show || !windowFocused || !ready) return@LaunchedEffect
+        var granted = false
+        var attempt = 0
+        while (!granted && attempt < FOCUS_ATTEMPTS) {
+            withFrameNanos { }
+            granted = runCatching { focus.requestFocus() }.getOrDefault(false)
+            attempt++
+        }
+        if (!granted) {
+            XLog.w("弹窗输入框没拿到焦点（这一档得靠用户点一下）")
+        }
+    }
+}
 
 /**
  * 弹窗正文算不算「短」—— 短则**整段居中**，长的左对齐。

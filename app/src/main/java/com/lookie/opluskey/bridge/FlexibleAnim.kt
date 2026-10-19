@@ -115,9 +115,10 @@ internal fun FlexibleWindowBridge.miniAnimLocal(
                 java.lang.reflect.InvocationHandler { _, method, _ ->
                     // 这个 Proxy 是交给**框架**回调用的：接口里只要有返回原始类型的方法，回 null
                     // 就会在框架那边拆箱时 NPE，并顺着调用栈抛回 system_server。
-                    //  零值映射只有一处（`Reflect.zeroOf`：与 `KeyHooks` 那条 proceed 失败同源），
-                    //  取值本身也兜一层。
-                    runCatching { Reflect.zeroOf(method.returnType) }.getOrNull()
+                    //  零值映射只有一处（`Reflect.zeroOf`：与 `KeyHooks` 那条 proceed 失败同源）。
+                    //  **不要**再套 `runCatching{}.getOrNull()`：一旦它返回 null，框架那边对
+                    //  `boolean` / `int` 返回值拆箱就是 NPE，而这个回调正是跑在 system_server 里。
+                    Reflect.zeroOf(method.returnType)
                 },
             )
         } catch (e: Throwable) {

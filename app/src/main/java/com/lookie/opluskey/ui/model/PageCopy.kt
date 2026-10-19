@@ -188,7 +188,7 @@ internal val COMMAND_DISCLAIMER_TEXT: String
         I18n.get(
             Strings.DIALOG_COMMAND_DISCLAIMER_CONTENT,
             "自定义命令是**高度危险**的功能。\n\n" +
-                "本模块**不会对的命令做任何检验或保护**。\n\n" +
+                "本模块**不会对编写的命令做任何检验或保护**。\n\n" +
                 "请自行确认命令安全并承担相应后果。",
         )
 

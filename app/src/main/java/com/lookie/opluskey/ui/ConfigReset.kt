@@ -5,8 +5,8 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyConfig
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.state.KeyWatchState
 
 // 「清空配置」单独一个文件：它是**两份文件一起重建**的一条路（主配置 + 命令库），
 // 与 `ConfigWrite.kt` 里那些「拨一个开关」不是一类；分开也让那个文件的函数数回到阈值以内。
@@ -46,7 +46,7 @@ internal fun SettingsPage.resetAll() {
     // 下次读取走的是「文件不存在」那条分支，与写一份空表不是同一条路，排查时对不上）。
     val cleared = saveCommands(emptyList(), "reset_all") != CommandsSave.Failed
     XLog.w("清空：主配置已重建，命令库清空=$cleared")
-    toast(
+    hint(
         if (cleared) {
             I18n.get(Strings.TOAST_CONFIG_CLEARED, "已清空配置")
         } else {
@@ -67,8 +67,16 @@ internal fun SettingsPage.resetAll() {
  */
 internal fun SettingsPage.resetKeyBindings() {
     val cfg = configState.config.value
-    val keep = cfg.key(KeyId.PLUS).enabled
-    val reset = KeyConfig.defaultFor(KeyId.PLUS).copy(enabled = keep)
-    if (write(cfg.copy(keys = cfg.keys + (KeyId.PLUS to reset)), "reset_key") == CommandsSave.Failed) return
-    toast(I18n.get(Strings.TOAST_KEY_RESET, "已重置当前按键的绑定"))
+    // 作用于**当前在编辑的那颗键**（自定义键也有自己的配置段）。`enabled` 保留：
+    //  重置说的是「绑定回到默认」，不是「把这颗键关掉」。
+    val id = KeyWatchState.editing(cfg)
+    val reset = KeyConfig.defaultFor(id).copy(enabled = cfg.key(id).enabled)
+    // 已经是默认值 ⇒ 不落盘、也不报「已重置」：什么都没变，报一句只会让人以为自己刚覆盖了什么。
+    //  （菜单里这一项对侧键也一直可点，误触是常事。）
+    if (cfg.key(id) == reset) {
+        XLog.w("重置绑定：${id.label} 已经是默认值，不用写")
+        return
+    }
+    if (write(cfg.copy(keys = cfg.keys + (id to reset)), "reset_key=${id.id}") == CommandsSave.Failed) return
+    hint(I18n.get(Strings.TOAST_KEY_RESET, "已重置当前按键的绑定"))
 }

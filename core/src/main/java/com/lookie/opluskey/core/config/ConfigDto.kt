@@ -1,0 +1,205 @@
+package com.lookie.opluskey.core.config
+
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.ConfigFields
+import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.model.KeyConfig
+import com.lookie.opluskey.core.model.KeyId
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+/**
+ * 配置文件的**线格式模型**（`@Serializable`）—— 与 `Config` 那套数据类分开。
+ *
+ * ## 为什么不直接给 `Config` 加 `@Serializable`
+ *
+ *  · `Config.keys` 是 `Map<KeyId, KeyConfig>`，而 [KeyId] 有私有构造、按 `id` 判等 ——
+ *    要序列化就得给它写一个自定义 `KSerializer`，把这个「身份类型」的细节摊到线格式层；
+ *  · 线格式要**稳定**（用户机器上的文件），而 `Config` 是会跟着功能演进的领域模型。
+ *    两者合一的话，以后往 `Config` 加字段就等于改文件格式。
+ *
+ * 所以这里只描述「文件里长什么样」，转换在两边的 `toConfig` / `from` 里。
+ *
+ * ## 默认值
+ *
+ *  每个字段都给了默认值 ⇒ **缺失字段不再需要手工兜底**（这正是换掉 org.json 的动机：
+ *  `optBoolean` 在键缺失时返回 false、`optString` 遇到 `null` 字面量返回字符串 `"null"`，
+ *  那两个坑在这里都不存在）。
+ *
+ *  但**取值范围不在这里钳**：上下限是 [ConfigFields] 那张表的事（表里 `Kind.Number(min, max)`），
+ *  转换时按表钳 —— 一处定义，广播与落盘两条通道共用同一套范围。
+ */
+@Serializable
+internal data class ConfigDto(
+    val version: Int = 0,
+    val keys: Map<String, KeyDto> = emptyMap(),
+    @SerialName("custom_keys") val customKeys: List<CustomKeyDto> = emptyList(),
+    val global: GlobalDto = GlobalDto(),
+    val disclaimerAccepted: Boolean = false,
+    val commandDisclaimerAccepted: Boolean = false,
+    @SerialName("app_names") val appNames: Map<String, String> = emptyMap(),
+    /** 正文完整性字段；只有 `version == ConfigCodec.VERSION` 时才校验（见 `ConfigCodec`）。 */
+    val md5: String = "",
+) {
+    /** 线格式 → 领域模型。**字段映射只有这一处**。 */
+    fun toConfig(): Config {
+        val custom = customKeys.mapNotNull { it.toKeyId() }.distinctBy { it.id }
+        val allKeys = (KeyId.builtins + custom).distinctBy { it.id }
+        // 老文件把「单击延迟 / 忽视双击」放在 `global` 里：逐键字段缺失时拿它兜底（迁移用）
+        val legacyDouble = global.doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS
+        val legacyInstant = global.instantSingle ?: KeyConfig.DEFAULT_INSTANT_SINGLE
+        val keyConfigs =
+            allKeys.associateWith { id ->
+                KeyConfig.ofFields(id, (keys[id.id] ?: KeyDto()).toValues(legacyDouble, legacyInstant))
+            }
+        return Config.ofFields(
+            keys = keyConfigs,
+            global = GlobalConfig.ofFields(global.toValues()),
+            v =
+                ConfigFields.Values(
+                    mapOf(
+                        ConfigFields.F_DISCLAIMER to disclaimerAccepted,
+                        ConfigFields.F_COMMAND_DISCLAIMER to commandDisclaimerAccepted,
+                    ),
+                ),
+            customKeys = custom,
+            appNames = appNames,
+        )
+    }
+
+    companion object {
+        /** 领域模型 → 线格式。 */
+        fun from(
+            config: Config,
+            version: Int,
+            md5: String,
+        ): ConfigDto =
+            ConfigDto(
+                version = version,
+                keys = config.allKeys.associate { it.id to KeyDto.from(config.key(it)) },
+                customKeys = config.customKeys.map { CustomKeyDto(it.id, it.label, it.keyCode) },
+                global = GlobalDto.from(config.global),
+                disclaimerAccepted = config.disclaimerAccepted,
+                commandDisclaimerAccepted = config.commandDisclaimerAccepted,
+                appNames = config.appNames,
+                md5 = md5,
+            )
+    }
+}
+
+/** 一颗键的绑定。 */
+@Serializable
+internal data class KeyDto(
+    val enabled: Boolean = false,
+    val single: String = Action.NONE,
+    val double: String = Action.NONE,
+    val long: String = Action.NONE,
+    val longPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
+    val longRepeat: Boolean = false,
+    val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    /**
+     * 「单击延迟」与「忽视无操作双击手势」—— **每颗键各一份**（以前在 `global` 段里）。
+     *
+     *  `null` = 这份文件里没写（老文件 / 手写）：读的时候退回 `global` 那份，见 [ConfigDto.toConfig]。
+     *  新写出来的文件一定是具体值。
+     */
+    val doubleClickMs: Int? = null,
+    val instantSingle: Boolean? = null,
+) {
+    /** 按 [ConfigFields] 那张表把取值钳进各自的上下限 —— 上下限只定义在表里。 */
+    fun toValues(
+        legacyDoubleClickMs: Int,
+        legacyInstantSingle: Boolean,
+    ): ConfigFields.Values =
+        ConfigFields.Values(
+            mapOf(
+                ConfigFields.F_ENABLED to enabled,
+                ConfigFields.F_SINGLE to single,
+                ConfigFields.F_DOUBLE to double,
+                ConfigFields.F_LONG to long,
+                ConfigFields.F_LONG_PRESS_MS to clamp(ConfigFields.F_LONG_PRESS_MS, longPressMs),
+                ConfigFields.F_LONG_REPEAT to longRepeat,
+                ConfigFields.F_REPEAT_INTERVAL_MS to clamp(ConfigFields.F_REPEAT_INTERVAL_MS, longRepeatIntervalMs),
+                ConfigFields.F_DOUBLE_CLICK_MS to
+                    clamp(ConfigFields.F_DOUBLE_CLICK_MS, doubleClickMs ?: legacyDoubleClickMs),
+                ConfigFields.F_INSTANT_SINGLE to (instantSingle ?: legacyInstantSingle),
+            ),
+        )
+
+    companion object {
+        fun from(key: KeyConfig): KeyDto =
+            KeyDto(
+                enabled = key.enabled,
+                single = key.single.token,
+                double = key.double.token,
+                long = key.long.token,
+                longPressMs = key.longPressMs,
+                longRepeat = key.longRepeat,
+                longRepeatIntervalMs = key.longRepeatIntervalMs,
+                doubleClickMs = key.doubleClickMs,
+                instantSingle = key.instantSingle,
+            )
+    }
+}
+
+/** 全局配置。 */
+@Serializable
+internal data class GlobalDto(
+    /**
+     * 老文件里「单击延迟 / 忽视无操作双击」在全局这一段 —— 现在归每颗键（[KeyDto]）。
+     * 这两个字段只为**迁移**读一次，写出去时是 `null`（新文件不再有它们）。
+     */
+    val doubleClickMs: Int? = null,
+    val vibrate: Boolean = false,
+    val instantSingle: Boolean? = null,
+    val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
+    val language: String = GlobalConfig.DEFAULT_LANGUAGE,
+    val colorOsApi: Boolean = GlobalConfig.DEFAULT_COLOR_OS_API,
+    val miniWindowAnim: Boolean = GlobalConfig.DEFAULT_MINI_WINDOW_ANIM,
+) {
+    fun toValues(): ConfigFields.Values =
+        ConfigFields.Values(
+            mapOf(
+                ConfigFields.F_VIBRATE to vibrate,
+                ConfigFields.F_TOAST_ON_RUN to toastOnRun,
+                ConfigFields.F_LANGUAGE to language,
+                ConfigFields.F_COLOR_OS_API to colorOsApi,
+                ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
+            ),
+        )
+
+    companion object {
+        fun from(g: GlobalConfig): GlobalDto =
+            GlobalDto(
+                vibrate = g.vibrate,
+                toastOnRun = g.toastOnRun,
+                language = g.language,
+                colorOsApi = g.colorOsApi,
+                miniWindowAnim = g.miniWindowAnim,
+            )
+    }
+}
+
+/** `custom_keys` 的一项。 */
+@Serializable
+internal data class CustomKeyDto(
+    val id: String = "",
+    val name: String = "",
+    val code: Int = 0,
+) {
+    /** 没有 id 或没有正键码的读不懂（前者当不了配置键名，后者认领不了）。 */
+    fun toKeyId(): KeyId? {
+        if (id.isEmpty() || code <= 0) return null
+        return KeyId.custom(id, name.ifEmpty { id }, code)
+    }
+}
+
+/** 按字段表钳一个整数字段的取值范围。 */
+private fun clamp(
+    field: ConfigFields.Field,
+    value: Int,
+): Int {
+    val kind = field.kind as? ConfigFields.Kind.Number ?: return value
+    return value.coerceIn(kind.min, kind.max)
+}

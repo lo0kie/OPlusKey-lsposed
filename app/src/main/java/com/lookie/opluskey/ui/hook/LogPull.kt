@@ -41,6 +41,8 @@ internal object LogPull {
     ): Map<String, String> {
         // 序号 → 那一片的正文；按进程分组。用并发容器：回调在主线程、读取在这次调用的线程上。
         val chunks = ConcurrentHashMap<String, MutableMap<Int, String>>()
+        // 发送方声明的总片数：只用来**核对完整性**，不拿它当结束条件（见类注释）。
+        val totals = ConcurrentHashMap<String, Int>()
         val receiver =
             object : BroadcastReceiver() {
                 override fun onReceive(
@@ -51,6 +53,8 @@ internal object LogPull {
                     val proc = intent.getStringExtra(ModuleWire.EXTRA_LOG_PROC) ?: return
                     val text = intent.getStringExtra(ModuleWire.EXTRA_LOG_TEXT) ?: return
                     val index = intent.getIntExtra(ModuleWire.EXTRA_LOG_INDEX, 0)
+                    val total = intent.getIntExtra(ModuleWire.EXTRA_LOG_TOTAL, -1)
+                    if (total > 0) totals[proc] = total
                     runCatching {
                         chunks.getOrPut(proc) { ConcurrentHashMap() }[index] = text
                     }.onFailure { XLog.w("导出日志：收到 $proc 的分片但存不下（忽略）：${it.javaClass.simpleName}") }
@@ -73,7 +77,18 @@ internal object LogPull {
 
         val out = LinkedHashMap<String, String>()
         for ((proc, parts) in chunks) {
+            val expected = totals[proc] ?: -1
+            if (expected > 0) {
+                val missing = (0 until expected).filter { it !in parts }
+                //  少片必须看得见：日志是本模块唯一自救通道，缺几段又看不出来的日志比没有更误导。
+                if (missing.isNotEmpty()) {
+                    XLog.w("导出日志：$proc 只收到 ${parts.size}/$expected 片，缺编号 $missing —— 这一节不完整")
+                }
+            }
             out[proc] = parts.toSortedMap().values.joinToString("\n")
+        }
+        for (proc in totals.keys) {
+            if (chunks[proc] == null) XLog.w("导出日志：$proc 声明了 ${totals[proc]} 片，但一片都没收到")
         }
         XLog.w("导出日志：收到 ${out.size} 个进程的回包（${out.map { "${it.key}=${it.value.lines().size} 行" }}）")
         return out

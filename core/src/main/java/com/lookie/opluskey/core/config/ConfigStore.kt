@@ -88,11 +88,8 @@ object ConfigStore {
      */
     fun load(): Load {
         val f = sharedFile()
-        if (!f.isFile) {
-            cached = null
-            return Load.Absent
-        }
-
+        // 注意：**不能**先判 `f.isFile`。只剩 `.bak` 时主文件不在，但配置还在 —— 那要交给
+        //  [readText] 走 `AtomicFile.openRead()` 还原，判成「首装」就会被默认值覆盖。
         val modified = f.lastModified()
         val length = f.length()
         val inode = inodeOf(f)
@@ -103,6 +100,11 @@ object ConfigStore {
         val raw =
             try {
                 readText(f)
+            } catch (e: java.io.FileNotFoundException) {
+                // 主文件与 `.bak` 都不在 = 真的没写过（只剩 `.bak` 的情况 [readText] 已经还原了）
+                XLog.d("读配置：主文件与 .bak 都不在，按首装处理 | ${e.message}")
+                cached = null
+                return Load.Absent
             } catch (e: Throwable) {
                 // EACCES / IO 错：只给 d（宿主每条按键前都要读一遍，w 会刷屏）
                 XLog.d("读配置失败（文件在但读不出来）：${f.path} | ${e.message}")
@@ -113,11 +115,13 @@ object ConfigStore {
         //  **不做旧格式兼容**：加第二层之前写下的文件、以及开发期的明文文件，判 [Load.Unreadable]
         //  （页面只读、不接管），不退回「当它没写过」—— 那会把用户配置整份换成默认值。
         //  正文自带 md5（[ConfigCodec]），值对不上同样走 Unreadable。
-        val text =
-            FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
-                ?: return Load.Unreadable
-
-        val result = ConfigCodec.parseOrNull(text)?.let { Load.Ok(it) } ?: Load.Unreadable
+        //
+        //  **读不懂也按指纹缓存**：这是由文件内容推出来的结论，指纹不变结论就不会变；不缓存的话
+        //  坏文件会被每一条按键重读一遍，`FileObfuscation` 那两行 W 也跟着刷屏（判据行会被冲掉）。
+        //  与它相对的，上面 readText 的 IO 失败不缓存 —— 那是**瞬时**故障（EACCES / IO 抖动），
+        //  下一按可能就好了。
+        val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
+        val result = text?.let { ConfigCodec.parseOrNull(it) }?.let { Load.Ok(it) } ?: Load.Unreadable
         cached = Cached(modified, length, inode, result)
         return result
     }
@@ -128,7 +132,7 @@ object ConfigStore {
      * 指纹是「修改时间 + 长度 + inode」三个字段，不合成一个数：合成会有碰撞的可能，分着比是精确的。
      * 为什么还要带上 inode：写方是设置页 `:ui` 进程、读方是宿主主进程，**写方清缓存清不到读方**，
      * 读方只能靠指纹自己发现「文件换了」——若新内容**长度恰好相同**、又落在同一个 mtime 粒度内，
-     * 只看（修改时间, 长度）就会把陈值当命中。写盘走的是「先 `.tmp` 再 rename」，目标文件因此
+     * 只看（修改时间, 长度）就会把陈值当命中。写盘走的是 `AtomicFile`（同目录改名换文件），目标文件因此
      * 每次都是**新 inode**，inode 必变，能天然区分出每一次写。
      */
     private class Cached(
@@ -156,7 +160,9 @@ object ConfigStore {
 
     /**
      * 写配置（只有宿主进程调得到）。
-     * 先包一层外皮（[FileObfuscation]），再走「先写 `.tmp` 再 rename」，避免执行侧读到半截内容。
+     *
+     * 先包一层外皮（[FileObfuscation]），再走 [writeAtomically]（`android.util.AtomicFile`），
+     * 避免执行侧读到半截内容。
      *
      * 写成功后**主动丢掉读缓存**（[load] 那一份）：本进程自己的写盘最清楚「刚换过内容」，
      * 主动失效省掉一次多余的 `stat` 比对，不依赖指纹去发现。
@@ -174,16 +180,29 @@ object ConfigStore {
     }
 
     /**
-     * **原子写**：先写同目录下的 `.tmp`、`fsync` 落盘，再 `rename` 覆盖目标。读方可能是另一个进程
-     * （命令库读方是宿主主进程、写方是设置页 `:ui` 进程，主配置同理），直接 `writeText`
-     * 是「先截断再写」，读方正好落在中间就读到半截内容。三个文件统一走这一份。
+     * 写配置（只有宿主进程调得到）。
      *
-     *  `fsync` 那一步不能省（与 `android.util.AtomicFile` 同一步）：rename 只保证「名字换过去」这件事
-     * 原子，不保证被它盖住的内容已经在盘上 —— 掉电时可能落成「名字换了、内容还是空的」，正是
-     * [Load.Unreadable] 那一档。只 `sync` 文件、不 `sync` 目录：与 `AtomicFile` 一致，省掉一次同步。
-     *  代价是每次写盘多几毫秒，写盘都在用户动作之后（拨开关 / 松手 / 存命令），走的是 UI 线程 ——
-     *  与 `SharedPreferences.commit()` 同一条路数，不值得为它把写盘改成异步（那会打断「落盘成功才
-     *  提交状态、才广播」这条因果链）。
+     * 先包一层外皮（[FileObfuscation]），再走 `android.util.AtomicFile` 的原子写：
+     * `startWrite` → 写字节 → `finishWrite`（内部 flush + `fd.sync` + 旧文件改名成 `.bak` +
+     * `.new` 改名成目标）。
+     *
+     * ## 为什么换成平台的 `AtomicFile`
+     *
+     *  早先是自己拼一个带 pid + 时间戳的 `.tmp`、`fd.sync()`、`renameTo`、失败时删残file ——
+     *  那套能挡住「读到半截」，但**挡不住写完之前断电 / 进程被杀**：目标文件已经没了、`.tmp`
+     *  还在，下一次读到的是一份不完整的新内容或干脆什么都没有。`AtomicFile` 在写之前先把旧文件
+     *  留成 `.bak`，`openRead` 发现目标缺失会用它还原（Android 官方在底层做的）。
+     *
+     * 写完之后仍要**自己补 chmod**（[exposeToOthers]）：`AtomicFile` 只认「写 + 还原」，
+     * 不知道我们要把文件放开给别的 uid 读。写在 `finishWrite` 之后、对**目标文件**做。
+     *
+     * ## 一处能力退化，记在这里
+     *
+     *  原来那个「tmp 名带 pid + 时间戳」是**并发写的防御**：两个写方各写各的 tmp，最后谁 rename
+     *  谁算数，字节不会互相掺。`AtomicFile` 固定用 `.new`，两个写方会写同一个临时文件 ⇒
+     *  理论上可能掺。当前写方是串行的（页面写配置、命令库写命令），跨进程同时写同一份文件这件事
+     *  本来就没有锁保护、也只是「后写覆盖先写」，所以接受这个退化；真要并发写，得上锁文件，
+     *  不在这一版做。
      *
      * DE 下的 `files/` 目录一开始并不存在（宿主自己没用过 DE），所以这里必须会建目录。
      *
@@ -196,45 +215,38 @@ object ConfigStore {
     ): Boolean {
         val dir = target.parentFile
         if (dir == null) return false
+        if (!dir.isDirectory && !dir.mkdirs()) {
+            XLog.w("建目录失败：${dir.path}")
+            return false
+        }
 
-        // 临时名带上 pid 与时间戳：当前只有一个写方且串行，定名不会撞；这里只是防御 ——
-        //  将来多一个并发写方（或同进程重入）时，定名会让两处共用同一个 tmp，
-        //  互相把对方没写完的内容 rename 成目标文件。带上进程与时刻就从命名上错开。
-        //  声明放在 try 外：写入阶段就失败时，catch 要把它收掉（见那边的注释）。
-        val tmp = File(dir, "${target.name}.${android.os.Process.myPid()}.${System.currentTimeMillis()}.tmp")
-
-        return try {
-            if (!dir.isDirectory && !dir.mkdirs()) {
-                XLog.w("建目录失败：${dir.path}")
-                return false
+        // **进程内串行**：`AtomicFile` 固定用同一个 `.new` 临时文件，两条线程同时写会互相掺字节。
+        //  跨进程那两个写方本来就只能「后写覆盖先写」（见上面那段能力退化），这里只护同进程这一层。
+        synchronized(writeLock) {
+            val atomic = android.util.AtomicFile(target)
+            // 只用于失败分支：`finishWrite` 之后置 null，免得对已交接的流再 `failWrite` 一次
+            var stream: java.io.FileOutputStream? = null
+            return try {
+                val out = atomic.startWrite()
+                stream = out
+                out.write(text.toByteArray(Charsets.UTF_8))
+                // 内部：flush + fd.sync + 旧文件 → `.bak`、`.new` → 目标（同目录内的 rename，原子）
+                atomic.finishWrite(out)
+                stream = null
+                // 放开权限只为 adb 排查方便，release 侧是空实现
+                if (openReadable) exposeToOthers(dir, target)
+                true
+            } catch (e: Throwable) {
+                // `failWrite` 会把半截的 `.new` 收掉 —— 不像手写那版要自己记得删
+                stream?.let { runCatching { atomic.failWrite(it) } }
+                XLog.w("写文件失败：${target.path} | ${e.message}")
+                false
             }
-            val bytes = text.toByteArray(Charsets.UTF_8)
-            java.io.FileOutputStream(tmp).use { out ->
-                out.write(bytes)
-                out.flush()
-                out.fd.sync()
-            }
-            // 放开权限只为 adb 排查方便，release 侧是空实现
-            if (openReadable) exposeToOthers(dir, tmp)
-
-            // rename 在同一文件系统内是原子的。失败（跨挂载点 / 个别 FS 不支持）**不退回「复制 + 删」**：
-            //  `copyTo(overwrite = true)` 是先清空目标再写，半途失败会把一份坏 JSON 留在目标上，
-            //  而读方一旦把它记成 `Unreadable` 就永不再写（写方被闸）—— 一次退路失败比「这次不写」更糟。
-            //  所以删掉 tmp、返回 false，让调用方按「没写进去」处理。
-            if (!tmp.renameTo(target)) {
-                runCatching { tmp.delete() }
-                XLog.w("落盘失败：rename 没成功（${target.path}），这次不写")
-                return false
-            }
-            true
-        } catch (e: Throwable) {
-            // 写到一半就失败（磁盘满 / 权限被拒）：把这份半截 tmp 收掉 ——
-            //  否则它永远躺在私有目录里，磁盘紧张时越积越多，排查时也分不清哪份是垃圾。
-            runCatching { if (tmp.exists()) tmp.delete() }
-            XLog.w("写文件失败：${target.path} | ${e.message}")
-            false
         }
     }
+
+    /** [writeAtomically] 的进程内互斥（见那里的说明）。 */
+    private val writeLock = Any()
 
     /**
      * 读文本文件并**剥掉开头的 UTF-8 BOM**（`U+FEFF`）。
@@ -256,7 +268,15 @@ object ConfigStore {
      * 正常字符，不该动。
      */
     fun readText(f: File): String {
-        val raw = f.readText(Charsets.UTF_8)
+        // **走 `AtomicFile.openRead()`**：目标文件缺失时它会先用 `.bak` 还原。写盘是
+        //  「base → .bak、.new → base」两步，中间被杀 / 断电就会留下「base 不在、.bak 在」——
+        //  这时直接 `f.readText()` 抛、调用方判「首装没配过」，用户整份配置随后被默认值覆盖。
+        //  两个都不在时它抛 `FileNotFoundException`，调用方据此判「真的没写过」。
+        val raw =
+            android.util
+                .AtomicFile(f)
+                .openRead()
+                .use { it.readBytes().decodeToString() }
         return stripBom(raw)
     }
 

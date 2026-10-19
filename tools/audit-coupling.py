@@ -76,7 +76,6 @@ RULES: list[tuple[str, tuple[str, ...], str]] = [
         (r"^com\.lookie\.opluskey\.inject\.", r"^com\.lookie\.opluskey\.ui\."),
         "宿主不依赖注入侧与界面层（decoupling 动作 1、2）",
     ),
-    ("ui.component", (r"^com\.lookie\.opluskey\.ui\.screen",), "通用组件不许依赖具体屏（decoupling 动作 4）"),
     ("ui.state", (r"^com\.lookie\.opluskey\.ui\.screen",), "状态不许反过来认识屏（decoupling 动作 5）"),
     # `ui/hook` 是 ui 内部的**顶层**，只该往下走。反向的三条（屏 / 状态 / 页面模型 认识 hook）
     # 都会把分层图倒过来变成环 —— `layer_of` 把 ui* 折成一层，环检测看不见它们，只能靠这三条。
@@ -105,7 +104,7 @@ RULES: list[tuple[str, tuple[str, ...], str]] = [
 #   - `CommandMenus` / `IconInput` / `DonateDialog` 同上；`MenuPopup` 留 `component/`
 #     （它服务五个屏，是真正的共用件）；
 #   - `SwitchRow.kt` 那个没用过的接收者已去掉。
-#   判据留在这里备用：**`ui/component/` 里只许放跨屏共用件** —— 只服务一屏的，跟着那一屏走。
+#   判据沿用（目录已并入 `ui/`）：**只服务一屏的，跟着那一屏走**
 WHITELIST: set[tuple[str, str]] = set()
 
 
@@ -113,13 +112,17 @@ def bucket_of(rel: str) -> str:
     """一个文件在包结构里的**细分档位** —— 禁止边按它判。"""
     if rel == "KeyModule.kt":
         return "root"
+    # 根包里其余的入口（`EntryActivity`）同属 root：按文件名当档位会凭空多出一个伪桶，
+    # 还把自己落在全部规则之外。
+    if "/" not in rel:
+        return "root"
     parts = rel.split("/")
     # bridge/ 按**进程归属**再分两档（2026-10-17 拆的）：`bridge/` 是本层共用的平台层
     # （两侧都会加载 ⇒ 与 inject/ 同待遇），`bridge/host/` 只有宿主侧用、`bridge/inject/` 只有
     # 注入侧用 —— 拿错档位判「这段会不会在 system_server 里跑」就会判错。
     if parts[0] == "bridge" and len(parts) >= 2 and parts[1] in ("host", "inject"):
         return "bridge." + parts[1]
-    if parts[0] == "ui" and len(parts) >= 2 and parts[1] in ("component", "hook", "state", "screen"):
+    if parts[0] == "ui" and len(parts) >= 2 and parts[1] in ("hook", "state", "screen"):
         # `ui/hook` 单独成档（2026-10-19）：它是 ui 内部的**顶层**（宿主页注入：换页 / 返回拦截 /
         #   配置导入导出 / 窗口色），分层图上 `ui.hook → ui.screen → ui → ui.state / ui.model` 是单向的。
         #   不拆出来的话它会被折进 `ui` 档，于是「`ui.screen` 反过来认识 `ui.hook`」这种事脚本抓不到 ——

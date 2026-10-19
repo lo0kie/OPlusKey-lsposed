@@ -119,15 +119,15 @@ internal sealed interface MenuEntry {
 }
 
 /**
- * 菜单行标题的**格数上限** —— 六个汉字（[displayWidth] 折算的 12 格）。
+ * 菜单行标题的**格数上限** —— 七个汉字（[displayWidth] 折算的 14 格）。
  *
  *  浮层的宽度由最长那一行决定，而库里给标题的行数上限是 `DropdownDefaults.TitleMaxLines`（3 行）：
  *  不截的话，一条长命令名会先把那一行撑成两三行、再把整张菜单拉宽，同一份菜单在不同命令下宽度还不一样。
  *
  *  按**格**算而不是按 `length` 算：`English`（7 字符 / 7 格）本来就放得下，按字符数判会把它砍成
- *  `Engli…`；汉字两格，所以这一档对中文就是「六个字」。
+ *  `Engli…`；汉字两格，所以这一档对中文就是「七个字」。
  */
-private const val MENU_TITLE_MAX_WIDTH = 12
+private const val MENU_TITLE_MAX_WIDTH = 14
 
 /**
  * 菜单行标题的**显示文本**：超过 [MENU_TITLE_MAX_WIDTH] 就从尾部砍掉、补一个省略号。

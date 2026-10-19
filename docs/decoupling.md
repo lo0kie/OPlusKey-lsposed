@@ -16,9 +16,9 @@
 
 | 项                                       | 值                                                                       | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
 | ---------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| 包级环 / 边                              | **0 / 31**（细分档位口径；`ui/hook` 单独成档后由 27 变 31，见下）        | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
+| 包级环 / 边                              | **0 / 30**（细分档位口径；`ui/hook` 单独成档后由 27 变 31，根包文件归入 root 档后为 30，见下）        | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
 | `SettingsPage` 状态字段                  | **21**                                                                   | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
-| `SettingsPage.xxx` 扩展                  | 204 个，散在 65 文件                                                     | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
+| `SettingsPage.xxx` 扩展                  | 215 个，散在 67 文件（2026-10-19 复核：204 / 65 → 215 / 67）             | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
 | `ui/SettingsPage.kt` 行数                | **517**（879 → 699 → 497 → 517）                                         | `wc -l ui/SettingsPage.kt`                                                          |
 | `inject/ProbeChannel.kt` 行数            | 337（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）            | `wc -l inject/Probe*.kt`                                                            |
 | `host/action/MiniWindowLauncher.kt` 行数 | 695（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`） | `wc -l host/action/MiniWindow*.kt`                                                  |
@@ -26,7 +26,7 @@
 | 屏文件 import 页面                       | 47 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线    | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
 | 零引用 import                            | 0，且由 detekt 拦下                                                      | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
-**边数 27 → 31 是量具变细，不是新增耦合**：`ui/hook` 原先被折进 `ui` 档，它自己的五条外连
+**边数 27 → 31 → 30 是量具变细，不是新增耦合**：`ui/hook` 原先被折进 `ui` 档，它自己的五条外连
 （`→ bridge / core / ui / ui.screen / ui.state`）和 `root` 那一条都被记在别的档上，方向看不出来。
 拆开之后 `root` 的依赖也从含糊的 `root → ui` 变成准确的 `root → ui.hook`，同时腾出位置新增三条
 「不许反向依赖 `ui.hook`」的禁止边（见五）。
@@ -537,3 +537,55 @@ grep -rn '^import com.lookie.opluskey.ui.screen' app/src/main/java/com/lookie/op
       眼下设备没连上，而这几个文件任何一环出错的表现是「按了没反应」甚至开机循环（五之二）——
       切法已经写在这里，设备回来即可按上面的顺序动手。
 4. 依赖条数是「import 行数」，不是「耦合强度」的完备度量：一条 `import` 背后可能是 1 个常量，也可能是 20 个符号。用它做趋势跟踪足够，做局部决策时要看具体符号。
+
+---
+
+## 十、层内耦合：脚本看不见、只能靠人守的那几条
+
+判据 1、2（禁止边 / 无环）管的是**包与包**的方向。有一类耦合它结构上看不见 ——
+同一个包里的两个文件互相认识，图上没有边，但语义上仍然是「谁依赖谁」。下面这几条是实测
+存在、且**有正当理由**的，写在这里是为了下次改动时不再重新论证一遍，也别顺手把它们拆坏。
+
+### 1. `ui/screen/PageContent.kt` 认识 COUI 的 `COUIPopupHost`
+
+```kotlin
+import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.COUIPopupHost
+...
+popupHost = { COUIPopupHost(); Box(...) { PageSnackbars() } }
+```
+
+`popupHost` 是 `Scaffold` 给的一个**槽**：默认值就是 `COUIPopupHost()`。我们要的东西
+（提示条压在弹窗之上）在默认值**里面**，所以只能改写这个槽、把默认那几个 composable
+自己再摆一遍 —— 这是「用槽」的固有代价，不是「依赖库内部实现」。
+
+**为什么值得**：`COUIPopupHost` 是库**公开**的入口（`COUIPopupUtils` 的伴生成员），
+不是反射 / 内部类；而槽的存在就是为了让调用方改写。反过来（继续用 `snackbarHost` 槽、
+想办法把提示条抬到弹窗之上）没有任何 `Scaffold` 层面的做法 —— 库在 `layout {}` 里把
+`popup` 放在**最后** `place()`。
+
+**风险与守则**：这个 import 是「跟着库版本走」的，库若把 `COUIPopupHost` 挪位置 / 改名，
+这里是唯一会编译失败的地方（正好也是唯一该改的地方）。**新代码不要照这个例子去 import
+`io.github.suqi8.coui.kmp.utils.*`** —— 目前全仓只有这一处。
+
+### 2. `ui/screen/binding/BindingList.kt` 读页面的 `overlays.hasOpen()`
+
+屏文件读页面对象的浮层域 —— 这在 `ui/screen → ui` 那条**允许**（本来就是页面构件的写法，
+`SettingsPage` 是 DSL 接收者），`audit-coupling.py` 的环检测也把 `ui*` 折成一层。
+
+要守的是**语义**：`hasOpen()` 读的是「组合期登记了几层浮窗」，比 `PageOverlays` 文档里那句
+「系统返回要不要整个吞掉」的判据**宽** —— 提示条也在 `openCount` 里。本轮用它做
+「浮窗开着就别抢按键焦点」正好合适（提示条虽然不吃焦点，但那时抢焦点同样是意料之外的事）；
+**下一次若有人拿它做「页面能不能响应按键」之类更窄的判断，要先看清这个口径。**
+
+### 3. `show` 穿过两个包：`binding/` → `command/` 的 `IconInputView(show = …)`
+
+`command/IconInputView.kt` 里的 `ImeGuard` 收 `show: Boolean?`，调用方在
+`ui/screen/binding/`。方向是 `binding → command`（都已经在 `ui.screen` 一层，脚本不记边）。
+
+写得克制的地方：`command/` **不认识「弹窗」「收集按键」「收集窗收场」这些概念** ——
+参数就叫 `show`，`null` 表示「这不是弹窗里的输入框、守卫不启用」，注释里也只说
+「外力把焦点 / 键盘收走时补回来」。`binding/` 那边才知道「这是 ROM 处理电源键之后的副作用」。
+
+**这条边只许保持这个形态**：往 `IconInputView` 里加 `dialogId` / `onDismissFinished` /
+`isCollecting` 这类参数，就是 `command/` 开始认识 `binding/` 的业务了，那才是真的反向耦合。
+同样的道理适用于 `KeyNameBody` 上那个 `show`（它本身就是 `binding/` 内部的共用件）。

@@ -23,6 +23,15 @@ data class KeyConfig(
     val longRepeat: Boolean,
     val longRepeatIntervalMs: Int,
     /**
+     * 「单击延迟」—— **这颗键自己的**双击窗口（毫秒）。
+     *
+     *  以前它是 `GlobalConfig` 的一项（所有键共用一份），自定义键出现之后就成了
+     *  「改一颗键的判定、另一颗跟着变」—— 用户口径是每颗键各管各的。
+     */
+    val doubleClickMs: Int = DEFAULT_DOUBLE_CLICK_MS,
+    /** 「忽视无操作双击手势」—— **这颗键自己的**判定（同上，原来在全局）。 */
+    val instantSingle: Boolean = DEFAULT_INSTANT_SINGLE,
+    /**
      * 长按绑的是不是「多条命令」（`cmd:<名字>` 且命令库里那条是串行命令）。
      * 只由宿主算好、随配置广播带过来（`ConfigFields.LONG_SERIAL_EXTRA`），注入侧不自己算：
      * 算它要读宿主私有目录的命令库，system_server 进不去带 MCS 分类的目录
@@ -69,11 +78,23 @@ data class KeyConfig(
                 ConfigFields.F_LONG_PRESS_MS to longPressMs,
                 ConfigFields.F_LONG_REPEAT to longRepeat,
                 ConfigFields.F_REPEAT_INTERVAL_MS to longRepeatIntervalMs,
+                ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
+                ConfigFields.F_INSTANT_SINGLE to instantSingle,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
             ),
         )
 
     companion object {
+        /** 「单击延迟」的默认值（毫秒）。 */
+        const val DEFAULT_DOUBLE_CLICK_MS = 300
+
+        /** 双击窗口下限 —— 100ms 比「两次完整按压 + 抬手」的物理最短时间还短，是给用户留的余量档。 */
+        const val MIN_DOUBLE_CLICK_MS = 100
+        const val MAX_DOUBLE_CLICK_MS = 1000
+
+        /** 「忽视无操作双击手势」的默认值（不等窗口）。 */
+        const val DEFAULT_INSTANT_SINGLE = true
+
         const val DEFAULT_LONG_PRESS_MS = 500
 
         /**
@@ -86,7 +107,9 @@ data class KeyConfig(
         const val MIN_LONG_PRESS_MS = 200
         const val MAX_LONG_PRESS_MS = 1000
         const val DEFAULT_REPEAT_INTERVAL_MS = 300
-        const val MIN_REPEAT_INTERVAL_MS = 100
+
+        /** 连发间隔下限 —— 50ms（用户口径）：再快就与「按住不放」的体感脱节，且按键注入本身也要时间。 */
+        const val MIN_REPEAT_INTERVAL_MS = 50
 
         const val MAX_REPEAT_INTERVAL_MS = 3000
 
@@ -106,6 +129,8 @@ data class KeyConfig(
                 longPressMs = DEFAULT_LONG_PRESS_MS,
                 longRepeat = false,
                 longRepeatIntervalMs = DEFAULT_REPEAT_INTERVAL_MS,
+                doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,
+                instantSingle = DEFAULT_INSTANT_SINGLE,
             )
 
         /**
@@ -127,6 +152,8 @@ data class KeyConfig(
                 longPressMs = v.number(ConfigFields.F_LONG_PRESS_MS),
                 longRepeat = v.bool(ConfigFields.F_LONG_REPEAT),
                 longRepeatIntervalMs = v.number(ConfigFields.F_REPEAT_INTERVAL_MS),
+                doubleClickMs = v.number(ConfigFields.F_DOUBLE_CLICK_MS),
+                instantSingle = v.bool(ConfigFields.F_INSTANT_SINGLE),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
             )
     }
@@ -134,13 +161,7 @@ data class KeyConfig(
 
 /** 全局配置（不属于任何单个键）。 */
 data class GlobalConfig(
-    val doubleClickMs: Int,
     val vibrate: Boolean,
-    /**
-     * 双击为 [Action.None] 时抬手立即触发单击，不等 [doubleClickMs] 的双击窗口。
-     * 代价：开启后连按两下会变成两次单击（关闭时第二下会被吞掉）。
-     */
-    val instantSingle: Boolean = DEFAULT_INSTANT_SINGLE,
     /** 执行**任意动作**时弹一条 Toast（内容是动作名；自定义命令取命令名）。 */
     val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
     /** 界面语言（auto = 跟随系统，zh_CN = 简体中文，en = English）。 */
@@ -161,9 +182,7 @@ data class GlobalConfig(
     fun fieldValues(): ConfigFields.Values =
         ConfigFields.Values(
             mapOf(
-                ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
                 ConfigFields.F_VIBRATE to vibrate,
-                ConfigFields.F_INSTANT_SINGLE to instantSingle,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_LANGUAGE to language,
                 ConfigFields.F_COLOR_OS_API to colorOsApi,
@@ -172,15 +191,6 @@ data class GlobalConfig(
         )
 
     companion object {
-        const val DEFAULT_DOUBLE_CLICK_MS = 300
-
-        /** 双击窗口下限 —— 100ms 比「两次完整按压 + 抬手」的物理最短时间还短，是给用户留的余量档。 */
-        const val MIN_DOUBLE_CLICK_MS = 100
-        const val MAX_DOUBLE_CLICK_MS = 1000
-
-        /** [GlobalConfig.instantSingle] 的默认值（不等窗口）。 */
-        const val DEFAULT_INSTANT_SINGLE = true
-
         /** [GlobalConfig.toastOnRun] 的默认值：默认不弹。 */
         const val DEFAULT_TOAST_ON_RUN = false
 
@@ -195,7 +205,6 @@ data class GlobalConfig(
 
         val DEFAULT =
             GlobalConfig(
-                doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,
                 vibrate = false,
                 colorOsApi = DEFAULT_COLOR_OS_API,
             )
@@ -203,9 +212,7 @@ data class GlobalConfig(
         /** 从取值表还原全局配置 —— 与 [GlobalConfig.fieldValues] 成对，两条通道共用。 */
         fun ofFields(v: ConfigFields.Values): GlobalConfig =
             GlobalConfig(
-                doubleClickMs = v.number(ConfigFields.F_DOUBLE_CLICK_MS),
                 vibrate = v.bool(ConfigFields.F_VIBRATE),
-                instantSingle = v.bool(ConfigFields.F_INSTANT_SINGLE),
                 toastOnRun = v.bool(ConfigFields.F_TOAST_ON_RUN),
                 language = v.text(ConfigFields.F_LANGUAGE),
                 colorOsApi = v.bool(ConfigFields.F_COLOR_OS_API),
@@ -217,6 +224,16 @@ data class GlobalConfig(
 /** 整份配置。 */
 data class Config(
     val keys: Map<KeyId, KeyConfig>,
+    /**
+     * 用户收集来的按键（顺序 = 收集顺序）。
+     *
+     *  **内置键不在这里** —— 内置与自定义的全集是 [allKeys]。把内置键也塞进来会让
+     *  「哪些是用户的东西」和「哪些是编译期就有的」混成一锅，删除 / 改名那些判据就得再各写一遍。
+     *
+     *  自定义键的**身份**是 `KeyId.id`（`ck1` `ck2`），键码只是它的一个属性：换一次驱动上报
+     *  换了个码，绑定不该跟着丢（见 [KeyId.custom]）。
+     */
+    val customKeys: List<KeyId> = emptyList(),
     val global: GlobalConfig,
     /**
      * 用户是否已经确认过「风险提示与免责声明」—— 只由**本地**产生，决定「启用」之前要不要弹那一次。
@@ -283,6 +300,37 @@ data class Config(
         }
     }
 
+    /**
+     * 内置 + 自定义的**全集**（界面列键清单、广播打包都按它走）。
+     *
+     *  `by lazy`：注入侧每条按键事件都要按码查一次键（`keyForCode` → `allKeys`），
+     *  每次现拼一个列表就是每按一次键多两三个分配 —— 而这跑在 `InputReader` 线程上。
+     *  配置是不可变的（写配置走 `copy`），所以缓存一次就够。
+     */
+    val allKeys: List<KeyId> by lazy { KeyId.builtins + customKeys }
+
+    /** 按 id 找键本身（要拿 `label` / `isCustom` 时用）；不认识返回 null。 */
+    fun keyIdOf(id: String): KeyId? = allKeys.firstOrNull { it.id == id }
+
+    /** 按 id 找那个键的配置（自定义键也认）；不认识返回 null。 */
+    fun keyForId(id: String): KeyConfig? = keyIdOf(id)?.let { key(it) }
+
+    /**
+     * 按 keyCode 找那个键的配置 —— **认领路径的唯一入口**。
+     *
+     *  注入侧不再问「这是不是侧键」，改问「这个码在配置里是不是某一颗键」。查不到就放行：
+     *  电源 / 音量那些必须原样交给系统，这一点没变。
+     */
+    fun keyForCode(code: Int): KeyConfig? = allKeys.firstOrNull { code in it.acceptedKeyCodes }?.let { key(it) }
+
+    /**
+     * 按**原始键码**找键 —— 与 [keyForCode] 的区别是**不含** ColorOS 的内部注入码。
+     *
+     *  PM（`PhoneWindowManager`）那条兜底路径能收到所有按键，策略类那条已经处理过 780 / 781 / 782，
+     *  这里再认一次会让同一次按压被判两遍（见 [KeyId.fromKeyCode] 的说明）。
+     */
+    fun keyForRawCode(code: Int): KeyConfig? = allKeys.firstOrNull { it.keyCode == code }?.let { key(it) }
+
     /** 顶层那两位的取值 —— 与另两段同一套（见 `KeyConfig.fieldValues` 的说明）。 */
     fun fieldValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -295,7 +343,7 @@ data class Config(
     companion object {
         val DEFAULT =
             Config(
-                keys = KeyId.entries.associateWith { KeyConfig.defaultFor(it) },
+                keys = KeyId.builtins.associateWith { KeyConfig.defaultFor(it) },
                 global = GlobalConfig.DEFAULT,
             )
 
@@ -303,16 +351,21 @@ data class Config(
          * 拼一份配置 —— 顶层那两位（两个「已确认」标记）从取值表来，与另外两段同一套读法。
          *
          *  [keys] / [global] 由调用方各自按 [KeyConfig.ofFields] / [GlobalConfig.ofFields] 建好。
+         *  [customKeys] 与 [keys] **必须对得上**：每一个自定义键都得在 `keys` 里有一条，
+         *  否则 `key(id)` 会退回默认值，界面上看着像「刚收集的键绑定全丢了」。
          */
         fun ofFields(
             keys: Map<KeyId, KeyConfig>,
             global: GlobalConfig,
             v: ConfigFields.Values,
-            /** 名字表（`app_names` 那一段）—— 不在字段表里，由 [ConfigCodec] 单独读出来传进来。 */
+            /** 用户收集来的按键（`custom_keys` 那一段）—— 不在字段表里，由 `ConfigCodec` 单独读。 */
+            customKeys: List<KeyId> = emptyList(),
+            /** 名字表（`app_names` 那一段）—— 同上，由 [ConfigCodec] 单独读出来传进来。 */
             appNames: Map<String, String> = emptyMap(),
         ): Config =
             Config(
                 keys = keys,
+                customKeys = customKeys,
                 global = global,
                 disclaimerAccepted = v.bool(ConfigFields.F_DISCLAIMER),
                 commandDisclaimerAccepted = v.bool(ConfigFields.F_COMMAND_DISCLAIMER),

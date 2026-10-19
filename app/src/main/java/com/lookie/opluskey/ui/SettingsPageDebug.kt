@@ -19,7 +19,7 @@ import com.lookie.opluskey.ui.state.fakeModel
  * 调试通道的处理体 —— **只有 debug 包会走到这里**（实现只在 `src/debug/` 源集）。
  *
  * 支持的动作见 [PageDebugChannel] 的类注释（`screen` / `gesture` / `kind` /
- * `name` / `cmd` / `steps` / `del` / `reset` / `save` / `action` / `state` / `model` / `rom`，
+ * `name` / `cmd` / `steps` / `del` / `reset` / `save` / `hint` / `action` / `state` / `model` / `rom`，
  * 一次可以带多个）。`model` / `rom` 是**伪装本机身份**（只动判定与显示，不碰注入），
  * 传空串即恢复真机值。
  *
@@ -83,6 +83,13 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
     if (intent.getBooleanExtra("save", false)) {
         XLog.w("调试：触发保存（等于点「保存 / 修改」）")
         addCommand()
+    }
+    // 弹一条操作提示 —— 排查提示条的排版 / 影子 / 进出场时用：
+    //   am broadcast -a com.lookie.opluskey.DEBUG --es hint "已切换到「音量 -」"
+    //  不这么做就得先点两下菜单才能触发一次，而这一段要看的是**动画**。
+    intent.getStringExtra("hint")?.let { text ->
+        XLog.w("调试：弹提示 → $text")
+        hint(text)
     }
     // 通用动作派发：`--es action NAME` —— 页面级调试动作统一走这张表，加新动作只动这里
     intent.getStringExtra("action")?.let { raw ->

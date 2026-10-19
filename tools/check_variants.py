@@ -43,8 +43,6 @@ def main():
         listing = subprocess.run(
             ['unzip', '-l', p], capture_output=True, text=True, errors='ignore'
         ).stdout
-        for line in listing.splitlines():
-            pass
         apks[v] = {'blob': blob, 'dexes': n, 'size': size, 'listing': listing}
 
     print('%-30s ' % '判据' + ' '.join('%-8s' % v for v in VARIANTS))

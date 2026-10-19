@@ -69,7 +69,7 @@ internal class AppLauncher(
         val userId = AppTarget.userId(target)
         val pkg = AppTarget.pkg(target)
         val pm = AppCloneCatalog.packageManagerFor(ctx, userId) ?: ctx.packageManager
-        val intent = AppEntry.intentOf(pm, target)
+        val intent = entryIntent(pm, target, pkg, userId)
         if (intent == null) {
             // 区分「包还在但没有可启动界面」与「包已不在」，前者提示「已卸载」会误导
             //  分身目标：主用户的 PM 问不出那个包在不在（`getApplicationInfo` 必抛），
@@ -171,10 +171,11 @@ internal class AppLauncher(
 
         var sent = 0
         for (action in channels) {
+            // 这是 `sendBroadcast`，不是 `startActivity`：`FLAG_ACTIVITY_*` 对广播没有意义，
+            //  带上只会让读日志的人以为这里在起界面。
             val intent =
                 Intent(action)
                     .setPackage(SHORTCUT_PKG)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             // 各版本用过不同的 extra key 名，**两条都带上** —— 实现方读哪个都能拿到。
             for (key in SHORTCUT_ID_KEYS) intent.putExtra(key, shortcutId)
             try {
@@ -472,3 +473,25 @@ private fun fillExtras(
         }
     }
 }
+
+/**
+ * 目标 → 入口 Intent。
+ *
+ *  分身：主用户的 PM 看不见那个包，[AppEntry.intentOf] 必然落空 —— 这时按 userId 走 binder
+ *  再问一次（[AppEntry.resolveAsUser]）。只给了包名才这么退：用户点名了某个 Activity 时
+ *  不要另挑一个顶上。
+ *
+ *  提成顶层函数与 [fillExtras] 同一个原因：这个类的函数条数贴着 detekt `TooManyFunctions` 那一档。
+ */
+private fun entryIntent(
+    pm: android.content.pm.PackageManager,
+    target: String,
+    pkg: String,
+    userId: Int,
+): Intent? =
+    AppEntry.intentOf(pm, target)
+        ?: if (userId != 0 && AppTarget.activity(target) == null) {
+            AppEntry.resolveAsUser(pkg, userId)
+        } else {
+            null
+        }

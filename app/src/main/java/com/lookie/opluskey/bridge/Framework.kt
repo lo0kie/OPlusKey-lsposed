@@ -35,9 +35,11 @@ internal object Framework {
      * @param pmEntries AOSP 原生入口
      * @param amsCandidate AMS 的广播入口 —— 本模块「主开关 / 配置 / 状态栏指令 / 小窗指令 /
      *   链路自检问」全从这里收
-     * @param amsBroadcastEntries AMS 广播入口的方法名（精确匹配）。`broadcastIntentWithFeature`
-     *   是新版本入口，老版本只有 `broadcastIntent`，两个都收；但不认模糊匹配 —— 抓错同族方法
-     *   （`broadcastIntentLocked` / `broadcastIntentInPackage`）会把我们**自己发出去**的广播也拦一遍
+     * @param amsBroadcastEntries AMS 广播入口的方法名（精确匹配），**按优先级排列**：
+     *   `broadcastIntentWithFeature` 是新版入口，老版本只有 `broadcastIntent`；[findBroadcastPoints]
+     *   只取第一个存在的名字（前者会转调后者，两个都挂等于同一条广播处理两遍）。不认模糊匹配 ——
+     *   抓错同族方法（`broadcastIntentLocked` / `broadcastIntentInPackage`）会把我们**自己发出去**的
+     *   广播也拦一遍
      * @param hostKeyService 其余场景的宿主服务 —— 也是「启动它把宿主抬出可冻结范围」用的那个服务
      * @param hostStartAppService 「打开应用」场景的宿主服务（框架按场景表里的 `click_action_info` 绑它）
      * @param hostHandlerSuffixes 宿主服务内部 Handler 的类名后缀**候选**（`XxxService$a` 里的 `a`）。
@@ -235,6 +237,12 @@ internal object Framework {
     /**
      * 找 AMS 的广播入口方法（[AMS_CANDIDATE] 上的 [AMS_BROADCAST_ENTRIES]，精确匹配）。
      *
+     * **同一族里只挂最靠里的那一个**：新版 AMS 上 `broadcastIntent(...)` 内部会转调
+     * `broadcastIntentWithFeature(...)`，两个都挂就是同一条广播被 [KeyHooks] 处理两遍
+     * （状态栏 toggle、探针 `call` 这类非幂等动作会执行两次）。所以按候选表顺序取
+     * **第一个存在的名字**，只返回这个名字下的全部重载；老 ROM 上没有 WithFeature 时自然退到
+     * `broadcastIntent`。
+     *
      * @return 命中的方法；找不到返回空表（调用方按「三条通道整体失效」记日志，不硬猜）
      */
     fun findBroadcastPoints(loader: ClassLoader): List<Method> {
@@ -255,8 +263,13 @@ internal object Framework {
                 "${hooks.amsCandidate} 上没有 ${hooks.amsBroadcastEntries.joinToString("/")}()" +
                     "（同族方法：${near.joinToString(", ").ifEmpty { "一个都没有" }}）",
             )
+            return emptyList()
         }
-        return hit
+        val terminal = hooks.amsBroadcastEntries.firstOrNull { name -> hit.any { it.name == name } }
+        val chosen = hit.filter { it.name == terminal }
+        // 判据行：挂的是哪一族决定了「一条广播走几次」，排查重复派发时先看这一行
+        XLog.w("广播入口：挂 $terminal（${chosen.size} 个重载；同族其余名字不挂，避免同一条广播走两遍）")
+        return chosen
     }
 
     /**
@@ -474,9 +487,11 @@ internal object Framework {
     /**
      * 一个可安装的接管点。
      *
-     * [kind] 决定怎么判定「这下是不是侧键」：[Kind.OPLUS_STRATEGY] 走白名单
-     * （`KeyId.fromAnyKeyCode`，含 735/780/781/782）；[Kind.OPLUS_PM_EXT] 与 [Kind.AOSP_PM]
-     * 只认原始码（`KeyId.fromKeyCode`，仅 735），免得同一次按键被两条路各判一次。
+     * [kind] 决定怎么判定「这下是不是侧键」（实现见 `inject/SideKeyInterceptor.decide`）：
+     * `OPLUS_STRATEGY` 按**全部键**的 `acceptedKeyCodes` 查（含侧键的 735/780/781/782，也含自定义键）；
+     * `OPLUS_PM_EXT` 与 `AOSP_PM` 只按**原始码**查（侧键只有 735），免得同一次按键被两条路各判一次。
+     * 两张查询表都来自当前配置（`Config.keyForCode` / `Config.keyForRawCode`）；
+     * `KeyId.fromKeyCode` / `fromAnyKeyCode` 是不带配置时的内置键判定，生产路径不用它们。
      */
     data class InterceptionPoint(
         val owner: Class<*>,

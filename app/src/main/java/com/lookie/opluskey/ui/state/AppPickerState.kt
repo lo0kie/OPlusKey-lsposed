@@ -164,7 +164,7 @@ internal class AppPickerState {
      *  真在那页确认了别的东西，会由页面层的写入点（`PageEntry.onDraftPicked`）直接覆盖。
      */
     fun openActivities(target: String) {
-        XLog.w("openActivities：看 $target（原来是 $activityTarget）")
+        XLog.d("openActivities：看 $target（原来是 $activityTarget）")
         activityTarget = target
     }
 
@@ -176,7 +176,7 @@ internal class AppPickerState {
      *  在退页时清反而会误伤「退场动画还没收完、用户已经点了下一个应用」那一瞬（见字段说明）。
      */
     fun forgetActivities() {
-        XLog.w("forgetActivities：无条件清掉 $activityTarget")
+        XLog.d("forgetActivities：无条件清掉 $activityTarget")
         activityTarget = null
     }
 
@@ -216,7 +216,7 @@ internal class AppPickerState {
     //  「谁能改、什么时候失效」全靠注释约定，而「谁在什么时候清」正是这类缓存唯一的难点。
     //  收进这一域之后所有者是 `SettingsPage.picker`，与这一页的状态同生共死。
     //
-    //  ⚠️ 页面**重建**（宿主 Activity 重建）会连它一起没。原来挂全局时能跨重建活下来，但那是**顺带**
+    //  注意：页面**重建**（宿主 Activity 重建）会连它一起没。原来挂全局时能跨重建活下来，但那是**顺带**
     //  的性质、不是设计目标：缓存只省「首帧先铺旧清单」这一下，丢了不影响正确性（进页照样查一遍）。
 
     /**

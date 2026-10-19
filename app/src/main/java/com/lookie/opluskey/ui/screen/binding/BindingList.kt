@@ -73,8 +73,12 @@ internal fun SettingsPage.BindingList(
     //  **只有当前页抢焦点**：pager 的相邻页同样在组合里，三页各请求一次的话最后请求到的拿走焦点。
     //  先把这个页面 View 的 Android 焦点拿回来，再请求 Compose 内部的焦点：按键事件按 Android
     //  焦点派发，只请求 Compose 焦点的话在「页面 View 从未拿过焦点」的情况下按键仍然进不来。
-    LaunchedEffect(st.specs, selectedIndex, page.active) {
-        if (!page.active) return@LaunchedEffect
+    //  浮窗（弹窗 / 菜单 / 提示）开着时**一律不抢**：浮窗里的输入框刚拿到焦点，这里再请求一次
+    //  就会把它抢走 —— 真机反馈「添加按键 / 重命名的输入框聚焦后又自动失焦」。
+    //  浮窗关掉那一刻 key 变回来，圈自然落回选中项。
+    val overlayOpen = overlays.hasOpen()
+    LaunchedEffect(st.specs, selectedIndex, page.active, overlayOpen) {
+        if (!page.active || overlayOpen) return@LaunchedEffect
         val seat = selectedIndex.coerceAtLeast(0)
         if (seat != st.focusedIndex) st.focusedIndex = seat
         val viewFocus = viewTree.rootView?.requestFocus() ?: false

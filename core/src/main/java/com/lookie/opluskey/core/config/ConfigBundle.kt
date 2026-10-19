@@ -3,7 +3,13 @@ package com.lookie.opluskey.core.config
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 
 /**
  * 「导入配置 / 导出配置」的文件格式与解析，全项目只有这一处。
@@ -52,6 +58,13 @@ object ConfigBundle {
     private const val ENVELOPE_CONFIG = "config"
     private const val ENVELOPE_COMMANDS = "commands"
 
+    /** 信封的编解码器 —— 与另外两处同一个口径（缩进两格、只写给出的字段）。 */
+    private val bundleJson =
+        Json {
+            prettyPrint = true
+            prettyPrintIndent = "  "
+        }
+
     /** 解析结果 —— **两段都一定有值**（少一段就当整份不过关，见 [parse]）。 */
     data class Parsed(
         val config: Config,
@@ -73,12 +86,15 @@ object ConfigBundle {
                     commandDisclaimerAccepted = false,
                 )
             val json =
-                JSONObject()
-                    .put(ENVELOPE_VERSION, VERSION)
-                    // 两份序列化结果都是 JSON 文本，原样嵌进来（不再拆一遍字段，避免两处维护同一份键名）
-                    .put(ENVELOPE_CONFIG, JSONObject(ConfigCodec.serialize(shareable)))
-                    .put(ENVELOPE_COMMANDS, JSONObject(CommandLibrary.serialize(commands)))
-                    .toString(2)
+                bundleJson.encodeToString(
+                    JsonObject.serializer(),
+                    buildJsonObject {
+                        put(ENVELOPE_VERSION, VERSION)
+                        // 两份序列化结果都是 JSON 文本，原样嵌进来（不再拆一遍字段，避免两处维护同一份键名）
+                        put(ENVELOPE_CONFIG, bundleJson.parseToJsonElement(ConfigCodec.serialize(shareable)))
+                        put(ENVELOPE_COMMANDS, bundleJson.parseToJsonElement(CommandLibrary.serialize(commands)))
+                    },
+                )
             FileObfuscation.wrap(MAGIC, json)
         } catch (e: Throwable) {
             // 序列化失败是「模块自己的问题」，不该让页面崩；调用方拿到空串会按「导出失败」处理
@@ -101,19 +117,19 @@ object ConfigBundle {
         val json = FileObfuscation.unwrap(MAGIC, text) ?: return null
         val root =
             try {
-                JSONObject(json)
+                bundleJson.parseToJsonElement(json).jsonObject
             } catch (e: Throwable) {
                 XLog.w("导入配置：解开之后不是 JSON：${e.message}")
                 return null
             }
         // 版本先认：信封结构将来变了，旧版程序读新版文件是「不知道自己在读什么」，一律拒
-        val version = root.optInt(ENVELOPE_VERSION, 0)
+        val version = (root[ENVELOPE_VERSION] as? JsonPrimitive)?.intOrNull ?: 0
         if (version != VERSION) {
             XLog.w("导入配置：信封版本 $version ≠ 本版 $VERSION，拒收")
             return null
         }
 
-        val configObj = root.optJSONObject(ENVELOPE_CONFIG)
+        val configObj = root[ENVELOPE_CONFIG]?.jsonObject
         if (configObj == null) {
             XLog.w("导入配置：没有 $ENVELOPE_CONFIG 段")
             return null
@@ -124,7 +140,7 @@ object ConfigBundle {
             return null
         }
 
-        val commandsObj = root.optJSONObject(ENVELOPE_COMMANDS)
+        val commandsObj = root[ENVELOPE_COMMANDS]?.jsonObject
         if (commandsObj == null) {
             XLog.w("导入配置：没有 $ENVELOPE_COMMANDS 段")
             return null

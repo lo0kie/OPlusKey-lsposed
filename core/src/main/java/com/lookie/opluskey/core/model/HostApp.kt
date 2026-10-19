@@ -13,7 +13,7 @@ package com.lookie.opluskey.core.model
  *  `com.oplus.gesture.ui`（与包同名加后缀），所以拿包名去比进程名只对主进程成立。
  *  分开写两个常量正是为了让「这里要的是包还是进程」在调用点看得出来；**字面量只有这一份**。
  *
- *  ⚠️ `scope.list`（`app/src/main/resources/META-INF/xposed/scope.list`）是**资源文件**，读不到这里的
+ *  注意：`scope.list`（`app/src/main/resources/META-INF/xposed/scope.list`）是**资源文件**，读不到这里的
  *  常量 —— 它由 CI 与这里的取值对齐（见 `.github/workflows/build.yml` 的「scope.list 与 HostApp 对齐」）。
  *  改这里的包名要连着那份文件一起改。
  */

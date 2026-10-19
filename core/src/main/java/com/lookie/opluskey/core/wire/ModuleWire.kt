@@ -1,7 +1,10 @@
 package com.lookie.opluskey.core.wire
 
 /**
- * 跨进程的**线格式** —— 三条广播通道上每个 action 与 extra 的字符串，全项目唯一一处定义。
+ * 跨进程的**线格式** —— 三条广播通道上每个 action 与 extra 的字符串，都在这一处定义。
+ *
+ *  调试通道那条 action 是例外（它不属于这三条通道，也不该让 `inject/` 反过来依赖本文件）：
+ *  `inject/ProbeChannel` 与 `app/src/debug/…/PageDebugChannel` 各自留着自己的那一份。
  *
  * ## 为什么它不在 `KeyModule` 上
  *

@@ -5,7 +5,6 @@ import android.os.SystemClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Gesture
-import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import java.util.concurrent.ConcurrentHashMap
@@ -108,6 +107,14 @@ internal class GestureDetector(
          * 必须是时刻、不能只用一个布尔：布尔会被上一次按压的直判污染。
          */
         @Volatile var pressAt: Long = 0L,
+        /**
+         * 这颗键最近一次「当场判单击」（双击为无操作那条路）的时刻，
+         * 用来压掉同一次物理按压被转发两遍造成的重复派发。
+         *
+         * **按颗存**，不是全局一个：全局的话，A 键刚直判过单击，B 键紧接着那一下
+         * 会被算成「已派发过」而吞掉（快速在两颗键之间敲、或短按 A 再长按 B 都会中）。
+         */
+        @Volatile var lastDirectSingleAt: Long = 0L,
         /** 「长按连续触发」正在跑的重复任务（抬手 / 重置时取消）。 */
         @Volatile var repeatRunnable: Runnable? = null,
         /**
@@ -130,13 +137,6 @@ internal class GestureDetector(
     private val pendingByKey = ConcurrentHashMap<KeyId, Pending>()
 
     /**
-     * 最近一次「当场判单击」（双击为无操作那条路）的时刻，
-     * 用来压掉同一次物理按压被转发两遍造成的重复派发。
-     */
-    @Volatile
-    private var lastDirectSingleAt = 0L
-
-    /**
      * 取（必要时建）某个键的待定状态。
      *
      * 用 `computeIfAbsent` 而不是 Kotlin 的 `getOrPut`：后者是「先取后写」，
@@ -148,15 +148,15 @@ internal class GestureDetector(
      * 双击窗口长度，由调用方每次按键前按当前配置写入 —— 改「单击延迟」立刻生效，不用重启。
      */
     @Volatile
-    var doubleClickMs: Int = 300
+    var doubleClickMs: Int = KeyConfig.DEFAULT_DOUBLE_CLICK_MS
 
     /**
-     * 双击为「无操作」时立即触发单击（`GlobalConfig.instantSingle`）。
+     * 双击为「无操作」时立即触发单击（`KeyConfig.instantSingle`，每颗键各一份）。
      *
      * 与 `doubleClickMs` 同一条路，每次按键前按当前配置写入；开着时抬手当场判单击、不等双击窗口。
      */
     @Volatile
-    var instantSingle: Boolean = GlobalConfig.DEFAULT_INSTANT_SINGLE
+    var instantSingle: Boolean = KeyConfig.DEFAULT_INSTANT_SINGLE
 
     /** 一次按键按下。 */
     fun onKeyDown(
@@ -173,9 +173,16 @@ internal class GestureDetector(
             XLog.w("${id.label}：双击")
             reset(id)
             // reset 会把这个标记清掉，所以在 reset 之后再置位：
-            // 这一下的抬手属于双击的第二下，`onKeyUp` 要据此不再开单击窗口。
+            // 这一下的抬手属于双击的第二下，`onKeyUp` 要据此**派发**双击（而不是再开单击窗口）。
             p.doubleFired = true
-            dispatch(id, Gesture.DOUBLE, config, repeat = false)
+            //  **派发挪到抬手**（见 onKeyUp 的 doubleFired 那一支）。原来在这里当场派发，
+            //  真机踩到两条：
+            //   · ROM 的组合键窗口：电源键按着的时候注入音量键，`PhoneWindowManager` 会把它当
+            //     「电源 + 音量」那一手（真机日志 `handleKeyGestureEvent: gestureType=56`
+            //     紧跟 `mIsPowerKeyDown = true`）整条吞掉 —— 表现就是「自定义电源键双击绑定
+            //     系统按键，一点反应都没有」；
+            //   · 触发键自己还按着就注入，本身就容易和这对键的组合语义打架。
+            //  代价只是把这一下推迟到抬手（几十毫秒），手感上看不出来。
             return
         }
 
@@ -201,26 +208,40 @@ internal class GestureDetector(
         //  常见来路是「模块在按下之后才装好」或者上一次按压的 DOWN 被别的接管点吞了。
         //  照旧判：用户确实按了这一下，宁可补一次单击，也别让他觉得「按了没反应」；
         //  但这一行必须留着 —— 否则日志里只有 UP、没有 DOWN，看起来像判定器漏了一条。
-        if (p.pressAt == 0L) {
+        //  双击的第二下抬手也满足 `pressAt==0`（判双击时 `reset` 已经清掉它）—— 那不是孤立抬手，
+        //  它下面会被 `doubleFired` 那一支收尾，所以这一行只在**没判过双击**时打。
+        if (p.pressAt == 0L && !p.doubleFired) {
             XLog.w("${id.label}：只收到抬手（没见到按下）⇒ 按孤立 UP 处理（补判一次单击）")
         }
 
         // 抬手 ⇒ 长按那一枪作废。**摘枪**，不是只靠到点读一眼 `sawFirstRelease`：那次读跨线程，
         //  读到陈旧值就是「明明抬手了还判长按」。长按延迟压到 100ms 这一档时，抬手与到点只隔
         //  几毫秒，正是这种读最容易失手的位置。
+        //
+        //  **这一小段与长按那一枪互斥**（同一把 `p` 锁）：两边都是「读状态 → 派发」，
+        //  抬手先拿到锁 ⇒ 枪到点时看到 `sawFirstRelease` 已置、作废；枪先拿到锁 ⇒
+        //  `longPressFired` 已置，抬手只收尾、不再补一次单击。没有这把锁时两者能同时通过判定，
+        //  一次按压会既执行长按动作、又执行单击动作。
+        val longPressed =
+            synchronized(p) {
+                p.sawFirstRelease = true
+                p.longPressFired
+            }
         cancelLongPressShot(id)
 
         // 长按已在按下期间触发过 —— 抬手不再重复判单击
         // （判据是 longPressFired，不是 longPressAt：后者已被长按定时器清零）
-        if (p.longPressFired) {
+        if (longPressed) {
             finish(id)
             return
         }
 
-        // 双击已经判过 —— 这次抬手是双击的第二下，不能再开一个单击窗口
-        // （否则 `doubleClickMs` 之后会补一次单击，双击变成「双击 + 单击」两下）
+        // 双击已经判过 —— 这次抬手是双击的第二下：**到这里才派发**（理由见 onKeyDown 里那段）。
+        // 也不能再开一个单击窗口，否则 `doubleClickMs` 之后会补一次单击，双击变成「双击 + 单击」两下
         if (p.doubleFired) {
+            p.doubleFired = false
             reset(id)
+            dispatch(id, Gesture.DOUBLE, config, repeat = false)
             return
         }
 
@@ -234,9 +255,9 @@ internal class GestureDetector(
             // 没记到按下时刻（只收到抬手的怪形态）⇒ 退回「刚刚这几毫秒内有没有直判」。
             val alreadyDispatched =
                 if (p.pressAt != 0L) {
-                    lastDirectSingleAt >= p.pressAt - DIRECT_BURST_MS
+                    p.lastDirectSingleAt >= p.pressAt - DIRECT_BURST_MS
                 } else {
-                    now - lastDirectSingleAt < DIRECT_BURST_MS
+                    now - p.lastDirectSingleAt < DIRECT_BURST_MS
                 }
             // reset 会取消那个还挂着的长按计时器 —— 不取消的话它到点还会再判一次长按
             reset(id)
@@ -250,12 +271,12 @@ internal class GestureDetector(
             XLog.w("${id.label}：单击（双击为无操作 ⇒ 不等双击窗口）")
             // 与上面那条直判去重同一笔账：这一下已经派发过单击了，
             // 紧接着那次 DOWN/UP（同一次按压被转发两遍时）与长按计时器都要据此让路。
-            lastDirectSingleAt = now
+            p.lastDirectSingleAt = now
             dispatch(id, Gesture.SINGLE, config, repeat = false)
             return
         }
 
-        p.sawFirstRelease = true
+        // `sawFirstRelease` 在上面那段临界区里已经置上了（与长按枪互斥的那一笔）
         // 窗口长度在这一刻定格（见 Pending.doubleWindowMs）：排窗用的窗口与到点判定用的窗口
         // 必须是同一个数，否则中途改「单击延迟」会让两者悄悄变成两个数。
         val window = doubleClickMs.toLong()
@@ -286,8 +307,18 @@ internal class GestureDetector(
         reset(id)
     }
 
-    /** 清空某个键的状态与计时器（含「长按连续触发」正在跑的重复任务）。 */
-    fun reset(id: KeyId) {
+    /**
+     * 清空某个键的状态与计时器（含「长按连续触发」正在跑的重复任务）。
+     *
+     * @param id `null` = **所有键**。配置里任意一颗键从「接管」翻成「不接管」时用
+     *   （见 `SideKeyInterceptor.cancelPending`）：只清一颗的话，关掉某一颗自定义键时
+     *   它按住不放的那一下会一路派发到连发上限。没有待定手势时是空操作。
+     */
+    fun reset(id: KeyId?) {
+        if (id == null) {
+            for (k in pendingByKey.keys.toList()) reset(k)
+            return
+        }
         val p = pending(id)
         cancelLongPressShot(id)
         p.repeatRunnable?.let { handler.removeCallbacks(it) }
@@ -325,11 +356,21 @@ internal class GestureDetector(
                     // 若转发顺序是先 SINGLE 后 DOWN，那个 DOWN 会把 `longPressAt` 重新排上，
                     // 一个 `longPressMs` 之后照样判长按 ⇒ 又是两个动作。
                     val directJustFired =
-                        SystemClock.uptimeMillis() - lastDirectSingleAt < config.longPressMs
-                    if (p.longPressAt != 0L && !p.sawFirstRelease && !directJustFired) {
+                        SystemClock.uptimeMillis() - p.lastDirectSingleAt < config.longPressMs
+                    // 状态位在锁里读改（与抬手那一段互斥），**派发留在锁外**：
+                    //  dispatch 会发广播，不该占着这把锁。
+                    val fire =
+                        synchronized(p) {
+                            if (p.longPressAt != 0L && !p.sawFirstRelease && !directJustFired) {
+                                p.longPressAt = 0L
+                                p.longPressFired = true
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    if (fire) {
                         XLog.w("${id.label}：长按")
-                        p.longPressAt = 0L
-                        p.longPressFired = true
                         dispatch(id, Gesture.LONG, config, repeat = false)
                         // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
                         // 多条命令（`cmd:<名字>` 指串行命令）反复重放没意义 —— 界面长按 tab 也按同一条判定隐藏。
@@ -384,7 +425,10 @@ internal class GestureDetector(
                     if (p.pressAt != 0L && SystemClock.uptimeMillis() - p.pressAt > REPEAT_MAX_MS) {
                         XLog.w("${id.label}：连续触发超过 ${REPEAT_MAX_MS}ms 未见抬手，强制停止（UP 可能已丢）")
                         p.repeatRunnable = null
-                        reset(id)
+                        // **finish 而不是 reset**：这一档等价于「替系统补一次抬手」，
+                        //  带「松手结束」语义的动作（灵感语音录音）要靠 onLongReleased 收尾 ——
+                        //  只 reset 的话连发停了、录音还在录。
+                        finish(id)
                         return@Runnable
                     }
                     dispatch(id, Gesture.LONG, config, repeat = true)
@@ -437,7 +481,7 @@ internal class GestureDetector(
                         // 这次按压已经当场判过单击（同一次按压被转发两遍）
                         // ⇒ 不再补一次单击，否则一次按压会执行两个单击动作。
                         // 这里的窗口同样用定格值 —— 与排窗一致。
-                        if (SystemClock.uptimeMillis() - lastDirectSingleAt < p.doubleWindowMs) {
+                        if (SystemClock.uptimeMillis() - p.lastDirectSingleAt < p.doubleWindowMs) {
                             XLog.w("${id.label}：这次按压已直判过单击，跳过补判")
                             p.sawFirstRelease = false
                             p.doubleWindowAt = 0L

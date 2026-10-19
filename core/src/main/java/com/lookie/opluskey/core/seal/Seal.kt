@@ -41,6 +41,10 @@ object Seal {
 
     /** GCM 参数 —— 与构建期那份必须一致（`core/build.gradle.kts` 里同名常量）。 */
     private const val GCM_IV_LENGTH = 12
+
+    /** 容器条目数与单条字节数的上限 —— 只为挡住「读出来是几亿」那种坏容器，正常资产远在它之下。 */
+    private const val MAX_SEAL_ENTRIES = 4096
+    private const val MAX_ENTRY_BYTES = 8 * 1024 * 1024
     private const val GCM_TAG_BITS = 128
 
     private const val TRANSFORMATION = "AES/GCM/NoPadding"
@@ -129,12 +133,21 @@ object Seal {
         check(String(magic, Charsets.US_ASCII) == MAGIC) { "容器魔数不符" }
         check(input.readUnsignedByte() == FORMAT_VERSION) { "容器版本不认识" }
         val count = input.readInt()
+        //  坏 / 截断的容器会把这几个长度读成巨大的数，直接拿去分配就是一次巨量分配
+        //  （`buildMap` 与 `ByteArray(...)` 都按它预分配）。封存资产是十来条量级，
+        //  上限给得很宽，只为挡住「读出来是几亿」这种；越界一律抛出去，由 `decryptContainer`
+        //  按「容器解不开」记一条。
+        check(count in 0..MAX_SEAL_ENTRIES) { "容器条目数 $count 不合理（上限 $MAX_SEAL_ENTRIES）" }
         XLog.d("封存容器：$count 条")
         return buildMap(count) {
             repeat(count) {
                 val name = input.readUTF()
-                val iv = ByteArray(input.readInt()).also { input.readFully(it) }
-                val sealed = ByteArray(input.readInt()).also { input.readFully(it) }
+                val ivLen = input.readInt()
+                check(ivLen in 0..MAX_ENTRY_BYTES) { "IV 长度 $ivLen 不合理" }
+                val iv = ByteArray(ivLen).also { input.readFully(it) }
+                val sealedLen = input.readInt()
+                check(sealedLen in 0..MAX_ENTRY_BYTES) { "密文长度 $sealedLen 不合理" }
+                val sealed = ByteArray(sealedLen).also { input.readFully(it) }
                 put(name, decipher(iv, sealed, key))
             }
         }
