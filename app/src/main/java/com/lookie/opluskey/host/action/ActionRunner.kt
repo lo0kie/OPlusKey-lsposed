@@ -185,12 +185,13 @@ internal class ActionRunner(
         }
     }
 
-    /** 一个 `keyevent:` 动作：大多走注入，通知中心 / 最近任务 / 静音键走特殊通道。 */
+    /** 一个 `keyevent:` 动作：大多走注入，通知中心 / 最近任务 / 静音键 / 电源键走特殊通道。 */
     private fun runKeyEvent(keyCode: Int) {
         when (keyCode) {
             KeyId.KEYCODE_NOTIFICATION -> sendStatusbar(StatusBarBridge.CMD_NOTIFICATIONS)
             KeyId.KEYCODE_APP_SWITCH -> sendStatusbar(StatusBarBridge.CMD_RECENTS)
             KeyId.KEYCODE_VOLUME_MUTE -> ringer.cycle()
+            KeyId.KEYCODE_POWER -> togglePower(context, ::notifyFailure)
             else -> injector.inject(keyCode)
         }
     }
@@ -289,3 +290,49 @@ internal class ActionRunner(
 
 /** 「灵感语音」的连按窗口（毫秒）：这段时间内的第二次触发当没按。 */
 private const val VOICE_MEMORY_GAP_MS = 3_000L
+
+/**
+ * 电源键那一档 —— **不能走注入**。
+ *
+ *  真机实测（PLK110 / ColorOS 17）：同一套 `injectInputEvent`，音量键生效、**电源键被系统直接忽略**
+ *  （`adb shell input keyevent 26` 也一样 —— `dumpsys power` 里 `mWakefulness` 一点没变）。
+ *  所以「双击绑定成电源键」在注入那条路上永远没反应；判定与执行其实都跑到了。
+ *
+ *  改成走 `PowerManager`：亮着就睡（等价按一下），睡着就醒（等价再按一下）。
+ *  两个方法都是 `@hide`，只能反射调（`DEVICE_POWER` 权限靠宿主是系统应用）。
+ */
+internal fun togglePower(
+    context: Context?,
+    onFailure: (CommandFailure) -> Unit,
+) {
+    val ctx =
+        context ?: run {
+            XLog.w("没有 Context，电源键跳过")
+            return
+        }
+    try {
+        val pm = ctx.getSystemService(android.os.PowerManager::class.java)
+        if (pm == null) {
+            XLog.w("拿不到 PowerManager，电源键跳过")
+            return
+        }
+        val now = android.os.SystemClock.uptimeMillis()
+        val cls = android.os.PowerManager::class.java
+        if (pm.isInteractive) {
+            cls.getMethod("goToSleep", Long::class.javaPrimitiveType).invoke(pm, now)
+            XLog.w("电源键：已请求灭屏（goToSleep）")
+        } else {
+            cls
+                .getMethod("wakeUp", Long::class.javaPrimitiveType, String::class.java)
+                .invoke(pm, now, POWER_WAKE_REASON)
+            XLog.w("电源键：已请求亮屏（wakeUp）")
+        }
+    } catch (e: Throwable) {
+        // 与其它动作同一条纪律：执行环境出错只记日志，不许抛出去
+        XLog.w("电源键执行失败（已忽略）", e)
+        onFailure(CommandFailure.UNKNOWN)
+    }
+}
+
+/** [togglePower] 亮屏那句 reason —— 系统日志里认得出是我们点起来的。 */
+private const val POWER_WAKE_REASON = "opluskey:power_key"

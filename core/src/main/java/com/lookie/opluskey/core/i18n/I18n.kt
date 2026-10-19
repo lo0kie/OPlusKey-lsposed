@@ -1,7 +1,10 @@
 package com.lookie.opluskey.core.i18n
 
 import com.lookie.opluskey.core.log.XLog
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import java.util.Locale
 
 /** 支持的界面语言档位。 */
@@ -176,13 +179,12 @@ object I18n {
             return null
         }
         return try {
-            val json = JSONObject(content)
-            val result = mutableMapOf<String, String>()
-            val keys = json.keys()
-            while (keys.hasNext()) {
-                val k = keys.next()
-                result[k] = json.optString(k, "")
-            }
+            // 字典是一张扁平的 `key -> 文本` 表；非标量 / JSON `null` 都当空串（缺文案好过整份崩）
+            val result =
+                Json
+                    .parseToJsonElement(content)
+                    .jsonObject
+                    .mapValues { (_, v) -> (v as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty() }
             loadAttempts.set(0)
             result
         } catch (e: Throwable) {
@@ -223,6 +225,9 @@ object I18n {
         return try {
             if (args.isEmpty()) pattern else String.format(Locale.ROOT, pattern, *args)
         } catch (e: Throwable) {
+            //  占位符与参数个数不匹配是**代码 bug**，静默返回原模板会让界面留一个裸 `%s`
+            //  而日志里什么都没有 —— 留一行，别让这类问题只能靠肉眼发现。
+            XLog.w("i18n：$key 的模板与 ${args.size} 个参数对不上（按原样返回）：${e.javaClass.simpleName}")
             pattern
         }
     }

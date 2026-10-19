@@ -1,6 +1,10 @@
 package com.lookie.opluskey.host.action
 
 import com.lookie.opluskey.core.log.XLog
+import java.util.concurrent.Future
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 
 /** 执行一条 shell 命令（`shell:` 动作）。 */
 internal object ShellRunner {
@@ -21,8 +25,11 @@ internal object ShellRunner {
         // 先占坑再起进程。`if (running.get() >= MAX) …` 那种**先查后加**在并发下会一起放行：两条
         //  会同时看到「没满」一起放行。占坑本身见 [acquireSlot]。
         val slot = acquireSlot()
-        if (slot < 0) {
-            XLog.w("已有 $MAX_CONCURRENT 条 shell 在跑（上限 $MAX_CONCURRENT），拒绝：${XLog.redactCommand(command)}")
+        // 判据只能是 [NO_SLOT]：退回本进程计数时给的是 [LOCAL_SLOT]（-2），
+        //  拿 `< 0` 去判会把它当成「已满」—— 于是锁文件建不出来的机器上所有 shell 全被拒，
+        //  而且那一次 `running` 已经加过、走不到释放（连续三次之后彻底不再放行）。
+        if (slot == NO_SLOT) {
+            XLog.w("已有 $SHELL_MAX_CONCURRENT 条 shell 在跑（上限 $SHELL_MAX_CONCURRENT），拒绝：${XLog.redactCommand(command)}")
             onFailure(CommandFailure.OVERLOADED)
             return
         }
@@ -32,15 +39,15 @@ internal object ShellRunner {
             // 不给子进程留 stdin：我们从不用它，而有些命令会**等 stdin 到 EOF** 才肯退出
             // （`sh -c "cat"` 之类）—— 管道一直开着就是一条挂到超时的 shell，每次还漏一对管道。
             runCatching { proc.outputStream.close() }
-            // 后台线程等子进程结束
-            Thread {
+            // 后台线程等子进程结束（走池子，不再每次硬建一条）
+            runnerPool.execute {
                 // 无论走哪条出口都要把槽位放回去（finally 兜底）
-                var reader: Thread? = null
+                var reader: Future<*>? = null
                 try {
                     // 读输出必须另起一条线程与等待**并行**：`forEachLine` 要读到 EOF 才返回，
                     // 而 logcat 不带 -d / 常驻进程 / `tail -f` 这类命令根本不关 stdout ——
                     // 一旦先读后等，这个线程就永久卡在 read 上，下面的 waitFor(超时) 与 finally
-                    // 的计数回收都到不了：累计 MAX_CONCURRENT 条之后所有 shell 动作永久 OVERLOADED，
+                    // 的计数回收都到不了：累计 SHELL_MAX_CONCURRENT 条之后所有 shell 动作永久 OVERLOADED，
                     // 每挂一条还泄一个线程 + 一对管道。
                     //
                     // 顺带**边读边认**权限拒绝：`am` 被拒时那句 `Permission Denial: …` 在第 4 行，
@@ -57,13 +64,13 @@ internal object ShellRunner {
                         try {
                             proc.waitFor(SHELL_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
                         } catch (e: Throwable) {
-                            // 注意：这条路直接 `return@Thread` 的话**不 destroy 子进程**：
+                            // 注意：这条路直接 `return@execute` 的话**不 destroy 子进程**：
                             //  进程漏在后台、读线程还挂着那对管道。与超时那条一样收掉（destroy 关管道 ⇒ 读到 EOF）。
                             //  也要报一句给用户：这一条原来静默返回，命令既没跑完、用户又什么都不知道。
                             XLog.w("等 shell 结束失败，杀掉它：${e.message}")
                             runCatching { proc.destroy() }
                             onFailure(CommandFailure.UNKNOWN)
-                            return@Thread
+                            return@execute
                         }
                     if (!done) {
                         XLog.w("shell 超过 ${SHELL_TIMEOUT_MS}ms 没结束，杀掉它：${XLog.redactCommand(command)}")
@@ -83,11 +90,11 @@ internal object ShellRunner {
                                 .onFailure { XLog.d("强杀 shell 进程失败（忽略）：${it.message}") }
                         }
                         onFailure(CommandFailure.SHELL_TIMEOUT)
-                        return@Thread
+                        return@execute
                     }
                     // 进程已退出，但 stdout 可能被子进程继承后仍开着（`sh -c "... &"`）：
                     // 只给读线程一个有限宽限把剩余输出收完，不用它来判定成败。
-                    runCatching { reader.join(SHELL_DRAIN_JOIN_MS) }
+                    runCatching { reader.get(SHELL_DRAIN_JOIN_MS, TimeUnit.MILLISECONDS) }
                     // 只有非 0 才算失败：0 是常规路径，不该有任何提示。
                     // 合并成一条 `a; b` 的步骤取的是最后一条的退出码（`sh` 的规矩）。
                     if (proc.exitValue() != 0) {
@@ -104,7 +111,7 @@ internal object ShellRunner {
                     runCatching { proc.errorStream.close() }
                     releaseSlot(slot)
                 }
-            }.apply { isDaemon = true }.start()
+            }
             // 判据级：这条是「动作到底有没有发出去」的唯一凭证，用 w（i/d 在 release 被编译期消除）
             XLog.w("shell 命令已在后台启动（走的是 $via）：${XLog.redactCommand(command)}")
         } catch (e: Throwable) {
@@ -134,7 +141,7 @@ internal object ShellRunner {
      *
      * **优先 `su -c`，没有 root 才退回 `sh -c`。**
      *
-     * ⚠️ 为什么必须优先 `su`：宿主跑在 `platform_app` 域，那个域**没有 `/system/bin/sh` 的执行权**
+     * 注意：为什么必须优先 `su`：宿主跑在 `platform_app` 域，那个域**没有 `/system/bin/sh` 的执行权**
      * （`system_app` 域同样没有），`ProcessBuilder("sh","-c",…)` 必然 `EACCES`。真机实测：
      * `runcon u:r:platform_app:s0 /system/bin/sh` → `Permission denied`。所以「非 root 的 shell」
      * 在这台机器上**根本起不来**，不是命令写错了。
@@ -145,7 +152,7 @@ internal object ShellRunner {
      * 没有 root 的机器上 `su` 这个二进制压根不存在 ⇒ `start()` 抛 `IOException` ⇒ 自然落到 `sh`。
      * 选中的那个记进 [launcher]，之后不再每次试错（否则非 root 机器每条命令都白起一次失败进程）。
      *
-     * ⚠️ 走 `su` 时每次调用都会经 KernelSU 授权一次：如果装了「授权提示」那类模块，每条命令会弹一次
+     * 注意：走 `su` 时每次调用都会经 KernelSU 授权一次：如果装了「授权提示」那类模块，每条命令会弹一次
      * toast —— 那是 root 管理器侧的行为，不是本模块的。
      */
     private fun startProcess(command: String): Pair<Process, String> {
@@ -176,8 +183,8 @@ internal object ShellRunner {
     private fun startOutputReader(
         proc: Process,
         denied: java.util.concurrent.atomic.AtomicReference<String>,
-    ): Thread =
-        Thread {
+    ): Future<*> =
+        readerPool.submit {
             runCatching {
                 // `use`：进程退出后那对管道要真正关掉（`sh -c "... &"` 这类会把 stdout
                 //  留给子进程继承，EOF 可能来得很晚）—— 不关就是每挂一条泄一个 FD。
@@ -192,15 +199,12 @@ internal object ShellRunner {
                     }
                 }
             }.onFailure { XLog.d("读 shell 输出失败：${it.message}") }
-        }.apply {
-            isDaemon = true
-            start()
         }
 
     /**
      * 非 0 退出码 → 失败提示。
      *
-     * ⚠️ **优先看输出，不只看退出码**：`am` / `cmd` 这类在 App uid 下被系统拒时打的是
+     * 注意：**优先看输出，不只看退出码**：`am` / `cmd` 这类在 App uid 下被系统拒时打的是
      * `Permission Denial: …` / `SecurityException`，而退出码只是 255 —— 按退出码分档会报成
      * 「命令没跑成功，检查一下内容」，把「权限不够」说成「内容写错了」。
      *
@@ -242,36 +246,47 @@ internal object ShellRunner {
      *
      * @return 槽位号；`-1` = 已满（调用方报 OVERLOADED）
      */
-    private fun acquireSlot(): Int {
-        val dir =
-            runCatching {
-                com.lookie.opluskey.core.config.ConfigStore
-                    .filesDir()
-            }.getOrNull()
-        if (dir == null || (!dir.isDirectory && !dir.mkdirs())) return acquireLocalSlot()
-        var opened = 0
-        for (i in 0 until MAX_CONCURRENT) {
-            val raf =
+    private fun acquireSlot(): Int =
+        //  **进程内也要互斥**：两条线程同时申请时，A 占住槽 0，B 也去开槽 0 —— B 的
+        //  `tryLock` 失败、`close()` 那一下会按 POSIX 语义把**本进程在该 inode 上的锁全放掉**，
+        //  于是 A 的锁被内核悄悄抹掉、全机上限当场失效。`heldSlots` 的读写也一并被这把锁护住。
+        synchronized(slotLock) {
+            val dir =
                 runCatching {
-                    java.io.RandomAccessFile(java.io.File(dir, "$SLOT_PREFIX$i"), "rw")
-                }.getOrNull() ?: continue
-            opened++
-            // 本进程已经占着这个文件时 `tryLock` 会抛 `OverlappingFileLockException`（吞掉、试下一个）
-            val locked = runCatching { raf.channel.tryLock() }.getOrNull()
-            if (locked == null) {
-                runCatching { raf.close() }
-                continue
+                    com.lookie.opluskey.core.config.ConfigStore
+                        .filesDir()
+                }.getOrNull()
+            if (dir == null || (!dir.isDirectory && !dir.mkdirs())) return@synchronized acquireLocalSlot()
+            var opened = 0
+            for (i in 0 until SHELL_MAX_CONCURRENT) {
+                // 本进程已经占着这一格就**别再去开它**：Linux 的 fcntl 锁是「按 (进程, inode)」记的，
+                //  同一个进程关掉指向该文件的**任意** fd，内核会把这一 inode 上的锁**全部**放掉 ——
+                //  再开一次、`tryLock` 抛 `OverlappingFileLockException`、然后 `close()` 那一下，
+                //  就把另一个线程正持有的锁悄悄抹了（跨进程上限当场失效）。
+                if (heldSlots.containsKey(i)) continue
+                val raf =
+                    runCatching {
+                        java.io.RandomAccessFile(java.io.File(dir, "$SLOT_PREFIX$i"), "rw")
+                    }.getOrNull() ?: continue
+                opened++
+                // 本进程已经占着这个文件时 `tryLock` 会抛 `OverlappingFileLockException`（吞掉、试下一个）
+                val locked = runCatching { raf.channel.tryLock() }.getOrNull()
+                if (locked == null) {
+                    runCatching { raf.close() }
+                    continue
+                }
+                heldSlots[i] = raf
+                return i
             }
-            heldSlots[i] = raf
-            return i
+            // 只有「一格都没占、且一个文件都没打开」才是锁机制坏了 ⇒ 退回本进程计数。
+            //  注意不能只看 `opened == 0`：本进程已经占满三格时循环全被 `continue` 跳过，
+            //  `opened` 同样是 0 —— 那是「满」，再退本进程计数等于把上限翻倍（3 + 3）。
+            if (opened == 0 && heldSlots.isEmpty()) acquireLocalSlot() else NO_SLOT
         }
-        // 一个槽都没占上：`opened == 0` 说明锁文件根本开不出来（不是「满」）⇒ 退回本进程计数
-        return if (opened == 0) acquireLocalSlot() else -1
-    }
 
     /** 退回本进程计数时用的哨位（不是真槽号，见 [releaseSlot]）。 */
     private fun acquireLocalSlot(): Int {
-        if (running.incrementAndGet() > MAX_CONCURRENT) {
+        if (running.incrementAndGet() > SHELL_MAX_CONCURRENT) {
             running.decrementAndGet()
             return -1
         }
@@ -280,11 +295,13 @@ internal object ShellRunner {
 
     /** 放掉一个槽位（[slot] 为 [LOCAL_SLOT] 时放的是本进程计数）。 */
     private fun releaseSlot(slot: Int) {
-        if (slot == LOCAL_SLOT) {
-            running.decrementAndGet()
-            return
+        synchronized(slotLock) {
+            if (slot == LOCAL_SLOT) {
+                running.decrementAndGet()
+                return
+            }
+            heldSlots.remove(slot)?.let { runCatching { it.close() } }
         }
-        heldSlots.remove(slot)?.let { runCatching { it.close() } }
     }
 
     /** 一条 shell 命令的等待上限（毫秒）—— 超时就杀掉并报失败。 */
@@ -297,16 +314,55 @@ internal object ShellRunner {
     private const val SHELL_DRAIN_JOIN_MS = 500L
 
     /**
-     * 同时挂着的 shell 子进程上限 —— **全机**（不是每进程，见 [acquireSlot]）。
-     * 长按连续触发最密 100ms 一条，不设限会堆上百个进程 / 线程。
+     * 跑 shell 的两条线程池 —— **执行**与**读输出**各一条，各自 [SHELL_MAX_CONCURRENT] 个线程。
+     *
+     * ## 为什么不共用一个池
+     *
+     *  执行那条会 `get()` 等读线程结束。共用池时「三条执行线程都在等、读任务还排在队列里」
+     *  就是死锁：队列里的任务永远轮不到线程。两个池各有上限，互不相等。
+     *
+     * ## 为什么核心线程也允许回收
+     *
+     *  按键是低频动作（长按连发最密 100ms 一条），池不该常驻。`allowCoreThreadTimeOut` 让空闲
+     *  线程 60 秒后自己退出 —— 早先是每条命令 `Thread {}` 硬建两条、用完即毁，连发时就是反复
+     *  创建 / 销毁 Java 线程。
+     *
+     * ## 为什么用无界队列而不是 `SynchronousQueue`
+     *
+     *  `SynchronousQueue` 在池满时抛 `RejectedExecutionException`，而读线程被拒等于「这次命令的
+     *  输出没人读」。用 `LinkedBlockingQueue`：超出并发的那一条**排队**，执行侧本来就有
+     *  `SHELL_DRAIN_JOIN_MS` 的等待上限，不会因此永久卡住。
      */
-    private const val MAX_CONCURRENT = 3
+    private val runnerPool =
+        ThreadPoolExecutor(
+            SHELL_MAX_CONCURRENT,
+            SHELL_MAX_CONCURRENT,
+            SHELL_THREAD_IDLE_SECONDS,
+            TimeUnit.SECONDS,
+            LinkedBlockingQueue(),
+        ) { r ->
+            Thread(r, "opluskey-shell-run").apply { isDaemon = true }
+        }.apply { allowCoreThreadTimeOut(true) }
+
+    private val readerPool =
+        ThreadPoolExecutor(
+            SHELL_MAX_CONCURRENT,
+            SHELL_MAX_CONCURRENT,
+            SHELL_THREAD_IDLE_SECONDS,
+            TimeUnit.SECONDS,
+            LinkedBlockingQueue(),
+        ) { r ->
+            Thread(r, "opluskey-shell-read").apply { isDaemon = true }
+        }.apply { allowCoreThreadTimeOut(true) }
 
     /** 并发槽位锁文件的前缀（放在宿主私有目录里，两个进程共用）。 */
     private const val SLOT_PREFIX = "opluskey_shell_slot_"
 
     /** [acquireLocalSlot] 的哨位 —— 与真槽号（0..MAX-1）区分开。 */
     private const val LOCAL_SLOT = -2
+
+    /** [acquireSlot] 的「一个都没占上、且不是锁坏了」—— 调用方据此报 OVERLOADED。 */
+    private const val NO_SLOT = -1
 
     /**
      * 起进程时按顺序试的解释器 —— **`su` 在前**（理由见 [startProcess]）。
@@ -341,4 +397,14 @@ internal object ShellRunner {
 
     /** 已占住的槽位：槽号 → 那个被锁住的锁文件句柄（关掉它 = 释放 `FileLock`）。 */
     private val heldSlots = java.util.concurrent.ConcurrentHashMap<Int, java.io.RandomAccessFile>()
+
+    /**
+     * 槽位申请 / 释放的**进程内**互斥。
+     *
+     *  没有它的时候，「检查 `heldSlots` → 开文件 → `tryLock` → 写 `heldSlots`」这一段是可交错的；
+     *  更糟的是交错那一支会 `close()` 自己刚开的 fd，而 POSIX 规定这会把**本进程在该 inode 上
+     *  的锁全部释放** —— 另一条线程正持有的锁就这么没了。叶子锁：只包本地状态与文件操作，
+     *  里面不调任何外部代码。
+     */
+    private val slotLock = Any()
 }

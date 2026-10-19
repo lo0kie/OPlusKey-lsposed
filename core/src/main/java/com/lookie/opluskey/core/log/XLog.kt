@@ -84,7 +84,10 @@ object XLog {
      */
     fun lines(): List<String> = ArrayList(buffer)
 
-    /** 日志的实际出口；`@PublishedApi internal` 是为了让 [d] 这个内联函数能调用它。 */
+    /**
+     * 日志的实际出口 —— 判据级日志**必须**走 [w]（或直接带 priority 走这里），`d` 在 release 里
+     * 会被编译期消除、在 LSPosed 日志页里也整档看不到（AGENTS.md 二、1.2）。
+     */
     fun write(
         priority: Int,
         msg: String,

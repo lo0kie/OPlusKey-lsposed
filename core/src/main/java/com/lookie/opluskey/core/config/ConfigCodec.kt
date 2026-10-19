@@ -2,62 +2,104 @@ package com.lookie.opluskey.core.config
 
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.ConfigFields
-import com.lookie.opluskey.core.model.GlobalConfig
-import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
-import org.json.JSONObject
+import kotlinx.serialization.json.Json
 import java.security.MessageDigest
 
 /**
- * 配置文件的解析与序列化：纯函数，不碰文件 IO。
- * 格式为 JSON（`org.json` 平台自带，不引依赖）。
- * 界面与执行侧都要解析同一份文本，解析逻辑只有这一份。
+ * 配置文件的解析与序列化：纯函数，不碰文件 IO。格式为 JSON。
  *
  * 本层只管**正文那份 JSON**：磁盘上正文之外还套了一层外皮（[FileObfuscation]，`ConfigStore` 负责剥/包）。
  *
- * 正文顶层带一个 `md5` 字段（[ConfigFields.MD5_JSON]）：它是**把这一格摘掉之后**那份 JSON 的 MD5。
- *  两道用处：文件被截断 / 传坏时不用等到后面才露馅；被改过而没把这一格一起重算的，直接判读不懂
- *  （[digestMatches]）。算的是**文本的字节**而不是语义 —— 只把缩进 / 换行弄乱照样认。
+ * ## 用 kotlinx.serialization 而不是 `org.json`
+ *
+ *  `org.json` 有两个把人坑过的行为：`optString` 遇到 `null` 字面量会返回字符串 `"null"`
+ *  （于是 `Action.parse("null")` 兜底成 `Shell("null")`，按那个手势会真去跑 `sh -c null`）；
+ *  `optBoolean` 在键缺失时返回 `false`，而不是「没写」这个语义。两者都让「缺字段」与
+ *  「明确写了 false / null」混在一起，只能靠手写清洗兜住。
+ *
+ *  kotlinx 直接绑到 [ConfigDto] 上的类型与默认值：缺字段就是缺字段（走 `@Serializable` 的默认值），
+ *  类型不对直接抛异常 ⇒ 判「读不懂」，不会静默变成某个合法但错误的值。
+ *
+ * ## 完整性字段 `md5` 与版本
+ *
+ *  · **`version == VERSION`**：`md5` 是「把 `md5` 这一格置空之后、**按 [ConfigDto] 重新编码**得到
+ *    的那份文本」的 MD5（不是原文逐字节），对不上判读不懂；
+ *  · **`version < VERSION`**：**不校验 `md5`**，只要求「能被解析 + 键段完整」。
+ *
+ *  为什么老版本一律不校验：`md5` 的口径是「按**当前** [ConfigDto] 重新编码」，而 DTO 每加一个字段
+ *  （`encodeDefaults = true` 会把它写进正文），老文件重编码出来的字节就必然与它自己那份 `md5`
+ *  不同 —— 校验只会把**每一份老配置都判成读不懂**，随后 `ConfigStore.read` 退回默认值、下一次
+ *  写盘把用户的绑定与开关整份抹掉。真机上就发生过这一回：「每颗键一份单击延迟」把字段从
+ *  `global` 搬到 `KeyDto` 之后，所有 v2 文件当场全被判成读不懂、页面顶着「配置读取失败」。
+ *
+ *  所以**往 [ConfigDto] 加 / 挪字段必须同时抬 [VERSION]**（见下），老文件读进来之后下一次写盘
+ *  自然升级成新版本并带上新 md5。
  */
 object ConfigCodec {
-    /** 当前格式版本，解析时不做版本兼容，只写进文件备查。 */
-    const val VERSION = 1
+    /**
+     * 当前格式版本。
+     *
+     *  1 = `org.json` 那版；2 = kotlinx + 新的 md5 口径；
+     *  **3** = `KeyDto` 多了 `doubleClickMs` / `instantSingle`（从 `global` 段搬下来，每颗键一份）。
+     */
+    const val VERSION = 3
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"
 
     /**
-     * 解析配置文本，**读不懂返回 null**（空文本 / 坏 JSON / 缺 `keys` 段 / 缺 `md5` 或对不上）。
+     * 唯一的编解码器 —— **写与校必须用同一份配置**，否则「自己写的文件自己读不出来」。
      *
-     * 与 [parse] 的区别是它把两件事分开了，这个区分是必须的：
-     *  · 「读懂了、但某些字段缺失」 ⇒ 缺的字段走默认值（老文件 / 手写文件的兼容，[fromJson] 负责）；
-     *  · 「压根读不懂」 ⇒ **null**，绝不能退化成默认值。
-     * 因为默认值里 `enabled=false`、三个手势全是「无操作」、`vibrate=false` ——
-     * **写方**一旦把这份默认值当成真相继续用、再照常写回，用户配的东西就被整份替换掉了
-     *（真机上真发生过一次「振动开关自己变 false」，根因就是这里只有「有值」一条路）。
+     * `encodeDefaults = true`：文件里写全每一个字段（老那版也是全写），这样 `md5`
+     * 覆盖的是完整正文。
      *
-     *  「**整个 KeyId 都没写**」也算读不懂（`{"keys":{}}` 配一份自洽的 `md5` 就是这种）：见 [parseOrNull]。
+     * `ignoreUnknownKeys` 只对 `version < VERSION`（不校验 md5）有意义：当前的 md5 按 DTO 重新编码算，
+     * 正文里多出来的键在重编码时会被丢掉 ⇒ 带未知键的当前版本文件必然对不上、判「读不懂」。
+     * 所以新增字段必须同时抬 [VERSION]，不要指望未知键做向前 / 向后兼容。
+     */
+    private val json =
+        Json {
+            prettyPrint = true
+            prettyPrintIndent = "  "
+            encodeDefaults = true
+            ignoreUnknownKeys = true
+            // 显式 `null` 按「缺字段」处理（回退 DTO 上的默认值）：手改 / 外部工具写出来的文件里
+            //  一个 `"keys": null` 就够让整份配置被判「读不懂」——页面随即只读，用户怎么改都存不进去。
+            coerceInputValues = true
+        }
+
+    /**
+     * 解析配置文本，**读不懂返回 null**（空文本 / 坏 JSON / 类型不对 / 缺键段 / 当前版本的 md5 对不上）。
      *
-     * 文件本身是原子写（`.tmp` + rename，见 `ConfigStore.writeAtomically`），所以「读到半截」
-     * 只会来自**外部改动**（root 直接改、别的进程手写）。真撞上了，这一层就是那道闸。
+     * 为什么必须区分「读懂了但缺字段」与「读不懂」：默认值里 `enabled=false`、三个手势全是
+     * 「无操作」—— **写方**一旦把这份默认值当成真相再写回去，用户配的东西就被整份替换掉了
+     *（真机上发生过「振动开关自己变 false」）。
      */
     fun parseOrNull(text: String): Config? =
         try {
-            val root = JSONObject(text)
-            // 「id 在、个别字段缺」才是兼容那一档（老格式加过 `instantSingle` / `toastOnRun` 那类
-            //  字段，缺了按默认补）。**id 整个都没写**是另一回事：键盘集合只有一个 `PLUS`，少它
-            //  意味着文件被裁剪过或被别的写法生成的 —— 按默认值补等于静默把主开关 / 三个绑定 /
-            //  振动全抹成默认，比判「读不懂」危险得多，所以连这一道一起要求。
-            val keys = root.optJSONObject(ConfigFields.KEYS_JSON)
-            if (keys == null || KeyId.entries.any { keys.optJSONObject(it.id) == null }) {
-                XLog.d("配置里没有 keys 段 / 缺 KeyId 条目 —— 不算一份配置")
-                null
-            } else if (!digestMatches(root)) {
-                // 缺 md5 / 对不上都算读不懂；日志在 digestMatches 里给（这里不能每条按键都刷一遍）
-                null
-            } else {
-                fromJson(root)
+            val dto = json.decodeFromString<ConfigDto>(text)
+            when {
+                // 老文件（v0..VERSION-1）：md5 口径按当前 DTO 算，老文件重编码必然不同 —— 不校验
+                dto.version < VERSION -> {
+                    if (dto.isStructurallySound()) dto.toConfig() else null
+                }
+
+                !digestMatches(dto) -> {
+                    // 把版本一起报出来：md5 对不上最典型的原因就是「文件是更老那一版 DTO 写的」，
+                    //  而那一版本该被上面那条 `version < VERSION` 拦住 —— 报出版本才能立刻分辨
+                    //  「版本号没抬」和「正文真被改过」。
+                    XLog.w("配置正文与 md5 对不上（version=${dto.version} / 本版 $VERSION）—— 判为读不懂")
+                    null
+                }
+
+                !dto.isStructurallySound() -> {
+                    null
+                }
+
+                else -> {
+                    dto.toConfig()
+                }
             }
         } catch (e: Throwable) {
             // 只给 d：宿主每条按键前都要读一遍，这条会成为噪声；判据看调用方（页面那条 w）
@@ -66,180 +108,33 @@ object ConfigCodec {
         }
 
     /**
-     * 取一个字符串字段。不能直接用 `optString(key, fallback)`：键不存在才走 fallback，
-     * 手改文件写成 `"long": null` 时它返回字符串 "null"（`JSONObject.NULL.toString()`），
-     * `Action.parse("null")` 兜底成 `Shell("null")`，按那个手势会真去跑 `sh -c null` 而非「无操作」。
-     * 只有 optString 有这个坑：`optBoolean` / `optInt` 类型不匹配（含 `JSONObject.NULL`）一律返回 fallback。
-     */
-    private fun textOf(
-        o: JSONObject?,
-        key: String,
-        fallback: String,
-    ): String =
-        if (o == null ||
-            o.isNull(key)
-        ) {
-            fallback
-        } else {
-            o.optString(key, fallback)
-        }
-
-    /**
-     * 从 JSON 构造配置。缺失的项一律走 `ConfigFields` 那张**字段表**里的默认值（整段缺、单个字段缺都算）。
+     * 序列化成 JSON 文本，缩进两格、末位带上 `md5`。
      *
-     *  字段 → 属性的映射不在这里：那在 `core/model/Config.kt` 的 `ofFields` 一处（本层只负责
-     *  「按类型把 JSON 里的值取出来」）。
-     */
-    private fun fromJson(root: JSONObject): Config {
-        val keysJson = root.optJSONObject(ConfigFields.KEYS_JSON)
-        val keys =
-            KeyId.entries.associateWith { id ->
-                KeyConfig.ofFields(id, readFields(keysJson?.optJSONObject(id.id), ConfigFields.KEY_FIELDS))
-            }
-        val global =
-            GlobalConfig.ofFields(readFields(root.optJSONObject(ConfigFields.GLOBAL_JSON), ConfigFields.GLOBAL_FIELDS))
-        return Config.ofFields(keys, global, readFields(root, ConfigFields.ROOT_FIELDS), readNames(root))
-    }
-
-    /**
-     * 读「打开应用」那一族显示名的表（`app_names` 那一段）；缺整段 / 不是对象时返回空表。
-     *
-     *  这是配置里**唯一一段映射**，所以不走 `readFields`（那张表是扁平的）。容错口径与其它段一致：
-     *  读不懂的条目**跳过**，不让一个手改坏的行把整份配置判成读不懂 —— 名字只是显示，
-     *  丢了最坏也就是退回包名。
-     */
-    private fun readNames(root: JSONObject): Map<String, String> {
-        val o = root.optJSONObject(ConfigFields.APP_NAMES_JSON) ?: return emptyMap()
-        val out = mutableMapOf<String, String>()
-        val it = o.keys()
-        while (it.hasNext()) {
-            val key = it.next()
-            if (o.isNull(key)) continue
-            // **不 trim**：这里读出来的必须与文件里逐字一致，否则重新序列化会算出另一个
-            //  md5（`digestMatches` 判「被改过」而整份配置作废）。空值只跳过、不改写。
-            val name = o.optString(key, "")
-            if (key.isNotEmpty() && name.isNotEmpty()) out[key] = name
-        }
-        return out
-    }
-
-    /**
-     * 按字段表从 JSON 里取值 —— 缺项走字段表里登记的默认值（老文件 / 手写文件的兼容）。
-     *
-     *  布尔这一列**必须自己判「键在不在」**：`JSONObject.optBoolean(key)` 在键缺失时返回 `false`
-     *  而不是默认值 —— 而字段表里 `instantSingle` / `colorOsApi` 登记的默认值是 `true`。照旧写法
-     *  「有 `global` 段但没写这一格」的文件读出来就翻面，且**读 → 渲染 → 写回**一次就把它固化下来。
-     */
-    private fun readFields(
-        o: JSONObject?,
-        fields: List<ConfigFields.Field>,
-    ): ConfigFields.Values {
-        val values = mutableMapOf<ConfigFields.Field, Any>()
-        for (f in fields) {
-            val key = f.json ?: continue
-            when (val kind = f.kind) {
-                is ConfigFields.Kind.Bool -> {
-                    values[f] = if (o != null && o.has(key)) o.optBoolean(key) else kind.default
-                }
-
-                is ConfigFields.Kind.Number -> {
-                    val raw = o?.optInt(key, kind.default) ?: kind.default
-                    values[f] = raw.coerceIn(kind.min, kind.max)
-                }
-
-                is ConfigFields.Kind.Text -> {
-                    values[f] = textOf(o, key, kind.default)
-                }
-            }
-        }
-        return ConfigFields.Values(values)
-    }
-
-    /**
-     * 序列化成 JSON 文本（回写时用），缩进两格，末位带上 `md5`。
-     *
-     * 顺序是**先算再写**：把不含 `md5` 的那份算一个 MD5，再把这一格加到最后 ——
-     * 所以它不覆盖它自己，校验时才有得比（[digestMatches]）。
-     *
-     * 键序由 `ConfigFields` 的字段表给出（表序 = 键序），本层不再逐字段抄一遍。
+     * 顺序是**先算再写**：把不含 `md5` 的那份编码出来算 MD5，再把这一格填上重新编码 ——
+     * 于是它不覆盖它自己，校验时才有得比（[digestMatches]）。
      */
     fun serialize(config: Config): String {
-        val keys = JSONObject()
-        for (id in KeyId.entries) {
-            val one = JSONObject()
-            writeFields(one, config.key(id).fieldValues(), ConfigFields.KEY_FIELDS)
-            keys.put(id.id, one)
-        }
-        val global = JSONObject()
-        writeFields(global, config.global.fieldValues(), ConfigFields.GLOBAL_FIELDS)
-
-        val root =
-            JSONObject()
-                .put(ConfigFields.VERSION_JSON, VERSION)
-                .put(ConfigFields.KEYS_JSON, keys)
-                .put(ConfigFields.GLOBAL_JSON, global)
-        writeFields(root, config.fieldValues(), ConfigFields.ROOT_FIELDS)
-        // 名字表：按身份 → 名字。**空表不写这一段**（从没绑过应用的人，文件格式与从前逐字相同），
-        //  键按字典序写 —— md5 算的是文本字节，键序会进它，而这张表的来源是 `Map`（无序）。
-        if (config.appNames.isNotEmpty()) {
-            val names = JSONObject()
-            for ((key, name) in config.appNames.toSortedMap()) names.put(key, name)
-            root.put(ConfigFields.APP_NAMES_JSON, names)
-        }
-        val digest = md5Hex(textWithoutDigest(root))
-        return root.put(ConfigFields.MD5_JSON, digest).toString(2) + "\n"
-    }
-
-    /** 按字段表把一份取值写进一个 JSON 对象（[ConfigFields.Field.json] 为 `null` 的项跳过）。 */
-    private fun writeFields(
-        o: JSONObject,
-        v: ConfigFields.Values,
-        fields: List<ConfigFields.Field>,
-    ) {
-        for (f in fields) {
-            val key = f.json ?: continue
-            when (f.kind) {
-                is ConfigFields.Kind.Bool -> o.put(key, v.bool(f))
-                is ConfigFields.Kind.Number -> o.put(key, v.number(f))
-                is ConfigFields.Kind.Text -> o.put(key, v.text(f))
-            }
-        }
+        val body = ConfigDto.from(config, VERSION, md5 = "")
+        val digest = md5Hex(json.encodeToString(body))
+        return json.encodeToString(body.copy(md5 = digest))
     }
 
     /**
-     * 核对正文的 `md5`。
+     * 「这份配置够不够格算一份配置」—— 缺键段 / 自定义键少了条目都算读不懂。
      *
-     * 比法：把 `md5` 那一格摘掉，按同一套缩进重新序列化，与文件里那个数比 —— 比的是**文本字节**，
-     * 所以「改了值没重算」当场露馅。
-     *
-     *  注意**键序也会进 md5**：摘掉 `md5` 那一格之后是按「当前解析出来的键序」重新序列化再算的，
-     *  用外部工具把键序重排过（值没动）就对不上了 —— 缩进与换行不影响（序列化时统一重排），
-     *  键序影响。这一条原来写成「键序弄乱也认」，与实现对不上。
-     *
-     * 摘之前先 `toString` 再 `JSONObject(...)` 复制一份：直接摘调用方那只的话，后面 [fromJson]
-     * 就用不上原本那份了。
+     * 缺 `keys` 段（`{"keys":{}}` 配一份自洽的 md5 就是这种）意味着文件被裁剪过或被别的写法生成的：
+     * 按默认值补等于静默把主开关 / 三个绑定 / 振动全抹成默认，比判「读不懂」危险得多。
      */
-    private fun digestMatches(root: JSONObject): Boolean {
-        val stored = if (root.isNull(ConfigFields.MD5_JSON)) "" else root.optString(ConfigFields.MD5_JSON, "")
-        if (stored.isEmpty()) {
-            XLog.w("配置里没有 ${ConfigFields.MD5_JSON} —— 判为读不懂")
-            return false
-        }
-        val body = JSONObject(root.toString())
-        body.remove(ConfigFields.MD5_JSON)
-        val expect = md5Hex(textWithoutDigest(body))
-        if (expect == stored) return true
-        XLog.w("配置正文与 ${ConfigFields.MD5_JSON} 对不上（被改过 / 传坏）：算出来 $expect，文件里是 $stored")
-        return false
-    }
+    private fun ConfigDto.isStructurallySound(): Boolean =
+        keys.size >= KeyId.builtins.size &&
+            KeyId.builtins.all { keys.containsKey(it.id) } &&
+            customKeys.all { keys.containsKey(it.id) }
 
-    /**
-     * 拿去算 `md5` 的那份文本：**不含 `md5`** 的 [body]，缩进两格、末尾一个换行。
-     *
-     * **写与校必须走这一个函数**：两边各写一遍缩进的话，将来改了一处就会出现「自己写的文件
-     * 自己读不出来」。
-     */
-    private fun textWithoutDigest(body: JSONObject): String = body.toString(2) + "\n"
+    /** 当前版本的完整性校验：把 `md5` 置空重新编码，与文件里那一格比。 */
+    private fun digestMatches(dto: ConfigDto): Boolean {
+        if (dto.md5.isEmpty()) return false
+        return md5Hex(json.encodeToString(dto.copy(md5 = ""))) == dto.md5
+    }
 
     /** 小写十六进制 MD5。自己拼十六进制而不走 `String.format`：后者吃系统区域设置。 */
     private fun md5Hex(text: String): String {

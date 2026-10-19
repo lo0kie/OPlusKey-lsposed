@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
@@ -18,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Gesture
@@ -106,10 +104,9 @@ internal fun SettingsPage.PageEntry(
                 PageBody(s, scrollBehavior, pagerState, commandPager)
             }
 
-            // 首页那条「模块未生效」提示（见 [HomeSnackbar]）
-            if (s == Screen.SHORTCUTS) {
-                HomeSnackbar(Modifier.align(Alignment.BottomCenter).fillMaxWidth())
-            }
+            // 首页那条「模块未生效」提示与操作回执一起挂在根 `Scaffold` 的**浮层槽**
+            //  （`popupHost`，排在弹窗宿主之后，见 [PageSnackbars]）—— 那里不随页走、也不跟着
+            //  内容滚，所以这里不再有它。
 
             // —— 自定义命令页的**底部操作悬浮工具栏** ——
             //
@@ -204,13 +201,9 @@ private fun SettingsPage.PageBody(
         Screen.BINDING -> {
             BindingScreen(
                 pagerState,
-                // 首页那个主开关（[KeyConfig.enabled]）关掉时整页禁用；停在一颗**收集来的键**
-                //  上也禁用 —— 那颗键还没有自己的配置（`KeyId` 还是枚举，`Config.keys` 里只有侧键），
-                //  这时放开的网格改的是侧键、看起来却像在改那颗键，比灰着更容易误操作。
-                // 主开关开着、且停在**侧键**那一组才放开：停在一颗收集来的键上时页面是灰的
-                //  —— 那颗键还没有自己的配置段，放开网格等于把改动写进侧键，看起来却像在改
-                //  那颗键。等 `KeyId` 从枚举改成动态、配置按键存之后，这一行缩回 `plusKeyEnabled()`。
-                enabled = KeyWatchState.selected == null && plusKeyEnabled(),
+                // 闸门是**当前在编辑的那颗键自己的** `enabled`：侧键看首页那个主开关，
+                //  自定义键看它自己那一份（收集时默认不开，第一次绑动作时自动打开，见 `pick`）。
+                enabled = keyEnabled(KeyWatchState.editing(configState.config.value)),
                 onOpenAppPicker = { g -> openAppPickerForGesture(g) },
                 scrollBehavior = scrollBehavior,
             )
@@ -247,9 +240,9 @@ private fun SettingsPage.PageBody(
 }
 
 /** 首页那个主开关（[KeyConfig.enabled]）—— 关掉时「按键绑定」页整页禁用。 */
-internal fun SettingsPage.plusKeyEnabled(): Boolean =
+internal fun SettingsPage.keyEnabled(id: KeyId): Boolean =
     configState.config.value
-        .key(KeyId.PLUS)
+        .key(id)
         .enabled
 
 /**
@@ -262,7 +255,7 @@ internal fun SettingsPage.plusKeyEnabled(): Boolean =
 private fun SettingsPage.AppPickerPage(scrollBehavior: ScrollBehavior) {
     AppPickerScreen(
         // 点 FAB：把这个应用整体写下去（不指定界面）
-        onPick = { target, window -> onAppPicked(target, window) },
+        onPick = { picked, window -> onAppPicked(picked, window) },
         // 点某一行 → 记下在看哪个应用，再压一页挑它的界面（振动由那一行自己给，这里不再补）
         onOpenActivities = { target ->
             // 搜索词清空（页面级状态，不随页面出栈注销，见 `AppPickerState.activityFilter`）
@@ -351,8 +344,9 @@ private fun SettingsPage.writeToken(
         // 「加一步 / 换一步」：`addStep()` / `replaceStep()` 自己会把页面切回「自定义命令」
         // （那才是这次挑应用的来处），所以这条路上调用方**不再退页**。
         val index = picker.takeStepTarget()
-        if (index >= 0) replaceStep(index, token) else addStep(token)
-        return true
+        //  真加进去了才算写成功：满员时 `addStep` 只 toast、不发车，这里若照样返回 true，
+        //  调用方会当作「已落盘」直接 return，刚挑的应用就凭空消失。
+        return if (index >= 0) replaceStep(index, token) else addStep(token)
     }
     // 写的是**进这一页时那个手势**（见 picker.gesture），不是 pager 的当前页
     // —— 这一页不属于 pager。
@@ -376,27 +370,21 @@ private fun SettingsPage.writeToken(
  *  否则用户挑的东西看起来像存好了，其实一个字节都没写。
  */
 private fun SettingsPage.onAppPicked(
-    target: String,
+    picked: PickedDetail,
     window: Boolean,
 ) {
     tickNow()
     // `forStep` 必须在写之前读：`writeToken` 里那个 `takeStepTarget()` 会把它清掉
     val forStep = picker.forStep
     // 刚在「选择界面」页确认过就照那一条写（`app:包名/类名` / `appshortcut:`）；
-    // 没确认过才是「就绑这个应用」这一档
-    val token =
-        picker.draft?.token(picker.smallWindow.value)
-            ?: if (window) {
-                Action.AppWindow(target).token
-            } else {
-                Action.App(target).token
-            }
+    // 没确认过就照 `pending` 这一份写 —— 它带着快捷方式的 id，不能退化成 `app:包名/id`
+    val token = picker.draft?.token(picker.smallWindow.value) ?: picked.token(window)
     // 名字与绑定**同一次写盘**（`Config.appNames`）—— 分两次写要多落一次盘 + 一次广播，
     //  而中间那一下读到的配置只有新绑定、没有名字，顶栏会当场闪一下包名。
     //  快捷方式带的是它自己的名字（「扫一扫」），其余按目标现取应用名。
-    val name = picker.draft?.label ?: appNameOf(target)
+    val name = picker.draft?.label ?: picked.label ?: appNameOf(picked.target)
     if (!writeToken(token, name)) {
-        XLog.w("选择应用：$target 没写进绑定，留在本页（不 goBack）")
+        XLog.w("选择应用：${picked.target} 没写进绑定，留在本页（不 goBack）")
         return
     }
     if (forStep) return

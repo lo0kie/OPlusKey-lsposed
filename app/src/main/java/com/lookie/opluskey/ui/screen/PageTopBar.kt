@@ -117,7 +117,9 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         //  这一行是菜单里那个「当前值」在大标题右边的复述，不进菜单也知道自己在哪一组。
         //  以前它挂在大标题**下面**（`largeTitleSubtitle`），会平白多占一行高度。
         Screen.BINDING -> {
-            KeyWatchState.selected?.label ?: I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键")
+            KeyWatchState
+                .editing(configState.config.value)
+                .let { if (it.isCustom) it.label else I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键") }
         }
 
         // 一条都没保存时不报数（「已保存0条命令」读起来像统计，也不成句）——
@@ -200,8 +202,9 @@ private fun SettingsPage.PageBottomBand(
         Screen.BINDING -> {
             BindingTabBand(
                 pagerState,
-                // 首页那个主开关（[KeyConfig.enabled]）—— 关掉时带子灰掉且吃掉输入（与那颗 FAB 同款）
-                enabled = plusKeyEnabled(),
+                // 与整页同一个闸门：**当前在编辑的那颗键**自己的 `enabled`（关掉时带子灰掉
+                //  且吃掉输入，与那颗 FAB 同款）
+                enabled = keyEnabled(KeyWatchState.editing(configState.config.value)),
             )
         }
 

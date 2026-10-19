@@ -22,13 +22,16 @@ package com.lookie.opluskey.core.model
  *
  * ## 加一个配置字段要改几处
  *
- * 1. 本文件：加一对 `*_JSON` / `*_EXTRA` 常量，并在下面那张表里加一行 [Field]（类型与默认值
- *    一起写：`Kind.Bool` / `Kind.Number` / `Kind.Text`）；
+ * 1. 本文件：加一对 `*_JSON` / `*_EXTRA` 常量，并在下面那张表里加一行 [Field]（类型、
+ *    默认值与上下限一起写：`Kind.Bool` / `Kind.Number` / `Kind.Text`）；
  * 2. `core/model/Config.kt`：给数据类加属性，并在它那**一对** `fieldValues()` / `ofFields()` 里
- *    加一行 —— 「字段 → 属性」的映射只有那一处。
+ *    加一行 —— 「字段 → 属性」的映射只有那一处；
+ * 3. `core/config/ConfigDto.kt`：线格式由 kotlinx.serialization 定义，
+ *    落盘 JSON 的字段名与默认值在那边也写一份。**`*_JSON` 那一列只是文档**（没有代码读它），
+ *    真正决定文件长什么样的是 DTO 的属性名与 `@SerialName`。
  *
- * 那两条通道（落盘 JSON / 广播 extra）的读写都按本文件这张表**生成**，不用再去改它们
- * （此前是「改 5 个文件」，其中两处还是各写一遍的钳制上下限）。
+ * 于是两条通道各有自己的生成源：**广播**仍完全由本表驱动（`*_EXTRA` + `Kind`），
+ * **落盘**由 DTO 的 `@Serializable` 驱动，取值区间两边都回到本表来钳。
  */
 object ConfigFields {
     // 正文结构 —— `ConfigCodec` 的顶层与两个段。广播不带这些：注入侧拿到的是一份已经解好的配置。
@@ -51,6 +54,22 @@ object ConfigFields {
      */
     const val APP_NAMES_JSON = "app_names"
 
+    /**
+     * 用户收集来的按键那张表（`{ "custom_keys": [ {"id":"ck1","name":"按键 1","code":1074} ] }`）。
+     *
+     *  **不在下面那张字段表里**：那张表是扁平的「一个字段一个值」，这是一张**数组**，
+     *  而且每一项有三个属性。与 `app_names` 同一档的处理方式 —— 由 `ConfigCodec` 单独读写。
+     *
+     *  但它**必须广播**（注入侧要靠它认领键码），所以 `ConfigBroadcast` 另有一套打包方式
+     *  （键 id 列表 + 每键的 code / name，见那里）。
+     */
+    const val CUSTOM_KEYS_JSON = "custom_keys"
+
+    /** [CUSTOM_KEYS_JSON] 每一项的三个键。 */
+    const val CUSTOM_KEY_ID_JSON = "id"
+    const val CUSTOM_KEY_NAME_JSON = "name"
+    const val CUSTOM_KEY_CODE_JSON = "code"
+
     /** 风险提示的确认记录 —— 与 `keys` / `global` 同一层，不在它们里面。 */
     const val DISCLAIMER_JSON = "disclaimerAccepted"
 
@@ -58,14 +77,29 @@ object ConfigFields {
     const val COMMAND_DISCLAIMER_JSON = "commandDisclaimerAccepted"
 
     // `KeyConfig` —— 主开关与三个手势绑定。
+    //
+    //  这几条 `*_EXTRA` 是**基础名**，真正写进广播的名字前面还挂一个 `<keyId>_` 前缀
+    //  （`plus_single` / `ck1_single` ……）—— 自定义按键是运行时才知道有几颗的，广播里必须
+    //  按键分开存，否则所有键的绑定会互相覆盖。拼前缀的地方只有 `ConfigBroadcast.putFields`。
     const val ENABLED_JSON = "enabled"
     const val ENABLED_EXTRA = "enabled"
     const val SINGLE_JSON = "single"
-    const val SINGLE_EXTRA = "plus_single"
+    const val SINGLE_EXTRA = "single"
     const val DOUBLE_JSON = "double"
-    const val DOUBLE_EXTRA = "plus_double"
+    const val DOUBLE_EXTRA = "double"
     const val LONG_JSON = "long"
-    const val LONG_EXTRA = "plus_long"
+    const val LONG_EXTRA = "long"
+
+    // 广播里那份「有哪些键」的清单（逗号分隔的 id）与每颗键的身份。
+    //  与上面几条不同，这三条**没有 JSON 那一列**：落盘用的是 `custom_keys` 那段数组
+    //  （见 `CUSTOM_KEYS_JSON`），只有广播才用这种扁平写法。
+    const val KEY_IDS_EXTRA = "key_ids"
+
+    /** 每颗键一条，实际 extra 名 = `<id>_code`。 */
+    const val KEY_CODE_EXTRA = "code"
+
+    /** 每颗键一条，实际 extra 名 = `<id>_name`。 */
+    const val KEY_NAME_EXTRA = "name"
 
     // `KeyConfig` —— 长按的三个参数。
     const val LONG_PRESS_MS_JSON = "longPressMs"
@@ -188,32 +222,44 @@ object ConfigFields {
             ),
         )
 
-    /** 长按绑的是不是串行命令 —— **只有广播那一列**，见 [LONG_SERIAL_EXTRA] 的说明。 */
-    val F_LONG_SERIAL = Field(null, LONG_SERIAL_EXTRA, Kind.Bool(false))
-
-    /** `KeyConfig` 的全部字段（顺序即落盘键序；[Field.json] 为 `null` 的那一项落盘时跳过）。 */
-    val KEY_FIELDS: List<Field> =
-        listOf(F_ENABLED, F_SINGLE, F_DOUBLE, F_LONG, F_LONG_PRESS_MS, F_LONG_REPEAT, F_REPEAT_INTERVAL_MS, F_LONG_SERIAL)
-
-    // ── `GlobalConfig` 的字段（顺序同样即落盘键序）
-
-    /** 双击窗口。 */
+    /** 「单击延迟」—— **每颗键各一份**（原来在全局，见 `KeyConfig.doubleClickMs`）。 */
     val F_DOUBLE_CLICK_MS =
         Field(
             DOUBLE_CLICK_MS_JSON,
             DOUBLE_CLICK_MS_EXTRA,
             Kind.Number(
-                GlobalConfig.DEFAULT_DOUBLE_CLICK_MS,
-                GlobalConfig.MIN_DOUBLE_CLICK_MS,
-                GlobalConfig.MAX_DOUBLE_CLICK_MS,
+                KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
+                KeyConfig.MIN_DOUBLE_CLICK_MS,
+                KeyConfig.MAX_DOUBLE_CLICK_MS,
             ),
         )
 
+    /** 「忽视无操作双击手势」—— **每颗键各一份**。 */
+    val F_INSTANT_SINGLE =
+        Field(INSTANT_SINGLE_JSON, INSTANT_SINGLE_EXTRA, Kind.Bool(KeyConfig.DEFAULT_INSTANT_SINGLE))
+
+    /** 长按绑的是不是串行命令 —— **只有广播那一列**，见 [LONG_SERIAL_EXTRA] 的说明。 */
+    val F_LONG_SERIAL = Field(null, LONG_SERIAL_EXTRA, Kind.Bool(false))
+
+    /** `KeyConfig` 的全部字段（顺序即落盘键序；[Field.json] 为 `null` 的那一项落盘时跳过）。 */
+    val KEY_FIELDS: List<Field> =
+        listOf(
+            F_ENABLED,
+            F_SINGLE,
+            F_DOUBLE,
+            F_LONG,
+            F_LONG_PRESS_MS,
+            F_LONG_REPEAT,
+            F_REPEAT_INTERVAL_MS,
+            F_DOUBLE_CLICK_MS,
+            F_INSTANT_SINGLE,
+            F_LONG_SERIAL,
+        )
+
+    // ── `GlobalConfig` 的字段（顺序同样即落盘键序）
+
     /** 触觉反馈。 */
     val F_VIBRATE = Field(VIBRATE_JSON, VIBRATE_EXTRA, Kind.Bool(false))
-
-    /** 不等双击窗口、抬手立即触发单击。 */
-    val F_INSTANT_SINGLE = Field(INSTANT_SINGLE_JSON, INSTANT_SINGLE_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_INSTANT_SINGLE))
 
     /** 执行时提示 —— **只有落盘那一列**，见 [TOAST_ON_RUN_JSON] 的说明。 */
     val F_TOAST_ON_RUN = Field(TOAST_ON_RUN_JSON, null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
@@ -233,9 +279,7 @@ object ConfigFields {
     /** `GlobalConfig` 的全部字段。 */
     val GLOBAL_FIELDS: List<Field> =
         listOf(
-            F_DOUBLE_CLICK_MS,
             F_VIBRATE,
-            F_INSTANT_SINGLE,
             F_TOAST_ON_RUN,
             F_LANGUAGE,
             F_COLOR_OS_API,
@@ -280,4 +324,22 @@ object ConfigFields {
      *  于是「新增 extra 忘了登记类型」不会变成异常，只是取法保守一档。
      */
     fun kindOfExtra(name: String): Kind? = (KEY_FIELDS + GLOBAL_FIELDS).firstOrNull { it.extra == name }?.kind
+
+    /**
+     * 广播 extra 名 → **基础名**（去掉 `<keyId>_` 前缀）。不认识的前缀原样返回。
+     *
+     *  逐键那几项在广播里叫 `plus_single` / `ck1_single`，而字段表登记的是 `single`。
+     *  [ConfigBroadcast.tag] 要按**类型**取 extra（类型不对 `getString` 会抛 `ClassCastException`），
+     *  所以取类型之前必须先剥掉前缀 —— 否则指纹会把所有逐键字段都当成「取不到值」，
+     *  两份不同的配置算出同一个指纹，界面就会报「已同步」。
+     *
+     *  只认两种前缀：内置键的 id（`plus`）与自定义键的 `ck<数字>`。两者都由 [KeyId] 给出，
+     *  不在这里另抄一份字面量。
+     */
+    fun baseExtraName(name: String): String = KEY_EXTRA_PREFIX.matchEntire(name)?.groupValues?.get(1) ?: name
+
+    private val KEY_EXTRA_PREFIX =
+        Regex(
+            "^(?:" + Regex.escape(KeyId.PLUS.id) + "|" + Regex.escape(KeyId.CUSTOM_ID_PREFIX) + "\\d+)_(.+)$",
+        )
 }

@@ -100,7 +100,7 @@ internal fun IconAction(
  *  这一对色（`onSurfaceContainer` / `disabledOnSecondaryVariant`）在开关行、滑杆行、输入框行首
  *  各写了一遍，值还一样：同一页里几个行首图标一拨主开关就该一起变，分散写时改一处就漏一处。
  *
- *  ⚠️ **不是所有图标都走这一对**：行尾那几颗（`onSurfaceVariantActions` 起头）、
+ *  注意：**不是所有图标都走这一对**：行尾那几颗（`onSurfaceVariantActions` 起头）、
  *  选中态那几颗（`onTertiaryContainer`）、以及带 `error` / `tint` 覆盖的那几档各有自己的调色，
  *  它们**不**并到这里来 —— 只有「行首图标 + 只有可用/禁用两态」才是这一对。
  *

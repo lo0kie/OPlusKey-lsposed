@@ -26,8 +26,24 @@ internal class KeyInjector(
         val down = construct(h, ACTION_DOWN, keyCode, now) ?: return
         val up = construct(h, ACTION_UP, keyCode, now) ?: return
         // 0 = INJECT_INPUT_EVENT_MODE_ASYNC
-        Reflect.call(h.manager, h.inject, down, INJECT_MODE_ASYNC)
-        Reflect.call(h.manager, h.inject, up, INJECT_MODE_ASYNC)
+        //  **看返回值**：新版 `injectInputEvent` 返回 int（0 = 失败），被拒时**不抛异常** ——
+        //  只判「没抛」会把拒绝当成注入成功，表现为「动作执行了、屏幕没反应」且日志无痕。
+        injectOnce(h, down, keyCode)
+        injectOnce(h, up, keyCode)
+    }
+
+    /** 下发一次事件，并对「被拒」留一行判据（返回值的语义见 [injectOrThrow] 里那条注释）。 */
+    private fun injectOnce(
+        h: Handle,
+        event: Any,
+        keyCode: Int,
+    ) {
+        val r = Reflect.call(h.manager, h.inject, event, INJECT_MODE_ASYNC)
+        when (r) {
+            null -> XLog.w("注入按键：injectInputEvent 没返回（按已下发处理）：keyevent:$keyCode")
+            false -> XLog.w("注入按键被系统拒（injectInputEvent=false）：keyevent:$keyCode")
+            0 -> XLog.w("注入按键被系统拒（RESULT_FAILED）：keyevent:$keyCode")
+        }
     }
 
     /**

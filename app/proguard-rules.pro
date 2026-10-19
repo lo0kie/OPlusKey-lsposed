@@ -3,7 +3,7 @@
 # 那种写法（`-keep,allowshrinking`）只钉名字、允许收缩，等于 release 只剪枝、**一个符号都不改**。
 #
 # 敢放开的前提：本项目**没有任何一处按名字找自家类** —— 全仓唯一的 `Class.forName`
-#  在 `core/reflect/Reflect.kt`（`findClass`，查的全是宿主 / 框架的类）；`inject/Framework.kt`
+#  在 `core/reflect/Reflect.kt`（`findClass`，查的全是宿主 / 框架的类）；`bridge/Framework.kt`
 #  的候选表不自己写，走的就是 `Reflect.findClass`。真正要被框架按名字取到的只有入口类
 #  （上面那条 `-keep`）与资源 id 类（下面两条）。
 #  放开之后 `FileObfuscation` / `scramble` 这类名字在 dex 里就捞不到了 —— 配置外皮的

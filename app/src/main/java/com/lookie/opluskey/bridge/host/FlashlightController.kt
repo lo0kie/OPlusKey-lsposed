@@ -34,20 +34,36 @@ internal class FlashlightController(
                 return
             }
 
-        // 「ColorOS 那侧读到了真值没有」是要一路带到下面那个判断的：读一次就够，
-        //  以前这里分两个函数各读一遍同一个 Secure 键（同一个事实两条路径）。
-        var colorOsStateKnown = false
         val viaColorOs = isColorOsApi()
         XLog.w("手电筒：接口档=${if (viaColorOs) "ColorOS" else "AOSP"}")
         if (viaColorOs) {
-            if (tryToggleViaColorOsService(ctx)) {
-                XLog.w("手电筒：已交 ColorOS 服务（切换结果由它决定，不再走 CameraManager）")
+            //  `onFail` 必须给：**受理 ≠ 连上**。服务 3 秒都没连上时请求根本没送出去，
+            //  这时不让 CameraManager 兜底，用户看到的就是「按下去什么都没发生」。
+            //
+            //  回退那一刻**重新读一次** ColorOS 真值：走到这里说明服务没连上，而「未受理」那条
+            //  路上读的那一次**根本没发生**（受理时直接 return 了）—— 闭包里捕获的初值 `false`
+            //  不是真值，拿它去判「现在是开还是关」就会把开着的再开一次。
+            val accepted =
+                tryToggleViaColorOsService(ctx) {
+                    toggleViaCamera(ctx, viaColorOs, colorOsStateKnown = syncStateFromSettings(ctx))
+                }
+            if (accepted) {
+                XLog.w("手电筒：已交 ColorOS 服务（连不上时由 onFail 退 CameraManager）")
                 return
             }
             // ColorOS 专属服务未成功，从 Settings.Secure 同步当前真值后再切
-            colorOsStateKnown = syncStateFromSettings(ctx)
+            toggleViaCamera(ctx, viaColorOs, colorOsStateKnown = syncStateFromSettings(ctx))
+            return
         }
+        toggleViaCamera(ctx, viaColorOs, colorOsStateKnown = false)
+    }
 
+    /** AOSP（`CameraManager.setTorchMode`）那一半 —— ColorOS 那条没接住时它就是兜底，所以独立成一段。 */
+    private fun toggleViaCamera(
+        ctx: Context,
+        viaColorOs: Boolean,
+        colorOsStateKnown: Boolean,
+    ) {
         val cm =
             try {
                 ctx.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
@@ -81,11 +97,15 @@ internal class FlashlightController(
      *
      * 发消息这一步交给 [BuiltInMessenger] —— 侧键场景动作那条用的也是它，边界处理（超时 /
      * bind 被拒 / 失败上报）只该有一份。这里**只借用通道**：失败不报 `CommandFailure`，
-     * 因为下面还有 CameraManager 那条兜底（`onFail` 为 `null`，失败仍有日志）。
+     * 因为还有 CameraManager 那条兜底 —— 所以 [onFail] **必须传**，否则「受理但 3 秒没连上」
+     * 这种最常见的失败就没人接手。
      *
      * @return true = 请求已受理（**不等于手电筒真的动了** —— 连接是异步的）
      */
-    private fun tryToggleViaColorOsService(ctx: Context): Boolean {
+    private fun tryToggleViaColorOsService(
+        ctx: Context,
+        onFail: () -> Unit,
+    ): Boolean {
         val target =
             RomProfile.builtIn(RomProfile.NAME_KEY_FLASHLIGHT) ?: run {
                 // 本机 ROM 档位表里没有这一条（或 release 包在本机没适配）—— 说出来，
@@ -93,7 +113,7 @@ internal class FlashlightController(
                 XLog.w("手电筒：本机 ROM 档位里没有 ${RomProfile.NAME_KEY_FLASHLIGHT} 的落点，走 CameraManager")
                 return false
             }
-        val accepted = BuiltInMessenger.send(ctx, target, "手电筒（ColorOS 接口）")
+        val accepted = BuiltInMessenger.send(ctx, target, "手电筒（ColorOS 接口）", onFail)
         if (!accepted) XLog.w("手电筒：ColorOS 服务那条没受理，退 CameraManager")
         return accepted
     }

@@ -286,6 +286,9 @@ private fun SettingsPage.CustomTile(
                 //  此刻根本没组合 ⇒ 按下去什么都不发生。
                 commandDraft.draft.load(cmd)
                 navTo(Screen.COMMANDS)
+            } else {
+                //  静默 return 的话「长按没反应」在日志里没有凭据 —— 至少说清是找不到那条命令
+                XLog.w("手势页打开自定义命令编辑：这条绑定不是 `cmd:`（${spec.token}），跳过")
             }
         }
         ActionTile(

@@ -8,6 +8,7 @@ import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.state.AppPickerUiState
+import com.lookie.opluskey.ui.state.PickedDetail
 
 // 「选择应用」页那两张**拦人的脸** —— 都是「留在这一页」，什么都不写。
 //
@@ -21,7 +22,7 @@ import com.lookie.opluskey.ui.state.AppPickerUiState
 @Composable
 internal fun SettingsPage.AppPickerDialogs(
     ui: AppPickerUiState,
-    onPick: (String, Boolean) -> Unit,
+    onPick: (PickedDetail, Boolean) -> Unit,
 ) {
     UnopenableDialog(ui)
     SmallWindowUnsupportedDialog(ui, onPick)
@@ -59,7 +60,7 @@ private fun SettingsPage.UnopenableDialog(ui: AppPickerUiState) {
 @Composable
 private fun SettingsPage.SmallWindowUnsupportedDialog(
     ui: AppPickerUiState,
-    onPick: (String, Boolean) -> Unit,
+    onPick: (PickedDetail, Boolean) -> Unit,
 ) {
     ConfirmDialog(
         show = ui.blockedSmallWindow != null,
@@ -79,11 +80,11 @@ private fun SettingsPage.SmallWindowUnsupportedDialog(
             picker.smallWindow.value = false
             XLog.w("选择应用：该应用不支持小窗，已把「以小窗口打开」拨回关")
             if (blocked?.fromPick == true) {
-                //  优先用 `pending`（可能带 `/类名`、`/快捷方式id`，也可能带 `999@`）——
+                //  优先用 `pending`（可能带 `/类名`、快捷方式的 id，也可能带 `999@`）——
                 //  这一页的 FAB 就是按它弹的这张窗；`app.target` 只是「这个应用」那一档。
-                val target = ui.pending?.target ?: blocked.app.target
-                XLog.w("选择应用：$target 改为普通打开并写入")
-                onPick(target, false)
+                val picked = ui.pending ?: PickedDetail(blocked.app.target, shortcutId = null)
+                XLog.w("选择应用：${picked.target} 改为普通打开并写入")
+                onPick(picked, false)
             }
         },
     )

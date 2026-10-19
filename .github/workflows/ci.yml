@@ -53,7 +53,7 @@ jobs:
       - name: 配置 Gradle 缓存
         uses: gradle/actions/setup-gradle@v6
 
-      # 没配签名密钥时**只出 debug**：release 的收款码与名单是**封存**的（见 `app/build.gradle.kts`
+      # 没配签名密钥时**只出 debug**：release 的收款码与名单是**封存**的（见 `core/build.gradle.kts` 的 `SealReleaseAssets`
       # 的 `SealReleaseAssets`），密钥由签名证书派生、且没有明文回退 —— 拿不到 keystore 那一步
       # 必然失败。与其让构建去撞墙，不如这里就说清「这一轮不出 release」。
       - name: 写入正式签名
@@ -130,7 +130,7 @@ jobs:
       - name: 收产物到 dist
         run: |
           mkdir -p dist
-          # 文件名按 **versionName**（用户认的是这个），不按 BUILD_ID —— 后者是源码里那个
+          # 文件名按 **versionName**（用户认的是这个），不按 BUILD_ID —— 后者是 `GenerateBuildId` 的产物
           #  手写常量，忘了更新时产物名会停在上一版（`oplus-key-2026-10-15-0001-release.apk` 就是这么来的）。
           cp app/build/outputs/apk/debug/app-debug.apk     "dist/oplus-key-${{ steps.dist.outputs.version_name }}-debug.apk"
           # 没签名那一轮没有 release 产物，别在这儿报错（封存那一步已经挡在前面了）

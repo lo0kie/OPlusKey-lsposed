@@ -11,36 +11,46 @@ import com.lookie.opluskey.core.model.Command
 // （见 `docs/decoupling.md` 动作 4）。
 // /
 
-/** 多条命令加一步（从「添加命令」浮层的「选择应用」挑完回来时调）。 */
-internal fun SettingsPage.addStep(token: String) {
+/**
+ * 多条命令加一步（从「添加命令」浮层的「选择应用」挑完回来时调）。
+ *
+ * @return true = 真的加进去了；false = 满员被拒（已 toast）。调用方据此决定要不要退页 ——
+ *   把「没加」当「加了」会让刚挑的应用凭空消失，用户一条提示都看不到。
+ */
+internal fun SettingsPage.addStep(token: String): Boolean {
     // 界面那一层的闸在别处：「添加命令」那颗按钮满员时自己置灰（`enabled = !stepsFull`），
     //  两个调用点也被它挡着。这里是**兜底** —— 越过界面直接调本函数时不能把步数顶过头。
     if (commandDraft.draft.steps.size >= Command.MAX_STEPS) {
         XLog.w("多条命令：已达上限 ${Command.MAX_STEPS} 步，拒绝再加 → $token")
-        return
+        hint(I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS))
+        return false
     }
     commandDraft.draft.steps.add(token)
     XLog.w("多条命令：加第 ${commandDraft.draft.steps.size} 步 → $token")
     navTo(Screen.COMMANDS)
+    return true
 }
 
 /**
  * 多条命令把第 [index] 步换成 [token] —— 点已添加的那一行弹出的选择菜单里挑完时调。
+ *
+ * @return true = 换成了；false = 那一步已经不在（已 toast 并退回命令页）
  */
 internal fun SettingsPage.replaceStep(
     index: Int,
     token: String,
-) {
+): Boolean {
     if (index !in commandDraft.draft.steps.indices) {
         // 越界不能静默 return：调用方已经 tick / 关了菜单，用户看不到任何反应也无从判断。
         XLog.w("多条命令：第 ${index + 1} 步不存在（当前 ${commandDraft.draft.steps.size} 步），换步已忽略")
-        toast(I18n.get(Strings.TOAST_COMMAND_STEP_MISSING, "这一步已经不在列表里了"))
+        hint(I18n.get(Strings.TOAST_COMMAND_STEP_MISSING, "这一步已经不在列表里了"))
         navTo(Screen.COMMANDS)
-        return
+        return false
     }
     commandDraft.draft.steps[index] = token
     XLog.w("多条命令：第 ${index + 1} 步换成 $token")
     navTo(Screen.COMMANDS)
+    return true
 }
 
 /**

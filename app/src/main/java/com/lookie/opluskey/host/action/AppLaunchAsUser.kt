@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.host.action.MiniWindowFacts.START_DELIVERED_TO_TOP
 
 /**
  * 「按目标用户起一个界面」—— 分身与主用户走同一条路。
@@ -135,15 +136,29 @@ internal object AppLaunchAsUser {
             val method =
                 Reflect.methodByNameAndArity(atm.javaClass, "startActivityAsUser", arity) ?: continue
             val thrown = runCatching { method.invoke(atm, *args) }
+            //  `invoke` 不抛 **不等于** 起得来：这个方法返回 `ActivityStarter` 的 `START_*`，
+            //  被后台启动策略拦下时同样是正常返回（`START_CANCELED` / 负的 error code）。
+            //  只看「没抛」会把拒绝报成「已下发启动」，用户侧则是一片静默。
+            val code = thrown.getOrNull() as? Int
             if (thrown.isSuccess) {
-                XLog.w("已下发启动：$intent（user=$userId，arity=$arity）")
-                return true
+                // 成功码只有 0..3（`START_SUCCESS` / `START_RESTART` / `START_DELAY_RESUME` /
+                //  `START_DELIVERED_TO_TOP`）。`code >= 0` 会把 **101/102**
+                //  （`START_RETURN_LOCK_TASK_MODE_VIOLATION` / `START_ABORTED`，后台启动被拦时正是它）
+                //  也当成成功 —— 失败提示与回退逻辑整条都不触发。
+                if (code != null && code in 0..START_DELIVERED_TO_TOP) {
+                    //  只打落点：整个 Intent 会带上 data / extras，那是用户写进命令里的东西
+                    val at = intent.component?.flattenToShortString() ?: intent.action.orEmpty()
+                    XLog.w("已下发启动：$at（user=$userId，arity=$arity，START_*=$code）")
+                    return true
+                }
+                XLog.w("startActivityAsUser(user=$userId, arity=$arity) 被系统拒（START_*=$code），没有起界面")
+            } else {
+                val cause = thrown.exceptionOrNull()?.let { Reflect.deepestCause(it) }
+                XLog.w(
+                    "startActivityAsUser(user=$userId, arity=$arity) 失败：" +
+                        "${cause?.javaClass?.name}: ${cause?.message}",
+                )
             }
-            val cause = thrown.exceptionOrNull()?.let { Reflect.deepestCause(it) }
-            XLog.w(
-                "startActivityAsUser(user=$userId, arity=$arity) 失败：" +
-                    "${cause?.javaClass?.name}: ${cause?.message}",
-            )
         }
         XLog.w("startActivityAsUser 没有可用签名（user=$userId）")
         return false

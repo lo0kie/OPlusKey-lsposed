@@ -4,14 +4,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.key.key
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.KeyConfig
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.AnimatedColumn
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
@@ -21,6 +18,7 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setLongRepeat
 import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
@@ -46,7 +44,10 @@ internal fun SettingsPage.LongRepeatCard(
 ) {
     val blocked = blockedReason != null
     val cfg = configState.config.value
-    val key = cfg.key(KeyId.PLUS)
+    // **当前在编辑的那一颗**：写死侧键的话，停在自定义键上拨开关 / 拖滑杆改的全是侧键
+    //  （卡片上的值却还是侧键的，看着像「拖了没反应」）。
+    val editing = KeyWatchState.editing(cfg)
+    val key = cfg.key(editing)
     // 三行：长按连续触发 +（开关打开时的）触发间隔 + 长按延迟
     val rows = if (key.longRepeat) 3 else 2
     val tick = rememberTick()
@@ -81,18 +82,11 @@ internal fun SettingsPage.LongRepeatCard(
                 default = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
                 enabled = !blocked,
             ) { v ->
+                val now = configState.config.value
+                val id = KeyWatchState.editing(now)
                 write(
-                    configState.config.value.copy(
-                        keys =
-                            configState.config.value.keys +
-                                (
-                                    KeyId.PLUS to
-                                        configState.config.value
-                                            .key(KeyId.PLUS)
-                                            .copy(longRepeatIntervalMs = v)
-                                ),
-                    ),
-                    "long_repeat_interval_ms=$v",
+                    now.copy(keys = now.keys + (id to now.key(id).copy(longRepeatIntervalMs = v))),
+                    "long_repeat_interval_ms=$v key=${id.id}",
                 ) != CommandsSave.Failed
             }
         }
@@ -113,7 +107,8 @@ private fun SettingsPage.LongPressDelayRow(
     rows: Int,
     enabled: Boolean,
 ) {
-    val key = configState.config.value.key(KeyId.PLUS)
+    val now = configState.config.value
+    val key = now.key(KeyWatchState.editing(now))
     // 「长按延迟」—— 多久算长按。
     //  它的 enabled 跟着**整张卡**走（主开关 + [blockedReason]）。这个参数对多条命令其实
     //  仍然生效（判定长按的时机与绑的是什么动作无关），但同一张卡里上面那行已经置灰、
@@ -132,18 +127,11 @@ private fun SettingsPage.LongPressDelayRow(
         default = KeyConfig.DEFAULT_LONG_PRESS_MS,
         enabled = enabled,
     ) { v ->
+        val latest = configState.config.value
+        val id = KeyWatchState.editing(latest)
         write(
-            configState.config.value.copy(
-                keys =
-                    configState.config.value.keys +
-                        (
-                            KeyId.PLUS to
-                                configState.config.value
-                                    .key(KeyId.PLUS)
-                                    .copy(longPressMs = v)
-                        ),
-            ),
-            "long_press_ms=$v",
+            latest.copy(keys = latest.keys + (id to latest.key(id).copy(longPressMs = v))),
+            "long_press_ms=$v key=${id.id}",
         ) != CommandsSave.Failed
     }
 }

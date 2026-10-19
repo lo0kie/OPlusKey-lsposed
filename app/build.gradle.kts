@@ -318,6 +318,8 @@ dependencies {
     // 两个进程共用的那一层（配置 / 字典 / 日志 / 模型 / 线协议 / 反射工具）—— 独立模块，
     //  于是「它不许引用界面层」从 CI 的事后扫描变成了编译期约束。
     implementation(project(":core"))
+    // 只读 asset（捐赠名单）改用 kotlinx 的树 API 解析；不挂编译器插件，就不需要 @Serializable
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     // Xposed API：运行时由 LSPosed 提供
     compileOnly("io.github.libxposed:api:102.0.0")

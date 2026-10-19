@@ -69,6 +69,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
 import io.github.lyxnx.compose.ui.tablericons.outline.InputX
 import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
+import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.LayoutGrid
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
@@ -83,6 +84,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Nfc
 import io.github.lyxnx.compose.ui.tablericons.outline.Notes
 import io.github.lyxnx.compose.ui.tablericons.outline.Notification
+import io.github.lyxnx.compose.ui.tablericons.outline.Number1
+import io.github.lyxnx.compose.ui.tablericons.outline.Number2
+import io.github.lyxnx.compose.ui.tablericons.outline.Number3
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
@@ -95,7 +99,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackPrev
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
-import io.github.lyxnx.compose.ui.tablericons.outline.PointerPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Power
 import io.github.lyxnx.compose.ui.tablericons.outline.RecordMail
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
@@ -108,7 +111,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
 import io.github.lyxnx.compose.ui.tablericons.outline.TableShortcut
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
-import io.github.lyxnx.compose.ui.tablericons.outline.TextOutline
 import io.github.lyxnx.compose.ui.tablericons.outline.TextRecognition
 import io.github.lyxnx.compose.ui.tablericons.outline.Tooltip
 import io.github.lyxnx.compose.ui.tablericons.outline.Trash
@@ -138,8 +140,8 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.Power
         }
 
-        // 电源键（⏻）
-        // 与「电源键」必须不同字形：同样一颗 ⏻ 摆在一起分不出按下的那个是按键还是菜单。
+        // 电源键（`Power` 那颗图标）
+        // 与「电源键」必须不同字形：同样一颗电源图标摆在一起，分不出按下的那个是按键还是菜单。
         // 「电源菜单」= 弹出关机 / 重启那一层，用「滑杆 + 闪电」。
         Action.POWER_MENU -> {
             TablerIcons.Outline.AdjustmentsBolt
@@ -190,7 +192,7 @@ internal fun actionIcon(token: String): ImageVector =
         }
 
         // 通知中心（改名不改字形）
-        // 控制中心（`panel:control_center`）—— 用「⌘」那颗：它是系统里「控制」那一类的通用读法
+        // 控制中心（`panel:control_center`）—— 用 Command 那颗：它是系统里「控制」那一类的通用读法
         ActionCatalog.PANEL_CONTROL -> {
             TablerIcons.Outline.Command
         }
@@ -286,6 +288,17 @@ internal fun actionIcon(token: String): ImageVector =
                 // 快捷方式（`appshortcut:`）与「打开应用」共用一颗字形：都是「把某个东西叫起来」
                 token.startsWith(Action.APP_PREFIX) || token.startsWith(Action.APP_SHORTCUT_PREFIX) -> {
                     TablerIcons.Outline.LayoutGrid
+                }
+
+                // 快捷方式 id（`shortcut:<id>`）—— 与上面那族同义，但写的是 id 不是包名，
+                //  给它一颗自己的字形，别落 `Dots`（清单里这两档都教用户手写，图标必须是可辨的）。
+                token.startsWith(Action.SHORTCUT_PREFIX) -> {
+                    PageIcons.Link
+                }
+
+                // `intent:ACTION` —— 按 action 起界面
+                token.startsWith(Action.INTENT_PREFIX) -> {
+                    TablerIcons.Outline.AppWindow
                 }
 
                 // 系统开关（`setting:<id>`）—— 每一条都有自己的字形，从清单里一眼分得开
@@ -504,17 +517,34 @@ internal object PageIcons {
      * 「按键绑定」页顶栏菜单的「快捷键」—— `keyboard`（一块键盘）。
      *
      *  这一项说的是「**现在这一组**是快捷键」，点它只收菜单（见 `BindingKeyMenu`）。
-     *  与 [MenuCustomKey] 必须不同字形：菜单里两行都是「一组按键」，只靠行首这一颗分谁是谁。
+     *  与 [MenuKeyCard] 必须不同字形：菜单里两行都是「一组按键」，只靠行首这一颗分谁是谁。
      */
     val MenuKeys: ImageVector get() = TablerIcons.Outline.Keyboard
 
     /**
-     * 「按键绑定」页顶栏菜单的「自定义按键」—— `pointer-plus`（光标 + 加号）。
+     * 「按键绑定」页顶栏菜单里**收集到的键** —— 按它在清单里的位置取数字：`number-1` / `-2` / `-3`
+     * （[index] 从 0 起）。
      *
-     *  这一项是**去把新键加进清单**（弹收集弹窗），所以带那个加号；
-     *  与 [TouchApp]（「按键绑定」行的光标，不带加号）同族不同义，各留一份名字。
+     *  用户口径：三颗键各拿一个数字，一眼能数出「现在有几颗」。上限就是三颗
+     *  （`KeyId.MAX_CUSTOM_KEYS`），所以 `else` 兜到 3；数字跟着**列表位置**走，
+     *  删掉中间那颗之后后面的会各自前移一位 —— 与菜单里看到的顺序一致。
+     *
+     *  与 [MenuKeyAdd]（加号）分工：那一行是「再加一颗」，这几行是「已经收下的那颗」。
      */
-    val MenuCustomKey: ImageVector get() = TablerIcons.Outline.PointerPlus
+    fun menuKeyNumber(index: Int): ImageVector =
+        when (index) {
+            0 -> TablerIcons.Outline.Number1
+            1 -> TablerIcons.Outline.Number2
+            else -> TablerIcons.Outline.Number3
+        }
+
+    /**
+     * 「按键绑定」页顶栏菜单的「添加按键」—— `plus`（加号）。
+     *
+     *  这一行是**往清单里再加一颗**（弹收集弹窗），加号直接说这件事；
+     *  收集到的那几行用 [MenuKeyCard]，两者不再共用同一颗字形。
+     */
+    val MenuKeyAdd: ImageVector get() = TablerIcons.Outline.Plus
 
     /**
      * 首页「其他 → 更多选项」那一行的行首 —— 圈里三点（`dots-circle-horizontal`，
@@ -662,8 +692,13 @@ internal object PageIcons {
     /** 「执行时提示」行的行首 —— `tooltip`（气泡提示）。 */
     val CommandToast: ImageVector get() = TablerIcons.Outline.Tooltip
 
-    /** 「名称」输入框的行首图标 —— `text-outline`（文字轮廓：这一格填的是名字）。 */
-    val InputName: ImageVector get() = TablerIcons.Outline.TextOutline
+    /**
+     * 「名称」这一类输入框的行首图标 —— `label-important`（标签）。
+     *
+     *  两个调用点：自定义命令页那个「名称」、以及「添加按键」弹窗里给新键起名的那一格
+     *  —— 填的都是**一个名字**，用同一颗字形，用户在两处看到的是同一件事。
+     */
+    val LabelImportant: ImageVector get() = TablerIcons.Outline.LabelImportant
 
     /**
      * 「关于」卡里「作者 / 查看地址 / 反馈问题」**三行的行尾** —— 链接符号（`link`）。

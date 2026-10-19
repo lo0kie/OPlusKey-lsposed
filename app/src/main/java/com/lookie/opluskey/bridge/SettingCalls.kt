@@ -83,7 +83,9 @@ internal object SettingCalls {
         val r = ServiceCalls.call(s, "setWifiEnabled", listOf(PKG, target))
         // 这个方法不抛异常、只返回 false 表示「被拒」—— 不把它打出来就只剩一句「没反应」
         if (r?.value == false) XLog.w("wifi：setWifiEnabled 返回 false（被系统拒了，不是异常）")
-        return r != null
+        // 成败看**返回值**：`r != null` 只说明「调用进去了」，被系统拒时同样是 true
+        //  ⇒ 上游会把它当成「切成功了」，而状态一点没变。
+        return r?.value == true
     }
 
     /**
@@ -173,6 +175,9 @@ internal object SettingCalls {
         }
         // 冻在「当前方向」上：这版 IWindowManager 没有 `getRotation()`，改版之后就叫这个名
         val rotation = ServiceCalls.call(s, "getDefaultDisplayRotation")?.value as? Int ?: 0
-        return ServiceCalls.call(s, "freezeDisplayRotation", listOf(rotation, 0, REASON)) != null
+        // 签名是 `freezeDisplayRotation(int displayId, int rotation, String caller)` ——
+        //  第一参是**屏号**、第二参才是方向。反过来传在横屏下等于去冻一个不存在的 displayId，
+        //  系统直接抛异常，表现是「横屏时自动旋转锁不住」（竖屏恰好蒙对，所以更容易漏）。
+        return ServiceCalls.call(s, "freezeDisplayRotation", listOf(0, rotation, REASON)) != null
     }
 }

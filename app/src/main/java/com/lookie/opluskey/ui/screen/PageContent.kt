@@ -7,7 +7,9 @@ import android.content.IntentFilter
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -18,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.navigationevent.NavigationEventDispatcherOwner
@@ -41,6 +44,7 @@ import io.github.suqi8.coui.kmp.basic.Scaffold
 import io.github.suqi8.coui.kmp.nav.core.NavDisplay
 import io.github.suqi8.coui.kmp.nav.core.NavDisplayEffects
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.COUIPopupHost
 import kotlinx.coroutines.delay
 
 // 整页渲染 —— 主题、根 Scaffold、页面栈的壳，以及页面级的**副作用**。
@@ -78,6 +82,27 @@ internal fun SettingsPage.PageContent() {
                 // 浮层的 dim 都自然作用到它 —— 之前那条盖着 hook 侧的
                 // 实心遮罩，模糊 / dim 都到不了，只能一个个单独处理（已删）。
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                //  底部那两摞提示（常驻结论 + 操作回执）挂**浮层槽**、且排在弹窗宿主**之后**：
+                //   · 内容之上、不随滚动 —— 挂进页内就得跟着列表滚，而各页都是滚动容器；
+                //   · **弹窗之上** —— 库的 `Scaffold` 把 `popup` 放在最后 `place()`，而
+                //     `snackbarHost` 槽在它下面；用原来的提示槽，弹窗一开提示就被整个盖住
+                //     （「这颗键不能添加」那种提示正是弹窗开着时弹的，等于没弹）。
+                //  槽位自己是一个 `Box`、顶对齐，所以这里补一层底部对齐的盒子。
+                //
+                //  ⚠️ 底部那条 inset 得**自己加**：`snackbarHost` 槽是库自己按
+                //  `contentWindowInsets` 让过位的，`popupHost` 槽不管 —— 直接搬过来，提示条就会
+                //  沉到手势导航条底下那一条里（这一页 `contentWindowInsets` 全零，没人替它让）。
+                popupHost = {
+                    COUIPopupHost()
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(hintInsets()),
+                        contentAlignment = Alignment.BottomCenter,
+                    ) {
+                        PageSnackbars()
+                    }
+                },
             ) { padding ->
                 Box(
                     Modifier
@@ -232,7 +257,9 @@ private fun SettingsPage.onHostServiceUp(intent: Intent) {
     link.hostServiceUp = true
     link.hostAliveToken++
     // 报活里带的两条诊断字段（链路自检用）
-    link.hostEnabled = intent.getBooleanExtra(ModuleWire.EXTRA_HOST_ENABLED, true)
+    //  缺省 false：报活里没带这一位（老宿主）时不该据此声称「已启用」，
+    //  宁可显示未启用 —— 那一档只是首页一条诊断行，谎报会让人以为模块开着却没生效。
+    link.hostEnabled = intent.getBooleanExtra(ModuleWire.EXTRA_HOST_ENABLED, false)
     link.hostLastActionAt = intent.getLongExtra(ModuleWire.EXTRA_HOST_LAST_ACTION_AT, 0L)
 }
 

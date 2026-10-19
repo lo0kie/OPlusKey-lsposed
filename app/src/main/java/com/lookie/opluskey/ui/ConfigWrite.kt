@@ -7,7 +7,9 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.ui.model.languageLabel
 import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.state.KeyWatchState
 
 // 配置落盘这一族：唯一的写入口 [write]，以及所有「拨一个开关 / 清空配置」的动作。
 //
@@ -18,20 +20,25 @@ import com.lookie.opluskey.ui.state.CommandsSave
 /** 切「振动反馈」—— 行点击与开关共用这一个入口。 */
 internal fun SettingsPage.setVibrate(on: Boolean) {
     val cfg = configState.config.value
-    write(cfg.copy(global = cfg.global.copy(vibrate = on)), "vibrate=${if (on) 1 else 0}")
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(vibrate = on)),
+        "vibrate=${if (on) 1 else 0}",
+    ) { switchNotice(I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"), on) }
 }
 
 /**
  * 切「立即触发单击」（双击为无操作时不等双击窗口）—— 行点击与开关共用这一个入口。
  *
- * 语义与判定侧见 `GlobalConfig.instantSingle` / `inject/input/GestureDetector.onKeyUp`。
+ *  这一位是**每颗键各一份**（`KeyConfig.instantSingle`）：写在当前编辑的那颗键上，
+ *  语义与判定侧见 `inject/input/GestureDetector.onKeyUp`。
  */
 internal fun SettingsPage.setInstantSingle(on: Boolean) {
     val cfg = configState.config.value
-    write(
-        cfg.copy(global = cfg.global.copy(instantSingle = on)),
-        "instant_single=${if (on) 1 else 0}",
-    )
+    val id = KeyWatchState.editing(cfg)
+    writeAndNotice(
+        cfg.copy(keys = cfg.keys + (id to cfg.key(id).copy(instantSingle = on))),
+        "instant_single=${if (on) 1 else 0} key=${id.id}",
+    ) { switchNotice(I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"), on) }
 }
 
 /**
@@ -41,19 +48,29 @@ internal fun SettingsPage.setInstantSingle(on: Boolean) {
  */
 internal fun SettingsPage.setToastOnRun(on: Boolean) {
     val cfg = configState.config.value
-    write(
+    writeAndNotice(
         cfg.copy(global = cfg.global.copy(toastOnRun = on)),
         "toast_on_run=${if (on) 1 else 0}",
-    )
+    ) { switchNotice(I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), on) }
 }
 
-/** 切换界面语言。 */
+/**
+ * 切换界面语言。
+ *
+ *  回执的名字**必须在写盘之后取**：[write] 里那一下 `I18n.currentLanguage` 换了档，
+ *  同一句话才会用新语言打出来（切到英文时显示 “English” 而不是「英语」）。
+ *  所以这里给的是 lambda，不是先算好的字符串。
+ */
 internal fun SettingsPage.setLanguage(code: String) {
     val cfg = configState.config.value
-    write(
+    writeAndNotice(
         cfg.copy(global = cfg.global.copy(language = code)),
         "language=$code",
-    )
+    ) {
+        I18n
+            .get(Strings.TOAST_LANGUAGE_SWITCHED, "已切换到「%s」")
+            .format(languageLabel(AppLanguage.fromCode(code)))
+    }
 }
 
 /**
@@ -63,28 +80,38 @@ internal fun SettingsPage.setLanguage(code: String) {
  */
 internal fun SettingsPage.setMiniWindowAnim(on: Boolean) {
     val cfg = configState.config.value
-    write(
+    writeAndNotice(
         cfg.copy(global = cfg.global.copy(miniWindowAnim = on)),
         "mini_window_anim=${if (on) 1 else 0}",
-    )
+    ) { switchNotice(I18n.get(Strings.HOME_MINI_ANIM_TITLE, "前台应用转小窗时使用动画"), on) }
 }
 
 /** 切「使用 ColorOS 接口」—— 行点击与开关共用这一个入口。 */
 internal fun SettingsPage.setColorOsApi(on: Boolean) {
     val cfg = configState.config.value
-    write(
+    writeAndNotice(
         cfg.copy(global = cfg.global.copy(colorOsApi = on)),
         "color_os_api=${if (on) 1 else 0}",
-    )
+    ) { switchNotice(I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"), on) }
 }
 
-/** 写 [KeyConfig.enabled] 总闸：关闭后绑定页控件置灰，侧键不再被接管。 */
+/**
+ * 写 [KeyConfig.enabled] 总闸：关闭后绑定页控件置灰，侧键不再被接管。
+ *
+ *  总闸的回执是**专用两句**（「已停用按键绑定，侧键交还系统」），不套「已关闭「启用按键绑定」」
+ *  —— 那读起来是句废话，而且「关掉之后会发生什么」才是这一下真正要交代的事。
+ */
 internal fun SettingsPage.setKeyEnabled(on: Boolean) {
     val cfg = configState.config.value
-    write(
+    writeAndNotice(
         cfg.copy(keys = cfg.keys + (KeyId.PLUS to cfg.key(KeyId.PLUS).copy(enabled = on))),
         "plus_enabled=${if (on) 1 else 0}",
-    )
+    ) {
+        I18n.get(
+            if (on) Strings.TOAST_BINDING_ON else Strings.TOAST_BINDING_OFF,
+            if (on) "已启用按键绑定" else "已停用按键绑定，侧键交还系统",
+        )
+    }
 }
 
 /**
@@ -94,24 +121,30 @@ internal fun SettingsPage.setKeyEnabled(on: Boolean) {
  */
 internal fun SettingsPage.acceptDisclaimerAndEnable() {
     val cfg = configState.config.value
-    write(
+    writeAndNotice(
         cfg.copy(
             keys = cfg.keys + (KeyId.PLUS to cfg.key(KeyId.PLUS).copy(enabled = true)),
             disclaimerAccepted = true,
         ),
         "disclaimer_accepted=true",
-    )
+    ) { I18n.get(Strings.TOAST_BINDING_ON, "已启用按键绑定") }
 }
 
-/** 切「长按连续触发」—— 行点击与开关共用这一个入口。 */
+/**
+ * 切「长按连续触发」—— 行点击与开关共用这一个入口。
+ *
+ *  写的是**当前在编辑的那颗键**：这一行属于「按键设置」卡，卡里三档（长按阈值 / 连续触发 /
+ *  忽视无操作双击）都是那颗键自己的参数。
+ */
 internal fun SettingsPage.setLongRepeat(on: Boolean) {
     val cfg = configState.config.value
-    write(
+    val id = KeyWatchState.editing(cfg)
+    writeAndNotice(
         cfg.copy(
-            keys = cfg.keys + (KeyId.PLUS to cfg.key(KeyId.PLUS).copy(longRepeat = on)),
+            keys = cfg.keys + (id to cfg.key(id).copy(longRepeat = on)),
         ),
-        "long_repeat=${if (on) 1 else 0}",
-    )
+        "long_repeat=${if (on) 1 else 0} key=${id.id}",
+    ) { switchNotice(I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_TITLE, "长按连续触发"), on) }
 }
 
 /**
@@ -133,7 +166,7 @@ internal fun SettingsPage.write(
     // 会把用户配的绑定 / 开关整份抹掉。一律拒，并明确告诉用户「没保存」。
     if (configState.readOnly) {
         XLog.w("配置处在只读态（这次没读成功），拒绝写回：$what")
-        toast(I18n.get(Strings.TOAST_CONFIG_READ_FAILED, "配置读取失败，未保存"))
+        hint(I18n.get(Strings.TOAST_CONFIG_READ_FAILED, "配置读取失败，未保存"))
         return CommandsSave.Failed
     }
     var saved = false
@@ -148,7 +181,7 @@ internal fun SettingsPage.write(
         XLog.w("设置页写配置失败：$what", e)
     }
     if (!saved) {
-        toast(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
+        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
         return CommandsSave.Failed
     }
     configState.config.value = next
@@ -169,7 +202,7 @@ internal fun SettingsPage.write(
         //  本地指纹跟着变，而注入侧那份还是旧的 ⇒ `configSideOk=false` ⇒ `linkReady=false`
         //  ⇒ ⋮ 菜单里的「重启服务」**正好被灰掉**，指过去等于让用户点一个点不动的入口。
         //  真正能自愈的是「退出重进」（重进会重发配置并重问自检），所以说这个。
-        toast(I18n.get(Strings.TOAST_CONFIG_SAVE_BROADCAST_FAILED, "已保存，但通知注入侧失败，退出重进本页即可"))
+        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_BROADCAST_FAILED, "已保存，但通知注入侧失败，退出重进本页即可"))
         return CommandsSave.BroadcastFailed
     }
     // 注意：写完必须**再问一次注入侧**：上面 `config.value = next` 一换本地指纹，页面手上那份

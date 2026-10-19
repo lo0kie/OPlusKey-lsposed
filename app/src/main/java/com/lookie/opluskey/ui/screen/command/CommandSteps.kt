@@ -65,7 +65,8 @@ internal fun SettingsPage.SerialSteps() {
     val tick = rememberTick()
     val steps = commandDraft.draft.steps
     // 这一刻开着的是哪一张选择器：`null` = 都没开、[STEP_PICK_APPEND] = 「添加命令」那一行、
-    //  其余 = 替换第 n 步。**两份状态合成一份**是因为两张浮层不能同开：以前是
+    //  其余 = 那一张**行 id**（不是 step 下标 —— 退场行会让两行算出同一个下标）。
+    //  **两份状态合成一份**是因为两张浮层不能同开：以前是
     //  `picking: Boolean` + `stepPick: Int` 两个互不知情的变量，点开某一步的选择器、再去点
     //  「添加命令」，两张就叠在一起了（行里那句 `show = stepPick == stepsIndex` 还成立）。
     var stepPicker by remember { mutableStateOf<Int?>(null) }
@@ -190,7 +191,9 @@ internal fun SettingsPage.SerialSteps() {
                                 XLog.w(
                                     "多条命令：点第 ${stepsIndex + 1} 步（弹选择菜单，替换模式）—— ${probe.describe()}",
                                 )
-                                stepPicker = stepsIndex
+                                //  记**行 id** 而不是 step 下标：退场行还在展示层里占位，
+                                //  它后面的行与它算出同一个下标 ⇒ 两张选择器同时开、两层 dim 叠在一起。
+                                stepPicker = item.id
                             },
                             // 行首图标 = 这一步是什么（内置动作取动作图标、`cmd:` 取**被引用那条命令**的类型图标）。
                             // 没有它标题会顶到卡片左边，与下面那行带 `+` 图标的「添加命令」差一个图标宽，
@@ -277,7 +280,7 @@ internal fun SettingsPage.SerialSteps() {
                         // 浮层挂在零宽内层盒子里（落点由触点决定，这里只是它的宿主）。
                         Box(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(0.dp)) {
                             StepPickerPopup(
-                                show = stepPicker == stepsIndex,
+                                show = stepPicker == item.id,
                                 preciseClick = rowPreciseClick,
                                 replaceIndex = stepsIndex,
                             ) { stepPicker = null }

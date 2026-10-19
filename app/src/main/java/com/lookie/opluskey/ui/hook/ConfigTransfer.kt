@@ -8,10 +8,10 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.ui.appVersionText
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.UNKNOWN_CONFIG_FORMAT
 import com.lookie.opluskey.ui.saveCommands
 import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.toast
 import com.lookie.opluskey.ui.write
 import io.github.libxposed.api.XposedModule
 import kotlinx.coroutines.CoroutineScope
@@ -154,7 +154,7 @@ internal object ConfigTransfer {
         body: String,
     ) {
         if (body.isEmpty()) {
-            HostSession.page?.toast(I18n.get(Strings.TOAST_LOG_EMPTY, "暂无日志"))
+            HostSession.page?.hint(I18n.get(Strings.TOAST_LOG_EMPTY, "暂无日志"))
             return
         }
         val now = java.time.LocalDateTime.now()
@@ -181,7 +181,7 @@ internal object ConfigTransfer {
         } catch (e: Throwable) {
             pendingExport = null
             XLog.w("导出日志：拉不起选择器：${e.message}")
-            HostSession.page?.toast(
+            HostSession.page?.hint(
                 I18n.get(ExportKind.LOG.failKey, ExportKind.LOG.failDefault),
             )
         }
@@ -203,7 +203,7 @@ internal object ConfigTransfer {
         // 而页面这份已经过 `configReadOnly` 那道闸 —— 读不懂的状态下压根进不来这一页。
         val text = ConfigBundle.export(page.configState.config.value, page.configState.commands.value)
         if (text.isEmpty()) {
-            page.toast(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败"))
+            page.hint(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败"))
             return
         }
         val now = java.time.LocalDateTime.now()
@@ -223,7 +223,7 @@ internal object ConfigTransfer {
         } catch (e: Throwable) {
             pendingExport = null
             XLog.w("导出配置：拉不起选择器：${e.message}")
-            page.toast(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
+            page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
         }
     }
 
@@ -254,7 +254,7 @@ internal object ConfigTransfer {
             XLog.w("导入配置：已弹出文件选择器")
         } catch (e: Throwable) {
             XLog.w("导入配置：拉不起选择器：${e.message}")
-            HostSession.page?.toast(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED, "导入失败"))
+            HostSession.page?.hint(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED, "导入失败"))
         }
     }
 
@@ -288,7 +288,7 @@ internal object ConfigTransfer {
             mainHandler.post {
                 if (parsed == null) {
                     XLog.w("导入配置：校验没过，未改动任何配置（${text?.length ?: 0} 字符）")
-                    page.toast(UNKNOWN_CONFIG_FORMAT)
+                    page.hint(UNKNOWN_CONFIG_FORMAT)
                     return@post
                 }
                 // 两段都过了**校验**才动手，但写入还要分开判：先配置（`write` 会拒只读态并 toast），
@@ -308,7 +308,7 @@ internal object ConfigTransfer {
                     // 文案点一句「主开关保持关闭」：导入**不带**主开关状态（见 `ConfigBundle`），
                     //  不说的话用户会以为「导入完就该生效」，实际还得自己去首页打开、并在那一步认风险。
                     CommandsSave.Ok -> {
-                        page.toast(I18n.get(Strings.TOAST_CONFIG_IMPORTED, "已导入配置，主开关保持关闭"))
+                        page.hint(I18n.get(Strings.TOAST_CONFIG_IMPORTED, "已导入配置，主开关保持关闭"))
                     }
 
                     // 两份都已落盘，只是没通知到注入侧：saveCommands 自己已经报过那一句，这里不叠。
@@ -347,7 +347,9 @@ internal object ConfigTransfer {
         val bytes = size ?: return false
         if (bytes <= MAX_IMPORT_BYTES) return false
         XLog.w("导入配置：这个文件太大（$bytes 字节 > $MAX_IMPORT_BYTES），不像是本模块导出的配置")
-        mainHandler.post { HostSession.page?.toast(UNKNOWN_CONFIG_FORMAT) }
+        //  提示要和原因对上：报「未知的配置格式」会让用户去检查格式，而该换的是文件。
+        val tooLarge = I18n.get(Strings.CONFIG_TOO_LARGE, "文件太大，不像是本模块导出的配置")
+        mainHandler.post { HostSession.page?.hint(tooLarge) }
         return true
     }
 
@@ -374,11 +376,19 @@ internal object ConfigTransfer {
                 XLog.w("导入配置：查文件信息失败（照读，不判上限）：${e.message}")
                 return null to null
             } ?: return null to null
+        //  查询成功不等于**读**成功：`moveToFirst` / `getString` 仍旧会和 provider 通信，
+        //  provider 中途死掉时抛的是运行期异常。这里在 IO 协程里、外面只有 SupervisorJob
+        //  —— 漏出去就是 `:ui` 进程崩，所以读取这一段自己兜住（拿不到就当「大小未知」）。
         return cursor.use { c ->
-            if (c.moveToFirst()) {
-                c.stringOrNull(android.provider.OpenableColumns.DISPLAY_NAME) to
-                    c.longOrNull(android.provider.OpenableColumns.SIZE)
-            } else {
+            try {
+                if (c.moveToFirst()) {
+                    c.stringOrNull(android.provider.OpenableColumns.DISPLAY_NAME) to
+                        c.longOrNull(android.provider.OpenableColumns.SIZE)
+                } else {
+                    null to null
+                }
+            } catch (e: Throwable) {
+                XLog.w("导入配置：读文件信息失败（照读，不判上限）：${e.javaClass.simpleName}")
                 null to null
             }
         }
@@ -451,10 +461,17 @@ internal object ConfigTransfer {
         }
         // resolver 在主线程上取好再进协程（[HostSession] 那两个引用本就只在主线程上换）
         val resolver = HostSession.activity?.contentResolver
+        if (resolver == null) {
+            //  页面在挑文件那一步被关了 ⇒ 后面既写不了也弹不出提示。说出来，
+            //  否则用户只看到「导出点了没反应」，日志里一句都没有。
+            XLog.w("${kind.what}：拿不到页面（它已经关了），这次不写盘")
+            mainHandler.post { HostSession.page?.hint(I18n.get(kind.failKey, kind.failDefault)) }
+            return
+        }
         fileScope.launch {
             val written =
                 try {
-                    val out = resolver?.openOutputStream(uri, "wt")
+                    val out = resolver.openOutputStream(uri, "wt")
                     out?.use { it.write(text.toByteArray()) }
                     out != null
                 } catch (e: Throwable) {
@@ -463,7 +480,7 @@ internal object ConfigTransfer {
                 }
             if (written) XLog.w("${kind.what}：已写入（${text.length} 字符）")
             mainHandler.post {
-                HostSession.page?.toast(
+                HostSession.page?.hint(
                     if (written) {
                         I18n.get(kind.okKey, kind.okDefault)
                     } else {

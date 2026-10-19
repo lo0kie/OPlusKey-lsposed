@@ -188,9 +188,12 @@ private fun SettingsPage.CommandTabSync(pagerState: PagerState) {
             //  （看起来毫无理由）。那一格是**用户手输的**（还没保存）时不清 —— 那是他的东西。
             //  表单内容（`single` / `steps`）照旧保留：那是两套互不干扰的字段。
             if (kind != commandDraft.draft.kind) {
-                if (commandDraft.draft.editingName != null) {
+                val editingName = commandDraft.draft.editingName
+                if (editingName != null) {
                     commandDraft.draft.editingName = null
-                    commandDraft.draft.name = ""
+                    // 只在名字仍是**载入时那个**时才清；与它不同说明用户已经手输过新名字，
+                    //  那是他的东西，翻个 tab 不该吞掉。
+                    if (commandDraft.draft.name == editingName) commandDraft.draft.name = ""
                 }
             }
             commandDraft.draft.kind = kind
@@ -247,7 +250,7 @@ private const val MAX_NAME_LENGTH = 24
 @Composable
 internal fun SettingsPage.CommandNameField() {
     IconInputView(
-        spec = InputSpec(PageIcons.InputName, I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"), MAX_NAME_LENGTH),
+        spec = InputSpec(PageIcons.LabelImportant, I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"), MAX_NAME_LENGTH),
         value = commandDraft.draft.name,
         // 边输边清洗：只换掉换行、不 trim —— 带 trim 的版本会让空格打不进去。
         // trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做。

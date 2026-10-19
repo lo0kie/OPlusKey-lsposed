@@ -12,6 +12,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setInstantSingle
+import com.lookie.opluskey.ui.state.KeyWatchState
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 
@@ -42,6 +43,8 @@ import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 @Composable
 internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
     val cfg = configState.config.value
+    // 与「单击延迟」同一条：这一位也是**每颗键自己的**（`KeyConfig.instantSingle`）
+    val checked = cfg.key(KeyWatchState.editing(cfg)).instantSingle
     val tick = rememberTick()
     val rowsEnabled = enabled
     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
@@ -51,7 +54,7 @@ internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
             // 也就是「双击手势不成立、按两下单击算」，而不是「少等一个窗口」这种内部说法。
             summary = I18n.get(Strings.BINDING_INSTANT_SINGLE, "双击为无操作时忽视双击手势，视为两次单击"),
             icon = PageIcons.IgnoreDouble,
-            checked = cfg.global.instantSingle,
+            checked = checked,
             position = cardListPositionOf(0, DOUBLE_SETTING_ROWS),
             enabled = rowsEnabled,
         ) {

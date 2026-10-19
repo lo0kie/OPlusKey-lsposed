@@ -167,37 +167,6 @@ internal val PAGE_TOP_PADDING = 8.dp
 internal val TILE_TEXT_OPTICAL_SHIFT = 1.5.dp
 
 /**
- * 首页那条链路提示（`SnackbarHost`）**内容盒外面**要留出的、给胶囊那圈影子落下的空间。
- *
- * ## 为什么必须留（真机量出来的）
- *
- *  库的 `SnackbarHost` 是「内容多高就多高」的 `LazyColumn`（内部 `reverseLayout`），
- *  items 的**外面那层盒子就是它的裁切边界** —— 影子的可见范围被卡在
- *  「胶囊 ∓ 库自己给的内边距」那一圈上。库给的是 `padding(horizontal = 16.dp, vertical = 4.dp)`，
- *  所以影子横向只画得出 16dp、**纵向往上只画得出 4dp**，而胶囊那圈投影是
- *  `Shadow(elevation = 26.dp, offset = (0, 4.dp))` —— 往上要 ~22dp。差的那一截就在
- *  胶囊顶上方 4dp 处被**齐平切断**（真机取样：断口上下差 10 个灰阶，一眼看得见那道直边）。
- *  底下为什么没事：库给 `LazyColumn` 的 `contentPadding` 底部留了 28dp，
- *  往下有 4 + 28 = 32dp 的地方，正好够 ~30dp 的溢出。
- *
- * ## 为什么补在 item 里，而不是给 `SnackbarHost` 加 `padding`
- *
- *  加在 `SnackbarHost` 上是从**视窗里往外抠**：那个视窗跟着内容一起缩，越抠越没地方
- *  —— 试过（补 16dp），结果切痕跟着胶囊一起上移，一点没修好。
- *  只有撑大 **item 自己**（走 `SnackbarHost` 的 `content` 槽位）才会把裁切边界一起撑出去。
- *
- * 取 20dp：往上要 ~22dp、库已经给了 4dp，补到 24dp 有富余；横向补到 36dp（要 ~26dp）。
- * 四周都够，且 item 总宽还放得下那行提示。
- *
- * ## 底部为什么不补（也别再补回去）
- *
- *  往下要 ~30dp，而库自己那份 `LazyColumn` 的 `contentPadding` 底部就留了 28dp ⇒
- *  4 + 28 = 32dp，本来就够。我们那 20dp 补上去只会把胶囊顶离底边 52dp —— 比库的默认落点高出
- *  一大截，看着像「这条提示悬在屏幕中间偏下」。所以底部按**库的默认值**来，本常量只管另外三边。
- */
-internal val SNACKBAR_SHADOW_ROOM = 20.dp
-
-/**
  * 「自定义命令」页底部操作工具栏（[CommandActions]）距屏幕底边的距离 —— 基准取 [PAGE_BOTTOM_PADDING] × 2（64dp），
  * 与「按键绑定」页那颗 FAB 的下边距同一基准。
  *
@@ -230,9 +199,6 @@ internal const val APP_LIST_HEADER_ITEMS = 1
  * （`LazyColumn` 的项无界）⇒ 行高必须先定死。64dp 是这一行自然高度向上取整；代价是系统字号调大时行不会变高。
  */
 internal val APP_ROW_HEIGHT = 64.dp
-
-/** 应用图标位图的取样边长 —— 48dp，比实际渲染的 40dp 大一档，缩下来才清晰。 */
-internal val APP_ICON_BITMAP_SIZE = 48.dp
 
 /**
  * 「往下滚就藏、往上滚就露」判据的方向翻转门槛 —— 取 0.5dp（真机 560dpi 上是 2px）。

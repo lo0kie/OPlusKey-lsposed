@@ -8,6 +8,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.pageBackgroundColor
 import com.lookie.opluskey.ui.screen.createView
+import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.TestRunnerCache
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
@@ -313,9 +314,14 @@ internal object SettingsPageHooks {
         //  主题这一步是**前置动作**：它抛了会让下面的 `chain.proceed()` 整条不执行，
         //  宿主 onCreate / setContentView 就此跳过、设置页直接建不起来。所以单独兜住，
         //  `proceed()` 无论如何都跑（与本文件另一处「前置动作单独 try、proceed 无条件」同口径）。
+        //  保护用 `catch (Throwable)`：这里要表达的是「保护宿主」，不是「预期内的失败」
+        //  （`runCatching` 在 AGENTS.md 五之二、2 里只留给日志出口与反射查找）。
         (chain.thisObject as? android.app.Activity)?.let {
-            runCatching { HostChrome.applyHostTheme(it) }
-                .onFailure { e -> XLog.w("应用宿主主题失败（继续建页）：${e.javaClass.simpleName}", e) }
+            try {
+                HostChrome.applyHostTheme(it)
+            } catch (e: Throwable) {
+                XLog.w("应用宿主主题失败（继续建页）：${e.javaClass.simpleName}", e)
+            }
         }
 
         // 再把宿主自己的 onCreate 跑完。这一步失败是宿主的 bug，让它照常崩。
@@ -588,11 +594,16 @@ internal object SettingsPageHooks {
         //  平时是 [BackInterception.syncBackCallback] 先摘掉的，这里只是「关页」这个时点的兜底（重复调用无害）。
         BackInterception.unregisterBackCallback()
         HostSession.activity = null
+        //  提示那几条协程也一起收掉：它们还挂在旧页面的作用域上，留着只会在没人看的时候醒一次
+        HostSession.page?.link?.dispose()
         HostSession.page = null
         pageView = null
         hostAppbar = null
         hostContainer = null
         stockRevealed = false
+        //  「在编辑哪一颗键」是这一趟停留的临时状态：页面没了就忘掉（见 `KeyWatchState` 的类注释），
+        //  否则下次进页仍停在上一颗自定义键上，而用户以为在改侧键。
+        KeyWatchState.select(null)
         //  「测试命令」那份执行器也一起放掉：它持宿主 Application Context、几个系统服务，
         //  以及一条**注册在系统里的**手电筒 torch 回调（`FlashlightController` 注册后不会自摘）。
         //  页面关掉就没有人再用它了，留着只是把这几样钉在这个 `:ui` 进程里。

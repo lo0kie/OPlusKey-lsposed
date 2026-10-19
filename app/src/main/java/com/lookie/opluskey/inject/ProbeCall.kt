@@ -333,6 +333,16 @@ internal fun ProbeChannel.zoomFromHere(
     loader: ClassLoader,
     intent: Intent,
 ) {
+    // 下面 `getInstance()` 会触发宿主类 `<clinit>` —— 与 `call` 同一条险路，同样要显式 opt-in
+    if (!allowUnsafe(RomProfile.effective.reflection.zoomTaskManager, OP_ZOOM, intent)) return
+    zoomFromHereGated(loader, intent)
+}
+
+/** [zoomFromHere] 过闸之后的那一半 —— 闸单独一层，免得这条路上的出口数顶到 detekt 上限。 */
+private fun ProbeChannel.zoomFromHereGated(
+    loader: ClassLoader,
+    intent: Intent,
+) {
     val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
     val flags = intent.getIntExtra(EXTRA_FLAGS, DEFAULT_ZOOM_LAUNCH_FLAGS)
     if (taskId <= 0) {

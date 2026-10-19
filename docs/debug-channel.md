@@ -80,9 +80,10 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture
   --es op call --es target service --es name getCaptionName --esa args 1 --ez unsafe true'"
 ```
 
-- `unsafe`：**必带**（`--ez unsafe true`）。`call` 会对广播指定的类直接 `invoke`，而 **`invoke` 会触发
-  那个宿主类的 `<clinit>`** —— 顺序不对就把类标成 erroneous，之后系统真用到它的地方
-  `NoClassDefFoundError`（AGENTS.md 五之二、1 那条红线）。所以它只在「广播显式要求」**且**「`cls` 命中
+- `unsafe`：**必带**（`--ez unsafe true`）。凡是会把宿主类**实例化**的 op（`call`、`state`、`corner`、
+  `dress`、`zoom` —— 它们都经 `FlexibleWindowManagerService.getInstance()`）都要这一步：`invoke` /
+  `getInstance` 会触发那个宿主类的 `<clinit>` —— 顺序不对就把类标成 erroneous，之后系统真用到它的地方
+  `NoClassDefFoundError`（AGENTS.md 五之二、1 那条红线）。所以它只在「广播显式要求」**且**「类名命中
   白名单」时才执行；白名单是 `com.android.server.wm.` 与 `android.app.OplusActivityTaskManager`
   （就是本模块真要用到的那两族）。其余情况一律拒绝，并在日志里留一条 W 级判据行写明卡在哪一条。
 - `cls`：目标类的完整类名（`target=static` 必填；`target=service` 可不填，由服务自身推出来）
@@ -97,7 +98,7 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture
 
 ```bash
 adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture \
-  --es op state --ei task_id 75'"
+  --es op state --ei task_id 75 --ez unsafe true'"
 ```
 
 打任务的 bounds、`TaskExt` 上的 `mScenario` / `mHasCaption` / `mFlexibleZoomState` / `mCaptionName`
@@ -107,7 +108,7 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture
 
 ```bash
 adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture \
-  --es op corner --ei task_id 75 --ef radius 91'"
+  --es op corner --ei task_id 75 --ef radius 91 --ez unsafe true'"
 ```
 
 给目标任务的窗口 surface 设圆角（`SurfaceControl.Transaction#setCornerRadius`）。 `SurfaceControl`
@@ -119,7 +120,7 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture
 
 ```bash
 adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture \
-  --es op dress --ei task_id 75 --ef radius 91 --ez caption true --ez show true'"
+  --es op dress --ei task_id 75 --ef radius 91 --ez caption true --ez show true --ez unsafe true'"
 ```
 
 - `radius`（给了才做圆角）/ `caption`（`initCaptionViewAndAttachToTask`）/ `show`（`showCaptionViewWithAnim`）
@@ -137,7 +138,7 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture
 # ⚠️ 曾经要从桌面进程发起时带 `-p com.android.launcher` —— 桌面落点 2026-10-14 已撤掉，
 #    现在不加 `-p`、由 system_server 那个 hook 接（见 §三）
 adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE \
-  --es op zoom --ei task_id 116 --ei flags 2'"
+  --es op zoom --ei task_id 116 --ei flags 2 --ez unsafe true'"
 ```
 
 返回值语义：**`2` = `START_TASK_TO_FRONT`，服务端已受理并 toggle**；`0` / 负数 = 没做任何事。

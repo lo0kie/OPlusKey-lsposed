@@ -270,17 +270,18 @@ private fun SettingsPage.CommandTileBody(
                 testCommand(cmd)
             }
         }
-        // 多条命令的标题在图标下面另起一行。
+        // 多条命令：**名字在图标那一行**，步骤间隔挪到下面另起一行（用户口径「名称和 delay
+        //  换个位置」—— 名字是这张卡的主键，跟类型图标同一行才读得出「这是哪一条」；
+        //  间隔是执行参数，放在名字下面当小字）
         if (cmd.kind == CommandKind.SERIAL) {
             Spacer(Modifier.height(TILE_TITLE_GAP))
-            // 标题档位：`headline1` + Medium。
             Text(
-                text = cmd.name,
-                style = COUITheme.textStyles.headline1,
-                fontWeight = FontWeight.Medium,
-                // 选中时上主题色，与类型图标同色、同一动画值。
-                color = accentColor,
-                maxLines = 2,
+                // 文案走 [durationText]（全局唯一一处）：
+                // 1000ms 以上写成秒（`3 秒`），一秒以内是毫秒（`400 毫秒`）
+                text = durationText(cmd.stepDelayMs),
+                style = COUITheme.textStyles.footnote1,
+                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -291,10 +292,10 @@ private fun SettingsPage.CommandTileBody(
 }
 
 /**
- * 卡片顶行左段：类型图标 + 一行小字。
+ * 卡片顶行左段：类型图标 + **标题**（单条 / 多条都一样）。
  *
- *  单条命令这行放**标题**；多条命令的标题另起一行，这里放它的**步骤间隔** —— 那是多条命令独有的
- *  执行参数（单条一闪而过，用不到），而卡片上原本只有步骤列表、看不到它。
+ *  多条命令的「步骤间隔」不在这一行 —— 它是执行参数，挪到名字下面那一行小字里
+ *  （见卡片正文：用户口径「名称和 delay 换个位置」）。
  *
  *  挂在 [Modifier.weight] 上（调用点传进来）而不是自己声明 `RowScope`：
  *  同一个函数还要读 [SettingsPage] 的东西时，Kotlin 只允许一个显式接收者。
@@ -314,28 +315,17 @@ private fun CommandTileHeadline(
             tint = accentColor,
         )
         Spacer(Modifier.width(TILE_TITLE_GAP))
-        if (cmd.kind == CommandKind.SINGLE) {
-            // 单条命令：标题与图标同一行，只给一行（超了省略号）。
-            Text(
-                text = cmd.name,
-                style = COUITheme.textStyles.headline1,
-                fontWeight = FontWeight.Medium,
-                // 选中时上主题色，与类型图标同色、同一动画值。
-                color = accentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        } else {
-            Text(
-                // 文案走 [durationText]（全局唯一一处）：
-                // 1000ms 以上写成秒（`3 秒`），一秒以内是毫秒（`400 毫秒`）
-                text = durationText(cmd.stepDelayMs),
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        // 两种命令的标题都**跟图标同一行**：名字是这张卡的主键，一眼要能认出来。
+        //  多条命令独有那位「步骤间隔」挪到名字下面那行小字里去（见卡片正文那一段）。
+        Text(
+            text = cmd.name,
+            style = COUITheme.textStyles.headline1,
+            fontWeight = FontWeight.Medium,
+            // 选中时上主题色，与类型图标同色、同一动画值。
+            color = accentColor,
+            maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

@@ -296,8 +296,14 @@ internal object KeyHooks {
             //  等于在广播路径里重入广播路径（与 `reportStatus` 同一条纪律）。
             ModuleWire.ACTION_LOG_PULL -> {
                 handler.post {
-                    val ctx = SystemContext.get(systemLoader ?: return@post) ?: return@post
-                    LogWire.reply(ctx, HostApp.PACKAGE, "system")
+                    // 这一段跑在 system_server 主线程上：任何未捕获异常都会把整机拖去重启
+                    //  （与上面 ProbeChannel 那支同一纪律，别再省这层 try）。
+                    try {
+                        val ctx = SystemContext.get(systemLoader ?: return@post) ?: return@post
+                        LogWire.reply(ctx, HostApp.PACKAGE, "system")
+                    } catch (e: Throwable) {
+                        XLog.w("导出日志（注入侧）失败（已忽略）：${e.javaClass.simpleName}", e)
+                    }
                 }
             }
 

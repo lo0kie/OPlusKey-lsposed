@@ -186,6 +186,9 @@ internal object GestureReceiver {
                     addAction(ModuleWire.ACTION_HOST_SERVICE_QUERY)
                     // 以及「重启服务」那句「请你把页面拉回来」（同上）
                     addAction(ModuleWire.ACTION_PAGE_RELAUNCH)
+                    // 以及「导出日志」那句「把你这边的缓冲交出来」—— 漏了这一条，
+                    //  onReceive 里那个分支永远进不来，导出的日志里永远缺宿主主进程这一段。
+                    addAction(ModuleWire.ACTION_LOG_PULL)
                 },
                 Context.RECEIVER_NOT_EXPORTED,
             )
@@ -206,7 +209,7 @@ internal object GestureReceiver {
      *  它只做一件事：起宿主自己的设置页（[Framework.HOST_SETTINGS_ACTIVITY]）；不读配置、不改状态 ——
      *  任何应用发这条，最多把设置页调到前台一次。这是「管理器那颗按钮不依赖 root」的代价。
      *
-     *  ⚠️ 发起方用的是**有序广播**：起页成败写进 `resultCode`，那边据此决定要不要提示。
+     *  注意：发起方用的是**有序广播**：起页成败写进 `resultCode`，那边据此决定要不要提示。
      */
     private fun registerOpener(ctx: Context) {
         if (opener != null) return
@@ -311,7 +314,7 @@ internal object GestureReceiver {
     private fun publishConfigState(ctx: Context) {
         XLog.guard("广播配置给注入侧") {
             val config = ConfigStore.read()
-            if (PageWire.send(ctx, HostApp.PACKAGE, ConfigBroadcast.intent(config, CommandLibrary.longIsSerial(config)))) {
+            if (PageWire.send(ctx, HostApp.PACKAGE, ConfigBroadcast.intent(config) { CommandLibrary.longIsSerial(config, it) })) {
                 XLog.w("已广播配置给注入侧（用户已解锁=${isUserUnlocked(ctx)}）")
             }
         }
@@ -369,8 +372,11 @@ internal object GestureReceiver {
         repeat: Boolean,
         sentAt: Long,
     ) {
+        // 键身份按**当前配置**解析，不用 `KeyId.fromId`：后者只认内置键，而自定义按键是用户
+        //  运行时收集来的，只存在于配置的 `custom_keys` 那段里。注入侧认领时用的也是这份身份。
+        //  `ConfigStore.read()` 有带指纹的读缓存，这里多读一次只是一次 `stat` 比对。
         val key =
-            KeyId.fromId(keyId.orEmpty()) ?: run {
+            ConfigStore.read().keyIdOf(keyId.orEmpty()) ?: run {
                 XLog.w("不认识的键 id：$keyId")
                 return
             }

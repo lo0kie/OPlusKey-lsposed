@@ -8,16 +8,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.withKeyName
+import com.lookie.opluskey.core.model.withoutKey
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.HeaderMenuButton
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.MenuPopup
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_PICKER_MAX_HEIGHT
 import com.lookie.opluskey.ui.resetKeyBindings
+import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.state.WatchedKey
+import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
 /**
@@ -68,17 +74,35 @@ internal fun SettingsPage.BindingKeyMenu() {
             show = open,
             preciseClick = preciseClick,
             onDismiss = { open = false },
-            // 与「添加命令」「入口格菜单」同一档高度：键一多这菜单就顶到屏幕外，而且滚不动
+            // 与「添加命令」「入口格菜单」**同一档**最大高度：超过就滚动。
+            //  不传的话面板按内容长，键一多（自定义按键是用户随时能加的）就会顶到屏幕外、
+            //  而且滚不动 —— 与系统开关那格（十个开关）是同一道菜单、同一条判据。
             maxHeight = STEP_PICKER_MAX_HEIGHT,
             entries =
                 keyMenuEntries(
-                    selected = KeyWatchState.selected,
-                    keys = KeyWatchState.added,
+                    // 选中态是界面状态（`KeyWatchState`），清单是**配置**（`customKeys`）——
+                    //  两者在这里凑齐交给菜单，菜单本身不认识任何一个来源。
+                    selected = KeyWatchState.editing(configState.config.value),
+                    keys = configState.config.value.customKeys,
                     actions =
                         KeyMenuActions(
-                            onSelect = {
-                                KeyWatchState.select(it)
+                            onSelect = { target ->
                                 open = false
+                                // 点的就是当前那颗 ⇒ 什么都不做（不切换、也不报「已切换到「…」」）：
+                                //  菜单里那颗本来就打着勾，再报一句等于说你刚做了一件没发生的事。
+                                //  比的是 `selectedId`（`null` = 侧键）：那一位就是菜单打勾的依据，
+                                //  与「点了哪一行」是同一套口径。
+                                if (target == KeyWatchState.selectedId) {
+                                    XLog.w("按键绑定：点的就是当前那颗，不切换")
+                                } else {
+                                    KeyWatchState.select(target)
+                                    // 「切换按键」是一个动作，弹一句说明切到了哪颗（用户口径）。
+                                    //  名字取**切换之后**那一颗 —— `editing` 会把「选中的那颗刚被删掉」
+                                    //  兜成侧键，所以这里读出来的就是用户眼前正看着的那颗。
+                                    val label = KeyWatchState.editing(configState.config.value).label
+                                    XLog.w("按键绑定：切换到「$label」")
+                                    hint(I18n.get(Strings.TOAST_KEY_SWITCHED, "已切换到「%s」").format(label))
+                                }
                             },
                             onCollect = {
                                 open = false
@@ -117,7 +141,7 @@ private enum class KeyMenuDialog {
  * `LongParameterList` 之下（那五条本来就同属「菜单点了什么」）。
  */
 private class KeyMenuActions(
-    val onSelect: (WatchedKey?) -> Unit,
+    val onSelect: (String?) -> Unit,
     val onCollect: () -> Unit,
     val onRename: () -> Unit,
     val onReset: () -> Unit,
@@ -127,12 +151,12 @@ private class KeyMenuActions(
 /**
  * 菜单内容 —— 与组合无关（纯数据 + 回调），单独一支只为让 [BindingKeyMenu] 那支短下来。
  *
- * @param selected 当前停在哪一颗（`null` = 侧键那一组）
- * @param keys 已经收集到的键
+ * @param selected 当前在编辑哪一颗（`KeyId.PLUS` = 侧键）
+ * @param keys 已经收集到的键（配置里的 `customKeys`，按收集顺序）
  */
 private fun keyMenuEntries(
-    selected: WatchedKey?,
-    keys: List<WatchedKey>,
+    selected: KeyId,
+    keys: List<KeyId>,
     actions: KeyMenuActions,
 ): List<MenuEntry> =
     buildList {
@@ -141,7 +165,7 @@ private fun keyMenuEntries(
                 title = I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键"),
                 icon = PageIcons.MenuKeys,
                 // 停在这组时行尾对勾 + 文字主题色
-                selected = selected == null,
+                selected = !selected.isCustom,
                 onPick = { actions.onSelect(null) },
             ),
         )
@@ -150,13 +174,14 @@ private fun keyMenuEntries(
         //  「添加按键」切成两组，而这两行本来就同属「键清单」那一组。
         if (keys.isNotEmpty()) {
             add(MenuEntry.GroupLine)
-            for (key in keys) {
+            keys.forEachIndexed { index, key ->
                 add(
                     MenuEntry.Row(
                         title = key.label,
-                        icon = PageIcons.MenuCustomKey,
-                        selected = selected?.code == key.code,
-                        onPick = { actions.onSelect(key) },
+                        // 第几颗就画哪个数字（`number-1/2/3`，与清单顺序一致）
+                        icon = PageIcons.menuKeyNumber(index),
+                        selected = selected.id == key.id,
+                        onPick = { actions.onSelect(key.id) },
                     ),
                 )
             }
@@ -172,7 +197,10 @@ private fun keyMenuEntries(
         add(
             MenuEntry.Row(
                 title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
-                icon = PageIcons.MenuCustomKey,
+                icon = PageIcons.MenuKeyAdd,
+                // 收满 [KeyId.MAX_CUSTOM_KEYS] 颗就置灰：点了也只会 toast 一句「到上限」，
+                // 不如直接说「不能再加了」。禁用行会吃掉点击、菜单不关（见 [MenuEntry.Row]）。
+                enabled = keys.size < KeyId.MAX_CUSTOM_KEYS,
                 onPick = actions.onCollect,
             ),
         )
@@ -182,36 +210,36 @@ private fun keyMenuEntries(
     }
 
 /**
- * 菜单下半那**三行动作** —— 重置 / 重命名 / 删除，全部作用于*当前选中的那一颗*。
+ * 菜单下半那**三行动作** —— 重命名 / 重置 / 删除，全部作用于*当前选中的那一颗*。
  *
  *  单独一支同样是为了让 [keyMenuEntries] 留在 `LongMethod` 之内；三行之间一律**细线**，
  *  与上面那条加深带（键清单 vs 操作）是两回事。
  *
- *  顺序是「重置 → 重命名 → 删除」：重置与删除都作用于**整颗键**（一个清绑定、一个删键），
- *  重命名只改名字，夹在中间会把两件「动这颗键」的事拆开。
+ *  顺序是「重命名 → 重置 → 删除」，按**破坏性**从小到大排（用户口径）：改名字不动任何数据；
+ *  重置清掉这颗键的三个手势与参数、键本身还在；删除最狠，压在最下面 —— 越靠下越不容易误点。
  */
 private fun keyActionEntries(
-    selected: WatchedKey?,
+    selected: KeyId,
     actions: KeyMenuActions,
 ): List<MenuEntry> =
     buildList {
         add(
             MenuEntry.Row(
-                title = I18n.get(Strings.BINDING_RESET_KEY, "重置绑定"),
-                icon = PageIcons.MenuReset,
-                // 现在只有侧键有配置段，收集来的键还没有绑定可重置
-                enabled = selected == null,
-                onPick = actions.onReset,
+                title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
+                icon = PageIcons.CommandEdit,
+                // 侧键的名字不归用户改
+                enabled = selected.isCustom,
+                onPick = actions.onRename,
             ),
         )
         add(MenuEntry.RowLine)
         add(
             MenuEntry.Row(
-                title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
-                icon = PageIcons.CommandEdit,
-                // 侧键的名字不归用户改
-                enabled = selected != null,
-                onPick = actions.onRename,
+                title = I18n.get(Strings.BINDING_RESET_KEY, "重置此按键绑定"),
+                icon = PageIcons.MenuReset,
+                // 每一颗键都有自己的配置段（`Config.keys`），所以都能重置
+                enabled = true,
+                onPick = actions.onReset,
             ),
         )
         add(MenuEntry.RowLine)
@@ -219,8 +247,8 @@ private fun keyActionEntries(
             MenuEntry.Row(
                 title = I18n.get(Strings.BINDING_DELETE_KEY, "删除按键"),
                 icon = PageIcons.CommandDelete,
-                // 侧键不给删（selected 为 null 就是侧键那一组）
-                enabled = selected != null,
+                // 侧键不给删（它不是用户收集来的东西）
+                enabled = selected.isCustom,
                 danger = true,
                 onPick = actions.onDelete,
             ),
@@ -239,7 +267,8 @@ private fun SettingsPage.KeyMenuDialogHost(
     onDismiss: () -> Unit,
 ) {
     // 弹窗里的文案取**当前选中**那一颗（弹窗开着时选中不会变，但取当前值比闭包更稳）
-    val selected = KeyWatchState.selected
+    val config = configState.config.value
+    val selected = KeyWatchState.editing(config)
 
     CollectKeyDialog(
         show = dialog == KeyMenuDialog.COLLECT,
@@ -247,16 +276,17 @@ private fun SettingsPage.KeyMenuDialogHost(
     )
     RenameKeyDialog(
         show = dialog == KeyMenuDialog.RENAME,
-        initial = selected?.name.orEmpty(),
+        initial = selected.label,
         onDismiss = onDismiss,
         onConfirm = { name ->
-            selected?.let { KeyWatchState.rename(it, name) }
+            // 改名写进配置（身份是 id，绑定不丢）；失败时 `write` 自己会提示，这里照样关窗。
+            if (selected.isCustom) confirmRenameKey(selected, name)
             onDismiss()
         },
     )
     ConfirmDialog(
         show = dialog == KeyMenuDialog.RESET,
-        title = I18n.get(Strings.BINDING_RESET_KEY, "重置绑定"),
+        title = I18n.get(Strings.BINDING_RESET_KEY, "重置此按键绑定"),
         summary = I18n.get(Strings.BINDING_RESET_KEY_CONFIRM, "单击、双击、长按与按键设置都会回到默认，按键本身保留。"),
         action = I18n.get(Strings.COMMON_RESET, "重置"),
         positiveDanger = true,
@@ -270,18 +300,49 @@ private fun SettingsPage.KeyMenuDialogHost(
         show = dialog == KeyMenuDialog.DELETE,
         title = I18n.get(Strings.BINDING_DELETE_KEY, "删除按键"),
         summary =
-            selected?.let {
-                I18n
-                    .get(
-                        Strings.BINDING_DELETE_KEY_CONFIRM,
-                        "「%s」会从按键清单里删掉。",
-                    ).format(it.label)
-            },
+            I18n
+                .get(
+                    Strings.BINDING_DELETE_KEY_CONFIRM,
+                    "「%s」会从按键清单里删掉。",
+                ).format(selected.label),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = onDismiss,
         onConfirm = {
-            KeyWatchState.removeSelected()
+            // 清单与绑定两处一起摘（见 `Config.withoutKey`）；选中态收回侧键。
+            //  **写成了才收**：写盘失败时界面仍停在那一颗上，与文件里的真实配置一致
+            //  （先 forget 会让页面切回侧键，而那颗键其实还在配置里）。
+            if (selected.isCustom) {
+                val now = configState.config.value
+                if (write(now.withoutKey(selected.id), "custom_key_delete=${selected.id}") != CommandsSave.Failed) {
+                    KeyWatchState.forget(selected.id)
+                    // 删成功才提示：名字得在 forget 之后取，否则 `selected` 已经指向不存在的键
+                    hint(I18n.get(Strings.TOAST_KEY_DELETED, "已删除「%s」").format(selected.label))
+                }
+            }
             onDismiss()
         },
     )
+}
+
+/**
+ * 「重命名」弹窗点了确定 —— **名字没变就什么都不做**（不落盘、也不报「已重命名为「…」」）。
+ *
+ *  打开弹窗看一眼再点确定是最常见的误触；报一句反而让人以为真的改了什么。
+ *  写盘取**此刻**的配置，不用组合期那份快照：弹窗开着这段时间别处可能已经写过配置，
+ *  拿旧快照写回去会把那次改动一起抹掉。
+ *
+ * @param name 弹窗里那一份（已去掉首尾空白）；回执里取的是**它**，不是 `selected.label`
+ *   —— 后者是改名之前的值
+ */
+private fun SettingsPage.confirmRenameKey(
+    selected: KeyId,
+    name: String,
+) {
+    if (name == selected.label) {
+        XLog.w("按键绑定：名字没变（${selected.label}），不写盘")
+        return
+    }
+    val now = configState.config.value
+    if (write(now.withKeyName(selected.id, name), "custom_key_rename=${selected.id}") == CommandsSave.Failed) return
+    hint(I18n.get(Strings.TOAST_KEY_RENAMED, "已重命名为「%s」").format(name))
 }

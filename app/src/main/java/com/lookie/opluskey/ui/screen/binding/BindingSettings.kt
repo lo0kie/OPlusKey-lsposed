@@ -6,12 +6,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
@@ -37,6 +38,9 @@ import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 @Composable
 internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
     val cfg = configState.config.value
+    // 这一份参数是**每颗键自己的**（`KeyConfig.doubleClickMs`），不再与其他键共用
+    val id = KeyWatchState.editing(cfg)
+    val key = cfg.key(id)
     val rowsEnabled = enabled
     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         SliderRow(
@@ -44,19 +48,17 @@ internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
             icon = PageIcons.DelayTap,
             summary = I18n.get(Strings.BINDING_DOUBLE_CLICK_WAIT, "单击后等待双击的时长"),
             position = cardListPositionOf(0, SINGLE_SETTING_ROWS),
-            min = GlobalConfig.MIN_DOUBLE_CLICK_MS,
-            max = GlobalConfig.MAX_DOUBLE_CLICK_MS,
-            value = cfg.global.doubleClickMs,
-            default = GlobalConfig.DEFAULT_DOUBLE_CLICK_MS,
+            min = KeyConfig.MIN_DOUBLE_CLICK_MS,
+            max = KeyConfig.MAX_DOUBLE_CLICK_MS,
+            value = key.doubleClickMs,
+            default = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
             enabled = rowsEnabled,
         ) { v ->
+            val now = configState.config.value
+            val target = KeyWatchState.editing(now)
             write(
-                configState.config.value.copy(
-                    global =
-                        configState.config.value.global
-                            .copy(doubleClickMs = v),
-                ),
-                "double_click_ms=$v",
+                now.copy(keys = now.keys + (target to now.key(target).copy(doubleClickMs = v))),
+                "double_click_ms=$v key=${target.id}",
             ) != CommandsSave.Failed
         }
     }

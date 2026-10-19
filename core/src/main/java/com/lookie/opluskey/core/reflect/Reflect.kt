@@ -48,6 +48,12 @@ object Reflect {
      */
     private val missAt: ConcurrentHashMap<String, Long> = ConcurrentHashMap()
 
+    /** [missAt] 的键：`loader` 的身份 + 类名 —— 同名类在不同 loader 里是两回事。 */
+    private fun missKey(
+        loader: ClassLoader?,
+        name: String,
+    ): String = "${System.identityHashCode(loader)}#$name"
+
     /** 负命中的重试窗口（毫秒）。 */
     private const val MISS_RETRY_MS = 30_000L
 
@@ -105,15 +111,19 @@ object Reflect {
             // 负命中要**会过期**：这个类可能只是「这会儿还加载不了」（挂点太早 / loader 还没就绪），
             //  永久记住「没有」会让那个注入点一直失效到重启。窗口内直接返回 null（省一次慢查找），
             //  出窗再查一遍 —— 查到了就把负命中覆盖掉。
-            val at = missAt[name] ?: 0L
+            //  负命中按「loader + 类名」记：同名类在两个 loader 里的解析是两件事，
+            //  共用一个窗口会让 loader A 的失败压住 loader B 的重试。
+            val at = missAt[missKey(loader, name)] ?: 0L
             if (System.nanoTime() / 1_000_000 - at < MISS_RETRY_MS) return null
         }
         val cls = runCatching { Class.forName(name, false, loader) }.getOrNull()
         bucket[name] = (cls ?: NOT_FOUND)
         if (cls == null) {
-            missAt[name] = System.nanoTime() / 1_000_000
+            missAt[missKey(loader, name)] = System.nanoTime() / 1_000_000
         } else {
-            missAt.remove(name)
+            // 键是「loader + 类名」，删也得删同一个键：传裸类名的话这一条永远删不掉，
+            //  静态表只涨不落（而且下次同名查找会被一条早已过期的负命中挡住）。
+            missAt.remove(missKey(loader, name))
         }
         return cls
     }
@@ -402,12 +412,34 @@ object Reflect {
         }
     }
 
-    /** 读取实例字段。 */
+    /**
+     * 读取实例字段；读不到返回 null。
+     *
+     *  「没有这个字段」与「字段值真是 null」必须分得开：前者是 ROM 改名 / 挪类，后者是正常值。
+     *  所以查找落空与读取抛异常各记一行（按 `类#字段` 去重 —— 这条路可能落在按键热路径上），
+     *  否则 ROM 换了字段名之后日志里一行线索都没有（AGENTS.md 五、2）。
+     */
     fun fieldValue(
         receiver: Any?,
         cls: Class<*>,
         name: String,
-    ): Any? = runCatching { field(cls, name)?.get(receiver) }.getOrNull()
+    ): Any? {
+        val f = field(cls, name)
+        if (f == null) {
+            if (reportedMissing.add("field:${cls.name}#$name")) {
+                XLog.w("找不到字段：${cls.name}#$name（读值按 null 处理）")
+            }
+            return null
+        }
+        return try {
+            f.get(receiver)
+        } catch (e: Throwable) {
+            if (reportedMissing.add("field-err:${cls.name}#$name")) {
+                XLog.w("读字段失败：${cls.name}#$name", e)
+            }
+            null
+        }
+    }
 
     /**
      * 剥到最内层的 cause —— 反射 `invoke()` 抛出的异常被包在 `InvocationTargetException` 里，

@@ -6,7 +6,10 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import io.github.suqi8.coui.kmp.basic.SnackbarHostState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 /**
  * 「我们自己刚写下去的那一份配置还在路上」的宽限 —— 见 [HostLinkState.configPending]。
@@ -15,6 +18,12 @@ import io.github.suqi8.coui.kmp.basic.SnackbarHostState
  *  留的余量。它只影响「乐观」这一小段 —— 回包一到就提前结束，等不到也会自己过期。
  */
 internal const val CONFIG_IN_FLIGHT_GRACE_MS = 2_000L
+
+/**
+ * 操作提示停留多久（毫秒）。库的 `SnackbarDuration.Short` 是 4s，这里短一点：
+ * 回执只是一句「已删除」，看完就走，不该一直压着页面底部。
+ */
+private const val HINT_HOLD_MS = 2200L
 
 /**
  * 「链路 / 报活」那一域的状态 —— 首页那条提示与「更多选项 → 运行状态」共用的那几项结论。
@@ -49,7 +58,7 @@ internal class HostLinkState {
     var injectAliveToken by mutableIntStateOf(0)
 
     /** 宿主报活带回来的「它读到的主开关真值」—— `false` ⇒ 它读到的是默认值（主开关关着 / 还没解锁）。 */
-    var hostEnabled by mutableStateOf(true)
+    var hostEnabled by mutableStateOf(false)
 
     /** 宿主报活带回来的「最后一次执行动作」（`elapsedRealtime()`，0 = 从未）。 */
     var hostLastActionAt by mutableLongStateOf(0L)
@@ -92,10 +101,54 @@ internal class HostLinkState {
             SystemClock.uptimeMillis() - pendingConfigSince < CONFIG_IN_FLIGHT_GRACE_MS
 
     /**
-     * 首页那条「模块未生效」提示的宿主状态 —— COUI 的 `SnackbarHost` 用它排队 / 显隐。
+     * 提示用的作用域 —— 页面级，关页时由 [dispose] 收掉。
      *
-     *  提示由首页弹，宿主却挂在这一层：`SnackbarHost` 要的是「底部对齐、不随内容滚动」的位置，
-     *  而首页自己整个是滚动容器 —— 挂在页内就只能跟着内容滚了。
+     *  `Main.immediate`：提示是 Compose 状态，写它就该在主线程；而 `hint()` 的调用点有一半
+     *  在事件回调里（已经在主线程），`immediate` 让那几处不必多绕一次消息队列。
+     *
+     *  **必须声明在两份 [HintState] 之前**：Kotlin 的属性按书写顺序初始化，放到后面那份
+     *  `HintState(scope, …)` 拿到的会是 `null`（编译期不报，运行时就是一次 NPE）。
      */
-    val snackbar = SnackbarHostState()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
+     * 首页那条「模块未生效」**常驻**结论 —— 一直挂着，直到结论变了或被代码收掉。
+     *
+     *  与 [actionHint] 分成两份状态，因为两者的生命周期正相反：这条不会自己走，
+     *  另一条几秒就消失。放在同一份里会互相顶掉（收常驻那条时把刚做的动作回执一起收掉）。
+     *  实现见 [HintState]（为什么不用库的 `SnackbarHostState`，那里写着）。
+     */
+    val statusHint = HintState(scope, holdMs = 0)
+
+    /**
+     * **操作提示** —— 用户做完一个动作之后的回执（已删除、保存失败、已切换到某颗键……）。
+     *
+     *  两秒多就自己走；新的一句**直接换掉**旧的一句，不排队（见 [HintState] 的类注释）。
+     */
+    val actionHint = HintState(scope, holdMs = HINT_HOLD_MS)
+
+    /**
+     * 弹一条**操作提示**（取代原来的 Android Toast）。
+     *
+     *  只换字符串：没有队列、没有「先收再弹」—— 那套是给库的 host 准备的，
+     *  也正是「第二句从更高的地方瞬回」的来源（见 [HintState]）。
+     */
+    fun hint(text: String) {
+        actionHint.show(text)
+    }
+
+    /** 换掉那条常驻提示（结论变了）；传 `null` = 收掉。 */
+    fun showStatus(text: String?) {
+        if (text == null) statusHint.dismiss() else statusHint.show(text)
+    }
+
+    /** 收掉那条常驻提示（离开首页 / 关页时）。 */
+    fun dismissStatus() {
+        statusHint.dismiss()
+    }
+
+    /** 关页时收掉作用域 —— 还在计时的提示跟着停，不会有人再往旧实例里写。 */
+    fun dispose() {
+        scope.cancel()
+    }
 }

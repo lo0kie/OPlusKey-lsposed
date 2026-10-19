@@ -65,10 +65,27 @@ object ConfigBroadcast {
         k: String,
     ): Any? =
         try {
-            when (ConfigFields.kindOfExtra(k)) {
-                is ConfigFields.Kind.Bool -> extras.getBoolean(k)
-                is ConfigFields.Kind.Number -> extras.getInt(k)
-                else -> extras.getString(k)
+            // 逐键那几项在广播里带 `<keyId>_` 前缀，字段表登记的是基础名 —— 取类型之前先剥掉，
+            //  否则类型永远判成「没登记」，`getString` 撞上 int / bool 直接抛。
+            when (ConfigFields.kindOfExtra(ConfigFields.baseExtraName(k))) {
+                is ConfigFields.Kind.Bool -> {
+                    extras.getBoolean(k)
+                }
+
+                is ConfigFields.Kind.Number -> {
+                    extras.getInt(k)
+                }
+
+                is ConfigFields.Kind.Text -> {
+                    extras.getString(k)
+                }
+
+                // 表里没登记、也不是逐键字段（每键的 code / name 这种）：按原始值取，
+                //  不做类型断言 —— 这一句只服务指纹，取不到就 null。
+                else -> {
+                    @Suppress("DEPRECATION")
+                    extras.get(k)
+                }
             }
         } catch (e: Throwable) {
             null
@@ -76,12 +93,12 @@ object ConfigBroadcast {
 
     /**
      * [tag] 的发送侧入口：按 [intent] 的口径算，与接收侧逐字节对得上。
-     * [longSerial] 与 [intent] 同源 —— 由调用方算好（见那里的说明）。
+     * [longSerialOf] 与 [intent] 同源 —— 由调用方算好（见那里的说明）。
      */
     fun tag(
         config: Config,
-        longSerial: Boolean,
-    ): String = tag(intent(config, longSerial))
+        longSerialOf: (KeyId) -> Boolean,
+    ): String = tag(intent(config, longSerialOf))
 
     /**
      * 把一份配置编成广播；宿主与设置页共用此构造器，格式只在这里写一次。
@@ -89,7 +106,7 @@ object ConfigBroadcast {
      *  逐项 extra 的名字与类型由 `ConfigFields` 那张**字段表**给出（本层只负责把值放进 intent），
      *  于是加一个字段不必再来这里改一遍 —— 这里原来是全项目第三个手抄字段名单的地方。
      *
-     *  [longSerial] 由**调用方**算好传进来：那一位要读宿主私有目录里的命令库
+     *  [longSerialOf] 由**调用方**算好传进来（**逐键**问）：那一位要读宿主私有目录里的命令库
      *  （`CommandLibrary.longIsSerial`，两个调用方都与宿主同 uid、读得到，且此路径不在按键热路径上）。
      *  本包因此**不认识落盘那包** —— 注入侧要 import 它，这条编译期保证不能靠传递依赖绕开
      *  （见 `docs/decoupling.md` 动作 3）。
@@ -99,28 +116,53 @@ object ConfigBroadcast {
      */
     fun intent(
         config: Config,
-        longSerial: Boolean,
+        longSerialOf: (KeyId) -> Boolean,
     ): Intent {
-        val key = config.key(KeyId.PLUS)
-        val override = ConfigFields.Values(key.fieldValues().raw() + (ConfigFields.F_LONG_SERIAL to longSerial))
-        return Intent(ACTION_CONFIG)
-            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
-            .also { putFields(it, override, ConfigFields.KEY_FIELDS) }
-            .also { putFields(it, config.global.fieldValues(), ConfigFields.GLOBAL_FIELDS) }
+        val intent = Intent(ACTION_CONFIG).addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+        val keys = config.allKeys
+        // 清单先放：接收侧要先知道**有哪些键**，才知道该按哪些前缀去取逐键字段。
+        intent.putExtra(ConfigFields.KEY_IDS_EXTRA, keys.joinToString(",") { it.id })
+        for (k in keys) {
+            intent.putExtra(extraName(k.id, ConfigFields.KEY_CODE_EXTRA), k.keyCode)
+            intent.putExtra(extraName(k.id, ConfigFields.KEY_NAME_EXTRA), k.label)
+            val stored = config.key(k).fieldValues()
+            // `longIsSerial` 是发送侧**现算**的一位，**每颗键都要算**：自定义键同样能绑
+            //  `cmd:名字`，只算侧键那一份的话，注入侧会把它的串行命令当成单条动作，
+            //  连发闸门（`longIsSerial`）对自定义键恒不生效。
+            val v = ConfigFields.Values(stored.raw() + (ConfigFields.F_LONG_SERIAL to longSerialOf(k)))
+            putFields(intent, v, ConfigFields.KEY_FIELDS, keyPrefix(k.id))
+        }
+        putFields(intent, config.global.fieldValues(), ConfigFields.GLOBAL_FIELDS)
+        return intent
     }
+
+    /**
+     * 逐键 extra 的完整名：`<id>_<基础名>`。拼法只在这里一处。
+     *
+     *  公开是因为接收侧还要判「这条广播带没带某一项」（`ConfigChannel` 判主开关时必须先知道
+     *  完整名，否则 `hasExtra` 永远为假 —— 那会让「关掉接管」这个动作静默失效）。
+     */
+    fun extraName(
+        id: String,
+        base: String,
+    ): String = keyPrefix(id) + base
+
+    private fun keyPrefix(id: String): String = id + "_"
 
     /** 按字段表把一份取值写进广播的 extras（[ConfigFields.Field.extra] 为 `null` 的项跳过）。 */
     private fun putFields(
         intent: Intent,
         v: ConfigFields.Values,
         fields: List<ConfigFields.Field>,
+        prefix: String = "",
     ) {
         for (f in fields) {
             val name = f.extra ?: continue
+            val full = prefix + name
             when (f.kind) {
-                is ConfigFields.Kind.Bool -> intent.putExtra(name, v.bool(f))
-                is ConfigFields.Kind.Number -> intent.putExtra(name, v.number(f))
-                is ConfigFields.Kind.Text -> intent.putExtra(name, v.text(f))
+                is ConfigFields.Kind.Bool -> intent.putExtra(full, v.bool(f))
+                is ConfigFields.Kind.Number -> intent.putExtra(full, v.number(f))
+                is ConfigFields.Kind.Text -> intent.putExtra(full, v.text(f))
             }
         }
     }
@@ -134,9 +176,45 @@ object ConfigBroadcast {
      *  顶层那两位「已确认」标记不进广播（它们只落盘，见 `ConfigFields.F_DISCLAIMER`）⇒ 取默认。
      */
     fun parse(intent: Intent): Config {
-        val keys = mapOf(KeyId.PLUS to KeyConfig.ofFields(KeyId.PLUS, readFields(intent, ConfigFields.KEY_FIELDS)))
-        val global = GlobalConfig.ofFields(readFields(intent, ConfigFields.GLOBAL_FIELDS))
-        return Config.ofFields(keys, global, ConfigFields.Values(emptyMap()))
+        val declared =
+            intent
+                .getStringExtra(ConfigFields.KEY_IDS_EXTRA)
+                ?.split(',')
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                .orEmpty()
+        // 缺清单（没有 `key_ids` 那一项）就只认内置键 —— 与这一版之前的广播等价。
+        val ids = if (declared.isEmpty()) KeyId.builtins.map { it.id } else declared.distinct()
+        val pairs = ids.mapNotNull { keyAt(intent, it) }
+        val keys = pairs.toMap()
+        return Config.ofFields(
+            keys,
+            GlobalConfig.ofFields(readFields(intent, ConfigFields.GLOBAL_FIELDS)),
+            ConfigFields.Values(emptyMap()),
+            pairs.map { it.first }.filter { it.isCustom },
+        )
+    }
+
+    /**
+     * 从广播里拼一颗键 —— 键身份 + 它那一组字段。
+     *
+     *  自定义键的**身份**来自 `key_ids`（`ck1` 这种），键码 / 名字是它的两个属性；
+     *  没有正键码的键**不收**：认领不了，收进来只会多一份永远匹配不到的配置。
+     */
+    private fun keyAt(
+        intent: Intent,
+        id: String,
+    ): Pair<KeyId, KeyConfig>? {
+        val key =
+            if (id == KeyId.PLUS.id) {
+                KeyId.PLUS
+            } else {
+                val code = intent.getIntExtra(extraName(id, ConfigFields.KEY_CODE_EXTRA), 0)
+                if (code <= 0) return null
+                val name = intent.getStringExtra(extraName(id, ConfigFields.KEY_NAME_EXTRA)) ?: id
+                KeyId.custom(id, name, code)
+            }
+        return key to KeyConfig.ofFields(key, readFields(intent, ConfigFields.KEY_FIELDS, keyPrefix(id)))
     }
 
     /**
@@ -149,10 +227,12 @@ object ConfigBroadcast {
     private fun readFields(
         intent: Intent,
         fields: List<ConfigFields.Field>,
+        prefix: String = "",
     ): ConfigFields.Values {
         val values = mutableMapOf<ConfigFields.Field, Any>()
         for (f in fields) {
-            val name = f.extra ?: continue
+            val base = f.extra ?: continue
+            val name = prefix + base
             when (val kind = f.kind) {
                 is ConfigFields.Kind.Bool -> {
                     values[f] = intent.getBooleanExtra(name, kind.default)

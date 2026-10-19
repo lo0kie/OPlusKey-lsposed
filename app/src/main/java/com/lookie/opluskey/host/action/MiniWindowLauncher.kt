@@ -264,7 +264,7 @@ internal class MiniWindowLauncher(
      *
      * 为什么顺序只能是「先转换、后动画」：动画器每帧第一句是
      * `isFlexibleTaskAndHasCaption(task)`，普通全屏任务**每帧都被挡回去** ——
-     * spring 在跑、画面纹丝不动（§12.3 ②）。
+     * spring 在跑、画面纹丝不动（§12.3 第 2 条）。
      *
      * 为什么不是「回桌面 + 真启动一次」：那条要先把界面挪出栈顶，而桌面是竖屏 ⇒
      * 设备被拽回竖屏、横屏应用拿到竖屏比例的落点，目标在前台时还常常压根起不来
@@ -683,7 +683,20 @@ internal class MiniWindowLauncher(
                 XLog.w("取不到 WINDOWING_MODE_FREEFORM，放弃自由窗口这条")
                 return false
             }
-            Reflect.call(options, "setLaunchWindowingMode", mode) ?: return false
+            //  **不要写成 `Reflect.call(...) ?: return false`**：`setLaunchWindowingMode` 返回 void，
+            //  `invoke` 对 void 恒返回 null —— 那样这一行永远当失败，自由窗口这条退路实际上不存在。
+            //  先按签名取方法，取不到才算「这台机器没有这条路」；取到了只管 invoke 有没有抛。
+            val setter =
+                Reflect.method(
+                    android.app.ActivityOptions::class.java,
+                    "setLaunchWindowingMode",
+                    java.lang.Integer.TYPE,
+                )
+            if (setter == null) {
+                XLog.w("ActivityOptions 上没有 setLaunchWindowingMode(int)，放弃自由窗口这条")
+                return false
+            }
+            setter.invoke(options, mode)
             ctx.startActivity(intent, options.toBundle())
             XLog.w("window:${intent.component?.packageName} → ActivityOptions 自由窗口（mode=$mode）")
             true

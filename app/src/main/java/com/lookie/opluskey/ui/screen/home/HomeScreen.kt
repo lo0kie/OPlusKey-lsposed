@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -31,7 +32,6 @@ import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
-import io.github.suqi8.coui.kmp.basic.SnackbarDuration
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 import kotlinx.coroutines.delay
@@ -130,7 +130,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
 @Composable
 private fun SettingsPage.HomeLinkSelfCheck() {
     //  键是**当前屏**，不是 `Unit`：`LaunchedEffect(Unit)` 只在这一棵进组合时跑一次，而首页被
-    //  子页盖住、再露回来时组合并不重建 —— 真机实测（2026-10-18）：退到「自定义命令」再回首页，
+    //  子页盖住、再露回来时组合并不重建 —— 真机实测：退到「自定义命令」再回首页，
     //  「设置页问宿主模块在不在」还是原来那 13 条，一条没多。后果是「链路后来自己好了（注入侧
     //  补上了 Context / uid），页面却一直停在未就绪」，用户唯一的出路是关掉整个设置页重进。
     //  每回到首页重问一遍，代价是每次进页最多 [QUERY_ROUNDS] 轮广播。
@@ -184,20 +184,22 @@ private fun SettingsPage.HomeLinkSelfCheck() {
 private fun SettingsPage.HomeBlockHint() {
     val blockHint = blockedReason()
     LaunchedEffect(blockHint) {
-        // 去重判据是**原因本身**，不是「当前有没有东西」：那条提示是 `Indefinite`（不会自己走），
-        //  只判 newest 是否为 null 的话，原因从 A 变成 B 时旧条还在、新条被跳过 ——
-        //  底部一直停在已经不成立的那条原因上，用户照着它排查会被带偏。
-        val shown = link.snackbar.newestSnackbarData()
+        // 判据是**原因本身**：那条提示是常驻的（不会自己走），只判「现在有没有内容」的话，
+        //  原因从 A 变成 B 时旧的那句还挂着、新的被跳过 —— 用户会照着已经不成立的原因排查。
+        //
+        //  只动 `statusHint`：操作回执在另一个状态里（`actionHint`），互不影响。
+        val shown = link.statusHint.text
         if (blockHint == null) {
-            shown?.dismiss()
-        } else if (shown?.visuals?.message != blockHint) {
-            shown?.dismiss()
+            if (shown != null) link.dismissStatus()
+        } else if (shown != blockHint) {
             XLog.w("首页提示：$blockHint")
-            link.snackbar.showSnackbar(
-                message = blockHint,
-                duration = SnackbarDuration.Indefinite,
-            )
+            link.showStatus(blockHint)
         }
+    }
+    // 离开首页（进子页 / 关页）时把它收掉：这一条挂在**页面级**的 host 上、不跟着页走，
+    //  不收就会跟到「自定义命令」那些页的底部去 —— 而它说的是首页那个「现在能不能用」。
+    DisposableEffect(Unit) {
+        onDispose { link.dismissStatus() }
     }
 }
 

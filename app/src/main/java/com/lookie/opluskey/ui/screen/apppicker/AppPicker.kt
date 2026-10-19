@@ -25,6 +25,7 @@ import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.rememberAppPickerUiState
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.BandHeight
+import com.lookie.opluskey.ui.state.PickedDetail
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import kotlinx.coroutines.Dispatchers
@@ -173,8 +174,8 @@ internal fun SettingsPage.PickerSearchBand(
  */
 @Composable
 internal fun SettingsPage.AppPickerScreen(
-    /** 点 FAB 确认：把这个应用整体写下去（不指定界面）。 */
-    onPick: (String, Boolean) -> Unit,
+    /** 点 FAB 确认：按这个**完整目标**写下去（不含界面时就是「打开应用」那一档）。 */
+    onPick: (PickedDetail, Boolean) -> Unit,
     /** 点某一行：进二级页看这个应用能打开哪些界面。 */
     onOpenActivities: (String) -> Unit,
     scrollBehavior: ScrollBehavior,
@@ -297,7 +298,7 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
  *  开关一翻，「选中的那个」可能正好落进被藏起来的那一批：行没了，可右下角那颗 FAB 还亮着
  *  —— 按下去就把一个**已经看不见、也不该再选**的应用写进绑定。
  *
- *  ⚠️ 判据必须用 [AppTarget.sameApp]（只比用户 + 包名）：`pending` 可能是
+ *  注意：判据必须用 [AppTarget.sameApp]（只比用户 + 包名）：`pending` 可能是
  *  `包名/类名`（从二级页挑完退回来时就是），拿 [AppTarget.same] 去和「只有包名的应用行」比
  *  永远不相等 ⇒ 每次挑完界面回到本页，选中就被这里清掉：行尾图标全灭、FAB 消失，
  *  再点一次应用还会因为「没有选中」而落到默认档位上（真机踩到：「每次都是主应用」）。

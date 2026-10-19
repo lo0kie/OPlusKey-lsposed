@@ -187,6 +187,9 @@ object Strings {
     const val AUTHOR_GITHUB = "author.github"
     const val AUTHOR_COOLAPK = "author.coolapk"
     const val CONFIG_UNKNOWN_FORMAT = "config.unknown_format"
+
+    /** 导入的文件超过上限时的提示 —— 与「格式认不出」分开：换文件能解决，改格式不能。 */
+    const val CONFIG_TOO_LARGE = "config.too_large"
     const val DIALOG_APP_UNOPENABLE_TITLE = "dialog.app_unopenable_title"
     const val DIALOG_APP_UNSUPPORTED_MINI_WINDOW_MESSAGE = "dialog.app_unsupported_mini_window_message"
     const val DIALOG_APP_UNSUPPORTED_MINI_WINDOW_TITLE = "dialog.app_unsupported_mini_window_title"
@@ -308,6 +311,7 @@ object Strings {
     const val TOAST_COMMAND_OVERWRITTEN = "toast.command_overwritten"
     const val TOAST_COMMAND_SAVED = "toast.command_saved"
     const val TOAST_COMMAND_STEP_MISSING = "toast.command_step_missing"
+    const val TOAST_COMMAND_STEP_FULL = "toast.command_step_full"
     const val TOAST_COMMAND_TRIGGERED = "toast.command_triggered"
     const val TOAST_COMMAND_TEST_FAILED = "toast.command_test_failed"
     const val TOAST_CONFIG_CLEAR_FAILED = "toast.config_clear_failed"
@@ -323,6 +327,29 @@ object Strings {
     const val TOAST_LOG_EMPTY = "toast.log_empty"
     const val TOAST_LOG_EXPORTED = "toast.log_exported"
     const val TOAST_KEY_RESET = "toast.key_reset"
+
+    /** 删除一颗自定义按键之后（「已删除「音量键」」）。 */
+    const val TOAST_KEY_DELETED = "toast.key_deleted"
+
+    /** 切到另一颗键之后（「已切换到「音量键」」）。 */
+    const val TOAST_KEY_SWITCHED = "toast.key_switched"
+
+    /** 把某个动作绑到手势 / 按键上之后（「已绑定「录音」」）。 */
+    const val TOAST_BOUND = "toast.bound"
+
+    /** 拨动一个开关之后（「已开启「振动反馈」」/「已关闭「振动反馈」」）。 */
+    const val TOAST_SWITCH_ON = "toast.switch_on"
+    const val TOAST_SWITCH_OFF = "toast.switch_off"
+
+    /** 总闸（「启用按键绑定」）拨动之后 —— 它有自己的两句措辞，不套「已开启「…」」。 */
+    const val TOAST_BINDING_ON = "toast.binding_on"
+    const val TOAST_BINDING_OFF = "toast.binding_off"
+
+    /** 重命名一颗自定义按键之后（「已重命名为「音量键」」）。 */
+    const val TOAST_KEY_RENAMED = "toast.key_renamed"
+
+    /** 切了界面语言之后（「已切换到「English」」）。 */
+    const val TOAST_LANGUAGE_SWITCHED = "toast.language_switched"
     const val TOAST_LOG_EXPORT_FAILED = "toast.log_export_failed"
     const val TOAST_SERVICE_RESTART_FAILED = "toast.service_restart_failed"
     const val TOAST_SERVICE_RESTARTED = "toast.service_restarted"
@@ -335,8 +362,13 @@ object Strings {
     const val KEY_WATCH_TITLE = "key_watch.title"
     const val KEY_WATCH_HINT = "key_watch.hint"
     const val KEY_WATCH_WAITING = "key_watch.waiting"
+    const val KEY_WATCH_CONFIRM = "key_watch.confirm"
     const val KEY_WATCH_ADD = "key_watch.add"
     const val KEY_WATCH_EMPTY = "key_watch.empty"
+    const val KEY_WATCH_RESERVED = "key_watch.reserved"
+    const val KEY_WATCH_LIMIT = "key_watch.limit"
+    const val KEY_WATCH_ADDED = "key_watch.added"
+    const val KEY_WATCH_DUPLICATE = "key_watch.duplicate"
 
     /**
      * 「系统开关」那一格点开的菜单里那十条的名字 ——

@@ -16,6 +16,9 @@ internal fun ProbeChannel.state(
     loader: ClassLoader,
     intent: Intent,
 ) {
+    // `taskOf` 第一步就是 `FlexibleWindowManagerService.getInstance()`，那会触发宿主类的 `<clinit>`
+    //  —— 与 `call` 同一条险路，所以同样要显式 opt-in（见 [allowUnsafe]）。
+    if (!allowUnsafe(SERVICE_CLASS, OP_STATE, intent)) return
     val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
     val task = taskOf(loader, taskId)
     if (task == null) {
@@ -67,6 +70,7 @@ internal fun ProbeChannel.corner(
     loader: ClassLoader,
     intent: Intent,
 ) {
+    if (!allowUnsafe(SERVICE_CLASS, OP_CORNER, intent)) return
     val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
     val radius =
         if (intent.hasExtra(EXTRA_RADIUS)) {
@@ -134,6 +138,7 @@ internal fun ProbeChannel.dress(
     loader: ClassLoader,
     intent: Intent,
 ) {
+    if (!allowUnsafe(SERVICE_CLASS, OP_DRESS, intent)) return
     val taskId = intent.getIntExtra(EXTRA_TASK_ID, -1)
     val task = taskOf(loader, taskId)
     if (task == null) {

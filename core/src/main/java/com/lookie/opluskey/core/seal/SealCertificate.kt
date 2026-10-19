@@ -44,10 +44,27 @@ internal object SealCertificate {
     fun matches(
         context: Context,
         pin: String,
-    ): Boolean? = sha256(context)?.joinToString("") { "%02x".format(it) }?.equals(pin, ignoreCase = true)
+    ): Boolean? = sha256(context)?.hex()?.equals(pin, ignoreCase = true)
 
     /** `AA:BB:…` 形式（与 `keytool -list -v` 同一写法），给「关于」页对账用。 */
-    fun fingerprint(context: Context): String? = sha256(context)?.joinToString(":") { "%02X".format(it) }
+    fun fingerprint(context: Context): String? = sha256(context)?.joinToString(":") { it.toHexPair().uppercase() }
+
+    /**
+     * 自己拼十六进制，不用 `String.format("%02x", …)` —— 后者吃系统区域设置，
+     *  在阿拉伯语这类环境里会写出另一套数字（与 `ConfigCodec.md5Hex` 同一条口径）。
+     */
+    private fun ByteArray.hex(): String {
+        val out = StringBuilder(size * 2)
+        for (b in this) out.append(b.toHexPair())
+        return out.toString()
+    }
+
+    private fun Byte.toHexPair(): String {
+        val v = toInt() and 0xFF
+        return "${HEX[v ushr 4]}${HEX[v and 0x0F]}"
+    }
+
+    private const val HEX = "0123456789abcdef"
 
     private fun read(context: Context): ByteArray? =
         try {

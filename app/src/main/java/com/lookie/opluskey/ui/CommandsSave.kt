@@ -26,7 +26,7 @@ internal fun SettingsPage.saveCommands(
     //  写回等于把它固化（用户的命令就没了），而用户看不到任何异常。一律拒，并说明「没保存」。
     if (configState.commandsReadOnly) {
         XLog.w("命令库处在只读态（这次没读成功），拒绝写回：$what")
-        toast(I18n.get(Strings.TOAST_COMMANDS_READ_FAILED, "命令库读取失败，未保存"))
+        hint(I18n.get(Strings.TOAST_COMMANDS_READ_FAILED, "命令库读取失败，未保存"))
         return CommandsSave.Failed
     }
     //  落盘前收一次**名字唯一**：同名的两条命令里，`cmd:<名字>` 只会命中第一条
@@ -50,7 +50,7 @@ internal fun SettingsPage.saveCommands(
     if (!saved) {
         configState.commands.value = previous
         XLog.w("命令库写入失败（已回滚界面状态）：$what")
-        toast(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
+        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
         return CommandsSave.Failed
     }
     XLog.w("命令库写入：$what")
@@ -67,7 +67,7 @@ internal fun SettingsPage.saveCommands(
         // 与 [write] 同一句口径：这一刻 config.value 刚换成新值、本地指纹跟着变，
         //  而注入侧那份还是旧的 ⇒ 页面判「未同步」、⋮ 里那一项会被灰掉，
         //  真正能自愈的是「退出重进」。
-        toast(I18n.get(Strings.TOAST_CONFIG_SAVE_BROADCAST_FAILED, "已保存，但通知注入侧失败，退出重进本页即可"))
+        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_BROADCAST_FAILED, "已保存，但通知注入侧失败，退出重进本页即可"))
         return CommandsSave.BroadcastFailed
     }
     //  发完**必须再问一次注入侧**：指纹（`ConfigBroadcast.tag`）

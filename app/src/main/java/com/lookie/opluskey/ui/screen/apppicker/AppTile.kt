@@ -23,16 +23,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.AnimatedFade
+import com.lookie.opluskey.ui.DrawablePainter
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.APP_ICON_BITMAP_SIZE
 import com.lookie.opluskey.ui.model.APP_KIND_MODULE_DARK
 import com.lookie.opluskey.ui.model.APP_KIND_MODULE_LIGHT
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_BG_ALPHA
@@ -75,21 +73,23 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun SettingsPage.AppIcon(app: LaunchableApp) {
     val packageName = app.packageName
+    //  缓存键带 user：主用户与分身**同包名**，只按包名存会把主用户那份图发给分身那一行
+    val iconKey = "${app.userId}@$packageName"
     // 读一次版本号 = 订阅「清缓存」（理由见 `AppPickerState.iconsGeneration`）
     val generation = picker.iconsGeneration.intValue
     // 这一行自己那份图：初值先看缓存（滚回来那一轮就命中）。
     //  **key 里只有包名，没有 `generation`**：清缓存（`generation +1`）只该让下面那个 effect
     //  重新取一张来覆盖，不该把已经在屏幕上的这张图丢掉 —— 带上 `generation` 就会在每次重查
     //  清单之后把整屏图标重置回空白再重新填，看起来就是「进页后图标闪一下」。
-    var icon by remember(packageName) { mutableStateOf(picker.cachedIcon(packageName)) }
+    var icon by remember(iconKey) { mutableStateOf(picker.cachedIcon(iconKey)) }
     // 「这一行问过一轮了没有」—— 决定那张通用字形到底该不该出现。
     //  缓存命中就算问过（`icon != null`）；否则要等这一轮 IO 回来才算。
-    var resolved by remember(packageName) { mutableStateOf(icon != null) }
+    var resolved by remember(iconKey) { mutableStateOf(icon != null) }
     // 键里带 `generation`：清过缓存就重取一张**覆盖**（换图标包 / 换主题后能换过来），
     //  但在新图到手之前，屏幕上那张旧图留着不动。
-    LaunchedEffect(packageName, generation) {
+    LaunchedEffect(iconKey, generation) {
         // 缓存里已有就直接用，不再跨进程问
-        picker.cachedIcon(packageName)?.let {
+        picker.cachedIcon(iconKey)?.let {
             icon = it
             resolved = true
             return@LaunchedEffect
@@ -98,39 +98,18 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
         // 取不到也要记「问过了」：下面据此决定画通用字形还是留白
         if (loaded != null) {
             // 写进缓存是为了「滚回去不再跨进程问第二轮」，写进自己这一份是为了当场画出来
-            picker.putIcon(packageName, loaded)
+            picker.putIcon(iconKey, loaded)
             icon = loaded
         }
         resolved = true
     }
-    // 取样按 [APP_ICON_BITMAP_SIZE]（比实际渲染的 40dp 大一档，缩下来清晰）。
-    val px =
-        with(androidx.compose.ui.platform.LocalDensity.current) {
-            APP_ICON_BITMAP_SIZE.roundToPx()
-        }
-    val bitmap =
-        // 尺寸跟着密度走：`px` 不进 key 的话，显示大小 / 密度一变，位图还是按老尺寸建的那张（发虚）
-        remember(packageName, icon, px) {
-            try {
-                icon?.let { d ->
-                    val bmp =
-                        android.graphics.Bitmap.createBitmap(
-                            px,
-                            px,
-                            android.graphics.Bitmap.Config.ARGB_8888,
-                        )
-                    d.setBounds(0, 0, px, px)
-                    d.draw(android.graphics.Canvas(bmp))
-                    bmp.asImageBitmap()
-                }
-            } catch (e: Throwable) {
-                XLog.d("光栅化应用图标失败：$packageName（${e.javaClass.simpleName}）")
-                null
-            }
-        }
-    if (bitmap != null) {
+    // 直接把 Drawable 交给 painter 画（见 [DrawablePainter]）：不分配中间位图。
+    //  早先是 createBitmap + Canvas + asImageBitmap —— 每滑过一个应用就多一张 48dp 的
+    //  Bitmap 和一次整块拷贝，几百项时内存与 GC 跟着滚动抖。
+    val painter = remember(icon) { icon?.let { DrawablePainter(it) } }
+    if (painter != null) {
         Image(
-            bitmap = bitmap,
+            painter = painter,
             contentDescription = null,
             // `fillMaxHeight` 把高度钉在内容区整高上（行高见 [APP_ROW_HEIGHT]），`aspectRatio(1f)`
             // 再按高度算宽度。顺序不能反：先 `aspectRatio` 会拿宽度当基准。

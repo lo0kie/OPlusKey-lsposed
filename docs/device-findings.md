@@ -3546,3 +3546,25 @@ resolveActivityForMultiApp, has cached userId: 998
   于是这几个码即便 -1 也是真按键。
 - 症状对得上用户反馈：单独按侧键几乎无反应，某些按法（比如电源键 + 侧键改走另一条派发路径）凑出
   一个孤立抬手才「偶尔触发一次」。
+
+## 二十六、COUI 的弹窗浮层**和页面同一个窗口**（源码核对，2026-10-19）
+
+这一条是为纠正一次错判记的 —— 它让「弹窗输入框叫不出键盘」多绕了两轮。
+
+- **事实**：`OverlayDialog` → `DialogContentLayout` → `popupHost`，最终落在
+  `COUIPopupUtils.COUIPopupHost()`，而它由根 `Scaffold` 直接调用（`Scaffold.kt` 里
+  `LocalDialogStates provides dialogStates` 那一处）。也就是说弹窗内容**没有独立的
+  Android `Dialog` / 独立 window**，它和页面共用同一棵 Compose 视图树、同一套
+  `LocalXxx`。
+- **推论**：`LocalSoftwareKeyboardController` / `LocalWindowInfo` / `LocalView` 在弹窗内容里
+  与在页面里读到的是**同一个对象**。库自己在 `DialogEntry` 里收键盘用的就是这个控制器。
+- **踩过的坑**：误以为「弹窗是另一个窗口，页面那侧的控制器 show() 会服务错窗口」，于是把
+  「叫键盘」从 `FocusOnShow` 挪进输入框的 `onFocusChanged`。挪过去之后那段代码**拿不到
+  `show`**，弹窗关掉后协程还在跑，真机就是「弹窗消失又把键盘拉起来」。
+- **正确归属**：凡是要跟着 `show` 生灭的动作（`requestFocus`、`keyboard.show()`）都放
+  `FocusOnShow` —— 它是 `LaunchedEffect(show, windowFocused)`，`show` 一变 false 立刻取消。
+  输入框那一侧只留「聚焦后把光标挪到末尾」这种一次性、无副作用的动作。
+- **另一个必须知道的时序**：`DialogEntry` / `DialogContentLayout` 在 `showState` 变 false 时
+  **无条件** `keyboardController.hide()`。「收集按键 → 添加按键」是两个独立弹窗交替，
+  一关一开挤在同一帧 ⇒ 新弹窗里叫一次键盘会被那一下 `hide()` 盖掉，要连叫几帧
+  （`IME_KICK_FRAMES`，取 6）。

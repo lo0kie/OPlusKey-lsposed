@@ -36,7 +36,7 @@ import javax.crypto.spec.SecretKeySpec
  *
  *  这一层**没有明文回退**：回退就是后门（删掉封存目录即可）。所以 release 构建拿不到
  *  `keystore.properties` 时这里**直接抛错**，而不是退回 debug 签名继续出包 —— 那种包装上去
- *  也解不开自己的收款码。CI 里没配签名密钥时不构建 release（见 `.github/workflows/build.yml`）。
+ *  也解不开自己的收款码。CI 里没配签名密钥时不构建 release（见 `.github/workflows/ci.yml`）。
  *
  * ## 产物有两份
  *
@@ -173,6 +173,7 @@ plugins {
     id("com.android.library")
     // 格式化与静态检查：规则**不在这里**，与 `:app` 同一份，收在根 `build.gradle.kts`
     //  的 `subprojects { }` 里（一处定义，两个模块都从这里拿）。
+    id("org.jetbrains.kotlin.plugin.serialization")
     id("com.diffplug.spotless")
     id("io.gitlab.arturbosch.detekt")
 }
@@ -242,4 +243,5 @@ kotlin {
 dependencies {
     // Xposed API：只在 `core/reflect` 那几处用到，运行时由 LSPosed 提供
     compileOnly("io.github.libxposed:api:102.0.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 }

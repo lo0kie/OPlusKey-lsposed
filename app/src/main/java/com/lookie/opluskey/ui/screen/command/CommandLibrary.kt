@@ -11,17 +11,19 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.draftToLibrary
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.saveCommands
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.TestRunnerCache
 import com.lookie.opluskey.ui.tickNow
-import com.lookie.opluskey.ui.toast
 import com.lookie.opluskey.ui.write
 import kotlin.math.roundToInt
 
@@ -35,7 +37,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
         testRunner(context).runTest(cmd.name)
     } catch (e: Throwable) {
         XLog.w("测试命令失败（已忽略）：${cmd.name}", e)
-        toast(I18n.get(Strings.TOAST_COMMAND_TEST_FAILED, "测试失败"))
+        hint(I18n.get(Strings.TOAST_COMMAND_TEST_FAILED, "测试失败"))
         return
     }
     //  注意：这里只能保证「**已派发**」，不是「已完成」：单条 `keyevent:` 是
@@ -43,7 +45,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     //  （`postDelayed` 续步）的**完成**晚于这一行 —— 说「已执行」是把派发说成了完成。
     //  命令可能一点可见动静都没有，没有这句分不清「发了」和「没反应」，所以保留提示、改口径
     //  （失败仍会由 `CommandFailure` 那条另弹一句）。
-    toast(I18n.get(Strings.TOAST_COMMAND_TRIGGERED, "已触发"))
+    hint(I18n.get(Strings.TOAST_COMMAND_TRIGGERED, "已触发"))
 }
 
 /**
@@ -146,29 +148,7 @@ internal fun CommandTileRow(
  */
 internal fun SettingsPage.removeCommand(cmd: Command) {
     val cfg = configState.config.value
-    val key = cfg.key(KeyId.PLUS)
-
-    fun clean(a: Action) = if (a.token == cmd.token) Action.None else a
-    val updated =
-        key.copy(
-            single = clean(key.single),
-            double = clean(key.double),
-            long = clean(key.long),
-        )
-    val bindingsCleared = updated != key
-    if (bindingsCleared) {
-        // 只读态下这次写会被拒（返回值不能丢）：命令库那份照删，配置里就留下悬空的
-        //  `cmd:` —— 按下去永远 NOT_FOUND。所以绑定没清掉时**不能**继续删命令，先告诉用户。
-        val ok =
-            write(
-                cfg.copy(keys = cfg.keys + (KeyId.PLUS to updated)),
-                "删除命令时清掉绑定：${cmd.name}",
-            ) != CommandsSave.Failed
-        if (!ok) {
-            XLog.w("删除命令中止：绑定没能清掉（配置只读），命令库保持原样：${cmd.name}")
-            return
-        }
-    }
+    if (!clearCommandBindings(cfg, cmd)) return
 
     // 删的就是正在编辑的那条 ⇒ 草稿一并清掉：留着的话「修改」按钮还挂着，
     // 点一下会把刚删的命令原样写回去。注意：这一步挪到**命令库真删掉之后**（见下）：
@@ -195,7 +175,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
     when (saveCommands(next, "删除命令：${cmd.name}")) {
         CommandsSave.Ok -> {
             if (commandDraft.draft.editingName == cmd.name) commandDraft.draft.reset() else cleanDraftRefs()
-            toast(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除"))
+            hint(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除「%s」").format(cmd.name))
         }
 
         // 库已经删掉了（只是没通知到注入侧，提示由 saveCommands 给）——草稿该清还是清，
@@ -205,7 +185,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
         }
 
         CommandsSave.Failed -> {
-            if (bindingsCleared) {
+            if (cfg.hasBindingFor(cmd)) {
                 // 注意：命令库没删成、绑定却已经清了 ⇒ 会留下「手势=无操作 + 命令仍在库」这种半份状态
                 // ：把绑定**写回原样**，两边一起保持原状。
                 //  失败原因 [saveCommands] 已经报过（「保存失败」），这里只补回滚与它的判据行。
@@ -215,3 +195,45 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
         }
     }
 }
+
+/**
+ * 删命令前把**每一颗键**上的 `cmd:` 引用清掉。
+ *
+ *  自定义键同样能绑 `cmd:`，只清侧键的话那些键按下去永远 NOT_FOUND（与改名那条路同一套口径，
+ *  见 `PageText.saveCommand`）。
+ *
+ * @return false = 绑定没清成（配置只读 / 写盘失败），调用方**不能**继续删命令
+ */
+private fun SettingsPage.clearCommandBindings(
+    cfg: Config,
+    cmd: Command,
+): Boolean {
+    fun clean(a: Action) = if (a.token == cmd.token) Action.None else a
+    val cleared = mutableMapOf<KeyId, KeyConfig>()
+    for (k in cfg.allKeys) {
+        val before = cfg.key(k)
+        val after =
+            before.copy(
+                single = clean(before.single),
+                double = clean(before.double),
+                long = clean(before.long),
+            )
+        if (after != before) cleared[k] = after
+    }
+    if (cleared.isEmpty()) return true
+    // 只读态下这次写会被拒（返回值不能丢）：命令库那份照删，配置里就留下悬空的 `cmd:`。
+    val ok =
+        write(
+            cfg.copy(keys = cfg.keys + cleared),
+            "删除命令时清掉绑定：${cmd.name}",
+        ) != CommandsSave.Failed
+    if (!ok) XLog.w("删除命令中止：绑定没能清掉（配置只读），命令库保持原样：${cmd.name}")
+    return ok
+}
+
+/** 有没有任一颗键还绑着这条命令 —— 删库失败时据此决定要不要回滚绑定。 */
+private fun Config.hasBindingFor(cmd: Command): Boolean =
+    allKeys.any { k ->
+        val key = key(k)
+        key.single.token == cmd.token || key.double.token == cmd.token || key.long.token == cmd.token
+    }

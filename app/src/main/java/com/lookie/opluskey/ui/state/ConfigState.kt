@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.state
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
@@ -32,8 +33,22 @@ internal class ConfigState {
      */
     var loaded by mutableStateOf(false)
 
-    /** 当前配置（页面自己读自己写）。 */
-    val config = mutableStateOf(Config.DEFAULT)
+    /**
+     * 当前配置（页面自己读自己写）。
+     *
+     * ## 为什么用**引用**相等而不是默认的结构相等
+     *
+     *  `mutableStateOf` 默认是 `structuralEqualityPolicy`：新值与旧值 `==` 时**直接丢弃新实例**、
+     *  连快照都不换。而 [Config] 的结构相等**看不见按键名** —— `KeyId.equals` 只比 `id`
+     *  （这是有意的：改名是改显示，不是换一颗键），于是「只改了个名字」的那份新配置与旧配置
+     *  `==`，赋值成了空操作：页面继续拿着旧实例，菜单还显示旧名字，本地指纹（`ui/LinkCheck`）
+     *  也一直算的是旧那一份 —— 注入侧明明收到了新名字，两边指纹对不上，页面顶着
+     *  「设置未同步」；更糟的是下一次写盘会把旧名字写回文件，把用户刚改的名字抹掉。
+     *
+     *  真机上就是这么发现的（2026-10-19：给按键改名后首页报「设置未同步」）。
+     *  配置是不可变快照、每次写盘都换新实例 ⇒ 换实例本来就该重画，用引用相等才是它该有的语义。
+     */
+    val config = mutableStateOf(Config.DEFAULT, referentialEqualityPolicy())
 
     /**
      * 建页那次**没读成功**（文件在、但读不了 / 读不懂）⇒ 页面进**只读**：任何写回都被拒。
