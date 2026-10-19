@@ -29,6 +29,18 @@ import kotlinx.serialization.Serializable
  *
  *  但**取值范围不在这里钳**：上下限是 [ConfigFields] 那张表的事（表里 `Kind.Number(min, max)`），
  *  转换时按表钳 —— 一处定义，广播与落盘两条通道共用同一套范围。
+ *
+ *  ## 键名的真源就是这里
+ *
+ *  属性名（或 `@SerialName`）**就是**文件里的键。`ConfigFields` 不再登记 JSON 那一列（它没有代码读，
+ *  改 `@SerialName` 时会静默分叉）；所以改这里的任何一个键名 / 加字段都等于**改文件格式** ——
+ *  老文件只能靠默认值兜底，不能靠改名兼容。
+ *
+ *  ## 加 / 挪字段必须同时抬 `ConfigCodec.VERSION`
+ *
+ *  当前版本的 md5 是「按**这个 DTO** 重新编码」算的（`encodeDefaults = true` ⇒ 新字段会进正文），
+ *  所以只加字段不抬版本 ⇒ **每一份现有文件**重编码后都对不上、全被判「读不懂」，
+ *  页面立刻顶着「配置读取失败」、整页只读。这个坑踩过两次（v2→v3 搬单击延迟、v3→v4 拆总闸）。
  */
 @Serializable
 internal data class ConfigDto(
@@ -49,13 +61,23 @@ internal data class ConfigDto(
         // 老文件把「单击延迟 / 忽视双击」放在 `global` 里：逐键字段缺失时拿它兜底（迁移用）
         val legacyDouble = global.doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS
         val legacyInstant = global.instantSingle ?: KeyConfig.DEFAULT_INSTANT_SINGLE
+        //  —— 总闸的迁移 ——
+        //  拆开之前没有 `global.enabled`：那时「主开关」就是 `keys.plus.enabled`，侧键那一份
+        //  同时当「总闸」与「这一颗键」两个用。老文件里那一位要读成**总闸**（用户当时的意图），
+        //  而「这一颗键」迁移成开着 —— 否则升级后用户打开总闸，侧键仍然是关的
+        //  （表现是「开了没反应」，还得去 ⋮ 菜单里再开一次）。
+        val masterFromFile = global.enabled
+        val legacyMaster = masterFromFile == null
+        val master = masterFromFile ?: keys[KeyId.PLUS.id]?.enabled ?: false
         val keyConfigs =
             allKeys.associateWith { id ->
-                KeyConfig.ofFields(id, (keys[id.id] ?: KeyDto()).toValues(legacyDouble, legacyInstant))
+                val key = KeyConfig.ofFields(id, (keys[id.id] ?: KeyDto()).toValues(legacyDouble, legacyInstant))
+                if (legacyMaster && id.id == KeyId.PLUS.id) key.copy(enabled = true) else key
             }
+        val globalConfig = GlobalConfig.ofFields(global.toValues())
         return Config.ofFields(
             keys = keyConfigs,
-            global = GlobalConfig.ofFields(global.toValues()),
+            global = if (legacyMaster) globalConfig.copy(enabled = master) else globalConfig,
             v =
                 ConfigFields.Values(
                     mapOf(
@@ -151,6 +173,11 @@ internal data class GlobalDto(
      * 这两个字段只为**迁移**读一次，写出去时是 `null`（新文件不再有它们）。
      */
     val doubleClickMs: Int? = null,
+    /**
+     * **模块总闸**。`null` = 这份文件是拆开之前写的 —— 那时「主开关」就是 `keys.plus.enabled`，
+     * 迁移见 [ConfigDto.toConfig]；新写出来的文件一定是具体值。
+     */
+    val enabled: Boolean? = null,
     val vibrate: Boolean = false,
     val instantSingle: Boolean? = null,
     val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
@@ -161,6 +188,9 @@ internal data class GlobalDto(
     fun toValues(): ConfigFields.Values =
         ConfigFields.Values(
             mapOf(
+                // 老文件这里给的是 null，取值会退回字段表的默认值（false）；真正的迁移在
+                //  `ConfigDto.toConfig` 里做 —— 它还要顺手改 `keys.plus` 那一位
+                ConfigFields.F_MODULE_ENABLED to (enabled ?: GlobalConfig.DEFAULT_ENABLED),
                 ConfigFields.F_VIBRATE to vibrate,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_LANGUAGE to language,
@@ -172,6 +202,7 @@ internal data class GlobalDto(
     companion object {
         fun from(g: GlobalConfig): GlobalDto =
             GlobalDto(
+                enabled = g.enabled,
                 vibrate = g.vibrate,
                 toastOnRun = g.toastOnRun,
                 language = g.language,

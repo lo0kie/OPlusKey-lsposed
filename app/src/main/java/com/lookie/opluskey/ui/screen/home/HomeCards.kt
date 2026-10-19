@@ -10,7 +10,6 @@ import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SwitchRow
@@ -25,8 +24,8 @@ import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.SHOW_HOME_MINI_ANIM
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setColorOsApi
-import com.lookie.opluskey.ui.setKeyEnabled
 import com.lookie.opluskey.ui.setMiniWindowAnim
+import com.lookie.opluskey.ui.setModuleEnabled
 import com.lookie.opluskey.ui.setToastOnRun
 import com.lookie.opluskey.ui.setVibrate
 import com.lookie.opluskey.ui.tickNow
@@ -56,7 +55,9 @@ internal fun SettingsPage.HomeBindingCard(
     ui: HomeUiState,
 ) {
     val tick = rememberTick()
-    val key = configState.config.value.key(KeyId.PLUS)
+    // 主开关写的是**模块总闸**（`GlobalConfig.enabled`），不是「侧键那颗键的开关」——
+    //  两者拆开之后，「停用这颗键」只停那一颗（⋮ 菜单里），这个开关停的是整个模块。
+    val moduleOn = configState.config.value.global.enabled
     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         // 主开关是这张卡的第一行，**不能被自己锁死**：它一旦关掉，全页（含这一页其它控件、
         // 「按键绑定」子页、顶栏菜单三项）都禁用 —— 它要是跟着一起禁用，就再也开不回来了。
@@ -69,8 +70,8 @@ internal fun SettingsPage.HomeBindingCard(
         // 它就**自己重新亮起来**了，用户当场拨了三下（每次都被 `write` 拒掉）。
         // **「拨了没反应」比「一开始就灰着」更难读**，所以这一档必须一起禁。
         //
-        // 它写的是 [KeyConfig.enabled] —— 执行侧早就存在的总闸（注入侧与宿主侧各有一道
-        // `if (!…enabled) return`），所以这一开关不只是界面置灰，是真的把功能关掉。
+        // 它写的是 [GlobalConfig.enabled] —— 执行侧的总闸（注入侧 `ConfigChannel.enabledOf`
+        // 与宿主侧各有一道 `if (!…enabled) return`），所以这一开关不只是界面置灰，是真的把功能关掉。
         //
         // 开关切换交给整行点击 —— 与「振动反馈」行同一条规矩（行与开关各切一次会「闪一下又变回去」）。
         // 库 `Switch` 自己那次无条件振动由 [SwitchRow] 统一掐掉，只留 `tick()` 这条通用通道。
@@ -78,7 +79,7 @@ internal fun SettingsPage.HomeBindingCard(
             title = I18n.get(Strings.SETTING_ENABLE_BINDING, "启用按键绑定"),
             // 开着时说明「关掉会怎样」；关着时直接报状态 —— 光看一个灰开关不知道后果
             summary =
-                if (key.enabled) {
+                if (moduleOn) {
                     // （14 字）正好一行放得下，再多一个字就折行、把这张卡撑高
                     I18n.get(Strings.HOME_SWITCH_DESC_ENABLED, "关闭后此模块将停用")
                 } else {
@@ -87,7 +88,7 @@ internal fun SettingsPage.HomeBindingCard(
             // 行首图标与下一行对齐用（不给的话两行的标题左边缘会差一个图标宽）。
             // 电源符号 = 「这一行是总开关」。
             icon = PageIcons.Power,
-            checked = key.enabled,
+            checked = moduleOn,
             position = cardListPositionOf(0, HOME_BINDING_ROWS),
             enabled = linkReady && !configState.readOnly,
         ) {
@@ -99,7 +100,7 @@ internal fun SettingsPage.HomeBindingCard(
                 XLog.w("免责声明：还没确认过，弹窗（总闸先不打开）")
                 ui.disclaimerPending = true
             } else {
-                setKeyEnabled(it)
+                setModuleEnabled(it)
             }
         }
 
@@ -195,8 +196,8 @@ internal fun SettingsPage.HomeActionsCard(pageEnabled: Boolean) {
  * 「其他」那张卡 —— 进「更多选项」页 + 捐赠打赏。
  *
  *  两行都**不吃任何闸**（用户要求「首页的更多行不跟随总闸禁用」）：
- *   · 「更多选项」是进那一页的**唯一入口**，而那一页里有「运行状态」—— 模块整页禁用
- *  （机型不支持 / 链路没齐 / 配置只读 / 主开关关着）时，用户正需要进去看断在哪一段；
+ *   · 「更多选项」是进那一页的**唯一入口**，而那一页里有「运行状态」—— 链路没齐 / 配置只读 /
+ *  主开关关着时，用户正需要进去看断在哪一段（机型清单不参与任何禁用，见 AGENTS.md 一、13）；
  *   · 打赏与模块启没启用无关，整页禁用时它照样该能点。
  *  所以行尾箭头与行首图标恒用常规色，不按 `pageEnabled` 换灰。
  */

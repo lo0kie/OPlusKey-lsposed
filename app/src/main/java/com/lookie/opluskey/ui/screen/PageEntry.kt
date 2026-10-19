@@ -201,8 +201,9 @@ private fun SettingsPage.PageBody(
         Screen.BINDING -> {
             BindingScreen(
                 pagerState,
-                // 闸门是**当前在编辑的那颗键自己的** `enabled`：侧键看首页那个主开关，
-                //  自定义键看它自己那一份（收集时默认不开，第一次绑动作时自动打开，见 `pick`）。
+                // 闸门是**当前在编辑的那颗键自己的** `enabled`（侧键也有一份，⋮ 菜单里能停用）：
+                //  模块总闸另有一层（关着时整页走 `blockedReason`），这里只管这一颗键。
+                //  自定义键收集时默认不开，第一次绑动作时自动打开（见 `pick`）。
                 enabled = keyEnabled(KeyWatchState.editing(configState.config.value)),
                 onOpenAppPicker = { g -> openAppPickerForGesture(g) },
                 scrollBehavior = scrollBehavior,
@@ -239,7 +240,13 @@ private fun SettingsPage.PageBody(
     }
 }
 
-/** 首页那个主开关（[KeyConfig.enabled]）—— 关掉时「按键绑定」页整页禁用。 */
+/**
+ * **这一颗键**开没开（[KeyConfig.enabled]）—— 「按键绑定」页那片网格的闸门。
+ *
+ *  它与**模块总闸**是两层：总闸（`GlobalConfig.enabled`）关掉时整页被拦，判据在
+ *  `LinkCheck.blockedReason` 那一处；这一颗键停用只让**它的**控件变灰，⋮ 菜单里那一行能开回来。
+ *  侧键同样走这一位（以前它兼任总闸，所以「停用侧键」等于关模块 —— 已拆开）。
+ */
 internal fun SettingsPage.keyEnabled(id: KeyId): Boolean =
     configState.config.value
         .key(id)
@@ -301,9 +308,14 @@ private fun SettingsPage.ActivityPickerPage(scrollBehavior: ScrollBehavior) {
     //  草稿不落盘，所以配置里还是「进来之前那一条」—— 只按配置取的话，刚挑完退回一级、
     //  再点进同一个应用，高亮会退回成首次打开时的样子（用户挑的那条看着像没记住）。
     val draft = picker.draft
+    val fromDraft = draft != null && AppTarget.sameApp(draft.target, target)
     ActivityPickerScreen(
         target = target,
-        selected = if (draft != null && AppTarget.sameApp(draft.target, target)) draft.target else appPickerSelectedTarget(),
+        selected = if (fromDraft) draft.target else appPickerSelectedTarget(),
+        // 快捷方式的**身份**要单独递进去（`PickedDetail.shortcutId`）：清单还在查 / 查失败时，
+        //  二级页拼不出行来，只能靠这一位原样把 `appshortcut:…` 写回去。少一位就降级成
+        //  `app:<包名>` —— 一条能用的快捷方式绑定被改成永远解析不了的 token。
+        selectedShortcutId = if (fromDraft) draft.shortcutId else bindingShortcutId(),
         onPick = { picked, shortcutId, label -> onDraftPicked(picked, shortcutId, label) },
         scrollBehavior = scrollBehavior,
     )
@@ -334,7 +346,7 @@ private fun SettingsPage.openAppPickerForGesture(g: Gesture) {
  *  `appshortcut:`。拼 token 的地方只剩调用点，这一层只管「写到哪儿去」。
  *
  * @return true = 写下去了；false = 没地方写（手势那条入口没记下来）或被拦
- *   （链路未就绪 / 机型不支持 / 写盘失败）。调用方据此决定留在原地。
+ *   （链路未就绪 / 写盘失败）。调用方据此决定留在原地。
  */
 private fun SettingsPage.writeToken(
     token: String,
@@ -366,7 +378,7 @@ private fun SettingsPage.writeToken(
  *  到这一颗才真正写配置。所以 token 优先取草稿 —— 有草稿说明用户刚在二级页挑过，
  *  照它写 `app:包名/类名` / `appshortcut:`；没有草稿才是「就绑这个应用」（`app:包名`）。
  *
- *  写成了才退页：被拦（链路未就绪 / 机型不支持）或写盘失败时留在原地，
+ *  写成了才退页：被拦（链路未就绪）或写盘失败时留在原地，
  *  否则用户挑的东西看起来像存好了，其实一个字节都没写。
  */
 private fun SettingsPage.onAppPicked(

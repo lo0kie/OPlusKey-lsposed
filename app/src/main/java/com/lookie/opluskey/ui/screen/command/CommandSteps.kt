@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -33,6 +34,7 @@ import com.lookie.opluskey.ui.IconAction
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.gestureProbe
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
@@ -47,6 +49,7 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
@@ -200,21 +203,35 @@ internal fun SettingsPage.SerialSteps() {
                             // 同一张卡里两行左边缘不齐。
                             startAction = { Icon(stepIcon(item.token, configState.commands.value), null, Modifier.size(ROW_ICON_SIZE)) },
                             endActions = {
-                                IconAction(
-                                    PageIcons.StepUp,
-                                    I18n.get(Strings.COMMON_MOVE_UP, "上移"),
-                                    enabled = !item.exiting && stepsIndex > 0,
+                                // 禁用时点一下说清为什么 —— 库里 `IconButton` 会把这一下点击
+                                //  交给 `LocalDisabledClick`，这里就地换成这一步自己的原因
+                                CompositionLocalProvider(
+                                    LocalDisabledClick provides {
+                                        hint(I18n.get(Strings.TOAST_COMMAND_STEP_FIRST, "已经是第一步"))
+                                    },
                                 ) {
-                                    tick()
-                                    moveStep(stepsIndex, -1)
+                                    IconAction(
+                                        PageIcons.StepUp,
+                                        I18n.get(Strings.COMMON_MOVE_UP, "上移"),
+                                        enabled = !item.exiting && stepsIndex > 0,
+                                    ) {
+                                        tick()
+                                        moveStep(stepsIndex, -1)
+                                    }
                                 }
-                                IconAction(
-                                    PageIcons.StepDown,
-                                    I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
-                                    enabled = !item.exiting && stepsIndex < steps.lastIndex,
+                                CompositionLocalProvider(
+                                    LocalDisabledClick provides {
+                                        hint(I18n.get(Strings.TOAST_COMMAND_STEP_LAST, "已经是最后一步"))
+                                    },
                                 ) {
-                                    tick()
-                                    moveStep(stepsIndex, 1)
+                                    IconAction(
+                                        PageIcons.StepDown,
+                                        I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
+                                        enabled = !item.exiting && stepsIndex < steps.lastIndex,
+                                    ) {
+                                        tick()
+                                        moveStep(stepsIndex, 1)
+                                    }
                                 }
                                 IconAction(
                                     PageIcons.CommandDelete,
@@ -332,75 +349,82 @@ internal fun SettingsPage.SerialSteps() {
     )
 
     // 整行挂上手指锚点 —— 浮层弹在按下那一点（只记不看，行自己的点击照常）。
-    Box(Modifier.fillMaxWidth().preciseClickAnchor(preciseClick).gestureProbe(probe)) {
-        BasicComponent(
-            //  注意：位置按**数据**（`draft.steps`）算，不按展示层行数（原 `cardListPositionOf(display.size, display.size + 1)`）：
-            //  退场行在动画期间仍留在 `display` 里，按展示层算会让这一行停在 `Tail`，**等退场动画播完、
-            //  那行被摘除**才翻成 `Full` —— 而库给圆角边的额外内边距是 `HeadOrTailPadding`（2dp，
-            //  且行最小高度同步抬高），`Full` 比 `Tail` 多一份**顶边** ⇒ 卡片高度在动画结束那一刻
-            //  又跳 4dp。真机逐帧量过：底边从 2058 一路收到 1847 后**又弹回 1854**，就是这一跳，
-            //  看着像「加号行先移过头、再被拉回来」。
-            //  按数据算 ⇒ 翻档发生在过渡**开始**那一帧，与行高动画同时进行，看不出来。
-            cardListPosition =
-                if (steps.isEmpty()) {
-                    CardListPosition.Full
-                } else {
-                    CardListPosition.Tail
+    //  满员时点这一行说清「最多几步」：整段覆盖 `LocalDisabledClick`，行本身照旧置灰
+    CompositionLocalProvider(
+        LocalDisabledClick provides {
+            hint(I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS))
+        },
+    ) {
+        Box(Modifier.fillMaxWidth().preciseClickAnchor(preciseClick).gestureProbe(probe)) {
+            BasicComponent(
+                //  注意：位置按**数据**（`draft.steps`）算，不按展示层行数（原 `cardListPositionOf(display.size, display.size + 1)`）：
+                //  退场行在动画期间仍留在 `display` 里，按展示层算会让这一行停在 `Tail`，**等退场动画播完、
+                //  那行被摘除**才翻成 `Full` —— 而库给圆角边的额外内边距是 `HeadOrTailPadding`（2dp，
+                //  且行最小高度同步抬高），`Full` 比 `Tail` 多一份**顶边** ⇒ 卡片高度在动画结束那一刻
+                //  又跳 4dp。真机逐帧量过：底边从 2058 一路收到 1847 后**又弹回 1854**，就是这一跳，
+                //  看着像「加号行先移过头、再被拉回来」。
+                //  按数据算 ⇒ 翻档发生在过渡**开始**那一帧，与行高动画同时进行，看不出来。
+                cardListPosition =
+                    if (steps.isEmpty()) {
+                        CardListPosition.Full
+                    } else {
+                        CardListPosition.Tail
+                    },
+                // 行首 `+` 的 tint 由上面 `addIconTint` 给（两档都显式写出来，为了过渡）：禁用态取
+                // `disabledOnSecondaryVariant`（库 `disabledColor` 的取值，与 `IconAction` 禁用色一致），
+                // 正常态取 `onSurfaceContainer`（外层 `contentColor`）。正常态不能用 `Color.Unspecified`
+                // 顶替 —— 那会变成完全不上色。
+                startAction = {
+                    Icon(PageIcons.StepAdd, null, Modifier.size(ROW_ICON_SIZE), tint = addIconTint)
                 },
-            // 行首 `+` 的 tint 由上面 `addIconTint` 给（两档都显式写出来，为了过渡）：禁用态取
-            // `disabledOnSecondaryVariant`（库 `disabledColor` 的取值，与 `IconAction` 禁用色一致），
-            // 正常态取 `onSurfaceContainer`（外层 `contentColor`）。正常态不能用 `Color.Unspecified`
-            // 顶替 —— 那会变成完全不上色。
-            startAction = {
-                Icon(PageIcons.StepAdd, null, Modifier.size(ROW_ICON_SIZE), tint = addIconTint)
-            },
-            // 行尾同样收一颗选择器指示（见 [PageIcons.Selector]）—— 这一行点了也弹选择器。
-            //   tint 走最弱那一档（`onSurfaceVariantActions`），比行首那颗 `+` 弱；不给满员另开一档，
-            //   与 `disabledOnSecondaryVariant` 同值（见上面步骤行那处注释）。
-            endActions = {
-                Box(
-                    Modifier.size(ICON_ACTION_SIZE),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        PageIcons.Selector,
-                        contentDescription = null,
-                        modifier = Modifier.size(ICON_ACTION_ICON),
-                        tint = COUITheme.colorScheme.onSurfaceVariantActions,
-                    )
-                }
-            },
-            // `enabled = false` 时 COUI 不挂 `clickableModifier` ⇒ 点不进去，浮层也就打不开。
-            enabled = !stepsFull,
-            onClick = {
-                tick()
-                // 诊断：这一下是点出来的还是滑出来的（见 [GestureProbe]）
-                XLog.w("添加命令：行被点开 —— ${probe.describe()}")
-                stepPicker = STEP_PICK_APPEND
-            },
-        ) {
-            Text(
-                text = I18n.get(Strings.COMMAND_ADD, "添加命令"),
-                style = COUITheme.textStyles.headline1,
-                fontWeight = FontWeight.Medium,
-                color = addTitleColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = I18n.get(Strings.COMMAND_STEP_SELECT_TITLE, "从内置命令与自定义命令里选择"),
-                modifier = Modifier.padding(top = 2.dp),
-                style = COUITheme.textStyles.body2,
-                color = addSummaryColor,
-            )
-        }
-        // 落点已经不看这个盒子 —— 库拿 `preciseClickState` 记下的触点当锚点。留着它只是为了兜底：
-        // 触点没记到（如无障碍点击）时，浮层落在这一条竖边的下方，仍是可见的位置。
-        Box(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(0.dp)) {
-            StepPickerPopup(
-                show = stepPicker == STEP_PICK_APPEND,
-                preciseClick = preciseClick,
-            ) { stepPicker = null }
+                // 行尾同样收一颗选择器指示（见 [PageIcons.Selector]）—— 这一行点了也弹选择器。
+                //   tint 走最弱那一档（`onSurfaceVariantActions`），比行首那颗 `+` 弱；不给满员另开一档，
+                //   与 `disabledOnSecondaryVariant` 同值（见上面步骤行那处注释）。
+                endActions = {
+                    Box(
+                        Modifier.size(ICON_ACTION_SIZE),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            PageIcons.Selector,
+                            contentDescription = null,
+                            modifier = Modifier.size(ICON_ACTION_ICON),
+                            tint = COUITheme.colorScheme.onSurfaceVariantActions,
+                        )
+                    }
+                },
+                // `enabled = false` 时 COUI 不挂 `clickableModifier` ⇒ 点不进去，浮层也就打不开。
+                enabled = !stepsFull,
+                onClick = {
+                    tick()
+                    // 诊断：这一下是点出来的还是滑出来的（见 [GestureProbe]）
+                    XLog.w("添加命令：行被点开 —— ${probe.describe()}")
+                    stepPicker = STEP_PICK_APPEND
+                },
+            ) {
+                Text(
+                    text = I18n.get(Strings.COMMAND_ADD, "添加命令"),
+                    style = COUITheme.textStyles.headline1,
+                    fontWeight = FontWeight.Medium,
+                    color = addTitleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = I18n.get(Strings.COMMAND_STEP_SELECT_TITLE, "从内置命令与自定义命令里选择"),
+                    modifier = Modifier.padding(top = 2.dp),
+                    style = COUITheme.textStyles.body2,
+                    color = addSummaryColor,
+                )
+            }
+            // 落点已经不看这个盒子 —— 库拿 `preciseClickState` 记下的触点当锚点。留着它只是为了兜底：
+            // 触点没记到（如无障碍点击）时，浮层落在这一条竖边的下方，仍是可见的位置。
+            Box(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(0.dp)) {
+                StepPickerPopup(
+                    show = stepPicker == STEP_PICK_APPEND,
+                    preciseClick = preciseClick,
+                ) { stepPicker = null }
+            }
         }
     }
 }

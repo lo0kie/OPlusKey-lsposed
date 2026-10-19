@@ -167,11 +167,17 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
         val clones =
             AppCloneCatalog.entries(context).map { entry ->
                 val label = cloneLabel(entry.label, entry.slot, entry.userId)
+                //  「能不能打开」对分身也要真判一次（主清单那一行本来就判了）：
+                //   写死 `true` 会让分身永远不被标「不可打开」——「隐藏失效应用」与确认键的闸
+                //   都判不到它（五、3 不伪造能力）。
+                //   判不出来（取不到 per-user 的 PM）时仍按「能打开」算：分身与主用户同包名，
+                //   拿主用户的 PM 问必抛，一律判 false 会把好端端的分身从列表里滤掉。
+                val clonePm = AppCloneCatalog.packageManagerFor(context, entry.userId)
                 LaunchableApp(
                     packageName = entry.packageName,
                     label = label,
                     system = entry.system,
-                    launchable = true,
+                    launchable = clonePm?.let { AppEntry.resolve(it, entry.packageName) != null } ?: true,
                     xposed = false,
                     sortKey = sortKeyOf(label, romanizer),
                     userId = entry.userId,
@@ -179,7 +185,11 @@ internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): Li
             }
         // 分身行**并进主清单再统一排序** —— 上一版是 `apps + clones`（分身一律吊在末尾），
         //  于是「微信 1」跑到「支付宝」后面去了；用户要的是按名字混排。
-        val all = (apps + clones).sortedWith(order)
+        //  **按 target 去重**：列表那边是 `items(key = { it.target })`，key 重复会让 Compose
+        //  抛「Key was already used」直接崩掉 `:ui` 进程（二级页在贴吧那一页真崩过一次，
+        //  见 `loadActivities`）。主清单与分身理论上不会撞（分身带 `999@` 前缀），
+        //  但合成两条来源之后补一道，比赌它不撞便宜。
+        val all = (apps + clones).distinctBy { it.target }.sortedWith(order)
         XLog.w("可启动应用：分身 ${clones.size} 行")
 
         // 打头几条 + 耗时便于核对（转写器是否生效、这次查了多久）

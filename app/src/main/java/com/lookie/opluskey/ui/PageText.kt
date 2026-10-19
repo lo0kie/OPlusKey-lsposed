@@ -99,7 +99,9 @@ internal fun SettingsPage.addCommand() {
     //  那句会让用户以为侧键行为也跟过来了，而 saveCommands 已经报过「通知注入侧失败」。
     if (bindingMoved == CommandsSave.Failed) {
         saveCommands(previousLibrary, "改名失败，回滚命令库：$editingFrom → $name")
-    } else if (saveResult == CommandsSave.Ok) {
+    } else if (saveResult == CommandsSave.Ok && bindingMoved == CommandsSave.Ok) {
+        //  两半都必须是 Ok 才报「已修改」：绑定那一半广播没发出去时，[write] 已经报过
+        //  「已保存，但通知注入侧失败」，这里再补一句会把它顶掉（底部只有一行回执）。
         hint(tip)
     }
     // 存完**留在本页**（以前新增那条会退回「按键绑定」）：接着编下一条是常事，

@@ -34,26 +34,22 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v7
-
-      # 必须 21：compileOptions 与 jvmTarget 都是 21；本机能过是靠 Gradle 自动下发 21 toolchain，
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       # CI 里别赌那次下载。
       - name: 装 JDK 21
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: "21"
 
       # compileSdk = 37 对应 `platforms;android-37.0`（Android 17 带小版本，目录也带）。
       - name: 装 Android SDK（platform 37.0 / build-tools 36.0.0）
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
         with:
           packages: "platforms;android-37.0 build-tools;36.0.0"
 
       - name: 配置 Gradle 缓存
-        uses: gradle/actions/setup-gradle@v6
-
-      # 没配签名密钥时**只出 debug**：release 的收款码与名单是**封存**的（见 `core/build.gradle.kts` 的 `SealReleaseAssets`
+        uses: gradle/actions/setup-gradle@07d1f8453baaff67fb503883367f8b13e6158a54 # v6
       # 的 `SealReleaseAssets`），密钥由签名证书派生、且没有明文回退 —— 拿不到 keystore 那一步
       # 必然失败。与其让构建去撞墙，不如这里就说清「这一轮不出 release」。
       - name: 写入正式签名
@@ -110,6 +106,17 @@ jobs:
       - name: 耦合审计（禁止边 / 包级环）
         run: python3 tools/audit-coupling.py
 
+      # i18n 缓存审计：`remember { … }` 里缓存了字典文案、键里却没有语言档 ⇒ 切语言后那几行
+      #   还是旧语言（真机上「关于」页那两行这么踩过）。detekt / lint 管不了这种跨语句的判据。
+      #   与耦合审计同一条纪律：脚本存在的意义就是被跑，挂在 CI 上而不是靠人记得。
+      - name: i18n 缓存审计
+        run: python3 tools/check-i18n-cache.py
+
+      # 补丁产物完整性：`patches/repo` 里那个 aar 是打完补丁重新发布的，不在任何上游仓库里，
+      #   也没有上游签名可对 —— 仓库里那份就是唯一来源。校验和缺了 / 对不上，说明它被换过或传坏了。
+      - name: 校验补丁产物
+        run: bash tools/verify-patches.sh
+
       # 每一轮都打整包（debug + release）：这两个包既是验证对象，也是 `release.yml` 发版时
       #   要取的那一份，还是出问题时能直接下来复现的那一份。
       - name: 构建 debug / release
@@ -139,12 +146,20 @@ jobs:
           fi
           ls -l dist
 
+      # 两档 APK 的区分度（`tools/check_variants.py`）：详细日志 / 调试通道 / 明文收款码 /
+      #   封存资产必须**只在各自那一档**出现。原先这个脚本既不在 gate 也不在 CI，
+      #   等于「档配反了没人拦」—— 而 debug 档带着任意反射执行，串档是安全问题。
+      #   只在签名那一轮跑：没签名就没有 release 产物，脚本会直接报「缺产物」。
+      - name: 校验两档差异（debug / release）
+        if: steps.sign.outputs.signed == 'true'
+        run: python3 tools/check_variants.py
+
       # 验收底线：脚本在 `tools/verify-apk.sh`，`release.yml` 发版前也调它 —— 一套判据一处实现。
       - name: 校验验收底线（AGENTS.md 二、1.2）
         run: bash tools/verify-apk.sh dist
 
       - name: 上传 debug 产物
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: oplus-key-debug-${{ steps.dist.outputs.version_name }}
           path: dist/*-debug.apk
@@ -155,7 +170,7 @@ jobs:
         # 这份产物是 `release.yml` 发版时按 SHA 取的（保留 90 天）；没签名那一轮压根没有 release
         # 包（见 `signed` 那一步），这时上传会空手报错，故仍需这个条件。
         if: steps.sign.outputs.signed == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: oplus-key-release-${{ steps.dist.outputs.version_name }}
           path: dist/*-release.apk
@@ -167,7 +182,7 @@ jobs:
       # 按版本号对齐 —— 用户报的那一版能不能还原，就看这份文件在不在。
       - name: 上传混淆映射
         if: steps.sign.outputs.signed == 'true'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: oplus-key-mapping-${{ steps.dist.outputs.version_name }}
           path: app/build/outputs/mapping/release/mapping.txt

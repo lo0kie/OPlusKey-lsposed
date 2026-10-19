@@ -241,13 +241,14 @@ internal object HostChrome {
         }
 
         if (decor == null) {
-            XLog.d("拿不到 decorView，跳过状态栏遮罩")
+            //  判据级：遮罩没画出来（顶部露底 / 发白）时，这两行说明跳过了哪一步
+            XLog.w("拿不到 decorView，跳过状态栏遮罩")
             return
         }
 
         val height = statusBarHeight(activity)
         if (height <= 0) {
-            XLog.d("量不到状态栏高度，跳过状态栏遮罩")
+            XLog.w("量不到状态栏高度，跳过状态栏遮罩")
             return
         }
 

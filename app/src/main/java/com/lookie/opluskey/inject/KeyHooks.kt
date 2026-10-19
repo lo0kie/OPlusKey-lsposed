@@ -87,7 +87,7 @@ internal object KeyHooks {
         }
 
         // 借 Context 的时机推迟到真正转交手势那一刻：安装阶段还没有 App attach 过，只能借到降级品。
-        val forwarder = GestureForwarder({ SystemContext.get(loader) }, handler)
+        val forwarder = GestureForwarder({ SystemContext.get(loader) })
         // 「自定义按键」页那条旁路监听同样推迟取 Context（只在真要上报时才借，见 `KeyWatch`）
         KeyWatch.install { SystemContext.get(loader) }
         // 触觉反馈**不在这边**：它在宿主侧、动作即将执行那一刻（`host/GestureReceiver.runAction`）。

@@ -7,7 +7,6 @@ import android.content.IntentFilter
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.PagerState
@@ -30,16 +29,20 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.wire.ModuleWire
+import com.lookie.opluskey.ui.LocalHint
 import com.lookie.opluskey.ui.PageDebugChannel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SyncToHost
 import com.lookie.opluskey.ui.colorsFor
+import com.lookie.opluskey.ui.disabledClickReason
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION
 import com.lookie.opluskey.ui.onDebugCommand
 import com.lookie.opluskey.ui.state.CONFIG_IN_FLIGHT_GRACE_MS
 import com.lookie.opluskey.ui.state.InjectStatus
+import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.Scaffold
 import io.github.suqi8.coui.kmp.nav.core.NavDisplay
 import io.github.suqi8.coui.kmp.nav.core.NavDisplayEffects
@@ -74,7 +77,20 @@ internal fun SettingsPage.PageContent() {
     val navOwner = rememberNavigationEventDispatcherOwner(parent = null)
 
     COUITheme(colors = colorsFor(night)) {
-        CompositionLocalProvider(LocalNavigationEventDispatcherOwner provides navOwner) {
+        CompositionLocalProvider(
+            LocalNavigationEventDispatcherOwner provides navOwner,
+            //  禁用态那几格点一下要说明原因（见 `ui/DisabledHint.kt`）：
+            //  提示怎么弹、以及「整页现在为什么改不了」，都从页面这一层传下去 ——
+            //  控件层不带 `SettingsPage` 接收者，拿不到这两样。
+            //  原因取**点击那一刻**的结论，不是组合期快照：禁用期间链路可能刚好恢复。
+            LocalHint provides { hint(it) },
+            //  禁用态被点一下要说的话：库里所有可点控件（`BasicComponent` / `IconButton` /
+            //  可交互 `Card` / 菜单行）在 `enabled = false` 时把这一下点击交给它
+            //  —— 见 `patches/coui/0008-disabled-click-explains.patch`。
+            //  `remember` 住这个 lambda：`hint` / `disabledClickReason()` 都在**调用那一刻**才读，
+            //  每次重组换一个新实例会让所有读它的控件白白重组一遍。
+            LocalDisabledClick provides remember { { hint(disabledClickReason()) } },
+        ) {
             Scaffold(
                 containerColor = COUITheme.colorScheme.surface,
                 //  整页**边到边**，insets 一概不加：状态栏那一条由页面自己画

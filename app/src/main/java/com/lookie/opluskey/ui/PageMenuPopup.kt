@@ -13,14 +13,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.input.pointer.changedToUp
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
@@ -29,6 +28,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.MENU_ICON_SIZE
+import com.lookie.opluskey.ui.model.MENU_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_PANEL_RADIUS
 import com.lookie.opluskey.ui.model.PageIcons
@@ -198,6 +198,10 @@ private fun SettingsPage.MenuRow(
     probe: GestureProbe?,
 ) {
     val tick = rememberTick()
+    // 禁用行被点时先收菜单再说原因（提示条在页面底部、被浮层压着）。
+    //  走 CompositionLocal 而不是加参数：`MenuRow` 已经贴着 detekt 的三条上限，
+    //  改签名还会让基线里那几条失效。
+    val currentDisabledHint by rememberUpdatedState(row.disabledHint)
     val iconColor by animateColorAsState(
         targetValue =
             when {
@@ -238,11 +242,26 @@ private fun SettingsPage.MenuRow(
             row.danger,
             row.selected,
             row.trailingIcon,
+            row.stateIcon,
+            row.disabledHint,
         ) {
             DropdownItem(
                 // 显示文本过一道截断（[ellipsizeMenuTitle]）：库里标题最多三行，长名字会撑宽整张菜单
                 text = ellipsizeMenuTitle(row.title),
                 enabled = row.enabled,
+                // 禁用行照样能点：点一下先说清「为什么不能点」，再把菜单收掉
+                //  （不收的话提示条被浮层压着，等于没说）。
+                onDisabledClick =
+                    if (row.enabled) {
+                        null
+                    } else {
+                        {
+                            // 只说明原因、**不动菜单**（用户口径：点禁用行菜单别关）；
+                            //  禁用行也不再闪按下色（补丁 0008 的 `disabledClickable`）
+                            XLog.w("浮层点选（禁用行）：${row.title} → 只说明原因，菜单保持打开")
+                            hint(currentDisabledHint ?: disabledClickReason())
+                        }
+                    },
                 // 文字由库按 `alert` 走 `DropdownColors.alertContentColor` —— 与图标的红同一档
                 alert = row.danger,
                 // **行尾那一格不画**（`showCheck = false`）：选中态改由**行首图标**换成对勾来表示
@@ -253,6 +272,21 @@ private fun SettingsPage.MenuRow(
                 // `COUIIcons.Basic.ArrowRight` 也是 COUI 那一套（12x24、描边 1.4），见 [PageIcons.EnterArrow]。
                 //  逐行可换（[MenuEntry.Row.trailingIcon]）：跳页面那些行用「窗口 + 加号」，与网格一致。
                 chevronIcon = row.trailingIcon ?: PageIcons.EnterArrow,
+                // 状态标记走库的 `hint` 槽（标题块与行尾指示之间，见 [MenuEntry.Row.stateIcon]）。
+                //  **禁用的行不画**：库里是 `item.hint?.takeIf { enabled }` —— 那一槽在 COUI 里
+                //  本来就跟禁用态一起收（`setHint` 那一条），别指望在这里标「为什么被禁用」。
+                hint =
+                    row.stateIcon?.let { glyph ->
+                        {
+                            Icon(
+                                glyph,
+                                null,
+                                Modifier.size(MENU_STATE_ICON_SIZE),
+                                // 与库给禁用行的那一档灰同一支笔：它是「不接管」，不是警告
+                                tint = COUITheme.colorScheme.disabledOnSecondaryVariant,
+                            )
+                        }
+                    },
                 icon = { m ->
                     val base = m.height(MENU_ROW_CONTENT_HEIGHT).bringIntoViewRequester(bringIntoView)
                     // 第 0 行兼当「列表滚了没有」的探针：挂在行内容上 —— 滚的是列表**内层**，
@@ -285,87 +319,38 @@ private fun SettingsPage.MenuRow(
         remember(baseColors) {
             baseColors.copy(containerColor = Color.Transparent)
         }
-    if (row.enabled) {
-        //  **直放**：中间套一层 `Box` 会让库收不到点击（见 [MenuPopup] 的警告）。
-        DropdownImpl(
-            item = item,
-            optionSize = optionSize,
-            isSelected = row.selected,
-            index = index,
-            isFirst = isFirst,
-            isLast = isLast,
-            hasSubmenu = row.submenu,
-            dropdownColors = frostedColors,
-            onSelectedIndexChange = {
-                // 「滑动不许选中」：库在**抬指那一刻**派发这一行，而它判「滚动还是选行」只看内部
-                //  `isDynamicSelection`（= 量不出滚动范围才允许拖拽选行）——长列表上会偶发判错，
-                //  真机两笔：位移 261px / 273px、列表跟着滚了 261px / 273px，
-                //  抬指却选中了手指下那一行（见 `docs/device-findings.md` 二十）。
-                //  这里按**这一段手势自己的位移**兜一道：越过阈值就是滑动，吞掉这次选中。
-                //  真点击是 0~几 px（同批日志），不会误吞。
-                val dragged = probe?.isDrag() == true
-                XLog.w(
-                    "浮层点选：${row.title} —— ${probe?.describe() ?: "没有位移账本"}" +
-                        if (!interactive) {
-                            "；浮层正在淡出 ⇒ 已吞掉这次选中"
-                        } else if (dragged) {
-                            "；这一段是滑动 ⇒ 已吞掉这次选中"
-                        } else {
-                            ""
-                        },
-                )
-                if (interactive && !dragged) {
-                    tick()
-                    row.onPick()
-                }
-            },
-        )
-    } else {
-        //  禁用的这一行库里**根本不挂 `clickable`**，这一下没人 consume、直接穿到浮层自己的
-        // 「点外面就关」那套逻辑上 —— 菜单照样会关。压一层**透明的吃事件层**把它挡住
-        // （不给任何视觉，「灰」由 `DropdownItem(enabled = false)` 自己画），
-        // 效果就是「点了没反应、菜单还开着」。
-        //  `propagateMinConstraints = true`：这一层只是**吃事件**用的，不该改变行的尺寸 ——
-        //  `Box` 默认把进来的 min 约束**放松成 0** 再交给子级，而行的宽度正是靠那一条 min 约束撑满面板的
-        //  （库的 `ListPopupColumn` 按 `minWidth = listWidth` 量每一行）⇒ 少传这一位，同一个
-        //  `MenuEntry.Row` 启用时行尾图标贴边、一禁用就缩到文字后面。
-        Box(propagateMinConstraints = true) {
-            DropdownImpl(
-                item = item,
-                optionSize = optionSize,
-                isSelected = row.selected,
-                index = index,
-                isFirst = isFirst,
-                isLast = isLast,
-                //  与启用行**同值**：库里这一位决定「行尾那一格画不画」，不传就落到默认的 `false`
-                //  —— 于是同一个 `MenuEntry.Row`，启用时行尾有图标、一禁用整格消失。
-                hasSubmenu = row.submenu,
-                //  禁用行也用磨砂那一档：不传的话落到库默认不透明底，
-                //  半透明面板上会现出一块实色。
-                dropdownColors = frostedColors,
-                // 走不到（这一行是禁用的），留着只为满足签名
-                onSelectedIndexChange = {},
-            )
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                //  注意：**只吞「抬起」** —— 把每一帧的
-                                //  `changes.forEach { it.consume() }` 全吞 —— **MOVE 也吞了**，
-                                //  祖先 `ListPopupColumn` 的滚动收不到未消费事件 ⇒ 禁用行成了一块
-                                //  滚不动的死区。点击（行自己 / 浮层「点外面就关」）的判定点都是
-                                //  抬起那一下，只吞它就够了：按下照常落、滚动照常走。
-                                //  用公开的 `changedToUp()`（`…IgnoreConsumed` 那支在库内部是 private，
-                                //  引不到）：Initial pass 上还没有谁消费过，两者等价。
-                                awaitPointerEvent().changes.forEach { change ->
-                                    if (change.changedToUp()) change.consume()
-                                }
-                            }
-                        }
+    //  **直放**：中间套一层 `Box` 会让库收不到点击（见 [MenuPopup] 的警告）。
+    DropdownImpl(
+        item = item,
+        optionSize = optionSize,
+        isSelected = row.selected,
+        index = index,
+        isFirst = isFirst,
+        isLast = isLast,
+        hasSubmenu = row.submenu,
+        dropdownColors = frostedColors,
+        onSelectedIndexChange = {
+            // 「滑动不许选中」：库在**抬指那一刻**派发这一行，而它判「滚动还是选行」只看内部
+            //  `isDynamicSelection`（= 量不出滚动范围才允许拖拽选行）——长列表上会偶发判错，
+            //  真机两笔：位移 261px / 273px、列表跟着滚了 261px / 273px，
+            //  抬指却选中了手指下那一行（见 `docs/device-findings.md` 二十）。
+            //  这里按**这一段手势自己的位移**兜一道：越过阈值就是滑动，吞掉这次选中。
+            //  真点击是 0~几 px（同批日志），不会误吞。
+            val dragged = probe?.isDrag() == true
+            XLog.w(
+                "浮层点选：${row.title} —— ${probe?.describe() ?: "没有位移账本"}" +
+                    if (!interactive) {
+                        "；浮层正在淡出 ⇒ 已吞掉这次选中"
+                    } else if (dragged) {
+                        "；这一段是滑动 ⇒ 已吞掉这次选中"
+                    } else {
+                        ""
                     },
             )
-        }
-    }
+            if (interactive && !dragged) {
+                tick()
+                row.onPick()
+            }
+        },
+    )
 }

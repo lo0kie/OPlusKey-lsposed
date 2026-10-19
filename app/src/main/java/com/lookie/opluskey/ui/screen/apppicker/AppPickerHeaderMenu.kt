@@ -22,7 +22,7 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  * 都是开关（行标题以本文件里的 `title` 为准）。
  *
  *  只服务**「选择应用」页**那一条顶栏，所以跟着这一屏放 —— 原先它长在
- *  `ui/PageHeader.kt` 里（那个文件因此装了两块业务菜单）。顶栏现在只提供
+ *  那个公共的顶栏文件里（因此装了两块业务菜单）。顶栏现在只提供
  *  `actions` 槽位，菜单由各页自己摆（口径见 [PageHeader]）。
  *
  * 列表来自 `MAIN + CATEGORY_LAUNCHER` 查询，只给得出有启动图标的应用；没有启动图标的系统应用与第三方应用

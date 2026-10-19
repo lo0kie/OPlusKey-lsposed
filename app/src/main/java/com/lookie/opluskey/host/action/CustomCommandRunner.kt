@@ -67,7 +67,9 @@ internal class CustomCommandRunner(
             }
             XLog.w("自定义命令「$name」（单条）→ ${XLog.redactCommand(cmd.single)}")
             // 与多条步骤同一套语义（Action.parse）：keyevent: / intent: / app: / shortcut: /
-            // cmd: / shell: 六种前缀写法在单条里同样成立；无前缀兜底成 shell（手写命令可省 shell:）。
+            // cmd: / shell: 六种前缀写法在单条里同样成立。**没有前缀的写法不再兜底成 shell**
+            // （解析成 `none`、不执行）—— 界面在「命令详细」那一栏就拦住了（`Action.hasSupportedFormat`），
+            // 这里能收到说明是老配置 / 手改文件，执行侧只留日志。
             // 注意：这里必须 `depth + 1`（与 `runSteps` 里那条 `cmd:` 步骤同口径）：单条正文里的
             // `cmd:` 引用会在派发侧再进 `run()`，**是一次同步重入**；把 `depth` 原样传下去等于
             // 「每层都还是 0」，上面那道 `depth > MAX_COMMAND_DEPTH` 永远不成立 ——

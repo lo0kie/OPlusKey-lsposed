@@ -13,6 +13,7 @@ import com.lookie.opluskey.ui.model.UNKNOWN_CONFIG_FORMAT
 import com.lookie.opluskey.ui.saveCommands
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.write
+import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -137,9 +138,19 @@ internal object ConfigTransfer {
         //  收的过程要等广播，不能在主线程上做，所以整条导出挪到 IO 作用域，拼好再回主线程弹选择器。
         val ctx = activity.applicationContext ?: activity
         fileScope.launch {
-            val remote = LogPull.collect(ctx, HostApp.PACKAGE)
-            mainHandler.post {
-                openExportPicker(activity, LogPull.compose(XLog.snapshot(), remote))
+            //  这一段必须自己包一层：`collect` 里要跨进程收日志、还要拼文本，
+            //  抛出去就是「点了没反应」且协程异常直接崩 `:ui` 进程（本文件末尾那条纪律）。
+            try {
+                val remote = LogPull.collect(ctx, HostApp.PACKAGE)
+                mainHandler.post {
+                    try {
+                        openExportPicker(activity, LogPull.compose(XLog.snapshot(), remote))
+                    } catch (e: Throwable) {
+                        XLog.w("导出日志：拼文本 / 弹选择器失败（已忽略）：${e.javaClass.simpleName}", e)
+                    }
+                }
+            } catch (e: Throwable) {
+                XLog.w("导出日志：收日志失败（已忽略）：${e.javaClass.simpleName}", e)
             }
         }
     }
@@ -176,6 +187,7 @@ internal object ConfigTransfer {
                 putExtra(android.content.Intent.EXTRA_TITLE, name)
             }
         try {
+            FileResultHook.arm(activity) { chain -> handleFileResult(chain) }
             activity.startActivityForResult(intent, REQ_EXPORT_LOG)
             XLog.w("导出日志：已弹出保存位置选择器（${body.length} 字符）")
         } catch (e: Throwable) {
@@ -218,6 +230,7 @@ internal object ConfigTransfer {
                 )
             }
         try {
+            FileResultHook.arm(activity) { chain -> handleFileResult(chain) }
             activity.startActivityForResult(intent, REQ_EXPORT_CONFIG)
             XLog.w("导出配置：已弹出保存位置选择器（${text.length} 字符）")
         } catch (e: Throwable) {
@@ -250,6 +263,7 @@ internal object ConfigTransfer {
                 type = EXPORT_MIME
             }
         try {
+            FileResultHook.arm(activity) { chain -> handleFileResult(chain) }
             activity.startActivityForResult(intent, REQ_IMPORT_CONFIG)
             XLog.w("导入配置：已弹出文件选择器")
         } catch (e: Throwable) {
@@ -300,15 +314,33 @@ internal object ConfigTransfer {
                 //  库里不存在的命令上（两个只读位是分开的，「配置能写、命令库只读」这种组合可达）。
                 //  所以这里留一份旧配置，命令库没落盘就把它写回去 —— 两段一起成、或一起不动。
                 val previousConfig = page.configState.config.value
-                if (page.write(parsed.config, "导入配置") == CommandsSave.Failed) {
+                //  **开关与「已确认免责协议」都跟着本机走，不跟着文件走**：文件里那几位一律是
+                //  「关 / 未确认」（见 `ConfigBundle`：不该让别人的文件替这台机器做决定）。
+                //  但**本机此刻的状态**没有必要因为一次导入被抹掉 —— 用户早就在这台机器上开过、
+                //  确认过了（用户口径「导入配置还是把主开关给关了」「已经是确认免责协议就不需要
+                //  再清除这个状态了」）。所以写入前把这几样换回本机此刻的值。
+                //  「开关」现在是两位：**模块总闸**（`global.enabled`）与**每颗键**（`key.enabled`）。
+                //  本地认得的那颗键就用本机的值；文件里新带来的键（本机配置里没有）才用文件里那份
+                //  —— `ConfigBundle` 已经把它们统一置开。
+                val merged =
+                    parsed.config.copy(
+                        global = parsed.config.global.copy(enabled = previousConfig.global.enabled),
+                        keys =
+                            parsed.config.keys.mapValues { (id, key) ->
+                                val local = previousConfig.keys[id] ?: return@mapValues key
+                                key.copy(enabled = local.enabled)
+                            },
+                        disclaimerAccepted = previousConfig.disclaimerAccepted,
+                        commandDisclaimerAccepted = previousConfig.commandDisclaimerAccepted,
+                    )
+                if (page.write(merged, "导入配置") == CommandsSave.Failed) {
                     XLog.w("导入配置：配置未落盘（只读态 / 写失败），命令库保持不动")
                     return@post
                 }
                 when (page.saveCommands(parsed.commands, "导入配置")) {
-                    // 文案点一句「主开关保持关闭」：导入**不带**主开关状态（见 `ConfigBundle`），
-                    //  不说的话用户会以为「导入完就该生效」，实际还得自己去首页打开、并在那一步认风险。
+                    // 只报「导入完成」：主开关跟着**本机**走（见上），不再有「保持关闭」这回事。
                     CommandsSave.Ok -> {
-                        page.hint(I18n.get(Strings.TOAST_CONFIG_IMPORTED, "已导入配置，主开关保持关闭"))
+                        page.hint(I18n.get(Strings.TOAST_CONFIG_IMPORTED, "已导入配置"))
                     }
 
                     // 两份都已落盘，只是没通知到注入侧：saveCommands 自己已经报过那一句，这里不叠。
@@ -396,6 +428,7 @@ internal object ConfigTransfer {
 
     /** 收「保存到 / 打开」的结果 —— 平台 `Activity#onActivityResult`，进程内只装一次。 */
     internal fun installFileResultHook(module: XposedModule) {
+        FileResultHook.install(module)
         if (exportResultHooked) return
         val origin =
             Reflect.method(
@@ -408,43 +441,48 @@ internal object ConfigTransfer {
                 XLog.w("文件选择：找不到 Activity#onActivityResult")
                 null
             } ?: return
-        exportResultHooked = module.hookGuarded(origin) { chain ->
-            // 这个 hook 挂在**平台类** `Activity#onActivityResult` 上（宿主没自己重写时），
-            //  进程里每个 Activity 的回调都会经过它；而返回 null = 把这次回调**吞掉**。
-            //  只认宿主的那个 Activity（口径同 BackInterception / SettingsPageHooks）：别的 Activity
-            //  撞上我们的请求码（0x4F4C / 0x4F43 / 0x4943）时原样放行 —— 否则它的回调被静默吃掉，
-            //  REQ_IMPORT_CONFIG 还会拿它的 uri 去导入。
-            //  取舍：SAF 打开期间宿主 Activity 若被重建、而 HostSession.activity 还没指向新实例，
-            //  这一次会放行给宿主 —— 宁可不导入，也不误吞宿主回调。
-            if (chain.thisObject !== HostSession.activity) return@hookGuarded chain.proceed()
-            val requestCode = chain.args.getOrNull(0) as? Int
-            val resultCode = chain.args.getOrNull(1) as? Int
-            val uri = (chain.args.getOrNull(2) as? android.content.Intent)?.data
-            when (requestCode) {
-                REQ_EXPORT_LOG, REQ_EXPORT_CONFIG -> {
-                    writeExportFile(
-                        uri = uri,
-                        ok = resultCode == android.app.Activity.RESULT_OK,
-                        kind = if (requestCode == REQ_EXPORT_LOG) ExportKind.LOG else ExportKind.CONFIG,
-                    )
-                    null // 自己的请求码，不再往下传
-                }
-
-                REQ_IMPORT_CONFIG -> {
-                    if (resultCode == android.app.Activity.RESULT_OK && uri != null) {
-                        applyImportedConfig(uri)
-                    } else {
-                        XLog.w("导入配置：用户取消")
-                    }
-                    null
-                }
-
-                else -> {
-                    chain.proceed()
-                }
-            }
-        } != null
+        exportResultHooked = module.hookGuarded(origin) { chain -> handleFileResult(chain) } != null
         XLog.w("文件选择：结果回调 hook=$exportResultHooked")
+    }
+
+    /**
+     * 收「保存到 / 打开」的结果 —— 两份 hook（平台类那份 + 宿主自己重写的那份）共用这一支。
+     *
+     *  返回 `null` = 把这次回调**吞掉**（我们的请求码不再往下传）。
+     *  只认宿主的那个 Activity（口径同 BackInterception / SettingsPageHooks）：别的 Activity 撞上
+     *  我们的请求码（0x4F4C / 0x4F43 / 0x4943）时原样放行 —— 否则它的回调被静默吃掉，
+     *  `REQ_IMPORT_CONFIG` 还会拿它的 uri 去导入。
+     *  取舍：SAF 打开期间宿主 Activity 若被重建、而 `HostSession.activity` 还没指向新实例，
+     *  这一次会放行给宿主 —— 宁可不导入，也不误吞宿主回调。
+     */
+    private fun handleFileResult(chain: XposedInterface.Chain): Any? {
+        if (chain.thisObject !== HostSession.activity) return chain.proceed()
+        val requestCode = chain.args.getOrNull(0) as? Int
+        val resultCode = chain.args.getOrNull(1) as? Int
+        val uri = (chain.args.getOrNull(2) as? android.content.Intent)?.data
+        return when (requestCode) {
+            REQ_EXPORT_LOG, REQ_EXPORT_CONFIG -> {
+                writeExportFile(
+                    uri = uri,
+                    ok = resultCode == android.app.Activity.RESULT_OK,
+                    kind = if (requestCode == REQ_EXPORT_LOG) ExportKind.LOG else ExportKind.CONFIG,
+                )
+                null
+            }
+
+            REQ_IMPORT_CONFIG -> {
+                if (resultCode == android.app.Activity.RESULT_OK && uri != null) {
+                    applyImportedConfig(uri)
+                } else {
+                    XLog.w("导入配置：用户取消")
+                }
+                null
+            }
+
+            else -> {
+                chain.proceed()
+            }
+        }
     }
 
     /** 把 [pendingExport] 写进用户挑的位置 —— 整份文本的写盘在 [fileScope] 上，结果回主线程报。 */
@@ -465,28 +503,44 @@ internal object ConfigTransfer {
             //  页面在挑文件那一步被关了 ⇒ 后面既写不了也弹不出提示。说出来，
             //  否则用户只看到「导出点了没反应」，日志里一句都没有。
             XLog.w("${kind.what}：拿不到页面（它已经关了），这次不写盘")
-            mainHandler.post { HostSession.page?.hint(I18n.get(kind.failKey, kind.failDefault)) }
+            mainHandler.post {
+                try {
+                    HostSession.page?.hint(I18n.get(kind.failKey, kind.failDefault))
+                } catch (e: Throwable) {
+                    XLog.w("${kind.what}：回执没弹出来（已忽略）：${e.javaClass.simpleName}", e)
+                }
+            }
             return
         }
         fileScope.launch {
-            val written =
-                try {
-                    val out = resolver.openOutputStream(uri, "wt")
-                    out?.use { it.write(text.toByteArray()) }
-                    out != null
-                } catch (e: Throwable) {
-                    XLog.w("${kind.what}：写入失败：${e.message}")
-                    false
+            //  同一笔账：写盘那一段有自己的 try，但回主线程那次 `hint` 原先裸着 ——
+            //  页面正好在这一刻销毁、或取字典抛异常，都会顺主 looper 崩掉 `:ui`。
+            try {
+                val written =
+                    try {
+                        val out = resolver.openOutputStream(uri, "wt")
+                        out?.use { it.write(text.toByteArray()) }
+                        out != null
+                    } catch (e: Throwable) {
+                        XLog.w("${kind.what}：写入失败：${e.message}")
+                        false
+                    }
+                if (written) XLog.w("${kind.what}：已写入（${text.length} 字符）")
+                mainHandler.post {
+                    try {
+                        HostSession.page?.hint(
+                            if (written) {
+                                I18n.get(kind.okKey, kind.okDefault)
+                            } else {
+                                I18n.get(kind.failKey, kind.failDefault)
+                            },
+                        )
+                    } catch (e: Throwable) {
+                        XLog.w("${kind.what}：回执没弹出来（已忽略）：${e.javaClass.simpleName}", e)
+                    }
                 }
-            if (written) XLog.w("${kind.what}：已写入（${text.length} 字符）")
-            mainHandler.post {
-                HostSession.page?.hint(
-                    if (written) {
-                        I18n.get(kind.okKey, kind.okDefault)
-                    } else {
-                        I18n.get(kind.failKey, kind.failDefault)
-                    },
-                )
+            } catch (e: Throwable) {
+                XLog.w("${kind.what}：收尾失败（已忽略）：${e.javaClass.simpleName}", e)
             }
         }
     }

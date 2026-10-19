@@ -234,6 +234,9 @@ internal fun SettingsPage.StepPickerPopup(
     MenuPopup(
         show = subTile != null,
         preciseClick = panelTouch,
+        //  与一级同一档封顶（[STEP_PICKER_MAX_HEIGHT]）：不给的话这一层按内容自然高度长，
+        //  条数一多就顶出屏幕、还没法滚。给了之后超出部分由库的列表自己滚。
+        maxHeight = STEP_PICKER_MAX_HEIGHT,
         enableWindowDim = true,
         onDismiss = { subTile = null },
         entries =

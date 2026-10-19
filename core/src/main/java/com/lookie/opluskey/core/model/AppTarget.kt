@@ -99,12 +99,6 @@ object AppTarget {
     /** 显式组件那一段（`包名/类名` 的类名部分），没有就返回 `null`。 */
     fun activity(target: String): String? = withoutUser(target).substringAfter('/', "").ifEmpty { null }
 
-    /** 换成另一个用户，其余不变（选择页里「主用户 / 分身」互相切换时用）。 */
-    fun withUser(
-        target: String,
-        userId: Int,
-    ): String = format(withoutUser(target), userId)
-
     /**
      * 两个目标**是不是同一个绑定** —— 忽略显示名，只比用户 + 组件。
      *

@@ -6,7 +6,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.model.languageLabel
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -96,21 +95,26 @@ internal fun SettingsPage.setColorOsApi(on: Boolean) {
 }
 
 /**
- * 写 [KeyConfig.enabled] 总闸：关闭后绑定页控件置灰，侧键不再被接管。
+ * 写**模块总闸**（[GlobalConfig.enabled]）：关闭后绑定页控件置灰，一颗键都不再被接管。
  *
- *  总闸的回执是**专用两句**（「已停用按键绑定，侧键交还系统」），不套「已关闭「启用按键绑定」」
- *  —— 那读起来是句废话，而且「关掉之后会发生什么」才是这一下真正要交代的事。
+ *  它**不碰**任何一颗键自己的 `enabled`：总闸与逐键是两层，关掉总闸再打开时，
+ *  用户之前在 ⋮ 菜单里停用过的那颗键应该还是停用的。
+ *
+ * **两档的回执不一样**（用户口径「关闭主开关会出现两个提示条」→「开启主开关也提示」）：
+ *
+ *  · **关** —— 不发回执。总闸一关，首页那条常驻提示立刻变成 [KEY_DISABLED_HINT]
+ *    （「按键绑定已关闭，侧键交还系统」），再补一条「已停用…」就是**两层胶囊**。
+ *    原来那句「侧键交还系统」的后果说明已经并进常驻文案，信息没丢；
+ *  · **开** —— 要发。常驻那条这时是**收掉**，界面上一个字的反馈都没有，用户会以为
+ *    「点了没反应」。回执「已启用按键绑定」正好补上这一格。
+ *
+ * 写盘失败仍由 [write] 自己报，拨开关不会没有反馈。
  */
-internal fun SettingsPage.setKeyEnabled(on: Boolean) {
+internal fun SettingsPage.setModuleEnabled(on: Boolean) {
     val cfg = configState.config.value
-    writeAndNotice(
-        cfg.copy(keys = cfg.keys + (KeyId.PLUS to cfg.key(KeyId.PLUS).copy(enabled = on))),
-        "plus_enabled=${if (on) 1 else 0}",
-    ) {
-        I18n.get(
-            if (on) Strings.TOAST_BINDING_ON else Strings.TOAST_BINDING_OFF,
-            if (on) "已启用按键绑定" else "已停用按键绑定，侧键交还系统",
-        )
+    val saved = write(cfg.copy(global = cfg.global.copy(enabled = on)), "module_enabled=${if (on) 1 else 0}")
+    if (saved == CommandsSave.Ok && on) {
+        hint(I18n.get(Strings.TOAST_BINDING_ON, "已启用按键绑定"))
     }
 }
 
@@ -123,7 +127,7 @@ internal fun SettingsPage.acceptDisclaimerAndEnable() {
     val cfg = configState.config.value
     writeAndNotice(
         cfg.copy(
-            keys = cfg.keys + (KeyId.PLUS to cfg.key(KeyId.PLUS).copy(enabled = true)),
+            global = cfg.global.copy(enabled = true),
             disclaimerAccepted = true,
         ),
         "disclaimer_accepted=true",

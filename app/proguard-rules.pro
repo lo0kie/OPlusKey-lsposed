@@ -20,7 +20,7 @@
 #  0 个类、`services.jar` 7 个、`OplusGestureUI.apk` 4 个（`a`~`d`），与本包重名的只有后者那 4 个。
 -keep class com.lookie.opluskey.KeyModule { *; }
 
-# 资源 id 类：`build_id` 是**按名字**取的（`ui/screen/HomeScreen.kt` 的 `appVersionLabel`
+# 资源 id 类：`build_id` 是**按名字**取的（`ui/PageText.kt` 的 `moduleBuildStamp`
 # 走 `Resources.getIdentifier("build_id", "string", MODULE_PACKAGE)` —— 不能写
 # `R.string.build_id`，页面跑在宿主进程里，`R` 会解析到宿主自己的资源表）。
 #  名字一旦被 R8 收缩掉、或那份 string 被 `shrinkResources` 当成「没人引用」删掉，

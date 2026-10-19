@@ -23,12 +23,13 @@ internal val APP_PICKER_TITLE: String
     get() = I18n.get(Strings.APP_PICKER_TITLE, "选择应用")
 
 /**
- * 「选择界面」页的标题 —— 「选择应用」页上**长按**某个应用进来（二级页）。
+ * 「选择界面」页的标题 —— 「选择应用」页上**点**某个应用进来（二级页）。
  *
- *  不叫「选择 Activity」：这一页列的是「这个应用能打开的界面」，用户不需要知道 Activity 这个词。
+ *  叫「应用组件」而不是「Activity」：这一页列的是「这个应用能打开的界面 + 快捷方式」，
+ *  用户不需要知道 Activity 这个词（用户定稿口径）。
  */
 internal val ACTIVITY_PICKER_TITLE: String
-    get() = I18n.get(Strings.APP_PICKER_ACTIVITY_TITLE, "Activity")
+    get() = I18n.get(Strings.APP_PICKER_ACTIVITY_TITLE, "应用组件")
 
 /**
  * 「更多选项」页的标题（首页「其他 → 更多选项」那一行进入；这是**唯一入口**）。
@@ -70,14 +71,17 @@ internal val CONFIG_READ_FAILED_HINT: String
     get() = I18n.get(Strings.STATUS_CONFIG_FAILED, "配置读取失败，请重进页面")
 
 /**
- * 首页那条常驻提示的第五种文案：**主开关关着**（`KeyConfig.enabled = false`）。
+ * 首页那条常驻提示的第五种文案：**模块总闸关着**（`GlobalConfig.enabled = false`）。
  *
  *  这一档不是故障、也不该让人等：**页面整片灰就是它关着导致的**，说清这一点用户自己拨回去即可
  *（所以与 [MODULE_UNAVAILABLE_HINT] 分开 —— 那一句会让人以为要等）。主开关那一行本身不吃这个闸，
  * 拨得回来（见 [HomeScreen] 主开关那段注释）。
+ *
+ *  **逐键的停用不走这一条**：停用一颗键（含侧键）时页面照常可用，只是那一颗的控件变灰、
+ *  点一下说「可在 ⋮ 菜单里启用」（见 `disabledClickReason`）。
  */
 internal val KEY_DISABLED_HINT: String
-    get() = I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭")
+    get() = I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，侧键交还系统")
 
 /**
  * 首页那条常驻提示的第六种文案：**宿主那一路服务没起来**（`link.hostServiceUp = false`）。
@@ -205,7 +209,9 @@ internal val COMMAND_DISCLAIMER_TEXT: String
 internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
     get() =
         listOf(
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_DEFAULT_SHELL, "默认为 shell 命令")),
+            //  **没有「默认为 shell 命令」那一行了**：现在命令必须显式带前缀（用户口径
+            //  「去掉默认为 shell 和 cmd:，对命令详细限制，必须以支持的格式开头」）。
+            //  这一列就是「能写什么」，每行都可点、把前缀整段填进输入框。
             CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令> —— 执行 shell 命令"), Action.SHELL_PREFIX),
             CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键> —— 模拟按键"), Action.KEYEVENT_PREFIX),
             CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action> —— 发送 Intent"), Action.INTENT_PREFIX),

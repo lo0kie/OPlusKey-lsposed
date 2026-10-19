@@ -1,16 +1,19 @@
 diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
-index 484bb33..7a3fe3a 100644
+index 484bb33..23a2b8f 100644
 --- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
 +++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
-@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.displayCutout
+@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.WindowInsets
+ import androidx.compose.foundation.layout.WindowInsetsSides
+ import androidx.compose.foundation.layout.displayCutout
  import androidx.compose.foundation.layout.navigationBars
++import androidx.compose.foundation.layout.offset
  import androidx.compose.foundation.layout.only
  import androidx.compose.foundation.layout.padding
 +import androidx.compose.foundation.layout.size
  import androidx.compose.foundation.layout.systemBars
  import androidx.compose.foundation.layout.windowInsetsPadding
  import androidx.compose.runtime.Composable
-@@ -43,6 +44,7 @@ import androidx.compose.ui.draw.drawWithContent
+@@ -43,6 +45,7 @@ import androidx.compose.ui.draw.drawWithContent
  import androidx.compose.ui.geometry.Offset
  import androidx.compose.ui.graphics.Color
  import androidx.compose.ui.graphics.TransformOrigin
@@ -18,7 +21,7 @@ index 484bb33..7a3fe3a 100644
  import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
  import androidx.compose.ui.input.nestedscroll.NestedScrollSource
  import androidx.compose.ui.input.nestedscroll.nestedScroll
-@@ -131,6 +133,13 @@ fun TopAppBar(
+@@ -131,6 +134,13 @@ fun TopAppBar(
      trailingSubtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
      trailingSubtitleAlignment: TopAppBarTrailingSubtitleAlignment =
          TopAppBarTrailingSubtitleAlignment.Bottom,
@@ -32,7 +35,7 @@ index 484bb33..7a3fe3a 100644
      dividerColor: Color = COUITheme.colorScheme.dividerLine,
      navigationIcon: @Composable () -> Unit = {},
      actions: @Composable RowScope.() -> Unit = {},
-@@ -168,6 +177,7 @@ fun TopAppBar(
+@@ -168,6 +178,7 @@ fun TopAppBar(
          trailingSubtitle = trailingSubtitle,
          trailingSubtitleColor = trailingSubtitleColor,
          trailingSubtitleAlignment = trailingSubtitleAlignment,
@@ -40,7 +43,7 @@ index 484bb33..7a3fe3a 100644
          dividerColor = dividerColor,
          navigationIcon = navigationIcon,
          actions = actionsRow,
-@@ -709,6 +719,7 @@ private fun TopAppBarLayout(
+@@ -709,6 +720,7 @@ private fun TopAppBarLayout(
      trailingSubtitleColor: Color,
      trailingSubtitleAlignment: TopAppBarTrailingSubtitleAlignment =
          TopAppBarTrailingSubtitleAlignment.Bottom,
@@ -48,7 +51,7 @@ index 484bb33..7a3fe3a 100644
      dividerColor: Color,
      navigationIcon: @Composable () -> Unit,
      actions: @Composable () -> Unit,
-@@ -830,14 +841,28 @@ private fun TopAppBarLayout(
+@@ -830,14 +842,35 @@ private fun TopAppBarLayout(
                  // Trailing subtitle: position and text size are both driven in the placement pass;
                  // it shares the large title's line and so contributes no height to the bar.
                  Box(Modifier.layoutId("trailingSubtitle")) {
@@ -77,6 +80,13 @@ index 484bb33..7a3fe3a 100644
 +                                contentDescription = null,
 +                                modifier = Modifier
 +                                    .padding(start = TrailingSubtitleIconGap)
++                                    // Centred on the row, an icon still reads low next to CJK text:
++                                    //   the subtitle's line-height style (alignment Top, trim None)
++                                    //   leaves the ideographic ink ~1.7dp above the line box centre.
++                                    //   Measured on device (3x): text ink centre 425.3px vs icon ink
++                                    //   centre 430.5px ⇒ lift 5px ≈ 1.7dp. Scales with the box, so the
++                                    //   collapsed bar keeps the same relationship.
++                                    .offset(y = -TrailingSubtitleIconLift)
 +                                    .size(TrailingSubtitleIconSize),
 +                                tint = animatedTrailingSubtitleColor,
 +                            )
@@ -85,7 +95,7 @@ index 484bb33..7a3fe3a 100644
                  }
              }
              Box(Modifier.layoutId("bottomContent")) {
-@@ -1339,6 +1364,13 @@ private val CollapsedTitleTextSize = 18.sp
+@@ -1339,6 +1372,19 @@ private val CollapsedTitleTextSize = 18.sp
   */
  private val TrailingSubtitleStartGap = 8.dp
  
@@ -95,6 +105,12 @@ index 484bb33..7a3fe3a 100644
 + */
 +private val TrailingSubtitleIconGap = 4.dp
 +private val TrailingSubtitleIconSize = 16.dp
++
++/**
++ * How far the optional icon rides above the line box's centre, so that it lines up with the
++ * subtitle text's **ink** centre instead of the box's. See the call site for the measurement.
++ */
++private val TrailingSubtitleIconLift = 1.75.dp
 +
  /**
   * How far the trailing subtitle shrinks by the time the bar is fully collapsed.

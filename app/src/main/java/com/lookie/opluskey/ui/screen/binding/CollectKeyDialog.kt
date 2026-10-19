@@ -108,17 +108,8 @@ internal fun SettingsPage.CollectKeyDialog(
     val waiting = !collectClosing
     val draftName = newKeyName()
 
-    // 兜底 —— 这一档只在「收场回调根本没来」时才该跑：
-    //   · 先等 [COLLECT_CLOSE_TIMEOUT_MS]（比退场动画留一倍余量）；
-    //   · 到点再看一眼：这一刻弹窗**还开着、并且已经该关了** ⇒ 说明那声回调丢了，直接放行；
-    //   · **已经关着** ⇒ 回调确实来过（它已把 `collectClosed` 置位），什么都不做。
-    //    这一步是整个兜底的关键：否则「用户自己点遮罩关掉弹窗 → 回调照常置位」之后，
-    //    这条 effect 会在 600ms 时再跑一次，把一颗**迟到的键**当成「上一个窗收场了」。
-    LaunchedEffect(show, pendingCode, duplicateName) {
-        if (!collectClosing) return@LaunchedEffect
-        delay(COLLECT_CLOSE_TIMEOUT_MS)
-        if (show) collectClosed = true
-    }
+    // 兜底 —— 这一档只在「收场回调根本没来」时才该跑，理由见 [CollectCloseFallback]。
+    CollectCloseFallback(show = show, closing = collectClosing) { collectClosed = true }
 
     // **只在「等按键」这一小段里监听**：一听到键就交给下一步，注入侧不该继续往外报。
     //  被拒时留在等待态、用消息条说一句，用户可以再按一次。
@@ -146,20 +137,17 @@ internal fun SettingsPage.CollectKeyDialog(
         CollectKeyBody()
     }
     AddKeyDialog(
-        show = show && pendingCode != null,
+        //  **等收集窗彻底收场了再开这一个**：两个弹窗窗口同时在场的那几百毫秒里，键盘会被
+        //  前一个窗口的销毁带走一次，而我们在后一个窗口里刚聚焦 ⇒ 用户看到的就是
+        //  「键盘拉起又消失」。以前是「早开窗、晚抢焦点」（`focusReady`），窗口仍是叠着的；
+        //  现在连窗都不叠 —— 收场回调（或它的兜底）一到，这一格才置位。
+        show = show && pendingCode != null && collectClosed,
         initial = draftName,
         // 取消 = 不添加：这一步还没写过配置，关掉就是没加
         onDismiss = onDismiss,
-        focusReady = collectClosed,
         onConfirm = { name ->
             // 写盘失败时 `write` 自己已经提示过，这里不关窗：用户可以改个名再试一次
-            val code = pendingCode
-            if (code != null && addKey(code, name)) {
-                // 回执照发即可：提示条现在挂在**浮层槽、弹窗宿主之后**（见 `PageContent`），
-                //  自己就压在弹窗之上；`onDismiss()` 紧跟其后把弹窗收走，两句谁先谁后都看得见
-                hint(I18n.get(Strings.KEY_WATCH_ADDED, "已添加「%s」").format(name))
-                onDismiss()
-            }
+            if (addKey(pendingCode, name)) onDismiss()
         },
     )
     FrostedDialog(
@@ -168,6 +156,36 @@ internal fun SettingsPage.CollectKeyDialog(
         onDismiss = onDismiss,
     ) {
         duplicateName?.let { DuplicateBody(it) }
+    }
+}
+
+/**
+ * 「等按键」那个窗**收场的兜底** —— `onDismissFinished` 没来时才接手。
+ *
+ *  那个回调正常都会来（库在退场动画播完时给）。但真机上一旦因为「动画被打断」之类没回调，
+ *  流程就卡在「弹窗已消失、命名窗永不出现」，所以留一条超时：
+ *
+ *   · 先等 [COLLECT_CLOSE_TIMEOUT_MS]（比退场动画留一倍余量）；
+ *   · 到点再看一眼：这一刻弹窗**还开着、并且已经该关了** ⇒ 说明那声回调丢了，直接放行；
+ *   · **已经关着** ⇒ 回调确实来过（它已把那个位置位），什么都不做。
+ *     这一步是关键：否则「用户自己点遮罩关掉弹窗 → 回调照常置位」之后，这条 effect 会在
+ *     600ms 时再跑一次，把一颗**迟到的键**当成「上一个窗收场了」。
+ *
+ *  单独成函数是为了让 [CollectKeyDialog] 留在 detekt 的圈复杂度阈值之内。
+ *
+ * @param closing 这个窗**此刻该不该关**（听到键 / 撞上重复之后）
+ * @param onTimedOut 确认回调丢了，放行
+ */
+@Composable
+private fun CollectCloseFallback(
+    show: Boolean,
+    closing: Boolean,
+    onTimedOut: () -> Unit,
+) {
+    LaunchedEffect(show, closing) {
+        if (!closing) return@LaunchedEffect
+        delay(COLLECT_CLOSE_TIMEOUT_MS)
+        if (show) onTimedOut()
     }
 }
 
@@ -248,21 +266,29 @@ private fun SettingsPage.checkKey(code: Int): CollectCheck {
 }
 
 /**
- * 把 [code] 连同用户起的名字写进配置 —— 命名弹窗上点了「确定」才走到这里。
+ * 把 [code] 连同用户起的名字写进配置，并弹一句「已添加「…」」—— 命名弹窗上点了「确定」才走到这里。
  *
  *  id 在这里按**此刻**的配置重新取（不在组合期就定下）：弹窗开着这段时间别处可能已经写过
  *  配置，拿旧快照算出来的 id 可能已经有人占了。
  *
- * @return `true` = 写成功；`false` = 写盘失败（`write` 自己已经 toast 过），调用方别关窗
+ *  [code] 可空只是为了让调用点少一层判断（见 `CollectKeyDialog` 那条圈复杂度）；
+ *  真走到 `null` 说明命名窗没听到键就开了，直接当失败。
+ *
+ * @return `true` = 写成功；`false` = 写盘失败（`write` 自己已经 toast 过）或没有键码，调用方别关窗
  */
 private fun SettingsPage.addKey(
-    code: Int,
+    code: Int?,
     name: String,
 ): Boolean {
+    // `null` = 没听到键就点了确定（这一档不该出现：命名窗只在听到键之后才开）
+    if (code == null) return false
     val cfg = configState.config.value
     val key = KeyId.custom(cfg.nextCustomKeyId(), name, code)
     if (write(cfg.withCustomKey(key), "custom_key_add=${key.id}") == CommandsSave.Failed) return false
     KeyWatchState.select(key.id)
+    // 回执照发即可：提示条现在挂在**浮层槽、弹窗宿主之后**（见 `PageContent`），
+    //  自己就压在弹窗之上；`onDismiss()` 紧跟其后把弹窗收走，两句谁先谁后都看得见
+    hint(I18n.get(Strings.KEY_WATCH_ADDED, "已添加「%s」").format(name))
     return true
 }
 

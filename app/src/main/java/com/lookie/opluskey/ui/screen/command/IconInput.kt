@@ -4,7 +4,6 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -32,6 +31,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
+import io.github.suqi8.coui.kmp.anim.SinOutEasing
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.InputViewDefaults
@@ -56,7 +56,15 @@ private const val IME_GUARD_WINDOW_MS = 2_000L
 /** [ImeGuard] 隔几帧看一眼 —— 6 帧 ≈ 100ms，比 IME 收放动画的一帧一步粗，够用且不烧 CPU。 */
 private const val IME_GUARD_TICK_FRAMES = 6
 
-private val INPUT_ERROR_EASE = CubicBezierEasing(0.33f, 0f, 0.67f, 1f)
+/**
+ * 错误提示淡入 / 淡出用的缓动 —— 取 COUI 的 [SinOutEasing]（`sin(t·π/2)`）。
+ *
+ *  原先这里是手写的 `CubicBezierEasing(0.33f, 0f, 0.67f, 1f)`（= CSS `ease-in-out`）：库自己的
+ *  `InputView` 里确实有同一个值（`CouiEase`），但那是 `private`，import 不到。拿不到同一个常量
+ *  就统一用 `anim` 包里公开的这条 —— 一次淡入淡出这种幅度，两条肉眼分不出，而「全仓缓动都来自
+ *  COUI」这条规矩比留一份手抄的贝塞尔更值钱。
+ */
+private val INPUT_ERROR_EASE = SinOutEasing
 
 /**
  * 一条输入项的**静态那几样**：行首图标、占位文案、长度上限。

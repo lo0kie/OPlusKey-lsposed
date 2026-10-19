@@ -16,6 +16,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.COMMAND_FORMAT_LINES
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
+import com.lookie.opluskey.ui.opticalTextCenter
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -45,11 +46,9 @@ internal fun SettingsPage.CommandFormatsCard(
         ) {
             COMMAND_FORMAT_LINES.forEachIndexed { index, line ->
                 if (index > 0) HorizontalDivider()
-                // 第一行没有前缀可填，不挂点击。
                 val prefix = line.prefix
                 Row(
-                    // 每行都撑到 [FORMAT_ROW_TOUCH]（第一行不可点也照样撑）——
-                    // 行高一致，也是整行触达高度。
+                    // 每行都撑到 [FORMAT_ROW_TOUCH]，行高一致，也是整行触达高度
                     Modifier
                         .fillMaxWidth()
                         .height(FORMAT_ROW_TOUCH)
@@ -70,8 +69,12 @@ internal fun SettingsPage.CommandFormatsCard(
                 ) {
                     Text(
                         text = line.text,
-                        // 文字占满整行（点击区在整行上）
-                        modifier = Modifier.weight(1f),
+                        // 文字占满整行（点击区在整行上）；行高固定 32dp、字在里面居中，
+                        //  汉字墨迹比行盒中心高一档，沉 0.1em 才与两条分隔线等距（[opticalTextCenter]）
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .opticalTextCenter(COUITheme.textStyles.footnote1),
                         style = COUITheme.textStyles.footnote1,
                         color = COUITheme.colorScheme.onSurfaceVariantSummary,
                     )

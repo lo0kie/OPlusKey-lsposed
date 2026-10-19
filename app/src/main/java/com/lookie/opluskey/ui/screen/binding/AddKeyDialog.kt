@@ -28,10 +28,11 @@ import com.lookie.opluskey.ui.model.PageIcons
  *  不想改就直接点确定 —— 两条路都只有一步。
  *
  * @param initial 输入框的初值（`按键 N`）
- * @param focusReady 能不能开始抢焦点了 —— 由调用方给「上一个弹窗收场了没有」。
- *   见 `FocusOnShow` 的 `ready`：收集窗退场动画结束时库会收一次键盘，早于那一步聚焦，
- *   键盘就会出现「弹出来又被收走」的闪。
  * @param onConfirm 只在名字非空时回调，参数已去掉首尾空白
+ *
+ *  **这个窗只在「收集窗已经收场」之后才开**（判据在调用点 [CollectKeyDialog]）：两个弹窗窗口
+ *  叠着的那几百毫秒里，键盘会被前一个窗口的销毁带走一次 —— 早先靠「晚一点抢焦点」绕，
+ *  绕不干净（焦点抢回来时前一个窗还没退净，键盘照样被收）。所以这里不再有 `focusReady`。
  */
 @Composable
 internal fun SettingsPage.AddKeyDialog(
@@ -39,11 +40,10 @@ internal fun SettingsPage.AddKeyDialog(
     initial: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
-    focusReady: Boolean = true,
 ) {
     var text by remember(show, initial) { mutableStateOf(initial) }
     val focus = remember { FocusRequester() }
-    FocusOnShow(show, focus, ready = focusReady)
+    FocusOnShow(show, focus)
 
     FrostedDialog(
         show = show,

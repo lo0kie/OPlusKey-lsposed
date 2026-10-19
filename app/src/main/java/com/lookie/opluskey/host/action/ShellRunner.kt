@@ -56,7 +56,10 @@ internal object ShellRunner {
                     val denied =
                         java.util.concurrent.atomic
                             .AtomicReference<String>()
-                    reader = startOutputReader(proc, denied)
+                    // 输出的**尾部**（最多 [SHELL_TAIL_LINES] 行）：只在失败时以 `w` 回放，
+                    //  理由见那个常量的注释。读写都在读线程里，主线程在 `reader.get` 之后才拿。
+                    val tail = java.util.Collections.synchronizedList(ArrayDeque<String>())
+                    reader = startOutputReader(proc, denied, tail)
 
                     // 必须带超时：有些命令在这个身份下会直接挂住（真机实测 `cmd audio set-ringer-mode` 就是）；
                     // 无超时的 `waitFor()` 每按一次就永久泄一个线程 + 一对管道，反复按也拦不住。
@@ -89,6 +92,7 @@ internal object ShellRunner {
                             runCatching { proc.destroyForcibly() }
                                 .onFailure { XLog.d("强杀 shell 进程失败（忽略）：${it.message}") }
                         }
+                        logOutputTail(tail)
                         onFailure(CommandFailure.SHELL_TIMEOUT)
                         return@execute
                     }
@@ -100,6 +104,7 @@ internal object ShellRunner {
                     if (proc.exitValue() != 0) {
                         val code = proc.exitValue()
                         XLog.w("shell 退出码 $code（走的是 $via）：${XLog.redactCommand(command)}")
+                        logOutputTail(tail)
                         onFailure(classifyFailure(code, via, denied.get()))
                     }
                 } finally {
@@ -179,10 +184,27 @@ internal object ShellRunner {
         throw last ?: error("没有可用的 shell 解释器")
     }
 
+    /**
+     * 失败时把输出尾部以 `w` 回放一遍（**只在这条路径**打，正常退出一个字都不多）。
+     *
+     *  为什么必须有：`sh: …` 逐行日志是 `d` 级、release 里被编译期消除，于是用户交回来的
+     *  release 日志只剩「命令没跑成功 / 这条命令要 root」这一句结论 —— 分不清是组件不存在、
+     *  Permission Denial，还是命令拼错。这一句就是给「用户反馈」那张日志用的。
+     *
+     *  内容**不脱敏**：它已经是命令自己的输出，脱敏会把 `Intent { cmp=… }` 这类判据抹掉
+     *  （命令本身在别处已过 `redactCommand`）。
+     */
+    private fun logOutputTail(tail: List<String>) {
+        val lines = synchronized(tail) { tail.toList() }
+        if (lines.isEmpty()) return
+        XLog.w("shell 输出（尾 ${lines.size} 行）：\n" + lines.joinToString("\n"))
+    }
+
     /** 读输出并逐行匹配权限拒绝提示。 */
     private fun startOutputReader(
         proc: Process,
         denied: java.util.concurrent.atomic.AtomicReference<String>,
+        tail: MutableList<String>,
     ): Future<*> =
         readerPool.submit {
             runCatching {
@@ -191,6 +213,11 @@ internal object ShellRunner {
                 proc.inputStream.bufferedReader().use { r ->
                     r.forEachLine { line ->
                         XLog.d("sh: $line")
+                        // 尾部环形保留（同步块在 [logOutputTail] 读的那一头）
+                        synchronized(tail) {
+                            if (tail.size >= SHELL_TAIL_LINES) tail.removeAt(0)
+                            tail.add(line)
+                        }
                         if (denied.get() == null) {
                             DENIED_HINTS
                                 .firstOrNull { line.contains(it, ignoreCase = true) }
@@ -312,6 +339,19 @@ internal object ShellRunner {
 
     /** 子进程已退出后，等读线程收完剩余输出的上限 —— 只影响日志完整度，不判定成败。 */
     private const val SHELL_DRAIN_JOIN_MS = 500L
+
+    /**
+     * 失败时回放多少行输出 —— 只留尾部，且**只在失败路径**打。
+     *
+     *  逐行的 `sh: …` 是 `d` 级，release 里被 `VERBOSE_LOG=false` 编译期消除 ⇒ 用户交回来的
+     *  release 日志里只剩「命令没跑成功 / 这条命令要 root」这一句结论，看不出到底是
+     *  「组件不存在」「Permission Denial」还是「命令拼错」。失败是低频路径，回放一次不刷屏。
+     *
+     *  取 12 行：`am` 报错往往先打 `Starting: Intent …`、再 `Error type 3` / `Error: …`，
+     *  几行就到；而 `Permission Denial` 那段后面跟着十几行 `at android.…` 栈帧 ——
+     *  判据另有逐行匹配（见 `startOutputReader` 的 `denied`），这里只负责给人看。
+     */
+    private const val SHELL_TAIL_LINES = 12
 
     /**
      * 跑 shell 的两条线程池 —— **执行**与**读输出**各一条，各自 [SHELL_MAX_CONCURRENT] 个线程。

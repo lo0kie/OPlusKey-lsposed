@@ -42,6 +42,18 @@ internal object SeedlingClient {
     private val pendingMessages = mutableListOf<Bundle>()
     private val lock = Any()
 
+    /**
+     * 队列上限 —— 服务一直连不上时，只保留**最近**这么多条。
+     *
+     *  这些消息是「响铃档位变了」这类瞬时通知：连上之后补发十条旧档位毫无意义，
+     *  反而会按顺序把界面刷过一遍。原先没有上限，SystemUI 长期不响应就一直堆。
+     */
+    private const val MAX_PENDING = 16
+
+    /** 上一次 `bindService` 用的 Application（`onBindingDied` 要拿它 `unbindService`）。 */
+    @Volatile
+    private var boundContext: Context? = null
+
     private val connection =
         object : ServiceConnection {
             override fun onServiceConnected(
@@ -76,8 +88,23 @@ internal object SeedlingClient {
                     serverMessenger = null
                     isConnecting = false
                 }
+                //  必须**解绑**：绑定死了但连接还挂着，之后再 `bindService` 会直接复用那条
+                //  死连接（`onServiceConnected` 不再来），表现是流体云从此一条都收不到。
+                unbindQuietly()
             }
         }
+
+    /** 静默解绑 —— 没绑上 / 已经解过都只是空操作（`unbindService` 会抛 IllegalArgumentException）。 */
+    private fun unbindQuietly() {
+        val app = boundContext
+        boundContext = null
+        if (app == null) return
+        try {
+            app.unbindService(connection)
+        } catch (e: Throwable) {
+            XLog.d("解绑流体云服务失败（忽略）：${e.javaClass.simpleName}")
+        }
+    }
 
     /**
      * 通知 ColorOS 流体云展示响铃模式切换。
@@ -111,6 +138,10 @@ internal object SeedlingClient {
 
         synchronized(lock) {
             pendingMessages.add(bundle)
+            // 只留最近 [MAX_PENDING] 条（见那个常量的说明）：连不上的时候不能无限堆。
+            while (pendingMessages.size > MAX_PENDING) {
+                pendingMessages.removeAt(0)
+            }
             if (!isConnecting) {
                 isConnecting = true
                 try {
@@ -121,6 +152,7 @@ internal object SeedlingClient {
                     // 用 Application 去绑：传进来的可能是 Activity，绑住的连接会把它一起钉住。
                     val app = context.applicationContext ?: context
                     val bound = app.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+                    if (bound) boundContext = app
                     XLog.w("绑定流体云服务结果: $bound")
                     if (!bound) {
                         isConnecting = false

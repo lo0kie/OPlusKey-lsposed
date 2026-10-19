@@ -2,6 +2,7 @@ package com.lookie.opluskey.bridge
 
 import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.Reflect
 
 // 原生动画器直调（`CMD_MINI_ANIM`）：建动画参数、算起止矩形、调框架那两支动画入口。
@@ -55,8 +56,10 @@ internal fun FlexibleWindowBridge.miniAnimLocal(
             XLog.w("$CMD_MINI_ANIM：$SERVICE.getInstance() 拿不到，跳过")
             return
         }
+    //  取法走 `RomProfile` 那一格（与 `FlexibleSwitchToMini` 同源）：ROM 换名时改一处，
+    //  两条路一起跟上 —— 写死方法名是「一条修好、另一条静默坏」的老坑。
     val controller =
-        Reflect.call(service, "getFlexibleTaskController") ?: run {
+        Reflect.call(service, RomProfile.effective.reflection.flexibleControllerGetter) ?: run {
             XLog.w("$CMD_MINI_ANIM：拿不到 FlexibleTaskController，跳过")
             return
         }

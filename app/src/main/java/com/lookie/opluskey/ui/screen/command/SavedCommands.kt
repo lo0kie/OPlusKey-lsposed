@@ -56,9 +56,12 @@ import com.lookie.opluskey.ui.model.commandIcon
 import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.model.serialSummarySteps
 import com.lookie.opluskey.ui.model.stepIcon
+import com.lookie.opluskey.ui.opticalTextCenter
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareRoundedMinus
+import io.github.suqi8.coui.kmp.anim.AccelerateEasing
+import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -103,12 +106,14 @@ internal fun SettingsPage.SavedCommandsSection(
             // 用 `ContentTransform` 显式给尺寸动画，而不是 `using(SizeTransform(...))`：
             // 这个 compose 版本里没有 `using` 那个中缀（实测 `Unresolved reference`）。
             ContentTransform(
-                targetContentEnter = fadeIn(tween(TAB_PAGE_SWITCH_MS)),
-                initialContentExit = fadeOut(tween(TAB_PAGE_SWITCH_MS)),
+                //  缓动取 COUI 的减速 / 加速两档（见 PageMotion 顶部那段）：进的那一栏淡入用减速、
+                //  退的那一栏淡出用加速，尺寸过渡跟着进场那一侧走同一条。
+                targetContentEnter = fadeIn(tween(TAB_PAGE_SWITCH_MS, easing = DecelerateEasing())),
+                initialContentExit = fadeOut(tween(TAB_PAGE_SWITCH_MS, easing = AccelerateEasing())),
                 sizeTransform =
                     SizeTransform(
                         clip = true,
-                        sizeAnimationSpec = { _, _ -> tween(TAB_PAGE_SWITCH_MS) },
+                        sizeAnimationSpec = { _, _ -> tween(TAB_PAGE_SWITCH_MS, easing = DecelerateEasing()) },
                     ),
             )
         },
@@ -325,6 +330,15 @@ private fun CommandTileHeadline(
             color = accentColor,
             maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
             overflow = TextOverflow.Ellipsis,
+            //  单行时沉半档、与那枚类型图标对齐（图标居中于盒子，汉字墨迹却偏上，见
+            //  [opticalTextCenter]）；**两行时不沉** —— 两行字的墨迹上下各占一半，那一块整体
+            //  已经是平的，再沉就成了第二行贴底。
+            modifier =
+                if (cmd.kind == CommandKind.SINGLE) {
+                    Modifier.opticalTextCenter(COUITheme.textStyles.headline1.fontSize, FontWeight.Medium)
+                } else {
+                    Modifier
+                },
         )
     }
 }
@@ -360,6 +374,8 @@ private fun SettingsPage.CommandTileSummary(cmd: Command) {
                     Spacer(Modifier.width(SUMMARY_REF_GAP))
                     Text(
                         text = line.title,
+                        //  与行首那枚 14dp 的小图标对齐（墨迹偏上的账见 [opticalTextCenter]）
+                        modifier = Modifier.opticalTextCenter(COUITheme.textStyles.footnote1),
                         style = COUITheme.textStyles.footnote1,
                         color = COUITheme.colorScheme.onSurfaceVariantSummary,
                         maxLines = 1,

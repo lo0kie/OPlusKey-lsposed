@@ -326,10 +326,10 @@ dependencies {
 
     // 界面：COUI（ColorOS 16 设计语言的 Compose 实现，自带色板与组件，不依赖宿主主题）
     //
-    //  `strictly` 不能去：Gradle 版本序里纯 `1.1.0` 比 `1.1.0-subtitle7` 更高（带限定符算更低），
+    //  `strictly` 不能去：Gradle 版本序里纯 `1.1.0` 比 `1.1.0-subtitle11` 更高（带限定符算更低），
     //  而 coui-preference / coui-nav 传递依赖 `coui-ui-android:1.1.0`，不受约束时会解析回 `1.1.0`。
-    implementation("io.github.suqi8.coui.kmp:coui-ui-android:1.1.0-subtitle7") {
-        version { strictly("1.1.0-subtitle7") }
+    implementation("io.github.suqi8.coui.kmp:coui-ui-android:1.1.0-subtitle11") {
+        version { strictly("1.1.0-subtitle11") }
     }
     // Preference 整行组件（Switch/Arrow/SliderPreference），不在 coui-ui 传递依赖里
     implementation("io.github.suqi8.coui.kmp:coui-preference-android:1.1.0")

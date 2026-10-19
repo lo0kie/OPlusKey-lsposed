@@ -282,7 +282,7 @@ internal object GestureReceiver {
      * 顺带带上两个诊断字段，让首页能判「读到的配置是不是真值」与「这个键执行过没有」——
      * 光说一句「我在」判不出那两种（配置没到 / 从来没按过）的真实故障，见 `ui/LinkCheck.kt`。
      */
-    private fun reportAlive(ctx: Context) = sendAlive(ctx, ConfigStore.read().key(KeyId.PLUS).enabled)
+    private fun reportAlive(ctx: Context) = sendAlive(ctx, ConfigStore.read().global.enabled)
 
     /**
      * 报活的发送本身。`enabled` 由调用方给。
@@ -363,8 +363,9 @@ internal object GestureReceiver {
      *
      * 配置每次都重读（`ConfigStore.read()`）—— 文件在宿主私有目录里、同 uid 直接读，
      * 所以「改完即时生效」在这一侧天然成立。
-     * 主开关（`KeyConfig.enabled`）的执行侧闸门：判定在 system_server、配置来自广播，
-     * 这里再按文件真值拦一道，两边不会各说各话。
+     * 开关的执行侧闸门：判定在 system_server、配置来自广播，这里再按文件真值拦一道
+     * （**总闸** `GlobalConfig.enabled` 与**这一颗键** `KeyConfig.enabled` 都要看），
+     * 两边不会各说各话。
      */
     private fun handle(
         keyId: String?,
@@ -372,8 +373,8 @@ internal object GestureReceiver {
         repeat: Boolean,
         sentAt: Long,
     ) {
-        // 键身份按**当前配置**解析，不用 `KeyId.fromId`：后者只认内置键，而自定义按键是用户
-        //  运行时收集来的，只存在于配置的 `custom_keys` 那段里。注入侧认领时用的也是这份身份。
+        // 键身份按**当前配置**解析（`Config.keyIdOf`）：自定义按键是用户运行时收集来的，
+        //  只存在于配置的 `custom_keys` 那段里。注入侧认领时用的也是这份身份。
         //  `ConfigStore.read()` 有带指纹的读缓存，这里多读一次只是一次 `stat` 比对。
         val key =
             ConfigStore.read().keyIdOf(keyId.orEmpty()) ?: run {
@@ -449,8 +450,9 @@ internal object GestureReceiver {
 
         val config = ConfigStore.read()
         val keyConfig = config.key(key)
-        if (!keyConfig.enabled) {
-            XLog.w("${key.label}：主开关已关，忽略这次 ${gesture.label}（模块不生效）")
+        if (!config.global.enabled || !keyConfig.enabled) {
+            val why = if (!config.global.enabled) "总闸已关" else "这颗键已停用"
+            XLog.w("${key.label}：$why，忽略这次 ${gesture.label}（模块不生效）")
             return
         }
 
@@ -463,12 +465,13 @@ internal object GestureReceiver {
      *  判据是 [KeyConfig.longIsVoiceMemory]：判定侧边也用它（不许连续触发），两处同一个口径 ——
      *  「长按绑了灵感语音」就等于「这一按松手要收尾」，没有第二种组合。
      *
-     *  主开关照旧拦一道：关掉模块之后不该再替用户去动别人的麦克风。
+     *  开关照旧拦一道：关掉模块之后不该再替用户去动别人的麦克风。
      */
     private fun onRelease(key: KeyId) {
-        val keyConfig = ConfigStore.read().key(key)
-        if (!keyConfig.enabled) {
-            XLog.w("${key.label}：主开关已关，忽略这一下松手")
+        val config = ConfigStore.read()
+        val keyConfig = config.key(key)
+        if (!config.global.enabled || !keyConfig.enabled) {
+            XLog.w("${key.label}：模块或这颗键已关，忽略这一下松手")
             return
         }
         if (!keyConfig.longIsVoiceMemory) {
@@ -518,7 +521,7 @@ internal object GestureReceiver {
         //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
         //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。
         //  所以每执行一次动作补发一条（连续触发的重复不发：那是同一次按压，一条就够）。
-        if (!repeat) appContext?.let { sendAlive(it, config.key(KeyId.PLUS).enabled) }
+        if (!repeat) appContext?.let { sendAlive(it, config.global.enabled) }
         if (!repeat && action !is Action.None) haptic(config)
         // 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），内容是**这次执行的是哪个动作**。
         //  钉在这一处（一次手势只走一遍）而不是 `CustomCommandRunner` 里 —— 那一处只覆盖 `cmd:`

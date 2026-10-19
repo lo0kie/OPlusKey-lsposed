@@ -7,6 +7,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.actionOf
@@ -17,6 +18,7 @@ import com.lookie.opluskey.ui.model.MODULE_UNAVAILABLE_HINT
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.writeAndNotice
 
 /**
  * 把一个动作绑到手势 [g] 上。
@@ -94,10 +96,13 @@ internal fun SettingsPage.pick(
             cfg
                 .copy(keys = cfg.keys + (keyId to updated))
                 .let { c -> if (appName != null && targetKey != null) c.withAppName(targetKey, appName) else c }
-        val written = write(next, "${g.id} → ${spec.token}") != CommandsSave.Failed
-        // 绑成了才报：被拦 / 写盘失败时 [write] 自己已经报过原因，这里再来一句会把它顶掉
-        if (written) hint(boundNotice(spec, action, appName))
-        written
+        val result = write(next, "${g.id} → ${spec.token}")
+        // 绑成了才报：被拦 / 写盘失败时 [write] 自己已经报过原因；广播没发出去时它报的那条
+        //  「已保存，但通知注入侧失败」更不能被一句「已绑定…」顶掉（底部只有一行回执）。
+        if (result == CommandsSave.Ok) hint(boundNotice(spec, action, appName))
+        //  返回值仍按「配置有没有落盘」给（见 [write] 的三态口径）：广播失败时文件与本地状态
+        //  都已经是新值，调用方不该把它当成「没绑上」。
+        result != CommandsSave.Failed
     } catch (e: Throwable) {
         XLog.w("选动作失败（忽略）：${spec.token}", e)
         //  点了格子必须有个说法：只记日志的话用户看到的就是「点了一下没反应」。
@@ -149,3 +154,37 @@ private fun boundNotice(
     I18n
         .get(Strings.TOAST_BOUND, "已绑定「%s」")
         .format(appName ?: ActionCatalog.label(action) ?: spec.label)
+
+/**
+ * 停用 / 启用**一颗键** —— 按键菜单里那一行（「停用这颗键」/「启用这颗键」）。
+ *
+ *  `enabled` 就是「这颗键能不能用」的闸门：自定义键收集时置开、导入时一律置开，
+ *  而在这之前界面上**没有任何入口**能改它 —— 导入一份收了音量键的配置之后只能删键（连带丢绑定）。
+ *
+ *  **侧键也走这一支**（用户口径：「快捷键也允许被禁用」）：从前它只给自定义键 ——
+ *  那时侧键的 `enabled` **同时兼任模块总闸**，从这条菜单写它等于关掉整个模块。
+ *  拆开之后这一位只表示「这一颗键接管不接管」，与首页那个总闸（`GlobalConfig.enabled`）
+ *  是两层，所以不需要过免责声明（那道闸只开总闸时才要，也只在首页）。
+ *
+ *  回执两档都发（与首页主开关不同，那一档关闭时不发）：这里没有「常驻横幅立刻接管」那回事，
+ *  发完这一句底部就是这一句；首页关主开关时横幅会紧接着顶上来，所以那边才不发。
+ */
+internal fun SettingsPage.setKeyEnabledFromMenu(
+    id: KeyId,
+    on: Boolean,
+) {
+    val cfg = configState.config.value
+    val key = cfg.key(id)
+    // 没变就不写：菜单里点一下本来就打着勾的那一档，不该落一次盘、更不该报「已停用」
+    if (key.enabled == on) return
+    writeAndNotice(
+        cfg.copy(keys = cfg.keys + (id to key.copy(enabled = on))),
+        "key_enabled=${if (on) 1 else 0} key=${id.id}",
+    ) {
+        I18n
+            .get(
+                if (on) Strings.TOAST_KEY_ENABLED else Strings.TOAST_KEY_DISABLED,
+                if (on) "已启用「%s」" else "已停用「%s」",
+            ).format(id.label)
+    }
+}

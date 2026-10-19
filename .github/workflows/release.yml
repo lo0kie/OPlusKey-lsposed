@@ -40,9 +40,7 @@ jobs:
 
     steps:
       - name: 检出代码
-        uses: actions/checkout@v7
-
-      # 三个版本值由 `tools/read-version.sh` 读 —— 与 `ci.yml` 是同一个脚本，不会两边漂。
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: 抓版本号
         id: dist
         run: bash tools/read-version.sh
@@ -135,7 +133,7 @@ jobs:
       # tag 用**这次推上来的那个**（`github.ref_name`），不拿版本号重算 —— 否则推 `v1.0.0`
       #   时本仓库里会凭空多出一条 `3-1.0.0` 指着同一个提交，历史里就有两个名字。
       - name: 建 / 更新本仓库 Release（历史存档）
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@5113cdc90fd4d541c801c55356214017bf5ae34b # v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ steps.dist.outputs.version_name }}
@@ -194,7 +192,7 @@ jobs:
       #   注意：版本号仍须单调递增：预发布也占一个 `versionCode`，不涨的话测试通道收不到更新提示。
       - name: 建 / 更新 Release（模块仓库）
         if: steps.token.outputs.ready == 'true'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@5113cdc90fd4d541c801c55356214017bf5ae34b # v3
         with:
           repository: ${{ env.MODULE_REPO }}
           token: ${{ secrets.MODULES_REPO_TOKEN }}

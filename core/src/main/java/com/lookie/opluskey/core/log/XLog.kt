@@ -157,7 +157,7 @@ object XLog {
      *  `panel:` / `zoom:` / `power:menu` / `flashlight` / `none`）本身就是判据 —— 按下的是哪个键、
      *  开哪个 App、引哪条命令 —— 必须原样看得见，脱敏等于把判据抹掉。
      *
-     *  判据只看冒号前那段前缀：认不出的前缀（会被 `Action.parse` 兜底成 shell）不在此列，
+     *  判据只看冒号前那段前缀：认不出的前缀（`Action.parse` 会解析成 `none`、不执行）不在此列，
      *  那条正文由调用点自己用 [redactCommand] 收口。
      */
     fun redactToken(token: String): String {

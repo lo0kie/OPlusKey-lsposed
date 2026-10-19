@@ -41,9 +41,10 @@ object ConfigCodec {
      * 当前格式版本。
      *
      *  1 = `org.json` 那版；2 = kotlinx + 新的 md5 口径；
-     *  **3** = `KeyDto` 多了 `doubleClickMs` / `instantSingle`（从 `global` 段搬下来，每颗键一份）。
+     *  3 = `KeyDto` 多了 `doubleClickMs` / `instantSingle`（从 `global` 段搬下来，每颗键一份）；
+     *  **4** = `GlobalDto` 多了 `enabled`（模块总闸从 `keys.plus.enabled` 里拆出来）。
      */
-    const val VERSION = 3
+    const val VERSION = 4
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

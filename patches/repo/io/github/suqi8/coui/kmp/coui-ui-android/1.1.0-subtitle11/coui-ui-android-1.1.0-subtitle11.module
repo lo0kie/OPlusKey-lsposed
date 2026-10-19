@@ -1,10 +1,10 @@
 {
   "formatVersion": "1.1",
   "component": {
-    "url": "../../coui-ui/1.1.0-subtitle7/coui-ui-1.1.0-subtitle7.module",
+    "url": "../../coui-ui/1.1.0-subtitle11/coui-ui-1.1.0-subtitle11.module",
     "group": "io.github.suqi8.coui.kmp",
     "module": "coui-ui",
-    "version": "1.1.0-subtitle7",
+    "version": "1.1.0-subtitle11",
     "attributes": {
       "org.gradle.status": "release"
     }
@@ -57,12 +57,12 @@
       "files": [
         {
           "name": "coui-ui.aar",
-          "url": "coui-ui-android-1.1.0-subtitle7.aar",
-          "size": 2185276,
-          "sha512": "343a4db8bdb0b2c139eb9d87b4e9d3f6658ab6f72eacf9373587dbf0fa40ce5721f52481aaac37898f95e3451a1e483597b44d527e54e0dc5f8441c34941b9b5",
-          "sha256": "2a8356f8da385fca5e6b37d8971ba3a424731e27f785f83c93e4952776b6420a",
-          "sha1": "a04ae3c175a953a92f323ac14e553722e922e292",
-          "md5": "3dafb80e39ed4228ba27ab6efe5a0644"
+          "url": "coui-ui-android-1.1.0-subtitle11.aar",
+          "size": 2195011,
+          "sha512": "1fc34f778fb6b50f43fda498cb7fcde570fb2973038946eec8743e1550916070cc2f103d0054b80bb84533370910475bec64f15fbd6146816c377e609c946c7e",
+          "sha256": "7bd6da060e28ff288b247a2253e8bbc16555a30e704597dde4d48ff32dc51985",
+          "sha1": "ce3ed1bb6750ba790967ccbd4c305ec1819f4b9d",
+          "md5": "7d55ef9bbf1636c91bc814866b302e9e"
         }
       ]
     },
@@ -129,12 +129,12 @@
       "files": [
         {
           "name": "coui-ui.aar",
-          "url": "coui-ui-android-1.1.0-subtitle7.aar",
-          "size": 2185276,
-          "sha512": "343a4db8bdb0b2c139eb9d87b4e9d3f6658ab6f72eacf9373587dbf0fa40ce5721f52481aaac37898f95e3451a1e483597b44d527e54e0dc5f8441c34941b9b5",
-          "sha256": "2a8356f8da385fca5e6b37d8971ba3a424731e27f785f83c93e4952776b6420a",
-          "sha1": "a04ae3c175a953a92f323ac14e553722e922e292",
-          "md5": "3dafb80e39ed4228ba27ab6efe5a0644"
+          "url": "coui-ui-android-1.1.0-subtitle11.aar",
+          "size": 2195011,
+          "sha512": "1fc34f778fb6b50f43fda498cb7fcde570fb2973038946eec8743e1550916070cc2f103d0054b80bb84533370910475bec64f15fbd6146816c377e609c946c7e",
+          "sha256": "7bd6da060e28ff288b247a2253e8bbc16555a30e704597dde4d48ff32dc51985",
+          "sha1": "ce3ed1bb6750ba790967ccbd4c305ec1819f4b9d",
+          "md5": "7d55ef9bbf1636c91bc814866b302e9e"
         }
       ]
     },
@@ -151,13 +151,13 @@
       },
       "files": [
         {
-          "name": "coui-ui-android-1.1.0-subtitle7-sources.jar",
-          "url": "coui-ui-android-1.1.0-subtitle7-sources.jar",
-          "size": 327206,
-          "sha512": "234e98d8231c469b28ad83ff72eb03de5d8e944d07f670b9f710230b71e829592206543d04dca334547a2d9b872dc69fb28d9c56a9629385ac926f6666219926",
-          "sha256": "2f0a59aa77e063a5bb055256742e1bf67097aad2df88a46019f4686111363565",
-          "sha1": "e9ef6b2b6f0a90b40a4f83643f3b81b25ae636bd",
-          "md5": "3ac6a62339b98e3ec28f19cbee68dc83"
+          "name": "coui-ui-android-1.1.0-subtitle11-sources.jar",
+          "url": "coui-ui-android-1.1.0-subtitle11-sources.jar",
+          "size": 330778,
+          "sha512": "68fd76b3c7e48902e1f1783d9d4c05ee892e3825f81c76f6fdf0a61aaf6f26de8075092d6e618adf7379db6bc7879fbc0d726839fc4f3341617bc1b439a461d5",
+          "sha256": "c05e76b7b0370fa08ee1b48a5728004787207f3a07953fd56353f495316360a7",
+          "sha1": "02f8c4b52bbf4fac94da2da595355c5b3ab8e179",
+          "md5": "d924132d421cb9b41bb0c85a761563dd"
         }
       ]
     }

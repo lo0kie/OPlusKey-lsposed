@@ -319,8 +319,11 @@ sealed interface Action {
         fun keyToken(keyCode: Int): String = "$KEYEVENT_PREFIX$keyCode"
 
         /**
-         * 解析一个动作字符串，认不出前缀的按 shell 命令执行（手写命令可省 `shell:`）。
-         * 不兼容 KSU 的按键名写法（`keyevent:KEYCODE_HOME`），只认数值。
+         * 解析一个动作字符串。
+         *
+         *  **必须带支持的前缀**（见 [hasSupportedFormat]）：认不出的写法按 [None] 处理、不执行 ——
+         *  不再「默认当 shell」（手写省 `shell:` 那种写法已经取消）。
+         *  不兼容 KSU 的按键名写法（`keyevent:KEYCODE_HOME`），只认数值。
          */
         fun parse(raw: String?): Action {
             val text = raw?.trim().orEmpty()
@@ -403,24 +406,110 @@ sealed interface Action {
                     Setting(text.removePrefix(SETTING_PREFIX).trim())
                 }
 
+                // **不再默认按 shell 执行**（原先这里是 `Shell(text)`，手写命令可省 `shell:`）。
+                //  现在「命令详细」必须显式带前缀，界面那一栏已经拦住（见 [hasSupportedFormat]）；
+                //  这里兜的是手改配置文件 / 老版本存下来的裸写法 —— 静默不执行，只留一行日志。
+                //  宁可不跑，也不把一段不知道是什么的字符串交给 shell。
+                //  独立成 [unsupported] 是为了让本函数留在 `LongMethod` 之内。
                 else -> {
-                    Shell(text)
+                    unsupported(text)
                 }
             }
         }
 
         /**
+         * [parse] 的兜底：认不出格式的写法**不执行**，留一行日志便于排查旧配置。
+         *
+         *  日志里把**后果**也写出来：这条写法在模型里就是 `none`，用户下次在界面上动一下配置、
+         *  整份文件被重新序列化时，原文就没了（手改文件是本项目支持过的工作流，所以这行必须说清）。
+         *  不做「原样保留」是**有意的**：那要新增一个动作类型，属动作契约变更（AGENTS.md 一、4），
+         *  而收益只是保住一条本来就执行不了的写法。
+         */
+        private fun unsupported(text: String): Action {
+            XLog.w("动作解析：这条写法没有支持的前缀，不执行；下次保存会归一成 none：${text.take(200)}")
+            return None
+        }
+
+        /**
+         * 这段文本**是不是以支持的格式开头** —— 「命令详细」那一栏的硬性要求。
+         *
+         *  早先认不出前缀的写法一律按 shell 执行（手写命令可省 `shell:`），「命令格式」那张卡
+         *  第一行也就写着「默认为 shell 命令」。现在取消这个默认：命令必须显式带前缀，
+         *  否则既不保存、也不执行（用户口径「去掉默认为 shell 和 `cmd:`，对命令详细限制，
+         *  必须以支持的格式开头」）。
+         *
+         *  判据就是 [parse] 里认的那几样：几个**精确比较**的字面量，加上各条 `xxx:` 前缀。
+         *  ⚠️ 往 [parse] 里加新前缀时，记得同步 [PREFIXES] —— 两处漂移会让新格式「能执行但存不进去」。
+         */
+        fun hasSupportedFormat(raw: String?): Boolean {
+            val text = raw?.trim().orEmpty()
+            if (text.isEmpty()) return false
+            return text == NONE ||
+                text == FLASHLIGHT ||
+                text == POWER_MENU ||
+                text == ZOOM_MINI ||
+                text == ZOOM_MINI_COLLAPSE ||
+                PREFIXES.any { text.startsWith(it) }
+        }
+
+        /**
+         * [parse] 认的所有前缀 —— 与那串 `startsWith` 分支一一对应（顺序无关，只用来判断
+         * 「这段字有没有带格式」）。[Command.PREFIX]（`cmd:`）也在这一列里。
+         */
+        private val PREFIXES: List<String> =
+            listOf(
+                KEYEVENT_PREFIX,
+                SHELL_PREFIX,
+                Command.PREFIX,
+                INTENT_PREFIX,
+                APP_PREFIX,
+                WINDOW_PREFIX,
+                APP_SHORTCUT_PREFIX,
+                SHORTCUT_PREFIX,
+                RINGER_PREFIX,
+                OPLUS_PREFIX,
+                PANEL_PREFIX,
+                SETTING_PREFIX,
+            )
+
+        /**
          * `keyevent:<码>` 那一支 —— 与 [parseAppShortcut] 拆出来的理由相同（[parse] 贴着长度上限）。
          */
         private fun parseKeyEvent(text: String): Action {
-            val code = text.removePrefix(KEYEVENT_PREFIX).trim().toIntOrNull()
-            return if (code == null) {
-                XLog.w("动作 keyevent: 的按键无法识别（按 none 处理）：$text")
-                None
-            } else {
-                KeyEvent(code)
+            val body = text.removePrefix(KEYEVENT_PREFIX).trim()
+            if (body.isEmpty()) return None
+            val code = body.toIntOrNull()
+            return when {
+                code == null -> {
+                    XLog.w("动作 keyevent: 的按键无法识别（按 none 处理）：$text")
+                    None
+                }
+
+                //  侧键那一族码（735 / 780 / 781 / 782）**不许注入**：拦截器按
+                //  `acceptedKeyCodes` 认领它们，注入出去会再走一遍这条路径 ⇒ 自己触发自己，
+                //  而且是**在 system_server 里**每 ~100ms 一轮的自持循环（`isSynthetic` 那道
+                //  放行判据只认 `INJECTABLE_CODES`，这几个码不在表里）。
+                //  别的码（含音量 / 电源 / 媒体）照旧放行：它们注入的那一下由 `isSynthetic` 认出来。
+                code in CLAIMED_CODES -> {
+                    XLog.w("动作 keyevent:$code 是模块自己认领的键码（会自持循环，按 none 处理）：$text")
+                    None
+                }
+
+                else -> {
+                    KeyEvent(code)
+                }
             }
         }
+
+        /**
+         * 模块自己**认领**的物理键码（内置键的 `acceptedKeyCodes`）—— [parseKeyEvent] 用它拦
+         * 「注入自己认领的码」。
+         *
+         *  自定义键的码不在这里：那些只存在于配置里（收集时才定），动作解析拿不到 —— 但它们是
+         *  用户自己收的物理键，注入同一个码本来就该按一次；真正的自持风险是侧键那一族。
+         */
+        private val CLAIMED_CODES: Set<Int> =
+            KeyId.builtins.flatMapTo(HashSet()) { it.acceptedKeyCodes }
 
         /**
          * `appshortcut:包名/快捷方式id` 那一支。
@@ -433,14 +522,15 @@ sealed interface Action {
          */
         private fun parseAppShortcut(text: String): Action {
             val raw = text.removePrefix(APP_SHORTCUT_PREFIX).trim()
-            // `w:` 紧跟前缀：小窗那一档。剥掉之后再按 `包名/id|名字` 解析
             val window = raw.startsWith(WINDOW_MARK)
             val body = if (window) raw.removePrefix(WINDOW_MARK) else raw
             val plain = AppTarget.withoutUser(body)
             val pkg = plain.substringBefore('/')
             val id = plain.substringAfter('/', "")
             if (pkg.isEmpty() || id.isEmpty()) {
-                XLog.w("动作 appshortcut: 缺包名或快捷方式 id（按 none 处理）：$text")
+                if (plain.isNotEmpty()) {
+                    XLog.w("动作 appshortcut: 缺包名或快捷方式 id（按 none 处理）：$text")
+                }
                 return None
             }
             return AppShortcut(pkg, id, AppTarget.userId(body), window)

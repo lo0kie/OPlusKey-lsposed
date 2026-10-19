@@ -44,14 +44,28 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 /**
  * 草稿里**到底有没有内容** —— 「保存」按钮和工具条的显隐都问这一处。
  *
- *  单条那一档不能只看 `isNotBlank()`：`cmd:` / `app:` / `shell:` 这种**只有前缀**的写法也不是空串，
- *  存下去就是一条注定失败的命令（`cmd:` ⇒ 永远 NOT_FOUND、`app:` ⇒ 解析不到界面）。
- *  判据取 [Action.isBarePrefix]，一处说清「什么算有载荷」。
+ *  单条那一档不能只看 `isNotBlank()`，两条都得拦：
+ *   · **格式**：必须以支持的前缀开头（`shell:` / `keyevent:` / `cmd:` …）——
+ *     早先没前缀的写法默认按 shell 执行，现在取消了这个默认（见 [Action.hasSupportedFormat]），
+ *     存一条裸命令进去只会变成「无操作」；
+ *   · **载荷**：`cmd:` / `app:` / `shell:` 这种**只有前缀**的写法也不是空串，
+ *     存下去就是一条注定失败的命令。判据取 [Action.isBarePrefix]。
  */
 internal fun SettingsPage.commandPayloadReady(): Boolean =
     when (commandDraft.draft.kind) {
-        CommandKind.SINGLE -> commandDraft.draft.single.isNotBlank() && !Action.parse(commandDraft.draft.single).isBarePrefix
-        CommandKind.SERIAL -> commandDraft.draft.steps.isNotEmpty()
+        CommandKind.SINGLE -> {
+            val raw = commandDraft.draft.single
+            if (raw.isBlank() || !Action.hasSupportedFormat(raw)) {
+                false
+            } else {
+                val parsed = Action.parse(raw)
+                parsed !is Action.None && !parsed.isBarePrefix
+            }
+        }
+
+        CommandKind.SERIAL -> {
+            commandDraft.draft.steps.isNotEmpty()
+        }
     }
 
 internal fun SettingsPage.commandToolbarVisible(): Boolean =

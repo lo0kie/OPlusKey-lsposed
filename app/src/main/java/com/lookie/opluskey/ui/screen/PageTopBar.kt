@@ -43,6 +43,9 @@ internal fun SettingsPage.PageTopBar(
     pagerState: PagerState,
     commandPager: PagerState,
 ) {
+    // 「按键绑定」页顶栏那枚禁用标记要读的两位：**当前在编辑哪颗**（界面状态）× **它开没开**（配置）。
+    //  判据直接借页内网格那支 [keyEnabled] —— 同一句「这一颗键开没开」不该有两份写法。
+    val editingKeyDisabled = !keyEnabled(KeyWatchState.editing(configState.config.value))
     PageHeader(
         title = pageTitle(s),
         // 大标题**下面**那行（库原本的底线副标题槽位，自己占一行）：首页 = 模块版本。
@@ -51,11 +54,29 @@ internal fun SettingsPage.PageTopBar(
         largeTitleSubtitle = largeTitleSubtitle(s),
         // 大标题**右边**那行小标题（补丁新增的槽位，折叠后保留），内容见 [pageSubtitle]。
         subtitle = pageSubtitle(s),
-        // 「选择应用」页开着小窗打开时，那行小字后面补一枚「小窗起」—— 与网格里「打开应用」
-        // 那格同一口径（见 `BindingScreen` 的 `appSmallWindow`）：那一行字只说明「选了哪个
-        // 应用」，看不出这一趟是要普通打开还是小窗起。
+        // 尾随标题后面那枚小图标 —— 现在两处：
+        //  · 「选择应用」页开着小窗打开时补一枚「小窗起」：与网格里「打开应用」那格同一口径
+        //    （见 `BindingScreen` 的 `appSmallWindow`）。那一行字只说明「选了哪个应用」，
+        //    看不出这一趟是要普通打开还是小窗起；
+        //  · 「按键绑定」页**当前这颗键被停用**时补一枚禁用标记：名字旁边不标的话，这一页
+        //    整片灰只能从「可能是模块关了 / 链路没通」里猜，而实际只是这一颗键不接管
+        //    （与 ⋮ 菜单里那一行同一个字形，见 [MenuEntry.Row.stateIcon]）。
         trailingSubtitleIcon =
-            if (s == Screen.APP_PICKER && picker.smallWindow.value) PageIcons.TileSmallWindow else null,
+            when {
+                // 「小窗起」只在**真选中了应用**时才标（否则那行是「还未选择应用」，图标会读成
+                //  「这个还没选的应用会用小窗打开」）
+                s == Screen.APP_PICKER && picker.smallWindow.value && appPickerChosenTarget() != null -> {
+                    PageIcons.TileSmallWindow
+                }
+
+                s == Screen.BINDING && editingKeyDisabled -> {
+                    PageIcons.Cancel
+                }
+
+                else -> {
+                    null
+                }
+            },
         // 右上角那几颗动作键按页分派：**首页 / 「按键绑定」/「选择应用」三页有**
         // （首页是打开默认界面 / 清空配置，「按键绑定」是「快捷键」「自定义按键」两组，
         // 「选择应用」是「显示系统应用」那三项）。
@@ -133,11 +154,8 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         }
 
         Screen.APP_PICKER -> {
-            //  **先看本次草稿**（二级页刚挑完、还没提交的那一条），没有才退回「当前绑定」：
-            //  这一行说的是「这一趟将要绑成什么」，草稿才是那个答案。只看当前绑定的话，
-            //  挑完某个具体界面 / 快捷方式退回来，顶栏仍写着上一个应用的名字（而页里已经亮了新的）。
-            //  草稿在每次进页时由 `AppPickerUiState.beginVisit` 清掉，不会跨趟残留在这一行上。
-            val target = picker.draft?.target ?: appPickerSelectedPkg()
+            //  判据见 [appPickerChosenTarget]（草稿优先）。
+            val target = appPickerChosenTarget()
             if (target == null) {
                 // 没选过就不摆一行「已选择: 无」—— 那种写法像是有个叫「无」的应用
                 I18n.get(Strings.APP_PICKER_UNSELECTED, "还未选择应用")
@@ -155,6 +173,19 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             ""
         }
     }
+
+/**
+ * 「选择应用」页这一趟**已经选中**的目标（草稿优先）；`null` = 还没选。
+ *
+ *  顶栏那行小字与它后面那枚「小窗起」图标共用这一个判据：没选应用时那一行是「还未选择应用」，
+ *  后面再挂一枚小窗图标，读起来就像「这个还没选的应用会用小窗打开」（真机反馈）。
+ *
+ *  **先看本次草稿**（二级页刚挑完、还没提交的那一条），没有才退回「当前绑定」：
+ *  这一行说的是「这一趟将要绑成什么」，草稿才是那个答案。只看当前绑定的话，
+ *  挑完某个具体界面 / 快捷方式退回来，顶栏仍写着上一个应用的名字（而页里已经亮了新的）。
+ *  草稿在每次进页时由 `AppPickerUiState.beginVisit` 清掉，不会跨趟残留在这一行上。
+ */
+private fun SettingsPage.appPickerChosenTarget(): String? = picker.draft?.target ?: appPickerSelectedPkg()
 
 /**
  * 「已选择」那一行要显示的名字 —— 优先级只有一处（[appNameOf]）：

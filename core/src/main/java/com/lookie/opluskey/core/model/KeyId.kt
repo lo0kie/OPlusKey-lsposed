@@ -11,9 +11,9 @@ package com.lookie.opluskey.core.model
  *  正是本项目一直在躲的那类 bug。
  *
  *  所以：**清单只属于 `Config`**（`Config.customKeys`），本类只负责「一颗键长什么样」。
- *  要按 id / 键码找键，从你手上那份 `Config` 找（`Config.keyForId` / `Config.keyForCode`）——
- *  [fromId] / [fromKeyCode] / [fromAnyKeyCode] 只认**内置键**，是「还没拿到配置」时的判定；
- *  生产路径（拦截点认领、界面解析）一律走 `Config` 那两张表，自定义键才认得到。
+ *  要按 id / 键码找键，一律从你手上那份 `Config` 找：`keyForId` / `keyIdOf` / `keyForCode` /
+ *  `keyForRawCode`。本类**不提供**「按 id / 键码反查」的接口 —— 那只认得到内置键，
+ *  自定义键会静默落空（原先那三个 `from*` 就是这么被误用的）。
  *
  * ## 判等按 [id]
  *
@@ -88,19 +88,6 @@ class KeyId private constructor(
             name: String,
             keyCode: Int,
         ): KeyId = KeyId(id, name, keyCode, setOf(keyCode), isCustom = true)
-
-        /** 按 id 找**内置**键；自定义键返回 null（它们只存在于配置里，见类注释）。 */
-        fun fromId(id: String): KeyId? = builtins.firstOrNull { it.id == id }
-
-        /**
-         * 按原始 keyCode 认领**内置**键（PM 兜底路径用），其余一律返回 null 放行。
-         * 故意不含内部注入码：策略类路径已处理它们，这里再认会同一次按键会被判两次。
-         * 电源键 / 音量键等必须原样交给系统（电源菜单、紧急呼叫、同按截屏都在系统侧）。
-         */
-        fun fromKeyCode(code: Int): KeyId? = builtins.firstOrNull { it.keyCode == code }
-
-        /** 按白名单认领**内置**键（策略类路径用，含 ColorOS 内部注入码 780 / 781 / 782）。 */
-        fun fromAnyKeyCode(code: Int): KeyId? = builtins.firstOrNull { code in it.acceptedKeyCodes }
 
         /**
          * 截图按键码（`KEYCODE_SYSRQ`）—— 内置「截图」动作注入的就是它，**不是侧键**、不参与认领。

@@ -84,6 +84,9 @@ internal fun popupSurfaceColor(): Color =
  *    （「换一步」时当前那一步常在第 7 项之后，不滚就看不见自己选的是哪个）；
  *  - [danger]：删除 / 重置这类破坏性动作（红）；
  *  - [submenu]：行尾**留出那一格**（库里就是 `DropdownImpl(hasSubmenu = …)`），不置时那一格不画。
+ *  - [stateIcon]：行尾一枚**状态标记**（小图标）—— 与 [trailingIcon] 那一位不是同一处：
+ *    它走库的 `hint` 槽（标题块与行尾指示之间），**不占**「有没有下一层」那一格，
+ *    所以既不需要置 [submenu]、也不会把一行操作读成「进下一层」。
  *  - [trailingIcon]：换掉那一格里的字形（`null` = 用默认的右箭头）。
  *    **注意：两位是分开的 —— 要行尾图标的行必须自己置上 [submenu]**。本组件只把 [submenu] 原样
  *    交给库，不替调用点猜「给了图标就顺手把那一格打开」。库里那一位是**唯一的开关**，只给
@@ -103,6 +106,21 @@ internal sealed interface MenuEntry {
         val danger: Boolean = false,
         val submenu: Boolean = false,
         val trailingIcon: ImageVector? = null,
+        /**
+         * 行尾的**状态标记**（一枚小图标）—— 一行现在的状态不是默认那个时用它说一句（`null` = 不标）。
+         *
+         *  现在只有按键清单用：那一行是「切到这颗键」的动作，键本身停用了它照样可点，
+         *  于是名字后面得有个记号，否则「停在了一颗停用的键上」只能从整页变灰反推出来。
+         *  图形取 `pointer-cancel`（光标 + 斜杠），与行首那枚键位数字不是一回事。
+         */
+        val stateIcon: ImageVector? = null,
+        /**
+         * [enabled] 为 false 时**点一下要说的话** —— 不填就用页面的统一原因（`blockedReason()`）。
+         *
+         *  逐行填的那种（「最多三颗按键」「侧键不能改名」）是**这一行自己**的限制，
+         *  与「整页为什么改不了」是两回事，不能拿页面那句顶替。
+         */
+        val disabledHint: String? = null,
         val onPick: () -> Unit,
     ) : MenuEntry
 

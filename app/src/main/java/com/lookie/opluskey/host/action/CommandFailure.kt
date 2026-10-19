@@ -48,12 +48,17 @@ internal enum class CommandFailure(
      */
     SHELL_NO_ROOT(
         Strings.COMMAND_FAILURE_SHELL_NO_ROOT,
-        "权限不够：root 要授给「手势体感」（%1\$s），不是本模块",
+        "权限不够：root 要授给「手势体感」（%1\$s）",
     ) {
         /**
          * 这一档必须说出**授给谁**：「这条命令要 root」对「我已经授权了」的人等于没说 ——
          *  他多半授给了模块自己的包（`io.github.lo0kie.opluskey`），而命令其实跑在**宿主进程**
          *  （`com.oplus.gesture` / `:ui`）里，那是另一个 uid。
+         *
+         *  只提宿主，**不提 shell**：2026-10-19 实测过 —— 把 root 管理器里 shell 那条授权
+         *  撤掉（`adb shell su` 立刻变成 `su: inaccessible or not found`）之后，模块照样
+         *  `走的是 su` 并把 `am start` 跑成功。两条授权互不影响，模块只需要宿主那一条；
+         *  shell 那条只影响**在终端里调试**（`adb shell su`），写进用户提示只会让人多开一个口子。
          */
         override val hint: String get() = I18n.format(key, HostApp.PACKAGE)
     },

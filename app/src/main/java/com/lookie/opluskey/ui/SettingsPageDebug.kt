@@ -135,8 +135,9 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
  */
 internal fun SettingsPage.logDebugState() {
     val key = configState.config.value.key(KeyId.PLUS)
+    val master = configState.config.value.global.enabled
     XLog.w(
-        "调试·状态：screen=$screen 栈=${navStack.joinToString(">")} 主开关=${key.enabled} " +
+        "调试·状态：screen=$screen 栈=${navStack.joinToString(">")} 总闸=$master 侧键=${key.enabled} " +
             "机型=$deviceModel 清单=$deviceSupport " +
             //  token 与**命令正文**一律过脱敏：`shell:` / `intent:` 的正文可能内嵌 token、密码，
             //  而这一行是 W 级 —— 既进 logcat 也进「导出日志」那份文件（口径见 `XLog.redactCommand`）。

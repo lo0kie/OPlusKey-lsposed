@@ -17,7 +17,7 @@ import com.lookie.opluskey.core.i18n.Strings
  * ## 执行不用 root
  *
  *  宿主（`com.oplus.gesture`，签名权限）负责**读**当前状态并算出目标值；写状态分两条路：
- *  · `mobile_data` / `low_power` 直接写 `Settings.Global`（Phone 与 PowerManagerService 各自有
+ *  · `cell` / `powersave` 直接写 `Settings.Global`（Phone 与 PowerManagerService 各自有
  *    ContentObserver 盯着）；
  *  · 其余走广播交给 system_server（uid 1000）按名字反射调服务（`bridge/SettingCalls`）。
  *  自动旋转与 NFC 由服务自己读状态取反，宿主不参与。
@@ -66,9 +66,6 @@ object SystemSwitches {
             Item(settingToken("darkmode"), Strings.SYS_SETTING_DARKMODE, "暗色模式"),
             Item(settingToken("powersave"), Strings.SYS_SETTING_POWERSAVE, "省电模式"),
         )
-
-    /** 十条的落盘取值 —— 判「网格里那一格算不算已绑定」用（见 `ActionCatalog.isSelected`）。 */
-    val TOKENS: List<String> = ITEMS.map { it.token }
 
     /** 某个落盘 token 对应清单里的哪一条（不是这十种写法就返回 `null`）。 */
     fun find(token: String): Item? = ITEMS.firstOrNull { it.token == token }

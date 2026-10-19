@@ -193,8 +193,13 @@ internal object BackInterception {
      */
     internal fun syncBackCallback(activity: android.app.Activity) {
         if (needsBackCallback()) {
-            if (backCallbackActivity !== activity && registerBackCallback(activity)) {
-                XLog.w("返回回调：已挂上（这一退是子页 / 浮层 / 原版页 —— 归模块接）")
+            if (backCallbackActivity !== activity) {
+                //  换实例之前**先摘旧的**：不摘的话旧 Activity 的 dispatcher 上还挂着我们那份回调，
+                //  旧页只要还活着，它的每一退都会被那份回调再接一次（两个回调同时生效）。
+                unregisterBackCallback()
+                if (registerBackCallback(activity)) {
+                    XLog.w("返回回调：已挂上（这一退是子页 / 浮层 / 原版页 —— 归模块接）")
+                }
             }
         } else {
             // 不再需要自己接 ⇒ 把手上的回调摘掉。判据**不能**只看「是不是当前这个 activity」：

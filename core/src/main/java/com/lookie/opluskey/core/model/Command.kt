@@ -42,7 +42,7 @@ data class Command(
     /**
      * 写进配置文件 `single` / `double` / `long` 那一档的取值。
      *
-     *  这几个 `id` 与 `ConfigFields.SINGLE_JSON` 那三个键**同字面量但无关**：那三个是「手势相位」
+     *  这几个 `id` 与配置里的 `single` / `double` / `long` 三个键**同字面量但无关**：那三个是「手势相位」
      *  的键名，这三个是「命令类型」。别顺手并成一个 —— 它们各自会变。
      */
     val token: String get() = "$PREFIX$name"

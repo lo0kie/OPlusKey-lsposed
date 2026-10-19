@@ -23,8 +23,10 @@ import com.lookie.opluskey.ui.model.PageIcons
 /**
  * 首次启用（以及清空配置之后再启用）要的那两次确认。
  *
- *  第一个归「启用按键绑定」那一行管，确认之后由 [acceptDisclaimerAndEnable] 一次写盘
- *  （记录 + 总闸）；第二个是紧接着的「温馨提醒」。
+ *  第一个归「启用按键绑定」那一行管（**模块总闸**），确认之后由 [acceptDisclaimerAndEnable]
+ *  一次写盘（记录 + 总闸）；第二个是紧接着的「温馨提醒」。
+ *
+ *  这道闸只服务总闸：⋮ 菜单里「停用 / 启用这颗键」是**逐键**开关，与它无关。
  */
 @Composable
 internal fun SettingsPage.HomeDisclaimers(ui: HomeUiState) {

@@ -10,21 +10,21 @@
 
 ---
 
-## 零、实测基线（2026-10-19 复核）
+## 零、实测基线（2026-10-20 复核）
 
 正文各节的 `43 字段 / 15 文件 / ui/component / 18 个环` 是**改造前**的口径。改造后的可复核值：
 
-| 项                                       | 值                                                                       | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
-| ---------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| 包级环 / 边                              | **0 / 30**（细分档位口径；`ui/hook` 单独成档后由 27 变 31，根包文件归入 root 档后为 30，见下）        | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
-| `SettingsPage` 状态字段                  | **21**                                                                   | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
-| `SettingsPage.xxx` 扩展                  | 215 个，散在 67 文件（2026-10-19 复核：204 / 65 → 215 / 67）             | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
-| `ui/SettingsPage.kt` 行数                | **517**（879 → 699 → 497 → 517）                                         | `wc -l ui/SettingsPage.kt`                                                          |
-| `inject/ProbeChannel.kt` 行数            | 337（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）            | `wc -l inject/Probe*.kt`                                                            |
-| `host/action/MiniWindowLauncher.kt` 行数 | 695（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`） | `wc -l host/action/MiniWindow*.kt`                                                  |
-| 单文件最大行数                           | **791**（`ui/model/ActionIcons.kt`）；全仓**无 > 1000 行**的文件         | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
-| 屏文件 import 页面                       | 47 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线    | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
-| 零引用 import                            | 0，且由 detekt 拦下                                                      | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
+| 项                                       | 值                                                                                             | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 包级环 / 边                              | **0 / 30**（细分档位口径；`ui/hook` 单独成档后由 27 变 31，根包文件归入 root 档后为 30，见下） | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
+| `SettingsPage` 状态字段                  | **21**                                                                                         | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
+| `SettingsPage.xxx` 扩展                  | 219 个，散在 67 文件（2026-10-19 复核：204 / 65 → 215 / 67 → 219 / 67）                        | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
+| `ui/SettingsPage.kt` 行数                | **523**（879 → 699 → 497 → 517 → 523）                                                         | `wc -l ui/SettingsPage.kt`                                                          |
+| `inject/ProbeChannel.kt` 行数            | 337（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）                                  | `wc -l inject/Probe*.kt`                                                            |
+| `host/action/MiniWindowLauncher.kt` 行数 | 695（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`）                       | `wc -l host/action/MiniWindow*.kt`                                                  |
+| 单文件最大行数                           | **844**（`ui/model/ActionIcons.kt`）；全仓**无 > 1000 行**的文件                               | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
+| 屏文件 import 页面                       | 49 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线                          | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
+| 零引用 import                            | 0，且由 detekt 拦下                                                                            | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
 **边数 27 → 31 → 30 是量具变细，不是新增耦合**：`ui/hook` 原先被折进 `ui` 档，它自己的五条外连
 （`→ bridge / core / ui / ui.screen / ui.state`）和 `root` 那一条都被记在别的档上，方向看不出来。

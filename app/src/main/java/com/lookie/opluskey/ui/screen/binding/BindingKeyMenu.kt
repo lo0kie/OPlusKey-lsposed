@@ -6,9 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.withKeyName
 import com.lookie.opluskey.core.model.withoutKey
@@ -38,13 +40,17 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *  2. 收集到的自定义按键（有才有），一行一颗；
  *  3. 「添加按键」—— **键清单那一组**的最后一行（它往这张清单里加一颗）；
  *  4. 一条加深分隔（「键清单」与「对这颗键动手」是两件事）；
- *  5. 「重置绑定」「重命名」「删除按键」—— 都是对**当前选中的那一颗**动手，三行之间一律细线。
+ *  5. 「重命名」「停用 / 启用这颗键」「重置绑定」「删除按键」—— 都是对**当前选中的那一颗**
+ *     动手，行之间一律细线，顺序按**破坏性**从小到大（改名不动数据 → 停用只是不接管 →
+ *     重置清掉绑定 → 删除最狠）。
  *
- * ## 哪几行什么时候是灰的
+ * ## 哪几行什么时候出现 / 是灰的
  *
  *  · **重命名 / 删除**：只在选中一颗自定义按键时可点 —— 侧键的名字与去留是模块自己说了算的；
- *  · **重置绑定**：只在**侧键**那组可点 —— 现在只有侧键有配置段（`KeyId` 还是枚举），
- *    一颗收集来的键还没有绑定可重置。
+ *  · **停用 / 启用**：每一颗键都有，**侧键也有**（「快捷键也允许被禁用」）—— 它写的是
+ *    **这一颗键**的 `enabled`，与首页那个模块总闸是两件事：停用侧键只停这颗键，
+ *    模块与其它键照常（总闸那一档才要过免责声明，也只在首页）；
+ *  · **重置绑定**：每一颗键都能点 —— `Config.keys` 里自定义键也有自己的配置段。
  *
  * ## 为什么「快捷键」那行点了只切组
  *
@@ -52,12 +58,14 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *  真要禁用它（`enabled = false`）反而更糟：库里禁用行连点击都不挂，菜单会一直开着
  *  （见 [MenuPopup] 里那段「禁用行吃事件」的说明），看着像卡住了。
  *
- * ## 行尾图标
+ * ## 键名后面那枚禁用标记
  *
- *  这几行**都不带行尾图标**（用户口径）：顶栏菜单里就这么几行，每一行是什么一目了然，
- *  再加一枚箭头反而把「一行操作」读成「进下一层」。所以 `submenu` / `trailingIcon`
- *  两位都不给：库里 `submenu` 是「行尾那一格画不画」的唯一开关，只清 `trailingIcon`
- *  会留下默认的右箭头（见 [MenuEntry.Row] 的说明）。
+ *  这一组行是**切换**动作，键停用了它照样可点 —— 于是名字后面得有个记号，否则
+ *  「停在了一颗停用的键上」只能从整页变灰反推出来。
+ *  它走库的 `hint` 槽（`MenuEntry.Row.stateIcon`），**不是**行尾那一格 ——
+ *  所以这几行仍然都不带行尾图标（用户口径）：顶栏菜单里就这么几行，每一行是什么一目了然，
+ *  再加一枚箭头反而把「一行操作」读成「进下一层」。`submenu` / `trailingIcon` 两位都不给：
+ *  库里 `submenu` 是「行尾那一格画不画」的唯一开关，只清 `trailingIcon` 会留下默认的右箭头。
  */
 @Composable
 internal fun SettingsPage.BindingKeyMenu() {
@@ -66,6 +74,8 @@ internal fun SettingsPage.BindingKeyMenu() {
     //  同一时刻只可能有一个弹窗，而且点任何一项都会先把菜单收掉。
     var dialog by remember { mutableStateOf<KeyMenuDialog?>(null) }
     val preciseClick = rememberPreciseClickState()
+    // 当前在编辑哪一颗 —— 打勾、下半那几行「对谁动手」、以及「停用还是启用」都读这一份。
+    val editing = KeyWatchState.editing(configState.config.value)
 
     Box {
         HeaderMenuButton(preciseClick) { open = true }
@@ -82,8 +92,9 @@ internal fun SettingsPage.BindingKeyMenu() {
                 keyMenuEntries(
                     // 选中态是界面状态（`KeyWatchState`），清单是**配置**（`customKeys`）——
                     //  两者在这里凑齐交给菜单，菜单本身不认识任何一个来源。
-                    selected = KeyWatchState.editing(configState.config.value),
-                    keys = configState.config.value.customKeys,
+                    selected = editing,
+                    // 「停用 / 启用」那一行写哪个字、键名后面挂不挂「已停用」，都读这一份配置
+                    cfg = configState.config.value,
                     actions =
                         KeyMenuActions(
                             onSelect = { target ->
@@ -111,6 +122,11 @@ internal fun SettingsPage.BindingKeyMenu() {
                             onRename = {
                                 open = false
                                 dialog = KeyMenuDialog.RENAME
+                            },
+                            // 一步到位、不弹确认：停用不丢任何数据，菜单里一字之差就能改回来
+                            onSetEnabled = { on ->
+                                open = false
+                                setKeyEnabledFromMenu(editing, on)
                             },
                             onReset = {
                                 open = false
@@ -144,6 +160,8 @@ private class KeyMenuActions(
     val onSelect: (String?) -> Unit,
     val onCollect: () -> Unit,
     val onRename: () -> Unit,
+    /** 停用 / 启用当前这一颗键（`true` = 启用）。 */
+    val onSetEnabled: (Boolean) -> Unit,
     val onReset: () -> Unit,
     val onDelete: () -> Unit,
 )
@@ -152,11 +170,12 @@ private class KeyMenuActions(
  * 菜单内容 —— 与组合无关（纯数据 + 回调），单独一支只为让 [BindingKeyMenu] 那支短下来。
  *
  * @param selected 当前在编辑哪一颗（`KeyId.PLUS` = 侧键）
- * @param keys 已经收集到的键（配置里的 `customKeys`，按收集顺序）
+ * @param cfg 配置快照 —— 键清单（`customKeys`）、每颗键的启用状态、下半那几行写哪个字，都读它。
+ *   传配置而不是传几个派生值：这几样必须同一份快照，分开传迟早出现「清单是新的、状态是旧的」。
  */
 private fun keyMenuEntries(
     selected: KeyId,
-    keys: List<KeyId>,
+    cfg: Config,
     actions: KeyMenuActions,
 ): List<MenuEntry> =
     buildList {
@@ -166,21 +185,29 @@ private fun keyMenuEntries(
                 icon = PageIcons.MenuKeys,
                 // 停在这组时行尾对勾 + 文字主题色
                 selected = !selected.isCustom,
+                // 侧键停用了就在名字后面挂那枚禁用图标（见 [disabledMark]）
+                stateIcon = disabledMark(cfg, KeyId.PLUS),
                 onPick = { actions.onSelect(null) },
             ),
         )
         // 侧键与**自定义按键**是两组 —— 加深分隔，不是相邻行的细线
         // （口径见 [MenuEntry.GroupLine]）。**没有键时不补**：那会把「快捷键」和紧跟其后的
         //  「添加按键」切成两组，而这两行本来就同属「键清单」那一组。
-        if (keys.isNotEmpty()) {
+        if (cfg.customKeys.isNotEmpty()) {
             add(MenuEntry.GroupLine)
-            keys.forEachIndexed { index, key ->
+            cfg.customKeys.forEachIndexed { index, key ->
+                // 两颗键之间那道线**显式画**（[MenuEntry.RowLine]）：库对相邻两行也会自动画一条，
+                //  但自动那条左端从 `PopupItemDividerMarginStartWithIcon` 起 —— 行首有图标时它
+                //  **让开图标那一格**、只从文字下面开始，与别处那道穿图标区的细线不是同一支笔。
+                //  用户口径：自定义按键之间也要通用细线。显式放一条之后，那段的自动线不再画。
+                if (index > 0) add(MenuEntry.RowLine)
                 add(
                     MenuEntry.Row(
                         title = key.label,
                         // 第几颗就画哪个数字（`number-1/2/3`，与清单顺序一致）
                         icon = PageIcons.menuKeyNumber(index),
                         selected = selected.id == key.id,
+                        stateIcon = disabledMark(cfg, key),
                         onPick = { actions.onSelect(key.id) },
                     ),
                 )
@@ -198,38 +225,71 @@ private fun keyMenuEntries(
             MenuEntry.Row(
                 title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
                 icon = PageIcons.MenuKeyAdd,
-                // 收满 [KeyId.MAX_CUSTOM_KEYS] 颗就置灰：点了也只会 toast 一句「到上限」，
-                // 不如直接说「不能再加了」。禁用行会吃掉点击、菜单不关（见 [MenuEntry.Row]）。
-                enabled = keys.size < KeyId.MAX_CUSTOM_KEYS,
+                // 收满 [KeyId.MAX_CUSTOM_KEYS] 颗就置灰；点一下说清「到上限」——
+                //  这一行自己的限制，不是「整页为什么改不了」，所以逐行填原因。
+                enabled = cfg.customKeys.size < KeyId.MAX_CUSTOM_KEYS,
+                disabledHint = I18n.format(Strings.KEY_WATCH_LIMIT, KeyId.MAX_CUSTOM_KEYS),
                 onPick = actions.onCollect,
             ),
         )
         // 键清单（含「添加按键」）与下面的「重置 / 重命名 / 删」是两组
         add(MenuEntry.GroupLine)
-        addAll(keyActionEntries(selected, actions))
+        addAll(keyActionEntries(selected, cfg, actions))
     }
 
 /**
- * 菜单下半那**三行动作** —— 重命名 / 重置 / 删除，全部作用于*当前选中的那一颗*。
+ * 键名后面那枚**禁用标记** —— 这颗键此刻不接管时才有值，否则 `null`（不画）。
  *
- *  单独一支同样是为了让 [keyMenuEntries] 留在 `LongMethod` 之内；三行之间一律**细线**，
+ *  图形是 `cancel`（见 [PageIcons.Cancel]）：不用文字，是因为库那一槽只给 40dp
+ *  —— 14sp 的三个汉字 42dp、11sp 虽然放得下但又小得不像话；也更不必为它多一条翻译。
+ */
+private fun disabledMark(
+    cfg: Config,
+    key: KeyId,
+): ImageVector? = if (cfg.key(key).enabled) null else PageIcons.Cancel
+
+/**
+ * 菜单下半那**三行动作** —— 重命名 / 停用启用 / 重置 / 删除，全部作用于*当前选中的那一颗*。
+ *
+ *  单独一支同样是为了让 [keyMenuEntries] 留在 `LongMethod` 之内；行之间一律**细线**，
  *  与上面那条加深带（键清单 vs 操作）是两回事。
  *
- *  顺序是「重命名 → 重置 → 删除」，按**破坏性**从小到大排（用户口径）：改名字不动任何数据；
- *  重置清掉这颗键的三个手势与参数、键本身还在；删除最狠，压在最下面 —— 越靠下越不容易误点。
+ *  顺序是「重命名 → 停用 → 重置 → 删除」，按**破坏性**从小到大排（用户口径）：改名字不动任何数据；
+ *  停用只是不接管（菜单里一字之差就能改回来）；重置清掉这颗键的三个手势与参数、键本身还在；
+ *  删除最狠，压在最下面 —— 越靠下越不容易误点。
+ *
+ *  「停用 / 启用」**每颗键都有**（用户口径：「快捷键也允许被禁用」）。它写的是**这一颗键**的
+ *  `KeyConfig.enabled` —— 与首页那个模块总闸（`GlobalConfig.enabled`）是两层，别混：
+ *  总闸关 ⇒ 一颗键都不接管；某颗键关 ⇒ 只那一颗不接管。
  */
 private fun keyActionEntries(
     selected: KeyId,
+    cfg: Config,
     actions: KeyMenuActions,
-): List<MenuEntry> =
-    buildList {
+): List<MenuEntry> {
+    val enabled = cfg.key(selected).enabled
+    return buildList {
         add(
             MenuEntry.Row(
                 title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
                 icon = PageIcons.CommandEdit,
                 // 侧键的名字不归用户改
                 enabled = selected.isCustom,
+                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_RENAME, "侧键不能改名"),
                 onPick = actions.onRename,
+            ),
+        )
+        add(MenuEntry.RowLine)
+        add(
+            MenuEntry.Row(
+                title =
+                    if (enabled) {
+                        I18n.get(Strings.BINDING_DISABLE_KEY, "停用这颗键")
+                    } else {
+                        I18n.get(Strings.BINDING_ENABLE_KEY, "启用这颗键")
+                    },
+                icon = PageIcons.Power,
+                onPick = { actions.onSetEnabled(!enabled) },
             ),
         )
         add(MenuEntry.RowLine)
@@ -249,11 +309,13 @@ private fun keyActionEntries(
                 icon = PageIcons.CommandDelete,
                 // 侧键不给删（它不是用户收集来的东西）
                 enabled = selected.isCustom,
+                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_DELETE, "侧键不能删除"),
                 danger = true,
                 onPick = actions.onDelete,
             ),
         )
     }
+}
 
 /**
  * 四个弹窗的落点。
@@ -313,10 +375,14 @@ private fun SettingsPage.KeyMenuDialogHost(
             //  （先 forget 会让页面切回侧键，而那颗键其实还在配置里）。
             if (selected.isCustom) {
                 val now = configState.config.value
-                if (write(now.withoutKey(selected.id), "custom_key_delete=${selected.id}") != CommandsSave.Failed) {
+                val deleted = write(now.withoutKey(selected.id), "custom_key_delete=${selected.id}")
+                if (deleted != CommandsSave.Failed) {
                     KeyWatchState.forget(selected.id)
-                    // 删成功才提示：名字得在 forget 之后取，否则 `selected` 已经指向不存在的键
-                    hint(I18n.get(Strings.TOAST_KEY_DELETED, "已删除「%s」").format(selected.label))
+                    //  只在**完全成功**时报：广播没发出去时 [write] 已经报过那条，别顶掉它
+                    if (deleted == CommandsSave.Ok) {
+                        // 名字得在 forget 之后取，否则 `selected` 已经指向不存在的键
+                        hint(I18n.get(Strings.TOAST_KEY_DELETED, "已删除「%s」").format(selected.label))
+                    }
                 }
             }
             onDismiss()
@@ -343,6 +409,7 @@ private fun SettingsPage.confirmRenameKey(
         return
     }
     val now = configState.config.value
-    if (write(now.withKeyName(selected.id, name), "custom_key_rename=${selected.id}") == CommandsSave.Failed) return
+    // 只在完全成功时报（见上一条同一笔账）
+    if (write(now.withKeyName(selected.id, name), "custom_key_rename=${selected.id}") != CommandsSave.Ok) return
     hint(I18n.get(Strings.TOAST_KEY_RENAMED, "已重命名为「%s」").format(name))
 }

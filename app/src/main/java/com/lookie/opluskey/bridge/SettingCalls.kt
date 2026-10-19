@@ -28,7 +28,10 @@ internal object SettingCalls {
     /** 系统身份调这些方法时传的包名（uid 1000 名下就是 `android`）。 */
     private const val PKG = "android"
 
-    /** `NfcAdapter.STATE_ON` —— `getState()` 的 3 与 4（TURNING_OFF）都算「开着」。 */
+    /** `NfcAdapter.STATE_TURNING_ON` —— 正在开，同样按「开着」处理（再点一下该关）。 */
+    private const val NFC_STATE_TURNING_ON = 2
+
+    /** `NfcAdapter.STATE_ON`。 */
     private const val NFC_STATE_ON = 3
 
     fun run(
@@ -80,7 +83,13 @@ internal object SettingCalls {
                 return false
             }
         val target = on ?: return false
-        val r = ServiceCalls.call(s, "setWifiEnabled", listOf(PKG, target))
+        //  两代签名都要试（五、3 的「退到下一层候选」）：新 ROM 是
+        //  `setWifiEnabled(String packageName, boolean enable)`，AOSP 老版只有 `setWifiEnabled(boolean)`。
+        //  只试新签名的话，老 ROM 上这一档**静默失败**（`call` 解析不到方法就返回 null）。
+        //  先新后老：老签名在 uid 1000 下也能过（没有包名参数就不查调用方包）。
+        val r =
+            ServiceCalls.call(s, "setWifiEnabled", listOf(PKG, target))
+                ?: ServiceCalls.call(s, "setWifiEnabled", listOf(target))
         // 这个方法不抛异常、只返回 false 表示「被拒」—— 不把它打出来就只剩一句「没反应」
         if (r?.value == false) XLog.w("wifi：setWifiEnabled 返回 false（被系统拒了，不是异常）")
         // 成败看**返回值**：`r != null` 只说明「调用进去了」，被系统拒时同样是 true
@@ -134,8 +143,8 @@ internal object SettingCalls {
      * NFC：`getState()` 读，`enable(String pkg)` / `disable(boolean persist, String pkg)` 写。
      *
      *  这个 ROM 的 `INfcAdapter` **没有 `isEnabled()`**（真机 dump 出来只有 `getState()`），
-     *  状态值是 `NfcAdapter.STATE_*`：OFF=1 / TURNING_ON=2 / ON=3 / TURNING_OFF=4 ——
-     *  3 与 4 都算「已经是开着」（4 只是正在关，再点一次应当开回来）。
+     *  状态值是 `NfcAdapter.STATE_*`：OFF=1 / TURNING_ON=2 / ON=3 / TURNING_OFF=4。
+     *  「开」只认 2 与 3；4（正在关）算「关」—— 再点一次应当**开回来**。
      *  `persist` 传 false：只关这一次；传 true 会写进「关机也保持」的持久档。
      */
     private fun nfc(loader: ClassLoader): Boolean {
@@ -149,8 +158,9 @@ internal object SettingCalls {
                 XLog.w("nfc：读不到 getState（服务对象是 ${s.javaClass.simpleName}）")
                 return false
             }
-        // STATE_ON = 3、STATE_TURNING_OFF = 4：这两个都算「已经开着」
-        val on = state >= NFC_STATE_ON
+        //  只认 2 / 3 为「开」。写成 `state >= 3` 会把 4（TURNING_OFF）也当成开 ⇒ 再点一次
+        //  又发一遍 disable，用户看到的是「点了没反应」，而此刻正是最该把它开回来的时候。
+        val on = state == NFC_STATE_ON || state == NFC_STATE_TURNING_ON
         XLog.w("nfc：getState=$state（${if (on) "开" else "关"}）")
         return if (on) {
             ServiceCalls.call(s, "disable", listOf(false, PKG)) != null

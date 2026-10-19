@@ -1,8 +1,10 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,6 +46,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.opticalTextCenter
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.PickedDetail
@@ -55,7 +58,10 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PullToRefresh
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
 import io.github.suqi8.coui.kmp.basic.rememberPullToRefreshState
+import io.github.suqi8.coui.kmp.basic.rememberScrollBarAdapter
+import io.github.suqi8.coui.kmp.interfaces.ExperimentalScrollBarApi
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
@@ -66,11 +72,16 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 // 三处「按下标滚动」的偏移账（`APP_LIST_HEADER_ITEMS`）散在列表与 effect 两头。
 
 /**
- * 列表本体 —— 下拉刷新包着 `LazyColumn`。
+ * 列表本体 —— 下拉刷新包着 `LazyColumn`，右边贴一条滚动条。
  *
  *  注意：顶栏折叠那条 connection **交给 [PullToRefresh]**（`topAppBarScrollBehavior`）：库内部会把它
  *  串进自己那条链（Idle 时先喂顶栏、再喂刷新），所以 `LazyColumn` 上**不能**再挂 `nestedScroll`
  *  —— 留着同一段位移会喂两遍。
+ *
+ * ## 滚动条
+ *
+ *  挂在右边、从「**此刻的**顶栏 + 搜索带」下面起画 —— 那两截是叠在列表之上的固定浮层，
+ *  从窗口顶边画起会被盖住一截。几何与理由都在 [PickerScrollBar] 里，两页共用那一支。
  *
  */
 @Composable
@@ -91,81 +102,128 @@ internal fun SettingsPage.AppPickerList(
     val row = remember(pending) { RowState(pending) }
     LocateSelected(ui, scrollBehavior, listState, searchBandDp)
 
-    PullToRefresh(
-        isRefreshing = ui.refreshing,
-        onRefresh = {
-            ui.refreshing = true
-            ui.refreshTick++
-        },
-        pullToRefreshState = pullToRefreshState,
-        topAppBarScrollBehavior = scrollBehavior,
-        modifier = Modifier.fillMaxSize(),
-        // 注意：指示器要**下移到「顶栏 + 搜索框那条带子」之下**：这两块是叠在列表之上的
-        //  固定浮层，指示器默认画在屏幕最顶上 ⇒ 整个被它们盖住。
-        //  库把这个参数直接当指示器那一层的 `offset(y = …)` 用（`calculateTopPadding` → `offset`，
-        //  见 `PullToRefreshKt`），并且**只取 top、不看 bottom** —— 所以下面那个 bottom 恒为 0。
-        //
-        //  末尾这额外一档 [PAGE_TOP_PADDING] 是为了**上下对称**：只让到「带子下沿」的话，
-        //  指示器上边紧贴搜索框（0），下边却离第一行有一整档 [PAGE_TOP_PADDING]，
-        //  看起来是「贴在搜索框上」。多让一档之后两边各占一份。
-        contentPadding =
-            PaddingValues(
-                top = currentHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING,
-            ),
-        refreshTexts = pickerRefreshTexts(),
-    ) {
-        LazyColumn(
-            state = listState,
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    // 越界回弹：COUI 自己的弹簧实现（`overScrollVertical`）。挂在这里同样是滚动
-                    // 容器外侧，吃的是它没吃掉的那部分位移 —— 列表不满一屏也弹。
-                    .overScrollVertical(),
-            // 底部留白与别页一模一样（[PAGE_BOTTOM_PADDING]，32dp）——
-            // 与「按键绑定」页那种「最后一行被 FAB 压住」的取舍保持一致。
-            contentPadding = PaddingValues(bottom = PAGE_BOTTOM_PADDING),
-        ) {
-            // —— 头一项：顶栏让位 + 固定搜索框那条带子的占位 ——
+    Box(Modifier.fillMaxSize()) {
+        PullToRefresh(
+            isRefreshing = ui.refreshing,
+            onRefresh = {
+                ui.refreshing = true
+                ui.refreshTick++
+            },
+            pullToRefreshState = pullToRefreshState,
+            topAppBarScrollBehavior = scrollBehavior,
+            modifier = Modifier.fillMaxSize(),
+            // 注意：指示器要**下移到「顶栏 + 搜索框那条带子」之下**：这两块是叠在列表之上的
+            //  固定浮层，指示器默认画在屏幕最顶上 ⇒ 整个被它们盖住。
+            //  库把这个参数直接当指示器那一层的 `offset(y = …)` 用（`calculateTopPadding` → `offset`，
+            //  见 `PullToRefreshKt`），并且**只取 top、不看 bottom** —— 所以下面那个 bottom 恒为 0。
             //
-            // 搜索框在固定层里，所以列表只要在顶上让出「顶栏 + 那条带子」这么多地方；滚起来
-            // 之后列表钻到带子背后，由带子那层不透明底挡住。因此下面所有按下标的滚动都要加
-            // [APP_LIST_HEADER_ITEMS] 这个偏移。
-            item(key = "header-space") {
-                // 用动态值（见 [currentHeaderHeight]）：折叠阶段这一档跟着缩下去。
-                // 顶栏 + 带子（带子的测量高度里含它自己那 8dp 下内边距）再补一档
-                // [PAGE_TOP_PADDING]：这一页第一行是卡片，没有别页首行那个 `SmallTitle`
-                // 自带的上内边距，不补的话卡片会直接贴着搜索框。
-                Spacer(
-                    Modifier.height(
-                        currentHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING,
-                    ),
-                )
-            }
-
-            // 列表区 —— 加载中什么都不铺（列表空着），转圈由页面那层叠上去画。
-            if (ui.loaded != null) {
-                // 「查得到但没有匹配项」那句提示不在这个列表里：它一进来就会占掉一个下标，
-                // 而按下标滚到当前绑定应用的偏移 [APP_LIST_HEADER_ITEMS] 只算了顶上那个占位项
-                // —— 多一项就错一行。
-                items(ui.shown, key = { it.target }) { app ->
-                    // **不给 `Modifier.animateItem()`** —— 理由写在 [AppRow] 的 KDoc 里：
-                    // 它把「过滤之后下标变了」当成「这一行换位了」。
-                    AppRow(
-                        app = app,
-                        row = row,
-                        onClick = {
-                            // **点行不产生「选中」**：这一页的选中位（[AppPickerUiState.pending]）
-                            // 只表示「当前已绑定的那个」，进页时由 `beginVisit` 放进去。
-                            // 点一行只是往下一级走 —— 真正的选择发生在那一页，点那颗 FAB 才落盘；
-                            // 在那一页直接返回，这里什么都不会变（新绑时仍是「无选中」）。
-                            onOpenActivities(app.target)
-                        },
+            //  末尾这额外一档 [PAGE_TOP_PADDING] 是为了**上下对称**：只让到「带子下沿」的话，
+            //  指示器上边紧贴搜索框（0），下边却离第一行有一整档 [PAGE_TOP_PADDING]，
+            //  看起来是「贴在搜索框上」。多让一档之后两边各占一份。
+            contentPadding =
+                PaddingValues(
+                    top = currentHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING,
+                ),
+            refreshTexts = pickerRefreshTexts(),
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        // 越界回弹：COUI 自己的弹簧实现（`overScrollVertical`）。挂在这里同样是滚动
+                        // 容器外侧，吃的是它没吃掉的那部分位移 —— 列表不满一屏也弹。
+                        .overScrollVertical(),
+                // 底部留白与别页一模一样（[PAGE_BOTTOM_PADDING]，32dp）——
+                // 与「按键绑定」页那种「最后一行被 FAB 压住」的取舍保持一致。
+                contentPadding = PaddingValues(bottom = PAGE_BOTTOM_PADDING),
+            ) {
+                // —— 头一项：顶栏让位 + 固定搜索框那条带子的占位 ——
+                //
+                // 搜索框在固定层里，所以列表只要在顶上让出「顶栏 + 那条带子」这么多地方；滚起来
+                // 之后列表钻到带子背后，由带子那层不透明底挡住。因此下面所有按下标的滚动都要加
+                // [APP_LIST_HEADER_ITEMS] 这个偏移。
+                item(key = "header-space") {
+                    // 用动态值（见 [currentHeaderHeight]）：折叠阶段这一档跟着缩下去。
+                    // 顶栏 + 带子（带子的测量高度里含它自己那 8dp 下内边距）再补一档
+                    // [PAGE_TOP_PADDING]：这一页第一行是卡片，没有别页首行那个 `SmallTitle`
+                    // 自带的上内边距，不补的话卡片会直接贴着搜索框。
+                    Spacer(
+                        Modifier.height(
+                            currentHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING,
+                        ),
                     )
+                }
+
+                // 列表区 —— 加载中什么都不铺（列表空着），转圈由页面那层叠上去画。
+                if (ui.loaded != null) {
+                    // 「查得到但没有匹配项」那句提示不在这个列表里：它一进来就会占掉一个下标，
+                    // 而按下标滚到当前绑定应用的偏移 [APP_LIST_HEADER_ITEMS] 只算了顶上那个占位项
+                    // —— 多一项就错一行。
+                    items(ui.shown, key = { it.target }) { app ->
+                        // **不给 `Modifier.animateItem()`** —— 理由写在 [AppRow] 的 KDoc 里：
+                        // 它把「过滤之后下标变了」当成「这一行换位了」。
+                        AppRow(
+                            app = app,
+                            row = row,
+                            onClick = {
+                                // **点行不产生「选中」**：这一页的选中位（[AppPickerUiState.pending]）
+                                // 只表示「当前已绑定的那个」，进页时由 `beginVisit` 放进去。
+                                // 点一行只是往下一级走 —— 真正的选择发生在那一页，点那颗 FAB 才落盘；
+                                // 在那一页直接返回，这里什么都不会变（新绑时仍是「无选中」）。
+                                onOpenActivities(app.target)
+                            },
+                        )
+                    }
                 }
             }
         }
+        // 滚动条：贴在右边，从「顶栏 + 搜索带」下沿开始画（见 [PickerScrollBar]）。
+        //  库自带淡出 —— 不滚动时它会自己收起来，不用我们管显隐。
+        PickerScrollBar(
+            listState = listState,
+            scrollBehavior = scrollBehavior,
+            searchBandDp = searchBandDp,
+            modifier = Modifier.align(Alignment.CenterEnd),
+        )
     }
+}
+
+/**
+ * 列表右边那条滚动条 —— 「选择应用」与「应用组件」两页共用这一支。
+ *
+ *  起在「**此刻的**顶栏 + 搜索带」下面：那两截是**叠在列表之上的固定浮层**，滚动条从窗口顶边
+ *  画起的话上面一截会被它们盖住，看着像「凭空从中间冒出来」。
+ *
+ *  这里取 [currentHeaderHeight]（当前实际高度）而不是 [collapsedHeaderHeight] 是有过教训的：
+ *  后者是**折叠到底**时的高度，而进页那一刻顶栏是展开的 —— 展开比折叠高出一整截，滚动条顶部
+ *  那一段正好落在顶栏背后（用户口径「滚动条被 header 挡住了」）。搜索带那笔是页面级状态、
+ *  首帧后就不再变。
+ *
+ *  代价：这一层会跟着顶栏折叠逐帧重组。但它本来就随滚动每帧更新（`rememberScrollBarAdapter`
+ *  读的就是列表的滚动位移），重组的是**一个 thumb**，不是列表；把与滚动无关的页面留在外面
+ *  才是要紧的那条（见 `ActivityPickerScreen` 里对 `ActivityEmptyState` 的处理）。
+ *
+ *  单独成函数还有两个原因：两页同一份几何不必各写一遍；以及两个调用点的组合函数都已经贴着
+ *  detekt 的 `LongMethod` 上限。
+ *
+ * @param modifier 只用来传 `align`（调用点在 `Box` 里右对齐）
+ */
+@OptIn(ExperimentalScrollBarApi::class)
+@Composable
+internal fun SettingsPage.PickerScrollBar(
+    listState: LazyListState,
+    scrollBehavior: ScrollBehavior,
+    searchBandDp: Dp,
+    modifier: Modifier = Modifier,
+) {
+    VerticalScrollBar(
+        adapter = rememberScrollBarAdapter(listState),
+        modifier =
+            modifier
+                .fillMaxHeight()
+                .padding(top = currentHeaderHeight(scrollBehavior) + searchBandDp),
+    )
 }
 
 /** 下拉刷新那四句 —— 库默认是英文（"Pull down to refresh" …），这一页是中文界面。 */
@@ -395,8 +453,13 @@ private fun SettingsPage.AppRowTitle(
         Text(
             text = app.label,
             // `weight` 让长名字先缩，标签始终留在行内可见
-            // （`fill = false`：名字短时不去撑满，标签紧跟在右边）
-            modifier = Modifier.weight(1f, fill = false),
+            // （`fill = false`：名字短时不去撑满，标签紧跟在右边）。
+            //  与右边那几枚标签**同一支**下沉（[opticalTextCenter]）：两边各按自己字号沉 0.1em，
+            //  名字与标签的中线就落在同一处，不用再靠一枚手调的抬升量去对。
+            modifier =
+                Modifier
+                    .weight(1f, fill = false)
+                    .opticalTextCenter(COUITheme.textStyles.headline1.fontSize, FontWeight.Medium),
             style = COUITheme.textStyles.headline1,
             fontWeight = FontWeight.Medium,
             color = BasicComponentDefaults.titleColor().color,
@@ -414,7 +477,7 @@ private fun SettingsPage.AppRowTitle(
             )
         }
         // 这一行是「盒子居中」而非 `alignByBaseline`：基线对齐会把胶囊整体
-        // 压低小半档（大标题字面比标签高一截），居中反而让两个字面的中线基本重合。
+        // 压低小半档（大标题字面比标签高一截），居中 + 两边各沉 0.1em 之后两个字面的中线重合。
         // 「模块 / 系统 / 用户」只在「显示系统应用」开着时画；「模块」不看那个开关
         // —— 模块默认就在列表里，开关关着也得分得出来。
         if (withSystem || app.xposed) {

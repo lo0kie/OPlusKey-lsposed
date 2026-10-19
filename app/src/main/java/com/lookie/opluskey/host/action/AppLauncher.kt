@@ -234,7 +234,7 @@ internal class AppLauncher(
             return
         }
         val intent = buildFeatureIntent(target)
-        fillExtras(intent, target.extras)
+        intent.putExtrasOf(target.extras, feature)
 
         val short = "${target.owner}/${target.service.substringAfterLast('.')}"
         // 界面型目标：非 Activity 的 Context 起界面必须带 NEW_TASK，否则 ActivityNotFoundException
@@ -297,7 +297,7 @@ internal class AppLauncher(
             }
         val intent = buildFeatureIntent(target)
         // 与起采集时同一套 extra，只把 stopExtras 盖上（灵感语音 = `longPressEventType` 改成 2）
-        fillExtras(intent, target.extras + target.stopExtras)
+        intent.putExtrasOf(target.extras + target.stopExtras, feature)
         val short = "${target.owner}/${target.service.substringAfterLast('.')}"
         for (foreground in if (target.foreground) FOREGROUND_FIRST else SERVICE_FIRST) {
             try {
@@ -414,12 +414,16 @@ private fun tryComponentFallback(
 }
 
 /**
- * 把场景表里那几样 extras 原样搬进 Intent。
+ * 把落点表里登记的那几样 extras **按原类型**搬进 Intent —— 起 / 停、正路（action + setPackage）
+ * 与退路（显式组件）四条路共用这一处。
  *
- *  正路（action + setPackage）与退路（显式组件）共用同一份载荷 —— 少了 `triggerType` /
- *  `longPressEventType` 这类项，服务照样被起、但已经不是用户要的那一下。
+ *  为什么必须共用且不能转字符串：原先起 / 停那两条用的是一个「`Int` 原样、其余转 `String`」的
+ *  版本，而退路那份保着 `Long` / `Boolean` / `Float`。同一个能力走哪条路，服务端读到的类型就不一样
+ *  —— 一条 `longPressEventType=false` 到了那边变成字符串 `"false"`，语义已经变了，日志还写着成功。
+ *  少了 `triggerType` / `longPressEventType` 这类项同理：服务照样被起、但已经不是用户要的那一下。
  *
- *  抽成顶层函数只为让 [tryComponentFallback] 的圈复杂度别顶破 detekt 那一档。
+ *  抽成顶层函数只为让 [tryComponentFallback] 的圈复杂度、以及 [AppLauncher] 的函数条数别顶破
+ *  detekt 那一档。
  */
 private fun Intent.putExtrasOf(
     extras: Map<String, Any>,
@@ -456,32 +460,13 @@ private fun buildFeatureIntent(target: RomProfile.BuiltIn): Intent =
     }
 
 /**
- * 把落点表里登记的 extra 写进 Intent（`Int` 原样、其余转字符串）。
- *
- *  提成顶层函数是因为**起 / 停两条路都要它**（[AppLauncher.startOplusFeature] 与
- *  [AppLauncher.stopOplusFeature]）—— 各写一遍时先漂的必然是类型判断那一档，
- *  而那个类的函数条数已经贴着 detekt `TooManyFunctions` 那一档。
- */
-private fun fillExtras(
-    intent: Intent,
-    extras: Map<String, Any>,
-) {
-    for ((key, value) in extras) {
-        when (value) {
-            is Int -> intent.putExtra(key, value)
-            else -> intent.putExtra(key, value.toString())
-        }
-    }
-}
-
-/**
  * 目标 → 入口 Intent。
  *
  *  分身：主用户的 PM 看不见那个包，[AppEntry.intentOf] 必然落空 —— 这时按 userId 走 binder
  *  再问一次（[AppEntry.resolveAsUser]）。只给了包名才这么退：用户点名了某个 Activity 时
  *  不要另挑一个顶上。
  *
- *  提成顶层函数与 [fillExtras] 同一个原因：这个类的函数条数贴着 detekt `TooManyFunctions` 那一档。
+ *  提成顶层函数与 [putExtrasOf] 同一个原因：这个类的函数条数贴着 detekt `TooManyFunctions` 那一档。
  */
 private fun entryIntent(
     pm: android.content.pm.PackageManager,

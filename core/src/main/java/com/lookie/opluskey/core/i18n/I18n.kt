@@ -188,6 +188,10 @@ object I18n {
             loadAttempts.set(0)
             result
         } catch (e: Throwable) {
+            //  与「文件没找到」同一条账：**解析失败也必须记账**，否则 [reload] 每次都返回 null、
+            //  [dict] 每次都以为「还没试过」⇒ 每取一条文案就重开一次 APK 的 zip、重解一遍、
+            //  再打一条 W（字典损坏时日志刷爆，重试上限形同虚设）。
+            loadAttempts.incrementAndGet()
             XLog.w("解析国际化 JSON 失败: $fileName", e)
             null
         }

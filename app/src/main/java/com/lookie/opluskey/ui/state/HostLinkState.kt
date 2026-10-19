@@ -149,6 +149,10 @@ internal class HostLinkState {
 
     /** 关页时收掉作用域 —— 还在计时的提示跟着停，不会有人再往旧实例里写。 */
     fun dispose() {
+        //  先把两条提示收成 null，再收作用域：只 cancel 的话，组合树上那两个 HintSlot
+        //  还读着旧字符串 —— 旧页面在拆除前最后一帧会再画一遍（而 `show` 此后已经拒绝写入）。
+        statusHint.dismiss()
+        actionHint.dismiss()
         scope.cancel()
     }
 }

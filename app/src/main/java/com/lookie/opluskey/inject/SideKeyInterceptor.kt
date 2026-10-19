@@ -313,9 +313,9 @@ internal class SideKeyInterceptor(
         keyConfig: KeyConfig,
     ): Boolean =
         try {
-            // 判定参数按**这颗键自己**的那一份刷（每颗键各有一份双击窗口 / 立即单击）
-            detector.doubleClickMs = keyConfig.doubleClickMs
-            detector.instantSingle = keyConfig.instantSingle
+            // 判定参数**不在这里刷**：判定器直接读传进去的 `keyConfig`（每颗键各一份）。
+            //  原先判定器上是两个全局槽，每事件前刷一次 —— B 键的 DOWN/UP 夹在 A 键的
+            //  DOWN/UP 之间时，A 的抬手会用 B 的窗口判（多颗自定义键同时在用时才撞）。
             if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount > 0) {
                 // 按住不放的 repeat：不能喂判定器（会刷新 pressAt、作废已排的长按枪），
                 // 也不能放行给系统（键已被接管）—— 直接吞掉。框架自己的分支也先判 getRepeatCount()==0。

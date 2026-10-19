@@ -144,20 +144,6 @@ internal class GestureDetector(
      */
     private fun pending(id: KeyId): Pending = pendingByKey.computeIfAbsent(id) { Pending() }
 
-    /**
-     * 双击窗口长度，由调用方每次按键前按当前配置写入 —— 改「单击延迟」立刻生效，不用重启。
-     */
-    @Volatile
-    var doubleClickMs: Int = KeyConfig.DEFAULT_DOUBLE_CLICK_MS
-
-    /**
-     * 双击为「无操作」时立即触发单击（`KeyConfig.instantSingle`，每颗键各一份）。
-     *
-     * 与 `doubleClickMs` 同一条路，每次按键前按当前配置写入；开着时抬手当场判单击、不等双击窗口。
-     */
-    @Volatile
-    var instantSingle: Boolean = KeyConfig.DEFAULT_INSTANT_SINGLE
-
     /** 一次按键按下。 */
     fun onKeyDown(
         id: KeyId,
@@ -248,7 +234,7 @@ internal class GestureDetector(
         // 「双击 = 无操作」且开了「立即触发单击」⇒ 不必再等双击窗口：抬手当场判单击。
         // 代价：不等就没法再判双击 —— 连按两下会变成两次单击（关着时第二下被吞掉）。
         // 两种语义都说得通，由配置项 instantSingle 决定。
-        if (instantSingle && config.actionOf(Gesture.DOUBLE) is Action.None) {
+        if (config.instantSingle && config.actionOf(Gesture.DOUBLE) is Action.None) {
             // 这一下是不是已经被直判过了（同一次按压被转发两遍）：
             // 记到了按下时刻 ⇒ 判「按下那一刻前后 DIRECT_BURST_MS 之内有没有直判」，用本次按下当锚点，
             //   才不会把上一次按压的直判算到这一下头上；
@@ -279,7 +265,7 @@ internal class GestureDetector(
         // `sawFirstRelease` 在上面那段临界区里已经置上了（与长按枪互斥的那一笔）
         // 窗口长度在这一刻定格（见 Pending.doubleWindowMs）：排窗用的窗口与到点判定用的窗口
         // 必须是同一个数，否则中途改「单击延迟」会让两者悄悄变成两个数。
-        val window = doubleClickMs.toLong()
+        val window = config.doubleClickMs.toLong()
         p.doubleWindowMs = window
         p.doubleWindowAt = now + window
         scheduleDoubleWindow(id, config)

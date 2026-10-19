@@ -1,8 +1,6 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,6 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
+import io.github.suqi8.coui.kmp.anim.AccelerateEasing
+import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 
 // 显隐动画包一层：进场 / 退场各自给一套动画，调用点不重复写 `AnimatedVisibility`。
 
@@ -60,7 +60,8 @@ internal fun AnimatedFade(
     AnimatedVisibility(
         visible = visible,
         modifier = modifier,
-        enter = fadeIn(tween(durationMillis = 220, easing = LinearOutSlowInEasing)),
-        exit = fadeOut(tween(durationMillis = 160, easing = FastOutLinearInEasing)),
+        //  缓动与其余显隐同一条（COUI 的减速 / 加速两档，见 PageMotion 顶部那段）
+        enter = fadeIn(tween(durationMillis = 220, easing = DecelerateEasing())),
+        exit = fadeOut(tween(durationMillis = 160, easing = AccelerateEasing())),
     ) { content() }
 }

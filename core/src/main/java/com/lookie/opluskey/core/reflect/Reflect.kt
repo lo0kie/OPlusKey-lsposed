@@ -163,10 +163,30 @@ object Reflect {
                 // 最后退一步按名字 + 参数个数匹配，兼容参数类型被擦除 / 泛型化的签名。
                 //  注意：用 [methodsOf]（沿类链的 declared 全集，含 hidden）而**不是** `cls.methods`
                 //  —— 后者只含 public，framework 里大量 hidden 方法在那里匹配不上。
-                ?: methodsOf(cls)
-                    .firstOrNull { it.name == name && it.parameterTypes.size == params.size }
-                    ?.also { runCatching { it.isAccessible = true } }
+                ?: pickByArity(cls, name, params.size)
         }
+
+    /**
+     * 「名字 + 参数个数」唯一命中时的兜底 —— 类型逐个都对不上时才走到这里（泛型擦除 / 桥接方法）。
+     *
+     *  **多个候选一律返回 null**：原先这里写的是 `firstOrNull`，等于按反射返回顺序瞎挑一个重载 ——
+     *  挑错的后果是 `invoke` 抛 `IllegalArgumentException`，而日志上看起来像「这个方法不存在」，
+     *  排查方向直接被带偏。宁可返回 null 让调用方按「本机没有这个方法」降级（五、3 不硬猜）。
+     */
+    private fun pickByArity(
+        cls: Class<*>,
+        name: String,
+        arity: Int,
+    ): Method? {
+        val candidates = methodsOf(cls).filter { it.name == name && it.parameterTypes.size == arity }
+        if (candidates.size != 1) {
+            if (candidates.isNotEmpty()) {
+                XLog.w("反射 $name/$arity：${candidates.size} 个候选且类型都对不上 ⇒ 不猜（按没有处理）")
+            }
+            return null
+        }
+        return candidates.first().also { runCatching { it.isAccessible = true } }
+    }
 
     /**
      * 按「名字 + 逐个参数类型」在 [methodsOf] 的全集里挑，**原始类型与装箱类型互认**。

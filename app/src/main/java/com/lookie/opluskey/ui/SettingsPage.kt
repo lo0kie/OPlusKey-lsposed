@@ -435,6 +435,8 @@ internal class SettingsPage(
      * 从设置页重进模块时（`SettingsPageHooks`）—— 把页面栈清回首页。
      */
     fun onHostReentered() {
+        // 应用名缓存在这期间可能已经过期（改名 / 卸载 / 换图标包）：重进模块时清一遍。
+        clearAppLabelCache()
         picker.clearTarget()
         // 二级页那一位也要清：栈被清回首页之后，再进「选择应用」不该还记着上次在看谁
         picker.forgetActivities()
