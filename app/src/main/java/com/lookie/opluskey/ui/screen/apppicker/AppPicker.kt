@@ -108,7 +108,7 @@ internal fun SettingsPage.ActivitySearchBand() {
             picker.activityFilter.value =
                 if (picker.activityFilter.value.isEmpty()) next.trimStart() else next
         },
-        label = I18n.get(Strings.APP_PICKER_SEARCH_ACTIVITY, "搜索界面"),
+        label = I18n.get(Strings.APP_PICKER_SEARCH_ACTIVITY, "搜索应用组件"),
         height = activitySearchBandHeight,
     )
 }

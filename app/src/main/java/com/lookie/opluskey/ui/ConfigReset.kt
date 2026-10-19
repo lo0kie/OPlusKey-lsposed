@@ -30,7 +30,8 @@ internal fun SettingsPage.resetAll() {
         XLog.w("清空：配置原处在只读态（读不懂）—— 明说要重来，放行写回")
         configState.readOnly = false
     }
-    if (write(Config.DEFAULT, "reset_all") == CommandsSave.Failed) {
+    val rebuilt = write(Config.DEFAULT, "reset_all")
+    if (rebuilt == CommandsSave.Failed) {
         // 没写成 ⇒ 把只读位**还原**：它是「手上这份不是用户的真相」的判据，清着不放的话，
         //  之后任何一次普通写入都会以这份默认值落盘，把用户配置抹掉（比原样留着更糟）。
         configState.readOnly = wasConfigReadOnly
@@ -44,15 +45,23 @@ internal fun SettingsPage.resetAll() {
     }
     // 命令库清空：空表就是重建后的状态，文件仍按同一份 JSON 格式写一份（不删文件 —— 删了
     // 下次读取走的是「文件不存在」那条分支，与写一份空表不是同一条路，排查时对不上）。
-    val cleared = saveCommands(emptyList(), "reset_all") != CommandsSave.Failed
-    XLog.w("清空：主配置已重建，命令库清空=$cleared")
-    hint(
-        if (cleared) {
-            I18n.get(Strings.TOAST_CONFIG_CLEARED, "已清空配置")
-        } else {
-            I18n.get(Strings.TOAST_CONFIG_CLEAR_FAILED, "配置已清空，命令库清理失败")
-        },
-    )
+    val cleared = saveCommands(emptyList(), "reset_all")
+    XLog.w("清空：主配置已重建=$rebuilt，命令库清空=$cleared")
+    // 三态各报各的：`BroadcastFailed` 那两位已经由 [write] / [saveCommands] 报过
+    // 「已保存，但通知注入侧失败」，这里再补一句「已清空」会把它顶掉（底部只有一行回执）。
+    when {
+        rebuilt == CommandsSave.BroadcastFailed || cleared == CommandsSave.BroadcastFailed -> {
+            XLog.w("清空：有一半没通知到注入侧，保留写盘那条警告（不再补「已清空」）")
+        }
+
+        cleared == CommandsSave.Failed -> {
+            hint(I18n.get(Strings.TOAST_CONFIG_CLEAR_FAILED, "配置已清空，命令库清理失败"))
+        }
+
+        else -> {
+            hint(I18n.get(Strings.TOAST_CONFIG_CLEARED, "已清空配置"))
+        }
+    }
 }
 
 /**
@@ -61,7 +70,8 @@ internal fun SettingsPage.resetAll() {
  *  主开关（`enabled`）说的是「这颗键归不归模块管」，不是一条绑定；把它一起关掉的话，
  *  用户点「重置绑定」会顺手把整颗键停用，看起来像模块坏了。
  *
- *  目前只有侧键有配置段（`KeyId` 还是枚举），所以这里写死的也是侧键。
+ *  这一条**只动一颗键**：写的是 `KeyWatchState.editing(cfg)` 那一颗（内置侧键或用户收集的
+ *  自定义键），`Config.keys` 里其余键原样保留。
  *
  *  与 [resetAll] 分开：那条是「两份文件一起按默认重建」，这条只动一个键的那一段。
  */
@@ -77,6 +87,8 @@ internal fun SettingsPage.resetKeyBindings() {
         XLog.w("重置绑定：${id.label} 已经是默认值，不用写")
         return
     }
-    if (write(cfg.copy(keys = cfg.keys + (id to reset)), "reset_key=${id.id}") == CommandsSave.Failed) return
+    // 只在**完全成功**时报「已重置」：广播没发出去时 [write] 自己已经报过那一条，
+    //  这里再补一句成功回执会把它顶掉（底部只有一行）。
+    if (write(cfg.copy(keys = cfg.keys + (id to reset)), "reset_key=${id.id}") != CommandsSave.Ok) return
     hint(I18n.get(Strings.TOAST_KEY_RESET, "已重置当前按键的绑定"))
 }

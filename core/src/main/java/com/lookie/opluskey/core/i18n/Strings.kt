@@ -46,11 +46,21 @@ object Strings {
     const val BINDING_CREATE_CUSTOM_COMMAND = "binding.create_custom_command"
     const val BINDING_CREATE_CUSTOM_COMMAND_DESC = "binding.create_custom_command_desc"
     const val BINDING_DELETE_KEY = "binding.delete_key"
+
+    /** 按键菜单里那一行：把这颗自定义键**停用**（键还在，只是不接管）。 */
+    const val BINDING_DISABLE_KEY = "binding.disable_key"
+
+    /** 同一行的另一半：重新启用。 */
+    const val BINDING_ENABLE_KEY = "binding.enable_key"
     const val BINDING_DELETE_KEY_CONFIRM = "binding.delete_key_confirm"
     const val BINDING_ADD_KEY = "binding.add_key"
     const val BINDING_CUSTOM_KEY_NAME = "binding.custom_key_name"
     const val BINDING_KEY_NAME = "binding.key_name"
     const val BINDING_RENAME_KEY = "binding.rename_key"
+
+    /** 侧键不可改名 / 不可删 —— 那两行在菜单里是禁用的，点一下要说清为什么。 */
+    const val BINDING_SIDE_KEY_NO_RENAME = "binding.side_key_no_rename"
+    const val BINDING_SIDE_KEY_NO_DELETE = "binding.side_key_no_delete"
     const val BINDING_RESET_KEY = "binding.reset_key"
     const val BINDING_RESET_KEY_CONFIRM = "binding.reset_key_confirm"
     const val BINDING_DOUBLE_CLICK_WAIT = "binding.double_click_wait"
@@ -101,9 +111,11 @@ object Strings {
     const val COMMAND_DELAY_DESC = "command.delay_desc"
     const val COMMAND_DELAY_LABEL = "command.delay_label"
     const val COMMAND_FORMAT_CMD = "command.format_cmd"
-    const val COMMAND_FORMAT_DEFAULT_SHELL = "command.format_default_shell"
     const val COMMAND_FORMAT_INTENT = "command.format_intent"
     const val COMMAND_FORMAT_KEYEVENT = "command.format_keyevent"
+
+    /** 「命令详细」那一栏的格式错误 —— 没带支持的前缀时出红字（保存按钮同时是灰的）。 */
+    const val COMMAND_FORMAT_REQUIRED = "command.format_required"
     const val COMMAND_FORMAT_SHELL = "command.format_shell"
     const val COMMAND_FORMAT_SHORTCUT = "command.format_shortcut"
     const val COMMAND_FORMATS_TITLE = "command.formats_title"
@@ -306,12 +318,22 @@ object Strings {
     const val STATUS_RESTART_REQUIRED = "status.restart_required"
     const val STATUS_SERVICE_NOT_RUNNING = "status.service_not_running"
     const val STATUS_UNAVAILABLE = "status.unavailable"
+
+    /** 控件置灰、但**不是**整页被闸住时的说法（原先落到「页面还没就绪」，把人引去重进页面）。 */
+    const val CONTROL_UNAVAILABLE = "status.control_unavailable"
+
+    /** 当前编辑的那颗键被停用了（`%s` = 键名；侧键与自定义键共用）—— 说清去哪儿重新启用。 */
+    const val KEY_DISABLED_ITEM = "status.key_disabled_item"
     const val TOAST_COMMAND_DELETED = "toast.command_deleted"
     const val TOAST_COMMAND_MODIFIED = "toast.command_modified"
     const val TOAST_COMMAND_OVERWRITTEN = "toast.command_overwritten"
     const val TOAST_COMMAND_SAVED = "toast.command_saved"
     const val TOAST_COMMAND_STEP_MISSING = "toast.command_step_missing"
     const val TOAST_COMMAND_STEP_FULL = "toast.command_step_full"
+
+    /** 点了一下禁用的「上移」/「下移」—— 这一步已经在最上面 / 最下面。 */
+    const val TOAST_COMMAND_STEP_FIRST = "toast.command_step_first"
+    const val TOAST_COMMAND_STEP_LAST = "toast.command_step_last"
     const val TOAST_COMMAND_TRIGGERED = "toast.command_triggered"
     const val TOAST_COMMAND_TEST_FAILED = "toast.command_test_failed"
     const val TOAST_CONFIG_CLEAR_FAILED = "toast.config_clear_failed"
@@ -331,6 +353,11 @@ object Strings {
     /** 删除一颗自定义按键之后（「已删除「音量键」」）。 */
     const val TOAST_KEY_DELETED = "toast.key_deleted"
 
+    /** 停用 / 启用一颗自定义键的回执（`%s` = 键名）。 */
+    const val TOAST_KEY_DISABLED = "toast.key_disabled"
+
+    const val TOAST_KEY_ENABLED = "toast.key_enabled"
+
     /** 切到另一颗键之后（「已切换到「音量键」」）。 */
     const val TOAST_KEY_SWITCHED = "toast.key_switched"
 
@@ -341,9 +368,14 @@ object Strings {
     const val TOAST_SWITCH_ON = "toast.switch_on"
     const val TOAST_SWITCH_OFF = "toast.switch_off"
 
-    /** 总闸（「启用按键绑定」）拨动之后 —— 它有自己的两句措辞，不套「已开启「…」」。 */
+    /**
+     * 总闸（「启用按键绑定」）**打开**之后的回执。
+     *
+     *  只有开这一档：关的那一档不发回执 —— 首页那条常驻提示会立刻变成
+     *  [STATUS_KEY_DISABLED]，再叠一条就是两层提示条（见 `setKeyEnabled`）；
+     *  「侧键交还系统」那句后果说明也并进了那条常驻文案，原来的 `toast.binding_off` 已删。
+     */
     const val TOAST_BINDING_ON = "toast.binding_on"
-    const val TOAST_BINDING_OFF = "toast.binding_off"
 
     /** 重命名一颗自定义按键之后（「已重命名为「音量键」」）。 */
     const val TOAST_KEY_RENAMED = "toast.key_renamed"

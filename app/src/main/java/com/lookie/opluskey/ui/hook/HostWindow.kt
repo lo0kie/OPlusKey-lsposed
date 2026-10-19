@@ -187,7 +187,8 @@ internal fun findContainer(activity: android.app.Activity): ViewGroup? {
 /** 平台类的 `Activity#onBackPressed()`；平台上没有它时返回 null。 */
 internal fun platformOnBackPressed(): java.lang.reflect.Method? =
     Reflect.method(android.app.Activity::class.java, "onBackPressed") ?: run {
-        XLog.d("平台上没有 Activity#onBackPressed")
+        //  判据级：返回键行为与原生不一致时，先看这一行（平台没这个方法 ⇒ 走了别的分支）
+        XLog.w("平台上没有 Activity#onBackPressed")
         null
     }
 

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.ui.state.CommandsSave
 
@@ -29,6 +30,8 @@ import com.lookie.opluskey.ui.state.CommandsSave
  *  永远被弹窗盖住；2026-10-19 提示槽挪到浮层槽之后那条理由不成立了，它已改走 [SettingsPage.hint]。）
  */
 internal fun SettingsPage.hint(text: String) {
+    // 留一行判据：提示条有没有被弹出来，从日志就能答（真机上「点了没反应」时先看这句）
+    XLog.w("提示：$text")
     link.hint(text)
 }
 

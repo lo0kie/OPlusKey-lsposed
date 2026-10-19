@@ -15,6 +15,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -203,28 +207,32 @@ private const val FOCUS_ATTEMPTS = 10
  *  窗口焦点一到它就没了。把这一位放进 key：它一翻 true 就重跑一遍、重新抢焦点。
  *  （`isWindowFocused` 不是 `State`，不能 `by` —— 但在组合里读它就订阅了它。）
  *
- * ## 为什么要 `ready` 这一道闸
+ * ## 只抢一次
  *
- *  「收集按键 → 添加按键」是两个**独立**的 `OverlayDialog` 交替：听到键的那一刻，
- *  收集窗开始退场、命名窗同时进场。而库的弹窗在**退场动画跑完**（250ms）时会
- *  `keyboardController.hide()` —— 那一刻正好是命名窗把键盘弹出来的时候，键盘当场被收掉。
- *  真机录屏逐帧对得上：键盘完整显示一帧之后消失，再被 `ImeGuard` 补回来。
+ *  窗口焦点在弹窗停留期间会翻（ROM 收键盘、输入法切换、宿主那边抢一下）。以前它也是 key，
+ *  于是每翻一次就重新 `requestFocus()` 一遍 —— 输入框反复「刚拿到又被丢」，
+ *  观感正是**键盘反复被拉起又消失**（真机反馈）。现在抢到过一次就不再抢：
+ *  真丢了焦点时用户点一下输入框就回来了，比自动抢一百遍稳。
  *
- *  所以命名的聚焦要等收集窗**真的收场**（`onDismissFinished`）再开始。`ready = false` 时
- *  这个 effect 直接返回、什么都不做；`ready` 一翻 true 才进去抢焦点 —— 那时退场动画已经
- *  走完、那声 `hide()` 也早执行过了（当时键盘还没开，收了个空）。
+ * ## 两个弹窗交替时为什么要「等前一个收场」
  *
- * @param ready 前置条件（缺省 `true` = 没有前置）。见上。
+ *  「收集按键 → 添加按键」是两个**独立**的 `OverlayDialog`：窗口一销毁，平台会把键盘一起带走。
+ *  所以调用点（`CollectKeyDialog`）**等收集窗收场之后才把命名窗的 `show` 打开** ——
+ *  两个窗口不叠，这里也就没有「刚聚焦就被前一个窗的销毁收走」那一刻。
+ *
+ * @param show 弹窗开着没有（关着时不动）
+ * @param focus 要拿焦点的那一栏
  */
 @Composable
 internal fun FocusOnShow(
     show: Boolean,
     focus: FocusRequester,
-    ready: Boolean = true,
 ) {
     val windowFocused = LocalWindowInfo.current.isWindowFocused
-    LaunchedEffect(show, windowFocused, ready) {
-        if (!show || !windowFocused || !ready) return@LaunchedEffect
+    // 这一次「开窗」里抢到过没有 —— 只抢一次（见上），`show` 变了就重来
+    var grantedOnce by remember(show) { mutableStateOf(false) }
+    LaunchedEffect(show, windowFocused) {
+        if (!show || !windowFocused || grantedOnce) return@LaunchedEffect
         var granted = false
         var attempt = 0
         while (!granted && attempt < FOCUS_ATTEMPTS) {
@@ -232,6 +240,7 @@ internal fun FocusOnShow(
             granted = runCatching { focus.requestFocus() }.getOrDefault(false)
             attempt++
         }
+        grantedOnce = granted
         if (!granted) {
             XLog.w("弹窗输入框没拿到焦点（这一档得靠用户点一下）")
         }

@@ -7,7 +7,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.ui.model.API_MISMATCH_HINT
 import com.lookie.opluskey.ui.model.CONFIG_NOT_SYNCED_HINT
@@ -16,6 +15,7 @@ import com.lookie.opluskey.ui.model.INJECT_NOT_LOADED_HINT
 import com.lookie.opluskey.ui.model.KEY_DISABLED_HINT
 import com.lookie.opluskey.ui.model.RESTART_REQUIRED_HINT
 import com.lookie.opluskey.ui.model.SERVICE_NOT_RUNNING_HINT
+import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.LinkCheck
 
 /**
@@ -84,15 +84,16 @@ internal val SettingsPage.linkReady: Boolean
  * 都读它（原先两处各写一份 `when`，加一档要改两个文件，迟早分叉）。
  *
  * 按**用户能做的事**分档，顺序就是优先级 —— 越靠前越「说清了就不必往下猜」：
- * 1) 机型不在清单 ⇒ 这台机器上就是不能用（等也没用）；
- * 2) 机型在、这一版系统没适配 ⇒ 只能等作者适配；
- * 3) 配置没读成功 ⇒ 重进页面就会重读；
- * 4) 主开关关着 ⇒ 用户自己拨回来（**排在链路之前**，理由见 [linkReady] 的注释）；
- * 5) 宿主服务没报活 ⇒ 重进页面 / 重启；
- * 6) 系统那一侧没回音 ⇒ 作用域漏了 `system`（含「装完从没重启过」那一档）；
- * 7) 回音了、但**构建标识不是本包** ⇒ 换过包没重启（system_server 里跑的还是上一版）；
- * 8) 回音了但接管点 0 个 ⇒ 这一版 ROM 把私有类改了形，只能等适配；
- * 9) 设置没送到 ⇒ 重进本页会重发一遍。
+ * 1) 配置没读成功 ⇒ 重进页面就会重读；
+ * 2) 主开关关着 ⇒ 用户自己拨回来（**排在链路之前**，理由见 [linkReady] 的注释）；
+ * 3) 宿主服务没报活 ⇒ 重进页面 / 重启；
+ * 4) 系统那一侧没回音 ⇒ 作用域漏了 `system`（含「装完从没重启过」那一档）；
+ * 5) 回音了、但**构建标识不是本包** ⇒ 换过包没重启（system_server 里跑的还是上一版）；
+ * 6) 回音了但接管点 0 个 ⇒ 这一版 ROM 把私有类改了形，只能等适配；
+ * 7) 设置没送到 ⇒ 重进本页会重发一遍。
+ *
+ *  **机型清单不在这张表里**：它只是「这一组验过没有」的提示，不拦注入、也不拦页面
+ *（AGENTS.md 一、13）—— 所以既没有「机型不在清单」这一档，也没有对应的禁用。
  *
  *  注意：**「模块没启用」不在这张表里，也不需要判** —— 这段文字只可能在「我们的页面被画出来」
  *  时出现，而页面本身就是模块的代码（跑在宿主 `:ui` 进程里）：能画出来就意味着模块已加载、
@@ -105,9 +106,8 @@ internal fun SettingsPage.blockedReason(): String? {
     return when {
         configState.readOnly -> CONFIG_READ_FAILED_HINT
 
-        !configState.config.value
-            .key(KeyId.PLUS)
-            .enabled -> KEY_DISABLED_HINT
+        // **模块总闸**，不是「侧键那颗键」—— 后者只是那一颗（见 `disabledClickReason`）
+        !configState.config.value.global.enabled -> KEY_DISABLED_HINT
 
         !link.hostServiceUp -> SERVICE_NOT_RUNNING_HINT
 
@@ -123,6 +123,26 @@ internal fun SettingsPage.blockedReason(): String? {
 
         else -> null
     }
+}
+
+/**
+ * 「这一下点不动」时该说什么 —— 整页总闸优先，其次是**当前编辑的那颗键自己停用了**。
+ *
+ *  为什么不能沿用 `blockedReason() ?: "页面还没就绪"`：页面上被置灰的控件分两种 ——
+ *  整页被闸住（[blockedReason] 有话说），或者只是**这一颗键被停用**（总闸是通的）。
+ *  第二种落到「页面还没就绪」会把人引去重进页面，而真正要做的是到 ⋮ 菜单里把键启用回来。
+ *
+ *  两种键同一句话：停用**任何一颗**（含侧键）之后，打开它的入口都是同一个 ⋮ 菜单里那一行。
+ */
+internal fun SettingsPage.disabledClickReason(): String {
+    blockedReason()?.let { return it }
+    val cfg = configState.config.value
+    val key = KeyWatchState.editing(cfg)
+    if (!cfg.key(key).enabled) {
+        return I18n.format(Strings.KEY_DISABLED_ITEM, key.label)
+    }
+    //  页面是通的、这一项仍然点不动（比如行要求先选一颗键）：说结论，不编一个「没就绪」
+    return I18n.get(Strings.CONTROL_UNAVAILABLE, "这一项现在不可用")
 }
 
 /**

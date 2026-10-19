@@ -60,11 +60,13 @@ internal fun resolveSelection(
  *  少了它，写回会走 `app:`（而不是 `appshortcut:`），`包名/快捷方式id` 这种写法就废了。
  *
  *  @param selected 已经过 [resolveSelection] 规范化 —— 一定在清单里，或就是 [target]（「自动」）
+ *  @param selectedShortcutId 当前绑定是快捷方式时的 id（清单没到时唯一的身份来源，见下）
  */
 internal fun defaultPickOf(
     all: List<LaunchableActivity>,
     selected: String?,
     target: String,
+    selectedShortcutId: String? = null,
 ): PickedDetail {
     val hit = all.firstOrNull { AppTarget.same(it.target, selected) }
     return when {
@@ -73,6 +75,14 @@ internal fun defaultPickOf(
         hit != null && hit.shortcutId != null -> PickedDetail(hit.target, hit.shortcutId, hit.label)
 
         hit != null -> PickedDetail(hit.target, null)
+
+        // 清单里找不到这一行（还在查 / 查失败 / 这一项真没了）⇒ 原样交回去。
+        //  快捷方式的身份必须**跟着原值走**：清单没到时按 `hit == null` 直接给
+        //  `PickedDetail(selected, null)`，写回就成了 `app:<包名>` —— 一行字都没改，
+        //  绑定却被换成了一条永远解析不了的 token（图标与名字同时变）。
+        //  清单已经查到「这一项真不在了」时调用点不会给 [selectedShortcutId]（见那里的注释），
+        //  所以这里不会替一个不存在的 id 拼 token。
+        selectedShortcutId != null -> PickedDetail(selected ?: target, selectedShortcutId, hit?.label)
 
         else -> PickedDetail(selected ?: target, null)
     }

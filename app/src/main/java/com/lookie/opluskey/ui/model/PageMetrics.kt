@@ -159,14 +159,6 @@ internal val PAGE_BOTTOM_PADDING = 32.dp
 internal val PAGE_TOP_PADDING = 8.dp
 
 /**
- * 网格格子里文字的视觉居中微调 —— 往下挪 1.5dp。
- *
- * 文字布局盒本身居中，但汉字字形墨迹在行盒里偏上（行盒要给基线以下留 descent，汉字几乎不占），
- * 真机量到视觉上高约 1.6dp。用 `offset` 而非 `padding`：只改绘制位置、不改测量。
- */
-internal val TILE_TEXT_OPTICAL_SHIFT = 1.5.dp
-
-/**
  * 「自定义命令」页底部操作工具栏（[CommandActions]）距屏幕底边的距离 —— 基准取 [PAGE_BOTTOM_PADDING] × 2（64dp），
  * 与「按键绑定」页那颗 FAB 的下边距同一基准。
  *
@@ -226,17 +218,21 @@ internal val APP_STATE_TEXT_GAP = 12.dp
  */
 internal val APP_KIND_TAG_GAP = 6.dp
 
+/**
+ * 种类标签胶囊整体**往下让**的这一档 —— 0.85dp（560dpi 下 3px）。
+ *
+ *  胶囊里的字按 [com.lookie.opluskey.ui.opticalTextCenter] 沉过之后在胶囊里是正中的，
+ *  但胶囊**自己**与旁边那个 16sp 大标题还差一档：真机量到标题墨迹中线在 2021px、
+ *  胶囊中线在 2018px —— 差 3px，看着就是「标签整体偏高一点点」。
+ *
+ *  这个数**跟着标题那档字号走**：标题改成别的档位要重新量（它是「16sp Medium 的墨迹中线
+ *  − 11sp Regular 胶囊中线」的差，两个字体文件的 descent 不一样，不能按字号等比推）。
+ */
+internal val APP_KIND_TAG_SINK = 0.85.dp
+
 internal val APP_KIND_TAG_RADIUS = 4.dp
 
 internal val APP_KIND_TAG_INSIDE = PaddingValues(horizontal = 5.dp, vertical = 1.dp)
-
-/**
- * 小标签相对「与大标题盒子居中」再往上抬的这一档 —— 0.5dp。
- *
- * COUI 的 `LineHeightStyle` 是 `Top` + `Trim.None`，多出来的行距全落在字面下面 ⇒ 与行盒居中的标签会被推下去，
- * 抬回 0.5dp 两个字形中线才重合。
- */
-internal val APP_KIND_TAG_RAISE = 0.5.dp
 
 /**
  * 应用行里标题与摘要之间的间距 —— 2dp，与库 `support_preference_margin_between_line` 同值；
@@ -267,6 +263,14 @@ internal val GRID_ROW_GAP = GRID_GAP
  * 库没有「每项图标尺寸」参数，只能从 `DropdownItem.icon` 的 `(Modifier) -> Unit` 槽位补（见 [ResetMenu]）。
  */
 internal val MENU_ICON_SIZE = 22.dp
+
+/**
+ * 浮层菜单行尾那枚**状态标记**的边长 —— 取 16dp，比行首图标小一档。
+ *
+ *  它是「这一行现在什么状态」（停用的键），不是这一行是什么：按行首那一档画会跟界面对吼。
+ *  位置是库的 `hint` 槽（`DropdownDefaults.HintMaxWidth` = 40dp），16dp 连同一档间隙还有富余。
+ */
+internal val MENU_STATE_ICON_SIZE = 16.dp
 
 /**
  * 行尾那颗指示图标（右箭头 / 选中圈 / 入口字形）的边长 —— 取 24dp，

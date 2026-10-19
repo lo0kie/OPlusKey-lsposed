@@ -37,6 +37,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BrandTelegram
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandWechat
 import io.github.lyxnx.compose.ui.tablericons.outline.BrowserPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
+import io.github.lyxnx.compose.ui.tablericons.outline.Cancel
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
 import io.github.lyxnx.compose.ui.tablericons.outline.Check
@@ -126,72 +127,72 @@ import io.github.lyxnx.compose.ui.tablericons.outline.World
 /** 动作 → 图标的映射（列表行首那个图标）。 */
 internal fun actionIcon(token: String): ImageVector =
     when (token) {
+        // 无操作
         Action.NONE -> {
             TablerIcons.Outline.Ban
         }
 
-        // 全项目只用 Tabler 一支笔，不混图标库
+        // 手电筒（全项目只用 Tabler 一支笔，不混图标库）
         Action.FLASHLIGHT -> {
             TablerIcons.Outline.Bulb
         }
 
-        // keyevent 一律是数字形态
+        // 电源键（`keyevent:` 一律是数字形态）
         Action.keyToken(KeyId.KEYCODE_POWER) -> {
             TablerIcons.Outline.Power
         }
 
-        // 电源键（`Power` 那颗图标）
-        // 与「电源键」必须不同字形：同样一颗电源图标摆在一起，分不出按下的那个是按键还是菜单。
-        // 「电源菜单」= 弹出关机 / 重启那一层，用「滑杆 + 闪电」。
+        // 电源菜单（弹出关机 / 重启那一层）—— 必须与「电源键」不同字形：同样一颗电源图标摆在一起，
+        //  分不出按下的那个是按键还是菜单，所以用「滑杆 + 闪电」。
         Action.POWER_MENU -> {
             TablerIcons.Outline.AdjustmentsBolt
         }
 
-        // 系统侧键场景表里的三档
+        // —— 系统侧键场景表里的四条 ——
+        // 一键闪记
         Action.OPLUS_PREFIX + RomProfile.NAME_FLASH_MEMORY -> {
             TablerIcons.Outline.Pencil
         }
 
-        // 一键闪记
+        // 免打扰（月亮：勿扰 / 夜间的通用读法）
         Action.OPLUS_PREFIX + RomProfile.NAME_NO_DISTURB -> {
             TablerIcons.Outline.Moon
         }
 
-        // 免打扰（月亮：勿扰/夜间的通用读法）
+        // 灵感语音
         Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY -> {
             TablerIcons.Outline.RecordMail
         }
 
+        // 录音
         Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING -> {
             TablerIcons.Outline.Microphone
         }
 
-        // 录音
+        // 响铃状态（那一格；菜单里的「循环」见 [specIcon]）
         ActionCatalog.RINGER_TILE -> {
             TablerIcons.Outline.Bell
         }
 
-        // 响铃状态（那一格；菜单里的「循环」见 [specIcon]）
+        // 系统导航三档
         Action.keyToken(KeyId.KEYCODE_HOME) -> {
             TablerIcons.Outline.Home
         }
 
-        // Home
         Action.keyToken(KeyId.KEYCODE_BACK) -> {
             TablerIcons.Outline.ArrowBackUp
         }
 
-        // 返回
+        // 最近任务
         Action.keyToken(KeyId.KEYCODE_APP_SWITCH) -> {
             TablerIcons.Outline.Cards
         }
 
-        // 最近任务
+        // 通知中心（改名不改字形）
         Action.keyToken(KeyId.KEYCODE_NOTIFICATION) -> {
             TablerIcons.Outline.Notification
         }
 
-        // 通知中心（改名不改字形）
         // 控制中心（`panel:control_center`）—— 用 Command 那颗：它是系统里「控制」那一类的通用读法
         ActionCatalog.PANEL_CONTROL -> {
             TablerIcons.Outline.Command
@@ -203,37 +204,32 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.Switch3
         }
 
-        // 播放 / 暂停（交给系统按当前状态翻面）
+        // 播放 / 暂停 / 上一首 / 下一首（前两条交给系统按当前状态翻面）
         Action.keyToken(KeyId.KEYCODE_MEDIA_PLAY) -> {
             TablerIcons.Outline.PlayerPlay
         }
 
-        // 播放
         Action.keyToken(KeyId.KEYCODE_MEDIA_PAUSE) -> {
             TablerIcons.Outline.PlayerStop
         }
 
-        // 暂停
         Action.keyToken(KeyId.KEYCODE_MEDIA_PREVIOUS) -> {
             TablerIcons.Outline.PlayerTrackPrev
         }
 
-        // 上一首
         Action.keyToken(KeyId.KEYCODE_MEDIA_NEXT) -> {
             TablerIcons.Outline.PlayerTrackNext
         }
 
-        // 下一首
+        // 音量 + / −
         Action.keyToken(KeyId.KEYCODE_VOLUME_UP) -> {
             TablerIcons.Outline.Volume
         }
 
-        // 音量 +（两条声波）
         Action.keyToken(KeyId.KEYCODE_VOLUME_DOWN) -> {
             TablerIcons.Outline.Volume4
         }
 
-        // 音量 −
         // 把前台应用收成小窗 —— 展开档用「窗口 + 底部块」（`app-window-bottom`）
         Action.ZOOM_MINI -> {
             TablerIcons.Outline.AppWindowBottom
@@ -330,14 +326,25 @@ internal fun actionIcon(token: String): ImageVector =
 private fun systemSettingIcon(id: String): ImageVector =
     when (id) {
         "bt" -> TablerIcons.Outline.Bluetooth
+
         "wifi" -> TablerIcons.Outline.Wifi
+
         "cell" -> TablerIcons.Outline.CellSignal4
+
         "rotation" -> TablerIcons.Outline.RotateRectangle
+
         "nfc" -> TablerIcons.Outline.Nfc
+
         "airplane" -> TablerIcons.Outline.Plane
+
+        // 老配置里可能还留着 `setting:dnd`（现在「免打扰」走 `oplus:` 那条，见上方 actionIcon），
+        //  留着这一支只为旧文件的图标不变成 Dots。
         "dnd" -> TablerIcons.Outline.Moon
+
         "darkmode" -> TablerIcons.Outline.MoonStars
+
         "powersave" -> TablerIcons.Outline.BatteryEco
+
         else -> TablerIcons.Outline.Dots
     }
 
@@ -451,6 +458,17 @@ internal object PageIcons {
      * 只给上面那行的话下面标题会左移一个图标宽。
      */
     val Power: ImageVector get() = TablerIcons.Outline.Power
+
+    /**
+     * 「这颗键停用了」—— 圆圈 + 叉（`cancel`）。
+     *
+     *  用在浮层菜单里那颗键的行尾（`MenuEntry.Row.stateIcon`）与「按键绑定」页顶栏的
+     *  尾随小图标：与行首那枚键位数字不同形，一眼能分出「这是第几颗键」与「这颗键现在不接管」。
+     *
+     *  不用 `Ban`（那是「无操作」那个动作的行首，摆在同一张网格里会串味），也不用 `Power`
+     *  ——「停用这颗键」那**一行**的行首就是它，同一张菜单里同一个字形读两种意思。
+     */
+    val Cancel: ImageVector get() = TablerIcons.Outline.Cancel
 
     /** 「系统导航」格的行首 —— 指北针 + 齿轮（`navigation-cog`）：这一格后面是一组导航动作。 */
     val NavigationCog: ImageVector get() = TablerIcons.Outline.NavigationCog

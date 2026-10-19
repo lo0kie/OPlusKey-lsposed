@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
@@ -140,6 +141,15 @@ internal fun SettingsPage.CommandPage(
  */
 @Composable
 private fun SettingsPage.SingleCommandField() {
+    val raw = commandDraft.draft.single
+    // 格式不对时在这一栏下面出红字 —— 保存按钮同时是灰的（见 `commandPayloadReady`），
+    //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。
+    val formatError =
+        if (raw.isNotBlank() && !Action.hasSupportedFormat(raw)) {
+            I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "命令必须以支持的格式开头，如 shell: / keyevent: / cmd:")
+        } else {
+            ""
+        }
     Column {
         IconInputView(
             spec =
@@ -148,11 +158,12 @@ private fun SettingsPage.SingleCommandField() {
                     I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令"),
                     MAX_SINGLE_LENGTH,
                 ),
-            value = commandDraft.draft.single,
-            onValueChange = { raw ->
+            value = raw,
+            onValueChange = { value ->
                 // 粘贴来的多半是 CRLF：只归一，不动内容
-                commandDraft.draft.single = raw.replace("\r\n", "\n").replace('\r', '\n')
+                commandDraft.draft.single = value.replace("\r\n", "\n").replace('\r', '\n')
             },
+            errorMessage = formatError,
             modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
         )
         // 权限边界的提示：这一栏写的是 shell 命令，而它跑在宿主进程里、身份是「手势体感」这个 App ——

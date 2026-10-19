@@ -490,8 +490,8 @@ internal object Framework {
      * [kind] 决定怎么判定「这下是不是侧键」（实现见 `inject/SideKeyInterceptor.decide`）：
      * `OPLUS_STRATEGY` 按**全部键**的 `acceptedKeyCodes` 查（含侧键的 735/780/781/782，也含自定义键）；
      * `OPLUS_PM_EXT` 与 `AOSP_PM` 只按**原始码**查（侧键只有 735），免得同一次按键被两条路各判一次。
-     * 两张查询表都来自当前配置（`Config.keyForCode` / `Config.keyForRawCode`）；
-     * `KeyId.fromKeyCode` / `fromAnyKeyCode` 是不带配置时的内置键判定，生产路径不用它们。
+     * 两张查询表都来自当前配置（`Config.keyForCode` / `Config.keyForRawCode`）——
+     * `KeyId` 上**没有**「按键码反查」的接口（那只认得到内置键，自定义键会静默落空）。
      */
     data class InterceptionPoint(
         val owner: Class<*>,

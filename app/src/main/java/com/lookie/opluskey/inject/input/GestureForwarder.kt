@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.SystemClock
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.core.log.XLog
@@ -21,9 +22,22 @@ internal class GestureForwarder(
      * 一用就失败）；推迟到真要转交手势时取值，借到好 Context 的机会大得多，且不影响启动时序。
      */
     private val context: () -> Context?,
-    /** 注入侧的主线程 Handler —— 延后发送走它。 */
-    private val handler: Handler,
 ) {
+    /**
+     * 专用发送线程 —— **两条发送（立刻 + 补发）都只在这里跑**。
+     *
+     *  原来它们直接跑在判定那一条线程上：单击 / 双击是在 **InputReader 线程**上判的
+     *  （见 `SideKeyInterceptor` 的实测结论），而 `startService` / `sendBroadcast` 各是一次
+     *  binder 往返 —— 输入线程上做 binder，一旦对面（AMS / 宿主）正忙，就是把整条输入读取
+     *  一起按住；补发那条还排在 system_server 主 looper 上，主 looper 一堵，`sent_at` 早就
+     *  过期，宿主按 `age > 2000ms` 直接丢弃，表现就是「按了没反应」。
+     *
+     *  单线程顺序执行还有一笔附带收益：手势与松手落进同一个队列，**先后不会乱**。
+     *  （`docs/device-findings.md` 里记的那条 ⏭️ 待办就是这件事。）
+     */
+    private val senderThread = HandlerThread("opluskey-gesture-forward").apply { start() }
+    private val sender = Handler(senderThread.looper)
+
     /** 宿主的服务（用来在转发前唤醒宿主进程）。 */
     private val hostService = ComponentName(HostApp.PACKAGE, HOST_SERVICE)
 
@@ -47,24 +61,30 @@ internal class GestureForwarder(
         gesture: Gesture,
         repeat: Boolean,
     ) {
-        val ctx =
-            context() ?: run {
-                XLog.w("没借到 Context，无法转交 ${id.label} 的手势")
-                return
-            }
-
-        wakeHost(ctx)
-
         val phase = gesture.id
-        // 补发那条**复用同一个 Intent**：两条必须带同一个 sent_at，宿主才认得出是一件事
+        // 补发那条**复用同一个 Intent**：两条必须带同一个 sent_at，宿主才认得出是一件事。
+        //  `sent_at` 也就在这里（判定那一刻）打上 —— 挪进发送线程会变成「排到队里才开始计时」，
+        //  主 looper 堵过之后宿主就判不出这是旧消息。
         val intent = gestureIntent(id, phase, repeat)
 
-        // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
-        // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。
-        //  补发只对「一次按压」有意义：长按连发（repeat）期间宿主早就在跑，每 100ms 再排一条
-        //  300ms 后到期的补发，松手后队列里会积一串废消息（且每条都要过一遍接收侧的去重）。
-        send(ctx, intent, delayMs = 0L, retry = false)
-        if (!repeat) send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+        sender.post {
+            //  取 Context 也挪进来：`SystemContext.get` 要反射扫一遍 `mAllApplicationThreads`，
+            //  那不该发生在输入读取线程上。
+            val ctx =
+                context() ?: run {
+                    XLog.w("没借到 Context，无法转交 ${id.label} 的手势")
+                    return@post
+                }
+
+            wakeHost(ctx)
+
+            // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
+            // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。
+            //  补发只对「一次按压」有意义：长按连发（repeat）期间宿主早就在跑，每 100ms 再排一条
+            //  300ms 后到期的补发，松手后队列里会积一串废消息（且每条都要过一遍接收侧的去重）。
+            send(ctx, intent, delayMs = 0L, retry = false)
+            if (!repeat) send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+        }
     }
 
     /**
@@ -77,18 +97,20 @@ internal class GestureForwarder(
      *  `host/GestureReceiver.onRelease`）—— 判定侧不替它判，两边就不会各有一套「哪些动作要收尾」。
      */
     fun release(id: KeyId) {
-        val ctx =
-            context() ?: run {
-                // 这里不用 w：手势那条已经报过一次「没借到 Context」，每个松手再报一遍是刷屏
-                XLog.d("没借到 Context，无法转交 ${id.label} 的松手")
-                return
-            }
-
-        // 也唤醒一次：宿主万一在这几十毫秒里被回收，startService 会把它拉起来（它一起来就注册接收器）
-        wakeHost(ctx)
         val intent = gestureIntent(id, ModuleWire.PHASE_RELEASE, repeat = false)
-        XLog.d("转交松手：${id.label}")
-        send(ctx, intent, delayMs = 0L, retry = false)
+        sender.post {
+            val ctx =
+                context() ?: run {
+                    // 这里不用 w：手势那条已经报过一次「没借到 Context」，每个松手再报一遍是刷屏
+                    XLog.d("没借到 Context，无法转交 ${id.label} 的松手")
+                    return@post
+                }
+
+            // 也唤醒一次：宿主万一在这几十毫秒里被回收，startService 会把它拉起来（它一起来就注册接收器）
+            wakeHost(ctx)
+            XLog.d("转交松手：${id.label}")
+            send(ctx, intent, delayMs = 0L, retry = false)
+        }
     }
 
     /** 唤醒宿主进程（动态接收器要求它活着；借来的 Context 与宿主同 uid，`startService` 才过得了 OPLUS_COMPONENT_SAFE）。 */
@@ -146,7 +168,7 @@ internal class GestureForwarder(
                     XLog.w("已把侧键手势转给宿主：$phase${if (repeat) "（连续触发）" else ""}")
                 }
             } else {
-                handler.postDelayed({
+                sender.postDelayed({
                     XLog.guard("发送侧键手势广播 $phase") {
                         ctx.sendBroadcast(intent)
                         if (retry) {

@@ -1485,12 +1485,25 @@ aapt2 dump xmltree --file AndroidManifest.xml reference/gesture.apk | grep -A1 Q
 
 ### 11.2 `clearCallingIdentity` 在这里是把双刃剑（两条路相反）
 
-宿主发的那条广播，被 hook 接住时**跑在宿主的 binder 线程上** ——
+> **2026-10-19 复核：本节原来那句前提「hook 跑在宿主的 binder 线程上」不成立。**
+> `KeyHooks.dispatchAction` 对 `ACTION_STATUSBAR` 是 `handler.post { … }`，handler 绑的是
+> `Looper.getMainLooper()` ⇒ 真正执行时 `Binder.getCallingUid()` 已经是 system_server 自己的
+> 1000，`asSystem` 那次 clear / restore 是个**空操作**。
 
-- `togglePanel()`：**不能清身份**。`checkCanCollapseStatusBar` 判的就是 `Binder.getCallingUid()`，宿主恰好持有
-  `STATUS_BAR`（dumpsys `granted=true`），清了反而判丢。
+实测（PLQ110 / ColorOS 17，`1.0.0-debug`）——用宿主 uid（10277）发广播，走的是与产品完全相同的
+那条路（`am broadcast` 以 10277 身份发出 → `KeyHooks` 校验通过 → 主 looper 执行）：
+
+| 指令 | 日志 | 屏幕 |
+| --- | --- | --- |
+| `cmd=notifications` | `已在本机调 IStatusBarService.togglePanel（notifications）` | 通知中心**拉下来了** |
+| `cmd=control_center` | `已在本机调 IStatusBar.animateExpandSettingsPanel（控制中心）` | 控制中心展开 |
+
+所以 `togglePanel()` 这条**保持现状**：`asSystem` 不是失败点，删了行为也不会变 ——
+留着只为「哪天真从 binder 线程直调」那一档兜底。原来那句「清了反而判丢」是**推断、未实测**。
+
 - `StatusBarManagerInternal.toggleRecentApps()`：**要清**。它没有权限校验，但下游（SystemUI
   → 启动器代理）看到的调用方应该是 system（uid 1000），与 `PhoneWindowManager` 自己调时一致。
+  （这一条同样**未经实测**：`asSystem` 在主 looper 上本来就是 1000，测不出差别。）
 
 - 两个码在 `PhoneWindowManager` 里都只在 **`handleKeyGestureEvent(KeyGestureEvent, IBinder)`**
   这一支被处理 ——那是 Android 16 的**按键手势**入口（`KeyGestureEvent` 由输入子系统在手势场景下产生），模块下发的普通
@@ -3245,9 +3258,11 @@ inset、补 20dp item 留白 ⇒ 净 +4dp），符合预期。
 
 - 这次按压的**动作没执行**（用户读到的就是「按了没反应」）；旧代码还在注入侧振了一下 ⇒「振了却什么都没发生」，正是用户说的「会误以为功能能用」。
 - 触觉反馈已经挪回宿主侧（见 changelog 同日那节）⇒ **这类被丢弃的包再也不会振** ✓。
-- ⏭️ **但动作本身还是会丢**：待办是把转发那一步挪出主 looper（例如给 `GestureForwarder` 一个专用
-  `HandlerThread`，只承载那两条 `sendBroadcast`，不动 `GestureDetector`
-  的计时器线程）。⚠️ 属注入侧改动，**要整机重启才生效**；且它改的是按键热路径的线程归属，须先想清楚再动。
+- ✅ **已修（2026-10-19）**：`GestureForwarder` 自带一条 `HandlerThread`（`opluskey-gesture-forward`），
+  「立刻发」与「300ms 补发」两条 `sendBroadcast` 全在这条线程上排队；`sent_at` 仍在**判定那一刻**打，
+  取 Context（跑 `SystemContext` 的反射）也一并挪进去。`GestureDetector` 的计时器线程没动。
+  单线程顺序执行顺带保证「手势 → 松手」不乱序。
+  ⚠️ 属注入侧改动：**这次改动要整机重启才生效**（装包本身不生效，模块 dex 在进程启动那一刻才加载）。
 
 ## 二十、COUI 浮层列表：**滑动会被当成「选行」**（实测，2026-10-15，PLK110）
 

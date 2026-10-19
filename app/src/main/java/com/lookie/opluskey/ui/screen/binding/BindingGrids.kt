@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -33,6 +34,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.durationText
+import com.lookie.opluskey.ui.rememberRowIconColor
 import com.lookie.opluskey.ui.rememberTick
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
@@ -216,11 +218,14 @@ private fun SettingsPage.CreateCommandRow(
     onCreateCommand: () -> Unit,
 ) {
     val tick = rememberTick()
+    //  行首图标要自己按 `enabled` 上色：库只给**它自己画的东西**上色，`startAction` 槽位原样渲染
+    //  —— 不给的话整行灰了、这颗 `+` 还亮着（与 `SwitchRow` / `SliderRow` 同一个坑）。
+    val iconColor by rememberRowIconColor(enabled, label = "CreateCommandIcon")
     Card(Modifier.fillMaxWidth()) {
         BasicComponent(
             title = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND, "自定义命令"),
             summary = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND_DESC, "一条命令或多个动作"),
-            startAction = { Icon(PageIcons.CommandAdd, null) },
+            startAction = { Icon(PageIcons.CommandAdd, null, tint = iconColor) },
             // 行尾箭头：「这一行后面还有一页」（与首页「按键绑定」那行同尺寸 24dp、
             // 同两档取色 —— 它不是弹浮层的入口格，所以不画那颗选择器字形）。
             endActions = {
@@ -306,8 +311,6 @@ private fun SettingsPage.CustomTile(
                 cmd
                     ?.takeIf { it.kind == CommandKind.SERIAL }
                     ?.let { durationText(it.stepDelayMs) },
-            //  行尾那支箭头现在只给这一组格子 —— 内置那几个入口格不画箭头。
-            enterArrow = true,
             // 长按与「已选中时再点一次」同一个去处（上面那个 `openEditor`）。
             // 长按之后那一下抬手由库的 `combinedClickable` 吞掉（不会再触发点击）。
             onLongClick = openEditor,

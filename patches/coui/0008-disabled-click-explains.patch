@@ -1,0 +1,330 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Card.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Card.kt
+index 15894a4..e7c7066 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Card.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Card.kt
+@@ -5,6 +5,7 @@ package io.github.suqi8.coui.kmp.basic
+ import androidx.compose.animation.core.Animatable
+ import androidx.compose.animation.core.spring
+ import androidx.compose.foundation.LocalIndication
++import androidx.compose.foundation.clickable
+ import androidx.compose.foundation.combinedClickable
+ import androidx.compose.foundation.interaction.MutableInteractionSource
+ import androidx.compose.foundation.interaction.collectIsPressedAsState
+@@ -155,22 +156,38 @@ fun Card(
+     val hasOnClick = onClick != null
+     val hasLongPress = onLongPress != null
+     val isClickable = hasOnClick || hasLongPress
+-    val clickableModifier = remember(isClickable, hasLongPress, interactionSource, indicationToUse) {
+-        if (isClickable) {
+-            Modifier.combinedClickable(
+-                interactionSource = interactionSource,
+-                indication = indicationToUse,
+-                onClick = { currentOnClick?.invoke() },
+-                onLongClick = if (hasLongPress) {
+-                    { currentOnLongPress?.invoke() }
+-                } else {
+-                    null
+-                },
+-            )
+-        } else {
+-            Modifier
++    // 没有点击回调（多半是禁用）时，把这一下点击交给使用方的 [LocalDisabledClick]（见其说明）
++    val disabledClick = LocalDisabledClick.current
++    val disabledInteraction = remember { MutableInteractionSource() }
++    val clickableModifier =
++        remember(isClickable, hasLongPress, interactionSource, indicationToUse, disabledClick) {
++            when {
++                isClickable -> {
++                    Modifier.combinedClickable(
++                        interactionSource = interactionSource,
++                        indication = indicationToUse,
++                        onClick = { currentOnClick?.invoke() },
++                        onLongClick = if (hasLongPress) {
++                            { currentOnLongPress?.invoke() }
++                        } else {
++                            null
++                        },
++                    )
++                }
++
++                disabledClick != null -> {
++                    Modifier.clickable(
++                        interactionSource = disabledInteraction,
++                        indication = null,
++                        onClick = { disabledClick() },
++                    )
++                }
++
++                else -> {
++                    Modifier
++                }
++            }
+         }
+-    }
+ 
+     BasicCard(
+         color = fillColor,
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Component.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Component.kt
+index 9efb8e3..a0b4a52 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Component.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Component.kt
+@@ -151,18 +151,39 @@ fun BasicComponent(
+ 
+     HoldDownObserver(holdDownState, interactionSource)
+ 
+-    val clickableModifier = remember(enabled, onClick != null, interactionSource, role, onClickLabel) {
+-        if (enabled && onClick != null) {
+-            Modifier.clickable(
+-                interactionSource = interactionSource,
+-                onClickLabel = onClickLabel,
+-                role = role,
+-                onClick = { currentOnClick?.invoke() },
+-            )
+-        } else {
+-            Modifier
++    // 禁用态被点时，若使用方给了 [LocalDisabledClick] 就挂一层「只解释、不做事」的点击
++    //  （`indication = null`：禁用态按下去不该有涟漪）。**另起一份 interactionSource** ——
++    //  与启用态共用的话，按下态 / 长按态的观察者（HoldDownObserver 等）会把这次点击当成
++    //  真的在按这一行，视觉上闪一下。
++    val disabledClick = LocalDisabledClick.current
++    val disabledInteraction = remember { MutableInteractionSource() }
++    val clickableModifier =
++        remember(enabled, onClick != null, interactionSource, role, onClickLabel, disabledClick) {
++            when {
++                enabled && onClick != null -> {
++                    Modifier.clickable(
++                        interactionSource = interactionSource,
++                        onClickLabel = onClickLabel,
++                        role = role,
++                        onClick = { currentOnClick?.invoke() },
++                    )
++                }
++
++                !enabled && disabledClick != null -> {
++                    Modifier.clickable(
++                        interactionSource = disabledInteraction,
++                        indication = null,
++                        onClickLabel = onClickLabel,
++                        role = role,
++                        onClick = { disabledClick() },
++                    )
++                }
++
++                else -> {
++                    Modifier
++                }
++            }
+         }
+-    }
+ 
+     // COUI COUICardListSelectedItemLayout.setPadding: the rounded outer edges of a card group each get
+     // an extra coui_list_card_head_or_tail_padding, and the row's minimum height grows by the same total.
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/DisabledClick.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/DisabledClick.kt
+new file mode 100644
+index 0000000..397305e
+--- /dev/null
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/DisabledClick.kt
+@@ -0,0 +1,23 @@
++package io.github.suqi8.coui.kmp.basic
++
++import androidx.compose.runtime.compositionLocalOf
++
++/**
++ * 「这一下点在了**禁用**的控件上」—— 由使用方提供一句解释，不提供就什么也不发生。
++ *
++ * ## 为什么库要开这个口子
++ *
++ *  禁用在本库里的做法是**连点击都不挂**（`clickableModifier` 只在 enabled 时加），于是整块
++ *  界面置灰之后用户点哪儿都没反应 —— 分不清「点歪了」「卡住了」还是「这东西本来就不能用」。
++ *  可「为什么不能用」只有使用方知道（业务闸门），库这边只负责把**这一下点击**递出去。
++ *
++ * ## 用法
++ *
++ *  使用方在页面根上 provide 一个「说明原因」的 lambda；库里所有**可点**的控件
++ *  （`BasicComponent` / `IconButton` / 可交互 `Card` / 下拉菜单行）在 `enabled = false` 时
++ *  会挂一层**没有涟漪、不改按下态**的点击，把事件交给它。
++ *
++ *  与「把 enabled 设成 true 再自己判断」的区别：外观、按下态、无障碍的 disabled 语义全都不变，
++ *  只是多了一条「问为什么」的通道。
++ */
++val LocalDisabledClick = compositionLocalOf<(() -> Unit)?> { null }
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+index 68d6b0c..f9f5a4c 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+@@ -174,6 +174,7 @@ fun DropdownImpl(
+                 role = role,
+                 hasIcon = item.icon != null,
+                 onClick = { currentOnSelectedIndexChange(index) },
++                onDisabledClick = item.onDisabledClick,
+             )
+             .then(containerModifier),
+     ) {
+@@ -467,6 +468,11 @@ data class DropdownItem(
+     val checkIcon: ImageVector? = null,
+     val chevronIcon: ImageVector? = null,
+     val showCheck: Boolean = true,
++    /**
++     * 补丁：这一行**禁用**时被点了一下 —— 交给使用方解释一句（外观与无障碍的 disabled 语义不变）。
++     * 不给就与上游一致：点了完全没反应。
++     */
++    val onDisabledClick: (() -> Unit)? = null,
+ ) {
+     /**
+      * [SpinnerEntry] compatibility
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/IconButton.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/IconButton.kt
+index d5066b5..6b0f12c 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/IconButton.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/IconButton.kt
+@@ -52,15 +52,31 @@ fun IconButton(
+     HoldDownObserver(holdDownState, interactionSource)
+ 
+     val currentOnClick by rememberUpdatedState(onClick)
+-    val clickableModifier = remember(enabled, interactionSource) {
+-        if (enabled) {
+-            Modifier.clickable(
+-                role = Role.Button,
+-                interactionSource = interactionSource,
+-                onClick = { currentOnClick() },
+-            )
+-        } else {
+-            Modifier
++    // 与 [BasicComponent] 同一条：禁用时把这一下点击交给使用方的 [LocalDisabledClick]
++    val disabledClick = LocalDisabledClick.current
++    val disabledInteraction = remember { MutableInteractionSource() }
++    val clickableModifier = remember(enabled, interactionSource, disabledClick) {
++        when {
++            enabled -> {
++                Modifier.clickable(
++                    role = Role.Button,
++                    interactionSource = interactionSource,
++                    onClick = { currentOnClick() },
++                )
++            }
++
++            disabledClick != null -> {
++                Modifier.clickable(
++                    role = Role.Button,
++                    interactionSource = disabledInteraction,
++                    indication = null,
++                    onClick = { disabledClick() },
++                )
++            }
++
++            else -> {
++                Modifier
++            }
+         }
+     }
+ 
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
+index 22fa90e..29fda8c 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
+@@ -163,6 +163,13 @@ internal class PopupListItemHandle {
+     var top: Float = 0f
+     var bottom: Float = 0f
+     var enabled: Boolean = true
++
++    /**
++     * 补丁：这一行**禁用**但配了 `onDisabledClick` —— 抬手时照样派发那一下，
++     * 但**不给按下态 / 高亮**（`enabled` 仍为 false，`onDown` / `onMoveTo` 里那几处
++     * `enterPress` 都只看 `enabled`）。
++     */
++    var disabledClickable: Boolean = false
+     var hasIcon: Boolean = false
+     var onClick: () -> Unit = {}
+ 
+@@ -360,7 +367,7 @@ internal class PopupListGestureHost {
+     fun onUp(scope: CoroutineScope) {
+         val target = activeItem
+         cancel(scope)
+-        if (target != null && target.enabled) target.onClick()
++        if (target != null && (target.enabled || target.disabledClickable)) target.onClick()
+     }
+ }
+ 
+@@ -454,6 +461,9 @@ private val IntrinsicMeasurable.popupListItemHandle: PopupListItemHandle?
+  * @param role The accessibility [Role] exposed for the row.
+  * @param hasIcon Whether the row shows a leading icon; widens the hairline's start inset.
+  * @param onClick Invoked when the row is selected, by pointer or by accessibility action.
++ * @param onDisabledClick Invoked when a **disabled** row is tapped. `enabled` keeps its meaning
++ *   (looks greyed, announced as disabled, no press highlight); this only forwards the tap so the
++ *   caller can explain why the row is unavailable. Without it a disabled row stays inert.
+  */
+ @Composable
+ internal fun Modifier.popupListItem(
+@@ -462,19 +472,63 @@ internal fun Modifier.popupListItem(
+     role: Role,
+     hasIcon: Boolean,
+     onClick: () -> Unit,
++    onDisabledClick: (() -> Unit)? = null,
+ ): Modifier {
+     val host = LocalPopupListGestureHost.current ?: return this.selectable(
+         selected = selected,
+         enabled = enabled,
+         role = role,
+-        onClick = onClick,
++        onClick = if (enabled) onClick else { { if (onDisabledClick != null) onDisabledClick() } },
+     )
+ 
+     val handle = remember { PopupListItemHandle() }
+     val currentOnClick by rememberUpdatedState(onClick)
++    val currentEnabled by rememberUpdatedState(enabled)
++    val currentOnDisabledClick by rememberUpdatedState(onDisabledClick)
+     handle.enabled = enabled
++    handle.disabledClickable = !enabled && onDisabledClick != null
+     handle.hasIcon = hasIcon
+-    handle.onClick = remember { { currentOnClick() } }
++    handle.onClick = remember {
++        { if (currentEnabled) currentOnClick() else currentOnDisabledClick?.invoke() }
++    }
++
++    // 禁用但可点的那一行：抬手要**吃掉**。
++    //  这一下由 `PopupListGestureHost` 在 Initial 趟先派发（它是祖先，先收到），
++    //  我们在这个行的 Initial 趟把它 consume 掉 —— 于是浮层「点外面就关」那条链
++    //  （Main 趟）拿到的是已消费事件，菜单不会跟着关。
++    val swallowUp =
++        if (!enabled && onDisabledClick != null) {
++            Modifier.pointerInput(Unit) {
++                awaitPointerEventScope {
++                    while (true) {
++                        val down =
++                            awaitFirstDown(
++                                requireUnconsumed = false,
++                                pass = PointerEventPass.Initial,
++                            )
++                        var dragged = false
++                        while (true) {
++                            val event = awaitPointerEvent(PointerEventPass.Initial)
++                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
++                            // 超过触摸阈值就算「在滚动」，不是「点一下」——
++                            //  滚动的抬手绝不能吃，否则滚动会被判成取消、松手就停住。
++                            if (!dragged &&
++                                (change.position - down.position).getDistance() >
++                                viewConfiguration.touchSlop
++                            ) {
++                                dragged = true
++                            }
++                            if (change.changedToUpIgnoreConsumed()) {
++                                if (!dragged) change.consume()
++                                break
++                            }
++                        }
++                    }
++                }
++            }
++        } else {
++            Modifier
++        }
+ 
+     DisposableEffect(host, handle) {
+         host.register(handle)
+@@ -493,6 +547,7 @@ internal fun Modifier.popupListItem(
+                 drawRect(color = maskColor, alpha = progress.coerceIn(0f, 1f))
+             }
+         }
++        .then(swallowUp)
+         .semantics(mergeDescendants = true) {
+             this.role = role
+             this.selected = selected

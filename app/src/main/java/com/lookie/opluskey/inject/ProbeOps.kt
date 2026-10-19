@@ -120,7 +120,13 @@ internal fun ProbeChannel.cornerOn(
     } finally {
         // 这条 Transaction 是**自己建、自己 apply** 的：不关就泄一个 native 对象
         //  （每一个提前 return 的分支都会漏一份）。
-        runCatching { tx.close() }
+        //  保护写 `catch (Throwable)` 而不是 `runCatching`：后者只给日志出口与反射查找用
+        //  （AGENTS.md 五之二、2）—— 这里要的是「关不掉也绝不外抛」，与同目录 `KeyWatch` 一致。
+        try {
+            tx.close()
+        } catch (e: Throwable) {
+            XLog.d("关闭 Transaction 失败（已忽略）：${e.javaClass.simpleName}")
+        }
     }
 }
 

@@ -114,15 +114,24 @@ data class KeyConfig(
         const val MAX_REPEAT_INTERVAL_MS = 3000
 
         /**
-         * 某个键的默认值：**默认不接管**（`enabled = false` ⇒ 拦截路径整条不生效，行为与原生一致）。
+         * 某个键的默认值：**内置键默认接管、自定义键默认不接管**。
+         *
+         *  「装上模块不改变行为」现在由**模块总闸**负责（`GlobalConfig.enabled` 默认 false），
+         *  不再靠这颗键的开关 —— 所以内置的侧键可以默认是开的：用户第一次打开总闸时它立刻可用。
+         *  反过来，侧键也默认关着的话，第一次打开总闸的表现是「开了没反应」，得先去绑一个动作
+         *  才活（`pick` 会顺手置开）—— 那是把一个初始化细节漏给了用户。
+         *
+         *  自定义键仍默认关：它们是被**收集**进来的，收集那一步自己置开（`Config.withCustomKey`）；
+         *  而「配置里认不出的键」也落在这一档 —— 不接管比接管安全，且删键时
+         *  `ConfigChannel` 靠「查不到 ⇒ enabled=false」判出「这一颗刚消失」。
          *
          * 注意：单击那档的默认值是「无操作」而不是「交还系统」—— 后者已删（见 `Action` 的注释）。
-         * 主开关开着而这一档还没配时，按键被吞掉什么都不做；这也是「还没配」最不容易误读的表现。
+         * 总闸开着而这一档还没配时，按键被吞掉什么都不做；这也是「还没配」最不容易误读的表现。
          */
         fun defaultFor(id: KeyId) =
             KeyConfig(
                 id = id,
-                enabled = false,
+                enabled = !id.isCustom,
                 single = Action.None,
                 double = Action.None,
                 long = Action.None,
@@ -161,6 +170,16 @@ data class KeyConfig(
 
 /** 全局配置（不属于任何单个键）。 */
 data class GlobalConfig(
+    /**
+     * **模块总闸**：关掉 ⇒ 一颗键都不接管（首页「启用按键绑定」那一行）。
+     *
+     *  与 `KeyConfig.enabled`（这一颗键接管不接管）是两件事 —— 拆开之前侧键那一份同时当两个用，
+     *  于是「停用侧键」被迫等于「关掉整个模块」（页面上其它键也跟着灰）。判定侧的闸门是
+     *  「总闸 **且** 这一颗键」（见 `inject/ConfigChannel.enabledOf`）。
+     *
+     *  默认关：装上模块不改变任何行为。
+     */
+    val enabled: Boolean = DEFAULT_ENABLED,
     val vibrate: Boolean,
     /** 执行**任意动作**时弹一条 Toast（内容是动作名；自定义命令取命令名）。 */
     val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
@@ -182,6 +201,7 @@ data class GlobalConfig(
     fun fieldValues(): ConfigFields.Values =
         ConfigFields.Values(
             mapOf(
+                ConfigFields.F_MODULE_ENABLED to enabled,
                 ConfigFields.F_VIBRATE to vibrate,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_LANGUAGE to language,
@@ -191,6 +211,9 @@ data class GlobalConfig(
         )
 
     companion object {
+        /** [GlobalConfig.enabled] 的默认值：**默认关** —— 装上模块不改变任何行为。 */
+        const val DEFAULT_ENABLED = false
+
         /** [GlobalConfig.toastOnRun] 的默认值：默认不弹。 */
         const val DEFAULT_TOAST_ON_RUN = false
 
@@ -205,6 +228,7 @@ data class GlobalConfig(
 
         val DEFAULT =
             GlobalConfig(
+                enabled = DEFAULT_ENABLED,
                 vibrate = false,
                 colorOsApi = DEFAULT_COLOR_OS_API,
             )
@@ -212,6 +236,7 @@ data class GlobalConfig(
         /** 从取值表还原全局配置 —— 与 [GlobalConfig.fieldValues] 成对，两条通道共用。 */
         fun ofFields(v: ConfigFields.Values): GlobalConfig =
             GlobalConfig(
+                enabled = v.bool(ConfigFields.F_MODULE_ENABLED),
                 vibrate = v.bool(ConfigFields.F_VIBRATE),
                 toastOnRun = v.bool(ConfigFields.F_TOAST_ON_RUN),
                 language = v.text(ConfigFields.F_LANGUAGE),
@@ -269,7 +294,7 @@ data class Config(
      *
      *  那张表是**扁平**的（一个字段一个值），而且两条通道共用它 —— 这张表是映射，又只有界面
      *  读（执行侧只需要「起哪个组件」），进字段表就等于每次按键都把整张表广播给 `system_server`。
-     *  所以它只走落盘这一条路：JSON 里单独一段（`ConfigFields.APP_NAMES_JSON`），
+     *  所以它只走落盘这一条路：JSON 里单独一段（`ConfigDto.appNames`，键名 `app_names`），
      *  `ConfigCodec` 单独读写。注入侧读到的 `Config` 里这一项恒为空，没人读它。
      *
      *  与应用改名无关：名字只是显示，身份是 `AppTarget.identity`。改过名之后旧名字还在表里，
@@ -327,7 +352,7 @@ data class Config(
      * 按**原始键码**找键 —— 与 [keyForCode] 的区别是**不含** ColorOS 的内部注入码。
      *
      *  PM（`PhoneWindowManager`）那条兜底路径能收到所有按键，策略类那条已经处理过 780 / 781 / 782，
-     *  这里再认一次会让同一次按压被判两遍（见 [KeyId.fromKeyCode] 的说明）。
+     *  这里再认一次会让同一次按压被判两遍（策略类那条路径的说明见 `inject/SideKeyInterceptor`）。
      */
     fun keyForRawCode(code: Int): KeyConfig? = allKeys.firstOrNull { it.keyCode == code }?.let { key(it) }
 

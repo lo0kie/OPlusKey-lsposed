@@ -117,10 +117,13 @@ internal object SideKeyGestureHooks {
                 //  注意：这里**没有任何例外** —— 「本次按键判为放行就放它过去」那条不能有，它正是「按下侧键把被替换的设置页拉起来」的来源。
                 //  唯一还放行的只有下面这一档：主开关关着时模块完全让位，行为与原生一致。
                 if (what == SCENE_DISPATCH_WHAT) {
-                    if (!ConfigStore.read().key(KeyId.PLUS).enabled) {
+                    // 一级是**总闸**、二级是**这一颗键**（侧键也能从 ⋮ 菜单停用）——
+                    //  只看总闸的话「停用了侧键」在这里仍然吞场景派发，系统那套就再也回不来了。
+                    val cfg = ConfigStore.read()
+                    if (!cfg.global.enabled || !cfg.key(KeyId.PLUS).enabled) {
                         // 判据级：这两条是「侧键到底走没走模块」的判据 —— 必须用 w，
                         //  用 d 会在 release 里被编译期消除 ⇒ 线上完全无痕，只能靠猜。
-                        XLog.w("主开关已关，场景派发放行（原生行为）")
+                        XLog.w("模块总闸或侧键已关，场景派发放行（原生行为）")
                         return@hookGuarded chain.proceed()
                     }
                     XLog.w("场景派发已吞掉（模块接管中）—— 侧键只走模块配置的动作")

@@ -37,6 +37,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.donors
+import com.lookie.opluskey.ui.opticalTextCenter
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
@@ -215,7 +216,13 @@ private fun DonorRow(
     }
 }
 
-/** 一格：撑满自己那份宽，字居中；超长按尾省略，不换行把行撑高。 */
+/**
+ * 一格：撑满自己那份宽，字居中；超长按尾省略，不换行把行撑高。
+ *
+ *  字的**墨迹**还要单独沉半档（[opticalTextCenter]）：[CELL_LINE_HEIGHT] 只把行距摊平，
+ *  行盒里 baseline 下面那段 descent 中文照样不占 —— 不沉的话整行字比格子中线高一档，
+ *  与上下那两条表格线一比就看得出来。
+ */
 @Composable
 private fun DonorCell(
     text: String,
@@ -225,6 +232,7 @@ private fun DonorCell(
     Box(modifier = modifier.padding(TABLE_CELL_PADDING), contentAlignment = Alignment.Center) {
         Text(
             text = text,
+            modifier = Modifier.opticalTextCenter(style),
             style = style,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

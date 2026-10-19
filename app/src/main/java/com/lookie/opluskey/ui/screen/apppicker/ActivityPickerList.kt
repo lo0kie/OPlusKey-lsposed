@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -19,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
@@ -87,6 +89,13 @@ internal fun SettingsPage.ActivityPickerScreen(
     target: String,
     selected: String?,
     /**
+     * 当前绑定若是一条**快捷方式**，这里是它的 id（见 `SettingsPage.bindingShortcutId`）。
+     *
+     *  只给 [defaultPickOf] 的兜底用：清单还没到（或查失败）时，行拼不出来，
+     *  身份只能靠这一位原样带回去 —— 否则会写成 `app:`（永远解析不了）。
+     */
+    selectedShortcutId: String?,
+    /**
      * 选中一行后交出去的东西。
      *
      * @param picked 完整目标写法：`包名`（自动）、`包名/类名`（界面）、`包名/快捷方式id`（快捷方式）
@@ -113,7 +122,7 @@ internal fun SettingsPage.ActivityPickerScreen(
     //  的注释）；跟着一起算就等于上下滑动时每帧跑两遍全量 filter，还会让 [PickerListData] 每帧换新
     //  实例 ⇒ [ActivityRows] 那一整棵（含列表 content lambda 与每一行的 `animateItem`）全都跳不过重组。
     val data =
-        remember(loaded, term, target, selected) {
+        remember(loaded, term, target, selected, selectedShortcutId) {
             val all = loaded.orEmpty()
             val shown = shownActivities(loaded, term)
             // 「当前绑的是哪一行」一律按**完整清单**判（`all`），不按过滤后的 `shown`：
@@ -126,7 +135,15 @@ internal fun SettingsPage.ActivityPickerScreen(
                 filterActive = term.isNotEmpty(),
                 // 两节（快捷方式 / 界面）由它自己切，顺序固定「界面在前」
                 shown = shown,
-                defaultPick = defaultPickOf(all, normalized, target),
+                // 身份兜底只在「绑定没被 [resolveSelection] 改写」时给：清单已经查出这一项真不在了
+                //  （normalized 退回「自动」）还按快捷方式写，等于给一个不存在的 id 拼 token。
+                defaultPick =
+                    defaultPickOf(
+                        all = all,
+                        selected = normalized,
+                        target = target,
+                        selectedShortcutId = if (normalized == selected) selectedShortcutId else null,
+                    ),
             )
         }
     // 带子高度由顶栏那一侧量（`ActivitySearchBand`），这里只读 —— 与「选择应用」页同一条通道
@@ -153,8 +170,11 @@ internal fun SettingsPage.ActivityPickerScreen(
             scrollBehavior = scrollBehavior,
             searchBandDp = searchBandDp,
         )
-        // 这一页唯一的写入入口：**常驻**（`current` 一定有值 —— 最差也是「自动」）。
-        PageCornerFab(visible = true) {
+        // 这一页唯一的写入入口：**清单到了才出现**。
+        //  第一版是常驻（`visible = true`）：那几十毫秒里清单还是空的，`current` 走的是
+        //  [defaultPickOf] 的兜底分支，一按就把「绑的是哪个界面 / 快捷方式」写成整个应用
+        //  （快捷方式连身份都丢，落成一条永远解析不了的 token）。看不见的行不该能写下什么。
+        PageCornerFab(visible = loaded != null) {
             ActivityConfirmFab(current, onPick)
         }
     }
@@ -262,9 +282,12 @@ private class PickerListData(
 }
 
 /**
- * 列表本体 —— 两节：界面（含「自动」）与快捷方式。
+ * 列表本体 —— 两节：界面（含「自动」）与快捷方式，右边贴一条滚动条。
  *
  *  单独一支是因为 [ActivityPickerScreen] 那个组合函数已经贴着 detekt 的长度上限。
+ *
+ *  滚动条起在「折叠后的顶栏 + 搜索带」下面：那两截是叠在列表之上的固定浮层，从窗口顶边画起
+ *  会被它们盖住一截（与「选择应用」页同一笔，见 `AppPickerList`）。
  */
 @Composable
 private fun SettingsPage.ActivityRows(
@@ -277,77 +300,119 @@ private fun SettingsPage.ActivityRows(
     onSelect: (PickedDetail) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    val tick = rememberTick()
     LocateActivitySelected(data, scrollBehavior, listState, searchBandDp)
-    LazyColumn(
-        state = listState,
-        // 大标题随滚动折叠：顶栏靠这条连接拿位移（`nestedScroll` 挂在滚动容器上，
-        //  与「关于模块」/「按键绑定」那几页同一个写法）
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection),
-        // 底部留白与别页一模一样（[PAGE_BOTTOM_PADDING]）
-        contentPadding = PaddingValues(bottom = PAGE_BOTTOM_PADDING),
-    ) {
-        // —— 头一项：顶栏让位 + 固定搜索带那一段的占位 ——
-        //
-        // 搜索框在固定层里，所以列表只要在顶上让出「顶栏 + 带子」这么多地方；滚起来
-        // 之后列表钻到带子背后，由带子那层不透明底挡住。这一项与「选择应用」页那个
-        // 占位项**逐字同源**（同样的三笔账），两页的上下边距才对得上。
-        item(key = "header-space") {
-            Spacer(
-                Modifier.height(
-                    currentHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING,
-                ),
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            // 大标题随滚动折叠：顶栏靠这条连接拿位移（`nestedScroll` 挂在滚动容器上，
+            //  与「关于模块」/「按键绑定」那几页同一个写法）
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+            // 底部留白与别页一模一样（[PAGE_BOTTOM_PADDING]）
+            contentPadding = PaddingValues(bottom = PAGE_BOTTOM_PADDING),
+        ) {
+            activityRows(
+                data = data,
+                current = current,
+                headerInset = { currentHeaderHeight(scrollBehavior) + searchBandDp },
+                tick = tick,
+                onSelect = onSelect,
             )
         }
+        // 滚动条：贴在右边，从「顶栏 + 搜索带」下沿开始画（见 [PickerScrollBar]）
+        PickerScrollBar(
+            listState = listState,
+            scrollBehavior = scrollBehavior,
+            searchBandDp = searchBandDp,
+            modifier = Modifier.align(Alignment.CenterEnd),
+        )
+    }
+}
 
-        // —— 第一节：快捷方式 ——
-        //  放在界面之前：这一节是应用自己给的、名字多半是中文，比一串类名好认。
-        //  一个都没查到就整节不画（不是画一个空标题）：应用没注册快捷方式很常见。
-        if (data.shortcuts.isNotEmpty()) {
-            item(key = "section-shortcut") {
-                SmallTitle(I18n.get(Strings.APP_PICKER_SECTION_SHORTCUTS, "快捷方式"))
-            }
-            items(data.shortcuts, key = { it.target }) { shortcut ->
-                ActivityRow(
-                    title = shortcut.label,
-                    summary = shortcut.summary,
-                    picked = current?.let { AppTarget.same(shortcut.target, it.target) } == true,
-                    onClick = {
-                        // 只带它自己的名字（「扫一扫」）：快捷方式名字与应用名是两回事，
-                        //  落盘时按这一条的身份（`999@包名/id`）单独记
-                        onSelect(PickedDetail(shortcut.target, shortcut.shortcutId, shortcut.label))
-                    },
-                )
-            }
+/**
+ * 列表里铺的东西 —— 顶栏让位那一项、快捷方式那一节、界面（含「自动」）那一节。
+ *
+ *  单独成函数有两个原因：[ActivityRows] 还要放 `Box` 与滚动条，留着这一整段会顶到 detekt 的
+ *  `LongMethod` 上限；以及这几项的铺法要跟 [rowIndexOf] 那套下标账逐项对应，放一起好对。
+ *
+ *  `currentHeaderHeight` 是在 `item` 的 content 里读的 —— 订阅只落在那一项里，不会让整页
+ *  跟着顶栏折叠逐帧重组。
+ */
+private fun LazyListScope.activityRows(
+    data: PickerListData,
+    current: PickedDetail?,
+    /**
+     * 顶栏 + 搜索带那一段的总高。
+     *
+     *  收成一格 lambda 而不是传 `scrollBehavior` + `searchBandDp` 两个参数：`currentHeaderHeight`
+     *  是 `SettingsPage` 的扩展，本层调不到；而且它跟着折叠**逐帧**变，只有在这个 `item` 的
+     *  组合里现算，订阅才落在那一项上、不会让整页跟着滚动重组。
+     */
+    headerInset: @Composable () -> Dp,
+    /** 点击触觉 —— 本层同样拿不到 `SettingsPage`，由调用方取好传来 */
+    tick: () -> Unit,
+    onSelect: (PickedDetail) -> Unit,
+) {
+    // —— 头一项：顶栏让位 + 固定搜索带那一段的占位 ——
+    //
+    // 搜索框在固定层里，所以列表只要在顶上让出「顶栏 + 带子」这么多地方；滚起来
+    // 之后列表钻到带子背后，由带子那层不透明底挡住。这一项与「选择应用」页那个
+    // 占位项**逐字同源**（同样的三笔账），两页的上下边距才对得上。
+    item(key = "header-space") {
+        Spacer(Modifier.height(headerInset() + PAGE_TOP_PADDING))
+    }
+
+    // —— 第一节：快捷方式 ——
+    //  放在界面之前：这一节是应用自己给的、名字多半是中文，比一串类名好认。
+    //  一个都没查到就整节不画（不是画一个空标题）：应用没注册快捷方式很常见。
+    if (data.shortcuts.isNotEmpty()) {
+        item(key = "section-shortcut") {
+            SmallTitle(I18n.get(Strings.APP_PICKER_SECTION_SHORTCUTS, "快捷方式"))
         }
-
-        // —— 第二节：Activity ——
-        //  两节都带小标题（`SmallTitle`，与「更多选项」「按键绑定」那几页同一颗）：
-        //  快捷方式与界面混在一起时，光看行内容分不出「这是页面还是长按桌面图标那个」。
-        item(key = "section-interface") {
-            SmallTitle(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES, "Activity"))
-        }
-
-        // 这一节的第一项固定是「自动」：与绑定一个纯包名完全等价，也是用户最常选的那一项
-        item(key = "auto") {
+        items(data.shortcuts, key = { it.target }) { shortcut ->
             ActivityRow(
-                title = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO, "自动"),
-                summary = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO_HINT, "直接打开应用"),
-                // 「自动」= 这个应用本身：绑定里存的是 `包名|名字`，比的是身份不是字符串
-                picked = current?.let { AppTarget.same(it.target, data.target) } == true,
-                onClick = { onSelect(PickedDetail(data.target, null)) },
+                title = shortcut.label,
+                summary = shortcut.summary,
+                picked = current?.let { AppTarget.same(shortcut.target, it.target) } == true,
+                tick = tick,
+                onClick = {
+                    // 只带它自己的名字（「扫一扫」）：快捷方式名字与应用名是两回事，
+                    //  落盘时按这一条的身份（`999@包名/id`）单独记
+                    onSelect(PickedDetail(shortcut.target, shortcut.shortcutId, shortcut.label))
+                },
             )
         }
-        items(data.interfaces, key = { it.target }) { activity ->
-            ActivityRow(
-                title = activity.label,
-                summary = activity.summary,
-                picked = current?.let { AppTarget.same(activity.target, it.target) } == true,
-                onClick = { onSelect(PickedDetail(activity.target, null)) },
-            )
-        }
+    }
+
+    // —— 第二节：Activity ——
+    //  两节都带小标题（`SmallTitle`，与「更多选项」「按键绑定」那几页同一颗）：
+    //  快捷方式与界面混在一起时，光看行内容分不出「这是页面还是长按桌面图标那个」。
+    item(key = "section-interface") {
+        SmallTitle(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES, "Activity"))
+    }
+
+    // 这一节的第一项固定是「自动」：与绑定一个纯包名完全等价，也是用户最常选的那一项
+    item(key = "auto") {
+        ActivityRow(
+            title = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO, "自动"),
+            summary = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO_HINT, "直接打开应用"),
+            // 「自动」= 这个应用本身：绑定里存的是 `包名|名字`，比的是身份不是字符串
+            picked = current?.let { AppTarget.same(it.target, data.target) } == true,
+            tick = tick,
+            onClick = { onSelect(PickedDetail(data.target, null)) },
+        )
+    }
+    items(data.interfaces, key = { it.target }) { activity ->
+        ActivityRow(
+            title = activity.label,
+            summary = activity.summary,
+            picked = current?.let { AppTarget.same(activity.target, it.target) } == true,
+            tick = tick,
+            onClick = { onSelect(PickedDetail(activity.target, null)) },
+        )
     }
 }
 
@@ -456,15 +521,22 @@ private fun SettingsPage.LocateActivitySelected(
  *  是内容位移被动画化的滞后感，看帧率数据永远看不出来，只能靠这一行改掉。
  *
  *  代价：搜索过滤时行是瞬切，不再淡入淡出。滚动是高频动作、过滤是低频动作，取舍往滚动这边偏。
+ *
+ * ## 为什么不是 `SettingsPage` 的扩展
+ *
+ *  它的调用点在 [activityRows]（`LazyListScope` 的扩展）里 —— 一个函数只能有一个显式接收者，
+ *  所以触觉那一格由调用方用 `rememberTick()` 取好、按 [tick] 传进来。
+ *
+ * @param tick 点击触觉（`SettingsPage.rememberTick()` 的产物）
  */
 @Composable
-private fun SettingsPage.ActivityRow(
+private fun ActivityRow(
     title: String,
     summary: String,
     picked: Boolean,
+    tick: () -> Unit,
     onClick: () -> Unit,
 ) {
-    val tick = rememberTick()
     Card(
         Modifier
             .fillMaxWidth()

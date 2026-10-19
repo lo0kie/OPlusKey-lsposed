@@ -19,7 +19,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.Screen
@@ -27,6 +26,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.linkReady
+import com.lookie.opluskey.ui.model.BLOCK_HINT_SETTLE_MS
 import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
@@ -46,13 +46,13 @@ import kotlinx.coroutines.delay
 @Composable
 internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     val cfg = configState.config.value
-    val key = cfg.key(KeyId.PLUS)
     val ui = remember { HomeUiState() }
 
     HomeLinkSelfCheck()
     HomeBlockHint()
 
-    // 这一页所有可交互项的**总闸**：机型允许 + 主开关开着 + 链路齐了（见 [linkReady]，它现在等同于
+    // 这一页所有可交互项的**总闸**：模块总闸开着（`GlobalConfig.enabled`，主开关那一行写的就是它）
+    // + 链路齐了（见 [linkReady]，它现在等同于
     // 「运行状态里除『主开关已关闭』与『使用验证』外每一段都 ok」）+ 配置可写
     // （建页那次没读成功 ⇒ 只读，写回一律被拒，见 `ConfigState.readOnly`）。
     // 有哪一条不满足时改配置不会生效，放用户去改只会误导（底部那条常驻提示会说明该怎么办）。
@@ -61,7 +61,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     // 「默认界面」（逃生口）始终可用。
     //  适配清单**不再参与**这道闸：清单外的机器照样能改（见 `core/model/DeviceSupport`），
     //  验没验过只在「更多选项」里提示。
-    val pageEnabled = key.enabled && linkReady && !configState.readOnly
+    val pageEnabled = cfg.global.enabled && linkReady && !configState.readOnly
 
     Column(
         Modifier
@@ -137,6 +137,7 @@ private fun SettingsPage.HomeLinkSelfCheck() {
     LaunchedEffect(screen) {
         if (screen != Screen.SHORTCUTS) return@LaunchedEffect
         var hostEverAnswered = false
+        var injectEverAnswered = false
         repeat(QUERY_ROUNDS) { round ->
             val hostToken = link.hostAliveToken
             val injectToken = link.injectAliveToken
@@ -153,16 +154,18 @@ private fun SettingsPage.HomeLinkSelfCheck() {
             val hostAnswered = link.hostAliveToken != hostToken
             val injectAnswered = link.injectAliveToken != injectToken
             if (hostAnswered) hostEverAnswered = true
-            // 没回音就把上一轮的回包清掉，免得拿旧结论当新结论（注入侧那一档是「清成未知」）
-            if (!injectAnswered) link.injectStatus = null
+            if (injectAnswered) injectEverAnswered = true
+            // 单轮漏答**不清结论**：AMS 偶尔忙一轮，清掉就 `linkReady=false` ⇒ 首页整片置灰
+            //  （用户报的「换 ROM 后整页一直是灰的，退出去再进来才好」正是这一处）。
+            //  与宿主那一档对齐：全程没答才降档，见下面两行。
             if (hostAnswered && injectAnswered) return@LaunchedEffect
             if (round > 0) XLog.w("链路自检第 ${round + 1} 轮仍未齐（宿主=$hostAnswered 注入=$injectAnswered）")
         }
-        //  注意：**只有问满所有轮都没回音才把宿主降档**：每轮超时就 `hostServiceUp = false`，
-        //  一轮偶然没回音（广播被压 / 宿主正忙）就会把一个**已经确认过**的宿主降成「没起来」；
-        //  而同一段的注入侧那一档只是把结论清成「未知」（`injectStatus = null`），两端口径还不一致。
-        //  现在与注入侧对齐：单轮漏答不算数，全程没答才判它没起来。
+        //  注意：**只有问满所有轮都没回音才降档**：每轮超时就清，一轮偶然没回音
+        //  （广播被压 / 宿主正忙）就会把一个**已经确认过**的结论清成「未加载」。
+        //  现在两端同一套判据：单轮漏答不算数，全程没答才判它没起来 / 没加载。
         if (!hostEverAnswered) link.hostServiceUp = false
+        if (!injectEverAnswered) link.injectStatus = null
         XLog.w("链路自检问了 $QUERY_ROUNDS 轮都没问齐，不再重问（详见「更多选项 → 运行状态」）")
     }
 }
@@ -189,11 +192,24 @@ private fun SettingsPage.HomeBlockHint() {
         //
         //  只动 `statusHint`：操作回执在另一个状态里（`actionHint`），互不影响。
         val shown = link.statusHint.text
-        if (blockHint == null) {
-            if (shown != null) link.dismissStatus()
-        } else if (shown != blockHint) {
-            XLog.w("首页提示：$blockHint")
-            link.showStatus(blockHint)
+        when {
+            blockHint == null -> {
+                if (shown != null) link.dismissStatus()
+            }
+
+            shown == blockHint -> {
+                // 已经挂着这句了，不重弹（`show` 会重发一个 stamp，提示条要重播一次进场动画）
+            }
+
+            else -> {
+                //  **先等一档再说**（[BLOCK_HINT_SETTLE_MS]）：冷启动那几帧 `hostServiceUp` /
+                //  `injectStatus` 都还是空的，这里必然判出「后台服务未运行」—— 立刻弹、广播一到
+                //  又被打回 null，观感就是「一条消息条闪一下就没了」（真机反馈）。
+                //  这一段挂起会被 `blockHint` 的变化取消 ⇒ 只要它自己通了，这条提示根本不出现。
+                delay(BLOCK_HINT_SETTLE_MS)
+                XLog.w("首页提示：$blockHint")
+                link.showStatus(blockHint)
+            }
         }
     }
     // 离开首页（进子页 / 关页）时把它收掉：这一条挂在**页面级**的 host 上、不跟着页走，

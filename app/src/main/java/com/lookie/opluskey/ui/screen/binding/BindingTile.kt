@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -23,7 +22,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.ui.NoHapticFeedback
 import com.lookie.opluskey.ui.SettingsPage
@@ -33,9 +31,9 @@ import com.lookie.opluskey.ui.TileFocusRing
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
-import com.lookie.opluskey.ui.model.TILE_TEXT_OPTICAL_SHIFT
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
+import com.lookie.opluskey.ui.opticalTextCenter
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
@@ -72,14 +70,6 @@ internal fun SettingsPage.ActionTile(
      * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。
      */
     subtitle: String? = null,
-    /**
-     * 是不是**带下一层**的格子 —— 是的话在行尾那枚指示器右边再画一支箭头。
-     *
-     * 现在只有「自定义命令」那一组格子传 true（长按进编辑）。内置那几个入口格
-     * （打开应用 / 系统导航 / 系统按键 / 响铃状态 / 媒体控制）同样是入口，但**不画箭头** ——
-     * 它们的行尾已经是选择器字形，见内置网格那段注释。
-     */
-    enterArrow: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -101,13 +91,17 @@ internal fun SettingsPage.ActionTile(
         targetValue = if (enabled) scheme.onSurfaceVariantSummary else contentColor,
         label = "TileMuted",
     )
-    // 行尾那颗指示字形（选择器 / 勾选框 / 窗口 + 加号）的配色 —— 逐档照 COUI 的 `RadioButtonDefaults.radioButtonColors()`
-    // 抄（选中 `primary`、未选中 `onSurfaceVariantActions`、禁用 `disabledPrimary` /
-    // `disabledSecondaryVariant`）：换掉单选圈之后，颜色语义与占位逐档不变。
+    // 行尾那颗指示字形（选择器 / 勾选框 / 窗口 + 加号）的配色。
+    //
+    //  可用那两档照 COUI 的 `RadioButtonDefaults.radioButtonColors()`（选中 `primary`、未选中
+    //  `onSurfaceVariantActions`）。**禁用时不再分选中**：原先选中的那一格用 `disabledPrimary`，
+    //  那是一档带主题色的灰蓝 —— 整片网格都灰了，只有它还在「亮着选中的味道」，读起来像
+    //  「这一格依旧被选中」，而这一档真正要说的是「这颗键现在不接管」（真机反馈）。
+    //  勾选框的**形状**仍在，看得到绑的是哪一格；只是不再用主题色喊。
     val entryIndicatorColor by animateColorAsState(
         targetValue =
             when {
-                !enabled -> if (selected) scheme.disabledPrimary else scheme.disabledSecondaryVariant
+                !enabled -> scheme.disabledSecondaryVariant
                 selected -> scheme.primary
                 else -> scheme.onSurfaceVariantActions
             },
@@ -203,16 +197,6 @@ internal fun SettingsPage.ActionTile(
                                     )
                                 }
                             }
-                            // 「自定义命令」那些格子长按进编辑，箭头表示「这一格后面还有东西」。
-                            // 见 [enterArrow] 的说明。
-                            if (enterArrow) {
-                                Icon(
-                                    PageIcons.EnterArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = tileMutedColor,
-                                )
-                            }
                         }
                     },
                     // 默认 16dp 的内边距在两列的格子里会把标题挤没（见类注释的宽度账）
@@ -231,13 +215,14 @@ internal fun SettingsPage.ActionTile(
                             color = contentColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            // 账见 [TILE_TEXT_OPTICAL_SHIFT]：`offset` 只挪绘制、不改测量。
+                            // 账见 [opticalTextCenter]：文字在 52dp 的格里居中，汉字墨迹却比盒子中心
+                            //  高一档（行盒给基线以下留的 descent 中文不占），沉 0.1em 才落在正中。
                             //  `weight(fill = false)`：标题只占自己要的那点宽度、装不下才缩到
                             //  省略号（标题右边不再有标记，这个权重仍按「只占自己那点」算）。
                             modifier =
                                 Modifier
                                     .weight(1f, fill = false)
-                                    .offset(y = TILE_TEXT_OPTICAL_SHIFT),
+                                    .opticalTextCenter(COUITheme.textStyles.body2.fontSize, FontWeight.Medium),
                         )
                     }
                     // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
@@ -264,8 +249,9 @@ internal fun SettingsPage.ActionTile(
                             color = tileMutedColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            // 与标题同一档视觉居中（两行一起挪，行距不变）
-                            modifier = Modifier.offset(y = TILE_TEXT_OPTICAL_SHIFT),
+                            // 与标题同一套视觉居中：按**各自字号**取同一比例（13sp 与 14sp 差 0.1dp，
+                            //  行距基本不变），两行一起落在格的视觉中心
+                            modifier = Modifier.opticalTextCenter(COUITheme.textStyles.footnote1),
                         )
                     }
                 }

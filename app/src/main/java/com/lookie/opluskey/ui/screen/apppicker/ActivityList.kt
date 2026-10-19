@@ -37,11 +37,33 @@ private const val RANK_MAIN = 1
  * @return 查到的清单；**查失败返回 null**（不是空清单）。空清单是一份有效结论
  *   （「这个应用确实没有能外部打开的界面」），拿它去覆盖缓存会把上一次的好清单抹掉。
  */
-internal fun SettingsPage.loadActivities(target: String): List<LaunchableActivity>? {
+internal fun SettingsPage.loadActivities(target: String): List<LaunchableActivity>? =
+    //  整段包一层：兄弟路径 `loadLaunchableApps` 就是这么做的（返回 null 让页面保留上一次的
+    //  清单）。裸着的话，任何一个叶子之外的 binder / 解析异常都会顺 `withContext(IO)` 抛出去，
+    //  落进宿主 `:ui` 进程就是「进这一页就崩」。
+    try {
+        loadActivitiesUnguarded(target)
+    } catch (e: Throwable) {
+        XLog.w("查界面清单失败（忽略，页面保留上一次的清单）：$target", e)
+        null
+    }
+
+/** [loadActivities] 的本体 —— 不包异常，`null` / 空清单的语义见那边。 */
+private fun SettingsPage.loadActivitiesUnguarded(target: String): List<LaunchableActivity>? {
     val t0 = SystemClock.uptimeMillis()
     val pkg = AppTarget.pkg(target)
     val userId = AppTarget.userId(target)
-    val pm = AppCloneCatalog.packageManagerFor(context, userId) ?: context.packageManager
+    val pm =
+        AppCloneCatalog.packageManagerFor(context, userId) ?: run {
+            //  分身**不能**退回主用户的 PM：同包名在两个用户下各有一份，主用户的回答是
+            //  「主用户那一份有什么界面」—— 列表于是列出一堆分身根本没有的组件，写下去也打不开。
+            //  问不到就如实报「没读出来」（返回 null 让页面保留旧清单 / 显示失败提示）。
+            if (userId != 0) {
+                XLog.w("查界面清单：拿不到分身 user=$userId 的 PackageManager，不退回主用户")
+                return null
+            }
+            context.packageManager
+        }
     val declared =
         try {
             pm.getPackageInfo(
@@ -93,7 +115,12 @@ internal fun SettingsPage.loadActivities(target: String): List<LaunchableActivit
             "运行时可用 ${visible.size} 个，快捷方式 ${shortcuts.size} 个，" +
             "耗时 ${SystemClock.uptimeMillis() - t0}ms",
     )
-    return activities + shortcuts
+    // **按 target 去重**：列表那边是 `items(key = { it.target })`，key 重复会让 Compose 当场抛
+    // 「Key was already used」并崩掉整个 `:ui` 进程（真机在贴吧那一页崩过一次：同一个
+    // `AuthorizeSignActivity` 在清单里出现了两条）。`getPackageInfo` 返回的 `activities`
+    // 本身可能带重复条目（同一个类被声明 / 合并成多条），这里按**我们自己的目标写法**收一次，
+    // 顺带也保证用户看不到两条一模一样的界面。
+    return (activities + shortcuts).distinctBy { it.target }
 }
 
 /**

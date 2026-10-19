@@ -39,6 +39,6 @@ internal fun SettingsPage.resyncInjectStatus() {
 /** 把完整配置广播给注入侧（inject/ConfigChannel，跑在 system_server）。@return 广播是否真的发出去了。 */
 internal fun SettingsPage.publishConfig(config: Config): Boolean {
     if (!PageWire.send(context, HostApp.PACKAGE, ConfigBroadcast.intent(config) { CommandLibrary.longIsSerial(config, it) })) return false
-    XLog.w("配置广播已发出（enabled=${config.key(KeyId.PLUS).enabled}）")
+    XLog.w("配置广播已发出（总闸=${config.global.enabled} 侧键=${config.key(KeyId.PLUS).enabled}）")
     return true
 }

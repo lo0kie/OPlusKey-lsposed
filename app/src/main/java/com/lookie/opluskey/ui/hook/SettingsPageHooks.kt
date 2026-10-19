@@ -14,6 +14,14 @@ import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 
 /**
+ * 「首帧已绘制」那条诊断监听最多挂多久（毫秒）。
+ *
+ *  正常页面几十毫秒就画完；到点还没画说明这一页根本没显示（被 GONE / 宿主直接换页），
+ *  监听必须摘掉 —— 否则它永久挂在宿主的 ViewTreeObserver 上，还钉住那一棵 View。
+ */
+private const val FIRST_FRAME_PROBE_TIMEOUT_MS = 3_000L
+
+/**
  * 把系统的「设置 → 侧键」页换成模块自己的页面 —— 换页编排与 Hook 安装。
  *
  * 它是个**枢纽**：装 Hook、建页面、把宿主的 container 上盖上模块页面，然后把三件独立的事分出去 ——
@@ -422,20 +430,30 @@ internal object SettingsPageHooks {
         // 只打一次；移除监听走 `post`（在 onDraw 里直接 remove 会踩并发修改）。
         try {
             val probe = view
-            probe.viewTreeObserver.addOnDrawListener(
+            val listener =
                 object : android.view.ViewTreeObserver.OnDrawListener {
                     private var done = false
 
                     override fun onDraw() {
                         if (done) return
-                        done = true
                         XLog.w("模块页面首帧已绘制")
+                        remove()
+                    }
+
+                    /** 摘掉自己（幂等）—— `onDraw` 里不能直接 remove，走 `post` 避开并发修改。 */
+                    fun remove() {
+                        if (done) return
+                        done = true
                         probe.post {
                             runCatching { probe.viewTreeObserver.removeOnDrawListener(this) }
                         }
                     }
-                },
-            )
+                }
+            probe.viewTreeObserver.addOnDrawListener(listener)
+            //  首帧迟迟不画（页面一进来就被 GONE / 宿主直接换页）时 `onDraw` 永远不来，
+            //  这个监听就会永久挂在宿主的 ViewTreeObserver 上（还钉住 `probe`）——
+            //  所以再挂一个「到点就摘」的兜底。
+            probe.postDelayed({ listener.remove() }, FIRST_FRAME_PROBE_TIMEOUT_MS)
         } catch (e: Throwable) {
             XLog.d("挂首帧诊断失败（忽略）：${e.message}")
         }
@@ -491,6 +509,10 @@ internal object SettingsPageHooks {
         // (1) 页面顶栏自己的返回键（页面内部处理）；
         // (2) 系统返回 / 返回手势（终点是 `Activity#finish`，见 [BackInterception.installBackInterception]）。
         HostSession.activity = activity
+        //  换页时**先把上一份收掉**：新实例先建、老实例后销毁那一档顺序下，`clearPageRefs`
+        //  会因为「HostSession.activity 已经不是它」而早退，旧页面（含每秒轮询、以及那些
+        //  捕获了旧 Activity 的回调）就永远没人 dispose —— 这一支补的就是那个缺口。
+        if (HostSession.page !== page) HostSession.page?.link?.dispose()
         HostSession.page = page
         moduleRef?.let { BackInterception.installBackInterception(it, activity) }
 
@@ -596,6 +618,8 @@ internal object SettingsPageHooks {
         HostSession.activity = null
         //  提示那几条协程也一起收掉：它们还挂在旧页面的作用域上，留着只会在没人看的时候醒一次
         HostSession.page?.link?.dispose()
+        //  这一页自建的 ViewTree 兜底 owner 同样要放（换页那条路走 `attachOne`，关页没有下一页）
+        HostSession.page?.viewTree?.release()
         HostSession.page = null
         pageView = null
         hostAppbar = null

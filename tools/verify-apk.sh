@@ -51,25 +51,40 @@ for apk in "$DIR"/*.apk; do
   #    只能查 APK 里的二进制清单：源清单注释会被 merger 抄进合并清单，按字面查会误报。
   #    判据逐项卡死，允许值写在括号里：
   #      · `MODULE_SETTINGS` ×1 —— 那一个跳板
-  #      · 裸 `activity` 元素 ×1（AXML 字符串池按行输出，整行精确匹配，
-  #        不会误伤 `MainActivity` 这种以 Activity 结尾的类名）
+  #      · 裸 `activity` 元素 ×1
   #      · `activity-alias` ×0、`CATEGORY_LAUNCHER` / `CATEGORY_INFO` ×0
   #      · 跳板类名 ×1 —— 防止「换个 Activity 名字」蒙混过去
-  if command -v strings >/dev/null 2>&1; then
-    manifest=$(unzip -p "$apk" AndroidManifest.xml | strings -e l)
-    entry=$(printf '%s\n' "$manifest" | grep -c 'MODULE_SETTINGS' || true)
-    activities=$(printf '%s\n' "$manifest" | grep -cx 'activity' || true)
-    aliases=$(printf '%s\n' "$manifest" | grep -cx 'activity-alias' || true)
-    launchers=$(printf '%s\n' "$manifest" | grep -cE 'android\.intent\.category\.LAUNCHER|android\.intent\.category\.INFO' || true)
-    jumper=$(printf '%s\n' "$manifest" | grep -c 'opluskey\.EntryActivity' || true)
+  #
+  #    **必须数元素、不能数字符串**：早先这一项是 `unzip … | strings -e l | grep -cx 'activity'`，
+  #    而 AXML 的字符串池里同一个字符串只存一份 —— 计数天生封顶为 1。再加一个 `<activity>`
+  #    （类名不同、不带 LAUNCHER）照样全绿，「恰好一个」从来没被机器守过。
+  #    `aapt2 dump xmltree` 打的是**元素树**（每个节点一行 `E: activity (line=…)`），这才是判据。
+  aapt2_bin=${AAPT2:-}
+  if [ -z "$aapt2_bin" ]; then
+    aapt2_bin=$(command -v aapt2 2>/dev/null || true)
+  fi
+  if [ -z "$aapt2_bin" ]; then
+    for sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}"; do
+      [ -n "$sdk" ] || continue
+      aapt2_bin=$(ls -1 "$sdk"/build-tools/*/aapt2 "$sdk"/build-tools/*/aapt2.exe 2>/dev/null | sort -V | tail -1)
+      [ -n "$aapt2_bin" ] && break
+    done
+  fi
+  if [ -n "$aapt2_bin" ]; then
+    xmltree=$("$aapt2_bin" dump xmltree --file AndroidManifest.xml "$apk" 2>/dev/null || true)
+    entry=$(printf '%s\n' "$xmltree" | grep -c 'MODULE_SETTINGS' || true)
+    activities=$(printf '%s\n' "$xmltree" | grep -cE '^ *E: activity \(' || true)
+    aliases=$(printf '%s\n' "$xmltree" | grep -cE '^ *E: activity-alias \(' || true)
+    launchers=$(printf '%s\n' "$xmltree" | grep -cE 'category\.(LAUNCHER|INFO)' || true)
+    jumper=$(printf '%s\n' "$xmltree" | grep -c 'opluskey\.EntryActivity' || true)
     if [ "$entry" = "1" ] && [ "$activities" = "1" ] && [ "$aliases" = "0" ] && [ "$launchers" = "0" ] && [ "$jumper" = "1" ]; then
       echo "  ok  清单入口只有 EntryActivity 这一个跳板（MODULE_SETTINGS×1 / activity×1 / alias×0 / LAUNCHER·INFO×0）"
     else
       bad "$apk 的清单入口不合规：MODULE_SETTINGS=${entry} activity=${activities} alias=${aliases} LAUNCHER/INFO=${launchers} EntryActivity=${jumper}（允许 1/1/0/0/1）"
     fi
   else
-    # 没有 strings 就查不了，必须报错而非静默放过
-    bad "runner 上没有 strings（binutils），清单入口这项没法校验"
+    # 查不了必须报错而非静默放过 —— 这道闸存在的意义就是「多一个 <activity> 会被拦」
+    bad "runner 上没有 aapt2（Android SDK build-tools），清单入口这项没法校验"
   fi
 
   # (6) java_init.list 声明的入口类必须**真的在 dex 里**：
@@ -221,12 +236,16 @@ else
   miss_zh=$(comm -23 <(printf '%s\n' "$k_src") <(printf '%s\n' "$k_zh") || true)
   miss_en=$(comm -23 <(printf '%s\n' "$k_src") <(printf '%s\n' "$k_en") || true)
   extra_zh=$(comm -13 <(printf '%s\n' "$k_src") <(printf '%s\n' "$k_zh") || true)
-  if [ -n "$miss_zh" ] || [ -n "$miss_en" ] || [ -n "$extra_zh" ]; then
+  #  两份字典都要查「多出来的键」：只查 zh 的话，en 里多一条旧键（改名后留下的）永远没人发现 ——
+  #  它不会显示，但下一次「按 zh 抄一遍」时会被当成有效键带回来。
+  extra_en=$(comm -13 <(printf '%s\n' "$k_src") <(printf '%s\n' "$k_en") || true)
+  if [ -n "$miss_zh" ] || [ -n "$miss_en" ] || [ -n "$extra_zh" ] || [ -n "$extra_en" ]; then
     # 这三条不能写成 `[ -n "$x" ] && printf …`：`bash -e` 下「条件不成立」会让整条
     #   `&&` 列表返回 1 ⇒ 脚本在这里退出，于是**该报的那一条反而看不到**。
     if [ -n "$miss_zh" ]; then printf 'zh-CN.json 缺键：\n%s\n' "$miss_zh"; fi
     if [ -n "$miss_en" ]; then printf 'en.json 缺键：\n%s\n' "$miss_en"; fi
-    if [ -n "$extra_zh" ]; then printf '字典里有而 Strings.kt 没有的键：\n%s\n' "$extra_zh"; fi
+    if [ -n "$extra_zh" ]; then printf 'zh-CN.json 里有而 Strings.kt 没有的键：\n%s\n' "$extra_zh"; fi
+    if [ -n "$extra_en" ]; then printf 'en.json 里有而 Strings.kt 没有的键：\n%s\n' "$extra_en"; fi
     bad "字典与 Strings.kt 对不上（界面会直接显示键名）"
   else
     echo "  ok  字典覆盖：Strings.kt / zh-CN.json / en.json 三边键一致（$(printf '%s\n' "$k_src" | wc -l | tr -d ' ') 条）"

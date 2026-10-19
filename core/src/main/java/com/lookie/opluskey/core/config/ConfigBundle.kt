@@ -31,8 +31,15 @@ import kotlinx.serialization.json.put
  * 也由 `ConfigCodec.parseOrNull` 校验。
  *
  * 注意：**主开关状态与「已确认」不随文件走** —— 导出的那份把这两样一律写成「关 / 未确认」，
- * 导入时再强制归零一次（文件可能被人手改过）。它们是「这台机器上你本人的决定」，一份配置文件不该
+ * 导入时这里再归零一次（文件可能被人手改过）。它们是「这台机器上你本人的决定」，一份配置文件不该
  * 替别人做这个决定，也不该让人靠导入绕开「启用之前先确认」那一步。
+ *
+ * 但**本机已经确认过**的那两位不会被一次导入抹掉：`ConfigTransfer.applyImportedConfig` 在写盘前
+ * 把它们换回本机此刻的值（用户口径「已经是确认免责协议就不需要再清除这个状态了」）。
+ * 这里仍然输出 false —— 文件本身不该带走「别人已确认」这件事。
+ *
+ * 但**逐键的开关不在此列**：导出与导入一律把它们写成开着（见 [withShareableKeys]）——
+ * 否则导回来的键全是关的，而那几个开关藏在 ⋮ 菜单里，用户不会想到去那儿找。
  *
  * 注意：**导入是全量校验**：整份文件（混淆层 + 信封 + 版本 + 两段）都过关才落盘，任何一处不过就一个字节都不写
  * —— 半份配置比没导入更难收拾（见 [parse]）。
@@ -52,7 +59,7 @@ object ConfigBundle {
      */
     private const val MAGIC = "OPlusKey-Config-$VERSION"
 
-    // 信封自己的三个键。与 `CommandLibrary.LIB_VERSION` / `ConfigFields.VERSION_JSON` **同字面量
+    // 信封自己的三个键。与 `CommandLibrary.LIB_VERSION` / `ConfigCodec.VERSION` **同字面量
     //  不同义**（信封版本 / 命令库版本 / 主配置版本各一个），所以名字带 `ENVELOPE` 区分。
     private const val ENVELOPE_VERSION = "version"
     private const val ENVELOPE_CONFIG = "config"
@@ -80,8 +87,7 @@ object ConfigBundle {
             // 落进文件的那份：主开关写关、确认记录写未确认（理由见类注释）——
             //  在**写出去之前**就剥掉，别人拿到手再怎么改也改不出「一导入就是已启用」。
             val shareable =
-                config.copy(
-                    keys = config.keys.mapValues { (_, k) -> k.copy(enabled = false) },
+                config.withShareableKeys().copy(
                     disclaimerAccepted = false,
                     commandDisclaimerAccepted = false,
                 )
@@ -156,13 +162,33 @@ object ConfigBundle {
         // 导入进来的那份**不接受**主开关状态与「已确认」：我们导出的文件本来就不带，
         //  但这份文件也可能被人手改过 —— 所以在这里再强制归零一次。导入之后必须自己去开、
         //  自己再确认一遍（那一步会弹风险提示，见 `ui/screen/HomeScreen`）。
+        //  自定义键那几颗相反：它们没有独立开关，一律置开（见 [withShareableKeys]）。
         return Parsed(
-            config.copy(
-                keys = config.keys.mapValues { (_, k) -> k.copy(enabled = false) },
+            config.withShareableKeys().copy(
                 disclaimerAccepted = false,
                 commandDisclaimerAccepted = false,
             ),
             commands,
         )
     }
+
+    /**
+     * 导出 / 导入时对开关的处理 —— **只关总闸，每一颗键一律开着**。
+     *
+     *  总闸现在是一位**独立字段**（`GlobalConfig.enabled`），不再是「侧键那份 `enabled`」：
+     *  拆开之前它俩共用一个位，于是这里只能按「自定义键留着、侧键那一位写关」来凑出「别替我
+     *  打开模块」的意思 —— 代价是导出的文件里侧键那颗看着是「停用」的。
+     *
+     * ## 为什么每一颗键都要一律开
+     *
+     *  文件可能被人手改过（外层混淆只是防误开，不是防篡改）。逐键的 `enabled` 原值是 `false`
+     *  的话，导进来就是一堆看得见、用不了的键（早先对自定义键就踩过：导回来的键全是关的、
+     *  绑定页整片灰，而界面上没有开关能打开它们）。强制开才不会把用户卡死在这一格；
+     *  真要停用哪一颗，导入之后再从 ⋮ 菜单里关就是了。
+     */
+    private fun Config.withShareableKeys(): Config =
+        copy(
+            global = global.copy(enabled = false),
+            keys = keys.mapValues { (_, key) -> key.copy(enabled = true) },
+        )
 }

@@ -1,98 +1,45 @@
 package com.lookie.opluskey.core.model
 
 /**
- * 配置字段的**声明表** —— 一个逻辑字段的名字、类型、取值范围只有这一处写全。
+ * 配置字段的**广播侧声明表** —— 一个逻辑字段在广播里的名字、类型、默认值与取值范围只在这里写全。
  *
- * ## 同一个逻辑字段有两张脸
+ * ## 只管广播这一条通道
  *
- *  · `*_JSON`  —— 落盘那份 JSON 的键（`core/config/ConfigCodec` 用）；
- *  · `*_EXTRA` —— 配置广播的 intent extra 名（`core/wire/ConfigBroadcast` 用）。
+ *  · `*_EXTRA` —— 配置广播的 intent extra 名（`core/wire/ConfigBroadcast` 用）；
+ *  · [Field.extra] 为 `null` 的那几项**不广播**（只落盘）：它们只作为 [Values] 的键存在，
+ *    取值由 `ConfigDto` / `Config.ofFields` 自己映射。
  *
- * 为什么必须收在一处：两列的取值**不一样**（`longPressMs` 对 `long_press_ms`），改一边时编译器
- * 不会提醒另一边 —— 曾经就有「改了广播那列、落盘那列没跟着改」这种漏，而它在真机上只表现为
- * 「配置读出来还是旧的」，没有任何一处报错。现在同一字段的两行挨着写，改的时候看得见对面那行。
+ * **落盘格式的真源是 `core/config/ConfigDto`**（`@SerialName` 与字段顺序）。本表**不登记** JSON 键：
+ * 原先那半列没有一行代码读它，改 `@SerialName` 时它也不会跟着动 —— 两处各说一套，迟早分叉。
  *
- * 两列的**稳定性不同**，动之前先分档：
- *  · `*_JSON` 已经落在用户机器的文件里（`opluskey_config.conf`）⇒ **不能改名**，只能加新键 +
- *    兼容旧键（`ConfigCodec` 对缺失字段一律走默认值，所以加键是安全的）；
- *  · `*_EXTRA` 只在同一次安装的两端之间传（发送与接收都是本模块、同一个版本）⇒ 可以改名，
- *    但发送侧与接收侧必须在同一次改动里一起改。
- *
- * 只出现在一列里的字段，理由写在各段的小标题下。
+ * 两列的稳定性本来就不同：
+ *  · 落盘键**不能改名** —— 它已经落在用户机器的 `opluskey_config.conf` 里，改名等于换一份格式；
+ *  · extra **可以改名** —— 发送与接收都是本模块、同一个版本，只要在同一次改动里两边一起改。
  *
  * ## 加一个配置字段要改几处
  *
- * 1. 本文件：加一对 `*_JSON` / `*_EXTRA` 常量，并在下面那张表里加一行 [Field]（类型、
- *    默认值与上下限一起写：`Kind.Bool` / `Kind.Number` / `Kind.Text`）；
- * 2. `core/model/Config.kt`：给数据类加属性，并在它那**一对** `fieldValues()` / `ofFields()` 里
- *    加一行 —— 「字段 → 属性」的映射只有那一处；
- * 3. `core/config/ConfigDto.kt`：线格式由 kotlinx.serialization 定义，
- *    落盘 JSON 的字段名与默认值在那边也写一份。**`*_JSON` 那一列只是文档**（没有代码读它），
- *    真正决定文件长什么样的是 DTO 的属性名与 `@SerialName`。
+ * 1. 本文件：加一条 `*_EXTRA` 常量，并在 [KEY_FIELDS] / [GLOBAL_FIELDS] 里加一行 [Field]
+ *    （类型、默认值与上下限一起写：`Kind.Bool` / `Kind.Number` / `Kind.Text`）；
+ * 2. `core/model/Config.kt`：给数据类加属性，并在它那**一对** `fieldValues()` / `ofFields()` 里加一行；
+ * 3. `core/config/ConfigDto.kt`：线格式由 kotlinx.serialization 定义，字段名与默认值写在那边的
+ *    属性与 `@SerialName` 上。
  *
- * 于是两条通道各有自己的生成源：**广播**仍完全由本表驱动（`*_EXTRA` + `Kind`），
- * **落盘**由 DTO 的 `@Serializable` 驱动，取值区间两边都回到本表来钳。
+ * 于是两条通道各有自己的生成源：**广播**由本表驱动（extra + [Kind]），**落盘**由 DTO 驱动，
+ * 取值区间两边都回到本表来钳。
  */
 object ConfigFields {
-    // 正文结构 —— `ConfigCodec` 的顶层与两个段。广播不带这些：注入侧拿到的是一份已经解好的配置。
-    const val VERSION_JSON = "version"
-    const val KEYS_JSON = "keys"
-    const val GLOBAL_JSON = "global"
-
-    /**
-     * 正文自带的完整性字段，**写在最后一位**（`ConfigCodec` 校验时把它摘掉再序列化比对）。
-     * 顺序是格式的一部分，动它等于改文件格式。
-     */
-    const val MD5_JSON = "md5"
-
-    /**
-     * 「打开应用」那一族的显示名（`{ "999@包名/类名": "微信 2" }`）。
-     *
-     *  **不在下面那张字段表里**：那张表是扁平的「一个字段一个值」，而这是映射；而且它只有界面读
-     *  （执行侧只要「起哪个组件」），进字段表就等于每次按键把整张表广播给 `system_server`。
-     *  所以这一项只由 `ConfigCodec` 单独读写，**没有 `*_EXTRA`**（不广播）。
-     */
-    const val APP_NAMES_JSON = "app_names"
-
-    /**
-     * 用户收集来的按键那张表（`{ "custom_keys": [ {"id":"ck1","name":"按键 1","code":1074} ] }`）。
-     *
-     *  **不在下面那张字段表里**：那张表是扁平的「一个字段一个值」，这是一张**数组**，
-     *  而且每一项有三个属性。与 `app_names` 同一档的处理方式 —— 由 `ConfigCodec` 单独读写。
-     *
-     *  但它**必须广播**（注入侧要靠它认领键码），所以 `ConfigBroadcast` 另有一套打包方式
-     *  （键 id 列表 + 每键的 code / name，见那里）。
-     */
-    const val CUSTOM_KEYS_JSON = "custom_keys"
-
-    /** [CUSTOM_KEYS_JSON] 每一项的三个键。 */
-    const val CUSTOM_KEY_ID_JSON = "id"
-    const val CUSTOM_KEY_NAME_JSON = "name"
-    const val CUSTOM_KEY_CODE_JSON = "code"
-
-    /** 风险提示的确认记录 —— 与 `keys` / `global` 同一层，不在它们里面。 */
-    const val DISCLAIMER_JSON = "disclaimerAccepted"
-
-    /** 自定义命令的风险提示确认记录，同上。 */
-    const val COMMAND_DISCLAIMER_JSON = "commandDisclaimerAccepted"
-
     // `KeyConfig` —— 主开关与三个手势绑定。
     //
     //  这几条 `*_EXTRA` 是**基础名**，真正写进广播的名字前面还挂一个 `<keyId>_` 前缀
     //  （`plus_single` / `ck1_single` ……）—— 自定义按键是运行时才知道有几颗的，广播里必须
     //  按键分开存，否则所有键的绑定会互相覆盖。拼前缀的地方只有 `ConfigBroadcast.putFields`。
-    const val ENABLED_JSON = "enabled"
     const val ENABLED_EXTRA = "enabled"
-    const val SINGLE_JSON = "single"
     const val SINGLE_EXTRA = "single"
-    const val DOUBLE_JSON = "double"
     const val DOUBLE_EXTRA = "double"
-    const val LONG_JSON = "long"
     const val LONG_EXTRA = "long"
 
     // 广播里那份「有哪些键」的清单（逗号分隔的 id）与每颗键的身份。
-    //  与上面几条不同，这三条**没有 JSON 那一列**：落盘用的是 `custom_keys` 那段数组
-    //  （见 `CUSTOM_KEYS_JSON`），只有广播才用这种扁平写法。
+    //  落盘用的是 `custom_keys` 那段数组（见 `ConfigDto.customKeys`），只有广播才用这种扁平写法。
     const val KEY_IDS_EXTRA = "key_ids"
 
     /** 每颗键一条，实际 extra 名 = `<id>_code`。 */
@@ -102,11 +49,8 @@ object ConfigFields {
     const val KEY_NAME_EXTRA = "name"
 
     // `KeyConfig` —— 长按的三个参数。
-    const val LONG_PRESS_MS_JSON = "longPressMs"
     const val LONG_PRESS_MS_EXTRA = "long_press_ms"
-    const val LONG_REPEAT_JSON = "longRepeat"
     const val LONG_REPEAT_EXTRA = "long_repeat"
-    const val REPEAT_INTERVAL_MS_JSON = "longRepeatIntervalMs"
     const val REPEAT_INTERVAL_MS_EXTRA = "long_repeat_interval_ms"
 
     /**
@@ -116,28 +60,25 @@ object ConfigFields {
     const val LONG_SERIAL_EXTRA = "long_is_serial"
 
     // `GlobalConfig`。
-    const val DOUBLE_CLICK_MS_JSON = "doubleClickMs"
     const val DOUBLE_CLICK_MS_EXTRA = "double_click_ms"
-    const val VIBRATE_JSON = "vibrate"
     const val VIBRATE_EXTRA = "vibrate"
-    const val INSTANT_SINGLE_JSON = "instantSingle"
     const val INSTANT_SINGLE_EXTRA = "instant_single"
-
-    /**
-     * 执行时提示（弹一条 toast）—— **只有 JSON 这一列**：它由宿主侧弹，注入侧不读它
-     * （判定在注入侧、执行在宿主侧，见 `docs/implementation.md`），所以不进广播。
-     */
-    const val TOAST_ON_RUN_JSON = "toastOnRun"
-
-    const val LANGUAGE_JSON = "language"
     const val LANGUAGE_EXTRA = "language"
-    const val MINI_WINDOW_ANIM_JSON = "miniWindowAnim"
-
-    const val COLOR_OS_API_JSON = "colorOsApi"
     const val COLOR_OS_API_EXTRA = "color_os_api"
 
     /**
-     * 字段的取值类型 —— 两条通道各自按它选 getter / setter，**默认值也在这里**。
+     * **模块总闸**（首页「启用按键绑定」那一行）—— 与 [ENABLED_EXTRA] 是两件事，别混：
+     *
+     *  · 本项：整个模块接管不接管（关掉 ⇒ 一颗键都不接管，页面整片灰）；
+     *  · [ENABLED_EXTRA]：**这一颗键**接管不接管（⋮ 菜单里「停用这颗键」，侧键也有）。
+     *
+     *  以前只有后者，侧键那一份同时当两个用 ⇒「停用侧键」被迫等于「关掉模块」。拆开之后
+     *  菜单里停用侧键只停那一颗，自定义键与页面都不受影响。
+     */
+    const val MODULE_ENABLED_EXTRA = "module_enabled"
+
+    /**
+     * 字段的取值类型 —— 广播那条路按它选 getter / setter，**默认值也在这里**。
      *
      * 为什么默认值要挂在这里：它有两个用处 —— 老文件 / 手写文件里缺这一项时补什么，以及
      * 「整段都缺」时补什么。原先是写在两条通道各自的读代码里（同一个默认值在两处各写一遍），
@@ -152,7 +93,7 @@ object ConfigFields {
         /**
          * 整数。[min] / [max] 是**两条通道共用**的钳制范围。
          *
-         * 原来这两个界各写两份（`ConfigCodec.clamp` 与 `ConfigBroadcast.clampInt` 的调用点），
+         * 原先这两个界各写两份（`ConfigCodec.clamp` 与 `ConfigBroadcast.clampInt` 的调用点），
          * 手改文件写了越界值时两边的收口方式一模一样地重复着。
          */
         class Number(
@@ -168,37 +109,37 @@ object ConfigFields {
     }
 
     /**
-     * 一个逻辑字段在两条通道上的坐标 + 类型。
+     * 一个逻辑字段在广播里的坐标 + 类型（也是 [Values] 里的键）。
      *
-     * @param json 落盘 JSON 里的键；`null` = 这一列没有它（只走广播）
-     * @param extra 广播 extra 名；`null` = 只落盘
+     * @param extra 广播 extra 名；`null` = 这一项不广播
      * @param kind 类型 + 默认值（+ 整数的钳制范围）
      */
     class Field(
-        val json: String?,
         val extra: String?,
         val kind: Kind,
     )
 
-    // ── `KeyConfig` 的字段。**书写顺序就是落盘 JSON 的键序**（`md5` 算的是文本字节，键序会进它，
-    //    所以这个顺序是格式的一部分：动它只影响**以后**写出来的文件，老文件仍按它自己那份键序校验）
+    // ── `KeyConfig` 的字段
 
-    /** 主开关（接管 / 不接管）。 */
-    val F_ENABLED = Field(ENABLED_JSON, ENABLED_EXTRA, Kind.Bool(false))
+    /**
+     * **这一颗键**接管不接管（`KeyConfig.enabled`）—— 与模块总闸 [F_MODULE_ENABLED] 是两件事。
+     *
+     *  侧键也走它：「停用这颗键」只停那一颗，模块与别的键照常。
+     */
+    val F_ENABLED = Field(ENABLED_EXTRA, Kind.Bool(false))
 
     /** 单击那一档的绑定（`Action` 的 token）。 */
-    val F_SINGLE = Field(SINGLE_JSON, SINGLE_EXTRA, Kind.Text(Action.NONE))
+    val F_SINGLE = Field(SINGLE_EXTRA, Kind.Text(Action.NONE))
 
     /** 双击那一档的绑定。 */
-    val F_DOUBLE = Field(DOUBLE_JSON, DOUBLE_EXTRA, Kind.Text(Action.NONE))
+    val F_DOUBLE = Field(DOUBLE_EXTRA, Kind.Text(Action.NONE))
 
     /** 长按那一档的绑定。 */
-    val F_LONG = Field(LONG_JSON, LONG_EXTRA, Kind.Text(Action.NONE))
+    val F_LONG = Field(LONG_EXTRA, Kind.Text(Action.NONE))
 
     /** 长按阈值。 */
     val F_LONG_PRESS_MS =
         Field(
-            LONG_PRESS_MS_JSON,
             LONG_PRESS_MS_EXTRA,
             Kind.Number(
                 KeyConfig.DEFAULT_LONG_PRESS_MS,
@@ -208,12 +149,11 @@ object ConfigFields {
         )
 
     /** 长按是否连续触发。 */
-    val F_LONG_REPEAT = Field(LONG_REPEAT_JSON, LONG_REPEAT_EXTRA, Kind.Bool(false))
+    val F_LONG_REPEAT = Field(LONG_REPEAT_EXTRA, Kind.Bool(false))
 
     /** 连发间隔。 */
     val F_REPEAT_INTERVAL_MS =
         Field(
-            REPEAT_INTERVAL_MS_JSON,
             REPEAT_INTERVAL_MS_EXTRA,
             Kind.Number(
                 KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
@@ -225,7 +165,6 @@ object ConfigFields {
     /** 「单击延迟」—— **每颗键各一份**（原来在全局，见 `KeyConfig.doubleClickMs`）。 */
     val F_DOUBLE_CLICK_MS =
         Field(
-            DOUBLE_CLICK_MS_JSON,
             DOUBLE_CLICK_MS_EXTRA,
             Kind.Number(
                 KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
@@ -235,13 +174,12 @@ object ConfigFields {
         )
 
     /** 「忽视无操作双击手势」—— **每颗键各一份**。 */
-    val F_INSTANT_SINGLE =
-        Field(INSTANT_SINGLE_JSON, INSTANT_SINGLE_EXTRA, Kind.Bool(KeyConfig.DEFAULT_INSTANT_SINGLE))
+    val F_INSTANT_SINGLE = Field(INSTANT_SINGLE_EXTRA, Kind.Bool(KeyConfig.DEFAULT_INSTANT_SINGLE))
 
     /** 长按绑的是不是串行命令 —— **只有广播那一列**，见 [LONG_SERIAL_EXTRA] 的说明。 */
-    val F_LONG_SERIAL = Field(null, LONG_SERIAL_EXTRA, Kind.Bool(false))
+    val F_LONG_SERIAL = Field(LONG_SERIAL_EXTRA, Kind.Bool(false))
 
-    /** `KeyConfig` 的全部字段（顺序即落盘键序；[Field.json] 为 `null` 的那一项落盘时跳过）。 */
+    /** `KeyConfig` 的全部广播字段。 */
     val KEY_FIELDS: List<Field> =
         listOf(
             F_ENABLED,
@@ -256,29 +194,33 @@ object ConfigFields {
             F_LONG_SERIAL,
         )
 
-    // ── `GlobalConfig` 的字段（顺序同样即落盘键序）
+    // ── `GlobalConfig` 的字段
+
+    /** 模块总闸（见 [MODULE_ENABLED_EXTRA]）。 */
+    val F_MODULE_ENABLED = Field(MODULE_ENABLED_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_ENABLED))
 
     /** 触觉反馈。 */
-    val F_VIBRATE = Field(VIBRATE_JSON, VIBRATE_EXTRA, Kind.Bool(false))
+    val F_VIBRATE = Field(VIBRATE_EXTRA, Kind.Bool(false))
 
-    /** 执行时提示 —— **只有落盘那一列**，见 [TOAST_ON_RUN_JSON] 的说明。 */
-    val F_TOAST_ON_RUN = Field(TOAST_ON_RUN_JSON, null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
+    /** 执行时提示 —— **只有落盘那一列**：它由宿主侧弹，注入侧不读它。 */
+    val F_TOAST_ON_RUN = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
 
     /** 界面语言。 */
-    val F_LANGUAGE = Field(LANGUAGE_JSON, LANGUAGE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_LANGUAGE))
+    val F_LANGUAGE = Field(LANGUAGE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_LANGUAGE))
 
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
-    val F_COLOR_OS_API = Field(COLOR_OS_API_JSON, COLOR_OS_API_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COLOR_OS_API))
+    val F_COLOR_OS_API = Field(COLOR_OS_API_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COLOR_OS_API))
 
     /**
      * 「前台转小窗」走带动画那条路 —— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：
      * 读它的是宿主进程里的执行器，它本来就读配置文件。
      */
-    val F_MINI_WINDOW_ANIM = Field(MINI_WINDOW_ANIM_JSON, null, Kind.Bool(GlobalConfig.DEFAULT_MINI_WINDOW_ANIM))
+    val F_MINI_WINDOW_ANIM = Field(null, Kind.Bool(GlobalConfig.DEFAULT_MINI_WINDOW_ANIM))
 
-    /** `GlobalConfig` 的全部字段。 */
+    /** `GlobalConfig` 的全部广播字段。 */
     val GLOBAL_FIELDS: List<Field> =
         listOf(
+            F_MODULE_ENABLED,
             F_VIBRATE,
             F_TOAST_ON_RUN,
             F_LANGUAGE,
@@ -286,16 +228,13 @@ object ConfigFields {
             F_MINI_WINDOW_ANIM,
         )
 
-    // ── `Config` 自己那两位（都在正文顶层、都只落盘）
+    // ── `Config` 自己那两位（正文顶层、都只落盘，不进广播）
 
     /** 已确认「风险提示与免责声明」。 */
-    val F_DISCLAIMER = Field(DISCLAIMER_JSON, null, Kind.Bool(false))
+    val F_DISCLAIMER = Field(null, Kind.Bool(false))
 
     /** 已确认「自定义命令不做任何检验」那一份提示。 */
-    val F_COMMAND_DISCLAIMER = Field(COMMAND_DISCLAIMER_JSON, null, Kind.Bool(false))
-
-    /** `Config` 顶层的全部字段（写 [VERSION_JSON] / [KEYS_JSON] / [GLOBAL_JSON] 之后、[MD5_JSON] 之前）。 */
-    val ROOT_FIELDS: List<Field> = listOf(F_DISCLAIMER, F_COMMAND_DISCLAIMER)
+    val F_COMMAND_DISCLAIMER = Field(null, Kind.Bool(false))
 
     /**
      * 某一项的取值 —— 读取方（两条通道）与写入方都过这一个壳，于是「字段类型」这件事只在一处判。

@@ -43,6 +43,19 @@ internal fun SettingsPage.appNameOf(target: String): String {
  */
 internal val appLabelCache = HashMap<String, String>()
 
+/** 缓存上限 —— 只是省 binder 的一层；不设上限会跟着滚动一路长下去。 */
+private const val APP_LABEL_CACHE_MAX = 512
+
+/**
+ * 清掉应用名缓存 —— **重进模块时调用**（见 `SettingsPage.onHostReentered`）。
+ *
+ *  这张表是进程级、没有别的失效路径：应用在这期间改名 / 卸载 / 换图标包，缓存里留着的
+ *  就是旧名字（真机上表现为「列表里还是旧名，点进去又是新名」）。
+ */
+internal fun clearAppLabelCache() {
+    appLabelCache.clear()
+}
+
 internal fun SettingsPage.appLabelOf(packageName: String): String {
     appLabelCache[packageName]?.let { return it }
     val label =
@@ -54,6 +67,10 @@ internal fun SettingsPage.appLabelOf(packageName: String): String {
             // 失败不写缓存，下次再查一次
             return packageName
         }
+    if (appLabelCache.size >= APP_LABEL_CACHE_MAX) {
+        // 整表清而不是逐条淘汰：这里省的是 binder，清一次最多让下一屏重新查一遍
+        appLabelCache.clear()
+    }
     appLabelCache[packageName] = label
     return label
 }

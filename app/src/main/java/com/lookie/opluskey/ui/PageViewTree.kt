@@ -87,6 +87,19 @@ internal class PageViewTree {
     }
 
     /**
+     * 页面关掉时放掉这一页自建的兜底 owner。
+     *
+     *  `attachOne` 里那次 `dispose` 只在「下一屏换了 owner」时走；直接关页（`clearPageRefs`）
+     *  没有下一页，那一套 `ViewModelStore` 就一直挂着，直到这个 `:ui` 进程结束。
+     */
+    fun release() {
+        val own = fallbackOwners ?: return
+        fallbackOwners = null
+        own.dispose()
+        XLog.w("ViewTree owner：页面关闭，兜底 owner 已释放")
+    }
+
+    /**
      * 往单个 View 挂三个 owner。
      *
      *  **宿主已经给了就不覆盖**；但**上一页自建的**要换成这一页的 —— 那个「不覆盖」原本把

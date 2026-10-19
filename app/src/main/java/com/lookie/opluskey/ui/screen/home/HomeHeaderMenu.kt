@@ -24,7 +24,7 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  * 首页顶栏右侧的菜单按钮 + 浮层菜单 —— 四项：「默认界面」「重启服务」「导出日志」「清空配置」。
  *
  *  只服务**首页**（`Screen.SHORTCUTS`）那一条顶栏，所以跟着这一屏放 ——
- *  原先它和「选择应用」页那份菜单一起长在 `ui/PageHeader.kt` 里，
+ *  原先它和「选择应用」页那份菜单一起长在那个公共的顶栏文件里，
  *  于是那个「公共组件」文件里躺着两块业务菜单、约 30 处页面字段触点。
  *  现在顶栏只提供 `actions` 槽位，菜单由各页自己摆（口径见 [PageHeader]）。
  *

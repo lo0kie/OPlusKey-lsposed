@@ -164,7 +164,8 @@ internal class AppPickerState {
      *  真在那页确认了别的东西，会由页面层的写入点（`PageEntry.onDraftPicked`）直接覆盖。
      */
     fun openActivities(target: String) {
-        XLog.d("openActivities：看 $target（原来是 $activityTarget）")
+        //  判据级：用户报「挑错了应用 / 进错了页」时要能在日志里对上这一笔；低频路径，用 w
+        XLog.w("openActivities：看 $target（原来是 $activityTarget）")
         activityTarget = target
     }
 

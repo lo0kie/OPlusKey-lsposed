@@ -32,6 +32,14 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  确认窗是糊的、起名窗是不透明的，看着像两个应用的控件（用户口径「添加按键/重命名的
  *  dialog 用项目通用那个，不然没有模糊」）。
  *
+ * ## 为什么参数到 6 个（`@Suppress("LongParameterList")`）
+ *
+ *  `show` / `title` / `onDismiss` 之外，`hideImeOnShow`、`onDismissFinished` 都是**这一个外壳
+ *  自己的开关**（键盘怎么处理、退场播完要不要回报），`content` 是正文槽。这些拆成 options
+ *  对象只会让二十多个调用点各多一层壳；Compose 的惯例就是平铺行参。
+ *  `onDismissFinished` 是「收集按键 → 添加按键」两个弹窗交替时才需要的那一格（见
+ *  `FocusOnShow` 的 `ready`），按这一个理由它也不能挪进正文槽。
+ *
  * ## 为什么面板与标题自己画
  *
  *  糊必须落在库那个**进出场图层里面**：库的进出场是 `DialogContentLayout` 里
@@ -45,6 +53,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * @param content 正文槽 —— 它是 `ColumnScope`：需要「贴着按钮栏、可滚动」的正文用
  *   `Modifier.weight(1f, fill = false)`（见 [DialogBody]）。
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun SettingsPage.FrostedDialog(
     show: Boolean,
