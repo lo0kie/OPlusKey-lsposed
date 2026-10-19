@@ -358,7 +358,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.0")
     implementation("androidx.savedstate:savedstate-ktx:1.3.0")
     // COUI 浮层菜单依赖 LocalNavigationEventDispatcherOwner（页面自建根 dispatcher）
-    implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
+    implementation("androidx.navigationevent:navigationevent-compose:1.2.0")
 
     // androidx 出现在 ui/ 与 core/i18n/I18n.kt（后者 import 了 compose 的 `mutableStateOf`）；
     //  ui/ 在 system_server 里从不执行（KeyModule 只在设置页那个进程分支里装界面 hook），
