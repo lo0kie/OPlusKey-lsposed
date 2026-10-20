@@ -3792,3 +3792,55 @@ PKU110（Find X8 Ultra 卫星通信版）机身侧面的拍照键是**压感键*
 （`ActionButtonKeyService$a#handleMessage what=1`），而 `host/SideKeyGestureHooks` 吞它的判据
 只有 `cfg.isLive(KeyId.PLUS)` —— **不看这条派发是哪颗键的**。于是「接管了侧键」会连带吞掉
 拍照键的系统原生动作。
+
+## 二十六、`LauncherApps.startShortcut` 在 Android 16 上被 BAL 静默拦掉（实测，2026-10-20，PLK110 / ColorOS 17.0.0）
+
+现象：`appshortcut:com.eg.android.AlipayGphone/1002`（支付宝「收付款」）按下侧键**什么都不发生** ——
+宿主侧日志停在「快捷方式 → com.eg.android.AlipayGphone/1002（user=0）」，没有异常、没有失败提示。
+
+`ShortcutService` 那条路是**系统代发**（拿快捷方式创建者那条 PendingIntent 去起），Android 15/16 的
+后台启动限制会拦，而 `startShortcut` 返回 `void` ⇒ **调用侧完全看不出来**。系统日志（按键那一刻）：
+
+```
+D ShortcutService: Getting shortcuts for launcher= com.oplus.gesture userId=0 pkg=com.eg.android.AlipayGphone
+E ActivityTaskManager: Background activity launch blocked! …
+    callingUid: 10367; realCallingPackage: com.oplus.gesture; realCallingUid: 10277
+    realCallerUidHasVisibleActivity: false; resultIfPiSenderAllowsBal: BAL_BLOCK
+E ActivityTaskManager: Abort background activity starts from 10367
+I ActivityTaskManager: START … (BAL_BLOCK) result code=102
+```
+
+同一份日志里 `realCallerStartMode: MODE_BACKGROUND_ACTIVITY_START_ALLOWED` —— 宿主**自己**起是允许的，
+被拦的是「替别人（快捷方式创建者）起」。
+
+**对策**：先问 `LauncherApps.getShortcuts` 要**快捷方式自己那条 intent**（`ShortcutInfo.getIntent()`），
+再用宿主身份 `startActivity` 起；拿不到 intent（真机见过：微信「扫一扫」返回 `null`）或直起失败，
+才退回 `startShortcut`。实现在 `host/action/AppShortcutLaunch`。
+
+**判据**：宿主日志里「快捷方式（直起 intent）→ …」= 走的是能过的那条；「快捷方式（系统代发）→ …」=
+退路，仍可能被拦。后者只应出现在 `getIntent()` 为 `null` 的应用上。
+
+### 二十六之二、「options 起法其实成了，是**验收**在骗人」（实测，2026-10-20 补，同机）
+
+同一支动作下一轮（宿主 pid 21448，`appshortcut:w:com.eg.android.AlipayGphone/1002`）：
+
+```
+20:31:37.838  快捷方式 w：… 现有任务 #-1（小窗=false）          ← 起点：没任务
+20:31:37.877  快捷方式 → 已按小窗 options 发出
+20:31:38.581  快捷方式 → 小窗 …（任务 #1201）                    ← 0.7 秒就成了 ✓
+20:31:42.412  小窗验收：… 还没有任务（冷启动中），再等一轮        ← 又按了一次，开始验
+20:31:43.115  小窗验收：… 还没有任务（冷启动中），再等一轮
+20:31:43.817  小窗 options 没被吃住（任务 #-1），改「先起再原地收」← 误判
+20:31:43.833  快捷方式（自发 PendingIntent）→ …                  ← 多发的第二份
+20:31:45.255  快捷方式 → 原地收成小窗 …（任务 #1206）            ← 4 秒后才有响应
+```
+
+两条定论：
+
+1. **`OplusActivityManager#getAllTopAppInfos()` 不包含「刚刚起、还在注册」的那份任务** ——
+   700ms / 1400ms / 2100ms 三个点全读到 `-1`，而任务实际在 0.7 秒时就已经是小窗了。
+   这张表只能用来**看现状**，不能用来**验一次刚发出的启动**（连「按 taskId 点名」也读不到）。
+2. **多发的每一发都直接变成用户可见的延迟**：误判之后的第二次 PI 让应用自己的跳板链接着跑，
+   最终窗口在 4.1 秒后才落定 —— 用户口径正是「按了还是长时间等待」。
+   ⇒ 「先起再收」只在第 0 轮真起，重试轮**只等不发**。
+

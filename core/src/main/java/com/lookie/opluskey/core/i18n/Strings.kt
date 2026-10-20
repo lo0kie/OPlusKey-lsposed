@@ -313,6 +313,14 @@ object Strings {
     const val MENU_SHOW_SYSTEM_APPS = "menu.show_system_apps"
     const val MORE_ABOUT_AUTHOR = "more.about_author"
     const val MORE_ABOUT_FEEDBACK = "more.about_feedback"
+
+    /** 「通用设置」页（标题与首页那一行共用）与它里面那节「接口选择」。 */
+    const val GENERAL_TITLE = "general.title"
+    const val GENERAL_SECTION_INTERFACE = "general.section_interface"
+
+    /** 首页「通用设置」那一行的摘要。 */
+    const val HOME_GENERAL_DESC = "home.general_desc"
+
     const val MORE_ABOUT_SIGNATURE = "more.about_signature"
     const val MORE_ABOUT_VERSION = "more.about_version"
     const val MORE_EXPORT_CONFIG = "more.export_config"

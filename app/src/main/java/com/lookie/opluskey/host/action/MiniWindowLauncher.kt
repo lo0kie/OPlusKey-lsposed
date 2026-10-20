@@ -36,6 +36,7 @@ import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_CLASS_FIELD
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_INFOS_METHOD
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_PACKAGE_FIELD
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_TASK_ID_FIELD
+import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_WINDOWING_MODE_FIELD
 import com.lookie.opluskey.host.action.MiniWindowFacts.USE_FORGED_ANIMATION_ROUTE
 import com.lookie.opluskey.host.action.MiniWindowFacts.WINDOWING_MODE_ZOOM
 import com.lookie.opluskey.host.action.MiniWindowFacts.ZOOM_ARGS
@@ -521,6 +522,47 @@ internal class MiniWindowLauncher(
         return Reflect.fieldValue(info, info.javaClass, TOP_APP_TASK_ID_FIELD) as? Int ?: -1
     }
 
+    /**
+     * 这个包名下的**任一**任务（小窗那份优先），一份都没有才 -1。
+     *
+     * 与 [foregroundTaskFor] 问的不是同一件事，别合并：
+     *  · [foregroundTaskFor] 问「它此刻在最前面吗」—— `window:` 那条「原地收成小窗」靠它决定要不要
+     *    新起实例，目标已经在后台时就该走 recents 那条；
+     *  · 本函数问「它跑起来没有、在哪一份里」—— 快捷方式的小窗验收要的是后者。
+     *
+     * **必须扫整张表**：`getAllTopAppInfos()` 在小窗在场时**同时**有小窗那份（`windowingMode=100`）
+     * 与全屏那份（`=1`）两条（`docs/device-findings.md` §17.6.1），第 0 项是不是目标包取决于此刻
+     * 谁在最前面。只认第 0 项时目标落在第二条就会被读成「还没有任务」。
+     */
+    internal fun taskOfPackage(pkg: String): Int {
+        val hits = topAppInfos().orEmpty().mapNotNull { taskOf(it, pkg) }
+        // 小窗那份就是验收要找的；整张表都没有小窗时才退回任意一份（全屏那份）。
+        return hits.firstOrNull { it.second == WINDOWING_MODE_ZOOM }?.first
+            ?: hits.firstOrNull()?.first
+            ?: -1
+    }
+
+    /**
+     * 表里的一条 → `(taskId, windowingMode)`；不是这个包、或读不到 taskId 时 `null`。
+     *
+     * 单独拆出来只为让 [taskOfPackage] 留在 detekt 的圈复杂度与循环跳转阈值内。
+     */
+    private fun taskOf(
+        raw: Any?,
+        pkg: String,
+    ): Pair<Int, Int?>? {
+        val info = raw ?: return null
+        val top = Reflect.fieldValue(info, info.javaClass, TOP_APP_ACTIVITY_FIELD) ?: return null
+        val taskId = Reflect.fieldValue(info, info.javaClass, TOP_APP_TASK_ID_FIELD) as? Int
+        // 包名不符与 taskId 无效是同一档「这条不是我们要的」—— 并成一次判断，别再各开一个 return。
+        val mine = taskId != null && taskId > 0 && packageOf(top, top.javaClass) == pkg
+        return if (mine) {
+            taskId to (Reflect.fieldValue(info, info.javaClass, TOP_APP_WINDOWING_MODE_FIELD) as? Int)
+        } else {
+            null
+        }
+    }
+
     /** `OplusAppInfo.topActivity` 的包名 —— `ComponentName` 与 `ComponentInfo` 两种形状都认。 */
     internal fun packageOf(
         top: Any,
@@ -528,6 +570,26 @@ internal class MiniWindowLauncher(
     ): String? =
         Reflect.call(top, "getPackageName") as? String
             ?: Reflect.fieldValue(top, cls, TOP_APP_PACKAGE_FIELD) as? String
+
+    /**
+     * 表里有没有 `taskId` 这一份任务 —— 不看它在前台还是后台、是不是小窗。
+     *
+     * 快捷方式的「先起再收」只用这一次查询：拿到 ATMS 回的 taskId 之后，只剩「它还在不在」这一个问题。
+     * 与 [taskOfPackage] 的区别是**按 id 点名**而不是按包名扫 —— 同一个包可能同时有多份任务
+     * （小窗那份 + 全屏那份 + 跳板链正在起的那份），按包名扫会挑错人。
+     */
+    internal fun hasTask(taskId: Int): Boolean = topAppInfos().orEmpty().any { idOf(it) == taskId }
+
+    /**
+     * 一条表项 → 它的 taskId；读不到返回 -1。
+     *
+     * 只为 [hasTask] 服务：那边只关心「这个 id 还在吗」，不关心包名与窗口模式。
+     */
+    private fun idOf(raw: Any?): Int {
+        val info = raw ?: return -1
+        val id = Reflect.fieldValue(info, info.javaClass, TOP_APP_TASK_ID_FIELD) as? Int ?: return -1
+        return if (id > 0) id else -1
+    }
 
     /** `OplusActivityManager#getAllTopAppInfos()` 的原始列表；拿不到一律返回 null（调用方据此降级）。 */
     internal fun topAppInfos(): List<*>? {
@@ -561,34 +623,40 @@ internal class MiniWindowLauncher(
         taskId: Int,
         zoomLaunchFlags: Int,
     ): Boolean {
-        val cls =
-            Reflect.findClass(javaClass.classLoader, ZOOM_TASK_MANAGER) ?: run {
-                XLog.w("没有 $ZOOM_TASK_MANAGER，跳过 recents 那条")
-                return false
-            }
-        val manager =
-            Reflect.callStatic(cls, "getInstance") ?: run {
-                XLog.w("$ZOOM_TASK_MANAGER#getInstance 返回 null，recents 那条走不通")
-                return false
-            }
-        val method =
-            Reflect.methodByNameAndArity(cls, RECENTS_FLEXIBLE_METHOD, RECENTS_FLEXIBLE_ARGS) ?: run {
-                XLog.w("$ZOOM_TASK_MANAGER 上没有 $RECENTS_FLEXIBLE_METHOD/$RECENTS_FLEXIBLE_ARGS")
-                return false
-            }
+        val code = startFlexibleFromRecentsCode(taskId, zoomLaunchFlags)
+        if (code == null || code < 0) {
+            XLog.w("$RECENTS_FLEXIBLE_METHOD($taskId, flags=$zoomLaunchFlags) 被拒（返回 $code），退下一层")
+            return false
+        }
+        XLog.w("zoom:mini → 从 recents 把任务 #$taskId 原地收成小窗（flags=$zoomLaunchFlags，返回 $code）")
+        return true
+    }
+
+    /**
+     * 同 [startFlexibleFromRecents]，但把**原始返回码**交出来 —— `null` = 反射这条路没走通，
+     * 负数是服务端拒了，`>= 0` 是受理。
+     *
+     *  快捷方式的「先起再收」要看这个码：`2` 与 `0` 的服务端语义不同（`2` = 已有任务提到前台、
+     *  这次确实是新做的一次转换），而 `-1` 一类的拒绝必须能被单独认出来才有排查价值。
+     */
+    internal fun startFlexibleFromRecentsCode(
+        taskId: Int,
+        zoomLaunchFlags: Int,
+    ): Int? {
+        val cls = Reflect.findClass(javaClass.classLoader, ZOOM_TASK_MANAGER)
+        val manager = cls?.let { Reflect.callStatic(it, "getInstance") }
+        val method = cls?.let { Reflect.methodByNameAndArity(it, RECENTS_FLEXIBLE_METHOD, RECENTS_FLEXIBLE_ARGS) }
+        if (cls == null || manager == null || method == null) {
+            XLog.w("$ZOOM_TASK_MANAGER 这条路不通（类/实例/方法：${cls != null}/${manager != null}/${method != null}）")
+            return null
+        }
         val options =
             Bundle().apply {
                 putInt(OPT_LAUNCH_WINDOWING_MODE, WINDOWING_MODE_ZOOM)
                 putInt(OPT_ZOOM_LAUNCH_FLAGS, zoomLaunchFlags)
                 putInt(ZOOM_EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM)
             }
-        val code = Reflect.call(manager, method, taskId, options) as? Int
-        if (code == null || code < 0) {
-            XLog.d("$RECENTS_FLEXIBLE_METHOD($taskId, flags=$zoomLaunchFlags) 被拒（返回 $code），退下一层")
-            return false
-        }
-        XLog.w("zoom:mini → 从 recents 把任务 #$taskId 原地收成小窗（flags=$zoomLaunchFlags，返回 $code）")
-        return true
+        return Reflect.call(manager, method, taskId, options) as? Int
     }
 
     /**

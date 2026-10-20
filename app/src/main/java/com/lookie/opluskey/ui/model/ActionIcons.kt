@@ -109,6 +109,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.RotateRectangle
 import io.github.lyxnx.compose.ui.tablericons.outline.Screenshot
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
+import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
@@ -445,6 +446,14 @@ private val SERIAL_STEP_ICONS: List<ImageVector> =
 internal object PageIcons {
     /** 顶栏返回键。 */
     val Back: ImageVector get() = TablerIcons.Outline.ArrowLeft
+
+    /**
+     * 「通用设置」那一行 / 那一页 —— `settings-cog`（齿轮）。
+     *
+     *  用户口径指定这一颗：这一页装的是「整个模块怎么跑」的全局项（接口选择、振动、执行提示），
+     *  齿轮比别的字形都更直接。
+     */
+    val SettingsCog: ImageVector get() = TablerIcons.Outline.SettingsCog
 
     /** 「按键绑定」行首 —— 箭头光标 `Pointer`，读作「按下去那一下」。 */
     val TouchApp: ImageVector get() = TablerIcons.Outline.Pointer

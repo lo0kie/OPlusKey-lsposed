@@ -37,6 +37,7 @@ import com.lookie.opluskey.ui.screen.binding.pick
 import com.lookie.opluskey.ui.screen.command.CommandActions
 import com.lookie.opluskey.ui.screen.command.CommandScreen
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
+import com.lookie.opluskey.ui.screen.general.GeneralScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
 import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -176,7 +177,8 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
         canScroll = {
             s != Screen.SHORTCUTS &&
                 s != Screen.ABOUT &&
-                s != Screen.DONATE_LIST
+                s != Screen.DONATE_LIST &&
+                s != Screen.GENERAL
         },
     )
 
@@ -236,6 +238,11 @@ private fun SettingsPage.PageBody(
         // 「捐赠列表」：名单是手写常量（见 `ui/model/Donors.kt`）
         Screen.DONATE_LIST -> {
             DonateListScreen(scrollBehavior)
+        }
+
+        // 「通用设置」：接口选择 + 按键行为（两节都是全局项）
+        Screen.GENERAL -> {
+            GeneralScreen(scrollBehavior)
         }
     }
 }

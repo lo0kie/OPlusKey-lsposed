@@ -94,10 +94,8 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         // 首次启用（以及清空配置之后再启用）要的那两次确认 —— 摆在那张卡后面，不跟别的开关混在一起。
         HomeDisclaimers(ui)
 
-        // 「按键绑定」卡片与「按键行为」分组之间留一档空档
-        Spacer(Modifier.height(8.dp))
-        SmallTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"))
-        HomeActionsCard(pageEnabled)
+        // 「按键行为」那一整块搬进了「通用设置」页（首页第 3 行进那一页）——
+        //  它是**全局**开关，与「这颗键绑了什么」无关，摆在这里会把常用的入口挤下去。
 
         // 版本 / 仓库地址那两行搬去**独立的「更多选项」页**（`AboutScreen`，从顶栏 ⋮ 菜单进）——
         // 它们是「想知道时才看一眼」的信息，摆在首页会把常用的那几张卡挤下去。

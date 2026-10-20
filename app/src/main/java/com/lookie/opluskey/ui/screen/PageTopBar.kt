@@ -18,6 +18,7 @@ import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
 import com.lookie.opluskey.ui.model.BINDING_TITLE
 import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
+import com.lookie.opluskey.ui.model.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
@@ -111,6 +112,8 @@ private fun SettingsPage.pageTitle(s: Screen): String =
         Screen.ABOUT -> ABOUT_TITLE
 
         Screen.DONATE_LIST -> DONATE_LIST_TITLE
+
+        Screen.GENERAL -> GENERAL_TITLE
     }
 
 /**
@@ -253,7 +256,7 @@ private fun SettingsPage.PageBottomBand(
         }
 
         // 首页 / 「关于模块」/「捐赠列表」都没有固定带（后两页都是「短内容」页，见 [pageScrollBehavior]）
-        Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST -> {
+        Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL -> {
             // 这几页不摆固定带
         }
     }

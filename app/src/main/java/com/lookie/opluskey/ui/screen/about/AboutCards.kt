@@ -342,7 +342,18 @@ internal fun SettingsPage.AppearanceCard(
                 tick()
                 ui.showPaletteMenu = true
             },
-            startAction = { Icon(PageIcons.Palette, null) },
+            // 行首直接摆**当前那一套的色块**（与菜单里那五行同一颗字形、同一个种子色）：
+            //  这一行回答的就是「现在是什么色」，画一颗调色板图标等于把答案藏起来。
+            //  **不指定尺寸**（与「主题」那行同一个写法）：行首槽位自己给的宽高是行内边距的
+            //  一部分，手动缩一档会让这一行的图标变小、右边文字跟着左移 —— 外观上就是
+            //  「这一行图标离文字比其他行近」，同卡两行反而对不齐。
+            startAction = {
+                Icon(
+                    PageIcons.PaletteSwatch,
+                    contentDescription = null,
+                    tint = currentPalette.seed,
+                )
+            },
             endActions = { RowEndIcon(PageIcons.Selector) },
             cardListPosition = cardListPositionOf(1, MORE_APPEARANCE_ROWS),
             modifier = Modifier.preciseClickAnchor(ui.paletteClick),

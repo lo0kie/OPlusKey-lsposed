@@ -96,7 +96,9 @@ for apk in "$DIR"/*.apk; do
     bad "$apk 的 java_init.list 是空的"
   else
     desc="L$(printf '%s' "$entry_cls" | tr '.' '/');"
-    if unzip -p "$apk" 'classes*.dex' 2>/dev/null | strings | grep -qF "$desc"; then
+    #  直接在字节流里找（类名是纯 ASCII，与 `strings | grep` 等价）：`strings` 是 binutils 的东西，
+    #  精简镜像与 Windows 的 Git Bash 上不一定有 —— 缺了它这条会变成**假红灯**。
+    if unzip -p "$apk" 'classes*.dex' 2>/dev/null | grep -aqF "$desc"; then
       echo "  ok  java_init.list 的 $entry_cls 在 dex 里"
     else
       bad "$apk 的 java_init.list 声明了 $entry_cls，但 dex 里找不到 $desc"

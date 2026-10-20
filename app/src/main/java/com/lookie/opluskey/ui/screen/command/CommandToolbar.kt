@@ -59,36 +59,42 @@ internal fun SettingsPage.commandPayloadReady(): Boolean = payloadBlockedReason(
 /**
  * 载荷**还差什么**（`null` = 够了）—— [commandPayloadReady] 的「为什么」，判据只有这一处。
  *
- *  三句话各自对应一种真实的半成品：没写 / 没写对格式 / 写了前缀没写正文。最后那档
+ *  单条那一档三句话各自对应一种真实的半成品：没写 / 没写对格式 / 写了前缀没写正文。最后那档
  *  （`shell:` 这种只有前缀的）以前没有任何一句在说它 —— 保存按钮灰着、点一下回
- *  「这一项现在不可用」（用户口径：要更精确精简）。
+ *  「这一项现在不可用」（用户口径：要更精确精简）。多条那一档只差「有没有步骤」。
+ *
+ *  **这一支必须能在填好之后返回 `null`**：`saveBlockedReason()` 拿它当唯一判据，
+ *  永远非空就等于「保存」按钮永远点不动。
  */
 private fun SettingsPage.payloadBlockedReason(): String? =
     when (commandDraft.draft.kind) {
         CommandKind.SINGLE -> {
-            val raw = commandDraft.draft.single
-            when {
-                raw.isBlank() -> {
-                    I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令")
-                }
-
-                !Action.hasSupportedFormat(raw) -> {
-                    I18n.get(
-                        Strings.COMMAND_FORMAT_REQUIRED,
-                        "开头要写 shell: / cmd: 这类前缀",
-                    )
-                }
-
-                else -> {
-                    I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE, "命令内容还不完整")
-                }
-            }
+            singlePayloadBlockedReason()
         }
 
         CommandKind.SERIAL -> {
-            I18n.get(Strings.COMMAND_NEED_STEP, "还没添加步骤")
+            if (commandDraft.draft.steps.isEmpty()) I18n.get(Strings.COMMAND_NEED_STEP, "还没添加步骤") else null
         }
     }
+
+/** 单条那一档的载荷判据（[payloadBlockedReason] 的一半，判据仍只有那一处）。 */
+private fun SettingsPage.singlePayloadBlockedReason(): String? {
+    val raw = commandDraft.draft.single
+    if (raw.isBlank()) return I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令")
+    if (!Action.hasSupportedFormat(raw)) {
+        return I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "开头要写 shell: / cmd: 这类前缀")
+    }
+    // 写法合法之后，再看这段字**解析出来到底做不做事**：`shell:` / `cmd:` 这种只有前缀的
+    //  （[Action.isBarePrefix]），以及 `keyevent:` 空正文 / 认不出的键码 / `none`（解析成
+    //  [Action.None]）——存下去都是一条注定什么都不做的命令。
+    val action = Action.parse(raw)
+    return if (action.isBarePrefix || action == Action.None) {
+        I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE, "命令内容还不完整")
+    } else {
+        // 这里**必须**能返回 `null`：它是「能不能存」的唯一判据，一直非空就等于保存按钮永远灰着。
+        null
+    }
+}
 
 /**
  * 名字那一格的红字 —— 与「保存被禁用时那句话」共用这一支（同一件事只说一处）。

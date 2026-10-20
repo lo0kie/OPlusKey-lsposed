@@ -1,38 +1,37 @@
 package com.lookie.opluskey.host.action
 
 import android.content.Context
-import android.content.pm.LauncherApps
-import android.os.Bundle
-import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.ZoomWindowWire
 import com.lookie.opluskey.host.action.MiniWindowFacts.MINI_VERIFY_MS
-import com.lookie.opluskey.host.action.MiniWindowFacts.SHORTCUT_VERIFY_RETRIES
+import com.lookie.opluskey.host.action.MiniWindowFacts.ZOOM_LAUNCH_FLAG_USER_POSITION
 
 /**
  * `appshortcut:包名/快捷方式id` 的执行 —— 起一个**应用自己注册的**快捷方式（扫一扫 / 收付款）。
  *
- * 只能走 `LauncherApps.startShortcut`：快捷方式那条 intent 里往往只有 action 与
- * `PersistableBundle`（微信就是 `ShortCutDispatchAction` + `LaunchType=launch_type_scan_qrcode`），
- * 按普通 intent 起会把参数丢掉、退化成「打开应用」。
+ * ## 起法只有一处：[ShortcutStarter]
+ *
+ *  快捷方式那条 intent 里往往只有 action 与 `PersistableBundle`（微信就是
+ *  `ShortCutDispatchAction` + `LaunchType=launch_type_scan_qrcode`），所以**不能自己拼** intent；
+ *  `ShortcutInfo.getIntent()` 在真机上取回来又是 `null`（支付宝、微信那几条动态快捷方式都是）。
+ *  ⇒ 只能靠 `LauncherApps`：要么 `startShortcut`（系统代发），要么 `getShortcutIntent` 拿 PI 自己发。
+ *
+ *  后者是本仓唯一能过 BAL 的那条：系统代发会被 `BAL_BLOCK` 静默拦掉，**调用侧看不出任何异常**
+ *  （真机 PLK110 / Android 16：
+ *  `Background activity launch blocked! … realCallerUidHasVisibleActivity: false`
+ *  + `START … (BAL_BLOCK) result code=102`）。两条起法及其顺序的理由都写在 [ShortcutStarter] 里。
  *
  * 权限：`getShortcuts` 与 `startShortcut` 在系统侧都过 `ensureShortcutPermission`，非桌面应用
- * 要靠 `ACCESS_SHORTCUTS`（宿主声明且已 grant，真机实测过）—— 拿不到就是 `SecurityException`，
- * 这里如实报「没有入口」，不假装成功。
+ *  要靠 `ACCESS_SHORTCUTS`（宿主声明且已 grant，真机实测过）—— 拿不到就是 `SecurityException`，
+ *  这里如实报「没有入口」，不假装成功。
  *
- * ## 小窗那一档（`appshortcut:w:…`）为什么不自己拼 intent
+ * ## 小窗那一档（`appshortcut:w:…`）怎么做
  *
- *  真机实测：宿主拿 `ShortcutInfo.getIntent()` 回来是 **null**（微信的扫一扫就是这样），
- *  所以「先把 intent 捞出来再交给小窗配方」这条路的地基不成立 —— 那版就是在这里静默退回普通起法的。
- *
- *  走的是 **`startShortcut` 自己的 `Bundle startActivityOptions` 那一档**：把小窗的窗口模式写进
- *  ActivityOptions 一起交上去，由系统自己带到柔性窗口那一层 ——
- *  `FlexibleWindowManagerService#startShortcut(Bundle, Intent[], Runnable)` 的**唯一调用方**
- *  就是 ATMS 里那条 `startShortcut`，它在 system_server 里自己取得出 intent。
- *  于是宿主既不用碰那条 intent，也不用为了这件事绕一趟注入侧。
+ *  见 [launchInWindow]：已在小窗 ⇒ 不动；全屏且在最前面 ⇒ 原地收；
+ *  其余 ⇒ **起一次**（PI 带上窗口模式）**再等它进表、收它**（[ShortcutThenMinimize]）。
+ *  全过程只发一次启动请求 —— 多发一次就多一份任务，用户看到的是更长的等待。
  *
  * 单独一个类而不是挂进 [AppLauncher]：那个类已经贴着 detekt 的函数数上限，而这一档与它
- * 那些「拉起界面 / 发广播」的方法没有共用状态（只借 Context、小窗执行器与失败出口）。
+ *  那些「拉起界面 / 发广播」的方法没有共用状态（只借 Context、小窗执行器与失败出口）。
  */
 internal class AppShortcutLaunch(
     private val context: () -> Context?,
@@ -40,6 +39,18 @@ internal class AppShortcutLaunch(
     private val mini: MiniWindowLauncher,
     private val onFailure: (CommandFailure) -> Unit,
 ) {
+    /**
+     * 「先起、再原地收」那一支 —— 拆成单独的类只为压函数数（见 [ShortcutThenMinimize]）。
+     *
+     * 用 `by lazy` 而不是构造参数：本类已经挂着函数数上限；而这段只在「需要起一次」那一档
+     * 才会被用到，晚一点建没有代价。
+     */
+    private val thenMinimize: ShortcutThenMinimize by lazy {
+        ShortcutThenMinimize(mini, onFailure) { pkg, shortcutId, userId, taskId ->
+            minimize(pkg, shortcutId, userId, taskId)
+        }
+    }
+
     /** @param window true = 用小窗起（`appshortcut:w:…`） */
     fun launch(
         pkg: String,
@@ -53,66 +64,72 @@ internal class AppShortcutLaunch(
                 return
             }
         if (window) {
-            // 带小窗 options 发一次，发出去就算接手 —— 窗口成不成由 [verifyThenFallback] 接着判。
-            //  发不出去（`LauncherApps` 拿不到 / 调用抛）才当场退普通起法。
-            if (startWith(ctx, pkg, shortcutId, userId, zoomStartOptions())) {
-                verifyThenFallback(ctx, pkg, shortcutId, userId)
-                return
-            }
-            XLog.w("带小窗 options 起快捷方式没走通，退普通起法：$pkg/$shortcutId（user=$userId）")
+            launchInWindow(ctx, pkg, shortcutId, userId)
+            return
         }
         startPlain(ctx, pkg, shortcutId, userId)
     }
 
     /**
-     * 带 **ActivityOptions** 起一次快捷方式。
+     * 小窗那一档 —— 只有三种处置，按「目标此刻是什么状态」选：
      *
-     * @param options 交上去的 `startActivityOptions`；小窗那一档见 [zoomStartOptions]
-     * @return 这次调用**发出去了没有**。**不代表窗口已经是小窗** —— 窗口模式是服务端说了算，
-     *   判据一律走 [verifyThenFallback] 里那次 `windowingMode` 验收
-     *   （返回码与截图都会骗人，见 `docs/device-findings.md` §17.6.1）。
+     *  1. 已经在小窗 ⇒ **什么都不做**。重发会走一遍应用自己的跳板链（支付宝是
+     *     `ShortcutsLauncherActivity → SchemeLauncherActivity → LauncherActivity.alias`），
+     *     链尾把主界面起成**全屏**任务、把小窗顶掉 —— 真机日志：
+     *     `Add Task{#1194 …} to hidden list because adding Task{#1197 …}`，紧接着
+     *     `notifyTaskRemoved #1194`。用户的观感就是「再按一下，小窗没了，出来个全屏」。
+     *     代价：小窗被收起（右上角那条）时按一下不会展开。两害相权取轻 —— 现在的行为是
+     *     「把小窗换成全屏」，比「不展开」恶劣得多。要做对得能从 `OplusAppInfo` 里分出
+     *     「展开 / 收起」两档，那个判据没在真机上验过（`appBounds` 两档同值，见 `MiniWindowFacts`）。
+     *  2. 有全屏任务、**而且就在最前面** ⇒ **原地收小窗**。用户正看着它，收一下立刻见效，
+     *     不必再起一份。判据必须是 [MiniWindowLauncher.foregroundTaskFor]（只看表里第 0 项）：
+     *     按包名扫整张表会把**后台**那份全屏任务也捞进来，那样「按一下只把它收成小窗、
+     *     屏幕一动不动」，用户看到的是没反应。
+     *  3. 其余（没有任务 / 只有后台任务）⇒ **起一次，等它进表，收它**。
+     *
+     * ## 为什么 3 那一条直接发 PI，而不是先试 `startShortcut`
+     *
+     *  `startShortcut` 带窗口模式 options 在真机上经常**整发不落地**（表里连任务都不会出现），
+     *  而自发 PI 通常 0.7 秒就进表；它是唯一能过 BAL 的那条。所以只发一次、
+     *  由 [ShortcutStarter.send] 保证先走 PI 且带上窗口模式 ⇒ 要么直接起成小窗，
+     *  要么 1.4 秒内收一下。取证见 `docs/zoom-window.md` 的「快捷方式以小窗打开」一节。
+     *
+     *  单拆一个函数是为了让 [launch] 的出口数量留在 detekt 的 `ReturnCount` 之内。
      */
-    private fun startWith(
+    private fun launchInWindow(
         ctx: Context,
         pkg: String,
         shortcutId: String,
         userId: Int,
-        options: Bundle?,
-    ): Boolean {
-        val launcherApps = launcherAppsOf(ctx) ?: return false
-        return try {
-            launcherApps.startShortcut(pkg, shortcutId, null, options, AppCloneCatalog.handleOf(userId))
-            XLog.w("快捷方式 → 已按小窗 options 发出：$pkg/$shortcutId（user=$userId）")
-            true
-        } catch (e: Throwable) {
-            // 服务端会把这份 options 转成 `ActivityOptions.fromBundle`，畸形时抛的是
-            //  `IllegalArgumentException`（不是 `SecurityException`）—— 两条都收在这里，交给调用方降级。
-            XLog.w("带 options 起快捷方式失败：$pkg/$shortcutId", e)
-            false
+    ) {
+        val existing = mini.taskOfPackage(pkg)
+        // 判据级：这一行是「这次为什么没走成小窗」的第一个分叉，没有它只能靠猜。
+        XLog.w("快捷方式 w：$pkg 现有任务 #$existing（小窗=${existing > 0 && mini.zoomStateOf(existing) == true}）")
+        if (existing > 0) {
+            if (mini.zoomStateOf(existing) == true) {
+                XLog.w("快捷方式：$pkg 已在小窗（任务 #$existing），不重起（重起会把它顶成全屏）")
+                return
+            }
+            //  只有「它在最前面」才原地收：收一份后台任务屏幕不会有任何变化，等于按了没反应。
+            val foreground = mini.foregroundTaskFor(pkg)
+            if (foreground > 0) {
+                XLog.w("快捷方式：$pkg 在全屏前台（任务 #$foreground）⇒ 原地收成小窗")
+                minimize(pkg, shortcutId, userId, foreground)
+                return
+            }
+            XLog.w("快捷方式：$pkg 有全屏任务 #$existing 但在后台 ⇒ 起一次再收（收后台那份屏幕不会变）")
         }
+        thenMinimize.start(ctx, pkg, shortcutId, userId, round = 0)
     }
 
     /**
-     * 小窗那一档的 `ActivityOptions`。
+     * 普通起法（全屏）—— `appshortcut:包名/id` 不加 `w:` 时的那一档。
      *
-     *  两个键都是**平台事实**（`ActivityOptions.toBundle()` 自己写的就是这两个名字），收在
-     *  [ZoomWindowWire] 里与「原地收成小窗」那条共用 —— 那边是直接塞进
-     *  `OplusActivityTaskManager` 的 Bundle，这边是当 ActivityOptions 交上去，**取值必须一致**。
+     * 不带窗口模式启动，让系统按默认窗口模式起。起法与窗口那一档**同一个出口**
+     * （[ShortcutStarter.send]）：先自发 PI（唯一能过 BAL 的那条），拿不到才系统代发。
+     * 区别只在 `windowOptions` 传 `null`。
      *
-     *  尺寸档给**展开**（[ZoomWindowWire.LAUNCH_FLAG_EXPANDED]）：收起档是右上角那条最小化窗，
-     *  「按一下侧键只拿到一条小窄条」不是这个动作的语义。
-     */
-    private fun zoomStartOptions(): Bundle =
-        Bundle().apply {
-            putInt(ZoomWindowWire.LAUNCH_WINDOWING_MODE_KEY, ZoomWindowWire.WINDOWING_MODE_ZOOM)
-            putInt(ZoomWindowWire.ZOOM_LAUNCH_FLAGS_KEY, ZoomWindowWire.LAUNCH_FLAG_EXPANDED)
-        }
-
-    /**
-     * 普通起法（全屏）—— 也是小窗没走通时的退路。
-     *
-     * 不加 options，让系统按默认窗口模式起。**不退成「打开主应用」**：这条走的仍是
-     * `startShortcut`，快捷方式那条 intent 与它的参数由系统自己取，参数不会丢。
+     * **不退成「打开主应用」**：这条走的仍是快捷方式那条 intent，参数不会丢。
      */
     private fun startPlain(
         ctx: Context,
@@ -120,74 +137,55 @@ internal class AppShortcutLaunch(
         shortcutId: String,
         userId: Int,
     ) {
-        val launcherApps = launcherAppsOf(ctx)
-        if (launcherApps == null) {
-            XLog.w("拿不到 LauncherApps，appshortcut:$pkg/$shortcutId 跳过")
-            onFailure(CommandFailure.UNKNOWN)
-            return
-        }
-        try {
-            launcherApps.startShortcut(pkg, shortcutId, null, null, AppCloneCatalog.handleOf(userId))
-            XLog.w("快捷方式 → $pkg/$shortcutId（user=$userId）")
-        } catch (e: Throwable) {
-            // 最常见的是快捷方式已被应用自己删掉（动态快捷方式会随登录状态变）——
-            //  报「没有入口」而不是「已卸载」：包明明还在。
-            XLog.w("起快捷方式失败：$pkg/$shortcutId（user=$userId）", e)
-            onFailure(CommandFailure.APP_NO_ENTRY)
-        }
+        if (ShortcutStarter.send(ctx, ShortcutStarter.Request(pkg, shortcutId, userId, windowOptions = null))) return
+        // 连发都没发出去 —— 最常见是那条快捷方式已被应用自己删掉（动态快捷方式随登录状态变）。
+        // 报「没有入口」而不是「已卸载」：包明明还在。
+        onFailure(CommandFailure.APP_NO_ENTRY)
     }
 
-    private fun launcherAppsOf(ctx: Context): LauncherApps? =
-        try {
-            ctx.getSystemService(LauncherApps::class.java)
-        } catch (e: Throwable) {
-            XLog.w("取 LauncherApps 失败", e)
-            null
-        }
-
     /**
-     * 交出去之后的一次验收 —— **窗口模式只能这样判**：`startShortcut` 返回 `void`，
-     * 「调用没抛」只说明请求发出去了。
+     * 把目标那份任务**原地**收成小窗，收完再验一轮。
      *
-     * 四档，区别全在「读不到」：
-     *
-     *  · 任务在、且是小窗 ⇒ 成；
-     *  · **连任务都没有** ⇒ 应用还在冷启动，再等一轮（[SHORTCUT_VERIFY_RETRIES]）——
-     *    这时候判失败会让下面再起一次全屏，把刚开好的小窗顶掉（真机症状：小窗闪一下就没了）；
-     *  · 任务在、但**读不到它的窗口信息**（[zoomStateOf] 为 `null`）⇒ **什么都不做**：
-     *    那是「不知道」，不是「options 没吃住」。以前这两档折在一起，读不到就再起一次全屏 ——
-     *    典型的「小窗已经开好了，一闪变成全屏」，还多出一次启动；
-     *  · 任务在、确认不是小窗 ⇒ 服务端确实没吃这份 options，退普通起法。
-     *
-     * 代价是「真的不支持小窗」时要多等那几轮；换的是不会把已经开好的小窗顶掉。
+     * @param taskId **点名**要收哪一份。这个参数是必需的（不能在里面按包名现扫）：同一个包
+     *   可能同时有多份任务，扫出来的可能是「小窗那份」（那就什么都不用做）或「跳板链正在起的那份」
+     *   （收了立刻被下一跳顶掉）。调用方本来就知道自己要收哪一份 —— 要么是当时在台前的那份，
+     *   要么是我们自己那一发刚开出来的那份。
      */
-    private fun verifyThenFallback(
-        ctx: Context,
+    internal fun minimize(
         pkg: String,
         shortcutId: String,
         userId: Int,
-        attempt: Int = 0,
+        taskId: Int,
     ) {
-        mini.postDelayedGuarded("appshortcut:$pkg/$shortcutId 的小窗验收（第 ${attempt + 1} 次）", MINI_VERIFY_MS) {
-            val taskId = mini.foregroundTaskFor(pkg)
+        if (taskId <= 0) {
+            XLog.w("收小窗：没有点名任务（$pkg/$shortcutId）")
+            return
+        }
+        if (mini.zoomStateOf(taskId) == true) {
+            XLog.w("快捷方式 → 小窗 $pkg/$shortcutId（user=$userId，任务 #$taskId）")
+            return
+        }
+        val code = mini.startFlexibleFromRecentsCode(taskId, ZOOM_LAUNCH_FLAG_USER_POSITION)
+        if (code == null || code < 0) {
+            XLog.w("收小窗：任务 #$taskId 没受理（返回 $code，$pkg/$shortcutId），保持原窗口")
+            onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+            return
+        }
+        mini.postDelayedGuarded("appshortcut:$pkg/$shortcutId 的收小窗验收", MINI_VERIFY_MS) {
             when {
-                taskId > 0 && mini.zoomStateOf(taskId) == true -> {
-                    XLog.w("快捷方式 → 小窗 $pkg/$shortcutId（user=$userId，任务 #$taskId）")
+                mini.zoomStateOf(taskId) == true -> {
+                    XLog.w("快捷方式 → 原地收成小窗 $pkg/$shortcutId（user=$userId，任务 #$taskId）")
                 }
 
-                taskId <= 0 && attempt < SHORTCUT_VERIFY_RETRIES -> {
-                    XLog.w("小窗验收：$pkg 还没有任务（冷启动中），再等一轮")
-                    verifyThenFallback(ctx, pkg, shortcutId, userId, attempt + 1)
-                }
-
-                // 任务在、但读不到它的窗口信息 ⇒ **不动它**（读不到不是「没吃住」）
-                taskId > 0 && mini.zoomStateOf(taskId) == null -> {
-                    XLog.w("小窗验收：读不到任务 #$taskId 的窗口信息，不重起（$pkg/$shortcutId）")
+                // 任务没了 ⇒ 跳板链把它换掉了。这时候**不再自己追新的那份**：新任务会被
+                // 下一跳的界面自己顶成全屏，追过去收是跟应用的导航链赛跑，输多赢少。
+                !mini.hasTask(taskId) -> {
+                    XLog.w("收小窗：任务 #$taskId 已被跳板链换掉（$pkg/$shortcutId），下一次按下再处理")
                 }
 
                 else -> {
-                    XLog.w("小窗 options 没被吃住（任务 #$taskId），退普通起法：$pkg/$shortcutId")
-                    startPlain(ctx, pkg, shortcutId, userId)
+                    XLog.w("收小窗：任务 #$taskId 仍是全屏（$pkg/$shortcutId），放弃")
+                    onFailure(CommandFailure.APP_NO_MINI_WINDOW)
                 }
             }
         }

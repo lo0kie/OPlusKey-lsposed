@@ -18,6 +18,14 @@ internal val BINDING_TITLE: String
 internal val COMMANDS_TITLE: String
     get() = I18n.get(Strings.ACTION_CUSTOM_COMMAND, "自定义命令")
 
+/**
+ * 「通用设置」页的标题 —— 首页「按键绑定」卡片第 3 行进来（**唯一入口**）。
+ *
+ *  那一行与这一页顶上的标题**共用同一个键**：进去之后看到的与点的那一行同名。
+ */
+internal val GENERAL_TITLE: String
+    get() = I18n.get(Strings.GENERAL_TITLE, "通用设置")
+
 /** 「选择应用」页的标题。 */
 internal val APP_PICKER_TITLE: String
     get() = I18n.get(Strings.APP_PICKER_TITLE, "选择应用")

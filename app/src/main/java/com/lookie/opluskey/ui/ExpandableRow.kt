@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,10 +39,13 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *
  * ## 行尾那颗「展开 / 收起」
  *
- *  它自己是**一颗按钮**（自带点击与涟漪），整行也能点（`BasicComponent` 的 `onClick`）——
- *  内层可点会吃掉手势，不会触发两次。只有**真的折了行**才给这颗按钮：一行放得下时
- *  「展开」点了也没有变化，等于骗人。判据是收起状态下那次排版有没有溢出
- *  （`TextLayoutResult.hasVisualOverflow`），量一次就够，不必自己算宽度。
+ *  它只是**指示**，不是按钮：点击一律交给整行（`BasicComponent` 的 `onClick`）。
+ *  早先给它单独挂了 `clickable`，结果是「点箭头才灵、点同一行的文字反应不一样」——
+ *  同一件事在一行里出现两种命中区，用户没法预期。
+ *
+ *  只有**真的折了行**才画这颗箭头：一行放得下时「展开」点了也没有变化，等于骗人。
+ *  判据是收起状态下那次排版有没有溢出（`TextLayoutResult.hasVisualOverflow`），
+ *  量一次就够，不必自己算宽度。
  */
 @Composable
 internal fun SettingsPage.ExpandableRow(
@@ -65,7 +67,7 @@ internal fun SettingsPage.ExpandableRow(
             if (expanded || overflowed) {
                 {
                     // 箭头 + 旋转：收起时朝下、展开时转 180° 朝上，转的过程与高度动画同一档。
-                    //  它自己也能点（整行也能点，内层会吃掉手势，不会触发两次）。
+                    //  **不单独挂点击**：整行就是命中区（见类注释）。
                     val rotation by animateFloatAsState(
                         targetValue = if (expanded) 180f else 0f,
                         animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
@@ -77,8 +79,7 @@ internal fun SettingsPage.ExpandableRow(
                         modifier =
                             Modifier
                                 .rotate(rotation)
-                                .size(ROW_END_ICON_SIZE)
-                                .clickable { toggle() },
+                                .size(ROW_END_ICON_SIZE),
                         // 与全页其他「行尾图标」同一档色（不是强调色）：它只是个指示，不是动作项
                         tint = COUITheme.colorScheme.onSurfaceVariantActions,
                     )
