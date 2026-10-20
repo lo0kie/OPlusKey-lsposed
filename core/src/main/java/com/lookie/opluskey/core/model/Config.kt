@@ -10,6 +10,15 @@ enum class Gesture(
     SINGLE("single", "单击"),
     DOUBLE("double", "双击"),
     LONG("long", "长按"),
+    ;
+
+    companion object {
+        /**
+         * 按 [id] 找手势 —— 配置与广播里存的一直是 id（`single` / `double` / `long`，见
+         * `ConfigFields` 的 `<键>_<档>`），不认枚举名。认不出返回 `null`，由调用方丢掉那一条。
+         */
+        fun ofId(id: String?): Gesture? = entries.firstOrNull { it.id == id }
+    }
 }
 
 /** 一个键的完整配置。 */
@@ -22,6 +31,13 @@ data class KeyConfig(
     val longPressMs: Int,
     val longRepeat: Boolean,
     val longRepeatIntervalMs: Int,
+    /**
+     * 「连续触发时振动」—— 连续触发的每一次重复都振一下。
+     *
+     *  只在 [longRepeat] 为真时有意义（界面那一行也只在那时出现）。默认 false = 只在长按
+     *  被判出来的那一下振一次，重复不振动。
+     */
+    val longRepeatVibrate: Boolean = false,
     /**
      * 「单击延迟」—— **这颗键自己的**双击窗口（毫秒）。
      *
@@ -39,6 +55,17 @@ data class KeyConfig(
      * 默认 false = 与早先行为一致（配置文件里没有这一位，不回写）。
      */
     val longIsSerial: Boolean = false,
+    /**
+     * **状态分支** —— 这颗键在特定状态下改执行别的动作（[StateRule]），按顺序匹配、
+     * 第一条成立的赢（[actionFor]）。
+     *
+     *  **只走落盘这一列**（与 [Config.appNames] 同一套做法）：它是一张**列表**，塞不进
+     *  [ConfigFields] 那种扁平字段表（一格一个值），也不该在每次按键时把整张表广播给
+     *  `system_server` —— 注入侧只判手势、不挑动作，它不需要这张表。
+     *
+     *  空表（默认）= 与没有这一档完全相同。
+     */
+    val rules: List<StateRule> = emptyList(),
 ) {
     fun actionOf(gesture: Gesture): Action =
         when (gesture) {
@@ -46,6 +73,20 @@ data class KeyConfig(
             Gesture.DOUBLE -> double
             Gesture.LONG -> long
         }
+
+    /**
+     * 这次手势该执行哪个动作 —— **状态分支的唯一入口**。
+     *
+     *  先按顺序找第一条成立的分支（[StateRule.appliesTo]），一条都没有就退回 [actionOf]
+     *  那一档本来的绑定。执行侧不要自己写这套 `firstOrNull`：状态维度以后会长，判据散在
+     *  多处时「某个路径上状态分支不生效」这种 bug 只会在真机上被看见。
+     *
+     *  [state] 取不到东西时传 [KeyState.UNKNOWN] —— 于是所有分支都不成立、退回原绑定。
+     */
+    fun actionFor(
+        gesture: Gesture,
+        state: KeyState,
+    ): Action = rules.firstOrNull { it.appliesTo(gesture, state) }?.action ?: actionOf(gesture)
 
     /**
      * 长按绑的是不是「灵感语音」（`oplus:voice_memory`）。
@@ -78,6 +119,7 @@ data class KeyConfig(
                 ConfigFields.F_LONG_PRESS_MS to longPressMs,
                 ConfigFields.F_LONG_REPEAT to longRepeat,
                 ConfigFields.F_REPEAT_INTERVAL_MS to longRepeatIntervalMs,
+                ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
                 ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
                 ConfigFields.F_INSTANT_SINGLE to instantSingle,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
@@ -138,6 +180,7 @@ data class KeyConfig(
                 longPressMs = DEFAULT_LONG_PRESS_MS,
                 longRepeat = false,
                 longRepeatIntervalMs = DEFAULT_REPEAT_INTERVAL_MS,
+                longRepeatVibrate = false,
                 doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,
                 instantSingle = DEFAULT_INSTANT_SINGLE,
             )
@@ -147,10 +190,14 @@ data class KeyConfig(
          *
          *  这里**不再钳制区间**：钳制是读取方对「外来文本」做的事（上下限就在
          *  `ConfigFields` 的字段表里），走到这里时值已经收口过。
+         *
+         *  [rules] 不在取值表里（那是列表，不是扁平的一格，见 [KeyConfig.rules]）——
+         *  由落盘那一侧单独读出来传进来；广播那条路不传，注入侧拿到的就是空表。
          */
         fun ofFields(
             id: KeyId,
             v: ConfigFields.Values,
+            rules: List<StateRule> = emptyList(),
         ): KeyConfig =
             KeyConfig(
                 id = id,
@@ -161,9 +208,11 @@ data class KeyConfig(
                 longPressMs = v.number(ConfigFields.F_LONG_PRESS_MS),
                 longRepeat = v.bool(ConfigFields.F_LONG_REPEAT),
                 longRepeatIntervalMs = v.number(ConfigFields.F_REPEAT_INTERVAL_MS),
+                longRepeatVibrate = v.bool(ConfigFields.F_REPEAT_VIBRATE),
                 doubleClickMs = v.number(ConfigFields.F_DOUBLE_CLICK_MS),
                 instantSingle = v.bool(ConfigFields.F_INSTANT_SINGLE),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
+                rules = rules,
             )
     }
 }
@@ -181,10 +230,38 @@ data class GlobalConfig(
      */
     val enabled: Boolean = DEFAULT_ENABLED,
     val vibrate: Boolean,
+    /**
+     * **振动强度** —— 三档（[VIBRATE_WEAK] / [VIBRATE_MEDIUM] / [VIBRATE_STRONG]）。
+     *
+     *  只在 [vibrate] 为真时有意义（那一条滑块也只在那时出现）。读它的是宿主进程里的
+     *  执行器（`host/GestureExec.haptic`），所以**只走落盘那一列**、不进广播 —— 注入侧不振。
+     */
+    val vibrateStrength: Int = DEFAULT_VIBRATE_STRENGTH,
     /** 执行**任意动作**时弹一条 Toast（内容是动作名；自定义命令取命令名）。 */
     val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
     /** 界面语言（auto = 跟随系统，zh_CN = 简体中文，en = English）。 */
     val language: String = DEFAULT_LANGUAGE,
+    /**
+     * **系统配色** —— 页面强调色用哪一套（取值是色板 id，见界面层的色板表）。
+     *
+     *  这里只存**字符串**、不存枚举：色板清单与它那一族颜色全在界面层
+     *  （`ui/model/PagePalettes`），而 `:core` 的 classpath 里没有 `:app` —— 共用层不认识
+     *  「有哪些色板」，也不该认识（注入侧与配色无关）。
+     *
+     *  于是手改文件写进一个不认识的 id 时，这一层原样收下、界面侧读不到就落回默认档
+     *  （`PagePalette.ofId` 的兜底）—— 不在这里钳，否则每加一档就要改一次 core。
+     */
+    val palette: String = DEFAULT_PALETTE,
+    /**
+     * **界面颜色** —— 跟随系统 / 固定浅色 / 固定深色（取值见 [THEME_AUTO] 那一组）。
+     *
+     *  与 [palette] 同一套：这里只存字符串，三档的枚举在界面层（`ui/model/AppTheme`）。
+     *
+     *  它决定的是页面与**宿主那条状态栏 / 顶栏**一起的深浅（`chrome.dark` 由它算出来，见
+     *  `ui/PageTheme.effectiveNight`）—— 所以选「固定深色」时，按宿主页面的观感是一整块深色，
+     *  不是「模块这一层深、宿主那层浅」。
+     */
+    val theme: String = DEFAULT_THEME,
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
     /**
@@ -203,8 +280,11 @@ data class GlobalConfig(
             mapOf(
                 ConfigFields.F_MODULE_ENABLED to enabled,
                 ConfigFields.F_VIBRATE to vibrate,
+                ConfigFields.F_VIBRATE_STRENGTH to vibrateStrength,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_LANGUAGE to language,
+                ConfigFields.F_PALETTE to palette,
+                ConfigFields.F_THEME to theme,
                 ConfigFields.F_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
             ),
@@ -217,8 +297,34 @@ data class GlobalConfig(
         /** [GlobalConfig.toastOnRun] 的默认值：默认不弹。 */
         const val DEFAULT_TOAST_ON_RUN = false
 
+        /** [GlobalConfig.vibrateStrength] 的三档取值 —— 弱 / 中 / 强。 */
+        const val VIBRATE_WEAK = 0
+        const val VIBRATE_MEDIUM = 1
+        const val VIBRATE_STRONG = 2
+
+        /** [GlobalConfig.vibrateStrength] 的默认值：中档（与「开振动」原本那一下手感对齐）。 */
+        const val DEFAULT_VIBRATE_STRENGTH = VIBRATE_MEDIUM
+
+        /** [GlobalConfig.vibrateStrength] 的取值范围（滑杆两端与钳制共用）。 */
+        val VIBRATE_STRENGTH_RANGE = VIBRATE_WEAK..VIBRATE_STRONG
+
         /** [GlobalConfig.language] 的默认值：跟随系统。 */
         const val DEFAULT_LANGUAGE = "auto"
+
+        /**
+         * [GlobalConfig.palette] 的默认值 —— **COUI 自己那套蓝**（`lightColorScheme()` 的 `primary`）。
+         *
+         *  字面量只写在这里：界面层那枚举的默认档用这个常量当 id，默认档与「没选过」是同一个东西。
+         */
+        const val DEFAULT_PALETTE = "default"
+
+        /** [GlobalConfig.theme] 的三档 —— 与界面层 `AppTheme` 的 code 一一对应。 */
+        const val THEME_AUTO = "auto"
+        const val THEME_LIGHT = "light"
+        const val THEME_DARK = "dark"
+
+        /** [GlobalConfig.theme] 的默认值：跟随系统。 */
+        const val DEFAULT_THEME = THEME_AUTO
 
         /** [GlobalConfig.colorOsApi] 的默认值：默认开启。 */
         const val DEFAULT_COLOR_OS_API = true
@@ -238,8 +344,13 @@ data class GlobalConfig(
             GlobalConfig(
                 enabled = v.bool(ConfigFields.F_MODULE_ENABLED),
                 vibrate = v.bool(ConfigFields.F_VIBRATE),
+                // 手改过的文件可能写进 7 —— 越界的幅度会直接交给 `VibrationEffect`，
+                //  所以在这一层就钳住（滑杆两端与这里同一个区间）。
+                vibrateStrength = v.number(ConfigFields.F_VIBRATE_STRENGTH).coerceIn(VIBRATE_STRENGTH_RANGE),
                 toastOnRun = v.bool(ConfigFields.F_TOAST_ON_RUN),
                 language = v.text(ConfigFields.F_LANGUAGE),
+                palette = v.text(ConfigFields.F_PALETTE),
+                theme = v.text(ConfigFields.F_THEME),
                 colorOsApi = v.bool(ConfigFields.F_COLOR_OS_API),
                 miniWindowAnim = v.bool(ConfigFields.F_MINI_WINDOW_ANIM),
             )
@@ -301,8 +412,30 @@ data class Config(
      *  界面优先用「这次清单里的新名字」（见 `ui/...` 的名字优先级），表只是冷启动时的兜底。
      */
     val appNames: Map<String, String> = emptyMap(),
+    /**
+     * **组合按键**（顺序 = 界面上的顺序，也是成员数相同时的优先级）。
+     *
+     *  与 `customKeys` / [appNames] 一样**只走落盘这一列**：它是一张列表，进不了
+     *  [ConfigFields] 那种扁平字段表。组合键的判定目前还没接（判定侧要的是一张「哪些键算一组」
+     *  的表，得另走一条广播），所以注入侧读到的 `Config` 里这一项恒为空。
+     */
+    val combos: List<ComboKey> = emptyList(),
 ) {
     fun key(id: KeyId): KeyConfig = keys[id] ?: KeyConfig.defaultFor(id)
+
+    /**
+     * **这颗键现在生效吗** —— 两级相与：[GlobalConfig.enabled]（模块总闸）与 [KeyConfig.enabled]
+     * （这一颗键自己的开关）。
+     *
+     *  这是**唯一判据**：注入侧的认领（`ConfigChannel.enabledOf`）、宿主侧的执行与松手
+     *  （`GestureReceiver`）、宿主侧的场景派发放行（`SideKeyGestureHooks`）三处都调它，
+     *  不许再就地写「`global.enabled && key(...).enabled`」—— 那一套曾经在四个地方各写一遍，
+     *  漏改一处就是「某个路径上停用的键还在吞键」，而编译期与 CI 都看不见。
+     *
+     *  界面侧要的往往只是**一半**：首页总开关那行看 `global.enabled`，⋮ 菜单那行看
+     *  `key(id).enabled` —— 那些地方继续各取一半，别拿这个方法去替代（会让总闸锁死自己）。
+     */
+    fun isLive(id: KeyId): Boolean = global.enabled && key(id).enabled
 
     /** 某个目标该显示的名字（按 [AppTarget.identity] 查）；没记过返回 `null`。 */
     fun appName(target: String): String? = appNames[AppTarget.identity(target)]
@@ -356,6 +489,25 @@ data class Config(
      */
     fun keyForRawCode(code: Int): KeyConfig? = allKeys.firstOrNull { it.keyCode == code }?.let { key(it) }
 
+    /**
+     * 当前按着 [down] 这几颗键（`KeyId.id`）时，该由哪一档组合键接管 —— 没有就是 `null`。
+     *
+     *  **成员多的优先**：`{侧键, 音量上}` 与 `{侧键, 音量上, 音量下}` 同时成立时，用户按了三颗
+     *  显然是冲更具体的那一档去的。成员数一样时取 [combos] 里靠前的那一档 —— 与界面上谁排在
+     *  前面是同一个口径（`maxByOrNull` 保留第一个最大值）。
+     *
+     *  判据只看**集合包含**（[ComboKey.matches]），不看按下的先后：两颗键「同时按」时上报顺序
+     *  由驱动决定，拿它当判据等于让配置依赖硬件细节。
+     *
+     *  成员里可能有**已经删掉的键**（自定义键删了、组合键还指着它）：那一档这辈子凑不齐，等于
+     *  停用。不在读取时清理，是因为「删键」与「改组合」是两条独立的路，清理要跨两处同步 ——
+     *  少一个成员反而会把用户写的「三键组合」悄悄降成两键。
+     *
+     *  这里是「底层接口」那一半：判定侧（`inject/input`）判出「这几颗键一起按着」之后调它取档位，
+     *  再按短按 / 长按取 [ComboKey.actionOf]。接线不在此刻。
+     */
+    fun comboFor(down: Set<String>): ComboKey? = combos.filter { it.isUsable && it.matches(down) }.maxByOrNull { it.keys.size }
+
     /** 顶层那两位的取值 —— 与另两段同一套（见 `KeyConfig.fieldValues` 的说明）。 */
     fun fieldValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -373,12 +525,17 @@ data class Config(
             )
 
         /**
-         * 拼一份配置 —— 顶层那两位（两个「已确认」标记）从取值表来，与另外两段同一套读法。
+         * 拼一份配置 —— 扁平字段从取值表来，几张「表」的段由调用方读好传进来。
          *
          *  [keys] / [global] 由调用方各自按 [KeyConfig.ofFields] / [GlobalConfig.ofFields] 建好。
          *  [customKeys] 与 [keys] **必须对得上**：每一个自定义键都得在 `keys` 里有一条，
          *  否则 `key(id)` 会退回默认值，界面上看着像「刚收集的键绑定全丢了」。
+         *
+         *  `@Suppress("LongParameterList")`：这不是「参数太多、该拆对象」那种函数 —— 参数个数就是
+         *  配置里那几张表的个数（扁平取值表 + 三张进不了字段表的段）。拆成一个 `Sections` 壳只是
+         *  把它们挪个地方，读取处还得一层层解引用，而每加一张表就多一个要同步的落点。
          */
+        @Suppress("LongParameterList")
         fun ofFields(
             keys: Map<KeyId, KeyConfig>,
             global: GlobalConfig,
@@ -387,6 +544,8 @@ data class Config(
             customKeys: List<KeyId> = emptyList(),
             /** 名字表（`app_names` 那一段）—— 同上，由 [ConfigCodec] 单独读出来传进来。 */
             appNames: Map<String, String> = emptyMap(),
+            /** 组合按键（`combos` 那一段）—— 同上。 */
+            combos: List<ComboKey> = emptyList(),
         ): Config =
             Config(
                 keys = keys,
@@ -395,6 +554,7 @@ data class Config(
                 disclaimerAccepted = v.bool(ConfigFields.F_DISCLAIMER),
                 commandDisclaimerAccepted = v.bool(ConfigFields.F_COMMAND_DISCLAIMER),
                 appNames = appNames,
+                combos = combos,
             )
     }
 }

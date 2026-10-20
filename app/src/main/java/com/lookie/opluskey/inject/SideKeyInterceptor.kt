@@ -284,18 +284,34 @@ internal class SideKeyInterceptor(
      *  每次都打会把日志刷满；留 `d` 的话在 release 里会被编译期消灭 ——「按了键但模块没认领」
      *  于是**一行都没有**，而这正是排查「侧键没反应」最缺的一条（ROM 换了内部码 / 换了键码时，
      *  用户日志里得能看见那个数）。
-     *  PM 那条：它本来就能收到所有按键，按 `d` 记（真机排查时才看）。
+     *
+     *  策略类那条的**抬手**记 `d`（不记就等于漏了一半证据）：一颗键「按下与抬手用两个码」时，
+     *  只看按下那一行分不出来 —— 而这正是「长按换了颗码上报」的形状，也是「这颗键根本
+     *  不发抬手」与「发了但被我吞了」的唯一分界。log 包里看得到，release 里被消灭，符合
+     *  「高频路径留 d」的口径。
+     *
+     *  PM 那条：它本来就能收到所有按键，按 `d` 记、且仍然只记按下（真机排查时才看）。
      */
     private fun logUnclaimed(
         point: Framework.InterceptionPoint,
         keyEvent: KeyEvent,
         raw: Boolean,
     ) {
-        if (keyEvent.action != KeyEvent.ACTION_DOWN) return
+        // PM 那条本来就能收到所有按键，按 `d` 记、且仍然只记按下（真机排查时才看）。
         if (raw) {
-            XLog.d("按键（$point）：不认识的 keyCode=${keyEvent.keyCode}，放行给系统")
-        } else if (keyEvent.keyCode !in QUIET_KEY_CODES) {
+            if (keyEvent.action == KeyEvent.ACTION_DOWN) {
+                XLog.d("按键（$point）：不认识的 keyCode=${keyEvent.keyCode}，放行给系统")
+            }
+            return
+        }
+        if (keyEvent.keyCode in QUIET_KEY_CODES) return
+        if (keyEvent.action == KeyEvent.ACTION_DOWN) {
             XLog.w("按键（$point）：keyCode=${keyEvent.keyCode} 不在认领白名单，放行给系统")
+        } else {
+            // 抬手也记一条（`d`，只在 log 包里看得到）：**没认领的键只记按下**会漏掉一类关键证据
+            //  ——「按下与抬手的码不同」正是这颗键长按换了个码上报的形状，而按下的那一行看不出来。
+            //  同时它也让「这颗键根本不发抬手」变得可见（按住不放也永远等不到 UP）。
+            XLog.d("按键（$point）：keyCode=${keyEvent.keyCode} 未认领键的抬手（放行给系统）")
         }
     }
 
@@ -319,6 +335,13 @@ internal class SideKeyInterceptor(
             if (keyEvent.action == KeyEvent.ACTION_DOWN && keyEvent.repeatCount > 0) {
                 // 按住不放的 repeat：不能喂判定器（会刷新 pressAt、作废已排的长按枪），
                 // 也不能放行给系统（键已被接管）—— 直接吞掉。框架自己的分支也先判 getRepeatCount()==0。
+                //
+                //  只给**第 1 发**重复留一行：它是「这颗键真的被按住」的唯一证据。有的键上报的是
+                //  「按下即抬起」的一对合成事件（DOWN 与 UP 只差几毫秒），那种键永远判不出长按 ——
+                //  有这一行就能一眼分开「判定坏了」与「这颗键根本不会保持按下」。
+                if (keyEvent.repeatCount == 1) {
+                    XLog.w("${id.label}（$point）：按住不放（第 1 发重复）keyCode=${keyEvent.keyCode}")
+                }
                 true
             } else {
                 when (keyEvent.action) {
@@ -327,6 +350,15 @@ internal class SideKeyInterceptor(
                         // 注入侧 i/d 在 LSPosed 日志页里看不到；一次按键两行，不会刷屏。
                         //  字面量**不要动**（六、2：判据级日志的字面量是接口，改它等于改判据）。
                         XLog.w("${id.label}（$point）：DOWN keyCode=${keyEvent.keyCode}")
+                        // d 级（真机排查才看）：`deviceId` 与 `flags` 是分开「人按的」与
+                        //  「ROM 合成的一对事件」的唯一证据 —— 后者的 DOWN/UP 只差几毫秒，
+                        //  靠时长判长按先天不成立。字面量是新加的一行，不动上面那条判据。
+                        //  拼串必须惰性：release 下整段被编译期消灭，不该在调用点先求值一次。
+                        XLog.d {
+                            "${id.label}（$point）：DOWN 明细 deviceId=${keyEvent.deviceId}" +
+                                " source=${keyEvent.source} repeat=${keyEvent.repeatCount}" +
+                                " flags=${keyEvent.flags}"
+                        }
                         detector.onKeyDown(id, keyConfig)
                         true
                     }

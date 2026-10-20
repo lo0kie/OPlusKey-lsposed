@@ -18,11 +18,13 @@
 | ---------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | 包级环 / 边                              | **0 / 30**（细分档位口径；`ui/hook` 单独成档后由 27 变 31，根包文件归入 root 档后为 30，见下） | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
 | `SettingsPage` 状态字段                  | **21**                                                                                         | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
-| `SettingsPage.xxx` 扩展                  | 219 个，散在 67 文件（2026-10-19 复核：204 / 65 → 215 / 67 → 219 / 67）                        | `grep -rcE 'fun SettingsPage\.' --include=*.kt .`                                   |
-| `ui/SettingsPage.kt` 行数                | **523**（879 → 699 → 497 → 517 → 523）                                                         | `wc -l ui/SettingsPage.kt`                                                          |
+| `SettingsPage.xxx` 扩展                  | **224** 个，散在 67 文件（204 / 65 → 215 / 67 → 219 / 67 → 224 / 67）                          | `python3 tools/audit-arch.py`（规模那一节）                                         |
+| `ui/SettingsPage.kt` 行数                | **531**（879 → 699 → 497 → 517 → 523 → 531，多出的是 `hints` 那一域）                          | `wc -l ui/SettingsPage.kt`                                                          |
 | `inject/ProbeChannel.kt` 行数            | 337（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）                                  | `wc -l inject/Probe*.kt`                                                            |
 | `host/action/MiniWindowLauncher.kt` 行数 | 695（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`）                       | `wc -l host/action/MiniWindow*.kt`                                                  |
 | 单文件最大行数                           | **844**（`ui/model/ActionIcons.kt`）；全仓**无 > 1000 行**的文件                               | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
+| 宿主入口编排                             | `GestureReceiver` **325** 行 + `GestureExec` **367** 行（原一个 572 行的单例）                  | `python3 tools/audit-arch.py`                                                       |
+| 业务规则的副本数                         | 6 条判据全达标（两级闸门 0 处手写、失败分类 0 处手写、动作标题 1 处实现 …）                    | `python3 tools/audit-arch.py`                                                       |
 | 屏文件 import 页面                       | 49 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线                          | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
 | 零引用 import                            | 0，且由 detekt 拦下                                                                            | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
@@ -346,6 +348,36 @@ ui/model/PageLabels.kt    3 个标签函数（gestureLabel / commandKindLabel / 
 - 执行分支仍是 `when`，但**分支数 = 动作档数**这件事要显式化：`ActionRunner` 用穷尽 `when`（无 `else`），这样漏一档会在**编译期**报出来（比运行时静默降级强）。
 
 ---
+
+### 动作 9：同一条业务规则只留一处实现（2026-10-20）
+
+判据 1、2 管的是**包与包之间**的方向。它们全绿之后还剩另一类耦合：**同一条规则在几个地方各写
+一遍**——包依赖图上看不见，编译期也发现不了，漏改一处的表现是「某条路径上行为不一致」。
+这一批把四条最贵的收成一处，判据进 `tools/audit-arch.py`（CI 只打印不阻断）：
+
+| 规则 | 之前 | 现在 | 落点 |
+| --- | --- | --- | --- |
+| 「这颗键现在生效吗」（总闸 且 这颗键） | 4 份手写：`ConfigChannel.enabledOf` / `GestureReceiver` 两处 / `SideKeyGestureHooks` 一处 | 1 | `core/model/Config.isLive` |
+| 「包还在吗 → 报哪一档失败」 | 3 份（`AppLauncher` 同文件两遍 + `MiniWindowLauncher`） | 1 | `host/action/CommandFailure.appInstalled` / `entryFailure` |
+| 「一个动作怎么念」 | 2 份同构 `when`（`ActionNotice` / `CommandText.stepTitle`），靠注释对齐 | 1 | `core/model/ActionLabels.actionTitle` |
+| 「链路就绪没有 / 先报哪句话」 | 2 套并列 `when`（`blockedReason` / `linkChecks`） | 1 份事实 + 2 处渲染 | `ui/LinkCheck.LinkFacts` |
+
+`ConfigChannel.enabledOf` 是**故意不并**的那一条：它的一级是 `takeOver`（「收到过权威配置没有」），
+不是 `global.enabled` —— 缺 `module_enabled` 的畸形广播里后者会被解析兜底成 `false`，用 `isLive`
+会让整个模块被一条残缺广播静默关掉。两者语义不同，合并就是制造 bug（见那里的注释）。
+
+同一批还拆了两个「一个类干四件事」：
+
+- `host/GestureReceiver`（572 行单例）→ **入口编排**（取 Context / 签名闸 / 保活 / 报活 / 注册广播，
+  325 行）+ `host/GestureExec`（一条手势进来之后的全部判定与执行，367 行）。拆分顺带把
+  `handle` 的圈复杂度与 7 个 `return` 降到阈值内（提取 `staleOrDuplicate` / `resolveKey` /
+  `dispatch`），detekt 基线因此**少了 4 条**，没有新增任何条目。
+- `ui/state/HostLinkState` 里的两条提示条 + 作用域 + `dispose()` → `ui/state/HintCenter`。
+  原先「链路诊断状态」带着生命周期，只想读 `hostServiceUp` 的地方也得背一份会 `cancel()` 的对象。
+
+**没做的一条（审计后撤销）**：原计划把 `bridge/Framework` 的 ROM 常量表下沉 `core/model`。
+实测 `host` 也要 `findHostHandlerClass` 做场景派发 hook —— 常量与查找在宿主机同样用得上，
+拆开只会让候选表出现两个落点，直接违反 `AGENTS.md` 一、7（候选类与方法名只写在 `Framework.kt`）。
 
 ## 五、目标结构（含「禁止边」白名单）
 

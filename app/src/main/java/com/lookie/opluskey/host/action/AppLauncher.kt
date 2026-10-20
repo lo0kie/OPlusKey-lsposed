@@ -75,19 +75,9 @@ internal class AppLauncher(
             //  分身目标：主用户的 PM 问不出那个包在不在（`getApplicationInfo` 必抛），
             //  这一支**不报「可能已卸载」**—— 上面 `resolveAsUser` 已经按 userId 问过 binder，
             //  拿不到就是「没有可用入口」。误报「已卸载」正是「列表点得动、按下报找不到」的成因之一。
-            val installed =
-                if (userId != 0) {
-                    true
-                } else {
-                    try {
-                        pm.getApplicationInfo(pkg, 0)
-                        true
-                    } catch (e: Throwable) {
-                        false
-                    }
-                }
+            val installed = appInstalled(pm, pkg, userId)
             XLog.w("解析不到界面：$target（这个包还在=$installed，user=$userId）")
-            onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
+            onFailure(entryFailure(installed))
             return
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -106,19 +96,9 @@ internal class AppLauncher(
             //  （`app:包名/Activity`）**被停用 / 组件不存在**时抛的也是 ANFE，
             //  一律报 APP_MISSING（「可能已经卸载了」）会把用户带偏 —— 包明明还在。
             //  判据与上面 `intent == null` 那一支同源（`getApplicationInfo` 查得到就是还在）。
-            val installed =
-                if (userId != 0) {
-                    true
-                } else {
-                    try {
-                        pm.getApplicationInfo(pkg, 0)
-                        true
-                    } catch (e2: Throwable) {
-                        false
-                    }
-                }
+            val installed = appInstalled(pm, pkg, userId)
             XLog.w("拉起界面失败：$target（这个包还在=$installed，user=$userId）", e)
-            onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
+            onFailure(entryFailure(installed))
         } catch (e: Throwable) {
             // 最常见的是后台启动限制 / 安全异常，不是「已卸载」—— 报「没执行成功」别误导
             XLog.w("拉起界面失败：$target（user=$userId）", e)

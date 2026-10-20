@@ -25,7 +25,6 @@
     <ID>CyclomaticComplexMethod:ProbeCall.kt$internal fun ProbeChannel.coerce( args: List&lt;String&gt;, types: Array&lt;Class&lt;*&gt;&gt;, ): Array&lt;Any?&gt;?</ID>
     <ID>CyclomaticComplexMethod:ProbeOps.kt$internal fun ProbeChannel.dress( loader: ClassLoader, intent: Intent, )</ID>
     <ID>CyclomaticComplexMethod:SettingsPageDebug.kt$internal fun SettingsPage.onDebugCommand(intent: android.content.Intent)</ID>
-    <ID>CyclomaticComplexMethod:SliderRow.kt$internal fun Modifier.tapSliderToSeek( min: Int, max: Int, enabled: Boolean, onSeek: (Int) -&gt; Unit, ): Modifier</ID>
     <ID>CyclomaticComplexMethod:SystemContext.kt$SystemContext$private fun stillHeldByItsProcess( loader: ClassLoader, held: Context, ): Boolean</ID>
     <ID>EmptyFunctionBlock:AppLauncher.kt$AppLauncher.&lt;no name provided&gt;${}</ID>
     <ID>InstanceOfCheckForException:FlexibleSwitchToMini.kt$e is java.lang.reflect.InvocationTargetException</ID>
@@ -43,7 +42,6 @@
     <ID>LongMethod:IconInput.kt$@Composable internal fun SettingsPage.IconInputView( icon: ImageVector, value: String, onValueChange: (String) -&gt; Unit, title: String, label: String, modifier: Modifier = Modifier, errorMessage: String = "", enabled: Boolean = true, /** * 多行（textarea）—— 命令正文那一栏用它：一条命令可能很长，多行粘贴也不该被揉成一行。 * * 单行档（命令名）保持原样；两档的排版、图标、清除键、错误行都是同一套，只差行数与换行。 */ multiline: Boolean = false, )</ID>
     <ID>LongMethod:PageMenuPopup.kt$@Composable internal fun SettingsPage.MenuPopup( show: Boolean, preciseClick: PreciseClickState, entries: List&lt;MenuEntry&gt;, onDismiss: () -&gt; Unit, maxHeight: Dp? = null, enableWindowDim: Boolean = false, columnAnchor: PreciseClickState? = null, onLeave: (() -&gt; Unit)? = null, )</ID>
     <ID>LongMethod:PageMenuPopup.kt$@Composable private fun SettingsPage.MenuRow( row: MenuEntry.Row, index: Int, optionSize: Int, isFirst: Boolean, isLast: Boolean, /** 浮层是不是真开着（见上面的 `@param`）。 */ interactive: Boolean, /** 整列的手势账本（见 [GestureProbe]）：点击日志要带上「这一段滑了多远」。 */ probe: GestureProbe?, )</ID>
-    <ID>LongMethod:PageSlider.kt$@Composable internal fun SettingsPage.SliderRow( title: String, summary: String, icon: ImageVector, position: CardListPosition, min: Int, max: Int, value: Int, default: Int, enabled: Boolean = true, onCommit: (Int) -&gt; Boolean, )</ID>
     <ID>LongMethod:ProbeOps.kt$internal fun ProbeChannel.dress( loader: ClassLoader, intent: Intent, )</ID>
     <ID>LongMethod:SettingsPageDebug.kt$internal fun SettingsPage.onDebugCommand(intent: android.content.Intent)</ID>
     <ID>LongMethod:SettingsPageHooks.kt$SettingsPageHooks$fun install( module: XposedModule, loader: ClassLoader, )</ID>
@@ -57,8 +55,6 @@
     <ID>LongParameterList:PageHeaderWidget.kt$( title: String, subtitle: String = "", trailingSubtitleIcon: ImageVector? = null, largeTitleSubtitle: String = "", scrollBehavior: ScrollBehavior, state: HazeState, actions: @Composable RowScope.() -&gt; Unit = {}, bottomContent: @Composable () -&gt; Unit = {}, )</ID>
     <ID>LongParameterList:PageMenuPopup.kt$( row: MenuEntry.Row, index: Int, optionSize: Int, isFirst: Boolean, isLast: Boolean, /** 浮层是不是真开着（见上面的 `@param`）。 */ interactive: Boolean, /** 整列的手势账本（见 [GestureProbe]）：点击日志要带上「这一段滑了多远」。 */ probe: GestureProbe?, )</ID>
     <ID>LongParameterList:PageMenuPopup.kt$( show: Boolean, preciseClick: PreciseClickState, entries: List&lt;MenuEntry&gt;, onDismiss: () -&gt; Unit, maxHeight: Dp? = null, enableWindowDim: Boolean = false, columnAnchor: PreciseClickState? = null, onLeave: (() -&gt; Unit)? = null, )</ID>
-    <ID>LongParameterList:PageSlider.kt$( title: String, summary: String, icon: ImageVector, position: CardListPosition, min: Int, max: Int, value: Int, default: Int, enabled: Boolean = true, onCommit: (Int) -&gt; Boolean, )</ID>
-    <ID>LongParameterList:SwitchRow.kt$( title: String, summary: String, icon: ImageVector, checked: Boolean, position: CardListPosition, enabled: Boolean = true, onCheckedChange: (Boolean) -&gt; Unit, )</ID>
     <ID>LongParameterList:TileMenuPopup.kt$( show: Boolean, preciseClick: PreciseClickState, /** 要列的行（[ActionCatalog.modeMenu] 取出来的那一层）。 */ modes: List&lt;ActionCatalog.Spec&gt;, current: Action, onPick: (ActionCatalog.Spec) -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
     <ID>LongParameterList:TileWidgets.kt$( icon: ImageVector, description: String, enabled: Boolean = true, error: Boolean = false, tint: Color? = null, onClick: () -&gt; Unit, )</ID>
     <ID>LoopWithTooManyJumpStatements:CustomCommandRunner.kt$CustomCommandRunner$while</ID>

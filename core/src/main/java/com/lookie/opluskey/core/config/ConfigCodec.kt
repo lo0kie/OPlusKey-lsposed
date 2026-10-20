@@ -42,9 +42,14 @@ object ConfigCodec {
      *
      *  1 = `org.json` 那版；2 = kotlinx + 新的 md5 口径；
      *  3 = `KeyDto` 多了 `doubleClickMs` / `instantSingle`（从 `global` 段搬下来，每颗键一份）；
-     *  **4** = `GlobalDto` 多了 `enabled`（模块总闸从 `keys.plus.enabled` 里拆出来）。
+     *  4 = `GlobalDto` 多了 `enabled`（模块总闸从 `keys.plus.enabled` 里拆出来）；
+     *  5 = `KeyDto` 多了 `longRepeatVibrate`（连续触发时是否每次重复都振动）；
+     *  6 = `GlobalDto` 多了 `vibrateStrength`（振动强度三档）；
+     *  7 = `KeyDto` 多了 `rules`（按状态分支的动作），顶层多了 `combos`（组合按键）；
+     *  8 = `GlobalDto` 多了 `palette`（页面配色）；
+     *  9 = `GlobalDto` 多了 `theme`（界面颜色：跟随系统 / 浅色 / 深色）。
      */
-    const val VERSION = 4
+    const val VERSION = 9
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

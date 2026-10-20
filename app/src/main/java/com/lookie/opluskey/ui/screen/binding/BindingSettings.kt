@@ -9,6 +9,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
+import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.state.CommandsSave
@@ -44,15 +45,18 @@ internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
     val rowsEnabled = enabled
     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         SliderRow(
-            title = I18n.get(Strings.SETTING_DOUBLE_CLICK_DELAY, "单击延迟"),
-            icon = PageIcons.DelayTap,
-            summary = I18n.get(Strings.BINDING_DOUBLE_CLICK_WAIT, "单击后等待双击的时长"),
             position = cardListPositionOf(0, SINGLE_SETTING_ROWS),
-            min = KeyConfig.MIN_DOUBLE_CLICK_MS,
-            max = KeyConfig.MAX_DOUBLE_CLICK_MS,
-            value = key.doubleClickMs,
-            default = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
-            enabled = rowsEnabled,
+            spec =
+                SliderSpec(
+                    title = I18n.get(Strings.SETTING_DOUBLE_CLICK_DELAY, "单击延迟"),
+                    icon = PageIcons.DelayTap,
+                    summary = I18n.get(Strings.BINDING_DOUBLE_CLICK_WAIT, "单击后等待双击的时长"),
+                    min = KeyConfig.MIN_DOUBLE_CLICK_MS,
+                    max = KeyConfig.MAX_DOUBLE_CLICK_MS,
+                    value = key.doubleClickMs,
+                    default = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
+                    enabled = rowsEnabled,
+                ),
         ) { v ->
             val now = configState.config.value
             val target = KeyWatchState.editing(now)

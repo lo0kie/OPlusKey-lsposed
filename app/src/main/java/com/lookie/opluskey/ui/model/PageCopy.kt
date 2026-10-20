@@ -100,7 +100,11 @@ internal val SERVICE_NOT_RUNNING_HINT: String
  *  只写这两件要做的事。
  */
 internal val INJECT_NOT_LOADED_HINT: String
-    get() = I18n.get(Strings.STATUS_DISABLED, "模块没生效：在 LSPosed 里把本模块的作用域勾上「系统」")
+    get() =
+        I18n.get(
+            Strings.STATUS_DISABLED,
+            "模块没生效：在 LSPosed 里给模块勾上「系统框架」和「手势体感」，改完重启手机",
+        )
 
 /**
  * 首页那条常驻提示的第八种文案：**换过包但没重启** —— 系统那一侧回了包，可它报的构建标识不是本包。
@@ -110,6 +114,55 @@ internal val INJECT_NOT_LOADED_HINT: String
  */
 internal val RESTART_REQUIRED_HINT: String
     get() = I18n.get(Strings.STATUS_RESTART_REQUIRED, "模块已更新，重启手机后生效")
+
+/**
+ * 自检**还没问完**时那条提示 —— 这一小段（开机后几秒、或刚进页面那一下）此前什么都不显示。
+ *
+ *  为什么值得单独一句：什么都没显示时，用户看到的是「页面正常但点了没反应」；
+ *  而这一档只是**还没问完**，不是故障 —— 一句中性的「正在检查」既不说谎，也解释了那几秒。
+ *
+ *  它不能排进「未生效」那一档：那会在每次进页面时闪一下假故障（`LinkFacts.injectChecked`
+ *  就是为这件事加的）。
+ */
+internal val CHECKING_HINT: String
+    get() = I18n.get(Strings.STATUS_CHECKING, "正在检查模块…")
+
+/**
+ * 「装了新版、系统侧还没用上」与「作用域里撤掉了系统框架」**共用**的一句话。
+ *
+ *  这两件事在模块眼里是同一组信号：本轮系统侧没回话、而后者的包又往往刚好是「这次开机之后才装的」。
+ *  作用域只有框架自己知道（宿主与 system_server 都读不到 `/data/adb`），所以不硬猜是哪一种 ——
+ *  一句话把两步都说了：先重启，重启后还见这句就去勾作用域。
+ */
+internal val PENDING_OR_SCOPE_HINT: String
+    get() =
+        I18n.get(
+            Strings.STATUS_PENDING_OR_SCOPE,
+            "模块已更新：重启手机后生效；若重启后仍见本行，请到 LSPosed 里确认「系统框架」已勾选",
+        )
+
+/**
+ * 首页那条常驻提示的第十二种文案：**系统侧回着话，但它跑的是旧包**（进程比盘上这个包起得还早）。
+ *
+ *  与 [RESTART_REQUIRED_HINT] 分工不同：那一档是「系统侧压根没回话」，除了重启没别的可能；
+ *  这一档**界面已经在新版上了**（页面跑在刚装的那份代码里），只有系统侧还是旧的。
+ *  文案只给动作（重启手机）：界面已生效这件事在这条提示里不必说，用户看的这一页就是它。
+ */
+internal val SYSTEM_STALE_HINT: String
+    get() =
+        I18n.get(
+            Strings.STATUS_SYSTEM_STALE,
+            "系统侧还是旧版，重启手机后生效",
+        )
+
+/**
+ * 首页那条常驻提示的第十一种文案：**宿主侧跑着旧包** —— 那个进程比盘上这个包起得还早。
+ *
+ *  与「要重启手机」分开写，是因为它**不需要重启**：宿主是普通应用进程，重开就换新代码
+ *  （`AGENTS.md` 五之一、6）。把它混进「重启手机」那一档，等于让人为一次装包多付一次重启。
+ */
+internal val HOST_STALE_HINT: String
+    get() = I18n.get(Strings.STATUS_HOST_STALE, "后台服务还是旧版：用「重启服务」即可，不用重启手机")
 
 /**
  * 首页那条常驻提示的第九种文案：回包了、但**一个接管点都没装上** —— 这一版 ROM 把那些私有类改了形。
@@ -250,4 +303,31 @@ internal fun languageLabel(lang: AppLanguage): String =
         AppLanguage.AUTO -> I18n.get(Strings.MORE_LANGUAGE_AUTO, "跟随系统")
         AppLanguage.ZH_CN -> I18n.get(Strings.MORE_LANGUAGE_ZH, "简体中文")
         AppLanguage.EN -> I18n.get(Strings.MORE_LANGUAGE_EN, "English")
+    }
+
+/**
+ * 系统配色在界面上叫什么 —— 「系统配色」那一行的副标题与它那一层菜单共用这一份。
+ *
+ *  一套色板在界面上就是一枚颜色，没有别的可写：菜单里只能靠名字区分，所以五个名字都得给。
+ *  与 [languageLabel] 同一个理由：[PagePalette] 上只留 `id` 与种子色（`id` 原样进配置文件）。
+ */
+internal fun paletteLabel(palette: PagePalette): String =
+    when (palette) {
+        PagePalette.DEFAULT -> I18n.get(Strings.MORE_PALETTE_BLUE, "蓝色")
+        PagePalette.GREEN -> I18n.get(Strings.MORE_PALETTE_GREEN, "绿色")
+        PagePalette.ORANGE -> I18n.get(Strings.MORE_PALETTE_ORANGE, "橙色")
+        PagePalette.PURPLE -> I18n.get(Strings.MORE_PALETTE_PURPLE, "紫色")
+        PagePalette.PINK -> I18n.get(Strings.MORE_PALETTE_PINK, "玫红色")
+    }
+
+/**
+ * 界面颜色那三档在界面上叫什么 —— 「界面颜色」那一行的副标题与它那一层菜单共用这一份。
+ *
+ *  与 [languageLabel] 同一个理由：[AppTheme] 上只留 `code`（原样进配置文件）。
+ */
+internal fun themeLabel(theme: AppTheme): String =
+    when (theme) {
+        AppTheme.AUTO -> I18n.get(Strings.MORE_THEME_AUTO, "跟随系统")
+        AppTheme.LIGHT -> I18n.get(Strings.MORE_THEME_LIGHT, "浅色")
+        AppTheme.DARK -> I18n.get(Strings.MORE_THEME_DARK, "深色")
     }

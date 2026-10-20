@@ -15,6 +15,7 @@
 | 设置包     | **`com.android.settings`**（不是 `com.oplus.settings`）                             |
 | 侧键实现包 | **`com.oplus.gesture`**（APK：`/system_ext/app/OplusGestureUI/OplusGestureUI.apk`） |
 | 框架侧实现 | **`oplus-services.jar`**（`/system/framework/oplus-services.jar`）                  |
+| 签名校验   | 装了**核心破解** ⇒ 签名不同的包也能 `adb install -r -d` 直接覆盖，不必卸载重装      |
 
 ## 二、真正的接管点（框架侧）
 
@@ -263,6 +264,21 @@ LSPosed 只读 `META-INF/xposed/` 元数据。
   ⚠️ 拷这个库要**连 `-wal` 一起拷**（`modules_config.db` + `modules_config.db-wal`）：最近一次写入还在 WAL 里，
   只拷主库会读到**旧路径**，实测能得出「库 ≠ 真机」的假警报 —— 带上 `-wal` 再查就一致了。
 - 修法：把库里该行改成 `pm path` 的当前值，再重启。
+- **装机时序（实测，2026-10-20）**：这一档最常见的来路不是「库写错了」，而是**装包那一刻 daemon 没在跑**。
+  先前用 `lspctl stop` 停过 daemon（它不会自启），此后装包没有任何进程去收包变更、库自然还停在旧路径；
+  紧接着重启，开机那一轮 `LSPosedService` 拿旧路径解析失败 ⇒ `system` 整条跳过，而开机更晚的
+  `com.oplus.gesture` / `com.oplus.gesture.ui` 正常 —— 表现就是「设置页能开、自检 `宿主=true 注入=false`」。
+  这一轮过去之后 lspd 自己会把库刷成新路径（`modules.apk_path` 与 `pm path` 逐字相同），
+  所以**此时只需再整机重启一次**，不必手工改库。
+- **正常只需一轮重启**：决定「一轮还是两轮」的唯一判据是**按下重启那一刻库里的 `apk_path` 是否已等于 `pm path`**。
+  相等 ⇒ 一轮就注入；不等 ⇒ 这一轮整条跳过，只能再来一轮。所以装配顺序是
+  `lspctl status` 通 → 装包 → **用 `tools/device-state.py` 核对路径** → 重启：
+  路径一致才重启（一轮）；不一致说明 daemon 当时没处理包事件（见上一条），
+  **确认 `lspctl status` 通之后重装一次同一个包**（比手工改库安全，lspd 会自己把行刷成新路径），
+  再核对一次才重启。**核对放在重启之前，两轮重启就不必发生。**
+  反过来说：daemon 停着的时候别装包 —— 要么先把 daemon 救回来（重启）再装，要么就接受多付一轮。
+- 「daemon 在跑就会刷新路径」这条不是猜的：六之三之一 实测过「卸载重装后 `enabled` 与作用域被
+  lspd 自己写回库里」—— 那只可能来自它对包增删事件的处理，装包时的 `apk_path` 走同一条路。
 
 ### 六之三之一、同样的报错还有第二种来路：增量安装（实测）
 
@@ -284,11 +300,39 @@ LSPosed 只读 `META-INF/xposed/` 元数据。
   `META-INF/xposed/scope.list` 把 `enabled=1` 与作用域（`system` / `com.oplus.gesture`）写回库里；
   只有六之三那一档（路径过期）才需要手工改库。
 
+### 六之三之二、怎么判「哪一侧还在跑旧包」（模块自己判，2026-10-20）
+
+旧版靠 `ModuleInfo.BUILD_ID` 当尺子，问题是要**人手维护**：忘改一次就量不出差别
+（10-20 的两个包都还挂着 `2026-10-18-0004`，换了包从模块侧看不出任何不同）。现在的主尺子改成时间戳：
+
+- **判据**：`某进程的启动时刻 < 包的 lastUpdateTime` ⇒ 这个进程起的比包还早，它加载的是上一版代码。
+  进程里的类只在进程启动那一刻从 APK 加载，之后盘上怎么换都不影响它。
+- **换算**：`ProcClock.startWall() = currentTimeMillis - (elapsedRealtime - Process.getStartElapsedRealtime())`。
+  两端必须同基准（都用 `elapsedRealtime` 那一族）；拿 `getStartUptimeMillis` 去减 `elapsedRealtime`
+  会在深睡之后差出整段时间。三项都只读本进程状态，system_server 里也安全（六之五）。
+- **三处上报**：注入侧 `ACTION_INJECT_READY` 带 `EXTRA_INJECT_PROC_START`；宿主
+  `ACTION_HOST_SERVICE_UP` 带 `EXTRA_HOST_PROC_START`；设置页在**建页的 IO 线程上**问
+  `PackageManager` 要 `lastUpdateTime`（查的是 `ModuleInfo.PACKAGE`，不是 `context.packageName`）。
+- **余量**：比大小时留 5 秒。正常换包到开机/开页相差是分钟级；只有「包刚更新完、进程几乎同时起来」
+  这种边界会落到几秒内，那时不该判过期 —— 冤枉一次就得让人多重启一次手机。
+- **两侧的处置不同**：注入侧过期只能整机重启（一、11）；宿主侧过期用「重启服务」即可，
+  宿主是普通应用进程，重开就换新代码（五之一、6）。
+- **开机指纹**：`ProcClock.bootWall() = (currentTimeMillis - elapsedRealtime) / 1000 * 1000`，
+  同一轮开机内各进程算出来一致、跨一轮必不同。配合 `opluskey_ui.conf` 里的
+  `inject_ever_alive` / `inject_alive_boot` 两项，把「没回话」分成三档：从没起来过 / 装好等重启 / 本轮掉线。
+- **仍然分不开的一档**：「作用域漏了 `system`」与「勾了但从没重启过」现象完全一样（都是没回话、
+  也没有任何历史）。作用域只存在 `/data/adb/lspd/config` 的库里，宿主进程与 system_server 都读不到（六之六），
+  `lspctl` 也只有 `status` / `stop` —— 所以这一档的文案只能同时说两件事：先去勾，再重启。
+
 ### 六之四、本机 LSPosed 版本与可用工具
 
 - **框架 2.2.1 (7912)、API 102**（`lspctl status` 报的；管理器 APK 显示 2.0.2 属正常，两者版本号体系不同）。
 - `lspctl`：`/data/adb/modules/zygisk_lsposed/lspctl`，支持 `status` / `stop`。用法
-  `su -c 'sh /data/adb/modules/zygisk_lsposed/lspctl status'`。
+  `su -c 'sh /data/adb/modules/zygisk_lsposed/lspctl status'`。**没有查作用域的子命令**
+  （`Developer mode: no` 时连 `--json` 也只对交互会话有效），作用域只能查库。
+- 一条命令拿全：`python tools/device-state.py --port 5038` —— 时间线（`boot_count` / uptime / 开机时刻）、
+  意图（库里的 `enabled` / `scope` / `apk_path`）、事实（本轮 `modules_*.log` 里各进程的行数）一起打，
+  并把结论映射到六之三 / 六之三之一。设备上没有 `sqlite3`，它是把 db + `-wal` + `-shm` 一次 `tar` 回本地查的。
 - **`lspctl stop`（即 `emulated-soft-reboot.sh`）不要用来「软重启」**：实测它只停掉 lspd
   daemon，**不会自动重新拉起**，之后 `status` 报 `Connection refused`，框架停在「zygote 在跑但无 hook 引擎」的坏状态，
 - 设备 IP / adb 端口**每次重启都会变**（实测 44029 → 41031 → 44865），且同一台机常同时存在两条连接：`192.168.x.x:port`
@@ -1493,10 +1537,10 @@ aapt2 dump xmltree --file AndroidManifest.xml reference/gesture.apk | grep -A1 Q
 实测（PLQ110 / ColorOS 17，`1.0.0-debug`）——用宿主 uid（10277）发广播，走的是与产品完全相同的
 那条路（`am broadcast` 以 10277 身份发出 → `KeyHooks` 校验通过 → 主 looper 执行）：
 
-| 指令 | 日志 | 屏幕 |
-| --- | --- | --- |
-| `cmd=notifications` | `已在本机调 IStatusBarService.togglePanel（notifications）` | 通知中心**拉下来了** |
-| `cmd=control_center` | `已在本机调 IStatusBar.animateExpandSettingsPanel（控制中心）` | 控制中心展开 |
+| 指令                 | 日志                                                           | 屏幕                 |
+| -------------------- | -------------------------------------------------------------- | -------------------- |
+| `cmd=notifications`  | `已在本机调 IStatusBarService.togglePanel（notifications）`    | 通知中心**拉下来了** |
+| `cmd=control_center` | `已在本机调 IStatusBar.animateExpandSettingsPanel（控制中心）` | 控制中心展开         |
 
 所以 `togglePanel()` 这条**保持现状**：`asSystem` 不是失败点，删了行为也不会变 ——
 留着只为「哪天真从 binder 线程直调」那一档兜底。原来那句「清了反而判丢」是**推断、未实测**。
@@ -1560,6 +1604,16 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.GESTURE -p com.oplus.gestu
 `delegateModified`
 就是 delegate 的**返回值**，也就是最终落下去的档位（见 12.2 的日志构造）。⇒ 请求**送进去了**，是被 framework 内部改写的；**不是权限被拒**
 —— 被拒会抛 `SecurityException: Not allowed to change Do Not Disturb state`，日志里没有这一条。
+
+**外部的静音请求还会把系统送进免打扰**（10-20 15:03 实测）：同一条 `setRingerMode external to 0` 之后，
+`dumpsys notification` 的 `manualRule` 变成 `zenMode=ZEN_MODE_IMPORTANT_INTERRUPTIONS`、`state=STATE_TRUE`，
+而 `enabler` 记的是 **`com.oplus.gesture`**（宿主包名），时间戳与那条写入同一毫秒
+（`lastActivation=07:03:21.604Z` ↔ `external to 0` 15:03:21.606）。也就是说用户按一次键会看到
+「免打扰被打开」。同一时段 external 0 也有 `delegateModified=0`（真的落成静音）的记录 ——
+**结果取决于当时 zen 状态，不稳定**。
+
+⇒ 结论：**落档一律走内部通道**（`setRingerModeInternal`），公共接口只作退路。「使用 ColorOS 接口」
+那个开关管的是切完那一下的触觉与流体云，**不决定走哪条通道**。
 
 ### 12.2 `AudioService` 的两条入口（`/system/framework/services.jar` → `classes.dex`）
 
@@ -3514,17 +3568,17 @@ resolveActivityForMultiApp, has cached userId: 998
 的 uid 1000 有）；反过来 system_server 里借来的 Context 用 ContentResolver **必 NPE**（六之五）——
 两边各做一件自己做得来的事，谁都不需要 root。
 
-| 开关 | 读（宿主，`Settings`） | 写（system_server，binder） |
-| --- | --- | --- |
-| WLAN | `Global.wifi_on` | `wifi` · `setWifiEnabled`（`(bool)` / `(String,bool)`） |
-| 蓝牙 | `Global.bluetooth_on` | `bluetooth_manager` · `enable(AttributionSource)` / `disable(AttributionSource, persist=true)` |
-| 移动数据 | `Global.mobile_data` | `phone` · `setDataEnabled`（或 `setDataEnabledForReason`） |
-| 飞行模式 | `Global.airplane_mode_on` | `connectivity` · `setAirplaneMode` |
-| 免打扰 | —— （走既有实现，见 §23） | `Action.Oplus` → 宿主侧 `AppLauncher` |
-| 暗色模式 | `Secure.ui_night_mode`（`2` = 开） | `uimode` · `setNightMode` |
-| 省电模式 | `Global.low_power` | `power` · `setPowerMode`（1 = 开、0 = 关） |
-| 自动旋转 | —（见下） | `window` · `freezeDisplayRotation` / `thawDisplayRotation` |
-| NFC | —（`nfc_on` 读不到，见下） | `nfc` · `isEnabled` 读、`enable` / `disable` 写 |
+| 开关     | 读（宿主，`Settings`）             | 写（system_server，binder）                                                                    |
+| -------- | ---------------------------------- | ---------------------------------------------------------------------------------------------- |
+| WLAN     | `Global.wifi_on`                   | `wifi` · `setWifiEnabled`（`(bool)` / `(String,bool)`）                                        |
+| 蓝牙     | `Global.bluetooth_on`              | `bluetooth_manager` · `enable(AttributionSource)` / `disable(AttributionSource, persist=true)` |
+| 移动数据 | `Global.mobile_data`               | `phone` · `setDataEnabled`（或 `setDataEnabledForReason`）                                     |
+| 飞行模式 | `Global.airplane_mode_on`          | `connectivity` · `setAirplaneMode`                                                             |
+| 免打扰   | —— （走既有实现，见 §23）          | `Action.Oplus` → 宿主侧 `AppLauncher`                                                          |
+| 暗色模式 | `Secure.ui_night_mode`（`2` = 开） | `uimode` · `setNightMode`                                                                      |
+| 省电模式 | `Global.low_power`                 | `power` · `setPowerMode`（1 = 开、0 = 关）                                                     |
+| 自动旋转 | —（见下）                          | `window` · `freezeDisplayRotation` / `thawDisplayRotation`                                     |
+| NFC      | —（`nfc_on` 读不到，见下）         | `nfc` · `isEnabled` 读、`enable` / `disable` 写                                                |
 
 几个容易走错的方向：
 
@@ -3583,3 +3637,158 @@ resolveActivityForMultiApp, has cached userId: 998
   **无条件** `keyboardController.hide()`。「收集按键 → 添加按键」是两个独立弹窗交替，
   一关一开挤在同一帧 ⇒ 新弹窗里叫一次键盘会被那一下 `hide()` 盖掉，要连叫几帧
   （`IME_KICK_FRAMES`，取 6）。
+
+## 二十七、响铃档位切换那一下振动的效果号（反编译 SystemUI + oplus-services，2026-10-20，ColorOS 17）
+
+**三条路，三张表，不要互相推**：Action Button 侧键、三段式滑块、控制中心开关各走各的。
+弄混过一次：把滑块的 `setDown`（静音 `308`）当成侧键，于是模块切静音放得比系统重得多。
+
+**一、Action Button 侧键**（模块跟的是这条；`oplus-services.jar` → `classes.dex`，
+`com.android.server.audio.AudioServiceExtImpl.vibrateMM`）
+
+```
+侧键按键 → 改档 → AudioServiceExtImpl.vibrateMM(新档位, caller)
+  effectId = (新档位 == 2) ? 308 : (新档位 == 1) ? 430 : 0      // 0 = 静音档
+  OplusFeatureConfigManager.hasFeature("oplus.software.vibrator_lmvibrator")
+    → LinearmotorVibrator.createWaveformEffect(effectId, -1, -1)
+      → LinearmotorVibrator.vibrate(Process.myUid(), ctx.getOpPackageName(), effect, tag,
+                                    VibrationAttributes.createForUsage(18))
+```
+
+| 档位              | 传给 `createWaveformEffect` | 真机 dumpsys 落到                                    | 听感           |
+| ----------------- | --------------------------- | ---------------------------------------------------- | -------------- |
+| `NORMAL`（响铃）  | 308                         | `mEffectId=308, mDuration=330, mEffectStrength=2000` | 低沉那一下     |
+| `VIBRATE`（振动） | 430                         | `mEffectId=430, mDuration=260, mEffectStrength=2000` | 两下           |
+| `SILENT`（静音）  | **0**                       | `mEffectId=1, mDuration=45, mEffectStrength=2400`    | **很轻的一下** |
+
+静音那档的 `0` 是入口值、不是「不振」——`createWaveformEffect` 把它解析成 prebaked 1 号（45ms）。
+**强度靠那两个 `-1` 与 attributes 落到默认档**（2000）；换用 `vibrate(WaveformEffect)` 这条不带
+attributes 的重载会落到最大档（2400），同号听感就比系统重 -- 模块一开始就是这么写的，用户当场听出来了。
+
+**二、三段式滑块**（`com.android.server.audio.AlertSliderVibratorPolicy`，同一个 dex）
+
+| 滑块位置     | 方法                               | 效果号  | 备注                                                                         |
+| ------------ | ---------------------------------- | ------- | ---------------------------------------------------------------------------- |
+| 中档（振动） | `setMiddle` → `vibrateIdForMiddle` | **430** | `mIsNewSliderVibratorSupport` 才用 430，否则 69；新滑块那条 170ms 后再放一下 |
+| 底档（静音） | `setDown`                          | **308** | `createWaveformEffect(308, -1, -1)`；无线性马达时 `createOneShot(260ms)`     |
+| 顶档（响铃） | ——                                 | 不振    | 这个策略类里没有对应方法                                                     |
+
+`setDown` 前面有一道闸：`Settings.System "vibrate_when_ringing" == 1`（默认 0）。
+**滑块与侧键不是同一条**：滑块静音是 308、侧键静音是 0，别拿一个推另一个。
+
+**三、控制中心开关**（`com.android.systemui` 的 dex，`/system_ext/priv-app/SystemUI/SystemUI.apk`，
+9 个 dex；不在 `SystemUIPlugin` 里 —— 后者一个 `Ringer` 字样都没有）
+
+```
+com.oplus.systemui.qs.tiles.RingerModeTile.handleClick(Expandable)
+  → audioManager.setRingerModeInternal(新档位)
+  → OplusRMChangeVibrateHelper.vibrateOnRMChanged(新档位, TAG)     // 类在 classes4.dex
+      → OplusVibrateHelper.vibrate(tag, linearMotorEffectId, strength, nomalEffectId)
+```
+
+`vibrateOnRMChanged` 里是「`== 1` 取 430、`== 2` 取 308、其余置 0 后直接 return」——
+**静音档这条直接 return，不振**。
+
+**这三张表是拿真机纠正过的，别按 smali 偏移硬读**：第一版按偏移读成「静音 430、振动 308」，
+真机表现为「切到振动是普通一下、切到静音反而是两下」；第二版又按 `handleClick` 里那条
+`vibrateOnRMChanged(0)` 推断「响铃不振」，真机表现为「切到响铃没动静，而控制中心有」。
+`const/16` 占两个 code unit、`invoke-static` 占三个，数错一位结论就整个反过来。
+
+**dumpsys 怎么用**：`Recent vibrations` 的 `played: OplusPrebakedSegment{mEffectId=…, mDuration=…,
+mEffectStrength=…}` 加上 `usage` / uid 一栏，能分清「谁放的、哪个号、多强」。档位读不到时**按时序对齐**：
+一次只操作一下、把 `mEffectId` 与刚才切到哪一档对上（`settings get global mode_ringer` 比内部档位
+慢一拍，别拿它当时间轴）。
+
+**再往下怎么振**（`OplusVibrateHelper`，classes3.dex）
+
+```
+vibrate$default → vibrate(tag, linearMotorEffectId, strength = -1, nomalEffectId = 5)
+  FeatureOption.isLinearVibratorSupport() == true
+      → LinearmotorVibrator lmv = context.getSystemService("linearmotor")
+         （类型 com.oplus.os.LinearmotorVibrator，服务名就是字面量 "linearmotor"）
+        前面还有两道闸：lmv != null、HapticSettingObserver.mSystemHapticEnabled
+        new WaveformEffect.Builder().setAsynchronous(true).setEffectType(效果号).build()
+        lmv.vibrate(effect)
+  else
+      → Vibrator.vibrate(VibrationEffect.get(5), sonification 的 AudioAttributes)
+```
+
+`strength < 0` 时**不**走 `setStrengthSettingEnabled/setEffectStrength` 那条（那是 luxun 马达的分支）。
+
+**`LinearmotorVibrator` 有两条放法，强度不一样**（`oplus-framework.jar` 的方法表）：
+
+| 调用                                                                                       | 强度落到           | 用它的地方                                                                 |
+| ------------------------------------------------------------------------------------------ | ------------------ | -------------------------------------------------------------------------- |
+| `vibrate(WaveformEffect)`                                                                  | **2400**（最大档） | `OplusVibrateHelper`（控制中心那条）                                       |
+| `createWaveformEffect(号, -1, -1)` + `vibrate(uid, 包名, effect, tag, createForUsage(18))` | **2000**（默认档） | `AudioServiceExtImpl.vibrateMM`、`AlertSliderVibratorPolicy`（侧键与滑块） |
+
+`createWaveformEffect` 是 `(int effectId, int strength, int duration)`，两个 `-1` = 让服务端取默认值。
+
+**从模块里怎么复现**：`com.oplus.os.WaveformEffect` / `LinearmotorVibrator` 在 boot classpath 的
+oplus-framework 里，不是 hidden API，普通进程反射就能用；SystemUI 那两个类反而加载不到。
+模块走的是**第二行**（与侧键同形），实现见 `app/src/main/java/com/lookie/opluskey/bridge/host/RingerHaptics.kt`。
+
+**以后核这类「手感对不对」不用猜**：`dumpsys vibrator_manager` 的 `Recent vibrations` 会逐条列出
+`OplusPrebakedSegment{mEffectId=…, mWaveformId=…, mDuration=…, mEffectStrength=…}` 以及发起方
+uid / usage —— 模块和系统各自放的是哪个号、多强，一比就知道。
+
+## 二十八、压感拍照键**不产生「按住」这一段**，长按在这颗键上做不到（实测，2026-10-20，PKU110 / ColorOS 17）
+
+PKU110（Find X8 Ultra 卫星通信版）机身侧面的拍照键是**压感键**（force sensor，没有按下/抬起的触点）。
+用 1.1.0-log 包在真机上量到的三组事实如下 —— 它们一起把「用时长判长按」这条路彻底封死。
+
+**一、事件流里没有时长，只有一对瞬时事件**
+
+```
+拍照键：DOWN keyCode=767   deviceId=3 source=257 repeat=0 flags=8
+拍照键：UP   keyCode=767            ← 与 DOWN 相隔 1~7ms
+拍照键：按住 3ms（长按阈值 500ms）
+```
+
+- 按住 **3000ms** 不放，事件流仍然是这一对，间隔 **1ms**，期间**没有任何** `repeat`、没有任何周期性事件。
+- 人手一次轻点最短也在 30ms 以上 ⇒ 这个 1~7ms **不是**用户按了多久，而是 ROM 把压力值翻译成
+  「按了一下」之后合成的瞬时对。
+- 同一颗键还有第二个码：**134**（`KEYCODE_F4`，不是标准的 `KEYCODE_CAMERA`(27)）。按住时上报
+  134、轻点到底时上报 767，两者同样是瞬时对。134 不是「长按码」——它在按下的瞬间就来，
+  与按了多久无关。
+
+**二、`InputManager.getKeyCodeState()` 对这颗键**恒**返回按下**
+
+`getKeyCodeState(deviceId=3, sourceMask=257, keyCode=767)` 在每次按压后 +50ms 起读到
+`ACTION_DOWN`，一直读到 **+4000ms** 仍然是 `ACTION_DOWN`，从不出现 `ACTION_UP`；`134` 同样。
+`deviceId` 是有效的（无效时 AOSP 返回 `-1`，实测拿到的是 `0`）。
+
+⇒ ColorOS 在**上层**合成了那对瞬时 DOWN/UP 给应用，但**没有回写** InputReader 的按键状态表
+（压感键的 evdev 只在上报压力越阈时发 down，从不发 release）。这张表因此永远停在「按下」，
+拿它测时长会得到「用户按了无限久」的假结论。
+
+**判据：这条必须靠「空白对照」才发现。** 只看 `+700ms 还按着` 会误以为「状态表能测时长」——
+真正的证据是**用户已经松手、读数仍然是 down**。
+
+复核方法（不依赖任何临时代码）：
+`IInputManager.getKeyCodeState(deviceId, sourceMask, keyCode)`（system_server 里走
+`ServiceManager.getService("input")`，本地 Binder、无 IPC），在一次按压的 **+50ms / +700ms**
+各查一次、**并在松手之后 2 秒再查一次**。三次都是 `ACTION_DOWN`(0) ⇒ 这张表对这颗键不可用；
+若松开后回到 `ACTION_UP`(1)，它才是可用的时长来源。
+
+**三、结论与边界**
+
+模块能碰到的三条信息源全部没有时长：事件流（合成瞬时对）、按键状态表（恒 down）、evdev
+（要 root 且要自己解析 `EV_ABS`）。因此：
+
+- **这颗键不可能支持长按**。靠时间判长按（`GestureDetector` 的 500ms 枪）在这里先天作废：
+  抬手在 3ms 就到，枪在那一刻被摘掉。
+- **也不要「自己造事件」**：注入 repeat 的 767 会自持循环（`SideKeyInterceptor.isSynthetic` 认合成事件
+  的那张表是 `KeyId.INJECTABLE_CODES`，里没有 767），而且造出来的流仍然不知道用户什么时候松手。
+- 能给的只有**单击**（ROM 每次按压就报一对，模块当场判）和**双击**（两次按压落在
+  `doubleClickMs` 内）。双击**不需要额外开关**：`GestureDetector.onKeyUp` 那条「抬手当场判单击」
+  的条件是 `instantSingle` **且** 双击为无操作（界面文案本身写的就是「双击无动作时…」），
+  给双击绑上动作它就自动改走双击窗口。代价是单击要晚一个双击窗口（默认 100ms）—— 那是双击
+  语义的固有代价，不是配置问题。
+- 侧键不受影响：它的 735 / 780 / 781 / 782 **有**真实时长与 repeat，永远走事件路径；
+  780/781/782 是 ROM 已判好的三档手势各一个码，对它们做轮询反而会把三档压成一档。
+
+**顺带一条与长按无关、但同一颗键上的实测**：拍照键每次按下都会触发一次宿主场景派发
+（`ActionButtonKeyService$a#handleMessage what=1`），而 `host/SideKeyGestureHooks` 吞它的判据
+只有 `cfg.isLive(KeyId.PLUS)` —— **不看这条派发是哪颗键的**。于是「接管了侧键」会连带吞掉
+拍照键的系统原生动作。

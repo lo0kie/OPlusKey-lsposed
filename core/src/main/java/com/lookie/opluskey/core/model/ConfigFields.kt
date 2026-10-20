@@ -53,6 +53,9 @@ object ConfigFields {
     const val LONG_REPEAT_EXTRA = "long_repeat"
     const val REPEAT_INTERVAL_MS_EXTRA = "long_repeat_interval_ms"
 
+    /** 长按连续触发时，每一次重复都振动一次（关 = 只在长按那一下振一次）。 */
+    const val REPEAT_VIBRATE_EXTRA = "long_repeat_vibrate"
+
     /**
      * 长按绑的是不是「多条命令」（`KeyConfig.longIsSerial`）—— **只有广播这一列**。
      * 它是发送侧**现算**的（要读命令库文件，注入侧读不到那个目录），不落盘。
@@ -162,6 +165,13 @@ object ConfigFields {
             ),
         )
 
+    /**
+     * 连续触发时是否每一下都振动（`KeyConfig.longRepeatVibrate`）。
+     *
+     *  默认 false = 与这一位出现之前一致：长按判出来的那一下振一次，之后每次重复不振。
+     */
+    val F_REPEAT_VIBRATE = Field(REPEAT_VIBRATE_EXTRA, Kind.Bool(false))
+
     /** 「单击延迟」—— **每颗键各一份**（原来在全局，见 `KeyConfig.doubleClickMs`）。 */
     val F_DOUBLE_CLICK_MS =
         Field(
@@ -189,6 +199,7 @@ object ConfigFields {
             F_LONG_PRESS_MS,
             F_LONG_REPEAT,
             F_REPEAT_INTERVAL_MS,
+            F_REPEAT_VIBRATE,
             F_DOUBLE_CLICK_MS,
             F_INSTANT_SINGLE,
             F_LONG_SERIAL,
@@ -202,11 +213,33 @@ object ConfigFields {
     /** 触觉反馈。 */
     val F_VIBRATE = Field(VIBRATE_EXTRA, Kind.Bool(false))
 
+    /**
+     * 振动强度（三档：弱 / 中 / 强）—— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：
+     * 振那一下的是宿主进程里的执行器，它本来就读配置文件；注入侧不振，没必要广播。
+     */
+    val F_VIBRATE_STRENGTH =
+        Field(null, Kind.Number(GlobalConfig.DEFAULT_VIBRATE_STRENGTH, GlobalConfig.VIBRATE_WEAK, GlobalConfig.VIBRATE_STRONG))
+
     /** 执行时提示 —— **只有落盘那一列**：它由宿主侧弹，注入侧不读它。 */
     val F_TOAST_ON_RUN = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
 
     /** 界面语言。 */
     val F_LANGUAGE = Field(LANGUAGE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_LANGUAGE))
+
+    /**
+     * 系统配色 —— **只有落盘那一列**：换的是这个页面自己的配色，注入侧不读它。
+     *
+     *  取值是色板 id（字符串），上下限与合法清单都在界面层（`ui/model/PagePalettes`）——
+     *  共用层不认识「有哪些色板」，理由见 `GlobalConfig.palette` 的说明。
+     */
+    val F_PALETTE = Field(null, Kind.Text(GlobalConfig.DEFAULT_PALETTE))
+
+    /**
+     * 界面颜色（跟随系统 / 固定浅 / 固定深）—— **只有落盘那一列**：它只决定这个页面自己的深浅。
+     *
+     *  注入侧不读它（那边没有界面），广播里也就不必带。
+     */
+    val F_THEME = Field(null, Kind.Text(GlobalConfig.DEFAULT_THEME))
 
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     val F_COLOR_OS_API = Field(COLOR_OS_API_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COLOR_OS_API))
@@ -222,8 +255,11 @@ object ConfigFields {
         listOf(
             F_MODULE_ENABLED,
             F_VIBRATE,
+            F_VIBRATE_STRENGTH,
             F_TOAST_ON_RUN,
             F_LANGUAGE,
+            F_PALETTE,
+            F_THEME,
             F_COLOR_OS_API,
             F_MINI_WINDOW_ANIM,
         )

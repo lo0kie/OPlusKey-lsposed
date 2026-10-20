@@ -10,6 +10,7 @@ import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.RomProfile
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
+import io.github.lyxnx.compose.ui.tablericons.filled.Square
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
 import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.AlignBoxCenterMiddle
@@ -35,7 +36,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandTelegram
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandWechat
-import io.github.lyxnx.compose.ui.tablericons.outline.BrowserPlus
+import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessAuto
 import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
 import io.github.lyxnx.compose.ui.tablericons.outline.Cancel
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
@@ -45,7 +46,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleX
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
@@ -89,6 +89,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Number1
 import io.github.lyxnx.compose.ui.tablericons.outline.Number2
 import io.github.lyxnx.compose.ui.tablericons.outline.Number3
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
+import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureTop
@@ -109,6 +110,11 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Screenshot
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
+import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
+import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
+import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber3
+import io.github.lyxnx.compose.ui.tablericons.outline.Sun
+import io.github.lyxnx.compose.ui.tablericons.outline.SunMoon
 import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
 import io.github.lyxnx.compose.ui.tablericons.outline.TableShortcut
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
@@ -440,14 +446,6 @@ internal object PageIcons {
     /** 顶栏返回键。 */
     val Back: ImageVector get() = TablerIcons.Outline.ArrowLeft
 
-    /**
-     * 输入框右侧的清除键 —— 圆圈 + 叉（`circle-x`）。
-     *
-     *  与库自带那个清除按钮同一读法（实心圆 + 叉），但这里用描边版：本组件的输入框是
-     *  「卡片里一行字」，实心圆比文字还重。
-     */
-    val Clear: ImageVector get() = TablerIcons.Outline.CircleX
-
     /** 「按键绑定」行首 —— 箭头光标 `Pointer`，读作「按下去那一下」。 */
     val TouchApp: ImageVector get() = TablerIcons.Outline.Pointer
 
@@ -494,18 +492,10 @@ internal object PageIcons {
     val MiniWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
 
     /**
-     * 网格里**跳页面**那格（「打开应用」）行尾的「窗口 + 加号」（`browser-plus`）。
-     *
-     * 与入口格那颗选择器字形（[Selector]）分两种字形：那颗表示「点开弹一层菜单」，这颗表示
-     * 「点开进另一个页面」（挑应用）。尺寸与配色同上。
-     */
-    val BrowserPlus: ImageVector get() = TablerIcons.Outline.BrowserPlus
-
-    /**
      * 「打开应用」格绑成**小窗打开**（`window:`）时，标题右边那枚小标记 ——
      * 画中画（`picture-in-picture-on`）。
      *
-     *  与行尾那颗 [BrowserPlus] 分工不同：那颗说明「点开进另一个页面」，这颗说明
+     *  与行尾那颗右箭头（[EnterArrow]）分工不同：那颗说明「点开进另一个页面」，这颗说明
      *  **这一格绑的是小窗起** —— 这一格只有一行标题，不点开「选择应用」菜单看不出绑的是哪一档。
      *  与 [SmallWindow]（菜单项）/ [MiniWindow]（入口格）同字形，各留一份名字。
      */
@@ -621,6 +611,31 @@ internal object PageIcons {
     /** 「更多选项」页「语言」—— `world`（地球：用地球表示语言）。 */
     val Language: ImageVector get() = TablerIcons.Outline.World
 
+    /** 「更多选项」页「系统配色」—— `palette`（这一行改的是配色）。 */
+    val Palette: ImageVector get() = TablerIcons.Outline.Palette
+
+    /**
+     * 「系统配色」菜单里每一行行首那块**色块** —— `square-filled`（实心方块）。
+     *
+     *  形状五套共用，颜色由 `MenuEntry.Row.iconTint` 逐行给（色块本身就是这一行的身份）。
+     *  用**实心**那一档：描边的图标上色之后只是一圈彩线，看不出是「这一套色」。
+     */
+    val PaletteSwatch: ImageVector get() = TablerIcons.Filled.Square
+
+    /** 「更多选项」页「界面颜色」—— `sun-moon`（一半日一半月：深浅由这一行定）。 */
+    val Theme: ImageVector get() = TablerIcons.Outline.SunMoon
+
+    // 「界面颜色」菜单里那三项各自的字形 —— 与语言那三颗同一个道理：共用一颗的话菜单三行长得一样。
+
+    /** 「跟随系统」—— `brightness-auto`（自动亮度那种「A」）。 */
+    val ThemeAuto: ImageVector get() = TablerIcons.Outline.BrightnessAuto
+
+    /** 「浅色」—— `sun`。 */
+    val ThemeLight: ImageVector get() = TablerIcons.Outline.Sun
+
+    /** 「深色」—— `moon`。 */
+    val ThemeDark: ImageVector get() = TablerIcons.Outline.Moon
+
     // 语言菜单里那三项各自的字形 —— **不共用上面那颗地球**：共用的话菜单里三行看起来一模一样，
     //  行首这一颗是唯一能一眼分出「跟随系统 / 中文 / English」的东西。
 
@@ -679,9 +694,6 @@ internal object PageIcons {
     /** 「步骤」卡片里「添加步骤」那一行的行首图标。 */
     val StepAdd: ImageVector get() = TablerIcons.Outline.Plus
 
-    /** 「支持的命令格式」每行末尾的小 `+` —— 与 [StepAdd] / [CommandAdd] 同字形，画小一档（16dp）。 */
-    val InsertPrefix: ImageVector get() = TablerIcons.Outline.Plus
-
     /** 「已保存的命令」卡片右上角 action 按钮 —— `Flask2`（锥形瓶），读作「把这条试跑一遍」。 */
     val TestCommand: ImageVector get() = TablerIcons.Outline.Flask2
 
@@ -695,6 +707,21 @@ internal object PageIcons {
 
     /** 「振动反馈」行的行首 —— `DeviceMobileVibration`（手机 + 两道声波）。 */
     val Vibrate: ImageVector get() = TablerIcons.Outline.DeviceMobileVibration
+
+    /**
+     * 「振动强度」滑杆的行首 —— **档位数字**（`SquareNumber1/2/3`）。
+     *
+     *  行尾不再写「弱 / 中 / 强」，档位全靠这一枚图标：方框里那个数字就是第几档，
+     *  一眼能看出「一共三档、现在第几档」—— 比一行字省地方，也不用再翻四份字典。
+     *
+     * @param level [GlobalConfig.vibrateStrength] 的取值；越界按中档（与执行侧的钳制同口径）
+     */
+    fun vibrateLevel(level: Int): ImageVector =
+        when (level) {
+            0 -> TablerIcons.Outline.SquareNumber1
+            2 -> TablerIcons.Outline.SquareNumber3
+            else -> TablerIcons.Outline.SquareNumber2
+        }
 
     /** 「版本」行的行首 —— `versions`（版本 / 分支符号，比通用信息符号更具体）。 */
     val Versions: ImageVector get() = TablerIcons.Outline.Versions

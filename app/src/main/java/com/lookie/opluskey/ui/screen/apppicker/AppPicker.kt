@@ -270,7 +270,7 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
         // 是按 CPU 核数限流的共享池，压满它会拖住别的 Default 任务（转场、各页动画）。
         //  图标不在这一轮：它是按行按需取的（见 [AppIcon]）。
         XLog.w("打开应用页：取列表（显示全部应用=$withSystem，先用缓存 ${picker.cachedApps.value?.size ?: 0} 条）")
-        val fresh = withContext(Dispatchers.IO) { loadLaunchableApps(withSystem) }
+        val fresh = withContext(Dispatchers.IO) { loadLaunchableApps(context, withSystem) }
         // 查失败（null）不覆盖缓存，也不把当前列表打回空态：那是「这次没查到」，
         //  不是「没有应用可挑」。缓存里那份可能只是模式不同，留着比清空强；
         //  真要一份空清单，[loadLaunchableApps] 会正常返回 emptyList()。

@@ -196,6 +196,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
+    buildTypes {
+        // 「带完整日志的 release」—— 与 release 同形态（日志那一档由 `src/releaseLog/` 顶替）。
+        //  **必须在这里声明**：`:app` 的 `releaseLog` 变体要求 `:core` 也有同名变体，
+        //  缺了它会在变体匹配阶段直接报「No matching variant」。
+        create("releaseLog")
+    }
+
     // 明文资产**只接给 debug**：开发时要能随手换图，走的就是明文这条路。
     //  release 不接这一条 —— 收款码与名单由 [SealReleaseAssets] 封成 `assets/sealed.bin`，
     //  明文一律不进包（这是「换图重打包」那条路被卡住的地方，见那个任务的说明）。
@@ -214,8 +221,10 @@ android {
 //  「先跑任务、再打包」这条依赖。
 androidComponents {
     onVariants { variant ->
-        // 只有「发布形态」那一个变体需要封存：`release`。
-        if (variant.buildType != "release") return@onVariants
+        // 只有「发布形态」的那些变体需要封存：`release` 与「带完整日志的 release」。
+        //  后者行为与发布版一致（同一把签名、同一套资产），只是日志没被折掉 —— 它也要封存，
+        //  否则装上去「捐赠打赏」那一页的图就没有了（明文资产只接给 debug）。
+        if (variant.buildType != "release" && variant.buildType != "releaseLog") return@onVariants
         val taskName = "seal" + variant.name.replaceFirstChar(Char::uppercase) + "Assets"
         val seal =
             tasks.register<SealReleaseAssets>(taskName) {

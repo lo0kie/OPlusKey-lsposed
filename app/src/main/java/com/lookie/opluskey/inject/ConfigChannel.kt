@@ -48,6 +48,12 @@ internal object ConfigChannel {
      *
      *  配置里认不出的键（还没收到过广播 / 那颗键被删了）按不接管 —— `Config.key` 对未知键
      *  返回 `defaultFor`，自定义键那一档的 `enabled = false`。
+     *
+     *  **它与 [Config.isLive] 不是同一件事，别合并**：这里的一级是 [takeOver]，不是
+     *  `received.global.enabled`。理由有两条 —— 还没收到过广播时要按「接管」引导；而缺
+     *  `module_enabled` 那一项的畸形广播里 `global.enabled` 会被 `ConfigBroadcast.parse`
+     *  兜底成 `false`，用 [Config.isLive] 会让整个模块被一条残缺广播静默关掉。
+     *  [takeOver] 的取值已经把这两条都吃在里面了。
      */
     fun enabledOf(id: KeyId): Boolean = takeOver && (received?.key(id)?.enabled ?: true)
 
@@ -142,6 +148,27 @@ internal object ConfigChannel {
                 " 双击窗口=${fresh.key(KeyId.PLUS).doubleClickMs}ms（侧键那份）" +
                 " 立即单击=${fresh.key(KeyId.PLUS).instantSingle}" +
                 " 单击=${XLog.redactToken(key.single.token)}",
+        )
+        // 上面那行只打**侧键那份**参数；自定义键各有一份自己的键码与长按阈值（见 [logCustomKeys]）。
+        logCustomKeys(fresh)
+    }
+
+    /**
+     * 把每颗自定义键的「键码 + 长按阈值」打一行 W。
+     *
+     *  上一行（`配置已更新`）只写侧键那份参数：自定义键的码是运行时收集来的、阈值也是每颗各一份，
+     *  两者任一不对那颗键的长按就永远不响，而日志里除了 `DOWN` 看不到任何线索 —— 这一行是
+     *  「自定义键长按没反应」时唯一能自证的配置快照。
+     *
+     *  单独成函数只为让 [read] 留在 `LongMethod` 阈值内（它已经攒了主开关 / 撤销 / 指纹三段）。
+     */
+    private fun logCustomKeys(fresh: Config) {
+        if (fresh.customKeys.isEmpty()) return
+        XLog.w(
+            "自定义键：" +
+                fresh.customKeys.joinToString("、") { k ->
+                    "${k.label}=${k.keyCode} 长按${fresh.key(k).longPressMs}ms"
+                },
         )
     }
 }

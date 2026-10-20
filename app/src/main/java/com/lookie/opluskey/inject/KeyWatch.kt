@@ -77,6 +77,11 @@ internal object KeyWatch {
      */
     fun report(event: KeyEvent) {
         if (!listening || event.action != KeyEvent.ACTION_DOWN) return
+        // 判据级：收集期「到底有没有看见这颗键、看见的是哪个码」。
+        //  没有这一行时，用户报「收集不到」只能靠界面反应猜 —— 而「键没到我们这层」与
+        //  「到了但这颗码收不下」是两种完全不同的故障（前者要往兜底层想办法，后者只是被拒）。
+        //  只在监听期（最长 60 秒）逐颗报，不进平时路径。
+        XLog.w("按键监听：收到 keyCode=${event.keyCode}（${KeyEvent.keyCodeToString(event.keyCode)}）")
         val ctx =
             try {
                 context?.invoke()

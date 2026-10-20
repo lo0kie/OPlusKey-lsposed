@@ -6,13 +6,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import com.lookie.opluskey.ui.model.SLIDER_ICON_INSET
 import com.lookie.opluskey.ui.model.SLIDER_SIDE_INSET
 import com.lookie.opluskey.ui.model.SLIDER_TAP_ZONE
-import com.lookie.opluskey.ui.model.STEP_MS
 import kotlin.math.roundToInt
 
 /**
@@ -24,15 +26,19 @@ import kotlin.math.roundToInt
  * 也正因为不消费，这条挂在外层的手势才不会把滑杆的 `draggable` 顶掉。
  */
 internal fun Modifier.tapSliderToSeek(
-    min: Int,
-    max: Int,
-    enabled: Boolean,
+    spec: SliderSpec,
     onSeek: (Int) -> Unit,
 ): Modifier =
-    pointerInput(min, max, enabled) {
+    pointerInput(spec.min, spec.max, spec.step, spec.enabled) {
+        // 全部取值都从 [spec] 现读，**不再逐个收成形参**：以前这里手抄了 `min/max/enabled`，
+        //  后来滑杆支持自定义步长时漏抄了 `step` —— 触点折算用的是写死的毫秒步长，
+        //  三档滑杆上 `(max-min)/step` 算成 0、夹到 1，点中间只能落到端点上。
+        val min = spec.min
+        val max = spec.max
+        val step = spec.step
         // 禁用时这条手势也得停 —— 它是**自己挂的**、不走滑杆的 `enabled`，
         // 不停的话置灰的滑杆照样能点着跳值（多条命令下的「触发间隔」）。
-        if (!enabled) return@pointerInput
+        if (!spec.enabled) return@pointerInput
         val slop = viewConfiguration.touchSlop
         // 轨道的左右边界：左边比右边多一个 [SLIDER_ICON_INSET]（行首图标把滑杆挤开的那一段）
         val trackStart = (SLIDER_SIDE_INSET + SLIDER_ICON_INSET).toPx()
@@ -52,31 +58,47 @@ internal fun Modifier.tapSliderToSeek(
                 //  也就是**写 min / max**：用户只是点了行首图标那一格或行尾空白，值却被跳到端点。
                 if (down.position.y < size.height - zone) continue
                 if (down.position.x < trackStart || down.position.x > size.width - trackEnd) continue
-                var moved = false
-                var released = false
-                while (true) {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                    if ((change.position - down.position).getDistance() > slop) {
-                        moved = true
-                    }
-                    if (change.changedToUpIgnoreConsumed()) {
-                        released = true
-                        break
-                    }
-                    if (!change.pressed) break
-                }
                 // 滑动 / 没正常抬手 ⇒ 不算轻点（拖动全归滑杆）
-                if (moved || !released) continue
-                // 触点 → 值：先按轨道左右边界折到轨道上，再按滑杆自己的刻度取整 ——
-                // 刻度必须与上面 Slider.steps 那套同源（(max-min)/STEP_MS 格），不能直接按
-                // STEP_MS 取整：区间不整除时两套值对不上。
+                val at = awaitTapUp(down, slop) ?: continue
                 val track = (size.width - trackStart - trackEnd).coerceAtLeast(1f)
-                val frac = ((down.position.x - trackStart) / track).coerceIn(0f, 1f)
-                val ticks = ((max - min) / STEP_MS).coerceAtLeast(1)
-                val idx = (frac * ticks).roundToInt()
-                val v = min + idx * (max - min).toDouble() / ticks
-                onSeek(v.roundToInt().coerceIn(min, max))
+                val frac = ((at.x - trackStart) / track).coerceIn(0f, 1f)
+                onSeek(seekValue(frac, min, max, step))
             }
         }
     }
+
+/**
+ * 等这次按下的**抬手**；返回抬手时的位置。
+ *
+ * @return `null` = 这次不算轻点（滑走了 / 被取消 / 中途丢了这一个指针）
+ */
+private suspend fun AwaitPointerEventScope.awaitTapUp(
+    down: PointerInputChange,
+    slop: Float,
+): Offset? {
+    var moved = false
+    while (true) {
+        val event = awaitPointerEvent(PointerEventPass.Initial)
+        val change = event.changes.firstOrNull { it.id == down.id } ?: return null
+        if ((change.position - down.position).getDistance() > slop) moved = true
+        if (change.changedToUpIgnoreConsumed()) return if (moved) null else down.position
+        if (!change.pressed) return null
+    }
+}
+
+/**
+ * 轨道上的相对位置（0..1）→ 值：按**这根滑杆自己的刻度**取整。
+ *
+ *  刻度必须与 `Slider.steps` 那套同源（`(max-min)/step` 格），不能直接按 `step` 取整 ——
+ *  区间不整除时两套值对不上。
+ */
+private fun seekValue(
+    frac: Float,
+    min: Int,
+    max: Int,
+    step: Int,
+): Int {
+    val ticks = ((max - min) / step).coerceAtLeast(1)
+    val idx = (frac * ticks).roundToInt()
+    return (min + idx * (max - min).toDouble() / ticks).roundToInt().coerceIn(min, max)
+}

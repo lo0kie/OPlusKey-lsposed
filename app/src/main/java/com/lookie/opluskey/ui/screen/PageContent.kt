@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.navigationevent.NavigationEventDispatcherOwner
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
+import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
@@ -34,14 +35,16 @@ import com.lookie.opluskey.ui.PageDebugChannel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SyncToHost
-import com.lookie.opluskey.ui.colorsFor
 import com.lookie.opluskey.ui.disabledClickReason
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION
+import com.lookie.opluskey.ui.model.PagePalette
+import com.lookie.opluskey.ui.model.colorsOf
 import com.lookie.opluskey.ui.onDebugCommand
 import com.lookie.opluskey.ui.state.CONFIG_IN_FLIGHT_GRACE_MS
 import com.lookie.opluskey.ui.state.InjectStatus
+import com.lookie.opluskey.ui.state.UiState
 import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.Scaffold
 import io.github.suqi8.coui.kmp.nav.core.NavDisplay
@@ -76,7 +79,11 @@ internal fun SettingsPage.PageContent() {
     // `parent = null` 是官方指定的「自建根 dispatcher」用法（见其 KDoc）。
     val navOwner = rememberNavigationEventDispatcherOwner(parent = null)
 
-    COUITheme(colors = colorsFor(night)) {
+    //  系统配色：配置里存的是 id 字符串（共用层不认识色板清单），认不出就落回默认档。
+    //  读的是 `configState.config`，所以选完色当场重组、整页配色跟着换 —— 不需要重进页面。
+    val palette = PagePalette.ofId(configState.config.value.global.palette)
+
+    COUITheme(colors = colorsOf(night, palette)) {
         CompositionLocalProvider(
             LocalNavigationEventDispatcherOwner provides navOwner,
             //  禁用态那几格点一下要说明原因（见 `ui/DisabledHint.kt`）：
@@ -277,6 +284,7 @@ private fun SettingsPage.onHostServiceUp(intent: Intent) {
     //  宁可显示未启用 —— 那一档只是首页一条诊断行，谎报会让人以为模块开着却没生效。
     link.hostEnabled = intent.getBooleanExtra(ModuleWire.EXTRA_HOST_ENABLED, false)
     link.hostLastActionAt = intent.getLongExtra(ModuleWire.EXTRA_HOST_LAST_ACTION_AT, 0L)
+    link.hostProcStart = intent.getLongExtra(ModuleWire.EXTRA_HOST_PROC_START, 0L)
 }
 
 /** 注入侧自检回包 —— 链路自检那一段据此显示「接管点 / 配置送达 / 指纹」。 */
@@ -288,12 +296,28 @@ private fun SettingsPage.onInjectReady(intent: Intent) {
             configTag = intent.getStringExtra(ModuleWire.EXTRA_INJECT_CONFIG_TAG).orEmpty(),
             lastGestureAt = intent.getLongExtra(ModuleWire.EXTRA_INJECT_LAST_GESTURE_AT, 0L),
             buildId = intent.getStringExtra(ModuleWire.EXTRA_INJECT_BUILD_ID).orEmpty(),
+            procStart = intent.getLongExtra(ModuleWire.EXTRA_INJECT_PROC_START, 0L),
         )
     XLog.w(
         "注入侧自检回包：接管点=${status.hooks} " +
             "配置已送达=${status.configOk} " +
             "指纹=${status.configTag.ifEmpty { "无" }}",
     )
+    // 判据级：这一侧**跑的是不是盘上这份包**。判据就是「进程启动时刻 vs 包更新时间」——
+    //  只在真的判成旧包时才写一行，正常机器上一条都不会有。
+    if (link.installedAt > 0 && status.procStart > 0 && link.installedAt > status.procStart) {
+        XLog.w(
+            "注入侧跑的可能是旧包：进程起于 ${status.procStart}，" +
+                "包更新于 ${link.installedAt} ⇒ 要整机重启",
+        )
+    }
+    // 「它跑起来过」这件事只增不减 —— 用来把「从没用过」与「用过、这次没起来」分开。
+    //  落盘只在值真的变时才发生（见 `noteInjectAlive`）；写盘本身挪到后台线程：
+    //  这里是广播回调（宿主主线程），一次几十字节不值得占首帧。
+    link.noteInjectAlive(ProcClock.bootWall()) { boot ->
+        Thread { UiState.writeInjectAlive(boot) }.start()
+        true
+    }
     link.injectStatus = status
     // 回包带回来的正是我们刚写下去的那一份 ⇒ 「在途」到此结束（见 `HostLinkState.configPending`）
     if (status.configTag == link.pendingConfigTag) link.clearConfigPending()

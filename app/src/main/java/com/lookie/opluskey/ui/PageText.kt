@@ -17,6 +17,8 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 /**
  * 把草稿里的那条命令存进命令库（不是立刻绑到某个手势上）。
@@ -132,30 +134,76 @@ internal fun SettingsPage.appVersionText(): String {
 }
 
 /**
- * 首页大标题那条副标题用的版本（不是「更多选项」页 —— 那一页走 [appVersionText]，见它）。
+ * 「更多选项」页「版本」那一行的副标题 —— `version-<版本号>-<构建类型>-<yyMMddHHmm>`
+ * （如 `version-1.1.0-release-2610201546`）。
  *
- *  前面带一截 `version-`：这串东西摆在大标题底下、没有标签，光一个 `1.0.0-release`
+ *  与 [appVersionText] **分开**：那一串还喂给导出的日志头，要完整日期带秒才方便事后对时间；
+ *  这一行是给人扫一眼的，时刻压到分钟，前面那截 `version-` 让它自己说明是什么。
+ */
+internal fun SettingsPage.appVersionBadge(): String {
+    val name = moduleVersionName()
+    val suffix = "-$BUILD_KIND"
+    // 三档的 `versionName` 已带后缀（`versionNameSuffix`），带过就不再拼一次。
+    val head =
+        when {
+            name.isNullOrBlank() -> BUILD_KIND
+            name.endsWith(suffix) -> name
+            else -> "$name$suffix"
+        }
+    return "$VERSION_BADGE_PREFIX$head-${compactBuildStamp(moduleBuildStamp())}"
+}
+
+/** 版本行那串的前缀（见 [appVersionBadge]）。 */
+private const val VERSION_BADGE_PREFIX = "version-"
+
+/** 构建时刻的完整形态（`GenerateBuildId` 写进资源的那一份）。 */
+private const val STAMP_FULL_PATTERN = "yyyy-MM-dd HH:mm:ss"
+
+/** 版本行上那一截压缩形态：两位年 + 月日 + 时分。 */
+private const val STAMP_LABEL_PATTERN = "yyMMddHHmm"
+
+/** 压缩形态的位数 —— 认不出的形态按这个截断，别把一整串日期甩进副标题。 */
+private const val STAMP_LABEL_DIGITS = 10
+
+/**
+ * 构建时刻压成 [STAMP_LABEL_PATTERN]（`2026-10-20 15:46:31` → `2610201546`）。
+ *
+ *  认不出的形态（例如退回 [ModuleInfo.BUILD_ID] 的 `日期-序号`）就只留数字：
+ *  宁可少两位，也不在副标题里显示成一句含糊的话。
+ */
+private fun compactBuildStamp(raw: String): String =
+    runCatching {
+        SimpleDateFormat(STAMP_FULL_PATTERN, Locale.US).parse(raw)?.let {
+            SimpleDateFormat(STAMP_LABEL_PATTERN, Locale.US).format(it)
+        }
+    }.getOrNull() ?: raw.filter { it.isDigit() }.take(STAMP_LABEL_DIGITS)
+
+/**
+ * 首页大标题那条副标题用的版本。
+ *
+ *  前面带一截 `version-`：这串东西摆在大标题底下、没有标签，光一个 `1.1.0-release`
  *  看不出它是什么（页面上别处也没有「版本」两个字给它托底）。
  *
- *  **debug 带构建时刻、release 不带**（[SHOW_BUILD_TIME]）：自用包一天里会出好几个，光看
- * `1.0.0-debug` 分不出手上这个是哪一次出的；release 的首页是面向用户的界面，
- * 构建时刻对用户没意义（要看的去「更多选项」页）。读不到版本号时只显示
- * [BUILD_KIND]，不抛异常。
+ *  两档口径（判据是 [SHOW_BUILD_TIME]，它只在 release 关着）：
+ *   · 非 release（debug / log）→ 与「更多选项」页那一行**同一个形态**（[appVersionBadge]，
+ *     `version-1.1.0-debug-2610201546`）：自用包一天里会出好几个，光看构建类型分不出是哪一次；
+ *   · release → 不带时刻（`version-1.1.0-release`）：首页是面向用户的界面，时刻对用户没意义
+ *     （要看的去「更多选项」页）。
+ *
+ *  读不到版本号时只显示 [BUILD_KIND]，不抛异常。
  */
 internal fun SettingsPage.appVersionLabel(): String {
-    val version =
-        if (SHOW_BUILD_TIME) {
-            appVersionText()
-        } else {
-            val name = moduleVersionName()
-            val suffix = "-$BUILD_KIND"
-            when {
-                name.isNullOrBlank() -> BUILD_KIND
-                name.endsWith(suffix) -> name
-                else -> "$name$suffix"
-            }
+    if (SHOW_BUILD_TIME) return appVersionBadge()
+    val name = moduleVersionName()
+    val suffix = "-$BUILD_KIND"
+    // 三档的 `versionName` 已带后缀（`versionNameSuffix`），带过就不再拼一次。
+    val head =
+        when {
+            name.isNullOrBlank() -> BUILD_KIND
+            name.endsWith(suffix) -> name
+            else -> "$name$suffix"
         }
-    return "$VERSION_LABEL_PREFIX$version"
+    return "$VERSION_LABEL_PREFIX$head"
 }
 
 /**

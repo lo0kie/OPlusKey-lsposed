@@ -92,15 +92,22 @@ internal fun popupSurfaceColor(): Color =
  *    交给库，不替调用点猜「给了图标就顺手把那一格打开」。库里那一位是**唯一的开关**，只给
  *    [trailingIcon] 的话一个像素都不画（真机踩到过：「反馈问题」菜单三行只传了图标，行尾全空）。
  *    置上之后字形怎么选：
- *     · 进下一层的行 → 不传 [trailingIcon]，用默认右箭头；
- *     · 跳**另一个页面**的行 → 换别处那一套（网格里「打开应用」那一格用的是「窗口 + 加号」，
- *       见 `PageIcons.BrowserPlus`）；
+ *     · 进下一层的行（含跳**另一个页面**的行）→ 不传 [trailingIcon]，用默认右箭头
+ *       （[com.lookie.opluskey.ui.model.PageIcons.EnterArrow]，与网格、列表同一颗）；
  *     · 弹一层菜单的行 → `PageIcons.Selector`；开外部链接的行 → `PageIcons.Link`。
  */
 internal sealed interface MenuEntry {
     data class Row(
         val title: String,
         val icon: ImageVector,
+        /**
+         * 行首图标的**指定颜色**；`null` = 按这一行的状态走（禁用灰 / 危险红 / 选中主色 / 常规色）。
+         *
+         *  只有「这一行的图形本身就在表达一个颜色」时才给（系统配色那五行：色块就是它的身份）——
+         *  给了之后图标不再跟着状态变色，选中也不再换成对勾（换了就看不见颜色了），
+         *  选中那件事由库的 `isSelected`（文字与底色）负责。
+         */
+        val iconTint: Color? = null,
         val enabled: Boolean = true,
         val selected: Boolean = false,
         val danger: Boolean = false,

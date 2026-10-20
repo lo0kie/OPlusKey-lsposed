@@ -10,6 +10,7 @@ import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.ModuleInfo
+import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
@@ -201,7 +202,10 @@ internal object KeyHooks {
                             ConfigChannel.configTag ?: "",
                         )
                         // 「我跑的是哪一次构建」—— 页面拿它判「换包后没重启」（见那个常量的说明）
-                        .putExtra(ModuleWire.EXTRA_INJECT_BUILD_ID, ModuleInfo.BUILD_ID),
+                        .putExtra(ModuleWire.EXTRA_INJECT_BUILD_ID, ModuleInfo.BUILD_ID)
+                        // 「我这个进程是什么时候起来的」—— 页面拿它与安装包的更新时间比，
+                        //  不需要人记得改任何常量（见该常量的说明）
+                        .putExtra(ModuleWire.EXTRA_INJECT_PROC_START, ProcClock.startWall()),
                 )
                 XLog.w(
                     "链路自检：已回包（接管点=$hookCount 配置=${ConfigChannel.receivedConfig}" +

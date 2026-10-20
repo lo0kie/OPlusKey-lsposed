@@ -33,7 +33,13 @@ internal class ActionRunner(
 ) {
     private val injector = KeyInjector { context }
     private val flashlight = FlashlightController({ context }, handler, isColorOsApi)
-    private val ringer = RingerController({ context }, isColorOsApi)
+    private val ringer =
+        RingerController(
+            { context },
+            isColorOsApi,
+            // 「振动反馈」与 `isColorOsApi` 同源：都从这一层的读盘口径来，执行器自己不读配置
+            { ConfigStore.read().global.vibrate },
+        )
     private val launcher = AppLauncher({ context }, ::notifyFailure)
     private val shortcut = AppShortcutLaunch({ context }, launcher.mini, ::notifyFailure)
     private val custom = CustomCommandRunner(handler, ::runShell, ::dispatch, ::notifyFailure)

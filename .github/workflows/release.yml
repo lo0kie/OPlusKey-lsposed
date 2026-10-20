@@ -1,12 +1,15 @@
-name: 发版
+name: 钉版
 
 # 与 `ci.yml` 同一个提交会各起一条 run，标题默认都是那句提交信息 —— 这里显式区分开。
-run-name: 发版 · ${{ github.ref_name }}
+run-name: 钉版 · ${{ github.ref_name }}
 
-# 只做「取 + 验 + 发」：包由 `ci.yml` 构建好，这里按**提交 SHA** 把那条 run 的产物取过来，
-#   在**本条 run 里再解一遍**，然后发布。同一个提交不构建两遍。
+# 只做「取 + 验 + 存档」：包由 `ci.yml` 构建好，这里按**提交 SHA** 把那条 run 的产物取过来，
+#   在**本条 run 里再解一遍**，存进本仓库的 Release。同一个提交不构建两遍。
 #
-# 只在打 tag 时跑。tag 规范 `<versionCode>-<versionName>`（如 `3-1.0.0`）—— 管理器
+# **这里不碰模块仓库**：管理器只读模块仓库那条 Release，一旦推上去所有装过的人都会收到更新提示。
+#   「钉版」与「上架」因此分开两步 —— 打完 tag 想上架时，去跑 `publish.yml`（手动触发、填 tag）。
+#
+# 只在打 tag 时跑。tag 规范 `<versionCode>-<versionName>`（如 `4-1.1.0`）—— 管理器
 #   `RepoLoader` 对模块仓库里那条 Release 的 tag 做 `split("-", 2)`，第一段当 versionCode 解析，
 #   不符合这个格式的 tag 能装但**永远不会提示更新**。
 #
@@ -31,7 +34,7 @@ permissions:
 
 jobs:
   publish:
-    name: 取 CI 产物并发布
+    name: 取 CI 产物并存档
     runs-on: ubuntu-latest
     env:
       # LSPosed 模块仓库由机器人按 applicationId 自动建；Release 必须发在那个仓库里，
@@ -41,6 +44,11 @@ jobs:
     steps:
       - name: 检出代码
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # 更新说明要从「上一个 tag → 这个 tag」的提交里拼，默认的浅克隆（深度 1、不取 tag）
+          # 既找不到上一个 tag，也没有那些提交。
+          fetch-depth: 0
+          fetch-tags: true
       - name: 抓版本号
         id: dist
         run: bash tools/read-version.sh
@@ -59,52 +67,55 @@ jobs:
           fi
 
       # 按 SHA 找 `ci.yml` 在 master 上那条 run，把产物取过来。
-      #   tag 常紧跟 master 推，两条 run 并发 —— 所以先等，最多 10 分钟。
+      #   三种情形分开处理：**没有 run** ⇒ 这条提交没推过 master，直接失败（等下去也不会出现）；
+      #   **还在跑** ⇒ 一直等（tag 常紧跟 master 推，构建没跑完是常态，不该按分钟数掐断）；
+      #   **跑完了但不是成功** ⇒ 直接失败。
       #   `branch=master` 这个过滤不能省：推 tag 本身也是 push 事件，不带它可能把别的 ref 的 run 捞进来。
-      #   `-e` 下别裸着写 `hits=$(grep …)` 那种：`gh api` 无结果时返回非零会让整段静默退出。
       - name: 取同提交的 CI 产物
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           api="repos/${{ github.repository }}/actions/workflows/ci.yml/runs"
-          for i in $(seq 1 30); do
-            info=$(gh api "$api?head_sha=${GITHUB_SHA}&branch=master&per_page=1" \
-              --jq '.workflow_runs[0] | [.id, .status, .conclusion] | @tsv' 2>/dev/null || true)
-            run_id=$(printf '%s' "$info" | cut -f1)
-            status=$(printf '%s' "$info" | cut -f2)
-            conclusion=$(printf '%s' "$info" | cut -f3)
+          # 刚推完 master 就打 tag 时，run 可能还没被创建出来 —— 给 60 秒宽限再判「没有」，
+          # 否则正常流程（先推 master、紧接着推 tag）会被误判成「这条提交没构建过」。
+          run_id=""
+          for _ in $(seq 1 6); do
+            run_id=$(gh api "$api?head_sha=${GITHUB_SHA}&branch=master&per_page=1"               --jq '.workflow_runs[0].id // empty' 2>/dev/null || true)
+            [ -n "$run_id" ] && break
+            echo "master 上还没有这条提交的构建 run，10 秒后再看"
+            sleep 10
+          done
+          if [ -z "$run_id" ]; then
+            echo "::error::这条提交在 master 上没有构建 run —— 先把 master 推上去、等它跑出产物，再来钉版"
+            exit 1
+          fi
+          echo "构建 run：$run_id"
 
-            if [ -z "$run_id" ]; then
-              echo "第 ${i} 次：这条提交在 master 上还没有构建 run"
-              sleep 20
-              continue
-            fi
-            if [ "$status" != "completed" ]; then
-              echo "第 ${i} 次：构建 run $run_id 还在跑（$status）"
-              sleep 20
-              continue
-            fi
-            if [ "$conclusion" != "success" ]; then
-              echo "::error::构建 run $run_id 的结论是 $conclusion —— 构建没过不该发版，先把它修绿"
-              exit 1
-            fi
-
-            echo "取构建 run $run_id 的产物"
-            rm -rf .ci-artifacts
-            if gh run download "$run_id" --dir .ci-artifacts --pattern 'oplus-key-*'; then
-              mkdir -p dist
-              cp .ci-artifacts/*/*.apk dist/ 2>/dev/null || true
-              if ls dist/*.apk >/dev/null 2>&1; then
-                echo "取到："
-                ls -l dist
-                exit 0
+          while :; do
+            info=$(gh api "repos/${{ github.repository }}/actions/runs/$run_id"               --jq '[.status, .conclusion] | @tsv')
+            status=$(printf '%s' "$info" | cut -f1)
+            conclusion=$(printf '%s' "$info" | cut -f2)
+            if [ "$status" = "completed" ]; then
+              if [ "$conclusion" != "success" ]; then
+                echo "::error::构建 run $run_id 的结论是 $conclusion —— 构建没过不该钉版，先把它修绿"
+                exit 1
               fi
+              break
             fi
-            echo "第 ${i} 次：产物没取到（可能已过保留期）"
+            echo "构建还在跑（$status），20 秒后再看"
             sleep 20
           done
-          echo "::error::等了 10 分钟仍取不到这条提交的构建产物 —— 确认它推过 master，且那一轮构建成功"
-          exit 1
+
+          rm -rf .ci-artifacts
+          gh run download "$run_id" --dir .ci-artifacts --pattern 'oplus-key-*'
+          mkdir -p dist
+          cp .ci-artifacts/*/*.apk dist/ 2>/dev/null || true
+          if ! ls dist/*.apk >/dev/null 2>&1; then
+            echo "::error::构建 run $run_id 成功了，但没取到产物（可能已过保留期）"
+            exit 1
+          fi
+          echo "取到："
+          ls -l dist
 
       # CI 没出 release 包时（最常见：Secrets 里少了 `KEYSTORE_*` 那四项 ⇒ `signed=false`，只出
       #   debug），后面建 Release 那步只会抛一句含糊的「no files found」。这里先判、把原因写清楚；
@@ -121,11 +132,55 @@ jobs:
             exit 1
           fi
           echo "ok  dist/$want"
+          # 详细日志那一档是后加的：老的 CI 轮次没有它，这里只提示、不判失败
+          if ! ls dist/*-releaseLog.apk >/dev/null 2>&1; then
+            echo "::notice title=缺少 releaseLog 包::这一轮 CI 产物里没有 *-releaseLog.apk（多半是改动之前那一轮构建的）"
+          fi
 
       # 发出去的那两个包要在**本条 run 里**解一遍：它们是从别的 run 取来的，中间没经过这里的手。
       #   判据与 `ci.yml` 同一份（`tools/verify-apk.sh`），不是两套。
       - name: 校验验收底线（AGENTS.md 二、1.2）
         run: bash tools/verify-apk.sh dist
+
+      # 这一版的更新说明 —— 与上架那条（`publish.yml`）**同一套口径**：
+      #   内容 = 上一个 tag 到这一个 tag 之间的提交标题，一行一条，不另维护说明文件。
+      #
+      #  存档这条也要有：用户点进本仓库的 Release 时，看到的应该和「更新提示」里那份一致，
+      #  而不是只有一串包名。包清单接在下面 —— 两者是两件事，合在一条正文里但分两段。
+      #
+      #  `--no-merges`：合并提交的标题是「Merge branch …」，对用户没有意义。
+      - name: 组装 Release 正文（上个 tag → 这个 tag 的提交）
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          prev=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          if [ -n "$prev" ]; then
+            log_args=("${prev}..${TAG}")
+            echo "提交范围：${prev}..${TAG}"
+          else
+            log_args=(-1 "${TAG}")
+            echo "没找到上一个 tag（首个版本），只列本 tag 那一条"
+          fi
+          {
+            if [ -n "$prev" ]; then
+              echo "自 \`${prev}\` 以来的改动："
+            else
+              echo "首个版本。"
+            fi
+            echo
+            git log "${log_args[@]}" --no-merges --pretty='- %s' | sed '/^$/d'
+            echo
+            echo "---"
+            echo
+            echo "\`versionName\` = ${{ steps.dist.outputs.version_name }}，\`versionCode\` = ${{ steps.dist.outputs.version_code }}，\`BUILD_ID\` = ${{ steps.dist.outputs.build_id }}。"
+            echo
+            echo "- \`oplus-key-${{ steps.dist.outputs.version_name }}-release.apk\` —— 正式签名，与管理器更新到的是同一个包"
+            echo "- \`oplus-key-${{ steps.dist.outputs.version_name }}-releaseLog.apk\` —— 同一份正式包，只是打开了详细日志（\`versionName\` 带 \`-log\` 后缀），给排查用"
+            echo "- \`oplus-key-${{ steps.dist.outputs.version_name }}-debug.apk\` —— 调试包（\`versionName\` 带 \`-debug\` 后缀），复现用"
+            echo
+            echo "更新走模块仓库那条：https://github.com/${MODULE_REPO}/releases"
+          } > dist/release-body.md
+          echo "--- 正文 ---"
+          cat dist/release-body.md
 
       # 本仓库这条 Release 是**历史存档**，不是更新通道：管理器只读模块仓库的 release
       #   （见 `MODULE_REPO`），所以同一次发版在这里也发一条，带**两个包**，回滚复现时直接取。
@@ -140,70 +195,5 @@ jobs:
           prerelease: ${{ contains(steps.dist.outputs.version_name, '-') }}
           make_latest: ${{ !contains(steps.dist.outputs.version_name, '-') }}
           files: dist/*.apk
-          body: |
-            `versionName` = ${{ steps.dist.outputs.version_name }}，`versionCode` = ${{ steps.dist.outputs.version_code }}，`BUILD_ID` = ${{ steps.dist.outputs.build_id }}。
-
-            - `oplus-key-${{ steps.dist.outputs.version_name }}-release.apk` —— 正式签名，与管理器更新到的是同一个包
-            - `oplus-key-${{ steps.dist.outputs.version_name }}-debug.apk` —— 调试包（`versionName` 带 `-debug` 后缀），复现用
-
-            更新走模块仓库那条：https://github.com/${{ env.MODULE_REPO }}/releases
-            这一版的改动见 [`changelog/`](https://github.com/${{ github.repository }}/tree/${{ github.ref_name }}/changelog)。
-
-      # 模块仓库还没批下来 / 令牌还没配时不发版，只提示（存档那条上面已经发了，不受影响）
-      - name: 检查模块仓库的前置条件
-        id: token
-        env:
-          MODULES_REPO_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
-          GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
-        run: |
-          if [ -z "${MODULES_REPO_TOKEN:-}" ]; then
-            echo "::notice title=未配置发布令牌::跳过模块仓库；需在 Secrets 里加 MODULES_REPO_TOKEN（对 ${MODULE_REPO} 有 contents:write）"
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! gh repo view "$MODULE_REPO" >/dev/null 2>&1; then
-            echo "::notice title=模块仓库尚不存在::跳过模块仓库；${MODULE_REPO} 还没创建（提交 issue 通过后由机器人建）"
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-
-      # 资产名按版本号，同一版重传会撞同名 —— 先清掉这一版已有资产再传，
-      # 免得 `gh` 报「文件已存在」，也免得同一条 release 下攒出两个同名包。
-      - name: 清掉这一版里的旧资产
-        if: steps.token.outputs.ready == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
-          TAG: ${{ steps.dist.outputs.tag }}
-        run: |
-          gh release view "$TAG" --repo "$MODULE_REPO" --json assets \
-            --jq '.assets[].name' 2>/dev/null | while read -r name; do
-            [ -n "$name" ] || continue
-            echo "删除旧资产 $name"
-            gh release delete-asset "$TAG" "$name" --repo "$MODULE_REPO" --yes
-          done
-
-      # 只传 release 包：机器人按单个 apk URL 处理，挂两个抓不准；debug 包在上面的存档里有。
-      #
-      # 预发布版本靠「预发布」这一个标记区分，没有第二套构建：
-      #   versionName 里带 `-`（如 1.1.0-beta.1）⇒ 发为预发布 ⇒ 只进管理器的「测试版」通道。
-      #   索引据此填 `latestBetaRelease`（稳定版填 `latestRelease`、快照版按 release 标题前缀填
-      #   `latestSnapshotRelease`），管理器的「稳定版」通道会把 `isPrerelease` 的条目整个滤掉。
-      #   注意：版本号仍须单调递增：预发布也占一个 `versionCode`，不涨的话测试通道收不到更新提示。
-      - name: 建 / 更新 Release（模块仓库）
-        if: steps.token.outputs.ready == 'true'
-        uses: softprops/action-gh-release@5113cdc90fd4d541c801c55356214017bf5ae34b # v3
-        with:
-          repository: ${{ env.MODULE_REPO }}
-          token: ${{ secrets.MODULES_REPO_TOKEN }}
-          tag_name: ${{ steps.dist.outputs.tag }}
-          name: ${{ steps.dist.outputs.version_name }}
-          prerelease: ${{ contains(steps.dist.outputs.version_name, '-') }}
-          # 预发布不能被设为 latest（GitHub 会拒），所以这一项和上面反着来。
-          make_latest: ${{ !contains(steps.dist.outputs.version_name, '-') }}
-          # 只有一档包体（release，见 `app/build.gradle.kts` 的 buildTypes）：预发布与正式
-          #   发的是同一个包，区别只在 `prerelease` 那个标记上。
-          files: dist/*-release.apk
-          body: |
-            `versionName` = ${{ steps.dist.outputs.version_name }}，`versionCode` = ${{ steps.dist.outputs.version_code }}，`BUILD_ID` = ${{ steps.dist.outputs.build_id }}。
-            由 GitHub Actions 自动构建。
+          # 正文由上一步组装（这一版的提交列表 + 版本号 + 三个包的说明）。
+          body_path: dist/release-body.md

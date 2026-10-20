@@ -512,7 +512,7 @@ internal object SettingsPageHooks {
         //  换页时**先把上一份收掉**：新实例先建、老实例后销毁那一档顺序下，`clearPageRefs`
         //  会因为「HostSession.activity 已经不是它」而早退，旧页面（含每秒轮询、以及那些
         //  捕获了旧 Activity 的回调）就永远没人 dispose —— 这一支补的就是那个缺口。
-        if (HostSession.page !== page) HostSession.page?.link?.dispose()
+        if (HostSession.page !== page) HostSession.page?.hints?.dispose()
         HostSession.page = page
         moduleRef?.let { BackInterception.installBackInterception(it, activity) }
 
@@ -617,7 +617,7 @@ internal object SettingsPageHooks {
         BackInterception.unregisterBackCallback()
         HostSession.activity = null
         //  提示那几条协程也一起收掉：它们还挂在旧页面的作用域上，留着只会在没人看的时候醒一次
-        HostSession.page?.link?.dispose()
+        HostSession.page?.hints?.dispose()
         //  这一页自建的 ViewTree 兜底 owner 同样要放（换页那条路走 `attachOne`，关页没有下一页）
         HostSession.page?.viewTree?.release()
         HostSession.page = null

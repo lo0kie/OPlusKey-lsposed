@@ -164,13 +164,13 @@ internal fun SettingsPage.ActionTile(
                             //  入口格不再画单选圈（那读作「这一格是一个可选项」），按**点开去哪**分两种字形：
                             //  · 弹一层菜单（系统导航 / 系统按键 / 媒体控制 / 响铃状态）→ 选择器字形
                             //    （[PageIcons.Selector]：一个框 + 右下角小三角，读作「点了要选点什么」）；
-                            //  · 进另一个页面（「打开应用」→ 挑应用）→「窗口 + 加号」。
+                            //  · 进另一个页面（「打开应用」→ 挑应用）→ **右箭头**（与菜单、列表那几处同一颗）。
                             //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
                             // 换掉之后占位与观感不变。
                             when {
                                 spec.token == ActionCatalog.APP_TILE -> {
                                     Icon(
-                                        PageIcons.BrowserPlus,
+                                        PageIcons.EnterArrow,
                                         contentDescription = null,
                                         modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
                                         tint = entryIndicatorColor,

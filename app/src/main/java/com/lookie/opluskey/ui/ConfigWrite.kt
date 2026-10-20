@@ -6,11 +6,15 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.ui.model.languageLabel
 import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeyWatchState
 
-// 配置落盘这一族：唯一的写入口 [write]，以及所有「拨一个开关 / 清空配置」的动作。
+// 配置落盘这一族：唯一的写入口 [write]，以及所有**全局**开关的动作。
+//
+// 「**这一颗键**的参数」那半在 `ui/KeyParamsWrite.kt`（长按连续触发 / 忽视无操作双击）：
+// 两者写的不是同一段配置（`global` 对 `keys[id]`），搬之前混在一个文件里，
+// 加一条全局开关就要跟「按键设置」那两条挤在同一个文件数函数个数。
 //
 // 它与另外两族**不是一类**，所以分开放：跨进程那两件（广播 + 重问自检）在 `HostLinkActions.kt`，
 // 动宿主页面与进程那几件（露出原版页 / 重启服务）在 `PageControl.kt`。
@@ -26,18 +30,20 @@ internal fun SettingsPage.setVibrate(on: Boolean) {
 }
 
 /**
- * 切「立即触发单击」（双击为无操作时不等双击窗口）—— 行点击与开关共用这一个入口。
+ * 写**振动强度**（三档，见 [GlobalConfig.VIBRATE_STRENGTH_RANGE]）。
  *
- *  这一位是**每颗键各一份**（`KeyConfig.instantSingle`）：写在当前编辑的那颗键上，
- *  语义与判定侧见 `inject/input/GestureDetector.onKeyUp`。
+ *  只改强度、不动 [GlobalConfig.vibrate]：那一行的开关管「振不振」，这一行管「振多重」，
+ *  两层各自独立（关掉振动时这一行整体不出现，见 `HomeActionsCard`）。
+ *
+ *  返回「写盘成没成」—— 滑杆失败时要拨回原值（见 `SliderRow` 的 `commit`）。
  */
-internal fun SettingsPage.setInstantSingle(on: Boolean) {
+internal fun SettingsPage.setVibrateStrength(level: Int): Boolean {
     val cfg = configState.config.value
-    val id = KeyWatchState.editing(cfg)
-    writeAndNotice(
-        cfg.copy(keys = cfg.keys + (id to cfg.key(id).copy(instantSingle = on))),
-        "instant_single=${if (on) 1 else 0} key=${id.id}",
-    ) { switchNotice(I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"), on) }
+    val next = level.coerceIn(GlobalConfig.VIBRATE_STRENGTH_RANGE)
+    return write(
+        cfg.copy(global = cfg.global.copy(vibrateStrength = next)),
+        "vibrate_strength=$next",
+    ) != CommandsSave.Failed
 }
 
 /**
@@ -67,7 +73,7 @@ internal fun SettingsPage.setLanguage(code: String) {
         "language=$code",
     ) {
         I18n
-            .get(Strings.TOAST_LANGUAGE_SWITCHED, "已切换到「%s」")
+            .get(Strings.TOAST_SWITCHED_TO, "已切换到「%s」")
             .format(languageLabel(AppLanguage.fromCode(code)))
     }
 }
@@ -132,23 +138,6 @@ internal fun SettingsPage.acceptDisclaimerAndEnable() {
         ),
         "disclaimer_accepted=true",
     ) { I18n.get(Strings.TOAST_BINDING_ON, "已启用按键绑定") }
-}
-
-/**
- * 切「长按连续触发」—— 行点击与开关共用这一个入口。
- *
- *  写的是**当前在编辑的那颗键**：这一行属于「按键设置」卡，卡里三档（长按阈值 / 连续触发 /
- *  忽视无操作双击）都是那颗键自己的参数。
- */
-internal fun SettingsPage.setLongRepeat(on: Boolean) {
-    val cfg = configState.config.value
-    val id = KeyWatchState.editing(cfg)
-    writeAndNotice(
-        cfg.copy(
-            keys = cfg.keys + (id to cfg.key(id).copy(longRepeat = on)),
-        ),
-        "long_repeat=${if (on) 1 else 0} key=${id.id}",
-    ) { switchNotice(I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_TITLE, "长按连续触发"), on) }
 }
 
 /**

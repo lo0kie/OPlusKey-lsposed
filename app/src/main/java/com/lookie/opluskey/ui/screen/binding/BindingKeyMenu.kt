@@ -295,7 +295,7 @@ private fun keyActionEntries(
         add(MenuEntry.RowLine)
         add(
             MenuEntry.Row(
-                title = I18n.get(Strings.BINDING_RESET_KEY, "重置此按键绑定"),
+                title = I18n.get(Strings.BINDING_RESET_KEY, "重置绑定"),
                 icon = PageIcons.MenuReset,
                 // 每一颗键都有自己的配置段（`Config.keys`），所以都能重置
                 enabled = true,
@@ -348,7 +348,7 @@ private fun SettingsPage.KeyMenuDialogHost(
     )
     ConfirmDialog(
         show = dialog == KeyMenuDialog.RESET,
-        title = I18n.get(Strings.BINDING_RESET_KEY, "重置此按键绑定"),
+        title = I18n.get(Strings.BINDING_RESET_KEY, "重置绑定"),
         summary = I18n.get(Strings.BINDING_RESET_KEY_CONFIRM, "单击、双击、长按与按键设置都会回到默认，按键本身保留。"),
         action = I18n.get(Strings.COMMON_RESET, "重置"),
         positiveDanger = true,

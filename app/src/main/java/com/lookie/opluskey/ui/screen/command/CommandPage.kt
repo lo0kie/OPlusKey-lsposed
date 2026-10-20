@@ -20,6 +20,7 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
+import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
@@ -146,7 +147,7 @@ private fun SettingsPage.SingleCommandField() {
     //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。
     val formatError =
         if (raw.isNotBlank() && !Action.hasSupportedFormat(raw)) {
-            I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "命令必须以支持的格式开头，如 shell: / keyevent: / cmd:")
+            I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "开头要写 shell: / cmd: 这类前缀")
         } else {
             ""
         }
@@ -198,14 +199,17 @@ private val HINT_SIDE_PADDING = 32.dp
 private fun SettingsPage.StepDelayCard(tick: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         SliderRow(
-            title = I18n.get(Strings.COMMAND_DELAY_LABEL, "命令间隔时长"),
-            icon = PageIcons.DelayStep,
-            summary = I18n.get(Strings.COMMAND_DELAY_DESC, "等多久再执行下一条"),
             position = cardListPositionOf(0, SERIAL_CARD_ROWS),
-            min = Command.MIN_STEP_DELAY_MS,
-            max = Command.MAX_STEP_DELAY_MS,
-            value = commandDraft.draft.stepDelayMs,
-            default = Command.DEFAULT_STEP_DELAY_MS,
+            spec =
+                SliderSpec(
+                    title = I18n.get(Strings.COMMAND_DELAY_LABEL, "命令间隔时长"),
+                    icon = PageIcons.DelayStep,
+                    summary = I18n.get(Strings.COMMAND_DELAY_DESC, "等多久再执行下一条"),
+                    min = Command.MIN_STEP_DELAY_MS,
+                    max = Command.MAX_STEP_DELAY_MS,
+                    value = commandDraft.draft.stepDelayMs,
+                    default = Command.DEFAULT_STEP_DELAY_MS,
+                ),
         ) { v ->
             tick()
             commandDraft.draft.stepDelayMs = v

@@ -27,4 +27,20 @@ internal class AboutUiState {
     /** 「作者」那一行（GitHub / 酷安两个去处，见 [com.lookie.opluskey.ui.model.AuthorTarget]）。 */
     val authorClick = PreciseClickState()
     var showAuthorMenu by mutableStateOf(false)
+
+    /** 「界面颜色」那一行（跟随系统 / 浅色 / 深色）。 */
+    val themeClick = PreciseClickState()
+    var showThemeMenu by mutableStateOf(false)
+
+    /** 「系统配色」那一行（五套强调色，见 [com.lookie.opluskey.ui.model.PagePalette]）。 */
+    val paletteClick = PreciseClickState()
+    var showPaletteMenu by mutableStateOf(false)
+
+    /**
+     * 「签名」那一行**展开了没有** —— 指纹平时收着，点一下才列出来（见 `ui/ExpandableRow`）。
+     *
+     *  放进这里而不是 `remember` 在行里：这一位要在整页重组（比如切语言）之后仍保持，
+     *  与上面几个菜单开关同一档。
+     */
+    var signatureExpanded by mutableStateOf(false)
 }

@@ -96,8 +96,8 @@ internal const val SHOW_HOME_MINI_ANIM = false
  */
 internal val HOME_ACTION_ROWS = if (SHOW_HOME_MINI_ANIM) 3 else 2
 
-/** 「更多选项」页「关于」那张卡的行数 —— 本机 / 版本 / 签名 / 作者 / 反馈问题，五行固定。 */
-internal const val ABOUT_ROWS = 5
+/** 「更多选项」页「关于」那张卡的行数 —— 版本 / 签名 / 作者 / 反馈问题，四行固定（本机那行在「运行状态」卡里）。 */
+internal const val ABOUT_ROWS = 4
 
 /**
  * 「更多选项」页「配置」那张卡的行数 —— 语言 / 导出配置 / 导入配置，三行固定。
@@ -106,6 +106,13 @@ internal const val ABOUT_ROWS = 5
  * 合成一个数会让上面那张卡的最后一行被当成「中间行」。
  */
 internal const val MORE_CONFIG_ROWS = 3
+
+/**
+ * 「更多选项」页「外观」那张卡的行数 —— 界面颜色 / 系统配色，两行固定。
+ *
+ *  与 [MORE_CONFIG_ROWS] 同一个理由分开算：两张卡的首尾圆角各按各的行数补。
+ */
+internal const val MORE_APPEARANCE_ROWS = 2
 
 /**
  * 首页「其他」卡的行数 —— 「更多选项」与「捐赠打赏」两行。

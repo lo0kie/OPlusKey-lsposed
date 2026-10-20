@@ -60,7 +60,7 @@ object ModuleWire {
      */
     const val PHASE_RELEASE = "release"
 
-    /** 广播里携带的「是否长按连续触发的重复派发」（执行侧据此跳过振动）。 */
+    /** 广播里携带的「是否长按连续触发的重复派发」（执行侧据此决定要不要振动、要不要补发报活）。 */
     const val EXTRA_REPEAT = "repeat"
 
     /**
@@ -151,13 +151,25 @@ object ModuleWire {
     /**
      * [ACTION_INJECT_READY] 里带「注入侧跑的是哪一次构建」（`ModuleInfo.BUILD_ID`）。
      *
-     *  它是**唯一**能判「换过包但没重启」的信号：system_server 里那份代码只在开机那一刻加载，
-     *  所以换包不重启时它照样回包、各项自检也照样过，只是 `BUILD_ID` 还是上一版。
-     *  页面拿它与自己那份比：不等 ⇒ 明确是「要重启」，与「作用域漏了 system」不是一回事
-     *  （后者**根本不会有回包**）。
-     *  旧版注入侧不带这一项时读到空串，按「不判」处理（升级过程中的一次性过渡）。
+     *  判「换过包但没重启」的**备用尺子**：主尺子是 [EXTRA_INJECT_PROC_START]（进程启动时刻 vs
+     *  包更新时间，不需要人记得改任何常量）。这一项留下的理由有两个 ——
+     *   · 旧版注入侧不含时间戳那一项时，只能靠它（读到空串 = 对面连它都没带，按「不判」处理）；
+     *   · 它是「同一次构建」的**身份**，日志里对得上人看得出来是哪一版。
+     *  代价是它要人手维护：忘了改就量不出差别，所以**不能让它单独决定「要不要重启」**。
      */
     const val EXTRA_INJECT_BUILD_ID = "inject_build_id"
+
+    /**
+     * [ACTION_INJECT_READY] 里带「注入侧所在进程的启动时刻」（wall clock 毫秒，见 `ProcClock.startWall`）。
+     *
+     *  判「换过包但没重启」的**主尺子**：与安装包的 `lastUpdateTime` 一比就知道 ——
+     *  进程起得比包早 ⇒ 它加载的是上一版代码。
+     *  0 = 对面是还没带这一项的旧版，此时退回 [EXTRA_INJECT_BUILD_ID] 那条。
+     */
+    const val EXTRA_INJECT_PROC_START = "inject_proc_start"
+
+    /** [ACTION_HOST_SERVICE_UP] 里带「宿主进程的启动时刻」（同上）。宿主是普通应用进程，重开即可，不必重启手机。 */
+    const val EXTRA_HOST_PROC_START = "host_proc_start"
 
     /** [ACTION_HOST_SERVICE_UP] 里带「宿主读到的主开关真值」——页面据此判它是不是读到了真配置。 */
     const val EXTRA_HOST_ENABLED = "host_enabled"

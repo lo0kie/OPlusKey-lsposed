@@ -6,10 +6,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 
 /**
  * 「我们自己刚写下去的那一份配置还在路上」的宽限 —— 见 [HostLinkState.configPending]。
@@ -18,12 +14,6 @@ import kotlinx.coroutines.cancel
  *  留的余量。它只影响「乐观」这一小段 —— 回包一到就提前结束，等不到也会自己过期。
  */
 internal const val CONFIG_IN_FLIGHT_GRACE_MS = 2_000L
-
-/**
- * 操作提示停留多久（毫秒）。库的 `SnackbarDuration.Short` 是 4s，这里短一点：
- * 回执只是一句「已删除」，看完就走，不该一直压着页面底部。
- */
-private const val HINT_HOLD_MS = 2200L
 
 /**
  * 「链路 / 报活」那一域的状态 —— 首页那条提示与「更多选项 → 运行状态」共用的那几项结论。
@@ -57,11 +47,68 @@ internal class HostLinkState {
     /** 注入侧回包的**代次** —— 与 [hostAliveToken] 同一个道理。 */
     var injectAliveToken by mutableIntStateOf(0)
 
+    /**
+     * 进首页那一趟**注入侧自检跑完了没有**（问满所有轮，或提前收到回包）。
+     *
+     *  为什么要单独一位：[injectStatus] 的初值就是 `null`（「没问到之前一律按未就绪算」），
+     *  而「未就绪」与「问过三轮都没回音」在判据上是同一份 `null`。少了这一位，重启后那几秒
+     *  （system_server 刚起、AMS 广播在排队）会被判成「模块没生效，去勾作用域」—— 一句假故障，
+     *  等回音一到又自己消失。有了它，判据就能分清「还没问完」与「问了没人答」。
+     *
+     *  **只置 true、不再回 false**：自检每回到首页都会重跑，但「曾经问通过」这件事不会变；
+     *  回 false 会让重新进首页时那几秒又把结论收起来。
+     */
+    var injectChecked by mutableStateOf(false)
+
     /** 宿主报活带回来的「它读到的主开关真值」—— `false` ⇒ 它读到的是默认值（主开关关着 / 还没解锁）。 */
     var hostEnabled by mutableStateOf(false)
 
     /** 宿主报活带回来的「最后一次执行动作」（`elapsedRealtime()`，0 = 从未）。 */
     var hostLastActionAt by mutableLongStateOf(0L)
+
+    /** 宿主报活带回来的「宿主进程启动时刻」（wall clock，0 = 对面没带这一项）。 */
+    var hostProcStart by mutableLongStateOf(0L)
+
+    /**
+     * 盘上那份模块包的更新时间（`PackageInfo.lastUpdateTime`，0 = 读不到）。
+     *
+     *  与 [hostProcStart] / [InjectStatus.procStart] 一比，就能判出「哪一侧还跑着旧版」——
+     *  进程起得比包早，它加载的就是上一版代码。判据在 `LinkFacts`，这里只存事实。
+     */
+    var installedAt by mutableLongStateOf(0L)
+
+    /**
+     * 系统那一侧**曾经**回过话没有 —— 从 `opluskey_ui.conf` 读进来（见 [UiState]）。
+     *
+     *  它是「从没用过」与「用过、这次没起来」之间唯一的区别；没有它，界面只能把这两种
+     *  现象糊成同一句话。
+     */
+    var injectEverAlive by mutableStateOf(false)
+
+    /** 上一次回话时的那轮开机（秒级 wall clock，0 = 从没回话）—— 用来判「那次是不是此刻这轮」。 */
+    var injectAliveBoot by mutableLongStateOf(0L)
+
+    /** 本轮开机的指纹（`ProcClock.bootWall()`）—— 建页那一刻取一次即可。 */
+    var bootWall by mutableLongStateOf(0L)
+
+    /**
+     * 记下「注入侧刚回过话」—— 只在值真的要变时才落盘（注入侧每次自检都回包，每次都写是白写）。
+     *
+     *  注意：这一位**只增不减**。它答的是「这台机器上跑起来过没有」，不是「现在活着」——
+     *  「现在活着」由 `injectStatus` 每轮自己回答。
+     *
+     * @param bootNow 本轮开机指纹（调用方传，避免这里自己再算一次）
+     * @param write 落盘动作（带上 `Context` 的那一半留在 `ui` 层，`ui.state` 不碰文件）
+     */
+    fun noteInjectAlive(
+        bootNow: Long,
+        write: (Long) -> Boolean,
+    ) {
+        if (injectEverAlive && injectAliveBoot == bootNow) return
+        injectEverAlive = true
+        injectAliveBoot = bootNow
+        write(bootNow)
+    }
 
     /**
      * 我们自己**刚写下去**的那一份配置的指纹（`ConfigBroadcast.tag`），`null` = 没有在途的写入。
@@ -99,60 +146,4 @@ internal class HostLinkState {
         pendingConfigTag == tag &&
             pendingConfigSince > 0 &&
             SystemClock.uptimeMillis() - pendingConfigSince < CONFIG_IN_FLIGHT_GRACE_MS
-
-    /**
-     * 提示用的作用域 —— 页面级，关页时由 [dispose] 收掉。
-     *
-     *  `Main.immediate`：提示是 Compose 状态，写它就该在主线程；而 `hint()` 的调用点有一半
-     *  在事件回调里（已经在主线程），`immediate` 让那几处不必多绕一次消息队列。
-     *
-     *  **必须声明在两份 [HintState] 之前**：Kotlin 的属性按书写顺序初始化，放到后面那份
-     *  `HintState(scope, …)` 拿到的会是 `null`（编译期不报，运行时就是一次 NPE）。
-     */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-
-    /**
-     * 首页那条「模块未生效」**常驻**结论 —— 一直挂着，直到结论变了或被代码收掉。
-     *
-     *  与 [actionHint] 分成两份状态，因为两者的生命周期正相反：这条不会自己走，
-     *  另一条几秒就消失。放在同一份里会互相顶掉（收常驻那条时把刚做的动作回执一起收掉）。
-     *  实现见 [HintState]（为什么不用库的 `SnackbarHostState`，那里写着）。
-     */
-    val statusHint = HintState(scope, holdMs = 0)
-
-    /**
-     * **操作提示** —— 用户做完一个动作之后的回执（已删除、保存失败、已切换到某颗键……）。
-     *
-     *  两秒多就自己走；新的一句**直接换掉**旧的一句，不排队（见 [HintState] 的类注释）。
-     */
-    val actionHint = HintState(scope, holdMs = HINT_HOLD_MS)
-
-    /**
-     * 弹一条**操作提示**（取代原来的 Android Toast）。
-     *
-     *  只换字符串：没有队列、没有「先收再弹」—— 那套是给库的 host 准备的，
-     *  也正是「第二句从更高的地方瞬回」的来源（见 [HintState]）。
-     */
-    fun hint(text: String) {
-        actionHint.show(text)
-    }
-
-    /** 换掉那条常驻提示（结论变了）；传 `null` = 收掉。 */
-    fun showStatus(text: String?) {
-        if (text == null) statusHint.dismiss() else statusHint.show(text)
-    }
-
-    /** 收掉那条常驻提示（离开首页 / 关页时）。 */
-    fun dismissStatus() {
-        statusHint.dismiss()
-    }
-
-    /** 关页时收掉作用域 —— 还在计时的提示跟着停，不会有人再往旧实例里写。 */
-    fun dispose() {
-        //  先把两条提示收成 null，再收作用域：只 cancel 的话，组合树上那两个 HintSlot
-        //  还读着旧字符串 —— 旧页面在拆除前最后一帧会再画一遍（而 `show` 此后已经拒绝写入）。
-        statusHint.dismiss()
-        actionHint.dismiss()
-        scope.cancel()
-    }
 }

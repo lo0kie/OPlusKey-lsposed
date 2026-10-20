@@ -107,8 +107,8 @@ android {
         // 没走模块仓库；`0.2.0` 没发过）。`versionCode` 仍取 3 而不是 1：1 / 2 都被历史包用掉了
         // （手动发的 0.1.0 与本地出的 0.2.0），而管理器判「有没有新版本」是**严格大于**
         // （`RepoLoader.upgradable`），安装器也不接受比已装版本小的包 —— 只增不减。
-        versionCode = 3
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "1.1.0"
 
         // `build_id`（出包时刻，界面版本行展示）**不在这里**声明：
         //  它是 [GenerateBuildId] 这个任务的产物，由 `androidComponents.onVariants` 挂进各变体的
@@ -207,6 +207,17 @@ android {
                 "proguard-rules.pro",
             )
             signingConfig = publishSigning
+        }
+
+        // 「带完整日志的 release」—— 给排查用的包：除日志外与 release 完全一致
+        //  （R8 + 资源收缩 + 正式签名 + 资产封存 + 不可调试）。
+        //
+        //  日志那一档由 `:core` 的 `src/releaseLog/BuildFlags.kt` 顶替（`VERBOSE_LOG = true`），
+        //  所以这一档**必须**在 `:core` 也声明同名 buildType —— 否则变体匹配失败。
+        //  `versionNameSuffix` 让「应用信息」与产物名都看得出这是哪一档（`1.0.0-log`）。
+        create("releaseLog") {
+            initWith(getByName("release"))
+            versionNameSuffix = "-log"
         }
     }
 

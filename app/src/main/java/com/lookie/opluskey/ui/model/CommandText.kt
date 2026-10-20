@@ -6,7 +6,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.SystemSwitches
+import com.lookie.opluskey.core.model.actionTitle
 
 // 命令文本的显示层：把一条命令 / 一个步骤压成界面上要显示的那几行字。
 // 与 Compose、与页面状态无关 —— 输入是 `Command` / 字符串，输出是字符串 / 图标。
@@ -50,10 +50,10 @@ internal fun isCommandRef(token: String): Boolean = token.startsWith(Command.PRE
  *  唯一的例外是「打开应用」那两档（`app:` 与 `window:`），它们显示成「打开应用:应用名」/
  *  「以小窗口打开:应用名」—— 那一段不是分类，是动作本身：少了它就只剩一个应用名，
  *  看不出这一步是「打开某个应用」，也看不出是小窗那一档。口径与执行时提示
- *  （`host/action/ActionNotice`）逐字一致。
+ *  （`host/action/ActionNotice`）**同一份实现**（`core/model/actionTitle`），不再各写一遍。
  *  - 内置动作取清单里的名字（[ActionCatalog.specOf]）；
  *  - 入口格取那一档的档位名（[ActionCatalog.modeName]）；
- *  - `cmd:` 只显示命令名 —— 与执行时提示（`host/action/ActionNotice`）同一个口径；
+ *  - `cmd:` 只显示命令名；
  *  - 都认不出来就原样显示取值（比如手改过的文件）。
  */
 internal fun stepTitle(
@@ -62,43 +62,20 @@ internal fun stepTitle(
 ): String {
     if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
     val action = Action.parse(token)
-    return when (action) {
-        // 这两档走的是**带 `%s` 的**格式键，不是清单里那条说明文案（后者值里没有格式符，
-        //  拿它去 format 等于把应用名丢掉，界面上只会显示一句「挑一个本机应用…」）。
-        //  交给 [appName] 的是**完整目标**：以前传 `substringBefore('/')`，分身会带着 `999@`
-        //  去查（必然查不到）、结果就显示成包名。
-        is Action.App -> {
-            I18n.format(Strings.COMMON_OPEN_APP_FORMAT, appName(action.target))
-        }
-
-        is Action.AppWindow -> {
-            I18n.format(
-                Strings.COMMON_OPEN_MINI_WINDOW_FORMAT,
-                appName(action.target),
-            )
-        }
-
-        // 快捷方式（`appshortcut:`）：显示它自己的名字（「扫一扫」，存在 `Config.appNames` 里），
-        //  没记过就退回应用名 / 包名。不与上面两档合并：那两档说的是「打开这个应用」，
-        //  这一档是「打开它的某个快捷方式」。
-        is Action.AppShortcut -> {
-            I18n.format(Strings.COMMON_OPEN_SHORTCUT_FORMAT, appName(action.appTarget.orEmpty()))
-        }
-
-        // 系统开关（`setting:<id>`）：读作「切换:WLAN」—— 名字在清单里，认不出就退回 id
-        is Action.Setting -> {
-            I18n.format(
-                Strings.COMMON_TOGGLE_SETTING_FORMAT,
-                SystemSwitches.titleOf(action.token) ?: action.id,
-            )
-        }
-
-        //  与执行时提示（`host/action/ActionNotice`）共用同一份优先级（`ActionCatalog.label`）；
-        //  兜底用**配置里的原样 token**：手改过的文件要看得见原始写法。
-        else -> {
-            ActionCatalog.label(action) ?: token
-        }
-    }
+    return actionTitle(
+        action = action,
+        // 名字从哪儿来是**界面侧**的事（宿主那边现查 PM）：这里先查这次清单、再查配置里记的名字
+        appName = { a ->
+            when (a) {
+                is Action.App -> appName(a.target)
+                is Action.AppWindow -> appName(a.target)
+                is Action.AppShortcut -> appName(a.appTarget.orEmpty())
+                else -> ""
+            }
+        },
+        // 认不出来时用**配置里那串原始写法**（宿主那边用规范化后的 token）
+        fallback = token,
+    )
 }
 
 /**

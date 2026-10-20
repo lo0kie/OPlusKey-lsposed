@@ -158,12 +158,19 @@ private fun SettingsPage.HomeLinkSelfCheck() {
             // 单轮漏答**不清结论**：AMS 偶尔忙一轮，清掉就 `linkReady=false` ⇒ 首页整片置灰
             //  （用户报的「换 ROM 后整页一直是灰的，退出去再进来才好」正是这一处）。
             //  与宿主那一档对齐：全程没答才降档，见下面两行。
-            if (hostAnswered && injectAnswered) return@LaunchedEffect
+            if (hostAnswered && injectAnswered) {
+                // 两端都答了 ⇒ 这一趟自检结束（提示可以按真结论说话了，见 `injectChecked`）
+                link.injectChecked = true
+                return@LaunchedEffect
+            }
             if (round > 0) XLog.w("链路自检第 ${round + 1} 轮仍未齐（宿主=$hostAnswered 注入=$injectAnswered）")
         }
         //  注意：**只有问满所有轮都没回音才降档**：每轮超时就清，一轮偶然没回音
         //  （广播被压 / 宿主正忙）就会把一个**已经确认过**的结论清成「未加载」。
         //  现在两端同一套判据：单轮漏答不算数，全程没答才判它没起来 / 没加载。
+        //  问满所有轮也结束：此时「没回音」才是结论 —— `blockedReason` 正是靠这一位
+        //  把「还在问」与「问了没人答」分开的。
+        link.injectChecked = true
         if (!hostEverAnswered) link.hostServiceUp = false
         if (!injectEverAnswered) link.injectStatus = null
         XLog.w("链路自检问了 $QUERY_ROUNDS 轮都没问齐，不再重问（详见「更多选项 → 运行状态」）")
@@ -191,10 +198,10 @@ private fun SettingsPage.HomeBlockHint() {
         //  原因从 A 变成 B 时旧的那句还挂着、新的被跳过 —— 用户会照着已经不成立的原因排查。
         //
         //  只动 `statusHint`：操作回执在另一个状态里（`actionHint`），互不影响。
-        val shown = link.statusHint.text
+        val shown = hints.statusHint.text
         when {
             blockHint == null -> {
-                if (shown != null) link.dismissStatus()
+                if (shown != null) hints.dismissStatus()
             }
 
             shown == blockHint -> {
@@ -208,14 +215,14 @@ private fun SettingsPage.HomeBlockHint() {
                 //  这一段挂起会被 `blockHint` 的变化取消 ⇒ 只要它自己通了，这条提示根本不出现。
                 delay(BLOCK_HINT_SETTLE_MS)
                 XLog.w("首页提示：$blockHint")
-                link.showStatus(blockHint)
+                hints.showStatus(blockHint)
             }
         }
     }
     // 离开首页（进子页 / 关页）时把它收掉：这一条挂在**页面级**的 host 上、不跟着页走，
     //  不收就会跟到「自定义命令」那些页的底部去 —— 而它说的是首页那个「现在能不能用」。
     DisposableEffect(Unit) {
-        onDispose { link.dismissStatus() }
+        onDispose { hints.dismissStatus() }
     }
 }
 

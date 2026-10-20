@@ -32,7 +32,7 @@ import com.lookie.opluskey.ui.state.CommandsSave
 internal fun SettingsPage.hint(text: String) {
     // 留一行判据：提示条有没有被弹出来，从日志就能答（真机上「点了没反应」时先看这句）
     XLog.w("提示：$text")
-    link.hint(text)
+    hints.hint(text)
 }
 
 /**

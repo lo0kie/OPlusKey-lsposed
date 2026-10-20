@@ -88,19 +88,9 @@ internal class MiniWindowLauncher(
             //  分身**不问主用户的 PM**：同包名在 0 与 998/999 里各有一份，`getApplicationInfo` 必抛，
             //  于是好端端的分身被报成「可能已卸载」（`AppLauncher` 那条路已经踩过这一坑）。
             //  `pm` 已经按 userId 取过（上面一行），拿不到入口就是「没有可用入口」。
-            val installed =
-                if (userId != 0) {
-                    true
-                } else {
-                    try {
-                        pm.getApplicationInfo(pkg, 0)
-                        true
-                    } catch (e: Throwable) {
-                        false
-                    }
-                }
+            val installed = appInstalled(pm, pkg, userId)
             XLog.w("解析不到界面：$target（这个包还在=$installed，user=$userId）")
-            onFailure(if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING)
+            onFailure(entryFailure(installed))
             return
         }
         val pkg = intent.component?.packageName ?: AppTarget.pkg(target)

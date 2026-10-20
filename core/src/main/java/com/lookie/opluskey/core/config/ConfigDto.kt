@@ -1,11 +1,16 @@
 package com.lookie.opluskey.core.config
 
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
+import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.StateCondition
+import com.lookie.opluskey.core.model.StateRule
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -51,6 +56,8 @@ internal data class ConfigDto(
     val disclaimerAccepted: Boolean = false,
     val commandDisclaimerAccepted: Boolean = false,
     @SerialName("app_names") val appNames: Map<String, String> = emptyMap(),
+    /** 组合按键（`Config.combos`）—— 与 `app_names` 同一套：单独一段，只走落盘。 */
+    val combos: List<ComboDto> = emptyList(),
     /** 正文完整性字段；只有 `version == ConfigCodec.VERSION` 时才校验（见 `ConfigCodec`）。 */
     val md5: String = "",
 ) {
@@ -71,7 +78,7 @@ internal data class ConfigDto(
         val master = masterFromFile ?: keys[KeyId.PLUS.id]?.enabled ?: false
         val keyConfigs =
             allKeys.associateWith { id ->
-                val key = KeyConfig.ofFields(id, (keys[id.id] ?: KeyDto()).toValues(legacyDouble, legacyInstant))
+                val key = (keys[id.id] ?: KeyDto()).toKeyConfig(id, legacyDouble, legacyInstant)
                 if (legacyMaster && id.id == KeyId.PLUS.id) key.copy(enabled = true) else key
             }
         val globalConfig = GlobalConfig.ofFields(global.toValues())
@@ -87,6 +94,7 @@ internal data class ConfigDto(
                 ),
             customKeys = custom,
             appNames = appNames,
+            combos = combos.mapNotNull { it.toCombo() },
         )
     }
 
@@ -105,6 +113,7 @@ internal data class ConfigDto(
                 disclaimerAccepted = config.disclaimerAccepted,
                 commandDisclaimerAccepted = config.commandDisclaimerAccepted,
                 appNames = config.appNames,
+                combos = config.combos.map { ComboDto.of(it) },
                 md5 = md5,
             )
     }
@@ -120,6 +129,8 @@ internal data class KeyDto(
     val longPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
     val longRepeat: Boolean = false,
     val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    /** 连续触发时是否每一次重复都振动（关 = 只在长按那一下振一次）。 */
+    val longRepeatVibrate: Boolean = false,
     /**
      * 「单击延迟」与「忽视无操作双击手势」—— **每颗键各一份**（以前在 `global` 段里）。
      *
@@ -128,6 +139,12 @@ internal data class KeyDto(
      */
     val doubleClickMs: Int? = null,
     val instantSingle: Boolean? = null,
+    /**
+     * **状态分支**（`KeyConfig.rules`）—— 只走落盘：它是列表，进不了 `ConfigFields` 的字段表。
+     *
+     *  老文件没有这一段 ⇒ 空表 ⇒ 行为与这一档出现之前完全一致。
+     */
+    val rules: List<StateRuleDto> = emptyList(),
 ) {
     /** 按 [ConfigFields] 那张表把取值钳进各自的上下限 —— 上下限只定义在表里。 */
     fun toValues(
@@ -143,11 +160,19 @@ internal data class KeyDto(
                 ConfigFields.F_LONG_PRESS_MS to clamp(ConfigFields.F_LONG_PRESS_MS, longPressMs),
                 ConfigFields.F_LONG_REPEAT to longRepeat,
                 ConfigFields.F_REPEAT_INTERVAL_MS to clamp(ConfigFields.F_REPEAT_INTERVAL_MS, longRepeatIntervalMs),
+                ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
                 ConfigFields.F_DOUBLE_CLICK_MS to
                     clamp(ConfigFields.F_DOUBLE_CLICK_MS, doubleClickMs ?: legacyDoubleClickMs),
                 ConfigFields.F_INSTANT_SINGLE to (instantSingle ?: legacyInstantSingle),
             ),
         )
+
+    /** 线格式 → 一颗键的配置（含状态分支）。两个 `legacy*` 是迁移兜底，见 [ConfigDto.toConfig]。 */
+    fun toKeyConfig(
+        id: KeyId,
+        legacyDoubleClickMs: Int,
+        legacyInstantSingle: Boolean,
+    ): KeyConfig = KeyConfig.ofFields(id, toValues(legacyDoubleClickMs, legacyInstantSingle), rules.mapNotNull { it.toRule() })
 
     companion object {
         fun from(key: KeyConfig): KeyDto =
@@ -159,8 +184,88 @@ internal data class KeyDto(
                 longPressMs = key.longPressMs,
                 longRepeat = key.longRepeat,
                 longRepeatIntervalMs = key.longRepeatIntervalMs,
+                longRepeatVibrate = key.longRepeatVibrate,
                 doubleClickMs = key.doubleClickMs,
                 instantSingle = key.instantSingle,
+                rules = key.rules.map { StateRuleDto.of(it) },
+            )
+    }
+}
+
+/** `rules` 的一项 —— 一条状态分支。 */
+@Serializable
+internal data class StateRuleDto(
+    /** 手势取 `Gesture.id`（`single` / `double` / `long`），不是枚举名。 */
+    val gesture: String = "",
+    /** 条件写法（`app:包名`），见 `StateCondition`。 */
+    val condition: String = "",
+    val action: String = Action.NONE,
+) {
+    /**
+     * 线格式 → 一条分支；**认不出就整条丢掉**（返回 `null`）。
+     *
+     *  为什么不兜成「永远成立」：那样一条写错的分支会静默接管这颗键的所有手势
+     *  （见 `StateCondition` 的类注释）。丢一条规则只是「这一条不生效」，用户能看得出来。
+     */
+    fun toRule(): StateRule? {
+        val parsedGesture = Gesture.ofId(gesture)
+        if (parsedGesture == null) {
+            XLog.w("配置：状态分支的手势认不出（丢掉这一条）：$gesture")
+            return null
+        }
+        val parsedCondition = StateCondition.parse(condition)
+        if (parsedCondition == null) {
+            XLog.w("配置：状态分支的条件认不出（丢掉这一条）：$condition")
+            return null
+        }
+        return StateRule(parsedGesture, parsedCondition, Action.parse(action))
+    }
+
+    companion object {
+        fun of(rule: StateRule): StateRuleDto = StateRuleDto(rule.gesture.id, rule.condition.token, rule.action.token)
+    }
+}
+
+/** `combos` 的一项 —— 一档组合键。 */
+@Serializable
+internal data class ComboDto(
+    val id: String = "",
+    /** 参与的键（`KeyId.id`）。 */
+    val keys: List<String> = emptyList(),
+    val enabled: Boolean = true,
+    val single: String = Action.NONE,
+    val long: String = Action.NONE,
+    val longPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
+) {
+    /**
+     * 线格式 → 一档组合键；id 空、或成员不足两颗的读不懂（返回 `null`）。
+     *
+     *  前者当不了身份（界面上选中哪一行、删哪一行都靠它），后者判不出来（一颗不叫组合）。
+     *  成员去重之后按 [ComboKey.MAX_KEYS] 截断 —— 手改文件写进十颗也不该让它进来。
+     */
+    fun toCombo(): ComboKey? {
+        val members = keys.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (id.isEmpty() || members.size < ComboKey.MIN_KEYS) return null
+        return ComboKey(
+            id = id,
+            keys = members.take(ComboKey.MAX_KEYS),
+            enabled = enabled,
+            single = Action.parse(single),
+            long = Action.parse(long),
+            // 长按阈值与单键共用同一个区间（`ConfigFields.F_LONG_PRESS_MS`）：它量的是同一件事。
+            longPressMs = clamp(ConfigFields.F_LONG_PRESS_MS, longPressMs),
+        )
+    }
+
+    companion object {
+        fun of(combo: ComboKey): ComboDto =
+            ComboDto(
+                id = combo.id,
+                keys = combo.keys,
+                enabled = combo.enabled,
+                single = combo.single.token,
+                long = combo.long.token,
+                longPressMs = combo.longPressMs,
             )
     }
 }
@@ -179,9 +284,16 @@ internal data class GlobalDto(
      */
     val enabled: Boolean? = null,
     val vibrate: Boolean = false,
+    /** 振动强度（三档）—— 老文件没有这一项，取值会退回字段表的默认值（中档）。 */
+    @SerialName("vibrate_strength")
+    val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
     val instantSingle: Boolean? = null,
     val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
     val language: String = GlobalConfig.DEFAULT_LANGUAGE,
+    /** 系统配色的 id（见 `GlobalConfig.palette`）—— 老文件没有这一项，取值退回默认档。 */
+    val palette: String = GlobalConfig.DEFAULT_PALETTE,
+    /** 界面颜色（见 `GlobalConfig.theme`）—— 老文件没有这一项，退回「跟随系统」。 */
+    val theme: String = GlobalConfig.DEFAULT_THEME,
     val colorOsApi: Boolean = GlobalConfig.DEFAULT_COLOR_OS_API,
     val miniWindowAnim: Boolean = GlobalConfig.DEFAULT_MINI_WINDOW_ANIM,
 ) {
@@ -192,8 +304,11 @@ internal data class GlobalDto(
                 //  `ConfigDto.toConfig` 里做 —— 它还要顺手改 `keys.plus` 那一位
                 ConfigFields.F_MODULE_ENABLED to (enabled ?: GlobalConfig.DEFAULT_ENABLED),
                 ConfigFields.F_VIBRATE to vibrate,
+                ConfigFields.F_VIBRATE_STRENGTH to vibrateStrength,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_LANGUAGE to language,
+                ConfigFields.F_PALETTE to palette,
+                ConfigFields.F_THEME to theme,
                 ConfigFields.F_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
             ),
@@ -204,8 +319,11 @@ internal data class GlobalDto(
             GlobalDto(
                 enabled = g.enabled,
                 vibrate = g.vibrate,
+                vibrateStrength = g.vibrateStrength,
                 toastOnRun = g.toastOnRun,
                 language = g.language,
+                palette = g.palette,
+                theme = g.theme,
                 colorOsApi = g.colorOsApi,
                 miniWindowAnim = g.miniWindowAnim,
             )

@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.toArgb
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.DARK_SCHEME
 import com.lookie.opluskey.ui.model.LIGHT_SCHEME
 import com.lookie.opluskey.ui.model.NIGHT_MODE_KEY
@@ -47,6 +48,12 @@ internal fun SettingsPage.systemNight(): Boolean =
 @Composable
 internal fun SettingsPage.SyncToHost() {
     LaunchedEffect(chrome.dark) { hooks.onSystemThemeChanged?.invoke() }
+
+    // 颜色模式改成「固定浅 / 固定深」时，**系统那边什么都没变** —— 上面那两条路（设置项监听 /
+    // 轮询）都不会醒。得由配置这一侧推一次，否则 `chrome.dark` 还停在旧值上，整页要等到下一次
+    // 系统切换深浅才会跟着变。
+    val theme = configState.config.value.global.theme
+    LaunchedEffect(theme) { syncNight("颜色模式变更") }
 
     // 真机量下来两边轮询延迟随机落在 0.14s~0.56s（相位运气），补这条推送把最常见的「手动切」
     // 压成即时。回调里不读设置项的值、只当「有事发生」的信号，权威仍是 [systemNight]（读系统
@@ -107,9 +114,25 @@ internal fun SettingsPage.SyncToHost() {
  * @return 这次真的翻过去了（推送那一路据此决定还要不要再查）
  */
 internal fun SettingsPage.syncNight(from: String): Boolean {
-    val now = systemNight()
+    val now = effectiveNight()
     if (now == chrome.dark) return false
-    XLog.w("系统深浅变化（$from）：night=$now")
+    XLog.w("深浅变化（$from）：night=$now")
     chrome.dark = now
     return true
 }
+
+/**
+ * 当前**实际**该用哪一档深浅 —— 配置里固定浅 / 固定深时就不再看系统。
+ *
+ *  用户选「固定深色」就是为了「不管系统怎么切」：此时系统那两条路（设置项监听 / 轮询）算出来的
+ *  结论都不该生效。跟随系统那一档才落到 [systemNight]。
+ *
+ *  它同时决定**推给宿主**的那一份（[SyncToHost] 看到 `chrome.dark` 变了就推）：所以固定深色时，
+ *  宿主自己的顶栏与状态栏也跟着深 —— 否则页面深、周围一圈浅，比不提供这一档更难看。
+ */
+internal fun SettingsPage.effectiveNight(): Boolean =
+    when (AppTheme.ofCode(configState.config.value.global.theme)) {
+        AppTheme.AUTO -> systemNight()
+        AppTheme.LIGHT -> false
+        AppTheme.DARK -> true
+    }

@@ -1,13 +1,10 @@
 package com.lookie.opluskey.host.action
 
 import android.content.Context
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.core.model.SystemSwitches
+import com.lookie.opluskey.core.model.actionTitle
 
 /**
  * 「执行时提示」（`GlobalConfig.toastOnRun`）里那行字：**这次执行的是哪个动作**。
@@ -26,52 +23,35 @@ internal fun actionNoticeText(
      */
     appNames: Map<String, String> = emptyMap(),
 ): String =
-    when (action) {
-        // 「无操作」不是「执行了某条命令」，调用点已排除，这里给空串兜底
-        is Action.None -> {
-            ""
-        }
+    actionTitle(
+        action = action,
+        // 名字从哪儿来是**宿主侧**的事（界面那边查的是清单与配置）：`app:` / `window:` 现查 PM；
+        //  快捷方式先看落盘时记下的名字（`appNames`），再退回**老配置 token 里那一段 `|名字`**、
+        //  最后退应用名 / 包名 —— 与界面 `ui/appNameOf` 的优先级逐档对齐（少这一档时，老配置里
+        //  绑的快捷方式在提示里显示成应用名，而界面上显示的是快捷方式名）。
+        appName = { a ->
+            when (a) {
+                is Action.App -> {
+                    appLabel(context, a.target)
+                }
 
-        // 自定义命令取命令名 —— 界面（「已保存的命令」卡片）也是这么叫的
-        is Action.Custom -> {
-            action.name
-        }
+                is Action.AppWindow -> {
+                    appLabel(context, a.target)
+                }
 
-        // 这两格是**入口**，清单只给到「打开应用」这个组名，带上应用名才说得清是哪一条
-        is Action.App -> {
-            I18n.format(Strings.COMMON_OPEN_APP_FORMAT, appLabel(context, action.target))
-        }
+                is Action.AppShortcut -> {
+                    val target = a.appTarget.orEmpty()
+                    appNames[AppTarget.identity(target)] ?: AppTarget.label(target) ?: appLabel(context, target)
+                }
 
-        is Action.AppWindow -> {
-            I18n.format(Strings.COMMON_OPEN_MINI_WINDOW_FORMAT, appLabel(context, action.target))
-        }
-
-        // 快捷方式：显示它自己的名字（「扫一扫」，落盘时记在 `appNames` 里），
-        //  没记过就退回**老配置 token 里那一段 `|名字`**、再退回应用名 / 包名 ——
-        //  与界面 `ui/appNameOf` 的优先级逐档对齐（少这一档时，老配置里绑的快捷方式在
-        //  提示里显示成应用名，而界面上显示的是快捷方式名）。
-        is Action.AppShortcut -> {
-            val target = action.appTarget.orEmpty()
-            I18n.format(
-                Strings.COMMON_OPEN_SHORTCUT_FORMAT,
-                appNames[AppTarget.identity(target)] ?: AppTarget.label(target) ?: appLabel(context, target),
-            )
-        }
-
-        // 系统开关（`setting:<id>`）：名字在清单里，认不出就退回 id
-        is Action.Setting -> {
-            I18n.format(
-                Strings.COMMON_TOGGLE_SETTING_FORMAT,
-                SystemSwitches.titleOf(action.token) ?: action.id,
-            )
-        }
-
-        // 与界面 `ui/model/CommandText.stepTitle` 共用同一份优先级（`ActionCatalog.label`）：
-        //  档位名 → 清单标题 → 认不出来。兜底各写各的（这里用规范化后的 token）。
-        else -> {
-            ActionCatalog.label(action) ?: action.token
-        }
-    }
+                else -> {
+                    ""
+                }
+            }
+        },
+        // 认不出来时用**规范化后的** token（界面那边用配置里那串原始写法）
+        fallback = action.token,
+    )
 
 /**
  * 目标 → 应用名；取不到原样回包名。

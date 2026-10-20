@@ -37,7 +37,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
         testRunner(context).runTest(cmd.name)
     } catch (e: Throwable) {
         XLog.w("测试命令失败（已忽略）：${cmd.name}", e)
-        hint(I18n.get(Strings.TOAST_COMMAND_TEST_FAILED, "测试失败"))
+        hint(I18n.get(Strings.TOAST_COMMAND_TEST_FAILED, "测试没触发"))
         return
     }
     //  注意：这里只能保证「**已派发**」，不是「已完成」：单条 `keyevent:` 是

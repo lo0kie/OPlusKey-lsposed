@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -25,6 +26,7 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addCommand
 import com.lookie.opluskey.ui.frosted
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
@@ -39,6 +41,7 @@ import io.github.suqi8.coui.kmp.basic.FloatingToolbar
 import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
+import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
@@ -51,22 +54,69 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *   · **载荷**：`cmd:` / `app:` / `shell:` 这种**只有前缀**的写法也不是空串，
  *     存下去就是一条注定失败的命令。判据取 [Action.isBarePrefix]。
  */
-internal fun SettingsPage.commandPayloadReady(): Boolean =
+internal fun SettingsPage.commandPayloadReady(): Boolean = payloadBlockedReason() == null
+
+/**
+ * 载荷**还差什么**（`null` = 够了）—— [commandPayloadReady] 的「为什么」，判据只有这一处。
+ *
+ *  三句话各自对应一种真实的半成品：没写 / 没写对格式 / 写了前缀没写正文。最后那档
+ *  （`shell:` 这种只有前缀的）以前没有任何一句在说它 —— 保存按钮灰着、点一下回
+ *  「这一项现在不可用」（用户口径：要更精确精简）。
+ */
+private fun SettingsPage.payloadBlockedReason(): String? =
     when (commandDraft.draft.kind) {
         CommandKind.SINGLE -> {
             val raw = commandDraft.draft.single
-            if (raw.isBlank() || !Action.hasSupportedFormat(raw)) {
-                false
-            } else {
-                val parsed = Action.parse(raw)
-                parsed !is Action.None && !parsed.isBarePrefix
+            when {
+                raw.isBlank() -> {
+                    I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令")
+                }
+
+                !Action.hasSupportedFormat(raw) -> {
+                    I18n.get(
+                        Strings.COMMAND_FORMAT_REQUIRED,
+                        "开头要写 shell: / cmd: 这类前缀",
+                    )
+                }
+
+                else -> {
+                    I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE, "命令内容还不完整")
+                }
             }
         }
 
         CommandKind.SERIAL -> {
-            commandDraft.draft.steps.isNotEmpty()
+            I18n.get(Strings.COMMAND_NEED_STEP, "还没添加步骤")
         }
     }
+
+/**
+ * 名字那一格的红字 —— 与「保存被禁用时那句话」共用这一支（同一件事只说一处）。
+ *
+ *  两条判据本身在 `CommandLibrary`（重名扫一遍命令库、`cmd:` 成环走引用图），这里只负责措辞。
+ */
+internal fun SettingsPage.commandNameProblem(): String? =
+    when {
+        commandNameDuplicated(commandDraft.draft.name, commandDraft.draft.editingName) -> {
+            I18n.get(Strings.COMMAND_NAME_DUPLICATE, "与已有命令重名，请换个名字")
+        }
+
+        else -> {
+            commandReferenceCycle()?.let { I18n.format(Strings.COMMAND_CYCLE_ERROR, it.joinToString(" → ")) }
+        }
+    }
+
+/**
+ * 「保存」此刻**为什么**点不动（`null` = 能点）—— 保存按钮的 `enabled` 就是「它是不是 `null`」。
+ *
+ *  灰着被点一下时说的也是这一句（见下面那层 `LocalDisabledClick`）：兜底的
+ *  「这一项现在不可用」对「写了 `shell:`、正文还空着」的人等于什么都没说。
+ */
+internal fun SettingsPage.saveBlockedReason(): String? {
+    if (commandDraft.draft.name.isBlank()) return I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称")
+    payloadBlockedReason()?.let { return it }
+    return commandNameProblem()
+}
 
 internal fun SettingsPage.commandToolbarVisible(): Boolean =
     commandDraft.draft.editingName != null || commandDraft.draft.name.isNotBlank() || commandPayloadReady()
@@ -76,14 +126,11 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
     val tick = rememberTick()
     val editing = commandDraft.draft.editingName != null
     val name = commandDraft.draft.name
-    val payloadReady = commandPayloadReady()
 
     val canReset = commandToolbarVisible()
-    // 重名（且不是编辑它自己）时按钮直接禁用；`cmd:` 引用成环时同样禁用（提示落在名称那格里）。
-    val canSave =
-        name.isNotBlank() && payloadReady &&
-            !commandNameDuplicated(name, commandDraft.draft.editingName) &&
-            commandReferenceCycle() == null
+    // 能不能存只看这一句（`null` = 能存）：判据与「点灰按钮时说的话」是同一支 ——
+    //  两处各写一遍的话，加一档「不能存」的理由就要改两个地方。
+    val canSave = saveBlockedReason() == null
 
     // 两个按钮都不可用就整条隐藏；`canSave` 蕴含 `canReset`，判据只看后者。
     val visible = canReset
@@ -217,28 +264,34 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
                         tint = resetIconColor,
                     )
                 }
-                IconButton(
-                    onClick = {
-                        tick()
-                        addCommand()
-                    },
-                    enabled = canSave,
-                    minWidth = TOOLBAR_ICON_SIZE,
-                    minHeight = TOOLBAR_ICON_SIZE,
-                    cornerRadius = TOOLBAR_ICON_SIZE / 2,
-                    // `primary` + 亮字形；禁用时落回 `surfaceContainerHigh` + 禁用灰（底不消失）。
-                    backgroundColor = saveBackgroundColor,
+                // 灰着被点了一下时，说清是**哪一档**没齐（不是页面不可用）：库把这一下交给
+                //  `LocalDisabledClick`，这里就地换成保存自己的原因。
+                CompositionLocalProvider(
+                    LocalDisabledClick provides { saveBlockedReason()?.let { hint(it) } },
                 ) {
-                    Icon(
-                        PageIcons.Confirm,
-                        contentDescription =
-                            if (editing) {
-                                I18n.get(Strings.COMMON_MODIFY, "修改")
-                            } else {
-                                I18n.get(Strings.COMMON_SAVE, "保存")
-                            },
-                        tint = saveIconColor,
-                    )
+                    IconButton(
+                        onClick = {
+                            tick()
+                            addCommand()
+                        },
+                        enabled = canSave,
+                        minWidth = TOOLBAR_ICON_SIZE,
+                        minHeight = TOOLBAR_ICON_SIZE,
+                        cornerRadius = TOOLBAR_ICON_SIZE / 2,
+                        // `primary` + 亮字形；禁用时落回 `surfaceContainerHigh` + 禁用灰（底不消失）。
+                        backgroundColor = saveBackgroundColor,
+                    ) {
+                        Icon(
+                            PageIcons.Confirm,
+                            contentDescription =
+                                if (editing) {
+                                    I18n.get(Strings.COMMON_MODIFY, "修改")
+                                } else {
+                                    I18n.get(Strings.COMMON_SAVE, "保存")
+                                },
+                            tint = saveIconColor,
+                        )
+                    }
                 }
             }
         }

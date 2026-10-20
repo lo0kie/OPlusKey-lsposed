@@ -156,13 +156,13 @@ internal fun SettingsPage.StepPickerPopup(
                                     },
                                 // 入口格会进下一层（二级菜单）
                                 submenu = ActionCatalog.isEntryTile(spec),
-                                // 行尾那颗按「点开去哪」分：跳另一个页面的「选择应用」用网格里同一颗
-                                //  「窗口 + 加号」（见 `PageIcons.BrowserPlus`）；**有二级菜单的那些行**
+                                // 行尾那颗按「点开去哪」分：跳另一个页面的「选择应用」给**右箭头**
+                                //  （与入口格、列表同一颗，见 `PageIcons.EnterArrow`）；**有二级菜单的那些行**
                                 //  （系统导航 / 系统按键 / 媒体控制 / 响铃状态）给选择器字形
                                 //  —— 点开还要再选一层，见 [PageIcons.Selector]。
                                 trailingIcon =
                                     when {
-                                        spec.token == ActionCatalog.APP_TILE -> PageIcons.BrowserPlus
+                                        spec.token == ActionCatalog.APP_TILE -> PageIcons.EnterArrow
                                         ActionCatalog.modeMenu(spec.token) != null -> PageIcons.Selector
                                         else -> null
                                     },
@@ -200,7 +200,7 @@ internal fun SettingsPage.StepPickerPopup(
                 if (singles.isEmpty()) {
                     add(
                         MenuEntry.Row(
-                            title = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND, "创建自定义命令"),
+                            title = I18n.get(Strings.BINDING_NEW_CUSTOM_COMMAND, "新建命令"),
                             icon = PageIcons.CommandAdd,
                             onPick = onDismiss,
                         ),

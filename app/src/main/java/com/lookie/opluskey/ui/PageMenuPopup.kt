@@ -238,6 +238,7 @@ private fun SettingsPage.MenuRow(
         remember(
             row.title,
             row.icon,
+            row.iconTint,
             row.enabled,
             row.danger,
             row.selected,
@@ -299,11 +300,13 @@ private fun SettingsPage.MenuRow(
                         }
                     Box(tracked, contentAlignment = Alignment.Center) {
                         Icon(
-                            // 选中那一行：行首这颗直接换成对勾（行尾那颗已经关掉了，见上面的 `showCheck`）
-                            if (row.selected) PageIcons.MenuCheck else row.icon,
+                            // 选中那一行：行首这颗直接换成对勾（行尾那颗已经关掉了，见上面的 `showCheck`）。
+                            //  自带颜色的行（系统配色的色块）**不换**：那块颜色就是这一行的身份，
+                            //  换成对勾等于把「哪一套色」抹掉；选中由库的 `isSelected` 表达。
+                            if (row.selected && row.iconTint == null) PageIcons.MenuCheck else row.icon,
                             null,
                             Modifier.size(MENU_ICON_SIZE),
-                            tint = iconColor,
+                            tint = row.iconTint ?: iconColor,
                         )
                     }
                 },

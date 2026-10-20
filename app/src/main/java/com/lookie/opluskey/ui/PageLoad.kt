@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui
 
+import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.log.XLog
@@ -27,7 +28,7 @@ import kotlinx.coroutines.withContext
  * 但缓存没命中时就是真的 open），没必要占着主线程等。
  */
 internal suspend fun SettingsPage.loadPageState() {
-    val snapshot = withContext(Dispatchers.IO) { readPageLoadSnapshot() }
+    val snapshot = withContext(Dispatchers.IO) { readPageLoadSnapshot(context) }
     applyPageLoad(snapshot)
     // 「装好后没动过任何设置」的状态下，注入侧只能等宿主进程的解锁广播 ——
     // 打开这一页就立刻同步一次，作为兜底（判定在注入侧，见 [publishConfig]）。
@@ -46,15 +47,23 @@ internal fun SettingsPage.applyPageLoad(snapshot: PageLoadSnapshot) {
     configState.readOnly = snapshot.configReadOnly
     configState.commands.value = snapshot.commands
     configState.commandsReadOnly = snapshot.commandsReadOnly
-    picker.showSystemApps.value = snapshot.showSystemApps
-    picker.showUnopenable.value = snapshot.showUnopenable
+    picker.showSystemApps.value = snapshot.prefs.showSystemApps
+    picker.showUnopenable.value = snapshot.prefs.showUnopenable
+
+    // 判「某侧跑的是不是盘上这份」要的三样事实：包的更新时间、本轮开机指纹、以及「系统那侧曾经起来过」。
+    //  第一项在 IO 线程上问过 PackageManager（见 `readPageLoadSnapshot`），后两项来自界面状态文件。
+    val baseline = snapshot.linkBaseline
+    link.installedAt = baseline.installedAt
+    link.bootWall = ProcClock.bootWall()
+    link.injectEverAlive = baseline.injectEverAlive
+    link.injectAliveBoot = baseline.injectAliveBoot
 
     // 语言档跟着配置走。放这里而不是 `installI18nBridge()` 那一步：那一步只装订阅、不读配置，
     //  而配置现在是异步读回来的 —— 读回来之后立刻换档，首帧文案才是用户选的那个语言。
     I18n.currentLanguage = AppLanguage.fromCode(snapshot.config.global.language)
 
     XLog.w(
-        "界面状态：显示全部应用=${snapshot.showSystemApps}，显示失效=${snapshot.showUnopenable}",
+        "界面状态：显示全部应用=${snapshot.prefs.showSystemApps}，显示失效=${snapshot.prefs.showUnopenable}",
     )
     XLog.w(
         "命令库：${snapshot.commands.size} 条" +

@@ -50,9 +50,10 @@ internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         SwitchRow(
             title = I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"),
-            // 说明写**结果**而不是机制：用户要判断的是「开了之后双击会变成什么样」——
-            // 也就是「双击手势不成立、按两下单击算」，而不是「少等一个窗口」这种内部说法。
-            summary = I18n.get(Strings.BINDING_INSTANT_SINGLE, "双击为无操作时忽视双击手势，视为两次单击"),
+            // 说明写**结果**而不是机制：用户要判断的是「开 / 关之后双击会变成什么样」，
+            //  所以两句各说一边的结果 —— 「按两下算单击」与「第二下不生效」。
+            summaryOn = I18n.get(Strings.BINDING_INSTANT_SINGLE_ON, "双击无动作时，按两下算单击"),
+            summaryOff = I18n.get(Strings.BINDING_INSTANT_SINGLE_OFF, "双击无动作时，第二下不生效"),
             icon = PageIcons.IgnoreDouble,
             checked = checked,
             position = cardListPositionOf(0, DOUBLE_SETTING_ROWS),

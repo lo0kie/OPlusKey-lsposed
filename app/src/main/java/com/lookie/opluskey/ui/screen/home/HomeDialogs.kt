@@ -60,7 +60,7 @@ internal fun SettingsPage.HomeDisclaimers(ui: HomeUiState) {
         show = ui.freeNoticePending,
         title = FREE_NOTICE_TITLE,
         summary = FREE_NOTICE_TEXT,
-        action = I18n.get(Strings.DIALOG_CONFIRM, "确认"),
+        action = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
         positiveDanger = false,
         onDismiss = { ui.freeNoticePending = false },
         onConfirm = { ui.freeNoticePending = false },
@@ -105,10 +105,8 @@ internal fun SettingsPage.HomeDonateOverlays(ui: HomeUiState) {
                         icon = PageIcons.DonateList,
                         // 行尾那一格：这一行点了是**进下一层页面**
                         submenu = true,
-                        // 字形用「打开新页面」那一颗（与网格里「打开应用」进「选择应用」页同一颗，
-                        //  见 [PageIcons.BrowserPlus]）—— 默认那支右箭头是「弹一层菜单」的记号，
-                        //  放在这儿读不出「会离开这一层」。
-                        trailingIcon = PageIcons.BrowserPlus,
+                        // 行尾字形走默认那颗**右箭头**（[PageIcons.EnterArrow]）—— 「会进下一层」
+                        //  在菜单里、列表里、入口格里是同一个记号。
                     ) {
                         ui.showDonateMenu = false
                         navTo(Screen.DONATE_LIST)

@@ -1,0 +1,185 @@
+name: 上架到模块仓库
+
+# 「钉版」与「上架」是两件事：`release.yml` 只在打 tag 时把包存进本仓库的 Release（历史存档），
+#   这条负责**在你想上架的时候**，把某个已经存过的 tag 推进 LSPosed 模块仓库。
+#
+# 为什么分开：管理器只读模块仓库那条 Release，一旦推上去，所有装过的人立刻收到更新提示 ——
+#   那不该跟「我打了个版本」绑在同一刻发生。钉完版继续写新功能，过一阵想放出去了再来跑这一条。
+#
+# 用法：Actions → 上架到模块仓库 → Run workflow → 填 tag（就是本仓库那条存档 Release 的 tag，
+#   如 `4-1.1.0`）。包从那条 Release 取，不重新构建 —— 上架的就是当初钉住的那一份。
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要上架的 tag（本仓库存档 Release 的 tag，如 4-1.1.0）"
+        required: true
+
+concurrency:
+  # 同一版不许并发上架：两条同时跑会互相删资产。
+  group: publish-module-repo-${{ github.event.inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  # 取本仓库那条 Release 的资产（读）与 checkout（读）。
+  contents: write
+
+jobs:
+  publish:
+    name: 上架到模块仓库
+    runs-on: ubuntu-latest
+    env:
+      # LSPosed 模块仓库由机器人按 applicationId 自动建；Release 必须发在那个仓库里，
+      #   发在本仓库不算数（管理器只读模块仓库的 release）。
+      MODULE_REPO: Xposed-Modules-Repo/io.github.lo0kie.opluskey
+      TAG: ${{ github.event.inputs.tag }}
+
+    steps:
+      - name: 检出该 tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.inputs.tag }}
+          # 更新说明要从「上一个 tag → 这个 tag」的提交里拼，默认的浅克隆（深度 1、不取 tag）
+          # 既找不到上一个 tag，也没有那些提交。
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: 抓版本号
+        id: dist
+        run: bash tools/read-version.sh
+
+      - name: 校验 tag 与版本号一致
+        env:
+          REF_NAME: ${{ github.event.inputs.tag }}
+          WANT_TAG: ${{ steps.dist.outputs.tag }}
+        run: |
+          if [ "$REF_NAME" = "$WANT_TAG" ]; then
+            echo "tag $REF_NAME 与源码里的版本号一致"
+          else
+            echo "::error::填的 tag 是 $REF_NAME，而该提交源码里的版本号算出来是 $WANT_TAG —— 上架用的 tag 必须是钉版时那一个"
+            exit 1
+          fi
+
+      # 包从**存档**取，不重新构建：上架的必须就是当初钉住的那一份（同一个 APK 字节）。
+      - name: 取本仓库存档 Release 的资产
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          gh release download "$TAG" --repo "${{ github.repository }}" --pattern '*.apk' --dir dist
+          echo "取到："
+          ls -l dist
+
+      - name: 确认拿到的是这一版的正式签名包
+        run: |
+          want="oplus-key-${{ steps.dist.outputs.version_name }}-release.apk"
+          if [ ! -f "dist/$want" ]; then
+            echo "::error::存档里没有 $want（实际拿到 $(ls dist | tr '\n' ' ')）—— 这条 Release 可能不是钉版产出的那一条"
+            exit 1
+          fi
+          echo "ok  dist/$want"
+
+      - name: 校验验收底线（AGENTS.md 二、1.2）
+        run: bash tools/verify-apk.sh dist
+
+      # 模块仓库还没批下来 / 令牌还没配时不发版，只提示
+      - name: 检查模块仓库的前置条件
+        id: token
+        env:
+          MODULES_REPO_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
+        run: |
+          if [ -z "${MODULES_REPO_TOKEN:-}" ]; then
+            echo "::notice title=未配置发布令牌::跳过模块仓库；需在 Secrets 里加 MODULES_REPO_TOKEN（对 ${MODULE_REPO} 有 contents:write）"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! gh repo view "$MODULE_REPO" >/dev/null 2>&1; then
+            echo "::notice title=模块仓库尚不存在::跳过模块仓库；${MODULE_REPO} 还没创建（提交 issue 通过后由机器人建）"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      # 资产名按版本号，同一版重传会撞同名 —— 先清掉这一版已有资产再传，
+      # 免得 `gh` 报「文件已存在」，也免得同一条 release 下攒出两个同名包。
+      - name: 清掉这一版里的旧资产
+        if: steps.token.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
+        run: |
+          gh release view "$TAG" --repo "$MODULE_REPO" --json assets \
+            --jq '.assets[].name' 2>/dev/null | while read -r name; do
+            [ -n "$name" ] || continue
+            echo "删除旧资产 $name"
+            gh release delete-asset "$TAG" "$name" --repo "$MODULE_REPO" --yes
+          done
+
+      # 这一版的更新说明 —— **管理器弹「有新版本」时显示的就是它**（模块仓库那条 release 的正文）。
+      #
+      #  内容 = **上一个 tag 到这一个 tag 之间的提交标题**，一行一条。不再维护单独的说明文件：
+      #  那些提交信息本来就要写，再抄一份到 `release-notes/` 只会两边分叉（改了代码忘了改文案，
+      #  或者反过来）。要调整弹窗里看到的东西，就改提交信息 —— 唯一真相只有一处。
+      #
+      #  「上一个 tag」用 `git describe --tags --abbrev=0 <tag>^` 取：从父提交往回找最近的 tag。
+      #  比按版本号排序可靠 —— 版本号是 `4-1.1.0` 这种带前缀的串，排序要靠解析；而 tag 本来就是
+      #  沿着提交链打的，`describe` 直接给出链上那一个。取不到（首个版本）就只列本 tag 的那一条。
+      #
+      #  `--no-merges`：合并提交的标题是「Merge branch …」，对用户没有意义。
+      - name: 组装 Release 正文（上个 tag → 这个 tag 的提交）
+        run: |
+          prev=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+          if [ -n "$prev" ]; then
+            log_args=("${prev}..${TAG}")
+            echo "提交范围：${prev}..${TAG}"
+          else
+            log_args=(-1 "${TAG}")
+            echo "没找到上一个 tag（首个版本），只列本 tag 那一条"
+          fi
+          {
+            if [ -n "$prev" ]; then
+              echo "自 \`${prev}\` 以来的改动："
+            else
+              echo "首个版本。"
+            fi
+            echo
+            git log "${log_args[@]}" --no-merges --pretty='- %s' | sed '/^$/d'
+            echo
+            echo "---"
+            echo
+            echo "\`versionName\` = ${{ steps.dist.outputs.version_name }}，\`versionCode\` = ${{ steps.dist.outputs.version_code }}，\`BUILD_ID\` = ${{ steps.dist.outputs.build_id }}。"
+            echo "由 GitHub Actions 自动构建。"
+          } > dist/release-body.md
+          echo "--- 正文 ---"
+          cat dist/release-body.md
+
+      # 只传 release 包：机器人按单个 apk URL 处理，挂两个抓不准；debug 包在存档里有。
+      #
+      # 预发布版本靠「预发布」这一个标记区分，没有第二套构建：
+      #   versionName 里带 `-`（如 1.1.0-beta.1）⇒ 发为预发布 ⇒ 只进管理器的「测试版」通道。
+      #   注意：版本号仍须单调递增：预发布也占一个 `versionCode`，不涨的话测试通道收不到更新提示。
+      - name: 建 / 更新 Release（模块仓库）
+        if: steps.token.outputs.ready == 'true'
+        uses: softprops/action-gh-release@5113cdc90fd4d541c801c55356214017bf5ae34b # v3
+        with:
+          repository: ${{ env.MODULE_REPO }}
+          token: ${{ secrets.MODULES_REPO_TOKEN }}
+          tag_name: ${{ steps.dist.outputs.tag }}
+          name: ${{ steps.dist.outputs.version_name }}
+          prerelease: ${{ contains(steps.dist.outputs.version_name, '-') }}
+          # 预发布不能被设为 latest（GitHub 会拒），所以这一项和上面反着来。
+          make_latest: ${{ !contains(steps.dist.outputs.version_name, '-') }}
+          # 两个包：`release`（管理器更新到的那一个）与 `releaseLog`（同一份构建、只打开详细日志，
+          #   给排查用）。预发布与正式发的是同一批包，区别只在 `prerelease` 那个标记上。
+          #
+          #  注意：模块仓库的索引会把这个 release 下的**所有** apk 列进 `releaseAssets`，
+          #   管理器取的是其中一条。同仓里有先例（`ps.reso.instaeclipse` 的 v0.8.2 就挂了
+          #   两个 apk：新版 API 与 Legacy），说明「一个版本两个包」本身是允许的。
+          #   我们的顺序仍按字典序保证 `-release.apk` 排在 `-releaseLog.apk` 前面
+          #   （`-release.` < `-releaseL`）—— 改动命名时先确认管理器下到的仍是正式包。
+          files: |
+            dist/*-release.apk
+            dist/*-releaseLog.apk
+          # 正文由上一步组装（这一版的更新说明 + 版本号那几行）。
+          body_path: dist/release-body.md

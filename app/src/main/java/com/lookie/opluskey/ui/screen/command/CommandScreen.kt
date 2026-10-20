@@ -256,19 +256,9 @@ internal fun SettingsPage.CommandNameField() {
         // trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做。
         onValueChange = { commandDraft.draft.name = CommandLibrary.sanitizeNameInput(it) },
         modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
-        // 同名冲突与 `cmd:` 成环提示都交给组件画（都只在打字 / 改步骤时才有意义，结果只喂这一个输入框）
-        errorMessage =
-            when {
-                commandNameDuplicated(commandDraft.draft.name, commandDraft.draft.editingName) -> {
-                    I18n.get(Strings.COMMAND_NAME_DUPLICATE, "与已有命令重名，请换个名字")
-                }
-
-                else -> {
-                    commandReferenceCycle()?.let {
-                        I18n.format(Strings.COMMAND_CYCLE_ERROR, it.joinToString(" → "))
-                    } ?: ""
-                }
-            },
+        // 同名冲突与 `cmd:` 成环提示都交给组件画（都只在打字 / 改步骤时才有意义，结果只喂这一个输入框）。
+        //  措辞与「保存按钮灰着时那句话」共用 `commandNameProblem` —— 同一件事只说一处。
+        errorMessage = commandNameProblem().orEmpty(),
     )
 }
 

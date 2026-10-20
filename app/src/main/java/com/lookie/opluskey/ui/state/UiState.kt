@@ -18,20 +18,37 @@ internal object UiState {
     private const val KEY_SHOW_UNOPENABLE = "show_unopenable"
 
     /**
-     * 一次把两项读出来（**建页那次用的唯一入口**）。
+     * 「系统那一侧**曾经**回过话」—— 只在收到注入侧回包那一下写 true，此后不再回 false。
      *
-     * 两项各读一遍的话会把同一个文件 open + parse **两遍**；建页那一次读现在整个挪到了
+     *  它要回答的问题只有一个：**这次到底是「从来没用过」还是「用过、这会儿没起来」**。
+     *  两者的现象一模一样（注入侧没有回包），但对用户说的话不同：前者要先去框架里勾作用域，
+     *  后者只要重启。没有这一位，界面只能把两种可能一起糊成一句。
+     *
+     *  为什么存在界面状态里而不是用户配置里：它描述的是「这台机器上跑过没有」，不是用户的选择，
+     *  也不该进执行侧要读的那份契约（`opluskey_config.conf`）。
+     */
+    private const val KEY_INJECT_EVER_ALIVE = "inject_ever_alive"
+
+    /** 上一次收到注入侧回包时的那轮开机（`ProcClock.bootWall()`，秒级）—— 用来判「那次是不是本轮的」。 */
+    private const val KEY_INJECT_ALIVE_BOOT = "inject_alive_boot"
+
+    /**
+     * 界面状态的一次读全 —— **建页那一次用的唯一入口**。
+     *
+     * 逐项各读一遍的话会把同一个文件 open + parse 好几遍；建页那次读现在整个挪到了
      * IO 线程上（见 `ui/state/PageLoadSnapshot.kt`），但「一次开一次盘」这件事本身仍然成立
      * —— 少一趟就少一趟，行为完全一样。
      *
      * 注意：这里**没有**「以小窗口打开」—— 那一项**不落盘**：
      * 它默认关、每次进「选择应用」页按「正在编辑的那个动作」重算，见 `SettingsPage.picker`。
      */
-    fun readAll(): Pair<Boolean, Boolean> {
+    fun readPrefs(): UiPrefs {
         val map = parse(readTextOrNull().orEmpty())
-        return Pair(
-            map[KEY_SHOW_SYSTEM_APPS]?.toBooleanStrictOrNull() ?: false,
-            map[KEY_SHOW_UNOPENABLE]?.toBooleanStrictOrNull() ?: false,
+        return UiPrefs(
+            showSystemApps = map[KEY_SHOW_SYSTEM_APPS]?.toBooleanStrictOrNull() ?: false,
+            showUnopenable = map[KEY_SHOW_UNOPENABLE]?.toBooleanStrictOrNull() ?: false,
+            injectEverAlive = map[KEY_INJECT_EVER_ALIVE]?.toBooleanStrictOrNull() ?: false,
+            injectAliveBoot = map[KEY_INJECT_ALIVE_BOOT]?.toLongOrNull() ?: 0L,
         )
     }
 
@@ -59,6 +76,25 @@ internal object UiState {
         val text = readTextOrNull() ?: return refuseWrite(KEY_SHOW_UNOPENABLE, value)
         val map = parse(text)
         map[KEY_SHOW_UNOPENABLE] = value.toString()
+        return writeText(render(map))
+    }
+
+    /**
+     * 记下「系统那一侧回话了，就在这一轮开机里」。
+     *
+     *  调用方（`PageContent` 的注入侧回包处理）只在值**真的要变**时才调它：注入侧每次自检都回包，
+     *  每次都落一次盘属于白写（这是主线程上的调用点，写盘必须可省）。
+     *
+     *  两条一起写：`ever` 是布尔、`boot` 是那一轮的开机指纹。`ever` 只增不减 ——
+     *  它的语义是「这台机器上曾经跑起来过」，不是「现在活着」。
+     *
+     * @return 是否真的落盘
+     */
+    fun writeInjectAlive(bootWall: Long): Boolean {
+        val text = readTextOrNull() ?: return refuseWrite(KEY_INJECT_EVER_ALIVE, true)
+        val map = parse(text)
+        map[KEY_INJECT_EVER_ALIVE] = true.toString()
+        map[KEY_INJECT_ALIVE_BOOT] = bootWall.toString()
         return writeText(render(map))
     }
 
@@ -109,3 +145,17 @@ internal object UiState {
             map.forEach { (key, value) -> appendLine("$key=$value") }
         }
 }
+
+/**
+ * 界面状态的一次读全（见 [UiState.readPrefs]）。
+ *
+ * @param showUnopenable 「选择应用」页是否列出拉不起来的应用
+ * @param injectEverAlive 系统那一侧**曾经**回过话（只增不减）
+ * @param injectAliveBoot 上一次回话时的那轮开机（`ProcClock.bootWall()`，0 = 从没回话）
+ */
+internal class UiPrefs(
+    val showSystemApps: Boolean,
+    val showUnopenable: Boolean,
+    val injectEverAlive: Boolean,
+    val injectAliveBoot: Long,
+)

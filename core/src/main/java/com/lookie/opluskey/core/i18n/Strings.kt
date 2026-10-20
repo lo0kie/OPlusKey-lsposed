@@ -44,6 +44,9 @@ object Strings {
     const val APP_PICKER_TITLE = "app_picker.title"
     const val APP_PICKER_UNSELECTED = "app_picker.unselected"
     const val BINDING_CREATE_CUSTOM_COMMAND = "binding.create_custom_command"
+
+    /** 「新建一条自定义命令」那个菜单项 —— 与网格里那格的标题（上面那条）不是一个角色：那边是名词，这边是动词。 */
+    const val BINDING_NEW_CUSTOM_COMMAND = "binding.new_custom_command"
     const val BINDING_CREATE_CUSTOM_COMMAND_DESC = "binding.create_custom_command_desc"
     const val BINDING_DELETE_KEY = "binding.delete_key"
 
@@ -64,16 +67,26 @@ object Strings {
     const val BINDING_RESET_KEY = "binding.reset_key"
     const val BINDING_RESET_KEY_CONFIRM = "binding.reset_key_confirm"
     const val BINDING_DOUBLE_CLICK_WAIT = "binding.double_click_wait"
-    const val BINDING_INSTANT_SINGLE = "binding.instant_single"
+
+    /**
+     * 「忽视无操作双击手势」那行开关的副标题 —— **开 / 关各一句**，两句都说「现在是什么行为」，
+     * 不写「关掉会怎样」（全项目 switch 副标题同一条口径，见 `SwitchRow` 的说明）。
+     */
+    const val BINDING_INSTANT_SINGLE_OFF = "binding.instant_single_off"
+    const val BINDING_INSTANT_SINGLE_ON = "binding.instant_single_on"
     const val BINDING_LONG_PRESS_DELAY_DESC = "binding.long_press_delay_desc"
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
-    const val BINDING_LONG_PRESS_REPEAT_DESC = "binding.long_press_repeat_desc"
+    const val BINDING_LONG_PRESS_REPEAT_DESC_OFF = "binding.long_press_repeat_desc_off"
+    const val BINDING_LONG_PRESS_REPEAT_DESC_ON = "binding.long_press_repeat_desc_on"
     const val BINDING_LONG_PRESS_REPEAT_TITLE = "binding.long_press_repeat_title"
 
     /** 「按键绑定」页大标题下面那行小标题：当前这一组是「快捷键」。 */
     const val BINDING_SECTION_KEYS = "binding.section_keys"
     const val BINDING_REPEAT_INTERVAL_DESC = "binding.repeat_interval_desc"
     const val BINDING_REPEAT_INTERVAL_TITLE = "binding.repeat_interval_title"
+    const val BINDING_REPEAT_VIBRATE_DESC_OFF = "binding.repeat_vibrate_desc_off"
+    const val BINDING_REPEAT_VIBRATE_DESC_ON = "binding.repeat_vibrate_desc_on"
+    const val BINDING_REPEAT_VIBRATE_TITLE = "binding.repeat_vibrate_title"
     const val BINDING_SERIAL_UNSUPPORTED_REPEAT = "binding.serial_unsupported_repeat"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
     const val BINDING_TITLE = "binding.title"
@@ -122,6 +135,12 @@ object Strings {
     const val COMMAND_LIST_TITLE = "command.list_title"
     const val COMMAND_NAME = "command.name"
     const val COMMAND_NAME_DUPLICATE = "command.name_duplicate"
+
+    /** 「保存」被禁用时：单条命令的正文还不完整（只写了 `shell:` 这种前缀也算）。 */
+    const val COMMAND_PAYLOAD_INCOMPLETE = "command.payload_incomplete"
+
+    /** 「保存」被禁用时：多条命令还没有任何步骤。 */
+    const val COMMAND_NEED_STEP = "command.need_step"
     const val COMMAND_NAME_HINT = "command.name_hint"
     const val COMMAND_NAME_LABEL = "command.name_label"
     const val COMMAND_NO_SAVED_COMMANDS = "command.no_saved_commands"
@@ -241,19 +260,27 @@ object Strings {
     const val HOME_DONATE_SUMMARY = "home.donate_summary"
     const val HOME_MORE_OPTIONS_SUMMARY = "home.more_options_summary"
     const val HOME_OTHER_SECTION = "home.other_section"
-    const val HOME_SWITCH_DESC_DISABLED = "home.switch_desc_disabled"
-    const val HOME_SWITCH_DESC_ENABLED = "home.switch_desc_enabled"
+
+    /** 首页主开关（「启用按键绑定」）的副标题 —— 开 / 关各一句。 */
+    const val HOME_SWITCH_DESC_OFF = "home.switch_desc_off"
+    const val HOME_SWITCH_DESC_ON = "home.switch_desc_on"
 
     /** 首页「使用 ColorOS 接口」那行开关的标题与副标题。 */
     const val HOME_COLOROS_TITLE = "home.coloros_title"
 
-    const val HOME_COLOROS_DESC = "home.coloros_desc"
+    const val HOME_COLOROS_DESC_OFF = "home.coloros_desc_off"
+    const val HOME_COLOROS_DESC_ON = "home.coloros_desc_on"
     const val HOME_TITLE = "home.title"
-    const val HOME_MINI_ANIM_DESC = "home.mini_anim_desc"
+    const val HOME_MINI_ANIM_DESC_OFF = "home.mini_anim_desc_off"
+    const val HOME_MINI_ANIM_DESC_ON = "home.mini_anim_desc_on"
     const val HOME_MINI_ANIM_TITLE = "home.mini_anim_title"
-    const val HOME_TOAST_DESC = "home.toast_desc"
+    const val HOME_TOAST_DESC_OFF = "home.toast_desc_off"
+    const val HOME_TOAST_DESC_ON = "home.toast_desc_on"
     const val HOME_TOAST_TITLE = "home.toast_title"
-    const val HOME_VIBRATE_DESC = "home.vibrate_desc"
+    const val HOME_VIBRATE_DESC_OFF = "home.vibrate_desc_off"
+    const val HOME_VIBRATE_DESC_ON = "home.vibrate_desc_on"
+    const val HOME_VIBRATE_STRENGTH_DESC = "home.vibrate_strength_desc"
+    const val HOME_VIBRATE_STRENGTH_TITLE = "home.vibrate_strength_title"
     const val HOME_VIBRATE_TITLE = "home.vibrate_title"
     const val LINK_CHECK_ALL_NORMAL = "link_check.all_normal"
     const val LINK_CHECK_BROKEN_FORMAT = "link_check.broken_format"
@@ -298,8 +325,23 @@ object Strings {
     const val MORE_LANGUAGE_ZH = "more.language_zh"
     const val MORE_OPTIONS_TITLE = "more.title"
     const val MORE_SECTION_ABOUT = "more.section_about"
+    const val MORE_SECTION_APPEARANCE = "more.section_appearance"
     const val MORE_SECTION_CONFIG = "more.section_config"
     const val MORE_SECTION_STATUS = "more.section_status"
+
+    /** 「更多选项」页「外观」那一卡：系统配色（页面强调色）与五套色板各自的名字。 */
+    const val MORE_PALETTE = "more.palette"
+    const val MORE_PALETTE_BLUE = "more.palette_blue"
+    const val MORE_PALETTE_GREEN = "more.palette_green"
+    const val MORE_PALETTE_ORANGE = "more.palette_orange"
+    const val MORE_PALETTE_PURPLE = "more.palette_purple"
+    const val MORE_PALETTE_PINK = "more.palette_pink"
+
+    /** 「更多选项」页「外观」那一卡：界面颜色（跟随系统 / 浅色 / 深色）。 */
+    const val MORE_THEME = "more.theme"
+    const val MORE_THEME_AUTO = "more.theme_auto"
+    const val MORE_THEME_LIGHT = "more.theme_light"
+    const val MORE_THEME_DARK = "more.theme_dark"
     const val MORE_SIGNATURE_DEBUG = "more.signature_debug"
     const val MORE_SIGNATURE_MISMATCH = "more.signature_mismatch"
     const val MORE_SIGNATURE_UNKNOWN = "more.signature_unknown"
@@ -311,12 +353,16 @@ object Strings {
     const val SETTING_IGNORE_DOUBLE = "setting.ignore_double"
     const val SETTING_KEY_BINDING = "setting.key_binding"
     const val STATUS_API_MISMATCH = "status.api_mismatch"
+    const val STATUS_CHECKING = "status.checking"
     const val STATUS_CONFIG_FAILED = "status.config_failed"
     const val STATUS_CONFIG_NOT_SYNCED = "status.config_not_synced"
     const val STATUS_DISABLED = "status.disabled"
+    const val STATUS_HOST_STALE = "status.host_stale"
     const val STATUS_KEY_DISABLED = "status.key_disabled"
+    const val STATUS_PENDING_OR_SCOPE = "status.pending_or_scope"
     const val STATUS_RESTART_REQUIRED = "status.restart_required"
     const val STATUS_SERVICE_NOT_RUNNING = "status.service_not_running"
+    const val STATUS_SYSTEM_STALE = "status.system_stale"
     const val STATUS_UNAVAILABLE = "status.unavailable"
 
     /** 控件置灰、但**不是**整页被闸住时的说法（原先落到「页面还没就绪」，把人引去重进页面）。 */
@@ -380,8 +426,14 @@ object Strings {
     /** 重命名一颗自定义按键之后（「已重命名为「音量键」」）。 */
     const val TOAST_KEY_RENAMED = "toast.key_renamed"
 
-    /** 切了界面语言之后（「已切换到「English」」）。 */
-    const val TOAST_LANGUAGE_SWITCHED = "toast.language_switched"
+    /**
+     * 「在一组选项里换了一档」的回执（「已切换到「English」」）。
+     *
+     *  语言 / 界面颜色 / 系统配色三处共用：它们说的是同一件事（这一组里换了一档），
+     *  文案也一样 —— 各留一个键的话，改一处界面措辞就得记着改三处。
+     *  [TOAST_KEY_SWITCHED] 不并进来：那一处的主语是**一颗键**，将来要改措辞时是另一个理由。
+     */
+    const val TOAST_SWITCHED_TO = "toast.switched_to"
     const val TOAST_LOG_EXPORT_FAILED = "toast.log_export_failed"
     const val TOAST_SERVICE_RESTART_FAILED = "toast.service_restart_failed"
     const val TOAST_SERVICE_RESTARTED = "toast.service_restarted"

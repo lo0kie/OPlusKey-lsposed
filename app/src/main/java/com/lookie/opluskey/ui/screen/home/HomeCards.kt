@@ -10,8 +10,12 @@ import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.ui.AnimatedColumn
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.SliderRow
+import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.SwitchRow
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
@@ -28,9 +32,11 @@ import com.lookie.opluskey.ui.setMiniWindowAnim
 import com.lookie.opluskey.ui.setModuleEnabled
 import com.lookie.opluskey.ui.setToastOnRun
 import com.lookie.opluskey.ui.setVibrate
+import com.lookie.opluskey.ui.setVibrateStrength
 import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -58,6 +64,7 @@ internal fun SettingsPage.HomeBindingCard(
     // 主开关写的是**模块总闸**（`GlobalConfig.enabled`），不是「侧键那颗键的开关」——
     //  两者拆开之后，「停用这颗键」只停那一颗（⋮ 菜单里），这个开关停的是整个模块。
     val moduleOn = configState.config.value.global.enabled
+    val colorOs = configState.config.value.global.colorOsApi
     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         // 主开关是这张卡的第一行，**不能被自己锁死**：它一旦关掉，全页（含这一页其它控件、
         // 「按键绑定」子页、顶栏菜单三项）都禁用 —— 它要是跟着一起禁用，就再也开不回来了。
@@ -77,14 +84,9 @@ internal fun SettingsPage.HomeBindingCard(
         // 库 `Switch` 自己那次无条件振动由 [SwitchRow] 统一掐掉，只留 `tick()` 这条通用通道。
         SwitchRow(
             title = I18n.get(Strings.SETTING_ENABLE_BINDING, "启用按键绑定"),
-            // 开着时说明「关掉会怎样」；关着时直接报状态 —— 光看一个灰开关不知道后果
-            summary =
-                if (moduleOn) {
-                    // （14 字）正好一行放得下，再多一个字就折行、把这张卡撑高
-                    I18n.get(Strings.HOME_SWITCH_DESC_ENABLED, "关闭后此模块将停用")
-                } else {
-                    I18n.get(Strings.HOME_SWITCH_DESC_DISABLED, "关闭后侧键交还系统，立即生效")
-                },
+            // 真假各一句，都说「现在是什么状态」（口径见 `SwitchRow` 的说明）
+            summaryOn = I18n.get(Strings.HOME_SWITCH_DESC_ON, "按键由模块接管，执行绑定动作"),
+            summaryOff = I18n.get(Strings.HOME_SWITCH_DESC_OFF, "按键交还系统，不执行任何绑定"),
             // 行首图标与下一行对齐用（不给的话两行的标题左边缘会差一个图标宽）。
             // 电源符号 = 「这一行是总开关」。
             icon = PageIcons.Power,
@@ -108,10 +110,11 @@ internal fun SettingsPage.HomeBindingCard(
         // 第 2 行：接口选择 —— 走 ColorOS 专属系统接口，还是 AOSP 标准接口。
         SwitchRow(
             title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
-            // 11 字：与上一行那两句同档，一行放得下，不把卡片撑高
-            summary = I18n.get(Strings.HOME_COLOROS_DESC, "关闭后部分命令将使用 AOSP 标准接口"),
+            // 开 = 走专属接口，关 = 走 AOSP —— 两句都只说「现在走哪条路」
+            summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
+            summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
             icon = PageIcons.ColorOsLink,
-            checked = configState.config.value.global.colorOsApi,
+            checked = colorOs,
             position = cardListPositionOf(1, HOME_BINDING_ROWS),
             // 吃整页总闸（含主开关自己）：主开关一关，这一行跟着灰
             enabled = pageEnabled,
@@ -128,7 +131,7 @@ internal fun SettingsPage.HomeBindingCard(
 }
 
 /**
- * 「按键行为」那张卡 —— 振动反馈 / 执行时提示（两个**全局**项，不分手势）。
+ * 「按键行为」那张卡 —— 振动反馈（+ 开着时的振动强度）/ 执行时提示（都是**全局**项，不分手势）。
  *
  *  「长按连发」那几个设置不在这张卡里（它们只管长按那一个手势，摆在首页会让人以为对三个手势
  *  都生效，见 `LongRepeatCard`）。
@@ -137,19 +140,38 @@ internal fun SettingsPage.HomeBindingCard(
 internal fun SettingsPage.HomeActionsCard(pageEnabled: Boolean) {
     val tick = rememberTick()
     val cfg = configState.config.value
+    val vibrate = cfg.global.vibrate
+    // 行数随「振动强度」那一行出现与否变化 —— 卡片首尾的圆角按 `position` 算，数错就是圆角错位。
+    val rows = HOME_ACTION_ROWS + if (vibrate) 1 else 0
     Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         SwitchRow(
             title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
-            summary = I18n.get(Strings.HOME_VIBRATE_DESC, "命令触发时振动"),
+            summaryOn = I18n.get(Strings.HOME_VIBRATE_DESC_ON, "每次执行动作振动一次"),
+            summaryOff = I18n.get(Strings.HOME_VIBRATE_DESC_OFF, "执行动作时不振动"),
             icon = PageIcons.Vibrate,
-            checked = cfg.global.vibrate,
-            position = cardListPositionOf(0, HOME_ACTION_ROWS),
+            checked = vibrate,
+            position = cardListPositionOf(0, rows),
             // `enabled = false` 时 COUI 不挂 `clickableModifier`、开关也跟着灰，
             // 行点击与开关点击自然都失效。
             enabled = pageEnabled,
         ) {
             tickNow()
             setVibrate(it)
+        }
+
+        // 「振动强度」：只在振动反馈开着时出现 —— 关掉振动还摆一根强度滑杆，
+        //  等于让人去调一个当前不起作用的东西。
+        //  三档（弱 / 中 / 强）由 `VIBRATE_STRENGTH_RANGE` 给，滑杆轨道上把三个点都画出来
+        //  （`keyPoints` 全给，而不是只标默认值那一个 —— 用户要的是「能看出只有三档」）。
+        // 显隐用 [AnimatedColumn]（与「长按连续触发」那张卡同一套进出场）：只藏行会留一条孤零零的
+        //  分隔线，所以连它一起显隐。
+        AnimatedColumn(visible = vibrate) {
+            HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+            VibrateStrengthRow(
+                position = cardListPositionOf(1, rows),
+                level = cfg.global.vibrateStrength,
+                enabled = pageEnabled,
+            )
         }
 
         HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
@@ -160,10 +182,11 @@ internal fun SettingsPage.HomeActionsCard(pageEnabled: Boolean) {
         // 所以拨完开关立刻生效，不必重启）。
         SwitchRow(
             title = I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"),
-            summary = I18n.get(Strings.HOME_TOAST_DESC, "执行命令时系统提示"),
+            summaryOn = I18n.get(Strings.HOME_TOAST_DESC_ON, "每次执行动作弹一条提示"),
+            summaryOff = I18n.get(Strings.HOME_TOAST_DESC_OFF, "执行动作时不弹提示"),
             icon = PageIcons.CommandToast,
             checked = cfg.global.toastOnRun,
-            position = cardListPositionOf(1, HOME_ACTION_ROWS),
+            position = cardListPositionOf(if (vibrate) 2 else 1, rows),
             enabled = pageEnabled,
         ) {
             tick()
@@ -179,10 +202,11 @@ internal fun SettingsPage.HomeActionsCard(pageEnabled: Boolean) {
             HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
             SwitchRow(
                 title = I18n.get(Strings.HOME_MINI_ANIM_TITLE, "前台应用转小窗时使用动画"),
-                summary = I18n.get(Strings.HOME_MINI_ANIM_DESC, "全屏应用缩成小窗时播放动画（仅竖屏）"),
+                summaryOn = I18n.get(Strings.HOME_MINI_ANIM_DESC_ON, "前台转小窗时播放缩小动画"),
+                summaryOff = I18n.get(Strings.HOME_MINI_ANIM_DESC_OFF, "前台转小窗时不播动画"),
                 icon = PageIcons.MiniWindow,
                 checked = cfg.global.miniWindowAnim,
-                position = cardListPositionOf(2, HOME_ACTION_ROWS),
+                position = cardListPositionOf(rows - 1, rows),
                 enabled = pageEnabled,
             ) {
                 tick()
@@ -309,4 +333,38 @@ private fun SettingsPage.BindingEntryRow(pageEnabled: Boolean) {
             navTo(Screen.BINDING)
         },
     )
+}
+
+/**
+ * 「振动强度」那一行 —— 三档滑杆（弱 / 中 / 强）。
+ *
+ *  轨道上把三个点都画出来（`keyPoints` 给全，而不是只标默认值那一个）：这一行要回答的是
+ *  「一共几档」，只标一个默认值等于让用户自己猜还有没有别的档。
+ */
+@Composable
+private fun SettingsPage.VibrateStrengthRow(
+    position: CardListPosition,
+    level: Int,
+    enabled: Boolean,
+) {
+    SliderRow(
+        position = position,
+        spec =
+            SliderSpec(
+                title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
+                summary = I18n.get(Strings.HOME_VIBRATE_STRENGTH_DESC, "命令触发时振动的力度"),
+                // 档位由行首那枚数字图标表达（1 / 2 / 3），行尾不再写「弱 / 中 / 强」
+                icon = PageIcons.vibrateLevel(level),
+                min = GlobalConfig.VIBRATE_WEAK,
+                max = GlobalConfig.VIBRATE_STRONG,
+                value = level,
+                default = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
+                step = 1,
+                enabled = enabled,
+                valueText = null,
+                // 轨道上只画**默认值**那一个点（与其它滑杆一致）：三档的「第几档」已经由行首图标说了，
+                //  再摆三个一样的圆点，读起来就是「三个默认值」。
+                keyPoints = null,
+            ),
+    ) { setVibrateStrength(it) }
 }

@@ -9,12 +9,17 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.ui.model.API_MISMATCH_HINT
+import com.lookie.opluskey.ui.model.CHECKING_HINT
 import com.lookie.opluskey.ui.model.CONFIG_NOT_SYNCED_HINT
 import com.lookie.opluskey.ui.model.CONFIG_READ_FAILED_HINT
+import com.lookie.opluskey.ui.model.HOST_STALE_HINT
 import com.lookie.opluskey.ui.model.INJECT_NOT_LOADED_HINT
 import com.lookie.opluskey.ui.model.KEY_DISABLED_HINT
-import com.lookie.opluskey.ui.model.RESTART_REQUIRED_HINT
+import com.lookie.opluskey.ui.model.PENDING_OR_SCOPE_HINT
 import com.lookie.opluskey.ui.model.SERVICE_NOT_RUNNING_HINT
+import com.lookie.opluskey.ui.model.SYSTEM_STALE_HINT
+import com.lookie.opluskey.ui.state.InjectPendingKind
+import com.lookie.opluskey.ui.state.InjectStatus
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.LinkCheck
 
@@ -65,6 +70,152 @@ internal val SettingsPage.configSideOk: Boolean
     }
 
 /**
+ * **链路现在到底什么状态** —— 一次把这几个信号读全，再由两处渲染各自取用。
+ *
+ *  为什么要有这个：`blockedReason()`（首页那条常驻提示 + 「点不动」时的说明）与
+ *  `linkChecks()`（「运行状态」里逐段结论）读的本来是**同一组信号**，但各自写了一套并列的
+ *  `when`。两套的条件项个数与顺序都得靠人对齐 —— 历史上已经因此分叉过一次（横幅说「需要重启」、
+ *  逐段行说「未同步」，因为一边多一个 `isNotEmpty()`）。现在两边只认这一个对象。
+ *
+ *  字段全是「已经从原始状态算好」的结论，没有副作用，也不持有 Compose 状态。
+ */
+@Suppress("LongParameterList")
+internal class LinkFacts(
+    /** 建页那次配置没读成功（整页只读）。 */
+    val readOnly: Boolean,
+    /** 模块总闸关着。 */
+    val masterOff: Boolean,
+    /** 宿主侧有没有在跑（报活）。 */
+    val hostUp: Boolean,
+    /** 注入侧回包；`null` = 问过但没回音。 */
+    val inject: InjectStatus?,
+    /** 「设置生效」的配置侧那半：读得出来、送到过、且送的就是这一份。 */
+    val configSideOk: Boolean,
+    /** 注入侧那趟自检**跑完了没有** —— 没跑完时 `inject` 的 `null` 只是初值，不是结论。 */
+    val injectChecked: Boolean,
+    /** 盘上那份包的更新时间（0 = 读不到，这一档不判）。 */
+    val installedAt: Long,
+    /** 宿主进程的启动时刻（0 = 对面没带这一项）。 */
+    val hostProcStart: Long,
+    /** 系统那一侧曾经回过话没有，以及那次是不是本轮开机（见 [InjectPendingKind]）。 */
+    val injectEverAlive: Boolean,
+    val injectAliveBoot: Long,
+    val bootNow: Long,
+) {
+    /** 注入侧回了包、并且接管点挂上了。 */
+    val respondOk: Boolean get() = inject != null && inject.hooks > 0
+
+    /**
+     * 回了包、但报的不是本包的构建标识 ⇒ system_server 里还是上一版代码（换包没重启）。
+     *
+     *  这是**备用尺子**：只在对面没带进程启动时刻时用（旧版注入侧）。主尺子是 [injectStale] ——
+     *  它比「包更新时间 vs 进程启动时刻」，不依赖任何人记得去改 `BUILD_ID`。
+     */
+    val buildStale: Boolean
+        get() = inject != null && inject.buildId.isNotEmpty() && inject.buildId != ModuleInfo.BUILD_ID
+
+    /**
+     * 注入侧**确实**跑着旧包：它那个进程比盘上这个包起得还早。
+     *
+     *  为什么这个判据成立：进程里的类只在进程启动那一刻从 APK 加载，之后盘上的包怎么换都不影响它。
+     *  留 [STALE_EPSILON_MS] 的余量是给「开机早期包更新时间与进程启动时刻贴得很近」那种情形 ——
+     *  换包没重启的间隔至少是分钟级，留几秒不会把正常情况判成过期。
+     */
+    val injectStale: Boolean
+        get() {
+            val start = inject?.procStart ?: 0L
+            return installedAt > 0 && start > 0 && installedAt > start + STALE_EPSILON_MS
+        }
+
+    /**
+     * 宿主侧跑着旧包（同上，主尺子是进程启动时刻）。
+     *
+     *  与注入侧的区别：宿主是普通应用进程，**重开就好**，不用重启手机（`AGENTS.md` 五之一、6）。
+     */
+    val hostStale: Boolean
+        get() = installedAt > 0 && hostProcStart > 0 && installedAt > hostProcStart + STALE_EPSILON_MS
+
+    /** 要不要重启手机：注入侧跑旧包 ⇒ 要。对面没带启动时刻时退回构建标识那把备用尺子。 */
+    val restartNeeded: Boolean
+        get() = injectStale || (inject != null && inject.procStart == 0L && buildStale)
+
+    /** 「没回包」到底是哪一档 —— 见 [InjectPendingKind] 的注释。 */
+    val injectPending: InjectPendingKind
+        get() =
+            when {
+                inject != null -> {
+                    InjectPendingKind.NONE
+                }
+
+                !injectChecked -> {
+                    InjectPendingKind.NONE
+                }
+
+                !injectEverAlive -> {
+                    InjectPendingKind.FIRST
+                }
+
+                injectAliveBoot > 0 && bootNow > 0 && injectAliveBoot == bootNow -> {
+                    InjectPendingKind.LOST
+                }
+
+                //  **这一条是「等重启」与「作用域被撤」之间唯一的分界**：包是这轮开机之后装的
+                //  ⇒ 系统侧确实还没来得及用上它（等重启）；包在开机之前就装好了 ⇒ 本轮早就该用上它了，
+                //  现在没回话只能是作用域里没有它。少了这一条，撤掉「系统框架」之后会一直报「重启后生效」，
+                //  而重启多少次都没用（实测撞到）。
+                installedAt > 0 && bootNow > 0 && installedAt > bootNow + REBOOT_EPSILON_MS -> {
+                    InjectPendingKind.UPDATED
+                }
+
+                else -> {
+                    InjectPendingKind.SCOPE_GONE
+                }
+            }
+
+    /** **整页总闸**：「运行状态」里任何一段不 ok 就关（口径见 [SettingsPage.linkReady]）。 */
+    val ready: Boolean get() = hostUp && respondOk && configSideOk
+}
+
+/**
+ * 「进程启动时刻 vs 包更新时间」这个比大小时留的余量。
+ *
+ *  取 5 秒：两次时间都来自系统时钟，正常情形（换包之后隔几分钟才开机 / 才开页）差得很远；
+ *  只有「包刚更新完、进程几乎同时起来」这种边界才可能落到几秒内，那时**不该**判过期 ——
+ *  冤枉一次就要人多重启一次手机。
+ */
+private const val STALE_EPSILON_MS = 5_000L
+
+/**
+ * 判「包是不是这次开机之后装的」时留的余量。
+ *
+ *  取 60 秒：两个人（装包 / 重启）先后相差通常以分钟计，但开机那一刻系统在忙，
+ *  `lastUpdateTime` 与开机时刻贴得很近是完全可能的；贴着时不判成「等重启」更安全 ——
+ *  宁可让人去 LSPosed 里看一眼作用域，也别让他为一个早就装好的包反复重启。
+ */
+private const val REBOOT_EPSILON_MS = 60_000L
+
+/**
+ * 读一遍上面那些信号 —— **全项目只有这一处**把它们凑成 [LinkFacts]。
+ *
+ *  `configSideOk` 自己已经封了只读态与「在途」宽限（见那里的注释），所以这里不再重复判。
+ */
+internal val SettingsPage.linkFacts: LinkFacts
+    get() =
+        LinkFacts(
+            readOnly = configState.readOnly,
+            masterOff = !configState.config.value.global.enabled,
+            hostUp = link.hostServiceUp,
+            inject = link.injectStatus,
+            configSideOk = configSideOk,
+            injectChecked = link.injectChecked,
+            installedAt = link.installedAt,
+            hostProcStart = link.hostProcStart,
+            injectEverAlive = link.injectEverAlive,
+            injectAliveBoot = link.injectAliveBoot,
+            bootNow = link.bootWall,
+        )
+
+/**
  * **整页总闸**：「运行状态」里**任何一段**不 ok 就关。
  *
  * 用户定的口径：总闸不再只看「服务运行 + 按键响应」那两段 —— 「设置生效」同样是在答
@@ -74,10 +225,10 @@ internal val SettingsPage.configSideOk: Boolean
  *   · 「主开关已关闭」不算异常：它是用户的意图状态，且算进去会锁死主开关自己（见 [configSideOk]）；
  *   · 「使用验证」不参与（`blocking = false`）：还没被验证过是信息、不是故障。
  *
- *  判据与盘面上的组合一一对应（见 [linkChecks]），两侧读的是同一组信号，不许各写一份。
+ *  判据与盘面上的组合一一对应（见 [linkChecks]），两侧读的是同一个 [LinkFacts]，不许各写一份。
  */
 internal val SettingsPage.linkReady: Boolean
-    get() = link.hostServiceUp && (link.injectStatus?.hooks ?: 0) > 0 && configSideOk
+    get() = linkFacts.ready
 
 /**
  * 「现在能不能用、不能是因为什么」—— **判据只此一处**：首页那条常驻提示与「选动作被拦住」的 toast
@@ -87,10 +238,13 @@ internal val SettingsPage.linkReady: Boolean
  * 1) 配置没读成功 ⇒ 重进页面就会重读；
  * 2) 主开关关着 ⇒ 用户自己拨回来（**排在链路之前**，理由见 [linkReady] 的注释）；
  * 3) 宿主服务没报活 ⇒ 重进页面 / 重启；
- * 4) 系统那一侧没回音 ⇒ 作用域漏了 `system`（含「装完从没重启过」那一档）；
- * 5) 回音了、但**构建标识不是本包** ⇒ 换过包没重启（system_server 里跑的还是上一版）；
- * 6) 回音了但接管点 0 个 ⇒ 这一版 ROM 把私有类改了形，只能等适配；
- * 7) 设置没送到 ⇒ 重进本页会重发一遍。
+ * 4) 系统那一侧**问过一轮都没回音** ⇒ 按 [InjectPendingKind] 再说一层：
+ *    从没起来过（勾作用域 + 重启）/ 装好等重启（只重启）/ 本轮掉线（看日志）；
+ *    「还没问完」不是这一档 —— 见 `LinkFacts.injectChecked`；
+ * 5) 回音了、但那个进程比盘上这个包起得还早 ⇒ 系统侧还是旧版（要重启；界面已生效）；
+ * 6) 宿主侧同样过期 ⇒ 用「重启服务」即可，不必重启手机；
+ * 7) 回音了但接管点 0 个 ⇒ 这一版 ROM 把私有类改了形，只能等适配；
+ * 8) 设置没送到 ⇒ 重进本页会重发一遍。
  *
  *  **机型清单不在这张表里**：它只是「这一组验过没有」的提示，不拦注入、也不拦页面
  *（AGENTS.md 一、13）—— 所以既没有「机型不在清单」这一档，也没有对应的禁用。
@@ -102,26 +256,66 @@ internal val SettingsPage.linkReady: Boolean
  * @return `null` = 可以用
  */
 internal fun SettingsPage.blockedReason(): String? {
-    val injectStatus = link.injectStatus
+    val f = linkFacts
     return when {
-        configState.readOnly -> CONFIG_READ_FAILED_HINT
+        f.readOnly -> {
+            CONFIG_READ_FAILED_HINT
+        }
 
         // **模块总闸**，不是「侧键那颗键」—— 后者只是那一颗（见 `disabledClickReason`）
-        !configState.config.value.global.enabled -> KEY_DISABLED_HINT
+        f.masterOff -> {
+            KEY_DISABLED_HINT
+        }
 
-        !link.hostServiceUp -> SERVICE_NOT_RUNNING_HINT
+        !f.hostUp -> {
+            SERVICE_NOT_RUNNING_HINT
+        }
 
-        injectStatus == null -> INJECT_NOT_LOADED_HINT
+        // 自检还没跑完：注入侧那几档此刻**没有判据**（`inject` 的空只是初值）。
+        //  不能说「未生效」（重启后那几秒会报假故障），但也不能什么都不说 ——
+        //  那几秒页面上没有任何解释，看着像「点了没反应」。中性一句「正在检查」。
+        !f.injectChecked -> {
+            CHECKING_HINT
+        }
 
-        // 回了包、但报的不是本包的构建标识 ⇒ system_server 里还是上一版代码（换包没重启）。
-        //  空串是还没带这个字段的旧版注入侧，按「不判」处理。
-        injectStatus.buildId.isNotEmpty() && injectStatus.buildId != ModuleInfo.BUILD_ID -> RESTART_REQUIRED_HINT
+        // 没回包 —— 四条来路，要做的事不同（见 `InjectPendingKind`）：
+        //  · 从没起来过：可能作用域漏了 system，也可能勾了但从没重启过，两句一起说（只此一档分不开）；
+        //  · 以前起来过、本轮没来、且包是这次开机之后装的：确实在等重启，别把人赶去 LSPosed；
+        //  · 以前起来过、本轮没来、但包开机前就装好了：**作用域被撤了** —— 这一档必须说去勾，
+        //    否则「重启后生效」会一直挂着，重启多少次都不变；
+        //  · 本轮刚才还在、现在不回了：掉线，说成「没生效」就行，往下看日志。
+        f.inject == null -> {
+            when (f.injectPending) {
+                // 「装好等重启」与「作用域被撤」分不开（见 `PENDING_OR_SCOPE_HINT`）：一句话覆盖两步
+                InjectPendingKind.UPDATED -> PENDING_OR_SCOPE_HINT
 
-        injectStatus.hooks <= 0 -> API_MISMATCH_HINT
+                else -> INJECT_NOT_LOADED_HINT
+            }
+        }
 
-        !configSideOk -> CONFIG_NOT_SYNCED_HINT
+        // 回了包、但那个进程比盘上这个包起得还早 ⇒ system_server 里还是上一版（换包没重启）。
+        //  主尺子是时间戳；对面没带时间戳时退回 `BUILD_ID` 那把备用尺子（见 `restartNeeded`）。
+        //  这一档**不模糊**：它回了包，说明作用域没问题，就是差一次重启 —— 所以点明「界面已生效」。
+        f.restartNeeded -> {
+            SYSTEM_STALE_HINT
+        }
 
-        else -> null
+        // 宿主侧跑着旧包：它是普通应用进程，**重开就好**，不必重启手机。
+        f.hostStale -> {
+            HOST_STALE_HINT
+        }
+
+        !f.respondOk -> {
+            API_MISMATCH_HINT
+        }
+
+        !f.configSideOk -> {
+            CONFIG_NOT_SYNCED_HINT
+        }
+
+        else -> {
+            null
+        }
     }
 }
 
@@ -162,19 +356,20 @@ internal fun SettingsPage.disabledClickReason(): String {
  */
 @Composable
 internal fun SettingsPage.linkChecks(): List<LinkCheck> {
-    val hostOk = link.hostServiceUp
-    val inj = link.injectStatus
-    val respondOk = inj != null && inj.hooks > 0
+    // 四段结论全部来自这一份事实 —— 与首页那条常驻提示（`blockedReason`）**同一个对象**，
+    //  两处不可能再各说一句话。
+    val f = linkFacts
+    val hostOk = f.hostUp
+    val inj = f.inject
+    val respondOk = f.respondOk
     // 「设置生效」的判据是**两边指纹相等**，不是「注入侧收到过一条」：
     //  后者答不了「后来改的那一次到了没有」—— 开机收到过之后哪条广播丢了，
     //  注入侧还按旧配置吞键，界面却照样报「正常」。指纹不同 = 明确知道它手上不是这份。
-    // 本地那份指纹按配置缓存（见 [localConfigTag]），只有配置变了才重算。
-    val configSide = configSideOk
-    // 换过包没重启：两边**必然**对不上（连配置字段表都可能不是同一份），这时报「未同步」
-    //  会把人引去「重进本页」，而真正该做的是重启 —— 与首页那条横幅（[blockedReason]）
-    //  同一个优先级、同一句话。这一档以前只写在横幅里，逐段行照样报「未同步」。
-    val buildStale =
-        inj != null && inj.buildId.isNotEmpty() && inj.buildId != ModuleInfo.BUILD_ID
+    val configSide = f.configSideOk
+    // 换了包没重启时两边**必然**对不上，这时报「未同步」会把人引去「重进本页」，
+    //  而真正该做的是重启 —— 与首页那条横幅（`blockedReason`）同一个优先级、同一句话。
+    //  判据与横幅同源（`restartNeeded`：时间戳为主、构建标识为备），不许各写一份。
+    val restartNeeded = f.restartNeeded
 
     return listOf(
         LinkCheck(
@@ -213,13 +408,13 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                 when {
                     // 真因优先：文件读不懂时宿主读到的是默认值（enabled=false），
                     // 再往下会报成「主开关已关闭」—— 那会把用户引到错的方向（他根本没关）。
-                    configState.readOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
+                    f.readOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
 
                     inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
 
                     !inj.configOk -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
 
-                    buildStale -> I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需重启")
+                    restartNeeded -> I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
 
                     // 收到过、但指纹对不上（且不是换包没重启造成的）：改过的那一次没送到它手上
                     //  判据与上面 `ok` **同源**（[configSideOk]）—— 这里原来另算了一遍，两处条件

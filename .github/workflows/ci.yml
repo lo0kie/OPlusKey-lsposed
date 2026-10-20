@@ -106,23 +106,41 @@ jobs:
       - name: 耦合审计（禁止边 / 包级环）
         run: python3 tools/audit-coupling.py
 
+      # 架构判据（趋势线）：耦合审计管**包与包之间**的方向，管不了「同一条业务规则在几个地方
+      #   各写了一遍」—— 包依赖图完全干净的时候，一条规则仍然可能有四五份手写实现，而漏改
+      #   其中一处的表现是「某条路径上行为不一致」，编译期与 detekt 都看不见。
+      #   这一步只打印不阻断（数值稳定之后再改成 `--strict`），目的是让「规则副本数」出现在
+      #   每次 CI 日志里，改坏了当场看得见。
+      - name: 架构判据（规则副本数 / 规模趋势）
+        run: python3 tools/audit-arch.py
+
       # i18n 缓存审计：`remember { … }` 里缓存了字典文案、键里却没有语言档 ⇒ 切语言后那几行
       #   还是旧语言（真机上「关于」页那两行这么踩过）。detekt / lint 管不了这种跨语句的判据。
       #   与耦合审计同一条纪律：脚本存在的意义就是被跑，挂在 CI 上而不是靠人记得。
       - name: i18n 缓存审计
         run: python3 tools/check-i18n-cache.py
 
+      # i18n 兜底一致性：每处 `I18n.get(Strings.X, "兜底")` 的兜底串**必须**与字典里的值逐字相同
+      #   —— 字典没载入时显示的就是兜底那句，两边分叉等于同一件事有两套说法（真机上就出现过
+      #   「需重启 / 需要重启」「确定 / 确认」这种两种口径都活着的情况）。275 处兜底，靠人看不住。
+      - name: i18n 兜底一致性
+        run: python3 tools/check-i18n-fallbacks.py
+
       # 补丁产物完整性：`patches/repo` 里那个 aar 是打完补丁重新发布的，不在任何上游仓库里，
       #   也没有上游签名可对 —— 仓库里那份就是唯一来源。校验和缺了 / 对不上，说明它被换过或传坏了。
       - name: 校验补丁产物
         run: bash tools/verify-patches.sh
 
-      # 每一轮都打整包（debug + release）：这两个包既是验证对象，也是 `release.yml` 发版时
-      #   要取的那一份，还是出问题时能直接下来复现的那一份。
-      - name: 构建 debug / release
+      # 每一轮都打整包（debug + release + releaseLog）：这三个包既是验证对象，也是 `release.yml`
+      #   发版时要取的那一份，还是出问题时能直接下来复现的那一份。
+      #
+      #  `releaseLog` = 正式签名 + R8 + 封存，只把 `VERBOSE_LOG` 那一档换成 true（见
+      #   `app/build.gradle.kts` 的 buildTypes）。给用户排查用：出问题的人装它、抓日志，
+      #   行为与正式包完全一致，只是多写日志。
+      - name: 构建 debug / release / releaseLog
         run: |
           if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
-            ./gradlew assembleDebug assembleRelease
+            ./gradlew assembleDebug assembleRelease assembleReleaseLog
           else
             ./gradlew assembleDebug
           fi
@@ -143,6 +161,10 @@ jobs:
           # 没签名那一轮没有 release 产物，别在这儿报错（封存那一步已经挡在前面了）
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
             cp app/build/outputs/apk/release/app-release.apk "dist/oplus-key-${{ steps.dist.outputs.version_name }}-release.apk"
+          fi
+          # 「带完整日志的正式包」：同样只在签名那一轮才有（它沿用 release 的签名与封存）
+          if [ -f app/build/outputs/apk/releaseLog/app-releaseLog.apk ]; then
+            cp app/build/outputs/apk/releaseLog/app-releaseLog.apk "dist/oplus-key-${{ steps.dist.outputs.version_name }}-releaseLog.apk"
           fi
           ls -l dist
 
@@ -173,7 +195,11 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: oplus-key-release-${{ steps.dist.outputs.version_name }}
-          path: dist/*-release.apk
+          # 两个正式签名的包一起存：`release.yml` 发版时都要（模块仓库里挂 release，
+          #  存档仓库里挂全部），按同一个 artifact 取才不会两趟。
+          path: |
+            dist/*-release.apk
+            dist/*-releaseLog.apk
           if-no-files-found: error
           retention-days: 90
 

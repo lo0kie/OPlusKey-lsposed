@@ -255,7 +255,10 @@ fi
 # (10) 封存：release 是「发布形态」—— 不许出现明文收款码 / 名单，且必须有容器；
 #    debug 反过来（它的图就是明文，靠 `core/seal` 那条 assets 目录进的包）。
 #    守的是「封存任务没跑起来 / 被绕过」——那种包照样能出、能装，只有把包解开才看得出来。
-for apk in "$DIR"/*-release.apk; do
+#
+#    通配 `*-release*.apk`：`releaseLog`（同一份正式包、只多开日志）也是发布形态，
+#    封存同样必须生效，别让它从这条判据下漏过去。
+for apk in "$DIR"/*-release*.apk; do
   [ -f "$apk" ] || continue
   echo "校验封存 $apk"
   listing=$(unzip -l "$apk")

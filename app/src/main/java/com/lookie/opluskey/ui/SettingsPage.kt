@@ -20,6 +20,7 @@ import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.CommandDraftState
 import com.lookie.opluskey.ui.state.ConfigState
+import com.lookie.opluskey.ui.state.HintCenter
 import com.lookie.opluskey.ui.state.HostLinkState
 import com.lookie.opluskey.ui.state.KeyWatchState
 import io.github.suqi8.coui.kmp.nav.core.NavBackStack
@@ -430,6 +431,13 @@ internal class SettingsPage(
      * 「链路 / 报活」那几项结论（宿主在不在、注入侧回没回包）—— 见 [HostLinkState]。
      */
     internal val link = HostLinkState()
+
+    /**
+     * 页面上那两条提示条（常驻结论 + 操作回执）—— 见 [HintCenter]。
+     *
+     *  与 [link] 分开：提示条有生命周期（关页要收作用域），链路诊断状态没有。
+     */
+    internal val hints = HintCenter()
 
     /**
      * 从设置页重进模块时（`SettingsPageHooks`）—— 把页面栈清回首页。

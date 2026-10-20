@@ -83,10 +83,14 @@ import kotlinx.coroutines.delay
  * ## 落点
  *
  *  距屏幕底边 32dp —— 与 COUI 的 `coui_snack_bar_margin_bottom` 一致：
- *  这一页的 [HINT_BOTTOM_GAP]（24dp）+ 阴影画布的下边（[HINT_ROOM_BOTTOM] 4dp）+
- *  胶囊自己那圈外边距（[HINT_ITEM_MARGIN] 4dp）。
+ *  阴影画布的下边（[HINT_SHADOW_ROOM] 28dp）+ 胶囊自己那圈外边距（[HINT_ITEM_MARGIN] 4dp）。
  *  页面是边到边（`contentWindowInsets` 全零），底边由 [HINT_INSETS] 自己补上导航条，
  *  所以这个数就是到**可视底边**的距离。
+ *
+ *  这笔账以前是「槽上留 24dp + 画布下边 4dp」—— 画布下边只有 4dp 时，**入场动画那一下**
+ *  阴影会被画布下沿切平（`fadeIn` 期间节点走离屏层，层边界就是节点边界），动画播完、层撤掉
+ *  才恢复（用户口径「入场动画时底部阴影被截断，播完就好了」）。现在把槽上那 24dp 并进画布，
+ *  胶囊的位置一个像素没动，四边的画布都是 28dp。
  *
  * ## 挂在浮层槽、压在弹窗之上
  *
@@ -113,8 +117,8 @@ internal fun SettingsPage.PageSnackbars() {
     //   · 回执到点自己走 → 落到常驻那条。
     //  三种切换都发生在**同一个 [HintSlot] 节点**里（换的只是字符串），所以不会再有任何位移：
     //  没有第二个节点占位，也就没有「从上面瞬回」。
-    val action = link.actionHint
-    val status = link.statusHint
+    val action = hints.actionHint
+    val status = hints.statusHint
     val text =
         when {
             action.text == null -> status.text
@@ -126,10 +130,10 @@ internal fun SettingsPage.PageSnackbars() {
 
             else -> status.text
         }
+    //  这里**不再留底部间距**：那一笔已经并进阴影画布（见 [HINT_SHADOW_ROOM]）——
+    //  离底边多远由画布 + 胶囊外边距一起决定，画布够大才不会在入场动画期间切掉阴影。
     Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(bottom = HINT_BOTTOM_GAP),
+        Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
     ) {
         HintSlot(text, backdrop)
@@ -163,14 +167,7 @@ private fun HintSlot(
     ) {
         // 这圈留白是**给阴影的画布**，不是排版留白（见 [HINT_SHADOW_ROOM]）：
         //  alpha 那一层（`saveLayer`）的边界就是节点边界，而阴影画在胶囊外面 —— 不留出来就会被裁平。
-        Box(
-            Modifier.padding(
-                start = HINT_SHADOW_ROOM,
-                end = HINT_SHADOW_ROOM,
-                top = HINT_SHADOW_ROOM,
-                bottom = HINT_ROOM_BOTTOM,
-            ),
-        ) {
+        Box(Modifier.padding(HINT_SHADOW_ROOM)) {
             HintCapsule(last, backdrop)
         }
     }
@@ -325,7 +322,8 @@ private fun frostedContainer(base: Color): Color = base.copy(alpha = base.alpha 
  *  为什么需要它：提示条原先挂在 `snackbarHost` 槽，那个槽是库自己按 `contentWindowInsets`
  *  让过位的；现在改挂 `popupHost` 槽（为了压在弹窗之上，见 `PageContent`），库就不再管它了 ——
  *  而这一页的 `contentWindowInsets` 是全零（边到边），于是提示条会沉进手势导航条下面那一条里。
- *  [HINT_BOTTOM_GAP] 那 24dp 是按「槽底 = 可视底边」算的（合计 32dp），少了这条 inset 就整体下移。
+ *  那 32dp（画布 [HINT_SHADOW_ROOM] + 胶囊外边距）是按「槽底 = 可视底边」算的，
+ *  少了这条 inset 就整体下移。
  *
  *  只要导航条、不要状态栏：这一槽是底部对齐的，顶部那条对落点没有意义。
  *  （`WindowInsets.navigationBars` 是 `@Composable` getter —— 只能在组合里取，不能存成顶层 val。）
@@ -358,38 +356,22 @@ private const val HINT_BORDER_ALPHA = 0.12f
 private val HINT_TALLER_BY = 2.dp
 
 /**
- * 提示距屏幕底边的距离 —— 与 COUI 的 `coui_snack_bar_margin_bottom` 一致（32dp）。
- *
- *  这一笔是**剩下的**那一截：这一页的 24dp + 阴影画布 [HINT_ROOM_BOTTOM] 的 4dp +
- *  胶囊自己那圈外边距（[HINT_ITEM_MARGIN]）4dp = 32dp。
- *  三处任改一处，都要回头把这个总数对回 32dp。
- */
-private val HINT_BOTTOM_GAP = 24.dp
-
-/**
- * 胶囊外面那圈**给阴影留的画布**（左右与上）。
+ * 胶囊外面那圈**给阴影留的画布** —— **四边一样**。
  *
  *  为什么需要它：进出场用 alpha（`fadeIn` / `fadeOut`）时，Compose 会给节点开一层会话层
  *  （`saveLayer`），**会话层的边界就是节点边界** —— 而阴影画在胶囊外面，不留出这一圈就会
- *  被四周裁平（真机反馈「打开过程中四周阴影还是被裁切」）。取 28dp：阴影半径 26 + 下移 4。
+ *  被四周裁平。取 28dp：阴影半径 26 + 下移 4。
  *
- *  注意它是**布局留白**，会把胶囊顶上去：所以 [HINT_BOTTOM_GAP] 只剩 24dp
- *  （底部 [HINT_ROOM_BOTTOM] 那 4dp 与胶囊自己的 4dp 外边距已经够隔开了）。
+ *  底部以前只留 4dp（「那圈阴影本来就该被窗口沿切掉」），但离屏层的边界在**动画期间**就生效，
+ *  于是入场那 150ms 里底部阴影是齐边切平的、播完才恢复。现在四边都留满 —— 胶囊的位置不变，
+ *  原来是「槽上 24dp + 画布 4dp」，现在那 24dp 都算进画布。
  */
 private val HINT_SHADOW_ROOM = 28.dp
-
-/**
- * 画布在**下**边只留 4dp。
- *
- *  底部那圈阴影本来就该被窗口沿切掉 —— COUI 自己也是这样（真机口径「COUI 的只有底部」）。
- *  多留 24dp 会把胶囊顶得离底边太远，得不偿失。
- */
-private val HINT_ROOM_BOTTOM = 4.dp
 
 /** 胶囊左右两侧的外边距（库 `Snackbar` 内联的那 16dp，COUI `grid_guide_column_card_margin_start`）。 */
 private val HINT_SIDE_MARGIN = 16.dp
 
-/** 胶囊上下两侧的外边距（库 `Snackbar` 内联的那 4dp）—— 与 [HINT_BOTTOM_GAP] 合起来才是 32dp。 */
+/** 胶囊上下两侧的外边距（库 `Snackbar` 内联的那 4dp）—— 与 [HINT_SHADOW_ROOM] 合起来才是 32dp。 */
 private val HINT_ITEM_MARGIN = 4.dp
 
 /**

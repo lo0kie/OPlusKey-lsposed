@@ -1,6 +1,7 @@
 package com.lookie.opluskey.host.action
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
@@ -120,6 +121,26 @@ internal enum class CommandFailure(
             }
     }
 }
+
+/**
+ * 「这个包还在不在」—— 解析不到界面 / 拉起被拒时**报哪一档失败**的判据。
+ *
+ *  判据本身只有一句：`getApplicationInfo` 问得到就是还在。但有两个坑写在调用点上：
+ *  · **分身不问主用户的 PM**：同包名在 0 与 998/999 里各有一份，拿主用户 PM 去问必抛，于是
+ *    好端端的分身被报成「可能已卸载」；
+ *  · 显式组件**被停用 / 组件不存在**时抛的也是 `ActivityNotFoundException`，一律报
+ *    [CommandFailure.APP_MISSING] 会把用户带偏 —— 包明明还在。
+ *
+ *  `runCatching` 在这里表达的是「预期内的失败 = 没找到」，不是「保护宿主」（那一类用 `XLog.guard`）。
+ */
+internal fun appInstalled(
+    pm: PackageManager,
+    pkg: String,
+    userId: Int,
+): Boolean = userId != 0 || runCatching { pm.getApplicationInfo(pkg, 0) }.isSuccess
+
+/** 上面那个布尔 → 失败档位：「还在」= 没有可用入口，「不在」= 可能已卸载。 */
+internal fun entryFailure(installed: Boolean): CommandFailure = if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING
 
 /** 把失败提示弹成 Toast。 */
 internal object FailureNotice {

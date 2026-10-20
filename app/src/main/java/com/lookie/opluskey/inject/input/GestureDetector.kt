@@ -200,6 +200,16 @@ internal class GestureDetector(
             XLog.w("${id.label}：只收到抬手（没见到按下）⇒ 按孤立 UP 处理（补判一次单击）")
         }
 
+        // 判据级：这一次按压按住了多久 —— 「长按没反应」最缺的就是这个数。
+        //   按住 7ms 而用户自称按住不放 ⇒ 这颗键上报的是「按下即抬起」的一对事件，
+        //    靠时长判长按先天不成立（长按枪在抬手那一刻就被摘了），只能靠 ROM 换码；
+        //   按住 800ms 却没判出长按 ⇒ 问题在阈值配置或下面那三条栅栏，与这颗键无关。
+        //   孤立抬手（`pressAt == 0`）不打：上面那行已经交代清楚了，再打一个负数只会误导。
+        //  阈值一起打出来：用户按住 250ms、阈值是 500ms 时，两个数并排就能看出是「按得不够久」。
+        if (p.pressAt != 0L) {
+            XLog.w("${id.label}：按住 ${now - p.pressAt}ms（长按阈值 ${config.longPressMs}ms）")
+        }
+
         // 抬手 ⇒ 长按那一枪作废。**摘枪**，不是只靠到点读一眼 `sawFirstRelease`：那次读跨线程，
         //  读到陈旧值就是「明明抬手了还判长按」。长按延迟压到 100ms 这一档时，抬手与到点只隔
         //  几毫秒，正是这种读最容易失手的位置。
@@ -345,6 +355,12 @@ internal class GestureDetector(
                         SystemClock.uptimeMillis() - p.lastDirectSingleAt < config.longPressMs
                     // 状态位在锁里读改（与抬手那一段互斥），**派发留在锁外**：
                     //  dispatch 会发广播，不该占着这把锁。
+                    //
+                    // 三条栅栏哪一条没过：到点却没判时，这是唯一能把「按住够久但被作废」与
+                    //  「压根没排上枪」分开的证据 —— 全静默的话，两种故障在日志里长得一模一样
+                    //  （只有一条 DOWN/UP，没有「长按」那行）。攒成一句在**锁外**打：日志出口要走
+                    //  logd，与 dispatch 同理，不该占着这把状态锁。
+                    var missReason: String? = null
                     val fire =
                         synchronized(p) {
                             if (p.longPressAt != 0L && !p.sawFirstRelease && !directJustFired) {
@@ -352,9 +368,15 @@ internal class GestureDetector(
                                 p.longPressFired = true
                                 true
                             } else {
+                                missReason =
+                                    "${id.label}：长按到点未判" +
+                                    "（长按位在=${p.longPressAt != 0L}" +
+                                    " 已抬手=${p.sawFirstRelease}" +
+                                    " 刚直判过单击=$directJustFired）"
                                 false
                             }
                         }
+                    missReason?.let { XLog.w(it) }
                     if (fire) {
                         XLog.w("${id.label}：长按")
                         dispatch(id, Gesture.LONG, config, repeat = false)

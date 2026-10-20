@@ -9,18 +9,24 @@ import com.lookie.opluskey.core.reflect.Reflect
 /**
  * 响铃模式（`keyevent:KEYCODE_VOLUME_MUTE` / 164）—— 响铃 → 振动 → 静音 → 响铃。
  *
+ *  落档一律走内部通道（`AudioService.setRingerModeInternal`，反射），公共接口只作退路：
+ *  这台 ROM 把公共接口的静音请求交给 delegate 改写（实测会变成「打开手动免打扰」），
+ *  只有内部通道三档都落得下去。「使用 ColorOS 接口」开关只管切完那一下的触觉与流体云。
+ *
  * 免打扰（Zen Mode）把外部档位视图压成静音（`am.ringerMode` 恒读静音），但内部档位仍归
- * AudioService 管：内部通道写入不被 zen 拦、也不联动关 zen。所以免打扰期间改读内部档位
- * （`AudioService.getRingerModeInternal()`，反射），循环与定点切换照常走内部通道、免打扰原样保留；
+ * AudioService 管：内部通道写入不被 zen 拦、也不联动关 zen。所以读档位同样走内部通道，
  * 读不到时退回自己记的上一档（rememberedMode）。
  */
 internal class RingerController(
     private val context: () -> Context?,
     /** 「使用 ColorOS 接口」这一档由装配处传入（见 `ActionRunner`）—— 本类不自己去读配置。 */
     private val isColorOsApi: () -> Boolean,
+    /** 「振动反馈」总开关，同样由装配处传入 —— 只决定切完档要不要振那一下。 */
+    private val vibrate: () -> Boolean = { true },
 ) {
     /** 免打扰期间内部档位读不到时的兜底：自己记的上一档（只在写入成功时按**实际落到的档位**更新）。 */
-    @Volatile private var rememberedMode: Int = AudioManager.RINGER_MODE_NORMAL
+    @Volatile
+    private var rememberedMode: Int = AudioManager.RINGER_MODE_NORMAL
 
     /** 切下一档。 */
     fun cycle() {
@@ -101,38 +107,60 @@ internal class RingerController(
     }
 
     /**
-     * 读当前档位：
-     * - ColorOS 模式：优先走内部通道 `AudioService.getRingerModeInternal()`（或 Settings.Global.mode_ringer），
-     *   免打扰开启时不被压制成静音（0）。内部档位读不到才退回 rememberedMode。
-     * - AOSP 标准模式：走公共视图 `am.ringerMode`（免打扰下若读不到退回 rememberedMode）。
+     * 切完档那一下触觉 —— **只在「使用 ColorOS 接口」开着时**放（见 [RingerHaptics]）。
+     *
+     *  看的是那个开关，不是这一次实际走了哪条通道（通道一律内部优先）。关掉时什么都不做：
+     *  那一下由调用方在动作执行前放通用振动（`host/GestureExec` 的 `haptic`），这里再放就是两下。
+     */
+    private fun hapticOnSwitched(
+        ctx: Context,
+        mode: Int,
+    ) {
+        if (!isColorOsApi()) {
+            XLog.w("响铃触觉：跳过（未使用 ColorOS 接口）")
+            return
+        }
+        if (!vibrate()) {
+            XLog.w("响铃触觉：跳过（振动反馈关着）")
+            return
+        }
+        RingerHaptics.play(ctx, mode)
+    }
+
+    /**
+     * 读当前档位 —— **内部通道优先，与写入那条路保持一致**：
+     * 先 `AudioService.getRingerModeInternal()`（反射），读不到用 `Settings.Global.mode_ringer`，
+     * 两者都没有才退回公共视图 `am.ringerMode`。
+     *
+     *  为什么不在免打扰关闭时就信任 `am.ringerMode`：它的写与读必须同一条通道，否则「写进去的」
+     *  与「回读到的」可能不是一个东西（免打扰下公共视图恒读静音），`rememberedMode` 跟着记错，
+     *  下一次 `cycle()` 就从错的档位起步。
      */
     private fun readCurrentMode(
         am: AudioManager,
         zen: Boolean,
         ctx: Context,
     ): Int {
-        if (isColorOsApi()) {
-            val service = Reflect.callStatic(AudioManager::class.java, "getService")
-            val internal = service?.let { Reflect.call(it, "getRingerModeInternal") }
-            if (internal is Int) return internal
-            // 两条反射在部分 ROM 上取不到 —— 说出来：否则「读到的档位为什么是这个」
-            //  在日志里没有任何依据，而下一档是拿它推出来的。
-            XLog.w("响铃档位：内部通道（AudioService.getRingerModeInternal）读不到，改读 Settings.Global")
+        val service = Reflect.callStatic(AudioManager::class.java, "getService")
+        val internal = service?.let { Reflect.call(it, "getRingerModeInternal") }
+        if (internal is Int) return internal
+        // 两条反射在部分 ROM 上取不到 —— 说出来：否则「读到的档位为什么是这个」
+        //  在日志里没有任何依据，而下一档是拿它推出来的。
+        XLog.w("响铃档位：内部通道（AudioService.getRingerModeInternal）读不到，改读 Settings.Global")
 
-            val settingsMode =
-                runCatching {
-                    android.provider.Settings.Global
-                        .getInt(ctx.contentResolver, MODE_RINGER_KEY, -1)
-                }.getOrDefault(-1)
-            if (settingsMode in 0..2) {
-                XLog.w("响铃档位：用 Settings.Global.$MODE_RINGER_KEY=$settingsMode 兜底")
-                return settingsMode
-            }
-            XLog.w(
-                "响铃档位：内部通道与 Settings.Global.$MODE_RINGER_KEY 都没读到" +
-                    (if (zen) "，免打扰开着 ⇒ 按上一档处理" else "，改读公共视图"),
-            )
+        val settingsMode =
+            runCatching {
+                android.provider.Settings.Global
+                    .getInt(ctx.contentResolver, MODE_RINGER_KEY, -1)
+            }.getOrDefault(-1)
+        if (settingsMode in 0..2) {
+            XLog.w("响铃档位：用 Settings.Global.$MODE_RINGER_KEY=$settingsMode 兜底")
+            return settingsMode
         }
+        XLog.w(
+            "响铃档位：内部通道与 Settings.Global.$MODE_RINGER_KEY 都没读到" +
+                (if (zen) "，免打扰开着 ⇒ 按上一档处理" else "，改读公共视图"),
+        )
         if (zen) {
             XLog.w("免打扰开启且内部档位读不到，按上一档处理（${modeName(rememberedMode)}）")
             return rememberedMode
@@ -154,8 +182,10 @@ internal class RingerController(
     /**
      * 切到 `next`，返回**实际落到的档位**（`null` = 两条路都没成，调用方据此更新 rememberedMode）。
      *
-     * - ColorOS 模式：优先走内部通道 —— 防 `mRingerModeDelegate` 降级改写，免打扰期间不被拦截；
-     * - AOSP 标准模式：走公共接口 `am.ringerMode`。
+     *  内部通道 `AudioService.setRingerModeInternal` **永远先走**：公共接口那条要把请求交给
+     *  `mRingerModeDelegate` 改写（这台 ROM 上是把静音变成「开手动免打扰」），只有内部通道
+     *  才三档都落得下去。「使用 ColorOS 接口」开关管的是切完那一下的触觉与流体云，
+     *  **不决定走哪条通道** —— 通道选择错了会让「切到静音」变成「进免打扰」。
      */
     private fun applyMode(
         am: AudioManager,
@@ -166,20 +196,21 @@ internal class RingerController(
     ): Int? {
         val useColorOs = isColorOsApi()
         val note = if (zen) "（免打扰开启）" else ""
-        if (useColorOs) {
-            if (setRingerModeInternal(am, next)) {
-                val landed = runCatching { readCurrentMode(am, zen, ctx) }.getOrNull()
-                val degraded = landed != null && landed != next
-                XLog.w(
-                    "响铃模式（ColorOS 接口）：${modeName(current)} → ${modeName(next)}" +
-                        (if (degraded) "（回读发现实际落成 ${modeName(landed)}）" else "") + note,
-                )
-                val finalMode = landed ?: next
+        if (setRingerModeInternal(am, next)) {
+            val landed = runCatching { readCurrentMode(am, zen, ctx) }.getOrNull()
+            val degraded = landed != null && landed != next
+            XLog.w(
+                "响铃模式（内部通道）：${modeName(current)} → ${modeName(next)}" +
+                    (if (degraded) "（回读发现实际落成 ${modeName(landed)}）" else "") + note,
+            )
+            val finalMode = landed ?: next
+            if (useColorOs) {
                 SeedlingClient.notifyRingMode(ctx, finalMode)
-                return finalMode
+                hapticOnSwitched(ctx, finalMode)
             }
-            XLog.w("ColorOS 内部通道 setRingerModeInternal 失败，退回公共接口")
+            return finalMode
         }
+        XLog.w("内部通道 setRingerModeInternal 失败，退回公共接口")
         try {
             am.ringerMode = next
             val landed = runCatching { am.ringerMode }.getOrNull()
@@ -193,11 +224,12 @@ internal class RingerController(
             val finalMode = landed ?: next
             if (useColorOs) {
                 SeedlingClient.notifyRingMode(ctx, finalMode)
+                hapticOnSwitched(ctx, finalMode)
             }
             return finalMode
         } catch (e: Throwable) {
             XLog.w(
-                "切换响铃模式失败（${if (useColorOs) "内部与公共接口均失败" else "AOSP 公共接口被拒"}）：" +
+                "切换响铃模式失败（内部与公共接口均失败）：" +
                     "${e.javaClass.simpleName}: ${e.message}",
             )
             return null
