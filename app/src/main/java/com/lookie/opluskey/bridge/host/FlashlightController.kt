@@ -26,6 +26,10 @@ internal class FlashlightController(
     @Volatile
     private var torchCallbackRegistered = false
 
+    /** 注册上去的那个回调实例 —— 注销时必须拿同一个对象（`unregisterTorchCallback` 按引用比）。 */
+    @Volatile
+    private var torchCallback: CameraManager.TorchCallback? = null
+
     /** 切换一次手电筒。 */
     fun toggle() {
         val ctx =
@@ -197,7 +201,7 @@ internal class FlashlightController(
     private fun registerTorchCallbackOnce(cm: CameraManager) {
         if (torchCallbackRegistered) return
         try {
-            cm.registerTorchCallback(
+            val callback =
                 object : CameraManager.TorchCallback() {
                     override fun onTorchModeChanged(
                         cameraId: String,
@@ -222,9 +226,9 @@ internal class FlashlightController(
                             torchCameraId = cameraId
                         }
                     }
-                },
-                handler,
-            )
+                }
+            cm.registerTorchCallback(callback, handler)
+            torchCallback = callback
             // 标记必须写在成功之后：写在 try 之前的话，一次失败就永不重试，
             // torchOn 与真实状态会长期相反。
             torchCallbackRegistered = true
@@ -232,6 +236,25 @@ internal class FlashlightController(
         } catch (e: Throwable) {
             XLog.w("注册 torch 回调失败（状态可能不准，仍会尝试切换）", e)
         }
+    }
+
+    /**
+     * 摘掉 torch 回调 —— 执行器被释放时调（`:ui` 进程里关页就走这里）。
+     *
+     *  必须是**同一个回调实例**：`unregisterTorchCallback` 按引用比，新建一个摘不掉。
+     *  摘过一次就把标记清掉，下一次 toggle 会重新注册。
+     */
+    fun release() {
+        val callback = torchCallback ?: return
+        torchCallback = null
+        torchCallbackRegistered = false
+        val cm =
+            runCatching { context()?.getSystemService(Context.CAMERA_SERVICE) as? CameraManager }
+                .getOrNull()
+        if (cm == null) return
+        runCatching { cm.unregisterTorchCallback(callback) }
+            .onSuccess { XLog.w("手电筒：已注销 torch 回调") }
+            .onFailure { XLog.w("手电筒：注销 torch 回调失败（进程结束时一并消失）", it) }
     }
 
     /** 兜底：自己找一颗带闪光灯的摄像头。 */

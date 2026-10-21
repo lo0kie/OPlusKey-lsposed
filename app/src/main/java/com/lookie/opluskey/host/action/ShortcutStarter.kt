@@ -14,11 +14,11 @@ import com.lookie.opluskey.core.model.ZoomWindowWire
  *
  * ## 两条起法，优先级不是随便定的
  *
- *  ① **自发 PendingIntent**（`getShortcutIntent` → `pending.send`）—— 本仓唯一能过 BAL 的起法。
+ *  1) **自发 PendingIntent**（`getShortcutIntent` → `pending.send`）—— 本仓唯一能过 BAL 的起法。
  *     发送时用 `setPendingIntentBackgroundActivityStartMode` 显式声明「允许这次 PI 起后台活动」，
  *     ATMS 日志里读作 `BAL_ALLOW_PERMISSION`。
- *  ② **系统代发**（`LauncherApps.startShortcut`）—— 被 `BAL_BLOCK` 拦时**调用侧完全看不出来**
- *     （返回 `void`、`result code=102`）。只当 ①拿不到 PI 时的兜底，**不能当主路**：
+ *  2) **系统代发**（`LauncherApps.startShortcut`）—— 被 `BAL_BLOCK` 拦时**调用侧完全看不出来**
+ *     （返回 `void`、`result code=102`）。只当 1) 拿不到 PI 时的兜底，**不能当主路**：
  *     真机上它常常整发不落地（表里连任务都不会出现），而 PI 那一发 0.7 秒就进表。
  *     取证见 `docs/zoom-window.md` 的「快捷方式以小窗打开」一节。
  *

@@ -41,15 +41,6 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollHorizontal
 import kotlinx.coroutines.launch
 
-/**
- * 单击档「按键设置」那张卡的**行数** —— 只剩「单击延迟」一行。
- *
- * 走 `cardListPositionOf`：首尾行各补 2dp（COUI 的 `coui_list_card_head_or_tail_padding`），
- * 与「多条命令」那张卡同一套账（见 `CommandScreen` 的 `SERIAL_CARD_ROWS`）。
- * 只有一行时它同时是首行与尾行，`cardListPositionOf` 自己认得这一档（圆角四角都收）。
- */
-internal const val SINGLE_SETTING_ROWS = 1
-
 /** 双击档「按键设置」那张卡的行数 —— 只有「忽视无操作双击手势」一行。 */
 internal const val DOUBLE_SETTING_ROWS = 1
 

@@ -131,9 +131,9 @@ internal fun sortKeyOf(
 /**
  * 本机的 **Xposed 模块**（旧式 + 新式 libxposed）—— 默认就列，不看「显示系统应用」开关。
  *
- *  ① 旧式：清单里挂 `MODULE_SETTINGS` 这个 category（`xposedminversion` 那类 metaData 在
+ *  1) 旧式：清单里挂 `MODULE_SETTINGS` 这个 category（`xposedminversion` 那类 metaData 在
  *    `dumpsys` 里不落地，翻 APK 的 `META-INF/xposed/` 太贵）；
- *  ② 新式 libxposed：**不声明** `MODULE_SETTINGS`，而是挂一个名叫
+ *  2) 新式 libxposed：**不声明** `MODULE_SETTINGS`，而是挂一个名叫
  *    `io.github.libxposed.service.XposedProvider` 的 provider（签名里那个
  *    `io.github.libxposed.service` 包就是它的身份）。真机上 `com.wizpizz.reddidnt` 2.0.0 即此：
  *    `query-activities -c …MODULE_SETTINGS` 查不到它，于是列表里一行「模块」标签都没有。

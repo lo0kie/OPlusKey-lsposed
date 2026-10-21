@@ -9,6 +9,7 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
+import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.actionOf
 import com.lookie.opluskey.ui.blockedReason
@@ -44,7 +45,7 @@ internal fun SettingsPage.pick(
         XLog.w("选动作被拦住（页面未就绪）：链路就绪=$linkReady ${g.id} → ${spec.token}")
         // 与首页那条常驻提示**同一句话**（判据见 [blockedReason]）：被拦住时看到的原因
         //  不该因为你从哪条路点进来而不同。
-        hint(blockedReason() ?: MODULE_UNAVAILABLE_HINT)
+        hint(blockedReason() ?: MODULE_UNAVAILABLE_HINT, slot = HINT_SLOT_BINDING)
         return false
     }
     return try {
@@ -99,14 +100,17 @@ internal fun SettingsPage.pick(
         val result = write(next, "${g.id} → ${spec.token}")
         // 绑成了才报：被拦 / 写盘失败时 [write] 自己已经报过原因；广播没发出去时它报的那条
         //  「已保存，但通知注入侧失败」更不能被一句「已绑定…」顶掉（底部只有一行回执）。
-        if (result == CommandsSave.Ok) hint(boundNotice(spec, action, appName))
+        //  归到**整页那一个位**（[HINT_SLOT_BINDING]）：这一页连改几格时屏幕上改字，
+        //  不叠出「已绑定甲」「已绑定乙」两串。
+        if (result == CommandsSave.Ok) hint(boundNotice(spec, action, appName), slot = HINT_SLOT_BINDING)
         //  返回值仍按「配置有没有落盘」给（见 [write] 的三态口径）：广播失败时文件与本地状态
         //  都已经是新值，调用方不该把它当成「没绑上」。
         result != CommandsSave.Failed
     } catch (e: Throwable) {
         XLog.w("选动作失败（忽略）：${spec.token}", e)
         //  点了格子必须有个说法：只记日志的话用户看到的就是「点了一下没反应」。
-        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
+        //  同一页只有一条回执 ⇒ 它**顶掉**上一条（而不是叠一条）—— 失败本该盖住那句「已绑定」。
+        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"), slot = HINT_SLOT_BINDING)
         false
     }
 }
@@ -180,6 +184,9 @@ internal fun SettingsPage.setKeyEnabledFromMenu(
     writeAndNotice(
         cfg.copy(keys = cfg.keys + (id to key.copy(enabled = on))),
         "key_enabled=${if (on) 1 else 0} key=${id.id}",
+        //  整页一个位（[HINT_SLOT_BINDING]）：不按 `what` 的前缀分（那会得到 `key_enabled`，
+        //  与这一页别的回执各占一格、又叠起来）。
+        slot = HINT_SLOT_BINDING,
     ) {
         I18n
             .get(

@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
  * ## 为什么只实现「画」，不实现 alpha / 色彩滤镜
  *
  *  `applyAlpha` / `applyColorFilter` 的语义是改**这个 painter 的**绘制参数，而这里的
- *  Drawable 是从缓存里取出来的、**可能被多行共用**（`AppPickerState.putIcon`）。改它的
+ *  Drawable 是从缓存里取出来的、**可能被多行共用**（`AppIconCache.put`）。改它的
  *  `alpha` 会把状态留在那个对象上，别的行下次画出来就跟着变。返回 `false` 表示「本 painter
  *  不支持这一项」，Compose 会在有 `alpha` modifier 时退回分层绘制。
  *

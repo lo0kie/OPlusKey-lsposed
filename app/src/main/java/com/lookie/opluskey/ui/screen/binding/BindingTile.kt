@@ -231,10 +231,11 @@ internal fun SettingsPage.ActionTile(
                     //  所以走 [VISIBILITY_ENTER] / [VISIBILITY_EXIT]（淡入 + 竖向展开，
                     //  与页里其他显隐同一套规格）：高度从 0 长到满，标题随之平滑上移；
                     //  收起时反向。两行（14sp + 12sp）在 52dp 的格子里装得下，不会溢出。
-                    //  `MutableTransitionState(false)` 起手：首次组合也走一遍展开 ——
-                    //  `AnimatedVisibility` 直接吃 `visible` 时，初始为 true 不播入场，
-                    //  进页面第一眼就会是「啪」地占好位。
-                    val subtitleShown = remember { MutableTransitionState(false) }
+                    //  **起手就取当前这一档**（`!subtitle.isNullOrBlank()`），不写死 `false`：
+                    //  写死的话「首帧 = 没展开」是每次**重新组合**都成立的 —— 翻 tab、从子页回来
+                    //  都会把这一格新建一遍，那行小字于是每换一页就重播一次展开（高度 0 → 满，
+                    //  标题跟着上下动一下）。取当前值之后，只有小字**真的出现 / 消失**时才播。
+                    val subtitleShown = remember { MutableTransitionState(!subtitle.isNullOrBlank()) }
                     subtitleShown.targetState = !subtitle.isNullOrBlank()
                     AnimatedVisibility(
                         visibleState = subtitleShown,

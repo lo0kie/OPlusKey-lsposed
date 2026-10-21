@@ -234,14 +234,6 @@ internal val GRID_ROW_GAP = GRID_GAP
 internal val MENU_ICON_SIZE = 22.dp
 
 /**
- * 浮层菜单行尾那枚**状态标记**的边长 —— 取 16dp，比行首图标小一档。
- *
- *  它是「这一行现在什么状态」（停用的键），不是这一行是什么：按行首那一档画会跟界面对吼。
- *  位置是库的 `hint` 槽（`DropdownDefaults.HintMaxWidth` = 40dp），16dp 连同一档间隙还有富余。
- */
-internal val MENU_STATE_ICON_SIZE = 16.dp
-
-/**
  * 行尾那颗指示图标（右箭头 / 选中圈 / 入口字形）的边长 —— 取 24dp，
  * 与库那颗 `COUIIcons.Basic.ArrowRight` 同为 24dp 下折线占 12dp 的字形。
  *

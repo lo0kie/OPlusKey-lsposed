@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
@@ -36,9 +37,9 @@ import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「条件执行」页 —— 从「按键绑定」页顶栏 ⋮ 菜单进来。
 //
@@ -76,7 +77,7 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
                 .key(key)
                 .rules
                 .filter { it.gesture == gesture }
-        XLog.w("条件执行：载入 ${key.label}·${gesture.label} 的 ${source.size} 条")
+        XLog.w("条件执行：载入 ${key.label} - ${gesture.label} 的 ${source.size} 条")
         branchDraft.draft.load(owner, source)
     }
 
@@ -87,22 +88,33 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
         Column(
             Modifier
                 .fillMaxSize()
+                // 大标题随滚动折叠（`nestedScroll` 必须在 `verticalScroll` **之前**）——
+                //  与「自定义命令」页 / 「按键绑定」页同一套接法（见 `CommandPage` / `BindingList`）。
+                //  原先这一页只读 `currentHeaderHeight(scrollBehavior)` 让位、却没把滚动量喂给顶栏
+                //  ⇒ 顶栏收不到位移，标题**永远停在展开态**。
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                // 越界回弹：`overScrollVertical` 挂在滚动容器**外侧**，所以内容不满一屏时照样能拖。
+                //  这一页常常只有一两条条件、根本撑不满一屏 —— 不挂它的话在那一档完全动不了。
+                .overScrollVertical()
                 .verticalScroll(scrollState)
                 // 底下那颗「确定」浮在内容之上：留白按「它的位置 + 它的身高 + 一档间隙」给，
                 //  滚到底时表尾那句注脚停在它上面，而不是被压在它底下。
+                //  注意这一句要落在 `verticalScroll` **之后**：那样它才是滚动内容里的内缩，
+                //  而不是把视口本身缩短（见 `BindingList` 顶部那段「纵向 padding 一档都不留」）。
                 .padding(bottom = FAB_BOTTOM_CLEARANCE),
         ) {
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
-            // 这一页是什么 —— 顶栏小标题写着「侧键-单击」，这里再说一次它在干什么
-            SmallTitle(I18n.get(Strings.COMMAND_BRANCH_SECTION, "条件执行"))
+            // 正文直接从顶栏下面开始，没有「条件执行」小标题：
+            //  顶栏尾随小标题已经写着「侧键-单击」说明在哪一档，正文再写一遍页名是重复的；
+            //  空态/表格本来就是这一页唯一的正文，直接顶到顶栏下面反而更像一页表。
             BranchCards(tick)
         }
         // 位置与进出场走「按键绑定」页那颗同一份（[PageCornerFab]），不在这里另算一遍
         PageCornerFab(visible = fabVisible) { BranchConfirmFab() }
     }
     // 改了还没保存就按返回时，`goBack` 会先置这一位 —— 这个窗必须挂上，否则返回被拦住却**没有窗**
-    //  （用户口径：添加完条件退不出去）。命令页那边是 `CommandDialogs` 一起挂的，这一页只挂这一个。
+    //  命令页那边是 `CommandDialogs` 一起挂的，这一页只挂这一个。
     LeaveDiscardDialog()
 }
 
@@ -193,13 +205,13 @@ internal fun SettingsPage.saveBranchRules(): Boolean {
                     }
                 },
         )
-    return when (write(next, "条件执行：${key.label}·${gesture.label}（${rules.size} 条）")) {
+    return when (write(next, "条件执行：${key.label} - ${gesture.label}（${rules.size} 条）")) {
         CommandsSave.Failed -> {
             false
         }
 
         else -> {
-            XLog.w("条件执行已保存：${key.label}·${gesture.label} ${rules.size} 条")
+            XLog.w("条件执行已保存：${key.label} - ${gesture.label} ${rules.size} 条")
             branchDraft.draft.load(BranchDraft.ownerOf(key, gesture), rules)
             true
         }
@@ -215,7 +227,13 @@ internal fun SettingsPage.saveBranchRules(): Boolean {
 @Composable
 internal fun SettingsPage.BranchEmptyHint() {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = EMPTY_STATE_PADDING),
+        //  上下**不再对称**：上边那一档是它与顶栏 / 表格之间的呼吸，下边紧跟「添加条件」那颗按钮，
+        //  原来各 24dp 时字与按钮之间空出一大块、看着像两段不相干的东西（用户口径「文字和按钮
+        //  距离缩小」）。下边收到 [EMPTY_STATE_TO_BUTTON_GAP]，按钮仍在同一组里跟着居中。
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = EMPTY_STATE_PADDING, bottom = EMPTY_STATE_TO_BUTTON_GAP),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(
@@ -234,8 +252,16 @@ internal fun SettingsPage.BranchEmptyHint() {
     }
 }
 
-/** 空态那块上下留白（与「已保存的命令」空态同一档）。 */
+/** 空态那块**上**边留白（与「已保存的命令」空态同一档）。 */
 private val EMPTY_STATE_PADDING = 24.dp
+
+/**
+ * 空态那行字与「添加条件」按钮之间的距离 —— 就是空态的**下**边留白。
+ *
+ *  比 [EMPTY_STATE_PADDING] 小两档：那一档是「与别的东西分开」，这一档是「紧接着的那颗按钮」，
+ *  ［添加条件］本来就属于这块空态（点了它就长出一张表），贴紧一点才读成一组。
+ */
+private val EMPTY_STATE_TO_BUTTON_GAP = 8.dp
 
 /** 空态字形与那行字之间的距离。 */
 private val EMPTY_STATE_TEXT_GAP = 8.dp
@@ -256,7 +282,7 @@ private val FAB_BOTTOM_CLEARANCE = PAGE_BOTTOM_PADDING * 2 + 56.dp + 8.dp
  *  （一条都没有也算「还没配」），但「还没添加条件」比「某一条没配好」更好懂。
  *
  *  「条件没配完」这一支同时管两件事：**整条还没选条件**（[StateRule.condition] 为空）与
- *  **选了要取值的档但取值还空着**（响铃档位 / 屏幕方向）。两种情况都落不下去。
+ *  **选了要取值的档但取值还空着**（响铃状态 / 屏幕方向）。两种情况都落不下去。
  */
 internal fun SettingsPage.branchRulesBlockedReason(): String? {
     val rules = branchDraft.draft.rules

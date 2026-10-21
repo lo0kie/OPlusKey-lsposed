@@ -3866,3 +3866,78 @@ I ActivityTaskManager: START … (BAL_BLOCK) result code=102
 `AppLauncher.toggledOn`；宿主没有 `MANAGE_MEDIA_PROJECTION`，查不到系统那边的会话）。
 
 **别用 `force-stop` 停**：那是硬杀，正在写的文件会留下半截。
+
+## 二十九、压感拍照键（SPRUCE）的**整族键码**：手势由 ROM 判好（反编译 `android.view.OplusKeyEvent` + 用户机日志，2026-10-21）
+
+第二十八节只看到这颗键的 134 / 767 两个码，于是当时把结论下成「只能给单击和双击」。
+用户机（PKU110）的日志把另一半补上了：**双击这颗键时 ROM 只发一个 769，不再发两次 767**，
+而模块只认收集时拿到的那一个码 ⇒ 769 漏给系统，由系统执行它自己的默认动作（打开相机）。
+
+### 29.1 键码表
+
+`oplus-framework.jar` 的 `classes.dex` 里 `Landroid/view/OplusKeyEvent;` 的
+`PUBLIC STATIC FINAL int`（`dexdump -d` 读出来的静态值）：
+
+| 值 | 常量 | 含义 |
+| --- | --- | --- |
+| 765 | `SPRUCE_PRESS_LIGHT_KEYCODE` | 轻按 |
+| 766 | `SPRUCE_PRESS_HARD_KEYCODE` | 重按 |
+| **767** | `SPRUCE_PRESS_SHORT_KEYCODE` | **短按（单击）** |
+| **768** | `SPRUCE_PRESS_LONG_KEYCODE` | **长按** |
+| **769** | `SPRUCE_DOUBLE_CLICK_KEYCODE` | **双击** |
+| 770 / 771 | `SPRUCE_SWIP_UP/DOWN_KEYCODE` | 上滑 / 下滑 |
+| 772 | `SPRUCE_REAL_FINGER_ACTION_KEYCODE` | 真实手指动作 |
+| 773 | `SPRUCE_START_CAMERA` | 启动相机 |
+
+另外 134（`KEYCODE_F4`）是这颗键在按键布局表里的**原始码**（按住时上报，见第二十八节）。
+
+### 29.2 日志证据（用户机，`1.1.2-debug`）
+
+```
+18:19:26  设置页写入：double → oplus:screen_record          ← 把「双击」绑成录屏
+18:19:28  按键（…StrategyActionButtonKeyLaunchApp#…）：keyCode=769 不在认领白名单，放行给系统
+18:19:40  按键（…）：keyCode=769 不在认领白名单，放行给系统
+```
+
+同一份日志里 767 一次都没出现（认领的码会打 `拍照键（…）：DOWN keyCode=…`，一行都没有）
+⇒ 双击那一下**只**发了 769。用户看到的就是「双击设了录屏，结果打开相机」。
+
+### 29.3 结论
+
+- 这颗键是**一个物理键、一族码**：手势由 ROM 判好，模块拿到的已经是结论，**不需要也不该**
+  再用时长去判 —— 判成双击时那两次 767 根本不存在。
+- 收集到族里任何一个码，认领集合就要扩成**整族**（`KeyId.custom` 里的 `familyOf`）。
+  只认一个码的后果就是这次这个 bug：其余手势的码全部漏给系统。
+- 767 / 768 / 769 三个码按「ROM 判好的手势」直接映射成单击 / 长按 / 双击
+  （`RomKeyFamilies.gestureOf`），注入侧走 `Decision.RomGesture`、抬手时派发；
+  其余族内码（134 / 765 / 766 / 770~773）**认下但吞掉**，不派发 —— 它们只是同一次按压的中间形态。
+- **768 只是「框架里有这个常量」，不等于这颗键会发它**。第二十八节实测过：按住 3 秒也只有
+  一对间隔 1~7ms 的 DOWN/UP、没有任何 repeat，用户机日志里也一次都没出现过 768。
+  所以认下 768 是**防御性**的（万一某个 ROM 版本真的发，就按长按处理），
+  **不代表长按在这颗键上可用了** —— 现状仍然是「长按做不到」，与第二十八节一致。
+  真要确认，得让用户按住 2 秒导一份日志，看有没有 768。
+
+### 29.4 同族清单：`OplusKeyEvent` 里一共五族（同一份 dex，2026-10-21）
+
+「一个物理键、好几个码」不是拍照键独有的形状。`Landroid/view/OplusKeyEvent;` 的 33 个常量
+按前缀分成五族 —— 记在这里是为了下次有人报「某某键不生效」时，能立刻知道该去查哪一族：
+
+| 族 | 码 | 常量 | 备注 |
+| --- | --- | --- | --- |
+| 侧键（`ACTION_BUTTON_*`） | 780 / 781 / 782 / 783 | CLICK / SINGLE_TAP / LONG_PRESS / START_APP | 见下面那条纠正 |
+| 压感拍照键（`SPRUCE_*`） | 765~773 | 见 29.1 | 本次适配的那一族 |
+| 灵犀触控（`LINGXI_*`） | 670~673、680~694 | SHORT_TAP / HEAVY_TAP / DOUBLE_TAP / 分区点按 | 后盖 / 边框敲击，按区域各一个码 |
+| 手柄（`KEYCODE_GIMBAL_*`） | 706 / 717 | SWITCH_CAMERA / POWER | |
+| 肩键（`KEYCODE_SHOULDER_*`） | 760 / 761 | DOWN / UP | 只有按下 / 抬起，没有手势 |
+| 其它 | 774 | `KEYCODE_AI` | |
+| （标志位，不是键码） | 8192 | `FLAG_DISPATCH_HOMEPRESSED` | |
+
+**对旧结论的纠正**：`780/781/782` 并不是「ROM 判好的三档手势」——
+780 是 `ACTION_BUTTON_CLICK`、**781 是 `ACTION_BUTTON_SINGLE_TAP`、782 是 `ACTION_BUTTON_LONG_PRESS`**、
+783 是 `ACTION_BUTTON_START_APP`。也就是说侧键**也有** ROM 判好的长按码（782）。
+
+现状是实测里只出现过 780（侧键有真实时长与 repeat，走时长判定，见第二十八节末段），
+所以这条纠正暂时不改行为。**但有个潜在坑**：`KeyId.PLUS.acceptedKeyCodes` 把 781/782 也认下了，
+而认下之后它们是**喂给时长判定器**的 —— 哪天某个 ROM 版本真的把长按改发 782，
+模块会把它当成「又一次按下」，判出单击而不是长按。真要撞上，按拍照键这套
+（`RomKeyFamilies.gestureOf` + `Decision.RomGesture`）把 782 映射成长按即可。

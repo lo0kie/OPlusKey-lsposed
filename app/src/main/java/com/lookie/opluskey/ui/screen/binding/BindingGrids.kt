@@ -163,12 +163,13 @@ private fun SettingsPage.BuiltInTile(
                         boundAppLabel
                     }
 
-                    //  系统开关那一格再细一档：「WLAN · 打开」—— 只写开关名时看不出是开还是关。
+                    //  系统开关那一格再细一档：「WLAN · 打开」/「NFC · 切换」—— 只写开关名时
+                    //  看不出绑的是哪一档（三档里连「切换」也要写，不然它和只写名字没区别）。
                     //  **必须判格子**：`switchStateLabel` 只看「当前绑的是什么」，而 `current` 每一格
                     //  都相同 —— 不判的话绑一次「打开」，整片网格的每一格都会挂上「打开」。
                     ActionCatalog.SWITCH_TILE -> {
                         listOfNotNull(boundMode?.label, ActionCatalog.switchStateLabel(current))
-                            .joinToString(" · ")
+                            .joinToString(" - ")
                             .ifEmpty { null }
                     }
 
@@ -322,8 +323,8 @@ private fun SettingsPage.CustomTile(
  * 入口格那一层的菜单。它**不占布局位置** —— 真正的落点由那一格记下的触点决定，
  * 挂在这里只是让它跟着这一页一起进 / 出组合。
  *
- *  两层（档位 + 某一档的后续写法）连同两层之间的守卫都在 [ModeMenuPopups] 里 ——
- *  这里只报「哪一格开着」与「选中了哪一档」，不拼菜单结构。
+ *  档位那一层菜单、以及系统开关再往下那一问（弹窗）连同两者之间的守卫都在 [ModeMenuPopups]
+ *  里 —— 这里只报「哪一格开着」与「选中了哪一档」，不拼菜单结构。
  */
 @Composable
 internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {

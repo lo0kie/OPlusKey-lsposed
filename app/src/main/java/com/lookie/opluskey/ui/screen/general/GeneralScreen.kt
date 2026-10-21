@@ -20,12 +20,12 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SHOW_HOME_MINI_ANIM
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.setColorOsApi
 import com.lookie.opluskey.ui.setMiniWindowAnim
 import com.lookie.opluskey.ui.setToastOnRun
@@ -51,7 +51,7 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
     val cfg = configState.config.value
     // 与首页 `pageEnabled` 同一条判据（含主开关自己）：这几项改的是「执行时怎么动」，
     //  模块没启用时改了也不会生效，放用户去改只会误导。
-    val pageEnabled = cfg.global.enabled && linkReady && !configState.readOnly
+    val pageEnabled = pageWritable()
     Column(
         Modifier
             .fillMaxSize()
@@ -201,6 +201,10 @@ private fun SettingsPage.toastRow(
  *
  *  轨道上把三个点都画出来（`keyPoints` 给全，而不是只标默认值那一个）：这一行要回答的是
  *  「一共几档」，只标一个默认值等于让用户自己猜还有没有别的档。
+ *
+ *  行首是**档位数字**（1 / 2 / 3），行尾写**这一档的说法**（弱 / 中 / 强）—— 两处不是同一件事：
+ *  数字答「第几档、一共三档」，文字答「这一档是什么手感」。只有数字时，用户得自己把「2」翻成
+ *  「中」，而滑杆从左到右是弱到强，越靠右越强这件事不写出来就得试。
  */
 @Composable
 private fun SettingsPage.VibrateStrengthRow(
@@ -214,7 +218,7 @@ private fun SettingsPage.VibrateStrengthRow(
             SliderSpec(
                 title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
                 summary = I18n.get(Strings.HOME_VIBRATE_STRENGTH_DESC, "命令触发时振动的力度"),
-                // 档位由行首那枚数字图标表达（1 / 2 / 3），行尾不再写「弱 / 中 / 强」
+                // 档位由行首那枚数字图标表达（1 / 2 / 3）
                 icon = PageIcons.vibrateLevel(level),
                 min = GlobalConfig.VIBRATE_WEAK,
                 max = GlobalConfig.VIBRATE_STRONG,
@@ -222,10 +226,32 @@ private fun SettingsPage.VibrateStrengthRow(
                 default = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
                 step = 1,
                 enabled = enabled,
-                valueText = null,
+                // 行尾跟着拖动的值一起变（滑杆那边每帧用 `dragging` 调这个 lambda）
+                valueText = { vibrateStrengthLabel(it) },
                 // 轨道上只画**默认值**那一个点（与其它滑杆一致）：三档的「第几档」已经由行首图标说了，
                 //  再摆三个一样的圆点，读起来就是「三个默认值」。
                 keyPoints = null,
             ),
     ) { setVibrateStrength(it) }
 }
+
+/**
+ * 三档强度的说法（弱 / 中 / 强）—— 「振动强度」行尾那行字，与 `GlobalConfig` 的三个取值一一对应。
+ *
+ *  越界的取值落到「中」：滑杆与读盘两处都已钳在 `VIBRATE_STRENGTH_RANGE` 里，这里只是兜底
+ *  （手改过的配置文件在钳制之前就会被读一次）。
+ */
+private fun vibrateStrengthLabel(level: Int): String =
+    when (level) {
+        GlobalConfig.VIBRATE_WEAK -> {
+            I18n.get(Strings.HOME_VIBRATE_STRENGTH_WEAK, "弱")
+        }
+
+        GlobalConfig.VIBRATE_STRONG -> {
+            I18n.get(Strings.HOME_VIBRATE_STRENGTH_STRONG, "强")
+        }
+
+        else -> {
+            I18n.get(Strings.HOME_VIBRATE_STRENGTH_MEDIUM, "中")
+        }
+    }

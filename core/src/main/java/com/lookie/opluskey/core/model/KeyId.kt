@@ -32,8 +32,9 @@ class KeyId private constructor(
      * ColorOS 策略类（`StrategyActionButtonKeyLaunchApp`）派发的是它自己注入的内部码
      * 780 / 781 / 782，只认原始码 735 会把侧键放行，表现为模块装了却完全不被接管。
      *
-     *  自定义键只有「收集时看到的那一个码」—— 内部码是策略类给**侧键**专用的，
-     *  别的键不走那条路（见 `docs/device-findings.md`）。
+     *  自定义键认**整族**：压感拍照键这类多码键（[RomKeyFamilies]），收集到族里任何一个码，
+     *  整族都要认 —— 只认一个码的话其余手势的码会漏给系统。内部码 780 / 781 / 782 是策略类
+     *  给**侧键**专用的，别的键不走那条路（见 `docs/device-findings.md`）。
      */
     val acceptedKeyCodes: Set<Int>,
     /** 是不是用户收集来的。收集来的可改名 / 可删，内置的不可 —— 判定只在这一处。 */
@@ -87,13 +88,21 @@ class KeyId private constructor(
             id: String,
             name: String,
             keyCode: Int,
-        ): KeyId = KeyId(id, name, keyCode, setOf(keyCode), isCustom = true)
+        ): KeyId =
+            // 族内键（如压感拍照键）：收集到族里任何一个码，认领集合就扩成**整族** ——
+            //  只认一个码的话，其余手势的码全部漏给系统（真机表现：双击拍照键跳到原生相机）。
+            //  哪些码同族、哪个码是什么手势，见 [RomKeyFamilies]。
+            KeyId(id, name, keyCode, RomKeyFamilies.familyOf(keyCode) ?: setOf(keyCode), isCustom = true)
+
+        // 「一个物理键、好几个码」的族表**不在这里** —— 那是 ROM 适配知识，跟着 ROM 版本走、
+        //  与「一颗键的身份」无关，住在 [RomKeyFamilies]（加一族只改那个文件）。
+        //  本类只在 [custom] 里按主码推整族。
 
         /**
          * 截图按键码（`KEYCODE_SYSRQ`）—— 内置「截图」动作注入的就是它，**不是侧键**、不参与认领。
          *
          * 放在这里只因为一、5 要求「键码只定义在 [KeyId] 一处」：执行侧不许在
-         * `bridge/KeyInjector` 的伴生对象里另留一份字面量 —— 那正是这条规矩要禁止的写法。
+         * `bridge/host/KeyInjector` 的伴生对象里另留一份字面量 —— 那正是这条规矩要禁止的写法。
          */
         const val KEYCODE_SYSRQ = 120
 

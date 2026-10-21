@@ -67,7 +67,9 @@ object LogWire {
                 out.add(rest.take(CHUNK_CHARS))
                 rest = rest.substring(CHUNK_CHARS)
             }
-            if (sb.length + rest.length + 1 > CHUNK_CHARS) {
+            //  空缓冲不切：`0 + rest + 1` 也可能超上限（单行正好 CHUNK_CHARS 时），
+            //  那时会先发一条空分片出去。切之前必须确认这一段真有内容。
+            if (sb.isNotEmpty() && sb.length + rest.length + 1 > CHUNK_CHARS) {
                 out.add(sb.toString())
                 sb.setLength(0)
             }

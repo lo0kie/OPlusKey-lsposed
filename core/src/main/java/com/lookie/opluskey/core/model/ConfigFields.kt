@@ -229,7 +229,7 @@ object ConfigFields {
     /**
      * 系统配色 —— **只有落盘那一列**：换的是这个页面自己的配色，注入侧不读它。
      *
-     *  取值是色板 id（字符串），上下限与合法清单都在界面层（`ui/model/PagePalettes`）——
+     *  取值是色板 id（字符串），上下限与合法清单都在界面层（`ui/model/PagePalette`）——
      *  共用层不认识「有哪些色板」，理由见 `GlobalConfig.palette` 的说明。
      */
     val F_PALETTE = Field(null, Kind.Text(GlobalConfig.DEFAULT_PALETTE))
@@ -250,6 +250,22 @@ object ConfigFields {
      */
     val F_MINI_WINDOW_ANIM = Field(null, Kind.Bool(GlobalConfig.DEFAULT_MINI_WINDOW_ANIM))
 
+    /**
+     * 「跟随系统显示大小」—— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：
+     * 它只决定这个页面自己那棵树的密度，注入侧没有界面、不读它。
+     */
+    val F_FOLLOW_DISPLAY_SIZE = Field(null, Kind.Bool(GlobalConfig.DEFAULT_FOLLOW_DISPLAY_SIZE))
+
+    /**
+     * 页面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
+     * ~ [GlobalConfig.PAGE_SCALE_MAX]）：手改文件写进 10 或 900 会被这一层钳回来。
+     */
+    val F_PAGE_SCALE =
+        Field(
+            null,
+            Kind.Number(GlobalConfig.DEFAULT_PAGE_SCALE, GlobalConfig.PAGE_SCALE_MIN, GlobalConfig.PAGE_SCALE_MAX),
+        )
+
     /** `GlobalConfig` 的全部广播字段。 */
     val GLOBAL_FIELDS: List<Field> =
         listOf(
@@ -262,6 +278,8 @@ object ConfigFields {
             F_THEME,
             F_COLOR_OS_API,
             F_MINI_WINDOW_ANIM,
+            F_FOLLOW_DISPLAY_SIZE,
+            F_PAGE_SCALE,
         )
 
     // ── `Config` 自己那两位（正文顶层、都只落盘，不进广播）

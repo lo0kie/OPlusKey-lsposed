@@ -7,9 +7,12 @@ import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.DeviceSupport
+import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.SliderRow
+import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.linkChecks
 import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.PageIcons
@@ -19,9 +22,12 @@ import com.lookie.opluskey.ui.model.paletteLabel
 import com.lookie.opluskey.ui.model.themeLabel
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setFollowDisplaySize
+import com.lookie.opluskey.ui.setPageScale
 import com.lookie.opluskey.ui.state.deviceModel
 import com.lookie.opluskey.ui.state.deviceSupport
+import com.lookie.opluskey.ui.switchToNotice
 import com.lookie.opluskey.ui.writeAndNotice
+import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -102,7 +108,7 @@ private fun localDeviceTitle(): String = DeviceSupport.adaptedNameOf(deviceModel
  * 「适配清单」里「本机」那一行的结论 —— 判定三档各一句（见 `core/model/DeviceSupport`）。
  *
  *  三句话说的是**三件不同的事**，所以不合并成两档：已适配 / **这一版系统没实测过** /
- *  这个**型号压根没实测过**。后两档的措辞是同一套（用户口径）：都说「没实测过，请自行尝试
+ *  这个**型号压根没实测过**。后两档的措辞是同一套：都说「没实测过，请自行尝试
  *  是否可用」，区别只在「版本」还是「型号」—— 前者是清单里有这机器、只是 ROM 版本没登记，
  *  后者是这台机器压根没见过。原来那句「不在适配清单」只说了事实、没告诉用户该怎么办。
  *  清单只是「这一组验过没有」的提示，不拦注入（AGENTS.md 一、13）。
@@ -247,9 +253,9 @@ internal fun SettingsPage.AppearanceCard(
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE, "跟随系统显示大小"),
                     summaryOn =
-                        I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE_ON, "页面大小随系统的「显示大小」变化"),
+                        I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE_ON, "页面比例随系统变化"),
                     summaryOff =
-                        I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE_OFF, "页面按标准大小显示，不受系统影响"),
+                        I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE_OFF, "页面显示为按标准大小"),
                     icon = PageIcons.TextSize,
                     checked = configState.config.value.global.followDisplaySize,
                     onCheckedChange = {
@@ -257,33 +263,64 @@ internal fun SettingsPage.AppearanceCard(
                         setFollowDisplaySize(it)
                     },
                 ),
+                // 第 4 行：页面缩放 —— **只在「跟随系统显示大小」关掉时出现**（跟着它一起进出场）。
+                //  跟随开着时再摆一根缩放，等于两处都能调页面大小，谁也说不清最后是多少。
+                //  整行另起一支（[PageScaleRow]）：这一卡已经四行了，再平铺下去就数不清行序。
+                CardRow.Custom(visible = !configState.config.value.global.followDisplaySize) { position ->
+                    PageScaleRow(position)
+                },
             ),
     )
+}
+
+/** 「页面缩放」那一行 —— 从 [SettingsPage.AppearanceCard] 里分出来，让那一卡只留行序。 */
+@Composable
+private fun SettingsPage.PageScaleRow(position: CardListPosition) {
+    SliderRow(
+        position = position,
+        spec =
+            SliderSpec(
+                title = I18n.get(Strings.MORE_PAGE_SCALE, "页面缩放"),
+                summary = I18n.get(Strings.MORE_PAGE_SCALE_DESC, "只影响模块页面"),
+                icon = PageIcons.ZoomIn,
+                min = GlobalConfig.PAGE_SCALE_MIN,
+                max = GlobalConfig.PAGE_SCALE_MAX,
+                value = configState.config.value.global.pageScale,
+                default = GlobalConfig.DEFAULT_PAGE_SCALE,
+                // 5% 一档：70~150 之间 17 档，拖起来细但不至于挪一格要半天
+                step = 5,
+                // 行尾把当前档写成「100%」—— 这一行问的就是「缩到多少」，不写就看不出来
+                valueText = { "$it%" },
+            ),
+    ) { setPageScale(it) }
 }
 
 /**
  * 把主题写进配置。
  *
  *  与滑杆那几行同一档：**不判 `linkReady`**（写的是外观、落盘就生效，不需要注入侧回话）。
- *  写完弹一句「已切换到「深色」」—— 这一行的回执与「语言」那一行同一个口径（同是「换一档」）。
+ *  写完弹一句「主题 已切换到「深色」」—— 回执带主语，与「强调色」「语言」那两行同一个句式
+ *  （只说「已切换到「深色」」时看不出是哪一项变了，见 `switchToNotice`）。
  */
 internal fun SettingsPage.setTheme(code: String) {
     val cfg = configState.config.value
     if (cfg.global.theme == code) return
     writeAndNotice(cfg.copy(global = cfg.global.copy(theme = code)), "theme=$code") {
-        I18n
-            .get(Strings.TOAST_SWITCHED_TO, "已切换到「%s」")
-            .format(themeLabel(AppTheme.ofCode(code)))
+        switchToNotice(
+            I18n.get(Strings.MORE_THEME, "主题"),
+            themeLabel(AppTheme.ofCode(code)),
+        )
     }
 }
 
-/** 把强调色写进配置 —— 与 [setTheme] 同一档，回执同样是「已切换到「绿色」」。 */
+/** 把强调色写进配置 —— 与 [setTheme] 同一档，回执「强调色 已切换到「蓝色」」。 */
 internal fun SettingsPage.setPalette(id: String) {
     val cfg = configState.config.value
     if (cfg.global.palette == id) return
     writeAndNotice(cfg.copy(global = cfg.global.copy(palette = id)), "palette=$id") {
-        I18n
-            .get(Strings.TOAST_SWITCHED_TO, "已切换到「%s」")
-            .format(paletteLabel(PagePalette.ofId(id)))
+        switchToNotice(
+            I18n.get(Strings.MORE_PALETTE, "强调色"),
+            paletteLabel(PagePalette.ofId(id)),
+        )
     }
 }

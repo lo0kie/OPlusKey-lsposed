@@ -6,19 +6,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.BranchCondition
-import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.PageMenu
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.PageIcons
@@ -27,14 +23,14 @@ import com.lookie.opluskey.ui.model.conditionChoiceLabel
 import com.lookie.opluskey.ui.model.conditionIcon
 import com.lookie.opluskey.ui.model.conditionKindLabel
 import com.lookie.opluskey.ui.model.conditionTitle
-import com.lookie.opluskey.ui.model.specIcon
 import com.lookie.opluskey.ui.state.AppPickerState
+import com.lookie.opluskey.ui.state.ResumeSheet
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowUp
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
-// 分叉那几张菜单 —— 第一层（换条件 / 换命令 / 删除）、条件种类菜单（十种）、
+// 分叉那几张菜单 —— 第一层（换条件 / 换命令 / 删除）、条件种类菜单（每种一行）、
 // 取值二级、命令菜单（内置动作 + 已保存命令）。
 
 /**
@@ -42,8 +38,7 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
  *
  * ```
  * 左列（条件）→ 条件种类菜单 ─┬─ 前台应用 → 进「选择应用」页
- *                             ├─ 响铃档位 / 屏幕方向 → 取值（二级）
- *                             ├─ 其余（无取值）→ 直接落条件
+ *                             ├─ 其余每一档 → 取值（二级）
  *                             └─ 上移 / 下移 / 删除
  * 右列（动作）→ 动作菜单（内置动作 / 已保存的命令）
  * ```
@@ -116,10 +111,11 @@ private fun SettingsPage.BranchRowMenu(
 }
 
 /**
- * 条件那张菜单与它的落条件动作。
+ * 条件那两张菜单与它的落条件动作。
  *
- *  「响铃档位 / 屏幕方向」的取值是**二级浮层**（一级还留着，挂在它上面），不先关一次再开一次
- *  —— 那两次的开合在真机上就是「菜单闪一下又换了一张」。
+ *  一级选**种类**、二级选**那一档取值**，两级拼成一次完整的选择：「响铃状态」+「振动」。
+ *  二级是**浮层**（一级还留着，挂在它上面），不是先关一次再开一次 —— 那两次的开合在真机上
+ *  就是「菜单闪一下又换了一张」。
  */
 @Composable
 private fun SettingsPage.BranchConditionFlow(
@@ -170,15 +166,16 @@ private class ConditionMenuSpec(
 )
 
 /**
- * 条件种类菜单 —— 「添加条件」与「换条件」都先经过它。
+ * 条件种类菜单 —— 「添加条件」与「换条件」都先经过它，它是**一级**。
  *
- *  每档**各给一颗字形**（[conditionIcon]）：十行共用一颗的话，菜单整列长得一样，只有文字能分。
+ *  每档**各给一颗字形**（[conditionIcon]）：八行共用一颗的话，菜单整列长得一样，只有文字能分。
  *
- *  要取值的两档（响铃档位 / 屏幕方向）**在这张菜单里开二级** —— 一级不关，二级挂在它上面；
- *  「前台应用」那档跳「选择应用」页（行尾给右箭头）。
+ *  一级里**每一行都还有下一层**：带候选档的开二级（[ConditionKind.choices]，一级不关、二级挂在
+ *  它上面）；「前台应用」跳「选择应用」页（行尾给右箭头）。没有「点了就直接落条件」的行 ——
+ *  那需要一个不带取值的条件，而 [ConditionKind] 里已经没有这种档了。
  *
  *  这一条**现在**是哪一档就走 `selected`（行首换对勾、文字上主题色）：改条件时最想知道的是
- *  「现在是什么」，不该还要从十行里自己找一遍。
+ *  「现在是什么」，不该还要从这几行里自己找一遍。
  */
 @Composable
 private fun SettingsPage.BranchConditionMenu(spec: ConditionMenuSpec) {
@@ -210,30 +207,11 @@ private fun SettingsPage.BranchConditionMenu(spec: ConditionMenuSpec) {
             } else {
                 listOf(
                     // 顶部小标题 = 这一格**现在**的文字（与格子里那半行同一份文案）：
-                    //  打开菜单第一眼该看到的不是十种可选，而是「我现在是什么」。
+                    //  打开菜单第一眼该看到的不是一长串可选，而是「我现在是什么」。
                     //  小标题下面那条细线、行与行之间的细线都由菜单自己加（见 [MenuEntry.Section]）。
                     MenuEntry.Section(
                         title = title,
-                        rows =
-                            ConditionKind.entries.map { kind ->
-                                MenuEntry.Row(
-                                    title = conditionKindLabel(kind),
-                                    icon = conditionIcon(kind),
-                                    // 表里已经有了的那一档置灰（本条自己原来那档除外 —— 它算「还是它」）
-                                    enabled = kind !in used,
-                                    disabledHint = I18n.get(Strings.COMMAND_BRANCH_DUPLICATE, "这个条件已经加过了"),
-                                    // 这一条现在是这一档 ⇒ 画成选中（行首对勾 + 文字主题色）
-                                    selected = kind == current,
-                                    // 入口格（进下一层）与跳页面的那档才画行尾那一格
-                                    submenu = kind.choices.isNotEmpty() || kind == ConditionKind.APP,
-                                    trailingIcon =
-                                        if (kind == ConditionKind.APP) PageIcons.EnterArrow else PageIcons.Selector,
-                                ) {
-                                    // 要取值的两档开二级（一级留着）；其余（含跳页面那档）交给调用点 ——
-                                    // 关菜单由调用点做：它得先读 `condAt` 才知道落哪一条。
-                                    if (kind.choices.isEmpty()) spec.onPick(kind, "") else subKind = kind
-                                }
-                            },
+                        rows = conditionKindRows(current, used, spec.onPick) { subKind = it },
                     ),
                 )
             },
@@ -243,14 +221,22 @@ private fun SettingsPage.BranchConditionMenu(spec: ConditionMenuSpec) {
         onDismiss = { if (subKind == null) spec.onDismiss() },
     )
 
-    // 二级：这一档的取值（只有 [ConditionKind.choices] 非空的两档会走到这里）
+    // 二级：这一档的取值（一级选中的种类 + 这里选的档位 = 一条完整条件）
+    //
+    //  顶部小标题写的是**一级里刚点的那个种类**：二级浮层是独立一张菜单，不写这一行的话，
+    //  它看着与「独立的一张取值表」没区别（尤其是「开 / 关」这种文字本身不带主语的档）。
     PageMenu(
         entries =
             subKind
                 ?.let { kind ->
                     // 当前这一档的取值也标出来（老配置里 WIFI / 媒体没有取值 ⇒ 按默认档高亮）
                     val currentValue = editing?.takeIf { it.kind == kind }?.effectiveValue.orEmpty()
-                    conditionChoiceEntries(kind, currentValue) { value -> spec.onPick(kind, value) }
+                    listOf(
+                        MenuEntry.Section(
+                            title = conditionKindLabel(kind),
+                            rows = conditionChoiceRows(kind, currentValue) { value -> spec.onPick(kind, value) },
+                        ),
+                    )
                 }.orEmpty(),
         preciseClick = panelTouch,
         onDismiss = { subKind = null },
@@ -259,16 +245,51 @@ private fun SettingsPage.BranchConditionMenu(spec: ConditionMenuSpec) {
 }
 
 /**
- * 取值那一层的行 —— [ConditionKind.choices] 非空的那几档用（WIFI / 媒体 / 响铃档位 / 屏幕方向）。
+ * 一级菜单那几行 —— 一种条件一行，`used` 里的置灰、`current` 那一档打勾。
+ *
+ *  抽成一支只为把 [BranchConditionMenu] 压回 `LongMethod` 的阈值：这里只有「行怎么画」，
+ *  与「菜单开没开、二级挂在哪儿」无关。
+ *
+ * @param current 这一条现在那一档（画成选中）
+ * @param used 表里已经用掉的档（点一下只说「这个条件已经加过了」）
+ * @param onPick 「前台应用」那一档交给调用点去挑页；其余档交给 [onSub] 开二级
+ * @param onSub 要开二级取值的那一档
+ */
+private fun conditionKindRows(
+    current: ConditionKind?,
+    used: Set<ConditionKind>,
+    onPick: (ConditionKind, String) -> Unit,
+    onSub: (ConditionKind) -> Unit,
+): List<MenuEntry.Row> =
+    ConditionKind.entries.map { kind ->
+        MenuEntry.Row(
+            title = conditionKindLabel(kind),
+            icon = conditionIcon(kind),
+            // 表里已经有了的那一档置灰（本条自己原来那档除外 —— 它算「还是它」）
+            enabled = kind !in used,
+            disabledHint = I18n.get(Strings.COMMAND_BRANCH_DUPLICATE, "这个条件已经加过了"),
+            // 这一条现在是这一档 ⇒ 画成选中（行首对勾 + 文字主题色）
+            selected = kind == current,
+            // 每一行点下去都还有下一层（跳页面 / 弹二级取值）—— 行尾那格一律留出
+            submenu = true,
+            trailingIcon = if (kind == ConditionKind.APP) PageIcons.EnterArrow else PageIcons.Selector,
+        ) {
+            // 「前台应用」先去挑是哪个应用（进另一页）；其余每一档都开二级选值。
+            //  关一级菜单由调用点做：它得先读 `condAt` 才知道落哪一条。
+            if (kind == ConditionKind.APP) onPick(kind, "") else onSub(kind)
+        }
+    }
+
+/**
+ * 取值那一层的行 —— [ConditionKind.choices] 非空的那几档用（WIFI / 媒体状态 / 响铃状态 / 屏幕方向…）。
  *
  *  @param currentValue 这一档**现在**的取值（用来画选中）；空值由调用方按默认档给
  */
-private fun conditionChoiceEntries(
+private fun conditionChoiceRows(
     kind: ConditionKind,
     currentValue: String,
     onPick: (String) -> Unit,
-): List<MenuEntry> =
-    // 只有两三行、也没有小标题：直接给行，行间细线由菜单自己加
+): List<MenuEntry.Row> =
     kind.choices.map { value ->
         MenuEntry.Row(
             title = conditionChoiceLabel(kind, value),
@@ -279,11 +300,11 @@ private fun conditionChoiceEntries(
     }
 
 /**
- * 动作菜单：这一条命中后执行什么 —— 与「添加命令」浮层**同一张表**：内置动作按
- * [ActionCatalog.STEP_GROUPS] 分组，末尾接「已保存的命令」。
+ * 动作菜单：这一条命中后执行什么。
  *
- *  入口格（系统导航 / 媒体控制 …）照样进二级，二级与「添加命令」共用同一份行构造（`ModeMenuPopups` 里的 `modeEntries`）；
- *  「选择应用」那一行进「打开应用」页挑一个应用。
+ *  **与「添加命令」同一支底部抽屉**：同一张候选表、
+ *  同一套「入口格进二级」「选择应用进挑应用页」的判据，只把「写回哪儿」交给这里
+ *  （`applyBranchAction` 写第几条规则）。当前那一条动作用行首对勾 + 主题色标出来。
  */
 @Composable
 private fun SettingsPage.BranchCommandMenu(
@@ -291,153 +312,36 @@ private fun SettingsPage.BranchCommandMenu(
     menus: BranchMenuState,
     tick: () -> Unit,
 ) {
-    val singles = configState.commands.value.filter { it.kind == com.lookie.opluskey.core.model.CommandKind.SINGLE }
-    val current = rules.getOrNull(menus.commandAt)?.action
-    var subTile by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
-    val show = menus.commandAt in rules.indices
-    LaunchedEffect(show) {
-        if (!show) subTile = null
+    //  从「选择应用」页挑完回来时，这一页的组合是**新的一份** —— `menus.commandAt` 已经回到
+    //  `-1`，靠页面级那一位把抽屉原样支起来，用户不用再点一次。
+    LaunchedEffect(Unit) {
+        picker.resumeSheetAt.value?.takeIf { it.page == Screen.BRANCHES }?.let { back ->
+            picker.resumeSheetAt.value = null
+            if (back.index in rules.indices) menus.commandAt = back.index
+        }
     }
-    val panelTouch = remember { PreciseClickState() }
-    val at = menus.commandAt // 这一趟改的是第几条（菜单一关就归 -1，先取出来）
-    PageMenu(
-        entries =
-            if (!show) {
-                emptyList()
-            } else {
-                // 页面离开时二级由 `closeOverlays` 一起收，这里不用另交代
-                branchCommandEntries(
-                    icons = tileIcons.value,
-                    singles = singles,
-                    current = current,
-                    onPick =
-                        BranchPick(
-                            onPiece = { token ->
-                                tick()
-                                subTile = null
-                                applyBranchAction(at, token)
-                                menus.commandAt = -1
-                            },
-                            onSubTile = { subTile = it },
-                            onOpenApp = {
-                                subTile = null
-                                menus.commandAt = -1
-                                openAppPickerForBranch(at, forCommand = true)
-                            },
-                        ),
-                )
-            },
-        preciseClick = menus.commandAnchor,
-        columnAnchor = panelTouch,
-        onDismiss = { if (subTile == null) menus.commandAt = -1 },
-    )
-
-    // 二级浮层：入口格那一层的行，与「添加命令」同一条路。系统开关那一族再往下那一层
-    //  （切换 / 打开 / 关闭）也在同一个组件里 —— 两层与守卫只有那一份实现。
-    ModeMenuPopups(
-        preciseClick = panelTouch,
-        tile = subTile,
-        current = current,
-        onPick = { spec ->
-            tick()
-            subTile = null
-            applyBranchAction(at, spec.token)
-            menus.commandAt = -1
-        },
-        onDismiss = { subTile = null },
+    val at = menus.commandAt // 这一趟改的是第几条（抽屉一关就归 -1，先取出来）
+    val show = at in rules.indices
+    StepPickerSheet(
+        show = show,
+        sheet =
+            StepSheetSpec(
+                title = I18n.get(Strings.COMMAND_STEP_REPLACE_TITLE, "选择命令"),
+                current = rules.getOrNull(at)?.action,
+                onOpenApp = {
+                    //  压一页之前记下「回来要开哪一条」，抽屉本身**不关**
+                    picker.resumeSheetAt.value = ResumeSheet(Screen.BRANCHES, at)
+                    openAppPickerForBranch(at, forCommand = true)
+                },
+                //  这一支**只由「确定」调**（点行只换高亮）：确定那一刻才把动作写到这一条规则上
+                onPick = { token ->
+                    tick()
+                    applyBranchAction(at, token)
+                },
+                onDismiss = { menus.commandAt = -1 },
+            ),
     )
 }
-
-/**
- * 动作菜单那三个回调 —— 合成一个对象只为把参数个数压回 detekt 的上限。
- *
- *  [onPiece] 挑中一个能直接写成动作的 token、[onSubTile] 点了入口格（开二级）、
- *  [onOpenApp] 点了「选择应用」（要进挑应用页）。
- */
-private class BranchPick(
-    val onPiece: (String) -> Unit,
-    val onSubTile: (ActionCatalog.Spec) -> Unit,
-    val onOpenApp: () -> Unit,
-)
-
-/**
- * 动作菜单的一级表 —— 内置动作按 [ActionCatalog.STEP_GROUPS] 分组 + 「已保存的命令」那一段。
- *
- *  与「添加命令」浮层逐项一致：同一张表、同一批图标、同一套「入口格进下一层」的判据。
- */
-private fun SettingsPage.branchCommandEntries(
-    icons: Map<ActionCatalog.Spec, ImageVector>,
-    singles: List<Command>,
-    current: Action?,
-    onPick: BranchPick,
-): List<MenuEntry> =
-    buildList {
-        // 每组一个 [MenuEntry.Section]：小标题下面那条细线、组内行间细线、组与组之间那条加深带，
-        //  全由菜单自己加（早先这里逐项 `add(RowLine)` / `add(GroupLine)`，漏一处就少一条线）。
-        ActionCatalog.STEP_GROUPS.forEach { (groupTitle, group) ->
-            add(
-                MenuEntry.Section(
-                    title = ActionCatalog.groupTitleLabel(groupTitle),
-                    rows =
-                        group.map { spec ->
-                            MenuEntry.Row(
-                                title = spec.label,
-                                icon = iconOf(spec, icons),
-                                submenu = ActionCatalog.isEntryTile(spec),
-                                trailingIcon =
-                                    when {
-                                        spec.token == ActionCatalog.APP_TILE -> PageIcons.EnterArrow
-                                        ActionCatalog.modeMenu(spec.token) != null -> PageIcons.Selector
-                                        else -> null
-                                    },
-                                selected = current?.let { ActionCatalog.isSelected(spec, it) } ?: false,
-                            ) {
-                                when {
-                                    spec.token == ActionCatalog.APP_TILE -> onPick.onOpenApp()
-                                    ActionCatalog.modeMenu(spec.token) == null -> onPick.onPiece(spec.token)
-                                    else -> onPick.onSubTile(spec)
-                                }
-                            }
-                        },
-                ),
-            )
-        }
-        add(
-            MenuEntry.Section(
-                title = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"),
-                rows =
-                    if (singles.isEmpty()) {
-                        listOf(
-                            MenuEntry.Row(
-                                title = I18n.get(Strings.BINDING_NEW_CUSTOM_COMMAND, "新建命令"),
-                                icon = PageIcons.CommandAdd,
-                                onPick = { onPick.onPiece(Command.PREFIX) },
-                            ),
-                        )
-                    } else {
-                        singles.map { cmd ->
-                            MenuEntry.Row(
-                                title = cmd.name,
-                                icon = iconOf(ActionCatalog.commandSpec(cmd), icons),
-                                selected = current?.token == cmd.token,
-                            ) { onPick.onPiece(cmd.token) }
-                        }
-                    },
-            ),
-        )
-    }
-
-/**
- * 一行菜单的图标 —— 从页面级那份 [icons] 取，缺项时退回 [specIcon] 并留一行凭据。
- */
-private fun iconOf(
-    spec: ActionCatalog.Spec,
-    icons: Map<ActionCatalog.Spec, ImageVector>,
-): ImageVector =
-    icons.getOrElse(spec) {
-        XLog.w("图标表缺项：${spec.token} 用兜底字形")
-        specIcon(spec)
-    }
 
 /**
  * 把某一档动作写到第 [index] 条规则上 —— 关菜单之前调用（关掉之后下标就取不到了）。
@@ -463,7 +367,8 @@ private fun SettingsPage.applyBranchCondition(
 ) {
     val gesture = branchGestureNow()
     val old = rules.getOrNull(index)
-    if (index == AppPickerState.NEW_BRANCH || old == null) {
+    //  `NEW_BRANCH` 是 -1，`getOrNull` 对它本来就给 null —— 不必再单判一次
+    if (old == null) {
         branchDraft.draft.add(StateRule(gesture, condition, Action.None))
     } else {
         branchDraft.draft.update(index, old.copy(condition = condition))

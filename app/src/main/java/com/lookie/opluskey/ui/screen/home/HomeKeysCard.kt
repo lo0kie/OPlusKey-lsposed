@@ -13,6 +13,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.binding.CollectKeyDialog
+import com.lookie.opluskey.ui.screen.keyEnabled
 import com.lookie.opluskey.ui.state.KeyWatchState
 
 // 首页那张「按键」卡 —— 按键清单（侧键 + 收集来的键）与「添加按键」。
@@ -61,10 +62,10 @@ internal fun SettingsPage.HomeKeysCard(
                 add(
                     CardRow.Item(
                         title = I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键"),
-                        summary = stateSummary(cfg.key(KeyId.PLUS).enabled),
+                        summary = stateSummary(keyEnabled(KeyId.PLUS)),
                         //  停用只把行首换成禁用图标，**不压色**：图标一灰，整行看起来像点不了，
                         //  而这一行恰恰还能点进去（停用也照样能进那一页开回来）。
-                        icon = keyIcon(PageIcons.MenuKeys, cfg.key(KeyId.PLUS).enabled),
+                        icon = keyIcon(PageIcons.MenuKeys, keyEnabled(KeyId.PLUS)),
                         enabled = pageEnabled,
                         arrow = true,
                         onClick = { openKey(KeyId.PLUS) },

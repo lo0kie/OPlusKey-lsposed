@@ -47,9 +47,10 @@ object ConfigCodec {
      *  6 = `GlobalDto` 多了 `vibrateStrength`（振动强度三档）；
      *  7 = `KeyDto` 多了 `rules`（按状态分支的动作），顶层多了 `combos`（组合按键）；
      *  8 = `GlobalDto` 多了 `palette`（页面配色）；
-     *  9 = `GlobalDto` 多了 `theme`（界面颜色：跟随系统 / 浅色 / 深色）。
+     *  9 = `GlobalDto` 多了 `theme`（界面颜色：跟随系统 / 浅色 / 深色）；
+     *  10 = `GlobalDto` 多了 `followDisplaySize` / `pageScale`（跟随系统显示大小 / 页面缩放）。
      */
-    const val VERSION = 9
+    const val VERSION = 10
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

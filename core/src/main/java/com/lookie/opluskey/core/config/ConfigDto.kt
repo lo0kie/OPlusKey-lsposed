@@ -302,6 +302,12 @@ internal data class GlobalDto(
     val theme: String = GlobalConfig.DEFAULT_THEME,
     val colorOsApi: Boolean = GlobalConfig.DEFAULT_COLOR_OS_API,
     val miniWindowAnim: Boolean = GlobalConfig.DEFAULT_MINI_WINDOW_ANIM,
+    /** 「跟随系统显示大小」—— 老文件没有这一项，取值退回默认（开）。 */
+    @SerialName("follow_display_size")
+    val followDisplaySize: Boolean = GlobalConfig.DEFAULT_FOLLOW_DISPLAY_SIZE,
+    /** 页面缩放（百分比）—— 老文件没有这一项，退回出厂值 100%。 */
+    @SerialName("page_scale")
+    val pageScale: Int = GlobalConfig.DEFAULT_PAGE_SCALE,
 ) {
     fun toValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -317,6 +323,8 @@ internal data class GlobalDto(
                 ConfigFields.F_THEME to theme,
                 ConfigFields.F_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
+                ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
+                ConfigFields.F_PAGE_SCALE to pageScale,
             ),
         )
 
@@ -332,6 +340,8 @@ internal data class GlobalDto(
                 theme = g.theme,
                 colorOsApi = g.colorOsApi,
                 miniWindowAnim = g.miniWindowAnim,
+                followDisplaySize = g.followDisplaySize,
+                pageScale = g.pageScale,
             )
     }
 }

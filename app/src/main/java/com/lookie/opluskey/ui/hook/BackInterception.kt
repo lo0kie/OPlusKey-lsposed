@@ -235,7 +235,7 @@ internal object BackInterception {
         try {
             activity.onBackInvokedDispatcher.unregisterOnBackInvokedCallback(callback)
         } catch (e: Throwable) {
-            XLog.d("注销返回回调失败（忽略）：${e.message}")
+            XLog.w("注销返回回调失败（忽略）：${e.message}")
         }
     }
 

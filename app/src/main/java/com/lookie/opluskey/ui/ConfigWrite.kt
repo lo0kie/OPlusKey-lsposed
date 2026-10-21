@@ -16,19 +16,12 @@ import com.lookie.opluskey.ui.state.CommandsSave
 // 两者写的不是同一段配置（`global` 对 `keys[id]`），搬之前混在一个文件里，
 // 加一条全局开关就要跟「按键设置」那两条挤在同一个文件数函数个数。
 //
+// 「页面大小」那两颗（跟随系统显示大小 / 页面缩放）在 `ui/DisplayWrite.kt` —— 它们是一件事的两半，
+// 与这里这些互不相干的开关不同类。
+//
 // 它与另外两族**不是一类**，所以分开放：跨进程那两件（广播 + 重问自检）在 `HostLinkActions.kt`，
 // 动宿主页面与进程那几件（露出原版页 / 重启服务）在 `PageControl.kt`。
 // 原先三族挤在一个 `ConfigActions.kt` 里，看文件名猜不出里面有什么。
-
-/** 切「跟随系统显示大小」（外观那一行）。 */
-internal fun SettingsPage.setFollowDisplaySize(on: Boolean) {
-    val cfg = configState.config.value
-    if (cfg.global.followDisplaySize == on) return
-    writeAndNotice(
-        cfg.copy(global = cfg.global.copy(followDisplaySize = on)),
-        "follow_display_size=${if (on) 1 else 0}",
-    ) { switchNotice(I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE, "跟随系统显示大小"), on) }
-}
 
 /** 切「振动反馈」—— 行点击与开关共用这一个入口。 */
 internal fun SettingsPage.setVibrate(on: Boolean) {
@@ -75,6 +68,9 @@ internal fun SettingsPage.setToastOnRun(on: Boolean) {
  *  回执的名字**必须在写盘之后取**：[write] 里那一下 `I18n.currentLanguage` 换了档，
  *  同一句话才会用新语言打出来（切到英文时显示 “English” 而不是「英语」）。
  *  所以这里给的是 lambda，不是先算好的字符串。
+ *
+ *  主语（「语言」）也一起在写盘之后取：切到英文之后那句应当是 “Language switched to “English””，
+ *  不是「语言 switched to…」。回执带主语的理由见 `switchToNotice`。
  */
 internal fun SettingsPage.setLanguage(code: String) {
     val cfg = configState.config.value
@@ -82,9 +78,10 @@ internal fun SettingsPage.setLanguage(code: String) {
         cfg.copy(global = cfg.global.copy(language = code)),
         "language=$code",
     ) {
-        I18n
-            .get(Strings.TOAST_SWITCHED_TO, "已切换到「%s」")
-            .format(languageLabel(AppLanguage.fromCode(code)))
+        switchToNotice(
+            I18n.get(Strings.MORE_LANGUAGE, "语言"),
+            languageLabel(AppLanguage.fromCode(code)),
+        )
     }
 }
 
@@ -116,23 +113,24 @@ internal fun SettingsPage.setColorOsApi(on: Boolean) {
  *  它**不碰**任何一颗键自己的 `enabled`：总闸与逐键是两层，关掉总闸再打开时，
  *  用户之前在 ⋮ 菜单里停用过的那颗键应该还是停用的。
  *
- * **两档的回执不一样**（用户口径「关闭主开关会出现两个提示条」→「开启主开关也提示」）：
+ * **两档都发，而且用同一条**（同一个位 [MODULE_ENABLED_SLOT]）：关 → 开 → 关，
+ *  屏幕上始终是那一条在改字（「已关闭「按键绑定」」↔「已开启「按键绑定」」）。
  *
- *  · **关** —— 不发回执。总闸一关，首页那条常驻提示立刻变成 [KEY_DISABLED_HINT]
- *    （「按键绑定已关闭，侧键交还系统」），再补一条「已停用…」就是**两层胶囊**。
- *    原来那句「侧键交还系统」的后果说明已经并进常驻文案，信息没丢；
- *  · **开** —— 要发。常驻那条这时是**收掉**，界面上一个字的反馈都没有，用户会以为
- *    「点了没反应」。回执「已启用按键绑定」正好补上这一格。
+ *  以前「关」这一档刻意不发，是因为常驻那条「按键绑定已关闭，侧键交还系统」会同一时刻出现，
+ *  两条说同一件事；发吧是两条、不发吧又像是拨了没反应。**那条常驻提示已经整条删掉**
+ *  （见 `HintQueue` 的类注释），于是两档都发、各出一条，正好。
  *
  * 写盘失败仍由 [write] 自己报，拨开关不会没有反馈。
  */
 internal fun SettingsPage.setModuleEnabled(on: Boolean) {
     val cfg = configState.config.value
     val saved = write(cfg.copy(global = cfg.global.copy(enabled = on)), "module_enabled=${if (on) 1 else 0}")
-    if (saved == CommandsSave.Ok && on) {
-        hint(I18n.get(Strings.TOAST_BINDING_ON, "已启用按键绑定"))
-    }
+    if (saved != CommandsSave.Ok) return
+    hint(moduleEnabledNotice(on), slot = MODULE_ENABLED_SLOT)
 }
+
+/** 总闸那一句 —— 开 / 关两档同一个句式，与其它开关的回执同一族（[switchNotice]）。 */
+private fun moduleEnabledNotice(on: Boolean): String = switchNotice(I18n.get(Strings.SETTING_KEY_BINDING, "按键绑定"), on)
 
 /**
  * 用户在「风险提示与免责声明」上点了确认 —— 「记下这一笔」与「打开总闸」**同一次写盘**。
@@ -147,8 +145,16 @@ internal fun SettingsPage.acceptDisclaimerAndEnable() {
             disclaimerAccepted = true,
         ),
         "disclaimer_accepted=true",
-    ) { I18n.get(Strings.TOAST_BINDING_ON, "已启用按键绑定") }
+        //  它做的也是「开总闸」，回执与 [setModuleEnabled] 是同一句话 ⇒ 用**同一个位**
+        slot = MODULE_ENABLED_SLOT,
+    ) { moduleEnabledNotice(on = true) }
 }
+
+/**
+ * 「主开关」这个提示位的名字 —— 拨开关（[setModuleEnabled]）与首次启用（[acceptDisclaimerAndEnable]）
+ * 共用：两处说的是同一件事，屏幕上就不该出两条。
+ */
+private const val MODULE_ENABLED_SLOT = "module_enabled"
 
 /**
  * 写配置并同步 [ConfigState.config] 状态；每次写盘把完整配置广播给注入侧，让参数改动立即生效。

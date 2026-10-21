@@ -1,17 +1,16 @@
 package com.lookie.opluskey.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.ui.model.MENU_ROW_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.MENU_ROW_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_DARK
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_LIGHT
+import com.lookie.opluskey.ui.model.isDarkScheme
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -53,7 +52,7 @@ private fun popupDividerColor(
     darkAlpha: Float,
     lightAlpha: Float,
 ): Color =
-    if (COUITheme.colorScheme.background.luminance() < 0.5f) {
+    if (COUITheme.colorScheme.isDarkScheme) {
         Color.White.copy(alpha = darkAlpha)
     } else {
         Color.Black.copy(alpha = lightAlpha)
@@ -67,7 +66,7 @@ private fun popupDividerColor(
  */
 @Composable
 internal fun popupSurfaceColor(): Color =
-    if (COUITheme.colorScheme.background.luminance() < 0.5f) {
+    if (COUITheme.colorScheme.isDarkScheme) {
         POPUP_SURFACE_DARK
     } else {
         POPUP_SURFACE_LIGHT
@@ -90,9 +89,6 @@ internal fun popupSurfaceColor(): Color =
  *    （「换一步」时当前那一步常在第 7 项之后，不滚就看不见自己选的是哪个）；
  *  - [danger]：删除 / 重置这类破坏性动作（红）；
  *  - [submenu]：行尾**留出那一格**（库里就是 `DropdownImpl(hasSubmenu = …)`），不置时那一格不画。
- *  - [stateIcon]：行尾一枚**状态标记**（小图标）—— 与 [trailingIcon] 那一位不是同一处：
- *    它走库的 `hint` 槽（标题块与行尾指示之间），**不占**「有没有下一层」那一格，
- *    所以既不需要置 [submenu]、也不会把一行操作读成「进下一层」。
  *  - [trailingIcon]：换掉那一格里的字形（`null` = 用默认的右箭头）。
  *    **注意：两位是分开的 —— 要行尾图标的行必须自己置上 [submenu]**。本组件只把 [submenu] 原样
  *    交给库，不替调用点猜「给了图标就顺手把那一格打开」。库里那一位是**唯一的开关**，只给
@@ -119,14 +115,6 @@ internal sealed interface MenuEntry {
         val danger: Boolean = false,
         val submenu: Boolean = false,
         val trailingIcon: ImageVector? = null,
-        /**
-         * 行尾的**状态标记**（一枚小图标）—— 一行现在的状态不是默认那个时用它说一句（`null` = 不标）。
-         *
-         *  目前**没有调用点**：唯一用过它的按键清单已经搬去首页那张卡（见 `HomeKeysCard`），
-         *  而那里是普通行、状态写在副标题里。这一格留着是因为「这一行是切换动作、状态却不影响可点」
-         *  这类菜单还会有；真用到时图形取 `pointer-cancel`（光标 + 斜杠），与行首图标不是一回事。
-         */
-        val stateIcon: ImageVector? = null,
         /**
          * [enabled] 为 false 时**点一下要说的话** —— 不填就用页面的统一原因（`blockedReason()`）。
          *

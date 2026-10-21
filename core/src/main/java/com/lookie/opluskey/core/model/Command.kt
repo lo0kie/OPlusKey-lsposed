@@ -38,34 +38,32 @@ enum class CommandKind(
 /**
  * 分叉能用的**条件种类** —— 存进配置的是 [id]，界面与执行两侧都从这里取，不各写一套字面量。
  *
- *  [needsValue] 区分两种形态：
- *   · `false`（亮屏 / 锁屏 / 充电 / 耳机 / 小窗）—— 命中即成立，没有取值；
- *   · `true`（前台应用 / WIFI / 媒体 / 响铃档位 / 屏幕方向）—— 还要一个取值，见 [choices]
- *     （空 = 自由取值，只有「前台应用」那种）。
+ *  **每一档都要一个取值**（[choices] 里挑一档，或像「前台应用」那样自由取值）：界面上一次条件
+ *  的选择因此天然是两级 —— 先选种类，再选那一档的值。没有取值的条件不放进这张表：
+ *  它在一级菜单里会变成唯一一个落不到第二级的行。
  *
- *  [defaultChoice] 是**空取值时按哪一档解释**：只有「以前没有取值、后来才加上」的那两档有
- *  （WIFI / MEDIA）—— 老配置里写的是 `wifi` / `media`，升级后必须仍按当时那个意思命中，
- *  否则用户那两条规则会静默失效。其余档留空：空取值一律按「用不了」处理。
+ *  [defaultChoice] 是**空取值时按哪一档解释**：只有「以前没有取值、后来才加上」的那几档有
+ *  （屏幕 / 充电 / 耳机 / WIFI / 媒体）—— 老配置里写的是 `wifi` / `media`，升级后必须仍按
+ *  当时那个意思命中，否则用户那几条规则会静默失效。其余档留空：空取值一律按「用不了」处理。
  *
  *  加一种条件 = 加一行 + 在执行侧补一个判据（`ConditionProbe`）+ 一条文案；
  *  线格式不动（`type` 本来就是字符串）。
  */
 enum class ConditionKind(
     val id: String,
-    val needsValue: Boolean,
     /** 有取值时的候选档；空表 = 自由取值（只有「前台应用」那种）。 */
     val choices: List<String> = emptyList(),
     /** 空取值时按哪一档解释（空 = 没有默认档，空取值即「用不了」）。 */
     val defaultChoice: String = "",
 ) {
     /** 某个应用在前台；取值为包名。 */
-    APP("app", needsValue = true),
+    APP("app"),
 
     /** **屏幕状态**：`on`（亮屏）/ `locked`（锁屏）。原来是「亮屏」「锁屏」两档，合成一档带取值。 */
-    SCREEN("screen", needsValue = true, choices = listOf("on", "locked"), defaultChoice = "on"),
+    SCREEN("screen", choices = listOf("on", "locked"), defaultChoice = "on"),
 
     /** **充电状态**：`charging`（充电中，含充满）/ `idle`（没在充电）。老配置没有取值 ⇒ 按 `charging` 解释。 */
-    CHARGING("charging", needsValue = true, choices = listOf("charging", "idle"), defaultChoice = "charging"),
+    CHARGING("charging", choices = listOf("charging", "idle"), defaultChoice = "charging"),
 
     /**
      * **耳机状态**：`connected`（接着耳机）/ `disconnected`（没接）。
@@ -74,22 +72,19 @@ enum class ConditionKind(
      *  所以 `disconnected` 直接取反 —— 与屏幕那两档不同。
      *  老配置没有取值 ⇒ 按 `connected` 解释（那时这条条件本来就只表示「接着耳机」）。
      */
-    HEADSET("headset", needsValue = true, choices = listOf("connected", "disconnected"), defaultChoice = "connected"),
+    HEADSET("headset", choices = listOf("connected", "disconnected"), defaultChoice = "connected"),
 
     /** 媒体**播放状态**：`playing` / `paused`（老配置没有取值 ⇒ 按 `playing` 解释）。 */
-    MEDIA("media", needsValue = true, choices = listOf("playing", "paused"), defaultChoice = "playing"),
+    MEDIA("media", choices = listOf("playing", "paused"), defaultChoice = "playing"),
 
     /** Wi-Fi **开关状态**：`on` / `off`（老配置没有取值 ⇒ 按 `on` 解释）。 */
-    WIFI("wifi", needsValue = true, choices = listOf("on", "off"), defaultChoice = "on"),
+    WIFI("wifi", choices = listOf("on", "off"), defaultChoice = "on"),
 
-    /** 屏幕上有小窗。 */
-    MINI("mini", needsValue = false),
-
-    /** 响铃档位等于取值（`normal` / `vibrate` / `silent`）。 */
-    RINGER("ringer", needsValue = true, choices = listOf("normal", "vibrate", "silent")),
+    /** 响铃状态等于取值（`normal` / `vibrate` / `silent`）。 */
+    RINGER("ringer", choices = listOf("normal", "vibrate", "silent")),
 
     /** 屏幕方向等于取值（`portrait` / `landscape`）。 */
-    ORIENTATION("orientation", needsValue = true, choices = listOf("portrait", "landscape")),
+    ORIENTATION("orientation", choices = listOf("portrait", "landscape")),
     ;
 
     companion object {
@@ -134,13 +129,13 @@ data class BranchCondition(
     val kind: ConditionKind? get() = ConditionKind.fromId(type)
 
     /**
-     * 认得出、并且该填的都填了 —— 判不出/没填的条件**永不命中**（宁可走默认那一档，也不乱执行）。
+     * 认得出、并且取值填了 —— 判不出/没填的条件**永不命中**（宁可走默认那一档，也不乱执行）。
      *
-     *  无取值的条件（亮屏 / 充电 / …）只要类型认得出就算可用；有取值的条件看 [effectiveValue]
-     *  —— 带 [ConditionKind.defaultChoice] 的那两档空着也算可用（老配置就是这么写的）。
+     *  取值看 [effectiveValue]：带 [ConditionKind.defaultChoice] 的那几档空着也算可用
+     *  （老配置就是这么写的），其余档空取值即「用不了」。
      */
     val isUsable: Boolean
-        get() = kind?.let { !it.needsValue || effectiveValue.isNotBlank() } == true
+        get() = kind != null && effectiveValue.isNotBlank()
 
     /**
      * 真正拿去判定的取值 —— 空的时候退回这一档的默认值（见 [ConditionKind.defaultChoice]）。
@@ -155,13 +150,10 @@ data class BranchCondition(
     val token: String get() = if (value.isBlank()) type else "$type:$value"
 
     companion object {
-        /** 「某个应用在前台」的 `type` —— 只给执行侧与老的判断留一个具名常量。 */
-        const val TYPE_APP = "app"
-
         fun app(pkg: String): BranchCondition = BranchCondition(ConditionKind.APP.id, pkg)
 
         /**
-         * 线格式 → 一个条件；认不出（类型不在这十种里 / 该带取值却没带）的返回 `null`。
+         * 线格式 → 一个条件；认不出（类型不在枚举里 / 该带取值却没带）的返回 `null`。
          *
          *  只做很轻的归一：去首尾空白、空取值按「没带」处理。真正的「这个包名装没装」不在这里判
          *  —— 配置是跨设备导出的，这台机器上没装不等于那条规则写错了。

@@ -5,6 +5,7 @@ import android.content.Context
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Config
@@ -27,7 +28,11 @@ import com.lookie.opluskey.host.action.actionNoticeText
  *
  *  装配由 `GestureReceiver` 在拿到 Application Context 之后调 [attach] 完成：执行器与 Context
  *  都由它给，「动作执行完了」这一笔回执也由它接（那是报活的事，不是执行的事）。
+ *
+ *  成员数贴着 `TooManyFunctions` 的阈值：这是一颗执行器的**完整方法集**（判定重复、派发、
+ *  收尾、振动、提示各一支），拆到别的文件里每个调用点都要跨文件跳一次，换不来可读性。
  */
+@Suppress("TooManyFunctions")
 internal object GestureExec {
     private var runner: ActionRunner? = null
 
@@ -239,7 +244,7 @@ internal object GestureExec {
             return
         }
         if (!keyConfig.longIsVoiceMemory) {
-            XLog.d("${key.label}·${Gesture.LONG.label} 松手：绑的不是灵感语音，没有要收尾的东西")
+            XLog.d("${key.label} - ${Gesture.LONG.label} 松手：绑的不是灵感语音，没有要收尾的东西")
             return
         }
         runner?.release()
@@ -284,7 +289,7 @@ internal object GestureExec {
             }
         // 这条是按键的可见证据（release 里也保留），所以只在第一次执行时打 W；
         val log =
-            "${id.label}·${gesture.label}${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}" +
+            "${id.label} - ${gesture.label}${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}" +
                 "（宿主进程执行）"
         if (repeat) XLog.d(log) else XLog.w(log)
         // 链路自检：这一笔是「动作真的执行了」的凭证（与注入侧那笔 lastGestureAt 配对）
@@ -294,8 +299,8 @@ internal object GestureExec {
         //  所以每执行一次动作补发一条（连续触发的重复不发：那是同一次按压，一条就够）。
         if (!repeat) onExecutedHook?.invoke(config)
         if (shouldVibrate(repeat, keyConfig, action, config)) haptic(config)
-        if (!repeat) noticeIfNeeded(config, action)
-        r.run(action, "${id.label}·${gesture.label}")
+        if (!repeat) noticeIfNeeded(config, action, id, gesture)
+        r.run(action, "${id.label} - ${gesture.label}")
     }
 
     /**
@@ -320,15 +325,21 @@ internal object GestureExec {
     }
 
     /**
-     * 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），内容是**这次执行的是哪个动作**。
+     * 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），内容是
+     * **这一下是哪颗键哪一档 + 执行了什么**（`侧键·单击 → 手电筒`）。
      *
      *  钉在这一处（一次手势只走一遍）而不是 `CustomCommandRunner` 里 —— 那一处只覆盖 `cmd:`
      *  自定义命令，绑的是内置动作（小布识屏 / 截图 / 手电筒 …）时按下去一直没动静
      *  （用户报「执行命令时系统提示没效果」）。连续触发的重复不弹：那是同一次按压。
+     *
+     *  主语（[triggerLabel]）只在动作名之前加一段：只说「手电筒」时，连按几下不同手势
+     *  看不出分别是哪一下触发的。
      */
     private fun noticeIfNeeded(
         config: Config,
         action: Action,
+        id: KeyId,
+        gesture: Gesture,
     ) {
         if (!config.global.toastOnRun) return
         // 语言档跟配置走：设置页那边建页时设过一次，但那是**另一个进程**（`:ui`）里的实例，
@@ -337,10 +348,33 @@ internal object GestureExec {
         //  同一个文件不重读（`reload` 里按文件名早返回），所以这一行在按键路径上是白给的。
         I18n.currentLanguage = AppLanguage.fromCode(config.global.language)
         // 名字表随配置来（`Config.appNames`）：快捷方式那档的名字只存在那里，token 里没有
-        val notice = actionNoticeText(appContext, action, config.appNames)
-        if (notice.isEmpty()) return
+        val what = actionNoticeText(appContext, action, config.appNames)
+        if (what.isEmpty()) return
+        //  主语在**语言设好之后**算：否则用的是上一次的语言档。
+        val notice = I18n.get(Strings.TOAST_RUN_ACTION, "%s → %s").format(triggerLabel(id, gesture), what)
         XLog.w("执行时提示：$notice")
         FailureNotice.toast(appContext, notice)
+    }
+
+    /**
+     * 提示里的主语 —— 「侧键·单击」。
+     *
+     *  手势名与内置键名都走字典：`Gesture.label` 与 `KeyId.PLUS.label` 是写死的中文常量，
+     *  直接拼会在英文界面下变成「侧键·单击 → Flashlight」这种半截。
+     *  自定义键的名字是用户起的，原样用。
+     */
+    private fun triggerLabel(
+        id: KeyId,
+        gesture: Gesture,
+    ): String {
+        val gestureName =
+            when (gesture) {
+                Gesture.SINGLE -> I18n.get(Strings.GESTURE_SINGLE, gesture.label)
+                Gesture.DOUBLE -> I18n.get(Strings.GESTURE_DOUBLE, gesture.label)
+                Gesture.LONG -> I18n.get(Strings.GESTURE_LONG, gesture.label)
+            }
+        val keyName = if (id.isCustom) id.label else I18n.get(Strings.KEY_SIDE, id.label)
+        return "$keyName - $gestureName"
     }
 
     /**

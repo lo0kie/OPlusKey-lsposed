@@ -20,13 +20,22 @@ import android.os.SystemClock
  */
 object ProcClock {
     /**
-     * 本进程启动时刻（wall clock 毫秒）。
+     * 本进程启动时刻（wall clock 毫秒，**取整到秒**）。
      *
-     *  取「现在」减去「本进程已经活了多久」。所以它是个**常量**：同一进程里任何时候调用都得到
-     *  同一个值（除非用户改了系统时间，那种情况下它也跟着整体平移，而我们只做「与包更新时间比大小」，
-     *  平移不影响结论的量级）。
+     *  取「现在」减去「本进程已经活了多久」。所以它对本进程是**常量**：同一进程里任何时候
+     *  调用都得到同一个值（除非用户改了系统时间，那种情况下它也跟着整体平移，而我们只做
+     *  「与包更新时间比大小」，平移不影响结论的量级）。
+     *
+     *  **为什么要取整到秒**：`currentTimeMillis` 与 `elapsedRealtime` 是两个时钟源，更新粒度不同，
+     *  两者之差的抖动可以到几毫秒 —— 同一进程里连续两次调用就可能差 1~10ms。而界面拿这个值
+     *  判「两边的宿主是不是同一个进程」（`HostLinkState.needsLinkCheck`）：那个判据允许
+     *  [com.lookie.opluskey.core.model] 之外的一秒容差（`PROC_SAME_TOLERANCE_MS`），
+     *  取整到秒之后剩余跨秒概率可以忽略 —— 两道一起兜，一条报活不会把「问过」判成「没问过」。
+     *
+     *  对「进程 vs 包谁更新」那条判据没有影响：那里留了 5 秒余量，1 秒的取整误差吃得下
+     *  （见 `LinkFacts.STALE_EPSILON_MS`）。
      */
-    fun startWall(): Long = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime())
+    fun startWall(): Long = alignToSecond(System.currentTimeMillis() - (SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime()))
 
     /**
      * 本轮开机时刻（wall clock 毫秒，秒级精度）。
@@ -37,5 +46,8 @@ object ProcClock {
      *
      *  取整到秒：两次调用相差几毫秒时，直接比原始值会判成「不同一轮」，而它本来只是个粗指纹。
      */
-    fun bootWall(): Long = (System.currentTimeMillis() - SystemClock.elapsedRealtime()) / 1000L * 1000L
+    fun bootWall(): Long = alignToSecond(System.currentTimeMillis() - SystemClock.elapsedRealtime())
+
+    /** 截到整秒 —— 上面两个时间戳都只是粗指纹，不需要毫秒（理由见各自 KDoc）。 */
+    private fun alignToSecond(ms: Long): Long = ms / 1000L * 1000L
 }

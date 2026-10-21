@@ -17,6 +17,8 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardColors
+import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -119,8 +121,18 @@ internal fun CardList(
     modifier: Modifier = Modifier,
     /** 卡片左右的外边距。默认与页面同一档 [PAGE_MARGIN]；已经在带边距的容器里时传 `0.dp`。 */
     margin: Dp = PAGE_MARGIN,
+    /**
+     * 这张卡的颜色。`null` = 库默认（`surfaceContainer`，与页面上各卡片同一档）。
+     *
+     *  给「卡片的宿主不是页面底色」那种容器用：底色比页面高一档时，卡片要再高一档 ——
+     *  否则面与卡片同色，卡的边界就没了。加到哪一档由调用点按自己的底色定，这里不预设。
+     */
+    colors: CardColors? = null,
 ) {
-    Card(modifier.fillMaxWidth().padding(horizontal = margin)) {
+    Card(
+        modifier = modifier.fillMaxWidth().padding(horizontal = margin),
+        colors = colors ?: CardDefaults.defaultColors(),
+    ) {
         rows.forEachIndexed { index, row ->
             val position = cardListPositionOf(index, rows.size)
             // 分隔线与行本身一起进出场（见各行的 `visible`）—— 所以它们必须同在一个块里

@@ -14,6 +14,7 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.withKeyName
 import com.lookie.opluskey.core.model.withoutKey
 import com.lookie.opluskey.ui.ConfirmDialog
+import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.HeaderMenuButton
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.PageMenu
@@ -110,12 +111,11 @@ internal fun SettingsPage.BindingKeyMenu() {
 }
 
 /**
- * 进「条件执行」页 —— 与「自定义命令」页那颗 FAB 同一条规矩：这是**新建**的入口，
- * 先把草稿清干净（`reset`），再把类型拨到分叉。
+ * 进「条件执行」页 —— 只切栈。
  *
- *  必须 reset：`goBack` 只在草稿 `dirty` 时才 reset ——「点开一条已保存的分叉看一眼、
- *  原样返回」那种不脏的退页**不会**清 `editingName`，于是下次进来表单还挂着「修改命令」、
- *  保存按钮还是「修改」，一按就把刚看过的那条原样覆盖回去。
+ *  那一页有自己的草稿（`branchDraft`），进页时由它自己按「这颗键 + 这一档手势」`load`
+ *  （见 `BranchScreen` 开头那段 effect），不经过命令页的 `commandDraft`。
+ *  离栈时草稿由 `discardPageStateOf` 清，所以下次进来是重新载入的一份。
  */
 private fun SettingsPage.openBranchesPage() {
     XLog.w("按键绑定：进「${BRANCHES_TITLE}」页")
@@ -141,11 +141,14 @@ private class KeyMenuActions(
 )
 
 /**
- * 「条件执行」入口**暂时收起**：页面、草稿、判定那一整套都还在，只是菜单里不给这一行。
+ * 「条件执行」入口**是否露在按键菜单里** —— 现在放开（`true`）。
  *
- *  改回 `true` 就恢复 —— 不留注释掉的代码块，也不删 `onOpenBranches` 那条回调链。
+ *  它曾被收起过一版：页面、草稿、判定那一整套都还在，只是菜单里不给这一行（用户口径
+ *  「把条件执行入口在菜单里隐藏」），同一版又要求「别的什么都不要改」，于是留了这个开关
+ *  而不是删代码。要再收起来只改这一行 —— 不留注释掉的代码块，也不删 `onOpenBranches`
+ *  那条回调链。
  */
-private const val SHOW_BRANCHES_ENTRY = false
+private const val SHOW_BRANCHES_ENTRY = true
 
 /**
  * 菜单内容 —— 与组合无关（纯数据 + 回调），单独一支只为让 [BindingKeyMenu] 那支短下来。
@@ -162,7 +165,7 @@ private fun keyMenuEntries(
     buildList {
         // 「条件执行」是**进下一页**，不是对这颗键动手 —— 压在顶上，下面用加深分隔隔开。
         //  行尾给箭头（库的 `submenu` 一给就会画那一格），它与下面三行「一行操作」不是一回事。
-        //  这一行现在按 [SHOW_BRANCHES_ENTRY] 收起。
+        //  这一行受 [SHOW_BRANCHES_ENTRY] 控制（收起来时不删这一支，随时能开回来）。
         if (SHOW_BRANCHES_ENTRY) {
             add(
                 MenuEntry.Row(
@@ -212,9 +215,9 @@ private fun keyActionEntries(
             MenuEntry.Row(
                 title =
                     if (enabled) {
-                        I18n.get(Strings.BINDING_DISABLE_KEY, "停用这颗键")
+                        I18n.get(Strings.BINDING_DISABLE_KEY, "停用按键")
                     } else {
-                        I18n.get(Strings.BINDING_ENABLE_KEY, "启用这颗键")
+                        I18n.get(Strings.BINDING_ENABLE_KEY, "启用按键")
                     },
                 icon = PageIcons.Power,
                 onPick = { actions.onSetEnabled(!enabled) },
@@ -282,7 +285,10 @@ private fun SettingsPage.KeyMenuDialogHost(
                     //  只在**完全成功**时报：广播没发出去时 [write] 已经报过那条，别顶掉它
                     if (deleted == CommandsSave.Ok) {
                         // 名字得在 forget 之后取，否则 `selected` 已经指向不存在的键
-                        hint(I18n.get(Strings.TOAST_KEY_DELETED, "已删除「%s」").format(selected.label))
+                        hint(
+                            I18n.get(Strings.TOAST_KEY_DELETED, "已删除「%s」").format(selected.label),
+                            slot = HINT_SLOT_BINDING,
+                        )
                     }
                     // 删掉的正是这一页**正在编辑的那一颗** —— 留在这里已经没有对象了（选中态会
                     //  落回侧键，页面内容跟着换成侧键的绑定，看着像「删错了」）。直接回首页：
@@ -317,5 +323,8 @@ private fun SettingsPage.confirmRenameKey(
     val now = configState.config.value
     // 只在完全成功时报（见下一条同一笔账）
     if (write(now.withKeyName(selected.id, name), "custom_key_rename=${selected.id}") != CommandsSave.Ok) return
-    hint(I18n.get(Strings.TOAST_KEY_RENAMED, "已重命名为「%s」").format(name))
+    hint(
+        I18n.get(Strings.TOAST_KEY_RENAMED, "已重命名为「%s」").format(name),
+        slot = HINT_SLOT_BINDING,
+    )
 }

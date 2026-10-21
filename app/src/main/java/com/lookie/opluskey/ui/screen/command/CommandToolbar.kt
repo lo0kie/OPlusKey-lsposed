@@ -23,6 +23,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addCommand
 import com.lookie.opluskey.ui.frosted
@@ -48,8 +49,8 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * 载荷**还差什么**（`null` = 够了）—— 「保存」能不能点、灰着时说什么，判据只有这一处。
  *
  *  单条那一档三句话各自对应一种真实的半成品：没写 / 没写对格式 / 写了前缀没写正文。最后那档
- *  （`shell:` 这种只有前缀的）以前没有任何一句在说它 —— 保存按钮灰着、点一下回
- *  「这一项现在不可用」（用户口径：要更精确精简）。多条那一档只差「有没有步骤」。
+ *  （`shell:` 这种只有前缀的）没有一句在说它 —— 保存按钮灰着、点一下只回一句
+ *  「这一项现在不可用」，说不出是哪一种。多条那一档只差「有没有步骤」。
  *
  *  **这一支必须能在填好之后返回 `null`**：`saveBlockedReason()` 拿它当唯一判据，
  *  永远非空就等于「保存」按钮永远点不动。
@@ -173,14 +174,14 @@ internal fun SettingsPage.FloatingActions(
         //  注意：**留白必须自己先加**（拉过 `FloatingToolbar.kt` 才看明白）：库内部那串链是
         //   `modifier → padding(outSidePadding) → divider → shadow → squircleBackground(color)`，
         //   而修饰符的绘制顺序就是链上的先后 —— 磨砂挂在 `modifier` 上，画的是**连留白一起**的整块矩形，
-        //   于是胶囊外面会多出一圈糊边（真机反馈「给工具条外部再套一个磨砂圈」就是它）。
+        //   于是胶囊外面会多出一圈糊边。
         //   改成：我们自己 `padding(outSidePadding)` 再挂磨砂（画在留白以内 ⇒ 正好等于胶囊那一块），
         //   并把库的 `outSidePadding` 置零 —— 总占位、点击范围都不变（都是 12dp / 8dp）。
         //
         //  注意：**阴影得自己补，且补在磨砂外面**：磨砂链上有个 `clip(胶囊)`（见 [frosted]），
         //  挂在它里面的东西全被裁进胶囊那个形状；
         //   库自己的 `dropShadow` 就挂在那里，而阴影本来画在形状**外面** ⇒ 被裁得一干二净
-        //  （真机反馈「工具条阴影怎么没了」就是它）。所以把库的 `shadowElevation` 置零、按库原样
+        //  所以把库的 `shadowElevation` 置零、按库原样
         //   （`radius = 10dp / 黑 10%`）在被裁的那一层**外面**补一层同样的阴影。
         val frost = toolbarFrostModifier()
         FloatingToolbar(
@@ -339,7 +340,9 @@ private fun SettingsPage.ToolbarButtons(spec: ToolbarSpec) {
         // 灰着被点了一下时，说清是**哪一档**没齐（不是页面不可用）：库把这一下交给
         //  `LocalDisabledClick`，这里就地换成保存自己的原因。
         CompositionLocalProvider(
-            LocalDisabledClick provides { spec.labels.blocked()?.let { hint(it) } },
+            //  也归整页那一个位：连点几下「保存」时改字不叠条（见 [HINT_SLOT_COMMAND]）；
+            //  这两句（「还没添加步骤」「命令内容还不完整」）是最常连着点的两档。
+            LocalDisabledClick provides { spec.labels.blocked()?.let { hint(it, slot = HINT_SLOT_COMMAND) } },
         ) {
             IconButton(
                 onClick = spec.actions.onSave,

@@ -1,18 +1,24 @@
 package com.lookie.opluskey.ui.screen.command
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -34,32 +39,34 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.TILE_HEIGHT
 import com.lookie.opluskey.ui.appNameOf
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT_MS
 import com.lookie.opluskey.ui.model.conditionIcon
-import com.lookie.opluskey.ui.model.conditionTitle
-import com.lookie.opluskey.ui.model.opticalCenter
+import com.lookie.opluskey.ui.model.conditionRowTitle
 import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.state.KeyWatchState
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
+import io.github.suqi8.coui.kmp.anim.AccelerateEasing
+import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Button
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 import kotlinx.coroutines.delay
 
 // 「条件执行」那一页的编辑区 —— 从 `CommandPage.kt` 拆出来：那边是「一页的骨架」，
@@ -101,46 +108,175 @@ internal fun SettingsPage.BranchCards(tick: () -> Unit) {
     var freshId by remember { mutableIntStateOf(NO_FRESH_ROW) }
     // 加一条 = 插一条**条件和动作都空着**的行：不先填默认条件（「亮屏中」看着像用户自己选的，
     //  一成立就悄悄接管这一档），也不弹菜单再落（那会把「加一条」变成两步）。
-    val addRule: () -> Unit = { freshId = draft.add(StateRule(branchGestureNow(), null, Action.None)) }
+    //
+    //  加的是**第一条**时不播行进场：那一下整块高度由外层（空态 ↔ 表格）那套动画负责，
+    //  里层再展开一遍就是同一条动画跑两遍 —— 用户口径「这样两遍动画太拖了」。
+    //  第二条起外层不再切换（`isEmpty` 一直是 false），行照常播自己的进场。
+    val addRule: () -> Unit = { addBranchRule(rules, tick) { freshId = it } }
     // 删除**先播收缩、再动数据**（见 `BranchMenuState.deletingAt`）：数据晚一步，行才不会瞬间消失。
     //  收尾再核一次「要删的还是不是它」—— 收缩没播完又删了另一条时，这一条留着（宁可不删，不能错删）。
+    //
+    //  **删的是最后一条时不等**：那一下整块要变成空态，而空态由外层（空态 ↔ 表格）那套动画接管；
+    //  要是还照「先收行 220ms + 结算 40ms、再展开空态 220ms」，就是两段串在一起。
+    //  直接移除，行不单独收缩、只跟着外层一起淡出。
     LaunchedEffect(menus.deletingAt) {
         val at = menus.deletingAt
         if (at < 0) return@LaunchedEffect
-        delay(STEP_ROW_EXIT_MS + ROW_EXIT_SETTLE_MS)
+        if (rules.size > 1) delay(STEP_ROW_EXIT_MS + ROW_EXIT_SETTLE_MS)
         if (menus.deletingAt == at) {
             draft.remove(at)
             menus.deletingAt = NO_EXITING_ROW
         }
     }
     // 一条都没有时先给一块空态 —— 与「自定义命令」页那块同一个样子（字形 + 一行字，不占卡片）。
-    //  不画空表格：空白页在设置类界面里读作「坏了」，而不是「还没配」。
-    if (rules.isEmpty()) {
-        BranchEmptyHint()
-    } else {
-        // 没有外层卡片：每一行就是左右两个胶囊。行距**挂在行自己身上**（见 [BranchRow]）：
-        //  挂在外层 `spacedBy` 的话，退场时那一档空档不会跟着收缩。
-        Column(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-            rules.forEachIndexed { index, rule ->
-                // 按**行身份**认（不是位次）：删中间一行时，后面的行不该继承被删那一行的「已退场」状态
-                key(draft.ids[index]) {
-                    BranchRow(
-                        rule = rule,
-                        spec = RuleRowSpec(index, anchors[index], fresh = draft.ids[index] == freshId, exiting = menus.deletingAt == index),
-                        menus = menus,
-                    )
-                }
+    //  不画空卡片：空白页在设置类界面里读作「坏了」，而不是「还没配」。
+    //
+    //  **空态 ↔ 表格不能硬切**（两处高度本来就不一样）：
+    //  空态那一块（上下各 24dp 留白 + 字形 + 一行字）约一百来 dp，表格一行是 [TILE_HEIGHT] 52 +
+    //  间距 12 = 64dp —— 两处高度本来就不一样（空态里没有行），以前 `if/else` 一换，页面高度
+    //  先掉一截再涨回去，「添加条件」那颗按钮跟着上下跳。
+    //  现在不追「一样高」，改成这一块高度**连续地**从旧值走到新值：同一个容器换内容，
+    //  尺寸交给 [SizeTransform] 插值（`clip = false` 是为了不把行尾那颗按钮的按压着色裁掉）。
+    //  这一下是**唯一**一处动画 —— 里层第一行不播进场（见上面 `addRule`）。
+    //
+    //  空态**不做整页居中**：它就从顶栏下面开始往下排，与表格同一个起点 ——
+    //  「空态 + 添加条件」这一组在屏幕正中漂着时，加第一条会看到整组先往上滑一大段，
+    //  而它本来就是这一页的正文，跟着顶栏走才对得齐。
+    Column(Modifier.fillMaxWidth()) {
+        AnimatedContent(
+            targetState = rules.isEmpty(),
+            transitionSpec = {
+                (
+                    fadeIn(tween(BRANCH_BODY_MS, easing = DecelerateEasing())) togetherWith
+                        fadeOut(tween(BRANCH_BODY_MS, easing = AccelerateEasing()))
+                ).using(SizeTransform(clip = false) { _, _ -> tween(BRANCH_SIZE_MS, easing = DecelerateEasing()) })
+            },
+            contentAlignment = Alignment.TopCenter,
+            label = "branch-body",
+        ) { empty ->
+            if (empty) {
+                BranchEmptyHint()
+            } else {
+                BranchRuleColumn(
+                    rules = rules,
+                    ids = draft.ids,
+                    freshId = freshId,
+                    menus = menus,
+                    anchors = anchors,
+                )
             }
         }
+        // 「添加条件」：表里与空态**同一个位置**（表下面 / 空态那句话下面），左右与列表同一档边距。
+        //  它落在上面那块的外面 ⇒ 块高怎么变，它就跟着平移多少（不再自己跳）。
+        //  宽度分两档：有表格时通栏（与表格左右对齐），空态时跟内容宽、居中
+        //  （见 [AddConditionButton] 的「宽度分两档」）。
+        AddConditionButton(anchors[rules.size].left, fillWidth = rules.isNotEmpty(), addRule)
+        // 表尾那句注脚讲的是「一条都不成立时执行什么」—— 一条都没有时这句话由空态自己说，
+        //  两句摆在同一个屏幕上只会让人多看一遍（见 `BranchEmptyHint`）。
+        //
+        //  也不能硬切：它是**多出来的一行高度**，从「没有」到「有」同样会顶一下（同一处抽动）。
+        AnimatedVisibility(
+            visible = rules.isNotEmpty(),
+            enter = fadeIn(tween(BRANCH_TIP_MS, easing = DecelerateEasing())) + BRANCH_TIP_EXPAND,
+            exit = fadeOut(tween(BRANCH_TIP_MS, easing = AccelerateEasing())) + BRANCH_TIP_SHRINK,
+        ) {
+            BranchDefaultTip()
+        }
     }
-    // 「添加条件」：表里与空态**同一个位置**（表下面 / 空态那句话下面），左右与列表同一档边距
-    AddConditionButton(anchors[rules.size].left, addRule)
-    // 表尾那句注脚讲的是「一条都不成立时执行什么」—— 一条都没有时这句话由空态自己说，
-    //  两句摆在同一个屏幕上只会让人多看一遍（见 `BranchEmptyHint`）。
-    if (rules.isNotEmpty()) BranchDefaultTip()
     BranchMenus(rules = rules, menus = menus, tick = tick)
     BranchDeleteDialog(menus)
 }
+
+/**
+ * 「添加条件」那一下 —— 末尾那条**条件和命令都还空着**时不再往下加：新加的行一样是空的，
+ * 堆两条空行既看不出差别、校验也过不了。说一句就停在这一条上，让人先去把它填了。
+ *
+ * 加的是**第一条**时返回 [NO_FRESH_ROW]：那一下整块高度由外层（空态 ↔ 表格）那套动画负责，
+ * 里层再展开一遍就是同一条动画跑两遍。
+ */
+private fun SettingsPage.addBranchRule(
+    rules: List<StateRule>,
+    tick: () -> Unit,
+    onAdded: (Int) -> Unit,
+) {
+    val tail = rules.lastOrNull()
+    if (tail != null && tail.condition == null && tail.action == Action.None) {
+        tick()
+        //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
+        hint(
+            I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有条件没选完"),
+            slot = HINT_SLOT_COMMAND,
+        )
+        return
+    }
+    val first = rules.isEmpty()
+    val id = branchDraft.draft.add(StateRule(branchGestureNow(), null, Action.None))
+    onAdded(if (first) NO_FRESH_ROW else id)
+}
+
+/**
+ * 表格那一列（一行一条规则）—— 单独一支只为让 [BranchCards] 那支短下来（它现在还要管
+ * 空态与表格的切换）。
+ *
+ *  行距挂在行自己身上（见 [BranchRow]）：挂在这层 `spacedBy` 的话，退场时那一档空档不会跟着收缩。
+ *  `key` 按**行身份**认（不是位次）：删中间一行时，后面的行不该继承被删那一行的「已退场」状态。
+ */
+@Composable
+private fun SettingsPage.BranchRuleColumn(
+    rules: List<StateRule>,
+    ids: List<Int>,
+    freshId: Int,
+    menus: BranchMenuState,
+    anchors: List<RuleAnchors>,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
+        // 只剩一条时它**不自己收缩**：那一条的消失由外层空态那一套接管（见 `BranchCards` 里
+        //  那个 effect）。不然数据被移除之前先闪一帧收缩，就成了「行先缩、空态再长」两段。
+        val shrinkable = rules.size > 1
+        rules.forEachIndexed { index, rule ->
+            key(ids[index]) {
+                BranchRow(
+                    rule = rule,
+                    spec =
+                        RuleRowSpec(
+                            index = index,
+                            anchors = anchors[index],
+                            fresh = ids[index] == freshId,
+                            exiting = shrinkable && menus.deletingAt == index,
+                        ),
+                    menus = menus,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 空态与表格切换时**淡入淡出**那一段 —— 给得比尺寸短：颜色先交代完，剩下的交给高度。
+ *
+ *  只跑这一套：内容交叉淡入淡出 [BRANCH_BODY_MS]，高度由 `emptyMinHeight` 那一条单独管，
+ *  里层第一行不再播进场（见 `addRule`）。
+ */
+private const val BRANCH_BODY_MS = 150
+
+/** 空态 ↔ 表格之间**高度**那一段 —— 与行的进场（280）/ 退场（220）同一量级。 */
+private const val BRANCH_SIZE_MS = 220
+
+/** 表尾注脚进出场的高度那一段 —— 比行的高度动画略短，它是注释不是内容。 */
+private const val BRANCH_TIP_MS = 180
+
+/** 表尾注脚进出场（淡入淡出 + 高度）—— 与空态那块同一族写法。 */
+private val BRANCH_TIP_EXPAND =
+    expandVertically(
+        animationSpec = tween(BRANCH_TIP_MS, easing = DecelerateEasing()),
+        expandFrom = Alignment.Top,
+    )
+
+private val BRANCH_TIP_SHRINK =
+    shrinkVertically(
+        animationSpec = tween(BRANCH_TIP_MS, easing = AccelerateEasing()),
+        shrinkTowards = Alignment.Top,
+    )
 
 /**
  * 列表里的一行 —— 行本体 + 它自己那份进出场。
@@ -170,24 +306,30 @@ private fun SettingsPage.BranchRow(
     LaunchedEffect(state, spec.exiting) { state.targetState = !spec.exiting }
     AnimatedVisibility(visibleState = state, enter = STEP_ROW_ENTER, exit = STEP_ROW_EXIT) {
         Box(Modifier.padding(bottom = GRID_ROW_GAP)) {
-            RuleRow(
-                // 条件空着的行写「未选择」：这一行还没配完，与右列「未选择」是同一句话
-                condition =
-                    rule.condition?.let { conditionTitle(it, ::appNameOf) }
-                        ?: I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择"),
-                action =
-                    if (rule.action == Action.None) {
-                        I18n.get(Strings.COMMAND_BRANCH_NO_COMMAND, "未选择")
-                    } else {
-                        stepTitle(rule.action.token, ::appNameOf)
-                    },
-                conditionIcon = rule.condition?.kind?.let(::conditionIcon) ?: PageIcons.CommandBranch,
-                actionIcon =
-                    if (rule.action == Action.None) {
-                        PageIcons.CommandSingle
-                    } else {
-                        stepIcon(rule.action.token, configState.commands.value)
-                    },
+            RuleBlock(
+                // 「条件 1」「条件 2」—— 一份表里第几条，标题上直接写出来
+                index = spec.index,
+                text =
+                    RuleText(
+                        // 条件空着的行写「未选择」：这一条还没配完，与下面那格「未选择」是同一句话。
+                        //  非空的走 `conditionRowTitle`：卡片里这一行把「种类 - 取值」两级都写出来。
+                        condition =
+                            rule.condition?.let { conditionRowTitle(it, ::appNameOf) }
+                                ?: I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择"),
+                        action =
+                            if (rule.action == Action.None) {
+                                I18n.get(Strings.COMMAND_BRANCH_NO_COMMAND, "未选择")
+                            } else {
+                                stepTitle(rule.action.token, ::appNameOf)
+                            },
+                        conditionIcon = rule.condition?.kind?.let(::conditionIcon) ?: PageIcons.CommandBranch,
+                        actionIcon =
+                            if (rule.action == Action.None) {
+                                PageIcons.CommandSingle
+                            } else {
+                                stepIcon(rule.action.token, configState.commands.value)
+                            },
+                    ),
                 cells =
                     RuleCells(
                         anchors = spec.anchors,
@@ -232,29 +374,45 @@ private const val ROW_EXIT_SETTLE_MS = 40L
  *  用的是 COUI 的 [Button] 本体（默认就是次要那一档配色），不自己拼颜色 / 圆角 / 字号：
  *  最小高度、圆角、内边距、按压反馈都由 `ButtonDefaults` 给，与页面里别的控件同一族。
  *
- *  **撑满整行**，所以关掉按压缩放（库的口径：填满容器的按钮只留铺满整格的按压着色，见
- *  `pressScaleEnabled`）。左右边距由它自己带（[PAGE_MARGIN]，与列表同一档）——
- *  以前表里那份靠外层 `Column` 的 `padding`、空态那份铺满整宽，于是表一空按钮就贴到屏幕两边。
+ *  ## 宽度分两档：有表时通栏，空态时跟内容
+ *
+ *   · **有表格**（`fillWidth = true`）：`fillMaxWidth` —— 通栏压在整张表下面，读作「在这张表
+ *     末尾再加一条」，上下与表格的左右边缘对齐。此时关掉按压缩放：
+ *     库的口径是「填满容器的按钮只留铺满整格的按压着色」（见 `pressScaleEnabled`）。
+ *   · **空态**（`fillWidth = false`）：宽度由「添加条件」四个字加上库的内边距决定、水平居中 ——
+ *     空态那一组（字形 + 一句话 + 这颗按钮）整体在内容区居中，一颗通栏按钮摆在里面会把
+ *     那块留白切开。
+ *
+ *  左右边距两档都在（外层那个 `Box` 带 [PAGE_MARGIN]），文字再长也碰不到屏幕边。
+ *
+ * @param fillWidth 这一档是不是「表格下面那颗通栏按钮」（判据是**有没有条件**，见调用点）
  */
 @Composable
 private fun SettingsPage.AddConditionButton(
     anchor: PreciseClickState,
+    fillWidth: Boolean,
     onClick: () -> Unit,
 ) {
-    Button(
-        onClick = onClick,
+    Box(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(start = PAGE_MARGIN, end = PAGE_MARGIN, top = ADD_BUTTON_GAP)
-                .preciseClickAnchor(anchor),
-        pressScaleEnabled = false,
+                .padding(start = PAGE_MARGIN, end = PAGE_MARGIN, top = ADD_BUTTON_GAP),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = I18n.get(Strings.COMMAND_BRANCH_ADD, "添加条件"),
-            // 与库的文本按钮同一档字（默认就是它，显式写出免得跟着库默认值漂）
-            style = COUITheme.textStyles.button,
-        )
+        Button(
+            onClick = onClick,
+            modifier =
+                (if (fillWidth) Modifier.fillMaxWidth() else Modifier.wrapContentWidth())
+                    .preciseClickAnchor(anchor),
+            pressScaleEnabled = !fillWidth,
+        ) {
+            Text(
+                text = I18n.get(Strings.COMMAND_BRANCH_ADD, "添加条件"),
+                // 与库的文本按钮同一档字（默认就是它，显式写出免得跟着库默认值漂）
+                style = COUITheme.textStyles.button,
+            )
+        }
     }
 }
 
@@ -268,8 +426,11 @@ private class RuleAnchors {
 /** 表与「添加条件」之间的留白 —— 行自己带了 [GRID_ROW_GAP] 的下边距，这里不再加。 */
 private val ADD_BUTTON_GAP = 0.dp
 
-/** 中间那颗三点的**外边距**（只给左右）—— 与两格之间那一小道缝。 */
-private val MENU_DOTS_MARGIN = 2.dp
+/** 小标题那一行的高度 —— 标题 + 右端那颗三点，两者都在这一行里竖居中。 */
+private val RULE_TITLE_HEIGHT = 28.dp
+
+/** 小标题行右端那颗三点的大小（点击区）—— 与标题行同高，别再往外扩。 */
+private val RULE_MENU_SIZE = 28.dp
 
 /** 表尾那句注脚 —— 与「自定义命令」页那条权限提示同一个样式（不占卡片、居中、`footnote1`）。 */
 @Composable
@@ -301,105 +462,96 @@ private class RuleCells(
     val onMenu: () -> Unit,
 )
 
+/** 一条规则那两行「写什么、配哪颗字形」—— 合成一个对象，[RuleBlock] 的参数才压得回 5 个以内。 */
+private class RuleText(
+    val condition: String,
+    val action: String,
+    val conditionIcon: ImageVector,
+    val actionIcon: ImageVector,
+)
+
 /**
- * 一条规则那一行 —— **两列**：左边是条件、右边是动作，中间一枚右箭头。
+ * 一条规则那一块 —— **小标题 + 上下两格**：上面是条件、下面是命令。
  *
- *  两列各自可点（左列换条件、右列换动作），所以是两个独立的触点，各挂一份
- *  [preciseClickAnchor]：菜单弹在**被点的那一格**旁边，而不是整行。
+ *  为什么不再左右并排：条件与命令都是长句（「微信 在前台」/「以小窗口打开 微信」），
+ *  一行里各占一半时两边都在打省略号，看不出选的是哪一条；竖下来各自整行，读起来才是
+ *  「这一条什么时候、做什么」。小标题写「条件 N」，删掉一条之后序号也跟着重排。
+ *
+ *  两格各自可点（上面换条件、下面换动作），所以是两个独立的触点，各挂一份
+ *  [preciseClickAnchor]：菜单弹在**被点的那一格**旁边，而不是整块。
+ *
+ *  这一条自己的菜单（上移 / 下移 / 删除）挪到小标题那一行右端：两格都通栏之后，
+ *  中间没有位置再放那颗三点了；挂在标题行也不会和两格的点击区抢。
+ *
+ *  @param text 上下两行写什么、各配哪颗字形（见 [RuleText]）
+ *  @param cells 两格与那颗「更多」的触点（见 [RuleCells]）
  */
 @Composable
-private fun RuleRow(
-    condition: String,
-    action: String,
-    conditionIcon: ImageVector,
-    actionIcon: ImageVector,
+private fun RuleBlock(
+    index: Int,
+    text: RuleText,
     cells: RuleCells,
 ) {
-    Row(
-        // 行高按格子那一档**定死**：中间那颗要 `fillMaxHeight()` 填满，而 `fillMaxHeight`
-        //  在「父级高度不定」时是空操作（Row 是 warp-content，子项拿到的是无限高度）。
-        modifier = Modifier.fillMaxWidth().height(TILE_HEIGHT),
-        // 两列之间那道缝 = 中间那颗的 margin 2dp + 它自己的 padding（见下面那颗 Box）。
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RuleCell(
-            text = condition,
-            icon = conditionIcon,
-            modifier = Modifier.weight(1f).preciseClickAnchor(cells.anchors.left),
-            onClick = cells.onCondition,
-        )
-        // 中间那颗管**这一行本身**（上移 / 下移 / 删除），所以它自己也是一个触点。
-        //
-        //  · **margin 2dp（只给左右）**：让这颗按键与两格之间各留一道缝，点的时候不会贴着格子边；
-        //    纵向不给 margin —— 那一头要填满整行（`fillMaxHeight`，行高由上面定死的那一档给）。
-        //  · **padding 保持原值（水平 4dp / 纵向 8dp）**：那是图标与按钮边界之间的距离，
-        //    与 margin 是两件事（margin 在 `clip` / `clickable` **外面**，不进点击区）。
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxHeight()
-                    .padding(horizontal = MENU_DOTS_MARGIN)
-                    .preciseClickAnchor(cells.anchors.menu)
-                    .clip(RULE_CELL_SHAPE)
-                    .clickable(onClick = cells.onMenu)
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center,
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(RULE_TITLE_HEIGHT),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                TablerIcons.Outline.DotsVertical,
-                contentDescription = I18n.get(Strings.COMMON_MORE, "更多"),
-                tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+            Text(
+                text = I18n.format(Strings.COMMAND_BRANCH_ITEM, index + 1),
+                style = COUITheme.textStyles.footnote1,
+                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.weight(1f).padding(start = 4.dp),
             )
+            Box(
+                modifier =
+                    Modifier
+                        .size(RULE_MENU_SIZE)
+                        .preciseClickAnchor(cells.anchors.menu)
+                        .clip(RULE_CELL_SHAPE)
+                        .clickable(onClick = cells.onMenu),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    TablerIcons.Outline.DotsVertical,
+                    contentDescription = I18n.get(Strings.COMMON_MORE, "更多"),
+                    tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
         }
-        RuleCell(
-            text = action,
-            icon = actionIcon,
-            modifier = Modifier.weight(1f).preciseClickAnchor(cells.anchors.right),
-            onClick = cells.onAction,
+        //  一行条件、一行命令，**同一张卡**（与各页的 listview 同一个壳：Card + 行间细线 +
+        //  首尾圆角），不再拆成两个胶囊 —— 拆开时中间那道缝读起来像两件不相干的事。
+        //  两行各自可点，行尾那枚选择器说明「点开还有一层」（换条件 / 换动作）。
+        CardList(
+            margin = 0.dp,
+            rows =
+                listOf(
+                    CardRow.Item(
+                        title = text.condition,
+                        icon = text.conditionIcon,
+                        trailing = { SelectorGlyph() },
+                        modifier = Modifier.preciseClickAnchor(cells.anchors.left),
+                        onClick = cells.onCondition,
+                    ),
+                    CardRow.Item(
+                        title = text.action,
+                        icon = text.actionIcon,
+                        trailing = { SelectorGlyph() },
+                        modifier = Modifier.preciseClickAnchor(cells.anchors.right),
+                        onClick = cells.onAction,
+                    ),
+                ),
         )
     }
 }
 
-/** 一行里的一格 —— 与网格的格子同一个壳（[Card] + `surfaceContainer`），文字单行截断。 */
+/** 行尾那枚「点开还有一层」的选择器字形 —— 与菜单、网格里同一个记号（[PageIcons.Selector]）。 */
 @Composable
-private fun RuleCell(
-    text: String,
-    icon: ImageVector,
-    modifier: Modifier,
-    onClick: () -> Unit,
-) {
-    val scheme = COUITheme.colorScheme
-    Card(
-        // 与网格那格**同高**（[TILE_HEIGHT]）—— 两页的格子摆在一起时不会一高一矮
-        modifier = modifier.height(TILE_HEIGHT),
-        // 与网格那格**同一套壳**（见 `BindingTile` 的 `ActionTile`）：底色 / 按下色 / 内容色都取自
-        //  那三档，圆角与阴影交给库的 `Card` —— 这样两个胶囊与按键绑定页的格子读起来是一族。
-        colors =
-            CardDefaults.defaultColors(
-                color = scheme.surfaceContainer,
-                contentColor = scheme.onSurfaceContainer,
-                pressedColor = scheme.surfaceContainerHigh,
-            ),
-        pressFeedbackType = PressFeedbackType.None,
-        showIndication = true,
-        onClick = onClick,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(icon, contentDescription = null, tint = scheme.onSurfaceContainer)
-            Text(
-                text = text,
-                // 与网格里那行标题同一档字号（`body2`）：一行放两格，比整行标题小一档才不挤
-                style = COUITheme.textStyles.body2,
-                // 与行首那枚图标同一行、竖居中 —— 行盒居中于字却不居中于墨迹（见 `opticalCenter`）
-                modifier = Modifier.opticalCenter(COUITheme.textStyles.body2),
-                color = scheme.onSurfaceContainer,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+private fun SelectorGlyph() {
+    Icon(
+        PageIcons.Selector,
+        contentDescription = null,
+        modifier = Modifier.size(ROW_END_ICON_SIZE),
+        tint = COUITheme.colorScheme.onSurfaceVariantActions,
+    )
 }

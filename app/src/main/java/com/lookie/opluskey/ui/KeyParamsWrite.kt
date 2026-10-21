@@ -8,6 +8,9 @@ import com.lookie.opluskey.ui.state.KeyWatchState
 // 分开：两者改的不是同一段配置（`keys[id]` 对 `global`），错放会让「这一项属于谁」看不出来。
 //
 // 长按阈值 / 触发间隔那几档是滑杆，各自在 `LongRepeatCard` 里直接调 [write]，不在这里再包一层。
+//
+// **回执的位一律 [HINT_SLOT_BINDING]**：这一族只在「按键绑定」页被调用（`InstantSingleCard` /
+//  `LongRepeatCard`），那页的所有回执共用一条消息（理由见 [HINT_SLOT_BINDING] 的注释）。
 
 /**
  * 切「立即触发单击」（双击为无操作时不等双击窗口）—— 行点击与开关共用这一个入口。
@@ -21,6 +24,7 @@ internal fun SettingsPage.setInstantSingle(on: Boolean) {
     writeAndNotice(
         cfg.copy(keys = cfg.keys + (id to cfg.key(id).copy(instantSingle = on))),
         "instant_single=${if (on) 1 else 0} key=${id.id}",
+        slot = HINT_SLOT_BINDING,
     ) { switchNotice(I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"), on) }
 }
 
@@ -38,5 +42,6 @@ internal fun SettingsPage.setLongRepeat(on: Boolean) {
             keys = cfg.keys + (id to cfg.key(id).copy(longRepeat = on)),
         ),
         "long_repeat=${if (on) 1 else 0} key=${id.id}",
+        slot = HINT_SLOT_BINDING,
     ) { switchNotice(I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_TITLE, "长按连续触发"), on) }
 }

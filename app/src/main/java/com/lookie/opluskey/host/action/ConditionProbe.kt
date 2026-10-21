@@ -6,7 +6,6 @@ import android.media.AudioManager
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
-import com.lookie.opluskey.core.reflect.Reflect
 
 /**
  * 条件执行里每一种条件「此刻成不成立」—— 全项目唯一的判据出口。
@@ -18,8 +17,8 @@ import com.lookie.opluskey.core.reflect.Reflect
  *
  * ## 只有派发在这里
  *
- *  具体怎么读拆在 `ConditionChecks.kt`（带取值的那几档：屏幕 / 充电 / Wi-Fi / 媒体 / 响铃 / 方向）
- *  与本文件下半（无取值的耳机 / 小窗）。加一种条件仍然只动两处：这里加一行、那边加一个函数。
+ *  具体怎么读拆在 `ConditionChecks.kt`（屏幕 / 充电 / Wi-Fi / 媒体 / 响铃 / 方向）与本文件下半
+ *  （耳机 —— 「接着没有」要扫一遍音频输出设备）。加一种条件仍然只动两处：这里加一行、那边加一个函数。
  *
  * ## 权限
  *
@@ -61,7 +60,6 @@ internal object ConditionProbe {
             ConditionKind.HEADSET -> headsetMatches(ctx, value)
             ConditionKind.MEDIA -> mediaMatches(ctx, value)
             ConditionKind.WIFI -> wifiMatches(ctx, value)
-            ConditionKind.MINI -> hasMiniWindow()
             ConditionKind.RINGER -> ringerMatches(ctx, value)
             ConditionKind.ORIENTATION -> orientationMatches(ctx, value)
         }
@@ -104,15 +102,4 @@ internal object ConditionProbe {
                 it == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
         }
     }
-
-    /**
-     * 屏幕上有没有小窗 —— 扫 `getAllTopAppInfos()`，看有没有 `windowingMode == 100` 的那一条。
-     *
-     *  与小窗那一族同一个来源（`MiniWindowFacts.WINDOWING_MODE_ZOOM`），不另开一条反射路径。
-     */
-    private fun hasMiniWindow(): Boolean =
-        ForegroundApp.infos().any {
-            Reflect.fieldValue(it, it.javaClass, MiniWindowFacts.TOP_APP_WINDOWING_MODE_FIELD) ==
-                MiniWindowFacts.WINDOWING_MODE_ZOOM
-        }
 }

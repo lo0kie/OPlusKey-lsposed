@@ -107,6 +107,11 @@ object Strings {
     const val CATALOG_MODE_TOGGLE = "catalog.mode_toggle"
     const val CATALOG_MODE_TURN_ON = "catalog.mode_turn_on"
     const val CATALOG_MODE_TURN_OFF = "catalog.mode_turn_off"
+
+    /** 同上的**带开关名**写法（「切换免打扰」）—— 选择器里逐行读的地方用。 */
+    const val CATALOG_MODE_TOGGLE_OF = "catalog.mode_toggle_of"
+    const val CATALOG_MODE_TURN_ON_OF = "catalog.mode_turn_on_of"
+    const val CATALOG_MODE_TURN_OFF_OF = "catalog.mode_turn_off_of"
     const val CATALOG_MODE_EXPAND = "catalog.mode_expand"
     const val CATALOG_MODE_HOME = "catalog.mode_home"
     const val CATALOG_MODE_NOTIFICATIONS = "catalog.mode_notifications"
@@ -134,13 +139,20 @@ object Strings {
     const val COMMAND_DELAY_DESC = "command.delay_desc"
     const val COMMAND_DELAY_LABEL = "command.delay_label"
     const val COMMAND_FORMAT_CMD = "command.format_cmd"
-    const val COMMAND_FORMAT_INTENT = "command.format_intent"
-    const val COMMAND_FORMAT_KEYEVENT = "command.format_keyevent"
 
-    /** 「命令详细」那一栏的格式错误 —— 没带支持的前缀时出红字（保存按钮同时是灰的）。 */
+    /** 「支持的命令格式」卡右列那一句说明 —— 与左列的前缀文案分开两条，好在界面上对成一列。 */
+    const val COMMAND_FORMAT_CMD_DESC = "command.format_cmd_desc"
+    const val COMMAND_FORMAT_INTENT = "command.format_intent"
+    const val COMMAND_FORMAT_INTENT_DESC = "command.format_intent_desc"
+    const val COMMAND_FORMAT_KEYEVENT = "command.format_keyevent"
+    const val COMMAND_FORMAT_KEYEVENT_DESC = "command.format_keyevent_desc"
+
+    /** 「命令详情」那一栏的格式错误 —— 没带支持的前缀时出红字（保存按钮同时是灰的）。 */
     const val COMMAND_FORMAT_REQUIRED = "command.format_required"
     const val COMMAND_FORMAT_SHELL = "command.format_shell"
+    const val COMMAND_FORMAT_SHELL_DESC = "command.format_shell_desc"
     const val COMMAND_FORMAT_SHORTCUT = "command.format_shortcut"
+    const val COMMAND_FORMAT_SHORTCUT_DESC = "command.format_shortcut_desc"
     const val COMMAND_FORMATS_TITLE = "command.formats_title"
     const val COMMAND_LIST_TITLE = "command.list_title"
     const val COMMAND_NAME = "command.name"
@@ -159,6 +171,9 @@ object Strings {
     const val COMMAND_SAVED_COUNT = "command.saved_count"
     const val COMMAND_SINGLE_HINT = "command.single_hint"
     const val COMMAND_STEP_SELECT_TITLE = "command.step_select_title"
+
+    /** 「换掉这一步 / 换掉这一条动作」那张抽屉的标题 —— 与 [COMMAND_STEP_SELECT_TITLE] 同一处、两种来处。 */
+    const val COMMAND_STEP_REPLACE_TITLE = "command.step_replace_title"
     const val COMMAND_TEST_BUTTON = "command.test_button"
 
     /** 表单第一条小标题：名称输入框（原先这里写的是「修改命令 / 新增命令」）。 */
@@ -179,6 +194,9 @@ object Strings {
     const val COMMAND_BRANCH_WHEN_APP = "command.branch_when_app"
     const val COMMAND_BRANCH_ELSE = "command.branch_else"
     const val COMMAND_BRANCH_ANY = "command.branch_any"
+
+    /** 一条条件的小标题（「条件 1」）。 */
+    const val COMMAND_BRANCH_ITEM = "command.branch_item"
     const val COMMAND_BRANCH_NO_COMMAND = "command.branch_no_command"
     const val COMMAND_BRANCH_DUPLICATE = "command.branch_duplicate"
 
@@ -214,7 +232,6 @@ object Strings {
     const val COMMAND_COND_WIFI_NAME = "command.cond_wifi_name"
     const val COMMAND_COND_WIFI_ON = "command.cond_wifi_on"
     const val COMMAND_COND_WIFI_OFF = "command.cond_wifi_off"
-    const val COMMAND_COND_MINI = "command.cond_mini"
     const val COMMAND_COND_RINGER = "command.cond_ringer"
     const val COMMAND_COND_RINGER_NORMAL = "command.cond_ringer_normal"
     const val COMMAND_COND_RINGER_VIBRATE = "command.cond_ringer_vibrate"
@@ -326,6 +343,10 @@ object Strings {
     /** 「温馨提醒」：免责声明确认之后接着弹的那一个（模块免费、认准官方正版）。 */
     const val DIALOG_FREE_NOTICE_TITLE = "dialog.free_notice_title"
     const val DIALOG_FREE_NOTICE_CONTENT = "dialog.free_notice_content"
+
+    /** 内置键「侧键」的名字 —— 提示里的主语用它，自定义键名是用户起的、不译。 */
+    const val KEY_SIDE = "key.side"
+
     const val GESTURE_DOUBLE = "gesture.double"
     const val GESTURE_LONG = "gesture.long"
     const val GESTURE_SINGLE = "gesture.single"
@@ -366,6 +387,11 @@ object Strings {
     const val HOME_VIBRATE_DESC_OFF = "home.vibrate_desc_off"
     const val HOME_VIBRATE_DESC_ON = "home.vibrate_desc_on"
     const val HOME_VIBRATE_STRENGTH_DESC = "home.vibrate_strength_desc"
+
+    /** 「振动强度」三档的说法（弱 / 中 / 强）—— 那一行**行尾**写的是它。 */
+    const val HOME_VIBRATE_STRENGTH_MEDIUM = "home.vibrate_strength_medium"
+    const val HOME_VIBRATE_STRENGTH_STRONG = "home.vibrate_strength_strong"
+    const val HOME_VIBRATE_STRENGTH_WEAK = "home.vibrate_strength_weak"
     const val HOME_VIBRATE_STRENGTH_TITLE = "home.vibrate_strength_title"
     const val HOME_VIBRATE_TITLE = "home.vibrate_title"
     const val LINK_CHECK_ALL_NORMAL = "link_check.all_normal"
@@ -438,6 +464,10 @@ object Strings {
     const val MORE_FOLLOW_DISPLAY_SIZE = "more.follow_display_size"
     const val MORE_FOLLOW_DISPLAY_SIZE_ON = "more.follow_display_size_on"
     const val MORE_FOLLOW_DISPLAY_SIZE_OFF = "more.follow_display_size_off"
+
+    /** 「页面缩放」那一行（只在「跟随系统显示大小」关掉时出现）。 */
+    const val MORE_PAGE_SCALE = "more.page_scale"
+    const val MORE_PAGE_SCALE_DESC = "more.page_scale_desc"
     const val MORE_THEME_AUTO = "more.theme_auto"
     const val MORE_THEME_LIGHT = "more.theme_light"
     const val MORE_THEME_DARK = "more.theme_dark"
@@ -509,28 +539,31 @@ object Strings {
     const val TOAST_SWITCH_ON = "toast.switch_on"
     const val TOAST_SWITCH_OFF = "toast.switch_off"
 
-    /**
-     * 总闸（「启用按键绑定」）**打开**之后的回执。
-     *
-     *  只有开这一档：关的那一档不发回执 —— 首页那条常驻提示会立刻变成
-     *  [STATUS_KEY_DISABLED]，再叠一条就是两层提示条（见 `setKeyEnabled`）；
-     *  「侧键交还系统」那句后果说明也并进了那条常驻文案，原来的 `toast.binding_off` 已删。
-     */
-    const val TOAST_BINDING_ON = "toast.binding_on"
-
     /** 重命名一颗自定义按键之后（「已重命名为「音量键」」）。 */
     const val TOAST_KEY_RENAMED = "toast.key_renamed"
 
     /**
-     * 「在一组选项里换了一档」的回执（「已切换到「English」」）。
+     * 「在一组选项里换了一档」的回执（「强调色 已切换到「蓝色」」）。
      *
      *  语言 / 界面颜色 / 系统配色三处共用：它们说的是同一件事（这一组里换了一档），
-     *  文案也一样 —— 各留一个键的话，改一处界面措辞就得记着改三处。
+     *  句式也一样 —— 各留一个键的话，改一处界面措辞就得记着改三处。
+     *
+     *  **带主语**（两个占位符：哪一项、哪一档）：只有「已切换到「蓝色」」时不知道切的是什么，
+     *  深色 / 强调色 / 语言三行都是这个句式，回执里分不出来（用户口径「换成更精确的」）。
      *
      *  主语是**一组选项里的某一档**（语言 / 深浅 / 配色）。首页「按键清单」点一颗键**不算**：
      *  那是进那颗键的页面，不是切换，所以那一处不发回执。
      */
     const val TOAST_SWITCHED_TO = "toast.switched_to"
+
+    /**
+     * 「执行时提示」那一条（`GlobalConfig.toastOnRun`）—— 两个占位符：
+     * **这次是哪一下**（`侧键·单击`）与**执行了什么**（`手电筒`）。
+     *
+     *  只说动作名时，连发几次不同的手势看不出分别（用户口径「换成更精确的」）；
+     *  触发源那一半用的是界面上的同一个词（`KeyId.label` · `Gesture.label`），不另造说法。
+     */
+    const val TOAST_RUN_ACTION = "toast.run_action"
     const val TOAST_LOG_EXPORT_FAILED = "toast.log_export_failed"
     const val TOAST_SERVICE_RESTART_FAILED = "toast.service_restart_failed"
     const val TOAST_SERVICE_RESTARTED = "toast.service_restarted"

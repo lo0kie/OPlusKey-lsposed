@@ -73,6 +73,11 @@ internal fun SettingsPage.addCommand() {
         val oldToken = Command.PREFIX + editingFrom
 
         fun move(a: Action) = if (a.token == oldToken) Action.Custom(name) else a
+
+        //  条件规则里的动作是**第四处引用**（前三处是与手势那三格）。漏了它，改名之后
+        //  规则命中时解析新名字失败 —— 界面上看不出任何悬空，只是那一条不再执行。
+        fun moveRule(r: com.lookie.opluskey.core.model.StateRule) =
+            if (r.action.token == oldToken) r.copy(action = Action.Custom(name)) else r
         // **每一颗键**都要挪：自定义键同样能绑 `cmd:名字`，只改侧键的话那些键按下去就是
         //  「命令已不存在」（NOT_FOUND），而用户看到的是「改名成功」。
         val moved = mutableMapOf<KeyId, com.lookie.opluskey.core.model.KeyConfig>()
@@ -83,6 +88,7 @@ internal fun SettingsPage.addCommand() {
                     single = move(key.single),
                     double = move(key.double),
                     long = move(key.long),
+                    rules = key.rules.map(::moveRule),
                 )
             if (updated != key) moved[k] = updated
         }
@@ -104,7 +110,8 @@ internal fun SettingsPage.addCommand() {
     } else if (saveResult == CommandsSave.Ok && bindingMoved == CommandsSave.Ok) {
         //  两半都必须是 Ok 才报「已修改」：绑定那一半广播没发出去时，[write] 已经报过
         //  「已保存，但通知注入侧失败」，这里再补一句会把它顶掉（底部只有一行回执）。
-        hint(tip)
+        //  归到整页那一个位：连续保存两次时屏幕上改字，不叠出两条「已保存」（见 [HINT_SLOT_COMMAND]）
+        hint(tip, slot = HINT_SLOT_COMMAND)
     }
     // 存完**留在本页**（以前新增那条会退回「按键绑定」）：接着编下一条是常事，
     //  每存一条就被弹回去一次纯属添乱；这条命令已经在那张「已保存的命令」列表里了，

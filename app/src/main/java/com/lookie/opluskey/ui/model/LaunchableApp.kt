@@ -76,6 +76,6 @@ internal fun cloneLabel(
 ): String =
     when {
         slot > 0 -> "$base $slot"
-        userId != 0 -> "$base · $userId"
+        userId != 0 -> "$base - $userId"
         else -> base
     }

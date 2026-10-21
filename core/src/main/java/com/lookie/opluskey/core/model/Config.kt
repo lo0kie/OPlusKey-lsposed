@@ -249,7 +249,7 @@ data class GlobalConfig(
      * **系统配色** —— 页面强调色用哪一套（取值是色板 id，见界面层的色板表）。
      *
      *  这里只存**字符串**、不存枚举：色板清单与它那一族颜色全在界面层
-     *  （`ui/model/PagePalettes`），而 `:core` 的 classpath 里没有 `:app` —— 共用层不认识
+     *  （`ui/model/PagePalette`），而 `:core` 的 classpath 里没有 `:app` —— 共用层不认识
      *  「有哪些色板」，也不该认识（注入侧与配色无关）。
      *
      *  于是手改文件写进一个不认识的 id 时，这一层原样收下、界面侧读不到就落回默认档
@@ -278,6 +278,16 @@ data class GlobalConfig(
      *  默认开 —— 不改变任何人的现状。
      */
     val followDisplaySize: Boolean = DEFAULT_FOLLOW_DISPLAY_SIZE,
+    /**
+     * **页面缩放**（百分比，[PAGE_SCALE_MIN] ~ [PAGE_SCALE_MAX]）。
+     *
+     *  只在 [followDisplaySize] 为假时生效（那一根滑杆也只在那时出现）：跟随系统时页面大小
+     *  由系统那一档说了算，再乘一个缩放会让两处都能调、谁也不清楚最后是多少。
+     *
+     *  实现：把页面根上那份 `Density.density` 乘上 `pageScale / 100`（见 `PageContent`）——
+     *  只改模块这一棵页面树，宿主的顶栏 / 状态栏不动。
+     */
+    val pageScale: Int = DEFAULT_PAGE_SCALE,
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
     /**
@@ -303,6 +313,8 @@ data class GlobalConfig(
                 ConfigFields.F_THEME to theme,
                 ConfigFields.F_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
+                ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
+                ConfigFields.F_PAGE_SCALE to pageScale,
             ),
         )
 
@@ -348,6 +360,11 @@ data class GlobalConfig(
         /** 「跟随系统显示大小」的默认值 —— 开（与升级前的行为一致）。 */
         const val DEFAULT_FOLLOW_DISPLAY_SIZE = true
 
+        /** 页面缩放的三档：下限 / 出厂值 / 上限（百分比）。 */
+        const val PAGE_SCALE_MIN = 70
+        const val DEFAULT_PAGE_SCALE = 100
+        const val PAGE_SCALE_MAX = 150
+
         /** [GlobalConfig.miniWindowAnim] 的默认值：默认关闭（原地收、无动画）。 */
         const val DEFAULT_MINI_WINDOW_ANIM = false
 
@@ -372,6 +389,9 @@ data class GlobalConfig(
                 theme = v.text(ConfigFields.F_THEME),
                 colorOsApi = v.bool(ConfigFields.F_COLOR_OS_API),
                 miniWindowAnim = v.bool(ConfigFields.F_MINI_WINDOW_ANIM),
+                followDisplaySize = v.bool(ConfigFields.F_FOLLOW_DISPLAY_SIZE),
+                // 与 vibrateStrength 同一档：手改文件写进越界值，在这一层就钳回滑杆两端
+                pageScale = v.number(ConfigFields.F_PAGE_SCALE).coerceIn(PAGE_SCALE_MIN, PAGE_SCALE_MAX),
             )
     }
 }

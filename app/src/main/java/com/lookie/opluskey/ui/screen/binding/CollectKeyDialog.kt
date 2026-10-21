@@ -29,6 +29,7 @@ import com.lookie.opluskey.core.model.withCustomKey
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.FrostedDialog
+import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialogBottomMargin
 import com.lookie.opluskey.ui.dialogSideMargin
@@ -95,7 +96,7 @@ internal fun SettingsPage.CollectKeyDialog(
     // 被拒（保留码 / 内置键 / 到上限）用**消息条**说，不写在弹窗正文里（用户口径）：
     //  正文里那句红字会把面板撑高、又跟下面的「正在等待按键…」挤在一起；而且它是
     //  「对刚才那一下的答复」，与底部的操作回执是同一类东西。
-    //  ⚠️ 提示条必须画在弹窗**之上**才看得见 —— 根 Scaffold 那边已经把提示挂到浮层槽的
+    //  提示条必须画在弹窗**之上**才看得见 —— 根 Scaffold 那边已经把提示挂到浮层槽的
     //  弹窗宿主之后（见 `PageContent` 的 `popupHost`）。
     // 「等按键」那个窗**退场动画播完了**没有 —— 命名的聚焦要等它（见 [AddKeyDialog] 的 `focusReady`）。
     //  库在退场动画结束时会收一次键盘：早于那一步聚焦，键盘就是「弹出来又被收走」。
@@ -116,7 +117,7 @@ internal fun SettingsPage.CollectKeyDialog(
     KeyWatchWhileVisible(show && waiting, context) { code ->
         when (val check = checkKey(code)) {
             // 被拒：消息条说一句，继续等下一颗（弹窗不关）
-            is CollectCheck.Rejected -> check.message?.let { hint(it) }
+            is CollectCheck.Rejected -> check.message?.let { hint(it, slot = HINT_SLOT_BINDING) }
 
             is CollectCheck.Duplicate -> duplicateName = check.name
 
@@ -283,12 +284,18 @@ private fun SettingsPage.addKey(
     // `null` = 没听到键就点了确定（这一档不该出现：命名窗只在听到键之后才开）
     if (code == null) return false
     val cfg = configState.config.value
+    //  **这里只拿得到一个码**（收集期报回来的是「按下那一下的 keyCode」），而有的键一次按压
+    //  只报其中一个码 —— 压感拍照键双击报 769、短按报 767。族内其余码由 `KeyId.custom`
+    //  按主码**整族认下**（见 `KeyId.familyOf`），所以这里不必（也拿不到）逐个收集。
     val key = KeyId.custom(cfg.nextCustomKeyId(), name, code)
     if (write(cfg.withCustomKey(key), "custom_key_add=${key.id}") == CommandsSave.Failed) return false
     KeyWatchState.select(key.id)
     // 回执照发即可：提示条现在挂在**浮层槽、弹窗宿主之后**（见 `PageContent`），
     //  自己就压在弹窗之上；`onDismiss()` 紧跟其后把弹窗收走，两句谁先谁后都看得见
-    hint(I18n.get(Strings.KEY_WATCH_ADDED, "已添加「%s」").format(name))
+    hint(
+        I18n.get(Strings.KEY_WATCH_ADDED, "已添加「%s」").format(name),
+        slot = HINT_SLOT_BINDING,
+    )
     return true
 }
 
@@ -383,10 +390,13 @@ private fun KeyWatchWhileVisible(
                 )
             }.onFailure { XLog.w("收集按键：接收器没注册上（弹窗会一直显示「正在等待按键」）", it) }
                 .isSuccess
+        //  接收器没注册上就别开监听：注入侧照旧上报，但没有接收方，弹窗会一直停在
+        //  「正在等待按键」直到 60 秒自动关 —— 用户看到的是「按了没反应」。
+        if (!registered) return@DisposableEffect onDispose {}
         watch(context, on = true)
         onDispose {
             watch(context, on = false)
-            if (registered) runCatching { context.unregisterReceiver(receiver) }
+            runCatching { context.unregisterReceiver(receiver) }
         }
     }
 }

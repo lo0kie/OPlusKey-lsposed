@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
@@ -24,15 +23,11 @@ import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.linkReady
-import com.lookie.opluskey.ui.model.BLOCK_HINT_SETTLE_MS
 import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
-import com.lookie.opluskey.ui.noticeReason
+import com.lookie.opluskey.ui.screen.pageWritable
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -48,12 +43,11 @@ import kotlinx.coroutines.delay
 /** 首页。 */
 @Composable
 internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
-    val cfg = configState.config.value
     val ui = remember { HomeUiState() }
 
-    HomeLinkSelfCheck()
-    HomeBlockHint()
-    HomeNoticeHint()
+    //  自检**不在这一页**：它挂在 `PageContent` 的页面级副作用里 —— 挂在这里的话，
+    //  一离开首页这一棵就出组合、协程被取消，`injectChecked` 永远回不来（症状：留在首页才看得到
+    //  「系统侧还是旧版」，一点进子页就再也不会说）。
 
     // 这一页所有可交互项的**总闸**：模块总闸开着（`GlobalConfig.enabled`，主开关那一行写的就是它）
     // + 链路齐了（见 [linkReady]，它现在等同于
@@ -65,7 +59,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     // 「默认界面」（逃生口）始终可用。
     //  适配清单**不再参与**这道闸：清单外的机器照样能改（见 `core/model/DeviceSupport`），
     //  验没验过只在「更多选项」里提示。
-    val pageEnabled = cfg.global.enabled && linkReady && !configState.readOnly
+    val pageEnabled = pageWritable()
 
     Column(
         Modifier
@@ -139,7 +133,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
  *  一直问不到也不会转下去：链路一直不通的机器本来就该一直禁用，无限轮询只是白耗电。
  */
 @Composable
-private fun SettingsPage.HomeLinkSelfCheck() {
+internal fun SettingsPage.HomeLinkSelfCheck() {
     //  键**不是**当前屏、也不是 `Unit` —— 两种极端都踩过：
     //   · `Unit`：只在这一棵进组合时跑一次，而首页被子页盖住、再露回来时**组合并不重建**
     //     （真机实测：退到「自定义命令」再回首页，那条问句还是原来那 13 条，一条没多）⇒ 链路后来
@@ -202,97 +196,6 @@ private suspend fun SettingsPage.queryLinkOnce() {
     if (!hostEverAnswered) link.hostServiceUp = false
     if (!injectEverAnswered) link.injectStatus = null
     XLog.w("链路自检问了 $QUERY_ROUNDS 轮都没问齐，不再重问（详见「更多选项 → 运行状态」）")
-}
-
-/**
- * 底部那条常驻提示 —— 「现在能不能用、该做什么」。
- *
- *  判据就是**同一个总闸**（[linkReady]），不再另算一遍「哪一段 not-ok」：这样「运行状态里报异常」
- *  与「首页弹提示」永远是同一件事 —— 「还没被验证过」是信息、不是故障，「主开关自己关着」属用户
- *  意图、也不是故障，两档都不该骂人。
- *  落点由 `HostLinkState.snackbar` 那一层的 `SnackbarHost` 给（屏幕底边），这里只管弹 / 收。
- *
- *  提示内容由 [blockedReason] 一处给出：**说清是哪一档、该做什么**，不再是笼统的「暂不可用」。
- *  它按「用户能做的事」分档，各页不再自己写 `when` —— 原先这里与 `pick` 各写一份，
- *  加一档要改两个文件，迟早分叉。这一段**只回答「现在能不能用」**；某一环坏在哪儿仍归
- *  「更多选项 → 运行状态」。
- */
-@Composable
-private fun SettingsPage.HomeBlockHint() {
-    val blockHint = blockedReason()
-    //  `screen` 也进键：回首页时把当前结论**重新摆出来**（离开那一刻被下面那个 effect 收掉了，
-    //  只按 `blockHint` 做键的话它一直不变、这句就再也回不来）。
-    LaunchedEffect(blockHint, screen) {
-        // 不在首页就不管 —— 这条说的是**首页那一眼**的结论，跟着页走会挂在子页底部。
-        if (screen != Screen.SHORTCUTS) return@LaunchedEffect
-        // 判据是**原因本身**：那条提示是常驻的（不会自己走），只判「现在有没有内容」的话，
-        //  原因从 A 变成 B 时旧的那句还挂着、新的被跳过 —— 用户会照着已经不成立的原因排查。
-        //
-        //  只动 `statusHint`：操作回执在另一个状态里（`actionHint`），互不影响。
-        val shown = hints.statusHint.text
-        when {
-            blockHint == null -> {
-                if (shown != null) hints.dismissStatus()
-            }
-
-            shown == blockHint -> {
-                // 已经挂着这句了，不重弹（`show` 会重发一个 stamp，提示条要重播一次进场动画）
-            }
-
-            else -> {
-                //  **只在「自检还没问完」时先等一档**（[BLOCK_HINT_SETTLE_MS]）：冷启动那几帧
-                //  `hostServiceUp` / `injectStatus` 都还是空的，这里必然判出「后台服务未运行」——
-                //  立刻弹、广播一到又被打回 null，观感就是「一条消息条闪一下就没了」（真机反馈）。
-                //  这一段挂起会被 `blockHint` 的变化取消 ⇒ 只要它自己通了，这条提示根本不出现。
-                //
-                //  自检跑完之后**一秒都不等**：那时判出来的就是已经落地的事实，原因一变就是真变了 ——
-                //  最典型的是用户自己关掉主开关，再压 600ms 就成了「点了没反应」
-                //  （真机反馈：关主开关后要等约 500ms 提示条才出来）。原来的无条件下压
-                //  把这条「操作回执」也当成了「冷启动的假结论」。
-                if (!link.injectChecked) delay(BLOCK_HINT_SETTLE_MS)
-                XLog.w("首页提示：$blockHint")
-                hints.showStatus(blockHint)
-            }
-        }
-    }
-    // 离开首页（进子页 / 关页）时把它收掉：这一条挂在**页面级**的 host 上、不跟着页走，
-    //  不收就会跟到「自定义命令」那些页的底部去 —— 而它说的是首页那个「现在能不能用」。
-    //
-    //  键必须是 `screen`，**不能是 `Unit`**：首页被子页盖住时组合并不重建（与自检那条同一份实测
-    //  结论），`Unit` 那份 `onDispose` 只在整页关掉时才跑 ⇒ 进子页那一刻根本没机会收。真机症状：
-    //  自检还没问完就切页，那句「正在检查模块…」一直挂在子页底部（它常驻、不会自己走）。
-    DisposableEffect(screen) {
-        onDispose { hints.dismissStatus() }
-    }
-}
-
-/**
- * 「能用，只是这次没落到新代码上」那一类**提醒**（系统侧 / 宿主侧跑着旧包，判据见 [noticeReason]）。
- *
- *  与上面那条常驻提示**分成两条路**：
- *   · 常驻那条答「页面为什么是灰的」，得一直挂着（控件灰着总得有人解释）；
- *   · 这一条页面照常能改，说一遍就走 —— 走操作回执那条（`hints.hint`，几秒自己消失）。
- *  用户口径：「除了模块无法正常运行时的提示，其他的不要常驻，比如系统侧还是旧版这种，提示一下就好」。
- *
- *  同一个提醒**整趟进程只说一遍**（`HostLinkState.lastNoticeShown`）：原先这一位是首页的
- *  `remember`，而首页的组合在进出某些子页（如「条件执行」）时会被重建 —— 于是每回一次首页
- *  就再弹一次。挪到进程级之后，来回切页不再重复；提醒自己消失（重启完 / 换包后恢复）时清零，
- *  下次再出现照说。
- */
-@Composable
-private fun SettingsPage.HomeNoticeHint() {
-    val notice = noticeReason()
-    LaunchedEffect(notice, screen) {
-        if (notice == null) {
-            link.lastNoticeShown = null
-            return@LaunchedEffect
-        }
-        // 不在首页就先不说：这条会跟着页面级的 host 走，在子页弹出来与那一页无关。
-        if (screen != Screen.SHORTCUTS || link.lastNoticeShown == notice) return@LaunchedEffect
-        link.lastNoticeShown = notice
-        XLog.w("首页提醒：$notice")
-        hint(notice)
-    }
 }
 
 /**

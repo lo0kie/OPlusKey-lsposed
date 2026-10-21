@@ -184,7 +184,7 @@ sealed interface Action {
 
         companion object {
             /**
-             * 三个档位名 —— 配置里 `ringer:<名>` 的 `<名>`，与执行侧（`bridge/RingerController`）
+             * 三个档位名 —— 配置里 `ringer:<名>` 的 `<名>`，与执行侧（`bridge/host/RingerController`）
              * 认的档位一一对应。清单表与图标表都从这一处取，不再各写一遍字符串。
              */
             const val NORMAL = "normal"
@@ -229,7 +229,7 @@ sealed interface Action {
              *
              * 名字照搬系统自己侧键动作表里的 `control_center`（`docs/device-findings.md` §五），
              * 但**调用目标不是场景表那份**：那张表里没有这一行，落点是我们自己在 system_server 里试的
-             * （候选与判据见 [com.lookie.opluskey.inject.system.StatusBarBridge]）。
+             * （候选与判据见 [com.lookie.opluskey.bridge.StatusBarBridge]）。
              */
             const val CONTROL_CENTER = "control_center"
         }
@@ -266,7 +266,7 @@ sealed interface Action {
         //  图标表 / 文案表 / 清单表、日志脱敏）一律引用这些常量，不许再写字面量：同一个前缀散在
         //  几个文件里时，改一处而漏另一处的表现是「配置读出来是另一档」，而编译器不会提醒。
         //  前缀之外的「入口格标记」（`nav:` / `key:` / `zoom:`）不是动作取值、永不写进配置，
-        //  它们归 `ui/model/ActionCatalog`（那里是清单层）。
+        //  它们归 `core/model/ActionCatalog`（那里是清单层）。
 
         /** 「无操作」。 */
         const val NONE = "none"
@@ -426,7 +426,7 @@ sealed interface Action {
                 }
 
                 // **不再默认按 shell 执行**（原先这里是 `Shell(text)`，手写命令可省 `shell:`）。
-                //  现在「命令详细」必须显式带前缀，界面那一栏已经拦住（见 [hasSupportedFormat]）；
+                //  现在「命令详情」必须显式带前缀，界面那一栏已经拦住（见 [hasSupportedFormat]）；
                 //  这里兜的是手改配置文件 / 老版本存下来的裸写法 —— 静默不执行，只留一行日志。
                 //  宁可不跑，也不把一段不知道是什么的字符串交给 shell。
                 //  独立成 [unsupported] 是为了让本函数留在 `LongMethod` 之内。
@@ -450,15 +450,15 @@ sealed interface Action {
         }
 
         /**
-         * 这段文本**是不是以支持的格式开头** —— 「命令详细」那一栏的硬性要求。
+         * 这段文本**是不是以支持的格式开头** —— 「命令详情」那一栏的硬性要求。
          *
          *  早先认不出前缀的写法一律按 shell 执行（手写命令可省 `shell:`），「命令格式」那张卡
          *  第一行也就写着「默认为 shell 命令」。现在取消这个默认：命令必须显式带前缀，
-         *  否则既不保存、也不执行（用户口径「去掉默认为 shell 和 `cmd:`，对命令详细限制，
+         *  否则既不保存、也不执行（用户口径「去掉默认为 shell 和 `cmd:`，对命令详情限制，
          *  必须以支持的格式开头」）。
          *
          *  判据就是 [parse] 里认的那几样：几个**精确比较**的字面量，加上各条 `xxx:` 前缀。
-         *  ⚠️ 往 [parse] 里加新前缀时，记得同步 [PREFIXES] —— 两处漂移会让新格式「能执行但存不进去」。
+         *  往 [parse] 里加新前缀时，记得同步 [PREFIXES] —— 两处漂移会让新格式「能执行但存不进去」。
          */
         fun hasSupportedFormat(raw: String?): Boolean {
             val text = raw?.trim().orEmpty()
@@ -527,7 +527,9 @@ sealed interface Action {
                 //  而且是**在 system_server 里**每 ~100ms 一轮的自持循环（`isSynthetic` 那道
                 //  放行判据只认 `INJECTABLE_CODES`，这几个码不在表里）。
                 //  别的码（含音量 / 电源 / 媒体）照旧放行：它们注入的那一下由 `isSynthetic` 认出来。
-                code in CLAIMED_CODES -> {
+                //  族码（压感拍照键那类）同样是模块认领的码，但不在 [CLAIMED_CODES] 里
+                //  （那张表只列内置键）—— 漏了这一条，写 `keyevent:767` 绑给那颗键就是自持循环。
+                code in CLAIMED_CODES || RomKeyFamilies.isFamilyCode(code) -> {
                     XLog.w("动作 keyevent:$code 是模块自己认领的键码（会自持循环，按 none 处理）：$text")
                     None
                 }

@@ -8,6 +8,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
@@ -184,5 +185,7 @@ private fun SettingsPage.setRepeatVibrate(on: Boolean) {
     writeAndNotice(
         cfg.copy(keys = cfg.keys + (id to cfg.key(id).copy(longRepeatVibrate = on))),
         "long_repeat_vibrate=${if (on) 1 else 0} key=${id.id}",
+        //  整页一个位（[HINT_SLOT_BINDING]）：这一页的开关不各占一格，后一句改前一句的字
+        slot = HINT_SLOT_BINDING,
     ) { switchNotice(I18n.get(Strings.BINDING_REPEAT_VIBRATE_TITLE, "连续触发时振动"), on) }
 }

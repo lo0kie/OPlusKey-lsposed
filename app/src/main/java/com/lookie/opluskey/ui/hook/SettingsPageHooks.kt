@@ -41,19 +41,6 @@ internal object SettingsPageHooks {
     private val BASE_ACTIVITY = Framework.HOST_SETTINGS_BASE_ACTIVITY
 
     /**
-     * 侧键设置页的**实际** Activity（[BASE_ACTIVITY] 的子类）。
-     *
-     *  「重启服务」杀掉本进程之后要靠它把页面重新拉起来（见 `ui/state/PageControl`
-     * 的 `schedulePageRelaunch`）：那一枪是进程死了之后由系统投递的，拿不到当前 Activity，
-     * 只能有一个写死的组件名兜底。照旧保守取 `activity?.componentName`，取到就不用它。
-     *  真机 `dumpsys package com.oplus.gesture` 核对（它的 intent-filter 里带着
-     * `com.oplus.gesture.StartActionButtonSettingsActivity` 这个 action）。
-     *
-     * 注意：类名本体在 `bridge/Framework.kt` 的候选表里（一、7），这里只是别名。
-     */
-    internal val SETTINGS_ACTIVITY = Framework.HOST_SETTINGS_ACTIVITY
-
-    /**
      * `R.id.container` / `R.id.appbar_layout` 的数值、宿主包名、浅色主题名 ——
      * 全部搬到了 `ui/HostWindow.kt`（连同 [findContainer] / [pageContext] / [isNight]
      * 那几个纯读取的辅助函数）。
@@ -510,7 +497,7 @@ internal object SettingsPageHooks {
         // (2) 系统返回 / 返回手势（终点是 `Activity#finish`，见 [BackInterception.installBackInterception]）。
         HostSession.activity = activity
         //  换页时**先把上一份收掉**：新实例先建、老实例后销毁那一档顺序下，`clearPageRefs`
-        //  会因为「HostSession.activity 已经不是它」而早退，旧页面（含每秒轮询、以及那些
+        //  会因为「HostSession.activity 已经不是它」而早退，旧页面（含那条轮询、以及那些
         //  捕获了旧 Activity 的回调）就永远没人 dispose —— 这一支补的就是那个缺口。
         if (HostSession.page !== page) HostSession.page?.hints?.dispose()
         HostSession.page = page
@@ -529,10 +516,10 @@ internal object SettingsPageHooks {
         HostChrome.removeStatusFiller()
         HostChrome.paintChrome(activity, container, pageBg)
 
-        //  深浅切换只靠页面里的每秒轮询（读系统全局配置）。
+        //  深浅切换只靠页面里那条轮询（读系统全局配置，间隔 [NIGHT_POLL_MS]）。
         // 抓到它是「亮色进页先黑 1 秒再变白」的元凶：宿主声明了 `configChanges=uiMode`，
         // 它的配置**停在旧的 night 值**（见 [pageContext] 注释），回调把这份过期配置喂给
-        // 页面 ⇒ 页面刚画完浅色就被翻成深色，一秒后轮询才纠正回来。删。
+        // 页面 ⇒ 页面刚画完浅色就被翻成深色，下一次轮询才纠正回来。删。
 
         // 状态栏图标的明暗已经由上面那句 `HostChrome.paintChrome` 里的
         // `HostChrome.setStatusBarIconAppearance` 按页面底色刷过（浅底 → 深色图标）。

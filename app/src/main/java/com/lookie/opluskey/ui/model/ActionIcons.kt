@@ -102,7 +102,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackNext
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackPrev
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
-import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Power
 import io.github.lyxnx.compose.ui.tablericons.outline.RecordMail
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
@@ -136,6 +135,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Volume4
 import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
 import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
 import io.github.lyxnx.compose.ui.tablericons.outline.World
+import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
 
 /** 动作 → 图标的映射（列表行首那个图标）。 */
 internal fun actionIcon(token: String): ImageVector =
@@ -484,9 +484,6 @@ internal object PageIcons {
      */
     val SettingsCog: ImageVector get() = TablerIcons.Outline.SettingsCog
 
-    /** 「按键绑定」行首 —— 箭头光标 `Pointer`，读作「按下去那一下」。 */
-    val TouchApp: ImageVector get() = TablerIcons.Outline.Pointer
-
     /**
      * 「启用按键绑定」那一行的行首 —— 电源符号。
      *
@@ -498,7 +495,7 @@ internal object PageIcons {
     /**
      * 「这颗键停用了」—— 圆圈 + 叉（`cancel`）。
      *
-     *  用在浮层菜单里那颗键的行尾（`MenuEntry.Row.stateIcon`）与「按键绑定」页顶栏的
+     *  用在「按键绑定」页顶栏的
      *  尾随小图标：与行首那枚键位数字不同形，一眼能分出「这是第几颗键」与「这颗键现在不接管」。
      *
      *  不用 `Ban`（那是「无操作」那个动作的行首，摆在同一张网格里会串味），也不用 `Power`
@@ -547,7 +544,12 @@ internal object PageIcons {
      */
     val ColorOsLink: ImageVector get() = TablerIcons.Outline.PlugConnected
 
-    /** 顶栏右侧的菜单按钮（竖三点）。 */
+    /**
+     * 竖三点（`dots-vertical`）—— 顶栏右侧的菜单按钮，也是**行尾溢出菜单**的按钮。
+     *
+     *  两处同一个字形、同一层意思「这里还有一组动作」：顶栏那颗弹页面菜单（`I18n` 的
+     *  `common.menu`「菜单」），「多条命令」步骤行那颗弹上移 / 下移 / 删除（`common.more`「更多」）。
+     */
     val Menu: ImageVector get() = TablerIcons.Outline.DotsVertical
 
     /** 浮层菜单「打开默认界面」—— 窗口框，读作「另一个界面」。 */
@@ -660,6 +662,9 @@ internal object PageIcons {
      */
     val PaletteSwatch: ImageVector get() = TablerIcons.Filled.Square
 
+    /** 「外观」卡「页面缩放」—— `zoom-in`（放大镜加号：这一行是缩放）。 */
+    val ZoomIn: ImageVector get() = TablerIcons.Outline.ZoomIn
+
     /** 「外观」卡「跟随系统显示大小」—— `text-size`（大小 A→A）。 */
     val TextSize: ImageVector get() = TablerIcons.Outline.TextSize
 
@@ -736,7 +741,7 @@ internal object PageIcons {
     /**
      * 分叉条件「某个应用在前台」—— `apps`（九宫格）。
      *
-     *  与 [CommandBranch] 分开：「选择条件」那张菜单里十种条件一行一颗，`arrows-split` 是
+     *  与 [CommandBranch] 分开：「选择条件」那张菜单里每种条件一行一颗，`arrows-split` 是
      *  「这一支怎么走」这件事的记号，不是「哪个应用」；同一张菜单里既当行首又当条件名会读混。
      */
     val AppFront: ImageVector get() = TablerIcons.Outline.Apps

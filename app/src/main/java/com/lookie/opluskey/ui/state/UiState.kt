@@ -63,7 +63,7 @@ internal object UiState {
      *
      * @return 是否真的落盘 —— 调用方（`PageHeader` 那三处切换）会紧接着向用户报「已…」，
      *   丢了这个返回值就变成了「明明没写进去却说已落盘」。吞掉返回值、那三处又用
-     *   `XLog.i` 断言，release 下两处都看不见，是最难发现的一类谎报。
+     *  `XLog.d` 打一句，release 下那行被编译期消除，是最难发现的一类谎报。
      */
     fun writeShowSystemApps(value: Boolean): Boolean {
         val text = readTextOrNull() ?: return refuseWrite(KEY_SHOW_SYSTEM_APPS, value)

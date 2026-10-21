@@ -47,10 +47,15 @@ internal object FileResultHook {
         while (cur != null && cur != Activity::class.java) {
             val declared = declaredResult(cur)
             if (declared != null) {
-                module.hookGuarded(declared, hooker)
-                hookedClass = cls
-                XLog.w("文件选择：宿主的 ${cur.simpleName}#$METHOD 已单独挂钩（它不往上调也能收到）")
-                return
+                //  挂钩**成功**才记账。没记上就把 `hookedClass` 提前写上、还打一句「已挂钩」，
+                //  后面每次进来都会被开头那句 `hookedClass === cls` 挡回去 —— 结果是这条路
+                //  **一次都没接上、日志还说自己接上了**（导入导出整条静默归零）。
+                if (module.hookGuarded(declared, hooker) != null) {
+                    hookedClass = cls
+                    XLog.w("文件选择：宿主的 ${cur.simpleName}#$METHOD 已单独挂钩（它不往上调也能收到）")
+                    return
+                }
+                XLog.w("文件选择：宿主 ${cur.simpleName}#$METHOD 挂钩失败，继续往上找")
             }
             cur = cur.superclass
         }

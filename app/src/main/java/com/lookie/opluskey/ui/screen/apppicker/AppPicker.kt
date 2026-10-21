@@ -266,6 +266,13 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
             ui.loaded = null
         }
         ui.lastMode = withSystem
+        //  首帧先铺上一份缓存：**只在模式一致时**铺 —— 把「开着系统应用时查的清单」当关着时的
+        //  首帧用，退出再进会先闪一屏系统应用（与 `cachedAppsWithSystem` 同一个理由）。
+        //  下面照样重查并覆盖它，新装 / 卸载的应用不会因为这份缓存而看不见。
+        val cached = picker.cachedApps.value
+        if (ui.loaded == null && cached != null && picker.cachedAppsWithSystem == withSystem) {
+            ui.loaded = cached
+        }
         // 整段查询都在后台调度器上，一行都不许落在主线程：里面有 `getInstalledApplications`、
         // 逐个 `getLaunchIntentForPackage`（开着系统应用时是几百次 binder 调用）与每个包的
         // label 加载，全是阻塞式的。用 `IO` 而非 `Default`：这些活是 IO 型，而 `Default`
@@ -280,9 +287,10 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
             XLog.w("选择应用：这次没查到（保留上一份清单 ${picker.cachedApps.value?.size ?: 0} 条）")
             ui.failed = true
         } else {
-            // 图标缓存跟着新清单一起清（理由见 `APP_ICON_CACHE_SLOTS`）：清在 `loaded` 之前，
-            //  新组合出来的行才会去取新图标，而不是命中上一批 `Drawable`。
-            picker.clearIcons()
+            //  图标缓存只在**清单真的变了**时才清（理由见 `APP_ICON_CACHE_SLOTS`：换图标包 / 换主题
+            //  之后要重新取）。每次查询成功都清的话，一次下拉刷新会把滚过的几十个 `Drawable` 全丢掉，
+            //  滚动回去又逐个问一遍 `PackageManager` —— 而清单没变时一个图标都不会变。
+            if (fresh != picker.cachedApps.value) picker.iconCache.clear()
             picker.cachedApps.value = fresh
             picker.cachedAppsWithSystem = withSystem
             ui.loaded = fresh

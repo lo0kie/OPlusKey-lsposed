@@ -23,7 +23,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -44,6 +43,7 @@ import com.lookie.opluskey.ui.model.CLONE_TAG_LIGHT
 import com.lookie.opluskey.ui.model.LaunchableApp
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.isDarkScheme
 import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -63,12 +63,12 @@ import kotlinx.coroutines.withContext
  *
  *  取回来的图进**这一行自己的状态**（下面那个 `icon`）：到位只重组这一行。发一份全局版本号去通知
  *  所有行「我这张到了」是错的 —— 一屏十来行依次到位就是十来次全表重组，而别的行除了重跑一遍查表
- *  什么也没得到。版本号只留「清缓存」那一档（见 `AppPickerState.iconsGeneration`）。
+ *  什么也没得到。版本号只留「清缓存」那一档（见 `AppIconCache.generation`）。
  *
  *  位图的 `remember` 键带 [icon] 而不只带包名：清过缓存之后同一个包名会取到新一份 `Drawable`，
  *  键里不带它就重画不出来。
  *
- *  图标换了（换主题 / 图标包）由 `AppPickerState.clearIcons` 跟着清单一起失效，**已经在视口里的那几行也算**
+ *  图标换了（换主题 / 图标包）由 `AppIconCache.clear` 跟着清单一起失效，**已经在视口里的那几行也算**
  *  —— 版本号一动，下面那个 `remember` 就重新取值（缓存这时是空的 ⇒ 重新取）。
  */
 @Composable
@@ -76,13 +76,13 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
     val packageName = app.packageName
     //  缓存键带 user：主用户与分身**同包名**，只按包名存会把主用户那份图发给分身那一行
     val iconKey = "${app.userId}@$packageName"
-    // 读一次版本号 = 订阅「清缓存」（理由见 `AppPickerState.iconsGeneration`）
-    val generation = picker.iconsGeneration.intValue
+    // 读一次版本号 = 订阅「清缓存」（理由见 `AppIconCache.generation`）
+    val generation = picker.iconCache.generation.intValue
     // 这一行自己那份图：初值先看缓存（滚回来那一轮就命中）。
     //  **key 里只有包名，没有 `generation`**：清缓存（`generation +1`）只该让下面那个 effect
     //  重新取一张来覆盖，不该把已经在屏幕上的这张图丢掉 —— 带上 `generation` 就会在每次重查
     //  清单之后把整屏图标重置回空白再重新填，看起来就是「进页后图标闪一下」。
-    var icon by remember(iconKey) { mutableStateOf(picker.cachedIcon(iconKey)) }
+    var icon by remember(iconKey) { mutableStateOf(picker.iconCache.cached(iconKey)) }
     // 「这一行问过一轮了没有」—— 决定那张通用字形到底该不该出现。
     //  缓存命中就算问过（`icon != null`）；否则要等这一轮 IO 回来才算。
     var resolved by remember(iconKey) { mutableStateOf(icon != null) }
@@ -90,7 +90,7 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
     //  但在新图到手之前，屏幕上那张旧图留着不动。
     LaunchedEffect(iconKey, generation) {
         // 缓存里已有就直接用，不再跨进程问
-        picker.cachedIcon(iconKey)?.let {
+        picker.iconCache.cached(iconKey)?.let {
             icon = it
             resolved = true
             return@LaunchedEffect
@@ -99,7 +99,7 @@ internal fun SettingsPage.AppIcon(app: LaunchableApp) {
         // 取不到也要记「问过了」：下面据此决定画通用字形还是留白
         if (loaded != null) {
             // 写进缓存是为了「滚回去不再跨进程问第二轮」，写进自己这一份是为了当场画出来
-            picker.putIcon(iconKey, loaded)
+            picker.iconCache.put(iconKey, loaded)
             icon = loaded
         }
         resolved = true
@@ -206,7 +206,7 @@ internal fun appKindTagTint(
 ): Color =
     when {
         xposed -> {
-            if (COUITheme.colorScheme.background.luminance() < 0.5f) {
+            if (COUITheme.colorScheme.isDarkScheme) {
                 APP_KIND_MODULE_DARK
             } else {
                 APP_KIND_MODULE_LIGHT
@@ -225,7 +225,7 @@ internal fun appKindTagTint(
 /** 「分身」标签色（明暗各一值，见 `CLONE_TAG_*`）—— 与 [appKindTagTint] 同一套切色判据。 */
 @Composable
 internal fun cloneTagTint(): Color =
-    if (COUITheme.colorScheme.background.luminance() < 0.5f) {
+    if (COUITheme.colorScheme.isDarkScheme) {
         CLONE_TAG_DARK
     } else {
         CLONE_TAG_LIGHT

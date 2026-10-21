@@ -350,7 +350,7 @@ internal object Framework {
 
     /**
      * 把 [cls] 上名为 [entries] 里的方法收进 [out]（精确匹配，见 [STRATEGY_ENTRIES]）。
-     * 找不到时打 W 级日志（注入侧 `XLog.i` 在 LSPosed 日志页里看不到，见 `docs/device-findings.md`
+     * 找不到时打 W 级日志（注入侧只能给 w：`XLog.d` 在 release 被编译期消除，而 `XLog` 没有 i 级，见 `docs/device-findings.md`
      * §十五），并列出同类命名的方法名，让「层找到但方法改名」与「类没找到」一眼可分。
      */
     private fun collect(

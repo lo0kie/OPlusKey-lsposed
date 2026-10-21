@@ -17,37 +17,27 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.LocalHeaderBoxHeight
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.addStep
-import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.headerReady
+import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
-import com.lookie.opluskey.ui.replaceStep
 import com.lookie.opluskey.ui.screen.about.AboutScreen
 import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingScreen
-import com.lookie.opluskey.ui.screen.binding.pick
 import com.lookie.opluskey.ui.screen.command.BranchScreen
 import com.lookie.opluskey.ui.screen.command.CommandActions
 import com.lookie.opluskey.ui.screen.command.CommandScreen
-import com.lookie.opluskey.ui.screen.command.writeBranchCommand
-import com.lookie.opluskey.ui.screen.command.writeBranchCondition
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import com.lookie.opluskey.ui.screen.general.GeneralScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
-import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.state.PickTarget
-import com.lookie.opluskey.ui.state.PickedDetail
-import com.lookie.opluskey.ui.tickNow
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
@@ -133,7 +123,7 @@ internal fun SettingsPage.PageEntry(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = COMMAND_TOOLBAR_BOTTOM)
-            if (s.isCommandForm) CommandActions(toolbarModifier)
+            if (s == Screen.COMMANDS) CommandActions(toolbarModifier)
 
             // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
             // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
@@ -270,6 +260,14 @@ internal fun SettingsPage.keyEnabled(id: KeyId): Boolean =
         .enabled
 
 /**
+ * 「这一页现在能不能改」—— 主开关开着、链路就绪、配置不是只读。
+ *
+ *  首页与「通用设置」都要它：两处各写一遍时，加一条闸门（比如以后只读再加一档）就得记得改两处，
+ *  漏一处的那一页会「看起来能改、点了被拦」。
+ */
+internal fun SettingsPage.pageWritable(): Boolean = configState.config.value.global.enabled && linkReady && !configState.readOnly
+
+/**
  * 「选择应用」页 —— 两个入口共用（挑中的东西写到哪儿去由 `picker` 那一组标记决定）。
  *
  * 「当前已选的那个应用」= 行尾那枚图标（箭头 / 勾 / 一块屏）+ 进页滚到它眼前，来源见
@@ -354,129 +352,4 @@ private fun SettingsPage.openAppPickerForGesture(g: Gesture) {
     // 进页唯一复位点：点过的行回到当前绑定，定位 / 拦人窗 / 刷新指示器归零（清单不清）
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
     navTo(Screen.APP_PICKER)
-}
-
-/**
- * 把一个**已经拼好的 token** 写成本次挑应用的取值 —— **不负责退页**。
- *
- *  两页（应用 / 界面）最后都落到这里：应用那页拼 `app:` / `window:`，界面那页还可能拼
- *  `appshortcut:`。拼 token 的地方只剩调用点，这一层只管「写到哪儿去」。
- *
- * @return true = 写下去了；false = 没地方写（手势那条入口没记下来）或被拦
- *   （链路未就绪 / 写盘失败）。调用方据此决定留在原地。
- */
-private fun SettingsPage.writeToken(
-    token: String,
-    appName: String?,
-): Boolean {
-    // 「写到哪儿去」只有一处分派：分叉的条件 / 分叉某一支要执行的应用 / 多条命令的某一步 /
-    //   手势绑定。
-    return when (val target = picker.takePickTarget()) {
-        is PickTarget.Branch -> {
-            // `takePickTarget()` 是**一次性消费**：写失败了得把「为谁挑」放回去，否则这一页
-            //  立刻退化成「普通挑应用」—— 点一行会去挑界面、按确定还会写到手势绑定上。
-            if (!writeBranchCondition(token, target.index)) {
-                picker.openForBranch(target.index)
-                false
-            } else {
-                true
-            }
-        }
-
-        is PickTarget.BranchCommand -> {
-            if (!writeBranchCommand(token, target.index)) {
-                picker.openForBranch(target.index, forCommand = true)
-                false
-            } else {
-                true
-            }
-        }
-
-        // 「加一步 / 换一步」：`addStep()` / `replaceStep()` 自己会把页面切回「自定义命令」
-        // （那才是这次挑应用的来处），所以这条路上调用方**不再退页**。
-        //  真加进去了才算写成功：满员时 `addStep` 只 toast、不发车，这里若照样返回 true，
-        //  调用方会当作「已落盘」直接 return，刚挑的应用就凭空消失。
-        is PickTarget.Step -> {
-            if (target.index >= 0) replaceStep(target.index, token) else addStep(token)
-        }
-
-        // 写的是**进这一页时那个手势**（见 picker.gesture），不是 pager 的当前页
-        // —— 这一页不属于 pager。
-        null -> {
-            val g = picker.gesture ?: return false
-            pick(
-                // 只为把取值交给 `pick`（它读的是 token），name 这一位在这条路上不参与显示。
-                ActionCatalog.Spec(name = token, token = token),
-                g,
-                appName,
-            )
-        }
-    }
-}
-
-/**
- * 「选择应用」页点 FAB —— 把**当前选中**的那一条写下去。
- *
- *  **这是整趟挑应用唯一的落盘点**：二级页点确认只写 [AppPickerState.draft]（草稿），
- *  到这一颗才真正写配置。所以 token 优先取草稿 —— 有草稿说明用户刚在二级页挑过，
- *  照它写 `app:包名/类名` / `appshortcut:`；没有草稿才是「就绑这个应用」（`app:包名`）。
- *
- *  写成了才退页：被拦（链路未就绪）或写盘失败时留在原地，
- *  否则用户挑的东西看起来像存好了，其实一个字节都没写。
- */
-private fun SettingsPage.onAppPicked(
-    picked: PickedDetail,
-    window: Boolean,
-) {
-    tickNow()
-    // `forStep` 必须在写之前读：`writeToken` 里那个 `takePickTarget()` 会把它清掉
-    val forStep = picker.forStep
-    // 分叉那两条路同理（条件 / 那一支要执行的应用），而且它们**自己会退页**
-    //  （见 `writeBranchCondition` / `writeBranchCommand`）—— 这里不能再补一次
-    //  `goBack()`，否则一次退两层、还会把「放弃未保存的命令」弹出来。
-    val forBranch = picker.forBranch
-    // 刚在「选择界面」页确认过就照那一条写（`app:包名/类名` / `appshortcut:`）；
-    // 没确认过就照 `pending` 这一份写 —— 它带着快捷方式的 id，不能退化成 `app:包名/id`。
-    //  给「条件执行」挑的那一趟**没有二级页**（不挑界面），所以那边一律按 `pending` 写：
-    //  草稿里若留着上一趟的 `包名/类名`，照它写会把条件弄成「某个界面」，而条件只认包名。
-    val token =
-        if (forBranch) {
-            picked.token(window = false)
-        } else {
-            picker.draft?.token(picker.smallWindow.value) ?: picked.token(window)
-        }
-    // 名字与绑定**同一次写盘**（`Config.appNames`）—— 分两次写要多落一次盘 + 一次广播，
-    //  而中间那一下读到的配置只有新绑定、没有名字，顶栏会当场闪一下包名。
-    //  快捷方式带的是它自己的名字（「扫一扫」），其余按目标现取应用名。
-    val name = picker.draft?.label ?: picked.label ?: appNameOf(picked.target)
-    if (!writeToken(token, name)) {
-        XLog.w("选择应用：${picked.target} 没写进绑定，留在本页（不 goBack）")
-        return
-    }
-    if (forStep || forBranch) return
-    picker.clearTarget()
-    goBack()
-}
-
-/**
- * 「选择界面」页点确认 —— **只记草稿，不写配置**。
- *
- *  这一页是「挑」，落盘在上一级（「选择应用」页那颗 FAB）。所以这里做两件事：
- *   · 把挑中的那一条存进 [AppPickerState.draft]（连同「以小窗口打开」那一档，等提交时再拼 token）；
- *   · 退回一级页，并把那一页的选中也挪过来 —— 行尾图标要立刻显示成「一块屏」。
- *
- *  用户在这之后按返回走人，配置一个字节都不会动（草稿随这一趟结束一起作废，
- *  见 [AppPickerState.clearTarget]）。
- */
-private fun SettingsPage.onDraftPicked(
-    target: String,
-    shortcutId: String?,
-    label: String?,
-) {
-    tickNow()
-    val detail = PickedDetail(target, shortcutId, label)
-    // 草稿与「选中位」装同一份：行尾靠它的 shortcutId 画 table-shortcut，FAB 靠它取目标
-    picker.draft = detail
-    appPickerUi.pending = detail
-    goBack()
 }

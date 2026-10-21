@@ -49,8 +49,6 @@ import kotlinx.coroutines.launch
 //
 // 拆之前这里是 626 行一个函数（含三层 lambda 里的整页内容），改一行得先数括号。
 
-internal const val SERIAL_CARD_ROWS = 1
-
 /**
  * 「已保存的命令」里单条命令卡的行高下限 = 卡宽 × 本值。
  * 单条只有「一行摘要」，占满正方形会空出一大半，取一半即可。
@@ -62,6 +60,13 @@ internal const val SINGLE_CARD_MIN_HEIGHT_RATIO = 0.5f
  * 这一行整行可点，高度不够就等于把触达区缩到手指够不着。
  */
 internal val FORMAT_ROW_TOUCH = 32.dp
+
+/**
+ * 「支持的命令格式」卡里两列之间的间距（左列写法与右列说明之间）。
+ *
+ *  跟着 `footnote1` 的字号走：比一个全角字的宽度略窄，够把两列分开又不像两栏表格。
+ */
+internal val FORMAT_COLUMN_GAP = 12.dp
 
 /**
  * 「自定义命令」页那条类型选择器带（单条 / 多条）—— 挂在顶栏的 `bottomContent` 里。

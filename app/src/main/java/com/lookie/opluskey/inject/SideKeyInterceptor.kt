@@ -9,6 +9,7 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.RomKeyFamilies
 import com.lookie.opluskey.inject.input.GestureDetector
 import io.github.libxposed.api.XposedInterface
 
@@ -172,7 +173,7 @@ internal class SideKeyInterceptor(
         if (isSynthetic(keyEvent)) {
             // 提成 W：这条在 release 里也要能看到 —— 「遥控器式的真事件被当合成丢了」正是
             //   这次 PLQ110 那种故障唯一的一行证据（d 级在正式包里被编译期消灭）。
-            XLog.w("按键（$point）：合成事件（deviceId=${keyEvent.deviceId} keyCode=${keyEvent.keyCode}），放行给系统")
+            XLog.d("按键（$point）：合成事件（deviceId=${keyEvent.deviceId} keyCode=${keyEvent.keyCode}），放行给系统")
             return false
         }
 
@@ -183,6 +184,8 @@ internal class SideKeyInterceptor(
             Decision.Pass -> false
             Decision.Swallow -> true
             is Decision.Claimed -> feedDetector(d.config.id, point, keyEvent, d.config)
+            is Decision.RomGesture -> runRomGesture(d, keyEvent)
+            is Decision.RomSwallow -> swallowRomMiddleCode(d.code, keyEvent)
         }
     }
 
@@ -205,7 +208,41 @@ internal class SideKeyInterceptor(
             Decision.Pass -> false
             Decision.Swallow -> true
             is Decision.Claimed -> feedDetector(d.config.id, point, keyEvent, d.config)
+            is Decision.RomGesture -> runRomGesture(d, keyEvent)
+            is Decision.RomSwallow -> swallowRomMiddleCode(d.code, keyEvent)
         }
+    }
+
+    /**
+     * 族里的中间态码：**按下与抬手都吞**，一次按压只在按下记一行。
+     *
+     *  抬手也吞是必须的：放一条没有按下的 UP 过去，判定器会按「孤立抬手」补判一次单击。
+     */
+    private fun swallowRomMiddleCode(
+        code: Int,
+        keyEvent: KeyEvent,
+    ): Boolean {
+        if (keyEvent.action == KeyEvent.ACTION_DOWN) {
+            XLog.w("按键：ROM 中间码 $code 已认下并吞掉（不是手势码，不派发）")
+        }
+        return true
+    }
+
+    /**
+     * ROM 判好的手势码：**按下与抬手都吞**，只在抬手那一下派发。
+     *
+     *  为什么派发放在抬手（与判定器把双击挪到抬手同一个理由，见 `GestureDetector.onKeyDown`
+     *  里那段）：按下那一刻触发键自己还按着，注入的动作容易和 ROM 的组合键窗口打架。
+     *  代价只有几十毫秒，手感上看不出来。
+     */
+    private fun runRomGesture(
+        d: Decision.RomGesture,
+        keyEvent: KeyEvent,
+    ): Boolean {
+        if (keyEvent.action == KeyEvent.ACTION_UP) {
+            detector.onRomGesture(d.config.id, d.gesture, d.config)
+        }
+        return true
     }
 
     /** 一次按键的处置结果 —— 两条认领路径共用（`when` 一出，出口数量也降下来了）。 */
@@ -216,9 +253,31 @@ internal class SideKeyInterceptor(
         /** 吞掉 —— 收集按键期间用（见 `KeyWatch` 的类注释）。 */
         object Swallow : Decision
 
-        /** 接管这颗键，交给它自己那一份配置。 */
+        // 接管这颗键，交给它自己那一份配置。
         data class Claimed(
             val config: KeyConfig,
+        ) : Decision
+
+        /**
+         * 接管，且**这个码本身就是 ROM 判好的手势**（压感拍照键的 767/768/769）——
+         * 不喂判定器，抬手时直接按 [gesture] 派发。
+         *
+         *  与 [Claimed] 分开是为了让「喂判定器」那一句在两条认领路径上都只有一种形状：
+         *  凡是进判定器的都是「只有按下/抬手、手势靠时长判」的普通码。
+         */
+        data class RomGesture(
+            val config: KeyConfig,
+            val gesture: Gesture,
+        ) : Decision
+
+        /**
+         * 认下、但**不派发**：这个码属于已知族、却不是手势码（轻按 / 重按 / 上滑 / 下滑 …）。
+         *
+         *  这些码是按压过程的中间态。喂给判定器会补判出一次单击；放行给系统则让 ROM 自己
+         *  执行拍照。两条都错，只能吞。
+         */
+        data class RomSwallow(
+            val code: Int,
         ) : Decision
     }
 
@@ -236,40 +295,37 @@ internal class SideKeyInterceptor(
         point: Framework.InterceptionPoint,
         raw: Boolean,
     ): Decision {
-        // 「自定义按键」页开着监听时，先把这一下**旁路**报回去。刻意摆在白名单**之前**：
-        //  那一页要的是「用户按了哪些键」，摆到白名单后面就只剩侧键自己那份码，
-        //  别的键一个都听不到。
-        KeyWatch.report(keyEvent)
-        // 收集期**一律吞掉**：弹窗是模态的，这时按任何键都是在「报键」，不是在用它。
-        //  不吞的话音量会真的调音量、电源会真的弹菜单（还把弹窗盖掉）—— 用户看到的是
-        //  「按了没加上，还顺手改了别的东西」。
-        //  最长影响由 [KeyWatch] 的 60 秒自动关兜着，弹窗一关就恢复。
-        val collecting = KeyWatch.active
-        if (collecting && keyEvent.action == KeyEvent.ACTION_DOWN) {
-            // 记下这一下「按下」：弹窗很可能**因为这一下而关掉**（收下了 / 被手动关掉），
-            // 紧跟的 UP 就不再属于「收集期」了（见下面那段）。
-            swallowedDownAt[keyEvent.keyCode] = SystemClock.uptimeMillis()
-        }
-        // 收集期被吞掉的那一下，它的**抬手也要吞**：只吞 DOWN 的话，判定器收到一条没有按下的
-        // UP，会按「孤立抬手」补判一次单击 —— 侧键的动作照样执行（真机实测：弹窗一关，
-        // 侧键立刻跑了一次 OCR）。判据是「这颗码的按下刚刚被我们吞过」。
-        val justSwallowed =
-            !collecting &&
-                keyEvent.action == KeyEvent.ACTION_UP &&
-                (
-                    swallowedDownAt.remove(keyEvent.keyCode)?.let {
-                        SystemClock.uptimeMillis() - it < COLLECT_SWALLOW_TAIL_MS
-                    } == true
-                )
-        if (collecting || justSwallowed) return Decision.Swallow
+        //  收集期那一段（旁路上报 + 记账 + 判这次该不该整条吞）收在 [swallowWhileCollecting]，
+        //  这里的 `decide` 只剩「认领 / 放行」两层判断。
+        if (swallowWhileCollecting(swallowedDownAt, keyEvent)) return Decision.Swallow
 
         val keyConfig =
             if (raw) config.keyForRawCode(keyEvent.keyCode) else config.keyForCode(keyEvent.keyCode)
-        if (keyConfig == null) {
-            logUnclaimed(point, keyEvent, raw)
+        //  **保留码一律不认领**（见 `KeyId.RESERVED_CODES`）：那一批是动作自己会注入的码，
+        //  认下来就是「按一下等于触发自己」。收集侧已经拦过一次（`CollectKeyDialog.checkKey`），
+        //  这里是拦截路径上的**第二道** —— 导进来的、手改过的配置照样可能带着它。
+        //  与「这个码不是任何一颗键」并成一处：两者都是「不认领、放行」，分两个出口只会多一个 return。
+        if (keyConfig == null || keyEvent.keyCode in KeyId.RESERVED_CODES) {
+            if (keyConfig == null) {
+                logUnclaimed(point, keyEvent, raw)
+            } else {
+                XLog.w("${keyConfig.id.label}（$point）：keyCode=${keyEvent.keyCode} 是保留码，不认领，放行给系统")
+            }
             return Decision.Pass
         }
-        if (ConfigChannel.enabledOf(keyConfig.id)) return Decision.Claimed(keyConfig)
+        if (ConfigChannel.enabledOf(keyConfig.id)) {
+            // ROM 判好的手势码（压感拍照键）：直接按手势派发，不进时长判定 ——
+            //  判成双击时 ROM 只发 769 一个码，等第二次按下永远等不到（见 `RomKeyFamilies`）。
+            val gesture = RomKeyFamilies.gestureOf(keyEvent.keyCode)
+            return when {
+                gesture != null -> Decision.RomGesture(keyConfig, gesture)
+
+                //  族里的**中间态码**：认下就吞，既不派发、也不放行给 ROM
+                RomKeyFamilies.isNonGestureMember(keyEvent.keyCode) -> Decision.RomSwallow(keyEvent.keyCode)
+
+                else -> Decision.Claimed(keyConfig)
+            }
+        }
         // 只在按下那一下打：闸门关着时每一按都会走到这里
         if (keyEvent.action == KeyEvent.ACTION_DOWN) {
             XLog.w("${keyConfig.id.label}（$point）：这颗键没开接管，放行给系统")
@@ -389,10 +445,60 @@ internal class SideKeyInterceptor(
             XLog.w("手势判定失败（这一次按键放行给系统）：$point", e)
             false
         }
+}
 
-    /** 从实参里挑出第一个 `KeyEvent`（按键热路径，不要 `filterIsInstance`）。 */
-    private fun firstKeyEvent(args: List<Any?>): KeyEvent? {
-        for (a in args) if (a is KeyEvent) return a
-        return null
+/** 从实参里挑出第一个 `KeyEvent`（按键热路径，不要 `filterIsInstance`）。 */
+private fun firstKeyEvent(args: List<Any?>): KeyEvent? {
+    for (a in args) if (a is KeyEvent) return a
+    return null
+}
+
+/**
+ * 这一下抬手是不是「收集期被吞掉那一下的尾巴」—— 判据与记账见 `decide` 里那段注释。
+ *
+ *  放在对象外只为压 [SideKeyInterceptor] 的成员数；这本来就是一条纯判定。
+ */
+private fun justSwallowed(
+    collecting: Boolean,
+    swallowedAt: Long?,
+): Boolean {
+    if (collecting || swallowedAt == null) return false
+    return SystemClock.uptimeMillis() - swallowedAt < COLLECT_SWALLOW_TAIL_MS
+}
+
+/**
+ * 收集期那一段：**旁路上报 → 按下记账 → 抬手摘表**，返回「这一下该整条吞掉吗」。
+ *
+ * 「自定义按键」页开着监听时，先把这一下**旁路**报回去。刻意摆在白名单**之前**：
+ * 那一页要的是「用户按了哪些键」，摆到白名单后面就只剩侧键自己那份码，别的键一个都听不到。
+ *
+ * 收集期**一律吞掉**：弹窗是模态的，这时按任何键都是在「报键」，不是在用它。不吞的话音量会
+ * 真的调音量、电源会真的弹菜单（还把弹窗盖掉）—— 用户看到的是「按了没加上，还顺手改了别的东西」。
+ * 最长影响由 [KeyWatch] 的 60 秒自动关兜着，弹窗一关就恢复。
+ *
+ * 收集期被吞掉的那一下，它的**抬手也要吞**：只吞 DOWN 的话，判定器收到一条没有按下的 UP，
+ * 会按「孤立抬手」补判一次单击 —— 侧键的动作照样执行（真机实测：弹窗一关，侧键立刻跑了一次 OCR）。
+ *
+ * **摘表与判据分开**：只要是 UP 就先把这一颗的记账摘掉。写成「先判 justSwallowed 才摘」的话，
+ * 收集期里到达的那条 UP 会被 `!collecting` 短路掉、记账留着；下一条真实按压缩在窗口内时，
+ * 它正常的抬手就会被上一轮那条记账吞掉 —— 判定器收到一条没有抬手的 DOWN，长按于是误触发。
+ */
+private fun swallowWhileCollecting(
+    swallowedDownAt: MutableMap<Int, Long>,
+    keyEvent: KeyEvent,
+): Boolean {
+    KeyWatch.report(keyEvent)
+    val collecting = KeyWatch.active
+    // 记下这一下「按下」：弹窗很可能**因为这一下而关掉**（收下了 / 被手动关掉），
+    // 紧跟的 UP 就不再属于「收集期」了。
+    if (collecting && keyEvent.action == KeyEvent.ACTION_DOWN) {
+        swallowedDownAt[keyEvent.keyCode] = SystemClock.uptimeMillis()
     }
+    val swallowedAt =
+        if (keyEvent.action == KeyEvent.ACTION_UP) {
+            swallowedDownAt.remove(keyEvent.keyCode)
+        } else {
+            null
+        }
+    return collecting || justSwallowed(collecting, swallowedAt)
 }

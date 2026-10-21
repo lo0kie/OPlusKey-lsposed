@@ -142,4 +142,31 @@ internal class PageOverlays {
             onDispose { closers -= closer }
         }
     }
+
+    /**
+     * 开着几个「**自己接系统返回**」的浮层 —— 目前只有底部抽屉（`StepPickerSheet`）。
+     *
+     *  与 [openCount] 分开记，因为两者要的东西正相反：
+     *   · [openCount] 一非零，[wouldConsumeBack] 就判「**别**把这一退喂给页面栈」（浮层自己不接，
+     *     喂进去只会让底下的页面跟着手指滑）；
+     *   · 抽屉相反 —— 库里那个 `NavigationBackHandler` 是靠**逐帧进度**驱动下滑动画的，事件必须
+     *     **喂进去**才动。所以它额外记这一格，让 [wouldConsumeBack] 放行（见那边的判定）。
+     *
+     *  干吗不干脆不登记 [openCount]？那样「三键导航 / 实体返回」那一档会退页、且换页收浮窗
+     *  也收不到它（真机踩过：条件执行里按返回把页面退了）。两条账本来就不是一件事。
+     */
+    val backCapturing = mutableIntStateOf(0)
+
+    /**
+     * 登记一个「自己接返回」的浮层（见 [backCapturing]）。
+     *
+     * @param show 这一层此刻开着没有 —— 开着才算「这一退归它」
+     */
+    @Composable
+    fun BackCapturing(show: Boolean) {
+        DisposableEffect(show) {
+            if (show) backCapturing.intValue++
+            onDispose { if (show) backCapturing.intValue-- }
+        }
+    }
 }

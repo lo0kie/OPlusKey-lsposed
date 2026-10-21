@@ -10,7 +10,7 @@ package com.lookie.opluskey.core
  *  见那边的说明）。两处都不能用 `context.packageName`：那个在宿主进程里拿到的是宿主包名。
  *
  *  硬编码是因为本工程关了 `BuildConfig`（拿不到 `APPLICATION_ID`）；它与
- *  `app/build.gradle.kts` 的 `applicationId` 必须一致 —— CI 会核对（见 `.github/workflows/build.yml`
+ *  `app/build.gradle.kts` 的 `applicationId` 必须一致 —— CI 会核对（见 `.github/workflows/ci.yml`
  *  的「模块包名与 applicationId 对齐」）。
  */
 object ModuleInfo {
@@ -22,7 +22,7 @@ object ModuleInfo {
      * （`LinkCheck` 的「换包没重启」那一档比的就是它）。
      *
      *  不更新的话那把尺子量不出差别：换了包、system_server 里还是旧的，界面照样判「同一次构建」。
-     *  产物命名**不看它**（`build.yml` 按 `versionName` 命名，见那一步的注释）。
+     *  产物命名**不看它**（`ci.yml` 按 `versionName` 命名，见那一步的注释）。
      *
      * 它还是**构建时刻读不到时的回退值**（`ui/screen/PageText.kt` 的 `moduleBuildStamp`）
      * —— 那时界面版本行显示的整串就是它，所以它自己带着日期。

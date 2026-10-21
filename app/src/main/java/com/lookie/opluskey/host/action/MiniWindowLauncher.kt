@@ -690,7 +690,12 @@ internal class MiniWindowLauncher(
                 XLog.w("没有 $ZOOM_MANAGER，跳过 ColorOS 小窗接口")
                 return null
             }
-        val manager = Reflect.callStatic(cls, "getInstance") ?: return null
+        val manager =
+            Reflect.callStatic(cls, "getInstance") ?: run {
+                //  反射链上每一步都要有失败行：这一处静默 return 的话，「小窗没起来」就只能靠猜
+                XLog.w("$ZOOM_MANAGER.getInstance() 返回空，跳过 ColorOS 小窗接口")
+                return null
+            }
         val method =
             Reflect.methodByNameAndArity(cls, ROM.zoomStartMethod, ZOOM_ARGS) ?: run {
                 XLog.w("$ZOOM_MANAGER 上没有 startZoomWindow/$ZOOM_ARGS")

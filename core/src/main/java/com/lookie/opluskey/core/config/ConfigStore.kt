@@ -94,7 +94,11 @@ object ConfigStore {
         val length = f.length()
         val inode = inodeOf(f)
         cached?.let {
-            if (it.modified == modified && it.length == length && it.inode == inode) return it.result
+            //  `inode != 0` 是**必要条件**：inode 取不到（主文件与 `.bak` 都不在、stat 失败）时三个
+            //  值一起是 0，而「只剩 `.bak` 被还原」那条路存下来的缓存条目**正好也是全 0** ——
+            //  只比三个数的话，之后配置被删掉会命中那条，把已经不存在的内容当成本次结果。
+            val sameFile = it.modified == modified && it.length == length && it.inode == inode
+            if (inode != 0L && sameFile) return it.result
         }
 
         val raw =

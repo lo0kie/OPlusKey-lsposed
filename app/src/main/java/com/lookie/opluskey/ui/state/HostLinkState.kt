@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.lookie.opluskey.ui.model.LinkNotice
+import kotlin.math.abs
 
 /**
  * 「我们自己刚写下去的那一份配置还在路上」的宽限 —— 见 [HostLinkState.configPending]。
@@ -14,6 +16,14 @@ import androidx.compose.runtime.setValue
  *  留的余量。它只影响「乐观」这一小段 —— 回包一到就提前结束，等不到也会自己过期。
  */
 internal const val CONFIG_IN_FLIGHT_GRACE_MS = 2_000L
+
+/**
+ * 「两个进程启动时刻差多少以内算同一个进程」的容差（[HostLinkState.needsLinkCheck]）。
+ *
+ *  取 1 秒：`ProcClock.startWall()` 已取整到秒，残留的跨秒错位最多 1 秒；而真正的进程重启
+ *  （被杀后重起 / 手机重启）与上一次至少差开几秒 —— 这一档既能吃掉抖动，又不会把重启盖掉。
+ */
+internal const val PROC_SAME_TOLERANCE_MS = 1_000L
 
 /**
  * 「链路 / 报活」那一域的状态 —— 首页那条提示与「更多选项 → 运行状态」共用的那几项结论。
@@ -79,15 +89,36 @@ internal object HostLinkState {
      *  原先「说过了」这一位放在首页那个 `remember` 里，从子页（如「条件执行」）回来时组合被重建，
      *  于是每回一次首页就再弹一次。提醒自己消失时（[noticeReason] 变回 `null`）清零，
      *  下次再出现照说一遍。
+     *
+     *  **比的是身份不是文案**（[LinkNotice]）：比文案的话，切一次语言就换了一串字，
+     *  这一位判不出「已经说过」，同一条提醒会再弹一遍。
      */
-    var lastNoticeShown: String? = null
+    var lastNoticeShown: LinkNotice? = null
 
     /**
      * 这一趟还要不要再跑自检 —— 判据见 [checkedHostStart]。
      *
      *  `injectChecked` 也一起看：没跑完的那一趟不算数（否则「问了一半就切页」会被当成问过了）。
+     *
+     *  比的是「两次记下的进程启动时刻**差在 [PROC_SAME_TOLERANCE_MS] 以内**就当作同一个进程」，
+     *  不是精确相等。原先写的是 `checkedHostStart == hostProcStart`，于是**偶尔回一次首页就会
+     *  重跑一趟自检**（用户口径「回到首页还是会偶尔触发模块自检」）：那个时刻是
+     *  `ProcClock.startWall()` 算出来的，`currentTimeMillis` 与 `elapsedRealtime` 两个时钟源
+     *  更新粒度不同，同一进程里连续两次调用就能差几毫秒；宿主每回一条报活就重算一次，
+     *  一条报活足以把「问过」判成「没问过」。`startWall` 那边已取整到秒，这里再加一档容差兜底。
      */
-    fun needsLinkCheck(): Boolean = !(injectChecked && checkedHostStart == hostProcStart)
+    fun needsLinkCheck(): Boolean = !(injectChecked && sameProcess(checkedHostStart, hostProcStart))
+
+    /**
+     * 两个「进程启动时刻」是不是同一个进程 —— 允许 [PROC_SAME_TOLERANCE_MS] 的误差。
+     *
+     *  真正的进程重启（被杀后重起 / 手机重启）与上一次至少差开几秒，容差不会把它盖住；
+     *  而 `0` 与 `0` 这一档仍然算同一个（「问过、但宿主没答」）。
+     */
+    private fun sameProcess(
+        a: Long,
+        b: Long,
+    ): Boolean = a == b || abs(a - b) <= PROC_SAME_TOLERANCE_MS
 
     /** 宿主报活带回来的「它读到的主开关真值」—— `false` ⇒ 它读到的是默认值（主开关关着 / 还没解锁）。 */
     var hostEnabled by mutableStateOf(false)

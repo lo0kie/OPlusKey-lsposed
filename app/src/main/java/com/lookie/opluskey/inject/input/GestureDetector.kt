@@ -40,7 +40,11 @@ private const val REPEAT_MAX_MS = 30_000L
  *    摘枪是「到点之前就没了」，后者与线程调度无关；
  *  · 但 `check → act` 那几段仍无锁，极端竞态下「既判长按又判单击」只是变小、没消失 ——
  *    彻底收口要把状态机归到一个线程上。也不能改用 `handler.post`（`onIntercept` 须同步返回是否接管）。
+ *
+ *  成员数贴着 `TooManyFunctions` 的阈值：单击 / 双击 / 长按 / 连续触发各有一套计时与取消，
+ *  拆文件就得把 `Pending` 与那三个 `Runnable` 一起搬出去 —— 状态机被切成两半更难跟。
  */
+@Suppress("TooManyFunctions")
 internal class GestureDetector(
     private val handler: Handler,
     /**
@@ -143,6 +147,30 @@ internal class GestureDetector(
      * 并发首按（两条线程同时进）会各建一个 `Pending`、先写进去的那份状态被丢掉。
      */
     private fun pending(id: KeyId): Pending = pendingByKey.computeIfAbsent(id) { Pending() }
+
+    /**
+     * ROM **已经把手势判好**的那一档（压感拍照键的 767 短按 / 768 长按 / 769 双击）——
+     * 直接派发，不进时长判定。
+     *
+     *  为什么不能喂 [onKeyDown] / [onKeyUp]：ROM 判成双击时**只发 769 这一个码**（不会先发
+     *  两次 767），靠「两次按下落在 doubleClickMs 内」永远等不到第二次 —— 喂进来只会被判成
+     *  单击。反过来，把 769 当一次普通按压、又按「双击窗口」等下去，就变成「双击绑的动作
+     *  永远不执行、单击绑的动作被双击触发」。
+     *
+     *  先 [reset]：同一颗键上一次按压可能还挂着长按枪 / 双击窗（例如按住途中被 ROM 判成
+     *  双击），不清的话那两枪会在这次派发之后再响一次，一次按压执行两个动作。
+     */
+    fun onRomGesture(
+        id: KeyId,
+        gesture: Gesture,
+        config: KeyConfig,
+    ) {
+        reset(id)
+        // 判据级（与「双击」「长按」那几行同一档）：这条是「ROM 换了码 / 码的含义变了」时
+        //  唯一能看出来的凭据 —— 只有它会把「按这个码等于这个手势」写进日志。
+        XLog.w("${id.label}：${gesture.label}（ROM 已判好的手势码）")
+        dispatch(id, gesture, config, repeat = false)
+    }
 
     /** 一次按键按下。 */
     fun onKeyDown(

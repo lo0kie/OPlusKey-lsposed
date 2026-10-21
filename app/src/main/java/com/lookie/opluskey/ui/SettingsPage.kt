@@ -125,7 +125,11 @@ internal class SettingsPage(
         }
         // 一次删到底（含栈顶）—— 库把「一次组合里少 N 个 entry」当成**一次多级 pop**：整叠一起
         //  滑回目标页。与 [onHostReentered] 清栈那条同一口径。
-        while (navStack.size > index + 1) navStack.removeAt(navStack.lastIndex)
+        //  被弹掉的每一页都要走一遍离栈收尾（命令表单页的界面状态出栈即销）。
+        while (navStack.size > index + 1) {
+            discardPageStateOf(navStack[navStack.lastIndex] as Screen)
+            navStack.removeAt(navStack.lastIndex)
+        }
     }
 
     /**
@@ -147,7 +151,11 @@ internal class SettingsPage(
     // 这一页有没有「改过还没保存」的东西 —— 退出要不要问那一句的唯一判据。
     //  两处都要看：命令页看命令草稿，分叉页看条件表草稿（它不是命令，草稿也不共用）。
     private fun hasUnsavedDraft(s: Screen): Boolean =
-        (s.isCommandForm && commandDraft.draft.dirty) || (s == Screen.BRANCHES && branchDraft.draft.dirty)
+        when (s) {
+            Screen.COMMANDS -> commandDraft.draft.dirty
+            Screen.BRANCHES -> branchDraft.draft.dirty
+            else -> false
+        }
 
     /**
      * 系统返回要交给**页面栈**处理吗 —— **只判断，不动手**（`onBackStarted` 那一刻不能有副作用，
@@ -160,10 +168,16 @@ internal class SettingsPage(
      *     库的提交是 `onCommit = { currentOnBack.value() }`，**弹栈交给 [goBack]** —— 接管了就等于
      *     页面先滑走、栈却没弹，页面停在滑出去的位置回不来。判据与 [goBack] 那条**同一份**，一起改。
      */
-    internal fun wouldConsumeBack(): Boolean =
-        navStack.size > 1 &&
+    internal fun wouldConsumeBack(): Boolean {
+        //  抽屉（自己接返回的浮层）开着：这一退**一定**归页面 —— 喂进 dispatcher 之后是它先接
+        //  （跟手下滑、松手收起），弹栈那条轮不到它。所以草稿脏不脏、`openCount` 几都不影响这一档：
+        //  「草稿脏 ⇒ 先弹问话」那条闸是给 `goBack` 的，而这一退根本走不到 `goBack`
+        //  —— 条件执行页草稿一脏就走不到那一档。
+        if (overlays.backCapturing.intValue > 0) return true
+        return navStack.size > 1 &&
             overlays.openCount.intValue == 0 &&
             !hasUnsavedDraft(screen)
+    }
 
     /** 此刻有浮窗开着吗 —— 开着时系统返回**整个吞掉**（见 `BackInterception.handleDiscreteBack`）。 */
     internal fun hasOpenOverlays(): Boolean = overlays.hasOpen()
@@ -324,23 +338,22 @@ internal class SettingsPage(
     /**
      * 从子页返回上一级 —— 把**栈顶弹掉**。上一级就是压在当前页下面的那一页（不查表）。
      *
-     * 注意：两处**拦住不让退**（都返回 true = 这次返回已被消费）：「自定义命令」页草稿有改动
-     * （先问一句，见 [PageOverlays.confirmLeaveCommands]）；栈里只剩首页（交给宿主关页面）。
+     * 注意：两处**拦住不让退**（都返回 true = 这次返回已被消费）：命令表单页（「自定义命令」/
+     * 「条件执行」）自己那份草稿有改动（先问一句，见 [PageOverlays.confirmLeaveCommands]）；
+     * 栈里只剩首页（交给宿主关页面）。
      */
     internal fun goBack(): Boolean {
         val current = screen
-        // 「打开应用」页返回：**原样保留进页前的选择** —— 挑中了写新值（那边自己 `pick`），
-        // 没挑就什么都不动，蓝框本来就在选中项上。
-        if (current == Screen.APP_PICKER) {
-            // 「为谁挑」整组一并清掉 —— 不管这次是挑完了、还是没挑就退出来
-            picker.clearTarget()
-        }
+        // 「打开应用」页那一趟的收尾（「为谁挑」、搜索词、临时的小窗口开关）**不在这一处**：
+        //  统一归 [discardPageStateOf] —— 它挂在「真的离栈」那一刻，一次返回退两层（多级 pop）
+        //  与从设置重进模块清栈也走同一条，不会漏。
         // 注意：「选择界面」那一页的「在看哪个应用」**不在这里清** —— 这里清掉之后，那一页
         // 会在**退场动画**期间重组成「状态丢了」的分支，那一支自己还会再退一页（一次返回退两层）。
-        // 它由 `ActivityPickerPage` 的 `onDispose` 负责（离开组合时清，退场动画照常画完）。
-        // 「自定义命令」页：表单里改过还没保存 ⇒ 不退，先弹一句确认。判据用 `draft.dirty`
-        // （与载入时的快照比），不是 `hasContent` —— 后者会把「点开一条看一眼、原样返回」也算成有改动。
-        //  「条件执行」页用的是**同一份草稿**、同一套保存按钮，所以走同一条拦截。
+        // 它由 `ActivityPickerPage` 的 `onDispose` 负责（离开组合时清，退场动画照常画完），
+        // 整趟结束时再由 [discardPageStateOf] 的 `APP_PICKER` 分支收一次。
+        // 命令表单页（「自定义命令」/「条件执行」）：**各自那份**草稿改过还没保存 ⇒ 不退，先问一句。
+        //  判据用 `draft.dirty`（与载入时的快照比），不是 `hasContent` ——
+        //  后者会把「点开一条看一眼、原样返回」也算成有改动。
         if (hasUnsavedDraft(current)) {
             if (!overlays.confirmLeaveCommands) {
                 XLog.w("退出命令编辑页（${current.name}）：表单改过还没保存，先弹确认")
@@ -349,6 +362,67 @@ internal class SettingsPage(
             return true
         }
         return popBackStack()
+    }
+
+    /**
+     * 一页**离开栈**时的收尾 —— 把这一页引入的**页面级状态**复位成「下次进来是新的一份」。
+     *
+     *  为什么要手动做：这些位挂在**页面对象**上（[commandDraft] / [branchDraft] / [picker] /
+     *  [branchGesture]），提上来是因为它们要在「被上层页盖住、组合被注销」时存活（顶栏与页内容
+     *  是两棵树）。代价就是：栈语义里「出栈的页整个销毁」这一条得在这里补上，否则它们会带着上一次
+     *  的残留回到下一次。
+     *
+     *  **只处理真的离栈的页**：push 新页（如命令页压一层「选择应用」）时草稿必须原样留着，
+     *  所以三处调用点（[popBackStack] / [navTo] 的批量回退 / [onHostReentered] 的清栈）
+     *  都只对**被弹掉的那些**调它。
+     *
+     *  不在这里的两类：
+     *   · **落盘的偏好**（「显示系统应用」「显示失效应用」）是**意图**不是页面状态 —— 进页读一次、
+     *     跨次留存，清了等于改用户设置；
+     *   · **分页器位置**（手势 tab / 命令页 tab）是 `PageContent` 里 `remember` 的、这一层拿不到 ——
+     *     它们的归位由 `PushResetsPagers` 在**下一次 push** 时按「这一页该从哪一档开始」做，
+     *     这里把草稿的 `kind` 清成默认，等于给了它同一个答案。
+     */
+    private fun discardPageStateOf(leaving: Screen) {
+        when (leaving) {
+            Screen.BINDING -> {
+                //  「从哪一档手势进的分叉」只在这一次停留里有效：退回首页再进来，
+                //  该重新按手势 tab 当前那一档算（否则顶栏小标题会写着上一次那一档）。
+                branchGesture = 0
+            }
+
+            Screen.COMMANDS -> {
+                //  草稿与 tab 镜像一起归位（`kind` 的例外说在 `CommandDraftState.discard` 那边）
+                commandDraft.discard()
+                //  「挑完应用回来要把抽屉支起来」是这一趟的账，命令页走了就该作废
+                picker.cancelResume()
+            }
+
+            Screen.BRANCHES -> {
+                // 条件执行页用另一份草稿（分叉不是命令库的一条记录），同样出栈即销
+                branchDraft.draft.reset()
+                branchGesture = 0
+                picker.cancelResume()
+            }
+
+            Screen.APP_PICKER -> {
+                //  这一趟挑应用结束（挑完了 / 没挑就退出来）：把这一页引入的界面状态整份复位。
+                //  具体的字段清单归 [AppPickerState.resetSession] —— 页面骨架只报「这一页走了」，
+                //  不去认识那一页有哪些字段（那一域只有一个写入口）。
+                picker.resetSession()
+            }
+
+            Screen.ACTIVITY_PICKER -> {
+                //  单退这一页时**不能动** `activityTarget`：挑完界面退回「选择应用」还得按它写回，
+                //  而退场动画期间用户可能已经点了下一个应用（见 `AppPickerState.activityTarget`）。
+                //  整趟结束的清理归上面那条 `APP_PICKER` 分支。
+            }
+
+            else -> {
+                //  SHORTCUTS（栈底，永远不出栈）/ ABOUT / DONATE_LIST / GENERAL：
+                //  这几页没有页面级状态，页里的东西都是 `remember`，随组合注销自然销毁。
+            }
+        }
     }
 
     /**
@@ -362,7 +436,9 @@ internal class SettingsPage(
         // 退页同样收键盘（理由见 [dismissIme]）：两条动栈的路都堵上，
         // 以后谁再新开一条压 / 弹栈的路，也不必记得补这一句。
         dismissIme()
+        val leaving = navStack[navStack.lastIndex] as Screen
         navStack.removeAt(navStack.lastIndex)
+        discardPageStateOf(leaving)
         return true
     }
 
@@ -510,7 +586,11 @@ internal class SettingsPage(
             // 一次删到底 —— 库把它当**一次多级 pop** 处理：整叠一起滑回首页，而不是
             // 「一串页面依次滑过去」。所以不需要那个「跳过转场直落」的开关
             // （手写那套只能播一条跨级的长滑页，才必须直落；见 [PAGE_TRANSITION]）。
-            while (navStack.size > 1) navStack.removeAt(navStack.lastIndex)
+            // 这一趟停留到此结束：每一页都走一遍离栈收尾（命令表单页的草稿出栈即销）。
+            while (navStack.size > 1) {
+                discardPageStateOf(navStack[navStack.lastIndex] as Screen)
+                navStack.removeAt(navStack.lastIndex)
+            }
         }
     }
 

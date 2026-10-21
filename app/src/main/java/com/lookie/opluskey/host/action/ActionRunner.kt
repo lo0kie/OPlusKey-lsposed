@@ -15,7 +15,13 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.RomProfile
 
-/** 动作派发器，只服务侧键。 */
+/**
+ * 动作派发器，只服务侧键。
+ *
+ *  成员数贴着 `TooManyFunctions` 的阈值：一种动作一个 `runXxx`，这一层就是那张分派表本身 ——
+ *  拆开之后「支持哪些动作」反而要翻好几个文件才数得清。
+ */
+@Suppress("TooManyFunctions")
 internal class ActionRunner(
     /** 借来的宿主 Context（`host/GestureReceiver` 从 `ActivityThread` 反射取）。 */
     @Volatile var context: Context?,
@@ -49,6 +55,16 @@ internal class ActionRunner(
             ::dispatch,
             ::notifyFailure,
         )
+
+    /**
+     * 释放执行器持有的**进程级注册**（现在只有手电筒那条 torch 回调）。
+     *
+     *  宿主主进程里不需要（进程活多久就活多久）；`:ui` 进程里那份「测试命令」执行器在关页时调它，
+     *  否则每轮「进设置 → 测试手电筒 → 关页」都会在系统里留一份不会再被用的回调。
+     */
+    fun release() {
+        flashlight.release()
+    }
 
     /**
      * 「灵感语音」上一次触发的时间（`uptimeMillis`）—— 连按不重复起采集。
@@ -135,10 +151,10 @@ internal class ActionRunner(
     /**
      * 执行一个手势对应的动作。
      *
-     *  @param gestureLabel 形如 `侧键·长按`（**键名 · 手势名**）—— 由 `host/GestureReceiver`
+     *  @param gestureLabel 形如 `侧键 - 长按`（**键名 - 手势名**）—— 由 `host/GestureReceiver`
      *    用 [KeyId.label] 与手势名拼好传进来。**这里不写死键名**：本类只服务侧键，但「有几个键、
      *    各叫什么」是模型（[KeyId]）的事，在日志里另抄一份字面量，等第二个键出现时就会对不上
-     *    （真机踩到过：两边各拼一次，日志成了 `侧键·侧键·长按`）。
+     *    （真机踩到过：两边各拼一次，日志成了 `侧键 - 侧键 - 长按`）。
      *
      *  下面这行与 `GestureReceiver` 里那行（带「（宿主进程执行）」后缀）**是刻意的一对，不要合并**：
      *  调用点在那两行之间还夹着报活广播、触觉、执行时提示，所以「前一行有、后一行没有」正好定位到
@@ -153,7 +169,7 @@ internal class ActionRunner(
     }
 
     /**
-     * 设置页「测试命令」按钮走这里，日志不套「侧键·」前缀（那一条是「侧键真被按了」的判据）。
+     * 设置页「测试命令」按钮走这里，日志不套「侧键 -」前缀（那一条是「侧键真被按了」的判据）。
      * 只在设置页进程（`:ui`）里跑，不走广播给宿主主进程那条路（那个进程开机后可能还没起来）。
      */
     fun runTest(name: String) {

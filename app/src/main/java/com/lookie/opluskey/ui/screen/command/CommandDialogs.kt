@@ -86,9 +86,9 @@ internal fun SettingsPage.LeaveDiscardDialog() {
         onDismiss = { overlays.confirmLeaveCommands = false },
         onConfirm = {
             overlays.confirmLeaveCommands = false
-            // 两份草稿都清：这个窗现在命令页与分叉页共用（见 `hasUnsavedDraft`）
-            commandDraft.draft.reset()
-            branchDraft.draft.reset()
+            //  只弹栈：**当前页**那一份草稿由离栈收尾（`discardPageStateOf`）按 leaving 页清。
+            //  两页的草稿是两份，这个窗说的「放弃未保存的命令」只指当前页那份 ——
+            //  在这里把另一份也 reset 会无提示吞掉另一页的输入。
             popBackStack()
         },
     )

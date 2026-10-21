@@ -76,7 +76,9 @@ internal object KeyWatch {
      *  整体 catch：这里在 hooker 体内，`sendBroadcast` 抛出去就是炸 AMS 的调用线程。
      */
     fun report(event: KeyEvent) {
-        if (!listening || event.action != KeyEvent.ACTION_DOWN) return
+        //  `repeatCount > 0` 一律不问：按住不放时系统每几十毫秒补一发 DOWN，逐发都报就是
+        //  「W 刷屏 + 一条一条广播」—— 而页面要的只是「按了哪个键」，第一发已经说清了。
+        if (!listening || event.action != KeyEvent.ACTION_DOWN || event.repeatCount > 0) return
         // 判据级：收集期「到底有没有看见这颗键、看见的是哪个码」。
         //  没有这一行时，用户报「收集不到」只能靠界面反应猜 —— 而「键没到我们这层」与
         //  「到了但这颗码收不下」是两种完全不同的故障（前者要往兜底层想办法，后者只是被拒）。
@@ -97,7 +99,6 @@ internal object KeyWatch {
             Intent(ModuleWire.ACTION_KEY_SEEN)
                 .setPackage(HostApp.PACKAGE)
                 .putExtra(ModuleWire.EXTRA_SEEN_CODE, event.keyCode)
-                .putExtra(ModuleWire.EXTRA_SEEN_NAME, KeyEvent.keyCodeToString(event.keyCode))
         handler.post {
             // 这里是 hook 体内：保护用 catch (Throwable) 而不是 runCatching —— 后者只允许出现在
             // 日志出口与反射查找（AGENTS.md 五之二、2），表达的不是同一件事。

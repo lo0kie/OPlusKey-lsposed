@@ -198,8 +198,6 @@ object ModuleWire {
     /** [ACTION_KEY_SEEN] 里带「键码」。 */
     const val EXTRA_SEEN_CODE = "seen_code"
 
-    /** [ACTION_KEY_SEEN] 里带「键码的名字」（`KeyEvent.keyCodeToString`，如 `KEYCODE_VOLUME_UP`）。 */
-    const val EXTRA_SEEN_NAME = "seen_name"
     // ── 导出日志：把另外两个进程的日志一起收上来 ──
     //
     //  设置页那格「导出」只导**本进程**的缓冲（见 `XLog.snapshot`），而判据行散在三个进程里：

@@ -128,15 +128,6 @@ internal val INJECT_NOT_LOADED_HINT: String
         )
 
 /**
- * 首页那条常驻提示的第八种文案：**换过包但没重启** —— 系统那一侧回了包，可它报的构建标识不是本包。
- *
- *  这一档与「没回音」分开是因为要做的事不同：这里**只有一件**（重启手机），
- *  作用域是对的、模块也是启用的，别让人去 LSPosed 里乱翻。
- */
-internal val RESTART_REQUIRED_HINT: String
-    get() = I18n.get(Strings.STATUS_RESTART_REQUIRED, "模块已更新，重启手机后生效")
-
-/**
  * 自检**还没问完**时那条提示 —— 这一小段（开机后几秒、或刚进页面那一下）此前什么都不显示。
  *
  *  为什么值得单独一句：什么都没显示时，用户看到的是「页面正常但点了没反应」；
@@ -165,7 +156,7 @@ internal val PENDING_OR_SCOPE_HINT: String
 /**
  * 首页那条常驻提示的第十二种文案：**系统侧回着话，但它跑的是旧包**（进程比盘上这个包起得还早）。
  *
- *  与 [RESTART_REQUIRED_HINT] 分工不同：那一档是「系统侧压根没回话」，除了重启没别的可能；
+ *  与「系统侧压根没回话」那一档分工不同：那种除了重启没别的可能；
  *  这一档**界面已经在新版上了**（页面跑在刚装的那份代码里），只有系统侧还是旧的。
  *  文案只给动作（重启手机）：界面已生效这件事在这条提示里不必说，用户看的这一页就是它。
  */
@@ -184,6 +175,29 @@ internal val SYSTEM_STALE_HINT: String
  */
 internal val HOST_STALE_HINT: String
     get() = I18n.get(Strings.STATUS_HOST_STALE, "后台服务还是旧版：用「重启服务」即可，不用重启手机")
+
+/**
+ * 「能用，只是这次没落到新代码上」那两档提醒的**身份** —— 去重比的是它，不是文案。
+ *
+ *  比文案的话「整趟进程只说一遍」这一位随时会失效：切一次语言，同一件事的两句话就变成两个
+ *  字符串，`lastNoticeShown` 判不出「这条已经说过」，系统侧那条提醒于是又弹一遍。
+ *
+ *  [text] 是**取的时候现查**（不缓存）：语言切了以后同一档要跟着换成新的那句话。
+ */
+internal enum class LinkNotice {
+    /** 系统侧跑着旧包：换过包但没重启。 */
+    SystemStale,
+
+    /** 宿主侧跑着旧包：它是普通应用进程，重开就好。 */
+    HostStale,
+    ;
+
+    fun text(): String =
+        when (this) {
+            SystemStale -> SYSTEM_STALE_HINT
+            HostStale -> HOST_STALE_HINT
+        }
+}
 
 /**
  * 首页那条常驻提示的第九种文案：回包了、但**一个接管点都没装上** —— 这一版 ROM 把那些私有类改了形。
@@ -284,13 +298,34 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
     get() =
         listOf(
             //  **没有「默认为 shell 命令」那一行了**：现在命令必须显式带前缀（用户口径
-            //  「去掉默认为 shell 和 cmd:，对命令详细限制，必须以支持的格式开头」）。
+            //  「去掉默认为 shell 和 cmd:，对命令详情限制，必须以支持的格式开头」）。
             //  这一列就是「能写什么」，每行都可点、把前缀整段填进输入框。
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令> —— 执行 shell 命令"), Action.SHELL_PREFIX),
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键> —— 模拟按键"), Action.KEYEVENT_PREFIX),
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action> —— 发送 Intent"), Action.INTENT_PREFIX),
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID> —— 触发快捷方式"), Action.SHORTCUT_PREFIX),
-            CommandFormatLine(I18n.get(Strings.COMMAND_FORMAT_CMD, "cmd:<名字> —— 调用另一条单条命令"), Command.PREFIX),
+            //  左列写法 / 右列说明分成两条键取 —— 卡片排的是两列，各自要能单独对齐。
+            CommandFormatLine(
+                label = I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令>"),
+                desc = I18n.get(Strings.COMMAND_FORMAT_SHELL_DESC, "执行 shell 命令"),
+                prefix = Action.SHELL_PREFIX,
+            ),
+            CommandFormatLine(
+                label = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键>"),
+                desc = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_DESC, "模拟按键"),
+                prefix = Action.KEYEVENT_PREFIX,
+            ),
+            CommandFormatLine(
+                label = I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action>"),
+                desc = I18n.get(Strings.COMMAND_FORMAT_INTENT_DESC, "发送 Intent"),
+                prefix = Action.INTENT_PREFIX,
+            ),
+            CommandFormatLine(
+                label = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID>"),
+                desc = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_DESC, "触发快捷方式"),
+                prefix = Action.SHORTCUT_PREFIX,
+            ),
+            CommandFormatLine(
+                label = I18n.get(Strings.COMMAND_FORMAT_CMD, "cmd:<名字>"),
+                desc = I18n.get(Strings.COMMAND_FORMAT_CMD_DESC, "调用另一条单条命令"),
+                prefix = Command.PREFIX,
+            ),
         )
 
 /**

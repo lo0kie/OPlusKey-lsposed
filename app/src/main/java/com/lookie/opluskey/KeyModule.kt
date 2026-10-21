@@ -42,7 +42,7 @@ class KeyModule : XposedModule() {
                 "本机机型：${DeviceSupport.describe(
                     DeviceSupport.currentModel,
                 )}；系统：${DeviceSupport.systemOf(DeviceSupport.currentAndroid, DeviceSupport.currentRomSeries)}" +
-                    "；允许运行=${DeviceSupport.isAdapted}",
+                    "；适配清单=${if (DeviceSupport.isAdapted) "已适配" else "未适配" }",
             )
             if (!DeviceSupport.isAdapted) {
                 // **不再据此拒绝注入**（适配清单现在只是「验过没有」的提示）：这一行留给排查 ——

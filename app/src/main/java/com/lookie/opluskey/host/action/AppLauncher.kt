@@ -139,7 +139,11 @@ internal class AppLauncher(
      * （非导出接收器对跨 uid 查询不可见）；日志只说「已发」这一步的事实，指令有没有被执行是小布自己的事。
      */
     fun runShortcut(shortcutId: String) {
-        if (shortcutId.isBlank()) return
+        if (shortcutId.isBlank()) {
+            //  说清断在哪一环：这是配置里存着一个空指令（导入 / 手改），不是「发了但没人接」
+            XLog.w("小布快捷指令：shortcutId 为空，跳过")
+            return
+        }
         val ctx =
             context() ?: run {
                 XLog.w("没有 Context，shortcut:$shortcutId 跳过")

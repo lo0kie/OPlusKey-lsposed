@@ -33,7 +33,7 @@ internal class GestureForwarder(
      *  过期，宿主按 `age > 2000ms` 直接丢弃，表现就是「按了没反应」。
      *
      *  单线程顺序执行还有一笔附带收益：手势与松手落进同一个队列，**先后不会乱**。
-     *  （`docs/device-findings.md` 里记的那条 ⏭️ 待办就是这件事。）
+     *  （`docs/device-findings.md` 里记的那条待办就是这件事。）
      */
     private val senderThread = HandlerThread("opluskey-gesture-forward").apply { start() }
     private val sender = Handler(senderThread.looper)
@@ -159,9 +159,13 @@ internal class GestureForwarder(
         delayMs: Long,
         retry: Boolean,
     ) {
-        val phase = intent.getStringExtra(ModuleWire.EXTRA_PHASE).orEmpty()
-        val repeat = intent.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false)
+        //  两个 extra 也读在 `try` 里：这一支跑在专用投递线程上，抛出去就是那条线程的队列断掉 ——
+        //  之后所有手势一起静默丢失，而最坏只该是「这一下没生效」。
+        //  `phase` 留在外面只为失败那行日志还能写出是哪一相（读失败时是空串）。
+        var phase = ""
         try {
+            phase = intent.getStringExtra(ModuleWire.EXTRA_PHASE).orEmpty()
+            val repeat = intent.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false)
             if (delayMs <= 0L) {
                 XLog.guard("发送侧键手势广播 $phase") {
                     ctx.sendBroadcast(intent)

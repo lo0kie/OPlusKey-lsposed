@@ -5,10 +5,10 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 
-// 「多条命令」那几步的增删改 —— 从 `ui/screen/CommandScreen` / `ui/screen/AppPicker` 搬过来。
-// 它们只动页面状态（草稿里的步骤、导航、「选应用」那一档），一行像素都不画，所以归 `ui/state`；
-// 搬过来之后 `ui/component`（「添加命令」浮层）可以直接用它们，不必反过来依赖具体屏
-// （见 `docs/decoupling.md` 动作 4）。
+// 「多条命令」那几步的增删改 —— 只动页面状态（草稿里的步骤、导航、「选应用」那一档），一行像素都不画。
+//  放在 `ui` 根而不是 `ui/state`：`ui/state` 只装**状态对象**（谁的字段、谁能写），
+//  这些是「对状态做的动作」，要读页面导航与草稿两个域，所以与 `PageText` / `PageFeedback` 同级。
+//  这样 `screen/*` 与浮层都能直接调它，不必反过来依赖具体屏（见 `docs/decoupling.md` 动作 4）。
 // /
 
 /**
@@ -22,7 +22,7 @@ internal fun SettingsPage.addStep(token: String): Boolean {
     //  两个调用点也被它挡着。这里是**兜底** —— 越过界面直接调本函数时不能把步数顶过头。
     if (commandDraft.draft.steps.size >= Command.MAX_STEPS) {
         XLog.w("多条命令：已达上限 ${Command.MAX_STEPS} 步，拒绝再加 → $token")
-        hint(I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS))
+        hint(I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS), slot = HINT_SLOT_COMMAND)
         return false
     }
     commandDraft.draft.steps.add(token)
@@ -43,7 +43,7 @@ internal fun SettingsPage.replaceStep(
     if (index !in commandDraft.draft.steps.indices) {
         // 越界不能静默 return：调用方已经 tick / 关了菜单，用户看不到任何反应也无从判断。
         XLog.w("多条命令：第 ${index + 1} 步不存在（当前 ${commandDraft.draft.steps.size} 步），换步已忽略")
-        hint(I18n.get(Strings.TOAST_COMMAND_STEP_MISSING, "这一步已经不在列表里了"))
+        hint(I18n.get(Strings.TOAST_COMMAND_STEP_MISSING, "这一步已经不在列表里了"), slot = HINT_SLOT_COMMAND)
         navTo(Screen.COMMANDS)
         return false
     }

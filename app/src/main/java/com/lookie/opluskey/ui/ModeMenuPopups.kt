@@ -1,37 +1,66 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.specIcon
+import io.github.suqi8.coui.kmp.basic.DividerDefaults
+import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.layout.DialogDefaults
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
- * 入口格那**两层**浮层 —— 「入口格的档位」与「某一档再往下那一层」，连守卫一起，全项目只此一份。
+ * 入口格那一层浮层 —— 「入口格的档位」加上「系统开关再往下的那一问」，全项目只此一份。
  *
- *  出现过的三种写法（网格的入口格 / 「添加命令」浮层 / 条件执行的动作菜单）本来就是同一件事：
+ *  出现过的几处（网格的入口格 / 「添加命令」抽屉 / 条件执行的动作菜单）本来就是同一件事：
  *  点一格 → 列出它那几档 → 其中某个开关还要再问一句「切换 / 打开 / 关闭」。
- *  以前每处各拼一遍 `MenuPopup` + 各写一遍「三级开着时别被二级的 dismiss 带走」的守卫，
- *  结果只有一处漏了守卫，真机表现就是「点一个开关，两层一起消失」。
+ *
+ * ## 第一层是菜单，第二层是**弹窗**
+ *
+ *  档位是「挑一个」—— 贴着手指弹出来、点一下就收，菜单最合适。
+ *  而系统开关那三档是在问「这个开关**怎么用**」（取反 / 定成开 / 定成关），是个需要看清、
+ *  选完才作数的决定，不是随手划一下的清单；叠第二层菜单时它挤在手指旁边、和第一层抢地方，
+ *  两层窗口互相抢焦点还要额外的守卫。所以那一层改成**模态弹窗**：标题写开关名、一行一个状态，
+ *  当前绑的那一行行首换成对勾、整行走主色。
+ *
+ *  点那一行时菜单**先收**，弹窗紧接着起来：菜单留着的话它压在弹窗底下、还带着自己的锚点与
+ *  退场动画，两层叠在一起只会显得脏；直接换成一个居中的弹窗，视线也就跟着定下来了。
  *
  * ## 调用方只表达两件事
  *
  *  · [tile] 是哪一格开着（`null` = 关）：行与小标题都由它算，调用方不用挑模式；
- *  · [onPick] 选中了哪一档（三级的「打开 / 关闭」也是同一个回调）。
+ *  · [onPick] 选中了哪一档（弹窗里那三行也是同一个回调）。
  *
- *  哪一行点下去还有下一层由模型回答（[ActionCatalog.stateMenu]）—— 界面侧不判 token。
+ *  哪一行点下去还有后续由模型回答（[ActionCatalog.stateMenu]）—— 界面侧不认 token。
  *
- * @param preciseClick 弹层锚点：网格传那一格自己的，浮层里传浮层内部那个触点
+ * @param preciseClick 弹层锚点：网格传那一格自己的，抽屉里传行内触点
  * @param current 当前绑的动作（`null` = 不知道，谁都不打勾）
- * @param onDismiss 这一格菜单该收起时调（含「点空白处」）。**只这一层**，不含上层浮层
+ * @param onDismiss 这一格流程该收起时调（含「点空白处」）。弹窗自己那一层不经过它
  */
 @Composable
 internal fun SettingsPage.ModeMenuPopups(
@@ -41,34 +70,23 @@ internal fun SettingsPage.ModeMenuPopups(
     onPick: (ActionCatalog.Spec) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // 第二层开着哪一档（`null` = 没开）。只在组件内部流转，调用方看不见也不用管。
+    // 弹窗开着的是哪一档（`null` = 没开）。只在组件内部流转，调用方看不见也不用管。
+    //  它**不跟着 `tile` 清**：菜单在点开弹窗那一下就已经收了，两者本来就不同生共死。
     var stateEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
-    // 整格菜单收起（含退场）后回到第一层：`remember` 不因 `tile = null` 清空，
-    //  不重置会停在第二层、下次点开另一个开关时直接看见上一次那三行。
-    LaunchedEffect(tile) {
-        if (tile == null) stateEntry = null
-    }
     val icons = tileIcons.value
-    // 第一层里**手指按下的那一点** —— 第二层弹在它上面，而不是跟着上一层那一格的位置。
-    //  `PreciseClickState` 把 DOWN 换算成窗口坐标，库以它为零尺寸锚点
-    //  （横向居中、下面放不下就翻到上方），所以手指点到哪一块、下一层就贴在哪一块。
-    val rowTouch = remember { PreciseClickState() }
 
     PageMenu(
-        // 整列挂手指锚点：第一层只负责把「按了哪一点」记下来，给第二层当锚点。
-        columnAnchor = rowTouch,
         preciseClick = preciseClick,
-        //  第二层开着时这一层**不接**关闭请求 —— 否则第二层窗口一抢焦点，这一层就收到
-        //  dismiss、`tile` 被置空，第二层跟着被上面那条 effect 一起清掉（两层一起消失）。
-        onDismiss = { if (stateEntry == null) onDismiss() },
+        onDismiss = onDismiss,
         entries =
             tile
                 ?.let { t ->
                     ActionCatalog.modeMenu(t.token)?.let { modes ->
                         modeEntries(t.label, modes, icons, current) { picked ->
-                            // 这一档还有下一层就叠上去（这一下**不关**本层）；否则它就是最终取值
+                            // 这一档还有后续：收菜单、起弹窗（顺序反了会闪一帧空菜单）
                             if (ActionCatalog.stateMenu(picked.token) != null) {
                                 stateEntry = picked
+                                onDismiss()
                             } else {
                                 onDismiss()
                                 onPick(picked)
@@ -78,38 +96,118 @@ internal fun SettingsPage.ModeMenuPopups(
                 }.orEmpty(),
     )
 
-    // 第二层：某一档的后续写法（切换 / 打开 / 关闭），各带自己的字形
-    //  （`切换` 是开关本身、`打开` toggle-right、`关闭` toggle-left，见 `ActionIcons.systemSettingIcon`）。
-    //  锚点是**第一层里手指按下的那一点** —— 与「添加命令」浮层那条路同一个手感。
-    PageMenu(
-        preciseClick = rowTouch,
-        dim = true,
+    // —— 系统开关的「后续写法」——
+    //  单档的开关（手电筒 / 免打扰，执行只有「切换」一种语义）走不到这里：`stateMenu` 在
+    //  只有一条时返回 `null`，它们在上一层点一下就是结论。
+    val states = stateEntry?.let { entry -> ActionCatalog.switchStates(entry.token) }.orEmpty()
+    //  开关名（「免打扰」）：行文案要把它带进去。
+    val switchName = stateEntry?.label.orEmpty()
+    FrostedDialog(
+        show = stateEntry != null,
+        title = switchName,
         onDismiss = { stateEntry = null },
-        entries =
-            stateEntry
-                ?.let { entry ->
-                    listOf(
-                        MenuEntry.Section(
-                            title = entry.label,
-                            rows =
-                                ActionCatalog.switchStates(entry.token).map { state ->
-                                    MenuEntry.Row(
-                                        title = state.label,
-                                        icon = icons[state] ?: specIcon(state),
-                                        //  必须精确到状态（`isBoundExactly`）：这几行之间只差一个后缀，
-                                        //  用 `isBound`（把同一个开关的几档当一回事）会全部打勾。
-                                        selected = current?.let { ActionCatalog.isBoundExactly(state, it) } ?: false,
-                                    ) {
-                                        stateEntry = null
-                                        onDismiss()
-                                        onPick(state)
-                                    }
-                                },
-                        ),
-                    )
-                }.orEmpty(),
-    )
+        //  选择器不磨砂：一列贴着读的选项，糊上去只是让字发虚、底下的页面从面板边缘晃过来。
+        blurred = false,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(bottom = STATE_ROW_BOTTOM_GAP)) {
+            states.forEachIndexed { index, state ->
+                //  行之间那条细线：与各页卡片里同一档（[CardList] 那条 `HorizontalDivider` +
+                //  同一份两端内缩），不自己另调一道色。第一行之上不画。
+                if (index > 0) {
+                    HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+                }
+                //  必须精确到状态（`isBoundExactly`）：这几行之间只差一个后缀，
+                //  用 `isBound`（把同一个开关的几档当一回事）会全部打勾。
+                val selected = current?.let { ActionCatalog.isBoundExactly(state, it) } ?: false
+                StatePickRow(stateRowLabel(state, switchName), selected) {
+                    stateEntry = null
+                    onDismiss()
+                    onPick(state)
+                }
+            }
+        }
+    }
 }
+
+/**
+ * 选择器里那一行的文案 —— **动作 + 开关名**（「切换免打扰」）。
+ *
+ *  只写「切换」时单看一行不知道切的是谁；三行挨在一起读的时候，名字跟手一点省一次回看标题。
+ *  三种写法各给一条**带 `%s` 的字典条目**，不做字符串拼接：英文那边词与名之间要空格，
+ *  中文不要，这个差别只能由译文自己带。
+ */
+private fun stateRowLabel(
+    state: ActionCatalog.Spec,
+    switchName: String,
+): String =
+    when {
+        state.token.endsWith(Action.ON_SUFFIX) -> I18n.get(Strings.CATALOG_MODE_TURN_ON_OF, "打开%s")
+        state.token.endsWith(Action.OFF_SUFFIX) -> I18n.get(Strings.CATALOG_MODE_TURN_OFF_OF, "关闭%s")
+        else -> I18n.get(Strings.CATALOG_MODE_TOGGLE_OF, "切换%s")
+    }.format(switchName)
+
+/**
+ * 选择器里的一行 —— **整行通栏可点**，标题左起、选中的行尾一个对勾。
+ *
+ *  不挂行首图标：这三行说的是同一个开关的三种用法，图标只会让三种用法看着像三类东西。
+ *  行与行之间那条细线由调用方插（与各页卡片同一档），行自己不画。
+ *
+ *  通栏是**故意**的：面板的圆角由库那层 shader mask 裁，行铺到边也不会出角，
+ *  而两边各让出一条内缩会把选中那条带切成浮在中间的胶囊，与参考的那张图不一样。
+ */
+@Composable
+private fun StatePickRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = COUITheme.colorScheme
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = STATE_ROW_MIN_HEIGHT)
+                .background(
+                    if (selected) {
+                        colors.primary.copy(alpha = STATE_ROW_TINT_ALPHA)
+                    } else {
+                        Color.Transparent
+                    },
+                ).clickable(onClick = onClick)
+                .padding(
+                    horizontal = DialogDefaults.insideMargin.width,
+                    vertical = STATE_ROW_VERTICAL_PADDING,
+                ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = COUITheme.textStyles.body1,
+            color = if (selected) colors.primary else colors.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        if (selected) {
+            Icon(
+                PageIcons.MenuCheck,
+                contentDescription = null,
+                modifier = Modifier.size(ROW_END_ICON_SIZE),
+                tint = colors.primary,
+            )
+        }
+    }
+}
+
+/** 选中那一行的底色 —— 主色压一档，与「整行上主题色」那套观感一致，但不至于盖住面板本色。 */
+private const val STATE_ROW_TINT_ALPHA = 0.12f
+
+/** 行内上下留白 —— 高度不够时靠 [STATE_ROW_MIN_HEIGHT] 撑，两行字时也不至于贴住。 */
+private val STATE_ROW_VERTICAL_PADDING = 8.dp
+
+/** 选择器里一行的高度下限 —— 与卡片行同一档（56dp），点起来手指不局促。 */
+private val STATE_ROW_MIN_HEIGHT = 56.dp
+
+/** 最后一行下面那一点面板本色 —— 行铺到面板底边的话，圆角那两处会显得被切平。 */
+private val STATE_ROW_BOTTOM_GAP = 8.dp
 
 /**
  * 入口格那一层菜单的行（响铃四档 / 媒体五档 / 系统开关那串）。
@@ -118,7 +216,7 @@ internal fun SettingsPage.ModeMenuPopups(
  *  三处各写一份的话「这一行点了还有没有下一层」的判据就会走形（`ui` 也不许反过来认识具体屏）。
  *
  * 第一行是**小标题**（库的 `DropdownHeaderItem`），写的是**父标题** —— 也就是一级菜单里
- * 那一行的标题（响铃状态 / 媒体控制 / 系统导航 / 系统按键）。二级是另一张浮层、会把一级压暗，
+ * 那一行的标题（响铃状态 / 媒体控制 / 系统导航 / 系统按键）。这一层是压在一级上面的另一张浮层，
  * 没有这行小标题时只看得到「静音 / 振动」这几项，认不出自己是点哪个入口进来的。
  *
  * 行之间的分隔线按行自己带的那一档给（[ActionCatalog.Spec.dividerBefore]）：标了的用**加深带**
@@ -143,10 +241,6 @@ private fun modeEntries(
             title = parentTitle,
             rows =
                 modes.map { spec ->
-                    // 这一档点下去**还有一层**（系统开关的切换 / 打开 / 关闭）⇒ 行尾给选择器字形，
-                    //  与「添加命令」一级菜单里入口格那一行同一个记号；最终取值的档位（播放 / 静音…）
-                    //  点了就结账，不给行尾那一格。判据仍由模型回答，界面不认 token。
-                    val deeper = ActionCatalog.stateMenu(spec.token) != null
                     MenuEntry.Row(
                         title = spec.label,
                         icon =
@@ -155,10 +249,10 @@ private fun modeEntries(
                                 specIcon(spec)
                             },
                         //  必须用 [ActionCatalog.isBound]（一行一行比），不能用 `isSelected` ——
-                        // 后者对整组都算选中，会让二级菜单同时勾上多项。
+                        // 后者对整组都算选中，会让菜单同时勾上多项。
                         selected = current?.let { ActionCatalog.isBound(spec, it) } ?: false,
-                        submenu = deeper,
-                        trailingIcon = if (deeper) PageIcons.Selector else null,
+                        //  行尾**不留指示位**：点了还有后续的那几行（系统开关）后面跟着的是弹窗，
+                        //  不是第二层菜单，行尾再挂个「下一层」记号说反了；不留这一格，行也算得宽。
                         dividerBefore = spec.dividerBefore,
                         onPick = { onPick(spec) },
                     )

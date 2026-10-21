@@ -9,6 +9,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.model.LaunchableApp
 
 /**
@@ -25,6 +26,7 @@ import com.lookie.opluskey.ui.model.LaunchableApp
  * 注意：这些字段提到页面对象上（而不是留在页面里 `remember`）**是有理由的**，见各字段自己的说明
  * —— 顶栏与页内容是同一层 `Box` 里**两棵并列的树**，页面那棵出栈即注销，顶栏那棵不走。
  */
+
 internal class AppPickerState {
     companion object {
         /** [branchTarget] 的「不是在给分叉挑」。 */
@@ -125,6 +127,17 @@ internal class AppPickerState {
         private set
 
     /**
+     * 挑完应用（或中途返回）回到来源页时，那支底部抽屉该按哪个来处**重新打开**；`null` = 不用开。
+     *
+     *  为什么必须挂在页面级：抽屉的开关是**来源页组合里**的一个 `remember`，而挑应用要压一页
+     *  「选择应用」—— 来源页那棵组合被注销，回来时那个 `remember` 已经回到初值（关着）。
+     *  这一位与 [filter] 同一个理由（页面级对象，越过这一趟还在），回来后据此把抽屉原样支起来，
+     *  用户不用再点一次「选择应用」。具体含义由各页解释：命令页是「`-1` 追加 / `>= 0` 换第几步」，
+     *  条件执行是「第几条规则」。读过即清（见 `CommandSteps` / `CommandBranchMenus`）。
+     */
+    val resumeSheetAt = mutableStateOf<ResumeSheet?>(null)
+
+    /**
      * 这一趟是在给「条件执行」挑 —— [branchTarget] 或 [branchCommandTarget] 有一头有效。
      *
      *  那一页的两处**只认应用本身**：条件记的是包名，动作记的是 `app:包名`。所以这一页对它们
@@ -189,6 +202,34 @@ internal class AppPickerState {
         // 本地选中与草稿一并作废：这一趟挑应用的账到此为止
         pending.value = null
         draft = null
+    }
+
+    /**
+     * 放弃「挑完回来要把抽屉支起来」那笔账 —— **来源页**出栈时调。
+     *
+     *  [resumeSheetAt] 记的是来源页的意图，所以它既不在进页时清、也不在 [resetSession] 里清
+     *  （挑应用页出栈那一刻正是要用它的时候）；只有来源页自己走了，这个意图才失去意义。
+     */
+    fun cancelResume() {
+        resumeSheetAt.value = null
+    }
+
+    /**
+     * 这一趟「选择应用」**整趟结束**（页面离开栈）—— 把这一页引入的界面状态全部复位。
+     *
+     *  与 [clearTarget] 分工：[clearTarget] 只作废「为谁挑」，是「挑完了 / 没挑就退」那一步的账；
+     *  这一支连搜索词、二级页在看谁、临时的「以小窗口打开」一起收 —— 页面离栈之后再进，
+     *  看到的应当是一张干净的列表，而不是上一次的搜索词与筛选。
+     *
+     *  **不碰**两类：`showSystemApps` / `showUnopenable` 是落盘偏好（进页读一次，清了等于改设置）；
+     *  `resumeSheetAt` 是**来源页**的账（挑完要回去把抽屉支起来），归来源页出栈时清。
+     */
+    fun resetSession() {
+        clearTarget()
+        forgetActivities()
+        filter.value = ""
+        activityFilter.value = ""
+        smallWindow.value = false
     }
 
     /**
@@ -324,34 +365,46 @@ internal class AppPickerState {
      */
     var cachedAppsWithSystem = false
 
-    /** 图标缓存：包名 → 图。容量见 [APP_ICON_CACHE_SLOTS]。`accessOrder = true`：取用即算「刚用过」。 */
+    /** 图标缓存。整块收在一个对象里，见 [AppIconCache]。 */
+    val iconCache = AppIconCache()
+}
+
+/**
+ * 「打开应用」页那份图标 LRU —— 包名 → 图，容量见 [APP_ICON_CACHE_SLOTS]。
+ *
+ *  单独一个类，不挂在 [AppPickerState] 上：那边是「挑应用这趟会话的目标与筛选」，这一份只是
+ *  缓存的存取（连版本号一起）。混在一起时那个类的方法数已经越过 `TooManyFunctions` 的阈值，
+ *  而这两族改的理由完全不同。
+ */
+internal class AppIconCache {
+    /** `accessOrder = true`：取用即算「刚用过」。 */
     private val icons =
         object : LinkedHashMap<String, Drawable>(APP_ICON_CACHE_SLOTS, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Drawable>?): Boolean = size > APP_ICON_CACHE_SLOTS
         }
 
     /**
-     * 图标缓存的版本号 —— **只在「清缓存」时 +1**（[clearIcons]）。
+     * 版本号 —— **只在「清缓存」时 +1**（[clear]）。
      *
      *  它是 Compose 状态：`AppIcon` 在组合里读它，于是清缓存能让**已经组合出来的行**重新取一次。
      *  不读它不行 —— 那些行的键是包名，清单换了照样不重组、`LaunchedEffect` 也不重跑，
      *  清缓存对它们等于没清（换图标包后要滚出去再滚回来才换）。
      *
-     *  「某一行取到了图」**不走这里**（见 [putIcon]）：那一档由那一行自己的状态驱动 ——
+     *  「某一行取到了图」**不走这里**（见 [put]）：那一档由那一行自己的状态驱动 ——
      *  走全局版本号的话，一屏十来行依次到位就是十来次全表重组（每行各自那一份图与位图都得重跑一遍）。
      */
-    val iconsGeneration = mutableIntStateOf(0)
+    val generation = mutableIntStateOf(0)
 
     /** 取一份图（滚回来的那一行靠它免掉第二次跨进程取图标）。 */
-    fun cachedIcon(packageName: String): Drawable? = synchronized(icons) { icons[packageName] }
+    fun cached(packageName: String): Drawable? = synchronized(icons) { icons[packageName] }
 
     /**
      * 往缓存里补一份图（只为「滚回去不再跨进程问第二轮」）。
      *
-     *  注意**不动** [iconsGeneration]：这一份是给**滚回来那一行**用的；当下这一行由它自己那份状态
+     *  注意**不动** [generation]：这一份是给**滚回来那一行**用的；当下这一行由它自己那份状态
      *  画出来（见 `AppIcon`），不需要惊动全表。
      */
-    fun putIcon(
+    fun put(
         packageName: String,
         icon: Drawable,
     ) {
@@ -359,9 +412,9 @@ internal class AppPickerState {
     }
 
     /** 清单重查完就清空（理由见 [APP_ICON_CACHE_SLOTS]）：让图标跟着那份新清单重新取。 */
-    fun clearIcons() {
+    fun clear() {
         synchronized(icons) { icons.clear() }
-        iconsGeneration.intValue++
+        generation.intValue++
     }
 }
 
@@ -371,7 +424,7 @@ internal class AppPickerState {
  *  容量按「来回滚两三屏」给：一屏十来行，超出按最久没滚到的淘汰，淘汰只是下次滚回来多问一次
  *  `PackageManager`，不是错。
  *
- *  **每次拿到新清单就清一遍**（见 [AppPickerState.clearIcons] 的调用点）：图标本身会因为换图标包 /
+ *  **每次拿到新清单就清一遍**（见 [AppIconCache.clear] 的调用点）：图标本身会因为换图标包 /
  *  换主题而变，缓存里留着的就是换之前那一份 —— 不清，最近滚过的那几十个应用会一直用它。
  *  清单没变时缓存照旧生效，滚动来回不走第二次 binder。
  */
@@ -437,3 +490,15 @@ internal sealed interface PickTarget {
         val index: Int,
     ) : PickTarget
 }
+
+/**
+ * 「挑完应用回来，**哪一页**的抽屉要按哪个来处重新打开」。
+ *
+ *  [page] 是必须的：这一位是页面级、跨页存活 —— 只记一个下标时，条件页留下的值会被
+ *  命令页当成自己的步骤下标读走（串页：自动弹出抽屉、再选一项就换掉那一步）。
+ *  消费方各自 `takeIf { it.page == 自己 }`，读不到就当作没有。
+ */
+internal data class ResumeSheet(
+    val page: Screen,
+    val index: Int,
+)

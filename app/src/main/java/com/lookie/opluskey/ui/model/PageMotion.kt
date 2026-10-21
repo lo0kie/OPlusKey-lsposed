@@ -52,7 +52,7 @@ internal const val VISIBILITY_EXIT_MS = 200
 /** 贴边控件进场时那一下淡入 / 出场时那一下淡出的时长。 */
 private const val VISIBILITY_FADE_IN_MS = 180
 
-private const val VISIBILITY_FADE_OUT_MS = 140
+private const val VISIBILITY_FADE_OUT_MS = 120
 
 /**
  * 命令页「单条 / 多条」两栏切换的时长。
@@ -64,7 +64,7 @@ internal const val TAB_PAGE_SWITCH_MS = 260
 
 /** 动态显隐统一进场：淡入 + 纵向柔和展开（对齐顶边缘向下推开）。 */
 internal val VISIBILITY_ENTER: EnterTransition =
-    fadeIn(tween(180, easing = DecelerateEasing())) +
+    fadeIn(tween(VISIBILITY_FADE_IN_MS, easing = DecelerateEasing())) +
         expandVertically(
             animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
             expandFrom = Alignment.Top,
@@ -72,7 +72,7 @@ internal val VISIBILITY_ENTER: EnterTransition =
 
 /** 统一出场：先快淡出（避免文字被截断挤压）+ 纵向利落收缩。 */
 internal val VISIBILITY_EXIT: ExitTransition =
-    fadeOut(tween(120, easing = AccelerateEasing())) +
+    fadeOut(tween(VISIBILITY_FADE_OUT_MS, easing = AccelerateEasing())) +
         shrinkVertically(
             animationSpec = tween(VISIBILITY_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
             shrinkTowards = Alignment.Top,
@@ -124,7 +124,7 @@ internal const val STEP_ROW_EXIT_MS = 220
  * 文字先隐去 + 轻微位移离场 + 高度平滑收缩，使得后续项与底部添加行丝滑吸附上移。
  */
 internal val STEP_ROW_EXIT: ExitTransition =
-    fadeOut(tween(120, easing = AccelerateEasing())) +
+    fadeOut(tween(VISIBILITY_FADE_OUT_MS, easing = AccelerateEasing())) +
         shrinkVertically(
             animationSpec = tween(STEP_ROW_EXIT_MS, easing = EASING_EMPHASIZED_ACCEL),
             shrinkTowards = Alignment.Top,
@@ -136,12 +136,18 @@ internal val STEP_ROW_EXIT: ExitTransition =
 /**
  * 「支持的命令格式」卡里的一行。
  *
- * @param text 整行文案
- * @param prefix 行尾那颗小 `+` 往「命令」输入框里填的前缀（`shell:` / `keyevent:` …）；
- *   `null` = 这一行没有可填的前缀，行尾不画 `+`。
+ *  文案拆成 [label] / [desc] 两段（不是一整串），因为卡里排的是**两列**：左边前缀一列等宽对齐，
+ *  右边说明一列从同一个 x 起。拼成一串再加分隔符的话，各行的说明会随前缀长短各自缩进，
+ *  看着就是一路斜下去。
+ *
+ * @param label 左列：能写的写法本身（`shell:<命令>` / `keyevent:<按键>` …）
+ * @param desc 右列：这一句说明它干什么（`执行 shell 命令` …）
+ * @param prefix 点这一行时往「命令」输入框里填的前缀（`shell:` / `keyevent:` …）；
+ *   `null` = 这一行没有可填的前缀，整行不可点。
  */
 internal data class CommandFormatLine(
-    val text: String,
+    val label: String,
+    val desc: String,
     val prefix: String? = null,
 )
 

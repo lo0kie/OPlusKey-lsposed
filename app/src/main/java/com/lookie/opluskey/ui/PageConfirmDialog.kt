@@ -25,7 +25,10 @@ import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
- * 项目自己的弹窗外壳 —— **磨砂面板 + 居中标题 + 正文槽**，库只管宿主、压暗、进出场与圆角。
+ * 项目自己的弹窗外壳 —— **面板 + 居中标题 + 正文槽**，库只管宿主、压暗、进出场与圆角。
+ *
+ *  面板两档：磨砂（默认，确认窗那一类）与不磨砂（`blurred = false`，库自己那块不透明底，
+ *  给选择器用 —— 见该参数）。两档的标题度量、进出场、返回与页面离开时自动收掉都是同一份。
  *
  *  全项目所有弹窗都走它（确认窗、重命名、添加按键）。以前重命名 / 添加按键直接用库的
  *  `OverlayDialog(title = …)`，那样面板是库画的不透明底，**磨砂没地方挂** —— 同一页里
@@ -37,8 +40,8 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  `show` / `title` / `onDismiss` 之外，`hideImeOnShow`、`onDismissFinished` 都是**这一个外壳
  *  自己的开关**（键盘怎么处理、退场播完要不要回报），`content` 是正文槽。这些拆成 options
  *  对象只会让二十多个调用点各多一层壳；Compose 的惯例就是平铺行参。
- *  `onDismissFinished` 是「收集按键 → 添加按键」两个弹窗交替时才需要的那一格（见
- *  `FocusOnShow` 的 `ready`），按这一个理由它也不能挪进正文槽。
+ *  `onDismissFinished` 是「收集按键 → 添加按键」两个弹窗交替时才需要的那一格（前一个窗收场后
+ *  才让后一个窗去抢焦点），按这一个理由它也不能挪进正文槽。
  *
  * ## 为什么面板与标题自己画
  *
@@ -78,9 +81,17 @@ internal fun SettingsPage.FrostedDialog(
      *
      *  给「两个弹窗交替」那种流程用：收集窗收场之后才让下一个窗去抢焦点 ——
      *  库在退场动画结束时会顺手 `hide()` 键盘，早一步聚焦就会让键盘刚弹出又被收掉
-     *  （见 `FocusOnShow` 的 `ready` 参数）。
+     *  （聚焦那一侧见 `FocusOnShow`：它按 `show` 变化重抢一次）。
      */
     onDismissFinished: (() -> Unit)? = null,
+    /**
+     * 面板要不要磨砂。
+     *
+     *  `true`（默认）：糊 + 半透本色，确认窗那一类都是它 —— 面板大、底色平，糊上去能看出「底下是我刚在看的那页」。
+     *  `false`：**库自己那块不透明面板**，不挂糊。给「一整列可点的选项」那种选择器用：
+     *  一行行贴着读的东西不需要糊，糊了反而把底下那页的内容透过面板边缘晃进来、字也发虚。
+     */
+    blurred: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // 弹之前先把软键盘收掉：确认窗是**模态**的，键盘留在下面会跟它抢地方（「选择应用」页那两句
@@ -105,8 +116,9 @@ internal fun SettingsPage.FrostedDialog(
     OverlayDialog(
         show = show,
         title = null,
-        // 面板底色也由我们画（压在糊上），所以库那一层给它透明。
-        backgroundColor = Color.Transparent,
+        // 磨砂那档的面板底色由我们画（压在糊上），所以库那一层给它透明；
+        //  不磨砂那档**交给库**画它自己那块不透明面板（见 [blurred]）。
+        backgroundColor = if (blurred) Color.Transparent else DialogDefaults.backgroundColor(),
         onDismissRequest = onDismiss,
         onDismissFinished = onDismissFinished,
     ) {
@@ -118,8 +130,16 @@ internal fun SettingsPage.FrostedDialog(
                 // ——暗色下不能拿 `background`（纯黑）：糊的是接近纯黑的页面，纯黑底会把糊盖成一片黑，
                 //  与菜单那边同一条教训。
                 //  第二参数给矩形：形状交给库的圆角 mask（见上）。
-                .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
-                .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
+                //  不磨砂时这两层都不挂：面板是库那块不透明的，糊上去反而把内容糊花。
+                .then(
+                    if (blurred) {
+                        Modifier
+                            .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
+                            .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA))
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             // 标题：与库 `DialogContent` 里那一份同度量（`insideMargin` 24dp 内缩、下边距 6dp、
             //  `title4` 字号、Medium、居中、1.29em 行高）——那几条在库里是 private 常量，

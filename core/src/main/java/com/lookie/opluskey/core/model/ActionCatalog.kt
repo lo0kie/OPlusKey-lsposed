@@ -576,13 +576,19 @@ object ActionCatalog {
             .trim()
 
     /**
-     * 「系统开关」那一族当前落在**哪个状态**上（`打开` / `关闭`）；「切换」那一档与别的动作返回 `null`。
+     * 「系统开关」那一族当前落在**哪个状态**上（`切换` / `打开` / `关闭`）；别的动作返回 `null`。
      *
-     *  网格那一格的小字要它：只写「WLAN」时看不出绑的是打开还是关闭。
+     *  网格那一格的小字要它：只写「WLAN」时看不出绑的是哪一档。**「切换」也要写**——
+     *  它和「打开 / 关闭」一样是一个具体取值，不写的话那一格的小字与开关名一模一样，
+     *  一眼看不出是「按一下取反」还是「定成开 / 关」。
      */
     fun switchStateLabel(action: Action): String? {
-        val on = (action as? Action.Setting)?.on ?: return null
-        return I18n.get(if (on) Strings.CATALOG_MODE_TURN_ON else Strings.CATALOG_MODE_TURN_OFF)
+        val setting = action as? Action.Setting ?: return null
+        return when (setting.on) {
+            true -> I18n.get(Strings.CATALOG_MODE_TURN_ON, "打开")
+            false -> I18n.get(Strings.CATALOG_MODE_TURN_OFF, "关闭")
+            null -> I18n.get(Strings.CATALOG_MODE_TOGGLE, "切换")
+        }
     }
 
     /** 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。 */
@@ -651,15 +657,19 @@ object ActionCatalog {
      *（除「打开应用」外一律拍平，`系统导航:主屏幕` → `主屏幕`）。
      * 档位名与格子怎么配对由这一处决定，网格里那行小字走 [modeTitle]。
      */
-    fun modeName(action: Action): String? =
-        ALL.firstOrNull { it.token in MODE_MENUS && isSelected(it, action) }?.let { tile ->
-            modeMenu(tile.token)?.let { modeTitle(it, action) } ?: action.token
-        }
+    fun modeName(action: Action): String? {
+        //  `tile` 是按「token 在 MODE_MENUS 里」挑出来的，那一层菜单必然存在 —— 不写
+        //  `?: action.token` 那种回退：回退出来的不是档位名（是整串 token），调用方会当名字用。
+        val tile = ALL.firstOrNull { it.token in MODE_MENUS && isSelected(it, action) } ?: return null
+        val modes = modeMenu(tile.token) ?: return null
+        return modeTitle(modes, action)
+    }
 
     /**
      * 这一格点了会进下一层（跳「打开应用」页 / 跳「控制中心磁贴」页 / 弹一格菜单）。
      *
-     * 只有「添加命令」浮层拿它标 `hasSubmenu` —— 网格里的格子不画行尾箭头。
+     * 「添加命令」抽屉**不用它**：那里先把「选择应用」那一格接走，剩下的判据正好是
+     * 「这一档有没有一层菜单」，直接看 [modeMenu] 更贴切。网格的绑定路径用它。
      */
     fun isEntryTile(spec: Spec): Boolean = spec.token == APP_TILE || modeMenu(spec.token) != null
 

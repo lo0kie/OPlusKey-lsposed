@@ -294,7 +294,7 @@ internal object GestureReceiver {
      * 两条 action 互为兜底：`ACTION_USER_UNLOCKED` 是正主，`ACTION_BOOT_COMPLETED`
      * 防「解锁早于本进程启动、错过前一条」；都是受保护系统广播，`RECEIVER_NOT_EXPORTED` 照样收得到。
      *
-     * 解锁时再广播一次配置 —— 「启动 / 解锁 / 写盘」三个时机之一（`AGENTS.md` 二、9）。
+     * 解锁时再广播一次配置 —— 「启动 / 解锁 / 写盘」三个时机之一（`AGENTS.md` 五之二、9）。
      */
     private fun registerUnlockListener(ctx: Context) {
         if (isUserUnlocked(ctx)) return
@@ -324,6 +324,9 @@ internal object GestureReceiver {
         try {
             ctx.getSystemService(android.os.UserManager::class.java)?.isUserUnlocked ?: true
         } catch (e: Throwable) {
+            //  查不到就按「已解锁」继续（发布决策不该被这一下卡住），但要留一行：
+            //  静默返 true 的话，日志里就只剩「按解锁处理」这个结论、看不出它是猜的
+            XLog.w("读解锁状态失败：${e.javaClass.simpleName}，按已解锁继续")
             true
         }
 }

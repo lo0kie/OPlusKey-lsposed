@@ -77,7 +77,7 @@ internal fun SettingsPage.CommandPage(
         // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带（`tabBlockDp`）一起让出。
         Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp))
 
-        // 表单的每一栏都带一条小标题（「命令名称」「命令详细」）：输入框里的字是**占位文案**
+        // 表单的每一栏都带一条小标题（「命令名称」「命令详情」）：输入框里的字是**占位文案**
         //  （「请输入名称」），滚到这一屏时那行字可能已经被填满，光看框分不清哪个是名字、
         //  哪个是命令本体。原先这一条写的是「修改命令 / 新增命令」—— 那说的是**这一页在干什么**，
         //  而顶栏已经写着「自定义命令」、工具栏那颗键写着「保存 / 修改」，这里该说的是**这一栏是什么**。
@@ -91,7 +91,7 @@ internal fun SettingsPage.CommandPage(
         // 单条命令的正文 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
         if (kind == CommandKind.SINGLE) {
             Spacer(Modifier.height(12.dp))
-            SmallTitle(I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详细"))
+            SmallTitle(I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"))
             SingleCommandField()
         }
 

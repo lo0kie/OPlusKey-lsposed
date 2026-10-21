@@ -15,7 +15,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Headphones
 import io.github.lyxnx.compose.ui.tablericons.outline.HeadphonesOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
 import io.github.lyxnx.compose.ui.tablericons.outline.Music
-import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
 import io.github.lyxnx.compose.ui.tablericons.outline.Rotate
@@ -31,7 +30,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.WifiOff
 /**
  * 分叉**条件种类**的字形 —— 「选择条件」那张菜单里，一行一个条件。
  *
- *  十种条件共用一颗 `arrows-split` 的话，菜单就是十行长得一模一样的字，
+ *  每种条件共用一颗 `arrows-split` 的话，菜单就是一串长得一模一样的字，
  *  只剩标题能区分；每档各给一颗，一眼能扫到「我要的是哪一个」。
  *
  *  **全项目唯一一处**（与 `systemSettingIcon` 同一条规矩）：加一种 [ConditionKind] 时，
@@ -48,7 +47,6 @@ internal fun conditionIcon(kind: ConditionKind): ImageVector =
         ConditionKind.HEADSET -> TablerIcons.Outline.Headphones
         ConditionKind.MEDIA -> TablerIcons.Outline.Music
         ConditionKind.WIFI -> TablerIcons.Outline.Wifi
-        ConditionKind.MINI -> TablerIcons.Outline.PictureInPictureOn
         ConditionKind.RINGER -> TablerIcons.Outline.Bell
         ConditionKind.ORIENTATION -> TablerIcons.Outline.Rotate
     }

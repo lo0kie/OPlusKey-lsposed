@@ -30,8 +30,8 @@ enum class AppLanguage(
  * 主进程唯一能走通的那条，理由与后果都写在那边）；本类只管**状态与查询**：当前语言、字典表、
  * 界面层的订阅口。
  *
- * 读不到字典时**显示键名**（`I18n.get` 的兜底就是 key），不静默退成某一种语言 ——
- * 字典缺项要看得见（覆盖由 CI 逐键核对）。
+ * 读不到字典时显示**调用点给的兜底文案**（`I18n.get(key, default)`；没人给才是键名），
+ * 不静默退成某一种语言 —— 字典缺项要看得见（覆盖由 CI 逐键核对）。
  */
 object I18n {
     @Volatile
@@ -55,16 +55,12 @@ object I18n {
                 }
             }
 
-    /** 当前是否中文环境。 */
-    val isChinese: Boolean
-        get() = effectiveLanguage == AppLanguage.ZH_CN
-
     /**
      * 当前这一档语言的字典（key -> localized text）—— **普通 Map，不是 Compose 状态**。
      *
      *  为什么不能是 Compose 状态：本类被**注入侧**与宿主进程双头使用，而 CI 有一条
      *  「注入侧不得引用界面层依赖」的 grep 把 `core/` 一并圈在范围内（见
-     *  `.github/workflows/build.yml`）—— 这一层出现 `androidx.*` 就等于把发版断在 CI 上。
+     *  `.github/workflows/ci.yml`）—— 这一层出现 `androidx.*` 就等于把发版断在 CI 上。
      *  界面要的「切档当场重画」走 [reader] 那道口（见 [installUiBridge]）。
      */
     @Volatile

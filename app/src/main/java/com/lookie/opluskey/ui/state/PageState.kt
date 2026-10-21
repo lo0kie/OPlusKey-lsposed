@@ -66,13 +66,17 @@ internal class CommandDraft {
         }
 
     /**
-     * 表单内容的**指纹** —— 给「重置收尾那 240ms 里用户又输入了没有」当判据（见 `CommandScreen`）。
+     * 表单内容的**指纹** —— 给「重置收尾」那段时间里用户又输入了没有当判据（见 `CommandScreen`）。
      *
-     *  「重置」对有多条步骤的串行命令走行级退场：先让步骤行播完 shrink，再由页面级协程真正
-     *  [reset]。那 240ms 里用户完全可能已经又开始敲字（焦点还在输入框上），此时无条件 `reset()`
-     *  会把刚敲进去的内容一起吞掉。指纹相等才收尾。
+     *  「重置」对有多条步骤的串行命令走行级退场：先让步骤行播完 shrink（`STEP_ROW_EXIT_MS` 再加
+     *  40ms 余量），再由页面级协程真正 [reset]。这段时间里用户完全可能已经又开始敲字（焦点还在
+     *  输入框上），此时无条件 `reset()` 会把刚敲进去的内容一起吞掉。指纹相等才收尾。
+     *
+     *  **不含 [kind]**：它是 pager 停在哪一页的镜像，[reset] 不碰它、「改没改内容」也不看它
+     *  （见 [dirty]）。把它算进指纹的话，退场那几百毫秒里顺手切一次 tab 就会被判成「用户又改了」，
+     *  重置静默放弃 —— 而那一次切页什么都没写。
      */
-    fun contentFingerprint(): String = "$kind\u0000$name\u0000$single\u0000$stepDelayMs\u0000${steps.joinToString("\u0001")}"
+    fun contentFingerprint(): String = "$name\u0000$single\u0000$stepDelayMs\u0000${steps.joinToString("\u0001")}"
 
     /**
      * 保存成功、或从菜单重新进来时清空。

@@ -1,23 +1,19 @@
 package com.lookie.opluskey.ui.screen
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,6 +28,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -40,10 +38,21 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.HINT_SLOT_CHECKING
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.frosted
+import com.lookie.opluskey.ui.hint
+import com.lookie.opluskey.ui.model.CHECKING_HINT
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
+import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
+import com.lookie.opluskey.ui.model.QUERY_ROUNDS
 import com.lookie.opluskey.ui.model.opticalCenter
+import com.lookie.opluskey.ui.noticeReason
+import com.lookie.opluskey.ui.retireHint
+import com.lookie.opluskey.ui.state.HintItem
+import dev.chrisbanes.haze.HazePerformanceMode
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
@@ -51,131 +60,231 @@ import io.github.suqi8.coui.kmp.basic.SnackbarDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.squircle.addSquircleRect
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
 /**
- * 页面底部的**一条**提示 —— 常驻结论与操作回执共用一个位置，谁最近变了显示谁。
+ * 页面顶端那一叠提示条 —— **后来的在最上面**，最多三条（见 `HintQueue`）。
  *
- * ## 为什么不用库的 `SnackbarHost`
+ * ## 三条规矩
  *
- *  那个 host 是「一个 `LazyColumn` + 每条 item 外面套一层横向 `AnchoredDraggable`」，
- *  两件事都在它内部、外面调不了（`canSwipeToDismiss = false` 也压不住）：
+ *  1. **入场**：这一条自己从上方 16dp 滑下来，同时 0.92 → 1 放大。位移是相对**它自己**的
+ *     （`graphicsLayer.translationY`），与容器无关 —— 容器多高都不会改变它滑动的距离。
+ *  2. **出场**：两个口，都 180ms。**到点**的原路往**上** 16dp 收回去（与入场互逆）；
+ *     **被挤出队列**的（超出三条）往**下** 56dp 滑走 —— 它是被后来的那条顶下去的
+ *     （见 `HintQueue.enqueue`）。两者都缩到 0.92 并淡出，播完才从队列摘掉。
+ *  3. **让位**：新的一条插进来时，**旧的往下让**。这里没有 FLIP 补偿 —— 位移是**被新条目
+ *     报出来的高度挤出来的**（见 [HintSlot] 里那个 `Modifier.layout`）。
  *
- *   · 横滑容器的锚点第一帧之后才量出来 ⇒ 出现那一下胶囊先右移一点、再被弹簧拉回；
- *   · 收一条时条目留在队列里画退场动画，新的一条**排在它上面** ⇒ 连续两句时第二句
- *     从更高的地方落回底边。
+ * ## 为什么是 `Column` 而不是自己 `Layout`
  *
- *  所以这里自己排：**一个 [HintSlot] 就是那一句话**，同一时刻只有一条，换内容就是换字符串
- *  （两份状态谁该露脸见 [PageSnackbars] 里那段）。没有队列就没有叠放，
- *  没有 drag 容器就没有横向漂移 —— 这两个毛病从结构上不会再出现。
+ *  这一叠不需要错落排布，`Column` 就够了；重点是它**不裁剪、也不拦触摸** —— 整叠只占内容高度，
+ *  页面照常可点。（`LazyColumn` + `animateItem` 是官方的位置动画，但它必须有界高度、放进浮层
+ *  就得铺满整屏，实测**整页点不动**，所以用不了。）
  *
- * ## 为什么连库的 `Snackbar` 也不用了（改自己画胶囊）
- *
- *  要加磨砂，模糊层就得**正好落在胶囊那一块**上；而库的 `Snackbar` 把外边距写死在自己身上
- *  （`padding(horizontal = 16.dp, vertical = 4.dp)`，见其源码），它只收 `modifier`、且挂在那圈
- *  外边距**外面** ⇒ 磨砂画出来是「胶囊 + 一圈 16dp 的糊边」（[CommandToolbar] 当初踩的同一个坑：
- *  真机反馈「给工具条外面再套一个磨砂圈」）。
- *  外观那几笔（圆角 / 内边距 / 字号 / 底色）仍取库的公开常量 [SnackbarDefaults]，改库就跟着改。
- *
- * ## 落点
- *
- *  **状态栏之下、页面最顶端**，离状态栏只有胶囊外边距那 4dp（[HINT_ITEM_MARGIN]）——
- *  顶边不再留阴影画布（[HINT_TOP_ROOM] = 0）。顶部**不能照搬**原先离底边那一档
- *  （`coui_snack_bar_margin_bottom` 32dp）：那一档里 28dp 是给阴影留的画布，而阴影在**下方**、
- *  还是下移 4dp 的 —— 上方真正要留的只有 22dp 不到，且那圈是最淡的尾，被离屏层切掉看不出来。
- *  顶部照留满就变成「状态栏下面空一大块」（真机反馈三次：先「离得也太远了点」，改到 32dp 后
- *  「还是太远了」，收到 12dp 后仍要「改成 0 试一下」）。
- *  原先贴底边时，弹窗偏下、两者必然重叠 —— 提示条会把弹窗底部那排按钮压住；挪到顶部之后
- *  互不打扰，「弹窗开着时的提示」照样看得见。
- *
- *  这笔账以前是「槽上留 24dp + 画布下边 4dp」—— 画布下边只有 4dp 时，**入场动画那一下**
- *  阴影会被画布下沿切平（`fadeIn` 期间节点走离屏层，层边界就是节点边界），动画播完、层撤掉
- *  才恢复（用户口径「入场动画时底部阴影被截断，播完就好了」）。现在把槽上那 24dp 并进画布，
- *  胶囊的位置一个像素没动，四边的画布都是 28dp。
- *
- * ## 挂在浮层槽、压在弹窗之上
- *
- *  这一槽是 `popupHost`（不是在 `snackbarHost`），理由见 `PageContent`：库把 `popup`
- *  放在最后 `place()`，用提示槽的话弹窗一开提示就整个被盖住。
+ * @param statusBarTop 状态栏高度，由 `PageContent` 在页面级读好传进来 —— **不能在 `popupHost`
+ *   这一层自己读**：那是 `SubcomposeLayout` 另起的子组合，`statusBarsPadding()` 在这里恒为 0
+ *   （真机：提示条直接盖住了状态栏的时间与电量）。
  */
 @Composable
-internal fun SettingsPage.PageSnackbars() {
+internal fun SettingsPage.PageSnackbars(statusBarTop: Dp) {
     // 磨砂取样源：栈顶页的内容层（与顶栏 / 浮层菜单 / 底部工具栏同一个）。本组件画在 Scaffold
     //  的浮层槽里、在页面那层**之外**，所以不会落进自己取样的那一层（落了就是 RenderThread 栈溢出）。
     val backdrop = chrome.pageHazeState
-    // 底部**只有一个位置**：两份状态（常驻结论 / 操作回执）里**谁最近变了就显示谁**。
-    //
-    //  历史：「回执在场时常驻那条整个让位」—— 这条规则治好了「两层胶囊叠在底部」（用户反馈过三次），
-    //  但带出两个新毛病（用户口径：「点振动反馈再点主开关，主开关的提示条会等振动反馈的消息条
-    //  消失再显示，而且是从靠上的位置瞬回的」）：
-    //   · 主开关刚变（「现在能不能用」已经变了）却要**等**回执两秒走完才敢露脸；
-    //   · 露脸那一刻回执还在画退场动画、仍占着一行高，于是它**先出现在靠上的位置**，等退场
-    //     结束才瞬回底边。
-    //
-    //  现在按 [HintState.stamp] 比「谁的话更新」（不是比谁非空 —— 主开关变的时候回执照样非空）：
-    //   · 回执刚来 → 它在上面，常驻那条让位；
-    //   · 主开关 / 运行状态刚变 → 常驻结论**立刻**顶掉还在计时的回执（用户要的就是「立即生效」）；
-    //   · 回执到点自己走 → 落到常驻那条。
-    //  三种切换都发生在**同一个 [HintSlot] 节点**里（换的只是字符串），所以不会再有任何位移：
-    //  没有第二个节点占位，也就没有「从上面瞬回」。
-    val action = hints.actionHint
-    val status = hints.statusHint
-    val text =
-        when {
-            action.text == null -> status.text
-
-            status.text == null -> action.text
-
-            //  号是全局发的，平手只可能是「两边都还没说过话」（上面两条已经拦掉），这里偏回执无害
-            action.stamp >= status.stamp -> action.text
-
-            else -> status.text
-        }
-    //  这里**不留额外间距**：那一笔已经并进阴影画布（见 [HINT_SHADOW_ROOM]）——
-    //  离顶栏多远由画布 + 胶囊外边距一起决定，画布够大才不会在入场动画期间切掉阴影。
-    Box(
-        Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.Center,
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                // 画布要**盖住状态栏那一条**（阴影往上要溢 22dp），所以把整叠上提到
+                // 「状态栏高度 − 画布」的位置：画布从状态栏里开始，胶囊正好落在状态栏下 4dp
+                .padding(top = (statusBarTop - HINT_SHADOW_CAP).coerceAtLeast(0.dp)),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        HintSlot(text, backdrop)
+        val items = hints.queue.items
+        items.forEachIndexed { index, item ->
+            // 按**条目身份**做 key：插入一条时只有新节点播入场，其余几条只做让位
+            key(item.id) {
+                HintSlot(
+                    item = item,
+                    backdrop = backdrop,
+                    //  **后来的压在上面**（`Column` 的绘制顺序是「后面的盖前面的」，正好反着）。
+                    //  位置在最上面不代表层级最高：入场那一下新旧会短暂重叠，新的必须盖住旧的。
+                    modifier = Modifier.zIndex((items.size - index).toFloat()),
+                )
+            }
+        }
     }
 }
 
 /**
- * 一行提示：**淡入 + 缩放并行**地出现 / 收走；换句时在文字淡出后的窗口里平滑过渡宽度。
+ * 「能用，只是这次没落到新代码上」那一类**一次性提醒**（系统侧 / 宿主侧跑着旧包，见 [noticeReason]）。
  *
- *  显 / 隐由 [AnimatedVisibility] 管（整行出现 / 收走那一下）；换句是文字淡出 → 胶囊过渡宽度 →
- *  文字淡入（三段时长见 [HintCapsule]），避免文字比宽度先变导致的字幅溢出。
- *  （换句**不能**套 `AnimatedContent` / `Crossfade`，那条理由见 [HintCapsule]。）
+ *  这一类**一次性提醒**（系统侧 / 宿主侧跑着旧包，见 [noticeReason]）：页面照常能改，说一遍就走
+ *  —— 走操作回执那条（`hints.hint`，几秒自己消失）。用户口径：「除了模块无法正常运行
+ *  时的提示，其他的不要常驻，比如系统侧还是旧版这种，提示一下就好」。
  *
- * @param text 这一行此刻要显示的话；`null` = 这一行不收（走退场动画）
+ *  **也在页面级**：它弹的是同一条提示条，不该有第二个宿主、也不该挑页显示 —— 原先挂在首页时
+ *  只认 `screen == SHORTCUTS`，冷启动后马上点进子页这条提醒就被吞了，而它说的「这一版没落到
+ *  新代码上」与用户在哪一页毫无关系（用户口径「不要留在首页，提示条全局单例，不要有第二个」）。
+ *
+ *  「整趟进程只说一遍」不靠页面，靠 `HostLinkState.lastNoticeShown`（进程级）：来回切页不会重复，
+ *  提醒自己消失（重启完 / 换包后恢复）时清零，下次再出现照说。
+ */
+@Composable
+internal fun SettingsPage.PageNoticeHint() {
+    val notice = noticeReason()
+    LaunchedEffect(notice) {
+        if (notice == null) {
+            //  只在**自检跑完**之后才清零：自检没跑完（`injectChecked` 还是 false）时这一段
+            //  `null` 是「还没问出来」，不是「提醒消失了」—— 顺手清零，等于每换一次语言、
+            //  每重跑一次自检都把「说过了」抹掉，同一条提醒再弹一遍。
+            if (link.injectChecked) link.lastNoticeShown = null
+            return@LaunchedEffect
+        }
+        // 同一条整趟只弹一次（`lastNoticeShown` 是进程级的那一位）。**比身份不比文案** ——
+        //  比文案的话切一次语言就不认得了（见 [LinkNotice]）。
+        if (link.lastNoticeShown == notice) return@LaunchedEffect
+        link.lastNoticeShown = notice
+        val text = notice.text()
+        XLog.w("页面提醒：$text")
+        //  先让「正在检查模块…」那条退场，再上结论：同一帧顶上来时两条会叠在一起，
+        //  屏幕上看到的只是「一条在换成另一句」，结论那 2 秒很容易被当成「检查还在走」。
+        //  错开一档退场时长，读起来才是「检查完了 → 结论」。
+        retireHint(HINT_SLOT_CHECKING)
+        delay(HINT_HANDOFF_MS)
+        hint(text, holdMs = NOTICE_HOLD_MS)
+    }
+}
+
+/**
+ * 自检还没跑完时那一条**一次性**提示 —— 「正在检查模块…」。
+ *
+ *  与已删掉的那条「常驻结论」不是一回事：那条是**一直挂着**的状态说明（用户要求整条删除），
+ *  这一条只是冷启动/刚进页面那几百毫秒的告知，走队列、两秒自己走。
+ *
+ *  判据是 `link.injectChecked`（自检跑完没有）。只弹一次：`LaunchedEffect(Unit)` 在页面
+ *  首次组合时跑一遍，之后自检完成与否都不再打扰。
+ */
+@Composable
+internal fun SettingsPage.PageCheckingHint() {
+    LaunchedEffect(Unit) {
+        //  自检已经跑完（热启动、或从子页回来）就不说这句
+        if (link.injectChecked) return@LaunchedEffect
+        //  **不按固定秒数走**：这条的意思是「还在问」，自检第一轮就要等满
+        //  [HOST_ALIVE_TIMEOUT_MS]（3 秒）才敢下结论 —— 用默认那 2.2 秒，它会在结论出来
+        //  之前先自己消失，中间空出一段「什么都没有」的空档，看着像「检查完了、什么也没说」。
+        //  所以给一个足够长的兜底，真正的收场在下面那条 effect。
+        hint(CHECKING_HINT, slot = HINT_SLOT_CHECKING, holdMs = CHECKING_HINT_FALLBACK_MS)
+    }
+    LaunchedEffect(link.injectChecked) {
+        //  自检一跑完就把这条收掉（播退场），「系统侧 / 宿主侧还是旧版」那条紧接着顶上来。
+        if (link.injectChecked) retireHint(HINT_SLOT_CHECKING)
+    }
+}
+
+/**
+ * 「正在检查模块…」那条的**兜底**停留时长 —— 只是防它赖着不走：正常路径是自检一结束就收。
+ *
+ *  按自检最长那一趟给（[QUERY_ROUNDS] 轮 × [HOST_ALIVE_TIMEOUT_MS]）再留 1 秒余量。
+ */
+private const val CHECKING_HINT_FALLBACK_MS = QUERY_ROUNDS * HOST_ALIVE_TIMEOUT_MS + 1000L
+
+/** 「检查中 → 结论」之间那一档停顿 —— 等于提示条退场的那 220ms 再留一点余量。 */
+private const val HINT_HANDOFF_MS = 260L
+
+/**
+ * 「系统侧 / 宿主侧还是旧版」那条的停留时长 —— 比默认那 2.2 秒长。
+ *
+ *  默认那一档是给「已保存 / 已删除」这种一眼就完的回执用的；这一条要用户**去做一件事**
+ *  （重启手机 / 重启服务），而且它前面刚走完一条「正在检查」，读的时间本来就被压掉一截。
+ */
+private const val NOTICE_HOLD_MS = 4000L
+
+/**
+ * 队列里的一格 —— 走位与缩放都在**它自己**身上，旧消息的位移是**被它占的高度挤出来的**。
+ *
+ * ## 怎么「挤」
+ *
+ *  入场/退场只跑一个 `progress`（0 = 不在位，1 = 在位）。方向按 `exiting / exitingDown` 定，
+ *  但**都是相对自己**的：
+ *   · 入场：从上方 16dp 落下来、0.92 → 1；
+ *   · 到点退场：原路往**上** 16dp 收回去、1 → 0.92、淡出；
+ *   · 被挤出队列：往**下** 56dp 滑走，同样缩到 0.92。
+ *  真正推动别的条目的是**报告给父级的高度**（见下面 `Modifier.layout`）：按 `progress` 从 0 长到满，
+ *  父级（`Column`）每帧重排 ⇒ 下面几条被逐帧往下挤；走的时候反过来，它们逐帧落回来。
+ *
+ *  和 `expandVertically` 的区别在**内容不裁**：这里只是把「报给父级的高度」按比例缩小，
+ *  内容仍按原尺寸完整画在 (0,0) —— 所以看到的是整条滑进来，而不是「从上往下一点点露出来」
+ *  （用户口径「不是从零长出来，动画不要变，挤的是位移量」）。
+ *
+ *  于是也不需要 FLIP / 让位动画：没有任何一条自己去做位移补偿，位移全是布局挤出来的。
+ *
+ * @param item 这一格画什么、是不是正在走
  */
 @Composable
 private fun HintSlot(
-    text: String?,
+    item: HintItem,
     backdrop: HazeState?,
+    modifier: Modifier = Modifier,
 ) {
-    // 退场那一两百毫秒里 `text` 已经是 null，但还要接着画上一次的内容 —— 否则会先闪空再消失。
-    //  初值取当前文本：这一槽里换的只是字符串（两份状态谁露脸见 [PageSnackbars]），
-    //  `AnimatedVisibility` 收起后重新开出时节点是新建的，第一帧就该是那句话，不该先空一帧。
-    var last by remember { mutableStateOf(text.orEmpty()) }
-    if (text != null && text != last) last = text
-
-    AnimatedVisibility(
-        visible = text != null,
-        enter = HINT_ENTER,
-        exit = HINT_EXIT,
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(item.exiting) {
+        progress.animateTo(
+            targetValue = if (item.exiting) 0f else 1f,
+            //  **对称的 `FastOutSlowInEasing`**：`DecelerateEasing` 前段极快、后段几乎不动，
+            //  看着就是「一下冲到位然后停住」（真机反馈「过渡到中间停住」）。
+            animationSpec = tween(HINT_FLY_MS.toInt(), easing = FastOutSlowInEasing),
+        )
+    }
+    val enter = with(LocalDensity.current) { HINT_ENTER_DISTANCE.toPx() }
+    val exit = with(LocalDensity.current) { HINT_EXIT_DOWN.toPx() }
+    //  方向和长度在**组合期**就定好：只有「被挤出队列」那条往下，其余（入场、到点退场）
+    //  都取负 —— 到点走的走的是入场那条路的反向，从哪儿来回哪儿去。
+    val travel = if (item.exitingDown) exit else -enter
+    Box(
+        modifier
+            //  报给父级的高度按 `progress` 长（入场）/ 缩（退场）—— 这就是「挤」：父级每帧重排，
+            //  下面的条目跟着位移。
+            //
+            //  入场时内容**贴着这个槽的下沿**放（`shown - full`，即往上冒出一整条）：报出去的高度
+            //  长多少，它的下边缘就走到哪，下面那几条被推开的距离与新消息的下边缘**始终是同一条线**。
+            //  以前内容固定画在 (0,0)、只靠 `translationY` 往上挪 16dp，槽还没长起来的那半程里
+            //  新胶囊其实已经整条画在旧消息身上了 —— 屏幕上就是「盖着」而不是「挤开」。
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val full = placeable.height
+                val shown = (full * progress.value).roundToInt().coerceIn(0, full)
+                layout(placeable.width, shown) {
+                    //  退场那条不动：它本来就要从自己的位置滑走、把位置让出来
+                    placeable.place(0, if (item.exiting) 0 else shown - full)
+                }
+            }.graphicsLayer {
+                //  相对**自己**的位移与缩放（与容器无关）：
+                //   · 入场：**不再自带位移**（位置由上面 `place` 贴着槽的下沿定），代价是它从
+                //     上面「冒出来」而不是浮在半空滑下来 —— 这样才不会压住别人；
+                //   · 到点退场：往上 16dp 收回去（`travel` 取负）；
+                //   · 被挤出队列：往**下** 56dp 滑走 —— 它是被后来的顶下去的。
+                //  缩放只影响画出来的大小，**占位仍按未缩放的尺寸**（槽的高度来自 `placeable.height`）。
+                translationY = if (item.exiting) travel * (1f - progress.value) else 0f
+                val scale = HINT_SCALE + (1f - HINT_SCALE) * progress.value
+                scaleX = scale
+                scaleY = scale
+                //  入场**不淡入**（文字从头就实着），走的时候**淡出**
+                alpha = if (item.exiting) progress.value.coerceIn(0f, 1f) else 1f
+            },
     ) {
-        // 三边留满阴影画布（阴影主要落在下 / 左右），**顶边收窄**：提示条在页面最顶端，
-        //  上方留满 28dp 就是「状态栏下面空一大块」（见文件头「落点」那段）。
+        // 这圈是**给阴影的画布**，不是排版留白（见 [HINT_SHADOW_SIDE]）：动画期间那层
+        // `graphicsLayer` 的边界就是节点边界，而阴影画在胶囊外面 —— 不留出来就会被裁平。
+        //  宽度**不要** `fillMaxWidth`：那会把这一格撑满整屏，胶囊就贴到左边去了
+        //  （真机反馈「现在不居中了」）。宽度跟着胶囊走，居中由 [PageSnackbars] 给。
         Box(
             Modifier.padding(
-                start = HINT_SHADOW_ROOM,
-                end = HINT_SHADOW_ROOM,
-                top = HINT_TOP_ROOM,
-                bottom = HINT_SHADOW_ROOM,
+                start = HINT_SHADOW_SIDE,
+                end = HINT_SHADOW_SIDE,
+                top = HINT_SHADOW_CAP,
+                bottom = HINT_SHADOW_CAP,
             ),
         ) {
-            HintCapsule(last, backdrop)
+            HintCapsule(item.text, backdrop)
         }
     }
 }
@@ -238,8 +347,14 @@ private fun HintCapsule(
             Modifier
                 .padding(horizontal = HINT_SIDE_MARGIN, vertical = HINT_ITEM_MARGIN)
                 .dropShadow(shape = shape, shadow = HINT_SHADOW)
-                .then(backdrop?.let { Modifier.frosted(it, shape) } ?: Modifier)
-                .background(container, shape)
+                .then(
+                    backdrop?.let {
+                        //  这一叠**一直在动**（进出场 + 让位都是逐帧位移），而糊是每帧重算的 ——
+                        //  所以取半分辨率采样那一档：Haze 会按缩放同比放大半径，视觉半径与观感不变，
+                        //  只是少掉一点糊的细节；换来的是一半的采样像素。
+                        Modifier.frosted(it, shape, performanceMode = HazePerformanceMode.Performance)
+                    } ?: Modifier,
+                ).background(container, shape)
                 //  一圈细描边：磨砂底与底下内容撞色时边界会糊掉（暗色下尤其），描一道把边收住。
                 //  挂在 `background` **之后**（画在底色上）、`clip` **之前**：描边居中于节点边界，
                 //  先 clip 会把外半圈裁掉、视觉只剩半宽。
@@ -300,11 +415,22 @@ private fun HintCapsule(
 private class SquircleShape(
     private val cornerRadius: Dp,
 ) : Shape {
+    //  上一次算出来的轮廓。同一个形状在一帧里要被问**四五次**（阴影 / 磨砂裁剪 / 底色 /
+    //  描边 / 裁内容），每次都是一模一样的尺寸 —— 不缓存就是同一帧里重画四五遍同样的
+    //  8 段超椭圆曲线、再建四五个 `Path`；进出场那几帧本来就没有余量，这一档省得最省事。
+    private var cached: Outline? = null
+    private var cachedSize: Size = Size.Unspecified
+    private var cachedDensity = 0f
+    private var cachedDirection: LayoutDirection? = null
+
     override fun createOutline(
         size: Size,
         layoutDirection: LayoutDirection,
         density: Density,
     ): Outline {
+        val hit = cached
+        //  尺寸、密度、书写方向三者任一变了才重算（换句时宽度会变，那是唯一会命中的场合）
+        if (hit != null && sameAsCached(size, density, layoutDirection)) return hit
         val path =
             Path().apply {
                 addSquircleRect(
@@ -313,8 +439,20 @@ private class SquircleShape(
                     cornerRadius = with(density) { cornerRadius.toPx() },
                 )
             }
-        return Outline.Generic(path)
+        val outline = Outline.Generic(path)
+        cached = outline
+        cachedSize = size
+        cachedDensity = density.density
+        cachedDirection = layoutDirection
+        return outline
     }
+
+    /** 上一次算的那份轮廓还能不能复用 —— 尺寸 / 密度 / 书写方向三样都对上才算命中。 */
+    private fun sameAsCached(
+        size: Size,
+        density: Density,
+        layoutDirection: LayoutDirection,
+    ): Boolean = size == cachedSize && density.density == cachedDensity && layoutDirection == cachedDirection
 }
 
 /**
@@ -350,34 +488,28 @@ private const val HINT_BORDER_ALPHA = 0.12f
 private val HINT_TALLER_BY = 2.dp
 
 /**
- * 胶囊外面那圈**给阴影留的画布**（左 / 右 / 下）—— 28dp = 阴影半径 26 + 下移 4。
+ * 胶囊左右两侧的**阴影画布**（28dp = 阴影半径 26 + 余量）。
  *
- *  为什么需要它：进出场用 alpha（`fadeIn` / `fadeOut`）时，Compose 会给节点开一层会话层
- *  （`saveLayer`），**会话层的边界就是节点边界** —— 而阴影画在胶囊外面，不留出这一圈就会
- *  被四周裁平。取 28dp：阴影半径 26 + 下移 4。
- *
- *  底部以前只留 4dp（「那圈阴影本来就该被窗口沿切掉」），但离屏层的边界在**动画期间**就生效，
- *  于是入场那 150ms 里底部阴影是齐边切平的、播完才恢复。现在底边留满。
- *
- *  **顶边不用这一档**，见 [HINT_TOP_ROOM]。
+ *  为什么需要它：进出场那层 `alpha`（离屏层）的边界就是节点边界，而阴影画在胶囊外面 ——
+ *  不留出来就会被裁平。左右两侧不参与堆叠间距，所以照留满。
  */
-private val HINT_SHADOW_ROOM = 28.dp
+private val HINT_SHADOW_SIDE = 28.dp
 
 /**
- * 顶边那圈画布的宽度 —— **0dp**：贴到最上面，离状态栏只剩 [HINT_ITEM_MARGIN] 的 4dp。
+ * 上下那两圈画布 —— 只留这么点，因为**它同时就是相邻两条的间距**：每条上下各占一份，
+ * 再加上 [HINT_ITEM_MARGIN] 的上下各 4dp，两条胶囊之间实际空 **16dp**（用户口径「消息间距再小一点」）。
+ *  留满 28dp 时两条之间空 56dp，比胶囊本身还高；收到 4dp 才凑出这一档。
  *
- *  阴影是**下移 4dp** 的：上方实际溢出只有 `26 - 4 = 22dp`，而且那一段是整圈里最淡的尾
- *  （14% 的黑再乘径向渐变到尾端），被离屏层切掉看不出来 —— 拿它换「贴近状态栏」很值。
- *
- *  顶部照留满 28dp（原先离底边那一档）浮现出来就是「状态栏下面空一大块」（真机反馈两次：
- *  先「离得也太远了点」，改到 32dp 后仍是「还是太远了」）；12dp 仍嫌远，收到 0。
+ *  代价：阴影往上是 22dp、往下 30dp，**动画那 180ms 里**上下各裁掉一截 —— 进场与退场都套着
+ *  那层 `alpha`，离屏层的边界就是节点边界。稳定后没有 alpha 层，一点不裁。
+ *  裁掉的是径向渐变最淡的尾巴，真机上看不出来；退场往下走时同理，走的那条会被自己的下沿裁一点。
  */
-private val HINT_TOP_ROOM = 0.dp
+private val HINT_SHADOW_CAP = 4.dp
 
 /** 胶囊左右两侧的外边距（库 `Snackbar` 内联的那 16dp，COUI `grid_guide_column_card_margin_start`）。 */
 private val HINT_SIDE_MARGIN = 16.dp
 
-/** 胶囊上下两侧的外边距（库 `Snackbar` 内联的那 4dp）—— 与 [HINT_SHADOW_ROOM] 合起来才是 32dp。 */
+/** 胶囊上下两侧的外边距（库 `Snackbar` 内联的那 4dp）—— 与 [HINT_SHADOW_CAP] 的上下各 4dp 相加，才是两条之间的 8dp。 */
 private val HINT_ITEM_MARGIN = 4.dp
 
 /**
@@ -397,29 +529,56 @@ private val HINT_SHADOW: Shadow =
         offset = DpOffset(x = 0.dp, y = 4.dp),
     )
 
-/** 进出场那几条规格 —— **淡入淡出与缩放并行**（COUI 那个组合：0.8 缩放 + 淡入）。 */
-private const val HINT_ENTER_MS = 150
+/**
+ * 进出场与让位那几条规格 —— 照搬 `fret-logic` 的 `v-transition-fly-up`（它是
+ * `src/assets/transitions.scss` 里给浮层消息用的那一套）：
+ *
+ * ```scss
+ * .fly-up-enter-from { transform: translateY(-16px) scale(0.96); opacity: 0; }
+ * .fly-up-leave-to   { transform: translateY(-16px) scale(0.92); opacity: 0; }
+ * .fly-up-enter-active, .fly-up-leave-active {
+ *   transition: opacity .1s cubic-bezier(.25,.1,.25,1), transform .1s cubic-bezier(.34,1.56,.64,1);
+ * }
+ * .fly-up-move { transition: transform .18s cubic-bezier(.34,1.56,.64,1); }
+ * ```
+ *
+ *  **`transform` 一律用 `FastOutSlowInEasing`，不用带 overshoot 的 `cubic-bezier(.34,1.56,.64,1)`**：
+ *  那条曲线在末尾会「冲过头再弹回来」，十六进制缩放在 100ms 里弹一下特别刺眼
+ *  （用户口径「不要做回弹效果，太难看了」）。fret-logic 用它是因为 web 上那点回弹配着 180ms
+ *  还算轻，挪到这个位置就过了。
+ *
+ *  和原版**不一样的两处**（都按真机口径调的）：
+ *   · 原版进出场都往上 16px；这里**进场往上（-16dp 落下来）、到点出场原路往上收回去**，
+ *     只有**被挤出队列**那条反过来往下 56dp（用户口径「超出队列的消息往下滑出配合 scale」、
+ *     「到点自动消失往上」）；
+ *   · 原版的 `.fly-up-move`（让位位移）**不另做**：位移靠新条目报出来的高度逐帧挤，见 [HintSlot]。
+ *     上一版用 `expandVertically` 做让位，问题正是「高度逐帧变化把别的东西一起推」——
+ *     这里虽然也动高度，但内容不裁、整条照原样画，看上去是「被挤」，不是「从零长出来」。
+ */
+private const val HINT_FLY_MS = 180L
 
-private const val HINT_EXIT_MS = 130
+/** 入场从上方落下的距离（`translateY(-16px)`）。 */
+private val HINT_ENTER_DISTANCE = 16.dp
 
-/** 缩放从 / 到 0.9：与淡出一起来时，幅度不必像纯缩放那样夸张。 */
-private const val HINT_ENTER_SCALE = 0.9f
+/**
+ * 退场往**下**滑走的距离 —— 只给**被挤出队列**那一条用（到点的走 `HINT_ENTER_DISTANCE` 原路往上）。
+ *
+ *  比入场远：入场是「落进来」，这条是「被顶下去」，得有被推开的量感。取 56dp（≈ 一格「胶囊 +
+ *  间距」）—— 走完这一段它已经让出整整一格，配合 0.92 的缩小与淡出，观感就是被后来那条挤掉。
+ *  这也是用户口径「超出队列的消息往下滑出配合 scale」「到点自动消失往上」的那两句话的分界：
+ *  **自己走的原路返回，被挤掉的顺着挤的方向走**。
+ */
+private val HINT_EXIT_DOWN = 56.dp
 
-/** 进出场：缩放 + 淡入淡出（两条并行，同一条 `tween`；缓动取 COUI 的减速 / 加速两档）。 */
-private val HINT_ENTER: EnterTransition =
-    fadeIn(tween(HINT_ENTER_MS, easing = DecelerateEasing())) +
-        scaleIn(tween(HINT_ENTER_MS, easing = DecelerateEasing()), initialScale = HINT_ENTER_SCALE)
-
-private val HINT_EXIT: ExitTransition =
-    fadeOut(tween(HINT_EXIT_MS, easing = AccelerateEasing())) +
-        scaleOut(tween(HINT_EXIT_MS, easing = AccelerateEasing()), targetScale = HINT_ENTER_SCALE)
+/** 缩放的两端 —— 入场 0.92 → 1（`fly-up` 是 0.96，这里取 0.92 与出场共用一条曲线）。 */
+private const val HINT_SCALE = 0.92f
 
 /**
  * 换句时胶囊宽度过渡的时长 —— 这一段**文字是不可见的**（见 [HintCapsule] 的「换句三段」），
  * 于是宽度动画不会带着半截文字一起动。
  *
- *  120ms：与进出场那两条（150 / 130）同一档。原来取 180，加上前后两段淡入淡出要 300ms 出头，
- *  真机上换句显得慢半拍（用户口径「文字动画太慢了」）。
+ *  120ms：比进出场那条（[HINT_FLY_MS] = 180）短一档 —— 换句只做宽度过渡，
+ *  加上前后两段文字淡入淡出也要 300ms 出头，再长就显得慢半拍。
  */
 private const val HINT_RESIZE_MS = 120
 

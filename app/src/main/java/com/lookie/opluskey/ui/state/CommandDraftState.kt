@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.state
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.lookie.opluskey.core.model.CommandKind
 
 /**
  * 「自定义命令」页那一域的状态 —— 草稿本体 + 「重置」那套行级退场的三个标记。
@@ -40,4 +41,16 @@ internal class CommandDraftState {
      *  无条件 reset 会把刚敲的内容一起吞掉（见 `CommandDraft.contentFingerprint`）。
      */
     var resetBaseline: String = ""
+
+    /**
+     * 页面**离开栈**：草稿与 tab 镜像一起归位。
+     *
+     *  与 [CommandDraft.reset] 的差别只有一处：这里连 `kind` 也清回单条。平时 `kind` 由分页器
+     *  单向同步（见那边的注释），但页面出栈之后没人再替它归位，而下次进页时
+     *  `PushResetsPagers` 要按它定位 tab —— 不清就会停在上次那一档。
+     */
+    fun discard() {
+        draft.reset()
+        draft.kind = CommandKind.SINGLE
+    }
 }

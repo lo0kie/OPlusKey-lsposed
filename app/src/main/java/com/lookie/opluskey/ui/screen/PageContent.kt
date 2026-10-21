@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
@@ -46,6 +45,7 @@ import com.lookie.opluskey.ui.model.PAGE_TRANSITION
 import com.lookie.opluskey.ui.model.PagePalette
 import com.lookie.opluskey.ui.model.colorsOf
 import com.lookie.opluskey.ui.onDebugCommand
+import com.lookie.opluskey.ui.screen.home.HomeLinkSelfCheck
 import com.lookie.opluskey.ui.state.CONFIG_IN_FLIGHT_GRACE_MS
 import com.lookie.opluskey.ui.state.InjectStatus
 import com.lookie.opluskey.ui.state.UiState
@@ -97,15 +97,34 @@ internal fun SettingsPage.PageContent() {
     //
     //  字号同样取系统那份的 `fontScale`（「字体大小」那一档也一起跟随）。
     //  只包这一棵页面树：宿主自己的顶栏 / 状态栏不归我们管，也不该跟着变。
-    val followDisplaySize = configState.config.value.global.followDisplaySize
+    //
+    // 「页面缩放」在这条基准上再乘一档（只在**不跟随**时生效，那一根滑杆也只在那时出现）：
+    //  跟随开着时页面大小由系统那一档说了算，再乘一个缩放等于两处都能调、谁也说不清最后是多少。
+    //  乘的是 `Density.density` ⇒ dp 与 sp 一起缩（字号也跟着变，这才是「缩放」而不是「只缩间距」）。
+    val global = configState.config.value.global
+    val followDisplaySize = global.followDisplaySize
+    val hostDensity = LocalDensity.current
     val systemDensity =
         remember {
             val res = Resources.getSystem()
             Density(res.displayMetrics.density, res.configuration.fontScale)
         }
+    val pageDensity =
+        remember(hostDensity, systemDensity, followDisplaySize, global.pageScale) {
+            val base = if (followDisplaySize) systemDensity else hostDensity
+            val factor = if (followDisplaySize) 1f else global.pageScale / 100f
+            // 100% 时原样返回：否则每重组一次都会换一个新 `Density` 实例，
+            //  下面那层 `CompositionLocalProvider` 就得把整棵页面树重画一遍。
+            if (factor == 1f) base else Density(base.density * factor, base.fontScale)
+        }
+    //  提示条那一层（`popupHost`）是 **SubcomposeLayout 另起的子组合**，读不到页面级的窗口 inset
+    //  （同一个坑见 `LocalHeaderBoxHeight` 那条注释：在那里 `error()` 过一次）。在 `popupHost`
+    //  里面调 `statusBarsPadding()` 拿到的是 **0**，提示条于是画到 y=0 —— 真机视频里它盖住了
+    //  系统状态栏的时间与电量。所以在这一层（页面级、Scaffold 之外）读好，按 Dp 传下去。
+    val statusBarTop = with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() }
     COUITheme(colors = colorsOf(night, palette)) {
         CompositionLocalProvider(
-            LocalDensity provides if (followDisplaySize) systemDensity else LocalDensity.current,
+            LocalDensity provides pageDensity,
             LocalNavigationEventDispatcherOwner provides navOwner,
             //  禁用态那几格点一下要说明原因（见 `ui/DisabledHint.kt`）：
             //  提示怎么弹、以及「整页现在为什么改不了」，都从页面这一层传下去 ——
@@ -133,15 +152,14 @@ internal fun SettingsPage.PageContent() {
                 //     而「弹窗开着时的提示」（「这颗键不能添加」）照样看得见。
                 //     **只让状态栏这一条**，不要让顶栏 —— 提示条本来就浮在顶栏那一行，
                 //     让了顶栏会看着「离顶部很远」（真机反馈）。
+                //   · 状态栏那条 inset **不在这里加**：它加在这一层的话，提示条入场那层 alpha
+                //     的上边界就是状态栏下沿，而阴影往上要溢出 22dp ⇒ 那 150ms 里阴影上沿被切平
+                //     （真机反馈「提示条顶部阴影在入场出场时被裁切」）。让给提示条自己加
+                //     （见 `PageSnackbar.HintSlot`）：画布从**屏幕顶**开始，胶囊位置不变。
                 popupHost = {
                     COUIPopupHost()
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .windowInsetsPadding(WindowInsets.statusBars),
-                        contentAlignment = Alignment.TopCenter,
-                    ) {
-                        PageSnackbars()
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                        PageSnackbars(statusBarTop)
                     }
                 },
             ) { padding ->
@@ -235,6 +253,15 @@ private fun SettingsPage.PageEffects(
     }
     DebugGestureSwitch(pagerState)
     PushResetsPagers(pagerState, commandPager)
+    //  提示条那条**页面级**副作用（一次性提醒）—— 提示条全局只有这一叠，
+    //  所以弹它的人也只能在页面级这一处（实现见 `PageSnackbar.kt`，那里是提示条的家）。
+    //  常驻结论那条已经删掉：见 `HintQueue` 的类注释。
+    //  链路自检也在页面级：它要把 `injectChecked` 置 true，而那一位正是一堆判据的门
+    //  （「系统侧还是旧版」「页面还在检查」都等它）。挂在首页时一离开那一页就被取消 ——
+    //  于是「留在首页才看得到提示」，与本意（一趟进程只说一次）相反。
+    HomeLinkSelfCheck()
+    PageNoticeHint()
+    PageCheckingHint()
 }
 
 /**

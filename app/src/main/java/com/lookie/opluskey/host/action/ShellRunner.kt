@@ -20,7 +20,12 @@ internal object ShellRunner {
         command: String,
         onFailure: (CommandFailure) -> Unit = {},
     ) {
-        if (command.isBlank()) return
+        if (command.isBlank()) {
+            //  空命令不该走到这里（`shell:` 那一支解析时已经掉空值）；真走到就是配置里有条空的，
+            //  留一行而不是无声无息地什么都不做
+            XLog.w("shell：命令为空，跳过")
+            return
+        }
 
         // 先占坑再起进程。`if (running.get() >= MAX) …` 那种**先查后加**在并发下会一起放行：两条
         //  会同时看到「没满」一起放行。占坑本身见 [acquireSlot]。

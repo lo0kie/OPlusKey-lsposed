@@ -14,7 +14,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 
 /**
- * 自定义命令库的读写：JSON 编解码加文件 IO（`org.json` 平台自带，不引依赖）。
+ * 自定义命令库的读写：JSON 编解码（kotlinx.serialization）加文件 IO。
  * 磁盘上正文之外套了一层外皮（[FileObfuscation]），[loadState] / [save] 负责剥与包。
  */
 object CommandLibrary {
@@ -149,11 +149,19 @@ object CommandLibrary {
      */
     fun parseOrNull(text: String): List<Command>? {
         val arr = commandElements(text) ?: return null
-        for (e in arr) {
-            if (decodeCommand(e) == null) return null
-        }
-        return parse(text)
+        //  「类型认不出」是**已知形态**（老文件里的 `branch`、或比我们新的版本写进来的类型），
+        //  跳过那一条、其余照常导入；真坏（名字空 / 结构不对）才整份判坏 ——
+        //  否则用户拿着旧备份升级后就再也导不进来（报「未知的配置格式」）。
+        val broken = arr.any { e -> decodeCommand(e) == null && !isUnknownKind(e) }
+        return if (broken) null else parse(text)
     }
+
+    /** 这一条是不是「名字读得出来、只是类型认不出」—— 与「真坏」分开，见 [parseOrNull]。 */
+    private fun isUnknownKind(e: JsonElement): Boolean =
+        runCatching {
+            val dto = json.decodeFromJsonElement<CommandDto>(e)
+            sanitizeName(dto.name).isNotEmpty() && CommandKind.fromId(dto.kind) == null
+        }.getOrDefault(false)
 
     /** 序列化成命令库文本，缩进两格、末尾一个换行（与老格式一致）。 */
     fun serialize(commands: List<Command>): String =
@@ -190,9 +198,6 @@ object CommandLibrary {
             XLog.w("读命令库失败（按读不懂处理）：${e.message}")
             Load.Unreadable
         }
-
-    /** 读命令库；读不到 / 读不懂都返回空表（不抛）—— 只给「空表就够用」的调用方（执行侧、导出包）。 */
-    fun load(): List<Command> = (loadState() as? Load.Ok)?.commands ?: emptyList()
 
     private fun parseState(text: String): Load {
         val elements =

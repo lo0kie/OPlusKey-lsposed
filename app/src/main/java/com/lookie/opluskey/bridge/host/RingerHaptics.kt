@@ -108,14 +108,26 @@ internal object RingerHaptics {
                     return true
                 }
             }
+        //  两条通道是**先后**关系：线性马达那条没走通才退回普通马达。
+        //  两者都没放出去时必须返回 false —— 调用方据此知道「这一下没有触觉」，
+        //  而不是以为已经振过（原来无脑返回 true，等于把失败吞了）。
         val byLinear = playByLinearMotor(ctx, effectId)
-        if (!byLinear) playByVibrator(ctx)
+        val played = if (byLinear) true else playByVibrator(ctx)
         // 判据级一行（每次切档一条，不刷屏）：档位 / 效果号 / 走的是哪条马达 ——
         //  「手感对不上」时先看这一行，别再从偏移去猜常量。
         XLog.w(
-            "响铃触觉：mode=$mode 效果号=$effectId 走${if (byLinear) "线性马达" else "普通马达（线性马达那条没走通）"}",
+            "响铃触觉：mode=$mode 效果号=$effectId " +
+                (
+                    if (byLinear) {
+                        "走线性马达"
+                    } else if (played) {
+                        "走普通马达（线性马达那条没走通）"
+                    } else {
+                        "两条通道都没放出去"
+                    }
+                ),
         )
-        return true
+        return played
     }
 
     /**

@@ -15,6 +15,7 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.host.action.ActionRunner
+import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.draftToLibrary
 import com.lookie.opluskey.ui.hint
@@ -37,7 +38,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
         testRunner(context).runTest(cmd.name)
     } catch (e: Throwable) {
         XLog.w("测试命令失败（已忽略）：${cmd.name}", e)
-        hint(I18n.get(Strings.TOAST_COMMAND_TEST_FAILED, "测试没触发"))
+        hint(I18n.get(Strings.TOAST_COMMAND_TEST_FAILED, "测试没触发"), slot = HINT_SLOT_COMMAND)
         return
     }
     //  注意：这里只能保证「**已派发**」，不是「已完成」：单条 `keyevent:` 是
@@ -45,7 +46,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     //  （`postDelayed` 续步）的**完成**晚于这一行 —— 说「已执行」是把派发说成了完成。
     //  命令可能一点可见动静都没有，没有这句分不清「发了」和「没反应」，所以保留提示、改口径
     //  （失败仍会由 `CommandFailure` 那条另弹一句）。
-    hint(I18n.get(Strings.TOAST_COMMAND_TRIGGERED, "已触发"))
+    hint(I18n.get(Strings.TOAST_COMMAND_TRIGGERED, "已触发"), slot = HINT_SLOT_COMMAND)
 }
 
 /**
@@ -175,7 +176,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
     when (saveCommands(next, "删除命令：${cmd.name}")) {
         CommandsSave.Ok -> {
             if (commandDraft.draft.editingName == cmd.name) commandDraft.draft.reset() else cleanDraftRefs()
-            hint(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除「%s」").format(cmd.name))
+            hint(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除「%s」").format(cmd.name), slot = HINT_SLOT_COMMAND)
         }
 
         // 库已经删掉了（只是没通知到注入侧，提示由 saveCommands 给）——草稿该清还是清，
@@ -209,6 +210,10 @@ private fun SettingsPage.clearCommandBindings(
     cmd: Command,
 ): Boolean {
     fun clean(a: Action) = if (a.token == cmd.token) Action.None else a
+
+    //  条件规则里的动作是**第四处引用**：摘掉整条规则会让用户的判断条件一起消失，
+    //  所以只把动作换成「无操作」—— 条件还在、命中时什么都不做，不是 NOT_FOUND。
+    fun cleanRule(r: com.lookie.opluskey.core.model.StateRule) = r.copy(action = clean(r.action))
     val cleared = mutableMapOf<KeyId, KeyConfig>()
     for (k in cfg.allKeys) {
         val before = cfg.key(k)
@@ -217,6 +222,7 @@ private fun SettingsPage.clearCommandBindings(
                 single = clean(before.single),
                 double = clean(before.double),
                 long = clean(before.long),
+                rules = before.rules.map(::cleanRule),
             )
         if (after != before) cleared[k] = after
     }
@@ -235,5 +241,6 @@ private fun SettingsPage.clearCommandBindings(
 private fun Config.hasBindingFor(cmd: Command): Boolean =
     allKeys.any { k ->
         val key = key(k)
-        key.single.token == cmd.token || key.double.token == cmd.token || key.long.token == cmd.token
+        key.single.token == cmd.token || key.double.token == cmd.token || key.long.token == cmd.token ||
+            key.rules.any { it.action.token == cmd.token }
     }

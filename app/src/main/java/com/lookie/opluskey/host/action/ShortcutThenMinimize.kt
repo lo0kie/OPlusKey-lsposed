@@ -15,7 +15,7 @@ import com.lookie.opluskey.host.action.MiniWindowFacts.SHORTCUT_VERIFY_RETRIES
  *  这里多传一份 [ShortcutStarter.zoomOptions]：**窗口模式写在同一份 options 里**，
  *  服务端认了就从小窗起，不必再收。
  *
- * ## ⚠️ 重试轮只等、绝不补发
+ * ## 重试轮只等、绝不补发
  *
  *  `getAllTopAppInfos()` 对**刚发出、还在注册**的那份任务读到的是 `-1`，所以「查不到」
  *  不等于「没起来」。在这里补发一次，跳板链会把两份任务串起来、第二份顶掉第一份 ——

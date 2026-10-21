@@ -184,7 +184,7 @@ internal object HostChrome {
             val appbar = findAppbar(activity)
             val aLoc = IntArray(2)
             appbar?.getLocationOnScreen(aLoc)
-            XLog.d(
+            XLog.w(
                 "状态栏区域诊断：container top=${cLoc[1]} 高=${container.height}" +
                     "；appbar top=${aLoc[1]} 高=${appbar?.height}",
             )

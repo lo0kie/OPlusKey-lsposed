@@ -16,7 +16,7 @@ internal const val PROFILE_URL = "https://github.com/$AUTHOR"
 /**
  * 「作者」菜单里「酷安」那一项的目标 —— 作者的酷安主页。
  *
- *  `AuthorTarget.configured` 判的是「地址空不空」（空串会让那一行置灰、点了不派发），
+ *  这一行的地址由 `AuthorTarget` 自己带着（[AuthorTarget.url]），界面不判空、也不置灰，
  *  所以这一行有值就等于菜单里那一项是亮的。
  */
 internal const val COOLAPK_URL = "https://www.coolapk.com/u/1014357"

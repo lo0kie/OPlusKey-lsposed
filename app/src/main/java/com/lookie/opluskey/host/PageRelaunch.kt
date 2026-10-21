@@ -12,7 +12,7 @@ import com.lookie.opluskey.core.wire.ModuleWire
 
 /**
  * 「重启服务」的最后一环，跑在**宿主主进程**里（设置页那边发出 [ModuleWire.ACTION_PAGE_RELAUNCH] 后
- * 就杀自己，见 `ui/state/PageControl`）。
+ * 就杀自己，见 `ui/PageControl`）。
  *
  *  为什么必须由这里来做：杀了自己的进程没法再把自己叫回来，而「从进程外叫」那条路在真机上走不通
  * —— 闹钟挂 `PendingIntent` 拉起 Activity 会被后台启动策略拦掉，判据是

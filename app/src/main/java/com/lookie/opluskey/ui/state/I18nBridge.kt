@@ -7,7 +7,7 @@ import com.lookie.opluskey.core.i18n.I18n
  * 界面层的字典订阅点。
  *
  *  `core/i18n/I18n` 本体不能持 Compose 状态：`core/` 被 CI 那条「注入侧不得引用界面层依赖」的
- *  grep 一并圈在范围内（见 `.github/workflows/build.yml`），那一层出现 `androidx.*` 就等于把发版
+ *  grep 一并圈在范围内（见 `.github/workflows/ci.yml`），那一层出现 `androidx.*` 就等于把发版
  *  断在 CI 上。所以字典本体留在 core（普通 Map），**订阅**这一半放在这里：
  *
  *  - [read]：组合期取文案时经它读下面这份状态 —— 「取一次文案」于是变成一次状态读取，

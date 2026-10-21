@@ -12,12 +12,11 @@ import com.lookie.opluskey.ui.model.API_MISMATCH_HINT
 import com.lookie.opluskey.ui.model.CHECKING_HINT
 import com.lookie.opluskey.ui.model.CONFIG_NOT_SYNCED_HINT
 import com.lookie.opluskey.ui.model.CONFIG_READ_FAILED_HINT
-import com.lookie.opluskey.ui.model.HOST_STALE_HINT
 import com.lookie.opluskey.ui.model.INJECT_NOT_LOADED_HINT
 import com.lookie.opluskey.ui.model.KEY_DISABLED_HINT
+import com.lookie.opluskey.ui.model.LinkNotice
 import com.lookie.opluskey.ui.model.PENDING_OR_SCOPE_HINT
 import com.lookie.opluskey.ui.model.SERVICE_NOT_RUNNING_HINT
-import com.lookie.opluskey.ui.model.SYSTEM_STALE_HINT
 import com.lookie.opluskey.ui.state.InjectPendingKind
 import com.lookie.opluskey.ui.state.InjectStatus
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -328,7 +327,7 @@ internal fun SettingsPage.blockedReason(): String? {
  *     「除了模块无法正常运行时的提示，其他的不要常驻，比如系统侧还是旧版这种，提示一下就好」）。
  *  两档都能照常改设置，所以**不能**进 [linkReady] / 整页闸 —— 那是另一次判断（见那里）。
  */
-internal fun SettingsPage.noticeReason(): String? {
+internal fun SettingsPage.noticeReason(): LinkNotice? {
     val f = linkFacts
     // **自检没跑完就不下结论**：这一趟的数据还没齐（注入侧的回包可能刚到、也可能还没到），
     //  此时弹「系统侧还是旧版」会跟紧跟着的「正在检查模块…」互相打架 ——
@@ -337,10 +336,10 @@ internal fun SettingsPage.noticeReason(): String? {
     if (!f.injectChecked) return null
     return when {
         // 系统侧跑着旧包：换包没重启。**只有这一件事**要做（重启手机）。
-        f.restartNeeded -> SYSTEM_STALE_HINT
+        f.restartNeeded -> LinkNotice.SystemStale
 
         // 宿主侧跑着旧包：它是普通应用进程，重开就好，不必重启手机。
-        f.hostStale -> HOST_STALE_HINT
+        f.hostStale -> LinkNotice.HostStale
 
         else -> null
     }

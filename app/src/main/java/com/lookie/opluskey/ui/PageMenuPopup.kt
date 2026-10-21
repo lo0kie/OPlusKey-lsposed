@@ -19,7 +19,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
@@ -28,11 +27,11 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.MENU_ICON_SIZE
-import com.lookie.opluskey.ui.model.MENU_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_PANEL_RADIUS
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_PICKER_MAX_HEIGHT
+import com.lookie.opluskey.ui.model.isDarkScheme
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.DropdownHeaderItem
 import io.github.suqi8.coui.kmp.basic.DropdownImpl
@@ -103,8 +102,8 @@ private fun expandMenu(entries: List<MenuEntry>): List<MenuPart> =
  *  调用方一个都碰不到 —— 以前十几处各写一遍 `show / maxHeight / enableWindowDim / columnAnchor`，
  *  漏一处就是「这张菜单没有关闭动画」或者「这一层长到屏幕外还滚不动」。
  *
- *  要「点一行再叠一层」的菜单（入口格的档位、系统开关的切换 / 打开 / 关闭）」不要用它，
- *  用 [ModeMenuPopups]：两层之间的守卫只有那一份实现。
+ *  入口格那类「点一行还要再问一句」的不要用它，用 [ModeMenuPopups]：一层菜单加一层弹窗的
+ *  编排（连同「弹窗开着时别被菜单的 dismiss 带走」那条守卫）只有那一份实现。
  *
  * @param entries 行；空表 = 关闭
  * @param preciseClick 开菜单那个控件自己的触点锚点
@@ -124,13 +123,30 @@ internal fun SettingsPage.PageMenu(
         preciseClick = preciseClick,
         entries = entries,
         onDismiss = onDismiss,
-        columnAnchor = columnAnchor,
-        enableWindowDim = dim,
-        // 长菜单一律封顶：不给的话面板按内容自然高度长，条数一多就顶出屏幕、而且滚不动
-        //  （「添加命令」那张、系统开关那十个开关都踩过）。给了之后超出部分由库的列表自己滚。
-        maxHeight = STEP_PICKER_MAX_HEIGHT,
+        options =
+            MenuPopupOptions(
+                // 长菜单一律封顶：不给的话面板按内容自然高度长，条数一多就顶出屏幕、而且滚不动
+                //  （「添加命令」那张、系统开关那十个开关都踩过）。给了之后超出部分由库的列表自己滚。
+                maxHeight = STEP_PICKER_MAX_HEIGHT,
+                dim = dim,
+                columnAnchor = columnAnchor,
+            ),
     )
 }
+
+/**
+ * [MenuPopup] 那三样「面板怎么摆」—— 合成一个对象，参数才压得回 detekt 的 5 个以内，
+ * 也让调用点一眼看出「这几样只影响面板本身」。
+ *
+ * @param maxHeight 面板最高多少（`null` = 按内容长）
+ * @param dim 叠在另一层上面时压暗背景
+ * @param columnAnchor 只给「还要再弹一层」的调用方：把这一层里的按下点记下来当下一层的锚点
+ */
+internal class MenuPopupOptions(
+    val maxHeight: Dp? = null,
+    val dim: Boolean = false,
+    val columnAnchor: PreciseClickState? = null,
+)
 
 @Composable
 internal fun SettingsPage.MenuPopup(
@@ -138,13 +154,10 @@ internal fun SettingsPage.MenuPopup(
     preciseClick: PreciseClickState,
     entries: List<MenuEntry>,
     onDismiss: () -> Unit,
-    maxHeight: Dp? = null,
-    enableWindowDim: Boolean = false,
-    columnAnchor: PreciseClickState? = null,
-    onLeave: (() -> Unit)? = null,
+    options: MenuPopupOptions = MenuPopupOptions(),
 ) {
     // 页面离开时跟着一起收（见 [SettingsPage.closeOverlays]）
-    OverlayCloser(show = show) { (onLeave ?: onDismiss)() }
+    OverlayCloser(show = show) { onDismiss() }
     // 整列的手势账本 —— 抓「滑动被当成点一下」那种偶发现场（见 [GestureProbe]）。
     val probe = rememberGestureProbe("浮层列表")
     //  每开一次把账本归零：对象跨开合不重建，留着上一次的
@@ -167,62 +180,14 @@ internal fun SettingsPage.MenuPopup(
         show = show,
         popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
         preciseClickState = held.click,
-        maxHeight = maxHeight,
-        enableWindowDim = enableWindowDim,
+        maxHeight = options.maxHeight,
+        enableWindowDim = options.dim,
         onDismissRequest = onDismiss,
     ) {
         // 退场期间用的就是 held 里那一次的内容（见上）。
         val shown = held.entries
         val column: @Composable () -> Unit = {
-            ListPopupColumn {
-                // 调用方那份「只有内容」的列表先展开成「内容 + 分隔」的展示序列（见 [expandMenu]）
-                val parts = expandMenu(shown)
-                val optionSize = parts.count { it is MenuPart.Item }
-                var index = -1
-                parts.forEachIndexed { position, part ->
-                    when (part) {
-                        is MenuPart.Item -> {
-                            index++
-                            MenuRow(
-                                row = part.row,
-                                index = index,
-                                optionSize = optionSize,
-                                // 「首行 / 末行」看的是**整列**的首尾元素：组标题占首行时，
-                                // 标题下面那一行**不算**首行 —— 否则会多出一次首行内衬，
-                                // 与组标题之间凭空多 2dp（查「小标题那笔账」时发现）。
-                                isFirst = position == 0,
-                                isLast = position == parts.lastIndex,
-                                // 淡出期间（`show = false`，内容还按 held 那一次留着）**不再派发**
-                                // —— 见 [MenuRow] 的 `interactive`。
-                                interactive = show,
-                                probe = probe,
-                            )
-                        }
-
-                        is MenuPart.Title -> {
-                            DropdownHeaderItem(part.text, isFirst = position == 0)
-                        }
-
-                        MenuPart.Line -> {
-                            PopupRowDivider()
-                        }
-
-                        MenuPart.HeavyLine -> {
-                            HorizontalDivider(
-                                thickness = DropdownDefaults.PopupGroupDividerThickness,
-                                // 组间那条**槽**：暗色下加深（`#333` 面板上压到 `#1f` 才看得出是一道槽），
-                                // 浅色下仍是那点灰。见 [popupDividerColor]。
-                                color =
-                                    if (COUITheme.colorScheme.background.luminance() < 0.5f) {
-                                        Color.Black.copy(alpha = MENU_GROUP_LINE_DARK_ALPHA)
-                                    } else {
-                                        Color.Black.copy(alpha = MENU_GROUP_LINE_LIGHT_ALPHA)
-                                    },
-                            )
-                        }
-                    }
-                }
-            }
+            ListPopupColumn { MenuEntries(shown, interactive = show, probe = probe) }
         }
         // `ListPopupColumn` 没有 `modifier` 参数 ⇒ 整列锚点 / 手势账本 / 磨砂只能套在它外面。
         //
@@ -251,10 +216,73 @@ internal fun SettingsPage.MenuPopup(
                         panelShape,
                     )
             } ?: Modifier
-        if (columnAnchor == null) {
+        val anchor = options.columnAnchor
+        if (anchor == null) {
             Box(Modifier.gestureProbe(probe).then(frost)) { column() }
         } else {
-            Box(Modifier.preciseClickAnchor(columnAnchor).gestureProbe(probe).then(frost)) { column() }
+            Box(Modifier.preciseClickAnchor(anchor).gestureProbe(probe).then(frost)) { column() }
+        }
+    }
+}
+
+/**
+ * 一列菜单的**内容** —— 先把调用方那份「只有行与小标题」的列表展开成「内容 + 分隔」的展示序列
+ * （见 [expandMenu]），再逐项画。
+ *
+ *  抽成一支只为把 [MenuPopup] 压回 `LongMethod` 的阈值：这里与「面板怎么摆、磨砂取哪一层、
+ *  退场期间用哪一份内容」无关，纯渲染。
+ *
+ * @param interactive 淡出期间（`show = false`，内容还留着）传 `false` —— 那一帧不再派发点击，
+ *   见 [MenuRow] 的 `interactive`。
+ */
+@Composable
+private fun SettingsPage.MenuEntries(
+    entries: List<MenuEntry>,
+    interactive: Boolean,
+    probe: GestureProbe?,
+) {
+    val parts = expandMenu(entries)
+    val optionSize = parts.count { it is MenuPart.Item }
+    var index = -1
+    parts.forEachIndexed { position, part ->
+        when (part) {
+            is MenuPart.Item -> {
+                index++
+                MenuRow(
+                    row = part.row,
+                    index = index,
+                    optionSize = optionSize,
+                    // 「首行 / 末行」看的是**整列**的首尾元素：组标题占首行时，
+                    // 标题下面那一行**不算**首行 —— 否则会多出一次首行内衬，
+                    // 与组标题之间凭空多 2dp（查「小标题那笔账」时发现）。
+                    isFirst = position == 0,
+                    isLast = position == parts.lastIndex,
+                    interactive = interactive,
+                    probe = probe,
+                )
+            }
+
+            is MenuPart.Title -> {
+                DropdownHeaderItem(part.text, isFirst = position == 0)
+            }
+
+            MenuPart.Line -> {
+                PopupRowDivider()
+            }
+
+            MenuPart.HeavyLine -> {
+                HorizontalDivider(
+                    thickness = DropdownDefaults.PopupGroupDividerThickness,
+                    // 组间那条**槽**：暗色下加深（`#333` 面板上压到 `#1f` 才看得出是一道槽），
+                    // 浅色下仍是那点灰。见 [popupDividerColor]。
+                    color =
+                        if (COUITheme.colorScheme.isDarkScheme) {
+                            Color.Black.copy(alpha = MENU_GROUP_LINE_DARK_ALPHA)
+                        } else {
+                            Color.Black.copy(alpha = MENU_GROUP_LINE_LIGHT_ALPHA)
+                        },
+                )
+            }
         }
     }
 }
@@ -332,7 +360,6 @@ private fun SettingsPage.MenuRow(
             row.danger,
             row.selected,
             row.trailingIcon,
-            row.stateIcon,
             row.disabledHint,
         ) {
             DropdownItem(
@@ -362,21 +389,6 @@ private fun SettingsPage.MenuRow(
                 // `COUIIcons.Basic.ArrowRight` 也是 COUI 那一套（12x24、描边 1.4），见 [PageIcons.EnterArrow]。
                 //  逐行可换（[MenuEntry.Row.trailingIcon]）：跳页面那些行用「窗口 + 加号」，与网格一致。
                 chevronIcon = row.trailingIcon ?: PageIcons.EnterArrow,
-                // 状态标记走库的 `hint` 槽（标题块与行尾指示之间，见 [MenuEntry.Row.stateIcon]）。
-                //  **禁用的行不画**：库里是 `item.hint?.takeIf { enabled }` —— 那一槽在 COUI 里
-                //  本来就跟禁用态一起收（`setHint` 那一条），别指望在这里标「为什么被禁用」。
-                hint =
-                    row.stateIcon?.let { glyph ->
-                        {
-                            Icon(
-                                glyph,
-                                null,
-                                Modifier.size(MENU_STATE_ICON_SIZE),
-                                // 与库给禁用行的那一档灰同一支笔：它是「不接管」，不是警告
-                                tint = COUITheme.colorScheme.disabledOnSecondaryVariant,
-                            )
-                        }
-                    },
                 icon = { m ->
                     val base = m.height(MENU_ROW_CONTENT_HEIGHT).bringIntoViewRequester(bringIntoView)
                     // 第 0 行兼当「列表滚了没有」的探针：挂在行内容上 —— 滚的是列表**内层**，
