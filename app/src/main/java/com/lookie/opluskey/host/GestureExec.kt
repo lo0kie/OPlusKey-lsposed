@@ -13,6 +13,7 @@ import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.host.action.ActionRunner
+import com.lookie.opluskey.host.action.ConditionProbe
 import com.lookie.opluskey.host.action.FailureNotice
 import com.lookie.opluskey.host.action.actionNoticeText
 
@@ -269,7 +270,13 @@ internal object GestureExec {
         repeat: Boolean,
         config: Config,
     ) {
-        val action = keyConfig.actionOf(gesture)
+        // 条件执行：先在这颗键这一档的**顺序表**里找，命中第一条就执行它；一条都不中就走
+        //  [KeyConfig.actionOf] 那一档本来的绑定 —— 所以分叉不占用绑定，两件事互不影响。
+        //  判据现判（按下的那一刻）：缓存会让「切到微信再按」仍按上一次的应用走。
+        val action =
+            keyConfig.actionFor(gesture) { condition ->
+                appContext?.let { ConditionProbe.matches(condition, it) } == true
+            }
         val r =
             runner ?: run {
                 XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${gesture.id}")

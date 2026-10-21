@@ -3844,3 +3844,25 @@ I ActivityTaskManager: START … (BAL_BLOCK) result code=102
    最终窗口在 4.1 秒后才落定 —— 用户口径正是「按了还是长时间等待」。
    ⇒ 「先起再收」只在第 0 轮真起，重试轮**只等不发**。
 
+
+## 二十七、录屏只有 `MainActivity` 一个入口管用（实测，2026-10-21，PLK110 / ColorOS 17.0.0）
+
+`com.oplus.screenrecorder` 对外有三个入口，逐个试过：
+
+| 入口 | 需要 | 实测 |
+| --- | --- | --- |
+| `.MainActivity`（MAIN） | 无 | **起来就录**：状态栏出红点、通知栏「屏幕录制 正在录屏…」、`dumpsys media_projection` 有会话 |
+| `.seedlingcard.JumpActivity` + `oplus.intent.action.SCREEN_RECORDER_JUMP` | `com.oplus.permission.safe.ASSISTANT`（宿主已授予） | **空转**：Activity 真的起来了（`START`/`ActivityRecord` 都在），但既不出界面也不开录，`media_projection` 仍是 `null` |
+| `.floatwindow.services.CommandRecorderService` + `oplus.intent.action.COMMAND_RECORDER_SERVICE` | `com.oplus.permission.safe.PICTURE` | 宿主**没申请**这一条，起必被拦 |
+
+落点登记在 `RomProfile` 的 `NAME_SCREEN_RECORD`，用的是第一条。`action` 留空、只按组件起。
+
+**判据**：按一下之后 `dumpsys media_projection` 有会话 / 状态栏出红点 = 起来了；
+只有 `START` 日志、`media_projection` 为 `null` = 起成了 JumpActivity（空转）。
+
+**停录**：发广播 `com.oplus.screenrecorder.ACTION_STOP_SCREEN_RECORDING`（带包名）即可 ——
+真机验过：发之前 `dumpsys media_projection` 是 `Projection:`，发之后立刻变 `null`，文件正常收尾。
+所以这一档做成**开关**：起过一次、没发过停止 ⇒ 下一次按是关（记账在宿主进程内，见
+`AppLauncher.toggledOn`；宿主没有 `MANAGE_MEDIA_PROJECTION`，查不到系统那边的会话）。
+
+**别用 `force-stop` 停**：那是硬杀，正在写的文件会留下半截。

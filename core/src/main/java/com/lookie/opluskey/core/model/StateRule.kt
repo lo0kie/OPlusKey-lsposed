@@ -1,94 +1,50 @@
 package com.lookie.opluskey.core.model
 
 /**
- * 判定一次按键时的**环境快照** —— 「按键按状态执行不同命令」的输入。
+ * 一条**条件分支**：这个手势在 [condition] 成立时改执行 [action]。
  *
- * 目前只有一格（前台应用的包名），因为状态维度里只落地了它。以后要加「屏幕是否点亮」
- * 「是否在充电」这类条件，就往这里加一格、在 [StateCondition] 加一个实现 ——
- * 判定侧只需要在**取环境的那一处**把值填上，分支表与匹配逻辑都不用动。
+ * 挂在 `KeyConfig.rules` 上，**按顺序匹配、第一条成立的赢**（见 `KeyConfig.actionFor`）；
+ * 一条都不中就走这颗键这一档**本来绑定的动作**（`KeyConfig.actionOf`）。表是空的（默认）⇒
+ * 行为与没有这一档完全相同。
  *
- * 取不到时填 `null`，不要猜：拿不到前台应用（清单读不出来、系统接口拒绝）时传
- * [UNKNOWN]，于是所有「按状态」的分支都不成立、退回这颗键本来的绑定 ——
- * 那与「状态不匹配」是同一个结果，比随便填一个包名安全。
- */
-data class KeyState(
-    /** 前台应用的包名；`null` = 不知道。 */
-    val foregroundPkg: String? = null,
-) {
-    companion object {
-        /** 什么都不知道：所有状态分支都不成立。 */
-        val UNKNOWN = KeyState()
-    }
-}
-
-/**
- * 一个**状态条件** —— 成立时，挂着它的那条分支才有资格顶替这颗键本来的绑定。
+ * ## 为什么分叉不占绑定
  *
- * ## 为什么是 sealed 接口，而不是一个 `pkg: String` 字段
+ * 按下去先看这张表，命中就捕获下来执行、没命中才轮到按键绑定本身 —— 于是「加一条条件」
+ * 永远不必先想清楚「那原来的绑定去哪了」，两件事各自独立。
  *
- * 状态这一族天然会长（前台应用只是第一档）。写成接口之后，加一档 = 加一个实现 + 加一个解析分支，
- * 于是每一个 `when` 都会因为不完整而**编译不过**，漏掉的地方立刻暴露；写成裸字段则是
- * 「加一档 = 改数据类 + 改所有读它的地方」，漏一处没有任何提示。
+ * ## 手势是分支的一部分
  *
- * ## 为什么不做「永远成立」的兜底档
+ * 而不是「每个手势一张表」：用户的心智是「在微信里，短按改成扫码」，一条一条写得出来；
+ * 拆成三张表则要求每条规则先选对表，配置文件和界面上都多一层无意义的分类。
+ * 界面上按当前手势过滤，看到的就是「这一档的规则」。
  *
- * 一条写错的条件被当成「永远成立」，会静默接管这颗键的所有手势 —— 表现是「这颗键怎么按
- * 都不走原来的绑定了」，而且没有任何症状指向那条规则。所以 [parse] 认不出就返回 `null`，
- * 由调用方把这条规则整条丢掉、只留一行日志。
- */
-sealed interface StateCondition {
-    /** 配置文件里的写法。 */
-    val token: String
-
-    /** 这个条件在 [state] 下成不成立。 */
-    fun matches(state: KeyState): Boolean
-
-    /** 前台应用就是 [pkg] 时成立。 */
-    data class ForegroundApp(
-        val pkg: String,
-    ) : StateCondition {
-        override val token: String = PREFIX + pkg
-
-        override fun matches(state: KeyState): Boolean = pkg.isNotEmpty() && state.foregroundPkg == pkg
-    }
-
-    companion object {
-        /** 前台应用那一档的前缀 —— **只在这里写一次**（与 `Action` 的前缀同一口径）。 */
-        const val PREFIX = "app:"
-
-        /**
-         * 解析一条条件写法；认不出的返回 `null`（理由见本接口的类注释）。
-         *
-         * 只做很轻的归一：去首尾空白、空包名当认不出。真正的「这个包名装没装」不在这里判 ——
-         * 配置是跨设备导出的，这台机器上没装不等于那条规则写错了。
-         */
-        fun parse(raw: String?): StateCondition? {
-            val text = raw?.trim().orEmpty()
-            if (!text.startsWith(PREFIX)) return null
-            val pkg = text.removePrefix(PREFIX).trim()
-            if (pkg.isEmpty()) return null
-            return ForegroundApp(pkg)
-        }
-    }
-}
-
-/**
- * 一条**状态分支**：这个手势在这个状态下改执行 [action]。
+ * ## 判据不在这里
  *
- * 挂在 `KeyConfig.rules` 上，按顺序匹配、**第一条成立的赢**（见 `KeyConfig.actionFor`）。
- * 表是空的（默认）⇒ 行为与没有这一档完全相同。
+ * 条件成不成立要读系统开关（前台应用 / 亮屏 / 响铃档位…），那是宿主侧的事
+ * （`ConditionProbe`）。所以匹配由调用方传进来，这一层只管「顺序」与「第一条赢」。
  *
- * 手势是分支的一部分，而不是「每个手势一张表」：用户的心智是「在微信里，短按改成扫码」，
- * 一条一条写得出来；拆成三张表则要求每条规则先选对表，配置文件和界面上都多一层无意义的分类。
+ * ## [condition] 可以为空（还没选）
+ *
+ * 界面上「添加条件」只是往表里插一行，**不替用户先填一个默认条件**（先填「亮屏中」看着像
+ * 用户自己选的，实际上会静默接管这一档，比空着更危险）。空条件的那一行就是「还没选」：
+ * 它在执行侧**永不成立**（见 [appliesTo]），界面上拦着不许保存。
  */
 data class StateRule(
     val gesture: Gesture,
-    val condition: StateCondition,
+    val condition: BranchCondition?,
     val action: Action,
 ) {
-    /** 这一条在「[gesture] 这次手势 + [state] 这个环境」下成立吗。 */
+    /**
+     * 这一条在「[gesture] 这次手势」下成立吗 —— [matches] 是那条条件的判据。
+     *
+     *  条件空着的行**不成立**：宁可落到下面一条 / 落到按键绑定那一档，也不执行一条用户还没
+     *  想清楚的条件（那是「填了一半的规则」）。
+     */
     fun appliesTo(
         gesture: Gesture,
-        state: KeyState,
-    ): Boolean = this.gesture == gesture && condition.matches(state)
+        matches: (BranchCondition) -> Boolean,
+    ): Boolean {
+        val cond = condition ?: return false
+        return this.gesture == gesture && matches(cond)
+    }
 }

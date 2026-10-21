@@ -62,6 +62,15 @@ object RomProfile {
         val activity: Boolean = false,
         val message: Int? = null,
         val stopExtras: Map<String, Any> = emptyMap(),
+        /**
+         * 「再点一次要关」那一档的**停止广播** —— 非空时这一档是**开关**，不是一次性的动作。
+         *
+         *  宿主没有 `MANAGE_MEDIA_PROJECTION`，查不到系统那边有没有投影会话，所以「现在是开还是关」
+         *  只能自己记账（见 `AppLauncher` 里的进程内状态）：起过一次、没发过停止 ⇒ 下一次按是关。
+         *  用户自己从通知里停掉时这本账会落后一步 —— 那时按一下先发一条停止广播（空转），
+         *  再按一下才重新开始。
+         */
+        val stopAction: String? = null,
     )
 
     /**
@@ -176,6 +185,16 @@ object RomProfile {
     const val NAME_KEY_FLASHLIGHT = "key_flashlight"
 
     /**
+     * 录屏（ColorOS 自带的屏幕录制）。
+     *
+     *  **不是「开关」而是一次「开始录制」**：这一档起的是录屏应用自己的 `JumpActivity`，
+     *  它一起就进录制（真机实测：状态栏立刻出现红点、通知栏是「屏幕录制 正在录屏…」）。
+     *  停录仍走录屏应用自己那颗浮动停止键 / 通知里的停止 —— 模块不碰它（那是它自己的会话状态，
+     *  从外面硬停会把文件写成半截）。
+     */
+    const val NAME_SCREEN_RECORD = "screen_record"
+
+    /**
      * 一键闪记（场景表 `flash_memory`）。`triggerType=1` 是它的 `TriggerType.MAGIC_KEY`。
      *
      * 落点取 Gleaner 自己那份 `DataCollectService`：场景表写的那个 `scene_owner` 已经过期，
@@ -270,6 +289,31 @@ object RomProfile {
         )
 
     /**
+     * 录屏（ColorOS 的 `com.oplus.screenrecorder`）—— 起它的 `MainActivity`，**一起就进录制**。
+     *
+     *  ## 三个入口里只有它管用（真机逐个试过）
+     *
+     *  · `MainActivity`（MAIN）：起来就录。状态栏出红点、通知栏「屏幕录制 正在录屏…」，
+     *    `dumpsys media_projection` 有会话 —— **用这一条**；
+     *  · `seedlingcard.JumpActivity` + `oplus.intent.action.SCREEN_RECORDER_JUMP`：**空转**。
+     *    权限（`safe.ASSISTANT`，宿主有）够了、Activity 也真的起来了，但既不出界面也不开录 ——
+     *    `dumpsys media_projection` 仍是 `null`。它多半还要一个 extra，别猜，别用；
+     *  · `floatwindow.services.CommandRecorderService` + `oplus.intent.action.COMMAND_RECORDER_SERVICE`：
+     *    要 `com.oplus.permission.safe.PICTURE`，宿主**没申请**这一条 —— 起必被拦。
+     *
+     *  `action` 留空：只按组件起。填 MAIN 也能起，但那条 action 会连带把「打开应用」的语义
+     *  带进来（有些 ROM 会走 launcher 的启动路径）。
+     */
+    private val SCREEN_RECORD =
+        BuiltIn(
+            owner = "com.oplus.screenrecorder",
+            service = "com.oplus.screenrecorder.MainActivity",
+            activity = true,
+            // 「再点一次要关」：真机验过 —— 发这条广播后 `dumpsys media_projection` 立刻变 null
+            stopAction = "com.oplus.screenrecorder.ACTION_STOP_SCREEN_RECORDING",
+        )
+
+    /**
      * **各版本的表 —— 加一档就在这里加一个 [Profile]**。
      *
      * 落点的来路：系统自己的侧键场景表（真机 `content://uri.gesturemanagerprovider/action_button`
@@ -295,6 +339,7 @@ object RomProfile {
                         NAME_RECORDING to RECORDING,
                         NAME_SCREEN_OCR to SCREEN_OCR,
                         NAME_KEY_FLASHLIGHT to KEY_FLASHLIGHT,
+                        NAME_SCREEN_RECORD to SCREEN_RECORD,
                     ),
                 reflection =
                     Reflection(

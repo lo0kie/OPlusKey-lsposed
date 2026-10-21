@@ -35,6 +35,14 @@ internal class HomeUiState {
     /** 「捐赠打赏」那一行的锚点 —— 菜单的落点由它给。 */
     val donateClick = PreciseClickState()
 
+    /**
+     * 「按键」卡末行那个「添加按键」弹的收集窗 —— 开着就为 true。
+     *
+     *  与菜单里那一项**同一套流程**（`CollectKeyDialog`：等按键 → 起名字 → 落盘），只是入口
+     *  从「按键绑定」页的 ⋮ 挪到了首页这张清单上。
+     */
+    var collectKeyPending by mutableStateOf(false)
+
     var showDonateMenu by mutableStateOf(false)
 
     /** 选中的捐赠去处（非 `null` = 收款码窗口开着）。 */

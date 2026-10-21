@@ -33,7 +33,7 @@ import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
-import com.lookie.opluskey.ui.opticalTextCenter
+import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
@@ -215,14 +215,12 @@ internal fun SettingsPage.ActionTile(
                             color = contentColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            // 账见 [opticalTextCenter]：文字在 52dp 的格里居中，汉字墨迹却比盒子中心
-                            //  高一档（行盒给基线以下留的 descent 中文不占），沉 0.1em 才落在正中。
                             //  `weight(fill = false)`：标题只占自己要的那点宽度、装不下才缩到
                             //  省略号（标题右边不再有标记，这个权重仍按「只占自己那点」算）。
                             modifier =
                                 Modifier
                                     .weight(1f, fill = false)
-                                    .opticalTextCenter(COUITheme.textStyles.body2.fontSize, FontWeight.Medium),
+                                    .opticalCenter(COUITheme.textStyles.body2),
                         )
                     }
                     // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
@@ -247,11 +245,11 @@ internal fun SettingsPage.ActionTile(
                             text = subtitle.orEmpty(),
                             style = COUITheme.textStyles.footnote1,
                             color = tileMutedColor,
+                            modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             // 与标题同一套视觉居中：按**各自字号**取同一比例（13sp 与 14sp 差 0.1dp，
                             //  行距基本不变），两行一起落在格的视觉中心
-                            modifier = Modifier.opticalTextCenter(COUITheme.textStyles.footnote1),
                         )
                     }
                 }

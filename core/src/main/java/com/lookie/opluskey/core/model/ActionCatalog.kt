@@ -131,6 +131,9 @@ object ActionCatalog {
      * 系统自己的侧键设置里就是这三项，调用目标逐字抄自它的场景表。
      */
     private val FLASH_MEMORY = Action.OPLUS_PREFIX + RomProfile.NAME_FLASH_MEMORY
+
+    /** 录屏 —— 与其它 `oplus:` 档同一条：名字在 [RomProfile] 那一处，这里只拼 token。 */
+    private val SCREEN_RECORD = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD
     private val RECORDING = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING
 
     /**
@@ -188,6 +191,10 @@ object ActionCatalog {
                     Spec(name = Strings.CATEGORY_RINGER, token = RINGER_TILE, glyph = Glyph.Bell),
                     // 「音量 + / 音量 − / 电源键」三档收进这一格（点它弹 [KEY_MODES] 菜单），同样是标记。
                     Spec(name = Strings.CATALOG_SYSTEM_KEYS, token = KEY_TILE, glyph = Glyph.Click),
+                    // 系统开关入口：点它弹 [SWITCH_MODES] 菜单（WLAN / 蓝牙 / 手电筒 …），
+                    // 选完绑成 `setting:<id>` 或那条动作本身的 token（见 [SystemSwitches]）。
+                    //  它属于「系统操作」这一组：动的是系统状态，不是某一颗按键。
+                    SWITCH_TILE_SPEC,
                     // KSU 没有这项；执行侧在 system_server 里反射调 PWM，不走按键长按
                     Spec(name = Strings.PANEL_POWER_MENU, token = POWER_MENU),
                 ),
@@ -202,12 +209,11 @@ object ActionCatalog {
                     // 灵感语音：只在长按那张网格里出现（[forGesture] 过滤），见 [VOICE_MEMORY] 的说明
                     Spec(name = Strings.CATALOG_VOICE_MEMORY, token = VOICE_MEMORY),
                     Spec(name = Strings.CATALOG_RECORDING, token = RECORDING),
+                    // 录屏：起 ColorOS 录屏应用自己的 JumpActivity，一起就进录制（落点见 RomProfile）
+                    Spec(name = Strings.CATALOG_SCREEN_RECORD, token = SCREEN_RECORD),
                     // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
                     // 两档尺寸（展开 / 收起）各不相同，格子代表不了其中任何一个 ⇒ 按 [MINI_TILE] 当入口格、弹菜单
                     Spec(name = Strings.TOOL_MINI_WINDOW, token = MINI_TILE, glyph = Glyph.MiniWindow),
-                    // 系统开关入口：点它弹 [SWITCH_MODES] 菜单（WLAN / 蓝牙 / 手电筒 …），
-                    // 选完绑成 `setting:<id>` 或那条动作本身的 token（见 [SystemSwitches]）。
-                    SWITCH_TILE_SPEC,
                     // 这一条是入口不是取值：点它跳「打开应用」页挑应用，选完绑成 `app:<包名>`（[Action.App]）。
                     // 网格点击靠比这个常量认领；不能靠「`Action.parse` 能否匹配」——`app:` 本身就是合法
                     // 的空 App 动作，走 `select()` 会把配置写成 `app:`（拉不起任何应用）。
@@ -472,6 +478,11 @@ object ActionCatalog {
             addAll(ALL)
             addAll(STEP_GROUPS.flatMap { it.second })
             MODE_MENUS.values.forEach { addAll(it) }
+            // 系统开关的三档里，`:on` / `:off` 这两行是按开关**现算**出来的（见 [switchStates]），
+            //  不在任何一张静态表里。收进这条队列，图标表才认得它们 —— 不收的话三级菜单那两行
+            //  每次重组都走一遍「图标表缺项」的兜底分支（字形对，但那行 W 日志是假的）。
+            //  `drop(1)` 去掉「切换」那一行：它换了个名字（`切换`）出现，收进来只是重复。
+            SWITCH_MODES.flatMap { switchStates(it.token).drop(1) }.forEach { add(it) }
             commands.forEach { add(commandSpec(it)) }
         }.distinct()
 
@@ -522,10 +533,89 @@ object ActionCatalog {
     fun isBound(
         spec: Spec,
         action: Action,
+    ): Boolean {
+        val bound = canonicalToken(spec.token)
+        //  「系统开关」那一族：`setting:wifi` 与 `setting:wifi:on` / `:off` 是**同一个开关**的三个状态
+        //  —— 菜单那一行（「切换」）与网格那一格都得认得出「这个开关已经绑了」。
+        //   只比整串的话，绑了「打开」之后勾子、高亮、格子里那行小字全都不出现，
+        //   在真机上就是「三态没有效果」。具体落在哪一档另由 `isBoundExactly` 判。
+        if (bound.startsWith(Action.SETTING_PREFIX)) {
+            val mine = switchIdOf(bound)
+            //  绑的这一头也认**老写法**（`oplus:no_disturb` / `flashlight`）：老配置不迁移，
+            //  执行照旧，但界面不能因此认不出「这一格绑的就是那个开关」。
+            //  只在这一头放宽 —— 反过来（spec 是老写法）仍按整串比，否则「快捷功能」里的手电筒格
+            //  会和「系统开关」格同时亮。
+            val theirs =
+                if (action.token.startsWith(Action.SETTING_PREFIX)) {
+                    switchIdOf(action.token)
+                } else {
+                    SystemSwitches.idOfLegacy(action.token)
+                }
+            return mine == theirs
+        }
+        return bound == action.token
+    }
+
+    /**
+     * 精确到**状态**的比法 —— 三档菜单（切换 / 打开 / 关闭）里打勾用它。
+     *
+     *  与 [isBound] 的差别只有一处：后者把 `setting:wifi:on` 与 `setting:wifi` 当同一个开关
+     *  （菜单里那行「WLAN」要认得出已绑），三级那三行则必须分得开。
+     */
+    fun isBoundExactly(
+        spec: Spec,
+        action: Action,
     ): Boolean = canonicalToken(spec.token) == action.token
+
+    /** 系统开关去掉「状态」那一维之后剩下的那一半（`setting:wifi:on` → `wifi`）。 */
+    private fun switchIdOf(token: String): String =
+        token
+            .removePrefix(Action.SETTING_PREFIX)
+            .removeSuffix(Action.ON_SUFFIX)
+            .removeSuffix(Action.OFF_SUFFIX)
+            .trim()
+
+    /**
+     * 「系统开关」那一族当前落在**哪个状态**上（`打开` / `关闭`）；「切换」那一档与别的动作返回 `null`。
+     *
+     *  网格那一格的小字要它：只写「WLAN」时看不出绑的是打开还是关闭。
+     */
+    fun switchStateLabel(action: Action): String? {
+        val on = (action as? Action.Setting)?.on ?: return null
+        return I18n.get(if (on) Strings.CATALOG_MODE_TURN_ON else Strings.CATALOG_MODE_TURN_OFF)
+    }
 
     /** 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。 */
     fun modeMenu(token: String): List<Spec>? = MODE_MENUS[token]
+
+    /**
+     * 「系统开关」再下一层：某个开关的**三档动作** —— 切换 / 打开 / 关闭。
+     *
+     *  `setting:` 那一族各有明确的开 / 关写法（`setting:wifi:on` / `setting:wifi:off`）；
+     *  手电筒与免打扰不是 `setting:`，它们的执行只有「切换」一种语义，所以只给一档 ——
+     *  不假装能指定开 / 关（写了也没人认）。
+     *
+     * @param token 开关在 [SWITCH_MODES] 里那一行的 token
+     */
+    fun switchStates(token: String): List<Spec> {
+        val toggle = Spec(name = Strings.CATALOG_MODE_TOGGLE, token = token)
+        if (!token.startsWith(Action.SETTING_PREFIX)) return listOf(toggle)
+        val id = token.removePrefix(Action.SETTING_PREFIX)
+        return listOf(
+            toggle,
+            Spec(name = Strings.CATALOG_MODE_TURN_ON, token = Action.Setting(id, on = true).token),
+            Spec(name = Strings.CATALOG_MODE_TURN_OFF, token = Action.Setting(id, on = false).token),
+        )
+    }
+
+    /**
+     * 入口格菜单里的**这一行**点下去还有没有再一层 —— 有的话直接把那几档给出来。
+     *
+     *  只有「系统开关」那一族有（切换 / 打开 / 关闭）；其余档位点一下就是最终取值，返回 `null`。
+     *  判据写成「[switchStates] 多于一条」而不是「token 是不是 [SWITCH_TILE] 的」：以后哪个开关
+     *  只有一种写法（手电筒 / 免打扰）自然就只有一条、不再进下一层，界面侧不用跟着改。
+     */
+    fun stateMenu(token: String): List<Spec>? = switchStates(token).takeIf { it.size > 1 }
 
     /**
      * `token` → 规范化之后的写法（走一遍 `Action.parse` 再取回它的 `token`）。

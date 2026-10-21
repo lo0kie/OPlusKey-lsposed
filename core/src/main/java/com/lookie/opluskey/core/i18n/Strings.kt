@@ -57,6 +57,12 @@ object Strings {
     const val BINDING_ENABLE_KEY = "binding.enable_key"
     const val BINDING_DELETE_KEY_CONFIRM = "binding.delete_key_confirm"
     const val BINDING_ADD_KEY = "binding.add_key"
+
+    /** 首页按键清单里，一颗**停用的**键后面那句状态（不是动作，别与 `binding.disable_key` 混）。 */
+    const val BINDING_KEY_DISABLED_STATE = "binding.key_disabled_state"
+
+    /** 同一处的另一半：这颗键**开着**（与上面那条一起用，两档都有副标题）。 */
+    const val BINDING_KEY_ENABLED_STATE = "binding.key_enabled_state"
     const val BINDING_CUSTOM_KEY_NAME = "binding.custom_key_name"
     const val BINDING_KEY_NAME = "binding.key_name"
     const val BINDING_RENAME_KEY = "binding.rename_key"
@@ -64,8 +70,6 @@ object Strings {
     /** 侧键不可改名 / 不可删 —— 那两行在菜单里是禁用的，点一下要说清为什么。 */
     const val BINDING_SIDE_KEY_NO_RENAME = "binding.side_key_no_rename"
     const val BINDING_SIDE_KEY_NO_DELETE = "binding.side_key_no_delete"
-    const val BINDING_RESET_KEY = "binding.reset_key"
-    const val BINDING_RESET_KEY_CONFIRM = "binding.reset_key_confirm"
     const val BINDING_DOUBLE_CLICK_WAIT = "binding.double_click_wait"
 
     /**
@@ -98,6 +102,11 @@ object Strings {
     const val CATALOG_MODE_COLLAPSE = "catalog.mode_collapse"
     const val CATALOG_MODE_CONTROL_CENTER = "catalog.mode_control_center"
     const val CATALOG_MODE_CYCLE = "catalog.mode_cycle"
+
+    /** 系统开关再下一层的三档：切换 / 打开 / 关闭。 */
+    const val CATALOG_MODE_TOGGLE = "catalog.mode_toggle"
+    const val CATALOG_MODE_TURN_ON = "catalog.mode_turn_on"
+    const val CATALOG_MODE_TURN_OFF = "catalog.mode_turn_off"
     const val CATALOG_MODE_EXPAND = "catalog.mode_expand"
     const val CATALOG_MODE_HOME = "catalog.mode_home"
     const val CATALOG_MODE_NOTIFICATIONS = "catalog.mode_notifications"
@@ -110,6 +119,7 @@ object Strings {
     const val CATALOG_MODE_VOL_DOWN = "catalog.mode_vol_down"
     const val CATALOG_QUICK_TOOLS = "catalog.quick_tools"
     const val CATALOG_RECORDING = "catalog.recording"
+    const val CATALOG_SCREEN_RECORD = "catalog.screen_record"
     const val CATALOG_SCREENSHOT = "catalog.screenshot"
     const val CATALOG_SYSTEM_ACTIONS = "catalog.system_actions"
     const val CATALOG_SYSTEM_KEYS = "catalog.system_keys"
@@ -160,6 +170,62 @@ object Strings {
     /** 表单第二条小标题：命令正文（单条命令那个输入框）。 */
     const val COMMAND_DETAIL_TITLE = "command.detail_title"
     const val COMMAND_TYPE_SERIAL = "command.type_serial"
+    const val COMMAND_TYPE_BRANCH = "command.type_branch"
+
+    /** 条件执行那一页的几处文案（分支行、保存判据、编辑按钮）。 */
+    const val COMMAND_BRANCH_SECTION = "command.branch_section"
+    const val COMMAND_BRANCH_ADD = "command.branch_add"
+    const val COMMAND_BRANCH_ADD_ELSE = "command.branch_add_else"
+    const val COMMAND_BRANCH_WHEN_APP = "command.branch_when_app"
+    const val COMMAND_BRANCH_ELSE = "command.branch_else"
+    const val COMMAND_BRANCH_ANY = "command.branch_any"
+    const val COMMAND_BRANCH_NO_COMMAND = "command.branch_no_command"
+    const val COMMAND_BRANCH_DUPLICATE = "command.branch_duplicate"
+
+    /** 「前台应用」可以多条，但**同一个应用**只能当一次条件。 */
+    const val COMMAND_BRANCH_DUPLICATE_APP = "command.branch_duplicate_app"
+    const val COMMAND_BRANCH_EMPTY = "command.branch_empty"
+    const val COMMAND_BRANCH_PICK_COMMAND = "command.branch_pick_command"
+    const val COMMAND_BRANCH_NEED = "command.branch_need"
+    const val COMMAND_BRANCH_NEED_COMMAND = "command.branch_need_command"
+    const val COMMAND_BRANCH_NEED_CONDITION = "command.branch_need_condition"
+    const val COMMAND_BRANCH_DELETE = "command.branch_delete"
+    const val COMMAND_BRANCH_DEFAULT = "command.branch_default"
+
+    /** 条件执行里每一种条件的叫法（分支行、条件菜单、摘要共用）。 */
+    const val COMMAND_COND_APP = "command.cond_app"
+    const val COMMAND_COND_RINGER_NAME = "command.cond_ringer_name"
+    const val COMMAND_COND_ORIENTATION_NAME = "command.cond_orientation_name"
+    const val COMMAND_COND_SCREEN_ON = "command.cond_screen_on"
+    const val COMMAND_COND_LOCKED = "command.cond_locked"
+    const val COMMAND_COND_SCREEN = "command.cond_screen"
+    const val COMMAND_COND_SCREEN_NAME = "command.cond_screen_name"
+    const val COMMAND_COND_CHARGING = "command.cond_charging"
+    const val COMMAND_COND_CHARGING_NAME = "command.cond_charging_name"
+    const val COMMAND_COND_CHARGING_OFF = "command.cond_charging_off"
+    const val COMMAND_COND_HEADSET = "command.cond_headset"
+    const val COMMAND_COND_HEADSET_NAME = "command.cond_headset_name"
+    const val COMMAND_COND_HEADSET_OFF = "command.cond_headset_off"
+    const val COMMAND_COND_MEDIA = "command.cond_media"
+    const val COMMAND_COND_MEDIA_NAME = "command.cond_media_name"
+    const val COMMAND_COND_MEDIA_PLAYING = "command.cond_media_playing"
+    const val COMMAND_COND_MEDIA_PAUSED = "command.cond_media_paused"
+    const val COMMAND_COND_WIFI = "command.cond_wifi"
+    const val COMMAND_COND_WIFI_NAME = "command.cond_wifi_name"
+    const val COMMAND_COND_WIFI_ON = "command.cond_wifi_on"
+    const val COMMAND_COND_WIFI_OFF = "command.cond_wifi_off"
+    const val COMMAND_COND_MINI = "command.cond_mini"
+    const val COMMAND_COND_RINGER = "command.cond_ringer"
+    const val COMMAND_COND_RINGER_NORMAL = "command.cond_ringer_normal"
+    const val COMMAND_COND_RINGER_VIBRATE = "command.cond_ringer_vibrate"
+    const val COMMAND_COND_RINGER_SILENT = "command.cond_ringer_silent"
+    const val COMMAND_COND_ORIENTATION = "command.cond_orientation"
+    const val COMMAND_COND_ORIENTATION_PORTRAIT = "command.cond_orientation_portrait"
+    const val COMMAND_COND_ORIENTATION_LANDSCAPE = "command.cond_orientation_landscape"
+
+    /** 「添加分支」第一步：先挑条件种类。 */
+    const val COMMAND_BRANCH_PICK_CONDITION = "command.branch_pick_condition"
+
     const val COMMAND_TYPE_SINGLE = "command.type_single"
     const val COMMAND_FAILURE_APP_MISSING = "command_failure.app_missing"
     const val COMMAND_FAILURE_APP_NO_ENTRY = "command_failure.app_no_entry"
@@ -186,6 +252,7 @@ object Strings {
     const val COMMON_MENU = "common.menu"
     const val COMMON_MODIFY = "common.modify"
     const val COMMON_MOVE_DOWN = "common.move_down"
+    const val COMMON_MORE = "common.more"
     const val COMMON_MOVE_UP = "common.move_up"
     const val COMMON_OPEN_APP_FORMAT = "common.open_app_format"
     const val COMMON_OPEN_MINI_WINDOW_FORMAT = "common.open_mini_window_format"
@@ -193,6 +260,10 @@ object Strings {
 
     /** 「系统开关」里那几颗在执行提示 / 步骤行里的写法（`切换 WLAN`）。 */
     const val COMMON_TOGGLE_SETTING_FORMAT = "common.toggle_setting_format"
+
+    /** 系统开关「打开 / 关闭」那两档的步骤标题。 */
+    const val COMMON_TURN_ON_SETTING_FORMAT = "common.turn_on_setting_format"
+    const val COMMON_TURN_OFF_SETTING_FORMAT = "common.turn_off_setting_format"
     const val COMMON_REPLACE = "common.replace"
     const val COMMON_RESET = "common.reset"
     const val COMMON_SAVE = "common.save"
@@ -228,6 +299,10 @@ object Strings {
     const val DIALOG_CLEAR_CONFIG_CONFIRM = "dialog.clear_config_confirm"
     const val DIALOG_CLEAR_CONFIG_MESSAGE = "dialog.clear_config_message"
     const val DIALOG_CLEAR_CONFIG_TITLE = "dialog.clear_config_title"
+
+    /** 删掉「条件执行」里的一条（那条条件与它的动作一起没了，顺序会往前顶）。 */
+    const val DIALOG_DELETE_CONDITION_MESSAGE = "dialog.delete_condition_message"
+    const val DIALOG_DELETE_CONDITION_TITLE = "dialog.delete_condition_title"
     const val DIALOG_DELETE_COMMAND_SERIAL_MESSAGE = "dialog.delete_command_serial_message"
     const val DIALOG_DELETE_COMMAND_SINGLE_MESSAGE = "dialog.delete_command_single_message"
     const val DIALOG_DELETE_COMMAND_TITLE = "dialog.delete_command_title"
@@ -260,6 +335,17 @@ object Strings {
     const val HOME_DONATE_SUMMARY = "home.donate_summary"
     const val HOME_MORE_OPTIONS_SUMMARY = "home.more_options_summary"
     const val HOME_OTHER_SECTION = "home.other_section"
+
+    /** 首页「按键列表」那一节的小标题（清单 + 添加按键都在这一节里）。 */
+    const val HOME_KEYS_SECTION = "home.keys_section"
+
+    /**
+     * 首页第一节的小标题 —— 那一节只有模块总闸一行。
+     *
+     *  **不能复用 [BINDING_TITLE]**：那一个是「按键绑定」**子页**的标题（顶栏用，见 `PageTopBar`），
+     *  两处共用一个键的话，改首页小标题会顺手把子页也改名。
+     */
+    const val HOME_MASTER_SECTION = "home.master_section"
 
     /** 首页主开关（「启用按键绑定」）的副标题 —— 开 / 关各一句。 */
     const val HOME_SWITCH_DESC_OFF = "home.switch_desc_off"
@@ -347,6 +433,11 @@ object Strings {
 
     /** 「更多选项」页「外观」那一卡：界面颜色（跟随系统 / 浅色 / 深色）。 */
     const val MORE_THEME = "more.theme"
+
+    /** 「跟随系统显示大小」那一行（开关）。 */
+    const val MORE_FOLLOW_DISPLAY_SIZE = "more.follow_display_size"
+    const val MORE_FOLLOW_DISPLAY_SIZE_ON = "more.follow_display_size_on"
+    const val MORE_FOLLOW_DISPLAY_SIZE_OFF = "more.follow_display_size_off"
     const val MORE_THEME_AUTO = "more.theme_auto"
     const val MORE_THEME_LIGHT = "more.theme_light"
     const val MORE_THEME_DARK = "more.theme_dark"
@@ -402,7 +493,6 @@ object Strings {
     const val TOAST_COMMANDS_READ_FAILED = "toast.commands_read_failed"
     const val TOAST_LOG_EMPTY = "toast.log_empty"
     const val TOAST_LOG_EXPORTED = "toast.log_exported"
-    const val TOAST_KEY_RESET = "toast.key_reset"
 
     /** 删除一颗自定义按键之后（「已删除「音量键」」）。 */
     const val TOAST_KEY_DELETED = "toast.key_deleted"
@@ -411,9 +501,6 @@ object Strings {
     const val TOAST_KEY_DISABLED = "toast.key_disabled"
 
     const val TOAST_KEY_ENABLED = "toast.key_enabled"
-
-    /** 切到另一颗键之后（「已切换到「音量键」」）。 */
-    const val TOAST_KEY_SWITCHED = "toast.key_switched"
 
     /** 把某个动作绑到手势 / 按键上之后（「已绑定「录音」」）。 */
     const val TOAST_BOUND = "toast.bound"
@@ -439,7 +526,9 @@ object Strings {
      *
      *  语言 / 界面颜色 / 系统配色三处共用：它们说的是同一件事（这一组里换了一档），
      *  文案也一样 —— 各留一个键的话，改一处界面措辞就得记着改三处。
-     *  [TOAST_KEY_SWITCHED] 不并进来：那一处的主语是**一颗键**，将来要改措辞时是另一个理由。
+     *
+     *  主语是**一组选项里的某一档**（语言 / 深浅 / 配色）。首页「按键清单」点一颗键**不算**：
+     *  那是进那颗键的页面，不是切换，所以那一处不发回执。
      */
     const val TOAST_SWITCHED_TO = "toast.switched_to"
     const val TOAST_LOG_EXPORT_FAILED = "toast.log_export_failed"

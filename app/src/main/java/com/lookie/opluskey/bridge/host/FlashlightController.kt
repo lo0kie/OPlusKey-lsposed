@@ -58,12 +58,8 @@ internal class FlashlightController(
         toggleViaCamera(ctx, viaColorOs, colorOsStateKnown = false)
     }
 
-    /** AOSP（`CameraManager.setTorchMode`）那一半 —— ColorOS 那条没接住时它就是兜底，所以独立成一段。 */
-    private fun toggleViaCamera(
-        ctx: Context,
-        viaColorOs: Boolean,
-        colorOsStateKnown: Boolean,
-    ) {
+    /** 取 `CameraManager` —— 取不到就记一行、返回 `null`（调用方直接收工）。 */
+    private fun cameraManager(ctx: Context): CameraManager? {
         val cm =
             try {
                 ctx.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
@@ -71,10 +67,46 @@ internal class FlashlightController(
                 XLog.w("取 CameraManager 失败", e)
                 null
             }
-        if (cm == null) {
-            XLog.w("拿不到 CameraManager，flashlight: 跳过")
-            return
+        if (cm == null) XLog.w("拿不到 CameraManager，手电筒跳过")
+        return cm
+    }
+
+    /**
+     * 明确开到 / 关到 —— 三态里「打开 / 关闭」那两档。
+     *
+     *  **不走 ColorOS 那条服务**：它只有「切一下」（`what=2`），表达不了目标状态。
+     *  `CameraManager.setTorchMode(id, on)` 是系统真开关（传什么就是什么），明确档直接用它；
+     *  切不动时 `torchOn` 不跟着改 —— 状态以回调 / 读回来的为准。
+     */
+    fun setEnabled(on: Boolean) {
+        val ctx =
+            context() ?: run {
+                XLog.w("没有 Context，手电筒跳过")
+                return
+            }
+        val cm = cameraManager(ctx) ?: return
+        registerTorchCallbackOnce(cm)
+        val id =
+            torchCameraId ?: firstTorchCamera(cm) ?: run {
+                XLog.w("找不到带闪光灯的摄像头，手电筒跳过")
+                return
+            }
+        try {
+            cm.setTorchMode(id, on)
+            torchOn = on
+            XLog.w("手电筒 → ${if (on) "开" else "关"}（camera=$id）")
+        } catch (e: Throwable) {
+            XLog.w("设置手电筒失败（相机被占用时 torch 不可用，见异常）", e)
         }
+    }
+
+    /** AOSP（`CameraManager.setTorchMode`）那一半 —— ColorOS 那条没接住时它就是兜底，所以独立成一段。 */
+    private fun toggleViaCamera(
+        ctx: Context,
+        viaColorOs: Boolean,
+        colorOsStateKnown: Boolean,
+    ) {
+        val cm = cameraManager(ctx) ?: return
 
         registerTorchCallbackOnce(cm)
 

@@ -6,19 +6,28 @@ name: 上架到模块仓库
 # 为什么分开：管理器只读模块仓库那条 Release，一旦推上去，所有装过的人立刻收到更新提示 ——
 #   那不该跟「我打了个版本」绑在同一刻发生。钉完版继续写新功能，过一阵想放出去了再来跑这一条。
 #
-# 用法：Actions → 上架到模块仓库 → Run workflow → 填 tag（就是本仓库那条存档 Release 的 tag，
-#   如 `4-1.1.0`）。包从那条 Release 取，不重新构建 —— 上架的就是当初钉住的那一份。
+# 用法：Actions → 上架到模块仓库 → Run workflow → **tag 留空即可**（取本仓库存档 Release
+#   里最新的那条，也就是刚钉的版）；要补上某个历史版本时才填具体 tag。
+#   包从那条 Release 取，不重新构建 —— 上架的就是当初钉住的那一份。
+#
+# 为什么是「留空取最新」而不是「预填上一个 tag」：`workflow_dispatch` 的 `default`
+#   只认字面量，写不了 `${{ }}`，没法按仓库状态算出默认值。留空再在第一步里解析，
+#   效果一样（点开就能直接跑），填了仍然以填的为准。
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "要上架的 tag（本仓库存档 Release 的 tag，如 4-1.1.0）"
-        required: true
+        # 不写具体版本号示例：那会让这一行每发一版就要跟着改一次（写 `4-1.1.0` 时就是这么过时的）。
+        description: "要上架的 tag（留空 = 本仓库最新的存档 Release）"
+        required: false
+        default: ""
 
 concurrency:
   # 同一版不许并发上架：两条同时跑会互相删资产。
-  group: publish-module-repo-${{ github.event.inputs.tag }}
+  #   不把 tag 拼进 group —— 它要等第一步解析完才知道，而 group 在 job 之前就要定；
+  #   改成全局串行：同一时间只允许一条上架，代价是不同版本的上架也得排队。
+  group: publish-module-repo
   cancel-in-progress: false
 
 permissions:
@@ -33,13 +42,32 @@ jobs:
       # LSPosed 模块仓库由机器人按 applicationId 自动建；Release 必须发在那个仓库里，
       #   发在本仓库不算数（管理器只读模块仓库的 release）。
       MODULE_REPO: Xposed-Modules-Repo/io.github.lo0kie.opluskey
-      TAG: ${{ github.event.inputs.tag }}
 
     steps:
+      # 先定「上哪一个 tag」—— 后面每一步都靠它（checkout 的 ref 也要）。
+      #   输入留空 ⇒ 取本仓库**最新**那条存档 Release 的 tag（`release.yml` 每次钉版都会建一条）。
+      #   排在 checkout 之前：这一问走 API，不需要工作区。
+      - name: 解析要上架的 tag
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          tag="${INPUT_TAG:-}"
+          if [ -z "$tag" ]; then
+            tag=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName')
+            echo "::notice title=按最新存档 tag 上架::输入留空，取到 ${tag:-（没有）}"
+          fi
+          if [ -z "$tag" ]; then
+            echo "::error::没有可用的 tag：输入为空，且本仓库没有存档 Release"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: 检出该 tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.inputs.tag }}
+          ref: ${{ steps.resolve.outputs.tag }}
           # 更新说明要从「上一个 tag → 这个 tag」的提交里拼，默认的浅克隆（深度 1、不取 tag）
           # 既找不到上一个 tag，也没有那些提交。
           fetch-depth: 0
@@ -51,7 +79,7 @@ jobs:
 
       - name: 校验 tag 与版本号一致
         env:
-          REF_NAME: ${{ github.event.inputs.tag }}
+          REF_NAME: ${{ steps.resolve.outputs.tag }}
           WANT_TAG: ${{ steps.dist.outputs.tag }}
         run: |
           if [ "$REF_NAME" = "$WANT_TAG" ]; then
@@ -64,6 +92,7 @@ jobs:
       # 包从**存档**取，不重新构建：上架的必须就是当初钉住的那一份（同一个 APK 字节）。
       - name: 取本仓库存档 Release 的资产
         env:
+          TAG: ${{ steps.resolve.outputs.tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p dist
@@ -107,6 +136,7 @@ jobs:
       - name: 清掉这一版里的旧资产
         if: steps.token.outputs.ready == 'true'
         env:
+          TAG: ${{ steps.resolve.outputs.tag }}
           GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
         run: |
           gh release view "$TAG" --repo "$MODULE_REPO" --json assets \
@@ -128,6 +158,8 @@ jobs:
       #
       #  `--no-merges`：合并提交的标题是「Merge branch …」，对用户没有意义。
       - name: 组装 Release 正文（上个 tag → 这个 tag 的提交）
+        env:
+          TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           prev=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
           if [ -n "$prev" ]; then

@@ -5,19 +5,24 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigationevent.NavigationEvent
 import androidx.navigationevent.NavigationEventInput
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.model.specIcon
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.BandHeight
+import com.lookie.opluskey.ui.state.BranchDraftState
 import com.lookie.opluskey.ui.state.CommandDraftState
 import com.lookie.opluskey.ui.state.ConfigState
 import com.lookie.opluskey.ui.state.HintCenter
@@ -139,6 +144,11 @@ internal class SettingsPage(
      */
     internal val overlays = PageOverlays()
 
+    // 这一页有没有「改过还没保存」的东西 —— 退出要不要问那一句的唯一判据。
+    //  两处都要看：命令页看命令草稿，分叉页看条件表草稿（它不是命令，草稿也不共用）。
+    private fun hasUnsavedDraft(s: Screen): Boolean =
+        (s.isCommandForm && commandDraft.draft.dirty) || (s == Screen.BRANCHES && branchDraft.draft.dirty)
+
     /**
      * 系统返回要交给**页面栈**处理吗 —— **只判断，不动手**（`onBackStarted` 那一刻不能有副作用，
      * 所以不能调 [goBack] 来探）。**三种不接管**：
@@ -153,7 +163,7 @@ internal class SettingsPage(
     internal fun wouldConsumeBack(): Boolean =
         navStack.size > 1 &&
             overlays.openCount.intValue == 0 &&
-            !(screen == Screen.COMMANDS && commandDraft.draft.dirty)
+            !hasUnsavedDraft(screen)
 
     /** 此刻有浮窗开着吗 —— 开着时系统返回**整个吞掉**（见 `BackInterception.handleDiscreteBack`）。 */
     internal fun hasOpenOverlays(): Boolean = overlays.hasOpen()
@@ -291,6 +301,21 @@ internal class SettingsPage(
      */
     internal val commandDraft = CommandDraftState()
 
+    /**
+     * 「条件执行」页的草稿 —— 当前这颗键这一档的条件表（[BranchDraftState]）。
+     *
+     *  与 [commandDraft] 分开：分叉不是命令库的一条记录，两者连草稿都不该共用。
+     */
+    internal val branchDraft = BranchDraftState()
+
+    /**
+     * 「按键绑定」页**当前停在哪一档手势**（0 = 单击 / 1 = 双击 / 2 = 长按）。
+     *
+     *  分叉页要它：从哪个手势页签进来，编的就是哪一档的条件表，顶栏小标题也写这一档
+     *  （`侧键-单击`）。pager 状态在 `PageContent` 里 remember、跨页拿不到，所以在这一层记一份。
+     */
+    internal var branchGesture by mutableIntStateOf(0)
+
     // 「清空配置」确认弹窗的置位在 [overlays] 那一域（[PageOverlays.confirmReset]）。
 
     /** hook 侧塞进来的那条标题与六个回调（见 [PageHooks]）。 */
@@ -315,9 +340,10 @@ internal class SettingsPage(
         // 它由 `ActivityPickerPage` 的 `onDispose` 负责（离开组合时清，退场动画照常画完）。
         // 「自定义命令」页：表单里改过还没保存 ⇒ 不退，先弹一句确认。判据用 `draft.dirty`
         // （与载入时的快照比），不是 `hasContent` —— 后者会把「点开一条看一眼、原样返回」也算成有改动。
-        if (current == Screen.COMMANDS && commandDraft.draft.dirty) {
+        //  「条件执行」页用的是**同一份草稿**、同一套保存按钮，所以走同一条拦截。
+        if (hasUnsavedDraft(current)) {
             if (!overlays.confirmLeaveCommands) {
-                XLog.w("退出自定义命令页：表单改过还没保存，先弹确认")
+                XLog.w("退出命令编辑页（${current.name}）：表单改过还没保存，先弹确认")
                 overlays.confirmLeaveCommands = true
             }
             return true
@@ -397,12 +423,35 @@ internal class SettingsPage(
      *  与它分开是因为两级要认的东西不一样：应用那一级只认到包名（一行一个包），
      *  界面那一级要认到类名 —— 否则挑完某个界面再进来，那一行永远不亮，看着像没选过。
      */
-    internal fun appPickerSelectedTarget(): String? =
+    internal fun appPickerSelectedTarget(): String? {
+        // 给「条件执行」挑的那一趟**先看那一支**：条件记的是包名、动作记的是 token，两者都只认到
+        //  应用（那一页不挑界面，点一行就是选中）。走 [editingAction] 认不出来 —— 那两个入口
+        //  既没有手势也不在多条命令里，`editingAction` 对它们恒为 `null`。
+        val forCommand = picker.branchCommandTarget != AppPickerState.NOT_FOR_BRANCH
+        val branchAt = if (forCommand) picker.branchCommandTarget else picker.branchTarget
+        if (branchAt != AppPickerState.NOT_FOR_BRANCH) {
+            val rule = branchDraft.draft.rules.getOrNull(branchAt)
+            return when {
+                rule == null -> {
+                    null
+                }
+
+                // 动作那一头取 token 里的目标（`app:包名` / `appshortcut:w:包名|名字` 都认）
+                forCommand -> {
+                    rule.action.appTarget?.let(AppTarget::pkg)
+                }
+
+                // 条件那一头直接就是包名
+                else -> {
+                    rule.condition?.value?.takeIf { it.isNotBlank() }
+                }
+            }
+        }
         // 两种动作都要认：`app:`（普通打开）与 `window:`（小窗，[Action.AppWindow]）——
         // 与「按键绑定」页那一格取应用名同口径。少认一种时，开着「以小窗口打开」挑完应用回来
         // 这页一行都不点亮、也不滚过去，看起来像没选过。
         //  来源与「以小窗口打开」的重算同源（[editingAction]）—— 两处判据必须一致。
-        when (val action = editingAction()) {
+        return when (val action = editingAction()) {
             is Action.App, is Action.AppWindow -> {
                 action.appTarget
             }
@@ -417,6 +466,7 @@ internal class SettingsPage(
                 null
             }
         }
+    }
 
     /**
      * 当前绑定如果是**快捷方式**，返回它的 id；否则 `null`。
@@ -430,7 +480,7 @@ internal class SettingsPage(
     /**
      * 「链路 / 报活」那几项结论（宿主在不在、注入侧回没回包）—— 见 [HostLinkState]。
      */
-    internal val link = HostLinkState()
+    internal val link = HostLinkState
 
     /**
      * 页面上那两条提示条（常驻结论 + 操作回执）—— 见 [HintCenter]。

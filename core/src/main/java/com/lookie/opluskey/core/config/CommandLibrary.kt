@@ -100,15 +100,22 @@ object CommandLibrary {
             XLog.w("命令库：有一条的类型认不出（已跳过）：$name（kind=${dto.kind}）")
             return null
         }
-        if (kind != CommandKind.SERIAL) {
-            return Command(name = name, kind = CommandKind.SINGLE, single = dto.single)
+        //  **必须一个类型一个分支**：这里是「不是 SERIAL 就当 SINGLE」的话，以后再加一档就会
+        //  被静默读成单条，而用户下一次保存就把它固化进文件。
+        return when (kind) {
+            CommandKind.SINGLE -> {
+                Command(name = name, kind = CommandKind.SINGLE, single = dto.single)
+            }
+
+            CommandKind.SERIAL -> {
+                Command(
+                    name = name,
+                    kind = CommandKind.SERIAL,
+                    steps = dto.steps.map { it?.trim().orEmpty() }.filter { it.isNotEmpty() },
+                    stepDelayMs = dto.stepDelayMs.coerceIn(Command.MIN_STEP_DELAY_MS, Command.MAX_STEP_DELAY_MS),
+                )
+            }
         }
-        return Command(
-            name = name,
-            kind = CommandKind.SERIAL,
-            steps = dto.steps.map { it?.trim().orEmpty() }.filter { it.isNotEmpty() },
-            stepDelayMs = dto.stepDelayMs.coerceIn(Command.MIN_STEP_DELAY_MS, Command.MAX_STEP_DELAY_MS),
-        )
     }
 
     /** 解析命令库文本，读不懂的条目跳过，绝不抛异常。 */

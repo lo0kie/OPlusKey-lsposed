@@ -29,6 +29,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.Donor
@@ -37,17 +39,13 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.donors
-import com.lookie.opluskey.ui.opticalTextCenter
-import io.github.suqi8.coui.kmp.basic.BasicComponent
-import io.github.suqi8.coui.kmp.basic.Card
+import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.VerticalDivider
-import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
@@ -132,14 +130,16 @@ private val CELL_LINE_HEIGHT =
  */
 @Composable
 private fun EmptyDonorCard() {
-    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-        BasicComponent(
-            title = I18n.get(Strings.DONATE_LIST_EMPTY_TITLE, "还没有捐赠记录"),
-            summary = I18n.get(Strings.DONATE_LIST_EMPTY_SUMMARY, "收到的每一份支持都会记在这里"),
-            startAction = { Icon(PageIcons.Donate, null) },
-            cardListPosition = cardListPositionOf(0, 1),
-        )
-    }
+    CardList(
+        rows =
+            listOf(
+                CardRow.Item(
+                    title = I18n.get(Strings.DONATE_LIST_EMPTY_TITLE, "还没有捐赠记录"),
+                    summary = I18n.get(Strings.DONATE_LIST_EMPTY_SUMMARY, "收到的每一份支持都会记在这里"),
+                    icon = PageIcons.Donate,
+                ),
+            ),
+    )
 }
 
 /**
@@ -219,9 +219,7 @@ private fun DonorRow(
 /**
  * 一格：撑满自己那份宽，字居中；超长按尾省略，不换行把行撑高。
  *
- *  字的**墨迹**还要单独沉半档（[opticalTextCenter]）：[CELL_LINE_HEIGHT] 只把行距摊平，
- *  行盒里 baseline 下面那段 descent 中文照样不占 —— 不沉的话整行字比格子中线高一档，
- *  与上下那两条表格线一比就看得出来。
+ *  行高由 [CELL_LINE_HEIGHT] 摊平，字按行盒居中 —— 不再对各字体做额外的墨迹修正。
  */
 @Composable
 private fun DonorCell(
@@ -232,7 +230,8 @@ private fun DonorCell(
     Box(modifier = modifier.padding(TABLE_CELL_PADDING), contentAlignment = Alignment.Center) {
         Text(
             text = text,
-            modifier = Modifier.opticalTextCenter(style),
+            // 格子高度由行高固定、字在里面竖居中 —— 补一档光学修正（见 `opticalCenter`）
+            modifier = Modifier.opticalCenter(style),
             style = style,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

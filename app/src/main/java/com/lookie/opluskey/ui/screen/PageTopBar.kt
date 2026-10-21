@@ -16,16 +16,19 @@ import com.lookie.opluskey.ui.model.ABOUT_TITLE
 import com.lookie.opluskey.ui.model.ACTIVITY_PICKER_TITLE
 import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
 import com.lookie.opluskey.ui.model.BINDING_TITLE
+import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.editingKeyName
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
 import com.lookie.opluskey.ui.screen.binding.BindingTabBand
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
+import com.lookie.opluskey.ui.screen.command.branchDefaultLabel
 import com.lookie.opluskey.ui.screen.home.ResetMenu
 import com.lookie.opluskey.ui.state.KeyWatchState
 import dev.chrisbanes.haze.HazeState
@@ -105,6 +108,8 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         Screen.COMMANDS -> COMMANDS_TITLE
 
+        Screen.BRANCHES -> BRANCHES_TITLE
+
         Screen.APP_PICKER -> APP_PICKER_TITLE
 
         Screen.ACTIVITY_PICKER -> ACTIVITY_PICKER_TITLE
@@ -141,9 +146,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         //  这一行是菜单里那个「当前值」在大标题右边的复述，不进菜单也知道自己在哪一组。
         //  以前它挂在大标题**下面**（`largeTitleSubtitle`），会平白多占一行高度。
         Screen.BINDING -> {
-            KeyWatchState
-                .editing(configState.config.value)
-                .let { if (it.isCustom) it.label else I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键") }
+            editingKeyName()
         }
 
         // 一条都没保存时不报数（「已保存0条命令」读起来像统计，也不成句）——
@@ -165,6 +168,12 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             } else {
                 I18n.format(Strings.APP_PICKER_SELECTED_FORMAT, selectedLabel(target))
             }
+        }
+
+        // 分叉页：这一行写**在编哪一档** —— `侧键-单击`。分叉是按「键 + 手势」各一份的，
+        //  标题只写「条件执行」看不出在改哪一档。
+        Screen.BRANCHES -> {
+            branchDefaultLabel()
         }
 
         // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
@@ -255,8 +264,9 @@ private fun SettingsPage.PageBottomBand(
             ActivitySearchBand()
         }
 
-        // 首页 / 「关于模块」/「捐赠列表」都没有固定带（后两页都是「短内容」页，见 [pageScrollBehavior]）
-        Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL -> {
+        // 首页 / 「关于模块」/「捐赠列表」都没有固定带（后两页都是「短内容」页，见 [pageScrollBehavior]）。
+        //  「条件执行」也没有：它没有类型可选，那一页的内容直接顶在顶栏下面。
+        Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL, Screen.BRANCHES -> {
             // 这几页不摆固定带
         }
     }

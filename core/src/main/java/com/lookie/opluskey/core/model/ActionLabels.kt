@@ -61,11 +61,15 @@ fun actionTitle(
             I18n.format(Strings.COMMON_OPEN_SHORTCUT_FORMAT, appName(action))
         }
 
-        // 系统开关（`setting:<id>`）：读作「切换:WLAN」—— 名字在清单里，认不出就退回 id
+        // 系统开关：切换 / 打开 / 关闭三档各一句话 —— 名字在清单里，认不出就退回 id
         is Action.Setting -> {
             I18n.format(
-                Strings.COMMON_TOGGLE_SETTING_FORMAT,
-                SystemSwitches.titleOf(action.token) ?: action.id,
+                when (action.on) {
+                    true -> Strings.COMMON_TURN_ON_SETTING_FORMAT
+                    false -> Strings.COMMON_TURN_OFF_SETTING_FORMAT
+                    null -> Strings.COMMON_TOGGLE_SETTING_FORMAT
+                },
+                SystemSwitches.titleOfId(action.id) ?: action.id,
             )
         }
 

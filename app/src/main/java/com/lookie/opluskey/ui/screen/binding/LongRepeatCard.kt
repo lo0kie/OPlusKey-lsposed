@@ -1,20 +1,16 @@
 package com.lookie.opluskey.ui.screen.binding
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.KeyConfig
-import com.lookie.opluskey.ui.AnimatedColumn
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
-import com.lookie.opluskey.ui.SwitchRow
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setLongRepeat
@@ -23,10 +19,7 @@ import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.switchNotice
 import com.lookie.opluskey.ui.write
 import com.lookie.opluskey.ui.writeAndNotice
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.DividerDefaults
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
-import io.github.suqi8.coui.kmp.basic.cardListPositionOf
+import io.github.suqi8.coui.kmp.basic.CardListPosition
 
 // 「长按」那一档的设置卡 —— 从 `BindingList.kt` 搬出来（它不属于「网格」，只属于长按这一档）。
 
@@ -51,88 +44,86 @@ internal fun SettingsPage.LongRepeatCard(
     //  （卡片上的值却还是侧键的，看着像「拖了没反应」）。
     val editing = KeyWatchState.editing(cfg)
     val key = cfg.key(editing)
-    // 四行：长按连续触发 +（开关打开时的）连续触发时振动 +（同上）触发间隔 + 长按延迟
-    val rows = if (key.longRepeat) 4 else 2
     val tick = rememberTick()
 
-    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-        LongRepeatSwitchRow(blockedReason, rows, key, enabled = !blocked)
-        // 「触发间隔」与「连续触发时振动」只在**开关打开时**才存在（关着时没有可调的东西）。
-        //  它们是上面那一行的参数，所以紧跟着上面那一行，而不是掉到「长按延迟」后面去；
-        //  连上面那条分隔线一起显隐（[AnimatedColumn]）—— 只藏行的话会留一条孤零零的线。
-        //
-        //  这两行的先后：**先「振动」后「间隔」**（用户口径）。先答「每次要不要振」，
-        //  再调「隔多久一次」—— 一个是行为的有无，一个是它的数值。
-        AnimatedColumn(visible = key.longRepeat) {
-            HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-            // 「连续触发时振动」：连发的行为细节（每一次重复要不要振），关着时没有「每一次」可谈。
-            SwitchRow(
-                title = I18n.get(Strings.BINDING_REPEAT_VIBRATE_TITLE, "连续触发时振动"),
-                summaryOn = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_ON, "每次重复都振动"),
-                summaryOff = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_OFF, "只在长按触发时振动一次"),
-                icon = PageIcons.Vibrate,
-                checked = key.longRepeatVibrate,
-                position = cardListPositionOf(1, rows),
-                enabled = !blocked,
-            ) {
-                tick()
-                setRepeatVibrate(it)
-            }
-            HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-            SliderRow(
-                position = cardListPositionOf(2, rows),
-                spec =
-                    SliderSpec(
-                        title = I18n.get(Strings.BINDING_REPEAT_INTERVAL_TITLE, "触发间隔"),
-                        icon = PageIcons.DelayRepeat,
-                        summary = I18n.get(Strings.BINDING_REPEAT_INTERVAL_DESC, "长按连续触发的重复间隔"),
-                        min = KeyConfig.MIN_REPEAT_INTERVAL_MS,
-                        max = KeyConfig.MAX_REPEAT_INTERVAL_MS,
-                        value = key.longRepeatIntervalMs,
-                        default = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
-                        enabled = !blocked,
-                    ),
-            ) { v ->
-                val now = configState.config.value
-                val id = KeyWatchState.editing(now)
-                write(
-                    now.copy(keys = now.keys + (id to now.key(id).copy(longRepeatIntervalMs = v))),
-                    "long_repeat_interval_ms=$v key=${id.id}",
-                ) != CommandsSave.Failed
-            }
-        }
-        HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-        LongPressDelayRow(rows, masterEnabled && !blocked)
-    }
+    CardList(
+        rows =
+            listOf(
+                // 「长按连续触发」：副标题有**三个来源** —— 置灰原因（为什么点不了）优先，
+                //  否则按开关真假各一句。这种「三取一」写成一行的 `summaryOn/Off` 刚好。
+                CardRow.Switch(
+                    title = I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_TITLE, "长按连续触发"),
+                    summaryOn =
+                        blockedReason ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_ON, "按住不放，按间隔重复执行"),
+                    summaryOff =
+                        blockedReason ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_OFF, "按住不放只执行一次"),
+                    icon = PageIcons.LongRepeat,
+                    checked = key.longRepeat,
+                    enabled = !blocked,
+                ) {
+                    tick()
+                    setLongRepeat(it)
+                },
+                // 「连续触发时振动」与「触发间隔」只在**开关打开时**才存在（关着时没有可调的东西）。
+                //  它们是上面那一行的参数，所以紧跟着上面那一行，而不是掉到「长按延迟」后面去；
+                //  显隐由列表连分隔线一起做（`visible`）—— 只藏行会留一条孤零零的线。
+                //
+                //  这两行的先后：**先「振动」后「间隔」**（用户口径）。先答「每次要不要振」，
+                //  再调「隔多久一次」—— 一个是行为的有无，一个是它的数值。
+                CardRow.Switch(
+                    title = I18n.get(Strings.BINDING_REPEAT_VIBRATE_TITLE, "连续触发时振动"),
+                    summaryOn = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_ON, "每次重复都振动"),
+                    summaryOff = I18n.get(Strings.BINDING_REPEAT_VIBRATE_DESC_OFF, "只在长按触发时振动一次"),
+                    icon = PageIcons.Vibrate,
+                    checked = key.longRepeatVibrate,
+                    enabled = !blocked,
+                    visible = key.longRepeat,
+                ) {
+                    tick()
+                    setRepeatVibrate(it)
+                },
+                CardRow.Custom(visible = key.longRepeat) { position ->
+                    RepeatIntervalRow(position, key, !blocked)
+                },
+                // 「长按延迟」—— 多久算长按。
+                CardRow.Custom { position ->
+                    LongPressDelayRow(position, masterEnabled && !blocked)
+                },
+            ),
+    )
 }
 
 /**
- * 「长按连续触发」那一行 —— 从卡里抽出来只为长度（detekt 的 `LongMethod`）。
+ * 「触发间隔」那一行 —— 长按连续触发隔多久重放一次。
  *
- *  它的副标题有**三个来源**：置灰原因（为什么点不了）优先，否则按开关真假各一句。
- *  这种「三取一」摊在卡片函数里会把那张卡顶出长度上限，而它自己也确实是一件事，
- *  所以自成一个行函数 —— 与同文件的 `LongPressDelayRow` 同一套写法。
+ *  单独一支只为让 [LongRepeatCard] 留在 detekt 的长度上限之内（它自己也要能被 `visible` 藏起来）。
  */
 @Composable
-private fun SettingsPage.LongRepeatSwitchRow(
-    blockedReason: String?,
-    rows: Int,
+private fun SettingsPage.RepeatIntervalRow(
+    position: CardListPosition,
     key: KeyConfig,
     enabled: Boolean,
 ) {
-    val tick = rememberTick()
-    SwitchRow(
-        title = I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_TITLE, "长按连续触发"),
-        // 真假各一句，都说「现在是什么行为」—— 关着的时候再讲「关闭后会怎样」是错的
-        summaryOn = blockedReason ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_ON, "按住不放，按间隔重复执行"),
-        summaryOff = blockedReason ?: I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_DESC_OFF, "按住不放只执行一次"),
-        icon = PageIcons.LongRepeat,
-        checked = key.longRepeat,
-        position = cardListPositionOf(0, rows),
-        enabled = enabled,
-    ) {
-        tick()
-        setLongRepeat(it)
+    SliderRow(
+        position = position,
+        spec =
+            SliderSpec(
+                title = I18n.get(Strings.BINDING_REPEAT_INTERVAL_TITLE, "触发间隔"),
+                icon = PageIcons.DelayRepeat,
+                summary = I18n.get(Strings.BINDING_REPEAT_INTERVAL_DESC, "长按连续触发的重复间隔"),
+                min = KeyConfig.MIN_REPEAT_INTERVAL_MS,
+                max = KeyConfig.MAX_REPEAT_INTERVAL_MS,
+                value = key.longRepeatIntervalMs,
+                default = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+                enabled = enabled,
+            ),
+    ) { v ->
+        val now = configState.config.value
+        val id = KeyWatchState.editing(now)
+        write(
+            now.copy(keys = now.keys + (id to now.key(id).copy(longRepeatIntervalMs = v))),
+            "long_repeat_interval_ms=$v key=${id.id}",
+        ) != CommandsSave.Failed
     }
 }
 
@@ -145,7 +136,7 @@ private fun SettingsPage.LongRepeatSwitchRow(
  */
 @Composable
 private fun SettingsPage.LongPressDelayRow(
-    rows: Int,
+    position: CardListPosition,
     enabled: Boolean,
 ) {
     val now = configState.config.value
@@ -158,7 +149,7 @@ private fun SettingsPage.LongPressDelayRow(
     //  说明里点一句「比它短算单击」：按不出来时用户第一个怀疑的就是这个数。到这一句为止 ——
     //  写全「这一档已短于人一次自然按压」那种话太长，会把行撑成两行、与旁边几行的说明也不齐。
     SliderRow(
-        position = cardListPositionOf(if (key.longRepeat) 3 else 1, rows),
+        position = position,
         spec =
             SliderSpec(
                 title = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_TITLE, "长按延迟"),

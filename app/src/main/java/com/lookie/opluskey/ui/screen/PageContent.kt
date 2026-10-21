@@ -4,10 +4,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Resources
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
@@ -22,6 +24,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.navigationevent.NavigationEventDispatcherOwner
 import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
@@ -83,8 +87,25 @@ internal fun SettingsPage.PageContent() {
     //  读的是 `configState.config`，所以选完色当场重组、整页配色跟着换 —— 不需要重进页面。
     val palette = PagePalette.ofId(configState.config.value.global.palette)
 
+    // 「跟随系统显示大小」：**开着**时把整棵页面树换成系统那份 `Density`，关着时保持宿主这一份。
+    //
+    //  真机（PLK110，显示大小调大：`wm density` = Override 476 / Physical 560）量出来的方向是：
+    //   · `LocalDensity.current`（宿主 Activity 的 resources）= **560**，即页面本来就不随系统的
+    //     「显示大小」变 —— 宿主那份 Configuration 里密度还是物理值；
+    //   · `Resources.getSystem().displayMetrics` = **476**，系统全局配置，跟着「显示大小」走。
+    //  所以「跟随」= 用系统那份，「不跟随」= 保持现状（宿主那份）。第一版写反了，真机一拨就看出来。
+    //
+    //  字号同样取系统那份的 `fontScale`（「字体大小」那一档也一起跟随）。
+    //  只包这一棵页面树：宿主自己的顶栏 / 状态栏不归我们管，也不该跟着变。
+    val followDisplaySize = configState.config.value.global.followDisplaySize
+    val systemDensity =
+        remember {
+            val res = Resources.getSystem()
+            Density(res.displayMetrics.density, res.configuration.fontScale)
+        }
     COUITheme(colors = colorsOf(night, palette)) {
         CompositionLocalProvider(
+            LocalDensity provides if (followDisplaySize) systemDensity else LocalDensity.current,
             LocalNavigationEventDispatcherOwner provides navOwner,
             //  禁用态那几格点一下要说明原因（见 `ui/DisabledHint.kt`）：
             //  提示怎么弹、以及「整页现在为什么改不了」，都从页面这一层传下去 ——
@@ -105,23 +126,20 @@ internal fun SettingsPage.PageContent() {
                 // 浮层的 dim 都自然作用到它 —— 之前那条盖着 hook 侧的
                 // 实心遮罩，模糊 / dim 都到不了，只能一个个单独处理（已删）。
                 contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                //  底部那两摞提示（常驻结论 + 操作回执）挂**浮层槽**、且排在弹窗宿主**之后**：
+                //  提示条（常驻结论 + 操作回执）挂**浮层槽**、排在弹窗宿主**之后**：
                 //   · 内容之上、不随滚动 —— 挂进页内就得跟着列表滚，而各页都是滚动容器；
-                //   · **弹窗之上** —— 库的 `Scaffold` 把 `popup` 放在最后 `place()`，而
-                //     `snackbarHost` 槽在它下面；用原来的提示槽，弹窗一开提示就被整个盖住
-                //     （「这颗键不能添加」那种提示正是弹窗开着时弹的，等于没弹）。
-                //  槽位自己是一个 `Box`、顶对齐，所以这里补一层底部对齐的盒子。
-                //
-                //  ⚠️ 底部那条 inset 得**自己加**：`snackbarHost` 槽是库自己按
-                //  `contentWindowInsets` 让过位的，`popupHost` 槽不管 —— 直接搬过来，提示条就会
-                //  沉到手势导航条底下那一条里（这一页 `contentWindowInsets` 全零，没人替它让）。
+                //   · 位置在**页面最顶部**（状态栏之下）：贴着底边时它会压在弹窗那一排按钮上
+                //     （弹窗是居中/偏下的，二者必然重叠）。挪到顶部之后两者不再抢地方，
+                //     而「弹窗开着时的提示」（「这颗键不能添加」）照样看得见。
+                //     **只让状态栏这一条**，不要让顶栏 —— 提示条本来就浮在顶栏那一行，
+                //     让了顶栏会看着「离顶部很远」（真机反馈）。
                 popupHost = {
                     COUIPopupHost()
                     Box(
                         Modifier
                             .fillMaxSize()
-                            .windowInsetsPadding(hintInsets()),
-                        contentAlignment = Alignment.BottomCenter,
+                            .windowInsetsPadding(WindowInsets.statusBars),
+                        contentAlignment = Alignment.TopCenter,
                     ) {
                         PageSnackbars()
                     }
@@ -135,7 +153,7 @@ internal fun SettingsPage.PageContent() {
                         .clipToBounds(),
                 ) {
                     val pagerState = rememberPagerState(pageCount = { Gesture.entries.size })
-                    val commandPager = rememberPagerState(pageCount = { CommandKind.entries.size })
+                    val commandPager = rememberPagerState(pageCount = { CommandKind.FORM_TABS.size })
                     PageEffects(navOwner, pagerState, commandPager)
                     PageBackStack(pagerState, commandPager)
                 }
@@ -370,9 +388,11 @@ private fun SettingsPage.PushResetsPagers(
             // 还会被分页器反着覆盖回「单条」（真机反馈「长按自定义命令跳转后，
             // 多条命令的 tab 没有对应切换」）。
             //  从 FAB 进来时草稿刚 `reset()`（kind = SINGLE），等价于回第一页。
+            //  分叉那一档不在这个分页器里（它是独立页）：`indexOf` 给出 -1 ⇒ 落到第一页，
+            //  紧接着 `CommandTabSync` 会把 `draft.kind` 拨回单条 —— 这一页本来也只认这两档。
             Screen.COMMANDS -> {
                 commandPager.scrollToPage(
-                    CommandKind.entries.indexOf(commandDraft.draft.kind).coerceAtLeast(0),
+                    CommandKind.FORM_TABS.indexOf(commandDraft.draft.kind).coerceAtLeast(0),
                 )
             }
 

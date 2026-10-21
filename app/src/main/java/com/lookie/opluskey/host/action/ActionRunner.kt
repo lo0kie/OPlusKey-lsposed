@@ -42,7 +42,13 @@ internal class ActionRunner(
         )
     private val launcher = AppLauncher({ context }, ::notifyFailure)
     private val shortcut = AppShortcutLaunch({ context }, launcher.mini, ::notifyFailure)
-    private val custom = CustomCommandRunner(handler, ::runShell, ::dispatch, ::notifyFailure)
+    private val custom =
+        CustomCommandRunner(
+            handler,
+            ::runShell,
+            ::dispatch,
+            ::notifyFailure,
+        )
 
     /**
      * 「灵感语音」上一次触发的时间（`uptimeMillis`）—— 连按不重复起采集。
@@ -182,7 +188,7 @@ internal class ActionRunner(
                 is Action.PowerMenu -> sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
                 is Action.Oplus -> runOplus(action.feature)
                 is Action.Panel -> runPanel(action.mode)
-                is Action.Setting -> SettingSwitch.toggle(context, action.id, ::notifyFailure)
+                is Action.Setting -> SettingSwitch.toggleOrFlashlight(context, action, flashlight, ::notifyFailure)
             }
         } catch (e: Throwable) {
             // 必须 catch Throwable：执行环境（Runtime / 反射注入）出错可能是 Error 系，漏出去会崩系统

@@ -3,7 +3,10 @@ package com.lookie.opluskey.host.action
 import android.content.Context
 import android.provider.Settings
 import com.lookie.opluskey.bridge.SettingBridge
+import com.lookie.opluskey.bridge.host.FlashlightController
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.SystemSwitches
 
 /**
  * 「系统开关」那几条开关的**宿主侧** —— 读当前状态、算出目标值，再交给 system_server 执行。
@@ -38,18 +41,49 @@ internal object SettingSwitch {
         )
 
     /**
+     * `setting:<id>[:on|:off]` 的分派 —— 手电筒那一支**不走**下面那条链路。
+     *
+     *  它的真开关就在宿主里（[FlashlightController] 调 `CameraManager.setTorchMode`），
+     *  交给 [toggle] 会发一条 system_server 那边没人接的广播（那边只接了
+     *  wifi / bt / airplane / rotation / nfc / dnd / darkmode）。
+     *  清单里手电筒与免打扰都收进了 `setting:` 族（三态要能把目标状态写进 token），执行各走各的通道。
+     */
+    fun toggleOrFlashlight(
+        context: Context?,
+        action: Action.Setting,
+        flashlight: FlashlightController,
+        onFailure: (CommandFailure) -> Unit,
+    ) {
+        if (action.id == SystemSwitches.ID_FLASHLIGHT) {
+            val on = action.on
+            if (on == null) flashlight.toggle() else flashlight.setEnabled(on)
+            return
+        }
+        toggle(context, action.id, action.on, onFailure)
+    }
+
+    /**
      * 切一下 [id]。
      *
+     * @param on 目标状态：`null` = 切换（先读当前状态再取反）、`true` / `false` = 明确打开 / 关闭
+     *   （这两种**不读状态**：用户已经把目标写死了，读不到也能执行）
      * @param onFailure 读不到状态 / 通道发不出去时的回调（与 `shell:` 动作同一套分档）
      */
     fun toggle(
         context: Context?,
         id: String,
+        on: Boolean?,
         onFailure: (CommandFailure) -> Unit,
     ) {
         if (context == null) {
             XLog.w("没有 Context，系统开关 $id 跳过")
             onFailure(CommandFailure.UNKNOWN)
+            return
+        }
+        // 明确的开 / 关不需要读状态：直接把目标交给执行侧
+        if (on != null) {
+            XLog.w("系统开关：$id 明确${if (on) "打开" else "关闭"}")
+            write(context, id, on, onFailure)
             return
         }
         // 这两条没有可读的 Settings 键（旋转锁不在 Settings 里、`nfc_on` 也读不到），
@@ -59,16 +93,29 @@ internal object SettingSwitch {
             SettingBridge.send(context, id, null)
             return
         }
-        val on = readOn(context, id)
-        if (on == null) {
+        val current = readOn(context, id)
+        if (current == null) {
             XLog.w("系统开关：读不到 $id 当前状态，这次不切（盲调会把开着的关掉）")
             onFailure(CommandFailure.UNKNOWN)
             return
         }
-        val target = !on
-        XLog.w("系统开关：$id 现在是${if (on) "开" else "关"}，切成${if (target) "开" else "关"}")
-        // 这两条系统自己盯着 Settings 里的键（Phone 的 DataEnabledSettings / PowerManagerService
-        //  都有 ContentObserver），宿主有 WRITE_SECURE_SETTINGS，写一下就够了
+        val target = !current
+        XLog.w("系统开关：$id 现在是${if (current) "开" else "关"}，切成${if (target) "开" else "关"}")
+        write(context, id, target, onFailure)
+    }
+
+    /**
+     * 把目标状态写下去：能直接写 `Settings.Global` 的就写，其余交给 system_server。
+     *
+     *  这两条系统自己盯着 Settings 里的键（Phone 的 `DataEnabledSettings` / `PowerManagerService`
+     *  都有 ContentObserver），宿主有 `WRITE_SECURE_SETTINGS`，写一下就够了。
+     */
+    private fun write(
+        context: Context,
+        id: String,
+        target: Boolean,
+        onFailure: (CommandFailure) -> Unit,
+    ) {
         val key = SETTINGS_KEYS[id]
         if (key != null) {
             // `putInt` 自己返回布尔：false = 写入被拒（权限 / 只读档），它与「抛异常」是两件事，
@@ -119,6 +166,11 @@ internal object SettingSwitch {
 
             // ui_night_mode：MODE_NIGHT_NO = 1、MODE_NIGHT_YES = 2（0 / auto 都算没开）
             "darkmode" -> nightMode(value("ui_night_mode", secure = true))
+
+            // 免打扰：`Settings.Global.zen_mode` 由 NotificationManagerService 自己维护
+            //  （ZEN_MODE_OFF=0，其余三档都算「开着」）。
+            //  写不走 Settings，得由 system_server 调 `setZenMode` —— 见 `SettingCalls.dnd`。
+            "dnd" -> onOff(value("zen_mode"))
 
             else -> null
         }

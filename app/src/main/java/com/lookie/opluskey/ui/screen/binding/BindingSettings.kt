@@ -1,22 +1,18 @@
 package com.lookie.opluskey.ui.screen.binding
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.KeyConfig
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 
 /**
  * 「按键设置」卡（**单击档**）—— 只有「单击延迟」一行。
@@ -43,27 +39,32 @@ internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
     val id = KeyWatchState.editing(cfg)
     val key = cfg.key(id)
     val rowsEnabled = enabled
-    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-        SliderRow(
-            position = cardListPositionOf(0, SINGLE_SETTING_ROWS),
-            spec =
-                SliderSpec(
-                    title = I18n.get(Strings.SETTING_DOUBLE_CLICK_DELAY, "单击延迟"),
-                    icon = PageIcons.DelayTap,
-                    summary = I18n.get(Strings.BINDING_DOUBLE_CLICK_WAIT, "单击后等待双击的时长"),
-                    min = KeyConfig.MIN_DOUBLE_CLICK_MS,
-                    max = KeyConfig.MAX_DOUBLE_CLICK_MS,
-                    value = key.doubleClickMs,
-                    default = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
-                    enabled = rowsEnabled,
-                ),
-        ) { v ->
-            val now = configState.config.value
-            val target = KeyWatchState.editing(now)
-            write(
-                now.copy(keys = now.keys + (target to now.key(target).copy(doubleClickMs = v))),
-                "double_click_ms=$v key=${target.id}",
-            ) != CommandsSave.Failed
-        }
-    }
+    CardList(
+        rows =
+            listOf(
+                CardRow.Custom { position ->
+                    SliderRow(
+                        position = position,
+                        spec =
+                            SliderSpec(
+                                title = I18n.get(Strings.SETTING_DOUBLE_CLICK_DELAY, "单击延迟"),
+                                icon = PageIcons.DelayTap,
+                                summary = I18n.get(Strings.BINDING_DOUBLE_CLICK_WAIT, "单击后等待双击的时长"),
+                                min = KeyConfig.MIN_DOUBLE_CLICK_MS,
+                                max = KeyConfig.MAX_DOUBLE_CLICK_MS,
+                                value = key.doubleClickMs,
+                                default = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
+                                enabled = rowsEnabled,
+                            ),
+                    ) { v ->
+                        val now = configState.config.value
+                        val target = KeyWatchState.editing(now)
+                        write(
+                            now.copy(keys = now.keys + (target to now.key(target).copy(doubleClickMs = v))),
+                            "double_click_ms=$v key=${target.id}",
+                        ) != CommandsSave.Failed
+                    }
+                },
+            ),
+    )
 }

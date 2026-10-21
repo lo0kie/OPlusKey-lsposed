@@ -1,20 +1,15 @@
 package com.lookie.opluskey.ui.screen.binding
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SwitchRow
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setInstantSingle
 import com.lookie.opluskey.ui.state.KeyWatchState
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 
 /**
  * 「按键设置」卡（**双击档**）—— 只有一个开关：忽视无操作双击手势。
@@ -47,20 +42,22 @@ internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
     val checked = cfg.key(KeyWatchState.editing(cfg)).instantSingle
     val tick = rememberTick()
     val rowsEnabled = enabled
-    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-        SwitchRow(
-            title = I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"),
-            // 说明写**结果**而不是机制：用户要判断的是「开 / 关之后双击会变成什么样」，
-            //  所以两句各说一边的结果 —— 「按两下算单击」与「第二下不生效」。
-            summaryOn = I18n.get(Strings.BINDING_INSTANT_SINGLE_ON, "双击无动作时，按两下算单击"),
-            summaryOff = I18n.get(Strings.BINDING_INSTANT_SINGLE_OFF, "双击无动作时，第二下不生效"),
-            icon = PageIcons.IgnoreDouble,
-            checked = checked,
-            position = cardListPositionOf(0, DOUBLE_SETTING_ROWS),
-            enabled = rowsEnabled,
-        ) {
-            tick()
-            setInstantSingle(it)
-        }
-    }
+    CardList(
+        rows =
+            listOf(
+                CardRow.Switch(
+                    title = I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"),
+                    // 说明写**结果**而不是机制：用户要判断的是「开 / 关之后双击会变成什么样」，
+                    //  所以两句各说一边的结果 —— 「按两下算单击」与「第二下不生效」。
+                    summaryOn = I18n.get(Strings.BINDING_INSTANT_SINGLE_ON, "双击无动作时，按两下算单击"),
+                    summaryOff = I18n.get(Strings.BINDING_INSTANT_SINGLE_OFF, "双击无动作时，第二下不生效"),
+                    icon = PageIcons.IgnoreDouble,
+                    checked = checked,
+                    enabled = rowsEnabled,
+                ) {
+                    tick()
+                    setInstantSingle(it)
+                },
+            ),
+    )
 }

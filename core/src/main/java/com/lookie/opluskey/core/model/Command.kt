@@ -17,11 +17,171 @@ enum class CommandKind(
      * 枚举名与文件标识 `serial` 是持久化格式，改了认不出老数据。
      */
     SERIAL("多条命令", "serial"),
+
     ;
 
     companion object {
+        /**
+         * 「自定义命令」页**有页签**的那几档 —— 顺序即页签顺序，`CommandScreen` 的 pager
+         * 与那条类型选择器带都读它。
+         *
+         *  条件执行**不是命令**（它是叠在按键绑定之上的一张顺序表，见 `KeyConfig.rules`），
+         *  所以不在这张表里，也不在 `entries` 里。
+         */
+        val FORM_TABS: List<CommandKind> = listOf(SINGLE, SERIAL)
+
         /** 带 `Locale.ROOT`：文件格式解析不能受设备语言影响。 */
         fun fromId(id: String): CommandKind? = entries.firstOrNull { it.id == id.trim().lowercase(Locale.ROOT) }
+    }
+}
+
+/**
+ * 分叉能用的**条件种类** —— 存进配置的是 [id]，界面与执行两侧都从这里取，不各写一套字面量。
+ *
+ *  [needsValue] 区分两种形态：
+ *   · `false`（亮屏 / 锁屏 / 充电 / 耳机 / 小窗）—— 命中即成立，没有取值；
+ *   · `true`（前台应用 / WIFI / 媒体 / 响铃档位 / 屏幕方向）—— 还要一个取值，见 [choices]
+ *     （空 = 自由取值，只有「前台应用」那种）。
+ *
+ *  [defaultChoice] 是**空取值时按哪一档解释**：只有「以前没有取值、后来才加上」的那两档有
+ *  （WIFI / MEDIA）—— 老配置里写的是 `wifi` / `media`，升级后必须仍按当时那个意思命中，
+ *  否则用户那两条规则会静默失效。其余档留空：空取值一律按「用不了」处理。
+ *
+ *  加一种条件 = 加一行 + 在执行侧补一个判据（`ConditionProbe`）+ 一条文案；
+ *  线格式不动（`type` 本来就是字符串）。
+ */
+enum class ConditionKind(
+    val id: String,
+    val needsValue: Boolean,
+    /** 有取值时的候选档；空表 = 自由取值（只有「前台应用」那种）。 */
+    val choices: List<String> = emptyList(),
+    /** 空取值时按哪一档解释（空 = 没有默认档，空取值即「用不了」）。 */
+    val defaultChoice: String = "",
+) {
+    /** 某个应用在前台；取值为包名。 */
+    APP("app", needsValue = true),
+
+    /** **屏幕状态**：`on`（亮屏）/ `locked`（锁屏）。原来是「亮屏」「锁屏」两档，合成一档带取值。 */
+    SCREEN("screen", needsValue = true, choices = listOf("on", "locked"), defaultChoice = "on"),
+
+    /** **充电状态**：`charging`（充电中，含充满）/ `idle`（没在充电）。老配置没有取值 ⇒ 按 `charging` 解释。 */
+    CHARGING("charging", needsValue = true, choices = listOf("charging", "idle"), defaultChoice = "charging"),
+
+    /**
+     * **耳机状态**：`connected`（接着耳机）/ `disconnected`（没接）。
+     *
+     *  接线 / USB / 蓝牙 A2DP 都算「接着」。两档是真正的正反两面（设备要么在、要么不在），
+     *  所以 `disconnected` 直接取反 —— 与屏幕那两档不同。
+     *  老配置没有取值 ⇒ 按 `connected` 解释（那时这条条件本来就只表示「接着耳机」）。
+     */
+    HEADSET("headset", needsValue = true, choices = listOf("connected", "disconnected"), defaultChoice = "connected"),
+
+    /** 媒体**播放状态**：`playing` / `paused`（老配置没有取值 ⇒ 按 `playing` 解释）。 */
+    MEDIA("media", needsValue = true, choices = listOf("playing", "paused"), defaultChoice = "playing"),
+
+    /** Wi-Fi **开关状态**：`on` / `off`（老配置没有取值 ⇒ 按 `on` 解释）。 */
+    WIFI("wifi", needsValue = true, choices = listOf("on", "off"), defaultChoice = "on"),
+
+    /** 屏幕上有小窗。 */
+    MINI("mini", needsValue = false),
+
+    /** 响铃档位等于取值（`normal` / `vibrate` / `silent`）。 */
+    RINGER("ringer", needsValue = true, choices = listOf("normal", "vibrate", "silent")),
+
+    /** 屏幕方向等于取值（`portrait` / `landscape`）。 */
+    ORIENTATION("orientation", needsValue = true, choices = listOf("portrait", "landscape")),
+    ;
+
+    companion object {
+        fun fromId(id: String): ConditionKind? = entries.firstOrNull { it.id == id.trim() }
+
+        /**
+         * 老配置里的类型名 → 现在这一档 + 它当时那个取值。
+         *
+         *  只有**合并过**的那一档需要（亮屏 / 锁屏 → 屏幕状态）：老文件里写的是 `screen_on` /
+         *  `locked` 两个**独立类型**、都没有取值。读的时候在这一层翻译成 `screen:on` /
+         *  `screen:locked`，其余代码只认新写法 —— 用户不动它就一直能用，动过之后自然写成新写法。
+         */
+        private val LEGACY: Map<String, Pair<ConditionKind, String>> =
+            mapOf(
+                "screen_on" to (SCREEN to "on"),
+                "locked" to (SCREEN to "locked"),
+            )
+
+        /** 按老名字翻译一次（不是老名字就原样返回）。 */
+        fun normalize(
+            type: String,
+            value: String,
+        ): Pair<String, String> {
+            val legacy = LEGACY[type.trim()] ?: return type to value
+            return legacy.first.id to legacy.second
+        }
+    }
+}
+
+/**
+ * 分叉里的一个**条件** —— 「什么情况下走这一支」。
+ *
+ *  `type` + `value` 两个字段而不是每种条件一个类：条件会一种一种往上加，
+ *  而线格式要稳定（用户机器上的文件）—— 加一种条件只是多一个 [ConditionKind]，
+ *  老版本读到认不出的 `type` 时按「这条分支不命中」处理，不会把整条命令读坏。
+ */
+data class BranchCondition(
+    val type: String,
+    val value: String = "",
+) {
+    /** 认得出的那一档；`null` = 这个版本不认识的类型（多半是配置文件来自更新的版本）。 */
+    val kind: ConditionKind? get() = ConditionKind.fromId(type)
+
+    /**
+     * 认得出、并且该填的都填了 —— 判不出/没填的条件**永不命中**（宁可走默认那一档，也不乱执行）。
+     *
+     *  无取值的条件（亮屏 / 充电 / …）只要类型认得出就算可用；有取值的条件看 [effectiveValue]
+     *  —— 带 [ConditionKind.defaultChoice] 的那两档空着也算可用（老配置就是这么写的）。
+     */
+    val isUsable: Boolean
+        get() = kind?.let { !it.needsValue || effectiveValue.isNotBlank() } == true
+
+    /**
+     * 真正拿去判定的取值 —— 空的时候退回这一档的默认值（见 [ConditionKind.defaultChoice]）。
+     *
+     *  为什么需要它：`wifi` / `media` 以前没有取值，老配置里就是光秃秃一个类型名。升级后
+     *  线格式**不迁移**（不往用户文件里偷写 `wifi:on`），靠这一层在读取时按当时的意思解释。
+     */
+    val effectiveValue: String
+        get() = value.ifBlank { kind?.defaultChoice.orEmpty() }
+
+    /** 线格式里的写法：无取值是 `type`，有取值是 `type:value`（`app:包名` / `ringer:vibrate`）。 */
+    val token: String get() = if (value.isBlank()) type else "$type:$value"
+
+    companion object {
+        /** 「某个应用在前台」的 `type` —— 只给执行侧与老的判断留一个具名常量。 */
+        const val TYPE_APP = "app"
+
+        fun app(pkg: String): BranchCondition = BranchCondition(ConditionKind.APP.id, pkg)
+
+        /**
+         * 线格式 → 一个条件；认不出（类型不在这十种里 / 该带取值却没带）的返回 `null`。
+         *
+         *  只做很轻的归一：去首尾空白、空取值按「没带」处理。真正的「这个包名装没装」不在这里判
+         *  —— 配置是跨设备导出的，这台机器上没装不等于那条规则写错了。
+         */
+        fun parse(raw: String?): BranchCondition? {
+            val text = raw?.trim().orEmpty()
+            if (text.isEmpty()) return null
+            val cut = text.indexOf(':')
+            val rawType = if (cut < 0) text else text.substring(0, cut)
+            val rawValue = if (cut < 0) "" else text.substring(cut + 1).trim()
+            // 合并过的老类型在这里翻译一次（`screen_on` → `screen:on`，见 `ConditionKind.LEGACY`）
+            val (type, value) = ConditionKind.normalize(rawType, rawValue)
+            val condition = BranchCondition(type, value)
+            return condition.takeIf { it.isUsable }
+        }
+
+        fun of(
+            kind: ConditionKind,
+            value: String = "",
+        ): BranchCondition = BranchCondition(kind.id, value)
     }
 }
 
@@ -117,7 +277,8 @@ data class Command(
 
     /**
      * 这条命令引用了哪些别的命令。**两条路都看**：多条命令的步骤列表、单条命令的正文
-     * （`cmd:<名字>` 在正文里同样成立）。判据与 [references] 同源 —— 都过 [referencedName]。
+     * （`cmd:<名字>` 在正文里同样成立）。判据与 [references] 同源 —— 都过 [referencedName]，
+     * 所以正文里的内置动作（`keyevent:` …）不算引用，只有 `cmd:<名字>` 才算。
      */
     fun referencedNames(): List<String> =
         when (kind) {

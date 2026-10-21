@@ -2,6 +2,7 @@ package com.lookie.opluskey.core.config
 
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
@@ -9,7 +10,6 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.StateCondition
 import com.lookie.opluskey.core.model.StateRule
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -197,7 +197,7 @@ internal data class KeyDto(
 internal data class StateRuleDto(
     /** 手势取 `Gesture.id`（`single` / `double` / `long`），不是枚举名。 */
     val gesture: String = "",
-    /** 条件写法（`app:包名`），见 `StateCondition`。 */
+    /** 条件写法（`app:包名` / `ringer:vibrate` / `screen_on`），见 `BranchCondition.token`。 */
     val condition: String = "",
     val action: String = Action.NONE,
 ) {
@@ -205,7 +205,7 @@ internal data class StateRuleDto(
      * 线格式 → 一条分支；**认不出就整条丢掉**（返回 `null`）。
      *
      *  为什么不兜成「永远成立」：那样一条写错的分支会静默接管这颗键的所有手势
-     *  （见 `StateCondition` 的类注释）。丢一条规则只是「这一条不生效」，用户能看得出来。
+     *  （见 `BranchCondition.parse`）。丢一条规则只是「这一条不生效」，用户能看得出来。
      */
     fun toRule(): StateRule? {
         val parsedGesture = Gesture.ofId(gesture)
@@ -213,7 +213,7 @@ internal data class StateRuleDto(
             XLog.w("配置：状态分支的手势认不出（丢掉这一条）：$gesture")
             return null
         }
-        val parsedCondition = StateCondition.parse(condition)
+        val parsedCondition = BranchCondition.parse(condition)
         if (parsedCondition == null) {
             XLog.w("配置：状态分支的条件认不出（丢掉这一条）：$condition")
             return null
@@ -222,7 +222,13 @@ internal data class StateRuleDto(
     }
 
     companion object {
-        fun of(rule: StateRule): StateRuleDto = StateRuleDto(rule.gesture.id, rule.condition.token, rule.action.token)
+        /**
+         * 一条规则 → 线格式。
+         *
+         *  条件空着（界面上那一行还没选条件）就写成空串 —— 这种行保存前就被拦了，正常到不了
+         *  这里；万一到了，读回来时按「条件认不出」整条丢掉，而不是当成「永远成立」。
+         */
+        fun of(rule: StateRule): StateRuleDto = StateRuleDto(rule.gesture.id, rule.condition?.token.orEmpty(), rule.action.token)
     }
 }
 

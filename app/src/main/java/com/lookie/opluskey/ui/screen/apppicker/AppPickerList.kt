@@ -35,6 +35,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.collapseHeader
 import com.lookie.opluskey.ui.collapsedHeaderHeight
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_GAP
 import com.lookie.opluskey.ui.model.APP_LIST_HEADER_ITEMS
 import com.lookie.opluskey.ui.model.APP_ROW_HEIGHT
@@ -46,8 +47,10 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
-import com.lookie.opluskey.ui.opticalTextCenter
+import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.screen.command.branchConditionUsed
+import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.PickedDetail
 import io.github.suqi8.coui.kmp.basic.BasicComponent
@@ -97,9 +100,9 @@ internal fun SettingsPage.AppPickerList(
     // 行尾那枚图标画的是**当前选中的那个**（[AppPickerUiState.pending]）：进页时它是已绑定的
     // 那一档，在二级页点了确认之后换成刚挑的那一档。
     val pending = ui.pending
-    // 行状态只跟「选中」变：不 remember 的话，每次重组都给每一行做一个新实例
+    // 行状态只跟「选中」与「为谁挑」变：不 remember 的话，每次重组都给每一行做一个新实例
     //  ⇒ 行永远跳不过重组（`RowState` 是普通 class，只有引用相等）
-    val row = remember(pending) { RowState(pending) }
+    val row = remember(pending, picker.forBranch) { RowState(pending, picker.forBranch) }
     LocateSelected(ui, scrollBehavior, listState, searchBandDp)
 
     Box(Modifier.fillMaxSize()) {
@@ -166,13 +169,7 @@ internal fun SettingsPage.AppPickerList(
                         AppRow(
                             app = app,
                             row = row,
-                            onClick = {
-                                // **点行不产生「选中」**：这一页的选中位（[AppPickerUiState.pending]）
-                                // 只表示「当前已绑定的那个」，进页时由 `beginVisit` 放进去。
-                                // 点一行只是往下一级走 —— 真正的选择发生在那一页，点那颗 FAB 才落盘；
-                                // 在那一页直接返回，这里什么都不会变（新绑时仍是「无选中」）。
-                                onOpenActivities(app.target)
-                            },
+                            onClick = { pickRow(app, ui, onOpenActivities) },
                         )
                     }
                 }
@@ -187,6 +184,34 @@ internal fun SettingsPage.AppPickerList(
             modifier = Modifier.align(Alignment.CenterEnd),
         )
     }
+}
+
+/**
+ * 点一行做什么 —— 两种入口语义不同，判据只在这里。
+ *
+ *  · **给「条件执行」挑**（[AppPickerState.forBranch]）：那一支只存一个包名，没有「里面哪个
+ *    界面」这回事 ⇒ 点一行就是**选中它**（行尾画勾），右下角那颗确认键再落盘。
+ *    其中**给条件挑**（[AppPickerState.branchTarget]）还要去重：同一个应用只能当一次条件，
+ *    点到已经用过的那一行就**只提示、不选中** —— 等到按确认才说，用户已经点完一轮了。
+ *  · 其余入口：点一行只是往下一级走，真正的选择发生在「选择界面」那一页、那颗 FAB 才落盘
+ *    —— 在那一页直接返回，这里什么都不会变（新绑时仍是「无选中」）。
+ */
+private fun SettingsPage.pickRow(
+    app: LaunchableApp,
+    ui: AppPickerUiState,
+    onOpenActivities: (String) -> Unit,
+) {
+    if (!picker.forBranch) {
+        onOpenActivities(app.target)
+        return
+    }
+    // 给**条件**挑才去重（给动作挑的是 `branchCommandTarget`，同一应用出现在两条动作里没坏处）
+    val conditionAt = picker.branchTarget
+    if (conditionAt != AppPickerState.NOT_FOR_BRANCH && branchConditionUsed(AppTarget.pkg(app.target), conditionAt)) {
+        hint(I18n.get(Strings.COMMAND_BRANCH_DUPLICATE_APP, "这个应用已经加过了"))
+        return
+    }
+    ui.pending = PickedDetail(app.target, shortcutId = null)
 }
 
 /**
@@ -241,21 +266,31 @@ private fun pickerRefreshTexts(): List<String> =
 private class RowState(
     /** **当前选中**的那一条（进页时等于已绑定的那一档；二级页确认后是刚挑的那一条）。 */
     val pending: PickedDetail?,
+    /** 这一趟是在给「条件执行」挑（[AppPickerState.forBranch]）：那一趟没有下一级、也没有小窗。 */
+    val forBranch: Boolean,
 ) {
     /** 这一行（[target] 是应用那一级的 `包名` / `999@包名`）是不是当前选中的那个应用。 */
     fun pickedBy(target: String): Boolean = pending != null && AppTarget.sameApp(target, pending.target)
 
     /**
-     * 行尾那枚图标 —— 四档：没选中 / 整个应用 / 里面某个界面 / 某个快捷方式。
+     * 行尾那枚图标 —— 选中态四档：没选中 / 整个应用 / 里面某个界面 / 某个快捷方式。
+     * 后两者在配置里都长成 `包名/xxx`（一边是类名、一边是快捷方式 id），光看字符串分不出来，
+     * 只能靠 [PickedDetail.shortcutId] 判：有 id ⇒ 快捷方式（`table-shortcut`），
+     * 没有 ⇒ 具体界面（`device-screen`）。
      *
-     *  后两者在配置里都长成 `包名/xxx`（一边是类名、一边是快捷方式 id），光看字符串分不出来，
-     *  只能靠 [PickedDetail.shortcutId] 判：有 id ⇒ 快捷方式（`table-shortcut`），
-     *  没有 ⇒ 具体界面（`device-screen`）。
+     *  **给「条件执行」挑时只有两档**：选中画勾、没选中**什么都不画**。那一趟点一行就是选中
+     *  （不进二级页），画「箭头 = 点进去能看到里面有什么」等于骗人。
+     *
+     * @return `null` = 这一行不画图标
      */
-    fun iconFor(target: String): ImageVector {
+    fun iconFor(target: String): ImageVector? {
         // 先排除「没选中 / 选的是别的应用」——`pending` 收窄成非空之后才看它装的是哪一档
-        val picked = pending ?: return PageIcons.EnterArrow
-        if (!AppTarget.sameApp(target, picked.target)) return PageIcons.EnterArrow
+        val picked = pending
+        if (picked == null || !AppTarget.sameApp(target, picked.target)) {
+            // 没选中：给「条件执行」挑时没有下一级，不画箭头；其余入口画箭头（点进去能看到里面有什么）
+            return if (forBranch) null else PageIcons.EnterArrow
+        }
+        if (forBranch) return PageIcons.TileChecked
         return when {
             // 有快捷方式 id ⇒ 快捷方式；否则目标里带 `/类名` 就是某个具体界面
             picked.shortcutId != null -> PageIcons.ShortcutMark
@@ -294,6 +329,8 @@ private fun SettingsPage.AppRow(
 ) {
     val tick = rememberTick()
     val withSystem = picker.showSystemApps.value
+    // 这一行是不是当前选中的那个应用 —— 标题与行尾那枚图标共用这一个判据（两处必须同色）
+    val picked = row.pickedBy(app.target)
     Card(
         Modifier
             .fillMaxWidth()
@@ -320,19 +357,21 @@ private fun SettingsPage.AppRow(
             //  · 这个应用本身 ⇒ 一颗勾；
             //  · 没选中 ⇒ 箭头（点下去能看到里面有什么）。
             endActions = {
-                val picked = row.pickedBy(app.target)
-                Icon(
-                    row.iconFor(app.target),
-                    contentDescription = null,
-                    // 与网格那颗同尺寸：24dp，即原先 COUI `RadioButton` 的 `requiredSize`
-                    modifier = Modifier.size(ROW_END_ICON_SIZE),
-                    tint =
-                        if (picked) {
-                            COUITheme.colorScheme.primary
-                        } else {
-                            COUITheme.colorScheme.onSurfaceVariantActions
-                        },
-                )
+                // `null` = 这一行不画（给「条件执行」挑时，没选中的行没有「点进去」这回事）
+                row.iconFor(app.target)?.let { icon ->
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        // 与网格那颗同尺寸：24dp，即原先 COUI `RadioButton` 的 `requiredSize`
+                        modifier = Modifier.size(ROW_END_ICON_SIZE),
+                        tint =
+                            if (picked) {
+                                COUITheme.colorScheme.primary
+                            } else {
+                                COUITheme.colorScheme.onSurfaceVariantActions
+                            },
+                    )
+                }
             },
             cardListPosition = CardListPosition.Full,
             // 不给 `onClick` —— 点击在外面那个 `Card` 上（理由见那里的注释）
@@ -454,12 +493,10 @@ private fun SettingsPage.AppRowTitle(
             text = app.label,
             // `weight` 让长名字先缩，标签始终留在行内可见
             // （`fill = false`：名字短时不去撑满，标签紧跟在右边）。
-            //  与右边那几枚标签**同一支**下沉（[opticalTextCenter]）：两边各按自己字号沉 0.1em，
-            //  名字与标签的中线就落在同一处，不用再靠一枚手调的抬升量去对。
             modifier =
                 Modifier
                     .weight(1f, fill = false)
-                    .opticalTextCenter(COUITheme.textStyles.headline1.fontSize, FontWeight.Medium),
+                    .opticalCenter(COUITheme.textStyles.headline1),
             style = COUITheme.textStyles.headline1,
             fontWeight = FontWeight.Medium,
             color = BasicComponentDefaults.titleColor().color,

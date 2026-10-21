@@ -78,7 +78,7 @@ private fun SettingsPage.acceptCommandDisclaimer() {
  *  取消 ⇒ 关掉窗，留在页里继续编。
  */
 @Composable
-private fun SettingsPage.LeaveDiscardDialog() {
+internal fun SettingsPage.LeaveDiscardDialog() {
     ConfirmDialog(
         show = overlays.confirmLeaveCommands,
         title = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
@@ -86,7 +86,9 @@ private fun SettingsPage.LeaveDiscardDialog() {
         onDismiss = { overlays.confirmLeaveCommands = false },
         onConfirm = {
             overlays.confirmLeaveCommands = false
+            // 两份草稿都清：这个窗现在命令页与分叉页共用（见 `hasUnsavedDraft`）
             commandDraft.draft.reset()
+            branchDraft.draft.reset()
             popBackStack()
         },
     )

@@ -44,7 +44,7 @@ import com.lookie.opluskey.ui.model.CLONE_TAG_LIGHT
 import com.lookie.opluskey.ui.model.LaunchableApp
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.opticalTextCenter
+import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -255,8 +255,8 @@ internal fun SettingsPage.AppKindTag(
     Box(
         modifier =
             modifier
-                // 字在胶囊里已经是正中的（下面那个 [opticalTextCenter]），但**胶囊自己**比旁边那行
-                //  16sp 标题的墨迹中线高 3px（实测），整体让下来这一档两者才齐（见 [APP_KIND_TAG_SINK]）
+                // 胶囊自己比旁边那行 16sp 标题的墨迹中线高 3px（实测），整体让下来这一档两者才齐
+                //  （见 [APP_KIND_TAG_SINK]）
                 .offset(y = APP_KIND_TAG_SINK)
                 .background(
                     color = tint.copy(alpha = APP_KIND_TAG_BG_ALPHA),
@@ -266,15 +266,11 @@ internal fun SettingsPage.AppKindTag(
     ) {
         Text(
             text = text,
-            //  标签是一枚**可见的胶囊**：胶囊高度 = 行盒 + 上下各 1dp，而行盒里 baseline 下面那段
-            //  descent 汉字不占 ⇒ 字在胶囊里天然偏高（上下留白 1dp : 2dp，一眼看得出）。
-            //  沉 0.1em 之后上下才真等距（[opticalTextCenter]）。
-            //  与旁边那个大标题的关系不用再单独补偿：标题那边同样调这一支，两边沉的比例一致、
-            //  字号差 5sp 只差 0.5dp —— 原先那条 `APP_KIND_TAG_RAISE`（0.5dp）量的正是这个差，
-            //  现在由这条公式自己算出来，那枚常量整个删掉了。
-            modifier = Modifier.opticalTextCenter(COUITheme.textStyles.footnote2),
+            //  胶囊高度由**行盒 + 上下对称 padding** 撑出来，所以只要把行盒收紧，
+            //  文字就落在胶囊的几何中心 —— 换字体也不会偏，不用比例补偿。
             style = COUITheme.textStyles.footnote2,
             color = tint,
+            modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote2),
             maxLines = 1,
         )
     }

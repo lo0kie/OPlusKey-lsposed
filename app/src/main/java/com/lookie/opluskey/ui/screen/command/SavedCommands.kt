@@ -50,13 +50,14 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.SUMMARY_REF_GAP
 import com.lookie.opluskey.ui.model.SUMMARY_REF_ICON
+import com.lookie.opluskey.ui.model.StepLine
 import com.lookie.opluskey.ui.model.TAB_PAGE_SWITCH_MS
 import com.lookie.opluskey.ui.model.TILE_TITLE_GAP
 import com.lookie.opluskey.ui.model.commandIcon
 import com.lookie.opluskey.ui.model.durationText
+import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.model.serialSummarySteps
 import com.lookie.opluskey.ui.model.stepIcon
-import com.lookie.opluskey.ui.opticalTextCenter
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareRoundedMinus
@@ -330,15 +331,8 @@ private fun CommandTileHeadline(
             color = accentColor,
             maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
             overflow = TextOverflow.Ellipsis,
-            //  单行时沉半档、与那枚类型图标对齐（图标居中于盒子，汉字墨迹却偏上，见
-            //  [opticalTextCenter]）；**两行时不沉** —— 两行字的墨迹上下各占一半，那一块整体
-            //  已经是平的，再沉就成了第二行贴底。
-            modifier =
-                if (cmd.kind == CommandKind.SINGLE) {
-                    Modifier.opticalTextCenter(COUITheme.textStyles.headline1.fontSize, FontWeight.Medium)
-                } else {
-                    Modifier
-                },
+            // 与行首那枚类型图标同一行、竖居中：补一档光学修正（见 `opticalCenter`）
+            modifier = Modifier.opticalCenter(COUITheme.textStyles.headline1),
         )
     }
 }
@@ -352,6 +346,8 @@ private fun SettingsPage.CommandTileSummary(cmd: Command) {
                 text = cmd.single,
                 style = COUITheme.textStyles.footnote1,
                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                // 与行首图标对齐（行盒居中不等于墨迹居中，见 `opticalCenter`）
+                modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
                 // 卡片高度封顶在正方形（见 `CommandTileRow` 的 `maxHeightRatio`），摘要再长也画不下：
                 //  三行封顶 + 省略号，好过被父级的高度约束**从中间裁断**（那连省略号都没有）。
                 maxLines = 3,
@@ -360,29 +356,35 @@ private fun SettingsPage.CommandTileSummary(cmd: Command) {
         }
 
         CommandKind.SERIAL -> {
-            serialSummarySteps(cmd.steps, ::appNameOf).forEach { line ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    //  每一步行首都补一枚小图标（与步骤列表同一套 [stepIcon]）：
-                    // 引用另一条命令（`cmd:<名字>`）的那一步用**被引用那条的真实类型图标**
-                    // （单条 / 按步数的多条），其余步骤用动作图标 —— 光看文字分不出两类步骤。
-                    Icon(
-                        stepIcon(line.token, configState.commands.value),
-                        contentDescription = null,
-                        modifier = Modifier.size(SUMMARY_REF_ICON),
-                        tint = COUITheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Spacer(Modifier.width(SUMMARY_REF_GAP))
-                    Text(
-                        text = line.title,
-                        //  与行首那枚 14dp 的小图标对齐（墨迹偏上的账见 [opticalTextCenter]）
-                        modifier = Modifier.opticalTextCenter(COUITheme.textStyles.footnote1),
-                        style = COUITheme.textStyles.footnote1,
-                        color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            summaryLineRows(serialSummarySteps(cmd.steps, ::appNameOf))
+        }
+    }
+}
+
+/**
+ * 摘要里的那几行 —— 「多条命令」与「条件执行」同一套画法：一行一条，行首一枚小图标。
+ *
+ *  行头那枚图标走 [stepIcon]：引用另一条命令（`cmd:<名字>`）的行用**被引用那条的真实类型图标**
+ *  （单条 / 按步数的多条 / 分叉），其余用动作图标 —— 光看文字分不出几类内容。
+ */
+@Composable
+private fun SettingsPage.summaryLineRows(lines: List<StepLine>) {
+    lines.forEach { line ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                stepIcon(line.token, configState.commands.value),
+                contentDescription = null,
+                modifier = Modifier.size(SUMMARY_REF_ICON),
+                tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(Modifier.width(SUMMARY_REF_GAP))
+            Text(
+                text = line.title,
+                style = COUITheme.textStyles.footnote1,
+                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

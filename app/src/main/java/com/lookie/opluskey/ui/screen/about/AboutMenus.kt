@@ -3,7 +3,7 @@ package com.lookie.opluskey.ui.screen.about
 import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.MenuPopup
+import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.AuthorTarget
@@ -20,6 +20,9 @@ import com.lookie.opluskey.ui.setLanguage
 //
 // 它们原来夹在 `AboutScreen` 的卡片之间 —— 三块各四十来行，把「哪张卡、哪一层菜单、哪个锚点」
 // 这三件事搅在一起。挪出来之后菜单与它那一行各归各的，页面只剩「铺顺序」。
+//
+// 五个菜单都走 [PageMenu]：只给「行」与「锚点」，`show` 由「行表空不空」表达
+// （`takeIf { 开着 }.orEmpty()`），弹层本身那些参数一个都不写。
 
 /**
  * 「反馈问题」那一行的菜单（三个渠道）。
@@ -29,56 +32,48 @@ import com.lookie.opluskey.ui.setLanguage
  */
 @Composable
 internal fun SettingsPage.FeedbackMenu(ui: AboutUiState) {
-    MenuPopup(
-        show = ui.showFeedbackMenu,
+    PageMenu(
+        entries =
+            FeedbackTarget.entries
+                .map { target ->
+                    MenuEntry.Row(
+                        title = target.label,
+                        icon = target.icon,
+                        // 行尾要那颗链接字形 —— 得**自己声明** `submenu` 把那一格打开
+                        //  （本组件不替调用点猜，见 `MenuEntry.Row.submenu` 的说明）
+                        submenu = true,
+                        trailingIcon = PageIcons.Link,
+                    ) {
+                        ui.showFeedbackMenu = false
+                        openUrl(target.url)
+                    }
+                }.takeIf { ui.showFeedbackMenu }
+                .orEmpty(),
         preciseClick = ui.feedbackClick,
         onDismiss = { ui.showFeedbackMenu = false },
-        entries =
-            buildList {
-                FeedbackTarget.entries.forEachIndexed { index, target ->
-                    if (index > 0) add(MenuEntry.RowLine)
-                    add(
-                        MenuEntry.Row(
-                            title = target.label,
-                            icon = target.icon,
-                            // 行尾要那颗链接字形 —— 得**自己声明** `submenu` 把那一格打开
-                            //  （本组件不替调用点猜，见 `MenuEntry.Row.submenu` 的说明）
-                            submenu = true,
-                            trailingIcon = PageIcons.Link,
-                        ) {
-                            ui.showFeedbackMenu = false
-                            openUrl(target.url)
-                        },
-                    )
-                }
-            },
     )
 }
 
 /** 「作者」那一行的菜单（GitHub / 酷安）—— 两处**一律可点**，菜单里不留灰行。 */
 @Composable
 internal fun SettingsPage.AuthorMenu(ui: AboutUiState) {
-    MenuPopup(
-        show = ui.showAuthorMenu,
+    PageMenu(
+        entries =
+            AuthorTarget.entries
+                .map { target ->
+                    MenuEntry.Row(
+                        title = target.label,
+                        icon = target.icon,
+                        submenu = true,
+                        trailingIcon = PageIcons.Link,
+                    ) {
+                        ui.showAuthorMenu = false
+                        openUrl(target.url)
+                    }
+                }.takeIf { ui.showAuthorMenu }
+                .orEmpty(),
         preciseClick = ui.authorClick,
         onDismiss = { ui.showAuthorMenu = false },
-        entries =
-            buildList {
-                AuthorTarget.entries.forEachIndexed { index, target ->
-                    if (index > 0) add(MenuEntry.RowLine)
-                    add(
-                        MenuEntry.Row(
-                            title = target.label,
-                            icon = target.icon,
-                            submenu = true,
-                            trailingIcon = PageIcons.Link,
-                        ) {
-                            ui.showAuthorMenu = false
-                            openUrl(target.url)
-                        },
-                    )
-                }
-            },
     )
 }
 
@@ -88,36 +83,31 @@ internal fun SettingsPage.LanguageMenu(
     ui: AboutUiState,
     currentLang: AppLanguage,
 ) {
-    MenuPopup(
-        show = ui.showLangMenu,
+    PageMenu(
+        entries =
+            AppLanguage.entries
+                .map { lang ->
+                    MenuEntry.Row(
+                        title = languageLabel(lang),
+                        // 三项各自的字形（齿轮 / 汉字「文」/ abc）—— 见 [PageIcons.LanguageAuto] 那一段
+                        // 的注释：共用一颗地球的话，菜单里三行看起来一模一样。
+                        icon =
+                            when (lang) {
+                                AppLanguage.AUTO -> PageIcons.LanguageAuto
+                                AppLanguage.ZH_CN -> PageIcons.LanguageChinese
+                                AppLanguage.EN -> PageIcons.LanguageEnglish
+                            },
+                        selected = lang == currentLang,
+                    ) {
+                        ui.showLangMenu = false
+                        if (lang != currentLang) {
+                            setLanguage(lang.code)
+                        }
+                    }
+                }.takeIf { ui.showLangMenu }
+                .orEmpty(),
         preciseClick = ui.langClick,
         onDismiss = { ui.showLangMenu = false },
-        entries =
-            buildList {
-                AppLanguage.entries.forEachIndexed { index, lang ->
-                    // 相邻两行一条细线 —— 与 ⋮ 菜单 / 长按菜单 /「添加命令」同一件（`MenuEntry.RowLine`）
-                    if (index > 0) add(MenuEntry.RowLine)
-                    add(
-                        MenuEntry.Row(
-                            title = languageLabel(lang),
-                            // 三项各自的字形（齿轮 / 汉字「文」/ abc）—— 见 [PageIcons.LanguageAuto] 那一段
-                            // 的注释：共用一颗地球的话，菜单里三行看起来一模一样。
-                            icon =
-                                when (lang) {
-                                    AppLanguage.AUTO -> PageIcons.LanguageAuto
-                                    AppLanguage.ZH_CN -> PageIcons.LanguageChinese
-                                    AppLanguage.EN -> PageIcons.LanguageEnglish
-                                },
-                            selected = lang == currentLang,
-                        ) {
-                            ui.showLangMenu = false
-                            if (lang != currentLang) {
-                                setLanguage(lang.code)
-                            }
-                        },
-                    )
-                }
-            },
     )
 }
 
@@ -132,33 +122,29 @@ internal fun SettingsPage.ThemeMenu(
     ui: AboutUiState,
     currentTheme: AppTheme,
 ) {
-    MenuPopup(
-        show = ui.showThemeMenu,
+    PageMenu(
+        entries =
+            AppTheme.entries
+                .map { theme ->
+                    MenuEntry.Row(
+                        title = themeLabel(theme),
+                        icon =
+                            when (theme) {
+                                AppTheme.AUTO -> PageIcons.ThemeAuto
+                                AppTheme.LIGHT -> PageIcons.ThemeLight
+                                AppTheme.DARK -> PageIcons.ThemeDark
+                            },
+                        selected = theme == currentTheme,
+                    ) {
+                        ui.showThemeMenu = false
+                        if (theme != currentTheme) {
+                            setTheme(theme.code)
+                        }
+                    }
+                }.takeIf { ui.showThemeMenu }
+                .orEmpty(),
         preciseClick = ui.themeClick,
         onDismiss = { ui.showThemeMenu = false },
-        entries =
-            buildList {
-                AppTheme.entries.forEachIndexed { index, theme ->
-                    if (index > 0) add(MenuEntry.RowLine)
-                    add(
-                        MenuEntry.Row(
-                            title = themeLabel(theme),
-                            icon =
-                                when (theme) {
-                                    AppTheme.AUTO -> PageIcons.ThemeAuto
-                                    AppTheme.LIGHT -> PageIcons.ThemeLight
-                                    AppTheme.DARK -> PageIcons.ThemeDark
-                                },
-                            selected = theme == currentTheme,
-                        ) {
-                            ui.showThemeMenu = false
-                            if (theme != currentTheme) {
-                                setTheme(theme.code)
-                            }
-                        },
-                    )
-                }
-            },
     )
 }
 
@@ -174,29 +160,25 @@ internal fun SettingsPage.PaletteMenu(
     ui: AboutUiState,
     currentPalette: PagePalette,
 ) {
-    MenuPopup(
-        show = ui.showPaletteMenu,
+    PageMenu(
+        entries =
+            PagePalette.entries
+                .map { palette ->
+                    MenuEntry.Row(
+                        title = paletteLabel(palette),
+                        icon = PageIcons.PaletteSwatch,
+                        // 行首那块色就是这一套的强调色
+                        iconTint = palette.seed,
+                        selected = palette == currentPalette,
+                    ) {
+                        ui.showPaletteMenu = false
+                        if (palette != currentPalette) {
+                            setPalette(palette.id)
+                        }
+                    }
+                }.takeIf { ui.showPaletteMenu }
+                .orEmpty(),
         preciseClick = ui.paletteClick,
         onDismiss = { ui.showPaletteMenu = false },
-        entries =
-            buildList {
-                PagePalette.entries.forEachIndexed { index, palette ->
-                    if (index > 0) add(MenuEntry.RowLine)
-                    add(
-                        MenuEntry.Row(
-                            title = paletteLabel(palette),
-                            icon = PageIcons.PaletteSwatch,
-                            // 行首那块色就是这一套的强调色
-                            iconTint = palette.seed,
-                            selected = palette == currentPalette,
-                        ) {
-                            ui.showPaletteMenu = false
-                            if (palette != currentPalette) {
-                                setPalette(palette.id)
-                            }
-                        },
-                    )
-                }
-            },
     )
 }

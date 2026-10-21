@@ -34,13 +34,18 @@ import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingScreen
 import com.lookie.opluskey.ui.screen.binding.pick
+import com.lookie.opluskey.ui.screen.command.BranchScreen
 import com.lookie.opluskey.ui.screen.command.CommandActions
 import com.lookie.opluskey.ui.screen.command.CommandScreen
+import com.lookie.opluskey.ui.screen.command.writeBranchCommand
+import com.lookie.opluskey.ui.screen.command.writeBranchCondition
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import com.lookie.opluskey.ui.screen.general.GeneralScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
+import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.KeyWatchState
+import com.lookie.opluskey.ui.state.PickTarget
 import com.lookie.opluskey.ui.state.PickedDetail
 import com.lookie.opluskey.ui.tickNow
 import dev.chrisbanes.haze.hazeSource
@@ -120,16 +125,15 @@ internal fun SettingsPage.PageEntry(
             // 所以工具栏与顶栏同一个挂法：页内、取样源外，只是贴在底部。
             // （它自己那层模糊挂上了，与顶栏同一个取样层。）
             //
-            // 只在这一页显示；整页 push / pop 转场时它跟着一起滑
+            // 只在这一页「能写命令」的那两页显示；整页 push / pop 转场时它跟着一起滑
             // （挂在页里，不是挂在页面之外）。
-            if (s == Screen.COMMANDS) {
-                CommandActions(
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = COMMAND_TOOLBAR_BOTTOM),
-                )
-            }
+            //  「条件执行」页**没有**这条工具条：那一页的落盘入口是右下角那颗「确定」（见
+            //  `BranchConfirmFab`），一边一个保存键只会让人猜哪个算数。
+            val toolbarModifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = COMMAND_TOOLBAR_BOTTOM)
+            if (s.isCommandForm) CommandActions(toolbarModifier)
 
             // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
             // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
@@ -214,6 +218,12 @@ private fun SettingsPage.PageBody(
 
         Screen.COMMANDS -> {
             CommandScreen(scrollBehavior, commandPager)
+        }
+
+        // 「条件执行」：与「自定义命令」页同一套表单骨架，只是固定成 BRANCH 那一档，
+        //  没有类型选择器带子（见 [BranchScreen]）。
+        Screen.BRANCHES -> {
+            BranchScreen(scrollBehavior)
         }
 
         // 挑应用。**两个入口共用这一页**（挑中的东西不一样）；点一行进下一级，
@@ -359,23 +369,49 @@ private fun SettingsPage.writeToken(
     token: String,
     appName: String?,
 ): Boolean {
-    if (picker.forStep) {
+    // 「写到哪儿去」只有一处分派：分叉的条件 / 分叉某一支要执行的应用 / 多条命令的某一步 /
+    //   手势绑定。
+    return when (val target = picker.takePickTarget()) {
+        is PickTarget.Branch -> {
+            // `takePickTarget()` 是**一次性消费**：写失败了得把「为谁挑」放回去，否则这一页
+            //  立刻退化成「普通挑应用」—— 点一行会去挑界面、按确定还会写到手势绑定上。
+            if (!writeBranchCondition(token, target.index)) {
+                picker.openForBranch(target.index)
+                false
+            } else {
+                true
+            }
+        }
+
+        is PickTarget.BranchCommand -> {
+            if (!writeBranchCommand(token, target.index)) {
+                picker.openForBranch(target.index, forCommand = true)
+                false
+            } else {
+                true
+            }
+        }
+
         // 「加一步 / 换一步」：`addStep()` / `replaceStep()` 自己会把页面切回「自定义命令」
         // （那才是这次挑应用的来处），所以这条路上调用方**不再退页**。
-        val index = picker.takeStepTarget()
         //  真加进去了才算写成功：满员时 `addStep` 只 toast、不发车，这里若照样返回 true，
         //  调用方会当作「已落盘」直接 return，刚挑的应用就凭空消失。
-        return if (index >= 0) replaceStep(index, token) else addStep(token)
+        is PickTarget.Step -> {
+            if (target.index >= 0) replaceStep(target.index, token) else addStep(token)
+        }
+
+        // 写的是**进这一页时那个手势**（见 picker.gesture），不是 pager 的当前页
+        // —— 这一页不属于 pager。
+        null -> {
+            val g = picker.gesture ?: return false
+            pick(
+                // 只为把取值交给 `pick`（它读的是 token），name 这一位在这条路上不参与显示。
+                ActionCatalog.Spec(name = token, token = token),
+                g,
+                appName,
+            )
+        }
     }
-    // 写的是**进这一页时那个手势**（见 picker.gesture），不是 pager 的当前页
-    // —— 这一页不属于 pager。
-    val g = picker.gesture ?: return false
-    return pick(
-        // 只为把取值交给 `pick`（它读的是 token），name 这一位在这条路上不参与显示。
-        ActionCatalog.Spec(name = token, token = token),
-        g,
-        appName,
-    )
 }
 
 /**
@@ -393,11 +429,22 @@ private fun SettingsPage.onAppPicked(
     window: Boolean,
 ) {
     tickNow()
-    // `forStep` 必须在写之前读：`writeToken` 里那个 `takeStepTarget()` 会把它清掉
+    // `forStep` 必须在写之前读：`writeToken` 里那个 `takePickTarget()` 会把它清掉
     val forStep = picker.forStep
+    // 分叉那两条路同理（条件 / 那一支要执行的应用），而且它们**自己会退页**
+    //  （见 `writeBranchCondition` / `writeBranchCommand`）—— 这里不能再补一次
+    //  `goBack()`，否则一次退两层、还会把「放弃未保存的命令」弹出来。
+    val forBranch = picker.forBranch
     // 刚在「选择界面」页确认过就照那一条写（`app:包名/类名` / `appshortcut:`）；
-    // 没确认过就照 `pending` 这一份写 —— 它带着快捷方式的 id，不能退化成 `app:包名/id`
-    val token = picker.draft?.token(picker.smallWindow.value) ?: picked.token(window)
+    // 没确认过就照 `pending` 这一份写 —— 它带着快捷方式的 id，不能退化成 `app:包名/id`。
+    //  给「条件执行」挑的那一趟**没有二级页**（不挑界面），所以那边一律按 `pending` 写：
+    //  草稿里若留着上一趟的 `包名/类名`，照它写会把条件弄成「某个界面」，而条件只认包名。
+    val token =
+        if (forBranch) {
+            picked.token(window = false)
+        } else {
+            picker.draft?.token(picker.smallWindow.value) ?: picked.token(window)
+        }
     // 名字与绑定**同一次写盘**（`Config.appNames`）—— 分两次写要多落一次盘 + 一次广播，
     //  而中间那一下读到的配置只有新绑定、没有名字，顶栏会当场闪一下包名。
     //  快捷方式带的是它自己的名字（「扫一扫」），其余按目标现取应用名。
@@ -406,7 +453,7 @@ private fun SettingsPage.onAppPicked(
         XLog.w("选择应用：${picked.target} 没写进绑定，留在本页（不 goBack）")
         return
     }
-    if (forStep) return
+    if (forStep || forBranch) return
     picker.clearTarget()
     goBack()
 }

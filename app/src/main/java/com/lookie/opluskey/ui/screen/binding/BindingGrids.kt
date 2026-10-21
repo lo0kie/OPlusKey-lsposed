@@ -14,6 +14,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -22,6 +23,9 @@ import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.actionOf
@@ -32,18 +36,11 @@ import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.durationText
-import com.lookie.opluskey.ui.rememberRowIconColor
 import com.lookie.opluskey.ui.rememberTick
-import io.github.suqi8.coui.kmp.basic.BasicComponent
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SmallTitle
-import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「按键绑定」页的两张网格 —— 内置动作一组组排下来，再加最下面「已保存的命令」那一组。
 //
@@ -159,11 +156,25 @@ private fun SettingsPage.BuiltInTile(
             //  「亮着、点了被拦」—— 点了只弹一句提示，不如先灰着。
             enabled = enabled && linkReady,
             // 「打开应用」格与入口格都要补一行小字：前者是绑的应用名，
-            // 入口格那格只写组名，不点开菜单根本看不出绑的是哪一档
+            // 入口格那格只写组名，不点开菜单根本看不出绑的是哪一档。
             subtitle =
-                when {
-                    spec.token == ActionCatalog.APP_TILE -> boundAppLabel
-                    else -> boundMode?.label
+                when (spec.token) {
+                    ActionCatalog.APP_TILE -> {
+                        boundAppLabel
+                    }
+
+                    //  系统开关那一格再细一档：「WLAN · 打开」—— 只写开关名时看不出是开还是关。
+                    //  **必须判格子**：`switchStateLabel` 只看「当前绑的是什么」，而 `current` 每一格
+                    //  都相同 —— 不判的话绑一次「打开」，整片网格的每一格都会挂上「打开」。
+                    ActionCatalog.SWITCH_TILE -> {
+                        listOfNotNull(boundMode?.label, ActionCatalog.switchStateLabel(current))
+                            .joinToString(" · ")
+                            .ifEmpty { null }
+                    }
+
+                    else -> {
+                        boundMode?.label
+                    }
                 },
             // 入口格虽然是**入口**（点了进下一层），但**不画行尾箭头** ——
             // 走 `ActionTile` 的默认值 false，别顺手补回来。
@@ -218,39 +229,25 @@ private fun SettingsPage.CreateCommandRow(
     onCreateCommand: () -> Unit,
 ) {
     val tick = rememberTick()
-    //  行首图标要自己按 `enabled` 上色：库只给**它自己画的东西**上色，`startAction` 槽位原样渲染
-    //  —— 不给的话整行灰了、这颗 `+` 还亮着（与 `SwitchRow` / `SliderRow` 同一个坑）。
-    val iconColor by rememberRowIconColor(enabled, label = "CreateCommandIcon")
-    Card(Modifier.fillMaxWidth()) {
-        BasicComponent(
-            title = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND, "自定义命令"),
-            summary = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND_DESC, "一条命令或多个动作"),
-            startAction = { Icon(PageIcons.CommandAdd, null, tint = iconColor) },
-            // 行尾箭头：「这一行后面还有一页」（与首页「按键绑定」那行同尺寸 24dp、
-            // 同两档取色 —— 它不是弹浮层的入口格，所以不画那颗选择器字形）。
-            endActions = {
-                Icon(
-                    PageIcons.EnterArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(ROW_END_ICON_SIZE),
-                    tint =
-                        if (enabled) {
-                            COUITheme.colorScheme.onSurfaceVariantActions
-                        } else {
-                            COUITheme.colorScheme.disabledOnSecondaryVariant
-                        },
-                )
-            },
-            cardListPosition = cardListPositionOf(0, 1),
-            enabled = enabled,
-            onClick = {
-                if (enabled) {
-                    tick()
-                    onCreateCommand()
-                }
-            },
-        )
-    }
+    CardList(
+        rows =
+            listOf(
+                CardRow.Item(
+                    title = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND, "自定义命令"),
+                    summary = I18n.get(Strings.BINDING_CREATE_CUSTOM_COMMAND_DESC, "一条命令或多个动作"),
+                    icon = PageIcons.CommandCode,
+                    // 行尾箭头：「这一行后面还有一页」（它不是弹浮层的入口格，所以不画那颗选择器字形）
+                    arrow = true,
+                    enabled = enabled,
+                    onClick = {
+                        tick()
+                        onCreateCommand()
+                    },
+                ),
+            ),
+        // 这张卡在**已经带左右边距的网格段**里，所以自己不再加一档
+        margin = 0.dp,
+    )
 }
 
 /** 自定义命令网格里的一格。 */
@@ -324,18 +321,21 @@ private fun SettingsPage.CustomTile(
 /**
  * 入口格那一层的菜单。它**不占布局位置** —— 真正的落点由那一格记下的触点决定，
  * 挂在这里只是让它跟着这一页一起进 / 出组合。
+ *
+ *  两层（档位 + 某一档的后续写法）连同两层之间的守卫都在 [ModeMenuPopups] 里 ——
+ *  这里只报「哪一格开着」与「选中了哪一档」，不拼菜单结构。
  */
 @Composable
 internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
     val current = actionOf(configState.config.value, st.g)
-    TileMenuPopup(
+    ModeMenuPopups(
         // 锚点就是**开着的那一格**自己那一份 —— 这里不再有「哪一格用哪一支」的表：
         // 那种表漏一个入口格，菜单就弹到别人身上（小窗、通知与控制中心，两次都是这么漏的）。
         //  关掉之后 `tileMenu` 是 null，而退场动画期间真正生效的是 `MenuPopup` 内部保持住的
         // 上一次那份锚点，所以这里给个没记过触点的占位即可。
         preciseClick = st.tileMenu?.anchor ?: st.noAnchor,
-        // 行与顶上那行小标题都由这一格算（见 `TileMenuPopup`）：不再各传一份。
-        spec = st.tileMenu?.spec,
+        // 行与顶上那行小标题都由这一格算：不再各传一份。
+        tile = st.tileMenu?.spec,
         current = current,
         //  走 `pick` 而**不是** `bindingSelect`：菜单里的取值不在 `specs` 里，
         //  `select` 那一步的 `specs.indexOf(spec)` 会取到 −1、把焦点圈甩到第一格去。

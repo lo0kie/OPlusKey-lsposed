@@ -22,7 +22,12 @@ internal data class CommandLibraryDto(
     val commands: List<CommandDto> = emptyList(),
 )
 
-/** 一条命令。`kind` 取 `CommandKind.id`；单条用 `single`，多条用 `steps` + `stepDelayMs`。 */
+/**
+ * 一条命令。`kind` 取 `CommandKind.id`：单条用 `single`，多条用 `steps` + `stepDelayMs`。
+ *
+ *  条件执行**不在这里** —— 它是叠在按键绑定之上的一张顺序表（`KeyConfig.rules`），不是命令。
+ *  老文件里可能还留着 `kind: "branch"` 的条目，读的时候按「认不出的类型」跳过。
+ */
 @Serializable
 internal data class CommandDto(
     val name: String = "",

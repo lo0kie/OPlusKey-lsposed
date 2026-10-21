@@ -6,7 +6,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.MenuPopup
+import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.acceptDisclaimerAndEnable
@@ -75,15 +75,10 @@ internal fun SettingsPage.HomeDisclaimers(ui: HomeUiState) {
  */
 @Composable
 internal fun SettingsPage.HomeDonateOverlays(ui: HomeUiState) {
-    MenuPopup(
-        show = ui.showDonateMenu,
-        preciseClick = ui.donateClick,
-        onDismiss = { ui.showDonateMenu = false },
+    PageMenu(
         entries =
             buildList {
-                DonateTarget.entries.forEachIndexed { index, target ->
-                    // 相邻两行一条细线 —— 与全项目其它菜单同一件（[MenuEntry.RowLine]）
-                    if (index > 0) add(MenuEntry.RowLine)
+                DonateTarget.entries.forEach { target ->
                     add(
                         MenuEntry.Row(
                             title = target.label,
@@ -96,8 +91,7 @@ internal fun SettingsPage.HomeDonateOverlays(ui: HomeUiState) {
                     )
                 }
                 // 加深分隔：上面三行是「怎么给」，下面这一行是「谢谢谁」—— 两件事，
-                //  用组间那条**槽**分开（[MenuEntry.GroupLine]），不是行与行之间那种细线。
-                add(MenuEntry.GroupLine)
+                //  用组间那条**槽**分开（`dividerBefore`），不是行与行之间那种细线。
                 add(
                     MenuEntry.Row(
                         title = DONATE_LIST_TITLE,
@@ -107,12 +101,16 @@ internal fun SettingsPage.HomeDonateOverlays(ui: HomeUiState) {
                         submenu = true,
                         // 行尾字形走默认那颗**右箭头**（[PageIcons.EnterArrow]）—— 「会进下一层」
                         //  在菜单里、列表里、入口格里是同一个记号。
+                        dividerBefore = true,
                     ) {
                         ui.showDonateMenu = false
                         navTo(Screen.DONATE_LIST)
                     },
                 )
-            },
+            }.takeIf { ui.showDonateMenu }
+                .orEmpty(),
+        preciseClick = ui.donateClick,
+        onDismiss = { ui.showDonateMenu = false },
     )
 
     // 收款码窗口（居中）：内容是那张图，图还没进包时退成品牌字形（见 [DonateDialog]）

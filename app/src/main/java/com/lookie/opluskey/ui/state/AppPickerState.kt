@@ -26,6 +26,14 @@ import com.lookie.opluskey.ui.model.LaunchableApp
  * —— 顶栏与页内容是同一层 `Box` 里**两棵并列的树**，页面那棵出栈即注销，顶栏那棵不走。
  */
 internal class AppPickerState {
+    companion object {
+        /** [branchTarget] 的「不是在给分叉挑」。 */
+        const val NOT_FOR_BRANCH = -2
+
+        /** [branchTarget] 的「给分叉新加一支」。 */
+        const val NEW_BRANCH = -1
+    }
+
     /**
      * 搜索词。
      *
@@ -93,10 +101,38 @@ internal class AppPickerState {
         private set
 
     /**
+     * 这次是给「条件执行」的某一支挑**条件应用**：`>= 0` = 改第几支，[NEW_BRANCH] = 新加一支。
+     * [NOT_FOR_BRANCH] = 不是在给分叉挑。与 [forStep] 一样同生共死。
+     */
+    var branchTarget: Int = NOT_FOR_BRANCH
+        private set
+
+    /**
+     * 这次是给「条件执行」的某一支挑**要执行的应用**（`app:` / `window:` 那一步）：
+     * `>= 0` = 改第几支。`-1` = 不是在给分支命令挑。
+     *
+     *  与 [branchTarget] 是**两件事**，虽然落点都是「某一支」：那一支有两个位置能放应用 ——
+     *  判别用的条件（包名）与执行用的命令（token）。合成一个字段时界面上分不出这次挑完该往
+     *  哪一处写，而两者的写法（包名 vs `app:` token）也不一样。
+     */
+    var branchCommandTarget: Int = NOT_FOR_BRANCH
+        private set
+
+    /**
      * 这次进这一页是**替换多条命令的第几步**。`-1` = 追加为一步。与 [forStep] 同生共死。
      */
     var replaceStep = -1
         private set
+
+    /**
+     * 这一趟是在给「条件执行」挑 —— [branchTarget] 或 [branchCommandTarget] 有一头有效。
+     *
+     *  那一页的两处**只认应用本身**：条件记的是包名，动作记的是 `app:包名`。所以这一页对它们
+     *  要关掉两件「把应用细化成别的东西」的事 —— **挑界面**（点行不再进二级页）与
+     *  **以小窗口打开**（`window:` 那一档在这里没人读）。判据只此一处，两个界面各读它。
+     */
+    val forBranch: Boolean
+        get() = branchTarget != NOT_FOR_BRANCH || branchCommandTarget != NOT_FOR_BRANCH
 
     // —— 「这趟为谁挑」那一组标记的三个改法 ——
     //
@@ -110,6 +146,8 @@ internal class AppPickerState {
         gesture = g
         forStep = false
         replaceStep = -1
+        branchTarget = NOT_FOR_BRANCH
+        branchCommandTarget = NOT_FOR_BRANCH
     }
 
     /** 「添加命令」那条入口：给多条命令**加一步**（[replaceIndex] `< 0`）或换掉第 [replaceIndex] 步。 */
@@ -117,6 +155,28 @@ internal class AppPickerState {
         gesture = null
         forStep = true
         replaceStep = replaceIndex
+        branchTarget = NOT_FOR_BRANCH
+        branchCommandTarget = NOT_FOR_BRANCH
+    }
+
+    /**
+     * 分叉那条入口的两档：给第 [index] 支挑**条件应用**（[forCommand] = false）
+     * 或**要执行的应用**（[forCommand] = true）。
+     *
+     *  两档写的是同一支的两个不同位置 —— 条件（包名）与命令（`app:` token），落点不同、
+     *  语义也不同，但「为谁挑」那一组的清场纪律完全一样，所以只留一个入口：
+     *  分成两个函数时，那一串「把另外几位清掉」要写两遍，加一档就得改两处（`TooManyFunctions`
+     *  也是这么来的）。
+     */
+    fun openForBranch(
+        index: Int,
+        forCommand: Boolean = false,
+    ) {
+        gesture = null
+        forStep = false
+        replaceStep = -1
+        branchTarget = if (forCommand) NOT_FOR_BRANCH else index
+        branchCommandTarget = if (forCommand) index else NOT_FOR_BRANCH
     }
 
     /** 这趟「为谁挑」整个作废 —— 挑完了、写失败留在原地、或干脆没挑就退出来。 */
@@ -124,18 +184,44 @@ internal class AppPickerState {
         gesture = null
         forStep = false
         replaceStep = -1
+        branchTarget = NOT_FOR_BRANCH
+        branchCommandTarget = NOT_FOR_BRANCH
         // 本地选中与草稿一并作废：这一趟挑应用的账到此为止
         pending.value = null
         draft = null
     }
 
-    /** 这一趟「加一步 / 换一步」挑完了 —— 返回要替换的那一步（`-1` = 追加），标记一并收掉。 */
-    fun takeStepTarget(): Int {
-        forStep = false
-        val index = replaceStep
-        replaceStep = -1
-        return index
-    }
+    /**
+     * 这一趟挑完了 —— 返回「挑中的东西写到哪儿」，标记一并收掉；`null` = 不是这两条路（写手势绑定）。
+     *
+     *  三档合成一个出口：它们互斥、判据又在同一个「为谁挑」组里，分三个方法时调用方得先自己
+     *  判一次谁有效再去取 —— 那一步正是「两个字段都可能非空」的漏洞来源。
+     */
+    fun takePickTarget(): PickTarget? =
+        when {
+            branchCommandTarget != NOT_FOR_BRANCH -> {
+                val index = branchCommandTarget
+                branchCommandTarget = NOT_FOR_BRANCH
+                PickTarget.BranchCommand(index)
+            }
+
+            branchTarget != NOT_FOR_BRANCH -> {
+                val index = branchTarget
+                branchTarget = NOT_FOR_BRANCH
+                PickTarget.Branch(index)
+            }
+
+            forStep -> {
+                forStep = false
+                val index = replaceStep
+                replaceStep = -1
+                PickTarget.Step(index)
+            }
+
+            else -> {
+                null
+            }
+        }
 
     // ── 二级页「选择界面」在看哪个应用 ──
 
@@ -332,4 +418,22 @@ internal data class PickedDetail(
                 Action.App(target).token
             }
         }
+}
+
+/** 这一趟挑中的应用写到哪儿去 —— 见 [AppPickerState.takePickTarget]。 */
+internal sealed interface PickTarget {
+    /** 多条命令的某一「步」：`-1` = 追加、`>= 0` = 换掉那一步。 */
+    data class Step(
+        val index: Int,
+    ) : PickTarget
+
+    /** 条件执行的某一支：[AppPickerState.NEW_BRANCH] = 新加一支。写的是那一支的**条件**（包名）。 */
+    data class Branch(
+        val index: Int,
+    ) : PickTarget
+
+    /** 条件执行的某一支要**执行的应用**：写的是那一支的**命令**（`app:` / `window:` token）。 */
+    data class BranchCommand(
+        val index: Int,
+    ) : PickTarget
 }

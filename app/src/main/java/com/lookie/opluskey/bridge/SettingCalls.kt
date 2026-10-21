@@ -57,13 +57,17 @@ internal object SettingCalls {
             }
 
             // 这两条没有可读的 Settings 键（旋转锁不在 Settings 里、`nfc_on` 读不到），
-            // 状态由服务自己报 —— `on` 传 null，在这里读一次再取反
+            // 状态由服务自己报 —— `on` 为 null 时在这里读一次再取反；明确开 / 关时直接用。
             "rotation" -> {
-                rotation(loader)
+                rotation(loader, on)
             }
 
             "nfc" -> {
-                nfc(loader)
+                nfc(loader, on)
+            }
+
+            "dnd" -> {
+                dnd(loader, on)
             }
 
             else -> {
@@ -71,6 +75,48 @@ internal object SettingCalls {
                 false
             }
         }
+
+    /**
+     * 免打扰：`notification` 服务的 `getZenMode()` 读、`setZenMode(int, Uri, String)` 写。
+     *
+     *  `ZEN_MODE_OFF = 0`，其余三档（重要打扰 / 完全不打扰 / 只闹钟）都算「开着」——
+     *  与宿主侧 `SettingSwitch.readOn("dnd")` 读 `Settings.Global.zen_mode` 同一把尺子。
+     *  这**不能**靠写 Settings 生效：zen 那一个键由 NotificationManagerService 自己维护，
+     *  直接改只是改了一个没人理的数。
+     *
+     *  `conditionId` 传 null：内置那几档没有条件 id，系统接受 null。
+     */
+    private fun dnd(
+        loader: ClassLoader,
+        target: Boolean?,
+    ): Boolean {
+        val s =
+            ServiceCalls.service(loader, "notification", "android.app.INotificationManager") ?: run {
+                XLog.w("dnd：取不到 notification 服务")
+                return false
+            }
+        val on =
+            target ?: run {
+                val mode =
+                    ServiceCalls.call(s, "getZenMode")?.value as? Int ?: run {
+                        XLog.w("dnd：读不到 getZenMode")
+                        return false
+                    }
+                XLog.w("dnd：getZenMode=$mode")
+                //  **取反**：`target` 为空 = 切换，目标是「与现在相反」——
+                //  把当前值当目标的话，这一档就永远是「设置成它现在的样子」（NFC 那条踩过同一个坑）。
+                mode == 0
+            }
+        XLog.w("dnd：目标=${if (on) "开" else "关"}")
+        val mode = if (on) 1 else 0
+        // 三参是这一族的通用签名；个别版本多一个 `boolean`（persist），一起试
+        return ServiceCalls.call(
+            s,
+            "setZenMode",
+            listOf(mode, null, REASON),
+            listOf(mode, null, REASON, false),
+        ) != null
+    }
 
     /** WLAN：`setWifiEnabled(String packageName, boolean enable)`。 */
     private fun wifi(
@@ -147,25 +193,36 @@ internal object SettingCalls {
      *  「开」只认 2 与 3；4（正在关）算「关」—— 再点一次应当**开回来**。
      *  `persist` 传 false：只关这一次；传 true 会写进「关机也保持」的持久档。
      */
-    private fun nfc(loader: ClassLoader): Boolean {
+    private fun nfc(
+        loader: ClassLoader,
+        target: Boolean?,
+    ): Boolean {
         val s =
             ServiceCalls.service(loader, "nfc", "android.nfc.INfcAdapter") ?: run {
                 XLog.w("nfc：取不到 nfc 服务")
                 return false
             }
-        val state =
-            ServiceCalls.call(s, "getState")?.value as? Int ?: run {
-                XLog.w("nfc：读不到 getState（服务对象是 ${s.javaClass.simpleName}）")
-                return false
+        val on =
+            target ?: run {
+                val state =
+                    ServiceCalls.call(s, "getState")?.value as? Int ?: run {
+                        XLog.w("nfc：读不到 getState（服务对象是 ${s.javaClass.simpleName}）")
+                        return false
+                    }
+                //  只认 2 / 3 为「开着」。写成 `state >= 3` 会把 4（TURNING_OFF）也当成开 ⇒ 再点一次
+                //  又发一遍 disable，用户看到的是「点了没反应」，而此刻正是最该把它开回来的时候。
+                XLog.w("nfc：getState=$state")
+                //  **这里要取反**：`target` 为空 = 切换，目标是「与现在相反」。
+                //  早先漏了这一下 —— 把「当前开着」直接当成「目标开着」，于是切换永远变成
+                //  「设置成它现在的样子」，表现就是「NFC 那一档按了没反应」（真机日志：
+                //  `getState=3` 紧跟着 `目标=开`）。
+                !(state == NFC_STATE_ON || state == NFC_STATE_TURNING_ON)
             }
-        //  只认 2 / 3 为「开」。写成 `state >= 3` 会把 4（TURNING_OFF）也当成开 ⇒ 再点一次
-        //  又发一遍 disable，用户看到的是「点了没反应」，而此刻正是最该把它开回来的时候。
-        val on = state == NFC_STATE_ON || state == NFC_STATE_TURNING_ON
-        XLog.w("nfc：getState=$state（${if (on) "开" else "关"}）")
+        XLog.w("nfc：目标=${if (on) "开" else "关"}")
         return if (on) {
-            ServiceCalls.call(s, "disable", listOf(false, PKG)) != null
-        } else {
             ServiceCalls.call(s, "enable", listOf(PKG)) != null
+        } else {
+            ServiceCalls.call(s, "disable", listOf(false, PKG)) != null
         }
     }
 
@@ -177,10 +234,21 @@ internal object SettingCalls {
      *  状态也就只能从它自己那里读（`isRotationFrozen()`）—— `Settings.System` 里那个键写不了
      *  （`system_server` 用不了 ContentResolver），两边各说各的反而更糟。
      */
-    private fun rotation(loader: ClassLoader): Boolean {
+    private fun rotation(
+        loader: ClassLoader,
+        target: Boolean?,
+    ): Boolean {
         val s = ServiceCalls.service(loader, "window", "android.view.IWindowManager") ?: return false
-        val frozen = ServiceCalls.call(s, "isRotationFrozen")?.value as? Boolean ?: return false
-        if (frozen) {
+        // 「自动旋转开着」= 没冻结。明确开 / 关时不用读当前状态。
+        //  切换那一档：目标 unfreeze = 「现在**冻结着**」—— 两个否定叠起来正好是取反
+        //  （`frozen` 本身是「自动旋转关着」），别把它当成「当前值当目标值」那个坑。
+        val unfreeze =
+            target ?: run {
+                val frozen = ServiceCalls.call(s, "isRotationFrozen")?.value as? Boolean ?: return false
+                XLog.w("rotation：isRotationFrozen=$frozen")
+                frozen
+            }
+        if (unfreeze) {
             return ServiceCalls.call(s, "thawDisplayRotation", listOf(0, REASON)) != null
         }
         // 冻在「当前方向」上：这版 IWindowManager 没有 `getRotation()`，改版之后就叫这个名

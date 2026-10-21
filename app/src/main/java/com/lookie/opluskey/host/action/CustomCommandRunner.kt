@@ -85,28 +85,8 @@ internal class CustomCommandRunner(
             return
         }
 
-        // 多条命令的「同时只跑一条」闸，两道。
-        //
-        //  第一道按「有没有链在跑」挡，不是按名字：连着按两下（单击 / 双击都算）会让两条命令链
-        //  **交错** —— 第 2 条的第 1 步插在第 1 条的第 2 步前面（间隔越长的链越明显）。
-        //  只按名字挡的话，两条**不同的**多条命令照样同时跑（名字不同，谁都挡不住谁），
-        //  闸就没达到它那句话。
-        //  只看顶层（`depth == 0`）：一步写 `cmd:<另一条>` 是同一条链的嵌套，不是新的一次触发。
-        //  嵌套那条还在跑、外层已经结束的那段尾巴，`runningSerial` 也非空 ⇒ 新的顶层触发照样被挡。
-        //  闸设在这里而不是判定侧：判定侧分不出「上一次跑完没有」，只有展开器自己知道。
-        if (depth == 0 && runningSerial.isNotEmpty()) {
-            XLog.w("已有命令链在跑（${runningSerial.joinToString()}），「$name」这一下跳过（避免两条链交错）")
-            onFailure(CommandFailure.OVERLOADED)
-            return
-        }
-
-        //  第二道按名字挡：同一条命令的重入 —— 顶层那一种已经被上面那道挡掉了，这里主要盖住
-        //  `cmd:` 自引 / 互引（手改命令库才写得出来的环）。
-        if (!runningSerial.add(name)) {
-            XLog.w("自定义命令「$name」（多条）还在跑，这一下跳过（避免两条命令链交错）")
-            onFailure(CommandFailure.OVERLOADED)
-            return
-        }
+        // 「同时只跑一条命令链」的两道闸 —— 与分叉共用同一个入口（[enterChain]）。
+        if (!enterChain(name, depth)) return
         XLog.w("自定义命令「$name」（多条）共 ${cmd.steps.size} 步")
         try {
             runSteps(cmd.steps, 0, depth, cmd.stepDelayMs, name)
@@ -203,9 +183,40 @@ internal class CustomCommandRunner(
         }
     }
 
-    /** 一条多条命令跑完（或中止）—— 摘掉 [runningSerial] 里的占位。 */
+    /** 一条命令链跑完（或中止）—— 摘掉 [runningSerial] 里的占位。 */
     private fun finishSerial(name: String) {
         runningSerial.remove(name)
+    }
+
+    /**
+     * 「同时只跑一条命令链」的两道闸 —— 多条命令与条件执行共用（两者都会展开**另一条**命令）。
+     *
+     *  第一道按「有没有链在跑」挡，不是按名字：连着按两下（单击 / 双击都算）会让两条命令链
+     *  **交错** —— 第 2 条的第 1 步插在第 1 条的第 2 步前面（间隔越长的链越明显）。
+     *  只按名字挡的话，两条**不同的**命令照样同时跑（名字不同，谁都挡不住谁），闸就没达到那句话。
+     *  只看顶层（`depth == 0`）：一步写 `cmd:<另一条>` 是同一条链的嵌套，不是新的一次触发。
+     *  闸设在这里而不是判定侧：判定侧分不出「上一次跑完没有」，只有展开器自己知道。
+     *
+     *  第二道按名字挡：同一条命令的重入 —— 顶层那一种已经被上面那道挡掉了，这里主要盖住
+     *  `cmd:` 自引 / 互引（手改命令库才写得出来的环）。
+     *
+     * @return false = 这一下被挡掉了（已经报过 [CommandFailure.OVERLOADED]），调用方直接返回
+     */
+    private fun enterChain(
+        name: String,
+        depth: Int,
+    ): Boolean {
+        if (depth == 0 && runningSerial.isNotEmpty()) {
+            XLog.w("已有命令链在跑（${runningSerial.joinToString()}），「$name」这一下跳过（避免两条链交错）")
+            onFailure(CommandFailure.OVERLOADED)
+            return false
+        }
+        if (!runningSerial.add(name)) {
+            XLog.w("自定义命令「$name」还在跑，这一下跳过（避免两条命令链交错）")
+            onFailure(CommandFailure.OVERLOADED)
+            return false
+        }
+        return true
     }
 
     /**

@@ -45,19 +45,7 @@ import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
- * 草稿里**到底有没有内容** —— 「保存」按钮和工具条的显隐都问这一处。
- *
- *  单条那一档不能只看 `isNotBlank()`，两条都得拦：
- *   · **格式**：必须以支持的前缀开头（`shell:` / `keyevent:` / `cmd:` …）——
- *     早先没前缀的写法默认按 shell 执行，现在取消了这个默认（见 [Action.hasSupportedFormat]），
- *     存一条裸命令进去只会变成「无操作」；
- *   · **载荷**：`cmd:` / `app:` / `shell:` 这种**只有前缀**的写法也不是空串，
- *     存下去就是一条注定失败的命令。判据取 [Action.isBarePrefix]。
- */
-internal fun SettingsPage.commandPayloadReady(): Boolean = payloadBlockedReason() == null
-
-/**
- * 载荷**还差什么**（`null` = 够了）—— [commandPayloadReady] 的「为什么」，判据只有这一处。
+ * 载荷**还差什么**（`null` = 够了）—— 「保存」能不能点、灰着时说什么，判据只有这一处。
  *
  *  单条那一档三句话各自对应一种真实的半成品：没写 / 没写对格式 / 写了前缀没写正文。最后那档
  *  （`shell:` 这种只有前缀的）以前没有任何一句在说它 —— 保存按钮灰着、点一下回
@@ -125,21 +113,49 @@ internal fun SettingsPage.saveBlockedReason(): String? {
 }
 
 internal fun SettingsPage.commandToolbarVisible(): Boolean =
-    commandDraft.draft.editingName != null || commandDraft.draft.name.isNotBlank() || commandPayloadReady()
+    commandDraft.draft.editingName != null || commandDraft.draft.name.isNotBlank() || payloadBlockedReason() == null
 
+/**
+ * 底部那条浮动工具条要的几件事 —— 由「自定义命令」页把它那份草稿的状态译成这一份。
+ *
+ *  [visible] 管整条出不出现；[canReset] / [canSave] 是两个按钮各自可不可点；
+ *  [labels.blocked] 是「保存还不能点」的原因（点灰按钮时就说这一句）。
+ */
+internal class ToolbarSpec(
+    val visible: Boolean,
+    val canReset: Boolean,
+    val canSave: Boolean,
+    val labels: ToolbarLabels,
+    val actions: ToolbarActions,
+)
+
+/** 两个按钮各自的文案与「不能存」的原因。 */
+internal class ToolbarLabels(
+    val reset: String,
+    val save: String,
+    val blocked: () -> String?,
+)
+
+/** 两个按钮各自做什么。 */
+internal class ToolbarActions(
+    val onReset: () -> Unit,
+    val onSave: () -> Unit,
+)
+
+/**
+ * 底部那条浮动工具条的本体 —— 磨砂、阴影、进出场、两颗圆按钮全在这里。
+ *
+ *  现在只有「自定义命令」页在用它（[CommandActions]）：条件执行页的落盘入口是右下角那颗
+ *  「确定」，不在这条工具条上。
+ */
 @Composable
-internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
-    val tick = rememberTick()
-    val editing = commandDraft.draft.editingName != null
-    val name = commandDraft.draft.name
-
-    val canReset = commandToolbarVisible()
-    // 能不能存只看这一句（`null` = 能存）：判据与「点灰按钮时说的话」是同一支 ——
-    //  两处各写一遍的话，加一档「不能存」的理由就要改两个地方。
-    val canSave = saveBlockedReason() == null
-
-    // 两个按钮都不可用就整条隐藏；`canSave` 蕴含 `canReset`，判据只看后者。
-    val visible = canReset
+internal fun SettingsPage.FloatingActions(
+    spec: ToolbarSpec,
+    modifier: Modifier = Modifier,
+) {
+    val canReset = spec.canReset
+    val canSave = spec.canSave
+    val visible = spec.visible
     // 滑出要滑到屏幕下沿之外：胶囊浮在底边上方 [COMMAND_TOOLBAR_BOTTOM] 处，那段距离要一起算。
     val bottomGapPx = with(LocalDensity.current) { COMMAND_TOOLBAR_BOTTOM.roundToPx() }
 
@@ -166,20 +182,7 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
         //   库自己的 `dropShadow` 就挂在那里，而阴影本来画在形状**外面** ⇒ 被裁得一干二净
         //  （真机反馈「工具条阴影怎么没了」就是它）。所以把库的 `shadowElevation` 置零、按库原样
         //   （`radius = 10dp / 黑 10%`）在被裁的那一层**外面**补一层同样的阴影。
-        val state = chrome.pageHazeState
-        if (state == null && !chrome.frostDegradeLogged) {
-            chrome.frostDegradeLogged = true
-            XLog.w("底部工具栏磨砂跳过：页面取样层未就绪 ⇒ 这一轮仍用不透明底")
-        }
-        val capsule = remember { RoundedCornerShape(FloatingToolbarDefaults.CornerRadius) }
-        val gap =
-            Modifier
-                .padding(FloatingToolbarDefaults.OutSidePadding)
-                .dropShadow(
-                    shape = capsule,
-                    shadow = Shadow(radius = 10.dp, color = Color.Black, alpha = TOOLBAR_SHADOW_ALPHA),
-                )
-        val frost: Modifier = state?.let { gap.frosted(it, capsule) } ?: gap
+        val frost = toolbarFrostModifier()
         FloatingToolbar(
             modifier = frost,
             // 底色要**半透明**才透得出磨砂：`compositeOver(surface)` 会把它压成不透明实心，
@@ -200,105 +203,158 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
             // `showDivider` 那圈描边与半透明底互斥（原注释的结论，磨砂要它让位）。
             showDivider = false,
         ) {
-            // 用图标按钮：文字会把这窄条撑宽。文案进了各自的 `contentDescription`。
-            // 按钮 40dp、高亮圆角一半，外留白与按钮间距都是 [TOOLBAR_EDGE_GAP]。
-            // 底色 / 字形的可用 / 禁用切换走统一的 [COLOR_TRANSITION_SPEC]。
-            val resetIconColor by animateColorAsState(
-                targetValue =
-                    if (canReset) {
-                        COUITheme.colorScheme.onSurfaceContainer
-                    } else {
-                        COUITheme.colorScheme.disabledOnSecondaryVariant
-                    },
-                animationSpec = COLOR_TRANSITION_SPEC,
-                label = "ToolbarResetIcon",
-            )
-            val saveBackgroundColor by animateColorAsState(
-                targetValue =
-                    if (canSave) {
-                        // 底色走**主题原色**（透明度导致颜色和主题色有偏差，
-                        //  指的是**这颗按钮**，不是整条工具条）：不再单独降 alpha，字形（`onPrimary`，白）
-                        //  压在实色 `primary` 上对比度也最足。代价是实色底把糊盖住，这颗圆里看不到磨砂。
-                        COUITheme.colorScheme.primary
-                    } else {
-                        COUITheme.colorScheme.surfaceContainerHigh
-                    },
-                animationSpec = COLOR_TRANSITION_SPEC,
-                label = "ToolbarSaveBackground",
-            )
-            val saveIconColor by animateColorAsState(
-                targetValue =
-                    if (canSave) {
-                        COUITheme.colorScheme.onPrimary
-                    } else {
-                        COUITheme.colorScheme.disabledOnSecondaryVariant
-                    },
-                animationSpec = COLOR_TRANSITION_SPEC,
-                label = "ToolbarSaveIcon",
-            )
-            Row(
-                modifier = Modifier.padding(TOOLBAR_EDGE_GAP),
-                horizontalArrangement = Arrangement.spacedBy(TOOLBAR_EDGE_GAP),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(
-                    onClick = {
-                        tick()
-                        // 多条命令带步骤时走行级退场：步骤行 shrink 完才真正 reset，否则整批行瞬时消失。
-                        if (commandDraft.draft.kind == CommandKind.SERIAL && commandDraft.draft.steps.isNotEmpty()) {
-                            // 记下这一刻的内容指纹：收尾时对一次账，这期间用户又输入了就放弃 reset。
-                            commandDraft.resetBaseline = commandDraft.draft.contentFingerprint()
-                            commandDraft.resetPending = true
-                        } else {
-                            commandDraft.draft.reset()
-                        }
-                    },
-                    enabled = canReset,
-                    minWidth = TOOLBAR_ICON_SIZE,
-                    minHeight = TOOLBAR_ICON_SIZE,
-                    cornerRadius = TOOLBAR_ICON_SIZE / 2,
-                ) {
-                    Icon(
-                        PageIcons.MenuReset,
-                        contentDescription =
-                            if (editing) {
-                                I18n.get(Strings.COMMON_CANCEL, "取消")
+            ToolbarButtons(spec)
+        }
+    }
+}
+
+/**
+ * 「自定义命令」页那条工具条 —— 重置 / 保存两颗圆按钮，浮在页面底边上方。
+ *
+ *  实现全在 [FloatingActions] 里（磨砂、阴影、进出场），这一层只负责「把命令草稿的状态译成 spec」。
+ */
+@Composable
+internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
+    val tick = rememberTick()
+    val editing = commandDraft.draft.editingName != null
+    FloatingActions(
+        spec =
+            ToolbarSpec(
+                visible = commandToolbarVisible(),
+                canReset = commandToolbarVisible(),
+                // 能不能存只看这一句（`null` = 能存）：判据与「点灰按钮时说的话」是同一支
+                canSave = saveBlockedReason() == null,
+                labels =
+                    ToolbarLabels(
+                        reset = if (editing) I18n.get(Strings.COMMON_CANCEL, "取消") else I18n.get(Strings.COMMON_RESET, "重置"),
+                        save = if (editing) I18n.get(Strings.COMMON_MODIFY, "修改") else I18n.get(Strings.COMMON_SAVE, "保存"),
+                        blocked = ::saveBlockedReason,
+                    ),
+                actions =
+                    ToolbarActions(
+                        onReset = {
+                            tick()
+                            // 多条命令带步骤时走行级退场：步骤行 shrink 完才真正 reset，否则整批行瞬时消失。
+                            if (commandDraft.draft.kind == CommandKind.SERIAL && commandDraft.draft.steps.isNotEmpty()) {
+                                // 记下这一刻的内容指纹：收尾时对一次账，这期间用户又输入了就放弃 reset。
+                                commandDraft.resetBaseline = commandDraft.draft.contentFingerprint()
+                                commandDraft.resetPending = true
                             } else {
-                                I18n.get(Strings.COMMON_RESET, "重置")
-                            },
-                        // 禁用时跟着置灰（库不给图标上色）
-                        tint = resetIconColor,
-                    )
-                }
-                // 灰着被点了一下时，说清是**哪一档**没齐（不是页面不可用）：库把这一下交给
-                //  `LocalDisabledClick`，这里就地换成保存自己的原因。
-                CompositionLocalProvider(
-                    LocalDisabledClick provides { saveBlockedReason()?.let { hint(it) } },
-                ) {
-                    IconButton(
-                        onClick = {
+                                commandDraft.draft.reset()
+                            }
+                        },
+                        onSave = {
                             tick()
                             addCommand()
                         },
-                        enabled = canSave,
-                        minWidth = TOOLBAR_ICON_SIZE,
-                        minHeight = TOOLBAR_ICON_SIZE,
-                        cornerRadius = TOOLBAR_ICON_SIZE / 2,
-                        // `primary` + 亮字形；禁用时落回 `surfaceContainerHigh` + 禁用灰（底不消失）。
-                        backgroundColor = saveBackgroundColor,
-                    ) {
-                        Icon(
-                            PageIcons.Confirm,
-                            contentDescription =
-                                if (editing) {
-                                    I18n.get(Strings.COMMON_MODIFY, "修改")
-                                } else {
-                                    I18n.get(Strings.COMMON_SAVE, "保存")
-                                },
-                            tint = saveIconColor,
-                        )
-                    }
-                }
+                    ),
+            ),
+        modifier = modifier,
+    )
+}
+
+/**
+ * 底部工具条那层「磨砂 + 阴影」的修饰符 —— 从 [FloatingActions] 抽出来只为把那边压回长度上限。
+ *
+ *  · 磨砂从**页面内容层**取样（[frosted]）。取样方在页面那个取样源**之外**（工具条挂在页内、
+ *    `hazeSource` 那个 Box 外面），不会落进自己取样的那一层（落了就是 RenderThread 栈溢出）。
+ *  · **留白必须自己先加**：库内部那串链是 `modifier → padding(outSidePadding) → divider →
+ *    shadow → squircleBackground(color)`，而修饰符的绘制顺序就是链上的先后 —— 磨砂挂在
+ *    `modifier` 上，画的是**连留白一起**的整块矩形，于是胶囊外面会多出一圈糊边。
+ *    改成：我们自己 `padding(outSidePadding)` 再挂磨砂（画在留白以内 ⇒ 正好等于胶囊那一块），
+ *    并把库的 `outSidePadding` 置零 —— 总占位、点击范围都不变。
+ *  · **阴影得自己补，且补在磨砂外面**：磨砂链上有个 `clip(胶囊)`（见 [frosted]），挂在它里面
+ *    的东西全被裁进胶囊那个形状；库自己的 `dropShadow` 就挂在那里，而阴影本来画在形状**外面**
+ *    ⇒ 被裁得一干二净。所以把库的 `shadowElevation` 置零、按库原样（`radius = 10dp / 黑 10%`）
+ *    在被裁的那一层**外面**补一层同样的阴影。
+ */
+@Composable
+private fun SettingsPage.toolbarFrostModifier(): Modifier {
+    val state = chrome.pageHazeState
+    if (state == null && !chrome.frostDegradeLogged) {
+        chrome.frostDegradeLogged = true
+        XLog.w("底部工具栏磨砂跳过：页面取样层未就绪 ⇒ 这一轮仍用不透明底")
+    }
+    val capsule = remember { RoundedCornerShape(FloatingToolbarDefaults.CornerRadius) }
+    val gap =
+        Modifier
+            .padding(FloatingToolbarDefaults.OutSidePadding)
+            .dropShadow(
+                shape = capsule,
+                shadow = Shadow(radius = 10.dp, color = Color.Black, alpha = TOOLBAR_SHADOW_ALPHA),
+            )
+    return state?.let { gap.frosted(it, capsule) } ?: gap
+}
+
+/**
+ * 工具条里那两个圆按钮 —— 从 [FloatingActions] 抽出来只为把那边压回长度上限。
+ *
+ *  颜色三档都走 [COLOR_TRANSITION_SPEC]；保存那颗的底色用**主题原色** `primary`
+ *  （不再单独降 alpha：字形压在上面对比度最足，代价是实色底把糊盖住）。
+ */
+@Composable
+private fun SettingsPage.ToolbarButtons(spec: ToolbarSpec) {
+// 用图标按钮：文字会把这窄条撑宽。文案进了各自的 `contentDescription`。
+// 按钮 40dp、高亮圆角一半，外留白与按钮间距都是 [TOOLBAR_EDGE_GAP]。
+// 底色 / 字形的可用 / 禁用切换走统一的 [COLOR_TRANSITION_SPEC]。
+    val on = COUITheme.colorScheme.onSurfaceContainer
+    val off = COUITheme.colorScheme.disabledOnSecondaryVariant
+// 保存那颗的底色走**主题原色**（不单独降 alpha：字形压在上面对比度最足，代价是实色底盖住了糊）
+    val saveOn = COUITheme.colorScheme.primary
+    val saveOff = COUITheme.colorScheme.surfaceContainerHigh
+    val resetIconColor by animateColorAsState(
+        targetValue = if (spec.canReset) on else off,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "ToolbarResetIcon",
+    )
+    val saveBackgroundColor by animateColorAsState(
+        targetValue = if (spec.canSave) saveOn else saveOff,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "ToolbarSaveBackground",
+    )
+    val saveIconColor by animateColorAsState(
+        targetValue = if (spec.canSave) COUITheme.colorScheme.onPrimary else off,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "ToolbarSaveIcon",
+    )
+    Row(
+        modifier = Modifier.padding(TOOLBAR_EDGE_GAP),
+        horizontalArrangement = Arrangement.spacedBy(TOOLBAR_EDGE_GAP),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(
+            onClick = spec.actions.onReset,
+            enabled = spec.canReset,
+            minWidth = TOOLBAR_ICON_SIZE,
+            minHeight = TOOLBAR_ICON_SIZE,
+            cornerRadius = TOOLBAR_ICON_SIZE / 2,
+        ) {
+            Icon(
+                PageIcons.MenuReset,
+                contentDescription = spec.labels.reset,
+                // 禁用时跟着置灰（库不给图标上色）
+                tint = resetIconColor,
+            )
+        }
+        // 灰着被点了一下时，说清是**哪一档**没齐（不是页面不可用）：库把这一下交给
+        //  `LocalDisabledClick`，这里就地换成保存自己的原因。
+        CompositionLocalProvider(
+            LocalDisabledClick provides { spec.labels.blocked()?.let { hint(it) } },
+        ) {
+            IconButton(
+                onClick = spec.actions.onSave,
+                enabled = spec.canSave,
+                minWidth = TOOLBAR_ICON_SIZE,
+                minHeight = TOOLBAR_ICON_SIZE,
+                cornerRadius = TOOLBAR_ICON_SIZE / 2,
+                // `primary` + 亮字形；禁用时落回 `surfaceContainerHigh` + 禁用灰（底不消失）。
+                backgroundColor = saveBackgroundColor,
+            ) {
+                Icon(
+                    PageIcons.Confirm,
+                    contentDescription = spec.labels.save,
+                    tint = saveIconColor,
+                )
             }
         }
     }

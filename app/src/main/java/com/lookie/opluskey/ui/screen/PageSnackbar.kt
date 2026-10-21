@@ -12,11 +12,8 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,7 +32,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -47,7 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.frosted
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
-import com.lookie.opluskey.ui.opticalTextCenter
+import com.lookie.opluskey.ui.model.opticalCenter
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
@@ -82,10 +78,14 @@ import kotlinx.coroutines.delay
  *
  * ## 落点
  *
- *  距屏幕底边 32dp —— 与 COUI 的 `coui_snack_bar_margin_bottom` 一致：
- *  阴影画布的下边（[HINT_SHADOW_ROOM] 28dp）+ 胶囊自己那圈外边距（[HINT_ITEM_MARGIN] 4dp）。
- *  页面是边到边（`contentWindowInsets` 全零），底边由 [HINT_INSETS] 自己补上导航条，
- *  所以这个数就是到**可视底边**的距离。
+ *  **状态栏之下、页面最顶端**，离状态栏只有胶囊外边距那 4dp（[HINT_ITEM_MARGIN]）——
+ *  顶边不再留阴影画布（[HINT_TOP_ROOM] = 0）。顶部**不能照搬**原先离底边那一档
+ *  （`coui_snack_bar_margin_bottom` 32dp）：那一档里 28dp 是给阴影留的画布，而阴影在**下方**、
+ *  还是下移 4dp 的 —— 上方真正要留的只有 22dp 不到，且那圈是最淡的尾，被离屏层切掉看不出来。
+ *  顶部照留满就变成「状态栏下面空一大块」（真机反馈三次：先「离得也太远了点」，改到 32dp 后
+ *  「还是太远了」，收到 12dp 后仍要「改成 0 试一下」）。
+ *  原先贴底边时，弹窗偏下、两者必然重叠 —— 提示条会把弹窗底部那排按钮压住；挪到顶部之后
+ *  互不打扰，「弹窗开着时的提示」照样看得见。
  *
  *  这笔账以前是「槽上留 24dp + 画布下边 4dp」—— 画布下边只有 4dp 时，**入场动画那一下**
  *  阴影会被画布下沿切平（`fadeIn` 期间节点走离屏层，层边界就是节点边界），动画播完、层撤掉
@@ -130,8 +130,8 @@ internal fun SettingsPage.PageSnackbars() {
 
             else -> status.text
         }
-    //  这里**不再留底部间距**：那一笔已经并进阴影画布（见 [HINT_SHADOW_ROOM]）——
-    //  离底边多远由画布 + 胶囊外边距一起决定，画布够大才不会在入场动画期间切掉阴影。
+    //  这里**不留额外间距**：那一笔已经并进阴影画布（见 [HINT_SHADOW_ROOM]）——
+    //  离顶栏多远由画布 + 胶囊外边距一起决定，画布够大才不会在入场动画期间切掉阴影。
     Box(
         Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center,
@@ -165,9 +165,16 @@ private fun HintSlot(
         enter = HINT_ENTER,
         exit = HINT_EXIT,
     ) {
-        // 这圈留白是**给阴影的画布**，不是排版留白（见 [HINT_SHADOW_ROOM]）：
-        //  alpha 那一层（`saveLayer`）的边界就是节点边界，而阴影画在胶囊外面 —— 不留出来就会被裁平。
-        Box(Modifier.padding(HINT_SHADOW_ROOM)) {
+        // 三边留满阴影画布（阴影主要落在下 / 左右），**顶边收窄**：提示条在页面最顶端，
+        //  上方留满 28dp 就是「状态栏下面空一大块」（见文件头「落点」那段）。
+        Box(
+            Modifier.padding(
+                start = HINT_SHADOW_ROOM,
+                end = HINT_SHADOW_ROOM,
+                top = HINT_TOP_ROOM,
+                bottom = HINT_SHADOW_ROOM,
+            ),
+        ) {
             HintCapsule(last, backdrop)
         }
     }
@@ -249,8 +256,10 @@ private fun HintCapsule(
                 //  那一半把半径钳死了，角看上去发方（用户反馈「圆角变小了」）。上下各加 2dp
                 //  让上限抬 2dp —— 换来的圆角，代价是胶囊胖一点。
                 .padding(vertical = HINT_TALLER_BY)
-                // 提示压在内容上：吃掉落在它身上的点击，免得穿透去点到底下那一行
-                .pointerInput(Unit) { detectTapGestures { } }
+                //  这一层**没有任何手势**：胶囊压在内容上，点在它身上要**穿透**到底下那一行
+                //  （用户口径「snackbar 改成点击穿透，点它时它下面的东西响应」）。
+                //  以前这里挂 `detectTapGestures {}` 把点击吃掉（怕点提示时误点到下面那一行），
+                //  但那正好反了：提示只是回执，用户真要点的往往就是它盖住的那一行。
                 .semantics { liveRegion = LiveRegionMode.Polite },
         // 文字**垂直居中**：`Box` 默认 `TopStart`，胶囊比一行字高时文字会顶在上沿
         //  （用户反馈「文字没有垂直居中」）。水平方向本来就贴着文字宽度，居中与否看不出。
@@ -262,10 +271,10 @@ private fun HintCapsule(
             // 库 `couiTextAppearanceButton`：14sp Medium —— 与真机上的提示同一档字号
             style = SnackbarDefaults.textStyle(),
             // 只动文字这一层的 alpha：磨砂 / 底色 / 描边不跟着淡，换句时糊不会消失。
-            //  [opticalTextCenter] 那一下把汉字墨迹对回胶囊的几何中心（量到的账见那个文件顶部）。
             modifier =
                 Modifier
-                    .opticalTextCenter(SnackbarDefaults.textStyle())
+                    // 胶囊高度是设计值，字在里头竖居中 —— 补一档光学修正（见 `opticalCenter`）
+                    .opticalCenter(SnackbarDefaults.textStyle())
                     .graphicsLayer { alpha = textAlpha.value },
         )
     }
@@ -317,21 +326,6 @@ private class SquircleShape(
 private fun frostedContainer(base: Color): Color = base.copy(alpha = base.alpha * FROSTED_SURFACE_ALPHA)
 
 /**
- * 提示条那一槽要让开的系统条 —— **只有导航条**（底部）。
- *
- *  为什么需要它：提示条原先挂在 `snackbarHost` 槽，那个槽是库自己按 `contentWindowInsets`
- *  让过位的；现在改挂 `popupHost` 槽（为了压在弹窗之上，见 `PageContent`），库就不再管它了 ——
- *  而这一页的 `contentWindowInsets` 是全零（边到边），于是提示条会沉进手势导航条下面那一条里。
- *  那 32dp（画布 [HINT_SHADOW_ROOM] + 胶囊外边距）是按「槽底 = 可视底边」算的，
- *  少了这条 inset 就整体下移。
- *
- *  只要导航条、不要状态栏：这一槽是底部对齐的，顶部那条对落点没有意义。
- *  （`WindowInsets.navigationBars` 是 `@Composable` getter —— 只能在组合里取，不能存成顶层 val。）
- */
-@Composable
-internal fun hintInsets(): WindowInsets = WindowInsets.navigationBars
-
-/**
  * 提示胶囊的描边 —— 1dp 发丝线，颜色是**提示文字色**的一档淡透明度。
  *
  *  为什么需要：胶囊是半透明磨砂底，落在同色的内容上时边界会糊掉（暗色下最明显，
@@ -356,17 +350,29 @@ private const val HINT_BORDER_ALPHA = 0.12f
 private val HINT_TALLER_BY = 2.dp
 
 /**
- * 胶囊外面那圈**给阴影留的画布** —— **四边一样**。
+ * 胶囊外面那圈**给阴影留的画布**（左 / 右 / 下）—— 28dp = 阴影半径 26 + 下移 4。
  *
  *  为什么需要它：进出场用 alpha（`fadeIn` / `fadeOut`）时，Compose 会给节点开一层会话层
  *  （`saveLayer`），**会话层的边界就是节点边界** —— 而阴影画在胶囊外面，不留出这一圈就会
  *  被四周裁平。取 28dp：阴影半径 26 + 下移 4。
  *
  *  底部以前只留 4dp（「那圈阴影本来就该被窗口沿切掉」），但离屏层的边界在**动画期间**就生效，
- *  于是入场那 150ms 里底部阴影是齐边切平的、播完才恢复。现在四边都留满 —— 胶囊的位置不变，
- *  原来是「槽上 24dp + 画布 4dp」，现在那 24dp 都算进画布。
+ *  于是入场那 150ms 里底部阴影是齐边切平的、播完才恢复。现在底边留满。
+ *
+ *  **顶边不用这一档**，见 [HINT_TOP_ROOM]。
  */
 private val HINT_SHADOW_ROOM = 28.dp
+
+/**
+ * 顶边那圈画布的宽度 —— **0dp**：贴到最上面，离状态栏只剩 [HINT_ITEM_MARGIN] 的 4dp。
+ *
+ *  阴影是**下移 4dp** 的：上方实际溢出只有 `26 - 4 = 22dp`，而且那一段是整圈里最淡的尾
+ *  （14% 的黑再乘径向渐变到尾端），被离屏层切掉看不出来 —— 拿它换「贴近状态栏」很值。
+ *
+ *  顶部照留满 28dp（原先离底边那一档）浮现出来就是「状态栏下面空一大块」（真机反馈两次：
+ *  先「离得也太远了点」，改到 32dp 后仍是「还是太远了」）；12dp 仍嫌远，收到 0。
+ */
+private val HINT_TOP_ROOM = 0.dp
 
 /** 胶囊左右两侧的外边距（库 `Snackbar` 内联的那 16dp，COUI `grid_guide_column_card_margin_start`）。 */
 private val HINT_SIDE_MARGIN = 16.dp

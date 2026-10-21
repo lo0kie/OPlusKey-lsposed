@@ -49,6 +49,17 @@ object SystemSwitches {
      */
     fun settingToken(id: String): String = Action.Setting(id).token
 
+    /**
+     * 手电筒在清单里的 id（落盘 `setting:flashlight`）。
+     *
+     *  它的执行**不在** `SettingSwitch` 那条路上 —— 宿主里由 `FlashlightController` 直接调
+     *  `CameraManager.setTorchMode`，所以分派要用这个 id 认一次。
+     */
+    const val ID_FLASHLIGHT = "flashlight"
+
+    /** 免打扰的 id（落盘 `setting:dnd`）—— system_server 侧走 `notification.setZenMode`。 */
+    const val ID_DND = "dnd"
+
     /** 页面上的十条，顺序即显示顺序。 */
     val ITEMS: List<Item> =
         listOf(
@@ -58,17 +69,38 @@ object SystemSwitches {
             Item(settingToken("rotation"), Strings.SYS_SETTING_ROTATION, "自动旋转"),
             Item(settingToken("nfc"), Strings.SYS_SETTING_NFC, "NFC"),
             Item(settingToken("airplane"), Strings.SYS_SETTING_AIRPLANE, "飞行模式"),
-            // 免打扰与手电筒都是**本来就有实现**的动作，不再写第二套：
-            //  dnd 走 `Action.Oplus`（宿主侧的 ColorOS/AOSP 通道），flashlight 走 `Action.Flashlight`
-            Item(Action.OPLUS_PREFIX + RomProfile.NAME_NO_DISTURB, Strings.SYS_SETTING_DND, "免打扰"),
-            // 手电筒复用网格里那一格（`flashlight`）：执行侧本来就有真开关，不必绕 shell
-            Item(Action.FLASHLIGHT, Strings.SYS_SETTING_FLASHLIGHT, "手电筒"),
+            //  免打扰与手电筒**也收进 `setting:` 这一族** —— 三态（切换 / 打开 / 关闭）要求
+            //  「目标状态」能写在 token 里，而 `oplus:no_disturb` / `flashlight` 这两种老写法
+            //  只能表达「切一下」。执行侧各自分派（见 `ActionRunner` 与 `SettingCalls`），
+            //  老配置里那两种写法仍然按原路跑，不迁移、不丢。
+            Item(settingToken(ID_DND), Strings.SYS_SETTING_DND, "免打扰"),
+            Item(settingToken(ID_FLASHLIGHT), Strings.SYS_SETTING_FLASHLIGHT, "手电筒"),
             Item(settingToken("darkmode"), Strings.SYS_SETTING_DARKMODE, "暗色模式"),
             Item(settingToken("powersave"), Strings.SYS_SETTING_POWERSAVE, "省电模式"),
         )
 
     /** 某个落盘 token 对应清单里的哪一条（不是这十种写法就返回 `null`）。 */
     fun find(token: String): Item? = ITEMS.firstOrNull { it.token == token }
+
+    /**
+     * **老写法**对应清单里的哪个 id（认不出返回 `null`）。
+     *
+     *  免打扰与手电筒早先是 `oplus:no_disturb` / `flashlight` 两种独立写法（执行只有「切换」
+     *  一种语义）；三态改版后落盘统一成 `setting:dnd` / `setting:flashlight`。
+     *  老配置**不迁移** —— 执行侧两种写法都还认（见 `ActionRunner` / `SettingSwitch`），
+     *  但界面判定得靠这一条把它们归到同一个开关上，否则升级之后那一格不亮、菜单里也不打勾。
+     */
+    fun idOfLegacy(token: String): String? =
+        when (token) {
+            Action.FLASHLIGHT -> ID_FLASHLIGHT
+            Action.OPLUS_PREFIX + RomProfile.NAME_NO_DISTURB -> ID_DND
+            else -> null
+        }
+
+    /**
+     * 按 `setting:<id>` 里的 `<id>` 找那一条 —— 三态写法（`setting:wifi:on`）剥掉后缀之后用这个。
+     */
+    fun titleOfId(id: String): String? = find(settingToken(id))?.let { I18n.get(it.labelKey, it.label) }
 
     /** 某个 token 的显示名（当前语言）—— 步骤行 / 执行提示 / 顶栏小标题共用这一处。 */
     fun titleOf(token: String): String? = find(token)?.let { I18n.get(it.labelKey, it.label) }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -213,6 +214,11 @@ internal fun SettingsPage.BindingScreen(
     // 两者才严丝合缝。这条带子现在挂在**顶栏**里（见 [BindingTabBand]），量高度也在那边，
     // 值走页面级的 [SettingsPage.bindingBandHeight]（见 [BandHeight]）。
     val tabBlockDp = bindingBandHeight.dp()
+
+    // 当前停在哪一档手势 —— 页面级记一份：分叉页要从这里知道「进来时停的是单击还是长按」，
+    //  它编的是这一档的条件表，顶栏小标题也写这一档。pager 状态在这个 composable 里、
+    //  跨页拿不到，所以落到 [SettingsPage.branchGesture] 上。
+    LaunchedEffect(pagerState.currentPage) { branchGesture = pagerState.currentPage }
 
     Box(
         Modifier

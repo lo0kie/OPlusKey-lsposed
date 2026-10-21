@@ -20,6 +20,16 @@ import com.lookie.opluskey.ui.state.CommandsSave
 // 动宿主页面与进程那几件（露出原版页 / 重启服务）在 `PageControl.kt`。
 // 原先三族挤在一个 `ConfigActions.kt` 里，看文件名猜不出里面有什么。
 
+/** 切「跟随系统显示大小」（外观那一行）。 */
+internal fun SettingsPage.setFollowDisplaySize(on: Boolean) {
+    val cfg = configState.config.value
+    if (cfg.global.followDisplaySize == on) return
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(followDisplaySize = on)),
+        "follow_display_size=${if (on) 1 else 0}",
+    ) { switchNotice(I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE, "跟随系统显示大小"), on) }
+}
+
 /** 切「振动反馈」—— 行点击与开关共用这一个入口。 */
 internal fun SettingsPage.setVibrate(on: Boolean) {
     val cfg = configState.config.value

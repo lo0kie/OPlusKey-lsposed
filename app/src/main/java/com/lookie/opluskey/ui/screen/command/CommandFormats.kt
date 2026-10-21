@@ -16,7 +16,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.COMMAND_FORMAT_LINES
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.opticalTextCenter
+import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -69,12 +69,12 @@ internal fun SettingsPage.CommandFormatsCard(
                 ) {
                     Text(
                         text = line.text,
-                        // 文字占满整行（点击区在整行上）；行高固定 32dp、字在里面居中，
-                        //  汉字墨迹比行盒中心高一档，沉 0.1em 才与两条分隔线等距（[opticalTextCenter]）
+                        // 文字占满整行（点击区在整行上）；行高固定 32dp、字在里面居中 ——
+                        //  行盒居中不等于墨迹居中，所以再补一档光学修正（见 `opticalCenter`）
                         modifier =
                             Modifier
                                 .weight(1f)
-                                .opticalTextCenter(COUITheme.textStyles.footnote1),
+                                .opticalCenter(COUITheme.textStyles.footnote1),
                         style = COUITheme.textStyles.footnote1,
                         color = COUITheme.colorScheme.onSurfaceVariantSummary,
                     )

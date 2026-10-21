@@ -32,6 +32,7 @@ import com.lookie.opluskey.ui.model.MENU_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_PANEL_RADIUS
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.STEP_PICKER_MAX_HEIGHT
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.DropdownHeaderItem
 import io.github.suqi8.coui.kmp.basic.DropdownImpl
@@ -44,6 +45,92 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.COUITheme
+
+/** 展开之后的一项 —— 渲染层只认这四种（调用方永远看不到它们）。 */
+private sealed interface MenuPart {
+    data class Title(
+        val text: String,
+    ) : MenuPart
+
+    data class Item(
+        val row: MenuEntry.Row,
+    ) : MenuPart
+
+    data object Line : MenuPart
+
+    data object HeavyLine : MenuPart
+}
+
+/**
+ * 把调用方那份「只有内容」的列表展开成「内容 + 分隔」。
+ *
+ *  **分隔全在这里生成**，调用方一个都不写：
+ *   · 小标题与第一行之间一条细线；
+ *   · 组内行与行之间一条细线（某一行的 `dividerBefore` 换成加深带）；
+ *   · 相邻两组之间（含组与上面那些裸行之间）一条加深带；
+ *   · 顶层裸行之间也是一条细线。
+ */
+private fun expandMenu(entries: List<MenuEntry>): List<MenuPart> =
+    buildList {
+        entries.forEach { entry ->
+            when (entry) {
+                is MenuEntry.Row -> {
+                    if (lastOrNull() is MenuPart.Item) {
+                        add(if (entry.dividerBefore) MenuPart.HeavyLine else MenuPart.Line)
+                    }
+                    add(MenuPart.Item(entry))
+                }
+
+                is MenuEntry.Section -> {
+                    if (isNotEmpty()) add(MenuPart.HeavyLine)
+                    add(MenuPart.Title(entry.title))
+                    // 小标题下**默认**一条细线：标题与第一行贴在一起时读成「这一行是标题的一部分」
+                    add(MenuPart.Line)
+                    entry.rows.forEachIndexed { index, row ->
+                        if (index > 0) add(if (row.dividerBefore) MenuPart.HeavyLine else MenuPart.Line)
+                        add(MenuPart.Item(row))
+                    }
+                }
+            }
+        }
+    }
+
+/**
+ * **单层菜单的唯一入口** —— 调用方只给「行」和「手指锚点」，别的一律不写。
+ *
+ *  `show` 由「行表空不空」表达：关掉那一刻给空表即可（退场动画期间的锚点与内容由
+ *  [MenuPopup] 内部保住）。弹层位置、分隔、最大高度、磨砂这些都由这里与 [MenuPopup] 定，
+ *  调用方一个都碰不到 —— 以前十几处各写一遍 `show / maxHeight / enableWindowDim / columnAnchor`，
+ *  漏一处就是「这张菜单没有关闭动画」或者「这一层长到屏幕外还滚不动」。
+ *
+ *  要「点一行再叠一层」的菜单（入口格的档位、系统开关的切换 / 打开 / 关闭）」不要用它，
+ *  用 [ModeMenuPopups]：两层之间的守卫只有那一份实现。
+ *
+ * @param entries 行；空表 = 关闭
+ * @param preciseClick 开菜单那个控件自己的触点锚点
+ * @param columnAnchor 只给「还要再弹一层」的调用方：把这一层里的按下点记下来当下一层的锚点
+ * @param dim 叠在另一层上面时压暗背景（单层菜单不用管）
+ */
+@Composable
+internal fun SettingsPage.PageMenu(
+    entries: List<MenuEntry>,
+    preciseClick: PreciseClickState,
+    onDismiss: () -> Unit,
+    columnAnchor: PreciseClickState? = null,
+    dim: Boolean = false,
+) {
+    MenuPopup(
+        show = entries.isNotEmpty(),
+        preciseClick = preciseClick,
+        entries = entries,
+        onDismiss = onDismiss,
+        columnAnchor = columnAnchor,
+        enableWindowDim = dim,
+        // 长菜单一律封顶：不给的话面板按内容自然高度长，条数一多就顶出屏幕、而且滚不动
+        //  （「添加命令」那张、系统开关那十个开关都踩过）。给了之后超出部分由库的列表自己滚。
+        maxHeight = STEP_PICKER_MAX_HEIGHT,
+    )
+}
 
 @Composable
 internal fun SettingsPage.MenuPopup(
@@ -88,21 +175,23 @@ internal fun SettingsPage.MenuPopup(
         val shown = held.entries
         val column: @Composable () -> Unit = {
             ListPopupColumn {
-                val optionSize = shown.count { it is MenuEntry.Row }
+                // 调用方那份「只有内容」的列表先展开成「内容 + 分隔」的展示序列（见 [expandMenu]）
+                val parts = expandMenu(shown)
+                val optionSize = parts.count { it is MenuPart.Item }
                 var index = -1
-                shown.forEachIndexed { position, entry ->
-                    when (entry) {
-                        is MenuEntry.Row -> {
+                parts.forEachIndexed { position, part ->
+                    when (part) {
+                        is MenuPart.Item -> {
                             index++
                             MenuRow(
-                                row = entry,
+                                row = part.row,
                                 index = index,
                                 optionSize = optionSize,
                                 // 「首行 / 末行」看的是**整列**的首尾元素：组标题占首行时，
                                 // 标题下面那一行**不算**首行 —— 否则会多出一次首行内衬，
                                 // 与组标题之间凭空多 2dp（查「小标题那笔账」时发现）。
                                 isFirst = position == 0,
-                                isLast = position == shown.lastIndex,
+                                isLast = position == parts.lastIndex,
                                 // 淡出期间（`show = false`，内容还按 held 那一次留着）**不再派发**
                                 // —— 见 [MenuRow] 的 `interactive`。
                                 interactive = show,
@@ -110,15 +199,15 @@ internal fun SettingsPage.MenuPopup(
                             )
                         }
 
-                        is MenuEntry.Group -> {
-                            DropdownHeaderItem(entry.text, isFirst = position == 0)
+                        is MenuPart.Title -> {
+                            DropdownHeaderItem(part.text, isFirst = position == 0)
                         }
 
-                        MenuEntry.RowLine -> {
+                        MenuPart.Line -> {
                             PopupRowDivider()
                         }
 
-                        MenuEntry.GroupLine -> {
+                        MenuPart.HeavyLine -> {
                             HorizontalDivider(
                                 thickness = DropdownDefaults.PopupGroupDividerThickness,
                                 // 组间那条**槽**：暗色下加深（`#333` 面板上压到 `#1f` 才看得出是一道槽），

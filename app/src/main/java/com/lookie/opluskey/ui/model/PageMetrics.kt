@@ -87,39 +87,9 @@ internal const val COLUMNS = 2
  */
 internal const val SHOW_HOME_MINI_ANIM = false
 
-/**
- * 「快捷键」首页「按键行为」卡的行数 —— 振动反馈 / 执行时提示 /
- * 前台转小窗动画（那一行见 [SHOW_HOME_MINI_ANIM]）。
- *
- * 行不再随状态增减，所以写成常量而不是 `buildList`；但**行数要跟着可见性走** ——
- * `cardListPositionOf` 靠它算首尾圆角，多算一行会让最后那一行被当成「中间行」、卡片底角变成直角。
- */
-internal val HOME_ACTION_ROWS = if (SHOW_HOME_MINI_ANIM) 3 else 2
-
-/** 「更多选项」页「关于」那张卡的行数 —— 版本 / 签名 / 作者 / 反馈问题，四行固定（本机那行在「运行状态」卡里）。 */
-internal const val ABOUT_ROWS = 4
-
-/**
- * 「更多选项」页「配置」那张卡的行数 —— 语言 / 导出配置 / 导入配置，三行固定。
- *
- * 与 [ABOUT_ROWS] 分开：两张卡各算各的圆角（`cardListPositionOf` 的首尾各补 2dp），
- * 合成一个数会让上面那张卡的最后一行被当成「中间行」。
- */
-internal const val MORE_CONFIG_ROWS = 3
-
-/**
- * 「更多选项」页「外观」那张卡的行数 —— 界面颜色 / 系统配色，两行固定。
- *
- *  与 [MORE_CONFIG_ROWS] 同一个理由分开算：两张卡的首尾圆角各按各的行数补。
- */
-internal const val MORE_APPEARANCE_ROWS = 2
-
-/**
- * 首页「其他」卡的行数 —— 「更多选项」与「捐赠打赏」两行。
- *
- * 与 [HOME_ACTION_ROWS] 分开同样是圆角账：两张卡的首尾各自算。
- */
-internal const val HOME_MORE_ROWS = 2
+// 「一张卡有几行」不再写成常量：行的位置（首行 / 中间 / 末行）与分隔线现在由 `CardList`
+// 遍历时自己算（见 `ui/CardRow`），条件行用 `buildList { if (…) add(…) }` 组出来就是真相 ——
+// 数错了会让卡片首尾圆角错位的那一类账，整类消失了。
 
 /**
  * 「已保存的命令」卡片里图标到标题的间距 —— 卡片高度至少等于宽度、步骤多时会跟着长高，
@@ -135,14 +105,6 @@ internal val SUMMARY_REF_ICON = 14.dp
 
 /** 那枚小图标与它后面那行摘要之间的间距。 */
 internal val SUMMARY_REF_GAP = 4.dp
-
-/**
- * 「按键绑定」那张卡的行数：第 1 行主开关、第 2 行接口选择、第 3 行进子页 ——
- * 主开关是独立一行，不挂在跳转行行尾。
- *
- * 行数不再随状态变，所以写成常量。
- */
-internal const val HOME_BINDING_ROWS = 3
 
 /**
  * 页面左右边距 —— 取 12dp，网格列距与分段控件共用同一值。
@@ -228,7 +190,7 @@ internal val APP_KIND_TAG_GAP = 6.dp
 /**
  * 种类标签胶囊整体**往下让**的这一档 —— 0.85dp（560dpi 下 3px）。
  *
- *  胶囊里的字按 [com.lookie.opluskey.ui.opticalTextCenter] 沉过之后在胶囊里是正中的，
+ *  胶囊里的字按行盒竖直居中，
  *  但胶囊**自己**与旁边那个 16sp 大标题还差一档：真机量到标题墨迹中线在 2021px、
  *  胶囊中线在 2018px —— 差 3px，看着就是「标签整体偏高一点点」。
  *

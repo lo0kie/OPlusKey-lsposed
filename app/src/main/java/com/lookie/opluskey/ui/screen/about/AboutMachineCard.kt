@@ -1,32 +1,25 @@
 package com.lookie.opluskey.ui.screen.about
 
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.ExpandableRow
 import com.lookie.opluskey.ui.ExpandableRowSpec
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.ABOUT_ROWS
 import com.lookie.opluskey.ui.model.AUTHOR
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.REPO_URL
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.home.openUrl
-import io.github.suqi8.coui.kmp.basic.BasicComponent
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.DividerDefaults
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.cardListPositionOf
+import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
- * 「关于」卡 —— 版本 / 签名 / 作者 / 反馈问题，四行固定（见 [ABOUT_ROWS]）。
+ * 「关于」卡 —— 版本 / 签名 / 作者 / 反馈问题，四行固定。
  *
  *  本机那一行已经挪到「运行状态」卡的最上面：那是「这台机器现在什么状态」，与链路那几段同属一类。
  *
@@ -42,31 +35,54 @@ internal fun SettingsPage.MachineCard(
     signature: SignatureInfo,
     ui: AboutUiState,
 ) {
-    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-        VersionRow(version)
-        HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-        SignatureRow(signature, ui)
-        HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-        AuthorRow(ui)
-        HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-        FeedbackRow(ui)
-    }
-}
-
-/** 版本那一行 —— 点一下开项目仓库（与「作者 / 反馈问题」一样是跳外部链接）。 */
-@Composable
-private fun SettingsPage.VersionRow(version: String) {
     val tick = rememberTick()
-    BasicComponent(
-        title = I18n.get(Strings.MORE_ABOUT_VERSION, "版本"),
-        summary = version,
-        onClick = {
-            tick()
-            openUrl(REPO_URL)
-        },
-        startAction = { Icon(PageIcons.Versions, null) },
-        endActions = { RowEndIcon(PageIcons.Link) },
-        cardListPosition = cardListPositionOf(0, ABOUT_ROWS),
+    CardList(
+        rows =
+            buildList {
+                // 版本那一行 —— 点一下开项目仓库（与「作者 / 反馈问题」一样是跳外部链接）。
+                add(
+                    CardRow.Item(
+                        title = I18n.get(Strings.MORE_ABOUT_VERSION, "版本"),
+                        summary = version,
+                        icon = PageIcons.Versions,
+                        trailing = { RowEndIcon(PageIcons.Link) },
+                        onClick = {
+                            tick()
+                            openUrl(REPO_URL)
+                        },
+                    ),
+                )
+                // 签名那一行自己是一整行（可展开的指纹），位置由列表递进来
+                add(CardRow.Custom { position -> SignatureRow(signature, ui, position) })
+                // 作者那一行 —— 点开的是一层菜单（GitHub / 酷安两个去处），不直接跳外部。
+                //  行尾给选择器字形（不是链接符号）：链接符号留给菜单里那两行。
+                add(
+                    CardRow.Item(
+                        title = I18n.get(Strings.MORE_ABOUT_AUTHOR, "作者"),
+                        summary = AUTHOR,
+                        icon = PageIcons.UserScreen,
+                        trailing = { RowEndIcon(PageIcons.Selector) },
+                        modifier = Modifier.preciseClickAnchor(ui.authorClick),
+                        onClick = {
+                            tick()
+                            ui.showAuthorMenu = true
+                        },
+                    ),
+                )
+                // 反馈与交流那一行 —— 同样是一层菜单；不给副标题（渠道名在菜单里逐条列着）。
+                add(
+                    CardRow.Item(
+                        title = I18n.get(Strings.MORE_ABOUT_FEEDBACK, "反馈与交流"),
+                        icon = PageIcons.Feedback,
+                        trailing = { RowEndIcon(PageIcons.Selector) },
+                        modifier = Modifier.preciseClickAnchor(ui.feedbackClick),
+                        onClick = {
+                            tick()
+                            ui.showFeedbackMenu = true
+                        },
+                    ),
+                )
+            },
     )
 }
 
@@ -80,9 +96,10 @@ private fun SettingsPage.VersionRow(version: String) {
 private fun SettingsPage.SignatureRow(
     signature: SignatureInfo,
     ui: AboutUiState,
+    position: CardListPosition,
 ) {
     // 值就是原来那一行的摘要（一句结论 + 指纹，中间是硬换行）。展开后与不折叠时**一模一样**，
-    //  收起时压成一行、末尾省略号 —— 差别只在 `maxLines`，见 `ui/ExpandableRow`。
+    //  差别只在 `maxLines`，见 `ui/ExpandableRow`。
     val text = listOfNotNull(signature.note.ifEmpty { null }, signature.fingerprint).joinToString("\n")
     ExpandableRow(
         spec =
@@ -97,47 +114,9 @@ private fun SettingsPage.SignatureRow(
                     } else {
                         COUITheme.colorScheme.error
                     },
-                position = cardListPositionOf(1, ABOUT_ROWS),
+                position = position,
             ),
         expanded = ui.signatureExpanded,
         onToggle = { ui.signatureExpanded = !ui.signatureExpanded },
-    )
-}
-
-/** 作者那一行 —— 点开的是一层菜单（GitHub / 酷安两个去处），不直接跳外部。 */
-@Composable
-private fun SettingsPage.AuthorRow(ui: AboutUiState) {
-    val tick = rememberTick()
-    BasicComponent(
-        title = I18n.get(Strings.MORE_ABOUT_AUTHOR, "作者"),
-        summary = AUTHOR,
-        onClick = {
-            tick()
-            ui.showAuthorMenu = true
-        },
-        startAction = { Icon(PageIcons.UserScreen, null) },
-        // 行尾给选择器字形（不是链接符号）：链接符号留给菜单里那两行。
-        endActions = { RowEndIcon(PageIcons.Selector) },
-        cardListPosition = cardListPositionOf(2, ABOUT_ROWS),
-        modifier = Modifier.preciseClickAnchor(ui.authorClick),
-    )
-}
-
-/** 反馈与交流那一行 —— 同样是一层菜单；不给副标题（渠道名在菜单里逐条列着）。 */
-@Composable
-private fun SettingsPage.FeedbackRow(ui: AboutUiState) {
-    val tick = rememberTick()
-    BasicComponent(
-        title = I18n.get(Strings.MORE_ABOUT_FEEDBACK, "反馈与交流"),
-        onClick = {
-            tick()
-            ui.showFeedbackMenu = true
-        },
-        startAction = { Icon(PageIcons.Feedback, null) },
-        // 行尾给选择器字形（不是链接符号）：这一行点开的是**一层菜单**，
-        //  与「语言」那一行同一件（链接符号留给菜单里那三行）。
-        endActions = { RowEndIcon(PageIcons.Selector) },
-        cardListPosition = cardListPositionOf(3, ABOUT_ROWS),
-        modifier = Modifier.preciseClickAnchor(ui.feedbackClick),
     )
 }

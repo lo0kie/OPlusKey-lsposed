@@ -7,6 +7,8 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.state.KeyWatchState
 
 // 页面文案与标签函数。 —— 从 PageConst.kt 拆出（同包搬迁，调用点不变）。
 
@@ -19,7 +21,14 @@ internal val COMMANDS_TITLE: String
     get() = I18n.get(Strings.ACTION_CUSTOM_COMMAND, "自定义命令")
 
 /**
- * 「通用设置」页的标题 —— 首页「按键绑定」卡片第 3 行进来（**唯一入口**）。
+ * 「条件执行」页的标题 —— 与「按键绑定」页菜单里那一项**共用同一个键**
+ * （`command.type_branch`）：点的那一行与进去之后看到的标题同名。
+ */
+internal val BRANCHES_TITLE: String
+    get() = I18n.get(Strings.COMMAND_TYPE_BRANCH, "条件执行")
+
+/**
+ * 「通用设置」页的标题 —— 首页「其他」卡第一行进来（**唯一入口**，在「更多选项」上面）。
  *
  *  那一行与这一页顶上的标题**共用同一个键**：进去之后看到的与点的那一行同名。
  */
@@ -82,8 +91,12 @@ internal val CONFIG_READ_FAILED_HINT: String
  * 首页那条常驻提示的第五种文案：**模块总闸关着**（`GlobalConfig.enabled = false`）。
  *
  *  这一档不是故障、也不该让人等：**页面整片灰就是它关着导致的**，说清这一点用户自己拨回去即可
- *（所以与 [MODULE_UNAVAILABLE_HINT] 分开 —— 那一句会让人以为要等）。主开关那一行本身不吃这个闸，
- * 拨得回来（见 [HomeScreen] 主开关那段注释）。
+ *（所以与 [MODULE_UNAVAILABLE_HINT] 分开 —— 那一句会让人以为要等）。主开关那一行不吃「整页闸」，
+ * 拨得回来（见 [HomeCards] 主开关那段注释）。
+ *
+ *  **它排在链路的几档之后**（见 `blockedReason` 的顺序）：那一行自己吃 `linkReady`，链路没齐时
+ *  它是灰的、拨不动 —— 先说这句等于让人去开一个开不了的开关。反过来，**这句能出现就说明链路是通的、
+ *  那一行此刻可点**，所以「拨回去」这个建议永远是可执行的。
  *
  *  **逐键的停用不走这一条**：停用一颗键（含侧键）时页面照常可用，只是那一颗的控件变灰、
  *  点一下说「可在 ⋮ 菜单里启用」（见 `disabledClickReason`）。
@@ -293,7 +306,18 @@ internal fun gestureLabel(gesture: Gesture): String =
         Gesture.LONG -> I18n.get(Strings.GESTURE_LONG, "长按")
     }
 
-/** 「单条命令 / 多条命令」两个分段标题，理由同上。 */
+/**
+ * 当前这颗键在界面上叫什么 —— 侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。
+ *
+ *  与「按键绑定」页那组名同一个口径（顶栏 ⋮ 菜单第一项就是这句话）：那一页的尾随小标题、
+ *  分叉页的「在编哪一档」都用它，免得同一个东西两处两个叫法。
+ */
+internal fun SettingsPage.editingKeyName(): String =
+    KeyWatchState
+        .editing(configState.config.value)
+        .let { if (it.isCustom) it.label else I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键") }
+
+/** 两个分段标题（单条 / 多条），理由同上。 */
 internal fun commandKindLabel(kind: CommandKind): String =
     when (kind) {
         CommandKind.SINGLE -> I18n.get(Strings.COMMAND_TYPE_SINGLE, "单条命令")

@@ -11,7 +11,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.HeaderMenuButton
 import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.MenuPopup
+import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.PageIcons
@@ -60,10 +60,7 @@ internal fun SettingsPage.ResetMenu() {
         // 触发键同样是库的 IconButton，只是多挂 `preciseClickAnchor`：浮层弹在按下的那一点
         HeaderMenuButton(preciseClick) { open = true }
 
-        MenuPopup(
-            show = open,
-            preciseClick = preciseClick,
-            onDismiss = { open = false },
+        PageMenu(
             entries =
                 listOf(
                     // 「默认界面」：打开未替换的宿主原版页面 —— **永远可用**（逃生口，见上面那段）。
@@ -76,10 +73,6 @@ internal fun SettingsPage.ResetMenu() {
                         open = false
                         openStockPage()
                     },
-                    MenuEntry.RowLine,
-                    // 第二项：重启服务 —— 跟着 [rowsEnabled]（它动的是两个进程，配置不丢，见 [restartModule]）。
-                    //  叫「服务」不叫「模块」：这一步杀宿主主进程与本页进程、由系统重新拉起，
-                    // **不会**重新加载 system_server 里那份注入（那个只能整机重启）。
                     MenuEntry.Row(
                         title = I18n.get(Strings.MENU_RESTART_SERVICE, "重启服务"),
                         icon = PageIcons.ModuleRestart,
@@ -88,7 +81,6 @@ internal fun SettingsPage.ResetMenu() {
                         open = false
                         restartModule()
                     },
-                    MenuEntry.RowLine,
                     // 第三项：导出日志 —— 同样跟着 [rowsEnabled]
                     MenuEntry.Row(
                         title = I18n.get(Strings.MENU_EXPORT_LOG, "导出日志"),
@@ -101,21 +93,24 @@ internal fun SettingsPage.ResetMenu() {
                     // 「更多」那一项**已删**（「去掉菜单里的更多」）：
                     // 进「更多选项」页只留首页那一行，且那一行**不吃任何闸**（见 [HomeScreen]）——
                     // 它现在同时承担「日常入口」与「模块坏掉时看运行状态的地方」两个角色。
-                    // 组间加深带：下面这项是破坏性动作，与上面三项不是一类，细线分不出来
-                    MenuEntry.GroupLine,
                     // 第四项：跟着 [rowsEnabled] —— 未就绪时置灰且吃掉点击（由 MenuRow 那层透明吃事件 Box 兜住，菜单不关、不派发）
                     //  文案是「清空」不是「重置」：这一下**真的把两份配置都清掉**
                     // （含已保存的命令），叫「重置」会让人以为只是恢复默认、数据还在。
+                    //  `dividerBefore`：它是破坏性动作，与上面三项不是一类 —— 上面一条加深带。
                     MenuEntry.Row(
                         title = I18n.get(Strings.MENU_CLEAR_CONFIG, "清空配置"),
                         icon = PageIcons.MenuReset,
                         enabled = rowsEnabled,
                         danger = true,
+                        dividerBefore = true,
                     ) {
                         open = false
                         overlays.confirmReset = true
                     },
-                ),
+                ).takeIf { open }
+                    .orEmpty(),
+            preciseClick = preciseClick,
+            onDismiss = { open = false },
         )
 
         ConfirmDialog(

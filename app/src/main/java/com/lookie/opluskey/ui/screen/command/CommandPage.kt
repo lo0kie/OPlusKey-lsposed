@@ -18,6 +18,8 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
@@ -29,7 +31,6 @@ import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
@@ -197,24 +198,29 @@ private val HINT_SIDE_PADDING = 32.dp
 /** 多条命令的「命令间隔时长」卡 —— 只有一行：等多久再派发下一条。 */
 @Composable
 private fun SettingsPage.StepDelayCard(tick: () -> Unit) {
-    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-        SliderRow(
-            position = cardListPositionOf(0, SERIAL_CARD_ROWS),
-            spec =
-                SliderSpec(
-                    title = I18n.get(Strings.COMMAND_DELAY_LABEL, "命令间隔时长"),
-                    icon = PageIcons.DelayStep,
-                    summary = I18n.get(Strings.COMMAND_DELAY_DESC, "等多久再执行下一条"),
-                    min = Command.MIN_STEP_DELAY_MS,
-                    max = Command.MAX_STEP_DELAY_MS,
-                    value = commandDraft.draft.stepDelayMs,
-                    default = Command.DEFAULT_STEP_DELAY_MS,
-                ),
-        ) { v ->
-            tick()
-            commandDraft.draft.stepDelayMs = v
-            // 只改草稿、不落盘（随「保存」一起入库）—— 没有失败可言，恒 true。
-            true
-        }
-    }
+    CardList(
+        rows =
+            listOf(
+                CardRow.Custom { position ->
+                    SliderRow(
+                        position = position,
+                        spec =
+                            SliderSpec(
+                                title = I18n.get(Strings.COMMAND_DELAY_LABEL, "命令间隔时长"),
+                                icon = PageIcons.DelayStep,
+                                summary = I18n.get(Strings.COMMAND_DELAY_DESC, "等多久再执行下一条"),
+                                min = Command.MIN_STEP_DELAY_MS,
+                                max = Command.MAX_STEP_DELAY_MS,
+                                value = commandDraft.draft.stepDelayMs,
+                                default = Command.DEFAULT_STEP_DELAY_MS,
+                            ),
+                    ) { v ->
+                        tick()
+                        commandDraft.draft.stepDelayMs = v
+                        // 只改草稿、不落盘（随「保存」一起入库）—— 没有失败可言，恒 true。
+                        true
+                    }
+                },
+            ),
+    )
 }

@@ -77,6 +77,12 @@ internal fun popupSurfaceColor(): Color =
  * 浮层菜单的**一行**（[MenuPopup] 的入参模型）—— 四处菜单（顶栏 ⋮ / 命令长按 / 响铃档位 /
  * 「添加命令」一级与二级）共用这一张小表。
  *
+ * ## 调用方只写「内容」，分隔由渲染层加
+ *
+ *  一份菜单 = `List<MenuEntry>`，里面只放 [Row] 与 [Section]。**行与行之间的细线、小标题下面那条线、
+ *  组与组之间的加深带，全部由渲染层按结构生成** —— 早先这些是调用方自己在 `buildList` 里一项一项
+ *  `add(MenuEntry.RowLine)`，八处菜单各写一遍，漏一处就少一条线（「添加命令」那张就漏过）。
+ *
  * 一行能表达现状的全部形态：
  *  - [enabled] `false`：置灰 + **吃掉点击**（菜单不关、也不派发）；
  *  - [selected]：单选组那一档（**行首图标换成对勾** + 文字/图标走 `primary`；行尾不再有对勾那一格，
@@ -116,9 +122,9 @@ internal sealed interface MenuEntry {
         /**
          * 行尾的**状态标记**（一枚小图标）—— 一行现在的状态不是默认那个时用它说一句（`null` = 不标）。
          *
-         *  现在只有按键清单用：那一行是「切到这颗键」的动作，键本身停用了它照样可点，
-         *  于是名字后面得有个记号，否则「停在了一颗停用的键上」只能从整页变灰反推出来。
-         *  图形取 `pointer-cancel`（光标 + 斜杠），与行首那枚键位数字不是一回事。
+         *  目前**没有调用点**：唯一用过它的按键清单已经搬去首页那张卡（见 `HomeKeysCard`），
+         *  而那里是普通行、状态写在副标题里。这一格留着是因为「这一行是切换动作、状态却不影响可点」
+         *  这类菜单还会有；真用到时图形取 `pointer-cancel`（光标 + 斜杠），与行首图标不是一回事。
          */
         val stateIcon: ImageVector? = null,
         /**
@@ -128,19 +134,29 @@ internal sealed interface MenuEntry {
          *  与「整页为什么改不了」是两回事，不能拿页面那句顶替。
          */
         val disabledHint: String? = null,
+        /**
+         * 这一行前面用**加深带**而不是默认那条细线（组内再分一小段时用）。
+         *
+         *  组与组之间的加深带由 [Section] 自动加，不许调用方操心；这一位只管「同一组里也要断开」。
+         */
+        val dividerBefore: Boolean = false,
         val onPick: () -> Unit,
     ) : MenuEntry
 
-    /** 组标题（库的 `DropdownHeaderItem`）。 */
-    data class Group(
-        val text: String,
+    /**
+     * 一组：一行小标题 + 它下面那几行。
+     *
+     *  渲染层负责三件事，调用方一个分隔项都不用写：
+     *   · 小标题与第一行之间那条细线；
+     *   · 组内行与行之间的细线；
+     *   · 相邻两组（或组与上面那些裸行）之间那条加深带。
+     *
+     *  没有小标题的菜单直接把若干 [Row] 放进列表即可 —— 那种「裸行」之间默认也是一条细线。
+     */
+    data class Section(
+        val title: String,
+        val rows: List<Row>,
     ) : MenuEntry
-
-    /** 相邻两行之间的细线（[PopupRowDivider]）。 */
-    data object RowLine : MenuEntry
-
-    /** 组与组之间的**加深带**（颜色 / 厚度取库常量）。 */
-    data object GroupLine : MenuEntry
 }
 
 /**

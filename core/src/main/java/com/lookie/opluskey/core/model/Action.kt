@@ -242,11 +242,23 @@ sealed interface Action {
      *  算目标值（`host/action/SettingSwitch`），写状态要么直接落 `Settings.Global`，要么交给
      *  system_server 反射调服务（`bridge/SettingCalls`）。模块不碰 SystemUI，也不需要
      *  把这些开关先加进控制中心。
+     *
+     *  [on] 是**目标状态**，三档各写一个 token：
+     *   · `null` → `setting:wifi`（切换，老写法）；
+     *   · `true` → `setting:wifi:on`；
+     *   · `false` → `setting:wifi:off`。
+     *  切换那一档仍要宿主先读当前状态（读不到就不动），明确的开 / 关不需要读。
      */
     data class Setting(
         val id: String,
+        val on: Boolean? = null,
     ) : Action {
-        override val token: String = Action.SETTING_PREFIX + id
+        override val token: String =
+            when (on) {
+                true -> "${Action.SETTING_PREFIX}$id$ON_SUFFIX"
+                false -> "${Action.SETTING_PREFIX}$id$OFF_SUFFIX"
+                null -> Action.SETTING_PREFIX + id
+            }
     }
 
     companion object {
@@ -311,6 +323,12 @@ sealed interface Action {
 
         /** 系统开关（`setting:wifi`）—— 与「系统开关」那一格的清单一一对应。 */
         const val SETTING_PREFIX = "setting:"
+
+        /** 系统开关后接「打开」这一档（`setting:wifi:on`）。 */
+        const val ON_SUFFIX = ":on"
+
+        /** 系统开关后接「关闭」这一档（`setting:wifi:off`）。 */
+        const val OFF_SUFFIX = ":off"
 
         /**
          * `keyevent:<码>` 的拼法 —— 键码本体在 [KeyId] 一处（一、5），这里只负责拼成 token。
@@ -401,9 +419,10 @@ sealed interface Action {
                     Panel(text.removePrefix(PANEL_PREFIX).trim())
                 }
 
-                // 系统开关（`setting:<id>`）：`id` 认不出时交给执行侧报「没接执行」，不落 shell
+                // 系统开关（`setting:<id>` / `setting:<id>:on` / `setting:<id>:off`）：
+                //  `id` 认不出时交给执行侧报「没接执行」，不落 shell
                 text.startsWith(SETTING_PREFIX) -> {
-                    Setting(text.removePrefix(SETTING_PREFIX).trim())
+                    parseSetting(text)
                 }
 
                 // **不再默认按 shell 执行**（原先这里是 `Shell(text)`，手写命令可省 `shell:`）。
@@ -471,6 +490,24 @@ sealed interface Action {
                 PANEL_PREFIX,
                 SETTING_PREFIX,
             )
+
+        /**
+         * `setting:<id>[:on|:off]` 那一支 —— 与 [parseKeyEvent] 同一个理由（[parse] 贴着长度上限）。
+         *
+         *  后缀只在**最后一段**上认：`id` 里不带冒号，所以认不出后缀时整段原样当 id
+         *  （老配置与将来新增的 id 都不会被这条规则伤到）。
+         */
+        private fun parseSetting(text: String): Action {
+            val body = text.removePrefix(SETTING_PREFIX).trim()
+            val cut = body.lastIndexOf(':')
+            if (cut < 0) return Setting(body)
+            val id = body.substring(0, cut).trim()
+            return when (body.substring(cut + 1).trim()) {
+                "on" -> Setting(id, on = true)
+                "off" -> Setting(id, on = false)
+                else -> Setting(body)
+            }
+        }
 
         /**
          * `keyevent:<码>` 那一支 —— 与 [parseAppShortcut] 拆出来的理由相同（[parse] 贴着长度上限）。

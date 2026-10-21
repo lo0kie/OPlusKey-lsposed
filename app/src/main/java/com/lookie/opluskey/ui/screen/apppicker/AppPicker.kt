@@ -160,9 +160,6 @@ internal fun SettingsPage.PickerSearchBand(
 /**
  * 「打开应用」页 —— 列出本机可启动的应用。
  *
- * 点一条只**切换选中的那个**（行尾单选圈跟着走），右下角那颗确认键才把选择交出去
- * （`app:<包名>` 或 `window:<包名>`，看 [SettingsPage.picker]）。
- *
  * 用 `LazyColumn` 而不是 `verticalScroll + Card`：这一页可能有 200+ 行，`verticalScroll`
  * 会把所有行都组合一遍（200+ 次组合，每行还要排标签、单选圈与图标格子），首帧直接卡住。
  * 每行各自一张卡。
@@ -171,6 +168,11 @@ internal fun SettingsPage.PickerSearchBand(
  * 不再有「先点选、再按确认」的中间态：点一行就是往下一级走，选完在那一页就写下去。
  * 行尾那枚图标画的是**当前绑定**（箭头 = 还没绑 / 勾 = 绑的是应用本身 /
  * 一块屏 = 绑的是里面某个界面或快捷方式）。
+ *
+ * **例外是给「条件执行」挑的那一趟**（[AppPickerState.forBranch]）：那一支只存一个包名
+ * （条件是前台应用、动作是 `app:包名`），没有「里面哪个界面」这回事。所以那一趟
+ * **点一行就是选中它**（行尾画勾、其余行不画图标），右下角那颗确认键才把选择交出去；
+ * 菜单里的「以小窗口打开」也不出现。
  */
 @Composable
 internal fun SettingsPage.AppPickerScreen(
@@ -202,8 +204,8 @@ internal fun SettingsPage.AppPickerScreen(
             // `ActivityEmptyState` 的注释）。
             AppPickerPlaceholders(ui, scrollBehavior, searchBandDp)
 
-            // 这一页唯一的写入入口。**点行不写**（点行只是进下一级去挑界面），
-            // 所以「就绑这个应用、不挑界面」这条路只能走它。
+            // 这一页唯一的写入入口。**点行不写**（点行只是进下一级去挑界面；给「条件执行」
+            // 挑的那一趟是「选中」），所以「就绑这个应用、不挑界面」这条路只能走它。
             //
             // 显隐只看「清单到手了没有」：它**常驻**，不像以前那样跟着选中项忽隐忽现
             // （选中刚被重置、或挑完界面退回来时闪一下，看着像按钮坏了）。手上还没有选中时

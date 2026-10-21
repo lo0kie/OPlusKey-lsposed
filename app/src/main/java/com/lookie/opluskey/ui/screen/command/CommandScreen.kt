@@ -79,7 +79,7 @@ internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
             .onSizeChanged { commandBandHeight.report(it.height) },
     ) {
         TabRowWithContour(
-            tabs = CommandKind.entries.map { commandKindLabel(it) },
+            tabs = CommandKind.FORM_TABS.map { commandKindLabel(it) },
             // 亮哪一个只看分页器停在哪一页（`currentPage`）。
             selectedTabIndex = pagerState.currentPage,
             // 滑块按浮点页码实时插值，跟手（与「按键绑定」页同一套做法，取舍见
@@ -122,7 +122,7 @@ internal fun SettingsPage.CommandScreen(
     //  `scrollableState`，而 pager 滑动时相邻两页同时在场 ⇒ 两处 `verticalScroll` 挂
     //  同一个 state、互相打架（「按键绑定」页踩过同一个坑）。
     //  「点已保存的命令要滚回顶部」那几处也各自读**本页**这一份。
-    val pageScrolls = CommandKind.entries.map { rememberScrollState() }
+    val pageScrolls = CommandKind.FORM_TABS.map { rememberScrollState() }
     val scope = rememberCoroutineScope()
     val tabBlockDp = commandBandHeight.dp()
 
@@ -158,7 +158,7 @@ internal fun SettingsPage.CommandScreen(
         ) { page ->
             // 这一页是哪一类 —— 页内所有 `kind` 判断都指它，不是 `draft.kind`
             CommandPage(
-                kind = CommandKind.entries[page],
+                kind = CommandKind.FORM_TABS[page],
                 scroll = CommandPageScroll(pageScrolls[page], scrollBehavior, tabBlockDp),
                 ui = ui,
                 tick = tick,
@@ -179,7 +179,8 @@ internal fun SettingsPage.CommandScreen(
 private fun SettingsPage.CommandTabSync(pagerState: PagerState) {
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
-            val kind = CommandKind.entries[page]
+            // 只有单条 / 多条这两页（分叉是独立页，见 `Screen.BRANCHES`）
+            val kind = CommandKind.FORM_TABS[page]
             //  换 tab 就把**编辑态摘掉**：`editingName` 是「正在改哪一条」的标记，而它属于**上一个
             // tab 的那份表单** —— 留着会让新 tab 的重名判定把它当成「自己」，于是同名不判重、
             // 一路覆盖掉另一条命令（真机反馈「保存判断应限制在当前 tab 的表单下」）。

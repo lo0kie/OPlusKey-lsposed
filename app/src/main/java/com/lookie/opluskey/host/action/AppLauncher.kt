@@ -20,6 +20,17 @@ internal class AppLauncher(
     internal val mini = MiniWindowLauncher(context, onFailure)
 
     /**
+     * 「再点一次要关」那一档的**进程内记账**（此刻只有录屏，见 [RomProfile.BuiltIn.stopAction]）。
+     *
+     *  记的是「我们自己起过、还没发过停止」的能力名。为什么只能自己记：宿主没有
+     *  `MANAGE_MEDIA_PROJECTION`，`MediaProjectionManager` 查不到系统那边的投影会话。
+     *  进程被杀后这本账清零 —— 那时再按一下会起第二个会话，录屏应用自己会拒绝或提示。
+     */
+    private val toggledOn: MutableSet<String> =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet()
+
+    /**
      * `intent:ACTION`：先按界面拉起，拉不起来再当广播发。顺序不能反 ——
      * 清单里打开相机那条就是个界面 Intent，只发广播相机不会开。
      */
@@ -208,6 +219,18 @@ internal class AppLauncher(
                 XLog.w("没有 Context，oplus:$feature 跳过")
                 return
             }
+        // 「再点一次要关」那一档（此刻只有录屏）：登记了 [RomProfile.BuiltIn.stopAction] 的能力
+        //  按开关语义走 —— 起过一次、还没发过停止 ⇒ 这一下是关。
+        //  记账只在进程内：宿主没有 MANAGE_MEDIA_PROJECTION，查不到系统那边的投影会话。
+        if (target.stopAction != null) {
+            if (toggledOn.remove(feature)) {
+                ctx.sendBroadcast(Intent(target.stopAction).setPackage(target.owner))
+                XLog.w("oplus:$feature → 停止（广播 ${target.stopAction}）")
+                return
+            }
+            toggledOn.add(feature)
+        }
+
         // Messenger 绑定型（场景表 type=service 的大部分）必须 bind 后发 Message
         if (target.message != null) {
             sendMessengerMessage(ctx, feature, target)
@@ -224,6 +247,8 @@ internal class AppLauncher(
                 ctx.startActivity(intent)
                 XLog.w("oplus:$feature → startActivity($short)")
             } catch (e: Throwable) {
+                // 没起来 ⇒ 那本「现在是开」的账也要撤掉，否则下一次按会被当成「关」
+                if (target.stopAction != null) toggledOn.remove(feature)
                 XLog.w("起 oplus:$feature 的界面失败：${e.javaClass.simpleName}: ${e.message}")
                 onFailure(CommandFailure.UNKNOWN)
             }

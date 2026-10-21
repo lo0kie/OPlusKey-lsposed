@@ -20,6 +20,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AppWindowBottom
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
+import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsSplit
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
 import io.github.lyxnx.compose.ui.tablericons.outline.BatteryEco
 import io.github.lyxnx.compose.ui.tablericons.outline.Bell
@@ -48,6 +49,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
+import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
@@ -120,11 +122,15 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
 import io.github.lyxnx.compose.ui.tablericons.outline.TableShortcut
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TextRecognition
+import io.github.lyxnx.compose.ui.tablericons.outline.TextSize
+import io.github.lyxnx.compose.ui.tablericons.outline.ToggleLeft
+import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Tooltip
 import io.github.lyxnx.compose.ui.tablericons.outline.Trash
 import io.github.lyxnx.compose.ui.tablericons.outline.UserScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.UsersGroup
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
+import io.github.lyxnx.compose.ui.tablericons.outline.Video
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume4
 import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
@@ -174,6 +180,12 @@ internal fun actionIcon(token: String): ImageVector =
         // 录音
         Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING -> {
             TablerIcons.Outline.Microphone
+        }
+
+        // 录屏 —— 与「录音」那颗麦克风分开：一个是录画面、一个是录声音，同字形会读错。
+        //  用摄像机那一颗（`video`）：用户口径指定。
+        Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD -> {
+            TablerIcons.Outline.Video
         }
 
         // 响铃状态（那一格；菜单里的「循环」见 [specIcon]）
@@ -304,10 +316,10 @@ internal fun actionIcon(token: String): ImageVector =
                     TablerIcons.Outline.AppWindow
                 }
 
-                // 系统开关（`setting:<id>`）—— 每一条都有自己的字形，从清单里一眼分得开
-                //  （清单本体见 `core/model/SystemSwitches`）
+                // 系统开关（`setting:<id>` / `:on` / `:off`）—— 每一条都有自己的字形，从清单里
+                //  一眼分得开；三态里「打开 / 关闭」另换开关键字形（见 [systemSettingIcon]）
                 token.startsWith(Action.SETTING_PREFIX) -> {
-                    systemSettingIcon(token.removePrefix(Action.SETTING_PREFIX))
+                    systemSettingIcon(token)
                 }
 
                 // 「以小窗口打开」（`window:目标`）：新起一个窗口 —— 与「把前台的收成小窗」那两档
@@ -324,13 +336,29 @@ internal fun actionIcon(token: String): ImageVector =
     }
 
 /**
- * 「系统开关」里那几条开关的字形 —— `setting:<id>` 里 `<id>` 那一节在这里翻译成图标。
+ * 「系统开关」里那几条开关的字形 —— `setting:<id>[:on|:off]` 在这里翻译成图标。
+ *
+ *  **两种维度叠在一起**：
+ *   · 开关**种类**决定基础字形（蓝牙 / WLAN / 手电筒 …）；
+ *   · **状态**决定要不要换成开关键: 明确「打开」用 `toggle-right`、明确「关闭」用 `toggle-left`
+ *     —— 切换那一档留开关自己的字形（它表达的是「这个开关」，不是某个状态）。
+ *  这样三行（切换 / 打开 / 关闭）在菜单里字形互不相同，扫一眼就分得清。
  *
  *  **全项目唯一一处**（与 [actionIcon] 里那条前缀判断配套）：清单本身在
  *  `core/model/SystemSwitches`，那层没有 Compose，字形只能落在这里。加一条开关 = 在那个清单里
  * 加一行 + 这里加一支 —— 漏了这里会掉到 [TablerIcons.Outline.Dots]，看着像「没配图标」。
  */
-private fun systemSettingIcon(id: String): ImageVector =
+private fun systemSettingIcon(token: String): ImageVector {
+    val setting = Action.parse(token) as? Action.Setting
+    return when (setting?.on) {
+        true -> TablerIcons.Outline.ToggleRight
+        false -> TablerIcons.Outline.ToggleLeft
+        null -> systemSwitchKindIcon(setting?.id ?: token.removePrefix(Action.SETTING_PREFIX))
+    }
+}
+
+/** 开关**种类**那一层的字形表。 */
+private fun systemSwitchKindIcon(id: String): ImageVector =
     when (id) {
         "bt" -> TablerIcons.Outline.Bluetooth
 
@@ -347,6 +375,10 @@ private fun systemSettingIcon(id: String): ImageVector =
         // 老配置里可能还留着 `setting:dnd`（现在「免打扰」走 `oplus:` 那条，见上方 actionIcon），
         //  留着这一支只为旧文件的图标不变成 Dots。
         "dnd" -> TablerIcons.Outline.Moon
+
+        // 手电筒：与网格里那一格（`Action.FLASHLIGHT`）同一颗字形 ——
+        //  同一个意思在两个入口里长得不一样，用户会以为是两件事。
+        "flashlight" -> TablerIcons.Outline.Bulb
 
         "darkmode" -> TablerIcons.Outline.MoonStars
 
@@ -416,12 +448,9 @@ internal fun commandIcon(
     kind: CommandKind,
     steps: Int,
 ): ImageVector =
-    if (kind ==
-        CommandKind.SERIAL
-    ) {
-        commandSerialIcon(steps)
-    } else {
-        PageIcons.CommandSingle
+    when (kind) {
+        CommandKind.SERIAL -> commandSerialIcon(steps)
+        CommandKind.SINGLE -> PageIcons.CommandSingle
     }
 
 /**
@@ -531,20 +560,20 @@ internal object PageIcons {
     val MenuExport: ImageVector get() = TablerIcons.Outline.Logs
 
     /**
-     * 「按键绑定」页顶栏菜单的「快捷键」—— `keyboard`（一块键盘）。
+     * 首页「按键」卡里侧键那一行 —— `keyboard`（一块键盘）。
      *
-     *  这一项说的是「**现在这一组**是快捷键」，点它只收菜单（见 `BindingKeyMenu`）。
-     *  与 [MenuKeyCard] 必须不同字形：菜单里两行都是「一组按键」，只靠行首这一颗分谁是谁。
+     *  与 [menuKeyNumber] 那几颗数字必须不同字形：清单里第一行是侧键、往下是收集来的键，
+     *  只靠行首这一颗分谁是谁。
      */
     val MenuKeys: ImageVector get() = TablerIcons.Outline.Keyboard
 
     /**
-     * 「按键绑定」页顶栏菜单里**收集到的键** —— 按它在清单里的位置取数字：`number-1` / `-2` / `-3`
+     * 首页「按键」卡里**收集到的键** —— 按它在清单里的位置取数字：`number-1` / `-2` / `-3`
      * （[index] 从 0 起）。
      *
      *  用户口径：三颗键各拿一个数字，一眼能数出「现在有几颗」。上限就是三颗
      *  （`KeyId.MAX_CUSTOM_KEYS`），所以 `else` 兜到 3；数字跟着**列表位置**走，
-     *  删掉中间那颗之后后面的会各自前移一位 —— 与菜单里看到的顺序一致。
+     *  删掉中间那颗之后后面的会各自前移一位 —— 与清单里看到的顺序一致。
      *
      *  与 [MenuKeyAdd]（加号）分工：那一行是「再加一颗」，这几行是「已经收下的那颗」。
      */
@@ -556,10 +585,10 @@ internal object PageIcons {
         }
 
     /**
-     * 「按键绑定」页顶栏菜单的「添加按键」—— `plus`（加号）。
+     * 首页「按键」卡末行「添加按键」—— `plus`（加号）。
      *
      *  这一行是**往清单里再加一颗**（弹收集弹窗），加号直接说这件事；
-     *  收集到的那几行用 [MenuKeyCard]，两者不再共用同一颗字形。
+     *  收集到的那几行用 [menuKeyNumber]，两者不共用同一颗字形。
      */
     val MenuKeyAdd: ImageVector get() = TablerIcons.Outline.Plus
 
@@ -631,6 +660,9 @@ internal object PageIcons {
      */
     val PaletteSwatch: ImageVector get() = TablerIcons.Filled.Square
 
+    /** 「外观」卡「跟随系统显示大小」—— `text-size`（大小 A→A）。 */
+    val TextSize: ImageVector get() = TablerIcons.Outline.TextSize
+
     /** 「更多选项」页「界面颜色」—— `sun-moon`（一半日一半月：深浅由这一行定）。 */
     val Theme: ImageVector get() = TablerIcons.Outline.SunMoon
 
@@ -694,11 +726,36 @@ internal object PageIcons {
     val CommandSingle: ImageVector get() = TablerIcons.Outline.Terminal2
 
     /**
+     * 「条件执行」那条命令的类型图标 —— `arrows-split`（一路分两岔）。
+     *
+     *  与「多条命令」那族 `box-multiple-N` 区分开：那是一串盒子（按顺序走完），这是岔路
+     *  （按条件只走其中一条），形状本身就是两种语义。
+     */
+    val CommandBranch: ImageVector get() = TablerIcons.Outline.ArrowsSplit
+
+    /**
+     * 分叉条件「某个应用在前台」—— `apps`（九宫格）。
+     *
+     *  与 [CommandBranch] 分开：「选择条件」那张菜单里十种条件一行一颗，`arrows-split` 是
+     *  「这一支怎么走」这件事的记号，不是「哪个应用」；同一张菜单里既当行首又当条件名会读混。
+     */
+    val AppFront: ImageVector get() = TablerIcons.Outline.Apps
+
+    /**
      * 「按键绑定」页右下角那颗 FAB —— 进「自定义命令」页新增一条命令（`Plus`）。
      *
      * 与 [StepAdd] 同字形但语义不同（新增命令 / 给多条命令加一步），各留一个名字。
      */
     val CommandAdd: ImageVector get() = TablerIcons.Outline.Plus
+
+    /**
+     * 「自定义命令」那两处入口的行首 —— `code-plus`（代码符号 + 加号）。
+     *
+     *  两处：首页「其他」卡那一行、以及「按键绑定」页那块同名入口卡。
+     *  与 [CommandAdd]（纯加号）分开：[CommandAdd] 是「**加一条**」这个动作（FAB / 加一步 /
+     *  添加分支），这一颗是「**那一页**」这个去处 —— 入口行的图标该表示目的地，不是动作。
+     */
+    val CommandCode: ImageVector get() = TablerIcons.Outline.CodePlus
 
     /** 「步骤」卡片里「添加步骤」那一行的行首图标。 */
     val StepAdd: ImageVector get() = TablerIcons.Outline.Plus

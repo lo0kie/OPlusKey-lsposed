@@ -26,7 +26,7 @@ internal const val CONFIG_IN_FLIGHT_GRACE_MS = 2_000L
  *  （否则每次进页面都会闪一下「未生效」），于是它们不能当判据用；代次初值是 0，
  *  变了才有回音，这才是可判的。
  */
-internal class HostLinkState {
+internal object HostLinkState {
     /**
      * 宿主侧的模块有没有在跑 —— 也就是**执行侧有没有在工作**。
      *
@@ -59,6 +59,35 @@ internal class HostLinkState {
      *  回 false 会让重新进首页时那几秒又把结论收起来。
      */
     var injectChecked by mutableStateOf(false)
+
+    /**
+     * 上一次自检**跑完**时，宿主进程的启动时刻（[hostProcStart]）。
+     *
+     *  自检不便宜：一趟最多 [QUERY_ROUNDS] 轮广播、每轮等一档超时。原先每回首页都重跑一遍，
+     *  从子页退回来、从设置重进模块都要再问 —— 而这段时间里宿主进程根本没换过，问出来的
+     *  必然是同一份结论。所以判据改成「**这一趟宿主进程问过就不再问**」：
+     *  这一位与 [hostProcStart] 相等就说明问过（两者都是 0 也算 —— 那是「问过、但宿主没答」）。
+     *
+     *  宿主换了进程（重启 / 被杀后重起）⇒ [hostProcStart] 变 ⇒ 自动重问一次。
+     */
+    var checkedHostStart by mutableLongStateOf(0L)
+
+    /**
+     * 「已经说过的那条提醒」（[noticeReason] 的返回值）—— 进程级，跨页面组合的生死。
+     *
+     *  这条提醒（系统侧 / 宿主侧还跑着旧包）用户口径是「提示一下就好」，不是常驻。
+     *  原先「说过了」这一位放在首页那个 `remember` 里，从子页（如「条件执行」）回来时组合被重建，
+     *  于是每回一次首页就再弹一次。提醒自己消失时（[noticeReason] 变回 `null`）清零，
+     *  下次再出现照说一遍。
+     */
+    var lastNoticeShown: String? = null
+
+    /**
+     * 这一趟还要不要再跑自检 —— 判据见 [checkedHostStart]。
+     *
+     *  `injectChecked` 也一起看：没跑完的那一趟不算数（否则「问了一半就切页」会被当成问过了）。
+     */
+    fun needsLinkCheck(): Boolean = !(injectChecked && checkedHostStart == hostProcStart)
 
     /** 宿主报活带回来的「它读到的主开关真值」—— `false` ⇒ 它读到的是默认值（主开关关着 / 还没解锁）。 */
     var hostEnabled by mutableStateOf(false)

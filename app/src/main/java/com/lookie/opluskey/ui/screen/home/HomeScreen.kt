@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
@@ -25,11 +26,13 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.BLOCK_HINT_SETTLE_MS
 import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
+import com.lookie.opluskey.ui.noticeReason
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -50,6 +53,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
 
     HomeLinkSelfCheck()
     HomeBlockHint()
+    HomeNoticeHint()
 
     // 这一页所有可交互项的**总闸**：模块总闸开着（`GlobalConfig.enabled`，主开关那一行写的就是它）
     // + 链路齐了（见 [linkReady]，它现在等同于
@@ -84,24 +88,33 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         //  带子页那一档来自带子自己的 8dp 下内边距，两边视觉上正好齐平。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
-        SmallTitle(I18n.get(Strings.BINDING_TITLE, "按键绑定"))
+        // 这一节只有模块总闸一行，小标题就按它叫（原先叫「按键绑定」，与那一页的页名混在一起）。
+        //  **不要借 `Strings.BINDING_TITLE`**：那是「按键绑定」子页的标题，改这里会把它一起改名。
+        SmallTitle(I18n.get(Strings.HOME_MASTER_SECTION, "主开关"))
         // 「响铃状态」走的是公共 `AudioManager.setRingerMode`，ColorOS 的 ringer delegate 会把外来的
         // 静音请求改写成振动，于是要靠「勿扰访问」权限绕。现在执行侧改走 `setRingerModeInternal`
         // （宿主本来就持有 `STATUS_BAR_SERVICE`），**与勿扰再无关系** —— 那一行连同它引入的
         // 动态行数（`homeBindingRows`）一并删掉，别再按「静音要授权」加回来。
-        HomeBindingCard(pageEnabled, ui)
+        HomeBindingCard(ui)
 
         // 首次启用（以及清空配置之后再启用）要的那两次确认 —— 摆在那张卡后面，不跟别的开关混在一起。
         HomeDisclaimers(ui)
 
-        // 「按键行为」那一整块搬进了「通用设置」页（首页第 3 行进那一页）——
+        // 「按键列表」那一节 —— **按键清单与「添加按键」都在这里**（用户口径）：原先它们在
+        // 「按键绑定」页顶栏那份 ⋮ 菜单里，而那一页只回答「这颗键现在绑了什么」；
+        // 有哪几颗键是总览，属于首页。一颗键一行，点哪颗进哪颗。
+        Spacer(Modifier.height(8.dp))
+        SmallTitle(I18n.get(Strings.HOME_KEYS_SECTION, "按键列表"))
+        HomeKeysCard(pageEnabled, ui)
+
+        // 「按键行为」那一整块搬进了「通用设置」页（入口在下面「其他」卡的第一行）——
         //  它是**全局**开关，与「这颗键绑了什么」无关，摆在这里会把常用的入口挤下去。
 
         // 版本 / 仓库地址那两行搬去**独立的「更多选项」页**（`AboutScreen`，从顶栏 ⋮ 菜单进）——
         // 它们是「想知道时才看一眼」的信息，摆在首页会把常用的那几张卡挤下去。
         Spacer(Modifier.height(8.dp))
         SmallTitle(I18n.get(Strings.HOME_OTHER_SECTION, "其他"))
-        HomeOtherCard(ui)
+        HomeOtherCard(pageEnabled, ui)
 
         HomeDonateOverlays(ui)
 
@@ -127,52 +140,68 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
  */
 @Composable
 private fun SettingsPage.HomeLinkSelfCheck() {
-    //  键是**当前屏**，不是 `Unit`：`LaunchedEffect(Unit)` 只在这一棵进组合时跑一次，而首页被
-    //  子页盖住、再露回来时组合并不重建 —— 真机实测：退到「自定义命令」再回首页，
-    //  「设置页问宿主模块在不在」还是原来那 13 条，一条没多。后果是「链路后来自己好了（注入侧
-    //  补上了 Context / uid），页面却一直停在未就绪」，用户唯一的出路是关掉整个设置页重进。
-    //  每回到首页重问一遍，代价是每次进页最多 [QUERY_ROUNDS] 轮广播。
-    LaunchedEffect(screen) {
-        if (screen != Screen.SHORTCUTS) return@LaunchedEffect
-        var hostEverAnswered = false
-        var injectEverAnswered = false
-        repeat(QUERY_ROUNDS) { round ->
-            val hostToken = link.hostAliveToken
-            val injectToken = link.injectAliveToken
-            // 发不出去（广播队列满 / 进程正在死）不该把宿主 UI 进程带走
-            //  —— 裸着的话异常会顺协程抛出去（保护在 `PageWire.send` 里一处）
-            PageWire.send(
-                context,
-                HostApp.PACKAGE,
-                Intent(ModuleWire.ACTION_HOST_SERVICE_QUERY),
-            )
-            // 注入侧（system_server）那一段：它挂在 AMS 的广播入口上，认得出这条问句
-            PageWire.send(context, HostApp.PACKAGE, Intent(ModuleWire.ACTION_INJECT_QUERY))
-            delay(HOST_ALIVE_TIMEOUT_MS)
-            val hostAnswered = link.hostAliveToken != hostToken
-            val injectAnswered = link.injectAliveToken != injectToken
-            if (hostAnswered) hostEverAnswered = true
-            if (injectAnswered) injectEverAnswered = true
-            // 单轮漏答**不清结论**：AMS 偶尔忙一轮，清掉就 `linkReady=false` ⇒ 首页整片置灰
-            //  （用户报的「换 ROM 后整页一直是灰的，退出去再进来才好」正是这一处）。
-            //  与宿主那一档对齐：全程没答才降档，见下面两行。
-            if (hostAnswered && injectAnswered) {
-                // 两端都答了 ⇒ 这一趟自检结束（提示可以按真结论说话了，见 `injectChecked`）
-                link.injectChecked = true
-                return@LaunchedEffect
+    //  键**不是**当前屏、也不是 `Unit` —— 两种极端都踩过：
+    //   · `Unit`：只在这一棵进组合时跑一次，而首页被子页盖住、再露回来时**组合并不重建**
+    //     （真机实测：退到「自定义命令」再回首页，那条问句还是原来那 13 条，一条没多）⇒ 链路后来
+    //     自己好了（注入侧补上 Context / uid），页面仍停在未就绪，只能关掉整个设置页重进；
+    //   · `screen`：切页会把**正在跑的那一趟掐掉**，而那一趟是唯一会把 `injectChecked` 置 true
+    //     的地方 ⇒ 掐掉之后那句「正在检查模块…」再也没人收（它挂在页面级的 host 上、常驻不会自己
+    //     走），别的页点到灰控件也回它。真机症状：自检还没问完就切页，提示条一直挂着。
+    //  所以这里盯 `screen` 的一条流：**一趟自检跑完为止**（最多 [QUERY_ROUNDS] 轮）。
+    //  跑完之后**不再每回首页重问** —— 判据是「这一趟宿主进程问过没有」（[HostLinkState.needsLinkCheck]）：
+    //  宿主没换进程就沿用上一次的结论，换了（重启 / 被杀后重起）才重问一遍。
+    LaunchedEffect(Unit) {
+        snapshotFlow { screen }.collect { s ->
+            // 同一趟宿主进程只问一次（判据见 `HostLinkState.needsLinkCheck`）：
+            //  宿主没换过进程，问出来的必然是同一份结论，而一趟最多 QUERY_ROUNDS 轮广播。
+            if (s == Screen.SHORTCUTS && link.needsLinkCheck()) {
+                queryLinkOnce()
+                link.checkedHostStart = link.hostProcStart
             }
-            if (round > 0) XLog.w("链路自检第 ${round + 1} 轮仍未齐（宿主=$hostAnswered 注入=$injectAnswered）")
         }
-        //  注意：**只有问满所有轮都没回音才降档**：每轮超时就清，一轮偶然没回音
-        //  （广播被压 / 宿主正忙）就会把一个**已经确认过**的结论清成「未加载」。
-        //  现在两端同一套判据：单轮漏答不算数，全程没答才判它没起来 / 没加载。
-        //  问满所有轮也结束：此时「没回音」才是结论 —— `blockedReason` 正是靠这一位
-        //  把「还在问」与「问了没人答」分开的。
-        link.injectChecked = true
-        if (!hostEverAnswered) link.hostServiceUp = false
-        if (!injectEverAnswered) link.injectStatus = null
-        XLog.w("链路自检问了 $QUERY_ROUNDS 轮都没问齐，不再重问（详见「更多选项 → 运行状态」）")
     }
+}
+
+/** 跑一趟链路自检（见 [HomeLinkSelfCheck]）—— 两个出口都算「问完了」，见 `injectChecked`。 */
+private suspend fun SettingsPage.queryLinkOnce() {
+    var hostEverAnswered = false
+    var injectEverAnswered = false
+    repeat(QUERY_ROUNDS) { round ->
+        val hostToken = link.hostAliveToken
+        val injectToken = link.injectAliveToken
+        // 发不出去（广播队列满 / 进程正在死）不该把宿主 UI 进程带走
+        //  —— 裸着的话异常会顺协程抛出去（保护在 `PageWire.send` 里一处）
+        PageWire.send(
+            context,
+            HostApp.PACKAGE,
+            Intent(ModuleWire.ACTION_HOST_SERVICE_QUERY),
+        )
+        // 注入侧（system_server）那一段：它挂在 AMS 的广播入口上，认得出这条问句
+        PageWire.send(context, HostApp.PACKAGE, Intent(ModuleWire.ACTION_INJECT_QUERY))
+        delay(HOST_ALIVE_TIMEOUT_MS)
+        val hostAnswered = link.hostAliveToken != hostToken
+        val injectAnswered = link.injectAliveToken != injectToken
+        if (hostAnswered) hostEverAnswered = true
+        if (injectAnswered) injectEverAnswered = true
+        // 单轮漏答**不清结论**：AMS 偶尔忙一轮，清掉就 `linkReady=false` ⇒ 首页整片置灰
+        //  （用户报的「换 ROM 后整页一直是灰的，退出去再进来才好」正是这一处）。
+        //  与宿主那一档对齐：全程没答才降档，见下面两行。
+        if (hostAnswered && injectAnswered) {
+            // 两端都答了 ⇒ 这一趟自检结束（提示可以按真结论说话了，见 `injectChecked`）
+            link.injectChecked = true
+            return
+        }
+        if (round > 0) XLog.w("链路自检第 ${round + 1} 轮仍未齐（宿主=$hostAnswered 注入=$injectAnswered）")
+    }
+    //  注意：**只有问满所有轮都没回音才降档**：每轮超时就清，一轮偶然没回音
+    //  （广播被压 / 宿主正忙）就会把一个**已经确认过**的结论清成「未加载」。
+    //  现在两端同一套判据：单轮漏答不算数，全程没答才判它没起来 / 没加载。
+    //  问满所有轮也结束：此时「没回音」才是结论 —— `blockedReason` 正是靠这一位
+    //  把「还在问」与「问了没人答」分开的。
+    link.injectChecked = true
+    if (!hostEverAnswered) link.hostServiceUp = false
+    if (!injectEverAnswered) link.injectStatus = null
+    XLog.w("链路自检问了 $QUERY_ROUNDS 轮都没问齐，不再重问（详见「更多选项 → 运行状态」）")
 }
 
 /**
@@ -191,7 +220,11 @@ private fun SettingsPage.HomeLinkSelfCheck() {
 @Composable
 private fun SettingsPage.HomeBlockHint() {
     val blockHint = blockedReason()
-    LaunchedEffect(blockHint) {
+    //  `screen` 也进键：回首页时把当前结论**重新摆出来**（离开那一刻被下面那个 effect 收掉了，
+    //  只按 `blockHint` 做键的话它一直不变、这句就再也回不来）。
+    LaunchedEffect(blockHint, screen) {
+        // 不在首页就不管 —— 这条说的是**首页那一眼**的结论，跟着页走会挂在子页底部。
+        if (screen != Screen.SHORTCUTS) return@LaunchedEffect
         // 判据是**原因本身**：那条提示是常驻的（不会自己走），只判「现在有没有内容」的话，
         //  原因从 A 变成 B 时旧的那句还挂着、新的被跳过 —— 用户会照着已经不成立的原因排查。
         //
@@ -207,11 +240,16 @@ private fun SettingsPage.HomeBlockHint() {
             }
 
             else -> {
-                //  **先等一档再说**（[BLOCK_HINT_SETTLE_MS]）：冷启动那几帧 `hostServiceUp` /
-                //  `injectStatus` 都还是空的，这里必然判出「后台服务未运行」—— 立刻弹、广播一到
-                //  又被打回 null，观感就是「一条消息条闪一下就没了」（真机反馈）。
+                //  **只在「自检还没问完」时先等一档**（[BLOCK_HINT_SETTLE_MS]）：冷启动那几帧
+                //  `hostServiceUp` / `injectStatus` 都还是空的，这里必然判出「后台服务未运行」——
+                //  立刻弹、广播一到又被打回 null，观感就是「一条消息条闪一下就没了」（真机反馈）。
                 //  这一段挂起会被 `blockHint` 的变化取消 ⇒ 只要它自己通了，这条提示根本不出现。
-                delay(BLOCK_HINT_SETTLE_MS)
+                //
+                //  自检跑完之后**一秒都不等**：那时判出来的就是已经落地的事实，原因一变就是真变了 ——
+                //  最典型的是用户自己关掉主开关，再压 600ms 就成了「点了没反应」
+                //  （真机反馈：关主开关后要等约 500ms 提示条才出来）。原来的无条件下压
+                //  把这条「操作回执」也当成了「冷启动的假结论」。
+                if (!link.injectChecked) delay(BLOCK_HINT_SETTLE_MS)
                 XLog.w("首页提示：$blockHint")
                 hints.showStatus(blockHint)
             }
@@ -219,8 +257,41 @@ private fun SettingsPage.HomeBlockHint() {
     }
     // 离开首页（进子页 / 关页）时把它收掉：这一条挂在**页面级**的 host 上、不跟着页走，
     //  不收就会跟到「自定义命令」那些页的底部去 —— 而它说的是首页那个「现在能不能用」。
-    DisposableEffect(Unit) {
+    //
+    //  键必须是 `screen`，**不能是 `Unit`**：首页被子页盖住时组合并不重建（与自检那条同一份实测
+    //  结论），`Unit` 那份 `onDispose` 只在整页关掉时才跑 ⇒ 进子页那一刻根本没机会收。真机症状：
+    //  自检还没问完就切页，那句「正在检查模块…」一直挂在子页底部（它常驻、不会自己走）。
+    DisposableEffect(screen) {
         onDispose { hints.dismissStatus() }
+    }
+}
+
+/**
+ * 「能用，只是这次没落到新代码上」那一类**提醒**（系统侧 / 宿主侧跑着旧包，判据见 [noticeReason]）。
+ *
+ *  与上面那条常驻提示**分成两条路**：
+ *   · 常驻那条答「页面为什么是灰的」，得一直挂着（控件灰着总得有人解释）；
+ *   · 这一条页面照常能改，说一遍就走 —— 走操作回执那条（`hints.hint`，几秒自己消失）。
+ *  用户口径：「除了模块无法正常运行时的提示，其他的不要常驻，比如系统侧还是旧版这种，提示一下就好」。
+ *
+ *  同一个提醒**整趟进程只说一遍**（`HostLinkState.lastNoticeShown`）：原先这一位是首页的
+ *  `remember`，而首页的组合在进出某些子页（如「条件执行」）时会被重建 —— 于是每回一次首页
+ *  就再弹一次。挪到进程级之后，来回切页不再重复；提醒自己消失（重启完 / 换包后恢复）时清零，
+ *  下次再出现照说。
+ */
+@Composable
+private fun SettingsPage.HomeNoticeHint() {
+    val notice = noticeReason()
+    LaunchedEffect(notice, screen) {
+        if (notice == null) {
+            link.lastNoticeShown = null
+            return@LaunchedEffect
+        }
+        // 不在首页就先不说：这条会跟着页面级的 host 走，在子页弹出来与那一页无关。
+        if (screen != Screen.SHORTCUTS || link.lastNoticeShown == notice) return@LaunchedEffect
+        link.lastNoticeShown = notice
+        XLog.w("首页提醒：$notice")
+        hint(notice)
     }
 }
 

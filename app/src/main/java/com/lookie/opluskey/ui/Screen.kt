@@ -3,7 +3,7 @@ package com.lookie.opluskey.ui
 import io.github.suqi8.coui.kmp.nav.core.NavKey
 
 /**
- * 页面（系统设置 → 快捷键 → 按键绑定 → 自定义命令 → 「打开应用」/「更多选项」）。
+ * 页面（系统设置 → 快捷键 → 按键绑定 → 自定义命令 / 条件执行 → 「打开应用」/「更多选项」）。
  * 路标交给 coui-nav 的返回栈（`NavDisplay` + `navBackStackOf`，见 [SettingsPage.navStack]），
  * 谁在谁上面由栈说了算（「打开应用」两个来路的返回目标天然正确）。
  * key 不需要 `@Serializable`：栈是纯内存栈、不做状态保存 —— 页面进程死了本来也不该恢复。
@@ -12,6 +12,19 @@ internal enum class Screen : NavKey {
     SHORTCUTS,
     BINDING,
     COMMANDS,
+
+    /**
+     * 「条件执行」—— 从「按键绑定」页顶栏 ⋮ 菜单进来（**唯一入口**）。
+     *
+     *  它原先是「自定义命令」页的一个页签（`CommandKind.BRANCH`），搬出来是因为它编的东西
+     *  与另两档不是一回事：单条 / 多条写命令正文，分叉只挑**已有命令**，一张表单塞三档反而
+     *  每档都得解释「这一页为什么只有这一块能用」。
+     *
+     *  类型仍是 [com.lookie.opluskey.core.model.CommandKind.BRANCH]（存在同一份命令库里），
+     *  所以这一页与「自定义命令」页**共用同一份草稿**（`commandDraft`），只是进页时把
+     *  `draft.kind` 拨到分叉。
+     */
+    BRANCHES,
 
     /**
      * 「打开应用」——挑本机应用
@@ -47,11 +60,21 @@ internal enum class Screen : NavKey {
     DONATE_LIST,
 
     /**
-     * 「通用设置」——从首页「按键绑定」卡片第 3 行进来（**唯一入口**）。
+     * 「通用设置」——从首页「其他」卡第一行进来（**唯一入口**，在「更多选项」上面）。
      *
      *  装着两节：**接口选择**（ColorOS 专属接口 / AOSP 标准接口）与**按键行为**
      *  （振动反馈与强度、执行时提示）。两者都是**全局**项，与「这颗键绑了什么」无关，
      *  所以不放在「按键绑定」那一页。
      */
     GENERAL,
+    ;
+
+    /**
+     * 这一页是不是**命令表单** —— 共用同一份草稿（`commandDraft`）、同一颗底部保存按钮的页。
+     *
+     *  现在两页：[COMMANDS]（单条 / 多条）与 [BRANCHES]（条件执行）。「草稿脏了就问一句」
+     *  与「工具栏挂不挂」这两处判据都读它 —— 各写一遍的话，加第三档编辑页时必然漏一处。
+     */
+    internal val isCommandForm: Boolean
+        get() = this == COMMANDS || this == BRANCHES
 }

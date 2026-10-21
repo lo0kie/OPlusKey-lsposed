@@ -56,8 +56,11 @@ data class KeyConfig(
      */
     val longIsSerial: Boolean = false,
     /**
-     * **状态分支** —— 这颗键在特定状态下改执行别的动作（[StateRule]），按顺序匹配、
-     * 第一条成立的赢（[actionFor]）。
+     * **条件执行** —— 这颗键在某种情况下改执行别的动作（[StateRule]），按顺序匹配、
+     * 第一条成立的赢（[actionFor]）；一条都不中就走 [actionOf] 那一档本来的绑定。
+     *
+     *  分叉**不占用绑定**：它只是叠在绑定之上的一张顺序表，所以「加一条条件」与
+     *  「这一档绑什么」是两件事，互不影响。
      *
      *  **只走落盘这一列**（与 [Config.appNames] 同一套做法）：它是一张**列表**，塞不进
      *  [ConfigFields] 那种扁平字段表（一格一个值），也不该在每次按键时把整张表广播给
@@ -75,18 +78,19 @@ data class KeyConfig(
         }
 
     /**
-     * 这次手势该执行哪个动作 —— **状态分支的唯一入口**。
+     * 这次手势该执行哪个动作 —— **条件分支的唯一入口**。
      *
      *  先按顺序找第一条成立的分支（[StateRule.appliesTo]），一条都没有就退回 [actionOf]
-     *  那一档本来的绑定。执行侧不要自己写这套 `firstOrNull`：状态维度以后会长，判据散在
-     *  多处时「某个路径上状态分支不生效」这种 bug 只会在真机上被看见。
+     *  那一档本来的绑定。执行侧不要自己写这套 `firstOrNull`：条件维度以后会长，判据散在
+     *  多处时「某个路径上条件分支不生效」这种 bug 只会在真机上被看见。
      *
-     *  [state] 取不到东西时传 [KeyState.UNKNOWN] —— 于是所有分支都不成立、退回原绑定。
+     *  [matches] 是调用方给的判据（读系统开关的那一层，见 `ConditionProbe`）—— 这一层不认识
+     *  任何系统接口，只负责顺序与「第一条赢」。
      */
     fun actionFor(
         gesture: Gesture,
-        state: KeyState,
-    ): Action = rules.firstOrNull { it.appliesTo(gesture, state) }?.action ?: actionOf(gesture)
+        matches: (BranchCondition) -> Boolean,
+    ): Action = rules.firstOrNull { it.appliesTo(gesture, matches) }?.action ?: actionOf(gesture)
 
     /**
      * 长按绑的是不是「灵感语音」（`oplus:voice_memory`）。
@@ -262,6 +266,18 @@ data class GlobalConfig(
      *  不是「模块这一层深、宿主那层浅」。
      */
     val theme: String = DEFAULT_THEME,
+    /**
+     * **跟随系统显示大小** —— 关掉后模块页面按**出厂标准**的密度与字号渲染。
+     *
+     *  为什么要这一档：系统的「显示大小 / 字体大小」调到最大时，本模块那些按 dp 定死的行高、
+     *  52dp 的格子、单行标题都会挤在一起（标题被省略号吃掉、副标题顶到下一行）—— 用户要么
+     *  把系统调回去，要么就只能忍着。这一档让人**只让模块页面**保持标准大小。
+     *
+     *  实现：关掉时页面根上 provide 一份 `Density`，取 `Resources.getSystem()` 那份**未被
+     *  应用层覆盖**的 `displayMetrics`（系统配置，不含「显示大小」那层改写），字号固定 1.0。
+     *  默认开 —— 不改变任何人的现状。
+     */
+    val followDisplaySize: Boolean = DEFAULT_FOLLOW_DISPLAY_SIZE,
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
     /**
@@ -328,6 +344,9 @@ data class GlobalConfig(
 
         /** [GlobalConfig.colorOsApi] 的默认值：默认开启。 */
         const val DEFAULT_COLOR_OS_API = true
+
+        /** 「跟随系统显示大小」的默认值 —— 开（与升级前的行为一致）。 */
+        const val DEFAULT_FOLLOW_DISPLAY_SIZE = true
 
         /** [GlobalConfig.miniWindowAnim] 的默认值：默认关闭（原地收、无动画）。 */
         const val DEFAULT_MINI_WINDOW_ANIM = false
