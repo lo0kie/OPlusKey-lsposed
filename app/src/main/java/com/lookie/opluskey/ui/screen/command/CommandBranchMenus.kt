@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
@@ -351,7 +352,15 @@ private fun SettingsPage.applyBranchAction(
     token: String,
 ) {
     val old = branchDraft.draft.rules.getOrNull(index) ?: return
-    branchDraft.draft.update(index, old.copy(action = Action.parse(token)))
+    val parsed = Action.parse(token)
+    if (parsed is Action.None) {
+        //  认不出的 token（老配置 / 菜单给错了）不能静默落成「无操作」：那样保存时才报
+        //  「每条条件都要选一个动作」，既指不出是哪一条、也看不出是解析失败。
+        //  这里保留原来那一档不动，只留一行判据日志。
+        XLog.w("条件执行：认不出的动作 token（第 ${index + 1} 条保持原样）：$token")
+        return
+    }
+    branchDraft.draft.update(index, old.copy(action = parsed))
 }
 
 /**

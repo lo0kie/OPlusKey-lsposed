@@ -266,6 +266,9 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
             ui.loaded = null
         }
         ui.lastMode = withSystem
+        //  重查之前先把上一次的失败摘掉：加载态的判据要求 `!failed`（见 `AppPickerChrome`），
+        //  不清的话重试时界面还挂着「查询失败」，连转圈都不出现 —— 看起来像按了没反应。
+        ui.failed = false
         //  首帧先铺上一份缓存：**只在模式一致时**铺 —— 把「开着系统应用时查的清单」当关着时的
         //  首帧用，退出再进会先闪一屏系统应用（与 `cachedAppsWithSystem` 同一个理由）。
         //  下面照样重查并覆盖它，新装 / 卸载的应用不会因为这份缓存而看不见。

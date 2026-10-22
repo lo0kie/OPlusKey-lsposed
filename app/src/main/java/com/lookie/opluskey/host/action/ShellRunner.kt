@@ -13,6 +13,8 @@ internal object ShellRunner {
      *
      * 起进程用哪个解释器见 [startProcess] —— **优先 `su`**，没有 root 才退回 `sh`。
      *
+     * 本函数**立刻返回**：占坑、起进程、等结束全在 [runnerPool] 上做（理由见 [execBlocking]）。
+     *
      * @param onFailure 失败回调（后台线程里调 —— 实现方自己负责切线程）。
      *   两类时机：`ProcessBuilder.start()` 直接失败；子进程退出码非 0；等待超时。
      */
@@ -26,7 +28,18 @@ internal object ShellRunner {
             XLog.w("shell：命令为空，跳过")
             return
         }
+        //  整条命令都挪进池子：`acquireSlot` 是文件锁 + 目录 IO，`startProcess` 是 fork/exec
+        //  （首次 `su` 会停在等授权，可能几秒）。这两步原先在**调用线程**上同步做，而调用链是
+        //  宿主主线程的广播回调（`GestureReceiver` 的 Handler 建在主 Looper）—— 一条慢命令
+        //  就能把整个宿主卡住。
+        runnerPool.execute { execBlocking(command, onFailure) }
+    }
 
+    /** [exec] 的实现体 —— 跑在 [runnerPool] 上，所以这里允许阻塞。 */
+    private fun execBlocking(
+        command: String,
+        onFailure: (CommandFailure) -> Unit,
+    ) {
         // 先占坑再起进程。`if (running.get() >= MAX) …` 那种**先查后加**在并发下会一起放行：两条
         //  会同时看到「没满」一起放行。占坑本身见 [acquireSlot]。
         val slot = acquireSlot()
@@ -44,89 +57,13 @@ internal object ShellRunner {
             // 不给子进程留 stdin：我们从不用它，而有些命令会**等 stdin 到 EOF** 才肯退出
             // （`sh -c "cat"` 之类）—— 管道一直开着就是一条挂到超时的 shell，每次还漏一对管道。
             runCatching { proc.outputStream.close() }
-            // 后台线程等子进程结束（走池子，不再每次硬建一条）
-            runnerPool.execute {
-                // 无论走哪条出口都要把槽位放回去（finally 兜底）
-                var reader: Future<*>? = null
-                try {
-                    // 读输出必须另起一条线程与等待**并行**：`forEachLine` 要读到 EOF 才返回，
-                    // 而 logcat 不带 -d / 常驻进程 / `tail -f` 这类命令根本不关 stdout ——
-                    // 一旦先读后等，这个线程就永久卡在 read 上，下面的 waitFor(超时) 与 finally
-                    // 的计数回收都到不了：累计 SHELL_MAX_CONCURRENT 条之后所有 shell 动作永久 OVERLOADED，
-                    // 每挂一条还泄一个线程 + 一对管道。
-                    //
-                    // 顺带**边读边认**权限拒绝：`am` 被拒时那句 `Permission Denial: …` 在第 4 行，
-                    // 后面跟着十几行 `at android.…` 栈帧 —— 事后扫「输出尾巴」会把它顶掉（真机踩过：
-                    // 留 12 行时正好全是栈帧，判据落空，仍然报「命令没跑成功」）。
-                    val denied =
-                        java.util.concurrent.atomic
-                            .AtomicReference<String>()
-                    // 输出的**尾部**（最多 [SHELL_TAIL_LINES] 行）：只在失败时以 `w` 回放，
-                    //  理由见那个常量的注释。读写都在读线程里，主线程在 `reader.get` 之后才拿。
-                    val tail = java.util.Collections.synchronizedList(ArrayDeque<String>())
-                    reader = startOutputReader(proc, denied, tail)
-
-                    // 必须带超时：有些命令在这个身份下会直接挂住（真机实测 `cmd audio set-ringer-mode` 就是）；
-                    // 无超时的 `waitFor()` 每按一次就永久泄一个线程 + 一对管道，反复按也拦不住。
-                    val done =
-                        try {
-                            proc.waitFor(SHELL_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-                        } catch (e: Throwable) {
-                            // 注意：这条路直接 `return@execute` 的话**不 destroy 子进程**：
-                            //  进程漏在后台、读线程还挂着那对管道。与超时那条一样收掉（destroy 关管道 ⇒ 读到 EOF）。
-                            //  也要报一句给用户：这一条原来静默返回，命令既没跑完、用户又什么都不知道。
-                            XLog.w("等 shell 结束失败，杀掉它：${e.message}")
-                            runCatching { proc.destroy() }
-                            onFailure(CommandFailure.UNKNOWN)
-                            return@execute
-                        }
-                    if (!done) {
-                        XLog.w("shell 超过 ${SHELL_TIMEOUT_MS}ms 没结束，杀掉它：${XLog.redactCommand(command)}")
-                        try {
-                            proc.destroy()
-                        } catch (e: Throwable) {
-                            XLog.d("杀 shell 进程失败（忽略）：${e.message}")
-                        }
-                        // 子进程可能不理会 SIGTERM：宽限期内没退就强杀，保证管道被关掉、
-                        // 读线程能收到 EOF 退出（否则每次超时都永久泄一个读线程）。
-                        val gone =
-                            runCatching {
-                                proc.waitFor(SHELL_KILL_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-                            }.getOrDefault(false)
-                        if (!gone) {
-                            runCatching { proc.destroyForcibly() }
-                                .onFailure { XLog.d("强杀 shell 进程失败（忽略）：${it.message}") }
-                        }
-                        logOutputTail(tail)
-                        onFailure(CommandFailure.SHELL_TIMEOUT)
-                        return@execute
-                    }
-                    // 进程已退出，但 stdout 可能被子进程继承后仍开着（`sh -c "... &"`）：
-                    // 只给读线程一个有限宽限把剩余输出收完，不用它来判定成败。
-                    runCatching { reader.get(SHELL_DRAIN_JOIN_MS, TimeUnit.MILLISECONDS) }
-                    // 只有非 0 才算失败：0 是常规路径，不该有任何提示。
-                    // 合并成一条 `a; b` 的步骤取的是最后一条的退出码（`sh` 的规矩）。
-                    if (proc.exitValue() != 0) {
-                        val code = proc.exitValue()
-                        XLog.w("shell 退出码 $code（走的是 $via）：${XLog.redactCommand(command)}")
-                        logOutputTail(tail)
-                        onFailure(classifyFailure(code, via, denied.get()))
-                    }
-                } finally {
-                    // 收尾时**强关管道**：脚本派生的常驻子进程（`cmd &` / 没有 `nohup` 解除 stdout）
-                    //  会继承写端，`destroy()` 之后 `inputStream` 未必 EOF —— 读线程就一直卡在 read 上
-                    //  （daemon 线程同样算泄漏，且占着一对 FD）。close 会让那次 read 抛 IOException 退出。
-                    //  正常路径上 `use` 已经关过，重复关无害。
-                    runCatching { proc.inputStream.close() }
-                    runCatching { proc.errorStream.close() }
-                    releaseSlot(slot)
-                }
-            }
-            // 判据级：这条是「动作到底有没有发出去」的唯一凭证，用 w（i/d 在 release 被编译期消除）
+            // 判据级：这条是「动作到底有没有发出去」的唯一凭证，用 w（i/d 在 release 被编译期消除）。
+            //  必须在等结束**之前**打：命令挂到超时的那一档，用户要知道它确实起过。
             XLog.w("shell 命令已在后台启动（走的是 $via）：${XLog.redactCommand(command)}")
+
+            awaitProcess(proc, via, command, onFailure)
         } catch (e: Throwable) {
-            // 起进程这一步就失败 ⇒ 把刚占的槽位还回去（否则每被拒一次就永久吃掉一个名额）
-            releaseSlot(slot)
+            // 起进程这一步就失败：槽位由下面的 finally 还（只此一处释放，避免两条路径各记一次）
             XLog.w("执行 shell 失败：${XLog.redactCommand(command)}", e)
             // 两个解释器**都起不来**时按 errno 分档（`ProcessBuilder.start()` 抛的 `error=N`）：
             //  · 2  = ENOENT —— 没有 root：KernelSU 对未授权应用直接让 `/system/bin/su` **不可见**
@@ -143,6 +80,93 @@ internal object ShellRunner {
             onFailure(
                 if (errno == 2 || errno == 13) CommandFailure.SHELL_NO_ROOT else CommandFailure.SHELL_REJECTED,
             )
+        } finally {
+            // 唯一的释放点：占坑成功之后，无论从哪条出口离开都还回去。
+            //  （原先在「起进程失败」与「等待结束」两处各释放一次，任何一条新出口漏写就是永久少一格。）
+            releaseSlot(slot)
+        }
+    }
+
+    /**
+     * 等一个已起来的子进程结束，并把输出收干净。
+     *
+     * **不释放槽位** —— 那条账归 [execBlocking] 的 `finally` 一处记。
+     */
+    private fun awaitProcess(
+        proc: Process,
+        via: String,
+        command: String,
+        onFailure: (CommandFailure) -> Unit,
+    ) {
+        // 读输出必须另起一条线程与等待**并行**：`forEachLine` 要读到 EOF 才返回，
+        // 而 logcat 不带 -d / 常驻进程 / `tail -f` 这类命令根本不关 stdout ——
+        // 一旦先读后等，这个线程就永久卡在 read 上，下面的 waitFor(超时) 与收尾都到不了：
+        // 累计 SHELL_MAX_CONCURRENT 条之后所有 shell 动作永久 OVERLOADED，每挂一条还泄一个线程 + 一对管道。
+        //
+        // 顺带**边读边认**权限拒绝：`am` 被拒时那句 `Permission Denial: …` 在第 4 行，
+        // 后面跟着十几行 `at android.…` 栈帧 —— 事后扫「输出尾巴」会把它顶掉（真机踩过：
+        // 留 12 行时正好全是栈帧，判据落空，仍然报「命令没跑成功」）。
+        val denied =
+            java.util.concurrent.atomic
+                .AtomicReference<String>()
+        // 输出的**尾部**（最多 [SHELL_TAIL_LINES] 行）：只在失败时以 `w` 回放，
+        //  理由见那个常量的注释。读写都在读线程里，主线程在 `reader.get` 之后才拿。
+        val tail = java.util.Collections.synchronizedList(ArrayDeque<String>())
+        val reader = startOutputReader(proc, denied, tail)
+
+        try {
+            // 必须带超时：有些命令在这个身份下会直接挂住（真机实测 `cmd audio set-ringer-mode` 就是）；
+            // 无超时的 `waitFor()` 每按一次就永久泄一个线程 + 一对管道，反复按也拦不住。
+            val done =
+                try {
+                    proc.waitFor(SHELL_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                } catch (e: Throwable) {
+                    // 这条路直接 `return` 的话**不 destroy 子进程**：进程漏在后台、读线程还挂着
+                    //  那对管道。与超时那条一样收掉（destroy 关管道 ⇒ 读到 EOF），并报一句给用户。
+                    XLog.w("等 shell 结束失败，杀掉它：${e.message}")
+                    runCatching { proc.destroy() }
+                    onFailure(CommandFailure.UNKNOWN)
+                    return
+                }
+            if (!done) {
+                XLog.w("shell 超过 ${SHELL_TIMEOUT_MS}ms 没结束，杀掉它：${XLog.redactCommand(command)}")
+                try {
+                    proc.destroy()
+                } catch (e: Throwable) {
+                    XLog.d("杀 shell 进程失败（忽略）：${e.message}")
+                }
+                // 子进程可能不理会 SIGTERM：宽限期内没退就强杀，保证管道被关掉、
+                // 读线程能收到 EOF 退出（否则每次超时都永久泄一个读线程）。
+                val gone =
+                    runCatching {
+                        proc.waitFor(SHELL_KILL_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    }.getOrDefault(false)
+                if (!gone) {
+                    runCatching { proc.destroyForcibly() }
+                        .onFailure { XLog.d("强杀 shell 进程失败（忽略）：${it.message}") }
+                }
+                logOutputTail(tail)
+                onFailure(CommandFailure.SHELL_TIMEOUT)
+                return
+            }
+            // 进程已退出，但 stdout 可能被子进程继承后仍开着（`sh -c "... &"`）：
+            // 只给读线程一个有限宽限把剩余输出收完，不用它来判定成败。
+            runCatching { reader.get(SHELL_DRAIN_JOIN_MS, TimeUnit.MILLISECONDS) }
+            // 只有非 0 才算失败：0 是常规路径，不该有任何提示。
+            // 合并成一条 `a; b` 的步骤取的是最后一条的退出码（`sh` 的规矩）。
+            if (proc.exitValue() != 0) {
+                val code = proc.exitValue()
+                XLog.w("shell 退出码 $code（走的是 $via）：${XLog.redactCommand(command)}")
+                logOutputTail(tail)
+                onFailure(classifyFailure(code, via, denied.get()))
+            }
+        } finally {
+            // 收尾时**强关管道**：脚本派生的常驻子进程（`cmd &` / 没有 `nohup` 解除 stdout）
+            //  会继承写端，`destroy()` 之后 `inputStream` 未必 EOF —— 读线程就一直卡在 read 上
+            //  （daemon 线程同样算泄漏，且占着一对 FD）。close 会让那次 read 抛 IOException 退出。
+            //  正常路径上 `use` 已经关过，重复关无害。
+            runCatching { proc.inputStream.close() }
+            runCatching { proc.errorStream.close() }
         }
     }
 

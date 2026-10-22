@@ -1,9 +1,6 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset

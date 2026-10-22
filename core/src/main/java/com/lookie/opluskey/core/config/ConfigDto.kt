@@ -64,6 +64,10 @@ internal data class ConfigDto(
     /** 线格式 → 领域模型。**字段映射只有这一处**。 */
     fun toConfig(): Config {
         val custom = customKeys.mapNotNull { it.toKeyId() }.distinctBy { it.id }
+        if (custom.size != customKeys.size) {
+            //  手改 / 导入的文件里一条坏条目会让整颗键连同它的绑定一起消失 —— 至少要留一行账
+            XLog.w("配置：${customKeys.size - custom.size} 个自定义键认不出（已丢弃）")
+        }
         val allKeys = (KeyId.builtins + custom).distinctBy { it.id }
         // 老文件把「单击延迟 / 忽视双击」放在 `global` 里：逐键字段缺失时拿它兜底（迁移用）
         val legacyDouble = global.doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS
@@ -82,6 +86,11 @@ internal data class ConfigDto(
                 if (legacyMaster && id.id == KeyId.PLUS.id) key.copy(enabled = true) else key
             }
         val globalConfig = GlobalConfig.ofFields(global.toValues())
+        val parsedCombos = combos.mapNotNull { it.toCombo() }
+        if (parsedCombos.size != combos.size) {
+            //  与自定义键同一条：坏条目不能无声消失（组合键丢了 = 那一组按键整组失效）
+            XLog.w("配置：${combos.size - parsedCombos.size} 个组合键认不出（已丢弃）")
+        }
         return Config.ofFields(
             keys = keyConfigs,
             global = if (legacyMaster) globalConfig.copy(enabled = master) else globalConfig,
@@ -94,7 +103,7 @@ internal data class ConfigDto(
                 ),
             customKeys = custom,
             appNames = appNames,
-            combos = combos.mapNotNull { it.toCombo() },
+            combos = parsedCombos,
         )
     }
 

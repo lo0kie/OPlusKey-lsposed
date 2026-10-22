@@ -23,7 +23,7 @@ fun Config.nextCustomKeyId(): String {
  *
  * ## 为什么 `enabled` 直接给 `true`
  *
- *  `KeyConfig.defaultFor` 是 `enabled = false`（"装上模块不改变行为" 是侧键那一档的默认值，
+ *  `KeyConfig.defaultFor` 对**自定义键**给 `enabled = false`（"装上模块不改变行为" 是默认值，
  *  见它的注释）。自定义键不能照搬：那颗键**没有独立的总开关**，页面闸门就是它自己的
  *  `enabled` —— 默认关着的话，用户刚收完键，绑定页是整片灰的、一个动作都选不了，
  *  而他又没有别的地方能把它打开（死锁）。

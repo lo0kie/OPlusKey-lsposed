@@ -13,8 +13,6 @@ import com.lookie.opluskey.ui.state.fakeModel
 
 // 调试通道（`debug` 广播）那两条 —— 与页面骨架无关，单独一个文件。
 
-// 顶栏**当前**占掉的高度（含它自己那块状态栏 inset）—— 内容顶部要留出这么多。
-
 /**
  * 调试通道的处理体 —— **只有 debug 包会走到这里**（实现只在 `src/debug/` 源集）。
  *
@@ -32,6 +30,11 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
         val target = Screen.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
         if (target != null) {
             XLog.w("调试：跳页 → $target")
+            //  直接跳「选择应用」时补上「为谁挑」：正常路径由格子点击 `openAppPickerForGesture`
+            //  设置，少了它这一页的 FAB 会静默无效（`writeToken` 拿不到手势）。
+            if (target == Screen.APP_PICKER) {
+                picker.openForGesture(Gesture.entries.getOrElse(branchGesture) { Gesture.SINGLE })
+            }
             // 走 [navTo]（不是「压一层」）：目标已经在栈里就直接回到它，否则压上去。
             // 于是 `--es screen COMMANDS` 从首页一步落到「自定义命令」页，
             // 上面那条「push 时拨分页状态」的 effect 照样会跑到（栈深变深了）。

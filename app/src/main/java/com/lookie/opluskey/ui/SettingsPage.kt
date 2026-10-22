@@ -1,7 +1,8 @@
 package com.lookie.opluskey.ui
 
 import android.content.Context
-import androidx.compose.foundation.layout.size
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -18,6 +19,7 @@ import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.model.PAGE_TRANSITION_MS
 import com.lookie.opluskey.ui.model.specIcon
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.AppPickerUiState
@@ -125,10 +127,11 @@ internal class SettingsPage(
         }
         // 一次删到底（含栈顶）—— 库把「一次组合里少 N 个 entry」当成**一次多级 pop**：整叠一起
         //  滑回目标页。与 [onHostReentered] 清栈那条同一口径。
-        //  被弹掉的每一页都要走一遍离栈收尾（命令表单页的界面状态出栈即销）。
+        //  被弹掉的每一页都要走一遍离栈收尾（命令表单页的界面状态出栈即销），但清理要等转场播完
+        //  —— 见 [discardAfterExit]。
         while (navStack.size > index + 1) {
-            discardPageStateOf(navStack[navStack.lastIndex] as Screen)
-            navStack.removeAt(navStack.lastIndex)
+            val leaving = navStack.removeAt(navStack.lastIndex) as Screen
+            discardAfterExit(leaving)
         }
     }
 
@@ -401,7 +404,11 @@ internal class SettingsPage(
             Screen.BRANCHES -> {
                 // 条件执行页用另一份草稿（分叉不是命令库的一条记录），同样出栈即销
                 branchDraft.draft.reset()
-                branchGesture = 0
+                //  **不碰 [branchGesture]**：它是「按键绑定页当前停在哪一档」，不是这一页的状态。
+                //  在这里清成 0 的话，退出去再进来读到的是单击 —— 而那个值的唯一写入方
+                //  （`BindingScreen` 里 `LaunchedEffect(pagerState.currentPage)`）**不会重跑**
+                //  （tab 没变，key 没变），于是一整趟都停在错的档上。
+                //  离开按键绑定页时那一条照样清（见上一个分支），那一档才有意义。
                 picker.cancelResume()
             }
 
@@ -436,10 +443,25 @@ internal class SettingsPage(
         // 退页同样收键盘（理由见 [dismissIme]）：两条动栈的路都堵上，
         // 以后谁再新开一条压 / 弹栈的路，也不必记得补这一句。
         dismissIme()
-        val leaving = navStack[navStack.lastIndex] as Screen
-        navStack.removeAt(navStack.lastIndex)
-        discardPageStateOf(leaving)
+        val leaving = navStack.removeAt(navStack.lastIndex) as Screen
+        discardAfterExit(leaving)
         return true
+    }
+
+    /**
+     * 退页的**状态清理**推迟到转场结束之后（[PAGE_TRANSITION_MS] + 一点余量）。
+     *
+     *  退场那 350ms 里这一页还在画 —— Compose 会继续组合它。当场把草稿清掉，表单会在滑出
+     *  过程中**先变成空白再滑走**（命令页 / 条件页都看得到）。
+     *
+     *  到期时再确认一次「它没回到栈里」：这期间用户若又进了同一页，那是新的一次停留，
+     *  不该把刚编的新草稿清掉。
+     */
+    private fun discardAfterExit(leaving: Screen) {
+        Handler(Looper.getMainLooper()).postDelayed(
+            { if (leaving !in navStack) discardPageStateOf(leaving) },
+            PAGE_TRANSITION_MS + PAGE_STATE_DISCARD_MARGIN_MS,
+        )
     }
 
     /**
@@ -659,3 +681,11 @@ internal class NavBackInput : NavigationEventInput() {
  */
 @Composable
 internal fun SettingsPage.rememberAppPickerUiState(): AppPickerUiState = appPickerUi
+
+/**
+ * 退页状态清理比转场多等的余量。
+ *
+ *  转场本身是 [PAGE_TRANSITION_MS]；多留 60ms 是为了让「最后那一帧」也画完 —— 清理本身不花时间，
+ *  但 handler 的回调可能挤在转场最后一帧之前执行。
+ */
+private const val PAGE_STATE_DISCARD_MARGIN_MS = 60L

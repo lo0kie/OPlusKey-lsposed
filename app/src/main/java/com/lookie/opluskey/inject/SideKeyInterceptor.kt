@@ -96,10 +96,9 @@ internal class SideKeyInterceptor(
      */
     private fun isSynthetic(keyEvent: KeyEvent): Boolean =
         keyEvent.keyCode in KeyId.INJECTABLE_CODES &&
-            (
-                keyEvent.deviceId == android.view.KeyCharacterMap.VIRTUAL_KEYBOARD ||
-                    keyEvent.deviceId < 0
-            )
+            //  `VIRTUAL_KEYBOARD` 就是 -1，`deviceId < 0` 已覆盖它（另两种负值是内核的
+            //  BUILT_IN_KEYBOARD / 未指派设备，同样不是物理侧键）。
+            keyEvent.deviceId < 0
 
     /**
      * 收集期被吞掉的那一下「按下」：键码 → 时刻。

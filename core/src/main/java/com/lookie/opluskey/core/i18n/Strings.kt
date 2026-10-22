@@ -45,8 +45,6 @@ object Strings {
     const val APP_PICKER_UNSELECTED = "app_picker.unselected"
     const val BINDING_CREATE_CUSTOM_COMMAND = "binding.create_custom_command"
 
-    /** 「新建一条自定义命令」那个菜单项 —— 与网格里那格的标题（上面那条）不是一个角色：那边是名词，这边是动词。 */
-    const val BINDING_NEW_CUSTOM_COMMAND = "binding.new_custom_command"
     const val BINDING_CREATE_CUSTOM_COMMAND_DESC = "binding.create_custom_command_desc"
     const val BINDING_DELETE_KEY = "binding.delete_key"
 
@@ -57,6 +55,14 @@ object Strings {
     const val BINDING_ENABLE_KEY = "binding.enable_key"
     const val BINDING_DELETE_KEY_CONFIRM = "binding.delete_key_confirm"
     const val BINDING_ADD_KEY = "binding.add_key"
+
+    /**
+     * 「添加按键」那一行的副标题 —— **还没到上限**时说的那句；到上限时这一格换成原因（`key_watch.limit`）。
+     *
+     *  这一行点下去是开一次**按键收集**（弹窗里按下要加的那颗键），光看「添加按键」四个字看不出
+     *  这一步发生在模块外面。满员那一格被原因占着，所以这句只在未满时出现。
+     */
+    const val BINDING_ADD_KEY_DESC = "binding.add_key_desc"
 
     /** 首页按键清单里，一颗**停用的**键后面那句状态（不是动作，别与 `binding.disable_key` 混）。 */
     const val BINDING_KEY_DISABLED_STATE = "binding.key_disabled_state"
@@ -92,6 +98,7 @@ object Strings {
     const val BINDING_REPEAT_VIBRATE_DESC_ON = "binding.repeat_vibrate_desc_on"
     const val BINDING_REPEAT_VIBRATE_TITLE = "binding.repeat_vibrate_title"
     const val BINDING_SERIAL_UNSUPPORTED_REPEAT = "binding.serial_unsupported_repeat"
+    const val BINDING_VOICE_UNSUPPORTED_REPEAT = "binding.voice_unsupported_repeat"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
     const val BINDING_TITLE = "binding.title"
     const val CATALOG_FLASH_NOTE = "catalog.flash_note"
@@ -134,7 +141,6 @@ object Strings {
     const val CATEGORY_SYSTEM_NAV = "category.system_nav"
     const val COMMAND_ADD = "command.add"
     const val COMMAND_CMD_HINT = "command.cmd_hint"
-    const val COMMAND_CMD_LABEL = "command.cmd_label"
     const val COMMAND_CYCLE_ERROR = "command.cycle_error"
     const val COMMAND_DELAY_DESC = "command.delay_desc"
     const val COMMAND_DELAY_LABEL = "command.delay_label"
@@ -164,7 +170,6 @@ object Strings {
     /** 「保存」被禁用时：多条命令还没有任何步骤。 */
     const val COMMAND_NEED_STEP = "command.need_step"
     const val COMMAND_NAME_HINT = "command.name_hint"
-    const val COMMAND_NAME_LABEL = "command.name_label"
     const val COMMAND_NO_SAVED_COMMANDS = "command.no_saved_commands"
     const val COMMAND_PREFIX_FILL = "command.prefix_fill"
     const val COMMAND_SAVED_COMMANDS = "command.saved_commands"
@@ -187,10 +192,7 @@ object Strings {
     const val COMMAND_TYPE_SERIAL = "command.type_serial"
     const val COMMAND_TYPE_BRANCH = "command.type_branch"
 
-    /** 条件执行那一页的几处文案（分支行、保存判据、编辑按钮）。 */
-    const val COMMAND_BRANCH_SECTION = "command.branch_section"
     const val COMMAND_BRANCH_ADD = "command.branch_add"
-    const val COMMAND_BRANCH_ADD_ELSE = "command.branch_add_else"
     const val COMMAND_BRANCH_WHEN_APP = "command.branch_when_app"
     const val COMMAND_BRANCH_ELSE = "command.branch_else"
     const val COMMAND_BRANCH_ANY = "command.branch_any"
@@ -203,11 +205,9 @@ object Strings {
     /** 「前台应用」可以多条，但**同一个应用**只能当一次条件。 */
     const val COMMAND_BRANCH_DUPLICATE_APP = "command.branch_duplicate_app"
     const val COMMAND_BRANCH_EMPTY = "command.branch_empty"
-    const val COMMAND_BRANCH_PICK_COMMAND = "command.branch_pick_command"
     const val COMMAND_BRANCH_NEED = "command.branch_need"
     const val COMMAND_BRANCH_NEED_COMMAND = "command.branch_need_command"
     const val COMMAND_BRANCH_NEED_CONDITION = "command.branch_need_condition"
-    const val COMMAND_BRANCH_DELETE = "command.branch_delete"
     const val COMMAND_BRANCH_DEFAULT = "command.branch_default"
 
     /** 条件执行里每一种条件的叫法（分支行、条件菜单、摘要共用）。 */
@@ -239,9 +239,6 @@ object Strings {
     const val COMMAND_COND_ORIENTATION = "command.cond_orientation"
     const val COMMAND_COND_ORIENTATION_PORTRAIT = "command.cond_orientation_portrait"
     const val COMMAND_COND_ORIENTATION_LANDSCAPE = "command.cond_orientation_landscape"
-
-    /** 「添加分支」第一步：先挑条件种类。 */
-    const val COMMAND_BRANCH_PICK_CONDITION = "command.branch_pick_condition"
 
     const val COMMAND_TYPE_SINGLE = "command.type_single"
     const val COMMAND_FAILURE_APP_MISSING = "command_failure.app_missing"
@@ -350,7 +347,6 @@ object Strings {
     const val GESTURE_DOUBLE = "gesture.double"
     const val GESTURE_LONG = "gesture.long"
     const val GESTURE_SINGLE = "gesture.single"
-    const val HOME_BINDING_CARD_SUMMARY = "home.binding_card_summary"
     const val HOME_BINDING_CARD_TITLE = "home.binding_card_title"
     const val HOME_DONATE = "home.donate"
     const val HOME_DONATE_SUMMARY = "home.donate_summary"
@@ -476,7 +472,6 @@ object Strings {
     const val MORE_SIGNATURE_UNKNOWN = "more.signature_unknown"
     const val NAV_RECENTS = "nav.recents"
     const val PANEL_POWER_MENU = "panel.power_menu"
-    const val RINGER_CYCLE = "ringer.cycle"
     const val SETTING_DOUBLE_CLICK_DELAY = "setting.double_click_delay"
     const val SETTING_ENABLE_BINDING = "setting.enable_binding"
     const val SETTING_IGNORE_DOUBLE = "setting.ignore_double"
@@ -489,7 +484,6 @@ object Strings {
     const val STATUS_HOST_STALE = "status.host_stale"
     const val STATUS_KEY_DISABLED = "status.key_disabled"
     const val STATUS_PENDING_OR_SCOPE = "status.pending_or_scope"
-    const val STATUS_RESTART_REQUIRED = "status.restart_required"
     const val STATUS_SERVICE_NOT_RUNNING = "status.service_not_running"
     const val STATUS_SYSTEM_STALE = "status.system_stale"
     const val STATUS_UNAVAILABLE = "status.unavailable"
@@ -576,9 +570,8 @@ object Strings {
     const val KEY_WATCH_TITLE = "key_watch.title"
     const val KEY_WATCH_HINT = "key_watch.hint"
     const val KEY_WATCH_WAITING = "key_watch.waiting"
-    const val KEY_WATCH_CONFIRM = "key_watch.confirm"
+    const val KEY_WATCH_COUNTDOWN = "key_watch.countdown"
     const val KEY_WATCH_ADD = "key_watch.add"
-    const val KEY_WATCH_EMPTY = "key_watch.empty"
     const val KEY_WATCH_RESERVED = "key_watch.reserved"
     const val KEY_WATCH_LIMIT = "key_watch.limit"
     const val KEY_WATCH_ADDED = "key_watch.added"

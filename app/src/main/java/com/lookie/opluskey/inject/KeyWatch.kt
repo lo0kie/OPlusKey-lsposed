@@ -36,8 +36,8 @@ import com.lookie.opluskey.core.wire.ModuleWire
  *  到期自动当作关掉，绝不会永久往外发键码。
  */
 internal object KeyWatch {
-    /** 打开后最多监听这么久（页面正常退出会提前关掉）。 */
-    private const val AUTO_OFF_MS = 60_000L
+    /** 打开后最多监听这么久（页面正常退出会提前关掉）。与页面上的倒计时同一个数。 */
+    private const val AUTO_OFF_MS = com.lookie.opluskey.core.wire.ModuleWire.KEY_WATCH_WINDOW_MS
 
     /** 注入侧借到的 Context（推迟到真要发的时候取，理由同 `GestureForwarder`）。 */
     @Volatile

@@ -129,7 +129,14 @@ internal class PageViewTree {
             if (replace || target.findViewTreeSavedStateRegistryOwner() == null) {
                 target.setViewTreeSavedStateRegistryOwner(own)
             }
-            attachedTo[target] = own
+            //  **只在真的写过时才记账**：宿主本来就给了三个 owner 的那一层，我们一个 setter 都没调，
+            //  却把 `own` 记在账上的话，下一页会把它当成「上一页留下的兜底 owner」⇒ `replace = true`
+            //  ⇒ 反过来把**宿主提供的** Lifecycle / ViewModelStore 覆盖掉。
+            if (replace || target.findViewTreeLifecycleOwner() === own) {
+                attachedTo[target] = own
+            } else {
+                attachedTo.remove(target)
+            }
         } catch (e: Throwable) {
             XLog.w("挂 ViewTree owner 失败（${target.javaClass.simpleName}）", e)
         }

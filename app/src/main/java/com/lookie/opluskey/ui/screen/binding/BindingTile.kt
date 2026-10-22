@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.ui.NoHapticFeedback
 import com.lookie.opluskey.ui.SettingsPage
@@ -237,6 +238,11 @@ internal fun SettingsPage.ActionTile(
                     //  标题跟着上下动一下）。取当前值之后，只有小字**真的出现 / 消失**时才播。
                     val subtitleShown = remember { MutableTransitionState(!subtitle.isNullOrBlank()) }
                     subtitleShown.targetState = !subtitle.isNullOrBlank()
+                    //  字号 12sp：**主题里没有这一档** —— 小两档是 `footnote1` = 13sp、`footnote2` = 11sp，
+                    //  中间空着。取 `footnote2` 只把字号提到 12sp（行高仍按它那档 1.143em 走，
+                    //  12 × 1.143 ≈ 13.7dp）：11sp 的汉字在这个格子里偏糊，13sp 又太接近标题（14sp）。
+                    //  这一行是补充值，与标题同档时两行争主次，格子一窄还先挤它。
+                    val subtitleStyle = COUITheme.textStyles.footnote2.copy(fontSize = 12.sp)
                     AnimatedVisibility(
                         visibleState = subtitleShown,
                         enter = VISIBILITY_ENTER,
@@ -244,12 +250,12 @@ internal fun SettingsPage.ActionTile(
                     ) {
                         Text(
                             text = subtitle.orEmpty(),
-                            style = COUITheme.textStyles.footnote1,
+                            style = subtitleStyle,
                             color = tileMutedColor,
-                            modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
+                            modifier = Modifier.opticalCenter(subtitleStyle),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            // 与标题同一套视觉居中：按**各自字号**取同一比例（13sp 与 14sp 差 0.1dp，
+                            // 与标题同一套视觉居中：按**各自字号**取同一比例（12sp 与 14sp 差不到 0.2dp，
                             //  行距基本不变），两行一起落在格的视觉中心
                         )
                     }

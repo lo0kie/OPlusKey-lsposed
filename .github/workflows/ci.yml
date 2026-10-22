@@ -50,8 +50,9 @@ jobs:
 
       - name: 配置 Gradle 缓存
         uses: gradle/actions/setup-gradle@07d1f8453baaff67fb503883367f8b13e6158a54 # v6
-      # 的 `SealReleaseAssets`），密钥由签名证书派生、且没有明文回退 —— 拿不到 keystore 那一步
-      # 必然失败。与其让构建去撞墙，不如这里就说清「这一轮不出 release」。
+      # 没有 keystore 就不出 release：封存层（`core/build.gradle.kts` 的 `SealReleaseAssets`）
+      # 要签名派生密钥、没有明文回退 —— 拿不到 keystore 那一步必然失败。
+      # 与其让构建去撞墙，不如这里就说清「这一轮不出 release」。
       - name: 写入正式签名
         id: sign
         env:
@@ -122,7 +123,7 @@ jobs:
 
       # i18n 兜底一致性：每处 `I18n.get(Strings.X, "兜底")` 的兜底串**必须**与字典里的值逐字相同
       #   —— 字典没载入时显示的就是兜底那句，两边分叉等于同一件事有两套说法（真机上就出现过
-      #   「需重启 / 需要重启」「确定 / 确认」这种两种口径都活着的情况）。275 处兜底，靠人看不住。
+      #   「需重启 / 需要重启」「确定 / 确认」这种两种口径都活着的情况）。377 处兜底，靠人看不住。
       - name: i18n 兜底一致性
         run: python3 tools/check-i18n-fallbacks.py
 

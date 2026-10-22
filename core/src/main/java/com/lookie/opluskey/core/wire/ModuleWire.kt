@@ -38,7 +38,7 @@ object ModuleWire {
      */
     const val ACTION_GESTURE = "com.lookie.opluskey.GESTURE"
 
-    /** 广播里携带的键 id（`KeyId.id`，本模块只有 `plus`）。 */
+    /** 广播里携带的键 id（`KeyId.id`：内置侧键或收集来的自定义键）。 */
     const val EXTRA_KEY = "key"
 
     /** 广播里携带的**手势**（`Gesture.id`：`single` / `double` / `long`）。 */
@@ -191,6 +191,14 @@ object ModuleWire {
 
     /** [ACTION_KEY_WATCH] 里带「开还是关」。 */
     const val EXTRA_WATCH_ON = "watch_on"
+
+    /**
+     * 「等按键」这一趟最多持续多久。
+     *
+     *  它是**两侧共用的契约**：注入侧到点自己停发键码（`KeyWatch` 的兜底），页面按同一个数
+     *  显示倒计时并在同一刻收场。两处各写一个 60 秒的话，界面上的倒计时会与真实窗口对不上。
+     */
+    const val KEY_WATCH_WINDOW_MS = 60_000L
 
     /** 注入侧 → 设置页：听见一颗键（**只报按下那一下**）。 */
     const val ACTION_KEY_SEEN = "com.lookie.opluskey.KEY_SEEN"

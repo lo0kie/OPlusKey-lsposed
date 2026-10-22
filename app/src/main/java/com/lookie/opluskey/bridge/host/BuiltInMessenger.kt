@@ -66,7 +66,8 @@ internal object BuiltInMessenger {
                 )
             } catch (e: Throwable) {
                 XLog.w("bind $tag 失败：${e.javaClass.simpleName}: ${e.message}")
-                onFail?.invoke()
+                //  **不在这里调 onFail**：这两个同步失败分支的调用方拿到的返回值就是 false，
+                //  它自己会走兜底。这里再调一次等于兜底执行两遍（手电筒会被切两下、净结果等于没切）。
                 return false
             }
         if (!bound) {
@@ -74,7 +75,7 @@ internal object BuiltInMessenger {
             // 永远不会来。不能还等 TIMEOUT_MS：反馈会白白迟到，而且超时那条日志会把原因说成
             // 「没连上」，掩盖真正的错。
             XLog.w("$tag 的 Messenger 服务绑不上（bindService 返回 false）：$short")
-            onFail?.invoke()
+            //  同上：兜底由调用方按返回值做，这里不重复调 onFail。
             return false
         }
         // 「受理」与「连上」是两件事，中间可能隔到 TIMEOUT_MS —— 这一段空白期也要留一行，

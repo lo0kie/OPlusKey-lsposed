@@ -106,7 +106,12 @@ internal fun SettingsPage.addCommand() {
     // 绑定挪成了、但上面广播没发出去（[CommandsSave.BroadcastFailed]）时不报「已修改」：
     //  那句会让用户以为侧键行为也跟过来了，而 saveCommands 已经报过「通知注入侧失败」。
     if (bindingMoved == CommandsSave.Failed) {
+        //  回滚本身失败时文件里是「命令库新名 + 手势仍指旧名」—— 比两边都没变更糟。
+        //  [saveCommands] 失败会自己报「保存失败」，这里只补日志，不叠第二条回执。
         saveCommands(previousLibrary, "改名失败，回滚命令库：$editingFrom → $name")
+        //  表单**不清**：这一次没存成，用户刚编的改名内容要留在原地；
+        //  无条件 reset 等于把内容静默丢掉（文件一个字节都没变，用户却看到空表单）。
+        return
     } else if (saveResult == CommandsSave.Ok && bindingMoved == CommandsSave.Ok) {
         //  两半都必须是 Ok 才报「已修改」：绑定那一半广播没发出去时，[write] 已经报过
         //  「已保存，但通知注入侧失败」，这里再补一句会把它顶掉（底部只有一行回执）。
@@ -128,16 +133,8 @@ internal fun SettingsPage.addCommand() {
  * 首页那条副标题走 [appVersionLabel]（它按构建类型决定要不要带末段）。
  */
 internal fun SettingsPage.appVersionText(): String {
-    val name = moduleVersionName()
     val build = moduleBuildStamp()
-    val suffix = "-$BUILD_KIND"
-    // 三档的 `versionName` 已经带了后缀（`versionNameSuffix`，见 `build.gradle.kts`）——
-    //  已经带过就不再拼一次，否则会显示成 `0.0.1-beta-beta-…` 那种。
-    return when {
-        name.isNullOrBlank() -> "$BUILD_KIND-$build"
-        name.endsWith(suffix) -> "$name-$build"
-        else -> "$name$suffix-$build"
-    }
+    return "${versionHead()}-$build"
 }
 
 /**
@@ -147,17 +144,22 @@ internal fun SettingsPage.appVersionText(): String {
  *  与 [appVersionText] **分开**：那一串还喂给导出的日志头，要完整日期带秒才方便事后对时间；
  *  这一行是给人扫一眼的，时刻压到分钟，前面那截 `version-` 让它自己说明是什么。
  */
-internal fun SettingsPage.appVersionBadge(): String {
+internal fun SettingsPage.appVersionBadge(): String = "$VERSION_BADGE_PREFIX${versionHead()}-${compactBuildStamp(moduleBuildStamp())}"
+
+/**
+ * 版本号 + 构建类型（`1.1.0-release`）—— 三处版本串共用的那一段。
+ *
+ *  三档的 `versionName` 已经带了后缀（`versionNameSuffix`，见 `app/build.gradle.kts`）——
+ *  已经带过就不再拼一次，否则会显示成 `0.0.1-beta-beta` 那种。读不到版本号时只给构建类型。
+ */
+private fun SettingsPage.versionHead(): String {
     val name = moduleVersionName()
     val suffix = "-$BUILD_KIND"
-    // 三档的 `versionName` 已带后缀（`versionNameSuffix`），带过就不再拼一次。
-    val head =
-        when {
-            name.isNullOrBlank() -> BUILD_KIND
-            name.endsWith(suffix) -> name
-            else -> "$name$suffix"
-        }
-    return "$VERSION_BADGE_PREFIX$head-${compactBuildStamp(moduleBuildStamp())}"
+    return when {
+        name.isNullOrBlank() -> BUILD_KIND
+        name.endsWith(suffix) -> name
+        else -> "$name$suffix"
+    }
 }
 
 /** 版本行那串的前缀（见 [appVersionBadge]）。 */
@@ -201,16 +203,7 @@ private fun compactBuildStamp(raw: String): String =
  */
 internal fun SettingsPage.appVersionLabel(): String {
     if (SHOW_BUILD_TIME) return appVersionBadge()
-    val name = moduleVersionName()
-    val suffix = "-$BUILD_KIND"
-    // 三档的 `versionName` 已带后缀（`versionNameSuffix`），带过就不再拼一次。
-    val head =
-        when {
-            name.isNullOrBlank() -> BUILD_KIND
-            name.endsWith(suffix) -> name
-            else -> "$name$suffix"
-        }
-    return "$VERSION_LABEL_PREFIX$head"
+    return "$VERSION_LABEL_PREFIX${versionHead()}"
 }
 
 /**

@@ -170,6 +170,7 @@ for p in \
   app/src/main/java/com/lookie/opluskey/bridge \
   core/src/main/java/com/lookie/opluskey \
   core/src/debug/java/com/lookie/opluskey \
+  core/src/releaseLog/java/com/lookie/opluskey \
   core/src/release/java/com/lookie/opluskey ; do
   if [ -d "$p" ]; then
     injection_dirs="$injection_dirs $p"
@@ -280,7 +281,7 @@ done
 for apk in "$DIR"/*-debug.apk; do
   [ -f "$apk" ] || continue
   if unzip -l "$apk" | grep -q 'assets/donate/wechat.webp'; then
-    echo "  ok  debug 包里是明文收款码（app/seal 那条资产目录接上了）"
+    echo "  ok  debug 包里是明文收款码（core/seal 那条资产目录接上了）"
   else
     bad "$apk 里没有 assets/donate/wechat.webp —— debug 的明文资产没接上"
   fi

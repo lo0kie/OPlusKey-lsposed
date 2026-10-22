@@ -29,9 +29,9 @@ import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
-import com.lookie.opluskey.ui.model.editingKeyName
 import com.lookie.opluskey.ui.rememberFabVisibleOnScroll
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.screen.editingKeyName
 import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.write
@@ -67,9 +67,14 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
     val tick = rememberTick()
     val owner = BranchDraft.ownerOf(branchKeyNow(), branchGestureNow())
 
-    // 按「当前键 + 当前档」重灌草稿。`LaunchedEffect(owner)` 只在换了档时重跑；
-    //  挑应用往返（owner 不变）不会把刚配的东西冲掉。
+    // 按「当前键 + 当前档」重灌草稿。
+    //
+    //  **不能只看 owner**：从「选择应用」返回时本页会被重新组合（来源页的组合已注销，
+    //  见 `AppPickerState` 的说明），owner 不变、但草稿里正是刚编的那一份 —— 重灌会把它
+    //  连同刚挑中的那一项一起冲掉。出栈时 `discardPageStateOf` 已经把草稿 reset 成 `owner = null`，
+    //  所以「重新进页」仍然会走到下面按配置重灌这一支。
     LaunchedEffect(owner) {
+        if (branchDraft.draft.owner == owner) return@LaunchedEffect
         val key = branchKeyNow()
         val gesture = branchGestureNow()
         val source =
@@ -278,8 +283,11 @@ private val FAB_BOTTOM_CLEARANCE = PAGE_BOTTOM_PADDING * 2 + 56.dp + 8.dp
 /**
  * 保存前还差什么（`null` = 可以存）。
  *
- *  三种半成品各说一句：没条件 / 有条件没配完 / 有动作没选。第一条与第二条其实同一件事
- *  （一条都没有也算「还没配」），但「还没添加条件」比「某一条没配好」更好懂。
+ *  **空表是合法的**：把最后一条删掉再按确定，等于「这一档恢复成无条件」—— 存下去就是把这
+ *  一档的规则整段清掉，行为回落到按键绑定。所以这里不再把空表当成「还没配完」，
+ *  否则最后一条永远删不掉，也没有别的入口能做这件事。
+ *
+ *  剩下两种半成品各说一句：条件没配完 / 有动作没选。
  *
  *  「条件没配完」这一支同时管两件事：**整条还没选条件**（[StateRule.condition] 为空）与
  *  **选了要取值的档但取值还空着**（响铃状态 / 屏幕方向）。两种情况都落不下去。
@@ -287,10 +295,6 @@ private val FAB_BOTTOM_CLEARANCE = PAGE_BOTTOM_PADDING * 2 + 56.dp + 8.dp
 internal fun SettingsPage.branchRulesBlockedReason(): String? {
     val rules = branchDraft.draft.rules
     return when {
-        rules.isEmpty() -> {
-            I18n.get(Strings.COMMAND_BRANCH_NEED, "还没添加条件")
-        }
-
         rules.any { it.condition?.isUsable != true } -> {
             I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有条件没选完")
         }

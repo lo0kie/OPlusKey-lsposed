@@ -119,7 +119,7 @@ object DeviceSupport {
         /** 机型在清单里，但系统版本不是清单上那一档 —— 等作者适配。 */
         PENDING,
 
-        /** 机型不在清单里 —— 本机用不了。 */
+        /** 机型不在清单里 —— 照常注入，只是这一组没验过（清单只影响提示，不拦注入）。 */
         UNSUPPORTED,
     }
 
@@ -226,7 +226,7 @@ object DeviceSupport {
     val verdict: Support
         get() = check(currentModel, currentAndroid, currentRomSeries)
 
-    /** 清单命中的简写（判定本体是 [verdict]）—— 「注入整套」还是「只注入界面层」看它。 */
+    /** 清单命中的简写（判定本体是 [verdict]）—— **只用于「更多选项」里那行提示**，不参与是否注入。 */
     val isAdapted: Boolean get() = verdict == Support.ADAPTED
 
     /**

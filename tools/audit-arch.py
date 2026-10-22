@@ -55,12 +55,16 @@ def main() -> int:
     def add(name: str, value: int, rule: str, ok: bool):
         rows.append((name, value, rule, ok))
 
-    # 1) 「这颗键现在生效吗」：唯一判据是 `Config.isLive`（两级相与），三处调用点。
+    # 1) 「这颗键现在生效吗」：唯一判据是 `Config.isLive`（两级相与）。
+    #    三处决策点里只剩两处用它：**松手**那一支不该再按配置判 —— 这一按到底有没有起过采集，
+    #    只有执行侧知道（`ActionRunner.voiceMemoryOn`），而条件执行会让「静态绑定」与
+    #    「这一按实际执行的动作」不是一回事。按配置判会把「条件把长按改成语音」那一档漏掉，
+    #    于是录音开着一路不收尾。所以这里数的是「还有几处在用同一个判据」，不是「必须三处」。
     add(
         'Config.isLive 的调用点',
         count(r'\bisLive\(', APP),
-        '≥ 3（注入认领 / 宿主执行 / 场景派发）',
-        count(r'\bisLive\(', APP) >= 3,
+        '≥ 2（注入认领 / 宿主执行；松手由执行侧状态判）',
+        count(r'\bisLive\(', APP) >= 2,
     )
     add(
         '两级闸门就地手写（global.enabled ||）',

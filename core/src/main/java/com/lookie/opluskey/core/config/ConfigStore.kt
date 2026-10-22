@@ -105,6 +105,13 @@ object ConfigStore {
             try {
                 readText(f)
             } catch (e: java.io.FileNotFoundException) {
+                //  **FNF 有两种**：文件真的不在，与「文件在但没权限」—— `FileInputStream` 对
+                //  EACCES 抛的也是 `FileNotFoundException`。后者按首装处理会让写方拿默认值
+                //  覆盖用户的配置，正是这三态要防的那件事，所以先看文件到底在不在。
+                if (f.exists()) {
+                    XLog.d("读配置失败（文件在但读不出来）：${f.path} | ${e.message}")
+                    return Load.Unreadable
+                }
                 // 主文件与 `.bak` 都不在 = 真的没写过（只剩 `.bak` 的情况 [readText] 已经还原了）
                 XLog.d("读配置：主文件与 .bak 都不在，按首装处理 | ${e.message}")
                 cached = null

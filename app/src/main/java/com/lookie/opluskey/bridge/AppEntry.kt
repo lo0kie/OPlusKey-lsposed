@@ -88,20 +88,9 @@ internal object AppEntry {
                 pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).setPackage(pkg), 0)
             }.getOrNull()
                 ?.mapNotNull { it.activityInfo }
-                //  这一层只认**真的给用户当入口用**的活动：
-                //  · 导出是前提；
-                //  · `permission` 非空的不算 —— 那种活动要调用方持有某个（多半是 signature 级的）权限，
-                //    而本模块**零权限**，起它就是 `SecurityException`；
-                //  · `android:excludeFromRecents` 的不算 —— 那是悬浮面板宿主 / 磁贴设置页这类**辅助活动**的
-                //    写法（「不进最近任务」正说明它不是「打开这个应用」的入口）。
-                //  后两条都是真机踩出来的（症状同为「列表里显示可以打开、按下去打不开」）：
-                //  `oplus` 的 `TileLongClickActivity`（QS 磁贴长按设置页，带 `BIND_QUICK_SETTINGS_TILE`）、
-                //  `com.coloros.accessibilityassistant`（「AI语音摘记」）的 `floatpanel.MainActivity`
-                //  （悬浮面板宿主：`excludeFromRecents` + `resizeableActivity=false`）。
-                ?.filter {
-                    it.packageName == pkg && it.exported && it.permission == null &&
-                        it.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS == 0
-                }?.minWithOrNull(compareBy({ hintRank(it.name) }, { it.name }))
+                //  这一层只认**真的给用户当入口用**的活动，判据见 [isLaunchable]。
+                ?.filter { isLaunchable(it, pkg) }
+                ?.minWithOrNull(compareBy({ hintRank(it.name) }, { it.name }))
                 ?: return null
         return Intent(Intent.ACTION_MAIN).setComponent(ComponentName(pkg, activity.name))
     }
@@ -126,13 +115,32 @@ internal object AppEntry {
         val activity =
             resolved
                 .mapNotNull { it.activityInfo }
-                .filter {
-                    it.packageName == pkg && it.exported && it.permission == null &&
-                        it.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS == 0
-                }.minWithOrNull(compareBy({ hintRank(it.name) }, { it.name }))
+                .filter { isLaunchable(it, pkg) }
+                .minWithOrNull(compareBy({ hintRank(it.name) }, { it.name }))
                 ?: return null
         return Intent(Intent.ACTION_MAIN).setComponent(ComponentName(pkg, activity.name))
     }
+
+    /**
+     * 一个活动算不算「给用户当入口用」—— [resolve] 与 [resolveAsUser] 共用这一份判据。
+     *
+     *  1) 包名必须对得上（查询可能带回别家的活动）；
+     *  2) 导出是前提；
+     *  3) `permission` 非空的不算 —— 那种活动要调用方持有某个（多半是 signature 级的）权限，
+     *     而本模块**零权限**，起它就是 `SecurityException`；
+     *  4) `android:excludeFromRecents` 的不算 —— 那是悬浮面板宿主 / 磁贴设置页这类**辅助活动**的
+     *     写法（「不进最近任务」正说明它不是「打开这个应用」的入口）。
+     *
+     *  后两条都是真机踩出来的（症状同为「列表里显示可以打开、按下去打不开」）。
+     */
+    private fun isLaunchable(
+        info: ActivityInfo,
+        pkg: String,
+    ): Boolean =
+        info.packageName == pkg &&
+            info.exported &&
+            info.permission == null &&
+            info.flags and ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS == 0
 
     /** 名字里第一个命中的提示词的下标；一个都没命中排最后。 */
     private fun hintRank(name: String): Int {

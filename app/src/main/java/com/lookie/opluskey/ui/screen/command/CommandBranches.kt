@@ -13,9 +13,10 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -58,12 +59,13 @@ import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.state.KeyWatchState
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
-import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
+import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Button
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
+import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -122,9 +124,18 @@ internal fun SettingsPage.BranchCards(tick: () -> Unit) {
     LaunchedEffect(menus.deletingAt) {
         val at = menus.deletingAt
         if (at < 0) return@LaunchedEffect
+        //  记下「要删的是哪一条」而不是只记下标：这 260ms 里用户还能上移 / 下移 / 再删一条，
+        //  下标会移位，按 at 去删就会删错行。按**规则本身**找回来，挪过也能删对；
+        //  找不到（已经被改掉了）就什么都不删 —— 宁可不删，不能错删。
+        val target =
+            draft.rules.getOrNull(at) ?: run {
+                menus.deletingAt = NO_EXITING_ROW
+                return@LaunchedEffect
+            }
         if (rules.size > 1) delay(STEP_ROW_EXIT_MS + ROW_EXIT_SETTLE_MS)
         if (menus.deletingAt == at) {
-            draft.remove(at)
+            val now = draft.rules.indexOf(target)
+            if (now >= 0) draft.remove(now)
             menus.deletingAt = NO_EXITING_ROW
         }
     }
@@ -426,11 +437,22 @@ private class RuleAnchors {
 /** 表与「添加条件」之间的留白 —— 行自己带了 [GRID_ROW_GAP] 的下边距，这里不再加。 */
 private val ADD_BUTTON_GAP = 0.dp
 
-/** 小标题那一行的高度 —— 标题 + 右端那颗三点，两者都在这一行里竖居中。 */
-private val RULE_TITLE_HEIGHT = 28.dp
+/**
+ * 小标题那一行的**最小**高度 —— 标题与右端那颗三点都在这一行里竖居中。
+ *
+ *  32dp 是 [SmallTitle] 自己的下界（12sp 的字 + 上下各 8dp 内边距）；写成固定高度会把字裁掉半行。
+ */
+private val RULE_TITLE_HEIGHT = 32.dp
 
-/** 小标题行右端那颗三点的大小（点击区）—— 与标题行同高，别再往外扩。 */
-private val RULE_MENU_SIZE = 28.dp
+/**
+ * 小标题行右端那颗「更多」的点击区 —— **横比竖宽**。
+ *
+ *  横 40dp：三点横排，方形的点击区在字尾读起来像一块砖，横向多让一点才像「这一行的尾巴」。
+ *  竖 20dp：比标题行（[RULE_TITLE_HEIGHT]）矮一档，上下各让出一点，才是一颗「浮在行尾」的按钮；
+ *  里面那颗字也按这个高度画（见 `RuleBlock`）：库默认 24dp 装不进去，会被圆角裁掉上下两条。
+ */
+private val RULE_MENU_WIDTH = 40.dp
+private val RULE_MENU_HEIGHT = 20.dp
 
 /** 表尾那句注脚 —— 与「自定义命令」页那条权限提示同一个样式（不占卡片、居中、`footnote1`）。 */
 @Composable
@@ -494,28 +516,32 @@ private fun RuleBlock(
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(RULE_TITLE_HEIGHT),
+            modifier = Modifier.fillMaxWidth().heightIn(min = RULE_TITLE_HEIGHT),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
+            //  与各页的小标题**同一个组件**（同一档字号、颜色、行高）：「条件 N」是这一块的小标题，
+            //  不是正文。横向只把库里那 32dp 改成 20dp —— 默认值里含 12dp 页面边距，而这一页的外层
+            //  已经有 [PAGE_MARGIN]，照抄会多缩进一格（真机口径：两者字头都落在 112px @3.5x）。
+            SmallTitle(
                 text = I18n.format(Strings.COMMAND_BRANCH_ITEM, index + 1),
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.weight(1f).padding(start = 4.dp),
+                modifier = Modifier.weight(1f),
+                insideMargin = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
             )
             Box(
                 modifier =
                     Modifier
-                        .size(RULE_MENU_SIZE)
+                        .size(width = RULE_MENU_WIDTH, height = RULE_MENU_HEIGHT)
                         .preciseClickAnchor(cells.anchors.menu)
                         .clip(RULE_CELL_SHAPE)
                         .clickable(onClick = cells.onMenu),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    TablerIcons.Outline.DotsVertical,
+                    TablerIcons.Outline.Dots,
                     contentDescription = I18n.get(Strings.COMMON_MORE, "更多"),
                     tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+                    // 与点击区同高：库默认 24dp 塞不进 20dp 的框，上下会被圆角裁掉
+                    modifier = Modifier.size(RULE_MENU_HEIGHT),
                 )
             }
         }

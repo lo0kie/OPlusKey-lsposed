@@ -171,16 +171,7 @@ internal object StatusBarBridge {
 
             // —— 候选 1：mBar（SystemUI 的 IStatusBar），无权限闸门 ——
             val bar = Reflect.fieldValue(svc, svc.javaClass, Framework.Calls.FIELD_M_BAR)
-            val expanded =
-                bar?.let { b ->
-                    Reflect.methodByNameAndArity(b.javaClass, Framework.Calls.ANIMATE_EXPAND_SETTINGS_PANEL, 1)?.let { m ->
-                        m.isAccessible = true
-                        asSystem { m.invoke(b, null) }
-                        XLog.w("已在本机调 IStatusBar.animateExpandSettingsPanel（控制中心）")
-                        true
-                    }
-                }
-            if (expanded == true) return
+            if (expandViaBar(bar)) return
             XLog.w(
                 "控制中心候选 1 落空（mBar=${bar?.javaClass?.name ?: "取不到"}）；" +
                     "试候选 2（服务那层可能有 EXPAND_STATUS_BAR 闸门）",
@@ -211,6 +202,27 @@ internal object StatusBarBridge {
         } catch (e: Throwable) {
             XLog.w("拉控制中心失败：${e.javaClass.simpleName}: ${e.message}")
         }
+    }
+
+    /**
+     * 候选 1：直接调 SystemUI 的 `IStatusBar.animateExpandSettingsPanel`。
+     *
+     *  **异常自己收住**：漏到外层 catch 会把「试候选 2」整条截断（`InvocationTargetException`
+     *  那条只记一句「被拒」就返回了），于是一条候选失败等于两条都没试。
+     *
+     * @return true = 已调通（调用方直接返回）
+     */
+    private fun expandViaBar(bar: Any?): Boolean {
+        val b = bar ?: return false
+        val m = Reflect.methodByNameAndArity(b.javaClass, Framework.Calls.ANIMATE_EXPAND_SETTINGS_PANEL, 1) ?: return false
+        m.isAccessible = true
+        val ok = runCatching { asSystem { m.invoke(b, null) } }.isSuccess
+        if (ok) {
+            XLog.w("已在本机调 IStatusBar.animateExpandSettingsPanel（控制中心）")
+        } else {
+            XLog.w("控制中心候选 1 调不通，继续试候选 2")
+        }
+        return ok
     }
 
     /** 把所有带 `Expand` / `Panel` 的方法名 + 参数个数打进日志（上面那条兜底用的）。 */

@@ -157,7 +157,7 @@ internal object GestureExec {
 
         // 松手不是手势：它只给「按下开始、松手结束」的动作收尾（此刻只有灵感语音）。
         //  放在过期 / 去重两道闸**之前**：那两道是给「冻结期间积压的手势」用的，松手即使晚到
-        //  也只会被 `ActionRunner.release` 那道 `voiceMemoryOn` 闸挡住（两处判据不重叠）。
+        //  也只会被 `ActionRunner.stopVoiceCapture` 那道 `voiceMemoryOn` 闸挡住（两处判据不重叠）。
         if (phaseId == ModuleWire.PHASE_RELEASE) {
             onRelease(key)
             return
@@ -231,23 +231,19 @@ internal object GestureExec {
     /**
      * 「松手」 —— 给「按下开始、松手结束」的动作收尾。
      *
-     *  判据是 [KeyConfig.longIsVoiceMemory]：判定侧边也用它（不许连续触发），两处同一个口径 ——
-     *  「长按绑了灵感语音」就等于「这一按松手要收尾」，没有第二种组合。
-     *
-     *  开关照旧拦一道：关掉模块之后不该再替用户去动别人的麦克风。
+     *  判据只有执行侧那一个 `voiceMemoryOn`（见 `ActionRunner.stopVoiceCapture`）：这一按到底
+     *  有没有起过采集，只有执行侧知道。**不在这里按配置再判一次** —— 静态绑定与这一刻的实际
+     *  动作可能不是一回事，两种情形都要靠执行侧兜住：
+     *  · 条件执行把长按这一档改成了别的动作：静态绑定仍是语音，但这一按根本没起采集；
+     *  · 按下之后用户关掉了模块 / 这颗键：已经开始的录音更该收掉，不能留在系统里。
      */
     private fun onRelease(key: KeyId) {
-        val config = ConfigStore.read()
-        val keyConfig = config.key(key)
-        if (!config.isLive(key)) {
-            XLog.w("${key.label}：模块或这颗键已关，忽略这一下松手")
+        val runner = runner
+        if (runner == null) {
+            XLog.d("${key.label} 松手：执行器还没建好，没有要收尾的东西")
             return
         }
-        if (!keyConfig.longIsVoiceMemory) {
-            XLog.d("${key.label} - ${Gesture.LONG.label} 松手：绑的不是灵感语音，没有要收尾的东西")
-            return
-        }
-        runner?.release()
+        runner.stopVoiceCapture.invoke()
     }
 
     /**
@@ -292,15 +288,18 @@ internal object GestureExec {
             "${id.label} - ${gesture.label}${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}" +
                 "（宿主进程执行）"
         if (repeat) XLog.d(log) else XLog.w(log)
-        // 链路自检：这一笔是「动作真的执行了」的凭证（与注入侧那笔 lastGestureAt 配对）
-        lastActionAt = android.os.SystemClock.elapsedRealtime()
-        //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
-        //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。
-        //  所以每执行一次动作补发一条（连续触发的重复不发：那是同一次按压，一条就够）。
-        if (!repeat) onExecutedHook?.invoke(config)
+        // 链路自检那一笔必须在 `run` **之后**，且「无操作」不算执行过：
+        //  `run` 内部吞掉执行异常，绑了个解析不出来的 token 也走同一条路 —— 提前置位会让
+        //  「关于模块」的「使用验证」在什么都没发生时显示已生效（假绿灯）。
         if (shouldVibrate(repeat, keyConfig, action, config)) haptic(config)
         if (!repeat) noticeIfNeeded(config, action, id, gesture)
         r.run(action, "${id.label} - ${gesture.label}")
+        if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
+        //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
+        //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。
+        //  所以每执行一次动作补发一条（连续触发的重复不发：那是同一次按压，一条就够）。
+        //  这一笔**不按动作类型过滤**：它同时是「模块活着」的凭证，绑了「无操作」也该回。
+        if (!repeat) onExecutedHook?.invoke(config)
     }
 
     /**

@@ -135,7 +135,10 @@ object ConfigBundle {
             return null
         }
 
-        val configObj = root[ENVELOPE_CONFIG]?.jsonObject
+        //  `as? JsonObject` 而不是 `.jsonObject`：后者在「这一段不是对象」（手改过的导入文件
+        //  把 config 写成字符串 / 数组）时抛 IllegalArgumentException，而本函数的约定是
+        //  「任何一条不过就返回 null、调用方一个字节都不写」—— 异常漏到调用方就破坏了这个约定。
+        val configObj = root[ENVELOPE_CONFIG] as? JsonObject
         if (configObj == null) {
             XLog.w("导入配置：没有 $ENVELOPE_CONFIG 段")
             return null
@@ -146,7 +149,7 @@ object ConfigBundle {
             return null
         }
 
-        val commandsObj = root[ENVELOPE_COMMANDS]?.jsonObject
+        val commandsObj = root[ENVELOPE_COMMANDS] as? JsonObject
         if (commandsObj == null) {
             XLog.w("导入配置：没有 $ENVELOPE_COMMANDS 段")
             return null

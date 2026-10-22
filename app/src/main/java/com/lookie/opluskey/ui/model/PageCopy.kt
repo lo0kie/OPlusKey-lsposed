@@ -7,8 +7,6 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
-import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.state.KeyWatchState
 
 // 页面文案与标签函数。 —— 从 PageConst.kt 拆出（同包搬迁，调用点不变）。
 
@@ -340,17 +338,6 @@ internal fun gestureLabel(gesture: Gesture): String =
         Gesture.DOUBLE -> I18n.get(Strings.GESTURE_DOUBLE, "双击")
         Gesture.LONG -> I18n.get(Strings.GESTURE_LONG, "长按")
     }
-
-/**
- * 当前这颗键在界面上叫什么 —— 侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。
- *
- *  与「按键绑定」页那组名同一个口径（顶栏 ⋮ 菜单第一项就是这句话）：那一页的尾随小标题、
- *  分叉页的「在编哪一档」都用它，免得同一个东西两处两个叫法。
- */
-internal fun SettingsPage.editingKeyName(): String =
-    KeyWatchState
-        .editing(configState.config.value)
-        .let { if (it.isCustom) it.label else I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键") }
 
 /** 两个分段标题（单条 / 多条），理由同上。 */
 internal fun commandKindLabel(kind: CommandKind): String =

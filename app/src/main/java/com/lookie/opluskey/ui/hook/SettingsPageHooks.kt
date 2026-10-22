@@ -362,15 +362,9 @@ internal object SettingsPageHooks {
             return
         }
 
-        //  全量迁移：页面改成「**宿主真·COUI 控件 + 平台组件**」，
-        // 不再走 Compose / MD3 —— 那条路是「MD 组件 + COUI 取色」的混搭，观感与系统页对不上。
-        // 新页面用反射造宿主的 COUISwitch（类名未混淆、构造器是标准 View 构造器、
-        // 平台方法名改不了），其余用框架控件 + 宿主的 COUI 资源名，
-        // 依据见 docs/device-findings.md 第十节。
-        //  全量迁移：页面改成 **COUI（Compose 组件库）**，
-        // 不再用宿主控件反射、也不再从宿主主题取色 —— 依据见 SettingsPage 的类注释
-        // 与 app/build.gradle.kts 的依赖段。
-        // ⇒ ComposeView 需要 ViewTree owner，本文件在 `container.addView` **之后**
+        //  页面是 **COUI（Compose 组件库）** 渲染的覆盖层：不反射宿主控件、不从宿主主题取色
+        //  （依据见 `SettingsPage` 的类注释与 `app/build.gradle.kts` 的依赖段）。
+        //  ⇒ ComposeView 需要 ViewTree owner，本文件在 `container.addView` **之后**
         //   回调 `page.viewTree.attachOwnersUpward(view)`（宿主那棵树上一个 owner 都没有）。
         val pageCtx = pageContext(activity)
         val view: android.view.View
@@ -408,125 +402,140 @@ internal object SettingsPageHooks {
         //  **必须在 addView 之后**给整条祖先链挂 ViewTree owner：ComposeView 在
         // `onAttachedToWindow` 里就要用（那个时机在 try/catch 之外，缺了直接崩），
         // 而它只沿 **parent 链**找 owner —— addView 之前 parent 还是 null。
-        page.viewTree.attachOwnersUpward(view)
-
-        // 首帧诊断：记下模块页面**真的画到屏幕上**的时刻。
-        // 用途：录屏逐帧分析「从设置进来黑多久」时，靠它把那段黑切成两截 ——
-        // 「宿主 splash 还在」与「splash 撤了、我们的页面还没画出来」。
-        // 只看录屏是分不清的（两种情况都是一片黑），这是唯一能定责的锚点。
-        // 只打一次；移除监听走 `post`（在 onDraw 里直接 remove 会踩并发修改）。
+        //
+        //  从这里到函数末尾整段包 try：View 已经挂上去了，中途任何一步抛出都会留下
+        //  一个「owner 没挂 / 回调没接」的半成品盖住宿主页面 —— 那比系统原版页更难收拾。
         try {
-            val probe = view
-            val listener =
-                object : android.view.ViewTreeObserver.OnDrawListener {
-                    private var done = false
+            page.viewTree.attachOwnersUpward(view)
 
-                    override fun onDraw() {
-                        if (done) return
-                        XLog.w("模块页面首帧已绘制")
-                        remove()
-                    }
+            // 首帧诊断：记下模块页面**真的画到屏幕上**的时刻。
+            // 用途：录屏逐帧分析「从设置进来黑多久」时，靠它把那段黑切成两截 ——
+            // 「宿主 splash 还在」与「splash 撤了、我们的页面还没画出来」。
+            // 只看录屏是分不清的（两种情况都是一片黑），这是唯一能定责的锚点。
+            // 只打一次；移除监听走 `post`（在 onDraw 里直接 remove 会踩并发修改）。
+            try {
+                val probe = view
+                val listener =
+                    object : android.view.ViewTreeObserver.OnDrawListener {
+                        private var done = false
 
-                    /** 摘掉自己（幂等）—— `onDraw` 里不能直接 remove，走 `post` 避开并发修改。 */
-                    fun remove() {
-                        if (done) return
-                        done = true
-                        probe.post {
-                            runCatching { probe.viewTreeObserver.removeOnDrawListener(this) }
+                        override fun onDraw() {
+                            if (done) return
+                            XLog.w("模块页面首帧已绘制")
+                            remove()
+                        }
+
+                        /** 摘掉自己（幂等）—— `onDraw` 里不能直接 remove，走 `post` 避开并发修改。 */
+                        fun remove() {
+                            if (done) return
+                            done = true
+                            probe.post {
+                                runCatching { probe.viewTreeObserver.removeOnDrawListener(this) }
+                            }
                         }
                     }
-                }
-            probe.viewTreeObserver.addOnDrawListener(listener)
-            //  首帧迟迟不画（页面一进来就被 GONE / 宿主直接换页）时 `onDraw` 永远不来，
-            //  这个监听就会永久挂在宿主的 ViewTreeObserver 上（还钉住 `probe`）——
-            //  所以再挂一个「到点就摘」的兜底。
-            probe.postDelayed({ listener.remove() }, FIRST_FRAME_PROBE_TIMEOUT_MS)
-        } catch (e: Throwable) {
-            XLog.d("挂首帧诊断失败（忽略）：${e.message}")
-        }
-
-        // 标题与返回键由模块页面自己的 `TopAppBar` 渲染，宿主的 appbar 整条藏掉。
-        // 只改可见性、不 remove —— 换页第一纪律（宿主可能持有引用，remove = 埋雷）。
-        // 藏掉之后也就不需要避让（`reserveAppbarSpace` 那套）、不需要给宿主顶栏
-        // 刷底色 / 换标题 / 染图标（那些函数一并移除）。
-        try {
-            // 走 [findAppbar] 而不是裸 `findViewById(ID_APPBAR)`：宿主 ROM 升级重建资源表之后
-            //  写死的数值会失配，那条路会静默查不到 ⇒ 顶栏藏不掉、压在模块页面上。带名字反查的
-            //  兜底早就在 [findAppbar] 里，只有经它才执行得到。
-            val appbar = findAppbar(activity)
-            if (appbar == null) {
-                // 不伪造能力：没找到就说没找到，别打「已隐藏」（排查时会被带偏）
-                XLog.w("没找到宿主顶栏（R.id.appbar_layout）—— 顶栏可能与页面重叠")
-            } else {
-                appbar.visibility = android.view.View.GONE
-                hostAppbar = appbar
-                XLog.w("宿主顶栏已隐藏 —— 标题与返回键由模块页面自绘")
-            }
-        } catch (e: Throwable) {
-            XLog.w("隐藏宿主顶栏失败（顶栏可能与页面重叠，功能不受影响）", e)
-        }
-
-        // 见 [revealStock] —— 宿主那棵 View 树一直都在，露出来就是原版页面。
-        pageView = view
-        hostContainer = container
-        page.hooks.onOpenStock = { revealStock(activity) }
-        // 进出子页 / 浮层开合 ⇒ 重新定「要不要挂着返回回调」（见 BackInterception.syncBackCallback 的注释）
-        page.hooks.onBackInterceptionChanged = { BackInterception.syncBackCallback(activity) }
-        page.hooks.onExportLog = { ConfigTransfer.exportLog(activity) }
-        page.hooks.onExportConfig = { ConfigTransfer.exportConfig(activity) }
-        page.hooks.onImportConfig = { ConfigTransfer.importConfig(activity) }
-
-        // 状态栏区域已归页面自己管：模块页面本身是 edge-to-edge 的（Scaffold
-        // `contentWindowInsets = 0`、顶栏 107dp 含状态栏 inset、底色铺到 y=0），
-        // 那一条早就是页面自己画的，之前盖在上面的 [HostChrome.coverStatusBar] 遮罩反而把它
-        // 挡在模块控制之外 —— 顶栏的模糊在那儿断了、浮层的 dim 也到不了。
-        // 现在只剩「露出宿主原版页面」时才盖（那一档模块页面是 GONE 的，没人画那一条）。
-
-        // 首页标题交给页面（子页标题「按键绑定」在页面里）
-        hostTitle =
-            try {
-                activity.title?.toString().orEmpty()
+                probe.viewTreeObserver.addOnDrawListener(listener)
+                //  首帧迟迟不画（页面一进来就被 GONE / 宿主直接换页）时 `onDraw` 永远不来，
+                //  这个监听就会永久挂在宿主的 ViewTreeObserver 上（还钉住 `probe`）——
+                //  所以再挂一个「到点就摘」的兜底。
+                probe.postDelayed({ listener.remove() }, FIRST_FRAME_PROBE_TIMEOUT_MS)
             } catch (e: Throwable) {
-                XLog.d("读宿主标题失败（忽略）：${e.message}")
-                ""
+                XLog.d("挂首帧诊断失败（忽略）：${e.message}")
             }
-        page.hooks.homeTitle = hostTitle
 
-        // 返回：子页（按键绑定）→ 首页，首页 → 关页面。
-        // (1) 页面顶栏自己的返回键（页面内部处理）；
-        // (2) 系统返回 / 返回手势（终点是 `Activity#finish`，见 [BackInterception.installBackInterception]）。
-        HostSession.activity = activity
-        //  换页时**先把上一份收掉**：新实例先建、老实例后销毁那一档顺序下，`clearPageRefs`
-        //  会因为「HostSession.activity 已经不是它」而早退，旧页面（含那条轮询、以及那些
-        //  捕获了旧 Activity 的回调）就永远没人 dispose —— 这一支补的就是那个缺口。
-        if (HostSession.page !== page) HostSession.page?.hints?.dispose()
-        HostSession.page = page
-        moduleRef?.let { BackInterception.installBackInterception(it, activity) }
+            // 标题与返回键由模块页面自己的 `TopAppBar` 渲染，宿主的 appbar 整条藏掉。
+            // 只改可见性、不 remove —— 换页第一纪律（宿主可能持有引用，remove = 埋雷）。
+            // 藏掉之后也就不需要避让（`reserveAppbarSpace` 那套）、不需要给宿主顶栏
+            // 刷底色 / 换标题 / 染图标（那些函数一并移除）。
+            try {
+                // 走 [findAppbar] 而不是裸 `findViewById(ID_APPBAR)`：宿主 ROM 升级重建资源表之后
+                //  写死的数值会失配，那条路会静默查不到 ⇒ 顶栏藏不掉、压在模块页面上。带名字反查的
+                //  兜底早就在 [findAppbar] 里，只有经它才执行得到。
+                val appbar = findAppbar(activity)
+                if (appbar == null) {
+                    // 不伪造能力：没找到就说没找到，别打「已隐藏」（排查时会被带偏）
+                    XLog.w("没找到宿主顶栏（R.id.appbar_layout）—— 顶栏可能与页面重叠")
+                } else {
+                    appbar.visibility = android.view.View.GONE
+                    hostAppbar = appbar
+                    XLog.w("宿主顶栏已隐藏 —— 标题与返回键由模块页面自绘")
+                }
+            } catch (e: Throwable) {
+                XLog.w("隐藏宿主顶栏失败（顶栏可能与页面重叠，功能不受影响）", e)
+            }
 
-        // 系统切深浅时：页面自己会换色板，但**状态栏是我们刷在宿主 View 上的**，
-        // 不会跟着变 —— 不重刷就会出现「页面已经变深色、状态栏还是浅色」的割裂。
-        page.hooks.onSystemThemeChanged = {
-            XLog.w("系统深浅变了：重刷状态栏配色")
-            HostChrome.paintChrome(activity, container, page.pageBackgroundColor)
+            // 见 [revealStock] —— 宿主那棵 View 树一直都在，露出来就是原版页面。
+            pageView = view
+            hostContainer = container
+            page.hooks.onOpenStock = { revealStock(activity) }
+            // 进出子页 / 浮层开合 ⇒ 重新定「要不要挂着返回回调」（见 BackInterception.syncBackCallback 的注释）
+            page.hooks.onBackInterceptionChanged = { BackInterception.syncBackCallback(activity) }
+            page.hooks.onExportLog = { ConfigTransfer.exportLog(activity) }
+            page.hooks.onExportConfig = { ConfigTransfer.exportConfig(activity) }
+            page.hooks.onImportConfig = { ConfigTransfer.importConfig(activity) }
+
+            // 状态栏区域已归页面自己管：模块页面本身是 edge-to-edge 的（Scaffold
+            // `contentWindowInsets = 0`、顶栏 107dp 含状态栏 inset、底色铺到 y=0），
+            // 那一条早就是页面自己画的，之前盖在上面的 [HostChrome.coverStatusBar] 遮罩反而把它
+            // 挡在模块控制之外 —— 顶栏的模糊在那儿断了、浮层的 dim 也到不了。
+            // 现在只剩「露出宿主原版页面」时才盖（那一档模块页面是 GONE 的，没人画那一条）。
+
+            // 首页标题交给页面（子页标题「按键绑定」在页面里）
+            hostTitle =
+                try {
+                    activity.title?.toString().orEmpty()
+                } catch (e: Throwable) {
+                    XLog.d("读宿主标题失败（忽略）：${e.message}")
+                    ""
+                }
+            page.hooks.homeTitle = hostTitle
+
+            // 返回：子页（按键绑定）→ 首页，首页 → 关页面。
+            // (1) 页面顶栏自己的返回键（页面内部处理）；
+            // (2) 系统返回 / 返回手势（终点是 `Activity#finish`，见 [BackInterception.installBackInterception]）。
+            HostSession.activity = activity
+            //  换页时**先把上一份收掉**：新实例先建、老实例后销毁那一档顺序下，`clearPageRefs`
+            //  会因为「HostSession.activity 已经不是它」而早退，旧页面（含那条轮询、以及那些
+            //  捕获了旧 Activity 的回调）就永远没人 dispose —— 这一支补的就是那个缺口。
+            if (HostSession.page !== page) {
+                //  旧页的**两样**都要收：提示队列（轮询）与 ViewTree 兜底 owner。
+                //  只收前者会让旧页的 FallbackOwners / ViewModelStore 一直挂到进程结束 ——
+                //  `clearPageRefs` 那条路收不了它：新实例先建、旧实例后销毁时它在那儿会早退。
+                HostSession.page?.hints?.dispose()
+                HostSession.page?.viewTree?.release()
+            }
+            HostSession.page = page
+            moduleRef?.let { BackInterception.installBackInterception(it, activity) }
+
+            // 系统切深浅时：页面自己会换色板，但**状态栏是我们刷在宿主 View 上的**，
+            // 不会跟着变 —— 不重刷就会出现「页面已经变深色、状态栏还是浅色」的割裂。
+            page.hooks.onSystemThemeChanged = {
+                XLog.w("系统深浅变了：重刷状态栏配色")
+                HostChrome.paintChrome(activity, container, page.pageBackgroundColor)
+            }
+
+            // 状态栏的配色统一走 HostChrome.paintChrome（见上面那条回调）。
+            //  先拆掉可能残留在窗上的状态栏遮罩（上一档「露出宿主原版页面」盖的）：
+            // 这一步之后那一条就完全归模块页面自己画，见 [HostChrome.coverStatusBar] 的注释。
+            HostChrome.removeStatusFiller()
+            HostChrome.paintChrome(activity, container, pageBg)
+
+            //  深浅切换只靠页面里那条轮询（读系统全局配置，间隔 [NIGHT_POLL_MS]）。
+            // 抓到它是「亮色进页先黑 1 秒再变白」的元凶：宿主声明了 `configChanges=uiMode`，
+            // 它的配置**停在旧的 night 值**（见 [pageContext] 注释），回调把这份过期配置喂给
+            // 页面 ⇒ 页面刚画完浅色就被翻成深色，下一次轮询才纠正回来。删。
+
+            // 状态栏图标的明暗已经由上面那句 `HostChrome.paintChrome` 里的
+            // `HostChrome.setStatusBarIconAppearance` 按页面底色刷过（浅底 → 深色图标）。
+
+            XLog.w(
+                "设置页已盖上模块页面（container 原有 ${container.childCount - 1} 个子 View 保留未动）",
+            )
+        } catch (e: Throwable) {
+            //  只摘自己刚加的那个 View（宿主原有的子 View 一个都不碰，见换页第一纪律）。
+            runCatching { container.removeView(view) }
+            XLog.w("模块页面接线失败（已摘掉，保留系统原版页面）", e)
         }
-
-        // 状态栏的配色统一走 HostChrome.paintChrome（见上面那条回调）。
-        //  先拆掉可能残留在窗上的状态栏遮罩（上一档「露出宿主原版页面」盖的）：
-        // 这一步之后那一条就完全归模块页面自己画，见 [HostChrome.coverStatusBar] 的注释。
-        HostChrome.removeStatusFiller()
-        HostChrome.paintChrome(activity, container, pageBg)
-
-        //  深浅切换只靠页面里那条轮询（读系统全局配置，间隔 [NIGHT_POLL_MS]）。
-        // 抓到它是「亮色进页先黑 1 秒再变白」的元凶：宿主声明了 `configChanges=uiMode`，
-        // 它的配置**停在旧的 night 值**（见 [pageContext] 注释），回调把这份过期配置喂给
-        // 页面 ⇒ 页面刚画完浅色就被翻成深色，下一次轮询才纠正回来。删。
-
-        // 状态栏图标的明暗已经由上面那句 `HostChrome.paintChrome` 里的
-        // `HostChrome.setStatusBarIconAppearance` 按页面底色刷过（浅底 → 深色图标）。
-
-        XLog.w(
-            "设置页已盖上模块页面（container 原有 ${container.childCount - 1} 个子 View 保留未动）",
-        )
     }
 
     /**

@@ -75,7 +75,21 @@ internal class CustomCommandRunner(
             // 「每层都还是 0」，上面那道 `depth > MAX_COMMAND_DEPTH` 永远不成立 ——
             // 单条自引（A 的正文写 `cmd:A`）或互引（A→B→A）会一路同步递归到 StackOverflowError，
             // 每层还各读一次配置文件。传别的动作时这个数没人用，多 `+1` 不产生副作用。
-            dispatch(Action.parse(cmd.single), depth + 1)
+            val parsed = Action.parse(cmd.single)
+            if (parsed is Action.Custom) {
+                //  正文引用另一条命令 ⇒ 这一下也是一次「起一条链」，必须走同一道链闸：
+                //  `enterChain` 里「已有链在跑」那条只在 depth == 0 时生效，而这里是 depth+1，
+                //  不占位就会绕过它 —— 两条链（一条由单条拉起、一条直接按下）交错执行。
+                if (!enterChain(name, 0)) return
+                try {
+                    dispatch(parsed, depth + 1)
+                } finally {
+                    //  同步段结束就还回去（与多条那条 catch 同一口径），否则这条单条从此永久被自己挡住
+                    runningSerial.remove(name)
+                }
+                return
+            }
+            dispatch(parsed, depth + 1)
             return
         }
 

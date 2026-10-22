@@ -134,10 +134,10 @@ internal enum class CommandFailure(
  *  `runCatching` 在这里表达的是「预期内的失败 = 没找到」，不是「保护宿主」（那一类用 `XLog.guard`）。
  */
 internal fun appInstalled(
-    pm: PackageManager,
+    pm: PackageManager?,
     pkg: String,
     userId: Int,
-): Boolean = userId != 0 || runCatching { pm.getApplicationInfo(pkg, 0) }.isSuccess
+): Boolean = userId != 0 || (pm != null && runCatching { pm.getApplicationInfo(pkg, 0) }.isSuccess)
 
 /** 上面那个布尔 → 失败档位：「还在」= 没有可用入口，「不在」= 可能已卸载。 */
 internal fun entryFailure(installed: Boolean): CommandFailure = if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING
@@ -180,7 +180,7 @@ internal object FailureNotice {
 
     /**
      * 弹一条普通提示（非失败），目前只给「执行时提示」（`GlobalConfig.toastOnRun`）用
-     * —— 调用点在 `host/GestureReceiver.runAction`，内容由 [actionNoticeText] 给。
+     * —— 调用点在 `host/GestureExec.runAction`，内容由 [actionNoticeText] 给。
      *
      * @param context 宿主 Context；null 或空串时什么都不做。
      */

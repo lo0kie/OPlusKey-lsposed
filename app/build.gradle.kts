@@ -371,9 +371,10 @@ dependencies {
     // COUI 浮层菜单依赖 LocalNavigationEventDispatcherOwner（页面自建根 dispatcher）
     implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
 
-    // androidx 出现在 ui/ 与 core/i18n/I18n.kt（后者 import 了 compose 的 `mutableStateOf`）；
-    //  ui/ 在 system_server 里从不执行（KeyModule 只在设置页那个进程分支里装界面 hook），
-    //  注入侧（inject/）不引用 I18n，所以惰性类解析不会触发 NoClassDefFoundError。
+    // androidx 只出现在 `ui/`：`:core` 里一个 androidx import 都没有（`tools/audit-arch.py`
+    //  把这条当判据在 CI 里核）。`ui/` 在 system_server 里从不执行（KeyModule 只在设置页那个
+    //  进程分支里装界面 hook），注入侧（`inject/`）既不引用 `ui/` 也不引用 `I18n` 的界面订阅口，
+    //  所以惰性类解析不会触发 NoClassDefFoundError。
 
     // 不声明 libxposed:service：模块零 Activity，XposedServiceHelper 从未使用，
     // 引入会往清单里合并一个多余的 XposedProvider。

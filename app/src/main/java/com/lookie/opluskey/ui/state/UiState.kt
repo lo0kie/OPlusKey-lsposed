@@ -115,9 +115,14 @@ internal object UiState {
      */
     private fun readTextOrNull(): String? =
         try {
-            val f = ConfigStore.uiFile()
-            // 剥 BOM：这份文件同样可能被记事本改过（见 ConfigStore.readText）
-            if (f.isFile) ConfigStore.readText(f) else ""
+            //  **必须走 `ConfigStore.readText`**：它内部是 `AtomicFile.openRead()`，只剩 `.bak`
+            //  时会先把主文件还原出来。先判 `f.isFile` 会绕过这条还原 —— 主文件缺失时读到空串，
+            //  下一次写回就把这份文件里**其它键**一起抹掉。
+            ConfigStore.readText(ConfigStore.uiFile())
+        } catch (e: java.io.FileNotFoundException) {
+            //  主文件与 .bak 都不在 = 还没写过 ⇒ 空表（与「读不了」分开，见 KDoc）
+            XLog.d("读界面状态：主文件与 .bak 都不在，按空表处理 | ${e.message}")
+            ""
         } catch (e: Throwable) {
             // 判据级：读失败会让写回被拒（用户看到的是「没保存」），用 w 才能在 release 里看见
             XLog.w("读界面状态失败（按默认处理、且不写回）：${e.message}")

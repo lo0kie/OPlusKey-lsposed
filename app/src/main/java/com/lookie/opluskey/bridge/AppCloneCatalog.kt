@@ -3,6 +3,7 @@ package com.lookie.opluskey.bridge
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.UserHandle
 import android.os.UserManager
@@ -400,6 +401,58 @@ internal object AppClonePackages {
             return null
         }
         return unwrapList(raw, userId)
+    }
+
+    /**
+     * 按 userId 查一个包的 `PackageInfo`（`IPackageManager#getPackageInfo`）。
+     *
+     *  「列分身某个应用有哪些界面」只能走这条：`Context#createContextAsUser` 在分身用户里必然
+     *  失败（宿主的包不在那个用户里），而 `PackageInfo` 是界面清单的入口 —— 拿不到它，
+     *  分身的组件一个都列不出来。
+     *
+     *  与 [queryLaunchablesAsUser] 同一套 long / int 兼容：Android 13 起 flags 是 `long`。
+     *
+     * @return 拿不到返回 `null`（**不要**退成主用户 —— 那会列出一堆分身根本没有的组件）
+     */
+    fun packageInfoAsUser(
+        pkg: String,
+        flags: Long,
+        userId: Int,
+    ): PackageInfo? {
+        val binder = ipm() ?: return null
+        val withLongFlags =
+            Reflect.method(
+                binder.javaClass,
+                "getPackageInfo",
+                String::class.java,
+                java.lang.Long.TYPE,
+                Int::class.javaPrimitiveType!!,
+            )
+        val method =
+            withLongFlags
+                ?: Reflect.method(
+                    binder.javaClass,
+                    "getPackageInfo",
+                    String::class.java,
+                    Int::class.javaPrimitiveType!!,
+                    Int::class.javaPrimitiveType!!,
+                ) ?: run {
+                XLog.w("IPackageManager 上没有 getPackageInfo(String,long|int,int)")
+                return null
+            }
+        val flagArg: Any = if (withLongFlags != null) flags else flags.toInt()
+        val res = runCatching { method.invoke(binder, pkg, flagArg, userId) }
+        val raw = res.getOrNull()
+        if (raw == null) {
+            val cause = res.exceptionOrNull()?.let { Reflect.deepestCause(it) }
+            XLog.w("getPackageInfo($pkg, user=$userId) 失败：${cause?.javaClass?.name}: ${cause?.message}")
+            return null
+        }
+        return raw as? PackageInfo
+            ?: run {
+                XLog.w("getPackageInfo($pkg, user=$userId) 返回了不认识的形状：${raw.javaClass.name}")
+                null
+            }
     }
 
     /** `List` 与 `ParceledListSlice` 两种返回形状都摊成 `List<ResolveInfo>`。 */

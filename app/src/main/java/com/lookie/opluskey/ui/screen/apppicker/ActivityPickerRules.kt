@@ -36,6 +36,7 @@ internal fun resolveSelection(
     selected: String?,
     target: String,
     all: List<LaunchableActivity>,
+    shortcutsFailed: Boolean = false,
 ): String? =
     when {
         // 没绑过 / 绑的就是这个应用 ⇒ 「自动」
@@ -44,6 +45,11 @@ internal fun resolveSelection(
         // 清单还没到（或查完了确实一条都没有）⇒ **不知道**，不等于「不在」：
         //  这时保持原值。判成「自动」的话，进页那一瞬（列表还在查）按 FAB 就会把它降级。
         all.isEmpty() -> selected
+
+        // 快捷方式那一节这次没查出来（宿主持有 ACCESS_SHORTCUTS 失败 / binder 抖动）：
+        //  清单里缺的可能正是它，分不清「删了」与「没查到」—— 保持原值，不降级。
+        //  代价是「真的被删掉的快捷方式」会多留一轮，下次查询成功时自然收敛。
+        shortcutsFailed -> selected
 
         // 绑的是具体某一项，且它还在清单里 ⇒ 用它
         all.any { AppTarget.same(it.target, selected) } -> selected

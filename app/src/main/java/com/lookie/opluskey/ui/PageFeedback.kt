@@ -143,13 +143,8 @@ internal fun SettingsPage.writeAndNotice(
     hint(notice(), slot = slot)
 }
 
-/**
- * UI 触觉反馈的唯一判据 —— 只看系统状态（静音不振）。实现在 [PageHaptics.allowed]。
- *
- * 模块的「振动反馈」开关不参与：它管的是命令执行时的振动（判定在 `host/GestureReceiver`）。
- * 判定在调用时现查一次（[tickNow] 每振一次查一次），系统静音一变立刻生效。
- */
-internal fun SettingsPage.hapticsAllowed(): Boolean = haptics.allowed()
+// UI 触觉反馈的唯一判据是 `PageHaptics.allowed`：只看系统状态（静音不振），模块的「振动反馈」
+//  开关不参与 —— 它管的是命令执行时的振动（判定在 `host/GestureExec`）。
 
 /**
  * 通用振动通道 —— 界面所有点击 / 长按的触觉都走这里（实现在 [PageHaptics.tick]）。
@@ -158,7 +153,7 @@ internal fun SettingsPage.hapticsAllowed(): Boolean = haptics.allowed()
 internal fun SettingsPage.rememberTick(): () -> Unit = remember { { tickNow() } }
 
 /**
- * 实际执行一次点击触觉。判据只有 [hapticsAllowed]（系统状态），与模块开关无关。
+ * 实际执行一次点击触觉。判据只有 [PageHaptics.allowed]（系统状态），与模块开关无关。
  * `MissingPermission` 为什么成立写在 [PageHaptics.tick] 那里。
  */
 internal fun SettingsPage.tickNow() = haptics.tick()

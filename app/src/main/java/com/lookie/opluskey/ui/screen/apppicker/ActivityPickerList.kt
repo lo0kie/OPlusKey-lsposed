@@ -110,8 +110,13 @@ internal fun SettingsPage.ActivityPickerScreen(
     // null = 还在查；空清单 = 查完了、这个应用一个能外部打开的界面都没有
     var loaded by remember(target) { mutableStateOf<List<LaunchableActivity>?>(null) }
     var failed by remember(target) { mutableStateOf(false) }
+    //  快捷方式那一节这次没查出来（见 `LoadNotes`）：`resolveSelection` 据此不把
+    //  已绑的 `appshortcut:` 降级成 `app:`。
+    var shortcutsFailed by remember(target) { mutableStateOf(false) }
     LaunchedEffect(target) {
-        val fresh = withContext(Dispatchers.IO) { loadActivities(target) }
+        val notes = LoadNotes()
+        val fresh = withContext(Dispatchers.IO) { loadActivities(target, notes) }
+        shortcutsFailed = notes.shortcutsFailed
         failed = fresh == null
         loaded = fresh ?: emptyList()
     }
@@ -122,12 +127,12 @@ internal fun SettingsPage.ActivityPickerScreen(
     //  的注释）；跟着一起算就等于上下滑动时每帧跑两遍全量 filter，还会让 [PickerListData] 每帧换新
     //  实例 ⇒ [ActivityRows] 那一整棵（含列表 content lambda 与每一行的 `animateItem`）全都跳不过重组。
     val data =
-        remember(loaded, term, target, selected, selectedShortcutId) {
+        remember(loaded, term, target, selected, selectedShortcutId, shortcutsFailed) {
             val all = loaded.orEmpty()
             val shown = shownActivities(loaded, term)
             // 「当前绑的是哪一行」一律按**完整清单**判（`all`），不按过滤后的 `shown`：
             //  搜索词只决定显示什么，不决定绑的是什么。
-            val normalized = resolveSelection(selected, target, all)
+            val normalized = resolveSelection(selected, target, all, shortcutsFailed = shortcutsFailed)
             PickerListData(
                 target = target,
                 selected = normalized,
@@ -170,11 +175,13 @@ internal fun SettingsPage.ActivityPickerScreen(
             scrollBehavior = scrollBehavior,
             searchBandDp = searchBandDp,
         )
-        // 这一页唯一的写入入口：**清单到了才出现**。
+        // 这一页唯一的写入入口：**清单真的到了才出现**。
         //  第一版是常驻（`visible = true`）：那几十毫秒里清单还是空的，`current` 走的是
         //  [defaultPickOf] 的兜底分支，一按就把「绑的是哪个界面 / 快捷方式」写成整个应用
         //  （快捷方式连身份都丢，落成一条永远解析不了的 token）。看不见的行不该能写下什么。
-        PageCornerFab(visible = loaded != null) {
+        //  **查询失败时也不出现**：失败那条路把 `loaded` 填成空表，只判非空会让用户在
+        //  「什么都没查到」的页面上按确定，把绑定改写成「自动」。
+        PageCornerFab(visible = loaded != null && !failed) {
             ActivityConfirmFab(current, onPick)
         }
     }

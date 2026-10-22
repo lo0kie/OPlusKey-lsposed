@@ -61,8 +61,12 @@ internal class ActionRunner(
      *
      *  宿主主进程里不需要（进程活多久就活多久）；`:ui` 进程里那份「测试命令」执行器在关页时调它，
      *  否则每轮「进设置 → 测试手电筒 → 关页」都会在系统里留一份不会再被用的回调。
+     *
+     *  名字必须与 [stopVoiceCapture] 区分开：两者都是「松手 / 收尾」，但一个是**进程级注册**、
+     *  一个是**这一按的采集**。同名时 Kotlin 允许并存（函数与属性不在同一命名空间），
+     *  调用点 `runner.release()` 永远只会命中函数 —— 灵感语音那条收尾因此从不执行。
      */
-    fun release() {
+    fun releaseTorch() {
         flashlight.release()
     }
 
@@ -110,7 +114,7 @@ internal class ActionRunner(
      *
      *  与 [startOplusOrVoice] 同理写成 lambda 字段：这个类的函数数贴着 detekt 的上限。
      */
-    val release: () -> Unit = {
+    val stopVoiceCapture: () -> Unit = {
         if (!voiceMemoryOn) {
             XLog.d("松手：这一段灵感语音不是本进程起的，不收尾")
         } else {

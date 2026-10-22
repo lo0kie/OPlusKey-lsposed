@@ -65,7 +65,7 @@ internal fun SettingsPage.HomeKeysCard(
                         summary = stateSummary(keyEnabled(KeyId.PLUS)),
                         //  停用只把行首换成禁用图标，**不压色**：图标一灰，整行看起来像点不了，
                         //  而这一行恰恰还能点进去（停用也照样能进那一页开回来）。
-                        icon = keyIcon(PageIcons.MenuKeys, keyEnabled(KeyId.PLUS)),
+                        icon = keyIcon(PageIcons.MenuSideKey, keyEnabled(KeyId.PLUS)),
                         enabled = pageEnabled,
                         arrow = true,
                         onClick = { openKey(KeyId.PLUS) },
@@ -90,9 +90,14 @@ internal fun SettingsPage.HomeKeysCard(
                     CardRow.Item(
                         title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
                         icon = PageIcons.MenuKeyAdd,
-                        // 到上限就灰着，并把原因写在副标题里 —— 禁用态被点一下只会说页面那句笼统的
-                        //  「现在不可用」，而这里的原因是**这一行自己**的。
-                        summary = if (atLimit) I18n.format(Strings.KEY_WATCH_LIMIT, KeyId.MAX_CUSTOM_KEYS) else null,
+                        // 副标题两档都有，说的都是「这一行现在是什么状态」：满员 ⇒ 为什么加不了；
+                        //  没满 ⇒ 点下去是开一次**按键收集**（标题四个字看不出这一步在模块外面）。
+                        summary =
+                            if (atLimit) {
+                                I18n.format(Strings.KEY_WATCH_LIMIT, KeyId.MAX_CUSTOM_KEYS)
+                            } else {
+                                I18n.get(Strings.BINDING_ADD_KEY_DESC, "收集自定义按键")
+                            },
                         enabled = pageEnabled && !atLimit,
                         onClick = {
                             tick()

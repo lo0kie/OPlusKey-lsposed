@@ -154,7 +154,7 @@ internal data class CommandFormatLine(
 /**
  * 整页转场（push / pop）的时长 —— 350ms（真机录屏逐帧拟合定下来的，不跟库默认的 500ms 走）。
  */
-private const val PAGE_TRANSITION_MS = 350
+internal const val PAGE_TRANSITION_MS = 350
 
 /**
  * 手势提交 / 取消那两档弹簧的刚度 —— 293f（按收敛包络反推：350ms ⇒ k = (5.9915/0.35)² ≈ 293）。

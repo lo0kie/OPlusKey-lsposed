@@ -154,7 +154,8 @@ internal class LinkFacts(
                     InjectPendingKind.FIRST
                 }
 
-                injectAliveBoot > 0 && bootNow > 0 && injectAliveBoot == bootNow -> {
+                injectAliveBoot > 0 && bootNow > 0 &&
+                    kotlin.math.abs(injectAliveBoot - bootNow) <= BOOT_MATCH_EPSILON_MS -> {
                     InjectPendingKind.LOST
                 }
 
@@ -192,6 +193,16 @@ private const val STALE_EPSILON_MS = 5_000L
  *  宁可让人去 LSPosed 里看一眼作用域，也别让他为一个早就装好的包反复重启。
  */
 private const val REBOOT_EPSILON_MS = 60_000L
+
+/**
+ * 判「两次报活是不是同一轮开机」时留的余量。
+ *
+ *  那个指纹（`ProcClock.bootWall`）**截到整秒**，而两个进程取值时刻不同 —— 一次落在 x.999、
+ *  另一次落在 x+1.001，两边就整整差 1000ms。直接比相等会把「本轮开过、现在掉线」误报成
+ *  「作用域里没有它」，指去 LSPosed 里白翻一遍。
+ *  取 5 秒：跨一轮重启的间隔以分钟计，这个余量吃得下取整误差，吃不掉真重启。
+ */
+private const val BOOT_MATCH_EPSILON_MS = 5_000L
 
 /**
  * 读一遍上面那些信号 —— **全项目只有这一处**把它们凑成 [LinkFacts]。

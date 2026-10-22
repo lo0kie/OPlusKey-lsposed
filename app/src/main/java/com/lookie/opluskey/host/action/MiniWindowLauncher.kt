@@ -3,6 +3,7 @@ package com.lookie.opluskey.host.action
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -82,14 +83,28 @@ internal class MiniWindowLauncher(
                 return
             }
         val userId = AppTarget.userId(target)
-        val pm = AppCloneCatalog.packageManagerFor(ctx, userId) ?: ctx.packageManager
-        val intent = AppEntry.intentOf(pm, target)
+        //  **分身不能退主用户的 PM**：同包名在 0 与 998/999 里各有一份，主用户 PM 解析出来的
+        //  是主用户那份 —— 于是绑在分身上的 `window:` 按下去，收成小窗的是**主应用**（真机反馈）。
+        //  分身那条路只能走 binder（`createContextAsUser` 在分身用户里必失败，见 `AppClonePackages`）。
+        val pm: PackageManager? = if (userId == 0) ctx.packageManager else AppCloneCatalog.packageManagerFor(ctx, userId)
+        val pkgName = AppTarget.pkg(target)
+        val intent =
+            if (pm != null) {
+                AppEntry.intentOf(pm, target)
+            } else {
+                //  显式给了类名就直接拼（同一个应用在两个用户下的组件名一致）；
+                //  没给就按 userId 问一次入口 —— `resolveAsUser` 走 `IPackageManager`。
+                val act = AppTarget.activity(target)
+                if (act != null) {
+                    Intent(Intent.ACTION_MAIN).setComponent(ComponentName(pkgName, act))
+                } else {
+                    AppEntry.resolveAsUser(pkgName, userId)
+                }
+            }
         if (intent == null) {
-            val pkg = AppTarget.pkg(target)
-            //  分身**不问主用户的 PM**：同包名在 0 与 998/999 里各有一份，`getApplicationInfo` 必抛，
+            //  分身不问主用户的 PM：同包名在 0 与 998/999 里各有一份，`getApplicationInfo` 必抛，
             //  于是好端端的分身被报成「可能已卸载」（`AppLauncher` 那条路已经踩过这一坑）。
-            //  `pm` 已经按 userId 取过（上面一行），拿不到入口就是「没有可用入口」。
-            val installed = appInstalled(pm, pkg, userId)
+            val installed = appInstalled(pm, pkgName, userId)
             XLog.w("解析不到界面：$target（这个包还在=$installed，user=$userId）")
             onFailure(entryFailure(installed))
             return
@@ -420,7 +435,7 @@ internal class MiniWindowLauncher(
      *
      * 只有 recents 正门这一条 —— 服务端凭 `mZoomLaunchFlags == 32` 走 `fullToMini` 分支，
      * 用 `getMiniFlexibleTaskInfo` 那套几何（真机约 `Rect(898,168-1203,710)` / scale `0.2397`）。
-     * 收不起就退「按包名另起一份实例」，与展开档同一层兜底。
+     * 收不起就报失败 —— **不退回「按包名另起一份实例」**（那会多出一份全屏实例，见 [startFlexibleFromRecents]）。
      */
     internal fun putInCollapsedMini(taskId: Int) {
         if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_FULL_TO_MINI)) {
@@ -534,13 +549,24 @@ internal class MiniWindowLauncher(
      * 与全屏那份（`=1`）两条（`docs/device-findings.md` §17.6.1），第 0 项是不是目标包取决于此刻
      * 谁在最前面。只认第 0 项时目标落在第二条就会被读成「还没有任务」。
      */
-    internal fun taskOfPackage(pkg: String): Int {
-        val hits = topAppInfos().orEmpty().mapNotNull { taskOf(it, pkg) }
+    internal fun taskOfPackage(
+        pkg: String,
+        exclude: Set<Int> = emptySet(),
+    ): Int {
+        val hits = topAppInfos().orEmpty().mapNotNull { taskOf(it, pkg) }.filterNot { it.first in exclude }
         // 小窗那份就是验收要找的；整张表都没有小窗时才退回任意一份（全屏那份）。
         return hits.firstOrNull { it.second == WINDOWING_MODE_ZOOM }?.first
             ?: hits.firstOrNull()?.first
             ?: -1
     }
+
+    /**
+     * 这个包名在表里的**全部** taskId —— 分身那条路要用它做「起之前 / 起之后」的差集。
+     *
+     *  表里没有 userId，`taskOfPackage` 只按包名比；主用户与分身同包名，所以分身只能认
+     *  「这一发之后新出现的那一份」，不能按包名直接收（那会收走主应用）。
+     */
+    internal fun tasksOfPackage(pkg: String): Set<Int> = topAppInfos().orEmpty().mapNotNull { taskOf(it, pkg)?.first }.toSet()
 
     /**
      * 表里的一条 → `(taskId, windowingMode)`；不是这个包、或读不到 taskId 时 `null`。
@@ -670,7 +696,11 @@ internal class MiniWindowLauncher(
         userId: Int,
     ): Boolean {
         val code = startZoomWindowCode(ctx, intent, userId)
-        return code != null && code >= 0
+        //  只有 0（起成了）与 2（已有任务提到前台）算「进去了」：
+        //  3 = `START_DELIVERED_TO_TOP`，服务端把请求交给了栈顶那个实例、**屏幕没变**；
+        //  1 = 退回给调用方；负数才是错误码。按 `>= 0` 判会把 3 报成成功 ——
+        //  调用方于是不再走全屏兜底，用户看到的是「按了没反应」。
+        return code == 0 || code == 2
     }
 
     /**
@@ -744,11 +774,17 @@ internal class MiniWindowLauncher(
     ): Boolean =
         try {
             val options = android.app.ActivityOptions.makeBasic()
-            // 窗口模式那一对也都是隐藏 API：常量按字段取，设值按方法名调
+            // 窗口模式那一对也都是隐藏 API：常量按字段取，设值按方法名调。
+            //  常量在**两个类里都可能出现**：`ActivityOptions` 上有过一份，而本机 framework 里
+            //  它只属于 `WindowConfiguration`（PUBLIC STATIC FINAL，值 5）。只查前者的话，
+            //  这台机器上「取不到常量」⇒ 自由窗口这条退路恒不成立。
+            //  `android.app.WindowConfiguration` 在 SDK 里引不到（编译期没有这个符号），按名字找。
             val mode =
-                Reflect
-                    .field(android.app.ActivityOptions::class.java, "WINDOWING_MODE_FREEFORM")
-                    ?.getInt(null)
+                Reflect.field(android.app.ActivityOptions::class.java, "WINDOWING_MODE_FREEFORM")?.getInt(null)
+                    ?: runCatching { Class.forName("android.app.WindowConfiguration") }
+                        .getOrNull()
+                        ?.let { Reflect.field(it, "WINDOWING_MODE_FREEFORM") }
+                        ?.getInt(null)
             if (mode == null) {
                 XLog.w("取不到 WINDOWING_MODE_FREEFORM，放弃自由窗口这条")
                 return false

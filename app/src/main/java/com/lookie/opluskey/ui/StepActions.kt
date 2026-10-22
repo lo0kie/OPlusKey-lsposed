@@ -9,7 +9,6 @@ import com.lookie.opluskey.core.model.Command
 //  放在 `ui` 根而不是 `ui/state`：`ui/state` 只装**状态对象**（谁的字段、谁能写），
 //  这些是「对状态做的动作」，要读页面导航与草稿两个域，所以与 `PageText` / `PageFeedback` 同级。
 //  这样 `screen/*` 与浮层都能直接调它，不必反过来依赖具体屏（见 `docs/decoupling.md` 动作 4）。
-// /
 
 /**
  * 多条命令加一步（从「添加命令」浮层的「选择应用」挑完回来时调）。

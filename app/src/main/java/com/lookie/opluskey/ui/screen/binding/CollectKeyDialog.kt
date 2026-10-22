@@ -109,6 +109,11 @@ internal fun SettingsPage.CollectKeyDialog(
     val waiting = !collectClosing
     val draftName = newKeyName()
 
+    //  **倒计时**：注入侧到点自己停发键码（`ModuleWire.KEY_WATCH_WINDOW_MS`），界面必须把
+    //  这段时间显示出来、并在同一刻收场 —— 否则第 60 秒弹窗还挂着、按键已经没人报，
+    //  用户看到的是「按了没反应」。数字与注入侧共用同一个常量，不各写一份。
+    val secondsLeft = rememberWatchCountdown(show, waiting, onDismiss)
+
     // 兜底 —— 这一档只在「收场回调根本没来」时才该跑，理由见 [CollectCloseFallback]。
     CollectCloseFallback(show = show, closing = collectClosing) { collectClosed = true }
 
@@ -135,7 +140,7 @@ internal fun SettingsPage.CollectKeyDialog(
         //  只在**该关**那一档置位：用户自己关掉弹窗时「上一个窗收场了」这件事对命名窗毫无意义。
         onDismissFinished = { if (collectClosing) collectClosed = true },
     ) {
-        CollectKeyBody()
+        CollectKeyBody(secondsLeft)
     }
     AddKeyDialog(
         //  **等收集窗彻底收场了再开这一个**：两个弹窗窗口同时在场的那几百毫秒里，键盘会被
@@ -300,16 +305,17 @@ private fun SettingsPage.addKey(
 }
 
 /**
- * 弹窗正文：两句说明，居中。
+ * 弹窗正文：三行，居中。
  *
  *  **没有底部按钮**：这一步只是等按键，没有第二步可确认；关掉靠返回键 / 点遮罩
  *  （[FrostedDialog] 里的 `OverlayDialog` 自带 `onDismissRequest`）。
  *
  *  **也没有「被拒」那行红字**：那类答复走底部的消息条（用户口径），正文只保留
- *  「按下想添加的按键 / 正在等待按键…」这两句，高度恒定、不随按错而跳动。
+ *  「按下想添加的按键 / 正在等待按键… / N 秒后自动关闭」这三行，高度恒定、不随按错而跳动。
+ *  倒计时**单独一行**：与「正在等待按键」挤在一句里时，那个括号会把前半句推得长短不一。
  */
 @Composable
-private fun CollectKeyBody() {
+private fun CollectKeyBody(secondsLeft: Int) {
     Column(Modifier.fillMaxWidth()) {
         Text(
             text = I18n.get(Strings.KEY_WATCH_HINT, "按下想添加的按键"),
@@ -326,6 +332,17 @@ private fun CollectKeyBody() {
             text = I18n.get(Strings.KEY_WATCH_WAITING, "正在等待按键…"),
             style = COUITheme.textStyles.body2,
             color = COUITheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .dialogSideMargin()
+                    .padding(bottom = 2.dp),
+        )
+        Text(
+            text = I18n.format(Strings.KEY_WATCH_COUNTDOWN, secondsLeft),
+            style = COUITheme.textStyles.body2,
+            color = COUITheme.colorScheme.onSurfaceSecondary,
             textAlign = TextAlign.Center,
             modifier =
                 Modifier

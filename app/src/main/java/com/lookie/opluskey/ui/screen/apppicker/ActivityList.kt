@@ -21,10 +21,22 @@ import com.lookie.opluskey.ui.model.LaunchableActivity
 // 就有多少个 `ActivityInfo`），成本形态完全不同，混在一起会把两种预算的注释搅成一团。
 
 /** 排位：带 `MAIN` + `LAUNCHER`（桌面图标那一个）—— 排最前。 */
-private const val RANK_LAUNCHER = 0
+internal const val RANK_LAUNCHER = 0
 
 /** 排位：只带 `MAIN`（电视版入口这类）—— 排在其余之前。 */
-private const val RANK_MAIN = 1
+internal const val RANK_MAIN = 1
+
+/**
+ * 一次查询的**附注** —— 目前只有一件：快捷方式那一节是不是没查出来。
+ *
+ *  为什么不并进返回值：清单本身是 `List<LaunchableActivity>?`（null = 整次失败），
+ *  而「界面查到了、快捷方式没查到」是第三种状态。编码成哨兵行或改返回类型，会让每个
+ *  只关心清单的调用点都跟着改；而它唯一的用处是「别把 `appshortcut:` 降级成 `app:`」
+ *  （见 [resolveSelection]）。
+ */
+internal class LoadNotes {
+    var shortcutsFailed = false
+}
 
 /**
  * 一个应用里**能从模块这边拉起来**的界面，按「启动图标 → 带 MAIN → 其余」再按名字排序。
@@ -34,44 +46,40 @@ private const val RANK_MAIN = 1
  *
  * @param target 应用那一行的目标写法（`包名` 或 `999@包名`）—— 只取包名与用户两段，
  *   里面若带了 `/类名` 也不影响（[AppTarget.pkg] 自己会截断）。
+ * @param notes 可选附注（见 [LoadNotes]）—— 页面用它区分「快捷方式没查到」与「没有快捷方式」。
  * @return 查到的清单；**查失败返回 null**（不是空清单）。空清单是一份有效结论
  *   （「这个应用确实没有能外部打开的界面」），拿它去覆盖缓存会把上一次的好清单抹掉。
  */
-internal fun SettingsPage.loadActivities(target: String): List<LaunchableActivity>? =
+internal fun SettingsPage.loadActivities(
+    target: String,
+    notes: LoadNotes? = null,
+): List<LaunchableActivity>? =
     //  整段包一层：兄弟路径 `loadLaunchableApps` 就是这么做的（返回 null 让页面保留上一次的
     //  清单）。裸着的话，任何一个叶子之外的 binder / 解析异常都会顺 `withContext(IO)` 抛出去，
     //  落进宿主 `:ui` 进程就是「进这一页就崩」。
     try {
-        loadActivitiesUnguarded(target)
+        loadActivitiesUnguarded(target, notes)
     } catch (e: Throwable) {
         XLog.w("查界面清单失败（忽略，页面保留上一次的清单）：$target", e)
         null
     }
 
 /** [loadActivities] 的本体 —— 不包异常，`null` / 空清单的语义见那边。 */
-private fun SettingsPage.loadActivitiesUnguarded(target: String): List<LaunchableActivity>? {
+private fun SettingsPage.loadActivitiesUnguarded(
+    target: String,
+    notes: LoadNotes?,
+): List<LaunchableActivity>? {
     val t0 = SystemClock.uptimeMillis()
     val pkg = AppTarget.pkg(target)
     val userId = AppTarget.userId(target)
-    val pm =
-        AppCloneCatalog.packageManagerFor(context, userId) ?: run {
-            //  分身**不能**退回主用户的 PM：同包名在两个用户下各有一份，主用户的回答是
-            //  「主用户那一份有什么界面」—— 列表于是列出一堆分身根本没有的组件，写下去也打不开。
-            //  问不到就如实报「没读出来」（返回 null 让页面保留旧清单 / 显示失败提示）。
-            if (userId != 0) {
-                XLog.w("查界面清单：拿不到分身 user=$userId 的 PackageManager，不退回主用户")
-                return null
-            }
-            context.packageManager
-        }
+    //  主用户走 `PackageManager`；分身**只能走 binder** —— `Context#createContextAsUser(999)`
+    //  在真机上必抛 `Own package not found for user 999`（宿主的包不在那个用户里），
+    //  而 `queryIntentActivitiesAsUser` 又被这个 ROM 砍了（见 `AppClonePackages`）。
+    //  拿不到就如实报「没读出来」，**不退回主用户**：那会列出一堆分身根本没有的组件。
+    val pm: PackageManager? = if (userId == 0) context.packageManager else null
     val declared =
-        try {
-            pm.getPackageInfo(
-                pkg,
-                PackageManager.PackageInfoFlags.of(PackageManager.GET_ACTIVITIES.toLong()),
-            )
-        } catch (e: Throwable) {
-            XLog.w("查界面清单失败：$pkg（user=$userId）", e)
+        packageInfoOf(pkg, userId, pm) ?: run {
+            XLog.w("查界面清单：读不出 $pkg（user=$userId）的 PackageInfo")
             return null
         }
     // 纯资源包声明得了组件、类却不在包里 ⇒ 一个都起不来（`AppEntry.resolve` 那条路上踩过）
@@ -85,7 +93,9 @@ private fun SettingsPage.loadActivitiesUnguarded(target: String): List<Launchabl
     //  · `permission` —— 本模块**零权限**（清单里一条都没声明），带权限的活动一起就 SecurityException；
     //  · 运行时被 `setComponentEnabledSetting` 关掉的 —— `getPackageInfo` 照样把它报出来。
     val candidates = all.filter { it.exported && it.permission == null && it.enabled }
-    val alive = candidates.filter { enabledNow(pm, pkg, it.name) }
+    //  分身拿不到 `PackageManager`，问不了「运行时被关掉」这一档：按启用处理
+    //  （`ActivityInfo.enabled` 已经在上一条里筛过，那一位是清单里声明的默认值）。
+    val alive = if (pm != null) candidates.filter { enabledNow(pm, pkg, it.name) } else candidates
     // 别名与它指向的活动会同时出现在清单里（`activity-alias` 的 `targetActivity`），
     // 只留别名那一条：别名才是带图标 / 标签、且被声明成导出的那一个。
     val visible = dropShadowed(alive)
@@ -94,7 +104,7 @@ private fun SettingsPage.loadActivitiesUnguarded(target: String): List<Launchabl
             pm = pm,
             pkg = pkg,
             userId = userId,
-            ranks = launcherRanks(pm, pkg),
+            ranks = if (pm != null) launcherRanks(pm, pkg) else launcherRanksAsUser(pkg, userId),
             romanizer = romanizerOrNull(),
         )
     val activities =
@@ -108,19 +118,23 @@ private fun SettingsPage.loadActivitiesUnguarded(target: String): List<Launchabl
                     { it.name },
                 ),
             )
-    // 快捷方式（长按桌面图标那几个）另起一节 —— 它们不是界面，名字也由应用自己给（多半是中文）
+    // 快捷方式（长按桌面图标那几个）另起一节 —— 它们不是界面，名字也由应用自己给（多半是中文）。
+    //  `null` = 这一节没查到（第三种状态，见 [LoadNotes]）：页面据此**不把**已绑的
+    //  `appshortcut:` 降级成 `app:`（见 `resolveSelection`）。
     val shortcuts = shortcutsOf(pkg, userId, query.romanizer)
+    if (shortcuts == null) notes?.shortcutsFailed = true
     XLog.w(
         "界面清单：$pkg（user=$userId）声明 ${all.size} 个 → 导出 ${candidates.size} 个 → " +
-            "运行时可用 ${visible.size} 个，快捷方式 ${shortcuts.size} 个，" +
-            "耗时 ${SystemClock.uptimeMillis() - t0}ms",
+            "运行时可用 ${visible.size} 个，快捷方式 ${shortcuts?.size ?: 0} 个" +
+            (if (shortcuts == null) "（这一节没查到）" else "") +
+            "，耗时 ${SystemClock.uptimeMillis() - t0}ms",
     )
     // **按 target 去重**：列表那边是 `items(key = { it.target })`，key 重复会让 Compose 当场抛
     // 「Key was already used」并崩掉整个 `:ui` 进程（真机在贴吧那一页崩过一次：同一个
     // `AuthorizeSignActivity` 在清单里出现了两条）。`getPackageInfo` 返回的 `activities`
     // 本身可能带重复条目（同一个类被声明 / 合并成多条），这里按**我们自己的目标写法**收一次，
     // 顺带也保证用户看不到两条一模一样的界面。
-    return (activities + shortcuts).distinctBy { it.target }
+    return (activities + shortcuts.orEmpty()).distinctBy { it.target }
 }
 
 /**
@@ -131,20 +145,22 @@ private fun SettingsPage.loadActivitiesUnguarded(target: String): List<Launchabl
  *  （宿主声明并已 grant，真机实测过）。拿不到就**这一节一条不列**并记一行 `w` —— 不是「这个应用没有」，
  *  是「我们读不到」，两件事别混。
  *
- *  查不到（应用一个都没注册）返回空清单，是有效结论。
+ *  @return 查不到（应用一个都没注册）返回**空清单**（有效结论）；读不到返回 **`null`**
+ *    —— 后者要能区分出来，否则页面会把「这次没查到」当成「那一项已经没了」，
+ *    把用户绑的 `appshortcut:` 静默降级成 `app:`。
  */
 private fun SettingsPage.shortcutsOf(
     pkg: String,
     userId: Int,
     romanizer: Transliterator?,
-): List<LaunchableActivity> {
+): List<LaunchableActivity>? {
     val launcherApps =
         try {
             context.getSystemService(android.content.pm.LauncherApps::class.java)
         } catch (e: Throwable) {
             XLog.w("取 LauncherApps 失败", e)
             null
-        } ?: return emptyList()
+        } ?: return null
     val query =
         android.content.pm.LauncherApps
             .ShortcutQuery()
@@ -159,7 +175,7 @@ private fun SettingsPage.shortcutsOf(
             launcherApps.getShortcuts(query, AppCloneCatalog.handleOf(userId)).orEmpty()
         } catch (e: Throwable) {
             XLog.w("查快捷方式失败：$pkg（user=$userId，宿主要持有 ACCESS_SHORTCUTS）", e)
-            return emptyList()
+            return null
         }
     return shortcuts
         .map { info ->
@@ -264,7 +280,8 @@ private fun componentsOf(
  *  默认上限是 6）：参数一多，调用点按顺序排错一位编译照样过。
  */
 private class ActivityQuery(
-    val pm: PackageManager,
+    /** 主用户那份 `PackageManager`；分身是 `null`（那一路只能走 binder，见 `AppClonePackages`）。 */
+    val pm: PackageManager?,
     val pkg: String,
     val userId: Int,
     /** 组件 → 排位（[RANK_LAUNCHER] / [RANK_MAIN]）；不在这张表里的排最后。 */
@@ -296,11 +313,14 @@ private fun SettingsPage.entryOf(
     val simple = ai.name.substringAfterLast('.')
     val declared =
         if (ai.labelRes != 0) {
-            try {
-                ai.loadLabel(query.pm).toString()
-            } catch (e: Throwable) {
-                XLog.d("取界面名失败：${ai.name}（${e.javaClass.simpleName}）")
-                null
+            //  分身没有 `PackageManager`：这一档取不到名字，退回类名最后一段（见上面第 2 条）
+            query.pm?.let { pm ->
+                try {
+                    ai.loadLabel(pm).toString()
+                } catch (e: Throwable) {
+                    XLog.d("取界面名失败：${ai.name}（${e.javaClass.simpleName}）")
+                    null
+                }
             }
         } else {
             null

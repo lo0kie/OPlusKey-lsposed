@@ -51,7 +51,7 @@ internal object TestRunnerCache {
         synchronized(this) {
             //  置 null 只是「不再复用」，执行器还钉着那份 torch 回调 —— 要真的摘掉，
             //  否则每轮进出设置页都在系统里留一份（见类注释那段）。
-            cached?.release()
+            cached?.releaseTorch()
             if (cached != null) XLog.w("关页：释放测试命令执行器（torch 回调一并注销，下次进页重建）")
             cached = null
         }

@@ -3,20 +3,18 @@ package com.lookie.opluskey.core.model
 import java.util.Locale
 
 enum class CommandKind(
-    /** 界面上的叫法。 */
-    val label: String,
     /** 存文件时用的标识。 */
     val id: String,
 ) {
     /** 单条命令，选中后直接执行。 */
-    SINGLE("单条命令", "single"),
+    SINGLE("single"),
 
     /**
      * 多条命令，按顺序执行一串步骤。
      * 步骤是引用（动作写法或 `cmd:<名字>`），不是命令文本。
      * 枚举名与文件标识 `serial` 是持久化格式，改了认不出老数据。
      */
-    SERIAL("多条命令", "serial"),
+    SERIAL("serial"),
 
     ;
 

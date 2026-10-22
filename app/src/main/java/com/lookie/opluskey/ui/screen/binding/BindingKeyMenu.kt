@@ -170,7 +170,7 @@ private fun keyMenuEntries(
             add(
                 MenuEntry.Row(
                     title = BRANCHES_TITLE,
-                    icon = PageIcons.CommandBranch,
+                    icon = PageIcons.MenuCondition,
                     submenu = true,
                     onPick = actions.onOpenBranches,
                 ),
@@ -202,7 +202,7 @@ private fun keyActionEntries(
         add(
             MenuEntry.Row(
                 title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
-                icon = PageIcons.CommandEdit,
+                icon = PageIcons.MenuRename,
                 // 侧键的名字不归用户改
                 enabled = selected.isCustom,
                 disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_RENAME, "侧键不能改名"),

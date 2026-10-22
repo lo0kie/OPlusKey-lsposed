@@ -68,22 +68,28 @@ internal class GestureForwarder(
         val intent = gestureIntent(id, phase, repeat)
 
         sender.post {
-            //  取 Context 也挪进来：`SystemContext.get` 要反射扫一遍 `mAllApplicationThreads`，
-            //  那不该发生在输入读取线程上。
-            val ctx =
-                context() ?: run {
-                    XLog.w("没借到 Context，无法转交 ${id.label} 的手势")
-                    return@post
-                }
+            //  这里是注入侧的**自建线程**：任何漏出去的异常都会按 Android 默认策略杀掉进程
+            //  （system_server）。与 hook 体同一条纪律：只记日志、绝不上抛。
+            try {
+                //  取 Context 也挪进来：`SystemContext.get` 要反射扫一遍 `mAllApplicationThreads`，
+                //  那不该发生在输入读取线程上。
+                val ctx =
+                    context() ?: run {
+                        XLog.w("没借到 Context，无法转交 ${id.label} 的手势")
+                        return@post
+                    }
 
-            wakeHost(ctx)
+                wakeHost(ctx)
 
-            // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
-            // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。
-            //  补发只对「一次按压」有意义：长按连发（repeat）期间宿主早就在跑，每 100ms 再排一条
-            //  300ms 后到期的补发，松手后队列里会积一串废消息（且每条都要过一遍接收侧的去重）。
-            send(ctx, intent, delayMs = 0L, retry = false)
-            if (!repeat) send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+                // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
+                // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。
+                //  补发只对「一次按压」有意义：长按连发（repeat）期间宿主早就在跑，每 100ms 再排一条
+                //  300ms 后到期的补发，松手后队列里会积一串废消息（且每条都要过一遍接收侧的去重）。
+                send(ctx, intent, delayMs = 0L, retry = false)
+                if (!repeat) send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+            } catch (e: Throwable) {
+                XLog.w("转交手势失败（已忽略）：${id.label} ${gesture.id}", e)
+            }
         }
     }
 

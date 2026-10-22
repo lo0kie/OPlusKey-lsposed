@@ -237,7 +237,11 @@ internal class AppLauncher(
 
         // Messenger 绑定型（场景表 type=service 的大部分）必须 bind 后发 Message
         if (target.message != null) {
-            sendMessengerMessage(ctx, feature, target)
+            if (!sendMessengerMessage(ctx, feature, target) && target.stopAction != null) {
+                //  绑定没成立 = 这一次没起来 ⇒ 撤掉「现在是开」那笔账，
+                //  否则下一次按会被当成「关」，发一条没人接的停止广播（按一下等于没反应）。
+                toggledOn.remove(feature)
+            }
             return
         }
         val intent = buildFeatureIntent(target)
@@ -278,6 +282,8 @@ internal class AppLauncher(
         // 两种起法都被拒 ⇒ 退一层显式组件（口径与边界见 [tryComponentFallback]）。
         // 退路成功（返回 null）就在这里收手；否则拿最后那个错误报失败。
         val finalError = tryComponentFallback(ctx, feature, target, last) ?: return
+        //  三条起法全失败 ⇒ 与界面型那条失败分支同一笔账：撤掉「现在是开」，下次按还是「开」。
+        if (target.stopAction != null) toggledOn.remove(feature)
         XLog.w("起 oplus:$feature 失败：${finalError.javaClass.simpleName}: ${finalError.message}")
         onFailure(CommandFailure.UNKNOWN)
     }
@@ -331,9 +337,7 @@ internal class AppLauncher(
         ctx: Context,
         feature: String,
         target: RomProfile.BuiltIn,
-    ) {
-        BuiltInMessenger.send(ctx, target, "oplus:$feature") { onFailure(CommandFailure.UNKNOWN) }
-    }
+    ): Boolean = BuiltInMessenger.send(ctx, target, "oplus:$feature") { onFailure(CommandFailure.UNKNOWN) }
 
     /**
      * 小布识屏：配置里仍写 KSU 那串 shell 命令（老配置不能失效），执行换成

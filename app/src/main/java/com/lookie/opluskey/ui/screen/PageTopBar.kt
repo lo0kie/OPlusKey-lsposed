@@ -21,7 +21,6 @@ import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.editingKeyName
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
@@ -271,3 +270,17 @@ private fun SettingsPage.PageBottomBand(
         }
     }
 }
+
+/**
+ * 当前这颗键在界面上叫什么 —— 侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。
+ *
+ *  与「按键绑定」页那组名同一个口径（顶栏 ⋮ 菜单第一项就是这句话）：那一页的尾随小标题、
+ *  分叉页的「在编哪一档」都用它，免得同一个东西两处两个叫法。
+ *
+ *  住在这一层而不是 `ui/model/PageCopy`：它读的是页面状态（在编辑哪颗键），
+ *  而 `ui/model` 只放纯展示数据，不许反持页面。
+ */
+internal fun SettingsPage.editingKeyName(): String =
+    KeyWatchState
+        .editing(configState.config.value)
+        .let { if (it.isCustom) it.label else I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键") }

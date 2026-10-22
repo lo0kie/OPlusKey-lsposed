@@ -235,7 +235,7 @@ internal object Framework {
     }
 
     /**
-     * 找 AMS 的广播入口方法（[AMS_CANDIDATE] 上的 [AMS_BROADCAST_ENTRIES]，精确匹配）。
+     * 找 AMS 的广播入口方法（`HookSet.amsCandidate` 上的 `HookSet.amsBroadcastEntries`，精确匹配）。
      *
      * **同一族里只挂最靠里的那一个**：新版 AMS 上 `broadcastIntent(...)` 内部会转调
      * `broadcastIntentWithFeature(...)`，两个都挂就是同一条广播被 [KeyHooks] 处理两遍

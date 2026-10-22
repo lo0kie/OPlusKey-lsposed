@@ -1,6 +1,12 @@
 package com.lookie.opluskey.ui.model
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathData
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
@@ -59,19 +65,20 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DeviceScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
+import io.github.lyxnx.compose.ui.tablericons.outline.Edit
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
+import io.github.lyxnx.compose.ui.tablericons.outline.GitFork
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
 import io.github.lyxnx.compose.ui.tablericons.outline.InputX
-import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.LayoutGrid
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
@@ -93,6 +100,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Number3
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
+import io.github.lyxnx.compose.ui.tablericons.outline.PencilStar
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureTop
 import io.github.lyxnx.compose.ui.tablericons.outline.Plane
@@ -164,7 +172,7 @@ internal fun actionIcon(token: String): ImageVector =
         // —— 系统侧键场景表里的四条 ——
         // 一键闪记
         Action.OPLUS_PREFIX + RomProfile.NAME_FLASH_MEMORY -> {
-            TablerIcons.Outline.Pencil
+            TablerIcons.Outline.PencilStar
         }
 
         // 免打扰（月亮：勿扰 / 夜间的通用读法）
@@ -552,6 +560,23 @@ internal object PageIcons {
      */
     val Menu: ImageVector get() = TablerIcons.Outline.DotsVertical
 
+    /**
+     * 按键菜单里「重命名」那一行 —— `edit`（铅笔压一行字）。
+     *
+     *  与 [CommandEdit]（`pencil`，光一支铅笔）分开用：那一颗是「编辑这一条命令」，
+     *  这一行只改**名字**，压一行字更贴。
+     */
+    val MenuRename: ImageVector get() = TablerIcons.Outline.Edit
+
+    /**
+     * 按键菜单里「条件执行」那一行 —— `git-fork`（一个结点分成两岔）。
+     *
+     *  与 [CommandBranch]（`arrows-split`）分开用：那一颗是「这一支怎么走」的记号（条件页的空态、
+     *  规则里还没选条件时的兜底），这一颗只说「这里有分叉」；同一颗字在菜单行首与页面里各当一次
+     *  记号，读起来会混。
+     */
+    val MenuCondition: ImageVector get() = TablerIcons.Outline.GitFork
+
     /** 浮层菜单「打开默认界面」—— 窗口框，读作「另一个界面」。 */
     val MenuStock: ImageVector get() = TablerIcons.Outline.AppWindow
 
@@ -562,12 +587,62 @@ internal object PageIcons {
     val MenuExport: ImageVector get() = TablerIcons.Outline.Logs
 
     /**
-     * 首页「按键」卡里侧键那一行 —— `keyboard`（一块键盘）。
+     * 首页「按键」卡里侧键那一行 —— **手绘**：手机外框 + 左边凸出来的一颗侧键。
      *
-     *  与 [menuKeyNumber] 那几颗数字必须不同字形：清单里第一行是侧键、往下是收集来的键，
-     *  只靠行首这一颗分谁是谁。
+     *  与应用图标同一个 motif（那颗图标的字形就是「手机 + 凸起的侧键 + 面板」，见
+     *  `res/drawable/ic_module_foreground.xml`）；24 视口上只留最能读懂的两件：外框与那颗凸起，
+     *  面板与箭头在这种尺寸下会糊成一团。
+     *
+     *  笔画按 Tabler 那一档（1.9 圆头）落在 24 视口上，与相邻的 [menuKeyNumber] 那几颗数字
+     *  同一支笔；与它们必须不同字形：清单里第一行是侧键、往下是收集来的键，只靠行首这一颗分谁是谁。
      */
-    val MenuKeys: ImageVector get() = TablerIcons.Outline.Keyboard
+    val MenuSideKey: ImageVector by lazy {
+        //  构图：手机偏右（8.4～18.4），侧键在左边（x=5.6）与它并排 —— 整个字形左右居中在 24 格里
+        ImageVector
+            .Builder(
+                name = "MenuSideKey",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f,
+            ).apply {
+                addPath(
+                    pathData =
+                        PathData {
+                            val left = 8.4f
+                            val top = 3f
+                            val right = left + 10f
+                            val bottom = 21f
+                            val corner = 2.6f
+                            moveTo(left + corner, top)
+                            lineTo(right - corner, top)
+                            quadTo(right, top, right, top + corner)
+                            lineTo(right, bottom - corner)
+                            quadTo(right, bottom, right - corner, bottom)
+                            lineTo(left + corner, bottom)
+                            quadTo(left, bottom, left, bottom - corner)
+                            lineTo(left, top + corner)
+                            quadTo(left, top, left + corner, top)
+                            close()
+                        },
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = SIDE_KEY_STROKE,
+                    strokeLineCap = StrokeCap.Round,
+                    strokeLineJoin = StrokeJoin.Round,
+                )
+                addPath(
+                    // 一条圆头短线：圆帽就是这颗键的两端
+                    pathData =
+                        PathData {
+                            moveTo(5.6f, 8.4f)
+                            lineTo(5.6f, 12.4f)
+                        },
+                    stroke = SolidColor(Color.Black),
+                    strokeLineWidth = SIDE_KEY_STROKE,
+                    strokeLineCap = StrokeCap.Round,
+                )
+            }.build()
+    }
 
     /**
      * 首页「按键」卡里**收集到的键** —— 按它在清单里的位置取数字：`number-1` / `-2` / `-3`
@@ -940,3 +1015,9 @@ internal object PageIcons {
     /** 「运行状态」里**不正常**的那一段 —— `home-cancel`（房子 + 叉）。 */
     val LinkBroken: ImageVector get() = TablerIcons.Outline.HomeCancel
 }
+
+/**
+ * 手绘字形（[PageIcons.MenuSideKey]）的笔画宽度 —— 与 Tabler 那一档（2dp）对齐，
+ * 收 0.1 是为了让圆头笔画的两端不顶到 24 格的边界。
+ */
+private const val SIDE_KEY_STROKE = 1.9f

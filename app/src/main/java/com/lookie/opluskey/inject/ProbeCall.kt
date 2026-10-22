@@ -528,11 +528,12 @@ internal fun ProbeChannel.serviceOf(loader: ClassLoader): Any? =
 
 /** 候选名逐个试 —— 不同 ColorOS 版本这里的方法名不一样。 */
 internal fun ProbeChannel.surfaceControlOf(task: Any): android.view.SurfaceControl? {
+    //  `methodByNameAndArity` 只看「名字 + 参数个数」，所以同一名字同 arity 的候选只有第一条
+    //  走得到；`arrayOf(true)` 那一档原先排在 `arrayOf(false)` 后面，永远轮不到。
     val candidates =
         listOf<Pair<String, Array<Any?>>>(
             "getSurfaceControl" to arrayOf(),
             "getSurfaceControl" to arrayOf(false),
-            "getSurfaceControl" to arrayOf(true),
         )
     for ((name, args) in candidates) {
         val v =

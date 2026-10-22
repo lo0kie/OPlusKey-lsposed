@@ -51,8 +51,11 @@ internal class ShortcutThenMinimize(
         userId: Int,
         round: Int,
     ) {
+        //  分身：先记下「发之前表里已有哪几份任务」，之后只认新出现的那一份 ——
+        //  表里没有 userId，按包名收会把主用户那份收成小窗（同包名）。
+        val before = if (userId != 0) mini.tasksOfPackage(pkg) else emptySet()
         if (round == 0 && !launch(ctx, pkg, shortcutId, userId)) return
-        await(pkg, shortcutId, userId, round)
+        await(pkg, shortcutId, userId, round, before)
     }
 
     /**
@@ -89,9 +92,10 @@ internal class ShortcutThenMinimize(
         shortcutId: String,
         userId: Int,
         round: Int,
+        before: Set<Int>,
     ) {
         mini.postDelayedGuarded("appshortcut:$pkg/$shortcutId 的先起后收（第 ${round + 1} 次）", MINI_VERIFY_MS) {
-            val taskId = mini.taskOfPackage(pkg)
+            val taskId = mini.taskOfPackage(pkg, exclude = before)
             when {
                 taskId > 0 -> {
                     XLog.w("先起后收：$pkg 的任务 #$taskId 已进表，收它")
@@ -100,7 +104,7 @@ internal class ShortcutThenMinimize(
 
                 round < SHORTCUT_VERIFY_RETRIES -> {
                     XLog.w("先起后收：$pkg 还没有任务，再等一轮（不再重发）")
-                    await(pkg, shortcutId, userId, round + 1)
+                    await(pkg, shortcutId, userId, round + 1, before)
                 }
 
                 else -> {

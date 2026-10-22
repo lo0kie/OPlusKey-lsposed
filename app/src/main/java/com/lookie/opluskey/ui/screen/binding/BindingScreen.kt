@@ -41,9 +41,6 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollHorizontal
 import kotlinx.coroutines.launch
 
-/** 双击档「按键设置」那张卡的行数 —— 只有「忽视无操作双击手势」一行。 */
-internal const val DOUBLE_SETTING_ROWS = 1
-
 /**
  * 「按键绑定」页那条**分段控件带**（三个手势 tab）—— 挂在**顶栏的 `bottomContent`** 里
  *（见 [PageHeader] 的 `bottomContent` 与 [SettingsPage] 的 `Page()` 里那处分派）。
@@ -166,7 +163,7 @@ internal fun SettingsPage.BindingScreen(
      * 里面的话每翻一页都会重放一次进/出场，看着像闪。
      */
     val navigateToCommands: () -> Unit = nav@{
-        // 通用通道（判据只有系统状态，见 [hapticsAllowed]），与分段控件点击同一条规矩。
+        // 通用通道（判据只有系统状态，见 `PageHaptics.allowed`），与分段控件点击同一条规矩。
         tick()
         //  注意：这是**「新增」的唯一入口**，必须先把草稿清干净：
         //  这里必须 reset —— `goBack` 只在草稿 `dirty` 时才 reset —— 「点开一条已保存的命令

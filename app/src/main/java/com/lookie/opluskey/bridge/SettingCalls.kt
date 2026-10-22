@@ -158,10 +158,12 @@ internal object SettingCalls {
         val s = ServiceCalls.service(loader, "bluetooth_manager", "android.bluetooth.IBluetoothManager") ?: return false
         val target = on ?: return false
         val source = ServiceCalls.attributionSource(loader) ?: return false
+        //  `?.value == true` 而不是 `!= null`：这两个方法返回 boolean，**被系统拒绝时返回的是
+        //  false** 而不是 null —— 只判 null 会把「拒了」报成「切了」，界面状态与实际相反。
         return if (target) {
-            ServiceCalls.call(s, "enable", listOf(source)) != null
+            ServiceCalls.call(s, "enable", listOf(source))?.value == true
         } else {
-            ServiceCalls.call(s, "disable", listOf(source, true)) != null
+            ServiceCalls.call(s, "disable", listOf(source, true))?.value == true
         }
     }
 
@@ -219,10 +221,11 @@ internal object SettingCalls {
                 !(state == NFC_STATE_ON || state == NFC_STATE_TURNING_ON)
             }
         XLog.w("nfc：目标=${if (on) "开" else "关"}")
+        //  同蓝牙那一支：返回 boolean，false = 被拒，不能按「非 null 就是成功」判。
         return if (on) {
-            ServiceCalls.call(s, "enable", listOf(PKG)) != null
+            ServiceCalls.call(s, "enable", listOf(PKG))?.value == true
         } else {
-            ServiceCalls.call(s, "disable", listOf(false, PKG)) != null
+            ServiceCalls.call(s, "disable", listOf(false, PKG))?.value == true
         }
     }
 

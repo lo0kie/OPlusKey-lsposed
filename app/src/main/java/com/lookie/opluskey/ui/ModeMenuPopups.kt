@@ -99,9 +99,16 @@ internal fun SettingsPage.ModeMenuPopups(
     // —— 系统开关的「后续写法」——
     //  单档的开关（手电筒 / 免打扰，执行只有「切换」一种语义）走不到这里：`stateMenu` 在
     //  只有一条时返回 `null`，它们在上一层点一下就是结论。
-    val states = stateEntry?.let { entry -> ActionCatalog.switchStates(entry.token) }.orEmpty()
-    //  开关名（「免打扰」）：行文案要把它带进去。
-    val switchName = stateEntry?.label.orEmpty()
+    //
+    //  标题与那几行都照 [shown] 画，**不是照 `stateEntry`**：关窗是「先清数据、再播退场」，
+    //  `stateEntry = null` 当帧 `states` 就空了、标题也空，而库的退场还要走两百毫秒 ——
+    //  那一截里面板会塌成一条（真机反馈「选中器关闭时高度塌陷」）。所以退场期间照最后画过的
+    //  那一份画，与 `DonateDialog` 的 `Last` 同一个理由。
+    val lastPick = remember { LastPick() }
+    stateEntry?.let { lastPick.entry = it }
+    val shown = stateEntry ?: lastPick.entry
+    val states = shown?.let { entry -> ActionCatalog.switchStates(entry.token) }.orEmpty()
+    val switchName = shown?.label.orEmpty()
     FrostedDialog(
         show = stateEntry != null,
         title = switchName,
@@ -127,6 +134,15 @@ internal fun SettingsPage.ModeMenuPopups(
             }
         }
     }
+}
+
+/**
+ * 退场期间要画的那一份（见 [ModeMenuPopups] 里那段说明）。
+ *
+ *  只留一个格子就够：标题与那几行都由 `entry` 现算，留着它等于留住了整块面板。
+ */
+private class LastPick {
+    var entry: ActionCatalog.Spec? = null
 }
 
 /**

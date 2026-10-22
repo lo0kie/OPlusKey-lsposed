@@ -64,7 +64,14 @@ internal fun SettingsPage.writeToken(
         // 写的是**进这一页时那个手势**（见 picker.gesture），不是 pager 的当前页
         // —— 这一页不属于 pager。
         null -> {
-            val g = picker.gesture ?: return false
+            val g =
+                picker.gesture ?: run {
+                    //  **别静默返回**：正常路径由 [openAppPickerForGesture] 先记下手势，但经
+                    //  调试通道直接 `navTo(APP_PICKER)` 时没有那一步 —— 那时这一页的确认会
+                    //  一声不响地什么都不做（用户看到的就是「FAB 点了没反应」）。
+                    XLog.w("选择应用：这一趟没有目标手势（gesture=null），确认无效 —— 请从「按键绑定」页那一格进来")
+                    return false
+                }
             pick(
                 // 只为把取值交给 `pick`（它读的是 token），name 这一位在这条路上不参与显示。
                 ActionCatalog.Spec(name = token, token = token),

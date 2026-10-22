@@ -1,4 +1,4 @@
-"""两档 APK 的区分度检查：每个判别项都必须只在它该出现的档里出现。"""
+"""三档 APK 的区分度检查：每个判别项都必须只在它该出现的档里出现。"""
 
 import os
 import re
@@ -6,14 +6,16 @@ import subprocess
 import sys
 
 OUT = 'app/build/outputs/apk'
-VARIANTS = ['debug', 'release']
+# 三档都要查：`releaseLog` 与 release 同签名、同封存，只把 VERBOSE_LOG 打开 ——
+#   漏掉它，那两档之间配反了（比如 releaseLog 里带上 DEBUG_PROBE）没人拦。
+VARIANTS = ['debug', 'releaseLog', 'release']
 
 # (说明, 只该在这些档里出现)
 PROBES = [
-    ('详细日志 VERBOSE_LOG', '侧键手势已补发', {'debug'}),
+    ('详细日志 VERBOSE_LOG', '侧键手势已补发', {'debug', 'releaseLog'}),
     ('调试通道 DEBUG_PROBE', 'probe/state：拿不到任务', {'debug'}),
     ('明文资产（未封存）', 'assets/donate/alipay.webp', {'debug'}),
-    ('封存资产 sealed.bin', 'assets/sealed.bin', {'release'}),
+    ('封存资产 sealed.bin', 'assets/sealed.bin', {'release', 'releaseLog'}),
 ]
 
 

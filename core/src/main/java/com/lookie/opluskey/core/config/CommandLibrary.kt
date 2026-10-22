@@ -234,7 +234,11 @@ object CommandLibrary {
         val length = f.length()
         val inode = inodeOf(f)
         cache?.let {
-            if (it.modified == modified && it.length == length && it.inode == inode) return it.commands
+            //  `inode != 0` 是必要条件，与 [ConfigStore.load] 同一口径：inode 取不到时三个值
+            //  一起是 0，而「只剩 `.bak` 被还原」那条路存下来的条目也正好全 0 —— 只比三个数的话，
+            //  之后文件被删掉会命中那条，把已经不存在的内容当成本次结果。
+            val sameFile = it.modified == modified && it.length == length && it.inode == inode
+            if (inode != 0L && sameFile) return it.commands
         }
         //  **只缓存 Load.Ok**：读不懂（半截文件 / IO 抖动）塌成的空表一旦按指纹记下来，
         //  指纹不变就一直命中 —— 一次抖动被记成「命令库为空」，要等到下次写盘才恢复。

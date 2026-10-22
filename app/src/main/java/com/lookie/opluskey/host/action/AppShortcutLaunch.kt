@@ -102,6 +102,15 @@ internal class AppShortcutLaunch(
         shortcutId: String,
         userId: Int,
     ) {
+        //  分身**不复用已有任务**：`taskOfPackage` / `foregroundTaskFor` 只按包名比，而主用户与
+        //  分身同包名 —— 主用户那份在前台时，这一下收走的是**主应用**（真机反馈：
+        //  「在主应用上绑分身小窗，主应用变成了小窗」）。直接起一次，由 `thenMinimize` 按
+        //  「发之前 / 发之后」的差集认领新任务。
+        if (userId != 0) {
+            XLog.w("快捷方式 w：$pkg 是分身（user=$userId）⇒ 跳过「复用已有任务」，直接起")
+            thenMinimize.start(ctx, pkg, shortcutId, userId, round = 0)
+            return
+        }
         val existing = mini.taskOfPackage(pkg)
         // 判据级：这一行是「这次为什么没走成小窗」的第一个分叉，没有它只能靠猜。
         XLog.w("快捷方式 w：$pkg 现有任务 #$existing（小窗=${existing > 0 && mini.zoomStateOf(existing) == true}）")
