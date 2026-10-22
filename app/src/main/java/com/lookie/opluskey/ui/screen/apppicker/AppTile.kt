@@ -4,15 +4,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,12 +20,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.AnimatedFade
 import com.lookie.opluskey.ui.DrawablePainter
+import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.APP_KIND_MODULE_DARK
 import com.lookie.opluskey.ui.model.APP_KIND_MODULE_LIGHT
@@ -36,12 +32,9 @@ import com.lookie.opluskey.ui.model.APP_KIND_TAG_BG_ALPHA
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_INSIDE
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_RADIUS
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_SINK
-import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
-import com.lookie.opluskey.ui.model.APP_STATE_TEXT_GAP
 import com.lookie.opluskey.ui.model.CLONE_TAG_DARK
 import com.lookie.opluskey.ui.model.CLONE_TAG_LIGHT
 import com.lookie.opluskey.ui.model.LaunchableApp
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.isDarkScheme
 import com.lookie.opluskey.ui.model.opticalCenter
@@ -172,21 +165,9 @@ internal fun BoxScope.PageStatePlaceholder(
         contentAlignment = Alignment.Center,
     ) {
         AnimatedFade(visible = visible) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // 字形占一个定死的方框：三种形态互相切换时，下面那行字不会跟着上下跳。
-                Box(
-                    modifier = Modifier.size(APP_STATE_ICON_SIZE),
-                    contentAlignment = Alignment.Center,
-                ) { glyph(COUITheme.colorScheme.onSurfaceVariantSummary) }
-                Spacer(Modifier.height(APP_STATE_TEXT_GAP))
-                Text(
-                    text = text,
-                    modifier = Modifier.padding(horizontal = PAGE_MARGIN + 16.dp),
-                    style = COUITheme.textStyles.footnote1,
-                    color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                    textAlign = TextAlign.Center,
-                )
-            }
+            //  排版（字形 32dp 定框 + 说明 + 居中）全在 [Feedback] 里 —— 与「条件执行」「已保存的
+            //  命令」那两处空态同一份。这一层只负责「浮在列表上、让出顶栏、显隐淡入淡出」。
+            Feedback(glyph = glyph, text = text)
         }
     }
 }

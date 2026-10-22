@@ -13,14 +13,14 @@ object ActionCatalog {
      *  加一档动作时：**要新字形才动那张映射表**，复用已有字形的条目一个字都不用改。
      */
     enum class Glyph {
-        /** 「响铃状态」那一格（叶子图标）。 */
-        Bell,
+        /** 「响铃状态」那一格。名字说的是**槽位**而不是字形 —— 字形会换（现在是 `bell-cog`）。 */
+        RingerTile,
 
         /** 响铃菜单首行「循环」（与上面共用一个 token，字形不同 ⇒ 只能按 glyph 分）。 */
         Repeat,
 
-        /** 「媒体控制」那一格（与它菜单首行共用一个 token，同理）。 */
-        Music,
+        /** 「媒体控制」那一格（与它菜单首行共用一个 token，同理；现在是 `photo-video`）。 */
+        MediaTile,
 
         /** 「系统导航」标记格。 */
         NavigationCog,
@@ -152,7 +152,7 @@ object ActionCatalog {
      * companion、那里的 `STEP_GROUPS` 又要回头读还没初始化完的 `GROUPS`。
      */
     val MEDIA_TILE_SPEC: Spec =
-        Spec(name = Strings.CATEGORY_MEDIA, token = MEDIA_TILE, glyph = Glyph.Music)
+        Spec(name = Strings.CATEGORY_MEDIA, token = MEDIA_TILE, glyph = Glyph.MediaTile)
 
     /**
      * 「系统开关」那一格 —— 与 [MEDIA_TILE_SPEC] 同类：**入口格**，点它弹 [SWITCH_MODES]。
@@ -188,7 +188,7 @@ object ActionCatalog {
                     // 与「打开应用」一起归 [isEntryTile]；但它俩是真取值，能作为多条命令的一步。
                     // 「播放 / 暂停」收进这里 —— 同一个取值不给两个入口。
                     MEDIA_TILE_SPEC,
-                    Spec(name = Strings.CATEGORY_RINGER, token = RINGER_TILE, glyph = Glyph.Bell),
+                    Spec(name = Strings.CATEGORY_RINGER, token = RINGER_TILE, glyph = Glyph.RingerTile),
                     // 「音量 + / 音量 − / 电源键」三档收进这一格（点它弹 [KEY_MODES] 菜单），同样是标记。
                     Spec(name = Strings.CATALOG_SYSTEM_KEYS, token = KEY_TILE, glyph = Glyph.Click),
                     // 系统开关入口：点它弹 [SWITCH_MODES] 菜单（WLAN / 蓝牙 / 手电筒 …），

@@ -35,8 +35,8 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *
  *  1. 「条件执行」—— 进那一页（`Screen.BRANCHES`）。它不是对这颗键的操作，所以压在上面、
  *     并用一条**加深分隔**（下面第一行的 `dividerBefore`）与那三行分开；
- *  2. 「重命名」「停用 / 启用这颗键」「删除按键」—— 都是对**当前选中的那一颗**动手，
- *     顺序按**破坏性**从小到大（改名不动数据 → 停用只是不接管 → 删除最狠，压在最下面）。
+ *  2. 「停用 / 启用这颗键」「重命名」「删除按键」—— 都是对**当前选中的那一颗**动手，
+ *     删除最狠、压在最下面（越靠下越不容易误点），停用与改名在它上面。
  *
  * ## 按键清单**不在这里**
  *
@@ -180,13 +180,13 @@ private fun keyMenuEntries(
     }
 
 /**
- * 菜单下半那**三行动作** —— 重命名 / 停用启用 / 删除，全部作用于*当前选中的那一颗*。
+ * 菜单下半那**三行动作** —— 停用启用 / 重命名 / 删除，全部作用于*当前选中的那一颗*。
  *
  *  单独一支同样是为了让 [keyMenuEntries] 留在 `LongMethod` 之内；行之间一律**细线**，
  *  与上面那条加深带（进页 vs 操作）是两回事。
  *
- *  顺序按**破坏性**从小到大排（用户口径）：改名字不动任何数据；停用只是不接管
- *  （菜单里一字之差就能改回来）；删除最狠，压在最下面 —— 越靠下越不容易误点。
+ *  顺序（用户口径）：停用 / 启用在前、重命名其次、删除压最下面 —— 删除最狠，
+ *  越靠下越不容易误点。
  *
  *  「停用 / 启用」**每颗键都有**（用户口径：「快捷键也允许被禁用」）。它写的是**这一颗键**的
  *  `KeyConfig.enabled` —— 与首页那个模块总闸（`GlobalConfig.enabled`）是两层，别混：
@@ -201,26 +201,27 @@ private fun keyActionEntries(
     return buildList {
         add(
             MenuEntry.Row(
-                title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
-                icon = PageIcons.MenuRename,
-                // 侧键的名字不归用户改
-                enabled = selected.isCustom,
-                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_RENAME, "侧键不能改名"),
-                // 上面那一行是「进下一页」，这三行是「对这颗键动手」—— 一条加深带分开
-                dividerBefore = true,
-                onPick = actions.onRename,
-            ),
-        )
-        add(
-            MenuEntry.Row(
                 title =
                     if (enabled) {
                         I18n.get(Strings.BINDING_DISABLE_KEY, "停用按键")
                     } else {
                         I18n.get(Strings.BINDING_ENABLE_KEY, "启用按键")
                     },
-                icon = PageIcons.Power,
+                //  停用 / 启用各一颗（锁 / 开锁）：这一行本来就是随状态换文案的，图标跟着换才一致
+                icon = if (enabled) PageIcons.KeyLocked else PageIcons.KeyUnlocked,
+                // 上面那一行是「进下一页」，这三行是「对这颗键动手」—— 一条加深带分开
+                dividerBefore = true,
                 onPick = { actions.onSetEnabled(!enabled) },
+            ),
+        )
+        add(
+            MenuEntry.Row(
+                title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
+                icon = PageIcons.MenuRename,
+                // 侧键的名字不归用户改
+                enabled = selected.isCustom,
+                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_RENAME, "侧键不能改名"),
+                onPick = actions.onRename,
             ),
         )
         add(

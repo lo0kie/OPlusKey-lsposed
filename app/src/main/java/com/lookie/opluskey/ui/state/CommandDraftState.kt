@@ -43,6 +43,26 @@ internal class CommandDraftState {
     var resetBaseline: String = ""
 
     /**
+     * 「步骤排序」编辑态 —— 由「命令列表」卡右下角那颗 FAB 开关。
+     *
+     *  开着的这段时间里：步骤行行尾换成上移 / 下移 / 删除三颗行内按钮，行的轻点不再换命令，
+     *  页面其余控件一律禁用、底部工具条滑出隐藏。它是**整页**的态（表单与列表都要读），
+     *  所以住在这一域、而不是某个 composable 的 `remember` 里。
+     *
+     *  换 tab 时由 `CommandTabSync` 摘掉：另一页没有步骤可排，带着它过去只会让那一页莫名其妙地全灰。
+     */
+    var stepEditing by mutableStateOf(false)
+
+    /**
+     * 步骤行的**展示层**（动画用）—— 住在这一域，不住 `SerialSteps()` 里。
+     *
+     *  切 tab 时那一页的组合会被注销，`remember` 的展示层跟着没了，切回来整张表重播进场动画。
+     *  放到页面级之后，切回来时行还是原来那些，`AnimatedVisibility` 的 currentState 仍是 true，
+     *  不会再播一次（见 [StepRowDisplay] 的类注释）。
+     */
+    val stepRows = StepRowDisplay()
+
+    /**
      * 页面**离开栈**：草稿与 tab 镜像一起归位。
      *
      *  与 [CommandDraft.reset] 的差别只有一处：这里连 `kind` 也清回单条。平时 `kind` 由分页器
@@ -52,5 +72,7 @@ internal class CommandDraftState {
     fun discard() {
         draft.reset()
         draft.kind = CommandKind.SINGLE
+        stepEditing = false
+        stepRows.clear()
     }
 }

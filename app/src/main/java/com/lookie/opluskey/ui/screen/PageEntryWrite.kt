@@ -121,6 +121,11 @@ internal fun SettingsPage.onAppPicked(
         XLog.w("选择应用：${picked.target} 没写进绑定，留在本页（不 goBack）")
         return
     }
+    //  **写成了就不再恢复抽屉**：抽屉那边记着「挑完回来把抽屉支起来」，那是**还没选完**时的账。
+    //  这一笔已经落盘（抽屉里现在是「选中即确认」），回去再把抽屉弹出来等于让人对着同一条命令
+    //  再选一遍（用户口径「从应用组件确认后返回，抽屉会显示出来」）。
+    //  没写成 / 中途退出时不清 —— 那时抽屉还是用户没走完的那一步，回去要原样支起来。
+    picker.cancelResume()
     if (forStep || forBranch) return
     picker.clearTarget()
     goBack()

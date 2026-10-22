@@ -156,6 +156,9 @@
   "command.test_button": "测试命令",
   "command.step_select_title": "从内置命令与自定义命令里选择",
   "command.step_replace_title": "选择命令",
+  "command.step_sort": "调整步骤顺序",
+  "command.step_sort_done": "完成",
+  "command.step_sorting_locked": "排序中，先点右下角完成",
   "command.format_required": "开头要写 shell: / cmd: 这类前缀",
   "command.format_shell": "shell:<命令>",
   "command.format_shell_desc": "执行 shell 命令",
@@ -422,12 +425,14 @@
   "command.branch_else": "其他情况",
   "command.branch_any": "未选择",
   "command.branch_item": "条件 %d",
-  "command.branch_no_command": "未选择",
+  "command.branch_no_command": "未选择命令",
   "command.branch_need": "还没添加条件",
   "command.branch_need_command": "每条条件都要选一个动作",
   "command.branch_default": "以上都不成立时，执行按键绑定里的命令",
   "command.branch_need_condition": "还有条件没选完",
   "command.branch_duplicate": "这个条件已经加过了",
   "command.branch_duplicate_app": "这个应用已经加过了",
-  "command.branch_empty": "执行按键绑定里的 %s"
+  "command.branch_empty": "将执行按键绑定里的 %s",
+  "command.branch_empty_title": "还没有添加条件",
+  "command.branch_pick_condition": "未选择条件"
 }

@@ -22,6 +22,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -30,6 +31,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import io.github.suqi8.coui.kmp.anim.SinOutEasing
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -140,6 +142,8 @@ internal fun SettingsPage.IconInputView(
      *  不挪的话光标停在**开头**（原因见 [moveCaretToEnd]），接着打字就插到最前面去。
      */
     caretToEndOnFirstFocus: Boolean = false,
+    /** 这一栏能不能输入 —— `false` 时不吃焦点、不进键盘（排序态下整页禁用）。 */
+    enabled: Boolean = true,
 ) {
     val isError = errorMessage.isNotEmpty()
     // 淡出期间要**留着最后那条非空消息**，否则红字先消失、再走淡出（库同此做法）
@@ -151,7 +155,9 @@ internal fun SettingsPage.IconInputView(
     // 这一栏此刻有没有焦点 —— 「失焦就抢回来」那条守卫要用（见 [ImeGuard]）
     var focused by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier) {
+    // 禁用时整栏压暗（库的 `enabled = false` 只把字与图标换成灰档，观感上仍像「可以点」）——
+    //  与「按键绑定」那条分段控件、排序态下的命令卡同一档 [DISABLED_ALPHA]。
+    Column(modifier = modifier.alpha(if (enabled) 1f else DISABLED_ALPHA)) {
         InputField(
             query = value,
             // **长度上限在这一层兜**（不靠各调用点自己截）：超出的部分直接吃掉，
@@ -162,6 +168,7 @@ internal fun SettingsPage.IconInputView(
             // 展开态那套是「点搜索框撑开一页结果」用的，这里不展开
             expanded = false,
             onExpandedChange = { },
+            enabled = enabled,
             modifier =
                 Modifier
                     .fillMaxWidth()

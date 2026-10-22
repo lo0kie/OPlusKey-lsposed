@@ -14,6 +14,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.FAB_SCROLL_DIRECTION_THRESHOLD
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
@@ -23,6 +24,17 @@ import io.github.suqi8.coui.kmp.basic.FloatingActionButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 右下角那颗 FAB 那一族：按钮本体、页面角落定位、按滚动方向显隐。
+
+/**
+ * 内容底部留白 —— 比别页多一档，专门给右下角那颗 FAB 让位。
+ *
+ *  它距底边 [PAGE_BOTTOM_PADDING] × 2（就是 [PageCornerFab] 给的那个位置），按钮身高 56dp
+ *  （库里 `FloatingActionButton` 的默认档），再加一档 8dp 的间隙 ——
+ *  三者加起来才是「滚到最底下时最后一行停在它上面」的那个留白。
+ *
+ *  两处用：条件执行页那颗「确定」、自定义命令页那颗「排序」。
+ */
+internal val FAB_BOTTOM_CLEARANCE = PAGE_BOTTOM_PADDING * 2 + 56.dp + 8.dp
 
 /**
  * 页面右下角那颗 FAB 的**本体** —— 形状 / 底色 / 阴影收在这里，[PageCornerFab] 的两个调用点共用

@@ -207,10 +207,10 @@ internal fun SettingsPage.AppPickerScreen(
             // 这一页唯一的写入入口。**点行不写**（点行只是进下一级去挑界面；给「条件执行」
             // 挑的那一趟是「选中」），所以「就绑这个应用、不挑界面」这条路只能走它。
             //
-            // 显隐只看「清单到手了没有」：它**常驻**，不像以前那样跟着选中项忽隐忽现
-            // （选中刚被重置、或挑完界面退回来时闪一下，看着像按钮坏了）。手上还没有选中时
-            // 按它只给一句提示（见 `AppConfirmFab`）。
-            PageCornerFab(visible = ui.loaded != null) {
+            // 显隐跟**选中项**走（用户口径「有选中才显示，编辑 / 新增都一样」）：没有选中时
+            // 它没有可确认的东西，摆在那儿只会让人按一下、再读一句「先从列表里选一个应用」。
+            // 滑入滑出交给 [PageCornerFab] 自己那套 `AnimatedVisibility`。
+            PageCornerFab(visible = ui.loaded != null && ui.pending != null) {
                 AppConfirmFab(ui, onPick)
             }
 
@@ -237,12 +237,7 @@ private fun SettingsPage.AppPickerPlaceholders(
 ) {
     Box(Modifier.fillMaxSize()) {
         val topInset = currentHeaderHeight(scrollBehavior) + searchBandDp
-        PickListEmptyState(
-            visible = (ui.loaded != null || ui.failed) && ui.shown.isEmpty(),
-            topInset = topInset,
-            appsEmpty = ui.apps.isEmpty(),
-            text = emptyHint(ui),
-        )
+        //  空态不在这里 —— 它铺在**列表里**（见 `AppPickerList`），这样拖动时它跟着一起弹。
         PickListLoadingState(
             visible = ui.loaded == null && !ui.failed,
             topInset = topInset,

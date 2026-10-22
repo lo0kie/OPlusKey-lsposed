@@ -1,6 +1,6 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,23 +12,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.ConfirmDialog
+import com.lookie.opluskey.ui.FAB_BOTTOM_CLEARANCE
+import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.rememberFabVisibleOnScroll
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.editingKeyName
@@ -37,7 +34,6 @@ import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
@@ -75,21 +71,20 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
     //  所以「重新进页」仍然会走到下面按配置重灌这一支。
     LaunchedEffect(owner) {
         if (branchDraft.draft.owner == owner) return@LaunchedEffect
-        val key = branchKeyNow()
-        val gesture = branchGestureNow()
-        val source =
-            configState.config.value
-                .key(key)
-                .rules
-                .filter { it.gesture == gesture }
-        XLog.w("条件执行：载入 ${key.label} - ${gesture.label} 的 ${source.size} 条")
-        branchDraft.draft.load(owner, source)
+        reloadBranchDraft()
     }
 
-    // 那颗「确定」跟着滚动方向藏 / 露 —— 与「按键绑定」页那颗同一判据，不另写一套。
+    // 那颗「添加」跟着滚动方向藏 / 露 —— 与「按键绑定」页那颗同一判据，不另写一套。
     val fabVisible = rememberFabVisibleOnScroll(scrollState)
 
-    Box(Modifier.fillMaxSize()) {
+    //  量一次视口高度：空态要**在可见区里居中**，而它在滚动容器里拿不到「一屏多高」——
+    //  滚动容器的子项拿到的是无限高度约束，`fillMaxHeight()` 在那儿没有意义。
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        //  减掉滚动内容底部那档留白（`FAB_BOTTOM_CLEARANCE`）：不减的话空态那块比可见区高出一截，
+        //  居中的位置会偏下、还多出一段能拖的空白。
+        val emptyHeight =
+            (maxHeight - currentHeaderHeight(scrollBehavior) - FAB_BOTTOM_CLEARANCE)
+                .coerceAtLeast(0.dp)
         Column(
             Modifier
                 .fillMaxSize()
@@ -113,10 +108,10 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
             // 正文直接从顶栏下面开始，没有「条件执行」小标题：
             //  顶栏尾随小标题已经写着「侧键-单击」说明在哪一档，正文再写一遍页名是重复的；
             //  空态/表格本来就是这一页唯一的正文，直接顶到顶栏下面反而更像一页表。
-            BranchCards(tick)
+            BranchCards(tick, emptyHeight)
         }
         // 位置与进出场走「按键绑定」页那颗同一份（[PageCornerFab]），不在这里另算一遍
-        PageCornerFab(visible = fabVisible) { BranchConfirmFab() }
+        PageCornerFab(visible = fabVisible) { BranchAddFab() }
     }
     // 改了还没保存就按返回时，`goBack` 会先置这一位 —— 这个窗必须挂上，否则返回被拦住却**没有窗**
     //  命令页那边是 `CommandDialogs` 一起挂的，这一页只挂这一个。
@@ -124,37 +119,85 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
 }
 
 /**
- * 右下角那颗「确定」—— 这一页**唯一的落盘点**。
+ * 右下角那颗「添加」—— 这一页**唯一的加法入口**（原来那颗「添加条件」按钮已经撤掉）。
  *
- *  页内的改动（加一条 / 换条件 / 换动作 / 上移下移删除）全是在改草稿：配置一个字节都不动，
- *  退出时草稿作废。按这一颗才把这一档的整张表写回去。
- *
- *  半成品不许落盘（见 [branchRulesBlockedReason]）：空条件 / 空动作的行写下去就是一条永不成立的
- *  规则。灰着又拦点击比直接放着更难解释，所以按钮常驻、按下去就地给一句原因。
- *
- *  写成了才退页：写盘失败时留在原地，否则用户以为存好了、其实一个字节都没写。
+ *  它加的是**一条空规则**（条件和动作都空着），落在表尾并播自己的进场；表尾那条还空着时
+ *  不往下加，就地给一句原因（见 [addBranchRule]）。
  */
 @Composable
-private fun SettingsPage.BranchConfirmFab() {
+private fun SettingsPage.BranchAddFab() {
     val tick = rememberTick()
     PageFabButton(
         onClick = {
             tick()
-            val blocked = branchRulesBlockedReason()
-            if (blocked != null) {
-                hint(blocked)
-                return@PageFabButton
-            }
-            if (saveBranchRules()) goBack()
+            addBranchRule(branchDraft.draft.rules, tick) { branchDraft.draft.freshId = it }
         },
     ) {
         Icon(
-            PageIcons.Confirm,
-            contentDescription = I18n.get(Strings.COMMON_CONFIRM, "确定"),
+            PageIcons.StepAdd,
+            contentDescription = I18n.get(Strings.COMMAND_BRANCH_ADD, "添加条件"),
             // 库只给容器色、不给字形色
             tint = COUITheme.colorScheme.onPrimary,
         )
     }
+}
+
+/**
+ * 「条件执行」页底部那条浮动工具条 —— 这一页**唯一的落盘点**（原来是右下角那颗「确定」）。
+ *
+ *  页内的改动（加一条 / 换条件 / 换动作 / 上移下移删除）全是在改草稿：配置一个字节都不动。
+ *  按这颗「确定」才把这一档的整张表写回去，写成了才退页（写盘失败留在原地，否则用户以为
+ *  存好了、其实一个字节都没写）。
+ *
+ *  半成品不许落盘（见 [branchRulesBlockedReason]）：空条件 / 空动作的行写下去就是一条永不成立的
+ *  规则。按钮灰着、点一下由工具条自己说明是哪一档没齐（`SaveDisabledHint`）。
+ *
+ *  「重置」= 按配置重新载入这一档（丢掉草稿里的改动），所以没有改动时它是灰的。
+ */
+@Composable
+internal fun SettingsPage.BranchActions(modifier: Modifier = Modifier) {
+    val tick = rememberTick()
+    FloatingActions(
+        spec =
+            ToolbarSpec(
+                //  空态不摆工具条（没什么可存的）；但**草稿有改动时留着** —— 把最后一条删掉
+                //  等于「这一档恢复成无条件」，那一笔也得能存下去，藏了就永远存不了。
+                visible = branchDraft.draft.rules.isNotEmpty() || branchDraft.draft.dirty,
+                canReset = branchDraft.draft.dirty,
+                canSave = branchRulesBlockedReason() == null,
+                labels =
+                    ToolbarLabels(
+                        reset = I18n.get(Strings.COMMON_RESET, "重置"),
+                        save = I18n.get(Strings.COMMON_CONFIRM, "确定"),
+                        blocked = ::branchRulesBlockedReason,
+                    ),
+                actions =
+                    ToolbarActions(
+                        onReset = {
+                            tick()
+                            reloadBranchDraft()
+                        },
+                        onSave = {
+                            tick()
+                            if (saveBranchRules()) goBack()
+                        },
+                    ),
+            ),
+        modifier = modifier,
+    )
+}
+
+/** 按配置把这一档重新载入草稿（进页时与工具条的「重置」共用这一支）。 */
+private fun SettingsPage.reloadBranchDraft() {
+    val key = branchKeyNow()
+    val gesture = branchGestureNow()
+    val source =
+        configState.config.value
+            .key(key)
+            .rules
+            .filter { it.gesture == gesture }
+    XLog.w("条件执行：载入 ${key.label} - ${gesture.label} 的 ${source.size} 条")
+    branchDraft.draft.load(BranchDraft.ownerOf(key, gesture), source)
 }
 
 /**
@@ -224,61 +267,27 @@ internal fun SettingsPage.saveBranchRules(): Boolean {
 }
 
 /**
- * 「一条都还没有」那块空态 —— 与「自定义命令」页那块同一个样子（字形 + 一行字，不占卡片）。
+ * 「一条都还没有」那块空态 —— **在滚动内容里**，跟着内容一起拖、一起弹。
  *
  *  说的是**此刻什么都不配时会发生什么**：按键绑定里这一档原本绑的命令照常执行。表尾那句注脚
  *  讲的是同一件事，所以一条都没有时它不出现（见 `BranchCards`），这句话由空态来说。
+ *
+ *  它拿到的是 `emptyHeight`（可见区减顶栏、减底部留白）—— 那块高度由 `BranchCards` 给，
+ *  这样它在可见区里居中，而整块仍在滚动内容里（拖动时会跟着弹）。
  */
 @Composable
 internal fun SettingsPage.BranchEmptyHint() {
-    Column(
-        //  上下**不再对称**：上边那一档是它与顶栏 / 表格之间的呼吸，下边紧跟「添加条件」那颗按钮，
-        //  原来各 24dp 时字与按钮之间空出一大块、看着像两段不相干的东西（用户口径「文字和按钮
-        //  距离缩小」）。下边收到 [EMPTY_STATE_TO_BUTTON_GAP]，按钮仍在同一组里跟着居中。
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(top = EMPTY_STATE_PADDING, bottom = EMPTY_STATE_TO_BUTTON_GAP),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            PageIcons.CommandBranch,
-            contentDescription = null,
-            modifier = Modifier.size(ROW_ICON_SIZE),
-            tint = COUITheme.colorScheme.onSurfaceVariantSummary,
-        )
-        Spacer(Modifier.height(EMPTY_STATE_TEXT_GAP))
-        Text(
-            text = I18n.format(Strings.COMMAND_BRANCH_EMPTY, branchDefaultLabel()),
-            style = COUITheme.textStyles.footnote1,
-            color = COUITheme.colorScheme.onSurfaceVariantSummary,
-            textAlign = TextAlign.Center,
-        )
-    }
+    Feedback(
+        glyph = { tint ->
+            Icon(PageIcons.NoMatch, contentDescription = null, modifier = Modifier.fillMaxSize(), tint = tint)
+        },
+        //  上面一句说**状态**，下面一句说**现在会发生什么** —— 只有下面那句时，
+        //  用户得先读完整句才知道这块是空的。
+        title = I18n.get(Strings.COMMAND_BRANCH_EMPTY_TITLE, "还没有添加条件"),
+        text = I18n.format(Strings.COMMAND_BRANCH_EMPTY, branchDefaultLabel()),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
-
-/** 空态那块**上**边留白（与「已保存的命令」空态同一档）。 */
-private val EMPTY_STATE_PADDING = 24.dp
-
-/**
- * 空态那行字与「添加条件」按钮之间的距离 —— 就是空态的**下**边留白。
- *
- *  比 [EMPTY_STATE_PADDING] 小两档：那一档是「与别的东西分开」，这一档是「紧接着的那颗按钮」，
- *  ［添加条件］本来就属于这块空态（点了它就长出一张表），贴紧一点才读成一组。
- */
-private val EMPTY_STATE_TO_BUTTON_GAP = 8.dp
-
-/** 空态字形与那行字之间的距离。 */
-private val EMPTY_STATE_TEXT_GAP = 8.dp
-
-/**
- * 内容底部留白 —— 比别页多一档，专门给右下角那颗「确定」让位。
- *
- *  它距底边 [PAGE_BOTTOM_PADDING] × 2（与别页那颗 FAB 同一个位置，见 [PageCornerFab]），
- *  按钮身高 56dp（库里 `FloatingActionButton` 的默认档），再加一档 8dp 的间隙 ——
- *  三者加起来才是「滚到最底下时最后一行停在它上面」的那个留白。
- */
-private val FAB_BOTTOM_CLEARANCE = PAGE_BOTTOM_PADDING * 2 + 56.dp + 8.dp
 
 /**
  * 保存前还差什么（`null` = 可以存）。

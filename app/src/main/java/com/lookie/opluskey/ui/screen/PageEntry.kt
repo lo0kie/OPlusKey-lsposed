@@ -30,6 +30,7 @@ import com.lookie.opluskey.ui.screen.about.AboutScreen
 import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingScreen
+import com.lookie.opluskey.ui.screen.command.BranchActions
 import com.lookie.opluskey.ui.screen.command.BranchScreen
 import com.lookie.opluskey.ui.screen.command.CommandActions
 import com.lookie.opluskey.ui.screen.command.CommandScreen
@@ -117,13 +118,17 @@ internal fun SettingsPage.PageEntry(
             //
             // 只在这一页「能写命令」的那两页显示；整页 push / pop 转场时它跟着一起滑
             // （挂在页里，不是挂在页面之外）。
-            //  「条件执行」页**没有**这条工具条：那一页的落盘入口是右下角那颗「确定」（见
-            //  `BranchConfirmFab`），一边一个保存键只会让人猜哪个算数。
+            //  「条件执行」页也用它落盘（`BranchActions`）：那一页右下角那颗是**添加**，
+            //  保存交给这条工具条 —— 一页只留一个「加」、一个「存」，不必猜哪个算数。
             val toolbarModifier =
                 Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = COMMAND_TOOLBAR_BOTTOM)
-            if (s == Screen.COMMANDS) CommandActions(toolbarModifier)
+            when (s) {
+                Screen.COMMANDS -> CommandActions(toolbarModifier)
+                Screen.BRANCHES -> BranchActions(toolbarModifier)
+                else -> Unit
+            }
 
             // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
             // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。

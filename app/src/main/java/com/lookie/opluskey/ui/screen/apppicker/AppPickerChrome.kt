@@ -145,8 +145,9 @@ internal fun SettingsPage.AppConfirmFab(
             // `shortcutId` 而不是 `包名/id`，只传 target 会让落盘那边退回 `app:包名/id`
             // （那是一条跑不通的 token）。
             //
-            // 这颗按钮是**常驻**的（不与选中项联动），所以新手进页、还没点过任何一行时
-            // 它就在那儿 —— 这时按下去给一句提示，而不是默默什么都不做。
+            //  **只在有选中项时这颗按钮才在**（见调用点的 `PageCornerFab(visible = …)`）——
+            //  所以这一支理论上到不了；留着当兜底：将来要是又把 FAB 改回常驻，
+            //  按下它也该说一句「先从列表里选一个应用」，而不是默默什么都不做。
             val picked =
                 ui.pending ?: run {
                     hint(I18n.get(Strings.APP_PICKER_PICK_APP_FIRST, "先从列表里选一个应用"))

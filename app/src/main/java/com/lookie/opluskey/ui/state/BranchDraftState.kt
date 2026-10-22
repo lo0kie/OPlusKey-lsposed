@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.state
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
@@ -36,8 +37,21 @@ internal class BranchDraft {
     /** 下一个要发的行身份 —— 只增不减（重载 / 重置时归零）。 */
     private var nextId = 0
 
-    /** 草稿属于哪颗键、哪一档 —— 换了就重新载入（见 [load]）。 */
-    var owner: String? = null
+    /**
+     * 刚加的那一行的身份（[ids] 里的值；[NO_FRESH_ROW] = 没有）—— 只有它播入场。
+     *
+     *  住在页面级、不住 `BranchCards` 的 `remember`：加一条的入口已经挪到**页外**那颗 FAB 上
+     *  （右下角「添加」），它写不到页内的局部状态。
+     */
+    var freshId by mutableStateOf(NO_FRESH_ROW)
+
+    /**
+     * 草稿属于哪颗键、哪一档 —— 换了就重新载入（见 [load]）。
+     *
+     *  **必须是组合状态**：`BranchCards` 拿它当「草稿载入没有」的闸门（载入前整块不画，
+     *  免得空态 → 表格那一下播成进场动画）。普通 `var` 改了不触发重组，那一块会一直不画。
+     */
+    var owner: String? by mutableStateOf(null)
 
     /** [load] 进来的那份快照 —— 只服务 [dirty]。 */
     private var loaded: List<StateRule> = emptyList()
@@ -129,3 +143,6 @@ internal class BranchDraft {
 internal class BranchDraftState {
     val draft = BranchDraft()
 }
+
+/** 「没有刚加的那一行」的哨兵值（行身份从 0 起，撞不上）。 */
+internal const val NO_FRESH_ROW = -1

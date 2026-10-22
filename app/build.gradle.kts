@@ -199,8 +199,15 @@ android {
             // 混淆 + 资源收缩。详细日志不是被 R8 裁的：XLog.d / i 走的是 Kotlin 常量条件
             // （`inline` + `if (VERBOSE_LOG)`，见 `BuildFlags`），编译期就折掉了；
             // 告警与错误保留作降级诊断。
-            isMinifyEnabled = true
-            isShrinkResources = true
+            //
+            //  **`-Pfast` = 本地迭代档**：R8 那一步要 13 秒（构建剖析里占八成），改一行界面就得
+            //  等它一次。带上这个参数就跳过混淆 / 资源收缩，出包从 ~21s 降到 ~4s。
+            //  产物**不是交付物**（体积大、未混淆），只是「装上去看效果」用的；
+            //  它仍然是 release 签名、`isDebuggable = false`、`DEBUG_PROBE = false`，
+            //  所以装到真机上不会像 debug 包那样把「任意反射执行」开着。
+            val fast = project.hasProperty("fast")
+            isMinifyEnabled = !fast
+            isShrinkResources = !fast
             isDebuggable = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

@@ -16,6 +16,8 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import io.github.suqi8.coui.kmp.basic.BasicComponent
+import io.github.suqi8.coui.kmp.basic.BasicComponentColors
+import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardColors
 import io.github.suqi8.coui.kmp.basic.CardDefaults
@@ -61,6 +63,13 @@ internal sealed interface CardRow {
         val summary: String? = null,
         val icon: ImageVector? = null,
         val iconTint: Color? = null,
+        /**
+         * 标题的**非禁用**颜色（`null` = 库默认那档）。
+         *
+         *  用于「这一行还能点、但内容还不完整」：例如条件表里「未选择条件」那一格 ——
+         *  文字压到禁用色，行本身仍可点。真要整行不可用请用 [enabled] = false。
+         */
+        val titleTint: Color? = null,
         val enabled: Boolean = true,
         val danger: Boolean = false,
         val arrow: Boolean = false,
@@ -222,6 +231,12 @@ private fun ItemRow(
     BasicComponent(
         modifier = row.modifier,
         title = row.title,
+        //  只有「还能点、但内容不完整」那一档才自定标题色：库的 `BasicComponentColors`
+        //  只有「正常 / 禁用」两档，这里把正常色直接换成禁用色，`enabled` 仍为 true
+        //  ⇒ 点击、涟漪、无障碍语义都不受影响，只是字压暗了。
+        titleColor =
+            row.titleTint?.let { BasicComponentColors(color = it, disabledColor = it) }
+                ?: BasicComponentDefaults.titleColor(),
         summary = row.summary,
         startAction = row.icon?.let { { Icon(it, contentDescription = null, tint = iconTint) } },
         endActions = {

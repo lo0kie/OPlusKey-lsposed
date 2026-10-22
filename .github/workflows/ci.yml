@@ -78,8 +78,24 @@ jobs:
       # 静态检查放在出包**之前**：格式 / 静态检查 / Android Lint 三道闸不过就别往下走，
       # 不必等到打完两个包才发现少一个空格。`gate` 是根脚本注册的聚合任务
       # （= `spotlessCheck detekt lintDebug`，两个模块一起算），与本地同一条命令（AGENTS.md 二、1.2）。
+      #
+      #  构建期那条 Gradle 弃用警告来自 **detekt 自己的 Gradle 插件**：`DetektPlugin.apply`
+      #  一进来就调 `ReportingExtension.file(...)`（Gradle 9 起弃用，Gradle 10 删除）。
+      #  1.23.8 已是最新稳定版、上游修复只在未发布的 2.0，项目侧无法规避 ——
+      #  所以把**只有这一条**记为已知项放行；换成白名单而不是关警告：
+      #  之后任何**新的**弃用都会让这一步失败（关掉 `--warning-mode` 就等于连回归一起盖住）。
       - name: 静态检查（格式化 / detekt / lint）
-        run: ./gradlew gate
+        run: |
+          set -o pipefail
+          log="${RUNNER_TEMP:-/tmp}/gate.log"
+          ./gradlew gate --warning-mode all 2>&1 | tee "$log"
+          extra=$(grep -i "has been deprecated" "$log" \
+                  | grep -v "ReportingExtension.file(String)" || true)
+          if [ -n "$extra" ]; then
+            echo "::error::出现了新的 Gradle 弃用用法（已知的那条只有 detekt 的 ReportingExtension.file）"
+            echo "$extra"
+            exit 1
+          fi
 
       # 依赖锁定（`app/gradle.lockfile` 已入库，开关见根目录 `build.gradle.kts`）。
       #

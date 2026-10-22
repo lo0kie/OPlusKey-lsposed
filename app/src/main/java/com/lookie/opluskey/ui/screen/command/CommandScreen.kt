@@ -1,6 +1,6 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,12 +12,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.config.CommandLibrary
@@ -28,6 +29,7 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.hideIme
 import com.lookie.opluskey.ui.isImeVisible
+import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
@@ -78,6 +80,13 @@ internal val FORMAT_COLUMN_GAP = 12.dp
 internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
     val tick = rememberTick()
     val scope = rememberCoroutineScope()
+    // 排序态下这一条也禁用 —— 与「按键绑定」页主开关为关时同一套：
+    //  分段控件没有 `enabled` 参数，只能自己造（整条压暗 + 压一层透明吃事件层）。
+    val enabled = !commandDraft.stepEditing
+    val disabledAlpha by animateFloatAsState(
+        targetValue = if (enabled) 1f else DISABLED_ALPHA,
+        label = "CommandBandDisabledAlpha",
+    )
     Box(
         Modifier
             .fillMaxWidth()
@@ -102,8 +111,22 @@ internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
                         start = PAGE_MARGIN,
                         end = PAGE_MARGIN,
                         bottom = PAGE_TOP_PADDING,
-                    ),
+                    ).alpha(disabledAlpha),
         )
+        if (!enabled) {
+            // 透明吃事件层：灰是上面那层 alpha 做的，这一层只负责拦住点击 / 滑动
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent().changes.forEach { it.consume() }
+                            }
+                        }
+                    },
+            )
+        }
     }
 }
 
@@ -155,6 +178,10 @@ internal fun SettingsPage.CommandScreen(
     ) {
         HorizontalPager(
             state = pagerState,
+            // 排序态下不许横滑换页：另一页没有步骤可排，而滑过去之后编辑态还没摘
+            // （摘是在 `currentPage` 变了之后，见 [CommandTabSync]）—— 那一小段里
+            //  单条命令页会莫名其妙地整页灰着。要换 tab 就点上面那条带子，那一下会先退出排序态。
+            userScrollEnabled = !commandDraft.stepEditing,
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -194,6 +221,9 @@ private fun SettingsPage.CommandTabSync(pagerState: PagerState) {
             //  （看起来毫无理由）。那一格是**用户手输的**（还没保存）时不清 —— 那是他的东西。
             //  表单内容（`single` / `steps`）照旧保留：那是两套互不干扰的字段。
             if (kind != commandDraft.draft.kind) {
+                // 换 tab 就把**排序态摘掉**：它是「这一页的步骤列表」的态，另一页没有步骤可排，
+                //  带着它过去只会让那一页莫名其妙地整页禁用。
+                commandDraft.stepEditing = false
                 val editingName = commandDraft.draft.editingName
                 if (editingName != null) {
                     commandDraft.draft.editingName = null
@@ -254,42 +284,17 @@ private const val MAX_NAME_LENGTH = 24
  *  且结果只喂给这一个输入框的 `errorMessage`。
  */
 @Composable
-internal fun SettingsPage.CommandNameField() {
+internal fun SettingsPage.CommandNameField(enabled: Boolean = true) {
     IconInputView(
         spec = InputSpec(PageIcons.LabelImportant, I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"), MAX_NAME_LENGTH),
         value = commandDraft.draft.name,
         // 边输边清洗：只换掉换行、不 trim —— 带 trim 的版本会让空格打不进去。
         // trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做。
         onValueChange = { commandDraft.draft.name = CommandLibrary.sanitizeNameInput(it) },
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
         // 同名冲突与 `cmd:` 成环提示都交给组件画（都只在打字 / 改步骤时才有意义，结果只喂这一个输入框）。
         //  措辞与「保存按钮灰着时那句话」共用 `commandNameProblem` —— 同一件事只说一处。
         errorMessage = commandNameProblem().orEmpty(),
     )
-}
-
-/**
- * 「多条命令」步骤列表里的一行 —— 列表本身（`SerialSteps`）在 `CommandSteps.kt`，行数据留在这边：
- * 它是这一页所有内容共用的展示状态，不是那一块的私有实现。
- */
-internal class StepRowItem(
-    val id: Int,
-    val token: String,
-) {
-    val state = MutableTransitionState(false).apply { targetState = true }
-
-    /**
-     * 退场中：target 已切 false，播完 shrink+fade 就从展示层摘除。
-     *
-     *  组合期会读它（`count { !it.exiting }`、几处 `enabled = !item.exiting`），所以必须是 state：
-     *  普通 `var` 只在「每个写点都恰好与 `state.targetState` 同帧写」时看着能工作（靠那一次重组
-     *  顺带把读点重读一遍），那是巧合、不是保证。
-     */
-    var exiting by mutableStateOf(false)
-
-    /**
-     * 退场行的插回锚。**只在 effect 里读写**（差分重建 / 收尾放弃那两处），组合期不读 ⇒ 普通
-     *  `var` 就够，不必是 state。
-     */
-    var anchorId = -1
 }

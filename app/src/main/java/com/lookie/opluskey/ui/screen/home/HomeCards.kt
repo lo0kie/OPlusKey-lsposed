@@ -61,8 +61,8 @@ internal fun SettingsPage.HomeBindingCard(ui: HomeUiState) {
                     // 真假各一句，都说「现在是什么状态」（口径见 `SwitchRow` 的说明）
                     summaryOn = I18n.get(Strings.HOME_SWITCH_DESC_ON, "按键由模块接管，执行绑定动作"),
                     summaryOff = I18n.get(Strings.HOME_SWITCH_DESC_OFF, "按键交还系统，不执行任何绑定"),
-                    // 电源符号 = 「这一行是总开关」。
-                    icon = PageIcons.Power,
+                    // 拨到右的开关 = 「这一行是总开关」。
+                    icon = PageIcons.MasterSwitch,
                     checked = moduleOn,
                     enabled = linkReady && !configState.readOnly,
                 ) { on ->

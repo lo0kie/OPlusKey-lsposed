@@ -179,6 +179,13 @@ object Strings {
 
     /** 「换掉这一步 / 换掉这一条动作」那张抽屉的标题 —— 与 [COMMAND_STEP_SELECT_TITLE] 同一处、两种来处。 */
     const val COMMAND_STEP_REPLACE_TITLE = "command.step_replace_title"
+
+    /** 步骤卡右下角那颗 FAB 的两档说明：进排序态 / 退出排序态。 */
+    const val COMMAND_STEP_SORT = "command.step_sort"
+    const val COMMAND_STEP_SORT_DONE = "command.step_sort_done"
+
+    /** 排序态下点「添加命令」时说的话 —— 那时它在置灰，得说明是「先退出排序」而不是「满了」。 */
+    const val COMMAND_STEP_SORTING_LOCKED = "command.step_sorting_locked"
     const val COMMAND_TEST_BUTTON = "command.test_button"
 
     /** 表单第一条小标题：名称输入框（原先这里写的是「修改命令 / 新增命令」）。 */
@@ -205,6 +212,12 @@ object Strings {
     /** 「前台应用」可以多条，但**同一个应用**只能当一次条件。 */
     const val COMMAND_BRANCH_DUPLICATE_APP = "command.branch_duplicate_app"
     const val COMMAND_BRANCH_EMPTY = "command.branch_empty"
+
+    /** 条件页空态的**标题**（上面那行）—— 下面那行说的是「现在会发生什么」。 */
+    const val COMMAND_BRANCH_EMPTY_TITLE = "command.branch_empty_title"
+
+    /** 规则行里「条件那一格还没选」—— 与「未选择命令」成对，行首图标同时置红。 */
+    const val COMMAND_BRANCH_PICK_CONDITION = "command.branch_pick_condition"
     const val COMMAND_BRANCH_NEED = "command.branch_need"
     const val COMMAND_BRANCH_NEED_COMMAND = "command.branch_need_command"
     const val COMMAND_BRANCH_NEED_CONDITION = "command.branch_need_condition"

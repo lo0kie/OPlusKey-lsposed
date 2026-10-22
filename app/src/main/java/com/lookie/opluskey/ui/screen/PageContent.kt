@@ -130,7 +130,9 @@ internal fun SettingsPage.PageContent() {
             //  提示怎么弹、以及「整页现在为什么改不了」，都从页面这一层传下去 ——
             //  控件层不带 `SettingsPage` 接收者，拿不到这两样。
             //  原因取**点击那一刻**的结论，不是组合期快照：禁用期间链路可能刚好恢复。
-            LocalHint provides { hint(it) },
+            //  `remember` 住：与下面那条 `LocalDisabledClick` 同一个理由 ——
+            //  `hint` 在**调用那一刻**才读，每次重组换一个新实例会让所有读它的控件白白重组一遍。
+            LocalHint provides remember { { hint(it) } },
             //  禁用态被点一下要说的话：库里所有可点控件（`BasicComponent` / `IconButton` /
             //  可交互 `Card` / 菜单行）在 `enabled = false` 时把这一下点击交给它
             //  —— 见 `patches/coui/0008-disabled-click-explains.patch`。

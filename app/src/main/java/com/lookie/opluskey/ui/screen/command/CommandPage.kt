@@ -1,5 +1,7 @@
 package com.lookie.opluskey.ui.screen.command
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,11 +17,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.FAB_BOTTOM_CLEARANCE
+import com.lookie.opluskey.ui.PageCornerFab
+import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
@@ -27,8 +33,10 @@ import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -62,74 +70,123 @@ internal fun SettingsPage.CommandPage(
     //  记住它：这一页在每次重组上都要 `filter` 一遍整个命令库并新建一个 List，
     //  而下面那几处都会打脏本页（滚动手势、开关、输入……）。
     val saved = remember(configState.commands.value, kind) { configState.commands.value.filter { it.kind == kind } }
-    Column(
-        Modifier
-            .fillMaxSize()
-            // 大标题随滚动折叠（`nestedScroll` 要在 `verticalScroll` 之前）
-            .nestedScroll(scroll.behavior.nestedScrollConnection)
-            // 越界回弹：`overScrollVertical` 挂在滚动容器外侧，所以内容不满一屏时照样弹。
-            .overScrollVertical()
-            .verticalScroll(scroll.state)
-            // 页底留白挂在滚动内容内侧（`padding` 在 `verticalScroll` 之后）——
-            // 尾部 Spacer 实测不进滚动内容高度，会让最大滚动位置少一截。
-            .padding(bottom = PAGE_BOTTOM_PADDING),
-    ) {
-        // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带（`tabBlockDp`）一起让出。
-        Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp))
+    // 排序态（只可能出现在「多条命令」这一页）：表单与已保存那片一律禁用，底部工具条滑出隐藏。
+    val sorting = commandDraft.stepEditing
+    //  排序那颗 FAB 只在**有步骤可排**时出现：列表空着没什么可排的，摆一颗「调整顺序」只是噪音。
+    //  但排序态里即使把步骤删空也要留着 —— 那时工具条是隐藏的，它是**唯一的出口**，藏了就出不来。
+    val showSortFab = kind == CommandKind.SERIAL && (sorting || commandDraft.draft.steps.isNotEmpty())
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                // 大标题随滚动折叠（`nestedScroll` 要在 `verticalScroll` 之前）
+                .nestedScroll(scroll.behavior.nestedScrollConnection)
+                // 越界回弹：`overScrollVertical` 挂在滚动容器外侧，所以内容不满一屏时照样弹。
+                .overScrollVertical()
+                .verticalScroll(scroll.state)
+                // 页底留白挂在滚动内容内侧（`padding` 在 `verticalScroll` 之后）——
+                // 尾部 Spacer 实测不进滚动内容高度，会让最大滚动位置少一截。
+                //  多条命令那一页要多让一档给右下角那颗 FAB（[FAB_BOTTOM_CLEARANCE]）。
+                .padding(bottom = if (showSortFab) FAB_BOTTOM_CLEARANCE else PAGE_BOTTOM_PADDING),
+        ) {
+            // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带（`tabBlockDp`）一起让出。
+            Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp))
 
-        // 表单的每一栏都带一条小标题（「命令名称」「命令详情」）：输入框里的字是**占位文案**
-        //  （「请输入名称」），滚到这一屏时那行字可能已经被填满，光看框分不清哪个是名字、
-        //  哪个是命令本体。原先这一条写的是「修改命令 / 新增命令」—— 那说的是**这一页在干什么**，
-        //  而顶栏已经写着「自定义命令」、工具栏那颗键写着「保存 / 修改」，这里该说的是**这一栏是什么**。
-        SmallTitle(I18n.get(Strings.COMMAND_NAME_TITLE, "命令名称"))
+            // 表单的每一栏都带一条小标题（「命令名称」「命令详情」）：输入框里的字是**占位文案**
+            //  （「请输入名称」），滚到这一屏时那行字可能已经被填满，光看框分不清哪个是名字、
+            //  哪个是命令本体。原先这一条写的是「修改命令 / 新增命令」—— 那说的是**这一页在干什么**，
+            //  而顶栏已经写着「自定义命令」、工具栏那颗键写着「保存 / 修改」，这里该说的是**这一栏是什么**。
+            SmallTitle(I18n.get(Strings.COMMAND_NAME_TITLE, "命令名称"))
 
-        // 输入项用 COUI 的「卡片输入」形态（[IconInputView]）：一个输入项一张卡、无边框，
-        // 行首图标会把标题与输入框一起挤开 —— 库的 `InputView` 做不到，所以自己拼。
-        // 抽成独立的 composable 是为了把 `draft.name` 的读取关在里面（见它的注释）。
-        CommandNameField()
+            // 输入项用 COUI 的「卡片输入」形态（[IconInputView]）：一个输入项一张卡、无边框，
+            // 行首图标会把标题与输入框一起挤开 —— 库的 `InputView` 做不到，所以自己拼。
+            // 抽成独立的 composable 是为了把 `draft.name` 的读取关在里面（见它的注释）。
+            CommandNameField(enabled = !sorting)
 
-        // 单条命令的正文 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
-        if (kind == CommandKind.SINGLE) {
-            Spacer(Modifier.height(12.dp))
-            SmallTitle(I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"))
-            SingleCommandField()
-        }
-
-        // `keyevent:` 注入同毫秒生效，而「最近任务 / 通知中心 / 控制中心」要跨四个进程、`shell:` 更
-        // 是另起进程 —— 不等待的话连续几步会乱。只有多条命令有这个值，所以只在这一栏显示。
-        //  它自己那条行标题（「命令间隔时长」）说的是**这一行是什么**，小标题说的是**这一组是什么**
-        //  —— 以后这一组还会长（比如「失败后停止」），先按「命令设置」归拢。
-        if (kind == CommandKind.SERIAL) {
-            Spacer(Modifier.height(12.dp))
-            SmallTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
-            StepDelayCard(tick)
-        }
-
-        // 「支持的命令格式」卡 —— 说的是「命令输入框里能写什么」，多条命令没有那个
-        // 输入框，所以只在单条那一栏出现。
-        if (kind == CommandKind.SINGLE) {
-            Spacer(Modifier.height(12.dp))
-            SmallTitle(I18n.get(Strings.COMMAND_FORMATS_TITLE, "支持的命令格式"))
-            CommandFormatsCard(tick, ui, onScrollTop)
-        }
-
-        // 多条命令的步骤单独一张卡：它是一串行，塞进上面那张卡会多嵌两层内边距。
-        if (kind == CommandKind.SERIAL) {
-            Spacer(Modifier.height(12.dp))
-            SmallTitle(I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"))
-            //  加 / 删步骤的过渡不在这里：行让位 / 回位由 SerialSteps 每行的 expand / shrink 驱动，
-            // 两层高度动画叠在一起会让卡片背景慢半拍。
-            Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-                SerialSteps()
+            // 单条命令的正文 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
+            if (kind == CommandKind.SINGLE) {
+                Spacer(Modifier.height(12.dp))
+                SmallTitle(I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"))
+                SingleCommandField(enabled = !sorting)
             }
-        }
 
-        // 「已保存的命令」这一段**始终在**：一条都没有时给一张空状态卡 ——
-        //  以前是 `if (saved.isNotEmpty())` 整段不出现，用户看不出这块地方该有东西、也分不清
-        //  「还没保存过」与「这块地方根本不存在」。
-        Spacer(Modifier.height(12.dp))
-        SmallTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
-        SavedCommandsSection(saved, ui, tick, onScrollTop)
+            // `keyevent:` 注入同毫秒生效，而「最近任务 / 通知中心 / 控制中心」要跨四个进程、`shell:` 更
+            // 是另起进程 —— 不等待的话连续几步会乱。只有多条命令有这个值，所以只在这一栏显示。
+            //  它自己那条行标题（「命令间隔时长」）说的是**这一行是什么**，小标题说的是**这一组是什么**
+            //  —— 以后这一组还会长（比如「失败后停止」），先按「命令设置」归拢。
+            if (kind == CommandKind.SERIAL) {
+                Spacer(Modifier.height(12.dp))
+                SmallTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
+                StepDelayCard(tick, enabled = !sorting)
+            }
+
+            // 「支持的命令格式」卡 —— 说的是「命令输入框里能写什么」，多条命令没有那个
+            // 输入框，所以只在单条那一栏出现。
+            if (kind == CommandKind.SINGLE) {
+                Spacer(Modifier.height(12.dp))
+                SmallTitle(I18n.get(Strings.COMMAND_FORMATS_TITLE, "支持的命令格式"))
+                CommandFormatsCard(tick, ui, onScrollTop)
+            }
+
+            // 多条命令的步骤单独一张卡：它是一串行，塞进上面那张卡会多嵌两层内边距。
+            if (kind == CommandKind.SERIAL) {
+                Spacer(Modifier.height(12.dp))
+                SmallTitle(I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"))
+                //  加 / 删步骤的过渡不在这里：行让位 / 回位由 SerialSteps 每行的 expand / shrink 驱动，
+                // 两层高度动画叠在一起会让卡片背景慢半拍。
+                Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
+                    SerialSteps()
+                }
+            }
+
+            // 「已保存的命令」这一段**始终在**：一条都没有时给一张空状态卡 ——
+            //  以前是 `if (saved.isNotEmpty())` 整段不出现，用户看不出这块地方该有东西、也分不清
+            //  「还没保存过」与「这块地方根本不存在」。
+            Spacer(Modifier.height(12.dp))
+            SmallTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
+            SavedCommandsSection(saved, ui, tick, onScrollTop, enabled = !sorting)
+        }
+        // 排序那颗 FAB 只有「多条命令」这一页、且真有步骤可排时才在（见 [showSortFab]）。
+        //  位置与**进出场**都走 [PageCornerFab]（与「按键绑定」「条件执行」那两颗同一份）：
+        //  显隐要交给它的 `AnimatedVisibility`，别在外面套 `if` —— 那样是整棵子树瞬时增删，
+        //  滑入滑出就没了。
+        //  它**不跟滚动藏**：排序态是个开关，滚下去也得能点回来。
+        PageCornerFab(visible = showSortFab) { StepSortFab() }
+    }
+}
+
+/**
+ * 「调整步骤顺序」那颗 FAB —— 点一下进排序态、再点一下退出。
+ *
+ *  排序态下行尾出现上移 / 下移 / 删除，行的轻点不再换命令，页面其余控件禁用、工具条滑出隐藏
+ *  （判据全在 `CommandDraftState.stepEditing`）。
+ */
+@Composable
+private fun SettingsPage.StepSortFab() {
+    val tick = rememberTick()
+    val sorting = commandDraft.stepEditing
+    PageFabButton(
+        onClick = {
+            tick()
+            commandDraft.stepEditing = !sorting
+            XLog.w(if (sorting) "多条命令：退出排序态" else "多条命令：进入排序态")
+        },
+    ) {
+        //  字形换的是**形状**（铅笔 ↔ 对勾），插值不了 —— 用 `Crossfade` 淡过去
+        //  （与抽屉里行首那颗选中态同一套，见 `CommandMenus.StepSheetRow`）。
+        Crossfade(targetState = sorting, label = "StepSortFabIcon") { on ->
+            Icon(
+                if (on) PageIcons.Confirm else PageIcons.CommandEditCog,
+                contentDescription =
+                    if (on) {
+                        I18n.get(Strings.COMMAND_STEP_SORT_DONE, "完成")
+                    } else {
+                        I18n.get(Strings.COMMAND_STEP_SORT, "调整步骤顺序")
+                    },
+                // 库只给容器色、不给字形色
+                tint = COUITheme.colorScheme.onPrimary,
+            )
+        }
     }
 }
 
@@ -142,7 +199,7 @@ internal fun SettingsPage.CommandPage(
  *  仍然只归一换行符：粘贴来的多半是 CRLF，混着两种会让存下去的值里夹进不可见的 `\r`。
  */
 @Composable
-private fun SettingsPage.SingleCommandField() {
+private fun SettingsPage.SingleCommandField(enabled: Boolean) {
     val raw = commandDraft.draft.single
     // 格式不对时在这一栏下面出红字 —— 保存按钮同时是灰的（见 `commandPayloadReady`），
     //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。
@@ -166,6 +223,8 @@ private fun SettingsPage.SingleCommandField() {
                 commandDraft.draft.single = value.replace("\r\n", "\n").replace('\r', '\n')
             },
             errorMessage = formatError,
+            // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
+            enabled = enabled,
             modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
         )
         // 权限边界的提示：这一栏写的是 shell 命令，而它跑在宿主进程里、身份是「手势体感」这个 App ——
@@ -197,7 +256,10 @@ private val HINT_SIDE_PADDING = 32.dp
 
 /** 多条命令的「命令间隔时长」卡 —— 只有一行：等多久再派发下一条。 */
 @Composable
-private fun SettingsPage.StepDelayCard(tick: () -> Unit) {
+private fun SettingsPage.StepDelayCard(
+    tick: () -> Unit,
+    enabled: Boolean,
+) {
     CardList(
         rows =
             listOf(
@@ -213,6 +275,8 @@ private fun SettingsPage.StepDelayCard(tick: () -> Unit) {
                                 max = Command.MAX_STEP_DELAY_MS,
                                 value = commandDraft.draft.stepDelayMs,
                                 default = Command.DEFAULT_STEP_DELAY_MS,
+                                // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
+                                enabled = enabled,
                             ),
                     ) { v ->
                         tick()

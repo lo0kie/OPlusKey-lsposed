@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,6 +32,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.collapseHeader
 import com.lookie.opluskey.ui.collapsedHeaderHeight
@@ -141,36 +143,39 @@ internal fun SettingsPage.AppPickerList(
                 // 与「按键绑定」页那种「最后一行被 FAB 压住」的取舍保持一致。
                 contentPadding = PaddingValues(bottom = PAGE_BOTTOM_PADDING),
             ) {
-                // —— 头一项：顶栏让位 + 固定搜索框那条带子的占位 ——
-                //
-                // 搜索框在固定层里，所以列表只要在顶上让出「顶栏 + 那条带子」这么多地方；滚起来
-                // 之后列表钻到带子背后，由带子那层不透明底挡住。因此下面所有按下标的滚动都要加
-                // [APP_LIST_HEADER_ITEMS] 这个偏移。
-                item(key = "header-space") {
-                    // 用动态值（见 [currentHeaderHeight]）：折叠阶段这一档跟着缩下去。
-                    // 顶栏 + 带子（带子的测量高度里含它自己那 8dp 下内边距）再补一档
-                    // [PAGE_TOP_PADDING]：这一页第一行是卡片，没有别页首行那个 `SmallTitle`
-                    // 自带的上内边距，不补的话卡片会直接贴着搜索框。
-                    Spacer(
-                        Modifier.height(
-                            currentHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING,
-                        ),
-                    )
-                }
-
                 // 列表区 —— 加载中什么都不铺（列表空着），转圈由页面那层叠上去画。
                 if (ui.loaded != null) {
-                    // 「查得到但没有匹配项」那句提示不在这个列表里：它一进来就会占掉一个下标，
-                    // 而按下标滚到当前绑定应用的偏移 [APP_LIST_HEADER_ITEMS] 只算了顶上那个占位项
-                    // —— 多一项就错一行。
-                    items(ui.shown, key = { it.target }) { app ->
-                        // **不给 `Modifier.animateItem()`** —— 理由写在 [AppRow] 的 KDoc 里：
-                        // 它把「过滤之后下标变了」当成「这一行换位了」。
-                        AppRow(
-                            app = app,
-                            row = row,
-                            onClick = { pickRow(app, ui, onOpenActivities) },
-                        )
+                    // **一条都没有时，空态就铺在这里**（而不是浮在列表之上）：浮层不跟着列表动，
+                    //  拖动时它一动不动，读起来像「这一页不能拖」（用户口径「空态要跟着拖动一起弹」）。
+                    //  它占满一屏（`fillParentMaxHeight`）且顶上那个占位项此时不铺 —— 两者一起
+                    //  才能让它在可见区里居中、又不多出一截能拖的空白。
+                    //
+                    //  这一项只在 `shown` 为空时存在：`LocateSelected` 按下标滚到当前绑定的那一行，
+                    //  那时列表必然非空、`APP_LIST_HEADER_ITEMS` 的偏移照样成立。
+                    if (ui.shown.isEmpty()) {
+                        item(key = "empty-state") {
+                            PickerEmptyItem(ui, emptyHint(ui), currentHeaderHeight(scrollBehavior) + searchBandDp)
+                        }
+                    } else {
+                        // —— 头一项：顶栏让位 + 固定搜索框那条带子的占位 ——
+                        //
+                        // 搜索框在固定层里，所以列表只要在顶上让出「顶栏 + 那条带子」这么多地方；
+                        //  滚起来之后列表钻到带子背后，由带子那层不透明底挡住。因此下面所有按下标
+                        //  的滚动都要加 [APP_LIST_HEADER_ITEMS] 这个偏移。
+                        item(key = "header-space") { PickerHeaderSpace(scrollBehavior, searchBandDp) }
+
+                        // 「查得到但没有匹配项」那句提示不在这里：它一进来就会占掉一个下标，
+                        // 而按下标滚到当前绑定应用的偏移 [APP_LIST_HEADER_ITEMS] 只算了顶上那个占位项
+                        // —— 多一项就错一行。
+                        items(ui.shown, key = { it.target }) { app ->
+                            // **不给 `Modifier.animateItem()`** —— 理由写在 [AppRow] 的 KDoc 里：
+                            // 它把「过滤之后下标变了」当成「这一行换位了」。
+                            AppRow(
+                                app = app,
+                                row = row,
+                                onClick = { pickRow(app, ui, onOpenActivities) },
+                            )
+                        }
                     }
                 }
             }
@@ -182,6 +187,63 @@ internal fun SettingsPage.AppPickerList(
             scrollBehavior = scrollBehavior,
             searchBandDp = searchBandDp,
             modifier = Modifier.align(Alignment.CenterEnd),
+        )
+    }
+}
+
+/**
+ * 列表顶上那个占位项 —— 让出「顶栏 + 搜索框那条带子」，再补一档 [PAGE_TOP_PADDING]。
+ *
+ *  用动态值（见 [currentHeaderHeight]）：折叠阶段这一档跟着缩下去。
+ *  带子的测量高度里含它自己那 8dp 下内边距；末尾补的那一档是因为这一页第一行是卡片，
+ *  没有别页首行那个 `SmallTitle` 自带的上内边距 —— 不补的话卡片会直接贴着搜索框。
+ */
+@Composable
+private fun SettingsPage.PickerHeaderSpace(
+    scrollBehavior: ScrollBehavior,
+    searchBandDp: Dp,
+) {
+    Spacer(
+        Modifier.height(currentHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING),
+    )
+}
+
+/**
+ * 一条都没有时铺在列表里的那块空态 —— **占满一屏**，所以它在可见区里居中，而整块仍在列表里
+ * （拖动时跟着一起弹，这正是它不做成浮层的原因）。
+ *
+ *  **要自己让出顶栏 + 搜索带**：内容一直铺到屏幕顶，而那两块是压在列表之上的固定浮层 ——
+ *  不让出这一档，居中会落在**整屏**正中，看着偏上（真机反馈「没有垂直居中」）。
+ *
+ *  字形分两档：清单本身是空的（系统没给出可列的应用）用一摞盒子，被搜索词筛没了用那张脸 ——
+ *  两者说的不是一件事。文案由调用点算（`emptyHint` 是 `SettingsPage` 上的扩展）。
+ */
+@Composable
+private fun LazyItemScope.PickerEmptyItem(
+    ui: AppPickerUiState,
+    text: String,
+    topInset: Dp,
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillParentMaxHeight()
+                .fillMaxWidth()
+                //  上下各让出该让的：上面是顶栏 + 搜索带，下面是列表自己的底部留白（`contentPadding`
+                //  那一档不参与这一项的测量，不让掉就会把中线抬高半档）。
+                .padding(top = topInset, bottom = PAGE_BOTTOM_PADDING),
+        contentAlignment = Alignment.Center,
+    ) {
+        Feedback(
+            glyph = { tint ->
+                Icon(
+                    imageVector = if (ui.apps.isEmpty()) PageIcons.EmptyApps else PageIcons.NoMatch,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    tint = tint,
+                )
+            },
+            text = text,
         )
     }
 }

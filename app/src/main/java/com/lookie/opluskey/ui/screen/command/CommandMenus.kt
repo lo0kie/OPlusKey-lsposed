@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,10 +28,8 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.IconAction
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.PageMenu
@@ -107,83 +104,6 @@ internal fun SettingsPage.CommandMenuPopup(
     )
 }
 
-/**
- * 「这一行本身」的三件事 + 两头能不能挪 —— 合成一个对象，`StepRowMenuPopup` 的参数才压得回 5 个以内。
- *
- *  @param canMoveUp 这一行能不能往上挪（第一步不能）
- *  @param canMoveDown 这一行能不能往下挪（最后一步不能）
- */
-internal class StepRowMenuSpec(
-    val canMoveUp: Boolean,
-    val canMoveDown: Boolean,
-    val onMoveUp: () -> Unit,
-    val onMoveDown: () -> Unit,
-    val onDelete: () -> Unit,
-)
-
-/**
- * 步骤行行尾那颗**竖三点**弹出的菜单 —— 上移 / 下移 / 删除。
- *
- * ## 为什么收成菜单
- *
- *  三颗按钮并排时占掉近半行宽，标题那一列被挤到只剩十来个字、长一点的命令名一律省略号；
- *  而这三件事都不是每秒要点的动作。收进菜单之后，行尾只剩「选择器指示 + 竖三点」两格，
- *  宽度还给标题。
- *
- * ## 禁用行照旧说得清
- *
- *  第一 / 最后一步不能上移 / 下移这件事，原先靠置灰的按钮 + `LocalDisabledClick` 解释；
- *  菜单这边是 `MenuEntry.Row.enabled` + [MenuEntry.Row.disabledHint]：点一下只说明原因、
- *  菜单不关，比「一颗点不动的灰按钮」更直白（渲染层的处理见 `PageMenuPopup`）。
- *
- * @param spec 这一行能做的三件事，以及两头能不能挪（见 [StepRowMenuSpec]）
- */
-@Composable
-internal fun SettingsPage.StepRowMenuPopup(
-    show: Boolean,
-    preciseClick: PreciseClickState,
-    spec: StepRowMenuSpec,
-    onDismiss: () -> Unit,
-) {
-    PageMenu(
-        entries =
-            listOf(
-                MenuEntry.Row(
-                    title = I18n.get(Strings.COMMON_MOVE_UP, "上移"),
-                    icon = PageIcons.StepUp,
-                    enabled = spec.canMoveUp,
-                    disabledHint = I18n.get(Strings.TOAST_COMMAND_STEP_FIRST, "已经是第一步"),
-                ) {
-                    onDismiss()
-                    spec.onMoveUp()
-                },
-                MenuEntry.Row(
-                    title = I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
-                    icon = PageIcons.StepDown,
-                    enabled = spec.canMoveDown,
-                    disabledHint = I18n.get(Strings.TOAST_COMMAND_STEP_LAST, "已经是最后一步"),
-                ) {
-                    onDismiss()
-                    spec.onMoveDown()
-                },
-                // 危险项排在最后，与上面两步「挪位置」不是一类 —— 一条加深带隔开
-                //  （与条件执行那张行尾菜单同一套排法，见 `CommandBranchMenus.BranchRowMenu`）
-                MenuEntry.Row(
-                    title = I18n.get(Strings.COMMON_DELETE, "删除"),
-                    icon = PageIcons.CommandDelete,
-                    danger = true,
-                    dividerBefore = true,
-                ) {
-                    onDismiss()
-                    spec.onDelete()
-                },
-            ).takeIf { show }
-                .orEmpty(),
-        preciseClick = preciseClick,
-        onDismiss = onDismiss,
-    )
-}
-
 // 行尾菜单那几张浮层同样用 `ListPopupDefaults.DropdownPositionProvider` + 触点锚点。
 
 // --------------------------------------------------------------- 添加命令（底部抽屉）
@@ -219,7 +139,8 @@ internal class StepSheetSpec(
  *
  *  内置动作那几组之后是**「已保存的命令」**：多命令的步骤、条件执行的动作，挑的多半是自己写的那几条，
  *  摆在末尾不用先翻过整张内置表。这一组来自命令库（`configState.commands`），点一行落成 `cmd:<名字>`；
- *  只列**单条命令** —— 串行命令本身是一串步骤，塞成一步没有语义。
+ *  **单条与多条都列** —— 条件执行那一支的动作本来就是 `cmd:<名字>`，多条命令合法；多条命令的
+ *  「某一步」引用另一条多条命令，执行侧也认（深度与环都有闸）。
  *
  *  这一支是抽屉的**一次完整事务**：开关登记、六个「点了还没生效」的选中态、点行的三条去向
  *  （挑应用 / 开二级 / 只记高亮）、抽屉面配色、内容滚动。拆开就得把这几个状态连同它们的重置
@@ -277,35 +198,10 @@ internal fun SettingsPage.StepPickerSheet(
         }
     // 开着二级菜单的那一格（入口格那些：系统开关 / 系统导航 / 媒体控制…）。`null` = 没开。
     var subTile by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
-    //  **刚才点开的是哪个入口格** —— 与 [subTile] 分开存一份。
-    //  原因：[ModeMenuPopups] 的契约是「**先** `spec.onDismiss()`、**再** `onPick()`」（看它 `modeEntries`
-    //  的两个分支），而这里的 `onDismiss` 正是把 `subTile` 置空那一句。于是 onPick 里读 `subTile`
-    //  拿到的是 `null` ⇒ `pickedRow` 写空 ⇒ 选中态不出现（真机口径「抽屉里选择带二级菜单的
-    //  没有主题色表示」）。`pickedToken` / `pickedAction` 是独立赋的值，所以「确定」照旧能应用，
-    //  只是界面没亮 —— 症状就是这么来的。
-    var openedTile by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
 
-    //  用户**这一刻点了哪一行**（只换高亮，还没生效）。`null` = 还没点过 ⇒ 按 [current] 显示原有选中。
-    //  点行只换高亮、按右上角「确定」才应用：点一下就落的话，选中态根本来不及看（点完就写走了），
-    //  也没法先把几条候选挨个看一遍再决定。
-    var pickedRow by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
-    var pickedToken by remember { mutableStateOf<String?>(null) }
-    //  二级菜单里选中的那一档（再打开同一个入口格时用它打勾 —— 此时 [current] 还是旧值）
-    var pickedAction by remember { mutableStateOf<Action?>(null) }
-    LaunchedEffect(show) {
-        if (!show) {
-            pickedRow = null
-            pickedToken = null
-            pickedAction = null
-            openedTile = null
-        }
-    }
-
-    //  这一行画不画成「选中」（行首对勾 + 整行主题色）：点过就以点的那行为准，否则看当前动作。
-    fun isCurrent(spec: ActionCatalog.Spec): Boolean {
-        pickedRow?.let { return it == spec }
-        return sheet.current?.let { ActionCatalog.isSelected(spec, it) } ?: false
-    }
+    //  这一行画不画成「选中」（行首对勾 + 整行主题色）：看当前动作。
+    //  点一下就落盘、抽屉随即收掉（见 `land`），所以这里没有「刚点过、还没生效」那一档了。
+    fun isCurrent(spec: ActionCatalog.Spec): Boolean = sheet.current?.let { ActionCatalog.isSelected(spec, it) } ?: false
     // 每一行**自己的**锚点。**不能共用一份**：`preciseClickAnchor` 是靠 `onGloballyPositioned`
     //  把「这一行」的坐标写进 state 的，而 `anchorCoordinates` 只有一格 —— 共用时后布局的行会把
     //  前面的覆盖掉，按下时 `localToWindow(down.position)` 拿的是**别的行**的坐标 ⇒ 菜单弹在
@@ -321,7 +217,9 @@ internal fun SettingsPage.StepPickerSheet(
     //  现建一份。这一组都是 `cmd:<名字>`，点下去不再开下一层，锚点只用来撑住行组件那个参数。
     val savedSpecs =
         configState.commands.value
-            .filter { it.kind == CommandKind.SINGLE }
+            //  单条与多条**都列**：条件执行那一支的动作就是 `cmd:<名字>`，多条命令完全合法；
+            //  多条命令的「某一步」引用另一条多条命令，执行侧也认（深度与环都有闸）。
+            //  以前这里只留单条，抽屉里于是看不到自己写的命令链。
             .map { ActionCatalog.commandSpec(it) }
     val savedAnchors = remember(savedSpecs) { savedSpecs.associateWith { PreciseClickState() } }
     // 开着二级菜单那一行的锚点（开的时候记下来，`ModeMenuPopups` 用）；
@@ -348,14 +246,14 @@ internal fun SettingsPage.StepPickerSheet(
                 XLog.w("抽屉：点 ${spec.label} → 开二级菜单")
                 subAnchor = anchor
                 subTile = spec
-                //  高亮要落在**这一行**上，得自己留一份（`subTile` 会在回调前被清，见其注释）
-                openedTile = spec
             }
 
-            //  普通一行：**只记下来**，等「确定」再交给调用点
+            //  普通一行：**选中即确认**（用户口径「去掉确认按钮」）—— 这一下就落盘并收抽屉。
+            //  抽屉里不再有「点了但没生效」的中间态，所以也不需要那颗「确定」。
             else -> {
-                pickedRow = spec
-                pickedToken = spec.token
+                XLog.w("抽屉：选中 ${spec.label} → 应用 ${spec.token}")
+                sheet.onPick(spec.token)
+                sheet.onDismiss()
             }
         }
     }
@@ -384,21 +282,9 @@ internal fun SettingsPage.StepPickerSheet(
         backgroundColor = sheetColor,
         onDismissRequest = sheet.onDismiss,
         onDismissFinished = sheet.onDismiss,
-        //  右上角那颗「确定」：**应用选中的那一行**，然后收抽屉。
-        //  没点过任何行时它只是「关掉」—— 不会把当前那一步重新写一遍。
-        endAction = {
-            IconAction(
-                PageIcons.Confirm,
-                I18n.get(Strings.COMMON_CONFIRM, "确定"),
-            ) {
-                tick()
-                pickedToken?.let { token ->
-                    XLog.w("抽屉：确定 → 应用 $token")
-                    sheet.onPick(token)
-                }
-                sheet.onDismiss()
-            }
-        },
+        //  **右上角那颗「确定」已经撤掉**（用户口径「选中即确认」）：点一行 / 点二级菜单里的
+        //  一档 / 挑完应用，都当场落盘并收抽屉。原来那套「先高亮、再按确定」多一步，
+        //  而这一页的选择本来就是单选、且随时可以重来 —— 多那一步只换来一次误按。
         //  **抽屉内容的内边距全在这一个参数上**（`BottomSheetDefaults.insideMargin`，它同时套在
         //  把手 / 标题 / 内容上：横向 `padding(horizontal)`、纵向只取 height 做 `padding(bottom)`）：
         //   · 横向默认 24dp + 行自己的 16dp = 离屏幕边 40dp，太宽
@@ -444,21 +330,18 @@ internal fun SettingsPage.StepPickerSheet(
 
     // 入口格那一层菜单（档位）——「系统开关」再往下的那一问是**弹窗**，也在同一个组件里。
     //  锚点用**被点那一行**自己那份 —— 菜单才跟着手指落。
-    //  选中的那一档也**只记下来**：高亮落在它所属的入口格那一行上，等「确定」再应用。
+    //  **选中即确认**：点了哪一档就落哪一档，然后连抽屉一起收掉（不再等「确定」）。
     ModeMenuPopups(
         preciseClick = subAnchor ?: coldAnchor,
         tile = subTile,
-        current = pickedAction ?: sheet.current,
+        current = sheet.current,
         onPick = { spec ->
             tick()
-            XLog.w("抽屉二级菜单：选中 ${spec.label}（待确定）")
-            //  高亮落在**入口格那一行**上（不是点的那一档）：入口格代表整组取值。
-            //  取 [openedTile] 而不是 [subTile] —— 后者此刻已被 `onDismiss` 清成 null。
-            pickedRow = openedTile
-            pickedToken = spec.token
-            pickedAction = Action.parse(spec.token)
+            XLog.w("抽屉二级菜单：选中 ${spec.label} → 应用 ${spec.token}")
             subTile = null
             subAnchor = null
+            sheet.onPick(spec.token)
+            sheet.onDismiss()
         },
         onDismiss = {
             subTile = null

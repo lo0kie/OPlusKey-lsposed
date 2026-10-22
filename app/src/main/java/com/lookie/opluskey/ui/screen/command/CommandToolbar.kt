@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
@@ -113,8 +114,15 @@ internal fun SettingsPage.saveBlockedReason(): String? {
     return commandNameProblem()
 }
 
+/**
+ * 底部工具条此刻该不该在。
+ *
+ *  排序态（`stepEditing`）下**整条滑出隐藏**，而不是置灰：那时改的是步骤顺序、不是命令内容，
+ *  保存与重置都没有意义；留一条灰工具条只是多占一块地方。
+ */
 internal fun SettingsPage.commandToolbarVisible(): Boolean =
-    commandDraft.draft.editingName != null || commandDraft.draft.name.isNotBlank() || payloadBlockedReason() == null
+    !commandDraft.stepEditing &&
+        (commandDraft.draft.editingName != null || commandDraft.draft.name.isNotBlank() || payloadBlockedReason() == null)
 
 /**
  * 底部那条浮动工具条要的几件事 —— 由「自定义命令」页把它那份草稿的状态译成这一份。
@@ -255,6 +263,30 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
 }
 
 /**
+ * 「保存」灰着被点一下时说的那一句 —— 就地换掉整页那条 `LocalDisabledClick`。
+ *
+ *  单独抽一支只为把 [ToolbarButtons] 的长度压回 detekt 的上限。
+ *
+ *  **lambda 必须 `remember` 住、原因用 `rememberUpdatedState` 跟住**：`spec.labels` 每次重组
+ *  都是新实例，直接把它捕进 lambda 就等于每次换一个引用 —— 读这条通道的控件会跟着白白重组。
+ *  也归整页那一个位（[HINT_SLOT_COMMAND]）：连点几下「保存」时改字不叠条。
+ */
+@Composable
+private fun SettingsPage.SaveDisabledHint(
+    labels: ToolbarLabels,
+    content: @Composable () -> Unit,
+) {
+    val current = rememberUpdatedState(labels)
+    val onBlocked: () -> Unit =
+        remember {
+            {
+                current.value.blocked()?.let { hint(it, slot = HINT_SLOT_COMMAND) }
+            }
+        }
+    CompositionLocalProvider(LocalDisabledClick provides onBlocked) { content() }
+}
+
+/**
  * 底部工具条那层「磨砂 + 阴影」的修饰符 —— 从 [FloatingActions] 抽出来只为把那边压回长度上限。
  *
  *  · 磨砂从**页面内容层**取样（[frosted]）。取样方在页面那个取样源**之外**（工具条挂在页内、
@@ -337,13 +369,8 @@ private fun SettingsPage.ToolbarButtons(spec: ToolbarSpec) {
                 tint = resetIconColor,
             )
         }
-        // 灰着被点了一下时，说清是**哪一档**没齐（不是页面不可用）：库把这一下交给
-        //  `LocalDisabledClick`，这里就地换成保存自己的原因。
-        CompositionLocalProvider(
-            //  也归整页那一个位：连点几下「保存」时改字不叠条（见 [HINT_SLOT_COMMAND]）；
-            //  这两句（「还没添加步骤」「命令内容还不完整」）是最常连着点的两档。
-            LocalDisabledClick provides { spec.labels.blocked()?.let { hint(it, slot = HINT_SLOT_COMMAND) } },
-        ) {
+        // 灰着被点了一下时，说清是**哪一档**没齐（不是页面不可用）—— 见 [SaveDisabledHint]。
+        SaveDisabledHint(spec.labels) {
             IconButton(
                 onClick = spec.actions.onSave,
                 enabled = spec.canSave,

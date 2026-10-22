@@ -4,23 +4,19 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -71,31 +67,37 @@ private const val STEP_PICK_APPEND = -1
 internal fun SettingsPage.SerialSteps() {
     val tick = rememberTick()
     val steps = commandDraft.draft.steps
-    // 开着的是哪一行的**行尾菜单**（上移 / 下移 / 删除，见 [StepRowMenuPopup]）：`null` = 没开。
-    //  与 [stepSheet] 分开：一个是「换这一步」（抽屉）、一个是「动这一行」（浮层菜单）。
-    var stepMenu by remember { mutableStateOf<Int?>(null) }
+    // 这一页现在是不是「排序态」（由右下角那颗 FAB 开关，见 `CommandDraftState.stepEditing`）：
+    //  排序态下行尾换成上移 / 下移 / 删除，行的轻点不再换命令。
+    val sorting = commandDraft.stepEditing
     // 底部抽屉开着没有，以及它是**哪种来处**（见 `StepPickerSheet`）：
     //  `null` = 没开、[STEP_PICK_APPEND] = 追加一步、`>= 0` = 换掉那一步 ——
     //  「添加命令」与「点已添加的步骤」两条入口共用这一支。
-    //  初值取页面级那一位：压一页「选择应用」时这一页的组合被注销，`remember` 回到初值，
-    //  回来靠 `picker.resumeSheetAt` 把抽屉原样支起来，用户不用再点一次。
-    var stepSheet by remember {
-        mutableStateOf(
-            picker.resumeSheetAt.value
-                ?.takeIf { it.page == Screen.COMMANDS }
-                ?.index,
-        )
+    //  初值恒为 `null`，恢复靠下面那个 `LaunchedEffect(screen)` —— 见它上面那段说明。
+    var stepSheet by remember { mutableStateOf<Int?>(null) }
+    //  **回到命令页那一刻**才把「回来要开哪一档」这笔账兑现。
+    //
+    //  · key 是 `screen` 而不是 `Unit`：压着「选择应用」时这一页的组合可能被重建，
+    //    也可能不重建 —— 只认「当前页变回命令页」这一件事，两种情况都能兑现；
+    //  · **只在命令页上消费**：压在别的页上就把它留着，否则先被那次重建吃掉，
+    //    真回来时反而什么都不剩（真机口径「没点确认直接返回，抽屉应该出现，现在没有」）；
+    //  · 设这笔账的那一刻 `screen` 还是命令页、随后立刻 push —— 这里不会误触发
+    //    （effect 只在 `screen` 变化时重跑）。
+    LaunchedEffect(screen) {
+        val resume = picker.resumeSheetAt.value
+        if (screen == Screen.COMMANDS && resume?.page == Screen.COMMANDS) {
+            stepSheet = resume.index
+            picker.resumeSheetAt.value = null
+        }
     }
-    LaunchedEffect(Unit) { picker.resumeSheetAt.value = null }
     // 这张卡的手势账本：抓「滑动时行上的点击照样派发」那种偶发现场（见 [GestureProbe]）。
     //  挂整张卡而不是每一行 —— 卡里的行都在这条手势范围里，且它比行的 `clickable` 更早拿到事件。
     val probe = rememberGestureProbe("步骤卡")
 
-    // 行级动画的展示层：`draft.steps` 的镜像，每行一个稳定 id。steps 每次变化（增 / 删 / 换 / 移）
-    // 在这里差分对齐：还在的按多重集匹配保留、匹配不上的播退场、缺的建新条目播入场。
-    // 删除立即改 `draft.steps`（数据层马上正确），动画只活在展示层。
-    val display = remember { mutableStateListOf<StepRowItem>() }
-    var nextId by remember { mutableIntStateOf(0) }
+    // 行级动画的展示层：`draft.steps` 的镜像，每行一个稳定 id（差分规则见 [StepRowDisplay]）。
+    //  它住在页面级状态（`commandDraft.stepRows`）而不是这里的 `remember`：切 tab 时这一页的
+    //  组合会被注销，展示层跟着没了 —— 切回来重新建一遍就是**整张表重播进场动画**。
+    val display = commandDraft.stepRows.rows
 
     //  `toList()` **只算一次**：它既是下面那个 effect 的 key，也是差分要用的那份快照。
     //  原来 key 与函数体各算一遍 —— 每遍都要读完整张 `SnapshotStateList` 再新建一个 List。
@@ -105,70 +107,18 @@ internal fun SettingsPage.SerialSteps() {
         //  抽屉是按下标做事的，**那一步已经不在了**才收（用户口径「选中命令不关闭抽屉」：
         //  换一步本身就会改这个列表，一律收掉的话抽屉每选一次就没了）。
         stepSheet?.let { at -> if (at >= 0 && at !in stepsNow.indices) stepSheet = null }
-        //  行尾菜单同理：它是按**行 id**开着、但里面那三行算的是下标的活（上移 / 下移 / 删除），
-        //  列表一变就得收 —— 不收的话菜单还开着、点「删除」删的却是挪位之后的那一行。
-        if (stepMenu != null) stepMenu = null
-        // 未退场的展示行，按展示顺序与 steps 做多重集匹配（同 token 按先后配对）
-        val kept = display.filter { !it.exiting }
-        val matched = arrayOfNulls<StepRowItem>(stepsNow.size)
-        val pool = kept.toMutableList()
-        stepsNow.forEachIndexed { si, token ->
-            val i = pool.indexOfFirst { it.token == token }
-            if (i >= 0) matched[si] = pool.removeAt(i)
-        }
-        // 没匹配上的 → 退场；锚 = 前面最近的保留行（收缩期间插回它下面）
-        var prevId = -1
-        kept.forEach { row ->
-            if (matched.contains(row)) {
-                prevId = row.id
-            } else if (!row.exiting) {
-                row.exiting = true
-                row.anchorId = prevId
-                row.state.targetState = false
-            }
-        }
-        // 重建展示顺序：steps 顺序放匹配行（缺的建新行），其间插入挂锚的退场行
-        val exitingByAnchor = display.filter { it.exiting }.groupBy { it.anchorId }
-        val newOrder = mutableListOf<StepRowItem>()
-        newOrder += exitingByAnchor[-1].orEmpty().sortedBy { it.id }
-        stepsNow.forEachIndexed { si, token ->
-            val m = matched[si]
-            if (m == null) {
-                newOrder += StepRowItem(nextId++, token).also(display::add)
-            } else {
-                newOrder += m
-            }
-            newOrder += exitingByAnchor[m?.id].orEmpty().sortedBy { it.id }
-        }
-        display.clear()
-        display.addAll(newOrder)
+        commandDraft.stepRows.sync(stepsNow)
     }
 
     // 整卡重置的挂起落到每一行 → 同样播退场（reset 本体由页面级协程执行）
     LaunchedEffect(commandDraft.resetPending) {
-        // 注意：必须**连 `exiting` 一起置**：只置 `targetState` 的话行会淡出，
-        //  但摘除那道闸（下面 `if (item.exiting && …)`）永远不成立 —— 而摘除 effect 的 key 是
-        //  `item.state.currentState`，它在这里已经变成 false、之后再不会变 ⇒ 那些行**永留展示层**：
-        //  分隔线一直画着、`cardListPositionOf(index, display.size + 1)` 一直按旧行数算。
-        if (commandDraft.resetPending) {
-            display.forEach {
-                it.exiting = true
-                it.state.targetState = false
-            }
-        }
+        if (commandDraft.resetPending) commandDraft.stepRows.exitAll()
     }
 
-    // 收尾被放弃（[CommandDraftState.resetAborted]）⇒ 把上面标掉的行**收回来**：它们本来会被摘除，而
-    //  `draft.steps` 没变又不会重建 ⇒ 步骤在界面上凭空消失（数据还在，看不到也删不掉）。
+    // 收尾被放弃（[CommandDraftState.resetAborted]）⇒ 把上面标掉的行收回来（理由见 `restoreAll`）。
     LaunchedEffect(commandDraft.resetAborted) {
         if (commandDraft.resetAborted) {
-            display.forEach {
-                if (it.exiting) {
-                    it.exiting = false
-                    it.anchorId = -1
-                    it.state.targetState = true
-                }
-            }
+            commandDraft.stepRows.restoreAll()
             commandDraft.resetAborted = false
         }
     }
@@ -207,11 +157,14 @@ internal fun SettingsPage.SerialSteps() {
                             // 轻点整行 = 弹选择菜单（挑一个替换这一步）；行尾只剩一颗竖三点（更多菜单）。
                             onClick = {
                                 if (item.exiting) return@BasicComponent
+                                // 排序态下这一行只让位给行尾那三颗按钮：轻点整行不再换命令，
+                                //  否则「改顺序」与「换这一步」两种意图会撞在同一下手上。
+                                if (sorting) return@BasicComponent
                                 tick()
                                 XLog.w(
                                     "多条命令：点第 ${stepsIndex + 1} 步（弹选择菜单，替换模式）—— ${probe.describe()}",
                                 )
-                                //  抽屉是按**下标**做事（下移 / 删除 / 换这一步都算下标），而列表一变
+                                //  抽屉是按**下标**做事（换这一步算下标），而列表一变
                                 //  下标就挪位 —— 所以上面那个 effect 会在列表变化时把抽屉收掉。
                                 stepSheet = stepsIndex
                             },
@@ -220,17 +173,19 @@ internal fun SettingsPage.SerialSteps() {
                             // 同一张卡里两行左边缘不齐。
                             startAction = { Icon(stepIcon(item.token, configState.commands.value), null, Modifier.size(ROW_ICON_SIZE)) },
                             endActions = {
-                                // 行尾收成**一颗**竖三点（dots-vertical）：上移 / 下移 / 删除都挪进
-                                //  它弹出来的菜单（[StepRowMenuPopup]）。三个按钮并排时占掉近半行宽，
-                                //  标题那列被挤到只剩十来个字；收成一颗菜单之后宽度还给标题。
-                                IconAction(
-                                    PageIcons.Menu,
-                                    I18n.get(Strings.COMMON_MORE, "更多"),
-                                    enabled = !item.exiting,
-                                ) {
-                                    tick()
-                                    XLog.w("多条命令：点第 ${stepsIndex + 1} 步的行尾菜单")
-                                    stepMenu = item.id
+                                // 只读态行尾与「添加命令」那一行**同一颗**选择器指示：整行可点、
+                                //  点了弹抽屉换这一步，这件事得有视觉交代。
+                                //  排序态换成上移 / 下移 / 删除三颗（原来那颗竖三点菜单已经撤掉）。
+                                if (sorting) {
+                                    if (!item.exiting) {
+                                        StepRowButtons(
+                                            index = stepsIndex,
+                                            lastIndex = steps.lastIndex,
+                                            tick = tick,
+                                        )
+                                    }
+                                } else {
+                                    SelectorGlyph()
                                 }
                             },
                         ) {
@@ -253,46 +208,6 @@ internal fun SettingsPage.SerialSteps() {
                                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
                             )
                         }
-                        // 浮层挂在零宽内层盒子里（落点由触点决定，这里只是它的宿主）。
-                        Box(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(0.dp)) {
-                            // 换这一步的界面**不在这一行了**：两条入口（点整行 / 点「添加命令」）
-                            //  统一走抽屉（见文件末尾那个 `StepPickerSheet`，用户口径
-                            //  「命令列表也换成这个抽屉」）。
-                            // 行尾竖三点那颗弹出来的菜单 —— 上移 / 下移 / 删除（原先行尾那三个按钮）
-                            StepRowMenuPopup(
-                                show = stepMenu == item.id,
-                                preciseClick = rowPreciseClick,
-                                spec =
-                                    StepRowMenuSpec(
-                                        canMoveUp = !item.exiting && stepsIndex > 0,
-                                        canMoveDown = !item.exiting && stepsIndex < steps.lastIndex,
-                                        onMoveUp = {
-                                            tick()
-                                            moveStep(stepsIndex, -1)
-                                        },
-                                        onMoveDown = {
-                                            tick()
-                                            moveStep(stepsIndex, 1)
-                                        },
-                                        onDelete = {
-                                            tick()
-                                            // 从 steps 里立即移除（数据层马上正确）；展示层这一行由差分同步标成退场，shrink 完自己摘除。
-                                            //
-                                            //  `stepsIndex` 是**这一次组合**算出来的下标：菜单开着这段时间列表也可能被
-                                            //  别处改过（上面那个 effect 会收菜单，但同一帧里仍可能撞上），越界就当场忽略、
-                                            //  说清是哪一步 —— 抛在点击回调里就是宿主页面崩掉。
-                                            if (stepsIndex in steps.indices) {
-                                                steps.removeAt(stepsIndex)
-                                            } else {
-                                                XLog.w(
-                                                    "多条命令：要删的第 ${stepsIndex + 1} 步已经不在" +
-                                                        "（现在共 ${steps.size} 步），这次点击忽略",
-                                                )
-                                            }
-                                        },
-                                    ),
-                            ) { stepMenu = null }
-                        }
                     }
                 }
             }
@@ -312,7 +227,7 @@ internal fun SettingsPage.SerialSteps() {
     //  （与「捐赠打赏」那些行同一套，见 `CardRow.Item`）。
     val addIconTint by animateColorAsState(
         targetValue =
-            if (stepsFull) {
+            if (stepsFull || sorting) {
                 COUITheme.colorScheme.disabledOnSecondaryVariant
             } else {
                 COUITheme.colorScheme.onSurfaceContainer
@@ -322,12 +237,18 @@ internal fun SettingsPage.SerialSteps() {
     )
 
     // 整行挂上手指锚点 —— 浮层弹在按下那一点（只记不看，行自己的点击照常）。
-    //  满员时点这一行说清「最多几步」：整段覆盖 `LocalDisabledClick`，行本身照旧置灰
-    CompositionLocalProvider(
-        LocalDisabledClick provides {
-            hint(I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS))
-        },
-    ) {
+    //  两种点不动的情形各说一句：排序态下「先退出排序」，满员时说「最多几步」。
+    //  **文案先算在 remember 外面**：它跟着语言档变，缓存在 `remember(sorting)` 里会在切语言后
+    //  留着旧语言那一句（`tools/check-i18n-cache.py` 盯的就是这个）；只有 lambda 需要 remember ——
+    //  提示条那条通道是全页共用的一个引用，每次重组换新实例会让读 `LocalDisabledClick` 的控件白白重组。
+    val addBlockedHint =
+        if (sorting) {
+            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "排序中，先点右下角完成")
+        } else {
+            I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS)
+        }
+    val onAddBlocked = remember(addBlockedHint) { { hint(addBlockedHint) } }
+    CompositionLocalProvider(LocalDisabledClick provides onAddBlocked) {
         Box(Modifier.fillMaxWidth().gestureProbe(probe)) {
             BasicComponent(
                 //  注意：位置按**数据**（`draft.steps`）算，不按展示层行数（原 `cardListPositionOf(display.size, display.size + 1)`）：
@@ -355,23 +276,10 @@ internal fun SettingsPage.SerialSteps() {
                 startAction = {
                     Icon(PageIcons.StepAdd, null, Modifier.size(ROW_ICON_SIZE), tint = addIconTint)
                 },
-                // 行尾那颗选择器指示（见 [PageIcons.Selector]）—— 这一行点了弹选择器。
-                //  **步骤行已经没有这一颗了**（那里的行尾只剩竖三点菜单）；这一行留着：
-                //  它没有菜单按钮，整行可点这件事得有个视觉交代。
-                //  尺寸取 [ROW_END_ICON_SIZE]（24dp）—— 与「捐赠打赏」那一行的行尾同一档，
-                //  不再套 `ICON_ACTION_SIZE` 那颗按钮大的盒子。
-                //   tint 走最弱那一档（`onSurfaceVariantActions`），比行首那颗 `+` 弱；不给满员另开一档，
-                //   与 `disabledOnSecondaryVariant` **恰好同值**（浅色 0x42 / 深色 0x4D），分了也是同一个颜色。
-                endActions = {
-                    Icon(
-                        PageIcons.Selector,
-                        contentDescription = null,
-                        modifier = Modifier.size(ROW_END_ICON_SIZE),
-                        tint = COUITheme.colorScheme.onSurfaceVariantActions,
-                    )
-                },
+                // 行尾那颗选择器指示 —— 见 [SelectorGlyph]：步骤行与这一行**同一颗**。
+                endActions = { SelectorGlyph() },
                 // `enabled = false` 时 COUI 不挂 `clickableModifier` ⇒ 点不进去，浮层也就打不开。
-                enabled = !stepsFull,
+                enabled = !stepsFull && !sorting,
                 onClick = {
                     tick()
                     // 诊断：这一下是点出来的还是滑出来的（见 [GestureProbe]）
@@ -396,7 +304,12 @@ internal fun SettingsPage.SerialSteps() {
                     ?.let { runCatching { Action.parse(it) }.getOrNull() }
             }
     StepPickerSheet(
-        show = sheetAt != null,
+        //  **只有「当前页就是命令页」时才画**：抽屉是压在这一页上的浮层，而这一页的组合在
+        //  压了「选择应用」之后仍可能被重建（`resumeSheetAt` 那一手正是为重建准备的）。
+        //  只判 `sheetAt != null` 的话，重建那一刻抽屉会**画在选择应用页上面**
+        //  （真机口径「从组件界面点确认返回到选择页，抽屉就显示出来」）。
+        //  回到命令页时 `screen` 变回 COMMANDS，它才该出现 —— 那也正是「回来把抽屉支起来」。
+        show = sheetAt != null && screen == Screen.COMMANDS,
         sheet =
             StepSheetSpec(
                 title =
@@ -419,6 +332,90 @@ internal fun SettingsPage.SerialSteps() {
                 onDismiss = { stepSheet = null },
             ),
     )
+}
+
+/**
+ * 行尾那颗「点这一行能选一个」的指示（[PageIcons.Selector]）—— 步骤行与「添加命令」行**同一颗**。
+ *
+ *  尺寸取 [ROW_END_ICON_SIZE]（24dp），与「捐赠打赏」那一行的行尾同一档，不套 `ICON_ACTION_SIZE`
+ *  那颗按钮大的盒子；tint 走最弱那一档（`onSurfaceVariantActions`），比行首那颗图标弱。
+ */
+@Composable
+private fun SelectorGlyph() {
+    Icon(
+        PageIcons.Selector,
+        contentDescription = null,
+        modifier = Modifier.size(ROW_END_ICON_SIZE),
+        tint = COUITheme.colorScheme.onSurfaceVariantActions,
+    )
+}
+
+/**
+ * 排序态下步骤行行尾那三颗行内按钮 —— 上移 / 下移 / 删除。
+ *
+ *  只在排序态出现（见 `CommandDraftState.stepEditing`）：只读态的行尾是空的，换命令靠轻点整行。
+ *  首行 / 末行那一颗按 `enabled` 置灰，被点一下时说清为什么 —— 每颗各带一句：外层
+ *  「添加命令」那层 `LocalDisabledClick` 说的是「最多几步」，套在这里会答错问题。
+ */
+@Composable
+private fun SettingsPage.StepRowButtons(
+    index: Int,
+    lastIndex: Int,
+    tick: () -> Unit,
+) {
+    StepRowButton(
+        icon = PageIcons.StepUp,
+        label = I18n.get(Strings.COMMON_MOVE_UP, "上移"),
+        enabled = index > 0,
+        disabledHint = I18n.get(Strings.TOAST_COMMAND_STEP_FIRST, "已经是第一步"),
+    ) {
+        tick()
+        moveStep(index, -1)
+    }
+    StepRowButton(
+        icon = PageIcons.StepDown,
+        label = I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
+        enabled = index < lastIndex,
+        disabledHint = I18n.get(Strings.TOAST_COMMAND_STEP_LAST, "已经是最后一步"),
+    ) {
+        tick()
+        moveStep(index, 1)
+    }
+    //  删除这颗是**危险项**：颜色走 `IconAction` 的 `error` 通道（与浮层菜单里
+    //  `MenuEntry.Row(danger = true)` 同一档），而不是普通图标的次级色。
+    //  它恒可用，所以不必走 [StepRowButton]（那一支存在的意义是「禁用时说一句」）。
+    IconAction(
+        PageIcons.CommandDelete,
+        I18n.get(Strings.COMMON_DELETE, "删除"),
+        error = true,
+    ) {
+        tick()
+        // 从 steps 里立即移除（数据层马上正确）；展示层这一行由差分同步标成退场，shrink 完自己摘除。
+        //
+        //  `index` 是**这一次组合**算出来的下标：越界就当场忽略并说清是哪一步 ——
+        //  抛在点击回调里就是宿主页面崩掉。
+        if (index in commandDraft.draft.steps.indices) {
+            commandDraft.draft.steps.removeAt(index)
+        } else {
+            XLog.w("多条命令：要删的第 ${index + 1} 步已经不在（现在共 ${commandDraft.draft.steps.size} 步），这次点击忽略")
+        }
+    }
+}
+
+/** [StepRowButtons] 里的一颗：禁用态被点时用 [disabledHint] 说一句，而不是吃点击。 */
+@Composable
+private fun SettingsPage.StepRowButton(
+    icon: ImageVector,
+    label: String,
+    enabled: Boolean,
+    disabledHint: String,
+    onClick: () -> Unit,
+) {
+    //  同一档原因的行共用同一个引用（见上一条注释）
+    val onBlocked = remember(disabledHint) { { hint(disabledHint) } }
+    CompositionLocalProvider(LocalDisabledClick provides onBlocked) {
+        IconAction(icon, label, enabled = enabled, onClick = onClick)
+    }
 }
 
 /** 步骤上移 / 下移一位（[delta] 为 -1 / +1）；越界不动。 */

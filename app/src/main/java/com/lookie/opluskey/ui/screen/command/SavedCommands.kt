@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,10 +26,10 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
@@ -36,14 +37,15 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.IconAction
 import com.lookie.opluskey.ui.NoHapticFeedback
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TileFocusRing
 import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.model.APP_STATE_TEXT_GAP
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.COLUMNS
+import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
@@ -59,8 +61,6 @@ import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.model.serialSummarySteps
 import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.state.CommandUiState
-import io.github.lyxnx.compose.ui.tablericons.TablerIcons
-import io.github.lyxnx.compose.ui.tablericons.outline.SquareRoundedMinus
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Card
@@ -99,6 +99,8 @@ internal fun SettingsPage.SavedCommandsSection(
     ui: CommandUiState,
     tick: () -> Unit,
     onScrollTop: () -> Unit,
+    /** 排序态下这一片整片禁用（见 `CommandDraftState.stepEditing`）：点开一条会把正在排的草稿换掉。 */
+    enabled: Boolean = true,
 ) {
     AnimatedContent(
         targetState = saved,
@@ -157,7 +159,7 @@ internal fun SettingsPage.SavedCommandsSection(
                     //  位次记身份 ⇒ 删一条 / 改名之后后面的格子会继承前一格的位置，强调色从上一格的颜色
                     //  动画过去（一帧闪色）。
                     key(cmd.name) {
-                        CommandTile(cmd, ui, tick, onScrollTop)
+                        CommandTile(cmd, ui, tick, onScrollTop, enabled)
                     }
                 }
             }
@@ -177,6 +179,7 @@ private fun SettingsPage.CommandTile(
     ui: CommandUiState,
     tick: () -> Unit,
     onScrollTop: () -> Unit,
+    enabled: Boolean,
 ) {
     // 每一张卡各自一份 `PreciseClickState`（按命令名做 key）：`anchorCoordinates`
     //  只有一格，共用一份会把触点算到别的卡上去。
@@ -185,16 +188,13 @@ private fun SettingsPage.CommandTile(
     val editing = commandDraft.draft.editingName == cmd.name
     // 选中时类型图标与标题一起上主题色，带过渡（一处动画喂两个组件）。
     val accentColor by animateColorAsState(
-        targetValue =
-            if (editing) {
-                COUITheme.colorScheme.primary
-            } else {
-                COUITheme.colorScheme.onSurfaceContainer
-            },
+        targetValue = if (editing) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurfaceContainer,
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "CommandTileAccent",
     )
-    Box(Modifier.fillMaxWidth()) {
+    // 排序态下整张卡压暗：库的 `Card` 没有 `enabled`，而「点不动」得看得见 ——
+    //  与「按键绑定」页那条分段控件同一档（[DISABLED_ALPHA]），不做两套灰。
+    Box(Modifier.fillMaxWidth().alpha(if (enabled) 1f else DISABLED_ALPHA)) {
         // 长按振动只走通用通道（[tickNow]）：库默认还会自己振一次 `LongPress`，
         // 那条不看系统静音 —— 这里把局部触觉反馈换成空实现。
         CompositionLocalProvider(LocalHapticFeedback provides NoHapticFeedback) {
@@ -212,8 +212,11 @@ private fun SettingsPage.CommandTile(
                         pressedColor = COUITheme.colorScheme.surfaceContainerHigh,
                     ),
                 pressFeedbackType = PressFeedbackType.None,
-                showIndication = true,
+                // 禁用时连涟漪都不要：这一下本来就不做事，反馈会让人以为「点了、只是没生效」
+                showIndication = enabled,
                 onClick = {
+                    // 排序态下整片禁用：轻点这一张会把正在排的草稿整份换掉。
+                    if (!enabled) return@Card
                     tick()
                     // 草稿里有没保存的改动时先问一句（见 [loadDraft]）
                     loadDraft(cmd)
@@ -221,12 +224,13 @@ private fun SettingsPage.CommandTile(
                     onScrollTop()
                 },
                 onLongPress = {
+                    if (!enabled) return@Card
                     tick()
                     XLog.w("已保存命令长按：${cmd.name}（弹编辑 / 删除）")
                     ui.menuFor = cmd.name
                 },
             ) {
-                CommandTileBody(cmd, accentColor)
+                CommandTileBody(cmd, accentColor, enabled)
             }
         }
         // 浮层挂在零宽内层盒子里（落点由触点决定，这里只是宿主）。
@@ -256,6 +260,7 @@ private fun SettingsPage.CommandTile(
 private fun SettingsPage.CommandTileBody(
     cmd: Command,
     accentColor: Color,
+    enabled: Boolean,
 ) {
     // 顶部对齐：顶行定高，同一行的标题永远是一条线；高度包住内容，下限由布局给。
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -272,6 +277,7 @@ private fun SettingsPage.CommandTileBody(
                 PageIcons.TestCommand,
                 I18n.get(Strings.COMMAND_TEST_BUTTON, "测试命令"),
                 tint = COUITheme.colorScheme.primary,
+                enabled = enabled,
             ) {
                 testCommand(cmd)
             }
@@ -398,27 +404,16 @@ private fun SettingsPage.summaryLineRows(lines: List<StepLine>) {
  */
 @Composable
 private fun SavedCommandEmptyState() {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = EMPTY_STATE_VERTICAL_PADDING),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            TablerIcons.Outline.SquareRoundedMinus,
-            contentDescription = null,
-            modifier = Modifier.size(EMPTY_STATE_ICON_SIZE),
-            tint = COUITheme.colorScheme.onSurfaceVariantSummary,
-        )
-        Spacer(Modifier.height(APP_STATE_TEXT_GAP))
-        Text(
-            text = I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令"),
-            style = COUITheme.textStyles.footnote1,
-            color = COUITheme.colorScheme.onSurfaceVariantSummary,
-            textAlign = TextAlign.Center,
-        )
-    }
+    //  排版走 [Feedback]（与「选择应用」「条件执行」那两块同一份）；这一档只是页内一段，
+    //  所以上下留一档白，不当整页空态居中。
+    Feedback(
+        glyph = { tint ->
+            //  与「选择应用」「条件执行」那两块**同一颗脸**：三处说的都是「这里什么都没有」。
+            Icon(PageIcons.NoMatch, contentDescription = null, modifier = Modifier.fillMaxSize(), tint = tint)
+        },
+        text = I18n.get(Strings.COMMAND_NO_SAVED_COMMANDS, "没有保存的命令"),
+        modifier = Modifier.fillMaxWidth().padding(vertical = EMPTY_STATE_VERTICAL_PADDING),
+    )
 }
 
 /**
@@ -426,9 +421,3 @@ private fun SavedCommandEmptyState() {
  * （没有卡片背景了，这档留白就是它与上面标题、下面内容之间的距离。）
  */
 private val EMPTY_STATE_VERTICAL_PADDING = 24.dp
-
-/**
- * 空状态那颗字形的大小 —— 比「选择应用」页的整页空态那档（`APP_STATE_ICON_SIZE`，32dp）小一档：
- * 那一档整页只有这一句话，这一档只是页内一段（「图标缩小」）。
- */
-private val EMPTY_STATE_ICON_SIZE = ROW_ICON_SIZE

@@ -156,6 +156,9 @@
   "command.test_button": "Test command",
   "command.step_select_title": "Pick from built-in and custom commands",
   "command.step_replace_title": "Choose command",
+  "command.step_sort": "Reorder steps",
+  "command.step_sort_done": "Done",
+  "command.step_sorting_locked": "Sorting — tap the button in the corner to finish",
   "command.format_required": "Start with a prefix such as shell: / cmd:",
   "command.format_shell": "shell:<command>",
   "command.format_shell_desc": "Run a shell command",
@@ -422,12 +425,14 @@
   "command.branch_else": "Otherwise",
   "command.branch_any": "Not set",
   "command.branch_item": "Condition %d",
-  "command.branch_no_command": "Not set",
+  "command.branch_no_command": "No command selected",
   "command.branch_need": "No conditions yet",
   "command.branch_need_command": "Every condition needs an action",
   "command.branch_default": "Runs the command bound to this key when nothing matches",
   "command.branch_need_condition": "Some conditions aren't finished",
   "command.branch_duplicate": "That condition is already used",
   "command.branch_duplicate_app": "That app is already used",
-  "command.branch_empty": "Runs %s from the key binding"
+  "command.branch_empty": "Will run %s from the key binding",
+  "command.branch_empty_title": "No conditions yet",
+  "command.branch_pick_condition": "No condition selected"
 }
