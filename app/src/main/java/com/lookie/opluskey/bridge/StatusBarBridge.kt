@@ -23,6 +23,15 @@ internal object StatusBarBridge {
     /** 状态栏指令：弹系统电源菜单。 */
     const val CMD_POWER_MENU = "power_menu"
 
+    /**
+     * 状态栏指令：唤醒小布（语音助手）。
+     *
+     *  与 [CMD_POWER_MENU] 同属「**必须由 system_server 本人干**」那一类：ROM 里长按电源键是
+     *  `PhoneWindowManagerExtImpl.startSpeech` 用自己的身份去起语音服务的，宿主不一定有那个
+     *  签名级权限（见 `core/model/RomProfile.NAME_VOICE_ASSIST`）。
+     */
+    const val CMD_VOICE_ASSIST = "voice_assist"
+
     /** 状态栏指令：切一个系统开关（`setting:<id>`，见 [SettingBridge]）。 */
     const val CMD_SETTING = "setting"
 
@@ -93,6 +102,10 @@ internal object StatusBarBridge {
 
                 CMD_POWER_MENU -> {
                     showPowerMenuLocal(loader)
+                }
+
+                CMD_VOICE_ASSIST -> {
+                    VoiceAssistBridge.start(loader)
                 }
 
                 CMD_SETTING -> {

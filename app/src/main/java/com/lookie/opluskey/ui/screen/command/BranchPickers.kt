@@ -6,7 +6,6 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.BranchCondition
-import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -53,10 +52,7 @@ internal fun SettingsPage.branchConditionUsed(
 ): Boolean =
     branchDraft.draft.rules
         .filterIndexed { at, _ -> at != exceptIndex }
-        .any { rule ->
-            val other = rule.condition ?: return@any false
-            other.kind == ConditionKind.APP && other.value == pkg
-        }
+        .any { rule -> rule.appCondition?.value == pkg }
 
 /**
  * 把挑中的应用写成第 [index] 条规则的**条件**（前台应用；[AppPickerState.NEW_BRANCH] = 新加一条）。
@@ -91,9 +87,12 @@ internal fun SettingsPage.writeBranchCondition(
     val condition = BranchCondition.app(pkg)
     val old = branchDraft.draft.rules.getOrNull(index)
     if (old == null) {
-        branchDraft.draft.add(StateRule(branchGestureNow(), condition, Action.None))
+        branchDraft.draft.add(StateRule.single(branchGestureNow(), condition, Action.None))
     } else {
-        branchDraft.draft.update(index, old.copy(condition = condition))
+        //  改的是**「前台应用」那一条**：这块里已经有它（手改的配置可能带好几条）就换那一个槽位，
+        //  没有就换第一条 —— 一条都没有时 [StateRule.replacingCondition] 会把它放进去。
+        //  槽位口径只有一处（[StateRule.appConditionIndex]）。
+        branchDraft.draft.update(index, old.replacingCondition(old.appConditionIndex.coerceAtLeast(0), condition))
     }
     picker.clearTarget()
     popBackStack()

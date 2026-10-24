@@ -101,6 +101,38 @@ internal fun stepIcon(
 }
 
 /**
+ * 「条件执行」那种**一行两格**的列表里，命令那一格怎么写 —— **父级 - 子级**（「响铃状态 - 循环」）。
+ *
+ *  为什么这一处要带父名：那一格紧挨着条件那格（「响铃状态 - 亮屏」），两格同一套写法才读得顺；
+ *  而且「循环」「静音」这种词单摆着看不出是谁在循环、谁在静音。**其余地方仍走 [stepTitle]**
+ *  （「已保存的命令」那些步骤行窄，只写取值更省地方）。
+ *
+ *  没有父格的动作（`nav:` 那些入口格以外的一切、`cmd:` 引用、自定义命令）原样退回 [stepTitle]。
+ */
+internal fun actionCellTitle(
+    action: Action,
+    appName: (String) -> String,
+): String {
+    val hit = ActionCatalog.modeHitOf(action)
+    return if (hit == null) stepTitle(action.token, appName) else "${hit.tile.label} - ${hit.mode.label}"
+}
+
+/**
+ * 与 [actionCellTitle] 一一对应的行首图标 —— 有父格时用**那一行自己的**字形。
+ *
+ *  「循环」写的是 `keyevent:164`，与响铃那一格**同一个 token**：按 token 取图标只能拿到格子那颗
+ *  （响铃状态），档位自己的字形（重复箭头）只登记在 `Spec.glyph` 上。所以这里先问
+ * [ActionCatalog.modeHitOf]，问到就交给 `specIcon`（它认 `glyph`），问不到再按 token 走老路。
+ */
+internal fun actionCellIcon(
+    action: Action,
+    commands: List<Command>,
+): ImageVector {
+    val hit = ActionCatalog.modeHitOf(action)
+    return if (hit == null) stepIcon(action.token, commands) else specIcon(hit.mode)
+}
+
+/**
  * 时长（毫秒）在界面上怎么写 —— 全局唯一一处，滑杆行尾与网格小字都走它。
  *
  * 1000ms 及以上写成秒（`1500 → 1.5 秒`）：这两处宽度紧、四位数读不出量级；不足 1000ms 仍写

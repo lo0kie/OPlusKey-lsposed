@@ -182,19 +182,20 @@ private class ConditionMenuSpec(
 private fun SettingsPage.BranchConditionMenu(spec: ConditionMenuSpec) {
     val show = spec.at != AppPickerState.NOT_FOR_BRANCH
     // 这一格**现在**是什么 —— 标题用它（与格子里那半行同一份文案），也是「选中」那一档
+    //  读的是**第 0 条**：这张菜单改的就是第 0 条（见 `applyBranchCondition`），标题必须与它同源。
+    //  一块带好几条时其余几条这份菜单管不着 —— 也就不该拿它们来写标题。
     val editing = spec.rules.getOrNull(spec.at)?.condition
     val title = editing?.let { conditionTitle(it, ::appNameOf) } ?: I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择")
     val current = editing?.kind
-    // 已经用掉的档位置灰：一张表里同一个条件出现两次，后一条永远轮不到
-    //  （条件空着的行不算「用掉」—— 它还没选，任何一档都该能选）。
-    //  **「前台应用」不参与置灰**：它可以出现多条，只要应用不同 —— 重复的是
-    //  「同一个应用」，那一条在挑应用时拦（见 `writeBranchCondition`）。
-    val used =
-        spec.rules
-            .filterIndexed { at, _ -> at != spec.at }
-            .mapNotNull { it.condition?.kind }
-            .filter { it != ConditionKind.APP }
-            .toSet()
+    // 置灰的判据是「**这一档的每一种取值都用过了**」，不是「这一档用过没有」：
+    //  屏幕状态有亮屏 / 锁屏两档，加过「亮屏」之后还想加「锁屏」，那是两条不同的条件；
+    //  按整档灰掉，用户只能回去改已有那条（真机反馈）。
+    //  真正不能重复的是**同一条**（同一个种类 + 同一个取值）—— 那一层在二级里挡（见
+    //  [conditionChoiceRows]）。
+    //  **「前台应用」不参与**：它可以出现多条，只要应用不同 —— 重复的是「同一个应用」，
+    //  那一条在挑应用时拦（见 `writeBranchCondition`）。
+    val used = usedConditionsOf(spec.rules, skipAt = spec.at)
+    val disabled = ConditionKind.entries.filter { it.exhausted(used) }.toSet()
     // 二级在说哪一档；`null` = 没开
     var subKind by remember { mutableStateOf<ConditionKind?>(null) }
     LaunchedEffect(show) { if (!show) subKind = null }
@@ -212,7 +213,7 @@ private fun SettingsPage.BranchConditionMenu(spec: ConditionMenuSpec) {
                     //  小标题下面那条细线、行与行之间的细线都由菜单自己加（见 [MenuEntry.Section]）。
                     MenuEntry.Section(
                         title = title,
-                        rows = conditionKindRows(current, used, spec.onPick) { subKind = it },
+                        rows = conditionKindRows(current, disabled, spec.onPick) { subKind = it },
                     ),
                 )
             },
@@ -235,7 +236,7 @@ private fun SettingsPage.BranchConditionMenu(spec: ConditionMenuSpec) {
                     listOf(
                         MenuEntry.Section(
                             title = conditionKindLabel(kind),
-                            rows = conditionChoiceRows(kind, currentValue) { value -> spec.onPick(kind, value) },
+                            rows = conditionChoiceRows(kind, currentValue, used) { value -> spec.onPick(kind, value) },
                         ),
                     )
                 }.orEmpty(),
@@ -252,13 +253,13 @@ private fun SettingsPage.BranchConditionMenu(spec: ConditionMenuSpec) {
  *  与「菜单开没开、二级挂在哪儿」无关。
  *
  * @param current 这一条现在那一档（画成选中）
- * @param used 表里已经用掉的档（点一下只说「这个条件已经加过了」）
+ * @param disabled 表里**取值已经全用掉**的档（点一下只说「这个条件已经加过了」）
  * @param onPick 「前台应用」那一档交给调用点去挑页；其余档交给 [onSub] 开二级
  * @param onSub 要开二级取值的那一档
  */
 private fun conditionKindRows(
     current: ConditionKind?,
-    used: Set<ConditionKind>,
+    disabled: Set<ConditionKind>,
     onPick: (ConditionKind, String) -> Unit,
     onSub: (ConditionKind) -> Unit,
 ): List<MenuEntry.Row> =
@@ -266,8 +267,8 @@ private fun conditionKindRows(
         MenuEntry.Row(
             title = conditionKindLabel(kind),
             icon = conditionIcon(kind),
-            // 表里已经有了的那一档置灰（本条自己原来那档除外 —— 它算「还是它」）
-            enabled = kind !in used,
+            // 取值全用掉了才置灰（本条自己原来那档不计入 —— 它算「还是它」）
+            enabled = kind !in disabled,
             disabledHint = I18n.get(Strings.COMMAND_BRANCH_DUPLICATE, "这个条件已经加过了"),
             // 这一条现在是这一档 ⇒ 画成选中（行首对勾 + 文字主题色）
             selected = kind == current,
@@ -284,17 +285,25 @@ private fun conditionKindRows(
 /**
  * 取值那一层的行 —— [ConditionKind.choices] 非空的那几档用（WIFI / 媒体状态 / 响铃状态 / 屏幕方向…）。
  *
- *  @param currentValue 这一档**现在**的取值（用来画选中）；空值由调用方按默认档给
+ *  **用过的取值**在这一层挡，而不是把整档在一级灰掉（理由见 [BranchConditionMenu] 里那段注释）：
+ *  同一张表里「屏幕状态 = 亮屏」可以出现一次，「锁屏」是另一条，两条都该能加。
+ *
+ * @param currentValue 这一档**现在**的取值（用来画选中）；空值由调用方按默认档给
+ * @param used 表里已经用掉的「条件 + 取值」（不含正在改的这一条）
  */
 private fun conditionChoiceRows(
     kind: ConditionKind,
     currentValue: String,
+    used: Set<UsedCondition>,
     onPick: (String) -> Unit,
 ): List<MenuEntry.Row> =
     kind.choices.map { value ->
         MenuEntry.Row(
             title = conditionChoiceLabel(kind, value),
             icon = conditionChoiceIcon(kind, value),
+            // 这一档这一个取值已经有一条了 ⇒ 置灰（重复的两条永远轮不到后一条）
+            enabled = UsedCondition(kind, value) !in used,
+            disabledHint = I18n.get(Strings.COMMAND_BRANCH_DUPLICATE_VALUE, "这个取值已经加过了"),
             selected = value == currentValue,
             onPick = { onPick(value) },
         )
@@ -378,8 +387,10 @@ private fun SettingsPage.applyBranchCondition(
     val old = rules.getOrNull(index)
     //  `NEW_BRANCH` 是 -1，`getOrNull` 对它本来就给 null —— 不必再单判一次
     if (old == null) {
-        branchDraft.draft.add(StateRule(gesture, condition, Action.None))
+        branchDraft.draft.add(StateRule.single(gesture, condition, Action.None))
     } else {
-        branchDraft.draft.update(index, old.copy(condition = condition))
+        //  菜单编辑的是**第一条**条件（这一版一次只编辑一条）：只换那一个槽位，
+        //  一块带好几条时不把其余几条抹掉
+        branchDraft.draft.update(index, old.replacingCondition(0, condition))
     }
 }

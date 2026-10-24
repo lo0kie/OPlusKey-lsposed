@@ -105,6 +105,9 @@ object Strings {
 
     /** 灵感语音 —— 一键闪记的「长按录音」那一档（只在长按网格出现）。 */
     const val CATALOG_VOICE_MEMORY = "catalog.voice_memory"
+
+    /** 唤醒小布 —— 与系统「长按电源键」同一个能力（`oplus:voice_assist`）。 */
+    const val CATALOG_VOICE_ASSIST = "catalog.voice_assist"
     const val CATALOG_MODE_BACK = "catalog.mode_back"
     const val CATALOG_MODE_COLLAPSE = "catalog.mode_collapse"
     const val CATALOG_MODE_CONTROL_CENTER = "catalog.mode_control_center"
@@ -209,6 +212,34 @@ object Strings {
     const val COMMAND_BRANCH_NO_COMMAND = "command.branch_no_command"
     const val COMMAND_BRANCH_DUPLICATE = "command.branch_duplicate"
 
+    /**
+     * **某一个取值**已经用掉了（二级那层）—— 与上面那条「整档都加满了」不是一回事：
+     * 屏幕状态加过「亮屏」之后，「锁屏」照样能加。
+     */
+    const val COMMAND_BRANCH_DUPLICATE_VALUE = "command.branch_duplicate_value"
+
+    /**
+     * 「再加一条也没有意义了」—— 表里某一档条件的取值全在，无论什么状态前面都有成立的一条。
+     * 点「添加」时说的就是这句。
+     */
+    const val COMMAND_BRANCH_SATURATED = "command.branch_saturated"
+
+    /**
+     * 死分支那一行的小标题后缀（「条件 3 · 不会执行」）—— 它前面某一档条件已经凑齐，
+     * 这一条永远轮不到。与 [COMMAND_BRANCH_SATURATED] 是同一件事的两种说法：
+     * 那条是点「确认」时的整句，这条是行上的标签。
+     */
+    const val COMMAND_BRANCH_DEAD = "command.branch_dead"
+
+    /**
+     * 「这一条被前面那条更宽的条件盖住了」—— 点「确认」时说的另一句话。
+     *
+     *  与 [COMMAND_BRANCH_SATURATED] 分开：那条说的是「某一档取值凑齐、整张表恒成立」，
+     *  这条说的是「前面某一行的条件更宽且被这一行包含」—— 组合条件（一块好几条）之后才出现的情形，
+     *  拿「恒成立」那句去说它是不对的（前面那条并不恒成立）。
+     */
+    const val COMMAND_BRANCH_SUBSUMED = "command.branch_subsumed"
+
     /** 「前台应用」可以多条，但**同一个应用**只能当一次条件。 */
     const val COMMAND_BRANCH_DUPLICATE_APP = "command.branch_duplicate_app"
     const val COMMAND_BRANCH_EMPTY = "command.branch_empty"
@@ -285,7 +316,7 @@ object Strings {
     const val COMMON_OPEN_MINI_WINDOW_FORMAT = "common.open_mini_window_format"
     const val COMMON_OPEN_SHORTCUT_FORMAT = "common.open_shortcut_format"
 
-    /** 「系统开关」里那几颗在执行提示 / 步骤行里的写法（`切换 WLAN`）。 */
+    /** 「系统开关」里那几颗在执行提示 / 步骤行里的写法（`切换 WIFI`）。 */
     const val COMMON_TOGGLE_SETTING_FORMAT = "common.toggle_setting_format"
 
     /** 系统开关「打开 / 关闭」那两档的步骤标题。 */
@@ -335,6 +366,9 @@ object Strings {
     const val DIALOG_DELETE_COMMAND_TITLE = "dialog.delete_command_title"
     const val DIALOG_DISCARD_COMMAND_EDIT_MESSAGE = "dialog.discard_command_edit_message"
     const val DIALOG_DISCARD_COMMAND_TITLE = "dialog.discard_command_title"
+
+    /** 「条件执行」页那一份（那一页草稿里是条件表，不是命令）—— 与上面那条各说各的页。 */
+    const val DIALOG_DISCARD_CONDITION_TITLE = "dialog.discard_condition_title"
 
     /** 「支持的命令格式」点前缀时输入框里已有内容 —— 覆盖前问一句（那里是整段替换，不是插入）。 */
     const val DIALOG_FILL_PREFIX_TITLE = "dialog.fill_prefix_title"
@@ -578,6 +612,9 @@ object Strings {
     const val TOOL_OPEN_APP = "tool.open_app"
     const val TOOL_SYSTEM_SWITCHES = "tool.system_switches"
     const val TOOL_SCREEN_RECOGNITION = "tool.screen_recognition"
+
+    /** 「小布 AI」入口格 —— 识屏 / 语音 / 闪记 / 灵感语音四件收在这一格后面。 */
+    const val TOOL_XIAOBU_AI = "tool.xiaobu_ai"
 
     /** 「自定义按键」页（监听按键后添加）—— 标题 / 说明 / 等待 / 添加 / 空态。 */
     const val KEY_WATCH_TITLE = "key_watch.title"

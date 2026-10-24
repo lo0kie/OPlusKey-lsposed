@@ -181,6 +181,17 @@ object RomProfile {
     /** 小布识屏（**不在侧键场景表里**，见下面那一档的说明）。 */
     const val NAME_SCREEN_OCR = "screen_ocr"
 
+    /**
+     * 唤醒小布（语音助手）—— **这一档没有 [BuiltIn] 落点**。
+     *
+     *  它不是「起一个组件」那么直白：ROM 里走长按电源键时，`PhoneWindowManagerExtImpl.startSpeech`
+     *  用**自己 system_server 的身份**去 `startForegroundServiceAsUser`（外加 `caller_package=android`、
+     *  `start_type` 两个 extra）。宿主 `com.oplus.gesture` 未必有那个签名级权限，所以这一档不放给宿主起，
+     *  由注入侧在 system_server 里照同一条配方起 —— 见 `bridge/StatusBarBridge` 的 `voice_assist` 指令。
+     *  取证与配方原文见 `docs/device-findings.md` 第三十节。
+     */
+    const val NAME_VOICE_ASSIST = "voice_assist"
+
     /** 侧键专属手电筒服务。 */
     const val NAME_KEY_FLASHLIGHT = "key_flashlight"
 

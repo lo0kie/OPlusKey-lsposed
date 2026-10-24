@@ -8,6 +8,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyConfig
@@ -274,9 +275,13 @@ internal object GestureExec {
         // 条件执行：先在这颗键这一档的**顺序表**里找，命中第一条就执行它；一条都不中就走
         //  [KeyConfig.actionOf] 那一档本来的绑定 —— 所以分叉不占用绑定，两件事互不影响。
         //  判据现判（按下的那一刻）：缓存会让「切到微信再按」仍按上一次的应用走。
+        //  一次按下的**一次判定**里，同一个条件只判一次：一块可以带好几条条件，几张块之间又常
+        //  重复（好几条都要求「亮屏」）。判据里有反射与小窗那张表，不是纯函数级别的便宜货。
+        //  缓存只活在这一下里（下面这个 map 是局部的）—— 跨次缓存会让「切到微信再按」仍按上一次的应用走。
+        val judged = HashMap<BranchCondition, Boolean>()
         val action =
             keyConfig.actionFor(gesture) { condition ->
-                appContext?.let { ConditionProbe.matches(condition, it) } == true
+                judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
             }
         val r =
             runner ?: run {

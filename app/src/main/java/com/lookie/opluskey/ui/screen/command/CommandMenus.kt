@@ -32,6 +32,7 @@ import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.ModeMenuPopups
+import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
@@ -333,7 +334,8 @@ internal fun SettingsPage.StepPickerSheet(
     //  **选中即确认**：点了哪一档就落哪一档，然后连抽屉一起收掉（不再等「确定」）。
     ModeMenuPopups(
         preciseClick = subAnchor ?: coldAnchor,
-        tile = subTile,
+        // 命令链这一层**没有长按**这一档：灵感语音不在步骤链里出现
+        target = subTile?.let { ModeMenuTarget(it, withLongOnly = false) },
         current = sheet.current,
         onPick = { spec ->
             tick()

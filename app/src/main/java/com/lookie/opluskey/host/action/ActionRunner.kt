@@ -126,7 +126,12 @@ internal class ActionRunner(
 
     /** 执行 oplus 动作：免打扰走 AOSP 或 ColorOS，其余走落点。 */
     private val runOplus: (String) -> Unit = { feature ->
-        if (feature == RomProfile.NAME_NO_DISTURB && !isColorOsApi()) {
+        if (feature == RomProfile.NAME_VOICE_ASSIST) {
+            //  唤醒小布**没有宿主落点**：ROM 是用 system_server 自己的身份去起语音服务
+            //  （见 `RomProfile.NAME_VOICE_ASSIST`），宿主未必有那个签名级权限 ⇒ 转给注入侧。
+            XLog.w("oplus:$feature → 转给 system_server 起语音服务")
+            sendStatusbar(StatusBarBridge.CMD_VOICE_ASSIST)
+        } else if (feature == RomProfile.NAME_NO_DISTURB && !isColorOsApi()) {
             XLog.w("oplus:$feature → AOSP 标准接口（ColorOS 接口已关闭）")
             runAospDnd()
         } else {
@@ -217,14 +222,48 @@ internal class ActionRunner(
         }
     }
 
-    /** 一个 `keyevent:` 动作：大多走注入，通知中心 / 最近任务 / 静音键 / 电源键走特殊通道。 */
+    /** 一个 `keyevent:` 动作：大多走注入，通知中心 / 最近任务 / 静音键 / 电源键 / 音量走特殊通道。 */
     private fun runKeyEvent(keyCode: Int) {
         when (keyCode) {
             KeyId.KEYCODE_NOTIFICATION -> sendStatusbar(StatusBarBridge.CMD_NOTIFICATIONS)
             KeyId.KEYCODE_APP_SWITCH -> sendStatusbar(StatusBarBridge.CMD_RECENTS)
             KeyId.KEYCODE_VOLUME_MUTE -> ringer.cycle()
             KeyId.KEYCODE_POWER -> togglePower(context, ::notifyFailure)
+            KeyId.KEYCODE_VOLUME_UP -> adjustVolume(android.media.AudioManager.ADJUST_RAISE)
+            KeyId.KEYCODE_VOLUME_DOWN -> adjustVolume(android.media.AudioManager.ADJUST_LOWER)
             else -> injector.inject(keyCode)
+        }
+    }
+
+    /**
+     * 音量键：**不注入按键**，直接调系统音量。
+     *
+     *  注入的 24 / 25 会再走一遍输入层：物理电源键按着时，输入层把每一个注入的音量键当成
+     *  「电源 + 音量」组合的另一半，音量那一路被拿去做组合判定（而模块为了不截图又把组合吞掉），
+     *  表现就是「连续触发只生效一次」。`adjustSuggestedStreamVolume` 不经过输入层，绕开它。
+     *
+     *  两个参数都与按音量键同口径：`USE_DEFAULT_STREAM_TYPE` = 当前活跃那条流（放音乐调媒体、
+     *  通话调通话，不写死媒体流），`FLAG_SHOW_UI` 弹的就是系统自己那条音量条。
+     */
+    private fun adjustVolume(direction: Int) {
+        val ctx =
+            context ?: run {
+                XLog.w("没有 Context，音量调整跳过（方向 $direction）")
+                return
+            }
+        try {
+            val am =
+                ctx.getSystemService(android.media.AudioManager::class.java) ?: run {
+                    XLog.w("拿不到 AudioManager，音量调整跳过")
+                    return
+                }
+            am.adjustSuggestedStreamVolume(
+                direction,
+                android.media.AudioManager.USE_DEFAULT_STREAM_TYPE,
+                android.media.AudioManager.FLAG_SHOW_UI or android.media.AudioManager.FLAG_PLAY_SOUND,
+            )
+        } catch (e: Throwable) {
+            XLog.w("音量调整失败（已忽略）：${e.javaClass.simpleName}", e)
         }
     }
 

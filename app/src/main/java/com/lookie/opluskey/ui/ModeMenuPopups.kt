@@ -25,6 +25,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.model.specIcon
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -53,25 +54,26 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *
  * ## 调用方只表达两件事
  *
- *  · [tile] 是哪一格开着（`null` = 关）：行与小标题都由它算，调用方不用挑模式；
+ *  · [target] 是哪一格开着（`null` = 关）：行与小标题都由它算，调用方不用挑模式；
  *  · [onPick] 选中了哪一档（弹窗里那三行也是同一个回调）。
  *
  *  哪一行点下去还有后续由模型回答（[ActionCatalog.stateMenu]）—— 界面侧不认 token。
  *
  * @param preciseClick 弹层锚点：网格传那一格自己的，抽屉里传行内触点
+ * @param target 哪一格开着（`null` = 没开），连同「这一层要不要给只在长按成立的行」
  * @param current 当前绑的动作（`null` = 不知道，谁都不打勾）
  * @param onDismiss 这一格流程该收起时调（含「点空白处」）。弹窗自己那一层不经过它
  */
 @Composable
 internal fun SettingsPage.ModeMenuPopups(
     preciseClick: PreciseClickState,
-    tile: ActionCatalog.Spec?,
+    target: ModeMenuTarget?,
     current: Action?,
     onPick: (ActionCatalog.Spec) -> Unit,
     onDismiss: () -> Unit,
 ) {
     // 弹窗开着的是哪一档（`null` = 没开）。只在组件内部流转，调用方看不见也不用管。
-    //  它**不跟着 `tile` 清**：菜单在点开弹窗那一下就已经收了，两者本来就不同生共死。
+    //  它**不跟着 `target` 清**：菜单在点开弹窗那一下就已经收了，两者本来就不同生共死。
     var stateEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
     val icons = tileIcons.value
 
@@ -79,10 +81,10 @@ internal fun SettingsPage.ModeMenuPopups(
         preciseClick = preciseClick,
         onDismiss = onDismiss,
         entries =
-            tile
+            target
                 ?.let { t ->
-                    ActionCatalog.modeMenu(t.token)?.let { modes ->
-                        modeEntries(t.label, modes, icons, current) { picked ->
+                    ActionCatalog.modeMenu(t.tile.token, t.withLongOnly)?.let { modes ->
+                        modeEntries(t.tile.label, modes, icons, current) { picked ->
                             // 这一档还有后续：收菜单、起弹窗（顺序反了会闪一帧空菜单）
                             if (ActionCatalog.stateMenu(picked.token) != null) {
                                 stateEntry = picked
@@ -200,7 +202,9 @@ private fun StatePickRow(
             text = label,
             style = COUITheme.textStyles.body1,
             color = if (selected) colors.primary else colors.onSurface,
-            modifier = Modifier.weight(1f),
+            //  行高由 [STATE_ROW_MIN_HEIGHT] 定住、字在里面竖居中 —— 行盒居中不等于墨迹居中，
+            //  汉字会看着偏高那一点点。与网格格 / 胶囊 / 表格单元格同一档光学修正（见 `opticalCenter`）。
+            modifier = Modifier.weight(1f).opticalCenter(COUITheme.textStyles.body1),
         )
         if (selected) {
             Icon(

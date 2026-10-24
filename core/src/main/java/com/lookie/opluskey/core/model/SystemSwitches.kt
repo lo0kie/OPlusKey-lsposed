@@ -9,7 +9,7 @@ import com.lookie.opluskey.core.i18n.Strings
  *
  * ## 为什么不是「控制中心磁贴」
  *
- *  控制中心里点得动的第三方磁贴必须**先在控制中心里加过**，而用户真正常绑的那几个（WLAN / 蓝牙 /
+ *  控制中心里点得动的第三方磁贴必须**先在控制中心里加过**，而用户真正常绑的那几个（WIFI / 蓝牙 /
  *  移动数据 / NFC / 飞行模式 / 自动旋转 …）是 SystemUI 内置的简写 token、**没有组件名**，永远进不了
  *  那张列表。所以这一簇不再借控制中心的任何一种写法，自己定义动作类型：`setting:<id>`
  *  （见 [Action.Setting]）。
@@ -64,7 +64,7 @@ object SystemSwitches {
     val ITEMS: List<Item> =
         listOf(
             Item(settingToken("bt"), Strings.SYS_SETTING_BT, "蓝牙"),
-            Item(settingToken("wifi"), Strings.SYS_SETTING_WIFI, "WLAN"),
+            Item(settingToken("wifi"), Strings.SYS_SETTING_WIFI, "WIFI"),
             Item(settingToken("cell"), Strings.SYS_SETTING_CELL, "移动数据"),
             Item(settingToken("rotation"), Strings.SYS_SETTING_ROTATION, "自动旋转"),
             Item(settingToken("nfc"), Strings.SYS_SETTING_NFC, "NFC"),

@@ -33,6 +33,10 @@ internal object Framework {
      * @param pmExtEntries 覆写层要挂的入口方法名（`override` 前缀那套命名）
      * @param pmCandidates AOSP 原生 PhoneWindowManager（兜底）
      * @param pmEntries AOSP 原生入口
+     * @param chordCandidates **输入层**的组合键判定类（`com.android.server.input` 那一层，比 policy 早）。
+     *   与侧键那条分开装：它不参与手势判定，只负责把 ROM 已经判好的「电源 + 音量」组合吞掉 ——
+     *   policy 上吞掉的那一下到不了这里，所以侧键接管点再准也拦不住截图
+     * @param chordEntries 组合键判定类上的入口方法名（精确匹配）
      * @param amsCandidate AMS 的广播入口 —— 本模块「主开关 / 配置 / 状态栏指令 / 小窗指令 /
      *   链路自检问」全从这里收
      * @param amsBroadcastEntries AMS 广播入口的方法名（精确匹配），**按优先级排列**：
@@ -67,6 +71,8 @@ internal object Framework {
         val pmExtEntries: Set<String>,
         val pmCandidates: List<String>,
         val pmEntries: Set<String>,
+        val chordCandidates: List<String>,
+        val chordEntries: Set<String>,
         val amsCandidate: String,
         val amsBroadcastEntries: Set<String>,
         val hostKeyService: String,
@@ -110,6 +116,8 @@ internal object Framework {
                     ),
                 pmCandidates = listOf("com.android.server.policy.PhoneWindowManager"),
                 pmEntries = setOf("interceptKeyBeforeQueueing"),
+                chordCandidates = listOf("com.android.server.input.KeyGestureController"),
+                chordEntries = setOf("handleKeyGesture"),
                 amsCandidate = "com.android.server.am.ActivityManagerService",
                 amsBroadcastEntries = setOf("broadcastIntentWithFeature", "broadcastIntent"),
                 hostKeyService = "com.oplus.gesture.server.ActionButtonKeyService",
@@ -291,6 +299,41 @@ internal object Framework {
     }
 
     /**
+     * 输入层那条组合键判定的接管点 —— 与 [findSideKeyPoints] **并列、互不影响**。
+     *
+     *  为什么侧键那条不够：侧键接管点落在 policy 的策略类上，而「电源 + 音量」的组合键在**输入层**
+     *  就已经判完并派发下去了（`com.android.server.input` 那一层比 policy 早）。policy 上吞掉的
+     *  那一下对它完全不可见 —— 于是两颗键都归模块管时，组合键照旧由 ROM 执行。
+     *
+     *  与侧键那条分开装：这条**不参与手势判定**，只负责把 ROM 判好的组合吞掉；装不上时侧键照常
+     *  （这里记一行 w 就退，不影响另一条链路）。
+     *
+     * @return 命中的方法（同名的多重载全收）；一个都没命中返回空表（调用方只记日志，不硬猜）
+     */
+    fun findChordPoints(loader: ClassLoader): List<ChordPoint> {
+        for (name in hooks.chordCandidates) {
+            val cls = Reflect.findClass(loader, name) ?: continue
+            XLog.w("找到输入层组合键类：$name")
+            val all = Reflect.methodsOf(cls).filter { !it.isSynthetic && !it.name.startsWith("access$") }
+            val hit = all.filter { it.name in hooks.chordEntries }
+            if (hit.isEmpty()) {
+                val near = all.map { it.name }.filter { it.contains("KeyGesture") }.distinct()
+                XLog.w(
+                    "${cls.name} 上没有 ${hooks.chordEntries.joinToString("/")}()，组合键不拦" +
+                        "（同族方法：${near.joinToString(", ").ifEmpty { "一个都没有" }}）",
+                )
+                return emptyList()
+            }
+            return hit.map { ChordPoint(cls, it) }
+        }
+        XLog.w(
+            "没找到输入层组合键类（试过 ${hooks.chordCandidates.joinToString("/")}）" +
+                "—— 电源 + 音量的组合仍由 ROM 执行",
+        )
+        return emptyList()
+    }
+
+    /**
      * 收一层的接管点候选 —— **层内第一个命中的类就停**。
      *
      *  层与层之间的逐层降级在上面那三行；层内也要停：同一层的几个候选是同一个类的两种包名写法
@@ -466,6 +509,40 @@ internal object Framework {
         /** 长按电源那个全局菜单（走 `PhoneWindowManager`）。 */
         const val SHOW_GLOBAL_ACTIONS = "showGlobalActions"
 
+        // ── 小布助手（Breeno，`oplus:voice_assist`，配方照 `PhoneWindowManagerExtImpl.startSpeech`） ──
+        //  全是 ROM 私有字符串，取值与取证见 `docs/device-findings.md` 第三十节。
+        //  这一族**不注入任何东西**，只是「按名字把人叫起来」，所以放在候选表里而不是 HookSet。
+
+        /** 语音助手的包名候选：新机型是 `heytap`，老版本是 `oppo` —— 先试装着的那个。 */
+        val SPEECH_PACKAGES = listOf("com.heytap.speechassist", "com.oppo.speechassist")
+
+        /** 语音服务的组件名（**包名之外的那一半**，换包时不变）。 */
+        const val SPEECH_SERVICE = "com.heytap.speechassist.core.SpeechService"
+
+        /** 唤醒用的 action（服务那支；锁屏那支是 `heytap.speechassist.action.LOCK_SCREEN_UI`，未采用）。 */
+        const val SPEECH_ACTION_ACTIVATE = "heytap.intent.action.ACTIVATE_SPEECH_ASSIST"
+
+        /** 「谁叫的」那个 extra —— 系统自己写死 `android`。 */
+        const val SPEECH_EXTRA_CALLER = "caller_package"
+
+        /** 上面那个 extra 的取值。 */
+        const val SPEECH_CALLER_VALUE = "android"
+
+        /** 「从哪儿叫起来的」那个 extra。 */
+        const val SPEECH_EXTRA_START_TYPE = "start_type"
+
+        /**
+         * [SPEECH_EXTRA_START_TYPE] 的「电源键长按」那一档。
+         *
+         *  **512**，取值来自语音助手自己的映射表（`Loq/a;->b(I)` 的 sparse-switch：
+         *  `64 assistant / 80 health_app / 96 conversation_sdk / 112 software_store /
+         *  128 title_service / 144 set_entetr / 512 power_key / 1024 headset / 2048 mini_note …`），
+         *  并在真机上逐个值验过：1024 下去只有服务起来、界面不出来；512 下去小布界面直接到前台。
+         *  为什么不是 1024：那是框架侧 `MSG_POWER_LONG_PRESS_FOR_SPEECH` 那条**消息号**，
+         *  早先按指令顺序误读成了来源值 —— 见 `docs/device-findings.md` 第三十节。
+         */
+        const val SPEECH_START_TYPE_POWER = 512
+
         // ── 输入注入（AOSP 公开） ──
 
         /** `android.view.KeyEvent` —— 只为 `injectInputEvent` 拿它的 `ACTION_*` 常量。 */
@@ -510,5 +587,18 @@ internal object Framework {
             /** AOSP 原生 PhoneWindowManager（兜底）。 */
             AOSP_PM,
         }
+    }
+
+    /**
+     * 输入层的一个组合键接管点。
+     *
+     *  与 [InterceptionPoint] 分开：那个带 [InterceptionPoint.kind]，会被喂给判定器判手势；
+     *  这里只做一件事 —— 把 ROM 已经判好的组合吞掉，不产生任何手势。
+     */
+    data class ChordPoint(
+        val owner: Class<*>,
+        val method: Method,
+    ) {
+        override fun toString(): String = "${owner.name}#${method.name}"
     }
 }

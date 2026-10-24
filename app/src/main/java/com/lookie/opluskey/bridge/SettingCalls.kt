@@ -118,7 +118,7 @@ internal object SettingCalls {
         ) != null
     }
 
-    /** WLAN：`setWifiEnabled(String packageName, boolean enable)`。 */
+    /** WIFI：`setWifiEnabled(String packageName, boolean enable)`。 */
     private fun wifi(
         loader: ClassLoader,
         on: Boolean?,

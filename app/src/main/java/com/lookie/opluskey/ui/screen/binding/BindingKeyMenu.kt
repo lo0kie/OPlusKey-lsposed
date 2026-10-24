@@ -48,6 +48,7 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *
  * ## 哪几行是灰的
  *
+ *  · **条件执行**：这一颗键停用时不进得去（见 `keyMenuEntries` 里那一支）；
  *  · **重命名 / 删除**：只在选中一颗自定义按键时可点 —— 侧键的名字与去留是模块自己说了算的；
  *  · **停用 / 启用**：每一颗键都有，**侧键也有**（「快捷键也允许被禁用」）—— 它写的是
  *    **这一颗键**的 `enabled`，与首页那个模块总闸是两件事：停用侧键只停这颗键，
@@ -167,11 +168,23 @@ private fun keyMenuEntries(
         //  行尾给箭头（库的 `submenu` 一给就会画那一格），它与下面三行「一行操作」不是一回事。
         //  这一行受 [SHOW_BRANCHES_ENTRY] 控制（收起来时不删这一支，随时能开回来）。
         if (SHOW_BRANCHES_ENTRY) {
+            //  这一颗键停用了 ⇒ 这一行也按不动：条件表说的是「这颗键这一档怎么分流」，
+            //  键本身都不接管了，进去改那份表没有任何去处（用户口径：「停用按键时，菜单的
+            //  条件执行也禁用」）。提示语与页面里其它按不动的控件**同一句**（`KEY_DISABLED_ITEM`），
+            //  不另编一套说法。
+            val keyEnabled = cfg.key(selected).enabled
             add(
                 MenuEntry.Row(
                     title = BRANCHES_TITLE,
                     icon = PageIcons.MenuCondition,
                     submenu = true,
+                    enabled = keyEnabled,
+                    disabledHint =
+                        if (keyEnabled) {
+                            null
+                        } else {
+                            I18n.format(Strings.KEY_DISABLED_ITEM, selected.label)
+                        },
                     onPick = actions.onOpenBranches,
                 ),
             )

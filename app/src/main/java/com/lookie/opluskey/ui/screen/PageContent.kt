@@ -33,6 +33,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.wire.ModuleWire
+import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.LocalHint
 import com.lookie.opluskey.ui.PageDebugChannel
 import com.lookie.opluskey.ui.Screen
@@ -138,7 +139,8 @@ internal fun SettingsPage.PageContent() {
             //  —— 见 `patches/coui/0008-disabled-click-explains.patch`。
             //  `remember` 住这个 lambda：`hint` / `disabledClickReason()` 都在**调用那一刻**才读，
             //  每次重组换一个新实例会让所有读它的控件白白重组一遍。
-            LocalDisabledClick provides remember { { hint(disabledClickReason()) } },
+            //  同一个语义位（[HINT_SLOT_DISABLED]）：连点几下是这一条在改字，不叠一串
+            LocalDisabledClick provides remember { { hint(disabledClickReason(), slot = HINT_SLOT_DISABLED) } },
         ) {
             Scaffold(
                 containerColor = COUITheme.colorScheme.surface,

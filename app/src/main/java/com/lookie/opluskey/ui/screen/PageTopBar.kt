@@ -21,17 +21,20 @@ import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.SUBTITLE_DIM_FACTOR
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
 import com.lookie.opluskey.ui.screen.binding.BindingTabBand
+import com.lookie.opluskey.ui.screen.command.BranchHeaderAdd
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.command.branchDefaultLabel
 import com.lookie.opluskey.ui.screen.home.ResetMenu
 import com.lookie.opluskey.ui.state.KeyWatchState
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 顶栏 —— 标题 / 副标题 / 右上角动作 / 底下那条固定带，全部按页分派。
@@ -57,6 +60,18 @@ internal fun SettingsPage.PageTopBar(
         largeTitleSubtitle = largeTitleSubtitle(s),
         // 大标题**右边**那行小标题（补丁新增的槽位，折叠后保留），内容见 [pageSubtitle]。
         subtitle = pageSubtitle(s),
+        //  这一颗键停用 ⇒ 内容区整片压暗了，这行小标题也跟着**压低一档**：它是这一页上唯一还亮着的字，
+        //  满亮度留着会读成「这一区还是活的」。
+        //
+        //  **压暗是「乘」不是「盖」**：`onSurfaceVariantSummary` 本身就是 `0x66000000`（alpha 0.4，
+        //  见 coui 的 `Colors.kt`）。第一版写成 `copy(alpha = 0.5f)` —— 那是把它从 0.4 **抬**到 0.5，
+        //  比原来还清楚，看起来当然「没生效」。所以按现有 alpha 乘一个系数。
+        subtitleColor =
+            if (s == Screen.BINDING && editingKeyDisabled) {
+                COUITheme.colorScheme.onSurfaceVariantSummary.let { it.copy(alpha = it.alpha * SUBTITLE_DIM_FACTOR) }
+            } else {
+                COUITheme.colorScheme.onSurfaceVariantSummary
+            },
         // 尾随标题后面那枚小图标 —— 现在两处：
         //  · 「选择应用」页开着小窗打开时补一枚「小窗起」：与网格里「打开应用」那格同一口径
         //    （见 `BindingScreen` 的 `appSmallWindow`）。那一行字只说明「选了哪个应用」，
@@ -220,6 +235,10 @@ private fun SettingsPage.PageActions(s: Screen) {
         Screen.BINDING -> BindingKeyMenu()
 
         Screen.APP_PICKER -> AppPickerMenu()
+
+        // 「条件执行」页那颗「添加」：这一页唯一的加法入口。右下角只留「确认」一颗 FAB，
+        //  加法放在「这一页有什么」那一层的工具位置上（用户口径）。
+        Screen.BRANCHES -> BranchHeaderAdd()
 
         else -> Unit
     }

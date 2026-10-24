@@ -30,7 +30,6 @@ import com.lookie.opluskey.ui.screen.about.AboutScreen
 import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingScreen
-import com.lookie.opluskey.ui.screen.command.BranchActions
 import com.lookie.opluskey.ui.screen.command.BranchScreen
 import com.lookie.opluskey.ui.screen.command.CommandActions
 import com.lookie.opluskey.ui.screen.command.CommandScreen
@@ -116,17 +115,16 @@ internal fun SettingsPage.PageEntry(
             // 所以工具栏与顶栏同一个挂法：页内、取样源外，只是贴在底部。
             // （它自己那层模糊挂上了，与顶栏同一个取样层。）
             //
-            // 只在这一页「能写命令」的那两页显示；整页 push / pop 转场时它跟着一起滑
+            // 只在「自定义命令」那一页显示；整页 push / pop 转场时它跟着一起滑
             // （挂在页里，不是挂在页面之外）。
-            //  「条件执行」页也用它落盘（`BranchActions`）：那一页右下角那颗是**添加**，
-            //  保存交给这条工具条 —— 一页只留一个「加」、一个「存」，不必猜哪个算数。
+            //  「条件执行」页**不用**它：那一页是两颗一叠的 FAB（右下角「添加」常驻、「确定」
+            //  有改动才出现，见 `BranchScreen`），落盘点跟着动作走，不再单独占一条底栏。
             val toolbarModifier =
                 Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = COMMAND_TOOLBAR_BOTTOM)
             when (s) {
                 Screen.COMMANDS -> CommandActions(toolbarModifier)
-                Screen.BRANCHES -> BranchActions(toolbarModifier)
                 else -> Unit
             }
 

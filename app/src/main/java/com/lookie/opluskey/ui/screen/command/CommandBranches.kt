@@ -51,10 +51,10 @@ import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT_MS
+import com.lookie.opluskey.ui.model.actionCellIcon
+import com.lookie.opluskey.ui.model.actionCellTitle
 import com.lookie.opluskey.ui.model.conditionIcon
 import com.lookie.opluskey.ui.model.conditionRowTitle
-import com.lookie.opluskey.ui.model.stepIcon
-import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.NO_FRESH_ROW
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
@@ -229,7 +229,7 @@ internal fun SettingsPage.addBranchRule(
     onAdded: (Int) -> Unit,
 ) {
     val tail = rules.lastOrNull()
-    if (tail != null && tail.condition == null && tail.action == Action.None) {
+    if (tail != null && tail.conditions.isEmpty() && tail.action == Action.None) {
         tick()
         //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
         hint(
@@ -239,7 +239,7 @@ internal fun SettingsPage.addBranchRule(
         return
     }
     val first = rules.isEmpty()
-    val id = branchDraft.draft.add(StateRule(branchGestureNow(), null, Action.None))
+    val id = branchDraft.draft.add(StateRule.single(branchGestureNow(), null, Action.None))
     onAdded(if (first) NO_FRESH_ROW else id)
 }
 
@@ -258,6 +258,8 @@ private fun SettingsPage.BranchRuleColumn(
     menus: BranchMenuState,
     anchors: List<RuleAnchors>,
 ) {
+    //  哪几行是死分支（永远轮不到）—— 小标题上直接标出来，不必等点「确认」才被告知
+    val dead = deadIndexesOf(rules)
     Column(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         // 只剩一条时它**不自己收缩**：那一条的消失由外层空态那一套接管（见 `BranchCards` 里
         //  那个 effect）。不然数据被移除之前先闪一帧收缩，就成了「行先缩、空态再长」两段。
@@ -272,6 +274,7 @@ private fun SettingsPage.BranchRuleColumn(
                             anchors = anchors[index],
                             fresh = ids[index] == freshId,
                             exiting = shrinkable && menus.deletingAt == index,
+                            dead = index in dead,
                         ),
                     menus = menus,
                 )
@@ -316,14 +319,19 @@ private fun SettingsPage.BranchRow(
         Box(Modifier.padding(top = if (spec.index == 0) 0.dp else GRID_ROW_GAP)) {
             //  两格各自「有没有选完」先算出来：文案与行首图标都看它
             //  （条件那格还要 `isUsable` —— 选了种类但没选取值，写下去也存不住）。
+            //  一块可能带**好几条**条件：全部配完才写出来，几条之间用「 + 」连（这个符号两种
+            //  语言里都读得通，不必再加一个字典键）。少一条没配完 ⇒ 仍然是「未选择条件」。
             val conditionText =
-                rule.condition
-                    ?.takeIf { it.isUsable }
-                    ?.let { conditionRowTitle(it, ::appNameOf) }
-            val actionText = if (rule.action == Action.None) null else stepTitle(rule.action.token, ::appNameOf)
+                rule.conditions
+                    .takeIf { rule.isReady }
+                    ?.joinToString(CONDITION_JOINER) { conditionRowTitle(it, ::appNameOf) }
+            //  命令那格写成「父级 - 子级」（响铃状态 - 循环）：与条件那格同一套写法，
+            //  光写「循环」看不出是谁在循环（见 `actionCellTitle`）
+            val actionText = if (rule.action == Action.None) null else actionCellTitle(rule.action, ::appNameOf)
             RuleBlock(
                 // 「条件 1」「条件 2」—— 一份表里第几条，标题上直接写出来
                 index = spec.index,
+                dead = spec.dead,
                 text =
                     RuleText(
                         // 没选完的那一格写「未选择条件 / 未选择命令」，**行首图标同时置红**：
@@ -332,12 +340,17 @@ private fun SettingsPage.BranchRow(
                         action = actionText ?: I18n.get(Strings.COMMAND_BRANCH_NO_COMMAND, "未选择命令"),
                         conditionEmpty = conditionText == null,
                         actionEmpty = actionText == null,
-                        conditionIcon = rule.condition?.kind?.let(::conditionIcon) ?: PageIcons.CommandBranch,
+                        conditionIcon =
+                            rule.conditions
+                                .firstOrNull { it.isUsable }
+                                ?.kind
+                                ?.let(::conditionIcon) ?: PageIcons.CommandBranch,
                         actionIcon =
                             if (rule.action == Action.None) {
                                 PageIcons.CommandSingle
                             } else {
-                                stepIcon(rule.action.token, configState.commands.value)
+                                //  图标跟着**档位**走：循环是重复箭头，不是响铃那格那颗
+                                actionCellIcon(rule.action, configState.commands.value)
                             },
                     ),
                 cells =
@@ -367,6 +380,8 @@ private class RuleRowSpec(
     val anchors: RuleAnchors,
     val fresh: Boolean,
     val exiting: Boolean,
+    /** 这一行**永远轮不到**（它前面某一档条件已经凑齐）—— 小标题上标出来。 */
+    val dead: Boolean,
 )
 
 /** 「没有正在退场的行」的哨兵 —— 与 `BranchMenuState.deletingAt` 的初始值同义。 */
@@ -381,6 +396,9 @@ private class RuleAnchors {
     val right = PreciseClickState()
     val menu = PreciseClickState()
 }
+
+/** 一块里几条条件之间那个符号 —— 语言中立，不用进字典。 */
+private const val CONDITION_JOINER = " + "
 
 /**
  * 小标题那一行的**最小**高度 —— 标题与右端那颗三点都在这一行里竖居中。
@@ -403,9 +421,8 @@ private val RULE_MENU_HEIGHT = 20.dp
 @Composable
 private fun SettingsPage.BranchDefaultTip() {
     Text(
-        text =
-            I18n.get(Strings.COMMAND_BRANCH_DEFAULT, "以上都不成立时，执行按键绑定里的命令") +
-                "：${branchDefaultLabel()}",
+        //  只留这一句，不接「：侧键 - 单击」那截详细 —— 那一档顶栏尾随小标题已经写着
+        text = I18n.get(Strings.COMMAND_BRANCH_DEFAULT, "以上都不成立时，执行按键绑定里的命令"),
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -460,6 +477,8 @@ private class RuleText(
 @Composable
 private fun RuleBlock(
     index: Int,
+    /** 这一行**永远轮不到**：小标题后缀写明，免得用户配完才发现它不会执行。 */
+    dead: Boolean,
     text: RuleText,
     cells: RuleCells,
 ) {
@@ -508,7 +527,9 @@ private fun RuleBlock(
                         //  这一行本身仍可点，靠文案「未选择条件」说清缺什么就够了。
                         iconTint = if (text.conditionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
                         titleTint = if (text.conditionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                        trailing = { SelectorGlyph() },
+                        //  死分支（前面某一档条件已经凑齐）在条件这一行末尾标红 ——
+                        //  不必等点「确认」被拦下才知道这一条永远不会执行。
+                        trailing = { ConditionTrailing(dead) },
                         modifier = Modifier.preciseClickAnchor(cells.anchors.left),
                         onClick = cells.onCondition,
                     ),
@@ -523,6 +544,27 @@ private fun RuleBlock(
                     ),
                 ),
         )
+    }
+}
+
+/**
+ * 条件那一行的行尾：死分支先标一句红的，再接那枚选择器。
+ *
+ *  为什么标在**这一行**而不是小标题：小标题是库组件 `SmallTitle`，只能给一整串字，染不了一半；
+ *  而这一行本来就是「这一条什么时候执行」，写在这儿读起来最顺。
+ */
+@Composable
+private fun ConditionTrailing(dead: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (dead) {
+            Text(
+                I18n.get(Strings.COMMAND_BRANCH_DEAD, "不会执行"),
+                style = COUITheme.textStyles.footnote1,
+                color = COUITheme.colorScheme.error,
+                modifier = Modifier.padding(end = 6.dp),
+            )
+        }
+        SelectorGlyph()
     }
 }
 

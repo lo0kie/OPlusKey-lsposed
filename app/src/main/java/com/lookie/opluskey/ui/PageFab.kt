@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.FAB_SCROLL_DIRECTION_THRESHOLD
@@ -32,7 +33,8 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  （库里 `FloatingActionButton` 的默认档），再加一档 8dp 的间隙 ——
  *  三者加起来才是「滚到最底下时最后一行停在它上面」的那个留白。
  *
- *  两处用：条件执行页那颗「确定」、自定义命令页那颗「排序」。
+ *  两处用：条件执行页那颗「确认」、自定义命令页那颗「排序」。
+ *  （条件执行页曾经是**两颗一叠**，上面那颗「添加」后来挪到顶栏右上角，那一套栈式布局随之删掉。）
  */
 internal val FAB_BOTTOM_CLEARANCE = PAGE_BOTTOM_PADDING * 2 + 56.dp + 8.dp
 
@@ -56,17 +58,22 @@ internal val FAB_BOTTOM_CLEARANCE = PAGE_BOTTOM_PADDING * 2 + 56.dp + 8.dp
  * @param onClick 点击回调
  * @param modifier 调用点自己那点修饰（「按键绑定」页拿它套 `alpha` 做禁用观感）
  * @param content FAB 上的内容（图标）—— 内容色由调用点给（`onPrimary`）
+ * @param containerColor 底色，默认主题原色。**禁用态要换底色，不要在外面套 `alpha`**：
+ *   `Modifier.alpha` 会单独合成一层，层的边界就是这颗按钮的方框 —— 库内部那层
+ *   `graphicsLayer(shadowElevation)` 画的阴影落进层里，就被裁成**正方形**（真机踩过）。
+ *   底色 / 字形色都是能跟着状态动画的，阴影不该为「变灰」陪葬。
  */
 @Composable
 internal fun PageFabButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    containerColor: Color = COUITheme.colorScheme.primary,
     content: @Composable () -> Unit,
 ) {
     FloatingActionButton(
         onClick = onClick,
         modifier = modifier,
-        containerColor = COUITheme.colorScheme.primary,
+        containerColor = containerColor,
     ) { content() }
 }
 

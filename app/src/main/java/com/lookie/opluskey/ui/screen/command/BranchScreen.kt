@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
@@ -21,12 +22,13 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.FAB_BOTTOM_CLEARANCE
 import com.lookie.opluskey.ui.Feedback
+import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberFabVisibleOnScroll
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.editingKeyName
 import com.lookie.opluskey.ui.state.BranchDraft
@@ -74,14 +76,16 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
         reloadBranchDraft()
     }
 
-    // 那颗「添加」跟着滚动方向藏 / 露 —— 与「按键绑定」页那颗同一判据，不另写一套。
-    val fabVisible = rememberFabVisibleOnScroll(scrollState)
+    //  右下角现在只剩**一颗**「确认」（常驻、不跟滚动躲、也不按状态忽隐忽现）。
+    //  「添加」挪到了顶栏右上角（[BranchHeaderAdd]）—— 它是「往表里加一行」，不是这一页的主操作。
+    //  原先「确认」只在有改动时出现、「添加」在条件恒成立时按不动，两处早都撤了：
+    //  检查统一挪到**点确认那一刻**（见 [BranchSaveFab]）。
 
     //  量一次视口高度：空态要**在可见区里居中**，而它在滚动容器里拿不到「一屏多高」——
     //  滚动容器的子项拿到的是无限高度约束，`fillMaxHeight()` 在那儿没有意义。
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        //  减掉滚动内容底部那档留白（`FAB_BOTTOM_CLEARANCE`）：不减的话空态那块比可见区高出一截，
-        //  居中的位置会偏下、还多出一段能拖的空白。
+        //  减掉滚动内容底部那档留白（`FAB_BOTTOM_CLEARANCE`）：不减的话空态那块比可见区
+        //  高出一截，居中的位置会偏下、还多出一段能拖的空白。
         val emptyHeight =
             (maxHeight - currentHeaderHeight(scrollBehavior) - FAB_BOTTOM_CLEARANCE)
                 .coerceAtLeast(0.dp)
@@ -97,8 +101,8 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
                 //  这一页常常只有一两条条件、根本撑不满一屏 —— 不挂它的话在那一档完全动不了。
                 .overScrollVertical()
                 .verticalScroll(scrollState)
-                // 底下那颗「确定」浮在内容之上：留白按「它的位置 + 它的身高 + 一档间隙」给，
-                //  滚到底时表尾那句注脚停在它上面，而不是被压在它底下。
+                // 底下那颗「确认」浮在内容之上：留白按「一颗按钮」给死，
+                //  滚到底时表尾那句注脚停在它上面，而不是被压在底下。
                 //  注意这一句要落在 `verticalScroll` **之后**：那样它才是滚动内容里的内缩，
                 //  而不是把视口本身缩短（见 `BindingList` 顶部那段「纵向 padding 一档都不留」）。
                 .padding(bottom = FAB_BOTTOM_CLEARANCE),
@@ -110,81 +114,55 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
             //  空态/表格本来就是这一页唯一的正文，直接顶到顶栏下面反而更像一页表。
             BranchCards(tick, emptyHeight)
         }
-        // 位置与进出场走「按键绑定」页那颗同一份（[PageCornerFab]），不在这里另算一遍
-        PageCornerFab(visible = fabVisible) { BranchAddFab() }
+        // 位置走全项目那一份（[PageCornerFab]），不在这里另算 —— 恒显示，切换时不动画
+        PageCornerFab(visible = true) { BranchSaveFab() }
     }
     // 改了还没保存就按返回时，`goBack` 会先置这一位 —— 这个窗必须挂上，否则返回被拦住却**没有窗**
     //  命令页那边是 `CommandDialogs` 一起挂的，这一页只挂这一个。
-    LeaveDiscardDialog()
+    LeaveDiscardDialog(I18n.get(Strings.DIALOG_DISCARD_CONDITION_TITLE, "放弃未保存的条件"))
 }
 
 /**
- * 右下角那颗「添加」—— 这一页**唯一的加法入口**（原来那颗「添加条件」按钮已经撤掉）。
+ * 右下角那颗「确认」—— **恒显示**，点下去那一刻才检查、才落盘。
  *
- *  它加的是**一条空规则**（条件和动作都空着），落在表尾并播自己的进场；表尾那条还空着时
- *  不往下加，就地给一句原因（见 [addBranchRule]）。
+ *  页内的改动（加一条 / 换条件 / 换动作 / 上移下移删除）全是在改草稿：配置一个字节都不动。
+ *  按这颗才把这一档的整张表写回去，写成了才退页（写盘失败留在原地，否则用户以为存好了、
+ *  其实一个字节都没写）。
+ *
+ *  ## 检查放在点击里，不放在按钮外观上
+ *
+ *  三种「按了也不该落盘」各有各的说法，点一下由提示通道逐条说出来（同一语义位，不叠条）：
+ *   1. 半成品（[branchRulesBlockedReason]）：空条件 / 空动作的行写下去就是一条永不成立的规则；
+ *   2. **死分支**（[branchDeadReason]）：某一档条件的取值全在表里 ⇒ 它后面那几条永远轮不到；
+ *      或者前面某一条更宽、把这一条整个包含住了（组合条件那种情形）；
+ *   3. 什么都没改：不写盘，直接退页（写一遍同样的内容是白写，还会多一条「已保存」回执）。
+ *
+ *  按钮本身**不做禁用态**（也不换配色、更不用 `Modifier.alpha` —— alpha 会单独合成一层，
+ *  把阴影裁进按钮方框里）。一个恒显示的按钮忽明忽暗，比「按下去被告知差什么」更难理解。
  */
 @Composable
-private fun SettingsPage.BranchAddFab() {
+private fun SettingsPage.BranchSaveFab() {
     val tick = rememberTick()
     PageFabButton(
         onClick = {
             tick()
-            addBranchRule(branchDraft.draft.rules, tick) { branchDraft.draft.freshId = it }
+            val blocked = branchRulesBlockedReason() ?: branchDeadReason()
+            when {
+                blocked != null -> hint(blocked, slot = HINT_SLOT_COMMAND)
+
+                // 没有改动：这张表本来就是这个样子，不白写一遍
+                !branchDraft.draft.dirty -> goBack()
+
+                saveBranchRules() -> goBack()
+            }
         },
     ) {
         Icon(
-            PageIcons.StepAdd,
-            contentDescription = I18n.get(Strings.COMMAND_BRANCH_ADD, "添加条件"),
-            // 库只给容器色、不给字形色
+            PageIcons.Confirm,
+            contentDescription = I18n.get(Strings.COMMON_CONFIRM, "确定"),
             tint = COUITheme.colorScheme.onPrimary,
         )
     }
-}
-
-/**
- * 「条件执行」页底部那条浮动工具条 —— 这一页**唯一的落盘点**（原来是右下角那颗「确定」）。
- *
- *  页内的改动（加一条 / 换条件 / 换动作 / 上移下移删除）全是在改草稿：配置一个字节都不动。
- *  按这颗「确定」才把这一档的整张表写回去，写成了才退页（写盘失败留在原地，否则用户以为
- *  存好了、其实一个字节都没写）。
- *
- *  半成品不许落盘（见 [branchRulesBlockedReason]）：空条件 / 空动作的行写下去就是一条永不成立的
- *  规则。按钮灰着、点一下由工具条自己说明是哪一档没齐（`SaveDisabledHint`）。
- *
- *  「重置」= 按配置重新载入这一档（丢掉草稿里的改动），所以没有改动时它是灰的。
- */
-@Composable
-internal fun SettingsPage.BranchActions(modifier: Modifier = Modifier) {
-    val tick = rememberTick()
-    FloatingActions(
-        spec =
-            ToolbarSpec(
-                //  空态不摆工具条（没什么可存的）；但**草稿有改动时留着** —— 把最后一条删掉
-                //  等于「这一档恢复成无条件」，那一笔也得能存下去，藏了就永远存不了。
-                visible = branchDraft.draft.rules.isNotEmpty() || branchDraft.draft.dirty,
-                canReset = branchDraft.draft.dirty,
-                canSave = branchRulesBlockedReason() == null,
-                labels =
-                    ToolbarLabels(
-                        reset = I18n.get(Strings.COMMON_RESET, "重置"),
-                        save = I18n.get(Strings.COMMON_CONFIRM, "确定"),
-                        blocked = ::branchRulesBlockedReason,
-                    ),
-                actions =
-                    ToolbarActions(
-                        onReset = {
-                            tick()
-                            reloadBranchDraft()
-                        },
-                        onSave = {
-                            tick()
-                            if (saveBranchRules()) goBack()
-                        },
-                    ),
-            ),
-        modifier = modifier,
-    )
 }
 
 /** 按配置把这一档重新载入草稿（进页时与工具条的「重置」共用这一支）。 */
@@ -284,7 +262,7 @@ internal fun SettingsPage.BranchEmptyHint() {
         //  上面一句说**状态**，下面一句说**现在会发生什么** —— 只有下面那句时，
         //  用户得先读完整句才知道这块是空的。
         title = I18n.get(Strings.COMMAND_BRANCH_EMPTY_TITLE, "还没有添加条件"),
-        text = I18n.format(Strings.COMMAND_BRANCH_EMPTY, branchDefaultLabel()),
+        text = branchEmptyText(),
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -298,13 +276,14 @@ internal fun SettingsPage.BranchEmptyHint() {
  *
  *  剩下两种半成品各说一句：条件没配完 / 有动作没选。
  *
- *  「条件没配完」这一支同时管两件事：**整条还没选条件**（[StateRule.condition] 为空）与
- *  **选了要取值的档但取值还空着**（响铃状态 / 屏幕方向）。两种情况都落不下去。
+ *  「条件没配完」这一支同时管两件事：**整块还没选条件**（[StateRule.conditions] 为空）与
+ *  **选了要取值的档但取值还空着**（响铃状态 / 屏幕方向）。两种情况都落不下去 ——
+ *  判据是 [StateRule.isReady]，一块带几条条件都算同一个问题（少一条就是没配完）。
  */
 internal fun SettingsPage.branchRulesBlockedReason(): String? {
     val rules = branchDraft.draft.rules
     return when {
-        rules.any { it.condition?.isUsable != true } -> {
+        rules.any { !it.isReady } -> {
             I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有条件没选完")
         }
 

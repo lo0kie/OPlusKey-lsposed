@@ -68,6 +68,15 @@ internal const val DIALOG_FROSTED_ALPHA = 0.6f
 internal const val DISABLED_ALPHA = 0.4f
 
 /**
+ * 顶栏那行小标题在「这一颗键停用」时压暗的倍率 —— 0.5，也就是把它的 alpha 砍一半
+ *（`onSurfaceVariantSummary` 本色是 `0x66000000`，压完约等于 0.2）。
+ *
+ *  **只能乘、不能直接给一个 alpha**：那个 token 自带 0.4 的 alpha，`copy(alpha = 0.5f)` 会把它
+ *  **抬高**（第一版就是这么写的，真机上完全看不出变化）。改倍率，别改绝对值。
+ */
+internal const val SUBTITLE_DIM_FACTOR = 0.5f
+
+/**
  * 浮层菜单里两种分隔的 alpha。
  *
  *  库默认那一档在磨砂面板上几乎看不见，所以自己给：**细线**暗色走亮线、浅色走黑线；

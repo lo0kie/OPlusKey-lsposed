@@ -23,9 +23,11 @@ import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.ModeMenuPopups
+import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.actionOf
@@ -64,7 +66,7 @@ internal fun SettingsPage.BuiltInGrid(
     st: BindingGridState,
     enabled: Boolean,
 ) {
-    val groups = remember(st.g) { ActionCatalog.groupsFor(st.g) }
+    val groups = remember { ActionCatalog.groupsFor() }
     var builtInBase = 0
     groups.forEachIndexed { groupIndex, (groupTitle, group) ->
         // 「上一段 → 这个标题」之间给一档（与网格行距同值），与下面「自定义命令」那一段同一条规矩。
@@ -129,7 +131,7 @@ private fun SettingsPage.BuiltInTile(
         val icons = tileIcons.value
         //  入口格（点了弹二级菜单的那几格）：`modes` 非空。这一格绑在哪一档也从这里算一次
         //  —— **小字与小字前面那枚图标共用它**，同源就不会各说各的。
-        val modes = ActionCatalog.modeMenu(spec.token)
+        val modes = ActionCatalog.modeMenu(spec.token, withLongOnly = st.g == Gesture.LONG)
         val popsMenu = modes != null
         val boundMode = modes?.firstOrNull { ActionCatalog.isBound(it, current) }
         val boundAppLabel = rememberBoundAppLabel(current)
@@ -163,7 +165,7 @@ private fun SettingsPage.BuiltInTile(
                         boundAppLabel
                     }
 
-                    //  系统开关那一格再细一档：「WLAN · 打开」/「NFC · 切换」—— 只写开关名时
+                    //  系统开关那一格再细一档：「WIFI · 打开」/「NFC · 切换」—— 只写开关名时
                     //  看不出绑的是哪一档（三档里连「切换」也要写，不然它和只写名字没区别）。
                     //  **必须判格子**：`switchStateLabel` 只看「当前绑的是什么」，而 `current` 每一格
                     //  都相同 —— 不判的话绑一次「打开」，整片网格的每一格都会挂上「打开」。
@@ -336,7 +338,8 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
         // 上一次那份锚点，所以这里给个没记过触点的占位即可。
         preciseClick = st.tileMenu?.anchor ?: st.noAnchor,
         // 行与顶上那行小标题都由这一格算：不再各传一份。
-        tile = st.tileMenu?.spec,
+        //  「灵感语音」只在长按这一页出现（它起的是麦克风采集，短按一下开录没有语义）
+        target = st.tileMenu?.spec?.let { ModeMenuTarget(it, withLongOnly = st.g == Gesture.LONG) },
         current = current,
         //  走 `pick` 而**不是** `bindingSelect`：菜单里的取值不在 `specs` 里，
         //  `select` 那一步的 `specs.indexOf(spec)` 会取到 −1、把焦点圈甩到第一格去。

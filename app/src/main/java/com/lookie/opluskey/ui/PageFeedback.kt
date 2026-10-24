@@ -42,6 +42,16 @@ internal const val HINT_SLOT_BINDING = "binding"
 internal const val HINT_SLOT_COMMAND = "command"
 
 /**
+ * 「这一下点不动」那一条的语义位 —— 页面上**所有**禁用态控件共用它。
+ *
+ *  为什么需要一个位：这条回执原来没给位（`hint(disabledClickReason())`），于是每点一下都是
+ *  **新的一条**（新 id ⇒ 重新入场），连点几下就看见提示条叠起来、被挤下去的那条往下滑走 ——
+ *  真机口径「来回刷」。而「还有条件没选完」那种给了位，永远是一条在原地改字。
+ *  同一个控件连点两下本来就该只有一句话，所以这里也收成一位。
+ */
+internal const val HINT_SLOT_DISABLED = "disabled"
+
+/**
  * 「正在检查模块…」那一条的语义位 —— 它跟别的回执不一样：**挂在自检结束上**，不按秒数走。
  * 自检一跑完（`LinkFacts.injectChecked`）就由 `PageCheckingHint` 把它收掉，结论接着顶上来。
  */

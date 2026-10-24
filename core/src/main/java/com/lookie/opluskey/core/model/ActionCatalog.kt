@@ -36,6 +36,9 @@ object ActionCatalog {
 
         /** 「系统开关」标记格。 */
         SystemSwitch,
+
+        /** 「小布 AI」入口格（`sparkle-highlight`）：四件小布能力收在这一格后面。 */
+        XiaobuAi,
     }
 
     /**
@@ -143,6 +146,25 @@ object ActionCatalog {
     private val VOICE_MEMORY = Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY
 
     /**
+     * 唤醒小布（语音助手）。取值与「侧键场景表」那几档同一个写法，但**落点不在宿主**：
+     * 它由注入侧在 system_server 里照 ROM 长按电源键那一条配方起（见 [RomProfile.NAME_VOICE_ASSIST]）。
+     */
+    private val VOICE_ASSIST = Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_ASSIST
+
+    /** 灵感语音那一档（`oplus:voice_memory`）—— 只在小布 AI 菜单的长按那一档出现。 */
+    private val AI_MODES: List<Spec> =
+        listOf(
+            // 取值照搬 KSU 模块，但模块侧不走 shell —— 见 `host/action/AppLauncher.startSidebar`
+            Spec(name = Strings.TOOL_SCREEN_RECOGNITION, token = SIDEBAR),
+            // 小布助手（Breeno）：起法不在宿主，见 `RomProfile.NAME_VOICE_ASSIST` 与 `bridge/StatusBarBridge`
+            Spec(name = Strings.CATALOG_VOICE_ASSIST, token = VOICE_ASSIST),
+            Spec(name = Strings.CATALOG_FLASH_NOTE, token = FLASH_MEMORY),
+            // 灵感语音：**只在长按**（它起的是麦克风采集，短按一下就开录不是这个能力的语义）——
+            //  过滤在 [modeMenu] 的 `withLongOnly`，不在静态表里。
+            Spec(name = Strings.CATALOG_VOICE_MEMORY, token = VOICE_MEMORY),
+        )
+
+    /**
      * 「媒体控制」那一格**本身**（[GROUPS] 里那一行）—— 与菜单首行（[MEDIA_MODES] 的第一条）
      * 共用同一串 token（[MEDIA_TILE]），但两者**字形不同**：这一格是「一类东西」（音符，入口），
      * 菜单首行是「一个具体取值」（开关键）。认领只能靠 `spec ===`，见 `ui/model/ActionIcons.kt`
@@ -191,7 +213,7 @@ object ActionCatalog {
                     Spec(name = Strings.CATEGORY_RINGER, token = RINGER_TILE, glyph = Glyph.RingerTile),
                     // 「音量 + / 音量 − / 电源键」三档收进这一格（点它弹 [KEY_MODES] 菜单），同样是标记。
                     Spec(name = Strings.CATALOG_SYSTEM_KEYS, token = KEY_TILE, glyph = Glyph.Click),
-                    // 系统开关入口：点它弹 [SWITCH_MODES] 菜单（WLAN / 蓝牙 / 手电筒 …），
+                    // 系统开关入口：点它弹 [SWITCH_MODES] 菜单（WIFI / 蓝牙 / 手电筒 …），
                     // 选完绑成 `setting:<id>` 或那条动作本身的 token（见 [SystemSwitches]）。
                     //  它属于「系统操作」这一组：动的是系统状态，不是某一颗按键。
                     SWITCH_TILE_SPEC,
@@ -203,11 +225,10 @@ object ActionCatalog {
                 listOf(
                     // 取值是 KSU 的 `service call`，模块侧换成注入 `KEYCODE_SYSRQ`
                     Spec(name = Strings.CATALOG_SCREENSHOT, token = SCREENSHOT),
-                    // 取值照搬 KSU 模块，但模块侧不走 shell —— 见 `host/action/AppLauncher.startSidebar`
-                    Spec(name = Strings.TOOL_SCREEN_RECOGNITION, token = SIDEBAR),
-                    Spec(name = Strings.CATALOG_FLASH_NOTE, token = FLASH_MEMORY),
-                    // 灵感语音：只在长按那张网格里出现（[forGesture] 过滤），见 [VOICE_MEMORY] 的说明
-                    Spec(name = Strings.CATALOG_VOICE_MEMORY, token = VOICE_MEMORY),
+                    // 小布 AI 入口格：识屏 / 语音 / 闪记 / 灵感语音四件都收在这一格后面
+                    //  （点它弹 [AI_MODES]）。四件各是一个真取值，格子代表不了其中任何一个
+                    //  ⇒ 与 [NAV_TILE] / [MINI_TILE] 同类，是**标记格**，永不写进配置。
+                    Spec(name = Strings.TOOL_XIAOBU_AI, token = AI_TILE, glyph = Glyph.XiaobuAi),
                     Spec(name = Strings.CATALOG_RECORDING, token = RECORDING),
                     // 录屏：起 ColorOS 录屏应用自己的 JumpActivity，一起就进录制（落点见 RomProfile）
                     Spec(name = Strings.CATALOG_SCREEN_RECORD, token = SCREEN_RECORD),
@@ -313,6 +334,14 @@ object ActionCatalog {
     val PANEL_CONTROL = Action.PANEL_PREFIX + Action.Panel.CONTROL_CENTER
 
     /**
+     * 「小布 AI」那一格的标记 —— 与 [NAV_TILE] / [KEY_TILE] 同类：永不写进配置。
+     *
+     *  四件能力（识屏 / 语音 / 闪记 / 灵感语音）各是一个真取值，格子代表不了其中任何一个，
+     *  所以是**标记格**；点它弹 [AI_MODES]。
+     */
+    const val AI_TILE = "ai:"
+
+    /**
      * 「前台转小窗」那一格的标记 —— 与 [NAV_TILE] / [KEY_TILE] 同类。
      *
      * 两档尺寸（展开的普通小窗 / 收起的最小化窗）各不相同，格子代表不了其中任何一个，
@@ -399,6 +428,7 @@ object ActionCatalog {
             PANEL_TILE to PANEL_MODES,
             MINI_TILE to MINI_MODES,
             SWITCH_TILE to SWITCH_MODES,
+            AI_TILE to AI_MODES,
         )
 
     /**
@@ -419,31 +449,29 @@ object ActionCatalog {
     fun groupTitleLabel(groupTitle: String): String = I18n.get(groupTitle)
 
     /**
-     * 这一档手势的**内置动作分组** —— [GROUPS] 按手势剔掉在这一档不成立的条目（此刻只有「灵感语音」）。
+     * **内置动作分组**（按展示顺序）。
      *
      *  为什么网格必须用这一份、而不是继续按 [GROUPS] 的组大小切 [forGesture] 的结果：
-     *  `forGesture` 少了「灵感语音」那一格，而组大小没少 ⇒ 最后一组（「快捷功能」）会多吃进
-     *  **第一条自定义命令**（真机反馈「单击 / 双击的自定义命令跑到快捷功能里了」）。
+     *  清单哪天真的按手势少了某一格，而组大小没少 ⇒ 最后一组（「快捷功能」）会多吃进
+     *  **第一条自定义命令**（真机反馈过「单击 / 双击的自定义命令跑到快捷功能里了」）。
      *  清单与切分必须同源：谁剔条目，就由谁给出分组。
+     *
+     *  **没有手势参数**：「灵感语音」那项过滤已经挪到菜单层（[modeMenu] 的 `withLongOnly`），
+     *  分组本身对每一档都相同 —— 留一个收下却不读的参数，等于在签名里撒谎。
      */
-    fun groupsFor(gesture: Gesture): List<Pair<String, List<Spec>>> =
-        if (gesture == Gesture.LONG) {
-            GROUPS
-        } else {
-            GROUPS.map { (title, group) -> title to group.filterNot { it.token == VOICE_MEMORY } }
-        }
+    fun groupsFor(): List<Pair<String, List<Spec>>> = GROUPS
 
-    /** 这一档手势**内置动作的条数** —— 「自定义命令」那一段从它开始（见 `BindingGridState.builtInCount`）。 */
-    fun builtInCount(gesture: Gesture): Int = groupsFor(gesture).sumOf { it.second.size }
+    /** 内置动作的**条数** —— 「自定义命令」那一段从它开始（见 `BindingGridState.builtInCount`）。 */
+    fun builtInCount(): Int = groupsFor().sumOf { it.second.size }
 
-    /** 保留此函数而非让调用方直接读 [ALL]：清单按手势分化随时可能回来，调用点不必跟着改。 */
-    fun forGesture(
-        gesture: Gesture,
-        commands: List<Command> = emptyList(),
-    ): List<Spec> {
-        // 「灵感语音」只挂在长按上：短按 / 双击拨它等于「按一下就开录」，那不是这个能力的语义。
-        //  网格按手势各建一份（`rememberBindingGridState` 按 g 取），所以只在这里挡一次就够。
-        val base = groupsFor(gesture).flatMap { it.second }
+    /**
+     * 网格那一屏的全部条目：内置动作 + 自定义命令。
+     *
+     *  保留此函数而非让调用方直接读 [ALL]：清单按手势分化随时可能回来，调用点不必跟着改。
+     *  分化那件事现在归菜单层（[modeMenu]），所以这里**不收手势参数** —— 三档拿到的表相同。
+     */
+    fun forGesture(commands: List<Command> = emptyList()): List<Spec> {
+        val base = groupsFor().flatMap { it.second }
         return base + commands.map { commandSpec(it) }
     }
 
@@ -498,8 +526,9 @@ object ActionCatalog {
         GROUPS.map { (title, group) ->
             title to
                 group
-                    // 「无操作」代表吞掉按键、不是一步动作；「灵感语音」是长按才成立的采集，排进命令链没有语义
-                    .filterNot { it.token == NONE_TOKEN || it.token == VOICE_MEMORY }
+                    // 「无操作」代表吞掉按键、不是一步动作
+                    // （「灵感语音」不在顶层了 —— 它落在小布 AI 那层菜单里，由 `modeMenu(withLongOnly)` 挡）
+                    .filterNot { it.token == NONE_TOKEN }
                     .map {
                         when (it.token) {
                             APP_TILE -> APP_STEP
@@ -560,7 +589,7 @@ object ActionCatalog {
      * 精确到**状态**的比法 —— 三档菜单（切换 / 打开 / 关闭）里打勾用它。
      *
      *  与 [isBound] 的差别只有一处：后者把 `setting:wifi:on` 与 `setting:wifi` 当同一个开关
-     *  （菜单里那行「WLAN」要认得出已绑），三级那三行则必须分得开。
+     *  （菜单里那行「WIFI」要认得出已绑），三级那三行则必须分得开。
      */
     fun isBoundExactly(
         spec: Spec,
@@ -578,7 +607,7 @@ object ActionCatalog {
     /**
      * 「系统开关」那一族当前落在**哪个状态**上（`切换` / `打开` / `关闭`）；别的动作返回 `null`。
      *
-     *  网格那一格的小字要它：只写「WLAN」时看不出绑的是哪一档。**「切换」也要写**——
+     *  网格那一格的小字要它：只写「WIFI」时看不出绑的是哪一档。**「切换」也要写**——
      *  它和「打开 / 关闭」一样是一个具体取值，不写的话那一格的小字与开关名一模一样，
      *  一眼看不出是「按一下取反」还是「定成开 / 关」。
      */
@@ -591,8 +620,21 @@ object ActionCatalog {
         }
     }
 
-    /** 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。 */
-    fun modeMenu(token: String): List<Spec>? = MODE_MENUS[token]
+    /**
+     * 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。
+     *
+     * @param withLongOnly 这一层菜单里**只在长按成立**的行（此刻只有「灵感语音」）要不要给。
+     *   「判定这一档选没选中」那一类调用方要它（否则绑了它却一个勾都不亮）；**摆菜单**的两处
+     *   各按自己的语境传：网格传「这一页是不是长按」，命令链那层传 `false`
+     *   （步骤链没有长按这一档，排进去没有语义）。
+     */
+    fun modeMenu(
+        token: String,
+        withLongOnly: Boolean = true,
+    ): List<Spec>? {
+        val rows = MODE_MENUS[token] ?: return null
+        return if (withLongOnly) rows else rows.filterNot { it.token == VOICE_MEMORY }
+    }
 
     /**
      * 「系统开关」再下一层：某个开关的**三档动作** —— 切换 / 打开 / 关闭。
@@ -657,13 +699,33 @@ object ActionCatalog {
      *（除「打开应用」外一律拍平，`系统导航:主屏幕` → `主屏幕`）。
      * 档位名与格子怎么配对由这一处决定，网格里那行小字走 [modeTitle]。
      */
-    fun modeName(action: Action): String? {
+    fun modeName(action: Action): String? = modeHitOf(action)?.mode?.label
+
+    /**
+     * 这个动作落在「入口格 → 档位」两层的**哪一格、哪一行** —— `null` = 它不属于任何入口格菜单。
+     *
+     *  「格子里那行小字」只要档位名就走 [modeName]；会同时用到**父格**与**那一行**的地方
+     *  （条件执行页里「响铃状态 - 循环」那种写法、以及那一行自己的字形）用它：
+     *
+     *   · 文案要父格名 —— 光写「循环」看不出是谁在循环；
+     *   · 图标要**那一行的**字形 —— 「循环」写的是 `keyevent:164`，与响铃那一格**同一个 token**，
+     *     按 token 取图标只能拿到格子那颗（响铃状态），而档位自己的字形（重复箭头）只登记在
+     *     [Spec.glyph] 上。拿不到这一行，就等于把档位的身份丢在了主题层面。
+     */
+    fun modeHitOf(action: Action): ModeHit? {
         //  `tile` 是按「token 在 MODE_MENUS 里」挑出来的，那一层菜单必然存在 —— 不写
         //  `?: action.token` 那种回退：回退出来的不是档位名（是整串 token），调用方会当名字用。
         val tile = ALL.firstOrNull { it.token in MODE_MENUS && isSelected(it, action) } ?: return null
         val modes = modeMenu(tile.token) ?: return null
-        return modeTitle(modes, action)
+        val mode = modes.firstOrNull { isBound(it, action) } ?: return null
+        return ModeHit(tile, mode)
     }
+
+    /** 见 [modeHitOf]：父格 + 那一行。 */
+    data class ModeHit(
+        val tile: Spec,
+        val mode: Spec,
+    )
 
     /**
      * 这一格点了会进下一层（跳「打开应用」页 / 跳「控制中心磁贴」页 / 弹一格菜单）。

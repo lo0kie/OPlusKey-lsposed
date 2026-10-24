@@ -84,8 +84,11 @@ data class KeyConfig(
      *  那一档本来的绑定。执行侧不要自己写这套 `firstOrNull`：条件维度以后会长，判据散在
      *  多处时「某个路径上条件分支不生效」这种 bug 只会在真机上被看见。
      *
+     *  一个块可以带**好几条**条件，判定时逐条都要成立（且）—— 那是 [StateRule.appliesTo] 的账，
+     *  这里只负责顺序与「第一条赢」。
+     *
      *  [matches] 是调用方给的判据（读系统开关的那一层，见 `ConditionProbe`）—— 这一层不认识
-     *  任何系统接口，只负责顺序与「第一条赢」。
+     *  任何系统接口。
      */
     fun actionFor(
         gesture: Gesture,

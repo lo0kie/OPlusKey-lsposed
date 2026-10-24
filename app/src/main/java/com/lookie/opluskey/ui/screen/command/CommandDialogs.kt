@@ -78,10 +78,13 @@ private fun SettingsPage.acceptCommandDisclaimer() {
  *  取消 ⇒ 关掉窗，留在页里继续编。
  */
 @Composable
-internal fun SettingsPage.LeaveDiscardDialog() {
+internal fun SettingsPage.LeaveDiscardDialog(
+    /** 标题由调用页给：这一页的草稿里是命令还是条件，只有调用点知道。 */
+    title: String = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
+) {
     ConfirmDialog(
         show = overlays.confirmLeaveCommands,
-        title = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
+        title = title,
         action = I18n.get(Strings.COMMON_DISCARD, "放弃"),
         onDismiss = { overlays.confirmLeaveCommands = false },
         onConfirm = {

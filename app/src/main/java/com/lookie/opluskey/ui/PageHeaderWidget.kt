@@ -14,6 +14,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
@@ -128,10 +129,21 @@ internal fun SettingsPage.collapsedHeaderHeight(scrollBehavior: ScrollBehavior):
     }
 }
 
+/**
+ * 本页顶栏 —— 标题 / 副标题 / 右上角动作 / 底下那条固定带（内容按页在 `PageTopBar` 里分派）。
+ *
+ *  `subtitleColor` 是尾随标题（大标题右边那行）的颜色，默认就是库那一档次要色。留成参数是为了
+ *  「这一页整体按不动」时把它也压暗一档：内容区整片变灰了，这一行还按满亮度亮着，读起来像
+ *  那一区仍然是活的（见 `PageTopBar` 里停用那支）。
+ *
+ *  注：参数**不逐条写 KDoc** —— detekt 的基线 ID 会把参数上的注释一起抄进去，
+ *  那段文字一改基线就得跟着改。要解释的写在这里。
+ */
 @Composable
 internal fun SettingsPage.PageHeader(
     title: String,
     subtitle: String = "",
+    subtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
     trailingSubtitleIcon: ImageVector? = null,
     largeTitleSubtitle: String = "",
     scrollBehavior: ScrollBehavior,
@@ -147,6 +159,7 @@ internal fun SettingsPage.PageHeader(
         title = title,
         subtitle = largeTitleSubtitle,
         trailingSubtitle = subtitle,
+        trailingSubtitleColor = subtitleColor,
         trailingSubtitleIcon = trailingSubtitleIcon,
         trailingSubtitleAlignment = TopAppBarTrailingSubtitleAlignment.Bottom,
         hideSubtitleOnCollapse = false,

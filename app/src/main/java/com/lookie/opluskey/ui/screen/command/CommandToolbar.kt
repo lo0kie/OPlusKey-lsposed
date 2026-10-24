@@ -154,8 +154,8 @@ internal class ToolbarActions(
 /**
  * 底部那条浮动工具条的本体 —— 磨砂、阴影、进出场、两颗圆按钮全在这里。
  *
- *  现在只有「自定义命令」页在用它（[CommandActions]）：条件执行页的落盘入口是右下角那颗
- *  「确定」，不在这条工具条上。
+ *  现在只有「自定义命令」页在用它（[CommandActions]）：「条件执行」页的落盘点改成了右下角
+ *  那叠 FAB 里的「确定」（见 `BranchScreen`），不再共用这条底栏。
  */
 @Composable
 internal fun SettingsPage.FloatingActions(

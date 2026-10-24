@@ -539,9 +539,11 @@ internal class SettingsPage(
                     rule.action.appTarget?.let(AppTarget::pkg)
                 }
 
-                // 条件那一头直接就是包名
+                // 条件那一头直接就是包名 —— 一块可能带好几条条件，要取的是**「前台应用」那一条**
+                //  （只取第一条的话，手改的配置里应用条件排在第二位时这一页一行都不亮）。
+                //  槽位口径只有一处（`StateRule.appCondition`）。
                 else -> {
-                    rule.condition?.value?.takeIf { it.isNotBlank() }
+                    rule.appCondition?.value?.takeIf { it.isNotBlank() }
                 }
             }
         }

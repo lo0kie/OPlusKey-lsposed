@@ -104,28 +104,26 @@ internal object KeyHooks {
                 onRelease = { id ->
                     forwarder.release(id)
                 },
+                // 组合键（两颗键一起按）：这一层先只证明「认得出」，执行什么要等绑定数据
+                //  （那需要一套配置与入口）。判出来也记一笔，链路自检才算端到端通。
+                onCombo = { keys, long ->
+                    noteGesture()
+                    XLog.w(
+                        "组合键：${keys.joinToString(" + ") { it.label }} " +
+                            "${if (long) "一起按住" else "一起短按"} ⇒ 已判定（尚无绑定）",
+                    )
+                },
             )
         // 主开关翻到「不接管」时撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。
         //  撤销只能由「收到配置广播」触发，不能挂在拦截点那条 early return 上（按住不放时
         //  没有新事件进来）—— 回调在 AMS 广播 hook 内跑，其内部已包 catch（见 ConfigChannel.read）。
         ConfigChannel.onTakeOverOff = { interceptor.cancelPending() }
 
-        var ok = 0
-        for (point in points) {
-            val handle =
-                module.hookGuarded(point.method) { chain ->
-                    onIntercept(interceptor, point, chain)
-                }
-            if (handle != null) {
-                ok++
-                XLog.w(
-                    "已 Hook 侧键接管点：$point" +
-                        "（kind=${point.kind}，参数 ${point.method.parameterTypes.size} 个）",
-                )
-            }
-        }
-
+        val ok = installPoints(module, points, interceptor)
         hookCount = ok
+        // 输入层的组合键（电源 + 音量）：与侧键那条**分开装** —— 它不参与手势判定，只把 ROM 已经
+        //  判好的组合吞掉。装不上时侧键照常工作，各记一行 w。
+        XLog.guard("挂组合键接管点") { installChordHooks(module, loader) }
         installed = ok > 0
         // 必须 W 而非 i：注入侧 i 会被 LSPosed 进程级日志级别整档丢掉、release 里更被编译期消除
         // —— 这一行是「装没装上」的唯一分水岭，用 i 打就等于彻底静默。
@@ -134,6 +132,30 @@ internal object KeyHooks {
         } else {
             XLog.w("侧键 Hook 安装完成：$ok/${points.size} 个接管点")
         }
+    }
+
+    /**
+     * 挂输入层的组合键接管点（见 [ChordGuard]）。
+     *
+     *  一个都没装上也只记日志 —— 侧键那条链路不受影响（两条各管一件事）。
+     *
+     * @return 装上几个
+     */
+    private fun installChordHooks(
+        module: XposedModule,
+        loader: ClassLoader,
+    ): Int {
+        val points = Framework.findChordPoints(loader)
+        if (points.isEmpty()) return 0
+        var ok = 0
+        for (p in points) {
+            if (module.hookGuarded(p.method) { chain -> ChordGuard.handle(chain) } != null) {
+                ok++
+                XLog.w("已 Hook 组合键接管点：$p（参数 ${p.method.parameterTypes.size} 个）")
+            }
+        }
+        XLog.w("组合键 Hook 安装完成：$ok/${points.size} 个接管点")
+        return ok
     }
 
     /**
@@ -218,6 +240,32 @@ internal object KeyHooks {
     }
 
     /**
+     * 逐个挂上接管点，返回**真装上的个数** —— 从 [install] 分出来一支，只为让那一支留在
+     * detekt 的 `LongMethod` 之内（它已经贴着上限）。
+     */
+    private fun installPoints(
+        module: XposedModule,
+        points: List<Framework.InterceptionPoint>,
+        interceptor: SideKeyInterceptor,
+    ): Int {
+        var ok = 0
+        for (point in points) {
+            val handle =
+                module.hookGuarded(point.method) { chain ->
+                    onIntercept(interceptor, point, chain)
+                }
+            if (handle != null) {
+                ok++
+                XLog.w(
+                    "已 Hook 侧键接管点：$point" +
+                        "（kind=${point.kind}，参数 ${point.method.parameterTypes.size} 个）",
+                )
+            }
+        }
+        return ok
+    }
+
+    /**
      * 从广播调用的实参里挑出关心的那几条，命中就处理。每次广播都会走这里，不要
      * `filterIsInstance`（会建临时集合）—— 一趟 for 找 Intent、比过 action，命中才解析。
      * 来源要校验：挂在 AMS 的广播入口上，全系统每条广播都进来，光比 action 挡不住伪造。
@@ -244,7 +292,7 @@ internal object KeyHooks {
                 }
                 // 功能通道：只有宿主（与同 uid 的设置页）有资格发 —— 其余来源一律丢弃。
                 // debug 通道：只放行 root / system（调试从 adb 发，没有宿主身份）。
-                if (if (isProbe) !isFromRootOrSystem() else !isFromHost()) return
+                if (!BroadcastSender.isTrusted(isProbe, systemLoader)) return
                 dispatchAction(action, intent)
                 return
             }
@@ -322,66 +370,6 @@ internal object KeyHooks {
                 }
             }
         }
-    }
-
-    /**
-     * 这条广播是不是宿主进程发出来的。两条通道都只有宿主 / 设置页（同 uid）会发；不校验来源的话，
-     * 任意 App 发一条同名广播就能以 system 身份开最近任务、翻主开关、改长按 / 双击时序。
-     * 在原方法体跑之前读 `Binder.getCallingUid()` 拿到的就是发送方 uid；宿主 uid 解析一次后缓存。
-     * **解析不到时丢弃（fail-closed）**：放行等于任意 App 都能伪造这两条通道，而配置广播只在
-     * 启动 / 解锁 / 写盘时发，下一轮会重取 uid，不会因一次失败把通道永久锁死。
-     */
-    private fun isFromHost(): Boolean {
-        val calling = android.os.Binder.getCallingUid()
-        val host = hostUid()
-        if (host <= 0) {
-            // fail-closed：宿主 uid 拿不到时丢弃 —— 放行等于任意 App 可伪造这两条通道
-            // （翻主开关 / 以 system 身份开最近任务）。配置广播只在启动 / 解锁 / 写盘时发，
-            // 下一轮会重取 uid，不会因一次失败把通道锁死。
-            XLog.w("宿主 uid 未解析到，丢弃广播（fail-closed，下轮重取）")
-            return false
-        }
-        if (calling != host) {
-            XLog.w("丢弃来源不明的广播：callingUid=$calling（宿主 uid=$host）")
-            return false
-        }
-        return true
-    }
-
-    /**
-     * debug 通道（[ProbeChannel]）的来源校验：只放行 **root / system**。
-     *
-     * 与 [isFromHost] 分开是因为它的发送方**本来就不是宿主** —— 调试时是
-     * `adb shell su -c am broadcast`，没有宿主身份可用。普通 App（uid ≥ 10000）依旧进不来，
-     * 而且整个通道只在 debug 包存在（[DEBUG_PROBE] 是编译期常量，release 里这些代码全被折掉）。
-     */
-    private fun isFromRootOrSystem(): Boolean {
-        val calling = android.os.Binder.getCallingUid()
-        if (calling == 0 || calling == android.os.Process.SYSTEM_UID) return true
-        XLog.w("debug 通道：丢弃非 root/system 来源（callingUid=$calling）")
-        return false
-    }
-
-    /** 宿主包的 uid，解析成功后缓存（-1 = 还没解析到；失败不缓存，下一轮广播重取）。 */
-    @Volatile
-    private var cachedHostUid: Int = -1
-
-    private fun hostUid(): Int {
-        val cached = cachedHostUid
-        if (cached != -1) return cached
-        val uid =
-            try {
-                val ctx = SystemContext.get(systemLoader ?: return -1) ?: return -1
-                ctx.packageManager.getPackageUid(HostApp.PACKAGE, 0)
-            } catch (e: Throwable) {
-                XLog.w("解析宿主 uid 失败（这次丢弃，下轮重取）：${e.message}")
-                -1
-            }
-        if (uid > 0) {
-            cachedHostUid = uid
-            XLog.w("宿主 uid = $uid（广播来源校验用）")
-        }
-        return uid
     }
 
     /**

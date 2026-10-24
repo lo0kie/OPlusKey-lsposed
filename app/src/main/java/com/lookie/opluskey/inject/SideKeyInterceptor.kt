@@ -10,6 +10,7 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.RomKeyFamilies
+import com.lookie.opluskey.inject.input.ComboDetector
 import com.lookie.opluskey.inject.input.GestureDetector
 import io.github.libxposed.api.XposedInterface
 
@@ -45,6 +46,8 @@ internal class SideKeyInterceptor(
     private val onGestureNoted: () -> Unit,
     /** 判过长按的这一按松手了（去处与 [forward] 同一处，见 `GestureDetector.onLongReleased`）。 */
     private val onRelease: (KeyId) -> Unit,
+    /** 判出一次「两颗键一起按」（短按 / 一起按住）。组合没有单键配置，走这条独立回调。 */
+    private val onCombo: (List<KeyId>, Boolean) -> Unit,
 ) {
     /**
      * 手势判定器 —— 拿到的是 hook 回调里的原始事件，时序是真的，不会被「解冻灌包」搅乱。
@@ -62,6 +65,22 @@ internal class SideKeyInterceptor(
             onGestureNoted = onGestureNoted,
             onGesture = { id, gesture, _, repeat -> forward(id, gesture, repeat) },
             onLongReleased = onRelease,
+        )
+
+    /**
+     * 「两颗键一起按」的判定 —— 与单键判定器并排，**先于它**看每一个事件。
+     *
+     *  组合成立时会把这两颗键的单键状态机摘掉（`resetKey`），所以两颗键那一下只出一个结果：
+     *  要么组合，要么各自的手势，不会两边都执行。
+     */
+    private val combo =
+        ComboDetector(
+            handler = handler,
+            onCombo = onCombo,
+            resetKey = { id -> detector.reset(id) },
+            // 绑定数据还没有（那需要一套配置与入口）—— 这里恒 false ⇒ 组合不成立，
+            //  两颗键照旧各走各的。等绑定落地，改成「按这两颗键查一次绑定」即可。
+            hasBinding = { _ -> false },
         )
 
     /**
@@ -121,6 +140,8 @@ internal class SideKeyInterceptor(
     internal fun cancelPending() {
         try {
             detector.reset(null)
+            //  组合也一起清：两颗键按住不放时关掉其中一颗，组合的长按枪不能继续响
+            combo.reset()
         } catch (e: Throwable) {
             XLog.w("撤销待定手势失败（已忽略）：${e.javaClass.simpleName}", e)
         }
@@ -414,11 +435,17 @@ internal class SideKeyInterceptor(
                                 " source=${keyEvent.source} repeat=${keyEvent.repeatCount}" +
                                 " flags=${keyEvent.flags}"
                         }
+                        // 两颗键一起按 ⇒ 这一下归组合，不再喂单键判定器
+                        //  （组合成立时那两颗键的单键状态机已被摘掉）
+                        if (combo.onDown(id, keyConfig)) return true
                         detector.onKeyDown(id, keyConfig)
                         true
                     }
 
                     KeyEvent.ACTION_UP -> {
+                        // 这一下属于一次组合 ⇒ 组合自己收尾，不再喂单键判定器
+                        //  （组合成立时那两颗键的状态机已经被摘掉了）
+                        if (combo.onUp(id)) return true
                         // 抬手被取消（窗口失焦 / 按压被打断）⇒ 不判任何手势。
                         // KeyEvent 没有 ACTION_CANCEL（那是 MotionEvent 的），取消是 FLAG_CANCELED 位，
                         // 只能从 isCanceled 读；不认它的话已排下的长按照样触发（凭空长按）。

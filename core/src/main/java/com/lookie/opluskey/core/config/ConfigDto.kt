@@ -201,13 +201,26 @@ internal data class KeyDto(
     }
 }
 
-/** `rules` 的一项 —— 一条状态分支。 */
+/**
+ * `rules` 的一项 —— 一条状态分支（一个块，可带**多条**条件）。
+ *
+ * ## 两格条件字段
+ *
+ *  · [condition]：**老那一格**，只能装一条。这一版仍然写它 —— 但只在「这块正好一条条件」时写，
+ *    这样版本 11 之前的读方（认不出 [conditions]）读到的还是原来那条，不会把用户的一堆规则读丢；
+ *  · [conditions]：全量，写**每一条**。读的时候优先看它，空了才回落到 [condition]。
+ *
+ *  多条时 [condition] 留空 —— 老读方读回来是「条件认不出 ⇒ 丢掉这一条」，这是它能给出的最好结果
+ *  （它没有「且」这个概念，硬塞给它第一条会变成「命中一条就执行」，比丢掉更糟）。
+ */
 @Serializable
 internal data class StateRuleDto(
     /** 手势取 `Gesture.id`（`single` / `double` / `long`），不是枚举名。 */
     val gesture: String = "",
-    /** 条件写法（`app:包名` / `ringer:vibrate` / `screen_on`），见 `BranchCondition.token`。 */
+    /** 老写法：单条条件（`app:包名` / `ringer:vibrate` / `screen_on`），见 `BranchCondition.token`。 */
     val condition: String = "",
+    /** 这一块的**全部**条件，按书写顺序（判定时逐条都要成立）。 */
+    val conditions: List<String> = emptyList(),
     val action: String = Action.NONE,
 ) {
     /**
@@ -215,6 +228,7 @@ internal data class StateRuleDto(
      *
      *  为什么不兜成「永远成立」：那样一条写错的分支会静默接管这颗键的所有手势
      *  （见 `BranchCondition.parse`）。丢一条规则只是「这一条不生效」，用户能看得出来。
+     *  同理，一块里**只要有一条**条件认不出，整块丢掉 —— 留着其余几条会把「且」悄悄放宽。
      */
     fun toRule(): StateRule? {
         val parsedGesture = Gesture.ofId(gesture)
@@ -222,12 +236,29 @@ internal data class StateRuleDto(
             XLog.w("配置：状态分支的手势认不出（丢掉这一条）：$gesture")
             return null
         }
-        val parsedCondition = BranchCondition.parse(condition)
-        if (parsedCondition == null) {
-            XLog.w("配置：状态分支的条件认不出（丢掉这一条）：$condition")
+        val parsed = parsedConditions() ?: return null
+        return StateRule(parsedGesture, parsed, Action.parse(action))
+    }
+
+    /**
+     * 这一块的条件 —— 优先 [conditions]（全量），它空着才看老的 [condition]。
+     *
+     *  `null` = 认不出（调用方整条丢掉）。
+     */
+    private fun parsedConditions(): List<BranchCondition>? {
+        //  老文件 / 单条件：只有 `condition` 那一格
+        if (conditions.isEmpty()) {
+            val single = BranchCondition.parse(condition)
+            if (single == null) XLog.w("配置：状态分支的条件认不出（丢掉这一条）：$condition")
+            return single?.let(::listOf)
+        }
+        val parsed = conditions.map { BranchCondition.parse(it) }
+        val bad = parsed.indexOfFirst { it == null }
+        if (bad >= 0) {
+            XLog.w("配置：状态分支的第 ${bad + 1} 条条件认不出（整条丢掉）：${conditions.getOrNull(bad)}")
             return null
         }
-        return StateRule(parsedGesture, parsedCondition, Action.parse(action))
+        return parsed.filterNotNull()
     }
 
     companion object {
@@ -237,7 +268,18 @@ internal data class StateRuleDto(
          *  条件空着（界面上那一行还没选条件）就写成空串 —— 这种行保存前就被拦了，正常到不了
          *  这里；万一到了，读回来时按「条件认不出」整条丢掉，而不是当成「永远成立」。
          */
-        fun of(rule: StateRule): StateRuleDto = StateRuleDto(rule.gesture.id, rule.condition?.token.orEmpty(), rule.action.token)
+        fun of(rule: StateRule): StateRuleDto =
+            StateRuleDto(
+                gesture = rule.gesture.id,
+                // 只有一条时仍填老那一格：老读方读到的还是原来那条
+                condition =
+                    rule.conditions
+                        .singleOrNull()
+                        ?.token
+                        .orEmpty(),
+                conditions = rule.conditions.map { it.token },
+                action = rule.action.token,
+            )
     }
 }
 

@@ -376,7 +376,10 @@ private fun SettingsPage.MenuRow(
                             // 只说明原因、**不动菜单**（用户口径：点禁用行菜单别关）；
                             //  禁用行也不再闪按下色（补丁 0008 的 `disabledClickable`）
                             XLog.w("浮层点选（禁用行）：${row.title} → 只说明原因，菜单保持打开")
-                            hint(currentDisabledHint ?: disabledClickReason())
+                            hint(
+                                currentDisabledHint ?: disabledClickReason(),
+                                slot = HINT_SLOT_DISABLED,
+                            )
                         }
                     },
                 // 文字由库按 `alert` 走 `DropdownColors.alertContentColor` —— 与图标的红同一档

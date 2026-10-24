@@ -51,7 +51,7 @@ internal class BindingGridState(
      *  （「灵感语音」只在长按），用 `ALL.size` 会让切点后移一位 —— 第一条自定义命令就跑到
      *  「快捷功能」那一组里去了。切分与清单必须同源。
      */
-    val builtInCount: Int = ActionCatalog.builtInCount(g)
+    val builtInCount: Int = ActionCatalog.builtInCount()
 
     /**
      * 格子在界面上的**分行表**（每行是若干个扁平下标）—— 方向键按它挪，不按下标加减。
@@ -64,7 +64,7 @@ internal class BindingGridState(
     val rows: List<List<Int>> =
         buildList {
             var base = 0
-            for ((_, group) in ActionCatalog.groupsFor(g)) {
+            for ((_, group) in ActionCatalog.groupsFor()) {
                 for (row in (base until base + group.size).chunked(COLUMNS)) add(row)
                 base += group.size
             }
@@ -132,7 +132,7 @@ internal fun SettingsPage.rememberBindingGridState(
 ): BindingGridState {
     val specs =
         remember(g, configState.commands.value) {
-            ActionCatalog.forGesture(g, configState.commands.value)
+            ActionCatalog.forGesture(configState.commands.value)
         }
     val current = actionOf(configState.config.value, g)
     val selectedIndex = specs.indexOfFirst { ActionCatalog.isSelected(it, current) }
