@@ -29,6 +29,15 @@ internal fun wifiLabel(value: String): String =
         else -> I18n.get(Strings.COMMAND_COND_WIFI_ON, "开")
     }
 
+/**
+ * 「开 / 关」型系统开关的两档 —— 蓝牙 / 移动数据 / 飞行模式共用。
+ *
+ *  字典里那两个键（`command.cond_wifi_on` / `_off`）的文案就是「开」「关」，与主语无关，
+ *  所以这里直接复用、不再新增一对同义的键。以后要是把这两个键改名成通用的
+ *  `..._switch_on`，只改这一处即可。
+ */
+internal fun switchLabel(value: String): String = wifiLabel(value)
+
 /** 媒体状态两档在界面上叫什么。 */
 internal fun mediaLabel(value: String): String =
     when (value) {

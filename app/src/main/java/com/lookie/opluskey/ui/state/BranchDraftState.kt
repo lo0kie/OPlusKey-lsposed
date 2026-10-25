@@ -53,6 +53,18 @@ internal class BranchDraft {
      */
     var owner: String? by mutableStateOf(null)
 
+    /**
+     * 这一趟在编的是**哪一档组合键**（`ComboKey.id`）；`null` = 在编某颗单键的某一档。
+     *
+     *  两个来源（`Config.keys` / `Config.combos`）的规则表形状完全一样，只有「从哪张表读、
+     *  写回哪张表」不同 —— 这一位就是那个判据。
+     *
+     *  放在草稿里而不是页面局部状态：它必须和 [owner] 同生共死。出栈时 [reset] 一起清，
+     *  否则下次从单键进条件执行页时会带着上一趟的组合键 id 去 `combos` 里找规则、再把结果
+     *  写回配置。
+     */
+    var comboId: String? by mutableStateOf(null)
+
     /** [load] 进来的那份快照 —— 只服务 [dirty]。 */
     private var loaded: List<StateRule> = emptyList()
 
@@ -72,8 +84,11 @@ internal class BranchDraft {
     fun load(
         owner: String,
         source: List<StateRule>,
+        comboId: String? = null,
     ) {
         this.owner = owner
+        //  与 owner 一起写：两者必须同时成立，分两次写会有一帧「owner 是组合的、comboId 还是空的」
+        this.comboId = comboId
         rules.clear()
         ids.clear()
         nextId = 0
@@ -90,6 +105,7 @@ internal class BranchDraft {
         nextId = 0
         loaded = emptyList()
         owner = null
+        comboId = null
     }
 
     /**
@@ -136,6 +152,18 @@ internal class BranchDraft {
             key: KeyId,
             gesture: Gesture,
         ): String = "${key.id}/${gesture.id}"
+
+        /**
+         * 一档组合键 + 手势的标识 —— 与 [ownerOf] 同一用途、同一个字符串位置。
+         *
+         *  加 `combo:` 前缀是必须的：组合键 id 是 `cmb1`、单键 id 是 `pro` / `ck1` 那些，
+         *  撞不上，但两种「在编谁」混在同一个字段里，光看一个 id 分不出该去 `combos` 还是
+         *  `keys` 找 —— 判据要能从标识本身读出来。
+         */
+        fun comboOwnerOf(
+            comboId: String,
+            gesture: Gesture,
+        ): String = "combo:$comboId/${gesture.id}"
     }
 }
 

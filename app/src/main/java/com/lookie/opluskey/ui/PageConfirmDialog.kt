@@ -165,6 +165,17 @@ internal fun SettingsPage.FrostedDialog(
     }
 }
 
+/**
+ * 通用确认窗：一句标题 + 一段正文 + 「取消 / 动作」两颗按钮。
+ *
+ * ## 为什么参数到 8 个（`@Suppress("LongParameterList")`）
+ *
+ *  与 [FrostedDialog] 同一个理由：这七样都是「这个窗自己长什么样、点完干什么」，
+ *  平铺成行参是 Compose 的惯例；拆成 options 对象只会让二十多个调用点各多一层壳。
+ *  最后那个 `onDismissFinished` 是「关掉之后才接着做下一件事」用的（目前只有「填前缀」那一处），
+ *  它和 `onConfirm` 是**先后**关系而不是同一件事，不能合并。
+ */
+@Suppress("LongParameterList")
 @Composable
 internal fun SettingsPage.ConfirmDialog(
     show: Boolean,
@@ -175,8 +186,16 @@ internal fun SettingsPage.ConfirmDialog(
     positiveDanger: Boolean = true,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
+    /**
+     * 退场动画**播完**时回调（`show` 中途翻回 true 则不回调）—— 见 [FrostedDialog]。
+     *
+     *  要「关掉之后才接着做下一件事」的调用点传它。确认窗是独立窗口，库在退场结束时
+     *  会顺手把键盘收掉：**在退场途中**去聚焦 / 叫键盘，等窗一销毁平台又把键盘带走，
+     *  用户看到的就是「键盘闪一下又没了」。「填前缀」那一处正是这个形状。
+     */
+    onDismissFinished: (() -> Unit)? = null,
 ) {
-    FrostedDialog(show = show, title = title, onDismiss = onDismiss) {
+    FrostedDialog(show = show, title = title, onDismiss = onDismiss, onDismissFinished = onDismissFinished) {
         // 正文走 [DialogBody]（可滚、可收缩；按钮栏钉在下面）
         summary?.let { DialogBody(it) }
         DialogButtonRow(

@@ -20,7 +20,6 @@ import com.lookie.opluskey.ui.model.PagePalette
 import com.lookie.opluskey.ui.model.languageLabel
 import com.lookie.opluskey.ui.model.paletteLabel
 import com.lookie.opluskey.ui.model.themeLabel
-import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setFollowDisplaySize
 import com.lookie.opluskey.ui.setPageScale
 import com.lookie.opluskey.ui.state.deviceModel
@@ -156,7 +155,6 @@ internal fun SettingsPage.ConfigCard(
     currentLang: AppLanguage,
     ui: AboutUiState,
 ) {
-    val tick = rememberTick()
     CardList(
         rows =
             listOf(
@@ -168,7 +166,6 @@ internal fun SettingsPage.ConfigCard(
                     trailing = { RowEndIcon(PageIcons.Selector) },
                     modifier = Modifier.preciseClickAnchor(ui.langClick),
                     onClick = {
-                        tick()
                         ui.showLangMenu = true
                     },
                 ),
@@ -181,7 +178,6 @@ internal fun SettingsPage.ConfigCard(
                     // 行尾箭头：这一行点了有反应（开系统的「保存到」）
                     arrow = true,
                     onClick = {
-                        tick()
                         hooks.onExportConfig?.invoke()
                     },
                 ),
@@ -191,7 +187,6 @@ internal fun SettingsPage.ConfigCard(
                     icon = PageIcons.ConfigImport,
                     arrow = true,
                     onClick = {
-                        tick()
                         hooks.onImportConfig?.invoke()
                     },
                 ),
@@ -217,7 +212,6 @@ internal fun SettingsPage.AppearanceCard(
     currentPalette: PagePalette,
     ui: AboutUiState,
 ) {
-    val tick = rememberTick()
     CardList(
         rows =
             listOf(
@@ -229,7 +223,6 @@ internal fun SettingsPage.AppearanceCard(
                     trailing = { RowEndIcon(PageIcons.Selector) },
                     modifier = Modifier.preciseClickAnchor(ui.themeClick),
                     onClick = {
-                        tick()
                         ui.showThemeMenu = true
                     },
                 ),
@@ -245,7 +238,6 @@ internal fun SettingsPage.AppearanceCard(
                     trailing = { RowEndIcon(PageIcons.Selector) },
                     modifier = Modifier.preciseClickAnchor(ui.paletteClick),
                     onClick = {
-                        tick()
                         ui.showPaletteMenu = true
                     },
                 ),
@@ -259,7 +251,6 @@ internal fun SettingsPage.AppearanceCard(
                     icon = PageIcons.TextSize,
                     checked = configState.config.value.global.followDisplaySize,
                     onCheckedChange = {
-                        tick()
                         setFollowDisplaySize(it)
                     },
                 ),

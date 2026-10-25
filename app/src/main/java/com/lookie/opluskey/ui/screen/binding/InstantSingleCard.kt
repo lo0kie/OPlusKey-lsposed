@@ -7,7 +7,6 @@ import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setInstantSingle
 import com.lookie.opluskey.ui.state.KeyWatchState
 
@@ -40,7 +39,6 @@ internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
     val cfg = configState.config.value
     // 与「单击延迟」同一条：这一位也是**每颗键自己的**（`KeyConfig.instantSingle`）
     val checked = cfg.key(KeyWatchState.editing(cfg)).instantSingle
-    val tick = rememberTick()
     val rowsEnabled = enabled
     CardList(
         rows =
@@ -55,7 +53,6 @@ internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
                     checked = checked,
                     enabled = rowsEnabled,
                 ) {
-                    tick()
                     setInstantSingle(it)
                 },
             ),

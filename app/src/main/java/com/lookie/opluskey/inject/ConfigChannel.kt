@@ -2,6 +2,7 @@ package com.lookie.opluskey.inject
 
 import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.KeyId
@@ -56,6 +57,27 @@ internal object ConfigChannel {
      *  [takeOver] 的取值已经把这两条都吃在里面了。
      */
     fun enabledOf(id: KeyId): Boolean = takeOver && (received?.key(id)?.enabled ?: true)
+
+    /**
+     * [keys] 这几颗键一起按下时，该由哪一档组合键接管 —— 没有就是 `null`。
+     *
+     *  这是 `ComboDetector` 那道「有没有绑定」的闸（见它的 `bindingFor`）：答否时**组合不成立**，
+     *  两颗键照旧各走各的单键判定。答是时会摘掉两颗键的单键状态机 —— 所以这道闸必须准：
+     *  答错了，用户按下去什么反应都没有。
+     *
+     *  三条判据：
+     *  · 还没收到过配置 ⇒ 没有组合键（**不能**按「没配置 = 默认开着」处理：`enabledOf` 对未知键
+     *    返回 true，那样会拿一份空表判出「有绑定」，两颗键一起按就静默失效）；
+     *  · 参与的那几颗都得归模块管（[enabledOf] 已含总闸）—— 一颗被停用或删掉，这一档就凑不齐；
+     *  · 档位本身要算数（[ComboKey.isUsable]：没关掉、成员够数）。
+     *
+     *  「成员数取多」与「同数按配置顺序」都在 [Config.comboFor] 里，这一层不重复判。
+     */
+    fun comboFor(keys: Collection<KeyId>): ComboKey? {
+        val cfg = received ?: return null
+        if (keys.isEmpty() || !keys.all { enabledOf(it) }) return null
+        return cfg.comboFor(keys.map { it.id }.toSet())
+    }
 
     /**
      * 「某一颗键从接管翻成不接管」那一刻要执行的撤销动作，由 `KeyHooks.install` 装配上
@@ -151,6 +173,27 @@ internal object ConfigChannel {
         )
         // 上面那行只打**侧键那份**参数；自定义键各有一份自己的键码与长按阈值（见 [logCustomKeys]）。
         logCustomKeys(fresh)
+        logCombos(fresh)
+    }
+
+    /**
+     * 把组合键打一行 W。
+     *
+     *  「两颗键一起按没反应」有两个完全不同的原因：注入侧**没收到**这一份配置（`combos` 为空 ⇒
+     *  组合不成立、两颗键各走各的），或者收到了但**没配上**这一组。这一行是分辨它们的地方 ——
+     *  没有它，日志里只有「DOWN / UP」，看不出注入侧手上到底有几档组合键。
+     */
+    private fun logCombos(fresh: Config) {
+        if (fresh.combos.isEmpty()) return
+        XLog.w(
+            "组合键：" +
+                fresh.combos.joinToString("、") { c ->
+                    "${c.id}=${c.keys.joinToString("+")}" +
+                        " 短按=${XLog.redactToken(c.single.token)}" +
+                        " 长按=${XLog.redactToken(c.long.token)}" +
+                        " 阈值=${c.longPressMs}ms${if (c.enabled) "" else "（已停用）"}"
+                },
+        )
     }
 
     /**

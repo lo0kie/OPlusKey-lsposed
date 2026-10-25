@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.screen.binding
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -12,10 +13,10 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.actionOf
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.tickNow
@@ -32,15 +33,18 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
  *  它们每次重组都可能变，存进来就会过期；各段自己在组合期从页面状态里取。
  */
 internal class BindingGridState(
-    /** 这一页是哪一档手势 —— `pick` 要它。 */
-    val g: Gesture,
+    /** 这张网格往哪儿写（一颗键的一档 / 一档组合键的一档）—— `pick` 要它。 */
+    val target: BindingTarget,
     /** 这一页的动作清单（内置 + 自定义，见 `ActionCatalog.forGesture`）。 */
     val specs: List<ActionCatalog.Spec>,
-    /** 入口格被点开时进「选择应用」页（为**这一档手势**挑）。 */
-    val onOpenAppPicker: (Gesture) -> Unit,
+    /** 入口格被点开时进「选择应用」页（为**这一档**挑，写回也落在 [target] 上）。 */
+    val onOpenAppPicker: (BindingTarget) -> Unit,
     /** 入口格被点开时进「控制中心磁贴」页（为**这一档手势**挑）。 */
     initialFocus: Int,
 ) {
+    /** 这一张网格是哪一档手势 —— 折叠清单 / 入口格菜单都按它判（见 [BindingTarget.gesture]）。 */
+    val g: Gesture get() = target.gesture
+
     /** 焦点格总数 —— 与 [specs] 下标一一对应（见 `BindingList` 里「扁平焦点索引的账」）。 */
     val totalCount: Int get() = specs.size
 
@@ -127,22 +131,64 @@ internal class BindingGridState(
  */
 @Composable
 internal fun SettingsPage.rememberBindingGridState(
-    g: Gesture,
-    onOpenAppPicker: (Gesture) -> Unit,
+    target: BindingTarget,
+    onOpenAppPicker: (BindingTarget) -> Unit,
 ): BindingGridState {
     val specs =
-        remember(g, configState.commands.value) {
+        remember(target.gesture, configState.commands.value) {
             ActionCatalog.forGesture(configState.commands.value)
         }
-    val current = actionOf(configState.config.value, g)
+    val current = target.actionIn(configState.config.value)
     val selectedIndex = specs.indexOfFirst { ActionCatalog.isSelected(it, current) }
-    return remember(specs) {
+    //  **`target` 也要进 key**：单键那一页切到另一颗键时 `specs` 一点都不变（清单只跟命令库
+    //  与手势有关），只按 specs 记忆会把上一颗键的 `target` 一直用下去 —— 在 A 上选的动作写进了 B。
+    return remember(specs, target) {
         BindingGridState(
-            g = g,
+            target = target,
             specs = specs,
             onOpenAppPicker = onOpenAppPicker,
             initialFocus = if (selectedIndex in specs.indices) selectedIndex else 0,
         )
+    }
+}
+
+/**
+ * 「焦点圈跟着选中项走」—— 进场把圈放到当前已选中的那一格，之后**选中项一变就收回来**。
+ *
+ *  为什么必须是共用件：「按键绑定」页与「组合按键」编辑页用的是**同一张网格**，圈怎么动只能有一套。
+ *  组合键那一页一开始没接这段，真机上表现为「点了别的动作，边框还留在原来那一格，退出去重进才对」——
+ *  因为 `focusedIndex` 只在 [BindingGridState] 建出来的那一刻取过一次 `initialFocus`。
+ *
+ * ## 几条硬约束（都是真机上踩出来的）
+ *
+ *  · 请求焦点**只能在 `LaunchedEffect` 里**：Compose 明确禁止在组合期间请求。
+ *  · **只有当前页抢焦点**：pager 的相邻页同样在组合里，几页各请求一次的话最后请求到的拿走焦点。
+ *  · 浮窗（弹窗 / 菜单 / 提示）开着时**一律不抢**：浮窗里的输入框刚拿到焦点，这里再请求一次就会
+ *    把它抢走（真机反馈「添加按键 / 重命名的输入框聚焦后又自动失焦」）。浮窗关掉那一刻 key 变回来，
+ *    圈自然落回选中项。
+ *  · 先请求**页面 View** 的 Android 焦点，再请求 Compose 内部焦点：按键事件按 Android 焦点派发，
+ *    只请求 Compose 焦点的话，在「页面 View 从未拿过焦点」时按键仍然进不来。
+ *
+ * @param active 这一页是不是 pager 的当前页（非当前页不抢焦点）
+ * @param subject 日志主语（`按键绑定` / `组合按键`），排查时能看出是哪一页在抢
+ */
+@Composable
+internal fun SettingsPage.BindingGridFocus(
+    st: BindingGridState,
+    active: Boolean,
+    subject: String,
+) {
+    val current = st.target.actionIn(configState.config.value)
+    // 当前选中的那一项（配置里是清单外的写法时为 -1 ⇒ 焦点退回第一项）
+    val selectedIndex = st.specs.indexOfFirst { ActionCatalog.isSelected(it, current) }
+    val overlayOpen = overlays.hasOpen()
+    LaunchedEffect(st.specs, selectedIndex, active, overlayOpen) {
+        if (!active || overlayOpen) return@LaunchedEffect
+        val seat = selectedIndex.coerceAtLeast(0)
+        if (seat != st.focusedIndex) st.focusedIndex = seat
+        val viewFocus = viewTree.rootView?.requestFocus() ?: false
+        val tileFocus = st.focusers.getOrNull(st.focusedIndex)?.requestFocus() ?: false
+        XLog.w("$subject：焦点落在 index=${st.focusedIndex} viewFocus=$viewFocus tileFocus=$tileFocus")
     }
 }
 
@@ -163,7 +209,23 @@ internal fun SettingsPage.bindingSelect(
     // `clickable` 了，但确认键那条路是自己派发的，得自己拦）
     if (!enabled) return
     tickNow()
-    pick(spec, st.g)
+    //  **圈就在这一下挪过去**，不等「选中项变了再由 effect 收回来」：
+    //  真机上那条 effect 明明条件都成立，圈却纹丝不动（点了别的动作，边框还留在原来那一格，
+    //  退出去重进才对 —— `focusedIndex` 从头到尾没被改过）。与其去赌某条异步路径，
+    //  不如在**点下去的那一刻**直接把它写掉：这是事件回调，写 state 完全合法，下一帧就重画。
+    st.focusOn(spec.token)
+    pick(spec, st.target)
+}
+
+/**
+ * 把焦点圈挪到 [token] 那一格上 —— 找不到就什么都不做。
+ *
+ *  「找不到」是正常情况：入口格菜单里的取值（`nav:home` 这种）不在 `specs` 里，
+ *  那时候圈该留在**被点开的那一格入口格**上，不能甩到第一格去。
+ */
+internal fun BindingGridState.focusOn(token: String) {
+    val index = specs.indexOfFirst { it.token == token }
+    if (index >= 0) focusedIndex = index
 }
 
 /**
@@ -186,7 +248,7 @@ internal fun SettingsPage.bindingActivate(
         if (enabled) {
             tickNow()
             //  不挪焦点圈 —— 与 [bindingSelect] 同一条规矩：圈只跟随选中态。
-            st.onOpenAppPicker(st.g)
+            st.onOpenAppPicker(st.target)
         }
         return
     }

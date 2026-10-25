@@ -2,9 +2,11 @@ package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,16 +33,19 @@ import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.isDarkScheme
 import com.lookie.opluskey.ui.model.specIcon
 import com.lookie.opluskey.ui.rememberTick
@@ -50,6 +56,7 @@ import io.github.suqi8.coui.kmp.basic.CardColors
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
@@ -126,6 +133,19 @@ internal class StepSheetSpec(
     val onOpenApp: () -> Unit,
     val onPick: (String) -> Unit,
     val onDismiss: () -> Unit,
+    /**
+     * 这一次**不要列出来**的那几条命令（`cmd:<名字>`），空集 = 不排除。
+     *
+     *  编辑「命令 A」时，它自己也会出现在「已保存的命令」那一组里 —— 选中它就是把 A 塞进 A 的
+     *  某一步。执行侧虽然有一道环闸（`CommandFailure.TOO_DEEP`）会拦住，但那是**事后**报错：
+     *  用户点完才收到「套太深」。界面上直接不给这一行，比让他撞一次墙更省事。
+     *
+     *  **为什么是集合而不是一个名字**：编辑态下草稿名与库里那条的名字可以不同 —— 用户把 A 改成
+     *  B、还没保存时，草稿叫 B、库里那条叫 A。只按草稿名排除的话，A 仍留在候选里：选中它会把
+     *  A 塞进 B 的步骤，保存时 A 被摘掉、B 里留下一条悬空的 `cmd:A`，而成环检查按名字也查不出来
+     *  （目标已经不存在）。两个名字都要排除。
+     */
+    val excludeTokens: Set<String> = emptySet(),
 )
 
 /**
@@ -199,6 +219,11 @@ internal fun SettingsPage.StepPickerSheet(
         }
     // 开着二级菜单的那一格（入口格那些：系统开关 / 系统导航 / 媒体控制…）。`null` = 没开。
     var subTile by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
+    //  抽屉顶上那个过滤框 —— 内置动作 + 已保存命令一共四十多行，翻三屏才找到一条；
+    //  边输边筛，清空即回到分组列表。关抽屉时一并清掉：下一次打开还挂着上一个词的话，
+    //  用户会以为「列表少了东西」。
+    var query by remember { mutableStateOf("") }
+    LaunchedEffect(show) { if (!show) query = "" }
 
     //  这一行画不画成「选中」（行首对勾 + 整行主题色）：看当前动作。
     //  点一下就落盘、抽屉随即收掉（见 `land`），所以这里没有「刚点过、还没生效」那一档了。
@@ -221,6 +246,10 @@ internal fun SettingsPage.StepPickerSheet(
             //  单条与多条**都列**：条件执行那一支的动作就是 `cmd:<名字>`，多条命令完全合法；
             //  多条命令的「某一步」引用另一条多条命令，执行侧也认（深度与环都有闸）。
             //  以前这里只留单条，抽屉里于是看不到自己写的命令链。
+            //
+            //  **正在编辑的那条自己除外**（见 [StepSheetSpec.excludeTokens]）：引用自己就是环，
+            //  执行侧会报「套太深」，不如别让它出现在候选里。
+            .filter { it.token !in sheet.excludeTokens }
             .map { ActionCatalog.commandSpec(it) }
     val savedAnchors = remember(savedSpecs) { savedSpecs.associateWith { PreciseClickState() } }
     // 开着二级菜单那一行的锚点（开的时候记下来，`ModeMenuPopups` 用）；
@@ -272,6 +301,22 @@ internal fun SettingsPage.StepPickerSheet(
         StepSheetCtx(icons, sheetCards, { savedAnchors.getValue(it) }, { isCurrent(it) }) { spec, anchor ->
             land(spec, anchor)
         }
+    //  搜索态：分组标题全部让位，命中的行拍成**一张卡**（找东西时按组切反而要多扫几行标题）。
+    //  两组候选的锚点不在同一张表里，这里按「先查命令、再查动作」挑一份；
+    //  两个都没有（理论上不会）就落到 `coldAnchor`，至少不抛。
+    val searchCtx =
+        StepSheetCtx(icons, sheetCards, { savedAnchors[it] ?: anchors[it] ?: coldAnchor }, { isCurrent(it) }) { spec, anchor ->
+            land(spec, anchor)
+        }
+    val term = query.trim()
+    val hits =
+        if (term.isEmpty()) {
+            emptyList()
+        } else {
+            //  内置那几组按 STEP_GROUPS 的顺序，后面接已保存命令 —— 与不搜时的相对顺序一致
+            (ActionCatalog.STEP_GROUPS.flatMap { it.second } + savedSpecs)
+                .filter { it.label.contains(term, ignoreCase = true) }
+        }
 
     OverlayBottomSheet(
         show = show,
@@ -313,18 +358,74 @@ internal fun SettingsPage.StepPickerSheet(
             Modifier
                 .fillMaxWidth()
                 .heightIn(max = STEP_SHEET_MAX_HEIGHT)
-                .overScrollVertical(nestedScrollToParent = false)
-                .verticalScroll(rememberScrollState())
-                //  底边那一档留白**在滚动内容里**（与各页 `.padding(bottom = PAGE_BOTTOM_PADDING)`
-                //  同一个位置、同一个值）：滚到底时它垫在最后一行下面，不占滚动视口。
-                .padding(bottom = PAGE_BOTTOM_PADDING),
+                //  **抽屉高度变化加过渡**：分组列表 ↔ 搜索结果 ↔ 没找到，三种内容的高度是跳变的
+                //  （几十行换成一张卡、再换成一句话），面板跟着一跳很扎眼。
+                //  与页面里其它「动态显隐」同一档时长与缓动。
+                .animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)),
         ) {
-            StepSheetGroups(ctx)
-            //  **已保存的命令排在最后**：这是用户自己写的东西，挑的时候上面几组通常已经扫过一遍。
-            //  一条都没存过时整组不出现 —— 这是「挑一条来用」的抽屉，没得挑就别摆一栏空的；
-            //  「还没保存过命令」这件事由「已保存的命令」那张空状态卡去说。
-            if (savedSpecs.isNotEmpty()) {
-                SavedCommandsGroup(savedSpecs, savedCtx)
+            //  过滤框：用库自己的 `InputField`（「选择应用」页那个搜索框就是它）——
+            //  放大镜、清除键、占位文案都是它自带的，不另拼一层。
+            //  **在滚动区外面**：列表翻几屏时它不该跟着滚走（否则想换关键词得先滚回顶部）。
+            InputField(
+                query = query,
+                onQueryChange = { query = it },
+                //  键盘上点「搜索」不做额外动作：过滤是边输边做的
+                onSearch = { },
+                expanded = false,
+                onExpandedChange = { },
+                modifier = Modifier.fillMaxWidth().padding(bottom = STEP_SHEET_SEARCH_GAP),
+                label = I18n.get(Strings.COMMAND_SEARCH, "搜索命令"),
+            )
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    //  `fill = false`：内容短时抽屉跟着内容长（不撑到 460），长了才吃满剩余空间。
+                    //  这里必须给 weight 而不是再套一层 `heightIn`：搜索框的高度是库算的（会随
+                    //  字号 / 语言变），写死一个数去减，换语言就溢出。
+                    .weight(1f, fill = false)
+                    .overScrollVertical(nestedScrollToParent = false)
+                    .verticalScroll(rememberScrollState())
+                    //  底边那一档留白**在滚动内容里**（与各页 `.padding(bottom = PAGE_BOTTOM_PADDING)`
+                    //  同一个位置、同一个值）：滚到底时它垫在最后一行下面，不占滚动视口。
+                    .padding(bottom = PAGE_BOTTOM_PADDING),
+            ) {
+                //  **三种内容之间交叉淡入淡出**（列表 ↔ 搜索结果 ↔ 没找到）：高度变化交给外层
+                //  那个 `animateContentSize`，这里只做淡入淡出 —— 两层各管一件事，
+                //  两个都动高度会变成一段动画套一段。
+                Crossfade(
+                    targetState =
+                        when {
+                            term.isEmpty() -> SheetBody.Groups
+                            hits.isEmpty() -> SheetBody.Empty
+                            else -> SheetBody.Hits
+                        },
+                    animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+                    label = "step-sheet-body",
+                ) { body ->
+                    Column(Modifier.fillMaxWidth()) {
+                        when (body) {
+                            SheetBody.Groups -> {
+                                StepSheetGroups(ctx)
+                                //  **已保存的命令排在最后**：这是用户自己写的东西，挑的时候上面几组
+                                //  通常已经扫过一遍。一条都没存过时整组不出现 —— 这是「挑一条来用」
+                                //  的抽屉，没得挑就别摆一栏空的。
+                                if (savedSpecs.isNotEmpty()) {
+                                    SavedCommandsGroup(savedSpecs, savedCtx)
+                                }
+                            }
+
+                            //  搜不到时给一句话，不摆一张空卡：这里没有「这里还能放东西」的暗示
+                            SheetBody.Empty -> {
+                                StepSheetEmptyHint(term)
+                            }
+
+                            SheetBody.Hits -> {
+                                StepSheetCard(hits, searchCtx)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -351,6 +452,9 @@ internal fun SettingsPage.StepPickerSheet(
         },
     )
 }
+
+/** 抽屉正文的三种形态 —— 只为 [Crossfade] 有一个稳定的目标值（见 `StepPickerSheet`）。 */
+private enum class SheetBody { Groups, Hits, Empty }
 
 /**
  * 抽屉里那三支（内置组 / 已保存组 / 一张卡）共用的「长什么样、点了怎么算」——
@@ -461,6 +565,43 @@ private val STEP_SHEET_ICON_SIZE = 24.dp
 
 /** 组与组之间那一档留白 —— 与各页「Spacer(12.dp) + SmallTitle」同一档。 */
 private val STEP_SHEET_SECTION_GAP = 12.dp
+
+/** 搜索框与下面那串候选之间的距离 —— 比组间距（12dp）再紧一点：它俩是一块儿。 */
+private val STEP_SHEET_SEARCH_GAP = 8.dp
+
+/**
+ * 搜不到东西时那一行字。
+ *
+ *  **不摆空卡**：卡片在别处都表示「这里有东西、只是现在空着」（已保存命令那条空态就是这样），
+ *  而搜索没命中完全是另一回事 —— 一行字说明就够了，也别给出「还能往里放东西」的错觉。
+ *
+ *  用普通 `Text` 而不是 `EmphasisText`：用户输的词要原样显示（搜 `*` 就得看见 `*`），
+ *  正文记号那一套在这里没有用武之地。
+ */
+@Composable
+private fun SettingsPage.StepSheetEmptyHint(term: String) {
+    //  走全项目唯一那份空态排版（[Feedback]：32dp 字形框 + 居中文案），字形用**那张脸**
+    //  （`PageIcons.NoMatch`）—— 与「选择应用」搜不到时同一颗，同一个现象在两处长一个样。
+    //  不摆空卡：卡片在别处都表示「这里有东西、只是现在空着」，搜索没命中是另一回事。
+    Feedback(
+        glyph = { tint ->
+            Icon(
+                imageVector = PageIcons.NoMatch,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                tint = tint,
+            )
+        },
+        text = I18n.format(Strings.COMMAND_SEARCH_EMPTY, term),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = STEP_SHEET_EMPTY_PADDING),
+    )
+}
+
+/** 搜不到时那行字的上下留白 —— 与各页空态同一档（24dp）。 */
+private val STEP_SHEET_EMPTY_PADDING = 24.dp
 
 /**
  * 抽屉里的一行 —— **选中 / 未选中是同一棵子树**，会变的颜色全部过 `animateColorAsState`。

@@ -251,6 +251,13 @@ object ConfigFields {
     val F_MINI_WINDOW_ANIM = Field(null, Kind.Bool(GlobalConfig.DEFAULT_MINI_WINDOW_ANIM))
 
     /**
+     * 组合键的**无操作透传** —— **只有落盘那一列**（同上）：执行在宿主，注入侧只判手势。
+     *
+     *  开 = 组合那一格没绑动作时，两颗键各按自己这一档照常执行；关 = 什么都不做。
+     */
+    val F_COMBO_PASSTHROUGH = Field(null, Kind.Bool(GlobalConfig.DEFAULT_COMBO_PASSTHROUGH))
+
+    /**
      * 「跟随系统显示大小」—— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：
      * 它只决定这个页面自己那棵树的密度，注入侧没有界面、不读它。
      */
@@ -278,6 +285,7 @@ object ConfigFields {
             F_THEME,
             F_COLOR_OS_API,
             F_MINI_WINDOW_ANIM,
+            F_COMBO_PASSTHROUGH,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
         )

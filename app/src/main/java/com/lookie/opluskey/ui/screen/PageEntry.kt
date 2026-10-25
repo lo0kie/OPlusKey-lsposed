@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -18,7 +17,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.LocalHeaderBoxHeight
 import com.lookie.opluskey.ui.Screen
@@ -30,6 +28,9 @@ import com.lookie.opluskey.ui.screen.about.AboutScreen
 import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingScreen
+import com.lookie.opluskey.ui.screen.binding.BindingTarget
+import com.lookie.opluskey.ui.screen.combo.ComboEditScreen
+import com.lookie.opluskey.ui.screen.combo.ComboScreen
 import com.lookie.opluskey.ui.screen.command.BranchScreen
 import com.lookie.opluskey.ui.screen.command.CommandActions
 import com.lookie.opluskey.ui.screen.command.CommandScreen
@@ -56,8 +57,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 @Composable
 internal fun SettingsPage.PageEntry(
     s: Screen,
-    pagerState: PagerState,
-    commandPager: PagerState,
+    pagers: PagePagers,
 ) {
     val scrollBehavior = pageScrollBehavior(s)
     // 顶栏 / 浮层菜单 / 底部工具栏的磨砂**取样源**（Haze 的 `hazeSource`）。
@@ -97,7 +97,7 @@ internal fun SettingsPage.PageEntry(
                     //  采集层的底色（挂在 `hazeSource` **之后**，见上）
                     .background(surfaceColor),
             ) {
-                PageBody(s, scrollBehavior, pagerState, commandPager)
+                PageBody(s, scrollBehavior, pagers)
             }
 
             // 首页那条「模块未生效」提示与操作回执一起挂在根 `Scaffold` 的**浮层槽**
@@ -130,7 +130,7 @@ internal fun SettingsPage.PageEntry(
 
             // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
             // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
-            PageTopBar(s, scrollBehavior, hazeState, pagerState, commandPager)
+            PageTopBar(s, scrollBehavior, hazeState, pagers)
         }
     }
 }
@@ -175,7 +175,10 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
             s != Screen.SHORTCUTS &&
                 s != Screen.ABOUT &&
                 s != Screen.DONATE_LIST &&
-                s != Screen.GENERAL
+                s != Screen.GENERAL &&
+                //  组合键列表是短内容页（一档一行，最多五档）—— 钉住标题，
+                //  否则滚一下标题就折成一条、页面看着像什么都没有。编辑页内容长，照常折叠。
+                s != Screen.COMBOS
         },
     )
 
@@ -189,8 +192,7 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
 private fun SettingsPage.PageBody(
     s: Screen,
     scrollBehavior: ScrollBehavior,
-    pagerState: PagerState,
-    commandPager: PagerState,
+    pagers: PagePagers,
 ) {
     when (s) {
         Screen.SHORTCUTS -> {
@@ -199,18 +201,18 @@ private fun SettingsPage.PageBody(
 
         Screen.BINDING -> {
             BindingScreen(
-                pagerState,
+                pagers.gestures,
                 // 闸门是**当前在编辑的那颗键自己的** `enabled`（侧键也有一份，⋮ 菜单里能停用）：
                 //  模块总闸另有一层（关着时整页走 `blockedReason`），这里只管这一颗键。
                 //  自定义键收集时默认不开，第一次绑动作时自动打开（见 `pick`）。
                 enabled = keyEnabled(KeyWatchState.editing(configState.config.value)),
-                onOpenAppPicker = { g -> openAppPickerForGesture(g) },
+                onOpenAppPicker = { target -> openAppPickerForTarget(target) },
                 scrollBehavior = scrollBehavior,
             )
         }
 
         Screen.COMMANDS -> {
-            CommandScreen(scrollBehavior, commandPager)
+            CommandScreen(scrollBehavior, pagers.commands)
         }
 
         // 「条件执行」：与「自定义命令」页同一套表单骨架，只是固定成 BRANCH 那一档，
@@ -246,6 +248,16 @@ private fun SettingsPage.PageBody(
         // 「通用设置」：接口选择 + 按键行为（两节都是全局项）
         Screen.GENERAL -> {
             GeneralScreen(scrollBehavior)
+        }
+
+        // 「组合键」列表：一档一行 + 末行「添加组合键」
+        Screen.COMBOS -> {
+            ComboScreen(scrollBehavior)
+        }
+
+        // 「组合键」编辑：上面一行成员（只读），下面短按 / 长按两张网格
+        Screen.COMBO_EDIT -> {
+            ComboEditScreen(scrollBehavior, pagers.combos)
         }
     }
 }
@@ -340,13 +352,16 @@ private fun SettingsPage.ActivityPickerPage(scrollBehavior: ScrollBehavior) {
 }
 
 /**
- * 网格里点「打开应用」那一格 → 进「选择应用」页（**为当前手势**挑）。
+ * 网格里点「打开应用」那一格 → 进「选择应用」页（**为这一格**挑）。
  *
  *  三件事都得在进页那一刻做掉：记下为谁挑、清掉上一次的搜索词、「以小窗口打开」按这次要
  *  编辑的动作重算（见 [resetSmallWindowForPicker]）。父级不用记 —— 压它下面的是谁，返回就退到谁。
+ *
+ *  「为谁」整份带下去（[BindingTarget]）：单键那一页是「当前这颗键的这一档」，组合键那一页是
+ *  「这一档组合的短按 / 长按」—— 挑完回来写哪儿由它决定（见 `PageEntryWrite.onAppPicked`）。
  */
-private fun SettingsPage.openAppPickerForGesture(g: Gesture) {
-    picker.openForGesture(g)
+internal fun SettingsPage.openAppPickerForTarget(target: BindingTarget) {
+    picker.openForGesture(target.gesture, (target as? BindingTarget.Combo)?.id)
     // 搜索词清空（页面级状态，不再随页面出栈注销，见 [AppPickerState.filter]；
     // 另一条入口在 [openAppPickerForStep]）
     picker.filter.value = ""

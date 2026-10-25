@@ -119,6 +119,10 @@ internal fun SettingsPage.BindingKeyMenu() {
  *  离栈时草稿由 `discardPageStateOf` 清，所以下次进来是重新载入的一份。
  */
 private fun SettingsPage.openBranchesPage() {
+    //  从「按键绑定」进来编的是**这颗键**的这一档 —— 清掉上一趟可能留下的组合键目标。
+    //  草稿出栈时本来也会 `reset`，这里再明确一次：两条入口共用一个目标位
+    //  （`BranchDraft.comboId`），谁进来谁负责把它指对。
+    branchDraft.draft.comboId = null
     XLog.w("按键绑定：进「${BRANCHES_TITLE}」页")
     navTo(Screen.BRANCHES)
 }

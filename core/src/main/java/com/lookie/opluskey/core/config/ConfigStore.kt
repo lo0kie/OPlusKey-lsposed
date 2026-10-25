@@ -2,49 +2,49 @@ package com.lookie.opluskey.core.config
 
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.HostApp
-import java.io.File
 
-/** 配置文件的位置与读写，全项目只有这一处。 */
+/**
+ * 本模块（[MODULE_ID]）配置文件的**门面**：主配置的读、写、缓存，以及「哪三个槽是本模块的」。
+ *
+ * 文件怎么放、怎么写、怎么删，全在 [ModuleFiles]（多模块共用的那一层）；
+ * 这一层只剩**本模块自己的事**：文件格式（[ConfigCodec] + [FileObfuscation]）与读缓存。
+ */
 object ConfigStore {
     /**
-     * 宿主 App（[HostApp.PACKAGE]）私有目录 —— 用的是 **DE（设备加密）** 那一份，路径按**当前用户**拼。
+     * 本模块在宿主私有目录里的文件前缀（`opluskey_*.conf`）。
      *
-     * 为什么不用 CE（`/data/data/…`）：CE 在**首次解锁前不可见**，开机到解锁之间配置只能读到
-     * 默认值（`enabled=false`），注入侧据此按「不接管」处理、侧键那一段只能走系统原生。
-     * DE 与设备加密同源、开机即可读，解锁前也能按真配置接管。
-     *
-     * 为什么用户 id 不能写死成 0：`/data/user_de/<uid>/…` 里的 `<uid>` 是**当前用户**的用户 id
-     * （`android.os.Process.myUid() / 100000`，与 `UserHandle.getUserId()` 同口径）。副用户 / 工作资料
-     * 下用户 id 不是 0，写死 0 会一直去读主用户那份 —— 那些用户改配置怎么都不生效（读到的是别的
-     * 用户的配置，或干脆读不到而退回默认值）。
+     *  与 [com.lookie.opluskey.core.ModuleInfo.PACKAGE] 不是一个东西：那个是**包名**（带点），
+     *  这个是**文件名前缀**（只许小写字母 / 数字 / 连字符，规则见 [ModuleFiles.of]）。
+     *  两者同源但不同用途，改包名不必跟着改它 —— 除非真要换一套文件名（那要连迁移一起做）。
      */
-    private val HOST_DIR: String = "/data/user_de/${android.os.Process.myUid() / 100000}/${HostApp.PACKAGE}"
+    const val MODULE_ID: String = "opluskey"
 
-    private val HOST_FILES: String = "$HOST_DIR/files"
-
-    private const val SHARED_NAME = "opluskey_config.conf"
+    /** 主配置的槽名（`opluskey_config.conf`）。 */
+    const val SLOT_CONFIG: String = "config"
 
     /**
-     * 自定义命令库（[CommandLibrary] 读写）的文件名，与主配置分开存：
+     * 自定义命令库（[CommandLibrary]）的槽名，与主配置分开存：
      * 主配置只记 `cmd:<名字>` 引用，命令内容在这一份里。
      */
-    private const val COMMAND_NAME = "opluskey_commands.conf"
+    const val SLOT_COMMANDS: String = "commands"
 
-    /** 界面状态文件名，不是用户配置（只有「显示系统应用」这类界面偏好）。 */
-    private const val UI_NAME = "opluskey_ui.conf"
+    /** 界面状态（`ui/state/UiState`）的槽名，**不是用户配置**（只有「显示系统应用」这类界面偏好）。 */
+    const val SLOT_UI: String = "ui"
 
-    /** 本模块在宿主私有目录里用的文件夹（配置、命令库、界面状态、调试旁路标记都放这儿）。 */
-    fun filesDir(): File = File(HOST_FILES)
+    /** 本模块的文件句柄 —— 多模块那一层留出的唯一入口。 */
+    fun files(): ModuleFiles = ModuleFiles.of(MODULE_ID)
+
+    /** 本模块的配置文件目录（宿主私有目录里那一层，所有模块共用）。 */
+    fun filesDir() = hostFilesDir()
 
     /** 主配置文件（宿主私有目录里的那个）。 */
-    fun sharedFile(): File = File(filesDir(), SHARED_NAME)
+    fun sharedFile() = files().file(SLOT_CONFIG)
 
     /** 自定义命令库文件。 */
-    fun commandFile(): File = File(filesDir(), COMMAND_NAME)
+    fun commandFile() = files().file(SLOT_COMMANDS)
 
     /** 界面状态文件。 */
-    fun uiFile(): File = File(filesDir(), UI_NAME)
+    fun uiFile() = files().file(SLOT_UI)
 
     /** 主配置的读取结果 —— 「还没写过」与「读不懂」必须分开，理由见 [load]。 */
     sealed interface Load {
@@ -89,7 +89,7 @@ object ConfigStore {
     fun load(): Load {
         val f = sharedFile()
         // 注意：**不能**先判 `f.isFile`。只剩 `.bak` 时主文件不在，但配置还在 —— 那要交给
-        //  [readText] 走 `AtomicFile.openRead()` 还原，判成「首装」就会被默认值覆盖。
+        //  [ModuleFiles.read] 走 `AtomicFile.openRead()` 还原，判成「首装」就会被默认值覆盖。
         val modified = f.lastModified()
         val length = f.length()
         val inode = inodeOf(f)
@@ -102,24 +102,24 @@ object ConfigStore {
         }
 
         val raw =
-            try {
-                readText(f)
-            } catch (e: java.io.FileNotFoundException) {
-                //  **FNF 有两种**：文件真的不在，与「文件在但没权限」—— `FileInputStream` 对
-                //  EACCES 抛的也是 `FileNotFoundException`。后者按首装处理会让写方拿默认值
-                //  覆盖用户的配置，正是这三态要防的那件事，所以先看文件到底在不在。
-                if (f.exists()) {
-                    XLog.d("读配置失败（文件在但读不出来）：${f.path} | ${e.message}")
+            when (val r = files().read(SLOT_CONFIG)) {
+                is ModuleFiles.Load.Ok -> {
+                    r.text
+                }
+
+                ModuleFiles.Load.Absent -> {
+                    // 真的没写过（主文件与 `.bak` 都不在，[ModuleFiles.read] 已经还原过了）。
+                    //  用 d：这是首装时每条按键都会走到的正常状态，w 会刷屏。
+                    XLog.d("读配置：主文件与 .bak 都不在，按首装处理（${f.path}）")
+                    cached = null
+                    return Load.Absent
+                }
+
+                ModuleFiles.Load.Unreadable -> {
+                    //  d：宿主每条按键前都要读一遍，w 会刷屏 —— 与原来那一处同一个级别
+                    XLog.d("读配置失败（文件在但读不出来）：${f.path}")
                     return Load.Unreadable
                 }
-                // 主文件与 `.bak` 都不在 = 真的没写过（只剩 `.bak` 的情况 [readText] 已经还原了）
-                XLog.d("读配置：主文件与 .bak 都不在，按首装处理 | ${e.message}")
-                cached = null
-                return Load.Absent
-            } catch (e: Throwable) {
-                // EACCES / IO 错：只给 d（宿主每条按键前都要读一遍，w 会刷屏）
-                XLog.d("读配置失败（文件在但读不出来）：${f.path} | ${e.message}")
-                return Load.Unreadable
             }
 
         // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文认不出，都算「读不懂」。
@@ -129,8 +129,7 @@ object ConfigStore {
         //
         //  **读不懂也按指纹缓存**：这是由文件内容推出来的结论，指纹不变结论就不会变；不缓存的话
         //  坏文件会被每一条按键重读一遍，`FileObfuscation` 那两行 W 也跟着刷屏（判据行会被冲掉）。
-        //  与它相对的，上面 readText 的 IO 失败不缓存 —— 那是**瞬时**故障（EACCES / IO 抖动），
-        //  下一按可能就好了。
+        //  与它相对的，IO 失败不缓存 —— 那是**瞬时**故障（EACCES / IO 抖动），下一按可能就好了。
         val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
         val result = text?.let { ConfigCodec.parseOrNull(it) }?.let { Load.Ok(it) } ?: Load.Unreadable
         cached = Cached(modified, length, inode, result)
@@ -172,7 +171,7 @@ object ConfigStore {
     /**
      * 写配置（只有宿主进程调得到）。
      *
-     * 先包一层外皮（[FileObfuscation]），再走 [writeAtomically]（`android.util.AtomicFile`），
+     * 先包一层外皮（[FileObfuscation]），再交给 [ModuleFiles.write]（`android.util.AtomicFile`），
      * 避免执行侧读到半截内容。
      *
      * 写成功后**主动丢掉读缓存**（[load] 那一份）：本进程自己的写盘最清楚「刚换过内容」，
@@ -181,121 +180,14 @@ object ConfigStore {
      */
     fun write(config: Config): Boolean {
         val ok =
-            writeAtomically(
-                sharedFile(),
+            files().write(
+                SLOT_CONFIG,
                 FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, ConfigCodec.serialize(config)),
                 openReadable = true,
             )
         if (ok) cached = null
         return ok
     }
-
-    /**
-     * 写配置（只有宿主进程调得到）。
-     *
-     * 先包一层外皮（[FileObfuscation]），再走 `android.util.AtomicFile` 的原子写：
-     * `startWrite` → 写字节 → `finishWrite`（内部 flush + `fd.sync` + 旧文件改名成 `.bak` +
-     * `.new` 改名成目标）。
-     *
-     * ## 为什么换成平台的 `AtomicFile`
-     *
-     *  早先是自己拼一个带 pid + 时间戳的 `.tmp`、`fd.sync()`、`renameTo`、失败时删残file ——
-     *  那套能挡住「读到半截」，但**挡不住写完之前断电 / 进程被杀**：目标文件已经没了、`.tmp`
-     *  还在，下一次读到的是一份不完整的新内容或干脆什么都没有。`AtomicFile` 在写之前先把旧文件
-     *  留成 `.bak`，`openRead` 发现目标缺失会用它还原（Android 官方在底层做的）。
-     *
-     * 写完之后仍要**自己补 chmod**（[exposeToOthers]）：`AtomicFile` 只认「写 + 还原」，
-     * 不知道我们要把文件放开给别的 uid 读。写在 `finishWrite` 之后、对**目标文件**做。
-     *
-     * ## 一处能力退化，记在这里
-     *
-     *  原来那个「tmp 名带 pid + 时间戳」是**并发写的防御**：两个写方各写各的 tmp，最后谁 rename
-     *  谁算数，字节不会互相掺。`AtomicFile` 固定用 `.new`，两个写方会写同一个临时文件 ⇒
-     *  理论上可能掺。当前写方是串行的（页面写配置、命令库写命令），跨进程同时写同一份文件这件事
-     *  本来就没有锁保护、也只是「后写覆盖先写」，所以接受这个退化；真要并发写，得上锁文件，
-     *  不在这一版做。
-     *
-     * DE 下的 `files/` 目录一开始并不存在（宿主自己没用过 DE），所以这里必须会建目录。
-     *
-     * @param openReadable 请求跨 uid 可读；只有 debug 包真的放开（见 `exposeToOthers`）。
-     */
-    fun writeAtomically(
-        target: File,
-        text: String,
-        openReadable: Boolean,
-    ): Boolean {
-        val dir = target.parentFile
-        if (dir == null) return false
-        if (!dir.isDirectory && !dir.mkdirs()) {
-            XLog.w("建目录失败：${dir.path}")
-            return false
-        }
-
-        // **进程内串行**：`AtomicFile` 固定用同一个 `.new` 临时文件，两条线程同时写会互相掺字节。
-        //  跨进程那两个写方本来就只能「后写覆盖先写」（见上面那段能力退化），这里只护同进程这一层。
-        synchronized(writeLock) {
-            val atomic = android.util.AtomicFile(target)
-            // 只用于失败分支：`finishWrite` 之后置 null，免得对已交接的流再 `failWrite` 一次
-            var stream: java.io.FileOutputStream? = null
-            return try {
-                val out = atomic.startWrite()
-                stream = out
-                out.write(text.toByteArray(Charsets.UTF_8))
-                // 内部：flush + fd.sync + 旧文件 → `.bak`、`.new` → 目标（同目录内的 rename，原子）
-                atomic.finishWrite(out)
-                stream = null
-                // 放开权限只为 adb 排查方便，release 侧是空实现
-                if (openReadable) exposeToOthers(dir, target)
-                true
-            } catch (e: Throwable) {
-                // `failWrite` 会把半截的 `.new` 收掉 —— 不像手写那版要自己记得删
-                stream?.let { runCatching { atomic.failWrite(it) } }
-                XLog.w("写文件失败：${target.path} | ${e.message}")
-                false
-            }
-        }
-    }
-
-    /** [writeAtomically] 的进程内互斥（见那里的说明）。 */
-    private val writeLock = Any()
-
-    /**
-     * 读文本文件并**剥掉开头的 UTF-8 BOM**（`U+FEFF`）。
-     *
-     * 为什么必须剥：配置是让人能手改的（排障时用 root 直接编辑、或者拉出来改完再推回去），
-     * 而 Windows 记事本 / 记事本类的「另存为 UTF-8」会**自动加 BOM**。加了之后整份文本的第一段
-     * 是 `\\uFEFF{` —— `JSONObject` 在这里直接抛，于是 [load] 判 [Load.Unreadable]：
-     *   · 读方退化成默认值（侧键像没配过一样）；
-     *   · 更糟的是**写方被闸住**（Unreadable 不允许写回），用户在界面里怎么改都「保存失败」，
-     *     而他刚用记事本确认过文件内容好端端的 —— 这类「文件明明在、编辑器说没问题，模块说读不懂」
-     *     是最难自查的一种，代价只是这里 `removePrefix` 一下。
-     *
-     * 注意：**配置文件的外皮**（[FileObfuscation]）在这一层之外：本函数拿到的仍是磁盘原文
-     * （首行可能是 `OPlusKey-Runtime-1`），剥外皮在 [load] / `CommandLibrary.load` 里做。
-     * 手改配置文件要连着外皮一起改（解两层、改完再包两层，配方见 [FileObfuscation]），
-     * 正文里那个 `md5` 还得一起重算（见 `ConfigCodec`）。
-     *
-     * 只剥**开头一个**：BOM 的语义就是「这个流的开头」，中间出现 `U+FEFF`（零宽不换行空格）是
-     * 正常字符，不该动。
-     */
-    fun readText(f: File): String {
-        // **走 `AtomicFile.openRead()`**：目标文件缺失时它会先用 `.bak` 还原。写盘是
-        //  「base → .bak、.new → base」两步，中间被杀 / 断电就会留下「base 不在、.bak 在」——
-        //  这时直接 `f.readText()` 抛、调用方判「首装没配过」，用户整份配置随后被默认值覆盖。
-        //  两个都不在时它抛 `FileNotFoundException`，调用方据此判「真的没写过」。
-        val raw =
-            android.util
-                .AtomicFile(f)
-                .openRead()
-                .use { it.readBytes().decodeToString() }
-        return stripBom(raw)
-    }
-
-    /** 真正的剥离（纯函数，便于命令行 / 单测核对；只认开头那一个）。 */
-    fun stripBom(text: String): String = if (text.startsWith(BOM)) text.substring(1) else text
-
-    /** UTF-8 文本流开头的 BOM（一个 `U+FEFF` 码元）。 */
-    private const val BOM = '\uFEFF'
 }
 
 /**
@@ -310,7 +202,7 @@ object ConfigStore {
  *  [CommandLibrary] 拿不到，而且 [ConfigStore] 的函数条数已经贴着 detekt `TooManyFunctions`
  *  那一档，再往里放一个就把闸口顶红。
  */
-fun inodeOf(f: File): Long =
+fun inodeOf(f: java.io.File): Long =
     try {
         android.system.Os
             .stat(f.path)

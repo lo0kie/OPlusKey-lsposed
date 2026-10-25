@@ -293,6 +293,16 @@ internal data class ComboDto(
     val single: String = Action.NONE,
     val long: String = Action.NONE,
     val longPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
+    /** 长按连续触发与其两个参数 —— 老文件没有这一段，读回来就是「不连发」。 */
+    val longRepeat: Boolean = false,
+    val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    val longRepeatVibrate: Boolean = false,
+    /**
+     * **条件执行**（`ComboKey.rules`）—— 与单键那份同一个 [StateRuleDto]，只是挂在不同对象上。
+     *
+     *  老文件没有这一段 ⇒ 空表 ⇒ 行为与没有这项功能完全一致，不需要迁移。
+     */
+    val rules: List<StateRuleDto> = emptyList(),
 ) {
     /**
      * 线格式 → 一档组合键；id 空、或成员不足两颗的读不懂（返回 `null`）。
@@ -311,6 +321,12 @@ internal data class ComboDto(
             long = Action.parse(long),
             // 长按阈值与单键共用同一个区间（`ConfigFields.F_LONG_PRESS_MS`）：它量的是同一件事。
             longPressMs = clamp(ConfigFields.F_LONG_PRESS_MS, longPressMs),
+            longRepeat = longRepeat,
+            longRepeatIntervalMs = clamp(ConfigFields.F_REPEAT_INTERVAL_MS, longRepeatIntervalMs),
+            longRepeatVibrate = longRepeatVibrate,
+            //  条件表：认不出的条目整条丢掉（与单键那条同一个 `mapNotNull` 口径）——
+            //  一条读不懂的规则如果兜成「永远成立」，会把这一档的动作整个抢走。
+            rules = rules.mapNotNull { it.toRule() },
         )
     }
 
@@ -323,6 +339,10 @@ internal data class ComboDto(
                 single = combo.single.token,
                 long = combo.long.token,
                 longPressMs = combo.longPressMs,
+                longRepeat = combo.longRepeat,
+                longRepeatIntervalMs = combo.longRepeatIntervalMs,
+                longRepeatVibrate = combo.longRepeatVibrate,
+                rules = combo.rules.map { StateRuleDto.of(it) },
             )
     }
 }
@@ -359,6 +379,9 @@ internal data class GlobalDto(
     /** 页面缩放（百分比）—— 老文件没有这一项，退回出厂值 100%。 */
     @SerialName("page_scale")
     val pageScale: Int = GlobalConfig.DEFAULT_PAGE_SCALE,
+    /** 组合键的无操作透传 —— 老文件没有这一项，退回默认（开）。 */
+    @SerialName("combo_passthrough")
+    val comboPassthrough: Boolean = GlobalConfig.DEFAULT_COMBO_PASSTHROUGH,
 ) {
     fun toValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -376,6 +399,7 @@ internal data class GlobalDto(
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
                 ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
                 ConfigFields.F_PAGE_SCALE to pageScale,
+                ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
             ),
         )
 
@@ -393,6 +417,7 @@ internal data class GlobalDto(
                 miniWindowAnim = g.miniWindowAnim,
                 followDisplaySize = g.followDisplaySize,
                 pageScale = g.pageScale,
+                comboPassthrough = g.comboPassthrough,
             )
     }
 }

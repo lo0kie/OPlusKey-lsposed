@@ -40,4 +40,17 @@ internal class CommandUiState {
      *  那是不可逆的，先问一句。
      */
     var pendingFormatPrefix by mutableStateOf<String?>(null)
+
+    /**
+     * 「把焦点交给『命令』输入框」的请求 —— 点一下「支持的命令格式」那一行就 +1。
+     *
+     *  用**自增的计数**而不是一个布尔位：连着点两行时布尔会停在同一个值上（true → true），
+     *  第二次就不再是「变化」，`LaunchedEffect` 不会重跑，光标也不会重新挪到末尾。计数每次
+     *  都不同，天然可重复触发；初值 0 是「还没点过」，接收方据此跳过首次组合。
+     *
+     *  要的是三件事一起发生：滚回视野 → 拿焦点（键盘起来）→ 光标落到末尾。三件都由输入框
+     *  自己按这个计数去做 —— 触发点在下面的「支持的命令格式」卡上，它够不着输入框的
+     *  `FocusRequester`。
+     */
+    var singleFocusRequest by mutableStateOf(0)
 }

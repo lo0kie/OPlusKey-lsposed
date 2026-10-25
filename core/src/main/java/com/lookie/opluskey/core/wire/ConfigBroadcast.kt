@@ -133,6 +133,12 @@ object ConfigBroadcast {
             putFields(intent, v, ConfigFields.KEY_FIELDS, keyPrefix(k.id))
         }
         putFields(intent, config.global.fieldValues(), ConfigFields.GLOBAL_FIELDS)
+        // 组合键是**必须**广播的少数几张表之一（理由见 [ComboWire]）：判「这两颗键凑成哪一档」
+        //  发生在注入侧，而它读不到宿主私有目录里的配置文件。空表不放这一条 —— 与「没有组合键」
+        //  同一个结果，还省掉一次序列化。
+        if (config.combos.isNotEmpty()) {
+            intent.putExtra(ComboWire.EXTRA, ComboWire.encode(config.combos))
+        }
         return intent
     }
 
@@ -192,6 +198,9 @@ object ConfigBroadcast {
             GlobalConfig.ofFields(readFields(intent, ConfigFields.GLOBAL_FIELDS)),
             ConfigFields.Values(emptyMap()),
             pairs.map { it.first }.filter { it.isCustom },
+            // 组合键（`ComboWire`）：注入侧判「这两颗键有没有绑定」全靠这一条 ——
+            //  它读不到配置文件，缺了这一项就等于「一颗组合键都没配」。
+            combos = ComboWire.decode(intent.getStringExtra(ComboWire.EXTRA)),
         )
     }
 

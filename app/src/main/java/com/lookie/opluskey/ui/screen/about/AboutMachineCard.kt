@@ -12,7 +12,6 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.AUTHOR
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.REPO_URL
-import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.home.openUrl
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
@@ -35,7 +34,6 @@ internal fun SettingsPage.MachineCard(
     signature: SignatureInfo,
     ui: AboutUiState,
 ) {
-    val tick = rememberTick()
     CardList(
         rows =
             buildList {
@@ -47,7 +45,6 @@ internal fun SettingsPage.MachineCard(
                         icon = PageIcons.Versions,
                         trailing = { RowEndIcon(PageIcons.Link) },
                         onClick = {
-                            tick()
                             openUrl(REPO_URL)
                         },
                     ),
@@ -64,7 +61,6 @@ internal fun SettingsPage.MachineCard(
                         trailing = { RowEndIcon(PageIcons.Selector) },
                         modifier = Modifier.preciseClickAnchor(ui.authorClick),
                         onClick = {
-                            tick()
                             ui.showAuthorMenu = true
                         },
                     ),
@@ -77,7 +73,6 @@ internal fun SettingsPage.MachineCard(
                         trailing = { RowEndIcon(PageIcons.Selector) },
                         modifier = Modifier.preciseClickAnchor(ui.feedbackClick),
                         onClick = {
-                            tick()
                             ui.showFeedbackMenu = true
                         },
                     ),

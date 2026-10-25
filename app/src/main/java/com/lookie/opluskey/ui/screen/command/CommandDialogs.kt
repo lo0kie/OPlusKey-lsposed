@@ -1,6 +1,11 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -12,6 +17,7 @@ import com.lookie.opluskey.ui.model.COMMAND_DISCLAIMER_TEXT
 import com.lookie.opluskey.ui.model.COMMAND_DISCLAIMER_TITLE
 import com.lookie.opluskey.ui.state.CommandUiState
 import com.lookie.opluskey.ui.write
+import kotlinx.coroutines.delay
 
 // 「自定义命令」页那五个确认窗 —— 从 `CommandScreen.kt` 拆出来。
 //
@@ -22,20 +28,14 @@ import com.lookie.opluskey.ui.write
 
 /**
  * 这一页所有确认窗的挂载点 —— 一次画五个，各自看自己那一位。
- *
- * @param onScrollToCurrentPage 「填前缀」确认之后滚回顶部。用**当前页**而不是某一次进页时的页序：
- *   确认窗弹着的这段时间里用户滑到另一栏去了，要滚的是他现在看的这一栏。
  */
 @Composable
-internal fun SettingsPage.CommandDialogs(
-    ui: CommandUiState,
-    onScrollToCurrentPage: () -> Unit,
-) {
+internal fun SettingsPage.CommandDialogs(ui: CommandUiState) {
     DisclaimerDialog(ui)
     LeaveDiscardDialog()
     SwitchDraftDiscardDialog()
     DeleteCommandDialog(ui)
-    FillPrefixDialog(ui, onScrollToCurrentPage)
+    FillPrefixDialog(ui)
 }
 
 /**
@@ -159,13 +159,34 @@ private fun SettingsPage.DeleteCommandDialog(ui: CommandUiState) {
     )
 }
 
-/** 点「支持的命令格式」那一行要整段替换输入框 ⇒ 里面有东西时先确认（不是插入，没有撤销）。 */
+/**
+ * 点「支持的命令格式」那一行要整段替换输入框 ⇒ 里面有东西时先确认（不是插入，没有撤销）。
+ *
+ * ## 为什么「聚焦」要等窗收场
+ *
+ *  字在确认那一下就换掉（用户在窗后面看得见），但**举手让输入框抢焦点**必须挪到
+ *  [ConfirmDialog] 的 `onDismissFinished`：这个窗是独立窗口，库在退场动画结束时会把键盘
+ * 收掉；退场途中叫起来的键盘，窗一销毁就被平台一起带走 —— 真机表现是「键盘弹一下又没了」。
+ *  与「收集按键 → 添加按键」那两个窗交替时同一条教训（见 `FrostedDialog` 的注释）。
+ *
+ *  只有**真替换过**才举手：点「取消」关掉的窗不该把焦点塞进输入框。
+ */
 @Composable
-private fun SettingsPage.FillPrefixDialog(
-    ui: CommandUiState,
-    onScrollToCurrentPage: () -> Unit,
-) {
+private fun SettingsPage.FillPrefixDialog(ui: CommandUiState) {
     val prefix = ui.pendingFormatPrefix
+    // 这一下确认里到底换没换 —— 「取消」与「替换」走的是同一个收场回调，得分开
+    var replaced by remember { mutableStateOf(false) }
+    // 收场回调**不保证来**（`CollectKeyDialog` 那处也为此留了兜底）：到点还没等到就照样举手。
+    //  只是把「聚焦」推迟一档，比「键盘压根不起来」好；正常路径 250ms 左右回调就到，不等这一档。
+    LaunchedEffect(replaced) {
+        if (!replaced) return@LaunchedEffect
+        delay(PREFIX_FOCUS_FALLBACK_MS)
+        if (replaced) {
+            replaced = false
+            XLog.w("命令格式：收场回调没来，按兜底时长举手聚焦")
+            ui.singleFocusRequest++
+        }
+    }
     ConfirmDialog(
         show = prefix != null,
         title = I18n.get(Strings.DIALOG_FILL_PREFIX_TITLE, "替换已输入的命令"),
@@ -179,10 +200,25 @@ private fun SettingsPage.FillPrefixDialog(
         onConfirm = {
             ui.pendingFormatPrefix = null
             if (prefix != null) {
-                XLog.w("命令格式：已确认整段替换，把前缀 $prefix 填进「命令」输入框")
-                commandDraft.draft.single = prefix
-                onScrollToCurrentPage()
+                XLog.w("命令格式：已确认整段替换")
+                setFormatPrefix(prefix)
+                replaced = true
+            }
+        },
+        onDismissFinished = {
+            if (replaced) {
+                replaced = false
+                // 窗彻底没了，这时候抢焦点键盘才留得住
+                ui.singleFocusRequest++
             }
         },
     )
 }
+
+/**
+ * 等「替换」确认窗收场的最长时间（毫秒）。
+ *
+ *  比库的退场动画（250ms）留一倍余量，与 `CollectKeyDialog` 的 `COLLECT_CLOSE_TIMEOUT_MS`
+ *  同一档。只在 `onDismissFinished` 没来时起作用。
+ */
+private const val PREFIX_FOCUS_FALLBACK_MS = 600L

@@ -9,12 +9,19 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BatteryCharging
 import io.github.lyxnx.compose.ui.tablericons.outline.Bell
 import io.github.lyxnx.compose.ui.tablericons.outline.BellOff
 import io.github.lyxnx.compose.ui.tablericons.outline.BellRinging
+import io.github.lyxnx.compose.ui.tablericons.outline.Bluetooth
+import io.github.lyxnx.compose.ui.tablericons.outline.BluetoothOff
+import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
+import io.github.lyxnx.compose.ui.tablericons.outline.CellSignalOff
+import io.github.lyxnx.compose.ui.tablericons.outline.Clock
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobile
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Headphones
 import io.github.lyxnx.compose.ui.tablericons.outline.HeadphonesOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
 import io.github.lyxnx.compose.ui.tablericons.outline.Music
+import io.github.lyxnx.compose.ui.tablericons.outline.Plane
+import io.github.lyxnx.compose.ui.tablericons.outline.PlaneOff
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
 import io.github.lyxnx.compose.ui.tablericons.outline.Rotate
@@ -42,13 +49,30 @@ import io.github.lyxnx.compose.ui.tablericons.outline.WifiOff
 internal fun conditionIcon(kind: ConditionKind): ImageVector =
     when (kind) {
         ConditionKind.APP -> PageIcons.AppFront
+
         ConditionKind.SCREEN -> TablerIcons.Outline.DeviceMobile
+
         ConditionKind.CHARGING -> TablerIcons.Outline.BatteryCharging
+
         ConditionKind.HEADSET -> TablerIcons.Outline.Headphones
+
         ConditionKind.MEDIA -> TablerIcons.Outline.Music
+
         ConditionKind.WIFI -> TablerIcons.Outline.Wifi
+
         ConditionKind.RINGER -> TablerIcons.Outline.Bell
+
         ConditionKind.ORIENTATION -> TablerIcons.Outline.Rotate
+
+        //  时间区间给「一个钟」：它不是某一刻，但同一族里只有它是「几点」这一维
+        ConditionKind.TIME -> TablerIcons.Outline.Clock
+
+        ConditionKind.BLUETOOTH -> TablerIcons.Outline.Bluetooth
+
+        //  移动数据用信号格（与「系统开关」里那格同一颗，那格也是 `cell`）
+        ConditionKind.CELLULAR -> TablerIcons.Outline.CellSignal4
+
+        ConditionKind.AIRPLANE -> TablerIcons.Outline.Plane
     }
 
 /**
@@ -74,31 +98,44 @@ internal fun conditionChoiceIcon(
             orientationChoiceIcon(value)
         }
 
-        ConditionKind.WIFI -> {
-            if (value == "off") TablerIcons.Outline.WifiOff else TablerIcons.Outline.Wifi
-        }
-
-        ConditionKind.MEDIA -> {
-            if (value == "paused") TablerIcons.Outline.PlayerPause else TablerIcons.Outline.PlayerPlay
-        }
-
-        ConditionKind.HEADSET -> {
-            if (value == "disconnected") TablerIcons.Outline.HeadphonesOff else TablerIcons.Outline.Headphones
-        }
-
-        ConditionKind.SCREEN -> {
-            if (value == "locked") TablerIcons.Outline.Lock else TablerIcons.Outline.DeviceMobile
-        }
-
-        ConditionKind.CHARGING -> {
-            if (value == "idle") TablerIcons.Outline.Battery else TablerIcons.Outline.BatteryCharging
-        }
-
-        // 其余条件没有取值档（`choices` 空表），走不到这里
+        //  其余「两档」条件全在下面那张表里：一档一个 `if` 写在这里，复杂度会跟着
+        //  `ConditionKind` 一路涨（加两档就从 18 到 20，detekt 是 15）
         else -> {
-            conditionIcon(kind)
+            choiceIconsOf(kind, value) ?: conditionIcon(kind)
         }
     }
+
+/** 两档条件的一对字形：取 [firstValue] 时用 [onFirst]，其余用 [onSecond]。 */
+private class ChoiceIcons(
+    val firstValue: String,
+    val onFirst: ImageVector,
+    val onSecond: ImageVector,
+)
+
+/**
+ * 「只有两档」的那些条件 —— 关 / 开、暂停 / 播放、未连接 / 已连接、锁屏 / 亮屏、未充电 / 充电中。
+ *
+ *  做成表而不是 `when` 分支：每加一种条件只是多一行数据，不会把谁的分析复杂度顶上去。
+ */
+private val CHOICE_ICONS: Map<ConditionKind, ChoiceIcons> =
+    mapOf(
+        ConditionKind.WIFI to ChoiceIcons("off", TablerIcons.Outline.WifiOff, TablerIcons.Outline.Wifi),
+        ConditionKind.MEDIA to ChoiceIcons("paused", TablerIcons.Outline.PlayerPause, TablerIcons.Outline.PlayerPlay),
+        ConditionKind.HEADSET to
+            ChoiceIcons("disconnected", TablerIcons.Outline.HeadphonesOff, TablerIcons.Outline.Headphones),
+        ConditionKind.SCREEN to ChoiceIcons("locked", TablerIcons.Outline.Lock, TablerIcons.Outline.DeviceMobile),
+        ConditionKind.CHARGING to
+            ChoiceIcons("idle", TablerIcons.Outline.Battery, TablerIcons.Outline.BatteryCharging),
+        ConditionKind.BLUETOOTH to ChoiceIcons("off", TablerIcons.Outline.BluetoothOff, TablerIcons.Outline.Bluetooth),
+        ConditionKind.CELLULAR to ChoiceIcons("off", TablerIcons.Outline.CellSignalOff, TablerIcons.Outline.CellSignal4),
+        ConditionKind.AIRPLANE to ChoiceIcons("off", TablerIcons.Outline.PlaneOff, TablerIcons.Outline.Plane),
+    )
+
+/** 表里那一对字形；这个条件不是两档型（没有取值可挑）⇒ `null`。 */
+private fun choiceIconsOf(
+    kind: ConditionKind,
+    value: String,
+): ImageVector? = CHOICE_ICONS[kind]?.let { if (value == it.firstValue) it.onFirst else it.onSecond }
 
 /** 响铃三档：正常的响铃、振动、静音各一颗。 */
 private fun ringerChoiceIcon(value: String): ImageVector =

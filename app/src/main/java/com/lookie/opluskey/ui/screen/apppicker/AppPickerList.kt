@@ -102,9 +102,7 @@ internal fun SettingsPage.AppPickerList(
     // 行尾那枚图标画的是**当前选中的那个**（[AppPickerUiState.pending]）：进页时它是已绑定的
     // 那一档，在二级页点了确认之后换成刚挑的那一档。
     val pending = ui.pending
-    // 行状态只跟「选中」与「为谁挑」变：不 remember 的话，每次重组都给每一行做一个新实例
-    //  ⇒ 行永远跳不过重组（`RowState` 是普通 class，只有引用相等）
-    val row = remember(pending, picker.forBranch) { RowState(pending, picker.forBranch) }
+    val row = rememberRowState(pending)
     LocateSelected(ui, scrollBehavior, listState, searchBandDp)
 
     Box(Modifier.fillMaxSize()) {
@@ -251,10 +249,12 @@ private fun LazyItemScope.PickerEmptyItem(
 /**
  * 点一行做什么 —— 两种入口语义不同，判据只在这里。
  *
- *  · **给「条件执行」挑**（[AppPickerState.forBranch]）：那一支只存一个包名，没有「里面哪个
+ *  · **给「条件执行」挑**（[AppPickerState.forBranch]）：那一支只存包名，没有「里面哪个
  *    界面」这回事 ⇒ 点一行就是**选中它**（行尾画勾），右下角那颗确认键再落盘。
- *    其中**给条件挑**（[AppPickerState.branchTarget]）还要去重：同一个应用只能当一次条件，
- *    点到已经用过的那一行就**只提示、不选中** —— 等到按确认才说，用户已经点完一轮了。
+ *    · **给「前台应用」条件挑**（[AppPickerState.branchTarget]）：**多选**，点一下**切换**，
+ *      可以亮好几行（一条条件存 `包1||包2`，任一在前台即通过）。去重仍生效：同一个应用
+ *      已经用在**别的行**上就只提示、不选中 —— 已经在本条里的那颗必须能点掉，否则没法取消。
+ *    · 给那一支要执行的应用挑（`branchCommandTarget`）：单选，与手势入口一样。
  *  · 其余入口：点一行只是往下一级走，真正的选择发生在「选择界面」那一页、那颗 FAB 才落盘
  *    —— 在那一页直接返回，这里什么都不会变（新绑时仍是「无选中」）。
  */
@@ -267,10 +267,22 @@ private fun SettingsPage.pickRow(
         onOpenActivities(app.target)
         return
     }
-    // 给**条件**挑才去重（给动作挑的是 `branchCommandTarget`，同一应用出现在两条动作里没坏处）
     val conditionAt = picker.branchTarget
-    if (conditionAt != AppPickerState.NOT_FOR_BRANCH && branchConditionUsed(AppTarget.pkg(app.target), conditionAt)) {
-        hint(I18n.get(Strings.COMMAND_BRANCH_DUPLICATE_APP, "这个应用已经加过了"))
+    // 给**条件**挑：**多选**，点一下切换选中（同一块里「前台应用」只有一条条件，多选装在它自己的
+    //  取值里 —— `包1||包2`，任一在前台即通过）。其余入口（给动作挑、给手势挑）仍是单选。
+    if (conditionAt != AppPickerState.NOT_FOR_BRANCH) {
+        val pkg = AppTarget.pkg(app.target)
+        // 去重只对「还没选过的」做：这个应用已经用在**别的行**上就拦下。
+        //  已经在本条条件里的那颗必须能点掉，否则多选之后没法取消其中一个。
+        val now = picker.pickedApps.value
+        if (pkg !in now && branchConditionUsed(pkg, conditionAt)) {
+            hint(I18n.get(Strings.COMMAND_BRANCH_DUPLICATE_APP, "这个应用已经加过了"))
+            return
+        }
+        val next = if (pkg in now) now - pkg else now + pkg
+        picker.pickedApps.value = next
+        // `pending` 跟着集合走：它是「FAB 显不显示 / 滚到哪一行」的判据，空集时不该留一个旧目标。
+        ui.pending = next.firstOrNull()?.let { PickedDetail(it, shortcutId = null) }
         return
     }
     ui.pending = PickedDetail(app.target, shortcutId = null)
@@ -313,14 +325,21 @@ internal fun SettingsPage.PickerScrollBar(
     )
 }
 
-/** 下拉刷新那四句 —— 库默认是英文（"Pull down to refresh" …），这一页是中文界面。 */
-private fun pickerRefreshTexts(): List<String> =
-    listOf(
-        I18n.get(Strings.APP_PICKER_PULL_REFRESH, "下拉刷新"),
-        I18n.get(Strings.APP_PICKER_RELEASE_REFRESH, "松开刷新"),
-        I18n.get(Strings.APP_PICKER_REFRESHING, "正在刷新"),
-        I18n.get(Strings.APP_PICKER_REFRESH_DONE, "刷新完成"),
-    )
+/**
+ * 列表行的共享状态 —— 只跟「选中」与「为谁挑」变。
+ *
+ *  不 remember 的话，每次重组都给每一行做一个新实例 ⇒ 行永远跳不过重组
+ *  （`RowState` 是普通 class，只有引用相等）。
+ *  给**条件**挑的那一趟按集合画勾（可多选），其余入口按单个 `pending`。
+ */
+@Composable
+private fun SettingsPage.rememberRowState(pending: PickedDetail?): RowState {
+    val multi = picker.branchTarget != AppPickerState.NOT_FOR_BRANCH
+    val pickedPkgs = picker.pickedApps.value
+    return remember(pending, picker.forBranch, multi, pickedPkgs) {
+        RowState(pending, picker.forBranch, multi, pickedPkgs)
+    }
+}
 
 /**
  * 一行要用的那一个值 —— 打包递进去，省得 [AppRow] 多一个参数（detekt 上限是 6）。
@@ -330,9 +349,22 @@ private class RowState(
     val pending: PickedDetail?,
     /** 这一趟是在给「条件执行」挑（[AppPickerState.forBranch]）：那一趟没有下一级、也没有小窗。 */
     val forBranch: Boolean,
+    /** 这一趟是在给**条件**挑（而不是给那一支要执行的应用挑）—— 只有它支持多选。 */
+    val multi: Boolean,
+    /** 给条件挑时**已选的全部包名**；其余入口恒为空集（那时看 [pending]）。 */
+    val pickedPkgs: Set<String>,
 ) {
-    /** 这一行（[target] 是应用那一级的 `包名` / `999@包名`）是不是当前选中的那个应用。 */
-    fun pickedBy(target: String): Boolean = pending != null && AppTarget.sameApp(target, pending.target)
+    /**
+     * 这一行（[target] 是应用那一级的 `包名` / `999@包名`）是不是当前选中的那个应用。
+     *
+     *  给**条件**挑的那一趟看集合（可以选中好几个）；其余入口看 [pending] 那一个目标。
+     */
+    fun pickedBy(target: String): Boolean =
+        if (multi) {
+            AppTarget.pkg(target) in pickedPkgs
+        } else {
+            pending != null && AppTarget.sameApp(target, pending.target)
+        }
 
     /**
      * 行尾那枚图标 —— 选中态四档：没选中 / 整个应用 / 里面某个界面 / 某个快捷方式。
@@ -347,12 +379,13 @@ private class RowState(
      */
     fun iconFor(target: String): ImageVector? {
         // 先排除「没选中 / 选的是别的应用」——`pending` 收窄成非空之后才看它装的是哪一档
-        val picked = pending
-        if (picked == null || !AppTarget.sameApp(target, picked.target)) {
+        if (!pickedBy(target)) {
             // 没选中：给「条件执行」挑时没有下一级，不画箭头；其余入口画箭头（点进去能看到里面有什么）
             return if (forBranch) null else PageIcons.EnterArrow
         }
-        if (forBranch) return PageIcons.TileChecked
+        // 给条件挑（可多选）与给动作挑一样：选中就是一颗勾，没有「里面某个界面」那几档
+        if (multi || forBranch) return PageIcons.TileChecked
+        val picked = pending ?: return PageIcons.TileChecked
         return when {
             // 有快捷方式 id ⇒ 快捷方式；否则目标里带 `/类名` 就是某个具体界面
             picked.shortcutId != null -> PageIcons.ShortcutMark
@@ -419,8 +452,15 @@ private fun SettingsPage.AppRow(
             //  · 这个应用本身 ⇒ 一颗勾；
             //  · 没选中 ⇒ 箭头（点下去能看到里面有什么）。
             endActions = {
-                // `null` = 这一行不画（给「条件执行」挑时，没选中的行没有「点进去」这回事）
-                row.iconFor(app.target)?.let { icon ->
+                //  `null` = 这一行不画图标（给「条件执行」挑时，没选中的行没有「点进去」这回事）。
+                //  **但槽位照占同样大小**：库按行尾的实际宽度算中间那列能用多宽（见
+                //  `BasicComponent` 的 `Layout`：`endIntrinsicWidth` + 8dp spacer），
+                //  宽度从 0 跳到 24dp 会让长包名折行、整块内容跟着上下窜 ——
+                //  真机表现就是「勾一出现，应用名与包名两个标题一起往上移」。
+                val icon = row.iconFor(app.target)
+                if (icon == null) {
+                    Spacer(Modifier.size(ROW_END_ICON_SIZE))
+                } else {
                     Icon(
                         icon,
                         contentDescription = null,
@@ -444,6 +484,10 @@ private fun SettingsPage.AppRow(
                 modifier = Modifier.padding(top = APP_TITLE_SUMMARY_GAP),
                 style = COUITheme.textStyles.body2,
                 color = BasicComponentDefaults.summaryColor().color,
+                //  单行省略：包名是给人对号的，折成两行既难读、又会把这一行撑得比别的高
+                //  （行高定死 ⇒ 内容一高就居中上移，与上面行尾那笔同一个症状）。
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

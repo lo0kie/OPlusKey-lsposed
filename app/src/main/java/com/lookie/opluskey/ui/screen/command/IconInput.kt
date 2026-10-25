@@ -305,8 +305,12 @@ private fun Modifier.inputFocusBehavior(
  *  那个焦点上。
  *
  *  排一帧再发：焦点刚到时 `CoreTextField` 内部那份状态还没跟上，这一下会被丢掉。
+ *
+ *  调用方两处：弹窗里「打开就把光标放末尾」（本文件的 `inputFocusBehavior`），以及命令页
+ *  「点了『支持的命令格式』之后」那一段（`CommandPage` 的 `SingleCommandField`）——
+ *  后者是**每次点都挪**，所以不能只靠 `caretToEndOnFirstFocus` 那个一次性开关。
  */
-private fun moveCaretToEnd(view: View) {
+internal fun moveCaretToEnd(view: View) {
     view.post {
         view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MOVE_END))
         view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MOVE_END))

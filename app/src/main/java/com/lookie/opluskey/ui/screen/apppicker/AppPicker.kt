@@ -169,10 +169,15 @@ internal fun SettingsPage.PickerSearchBand(
  * 行尾那枚图标画的是**当前绑定**（箭头 = 还没绑 / 勾 = 绑的是应用本身 /
  * 一块屏 = 绑的是里面某个界面或快捷方式）。
  *
- * **例外是给「条件执行」挑的那一趟**（[AppPickerState.forBranch]）：那一支只存一个包名
+ * **例外是给「条件执行」挑的那一趟**（[AppPickerState.forBranch]）：那一支只存包名
  * （条件是前台应用、动作是 `app:包名`），没有「里面哪个界面」这回事。所以那一趟
  * **点一行就是选中它**（行尾画勾、其余行不画图标），右下角那颗确认键才把选择交出去；
  * 菜单里的「以小窗口打开」也不出现。
+ *
+ * 其中**给「前台应用」条件挑的那一趟可以多选**（[AppPickerState.branchTarget]）：一条条件
+ * 存的是 `包1||包2`，**任一在前台即通过**，所以点一行是**切换**、可以亮好几行
+ * （见 [AppPickerState.pickedApps]）。给那一支要执行的应用挑（`branchCommandTarget`）
+ * 仍是单选 —— `app:` 只能是一个应用。
  */
 @Composable
 internal fun SettingsPage.AppPickerScreen(
@@ -238,8 +243,18 @@ private fun SettingsPage.AppPickerPlaceholders(
     Box(Modifier.fillMaxSize()) {
         val topInset = currentHeaderHeight(scrollBehavior) + searchBandDp
         //  空态不在这里 —— 它铺在**列表里**（见 `AppPickerList`），这样拖动时它跟着一起弹。
+        //
+        //  这里要盖住**两种**「没有列表可铺」的情形，少一种就是整页空白：
+        //   · 还在查：转圈 + 「正在加载应用…」；
+        //   · 查失败了（`loaded` 仍为 null）：列表那边只在 `loaded != null` 时铺，所以失败那一档
+        //     若什么都不画，用户看到的就是一片空白 —— 连「没读出来」那句话都没有。
+        //     失败态自己一句（与 `emptyHint` 里那一档同一句），不必退回上一页再猜。
         PickListLoadingState(
             visible = ui.loaded == null && !ui.failed,
+            topInset = topInset,
+        )
+        PickListFailedState(
+            visible = ui.loaded == null && ui.failed,
             topInset = topInset,
         )
     }
@@ -324,7 +339,21 @@ private fun SettingsPage.SelectionPrune(ui: AppPickerUiState) {
         if (ui.loaded == null) return@LaunchedEffect
         if (ui.apps.none { AppTarget.sameApp(it.target, pending) && (showBroken || it.launchable) }) {
             XLog.w("选择应用：选中的应用被这一档藏起来了（显示失效=$showBroken）⇒ 清空选中")
-            ui.pending = null
+            //  给**条件**挑的那一趟按集合记选中（可多选）：只清 `pending` 会让集合里留着
+            //  一个「看不见却还算选着」的包名 —— FAB 消失、确认时却仍把它写进去。
+            //  摘掉这一个，剩下的继续亮着。
+            val rest = picker.pickedApps.value - AppTarget.pkg(pending)
+            picker.pickedApps.value = rest
+            ui.pending = rest.firstOrNull()?.let { PickedDetail(it, shortcutId = null) }
         }
     }
 }
+
+/** 下拉刷新那四句 —— 库默认是英文（"Pull down to refresh" …），这一页是中文界面。 */
+internal fun pickerRefreshTexts(): List<String> =
+    listOf(
+        I18n.get(Strings.APP_PICKER_PULL_REFRESH, "下拉刷新"),
+        I18n.get(Strings.APP_PICKER_RELEASE_REFRESH, "松开刷新"),
+        I18n.get(Strings.APP_PICKER_REFRESHING, "正在刷新"),
+        I18n.get(Strings.APP_PICKER_REFRESH_DONE, "刷新完成"),
+    )

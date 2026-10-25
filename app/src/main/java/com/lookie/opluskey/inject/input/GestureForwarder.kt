@@ -119,6 +119,42 @@ internal class GestureForwarder(
         }
     }
 
+    /**
+     * 转交一次**组合键**（两颗键一起按）。
+     *
+     *  与 [forward] 同一条发送线程、同一套「立刻 + 补发」：宿主冷进程时要靠补发那条把它抬起来。
+     *  载荷里带的是**组合的 id**（`ModuleWire.EXTRA_COMBO`）而不是键 id —— 组合没有单颗键的
+     *  `KeyConfig`，动作挂在 `ComboKey` 上，宿主按 id 去配置里取那一档即可
+     *  （它读得到配置文件，判定侧读不到）。
+     *
+     *  不带 `EXTRA_KEY`：这两条的含义不重叠，混在一起会让宿主那侧的日志变成
+     *  「key=cmb1」这种看不懂的东西。
+     */
+    fun forwardCombo(
+        comboId: String,
+        gesture: Gesture,
+        repeat: Boolean,
+    ) {
+        val intent = comboIntent(comboId, gesture.id, repeat)
+        sender.post {
+            try {
+                val ctx =
+                    context() ?: run {
+                        XLog.w("没借到 Context，无法转交组合键 $comboId")
+                        return@post
+                    }
+
+                wakeHost(ctx)
+                send(ctx, intent, delayMs = 0L, retry = false)
+                //  连续触发的重复不补发：那期间宿主早就在跑，每 100ms 再排一条 300ms 后到期的
+                //  补发只会在松手后积一串废消息（与单键那条同一条规矩）。
+                if (!repeat) send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+            } catch (e: Throwable) {
+                XLog.w("转交组合键失败（已忽略）：$comboId ${gesture.id}", e)
+            }
+        }
+    }
+
     /** 唤醒宿主进程（动态接收器要求它活着；借来的 Context 与宿主同 uid，`startService` 才过得了 OPLUS_COMPONENT_SAFE）。 */
     private fun wakeHost(ctx: Context) {
         try {
@@ -134,6 +170,21 @@ internal class GestureForwarder(
             }
         }
     }
+
+    /** 造一条**组合键**广播（与 [gestureIntent] 共用 `phase` / `sent_at` 那几格，只是主身份不同）。 */
+    private fun comboIntent(
+        comboId: String,
+        phase: String,
+        repeat: Boolean,
+    ): Intent =
+        Intent(ModuleWire.ACTION_GESTURE)
+            .setPackage(HostApp.PACKAGE)
+            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+            .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY)
+            .putExtra(ModuleWire.EXTRA_COMBO, comboId)
+            .putExtra(ModuleWire.EXTRA_PHASE, phase)
+            .putExtra(ModuleWire.EXTRA_REPEAT, repeat)
+            .putExtra(ModuleWire.EXTRA_SENT_AT, SystemClock.elapsedRealtime())
 
     /** 造一条手势广播（松手与手势共用同一套 extra，见 [ModuleWire.PHASE_RELEASE]）。 */
     private fun gestureIntent(

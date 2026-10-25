@@ -84,7 +84,8 @@ com.lookie.opluskey
 │   ├── model/                纯数据与适配表：Action / Command / Config / KeyId / Gesture / KeyConfig /
 │   │                         RomProfile（各版本档位表） / ConfigFields / HostApp / ModuleInfo /
 │   │                         KsuCompat
-│   ├── config/               落盘：ConfigStore / ConfigCodec / CommandLibrary      ← 只给 host / ui
+│   ├── config/               落盘：ModuleFiles（多模块的文件层）/ ConfigStore / ConfigCodec /
+│   │                         CommandLibrary                                        ← 只给 host / ui
 │   └── wire/                 跨进程线格式：ConfigBroadcast                        ← 给 inject / host / ui
 ├── inject/                   ← 注入侧（system_server）：拦按键、判手势、注入按键、调系统服务
 │   ├── KeyHooks / Hooks / Framework          挂点与降级候选表

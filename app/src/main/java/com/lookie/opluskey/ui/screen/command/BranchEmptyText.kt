@@ -1,10 +1,8 @@
 package com.lookie.opluskey.ui.screen.command
 
-import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.screen.editingKeyName
 
 // 「条件执行」空态那句说明的**拼装** —— 与页面分开一支，只为让 `BranchScreen.kt` 的文件级函数
 // 数量留在 detekt 的 `TooManyFunctions` 之下（那一支已经 12 个，只差这几个）。
@@ -18,13 +16,9 @@ import com.lookie.opluskey.ui.screen.editingKeyName
  */
 internal fun SettingsPage.branchEmptyText(): String {
     val template = I18n.get(Strings.COMMAND_BRANCH_EMPTY, "将执行按键绑定里的 %s")
-    val (open, close) = keyBrackets()
-    val key = "$open${editingKeyName()}$close - ${branchGestureNow().label}"
-    return template.substringBefore("%s") + key + template.substringAfter("%s", "")
+    //  键名那截与顶栏子标题**同一份**（[branchDefaultLabel]）：
+    //  在编组合键时它是「「侧键」+「电量 +」- 单击」，单键时是「「快捷键」- 单击」——
+    //  这里再拼一次 `editingKeyName()` 的话，组合键那一趟会写成「按键绑定里的「快捷键」」，
+    //  而那颗键根本不在这次编辑里。
+    return template.substringBefore("%s") + branchDefaultLabel() + template.substringAfter("%s", "")
 }
-
-/**
- * 键名外面那对括号 —— 中文用对角方括号（`「」`，与停用提示「「侧键」已停用…」同一对），
- * 英文用弯引号（`“”`，正是英文停用提示里那一对）。同一句话在两种语言里各自像本地写法。
- */
-private fun keyBrackets(): Pair<String, String> = if (I18n.effectiveLanguage == AppLanguage.ZH_CN) "「" to "」" else "“" to "”"

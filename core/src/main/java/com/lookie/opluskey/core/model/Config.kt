@@ -302,6 +302,16 @@ data class GlobalConfig(
      *  竖屏标定的那组落点，横屏时不播、照旧原地收。配方与坑见 `docs/zoom-window.md` §十二。
      */
     val miniWindowAnim: Boolean = DEFAULT_MINI_WINDOW_ANIM,
+    /**
+     * 「组合键绑的是无操作时，执行两颗键各自的绑定」—— 为真时那一档组合不吞键，
+     * 两颗键各按自己这一档手势照常执行；为假时什么都不做（与这一位出现之前一致）。
+     *
+     *  只在组合的**那一格**是 [Action.None] 时生效：绑了动作就以组合为准，
+     *  否则「配了组合还要两颗键各跑一遍」会变成一次按压执行三个动作。
+     *
+     *  读它的是宿主里的执行器（`host/GestureExec.handleCombo`），所以**只走落盘**、不进广播。
+     */
+    val comboPassthrough: Boolean = DEFAULT_COMBO_PASSTHROUGH,
 ) {
     /** 本对象在每个配置字段上的取值 —— 与 `KeyConfig.fieldValues` 同一套（见那边的说明）。 */
     fun fieldValues(): ConfigFields.Values =
@@ -318,6 +328,7 @@ data class GlobalConfig(
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
                 ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
                 ConfigFields.F_PAGE_SCALE to pageScale,
+                ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
             ),
         )
 
@@ -371,6 +382,14 @@ data class GlobalConfig(
         /** [GlobalConfig.miniWindowAnim] 的默认值：默认关闭（原地收、无动画）。 */
         const val DEFAULT_MINI_WINDOW_ANIM = false
 
+        /**
+         * [GlobalConfig.comboPassthrough] 的默认值：**开**。
+         *
+         *  组合键是用户主动配的，而「配了一组却忘了给某一格绑动作」很常见 ——
+         *  默认吞掉两颗键的全部反应，用户会以为模块坏了。开着时这种半成品至少还保留两颗键本来的行为。
+         */
+        const val DEFAULT_COMBO_PASSTHROUGH = true
+
         val DEFAULT =
             GlobalConfig(
                 enabled = DEFAULT_ENABLED,
@@ -395,6 +414,7 @@ data class GlobalConfig(
                 followDisplaySize = v.bool(ConfigFields.F_FOLLOW_DISPLAY_SIZE),
                 // 与 vibrateStrength 同一档：手改文件写进越界值，在这一层就钳回滑杆两端
                 pageScale = v.number(ConfigFields.F_PAGE_SCALE).coerceIn(PAGE_SCALE_MIN, PAGE_SCALE_MAX),
+                comboPassthrough = v.bool(ConfigFields.F_COMBO_PASSTHROUGH),
             )
     }
 }

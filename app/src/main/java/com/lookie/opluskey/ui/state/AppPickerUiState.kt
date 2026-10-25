@@ -79,8 +79,14 @@ internal class AppPickerUiState(
         selection: String?,
         /** 当前绑定是不是一条**快捷方式**；是就带上它的 id，行尾据此画 `table-shortcut`。 */
         shortcutId: String? = null,
+        /**
+         * 这一趟「给条件挑前台应用」时，那条条件**已经选中的全部包名**（可多选，见
+         * `BranchCondition.appPackages`）；其余入口传空集。
+         */
+        picked: Set<String> = emptySet(),
     ) {
         pending = selection?.let { PickedDetail(it, shortcutId) }
+        picker.pickedApps.value = picked
         // 上一趟的草稿不带到这一趟来（它是「等着被提交」的东西，跨趟存在只会误提交）
         picker.draft = null
         located = false

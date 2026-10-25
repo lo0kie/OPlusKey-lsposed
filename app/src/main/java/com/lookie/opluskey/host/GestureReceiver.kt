@@ -131,13 +131,21 @@ internal object GestureReceiver {
                     //  `getXxxExtra` 露在 guard 外面，一旦抛出就是宿主主进程的未捕获异常。
                     XLog.guard("处理转来的手势") {
                         val key = intent?.getStringExtra(ModuleWire.EXTRA_KEY)
+                        val combo = intent?.getStringExtra(ModuleWire.EXTRA_COMBO)
                         val phase = intent?.getStringExtra(ModuleWire.EXTRA_PHASE)
                         val repeat = intent?.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false) ?: false
                         val sentAt = intent?.getLongExtra(ModuleWire.EXTRA_SENT_AT, 0L) ?: 0L
                         // 「宿主到底收没收到这一下」是排查链路的**第一道判据**，只能写 W
                         //  （注入侧 / 宿主侧的 i、d 口径见 `XLog` 类注释与 `docs/device-findings.md` 十五）
-                        XLog.w("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
-                        GestureExec.handle(key, phase, repeat, sentAt)
+                        if (!combo.isNullOrEmpty()) {
+                            // 组合键走独立一条：动作在 `ComboKey` 上，没有单键的 `KeyConfig`
+                            //  （见 `ModuleWire.EXTRA_COMBO`）。
+                            XLog.w("收到 system_server 转来的组合键：combo=$combo phase=$phase repeat=$repeat")
+                            GestureExec.handleCombo(combo, phase, sentAt, repeat)
+                        } else {
+                            XLog.w("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
+                            GestureExec.handle(key, phase, repeat, sentAt)
+                        }
                     }
                 }
             }

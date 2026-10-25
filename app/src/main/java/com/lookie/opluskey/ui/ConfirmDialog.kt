@@ -122,22 +122,24 @@ internal fun DialogButtonRow(
         )
         TextButton(
             text = positive,
-            onClick = onPositive,
+            //  「禁用了但点了要有说法」：给了 `onDisabledClick` 时按钮仍可点，
+            //  只是按禁用色画 —— 用户点下去就能听到「为什么不能确定」。
+            onClick = if (positiveStyle.enabled) onPositive else positiveStyle.onDisabledClick ?: onPositive,
             modifier =
                 Modifier
                     .weight(1f)
                     .fillMaxHeight(),
-            enabled = positiveStyle.enabled,
+            enabled = positiveStyle.enabled || positiveStyle.onDisabledClick != null,
             pressScaleEnabled = false,
             cornerRadius = DialogButtonBarDefaults.ButtonCornerRadius,
             minHeight = DialogDefaults.ButtonBarMinHeight,
             colors =
                 ButtonDefaults.textButtonColorsBorderless(
                     textColor =
-                        if (positiveStyle.danger) {
-                            COUITheme.colorScheme.error
-                        } else {
-                            COUITheme.colorScheme.primary
+                        when {
+                            !positiveStyle.enabled -> COUITheme.colorScheme.disabledOnSurface
+                            positiveStyle.danger -> COUITheme.colorScheme.error
+                            else -> COUITheme.colorScheme.primary
                         },
                     disabledTextColor = COUITheme.colorScheme.disabledOnSurface,
                 ),
@@ -155,6 +157,13 @@ internal fun DialogButtonRow(
 internal data class DialogPositiveStyle(
     val danger: Boolean = false,
     val enabled: Boolean = true,
+    /**
+     * 禁用时点一下要做什么（`null` = 什么都不做，按钮真的按不动）。
+     *
+     *  给了这一格之后按钮**仍然可点**、但按禁用色画：用户点下去能听到「为什么还不能确定」——
+     *  灰着一颗按钮、点了没反应，是最容易被当成「坏了」的形态。
+     */
+    val onDisabledClick: (() -> Unit)? = null,
 )
 
 /** 与库 `DialogContent` 同度量：标题与正文的行高（库 `DialogLineHeight = 1.29.em`）。 */

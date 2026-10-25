@@ -52,6 +52,14 @@ internal const val HINT_SLOT_COMMAND = "command"
 internal const val HINT_SLOT_DISABLED = "disabled"
 
 /**
+ * 「组合键」那两页共用的语义位 —— 加一档、删一档、写盘失败都报在这里。
+ *
+ *  整页一次只改一件事（加一组 / 删一组），共用一个位就够：连着删两档时是那一条在改字，
+ *  而不是两条叠着往下推。
+ */
+internal const val HINT_SLOT_COMBO = "combo"
+
+/**
  * 「正在检查模块…」那一条的语义位 —— 它跟别的回执不一样：**挂在自检结束上**，不按秒数走。
  * 自检一跑完（`LinkFacts.injectChecked`）就由 `PageCheckingHint` 把它收掉，结论接着顶上来。
  */

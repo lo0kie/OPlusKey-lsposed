@@ -42,13 +42,15 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  一条跑不通的命令）。输入框里已经有别的内容时先问一句（`ui.pendingFormatPrefix`）：
  *  这一下是不可逆的，已经敲进去的命令会被一键清掉，没有撤销。
  *
- * @param onScrollTop 填完之后滚回顶部 —— 输入框在这张卡上面，不滚回去看不出改没改。
+ *  填完之后**输入框自己**会滚回视野、拿焦点（键盘起来）、把光标挪到末尾 —— 三件事都挂在
+ *  [CommandUiState.singleFocusRequest] 上，由输入框那一侧做（见 `SingleCommandField`）：
+ *  这张卡够不着输入框的 `FocusRequester`，而「填了字却停在半屏外、键盘也没起来」正是
+ *  用户点完这一行的下一个动作。
  */
 @Composable
 internal fun SettingsPage.CommandFormatsCard(
     tick: () -> Unit,
     ui: CommandUiState,
-    onScrollTop: () -> Unit,
 ) {
     val lines = COMMAND_FORMAT_LINES
     val style = COUITheme.textStyles.footnote1
@@ -76,7 +78,7 @@ internal fun SettingsPage.CommandFormatsCard(
                                     onClickLabel = I18n.format(Strings.COMMAND_PREFIX_FILL, prefix),
                                 ) {
                                     tick()
-                                    fillPrefix(prefix, ui, onScrollTop)
+                                    fillPrefix(prefix, ui)
                                 }
                             },
                         ),
@@ -140,7 +142,6 @@ private fun rememberLabelColumnWidth(
 private fun SettingsPage.fillPrefix(
     prefix: String,
     ui: CommandUiState,
-    onScrollTop: () -> Unit,
 ) {
     val current = commandDraft.draft.single
     if (current.isNotBlank() && current != prefix) {
@@ -148,7 +149,36 @@ private fun SettingsPage.fillPrefix(
         ui.pendingFormatPrefix = prefix
         return
     }
+    applyFormatPrefix(prefix, ui)
+}
+
+/**
+ * 前缀**真的**写进输入框 —— 直接点那一行与「替换」确认窗共用一个出口。
+ *
+ *  除了改草稿，还要举手让输入框接管下一拍（[CommandUiState.singleFocusRequest]）：滚回视野、
+ *  拿焦点、光标落到末尾。这两件事必须一起发生 —— 只填字不聚焦的话，用户看着一行命令出现在
+ *  半屏外，还得自己点一下那个框才能接着打。
+ *
+ *  滚回顶部**也交给输入框那一侧**（不在这里调 `animateScrollTo`）：两处都滚的话，
+ *  焦点那次 `bringIntoView` 会和滚动动画抢同一根滚动条，看着像卡了一下。
+ */
+internal fun SettingsPage.applyFormatPrefix(
+    prefix: String,
+    ui: CommandUiState,
+) {
+    setFormatPrefix(prefix)
+    ui.singleFocusRequest++
+}
+
+/**
+ * 只改草稿，**不举手** —— 「替换」确认窗那一支要的就是这个：字立刻换掉（用户在窗后面看得见），
+ * 但聚焦得等那个窗**收场之后**再举手。
+ *
+ *  确认窗是独立窗口，库在退场动画结束时会把键盘收掉。退场途中就叫键盘的话，窗一销毁平台
+ *  顺手带走它 —— 真机表现是「键盘弹出来又立刻关掉」（见 `ConfirmDialog` 的
+ *  `onDismissFinished`）。所以那一支把「举手」挪到退场结束的回调里。
+ */
+internal fun SettingsPage.setFormatPrefix(prefix: String) {
     XLog.w("命令格式：把前缀 $prefix 填进「命令」输入框")
     commandDraft.draft.single = prefix
-    onScrollTop()
 }

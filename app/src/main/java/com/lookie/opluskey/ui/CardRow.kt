@@ -6,15 +6,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentColors
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
@@ -25,6 +29,8 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -71,6 +77,25 @@ internal sealed interface CardRow {
          */
         val titleTint: Color? = null,
         val enabled: Boolean = true,
+        /**
+         * 这一行灰着被点一下时**这一行自己的说法**（`null` = 用整页那句，见 `LocalDisabledClick`）。
+         *
+         *  为什么需要：整页那条说明的是「这一页现在为什么改不了」（链路没通 / 配置只读），
+         *  而有些行是**因为它自己这一行的条件不够**才灰的 —— 例如「一颗自定义键都还没收时，
+         *  组合按键配不出来」。拿整页那句回答它，等于答了另一个问题。
+         *
+         *  与 `MenuEntry.Row.disabledHint` 同一个意思、同一套读法；
+         *  只在 `enabled = false` 时生效（能点的行不会被问「为什么点不了」）。
+         */
+        val disabledHint: String? = null,
+        /**
+         * 点这一行振不振 —— **默认振**（用户口径：能点的行默认就有触觉反馈）。
+         *
+         *  只有「点了会连着一串动作、或不希望它有反馈」的极少数行才传 `false`；
+         *  默认开、个别关，比每处都记得振少一种漏法（原来每处自己在 `onClick` 里调 `tick()`，
+         *  漏一处那一行就是「点了没感觉」）。
+         */
+        val vibrate: Boolean = true,
         val danger: Boolean = false,
         val arrow: Boolean = false,
         val trailing: (@Composable () -> Unit)? = null,
@@ -101,6 +126,8 @@ internal sealed interface CardRow {
         val enabled: Boolean = true,
         /** 同 [Item.visible]：非 `null` 时这一行（连分隔线）跟着它进出场。 */
         val visible: Boolean? = null,
+        /** 同 [Item.vibrate]：默认振，个别关。 */
+        val vibrate: Boolean = true,
         val onCheckedChange: (Boolean) -> Unit,
     ) : CardRow
 
@@ -148,6 +175,14 @@ internal fun CardList(
             val block: @Composable ColumnScope.() -> Unit = {
                 // 首行之上不画线；其余每一行之前一条（左端与卡片内容对齐的细线）
                 if (index > 0) HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+                //  行高**不做过渡**（用户口径：试过 `animateContentSize`，观感不好，直接去掉）。
+                //  试出来的结论留在这里，免得下次又走一遍：
+                //   · 默认 `Alignment.TopStart`：内容按最终高度摆好、只有外框在动
+                //     ⇒ 行首图标 / 行尾开关在动画第一帧就跳到最终位置（「瞬移」）；
+                //   · 改成 `Alignment.Center` + `clipToBounds()`：控件跟着动了，
+                //     但动画途中内容比外框高，上下各被裁掉半个行距，字被切一刀；
+                //   · 都不裁剪则收缩时点击波纹画到卡片外面。
+                //  根本原因是文本重排不可能逐帧渐变 —— 要么裁字，要么控件瞬移。不值得，去掉。
                 RowContent(row, position)
             }
             when (val visible = row.visible()) {
@@ -174,7 +209,17 @@ private fun ColumnScope.RowContent(
 ) {
     when (row) {
         is CardRow.Item -> {
-            ItemRow(row, position)
+            //  这一行自己带了「为什么灰着」的说法时，就地换掉整页那条 `LocalDisabledClick`
+            //  （库里禁用态的那一下点击会交给它）。只有**灰着**才换：能点的行不会被问这个问题。
+            val disabledHint = row.disabledHint
+            if (!row.enabled && disabledHint != null) {
+                val say = LocalHint.current
+                CompositionLocalProvider(LocalDisabledClick provides { say(disabledHint) }) {
+                    ItemRow(row, position)
+                }
+            } else {
+                ItemRow(row, position)
+            }
         }
 
         is CardRow.Switch -> {
@@ -186,6 +231,7 @@ private fun ColumnScope.RowContent(
                 checked = row.checked,
                 position = position,
                 enabled = row.enabled,
+                vibrate = row.vibrate,
                 onCheckedChange = row.onCheckedChange,
             )
         }
@@ -228,16 +274,15 @@ private fun ItemRow(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "CardRowArrow",
     )
+    //  标题 / 副标题这一块**自己画**（不用库那两个 `String` 参数）：没有副标题的行要让标题
+    //  做一次光学修正（见 [ItemText]），而库那一版把 `Text` 写死在内部、插不进修饰符。
+    //  样式逐项照抄库那一版（`headline1` + Medium、副标题 `body2`、两行之间 2dp）。
+    val titleColors =
+        row.titleTint?.let { BasicComponentColors(color = it, disabledColor = it) }
+            ?: BasicComponentDefaults.titleColor()
+    val summaryColors = BasicComponentDefaults.summaryColor()
     BasicComponent(
         modifier = row.modifier,
-        title = row.title,
-        //  只有「还能点、但内容不完整」那一档才自定标题色：库的 `BasicComponentColors`
-        //  只有「正常 / 禁用」两档，这里把正常色直接换成禁用色，`enabled` 仍为 true
-        //  ⇒ 点击、涟漪、无障碍语义都不受影响，只是字压暗了。
-        titleColor =
-            row.titleTint?.let { BasicComponentColors(color = it, disabledColor = it) }
-                ?: BasicComponentDefaults.titleColor(),
-        summary = row.summary,
         startAction = row.icon?.let { { Icon(it, contentDescription = null, tint = iconTint) } },
         endActions = {
             // `when` 在这里是**语句**（`endActions` 的返回值就是 Unit），不需要 `else` 兜底
@@ -258,6 +303,57 @@ private fun ItemRow(
         },
         cardListPosition = position,
         enabled = row.enabled,
-        onClick = row.onClick,
-    )
+        //  **点这一行就振一下**（默认行为，见 `LocalTick`）：控件层不认 `SettingsPage`，
+        //  振动从页面那条通道下来。`vibrate = false` 的行不叫这一声。
+        onClick =
+            row.onClick?.let { action ->
+                val tick = LocalTick.current
+                {
+                    if (row.vibrate) tick()
+                    action()
+                }
+            },
+    ) {
+        ItemText(row, titleColors, summaryColors)
+    }
 }
+
+/**
+ * 行里的两行字 —— 标题，以及（有的话）副标题。
+ *
+ * ## 为什么这一块要项目自己画
+ *
+ *  为了那一句**光学修正**：行里只有标题时（没有副标题），行高由这一行字自己撑起来，
+ *  而字在行盒里是**按行盒居中**的 —— 汉字墨迹的重心比行盒中心偏高一点，整行看着像被顶上去了。
+ *  [opticalCenter] 按字形边界把它压回来。库那版 `BasicComponent` 的 `Text` 写在内部，
+ *  修饰符插不进去，所以这一块自己拼。
+ *
+ *  有副标题时**不做**修正：那时行高由两行字一起撑，标题与副标题互相平衡，
+ *  单独把标题压下来反而让两行的间距看着不匀。
+ */
+@Composable
+private fun ItemText(
+    row: CardRow.Item,
+    titleColors: BasicComponentColors,
+    summaryColors: BasicComponentColors,
+) {
+    val titleStyle = COUITheme.textStyles.headline1
+    Text(
+        text = row.title,
+        style = titleStyle,
+        fontWeight = FontWeight.Medium,
+        color = if (row.enabled) titleColors.color else titleColors.disabledColor,
+        modifier = if (row.summary == null) Modifier.opticalCenter(titleStyle) else Modifier,
+    )
+    if (row.summary != null) {
+        Text(
+            text = row.summary,
+            modifier = Modifier.padding(top = ROW_LINE_GAP),
+            style = COUITheme.textStyles.body2,
+            color = if (row.enabled) summaryColors.color else summaryColors.disabledColor,
+        )
+    }
+}
+
+/** 标题与副标题之间那一档 —— 与库的 `MarginBetweenLine` 同一值（2dp）。 */
+private val ROW_LINE_GAP = 2.dp

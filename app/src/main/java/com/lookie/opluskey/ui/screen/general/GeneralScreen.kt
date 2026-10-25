@@ -24,14 +24,12 @@ import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SHOW_HOME_MINI_ANIM
-import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.setColorOsApi
 import com.lookie.opluskey.ui.setMiniWindowAnim
 import com.lookie.opluskey.ui.setToastOnRun
 import com.lookie.opluskey.ui.setVibrate
 import com.lookie.opluskey.ui.setVibrateStrength
-import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
@@ -82,7 +80,6 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
  */
 @Composable
 private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
-    val tick = rememberTick()
     val colorOs = configState.config.value.global.colorOsApi
     CardList(
         rows =
@@ -97,7 +94,6 @@ private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
                     // 吃整页总闸（含主开关自己）：主开关一关，这一行跟着灰
                     enabled = pageEnabled,
                 ) {
-                    tick()
                     setColorOsApi(it)
                 },
             ),
@@ -112,7 +108,6 @@ private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
  */
 @Composable
 private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
-    val tick = rememberTick()
     val cfg = configState.config.value
     val vibrate = cfg.global.vibrate
     CardList(
@@ -129,7 +124,6 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                         // 行点击与开关点击自然都失效。
                         enabled = pageEnabled,
                     ) {
-                        tickNow()
                         setVibrate(it)
                     },
                 )
@@ -145,7 +139,7 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                         )
                     },
                 )
-                add(toastRow(cfg.global.toastOnRun, pageEnabled, tick))
+                add(toastRow(cfg.global.toastOnRun, pageEnabled))
                 // 「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。
                 //  关（默认）= 原地收、无动画；开 = 原地收成小窗后紧接着让框架自己的动画器播那一段
                 //  （插值 / 矩阵 / spring 全是框架在跑，模块只交起止参数，配方见 `docs/zoom-window.md` §十二）。
@@ -161,7 +155,6 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                             checked = cfg.global.miniWindowAnim,
                             enabled = pageEnabled,
                         ) {
-                            tick()
                             setMiniWindowAnim(it)
                         },
                     )
@@ -182,7 +175,6 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
 private fun SettingsPage.toastRow(
     checked: Boolean,
     enabled: Boolean,
-    tick: () -> Unit,
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"),
@@ -192,7 +184,6 @@ private fun SettingsPage.toastRow(
         checked = checked,
         enabled = enabled,
     ) {
-        tick()
         setToastOnRun(it)
     }
 

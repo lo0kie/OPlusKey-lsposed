@@ -1,39 +1,19 @@
 package com.lookie.opluskey.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
-import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.model.specIcon
-import io.github.suqi8.coui.kmp.basic.DividerDefaults
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.layout.DialogDefaults
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 入口格那一层浮层 —— 「入口格的档位」加上「系统开关再往下的那一问」，全项目只此一份。
@@ -111,31 +91,26 @@ internal fun SettingsPage.ModeMenuPopups(
     val shown = stateEntry ?: lastPick.entry
     val states = shown?.let { entry -> ActionCatalog.switchStates(entry.token) }.orEmpty()
     val switchName = shown?.label.orEmpty()
-    FrostedDialog(
+    //  当前绑的是哪一行 —— 判据与各页网格同一把尺子：必须精确到状态（`isBoundExactly`），
+    //  这几行之间只差一个后缀，用 `isBound`（把同一个开关的几档当一回事）会全部打勾。
+    val selectedIndex =
+        states.indexOfFirst { state ->
+            current?.let { ActionCatalog.isBoundExactly(state, it) } ?: false
+        }
+    //  单选选择器（公共组件，见 `PagePicker`）：点一行就选完、自己关窗。
+    //  退场期间画的是 `shown`（最后画过的那一份），不是 `stateEntry` —— 理由见上面那段说明。
+    SinglePickerDialog(
         show = stateEntry != null,
         title = switchName,
+        labels = states.map { state -> stateRowLabel(state, switchName) },
+        selectedIndex = selectedIndex,
         onDismiss = { stateEntry = null },
-        //  选择器不磨砂：一列贴着读的选项，糊上去只是让字发虚、底下的页面从面板边缘晃过来。
-        blurred = false,
-    ) {
-        Column(Modifier.fillMaxWidth().padding(bottom = STATE_ROW_BOTTOM_GAP)) {
-            states.forEachIndexed { index, state ->
-                //  行之间那条细线：与各页卡片里同一档（[CardList] 那条 `HorizontalDivider` +
-                //  同一份两端内缩），不自己另调一道色。第一行之上不画。
-                if (index > 0) {
-                    HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-                }
-                //  必须精确到状态（`isBoundExactly`）：这几行之间只差一个后缀，
-                //  用 `isBound`（把同一个开关的几档当一回事）会全部打勾。
-                val selected = current?.let { ActionCatalog.isBoundExactly(state, it) } ?: false
-                StatePickRow(stateRowLabel(state, switchName), selected) {
-                    stateEntry = null
-                    onDismiss()
-                    onPick(state)
-                }
-            }
-        }
-    }
+        onPick = { index ->
+            val state = states.getOrNull(index) ?: return@SinglePickerDialog
+            onDismiss()
+            onPick(state)
+        },
+    )
 }
 
 /**
@@ -163,71 +138,6 @@ private fun stateRowLabel(
         state.token.endsWith(Action.OFF_SUFFIX) -> I18n.get(Strings.CATALOG_MODE_TURN_OFF_OF, "关闭%s")
         else -> I18n.get(Strings.CATALOG_MODE_TOGGLE_OF, "切换%s")
     }.format(switchName)
-
-/**
- * 选择器里的一行 —— **整行通栏可点**，标题左起、选中的行尾一个对勾。
- *
- *  不挂行首图标：这三行说的是同一个开关的三种用法，图标只会让三种用法看着像三类东西。
- *  行与行之间那条细线由调用方插（与各页卡片同一档），行自己不画。
- *
- *  通栏是**故意**的：面板的圆角由库那层 shader mask 裁，行铺到边也不会出角，
- *  而两边各让出一条内缩会把选中那条带切成浮在中间的胶囊，与参考的那张图不一样。
- */
-@Composable
-private fun StatePickRow(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val colors = COUITheme.colorScheme
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = STATE_ROW_MIN_HEIGHT)
-                .background(
-                    if (selected) {
-                        colors.primary.copy(alpha = STATE_ROW_TINT_ALPHA)
-                    } else {
-                        Color.Transparent
-                    },
-                ).clickable(onClick = onClick)
-                .padding(
-                    horizontal = DialogDefaults.insideMargin.width,
-                    vertical = STATE_ROW_VERTICAL_PADDING,
-                ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = COUITheme.textStyles.body1,
-            color = if (selected) colors.primary else colors.onSurface,
-            //  行高由 [STATE_ROW_MIN_HEIGHT] 定住、字在里面竖居中 —— 行盒居中不等于墨迹居中，
-            //  汉字会看着偏高那一点点。与网格格 / 胶囊 / 表格单元格同一档光学修正（见 `opticalCenter`）。
-            modifier = Modifier.weight(1f).opticalCenter(COUITheme.textStyles.body1),
-        )
-        if (selected) {
-            Icon(
-                PageIcons.MenuCheck,
-                contentDescription = null,
-                modifier = Modifier.size(ROW_END_ICON_SIZE),
-                tint = colors.primary,
-            )
-        }
-    }
-}
-
-/** 选中那一行的底色 —— 主色压一档，与「整行上主题色」那套观感一致，但不至于盖住面板本色。 */
-private const val STATE_ROW_TINT_ALPHA = 0.12f
-
-/** 行内上下留白 —— 高度不够时靠 [STATE_ROW_MIN_HEIGHT] 撑，两行字时也不至于贴住。 */
-private val STATE_ROW_VERTICAL_PADDING = 8.dp
-
-/** 选择器里一行的高度下限 —— 与卡片行同一档（56dp），点起来手指不局促。 */
-private val STATE_ROW_MIN_HEIGHT = 56.dp
-
-/** 最后一行下面那一点面板本色 —— 行铺到面板底边的话，圆角那两处会显得被切平。 */
-private val STATE_ROW_BOTTOM_GAP = 8.dp
 
 /**
  * 入口格那一层菜单的行（响铃四档 / 媒体五档 / 系统开关那串）。

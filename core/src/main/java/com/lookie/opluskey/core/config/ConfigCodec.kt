@@ -48,9 +48,12 @@ object ConfigCodec {
      *  7 = `KeyDto` 多了 `rules`（按状态分支的动作），顶层多了 `combos`（组合按键）；
      *  8 = `GlobalDto` 多了 `palette`（页面配色）；
      *  9 = `GlobalDto` 多了 `theme`（界面颜色：跟随系统 / 浅色 / 深色）；
-     *  10 = `GlobalDto` 多了 `followDisplaySize` / `pageScale`（跟随系统显示大小 / 页面缩放）。
+     *  10 = `GlobalDto` 多了 `followDisplaySize` / `pageScale`（跟随系统显示大小 / 页面缩放）；
+     *  11 / 12 = （见代码历史，本次未改动）；
+     *  13 = 当前上一版；
+     *  14 = `ComboDto` 多了 `rules`（组合键的条件执行）。
      */
-    const val VERSION = 11
+    const val VERSION = 14
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

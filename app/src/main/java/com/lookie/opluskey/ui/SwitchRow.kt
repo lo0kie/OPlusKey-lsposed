@@ -60,8 +60,13 @@ internal fun SwitchRow(
     checked: Boolean,
     position: CardListPosition,
     enabled: Boolean = true,
+    /** 拨这一下振不振 —— 默认振（与 `CardRow.Item.vibrate` 同一条口径）。 */
+    vibrate: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    //  振动走页面那条通道（`LocalTick`）：这一层不带 `SettingsPage` 接收者。
+    //  `NoSwitchHaptic` 已经把库自带的那一次关掉了 —— 那个不看系统静音，这里要看。
+    val tick = LocalTick.current
     // 颜色带过渡，与 [SliderRow] 同一套参数：主开关一拨，这个图标与库里那些标题一起渐变。
     //  硬切会出现「图标在淡、字在跳」——长按那张卡里 SwitchRow 与 SliderRow 就是挨着的。
     val iconColor by rememberRowIconColor(enabled, label = "SwitchIcon")
@@ -71,7 +76,10 @@ internal fun SwitchRow(
             title = title,
             summary = if (checked) summaryOn else summaryOff,
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = { on ->
+                if (vibrate) tick()
+                onCheckedChange(on)
+            },
             cardListPosition = position,
             startAction = {
                 Icon(

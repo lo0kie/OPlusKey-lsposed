@@ -17,6 +17,7 @@ import com.lookie.opluskey.ui.model.KEY_DISABLED_HINT
 import com.lookie.opluskey.ui.model.LinkNotice
 import com.lookie.opluskey.ui.model.PENDING_OR_SCOPE_HINT
 import com.lookie.opluskey.ui.model.SERVICE_NOT_RUNNING_HINT
+import com.lookie.opluskey.ui.model.SYSTEM_STALE_HINT
 import com.lookie.opluskey.ui.state.InjectPendingKind
 import com.lookie.opluskey.ui.state.InjectStatus
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -310,6 +311,15 @@ internal fun SettingsPage.blockedReason(): String? {
         //  （「回了包但跑的是旧包」那两档不在这里 —— 页面照样能改，它们只是提醒，见 [noticeReason]。）
         !f.respondOk -> {
             API_MISMATCH_HINT
+        }
+
+        // 系统侧跑着旧包（换包没重启）：**界面已经是新版、执行侧还是旧的** —— 改什么都到不了
+        //  那只手。这一档必须排在「设置未同步」前面：旧包里没有新的配置字段 / 指纹口径，
+        //  两边指纹自然对不上，落到下面那条就会说「重进本页即可」—— 而重进**修不好**它
+        //  （只有重启手机能）。同一页的逐段结论（`linkChecks`）早就报的是「需要重启」，
+        //  两处说法不一致时用户会照着错的那条去试。
+        f.restartNeeded -> {
+            SYSTEM_STALE_HINT
         }
 
         !f.configSideOk -> {

@@ -10,9 +10,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
@@ -107,7 +113,7 @@ internal fun SettingsPage.CommandPage(
             if (kind == CommandKind.SINGLE) {
                 Spacer(Modifier.height(12.dp))
                 SmallTitle(I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"))
-                SingleCommandField(enabled = !sorting)
+                SingleCommandField(ui, scroll, enabled = !sorting)
             }
 
             // `keyevent:` 注入同毫秒生效，而「最近任务 / 通知中心 / 控制中心」要跨四个进程、`shell:` 更
@@ -125,7 +131,7 @@ internal fun SettingsPage.CommandPage(
             if (kind == CommandKind.SINGLE) {
                 Spacer(Modifier.height(12.dp))
                 SmallTitle(I18n.get(Strings.COMMAND_FORMATS_TITLE, "支持的命令格式"))
-                CommandFormatsCard(tick, ui, onScrollTop)
+                CommandFormatsCard(tick, ui)
             }
 
             // 多条命令的步骤单独一张卡：它是一串行，塞进上面那张卡会多嵌两层内边距。
@@ -197,10 +203,54 @@ private fun SettingsPage.StepSortFab() {
  *  带换行的那串以前还得靠 `sh -c` 按行依次执行，语义反而更难说清；要串两步请用「多条命令」。
  *
  *  仍然只归一换行符：粘贴来的多半是 CRLF，混着两种会让存下去的值里夹进不可见的 `\r`。
+ *
+ * ## 被「支持的命令格式」点了一下之后
+ *
+ *  那一栏在页面下方，它够不着这里的 `FocusRequester`，所以只能举一个计数
+ *  （[CommandUiState.singleFocusRequest]）。这里按这个计数做三件事，**顺序不能换**：
+ *
+ *   1. **先滚回顶部**。输入框在这张格式卡上面，点完不滚回去等于「填了个看不见」。
+ *      滚也放在这一处，是因为焦点一落，Compose 会给文本节点做一次 `bringIntoView` ——
+ *      两处同时滚就是在同一根滚动条上打架，看着像卡了一下。
+ *   2. **等窗口拿到焦点，再要焦点**（键盘跟着起来）。用户点那一行的下一个动作就是接着打字。
+ *      输入框里本来就有值时，这一下前面还隔着「替换」确认窗 —— 那是个独立窗口，
+ *      它关掉的那一小段里页面窗口是没焦点的，此时抢到的焦点会被窗口焦点变化一并带走
+ *      （「键盘弹一下又没了」）。所以先等 [FOCUS_WAIT_FRAMES]，再抢。
+ *   3. **把光标挪到末尾**。`InputField` 只收 `String`，内部那份 `TextFieldValue` 的选区
+ *      默认是 0 ⇒ 不挪的话接着打的字会插到 `shell:` 前面去（原因见 `moveCaretToEnd`）。
+ *      挪光标走的是按键事件，得等焦点真正落到文本节点上（一两帧）才送得进去。
+ *
+ * @param scroll 本页的滚动状态 —— 第 1 步要用它滚回顶部
  */
 @Composable
-private fun SettingsPage.SingleCommandField(enabled: Boolean) {
+private fun SettingsPage.SingleCommandField(
+    ui: CommandUiState,
+    scroll: CommandPageScroll,
+    enabled: Boolean,
+) {
     val raw = commandDraft.draft.single
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val view = LocalView.current
+    val windowInfo = LocalWindowInfo.current
+    // 初值 0 = 「还没点过」，首次组合不该抢焦点
+    LaunchedEffect(ui.singleFocusRequest) {
+        if (ui.singleFocusRequest == 0) return@LaunchedEffect
+        scroll.state.animateScrollTo(0)
+        // 窗口焦点：确认窗刚关掉那一小段里它还是 false，这时候抢到的焦点会随窗口焦点变化一起丢
+        //  （`FocusOnShow` 上记着同一条）。等它回来再抢，最多等 [FOCUS_WAIT_FRAMES] 帧。
+        var waited = 0
+        while (!windowInfo.isWindowFocused && waited < FOCUS_WAIT_FRAMES) {
+            withFrameNanos { }
+            waited++
+        }
+        runCatching { focusRequester.requestFocus() }
+        keyboard?.show()
+        // 焦点落地要一两帧：早了那一下 `KEYCODE_MOVE_END` 没有节点接
+        withFrameNanos { }
+        withFrameNanos { }
+        moveCaretToEnd(view)
+    }
     // 格式不对时在这一栏下面出红字 —— 保存按钮同时是灰的（见 `commandPayloadReady`），
     //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。
     val formatError =
@@ -225,6 +275,10 @@ private fun SettingsPage.SingleCommandField(enabled: Boolean) {
             errorMessage = formatError,
             // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
             enabled = enabled,
+            // 只挂 `focusRequester`、不挂 `caretToEndOnFirstFocus`：光标那一下由上面那段
+            //  effect 按「填前缀」的时机做。挂上那个开关的话，只有**第一次**聚焦会挪光标，
+            //  而这里要的是「每点一次格式行都挪」。
+            focusRequester = focusRequester,
             modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
         )
         // 权限边界的提示：这一栏写的是 shell 命令，而它跑在宿主进程里、身份是「手势体感」这个 App ——
@@ -250,6 +304,15 @@ private fun SettingsPage.SingleCommandField(enabled: Boolean) {
 
 /** 单条命令能输入多少字（超出的部分在输入框里直接吃掉）。 */
 private const val MAX_SINGLE_LENGTH = 512
+
+/**
+ * 「等页面窗口重新拿到焦点」最多等几帧（60fps 下约半秒）。
+ *
+ *  只给「点了『支持的命令格式』之后」那一档用：如果那个确认窗还开着 / 刚关，页面窗口这一刻
+ *  是**没有窗口焦点**的，此时 `requestFocus()` 抢到的焦点会随着窗口焦点变化一起丢掉 ——
+ *  用户看到的就是「键盘弹一下又没了」。等不到（比如通知栏被拉下来）就照常往下走，不强求。
+ */
+private const val FOCUS_WAIT_FRAMES = 30
 
 /** 权限提示那行字的左右缩进 —— 与 `SmallTitleDefaults.InsideMargin` 同值（32dp）。 */
 private val HINT_SIDE_PADDING = 32.dp

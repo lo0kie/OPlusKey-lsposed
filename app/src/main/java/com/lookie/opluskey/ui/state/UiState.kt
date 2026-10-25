@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.state
 
 import com.lookie.opluskey.core.config.ConfigStore
+import com.lookie.opluskey.core.config.ModuleFiles
 import com.lookie.opluskey.core.log.XLog
 
 /**
@@ -53,7 +54,7 @@ internal object UiState {
     }
 
     /**
-     * 写一条；其余键原样保留（先读出来改一个键再整份写回）。走 [ConfigStore.writeAtomically]：
+     * 写一条；其余键原样保留（先读出来改一个键再整份写回）。走 [ModuleFiles.write]：
      * 虽只有本进程读写，但「先截断再写」遇到进程被杀会把整份状态变半截。
      * `openReadable = false`：不需要跨 uid 读。
      *
@@ -112,25 +113,35 @@ internal object UiState {
      *
      * @return **读不了返回 null**，与「文件还不存在 = 空串」分开 —— 写方靠这个区分
      *   「可以按空表重建」与「不许覆盖」（见 [writeShowSystemApps]）。
+     *
+     *  两件事都在 [ModuleFiles.read] 里：只剩 `.bak` 时由 `AtomicFile.openRead()` 先还原
+     *  （**不能**先判 `isFile`，那会绕过还原、读到空串，下一次写回就把这份文件里其它键一起抹掉）；
+     *  「文件在但读不出」与「文件真不在」分开判（同一个 `FileNotFoundException` 两种来路）。
      */
     private fun readTextOrNull(): String? =
-        try {
-            //  **必须走 `ConfigStore.readText`**：它内部是 `AtomicFile.openRead()`，只剩 `.bak`
-            //  时会先把主文件还原出来。先判 `f.isFile` 会绕过这条还原 —— 主文件缺失时读到空串，
-            //  下一次写回就把这份文件里**其它键**一起抹掉。
-            ConfigStore.readText(ConfigStore.uiFile())
-        } catch (e: java.io.FileNotFoundException) {
-            //  主文件与 .bak 都不在 = 还没写过 ⇒ 空表（与「读不了」分开，见 KDoc）
-            XLog.d("读界面状态：主文件与 .bak 都不在，按空表处理 | ${e.message}")
-            ""
-        } catch (e: Throwable) {
-            // 判据级：读失败会让写回被拒（用户看到的是「没保存」），用 w 才能在 release 里看见
-            XLog.w("读界面状态失败（按默认处理、且不写回）：${e.message}")
-            null
+        when (val r = files().read(ConfigStore.SLOT_UI)) {
+            is ModuleFiles.Load.Ok -> {
+                r.text
+            }
+
+            ModuleFiles.Load.Absent -> {
+                //  主文件与 .bak 都不在 = 还没写过 ⇒ 空表（与「读不了」分开，见 KDoc）
+                XLog.d("读界面状态：主文件与 .bak 都不在，按空表处理")
+                ""
+            }
+
+            ModuleFiles.Load.Unreadable -> {
+                // 判据级：读失败会让写回被拒（用户看到的是「没保存」），用 w 才能在 release 里看见
+                XLog.w("读界面状态失败（按默认处理、且不写回）")
+                null
+            }
         }
 
-    /** @return 是否真的落盘 —— 只意味着「这次改动活过了本进程」，失败由 writeAtomically 记日志。 */
-    private fun writeText(text: String): Boolean = ConfigStore.writeAtomically(ConfigStore.uiFile(), text, openReadable = false)
+    /** @return 是否真的落盘 —— 只意味着「这次改动活过了本进程」，失败由 [ModuleFiles.write] 记日志。 */
+    private fun writeText(text: String): Boolean = files().write(ConfigStore.SLOT_UI, text, openReadable = false)
+
+    /** 本模块的文件句柄（[ConfigStore] 是它的门面，这里只要知道「哪个槽」）。 */
+    private fun files(): ModuleFiles = ConfigStore.files()
 
     /** `key=value` 逐行解析；注释 / 空行 / 没有 `=` 的行一律跳过（半截文件也只是少几个键）。 */
     private fun parse(text: String): MutableMap<String, String> {

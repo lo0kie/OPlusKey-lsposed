@@ -11,13 +11,11 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.actionOf
 import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.MODULE_UNAVAILABLE_HINT
 import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
 import com.lookie.opluskey.ui.writeAndNotice
 
@@ -33,7 +31,7 @@ import com.lookie.opluskey.ui.writeAndNotice
  */
 internal fun SettingsPage.pick(
     spec: ActionCatalog.Spec,
-    g: Gesture,
+    target: BindingTarget,
     appName: String? = null,
 ): Boolean {
     // 与首页 / ⋮ 菜单**同一套闸位**。正常路径上它们已经拦过一遍（进不了这一页），
@@ -42,7 +40,7 @@ internal fun SettingsPage.pick(
     //  写盘成功、广播也发得出去，可注入侧那一半压根没装起来，用户看到的是「点了没反应」。
     //  `configReadOnly` 不在这里判 —— 它由 [write] 单点拦（那里还负责报「未保存」）。
     if (!linkReady) {
-        XLog.w("选动作被拦住（页面未就绪）：链路就绪=$linkReady ${g.id} → ${spec.token}")
+        XLog.w("选动作被拦住（页面未就绪）：链路就绪=$linkReady ${target.what} → ${spec.token}")
         // 与首页那条常驻提示**同一句话**（判据见 [blockedReason]）：被拦住时看到的原因
         //  不该因为你从哪条路点进来而不同。
         hint(blockedReason() ?: MODULE_UNAVAILABLE_HINT, slot = HINT_SLOT_BINDING)
@@ -50,54 +48,24 @@ internal fun SettingsPage.pick(
     }
     return try {
         val cfg = configState.config.value
-        // 绑到**当前在编辑的那颗键**上：侧键与自定义键各有一份 `KeyConfig`，
-        //  以前这里写死 `KeyId.PLUS`，等于在任何一颗键上选动作都改侧键。
-        val keyId = KeyWatchState.editing(cfg)
-        val key = cfg.key(keyId)
         val action = Action.parse(spec.token)
         // 已经绑的就是它 ⇒ 直接返回（判据见 [bindingUnchanged]）
-        if (bindingUnchanged(cfg, g, action, appName)) {
-            XLog.w("选动作：${g.id} 已经是 ${spec.token}，不重复写")
+        if (bindingUnchanged(cfg, target, action, appName)) {
+            XLog.w("选动作：${target.what} 已经是 ${spec.token}，不重复写")
             return true
         }
-        val updated =
-            when (g) {
-                Gesture.SINGLE -> {
-                    key.copy(single = action)
-                }
-
-                Gesture.DOUBLE -> {
-                    key.copy(double = action)
-                }
-
-                //  长按换成「多条命令」时必须把「连续触发」一起关掉（纯界面操作就能落进这个洞）：
-                // 先给一条单条命令开连续触发、再把长按换成多条命令 —— 换动作只写 `long`、
-                // 从不碰 `longRepeat`，界面只是把那一行置灰，而按住不放会一条条重放整个命令链。
-                //  只在这一种组合下清：换成别的动作时把用户的开关也一起抹掉没有道理，
-                // 而「动作是多条命令 + 连续触发=开」这个不一致由这里和判定侧的
-                // `KeyConfig.longIsSerial` 双重保证（判定侧那道闸门见 `GestureDetector`）。
-                Gesture.LONG -> {
-                    key.copy(
-                        long = action,
-                        longRepeat = key.longRepeat && !isSerialCommand(configState.commands.value, action.token),
-                    )
-                }
-            }.copy(
-                //  选动作 == 启用（真机发现）：设置页读不到旧配置时会回落到
-                // `Config.DEFAULT`，而默认是 `plus_enabled=0`（"装上模块不改变行为" 是有意的默认值）。
-                enabled = true,
-            )
         // 名字按**这次要绑的那个目标**记（应用/快捷方式/磁贴）：
         //  token 里带着 `app:` / `window:` / `setting:` 这些前缀与写法差异，
         //  而名字表的键是「身份」（`AppTarget.identity` 或磁贴组件名）—— 与界面查名字用的那一把完全一致。
         //  名字为空时**不动表**：`withAppName(…, null)` 是「删这一条」，那是「重新挑失败」的语义，
         //  不该被一次普通的重新绑定（绑内置动作、绑别的应用）顺手触发。
-        val targetKey = action.appTarget
         val next =
-            cfg
-                .copy(keys = cfg.keys + (keyId to updated))
-                .let { c -> if (appName != null && targetKey != null) c.withAppName(targetKey, appName) else c }
-        val result = write(next, "${g.id} → ${spec.token}")
+            withTargetBound(cfg, target, action)
+                .let { c ->
+                    val t = action.appTarget
+                    if (appName != null && t != null) c.withAppName(t, appName) else c
+                }
+        val result = write(next, "${target.what} → ${spec.token}")
         // 绑成了才报：被拦 / 写盘失败时 [write] 自己已经报过原因；广播没发出去时它报的那条
         //  「已保存，但通知注入侧失败」更不能被一句「已绑定…」顶掉（底部只有一行回执）。
         //  归到**整页那一个位**（[HINT_SLOT_BINDING]）：这一页连改几格时屏幕上改字，
@@ -116,6 +84,78 @@ internal fun SettingsPage.pick(
 }
 
 /**
+ * 把 [action] 绑到 [target] 那一格上 —— **两种目标各写各的表**，其余一律不动。
+ *
+ *  单键那两支带着两条老规矩（选动作 == 启用、长按换成多条命令时关掉连续触发），
+ *  组合键没有这些位：它没有「这一颗键启用不启用」，也没有「连续触发」。
+ */
+private fun SettingsPage.withTargetBound(
+    cfg: Config,
+    target: BindingTarget,
+    action: Action,
+): Config =
+    when (target) {
+        is BindingTarget.Key -> {
+            val key = cfg.key(target.id)
+            val updated =
+                when (target.gesture) {
+                    Gesture.SINGLE -> {
+                        key.copy(single = action)
+                    }
+
+                    Gesture.DOUBLE -> {
+                        key.copy(double = action)
+                    }
+
+                    //  长按换成「多条命令」时必须把「连续触发」一起关掉（纯界面操作就能落进这个洞）：
+                    // 先给一条单条命令开连续触发、再把长按换成多条命令 —— 换动作只写 `long`、
+                    // 从不碰 `longRepeat`，界面只是把那一行置灰，而按住不放会一条条重放整个命令链。
+                    //  只在这一种组合下清：换成别的动作时把用户的开关也一起抹掉没有道理，
+                    // 而「动作是多条命令 + 连续触发=开」这个不一致由这里和判定侧的
+                    // `KeyConfig.longIsSerial` 双重保证（判定侧那道闸门见 `GestureDetector`）。
+                    Gesture.LONG -> {
+                        key.copy(
+                            long = action,
+                            longRepeat = key.longRepeat && !isSerialCommand(configState.commands.value, action.token),
+                        )
+                    }
+                }.copy(
+                    //  选动作 == 启用（真机发现）：设置页读不到旧配置时会回落到
+                    // `Config.DEFAULT`，而默认是 `plus_enabled=0`（"装上模块不改变行为" 是有意的默认值）。
+                    enabled = true,
+                )
+            cfg.copy(keys = cfg.keys + (target.id to updated))
+        }
+
+        is BindingTarget.Combo -> {
+            cfg.copy(
+                combos =
+                    cfg.combos.map { c ->
+                        if (c.id != target.id) {
+                            c
+                        } else {
+                            when (target.gesture) {
+                                Gesture.SINGLE -> {
+                                    c.copy(single = action)
+                                }
+
+                                Gesture.LONG -> {
+                                    c.copy(long = action)
+                                }
+
+                                //  组合上没有双击（`ComboKey.actionOf` 恒返回「无操作」）——
+                                //  界面上走不到这一支；真走到了就原样不动，不写一个用不上的位。
+                                Gesture.DOUBLE -> {
+                                    c
+                                }
+                            }
+                        }
+                    },
+            )
+        }
+    }
+
+/**
  * 这次「选动作」是不是**等于现状**（点的就是已经打着勾那一档 / 那一格）。
  *
  *  **去重是为了「点了没变的事，别落盘、也别报回执」**：网格里点一下当前选中那格、或入口格菜单里
@@ -123,19 +163,20 @@ internal fun SettingsPage.pick(
  *  读起来像「刚刚改了什么」。
  *
  *  三条判据，缺一不可：
- *   · 主开关得是开着的 —— 关着时 [pick] 那一下还会顺手 `enabled = true`，那是真变化；
+ *   · 开关得是开着的 —— 关着时 [pick] 那一下还会顺手 `enabled = true`，那是真变化
+ *    （这一条只对单键成立：组合键没有这个位）；
  *   · 规范写法要一样（比 `token`，不比对象：`Action.parse` 出来的取值就是这个串）；
  *   · **显示名也没变** —— 挑应用那条路会把名字带进来，同一个应用也可能换了名字
  *    （分身 / 快捷方式），那时候不写就等于把用户刚挑的名字丢了。
  */
 private fun SettingsPage.bindingUnchanged(
     cfg: Config,
-    g: Gesture,
+    target: BindingTarget,
     action: Action,
     appName: String?,
 ): Boolean {
-    if (!cfg.key(KeyWatchState.editing(cfg)).enabled) return false
-    if (actionOf(cfg, g).token != action.token) return false
+    if (target is BindingTarget.Key && !cfg.key(target.id).enabled) return false
+    if (target.actionIn(cfg).token != action.token) return false
     val nameDiffers = appName != null && action.appTarget?.let { cfg.appName(it) != appName } == true
     return !nameDiffers
 }

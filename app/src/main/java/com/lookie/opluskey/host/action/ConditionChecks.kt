@@ -1,13 +1,8 @@
 package com.lookie.opluskey.host.action
 
-import android.app.KeyguardManager
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.res.Configuration
 import android.media.AudioManager
-import android.os.BatteryManager
-import android.os.PowerManager
 import android.provider.Settings
 
 // 「条件执行」里那些**带取值的判据** —— 一组条件一条，`ConditionProbe` 只负责派发。
@@ -46,7 +41,9 @@ internal fun chargingMatches(
     ctx: Context,
     value: String,
 ): Boolean {
-    val charging = isCharging(ctx)
+    //  读不到电量广播 = **判不出**，两档都不成立。不能按 `false` 当成「没在充电」——
+    //  那样 `idle` 会在读不到时凭空成立（与 `ConditionProbe` 头部那条契约相反）。
+    val charging = isCharging(ctx) ?: return false
     return when (value) {
         "idle" -> !charging
         "charging" -> charging
@@ -79,7 +76,10 @@ internal fun mediaMatches(
     ctx: Context,
     value: String,
 ): Boolean {
-    val playing = audio(ctx)?.isMusicActive == true
+    //  取不到 AudioManager = **判不出**，两档都不成立。不能把 `null` 当成「没在放」——
+    //  那样 `paused` 会在系统服务拿不到时凭空成立，去执行一条用户没预期的命令
+    //  （`ConditionProbe` 头部的契约：判不出就不成立）。
+    val playing = audio(ctx)?.isMusicActive ?: return false
     return when (value) {
         "paused" -> !playing
         "playing" -> playing
@@ -118,23 +118,42 @@ internal fun orientationMatches(
 }
 
 /**
- * 充电中（含充满）。
+ * 一个「开 / 关」型的系统开关 —— 这几个键都是 `Settings.Global` 里的 `0/1`。
  *
- *  用 **sticky 广播**而不是 `BatteryManager` 那几个 `isCharging`（那是 API 33 才有的静态属性，
- *  而且与 `status` 语义略有出入）：`registerReceiver(null, …)` 拿到的就是最近一次电量广播，
- *  不需要注册、也不需要权限。
+ *  与 [wifiMatches] 同一个读法：取不到（键不存在）时按 `0` 算，也就是「关着」。
+ *  这一档不能读失败就整体不成立：那样「蓝牙关 = 成立」在没蓝牙的机器上永远不成立，
+ *  而用户的规则会静默落到兜底 —— 宁可当它「关着」。
+ *
+ *  **键名用字面量**（`Settings.Global.BLUETOOTH_ON` 是 @hide）：与宿主侧
+ *  `SettingSwitch.readOn` 读的是同一批键，两处保持一致的写法，也不依赖编译期的隐藏字段。
  */
-private fun isCharging(ctx: Context): Boolean {
-    val intent: Intent =
-        ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            ?: return false
-    val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
-    return status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+internal fun switchMatches(
+    ctx: Context,
+    key: String,
+    value: String,
+): Boolean {
+    val on = Settings.Global.getInt(ctx.contentResolver, key, 0) == 1
+    return when (value) {
+        "off" -> !on
+        "on" -> on
+        else -> false
+    }
 }
 
-/** 三个系统服务各取一次 —— `getSystemService` 本身不会返回错类型，直接转。 */
-internal fun power(ctx: Context): PowerManager? = ctx.getSystemService(PowerManager::class.java)
+/** 蓝牙开关（`bluetooth_on`）。 */
+internal fun bluetoothMatches(
+    ctx: Context,
+    value: String,
+): Boolean = switchMatches(ctx, "bluetooth_on", value)
 
-internal fun keyguard(ctx: Context): KeyguardManager? = ctx.getSystemService(KeyguardManager::class.java)
+/** 移动数据（`mobile_data`）。 */
+internal fun cellularMatches(
+    ctx: Context,
+    value: String,
+): Boolean = switchMatches(ctx, "mobile_data", value)
 
-internal fun audio(ctx: Context): AudioManager? = ctx.getSystemService(AudioManager::class.java)
+/** 飞行模式（`airplane_mode_on`）。 */
+internal fun airplaneMatches(
+    ctx: Context,
+    value: String,
+): Boolean = switchMatches(ctx, "airplane_mode_on", value)

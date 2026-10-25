@@ -2,6 +2,8 @@ package com.lookie.opluskey.ui
 
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.model.Gesture
@@ -17,9 +19,10 @@ import com.lookie.opluskey.ui.state.fakeModel
  * 调试通道的处理体 —— **只有 debug 包会走到这里**（实现只在 `src/debug/` 源集）。
  *
  * 支持的动作见 [PageDebugChannel] 的类注释（`screen` / `gesture` / `kind` /
- * `name` / `cmd` / `steps` / `del` / `reset` / `save` / `hint` / `action` / `state` / `model` / `rom`，
- * 一次可以带多个）。`model` / `rom` 是**伪装本机身份**（只动判定与显示，不碰注入），
- * 传空串即恢复真机值。
+ * `name` / `cmd` / `steps` / `del` / `reset` / `save` / `hint` / `action` / `state` / `model` / `rom` /
+ * `combo` + `combo_single` + `combo_long`，一次可以带多个）。`model` / `rom` 是**伪装本机身份**
+ * （只动判定与显示，不碰注入），传空串即恢复真机值；`combo` 写一份组合键（界面入口还没有，
+ * 见 [applyDebugCombo]），传空串即清空。
  *
  * 执行顺序是**固定的**：先跳页、再切 tab、再填字段、最后才 reset / save —— 这样
  * 「`--es screen COMMANDS --es kind SERIAL --es name X --ez save true`」这一条广播
@@ -127,7 +130,54 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
                 "；清单判定=${DeviceSupport.verdict}；内置命令档位=${RomProfile.describeCurrent()}",
         )
     }
+    // 组合键 —— **界面入口还没有**（这一版只把底层接上），验证链路时用它写一份：
+    //   am broadcast -a com.lookie.opluskey.DEBUG --es combo "plus+ck1" \
+    //        --es combo_single "keyevent:26" --es combo_long "oplus:no_disturb"
+    //   am broadcast -a com.lookie.opluskey.DEBUG --es combo ""        ← 清空（成员不足两颗即清空）
+    intent.getStringExtra("combo")?.let { raw ->
+        applyDebugCombo(raw, intent.getStringExtra("combo_single"), intent.getStringExtra("combo_long"))
+    }
     if (intent.getBooleanExtra("state", false)) logDebugState()
+}
+
+/**
+ * 调试：写一份组合键（只有一档，`cmb1`）。
+ *
+ *  走 [write] 而不是直接落盘：那条路同时做「落盘 + 广播」，注入侧与宿主拿到的才是同一份 ——
+ *  只写文件的话，注入侧（system_server）手上仍是旧配置，组合键判断不成立，验出来就是假阴性。
+ *
+ *  @param raw `plus+ck1` 这种（`+` 连接的键 id）；**不是恰好两颗**（`ComboKey.MIN_KEYS..MAX_KEYS`）
+ *  就清空所有组合键 —— 与界面那条路同一个规矩，调试通道不该能写出界面上不存在的形状
+ */
+private fun SettingsPage.applyDebugCombo(
+    raw: String,
+    single: String?,
+    long: String?,
+) {
+    val members = raw.split('+').map { it.trim() }.filter { it.isNotEmpty() }
+    val combos =
+        if (members.size !in ComboKey.MIN_KEYS..ComboKey.MAX_KEYS) {
+            emptyList()
+        } else {
+            listOf(
+                ComboKey(
+                    id = ComboKey.idOf(1),
+                    keys = members,
+                    single = Action.parse(single ?: Action.NONE),
+                    long = Action.parse(long ?: Action.NONE),
+                ),
+            )
+        }
+    XLog.w(
+        "调试：组合键 → " +
+            (
+                combos.firstOrNull()?.let {
+                    "${it.id} ${it.keys} 短按=${XLog.redactToken(it.single.token)}" +
+                        " 长按=${XLog.redactToken(it.long.token)}"
+                } ?: "（清空）"
+            ),
+    )
+    write(configState.config.value.copy(combos = combos), "debug_combos")
 }
 
 /**

@@ -19,19 +19,28 @@ import com.lookie.opluskey.core.model.ConditionKind
 internal fun conditionTitle(
     condition: BranchCondition?,
     appName: (String) -> String,
-): String {
-    if (condition == null) return I18n.get(Strings.COMMAND_BRANCH_ELSE, "其他情况")
-    return when (condition.kind) {
+): String =
+    condition?.let { conditionTitleOf(it, appName) }
+        ?: I18n.get(Strings.COMMAND_BRANCH_ELSE, "其他情况")
+
+/**
+ * 有值那一支 —— 按条件种类分派（「其他情况」那一档在上面）。
+ *
+ *  只留下「不能只看格式串」的那几档：应用名要拼、充电 / 耳机那两档取值本身就是一句话、
+ *  时间要兜空值。其余同构的几档全在 [VALUE_TITLES] 那张表里 —— 一档一个分支写在这里，
+ *  复杂度会跟着 `ConditionKind` 涨（detekt 是 15）。
+ */
+private fun conditionTitleOf(
+    condition: BranchCondition,
+    appName: (String) -> String,
+): String =
+    when (condition.kind) {
         ConditionKind.APP -> {
             if (condition.value.isBlank()) {
                 I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择")
             } else {
-                I18n.format(Strings.COMMAND_BRANCH_WHEN_APP, appName(condition.value))
+                I18n.format(Strings.COMMAND_BRANCH_WHEN_APP, appNamesText(condition, appName))
             }
-        }
-
-        ConditionKind.SCREEN -> {
-            I18n.format(Strings.COMMAND_COND_SCREEN, screenLabel(condition.effectiveValue))
         }
 
         ConditionKind.CHARGING -> {
@@ -44,28 +53,57 @@ internal fun conditionTitle(
             headsetLabel(condition.effectiveValue)
         }
 
-        ConditionKind.MEDIA -> {
-            I18n.format(Strings.COMMAND_COND_MEDIA, mediaLabel(condition.effectiveValue))
+        //  时间区间：格子里写「时间 22:00-07:00」。不写成「22:00-07:00 之间」——
+        //  这一族一律是名词短语（见文件头），而且短一截，格子那半行更不容易被截断。
+        ConditionKind.TIME -> {
+            condition.value
+                .takeIf { it.isNotBlank() }
+                ?.let { I18n.format(Strings.COMMAND_COND_TIME, it) }
+                ?: I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择")
         }
 
-        ConditionKind.WIFI -> {
-            I18n.format(Strings.COMMAND_COND_WIFI, wifiLabel(condition.effectiveValue))
-        }
-
-        ConditionKind.RINGER -> {
-            I18n.format(Strings.COMMAND_COND_RINGER, ringerLabel(condition.value))
-        }
-
-        ConditionKind.ORIENTATION -> {
-            I18n.format(Strings.COMMAND_COND_ORIENTATION, orientationLabel(condition.value))
-        }
-
-        null -> {
-            // 认不出的条件（配置来自更新的版本）与「还没选」在这里同一句话：都说「未选择」
-            I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择")
+        //  `null`（认不出的条件，配置来自更新的版本）落这里，表里查不到 ⇒ 同样说「未选择」
+        else -> {
+            VALUE_TITLES[condition.kind]?.let {
+                I18n.format(it.format, it.value(condition))
+            } ?: I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择")
         }
     }
-}
+
+/**
+ * 「一个格式串 + 取值怎么念」那一档条件 —— 屏幕状态 / 媒体 / Wi-Fi / 响铃 / 方向 / 三个系统开关。
+ *
+ * @property format 文案模板（`Strings` 里那条 `…%s`）
+ * @property value 从条件里取哪一个值再念出来（`effectiveValue` 会在空值时补默认档）
+ */
+private class ValueTitle(
+    val format: String,
+    val value: (BranchCondition) -> String,
+)
+
+/** 同构的那几档全在这张表里 —— 每加一种条件只是多一行数据，不会顶到谁的分析复杂度。 */
+private val VALUE_TITLES: Map<ConditionKind?, ValueTitle> =
+    mapOf(
+        ConditionKind.SCREEN to ValueTitle(Strings.COMMAND_COND_SCREEN) { screenLabel(it.effectiveValue) },
+        ConditionKind.MEDIA to ValueTitle(Strings.COMMAND_COND_MEDIA) { mediaLabel(it.effectiveValue) },
+        ConditionKind.WIFI to ValueTitle(Strings.COMMAND_COND_WIFI) { wifiLabel(it.effectiveValue) },
+        ConditionKind.RINGER to ValueTitle(Strings.COMMAND_COND_RINGER) { ringerLabel(it.value) },
+        ConditionKind.ORIENTATION to ValueTitle(Strings.COMMAND_COND_ORIENTATION) { orientationLabel(it.value) },
+        ConditionKind.BLUETOOTH to ValueTitle(Strings.COMMAND_COND_BLUETOOTH) { switchLabel(it.effectiveValue) },
+        ConditionKind.CELLULAR to ValueTitle(Strings.COMMAND_COND_CELLULAR) { switchLabel(it.effectiveValue) },
+        ConditionKind.AIRPLANE to ValueTitle(Strings.COMMAND_COND_AIRPLANE) { switchLabel(it.effectiveValue) },
+    )
+
+/**
+ * 「前台应用」条件里那一组包名 → 应用名，多个用顿号连起来。
+ *
+ *  一条应用条件可以多选（`包1||包2`，任一在前台即通过），所以标题与取值那一行都不能只取
+ *  第一个 —— 那会让用户以为只绑了一个。两处共用这一份，免得一处改了另一处没跟上。
+ */
+private fun appNamesText(
+    condition: BranchCondition,
+    appName: (String) -> String,
+): String = condition.appPackages.joinToString("、") { appName(it) }
 
 /**
  * **卡片里那一行「条件」** 的说法 —— 与 [conditionTitle] 的区别只有一处：把两级**都用「 - 」连起来**。
@@ -95,21 +133,55 @@ private fun conditionValueLabel(
 ): String =
     when (kind) {
         // 前台应用取的是包名，显示成应用名；空着就是「未选择」（调用方那一支会退回去）
-        ConditionKind.APP -> condition.value.takeIf { it.isNotBlank() }.let { it?.let(appName).orEmpty() }
+        ConditionKind.APP -> {
+            if (condition.value.isBlank()) "" else appNamesText(condition, appName)
+        }
 
-        ConditionKind.SCREEN -> screenLabel(condition.effectiveValue)
+        ConditionKind.SCREEN -> {
+            screenLabel(condition.effectiveValue)
+        }
 
-        ConditionKind.CHARGING -> chargingLabel(condition.effectiveValue)
+        ConditionKind.CHARGING -> {
+            chargingLabel(condition.effectiveValue)
+        }
 
-        ConditionKind.HEADSET -> headsetLabel(condition.effectiveValue)
+        ConditionKind.HEADSET -> {
+            headsetLabel(condition.effectiveValue)
+        }
 
-        ConditionKind.MEDIA -> mediaLabel(condition.effectiveValue)
+        ConditionKind.MEDIA -> {
+            mediaLabel(condition.effectiveValue)
+        }
 
-        ConditionKind.WIFI -> wifiLabel(condition.effectiveValue)
+        ConditionKind.WIFI -> {
+            wifiLabel(condition.effectiveValue)
+        }
 
-        ConditionKind.RINGER -> ringerLabel(condition.value)
+        ConditionKind.RINGER -> {
+            ringerLabel(condition.value)
+        }
 
-        ConditionKind.ORIENTATION -> orientationLabel(condition.value)
+        ConditionKind.ORIENTATION -> {
+            orientationLabel(condition.value)
+        }
+
+        //  时间区间的「取值」就是那一段本身（`22:00-07:00`）—— 不再过任何模板，
+        //  它在两级之间已经是一句完整的话。
+        ConditionKind.TIME -> {
+            condition.value
+        }
+
+        ConditionKind.BLUETOOTH -> {
+            switchLabel(condition.effectiveValue)
+        }
+
+        ConditionKind.CELLULAR -> {
+            switchLabel(condition.effectiveValue)
+        }
+
+        ConditionKind.AIRPLANE -> {
+            switchLabel(condition.effectiveValue)
+        }
     }
 
 /**
@@ -140,6 +212,15 @@ internal fun conditionKindLabel(kind: ConditionKind): String =
 
         // 耳机这一档在格子里要带取值（「已连接耳机」），菜单里只写「耳机」。
         ConditionKind.HEADSET -> I18n.get(Strings.COMMAND_COND_HEADSET_NAME, "耳机状态")
+
+        // 时间区间是唯一「自由取值」又没有下一级菜单的那一档：菜单里点它弹时间选择器。
+        ConditionKind.TIME -> I18n.get(Strings.COMMAND_COND_TIME_NAME, "时间区间")
+
+        ConditionKind.BLUETOOTH -> I18n.get(Strings.COMMAND_COND_BLUETOOTH_NAME, "蓝牙")
+
+        ConditionKind.CELLULAR -> I18n.get(Strings.COMMAND_COND_CELLULAR_NAME, "移动数据")
+
+        ConditionKind.AIRPLANE -> I18n.get(Strings.COMMAND_COND_AIRPLANE_NAME, "飞行模式")
     }
 
 /** 有取值的条件，那一档取值在菜单里叫什么。 */
@@ -149,11 +230,28 @@ internal fun conditionChoiceLabel(
 ): String =
     when (kind) {
         ConditionKind.RINGER -> ringerLabel(value)
+
         ConditionKind.ORIENTATION -> orientationLabel(value)
+
         ConditionKind.WIFI -> wifiLabel(value)
+
         ConditionKind.MEDIA -> mediaLabel(value)
+
         ConditionKind.SCREEN -> screenLabel(value)
+
         ConditionKind.CHARGING -> chargingLabel(value)
+
         ConditionKind.HEADSET -> headsetLabel(value)
+
+        // 三个「开 / 关」型系统开关：二级菜单就两行，文案都是「开」「关」
+        ConditionKind.BLUETOOTH -> switchLabel(value)
+
+        ConditionKind.CELLULAR -> switchLabel(value)
+
+        ConditionKind.AIRPLANE -> switchLabel(value)
+
+        // 时间区间没有二级菜单（点它直接弹时间选择器），走不到这里
+        ConditionKind.TIME -> value
+
         else -> value
     }

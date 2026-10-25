@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.screen.home
 
 import android.content.Intent
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +29,7 @@ import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
 import com.lookie.opluskey.ui.screen.pageWritable
+import com.lookie.opluskey.ui.state.LINK_SILENT_RETRY_MS
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -94,12 +96,18 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         // 首次启用（以及清空配置之后再启用）要的那两次确认 —— 摆在那张卡后面，不跟别的开关混在一起。
         HomeDisclaimers(ui)
 
-        // 「按键列表」那一节 —— **按键清单与「添加按键」都在这里**（用户口径）：原先它们在
+        // 「按键列表」那一节 —— **只有按键清单**（用户口径）：原先它在
         // 「按键绑定」页顶栏那份 ⋮ 菜单里，而那一页只回答「这颗键现在绑了什么」；
         // 有哪几颗键是总览，属于首页。一颗键一行，点哪颗进哪颗。
         Spacer(Modifier.height(8.dp))
         SmallTitle(I18n.get(Strings.HOME_KEYS_SECTION, "按键列表"))
-        HomeKeysCard(pageEnabled, ui)
+        HomeKeysCard(pageEnabled)
+
+        // 「按键操作」那一节 —— 组合按键与「添加按键」两行（用户口径：与清单分开一张卡）。
+        //  这两行不是清单里的东西，是**对这颗键 / 这组键做的事**。
+        Spacer(Modifier.height(8.dp))
+        SmallTitle(I18n.get(Strings.HOME_KEY_OPS_SECTION, "按键操作"))
+        HomeKeyOpsCard(pageEnabled, ui)
 
         // 「按键行为」那一整块搬进了「通用设置」页（入口在下面「其他」卡的第一行）——
         //  它是**全局**开关，与「这颗键绑了什么」无关，摆在这里会把常用的入口挤下去。
@@ -181,8 +189,10 @@ private suspend fun SettingsPage.queryLinkOnce() {
         //  （用户报的「换 ROM 后整页一直是灰的，退出去再进来才好」正是这一处）。
         //  与宿主那一档对齐：全程没答才降档，见下面两行。
         if (hostAnswered && injectAnswered) {
-            // 两端都答了 ⇒ 这一趟自检结束（提示可以按真结论说话了，见 `injectChecked`）
+            // 两端都答了 ⇒ 这一趟自检结束（提示可以按真结论说话了，见 `injectChecked`）。
+            //  问通了就清掉退避：这一趟的结论可以一直用到宿主换进程。
             link.injectChecked = true
+            link.silentRetryAt = 0L
             return
         }
         if (round > 0) XLog.w("链路自检第 ${round + 1} 轮仍未齐（宿主=$hostAnswered 注入=$injectAnswered）")
@@ -195,7 +205,14 @@ private suspend fun SettingsPage.queryLinkOnce() {
     link.injectChecked = true
     if (!hostEverAnswered) link.hostServiceUp = false
     if (!injectEverAnswered) link.injectStatus = null
-    XLog.w("链路自检问了 $QUERY_ROUNDS 轮都没问齐，不再重问（详见「更多选项 → 运行状态」）")
+    //  **问空了不算「问过」到底**：注入侧自己恢复（借到 Context、uid 晚到）并不换宿主进程，
+    //  若就此不再问，首页会一直灰着，只能杀 `:ui` 进程或重启。所以记一个退避时刻 ——
+    //  过 [LINK_SILENT_RETRY_MS] 之后回首页会再问一趟（判据见 `HostLinkState.needsLinkCheck`）。
+    link.silentRetryAt = SystemClock.elapsedRealtime() + LINK_SILENT_RETRY_MS
+    XLog.w(
+        "链路自检问了 $QUERY_ROUNDS 轮都没问齐，" +
+            "改在 ${LINK_SILENT_RETRY_MS / 1000} 秒后回首页时再问（详见「更多选项 → 运行状态」）",
+    )
 }
 
 /**

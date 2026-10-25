@@ -1,14 +1,18 @@
 package com.lookie.opluskey.ui.screen
 
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.replaceStep
+import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.binding.pick
 import com.lookie.opluskey.ui.screen.command.writeBranchCommand
 import com.lookie.opluskey.ui.screen.command.writeBranchCondition
+import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.PickTarget
 import com.lookie.opluskey.ui.state.PickedDetail
 import com.lookie.opluskey.ui.tickNow
@@ -34,9 +38,15 @@ internal fun SettingsPage.writeToken(
     //   手势绑定。
     return when (val target = picker.takePickTarget()) {
         is PickTarget.Branch -> {
+            // 条件这一趟**可能多选**：整组包名在 `picker.pickedApps` 里（`takePickTarget()` 不动它，
+            //  `clearTarget()` 才清）。空集合说明状态被谁提前清了 —— 退回 token 里那一个包名。
+            val pkgs =
+                picker.pickedApps.value
+                    .toList()
+                    .ifEmpty { listOf(AppTarget.pkg(Action.parse(token).appTarget.orEmpty())) }
             // `takePickTarget()` 是**一次性消费**：写失败了得把「为谁挑」放回去，否则这一页
             //  立刻退化成「普通挑应用」—— 点一行会去挑界面、按确定还会写到手势绑定上。
-            if (!writeBranchCondition(token, target.index)) {
+            if (!writeBranchCondition(pkgs, target.index)) {
                 picker.openForBranch(target.index)
                 false
             } else {
@@ -75,7 +85,12 @@ internal fun SettingsPage.writeToken(
             pick(
                 // 只为把取值交给 `pick`（它读的是 token），name 这一位在这条路上不参与显示。
                 ActionCatalog.Spec(name = token, token = token),
-                g,
+                // 写回**进这一页时那一格**：组合键那一页（`picker.comboId` 非空）写它那一档，
+                //  否则写当前在编辑的那颗键。判据只有 `comboId` 一处 —— 不按「当前在哪一页」判：
+                //  退场动画期间栈顶可能已经变了，按页面判会把动作写到上一页那颗键上。
+                picker.comboId
+                    ?.let { BindingTarget.Combo(it, g) }
+                    ?: BindingTarget.Key(KeyWatchState.editing(configState.config.value), g),
                 appName,
             )
         }

@@ -28,12 +28,6 @@ internal object SettingCalls {
     /** 系统身份调这些方法时传的包名（uid 1000 名下就是 `android`）。 */
     private const val PKG = "android"
 
-    /** `NfcAdapter.STATE_TURNING_ON` —— 正在开，同样按「开着」处理（再点一下该关）。 */
-    private const val NFC_STATE_TURNING_ON = 2
-
-    /** `NfcAdapter.STATE_ON`。 */
-    private const val NFC_STATE_ON = 3
-
     fun run(
         loader: ClassLoader,
         id: String,
@@ -193,41 +187,15 @@ internal object SettingCalls {
      *  这个 ROM 的 `INfcAdapter` **没有 `isEnabled()`**（真机 dump 出来只有 `getState()`），
      *  状态值是 `NfcAdapter.STATE_*`：OFF=1 / TURNING_ON=2 / ON=3 / TURNING_OFF=4。
      *  「开」只认 2 与 3；4（正在关）算「关」—— 再点一次应当**开回来**。
-     *  `persist` 传 false：只关这一次；传 true 会写进「关机也保持」的持久档。
+     *
+     *  `persist` **必须传 true**，与蓝牙那条同一条教训：传 false 只关这一次，重启会开回来。
+     *  读状态与取反都在 [NfcToggle]：`getState` 在关闭那 3 秒里会停在 3，直接取反会把连按的
+     *  第二下吃掉（那里记着实测数据与那一条的来龙去脉）。
      */
     private fun nfc(
         loader: ClassLoader,
         target: Boolean?,
-    ): Boolean {
-        val s =
-            ServiceCalls.service(loader, "nfc", "android.nfc.INfcAdapter") ?: run {
-                XLog.w("nfc：取不到 nfc 服务")
-                return false
-            }
-        val on =
-            target ?: run {
-                val state =
-                    ServiceCalls.call(s, "getState")?.value as? Int ?: run {
-                        XLog.w("nfc：读不到 getState（服务对象是 ${s.javaClass.simpleName}）")
-                        return false
-                    }
-                //  只认 2 / 3 为「开着」。写成 `state >= 3` 会把 4（TURNING_OFF）也当成开 ⇒ 再点一次
-                //  又发一遍 disable，用户看到的是「点了没反应」，而此刻正是最该把它开回来的时候。
-                XLog.w("nfc：getState=$state")
-                //  **这里要取反**：`target` 为空 = 切换，目标是「与现在相反」。
-                //  早先漏了这一下 —— 把「当前开着」直接当成「目标开着」，于是切换永远变成
-                //  「设置成它现在的样子」，表现就是「NFC 那一档按了没反应」（真机日志：
-                //  `getState=3` 紧跟着 `目标=开`）。
-                !(state == NFC_STATE_ON || state == NFC_STATE_TURNING_ON)
-            }
-        XLog.w("nfc：目标=${if (on) "开" else "关"}")
-        //  同蓝牙那一支：返回 boolean，false = 被拒，不能按「非 null 就是成功」判。
-        return if (on) {
-            ServiceCalls.call(s, "enable", listOf(PKG))?.value == true
-        } else {
-            ServiceCalls.call(s, "disable", listOf(false, PKG))?.value == true
-        }
-    }
+    ): Boolean = NfcToggle.run(loader, target)
 
     /**
      * 自动旋转：读「现在锁没锁」→ 取反。

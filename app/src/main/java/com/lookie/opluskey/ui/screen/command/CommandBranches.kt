@@ -23,8 +23,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,14 +49,11 @@ import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
-import com.lookie.opluskey.ui.model.STEP_ROW_EXIT_MS
+import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.actionCellIcon
 import com.lookie.opluskey.ui.model.actionCellTitle
-import com.lookie.opluskey.ui.model.conditionIcon
-import com.lookie.opluskey.ui.model.conditionRowTitle
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.NO_FRESH_ROW
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
@@ -72,8 +71,14 @@ import kotlinx.coroutines.delay
 // 「条件执行」那一页的编辑区 —— 从 `CommandPage.kt` 拆出来：那边是「一页的骨架」，
 // 这一块是分叉特有的那张卡；四张菜单在 `CommandBranchMenus.kt`。
 
-/** 分叉页在编辑哪一档 —— 当前这颗键与这一档手势，两处（卡片与顶栏小标题）同一份判据。 */
-internal fun SettingsPage.branchGestureNow(): Gesture = Gesture.entries.getOrElse(branchGesture) { Gesture.SINGLE }
+/** 分叉页在编辑哪一档 —— 当前这颗键（或组合键）与这一档手势，两处（卡片与顶栏小标题）同一份判据。 */
+internal fun SettingsPage.branchGestureNow(): Gesture {
+    val now = Gesture.entries.getOrElse(branchGesture) { Gesture.SINGLE }
+    //  组合键只有短按 / 长按两档（双击在组合上没有定义，见 `ComboKey` 的类注释）。
+    //  在编组合键时双击那一档自动落回短按：页面停在一个「写进去也永远不会命中」的档上
+    //  比落回短按更糟 —— 用户会以为配了双击。
+    return if (now == Gesture.DOUBLE && branchDraft.draft.comboId != null) Gesture.SINGLE else now
+}
 
 /** 分叉页在编辑哪一颗键。 */
 internal fun SettingsPage.branchKeyNow(): KeyId = KeyWatchState.editing(configState.config.value)
@@ -139,22 +144,17 @@ internal fun SettingsPage.BranchCards(
     //  **删的是最后一条时不等**：那一下整块要变成空态，而空态由外层（空态 ↔ 表格）那套动画接管；
     //  要是还照「先收行 220ms + 结算 40ms、再展开空态 220ms」，就是两段串在一起。
     //  直接移除，行不单独收缩、只跟着外层一起淡出。
-    LaunchedEffect(menus.deletingAt) {
-        val at = menus.deletingAt
-        if (at < 0) return@LaunchedEffect
-        //  记下「要删的是哪一条」而不是只记下标：这 260ms 里用户还能上移 / 下移 / 再删一条，
-        //  下标会移位，按 at 去删就会删错行。按**规则本身**找回来，挪过也能删对；
-        //  找不到（已经被改掉了）就什么都不删 —— 宁可不删，不能错删。
-        val target =
-            draft.rules.getOrNull(at) ?: run {
-                menus.deletingAt = NO_EXITING_ROW
-                return@LaunchedEffect
-            }
-        if (rules.size > 1) delay(STEP_ROW_EXIT_MS + ROW_EXIT_SETTLE_MS)
-        if (menus.deletingAt == at) {
-            val now = draft.rules.indexOf(target)
-            if (now >= 0) draft.remove(now)
-            menus.deletingAt = NO_EXITING_ROW
+    BranchDeleteEffect(draft = draft, menus = menus)
+
+    //  删**一条条件**的收尾 —— 与上面删整行同一套：先让那一行收起（`exitingCond` 驱动行上的
+    //  `visible`），播完再从草稿里摘掉。确认之后菜单已经关了，这 200ms 里加不了也删不了另一条，
+    //  所以按下标去删是安全的；仍核一次「要删的还是不是它」（宁可不删，不能错删）。
+    LaunchedEffect(menus.exitingCond) {
+        val target = menus.exitingCond ?: return@LaunchedEffect
+        delay(VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS)
+        if (menus.exitingCond == target) {
+            deleteBranchCondition(target.at, target.index)
+            menus.exitingCond = null
         }
     }
     //  空态与表格**都在滚动内容里**（用户口径「空态要跟着拖动一起弹」）—— 空态做成浮层虽然
@@ -194,6 +194,8 @@ internal fun SettingsPage.BranchCards(
     }
     BranchMenus(rules = rules, menus = menus, tick = tick)
     BranchDeleteDialog(menus)
+    //  删「一条条件」是另一件事（只摘一块里的一条，不连动作、不动下面的行），窗也另开一个
+    BranchConditionDeleteDialog(menus)
 }
 
 /**
@@ -309,6 +311,14 @@ private fun SettingsPage.BranchRow(
 ) {
     // 首帧可见性：老行 true（不播进场），刚加的那一行从 false 起（播一次）
     val state = remember { MutableTransitionState(!spec.fresh) }
+    //  **播过就把「刚加的那一行」这笔账清掉**：不清的话这一行会一直带着 `fresh = true`，
+    //  而 `MutableTransitionState` 是跟着行一起新建的 —— 页面一旦重建（进「选择应用」页挑完
+    //  返回、来源页的组合已经注销），它又按 `!fresh = false` 从头播一遍进场。
+    //  真机表现：「刚加一行 → 去挑动作 → 回来整行又展开一次」。
+    //  清在这里而不是 `BranchRow` 之外：只有这一行知道自己已经上过场了。
+    LaunchedEffect(Unit) {
+        if (spec.fresh) branchDraft.draft.freshId = NO_FRESH_ROW
+    }
     LaunchedEffect(state, spec.exiting) { state.targetState = !spec.exiting }
     AnimatedVisibility(visibleState = state, enter = STEP_ROW_ENTER, exit = STEP_ROW_EXIT) {
         //  行距挂在**行首**而不是行尾（第一条不挂）：挂行尾的话最后一条底下会多出一档，
@@ -319,12 +329,10 @@ private fun SettingsPage.BranchRow(
         Box(Modifier.padding(top = if (spec.index == 0) 0.dp else GRID_ROW_GAP)) {
             //  两格各自「有没有选完」先算出来：文案与行首图标都看它
             //  （条件那格还要 `isUsable` —— 选了种类但没选取值，写下去也存不住）。
-            //  一块可能带**好几条**条件：全部配完才写出来，几条之间用「 + 」连（这个符号两种
-            //  语言里都读得通，不必再加一个字典键）。少一条没配完 ⇒ 仍然是「未选择条件」。
-            val conditionText =
-                rule.conditions
-                    .takeIf { rule.isReady }
-                    ?.joinToString(CONDITION_JOINER) { conditionRowTitle(it, ::appNameOf) }
+            //  一块可能带**好几条**条件，**每条各占卡片里的一行**（一条条件一个 `CardRow.Item`）。
+            //  一条都没配时也给一行「未选择条件」（`empty = true`），让用户知道这一格要配什么。
+            //  以前是用 ` + ` 拼在同一行里 —— 两条以上时读起来像一句话，看不出是「且」的关系。
+            val conditionLines = ruleConditionLines(rule)
             //  命令那格写成「父级 - 子级」（响铃状态 - 循环）：与条件那格同一套写法，
             //  光写「循环」看不出是谁在循环（见 `actionCellTitle`）
             val actionText = if (rule.action == Action.None) null else actionCellTitle(rule.action, ::appNameOf)
@@ -334,17 +342,9 @@ private fun SettingsPage.BranchRow(
                 dead = spec.dead,
                 text =
                     RuleText(
-                        // 没选完的那一格写「未选择条件 / 未选择命令」，**行首图标同时置红**：
-                        //  这是一条存不下去的半成品，灰色小字读起来像普通占位符。
-                        condition = conditionText ?: I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择条件"),
+                        conditionLines = conditionLines,
                         action = actionText ?: I18n.get(Strings.COMMAND_BRANCH_NO_COMMAND, "未选择命令"),
-                        conditionEmpty = conditionText == null,
                         actionEmpty = actionText == null,
-                        conditionIcon =
-                            rule.conditions
-                                .firstOrNull { it.isUsable }
-                                ?.kind
-                                ?.let(::conditionIcon) ?: PageIcons.CommandBranch,
                         actionIcon =
                             if (rule.action == Action.None) {
                                 PageIcons.CommandSingle
@@ -356,8 +356,10 @@ private fun SettingsPage.BranchRow(
                 cells =
                     RuleCells(
                         anchors = spec.anchors,
-                        onCondition = {
-                            menus.condAnchor = spec.anchors.left
+                        //  点的是**第几条**条件那一行 —— 菜单随后就改那一条
+                        onCondition = { condIndex ->
+                            menus.condIndexAt = condIndex
+                            menus.condAnchor = spec.anchors.conditionAt(condIndex)
                             menus.condAt = spec.index
                         },
                         onAction = {
@@ -369,8 +371,61 @@ private fun SettingsPage.BranchRow(
                             menus.menuAt = spec.index
                         },
                     ),
+                menus = menus,
             )
         }
+    }
+}
+
+/**
+ * 小标题行右端那颗「更多」—— 上移 / 下移 / 删除都挂在它上面。
+ *
+ *  抽成一支只为让 [RuleBlock] 留在 detekt 的长度上限内（几何见 [RULE_MENU_WIDTH] 那几段）。
+ */
+@Composable
+private fun RuleMenuButton(cells: RuleCells) {
+    Box(
+        modifier =
+            Modifier
+                .size(width = RULE_MENU_WIDTH, height = RULE_MENU_HEIGHT)
+                .preciseClickAnchor(cells.anchors.menu)
+                .clip(RULE_CELL_SHAPE)
+                .clickable(onClick = cells.onMenu),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            TablerIcons.Outline.Dots,
+            contentDescription = I18n.get(Strings.COMMON_MORE, "更多"),
+            tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+            // 与点击区同高：库默认 24dp 塞不进 20dp 的框，上下会被圆角裁掉
+            modifier = Modifier.size(RULE_MENU_HEIGHT),
+        )
+    }
+}
+
+/**
+ * 小标题那一行 —— 「条件 N」+ 右端那颗「更多」。
+ *
+ *  抽成一支只为让 [RuleBlock] 留在 detekt 的长度上限内。与各页的小标题**同一个组件**
+ *  （同一档字号、颜色、行高）：「条件 N」是这一块的小标题，不是正文。横向只把库里那 32dp
+ *  改成 20dp —— 默认值里含 12dp 页面边距，而这一页的外层已经有 `PAGE_MARGIN`，照抄会多缩进一格
+ *  （真机口径：两者字头都落在 112px @3.5x）。
+ */
+@Composable
+private fun RuleTitleRow(
+    index: Int,
+    cells: RuleCells,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = RULE_TITLE_HEIGHT),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SmallTitle(
+            text = I18n.format(Strings.COMMAND_BRANCH_ITEM, index + 1),
+            modifier = Modifier.weight(1f),
+            insideMargin = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+        )
+        RuleMenuButton(cells)
     }
 }
 
@@ -385,20 +440,28 @@ private class RuleRowSpec(
 )
 
 /** 「没有正在退场的行」的哨兵 —— 与 `BranchMenuState.deletingAt` 的初始值同义。 */
-private const val NO_EXITING_ROW = -1
+internal const val NO_EXITING_ROW = -1
 
 /** 退场播完再多等一帧才动数据：让收缩的最后一帧先落到屏幕上，删完不会看到一次跳变。 */
-private const val ROW_EXIT_SETTLE_MS = 40L
+internal const val ROW_EXIT_SETTLE_MS = 40L
 
-/** 每一行那三个触点（左列 / 右列 / 中间那颗「更多」）—— 一行一套。 */
+/** 每一行那几处触点（条件那几格 / 动作那一格 / 中间那颗「更多」）—— 一行一套。 */
 private class RuleAnchors {
-    val left = PreciseClickState()
+    /**
+     * 条件那几格**各一个** —— 一块可以带好几条条件，每条在卡片里各占一行，
+     * 菜单要弹在**被点的那一行**旁边，不能共用一份（共用时后布局的行会覆盖前面的坐标）。
+     *
+     *  按需增长（条件条数会变）：[conditionAt] 幂等，组合期多调几次也不会多长。
+     */
+    private val conditions = mutableListOf<PreciseClickState>()
     val right = PreciseClickState()
     val menu = PreciseClickState()
-}
 
-/** 一块里几条条件之间那个符号 —— 语言中立，不用进字典。 */
-private const val CONDITION_JOINER = " + "
+    fun conditionAt(index: Int): PreciseClickState {
+        while (conditions.size <= index) conditions += PreciseClickState()
+        return conditions[index]
+    }
+}
 
 /**
  * 小标题那一行的**最小**高度 —— 标题与右端那颗三点都在这一行里竖居中。
@@ -441,20 +504,23 @@ private val RULE_CELL_SHAPE = RoundedCornerShape(8.dp)
  */
 private class RuleCells(
     val anchors: RuleAnchors,
-    val onCondition: () -> Unit,
+    /** 点了**第几条**条件那一行（一块可以带好几条，各占一行）。 */
+    val onCondition: (Int) -> Unit,
     val onAction: () -> Unit,
     val onMenu: () -> Unit,
 )
 
 /** 一条规则那两行「写什么、配哪颗字形」—— 合成一个对象，[RuleBlock] 的参数才压得回 5 个以内。 */
 private class RuleText(
-    val condition: String,
+    /**
+     * 条件那几行 —— **一条条件一个**，`CardList` 里一条一个 `CardRow.Item`。
+     *
+     *  空表（新加的那一行还没条件）时给一条「未选择条件」，让用户知道这一格要配什么。
+     */
+    val conditionLines: List<ConditionLine>,
     val action: String,
-    /** 条件那一格还没选完 —— 文案换成「未选择条件」，行首图标置红。 */
-    val conditionEmpty: Boolean,
-    /** 命令那一格还没选 —— 同上。 */
+    /** 命令那一格还没选 —— 文字与图标压禁用色。 */
     val actionEmpty: Boolean,
-    val conditionIcon: ImageVector,
     val actionIcon: ImageVector,
 )
 
@@ -481,100 +547,83 @@ private fun RuleBlock(
     dead: Boolean,
     text: RuleText,
     cells: RuleCells,
+    /** 条件行的进出场要读它（刚插入的那条 / 正在退场的那条）。 */
+    menus: BranchMenuState,
 ) {
+    //  **刚插入的那一条条件**：先以不可见组合、下一帧再显 —— `AnimatedVisibility` 首帧就可见
+    //  的话不播进场（与 `BranchRow` 那个 `MutableTransitionState(!spec.fresh)` 同一个道理）。
+    val freshIndex = menus.freshCond?.takeIf { it.at == index }?.index
+    var freshShown by remember(freshIndex) { mutableStateOf(freshIndex == null) }
+    LaunchedEffect(freshIndex) {
+        if (freshIndex == null) return@LaunchedEffect
+        withFrameNanos { }
+        freshShown = true
+        //  **播过就把这笔账清掉**（与上面 `freshId` 同一条教训）：不清的话页面一重建
+        //  （去「选择应用」页挑完动作返回、来源页的组合已经注销），这一行又按「刚插入」
+        //  收起来再展开一次 —— 用户看到的就是「选完命令后还要再播一遍动画」。
+        menus.freshCond = null
+    }
     Column(Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = RULE_TITLE_HEIGHT),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            //  与各页的小标题**同一个组件**（同一档字号、颜色、行高）：「条件 N」是这一块的小标题，
-            //  不是正文。横向只把库里那 32dp 改成 20dp —— 默认值里含 12dp 页面边距，而这一页的外层
-            //  已经有 [PAGE_MARGIN]，照抄会多缩进一格（真机口径：两者字头都落在 112px @3.5x）。
-            SmallTitle(
-                text = I18n.format(Strings.COMMAND_BRANCH_ITEM, index + 1),
-                modifier = Modifier.weight(1f),
-                insideMargin = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-            )
-            Box(
-                modifier =
-                    Modifier
-                        .size(width = RULE_MENU_WIDTH, height = RULE_MENU_HEIGHT)
-                        .preciseClickAnchor(cells.anchors.menu)
-                        .clip(RULE_CELL_SHAPE)
-                        .clickable(onClick = cells.onMenu),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    TablerIcons.Outline.Dots,
-                    contentDescription = I18n.get(Strings.COMMON_MORE, "更多"),
-                    tint = COUITheme.colorScheme.onSurfaceVariantSummary,
-                    // 与点击区同高：库默认 24dp 塞不进 20dp 的框，上下会被圆角裁掉
-                    modifier = Modifier.size(RULE_MENU_HEIGHT),
-                )
-            }
-        }
+        RuleTitleRow(index, cells)
         //  一行条件、一行命令，**同一张卡**（与各页的 listview 同一个壳：Card + 行间细线 +
         //  首尾圆角），不再拆成两个胶囊 —— 拆开时中间那道缝读起来像两件不相干的事。
         //  两行各自可点，行尾那枚选择器说明「点开还有一层」（换条件 / 换动作）。
         CardList(
             margin = 0.dp,
             rows =
-                listOf(
-                    CardRow.Item(
-                        title = text.condition,
-                        icon = text.conditionIcon,
-                        //  没选完的那一格：图标与文字**都压到禁用色**（同一档），不加别的记号 ——
-                        //  这一行本身仍可点，靠文案「未选择条件」说清缺什么就够了。
-                        iconTint = if (text.conditionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                        titleTint = if (text.conditionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                        //  死分支（前面某一档条件已经凑齐）在条件这一行末尾标红 ——
-                        //  不必等点「确认」被拦下才知道这一条永远不会执行。
-                        trailing = { ConditionTrailing(dead) },
-                        modifier = Modifier.preciseClickAnchor(cells.anchors.left),
-                        onClick = cells.onCondition,
-                    ),
-                    CardRow.Item(
-                        title = text.action,
-                        icon = text.actionIcon,
-                        iconTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                        titleTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                        trailing = { SelectorGlyph() },
-                        modifier = Modifier.preciseClickAnchor(cells.anchors.right),
-                        onClick = cells.onAction,
-                    ),
-                ),
+                buildList {
+                    //  **一条条件一个 `CardItem`**：一块可以带好几条条件（逐条都要成立），
+                    //  每条各占卡片里的一行 —— 点哪一行就在**那一行**旁边弹条件菜单。
+                    //  不是一个 Item 里画多行字：那样每行没有自己的触点，点哪儿都只能改第一条。
+                    text.conditionLines.forEachIndexed { condIndex, line ->
+                        val disabledTint = COUITheme.colorScheme.disabledOnSecondaryVariant
+                        add(
+                            CardRow.Item(
+                                title = line.text,
+                                icon = line.icon,
+                                //  没配完的那一条：图标与文字**都压到禁用色**（同一档），不加别的记号 ——
+                                //  这一行本身仍可点，靠文案「未选择条件」说清缺什么就够了。
+                                iconTint = if (line.empty) disabledTint else null,
+                                titleTint = if (line.empty) disabledTint else null,
+                                //  行尾一律画那枚「点开还有一层」的选择器（每行都可点、都还有下一层）；
+                                //  「不会执行」那半句只挂在**最后一条**条件行 —— 那说的是
+                                //  「这一行整体」不会命中，不是某一条条件的问题。
+                                trailing = {
+                                    ConditionTrailing(dead = dead && condIndex == text.conditionLines.lastIndex)
+                                },
+                                modifier = Modifier.preciseClickAnchor(cells.anchors.conditionAt(condIndex)),
+                                onClick = { cells.onCondition(condIndex) },
+                                //  **进出场走通用动画**（`CardRow` 的 `visible`，与卡里其它行同一套：
+                                //  连它上面那条细线一起收起 / 展开）：
+                                //   · 正在退场的那一条 ⇒ 收起，播完由上面那个 effect 摘掉数据；
+                                //   · 刚插入的那一条 ⇒ 首帧不可见、下一帧显出来；
+                                //   · 其余 ⇒ **`true`**（一直走同一条分支，理由见下）。
+                                //
+                                //  **别给 `null`**：`null` 与 `true` 是 `CardList` 里两条不同的分支
+                                //  （直接画 / 套一层 `AnimatedVisibility`），从一条切到另一条会把
+                                //  这一行整棵子树重建一次 —— 真机表现是「刚插入的条件行播完、闪一下」。
+                                //  代价只是多一层常显的 `AnimatedVisibility`，一块顶多几条条件。
+                                visible =
+                                    when {
+                                        menus.exitingCond == CondRef(index, condIndex) -> false
+                                        condIndex == freshIndex -> freshShown
+                                        else -> true
+                                    },
+                            ),
+                        )
+                    }
+                    add(
+                        CardRow.Item(
+                            title = text.action,
+                            icon = text.actionIcon,
+                            iconTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
+                            titleTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
+                            trailing = { SelectorGlyph() },
+                            modifier = Modifier.preciseClickAnchor(cells.anchors.right),
+                            onClick = cells.onAction,
+                        ),
+                    )
+                },
         )
     }
-}
-
-/**
- * 条件那一行的行尾：死分支先标一句红的，再接那枚选择器。
- *
- *  为什么标在**这一行**而不是小标题：小标题是库组件 `SmallTitle`，只能给一整串字，染不了一半；
- *  而这一行本来就是「这一条什么时候执行」，写在这儿读起来最顺。
- */
-@Composable
-private fun ConditionTrailing(dead: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (dead) {
-            Text(
-                I18n.get(Strings.COMMAND_BRANCH_DEAD, "不会执行"),
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.error,
-                modifier = Modifier.padding(end = 6.dp),
-            )
-        }
-        SelectorGlyph()
-    }
-}
-
-/** 行尾那枚「点开还有一层」的选择器字形 —— 与菜单、网格里同一个记号（[PageIcons.Selector]）。 */
-@Composable
-private fun SelectorGlyph() {
-    Icon(
-        PageIcons.Selector,
-        contentDescription = null,
-        modifier = Modifier.size(ROW_END_ICON_SIZE),
-        tint = COUITheme.colorScheme.onSurfaceVariantActions,
-    )
 }

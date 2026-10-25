@@ -26,6 +26,15 @@ internal const val CONFIG_IN_FLIGHT_GRACE_MS = 2_000L
 internal const val PROC_SAME_TOLERANCE_MS = 1_000L
 
 /**
+ * 「上一趟自检问满所有轮都没人答」之后，隔多久才允许再问一次（[HostLinkState.needsLinkCheck]）。
+ *
+ *  取 30 秒：注入侧自愈通常发生在「重启后那十几秒」（`SystemContext` 借 Context、uid 晚到），
+ *  而一趟自检本身就要 [QUERY_ROUNDS] 轮 × 一档超时。太短会在宿主被冻结时把广播刷爆，
+ *  太长则用户盯着整片灰的首页等不到自愈。30 秒是一次「起身去倒杯水回来」的量级。
+ */
+internal const val LINK_SILENT_RETRY_MS = 30_000L
+
+/**
  * 「链路 / 报活」那一域的状态 —— 首页那条提示与「更多选项 → 运行状态」共用的那几项结论。
  *
  *  两处判据都在这几个字段上：宿主侧有没有在跑（[hostServiceUp] + [hostAliveToken]）、
@@ -83,6 +92,21 @@ internal object HostLinkState {
     var checkedHostStart by mutableLongStateOf(0L)
 
     /**
+     * 上一趟**问空了**之后，最早什么时候允许再问一次（[SystemClock.elapsedRealtime] 口径，
+     * `0` = 不限）。判据见 [needsLinkCheck]。
+     *
+     *  为什么需要它：问满所有轮都没人答时，`injectChecked` 会置 true（那是**结论**：
+     *  「问了没人答」），于是 `needsLinkCheck` 只剩「宿主换没换进程」一条 —— 而注入侧
+     *  自己恢复（借到 Context、uid 晚到）并不换进程 ⇒ 首页从此再也不会重问，整片灰着，
+     *  只能杀掉 `:ui` 进程或重启手机。这一位把「问空」与「问通」分开：问空的那一趟
+     *  过 [LINK_SILENT_RETRY_MS] 之后允许再问一次，问通的那一趟清零、照旧不问。
+     *
+     *  不用 Compose 状态：它只该在「回到首页」那个时机被读，变化本身不必驱动重组 ——
+     *  真让它驱动重组，就会变成「到期那一帧自己重问」，与「不刷广播」的初衷相反。
+     */
+    var silentRetryAt: Long = 0L
+
+    /**
      * 「已经说过的那条提醒」（[noticeReason] 的返回值）—— 进程级，跨页面组合的生死。
      *
      *  这条提醒（系统侧 / 宿主侧还跑着旧包）用户口径是「提示一下就好」，不是常驻。
@@ -107,7 +131,13 @@ internal object HostLinkState {
      *  更新粒度不同，同一进程里连续两次调用就能差几毫秒；宿主每回一条报活就重算一次，
      *  一条报活足以把「问过」判成「没问过」。`startWall` 那边已取整到秒，这里再加一档容差兜底。
      */
-    fun needsLinkCheck(): Boolean = !(injectChecked && sameProcess(checkedHostStart, hostProcStart))
+    fun needsLinkCheck(): Boolean {
+        if (!injectChecked) return true
+        if (!sameProcess(checkedHostStart, hostProcStart)) return true
+        // 上一趟问空了：退避窗口过去之后允许再问一次（判据见 `silentRetryAt`）。
+        val retryAt = silentRetryAt
+        return retryAt != 0L && SystemClock.elapsedRealtime() >= retryAt
+    }
 
     /**
      * 两个「进程启动时刻」是不是同一个进程 —— 允许 [PROC_SAME_TOLERANCE_MS] 的误差。
@@ -183,16 +213,54 @@ internal object HostLinkState {
     var pendingConfigSince by mutableLongStateOf(0L)
         private set
 
+    /**
+     * 宽限到期那一刻的收尾任务 —— 见 [markConfigPending]。
+     *
+     *  主线程的 `Handler`：这一位由页面点击写（本来就在主线程），到期后要改的也是
+     *  Compose 状态（必须回主线程）。
+     */
+    private val mainHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
+    private var pendingExpiry: Runnable? = null
+
     /** 记下「[tag] 这一份刚写下去、注入侧还没回包」。 */
     fun markConfigPending(tag: String) {
         pendingConfigTag = tag
         pendingConfigSince = SystemClock.uptimeMillis()
+        schedulePendingExpiry()
     }
 
     /** 结束「在途」—— 回包对上了，或宽限到期。 */
     fun clearConfigPending() {
         pendingConfigTag = null
         pendingConfigSince = 0L
+        pendingExpiry?.let { mainHandler.removeCallbacks(it) }
+        pendingExpiry = null
+    }
+
+    /**
+     * 排一次「宽限到期」的收尾。
+     *
+     * ## 为什么必须有它
+     *
+     *  [configPending] 只**读**时间窗，不写状态：窗口过期这件事本身不会让任何 Compose 状态变，
+     *  于是没有人重组 —— 页面就一直停在「已生效」那一档（乐观档），直到一次无关的重组
+     *  （切页、切语言）才被发现。真机表现是「广播丢了、注入侧回的指纹又没变，底部一直说已生效」。
+     *
+     *  排一次定时任务，到期时把「在途」清掉 ⇒ 状态写 ⇒ 重组 ⇒ 页面按真实指纹重判。
+     *  只清**同一趟**：期间可能又写了新的一份（它自己会排新的到期），所以到期时再核一遍时间窗。
+     */
+    private fun schedulePendingExpiry() {
+        pendingExpiry?.let { mainHandler.removeCallbacks(it) }
+        val task =
+            Runnable {
+                pendingExpiry = null
+                val since = pendingConfigSince
+                if (since > 0 && SystemClock.uptimeMillis() - since >= CONFIG_IN_FLIGHT_GRACE_MS) {
+                    clearConfigPending()
+                }
+            }
+        pendingExpiry = task
+        mainHandler.postDelayed(task, CONFIG_IN_FLIGHT_GRACE_MS)
     }
 
     /**

@@ -14,7 +14,7 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
-import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.mapActions
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
 import java.text.SimpleDateFormat
@@ -71,33 +71,13 @@ internal fun SettingsPage.addCommand() {
     if (editingFrom != null && editingFrom != name) {
         val cfg = configState.config.value
         val oldToken = Command.PREFIX + editingFrom
-
-        fun move(a: Action) = if (a.token == oldToken) Action.Custom(name) else a
-
-        //  条件规则里的动作是**第四处引用**（前三处是与手势那三格）。漏了它，改名之后
-        //  规则命中时解析新名字失败 —— 界面上看不出任何悬空，只是那一条不再执行。
-        fun moveRule(r: com.lookie.opluskey.core.model.StateRule) =
-            if (r.action.token == oldToken) r.copy(action = Action.Custom(name)) else r
-        // **每一颗键**都要挪：自定义键同样能绑 `cmd:名字`，只改侧键的话那些键按下去就是
-        //  「命令已不存在」（NOT_FOUND），而用户看到的是「改名成功」。
-        val moved = mutableMapOf<KeyId, com.lookie.opluskey.core.model.KeyConfig>()
-        for (k in cfg.allKeys) {
-            val key = cfg.key(k)
-            val updated =
-                key.copy(
-                    single = move(key.single),
-                    double = move(key.double),
-                    long = move(key.long),
-                    rules = key.rules.map(::moveRule),
-                )
-            if (updated != key) moved[k] = updated
-        }
-        if (moved.isNotEmpty()) {
-            bindingMoved =
-                write(
-                    cfg.copy(keys = cfg.keys + moved),
-                    "改名后把绑定挪到新名字：$editingFrom → $name",
-                )
+        // 五处动作位（三格手势 / 条件规则 / 组合键两档）由 `mapActions` 一次走完，
+        //  这里只回答「这一处指的是不是旧名字」。逐处手写 `copy(...)` 的版本漏过两次：
+        //  先漏条件规则（规则命中时解析新名字失败），再漏组合键那两档（组合按下仍是 NOT_FOUND），
+        //  而界面上都看不出任何悬空 —— 只有那只手按下去没反应。遍历只留 `mapActions` 一处。
+        val next = cfg.mapActions { if (it.token == oldToken) Action.Custom(name) else it }
+        if (next != cfg) {
+            bindingMoved = write(next, "改名后把绑定挪到新名字：$editingFrom → $name")
         }
     }
     // 绑定没挪成 ⇒ 把命令库**退回改名前的样子**：库里是新名、手势上还指着 `cmd:旧名` 的话，

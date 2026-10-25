@@ -34,7 +34,6 @@ import com.lookie.opluskey.ui.gestureProbe
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
@@ -330,23 +329,15 @@ internal fun SettingsPage.SerialSteps() {
                     if (sheetAt != null && sheetAt >= 0) replaceStep(sheetAt, token) else addStep(token)
                 },
                 onDismiss = { stepSheet = null },
+                //  正在编辑的就是这条命令：候选里不再列它（引用自己＝环，执行侧只会报「套太深」）。
+                //  **两个名字都排除**：草稿名是用户刚改的、库里那条还叫 `editingName` —— 只排除草稿名
+                //  的话，旧名字那一行仍在候选里，选中它会把旧命令塞进新命令的步骤（见 `excludeTokens`）。
+                excludeTokens =
+                    setOfNotNull(
+                        Command(commandDraft.draft.name, commandDraft.draft.kind).token,
+                        commandDraft.draft.editingName?.let { Command(it, commandDraft.draft.kind).token },
+                    ),
             ),
-    )
-}
-
-/**
- * 行尾那颗「点这一行能选一个」的指示（[PageIcons.Selector]）—— 步骤行与「添加命令」行**同一颗**。
- *
- *  尺寸取 [ROW_END_ICON_SIZE]（24dp），与「捐赠打赏」那一行的行尾同一档，不套 `ICON_ACTION_SIZE`
- *  那颗按钮大的盒子；tint 走最弱那一档（`onSurfaceVariantActions`），比行首那颗图标弱。
- */
-@Composable
-private fun SelectorGlyph() {
-    Icon(
-        PageIcons.Selector,
-        contentDescription = null,
-        modifier = Modifier.size(ROW_END_ICON_SIZE),
-        tint = COUITheme.colorScheme.onSurfaceVariantActions,
     )
 }
 

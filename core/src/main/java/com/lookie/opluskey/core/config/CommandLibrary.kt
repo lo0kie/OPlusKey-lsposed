@@ -168,31 +168,42 @@ object CommandLibrary {
         json.encodeToString(CommandLibraryDto(VERSION, commands.map { CommandDto.of(it) })) + "\n"
 
     /**
-     * 读命令库（三态）。文件不存在 ⇒ [Load.Absent]；外皮解不开 / 被截断 / 解析抛异常 ⇒
-     * [Load.Unreadable]（**不是**空表）；正常 ⇒ [Load.Ok]。全程不抛。
+     * 读命令库（三态）。文件不存在 ⇒ [Load.Absent]；**文件在却读不出来**（权限 / IO）/ 外皮解不开 /
+     * 被截断 / 解析抛异常 ⇒ [Load.Unreadable]（**不是**空表）；正常 ⇒ [Load.Ok]。全程不抛。
+     *
+     * 「文件真不在」与「文件在但没权限」的分辨（`FileNotFoundException` 的两种来路）、
+     * 只剩 `.bak` 时的还原、BOM 剥离，全在 [ModuleFiles.read]——那里是全项目唯一一处，
+     * 读配置 / 读界面状态走的是同一条判据。
      */
     fun loadState(): Load =
         try {
-            val f = ConfigStore.commandFile()
-            // 走 ConfigStore.readText：剥 BOM（记事本另存为会加），否则整份命令库在 JSONObject 那一步就抛；
-            //  它同时负责「只剩 `.bak` 时先还原」——所以**不能**先判 `f.isFile`（那会把还原机会跳过去）。
-            val raw =
-                try {
-                    ConfigStore.readText(f)
-                } catch (e: java.io.FileNotFoundException) {
-                    XLog.d("读命令库：主文件与 .bak 都不在，按没有命令处理 | ${e.message}")
-                    return Load.Absent
+            when (val r = ConfigStore.files().read(ConfigStore.SLOT_COMMANDS)) {
+                ModuleFiles.Load.Absent -> {
+                    XLog.d("读命令库：主文件与 .bak 都不在，按没有命令处理")
+                    Load.Absent
                 }
-            // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文解不开，都算「读不懂」——
-            //  同一个判据、不抛。不做旧格式兼容（见 `FileObfuscation` 的类注释）。
-            val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
-            if (text == null) {
-                XLog.w("读命令库：外皮解不开（文件可能被截断）⇒ 按读不懂处理")
-                Load.Unreadable
-            } else {
-                // 解析这一层也分「读得懂」与「读不懂」：`parse` 兜底成空表，但外皮剥开了、
-                //  正文却不是合法 JSON，那同样是「文件坏了」而不是「用户没有命令」。
-                parseState(text)
+
+                ModuleFiles.Load.Unreadable -> {
+                    // 判据级（用 w）：命令库读不出来会让下一次保存被拒，用户看到的是「存不了」。
+                    //  [ModuleFiles.read] 那边只有一句 d（它在按键路径上，w 会刷屏），
+                    //  这一层知道「是命令库这一份」，说清楚是谁读不懂。
+                    XLog.w("读命令库失败（文件在但读不出来）⇒ 按读不懂处理")
+                    Load.Unreadable
+                }
+
+                is ModuleFiles.Load.Ok -> {
+                    // 剥外皮（[FileObfuscation]）：首行不是魔数、或正文解不开，都算「读不懂」——
+                    //  同一个判据、不抛。不做旧格式兼容（见 `FileObfuscation` 的类注释）。
+                    val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, r.text)
+                    if (text == null) {
+                        XLog.w("读命令库：外皮解不开（文件可能被截断）⇒ 按读不懂处理")
+                        Load.Unreadable
+                    } else {
+                        // 解析这一层也分「读得懂」与「读不懂」：`parse` 兜底成空表，但外皮剥开了、
+                        //  正文却不是合法 JSON，那同样是「文件坏了」而不是「用户没有命令」。
+                        parseState(text)
+                    }
+                }
             }
         } catch (e: Throwable) {
             XLog.w("读命令库失败（按读不懂处理）：${e.message}")
@@ -253,15 +264,15 @@ object CommandLibrary {
     }
 
     /**
-     * 写命令库；失败只记日志。必须走 [ConfigStore.writeAtomically]（`AtomicFile` 原子写，见那边的说明）：
+     * 写命令库；失败只记日志。必须走 [ModuleFiles.write]（`AtomicFile` 原子写，见那边的说明）：
      * 写方是设置页 `:ui` 进程、读方是宿主主进程（`host/action/CustomCommandRunner` 按键时现读），
      * 同 uid 不同进程 —— 直接 `writeText`（先截断再写）撞上读方就会读到半截 JSON，那一下
      * 按键的所有 `cmd:` 都报「命令库里没有」；写盘中途抛异常更会把命令库永久留在坏文件上。
      */
     fun save(commands: List<Command>): Boolean {
         val ok =
-            ConfigStore.writeAtomically(
-                ConfigStore.commandFile(),
+            ConfigStore.files().write(
+                ConfigStore.SLOT_COMMANDS,
                 // 与主配置同一层外皮（[FileObfuscation]）
                 FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, serialize(commands)),
                 openReadable = false,
@@ -303,7 +314,7 @@ object CommandLibrary {
      *  读方是宿主主进程，**写方清缓存清不到读方**，读方只能靠指纹自己发现「文件换了」。
      *  若新内容**长度恰好相同**、又落在同一个 mtime 粒度内，只看（修改时间, 长度）就会把陈值
      *  当命中，于是宿主永久读旧表 —— 而日志完全自洽，看不出问题。
-     *  写盘走的是 `AtomicFile`（同目录改名换文件）（[ConfigStore.writeAtomically]），目标文件因此每次都是
+     *  写盘走的是 `AtomicFile`（同目录改名换文件）（[ModuleFiles.write]），目标文件因此每次都是
      *  **新 inode**，inode 必变，能天然区分出每一次写。
      *
      *  取法统一走 [inodeOf]（在 [ConfigStore] 那份里）：两份指纹各自实现过一次，

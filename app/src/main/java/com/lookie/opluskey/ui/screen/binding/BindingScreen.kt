@@ -30,9 +30,10 @@ import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.gestureLabel
 import com.lookie.opluskey.ui.rememberFabVisibleOnScroll
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.state.BandHeight
+import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -60,13 +61,17 @@ import kotlinx.coroutines.launch
  *     把点击 / 滑动全吃掉 —— 只把 `onTabSelected` 改成空实现是不够的，
  *     那样控件看着还能点、点了却没反应，比灰着更让人困惑。
  *
- *  高度报给 [SettingsPage.bindingBandHeight]：内容顶上那个占位 Spacer 读它，
+ *  高度报给 `SettingsPage.bindingBandHeight` / `comboBandHeight`：内容顶上那个占位 Spacer 读它，
  * 两者才严丝合缝。
  */
 @Composable
-internal fun SettingsPage.BindingTabBand(
+internal fun SettingsPage.PageTabBand(
     pagerState: androidx.compose.foundation.pager.PagerState,
+    /** 每一档的标签 —— 条数必须等于页数（组合键那边只有两档）。 */
+    labels: List<String>,
     enabled: Boolean,
+    /** 带子高度报到哪一份（每页一份，见 `SettingsPage.bindingBandHeight` / `comboBandHeight`）。 */
+    band: BandHeight,
 ) {
     val tick = rememberTick()
     val scope = rememberCoroutineScope()
@@ -77,10 +82,10 @@ internal fun SettingsPage.BindingTabBand(
     Box(
         Modifier
             .fillMaxWidth()
-            .onSizeChanged { bindingBandHeight.report(it.height) },
+            .onSizeChanged { band.report(it.height) },
     ) {
         TabRowWithContour(
-            tabs = Gesture.entries.map { gestureLabel(it) },
+            tabs = labels,
             // 亮哪一个只看**分页器停在哪一页**（`currentPage`）—— 标签的粗细与颜色仍按整页切，
             // 只有滑块（下面那条 `selectedTabPosition`）是连续跟手的。
             selectedTabIndex = pagerState.currentPage,
@@ -139,9 +144,12 @@ internal fun SettingsPage.BindingTabBand(
 internal fun SettingsPage.BindingScreen(
     pagerState: androidx.compose.foundation.pager.PagerState,
     enabled: Boolean,
-    /** 点「打开应用」那一格时跳「打开应用」页（新增，见 [Screen.APP_PICKER]）；
-     *  带上是**哪个手势**点的 —— 挑中写哪个手势、没挑就返回回退哪个手势都靠它。 */
-    onOpenAppPicker: (Gesture) -> Unit,
+    /**
+     * 点「打开应用」那一格时跳「打开应用」页（见 [Screen.APP_PICKER]）；
+     * 带上的是**哪一格**点的（[BindingTarget]）—— 挑中写回哪一格、没挑就退回来都靠它。
+     * 组合键那一页用的是同一套网格，所以这里收目标而不是手势。
+     */
+    onOpenAppPicker: (BindingTarget) -> Unit,
     /** 点「控制中心磁贴」那一格时跳「控制中心磁贴」页。 */
     scrollBehavior: ScrollBehavior,
 ) {
@@ -163,8 +171,9 @@ internal fun SettingsPage.BindingScreen(
      * 里面的话每翻一页都会重放一次进/出场，看着像闪。
      */
     val navigateToCommands: () -> Unit = nav@{
-        // 通用通道（判据只有系统状态，见 `PageHaptics.allowed`），与分段控件点击同一条规矩。
-        tick()
+        //  **这里不再振**：这条 lambda 现在有两个来路 —— 右下角那颗 FAB（它不是列表行，
+        //  自己在调用点叫一声，见下面 `BindingFab` 的 `onClick`），以及网格末尾那行
+        //  「自定义命令」（那是 `CardRow`，由 `CardList` 统一振）。这里再振一次就是两下。
         //  注意：这是**「新增」的唯一入口**，必须先把草稿清干净：
         //  这里必须 reset —— `goBack` 只在草稿 `dirty` 时才 reset —— 「点开一条已保存的命令
         //  看一眼、原样返回」那种不脏的退页**不会**清 `editingName`，于是下次点这颗 FAB 进来
@@ -246,7 +255,11 @@ internal fun SettingsPage.BindingScreen(
         // —— 进「自定义命令」页的唯一入口 FAB ——
         BindingFab(
             visible = rememberFabVisibleOnScroll(listScrolls[pagerState.currentPage]),
-            onClick = navigateToCommands,
+            //  FAB 不经过 `CardRow`，那层默认振动管不到它 —— 自己叫一声（同一个通用通道）。
+            onClick = {
+                tickNow()
+                navigateToCommands()
+            },
         )
     }
 }

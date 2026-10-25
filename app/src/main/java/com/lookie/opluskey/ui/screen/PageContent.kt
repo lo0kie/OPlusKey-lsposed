@@ -35,6 +35,7 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.LocalHint
+import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.PageDebugChannel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -50,6 +51,7 @@ import com.lookie.opluskey.ui.screen.home.HomeLinkSelfCheck
 import com.lookie.opluskey.ui.state.CONFIG_IN_FLIGHT_GRACE_MS
 import com.lookie.opluskey.ui.state.InjectStatus
 import com.lookie.opluskey.ui.state.UiState
+import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.Scaffold
 import io.github.suqi8.coui.kmp.nav.core.NavDisplay
@@ -134,6 +136,9 @@ internal fun SettingsPage.PageContent() {
             //  `remember` 住：与下面那条 `LocalDisabledClick` 同一个理由 ——
             //  `hint` 在**调用那一刻**才读，每次重组换一个新实例会让所有读它的控件白白重组一遍。
             LocalHint provides remember { { hint(it) } },
+            //  能点的行默认振一下（见 `LocalTick`）：控件层拿不到页面实例，走这一条下来。
+            //  `remember` 住同一个理由：每次重组换新实例会让读它的控件白白重组。
+            LocalTick provides remember { { tickNow() } },
             //  禁用态被点一下要说的话：库里所有可点控件（`BasicComponent` / `IconButton` /
             //  可交互 `Card` / 菜单行）在 `enabled = false` 时把这一下点击交给它
             //  —— 见 `patches/coui/0008-disabled-click-explains.patch`。
@@ -174,10 +179,16 @@ internal fun SettingsPage.PageContent() {
                         //  裁掉转场出画的部分：push/pop 时旧页滑出、新页滑入，
                         .clipToBounds(),
                 ) {
-                    val pagerState = rememberPagerState(pageCount = { Gesture.entries.size })
-                    val commandPager = rememberPagerState(pageCount = { CommandKind.FORM_TABS.size })
-                    PageEffects(navOwner, pagerState, commandPager)
-                    PageBackStack(pagerState, commandPager)
+                    //  三个分页器一次建好、打成一个包往下传（见 [PagePagers]）
+                    val pagers =
+                        PagePagers(
+                            gestures = rememberPagerState(pageCount = { Gesture.entries.size }),
+                            commands = rememberPagerState(pageCount = { CommandKind.FORM_TABS.size }),
+                            //  组合键只有短按 / 长按两档（`Gesture.entries` 是三档，别直接借它）
+                            combos = rememberPagerState(pageCount = { 2 }),
+                        )
+                    PageEffects(navOwner, pagers)
+                    PageBackStack(pagers)
                 }
             }
         }
@@ -194,8 +205,7 @@ internal fun SettingsPage.PageContent() {
 @Composable
 private fun SettingsPage.PageEffects(
     navOwner: NavigationEventDispatcherOwner,
-    pagerState: PagerState,
-    commandPager: PagerState,
+    pagers: PagePagers,
 ) {
     // 深浅变化同步给 hook 侧（只挂一次，不随子页重复挂）
     SyncToHost()
@@ -255,8 +265,8 @@ private fun SettingsPage.PageEffects(
     LaunchedEffect(navStack.size, overlays.openCount.intValue) {
         hooks.onBackInterceptionChanged?.invoke()
     }
-    DebugGestureSwitch(pagerState)
-    PushResetsPagers(pagerState, commandPager)
+    DebugGestureSwitch(pagers.gestures)
+    PushResetsPagers(pagers)
     //  提示条那条**页面级**副作用（一次性提醒）—— 提示条全局只有这一叠，
     //  所以弹它的人也只能在页面级这一处（实现见 `PageSnackbar.kt`，那里是提示条的家）。
     //  常驻结论那条已经删掉：见 `HintQueue` 的类注释。
@@ -397,10 +407,7 @@ private fun SettingsPage.DebugGestureSwitch(pagerState: PagerState) {
  *  就该原样留着（「打开应用」挑完退回「按键绑定」，还得停在**刚才那个手势**上）。
  */
 @Composable
-private fun SettingsPage.PushResetsPagers(
-    pagerState: PagerState,
-    commandPager: PagerState,
-) {
+private fun SettingsPage.PushResetsPagers(pagers: PagePagers) {
     var previousDepth by remember { mutableIntStateOf(navStack.size) }
     LaunchedEffect(navStack.size) {
         val depth = navStack.size
@@ -409,7 +416,13 @@ private fun SettingsPage.PushResetsPagers(
         if (!pushed) return@LaunchedEffect
         when (screen) {
             Screen.BINDING -> {
-                pagerState.scrollToPage(0)
+                pagers.gestures.scrollToPage(0)
+            }
+
+            // 组合键编辑页每次都从「短按」那一档开始 —— 上一组停在长按，换一组进来还停在长按，
+            //  看着像「这一组没有短按的网格」
+            Screen.COMBO_EDIT -> {
+                pagers.combos.scrollToPage(0)
             }
 
             // 「自定义命令」页**按草稿的类型**定位，不是一律回第一页：
@@ -422,7 +435,7 @@ private fun SettingsPage.PushResetsPagers(
             //  分叉那一档不在这个分页器里（它是独立页）：`indexOf` 给出 -1 ⇒ 落到第一页，
             //  紧接着 `CommandTabSync` 会把 `draft.kind` 拨回单条 —— 这一页本来也只认这两档。
             Screen.COMMANDS -> {
-                commandPager.scrollToPage(
+                pagers.commands.scrollToPage(
                     CommandKind.FORM_TABS.indexOf(commandDraft.draft.kind).coerceAtLeast(0),
                 )
             }
@@ -440,10 +453,7 @@ private fun SettingsPage.PushResetsPagers(
  * 所以注册一次就够，页与页的区别全在 [PageEntry] 里那个 `when`。
  */
 @Composable
-private fun SettingsPage.PageBackStack(
-    pagerState: PagerState,
-    commandPager: PagerState,
-) {
+private fun SettingsPage.PageBackStack(pagers: PagePagers) {
     NavDisplay(
         backStack = navStack,
         //  系统返回那条链在本集成方式下是断的（见 [navStack] 的注释），这个回调
@@ -461,7 +471,7 @@ private fun SettingsPage.PageBackStack(
         modifier = Modifier.fillMaxSize(),
     ) {
         entry<Screen> { s ->
-            PageEntry(s, pagerState, commandPager)
+            PageEntry(s, pagers)
         }
     }
 }

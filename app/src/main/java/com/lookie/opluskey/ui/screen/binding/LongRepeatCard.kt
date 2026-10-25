@@ -13,7 +13,6 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setLongRepeat
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -45,7 +44,6 @@ internal fun SettingsPage.LongRepeatCard(
     //  （卡片上的值却还是侧键的，看着像「拖了没反应」）。
     val editing = KeyWatchState.editing(cfg)
     val key = cfg.key(editing)
-    val tick = rememberTick()
 
     CardList(
         rows =
@@ -62,7 +60,6 @@ internal fun SettingsPage.LongRepeatCard(
                     checked = key.longRepeat,
                     enabled = !blocked,
                 ) {
-                    tick()
                     setLongRepeat(it)
                 },
                 // 「连续触发时振动」与「触发间隔」只在**开关打开时**才存在（关着时没有可调的东西）。
@@ -80,7 +77,6 @@ internal fun SettingsPage.LongRepeatCard(
                     enabled = !blocked,
                     visible = key.longRepeat,
                 ) {
-                    tick()
                     setRepeatVibrate(it)
                 },
                 CardRow.Custom(visible = key.longRepeat) { position ->

@@ -86,6 +86,33 @@ internal fun BoxScope.PickListLoadingState(
 }
 
 /**
+ * 列表**没读出来** —— 与「正在加载」并列的第二档占位。
+ *
+ *  为什么必须有它：列表只在 `loaded != null` 时铺（见 `AppPickerList`），所以「查失败、`loaded`
+ *  仍是 null」这一档如果什么都不画，整页就是**一片空白** —— 连一句「没读出来」都看不到，用户只能
+ *  猜。文案与 `emptyHint` 里那一档同一句（同一个原因，不该有两种说法）。
+ */
+@Composable
+internal fun BoxScope.PickListFailedState(
+    visible: Boolean,
+    topInset: Dp,
+) {
+    PageStatePlaceholder(
+        visible = visible,
+        topInset = topInset,
+        text = I18n.get(Strings.APP_PICKER_LOAD_FAILED, "应用列表没读出来，退回上一页再进来试一次"),
+        glyph = { tint ->
+            Icon(
+                PageIcons.EmptyApps,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                tint = tint,
+            )
+        },
+    )
+}
+
+/**
  * 空态那句话 —— 按「为什么一条都没有」分四档（真因优先：**没查出来**不是「一个都没有」）。
  *
  *  注意：这一句用的是**页面级**的两个落盘开关（`showUnopenable`）与搜索词，所以放在
@@ -157,7 +184,13 @@ internal fun SettingsPage.AppConfirmFab(
             val pkg = AppTarget.pkg(target)
             // 一行一个应用：`pending` 可能带 `/类名`，所以按「同一个应用」找，不能按 `same`
             val app = ui.apps.firstOrNull { AppTarget.sameApp(it.target, target) }
-            if (app != null && !app.launchable) {
+            //  **只拦「整个应用都没有入口」那一档**：`launchable` 是**应用级**的判据
+            //  （`LaunchableApp` 只有包名，没有具体界面），而用户可能是在二级页挑了一个
+            //  具体界面 —— 那一页列出来的就是能起的入口。按应用行拦等于把页面自己提供的
+            //  可选项否掉：开了「显示失效应用」之后，挑一个可用的 Activity 却被弹
+            //  「此应用无法打开」，一个字节都不写。带 `/类名` 的 target 交给执行侧那把尺子
+            //  （`AppLauncher` 解析不出来会自己报「打不开」）。
+            if (app != null && !app.launchable && AppTarget.activity(target) == null) {
                 XLog.w("选择应用：$pkg 拉不起来，弹「此应用无法打开」")
                 ui.blockedUnopenable = app
                 return@PageFabButton

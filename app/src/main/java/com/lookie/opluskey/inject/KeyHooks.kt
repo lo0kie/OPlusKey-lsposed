@@ -104,14 +104,17 @@ internal object KeyHooks {
                 onRelease = { id ->
                     forwarder.release(id)
                 },
-                // 组合键（两颗键一起按）：这一层先只证明「认得出」，执行什么要等绑定数据
-                //  （那需要一套配置与入口）。判出来也记一笔，链路自检才算端到端通。
-                onCombo = { keys, long ->
+                // 组合键（两颗键一起按）：判出来就**直接转给宿主执行** —— 动作在
+                //  `ComboKey` 上（短按 / 长按两格），判定侧只负责认档与转发，与单键手势同一分工。
+                onCombo = { combo, gesture, repeat ->
                     noteGesture()
-                    XLog.w(
-                        "组合键：${keys.joinToString(" + ") { it.label }} " +
-                            "${if (long) "一起按住" else "一起短按"} ⇒ 已判定（尚无绑定）",
-                    )
+                    //  连续触发的重复压到 d（release 裁掉）：一次按住会来几十条，W 会把日志淹掉
+                    val log =
+                        "组合键：${combo.id}（${combo.keys.joinToString(" + ")}）${gesture.label}" +
+                            "${if (repeat) "（连续触发）" else ""}" +
+                            " → ${XLog.redactToken(combo.actionOf(gesture).token)}"
+                    if (repeat) XLog.d(log) else XLog.w(log)
+                    forwarder.forwardCombo(combo.id, gesture, repeat)
                 },
             )
         // 主开关翻到「不接管」时撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。

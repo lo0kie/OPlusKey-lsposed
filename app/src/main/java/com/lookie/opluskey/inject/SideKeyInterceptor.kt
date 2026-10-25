@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyConfig
@@ -46,8 +47,12 @@ internal class SideKeyInterceptor(
     private val onGestureNoted: () -> Unit,
     /** 判过长按的这一按松手了（去处与 [forward] 同一处，见 `GestureDetector.onLongReleased`）。 */
     private val onRelease: (KeyId) -> Unit,
-    /** 判出一次「两颗键一起按」（短按 / 一起按住）。组合没有单键配置，走这条独立回调。 */
-    private val onCombo: (List<KeyId>, Boolean) -> Unit,
+    /**
+     * 判出一次「两颗键一起按」：哪一档组合 + 是短按还是长按。
+     *
+     *  组合没有单颗键的 `KeyConfig`（动作在 `ComboKey` 上、执行在宿主），所以走这条独立回调。
+     */
+    private val onCombo: (ComboKey, Gesture, Boolean) -> Unit,
 ) {
     /**
      * 手势判定器 —— 拿到的是 hook 回调里的原始事件，时序是真的，不会被「解冻灌包」搅乱。
@@ -78,9 +83,9 @@ internal class SideKeyInterceptor(
             handler = handler,
             onCombo = onCombo,
             resetKey = { id -> detector.reset(id) },
-            // 绑定数据还没有（那需要一套配置与入口）—— 这里恒 false ⇒ 组合不成立，
-            //  两颗键照旧各走各的。等绑定落地，改成「按这两颗键查一次绑定」即可。
-            hasBinding = { _ -> false },
+            // 这一组有没有绑定 —— 注入侧手上只有广播来的那份配置（配置文件它读不到），
+            //  所以判据收在 `ConfigChannel.comboFor` 一处：没有这一档就交回单键判定器。
+            bindingFor = { keys -> ConfigChannel.comboFor(keys) },
         )
 
     /**
@@ -437,7 +442,7 @@ internal class SideKeyInterceptor(
                         }
                         // 两颗键一起按 ⇒ 这一下归组合，不再喂单键判定器
                         //  （组合成立时那两颗键的单键状态机已被摘掉）
-                        if (combo.onDown(id, keyConfig)) return true
+                        if (combo.onDown(id)) return true
                         detector.onKeyDown(id, keyConfig)
                         true
                     }

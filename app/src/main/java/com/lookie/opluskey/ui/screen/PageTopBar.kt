@@ -1,12 +1,12 @@
 package com.lookie.opluskey.ui.screen
 
-import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.PageHeader
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -17,20 +17,25 @@ import com.lookie.opluskey.ui.model.ACTIVITY_PICKER_TITLE
 import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
 import com.lookie.opluskey.ui.model.BINDING_TITLE
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
+import com.lookie.opluskey.ui.model.COMBO_TITLE
 import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SUBTITLE_DIM_FACTOR
+import com.lookie.opluskey.ui.model.gestureLabel
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
-import com.lookie.opluskey.ui.screen.binding.BindingTabBand
+import com.lookie.opluskey.ui.screen.binding.PageTabBand
+import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
+import com.lookie.opluskey.ui.screen.combo.comboLabel
 import com.lookie.opluskey.ui.screen.command.BranchHeaderAdd
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.command.branchDefaultLabel
 import com.lookie.opluskey.ui.screen.home.ResetMenu
+import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.state.KeyWatchState
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -46,8 +51,7 @@ internal fun SettingsPage.PageTopBar(
     s: Screen,
     scrollBehavior: ScrollBehavior,
     hazeState: HazeState,
-    pagerState: PagerState,
-    commandPager: PagerState,
+    pagers: PagePagers,
 ) {
     // 「按键绑定」页顶栏那枚禁用标记要读的两位：**当前在编辑哪颗**（界面状态）× **它开没开**（配置）。
     //  判据直接借页内网格那支 [keyEnabled] —— 同一句「这一颗键开没开」不该有两份写法。
@@ -107,7 +111,7 @@ internal fun SettingsPage.PageTopBar(
         scrollBehavior = scrollBehavior,
         state = hazeState,
         // 顶栏底下那条**固定带**（三条带子各归各的页），见 [PageBottomBand]。
-        bottomContent = { PageBottomBand(s, pagerState, commandPager) },
+        bottomContent = { PageBottomBand(s, pagers) },
     )
 }
 
@@ -133,6 +137,12 @@ private fun SettingsPage.pageTitle(s: Screen): String =
         Screen.DONATE_LIST -> DONATE_LIST_TITLE
 
         Screen.GENERAL -> GENERAL_TITLE
+
+        // 两页不同名：列表页写「组合键列表」，编辑页写「组合键」——
+        //  顶栏一眼能看出自己在哪一层（在编哪一组由尾随小标题说，见 [pageSubtitle]）。
+        Screen.COMBOS -> COMBO_TITLE
+
+        Screen.COMBO_EDIT -> COMBO_TITLE
     }
 
 /**
@@ -184,7 +194,8 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             }
         }
 
-        // 分叉页：这一行写**在编哪一档** —— `侧键-单击`。分叉是按「键 + 手势」各一份的，
+        // 分叉页：这一行写**在编哪一档** —— `「侧键」-单击`（键名套一对括号，见
+        //  `branchDefaultLabel`）。分叉是按「键 + 手势」各一份的，
         //  标题只写「条件执行」看不出在改哪一档。
         Screen.BRANCHES -> {
             branchDefaultLabel()
@@ -193,6 +204,16 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
         Screen.ACTIVITY_PICKER -> {
             picker.activityTarget?.let { selectedLabel(it) }.orEmpty()
+        }
+
+        // 组合键编辑页：这一行写**在编哪一组**（`侧键 + 电量 +`）—— 标题只写「组合键」，
+        //  而这一页改的是其中一档，不写就分不出在看哪一组。
+        Screen.COMBO_EDIT -> {
+            val cfg = configState.config.value
+            ComboEditState.editingId
+                ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
+                ?.let { comboLabel(cfg, it, bracketed = true) }
+                .orEmpty()
         }
 
         else -> {
@@ -240,6 +261,9 @@ private fun SettingsPage.PageActions(s: Screen) {
         //  加法放在「这一页有什么」那一层的工具位置上（用户口径）。
         Screen.BRANCHES -> BranchHeaderAdd()
 
+        // 组合键编辑页的 ⋮：只有「删除组合键」一行（见 [ComboEditMenu]）
+        Screen.COMBO_EDIT -> ComboEditMenu()
+
         else -> Unit
     }
 }
@@ -256,21 +280,37 @@ private fun SettingsPage.PageActions(s: Screen) {
 @Composable
 private fun SettingsPage.PageBottomBand(
     s: Screen,
-    pagerState: PagerState,
-    commandPager: PagerState,
+    pagers: PagePagers,
 ) {
     when (s) {
         Screen.BINDING -> {
-            BindingTabBand(
-                pagerState,
+            PageTabBand(
+                pagers.gestures,
+                labels = Gesture.entries.map { gestureLabel(it) },
                 // 与整页同一个闸门：**当前在编辑的那颗键**自己的 `enabled`（关掉时带子灰掉
                 //  且吃掉输入，与那颗 FAB 同款）
                 enabled = keyEnabled(KeyWatchState.editing(configState.config.value)),
+                band = bindingBandHeight,
             )
         }
 
         Screen.COMMANDS -> {
-            CommandKindBand(commandPager)
+            CommandKindBand(pagers.commands)
+        }
+
+        // 「组合键」编辑页：短按 / 长按两档，与「按键绑定」那条带子同一个组件、同一个落点
+        Screen.COMBO_EDIT -> {
+            PageTabBand(
+                pagers.combos,
+                labels =
+                    listOf(
+                        I18n.get(Strings.COMBO_SHORT, "短按"),
+                        I18n.get(Strings.COMBO_LONG, "长按"),
+                    ),
+                // 这一页没有「这一颗键开没开」那一层，闸门就是整页那道（总闸 + 链路 + 可写）
+                enabled = pageWritable(),
+                band = comboBandHeight,
+            )
         }
 
         Screen.APP_PICKER -> {
@@ -284,7 +324,9 @@ private fun SettingsPage.PageBottomBand(
 
         // 首页 / 「关于模块」/「捐赠列表」都没有固定带（后两页都是「短内容」页，见 [pageScrollBehavior]）。
         //  「条件执行」也没有：它没有类型可选，那一页的内容直接顶在顶栏下面。
-        Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL, Screen.BRANCHES -> {
+        Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL, Screen.BRANCHES,
+        Screen.COMBOS,
+        -> {
             // 这几页不摆固定带
         }
     }

@@ -29,7 +29,9 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.keyBrackets
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.screen.combo.comboLabel
 import com.lookie.opluskey.ui.screen.editingKeyName
 import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.CommandsSave
@@ -63,7 +65,15 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
     val scrollState = rememberScrollState()
     val tick = rememberTick()
-    val owner = BranchDraft.ownerOf(branchKeyNow(), branchGestureNow())
+    //  这一趟在编谁：某颗键的一档，或某档组合键（`ComboKey.id`）。两边的规则表形状一样，
+    //  只有「读哪张表 / 写回哪张表」不同 —— 判据在 `BranchDraft.comboId`。
+    val comboId = branchDraft.draft.comboId
+    val owner =
+        if (comboId != null) {
+            BranchDraft.comboOwnerOf(comboId, branchGestureNow())
+        } else {
+            BranchDraft.ownerOf(branchKeyNow(), branchGestureNow())
+        }
 
     // 按「当前键 + 当前档」重灌草稿。
     //
@@ -167,10 +177,27 @@ private fun SettingsPage.BranchSaveFab() {
 
 /** 按配置把这一档重新载入草稿（进页时与工具条的「重置」共用这一支）。 */
 private fun SettingsPage.reloadBranchDraft() {
-    val key = branchKeyNow()
     val gesture = branchGestureNow()
+    val comboId = branchDraft.draft.comboId
+    val cfg = configState.config.value
+    if (comboId != null) {
+        //  组合键这一档：同一套 `StateRule`，只是从 `combos` 里取。
+        //  找不到（在别处把这一组删了）就清空草稿 —— 留着上一趟的规则会让用户「编辑一条
+        //  已经不存在的组合键」，点确认时还会把它写回去。
+        val combo = cfg.combos.firstOrNull { it.id == comboId }
+        if (combo == null) {
+            XLog.w("条件执行：组合键 $comboId 已经不在了，草稿清空")
+            branchDraft.draft.reset()
+            return
+        }
+        val source = combo.rules.filter { it.gesture == gesture }
+        XLog.w("条件执行：载入组合键 ${combo.id} - ${gesture.label} 的 ${source.size} 条")
+        branchDraft.draft.load(BranchDraft.comboOwnerOf(combo.id, gesture), source, comboId)
+        return
+    }
+    val key = branchKeyNow()
     val source =
-        configState.config.value
+        cfg
             .key(key)
             .rules
             .filter { it.gesture == gesture }
@@ -203,11 +230,53 @@ internal fun SettingsPage.BranchDeleteDialog(menus: BranchMenuState) {
 }
 
 /**
- * 结尾那一行默认项在界面上怎么写 —— `快捷键 - 单击`（键名 - 手势）。
+ * 「删掉一行里的**一条**条件」的确认窗（触发点在条件菜单的「删除」那一行）。
+ *
+ *  与 [BranchDeleteDialog] 分开：那个删的是**整条规则**（连它的动作一起消失、下面一行往上顶），
+ *  这个只摘掉一块里的一条 —— 后果差得远，标题与正文都不能共用一套说法。
+ */
+@Composable
+internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
+    val target = menus.deletingCond
+    ConfirmDialog(
+        show = target != null,
+        title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条条件"),
+        summary = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_MESSAGE, "只删这一条条件，同一行里的其余条件不受影响。"),
+        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        onDismiss = { menus.deletingCond = null },
+        onConfirm = {
+            //  只**标出来**，不在这里删：那一行要先播完收起（与删整行同一个做法，见
+            //  `BranchMenuState.exitingCond`），数据由 `BranchCards` 那个 effect 在动画结束时摘掉。
+            menus.exitingCond = target
+            menus.deletingCond = null
+        },
+    )
+}
+
+/**
+ * 结尾那一行默认项在界面上怎么写 —— `「快捷键」- 单击`（键名 - 手势）。
  *
  *  同一句也挂在顶栏的尾随小标题上：那里说的是「这一页在编哪一档」，与表尾那一行是同一件事。
+ *
+ *  **键名两边套一对括号**（[keyBrackets]，中文 `「」` / 英文 `“”`）—— 与页里空态那句
+ *  （[branchEmptyText]）、组合键编辑页的 `「侧键」+「电量 +」` 同一个长相：`快捷键 - 单击`
+ *  单看像一句话，套上括号才看得出「快捷键」是那颗键的名字。用户口径「header 子标题的按键名
+ *  用方框框起来，和其他页面一样」。
  */
-internal fun SettingsPage.branchDefaultLabel(): String = "${editingKeyName()} - ${branchGestureNow().label}"
+internal fun SettingsPage.branchDefaultLabel(): String {
+    //  组合键那一档写「「侧键」+「电量 +」- 单击」（`comboLabel` 自己带括号，外层不要再套）；
+    //  单键那一档仍是「「快捷键」- 单击」。
+    val comboId = branchDraft.draft.comboId
+    val name =
+        if (comboId != null) {
+            val cfg = configState.config.value
+            cfg.combos.firstOrNull { it.id == comboId }?.let { comboLabel(cfg, it, bracketed = true) } ?: comboId
+        } else {
+            val (open, close) = keyBrackets()
+            "$open${editingKeyName()}$close"
+        }
+    return "$name - ${branchGestureNow().label}"
+}
 
 /**
  * 把这一档的条件表写回配置 —— 只替换**这一颗键这一档**那几条，其余规则原样留着。
@@ -215,10 +284,44 @@ internal fun SettingsPage.branchDefaultLabel(): String = "${editingKeyName()} - 
  *  与命令库那套不同：分叉不占绑定，所以这里既不新增命令、也不碰别的档。
  */
 internal fun SettingsPage.saveBranchRules(): Boolean {
-    val key = branchKeyNow()
     val gesture = branchGestureNow()
     val rules = branchDraft.draft.rules.toList()
     val cfg = configState.config.value
+    //  组合键那一档：同一套规则、同一套「只替换这一档」的写法，只是写回 `combos` 而不是 `keys`。
+    val comboId = branchDraft.draft.comboId
+    if (comboId != null) {
+        val combo = cfg.combos.firstOrNull { it.id == comboId }
+        if (combo == null) {
+            //  在别处把这一组删了：不能再往一个不存在的 id 上写（那等于凭空造一档组合键）
+            XLog.w("条件执行：组合键 $comboId 已经不在了，本次不保存")
+            return false
+        }
+        val next =
+            cfg.copy(
+                combos =
+                    cfg.combos.map {
+                        if (it.id != comboId) {
+                            it
+                        } else {
+                            // 顺序就是判定顺序：别的档原样留下，这一档整段换成本次编辑的这一批
+                            it.copy(rules = it.rules.filterNot { rule -> rule.gesture == gesture } + rules)
+                        }
+                    },
+            )
+        val label = comboLabel(cfg, combo, bracketed = true)
+        return when (write(next, "条件执行：$label - ${gesture.label}（${rules.size} 条）")) {
+            CommandsSave.Failed -> {
+                false
+            }
+
+            else -> {
+                XLog.w("条件执行已保存：$label - ${gesture.label} ${rules.size} 条")
+                branchDraft.draft.load(BranchDraft.comboOwnerOf(comboId, gesture), rules, comboId)
+                true
+            }
+        }
+    }
+    val key = branchKeyNow()
     val next =
         cfg.copy(
             keys =
@@ -285,6 +388,12 @@ internal fun SettingsPage.branchRulesBlockedReason(): String? {
     return when {
         rules.any { !it.isReady } -> {
             I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有条件没选完")
+        }
+
+        //  时间区间两两不许重叠 —— 选的时候已经拦过一次，这里兜手改 / 导入来的配置：
+        //  那种表里两条重叠的区间，后一条永远轮不到，界面上却看不出来。
+        branchTimesOverlap() -> {
+            I18n.get(Strings.COMMAND_COND_TIME_OVERLAP, "时间区间不允许重叠")
         }
 
         rules.any { it.action == com.lookie.opluskey.core.model.Action.None } -> {

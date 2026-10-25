@@ -80,7 +80,13 @@ internal class CustomCommandRunner(
                 //  正文引用另一条命令 ⇒ 这一下也是一次「起一条链」，必须走同一道链闸：
                 //  `enterChain` 里「已有链在跑」那条只在 depth == 0 时生效，而这里是 depth+1，
                 //  不占位就会绕过它 —— 两条链（一条由单条拉起、一条直接按下）交错执行。
-                if (!enterChain(name, 0)) return
+                //
+                //  **这里必须传 `depth + 1`，不能传 0**：传 0 会让这道闸把「本层是一次嵌套」
+                //  误判成「本层是最外层」—— 上一条链还占着 `runningSerial`（多条命令的步骤
+                //  之间要等 gapMs，占位一直持续到整条链跑完），于是这一层永远判 OVERLOADED、
+                //  永远不执行：`A(多条) → cmd:B(单条, 正文又是 cmd:C)` 里的 C 一次也不会跑。
+                //  传 `depth + 1` 时只做 `runningSerial.add(name)` 那半（防同名重入），正是本意。
+                if (!enterChain(name, depth + 1)) return
                 try {
                     dispatch(parsed, depth + 1)
                 } finally {

@@ -54,14 +54,58 @@ internal object ConditionProbe {
         ctx: Context,
     ): Boolean =
         when (kind) {
-            ConditionKind.APP -> ForegroundApp.packageName()?.let { it == value } == true
-            ConditionKind.SCREEN -> screenMatches(ctx, value)
-            ConditionKind.CHARGING -> chargingMatches(ctx, value)
-            ConditionKind.HEADSET -> headsetMatches(ctx, value)
-            ConditionKind.MEDIA -> mediaMatches(ctx, value)
-            ConditionKind.WIFI -> wifiMatches(ctx, value)
-            ConditionKind.RINGER -> ringerMatches(ctx, value)
-            ConditionKind.ORIENTATION -> orientationMatches(ctx, value)
+            // 「前台应用」可以多选：同一条条件里用 `||` 连着几个包名，**任一**在前台即通过。
+            //  与块内多条条件之间的「且」不同 —— 那是同时成立，这里只要其中之一。
+            ConditionKind.APP -> {
+                val foreground = ForegroundApp.packageName()
+                foreground != null &&
+                    value.split(BranchCondition.APP_SEPARATOR).any { it.trim() == foreground }
+            }
+
+            ConditionKind.SCREEN -> {
+                screenMatches(ctx, value)
+            }
+
+            ConditionKind.CHARGING -> {
+                chargingMatches(ctx, value)
+            }
+
+            ConditionKind.HEADSET -> {
+                headsetMatches(ctx, value)
+            }
+
+            ConditionKind.MEDIA -> {
+                mediaMatches(ctx, value)
+            }
+
+            ConditionKind.WIFI -> {
+                wifiMatches(ctx, value)
+            }
+
+            ConditionKind.RINGER -> {
+                ringerMatches(ctx, value)
+            }
+
+            ConditionKind.ORIENTATION -> {
+                orientationMatches(ctx, value)
+            }
+
+            // 时间区间不读系统开关，只比「现在几点」—— 跨午夜那个「或」在 `TimeRange` 里
+            ConditionKind.TIME -> {
+                timeMatches(value)
+            }
+
+            ConditionKind.BLUETOOTH -> {
+                bluetoothMatches(ctx, value)
+            }
+
+            ConditionKind.CELLULAR -> {
+                cellularMatches(ctx, value)
+            }
+
+            ConditionKind.AIRPLANE -> {
+                airplaneMatches(ctx, value)
+            }
         }
 
     /**
@@ -74,7 +118,10 @@ internal object ConditionProbe {
         ctx: Context,
         value: String,
     ): Boolean {
-        val connected = hasHeadset(ctx)
+        //  拿不到 AudioManager = **判不出**，两档都不成立（与 `ConditionChecks` 里充电 / 媒体
+        //  那两档同一口径）。不能把 `null` 当成「没接耳机」—— `disconnected` 是取反得来的，
+        //  那样它会在读不到服务时凭空成立。
+        val connected = hasHeadset(ctx) ?: return false
         return when (value) {
             "disconnected" -> !connected
             "connected" -> connected
@@ -83,13 +130,13 @@ internal object ConditionProbe {
     }
 
     /**
-     * 接着耳机 —— 有线 / USB / 蓝牙 A2DP 三种都算。
+     * 接着耳机 —— 有线 / USB / 蓝牙 A2DP 三种都算；**取不到 AudioManager 返回 `null`**。
      *
      *  `isWiredHeadsetOn` 已废弃且在部分机型上恒 `false`，所以走 `getDevices(GET_DEVICES_OUTPUTS)`
      *  逐个看类型：蓝牙那档只算 A2DP（那是听媒体用的），不算 SCO（通话用）。
      */
-    private fun hasHeadset(ctx: Context): Boolean {
-        val manager = audio(ctx) ?: return false
+    private fun hasHeadset(ctx: Context): Boolean? {
+        val manager = audio(ctx) ?: return null
         val types =
             manager
                 .getDevices(AudioManager.GET_DEVICES_OUTPUTS)

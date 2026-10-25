@@ -243,6 +243,12 @@ internal class SettingsPage(
      *  它自己带量测上报与 dp 读取两端（口径见那边的类注释）。
      */
     internal val bindingBandHeight = BandHeight()
+
+    /**
+     * 「组合键」编辑页那条分段控件的高度 —— 与 [bindingBandHeight] 同一套、**不共用**：
+     * 两页的带子可能同时在组合里（转场），共用一个值只会互相改对方的占位。
+     */
+    internal val comboBandHeight = BandHeight()
     internal val commandBandHeight = BandHeight()
     internal val appSearchBandHeight = BandHeight()
 
@@ -542,8 +548,10 @@ internal class SettingsPage(
                 // 条件那一头直接就是包名 —— 一块可能带好几条条件，要取的是**「前台应用」那一条**
                 //  （只取第一条的话，手改的配置里应用条件排在第二位时这一页一行都不亮）。
                 //  槽位口径只有一处（`StateRule.appCondition`）。
+                // 条件可以**多选**（`包1||包2`，任一在前台即通过）：这一位只回答
+                //  「滚到哪一行、行尾亮哪个」，所以取第一个；完整集合在 `picker.pickedApps`。
                 else -> {
-                    rule.appCondition?.value?.takeIf { it.isNotBlank() }
+                    rule.appCondition?.appPackages?.firstOrNull()
                 }
             }
         }

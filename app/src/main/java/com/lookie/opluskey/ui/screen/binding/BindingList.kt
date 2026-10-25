@@ -13,12 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Dp
-import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.actionOf
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.state.KeyWatchState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
@@ -32,9 +30,9 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 //   · `BindingSettings.kt` / `InstantSingleCard.kt` / `LongRepeatCard.kt` —— 三档各一张设置卡；
 //   · `BindingSections.kt`  —— 纵向顺序（哪一段之间该给间距）。
 
-/** 选择器入口回调（应用 / 磁贴）。 */
+/** 选择器入口回调（应用 / 磁贴）—— 带上「哪一格」，组合键那一页也用这一份。 */
 internal data class BindingPickers(
-    val onOpenAppPicker: (Gesture) -> Unit,
+    val onOpenAppPicker: (BindingTarget) -> Unit,
 )
 
 /**
@@ -62,32 +60,14 @@ internal fun SettingsPage.BindingList(
     onCreateCommand: () -> Unit,
     scroll: BindingScroll,
 ) {
-    val st = rememberBindingGridState(g, pickers.onOpenAppPicker)
-    val current = actionOf(configState.config.value, g)
-    // 当前选中的那一项（配置里是清单外的写法时为 -1 ⇒ 焦点退回第一项）
-    val selectedIndex = st.specs.indexOfFirst { ActionCatalog.isSelected(it, current) }
-
-    // 进场把焦点放到「当前已选中的那一项」上，**选中项变了也把圈收回来** ——
-    // 绑定被改（点格子 / 挑应用 / 没挑回退）之后，圈跟着 `selectedIndex` 走。
-    //  必须在 LaunchedEffect 里请求：Compose 明确禁止在组合期间请求焦点。
-    //  **只有当前页抢焦点**：pager 的相邻页同样在组合里，三页各请求一次的话最后请求到的拿走焦点。
-    //  先把这个页面 View 的 Android 焦点拿回来，再请求 Compose 内部的焦点：按键事件按 Android
-    //  焦点派发，只请求 Compose 焦点的话在「页面 View 从未拿过焦点」的情况下按键仍然进不来。
-    //  浮窗（弹窗 / 菜单 / 提示）开着时**一律不抢**：浮窗里的输入框刚拿到焦点，这里再请求一次
-    //  就会把它抢走 —— 真机反馈「添加按键 / 重命名的输入框聚焦后又自动失焦」。
-    //  浮窗关掉那一刻 key 变回来，圈自然落回选中项。
-    val overlayOpen = overlays.hasOpen()
-    LaunchedEffect(st.specs, selectedIndex, page.active, overlayOpen) {
-        if (!page.active || overlayOpen) return@LaunchedEffect
-        val seat = selectedIndex.coerceAtLeast(0)
-        if (seat != st.focusedIndex) st.focusedIndex = seat
-        val viewFocus = viewTree.rootView?.requestFocus() ?: false
-        val tileFocus = st.focusers.getOrNull(st.focusedIndex)?.requestFocus() ?: false
-        XLog.w(
-            "按键绑定：进场请求焦点 index=${st.focusedIndex}" +
-                " viewFocus=$viewFocus tileFocus=$tileFocus",
+    val st =
+        rememberBindingGridState(
+            BindingTarget.Key(KeyWatchState.editing(configState.config.value), g),
+            pickers.onOpenAppPicker,
         )
-    }
+    //  焦点圈跟着选中项走（进场 / 改了绑定都收回来）——
+    //  与「组合按键」编辑页共用同一份实现，两页的圈只能有一套行为（见 [BindingGridFocus]）。
+    BindingGridFocus(st, page.active, "按键绑定")
 
     // 翻走这一页时把入口浮层收掉：它是**每个手势页各一份**的状态，而 pager 会把上一页留在
     // 组合里 —— 浮层于是跟着那一页活过了翻页，锚点还指着上一页那一格（弹到屏幕外 / 弹在别处）。

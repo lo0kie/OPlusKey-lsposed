@@ -30,7 +30,6 @@ import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.actionOf
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.COLUMNS
@@ -39,7 +38,7 @@ import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.durationText
-import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
@@ -127,7 +126,7 @@ private fun SettingsPage.BuiltInTile(
         val tileAnchor = rememberPreciseClickState()
         // 登记给确认键那条路用（见 `BindingGridState.tileAnchors`）—— 写的是普通 map、不是 state。
         st.tileAnchors[spec.token] = tileAnchor
-        val current = actionOf(configState.config.value, st.g)
+        val current = st.target.actionIn(configState.config.value)
         val icons = tileIcons.value
         //  入口格（点了弹二级菜单的那几格）：`modes` 非空。这一格绑在哪一档也从这里算一次
         //  —— **小字与小字前面那枚图标共用它**，同源就不会各说各的。
@@ -231,7 +230,6 @@ private fun SettingsPage.CreateCommandRow(
     enabled: Boolean,
     onCreateCommand: () -> Unit,
 ) {
-    val tick = rememberTick()
     CardList(
         rows =
             listOf(
@@ -243,7 +241,6 @@ private fun SettingsPage.CreateCommandRow(
                     arrow = true,
                     enabled = enabled,
                     onClick = {
-                        tick()
                         onCreateCommand()
                     },
                 ),
@@ -271,10 +268,9 @@ private fun SettingsPage.CustomTile(
     //  这一段是按**位次**排出来的（`chunked(COLUMNS)` 之后按下标取），而自定义命令会增删、
     //  会改名重排：不按 token 认身份，格子里的状态（焦点圈、进出场）就跟着位次挪到下一条命令身上。
     key(spec.token) {
-        val tick = rememberTick()
         // 这条命令本身（`cmd:<名字>` 反查）—— 小字与「进编辑」两处都要用
         val cmd = commandsByToken[spec.token]
-        val current = actionOf(configState.config.value, st.g)
+        val current = st.target.actionIn(configState.config.value)
         val selected = ActionCatalog.isSelected(spec, current)
         // 「进这条命令的编辑页」—— 长按、以及**已选中时再点一次**，共用这一个入口。
         //
@@ -283,7 +279,9 @@ private fun SettingsPage.CustomTile(
         //  与「自定义命令」页里轻点已保存命令同一个入口。
         val openEditor = {
             if (cmd != null) {
-                tick()
+                // 自定义命令这一格不是 `CardRow`（它是网格里的一格），振动仍自己叫一声；
+                // 走页面那条通用通道（`tickNow`），判据与列表行完全同一份。
+                tickNow()
                 XLog.w("手势页打开自定义命令编辑：${cmd.name}")
                 // 这里直接 `load`、不走 `loadDraft` 那个「先问一句」：草稿脏了必然还在
                 // 「自定义命令」页 —— 退出那一页时 `goBack` 已经问过并 `draft.reset()`。
@@ -330,7 +328,7 @@ private fun SettingsPage.CustomTile(
  */
 @Composable
 internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
-    val current = actionOf(configState.config.value, st.g)
+    val current = st.target.actionIn(configState.config.value)
     ModeMenuPopups(
         // 锚点就是**开着的那一格**自己那一份 —— 这里不再有「哪一格用哪一支」的表：
         // 那种表漏一个入口格，菜单就弹到别人身上（小窗、通知与控制中心，两次都是这么漏的）。
@@ -343,9 +341,12 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
         current = current,
         //  走 `pick` 而**不是** `bindingSelect`：菜单里的取值不在 `specs` 里，
         //  `select` 那一步的 `specs.indexOf(spec)` 会取到 −1、把焦点圈甩到第一格去。
-        // 写完之后 `selectedIndex` 变了，那个「把焦点收回选中项」的 effect 自然会把圈落回
-        // 入口格（本来就是点它的那一格）。
-        onPick = { spec -> pick(spec, st.g) },
+        //  圈落回**被点开的那一格入口格**（本来就是点它才弹出的菜单），也是当场就挪 ——
+        //  不靠「选中项变了再由 effect 收回来」（那条路真机上没跑起来，见 `bindingSelect`）。
+        onPick = { spec ->
+            st.tileMenu?.spec?.let { st.focusOn(it.token) }
+            pick(spec, st.target)
+        },
         onDismiss = { st.tileMenu = null },
     )
 }

@@ -16,3 +16,17 @@ import androidx.compose.runtime.staticCompositionLocalOf
  * 覆盖 `LocalDisabledClick` 说自己的话。
  */
 internal val LocalHint = staticCompositionLocalOf<(String) -> Unit> { {} }
+
+/**
+ * 「点一下振一次」—— 由页面在根上提供（实现是 `haptics.tick`，见 `PageHaptics`）。
+ *
+ *  为什么要有这一条：**能点的行默认就该振**（用户口径），而这一下振动发生在
+ *  `CardList` / `PickerRow` 这些**控件层**——它们不带 `SettingsPage` 接收者，拿不到页面实例。
+ *  所以和 [LocalHint] 一样从上面传下来，控件只管「点的时候叫一声」。
+ *
+ *  没提供时是空实现：这些控件在别的上下文里照样能用，只是不振动。
+ *
+ *  列表里「不振动」的少数几行，用 `CardRow.Item(vibrate = false)` 显式关掉 ——
+ *  默认开、个别关，比「每处都要记得振」少一种漏法。
+ */
+internal val LocalTick = staticCompositionLocalOf<() -> Unit> { {} }

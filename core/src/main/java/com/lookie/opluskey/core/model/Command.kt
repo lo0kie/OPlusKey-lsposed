@@ -83,6 +83,31 @@ enum class ConditionKind(
 
     /** 屏幕方向等于取值（`portrait` / `landscape`）。 */
     ORIENTATION("orientation", choices = listOf("portrait", "landscape")),
+
+    /**
+     * **时间区间**：取值 `HH:mm-HH:mm`（见 [TimeRange]）。
+     *
+     *  与「前台应用」同属**自由取值**那一类（[choices] 空）：区间是两天里任选一段，列不出候选。
+     *  界面上这一档不走二级取值菜单，点下去弹时间选择器（见 `BranchTimeRangeDialog`）。
+     *
+     *  `start > end` 表示跨午夜（`22:00-07:00`）—— 这是这一档唯一需要当心的地方，判定与解析
+     *  都在 [TimeRange] 里，不要在别处再写一遍比较。
+     */
+    TIME("time"),
+
+    /** 蓝牙**开关状态**：`on` / `off`。读 `Settings.Global.bluetooth_on`，与 WIFI 同一条路。 */
+    BLUETOOTH("bluetooth", choices = listOf("on", "off")),
+
+    /**
+     * 移动数据**开关状态**：`on` / `off`。读 `Settings.Global.mobile_data`。
+     *
+     *  注意它和「飞行模式」不是互补：飞行模式开着时移动数据也可能是 1（只是没网）。
+     *  要表达「现在没网」应当两条都判，别拿其中一条取反。
+     */
+    CELLULAR("cell", choices = listOf("on", "off")),
+
+    /** 飞行模式**开关状态**：`on` / `off`。读 `Settings.Global.airplane_mode_on`。 */
+    AIRPLANE("airplane", choices = listOf("on", "off")),
     ;
 
     companion object {
@@ -147,8 +172,37 @@ data class BranchCondition(
     /** 线格式里的写法：无取值是 `type`，有取值是 `type:value`（`app:包名` / `ringer:vibrate`）。 */
     val token: String get() = if (value.isBlank()) type else "$type:$value"
 
+    /**
+     * 「前台应用」那一条里的**全部包名**（非 APP 档 / 空取值返回空表）。
+     *
+     *  一条应用条件可以**多选**：`app:包1||包2`，判定时**满足其一**即通过（「或」）。
+     *  分隔符见 [APP_SEPARATOR] —— 包名只含字母数字下划线与点，不会撞上 `|`，不必转义。
+     */
+    val appPackages: List<String>
+        get() =
+            if (kind == ConditionKind.APP) {
+                value.split(APP_SEPARATOR).map { it.trim() }.filter { it.isNotEmpty() }
+            } else {
+                emptyList()
+            }
+
     companion object {
+        /**
+         * 一条「前台应用」条件里多个包名之间的分隔符 —— 双竖线，与「或」这个语义同形。
+         *
+         *  **语义是「或」**：任意一个在前台就算命中。与块内多条条件之间的「且」不是一回事 ——
+         *  后者是「同时成立」，前者是「其中之一」，所以多选必须装在**同一条**条件里。
+         *
+         *  取两个字符而不是一个 `|`：单竖线在这套配置里另有含义（`AppTarget` 老写法里
+         *  「目标 | 显示名」的分隔符），两种串虽然不在同一层，但人工看配置文件时容易读串。
+         */
+        const val APP_SEPARATOR = "||"
+
         fun app(pkg: String): BranchCondition = BranchCondition(ConditionKind.APP.id, pkg)
+
+        /** 多选版：几个包名装进同一条条件（判定为「或」）。 */
+        fun apps(packages: List<String>): BranchCondition =
+            BranchCondition(ConditionKind.APP.id, packages.filter { it.isNotBlank() }.joinToString(APP_SEPARATOR))
 
         /**
          * 线格式 → 一个条件；认不出（类型不在枚举里 / 该带取值却没带）的返回 `null`。

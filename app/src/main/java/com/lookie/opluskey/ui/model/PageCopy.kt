@@ -33,6 +33,17 @@ internal val BRANCHES_TITLE: String
 internal val GENERAL_TITLE: String
     get() = I18n.get(Strings.GENERAL_TITLE, "通用设置")
 
+/**
+ * 「组合按键」—— **列表页与编辑页共用这一个标题**（用户口径：顶栏不要「列表」两个字）。
+ *
+ *  两页看顶栏会觉得同名，但认得出在哪一层：编辑页顶栏底下一行副标题写着「在编哪一组」
+ *  （`「侧键」+「电量 +」`），列表页没有；再往下还有一个短按 / 长按的分段控件。
+ *  列表页卡上方那句小标题仍是「组合按键列表」（见 `ComboScreen`），说的是**那一列是什么**，
+ *  与顶栏的「这一页叫什么」不是同一件事。
+ */
+internal val COMBO_TITLE: String
+    get() = I18n.get(Strings.COMBO_TITLE, "组合按键")
+
 /** 「选择应用」页的标题。 */
 internal val APP_PICKER_TITLE: String
     get() = I18n.get(Strings.APP_PICKER_TITLE, "选择应用")
@@ -385,3 +396,12 @@ internal fun themeLabel(theme: AppTheme): String =
         AppTheme.LIGHT -> I18n.get(Strings.MORE_THEME_LIGHT, "浅色")
         AppTheme.DARK -> I18n.get(Strings.MORE_THEME_DARK, "深色")
     }
+
+/**
+ * 键名外面那对括号 —— 中文用对角方括号（`「」`，与停用提示「「侧键」已停用…」同一对），
+ * 英文用弯引号（`“”`，正是英文停用提示里那一对）。同一句话在两种语言里各自像本地写法。
+ *
+ *  全项目只有这一处：条件执行的空态、组合键列表那一行与顶栏副标题都读它 ——
+ *  同一个「一颗键的名字」在三处不该有三种长相。
+ */
+internal fun keyBrackets(): Pair<String, String> = if (I18n.effectiveLanguage == AppLanguage.ZH_CN) "「" to "」" else "“" to "”"

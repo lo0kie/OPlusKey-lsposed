@@ -13,7 +13,6 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
-import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.setModuleEnabled
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
@@ -36,7 +35,6 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  */
 @Composable
 internal fun SettingsPage.HomeBindingCard(ui: HomeUiState) {
-    val tick = rememberTick()
     // 主开关写的是**模块总闸**（`GlobalConfig.enabled`），不是「侧键那颗键的开关」——
     //  两者拆开之后，「停用这颗键」只停那一颗（⋮ 菜单里），这个开关停的是整个模块。
     val moduleOn = configState.config.value.global.enabled
@@ -66,7 +64,6 @@ internal fun SettingsPage.HomeBindingCard(ui: HomeUiState) {
                     checked = moduleOn,
                     enabled = linkReady && !configState.readOnly,
                 ) { on ->
-                    tick()
                     // 打开之前先要一次确认：没确认过就只弹窗、**不写盘**。
                     //  顺序不能反过来 —— 先写后弹等于「先启用了再问你同不同意」。
                     //  关闭不需要确认，直接写。
@@ -99,7 +96,6 @@ internal fun SettingsPage.HomeOtherCard(
     pageEnabled: Boolean,
     ui: HomeUiState,
 ) {
-    val tick = rememberTick()
     CardList(
         rows =
             listOf(
@@ -152,7 +148,6 @@ internal fun SettingsPage.HomeOtherCard(
                         )
                     },
                     onClick = {
-                        tick()
                         ui.showDonateMenu = true
                     },
                 ),

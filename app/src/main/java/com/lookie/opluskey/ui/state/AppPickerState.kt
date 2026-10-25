@@ -98,6 +98,16 @@ internal class AppPickerState {
     var gesture: Gesture? = null
         private set
 
+    /**
+     * 这一趟是给**哪一档组合键**挑（`null` = 给一颗键挑）。
+     *
+     *  与 [gesture] 并存而不是合成一个对象：这一层（`ui/state`）不认识界面那套「绑定目标」
+     *  （`ui/screen/binding/BindingTarget`），只记两个原始值；组装成目标由调用方做
+     *  （见 `PageEntryWrite.onAppPicked`）。组合那一档也要手势 —— 它也有短按 / 长按。
+     */
+    var comboId: String? = null
+        private set
+
     /** 这次是给「多条命令」加一步（挑中的包名走 `addStep`，不写手势绑定）。 */
     var forStep = false
         private set
@@ -107,6 +117,15 @@ internal class AppPickerState {
      * [NOT_FOR_BRANCH] = 不是在给分叉挑。与 [forStep] 一样同生共死。
      */
     var branchTarget: Int = NOT_FOR_BRANCH
+
+    /**
+     * 这一趟挑的应用要写进**那一块里的第几条条件**：`>= 0` = 换那一条，`-1` = 追加一条。
+     *
+     *  与 [branchTarget]（第几条规则）配对使用 —— 一块能带多条条件之后，「写进哪个槽位」
+     *  不能再靠 `appConditionIndex` 猜：用户在「再加一条条件」里选的应用，是**新增**一条，
+     *  而原来那套「这块已有前台应用就换它、没有就换第 0 条」会把别人的条件覆盖掉。
+     */
+    var branchConditionIndex: Int = -1
         private set
 
     /**
@@ -154,9 +173,17 @@ internal class AppPickerState {
     //  各自就地赋三个字段，散在**六个地方** —— 少清一个就留下半个状态（`forStep=false` 却带着
     //  上一次的 `gesture`），而从代码上看不出来（见 `docs/decoupling.md` 判据 3）。
 
-    /** 网格那条入口：给手势 [g] 挑应用（挑中的写成 `app:` / `window:` 绑给这个手势）。 */
-    fun openForGesture(g: Gesture) {
+    /**
+     * 网格那条入口：给 [g] 这一档挑应用（挑中的写成 `app:` / `window:` 绑给这个手势）。
+     *
+     * @param comboId 非空 = 这一趟是给**那一档组合键**挑（[g] 是它的短按 / 长按）。
+     */
+    fun openForGesture(
+        g: Gesture,
+        comboId: String? = null,
+    ) {
         gesture = g
+        this.comboId = comboId
         forStep = false
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
@@ -166,6 +193,7 @@ internal class AppPickerState {
     /** 「添加命令」那条入口：给多条命令**加一步**（[replaceIndex] `< 0`）或换掉第 [replaceIndex] 步。 */
     fun openForStep(replaceIndex: Int) {
         gesture = null
+        comboId = null
         forStep = true
         replaceStep = replaceIndex
         branchTarget = NOT_FOR_BRANCH
@@ -184,23 +212,30 @@ internal class AppPickerState {
     fun openForBranch(
         index: Int,
         forCommand: Boolean = false,
+        conditionIndex: Int = -1,
     ) {
         gesture = null
+        comboId = null
         forStep = false
         replaceStep = -1
         branchTarget = if (forCommand) NOT_FOR_BRANCH else index
         branchCommandTarget = if (forCommand) index else NOT_FOR_BRANCH
+        //  挑动作那一趟不写条件槽位（两个落点互斥），留着上一趟的值只会在下一次条件挑选时误导
+        branchConditionIndex = if (forCommand) -1 else conditionIndex
     }
 
     /** 这趟「为谁挑」整个作废 —— 挑完了、写失败留在原地、或干脆没挑就退出来。 */
     fun clearTarget() {
         gesture = null
+        comboId = null
         forStep = false
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
         branchCommandTarget = NOT_FOR_BRANCH
+        branchConditionIndex = -1
         // 本地选中与草稿一并作废：这一趟挑应用的账到此为止
         pending.value = null
+        pickedApps.value = emptySet()
         draft = null
     }
 
@@ -337,6 +372,18 @@ internal class AppPickerState {
      *  「已绑定的那个」—— 用户明明挑过 A，回来却亮着 B。
      */
     val pending = mutableStateOf<PickedDetail?>(null)
+
+    /**
+     * 这一趟「给条件挑前台应用」**选中的全部包名** —— 那条条件支持多选（`包1||包2`，任一在前台即通过）。
+     *
+     *  为什么与 [pending] 分开：`pending` 是「一个目标」，动作那一侧（`app:` / `appshortcut:`）
+     *  只能有一个；而条件这一侧可以是一组。合成一个类型会让另外三条路径（手势绑定、命令步骤、
+     *  分叉动作）都跟着多一个「其实恒为单元素」的集合。
+     *
+     *  只在 [branchTarget] 有效时才有意义（给动作挑、给手势挑都是空的），进页时按那条规则已有的
+     *  条件预填（见 `AppPickerUiState.beginVisit`）。
+     */
+    val pickedApps = mutableStateOf<Set<String>>(emptySet())
 
     // ── 屏级缓存：清单 + 图标 ──
     //

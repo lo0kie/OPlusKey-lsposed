@@ -198,9 +198,7 @@ internal fun SettingsPage.CommandScreen(
             )
         }
 
-        CommandDialogs(ui) {
-            scope.launch { pageScrolls[pagerState.currentPage].animateScrollTo(0) }
-        }
+        CommandDialogs(ui)
     }
 }
 

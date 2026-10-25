@@ -18,6 +18,7 @@ object Strings {
     const val APP_PICKER_ACTIVITY_EMPTY = "app_picker.activity_empty"
     const val APP_PICKER_ACTIVITY_LOAD_FAILED = "app_picker.activity_load_failed"
     const val APP_PICKER_ACTIVITY_TITLE = "app_picker.activity_title"
+    const val APP_PICKER_BRANCH_MULTI_HINT = "app_picker.branch_multi_hint"
     const val APP_PICKER_CONFIRM_SELECTION = "app_picker.confirm_selection"
     const val APP_PICKER_EMPTY_HINT_BROKEN = "app_picker.empty_hint_broken"
     const val APP_PICKER_EMPTY_OPENABLE = "app_picker.empty_openable"
@@ -102,6 +103,86 @@ object Strings {
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
     const val BINDING_TITLE = "binding.title"
     const val CATALOG_FLASH_NOTE = "catalog.flash_note"
+
+    // ── 组合键（首页「按键」卡那一行 + 组合键列表页 + 编辑页） ──
+
+    /**
+     * 「组合按键」—— **编辑页**的标题（在编某一档时用它）。
+     *
+     *  全应用统一叫「组合按键」（用户口径）：首页那行入口、列表页、编辑页、删除确认窗
+     *  是同一件事，不该首页一套说法、进去以后换一个简称 —— 用户会以为进了别的功能。
+     */
+    const val COMBO_TITLE = "combo.title"
+
+    /**
+     * 列表页的标题 —— 「组合按键列表」。
+     *
+     *  与 [COMBO_TITLE] 分开：列表页说的是「这里有几档」，编辑页说的是「这一档」，
+     *  两页同一个标题时顶栏看不出自己在哪一层。
+     */
+    const val COMBO_LIST_TITLE = "combo.list_title"
+
+    /** 首页「按键操作」卡里那一行的标题 —— 「组合按键」。 */
+    const val COMBO_ENTRY = "combo.entry"
+
+    /** 列表末行「添加组合按键」。 */
+    const val COMBO_ADD = "combo.add"
+
+    /** 选键弹窗那颗确认按钮 —— 只写「添加」（窗里已经说了选的是按键，再补三个字太挤）。 */
+    const val COMBO_ADD_CONFIRM = "combo.add_confirm"
+
+    /** 「添加组合键」那一行的副标题（没满员时）。 */
+    const val COMBO_ADD_DESC = "combo.add_desc"
+
+    /** 组合键的两档：列表副标题与编辑页小标题共用。 */
+    const val COMBO_SHORT = "combo.short"
+    const val COMBO_LONG = "combo.long"
+
+    /** 编辑页顶部那行「参与的按键」。 */
+    const val COMBO_MEMBERS = "combo.members"
+
+    /** 选键弹窗的标题。 */
+    const val COMBO_PICK_KEYS = "combo.pick_keys"
+
+    /** 列表行的菜单 / 删除确认窗标题。 */
+    const val COMBO_DELETE = "combo.delete"
+    const val COMBO_DELETE_CONFIRM = "combo.delete_confirm"
+
+    /** 加一组 / 删一组的回执。 */
+    const val COMBO_ADDED = "combo.added"
+    const val COMBO_REMOVED = "combo.removed"
+
+    /** 一档组合还没绑动作时那一格写的字（与单键网格里的「无操作」区分开）。 */
+    const val COMBO_UNBOUND = "combo.unbound"
+
+    /** 组合键满员时「添加组合键」那一行的副标题（格式：上限组数）。 */
+    const val COMBO_LIMIT = "combo.limit"
+
+    /** 首页那一行的副标题：已经配了几组（格式：组数）。 */
+    const val COMBO_COUNT = "combo.count"
+
+    /**
+     * 一颗自定义键都还没收时，首页那行「组合按键」的副标题与「为什么灰着」的说明。
+     *
+     *  组合要**两颗键**：只有默认侧键时根本配不出来（选键弹窗里只有一行），
+     *  所以那一行在这一档直接置灰，并把原因写在副标题上 —— 不用用户去点一下才发现。
+     */
+    const val COMBO_NEED_KEY = "combo.need_key"
+
+    /** 同一组键再加一遍时那句 —— 判定那边只会认第一档，第二档永远轮不到。 */
+    const val COMBO_DUPLICATE = "combo.duplicate"
+
+    /** 选键弹窗里「颗数不对」那两句（格式：颗数）—— 点灰按钮时显示在按钮上面。 */
+    const val COMBO_MAX_KEYS = "combo.max_keys"
+    const val COMBO_MIN_KEYS = "combo.min_keys"
+
+    /** 列表页那张设置卡的小标题。 */
+    const val COMBO_SETTINGS_SECTION = "combo.settings_section"
+
+    /** 「组合绑的是无操作时怎么办」那一行 —— 标题 + 开关真假各一句。 */
+    const val COMBO_PASSTHROUGH_TITLE = "combo.passthrough_title"
+    const val COMBO_PASSTHROUGH_DESC_ON = "combo.passthrough_desc_on"
+    const val COMBO_PASSTHROUGH_DESC_OFF = "combo.passthrough_desc_off"
 
     /** 灵感语音 —— 一键闪记的「长按录音」那一档（只在长按网格出现）。 */
     const val CATALOG_VOICE_MEMORY = "catalog.voice_memory"
@@ -284,6 +365,34 @@ object Strings {
     const val COMMAND_COND_ORIENTATION_PORTRAIT = "command.cond_orientation_portrait"
     const val COMMAND_COND_ORIENTATION_LANDSCAPE = "command.cond_orientation_landscape"
 
+    //  时间区间与另外三个系统开关（蓝牙 / 移动数据 / 飞行模式）——
+    //  `_name` 是菜单里那种类名（「时间区间」「蓝牙」），不带 `_name` 的是格子里那句话
+    //  （「时间 22:00-07:00」「蓝牙 开」）。
+    const val COMMAND_COND_TIME = "command.cond_time"
+    const val COMMAND_COND_TIME_NAME = "command.cond_time_name"
+    const val COMMAND_COND_TIME_OVERLAP = "command.cond_time_overlap"
+    const val COMMAND_COND_BLUETOOTH = "command.cond_bluetooth"
+    const val COMMAND_COND_BLUETOOTH_NAME = "command.cond_bluetooth_name"
+    const val COMMAND_COND_CELLULAR = "command.cond_cellular"
+    const val COMMAND_COND_CELLULAR_NAME = "command.cond_cellular_name"
+    const val COMMAND_COND_AIRPLANE = "command.cond_airplane"
+    const val COMMAND_COND_AIRPLANE_NAME = "command.cond_airplane_name"
+
+    /** 一块条件里再分几条时的那几句（第几条 / 添加条件）。 */
+    const val COMMAND_BRANCH_CONDITION_INDEX = "command.branch_condition_index"
+    const val COMMAND_BRANCH_ADD_CONDITION = "command.branch_add_condition"
+
+    /** 「添加条件」被拦下时那句话：这一块最后一条还是「未选择条件」，再插一条只是多一行空的。 */
+    const val COMMAND_BRANCH_CONDITION_PENDING = "command.branch_condition_pending"
+
+    /** 抽屉里那个过滤框的占位文案与空结果 —— 内置动作 + 已保存命令一起搜。 */
+    const val COMMAND_SEARCH = "command.search"
+    const val COMMAND_SEARCH_EMPTY = "command.search_empty"
+
+    /** 时间区间那个选择弹窗：标题与两列的小标题（开始 / 结束）。 */
+    const val COMMAND_COND_TIME_START = "command.cond_time_start"
+    const val COMMAND_COND_TIME_END = "command.cond_time_end"
+
     const val COMMAND_TYPE_SINGLE = "command.type_single"
     const val COMMAND_FAILURE_APP_MISSING = "command_failure.app_missing"
     const val COMMAND_FAILURE_APP_NO_ENTRY = "command_failure.app_no_entry"
@@ -361,6 +470,8 @@ object Strings {
     /** 删掉「条件执行」里的一条（那条条件与它的动作一起没了，顺序会往前顶）。 */
     const val DIALOG_DELETE_CONDITION_MESSAGE = "dialog.delete_condition_message"
     const val DIALOG_DELETE_CONDITION_TITLE = "dialog.delete_condition_title"
+    const val DIALOG_DELETE_ONE_CONDITION_MESSAGE = "dialog.delete_one_condition_message"
+    const val DIALOG_DELETE_ONE_CONDITION_TITLE = "dialog.delete_one_condition_title"
     const val DIALOG_DELETE_COMMAND_SERIAL_MESSAGE = "dialog.delete_command_serial_message"
     const val DIALOG_DELETE_COMMAND_SINGLE_MESSAGE = "dialog.delete_command_single_message"
     const val DIALOG_DELETE_COMMAND_TITLE = "dialog.delete_command_title"
@@ -400,8 +511,16 @@ object Strings {
     const val HOME_MORE_OPTIONS_SUMMARY = "home.more_options_summary"
     const val HOME_OTHER_SECTION = "home.other_section"
 
-    /** 首页「按键列表」那一节的小标题（清单 + 添加按键都在这一节里）。 */
+    /** 首页「按键列表」那一节的小标题（只有键清单 —— 收集来的那几颗）。 */
     const val HOME_KEYS_SECTION = "home.keys_section"
+
+    /**
+     * 首页「按键操作」那一节的小标题 —— 组合按键与「添加按键」两行。
+     *
+     *  这两行原先并进 [HOME_KEYS_SECTION] 那张卡里，于是那张卡同时装着「已经有哪些键」与
+     *  「还能做什么」两件事，读起来像同一类东西排在一起（用户口径：分开）。
+     */
+    const val HOME_KEY_OPS_SECTION = "home.key_ops_section"
 
     /**
      * 首页第一节的小标题 —— 那一节只有模块总闸一行。

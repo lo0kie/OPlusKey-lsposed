@@ -49,6 +49,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GitFork
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
+import io.github.lyxnx.compose.ui.tablericons.outline.HandTwoFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
@@ -67,6 +68,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Notes
 import io.github.lyxnx.compose.ui.tablericons.outline.Number1
 import io.github.lyxnx.compose.ui.tablericons.outline.Number2
 import io.github.lyxnx.compose.ui.tablericons.outline.Number3
+import io.github.lyxnx.compose.ui.tablericons.outline.Number4
+import io.github.lyxnx.compose.ui.tablericons.outline.Number5
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
@@ -78,7 +81,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
-import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
+import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
@@ -108,12 +111,13 @@ internal object PageIcons {
     val Back: ImageVector get() = TablerIcons.Outline.ArrowLeft
 
     /**
-     * 「通用设置」那一行 / 那一页 —— `settings-cog`（齿轮）。
+     * 「通用设置」那一行 / 那一页 —— `settings-2`（两颗滑块的齿轮）。
      *
-     *  用户口径指定这一颗：这一页装的是「整个模块怎么跑」的全局项（接口选择、振动、执行提示），
-     *  齿轮比别的字形都更直接。
+     *  用户口径指定这一颗：这一页装的是「整个模块怎么跑」的全局项（接口选择、振动、执行提示）。
+     *  换掉了原来的 `settings-cog` —— 那颗与「语言自动」那行的 `settings` 太像，两行摆在一起
+     *  分不出谁是谁。
      */
-    val SettingsCog: ImageVector get() = TablerIcons.Outline.SettingsCog
+    val SettingsCog: ImageVector get() = TablerIcons.Outline.Settings2
 
     /**
      * 「启用按键绑定」那一行的行首 —— 拨到右的开关（`toggle-right`）：这一行是**模块总闸**。
@@ -282,20 +286,26 @@ internal object PageIcons {
     }
 
     /**
-     * 首页「按键」卡里**收集到的键** —— 按它在清单里的位置取数字：`number-1` / `-2` / `-3`
+     * 清单里「第几条」—— 按它在这一列里的位置取数字：`number-1` … `number-5`
      * （[index] 从 0 起）。
      *
-     *  用户口径：三颗键各拿一个数字，一眼能数出「现在有几颗」。上限就是三颗
-     *  （`KeyId.MAX_CUSTOM_KEYS`），所以 `else` 兜到 3；数字跟着**列表位置**走，
-     *  删掉中间那颗之后后面的会各自前移一位 —— 与清单里看到的顺序一致。
+     *  两个调用点共用这一支笔：首页「按键」卡里**收集到的键**（上限三颗，
+     *  `KeyId.MAX_CUSTOM_KEYS`）、以及「组合键」列表里的**第几组**（上限五组，
+     *  `MAX_COMBOS`）。数字跟着**列表位置**走，删掉中间那条之后后面的各自前移一位 ——
+     *  与清单里看到的顺序一致。
      *
-     *  与 [MenuKeyAdd]（加号）分工：那一行是「再加一颗」，这几行是「已经收下的那颗」。
+     *  只到 5：五组是组合键的上限（用户口径），再往上那一档没有图标可用，
+     *  越界就兜到 5 —— 真的越界说明上限判据与这排数字又各说了一个数。
+     *
+     *  与 [MenuKeyAdd]（加号）分工：那一行是「再加一颗」，这几行是「已经收下的那条」。
      */
     fun menuKeyNumber(index: Int): ImageVector =
         when (index) {
             0 -> TablerIcons.Outline.Number1
             1 -> TablerIcons.Outline.Number2
-            else -> TablerIcons.Outline.Number3
+            2 -> TablerIcons.Outline.Number3
+            3 -> TablerIcons.Outline.Number4
+            else -> TablerIcons.Outline.Number5
         }
 
     /**
@@ -305,6 +315,17 @@ internal object PageIcons {
      *  收集到的那几行用 [menuKeyNumber]，两者不共用同一颗字形。
      */
     val MenuKeyAdd: ImageVector get() = TablerIcons.Outline.Plus
+
+    /**
+     * 首页「按键操作」卡里那一行「组合按键」—— `hand-two-fingers`（两只手指）。
+     *
+     *  用户口径指定这一颗：这一行说的是「**两颗键一起按**」，两只手指比 ⌘ 更直接 ——
+     *  ⌘ 是桌面键盘的组合键符号，手机上不出现在任何系统界面里。
+     *
+     *  页内那两处（列表的空态行、设置卡的行首）用全项目通用那颗空态字形
+     *  （[NoMatch]，`mood-empty`）—— 那里说的是「这一类东西 / 还没配」，不是「按键」。
+     */
+    val MenuComboFingers: ImageVector get() = TablerIcons.Outline.HandTwoFingers
 
     /**
      * 首页「其他 → 更多选项」那一行的行首 —— 圈里三点（`dots-circle-horizontal`，

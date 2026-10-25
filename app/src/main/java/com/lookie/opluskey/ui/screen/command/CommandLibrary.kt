@@ -12,8 +12,8 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.KeyConfig
-import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.bindsToken
+import com.lookie.opluskey.core.model.mapActions
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.SettingsPage
@@ -186,7 +186,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
         }
 
         CommandsSave.Failed -> {
-            if (cfg.hasBindingFor(cmd)) {
+            if (cfg.bindsToken(cmd.token)) {
                 // 注意：命令库没删成、绑定却已经清了 ⇒ 会留下「手势=无操作 + 命令仍在库」这种半份状态
                 // ：把绑定**写回原样**，两边一起保持原状。
                 //  失败原因 [saveCommands] 已经报过（「保存失败」），这里只补回滚与它的判据行。
@@ -209,38 +209,15 @@ private fun SettingsPage.clearCommandBindings(
     cfg: Config,
     cmd: Command,
 ): Boolean {
-    fun clean(a: Action) = if (a.token == cmd.token) Action.None else a
-
-    //  条件规则里的动作是**第四处引用**：摘掉整条规则会让用户的判断条件一起消失，
-    //  所以只把动作换成「无操作」—— 条件还在、命中时什么都不做，不是 NOT_FOUND。
-    fun cleanRule(r: com.lookie.opluskey.core.model.StateRule) = r.copy(action = clean(r.action))
-    val cleared = mutableMapOf<KeyId, KeyConfig>()
-    for (k in cfg.allKeys) {
-        val before = cfg.key(k)
-        val after =
-            before.copy(
-                single = clean(before.single),
-                double = clean(before.double),
-                long = clean(before.long),
-                rules = before.rules.map(::cleanRule),
-            )
-        if (after != before) cleared[k] = after
-    }
-    if (cleared.isEmpty()) return true
+    // 五处动作位（三格手势 / 条件规则 / 组合键两档）由 `mapActions` 一次走完 —— 这里只回答
+    //  「这一处是不是它」。早先逐处手写 `copy(...)` 时，组合键那两档就是这样漏掉的
+    //  （组合按下拿不到命令、只报 NOT_FOUND），所以遍历只留那一处。
+    //
+    //  规则里的动作同样只换成「无操作」、不摘整条规则：摘掉会让用户的判断条件一起消失。
+    val next = cfg.mapActions { if (it.token == cmd.token) Action.None else it }
+    if (next == cfg) return true
     // 只读态下这次写会被拒（返回值不能丢）：命令库那份照删，配置里就留下悬空的 `cmd:`。
-    val ok =
-        write(
-            cfg.copy(keys = cfg.keys + cleared),
-            "删除命令时清掉绑定：${cmd.name}",
-        ) != CommandsSave.Failed
+    val ok = write(next, "删除命令时清掉绑定：${cmd.name}") != CommandsSave.Failed
     if (!ok) XLog.w("删除命令中止：绑定没能清掉（配置只读），命令库保持原样：${cmd.name}")
     return ok
 }
-
-/** 有没有任一颗键还绑着这条命令 —— 删库失败时据此决定要不要回滚绑定。 */
-private fun Config.hasBindingFor(cmd: Command): Boolean =
-    allKeys.any { k ->
-        val key = key(k)
-        key.single.token == cmd.token || key.double.token == cmd.token || key.long.token == cmd.token ||
-            key.rules.any { it.action.token == cmd.token }
-    }

@@ -1271,8 +1271,8 @@ $ ls -l /data/user/0/com.oplus.gesture/files/opluskey_*
 -rw-r--r--  364  opluskey_config.conf   ← 老位置在 CE
 ```
 
-改法：`ConfigStore.HOST_DIR` 换成
-`/data/user_de/0/com.oplus.gesture`，三个文件（主配置 / 命令库 / 界面状态）一起走。**没写任何兼容代码**：本模块尚未发行过，CE 上那份旧文件直接删掉即可，不做搬迁。
+改法：目录换成
+`/data/user_de/<uid>/com.oplus.gesture/files`（现在这个路径只在 `core/config/ModuleFiles.hostFilesDir()` 里写一份），三个文件（主配置 / 命令库 / 界面状态）一起走。**没写任何兼容代码**：本模块尚未发行过，CE 上那份旧文件直接删掉即可，不做搬迁。
 
 真机复核（`kill` 宿主主进程让它带着新路径重读）：
 
@@ -4057,3 +4057,92 @@ adb shell 'dumpsys window windows | grep -c speech'      # 0 = 没起界面
 （同一个 Service Resolver 表里 `KeepLiveService` / `PreloadService` 都带
 `oplus.permission.OPLUS_COMPONENT_SAFE`），所以从宿主起大概率也能起。模块仍然留在 system_server 起
 （理由见 30.3），但这条意味着「宿主起不通」并不是死路，真出问题时可以退到那条。
+
+## 三十一、把音量设成某个值只有 `cmd audio set-volume` 这一条路（实测，2026-10-24，PLK110 / ColorOS 17.0.0）
+
+用户想用「自定义命令」把音量直接设成 0（不是按一下减一格）。真机上把三条候选逐个试了一遍：
+
+| 写法 | 退出码 | 结果 |
+| ---- | ------ | ---- |
+| `media volume --stream 3 --set 0` | 127 | `media: inaccessible or not found` —— 这条老命令在 ColorOS 17 上**已经没了** |
+| `cmd media_session volume --stream 3 --set 0` | 0 | **报成功、音量没变**（`get-stream-volume 3` 仍是原值）—— 它走 MediaSession，没有活动会话时静默空转 |
+| `cmd audio set-volume 3 0` | 0 | 生效，`get-stream-volume 3` 当场读回 0 |
+
+所以自定义命令写 `shell:cmd audio set-volume 3 0`（`shell:` 前缀不能省，见 `Action.parse`）。
+流编号与 `AudioManager.STREAM_*` 一致：`0` 通话 / `1` 系统 / `2` 铃声 / `3` 媒体 / `4` 闹钟 /
+`5` 通知。第三条参数是**档位下标**（这台机器 STREAM_MUSIC 是 `0..160`，不是 `0..15`），
+`0` 即静音；`cmd audio adj-volume 3 LOWER` 才是「减一格」。
+
+`cmd audio` 的副作用是**不弹音量条**（`setStreamVolume(…, flags=0)`），正是按键场景想要的。
+
+### 31.1 要弹音量条：`--show` 不管用，只能再补一次音量键
+
+| 写法 | 音量条 |
+| ---- | ------ |
+| `cmd media_session volume --stream 3 --set 0 --show` | **不弹**（`--show` 传下去的 `FLAG_SHOW_UI` 在 ColorOS 17 上被吞了，截图确认屏幕上什么都没有） |
+| `cmd audio set-volume 3 0` | 不弹（flags=0） |
+| `cmd audio set-volume 3 0 && input keyevent 25` | **弹**，且停在 0 |
+
+所以「设 0 且让用户看见」写成一条：
+
+```
+shell:cmd audio set-volume 3 0 && input keyevent 25
+```
+
+`input keyevent 25` 在音量已经是最小时**不会再改值**，只把 SystemUI 那条竖着的音量条叫出来（截图确认：右侧一条半透明竖胶囊，底部是划掉的喇叭图标）。
+
+两点注意：
+
+- **顺序必须靠 `&&` 串在同一条 shell 里**，不能拆成「多条命令」的两步：多条命令在 `stepDelayMs = 0` 时是把两步**同步派发**的，而 `shell:` 那一步是扔进线程池 fork/exec `su`（首次还要等授权弹窗），音量键很可能先跑完 —— 弹出来的是**旧音量**的条，随后音量才掉到 0。
+- `input` 由 `su` 跑得起来（`rc=0`，root 过 `INJECT_EVENTS`）。它每次要起一个 `app_process`（约几百毫秒），可接受。
+
+顺带量到的一条：这台机器 STREAM_MUSIC 是 `0..160`，**一次音量键走 10 格**（实测 `40 → 30`），
+也就是界面上那 16 级。所以「按一下减一格」在数值上是减 10，`--set` 用的才是原始下标。
+
+## 三十二、NFC 的「关」不会被记住，重启自己开回来（实测，2026-10-24，PLK110 / ColorOS 17.0.0）
+
+用户口径：「侧键绑定切换 NFC，重启会自动打开 NFC」。
+
+### 32.1 重启后的状态从哪儿来
+
+**`/data/user_de/0/com.android.nfc/shared_prefs/NfcServicePrefs.xml` 里的 `nfc_on`。**
+
+注意路径是 **`user_de`**（设备加密区，开机就有），不是 `/data/data/...` —— 后者里没有这个文件，
+按老路径去找会得出「没有持久档」的错误结论。
+
+A/B 实验（不用真重启，见 32.3）：
+
+| `nfc_on` | 杀掉 NFC 进程后拉起的状态 |
+| -------- | ------------------------- |
+| `true`   | `Nfc is enabled`          |
+| `false`  | `Nfc is disabled`         |
+
+### 32.2 「开」会写，「关」不写
+
+同一份文件、同一段时间里的 mtime 与取值：
+
+| 操作 | `nfc_on` | 文件 mtime |
+| ---- | -------- | ---------- |
+| `cmd nfc enable-nfc` | `true` | **变了** |
+| `cmd nfc disable-nfc` | 仍 `true` | 没变 |
+| `cmd nfc disable-nfc persist` | 仍 `true` | 没变 |
+
+也就是说这个 ROM 上 **只有「开」会落进持久档**，「关」不管带不带 `persist` 都不写。
+所以关掉之后一重启，NfcService 读回 `nfc_on=true`，NFC 自己就开回来了 —— 与模块传什么无关，
+系统自己的控制中心磁贴也一样（它走的是同一条 `disable`）。
+
+模块这一侧仍然把 `persist` 改成了 `true`（`NfcToggle.fire`，与 `SettingCalls.bluetooth`
+那条同一个坑）：语义上本来就该传 true，而且 `cmd nfc disable-nfc persist` 是**ROM 自己的 shell
+命令**，它有没有把 `persist` 传下去是另一件事 —— 模块走的是 binder 直调，值得在真机上再验一次
+（验法见 32.3，改完要**整机重启**才生效，注入侧只在 system_server 启动时加载）。
+
+### 32.3 「重启才复现」的问题不用真重启
+
+```bash
+adb shell "su -c 'kill -9 \$(pidof com.android.nfc)'"
+```
+
+`com.android.nfc` 是常驻服务进程，被 kill 之后由系统重新拉起，**读的就是开机时读的那份持久档**
+—— 与真重启的差别只在「别的服务还活着」。上表那两组 A/B 就是这么做的。
+
+同一招对 `com.android.bluetooth` / `com.android.phone` 这类常驻进程都成立。

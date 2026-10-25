@@ -41,6 +41,17 @@ object ModuleWire {
     /** 广播里携带的键 id（`KeyId.id`：内置侧键或收集来的自定义键）。 */
     const val EXTRA_KEY = "key"
 
+    /**
+     * 广播里携带的**组合键 id**（`ComboKey.id`：`cmb1` / `cmb2`）。
+     *
+     *  带了这一项就说明这一条是「两颗键一起按」，宿主按**组合**那条路走（动作在 `ComboKey`
+     *  上、没有单颗键的 `KeyConfig`）；不带则仍是 [EXTRA_KEY] 那条单键路径。
+     *
+     *  两者**不混用**：组合同时把 [EXTRA_KEY] 填成 `cmb1` 的话，宿主日志与去重表里
+     *  「键」这一列会混进一种不是键的东西。
+     */
+    const val EXTRA_COMBO = "combo"
+
     /** 广播里携带的**手势**（`Gesture.id`：`single` / `double` / `long`）。 */
     const val EXTRA_PHASE = "phase"
 

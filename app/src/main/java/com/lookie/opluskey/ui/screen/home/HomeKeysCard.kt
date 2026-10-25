@@ -11,19 +11,20 @@ import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.binding.CollectKeyDialog
 import com.lookie.opluskey.ui.screen.keyEnabled
 import com.lookie.opluskey.ui.state.KeyWatchState
 
-// 首页那张「按键」卡 —— 按键清单（侧键 + 收集来的键）与「添加按键」。
+// 首页那两张同族的卡 —— 「按键列表」（现在有哪几颗键）与「按键操作」（还能对它做什么：
+//  组合按键、添加按键）。两张卡分开是用户口径：一列里混着「清单条目」与「对清单的动作」，
+//  读起来像四个同类条目。
 //
 //  从「按键绑定」页顶栏那份 ⋮ 菜单搬过来（用户口径）：那一页只回答「这颗键现在绑了什么」，
 //  「有哪几颗键」是总览，属于首页。菜单里那一份清单连同「添加按键」一起挪走之后，
 //  绑定页的菜单只剩对**当前这一颗**动手的那三行（见 `BindingKeyMenu`）。
 
 /**
- * 「按键」卡 —— 一行一颗键，末行是「添加按键」。
+ * 「按键列表」卡 —— 一行一颗键（侧键 + 收集来的键）。
  *
  * ## 点一行做什么
  *
@@ -45,16 +46,14 @@ import com.lookie.opluskey.ui.state.KeyWatchState
  *  与原先那一行「按键绑定」入口**同一档**：整页总闸（[pageEnabled]）。这一页所有会写配置的
  *  入口都吃它，少给一个就会出现「别的都灰着、这一颗还能点进去改」。
  *
+ *  **只有清单**：组合按键与「添加按键」是**另一张卡**（[HomeKeyOpsCard]）——
+ *  这张卡回答「现在有哪几颗键」，那一张回答「还能做什么」，两件事不该挤在同一列里。
+ *
  * @param pageEnabled 整页总闸（模块开着 + 链路齐了 + 配置可写，见 `HomeScreen`）
  */
 @Composable
-internal fun SettingsPage.HomeKeysCard(
-    pageEnabled: Boolean,
-    ui: HomeUiState,
-) {
-    val tick = rememberTick()
+internal fun SettingsPage.HomeKeysCard(pageEnabled: Boolean) {
     val cfg = configState.config.value
-    val atLimit = cfg.customKeys.size >= KeyId.MAX_CUSTOM_KEYS
 
     CardList(
         rows =
@@ -86,6 +85,39 @@ internal fun SettingsPage.HomeKeysCard(
                         ),
                     )
                 }
+            },
+    )
+}
+
+/**
+ * 「按键操作」卡 —— 组合按键与「添加按键」两行。
+ *
+ *  为什么另起一张卡（用户口径）：这两行不是「清单里的东西」，是**对清单做的事**。
+ *  与 [HomeKeysCard] 挤在一起时，一列读下来「侧键 / 音量 + / 组合按键 / 添加按键」
+ *  像四个同类条目，而中间那两行的性质完全不同。
+ *
+ *  ## 组合按键那一行为什么会灰
+ *
+ *  组合要**两颗键**。只有默认侧键时（一颗自定义键都没收）选键弹窗里只有一行，
+ *  配不出来 —— 所以那一行在这一档直接置灰，副标题写「先添加一颗按键」，
+ *  点一下说的也是这一句（`CardRow.Item.disabledHint`），而不是整页那条「链路没通」。
+ */
+@Composable
+internal fun SettingsPage.HomeKeyOpsCard(
+    pageEnabled: Boolean,
+    ui: HomeUiState,
+) {
+    val cfg = configState.config.value
+    val atLimit = cfg.customKeys.size >= KeyId.MAX_CUSTOM_KEYS
+    //  一颗自定义键都没有 ⇒ 组合配不出来（组合是「侧键 + 另一颗」两颗键）。
+    //  **已经配过的那几组要放行**：收着的键删光之后，那几组都成了废配置（成员缺失），
+    //  而删除它们的入口只在列表页 —— 这里也禁掉的话，用户就再也删不掉了。
+    val canCombo = cfg.customKeys.isNotEmpty() || cfg.combos.isNotEmpty()
+
+    CardList(
+        rows =
+            buildList {
+                add(comboEntryRow(cfg, pageEnabled, canCombo))
                 add(
                     CardRow.Item(
                         title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
@@ -100,7 +132,6 @@ internal fun SettingsPage.HomeKeysCard(
                             },
                         enabled = pageEnabled && !atLimit,
                         onClick = {
-                            tick()
                             ui.collectKeyPending = true
                         },
                     ),
@@ -152,4 +183,41 @@ private fun SettingsPage.openKey(key: KeyId) {
         XLog.w("首页按键清单：切到「${key.label}」")
     }
     navTo(Screen.BINDING)
+}
+
+/**
+ * 「组合按键」那一行 —— 在「按键操作」卡的第一行。
+ *
+ *  与「添加按键」同一张卡：两者都是「对这颗键/这组键做事」的入口。副标题三档：
+ *  一颗自定义键都没有时说「先添加一颗按键」（同时也是灰着被点时的那句话），
+ *  一组都没配时说这一步是什么，配了就说已配几组（行高才一致）。
+ *
+ *  抽成函数只为让 [HomeKeyOpsCard] 留在 detekt 的 `LongMethod` 阈值内。
+ *
+ * @param canCombo 现在配不配得出组合 —— 只有默认侧键时为 `false`（组合要两颗键）
+ */
+private fun SettingsPage.comboEntryRow(
+    cfg: com.lookie.opluskey.core.model.Config,
+    pageEnabled: Boolean,
+    canCombo: Boolean,
+): CardRow.Item {
+    //  灰着的说法：只有「一颗键都没有」是这一行自己的原因；整页闸门关着时交给整页那条
+    val needKey = I18n.get(Strings.COMBO_NEED_KEY, "先添加一颗按键")
+    return CardRow.Item(
+        title = I18n.get(Strings.COMBO_ENTRY, "组合按键"),
+        summary =
+            when {
+                !canCombo -> needKey
+                cfg.combos.isEmpty() -> I18n.get(Strings.COMBO_ADD_DESC, "选两颗键一起按")
+                else -> I18n.format(Strings.COMBO_COUNT, cfg.combos.size)
+            },
+        icon = PageIcons.MenuComboFingers,
+        enabled = pageEnabled && canCombo,
+        disabledHint = if (!canCombo) needKey else null,
+        arrow = true,
+        onClick = {
+            XLog.w("首页按键清单：进「组合按键」页")
+            navTo(Screen.COMBOS)
+        },
+    )
 }
