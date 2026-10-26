@@ -289,7 +289,8 @@ internal object KeyHooks {
                         action == FlexibleWindowBridge.ACTION ||
                         action == ModuleWire.ACTION_INJECT_QUERY ||
                         action == ModuleWire.ACTION_KEY_WATCH ||
-                        action == ModuleWire.ACTION_LOG_PULL
+                        action == ModuleWire.ACTION_LOG_PULL ||
+                        action == ModuleWire.ACTION_INJECT_KEY
                 if (!isProbe && !isOurs) {
                     continue
                 }
@@ -304,6 +305,28 @@ internal object KeyHooks {
         }
     }
 
+    /**
+     * 把一段「只有注入侧才能做」的处理 post 到主线程，并整段兜 catch。
+     *
+     *  **必须 post**：这条回调跑在 AMS 的广播入口里，在里面再做注入 / `sendBroadcast`
+     *  等于在广播路径里重入一次（见 [reportStatus] 那条注释）。
+     *  **必须兜 catch**：这一段跑在 `system_server` 主线程上，漏一个异常出去就是整机重启。
+     *
+     * @param subject 日志主语（出事时能看出是哪一件失败了）
+     */
+    private fun postGuarded(
+        subject: String,
+        block: () -> Unit,
+    ) {
+        handler.post {
+            try {
+                block()
+            } catch (e: Throwable) {
+                XLog.w("$subject 失败（已忽略）：${e.javaClass.simpleName}", e)
+            }
+        }
+    }
+
     private fun dispatchAction(
         action: String,
         intent: Intent,
@@ -315,24 +338,12 @@ internal object KeyHooks {
 
             // 通知中心 / 控制中心 / 最近任务：让本机（system_server）去执行。
             StatusBarBridge.ACTION_STATUSBAR -> {
-                handler.post {
-                    try {
-                        StatusBarBridge.handle(intent, systemLoader)
-                    } catch (e: Throwable) {
-                        XLog.w("状态栏指令执行失败（已忽略）：${e.javaClass.simpleName}", e)
-                    }
-                }
+                postGuarded("状态栏指令") { StatusBarBridge.handle(intent, systemLoader) }
             }
 
             // 小窗指令：同上，只有这边能拿到 FlexibleTaskController。
             FlexibleWindowBridge.ACTION -> {
-                handler.post {
-                    try {
-                        FlexibleWindowBridge.handle(intent, systemLoader)
-                    } catch (e: Throwable) {
-                        XLog.w("小窗指令执行失败（已忽略）：${e.javaClass.simpleName}", e)
-                    }
-                }
+                postGuarded("小窗指令") { FlexibleWindowBridge.handle(intent, systemLoader) }
             }
 
             // 链路自检：回答「注入侧那套装好没有」
@@ -347,18 +358,18 @@ internal object KeyHooks {
             }
 
             // 导出日志：把注入侧（system_server）那份缓冲切片发回设置页。
-            //  必须 post 到主线程：这条回调跑在 AMS 的广播入口里，在它内部再 sendBroadcast
-            //  等于在广播路径里重入广播路径（与 `reportStatus` 同一条纪律）。
+            //  判据与纪律都在 [pullLogs] 里。
             ModuleWire.ACTION_LOG_PULL -> {
-                handler.post {
-                    // 这一段跑在 system_server 主线程上：任何未捕获异常都会把整机拖去重启
-                    //  （与上面 ProbeChannel 那支同一纪律，别再省这层 try）。
-                    try {
-                        val ctx = SystemContext.get(systemLoader ?: return@post) ?: return@post
-                        LogWire.reply(ctx, HostApp.PACKAGE, "system")
-                    } catch (e: Throwable) {
-                        XLog.w("导出日志（注入侧）失败（已忽略）：${e.javaClass.simpleName}", e)
-                    }
+                postGuarded("导出日志（注入侧）") {
+                    val ctx = SystemContext.get(systemLoader ?: return@postGuarded) ?: return@postGuarded
+                    LogWire.reply(ctx, HostApp.PACKAGE, "system")
+                }
+            }
+
+            // 宿主请我们注入一颗键（内置「截图」：宿主自己注入的那一下 ColorOS 不认，见 ModuleWire）
+            ModuleWire.ACTION_INJECT_KEY -> {
+                postGuarded("注入侧注入") {
+                    injectKeyFromSystem(systemLoader, intent.getIntExtra(ModuleWire.EXTRA_INJECT_CODE, -1))
                 }
             }
 

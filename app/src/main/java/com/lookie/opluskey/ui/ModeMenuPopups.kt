@@ -6,13 +6,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
-import com.lookie.opluskey.ui.model.specIcon
+import com.lookie.opluskey.ui.model.tileIcon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
 /**
@@ -55,7 +53,6 @@ internal fun SettingsPage.ModeMenuPopups(
     // 弹窗开着的是哪一档（`null` = 没开）。只在组件内部流转，调用方看不见也不用管。
     //  它**不跟着 `target` 清**：菜单在点开弹窗那一下就已经收了，两者本来就不同生共死。
     var stateEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
-    val icons = tileIcons.value
 
     PageMenu(
         preciseClick = preciseClick,
@@ -64,7 +61,7 @@ internal fun SettingsPage.ModeMenuPopups(
             target
                 ?.let { t ->
                     ActionCatalog.modeMenu(t.tile.token, t.withLongOnly)?.let { modes ->
-                        modeEntries(t.tile.label, modes, icons, current) { picked ->
+                        modeEntries(t.tile.label, modes, current) { picked ->
                             // 这一档还有后续：收菜单、起弹窗（顺序反了会闪一帧空菜单）
                             if (ActionCatalog.stateMenu(picked.token) != null) {
                                 stateEntry = picked
@@ -154,13 +151,12 @@ private fun stateRowLabel(
  * 「循环」与那三档），其余仍是相邻两行那条细线。
  *
  * @param parentTitle 父标题（一级菜单里那一行的标题）
- * @param icons 页面级那一份图标表（`SettingsPage.tileIcons`）—— 各层的行都从它取字形。
+ * 每一行的字形按需取（[tileIcon]）—— 这一层只建真被画到的那些行。
  * @param current 当前绑的动作（`null` = 不知道），用来把那一档标出来。
  */
 private fun modeEntries(
     parentTitle: String,
     modes: List<ActionCatalog.Spec>,
-    icons: Map<ActionCatalog.Spec, ImageVector>,
     current: Action?,
     onPick: (ActionCatalog.Spec) -> Unit,
 ): List<MenuEntry> =
@@ -173,11 +169,7 @@ private fun modeEntries(
                 modes.map { spec ->
                     MenuEntry.Row(
                         title = spec.label,
-                        icon =
-                            icons.getOrElse(spec) {
-                                XLog.w("图标表缺项：${spec.token} 用兜底字形")
-                                specIcon(spec)
-                            },
+                        icon = tileIcon(spec),
                         //  必须用 [ActionCatalog.isBound]（一行一行比），不能用 `isSelected` ——
                         // 后者对整组都算选中，会让菜单同时勾上多项。
                         selected = current?.let { ActionCatalog.isBound(spec, it) } ?: false,

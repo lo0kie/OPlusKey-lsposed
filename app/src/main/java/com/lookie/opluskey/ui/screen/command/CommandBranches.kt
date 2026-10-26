@@ -235,7 +235,7 @@ internal fun SettingsPage.addBranchRule(
         tick()
         //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
         hint(
-            I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有条件没选完"),
+            I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有场景没选完"),
             slot = HINT_SLOT_COMMAND,
         )
         return

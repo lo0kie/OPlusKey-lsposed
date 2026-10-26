@@ -155,7 +155,7 @@ internal fun SettingsPage.BindingScreen(
 ) {
     // tab 与页互相同步。
     // 挪进了每个手势页自己的滚动内容（见 [BindingList]）—— 它不再是固定的一层。
-    // （pagerState 与图标表都是页面级的，见 [tileIcons] —— 转场首帧不再做重活）
+    // （pagerState 是页面级的；图标按需取，见 [tileIcon] —— 转场首帧不再做重活）
     val gestures = Gesture.entries
     val tick = rememberTick()
 

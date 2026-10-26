@@ -4146,3 +4146,43 @@ adb shell "su -c 'kill -9 \$(pidof com.android.nfc)'"
 —— 与真重启的差别只在「别的服务还活着」。上表那两组 A/B 就是这么做的。
 
 同一招对 `com.android.bluetooth` / `com.android.phone` 这类常驻进程都成立。
+
+## 三十三、截图：宿主注入无效，得由注入侧（system_server）注入；`InputManager.getInstance()` 在那侧返回 null（实测，2026-10-25，3B15BR005FN00000 / ColorOS）
+
+**结论**
+
+| 谁注入 `KEYCODE_SYSRQ` | 结果 |
+|---|---|
+| 宿主进程（普通 app uid） | `injectInputEvent` 返回成功，屏幕无反应 |
+| 注入侧（`system_server`，uid 1000） | 正常截图 |
+
+所以「截图」这个内置动作**不能让宿主自己注入**，也不能退回 `su` 跑 `service call color_screenshot`
+（内置动作不该为截一张图要 root）。做法是宿主发一条
+`ModuleWire.ACTION_INJECT_KEY`（带键码），注入侧在 `system_server` 里注入 —— 见
+`host/action/ActionRunner.requestSystemInject` 与 `inject/KeyInject`。
+
+**判据**
+
+- `adb shell input keyevent 120` 能截出图（`/sdcard/Pictures/Screenshots/` 多一张）⇒ SYSRQ 这个码
+  ColorOS 照样处理，问题不在键码；
+- 宿主注入时日志只有「截图：注入…」一行、**没有任何「被拒」**——事件发出去了但不被处理；
+- 注入侧的注入模式要 `INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH`（`1`），与 `input` 命令一致；
+  宿主那份用的是 `0`（ASYNC）。
+
+**取 `InputManager` 的入口（这条 ROM 上的实测）**
+
+`InputManager.getInstance()` 在 `system_server` 里**返回 null** —— `Reflect.callStatic` 拿到 null、
+不抛异常，于是整条注入静默失效（日志「`InputManager.getInstance()` 拿不到实例」）。
+可用的是 **`InputManagerGlobal.getInstance()`**（Android 14 起静态方法搬到了这里，
+`injectInputEvent` 同名同签名）。
+
+代码里只试**两条**：`InputManagerGlobal.getInstance()` → `InputManager.getInstance()`，第一个非 null
+的记住（只在第一次注入时试，之后零反射）。留两条而不是一条的原因：Android 13 上没有
+`InputManagerGlobal`，14 之后 `InputManager.getInstance()` 又变成了包装（本机直接返回 null）——
+单写任一条都会让一半机器静默失效。命中时打一行「注入侧注入：入口用 …」，日志里看得出走哪条
+（本机是第一条）。
+
+**纪律**
+
+- 注入**不要放在 `system_server` 主线程上**：`WAIT_FOR_FINISH` 会等事件被处理完，那一下等于把整机挂住；
+- 全程不抛：调用点在 AMS 的广播入口，漏一个异常出去就是 `system_server` 崩。

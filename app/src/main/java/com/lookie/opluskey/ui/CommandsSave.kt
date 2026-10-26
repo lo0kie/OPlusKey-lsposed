@@ -63,8 +63,11 @@ internal fun SettingsPage.saveCommands(
  *
  *  留最后一条而不是第一条：导入的那份覆盖旧的是用户的本意（`addCommand` 的「已覆盖」也是
  *  同一档语义）。顺序按原表保持，界面上的排列不会因为去重而跳。
+ *
+ *  `internal` 而不是 `private`：**导入配置**那条路现在把命令库写进新的一份配置（不经过
+ *  [saveCommands]），同一条闸要自己再过一遍 —— 同名的两条里 `cmd:<名字>` 只会命中第一条。
  */
-private fun dedupeByName(commands: List<Command>): List<Command> {
+internal fun dedupeByName(commands: List<Command>): List<Command> {
     val seen = HashSet<String>(commands.size)
     val kept = ArrayList<Command>(commands.size)
     for (c in commands.asReversed()) {

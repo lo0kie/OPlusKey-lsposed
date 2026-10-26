@@ -73,13 +73,15 @@ internal fun SettingsPage.ResetMenu() {
                         open = false
                         openStockPage()
                     },
+                    //  点了**先问一句**：这一下会杀掉本页进程再让宿主拉回来（页面闪一下重开），
+                    //  正在编辑、没保存的内容跟着丢 —— 与「清空配置」同一档代价。
                     MenuEntry.Row(
                         title = I18n.get(Strings.MENU_RESTART_SERVICE, "重启服务"),
                         icon = PageIcons.ModuleRestart,
                         enabled = rowsEnabled,
                     ) {
                         open = false
-                        restartModule()
+                        overlays.confirmRestart = true
                     },
                     // 第三项：导出日志 —— 同样跟着 [rowsEnabled]
                     MenuEntry.Row(
@@ -111,6 +113,18 @@ internal fun SettingsPage.ResetMenu() {
                     .orEmpty(),
             preciseClick = preciseClick,
             onDismiss = { open = false },
+        )
+
+        ConfirmDialog(
+            show = overlays.confirmRestart,
+            title = I18n.get(Strings.DIALOG_RESTART_TITLE, "重启服务"),
+            summary = I18n.get(Strings.DIALOG_RESTART_MESSAGE, "未保存的内容会丢。"),
+            action = I18n.get(Strings.DIALOG_RESTART_CONFIRM, "重启"),
+            onDismiss = { overlays.confirmRestart = false },
+            onConfirm = {
+                overlays.confirmRestart = false
+                restartModule()
+            },
         )
 
         ConfirmDialog(

@@ -53,7 +53,7 @@ object ConfigCodec {
      *  13 = 当前上一版；
      *  14 = `ComboDto` 多了 `rules`（组合键的条件执行）。
      */
-    const val VERSION = 14
+    const val VERSION = 17
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

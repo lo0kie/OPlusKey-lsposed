@@ -37,7 +37,7 @@ internal fun conditionKindRows(
             icon = conditionIcon(kind),
             // 取值全用掉了才置灰（本条自己原来那档不计入 —— 它算「还是它」）
             enabled = kind !in disabled,
-            disabledHint = I18n.get(Strings.COMMAND_BRANCH_DUPLICATE, "这个条件已经加过了"),
+            disabledHint = I18n.get(Strings.COMMAND_BRANCH_DUPLICATE, "这个场景已经加过了"),
             // 这一条现在是这一档 ⇒ 画成选中（行首对勾 + 文字主题色）
             selected = kind == current,
             // 每一行点下去都还有下一层（跳页面 / 弹二级取值）—— 行尾那格一律留出

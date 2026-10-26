@@ -43,7 +43,7 @@ internal object ConditionProbe {
             // 空取值退回这一档的默认值（老的 `wifi` / `media` 就是没有取值的，见 `defaultChoice`）
             judge(kind, condition.effectiveValue, ctx)
         } catch (e: Throwable) {
-            XLog.w("分叉条件：判 ${kind.id} 时抛了异常，按不成立处理", e)
+            XLog.w("分叉场景：判 ${kind.id} 时抛了异常，按不成立处理", e)
             false
         }
     }

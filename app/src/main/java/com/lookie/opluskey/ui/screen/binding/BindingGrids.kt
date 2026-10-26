@@ -38,6 +38,7 @@ import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.durationText
+import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
@@ -127,7 +128,6 @@ private fun SettingsPage.BuiltInTile(
         // 登记给确认键那条路用（见 `BindingGridState.tileAnchors`）—— 写的是普通 map、不是 state。
         st.tileAnchors[spec.token] = tileAnchor
         val current = st.target.actionIn(configState.config.value)
-        val icons = tileIcons.value
         //  入口格（点了弹二级菜单的那几格）：`modes` 非空。这一格绑在哪一档也从这里算一次
         //  —— **小字与小字前面那枚图标共用它**，同源就不会各说各的。
         val modes = ActionCatalog.modeMenu(spec.token, withLongOnly = st.g == Gesture.LONG)
@@ -145,8 +145,8 @@ private fun SettingsPage.BuiltInTile(
             //  全画成「打开应用」那一族的字形。
             icon =
                 (if (spec.token == ActionCatalog.APP_TILE) appTileIcon(current) else null)
-                    ?: boundMode?.let { icons[it] }
-                    ?: icons[spec],
+                    ?: boundMode?.let { tileIcon(it) }
+                    ?: tileIcon(spec),
             selected = ActionCatalog.isSelected(spec, current),
             focused = index == st.focusedIndex,
             focusRequester = st.focusers[index],
@@ -296,7 +296,7 @@ private fun SettingsPage.CustomTile(
         }
         ActionTile(
             spec = spec,
-            icon = tileIcons.value[spec],
+            icon = tileIcon(spec),
             selected = selected,
             focused = index == st.focusedIndex,
             focusRequester = st.focusers[index],

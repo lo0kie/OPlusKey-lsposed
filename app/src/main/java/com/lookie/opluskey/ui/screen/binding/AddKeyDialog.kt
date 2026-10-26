@@ -1,15 +1,9 @@
 package com.lookie.opluskey.ui.screen.binding
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.focus.FocusRequester
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.FocusOnShow
-import com.lookie.opluskey.ui.FrostedDialog
+import com.lookie.opluskey.ui.NameDialog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.PageIcons
 
@@ -33,6 +27,8 @@ import com.lookie.opluskey.ui.model.PageIcons
  *  **这个窗只在「收集窗已经收场」之后才开**（判据在调用点 [CollectKeyDialog]）：两个弹窗窗口
  *  叠着的那几百毫秒里，键盘会被前一个窗口的销毁带走一次 —— 早先靠「晚一点抢焦点」绕，
  *  绕不干净（焦点抢回来时前一个窗还没退净，键盘照样被收）。所以这里不再有 `focusReady`。
+ *
+ *  正文（输入框 + 取消 / 确定）与「重命名」是同一个 [NameDialog]：两处填的都是一个名字。
  */
 @Composable
 internal fun SettingsPage.AddKeyDialog(
@@ -41,29 +37,14 @@ internal fun SettingsPage.AddKeyDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var text by remember(show, initial) { mutableStateOf(initial) }
-    val focus = remember { FocusRequester() }
-    FocusOnShow(show, focus)
-
-    FrostedDialog(
+    NameDialog(
         show = show,
         title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
+        label = I18n.get(Strings.BINDING_KEY_NAME, "按键名称"),
+        // 行首用标签（`label-important`）：这一格填的是**一个名字**
+        icon = PageIcons.LabelImportant,
+        initial = initial,
         onDismiss = onDismiss,
-        // 带输入框：键盘由 `ImeGuard` 叫，这里不能收（收晚一步就是「聚焦后又失焦」）
-        hideImeOnShow = false,
-    ) {
-        KeyNameBody(
-            text = text,
-            onTextChange = { text = it },
-            // 行首用标签（`label-important`）：这一格填的是**一个名字**
-            icon = PageIcons.LabelImportant,
-            focus = focus,
-            // 键盘与「失焦补焦点」需要知道弹窗关没关（见 `IconInputView` 的 `show`）——
-            //  「添加按键」这条路的弹窗是**按物理键之后**才开的，ROM 会在这之后把 IME 收掉
-            show = show,
-            // 取消 = 什么都不做：这一步还没写过配置，关掉就是没加
-            onCancel = onDismiss,
-            onConfirm = { onConfirm(text.trim()) },
-        )
-    }
+        onConfirm = onConfirm,
+    )
 }

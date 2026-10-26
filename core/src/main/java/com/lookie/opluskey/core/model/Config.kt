@@ -312,6 +312,15 @@ data class GlobalConfig(
      *  读它的是宿主里的执行器（`host/GestureExec.handleCombo`），所以**只走落盘**、不进广播。
      */
     val comboPassthrough: Boolean = DEFAULT_COMBO_PASSTHROUGH,
+    /**
+     * 组合键：**两颗键按下之间最多隔多久**（毫秒）—— 用户口径「按键之间互相的等待时间」。
+     *
+     *  判定在注入侧（`ComboDetector`），所以这一位**走广播**（`ConfigFields.F_COMBO_WINDOW_MS`）。
+     *
+     *  它的代价是真实的：参与组合的键要先等这么久才轮到自己的单键手势（等的是「第二颗键会不会来」）。
+     *  不参与任何组合的键不受影响 —— 那条路上没有可等的东西。
+     */
+    val comboWindowMs: Int = DEFAULT_COMBO_WINDOW_MS,
 ) {
     /** 本对象在每个配置字段上的取值 —— 与 `KeyConfig.fieldValues` 同一套（见那边的说明）。 */
     fun fieldValues(): ConfigFields.Values =
@@ -329,6 +338,7 @@ data class GlobalConfig(
                 ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
                 ConfigFields.F_PAGE_SCALE to pageScale,
                 ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
+                ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
             ),
         )
 
@@ -390,6 +400,17 @@ data class GlobalConfig(
          */
         const val DEFAULT_COMBO_PASSTHROUGH = true
 
+        /**
+         * [GlobalConfig.comboWindowMs] 的三档 —— 下限 / 出厂值 / 上限（毫秒）。
+         *
+         *  出厂 80 就是这一位出现之前写死的那个窗口：老配置读回来行为完全不变。
+         *  下限 20：再短就几乎是「必须精确同时按」，组合键会挑手。上限 300：再长，参与组合的键
+         *  按下去要等三分之一秒才有反应，那已经不是能用的手感了。
+         */
+        const val COMBO_WINDOW_MIN_MS = 20
+        const val DEFAULT_COMBO_WINDOW_MS = 80
+        const val COMBO_WINDOW_MAX_MS = 300
+
         val DEFAULT =
             GlobalConfig(
                 enabled = DEFAULT_ENABLED,
@@ -415,6 +436,8 @@ data class GlobalConfig(
                 // 与 vibrateStrength 同一档：手改文件写进越界值，在这一层就钳回滑杆两端
                 pageScale = v.number(ConfigFields.F_PAGE_SCALE).coerceIn(PAGE_SCALE_MIN, PAGE_SCALE_MAX),
                 comboPassthrough = v.bool(ConfigFields.F_COMBO_PASSTHROUGH),
+                //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
+                comboWindowMs = v.number(ConfigFields.F_COMBO_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
             )
     }
 }
@@ -482,6 +505,25 @@ data class Config(
      *  的表，得另走一条广播），所以注入侧读到的 `Config` 里这一项恒为空。
      */
     val combos: List<ComboKey> = emptyList(),
+    /**
+     * 这份配置的**名字** —— 多配置切换用。`""` = 「默认」那一份。
+     *
+     *  默认那份**不许改名、不许删除**（见 `core/config/ConfigProfiles`）：它是升级时自动落下的
+     *  那一份，删掉就没地方回去了。其余配置必须起名字。
+     *
+     *  随落盘走（`ConfigDto.profile_name`），所以导出一份配置时名字跟着出去 ——
+     *  导到另一台机器上它还叫原来的名字。
+     */
+    val profileName: String = "",
+    /**
+     * 这份配置在**多配置列表里的位次**（0 = 「默认」那份，1、2、3… 按创建顺序）。
+     *
+     *  用它而不是槽号排序：切换配置是**两份内容互换**，内容会在槽之间搬家 —— 按槽号排的话，
+     *  切一次某个配置就从第 3 行跳到第 1 行。位次跟着**内容**走（随落盘），所以列表顺序始终不变。
+     *
+     *  0 固定留给「默认」配置：它永远排在最上面。新建 / 导入时取「现有最大值 + 1」。
+     */
+    val profileOrder: Int = 0,
 ) {
     fun key(id: KeyId): KeyConfig = keys[id] ?: KeyConfig.defaultFor(id)
 

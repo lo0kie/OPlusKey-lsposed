@@ -34,11 +34,15 @@ internal class PageHooks {
     var onExportLog: (() -> Unit)? = null
 
     /**
-     * 「更多 → 导出配置」—— hook 侧实现：弹系统的「保存到」选择器，把主配置 + 命令库写成一份文件。
+     * 「更多 → 导出配置」—— hook 侧实现：弹系统的「保存到」选择器，把**这份配置 + 它的命令库**
+     * 写成一份文件。
+     *
+     * 参数是**导出哪一份的槽名**（`config` / `config-2` …，见 `ConfigProfiles`）：多份配置时
+     * 界面先让用户选一份再调这里；只有一份时直接传当前那份。
      *
      * 与 [onExportLog] 同一条 SAF 路（结果只能从宿主的 `onActivityResult` 收）。
      */
-    var onExportConfig: (() -> Unit)? = null
+    var onExportConfig: ((String) -> Unit)? = null
 
     /** 「更多 → 导入配置」—— hook 侧实现：弹系统的「打开」选择器，读回文件再写进配置与命令库。 */
     var onImportConfig: (() -> Unit)? = null

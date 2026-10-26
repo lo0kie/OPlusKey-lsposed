@@ -179,6 +179,24 @@ object ModuleWire {
      */
     const val EXTRA_INJECT_PROC_START = "inject_proc_start"
 
+    /**
+     * 宿主 → 注入侧：**替我注入一颗按键**（[EXTRA_INJECT_CODE]）。
+     *
+     *  现在只有「截图」用：宿主注入 `KEYCODE_SYSRQ` 时 `injectInputEvent` 返回成功、屏幕没反应
+     *  —— ColorOS 不认普通 app 注入的那一下。注入侧跑在 `system_server`，身份就是系统本身
+     *  （与 `input keyevent` 同级），那一下它认。
+     *
+     *  为什么不让宿主 `su` 跑 `service call color_screenshot`：内置动作不该为了截一张图去要 root
+     *  （弹授权、慢半拍、没 root 的机器上直接不可用）。这条通道既不走 shell、也不要授权。
+     *
+     *  收方是 `inject/KeyHooks` 那个 AMS 广播入口（注入侧不给它单独挂接收器），
+     *  所以宿主那边**直接 `sendBroadcast`** 就行，不必 `setPackage`。
+     */
+    const val ACTION_INJECT_KEY = "com.lookie.opluskey.INJECT_KEY"
+
+    /** [ACTION_INJECT_KEY] 里带「要注入的键码」（`KeyId.KEYCODE_SYSRQ` 之类）。 */
+    const val EXTRA_INJECT_CODE = "inject_code"
+
     /** [ACTION_HOST_SERVICE_UP] 里带「宿主进程的启动时刻」（同上）。宿主是普通应用进程，重开即可，不必重启手机。 */
     const val EXTRA_HOST_PROC_START = "host_proc_start"
 

@@ -184,6 +184,12 @@ object Strings {
     const val COMBO_PASSTHROUGH_DESC_ON = "combo.passthrough_desc_on"
     const val COMBO_PASSTHROUGH_DESC_OFF = "combo.passthrough_desc_off"
 
+    /** 组合键：按键之间的等待（两颗键按下最多隔多久才算一起按下）。 */
+    const val COMBO_WINDOW_TITLE = "combo.window_title"
+
+    /** 组合键：等待时间的副标题（提示调大会带来额外的等待）。 */
+    const val COMBO_WINDOW_DESC = "combo.window_desc"
+
     /** 灵感语音 —— 一键闪记的「长按录音」那一档（只在长按网格出现）。 */
     const val CATALOG_VOICE_MEMORY = "catalog.voice_memory"
 
@@ -464,6 +470,82 @@ object Strings {
     const val DIALOG_APP_UNSUPPORTED_MINI_WINDOW_TITLE = "dialog.app_unsupported_mini_window_title"
     const val DIALOG_CANCEL = "dialog.cancel"
     const val DIALOG_CLEAR_CONFIG_CONFIRM = "dialog.clear_config_confirm"
+
+    /** 「重启服务」确认窗：动作（按钮上的那个词）。 */
+    const val DIALOG_RESTART_CONFIRM = "dialog.restart_confirm"
+
+    /** 「重启服务」确认窗：正文只提醒代价（未保存的内容会丢），不解释流程。 */
+    const val DIALOG_RESTART_MESSAGE = "dialog.restart_message"
+
+    /** 「重启服务」确认窗：标题（与菜单那一项同名）。 */
+    const val DIALOG_RESTART_TITLE = "dialog.restart_title"
+
+    /** 多配置：切换配置（「更多选项」页那一行的标题） */
+    const val PROFILE_SWITCH_TITLE = "profile.switch_title"
+
+    /** 多配置：新建配置 */
+    const val PROFILE_NEW = "profile.new"
+
+    /** 多配置：删除配置 */
+    const val PROFILE_DELETE = "profile.delete"
+
+    /** 多配置：删除配置 */
+    const val PROFILE_DELETE_TITLE = "profile.delete_title"
+
+    /** 多配置：默认 */
+    const val PROFILE_DEFAULT = "profile.default"
+
+    /** 多配置：配置 %d */
+    const val PROFILE_NEW_NAME = "profile.new_name"
+
+    /** 多配置：已切到「%s」 */
+    const val PROFILE_SWITCHED = "profile.switched"
+
+    /** 多配置：已新建「%s」 */
+    const val PROFILE_CREATED = "profile.created"
+
+    /** 多配置：已删除「%s」 */
+    const val PROFILE_DELETED = "profile.deleted"
+
+    /** 多配置：切换失败：那份读不出来 */
+    const val PROFILE_SWITCH_FAILED = "profile.switch_failed"
+
+    /** 多配置：新建失败 */
+    const val PROFILE_NEW_FAILED = "profile.new_failed"
+
+    /** 多配置：删除失败 */
+    const val PROFILE_DELETE_FAILED = "profile.delete_failed"
+
+    /** 多配置：已导入为「%s」 */
+    const val PROFILE_IMPORTED = "profile.imported"
+
+    /** 多配置：重命名配置 */
+    const val PROFILE_RENAME = "profile.rename"
+
+    /** 多配置：配置名称（输入框左边的标签） */
+    const val PROFILE_NAME = "profile.name"
+
+    /** 多配置：已重命名为「%s」 */
+    const val PROFILE_RENAMED = "profile.renamed"
+
+    /** 多配置：默认那份不许改名 */
+    const val PROFILE_RENAME_DEFAULT = "profile.rename_default"
+
+    /** 多配置：默认那份不许删除（当前是它时没有地方可以退回去） */
+    const val PROFILE_DELETE_DEFAULT = "profile.delete_default"
+
+    /** 多配置：已删除「%1$s」，切到「%2$s」 */
+    const val PROFILE_DELETED_SWITCHED = "profile.deleted_switched"
+
+    /** 多配置：最多三份配置（除「默认」之外） */
+    const val PROFILE_FULL = "profile.full"
+
+    /** 多配置：删除配置确认窗的标题 */
+    const val DIALOG_DELETE_PROFILE_TITLE = "dialog.delete_profile_title"
+
+    /** 多配置：删除配置确认窗的正文（「**%s**」是被删那份的名字） */
+    const val DIALOG_DELETE_PROFILE_MESSAGE = "dialog.delete_profile_message"
+
     const val DIALOG_CLEAR_CONFIG_MESSAGE = "dialog.clear_config_message"
     const val DIALOG_CLEAR_CONFIG_TITLE = "dialog.clear_config_title"
 

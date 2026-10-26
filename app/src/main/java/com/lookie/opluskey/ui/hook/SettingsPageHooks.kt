@@ -471,7 +471,7 @@ internal object SettingsPageHooks {
             // 进出子页 / 浮层开合 ⇒ 重新定「要不要挂着返回回调」（见 BackInterception.syncBackCallback 的注释）
             page.hooks.onBackInterceptionChanged = { BackInterception.syncBackCallback(activity) }
             page.hooks.onExportLog = { ConfigTransfer.exportLog(activity) }
-            page.hooks.onExportConfig = { ConfigTransfer.exportConfig(activity) }
+            page.hooks.onExportConfig = { slot -> ConfigTransfer.exportConfig(activity, slot) }
             page.hooks.onImportConfig = { ConfigTransfer.importConfig(activity) }
 
             // 状态栏区域已归页面自己管：模块页面本身是 edge-to-edge 的（Scaffold

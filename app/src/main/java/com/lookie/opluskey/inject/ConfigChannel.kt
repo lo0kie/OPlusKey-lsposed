@@ -5,6 +5,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
+import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 
@@ -77,6 +78,28 @@ internal object ConfigChannel {
         val cfg = received ?: return null
         if (keys.isEmpty() || !keys.all { enabledOf(it) }) return null
         return cfg.comboFor(keys.map { it.id }.toSet())
+    }
+
+    /**
+     * 组合键的**等待窗口**（毫秒）—— 两颗键按下之间最多隔多久，`ComboDetector` 的判据。
+     *
+     *  还没收到过广播时给出厂值（80，与这一位出现之前写死的那个数一致）。
+     */
+    fun comboWindowMs(): Long =
+        received
+            ?.global
+            ?.comboWindowMs
+            ?.takeIf { it > 0 }
+            ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong()
+
+    /**
+     * 这一颗键**参与某一组已启用的组合**吗 —— 只有这种键才值得为组合先等一个窗口。
+     *
+     *  不参与的键不等：那条路上没有「第二颗键会不会来」这个问题，让它们跟着等只是白慢。
+     */
+    fun joinsCombo(id: KeyId): Boolean {
+        val cfg = received ?: return false
+        return cfg.combos.any { it.isUsable && id.id in it.keys }
     }
 
     /**

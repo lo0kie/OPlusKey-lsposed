@@ -45,7 +45,7 @@ internal fun SettingsPage.BranchHeaderAdd() {
     ) {
         Icon(
             PageIcons.StepAdd,
-            contentDescription = I18n.get(Strings.COMMAND_BRANCH_ADD, "添加条件"),
+            contentDescription = I18n.get(Strings.COMMAND_BRANCH_ADD, "添加场景"),
         )
     }
 }

@@ -37,12 +37,12 @@ internal fun SettingsPage.branchDeadReason(): String? =
         }
 
         BranchDeadCause.SATURATED -> {
-            I18n.get(Strings.COMMAND_BRANCH_SATURATED, "当前条件恒成立，后面的条件不会执行")
+            I18n.get(Strings.COMMAND_BRANCH_SATURATED, "当前场景恒成立，后面的场景不会执行")
         }
 
         //  文案只说结论，不讲「为什么轮不到」：哪一行不会执行，行上那枚标记已经写着
         BranchDeadCause.SUBSUMED -> {
-            I18n.get(Strings.COMMAND_BRANCH_SUBSUMED, "有一条条件不会执行")
+            I18n.get(Strings.COMMAND_BRANCH_SUBSUMED, "有一条场景不会执行")
         }
     }
 

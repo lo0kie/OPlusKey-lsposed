@@ -8,12 +8,15 @@ import com.lookie.opluskey.bridge.host.FlashlightController
 import com.lookie.opluskey.bridge.host.KeyInjector
 import com.lookie.opluskey.bridge.host.RingerController
 import com.lookie.opluskey.core.config.ConfigStore
+import com.lookie.opluskey.core.config.VariableStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.model.expandedWith
+import com.lookie.opluskey.core.wire.ModuleWire
 
 /**
  * 动作派发器，只服务侧键。
@@ -158,6 +161,18 @@ internal class ActionRunner(
     }
 
     /**
+     * 一个 `setvar:` 动作：改一个变量并立刻落盘（变量那一套见 `VariableStore`）。
+     *
+     *  失败（变量不存在 / 类型不符 / 值归一不了）报一句失败提示，与「命令不存在」同一档 ——
+     *  按下去确实什么都没发生，不该静默。原因由 `VariableStore.apply` 写进日志。
+     */
+    private fun runVarSet(action: Action.VarSet) {
+        if (VariableStore.apply(action)) return
+        XLog.w("变量没写进去（已忽略）：${action.token}")
+        notifyFailure(CommandFailure.UNKNOWN)
+    }
+
+    /**
      * 执行一个手势对应的动作。
      *
      *  @param gestureLabel 形如 `侧键 - 长按`（**键名 - 手势名**）—— 由 `host/GestureReceiver`
@@ -197,23 +212,27 @@ internal class ActionRunner(
         depth: Int = 0,
     ) {
         try {
-            when (action) {
+            //  `${变量}` 在这里展开一次（解析发生在存配置时，值要到这一刻才知道，见 `expandedWith`）。
+            //  放在 `when` 之前而不是每个分支里：漏一个分支就是「那一种动作里写变量不生效」，
+            //  而这种事在界面上完全看不出来。
+            when (val act = action.expandedWith(VariableStore.cached())) {
                 is Action.None -> Unit
-                is Action.KeyEvent -> runKeyEvent(action.keyCode)
-                is Action.Shell -> runShell(action.command)
-                is Action.Custom -> custom.run(action.name, depth)
-                is Action.Intent -> launcher.openIntent(action.action)
-                is Action.App -> launcher.launchApp(action.target)
-                is Action.AppWindow -> launcher.launchAppInWindow(action.target)
-                is Action.AppShortcut -> runAppShortcut(action)
-                is Action.MiniWindow -> launcher.putForegroundInMiniWindow(action.collapsed)
-                is Action.Shortcut -> launcher.runShortcut(action.shortcutId)
+                is Action.KeyEvent -> runKeyEvent(act.keyCode)
+                is Action.Shell -> runShell(act.command)
+                is Action.Custom -> custom.run(act.name, depth)
+                is Action.Intent -> launcher.openIntent(act.action)
+                is Action.App -> launcher.launchApp(act.target)
+                is Action.AppWindow -> launcher.launchAppInWindow(act.target)
+                is Action.AppShortcut -> runAppShortcut(act)
+                is Action.MiniWindow -> launcher.putForegroundInMiniWindow(act.collapsed)
+                is Action.Shortcut -> launcher.runShortcut(act.shortcutId)
                 is Action.Flashlight -> flashlight.toggle()
-                is Action.Ringer -> ringer.setMode(action.mode)
+                is Action.Ringer -> ringer.setMode(act.mode)
                 is Action.PowerMenu -> sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
-                is Action.Oplus -> runOplus(action.feature)
-                is Action.Panel -> runPanel(action.mode)
-                is Action.Setting -> SettingSwitch.toggleOrFlashlight(context, action, flashlight, ::notifyFailure)
+                is Action.Oplus -> runOplus(act.feature)
+                is Action.Panel -> runPanel(act.mode)
+                is Action.Setting -> SettingSwitch.toggleOrFlashlight(context, act, flashlight, ::notifyFailure)
+                is Action.VarSet -> runVarSet(act)
             }
         } catch (e: Throwable) {
             // 必须 catch Throwable：执行环境（Runtime / 反射注入）出错可能是 Error 系，漏出去会崩系统
@@ -282,8 +301,10 @@ internal class ActionRunner(
     }
 
     /**
-     * 执行一条 `shell:` 命令：截图 / 小布识屏两个 KSU 别名保持配置写法一致，
-     * 执行换成原生调用；其余交给 `ShellRunner`（宿主进程里 `sh -c` 可用）。
+     * 执行一条 `shell:` 命令。
+     *
+     *  「小布识屏」那条别名换成原生调用（`startForegroundService`，不走 shell）。
+     *  **「截图」那条别名走真的 shell** —— 见下面 [KsuCompat.isSidebarAlias] 那一支上方的说明。
      */
     private fun runShell(command: String) {
         if (command.isBlank()) {
@@ -292,23 +313,51 @@ internal class ActionRunner(
             return
         }
         val cmd = command.trim()
-        when {
-            // 两个 KSU 别名都按**前缀 + 没串别的命令**认领（口径收在 [KsuCompat] 一处）：
-            // 容得下参数差异，又不会把「用户命令正文里正好出现这个串」当成 KSU 那条劫持掉。
-            KsuCompat.isScreenshotAlias(cmd) -> {
-                XLog.w("截图：注入 KEYCODE_SYSRQ（KSU 那条 service call 在这里不必走 shell）")
-                injector.inject(KeyId.KEYCODE_SYSRQ)
-            }
-
-            KsuCompat.isSidebarAlias(cmd) -> {
-                launcher.startSidebar()
-            }
-
-            // 原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分
-            else -> {
-                ShellRunner.exec(command, ::notifyFailure)
-            }
+        // 别名按**前缀 + 没串别的命令**认领（口径收在 [KsuCompat] 一处）：容得下参数差异，
+        //  又不会把「用户命令正文里正好出现这个串」当成 KSU 那条劫持掉。
+        if (KsuCompat.isSidebarAlias(cmd)) {
+            launcher.startSidebar()
+            return
         }
+        //  截图**不**在这里认领，也**不走 shell**：
+        //  · 宿主自己注入 `KEYCODE_SYSRQ` —— `injectInputEvent` 返回成功、屏幕没反应
+        //    （ColorOS 不认普通 app 注入的那一下，日志里只有「截图：注入…」一行）；
+        //  · `su` 跑 `service call color_screenshot` —— 内置动作不该为了截张图去要 root
+        //    （弹授权、慢半拍、没 root 的机器上直接不可用）。
+        //  改成请**注入侧**代注入：那边在 `system_server`，注入身份就是系统本身，与 `input keyevent`
+        //  同级（见 `ModuleWire.ACTION_INJECT_KEY` 与 `inject/KeyInject`）。
+        if (KsuCompat.isScreenshotAlias(cmd)) {
+            XLog.w("截图：请注入侧注入 KEYCODE_SYSRQ（不走 shell，也不需要 root）")
+            requestSystemInject(KeyId.KEYCODE_SYSRQ)
+            return
+        }
+        //  原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分
+        ShellRunner.exec(command, ::notifyFailure)
+    }
+
+    /**
+     * 请注入侧（`system_server`）代注入一颗键 —— 内置「截图」用，宿主自己注入的那一下 ColorOS 不认。
+     *
+     *  收方是注入侧挂在 AMS 广播入口上的那个 hook（`inject/KeyHooks.readBroadcast`），
+     *  它看得见全系统每一条广播，所以这里**不必 `setPackage`**。
+     *  发不出去只记一行：这条路没有「命令失败」可报（不在 shell 里），用户感知就是按了没截图。
+     */
+    private fun requestSystemInject(keyCode: Int) {
+        val ctx =
+            context ?: run {
+                XLog.w("没有 Context，注入请求跳过：keyevent:$keyCode")
+                return
+            }
+        val sent =
+            runCatching {
+                ctx.sendBroadcast(
+                    android.content
+                        .Intent(ModuleWire.ACTION_INJECT_KEY)
+                        .putExtra(ModuleWire.EXTRA_INJECT_CODE, keyCode),
+                )
+            }.onFailure { XLog.w("注入请求没发出去：keyevent:$keyCode | ${it.javaClass.simpleName}", it) }
+                .isSuccess
+        if (sent) XLog.w("截图：注入请求已发给注入侧")
     }
 
     /** AOSP 标准免打扰切换（使用 NotificationManager 标准接口）。 */

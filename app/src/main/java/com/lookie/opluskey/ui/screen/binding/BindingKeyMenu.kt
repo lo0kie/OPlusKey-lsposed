@@ -180,7 +180,7 @@ private fun keyMenuEntries(
             add(
                 MenuEntry.Row(
                     title = BRANCHES_TITLE,
-                    icon = PageIcons.MenuCondition,
+                    icon = PageIcons.Scene,
                     submenu = true,
                     enabled = keyEnabled,
                     disabledHint =

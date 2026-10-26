@@ -5,6 +5,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.SettingsPage
@@ -161,4 +162,17 @@ internal fun SettingsPage.updateCombo(
     if (next == combo) return true
     return write(cfg.copy(combos = cfg.combos.map { if (it.id == id) next else it }), "combo:$id:$what") !=
         CommandsSave.Failed
+}
+
+/**
+ * 写「按键之间的等待」（毫秒）—— 两颗键按下最多隔多久才算一起按下。
+ *
+ *  这一位**改的是注入侧的手感**，所以走通用写入通道（落盘 + 广播 + 重问注入侧），
+ *  与别的全局项同一条路。返回「写盘成没成」：滑杆失败时要拨回原值（见 `SliderRow` 的 `commit`）。
+ */
+internal fun SettingsPage.setComboWindow(ms: Int): Boolean {
+    val cfg = configState.config.value
+    val value = ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
+    if (cfg.global.comboWindowMs == value) return true
+    return write(cfg.copy(global = cfg.global.copy(comboWindowMs = value)), "combo_window_ms=$value") != CommandsSave.Failed
 }

@@ -22,9 +22,10 @@ import com.lookie.opluskey.core.model.Command
  *
  *  ## 三样「问一句」的开关
  *
- *  [confirmReset] / [confirmLeaveCommands] / [pendingDraftLoad] 都是「要不要弹一张确认窗」，
+ *  [confirmReset] / [confirmRestart] / [confirmLeaveCommands] / [pendingDraftLoad] 都是「要不要弹一张确认窗」，
  *  但问的是三件不同的事，**不能合并**：
  *   · [confirmReset] —— 清空配置（由 `⋮` 菜单或调试通道置位）；
+ *   · [confirmRestart] —— 重启服务（由 `⋮` 菜单置位）；
  *   · [confirmLeaveCommands] —— 退不退页（表单改过还没保存时由 [SettingsPage.goBack] 置位）；
  *   · [pendingDraftLoad] —— 换不换内容（要载入另一条命令时由 [SettingsPage.loadDraft] 置位，
  *     存的是**待载入的那一条**，不是布尔）。
@@ -57,6 +58,14 @@ internal class PageOverlays {
 
     /** 「清空配置」确认弹窗（调试通道经 `action=CONFIRM_RESET` 置 true 弹出）。 */
     var confirmReset by mutableStateOf(false)
+
+    /**
+     * 「重启服务」确认弹窗 —— 由首页 `⋮` 菜单那一项置位，窗在 `HomeHeaderMenu` 里画。
+     *
+     *  为什么这一下也要问：它会**杀掉设置页进程**再让宿主把它拉回来（页面会闪一下重开），
+     *  正在编辑、还没保存的内容跟着丢 —— 与「清空配置」同一档代价，菜单里点一下就走太轻了。
+     */
+    var confirmRestart by mutableStateOf(false)
 
     /**
      * 「表单里有没保存的改动，但用户要退出这一页」—— 待确认。

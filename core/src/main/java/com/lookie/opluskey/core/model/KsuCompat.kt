@@ -3,8 +3,9 @@ package com.lookie.opluskey.core.model
 /** 照搬 KSU 模块（同目录 `OPlusKey`）的那些取值 —— 配置兼容用的别名表。 */
 object KsuCompat {
     /**
-     * KSU 预设里「截图」那条命令的**前缀**（预设原值是 `service call color_screenshot 1`，
-     * 模块侧换成注入 `KEYCODE_SYSRQ`）—— 认领时用 `startsWith`，**不要用 `contains`**。
+     * KSU 预设里「截图」那条命令的**前缀**（预设原值是 `service call color_screenshot 1`）——
+     * 模块侧**不走 shell**：换成请注入侧注入 `KEYCODE_SYSRQ`（见 `ActionRunner.requestSystemInject`），
+     * 这里的串只用来认「这一行是不是截图」、给界面挑字形。认领时用 `startsWith`，**不要用 `contains`**。
      *
      *  `contains` 会把「用户自己的命令正文里正好出现这个串」也当成 KSU 那条劫持掉
      *（自定义命令写 `echo color_screenshot` 就会被改成注入 SYSRQ，
@@ -15,7 +16,10 @@ object KsuCompat {
 
     /**
      * 「截图」那条命令的**完整写法**（KSU 预设原文）—— 清单里的取值就是它。
-     *  模块侧执行时不走 shell：换成注入 `KEYCODE_SYSRQ`（见 `host/action/ActionRunner`）。
+     *
+     *  执行时**不走 shell、也不要 root**：请注入侧（`system_server`）注入 `KEYCODE_SYSRQ` ——
+     *  宿主自己注入的那一下 ColorOS 不处理（返回成功、屏幕没反应），
+     *  而注入侧的身份就是系统本身（见 `host/action/ActionRunner.requestSystemInject`）。
      */
     const val SCREENSHOT_CMD = "$SCREENSHOT_CMD_PREFIX 1"
 
@@ -51,9 +55,6 @@ object KsuCompat {
 
     /** 这条 shell 文本是不是「小布识屏」那条 KSU 别名。 */
     fun isSidebarAlias(command: String): Boolean = matches(SIDEBAR_CMD_PREFIX, command)
-
-    /** 两条 KSU 别名里任意一条 —— 多条命令的步骤合并 / 派发要按它分流（见 `CustomCommandRunner`）。 */
-    fun isAlias(command: String): Boolean = isScreenshotAlias(command) || isSidebarAlias(command)
 
     /**
      * 别名认领的**唯一口径**：前缀匹配 + **这一条里没串别的命令**。

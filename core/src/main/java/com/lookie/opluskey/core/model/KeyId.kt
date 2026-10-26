@@ -99,7 +99,9 @@ class KeyId private constructor(
         //  本类只在 [custom] 里按主码推整族。
 
         /**
-         * 截图按键码（`KEYCODE_SYSRQ`）—— 内置「截图」动作注入的就是它，**不是侧键**、不参与认领。
+         * 截图按键码（`KEYCODE_SYSRQ`）—— 「截图」动作**请注入侧代注入**它（宿主自己注入的那一下
+         *  ColorOS 不处理）。留在 [INJECTABLE_CODES] 里是为「注入之后它会再走一遍按键路径，
+         *  这一下不能当侧键认领」。
          *
          * 放在这里只因为一、5 要求「键码只定义在 [KeyId] 一处」：执行侧不许在
          * `bridge/host/KeyInjector` 的伴生对象里另留一份字面量 —— 那正是这条规矩要禁止的写法。

@@ -129,7 +129,7 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
     }
     // 改了还没保存就按返回时，`goBack` 会先置这一位 —— 这个窗必须挂上，否则返回被拦住却**没有窗**
     //  命令页那边是 `CommandDialogs` 一起挂的，这一页只挂这一个。
-    LeaveDiscardDialog(I18n.get(Strings.DIALOG_DISCARD_CONDITION_TITLE, "放弃未保存的条件"))
+    LeaveDiscardDialog(I18n.get(Strings.DIALOG_DISCARD_CONDITION_TITLE, "放弃未保存的场景"))
 }
 
 /**
@@ -186,12 +186,12 @@ private fun SettingsPage.reloadBranchDraft() {
         //  已经不存在的组合键」，点确认时还会把它写回去。
         val combo = cfg.combos.firstOrNull { it.id == comboId }
         if (combo == null) {
-            XLog.w("条件执行：组合键 $comboId 已经不在了，草稿清空")
+            XLog.w("系统场景：组合键 $comboId 已经不在了，草稿清空")
             branchDraft.draft.reset()
             return
         }
         val source = combo.rules.filter { it.gesture == gesture }
-        XLog.w("条件执行：载入组合键 ${combo.id} - ${gesture.label} 的 ${source.size} 条")
+        XLog.w("系统场景：载入组合键 ${combo.id} - ${gesture.label} 的 ${source.size} 条")
         branchDraft.draft.load(BranchDraft.comboOwnerOf(combo.id, gesture), source, comboId)
         return
     }
@@ -201,7 +201,7 @@ private fun SettingsPage.reloadBranchDraft() {
             .key(key)
             .rules
             .filter { it.gesture == gesture }
-    XLog.w("条件执行：载入 ${key.label} - ${gesture.label} 的 ${source.size} 条")
+    XLog.w("系统场景：载入 ${key.label} - ${gesture.label} 的 ${source.size} 条")
     branchDraft.draft.load(BranchDraft.ownerOf(key, gesture), source)
 }
 
@@ -216,8 +216,8 @@ internal fun SettingsPage.BranchDeleteDialog(menus: BranchMenuState) {
     val at = menus.deleteAt
     ConfirmDialog(
         show = at >= 0,
-        title = I18n.get(Strings.DIALOG_DELETE_CONDITION_TITLE, "删除条件"),
-        summary = I18n.get(Strings.DIALOG_DELETE_CONDITION_MESSAGE, "这条条件和它的动作会一起删掉，下面的条件会往上顶一条。"),
+        title = I18n.get(Strings.DIALOG_DELETE_CONDITION_TITLE, "删除场景"),
+        summary = I18n.get(Strings.DIALOG_DELETE_CONDITION_MESSAGE, "这条场景和它的动作会一起删掉，下面的场景会往上顶一条。"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { menus.deleteAt = -1 },
         onConfirm = {
@@ -240,8 +240,8 @@ internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
     val target = menus.deletingCond
     ConfirmDialog(
         show = target != null,
-        title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条条件"),
-        summary = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_MESSAGE, "只删这一条条件，同一行里的其余条件不受影响。"),
+        title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条场景"),
+        summary = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_MESSAGE, "只删这一条场景，同一行里的其余场景不受影响。"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { menus.deletingCond = null },
         onConfirm = {
@@ -293,7 +293,7 @@ internal fun SettingsPage.saveBranchRules(): Boolean {
         val combo = cfg.combos.firstOrNull { it.id == comboId }
         if (combo == null) {
             //  在别处把这一组删了：不能再往一个不存在的 id 上写（那等于凭空造一档组合键）
-            XLog.w("条件执行：组合键 $comboId 已经不在了，本次不保存")
+            XLog.w("系统场景：组合键 $comboId 已经不在了，本次不保存")
             return false
         }
         val next =
@@ -309,13 +309,13 @@ internal fun SettingsPage.saveBranchRules(): Boolean {
                     },
             )
         val label = comboLabel(cfg, combo, bracketed = true)
-        return when (write(next, "条件执行：$label - ${gesture.label}（${rules.size} 条）")) {
+        return when (write(next, "系统场景：$label - ${gesture.label}（${rules.size} 条）")) {
             CommandsSave.Failed -> {
                 false
             }
 
             else -> {
-                XLog.w("条件执行已保存：$label - ${gesture.label} ${rules.size} 条")
+                XLog.w("系统场景已保存：$label - ${gesture.label} ${rules.size} 条")
                 branchDraft.draft.load(BranchDraft.comboOwnerOf(comboId, gesture), rules, comboId)
                 true
             }
@@ -334,13 +334,13 @@ internal fun SettingsPage.saveBranchRules(): Boolean {
                     }
                 },
         )
-    return when (write(next, "条件执行：${key.label} - ${gesture.label}（${rules.size} 条）")) {
+    return when (write(next, "系统场景：${key.label} - ${gesture.label}（${rules.size} 条）")) {
         CommandsSave.Failed -> {
             false
         }
 
         else -> {
-            XLog.w("条件执行已保存：${key.label} - ${gesture.label} ${rules.size} 条")
+            XLog.w("系统场景已保存：${key.label} - ${gesture.label} ${rules.size} 条")
             branchDraft.draft.load(BranchDraft.ownerOf(key, gesture), rules)
             true
         }
@@ -364,7 +364,7 @@ internal fun SettingsPage.BranchEmptyHint() {
         },
         //  上面一句说**状态**，下面一句说**现在会发生什么** —— 只有下面那句时，
         //  用户得先读完整句才知道这块是空的。
-        title = I18n.get(Strings.COMMAND_BRANCH_EMPTY_TITLE, "还没有添加条件"),
+        title = I18n.get(Strings.COMMAND_BRANCH_EMPTY_TITLE, "还没有添加场景"),
         text = branchEmptyText(),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -387,7 +387,7 @@ internal fun SettingsPage.branchRulesBlockedReason(): String? {
     val rules = branchDraft.draft.rules
     return when {
         rules.any { !it.isReady } -> {
-            I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有条件没选完")
+            I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有场景没选完")
         }
 
         //  时间区间两两不许重叠 —— 选的时候已经拦过一次，这里兜手改 / 导入来的配置：
@@ -397,7 +397,7 @@ internal fun SettingsPage.branchRulesBlockedReason(): String? {
         }
 
         rules.any { it.action == com.lookie.opluskey.core.model.Action.None } -> {
-            I18n.get(Strings.COMMAND_BRANCH_NEED_COMMAND, "每条条件都要选一个动作")
+            I18n.get(Strings.COMMAND_BRANCH_NEED_COMMAND, "每条场景都要选一个动作")
         }
 
         else -> {

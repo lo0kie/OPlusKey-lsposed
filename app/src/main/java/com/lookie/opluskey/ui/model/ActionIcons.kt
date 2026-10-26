@@ -328,9 +328,31 @@ private fun systemSwitchKindIcon(id: String): ImageVector =
     }
 
 /**
- * 一条清单条目（[ActionCatalog.Spec]）的图标 —— **只有一处该调它**：界面按
- * [ActionCatalog.queue] 建那张图标表的时候（见 `SettingsPage` 的 `tileIcons`）；
- * 界面各处一律从那张表里取，别处不要再现调这个、也不要直接调 [actionIcon]。
+ * 界面处处共用的那一颗图标 —— [specIcon] 的**按需版**，带进程内缓存。
+ *
+ *  网格格子、格子里那行小字、「添加命令」浮层的行、入口格菜单的行，一律走这里 ——
+ *  同一格在哪一处露面都是同一颗字形（同一个 `ImageVector` 实例），也不再各自现调 [specIcon]。
+ *
+ *  ## 为什么是「读一颗建一颗」而不是先把整张表建出来
+ *
+ *  内置动作 + 各层菜单的取值 + 命令库，合起来有一百五十多项，而一屏只画得出二三十格。
+ *  原来是在页面级 `derivedStateOf` 里把整条队列 `associateWith { specIcon(it) }`：第一次有人读，
+ *  就在**组合期**把那一百多颗全建一遍（每颗要建一串 path 节点）—— 冷启动后第一次进
+ *  「按键绑定」页那一下轻微掉帧就是这一笔。改成读一颗建一颗之后，首帧只建真正画到的那几十颗，
+ *  其余等它被画到时再建；取值完全一样，先建后建不影响结果。
+ *
+ *  缓存放在**文件级**而不是某个页面对象里：读它的那几处在**不同的树**里（网格在
+ *  `BindingScreen`、「添加命令」浮层在 `CommandScreen`），各自记会各建一份。
+ *  命令库变了**不清缓存**：键是 [ActionCatalog.Spec]（含 token 与标题，是 `data class`），
+ *  改个名字就是新键；旧键留在表里只是几个旧引用。
+ */
+private val iconCache = HashMap<ActionCatalog.Spec, ImageVector>()
+
+internal fun tileIcon(spec: ActionCatalog.Spec): ImageVector = iconCache.getOrPut(spec) { specIcon(spec) }
+
+/**
+ * 一条清单条目（[ActionCatalog.Spec]）的图标 —— **界面不直接调它**，一律走 [tileIcon]
+ * （那里带缓存，且只在这一格真被画到时才建）。也不要直接调 [actionIcon]。
  *
  * 与 [actionIcon] 的差别有两处。其一是自定义命令：两种命令 token 都是 `cmd:<名字>`，网格格子
  * 只有名字一行，单条 / 多条只能靠图标分辨，类型由 [ActionCatalog.Spec.commandKind] 带来。

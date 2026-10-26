@@ -139,10 +139,11 @@ internal class CustomCommandRunner(
 
         val shell = shellStepText(steps[index])
         val next: Int
-        if (shell != null && KsuCompat.isAlias(shell)) {
-            // 注意：KSU 别名（截图 / 小布识屏）会被翻译成**原生调用**、不是真的 shell，必须**单独派发**。
+        if (shell != null && KsuCompat.isSidebarAlias(shell)) {
+            // 注意：小布识屏那条别名会被翻译成**原生调用**、不是真的 shell，必须**单独派发**。
             //  并进 `;` 拼接串的话，`runShell` 的前缀认领会把**整串**认成别名，
             //  后面那些真正要跑的 shell 步骤随整串一起被吞掉。
+            //  （截图那条别名不在此列：它现在就是一条普通的 `service call`，走 shell 合并没问题。）
             XLog.w("  第 ${index + 1} 步（KSU 别名）→ $shell")
             execShell(shell)
             next = index + 1
@@ -260,7 +261,7 @@ internal class CustomCommandRunner(
         var cursor = index
         while (cursor < steps.size) {
             val text = shellStepText(steps[cursor]) ?: break
-            if (KsuCompat.isAlias(text)) break
+            if (KsuCompat.isSidebarAlias(text)) break
             merged.add(text)
             cursor++
         }

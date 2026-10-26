@@ -23,7 +23,7 @@ internal val COMMANDS_TITLE: String
  * （`command.type_branch`）：点的那一行与进去之后看到的标题同名。
  */
 internal val BRANCHES_TITLE: String
-    get() = I18n.get(Strings.COMMAND_TYPE_BRANCH, "条件执行")
+    get() = I18n.get(Strings.COMMAND_TYPE_BRANCH, "系统场景")
 
 /**
  * 「通用设置」页的标题 —— 首页「其他」卡第一行进来（**唯一入口**，在「更多选项」上面）。

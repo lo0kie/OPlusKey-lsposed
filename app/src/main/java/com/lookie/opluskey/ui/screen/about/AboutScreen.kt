@@ -111,6 +111,13 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         LanguageMenu(ui, currentLang)
         ThemeMenu(ui, currentTheme)
         PaletteMenu(ui, currentPalette)
+        // 「配置」卡里中间那两行：切换配置 / 导出配置，都是同一份配置列表的菜单
+        ProfileMenu(ui)
+        ProfileExportMenu(ui)
+        // 新建 / 重命名那个输入窗（入口在「切换配置」菜单的底部）
+        ProfileNamingDialog(ui)
+        // 删除配置的确认窗（同一个位置点进来，删完才真删）
+        ProfileDeleteConfirmDialog(ui)
 
         Spacer(Modifier.height(GRID_ROW_GAP))
         SmallTitle(I18n.get(Strings.MORE_SECTION_ABOUT, "关于"))

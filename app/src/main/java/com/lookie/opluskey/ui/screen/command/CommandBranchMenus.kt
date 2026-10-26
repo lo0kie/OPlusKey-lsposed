@@ -285,7 +285,7 @@ private fun SettingsPage.BranchConditionMenu(
                         MenuEntry.Section(
                             title =
                                 if (condIndex < 0) {
-                                    I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加条件")
+                                    I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景")
                                 } else {
                                     I18n.format(Strings.COMMAND_BRANCH_CONDITION_INDEX, condIndex + 1)
                                 },
@@ -336,7 +336,7 @@ private fun SettingsPage.addConditionRow(
     menus: BranchMenuState,
 ): MenuEntry.Row =
     MenuEntry.Row(
-        title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加条件"),
+        title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
         icon = TablerIcons.Outline.Plus,
         onPick = {
             menus.menuAt = -1
@@ -345,7 +345,7 @@ private fun SettingsPage.addConditionRow(
             //  同样已经摆了一行「未选择条件」占位，那也是「有待配的一行」。
             val pending = old.conditions.isEmpty() || old.conditions.lastOrNull()?.isUsable == false
             if (pending) {
-                hint(I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING, "有条件还没选"))
+                hint(I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING, "有场景还没选"))
                 return@Row
             }
             val next = old.addingCondition(BranchCondition(""))
@@ -444,7 +444,7 @@ private fun SettingsPage.applyBranchAction(
         //  认不出的 token（老配置 / 菜单给错了）不能静默落成「无操作」：那样保存时才报
         //  「每条条件都要选一个动作」，既指不出是哪一条、也看不出是解析失败。
         //  这里保留原来那一档不动，只留一行判据日志。
-        XLog.w("条件执行：认不出的动作 token（第 ${index + 1} 条保持原样）：$token")
+        XLog.w("系统场景：认不出的动作 token（第 ${index + 1} 条保持原样）：$token")
         return
     }
     branchDraft.draft.update(index, old.copy(action = parsed))
@@ -500,5 +500,5 @@ internal fun SettingsPage.deleteBranchCondition(
     if (old.conditions.size <= 1) return
     if (condIndex !in old.conditions.indices) return
     branchDraft.draft.update(index, old.withoutCondition(condIndex))
-    XLog.w("条件执行：第 ${index + 1} 条规则删掉第 ${condIndex + 1} 条条件（剩 ${old.conditions.size - 1} 条）")
+    XLog.w("系统场景：第 ${index + 1} 条规则删掉第 ${condIndex + 1} 条场景（剩 ${old.conditions.size - 1} 条）")
 }

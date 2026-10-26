@@ -137,7 +137,7 @@ internal fun SettingsPage.writeBranchCondition(
     //  空表 / 全空串说明这一趟什么都没选，不写。
     val pkgs = packages.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
     if (pkgs.isEmpty()) {
-        XLog.w("分叉条件：这一趟没有挑中任何应用，不改这一条")
+        XLog.w("分叉场景：这一趟没有挑中任何应用，不改这一条")
         return false
     }
     // **同一个应用只能当一次条件**：顺序表里两条相同条件时，后一条永远轮不到（第一条就赢了），
@@ -145,7 +145,7 @@ internal fun SettingsPage.writeBranchCondition(
     //  这里拦下并留在选择应用页，用户换个应用或直接返回都不会写脏数据。
     val dup = pkgs.firstOrNull { branchConditionUsed(it, index) }
     if (dup != null) {
-        XLog.w("分叉条件：$dup 已经用在别的行上了，不改这一条")
+        XLog.w("分叉场景：$dup 已经用在别的行上了，不改这一条")
         hint(I18n.get(Strings.COMMAND_BRANCH_DUPLICATE_APP, "这个应用已经加过了"))
         return false
     }

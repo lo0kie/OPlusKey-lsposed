@@ -4,23 +4,18 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigationevent.NavigationEvent
 import androidx.navigationevent.NavigationEventInput
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION_MS
-import com.lookie.opluskey.ui.model.specIcon
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.BandHeight
@@ -220,21 +215,6 @@ internal class SettingsPage(
      *  「谁改过这一项」一眼可列（见 `docs/decoupling.md` 动作 5 的写入者清单）。
      */
     internal val configState = ConfigState()
-
-    /**
-     * **界面处处共用的那一份图标表** —— [ActionCatalog.queue] 那条队列 → 图标。
-     *
-     * 队列与图标都只有这一个来源：网格格子、格子里那行小字、「添加命令」浮层的行、入口格菜单
-     * 的行，一律读这一张表 —— 同一格在哪一处露面都是同一颗字形，也不再各自现调 [specIcon]。
-     *
-     * 放在类上而不是组合里：读它的几处在**不同的树**里（网格在 `BindingScreen`、「添加命令」
-     * 浮层在 `CommandScreen`），各自 `remember` 会各建一份、还可能对不上。
-     * 随 [ConfigState.commands] 重算（命令库变了，新增的格子才有图标），`derivedStateOf` 只在有人读它时才算。
-     */
-    internal val tileIcons: State<Map<ActionCatalog.Spec, ImageVector>> =
-        derivedStateOf {
-            ActionCatalog.queue(configState.commands.value).associateWith { specIcon(it) }
-        }
 
     /**
      * 三条**固定带**的高度 —— 分段控件带 / 类型选择器带 / 搜索带，各一页一份。

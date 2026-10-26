@@ -39,8 +39,8 @@ internal fun SettingsPage.ruleConditionLines(rule: StateRule): List<ConditionLin
         //  一条都没配时也给一行「未选择条件」，让用户知道这一格要配什么
         listOf(
             ConditionLine(
-                I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择条件"),
-                PageIcons.CommandBranch,
+                I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择场景"),
+                PageIcons.Scene,
                 empty = true,
             ),
         )
@@ -52,9 +52,9 @@ internal fun SettingsPage.ruleConditionLines(rule: StateRule): List<ConditionLin
                     if (it.isUsable) {
                         conditionRowTitle(it, ::appNameOf)
                     } else {
-                        I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择条件")
+                        I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择场景")
                     },
-                icon = it.kind?.let(::conditionIcon) ?: PageIcons.CommandBranch,
+                icon = it.kind?.let(::conditionIcon) ?: PageIcons.Scene,
                 empty = !it.isUsable,
             )
         }

@@ -492,29 +492,6 @@ object ActionCatalog {
         )
 
     /**
-     * 界面处处共用的**那一条队列** —— 网格那张表（[forGesture]）、「添加命令」浮层那张表
-     * （[STEP_GROUPS]）、入口格点开的各层菜单（[MODE_MENUS]）、自定义命令，本来就是同一批
-     * [Spec] 的不同投影（「打开应用」那格在浮层里换成 [APP_STEP]、「无操作」被剔掉，其余是
-     * 同一批对象）；这里给出并集，`distinct` 按结构去重。
-     *
-     * 图标表按它建**一次**（见 `SettingsPage` 的 `tileIcons`）：网格格子、格子里那行小字、
-     * 「添加命令」的行、入口格菜单的行一律从那一份里取 —— 界面层不再各自现调 [specIcon]，
-     * 同一格在哪一处露面都是同一颗字形。
-     */
-    fun queue(commands: List<Command> = emptyList()): List<Spec> =
-        buildList {
-            addAll(ALL)
-            addAll(STEP_GROUPS.flatMap { it.second })
-            MODE_MENUS.values.forEach { addAll(it) }
-            // 系统开关的三档里，`:on` / `:off` 这两行是按开关**现算**出来的（见 [switchStates]），
-            //  不在任何一张静态表里。收进这条队列，图标表才认得它们 —— 不收的话三级菜单那两行
-            //  每次重组都走一遍「图标表缺项」的兜底分支（字形对，但那行 W 日志是假的）。
-            //  `drop(1)` 去掉「切换」那一行：它换了个名字（`切换`）出现，收进来只是重复。
-            SWITCH_MODES.flatMap { switchStates(it.token).drop(1) }.forEach { add(it) }
-            commands.forEach { add(commandSpec(it)) }
-        }.distinct()
-
-    /**
      * 「添加命令」浮层用的**分组** —— 就是网格那张 [GROUPS]，只做两处适配：
      * 「无操作」剔掉（它代表「吞掉按键」、不是一步动作），「打开应用」那格**就地换成** [APP_STEP]
      * （同一个 token，点它进「打开应用」页挑一个）。

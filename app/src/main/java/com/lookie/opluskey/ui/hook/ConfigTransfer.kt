@@ -2,17 +2,19 @@ package com.lookie.opluskey.ui.hook
 
 import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.core.config.ConfigBundle
+import com.lookie.opluskey.core.config.ConfigProfiles
+import com.lookie.opluskey.core.config.ProfileCommands
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.ui.appVersionText
+import com.lookie.opluskey.ui.dedupeByName
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.UNKNOWN_CONFIG_FORMAT
-import com.lookie.opluskey.ui.saveCommands
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.write
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import kotlinx.coroutines.CoroutineScope
@@ -200,20 +202,59 @@ internal object ConfigTransfer {
     }
 
     /**
-     * 「导出配置」：弹系统的「保存到」选择器（SAF），把**主配置 + 命令库**写成一份文件。
+     * 「导出配置」：弹系统的「保存到」选择器（SAF），把**这份配置 + 它的命令库**写成一份文件。
      *
      * 内容由 [ConfigBundle] 合成（JSON 信封，见它的注释）；写盘与导出日志同一条路 ——
      * 结果同样只能从宿主的 `onActivityResult` 收，文本先存 [pendingExport]。
+     *
+     * @param slot 导出哪一份（[ConfigProfiles.CURRENT_SLOT] = 当前生效的配置）。多份配置时
+     *   由界面先让用户选一份（见 `AboutCards` 的「导出配置」那一行）。
      */
-    internal fun exportConfig(activity: android.app.Activity) {
+    internal fun exportConfig(
+        activity: android.app.Activity,
+        slot: String = ConfigProfiles.CURRENT_SLOT,
+    ) {
         val page = HostSession.page
         if (page == null) {
             XLog.w("导出配置：页面没了，放弃")
             return
         }
-        // 导出**页面手上这份**（= 用户看到的），不是重读一遍文件：两边正常时等价，
+        // 导出**当前这份**就用页面手上这份（= 用户看到的），不是重读一遍文件：两边正常时等价，
         // 而页面这份已经过 `configReadOnly` 那道闸 —— 读不懂的状态下压根进不来这一页。
-        val text = ConfigBundle.export(page.configState.config.value, page.configState.commands.value)
+        if (slot == ConfigProfiles.CURRENT_SLOT) {
+            openConfigExport(activity, page.configState.config.value, page.configState.commands.value)
+            return
+        }
+        //  别的配置只能从盘上读（页面手上没有它）。几 KB，但仍是 IO —— 与这一族别处一样离开主线程。
+        //  退回用的命令库在主线程上先取好：协程里读页面状态（Compose 状态）不是它的用法。
+        val fallbackCommands = page.configState.commands.value
+        fileScope.launch {
+            val config = ConfigProfiles.readOf(slot)
+            // 目标配置没有自己的命令库（老配置）时退回当前这份：配置里的 `cmd:` 引用至少能对上一些
+            val commands = ProfileCommands.read(slot) ?: fallbackCommands
+            mainHandler.post {
+                try {
+                    if (config == null) {
+                        XLog.w("导出配置：$slot 读不出来，放弃")
+                        page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
+                    } else {
+                        openConfigExport(activity, config, commands)
+                    }
+                } catch (e: Throwable) {
+                    XLog.w("导出配置：收尾失败（已忽略）：${e.javaClass.simpleName}", e)
+                }
+            }
+        }
+    }
+
+    /** 合成导出包并弹「保存到」—— 配置那条的收尾（日志那条走 [openExportPicker]）。 */
+    private fun openConfigExport(
+        activity: android.app.Activity,
+        config: Config,
+        commands: List<Command>,
+    ) {
+        val page = HostSession.page ?: return
+        val text = ConfigBundle.export(config, commands)
         if (text.isEmpty()) {
             page.hint(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败"))
             return
@@ -273,14 +314,18 @@ internal object ConfigTransfer {
     }
 
     /**
-     * 把用户挑中的文件读进来并落地。
+     * 把用户挑中的文件读进来、**存成新的一份配置**（插在最末）。
      *
-     * 注意：**全量校验通过才覆写**：整份文件在 [ConfigBundle] 里过一遍，
+     * 注意：**全量校验通过才落盘**：整份文件在 [ConfigBundle] 里过一遍，
      * 认不出 / 有任一段读不懂就**一个字节都不写**，只报一句 [UNKNOWN_CONFIG_FORMAT]。
      * 用户界面上不解释「哪一段坏了」——那是日志的事（见 [XLog]）。
      *
+     * 注意：**不覆盖当前生效的配置**（用户口径「导入时插到最末」）：导入完当前这份还是原来那份，
+     * 新导入的那一份排在最末，从菜单里切过去才会生效。所以这条路上没有「把当前配置写坏」的可能，
+     * 也不再需要在两个只读位之间做回滚。
+     *
      * 读 + 解析在 [fileScope] 上（那一整份文件多大由用户挑，见 [fileScope]），
-     * 落盘那两步回到主线程做（与别处每一次写盘同一条路：要弹提示、要动页面状态）。
+     * 落盘那一步回到主线程做（与别处每一次写盘同一条路：要弹提示、要动页面状态）。
      */
     private fun applyImportedConfig(uri: android.net.Uri) {
         val page = HostSession.page ?: return
@@ -305,14 +350,7 @@ internal object ConfigTransfer {
                     page.hint(UNKNOWN_CONFIG_FORMAT)
                     return@post
                 }
-                // 两段都过了**校验**才动手，但写入还要分开判：先配置（`write` 会拒只读态并 toast），
-                // 配置没落盘就**一个字节都不再动命令库** —— 否则就成了「半份导入」：命令库被整份换成
-                // 文件里那份、配置却还是原来的，用户看到的是「导入了」而不是「你的命令全被换掉了」。
-                // （只读态下 `write` 必然被拒，这条是唯一会造成数据丢失的路径。）
-                //
-                //  反过来那一半也要防：命令库**写失败**时主配置已经生效，那份新配置里的手势会绑到
-                //  库里不存在的命令上（两个只读位是分开的，「配置能写、命令库只读」这种组合可达）。
-                //  所以这里留一份旧配置，命令库没落盘就把它写回去 —— 两段一起成、或一起不动。
+                //  文件里那套开关**不替这台机器做决定**，本机此刻的值要留住 —— 这一步与以前一样。
                 val previousConfig = page.configState.config.value
                 //  **开关与「已确认免责协议」都跟着本机走，不跟着文件走**：文件里那几位一律是
                 //  「关 / 未确认」（见 `ConfigBundle`：不该让别人的文件替这台机器做决定）。
@@ -333,28 +371,32 @@ internal object ConfigTransfer {
                         disclaimerAccepted = previousConfig.disclaimerAccepted,
                         commandDisclaimerAccepted = previousConfig.commandDisclaimerAccepted,
                     )
-                if (page.write(merged, "导入配置") == CommandsSave.Failed) {
-                    XLog.w("导入配置：配置未落盘（只读态 / 写失败），命令库保持不动")
+                //  **导入 = 存成新的一份、插在最末**，当前生效的配置一个字节都不动（用户口径
+                //  「导入时插到最末」）：导入是「把别人那套拿过来看看」，用户此刻正在用的这份
+                //  未必想丢。要换成它，导入完从菜单里切一下。
+                //  于是这里也不再需要「配置没写成就别动命令库」那套回滚账 —— 两样都写进同一个
+                //  新槽，`importAs` 里任一步失败会把这一槽清干净，当前的配置全程没被碰过。
+                val name =
+                    parsed.config.profileName
+                        .trim()
+                        .ifEmpty { I18n.get(Strings.MORE_IMPORT_CONFIG, "导入配置") }
+                //  除「默认」之外最多三份 —— 满了就只提示一句，不读不写（`importAs` 那边也会拦，
+                //  这里挡在前面是为了给一句能读懂的话：「导入失败」会让人以为文件坏了）
+                if (ConfigProfiles.list().count { !it.isDefault } >= ConfigProfiles.MAX_PROFILES) {
+                    XLog.w("导入配置：除「默认」之外已经有 ${ConfigProfiles.MAX_PROFILES} 份，不再导入")
+                    page.hint(I18n.get(Strings.PROFILE_FULL, "最多三份配置"))
                     return@post
                 }
-                when (page.saveCommands(parsed.commands, "导入配置")) {
-                    // 只报「导入完成」：主开关跟着**本机**走（见上），不再有「保持关闭」这回事。
-                    CommandsSave.Ok -> {
-                        page.hint(I18n.get(Strings.TOAST_CONFIG_IMPORTED, "已导入配置"))
-                    }
-
-                    // 两份都已落盘，只是没通知到注入侧：saveCommands 自己已经报过那一句，这里不叠。
-                    CommandsSave.BroadcastFailed -> {
-                        // 什么都不用做 —— 见上面那句
-                    }
-
-                    CommandsSave.Failed -> {
-                        XLog.w("导入配置：命令库未落盘 ⇒ 把主配置写回导入前那份（不留半份状态）")
-                        if (page.write(previousConfig, "导入配置失败：回滚主配置") == CommandsSave.Failed) {
-                            XLog.w("导入配置：回滚也没写成 —— 主配置是新那份、命令库是旧的，需退出重进再看")
-                        }
-                    }
+                // 命令名去重这条闸原本在 `saveCommands` 里，导入不经过它，所以自己过一遍
+                // （同理：`cmd:<名字>` 只命中第一条）
+                val slot = ConfigProfiles.importAs(merged, dedupeByName(parsed.commands), name)
+                if (slot == null) {
+                    XLog.w("导入配置：没写成（存储不可写？），当前配置一点没动")
+                    page.hint(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED, "导入失败"))
+                    return@post
                 }
+                //  报**落盘后**的名字：重名时 `importAs` 会加序号（「配置 2」那种）
+                page.hint(I18n.format(Strings.PROFILE_IMPORTED, ConfigProfiles.readOf(slot)?.profileName ?: name))
             }
         }
     }
@@ -383,47 +425,6 @@ internal object ConfigTransfer {
         val tooLarge = I18n.get(Strings.CONFIG_TOO_LARGE, "文件太大，不像是本模块导出的配置")
         mainHandler.post { HostSession.page?.hint(tooLarge) }
         return true
-    }
-
-    /**
-     * 问 provider 要「显示名 + 字节数」——取不到的那一项给 `null`（调用方据此跳过上限判断）。
-     *
-     *  拿不到大小**不**为了判上限先全量读一遍：那是为了省一次读反而多做一次读，且 provider 两次打开
-     *  还可能读到不同内容。
-     */
-    private fun readOpenableInfo(
-        resolver: android.content.ContentResolver,
-        uri: android.net.Uri,
-    ): Pair<String?, Long?> {
-        val projection =
-            arrayOf(
-                android.provider.OpenableColumns.DISPLAY_NAME,
-                android.provider.OpenableColumns.SIZE,
-            )
-        val cursor =
-            try {
-                resolver.query(uri, projection, null, null, null)
-            } catch (e: Throwable) {
-                // 问不出来就跳过上限判断（照读），不因为「拿不到大小」把导入整个挡掉
-                XLog.w("导入配置：查文件信息失败（照读，不判上限）：${e.message}")
-                return null to null
-            } ?: return null to null
-        //  查询成功不等于**读**成功：`moveToFirst` / `getString` 仍旧会和 provider 通信，
-        //  provider 中途死掉时抛的是运行期异常。这里在 IO 协程里、外面只有 SupervisorJob
-        //  —— 漏出去就是 `:ui` 进程崩，所以读取这一段自己兜住（拿不到就当「大小未知」）。
-        return cursor.use { c ->
-            try {
-                if (c.moveToFirst()) {
-                    c.stringOrNull(android.provider.OpenableColumns.DISPLAY_NAME) to
-                        c.longOrNull(android.provider.OpenableColumns.SIZE)
-                } else {
-                    null to null
-                }
-            } catch (e: Throwable) {
-                XLog.w("导入配置：读文件信息失败（照读，不判上限）：${e.javaClass.simpleName}")
-                null to null
-            }
-        }
     }
 
     /** 收「保存到 / 打开」的结果 —— 平台 `Activity#onActivityResult`，进程内只装一次。 */
@@ -542,6 +543,50 @@ internal object ConfigTransfer {
             } catch (e: Throwable) {
                 XLog.w("${kind.what}：收尾失败（已忽略）：${e.javaClass.simpleName}", e)
             }
+        }
+    }
+}
+
+/**
+ * 问 provider 要「显示名 + 字节数」——取不到的那一项给 `null`（调用方据此跳过上限判断）。
+ *
+ *  拿不到大小**不**为了判上限先全量读一遍：那是为了省一次读反而多做一次读，且 provider 两次打开
+ *  还可能读到不同内容。
+ *
+ *  放在**文件顶部**而不是 `ConfigTransfer` 里：它与那个对象的状态无关（只吃 resolver + uri），
+ *  而那个对象的函数条数已经贴着 detekt 的 `TooManyFunctions` 那一档。
+ */
+private fun readOpenableInfo(
+    resolver: android.content.ContentResolver,
+    uri: android.net.Uri,
+): Pair<String?, Long?> {
+    val projection =
+        arrayOf(
+            android.provider.OpenableColumns.DISPLAY_NAME,
+            android.provider.OpenableColumns.SIZE,
+        )
+    val cursor =
+        try {
+            resolver.query(uri, projection, null, null, null)
+        } catch (e: Throwable) {
+            // 问不出来就跳过上限判断（照读），不因为「拿不到大小」把导入整个挡掉
+            XLog.w("导入配置：查文件信息失败（照读，不判上限）：${e.message}")
+            return null to null
+        } ?: return null to null
+    //  查询成功不等于**读**成功：`moveToFirst` / `getString` 仍旧会和 provider 通信，
+    //  provider 中途死掉时抛的是运行期异常。这里在 IO 协程里、外面只有 SupervisorJob
+    //  —— 漏出去就是 `:ui` 进程崩，所以读取这一段自己兜住（拿不到就当「大小未知」）。
+    return cursor.use { c ->
+        try {
+            if (c.moveToFirst()) {
+                c.stringOrNull(android.provider.OpenableColumns.DISPLAY_NAME) to
+                    c.longOrNull(android.provider.OpenableColumns.SIZE)
+            } else {
+                null to null
+            }
+        } catch (e: Throwable) {
+            XLog.w("导入配置：读文件信息失败（照读，不判上限）：${e.javaClass.simpleName}")
+            null to null
         }
     }
 }

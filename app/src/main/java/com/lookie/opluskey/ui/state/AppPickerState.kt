@@ -339,7 +339,7 @@ internal class AppPickerState {
      *  在退页时清反而会误伤「退场动画还没收完、用户已经点了下一个应用」那一瞬（见字段说明）。
      */
     fun forgetActivities() {
-        XLog.d("forgetActivities：无条件清掉 $activityTarget")
+        XLog.d("forgetActivities：无场景清掉 $activityTarget")
         activityTarget = null
     }
 

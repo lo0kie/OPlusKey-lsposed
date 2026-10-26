@@ -53,6 +53,7 @@ sealed interface Action {
                 is Oplus -> feature.isBlank()
                 is Panel -> mode.isBlank()
                 is Setting -> id.isBlank()
+                is VarSet -> name.isBlank()
             }
 
     /** 拦截按键，什么都不做。 */
@@ -261,6 +262,21 @@ sealed interface Action {
             }
     }
 
+    /**
+     * 改一个**自定义变量**（`setvar:计数+=1`）—— 变量那一套见 [Variable] / [Vars]。
+     *
+     *  [op] 决定怎么改（赋值 / 相加 / 相减 / 取反），[value] 是符号右边那一段原文：里面可以写
+     *  `${其它变量}`，执行时才展开。**变量必须已经存在**：类型在新建那一刻定死，命令不能顺手造
+     *  一个出来（那会让「类型不许改」这条约束在运行时被绕过去）。
+     */
+    data class VarSet(
+        val name: String,
+        val op: VarOp,
+        val value: String = "",
+    ) : Action {
+        override val token: String = Action.SETVAR_PREFIX + name + op.symbol + value
+    }
+
     companion object {
         // 各 token 的前缀与整串取值 —— **全项目只在这里写**。别处（`Action.parse`、界面层的
         //  图标表 / 文案表 / 清单表、日志脱敏）一律引用这些常量，不许再写字面量：同一个前缀散在
@@ -324,6 +340,14 @@ sealed interface Action {
         /** 系统开关（`setting:wifi`）—— 与「系统开关」那一格的清单一一对应。 */
         const val SETTING_PREFIX = "setting:"
 
+        /**
+         * 改一个自定义变量（`setvar:<名字><符号><值>`）。
+         *
+         *  与 [SETTING_PREFIX] 一样是「认不出载荷就不落 shell」的那一类：名字 / 符号解析不出来时
+         *  返回 [None]，不把一段看不懂的字交给 shell。
+         */
+        const val SETVAR_PREFIX = "setvar:"
+
         /** 系统开关后接「打开」这一档（`setting:wifi:on`）。 */
         const val ON_SUFFIX = ":on"
 
@@ -346,93 +370,60 @@ sealed interface Action {
         fun parse(raw: String?): Action {
             val text = raw?.trim().orEmpty()
             return when {
-                text.isEmpty() || text == NONE -> {
-                    None
-                }
+                text.isEmpty() || text == NONE -> None
 
-                text.startsWith(KEYEVENT_PREFIX) -> {
-                    parseKeyEvent(text)
-                }
+                text.startsWith(KEYEVENT_PREFIX) -> parseKeyEvent(text)
 
-                text.startsWith(SHELL_PREFIX) -> {
-                    Shell(text.removePrefix(SHELL_PREFIX).trim())
-                }
+                text.startsWith(SHELL_PREFIX) -> Shell(text.removePrefix(SHELL_PREFIX).trim())
 
                 // 必须排在兜底之前，否则 `cmd:` 会被当成 shell 命令执行
-                text.startsWith(Command.PREFIX) -> {
-                    Custom(text.removePrefix(Command.PREFIX).trim())
-                }
+                text.startsWith(Command.PREFIX) -> Custom(text.removePrefix(Command.PREFIX).trim())
 
-                text.startsWith(INTENT_PREFIX) -> {
-                    Intent(text.removePrefix(INTENT_PREFIX).trim())
-                }
+                text.startsWith(INTENT_PREFIX) -> Intent(text.removePrefix(INTENT_PREFIX).trim())
 
-                text.startsWith(APP_PREFIX) -> {
-                    App(text.removePrefix(APP_PREFIX).trim())
-                }
+                text.startsWith(APP_PREFIX) -> App(text.removePrefix(APP_PREFIX).trim())
 
                 // 必须排在兜底之前，否则 `window:` 会被当成 shell 命令执行
-                text.startsWith(WINDOW_PREFIX) -> {
-                    AppWindow(text.removePrefix(WINDOW_PREFIX).trim())
-                }
+                text.startsWith(WINDOW_PREFIX) -> AppWindow(text.removePrefix(WINDOW_PREFIX).trim())
 
                 // 同理：`appshortcut:` 认不出也得先落在这里，别掉进 shell 兜底
-                text.startsWith(APP_SHORTCUT_PREFIX) -> {
-                    parseAppShortcut(text)
-                }
+                text.startsWith(APP_SHORTCUT_PREFIX) -> parseAppShortcut(text)
 
-                text.startsWith(SHORTCUT_PREFIX) -> {
-                    Shortcut(text.removePrefix(SHORTCUT_PREFIX).trim())
-                }
+                text.startsWith(SHORTCUT_PREFIX) -> Shortcut(text.removePrefix(SHORTCUT_PREFIX).trim())
 
-                text == FLASHLIGHT -> {
-                    Flashlight
-                }
+                text == FLASHLIGHT -> Flashlight
 
                 // 必须排在兜底之前，否则 `ringer:` 会被当成 shell 命令执行
-                text.startsWith(RINGER_PREFIX) -> {
-                    Ringer(text.removePrefix(RINGER_PREFIX).trim())
-                }
+                text.startsWith(RINGER_PREFIX) -> Ringer(text.removePrefix(RINGER_PREFIX).trim())
 
                 // 同上：认不出的前缀会落到 shell 兜底
-                text == POWER_MENU -> {
-                    PowerMenu
-                }
+                text == POWER_MENU -> PowerMenu
 
                 // 同上：`zoom:` 也是认不出就落到 shell 兜底的那一类。
                 // 两档都是**精确比较**（`zoom:mini` 与 `zoom:mini:collapse` 互不相等），所以这两支
                 // 之间**没有顺序要求**；这里真正要守的是它们都排在 `else -> Shell` 兜底之前。
-                text == ZOOM_MINI_COLLAPSE -> {
-                    MiniWindow(collapsed = true)
-                }
+                text == ZOOM_MINI_COLLAPSE -> MiniWindow(collapsed = true)
 
-                text == ZOOM_MINI -> {
-                    MiniWindow(collapsed = false)
-                }
+                text == ZOOM_MINI -> MiniWindow(collapsed = false)
 
-                text.startsWith(OPLUS_PREFIX) -> {
-                    Oplus(text.removePrefix(OPLUS_PREFIX).trim())
-                }
+                text.startsWith(OPLUS_PREFIX) -> Oplus(text.removePrefix(OPLUS_PREFIX).trim())
 
                 // 同上：`panel:` 也是认不出就落到 shell 兜底的那一类
-                text.startsWith(PANEL_PREFIX) -> {
-                    Panel(text.removePrefix(PANEL_PREFIX).trim())
-                }
+                text.startsWith(PANEL_PREFIX) -> Panel(text.removePrefix(PANEL_PREFIX).trim())
 
                 // 系统开关（`setting:<id>` / `setting:<id>:on` / `setting:<id>:off`）：
                 //  `id` 认不出时交给执行侧报「没接执行」，不落 shell
-                text.startsWith(SETTING_PREFIX) -> {
-                    parseSetting(text)
-                }
+                text.startsWith(SETTING_PREFIX) -> parseSetting(text)
+
+                // 自定义变量（`setvar:计数+=1`）：认不出就按不支持处理，不落 shell
+                text.startsWith(SETVAR_PREFIX) -> parseVarSet(text)
 
                 // **不再默认按 shell 执行**（原先这里是 `Shell(text)`，手写命令可省 `shell:`）。
                 //  现在「命令详情」必须显式带前缀，界面那一栏已经拦住（见 [hasSupportedFormat]）；
                 //  这里兜的是手改配置文件 / 老版本存下来的裸写法 —— 静默不执行，只留一行日志。
                 //  宁可不跑，也不把一段不知道是什么的字符串交给 shell。
                 //  独立成 [unsupported] 是为了让本函数留在 `LongMethod` 之内。
-                else -> {
-                    unsupported(text)
-                }
+                else -> unsupported(text)
             }
         }
 
@@ -489,6 +480,7 @@ sealed interface Action {
                 OPLUS_PREFIX,
                 PANEL_PREFIX,
                 SETTING_PREFIX,
+                SETVAR_PREFIX,
             )
 
         /**
@@ -507,6 +499,28 @@ sealed interface Action {
                 "off" -> Setting(id, on = false)
                 else -> Setting(body)
             }
+        }
+
+        /**
+         * `setvar:<名字><符号><值>` 那一支 —— 与 [parseSetting] 同一个理由（[parse] 贴着长度上限）。
+         *
+         *  名字 / 符号 / 值任何一段认不出都按 [None] 处理（不执行、留一行日志）：这是「写配置」的
+         *  动作，猜错的后果比不执行大。
+         */
+        private fun parseVarSet(text: String): Action {
+            val body = text.removePrefix(SETVAR_PREFIX).trim()
+            val (name, op, value) =
+                VarOp.split(body) ?: run {
+                    XLog.w("动作 setvar: 的写法认不出（按 none 处理）：$text")
+                    return None
+                }
+            //  名字要在**建的时候**就合法（见 `VariableName`）：这里只是提前挡一道，
+            //  真正「有没有这一颗」由执行侧的变量表判
+            if (VariableName.normalize(name) == null) {
+                XLog.w("动作 setvar: 的变量名不合法（按 none 处理）：$text")
+                return None
+            }
+            return VarSet(name, op, value)
         }
 
         /**

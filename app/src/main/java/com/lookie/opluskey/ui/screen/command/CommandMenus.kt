@@ -47,7 +47,7 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.isDarkScheme
-import com.lookie.opluskey.ui.model.specIcon
+import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.rememberTick
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.BasicComponent
@@ -190,7 +190,6 @@ internal fun SettingsPage.StepPickerSheet(
 
     //  抽屉里每一次点击都走通用振动通道（与页面里其它控件同一条，判据只有系统状态）。
     val tick = rememberTick()
-    val icons = tileIcons.value
     //  **暗色下把抽屉面抬一档**：页面底色是 `surface`，COUI 暗色里 `surface` 与抽屉能看到的那点
     //  缝隙几乎是同一个黑，面板浮不起来。
     //  所以只在暗色把面改成 `surfaceContainer`；浅色仍用页面那个 `surface`（上一条口径
@@ -290,7 +289,6 @@ internal fun SettingsPage.StepPickerSheet(
 
     val ctx =
         StepSheetCtx(
-            icons = icons,
             cards = sheetCards,
             anchorOf = { anchors.getValue(it) },
             isCurrent = { isCurrent(it) },
@@ -298,14 +296,14 @@ internal fun SettingsPage.StepPickerSheet(
         )
     //  「已保存的命令」那一组的锚点是另外一份（见 `savedAnchors`），其余上下文相同
     val savedCtx =
-        StepSheetCtx(icons, sheetCards, { savedAnchors.getValue(it) }, { isCurrent(it) }) { spec, anchor ->
+        StepSheetCtx(sheetCards, { savedAnchors.getValue(it) }, { isCurrent(it) }) { spec, anchor ->
             land(spec, anchor)
         }
     //  搜索态：分组标题全部让位，命中的行拍成**一张卡**（找东西时按组切反而要多扫几行标题）。
     //  两组候选的锚点不在同一张表里，这里按「先查命令、再查动作」挑一份；
     //  两个都没有（理论上不会）就落到 `coldAnchor`，至少不抛。
     val searchCtx =
-        StepSheetCtx(icons, sheetCards, { savedAnchors[it] ?: anchors[it] ?: coldAnchor }, { isCurrent(it) }) { spec, anchor ->
+        StepSheetCtx(sheetCards, { savedAnchors[it] ?: anchors[it] ?: coldAnchor }, { isCurrent(it) }) { spec, anchor ->
             land(spec, anchor)
         }
     val term = query.trim()
@@ -461,7 +459,6 @@ private enum class SheetBody { Groups, Hits, Empty }
  * 合成一个对象，是因为 detekt 的参数上限只有 5 个，而这几样是同一批上下文，不该拆散。
  */
 private class StepSheetCtx(
-    val icons: Map<ActionCatalog.Spec, ImageVector>,
     val cards: CardColors?,
     val anchorOf: (ActionCatalog.Spec) -> PreciseClickState,
     val isCurrent: (ActionCatalog.Spec) -> Boolean,
@@ -513,11 +510,7 @@ private fun SettingsPage.StepSheetCard(
         rows =
             specs.map { spec ->
                 val anchor = ctx.anchorOf(spec)
-                val glyph =
-                    ctx.icons.getOrElse(spec) {
-                        XLog.w("图标表缺项：${spec.token} 用兜底字形")
-                        specIcon(spec)
-                    }
+                val glyph = tileIcon(spec)
                 // 行尾那颗字形按「点开去哪」分（与页面里那几行同一套口径）：
                 //  · 「选择应用」进的是**另一个页面**去挑 → 右箭头（[PageIcons.EnterArrow]）；
                 //  · 入口格那几档（系统开关 / 媒体控制…）点开还有**一层菜单** → 选择器字形；

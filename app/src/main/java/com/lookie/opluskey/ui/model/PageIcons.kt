@@ -11,6 +11,7 @@ import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.filled.Square
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
+import io.github.lyxnx.compose.ui.tablericons.outline.Adjustments
 import io.github.lyxnx.compose.ui.tablericons.outline.AlignBoxCenterMiddle
 import io.github.lyxnx.compose.ui.tablericons.outline.AlphabetChinese
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
@@ -44,9 +45,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowRight
+import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
+import io.github.lyxnx.compose.ui.tablericons.outline.FilePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
-import io.github.lyxnx.compose.ui.tablericons.outline.GitFork
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
 import io.github.lyxnx.compose.ui.tablericons.outline.HandTwoFingers
@@ -86,6 +88,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber3
+import io.github.lyxnx.compose.ui.tablericons.outline.Stack2
 import io.github.lyxnx.compose.ui.tablericons.outline.Sun
 import io.github.lyxnx.compose.ui.tablericons.outline.SunMoon
 import io.github.lyxnx.compose.ui.tablericons.outline.TableShortcut
@@ -208,15 +211,6 @@ internal object PageIcons {
      *  这一行只改**名字**，压一行字更贴。
      */
     val MenuRename: ImageVector get() = TablerIcons.Outline.Edit
-
-    /**
-     * 按键菜单里「条件执行」那一行 —— `git-fork`（一个结点分成两岔）。
-     *
-     *  与 [CommandBranch]（`arrows-split`）分开用：那一颗是「这一支怎么走」的记号（条件页的空态、
-     *  规则里还没选条件时的兜底），这一颗只说「这里有分叉」；同一颗字在菜单行首与页面里各当一次
-     *  记号，读起来会混。
-     */
-    val MenuCondition: ImageVector get() = TablerIcons.Outline.GitFork
 
     /** 浮层菜单「打开默认界面」—— 窗口框，读作「另一个界面」。 */
     val MenuStock: ImageVector get() = TablerIcons.Outline.AppWindow
@@ -470,6 +464,25 @@ internal object PageIcons {
      *  （按条件只走其中一条），形状本身就是两种语义。
      */
     val CommandBranch: ImageVector get() = TablerIcons.Outline.ArrowsSplit
+
+    /**
+     * **场景**（界面上原来叫「条件」）—— `adjustments`（一组可调的设定）。
+     *
+     *  与 [CommandBranch]（`arrows-split`）分工：那颗说的是「按它**走哪一支**」（规则表的空态、
+     *  表尾注脚），这颗说的是「**在什么情境下**」——卡片里「未选择场景」那一行、以及菜单里
+     *  指到场景本身的那几处都用它（含按键 `⋮` 菜单里那一行）。两者混用会让「场景」与「分岔」
+     *  读成一件事。
+     */
+    val Scene: ImageVector get() = TablerIcons.Outline.Adjustments
+
+    /** **多配置** —— `stack-2`（一叠纸）：切换就是抽哪一张。 */
+    val Profiles: ImageVector get() = TablerIcons.Outline.Stack2
+
+    /** **新建配置** —— `file-plus`：加一份。 */
+    val ProfileAdd: ImageVector get() = TablerIcons.Outline.FilePlus
+
+    /** **删除配置** —— `file-minus`：减一份（与「新建」同一套形状，只换中间那一笔）。 */
+    val ProfileDelete: ImageVector get() = TablerIcons.Outline.FileMinus
 
     /**
      * 分叉条件「某个应用在前台」—— `apps`（九宫格）。

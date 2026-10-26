@@ -31,6 +31,14 @@ object ConfigStore {
     /** 界面状态（`ui/state/UiState`）的槽名，**不是用户配置**（只有「显示系统应用」这类界面偏好）。 */
     const val SLOT_UI: String = "ui"
 
+    /**
+     * 自定义变量的槽名（`opluskey_vars.conf`，见 [VariableStore]）。
+     *
+     *  与主配置 / 命令库分开一份：变量的值会被命令频繁改写，混进主配置等于每按一次就整份重写 +
+     *  发一次配置广播。
+     */
+    const val SLOT_VARS: String = "vars"
+
     /** 本模块的文件句柄 —— 多模块那一层留出的唯一入口。 */
     fun files(): ModuleFiles = ModuleFiles.of(MODULE_ID)
 

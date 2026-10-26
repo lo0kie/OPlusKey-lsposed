@@ -148,12 +148,15 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 /**
  * 大标题**下面**那行小标题按页分派（库原本那个槽位，折叠后跟着标题缩）：
  *  · 首页 = 模块版本 —— **只读一次**：它要读包信息，首页每重组一帧都重读一遍没有意义；
- *  · 其余页都不占这一槽（「按键绑定」那一组名挪去了大标题右边的尾随标题，见 [pageSubtitle]）。
+ *  · 条件执行 = **在编哪一档**（`「侧键」-单击`）—— 这一行比其它页的尾随标题长（键名 + 手势），
+ *    挂在大标题右边要跟标题抢宽度，放到下面独占一行才读得完整；
+ *  · 其余页都不占这一槽（「按键绑定」那一组名在大标题右边的尾随标题，见 [pageSubtitle]）。
  */
 @Composable
 private fun SettingsPage.largeTitleSubtitle(s: Screen): String =
     when (s) {
         Screen.SHORTCUTS -> remember { appVersionLabel() }
+        Screen.BRANCHES -> branchDefaultLabel()
         else -> ""
     }
 
@@ -194,12 +197,9 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             }
         }
 
-        // 分叉页：这一行写**在编哪一档** —— `「侧键」-单击`（键名套一对括号，见
-        //  `branchDefaultLabel`）。分叉是按「键 + 手势」各一份的，
-        //  标题只写「条件执行」看不出在改哪一档。
-        Screen.BRANCHES -> {
-            branchDefaultLabel()
-        }
+        // 分叉页那一行不在这里：它写的是「在编哪一档」（`「侧键」-单击`），键名 + 手势连起来
+        //  比其它页的尾随标题长得多，挂在大标题右边要跟标题抢宽度 —— 放到大标题下面独占一行
+        //  （[largeTitleSubtitle]）。
 
         // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
         Screen.ACTIVITY_PICKER -> {

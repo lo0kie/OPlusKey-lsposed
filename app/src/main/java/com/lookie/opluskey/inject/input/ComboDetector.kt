@@ -10,12 +10,13 @@ import com.lookie.opluskey.core.model.KeyId
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 「两颗键一起按」那一下的窗口（毫秒）—— 两颗键的 DOWN 相差不超过它，才算同时按下。
+ * 窗口的**兜底值**（毫秒）—— 只在配置还没送到、或送来的值不合法时用。
  *
- *  真机实测：电源与音量下同时按，两条 DOWN 相差 3ms（同一线程、同一串事件）。80ms 既盖得住
- *  人手的同时按，又不会把「先按 A、松手后再按 B」这种连按算成组合。
+ *  正常取值走 [ComboDetector] 的 `windowMs`（用户可在「组合按键设置」里调）。真机实测：
+ *  电源与音量下同时按，两条 DOWN 相差 3ms（同一线程、同一串事件），出厂 80ms 既盖得住人手的
+ *  同时按，又不会把「先按 A、松手后再按 B」这种连按算成组合。
  */
-private const val COMBO_DOWN_WINDOW_MS = 80L
+private const val FALLBACK_WINDOW_MS = 80L
 
 /**
  * 「长按连续触发」的外部终止上限（毫秒）—— 与单键那条同一个数与同一条理由
@@ -62,7 +63,34 @@ internal class ComboDetector(
      *  由装配方接 `ConfigChannel.comboFor`（读注入侧手上那份配置的 `combos`）。
      */
     private val bindingFor: (List<KeyId>) -> ComboKey?,
+    /**
+     * 当前的等待窗口（毫秒）—— 两颗键的 DOWN 相差不超过它才算同时按下。
+     *
+     *  由装配方接 `ConfigChannel.comboWindowMs`（用户在「组合按键设置」里可调）。
+     */
+    private val windowMs: () -> Long,
+    /**
+     * 这一颗键参与某一组已启用的组合吗 —— 决定它按下之后要不要**先等一个窗口**。
+     *
+     *  参与的键等着看「第二颗键会不会来」（这期间不喂单键判定器，用户能感觉到的就是
+     *  「参与组合的键按下去晚一点才有反应」）；不参与的键立刻交回单键，一点不受影响。
+     */
+    private val joinsCombo: (KeyId) -> Boolean,
 ) {
+    /**
+     * 一次 DOWN 的处理结果 —— 调用方据此决定「吞掉 / 延迟喂 / 立刻喂」。
+     */
+    enum class Down {
+        /** 归组合：这一下已经由组合接管，调用方**不要再喂单键判定器**。 */
+        TAKEN,
+
+        /** 这颗键参与组合、但组合还没凑成：调用方先压住一个窗口，到点再喂单键。 */
+        HOLD,
+
+        /** 与组合无关：立刻喂单键判定器，行为与没有组合键时完全一致。 */
+        PASS,
+    }
+
     /**
      * 这一刻按着的那几颗键（key → 按下时刻）。
      *
@@ -104,23 +132,26 @@ internal class ComboDetector(
         @Volatile var repeatShot: Runnable? = null,
     )
 
-    /** @return true = 这一下被组合接管（调用方不要再喂单键判定器）。 */
+    /**
+     * @return 见 [Down]：`TAKEN` = 归组合（调用方不要再喂单键）；`HOLD` = 先压一个窗口；
+     *   `PASS` = 与组合无关，立刻交给单键判定器。
+     */
     fun onDown(
         id: KeyId,
         now: Long = SystemClock.uptimeMillis(),
-    ): Boolean {
+    ): Down {
         down[id] = now
         // 已经在组合里：第三颗键按下来也不掺和，仍按「组合进行中」吞掉
-        if (combo != null) return true
+        if (combo != null) return Down.TAKEN
+        val window = windowMs().takeIf { it > 0 } ?: FALLBACK_WINDOW_MS
         val other =
             down.entries.firstOrNull { (key, at) ->
-                key != id && now - at <= COMBO_DOWN_WINDOW_MS
-            } ?: return false
-
+                key != id && now - at <= window
+            }
+        // 没凑成：只有「参与组合的键」才值得先等一个窗口，其余立刻交回单键
+        val hit = other?.let { bindingFor(listOf(it.key, id)) }
+        if (other == null || hit == null) return if (joinsCombo(id)) Down.HOLD else Down.PASS
         val keys = listOf(other.key, id)
-        // 没有绑定 ⇒ 组合不成立：不摘状态机、不记账、把这一下交回单键判定器。
-        //  先判这一条再动任何状态 —— 反过来（先摘再判）就回到「按了没反应」。
-        val hit = bindingFor(keys) ?: return false
         val c = Combo(hit, keys, pressedAt = now)
         combo = c
         consumed += keys
@@ -129,10 +160,10 @@ internal class ComboDetector(
         // 判据级：这一行是「组合键到底认没认出来」的唯一证据。
         XLog.w(
             "组合键：${keys.joinToString(" + ") { it.label }} 同时按下（${hit.id}）" +
-                "（间隔 ${now - other.value}ms，窗口 ${COMBO_DOWN_WINDOW_MS}ms）",
+                "（间隔 ${now - other.value}ms，窗口 ${window}ms）",
         )
         scheduleLong(c, startedAt = now)
-        return true
+        return Down.TAKEN
     }
 
     /**

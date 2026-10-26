@@ -104,7 +104,7 @@ private fun comboMenuEntries(
             //  「条件执行」放第一行：它是**进另一页**，与下面那条「删除这组」不是一类事，用加深带隔开。
             MenuEntry.Row(
                 title = BRANCHES_TITLE,
-                icon = PageIcons.CommandBranch,
+                icon = PageIcons.Scene,
                 submenu = true,
                 trailingIcon = PageIcons.EnterArrow,
                 onPick = onOpenBranches,

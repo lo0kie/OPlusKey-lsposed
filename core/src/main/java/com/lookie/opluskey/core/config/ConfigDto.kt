@@ -58,6 +58,10 @@ internal data class ConfigDto(
     @SerialName("app_names") val appNames: Map<String, String> = emptyMap(),
     /** 组合按键（`Config.combos`）—— 与 `app_names` 同一套：单独一段，只走落盘。 */
     val combos: List<ComboDto> = emptyList(),
+    /** 这份配置的名字（`Config.profileName`）；空串 = 「默认」那一份。 */
+    @SerialName("profile_name") val profileName: String = "",
+    /** 这份配置在列表里的位次（`Config.profileOrder`）；0 = 「默认」那份。 */
+    @SerialName("profile_order") val profileOrder: Int = 0,
     /** 正文完整性字段；只有 `version == ConfigCodec.VERSION` 时才校验（见 `ConfigCodec`）。 */
     val md5: String = "",
 ) {
@@ -91,20 +95,24 @@ internal data class ConfigDto(
             //  与自定义键同一条：坏条目不能无声消失（组合键丢了 = 那一组按键整组失效）
             XLog.w("配置：${combos.size - parsedCombos.size} 个组合键认不出（已丢弃）")
         }
-        return Config.ofFields(
-            keys = keyConfigs,
-            global = if (legacyMaster) globalConfig.copy(enabled = master) else globalConfig,
-            v =
-                ConfigFields.Values(
-                    mapOf(
-                        ConfigFields.F_DISCLAIMER to disclaimerAccepted,
-                        ConfigFields.F_COMMAND_DISCLAIMER to commandDisclaimerAccepted,
+        return Config
+            .ofFields(
+                keys = keyConfigs,
+                global = if (legacyMaster) globalConfig.copy(enabled = master) else globalConfig,
+                v =
+                    ConfigFields.Values(
+                        mapOf(
+                            ConfigFields.F_DISCLAIMER to disclaimerAccepted,
+                            ConfigFields.F_COMMAND_DISCLAIMER to commandDisclaimerAccepted,
+                        ),
                     ),
-                ),
-            customKeys = custom,
-            appNames = appNames,
-            combos = parsedCombos,
-        )
+                customKeys = custom,
+                appNames = appNames,
+                combos = parsedCombos,
+            )
+            //  名字与位次都不进 `ConfigFields`（那不是「一按就生效」的东西，也不需要广播给注入侧），
+            //  只走落盘这一列 —— 与 `appNames` / `combos` 同一条。
+            .copy(profileName = profileName, profileOrder = profileOrder)
     }
 
     companion object {
@@ -123,6 +131,8 @@ internal data class ConfigDto(
                 commandDisclaimerAccepted = config.commandDisclaimerAccepted,
                 appNames = config.appNames,
                 combos = config.combos.map { ComboDto.of(it) },
+                profileName = config.profileName,
+                profileOrder = config.profileOrder,
                 md5 = md5,
             )
     }
@@ -249,13 +259,13 @@ internal data class StateRuleDto(
         //  老文件 / 单条件：只有 `condition` 那一格
         if (conditions.isEmpty()) {
             val single = BranchCondition.parse(condition)
-            if (single == null) XLog.w("配置：状态分支的条件认不出（丢掉这一条）：$condition")
+            if (single == null) XLog.w("配置：状态分支的场景认不出（丢掉这一条）：$condition")
             return single?.let(::listOf)
         }
         val parsed = conditions.map { BranchCondition.parse(it) }
         val bad = parsed.indexOfFirst { it == null }
         if (bad >= 0) {
-            XLog.w("配置：状态分支的第 ${bad + 1} 条条件认不出（整条丢掉）：${conditions.getOrNull(bad)}")
+            XLog.w("配置：状态分支的第 ${bad + 1} 条场景认不出（整条丢掉）：${conditions.getOrNull(bad)}")
             return null
         }
         return parsed.filterNotNull()
@@ -382,6 +392,9 @@ internal data class GlobalDto(
     /** 组合键的无操作透传 —— 老文件没有这一项，退回默认（开）。 */
     @SerialName("combo_passthrough")
     val comboPassthrough: Boolean = GlobalConfig.DEFAULT_COMBO_PASSTHROUGH,
+    /** 组合键两颗键之间的等待窗口（毫秒）—— 老文件没有这一项，退回出厂值 80。 */
+    @SerialName("combo_window_ms")
+    val comboWindowMs: Int = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
 ) {
     fun toValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -400,6 +413,7 @@ internal data class GlobalDto(
                 ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
                 ConfigFields.F_PAGE_SCALE to pageScale,
                 ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
+                ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
             ),
         )
 
@@ -418,6 +432,7 @@ internal data class GlobalDto(
                 followDisplaySize = g.followDisplaySize,
                 pageScale = g.pageScale,
                 comboPassthrough = g.comboPassthrough,
+                comboWindowMs = g.comboWindowMs,
             )
     }
 }

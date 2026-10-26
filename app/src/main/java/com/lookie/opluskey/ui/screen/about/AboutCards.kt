@@ -2,7 +2,9 @@ package com.lookie.opluskey.ui.screen.about
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -98,7 +100,7 @@ internal fun SettingsPage.LinkStatusCard() {
 /**
  * 本机那一行的主标题 —— 机型号与代号都摆出来。
  *
- *  清单里那台机器用清单上那份名字（自带代号）；不在清单里就只有代号，毕竟它的名字我们也不知道。
+ *  清单里那台机器用清单上记录的名字（自带代号）；不在清单里就只有代号，毕竟它的名字我们也不知道。
  *  代号都读不出来时给空串（标题不画）—— 读不出来是「没读到」、不是结论，副标题那句结论照常给。
  */
 private fun localDeviceTitle(): String = DeviceSupport.adaptedNameOf(deviceModel).ifEmpty { deviceModel }
@@ -145,16 +147,22 @@ private fun statusRow(
     )
 
 /**
- * 「配置」卡（语言 / 导出 / 导入）。
+ * 「配置」卡（语言 / 切换配置 / 导出 / 导入）。
  *
  *  导出走系统的「保存到」、导入走系统的「打开」，两边都由 hook 侧实现
  * （`SettingsPageHooks`：SAF + `Activity#onActivityResult`），这里只负责派发。
+ *
+ *  中间两行（切换 / 导出）都是**点开一层菜单**：铺的是同一份「这台机器上有哪几份配置」，
+ *  一件事在页面上不该有两种形状 —— 以前切换是 `⋮` 菜单里一项 + 选择器弹窗、导出又一张弹窗。
  */
 @Composable
 internal fun SettingsPage.ConfigCard(
     currentLang: AppLanguage,
     ui: AboutUiState,
 ) {
+    //  除「默认」之外已满三份 ⇒ 「导入配置」这一行也灰掉（「新建配置」在切换菜单里，同一道闸）。
+    //  只能放进 remember：判一次要列目录，不能每次重组都去碰文件系统。
+    val profilesFull = remember(configState.config.value, ui.profiles.size) { ConfigProfiles.isFull() }
     CardList(
         rows =
             listOf(
@@ -170,15 +178,30 @@ internal fun SettingsPage.ConfigCard(
                     },
                 ),
                 CardRow.Item(
+                    title = I18n.get(Strings.PROFILE_SWITCH_TITLE, "切换配置"),
+                    // 副标题写**当前配置**的名字 —— 与「语言」那一行写当前语言同一档
+                    summary = currentProfileName(),
+                    icon = PageIcons.Profiles,
+                    trailing = { RowEndIcon(PageIcons.Selector) },
+                    modifier = Modifier.preciseClickAnchor(ui.profileClick),
+                    onClick = {
+                        //  列表是盘上扫出来的（每份要读文件取名字），点这一行时读一次即可
+                        ui.profiles = ConfigProfiles.list()
+                        ui.showProfileMenu = true
+                    },
+                ),
+                CardRow.Item(
                     title = I18n.get(Strings.MORE_EXPORT_CONFIG, "导出配置"),
                     // 副标题只报「做什么」的一句话，不解释机制 —— 用户界面不写
                     // 「把配置与自定义命令存成一份文件」那种交代细节的写法
                     summary = I18n.get(Strings.MORE_EXPORT_CONFIG_SUMMARY, "保存到本地文件"),
                     icon = PageIcons.ConfigExport,
-                    // 行尾箭头：这一行点了有反应（开系统的「保存到」）
-                    arrow = true,
+                    // 行尾选择器：点开的是一层「导出哪份」的菜单
+                    trailing = { RowEndIcon(PageIcons.Selector) },
+                    modifier = Modifier.preciseClickAnchor(ui.exportClick),
                     onClick = {
-                        hooks.onExportConfig?.invoke()
+                        ui.profiles = ConfigProfiles.list()
+                        ui.showExportMenu = true
                     },
                 ),
                 CardRow.Item(
@@ -186,6 +209,9 @@ internal fun SettingsPage.ConfigCard(
                     summary = I18n.get(Strings.MORE_IMPORT_CONFIG_SUMMARY, "从本地文件读取"),
                     icon = PageIcons.ConfigImport,
                     arrow = true,
+                    //  到上限时灰掉：选完文件再报「最多三份」等于白让人挑一遍
+                    enabled = !profilesFull,
+                    disabledHint = if (profilesFull) I18n.get(Strings.PROFILE_FULL, "最多三份配置") else null,
                     onClick = {
                         hooks.onImportConfig?.invoke()
                     },
@@ -193,6 +219,11 @@ internal fun SettingsPage.ConfigCard(
             ),
     )
 }
+
+/** 当前配置在界面上的叫法（「切换配置」那一行的副标题）。 */
+private fun SettingsPage.currentProfileName(): String =
+    configState.config.value.profileName
+        .ifBlank { I18n.get(Strings.PROFILE_DEFAULT, "默认") }
 
 /**
  * 「外观」那张卡 —— 主题（跟随系统 / 浅色 / 深色）+ 强调色（页面强调色）。

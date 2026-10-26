@@ -12,6 +12,7 @@ import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.ConfigStore
+import com.lookie.opluskey.core.config.VariableStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
@@ -91,6 +92,11 @@ internal object GestureReceiver {
         GestureExec.attach(ActionRunner(context = ctx, handler = handler), ctx) { config ->
             sendAlive(ctx, config.global.enabled)
         }
+
+        // 变量：**这台机器重启过**就把带「重启后重置」的那几颗拉回初始值。判据是开机的 wall clock
+        //  变了（`VariableStore.applyBootResets`）；同一次开机里反复起进程不会重复重置。
+        //  放在执行器装好之后 —— 再早的话这条链路上别的东西都还没就绪。
+        XLog.guard("变量开机重置") { VariableStore.applyBootResets() }
 
         keepProcessAwake(ctx)
 

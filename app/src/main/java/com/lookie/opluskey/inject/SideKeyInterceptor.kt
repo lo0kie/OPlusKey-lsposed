@@ -13,6 +13,7 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.RomKeyFamilies
 import com.lookie.opluskey.inject.input.ComboDetector
 import com.lookie.opluskey.inject.input.GestureDetector
+import com.lookie.opluskey.inject.input.HeldPresses
 import io.github.libxposed.api.XposedInterface
 
 /**
@@ -40,7 +41,8 @@ private const val COLLECT_SWALLOW_TAIL_MS = 5_000L
  * 一次按键的判定：这个键是不是侧键、该判成什么手势。
  */
 internal class SideKeyInterceptor(
-    handler: Handler,
+    /** 组合键那一块要把「压着的按下」延后一个窗口再喂给单键判定器，所以这条 Handler 要留着。 */
+    private val handler: Handler,
     /** 判出手势后的去向（由 `KeyHooks` 注入，实现是 `GestureForwarder`）。 */
     private val forward: (KeyId, Gesture, Boolean) -> Unit,
     /** 每判出一个手势记一笔（`KeyHooks.noteGesture`）—— 链路自检用，由装配方注入。 */
@@ -73,6 +75,14 @@ internal class SideKeyInterceptor(
         )
 
     /**
+     * 参与组合的键按下后「先等一个窗口」那笔账 —— 窗口到点才把按下补交给 [detector]。
+     *
+     *  单独立一个类：这里只是「到点补发」的簿记，挤进来会把本类顶到 `TooManyFunctions`
+     *  （它本来就贴着线）。见 `HeldPresses` 的类注释。
+     */
+    private val held = HeldPresses(handler, feed = detector::onKeyDown, feedUp = detector::onKeyUp)
+
+    /**
      * 「两颗键一起按」的判定 —— 与单键判定器并排，**先于它**看每一个事件。
      *
      *  组合成立时会把这两颗键的单键状态机摘掉（`resetKey`），所以两颗键那一下只出一个结果：
@@ -82,10 +92,18 @@ internal class SideKeyInterceptor(
         ComboDetector(
             handler = handler,
             onCombo = onCombo,
-            resetKey = { id -> detector.reset(id) },
+            resetKey = { id ->
+                //  这一颗已经归组合了 ⇒ 压着等窗口的那一下不必再喂单键（否则一次按压执行两个动作）
+                held.drop(id)
+                detector.reset(id)
+            },
             // 这一组有没有绑定 —— 注入侧手上只有广播来的那份配置（配置文件它读不到），
             //  所以判据收在 `ConfigChannel.comboFor` 一处：没有这一档就交回单键判定器。
             bindingFor = { keys -> ConfigChannel.comboFor(keys) },
+            //  等待窗口可调（「组合按键设置」里那一行）；还没收到广播时是出厂值
+            windowMs = { ConfigChannel.comboWindowMs() },
+            //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
+            joinsCombo = { id -> ConfigChannel.joinsCombo(id) },
         )
 
     /**
@@ -145,6 +163,8 @@ internal class SideKeyInterceptor(
     internal fun cancelPending() {
         try {
             detector.reset(null)
+            //  压着等窗口的那几颗也一起放掉：配置变了就不该再把旧的那一下补进去
+            held.drop(null)
             //  组合也一起清：两颗键按住不放时关掉其中一颗，组合的长按枪不能继续响
             combo.reset()
         } catch (e: Throwable) {
@@ -442,12 +462,28 @@ internal class SideKeyInterceptor(
                         }
                         // 两颗键一起按 ⇒ 这一下归组合，不再喂单键判定器
                         //  （组合成立时那两颗键的单键状态机已被摘掉）
-                        if (combo.onDown(id)) return true
+                        when (combo.onDown(id)) {
+                            //  归组合：两颗键那一下只出一个结果
+                            ComboDetector.Down.TAKEN -> {
+                                return true
+                            }
+
+                            //  参与组合但还没凑成：先压一个窗口，看第二颗键来不来
+                            ComboDetector.Down.HOLD -> {
+                                held.hold(id, keyConfig, ConfigChannel.comboWindowMs())
+                                return true
+                            }
+
+                            //  与组合无关：照旧立刻判单键（这条路上没有可等的东西）
+                            ComboDetector.Down.PASS -> {}
+                        }
                         detector.onKeyDown(id, keyConfig)
                         true
                     }
 
                     KeyEvent.ACTION_UP -> {
+                        // 还压着（在等组合窗口）⇒ 组合已经不可能成立了，把这一按立刻补给单键判定器
+                        if (held.release(id, keyConfig)) return true
                         // 这一下属于一次组合 ⇒ 组合自己收尾，不再喂单键判定器
                         //  （组合成立时那两颗键的状态机已经被摘掉了）
                         if (combo.onUp(id)) return true

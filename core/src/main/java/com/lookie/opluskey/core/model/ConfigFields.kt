@@ -69,6 +69,9 @@ object ConfigFields {
     const val LANGUAGE_EXTRA = "language"
     const val COLOR_OS_API_EXTRA = "color_os_api"
 
+    /** 组合键两颗键之间的等待窗口（毫秒）—— 注入侧判定要用，所以走广播。 */
+    const val COMBO_WINDOW_MS_EXTRA = "combo_window_ms"
+
     /**
      * **模块总闸**（首页「启用按键绑定」那一行）—— 与 [ENABLED_EXTRA] 是两件事，别混：
      *
@@ -258,6 +261,24 @@ object ConfigFields {
     val F_COMBO_PASSTHROUGH = Field(null, Kind.Bool(GlobalConfig.DEFAULT_COMBO_PASSTHROUGH))
 
     /**
+     * 组合键：**两颗键按下之间最多隔多久**（毫秒）。
+     *
+     *  走**广播**那一列 —— 判定它的是注入侧（`ComboDetector` 跑在 system_server），那边读不到
+     *  配置文件、只吃广播。
+     *
+     *  调大 ⇒ 手笨一点也能搓出组合；代价是参与组合的键要先等这么久（见 `ComboScreen` 那一行的副标题）。
+     */
+    val F_COMBO_WINDOW_MS =
+        Field(
+            COMBO_WINDOW_MS_EXTRA,
+            Kind.Number(
+                GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+                GlobalConfig.COMBO_WINDOW_MIN_MS,
+                GlobalConfig.COMBO_WINDOW_MAX_MS,
+            ),
+        )
+
+    /**
      * 「跟随系统显示大小」—— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：
      * 它只决定这个页面自己那棵树的密度，注入侧没有界面、不读它。
      */
@@ -286,6 +307,7 @@ object ConfigFields {
             F_COLOR_OS_API,
             F_MINI_WINDOW_ANIM,
             F_COMBO_PASSTHROUGH,
+            F_COMBO_WINDOW_MS,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
         )
