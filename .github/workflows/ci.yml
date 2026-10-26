@@ -49,7 +49,7 @@ jobs:
           packages: "platforms;android-37.0 build-tools;36.0.0"
 
       - name: 配置 Gradle 缓存
-        uses: gradle/actions/setup-gradle@07d1f8453baaff67fb503883367f8b13e6158a54 # v6
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
       # 没有 keystore 就不出 release：封存层（`core/build.gradle.kts` 的 `SealReleaseAssets`）
       # 要签名派生密钥、没有明文回退 —— 拿不到 keystore 那一步必然失败。
       # 与其让构建去撞墙，不如这里就说清「这一轮不出 release」。
