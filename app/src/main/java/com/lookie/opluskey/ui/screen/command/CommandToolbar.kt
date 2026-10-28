@@ -8,10 +8,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.dropShadow
@@ -24,11 +22,10 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
+import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addCommand
 import com.lookie.opluskey.ui.frosted
-import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
@@ -43,7 +40,6 @@ import io.github.suqi8.coui.kmp.basic.FloatingToolbar
 import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
-import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
@@ -105,7 +101,7 @@ internal fun SettingsPage.commandNameProblem(): String? =
 /**
  * 「保存」此刻**为什么**点不动（`null` = 能点）—— 保存按钮的 `enabled` 就是「它是不是 `null`」。
  *
- *  灰着被点一下时说的也是这一句（见下面那层 `LocalDisabledClick`）：兜底的
+ *  灰着被点一下时说的也是这一句（见 [ToolbarButtons] 那层 `DisabledHint`）：兜底的
  *  「这一项现在不可用」对「写了 `shell:`、正文还空着」的人等于什么都没说。
  */
 internal fun SettingsPage.saveBlockedReason(): String? {
@@ -115,10 +111,25 @@ internal fun SettingsPage.saveBlockedReason(): String? {
 }
 
 /**
- * 底部工具条此刻该不该在。
+ * 「重置」这一下做的事 —— 顶栏那颗「重置 / 取消」与「已保存的命令」菜单里「再点一次编辑」
+ * 共用这一份。
+ *
+ *  **就是一次 `draft.reset()`**：步骤行不会「瞬时消失」—— `steps` 一变，
+ *  `StepRowDisplay.sync` 把对不上的行标成退场，各自 shrink 完才摘除（见那个类的注释）。
+ *
+ *  不要再引入「先置挂起标记、等退场播完再由页面级协程收尾」那一套：那套的收尾协程一旦没接上
+ *  （或那段时间里用户又敲了字），`reset()` 就永远不执行 —— 表现正是「点了重置、表单还在」。
+ */
+internal fun SettingsPage.resetCommandDraft() {
+    commandDraft.draft.reset()
+}
+
+/**
+ * 「这一页现在有没有值得保存的东西」—— 底部那条工具条出不出现、顶栏那颗「重置」出不出现，
+ * 都看它（两处同一个判据，不会出现「底栏在、重置不在」这种半套）。
  *
  *  排序态（`stepEditing`）下**整条滑出隐藏**，而不是置灰：那时改的是步骤顺序、不是命令内容，
- *  保存与重置都没有意义；留一条灰工具条只是多占一块地方。
+ *  保存与重置都没有意义；留一条灰工具条只是多占一块地方。顶栏那颗同理不画。
  */
 internal fun SettingsPage.commandToolbarVisible(): Boolean =
     !commandDraft.stepEditing &&
@@ -127,27 +138,14 @@ internal fun SettingsPage.commandToolbarVisible(): Boolean =
 /**
  * 底部那条浮动工具条要的几件事 —— 由「自定义命令」页把它那份草稿的状态译成这一份。
  *
- *  [visible] 管整条出不出现；[canReset] / [canSave] 是两个按钮各自可不可点；
- *  [labels.blocked] 是「保存还不能点」的原因（点灰按钮时就说这一句）。
+ *  只剩一颗「保存 / 修改」：**重置挪去了顶栏右侧**（见 [CommandHeaderReset]），底栏不再放它。
+ *  [visible] 管整条出不出现；[blocked] 是「保存还不能点」的原因（点灰按钮时就说这一句）。
  */
 internal class ToolbarSpec(
     val visible: Boolean,
-    val canReset: Boolean,
     val canSave: Boolean,
-    val labels: ToolbarLabels,
-    val actions: ToolbarActions,
-)
-
-/** 两个按钮各自的文案与「不能存」的原因。 */
-internal class ToolbarLabels(
-    val reset: String,
-    val save: String,
+    val saveLabel: String,
     val blocked: () -> String?,
-)
-
-/** 两个按钮各自做什么。 */
-internal class ToolbarActions(
-    val onReset: () -> Unit,
     val onSave: () -> Unit,
 )
 
@@ -162,7 +160,6 @@ internal fun SettingsPage.FloatingActions(
     spec: ToolbarSpec,
     modifier: Modifier = Modifier,
 ) {
-    val canReset = spec.canReset
     val canSave = spec.canSave
     val visible = spec.visible
     // 滑出要滑到屏幕下沿之外：胶囊浮在底边上方 [COMMAND_TOOLBAR_BOTTOM] 处，那段距离要一起算。
@@ -218,7 +215,7 @@ internal fun SettingsPage.FloatingActions(
 }
 
 /**
- * 「自定义命令」页那条工具条 —— 重置 / 保存两颗圆按钮，浮在页面底边上方。
+ * 「自定义命令」页那条工具条 —— 只剩一颗「保存 / 修改」，浮在页面底边上方。
  *
  *  实现全在 [FloatingActions] 里（磨砂、阴影、进出场），这一层只负责「把命令草稿的状态译成 spec」。
  */
@@ -230,60 +227,18 @@ internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
         spec =
             ToolbarSpec(
                 visible = commandToolbarVisible(),
-                canReset = commandToolbarVisible(),
                 // 能不能存只看这一句（`null` = 能存）：判据与「点灰按钮时说的话」是同一支
                 canSave = saveBlockedReason() == null,
-                labels =
-                    ToolbarLabels(
-                        reset = if (editing) I18n.get(Strings.COMMON_CANCEL, "取消") else I18n.get(Strings.COMMON_RESET, "重置"),
-                        save = if (editing) I18n.get(Strings.COMMON_MODIFY, "修改") else I18n.get(Strings.COMMON_SAVE, "保存"),
-                        blocked = ::saveBlockedReason,
-                    ),
-                actions =
-                    ToolbarActions(
-                        onReset = {
-                            tick()
-                            // 多条命令带步骤时走行级退场：步骤行 shrink 完才真正 reset，否则整批行瞬时消失。
-                            if (commandDraft.draft.kind == CommandKind.SERIAL && commandDraft.draft.steps.isNotEmpty()) {
-                                // 记下这一刻的内容指纹：收尾时对一次账，这期间用户又输入了就放弃 reset。
-                                commandDraft.resetBaseline = commandDraft.draft.contentFingerprint()
-                                commandDraft.resetPending = true
-                            } else {
-                                commandDraft.draft.reset()
-                            }
-                        },
-                        onSave = {
-                            tick()
-                            addCommand()
-                        },
-                    ),
+                saveLabel =
+                    if (editing) I18n.get(Strings.COMMON_MODIFY, "修改") else I18n.get(Strings.COMMON_SAVE, "保存"),
+                blocked = ::saveBlockedReason,
+                onSave = {
+                    tick()
+                    addCommand()
+                },
             ),
         modifier = modifier,
     )
-}
-
-/**
- * 「保存」灰着被点一下时说的那一句 —— 就地换掉整页那条 `LocalDisabledClick`。
- *
- *  单独抽一支只为把 [ToolbarButtons] 的长度压回 detekt 的上限。
- *
- *  **lambda 必须 `remember` 住、原因用 `rememberUpdatedState` 跟住**：`spec.labels` 每次重组
- *  都是新实例，直接把它捕进 lambda 就等于每次换一个引用 —— 读这条通道的控件会跟着白白重组。
- *  也归整页那一个位（[HINT_SLOT_COMMAND]）：连点几下「保存」时改字不叠条。
- */
-@Composable
-private fun SettingsPage.SaveDisabledHint(
-    labels: ToolbarLabels,
-    content: @Composable () -> Unit,
-) {
-    val current = rememberUpdatedState(labels)
-    val onBlocked: () -> Unit =
-        remember {
-            {
-                current.value.blocked()?.let { hint(it, slot = HINT_SLOT_COMMAND) }
-            }
-        }
-    CompositionLocalProvider(LocalDisabledClick provides onBlocked) { content() }
 }
 
 /**
@@ -320,26 +275,19 @@ private fun SettingsPage.toolbarFrostModifier(): Modifier {
 }
 
 /**
- * 工具条里那两个圆按钮 —— 从 [FloatingActions] 抽出来只为把那边压回长度上限。
+ * 工具条里那颗圆按钮 —— 从 [FloatingActions] 抽出来只为把那边压回长度上限。
  *
- *  颜色三档都走 [COLOR_TRANSITION_SPEC]；保存那颗的底色用**主题原色** `primary`
+ *  颜色走 [COLOR_TRANSITION_SPEC]；底色用**主题原色** `primary`
  *  （不再单独降 alpha：字形压在上面对比度最足，代价是实色底把糊盖住）。
  */
 @Composable
 private fun SettingsPage.ToolbarButtons(spec: ToolbarSpec) {
-// 用图标按钮：文字会把这窄条撑宽。文案进了各自的 `contentDescription`。
-// 按钮 40dp、高亮圆角一半，外留白与按钮间距都是 [TOOLBAR_EDGE_GAP]。
-// 底色 / 字形的可用 / 禁用切换走统一的 [COLOR_TRANSITION_SPEC]。
-    val on = COUITheme.colorScheme.onSurfaceContainer
+// 用图标按钮：文字会把这窄条撑宽。文案进了 `contentDescription`。
+// 按钮 40dp、高亮圆角一半，外留白是 [TOOLBAR_EDGE_GAP]。
     val off = COUITheme.colorScheme.disabledOnSecondaryVariant
-// 保存那颗的底色走**主题原色**（不单独降 alpha：字形压在上面对比度最足，代价是实色底盖住了糊）
+// 底色走**主题原色**（不单独降 alpha：字形压在上面对比度最足，代价是实色底盖住了糊）
     val saveOn = COUITheme.colorScheme.primary
     val saveOff = COUITheme.colorScheme.surfaceContainerHigh
-    val resetIconColor by animateColorAsState(
-        targetValue = if (spec.canReset) on else off,
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "ToolbarResetIcon",
-    )
     val saveBackgroundColor by animateColorAsState(
         targetValue = if (spec.canSave) saveOn else saveOff,
         animationSpec = COLOR_TRANSITION_SPEC,
@@ -355,24 +303,11 @@ private fun SettingsPage.ToolbarButtons(spec: ToolbarSpec) {
         horizontalArrangement = Arrangement.spacedBy(TOOLBAR_EDGE_GAP),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(
-            onClick = spec.actions.onReset,
-            enabled = spec.canReset,
-            minWidth = TOOLBAR_ICON_SIZE,
-            minHeight = TOOLBAR_ICON_SIZE,
-            cornerRadius = TOOLBAR_ICON_SIZE / 2,
-        ) {
-            Icon(
-                PageIcons.MenuReset,
-                contentDescription = spec.labels.reset,
-                // 禁用时跟着置灰（库不给图标上色）
-                tint = resetIconColor,
-            )
-        }
-        // 灰着被点了一下时，说清是**哪一档**没齐（不是页面不可用）—— 见 [SaveDisabledHint]。
-        SaveDisabledHint(spec.labels) {
+        // 灰着被点了一下时，说清是**哪一档**没齐（不是页面不可用）—— 见 [DisabledHint]：
+        //  原因的取法与 `enabled` 同一支（`spec.blocked`），所以它一改，这里跟着重组。
+        DisabledHint(spec.blocked()) {
             IconButton(
-                onClick = spec.actions.onSave,
+                onClick = spec.onSave,
                 enabled = spec.canSave,
                 minWidth = TOOLBAR_ICON_SIZE,
                 minHeight = TOOLBAR_ICON_SIZE,
@@ -382,7 +317,7 @@ private fun SettingsPage.ToolbarButtons(spec: ToolbarSpec) {
             ) {
                 Icon(
                     PageIcons.Confirm,
-                    contentDescription = spec.labels.save,
+                    contentDescription = spec.saveLabel,
                     tint = saveIconColor,
                 )
             }

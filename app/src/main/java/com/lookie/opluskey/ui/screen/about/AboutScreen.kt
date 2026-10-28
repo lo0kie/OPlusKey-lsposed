@@ -21,18 +21,17 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.seal.SEAL_ENABLED
 import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.core.seal.Verdict
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appVersionBadge
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.AppTheme
-import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.PagePalette
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
@@ -92,20 +91,24 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         // 「选择应用」的。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
-        Spacer(Modifier.height(GRID_ROW_GAP))
-        SmallTitle(I18n.get(Strings.MORE_SECTION_STATUS, "运行状态"))
+        //  块与块之间的间距由小标题自带（上 16 / 下 0），页面不再写 `Spacer`。
+        SectionTitle(I18n.get(Strings.MORE_SECTION_STATUS, "运行状态"))
         LinkStatusCard()
 
-        Spacer(Modifier.height(GRID_ROW_GAP))
-        SmallTitle(I18n.get(Strings.MORE_SECTION_APPEARANCE, "外观"))
+        SectionTitle(I18n.get(Strings.MORE_SECTION_APPEARANCE, "外观"))
         AppearanceCard(currentTheme, currentPalette, ui)
 
-        // 「外观」与「配置」之间也是同一档：`SmallTitle` 自带的 8dp 只够让标题不贴着上一张卡，
-        // 那一档两节之间读起来还是有黏连（外观在前、配置在后）。
-        Spacer(Modifier.height(GRID_ROW_GAP))
-        SmallTitle(I18n.get(Strings.MORE_SECTION_CONFIG, "配置"))
+        SectionTitle(I18n.get(Strings.MORE_SECTION_CONFIG, "配置"))
         ConfigCard(currentLang, ui)
 
+        SectionTitle(I18n.get(Strings.MORE_SECTION_ABOUT, "关于"))
+        MachineCard(
+            version,
+            SignatureInfo(signatureTitle, signatureNote, fingerprint, signatureOfficial),
+            ui,
+        )
+
+        //  **浮层宿主**（本身不占布局）：摆在列容器外面，否则块间距会在它们前后各留一档空档。
         FeedbackMenu(ui)
         AuthorMenu(ui)
         LanguageMenu(ui, currentLang)
@@ -118,14 +121,6 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         ProfileNamingDialog(ui)
         // 删除配置的确认窗（同一个位置点进来，删完才真删）
         ProfileDeleteConfirmDialog(ui)
-
-        Spacer(Modifier.height(GRID_ROW_GAP))
-        SmallTitle(I18n.get(Strings.MORE_SECTION_ABOUT, "关于"))
-        MachineCard(
-            version,
-            SignatureInfo(signatureTitle, signatureNote, fingerprint, signatureOfficial),
-            ui,
-        )
     }
 }
 

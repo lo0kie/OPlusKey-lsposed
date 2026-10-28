@@ -482,11 +482,15 @@ internal class SideKeyInterceptor(
                     }
 
                     KeyEvent.ACTION_UP -> {
-                        // 还压着（在等组合窗口）⇒ 组合已经不可能成立了，把这一按立刻补给单键判定器
-                        if (held.release(id, keyConfig)) return true
-                        // 这一下属于一次组合 ⇒ 组合自己收尾，不再喂单键判定器
-                        //  （组合成立时那两颗键的状态机已经被摘掉了）
-                        if (combo.onUp(id)) return true
+                        //  还压着（在等组合窗口）⇒ 只记「松了」，到点再连着 UP 一起补给单键判定器。
+                        //  **不在这里就补**：配对看的只是两颗键的 DOWN 相差（`ComboDetector.recent`），
+                        //  松手那一刻还看不出结果 —— 立刻补的话先按的那颗单击会先跑掉，
+                        //  窗口内第二颗键再来，组合也跟着响（一次按键三下动作）。
+                        val waiting = held.release(id)
+                        //  组合那笔账无论走哪条路都要结：它要把「还按着」那颗的状态清掉。
+                        //  顺序不能反 —— 组合在窗口内成立时会把压着的那一枪摘掉，
+                        //  所以 `waiting` 与它不会同时为真。
+                        if (combo.onUp(id) || waiting) return true
                         // 抬手被取消（窗口失焦 / 按压被打断）⇒ 不判任何手势。
                         // KeyEvent 没有 ACTION_CANCEL（那是 MotionEvent 的），取消是 FLAG_CANCELED 位，
                         // 只能从 isCanceled 读；不认它的话已排下的长按照样触发（凭空长按）。

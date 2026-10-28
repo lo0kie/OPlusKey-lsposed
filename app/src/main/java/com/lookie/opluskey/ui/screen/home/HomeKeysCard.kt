@@ -131,6 +131,8 @@ internal fun SettingsPage.HomeKeyOpsCard(
                                 I18n.get(Strings.BINDING_ADD_KEY_DESC, "收集自定义按键")
                             },
                         enabled = pageEnabled && !atLimit,
+                        //  这一行自己的原因只有「满员」那一档；整页闸门关着时留给整页那条
+                        disabledHint = if (atLimit) I18n.format(Strings.KEY_WATCH_LIMIT, KeyId.MAX_CUSTOM_KEYS) else null,
                         onClick = {
                             ui.collectKeyPending = true
                         },

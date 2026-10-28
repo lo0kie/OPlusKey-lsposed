@@ -118,6 +118,34 @@ internal fun SettingsPage.removeCombo(id: String) {
     }
 }
 
+/**
+ * 停用 / 启用一档组合 —— 与单键那一支（`setKeyEnabledFromMenu`）同一套行为。
+ *
+ *  写的是这一档自己的 [ComboKey.enabled]，与模块总闸（`GlobalConfig.enabled`）是两层：
+ *  总闸关 ⇒ 一颗键都不接管；这一档关 ⇒ 只有这一组不成立（两颗键各按自己的绑定照常执行 ——
+ *  判定侧读 `ComboKey.isUsable`，`Config.comboFor` 与 `ConfigChannel.joinsCombo` 两处都不认它，
+ *  于是「参与组合的键要等一个窗口」也随之消失）。
+ *
+ *  **没变就不写**：菜单里点到当前那一档时，不该落一次盘、更不该报「已停用」。
+ */
+internal fun SettingsPage.setComboEnabled(
+    id: String,
+    on: Boolean,
+) {
+    val cfg = configState.config.value
+    val combo = cfg.combos.firstOrNull { it.id == id } ?: return
+    if (combo.enabled == on) return
+    XLog.w("组合键：${if (on) "启用" else "停用"} $id（${comboLabel(cfg, combo)}）")
+    //  回执与「已添加 / 已删除」同一个口径：成员名各带自己的括号，整串不再套引号
+    val label = comboLabel(cfg, combo, bracketed = true)
+    if (updateCombo(id, "enabled=${if (on) 1 else 0}") { it.copy(enabled = on) }) {
+        hint(
+            I18n.format(if (on) Strings.COMBO_ENABLED else Strings.COMBO_DISABLED, label),
+            slot = HINT_SLOT_COMBO,
+        )
+    }
+}
+
 /** 组合里有没有已经删掉的键（列表那一行据此标一句）。 */
 internal fun SettingsPage.comboHasMissingKey(
     cfg: Config,

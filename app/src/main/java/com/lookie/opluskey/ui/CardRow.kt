@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,7 +28,6 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -78,7 +76,7 @@ internal sealed interface CardRow {
         val titleTint: Color? = null,
         val enabled: Boolean = true,
         /**
-         * 这一行灰着被点一下时**这一行自己的说法**（`null` = 用整页那句，见 `LocalDisabledClick`）。
+         * 这一行灰着被点一下时**这一行自己的说法**（`null` = 用整页那句，见 [DisabledHint]）。
          *
          *  为什么需要：整页那条说明的是「这一页现在为什么改不了」（链路没通 / 配置只读），
          *  而有些行是**因为它自己这一行的条件不够**才灰的 —— 例如「一颗自定义键都还没收时，
@@ -209,17 +207,10 @@ private fun ColumnScope.RowContent(
 ) {
     when (row) {
         is CardRow.Item -> {
-            //  这一行自己带了「为什么灰着」的说法时，就地换掉整页那条 `LocalDisabledClick`
-            //  （库里禁用态的那一下点击会交给它）。只有**灰着**才换：能点的行不会被问这个问题。
-            val disabledHint = row.disabledHint
-            if (!row.enabled && disabledHint != null) {
-                val say = LocalHint.current
-                CompositionLocalProvider(LocalDisabledClick provides { say(disabledHint) }) {
-                    ItemRow(row, position)
-                }
-            } else {
-                ItemRow(row, position)
-            }
+            //  这一行自己带了「为什么灰着」的说法时，就地换掉整页那条（见 [DisabledHint]）。
+            //  只有**灰着**才换：能点的行不会被问这个问题。
+            val disabledHint = if (row.enabled) null else row.disabledHint
+            DisabledHint(disabledHint) { ItemRow(row, position) }
         }
 
         is CardRow.Switch -> {

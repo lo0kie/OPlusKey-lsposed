@@ -5,10 +5,8 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,6 +36,7 @@ import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.PageMenu
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
@@ -58,14 +57,16 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 /**
- * 各处下拉/浮层选择菜单（添加命令、响铃状态、长按菜单）。
+ * 各处下拉/浮层选择菜单（添加命令、响铃状态、命令卡菜单）。
+ *
+ *  [CommandMenuPopup] 是**命令卡的唯一菜单**：右上角那颗「更多」与卡片长按都开它，
+ *  三行固定是「测试 / 编辑 / 删除」—— 两个入口给的是不同的触点锚点，菜单本身不关心从哪儿来。
  *
  * 注：`onEdited` / `onDelete` 的 `= {}` 默认值**看起来是死的**（唯一调用点两个都显式传了），
  *  但它撑住的是参数个数这条线 —— 去掉默认值会让 detekt 的 `LongParameterList` 判据换成另一个
@@ -86,14 +87,31 @@ internal fun SettingsPage.CommandMenuPopup(
     PageMenu(
         entries =
             listOf(
+                // 「测试」—— 把这条命令当场跑一遍（不写配置、不改绑定）。原先它是卡片右上角单独一颗，
+                //  收进菜单之后那颗位置让给了「更多」。
+                MenuEntry.Row(
+                    title = I18n.get(Strings.COMMAND_TEST_BUTTON, "测试命令"),
+                    icon = PageIcons.TestCommand,
+                ) {
+                    onDismiss()
+                    testCommand(cmd)
+                },
                 MenuEntry.Row(
                     title = I18n.get(Strings.COMMON_EDIT, "编辑"),
                     icon = PageIcons.CommandEdit,
                 ) {
                     onDismiss()
-                    // 走 [SettingsPage.loadDraft] 而**不是** `draft.load`：表单里可能还有没保存的改动，
-                    //  直接灌进去会把它整份覆盖掉。
-                    loadDraft(cmd)
+                    //  已经在编这一条、而草稿又**没动过** ⇒ 这一下是「重置」：清掉表单、退出编辑态。
+                    //  草稿有改动时不在这里重置 —— 交给 [SettingsPage.loadDraft] 先问一句「放弃未保存的
+                    //  命令」（窗见 `CommandDialogs.SwitchDraftDiscardDialog`），确认后才动草稿。
+                    if (commandDraft.draft.editingName == cmd.name && !commandDraft.draft.dirty) {
+                        XLog.w("已保存命令菜单：再次点「编辑」且草稿无改动 ⇒ 重置表单（${cmd.name}）")
+                        resetCommandDraft()
+                    } else {
+                        // 走 [SettingsPage.loadDraft] 而**不是** `draft.load`：表单里可能还有没保存的改动，
+                        //  直接灌进去会把它整份覆盖掉。
+                        loadDraft(cmd)
+                    }
                     onEdited()
                 },
                 // 两项之间那条细线由菜单自己加
@@ -468,16 +486,17 @@ private class StepSheetCtx(
 /**
  * 内置动作那几组 —— 分组与网格同一张表（[ActionCatalog.STEP_GROUPS]），组名与组内顺序逐项一致。
  *
- *  组与组之间要断开：`SmallTitle` 自带的上边距只有 8dp，紧贴上一张卡片；这里补一档
- *  [STEP_SHEET_SECTION_GAP]，与各页「Spacer(12.dp) + SmallTitle」同一套；第一组不补 ——
- *  上面就是抽屉标题。
+ *  组与组之间要断开：这一档由小标题自己给（上 16 / 下 0，见 `SectionTitle`）——
+ *  与各页同一套，抽屉里也不再单独补 `Spacer`，第一组同样带（不特例）。
  */
 @Composable
 private fun SettingsPage.StepSheetGroups(ctx: StepSheetCtx) {
-    ActionCatalog.STEP_GROUPS.forEachIndexed { groupIndex, (groupTitle, group) ->
-        if (groupIndex > 0) Spacer(Modifier.height(STEP_SHEET_SECTION_GAP))
-        SmallTitle(ActionCatalog.groupTitleLabel(groupTitle))
-        StepSheetCard(group, ctx)
+    Column {
+        ActionCatalog.STEP_GROUPS.forEach { (groupTitle, group) ->
+            //  小标题用**库默认**内边距（左右 32dp）—— 抽屉里原先压到 16dp，比其它页浅一档
+            SectionTitle(ActionCatalog.groupTitleLabel(groupTitle))
+            StepSheetCard(group, ctx)
+        }
     }
 }
 
@@ -487,8 +506,8 @@ private fun SettingsPage.SavedCommandsGroup(
     specs: List<ActionCatalog.Spec>,
     ctx: StepSheetCtx,
 ) {
-    Spacer(Modifier.height(STEP_SHEET_SECTION_GAP))
-    SmallTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
+    //  与上面那几组同一份内边距（库默认）
+    SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
     StepSheetCard(specs, ctx)
 }
 
@@ -556,10 +575,7 @@ private class StepSheetItem(
  */
 private val STEP_SHEET_ICON_SIZE = 24.dp
 
-/** 组与组之间那一档留白 —— 与各页「Spacer(12.dp) + SmallTitle」同一档。 */
-private val STEP_SHEET_SECTION_GAP = 12.dp
-
-/** 搜索框与下面那串候选之间的距离 —— 比组间距（12dp）再紧一点：它俩是一块儿。 */
+/** 搜索框与下面那串候选之间的距离 —— 比小标题自带的那档（12dp）再紧一点：它俩是一块儿。 */
 private val STEP_SHEET_SEARCH_GAP = 8.dp
 
 /**

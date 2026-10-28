@@ -1,8 +1,8 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,37 +11,35 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.PageCornerFab
+import com.lookie.opluskey.ui.PageFabButton
+import com.lookie.opluskey.ui.PageTabBand
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.addCommand
 import com.lookie.opluskey.ui.hideIme
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.isImeVisible
-import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.STEP_ROW_EXIT_MS
 import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.CommandUiState
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.TabRowWithContour
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollHorizontal
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // 「自定义命令」页的骨架 —— 类型选择器带、两页的 pager、以及那几条只在整页上跑一次的副作用。
@@ -78,56 +76,13 @@ internal val FORMAT_COLUMN_GAP = 12.dp
  */
 @Composable
 internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
-    val tick = rememberTick()
-    val scope = rememberCoroutineScope()
-    // 排序态下这一条也禁用 —— 与「按键绑定」页主开关为关时同一套：
-    //  分段控件没有 `enabled` 参数，只能自己造（整条压暗 + 压一层透明吃事件层）。
-    val enabled = !commandDraft.stepEditing
-    val disabledAlpha by animateFloatAsState(
-        targetValue = if (enabled) 1f else DISABLED_ALPHA,
-        label = "CommandBandDisabledAlpha",
+    PageTabBand(
+        pagerState = pagerState,
+        labels = CommandKind.FORM_TABS.map { commandKindLabel(it) },
+        // 排序态下这一条也禁用 —— 与「按键绑定」页主开关为关时同一套（做法在 [PageTabBand] 里）
+        enabled = !commandDraft.stepEditing,
+        band = commandBandHeight,
     )
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .onSizeChanged { commandBandHeight.report(it.height) },
-    ) {
-        TabRowWithContour(
-            tabs = CommandKind.FORM_TABS.map { commandKindLabel(it) },
-            // 亮哪一个只看分页器停在哪一页（`currentPage`）。
-            selectedTabIndex = pagerState.currentPage,
-            // 滑块按浮点页码实时插值，跟手（与「按键绑定」页同一套做法，取舍见
-            // `BindingTabBand` 里 `selectedTabPosition` 那段注释）。
-            selectedTabPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
-            onTabSelected = {
-                tick()
-                scope.launch { pagerState.animateScrollToPage(it) }
-            },
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    // 左右与卡片同一个 [PAGE_MARGIN]；纵向只带下边一档（[PAGE_TOP_PADDING]）。
-                    .padding(
-                        start = PAGE_MARGIN,
-                        end = PAGE_MARGIN,
-                        bottom = PAGE_TOP_PADDING,
-                    ).alpha(disabledAlpha),
-        )
-        if (!enabled) {
-            // 透明吃事件层：灰是上面那层 alpha 做的，这一层只负责拦住点击 / 滑动
-            Box(
-                Modifier
-                    .matchParentSize()
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                awaitPointerEvent().changes.forEach { it.consume() }
-                            }
-                        }
-                    },
-            )
-        }
-    }
 }
 
 /**
@@ -166,7 +121,6 @@ internal fun SettingsPage.CommandScreen(
         }
     }
     CommandTabSync(pagerState)
-    CommandResetTail()
 
     // —— 两页：单条 / 多条 ——
     // 分页器承载内容，顶栏那条带子驱动它；`draft.kind` 始终跟停下来的那一页走，
@@ -199,6 +153,58 @@ internal fun SettingsPage.CommandScreen(
         }
 
         CommandDialogs(ui)
+
+        CommandFloatingButton(scope = this, tick = tick)
+    }
+}
+
+/**
+ * 右下角那颗 FAB —— 底栏撤掉之后落盘点回到这里。
+ *
+ *  · 平时是「保存」：先判 [saveBlockedReason]，不满足就用页内提示说明原因；
+ *  · 编辑列表（排序态）时它变成「完成」：那一状态下别的控件都禁用，出路只有这一颗。
+ *
+ *  空表单时**不显示**这颗（那会儿没有可保存的东西）；编辑列表时也要在（文案变「完成」）。
+ *  单独抽一支只为让 [CommandScreen] 留在 detekt 的长度上限之内。
+ */
+@Composable
+private fun SettingsPage.CommandFloatingButton(
+    /** 落点（页面右下角）由 [PageCornerFab] 决定，它要的是外层那个 `Box` 的作用域。 */
+    scope: BoxScope,
+    tick: () -> Unit,
+) {
+    val sortingSteps = commandDraft.stepEditing
+    with(scope) {
+        PageCornerFab(visible = commandToolbarVisible() || sortingSteps) {
+            PageFabButton(
+                onClick = {
+                    tick()
+                    if (sortingSteps) {
+                        commandDraft.stepEditing = false
+                        XLog.w("多条命令：退出排序态（FAB）")
+                    } else {
+                        val blocked = saveBlockedReason()
+                        if (blocked != null) {
+                            //  「为什么不能存」归到页面那个禁用原因位：与行级说法同一条提示
+                            hint(blocked, slot = HINT_SLOT_DISABLED)
+                        } else {
+                            addCommand()
+                        }
+                    }
+                },
+            ) {
+                Icon(
+                    PageIcons.Confirm,
+                    contentDescription =
+                        if (sortingSteps) {
+                            I18n.get(Strings.COMMAND_STEP_SORT_DONE, "完成")
+                        } else {
+                            I18n.get(Strings.COMMON_CONFIRM, "确定")
+                        },
+                    tint = COUITheme.colorScheme.onPrimary,
+                )
+            }
+        }
     }
 }
 
@@ -211,24 +217,14 @@ private fun SettingsPage.CommandTabSync(pagerState: PagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
             // 只有单条 / 多条这两页（分叉是独立页，见 `Screen.BRANCHES`）
             val kind = CommandKind.FORM_TABS[page]
-            //  换 tab 就把**编辑态摘掉**：`editingName` 是「正在改哪一条」的标记，而它属于**上一个
-            // tab 的那份表单** —— 留着会让新 tab 的重名判定把它当成「自己」，于是同名不判重、
-            // 一路覆盖掉另一条命令（真机反馈「保存判断应限制在当前 tab 的表单下」）。
-            //  摘编辑态时**名称要一起清**：只摘标记不清名字的话，名称格里还留着上一条命令的名字，
-            //  新 tab 拿它去判重必然撞上库里那条 ⇒ 名称格报「重名」、保存被禁，而用户只是滑了一下
-            //  （看起来毫无理由）。那一格是**用户手输的**（还没保存）时不清 —— 那是他的东西。
-            //  表单内容（`single` / `steps`）照旧保留：那是两套互不干扰的字段。
+            //  换 tab 只摘**排序态**：它是「这一页的步骤列表」的态，另一页没有步骤可排，
+            //  带着它过去只会让那一页莫名其妙地整页禁用。
+            //
+            //  名称与编辑态**一个都不清**：它们现在各自属于一页（见 `CommandForm`）——
+            //  原先只有一份时，切 tab 必须把载入进来的名字与编辑标记一起摘掉（否则新 tab 拿旧名字
+            //  判重必撞），代价就是「翻一下就变成新增态、手输的名字也没了」。
             if (kind != commandDraft.draft.kind) {
-                // 换 tab 就把**排序态摘掉**：它是「这一页的步骤列表」的态，另一页没有步骤可排，
-                //  带着它过去只会让那一页莫名其妙地整页禁用。
                 commandDraft.stepEditing = false
-                val editingName = commandDraft.draft.editingName
-                if (editingName != null) {
-                    commandDraft.draft.editingName = null
-                    // 只在名字仍是**载入时那个**时才清；与它不同说明用户已经手输过新名字，
-                    //  那是他的东西，翻个 tab 不该吞掉。
-                    if (commandDraft.draft.name == editingName) commandDraft.draft.name = ""
-                }
             }
             commandDraft.draft.kind = kind
             // 换 tab 收掉软键盘：单条那栏的命令输入框可能正开着键盘，翻到另一栏会盖住表单。
@@ -237,32 +233,6 @@ private fun SettingsPage.CommandTabSync(pagerState: PagerState) {
                 XLog.w("自定义命令：换 tab ⇒ 收键盘")
                 hideIme(host)
             }
-        }
-    }
-}
-
-/**
- * 「重置」收尾：行级退场播完才真正 reset —— 放 `SerialSteps` 里会因步骤卡隐藏而永远挂起。
- */
-@Composable
-private fun SettingsPage.CommandResetTail() {
-    LaunchedEffect(commandDraft.resetPending) {
-        if (commandDraft.resetPending) {
-            // 等的是**步骤行退场**（`STEP_ROW_EXIT_MS`）播完，留 40ms 余量收尾；不是换 tab 的时长
-            //  （那是另一件事，多等 100ms 只会让表单在原地干等）。
-            delay(STEP_ROW_EXIT_MS + 40L)
-            //  注意：这段等待里用户可能已经在输入栏里敲字了（点「重置」之后焦点还在名称 / 命令框上），
-            //  无条件 `reset()` 会把刚敲进去的内容一起吞掉。
-            //  指纹一致才收尾；不一致说明用户已经在写新的了，重置的意图已被覆盖，把表单留给他。
-            if (commandDraft.draft.contentFingerprint() == commandDraft.resetBaseline) {
-                commandDraft.draft.reset()
-            } else {
-                XLog.w("重置收尾：退场期间表单又被改过，放弃这次 reset（保住用户刚输入的内容）")
-                // 步骤行在退场那边已经被标掉、会被摘除，而重建那道闸的 key 是 `draft.steps` 的内容
-                //  —— 内容没变不会重跑 ⇒ 步骤凭空消失、数据还在。让 SerialSteps 把它们收回来。
-                commandDraft.resetAborted = true
-            }
-            commandDraft.resetPending = false
         }
     }
 }

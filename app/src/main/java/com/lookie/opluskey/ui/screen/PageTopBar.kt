@@ -8,6 +8,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.PageHeader
+import com.lookie.opluskey.ui.PageTabBand
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
@@ -28,10 +29,10 @@ import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
-import com.lookie.opluskey.ui.screen.binding.PageTabBand
 import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
 import com.lookie.opluskey.ui.screen.combo.comboLabel
 import com.lookie.opluskey.ui.screen.command.BranchHeaderAdd
+import com.lookie.opluskey.ui.screen.command.CommandHeaderReset
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.command.branchDefaultLabel
 import com.lookie.opluskey.ui.screen.home.ResetMenu
@@ -53,9 +54,15 @@ internal fun SettingsPage.PageTopBar(
     hazeState: HazeState,
     pagers: PagePagers,
 ) {
-    // 「按键绑定」页顶栏那枚禁用标记要读的两位：**当前在编辑哪颗**（界面状态）× **它开没开**（配置）。
-    //  判据直接借页内网格那支 [keyEnabled] —— 同一句「这一颗键开没开」不该有两份写法。
-    val editingKeyDisabled = !keyEnabled(KeyWatchState.editing(configState.config.value))
+    // 这一页正在编辑的那一档**被停用**了吗 —— 「按键绑定」看那颗键，「组合键编辑」看那一组。
+    //  判据直接借页内那一支（[keyEnabled] / 组合那一份配置）—— 同一句「开没开」不该有两份写法。
+    //  两页共用同一枚标记、同一档压暗：用户看到的都是「这一份东西现在不接管」。
+    val editingDisabled =
+        when (s) {
+            Screen.BINDING -> !keyEnabled(KeyWatchState.editing(configState.config.value))
+            Screen.COMBO_EDIT -> editingComboOff()
+            else -> false
+        }
     PageHeader(
         title = pageTitle(s),
         // 大标题**下面**那行（库原本的底线副标题槽位，自己占一行）：首页 = 模块版本。
@@ -64,14 +71,14 @@ internal fun SettingsPage.PageTopBar(
         largeTitleSubtitle = largeTitleSubtitle(s),
         // 大标题**右边**那行小标题（补丁新增的槽位，折叠后保留），内容见 [pageSubtitle]。
         subtitle = pageSubtitle(s),
-        //  这一颗键停用 ⇒ 内容区整片压暗了，这行小标题也跟着**压低一档**：它是这一页上唯一还亮着的字，
+        //  这一颗键 / 这一档组合停用 ⇒ 内容区整片压暗了，这行小标题也跟着**压低一档**：它是这一页上唯一还亮着的字，
         //  满亮度留着会读成「这一区还是活的」。
         //
         //  **压暗是「乘」不是「盖」**：`onSurfaceVariantSummary` 本身就是 `0x66000000`（alpha 0.4，
         //  见 coui 的 `Colors.kt`）。第一版写成 `copy(alpha = 0.5f)` —— 那是把它从 0.4 **抬**到 0.5，
         //  比原来还清楚，看起来当然「没生效」。所以按现有 alpha 乘一个系数。
         subtitleColor =
-            if (s == Screen.BINDING && editingKeyDisabled) {
+            if (editingDisabled) {
                 COUITheme.colorScheme.onSurfaceVariantSummary.let { it.copy(alpha = it.alpha * SUBTITLE_DIM_FACTOR) }
             } else {
                 COUITheme.colorScheme.onSurfaceVariantSummary
@@ -80,8 +87,8 @@ internal fun SettingsPage.PageTopBar(
         //  · 「选择应用」页开着小窗打开时补一枚「小窗起」：与网格里「打开应用」那格同一口径
         //    （见 `BindingScreen` 的 `appSmallWindow`）。那一行字只说明「选了哪个应用」，
         //    看不出这一趟是要普通打开还是小窗起；
-        //  · 「按键绑定」页**当前这颗键被停用**时补一枚禁用标记：名字旁边不标的话，这一页
-        //    整片灰只能从「可能是模块关了 / 链路没通」里猜，而实际只是这一颗键不接管
+        //  · 「按键绑定」页 /「组合键编辑」页**当前那一份被停用**时补一枚禁用标记：名字旁边不标的话，这一页
+        //    整片灰只能从「可能是模块关了 / 链路没通」里猜，而实际只是这一颗键 / 这一档组合不接管
         //    （与 ⋮ 菜单里那一行同一个字形）。
         trailingSubtitleIcon =
             when {
@@ -91,7 +98,7 @@ internal fun SettingsPage.PageTopBar(
                     PageIcons.TileSmallWindow
                 }
 
-                s == Screen.BINDING && editingKeyDisabled -> {
+                editingDisabled -> {
                     PageIcons.Cancel
                 }
 
@@ -113,6 +120,18 @@ internal fun SettingsPage.PageTopBar(
         // 顶栏底下那条**固定带**（三条带子各归各的页），见 [PageBottomBand]。
         bottomContent = { PageBottomBand(s, pagers) },
     )
+}
+
+/**
+ * 正在编辑的那一档组合被停用了吗 —— 顶栏那枚标记、那行小字的压暗、分段控件的闸门都要它。
+ *
+ *  找不到那一档（刚删完、退场那一帧）按**没停用**处理：那一帧这一页正在往下退，
+ *  再压暗一次只会看到闪一下。
+ */
+private fun SettingsPage.editingComboOff(): Boolean {
+    val cfg = configState.config.value
+    val id = ComboEditState.editingId ?: return false
+    return cfg.combos.firstOrNull { it.id == id }?.enabled == false
 }
 
 /** 顶栏标题按页分派。 */
@@ -261,6 +280,9 @@ private fun SettingsPage.PageActions(s: Screen) {
         //  加法放在「这一页有什么」那一层的工具位置上（用户口径）。
         Screen.BRANCHES -> BranchHeaderAdd()
 
+        // 「自定义命令」页那颗「重置 / 取消」：底栏只剩「保存」，重置挪到这一头（用户口径）
+        Screen.COMMANDS -> CommandHeaderReset()
+
         // 组合键编辑页的 ⋮：只有「删除组合键」一行（见 [ComboEditMenu]）
         Screen.COMBO_EDIT -> ComboEditMenu()
 
@@ -307,8 +329,9 @@ private fun SettingsPage.PageBottomBand(
                         I18n.get(Strings.COMBO_SHORT, "短按"),
                         I18n.get(Strings.COMBO_LONG, "长按"),
                     ),
-                // 这一页没有「这一颗键开没开」那一层，闸门就是整页那道（总闸 + 链路 + 可写）
-                enabled = pageWritable(),
+                // 闸门是**整页那道 + 这一档自己的开关**（与上面「按键绑定」那条同构：那一页吃的是
+                //  那颗键的 `enabled`）。停用之后分段控件灰掉，两档都翻不动 —— 与网格同一层判断。
+                enabled = pageWritable() && !editingComboOff(),
                 band = comboBandHeight,
             )
         }

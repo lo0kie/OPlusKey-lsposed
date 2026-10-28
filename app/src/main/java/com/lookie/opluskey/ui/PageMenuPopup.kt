@@ -319,6 +319,9 @@ private fun SettingsPage.MenuRow(
     //  走 CompositionLocal 而不是加参数：`MenuRow` 已经贴着 detekt 的三条上限，
     //  改签名还会让基线里那几条失效。
     val currentDisabledHint by rememberUpdatedState(row.disabledHint)
+    //  `MenuRow` 下面那个 `item` 是 `remember` 出来的：直接闭包会把**创建那一刻**的
+    //  `interactive` 钉死，淡出期间的禁用行照样会说「为什么不能点」。
+    val currentInteractive by rememberUpdatedState(interactive)
     val iconColor by animateColorAsState(
         targetValue =
             when {
@@ -372,15 +375,7 @@ private fun SettingsPage.MenuRow(
                     if (row.enabled) {
                         null
                     } else {
-                        {
-                            // 只说明原因、**不动菜单**（用户口径：点禁用行菜单别关）；
-                            //  禁用行也不再闪按下色（补丁 0008 的 `disabledClickable`）
-                            XLog.w("浮层点选（禁用行）：${row.title} → 只说明原因，菜单保持打开")
-                            hint(
-                                currentDisabledHint ?: disabledClickReason(),
-                                slot = HINT_SLOT_DISABLED,
-                            )
-                        }
+                        { tapDisabledRow(row.title, currentDisabledHint, probe, currentInteractive) }
                     },
                 // 文字由库按 `alert` 走 `DropdownColors.alertContentColor` —— 与图标的红同一档
                 alert = row.danger,
@@ -460,4 +455,40 @@ private fun SettingsPage.MenuRow(
             }
         },
     )
+}
+
+/**
+ * 禁用行被点那一下 —— **只有真的是点一下**才说原因（用户口径：点禁用行菜单别关、
+ * 也不再闪按下色，见补丁 0008 的 `disabledClickable`）。
+ *
+ * ## 为什么要与启用行分开兜一道
+ *
+ *  启用行那次点选会经过 `onSelectedIndexChange`，那里已经按**这一段手势的位移**
+ *  拦下了「滑动被当成选中」（见 `MenuRow` 里那段注释）。禁用行走的是另一条路：
+ *  库里 `PopupListGestureHost.onUp` 直接派发 `handle.onClick`（`enabled || disabledClickable`），
+ *  **绕过了**那道闸 —— 于是「按住往下滑到一行禁用项、松手」会把「为什么不能点」的提示弹出来。
+ *
+ *  只有**装得下的菜单**才看得出来：列表能滚的时候（内容超过最大高度）拖拽是在滚动，
+ *  库走 `cancel` 不选行；装得下时 `isDynamicSelection` 为真，库跟着手指换行、抬手选中手指下那一行 ——
+ *  正是一次「滑动」被当成了一次「点选」。
+ *
+ * @param hintText 这一行自己的限制（`MenuEntry.Row.disabledHint`）；`null` = 用页面的统一原因
+ */
+private fun SettingsPage.tapDisabledRow(
+    title: String,
+    hintText: String?,
+    probe: GestureProbe?,
+    interactive: Boolean,
+) {
+    val dragged = probe?.isDrag() == true
+    XLog.w(
+        "浮层点选（禁用行）：$title —— ${probe?.describe() ?: "没有位移账本"}" +
+            when {
+                !interactive -> "；浮层正在淡出 ⇒ 已吞掉这次点选"
+                dragged -> "；这一段是滑动 ⇒ 已吞掉这次点选"
+                else -> " → 只说明原因，菜单保持打开"
+            },
+    )
+    if (!interactive || dragged) return
+    hint(hintText ?: disabledClickReason(), slot = HINT_SLOT_DISABLED)
 }

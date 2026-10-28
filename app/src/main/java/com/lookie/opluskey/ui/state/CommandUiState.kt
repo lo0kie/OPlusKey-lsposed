@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.model.Command
+import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
 /**
  * 「自定义命令」页上那几个**一次只会开一个**的浮层与弹窗 —— 谁开着、为谁开着。
@@ -25,10 +26,13 @@ internal class CommandUiState {
     var disclaimerPending by mutableStateOf(false)
 
     /**
-     * 长按哪一条命令开着菜单（`null` = 没开着）。**名字是主键** —— 命令名在库里唯一，
-     * 用它认身份比用位次稳（删一条之后位次会整体前移）。
+     * 哪一张命令卡的菜单开着、**锚在哪**（`null` = 没开着）。
+     *
+     *  名字是主键 —— 命令名在库里唯一，用它认身份比用位次稳（删一条之后位次会整体前移）。
+     *  锚点跟着**从哪儿打开**走：长按走卡片自己那份（弹在手指那一点），右上角那颗「更多」走它自己那份
+     *  （弹在那颗字上）。合成一个对象，于是「开着谁、从哪儿弹」只有一处真相。
      */
-    var menuFor by mutableStateOf<String?>(null)
+    var menu by mutableStateOf<TileMenu?>(null)
 
     /** 待确认的删除：非空 = 弹着确认窗（真删在确认之后）。 */
     var deleting by mutableStateOf<Command?>(null)
@@ -54,3 +58,14 @@ internal class CommandUiState {
      */
     var singleFocusRequest by mutableStateOf(0)
 }
+
+/**
+ * 一张命令卡的菜单：[name] 是哪一条命令，[anchor] 是**这一下**按在哪 —— 浮层菜单的落点。
+ *
+ *  两处都能开它（卡片长按 / 右上角那颗「更多」），各自手里只有自己那份触点账本，
+ *  所以由开的那一处把锚点一起递上来，菜单层不再猜。
+ */
+internal class TileMenu(
+    val name: String,
+    val anchor: PreciseClickState,
+)

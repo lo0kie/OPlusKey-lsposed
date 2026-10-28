@@ -1,21 +1,16 @@
 package com.lookie.opluskey.ui.screen.binding
 
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.isSerialCommand
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.actionOf
-import com.lookie.opluskey.ui.model.GRID_GAP
-import com.lookie.opluskey.ui.model.GRID_ROW_GAP
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 
 /**
  * 「按键绑定」页的**纵向顺序** —— 按键设置 → 内置动作网格 → 已保存的命令 → 底部留白 → 入口浮层。
@@ -43,71 +38,62 @@ internal fun SettingsPage.BindingGroups(
     //  同一张卡里不放别的档的设置项：用户找它们时带着「我在调哪一档」这个前提，
     //  「双击窗口」也只有一个值，两档各放一个入口就是同一个配置项的第二个入口。
     //
-    //  下面那一档间距只在**真有这张卡**时给 —— 否则没有这张卡的那一档，
-    //  「内置命令」标题会白多一截空档（标题紧贴它下面的内容，这是全页的规矩）。
-    if (g == Gesture.SINGLE) {
-        SmallTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
-        BindingSettingsCard(enabled)
-        Spacer(Modifier.height(GRID_ROW_GAP))
+    //  **块与块之间**的间距由小标题自带；标题要不要、放哪儿是各块自己的事。
+    Column {
+        if (g == Gesture.SINGLE) {
+            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
+            BindingSettingsCard(enabled)
+        }
+
+        if (g == Gesture.DOUBLE) {
+            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
+            InstantSingleCard(enabled)
+        }
+
+        // 「长按多久算长按」与「长按连续触发 / 触发间隔」同属长按这一档的行为，摆在同一张卡里。
+        if (g == Gesture.LONG) {
+            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
+            LongRepeatCard(
+                blockedReason =
+                    when {
+                        // 主开关为关 ⇒ 整页禁用，这张卡也跟着置灰
+                        !enabled -> {
+                            // 这里是**主开关自己关着**，不是「模块没生效」：`STATUS_DISABLED` 的正文是
+                            //  「确认作用域含 system，换包后需重启」—— 拿它来报这一档，等于把用户赶去
+                            //  LSPosed 里翻一圈，而他要做的只是把开关拨回来。
+                            I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，侧键交还系统")
+                        }
+
+                        isSerialCommand(configState.commands.value, current.token) -> {
+                            I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT, "多条命令不支持连续触发")
+                        }
+
+                        //  判定侧对「长按绑灵感语音」也关着连续触发（`KeyConfig.longIsVoiceMemory`，
+                        //  见 `GestureDetector` 那条）—— 界面不置灰的话，用户能拨开一个永远不生效的开关。
+                        //  这里是 [Action] 的投影，与 `KeyConfig` 那个计算属性同一个口径。
+                        (current as? Action.Oplus)?.feature == RomProfile.NAME_VOICE_MEMORY -> {
+                            I18n.get(Strings.BINDING_VOICE_UNSUPPORTED_REPEAT, "灵感语音不支持连续触发")
+                        }
+
+                        else -> {
+                            null
+                        }
+                    },
+                // 「长按延迟」那行只看主开关（与「是不是多条命令」无关）
+                masterEnabled = enabled,
+            )
+        }
+
+        BuiltInGrid(st, enabled)
+
+        // 「自定义命令」这一段**始终在**：没有命令时给一行「去创建自定义命令」。
+        SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
+        CustomCommandsGrid(st, enabled, onCreateCommand)
     }
 
-    if (g == Gesture.DOUBLE) {
-        SmallTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
-        InstantSingleCard(enabled)
-        Spacer(Modifier.height(GRID_ROW_GAP))
-    }
-
-    // 「长按多久算长按」与「长按连续触发 / 触发间隔」同属长按这一档的行为，摆在同一张卡里。
-    if (g == Gesture.LONG) {
-        SmallTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
-        LongRepeatCard(
-            blockedReason =
-                when {
-                    // 主开关为关 ⇒ 整页禁用，这张卡也跟着置灰
-                    !enabled -> {
-                        // 这里是**主开关自己关着**，不是「模块没生效」：`STATUS_DISABLED` 的正文是
-                        //  「确认作用域含 system，换包后需重启」—— 拿它来报这一档，等于把用户赶去
-                        //  LSPosed 里翻一圈，而他要做的只是把开关拨回来。
-                        I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，侧键交还系统")
-                    }
-
-                    isSerialCommand(configState.commands.value, current.token) -> {
-                        I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT, "多条命令不支持连续触发")
-                    }
-
-                    //  判定侧对「长按绑灵感语音」也关着连续触发（`KeyConfig.longIsVoiceMemory`，
-                    //  见 `GestureDetector` 那条）—— 界面不置灰的话，用户能拨开一个永远不生效的开关。
-                    //  这里是 [Action] 的投影，与 `KeyConfig` 那个计算属性同一个口径。
-                    (current as? Action.Oplus)?.feature == RomProfile.NAME_VOICE_MEMORY -> {
-                        I18n.get(Strings.BINDING_VOICE_UNSUPPORTED_REPEAT, "灵感语音不支持连续触发")
-                    }
-
-                    else -> {
-                        null
-                    }
-                },
-            // 「长按延迟」那行只看主开关（与「是不是多条命令」无关）
-            masterEnabled = enabled,
-        )
-        Spacer(Modifier.height(GRID_ROW_GAP))
-    }
-
-    BuiltInGrid(st, enabled)
-
-    // 「自定义命令」这一段**始终在**：没有命令时给一行「去创建自定义命令」。
-    Spacer(Modifier.height(GRID_ROW_GAP))
-    SmallTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
-    CustomCommandsGrid(st, enabled, onCreateCommand)
-
-    // 页面底部留白 —— 三个页面统一的那一档是 [PAGE_BOTTOM_PADDING]
-    // 不能少这一档：少了的话这一页滚到底时最后一张卡直接贴着屏幕边缘。
-    //  代价：FAB（下边距 64dp、高 56dp，占 64~120dp 那一带）滚到底时会压住最后一行。
-    Spacer(Modifier.height(PAGE_BOTTOM_PADDING))
-    //  再补 [GRID_GAP]：这 12dp 若挂在**滚动视口之外**（`.padding(bottom = …)`），
-    // 视口就比整页矮 12dp，屏幕最底下那一条里没内容可画，透明的手势导航栏会把那一条
-    // 露成一块平色（真机反馈「导航栏不透明、控件被颜色挡住」）。
-    //  挪进内容里：让位量一分不变，但视口铺到屏幕底 —— 滚起来时内容能钻进导航栏底下。
-    Spacer(Modifier.height(GRID_GAP))
+    //  页底留白**不在这里**：这一页原先在末尾补 32 + 12 两个 Spacer（比别的页多出 12dp），
+    //  现在统一由 `BindingList` 的 `.padding(bottom = PAGE_BOTTOM_PADDING)` 给 ——
+    //  与首页及其它页同一处、同一档。
 
     // 入口格那一层的菜单（见 `BindingGridState.tileMenu`）。它**不占布局位置** ——
     // 真正的落点由那一格记下的触点决定，挂在这里只是让它跟着这一页一起进 / 出组合。

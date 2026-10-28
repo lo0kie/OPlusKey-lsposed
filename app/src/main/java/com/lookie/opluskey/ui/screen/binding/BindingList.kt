@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +17,7 @@ import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.state.KeyWatchState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
@@ -89,17 +91,21 @@ internal fun SettingsPage.BindingList(
             //  **横向 padding 故意不加在外层**：分组标题（`SmallTitle`）也在这里，
             // 加了就让标题的左边距比首页 / 命令页的小标题多一档，各段自己带横向 padding。
             //
-            //  **纵向 padding 一档都不留**：`padding` 落在 `verticalScroll` **之前**就等于是
-            //  **滚动视口之外**的内缩 —— 顶部那一档会让内容永远到不了顶栏底下、模糊没东西可糊；
-            //  底部同理：视口比整页矮，屏幕最底下那一条里没有内容，而手势导航栏是**透明**的
-            //  —— 那一条就被露成「一块平色」，看着像导航栏不透明、把控件挡住了。
-            //  两眼下的让位量改成内容里的 Spacer（顶 `tabBlock` 那一档、底见 `BindingGroups` 末尾）。
+            //  **纵向 padding 一档都不留**（除了最底下页底那一档，见 `.padding(bottom = …)`）：
+            //  `padding` 落在 `verticalScroll` **之前**就等于是 **滚动视口之外**的内缩 ——
+            //  顶部那一档会让内容永远到不了顶栏底下、模糊没东西可糊；底部同理：视口比整页矮，
+            //  屏幕最底下那一条里没有内容，而手势导航栏是**透明**的 —— 那一条就被露成
+            //  「一块平色」，看着像导航栏不透明、把控件挡住了。
+            //  所以页底的留白一律写在 `verticalScroll` **之后**（内容里的内缩），各页同一处。
             // 大标题随滚动折叠（`nestedScroll` 要在 `verticalScroll` 之前）
             .nestedScroll(scroll.behavior.nestedScrollConnection)
             //  用**外面递进来的**那个滚动状态（三个手势页共用一份）—— 分段控件在 pager 之外，
             //  要靠它算自己该滑到哪儿。
             .overScrollVertical()
             .verticalScroll(scroll.state)
+            //  页底留白 —— 与全项目同一档、同一种写法：落在 `verticalScroll` **之后**
+            //  （滚动内容里的内缩，视口仍铺到屏幕底），不再用尾部 Spacer。
+            .padding(bottom = PAGE_BOTTOM_PADDING)
             // 预览阶段接管方向键（见 `rememberBindingKeyHandler` 的注释）
             .onPreviewKeyEvent(onKey),
         //  **不用 `Arrangement.spacedBy`**：它会在**每一对相邻子项**之间插间距，

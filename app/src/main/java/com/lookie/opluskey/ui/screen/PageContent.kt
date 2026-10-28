@@ -34,6 +34,7 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.LocalDisabledHint
 import com.lookie.opluskey.ui.LocalHint
 import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.PageDebugChannel
@@ -136,6 +137,9 @@ internal fun SettingsPage.PageContent() {
             //  `remember` 住：与下面那条 `LocalDisabledClick` 同一个理由 ——
             //  `hint` 在**调用那一刻**才读，每次重组换一个新实例会让所有读它的控件白白重组一遍。
             LocalHint provides remember { { hint(it) } },
+            //  卡片行的「这一行为什么不能点」—— **与整页那条同一个槽位**：
+            //  行级说法与本页原因共用一个位，连点几行只会改同一条提示里的字，不叠条。
+            LocalDisabledHint provides remember { { hint(it, slot = HINT_SLOT_DISABLED) } },
             //  能点的行默认振一下（见 `LocalTick`）：控件层拿不到页面实例，走这一条下来。
             //  `remember` 住同一个理由：每次重组换新实例会让读它的控件白白重组。
             LocalTick provides remember { { tickNow() } },

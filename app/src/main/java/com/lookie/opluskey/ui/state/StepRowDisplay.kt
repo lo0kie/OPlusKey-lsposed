@@ -27,7 +27,7 @@ internal class StepRowItem(
     var exiting by mutableStateOf(false)
 
     /**
-     * 退场行的插回锚。**只在 [StepRowDisplay.sync] / [StepRowDisplay.restoreAll] 里读写**，
+     * 退场行的插回锚。**只在 [StepRowDisplay.sync] 里读写**，
      * 组合期不读 ⇒ 普通 `var` 就够，不必是 state。
      */
     var anchorId = -1
@@ -90,37 +90,6 @@ internal class StepRowDisplay {
         }
         rows.clear()
         rows.addAll(newOrder)
-    }
-
-    /**
-     * 全部标成退场（整卡重置那一刻）。
-     *
-     *  注意：必须**连 `exiting` 一起置**：只置 `targetState` 的话行会淡出，
-     *  但摘除那道闸（行里 `if (item.exiting && …)`）永远不成立 —— 而摘除 effect 的 key 是
-     *  `item.state.currentState`，它在这里已经变成 false、之后再不会变 ⇒ 那些行**永留展示层**：
-     *  分隔线一直画着、`cardListPositionOf(index, rows.size + 1)` 一直按旧行数算。
-     */
-    fun exitAll() {
-        rows.forEach {
-            it.exiting = true
-            it.state.targetState = false
-        }
-    }
-
-    /**
-     * 把 [exitAll] 标掉的行**收回来**（重置收尾被放弃那一次）。
-     *
-     *  它们本来会被摘除，而 `draft.steps` 没变又不会重建 ⇒ 步骤在界面上凭空消失
-     *  （数据还在，看不到也删不掉）。
-     */
-    fun restoreAll() {
-        rows.forEach {
-            if (it.exiting) {
-                it.exiting = false
-                it.anchorId = -1
-                it.state.targetState = true
-            }
-        }
     }
 
     /** 页面出栈：清空 —— 下一趟进来从干净的一份开始（id 也从头数）。 */

@@ -10,18 +10,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SHOW_HOME_MINI_ANIM
 import com.lookie.opluskey.ui.screen.pageWritable
@@ -32,7 +31,6 @@ import com.lookie.opluskey.ui.setVibrate
 import com.lookie.opluskey.ui.setVibrateStrength
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 /**
@@ -59,15 +57,15 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
             .verticalScroll(rememberScrollState())
             .padding(bottom = PAGE_BOTTOM_PADDING),
     ) {
-        // 顶栏叠在内容上，顶部要自己让出（动态值）；这一页首行就是小标题，
-        //  所以按「选择应用」那一页的账另加一档 [PAGE_TOP_PADDING]。
-        Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + PAGE_TOP_PADDING))
+        // 顶栏叠在内容上，顶部要自己让出（动态值）。
+        //  **不再另加 [PAGE_TOP_PADDING]**：这一页首行就是小标题，它自带的上间距（16 + 8）
+        //  已经够撑开（与首页、更多选项同一笔账）。
+        Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
-        SmallTitle(I18n.get(Strings.GENERAL_SECTION_INTERFACE, "接口选择"))
+        //  块与块之间的间距由小标题自带（与首页同一套），页面不再写 `Spacer`。
+        SectionTitle(I18n.get(Strings.GENERAL_SECTION_INTERFACE, "接口选择"))
         InterfaceCard(pageEnabled)
-
-        Spacer(Modifier.height(8.dp))
-        SmallTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"))
+        SectionTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"))
         ActionsCard(pageEnabled)
     }
 }

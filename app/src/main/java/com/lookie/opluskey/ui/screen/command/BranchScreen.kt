@@ -20,14 +20,14 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.FAB_BOTTOM_CLEARANCE
 import com.lookie.opluskey.ui.Feedback
-import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
+import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
+import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.keyBrackets
 import com.lookie.opluskey.ui.rememberTick
@@ -94,10 +94,10 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
     //  量一次视口高度：空态要**在可见区里居中**，而它在滚动容器里拿不到「一屏多高」——
     //  滚动容器的子项拿到的是无限高度约束，`fillMaxHeight()` 在那儿没有意义。
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        //  减掉滚动内容底部那档留白（`FAB_BOTTOM_CLEARANCE`）：不减的话空态那块比可见区
-        //  高出一截，居中的位置会偏下、还多出一段能拖的空白。
+        //  减掉滚动内容底部那档留白（[PAGE_BOTTOM_PADDING]，与首页同一档）：不减的话空态那块
+        //  比可见区高出一截，居中的位置会偏下、还多出一段能拖的空白。
         val emptyHeight =
-            (maxHeight - currentHeaderHeight(scrollBehavior) - FAB_BOTTOM_CLEARANCE)
+            (maxHeight - currentHeaderHeight(scrollBehavior) - PAGE_BOTTOM_PADDING)
                 .coerceAtLeast(0.dp)
         Column(
             Modifier
@@ -111,11 +111,11 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
                 //  这一页常常只有一两条条件、根本撑不满一屏 —— 不挂它的话在那一档完全动不了。
                 .overScrollVertical()
                 .verticalScroll(scrollState)
-                // 底下那颗「确认」浮在内容之上：留白按「一颗按钮」给死，
-                //  滚到底时表尾那句注脚停在它上面，而不是被压在底下。
+                // 底下那颗「确认」浮在内容之上，但页底留白**不再为它额外抬高**：
+                //  与首页同一档（[PAGE_BOTTOM_PADDING]），翻页时底部那段空白才一致（用户口径）。
                 //  注意这一句要落在 `verticalScroll` **之后**：那样它才是滚动内容里的内缩，
                 //  而不是把视口本身缩短（见 `BindingList` 顶部那段「纵向 padding 一档都不留」）。
-                .padding(bottom = FAB_BOTTOM_CLEARANCE),
+                .padding(bottom = PAGE_BOTTOM_PADDING),
         ) {
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
@@ -158,7 +158,7 @@ private fun SettingsPage.BranchSaveFab() {
             tick()
             val blocked = branchRulesBlockedReason() ?: branchDeadReason()
             when {
-                blocked != null -> hint(blocked, slot = HINT_SLOT_COMMAND)
+                blocked != null -> hint(blocked, slot = HINT_SLOT_DISABLED)
 
                 // 没有改动：这张表本来就是这个样子，不白写一遍
                 !branchDraft.draft.dirty -> goBack()
@@ -225,6 +225,40 @@ internal fun SettingsPage.BranchDeleteDialog(menus: BranchMenuState) {
             // 数据由 `BranchCards` 那个 effect 在动画结束时才移除。
             menus.deleteAt = -1
             menus.deletingAt = at
+        },
+    )
+}
+
+/**
+ * 「停用这一条场景」的确认窗（触发点在行尾那颗「更多」菜单里）。
+ *
+ *  为什么也要一道确认：这一条停用之后**按下去不会再命中它**。与删除不是一回事（删除是它不见了），
+ *  而两行在菜单里挨着 —— 一句确认把「暂时不生效」与「没了」分开。
+ *
+ *  **启用不走这里**（那是把它开回来，没有可失去的东西）：菜单里直接改草稿，
+ *  与「按键绑定」「组合键编辑」那两处同一条规矩。
+ *
+ *  与删除的另一个区别：删除是**立即动数据**的（配合行的收缩动画），这里是**只改草稿**，
+ *  还要再点右下角那颗「确认」才落盘 —— 这一页所有改动都是这个规矩（见 `BranchSaveFab`）。
+ */
+@Composable
+internal fun SettingsPage.BranchToggleDialog(menus: BranchMenuState) {
+    val at = menus.toggleAt
+    val rule = branchDraft.draft.rules.getOrNull(at)
+    //  规则已经不在了（这一趟里删过）⇒ 窗不显示
+    ConfirmDialog(
+        show = rule != null,
+        title = I18n.get(Strings.COMMAND_BRANCH_DISABLE, "停用场景"),
+        summary = I18n.get(Strings.COMMAND_BRANCH_DISABLE_MESSAGE, "这条场景将不再生效。"),
+        action = I18n.get(Strings.COMMON_DISABLE, "停用"),
+        onDismiss = { menus.toggleAt = -1 },
+        onConfirm = {
+            menus.toggleAt = -1
+            //  按下标去改是安全的：窗开着的这段里加不了也删不了另一条（菜单都收着），
+            //  仍核一次「要改的还是不是它」—— 宁可不改，不能错改。
+            branchDraft.draft.rules.getOrNull(at)?.let { target ->
+                branchDraft.draft.update(at, target.copy(enabled = false))
+            }
         },
     )
 }

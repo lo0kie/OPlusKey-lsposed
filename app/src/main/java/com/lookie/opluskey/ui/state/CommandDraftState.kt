@@ -17,32 +17,6 @@ internal class CommandDraftState {
     val draft = CommandDraft()
 
     /**
-     * 「重置」走**行级退场**时的挂起标记。
-     *
-     *  工具条的重置对「有多条步骤的多条命令」不直接 `reset`：整批清空会让所有步骤行瞬时消失。
-     *  先置这里，步骤卡里每一行播完自己的 shrink 退场之后，由它真正 reset（见收尾协程）。
-     */
-    var resetPending by mutableStateOf(false)
-
-    /**
-     * 「重置」收尾**被放弃**的那一次（收尾协程发现退场期间用户又改了表单）。
-     *
-     *  为什么要单独一位：步骤卡在 [resetPending] 置位那一刻就把每一行标了退场（`exiting = true`），
-     *  而退场行会被摘除、重建那道闸的 key 是 `draft.steps` 的内容 —— 内容没变就不会重跑
-     *  ⇒ 步骤在界面上凭空消失、数据还在（看不到也删不掉）。置这一位把那些行收回来，
-     *  处理完它自己清掉。
-     */
-    var resetAborted by mutableStateOf(false)
-
-    /**
-     * 「重置」收尾那段等待（步骤行退场 + 一点余量）的**基线指纹**（[resetPending] 置位那一刻记下）。
-     *
-     *  收尾时只有指纹没变才真正 reset —— 这段时间用户可能已经在输入框里敲字了，
-     *  无条件 reset 会把刚敲的内容一起吞掉（见 `CommandDraft.contentFingerprint`）。
-     */
-    var resetBaseline: String = ""
-
-    /**
      * 「步骤排序」编辑态 —— 由「命令列表」卡右下角那颗 FAB 开关。
      *
      *  开着的这段时间里：步骤行行尾换成上移 / 下移 / 删除三颗行内按钮，行的轻点不再换命令，

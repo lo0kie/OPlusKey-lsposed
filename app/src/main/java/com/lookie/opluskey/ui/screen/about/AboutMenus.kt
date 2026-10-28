@@ -177,7 +177,7 @@ internal fun SettingsPage.ProfileMenu(ui: AboutUiState) {
             } else {
                 buildList {
                     addAll(
-                        profileRows(ui) { item ->
+                        profileRows(ui, markCurrent = true) { item ->
                             ui.showProfileMenu = false
                             //  点当前配置等于没点：不落盘、也不报「已切到」
                             if (!item.isCurrent) switchToProfile(item)
@@ -215,12 +215,13 @@ private fun SettingsPage.profileManageRows(
             disabledHint = if (full) I18n.get(Strings.PROFILE_FULL, "最多三份配置") else null,
         ) {
             ui.showProfileMenu = false
-            //  名字的起点在点这一刻算好（要读一次盘上现在有几份）
-            val initial = I18n.format(Strings.PROFILE_NEW_NAME, ConfigProfiles.list().size + 1)
+            //  名字的起点在点这一刻算好：只数**自定义**的份数（「默认」不占号，第一份就是「配置 1」）
+            val named = ConfigProfiles.list().count { !it.isDefault }
+            val initial = I18n.format(Strings.PROFILE_NEW_NAME, named + 1)
             ui.naming = ProfileNaming(ProfileNaming.Kind.NEW, initial)
         },
         MenuEntry.Row(
-            title = I18n.get(Strings.PROFILE_RENAME, "重命名配置"),
+            title = I18n.get(Strings.PROFILE_RENAME, "重命名"),
             icon = PageIcons.MenuRename,
             //  「默认」配置是升级时落下的退路，它的名字空着才认得出 —— 不给改
             enabled = !currentIsDefault,
@@ -246,14 +247,16 @@ private fun SettingsPage.profileManageRows(
 /**
  * 「导出配置」那一行的菜单 —— 铺的是**同一份**配置列表，点哪份就导出哪份。
  *
- *  与 [ProfileMenu] 共用 [profileRows]：两处只差「点了之后干什么」。
+ *  与 [ProfileMenu] 共用 [profileRows]：两处只差「点了之后干什么」，以及**要不要打勾** ——
+ *  切换那层要标出「现在生效的是哪份」，导出与「当前」无关（点哪份导哪份），所以一行勾都不打，
+ *  单纯列出来（[markCurrent] 传 `false`）。
  *  只有一份配置时这层菜单里也只有一行，仍然照常弹 —— 配置列表永远是同一形状。
  */
 @Composable
 internal fun SettingsPage.ProfileExportMenu(ui: AboutUiState) {
     PageMenu(
         entries =
-            profileRows(ui) { item ->
+            profileRows(ui, markCurrent = false) { item ->
                 ui.showExportMenu = false
                 hooks.onExportConfig?.invoke(item.slot)
             }.takeIf { ui.showExportMenu }
@@ -266,22 +269,34 @@ internal fun SettingsPage.ProfileExportMenu(ui: AboutUiState) {
 /**
  * 配置列表的菜单行 —— 切换与导出两处共用。
  *
- *  行首**一律是同一颗**「一叠纸」：这里每一行都是同一类东西（用户自己建的一份配置），
- *  区分靠名字；语言 / 配色那种**固定几档**才需要各自一颗字形。
+ *  行首按**第几份**取数字牌面（`number-1` / `number-2` / `number-3`），与列表顺序一致；
+ *  「默认」不参与编号，仍用「一叠纸」—— 它是升级时落下的退路，不是用户建的第 N 份。
+ *
+ * @param markCurrent 要不要标出当前生效的那份（[MenuEntry.Row.selected]：行首换成对勾、
+ *   文字走主色，并**滚进视窗**）。切换那层要；导出那层不要 —— 那一层与「当前」无关。
  */
 private fun SettingsPage.profileRows(
     ui: AboutUiState,
+    markCurrent: Boolean,
     onPick: (ConfigProfiles.Item) -> Unit,
-): List<MenuEntry> =
-    ui.profiles.map { item ->
+): List<MenuEntry> {
+    //  只给自定义的那几份编号（默认那份排在首行，跳过后序号从 1 开始）
+    val numbered = ui.profiles.filter { !it.isDefault }
+    return ui.profiles.map { item ->
         MenuEntry.Row(
             title = item.displayName,
-            icon = PageIcons.Profiles,
-            selected = item.isCurrent,
+            icon =
+                if (item.isDefault) {
+                    PageIcons.Profiles
+                } else {
+                    PageIcons.menuKeyNumber(numbered.indexOf(item))
+                },
+            selected = markCurrent && item.isCurrent,
         ) {
             onPick(item)
         }
     }
+}
 
 /**
  * 「系统配色」那一行的菜单（五套强调色）。

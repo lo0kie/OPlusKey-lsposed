@@ -51,9 +51,10 @@ object ConfigCodec {
      *  10 = `GlobalDto` 多了 `followDisplaySize` / `pageScale`（跟随系统显示大小 / 页面缩放）；
      *  11 / 12 = （见代码历史，本次未改动）；
      *  13 = 当前上一版；
-     *  14 = `ComboDto` 多了 `rules`（组合键的条件执行）。
+     *  14 = `ComboDto` 多了 `rules`（组合键的条件执行）；
+     *  18 = `StateRuleDto` 多了 `enabled`（场景可以停用；15~17 见代码历史）。
      */
-    const val VERSION = 17
+    const val VERSION = 18
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

@@ -22,6 +22,14 @@ internal object ComboEditState {
     var pickKeysPending by mutableStateOf(false)
 
     /**
+     * 列表页的**筛选**：只看含这颗键的组合（`null` = 全部）。
+     *
+     *  不落盘 —— 它是「这一趟想找哪一组」，不是配置的一部分。单选（菜单里打勾的那一行）。
+     *  那一组被删掉 / 那颗键不再出现在任何组合里时，列表页会把它退回 `null`（见 `ComboScreen`）。
+     */
+    var filterKey by mutableStateOf<String?>(null)
+
+    /**
      * 编辑页停在**哪一页**：`0` = 短按、`1` = 长按。
      *
      *  进「条件执行」时要用它：那一页编的是「某一档手势的规则」，而这颗 ⋮ 是在**当前这一页**

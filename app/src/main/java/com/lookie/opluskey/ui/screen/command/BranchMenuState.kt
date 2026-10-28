@@ -33,6 +33,14 @@ internal class BranchMenuState {
     var deleteAt by mutableIntStateOf(-1)
 
     /**
+     * 「停用 / 启用」确认窗在问第几条；`-1` = 没在问（关着）。
+     *
+     *  与 [deleteAt] 分开一位：两者是两种后果完全不同的动作，同一时刻也只可能开着一个 ——
+     *  但合成一位就得再记「现在开的是哪一种」，读起来更绕。
+     */
+    var toggleAt by mutableIntStateOf(-1)
+
+    /**
      * 正在**播退场**的那一条；`-1` = 没有。
      *
      *  删除是「先播收缩、再动数据」：确认之后这一位先指过去，行从满高收到 0（[STEP_ROW_EXIT_MS] 左右），

@@ -40,6 +40,15 @@ internal class PageChrome {
     var pageHazeState: HazeState? by mutableStateOf(null)
 
     /**
+     * 每页上一次量到的**顶栏高度**（像素）—— 只是缓存，不参与组合。
+     *
+     *  退出子页再回到某一页时，那一页的 `BandHeight` 是新建的（起点 0），只能按兜底常量排一帧；
+     *  而实测值与兜底常量差几个 dp，真机表现就是「连续滚动后回首页，内容整体上移一点点」。
+     *  有这份缓存就从上次量到的值起步，转场那几帧也不会跳。
+     */
+    val headerHeights = HashMap<Screen, Int>()
+
+    /**
      * 每页各一份取样状态（键是页）—— 各页在 `DisposableEffect(s)` 里把自己那份登记进来、并在
      *  `onDispose` 摘掉（见 `PageEntry` 里 `NavDisplay` 的 entry）。页被 cull 后重建会换一份新的
      *  进来，旧的那份随 `onDispose` 出表（它的源节点已 detach）。

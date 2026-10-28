@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.PageIcons
@@ -69,15 +70,30 @@ internal class ConditionLine(
 )
 
 /**
- * 条件那一行的行尾：死分支先标一句红的，再接那枚选择器。
+ * 条件那一行的行尾：先标一句状态，再接那枚选择器。
+ *
+ *  两句各说一件事，同一时刻只会有一句：
+ *   · [dead]「不会执行」（红）—— 顺序上轮不到它（某档取值前面已经凑齐 / 被更宽的一条盖住）；
+ *   · [off]「已停用」（弱色）—— 它自己关着（行尾「更多」菜单里的停用，`StateRule.enabled`）。
+ *  两条同时成立时按「已停用」说：那是用户刚做过的动作，也是更直接的原因。
  *
  *  为什么标在**这一行**而不是小标题：小标题是库组件 `SmallTitle`，只能给一整串字，染不了一半；
  *  而这一行本来就是「这一条什么时候执行」，写在这儿读起来最顺。
  */
 @Composable
-internal fun ConditionTrailing(dead: Boolean) {
+internal fun ConditionTrailing(
+    dead: Boolean,
+    off: Boolean = false,
+) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (dead) {
+        if (off) {
+            Text(
+                I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用"),
+                style = COUITheme.textStyles.footnote1,
+                color = COUITheme.colorScheme.onSurfaceVariantActions,
+                modifier = Modifier.padding(end = 6.dp),
+            )
+        } else if (dead) {
             Text(
                 I18n.get(Strings.COMMAND_BRANCH_DEAD, "不会执行"),
                 style = COUITheme.textStyles.footnote1,
@@ -133,6 +149,41 @@ internal fun BranchDeleteEffect(
             val now = draft.rules.indexOf(target)
             if (now >= 0) draft.remove(now)
             menus.deletingAt = NO_EXITING_ROW
+        }
+    }
+}
+
+/**
+ * 行尾「更多」菜单里「停用 / 启用这一条」那一行 —— 与「按键绑定」页那一行同一个语义：
+ * 写的是这一条自己的 `StateRule.enabled`。
+ *
+ *  放在这个文件而不是菜单那边：菜单那一支的行数已经贴着 detekt 的 `LongMethod` 上限。
+ *
+ *  **停用要确认、启用不要**（三处同一条规矩）：停用之后这一条按下去不再命中，而它下面就是
+ *  「删除」；启用只是把它开回来，没有可失去的东西。两种都只改**草稿**，
+ *  等右下角那颗「确认」才落盘。
+ */
+internal fun SettingsPage.branchToggleRow(
+    rules: List<StateRule>,
+    at: Int,
+    menus: BranchMenuState,
+): MenuEntry.Row {
+    val off = rules.getOrNull(at)?.enabled == false
+    return MenuEntry.Row(
+        title =
+            if (off) {
+                I18n.get(Strings.COMMAND_BRANCH_ENABLE, "启用场景")
+            } else {
+                I18n.get(Strings.COMMAND_BRANCH_DISABLE, "停用场景")
+            },
+        icon = if (off) PageIcons.KeyUnlocked else PageIcons.KeyLocked,
+    ) {
+        menus.menuAt = -1
+        if (off) {
+            rules.getOrNull(at)?.let { branchDraft.draft.update(at, it.copy(enabled = true)) }
+        } else {
+            //  停用先弹确认窗（`BranchToggleDialog`，由 `BranchCards` 挂在页面里）
+            menus.toggleAt = at
         }
     }
 }

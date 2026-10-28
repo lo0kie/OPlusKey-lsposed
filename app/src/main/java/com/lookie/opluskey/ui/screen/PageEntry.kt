@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -11,7 +10,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
@@ -23,7 +21,6 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.headerReady
 import com.lookie.opluskey.ui.linkReady
-import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
 import com.lookie.opluskey.ui.screen.about.AboutScreen
 import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
@@ -32,7 +29,6 @@ import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.combo.ComboEditScreen
 import com.lookie.opluskey.ui.screen.combo.ComboScreen
 import com.lookie.opluskey.ui.screen.command.BranchScreen
-import com.lookie.opluskey.ui.screen.command.CommandActions
 import com.lookie.opluskey.ui.screen.command.CommandScreen
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import com.lookie.opluskey.ui.screen.general.GeneralScreen
@@ -81,7 +77,15 @@ internal fun SettingsPage.PageEntry(
     LaunchedEffect(s) {
         if (navStack.lastOrNull() == s) chrome.pageHazeState = hazeState
     }
-    val headerBand = remember { BandHeight() }
+    //  从**上一次量到的值**起步（按页缓存）：出栈再回来时不至于先按兜底常量排一帧
+    //  ——那一帧的差就是「回首页内容上移一点点」。
+    val headerBand =
+        remember(s) {
+            BandHeight(
+                initialPx = chrome.headerHeights[s] ?: 0,
+                onReport = { chrome.headerHeights[s] = it },
+            )
+        }
     CompositionLocalProvider(LocalHeaderBoxHeight provides headerBand) {
         Box(
             Modifier
@@ -119,15 +123,6 @@ internal fun SettingsPage.PageEntry(
             // （挂在页里，不是挂在页面之外）。
             //  「条件执行」页**不用**它：那一页是两颗一叠的 FAB（右下角「添加」常驻、「确定」
             //  有改动才出现，见 `BranchScreen`），落盘点跟着动作走，不再单独占一条底栏。
-            val toolbarModifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = COMMAND_TOOLBAR_BOTTOM)
-            when (s) {
-                Screen.COMMANDS -> CommandActions(toolbarModifier)
-                else -> Unit
-            }
-
             // 顶栏：叠在内容**之上**（`Box` 里后声明的画在上面），
             // 半透明底 + 模糊从它底下滚过去的内容 —— 见 [PageHeader]。
             PageTopBar(s, scrollBehavior, hazeState, pagers)
@@ -168,17 +163,17 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
                         ).roundToPx().toFloat()
                     },
             ),
-        // 「首页」「关于模块」「捐赠列表」三页钉住标题（不折叠），其余几页照常折叠。
-        //  后两页本来就是「短内容」页，没什么可折的。
+        // 「首页」「关于模块」「捐赠列表」三页钉住标题（不折叠），其余照常折叠。
+        //  那几页本来就是「短内容」页，没什么可折的。
         //  （名单长起来之后要放开折叠，改的就是这一行。）
+        //
+        //  **「组合键列表」与「通用设置」原先也在这份名单里**，用户口径两页都改成允许折叠：
+        //  前者五档加设置块也过一屏；后者本来就一屏多一点，折起来能多露几行。
+        //  编辑页一类的长内容页一直照常折叠。
         canScroll = {
             s != Screen.SHORTCUTS &&
                 s != Screen.ABOUT &&
-                s != Screen.DONATE_LIST &&
-                s != Screen.GENERAL &&
-                //  组合键列表是短内容页（一档一行，最多五档）—— 钉住标题，
-                //  否则滚一下标题就折成一条、页面看着像什么都没有。编辑页内容长，照常折叠。
-                s != Screen.COMBOS
+                s != Screen.DONATE_LIST
         },
     )
 

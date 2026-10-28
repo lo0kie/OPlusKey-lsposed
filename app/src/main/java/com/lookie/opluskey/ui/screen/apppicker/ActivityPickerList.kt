@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +33,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.collapseHeader
 import com.lookie.opluskey.ui.collapsedHeaderHeight
@@ -43,10 +43,10 @@ import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.model.LaunchableActivity
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.spacedItems
 import com.lookie.opluskey.ui.state.PickedDetail
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
@@ -54,7 +54,6 @@ import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.PressFeedbackType
@@ -318,7 +317,8 @@ private fun SettingsPage.ActivityRows(
                 Modifier
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection),
-            // 底部留白与别页一模一样（[PAGE_BOTTOM_PADDING]）
+            // 底部留白与别页同一档（行距已经挪到行首，末尾不再自带一档）
+            //  末行不留下行距 ⇒ 页底就是整档 [PAGE_BOTTOM_PADDING]，不用再减。
             contentPadding = PaddingValues(bottom = PAGE_BOTTOM_PADDING),
         ) {
             activityRows(
@@ -363,13 +363,38 @@ private fun LazyListScope.activityRows(
     tick: () -> Unit,
     onSelect: (PickedDetail) -> Unit,
 ) {
+    val activityEntries =
+        buildList {
+            add(
+                ActivityEntry(
+                    title = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO, "自动"),
+                    summary = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO_HINT, "直接打开应用"),
+                    // 「自动」= 这个应用本身：绑定里存的是 `包名|名字`，比的是身份不是字符串
+                    picked = current?.let { AppTarget.same(it.target, data.target) } == true,
+                    onClick = { onSelect(PickedDetail(data.target, null)) },
+                ),
+            )
+            data.interfaces.forEach { activity ->
+                add(
+                    ActivityEntry(
+                        title = activity.label,
+                        summary = activity.summary,
+                        picked = current?.let { AppTarget.same(activity.target, it.target) } == true,
+                        onClick = { onSelect(PickedDetail(activity.target, null)) },
+                    ),
+                )
+            }
+        }
+
     // —— 头一项：顶栏让位 + 固定搜索带那一段的占位 ——
     //
     // 搜索框在固定层里，所以列表只要在顶上让出「顶栏 + 带子」这么多地方；滚起来
-    // 之后列表钻到带子背后，由带子那层不透明底挡住。这一项与「选择应用」页那个
-    // 占位项**逐字同源**（同样的三笔账），两页的上下边距才对得上。
+    // 之后列表钻到带子背后，由带子那层不透明底挡住。
+    //
+    //  **不再补 [PAGE_TOP_PADDING]**：这一页首行就是小标题（「快捷方式」/「Activity」），
+    //  它自己带 16 + 8 的上间距 —— 再加一档就比别的页多出 8dp（用户口径）。
     item(key = "header-space") {
-        Spacer(Modifier.height(headerInset() + PAGE_TOP_PADDING))
+        Spacer(Modifier.height(headerInset()))
     }
 
     // —— 第一节：快捷方式 ——
@@ -377,9 +402,9 @@ private fun LazyListScope.activityRows(
     //  一个都没查到就整节不画（不是画一个空标题）：应用没注册快捷方式很常见。
     if (data.shortcuts.isNotEmpty()) {
         item(key = "section-shortcut") {
-            SmallTitle(I18n.get(Strings.APP_PICKER_SECTION_SHORTCUTS, "快捷方式"))
+            SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_SHORTCUTS, "快捷方式"))
         }
-        items(data.shortcuts, key = { it.target }) { shortcut ->
+        spacedItems(data.shortcuts, gap = GRID_GAP, key = { it.target }) { shortcut ->
             ActivityRow(
                 title = shortcut.label,
                 summary = shortcut.summary,
@@ -397,31 +422,34 @@ private fun LazyListScope.activityRows(
     // —— 第二节：Activity ——
     //  两节都带小标题（`SmallTitle`，与「更多选项」「按键绑定」那几页同一颗）：
     //  快捷方式与界面混在一起时，光看行内容分不出「这是页面还是长按桌面图标那个」。
+    //  间距**不分档**：与全项目一样用默认那一套。没有快捷方式时「快捷方式」那条标题
+    //  本来就不显示，这一条就是列表第一项 —— 默认档正好，不需要为它算一档。
     item(key = "section-interface") {
-        SmallTitle(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES, "Activity"))
+        SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES, "Activity"))
     }
 
     // 这一节的第一项固定是「自动」：与绑定一个纯包名完全等价，也是用户最常选的那一项
-    item(key = "auto") {
+    spacedItems(activityEntries, gap = GRID_GAP) { entry ->
         ActivityRow(
-            title = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO, "自动"),
-            summary = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO_HINT, "直接打开应用"),
-            // 「自动」= 这个应用本身：绑定里存的是 `包名|名字`，比的是身份不是字符串
-            picked = current?.let { AppTarget.same(it.target, data.target) } == true,
+            title = entry.title,
+            summary = entry.summary,
+            picked = entry.picked,
             tick = tick,
-            onClick = { onSelect(PickedDetail(data.target, null)) },
-        )
-    }
-    items(data.interfaces, key = { it.target }) { activity ->
-        ActivityRow(
-            title = activity.label,
-            summary = activity.summary,
-            picked = current?.let { AppTarget.same(activity.target, it.target) } == true,
-            tick = tick,
-            onClick = { onSelect(PickedDetail(activity.target, null)) },
+            onClick = entry.onClick,
         )
     }
 }
+
+/**
+ * 「自动」+ 各个界面 —— 合成一组交给 [spacedItems]：组的**首行不加**上间距、**末行不加**下间距，
+ * 这一处判断只在组件里做一次。
+ */
+private class ActivityEntry(
+    val title: String,
+    val summary: String,
+    val picked: Boolean,
+    val onClick: () -> Unit,
+)
 
 /**
  * 一行在列表里的下标 —— 「顶栏占位 + 小节标题 + 行」三笔账，与 [ActivityRows] 的铺法逐项对应。
@@ -466,7 +494,9 @@ private fun SettingsPage.LocateActivitySelected(
     //  （真机反馈「定位位置不对」）。
     val listTopInsetPx =
         with(LocalDensity.current) {
-            (collapsedHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING).roundToPx()
+            //  与上面那个 `header-space` 占位项**必须逐字一致**（它少了一档 [PAGE_TOP_PADDING]，
+            //  这里也跟着少）：多算一档，定位出来的行就会偏下一截。
+            (collapsedHeaderHeight(scrollBehavior) + searchBandDp).roundToPx()
         }
     // 「现在」被顶栏 + 搜索带挡住的那一段：此刻顶栏还是**展开**的，判「看不看得见」要用展开高
     //  （与上面那个「滚过去之后该落在哪」是两笔账）。
@@ -547,10 +577,10 @@ private fun ActivityRow(
     Card(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = PAGE_MARGIN)
-            // 行距给在卡片外面。这一行**没有行首图标**，高度交给内容 —— `BasicComponent`
-            // 自己的内边距上下对称，定死行高只会把两行字顶到上沿、底部空一截。
-            .padding(bottom = GRID_GAP),
+            .padding(horizontal = PAGE_MARGIN),
+        //  **行自己不带任何外边距** —— 行距由 [spacedItems] 给（首行不加、末行不加）。
+        //  这一行**没有行首图标**，高度交给内容 —— `BasicComponent` 自己的内边距上下对称，
+        //  定死行高只会把两行字顶到上沿、底部空一截。
         // 点击与涟漪挂在卡片上：`BasicComponent` 只包住内容，点击若挂在它身上，
         // 涟漪画到内容底边就停了，卡片底部那一截摸不到反馈。
         pressFeedbackType = PressFeedbackType.None,

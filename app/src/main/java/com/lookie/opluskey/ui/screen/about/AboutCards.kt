@@ -223,7 +223,7 @@ internal fun SettingsPage.ConfigCard(
 /** 当前配置在界面上的叫法（「切换配置」那一行的副标题）。 */
 private fun SettingsPage.currentProfileName(): String =
     configState.config.value.profileName
-        .ifBlank { I18n.get(Strings.PROFILE_DEFAULT, "默认") }
+        .ifBlank { I18n.get(Strings.PROFILE_DEFAULT, "默认配置") }
 
 /**
  * 「外观」那张卡 —— 主题（跟随系统 / 浅色 / 深色）+ 强调色（页面强调色）。

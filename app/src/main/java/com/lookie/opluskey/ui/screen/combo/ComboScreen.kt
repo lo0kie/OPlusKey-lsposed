@@ -5,14 +5,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -24,15 +27,18 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.HINT_SLOT_COMBO
+import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.MultiPickerDialog
+import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
+import com.lookie.opluskey.ui.SectionTitle
+import com.lookie.opluskey.ui.SectionTitleMenu
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.GRID_ROW_GAP
-import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
+import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -40,7 +46,8 @@ import com.lookie.opluskey.ui.switchNotice
 import com.lookie.opluskey.ui.writeAndNotice
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.SmallTitle
+import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「组合按键」列表页 —— 从首页「按键操作」卡里那一行进来。
@@ -61,25 +68,62 @@ internal fun SettingsPage.ComboScreen(scrollBehavior: ScrollBehavior) {
     val writable = pageWritable()
     val atLimit = cfg.combos.size >= MAX_COMBOS
     val scroll: ScrollState = rememberScrollState()
+    //  筛选：点小标题挑一颗键，只看含这颗键的组合（单选，不落盘）
+    var filterMenu by remember { mutableStateOf(false) }
+    val filterAnchor = rememberPreciseClickState()
+    val filterKey = ComboEditState.filterKey
+    //  筛的那颗键已经不在任何组合里了（那一组被删 / 那颗键被删）⇒ 退回「全部」，
+    //  否则回到这一页只会看到一张空表，还不知道是筛出来的。
+    LaunchedEffect(filterKey, cfg.combos) {
+        if (filterKey != null && cfg.combos.none { filterKey in it.keys }) ComboEditState.filterKey = null
+    }
 
     Column(
         Modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection)
             .overScrollVertical()
-            .verticalScroll(scroll),
+            .verticalScroll(scroll)
+            //  页底留白 —— 与全项目同一档、同一种写法（挂在滚动内容里，不用尾部 Spacer）
+            .padding(bottom = PAGE_BOTTOM_PADDING),
     ) {
-        //  与其它页同一档：顶栏叠在内容上，顶部这一块自己让出来（动态值）
-        Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + PAGE_TOP_PADDING))
+        //  与其它页同一档：顶栏叠在内容上，顶部这一块自己让出来（动态值）。
+        //  **不再另加 [PAGE_TOP_PADDING]**：这一页首行就是小标题，它自己带 16 + 8 的上间距
+        //  （与首页、更多选项两页同一笔账）；再加一档就比别的页多出 8dp。
+        Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
         //  小标题在这张卡上方（用户口径）：一列「有哪几档」需要一个名字，
         //  滚起来之后顶栏折成一条，只看行名认不出这一列是什么。
-        SmallTitle(I18n.get(Strings.COMBO_LIST_TITLE, "组合按键列表"))
-        CardList(rows = comboRows(cfg, writable, atLimit))
-        //  设置块：这一页唯一一个「不针对某一组」的项（见 [ComboPassthroughCard]）
-        Spacer(Modifier.height(GRID_ROW_GAP))
-        SmallTitle(I18n.get(Strings.COMBO_SETTINGS_SECTION, "组合按键设置"))
-        ComboSettingsCard(writable)
+        //  **点它弹筛选菜单**（用户口径：按按键筛这一列，单选）—— 小标题是这一列唯一的名字，
+        //  把「筛」挂在这儿，比在卡片顶上再占一行更省地方。文字末尾那颗箭头跟着菜单开合转。
+        Column {
+            //  筛选标题自己那一块：标题 + 表格（标题与表格的紧贴关系由这一层 Column 负责）
+            Column(Modifier.preciseClickAnchor(filterAnchor)) {
+                SectionTitle(
+                    text = comboListTitle(cfg, filterKey),
+                    menu = SectionTitleMenu(expanded = filterMenu) { filterMenu = true },
+                )
+                CardList(rows = comboRows(cfg, writable, atLimit, filterKey))
+            }
+            //  设置块：这一页唯一一个「不针对某一组」的项（见 [ComboPassthroughCard]）
+            SectionTitle(I18n.get(Strings.COMBO_SETTINGS_SECTION, "组合按键设置"))
+            ComboSettingsCard(writable)
+        }
     }
+
+    //  筛选菜单 —— 行表空着就是「不显示」（与别处 `PageMenu` 的用法一致）
+    PageMenu(
+        entries =
+            if (filterMenu) {
+                comboFilterEntries(cfg, filterKey) { key ->
+                    ComboEditState.filterKey = key
+                    filterMenu = false
+                }
+            } else {
+                emptyList()
+            },
+        preciseClick = filterAnchor,
+        onDismiss = { filterMenu = false },
+    )
 
     ComboKeysDialog(
         show = ComboEditState.pickKeysPending,
@@ -166,20 +210,31 @@ private fun SettingsPage.comboRows(
     cfg: Config,
     writable: Boolean,
     atLimit: Boolean,
+    /** 只看含这颗键的组合（`null` = 全部）—— 行首的「第几组」仍按**全部**里的位置算。 */
+    filter: String?,
 ): List<CardRow> =
     buildList {
         cfg.combos.forEachIndexed { index, combo ->
+            if (filter != null && filter !in combo.keys) return@forEachIndexed
             val dead = comboHasMissingKey(cfg, combo)
             add(
                 CardRow.Item(
                     title = comboLabel(cfg, combo, bracketed = true),
-                    //  行内**不写副标题**（用户口径）：`短按：手电筒 · 长按：…` 一列下来全是小字、
-                    //  每行还都不一样长，扫一眼只能看见一片灰。两档动作进页面看，
-                    //  这一列只回答「有哪几组」。
+                    //  副标题说**这一档开没开**（用户口径：与首页「按键列表」一致，两档都写一句，
+                    //  列表才不会一行高一行矮，而且「停用」不再只靠颜色区分）。
+                    //  动作摘要（`短按：手电筒 · 长按：…`）仍然不写：一列下来全是小字、每行还都不
+                    //  一样长，扫一眼只能看见一片灰 —— 两档动作进页面看。
+                    summary = comboStateSummary(combo.enabled),
                     //  行首用**第几组**的数字图标（1~5，与 `MAX_COMBOS` 同一档，用户口径）：一列下来能数清现在有几组，
                     //  与首页「按键」卡那几颗自定义键同一套写法（`menuKeyNumber`）。
-                    //  成员被删掉的那一档换成禁用图标（判定那边凑不齐），数字就看不到了 —— 那一组本来就废了。
-                    icon = if (dead) PageIcons.Cancel else PageIcons.menuKeyNumber(index),
+                    //  停用的那一档换成禁用图标（与按键列表同一颗、同一个位置）；成员被删掉的那一档
+                    //  同样是禁用图标（判定那边凑不齐），数字就看不到了 —— 那一组本来就废了。
+                    icon =
+                        if (dead || !combo.enabled) {
+                            PageIcons.Cancel
+                        } else {
+                            PageIcons.menuKeyNumber(index)
+                        },
                     enabled = writable,
                     arrow = true,
                     onClick = {
@@ -202,11 +257,93 @@ private fun SettingsPage.comboRows(
                     },
                 icon = PageIcons.MenuKeyAdd,
                 enabled = writable && !atLimit,
+                //  这一行自己的原因只有「满员」那一档
+                disabledHint = if (atLimit) I18n.format(Strings.COMBO_LIMIT, MAX_COMBOS) else null,
                 onClick = {
                     ComboEditState.pickKeysPending = true
                 },
             ),
         )
+    }
+
+/**
+ * 列表标题 —— 筛着的时候把「在看哪颗键」接在后面（`组合按键列表 - 侧键`）。
+ *
+ *  不写的话，从别处回到这一页只会看到一张短了的表：不知道那是筛出来的，第一反应是「组合丢了」。
+ *  连接符用半角连字符（用户口径），与页内别处的「键 - 手势」同一套写法。
+ */
+private fun SettingsPage.comboListTitle(
+    cfg: Config,
+    filter: String?,
+): String {
+    val base = I18n.get(Strings.COMBO_LIST_TITLE, "组合按键列表")
+    val key = filter?.let { cfg.keyIdOf(it) } ?: return base
+    return "$base - ${keyName(key)}"
+}
+
+/**
+ * 筛选菜单 —— 「全部」+ **出现在组合里**的每一颗键（单选，打勾的是当前那一档）。
+ *
+ *  只列被某组用到的键：一颗谁都还没用上的键，选了只会得到一张空表。
+ *  行首图标与首页「按键列表」同一套（侧键那颗 / 第几颗自定义键），两处读起来是同一种东西；
+ *  **顺序也按那套**（侧键在前、自定义键按收集顺序）—— 不排序的话是「组合里第一次出现的次序」。
+ *
+ * @param onPick `null` = 不筛（「全部」那一行）
+ */
+private fun SettingsPage.comboFilterEntries(
+    cfg: Config,
+    filter: String?,
+    onPick: (String?) -> Unit,
+): List<MenuEntry> =
+    buildList {
+        add(
+            MenuEntry.Row(
+                title = I18n.get(Strings.COMBO_FILTER_ALL, "全部"),
+                icon = PageIcons.MenuComboFingers,
+                selected = filter == null,
+            ) { onPick(null) },
+        )
+        //  顺序按**首页「按键列表」那一套**：侧键在前，自定义键按收集顺序（即「第几颗」的号）。
+        //  直接拿 `combos.flatMap { it.keys }.distinct()` 的次序是「在组合表里第一次出现的顺序」，
+        //  真机上就成了「侧键 / 1 / 3 / 2」这种看不懂的序 —— 那不是任何一处列表的顺序。
+        cfg.combos
+            .flatMap { it.keys }
+            .distinct()
+            .mapNotNull { cfg.keyIdOf(it) }
+            .sortedBy { key -> cfg.customKeys.indexOfFirst { it.id == key.id } }
+            .forEach { key ->
+                add(
+                    MenuEntry.Row(
+                        title = keyName(key),
+                        icon = keyFilterIcon(cfg, key),
+                        selected = filter == key.id,
+                    ) { onPick(key.id) },
+                )
+            }
+    }
+
+/** 筛选菜单里那颗键的行首图标 —— 与首页「按键列表」同一套（侧键那颗 / 第几颗自定义键）。 */
+private fun keyFilterIcon(
+    cfg: Config,
+    key: KeyId,
+): ImageVector =
+    if (key.isCustom) {
+        PageIcons.menuKeyNumber(cfg.customKeys.indexOfFirst { it.id == key.id }.coerceAtLeast(0))
+    } else {
+        PageIcons.MenuSideKey
+    }
+
+/**
+ * 「已启用」/「已停用」—— 与首页「按键列表」**同一对文案**（`binding.key_enabled_state` /
+ * `binding.key_disabled_state`）：两处是同一种状态的同一种说法，另起一套只会各走各的措辞。
+ *
+ *  两档都给一句，行高才一致；停用也不只靠颜色区分（灰对色弱不友好）。
+ */
+private fun comboStateSummary(enabled: Boolean): String =
+    if (enabled) {
+        I18n.get(Strings.BINDING_KEY_ENABLED_STATE, "已启用")
+    } else {
+        I18n.get(Strings.BINDING_KEY_DISABLED_STATE, "已停用")
     }
 
 /**

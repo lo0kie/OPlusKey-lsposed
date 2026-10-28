@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.verticalScroll
@@ -18,9 +19,9 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.Screen
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.screen.binding.BindingGridFocus
 import com.lookie.opluskey.ui.screen.binding.BindingTarget
@@ -32,7 +33,6 @@ import com.lookie.opluskey.ui.screen.openAppPickerForTarget
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「组合键」编辑页 —— 从列表点某一行进来。
@@ -68,7 +68,10 @@ internal fun SettingsPage.ComboEditScreen(
         return
     }
 
-    val enabled = pageWritable()
+    //  闸门是**整页那道 + 这一档自己的开关**（与「按键绑定」页同理：那一页吃的是那颗键的
+    //  `enabled`）。停用的组合照样能进来看，但网格 / 设置卡 / 分段控件都不再改得动 ——
+    //  要改先在 ⋮ 菜单里启用它（顶上那行小标题旁边会挂一枚禁用标记，见 `PageTopBar`）。
+    val enabled = pageWritable() && combo.enabled
     //  带子高度由顶栏那条分段控件量出来（`comboBandHeight`），内容顶上照它让位
     val bandBlock = comboBandHeight.dp()
     //  两页各一份滚动位置（`ScrollState` 内部只有一个 `scrollableState`，共用会互相打架）
@@ -98,25 +101,27 @@ internal fun SettingsPage.ComboEditScreen(
                 .fillMaxSize()
                 .nestedScroll(scrollBehavior.nestedScrollConnection)
                 .overScrollVertical()
-                .verticalScroll(scrolls[page]),
+                .verticalScroll(scrolls[page])
+                //  页底留白 —— 与全项目同一档、同一种写法（挂在滚动内容里，不用尾部 Spacer）
+                .padding(bottom = PAGE_BOTTOM_PADDING),
         ) {
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + bandBlock))
             //  长按那一档：设置卡在网格**上面**（与「按键绑定」页同一个顺序 ——
             //  先「这一档怎么判」，再挑「绑什么」）。短按没有可调的东西，直接是网格。
-            if (page == 1) {
-                //  小标题与「按键绑定」页长按那一档同一句（`binding.settings_section`）：
-                //  两页同一张卡，标题各写一套的话切页时会觉得换了一套东西。
-                SmallTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
-                ComboLongCard(combo, enabled)
-                Spacer(Modifier.height(GRID_ROW_GAP))
+            //  块与块之间的间距由小标题自带；网格自己那几组由网格内部管。
+            Column {
+                if (page == 1) {
+                    //  小标题与「按键绑定」页长按那一档同一句（`binding.settings_section`）：
+                    //  两页同一张卡，标题各写一套的话切页时会觉得换了一套东西。
+                    SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
+                    ComboLongCard(combo, enabled)
+                }
+                BuiltInGrid(grid, enabled)
+                // 「自定义命令」这一段**始终在**（用户口径：与「按键绑定」页一样另起一块、同一个
+                // 小标题）—— 没有命令时网格自己换成那一行「自定义命令 →」，空着也看得见去处。
+                SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
+                CustomCommandsGrid(grid, enabled, onCreateCommand)
             }
-            BuiltInGrid(grid, enabled)
-            // 「自定义命令」这一段**始终在**（用户口径：与「按键绑定」页一样另起一块、同一个
-            // 小标题）—— 没有命令时网格自己换成那一行「自定义命令 →」，空着也看得见去处。
-            Spacer(Modifier.height(GRID_ROW_GAP))
-            SmallTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
-            CustomCommandsGrid(grid, enabled, onCreateCommand)
-            Spacer(Modifier.height(PAGE_BOTTOM_PADDING))
         }
     }
 

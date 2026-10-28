@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,6 +51,7 @@ import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.command.branchConditionUsed
+import com.lookie.opluskey.ui.spacedItems
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.PickedDetail
@@ -137,8 +137,8 @@ internal fun SettingsPage.AppPickerList(
                         // 越界回弹：COUI 自己的弹簧实现（`overScrollVertical`）。挂在这里同样是滚动
                         // 容器外侧，吃的是它没吃掉的那部分位移 —— 列表不满一屏也弹。
                         .overScrollVertical(),
-                // 底部留白与别页一模一样（[PAGE_BOTTOM_PADDING]，32dp）——
-                // 与「按键绑定」页那种「最后一行被 FAB 压住」的取舍保持一致。
+                // 底部留白与别页同一档（行距已经挪到行首，末尾不再自带一档）
+                //  末行不留下行距 ⇒ 页底就是整档 [PAGE_BOTTOM_PADDING]，不用再减。
                 contentPadding = PaddingValues(bottom = PAGE_BOTTOM_PADDING),
             ) {
                 // 列表区 —— 加载中什么都不铺（列表空着），转圈由页面那层叠上去画。
@@ -165,7 +165,7 @@ internal fun SettingsPage.AppPickerList(
                         // 「查得到但没有匹配项」那句提示不在这里：它一进来就会占掉一个下标，
                         // 而按下标滚到当前绑定应用的偏移 [APP_LIST_HEADER_ITEMS] 只算了顶上那个占位项
                         // —— 多一项就错一行。
-                        items(ui.shown, key = { it.target }) { app ->
+                        spacedItems(ui.shown, gap = GRID_GAP, key = { it.target }) { app ->
                             // **不给 `Modifier.animateItem()`** —— 理由写在 [AppRow] 的 KDoc 里：
                             // 它把「过滤之后下标变了」当成「这一行换位了」。
                             AppRow(
@@ -432,7 +432,7 @@ private fun SettingsPage.AppRow(
             .padding(horizontal = PAGE_MARGIN)
             // 间距在高度之前给：这样 [APP_ROW_HEIGHT] 量的是卡片自己，那 12dp
             // 是卡片外面的行距（顺序反了会把卡片压矮 12dp）。
-            .padding(bottom = GRID_GAP)
+            //  **行自己不带外边距**：行距由 [spacedItems] 给（首行不加、末行不加）。
             // 行高定死 ⇒ 行首那枚图标才能整高（见 [APP_ROW_HEIGHT]）
             .height(APP_ROW_HEIGHT),
         // 按压反馈只要涟漪，与换之前 `BasicComponent` 那份同一套。

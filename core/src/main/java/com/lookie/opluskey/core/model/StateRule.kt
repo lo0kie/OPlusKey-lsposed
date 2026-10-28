@@ -43,6 +43,17 @@ data class StateRule(
     /** 这一块的**全部**条件（顺序即书写顺序，判定时逐条都要成立）。空 = 还没选。 */
     val conditions: List<BranchCondition> = emptyList(),
     val action: Action,
+    /**
+     * 这一条**参不参与判定**（界面上的「停用场景」）—— 停用的块整条跳过，条件与动作都还留着。
+     *
+     *  与「删掉」是两件事：删了就没了，停用只是让它这一趟不生效（比如某个场景配好了但暂时不想用）。
+     *  排在末尾、带默认值：停在数据类的**最后一个参数**才不会打断既有那批按位置构造的调用点
+     *  （`StateRule.single` 与 DTO 的 `toRule` 都是按位置传的）。
+     *
+     *  判定侧只在 [appliesTo] 一处读它 —— 也就是说「停用」对按键与组合键两条路同时生效，
+     *  不需要任何别的地方再判一次。
+     */
+    val enabled: Boolean = true,
 ) {
     /**
      * **第一条**条件 —— 给「一次只编辑一条」的界面与那一批老调用点用。
@@ -100,12 +111,14 @@ data class StateRule(
      *  **逐条都要成立**（且）；一条条件都没有的行**不成立**：宁可落到下面一条 / 落到按键绑定
      *  那一档，也不执行一条用户还没想清楚的条件（那是「填了一半的规则」）。
      *
+     *  停用的块（[enabled] 为假）一律不成立 —— 判定侧只有这一处读那一位（见 [enabled] 的注释）。
+     *
      *  `all` 本身会短路，所以配了三条条件的块在第一条不成立时不会再读后两个系统开关。
      */
     fun appliesTo(
         gesture: Gesture,
         matches: (BranchCondition) -> Boolean,
-    ): Boolean = this.gesture == gesture && conditions.isNotEmpty() && conditions.all(matches)
+    ): Boolean = enabled && this.gesture == gesture && conditions.isNotEmpty() && conditions.all(matches)
 
     /**
      * 换掉第 [at] 条条件 —— **其余的留着**。

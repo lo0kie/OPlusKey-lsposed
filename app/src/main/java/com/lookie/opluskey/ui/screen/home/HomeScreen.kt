@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -15,7 +16,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -23,6 +23,7 @@ import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.Screen
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
@@ -31,7 +32,6 @@ import com.lookie.opluskey.ui.model.QUERY_ROUNDS
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.LINK_SILENT_RETRY_MS
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 import kotlinx.coroutines.delay
@@ -74,7 +74,11 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
             // 越界回弹：COUI 自己的弹簧实现（`overScrollVertical`）。它挂在滚动容器**外侧**，
             // 吃的是滚动容器**没吃掉**的那部分位移 —— 所以内容不满一屏时照样弹。
             .overScrollVertical()
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(rememberScrollState())
+            //  页底留白 —— **全项目同一档、同一种写法**：挂在 `verticalScroll` 之后
+            //  （滚动内容里的内缩，视口仍铺到屏幕底），不再用尾部 `Spacer`
+            //  （Spacer 不进滚动内容高度，最大滚动位置会少一截）。
+            .padding(bottom = PAGE_BOTTOM_PADDING),
     ) {
         //  顶栏是叠在内容上的（见 `PageHeader`），所以顶部这一块要自己让出来 ——
         // 数值是**动态**的（跟着折叠走），理由见 `currentHeaderHeight`。
@@ -84,43 +88,39 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         //  带子页那一档来自带子自己的 8dp 下内边距，两边视觉上正好齐平。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
+        //  块与块之间的间距由小标题自带（上 16 / 下 0），这一页不再写 `Spacer`。
         // 这一节只有模块总闸一行，小标题就按它叫（原先叫「按键绑定」，与那一页的页名混在一起）。
         //  **不要借 `Strings.BINDING_TITLE`**：那是「按键绑定」子页的标题，改这里会把它一起改名。
-        SmallTitle(I18n.get(Strings.HOME_MASTER_SECTION, "主开关"))
+        SectionTitle(I18n.get(Strings.HOME_MASTER_SECTION, "主开关"))
         // 「响铃状态」走的是公共 `AudioManager.setRingerMode`，ColorOS 的 ringer delegate 会把外来的
         // 静音请求改写成振动，于是要靠「勿扰访问」权限绕。现在执行侧改走 `setRingerModeInternal`
         // （宿主本来就持有 `STATUS_BAR_SERVICE`），**与勿扰再无关系** —— 那一行连同它引入的
         // 动态行数（`homeBindingRows`）一并删掉，别再按「静音要授权」加回来。
         HomeBindingCard(ui)
 
-        // 首次启用（以及清空配置之后再启用）要的那两次确认 —— 摆在那张卡后面，不跟别的开关混在一起。
-        HomeDisclaimers(ui)
-
         // 「按键列表」那一节 —— **只有按键清单**（用户口径）：原先它在
         // 「按键绑定」页顶栏那份 ⋮ 菜单里，而那一页只回答「这颗键现在绑了什么」；
         // 有哪几颗键是总览，属于首页。一颗键一行，点哪颗进哪颗。
-        Spacer(Modifier.height(8.dp))
-        SmallTitle(I18n.get(Strings.HOME_KEYS_SECTION, "按键列表"))
+        SectionTitle(I18n.get(Strings.HOME_KEYS_SECTION, "按键列表"))
         HomeKeysCard(pageEnabled)
 
         // 「按键操作」那一节 —— 组合按键与「添加按键」两行（用户口径：与清单分开一张卡）。
         //  这两行不是清单里的东西，是**对这颗键 / 这组键做的事**。
-        Spacer(Modifier.height(8.dp))
-        SmallTitle(I18n.get(Strings.HOME_KEY_OPS_SECTION, "按键操作"))
+        SectionTitle(I18n.get(Strings.HOME_KEY_OPS_SECTION, "按键操作"))
         HomeKeyOpsCard(pageEnabled, ui)
 
         // 「按键行为」那一整块搬进了「通用设置」页（入口在下面「其他」卡的第一行）——
         //  它是**全局**开关，与「这颗键绑了什么」无关，摆在这里会把常用的入口挤下去。
 
         // 版本 / 仓库地址那两行搬去**独立的「更多选项」页**（`AboutScreen`，从顶栏 ⋮ 菜单进）——
-        // 它们是「想知道时才看一眼」的信息，摆在首页会把常用的那几张卡挤下去。
-        Spacer(Modifier.height(8.dp))
-        SmallTitle(I18n.get(Strings.HOME_OTHER_SECTION, "其他"))
+        //  它们是「想知道时才看一眼」的信息，摆在首页会把常用的那几张卡挤下去。
+        SectionTitle(I18n.get(Strings.HOME_OTHER_SECTION, "其他"))
         HomeOtherCard(pageEnabled, ui)
 
+        //  下面两个是**浮层宿主**（本身不占布局）：摆在块容器外面，
+        //  否则块间距会在它们前后各留一档空档。
+        HomeDisclaimers(ui)
         HomeDonateOverlays(ui)
-
-        Spacer(Modifier.height(PAGE_BOTTOM_PADDING))
     }
 }
 

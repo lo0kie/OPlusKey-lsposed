@@ -38,7 +38,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.Feedback
-import com.lookie.opluskey.ui.IconAction
+import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.NoHapticFeedback
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TileFocusRing
@@ -61,9 +61,11 @@ import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.model.serialSummarySteps
 import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.state.CommandUiState
+import com.lookie.opluskey.ui.state.TileMenu
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Card
+import io.github.suqi8.coui.kmp.basic.CardColors
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -184,6 +186,8 @@ private fun SettingsPage.CommandTile(
     // 每一张卡各自一份 `PreciseClickState`（按命令名做 key）：`anchorCoordinates`
     //  只有一格，共用一份会把触点算到别的卡上去。
     val tilePreciseClick = remember(cmd.name) { PreciseClickState() }
+    // 右上角那颗「更多」另记一份：菜单要弹在**那颗字上**，不是长按的手指那一点。
+    val dotsAnchor = remember(cmd.name) { PreciseClickState() }
     // 选中态（正在表单里编辑的那一条）：三处共用，只算一次 —— 判据是 `draft.editingName`。
     val editing = commandDraft.draft.editingName == cmd.name
     // 选中时类型图标与标题一起上主题色，带过渡（一处动画喂两个组件）。
@@ -205,12 +209,7 @@ private fun SettingsPage.CommandTile(
                         // 行高由 [CommandTileRow] 统一定，这里填满行高即可。
                         .fillMaxHeight()
                         .preciseClickAnchor(tilePreciseClick),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = COUITheme.colorScheme.surfaceContainer,
-                        contentColor = COUITheme.colorScheme.onSurfaceContainer,
-                        pressedColor = COUITheme.colorScheme.surfaceContainerHigh,
-                    ),
+                colors = commandTileColors(),
                 pressFeedbackType = PressFeedbackType.None,
                 // 禁用时连涟漪都不要：这一下本来就不做事，反馈会让人以为「点了、只是没生效」
                 showIndication = enabled,
@@ -226,26 +225,31 @@ private fun SettingsPage.CommandTile(
                 onLongPress = {
                     if (!enabled) return@Card
                     tick()
-                    XLog.w("已保存命令长按：${cmd.name}（弹编辑 / 删除）")
-                    ui.menuFor = cmd.name
+                    XLog.w("已保存命令长按：${cmd.name}（弹测试 / 编辑 / 删除）")
+                    ui.menu = TileMenu(cmd.name, tilePreciseClick)
                 },
             ) {
-                CommandTileBody(cmd, accentColor, enabled)
+                CommandTileBody(cmd, accentColor, enabled, dotsAnchor) {
+                    tick()
+                    XLog.w("已保存命令菜单：${cmd.name}（右上角那颗「更多」）")
+                    ui.menu = TileMenu(cmd.name, dotsAnchor)
+                }
             }
         }
         // 浮层挂在零宽内层盒子里（落点由触点决定，这里只是宿主）。
         Box(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(0.dp)) {
             CommandMenuPopup(
                 cmd = cmd,
-                show = ui.menuFor == cmd.name,
-                preciseClick = tilePreciseClick,
+                show = ui.menu?.name == cmd.name,
+                //  开着的时候这里拿到的必然是**这一次**的锚点（名字对得上才画）
+                preciseClick = ui.menu?.anchor ?: tilePreciseClick,
                 // 与「轻点这一张」同一个去处：灌进表单后滚回顶部。
                 onEdited = onScrollTop,
                 onDelete = {
-                    ui.menuFor = null
+                    ui.menu = null
                     ui.deleting = cmd
                 },
-                onDismiss = { ui.menuFor = null },
+                onDismiss = { ui.menu = null },
             )
         }
         // 选中态：正在表单里编辑的那一条画一圈内缩边框（[TileFocusRing]），
@@ -255,12 +259,28 @@ private fun SettingsPage.CommandTile(
     }
 }
 
-/** 卡片内容：顶行（图标 + 标题或间隔 + 测试键）、多条命令另起一行的标题、以及摘要。 */
+/**
+ * 命令卡的三档底色 —— **所有卡一样**，抽成一份：卡里原先每次重组都重搭一个 `CardColors`，
+ * 而这三档只跟主题走。
+ */
+@Composable
+private fun commandTileColors(): CardColors =
+    CardDefaults.defaultColors(
+        color = COUITheme.colorScheme.surfaceContainer,
+        contentColor = COUITheme.colorScheme.onSurfaceContainer,
+        pressedColor = COUITheme.colorScheme.surfaceContainerHigh,
+    )
+
+/** 卡片内容：顶行（图标 + 标题或间隔 + 那颗「更多」）、多条命令另起一行的标题、以及摘要。 */
 @Composable
 private fun SettingsPage.CommandTileBody(
     cmd: Command,
     accentColor: Color,
     enabled: Boolean,
+    /** 右上角那颗「更多」的触点锚点（菜单弹在它上面）。 */
+    menuAnchor: PreciseClickState,
+    /** 点那颗「更多」：开这一张卡的菜单（测试 / 编辑 / 删除）。 */
+    onMenu: () -> Unit,
 ) {
     // 顶部对齐：顶行定高，同一行的标题永远是一条线；高度包住内容，下限由布局给。
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -271,31 +291,42 @@ private fun SettingsPage.CommandTileBody(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CommandTileHeadline(cmd, accentColor, Modifier.weight(1f))
-            // 点一下把这条命令跑一遍（不写配置、不改绑定）。
-            // 它自己吃掉这一下，不会触发整张卡的 `onClick` 或长按菜单。
-            IconAction(
-                PageIcons.TestCommand,
-                I18n.get(Strings.COMMAND_TEST_BUTTON, "测试命令"),
-                tint = COUITheme.colorScheme.primary,
-                enabled = enabled,
-            ) {
-                testCommand(cmd)
-            }
+            // 右上角那颗「横向三个点」—— 测试 / 编辑 / 删除都收进它的菜单
+            //  （原先这里是单独一颗「测试」）。它自己吃掉这一下，不会触发整张卡的 `onClick` 或长按。
+            //  **flushEnd**：字形贴住这一格的右边线，右边线才与卡片左侧那颗类型图标对称
+            //  （卡片内容有 16dp 内边距，居中的话它会比左边多缩进半个点击区）。
+            //  挪的是整个点击区、不是格子里的字形 —— 详情见 `MoreButton`（上一版挪字形，
+            //  按下去的底色偏在字左边，看着像「波纹歪」）。
+            MoreButton(onClick = onMenu, anchor = menuAnchor, enabled = enabled, flushEnd = true)
         }
         // 多条命令：**名字在图标那一行**，步骤间隔挪到下面另起一行（用户口径「名称和 delay
         //  换个位置」—— 名字是这张卡的主键，跟类型图标同一行才读得出「这是哪一条」；
         //  间隔是执行参数，放在名字下面当小字）
         if (cmd.kind == CommandKind.SERIAL) {
             Spacer(Modifier.height(TILE_TITLE_GAP))
-            Text(
-                // 文案走 [durationText]（全局唯一一处）：
-                // 1000ms 以上写成秒（`3 秒`），一秒以内是毫秒（`400 毫秒`）
-                text = durationText(cmd.stepDelayMs),
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            //  行首那枚小图标与下面摘要行同一支笔、同一档尺寸（[SUMMARY_REF_ICON] / [SUMMARY_REF_GAP]）——
+            //  图标就是「命令间隔时长」那一行用的那枚（[PageIcons.DelayStep]）：同一个参数，同一颗图标。
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    PageIcons.DelayStep,
+                    contentDescription = null,
+                    modifier = Modifier.size(SUMMARY_REF_ICON),
+                    tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Spacer(Modifier.width(SUMMARY_REF_GAP))
+                Text(
+                    // 文案走 [durationText]（全局唯一一处）：
+                    // 1000ms 以上写成秒（`3 秒`），一秒以内是毫秒（`400 毫秒`）
+                    text = durationText(cmd.stepDelayMs),
+                    style = COUITheme.textStyles.footnote1,
+                    color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    //  与行首那枚小图标同一行、竖居中：行盒居中不等于墨迹居中，补一档光学修正
+                    //  （与下面摘要行、单条摘要、卡片标题同一支笔 —— 见 `opticalCenter`）
+                    modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
+                )
+            }
         }
         // 标题与摘要之间那 2dp = 库私有常量 `MarginBetweenLine` 的取值。
         Spacer(Modifier.height(2.dp))
@@ -390,6 +421,8 @@ private fun SettingsPage.summaryLineRows(lines: List<StepLine>) {
                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                //  同上：与行首那枚步骤图标竖着对中（行盒 ≠ 墨迹，见 `opticalCenter`）
+                modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
             )
         }
     }

@@ -7,17 +7,14 @@ import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,7 +26,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -42,11 +38,12 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
+import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.MoreButton
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
@@ -56,13 +53,9 @@ import com.lookie.opluskey.ui.model.actionCellIcon
 import com.lookie.opluskey.ui.model.actionCellTitle
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.NO_FRESH_ROW
-import io.github.lyxnx.compose.ui.tablericons.TablerIcons
-import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -194,6 +187,8 @@ internal fun SettingsPage.BranchCards(
     }
     BranchMenus(rules = rules, menus = menus, tick = tick)
     BranchDeleteDialog(menus)
+    //  停用 / 启用一条场景 —— 与删除同一条路（菜单里点、窗里确认），但改的是这一条自己的开合位
+    BranchToggleDialog(menus)
     //  删「一条条件」是另一件事（只摘一块里的一条，不连动作、不动下面的行），窗也另开一个
     BranchConditionDeleteDialog(menus)
 }
@@ -236,7 +231,7 @@ internal fun SettingsPage.addBranchRule(
         //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
         hint(
             I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有场景没选完"),
-            slot = HINT_SLOT_COMMAND,
+            slot = HINT_SLOT_DISABLED,
         )
         return
     }
@@ -276,7 +271,13 @@ private fun SettingsPage.BranchRuleColumn(
                             anchors = anchors[index],
                             fresh = ids[index] == freshId,
                             exiting = shrinkable && menus.deletingAt == index,
-                            dead = index in dead,
+                            //  「停用」优先于「不会执行」：那是用户刚做过的动作，也是更直接的原因
+                            state =
+                                when {
+                                    !rule.enabled -> RuleState.OFF
+                                    index in dead -> RuleState.DEAD
+                                    else -> RuleState.NORMAL
+                                },
                         ),
                     menus = menus,
                 )
@@ -321,12 +322,10 @@ private fun SettingsPage.BranchRow(
     }
     LaunchedEffect(state, spec.exiting) { state.targetState = !spec.exiting }
     AnimatedVisibility(visibleState = state, enter = STEP_ROW_ENTER, exit = STEP_ROW_EXIT) {
-        //  行距挂在**行首**而不是行尾（第一条不挂）：挂行尾的话最后一条底下会多出一档，
-        //  表尾那句注脚再补 6dp，实际间距就成了 [GRID_ROW_GAP] + 6dp —— 而「自定义命令」页
-        //  输入框下面那行 root 提示是 6dp，两处读起来差三倍（用户口径「tips 的上边距和它一样」）。
-        //  挂行首之后：行与行之间还是那一档，最后一条下面**只剩注脚自己那 6dp**；
-        //  追加一条时也不会让上一条的高度变化（新行自带它那一档）。
-        Box(Modifier.padding(top = if (spec.index == 0) 0.dp else GRID_ROW_GAP)) {
+        //  块与块之间的间距**不在这里给**：小标题自己带上间距（上 16 / 下 0，见 `SectionTitle`），
+        //  这里再补一档就成了 24dp。行距原本挂在行首（第一条不挂）是为了让「行与行之间」
+        //  保持一档、最后一条下面只留注脚自己那 6dp —— 那个理由现在由标题那层负责。
+        Box {
             //  两格各自「有没有选完」先算出来：文案与行首图标都看它
             //  （条件那格还要 `isUsable` —— 选了种类但没选取值，写下去也存不住）。
             //  一块可能带**好几条**条件，**每条各占卡片里的一行**（一条条件一个 `CardRow.Item`）。
@@ -339,7 +338,7 @@ private fun SettingsPage.BranchRow(
             RuleBlock(
                 // 「条件 1」「条件 2」—— 一份表里第几条，标题上直接写出来
                 index = spec.index,
-                dead = spec.dead,
+                state = spec.state,
                 text =
                     RuleText(
                         conditionLines = conditionLines,
@@ -378,32 +377,6 @@ private fun SettingsPage.BranchRow(
 }
 
 /**
- * 小标题行右端那颗「更多」—— 上移 / 下移 / 删除都挂在它上面。
- *
- *  抽成一支只为让 [RuleBlock] 留在 detekt 的长度上限内（几何见 [RULE_MENU_WIDTH] 那几段）。
- */
-@Composable
-private fun RuleMenuButton(cells: RuleCells) {
-    Box(
-        modifier =
-            Modifier
-                .size(width = RULE_MENU_WIDTH, height = RULE_MENU_HEIGHT)
-                .preciseClickAnchor(cells.anchors.menu)
-                .clip(RULE_CELL_SHAPE)
-                .clickable(onClick = cells.onMenu),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            TablerIcons.Outline.Dots,
-            contentDescription = I18n.get(Strings.COMMON_MORE, "更多"),
-            tint = COUITheme.colorScheme.onSurfaceVariantSummary,
-            // 与点击区同高：库默认 24dp 塞不进 20dp 的框，上下会被圆角裁掉
-            modifier = Modifier.size(RULE_MENU_HEIGHT),
-        )
-    }
-}
-
-/**
  * 小标题那一行 —— 「条件 N」+ 右端那颗「更多」。
  *
  *  抽成一支只为让 [RuleBlock] 留在 detekt 的长度上限内。与各页的小标题**同一个组件**
@@ -416,17 +389,41 @@ private fun RuleTitleRow(
     index: Int,
     cells: RuleCells,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = RULE_TITLE_HEIGHT),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SmallTitle(
-            text = I18n.format(Strings.COMMAND_BRANCH_ITEM, index + 1),
-            modifier = Modifier.weight(1f),
-            insideMargin = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-        )
-        RuleMenuButton(cells)
-    }
+    SectionTitle(
+        text = I18n.format(Strings.COMMAND_BRANCH_ITEM, index + 1),
+        modifier = Modifier.heightIn(min = RULE_TITLE_HEIGHT),
+        //  左右缩进比页面小一档（外层已有 `PAGE_MARGIN`）
+        insideMargin = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+        //  行尾那颗「更多」—— 通用小标题的 `trailing` 槽位（这一行菜单就挂在小标题右侧，
+        //  不再自己套一层 `Row` + 一份 `weight`）；样式在 `MoreButton` 里（场景 / 命令列表共用一份）。
+        trailing = {
+            MoreButton(
+                onClick = cells.onMenu,
+                anchor = cells.anchors.menu,
+                //  **补 20dp 右边距**（回到改之前那一档）。中间试过归零、让这颗与它上面那一行
+                //  的右边线都落在 `PAGE_MARGIN` 上，但这一页的正文（那些卡片）自己有内边距、
+                //  字头离屏幕边缘本来就更远一截 —— 归零之后这颗反倒比左邻的内容更贴边。
+                //  用户口径：右缩进多一点就多一点，宁可它往左收，也不要它探到最右边。
+                endPadding = 20.dp,
+            )
+        },
+    )
+}
+
+/**
+ * 这一行现在处在哪一档 —— 行尾那半句话显示哪一句（两句话只会出一句）。
+ *
+ *  合成一个枚举而不是两个布尔：两种状态互斥，各自一个位的话调用点要先想「两个都真时显示哪个」，
+ *  而那个优先级（先说「已停用」）只该有一处口径。
+ */
+private enum class RuleState {
+    NORMAL,
+
+    /** 顺序上轮不到（某档取值前面已经凑齐 / 被更宽的一条盖住）—— 红字「不会执行」。 */
+    DEAD,
+
+    /** 这一条自己关着（行尾菜单里的停用）—— 弱色「已停用」。 */
+    OFF,
 }
 
 /** 一行「是第几条、跟哪两格、要不要播进出场」—— 合成一个对象把参数个数压回 detekt 的上限。 */
@@ -435,8 +432,8 @@ private class RuleRowSpec(
     val anchors: RuleAnchors,
     val fresh: Boolean,
     val exiting: Boolean,
-    /** 这一行**永远轮不到**（它前面某一档条件已经凑齐）—— 小标题上标出来。 */
-    val dead: Boolean,
+    /** 行尾那半句话说什么（见 [RuleState]）。 */
+    val state: RuleState,
 )
 
 /** 「没有正在退场的行」的哨兵 —— 与 `BranchMenuState.deletingAt` 的初始值同义。 */
@@ -470,16 +467,6 @@ private class RuleAnchors {
  */
 private val RULE_TITLE_HEIGHT = 32.dp
 
-/**
- * 小标题行右端那颗「更多」的点击区 —— **横比竖宽**。
- *
- *  横 40dp：三点横排，方形的点击区在字尾读起来像一块砖，横向多让一点才像「这一行的尾巴」。
- *  竖 20dp：比标题行（[RULE_TITLE_HEIGHT]）矮一档，上下各让出一点，才是一颗「浮在行尾」的按钮；
- *  里面那颗字也按这个高度画（见 `RuleBlock`）：库默认 24dp 装不进去，会被圆角裁掉上下两条。
- */
-private val RULE_MENU_WIDTH = 40.dp
-private val RULE_MENU_HEIGHT = 20.dp
-
 /** 表尾那句注脚 —— 与「自定义命令」页那条权限提示同一个样式（不占卡片、居中、`footnote1`）。 */
 @Composable
 private fun SettingsPage.BranchDefaultTip() {
@@ -495,9 +482,6 @@ private fun SettingsPage.BranchDefaultTip() {
         color = COUITheme.colorScheme.onSurfaceVariantSummary,
     )
 }
-
-/** 两列每一格的圆角 —— 两个圆角块之间那条缝就是「gap」。 */
-private val RULE_CELL_SHAPE = RoundedCornerShape(8.dp)
 
 /**
  * 一行两列那四个「点哪个 / 点了做什么」 —— 合成一个对象只为把参数个数压回 detekt 的上限。
@@ -543,8 +527,8 @@ private class RuleText(
 @Composable
 private fun RuleBlock(
     index: Int,
-    /** 这一行**永远轮不到**：小标题后缀写明，免得用户配完才发现它不会执行。 */
-    dead: Boolean,
+    /** 行尾那半句话说什么（见 [RuleState]）—— 「不会执行」/「已停用」/ 什么都不说。 */
+    state: RuleState,
     text: RuleText,
     cells: RuleCells,
     /** 条件行的进出场要读它（刚插入的那条 / 正在退场的那条）。 */
@@ -586,10 +570,14 @@ private fun RuleBlock(
                                 iconTint = if (line.empty) disabledTint else null,
                                 titleTint = if (line.empty) disabledTint else null,
                                 //  行尾一律画那枚「点开还有一层」的选择器（每行都可点、都还有下一层）；
-                                //  「不会执行」那半句只挂在**最后一条**条件行 —— 那说的是
-                                //  「这一行整体」不会命中，不是某一条条件的问题。
+                                //  「不会执行」/「已停用」那半句只挂在**最后一条**条件行 ——
+                                //  那说的是「这一行整体」不生效，不是某一条条件的问题。
                                 trailing = {
-                                    ConditionTrailing(dead = dead && condIndex == text.conditionLines.lastIndex)
+                                    val last = condIndex == text.conditionLines.lastIndex
+                                    ConditionTrailing(
+                                        dead = state == RuleState.DEAD && last,
+                                        off = state == RuleState.OFF && last,
+                                    )
                                 },
                                 modifier = Modifier.preciseClickAnchor(cells.anchors.conditionAt(condIndex)),
                                 onClick = { cells.onCondition(condIndex) },

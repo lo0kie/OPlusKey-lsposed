@@ -54,6 +54,14 @@ object Strings {
 
     /** 同一行的另一半：重新启用。 */
     const val BINDING_ENABLE_KEY = "binding.enable_key"
+
+    /**
+     * 停用那颗键之前问一句（`%s` = 键名）。
+     *
+     *  与 [BINDING_DELETE_KEY_CONFIRM] 正好把两种后果说开：一个是「不再接管但都还在」，
+     *  一个是「从清单里删掉」。这两行在菜单里只差一个字，不确认的话很容易点错。
+     */
+    const val BINDING_DISABLE_KEY_CONFIRM = "binding.disable_key_confirm"
     const val BINDING_DELETE_KEY_CONFIRM = "binding.delete_key_confirm"
     const val BINDING_ADD_KEY = "binding.add_key"
 
@@ -152,6 +160,20 @@ object Strings {
     const val COMBO_ADDED = "combo.added"
     const val COMBO_REMOVED = "combo.removed"
 
+    /**
+     * 停用 / 启用这一档组合（⋮ 菜单那一行），以及点完的回执（格式：成员名，已带各自的括号）。
+     *
+     *  与单键那两支（`BINDING_DISABLE_KEY` / `TOAST_KEY_DISABLED`）同一套语义：
+     *  写的是这一档自己的 `ComboKey.enabled`，与模块总闸是两层。
+     */
+    const val COMBO_DISABLE = "combo.disable"
+    const val COMBO_ENABLE = "combo.enable"
+    const val COMBO_DISABLED = "combo.disabled"
+    const val COMBO_ENABLED = "combo.enabled"
+
+    /** 停用那一档之前的确认正文（`%s` = 成员名，已带各自的括号）—— 一句就够，别写成说明书。 */
+    const val COMBO_DISABLE_MESSAGE = "combo.disable_message"
+
     /** 一档组合还没绑动作时那一格写的字（与单键网格里的「无操作」区分开）。 */
     const val COMBO_UNBOUND = "combo.unbound"
 
@@ -160,6 +182,9 @@ object Strings {
 
     /** 首页那一行的副标题：已经配了几组（格式：组数）。 */
     const val COMBO_COUNT = "combo.count"
+
+    /** 列表页筛选菜单的第一行：不筛（列出全部组合）。 */
+    const val COMBO_FILTER_ALL = "combo.filter_all"
 
     /**
      * 一颗自定义键都还没收时，首页那行「组合按键」的副标题与「为什么灰着」的说明。
@@ -278,6 +303,9 @@ object Strings {
     const val COMMAND_STEP_SORTING_LOCKED = "command.step_sorting_locked"
     const val COMMAND_TEST_BUTTON = "command.test_button"
 
+    /** 表单与步骤都空着时，顶栏那颗「重置」为什么点不动 —— 点它一下说这一句。 */
+    const val COMMAND_RESET_EMPTY = "command.reset_empty"
+
     /** 表单第一条小标题：名称输入框（原先这里写的是「修改命令 / 新增命令」）。 */
     const val COMMAND_NAME_TITLE = "command.name_title"
 
@@ -330,6 +358,21 @@ object Strings {
     /** 「前台应用」可以多条，但**同一个应用**只能当一次条件。 */
     const val COMMAND_BRANCH_DUPLICATE_APP = "command.branch_duplicate_app"
     const val COMMAND_BRANCH_EMPTY = "command.branch_empty"
+
+    /**
+     * 停用 / 启用一条场景 —— 行尾那颗「更多」菜单里的那一行，以及停用点下去那道确认窗。
+     *
+     *  与按键那一对（`BINDING_DISABLE_KEY` / `BINDING_ENABLE_KEY`）同一个语义：写的是这一条自己的
+     *  `StateRule.enabled`。**启用没有确认窗**（与按键、组合键同一条规矩）。
+     */
+    const val COMMAND_BRANCH_DISABLE = "command.branch_disable"
+    const val COMMAND_BRANCH_ENABLE = "command.branch_enable"
+
+    /** 确认窗的正文 —— 一句话说清「停用之后会怎样」。 */
+    const val COMMAND_BRANCH_DISABLE_MESSAGE = "command.branch_disable_message"
+
+    /** 停用那一条行上的标签（「条件 3」行尾那半句，与 [COMMAND_BRANCH_DEAD] 同一个位置）。 */
+    const val COMMAND_BRANCH_DISABLED = "command.branch_disabled"
 
     /** 条件页空态的**标题**（上面那行）—— 下面那行说的是「现在会发生什么」。 */
     const val COMMAND_BRANCH_EMPTY_TITLE = "command.branch_empty_title"
@@ -390,6 +433,8 @@ object Strings {
 
     /** 「添加条件」被拦下时那句话：这一块最后一条还是「未选择条件」，再插一条只是多一行空的。 */
     const val COMMAND_BRANCH_CONDITION_PENDING = "command.branch_condition_pending"
+    const val COMMAND_BRANCH_TOP_REACHED = "command.branch_top_reached"
+    const val COMMAND_BRANCH_BOTTOM_REACHED = "command.branch_bottom_reached"
 
     /** 抽屉里那个过滤框的占位文案与空结果 —— 内置动作 + 已保存命令一起搜。 */
     const val COMMAND_SEARCH = "command.search"
@@ -420,6 +465,9 @@ object Strings {
     const val COMMON_CANCEL = "common.cancel"
     const val COMMON_CONFIRM = "common.confirm"
     const val COMMON_DELETE = "common.delete"
+
+    /** 停用确认窗上那颗按钮 —— 与 [COMMON_DELETE] 同一档：一颗动词，不带宾语。 */
+    const val COMMON_DISABLE = "common.disable"
     const val COMMON_DISCARD = "common.discard"
     const val COMMON_EDIT = "common.edit"
     const val COMMON_MENU = "common.menu"
@@ -741,6 +789,14 @@ object Strings {
 
     /** 当前编辑的那颗键被停用了（`%s` = 键名；侧键与自定义键共用）—— 说清去哪儿重新启用。 */
     const val KEY_DISABLED_ITEM = "status.key_disabled_item"
+
+    /**
+     * 当前编辑的那一档组合被停用了（`%s` = 成员名，**已带各自的括号**，见 `comboLabel`）。
+     *
+     *  为什么不复用 [KEY_DISABLED_ITEM]：那一句给键名外面再套一对「」，而组合名里每个成员
+     *  已经各有自己的括号 —— 套两层会读成「一个叫『「侧键」+「电量 +」』的东西」。
+     */
+    const val COMBO_DISABLED_ITEM = "status.combo_disabled_item"
     const val TOAST_COMMAND_DELETED = "toast.command_deleted"
     const val TOAST_COMMAND_MODIFIED = "toast.command_modified"
     const val TOAST_COMMAND_OVERWRITTEN = "toast.command_overwritten"

@@ -88,6 +88,9 @@ private fun deadEndOf(rules: List<StateRule>): Pair<Int, BranchDeadCause>? {
     //  前面那些「条件集合」—— 判「更宽的条件」用
     val earlier = mutableListOf<Set<Pair<String, String>>>()
     for ((index, rule) in rules.withIndex()) {
+        //  停用的那一条**不参与这张扫描**：它不替任何一档凑数（下面那段记账），也不会被谁「盖住」——
+        //  它的「不执行」是自己关着，与顺序无关（行上另有「已停用」那半句，见 `ConditionTrailing`）。
+        if (!rule.enabled) continue
         //  先判死、再记账：反过来的话「把这一档凑齐的那一行」会把自己标死（它还要接最后一个取值）
         if (saturated.isNotEmpty()) return index to BranchDeadCause.SATURATED
         val signature = signatureOf(rule)

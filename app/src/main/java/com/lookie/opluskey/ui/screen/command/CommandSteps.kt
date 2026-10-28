@@ -1,14 +1,12 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -16,7 +14,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,14 +22,13 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.IconAction
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.gestureProbe
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
@@ -41,6 +37,7 @@ import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.openAppPickerForStep
 import com.lookie.opluskey.ui.rememberGestureProbe
+import com.lookie.opluskey.ui.rememberRowIconColor
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.replaceStep
 import com.lookie.opluskey.ui.state.ResumeSheet
@@ -49,7 +46,6 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
@@ -107,19 +103,6 @@ internal fun SettingsPage.SerialSteps() {
         //  换一步本身就会改这个列表，一律收掉的话抽屉每选一次就没了）。
         stepSheet?.let { at -> if (at >= 0 && at !in stepsNow.indices) stepSheet = null }
         commandDraft.stepRows.sync(stepsNow)
-    }
-
-    // 整卡重置的挂起落到每一行 → 同样播退场（reset 本体由页面级协程执行）
-    LaunchedEffect(commandDraft.resetPending) {
-        if (commandDraft.resetPending) commandDraft.stepRows.exitAll()
-    }
-
-    // 收尾被放弃（[CommandDraftState.resetAborted]）⇒ 把上面标掉的行收回来（理由见 `restoreAll`）。
-    LaunchedEffect(commandDraft.resetAborted) {
-        if (commandDraft.resetAborted) {
-            commandDraft.stepRows.restoreAll()
-            commandDraft.resetAborted = false
-        }
     }
 
     display.forEachIndexed { index, item ->
@@ -221,33 +204,23 @@ internal fun SettingsPage.SerialSteps() {
     // 置灰不改变行数（这一行还在，只是不吃点击），所以上面的 cardListPosition 不用动。
     val stepsFull = steps.size >= Command.MAX_STEPS
     // 行首那颗 `+` 的颜色随「满没满」切换、带过渡 —— 否则第 5 步一加它是「啪」地灰下去的。
-    // 正常态那一档就是外层的 `onSurfaceContainer`（`contentColor`）；要给过渡就得把两档都写出来。
+    //  两档色走全项目那一对（[rememberRowIconColor]）：禁用态与 `IconAction` 的禁用色同一档，
+    //  正常态那一档就是外层的 `onSurfaceContainer`（`contentColor`）。
     //  标题与副标题**不再自己上色**：改走库的 `title` / `summary` 槽之后，置灰由 `enabled` 管
     //  （与「捐赠打赏」那些行同一套，见 `CardRow.Item`）。
-    val addIconTint by animateColorAsState(
-        targetValue =
-            if (stepsFull || sorting) {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            } else {
-                COUITheme.colorScheme.onSurfaceContainer
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "StepAddIcon",
-    )
+    val addIconTint by rememberRowIconColor(enabled = !stepsFull && !sorting, label = "StepAddIcon")
 
     // 整行挂上手指锚点 —— 浮层弹在按下那一点（只记不看，行自己的点击照常）。
     //  两种点不动的情形各说一句：排序态下「先退出排序」，满员时说「最多几步」。
     //  **文案先算在 remember 外面**：它跟着语言档变，缓存在 `remember(sorting)` 里会在切语言后
-    //  留着旧语言那一句（`tools/check-i18n-cache.py` 盯的就是这个）；只有 lambda 需要 remember ——
-    //  提示条那条通道是全页共用的一个引用，每次重组换新实例会让读 `LocalDisabledClick` 的控件白白重组。
+    //  留着旧语言那一句（`tools/check-i18n-cache.py` 盯的就是这个）；lambda 与语义位都收在 `DisabledHint` 里。
     val addBlockedHint =
         if (sorting) {
-            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "排序中，先点右下角完成")
+            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
         } else {
             I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS)
         }
-    val onAddBlocked = remember(addBlockedHint) { { hint(addBlockedHint) } }
-    CompositionLocalProvider(LocalDisabledClick provides onAddBlocked) {
+    DisabledHint(addBlockedHint) {
         Box(Modifier.fillMaxWidth().gestureProbe(probe)) {
             BasicComponent(
                 //  注意：位置按**数据**（`draft.steps`）算，不按展示层行数（原 `cardListPositionOf(display.size, display.size + 1)`）：
@@ -346,7 +319,7 @@ internal fun SettingsPage.SerialSteps() {
  *
  *  只在排序态出现（见 `CommandDraftState.stepEditing`）：只读态的行尾是空的，换命令靠轻点整行。
  *  首行 / 末行那一颗按 `enabled` 置灰，被点一下时说清为什么 —— 每颗各带一句：外层
- *  「添加命令」那层 `LocalDisabledClick` 说的是「最多几步」，套在这里会答错问题。
+ *  「添加命令」那层说的是「最多几步」，套在这里会答错问题。
  */
 @Composable
 private fun SettingsPage.StepRowButtons(
@@ -354,27 +327,31 @@ private fun SettingsPage.StepRowButtons(
     lastIndex: Int,
     tick: () -> Unit,
 ) {
-    StepRowButton(
-        icon = PageIcons.StepUp,
-        label = I18n.get(Strings.COMMON_MOVE_UP, "上移"),
-        enabled = index > 0,
-        disabledHint = I18n.get(Strings.TOAST_COMMAND_STEP_FIRST, "已经是第一步"),
-    ) {
-        tick()
-        moveStep(index, -1)
+    //  每一颗被点不动时都说**自己那一句**：外层「添加命令」那层说的是「最多几步」，
+    //  套在这里会答错问题 —— 所以各带一句，投递口在 [DisabledHint]。
+    DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_FIRST, "已经是第一步")) {
+        IconAction(
+            PageIcons.StepUp,
+            I18n.get(Strings.COMMON_MOVE_UP, "上移"),
+            enabled = index > 0,
+        ) {
+            tick()
+            moveStep(index, -1)
+        }
     }
-    StepRowButton(
-        icon = PageIcons.StepDown,
-        label = I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
-        enabled = index < lastIndex,
-        disabledHint = I18n.get(Strings.TOAST_COMMAND_STEP_LAST, "已经是最后一步"),
-    ) {
-        tick()
-        moveStep(index, 1)
+    DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_LAST, "已经是最后一步")) {
+        IconAction(
+            PageIcons.StepDown,
+            I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
+            enabled = index < lastIndex,
+        ) {
+            tick()
+            moveStep(index, 1)
+        }
     }
     //  删除这颗是**危险项**：颜色走 `IconAction` 的 `error` 通道（与浮层菜单里
     //  `MenuEntry.Row(danger = true)` 同一档），而不是普通图标的次级色。
-    //  它恒可用，所以不必走 [StepRowButton]（那一支存在的意义是「禁用时说一句」）。
+    //  它恒可用，所以不需要 [DisabledHint]（那一支存在的意义是「禁用时说一句」）。
     IconAction(
         PageIcons.CommandDelete,
         I18n.get(Strings.COMMON_DELETE, "删除"),
@@ -390,22 +367,6 @@ private fun SettingsPage.StepRowButtons(
         } else {
             XLog.w("多条命令：要删的第 ${index + 1} 步已经不在（现在共 ${commandDraft.draft.steps.size} 步），这次点击忽略")
         }
-    }
-}
-
-/** [StepRowButtons] 里的一颗：禁用态被点时用 [disabledHint] 说一句，而不是吃点击。 */
-@Composable
-private fun SettingsPage.StepRowButton(
-    icon: ImageVector,
-    label: String,
-    enabled: Boolean,
-    disabledHint: String,
-    onClick: () -> Unit,
-) {
-    //  同一档原因的行共用同一个引用（见上一条注释）
-    val onBlocked = remember(disabledHint) { { hint(disabledHint) } }
-    CompositionLocalProvider(LocalDisabledClick provides onBlocked) {
-        IconAction(icon, label, enabled = enabled, onClick = onClick)
     }
 }
 

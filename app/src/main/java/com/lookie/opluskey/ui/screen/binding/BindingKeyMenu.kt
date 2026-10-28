@@ -91,10 +91,16 @@ internal fun SettingsPage.BindingKeyMenu() {
                                 open = false
                                 dialog = KeyMenuDialog.RENAME
                             },
-                            // 一步到位、不弹确认：停用不丢任何数据，菜单里一字之差就能改回来
+                            //  停用要过一道确认：停用之后这颗键**不再接管**，而它旁边就是「删除」——
+                            //  两句一字之差、后果完全不同（一个是暂时不接管、一个是没了），
+                            //  先问一句才分得清。启用不必确认（那是把它开回来，没有可失去的东西）。
                             onSetEnabled = { on ->
                                 open = false
-                                setKeyEnabledFromMenu(editing, on)
+                                if (on) {
+                                    setKeyEnabledFromMenu(editing, true)
+                                } else {
+                                    dialog = KeyMenuDialog.DISABLE
+                                }
                             },
                             onDelete = {
                                 open = false
@@ -127,10 +133,13 @@ private fun SettingsPage.openBranchesPage() {
     navTo(Screen.BRANCHES)
 }
 
-/** 菜单底下那两个弹窗 —— 同一时刻至多一个。 */
+/** 菜单底下那三个弹窗 —— 同一时刻至多一个。 */
 private enum class KeyMenuDialog {
     RENAME,
     DELETE,
+
+    /** 停用这一颗键的确认窗（启用不弹，直接写）。 */
+    DISABLE,
 }
 
 /**
@@ -278,6 +287,21 @@ private fun SettingsPage.KeyMenuDialogHost(
             // 改名写进配置（身份是 id，绑定不丢）；失败时 `write` 自己会提示，这里照样关窗。
             if (selected.isCustom) confirmRenameKey(selected, name)
             onDismiss()
+        },
+    )
+    ConfirmDialog(
+        show = dialog == KeyMenuDialog.DISABLE,
+        title = I18n.get(Strings.BINDING_DISABLE_KEY, "停用按键"),
+        //  说清两件事：**这颗键不再接管**（按下去不会有任何动作），以及**什么都没丢**
+        //  （绑定、条件、名字都留着，随时能开回来）—— 与下面那句「删除」正好是这两种后果的分界。
+        summary = I18n.format(Strings.BINDING_DISABLE_KEY_CONFIRM, selected.label),
+        //  按钮只写动词（与「删除」那一档同一形状）：标题已经说了停用的是什么
+        action = I18n.get(Strings.COMMON_DISABLE, "停用"),
+        onDismiss = onDismiss,
+        onConfirm = {
+            onDismiss()
+            //  写的是这一颗键的 `enabled`（与模块总闸是两层）；失败时 `write` 自己会提示。
+            setKeyEnabledFromMenu(selected, false)
         },
     )
     ConfirmDialog(

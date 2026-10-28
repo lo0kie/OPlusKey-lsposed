@@ -72,16 +72,16 @@ object ConfigProfiles {
         val order: Int,
     ) {
         /**
-         * 界面上怎么写它 —— 名字为空的配置（[isDefault]）写「默认」，其余写用户起的名字。
+         * 界面上怎么写它 —— 名字为空的配置（[isDefault]）写「默认配置」，其余写用户起的名字。
          *
          *  放在这里而不是各页各写一份：切换 / 导出那几层菜单与删除提示都要这一行，
          *  各写一遍就会有一处忘了处理空名字，界面上出现一个空格子。
          */
-        val displayName: String get() = if (isDefault) I18n.get(Strings.PROFILE_DEFAULT, "默认") else name
+        val displayName: String get() = if (isDefault) I18n.get(Strings.PROFILE_DEFAULT, "默认配置") else name
     }
 
     /**
-     * 列出全部配置，顺序**只看位次**（[Config.profileOrder]），「默认」配置永远在最上面。
+     * 列出全部配置，顺序**只看位次**（[Config.profileOrder]），「默认配置」永远在最上面。
      *
      * ## 为什么不用槽号排
      *

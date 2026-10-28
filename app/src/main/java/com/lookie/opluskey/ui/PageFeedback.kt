@@ -42,6 +42,15 @@ internal const val HINT_SLOT_BINDING = "binding"
 internal const val HINT_SLOT_COMMAND = "command"
 
 /**
+ * **本页杂项** —— 所有「没特别指定语义位」的提示都落在这里。
+ *
+ *  以前不传 `slot` 等于「每次新开一条」：同一个按钮连点两下（保存失败再试一次）会叠出两条
+ *  几乎一样的条子，用户看到的就是「一直弹新的」。收到这一个位上之后，同一页的杂项提示
+ *  永远只有一条、原地改字。
+ */
+internal const val HINT_SLOT_PAGE = "page"
+
+/**
  * 「这一下点不动」那一条的语义位 —— 页面上**所有**禁用态控件共用它。
  *
  *  为什么需要一个位：这条回执原来没给位（`hint(disabledClickReason())`），于是每点一下都是
@@ -87,12 +96,13 @@ internal const val HINT_SLOT_CHECKING = "checking"
  *  永远被弹窗盖住；2026-10-19 提示槽挪到浮层槽之后那条理由不成立了，它已改走 [SettingsPage.hint]。）
  *
  * @param slot 语义位：同一个位上的话**改那一条**而不是再叠一条（见 `HintQueue.push`）。
- *   开关 / 切换类都带位（`writeAndNotice` 按写盘说明的前缀给），
- *   一次性回执（保存失败、已清空）不带给 —— 那本来就该各说各的。
+ *   开关 / 切换类都带位（`writeAndNotice` 按写盘说明的前缀给）；
+ *   **不给位时落到「本页杂项」这一个位上**（[HINT_SLOT_PAGE]），不再每次新开一条 ——
+ *   以前 `null` 的含义是「各说各的」，结果连点同一个按钮也会叠出一串几乎一样的条子。
  */
 internal fun SettingsPage.hint(
     text: String,
-    slot: String? = null,
+    slot: String? = HINT_SLOT_PAGE,
     /** 这一条自己的停留时长（`null` = 队列统一那一档）。见 [HintQueue.push] 的 `holdMs`。 */
     holdMs: Long? = null,
 ) {

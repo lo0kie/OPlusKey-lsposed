@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -11,7 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -29,9 +31,11 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.FAB_BOTTOM_CLEARANCE
-import com.lookie.opluskey.ui.PageCornerFab
-import com.lookie.opluskey.ui.PageFabButton
+import com.lookie.opluskey.ui.DisabledHint
+import com.lookie.opluskey.ui.MenuEntry
+import com.lookie.opluskey.ui.MoreButton
+import com.lookie.opluskey.ui.PageMenu
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
@@ -39,12 +43,11 @@ import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.SmallTitle
+import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
@@ -78,9 +81,13 @@ internal fun SettingsPage.CommandPage(
     val saved = remember(configState.commands.value, kind) { configState.commands.value.filter { it.kind == kind } }
     // 排序态（只可能出现在「多条命令」这一页）：表单与已保存那片一律禁用，底部工具条滑出隐藏。
     val sorting = commandDraft.stepEditing
+    //  命令列表那一行的小标题右侧那颗「更多」（与条件执行页的场景块同一套）：
+    //  点它弹一层菜单，排序态从菜单里进出 —— 原先挂在右下角那颗 FAB 上，用户口径挪到这里。
+    val listAnchor = rememberPreciseClickState()
+    var listMenu by remember { mutableStateOf(false) }
     //  排序那颗 FAB 只在**有步骤可排**时出现：列表空着没什么可排的，摆一颗「调整顺序」只是噪音。
     //  但排序态里即使把步骤删空也要留着 —— 那时工具条是隐藏的，它是**唯一的出口**，藏了就出不来。
-    val showSortFab = kind == CommandKind.SERIAL && (sorting || commandDraft.draft.steps.isNotEmpty())
+
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier
@@ -92,8 +99,9 @@ internal fun SettingsPage.CommandPage(
                 .verticalScroll(scroll.state)
                 // 页底留白挂在滚动内容内侧（`padding` 在 `verticalScroll` 之后）——
                 // 尾部 Spacer 实测不进滚动内容高度，会让最大滚动位置少一截。
-                //  多条命令那一页要多让一档给右下角那颗 FAB（[FAB_BOTTOM_CLEARANCE]）。
-                .padding(bottom = if (showSortFab) FAB_BOTTOM_CLEARANCE else PAGE_BOTTOM_PADDING),
+                //  **与首页同一档（[PAGE_BOTTOM_PADDING]），不再为右下角那颗 FAB 额外抬高** ——
+                //  一页一档的话，翻页时底部那段空白会忽高忽低（用户口径：统一）。
+                .padding(bottom = PAGE_BOTTOM_PADDING),
         ) {
             // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带（`tabBlockDp`）一起让出。
             Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp))
@@ -102,7 +110,7 @@ internal fun SettingsPage.CommandPage(
             //  （「请输入名称」），滚到这一屏时那行字可能已经被填满，光看框分不清哪个是名字、
             //  哪个是命令本体。原先这一条写的是「修改命令 / 新增命令」—— 那说的是**这一页在干什么**，
             //  而顶栏已经写着「自定义命令」、工具栏那颗键写着「保存 / 修改」，这里该说的是**这一栏是什么**。
-            SmallTitle(I18n.get(Strings.COMMAND_NAME_TITLE, "命令名称"))
+            SectionTitle(I18n.get(Strings.COMMAND_NAME_TITLE, "命令名称"))
 
             // 输入项用 COUI 的「卡片输入」形态（[IconInputView]）：一个输入项一张卡、无边框，
             // 行首图标会把标题与输入框一起挤开 —— 库的 `InputView` 做不到，所以自己拼。
@@ -111,8 +119,7 @@ internal fun SettingsPage.CommandPage(
 
             // 单条命令的正文 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
             if (kind == CommandKind.SINGLE) {
-                Spacer(Modifier.height(12.dp))
-                SmallTitle(I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"))
+                SectionTitle(I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"))
                 SingleCommandField(ui, scroll, enabled = !sorting)
             }
 
@@ -121,23 +128,28 @@ internal fun SettingsPage.CommandPage(
             //  它自己那条行标题（「命令间隔时长」）说的是**这一行是什么**，小标题说的是**这一组是什么**
             //  —— 以后这一组还会长（比如「失败后停止」），先按「命令设置」归拢。
             if (kind == CommandKind.SERIAL) {
-                Spacer(Modifier.height(12.dp))
-                SmallTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
-                StepDelayCard(tick, enabled = !sorting)
+                CommandSettingsSection(sorting = sorting, tick = tick)
             }
 
             // 「支持的命令格式」卡 —— 说的是「命令输入框里能写什么」，多条命令没有那个
             // 输入框，所以只在单条那一栏出现。
             if (kind == CommandKind.SINGLE) {
-                Spacer(Modifier.height(12.dp))
-                SmallTitle(I18n.get(Strings.COMMAND_FORMATS_TITLE, "支持的命令格式"))
+                SectionTitle(I18n.get(Strings.COMMAND_FORMATS_TITLE, "支持的命令格式"))
                 CommandFormatsCard(tick, ui)
             }
 
             // 多条命令的步骤单独一张卡：它是一串行，塞进上面那张卡会多嵌两层内边距。
             if (kind == CommandKind.SERIAL) {
-                Spacer(Modifier.height(12.dp))
-                SmallTitle(I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"))
+                SectionTitle(
+                    text = I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"),
+                    trailing = {
+                        MoreButton(
+                            onClick = { listMenu = true },
+                            anchor = listAnchor,
+                            endPadding = PAGE_MARGIN,
+                        )
+                    },
+                )
                 //  加 / 删步骤的过渡不在这里：行让位 / 回位由 SerialSteps 每行的 expand / shrink 驱动，
                 // 两层高度动画叠在一起会让卡片背景慢半拍。
                 Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
@@ -148,51 +160,97 @@ internal fun SettingsPage.CommandPage(
             // 「已保存的命令」这一段**始终在**：一条都没有时给一张空状态卡 ——
             //  以前是 `if (saved.isNotEmpty())` 整段不出现，用户看不出这块地方该有东西、也分不清
             //  「还没保存过」与「这块地方根本不存在」。
-            Spacer(Modifier.height(12.dp))
-            SmallTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
+            SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
             SavedCommandsSection(saved, ui, tick, onScrollTop, enabled = !sorting)
         }
-        // 排序那颗 FAB 只有「多条命令」这一页、且真有步骤可排时才在（见 [showSortFab]）。
-        //  位置与**进出场**都走 [PageCornerFab]（与「按键绑定」「条件执行」那两颗同一份）：
-        //  显隐要交给它的 `AnimatedVisibility`，别在外面套 `if` —— 那样是整棵子树瞬时增删，
-        //  滑入滑出就没了。
-        //  它**不跟滚动藏**：排序态是个开关，滚下去也得能点回来。
-        PageCornerFab(visible = showSortFab) { StepSortFab() }
+        //  排序态的入口在「命令列表」那条小标题的行尾（见它上面那个 `trailing`），
+        //  不再用右下角那颗 FAB —— 与「条件执行」页的场景块同一个形态。
+        StepListMenu(
+            open = listMenu,
+            sorting = sorting,
+            anchor = listAnchor,
+            tick = tick,
+            onClose = { listMenu = false },
+        )
     }
 }
 
 /**
- * 「调整步骤顺序」那颗 FAB —— 点一下进排序态、再点一下退出。
+ * 「命令列表」那条小标题行尾那颗「更多」弹出来的菜单 —— 排序态从这里进出。
  *
- *  排序态下行尾出现上移 / 下移 / 删除，行的轻点不再换命令，页面其余控件禁用、工具条滑出隐藏
- *  （判据全在 `CommandDraftState.stepEditing`）。
+ *  与「条件执行」页的场景菜单同一种形态：一层菜单 + 一段带标题的候选
+ *  （`MenuEntry.Section` 负责标题与行距，样式来源只有那一处）。
+ *  单独抽一支只为让 [CommandPage] 留在 detekt 的长度上限之内。
  */
 @Composable
-private fun SettingsPage.StepSortFab() {
-    val tick = rememberTick()
-    val sorting = commandDraft.stepEditing
-    PageFabButton(
-        onClick = {
-            tick()
-            commandDraft.stepEditing = !sorting
-            XLog.w(if (sorting) "多条命令：退出排序态" else "多条命令：进入排序态")
-        },
-    ) {
-        //  字形换的是**形状**（铅笔 ↔ 对勾），插值不了 —— 用 `Crossfade` 淡过去
-        //  （与抽屉里行首那颗选中态同一套，见 `CommandMenus.StepSheetRow`）。
-        Crossfade(targetState = sorting, label = "StepSortFabIcon") { on ->
-            Icon(
-                if (on) PageIcons.Confirm else PageIcons.CommandEditCog,
-                contentDescription =
-                    if (on) {
-                        I18n.get(Strings.COMMAND_STEP_SORT_DONE, "完成")
-                    } else {
-                        I18n.get(Strings.COMMAND_STEP_SORT, "调整步骤顺序")
-                    },
-                // 库只给容器色、不给字形色
-                tint = COUITheme.colorScheme.onPrimary,
-            )
+private fun SettingsPage.StepListMenu(
+    open: Boolean,
+    sorting: Boolean,
+    anchor: PreciseClickState,
+    tick: () -> Unit,
+    onClose: () -> Unit,
+) {
+    PageMenu(
+        entries =
+            if (open) {
+                listOf(
+                    MenuEntry.Section(
+                        title = I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"),
+                        rows =
+                            listOf(
+                                //  文案固定「编辑列表」，排序态里这一行**禁用** ——
+                                //  那种状态下要退出编辑，走右下角那颗改成了「完成」的 FAB。
+                                MenuEntry.Row(
+                                    title = I18n.get(Strings.COMMAND_STEP_SORT, "编辑列表"),
+                                    icon = PageIcons.CommandEditCog,
+                                    //  列表空着 / 编辑中 ⇒ 禁用；`disabledHint` 是**这一行自己**的限制，
+                                    //  不填就会掉到整页那句「系统侧还是旧版」上
+                                    enabled = !sorting && commandDraft.draft.steps.isNotEmpty(),
+                                    disabledHint =
+                                        if (sorting) {
+                                            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
+                                        } else {
+                                            I18n.get(Strings.COMMAND_NEED_STEP, "还没添加步骤")
+                                        },
+                                ) {
+                                    onClose()
+                                    tick()
+                                    commandDraft.stepEditing = !sorting
+                                    XLog.w(if (sorting) "多条命令：退出排序态" else "多条命令：进入排序态")
+                                },
+                            ),
+                    ),
+                )
+            } else {
+                emptyList()
+            },
+        preciseClick = anchor,
+        onDismiss = onClose,
+    )
+}
+
+/**
+ * 「命令设置」那一栏 —— 目前只有「命令间隔时长」一张卡。
+ *
+ *  编辑列表（排序态）时它整块禁用，且禁用态那句话要换成本页的：页面那条
+ *  （`disabledClickReason`）讲的是宿主 / 旧版（给「模块没生效」用的），
+ *  与「正在编辑列表」完全不是一回事。
+ *
+ *  单独抽一支只为让 [CommandPage] 留在 detekt 的长度上限之内。
+ */
+@Composable
+private fun SettingsPage.CommandSettingsSection(
+    sorting: Boolean,
+    tick: () -> Unit,
+) {
+    SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
+    if (sorting) {
+        //  整块共用一句「编辑中…」—— 投递与槽位都在 `DisabledHint` 里
+        DisabledHint(I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")) {
+            StepDelayCard(tick, enabled = false)
         }
+    } else {
+        StepDelayCard(tick, enabled = true)
     }
 }
 

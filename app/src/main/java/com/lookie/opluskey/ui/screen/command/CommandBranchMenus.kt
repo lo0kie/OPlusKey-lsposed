@@ -13,6 +13,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
@@ -86,11 +87,16 @@ private fun SettingsPage.BranchRowMenu(
                 //  变成两行「未选择条件」，用户还得分清哪行是刚加的）。
                 //  两种情况都给同一句提示，把注意力推回那一行。
                 add(addConditionRow(at, menus))
+                //  停用 / 启用紧跟在「添加场景」下面（同属「这一行现在怎么样」）——
+                //  行本体在 `CommandBranchParts.kt`：这一支的行数已经到了 detekt 的上限。
+                add(branchToggleRow(rules, at, menus))
                 add(
                     MenuEntry.Row(
                         title = I18n.get(Strings.COMMON_MOVE_UP, "上移"),
                         icon = TablerIcons.Outline.ArrowUp,
                         enabled = at > 0,
+                        //  禁用的行必须自带说法：不给就会落到整页那条（讲的是模块/宿主链路）
+                        disabledHint = I18n.get(Strings.COMMAND_BRANCH_TOP_REACHED, "已经在最上面"),
                         dividerBefore = true,
                     ) {
                         branchDraft.draft.move(at, at - 1)
@@ -102,6 +108,7 @@ private fun SettingsPage.BranchRowMenu(
                         title = I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
                         icon = TablerIcons.Outline.ArrowDown,
                         enabled = at >= 0 && at < rules.lastIndex,
+                        disabledHint = I18n.get(Strings.COMMAND_BRANCH_BOTTOM_REACHED, "已经在最下面"),
                     ) {
                         branchDraft.draft.move(at, at + 1)
                         menus.menuAt = -1
@@ -345,7 +352,11 @@ private fun SettingsPage.addConditionRow(
             //  同样已经摆了一行「未选择条件」占位，那也是「有待配的一行」。
             val pending = old.conditions.isEmpty() || old.conditions.lastOrNull()?.isUsable == false
             if (pending) {
-                hint(I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING, "有场景还没选"))
+                //  与其它「为什么这一步做不了」共用同一个位
+                hint(
+                    I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING, "有场景还没选"),
+                    slot = HINT_SLOT_DISABLED,
+                )
                 return@Row
             }
             val next = old.addingCondition(BranchCondition(""))

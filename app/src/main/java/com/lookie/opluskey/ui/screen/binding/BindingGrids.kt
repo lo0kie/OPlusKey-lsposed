@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -29,6 +28,7 @@ import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.Screen
+import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.linkReady
@@ -40,7 +40,6 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.tickNow
-import io.github.suqi8.coui.kmp.basic.SmallTitle
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
@@ -68,35 +67,35 @@ internal fun SettingsPage.BuiltInGrid(
 ) {
     val groups = remember { ActionCatalog.groupsFor() }
     var builtInBase = 0
-    groups.forEachIndexed { groupIndex, (groupTitle, group) ->
-        // 「上一段 → 这个标题」之间给一档（与网格行距同值），与下面「自定义命令」那一段同一条规矩。
-        // 第一组不加 —— 它前面那一段（按键设置卡）已经自带收尾间距，双击档则是页首、不需要。
-        if (groupIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
-        SmallTitle(ActionCatalog.groupTitleLabel(groupTitle))
+    //  每一组 = 标题 + 网格，包成一块；组与组之间的间距由小标题自带，不做首尾特判。
+    Column {
+        groups.forEachIndexed { groupIndex, (groupTitle, group) ->
+            SectionTitle(ActionCatalog.groupTitleLabel(groupTitle))
 
-        // 这一段用一个**内层 Column** 单独带 `PAGE_MARGIN` 横向 padding，
-        // 标题在外层不受影响。
-        Column(
-            Modifier.padding(horizontal = PAGE_MARGIN),
-            verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
-        ) {
-            for (rowIndices in (builtInBase until builtInBase + group.size).chunked(COLUMNS)) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    // 上下左右间距保持一致；不再给焦点圈留补偿（见 `GRID_GAP` 的注释）
-                    horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
-                ) {
-                    rowIndices.forEach { index ->
-                        BuiltInTile(st, index, enabled, Modifier.weight(1f))
-                    }
-                    // 最后一行不满时补空位：不补的话剩下那格会被 weight 撑到整行宽
-                    repeat(COLUMNS - rowIndices.size) {
-                        Spacer(Modifier.weight(1f))
+            // 这一段用一个**内层 Column** 单独带 `PAGE_MARGIN` 横向 padding，
+            // 标题在外层不受影响。
+            Column(
+                Modifier.padding(horizontal = PAGE_MARGIN),
+                verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
+            ) {
+                for (rowIndices in (builtInBase until builtInBase + group.size).chunked(COLUMNS)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        // 上下左右间距保持一致；不再给焦点圈留补偿（见 `GRID_GAP` 的注释）
+                        horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
+                    ) {
+                        rowIndices.forEach { index ->
+                            BuiltInTile(st, index, enabled, Modifier.weight(1f))
+                        }
+                        // 最后一行不满时补空位：不补的话剩下那格会被 weight 撑到整行宽
+                        repeat(COLUMNS - rowIndices.size) {
+                            Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
             }
+            builtInBase += group.size
         }
-        builtInBase += group.size
     }
 }
 

@@ -232,6 +232,14 @@ internal data class StateRuleDto(
     /** 这一块的**全部**条件，按书写顺序（判定时逐条都要成立）。 */
     val conditions: List<String> = emptyList(),
     val action: String = Action.NONE,
+    /**
+     * 这一条参不参与判定（界面上的「停用场景」）。
+     *
+     *  **默认 `true`**：老文件没有这一格，读回来就是「启用」—— 与升级前的行为一致。
+     *  写成 `false` 才会被别的版本看到；认不出这一格的老读方会按 `true` 处理（等于这一条照旧生效），
+     *  所以读侧**不需要**任何迁移。
+     */
+    val enabled: Boolean = true,
 ) {
     /**
      * 线格式 → 一条分支；**认不出就整条丢掉**（返回 `null`）。
@@ -247,7 +255,7 @@ internal data class StateRuleDto(
             return null
         }
         val parsed = parsedConditions() ?: return null
-        return StateRule(parsedGesture, parsed, Action.parse(action))
+        return StateRule(parsedGesture, parsed, Action.parse(action), enabled)
     }
 
     /**
@@ -289,6 +297,7 @@ internal data class StateRuleDto(
                         .orEmpty(),
                 conditions = rule.conditions.map { it.token },
                 action = rule.action.token,
+                enabled = rule.enabled,
             )
     }
 }

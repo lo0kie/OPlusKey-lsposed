@@ -167,7 +167,7 @@ internal fun SettingsPage.ProfileDeleteConfirmDialog(ui: AboutUiState) {
                 Strings.DIALOG_DELETE_PROFILE_MESSAGE,
                 //  「默认」配置没有名字（这时菜单里那一行本来就是灰的，走不到这里）——
                 //  仍然给一个能读的说法，免得万一出现一个空书名号
-                escapeEmphasis(name.ifBlank { I18n.get(Strings.PROFILE_DEFAULT, "默认") }),
+                escapeEmphasis(name.ifBlank { I18n.get(Strings.PROFILE_DEFAULT, "默认配置") }),
             ),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { ui.showDeleteConfirm = false },
@@ -192,7 +192,7 @@ internal fun SettingsPage.ProfileNamingDialog(ui: AboutUiState) {
         title =
             when (naming?.kind) {
                 ProfileNaming.Kind.NEW -> I18n.get(Strings.PROFILE_NEW, "新建配置")
-                else -> I18n.get(Strings.PROFILE_RENAME, "重命名配置")
+                else -> I18n.get(Strings.PROFILE_RENAME, "重命名")
             },
         label = I18n.get(Strings.PROFILE_NAME, "配置名称"),
         //  与「添加按键 / 重命名按键」同一颗标签：这一格填的都是**一个名字**
