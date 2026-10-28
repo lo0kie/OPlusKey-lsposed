@@ -10,28 +10,31 @@
 
 ---
 
-## 零、实测基线（2026-10-22 复核）
+## 零、实测基线（2026-10-28 复核）
 
-正文各节的 `43 字段 / 15 文件 / ui/component / 18 个环` 是**改造前**的口径。改造后的可复核值：
+**本节是唯一的口径来源**：正文各节是不同时点的审计记录（`43 字段 / 15 文件 / ui/component / 18 个环`、
+「包间导入条数」与「`ui/` 内部三处环」两张表都是改造前或改造中的快照），**数字不回填** ——
+要看现状就跑下面那列命令。目录 `ui/component/` 已并入 `ui/`，正文里的旧路径按 `ui/` 读。
 
-| 项                                       | 值                                                                                             | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 包级环 / 边                              | **0 / 30**（细分档位口径；`ui/hook` 单独成档后由 27 变 31，根包文件归入 root 档后为 30，见下） | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
-| `SettingsPage` 状态字段                  | **24**                                                                                         | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
-| `SettingsPage.xxx` 扩展                  | **287** 个，散在 77 文件（204 / 65 → 215 / 67 → 219 / 67 → 224 / 67 → 287 / 77）               | `python3 tools/audit-arch.py`（规模那一节）                                         |
-| `ui/SettingsPage.kt` 行数                | **660**（879 → 699 → 497 → 517 → 523 → 531 → 660，多出的是 `hints` 那一域）                    | `wc -l ui/SettingsPage.kt`                                                          |
-| `inject/ProbeChannel.kt` 行数            | 337（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）                                  | `wc -l inject/Probe*.kt`                                                            |
-| `host/action/MiniWindowLauncher.kt` 行数 | 788（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`）                       | `wc -l host/action/MiniWindow*.kt`                                                  |
-| 单文件最大行数                           | **962**（`ui/model/ActionIcons.kt`）；全仓**无 > 1000 行**的文件                               | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
-| 宿主入口编排                             | `GestureReceiver` **332** 行 + `GestureExec` **418** 行（原一个 572 行的单例）                 | `python3 tools/audit-arch.py`                                                       |
-| 业务规则的副本数                         | 6 条判据全达标（两级闸门 0 处手写、失败分类 0 处手写、动作标题 1 处实现 …）                    | `python3 tools/audit-arch.py`                                                       |
-| 屏文件 import 页面                       | 54 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线                          | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
-| 零引用 import                            | 0，且由 detekt 拦下                                                                            | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
+| 项                                       | 值                                                                     | 判据命令（在 `app/src/main/java/com/lookie/opluskey` 下执行）                       |
+| ---------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 包级环 / 边                              | **0 / 31**（细分档位口径）                                             | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
+| `SettingsPage` 状态字段                  | **24**                                                                 | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
+| `SettingsPage.xxx` 扩展                  | **360** 个，散在 94 文件                                               | `python3 tools/audit-arch.py`（规模那一节）                                         |
+| `ui/SettingsPage.kt` 行数                | **681**                                                                | `wc -l ui/SettingsPage.kt`                                                          |
+| `inject/ProbeChannel.kt` 行数            | 338（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）          | `wc -l inject/Probe*.kt`                                                            |
+| `host/action/MiniWindowLauncher.kt` 行数 | 814（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`） | `wc -l host/action/MiniWindow*.kt`                                                  |
+| 单文件最大行数                           | **891**（`core/i18n/Strings.kt`）；全仓**无 > 1000 行**的文件          | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
+| 宿主入口编排                             | `GestureReceiver` **346** 行 + `GestureExec` **650** 行                | `python3 tools/audit-arch.py`                                                       |
+| 业务规则的副本数                         | 8 条判据全达标（两级闸门 0 处手写、失败分类 0 处手写、动作标题 1 处实现 …） | `python3 tools/audit-arch.py`                                                       |
+| 屏文件 import 页面                       | 66 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线  | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
+| 零引用 import                            | 0，且由 detekt 拦下                                                    | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
-**边数 27 → 31 → 30 是量具变细，不是新增耦合**：`ui/hook` 原先被折进 `ui` 档，它自己的五条外连
-（`→ bridge / core / ui / ui.screen / ui.state`）和 `root` 那一条都被记在别的档上，方向看不出来。
-拆开之后 `root` 的依赖也从含糊的 `root → ui` 变成准确的 `root → ui.hook`，同时腾出位置新增三条
-「不许反向依赖 `ui.hook`」的禁止边（见五）。
+**边数 27 → 31 → 30 → 32 → 31 有两个来源，都不是新增耦合**：`ui/hook` 从 `ui` 档里拆出来时量具变细，
+原先记在别档的五条外连与 `root` 那一条各归各位，同时腾出位置新增三条「不许反向依赖 `ui.hook`」的禁止边（见五）；
+`30 → 32` 是这两天新增的 `combo/` 与 `general/` 两个屏目录，`32 → 31` 是把 `IconInput` 从
+`ui/screen/command/` 搬回共用层之后，那条 `ui → ui.screen` 反向边不见了（现在它由禁止边兜住，见五）。
+
 
 新的分层（方向是单向的，`ui.hook` 在最上层，只往 `ui.screen` → `ui` → `ui.state` / `ui.model` 走；
 2026-10-19 起「下层反向引 `ui.hook`」由 `audit-coupling.py` 逐条禁止，不再只靠人守）：
@@ -102,7 +105,7 @@ ui.state 纯状态类（不扩展页面）      ui.model 纯展示数据
 
 1. **注入侧零界面依赖**：`inject/` 下 grep `androidx` / `io.github.suqi8` / `io.github.lyxnx` / `ui.` 全空 —— 而且 CI 已经把这条钉死了（`tools/verify-apk.sh` 里「(5) 注入侧不得引用 …」那一段，含 `KeyModule.kt` 单列一档；`ci.yml` 与 `release.yml` 都调这个脚本）。
 2. **`core/` 不认识进程、不认识界面**：`core/*` 全部导入都落在 `core/` 内 + 标准库（`core/wire → core/config` 那一条是唯一的例外，见三、C）。
-3. **`core/seal`、`ui/component/*` 的单职责已经很干净**：`Seal` / `SealAssets` / `SealCertificate` 一包三件、各管一件事；`component/` 已从早先的「PageWidgets 一个文件装所有控件」拆成 15 个文件（`MenuPopup` / `ConfirmDialog` / `PageFab` / `SliderRow` / `SwitchRow` / `TileWidgets` / `Haptics` / `Visibility` / `TextMetrics` / `IconInput` / `MarkdownBody` …）。
+3. **`core/seal`、`ui/*` 的单职责已经很干净**：`Seal` / `SealAssets` / `SealCertificate` 一包三件、各管一件事；共用件（原 `component/`，已并入 `ui/` 根）也从早先的「PageWidgets 一个文件装所有控件」拆开了（`MenuPopup` / `ConfirmDialog` / `PageFab` / `SliderRow` / `SwitchRow` / `TileWidgets` / `Haptics` / `Visibility` / `TextMetrics` / `IconInput` …）。
 
 ---
 
@@ -173,8 +176,8 @@ core/wire/ConfigBroadcast.kt:5 → core.config.CommandLibrary
 | ---------------------------- | ---------- | -------------------------- | ---------- |
 | `ui/screen/CommandScreen.kt` | 16         | `ui/screen/HomeScreen.kt`  | 7          |
 | `ui/state/ConfigActions.kt`  | 16         | `ui/theme/PageTheme.kt`    | 5          |
-| `ui/screen/AppPicker.kt`     | 9          | `ui/state/LinkCheck.kt`    | 4          |
-| `ui/component/PageHeader.kt` | 7          | `ui/state/PageFeedback.kt` | 4          |
+| `ui/screen/AppPicker.kt`     | 9          | `ui/LinkCheck.kt`          | 4          |
+| `ui/PageHeader.kt` | 7          | `ui/state/PageFeedback.kt` | 4          |
 | `ui/screen/BindingScreen.kt` | 7          | （其余 6 个文件）          | 1~3        |
 
 后果不是「不好看」，是三条实打实的：
@@ -199,12 +202,12 @@ core/wire/ConfigBroadcast.kt:5 → core.config.CommandLibrary
 
 ### G. 文案两条路
 
-- 字典路：`core/i18n/{I18n,Strings,DictionaryLoader}.kt`，`Strings` 261 个键、22 个文件引用，CI 已校验「两份字典键集合一致」。
-- 硬编码路：`ui/model/PageConst.kt` 里 17 个 `internal val …: String`（免责声明、免费声明、不可用提示 …），以及各屏里直接写的中文。**这些翻不了**，于是「中英双语」是打折的。
+- 字典路：`core/i18n/{I18n,Strings,DictionaryLoader}.kt`，`Strings` 525 个键、两份字典逐键对齐，CI 已校验「两份字典键集合一致」，另有「兜底串必须与字典逐字相同」那条审计。
+- 硬编码路：界面文案已全部走字典（见后文动作 7 的进度）；仍直接写死的只剩**日志与判据文案**，它们不进双语、也不该进。
 
 ### H. 磨砂（Haze）状态也是页面级共享
 
-`dev.chrisbanes.haze:haze:2.0.1` 已成为唯一磨砂机制（此前的 `drawBackdrop` 取样那套已撤）。`SettingsPage.pageHazeState` 被 5 个文件读：`ui/SettingsPage.kt`、`ui/component/{PageHeader,MenuPopup,ConfirmDialog}.kt`、`ui/screen/CommandScreen.kt`。
+`dev.chrisbanes.haze:haze:2.0.1` 已成为唯一磨砂机制（此前的 `drawBackdrop` 取样那套已撤）。`SettingsPage.pageHazeState` 被 5 个文件读：`ui/SettingsPage.kt`、`ui/{PageHeader,MenuPopup,ConfirmDialog}.kt`、`ui/screen/CommandScreen.kt`。
 
 这本身是**正确**的收敛（一个取样源，谁要用谁读）—— 但它是**跨包直接读字段**的形态，属于判据 3 的欠账：理想形态是「取样源由页面提供、组件通过参数或 CompositionLocal 消费」，这样组件才不依赖页面对象本身。
 
@@ -243,11 +246,12 @@ core/wire/ConfigBroadcast.kt:5 → core.config.CommandLibrary
 - **判据**：`grep -rn '^import com.lookie.opluskey.core.config' app/src/main/java/com/lookie/opluskey/inject/ core/src/main/java/com/lookie/opluskey/core/wire/` 为空 —— 这才让「注入侧读不到配置文件」重新变成**编译期**事实。
 - **风险**：线格式一动就是跨进程协议，必须三处同步（发送方 / 接收方 / 判据日志），并且**待真机验证**（`AGENTS.md` 二、1.2）。
 
-### 动作 4：`ui/` 破裂环（component 不许依赖 screen）
+### 动作 4：`ui/` 破裂环（共用件不许依赖 screen）
 
-- **怎么做**：把 `component/` 里那几个「别人的屏的零件」搬回它所属的屏（`PageFab` → `ui/screen/PageFab.kt` 或直接进 `CommandScreen`；`TileWidgets` / `Haptics` 里只服务某一屏的部分同理），把**真正跨屏**的东西留在 `component/`（`PageHeader` / `MenuPopup` / `ConfirmDialog` / `SwitchRow` / `SliderRow` / `Visibility` / `TextMetrics`）。
-- 被 `component` 引用的屏级类型与函数（`LaunchableApp` / `ActionTile` / `addStep` / `replaceStep` / `openAppPickerForStep`）按归属下沉：类型进 `ui/model`，函数留在屏内，**屏之间的调用改走页面对象上的显式接口**（见动作 5）。
-- **判据**：`grep -rn '^import com.lookie.opluskey.ui.screen' app/src/main/java/com/lookie/opluskey/ui/component/` 为空。
+- **怎么做**：把共用件里那几个「别人的屏的零件」搬回它所属的屏（`PageFab` → 该屏目录或直接进 `CommandScreen`；`TileWidgets` / `Haptics` 里只服务某一屏的部分同理），把**真正跨屏**的东西留在共用层（`ui/` 根：`MenuPopup` / `ConfirmDialog` / `SwitchRow` / `SliderRow` / `Visibility` / `TextMetrics` / `IconInput`）。
+- 被共用件引用的屏级类型与函数（`LaunchableApp` / `ActionTile` / `addStep` / `replaceStep` / `openAppPickerForStep`）按归属下沉：类型进 `ui/model`，函数留在屏内，**屏之间的调用改走页面对象上的显式接口**（见动作 5）。
+- **判据**：`audit-coupling.py` 的 `ui` 档禁止边（`ui` 根与 `ui/model` 不许 import `ui.screen.*`；`ui/hook` 是上层，不在此列）；人工复核用
+  `grep -rn '^import com.lookie.opluskey.ui.screen' app/src/main/java/com/lookie/opluskey/ui/*.kt app/src/main/java/com/lookie/opluskey/ui/model/` 应为空。
 
 ### 动作 5：拆 `SettingsPage`（分域持有，不是「搬去 ViewModel」）
 
@@ -342,7 +346,7 @@ ui/model/PageLabels.kt    3 个标签函数（gestureLabel / commandKindLabel / 
 
 ### 动作 8：新增动作的扩展面收敛到 2 处
 
-现在加一档动作要动 `core/model/Action.kt`（定义）、`host/action/ActionRunner.kt`（执行分支）、`ui/model/ActionCatalog.kt`（目录与网格）、`ui/model/ActionIcons.kt`（图标）、`core/i18n`（文案）、`ui/component/CommandMenus.kt`（菜单项）。做到「定义 + 注册」两处的关键是把后四项**变成一处注册表**：
+现在加一档动作要动 `core/model/Action.kt`（定义）、`host/action/ActionRunner.kt`（执行分支）、`ui/model/ActionCatalog.kt`（目录与网格）、`ui/model/ActionIcons.kt`（图标）、`core/i18n`（文案）、`ui/CommandMenus.kt`（菜单项）。做到「定义 + 注册」两处的关键是把后四项**变成一处注册表**：
 
 - `ActionCatalog.Spec` 已经承担了「目录项」的角色（`ui/model/ActionCatalog.kt`，被 10 个文件引用）—— 让它成为**唯一注册处**：图标、文案键、分类、网格位置都在同一条 `Spec` 里；
 - 执行分支仍是 `when`，但**分支数 = 动作档数**这件事要显式化：`ActionRunner` 用穷尽 `when`（无 `else`），这样漏一档会在**编译期**报出来（比运行时静默降级强）。
@@ -391,7 +395,7 @@ com.lookie.opluskey
 │   └── inject/                  ← 只有注入侧引用
 ├── inject/                      只在 system_server 执行：拦截 · 手势判定 · 配置接收 · 候选表
 ├── host/                        宿主主进程：接手势 · 跑动作 · 页面重进
-└── ui/                          宿主设置页进程：骨架 · screen/ · component/ · model/ · state/ · theme/
+└── ui/                          宿主设置页进程：骨架 · screen/ · model/ · state/ · theme/（共用件在根）
 ```
 
 **禁止边清单**（建议进 CI，见「七」）：
@@ -400,7 +404,7 @@ com.lookie.opluskey
 | --------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | `inject/`       | `androidx.*` · `io.github.suqi8.*` · `io.github.lyxnx.*` · `ui.*` · `host.*` · `core/config` | 已有 CI 黑名单 + 本文动作 3 补传递依赖                        |
 | `host/`         | `inject.*` · `ui.*`                                                                          | 本文动作 1、2                                                 |
-| `ui/component/` | `ui/screen.*`                                                                                | 本文动作 4                                                    |
+| `ui/` | `ui/screen.*`                                                                                | 本文动作 4                                                    |
 | `ui/state/`     | `ui/screen.*`                                                                                | 同向（状态不许反过来认识屏）                                  |
 | `ui/screen/`    | `ui.hook.*`                                                                                  | 分层图单向：hook 装页面，页面不认识 hook（2026-10-19 补）     |
 | `ui/state/`     | `ui.hook.*`                                                                                  | 同上                                                          |
@@ -424,7 +428,7 @@ com.lookie.opluskey
 | `FlexibleWindowBridge` 的框架语义数字（`switchState` 目标态 / `mScenario` / `mFlexibleZoomState` / caption 场景档 / `anyTaskForId` 的 matchMode） | 6                          | 裸数字（`1` 在三个不同含义上出现，看代码分不出哪个是哪个）                                        | 5 个具名常量 + 判据注释                                                               |
 | 宿主内部 Handler 的混淆后缀（`XxxService$a`）                                                                                                     | 1（降级纪律五、2 / 五、3） | 单值，猜错只剩一句「没找到 Handler 类」                                                           | 候选列表 + 逐个试 + 命中留痕 + 全落空时报出试过哪些                                   |
 | ROM 档位登记（档位名 / 验证记录）                                                                                                                 | 1                          | `Framework.HOOK_SETS` 与 `RomProfile.PROFILES` 各写一遍                                           | `RomProfile` 一处登记，另一张按 `romSeries` 反查；安装期新增一行「三张表对账」        |
-| 配置字段（名字 / 类型 / 默认值 / 钳制范围）                                                                                                       | 5                          | 加一个字段要改 5 个文件，其中钳制上下限在两个通道各写一遍                                         | 加一个字段改 2 个文件（`ConfigFields` 表 + `Config.kt` 的字段映射），两条通道按表生成 |
+| 配置字段（名字 / 类型 / 默认值 / 钳制范围）                                                                                                       | 5                          | 加一个字段要改 5 个文件，其中钳制上下限在两个通道各写一遍                                         | 加一个字段改 **3** 个文件（`ConfigFields` 表 · `Config.kt` 的字段映射 · `ConfigDto.toValues`），两条通道按表生成；DTO 那一层仍是手写的，所以比原定 2 个多一处 |
 
 **进度（2026-10-17）**：第三批 = 动作 5 的第 1 步（上面那张写入者清单）+ 第 2 步的第一个域 ——
 新增 `ui/state/PickerState.kt`，把「选择应用」页那 7 个字段（搜索词 / 两个落盘的筛选开关 / 小窗开关 /
@@ -438,7 +442,7 @@ com.lookie.opluskey
 `ConfigState`），`SettingsPage` 字段 **43 → 25**（剩下的 25 个是宿主资产、导航栈、度量、覆盖层编排与宿主回调 ——
 正是本文目标形态里要留在页面上的那些）；动作 6 的六个屏目录已就位（`command/` `binding/` `apppicker/` `home/`
 `about/` `donate/`），其中命令页已切成四块。三道闸 + `assembleDebug` 全过。
-**界面层已完成**：`ui/` 下不再有 > 1000 行的文件（`SettingsPage.kt` 1591 → 887，另出 `SettingsPageView.kt` / `SettingsPageDebug.kt`；六个屏各自成目录并切成 3~4 块）。
+**界面层已完成**：`ui/` 下不再有 > 1000 行的文件（`SettingsPage.kt` 1591 → 887，另出 `SettingsPageDebug.kt`；屏各自成目录并切成 3~4 块 —— 现在八个：`home/` `binding/` `apppicker/` `command/` `combo/` `general/` `about/` `donate/`）。
 **已拆（2026-10-18 复核）**：注入侧 / 宿主侧那三个 > 1000 行的文件都拆完了 —— `ProbeChannel`
 （`ProbeCall` / `ProbeOps`）、`MiniWindowLauncher`（`MiniWindowFacts`）、`FlexibleWindowBridge`
 （`FlexibleAnim`）。全仓现在没有 > 1000 行的文件，最大的是 `ui/model/ActionIcons.kt` 714 行。
@@ -515,8 +519,8 @@ grep -rn '^import com.lookie.opluskey.core.config' core/src/main/java/com/lookie
 # host 不许依赖注入侧与界面层
 grep -rn '^import com.lookie.opluskey.inject' app/src/main/java/com/lookie/opluskey/host/
 grep -rn '^import com.lookie.opluskey.ui'     app/src/main/java/com/lookie/opluskey/host/
-# 通用组件不许依赖具体屏
-grep -rn '^import com.lookie.opluskey.ui.screen' app/src/main/java/com/lookie/opluskey/ui/component/
+# 通用组件不许依赖具体屏（`ui/hook` 是上层，天然会往下引，不在此列）
+grep -rn '^import com.lookie.opluskey.ui.screen' app/src/main/java/com/lookie/opluskey/ui/*.kt app/src/main/java/com/lookie/opluskey/ui/model/
 grep -rn '^import com.lookie.opluskey.ui.screen' app/src/main/java/com/lookie/opluskey/ui/state/
 ```
 

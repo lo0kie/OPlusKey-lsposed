@@ -83,18 +83,38 @@ private val SECTION_TITLE_PAD_BOTTOM = 0.dp
 private val SECTION_TITLE_ARROW_SIZE = 16.dp
 
 /**
- * 小标题自带的那层菜单 —— 给了它就**整块可点**，并在文字末尾自动补一颗会转的箭头。
+ * 小标题那一档**可点** —— 给了它就整块可点，并在文字末尾自动补一颗箭头；`null` = 纯标题。
  *
- *  单独一个对象而不是两个参数：`SectionTitle` 的参数已经到 detekt 的上限（5 个），
- *  而「开着没有」只有「有菜单」时才成立 —— 合成一个类型，`null` 就把两件事一起表达完了。
+ *  两种去处互斥，合成一个类型而不是两个可空参数：`SectionTitle` 的参数已经贴着 detekt 的上限，
+ *  而「两样不会同时给」这件事只有合成一个类型才表达得出来（两个可空参数里总有人两个都传）。
  *
- * @param expanded 菜单现在开着没有（箭头按它转 180°）
- * @param onClick 点标题做什么（通常是 `menuOpen = true`）
+ * @see Menu 点标题开这一块的菜单
+ * @see Jump 点标题跳去另一页
  */
-internal class SectionTitleMenu(
-    val expanded: Boolean,
-    val onClick: () -> Unit,
-)
+internal sealed interface SectionTitleClick {
+    /** 点标题做什么。 */
+    val onClick: () -> Unit
+
+    /**
+     * **开这一块的菜单**：行尾一颗 `chevron-down`，开合时转 180°。
+     *
+     * @param expanded 菜单现在开着没有（箭头按它转）
+     * @param onClick 点标题做什么（通常是 `menuOpen = true`）
+     */
+    class Menu(
+        val expanded: Boolean,
+        override val onClick: () -> Unit,
+    ) : SectionTitleClick
+
+    /**
+     * **跳去另一页**：行尾一颗右箭头、恒不动 —— 与列表里「点了会进另一页」那一颗同一字形。
+     *
+     * @param onClick 点标题去哪
+     */
+    class Jump(
+        override val onClick: () -> Unit,
+    ) : SectionTitleClick
+}
 
 /** 那颗「更多」的点击区 —— 小标题行尾与命令卡右上角同一尺寸（40×20、8dp 圆角）。 */
 private val MORE_BUTTON_WIDTH = 40.dp
@@ -178,11 +198,15 @@ internal fun MoreButton(
  *  按钮，都得在每个调用点各套一遍 `Row` / `Box` —— 三十来处各写一遍，形状迟早走形。
  *
  *  这里**不重画样式**：文字、字号、行高、内边距仍是库那一份，补的只有三件事 ——
- *  可点、文字末尾那颗会转的箭头、行尾那一格。
+ *  可点、文字末尾那颗箭头、行尾那一格。
+ *
+ *  可点分两档，形状一样、只有箭头不同：**开菜单**（[SectionTitleClick.Menu]，行尾一颗
+ *  `chevron-down`，开合时转 180°）与**跳转**（[SectionTitleClick.Jump]，行尾一颗右箭头，
+ *  恒不动 —— 与列表里「点了会进另一页」那颗同形）。两档合成 [SectionTitleClick] 一个类型。
  *
  * ## 点击区只包住标题本身
  *
- *  给了 [menu] 时，按压面积 = **文字 + 箭头 + 左右 12dp / 上下 2dp**
+ *  可点时，按压面积 = **文字 + 箭头 + 左右 12dp / 上下 2dp**
  *  （[SECTION_TITLE_TAP_H] / [SECTION_TITLE_TAP_V]），**页面缩进与行高余量都留在外面**——
  *  上一版把它们包在可点区里，真机上就成了「点标题左边一大片空白、点上下一整行也弹菜单」。
  *  行高不变：缩进与余量由外面那层 padding 提供，总高仍是库那一份（16 + 8 + 8 ≈ 33dp）。
@@ -194,7 +218,7 @@ internal fun MoreButton(
  *
  * @param text 小标题的文字（调用方自己 `I18n` 取好）
  * @param insideMargin 库那份内边距（左右版式缩进 + 上下留白）；页面里用默认值
- * @param menu 点标题要开的菜单；`null` = 不可点（纯标题，绝大多数调用点）
+ * @param click 点标题做什么（开菜单 / 跳去别页）；`null` = 纯标题（绝大多数调用点）
  * @param trailing 行尾那一格（一颗「更多」之类）；`null` = 不占位
  *
  *  注意：**这一层不管块与块之间的间距**（它以前带过 `gapTop` / `gapBottom`，结果每个调用点
@@ -205,7 +229,7 @@ internal fun SectionTitle(
     text: String,
     modifier: Modifier = Modifier,
     insideMargin: PaddingValues = SmallTitleDefaults.InsideMargin,
-    menu: SectionTitleMenu? = null,
+    click: SectionTitleClick? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     //  **区块间距由组件统一给**（上 16 / 下 0，见常量那段）：页面里不再为标题补 `Spacer`，
@@ -213,7 +237,7 @@ internal fun SectionTitle(
     //  自带上下边距（上多下少）：调用点不用管标题前后该留多少
     val box = modifier.padding(top = SECTION_TITLE_PAD_TOP, bottom = SECTION_TITLE_PAD_BOTTOM)
     //  两样都没有：就是库那颗标题，一点多余布局都不套（这一支是绝大多数调用点）
-    if (menu == null && trailing == null) {
+    if (click == null && trailing == null) {
         SmallTitle(text = text, modifier = box, insideMargin = insideMargin)
         return
     }
@@ -221,61 +245,85 @@ internal fun SectionTitle(
         modifier = box.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (menu == null) {
+        if (click == null) {
             SmallTitle(text = text, insideMargin = insideMargin)
         } else {
-            val layoutDirection = LocalLayoutDirection.current
-            //  页面缩进（16 / 32dp）与行高余量都留在**点击区外面**：
-            //  上一版把它们包在可点区里，结果「点标题左边一大片空白、点上下一整行也能弹菜单」。
-            val startInset = insideMargin.calculateStartPadding(layoutDirection)
-            val outerTop = (insideMargin.calculateTopPadding() - SECTION_TITLE_TAP_V).coerceAtLeast(0.dp)
-            val outerBottom = (insideMargin.calculateBottomPadding() - SECTION_TITLE_TAP_V).coerceAtLeast(0.dp)
-            Row(
-                modifier =
-                    Modifier
-                        .padding(start = startInset, top = outerTop, bottom = outerBottom),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    modifier =
-                        Modifier
-                            //  **链式顺序是这里唯一的坑**：`clickable` 必须在 `padding` **外面**
-                            //  （写在它前面），这样点击区才等于「文字 + 内外那两档 padding」。
-                            //  反过来写（padding 在外）时，padding 只是给外圈留白、**不参与点击**——
-                            //  真机表现就是「调了半天 padding，点击区一点都不变」。
-                            //  `offset` 与 padding 一负一正：按压面积向左右各多出 [SECTION_TITLE_TAP_H]，
-                            //  而文字仍落在 [startInset] 上。
-                            .offset(x = -SECTION_TITLE_TAP_H)
-                            .clip(SECTION_TITLE_SHAPE)
-                            .clickable(onClick = menu.onClick)
-                            .padding(horizontal = SECTION_TITLE_TAP_H, vertical = SECTION_TITLE_TAP_V),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    //  文字本身零内边距：缩进已经在外面了，右边紧接箭头。
-                    //  外面那层 `offset` 是**光学修正**：整行字往下落一档（见常量的注释）。
-                    Box(Modifier.offset(y = SECTION_TITLE_TEXT_OPTICAL_Y)) {
-                        SmallTitle(text = text, insideMargin = PaddingValues(0.dp))
-                    }
-                    //  文字末尾那颗箭头：给了菜单就自动补，开合时转 180°
-                    val rotation by animateFloatAsState(
-                        targetValue = if (menu.expanded) 180f else 0f,
-                        label = "SectionTitleArrow",
-                    )
-                    Icon(
-                        PageIcons.StepDown,
-                        contentDescription = null,
-                        modifier =
-                            Modifier
-                                .padding(start = SECTION_TITLE_ARROW_GAP)
-                                .size(SECTION_TITLE_ARROW_SIZE)
-                                .rotate(rotation),
-                        tint = COUITheme.colorScheme.onBackgroundVariant,
-                    )
-                }
-            }
+            ClickableTitleRow(text = text, insideMargin = insideMargin, click = click)
         }
         //  把行尾那一格推到右边（标题自己只占它本身的宽度）
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
     }
+}
+
+/**
+ * 可点的标题本体 —— 文字 + 行尾那颗箭头。点击区只包住这两样（见 [SECTION_TITLE_TAP_H]），
+ * 页面缩进与行高余量都留在外面。
+ */
+@Composable
+private fun ClickableTitleRow(
+    text: String,
+    insideMargin: PaddingValues,
+    click: SectionTitleClick,
+) {
+    //  振动走页面那条通用通道（[LocalTick]）：这一层不带 `SettingsPage` 接收者 ——
+    //  与能点的行（`CardRow`）、开关（`SwitchRow`）同一份判据，不在这里自己 new 一个。
+    val tick = LocalTick.current
+    val layoutDirection = LocalLayoutDirection.current
+    //  页面缩进（16 / 32dp）与行高余量都留在**点击区外面**：
+    //  上一版把它们包在可点区里，结果「点标题左边一大片空白、点上下一整行也能弹菜单」。
+    val startInset = insideMargin.calculateStartPadding(layoutDirection)
+    val outerTop = (insideMargin.calculateTopPadding() - SECTION_TITLE_TAP_V).coerceAtLeast(0.dp)
+    val outerBottom = (insideMargin.calculateBottomPadding() - SECTION_TITLE_TAP_V).coerceAtLeast(0.dp)
+    Row(
+        modifier =
+            Modifier
+                .padding(start = startInset, top = outerTop, bottom = outerBottom),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    //  **链式顺序是这里唯一的坑**：`clickable` 必须在 `padding` **外面**
+                    //  （写在它前面），这样点击区才等于「文字 + 内外那两档 padding」。
+                    //  反过来写（padding 在外）时，padding 只是给外圈留白、**不参与点击**——
+                    //  真机表现就是「调了半天 padding，点击区一点都不变」。
+                    //  `offset` 与 padding 一负一正：按压面积向左右各多出 [SECTION_TITLE_TAP_H]，
+                    //  而文字仍落在 [startInset] 上。
+                    .offset(x = -SECTION_TITLE_TAP_H)
+                    .clip(SECTION_TITLE_SHAPE)
+                    .clickable {
+                        tick()
+                        click.onClick()
+                    }.padding(horizontal = SECTION_TITLE_TAP_H, vertical = SECTION_TITLE_TAP_V),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            //  文字本身零内边距：缩进已经在外面了，右边紧接箭头。
+            //  外面那层 `offset` 是**光学修正**：整行字往下落一档（见常量的注释）。
+            Box(Modifier.offset(y = SECTION_TITLE_TEXT_OPTICAL_Y)) {
+                SmallTitle(text = text, insideMargin = PaddingValues(0.dp))
+            }
+            TitleArrow(click)
+        }
+    }
+}
+
+/**
+ * 文字末尾那颗箭头 —— 两档各一颗：
+ *  · [SectionTitleClick.Menu]：`chevron-down`，开合时转 180°；
+ *  · [SectionTitleClick.Jump]：右箭头、恒不动 —— 与列表里「点了会进另一页」那一颗同一字形。
+ */
+@Composable
+private fun TitleArrow(click: SectionTitleClick) {
+    val box = Modifier.padding(start = SECTION_TITLE_ARROW_GAP).size(SECTION_TITLE_ARROW_SIZE)
+    val tint = COUITheme.colorScheme.onBackgroundVariant
+    if (click !is SectionTitleClick.Menu) {
+        Icon(PageIcons.EnterArrow, contentDescription = null, modifier = box, tint = tint)
+        return
+    }
+    val rotation by animateFloatAsState(
+        targetValue = if (click.expanded) 180f else 0f,
+        label = "SectionTitleArrow",
+    )
+    Icon(PageIcons.StepDown, contentDescription = null, modifier = box.rotate(rotation), tint = tint)
 }

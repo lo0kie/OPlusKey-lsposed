@@ -48,6 +48,8 @@ import com.lookie.opluskey.ui.model.PAGE_TRANSITION
 import com.lookie.opluskey.ui.model.PagePalette
 import com.lookie.opluskey.ui.model.colorsOf
 import com.lookie.opluskey.ui.onDebugCommand
+import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
+import com.lookie.opluskey.ui.screen.command.COMMAND_PAGE_COUNT
 import com.lookie.opluskey.ui.screen.home.HomeLinkSelfCheck
 import com.lookie.opluskey.ui.state.CONFIG_IN_FLIGHT_GRACE_MS
 import com.lookie.opluskey.ui.state.InjectStatus
@@ -187,7 +189,7 @@ internal fun SettingsPage.PageContent() {
                     val pagers =
                         PagePagers(
                             gestures = rememberPagerState(pageCount = { Gesture.entries.size }),
-                            commands = rememberPagerState(pageCount = { CommandKind.FORM_TABS.size }),
+                            commands = rememberPagerState(pageCount = { COMMAND_PAGE_COUNT }),
                             //  组合键只有短按 / 长按两档（`Gesture.entries` 是三档，别直接借它）
                             combos = rememberPagerState(pageCount = { 2 }),
                         )
@@ -429,7 +431,8 @@ private fun SettingsPage.PushResetsPagers(pagers: PagePagers) {
                 pagers.combos.scrollToPage(0)
             }
 
-            // 「自定义命令」页**按草稿的类型**定位，不是一律回第一页：
+            //  从手势页那条「已保存的命令」标题进来时停在**命令列表**那一格（一次性意图，
+            //  读过就清）；其余入口按草稿类型定位，不是一律回第一页：
             // 从「按键绑定」网格长按 / 已选中再点一下某条命令进来时，
             // `draft.load(cmd)` 已经把 `kind` 设成那条命令的类型 —— 一律回 0
             // 的话单条 / 多条那条 tab 会停在错的档上，紧接着 `draft.kind`
@@ -439,9 +442,13 @@ private fun SettingsPage.PushResetsPagers(pagers: PagePagers) {
             //  分叉那一档不在这个分页器里（它是独立页）：`indexOf` 给出 -1 ⇒ 落到第一页，
             //  紧接着 `CommandTabSync` 会把 `draft.kind` 拨回单条 —— 这一页本来也只认这两档。
             Screen.COMMANDS -> {
-                pagers.commands.scrollToPage(
-                    CommandKind.FORM_TABS.indexOf(commandDraft.draft.kind).coerceAtLeast(0),
-                )
+                val page =
+                    if (commandDraft.consumeOpenListPage()) {
+                        COMMAND_LIST_PAGE
+                    } else {
+                        CommandKind.FORM_TABS.indexOf(commandDraft.draft.kind).coerceAtLeast(0)
+                    }
+                pagers.commands.scrollToPage(page)
             }
 
             else -> {

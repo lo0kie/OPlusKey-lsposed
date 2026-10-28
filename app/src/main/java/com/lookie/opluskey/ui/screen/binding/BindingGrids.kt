@@ -271,7 +271,7 @@ private fun SettingsPage.CustomTile(
         val cmd = commandsByToken[spec.token]
         val current = st.target.actionIn(configState.config.value)
         val selected = ActionCatalog.isSelected(spec, current)
-        // 「进这条命令的编辑页」—— 长按、以及**已选中时再点一次**，共用这一个入口。
+        // 「进这条命令的编辑页」—— **已选中时再点一次**就是唯一入口（长按不接，见 `ActionTile`）。
         //
         //  走 `draft.load` 而**不是** FAB 那条 `navigateToCommands` —— 后者会先 `draft.reset()`
         //  （那是「新增」的入口），这里要的正是「把这条命令灌进表单」，
@@ -289,7 +289,7 @@ private fun SettingsPage.CustomTile(
                 commandDraft.draft.load(cmd)
                 navTo(Screen.COMMANDS)
             } else {
-                //  静默 return 的话「长按没反应」在日志里没有凭据 —— 至少说清是找不到那条命令
+                //  静默 return 的话「点不动」在日志里没有凭据 —— 至少说清是找不到那条命令
                 XLog.w("手势页打开自定义命令编辑：这条绑定不是 `cmd:`（${spec.token}），跳过")
             }
         }
@@ -308,11 +308,9 @@ private fun SettingsPage.CustomTile(
                 cmd
                     ?.takeIf { it.kind == CommandKind.SERIAL }
                     ?.let { durationText(it.stepDelayMs) },
-            // 长按与「已选中时再点一次」同一个去处（上面那个 `openEditor`）。
-            // 长按之后那一下抬手由库的 `combinedClickable` 吞掉（不会再触发点击）。
-            onLongClick = openEditor,
             // **已经选中的再点一次 = 「我要改它」**，不是「重新绑一遍」，
-            // 所以走编辑；没选中时才是「选中绑定」。
+            // 所以走编辑；没选中时才是「选中绑定」。这一格不再接长按 ——
+            // 「选中 → 再点一次」两步本来就走得通，长按只是同一件事的第二个入口。
             onClick = { if (selected) openEditor() else bindingSelect(st, spec, enabled) },
         )
     }

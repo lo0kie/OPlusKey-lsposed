@@ -37,6 +37,24 @@ internal class CommandDraftState {
     val stepRows = StepRowDisplay()
 
     /**
+     * 下一次进「自定义命令」页要停在**命令列表**那一格 —— 一次性意图，读到就清掉。
+     *
+     *  手势页那条「已保存的命令」标题点下去是「去管命令库」，落点就该是列表那页；
+     *  而进页的分页定位在 `PageContent.PushResetsPagers` 里、按草稿类型算，那一层看不到
+     *  「用户想从哪进来的」—— 于是由发起方在这儿留一句，那边读一次就清。
+     *
+     *  消费方一定跑：它挂在 push 那一刻（`LaunchedEffect(navStack.size)`），与这次导航同一拍。
+     */
+    var openListPage by mutableStateOf(false)
+
+    /** 读一次并清掉 [openListPage]。 */
+    fun consumeOpenListPage(): Boolean {
+        val want = openListPage
+        openListPage = false
+        return want
+    }
+
+    /**
      * 页面**离开栈**：草稿与 tab 镜像一起归位。
      *
      *  与 [CommandDraft.reset] 的差别只有一处：这里连 `kind` 也清回单条。平时 `kind` 由分页器
@@ -48,5 +66,6 @@ internal class CommandDraftState {
         draft.kind = CommandKind.SINGLE
         stepEditing = false
         stepRows.clear()
+        openListPage = false
     }
 }

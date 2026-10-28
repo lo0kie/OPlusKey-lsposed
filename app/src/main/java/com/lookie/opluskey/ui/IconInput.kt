@@ -1,4 +1,4 @@
-package com.lookie.opluskey.ui.screen.command
+package com.lookie.opluskey.ui
 
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -30,7 +30,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
-import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import io.github.suqi8.coui.kmp.anim.SinOutEasing

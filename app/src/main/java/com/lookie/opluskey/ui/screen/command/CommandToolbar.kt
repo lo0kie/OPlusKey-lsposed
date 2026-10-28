@@ -1,46 +1,11 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.dropShadow
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.addCommand
-import com.lookie.opluskey.ui.frosted
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.COMMAND_TOOLBAR_BOTTOM
-import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.TOOLBAR_EDGE_GAP
-import com.lookie.opluskey.ui.model.TOOLBAR_ICON_SIZE
-import com.lookie.opluskey.ui.model.TOOLBAR_SHADOW_ALPHA
-import com.lookie.opluskey.ui.model.edgeSlideIn
-import com.lookie.opluskey.ui.model.edgeSlideOut
-import com.lookie.opluskey.ui.rememberTick
-import io.github.suqi8.coui.kmp.basic.FloatingToolbar
-import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.IconButton
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
  * 载荷**还差什么**（`null` = 够了）—— 「保存」能不能点、灰着时说什么，判据只有这一处。
@@ -111,216 +76,28 @@ internal fun SettingsPage.saveBlockedReason(): String? {
 }
 
 /**
- * 「重置」这一下做的事 —— 顶栏那颗「重置 / 取消」与「已保存的命令」菜单里「再点一次编辑」
- * 共用这一份。
+ * 「重置」这一下做的事 —— 顶栏那颗「重置 / 取消」调它。
  *
- *  **就是一次 `draft.reset()`**：步骤行不会「瞬时消失」—— `steps` 一变，
+ *  **只清当前这一页那份表单**：两页各自独立（见 `CommandForm`），在「单条」页点重置不该把
+ *  「多条」页写了一半的步骤一起清掉 —— 那时候另一页的内容根本不在屏幕上。
+ *
+ *  清的是 [CommandDraft.form]，步骤行不会「瞬时消失」—— `steps` 一变，
  *  `StepRowDisplay.sync` 把对不上的行标成退场，各自 shrink 完才摘除（见那个类的注释）。
  *
  *  不要再引入「先置挂起标记、等退场播完再由页面级协程收尾」那一套：那套的收尾协程一旦没接上
  *  （或那段时间里用户又敲了字），`reset()` 就永远不执行 —— 表现正是「点了重置、表单还在」。
  */
 internal fun SettingsPage.resetCommandDraft() {
-    commandDraft.draft.reset()
+    commandDraft.draft.form.reset()
 }
 
 /**
- * 「这一页现在有没有值得保存的东西」—— 底部那条工具条出不出现、顶栏那颗「重置」出不出现，
- * 都看它（两处同一个判据，不会出现「底栏在、重置不在」这种半套）。
+ * 「这一页现在有没有值得保存的东西」—— 右下角那颗 FAB 出不出现看它，顶栏那颗「重置」也看它
+ * （同一个判据，不会出现「FAB 在、重置不在」这种半套）。
  *
- *  排序态（`stepEditing`）下**整条滑出隐藏**，而不是置灰：那时改的是步骤顺序、不是命令内容，
- *  保存与重置都没有意义；留一条灰工具条只是多占一块地方。顶栏那颗同理不画。
+ *  排序态（`stepEditing`）下 FAB 仍在，只是换了文案（「完成」，见 `CommandFloatingButton`）：
+ *  那时改的是步骤顺序、不是命令内容，保存没有意义，出路只有那一颗。顶栏那颗「重置」不画。
  */
-internal fun SettingsPage.commandToolbarVisible(): Boolean =
+internal fun SettingsPage.commandDraftHasContent(): Boolean =
     !commandDraft.stepEditing &&
         (commandDraft.draft.editingName != null || commandDraft.draft.name.isNotBlank() || payloadBlockedReason() == null)
-
-/**
- * 底部那条浮动工具条要的几件事 —— 由「自定义命令」页把它那份草稿的状态译成这一份。
- *
- *  只剩一颗「保存 / 修改」：**重置挪去了顶栏右侧**（见 [CommandHeaderReset]），底栏不再放它。
- *  [visible] 管整条出不出现；[blocked] 是「保存还不能点」的原因（点灰按钮时就说这一句）。
- */
-internal class ToolbarSpec(
-    val visible: Boolean,
-    val canSave: Boolean,
-    val saveLabel: String,
-    val blocked: () -> String?,
-    val onSave: () -> Unit,
-)
-
-/**
- * 底部那条浮动工具条的本体 —— 磨砂、阴影、进出场、两颗圆按钮全在这里。
- *
- *  现在只有「自定义命令」页在用它（[CommandActions]）：「条件执行」页的落盘点改成了右下角
- *  那叠 FAB 里的「确定」（见 `BranchScreen`），不再共用这条底栏。
- */
-@Composable
-internal fun SettingsPage.FloatingActions(
-    spec: ToolbarSpec,
-    modifier: Modifier = Modifier,
-) {
-    val canSave = spec.canSave
-    val visible = spec.visible
-    // 滑出要滑到屏幕下沿之外：胶囊浮在底边上方 [COMMAND_TOOLBAR_BOTTOM] 处，那段距离要一起算。
-    val bottomGapPx = with(LocalDensity.current) { COMMAND_TOOLBAR_BOTTOM.roundToPx() }
-
-    AnimatedVisibility(
-        visible = visible,
-        modifier = modifier,
-        // 从底边滑入 / 滑出 —— 与右下角那颗 FAB 同一份规格（见 [edgeSlideIn]）
-        enter = edgeSlideIn(bottomGapPx),
-        exit = edgeSlideOut(bottomGapPx),
-    ) {
-        // 磨砂：与顶栏、浮层菜单同一个挂法 —— 从**页面内容层**取样（[frosted]）。
-        //  取样方在本页那个取样源**之外**（工具栏挂在页内、`hazeSource` 那个 Box 外面，
-        //  见 `SettingsPage` 的调用点），不会落进自己取样的那一层（落了就是 RenderThread 栈溢出）。
-        //
-        //  注意：**留白必须自己先加**（拉过 `FloatingToolbar.kt` 才看明白）：库内部那串链是
-        //   `modifier → padding(outSidePadding) → divider → shadow → squircleBackground(color)`，
-        //   而修饰符的绘制顺序就是链上的先后 —— 磨砂挂在 `modifier` 上，画的是**连留白一起**的整块矩形，
-        //   于是胶囊外面会多出一圈糊边。
-        //   改成：我们自己 `padding(outSidePadding)` 再挂磨砂（画在留白以内 ⇒ 正好等于胶囊那一块），
-        //   并把库的 `outSidePadding` 置零 —— 总占位、点击范围都不变（都是 12dp / 8dp）。
-        //
-        //  注意：**阴影得自己补，且补在磨砂外面**：磨砂链上有个 `clip(胶囊)`（见 [frosted]），
-        //  挂在它里面的东西全被裁进胶囊那个形状；
-        //   库自己的 `dropShadow` 就挂在那里，而阴影本来画在形状**外面** ⇒ 被裁得一干二净
-        //  所以把库的 `shadowElevation` 置零、按库原样
-        //   （`radius = 10dp / 黑 10%`）在被裁的那一层**外面**补一层同样的阴影。
-        val frost = toolbarFrostModifier()
-        FloatingToolbar(
-            modifier = frost,
-            // 底色要**半透明**才透得出磨砂：`compositeOver(surface)` 会把它压成不透明实心，
-            //  那正是「磨砂看不见」的直接原因。
-            //  注意：alpha 只能**按比例缩**，不能 `copy(alpha = …)` 整个换掉 —— 库的深色板里
-            //  `surfaceContainer` 是**半透白**（`0x1AFFFFFF`，白 10%，叠在黑页上才是那个深灰），
-            //  整个换成 0.82 就成了「白 82%」的亮胶囊：真机反馈「暗色下工具条还是亮色的」正是它。
-            //  浅色板里它是实色白，替换恰好看不出来，所以之前没暴露。顶栏没这毛病是因为它取
-            //  `surface`（两档都是实色）。
-            color =
-                COUITheme.colorScheme.surfaceContainer.let {
-                    it.copy(alpha = it.alpha * FROSTED_SURFACE_ALPHA)
-                },
-            // 留白已由上面那段 `padding` 顶掉，这里置零 —— 不置会**再**缩一圈
-            outSidePadding = PaddingValues(0.dp),
-            // 库那层阴影画在磨砂的裁剪层**里面**、必定被裁光（见上面那段注释），改由我们自己在外面补
-            shadowElevation = 0.dp,
-            // `showDivider` 那圈描边与半透明底互斥（原注释的结论，磨砂要它让位）。
-            showDivider = false,
-        ) {
-            ToolbarButtons(spec)
-        }
-    }
-}
-
-/**
- * 「自定义命令」页那条工具条 —— 只剩一颗「保存 / 修改」，浮在页面底边上方。
- *
- *  实现全在 [FloatingActions] 里（磨砂、阴影、进出场），这一层只负责「把命令草稿的状态译成 spec」。
- */
-@Composable
-internal fun SettingsPage.CommandActions(modifier: Modifier = Modifier) {
-    val tick = rememberTick()
-    val editing = commandDraft.draft.editingName != null
-    FloatingActions(
-        spec =
-            ToolbarSpec(
-                visible = commandToolbarVisible(),
-                // 能不能存只看这一句（`null` = 能存）：判据与「点灰按钮时说的话」是同一支
-                canSave = saveBlockedReason() == null,
-                saveLabel =
-                    if (editing) I18n.get(Strings.COMMON_MODIFY, "修改") else I18n.get(Strings.COMMON_SAVE, "保存"),
-                blocked = ::saveBlockedReason,
-                onSave = {
-                    tick()
-                    addCommand()
-                },
-            ),
-        modifier = modifier,
-    )
-}
-
-/**
- * 底部工具条那层「磨砂 + 阴影」的修饰符 —— 从 [FloatingActions] 抽出来只为把那边压回长度上限。
- *
- *  · 磨砂从**页面内容层**取样（[frosted]）。取样方在页面那个取样源**之外**（工具条挂在页内、
- *    `hazeSource` 那个 Box 外面），不会落进自己取样的那一层（落了就是 RenderThread 栈溢出）。
- *  · **留白必须自己先加**：库内部那串链是 `modifier → padding(outSidePadding) → divider →
- *    shadow → squircleBackground(color)`，而修饰符的绘制顺序就是链上的先后 —— 磨砂挂在
- *    `modifier` 上，画的是**连留白一起**的整块矩形，于是胶囊外面会多出一圈糊边。
- *    改成：我们自己 `padding(outSidePadding)` 再挂磨砂（画在留白以内 ⇒ 正好等于胶囊那一块），
- *    并把库的 `outSidePadding` 置零 —— 总占位、点击范围都不变。
- *  · **阴影得自己补，且补在磨砂外面**：磨砂链上有个 `clip(胶囊)`（见 [frosted]），挂在它里面
- *    的东西全被裁进胶囊那个形状；库自己的 `dropShadow` 就挂在那里，而阴影本来画在形状**外面**
- *    ⇒ 被裁得一干二净。所以把库的 `shadowElevation` 置零、按库原样（`radius = 10dp / 黑 10%`）
- *    在被裁的那一层**外面**补一层同样的阴影。
- */
-@Composable
-private fun SettingsPage.toolbarFrostModifier(): Modifier {
-    val state = chrome.pageHazeState
-    if (state == null && !chrome.frostDegradeLogged) {
-        chrome.frostDegradeLogged = true
-        XLog.w("底部工具栏磨砂跳过：页面取样层未就绪 ⇒ 这一轮仍用不透明底")
-    }
-    val capsule = remember { RoundedCornerShape(FloatingToolbarDefaults.CornerRadius) }
-    val gap =
-        Modifier
-            .padding(FloatingToolbarDefaults.OutSidePadding)
-            .dropShadow(
-                shape = capsule,
-                shadow = Shadow(radius = 10.dp, color = Color.Black, alpha = TOOLBAR_SHADOW_ALPHA),
-            )
-    return state?.let { gap.frosted(it, capsule) } ?: gap
-}
-
-/**
- * 工具条里那颗圆按钮 —— 从 [FloatingActions] 抽出来只为把那边压回长度上限。
- *
- *  颜色走 [COLOR_TRANSITION_SPEC]；底色用**主题原色** `primary`
- *  （不再单独降 alpha：字形压在上面对比度最足，代价是实色底把糊盖住）。
- */
-@Composable
-private fun SettingsPage.ToolbarButtons(spec: ToolbarSpec) {
-// 用图标按钮：文字会把这窄条撑宽。文案进了 `contentDescription`。
-// 按钮 40dp、高亮圆角一半，外留白是 [TOOLBAR_EDGE_GAP]。
-    val off = COUITheme.colorScheme.disabledOnSecondaryVariant
-// 底色走**主题原色**（不单独降 alpha：字形压在上面对比度最足，代价是实色底盖住了糊）
-    val saveOn = COUITheme.colorScheme.primary
-    val saveOff = COUITheme.colorScheme.surfaceContainerHigh
-    val saveBackgroundColor by animateColorAsState(
-        targetValue = if (spec.canSave) saveOn else saveOff,
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "ToolbarSaveBackground",
-    )
-    val saveIconColor by animateColorAsState(
-        targetValue = if (spec.canSave) COUITheme.colorScheme.onPrimary else off,
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "ToolbarSaveIcon",
-    )
-    Row(
-        modifier = Modifier.padding(TOOLBAR_EDGE_GAP),
-        horizontalArrangement = Arrangement.spacedBy(TOOLBAR_EDGE_GAP),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // 灰着被点了一下时，说清是**哪一档**没齐（不是页面不可用）—— 见 [DisabledHint]：
-        //  原因的取法与 `enabled` 同一支（`spec.blocked`），所以它一改，这里跟着重组。
-        DisabledHint(spec.blocked()) {
-            IconButton(
-                onClick = spec.onSave,
-                enabled = spec.canSave,
-                minWidth = TOOLBAR_ICON_SIZE,
-                minHeight = TOOLBAR_ICON_SIZE,
-                cornerRadius = TOOLBAR_ICON_SIZE / 2,
-                // `primary` + 亮字形；禁用时落回 `surfaceContainerHigh` + 禁用灰（底不消失）。
-                backgroundColor = saveBackgroundColor,
-            ) {
-                Icon(
-                    PageIcons.Confirm,
-                    contentDescription = spec.saveLabel,
-                    tint = saveIconColor,
-                )
-            }
-        }
-    }
-}

@@ -21,8 +21,11 @@ import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.IconInputView
+import com.lookie.opluskey.ui.InputSpec
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.PageTabBand
@@ -69,7 +72,18 @@ internal val FORMAT_ROW_TOUCH = 32.dp
 internal val FORMAT_COLUMN_GAP = 12.dp
 
 /**
- * 「自定义命令」页那条类型选择器带（单条 / 多条）—— 挂在顶栏的 `bottomContent` 里。
+ * 「命令列表」那个页签的页号 —— 排在单条 / 多条两个**表单页**之后。
+ *
+ *  三个页签不再是「同一张表单的三种类型」：前两页是表单，第三页是**整个命令库**
+ *  （不分单条 / 多条）。所以凡是「只属于表单」的控件（保存那颗 FAB）都要按它判显隐。
+ */
+internal val COMMAND_LIST_PAGE = CommandKind.FORM_TABS.size
+
+/** 这一页的页签数：两个表单页 + 第三页「命令列表」。 */
+internal val COMMAND_PAGE_COUNT = COMMAND_LIST_PAGE + 1
+
+/**
+ * 「自定义命令」页那条类型选择器带（单条 / 多条 / 命令列表）—— 挂在顶栏的 `bottomContent` 里。
  *
  * 亮哪一个由 `pagerState.currentPage` 说了算，点它则去翻页；滑块位置另按浮点页码实时插值
  * （横向滑动时跟手）；高度报给 [SettingsPage.commandBandHeight]，内容顶上那个占位 Spacer 读它。
@@ -78,7 +92,9 @@ internal val FORMAT_COLUMN_GAP = 12.dp
 internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
     PageTabBand(
         pagerState = pagerState,
-        labels = CommandKind.FORM_TABS.map { commandKindLabel(it) },
+        labels =
+            CommandKind.FORM_TABS.map { commandKindLabel(it) } +
+                I18n.get(Strings.COMMAND_TAB_LIST, "命令列表"),
         // 排序态下这一条也禁用 —— 与「按键绑定」页主开关为关时同一套（做法在 [PageTabBand] 里）
         enabled = !commandDraft.stepEditing,
         band = commandBandHeight,
@@ -86,10 +102,13 @@ internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
 }
 
 /**
- * 「自定义命令」页：表单、已保存列表与底部操作工具栏 —— 从「按键绑定」页顶栏菜单 push
+ * 「自定义命令」页：表单、命令列表与右下角那颗保存 —— 从「按键绑定」页顶栏菜单 push
  * 出来的第三级页面。
  *
- * @param pagerState 单条 / 多条这两页的分页状态，由调用点建好传进来：类型选择器那条带子
+ *  三个页签：**单条 / 多条**两页是表单（同一份草稿的两种类型），**命令列表**那一页是整个命令库 ——
+ *  原先「已保存的命令」那一片挂在两张表单的页尾，两类各列一半，翻页才看得出全貌。
+ *
+ * @param pagerState 三个页签的分页状态，由调用点建好传进来：类型选择器那条带子
  *   挂在顶栏（[CommandKindBand]）、内容在这一页，两棵树共用同一份状态。
  */
 @Composable
@@ -100,14 +119,29 @@ internal fun SettingsPage.CommandScreen(
     val tick = rememberTick()
     // 这一页那几个「一次只开一个」的浮层与弹窗（风险提示 / 长按菜单 / 删除 / 填前缀）。
     val ui = remember { CommandUiState() }
-    //  滚动位置**每个类型页各持一份**（与「按键绑定」页那三个手势页同一套做法）。
-    //  注意：两页**共用一份**的话**切回来就滚不动**：`ScrollState` 内部只有一个
+    //  滚动位置**每个页签各持一份**（与「按键绑定」页那三个手势页同一套做法）。
+    //  注意：几页**共用一份**的话**切回来就滚不动**：`ScrollState` 内部只有一个
     //  `scrollableState`，而 pager 滑动时相邻两页同时在场 ⇒ 两处 `verticalScroll` 挂
     //  同一个 state、互相打架（「按键绑定」页踩过同一个坑）。
-    //  「点已保存的命令要滚回顶部」那几处也各自读**本页**这一份。
-    val pageScrolls = CommandKind.FORM_TABS.map { rememberScrollState() }
+    //  「点命令列表里的一张卡要滚回表单顶部」那处也读**目标那一页**这一份。
+    val pageScrolls = (0 until COMMAND_PAGE_COUNT).map { rememberScrollState() }
     val scope = rememberCoroutineScope()
     val tabBlockDp = commandBandHeight.dp()
+
+    //  点列表里的一张卡（或它菜单里的「编辑」）：草稿已经由卡片那边灌好了（`loadDraft`），
+    //  这里负责**跳到它所属那一类的表单页**、再把那一页滚回顶部 ——
+    //  停在列表页等于「点开了一条，眼前什么都没变」。
+    val openSaved: (Command) -> Unit = { cmd ->
+        val page = CommandKind.FORM_TABS.indexOf(cmd.kind).coerceAtLeast(0)
+        scope.launch {
+            //  顺序是「先把那一页滚回顶部、再让它滑进来」：
+            //  反过来的话（先瞬移到那一页、再播一段滚动动画）看起来是「内容猛地换成另一份、
+            //  然后自己又动一下」—— 两次突兀叠在一起。滚到底那一页此刻还在屏幕外，瞬时归位
+            //  谁也看不见，滑进来的时候已经是一屏完整的表单。
+            pageScrolls[page].scrollTo(0)
+            pagerState.animateScrollToPage(page)
+        }
+    }
 
     // 首次进这一页要先过一道风险提示：这一页能让用户写任意 shell 命令，
     //  而我们**不做任何检验或保护**。不确认就退出这一页（[goBack]），确认了才记下这一笔。
@@ -122,7 +156,7 @@ internal fun SettingsPage.CommandScreen(
     }
     CommandTabSync(pagerState)
 
-    // —— 两页：单条 / 多条 ——
+    // —— 三页：单条 / 多条两个表单页 + 最右那个「命令列表」 ——
     // 分页器承载内容，顶栏那条带子驱动它；`draft.kind` 始终跟停下来的那一页走，
     // 保存 / 载入 / 工具条显隐都读它。
     Box(
@@ -142,19 +176,18 @@ internal fun SettingsPage.CommandScreen(
                     // 横向越界回弹：与「按键绑定」页那三个手势页同一套弹簧
                     .overScrollHorizontal(),
         ) { page ->
-            // 这一页是哪一类 —— 页内所有 `kind` 判断都指它，不是 `draft.kind`
-            CommandPage(
-                kind = CommandKind.FORM_TABS[page],
-                scroll = CommandPageScroll(pageScrolls[page], scrollBehavior, tabBlockDp),
-                ui = ui,
-                tick = tick,
-                onScrollTop = { scope.launch { pageScrolls[page].animateScrollTo(0) } },
-            )
+            val scroll = CommandPageScroll(pageScrolls[page], scrollBehavior, tabBlockDp)
+            if (page == COMMAND_LIST_PAGE) {
+                CommandListPage(scroll = scroll, ui = ui, tick = tick, onOpen = openSaved)
+            } else {
+                // 这一页是哪一类 —— 页内所有 `kind` 判断都指它，不是 `draft.kind`
+                CommandPage(kind = CommandKind.FORM_TABS[page], scroll = scroll, ui = ui, tick = tick)
+            }
         }
 
         CommandDialogs(ui)
 
-        CommandFloatingButton(scope = this, tick = tick)
+        CommandFloatingButton(scope = this, tick = tick, onListPage = pagerState.currentPage == COMMAND_LIST_PAGE)
     }
 }
 
@@ -165,6 +198,8 @@ internal fun SettingsPage.CommandScreen(
  *  · 编辑列表（排序态）时它变成「完成」：那一状态下别的控件都禁用，出路只有这一颗。
  *
  *  空表单时**不显示**这颗（那会儿没有可保存的东西）；编辑列表时也要在（文案变「完成」）。
+ *  停在「命令列表」那一页时也不显示：那一页没有表单，一颗「保存」摆在那儿没有宾语
+ *  （[onListPage] 由调用点按页号给）。
  *  单独抽一支只为让 [CommandScreen] 留在 detekt 的长度上限之内。
  */
 @Composable
@@ -172,10 +207,14 @@ private fun SettingsPage.CommandFloatingButton(
     /** 落点（页面右下角）由 [PageCornerFab] 决定，它要的是外层那个 `Box` 的作用域。 */
     scope: BoxScope,
     tick: () -> Unit,
+    /** 现在停在「命令列表」那一页 —— 那颗 FAB 属于表单，这一页不出。 */
+    onListPage: Boolean,
 ) {
     val sortingSteps = commandDraft.stepEditing
     with(scope) {
-        PageCornerFab(visible = commandToolbarVisible() || sortingSteps) {
+        //  这一页不做滑入滑出：它的显隐跟着**当前这一页的表单内容**走，翻 tab 会让它进 / 出一次，
+        //  每切一次就滑一遍只是噪音（见 `PageCornerFab` 的 `animate`）。
+        PageCornerFab(visible = !onListPage && (commandDraftHasContent() || sortingSteps), animate = false) {
             PageFabButton(
                 onClick = {
                     tick()
@@ -215,7 +254,15 @@ private fun SettingsPage.CommandFloatingButton(
 private fun SettingsPage.CommandTabSync(pagerState: PagerState) {
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
-            // 只有单条 / 多条这两页（分叉是独立页，见 `Screen.BRANCHES`）
+            //  「命令列表」那一页不是表单：**草稿一点不动**（`kind` 属于表单那两页），
+            //  只把排序态收掉 —— 它属于「多条」那一页的步骤列表，带着过页只会让列表页莫名其妙地
+            //  整屏禁用（`userScrollEnabled` 也读它）。软键盘同理要收：这一页没有输入框。
+            if (page >= COMMAND_LIST_PAGE) {
+                commandDraft.stepEditing = false
+                hideCommandIme()
+                return@collect
+            }
+            // 剩下两页是单条 / 多条（分叉是独立页，见 `Screen.BRANCHES`）
             val kind = CommandKind.FORM_TABS[page]
             //  换 tab 只摘**排序态**：它是「这一页的步骤列表」的态，另一页没有步骤可排，
             //  带着它过去只会让那一页莫名其妙地整页禁用。
@@ -228,12 +275,17 @@ private fun SettingsPage.CommandTabSync(pagerState: PagerState) {
             }
             commandDraft.draft.kind = kind
             // 换 tab 收掉软键盘：单条那栏的命令输入框可能正开着键盘，翻到另一栏会盖住表单。
-            val host = activity
-            if (host != null && isImeVisible(host)) {
-                XLog.w("自定义命令：换 tab ⇒ 收键盘")
-                hideIme(host)
-            }
+            hideCommandIme()
         }
+    }
+}
+
+/** 换页时收键盘 —— 两处调用点（表单页之间、进出命令列表页）用的是同一条判据。 */
+private fun SettingsPage.hideCommandIme() {
+    val host = activity
+    if (host != null && isImeVisible(host)) {
+        XLog.w("自定义命令：换 tab ⇒ 收键盘")
+        hideIme(host)
     }
 }
 

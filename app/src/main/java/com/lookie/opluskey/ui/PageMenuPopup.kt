@@ -24,6 +24,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.MENU_ICON_SIZE
@@ -330,6 +331,7 @@ private fun SettingsPage.MenuRow(
                 row.selected -> COUITheme.colorScheme.primary
                 else -> COUITheme.colorScheme.onSurfaceContainer
             },
+        animationSpec = COLOR_TRANSITION_SPEC,
         label = "MenuRowIcon",
     )
     // 进场定位到当前那一行：requester 挂在**整行内容区一样高**的盒子上，请求的是**上下各

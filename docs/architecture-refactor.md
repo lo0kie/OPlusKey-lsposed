@@ -102,13 +102,18 @@ com.lookie.opluskey
     │   SettingsPageHooks 只留换页编排；伙伴：HostSession（当前 Activity / 页面）、
     │   HostChrome（窗口与状态栏）、BackInterception（系统返回）、ConfigTransfer（导入导出）
     ├── screen/               HomeScreen / BindingScreen / CommandScreen / AppPicker / AboutScreen
-    ├── component/            PageHeader / PageWidgets / SliderRow / CommandMenus
-    ├── model/                ActionCatalog / CommandText / ActionIcons / PageConst
+    ├── 共用件（在 `ui/` 根，原 `component/` 已并入）MenuPopup / ConfirmDialog / SliderRow / SwitchRow / IconInput /
+    │                         SectionTitle / CardRow / Haptics / TextMetrics …
+    ├── model/                ActionCatalog / CommandText / ActionIcons / PageCopy
     ├── state/                PageState / UiState / ConfigActions / PageFeedback
     └── theme/                PageTheme
 ```
 
 ## 三、逐文件迁移映射
+
+> 下表是这次重建**当时**的落点。之后屏目录按功能细分、共用件并入 `ui/` 根、`ui/hook` 单独成档，
+> 所以「迁移后」那一列只能当**历史记录**读；要点名一个文件现在在哪，以 `docs/decoupling.md` 零节与
+> `tools/audit-coupling.py` 打印的档位为准。左列那几个旧包名（`page/` `hook/` `gesture/`）早已不存在。
 
 ### 根包与 core
 
@@ -172,10 +177,10 @@ com.lookie.opluskey
 | `page/CommandScreen.kt`     | `ui/screen/CommandScreen.kt`   |
 | `page/AppPicker.kt`         | `ui/screen/AppPicker.kt`       |
 | `page/AboutScreen.kt`       | `ui/screen/AboutScreen.kt`     |
-| `page/PageHeader.kt`        | `ui/component/PageHeader.kt`   |
-| `page/PageWidgets.kt`       | `ui/component/PageWidgets.kt`  |
-| `page/SliderRow.kt`         | `ui/component/SliderRow.kt`    |
-| `page/CommandMenus.kt`      | `ui/component/CommandMenus.kt` |
+| `page/PageHeader.kt`        | `ui/PageHeader.kt`   |
+| `page/PageWidgets.kt`       | `ui/PageWidgets.kt`  |
+| `page/SliderRow.kt`         | `ui/SliderRow.kt`    |
+| `page/CommandMenus.kt`      | `ui/CommandMenus.kt` |
 | `page/ActionCatalog.kt`     | `ui/model/ActionCatalog.kt`    |
 | `page/CommandText.kt`       | `ui/model/CommandText.kt`      |
 | `page/ActionIcons.kt`       | `ui/model/ActionIcons.kt`      |

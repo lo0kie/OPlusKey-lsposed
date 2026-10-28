@@ -32,6 +32,7 @@ import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
 import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
 import com.lookie.opluskey.ui.screen.combo.comboLabel
 import com.lookie.opluskey.ui.screen.command.BranchHeaderAdd
+import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
 import com.lookie.opluskey.ui.screen.command.CommandHeaderReset
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.command.branchDefaultLabel
@@ -114,7 +115,7 @@ internal fun SettingsPage.PageTopBar(
         //
         //  「按键绑定」页那一套「新增命令」菜单晚些时候**撤掉了**，不再有 ⋮。
         // 进「自定义命令」页的唯一入口现在是那一页右下角的那颗 FAB（见 [BindingScreen]）。
-        actions = { PageActions(s) },
+        actions = { PageActions(s, pagers) },
         scrollBehavior = scrollBehavior,
         state = hazeState,
         // 顶栏底下那条**固定带**（三条带子各归各的页），见 [PageBottomBand]。
@@ -266,7 +267,10 @@ private fun SettingsPage.selectedLabel(target: String): String = appNameOf(targe
 
 /** 顶栏右上角那几颗动作键 —— 首页 / 「按键绑定」/「选择应用」三页各一颗。 */
 @Composable
-private fun SettingsPage.PageActions(s: Screen) {
+private fun SettingsPage.PageActions(
+    s: Screen,
+    pagers: PagePagers,
+) {
     when (s) {
         Screen.SHORTCUTS -> ResetMenu()
 
@@ -281,7 +285,7 @@ private fun SettingsPage.PageActions(s: Screen) {
         Screen.BRANCHES -> BranchHeaderAdd()
 
         // 「自定义命令」页那颗「重置 / 取消」：底栏只剩「保存」，重置挪到这一头（用户口径）
-        Screen.COMMANDS -> CommandHeaderReset()
+        Screen.COMMANDS -> CommandHeaderReset(onListPage = pagers.commands.currentPage == COMMAND_LIST_PAGE)
 
         // 组合键编辑页的 ⋮：只有「删除组合键」一行（见 [ComboEditMenu]）
         Screen.COMBO_EDIT -> ComboEditMenu()

@@ -34,6 +34,13 @@ internal object ConfigChannel {
     @Volatile
     private var receivedTag: String? = null
 
+    /**
+     * 「参与某一组**可用**组合」的键 id 集合 —— 收到配置时算一次（[rebuildComboIndex]），
+     * 供 [joinsCombo] 每次 DOWN 直接查。
+     */
+    @Volatile
+    private var comboMembers: Set<String> = emptySet()
+
     /** 主开关当前值；没收到过广播时按 `true`（接管）处理。 */
     val takeOver: Boolean
         get() = switchFromBroadcast ?: true
@@ -76,8 +83,27 @@ internal object ConfigChannel {
      */
     fun comboFor(keys: Collection<KeyId>): ComboKey? {
         val cfg = received ?: return null
-        if (keys.isEmpty() || !keys.all { enabledOf(it) }) return null
-        return cfg.comboFor(keys.map { it.id }.toSet())
+        // 一个组合都没配时直接收工：`Config.comboFor` 里那句 `filter {}` 会在**每次按键**上
+        //  分配一个空列表 —— 绝大多数用户压根没配组合键。
+        if (cfg.combos.isEmpty()) return null
+        return ownedKeyIds(keys)?.let { cfg.comboFor(it) }
+    }
+
+    /**
+     * [keys] 全归模块管时返回它们的 id 集合；有一颗不归（或一颗都没有）就是 `null` ——
+     * 组合不成立，两颗键照旧各走各的单键判定。
+     *
+     *  一次遍历既判归属又攒集合，省掉原先 `keys.map {}.toSet()` 那个中间列表；
+     *  短路口径不变：任何一颗不接管就整组不成立。
+     */
+    private fun ownedKeyIds(keys: Collection<KeyId>): Set<String>? {
+        if (keys.isEmpty()) return null
+        val down = HashSet<String>(keys.size * 2)
+        for (k in keys) {
+            if (!enabledOf(k)) return null
+            down += k.id
+        }
+        return down
     }
 
     /**
@@ -96,11 +122,11 @@ internal object ConfigChannel {
      * 这一颗键**参与某一组已启用的组合**吗 —— 只有这种键才值得为组合先等一个窗口。
      *
      *  不参与的键不等：那条路上没有「第二颗键会不会来」这个问题，让它们跟着等只是白慢。
+     *
+     *  集合在收到配置时算好（[rebuildComboIndex]）：这条判据每次 DOWN 都要问一遍，
+     *  原先的写法是**扫一遍 `combos`、每档再做一次 `in`**。
      */
-    fun joinsCombo(id: KeyId): Boolean {
-        val cfg = received ?: return false
-        return cfg.combos.any { it.isUsable && id.id in it.keys }
-    }
+    fun joinsCombo(id: KeyId): Boolean = received != null && id.id in comboMembers
 
     /**
      * 「某一颗键从接管翻成不接管」那一刻要执行的撤销动作，由 `KeyHooks.install` 装配上
@@ -181,6 +207,9 @@ internal object ConfigChannel {
             }
         }
 
+        // 先算索引再换 `received`：`joinsCombo` 那句 `received != null &&` 挡的是「配置还没来过」，
+        //  两者之间那几纳秒里它看到的是旧集合，与旧配置正好对得上。
+        comboMembers = rebuildComboIndex(fresh)
         received = fresh
         // 指纹按广播本身算（与设置页那边同一份 intent 口径），不是按解析后的对象算
         receivedTag = ConfigBroadcast.tag(intent)
@@ -197,6 +226,22 @@ internal object ConfigChannel {
         // 上面那行只打**侧键那份**参数；自定义键各有一份自己的键码与长按阈值（见 [logCustomKeys]）。
         logCustomKeys(fresh)
         logCombos(fresh)
+    }
+
+    /**
+     * 重算 [comboMembers] —— 配置到达时算一次（[read]）。
+     *
+     *  口径与 `Config.comboFor` 一致：[ComboKey.isUsable] 不成立的那几档永远不会被它判出来
+     *  （停用 / 成员不够数），让参与它们的键去等一个窗口只是白慢，所以不进这张表。
+     *
+     *  单独成函数只为让 [read] 留在 `LongMethod` 阈值内（它已经攒了主开关 / 撤销 / 指纹 / 三行日志）。
+     */
+    private fun rebuildComboIndex(fresh: Config): Set<String> {
+        val members = HashSet<String>(fresh.combos.size * 4)
+        for (c in fresh.combos) {
+            if (c.isUsable) members += c.keys
+        }
+        return members
     }
 
     /**

@@ -7,10 +7,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 
 /**
@@ -47,23 +50,51 @@ import kotlin.math.roundToInt
 @Composable
 internal fun Modifier.opticalCenter(style: TextStyle): Modifier {
     val density = LocalDensity.current
-    val measurer = rememberTextMeasurer()
-    val dy =
-        remember(style, density) {
-            // 一个汉字足够：它同时给出这个字体的行盒高与基线位置
-            val probe = measurer.measure("国", style)
-            val bounds = glyphBounds(style, with(density) { style.fontSize.toPx() })
-            if (bounds == null) {
-                // 取不到字形边界就按行盒居中（不猜比例 —— 猜错只会比现在更偏）
-                0
-            } else {
-                // top / bottom 是**相对基线**的字形极值（top 为负，bottom 为正）
-                val glyphCenter = probe.firstBaseline + (bounds.top + bounds.bottom) / 2f
-                (probe.size.height / 2f - glyphCenter).roundToInt()
-            }
-        }
+    //  每个调用点仍各有一份 `TextMeasurer`（它是 @Composable，没法在缓存命中时跳过创建），
+    //  但**真正的排版**只在 [opticalDyCache] 缺失时才发生 —— 它自带的那层缓存是按实例的，
+    //  列表里每滚出一行都是新实例、缓存全空。
+    //  `cacheSize = 1`：这个实例只会用来量那一个「国」字。
+    val measurer = rememberTextMeasurer(cacheSize = 1)
+    val dy = remember(style, density) { opticalDy(style, density, measurer) }
     return offset { IntOffset(x = 0, y = dy) }
 }
+
+/**
+ * 下沉量缓存 —— **进程级**，键是（样式, 密度）。
+ *
+ *  为什么要有它：`TextMeasurer.measure` 每量一次就是一次段落排版（建一个 `MultiParagraph`），
+ *  加上为取字形边界临时建的 `Paint` 与 `Typeface`。而这些量与**调用点无关**，只跟字号 / 字重 /
+ *  字体 / 密度有关 —— 「按键绑定」页那几格、应用清单那些行、命令卡的每一步，量出来的都是同一个数。
+ *
+ *  改前：列表里每滚出一行 = 一次排版 + 一次 `Typeface.create`；改后：同一种字号在整个进程里
+ *  只量一次，之后是一行 `HashMap` 查找。
+ *
+ *  键的取值空间是全项目的字号档位（个位数）× 密度（通常 1 档），不必考虑淘汰。
+ *  用 `ConcurrentHashMap`：组合在主线程跑，但这张表是进程级共享的，别赌只有一个写者。
+ *
+ *  **换字体族不换键**：键里只有样式与密度，字体族取的是系统默认族（见 [glyphBounds]）。
+ *  哪天正文改用自定义字体，得把族名一起拼进键，否则会一直用着旧字体量出来的那个数。
+ */
+private val opticalDyCache = ConcurrentHashMap<Pair<TextStyle, Density>, Int>()
+
+private fun opticalDy(
+    style: TextStyle,
+    density: Density,
+    measurer: TextMeasurer,
+): Int =
+    opticalDyCache.getOrPut(style to density) {
+        // 一个汉字足够：它同时给出这个字体的行盒高与基线位置
+        val probe = measurer.measure("国", style)
+        val bounds = glyphBounds(style, with(density) { style.fontSize.toPx() })
+        if (bounds == null) {
+            // 取不到字形边界就按行盒居中（不猜比例 —— 猜错只会比现在更偏）
+            0
+        } else {
+            // top / bottom 是**相对基线**的字形极值（top 为负，bottom 为正）
+            val glyphCenter = probe.firstBaseline + (bounds.top + bounds.bottom) / 2f
+            (probe.size.height / 2f - glyphCenter).roundToInt()
+        }
+    }
 
 /**
  * 当前样式在 `em` 字号下的**字形边界**（`Paint.FontMetrics`）。

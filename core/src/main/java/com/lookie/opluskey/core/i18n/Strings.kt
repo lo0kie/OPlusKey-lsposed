@@ -146,9 +146,6 @@ object Strings {
     const val COMBO_SHORT = "combo.short"
     const val COMBO_LONG = "combo.long"
 
-    /** 编辑页顶部那行「参与的按键」。 */
-    const val COMBO_MEMBERS = "combo.members"
-
     /** 选键弹窗的标题。 */
     const val COMBO_PICK_KEYS = "combo.pick_keys"
 
@@ -173,9 +170,6 @@ object Strings {
 
     /** 停用那一档之前的确认正文（`%s` = 成员名，已带各自的括号）—— 一句就够，别写成说明书。 */
     const val COMBO_DISABLE_MESSAGE = "combo.disable_message"
-
-    /** 一档组合还没绑动作时那一格写的字（与单键网格里的「无操作」区分开）。 */
-    const val COMBO_UNBOUND = "combo.unbound"
 
     /** 组合键满员时「添加组合键」那一行的副标题（格式：上限组数）。 */
     const val COMBO_LIMIT = "combo.limit"
@@ -276,7 +270,9 @@ object Strings {
     const val COMMAND_FORMAT_SHORTCUT_DESC = "command.format_shortcut_desc"
     const val COMMAND_FORMATS_TITLE = "command.formats_title"
     const val COMMAND_LIST_TITLE = "command.list_title"
-    const val COMMAND_NAME = "command.name"
+
+    /** 「自定义命令」页最右那个页签 —— 与 [COMMAND_LIST_TITLE] 说的不是一件事（那是多条命令的步骤段）。 */
+    const val COMMAND_TAB_LIST = "command.tab_list"
     const val COMMAND_NAME_DUPLICATE = "command.name_duplicate"
 
     /** 「保存」被禁用时：单条命令的正文还不完整（只写了 `shell:` 这种前缀也算）。 */
@@ -305,6 +301,9 @@ object Strings {
 
     /** 表单与步骤都空着时，顶栏那颗「重置」为什么点不动 —— 点它一下说这一句。 */
     const val COMMAND_RESET_EMPTY = "command.reset_empty"
+
+    /** 停在「命令列表」那一页点重置时的说法 —— 那一页没有表单，清不了什么。 */
+    const val COMMAND_RESET_LIST_PAGE = "command.reset_list_page"
 
     /** 表单第一条小标题：名称输入框（原先这里写的是「修改命令 / 新增命令」）。 */
     const val COMMAND_NAME_TITLE = "command.name_title"
@@ -379,7 +378,6 @@ object Strings {
 
     /** 规则行里「条件那一格还没选」—— 与「未选择命令」成对，行首图标同时置红。 */
     const val COMMAND_BRANCH_PICK_CONDITION = "command.branch_pick_condition"
-    const val COMMAND_BRANCH_NEED = "command.branch_need"
     const val COMMAND_BRANCH_NEED_COMMAND = "command.branch_need_command"
     const val COMMAND_BRANCH_NEED_CONDITION = "command.branch_need_condition"
     const val COMMAND_BRANCH_DEFAULT = "command.branch_default"
@@ -537,9 +535,6 @@ object Strings {
     /** 多配置：删除配置 */
     const val PROFILE_DELETE = "profile.delete"
 
-    /** 多配置：删除配置 */
-    const val PROFILE_DELETE_TITLE = "profile.delete_title"
-
     /** 多配置：默认 */
     const val PROFILE_DEFAULT = "profile.default"
 
@@ -551,9 +546,6 @@ object Strings {
 
     /** 多配置：已新建「%s」 */
     const val PROFILE_CREATED = "profile.created"
-
-    /** 多配置：已删除「%s」 */
-    const val PROFILE_DELETED = "profile.deleted"
 
     /** 多配置：切换失败：那份读不出来 */
     const val PROFILE_SWITCH_FAILED = "profile.switch_failed"
@@ -814,7 +806,6 @@ object Strings {
     const val TOAST_CONFIG_EXPORT_FAILED = "toast.config_export_failed"
     const val TOAST_CONFIG_EXPORTED = "toast.config_exported"
     const val TOAST_CONFIG_IMPORT_FAILED = "toast.config_import_failed"
-    const val TOAST_CONFIG_IMPORTED = "toast.config_imported"
     const val TOAST_CONFIG_READ_FAILED = "toast.config_read_failed"
     const val TOAST_CONFIG_SAVE_BROADCAST_FAILED = "toast.config_save_broadcast_failed"
     const val TOAST_CONFIG_SAVE_FAILED = "toast.config_save_failed"
@@ -878,7 +869,6 @@ object Strings {
     const val KEY_WATCH_HINT = "key_watch.hint"
     const val KEY_WATCH_WAITING = "key_watch.waiting"
     const val KEY_WATCH_COUNTDOWN = "key_watch.countdown"
-    const val KEY_WATCH_ADD = "key_watch.add"
     const val KEY_WATCH_RESERVED = "key_watch.reserved"
     const val KEY_WATCH_LIMIT = "key_watch.limit"
     const val KEY_WATCH_ADDED = "key_watch.added"

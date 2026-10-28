@@ -100,7 +100,15 @@ internal class CommandDraft {
 
     /** 当前这一页那一份（`kind` 由 `CommandScreen` 那条 `snapshotFlow` 单向同步）。 */
     val form: CommandForm
-        get() = if (kind == CommandKind.SINGLE) singleForm else serialForm
+        get() = formOf(kind)
+
+    /**
+     * 某一类命令对应的那份表单 —— 两页各一份，[form] 是「当前这一页」的快捷方式。
+     *
+     *  按**某条命令的类型**去动表单时用它（例如列表页里对一条命令点「再点一次编辑」＝重置，
+     *  那一下要清的是**这条命令所属那一类**的表单，不一定是当前停在那一页的那份）。
+     */
+    fun formOf(kind: CommandKind): CommandForm = if (kind == CommandKind.SINGLE) singleForm else serialForm
 
     var name: String
         get() = form.name

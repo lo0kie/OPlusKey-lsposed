@@ -90,9 +90,6 @@ internal const val MENU_GROUP_LINE_DARK_ALPHA = 0.32f
 
 internal const val MENU_GROUP_LINE_LIGHT_ALPHA = 0.08f
 
-/** 底部工具栏那颗胶囊的阴影 alpha（[CommandScreen] 的工具栏）。 */
-internal const val TOOLBAR_SHADOW_ALPHA = 0.1f
-
 internal const val APP_KIND_TAG_BG_ALPHA = 0.10f
 
 /**

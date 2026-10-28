@@ -8,7 +8,9 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.isSerialCommand
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
+import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.actionOf
 
@@ -87,7 +89,28 @@ internal fun SettingsPage.BindingGroups(
         BuiltInGrid(st, enabled)
 
         // 「自定义命令」这一段**始终在**：没有命令时给一行「去创建自定义命令」。
-        SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
+        //
+        //  标题可点（进「自定义命令」页去管）—— 但**一条命令都没有时不接点击**：那一格里
+        //  已经是「去创建自定义命令」，同一趟去处摆两个入口，点哪个都行反而让人以为标题是
+        //  另一件事。有命令之后标题才成为「进那一页」的入口。
+        //
+        //  两处去处也不一样：下面那一行会先 `reset()`（新增的入口），标题只跳页，
+        //  表单里正编着的那份草稿原样留着。
+        val hasCommands = configState.commands.value.isNotEmpty()
+        SectionTitle(
+            text = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"),
+            click =
+                if (hasCommands) {
+                    SectionTitleClick.Jump {
+                        //  落点是**命令列表**那一格（不是上次停着的表单页）：点这条标题的意思是
+                        //  「去管命令库」——留在列表页看得出全部命令，落在表单页只能看到一条草稿。
+                        commandDraft.openListPage = true
+                        navTo(Screen.COMMANDS)
+                    }
+                } else {
+                    null
+                },
+        )
         CustomCommandsGrid(st, enabled, onCreateCommand)
     }
 

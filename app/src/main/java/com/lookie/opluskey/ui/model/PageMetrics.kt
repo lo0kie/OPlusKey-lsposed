@@ -1,9 +1,7 @@
 package com.lookie.opluskey.ui.model
 
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import io.github.suqi8.coui.kmp.basic.FloatingToolbarDefaults
 import io.github.suqi8.coui.kmp.basic.SliderDefaults
 
 // 尺寸 / 边距 / 行数 / 触达区（拆分后剩下的一档）。 —— 从 PageConst.kt 拆出（同包搬迁，调用点不变）。
@@ -126,25 +124,6 @@ internal val PAGE_BOTTOM_PADDING = 32.dp
  * `SmallTitle` 自带的上内边距；首行是 `SmallTitle` 的那几页不补。两条固定带只带下边这一档。
  */
 internal val PAGE_TOP_PADDING = 8.dp
-
-/**
- * 「自定义命令」页底部操作工具栏（[CommandActions]）距屏幕底边的距离 —— 基准取 [PAGE_BOTTOM_PADDING] × 2（64dp），
- * 与「按键绑定」页那颗 FAB 的下边距同一基准。
- *
- * `FloatingToolbar` 内部自带一圈 `OutSidePadding`（上下 8dp、左右 12dp），`padding` 加在它外面 ⇒
- * 减掉那一圈，胶囊底边才与 FAB 齐平。
- */
-internal val COMMAND_TOOLBAR_BOTTOM: Dp =
-    PAGE_BOTTOM_PADDING * 2 - FloatingToolbarDefaults.OutSidePadding.calculateBottomPadding()
-
-/** 工具栏里那两颗图标按钮（[CommandActions]）的边长 —— 40dp，与顶栏那两颗（[HEADER_ICON_SIZE]）同款。 */
-internal val TOOLBAR_ICON_SIZE = 40.dp
-
-/**
- * 工具栏（[CommandActions]）里按钮到胶囊边缘的留白与按钮之间的间距 —— 取同一个值，
- * `Row` 的 `padding` 与 `spacedBy` 都用它。
- */
-internal val TOOLBAR_EDGE_GAP = 6.dp
 
 /**
  * 「选择应用」页列表头部占的项数 —— 1（「顶栏让位 + 固定搜索带」那一项）。

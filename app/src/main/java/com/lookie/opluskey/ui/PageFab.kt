@@ -1,6 +1,8 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.padding
@@ -83,11 +85,15 @@ internal fun PageFabButton(
  *  「cannot be called with an implicit receiver」。
  *
  * @param visible 显不显示（判据在调用点）
+ * @param animate 显隐要不要过渡（`false` = 直接出现 / 消失）
+ *   「自定义命令」页传 `false`：那一页的显隐跟着**当前这一页的表单内容**走，翻 tab 会让它
+ *   进 / 出一次，而那颗按钮在那一页本来就守着不同的表单 —— 每切一次就滑一遍只是噪音。
  * @param content FAB 本体（各页自己那颗）
  */
 @Composable
 internal fun BoxScope.PageCornerFab(
     visible: Boolean,
+    animate: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val slidePx = with(LocalDensity.current) { (PAGE_BOTTOM_PADDING * 2).roundToPx() }
@@ -98,8 +104,8 @@ internal fun BoxScope.PageCornerFab(
                 .align(Alignment.BottomEnd)
                 .padding(end = PAGE_MARGIN * 2, bottom = PAGE_BOTTOM_PADDING * 2),
         // 与底部工具栏同一份规格（见 [edgeSlideIn]）：差别只在多滑的距离
-        enter = edgeSlideIn(slidePx),
-        exit = edgeSlideOut(slidePx),
+        enter = if (animate) edgeSlideIn(slidePx) else EnterTransition.None,
+        exit = if (animate) edgeSlideOut(slidePx) else ExitTransition.None,
     ) { content() }
 }
 

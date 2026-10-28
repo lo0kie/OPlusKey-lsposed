@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +14,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -20,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.IconAction
@@ -61,7 +63,15 @@ private const val STEP_PICK_APPEND = -1
 @Composable
 internal fun SettingsPage.SerialSteps() {
     val tick = rememberTick()
-    val steps = commandDraft.draft.steps
+    //  **这一页只认「多条」那一份表单**，不走 `draft.steps`。
+    //
+    //  `draft.steps` 是「`draft.kind` 那一份」的快捷方式，而 `draft.kind` 由分页器**单向同步** ——
+    //  翻页动画期间它晚一帧：从「单条」翻过来的那一帧 `kind` 还是单条，于是这里读到的是单条那份
+    //  **空表** ⇒ `sync([])` 把展示行全标退场、`rows` 被清空 ⇒ 下一帧读到真的步骤时只能整表新建
+    //  ⇒ 整张表从头展开一遍（用户口径「每次从单条切到多条，列表都重新展开了」）。
+    //  从「命令列表」过来不会有这一帧（那时 `kind` 已经是多条），所以那条路看着正常。
+    val form = commandDraft.draft.serialForm
+    val steps = form.steps
     // 这一页现在是不是「排序态」（由右下角那颗 FAB 开关，见 `CommandDraftState.stepEditing`）：
     //  排序态下行尾换成上移 / 下移 / 删除，行的轻点不再换命令。
     val sorting = commandDraft.stepEditing
@@ -94,9 +104,22 @@ internal fun SettingsPage.SerialSteps() {
     //  组合会被注销，展示层跟着没了 —— 切回来重新建一遍就是**整张表重播进场动画**。
     val display = commandDraft.stepRows.rows
 
+    //  这一支组合是「刚进来」还是「已经在页上了」：进来的**第一帧**不播入场动画。
+    //
+    //  展示层住在页面级、行对象也还是原来那些，可切 tab 时这一页的组合会被注销 ——
+    //  回来重新组合时 `AnimatedVisibility` 在**新的**组合里仍会把整张表从头展开一遍
+    //  （用户口径「每次切到多条命令，列表都重新展开」）。这里只放行「进来之后才新增的行」：
+    //  第一帧把所有已有行直接摆到位，之后插入 / 删除仍走 [STEP_ROW_ENTER] / [STEP_ROW_EXIT]。
+    var entered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        //  等这一帧画完再放开：第一帧里出现的行（含 `sync` 刚补上的那些）一律直接到位
+        withFrameNanos { }
+        entered = true
+    }
+
     //  `toList()` **只算一次**：它既是下面那个 effect 的 key，也是差分要用的那份快照。
     //  原来 key 与函数体各算一遍 —— 每遍都要读完整张 `SnapshotStateList` 再新建一个 List。
-    val stepsNow = commandDraft.draft.steps.toList()
+    val stepsNow = steps.toList()
     LaunchedEffect(stepsNow) {
         // 列表一变，行下标就不一定还落在原来那一行上（插入 / 删除 / 上移下移都挪位）——
         //  抽屉是按下标做事的，**那一步已经不在了**才收（用户口径「选中命令不关闭抽屉」：
@@ -120,7 +143,8 @@ internal fun SettingsPage.SerialSteps() {
             }
             AnimatedVisibility(
                 visibleState = item.state,
-                enter = STEP_ROW_ENTER,
+                //  刚进来那一帧直接到位，之后新增的行才播展开（见上面 `entered`）
+                enter = if (entered) STEP_ROW_ENTER else EnterTransition.None,
                 exit = STEP_ROW_EXIT,
             ) {
                 Column {
@@ -271,9 +295,9 @@ internal fun SettingsPage.SerialSteps() {
         sheetAt
             ?.takeIf { it >= 0 }
             ?.let { at ->
-                commandDraft.draft.steps
+                steps
                     .getOrNull(at)
-                    ?.let { runCatching { Action.parse(it) }.getOrNull() }
+                    ?.let { runCatching { ActionCatalog.actionOf(it) }.getOrNull() }
             }
     StepPickerSheet(
         //  **只有「当前页就是命令页」时才画**：抽屉是压在这一页上的浮层，而这一页的组合在
@@ -362,10 +386,12 @@ private fun SettingsPage.StepRowButtons(
         //
         //  `index` 是**这一次组合**算出来的下标：越界就当场忽略并说清是哪一步 ——
         //  抛在点击回调里就是宿主页面崩掉。
-        if (index in commandDraft.draft.steps.indices) {
-            commandDraft.draft.steps.removeAt(index)
+        //  动的是**多条那一份**表单（与 `SerialSteps` 同一个口径，不跟 `draft.kind` 走）
+        val steps = commandDraft.draft.serialForm.steps
+        if (index in steps.indices) {
+            steps.removeAt(index)
         } else {
-            XLog.w("多条命令：要删的第 ${index + 1} 步已经不在（现在共 ${commandDraft.draft.steps.size} 步），这次点击忽略")
+            XLog.w("多条命令：要删的第 ${index + 1} 步已经不在（现在共 ${steps.size} 步），这次点击忽略")
         }
     }
 }
@@ -376,6 +402,8 @@ internal fun SettingsPage.moveStep(
     delta: Int,
 ) {
     val target = index + delta
-    if (index !in commandDraft.draft.steps.indices || target !in commandDraft.draft.steps.indices) return
-    commandDraft.draft.steps.add(target, commandDraft.draft.steps.removeAt(index))
+    //  同上：只动「多条」那一份（`draft.steps` 会跟着 `draft.kind` 的镜像走）
+    val steps = commandDraft.draft.serialForm.steps
+    if (index !in steps.indices || target !in steps.indices) return
+    steps.add(target, steps.removeAt(index))
 }

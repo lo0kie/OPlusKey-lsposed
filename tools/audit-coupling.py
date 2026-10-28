@@ -86,7 +86,11 @@ RULES: list[tuple[str, tuple[str, ...], str]] = [
     # `ui.hook.SettingsPageHooks`，那是 decoupling.md 五 给 KeyModule 明写的例外。
     ("ui.screen", (r"^com\.lookie\.opluskey\.ui\.hook\.",), "屏不许反向依赖 ui.hook（分层图是单向的）"),
     ("ui.state", (r"^com\.lookie\.opluskey\.ui\.hook\.",), "状态不许反向依赖 ui.hook（分层图是单向的）"),
-    ("ui", (r"^com\.lookie\.opluskey\.ui\.hook\.",), "页面模型 / 页面行为不许反向依赖 ui.hook（分层图是单向的）"),
+    (
+        "ui",
+        (r"^com\.lookie\.opluskey\.ui\.hook\.", r"^com\.lookie\.opluskey\.ui\.screen\."),
+        "共用件 / 页面模型不许反向依赖 ui.hook 与具体屏（分层图是单向的）",
+    ),
     ("core", (r"^com\.lookie\.opluskey\.(inject|bridge|host|ui)\.",), "core 是最底层，不引任何上层包"),
     # KeyModule 在注入侧被加载，但它**允许** import ui/（界面 hook 只在设置页进程分支里装，
     # 见它的类注释）—— 所以这里只拦「一加载就崩」的那几样，与 CI 的 (5)' 同口径。
@@ -104,10 +108,11 @@ RULES: list[tuple[str, tuple[str, ...], str]] = [
 #   但目录语义错了），只能靠人记 —— 2026-10-17 已按「只服务一屏的跟着那一屏走」清完：
 #   - `PageHeader.kt` 里那两块业务菜单搬去 `ui/screen/{home,apppicker}/`，顶栏改成 `actions` 槽位
 #     （`HeaderMenu` 枚举随之删掉，「顶栏不认识页面」现在是代码事实）；
-#   - `CommandMenus` / `IconInput` / `DonateDialog` 同上；`MenuPopup` 留 `component/`
-#     （它服务五个屏，是真正的共用件）；
+#   - `CommandMenus` / `DonateDialog` 同上；`MenuPopup` 留在共用层（它服务五个屏，是真正的共用件）；
 #   - `SwitchRow.kt` 那个没用过的接收者已去掉。
-#   判据沿用（目录已并入 `ui/`）：**只服务一屏的，跟着那一屏走**
+#   判据沿用（`component/` 已并入 `ui/`）：**只服务一屏的，跟着那一屏走**。
+#   并入之后 `ui/` 根与 `ui/model/` 都归 `ui` 档 —— 「共用件不许认识具体屏」于是必须由
+#   RULES 里那条 `ui → ui.screen` 显式承担，否则这条判据随目录一起消失。
 WHITELIST: set[tuple[str, str]] = set()
 
 
@@ -137,7 +142,7 @@ def bucket_of(rel: str) -> str:
 def layer_of(bucket: str) -> str:
     """细分档位 → **分层** —— 环检测按它判。
 
-    `ui/` 的五个档位（`ui` / `ui.component` / `ui.hook` / `ui.state` / `ui.screen`）折成同一层：
+    `ui/` 的四个档位（`ui` / `ui.hook` / `ui.state` / `ui.screen`）折成同一层：
     `SettingsPage` 是个 **DSL 接收者**（页面构件写成它的扩展函数，与 Compose 的
     `ColumnScope` 同一种做法），所以「`SettingsPage.kt` 用构件」与「构件是它的扩展」
     本来就互相 import —— 那是这套 UI 写法的固有形状，不是耦合缺陷。
@@ -146,7 +151,7 @@ def layer_of(bucket: str) -> str:
     它们互相调用是正常的（分开是为了**说明进程归属**，不是为了禁止互相引用）。
 
     于是两类判据**用两种粒度**（docs/decoupling.md 五 的设计也一样）：
-      - **禁止边**看细分档位：`ui/component` 不许认识 `ui/screen`，`bridge/host` 不许认识 `ui`；
+      - **禁止边**看细分档位：`ui`（共用件 / 页面模型）不许认识 `ui/screen`，`bridge/host` 不许认识 `ui`；
       - **环检测**看分层：`ui/` 内部、`bridge/` 内部互相引用不算环，跨层（`host → inject` 之类）才算。
     """
     if bucket.startswith("ui") or bucket.startswith("bridge"):

@@ -38,6 +38,7 @@ import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
@@ -48,7 +49,6 @@ import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.isDarkScheme
 import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.rememberTick
-import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.CardColors
@@ -65,8 +65,8 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 /**
  * 各处下拉/浮层选择菜单（添加命令、响铃状态、命令卡菜单）。
  *
- *  [CommandMenuPopup] 是**命令卡的唯一菜单**：右上角那颗「更多」与卡片长按都开它，
- *  三行固定是「测试 / 编辑 / 删除」—— 两个入口给的是不同的触点锚点，菜单本身不关心从哪儿来。
+ *  [CommandMenuPopup] 是**命令卡的唯一菜单**：从卡片右上角那颗「更多」进，
+ *  三行固定是「测试 / 编辑 / 删除」—— 菜单本身不关心从哪儿来（落点由调用点给的锚点决定）。
  *
  * 注：`onEdited` / `onDelete` 的 `= {}` 默认值**看起来是死的**（唯一调用点两个都显式传了），
  *  但它撑住的是参数个数这条线 —— 去掉默认值会让 detekt 的 `LongParameterList` 判据换成另一个
@@ -106,7 +106,10 @@ internal fun SettingsPage.CommandMenuPopup(
                     //  命令」（窗见 `CommandDialogs.SwitchDraftDiscardDialog`），确认后才动草稿。
                     if (commandDraft.draft.editingName == cmd.name && !commandDraft.draft.dirty) {
                         XLog.w("已保存命令菜单：再次点「编辑」且草稿无改动 ⇒ 重置表单（${cmd.name}）")
-                        resetCommandDraft()
+                        //  清的是**这条命令所属那一类**的表单，不是「当前停着的那一页」：
+                        //  在「命令列表」页点时，分页器停在列表那格，`form` 指向的是上次离开时那一页，
+                        //  按 `cmd.kind` 取才不会清错（`formOf` 见 `CommandDraft`）。
+                        commandDraft.draft.formOf(cmd.kind).reset()
                     } else {
                         // 走 [SettingsPage.loadDraft] 而**不是** `draft.load`：表单里可能还有没保存的改动，
                         //  直接灌进去会把它整份覆盖掉。
@@ -660,7 +663,7 @@ private fun SettingsPage.StepSheetRow(
         startAction = {
             Crossfade(
                 targetState = selected,
-                animationSpec = STEP_SHEET_LEAD_FADE,
+                animationSpec = COLOR_FADE_SPEC,
                 label = "StepSheetLead",
             ) { on ->
                 if (on) {
@@ -695,9 +698,6 @@ private fun SettingsPage.StepSheetRow(
         onClick = onClick,
     )
 }
-
-/** 行首字形交叉淡入淡出的节奏 —— 与颜色同一条曲线、同一时长（[COLOR_TRANSITION_SPEC] 的浮点版）。 */
-private val STEP_SHEET_LEAD_FADE = tween<Float>(durationMillis = 200, easing = DecelerateEasing())
 
 /** 抽屉内容的最高高度 —— 再高就把整屏都盖住了，留一档给「它是个抽屉」这件事。 */
 private val STEP_SHEET_MAX_HEIGHT = 460.dp

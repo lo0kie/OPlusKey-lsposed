@@ -478,7 +478,7 @@ mHasCaption 分支
 | `core/model/Action.kt`                  | `Action.MiniWindow(collapsed)`：两档的 token 与解析（收起档要排在展开档前）                                                                                                                                                                                   |
 | `ui/model/ActionCatalog.kt`             | 「系统小窗」入口格 + `MINI_MODES` 两行菜单                                                                                                                                                                                                                    |
 | `ui/screen/AppPicker.kt`                | 界面侧那把尺子的**两个触发点** + 两张拦人的脸                                                                                                                                                                                                                 |
-| `ui/component/PageHeader.kt`            | 菜单里那项「以小窗口打开」（临时档，每次进页按正在编辑的动作重算）                                                                                                                                                                                            |
+| `ui/PageHeader.kt`            | 菜单里那项「以小窗口打开」（临时档，每次进页按正在编辑的动作重算）                                                                                                                                                                                            |
 
 **选择应用页那半边（2026-10-14，两次返工后的落法）**：
 

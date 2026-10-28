@@ -14,14 +14,14 @@ import androidx.compose.ui.platform.LocalView
 // 触觉屏蔽：把库自己发出的振动反馈按住（我们的点击语义与库不一致）。
 
 /**
- * **长按的振动只走通用通道**（[rememberTick] / [tickNow]）。
+ * **开关的振动只走通用通道**（[rememberTick] / [tickNow]）。
  *
- * 库的交互式 `Card` 内部用的是 `Modifier.combinedClickable`，它默认还会**自己**振一次
- * `HapticFeedbackType.LongPress`（经 `LocalHapticFeedback` → 宿主 `View.performHapticFeedback`）——
- * 那条路不看系统静音，于是长按会比单击多出一次不受系统状态约束的振动。
+ * 库的 `Switch` 在 `checked` 变化时**无条件**振一次（经 `LocalView` → 宿主
+ * `View.performHapticFeedback`）—— 那条路不看系统静音，于是拨开关会比点别的控件多出一次
+ * 不受系统状态约束的振动。
  *
- * 做法：在**那一格**外面把 `LocalHapticFeedback` 换成本实现（见「按键绑定」页的那些格子与
- * 「自定义命令」页里已保存命令那组格子）。只包格子 —— 滑杆 / 浮层自己的触觉不走这里。
+ * 做法：在**那一行**外面把 `LocalHapticFeedback` 换成本实现（见 [NoSwitchHaptic]）。
+ * 只包开关那一行 —— 滑杆 / 浮层 / 网格那些格子的触觉不走这里（它们已经没有长按手势了）。
  */
 internal val NoHapticFeedback: HapticFeedback =
     object : HapticFeedback {

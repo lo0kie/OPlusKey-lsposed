@@ -24,20 +24,31 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  **表单与步骤都空着时置灰**（判据 [CommandDraft.hasContent]），点它一下说清没有可清的东西 ——
  *  不干脆不画那颗：顶栏右侧的按钮时有时无，大标题的可用宽度会跟着一跳一跳。
  *
- *  「重置」这一下做什么在 [resetCommandDraft]（与「已保存的命令」菜单里「再点一次编辑」同一份）。
+ *  停在「命令列表」那一页时**始终置灰**（[onListPage]）：那一页没有表单，重置没有宾语；
+ *  灰着点一下说的是「切到单条或多条再重置」，而不是「表单是空的」（后者在那页上是假话）。
+ *
+ *  「重置」这一下做什么在 [resetCommandDraft]（只清**当前这一页**那份表单）。
  */
 @Composable
-internal fun SettingsPage.CommandHeaderReset() {
+internal fun SettingsPage.CommandHeaderReset(
+    /** 现在停在「命令列表」那一页吗 —— 那一页没有表单可清，这颗始终置灰。 */
+    onListPage: Boolean,
+) {
     val tick = rememberTick()
     val draft = commandDraft.draft
-    //  表单（名称 / 正文）与步骤列表都空着 ⇒ 没有可清的东西
-    val canReset = draft.hasContent
+    //  表单（名称 / 正文）与步骤列表都空着 ⇒ 没有可清的东西；列表页则一律没有
+    val canReset = !onListPage && draft.hasContent
     //  文案跟着编辑态走：编一条已有命令时它是「取消」（这一下等于放弃这次修改），
     //  新建时是「重置」（清空重来）—— 与它原先在底栏时的口径一致。
     val label =
         if (draft.editingName != null) I18n.get(Strings.COMMON_CANCEL, "取消") else I18n.get(Strings.COMMON_RESET, "重置")
     //  灰着被点一下时说清为什么（顶栏按钮不吃点击，不给这一句就成了「点了没反应」）
-    val blocked = I18n.get(Strings.COMMAND_RESET_EMPTY, "表单是空的，没有可重置的内容")
+    val blocked =
+        if (onListPage) {
+            I18n.get(Strings.COMMAND_RESET_LIST_PAGE, "这一页没有表单")
+        } else {
+            I18n.get(Strings.COMMAND_RESET_EMPTY, "表单是空的，没有可重置的内容")
+        }
     DisabledHint(if (canReset) null else blocked) {
         IconButton(
             onClick = {

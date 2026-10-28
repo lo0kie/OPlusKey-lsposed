@@ -32,7 +32,7 @@ import com.lookie.opluskey.ui.MultiPickerDialog
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
-import com.lookie.opluskey.ui.SectionTitleMenu
+import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
@@ -100,7 +100,7 @@ internal fun SettingsPage.ComboScreen(scrollBehavior: ScrollBehavior) {
             Column(Modifier.preciseClickAnchor(filterAnchor)) {
                 SectionTitle(
                     text = comboListTitle(cfg, filterKey),
-                    menu = SectionTitleMenu(expanded = filterMenu) { filterMenu = true },
+                    click = SectionTitleClick.Menu(expanded = filterMenu) { filterMenu = true },
                 )
                 CardList(rows = comboRows(cfg, writable, atLimit, filterKey))
             }

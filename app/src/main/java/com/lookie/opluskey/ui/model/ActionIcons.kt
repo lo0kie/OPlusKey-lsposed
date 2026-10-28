@@ -289,7 +289,8 @@ internal fun actionIcon(token: String): ImageVector =
  * 加一行 + 这里加一支 —— 漏了这里会掉到 [TablerIcons.Outline.Dots]，看着像「没配图标」。
  */
 private fun systemSettingIcon(token: String): ImageVector {
-    val setting = Action.parse(token) as? Action.Setting
+    //  与 `stepTitle` 同一口径：按 token 取记忆的解析结果，不在这条「每次重组都走」的路上现解析。
+    val setting = ActionCatalog.actionOf(token) as? Action.Setting
     return when (setting?.on) {
         true -> TablerIcons.Outline.ToggleRight
         false -> TablerIcons.Outline.ToggleLeft

@@ -20,15 +20,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.State
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,13 +36,11 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.MoreButton
-import com.lookie.opluskey.ui.NoHapticFeedback
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TileFocusRing
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.COLUMNS
-import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
@@ -100,9 +95,8 @@ internal fun SettingsPage.SavedCommandsSection(
     saved: List<Command>,
     ui: CommandUiState,
     tick: () -> Unit,
-    onScrollTop: () -> Unit,
-    /** 排序态下这一片整片禁用（见 `CommandDraftState.stepEditing`）：点开一条会把正在排的草稿换掉。 */
-    enabled: Boolean = true,
+    /** 点开一条（轻点卡片 / 菜单里的「编辑」）—— 草稿由卡片自己灌好，调用方只管跳回表单页。 */
+    onOpen: (Command) -> Unit,
 ) {
     AnimatedContent(
         targetState = saved,
@@ -161,7 +155,7 @@ internal fun SettingsPage.SavedCommandsSection(
                     //  位次记身份 ⇒ 删一条 / 改名之后后面的格子会继承前一格的位置，强调色从上一格的颜色
                     //  动画过去（一帧闪色）。
                     key(cmd.name) {
-                        CommandTile(cmd, ui, tick, onScrollTop, enabled)
+                        CommandTile(cmd, ui, tick, onOpen)
                     }
                 }
             }
@@ -170,70 +164,66 @@ internal fun SettingsPage.SavedCommandsSection(
 }
 
 /**
- * 一张「已保存的命令」卡 —— 卡片本体 + 长按菜单 + 选中那圈边框。
+ * 一张「已保存的命令」卡 —— 卡片本体 + 选中那圈边框。
  *
- *  交互走库的交互式 `Card`（自带 `onClick` / `onLongPress` 与涟漪）；`preciseClickAnchor`
+ *  交互走库的交互式 `Card`（自带 `onClick` 与涟漪）；`preciseClickAnchor`
  *  挂在外层，只看不消费（浮层菜单的落点由它给）。
+ *
+ *  这张卡只有轻点一个手势：长按不接，菜单只从右上角那颗「更多」进 ——
+ *  卡片本身不大，长按与轻点抢同一片区域时（草稿脏了要先问一句）容易点错。
  */
 @Composable
 private fun SettingsPage.CommandTile(
     cmd: Command,
     ui: CommandUiState,
     tick: () -> Unit,
-    onScrollTop: () -> Unit,
-    enabled: Boolean,
+    /** 点开这一条之后去哪（跳回表单页）—— 灌草稿在这一层做，跳页由调用方做。 */
+    onOpen: (Command) -> Unit,
 ) {
     // 每一张卡各自一份 `PreciseClickState`（按命令名做 key）：`anchorCoordinates`
     //  只有一格，共用一份会把触点算到别的卡上去。
     val tilePreciseClick = remember(cmd.name) { PreciseClickState() }
-    // 右上角那颗「更多」另记一份：菜单要弹在**那颗字上**，不是长按的手指那一点。
+    // 右上角那颗「更多」另记一份：菜单要弹在**那颗字上**，不是整张卡上随便一点的位置。
     val dotsAnchor = remember(cmd.name) { PreciseClickState() }
     // 选中态（正在表单里编辑的那一条）：三处共用，只算一次 —— 判据是 `draft.editingName`。
     val editing = commandDraft.draft.editingName == cmd.name
     // 选中时类型图标与标题一起上主题色，带过渡（一处动画喂两个组件）。
-    val accentColor by animateColorAsState(
-        targetValue = if (editing) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurfaceContainer,
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "CommandTileAccent",
-    )
-    // 排序态下整张卡压暗：库的 `Card` 没有 `enabled`，而「点不动」得看得见 ——
-    //  与「按键绑定」页那条分段控件同一档（[DISABLED_ALPHA]），不做两套灰。
-    Box(Modifier.fillMaxWidth().alpha(if (enabled) 1f else DISABLED_ALPHA)) {
-        // 长按振动只走通用通道（[tickNow]）：库默认还会自己振一次 `LongPress`，
-        // 那条不看系统静音 —— 这里把局部触觉反馈换成空实现。
-        CompositionLocalProvider(LocalHapticFeedback provides NoHapticFeedback) {
-            Card(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        // 行高由 [CommandTileRow] 统一定，这里填满行高即可。
-                        .fillMaxHeight()
-                        .preciseClickAnchor(tilePreciseClick),
-                colors = commandTileColors(),
-                pressFeedbackType = PressFeedbackType.None,
-                // 禁用时连涟漪都不要：这一下本来就不做事，反馈会让人以为「点了、只是没生效」
-                showIndication = enabled,
-                onClick = {
-                    // 排序态下整片禁用：轻点这一张会把正在排的草稿整份换掉。
-                    if (!enabled) return@Card
-                    tick()
-                    // 草稿里有没保存的改动时先问一句（见 [loadDraft]）
-                    loadDraft(cmd)
-                    // 表单在页面顶部，不滚回去看不出点开了哪一张。
-                    onScrollTop()
-                },
-                onLongPress = {
-                    if (!enabled) return@Card
-                    tick()
-                    XLog.w("已保存命令长按：${cmd.name}（弹测试 / 编辑 / 删除）")
-                    ui.menu = TileMenu(cmd.name, tilePreciseClick)
-                },
-            ) {
-                CommandTileBody(cmd, accentColor, enabled, dotsAnchor) {
-                    tick()
-                    XLog.w("已保存命令菜单：${cmd.name}（右上角那颗「更多」）")
-                    ui.menu = TileMenu(cmd.name, dotsAnchor)
-                }
+    //
+    //  **传状态对象、不在这一层解构**：`by` 那个委托读发生在 `CommandTile` 自己的作用域里，
+    //  读一次就把整张卡绑在这条动画上 —— 选中 / 取消那 200ms 里摘要与步骤行会跟着每帧重组一遍
+    //  （它们一个像素都不变）。传 `State` 下去之后，读 `.value` 的只剩
+    //  `CommandTileHeadline` 那两处，重组范围收到那一行里。
+    val accentColor =
+        animateColorAsState(
+            targetValue = if (editing) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurfaceContainer,
+            animationSpec = COLOR_TRANSITION_SPEC,
+            label = "CommandTileAccent",
+        )
+    //  这一页（「命令列表」）没有禁用态：排序态只属于「多条」那张表单，进这一页时已经收掉了。
+    Box(Modifier.fillMaxWidth()) {
+        Card(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    // 行高由 [CommandTileRow] 统一定，这里填满行高即可。
+                    .fillMaxHeight()
+                    .preciseClickAnchor(tilePreciseClick),
+            colors = commandTileColors(),
+            pressFeedbackType = PressFeedbackType.None,
+            showIndication = true,
+            onClick = {
+                tick()
+                // 草稿里有没保存的改动时先问一句（见 [loadDraft]）
+                loadDraft(cmd)
+                // 灌完草稿要跳回**这一条所属那一类**的表单页（见调用方）——
+                //  停在列表页等于「点开了一条，眼前什么都没变」。
+                onOpen(cmd)
+            },
+        ) {
+            CommandTileBody(cmd, accentColor, dotsAnchor) {
+                tick()
+                XLog.w("已保存命令菜单：${cmd.name}（右上角那颗「更多」）")
+                ui.menu = TileMenu(cmd.name, dotsAnchor)
             }
         }
         // 浮层挂在零宽内层盒子里（落点由触点决定，这里只是宿主）。
@@ -244,7 +234,7 @@ private fun SettingsPage.CommandTile(
                 //  开着的时候这里拿到的必然是**这一次**的锚点（名字对得上才画）
                 preciseClick = ui.menu?.anchor ?: tilePreciseClick,
                 // 与「轻点这一张」同一个去处：灌进表单后滚回顶部。
-                onEdited = onScrollTop,
+                onEdited = { onOpen(cmd) },
                 onDelete = {
                     ui.menu = null
                     ui.deleting = cmd
@@ -275,8 +265,8 @@ private fun commandTileColors(): CardColors =
 @Composable
 private fun SettingsPage.CommandTileBody(
     cmd: Command,
-    accentColor: Color,
-    enabled: Boolean,
+    /** 强调色的**状态对象**（不是当前值）：只有标题那一行读它，见 `CommandTile` 的注释。 */
+    accentColor: State<Color>,
     /** 右上角那颗「更多」的触点锚点（菜单弹在它上面）。 */
     menuAnchor: PreciseClickState,
     /** 点那颗「更多」：开这一张卡的菜单（测试 / 编辑 / 删除）。 */
@@ -292,12 +282,12 @@ private fun SettingsPage.CommandTileBody(
         ) {
             CommandTileHeadline(cmd, accentColor, Modifier.weight(1f))
             // 右上角那颗「横向三个点」—— 测试 / 编辑 / 删除都收进它的菜单
-            //  （原先这里是单独一颗「测试」）。它自己吃掉这一下，不会触发整张卡的 `onClick` 或长按。
+            //  （原先这里是单独一颗「测试」）。它自己吃掉这一下，不会触发整张卡的 `onClick`。
             //  **flushEnd**：字形贴住这一格的右边线，右边线才与卡片左侧那颗类型图标对称
             //  （卡片内容有 16dp 内边距，居中的话它会比左边多缩进半个点击区）。
             //  挪的是整个点击区、不是格子里的字形 —— 详情见 `MoreButton`（上一版挪字形，
             //  按下去的底色偏在字左边，看着像「波纹歪」）。
-            MoreButton(onClick = onMenu, anchor = menuAnchor, enabled = enabled, flushEnd = true)
+            MoreButton(onClick = onMenu, anchor = menuAnchor, flushEnd = true)
         }
         // 多条命令：**名字在图标那一行**，步骤间隔挪到下面另起一行（用户口径「名称和 delay
         //  换个位置」—— 名字是这张卡的主键，跟类型图标同一行才读得出「这是哪一条」；
@@ -346,16 +336,18 @@ private fun SettingsPage.CommandTileBody(
 @Composable
 private fun CommandTileHeadline(
     cmd: Command,
-    accentColor: Color,
+    accentColor: State<Color>,
     modifier: Modifier,
 ) {
+    //  **读在这一层**（不是它的调用点）：动画值一变只有这一行重组，卡片正文与摘要不跟着走。
+    val accent = accentColor.value
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(
             commandIcon(cmd.kind, cmd.steps.size),
             null,
             Modifier.size(ROW_ICON_SIZE),
             // 选中时跟着标题走主题色 —— 不给 tint 会吃 `Card` 的 `contentColor`。
-            tint = accentColor,
+            tint = accent,
         )
         Spacer(Modifier.width(TILE_TITLE_GAP))
         // 两种命令的标题都**跟图标同一行**：名字是这张卡的主键，一眼要能认出来。
@@ -365,7 +357,7 @@ private fun CommandTileHeadline(
             style = COUITheme.textStyles.headline1,
             fontWeight = FontWeight.Medium,
             // 选中时上主题色，与类型图标同色、同一动画值。
-            color = accentColor,
+            color = accent,
             maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
             overflow = TextOverflow.Ellipsis,
             // 与行首那枚类型图标同一行、竖居中：补一档光学修正（见 `opticalCenter`）
@@ -436,7 +428,7 @@ private fun SettingsPage.summaryLineRows(lines: List<StepLine>) {
  *  · 字形比「选择应用」页那几块空态小一档（那是整页空态，这里只是页内一段），取色同一份。
  */
 @Composable
-private fun SavedCommandEmptyState() {
+internal fun SavedCommandEmptyState() {
     //  排版走 [Feedback]（与「选择应用」「条件执行」那两块同一份）；这一档只是页内一段，
     //  所以上下留一档白，不当整页空态居中。
     Feedback(

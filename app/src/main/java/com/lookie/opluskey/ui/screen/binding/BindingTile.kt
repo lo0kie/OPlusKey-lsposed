@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.screen.binding
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.layout.Box
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -19,16 +19,16 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.lookie.opluskey.core.model.ActionCatalog
-import com.lookie.opluskey.ui.NoHapticFeedback
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TILE_HEIGHT
 import com.lookie.opluskey.ui.TILE_SIDE_PADDING
 import com.lookie.opluskey.ui.TileFocusRing
+import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
@@ -71,7 +71,6 @@ internal fun SettingsPage.ActionTile(
      * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。
      */
     subtitle: String? = null,
-    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val scheme = COUITheme.colorScheme
@@ -85,11 +84,13 @@ internal fun SettingsPage.ActionTile(
                 selected -> scheme.onTertiaryContainer
                 else -> scheme.onSurfaceContainer
             },
+        animationSpec = COLOR_TRANSITION_SPEC,
         label = "TileContent",
     )
     // 行尾箭头与选中小字共用的那档「弱化色」，可用/禁用切换带过渡
     val tileMutedColor by animateColorAsState(
         targetValue = if (enabled) scheme.onSurfaceVariantSummary else contentColor,
+        animationSpec = COLOR_TRANSITION_SPEC,
         label = "TileMuted",
     )
     // 行尾那颗指示字形（选择器 / 勾选框 / 窗口 + 加号）的配色。
@@ -106,92 +107,97 @@ internal fun SettingsPage.ActionTile(
                 selected -> scheme.primary
                 else -> scheme.onSurfaceVariantActions
             },
+        animationSpec = COLOR_TRANSITION_SPEC,
         label = "TileEntryIndicator",
     )
 
-    // 外层 `Box` 现在**只为焦点圈**留一个浮层位置（见 [TileFocusRing]）——
-    // 长按不再自己写了：库的**交互式 `Card`** 自带 `onLongPress`
-    // （v1.1.0 `Card.kt` 第二个重载，内部就是 `Modifier.combinedClickable`，
-    // 长按之后那一下抬手不会再触发点击，两个手势互不抢）。
+    // 外层 `Box` **只为焦点圈**留一个浮层位置（见 [TileFocusRing]）。
     //
-    //  主开关为关时**两个手势一起停**（下面把两个回调都置 null ⇒
-    // 库的 `isClickable` 为 false，整个 `Card` 不可点）。
+    //  这一格只有轻点一个手势：长按不接（库的 `Card` 在 `onLongPress` 为 null 时走
+    //  `Modifier.clickable`，不是 `combinedClickable`）。自定义命令那条「进编辑」因此只剩
+    //  「已选中时再点一次」一个入口 —— 见网格里 `CustomTile` 的 `onClick`。
+    //
+    //  主开关为关时 `onClick` 置 null ⇒ 库的 `isClickable` 为 false，整个 `Card` 不可点。
     Box(modifier.height(TILE_HEIGHT)) {
-        // 长按的振动**只走通用通道**（[rememberTick] / [tickNow]）：库的 `combinedClickable`
-        // 默认还会自己振一次 `HapticFeedbackType.LongPress` —— 那条路不看系统静音。
-        // 把这一格的局部触觉反馈换成空实现（见 [NoHapticFeedback]）。
-        CompositionLocalProvider(LocalHapticFeedback provides NoHapticFeedback) {
-            Card(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .focusRequester(focusRequester)
-                        //  **必须自己补一个焦点目标**（真机定位）：
-                        // 这个版本的 `Modifier.combinedClickable` / `clickable` **不带 focusable** ——
-                        // `androidx.compose.foundation.ClickableKt` 里对 `FocusableKt`
-                        // 的引用数为 **0**，`AbstractClickableNode` 也只实现
-                        // `KeyInputModifierNode`、不是 `FocusTargetModifierNode`。
-                        // 后果：格子里没有 FocusTarget ⇒ `FocusRequester.requestFocus()` 找不到目标、
-                        // ⇒ 按键事件只发给根节点（`FocusOwnerImpl.dispatchKeyEvent` 在
-                        // `findFocusTargetNode()` 为 null 时只走根节点的 key 节点）
-                        // ⇒ [BindingList] 那个 `onPreviewKeyEvent` 一次都不会被调用。
-                        // 顺序不能反：`focusRequester` 必须在这个焦点目标**之前**（链上更靠外）。
-                        .focusTarget(),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = scheme.surfaceContainer,
-                        contentColor = contentColor,
-                        pressedColor = scheme.surfaceContainerHigh,
-                    ),
-                // 按压反馈**只要涟漪**：`showIndication` 让 `combinedClickable` 用
-                // `LocalIndication`，与 `BasicComponent` 那个 `clickable` 同一份，
-                // 视觉与换之前逐像素一致。`Tint`（底色渐变到 `pressedColor`）显式关掉 ——
-                pressFeedbackType = PressFeedbackType.None,
-                showIndication = true,
-                onClick = if (enabled) onClick else null,
-                onLongPress = if (enabled) onLongClick else null,
-            ) {
-                BasicComponent(
-                    //  **不给 `onClick`**：行内容自己那个 `clickable` 会在 Main 趟
-                    // 把事件消费掉，外层 `Card` 的 `combinedClickable` 就永远等不到
-                    // 轻点 / 长按 / 涟漪**全部**由外层 `Card` 负责。
-                    startAction = {
-                        // 图标列只有这一枚 22dp（尺寸沿用全页的 22dp 纪律，见 ActionIcons 的注释）。
-                        //  入口格的行首随档位变，见网格里 `icon = boundMode ?: spec` 那一句。
-                        icon?.let { Icon(it, null, Modifier.size(ROW_ICON_SIZE)) }
-                    },
-                    endActions = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            //  入口格不再画单选圈（那读作「这一格是一个可选项」），按**点开去哪**分两种字形：
-                            //  · 弹一层菜单（系统导航 / 系统按键 / 媒体控制 / 响铃状态）→ 选择器字形
-                            //    （[PageIcons.Selector]：一个框 + 右下角小三角，读作「点了要选点什么」）；
-                            //  · 进另一个页面（「打开应用」→ 挑应用）→ **右箭头**（与菜单、列表那几处同一颗）。
-                            //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
-                            // 换掉之后占位与观感不变。
-                            when {
-                                spec.token == ActionCatalog.APP_TILE -> {
-                                    Icon(
-                                        PageIcons.EnterArrow,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                        tint = entryIndicatorColor,
-                                    )
-                                }
+        Card(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .focusRequester(focusRequester)
+                    //  **必须自己补一个焦点目标**（真机定位）：
+                    // 这个版本的 `Modifier.combinedClickable` / `clickable` **不带 focusable** ——
+                    // `androidx.compose.foundation.ClickableKt` 里对 `FocusableKt`
+                    // 的引用数为 **0**，`AbstractClickableNode` 也只实现
+                    // `KeyInputModifierNode`、不是 `FocusTargetModifierNode`。
+                    // 后果：格子里没有 FocusTarget ⇒ `FocusRequester.requestFocus()` 找不到目标、
+                    // ⇒ 按键事件只发给根节点（`FocusOwnerImpl.dispatchKeyEvent` 在
+                    // `findFocusTargetNode()` 为 null 时只走根节点的 key 节点）
+                    // ⇒ [BindingList] 那个 `onPreviewKeyEvent` 一次都不会被调用。
+                    // 顺序不能反：`focusRequester` 必须在这个焦点目标**之前**（链上更靠外）。
+                    .focusTarget(),
+            colors =
+                CardDefaults.defaultColors(
+                    color = scheme.surfaceContainer,
+                    contentColor = contentColor,
+                    pressedColor = scheme.surfaceContainerHigh,
+                ),
+            // 按压反馈**只要涟漪**：`showIndication` 让 `clickable` 用
+            // `LocalIndication`，与 `BasicComponent` 那个 `clickable` 同一份，
+            // 视觉与换之前逐像素一致。`Tint`（底色渐变到 `pressedColor`）显式关掉 ——
+            pressFeedbackType = PressFeedbackType.None,
+            showIndication = true,
+            onClick = if (enabled) onClick else null,
+        ) {
+            BasicComponent(
+                //  **不给 `onClick`**：行内容自己那个 `clickable` 会在 Main 趟
+                // 把事件消费掉，外层 `Card` 的 `clickable` 就永远等不到 ——
+                // 轻点 / 涟漪**全部**由外层 `Card` 负责。
+                startAction = {
+                    // 图标列只有这一枚 22dp（尺寸沿用全页的 22dp 纪律，见 ActionIcons 的注释）。
+                    //  入口格的行首随档位变，见网格里 `icon = boundMode ?: spec` 那一句。
+                    icon?.let { Icon(it, null, Modifier.size(ROW_ICON_SIZE)) }
+                },
+                endActions = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        //  入口格不再画单选圈（那读作「这一格是一个可选项」），按**点开去哪**分两种字形：
+                        //  · 弹一层菜单（系统导航 / 系统按键 / 媒体控制 / 响铃状态）→ 选择器字形
+                        //    （[PageIcons.Selector]：一个框 + 右下角小三角，读作「点了要选点什么」）；
+                        //  · 进另一个页面（「打开应用」→ 挑应用）→ **右箭头**（与菜单、列表那几处同一颗）。
+                        //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
+                        // 换掉之后占位与观感不变。
+                        when {
+                            spec.token == ActionCatalog.APP_TILE -> {
+                                Icon(
+                                    PageIcons.EnterArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    tint = entryIndicatorColor,
+                                )
+                            }
 
-                                ActionCatalog.modeMenu(spec.token) != null -> {
-                                    Icon(
-                                        PageIcons.Selector,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                        tint = entryIndicatorColor,
-                                    )
-                                }
+                            ActionCatalog.modeMenu(spec.token) != null -> {
+                                Icon(
+                                    PageIcons.Selector,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    tint = entryIndicatorColor,
+                                )
+                            }
 
-                                //  取值格（不是入口格）的选中指示 —— 空心方框 / 带勾方框，见 [PageIcons.TileUnchecked]。
-                                //  形状与另两种字形同尺寸，不给触达区（点击交给整行）。
-                                else -> {
+                            //  取值格（不是入口格）的选中指示 —— 空心方框 / 带勾方框，见 [PageIcons.TileUnchecked]。
+                            //  形状与另两种字形同尺寸，不给触达区（点击交给整行）。
+                            //
+                            //  这一档变的是**状态**（选没选），换的是字形、插不了值 ⇒ 交叉淡过去，
+                            //  曲线与旁边那片底色同源（[COLOR_FADE_SPEC]）；两种字形同尺寸，
+                            //  交叉期间盒子宽度不变，标题不会被推一下。
+                            else -> {
+                                Crossfade(
+                                    targetState = selected,
+                                    animationSpec = COLOR_FADE_SPEC,
+                                    label = "TileChecked",
+                                ) { on ->
                                     Icon(
-                                        if (selected) PageIcons.TileChecked else PageIcons.TileUnchecked,
+                                        if (on) PageIcons.TileChecked else PageIcons.TileUnchecked,
                                         contentDescription = null,
                                         modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
                                         tint = entryIndicatorColor,
@@ -199,66 +205,66 @@ internal fun SettingsPage.ActionTile(
                                 }
                             }
                         }
-                    },
-                    // 默认 16dp 的内边距在两列的格子里会把标题挤没（见类注释的宽度账）
-                    insideMargin = PaddingValues(horizontal = TILE_SIDE_PADDING),
-                    // 格子是独立的卡片，按 COUI 的「卡片组里唯一一行」处理（上下各补 2dp）
-                    cardListPosition = CardListPosition.Full,
-                    // `enabled` 只管这一行**内容**的置灰（标题 / 图标 / radio）；
-                    // 能不能点由外层 `Card` 的两个回调（上面按 `enabled` 置 null）决定
-                    enabled = enabled,
+                    }
+                },
+                // 默认 16dp 的内边距在两列的格子里会把标题挤没（见类注释的宽度账）
+                insideMargin = PaddingValues(horizontal = TILE_SIDE_PADDING),
+                // 格子是独立的卡片，按 COUI 的「卡片组里唯一一行」处理（上下各补 2dp）
+                cardListPosition = CardListPosition.Full,
+                // `enabled` 只管这一行**内容**的置灰（标题 / 图标 / radio）；
+                // 能不能点由外层 `Card` 的两个回调（上面按 `enabled` 置 null）决定
+                enabled = enabled,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = spec.label,
+                        style = COUITheme.textStyles.body2,
+                        fontWeight = FontWeight.Medium,
+                        color = contentColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        //  `weight(fill = false)`：标题只占自己要的那点宽度、装不下才缩到
+                        //  省略号（标题右边不再有标记，这个权重仍按「只占自己那点」算）。
+                        modifier =
+                            Modifier
+                                .weight(1f, fill = false)
+                                .opticalCenter(COUITheme.textStyles.body2),
+                    )
+                }
+                // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
+                // 这行就是那个值。格子高 52dp、BasicComponent 最小高 48dp：两行（14sp + 12sp）装得下。
+                //  注意：这里**不能**用 [AnimatedFade]（只淡、不动高度）：那样这行字的
+                //  **布局高度是立刻占上的**，上面那行标题会**瞬间**被顶上去 ——
+                //  而要的正是「标题给这行字让位 / 复位」这个**位移本身滑出来**。
+                //  所以走 [VISIBILITY_ENTER] / [VISIBILITY_EXIT]（淡入 + 竖向展开，
+                //  与页里其他显隐同一套规格）：高度从 0 长到满，标题随之平滑上移；
+                //  收起时反向。两行（14sp + 12sp）在 52dp 的格子里装得下，不会溢出。
+                //  **起手就取当前这一档**（`!subtitle.isNullOrBlank()`），不写死 `false`：
+                //  写死的话「首帧 = 没展开」是每次**重新组合**都成立的 —— 翻 tab、从子页回来
+                //  都会把这一格新建一遍，那行小字于是每换一页就重播一次展开（高度 0 → 满，
+                //  标题跟着上下动一下）。取当前值之后，只有小字**真的出现 / 消失**时才播。
+                val subtitleShown = remember { MutableTransitionState(!subtitle.isNullOrBlank()) }
+                subtitleShown.targetState = !subtitle.isNullOrBlank()
+                //  字号 12sp：**主题里没有这一档** —— 小两档是 `footnote1` = 13sp、`footnote2` = 11sp，
+                //  中间空着。取 `footnote2` 只把字号提到 12sp（行高仍按它那档 1.143em 走，
+                //  12 × 1.143 ≈ 13.7dp）：11sp 的汉字在这个格子里偏糊，13sp 又太接近标题（14sp）。
+                //  这一行是补充值，与标题同档时两行争主次，格子一窄还先挤它。
+                val subtitleStyle = COUITheme.textStyles.footnote2.copy(fontSize = 12.sp)
+                AnimatedVisibility(
+                    visibleState = subtitleShown,
+                    enter = VISIBILITY_ENTER,
+                    exit = VISIBILITY_EXIT,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = spec.label,
-                            style = COUITheme.textStyles.body2,
-                            fontWeight = FontWeight.Medium,
-                            color = contentColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            //  `weight(fill = false)`：标题只占自己要的那点宽度、装不下才缩到
-                            //  省略号（标题右边不再有标记，这个权重仍按「只占自己那点」算）。
-                            modifier =
-                                Modifier
-                                    .weight(1f, fill = false)
-                                    .opticalCenter(COUITheme.textStyles.body2),
-                        )
-                    }
-                    // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
-                    // 这行就是那个值。格子高 52dp、BasicComponent 最小高 48dp：两行（14sp + 12sp）装得下。
-                    //  注意：这里**不能**用 [AnimatedFade]（只淡、不动高度）：那样这行字的
-                    //  **布局高度是立刻占上的**，上面那行标题会**瞬间**被顶上去 ——
-                    //  而要的正是「标题给这行字让位 / 复位」这个**位移本身滑出来**。
-                    //  所以走 [VISIBILITY_ENTER] / [VISIBILITY_EXIT]（淡入 + 竖向展开，
-                    //  与页里其他显隐同一套规格）：高度从 0 长到满，标题随之平滑上移；
-                    //  收起时反向。两行（14sp + 12sp）在 52dp 的格子里装得下，不会溢出。
-                    //  **起手就取当前这一档**（`!subtitle.isNullOrBlank()`），不写死 `false`：
-                    //  写死的话「首帧 = 没展开」是每次**重新组合**都成立的 —— 翻 tab、从子页回来
-                    //  都会把这一格新建一遍，那行小字于是每换一页就重播一次展开（高度 0 → 满，
-                    //  标题跟着上下动一下）。取当前值之后，只有小字**真的出现 / 消失**时才播。
-                    val subtitleShown = remember { MutableTransitionState(!subtitle.isNullOrBlank()) }
-                    subtitleShown.targetState = !subtitle.isNullOrBlank()
-                    //  字号 12sp：**主题里没有这一档** —— 小两档是 `footnote1` = 13sp、`footnote2` = 11sp，
-                    //  中间空着。取 `footnote2` 只把字号提到 12sp（行高仍按它那档 1.143em 走，
-                    //  12 × 1.143 ≈ 13.7dp）：11sp 的汉字在这个格子里偏糊，13sp 又太接近标题（14sp）。
-                    //  这一行是补充值，与标题同档时两行争主次，格子一窄还先挤它。
-                    val subtitleStyle = COUITheme.textStyles.footnote2.copy(fontSize = 12.sp)
-                    AnimatedVisibility(
-                        visibleState = subtitleShown,
-                        enter = VISIBILITY_ENTER,
-                        exit = VISIBILITY_EXIT,
-                    ) {
-                        Text(
-                            text = subtitle.orEmpty(),
-                            style = subtitleStyle,
-                            color = tileMutedColor,
-                            modifier = Modifier.opticalCenter(subtitleStyle),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            // 与标题同一套视觉居中：按**各自字号**取同一比例（12sp 与 14sp 差不到 0.2dp，
-                            //  行距基本不变），两行一起落在格的视觉中心
-                        )
-                    }
+                    Text(
+                        text = subtitle.orEmpty(),
+                        style = subtitleStyle,
+                        color = tileMutedColor,
+                        modifier = Modifier.opticalCenter(subtitleStyle),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        // 与标题同一套视觉居中：按**各自字号**取同一比例（12sp 与 14sp 差不到 0.2dp，
+                        //  行距基本不变），两行一起落在格的视觉中心
+                    )
                 }
             }
         }

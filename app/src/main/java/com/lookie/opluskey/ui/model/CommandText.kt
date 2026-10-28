@@ -61,7 +61,9 @@ internal fun stepTitle(
     appName: (String) -> String,
 ): String {
     if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
-    val action = Action.parse(token)
+    //  走 `ActionCatalog` 那份按 token 记忆的解析结果，不在这里现 `Action.parse` ——
+    //  步骤行的每一次重组、每一条已保存命令卡都会走到这一句（见 `ActionCatalog.actionOf`）。
+    val action = ActionCatalog.actionOf(token)
     return actionTitle(
         action = action,
         // 名字从哪儿来是**界面侧**的事（宿主那边现查 PM）：这里先查这次清单、再查配置里记的名字

@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -32,6 +34,8 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.DisabledHint
+import com.lookie.opluskey.ui.IconInputView
+import com.lookie.opluskey.ui.InputSpec
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.PageMenu
@@ -43,6 +47,8 @@ import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.commandKindLabel
+import com.lookie.opluskey.ui.moveCaretToEnd
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -60,12 +66,11 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
 //   · `CommandDialogs.kt` —— 页外那五个确认窗。
 
 /**
- * 「自定义命令」页的**一页** —— 单条与多条各走一次。
+ * 「自定义命令」页的**表单页** —— 单条与多条各走一次。
  *
  * @param kind 这一页是哪一类。页内所有 `kind` 判断都指它，**不是** `draft.kind`
  *   （后者跟着停下来的那一页走，过渡期两者可能不同）。
  * @param scroll 本页的滚动骨架（见 [CommandPageScroll]）。
- * @param onScrollTop 「点一下已保存的命令」之后滚回顶部 —— 表单在页面顶部，不滚回去看不出点开了哪一张。
  */
 @Composable
 internal fun SettingsPage.CommandPage(
@@ -73,13 +78,8 @@ internal fun SettingsPage.CommandPage(
     scroll: CommandPageScroll,
     ui: CommandUiState,
     tick: () -> Unit,
-    onScrollTop: () -> Unit,
 ) {
-    // 这一页只列自己那一类（`saved` 与同名的外层变量无关）
-    //  记住它：这一页在每次重组上都要 `filter` 一遍整个命令库并新建一个 List，
-    //  而下面那几处都会打脏本页（滚动手势、开关、输入……）。
-    val saved = remember(configState.commands.value, kind) { configState.commands.value.filter { it.kind == kind } }
-    // 排序态（只可能出现在「多条命令」这一页）：表单与已保存那片一律禁用，底部工具条滑出隐藏。
+    // 排序态（只可能出现在「多条命令」这一页）：表单与列表一律禁用，底部工具条滑出隐藏。
     val sorting = commandDraft.stepEditing
     //  命令列表那一行的小标题右侧那颗「更多」（与条件执行页的场景块同一套）：
     //  点它弹一层菜单，排序态从菜单里进出 —— 原先挂在右下角那颗 FAB 上，用户口径挪到这里。
@@ -157,11 +157,8 @@ internal fun SettingsPage.CommandPage(
                 }
             }
 
-            // 「已保存的命令」这一段**始终在**：一条都没有时给一张空状态卡 ——
-            //  以前是 `if (saved.isNotEmpty())` 整段不出现，用户看不出这块地方该有东西、也分不清
-            //  「还没保存过」与「这块地方根本不存在」。
-            SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
-            SavedCommandsSection(saved, ui, tick, onScrollTop, enabled = !sorting)
+            //  「已保存的命令」不在这里了 —— 它是第三个页签（见 [CommandListPage]）：
+            //  原先挂在两张表单的页尾、每页只列自己那一类，翻页才看得见另一半。
         }
         //  排序态的入口在「命令列表」那条小标题的行尾（见它上面那个 `trailing`），
         //  不再用右下角那颗 FAB —— 与「条件执行」页的场景块同一个形态。
@@ -172,6 +169,71 @@ internal fun SettingsPage.CommandPage(
             tick = tick,
             onClose = { listMenu = false },
         )
+    }
+}
+
+/**
+ * 「命令列表」那一页 —— 整个命令库，按类型分成两段：单条命令在上、多条命令在下。
+ *
+ *  原先这一片是挂在**两张表单的页尾**、每页只列自己那一类：翻到哪一页就只看得见一半，
+ *  要改另一类的那条得先翻页。现在它是独立的一页，两段各给一条小标题。
+ *
+ *  分段的第二个理由在**行高**上：单条卡是半个正方形、多条卡是正方形，一格混排时整行按
+ *  高的那一档算（见 `CommandTileRow` 的 `minHeightRatio`），单条卡就会空出半张。
+ *  分段之后每段里只有一种类型，格子高度正好。
+ *
+ *  与 [CommandPage] 共用同一套滚动骨架（顶栏折叠 + 越界回弹 + 页底留白）：换页时底部留白与
+ *  折叠曲线要对得上，各写一份迟早走形。
+ *
+ * @param onOpen 点开一条（或它菜单里的「编辑」）—— 草稿由卡片那边灌好，这里只管跳回表单页
+ *   （见 `CommandScreen` 的 `openSaved`）。
+ */
+@Composable
+internal fun SettingsPage.CommandListPage(
+    scroll: CommandPageScroll,
+    ui: CommandUiState,
+    tick: () -> Unit,
+    onOpen: (Command) -> Unit,
+) {
+    val commands = configState.commands.value
+    //  量一次视口高度：空态要**在可见区里居中**，而滚动容器的子项拿到的是无限高度约束
+    //  （`fillMaxHeight()` 在那儿没有意义）—— 与「条件执行」页同一个做法。
+    //  空态**仍然留在滚动内容里**：它得跟着内容一起拖、一起弹，挪出滚动容器就再也越界不动了。
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val emptyHeight =
+            (maxHeight - currentHeaderHeight(scroll.behavior) - scroll.tabBlockDp - PAGE_BOTTOM_PADDING)
+                .coerceAtLeast(0.dp)
+        Column(
+            Modifier
+                .fillMaxSize()
+                // 大标题随滚动折叠（`nestedScroll` 要在 `verticalScroll` 之前）
+                .nestedScroll(scroll.behavior.nestedScrollConnection)
+                // 越界回弹：`overScrollVertical` 挂在滚动容器外侧，所以内容不满一屏时照样弹。
+                .overScrollVertical()
+                .verticalScroll(scroll.state)
+                // 页底留白挂在滚动内容内侧 —— 与 [CommandPage] 同一档、同一位置
+                .padding(bottom = PAGE_BOTTOM_PADDING),
+        ) {
+            // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带一起让出。
+            Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp))
+            if (commands.isEmpty()) {
+                //  一条都没有：撑满可见区并正中（高度已减掉顶栏、分页带与页底留白，
+                //  所以居中落在**看得见的那块**正中间，不多出一段能拖的空白）。
+                Box(Modifier.fillMaxWidth().height(emptyHeight), contentAlignment = Alignment.Center) {
+                    SavedCommandEmptyState()
+                }
+            } else {
+                //  两段各一条小标题；**空的那一段整段不画**（一条命令都没有的那类，留一条光标题
+                //  + 空网格只是占地方）。
+                CommandKind.FORM_TABS.forEach { kind ->
+                    val group = commands.filter { it.kind == kind }
+                    if (group.isEmpty()) return@forEach
+                    SectionTitle(commandKindLabel(kind))
+                    //  这一页没有表单要禁用：排序态只属于「多条」那张表单，进这一页时已经收掉了。
+                    SavedCommandsSection(saved = group, ui = ui, tick = tick, onOpen = onOpen)
+                }
+            }
+        }
     }
 }
 
@@ -394,14 +456,17 @@ private fun SettingsPage.StepDelayCard(
                                 summary = I18n.get(Strings.COMMAND_DELAY_DESC, "等多久再执行下一条"),
                                 min = Command.MIN_STEP_DELAY_MS,
                                 max = Command.MAX_STEP_DELAY_MS,
-                                value = commandDraft.draft.stepDelayMs,
+                                //  读**多条那一份**：这张卡只出现在多条页，而 `draft.stepDelayMs`
+                                //  跟 `draft.kind` 的镜像走 —— 翻页那一帧会给成单条那份的值
+                                //  （滑杆随即又跳回来，看着像自己动了一下）。
+                                value = commandDraft.draft.serialForm.stepDelayMs,
                                 default = Command.DEFAULT_STEP_DELAY_MS,
                                 // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
                                 enabled = enabled,
                             ),
                     ) { v ->
                         tick()
-                        commandDraft.draft.stepDelayMs = v
+                        commandDraft.draft.serialForm.stepDelayMs = v
                         // 只改草稿、不落盘（随「保存」一起入库）—— 没有失败可言，恒 true。
                         true
                     }

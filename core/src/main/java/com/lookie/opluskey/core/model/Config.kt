@@ -578,12 +578,39 @@ data class Config(
     fun keyForId(id: String): KeyConfig? = keyIdOf(id)?.let { key(it) }
 
     /**
+     * 键码 → 那一颗键的配置 —— [keyForCode] 的**索引**，建一次。
+     *
+     *  [allKeys] 那次 `lazy` 省掉的是「每次按键现拼一个列表」，剩下的一半仍在每次按键上：
+     *  **线性扫一遍** `allKeys`、每颗键再 `List.contains` 一次自己的码表。而这条路径收的是
+     *  系统里的**每一个**按键（不认识的随即放行），一次按键扫两遍（`keyForCode` 与
+     *  [keyForRawCode] 各一遍）。建成表之后每次按键只剩一次 `HashMap` 查找。
+     *
+     *  重复码取**先出现**的那一颗（与原先 `firstOrNull` 的结果逐字一致）：用 `putIfAbsent`。
+     *  `lazy` 默认带锁 —— 建表可能发生在 `InputReader` 线程上，别换成 `NONE`。
+     */
+    private val keysByCode: Map<Int, KeyConfig> by lazy {
+        val map = HashMap<Int, KeyConfig>(allKeys.size * 2)
+        for (k in allKeys) {
+            val cfg = key(k)
+            for (code in k.acceptedKeyCodes) map.putIfAbsent(code, cfg)
+        }
+        map
+    }
+
+    /** 同上，按**原始键码**建表 —— [keyForRawCode] 那条路。 */
+    private val keysByRawCode: Map<Int, KeyConfig> by lazy {
+        val map = HashMap<Int, KeyConfig>(allKeys.size * 2)
+        for (k in allKeys) map.putIfAbsent(k.keyCode, key(k))
+        map
+    }
+
+    /**
      * 按 keyCode 找那个键的配置 —— **认领路径的唯一入口**。
      *
      *  注入侧不再问「这是不是侧键」，改问「这个码在配置里是不是某一颗键」。查不到就放行：
      *  电源 / 音量那些必须原样交给系统，这一点没变。
      */
-    fun keyForCode(code: Int): KeyConfig? = allKeys.firstOrNull { code in it.acceptedKeyCodes }?.let { key(it) }
+    fun keyForCode(code: Int): KeyConfig? = keysByCode[code]
 
     /**
      * 按**原始键码**找键 —— 与 [keyForCode] 的区别是**不含** ColorOS 的内部注入码。
@@ -591,7 +618,7 @@ data class Config(
      *  PM（`PhoneWindowManager`）那条兜底路径能收到所有按键，策略类那条已经处理过 780 / 781 / 782，
      *  这里再认一次会让同一次按压被判两遍（策略类那条路径的说明见 `inject/SideKeyInterceptor`）。
      */
-    fun keyForRawCode(code: Int): KeyConfig? = allKeys.firstOrNull { it.keyCode == code }?.let { key(it) }
+    fun keyForRawCode(code: Int): KeyConfig? = keysByRawCode[code]
 
     /**
      * 当前按着 [down] 这几颗键（`KeyId.id`）时，该由哪一档组合键接管 —— 没有就是 `null`。

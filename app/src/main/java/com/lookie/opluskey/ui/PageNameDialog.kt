@@ -14,8 +14,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.screen.command.IconInputView
-import com.lookie.opluskey.ui.screen.command.InputSpec
 
 /** 一个名字最多能输多少字（超出的部分在输入框里直接吃掉）。 */
 internal const val MAX_NAME_LENGTH = 24

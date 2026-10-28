@@ -88,8 +88,15 @@ internal class StepRowDisplay {
             }
             newOrder += exitingByAnchor[m?.id].orEmpty().sortedBy { it.id }
         }
-        rows.clear()
-        rows.addAll(newOrder)
+        //  次序没变就**一点不动这张表**：`clear()` + `addAll()` 会让组合层看到一次「空表」——
+        //  那一帧里所有 `key(item.id)` 的组都会被注销，下一帧再重建时 `AnimatedVisibility`
+        //  是一份新组合，整张表于是重新展开一遍（切 tab 回来会跑这一趟 `sync`，
+        //  用户的「每次都重新展开了」就是这么来的）。同样的次序、同样的对象 ⇒ 不写就不脏。
+        val sameOrder = rows.size == newOrder.size && rows.indices.all { rows[it] === newOrder[it] }
+        if (!sameOrder) {
+            rows.clear()
+            rows.addAll(newOrder)
+        }
     }
 
     /** 页面出栈：清空 —— 下一趟进来从干净的一份开始（id 也从头数）。 */

@@ -622,7 +622,14 @@ object ActionCatalog {
      *
      * @param token 开关在 [SWITCH_MODES] 里那一行的 token
      */
-    fun switchStates(token: String): List<Spec> {
+    fun switchStates(token: String): List<Spec> = switchStatesCache.getOrPut(token) { buildSwitchStates(token) }
+
+    /**
+     * [switchStates] 的实体 —— 每次调用要新造 1~3 个 [Spec]（`Spec` 是 data class，名字还要过一次
+     * i18n）。它被 `stateMenu` → 入口格菜单、以及网格里每一格的小字反复问到，键只有
+     * 「开关的 token」那么几个 —— 按 token 记一份，返回的 List 只读，调用方不要改。
+     */
+    private fun buildSwitchStates(token: String): List<Spec> {
         val toggle = Spec(name = Strings.CATALOG_MODE_TOGGLE, token = token)
         if (!token.startsWith(Action.SETTING_PREFIX)) return listOf(toggle)
         val id = token.removePrefix(Action.SETTING_PREFIX)
@@ -642,6 +649,29 @@ object ActionCatalog {
      */
     fun stateMenu(token: String): List<Spec>? = switchStates(token).takeIf { it.size > 1 }
 
+    //  下面三张表是同一个口径：**键只由 token 决定**，取值集合 = 清单 + 用户建过的命令，
+    //  随配置大小封顶、不随运行时间增长（所以不需要 LRU）；并发下允许算重复一次，结果相同。
+    //
+    //  它们换掉的是这几处的一次实算 —— 都是「每次重组 / 每行每帧」的调用点：
+    //   · [actionOf]      —— `Action.parse`（切前缀 + `toIntOrNull` + 造对象）；
+    //   · [modeHitOf]     —— 扫一遍 [ALL]（四十余项），并对每个入口格再扫一遍它那层菜单；
+    //   · [switchStates]  —— 每次新造 1~3 个 `Spec`（data class，名字还要过一次 i18n）。
+
+    /** `token` → 解析出来的动作。动作都是不可变的，可以整只存下来。 */
+    private val parsedActions = java.util.concurrent.ConcurrentHashMap<String, Action>()
+
+    fun actionOf(token: String): Action = parsedActions.getOrPut(token) { Action.parse(token) }
+
+    /** `action.token` → 落在入口格哪一格哪一行（只存**命中**的那份）。 */
+    private val modeHits = java.util.concurrent.ConcurrentHashMap<String, ModeHit>()
+
+    /** 明确问过、确实不属于任何入口格的 token —— 不记的话 `cmd:` 那类每次都要重扫一遍全表。 */
+    private val modeMisses =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet<String>()
+
+    private val switchStatesCache = java.util.concurrent.ConcurrentHashMap<String, List<Spec>>()
+
     /**
      * `token` → 规范化之后的写法（走一遍 `Action.parse` 再取回它的 `token`）。
      *
@@ -656,7 +686,7 @@ object ActionCatalog {
      */
     private val canonicalTokens = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    fun canonicalToken(token: String): String = canonicalTokens.getOrPut(token) { Action.parse(token).token }
+    fun canonicalToken(token: String): String = canonicalTokens.getOrPut(token) { actionOf(token).token }
 
     /**
      * 当前动作落在入口格的哪一档上（行里那些标题：循环 / 静音 / 上一首 …）；不在任何一组时返回 `null`。
@@ -690,6 +720,16 @@ object ActionCatalog {
      *     [Spec.glyph] 上。拿不到这一行，就等于把档位的身份丢在了主题层面。
      */
     fun modeHitOf(action: Action): ModeHit? {
+        val token = action.token
+        modeHits[token]?.let { return it }
+        if (token in modeMisses) return null
+        val hit = searchModeHit(action)
+        if (hit == null) modeMisses.add(token) else modeHits[token] = hit
+        return hit
+    }
+
+    /** [modeHitOf] 的实算那一半 —— 只在缓存没命中时跑一次。 */
+    private fun searchModeHit(action: Action): ModeHit? {
         //  `tile` 是按「token 在 MODE_MENUS 里」挑出来的，那一层菜单必然存在 —— 不写
         //  `?: action.token` 那种回退：回退出来的不是档位名（是整串 token），调用方会当名字用。
         val tile = ALL.firstOrNull { it.token in MODE_MENUS && isSelected(it, action) } ?: return null

@@ -69,7 +69,7 @@ internal fun SettingsPage.BindingScreen(
         //  这里必须 reset —— `goBack` 只在草稿 `dirty` 时才 reset —— 「点开一条已保存的命令
         //  看一眼、原样返回」那种不脏的退页**不会**清 `editingName`，于是下次点这颗 FAB 进来
         //  表单还挂着「修改命令」、保存按钮还是「修改」，一按就把刚看过的那条原样覆盖回去。
-        //  「进编辑」那条路（长按 / 再点一次）走的是 `draft.load`，不经过这里。
+        //  「进编辑」那条路（网格里已选中的那一格再点一次）走的是 `draft.load`，不经过这里。
         commandDraft.draft.reset()
         navTo(Screen.COMMANDS)
     }

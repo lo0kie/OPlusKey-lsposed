@@ -30,10 +30,26 @@ import io.github.suqi8.coui.kmp.nav.transition.NavTransitions
 //   · **进 / 涨**（淡入、展开、淡入式位移）→ [DecelerateEasing]（t² 的镜像，起步快、收尾缓）；
 //   · **出 / 缩**（淡出、收缩、离场位移）→ [AccelerateEasing]（t²，起步缓、收尾快）。
 
+/** 状态色 / 状态字形那一条过渡的时长 —— [COLOR_TRANSITION_SPEC] 与 [COLOR_FADE_SPEC] 共用这一个数。 */
+private const val COLOR_TRANSITION_MS = 200
+
 /** 全局统一颜色过渡曲线与时长（200ms 柔和减速，供全仓状态颜色切换）。 */
 internal val COLOR_TRANSITION_SPEC =
     tween<Color>(
-        durationMillis = 200,
+        durationMillis = COLOR_TRANSITION_MS,
+        easing = DecelerateEasing(),
+    )
+
+/**
+ * 同一条曲线的**浮点版** —— 字形 / 图标那种「不是颜色、又要和颜色同时到位」的切换用它。
+ *
+ *  典型用法是 `Crossfade(animationSpec = COLOR_FADE_SPEC)`：形状没法插值，只能换字形，
+ *  而换字形那一淡必须与旁边那片底色同一条曲线、同一个时长，否则同一次点击看着是「先亮后换」。
+ *  两档共用 [COLOR_TRANSITION_MS]，别再各自写一份 `tween<Float>(200, …)`。
+ */
+internal val COLOR_FADE_SPEC =
+    tween<Float>(
+        durationMillis = COLOR_TRANSITION_MS,
         easing = DecelerateEasing(),
     )
 
