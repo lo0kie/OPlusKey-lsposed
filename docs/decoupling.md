@@ -20,14 +20,14 @@
 | ---------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | 包级环 / 边                              | **0 / 31**（细分档位口径）                                             | 跑 `python3 tools/audit-coupling.py`，第一行就打印这两个数                          |
 | `SettingsPage` 状态字段                  | **24**                                                                 | `grep -cE '^    (internal )?(private )?(val\|var) ' ui/SettingsPage.kt`             |
-| `SettingsPage.xxx` 扩展                  | **360** 个，散在 94 文件                                               | `python3 tools/audit-arch.py`（规模那一节）                                         |
+| `SettingsPage.xxx` 扩展                  | **368** 个，散在 97 文件                                               | `python3 tools/audit-arch.py`（规模那一节）                                         |
 | `ui/SettingsPage.kt` 行数                | **681**                                                                | `wc -l ui/SettingsPage.kt`                                                          |
 | `inject/ProbeChannel.kt` 行数            | 338（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）          | `wc -l inject/Probe*.kt`                                                            |
 | `host/action/MiniWindowLauncher.kt` 行数 | 814（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`） | `wc -l host/action/MiniWindow*.kt`                                                  |
-| 单文件最大行数                           | **891**（`core/i18n/Strings.kt`）；全仓**无 > 1000 行**的文件          | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
+| 单文件最大行数                           | **945**（`core/i18n/Strings.kt`）；全仓**无 > 1000 行**的文件          | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
 | 宿主入口编排                             | `GestureReceiver` **346** 行 + `GestureExec` **650** 行                | `python3 tools/audit-arch.py`                                                       |
 | 业务规则的副本数                         | 8 条判据全达标（两级闸门 0 处手写、失败分类 0 处手写、动作标题 1 处实现 …） | `python3 tools/audit-arch.py`                                                       |
-| 屏文件 import 页面                       | 66 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线  | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
+| 屏文件 import 页面                       | 68 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线  | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
 | 零引用 import                            | 0，且由 detekt 拦下                                                    | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
 **边数 27 → 31 → 30 → 32 → 31 有两个来源，都不是新增耦合**：`ui/hook` 从 `ui` 档里拆出来时量具变细，

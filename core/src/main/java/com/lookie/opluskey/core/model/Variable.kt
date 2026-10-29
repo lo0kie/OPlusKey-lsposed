@@ -51,8 +51,8 @@ enum class VarType(
 
             BOOLEAN -> {
                 when (raw.trim().lowercase(Locale.ROOT)) {
-                    "true", "1", "on", "yes" -> "true"
-                    "false", "0", "off", "no" -> "false"
+                    "true", "1", "on", "yes" -> TEXT_TRUE
+                    "false", "0", "off", "no" -> TEXT_FALSE
                     else -> null
                 }
             }
@@ -80,10 +80,10 @@ enum class VarType(
      */
     fun negate(value: String): String? =
         if (this == BOOLEAN) {
-            if (value == "true") {
-                "false"
+            if (value == TEXT_TRUE) {
+                TEXT_FALSE
             } else {
-                "true"
+                TEXT_TRUE
             }
         } else {
             null
@@ -101,6 +101,17 @@ enum class VarType(
     }
 
     companion object {
+        /**
+         * 布尔变量的**存盘写法** —— 界面上显示「真 / 假」，存储与命令写法里只认这两个词。
+         *
+         *  放在这里而不是各界面自己写一份字面量：这两个词是协议值（见类注释「存储格式」），
+         *  散开之后改一处漏一处的表现是「界面存了 `True`、执行侧读不到」。
+         */
+        const val TEXT_TRUE: String = "true"
+
+        /** 见 [TEXT_TRUE]。 */
+        const val TEXT_FALSE: String = "false"
+
         /** 按线格式里的 id 认一档；认不出返回 `null`（多半是文件来自更新的版本）。 */
         fun fromId(id: String): VarType? = entries.firstOrNull { it.id == id.trim().lowercase(Locale.ROOT) }
 
@@ -141,20 +152,26 @@ enum class VarType(
 }
 
 /**
- * 变量名 —— `[A-Za-z_][A-Za-z0-9_]*`，最长 [MAX_LENGTH]。
+ * 变量名 —— 不含语法字符即可，最长 [MAX_LENGTH] 个字符。
  *
- *  只用 ASCII 标识符：引用写法是 `${名字}`，名字里再出现中文 / 空格 / `}` 时，
- *  手写命令与日志里都容易读串（`${序号}` 与 `${序 号}` 是不是一个变量，光看字分不出）。
- *  真要中文名，等界面上有线了再放宽 —— 这一条只影响「新建时填什么」，不影响已存的变量。
+ * ## 只挡「会被当成语法」的字符
+ *
+ *  引用写法是 `${名字}`、赋值写法是 `setvar:<名字><符号><值>`（见 [VarOp]），所以名字里出现
+ *  `= + - ! $ : { }` 或空白时，这两种写法就切不开了（`a-=1` 会被读成「把 `a` 减 1」）。
+ *  除这几个之外**不另设限制**：中文、日文、数字开头、中间带小数点都可以 —— 名字是给人看的，
+ *  只该挡真正会坏事的字符。
+ *
+ *  这一条只影响「新建时填什么」，不影响已存的变量（老配置里那些 ASCII 名字照样能用）。
  */
 object VariableName {
     /** 名字最多多少个字符。 */
     const val MAX_LENGTH: Int = 32
 
-    private val PATTERN = Regex("^[A-Za-z_][A-Za-z0-9_]*$")
+    /** 语法字符与空白 —— 名字里出现任何一个都不合法（见类注释）。 */
+    private val FORBIDDEN = Regex("[\\s=+\\-!$:{}]")
 
     /** 这个名字能不能用（首尾空白不算数：` 序号 ` 与 `序号` 是同一个名字）。 */
-    fun isValid(raw: String): Boolean = raw.trim().let { it.isNotEmpty() && it.length <= MAX_LENGTH && PATTERN.matches(it) }
+    fun isValid(raw: String): Boolean = raw.trim().let { it.isNotEmpty() && it.length <= MAX_LENGTH && !FORBIDDEN.containsMatchIn(it) }
 
     /** 归一成存盘用的写法（去首尾空白）；不合法返回 `null`。 */
     fun normalize(raw: String): String? = raw.trim().takeIf(::isValid)
@@ -190,7 +207,7 @@ data class Variable(
         get() = VariableName.isValid(name) && type.coerce(initial) == initial && type.coerce(value) == value
 
     /** 这个值在**布尔**语境下算不算真（只有 BOOLEAN 变量会用到；其余档恒为 false）。 */
-    val isTrue: Boolean get() = type == VarType.BOOLEAN && value == "true"
+    val isTrue: Boolean get() = type == VarType.BOOLEAN && value == VarType.TEXT_TRUE
 
     /** 回到初始值（开机重置与「恢复初始值」共用这一处）。 */
     fun reset(): Variable = if (value == initial) this else copy(value = initial)

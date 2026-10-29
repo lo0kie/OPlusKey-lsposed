@@ -81,20 +81,4 @@ internal object VoiceAssistBridge {
         Framework.Calls.SPEECH_PACKAGES.firstOrNull { pkg ->
             runCatching { ctx.packageManager.getApplicationInfo(pkg, 0) }.isSuccess
         }
-
-    /**
-     * 以 **system_server 自己的身份**（uid 1000）执行 [block]。
-     *
-     *  与 [StatusBarBridge] 里那个同名约定**是同一件事**：这段跑在 AMS 的广播入口里，调用方
-     *  uid 还是发广播的宿主；换个身份再起，目标服务按调用方判权限才不会拒。
-     *  换完必须还原（`finally`），否则会把 system 身份漏给同线程后面的调用。
-     */
-    private inline fun <T> asSystem(block: () -> T): T {
-        val token = android.os.Binder.clearCallingIdentity()
-        return try {
-            block()
-        } finally {
-            android.os.Binder.restoreCallingIdentity(token)
-        }
-    }
 }

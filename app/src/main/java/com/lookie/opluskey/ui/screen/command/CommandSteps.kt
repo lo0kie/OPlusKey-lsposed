@@ -26,6 +26,7 @@ import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.IconAction
+import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
@@ -42,6 +43,7 @@ import com.lookie.opluskey.ui.rememberGestureProbe
 import com.lookie.opluskey.ui.rememberRowIconColor
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.replaceStep
+import com.lookie.opluskey.ui.screen.openVarOpsForStep
 import com.lookie.opluskey.ui.state.ResumeSheet
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.CardListPosition
@@ -191,7 +193,7 @@ internal fun SettingsPage.SerialSteps() {
                                         )
                                     }
                                 } else {
-                                    SelectorGlyph()
+                                    RowEndIcon(PageIcons.Selector)
                                 }
                             },
                         ) {
@@ -272,8 +274,8 @@ internal fun SettingsPage.SerialSteps() {
                 startAction = {
                     Icon(PageIcons.StepAdd, null, Modifier.size(ROW_ICON_SIZE), tint = addIconTint)
                 },
-                // 行尾那颗选择器指示 —— 见 [SelectorGlyph]：步骤行与这一行**同一颗**。
-                endActions = { SelectorGlyph() },
+                // 行尾那颗选择器指示 —— 见 [RowEndIcon]：步骤行与这一行**同一颗**。
+                endActions = { RowEndIcon(PageIcons.Selector) },
                 // `enabled = false` 时 COUI 不挂 `clickableModifier` ⇒ 点不进去，浮层也就打不开。
                 enabled = !stepsFull && !sorting,
                 onClick = {
@@ -315,11 +317,19 @@ internal fun SettingsPage.SerialSteps() {
                         I18n.get(Strings.COMMAND_ADD, "添加命令")
                     },
                 current = currentAction,
-                onOpenApp = {
-                    //  压一页之前把「回来要开哪一档」记在页面级（这一页的组合会被注销）
+                //  两行关卡：都只是「收抽屉 → 压一页」，区别只在去哪一页。
+                //  压页之前把「回来要开哪一档」记在页面级（这一页的组合会被注销）——没挑成、
+                //  直接返回时抽屉原样支起来；挑成了由落盘那一路把这笔账清掉（见 `commitVarOp`）。
+                //  `STEP_PICK_APPEND` 表示这一趟是追加，回来照旧从末尾加一步。
+                onOpenPicker = { page ->
                     val at = if (sheetAt != null && sheetAt >= 0) sheetAt else STEP_PICK_APPEND
+                    //  压页之前把「回来要开哪一档」记在页面级（这一页的组合会被注销）——没挑成、
+                    //  直接返回时抽屉原样支起来；挑成了由落盘那一路把这笔账清掉（见 `commitStep`）。
                     picker.resumeSheetAt.value = ResumeSheet(Screen.COMMANDS, at)
-                    openAppPickerForStep(at)
+                    when (page) {
+                        StepPickerPage.App -> openAppPickerForStep(at)
+                        StepPickerPage.Vars -> openVarOpsForStep(at)
+                    }
                 },
                 //  这一支**只由「确定」调**（点行只换高亮）：确定那一刻才真正加一步 / 换掉这一步。
                 onPick = { token ->

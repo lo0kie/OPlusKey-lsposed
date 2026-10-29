@@ -13,6 +13,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.state.VarListSignal
 import com.lookie.opluskey.ui.write
 
 // 「配置」那四个**动作**（切换 / 新建 / 重命名 / 删除）与命名窗。
@@ -22,12 +23,16 @@ import com.lookie.opluskey.ui.write
 // 菜单行的拼装留在 `AboutMenus`，这里只有「点了之后干什么」。
 
 /**
- * 换了一份配置之后的两件事：落盘广播 + 重读命令库。
+ * 换了一份配置之后的三件事：落盘广播 + 重读命令库 + 让变量页重读清单。
  *
  *  命令库是**跟着配置走**的（见 [ConfigProfiles.switchTo] / [ProfileCommands.swap]），切换把两边
  *  一起换了之后，页面手上这份命令表还是旧的 —— 不重读的话命令页与绑定页列的是上一份的命令。
  *
- *  只读态不动命令表：那时手上这份本来就不是盘上的真相。
+ *  变量表同样跟着走（[ProfileVars]）：两页变量清单都是 `remember` 住的，不打个记号它们会一直
+ *  显示上一份配置的那几颗 —— 而这一位（`VarListSignal`）同时管「改过值」与「换过配置」，
+ *  两页各自 `LaunchedEffect` 跟着它重读。
+ *
+ *  只读态不动命令表：那时手上这份本来就不是盘上的真相（变量那两页是只读显示的，照读即可）。
  */
 internal fun SettingsPage.applySwitchedConfig(
     next: Config,
@@ -37,6 +42,7 @@ internal fun SettingsPage.applySwitchedConfig(
     if (!configState.commandsReadOnly) {
         ProfileCommands.read(ConfigProfiles.CURRENT_SLOT)?.let { configState.commands.value = it }
     }
+    VarListSignal.bump()
 }
 
 /** 切到某一份：写进当前（连同广播），失败就只提示不动界面。 */

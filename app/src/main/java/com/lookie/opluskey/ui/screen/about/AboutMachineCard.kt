@@ -8,6 +8,7 @@ import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.ExpandableRow
 import com.lookie.opluskey.ui.ExpandableRowSpec
+import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.AUTHOR
 import com.lookie.opluskey.ui.model.PageIcons

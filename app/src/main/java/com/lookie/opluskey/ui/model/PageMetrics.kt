@@ -13,12 +13,26 @@ import io.github.suqi8.coui.kmp.basic.SliderDefaults
 internal const val STEP_MS = 50
 
 /**
- * 顶栏两颗图标按钮（返回 / ⋮）的触达区边长 —— 圆角取它的一半（= 圆形）。
+ * 「一颗圆形图标键」的触达区边长 —— 圆角取它的一半（= 圆形）。
+ *
+ *  用在两处：顶栏那几颗（返回 / ⋮ / 添加 / 重置），以及**抽屉标题行右端**那颗
+ *  （`PageSheet` 的 `endAction`：新建、删除）。
  *
  * 库 `IconButton` 的按压高亮是画在 `defaultMinSize` 那一层的 squircle，所以高亮圈多大完全由这两个数决定
- * （库默认 48dp / 圆角 24dp）。
+ * （库默认 48dp / 圆角 24dp）—— **不给这两个数就会大一圈**，摆在标题行右端比标题还高一截。
  */
 internal val HEADER_ICON_SIZE = 40.dp
+
+/**
+ * 顶栏里**满格字形**的边长（垃圾桶 / 对勾这类画满一整格的）。
+ *
+ *  Tabler 那套图标的画布都是 24dp，但**墨量**差得远：「+」「⋮」「<」只占中间一小块，`trash`
+ *  几乎画到四边。同样摆进 40dp 的圆键里，满格那颗看着就比旁边大一号（真机口径「删除图标这么大」）。
+ *
+ *  所以满格字形显式收一档到 20dp —— 抽屉标题行右端那颗也是同一个坑、同一档尺寸
+ *  （`PageSheet` 的 `SHEET_ACTION_ICON`），两处不该各写一个数。
+ */
+internal val HEADER_FULL_ICON_SIZE = 20.dp
 
 /**
  * 磨砂浮层的模糊半径（dp，给 `blur(radiusX, radiusY)` 之前换算成 px）—— 顶栏与浮层菜单共用这一个值。

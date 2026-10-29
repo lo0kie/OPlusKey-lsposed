@@ -336,23 +336,4 @@ internal object StatusBarBridge {
             XLog.w("弹电源菜单失败：${e.javaClass.simpleName}: ${e.message}")
         }
     }
-
-    /**
-     * 以 **system_server 自己的身份**（uid 1000）执行 [block]。
-     *
-     *  这些反射调用跑在 AMS 广播 / 按键回调里：整条链路若是从宿主进程的 Binder 事务进来的，
-     *  `Binder.getCallingUid()` 拿到的是宿主的 uid —— 目标服务一旦按调用方判权限就抛
-     *  SecurityException，表现是「通知中心 / 控制中心 / 电源菜单按了没反应」。
-     *
-     *  换身份之后**必须还原**（`finally`）：`clearCallingIdentity` 改的是当前线程的调用方，
-     *  不还原会把 system 身份泄漏给同一线程后面的调用。
-     */
-    private inline fun <T> asSystem(block: () -> T): T {
-        val token = android.os.Binder.clearCallingIdentity()
-        return try {
-            block()
-        } finally {
-            android.os.Binder.restoreCallingIdentity(token)
-        }
-    }
 }

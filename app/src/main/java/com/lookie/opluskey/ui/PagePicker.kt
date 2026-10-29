@@ -141,6 +141,49 @@ internal fun ColumnScope.PickerRows(
 }
 
 /**
+ * **动作**选择器弹窗 —— 行长得与 [SinglePickerDialog] 一模一样（通栏纯文字、行间细线），
+ * 区别只在这几行说的不是「选哪一个」而是「做哪件事」：没有对勾、也没有当前值。
+ *
+ *  给「对某一个东西做一件事」那种窗用（变量操作、以后的同类）：点一行就办，办完窗就收了 ——
+ *  所以它是选择器那一族，不是确认窗（确认窗那两颗按钮问的是「要不要」）。
+ *
+ * ## 为什么参数到 6 个（`@Suppress("LongParameterList")`）
+ *
+ *  与 [SinglePickerDialog] 同一个理由：全是行参。`onDismissFinished` 是「这一窗后面还要接着
+ *  弹下一层」时才需要的（两层窗不叠着开，理由见 `FrostedDialog` 的同名参数）。
+ *
+ * @param onPick 点了第几行 —— **窗已经开始收了**再回调（与 [SinglePickerDialog] 同一顺序），
+ *   要用到「收场之后」的时机请传 [onDismissFinished]
+ */
+@Suppress("LongParameterList")
+@Composable
+internal fun SettingsPage.PickerActionDialog(
+    show: Boolean,
+    title: String,
+    labels: List<String>,
+    onDismiss: () -> Unit,
+    onDismissFinished: (() -> Unit)? = null,
+    onPick: (Int) -> Unit,
+) {
+    FrostedDialog(
+        show = show,
+        title = title,
+        onDismiss = onDismiss,
+        onDismissFinished = onDismissFinished,
+    ) {
+        PickerRows(
+            labels = labels,
+            //  动作没有「当前是哪一个」—— 一行都不打勾
+            isSelected = { false },
+            onClick = { index ->
+                onDismiss()
+                onPick(index)
+            },
+        )
+    }
+}
+
+/**
  * **单选**选择器弹窗 —— 标题 + 一列选项，点一行就算选完（自己关窗再回调）。
  *
  *  与「系统开关」那一层（切换 / 打开 / 关闭）同一个形状：那三档是在问「这个开关怎么用」，
@@ -169,8 +212,6 @@ internal fun SettingsPage.SinglePickerDialog(
         show = show,
         title = title,
         onDismiss = onDismiss,
-        //  选择器不磨砂：一列贴着读的选项，糊上去只是让字发虚、底下的页面从面板边缘晃过来。
-        blurred = false,
     ) {
         PickerRows(
             labels = labels,
@@ -218,7 +259,6 @@ internal fun SettingsPage.MultiPickerDialog(
         show = show,
         title = title,
         onDismiss = onDismiss,
-        blurred = false,
     ) {
         if (hint != null) {
             Text(

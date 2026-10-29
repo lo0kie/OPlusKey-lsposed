@@ -1,19 +1,11 @@
 package com.lookie.opluskey.ui.screen.about
 
 import android.content.Context
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
@@ -21,19 +13,14 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.seal.SEAL_ENABLED
 import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.core.seal.Verdict
+import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appVersionBadge
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.AppTheme
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.PagePalette
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「更多选项」页 —— 从首页「其他 → 更多选项」那一行进来（见 `Screen.ABOUT`）。
 //
@@ -77,15 +64,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
     // 三行菜单的锚点与开关（语言 / 反馈问题 / 作者）—— 行与菜单共用一份，见 [AboutUiState]。
     val ui = remember { AboutUiState() }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            // 大标题随滚动折叠：`nestedScroll` 必须在 `verticalScroll` 之前
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
-            .overScrollVertical()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = PAGE_BOTTOM_PADDING),
-    ) {
+    PageScrollColumn(scrollBehavior = scrollBehavior) {
         // 顶栏叠在内容上，顶部要自己让出（动态值）。这一页首行是 `SmallTitle`（下面「运行状态」
         // 那一个），它自带 8dp 上内边距，**不另加** [PAGE_TOP_PADDING] —— 那一档是给首行是卡片的
         // 「选择应用」的。
@@ -122,35 +101,6 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         // 删除配置的确认窗（同一个位置点进来，删完才真删）
         ProfileDeleteConfirmDialog(ui)
     }
-}
-
-/**
- * 「更多选项」页里可点那几行的**行尾图标** —— 本页共用一份（规格只有这一处，免得各写各的走形）。
- *
- *  默认是那颗右箭头（[PageIcons.EnterArrow]），口径就是「带 `onClick` 的行都给」：本页这几行的
- *  下一站是**外部**的（开 URL、开系统的「保存到 / 打开」），不是页内的下一层 —— 与
- *  `EnterArrow` 那条「只给会进下一层的地方」分工不同，但同样需要一个「点了有反应」的指示。
- *  只读的行（适配清单、运行状态、版本那一行）一律不给。
- *
- *  两种例外（字形见 [icon]）：
- *   · 「语言」与「反馈问题」那两行给 [PageIcons.Selector]：它们点开的都是**一层菜单**，
- *     选择器字形比右箭头更贴「点了要选点什么」；
- *   · 「关于」卡里「版本 / 作者」那两行给 [PageIcons.Link]：它们点了都是**跳出去**
- *     （开外部链接），链接字形比箭头具体。
- *
- *  尺寸与取色照「按键绑定」页那处（24dp、`onSurfaceVariantActions`）：行尾图标是同一个东西，
- *  几页摆在一起不该有两种大小、两种深浅。本页这几行都没有禁用态，所以只有一档。
- *
- * @param icon 行尾那颗字形
- */
-@Composable
-internal fun RowEndIcon(icon: ImageVector = PageIcons.EnterArrow) {
-    Icon(
-        icon,
-        contentDescription = null,
-        modifier = Modifier.size(ROW_END_ICON_SIZE),
-        tint = COUITheme.colorScheme.onSurfaceVariantActions,
-    )
 }
 
 /**

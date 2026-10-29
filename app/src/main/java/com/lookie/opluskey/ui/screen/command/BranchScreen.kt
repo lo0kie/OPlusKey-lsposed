@@ -1,20 +1,16 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -24,6 +20,7 @@ import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
+import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
@@ -39,7 +36,6 @@ import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「条件执行」页 —— 从「按键绑定」页顶栏 ⋮ 菜单进来。
 //
@@ -99,24 +95,7 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
         val emptyHeight =
             (maxHeight - currentHeaderHeight(scrollBehavior) - PAGE_BOTTOM_PADDING)
                 .coerceAtLeast(0.dp)
-        Column(
-            Modifier
-                .fillMaxSize()
-                // 大标题随滚动折叠（`nestedScroll` 必须在 `verticalScroll` **之前**）——
-                //  与「自定义命令」页 / 「按键绑定」页同一套接法（见 `CommandPage` / `BindingList`）。
-                //  原先这一页只读 `currentHeaderHeight(scrollBehavior)` 让位、却没把滚动量喂给顶栏
-                //  ⇒ 顶栏收不到位移，标题**永远停在展开态**。
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                // 越界回弹：`overScrollVertical` 挂在滚动容器**外侧**，所以内容不满一屏时照样能拖。
-                //  这一页常常只有一两条条件、根本撑不满一屏 —— 不挂它的话在那一档完全动不了。
-                .overScrollVertical()
-                .verticalScroll(scrollState)
-                // 底下那颗「确认」浮在内容之上，但页底留白**不再为它额外抬高**：
-                //  与首页同一档（[PAGE_BOTTOM_PADDING]），翻页时底部那段空白才一致（用户口径）。
-                //  注意这一句要落在 `verticalScroll` **之后**：那样它才是滚动内容里的内缩，
-                //  而不是把视口本身缩短（见 `BindingList` 顶部那段「纵向 padding 一档都不留」）。
-                .padding(bottom = PAGE_BOTTOM_PADDING),
-        ) {
+        PageScrollColumn(scrollBehavior = scrollBehavior, state = scrollState) {
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
             // 正文直接从顶栏下面开始，没有「条件执行」小标题：

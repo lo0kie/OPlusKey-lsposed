@@ -156,6 +156,10 @@ internal fun MoreButton(
     //  用户的说法就是「波纹歪的」（COUI 的 `COUIIndication` 画的是盖满整格的矩形，不是圆形涟漪）。
     //  现在字留在格子正中、格子整体右移半个余量：字右边线落在原处，底色与字同心。
     val endShift = if (flushEnd) MORE_BUTTON_END_SHIFT else 0.dp
+    //  振动走页面那条通用通道（[LocalTick]）—— 与可点标题（[ClickableTitleRow]）、卡片行同一份判据。
+    //  漏这一下时这颗是**唯一**点了不响的控件：它挂在标题行尾，与旁边那颗可点标题挨着，
+    //  同一行两种手感（真机口径「小标题菜单点击时没有通用振动」）。
+    val tick = LocalTick.current
     Box(
         modifier =
             Modifier
@@ -169,7 +173,10 @@ internal fun MoreButton(
                     .size(width = MORE_BUTTON_WIDTH, height = MORE_BUTTON_HEIGHT)
                     .preciseClickAnchor(anchor)
                     .clip(SECTION_TITLE_SHAPE)
-                    .clickable(enabled = enabled, onClick = onClick),
+                    .clickable(enabled = enabled) {
+                        tick()
+                        onClick()
+                    },
             //  字形**恒居中**：状态层与字形同心，按下去不会偏一半
             contentAlignment = Alignment.Center,
         ) {

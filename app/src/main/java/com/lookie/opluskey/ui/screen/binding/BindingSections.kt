@@ -15,6 +15,34 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.actionOf
 
 /**
+ * 「已保存的命令」那一块的小标题 —— **两页共用**（按键绑定 / 组合键编辑）。
+ *
+ *  有命令时可点：进「自定义命令」页去管命令库，落点是**命令列表**那一格（不是上次停着的表单页：
+ *  留在列表页看得出全部命令，落在表单页只能看到一条草稿），草稿原样留着。
+ *  **一条命令都没有时不接点击**：那一格里已经是「去创建自定义命令」（它会先 `reset()`，
+ *  是「新增」那条路），同一趟去处摆两个入口，点哪个都行反而让人以为标题是另一件事。
+ *
+ *  抽成一支有两个理由：两页的判据必须同一份（组合键那一页原先压根没接点击）；以及
+ *  两边各写一遍的话，detekt 的长度上限会先替我们报警。
+ */
+@Composable
+internal fun SettingsPage.SavedCommandsTitle() {
+    val hasCommands = configState.commands.value.isNotEmpty()
+    SectionTitle(
+        text = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"),
+        click =
+            if (hasCommands) {
+                SectionTitleClick.Jump {
+                    commandDraft.openListPage = true
+                    navTo(Screen.COMMANDS)
+                }
+            } else {
+                null
+            },
+    )
+}
+
+/**
  * 「按键绑定」页的**纵向顺序** —— 按键设置 → 内置动作网格 → 已保存的命令 → 底部留白 → 入口浮层。
  *
  *  拆出来只是为了让 `BindingList` 只剩「参数 + 三条 effect」：这一页的纵向顺序里有一堆
@@ -89,28 +117,7 @@ internal fun SettingsPage.BindingGroups(
         BuiltInGrid(st, enabled)
 
         // 「自定义命令」这一段**始终在**：没有命令时给一行「去创建自定义命令」。
-        //
-        //  标题可点（进「自定义命令」页去管）—— 但**一条命令都没有时不接点击**：那一格里
-        //  已经是「去创建自定义命令」，同一趟去处摆两个入口，点哪个都行反而让人以为标题是
-        //  另一件事。有命令之后标题才成为「进那一页」的入口。
-        //
-        //  两处去处也不一样：下面那一行会先 `reset()`（新增的入口），标题只跳页，
-        //  表单里正编着的那份草稿原样留着。
-        val hasCommands = configState.commands.value.isNotEmpty()
-        SectionTitle(
-            text = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"),
-            click =
-                if (hasCommands) {
-                    SectionTitleClick.Jump {
-                        //  落点是**命令列表**那一格（不是上次停着的表单页）：点这条标题的意思是
-                        //  「去管命令库」——留在列表页看得出全部命令，落在表单页只能看到一条草稿。
-                        commandDraft.openListPage = true
-                        navTo(Screen.COMMANDS)
-                    }
-                } else {
-                    null
-                },
-        )
+        SavedCommandsTitle()
         CustomCommandsGrid(st, enabled, onCreateCommand)
     }
 
@@ -121,4 +128,6 @@ internal fun SettingsPage.BindingGroups(
     // 入口格那一层的菜单（见 `BindingGridState.tileMenu`）。它**不占布局位置** ——
     // 真正的落点由那一格记下的触点决定，挂在这里只是让它跟着这一页一起进 / 出组合。
     BindingTileMenu(st)
+
+    // 「自定义变量」那一格点开的两层抽屉（挑变量 → 挑对它做什么），同样不占布局。
 }

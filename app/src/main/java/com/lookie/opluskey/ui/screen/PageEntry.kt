@@ -33,6 +33,7 @@ import com.lookie.opluskey.ui.screen.command.CommandScreen
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import com.lookie.opluskey.ui.screen.general.GeneralScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
+import com.lookie.opluskey.ui.screen.variables.VariableScreen
 import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.KeyWatchState
 import dev.chrisbanes.haze.hazeSource
@@ -253,6 +254,11 @@ private fun SettingsPage.PageBody(
         // 「组合键」编辑：上面一行成员（只读），下面短按 / 长按两张网格
         Screen.COMBO_EDIT -> {
             ComboEditScreen(scrollBehavior, pagers.combos)
+        }
+
+        // 「自定义变量」：一列变量 + 顶栏那颗新建；点一行弹编辑 / 删除那张窗
+        Screen.VARIABLES -> {
+            VariableScreen(scrollBehavior)
         }
     }
 }

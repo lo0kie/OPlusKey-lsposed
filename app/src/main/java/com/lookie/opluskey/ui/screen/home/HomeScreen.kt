@@ -2,38 +2,29 @@ package com.lookie.opluskey.ui.screen.home
 
 import android.content.Intent
 import android.os.SystemClock
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
+import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.LINK_SILENT_RETRY_MS
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 import kotlinx.coroutines.delay
 
 // 首页 —— 三张卡 + 两条「进页就跑一次」的副作用。
@@ -63,23 +54,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     //  验没验过只在「更多选项」里提示。
     val pageEnabled = pageWritable()
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            // 每个页面自带不透明底：push/pop 转场两屏交叠时，透出的是本页自己的底色。
-            .background(COUITheme.colorScheme.surface)
-            //  `nestedScroll` 必须排在 `verticalScroll` **之前**（链上更靠外）：
-            // 它是「把里层滚动容器的余量交给顶栏」的那一环，挂在滚动容器内侧就收不到它自己的滚动事件了。
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
-            // 越界回弹：COUI 自己的弹簧实现（`overScrollVertical`）。它挂在滚动容器**外侧**，
-            // 吃的是滚动容器**没吃掉**的那部分位移 —— 所以内容不满一屏时照样弹。
-            .overScrollVertical()
-            .verticalScroll(rememberScrollState())
-            //  页底留白 —— **全项目同一档、同一种写法**：挂在 `verticalScroll` 之后
-            //  （滚动内容里的内缩，视口仍铺到屏幕底），不再用尾部 `Spacer`
-            //  （Spacer 不进滚动内容高度，最大滚动位置会少一截）。
-            .padding(bottom = PAGE_BOTTOM_PADDING),
-    ) {
+    PageScrollColumn(scrollBehavior = scrollBehavior) {
         //  顶栏是叠在内容上的（见 `PageHeader`），所以顶部这一块要自己让出来 ——
         // 数值是**动态**的（跟着折叠走），理由见 `currentHeaderHeight`。
         //  注意：**不再另加 `PAGE_TOP_PADDING`**：这一页没有固定带，顶栏底下没有看得见的边界，

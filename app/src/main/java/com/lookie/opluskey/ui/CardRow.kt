@@ -348,3 +348,45 @@ private fun ItemText(
 
 /** 标题与副标题之间那一档 —— 与库的 `MarginBetweenLine` 同一值（2dp）。 */
 private val ROW_LINE_GAP = 2.dp
+
+/**
+ * 行尾那颗**指示性图标**（`trailing` / `endActions` 槽里那一颗）—— 全项目只此一份。
+ *
+ * ## 为什么收在这里
+ *
+ *  同一颗图标原来有三份实现：`ui/screen/about/AboutScreen` 的 `RowEndIcon`、
+ *  `ui/screen/command/CommandBranchParts` 的 `SelectorGlyph`、以及首页 / 变量页里各写一遍的
+ *  `Icon(…, size(ROW_END_ICON_SIZE), onSurfaceVariantActions)`。三份的差别只在**字形**，
+ *  尺寸与颜色一模一样 —— 而尺寸和颜色正是「行尾那一档」的定义，不该由调用点各记一遍。
+ *
+ *  位置也顺带修正了：原来那份定义在「关于」页里，别的页要么跨页 import、要么自己再抄一份。
+ *  行尾槽是 `CardRow` 的东西，图标跟着它走。
+ *
+ * ## 字形怎么选
+ *
+ *   · 进**页内下一层**（或跳出去）→ 默认的 `EnterArrow`；
+ *   · 点开的是一层**菜单 / 选择器** → `PageIcons.Selector`（读作「点了要选点什么」）；
+ *   · 点了**跳外部链接** → `PageIcons.Link`（链接字形比箭头具体）。
+ *  只读的行（不给 `onClick`）一律**不给**这颗图标 —— 它说的是「点了有下一站」。
+ *
+ * ## 尺寸与颜色
+ *
+ *  [ROW_END_ICON_SIZE]（24dp）+ `onSurfaceVariantActions`：比行首那颗图标弱一档，
+ *  它表示「点这一行还有下一层」，不是动作本身。要更强的读法（比如已选中）由调用方自己传
+ *  [tint]，**不要**在这里加分支。
+ *
+ * @param icon 字形。默认「进入下一层」的箭头
+ * @param tint 颜色。默认最弱那一档
+ */
+@Composable
+internal fun RowEndIcon(
+    icon: ImageVector = PageIcons.EnterArrow,
+    tint: Color = COUITheme.colorScheme.onSurfaceVariantActions,
+) {
+    Icon(
+        icon,
+        contentDescription = null,
+        modifier = Modifier.size(ROW_END_ICON_SIZE),
+        tint = tint,
+    )
+}

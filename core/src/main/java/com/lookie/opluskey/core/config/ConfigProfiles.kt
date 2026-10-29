@@ -149,6 +149,9 @@ object ConfigProfiles {
         //  只换配置不换库，切过去看到的是一堆指向旧命令的绑定。这一步失败不回退配置 ——
         //  两份配置都完整、只是命令库对不上，回退反而会把刚写好的配置弄丢（日志由那边打）。
         ProfileCommands.swap(slot)
+        //  变量表同样跟着走（见 [ProfileVars]）：绑定里写着「计数 += 1」，值却留在上一份，
+        //  切过去那套绑定就会接着改别人的计数。失败理由同上，不回退配置。
+        ProfileVars.swap(slot)
         XLog.w("配置切换：已切到 ${target.profileName.ifBlank { "默认" }}（槽 $slot）")
         return target
     }
@@ -196,6 +199,8 @@ object ConfigProfiles {
         val ok = ConfigStore.files().delete(slot)
         //  命令库一起删：留着就是一份谁也认不出的孤儿槽（下一次 [nextSlot] 也不会回收这个名字）
         if (ok) ProfileCommands.delete(slot)
+        //  变量表同理（见 [ProfileVars]）：孤儿槽一样不会被回收
+        if (ok) ProfileVars.delete(slot)
         if (ok) XLog.w("配置删除：已删 ${target.profileName}（槽 $slot）")
         return ok
     }
@@ -231,6 +236,9 @@ object ConfigProfiles {
         //  命令库留空（而不是复制当前那份）：空白配置里没有任何 `cmd:` 引用，把旧命令带过去
         //  会让它看着像「复制了一份」—— 与上一版的行为正好相反。
         ProfileCommands.save(slot, emptyList())
+        //  变量表**落一份空表**（不是不写）：不写的话切换时目标槽空着会被当成老配置，
+        //  新配置一上来就继承了上一套的计数（见 [ProfileVars] 的类注释）
+        ProfileVars.save(slot, emptyList())
         XLog.w("配置新建：$trimmed（槽 $slot，空白）")
         return slot
     }

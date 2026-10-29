@@ -7,19 +7,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -31,10 +27,10 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.Donor
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
@@ -47,7 +43,6 @@ import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.VerticalDivider
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 /**
  * 「捐赠列表」页 —— 从首页「其他 → 捐赠打赏」那层菜单的最后一项进来（见 [Screen.DONATE_LIST]）。
@@ -73,15 +68,7 @@ internal fun SettingsPage.DonateListScreen(scrollBehavior: ScrollBehavior) {
     // 静态数据，进页读一次就够（进程内还有一层缓存，见 `ui/model/Donor`）
     val context = LocalContext.current
     val rows = remember { donors(context) }
-    Column(
-        Modifier
-            .fillMaxSize()
-            // 大标题随滚动折叠：`nestedScroll` 必须在 `verticalScroll` 之前（与「更多选项」页同一条）
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
-            .overScrollVertical()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = PAGE_BOTTOM_PADDING),
-    ) {
+    PageScrollColumn(scrollBehavior = scrollBehavior) {
         // 顶栏叠在内容上，顶部要自己让出（动态值）。这一页**没有小标题**、首行就是内容本身，
         //  所以按「选择应用」那一页的账另加一档 [PAGE_TOP_PADDING]（见 `AppPicker`）。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + PAGE_TOP_PADDING))

@@ -5,35 +5,32 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.screen.binding.BindingGridFocus
 import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.binding.BindingTileMenu
 import com.lookie.opluskey.ui.screen.binding.BuiltInGrid
 import com.lookie.opluskey.ui.screen.binding.CustomCommandsGrid
+import com.lookie.opluskey.ui.screen.binding.SavedCommandsTitle
 import com.lookie.opluskey.ui.screen.binding.rememberBindingGridState
 import com.lookie.opluskey.ui.screen.openAppPickerForTarget
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「组合键」编辑页 —— 从列表点某一行进来。
 //
@@ -96,15 +93,7 @@ internal fun SettingsPage.ComboEditScreen(
         //  少了这一句就会「点了别的动作，边框还留在原来那一格，退出去重进才对」：
         //  `focusedIndex` 只在网格状态建出来那一刻取过一次 `initialFocus`，之后没人挪它。
         BindingGridFocus(grid, pager.currentPage == page, "组合按键")
-        Column(
-            Modifier
-                .fillMaxSize()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .overScrollVertical()
-                .verticalScroll(scrolls[page])
-                //  页底留白 —— 与全项目同一档、同一种写法（挂在滚动内容里，不用尾部 Spacer）
-                .padding(bottom = PAGE_BOTTOM_PADDING),
-        ) {
+        PageScrollColumn(scrollBehavior = scrollBehavior, state = scrolls[page]) {
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + bandBlock))
             //  长按那一档：设置卡在网格**上面**（与「按键绑定」页同一个顺序 ——
             //  先「这一档怎么判」，再挑「绑什么」）。短按没有可调的东西，直接是网格。
@@ -119,7 +108,8 @@ internal fun SettingsPage.ComboEditScreen(
                 BuiltInGrid(grid, enabled)
                 // 「自定义命令」这一段**始终在**（用户口径：与「按键绑定」页一样另起一块、同一个
                 // 小标题）—— 没有命令时网格自己换成那一行「自定义命令 →」，空着也看得见去处。
-                SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
+                //  标题的可点判据与那一页**同一份**（`SavedCommandsTitle`），不再各写一遍。
+                SavedCommandsTitle()
                 CustomCommandsGrid(grid, enabled, onCreateCommand)
             }
         }
@@ -129,4 +119,5 @@ internal fun SettingsPage.ComboEditScreen(
     //  一起进 / 出组合。同一时刻只会有一层开着（点开那一格时才写自己的 `tileMenu`）。
     BindingTileMenu(short)
     BindingTileMenu(long)
+    //  「自定义变量」那一格的两层抽屉同上：两档各挂一份，同一时刻只会有一份开着。
 }

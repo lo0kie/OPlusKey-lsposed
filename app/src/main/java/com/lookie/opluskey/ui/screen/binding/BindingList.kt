@@ -1,26 +1,20 @@
 package com.lookie.opluskey.ui.screen.binding
 
 import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.state.KeyWatchState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「按键绑定」页 —— 一页 = 一个手势档。
 //
@@ -74,7 +68,10 @@ internal fun SettingsPage.BindingList(
     // 翻走这一页时把入口浮层收掉：它是**每个手势页各一份**的状态，而 pager 会把上一页留在
     // 组合里 —— 浮层于是跟着那一页活过了翻页，锚点还指着上一页那一格（弹到屏幕外 / 弹在别处）。
     LaunchedEffect(page.active) {
-        if (!page.active) st.tileMenu = null
+        if (!page.active) {
+            st.tileMenu = null
+            // 「自定义变量」那两层抽屉不在这一页了也得收：它没有锚点，翻回来时会**自己弹出来**。
+        }
     }
 
     // 滚动时把入口浮层收掉。锚点是**按压那一点**换算出来的窗口坐标：行一滚走，那一格就不在
@@ -85,32 +82,15 @@ internal fun SettingsPage.BindingList(
 
     val onKey = rememberBindingKeyHandler(st, page.enabled, page.active)
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            //  **横向 padding 故意不加在外层**：分组标题（`SmallTitle`）也在这里，
-            // 加了就让标题的左边距比首页 / 命令页的小标题多一档，各段自己带横向 padding。
-            //
-            //  **纵向 padding 一档都不留**（除了最底下页底那一档，见 `.padding(bottom = …)`）：
-            //  `padding` 落在 `verticalScroll` **之前**就等于是 **滚动视口之外**的内缩 ——
-            //  顶部那一档会让内容永远到不了顶栏底下、模糊没东西可糊；底部同理：视口比整页矮，
-            //  屏幕最底下那一条里没有内容，而手势导航栏是**透明**的 —— 那一条就被露成
-            //  「一块平色」，看着像导航栏不透明、把控件挡住了。
-            //  所以页底的留白一律写在 `verticalScroll` **之后**（内容里的内缩），各页同一处。
-            // 大标题随滚动折叠（`nestedScroll` 要在 `verticalScroll` 之前）
-            .nestedScroll(scroll.behavior.nestedScrollConnection)
-            //  用**外面递进来的**那个滚动状态（三个手势页共用一份）—— 分段控件在 pager 之外，
-            //  要靠它算自己该滑到哪儿。
-            .overScrollVertical()
-            .verticalScroll(scroll.state)
-            //  页底留白 —— 与全项目同一档、同一种写法：落在 `verticalScroll` **之后**
-            //  （滚动内容里的内缩，视口仍铺到屏幕底），不再用尾部 Spacer。
-            .padding(bottom = PAGE_BOTTOM_PADDING)
-            // 预览阶段接管方向键（见 `rememberBindingKeyHandler` 的注释）
-            .onPreviewKeyEvent(onKey),
-        //  **不用 `Arrangement.spacedBy`**：它会在**每一对相邻子项**之间插间距，
-        // 于是标题与它下面那一段之间也被插了间距 —— 全页的规矩是「标题紧贴它下面的内容」，
-        // 需要分隔的地方自己给一个显式 Spacer（见 `BindingGroups`）。
+    //  滚动状态用**外面递进来的**那份（三个手势页共用一份）—— 分段控件在 pager 之外，
+    //  要靠它算自己该滑到哪儿；预览阶段的方向键接管挂在链尾（见 `rememberBindingKeyHandler`）。
+    //  **不用 `Arrangement.spacedBy`**：它会在**每一对相邻子项**之间插间距，于是标题与它下面
+    //  那一段之间也被插了间距 —— 全页的规矩是「标题紧贴它下面的内容」，需要分隔的地方
+    //  自己给一个显式 Spacer（见 `BindingGroups`）。
+    PageScrollColumn(
+        scrollBehavior = scroll.behavior,
+        state = scroll.state,
+        modifier = Modifier.onPreviewKeyEvent(onKey),
     ) {
         //  顶栏叠在内容上，顶部这一块要自己让出来（动态值）；后面再加 `tabBlock` ——
         // 那是**分段控件那条固定带**的高度，它**含自己那 8dp 下内边距**，

@@ -11,17 +11,18 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.ui.MenuEntry
+import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT_MS
+import com.lookie.opluskey.ui.model.conditionChoiceIcon
 import com.lookie.opluskey.ui.model.conditionIcon
 import com.lookie.opluskey.ui.model.conditionRowTitle
 import com.lookie.opluskey.ui.state.BranchDraft
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
@@ -55,11 +56,26 @@ internal fun SettingsPage.ruleConditionLines(rule: StateRule): List<ConditionLin
                     } else {
                         I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择场景")
                     },
-                icon = it.kind?.let(::conditionIcon) ?: PageIcons.Scene,
+                icon = conditionLineIcon(it),
                 empty = !it.isUsable,
             )
         }
     }
+
+/**
+ * 条件那一行的行首字形 —— **跟着取值给**（[conditionChoiceIcon]），不是只跟着种类。
+ *
+ *  只按种类给的话，同一类的不同状态长得一模一样：亮屏与锁屏都是那块屏、WiFi 开与关都是那个
+ *  WiFi、飞行模式开与关都是那架飞机 —— 一列条件扫下来「很多状态图标都一样」（真机口径），
+ *  只剩文字能分。取值那颗才是这一行真正在说什么。
+ *
+ *  未配完的那一条（只选了种类 / 刚插进来的空条件）按种类给：那时候还没有取值可看，
+ *  `conditionChoiceIcon` 本来也会掉回种类那颗。
+ */
+private fun conditionLineIcon(condition: BranchCondition): ImageVector {
+    val kind = condition.kind ?: return PageIcons.Scene
+    return if (condition.isUsable) conditionChoiceIcon(kind, condition.effectiveValue) else conditionIcon(kind)
+}
 
 /** 条件那**一行**写什么、配哪颗字形、是不是还没配完 —— 一条条件一个，卡片里各占一行。 */
 internal class ConditionLine(
@@ -101,24 +117,8 @@ internal fun ConditionTrailing(
                 modifier = Modifier.padding(end = 6.dp),
             )
         }
-        SelectorGlyph()
+        RowEndIcon(PageIcons.Selector)
     }
-}
-
-/**
- * 行尾那颗「点这一行能选一个」的指示（[PageIcons.Selector]）—— 条件行、步骤行、「添加命令」行**同一颗**。
- *
- *  尺寸取 [ROW_END_ICON_SIZE]（24dp），与「捐赠打赏」那一行的行尾同一档，不套 `ICON_ACTION_SIZE`
- *  那颗按钮大的盒子；tint 走最弱那一档（`onSurfaceVariantActions`），比行首那颗图标弱。
- */
-@Composable
-internal fun SelectorGlyph() {
-    Icon(
-        PageIcons.Selector,
-        contentDescription = null,
-        modifier = Modifier.size(ROW_END_ICON_SIZE),
-        tint = COUITheme.colorScheme.onSurfaceVariantActions,
-    )
 }
 
 /**

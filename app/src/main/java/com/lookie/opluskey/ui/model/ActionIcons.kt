@@ -33,6 +33,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Command
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
+import io.github.lyxnx.compose.ui.tablericons.outline.Language
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.MessageAi
 import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
@@ -61,6 +62,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TextScanAi
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
+import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.lyxnx.compose.ui.tablericons.outline.Video
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume4
@@ -123,6 +125,13 @@ internal fun actionIcon(token: String): ImageVector =
         //  用摄像机那一颗（`video`）：用户口径指定。
         Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD -> {
             TablerIcons.Outline.Video
+        }
+
+        // 屏幕翻译 —— `language`（「A 文」那个字形）就是「翻译」的通用读法。
+        //  与「语言」那几行不撞：那几行用的是 `world` / `abc` / `alphabet-chinese`，
+        //  而这一格是「把屏上的字翻掉」这个动作，不是「选语言」。
+        Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_TRANSLATE -> {
+            TablerIcons.Outline.Language
         }
 
         // 响铃状态（那一格；菜单里的「循环」见 [specIcon]）
@@ -268,6 +277,11 @@ internal fun actionIcon(token: String): ImageVector =
                     TablerIcons.Outline.WindowMinimize
                 }
 
+                // 自定义变量（`setvar:计数+=1`）—— 变量自己的字形，与变量页那一列同一颗
+                token.startsWith(Action.SETVAR_PREFIX) -> {
+                    TablerIcons.Outline.Variable
+                }
+
                 else -> {
                     TablerIcons.Outline.Dots
                 }
@@ -301,31 +315,53 @@ private fun systemSettingIcon(token: String): ImageVector {
 /** 开关**种类**那一层的字形表。 */
 private fun systemSwitchKindIcon(id: String): ImageVector =
     when (id) {
-        "bt" -> TablerIcons.Outline.Bluetooth
+        "bt" -> {
+            TablerIcons.Outline.Bluetooth
+        }
 
-        "wifi" -> TablerIcons.Outline.Wifi
+        "wifi" -> {
+            TablerIcons.Outline.Wifi
+        }
 
-        "cell" -> TablerIcons.Outline.CellSignal4
+        "cell" -> {
+            TablerIcons.Outline.CellSignal4
+        }
 
-        "rotation" -> TablerIcons.Outline.RotateRectangle
+        "rotation" -> {
+            TablerIcons.Outline.RotateRectangle
+        }
 
-        "nfc" -> TablerIcons.Outline.Nfc
+        "nfc" -> {
+            TablerIcons.Outline.Nfc
+        }
 
-        "airplane" -> TablerIcons.Outline.Plane
+        "airplane" -> {
+            TablerIcons.Outline.Plane
+        }
 
         // 老配置里可能还留着 `setting:dnd`（现在「免打扰」走 `oplus:` 那条，见上方 actionIcon），
         //  留着这一支只为旧文件的图标不变成 Dots。
-        "dnd" -> TablerIcons.Outline.Moon
+        "dnd" -> {
+            TablerIcons.Outline.Moon
+        }
 
         // 手电筒：与网格里那一格（`Action.FLASHLIGHT`）同一颗字形 ——
         //  同一个意思在两个入口里长得不一样，用户会以为是两件事。
-        "flashlight" -> TablerIcons.Outline.Bulb
+        "flashlight" -> {
+            TablerIcons.Outline.Bulb
+        }
 
-        "darkmode" -> TablerIcons.Outline.MoonStars
+        "darkmode" -> {
+            TablerIcons.Outline.MoonStars
+        }
 
-        "powersave" -> TablerIcons.Outline.BatteryEco
+        "powersave" -> {
+            TablerIcons.Outline.BatteryEco
+        }
 
-        else -> TablerIcons.Outline.Dots
+        else -> {
+            TablerIcons.Outline.Dots
+        }
     }
 
 /**
@@ -403,6 +439,9 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         // 「小布 AI」入口格：`sparkle-highlight`（闪光带高亮框）—— 与「灵感语音」那颗普通闪光
         //  分得开：这一格是**一类东西**（四件小布能力），不是「灵感语音」那个取值本身。
         ActionCatalog.Glyph.XiaobuAi -> TablerIcons.Outline.SparkleHighlight
+
+        // 「自定义变量」入口格：`variable`（那个 `x` 里带 y 的符号本身）—— 这一格进的是变量清单
+        ActionCatalog.Glyph.Variables -> TablerIcons.Outline.Variable
     }
 
 /**

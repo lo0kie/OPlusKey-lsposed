@@ -26,10 +26,11 @@ import kotlinx.serialization.json.put
  *  混在一起的话，每按一次「+1」都要把整份配置重写一遍、还要发一次配置广播 —— 代价与风险
  *  （写坏配置）都远超「记一个数」。分开之后这一份只装变量，写得再频繁也只影响自己。
  *
- * ## 变量不跟配置档走
+ * ## 变量跟着配置走
  *
- *  多配置切换时**不动**变量：它是运行期状态（计数器 / 开关位），不是「这套绑定怎么配」的一部分。
- *  切换配置回来时看到的还是当前的计数，这才符合直觉。
+ *  多配置切换时**一起换**：一份配置 = 主配置 + 命令库 + 变量表（见 [ProfileVars]）。
+ *  现在这一份（`vars` 槽）永远是**当前生效**配置的那套变量 —— 宿主按键时读的也是它，
+ *  所以切完配置，绑定与它们读写的那几个值是一致的。
  *
  * ## 持久化 + 开机重置
  *
@@ -126,18 +127,24 @@ object VariableStore {
         }
 
     /**
-     * 写全部变量（顺带把开机标记更新成这一次）。失败只记日志、返回 `false`。
+     * 写一份变量（顺带把开机标记更新成这一次）。失败只记日志、返回 `false`。
      *
      *  `openReadable = false`：只有宿主这一侧（`:ui` 与宿主主进程，同 uid）读写它，
      *  注入侧（system_server）不碰变量 —— 它的执行请求仍然只走配置广播。
+     *
+     * @param slot 写哪一槽。默认就是**当前生效**那一槽（`vars`）；[ProfileVars.save] 会给
+     *  别的配置那一槽落一份空表 —— 那条路与当前配置无关，所以只在写当前槽时清读缓存。
      */
-    fun save(vars: List<Variable>): Boolean {
+    fun save(
+        vars: List<Variable>,
+        slot: String = ConfigStore.SLOT_VARS,
+    ): Boolean {
         val text = FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, encode(vars, ProcClock.bootWall()))
-        val ok = ConfigStore.files().write(ConfigStore.SLOT_VARS, text, openReadable = false)
-        if (ok) {
+        val ok = ConfigStore.files().write(slot, text, openReadable = false)
+        if (!ok) {
+            XLog.w("写变量失败：${vars.size} 颗（槽 $slot），这一次改动没落盘")
+        } else if (slot == ConfigStore.SLOT_VARS) {
             cache = null
-        } else {
-            XLog.w("写变量失败：${vars.size} 颗，这一次改动没落盘")
         }
         return ok
     }

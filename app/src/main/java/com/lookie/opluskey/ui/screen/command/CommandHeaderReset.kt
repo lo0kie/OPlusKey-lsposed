@@ -36,18 +36,20 @@ internal fun SettingsPage.CommandHeaderReset(
 ) {
     val tick = rememberTick()
     val draft = commandDraft.draft
-    //  表单（名称 / 正文）与步骤列表都空着 ⇒ 没有可清的东西；列表页则一律没有
-    val canReset = !onListPage && draft.hasContent
+    //  三种情况都没有可清的东西：停在「命令列表」那一页（没有表单）、步骤排序态（改的是顺序，
+    //  不是内容 —— 那一状态下页里别的控件也都禁用，见 `CommandFloatingButton`）、以及表单本身就空着。
+    val sorting = commandDraft.stepEditing
+    val canReset = !onListPage && !sorting && draft.hasContent
     //  文案跟着编辑态走：编一条已有命令时它是「取消」（这一下等于放弃这次修改），
     //  新建时是「重置」（清空重来）—— 与它原先在底栏时的口径一致。
     val label =
         if (draft.editingName != null) I18n.get(Strings.COMMON_CANCEL, "取消") else I18n.get(Strings.COMMON_RESET, "重置")
     //  灰着被点一下时说清为什么（顶栏按钮不吃点击，不给这一句就成了「点了没反应」）
     val blocked =
-        if (onListPage) {
-            I18n.get(Strings.COMMAND_RESET_LIST_PAGE, "这一页没有表单")
-        } else {
-            I18n.get(Strings.COMMAND_RESET_EMPTY, "表单是空的，没有可重置的内容")
+        when {
+            onListPage -> I18n.get(Strings.COMMAND_RESET_LIST_PAGE, "这一页没有表单")
+            sorting -> I18n.get(Strings.COMMAND_RESET_SORTING, "排序中不能重置")
+            else -> I18n.get(Strings.COMMAND_RESET_EMPTY, "表单是空的，没有可重置的内容")
         }
     DisabledHint(if (canReset) null else blocked) {
         IconButton(

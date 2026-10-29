@@ -2,16 +2,12 @@ package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,9 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -36,31 +30,27 @@ import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.PageMenu
+import com.lookie.opluskey.ui.PageSheet
+import com.lookie.opluskey.ui.SHEET_TITLE_MARGIN
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
-import com.lookie.opluskey.ui.model.isDarkScheme
 import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.sheetCardColors
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
-import io.github.suqi8.coui.kmp.basic.CardColors
-import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
-import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 /**
  * 各处下拉/浮层选择菜单（添加命令、响铃状态、命令卡菜单）。
@@ -145,13 +135,14 @@ internal fun SettingsPage.CommandMenuPopup(
  *  @param current 当前选中的动作：命中那一行行首换对勾、整行主题色；`null` = 谁都不打勾。
  *   由调用点算好递进来，抽屉自己不读草稿：这一支两处用（多条命令的某一步 / 条件执行的某条动作），
  *   各自的「当前」不是同一份数据。
- *  @param onOpenApp 「选择应用」那一行点下去做什么（两处各有各的去处：写某一步 / 写某一条规则）
+ *  @param onOpenPicker 抽屉里那两行**关卡**（「选择应用」/「自定义变量」）点下去去哪一页 ——
+ *   都由调用点定：写某一步 / 写某一条规则。抽屉自己不认页，只把这一个「哪一关」交出去。
  *  @param onPick 挑中一个动作的 token（由调用方决定是追加还是替换）
  */
 internal class StepSheetSpec(
     val title: String,
     val current: Action?,
-    val onOpenApp: () -> Unit,
+    val onOpenPicker: (StepPickerPage) -> Unit,
     val onPick: (String) -> Unit,
     val onDismiss: () -> Unit,
     /**
@@ -170,14 +161,29 @@ internal class StepSheetSpec(
 )
 
 /**
+ * 抽屉里那两行**关卡** —— 点它们不是「落一步」，而是「换一页去挑」。
+ *
+ *  两行的行为形态完全一样（收抽屉 → 压一页），只是目的地不同；合成一个枚举是因为
+ *  [StepSheetSpec.onOpenPicker] 只收一个回调 —— 两个参数会让那个类多一格，
+ *  而「去哪一页」本来就是调用点一个 `when` 里的事。
+ */
+internal enum class StepPickerPage {
+    /** 「选择应用」→ 挑应用页（落 `app:` / `window:`）。 */
+    App,
+
+    /** 「自定义变量」→ 「变量操作」页（落 `setvar:` 的一步）。 */
+    Vars,
+}
+
+/**
  * 「添加命令 / 选择命令」点开的**底部抽屉** —— 挑一个动作落成一步，或换掉某一步。
  *
  *  三个来处共用这一支：「多条命令」那颗「添加命令」（追加）、点某一步（换掉它）、条件执行
- *  某一条的「动作」。三者的差别只在 [title] / [current] / [onOpenApp] / [onPick] 由调用点给，
+ *  某一条的「动作」。三者的差别只在 [title] / [current] / [onOpenPicker] / [onPick] 由调用点给，
  *  抽屉自己不读草稿 —— 「选了之后写回哪儿」是各页的语义，不归容器。
  *
  *  行用 `CardList` + [StepSheetRow]，与页面里其它卡同一套行高与分隔线。行尾字形按「点开去哪」分：
- *  选择应用给右箭头（进另一页）、入口格给选择器字形（还有一层菜单）、直接落成一步的不给。
+ *  选择应用 / 自定义变量给右箭头（进另一页）、入口格给选择器字形（还有一层菜单）、直接落成一步的不给。
  *
  *  内置动作那几组之后是**「已保存的命令」**：多命令的步骤、条件执行的动作，挑的多半是自己写的那几条，
  *  摆在末尾不用先翻过整张内置表。这一组来自命令库（`configState.commands`），点一行落成 `cmd:<名字>`；
@@ -197,46 +203,10 @@ internal fun SettingsPage.StepPickerSheet(
     show: Boolean,
     sheet: StepSheetSpec,
 ) {
-    //  **登记进页面级浮窗表**：系统返回那条路（`BackInterception`）先问「有没有浮层开着」——
-    //  有就**吞掉这次返回、只收浮层**，没有才退页面。抽屉不登记的话，返回会直接退页
-    //  （真机：命令页里抽屉像是「吃掉了返回」，条件执行里却是退页 —— 差别就在这层登记与
-    //  窗口焦点谁先拿到，不可靠）。登记之后两条路一致：`hasOpen()` 为真 ⇒ 返回只收抽屉；
-    //  换页时 `closeAll` 也会把它一起收掉（与浮层菜单 / 确认窗同一条纪律）。
-    overlays.Closer(show = show, onDismiss = sheet.onDismiss)
-    //  再登记一次「这一退归我、而且我要**跟手**」：抽屉内部那个 `NavigationBackHandler` 是靠
-    //  逐帧进度驱动下滑的，事件必须喂进 dispatcher 才动（见 `PageOverlays.backCapturing`
-    //  与 `wouldConsumeBack` 里那两行）。少了这一格，返回只剩「一次性收掉」——
-    //  真机口径「之前抽屉会有类似预测返回手势的效果，现在没了」。
-    overlays.BackCapturing(show = show)
-
+    //  登记（系统返回只收抽屉、下拉跟手那一套）与面板底色都在 [PageSheet] 里，这里只管内容。
+    //
     //  抽屉里每一次点击都走通用振动通道（与页面里其它控件同一条，判据只有系统状态）。
     val tick = rememberTick()
-    //  **暗色下把抽屉面抬一档**：页面底色是 `surface`，COUI 暗色里 `surface` 与抽屉能看到的那点
-    //  缝隙几乎是同一个黑，面板浮不起来。
-    //  所以只在暗色把面改成 `surfaceContainer`；浅色仍用页面那个 `surface`（上一条口径
-    //  「配色和页面一样」在浅色下原样成立）。
-    //
-    //  **必须 `compositeOver` 合一次**：COUI 暗色的层级色是**半透明白**（`surfaceContainer` =
-    //  `0x1AFFFFFF`，`surfaceContainerHigh` = `0x33FFFFFF`），设计上是叠在页面那层实黑上的。
-    //  抽屉面板画在独立窗口上，直接把半透明色交给它就是**真透明** —— 底下的页面透上来
-    //  所以先按「页面黑底」合出实色，观感与 COUI 原本一致，
-    //  只是不再透。
-    //  卡片的底也取页面那层（不是取抽屉面）：那样算出来的色与页面里的卡片**同值**，
-    //  于是层级是「页面 < 抽屉面 < 卡片」，卡片还是用户熟悉的那一档。
-    val dark = COUITheme.colorScheme.isDarkScheme
-    val pageSurface = COUITheme.colorScheme.surface
-    val sheetColor =
-        if (dark) COUITheme.colorScheme.surfaceContainer.compositeOver(pageSurface) else pageSurface
-    val sheetCards =
-        if (dark) {
-            val cardColor = COUITheme.colorScheme.surfaceContainerHigh.compositeOver(pageSurface)
-            CardDefaults.defaultColors(
-                color = cardColor,
-                pressedColor = COUITheme.colorScheme.surfaceContainerHigh.compositeOver(cardColor),
-            )
-        } else {
-            null
-        }
     // 开着二级菜单的那一格（入口格那些：系统开关 / 系统导航 / 媒体控制…）。`null` = 没开。
     var subTile by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
     //  抽屉顶上那个过滤框 —— 内置动作 + 已保存命令一共四十多行，翻三屏才找到一条；
@@ -286,7 +256,14 @@ internal fun SettingsPage.StepPickerSheet(
             // 「选择应用」不能落成一个空的 `app:`：交给挑应用页（去哪儿由调用点说）
             spec.token == ActionCatalog.APP_TILE -> {
                 sheet.onDismiss()
-                sheet.onOpenApp()
+                sheet.onOpenPicker(StepPickerPage.App)
+            }
+
+            // 「自定义变量」同理：它代表的是一整族 `setvar:` 写法，落成一步只会写出一个
+            //  `Action.parse` 认不出的废串 —— 交给「变量操作」页挑（挑变量 → 挑操作 → 落盘）
+            spec.token == ActionCatalog.VARS_TILE -> {
+                sheet.onDismiss()
+                sheet.onOpenPicker(StepPickerPage.Vars)
             }
 
             // 入口格 → 弹它那一层菜单（抽屉原地留着，与锚点浮层那套一致）
@@ -310,23 +287,29 @@ internal fun SettingsPage.StepPickerSheet(
 
     val ctx =
         StepSheetCtx(
-            cards = sheetCards,
             anchorOf = { anchors.getValue(it) },
             isCurrent = { isCurrent(it) },
             onLand = { spec, anchor -> land(spec, anchor) },
+            current = sheet.current,
         )
     //  「已保存的命令」那一组的锚点是另外一份（见 `savedAnchors`），其余上下文相同
     val savedCtx =
-        StepSheetCtx(sheetCards, { savedAnchors.getValue(it) }, { isCurrent(it) }) { spec, anchor ->
-            land(spec, anchor)
-        }
+        StepSheetCtx(
+            anchorOf = { savedAnchors.getValue(it) },
+            isCurrent = { isCurrent(it) },
+            onLand = { spec, anchor -> land(spec, anchor) },
+            current = sheet.current,
+        )
     //  搜索态：分组标题全部让位，命中的行拍成**一张卡**（找东西时按组切反而要多扫几行标题）。
     //  两组候选的锚点不在同一张表里，这里按「先查命令、再查动作」挑一份；
     //  两个都没有（理论上不会）就落到 `coldAnchor`，至少不抛。
     val searchCtx =
-        StepSheetCtx(sheetCards, { savedAnchors[it] ?: anchors[it] ?: coldAnchor }, { isCurrent(it) }) { spec, anchor ->
-            land(spec, anchor)
-        }
+        StepSheetCtx(
+            anchorOf = { savedAnchors[it] ?: anchors[it] ?: coldAnchor },
+            isCurrent = { isCurrent(it) },
+            onLand = { spec, anchor -> land(spec, anchor) },
+            current = sheet.current,
+        )
     val term = query.trim()
     val hits =
         if (term.isEmpty()) {
@@ -337,54 +320,14 @@ internal fun SettingsPage.StepPickerSheet(
                 .filter { it.label.contains(term, ignoreCase = true) }
         }
 
-    OverlayBottomSheet(
+    PageSheet(
         show = show,
         title = sheet.title,
-        //  **底色取页面同一个槽**：页面 Scaffold 用的是 `surface`（见 `PageContent` 里那句
-        //  `containerColor = COUITheme.colorScheme.surface`），而抽屉默认给的是 `background`
-        //  —— COUI 里这是两档色，并排看能看出抽屉比页面深/浅一档。
-        //  暗色下再抬一档到 `surfaceContainer`，理由见上面 [sheetColor] 那段注释。
-        backgroundColor = sheetColor,
-        onDismissRequest = sheet.onDismiss,
-        onDismissFinished = sheet.onDismiss,
-        //  **右上角那颗「确定」已经撤掉**（用户口径「选中即确认」）：点一行 / 点二级菜单里的
-        //  一档 / 挑完应用，都当场落盘并收抽屉。原来那套「先高亮、再按确定」多一步，
-        //  而这一页的选择本来就是单选、且随时可以重来 —— 多那一步只换来一次误按。
-        //  **抽屉内容的内边距全在这一个参数上**（`BottomSheetDefaults.insideMargin`，它同时套在
-        //  把手 / 标题 / 内容上：横向 `padding(horizontal)`、纵向只取 height 做 `padding(bottom)`）：
-        //   · 横向默认 24dp + 行自己的 16dp = 离屏幕边 40dp，太宽
-        //     ⇒ 收到 [PAGE_MARGIN]，标题与行文字的左边线因此对齐在同一条 16dp 线上；
-        //   · 纵向**留在 0**：那一档底边留白挪进**滚动内容里**（见下面 `Column` 的
-        //     `.padding(bottom = PAGE_BOTTOM_PADDING)`）—— 挂在 `insideMargin` 上是在滚动视口
-        //     **外面**加内缩，视口被压短、最后一行还是被底边吃掉一截。
-        insideMargin = DpSize(PAGE_MARGIN, 0.dp),
-        //  **断掉抽屉对内容滚动的接管**：库里那条 `NestedScrollConnection` 会把「内容滚不动之后
-        //  剩下的余量」当成往下拽抽屉（见 `BottomSheetContentLayout.onPostScroll`），所以滚到底
-        //  再松手 = dismiss。只把内容那层设成 `nestedScrollToParent = false` **不够**：那一位只
-        //  挡手指拖动（`source == UserInput`）那一支，松手之后的**惯性**走的是另一个分支，那里
-        //  无条件往回派发 ⇒ fling 的余量照样喂给抽屉。
-        //  这一位是库自己给的开关：false ⇒ 三条回调一律 `Offset.Zero`，内容怎么滚都动不了抽屉。
-        //  抽屉仍能用把手下拉（把手那颗 `draggable` 是它自己的手势）、也能点外部 / 返回收掉。
-        enableNestedScroll = false,
-    ) {
-        //  内容自己滚：候选可能有几十行，抽屉高度跟着内容长、长到装不下就停在 `heightIn` 这一档。
-        //
-        //  `overScrollVertical(nestedScrollToParent = false)`：余量在原地做成橡皮筋回弹，
-        //  **不往上传**（默认 true 时会继续派发，抽屉照样收得到、照样被拖下去）。
-        //  「按住拖到头也会弹」是这一支必然的行为（库不区分拖动与惯性）—— 试过去掉，
-        //  结果连越界回弹一起没了，用户口径「那算了改回去」。
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = STEP_SHEET_MAX_HEIGHT)
-                //  **抽屉高度变化加过渡**：分组列表 ↔ 搜索结果 ↔ 没找到，三种内容的高度是跳变的
-                //  （几十行换成一张卡、再换成一句话），面板跟着一跳很扎眼。
-                //  与页面里其它「动态显隐」同一档时长与缓动。
-                .animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)),
-        ) {
-            //  过滤框：用库自己的 `InputField`（「选择应用」页那个搜索框就是它）——
-            //  放大镜、清除键、占位文案都是它自带的，不另拼一层。
-            //  **在滚动区外面**：列表翻几屏时它不该跟着滚走（否则想换关键词得先滚回顶部）。
+        onDismiss = sheet.onDismiss,
+        //  过滤框用库自己的 `InputField`（「选择应用」页那个搜索框就是它）——
+        //  放大镜、清除键、占位文案都是它自带的，不另拼一层。
+        //  走 `header`：它在滚动区**外面**，列表翻几屏时不该跟着滚走（否则想换关键词得先滚回顶部）。
+        header = {
             InputField(
                 query = query,
                 onQueryChange = { query = it },
@@ -395,54 +338,40 @@ internal fun SettingsPage.StepPickerSheet(
                 modifier = Modifier.fillMaxWidth().padding(bottom = STEP_SHEET_SEARCH_GAP),
                 label = I18n.get(Strings.COMMAND_SEARCH, "搜索命令"),
             )
-
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    //  `fill = false`：内容短时抽屉跟着内容长（不撑到 460），长了才吃满剩余空间。
-                    //  这里必须给 weight 而不是再套一层 `heightIn`：搜索框的高度是库算的（会随
-                    //  字号 / 语言变），写死一个数去减，换语言就溢出。
-                    .weight(1f, fill = false)
-                    .overScrollVertical(nestedScrollToParent = false)
-                    .verticalScroll(rememberScrollState())
-                    //  底边那一档留白**在滚动内容里**（与各页 `.padding(bottom = PAGE_BOTTOM_PADDING)`
-                    //  同一个位置、同一个值）：滚到底时它垫在最后一行下面，不占滚动视口。
-                    .padding(bottom = PAGE_BOTTOM_PADDING),
-            ) {
-                //  **三种内容之间交叉淡入淡出**（列表 ↔ 搜索结果 ↔ 没找到）：高度变化交给外层
-                //  那个 `animateContentSize`，这里只做淡入淡出 —— 两层各管一件事，
-                //  两个都动高度会变成一段动画套一段。
-                Crossfade(
-                    targetState =
-                        when {
-                            term.isEmpty() -> SheetBody.Groups
-                            hits.isEmpty() -> SheetBody.Empty
-                            else -> SheetBody.Hits
-                        },
-                    animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
-                    label = "step-sheet-body",
-                ) { body ->
-                    Column(Modifier.fillMaxWidth()) {
-                        when (body) {
-                            SheetBody.Groups -> {
-                                StepSheetGroups(ctx)
-                                //  **已保存的命令排在最后**：这是用户自己写的东西，挑的时候上面几组
-                                //  通常已经扫过一遍。一条都没存过时整组不出现 —— 这是「挑一条来用」
-                                //  的抽屉，没得挑就别摆一栏空的。
-                                if (savedSpecs.isNotEmpty()) {
-                                    SavedCommandsGroup(savedSpecs, savedCtx)
-                                }
-                            }
-
-                            //  搜不到时给一句话，不摆一张空卡：这里没有「这里还能放东西」的暗示
-                            SheetBody.Empty -> {
-                                StepSheetEmptyHint(term)
-                            }
-
-                            SheetBody.Hits -> {
-                                StepSheetCard(hits, searchCtx)
-                            }
+        },
+    ) {
+        //  **三种内容之间交叉淡入淡出**（列表 ↔ 搜索结果 ↔ 没找到）：高度变化交给壳里那个
+        //  `animateContentSize`，这里只做淡入淡出 —— 两层各管一件事，
+        //  两个都动高度会变成一段动画套一段。
+        Crossfade(
+            targetState =
+                when {
+                    term.isEmpty() -> SheetBody.Groups
+                    hits.isEmpty() -> SheetBody.Empty
+                    else -> SheetBody.Hits
+                },
+            animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
+            label = "step-sheet-body",
+        ) { body ->
+            Column(Modifier.fillMaxWidth()) {
+                when (body) {
+                    SheetBody.Groups -> {
+                        StepSheetGroups(ctx)
+                        //  **已保存的命令排在最后**：这是用户自己写的东西，挑的时候上面几组
+                        //  通常已经扫过一遍。一条都没存过时整组不出现 —— 这是「挑一条来用」
+                        //  的抽屉，没得挑就别摆一栏空的。
+                        if (savedSpecs.isNotEmpty()) {
+                            SavedCommandsGroup(savedSpecs, savedCtx)
                         }
+                    }
+
+                    //  搜不到时给一句话，不摆一张空卡：这里没有「这里还能放东西」的暗示
+                    SheetBody.Empty -> {
+                        StepSheetEmptyHint(term)
+                    }
+
+                    SheetBody.Hits -> {
+                        StepSheetCard(hits, searchCtx)
                     }
                 }
             }
@@ -480,10 +409,11 @@ private enum class SheetBody { Groups, Hits, Empty }
  * 合成一个对象，是因为 detekt 的参数上限只有 5 个，而这几样是同一批上下文，不该拆散。
  */
 private class StepSheetCtx(
-    val cards: CardColors?,
     val anchorOf: (ActionCatalog.Spec) -> PreciseClickState,
     val isCurrent: (ActionCatalog.Spec) -> Boolean,
     val onLand: (ActionCatalog.Spec, PreciseClickState) -> Unit,
+    /** 当前那一个动作 —— 入口格那几行的行首字形按它算（见 `StepSheetCard`）。 */
+    val current: Action?,
 )
 
 /**
@@ -496,8 +426,9 @@ private class StepSheetCtx(
 private fun SettingsPage.StepSheetGroups(ctx: StepSheetCtx) {
     Column {
         ActionCatalog.STEP_GROUPS.forEach { (groupTitle, group) ->
-            //  小标题用**库默认**内边距（左右 32dp）—— 抽屉里原先压到 16dp，比其它页浅一档
-            SectionTitle(ActionCatalog.groupTitleLabel(groupTitle))
+            //  小标题收一档（左右各一档 `PAGE_MARGIN`）：抽屉自己已经给过一档，再叠库默认那
+            //  32dp 就比卡片行文字右移一档（见 `SHEET_TITLE_MARGIN`）
+            SectionTitle(ActionCatalog.groupTitleLabel(groupTitle), insideMargin = SHEET_TITLE_MARGIN)
             StepSheetCard(group, ctx)
         }
     }
@@ -509,8 +440,8 @@ private fun SettingsPage.SavedCommandsGroup(
     specs: List<ActionCatalog.Spec>,
     ctx: StepSheetCtx,
 ) {
-    //  与上面那几组同一份内边距（库默认）
-    SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"))
+    //  与上面那几组同一份内边距
+    SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"), insideMargin = SHEET_TITLE_MARGIN)
     StepSheetCard(specs, ctx)
 }
 
@@ -527,22 +458,33 @@ private fun SettingsPage.StepSheetCard(
 ) {
     CardList(
         margin = 0.dp,
-        //  暗色下卡片比抽屉面再亮一档（见 `sheetCards`）；浅色传 null = 库默认，与页面同一档
-        colors = ctx.cards,
+        //  暗色下卡片比抽屉面再亮一档（见 `sheetCardColors`）；浅色传 null = 库默认，与页面同一档
+        colors = sheetCardColors(),
         rows =
             specs.map { spec ->
                 val anchor = ctx.anchorOf(spec)
-                val glyph = tileIcon(spec)
+                //  **行首字形与网格那一格同一判据**：入口格（响铃状态 / 媒体控制 / 系统开关…）
+                //  按**当前绑的是哪一档**给，其余按清单条目给 —— 抽屉与网格摆的是同一张清单，
+                //  同一个「响铃状态」在两处长成两个样子的唯一原因就是这里少判了一下。
+                val glyph = tileIcon(ActionCatalog.boundModeOf(spec, ctx.current) ?: spec)
                 // 行尾那颗字形按「点开去哪」分（与页面里那几行同一套口径）：
-                //  · 「选择应用」进的是**另一个页面**去挑 → 右箭头（[PageIcons.EnterArrow]）；
+                //  · 「选择应用」/「自定义变量」进的是**另一个页面**去挑 → 右箭头（[PageIcons.EnterArrow]）；
                 //  · 入口格那几档（系统开关 / 媒体控制…）点开还有**一层菜单** → 选择器字形；
                 //  · 其余动作点一下就落成一步、`cmd:<名字>` 同样落成一步 → 不给。
                 //  **选中那一行也照画**：选中只把行首换成对勾，行尾该不该有指示不变。
                 val trailingIcon =
                     when {
-                        spec.token == ActionCatalog.APP_TILE -> PageIcons.EnterArrow
-                        ActionCatalog.modeMenu(spec.token) != null -> PageIcons.Selector
-                        else -> null
+                        spec.token == ActionCatalog.APP_TILE || spec.token == ActionCatalog.VARS_TILE -> {
+                            PageIcons.EnterArrow
+                        }
+
+                        ActionCatalog.modeMenu(spec.token) != null -> {
+                            PageIcons.Selector
+                        }
+
+                        else -> {
+                            null
+                        }
                     }
                 //  **当前这一步**那一行整行上主题色、**行首**那颗图标换成对勾
                 //  （与浮层菜单里 `PageMenuPopup` 的选中态同一套）。
@@ -698,6 +640,3 @@ private fun SettingsPage.StepSheetRow(
         onClick = onClick,
     )
 }
-
-/** 抽屉内容的最高高度 —— 再高就把整屏都盖住了，留一档给「它是个抽屉」这件事。 */
-private val STEP_SHEET_MAX_HEIGHT = 460.dp

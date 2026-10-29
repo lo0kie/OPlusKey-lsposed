@@ -15,12 +15,13 @@ import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.MODULE_UNAVAILABLE_HINT
+import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.write
 import com.lookie.opluskey.ui.writeAndNotice
 
 /**
- * 把一个动作绑到手势 [g] 上。
+ * 把一个清单里的动作绑到 [target] 那一格上。
  *
  * @param appName 「打开应用」那一族挑完之后要**一并记下的名字**（`微信 2` / `扫一扫`）。
  *   它与绑定同一次写盘（`Config.appNames`，见 `Config.appNames` 的注释）；其余动作为 `null`。
@@ -33,6 +34,37 @@ internal fun SettingsPage.pick(
     spec: ActionCatalog.Spec,
     target: BindingTarget,
     appName: String? = null,
+): Boolean = writeBinding(spec.token, target, appName) { action -> boundNotice(spec, action, appName) }
+
+/**
+ * **变量那一格**挑完之后落到配置上 —— 与 [pick] 同一条写盘路径，差别只在两处：
+ * 取值是那一步 `setvar:`（没有对应的清单条目，`spec` 也就无从给起），回执自己那句话
+ * （[Strings.VAR_BOUND]，不再套 [Strings.TOAST_BOUND] 那层「」）。
+ *
+ *  不把这两样塞进 [pick] 的参数：它们在别的调用点上都没有意义，摆在那儿等于每个调用点
+ *  都要看一眼一件与自己无关的事。
+ */
+internal fun SettingsPage.pickVar(
+    token: String,
+    target: BindingTarget,
+): Boolean =
+    writeBinding(token, target, null) { _ ->
+        //  回执里那句正文走 [stepTitle]（步骤行那一套叫法）—— 「怎么念一个动作」全项目只有
+        //  那一支实现，这里不再为变量另拼一遍（`actionTitle` 的调用点有明文预算）。
+        I18n.format(Strings.VAR_BOUND, stepTitle(token) { "" })
+    }
+
+/**
+ * 绑定的**唯一写盘路径**（[pick] / [pickVar] 都从这里过）。
+ *
+ * @param token 要写进配置的动作写法
+ * @param notice 成功回执那句话（参数是解析后的动作）—— 两种动作叫法不同，这一层不猜
+ */
+private fun SettingsPage.writeBinding(
+    token: String,
+    target: BindingTarget,
+    appName: String?,
+    notice: (Action) -> String,
 ): Boolean {
     // 与首页 / ⋮ 菜单**同一套闸位**。正常路径上它们已经拦过一遍（进不了这一页），
     //  这里拦的是「绕过首页直接落到这一页」那条路 —— 调试通道的 `navTo` 就是那么进来的
@@ -40,7 +72,7 @@ internal fun SettingsPage.pick(
     //  写盘成功、广播也发得出去，可注入侧那一半压根没装起来，用户看到的是「点了没反应」。
     //  `configReadOnly` 不在这里判 —— 它由 [write] 单点拦（那里还负责报「未保存」）。
     if (!linkReady) {
-        XLog.w("选动作被拦住（页面未就绪）：链路就绪=$linkReady ${target.what} → ${spec.token}")
+        XLog.w("选动作被拦住（页面未就绪）：链路就绪=$linkReady ${target.what} → $token")
         // 与首页那条常驻提示**同一句话**（判据见 [blockedReason]）：被拦住时看到的原因
         //  不该因为你从哪条路点进来而不同。
         hint(blockedReason() ?: MODULE_UNAVAILABLE_HINT, slot = HINT_SLOT_BINDING)
@@ -48,10 +80,10 @@ internal fun SettingsPage.pick(
     }
     return try {
         val cfg = configState.config.value
-        val action = Action.parse(spec.token)
+        val action = Action.parse(token)
         // 已经绑的就是它 ⇒ 直接返回（判据见 [bindingUnchanged]）
         if (bindingUnchanged(cfg, target, action, appName)) {
-            XLog.w("选动作：${target.what} 已经是 ${spec.token}，不重复写")
+            XLog.w("选动作：${target.what} 已经是 $token，不重复写")
             return true
         }
         // 名字按**这次要绑的那个目标**记（应用/快捷方式/磁贴）：
@@ -65,17 +97,17 @@ internal fun SettingsPage.pick(
                     val t = action.appTarget
                     if (appName != null && t != null) c.withAppName(t, appName) else c
                 }
-        val result = write(next, "${target.what} → ${spec.token}")
+        val result = write(next, "${target.what} → $token")
         // 绑成了才报：被拦 / 写盘失败时 [write] 自己已经报过原因；广播没发出去时它报的那条
         //  「已保存，但通知注入侧失败」更不能被一句「已绑定…」顶掉（底部只有一行回执）。
         //  归到**整页那一个位**（[HINT_SLOT_BINDING]）：这一页连改几格时屏幕上改字，
         //  不叠出「已绑定甲」「已绑定乙」两串。
-        if (result == CommandsSave.Ok) hint(boundNotice(spec, action, appName), slot = HINT_SLOT_BINDING)
+        if (result == CommandsSave.Ok) hint(notice(action), slot = HINT_SLOT_BINDING)
         //  返回值仍按「配置有没有落盘」给（见 [write] 的三态口径）：广播失败时文件与本地状态
         //  都已经是新值，调用方不该把它当成「没绑上」。
         result != CommandsSave.Failed
     } catch (e: Throwable) {
-        XLog.w("选动作失败（忽略）：${spec.token}", e)
+        XLog.w("选动作失败（忽略）：$token", e)
         //  点了格子必须有个说法：只记日志的话用户看到的就是「点了一下没反应」。
         //  同一页只有一条回执 ⇒ 它**顶掉**上一条（而不是叠一条）—— 失败本该盖住那句「已绑定」。
         hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"), slot = HINT_SLOT_BINDING)

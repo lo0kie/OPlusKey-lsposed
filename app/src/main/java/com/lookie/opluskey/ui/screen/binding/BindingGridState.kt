@@ -19,6 +19,7 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.COLUMNS
+import com.lookie.opluskey.ui.screen.openVarOpsForTarget
 import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
@@ -231,10 +232,10 @@ internal fun BindingGridState.focusOn(token: String) {
 /**
  * 点一下某一格 —— **点击与确认键共用这一个入口**。
  *
- *  注意：入口格必须在这里分派（「打开应用」进挑选页、其余入口格弹菜单），**不能交给
- *  [bindingSelect]**：`app:` / `nav:` / `key:` / `panel:` / `zoom:` 这些都是**标记** token，
- *  `Action.parse` 认不出 —— `nav:` / `key:` / `zoom:` 落 `else -> Shell(...)`、`app:` 落
- *  `App("")`、`panel:` 落 `Panel("")`，交过去就是把垃圾写进配置再广播出去。
+ *  注意：入口格必须在这里分派（「打开应用」进挑选页、其余入口格弹菜单、变量那格开底部抽屉），
+ *  **不能交给 [bindingSelect]**：`app:` / `vars:` / `nav:` / `key:` / `panel:` / `zoom:` 这些都是
+ *  **标记** token，`Action.parse` 认不出 —— `nav:` / `key:` / `zoom:` 落 `else -> Shell(...)`、
+ *  `app:` 落 `App("")`、`panel:` 落 `Panel("")`，交过去就是把垃圾写进配置再广播出去。
  *
  * @param anchor 这一格自己那份触点锚点（弹菜单要用它定位）；确认键那条路从 `st.tileAnchors` 取
  */
@@ -249,6 +250,15 @@ internal fun SettingsPage.bindingActivate(
             tickNow()
             //  不挪焦点圈 —— 与 [bindingSelect] 同一条规矩：圈只跟随选中态。
             st.onOpenAppPicker(st.target)
+        }
+        return
+    }
+    // 「自定义变量」那一格同样是**入口**：当场挑一颗变量、再挑对它做哪一步，落成 `setvar:` 写进配置。
+    //  它不进 [ActionCatalog.modeMenu]（变量是运行时收集的，静态表里列不出来），所以单独分派。
+    if (spec.token == ActionCatalog.VARS_TILE) {
+        if (enabled) {
+            tickNow()
+            openVarOpsForTarget(st.target)
         }
         return
     }

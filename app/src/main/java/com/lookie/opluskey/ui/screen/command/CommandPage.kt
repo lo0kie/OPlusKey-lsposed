@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,7 +18,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -39,6 +37,7 @@ import com.lookie.opluskey.ui.InputSpec
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.PageMenu
+import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
@@ -55,7 +54,6 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「自定义命令」页的一页（单条 / 多条各一份）—— 从 `CommandScreen.kt` 拆出来。
 //
@@ -89,20 +87,7 @@ internal fun SettingsPage.CommandPage(
     //  但排序态里即使把步骤删空也要留着 —— 那时工具条是隐藏的，它是**唯一的出口**，藏了就出不来。
 
     Box(Modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                // 大标题随滚动折叠（`nestedScroll` 要在 `verticalScroll` 之前）
-                .nestedScroll(scroll.behavior.nestedScrollConnection)
-                // 越界回弹：`overScrollVertical` 挂在滚动容器外侧，所以内容不满一屏时照样弹。
-                .overScrollVertical()
-                .verticalScroll(scroll.state)
-                // 页底留白挂在滚动内容内侧（`padding` 在 `verticalScroll` 之后）——
-                // 尾部 Spacer 实测不进滚动内容高度，会让最大滚动位置少一截。
-                //  **与首页同一档（[PAGE_BOTTOM_PADDING]），不再为右下角那颗 FAB 额外抬高** ——
-                //  一页一档的话，翻页时底部那段空白会忽高忽低（用户口径：统一）。
-                .padding(bottom = PAGE_BOTTOM_PADDING),
-        ) {
+        PageScrollColumn(scrollBehavior = scroll.behavior, state = scroll.state) {
             // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带（`tabBlockDp`）一起让出。
             Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp))
 
@@ -203,17 +188,7 @@ internal fun SettingsPage.CommandListPage(
         val emptyHeight =
             (maxHeight - currentHeaderHeight(scroll.behavior) - scroll.tabBlockDp - PAGE_BOTTOM_PADDING)
                 .coerceAtLeast(0.dp)
-        Column(
-            Modifier
-                .fillMaxSize()
-                // 大标题随滚动折叠（`nestedScroll` 要在 `verticalScroll` 之前）
-                .nestedScroll(scroll.behavior.nestedScrollConnection)
-                // 越界回弹：`overScrollVertical` 挂在滚动容器外侧，所以内容不满一屏时照样弹。
-                .overScrollVertical()
-                .verticalScroll(scroll.state)
-                // 页底留白挂在滚动内容内侧 —— 与 [CommandPage] 同一档、同一位置
-                .padding(bottom = PAGE_BOTTOM_PADDING),
-        ) {
+        PageScrollColumn(scrollBehavior = scroll.behavior, state = scroll.state) {
             // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带一起让出。
             Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp))
             if (commands.isEmpty()) {

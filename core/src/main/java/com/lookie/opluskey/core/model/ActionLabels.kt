@@ -61,6 +61,12 @@ fun actionTitle(
             I18n.format(Strings.COMMON_OPEN_SHORTCUT_FORMAT, appName(action))
         }
 
+        // 自定义变量（`setvar:计数+=1`）：四档各一句话。
+        //  值是配置里的原文（里面可能还写着 `${其它变量}`），照原样显示 —— 展开是执行时的事。
+        is Action.VarSet -> {
+            varSetTitle(action)
+        }
+
         // 系统开关：切换 / 打开 / 关闭三档各一句话 —— 名字在清单里，认不出就退回 id
         is Action.Setting -> {
             I18n.format(
@@ -79,3 +85,21 @@ fun actionTitle(
             ActionCatalog.label(action) ?: fallback
         }
     }
+
+/**
+ * 一步变量操作在界面上的说法 —— 四档各一句，值是配置里的原文（可能还写着 `${其它变量}`）。
+ *
+ *  单独一支只为把 [actionTitle] 的圈复杂度压回 detekt 的阈值之下（那一支本来就贴着上限，
+ *  再并进来一条就报 `CyclomaticComplexMethod`）。
+ */
+private fun varSetTitle(action: Action.VarSet): String =
+    I18n.format(
+        when (action.op) {
+            VarOp.SET -> Strings.VAR_STEP_SET
+            VarOp.ADD -> Strings.VAR_STEP_ADD
+            VarOp.SUB -> Strings.VAR_STEP_SUB
+            VarOp.NOT -> Strings.VAR_STEP_NOT
+        },
+        action.name,
+        action.value,
+    )

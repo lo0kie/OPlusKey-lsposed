@@ -48,6 +48,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowRight
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
+import io.github.lyxnx.compose.ui.tablericons.outline.Flag
 import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
@@ -569,6 +570,17 @@ internal object PageIcons {
      *  —— 填的都是**一个名字**，用同一颗字形，用户在两处看到的是同一件事。
      */
     val LabelImportant: ImageVector get() = TablerIcons.Outline.LabelImportant
+
+    /**
+     * 变量表单里「初始值」那一格的行首图标 —— `flag`（一面起点旗）。
+     *
+     *  这一格填的是「这个变量**一开始**是什么」，旗读作「起点」，与同排另外两格分得开
+     *  （名称是标签、类型是 `abc` / `123` / 开关）。
+     *
+     *  原先借用的是变量自己的字形（`variable`）：与列表页每一行行首那颗**一模一样**，
+     *  抽屉里看就成了「又是一行变量」，看不出这一格是在填值。
+     */
+    val VarInitial: ImageVector get() = TablerIcons.Outline.Flag
 
     /**
      * 「关于」卡里「作者 / 查看地址 / 反馈问题」**三行的行尾** —— 链接符号（`link`）。

@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.screen.home
 
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
@@ -8,15 +7,16 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.screen.variables.openVariablesForManage
 import com.lookie.opluskey.ui.setModuleEnabled
-import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.lyxnx.compose.ui.tablericons.TablerIcons
+import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 首页那两张卡片 —— 从 `HomeScreen.kt` 拆出来。
 //
@@ -121,6 +121,19 @@ internal fun SettingsPage.HomeOtherCard(
                     arrow = true,
                     onClick = { openCommandsPage() },
                 ),
+                // 「自定义变量」：与「自定义命令」并排 —— 两者是同一类东西（用户自己定义、之后
+                //  在命令里用），摆在一起比塞进「更多选项」更好找。
+                //  这一页只有变量的清单与新建，不吃整页总闸以外的东西：建 / 改变量要写盘，
+                //  所以与上面两行同一档（`pageEnabled`）。
+                CardRow.Item(
+                    title = I18n.get(Strings.TOOL_VARIABLES, "自定义变量"),
+                    summary = I18n.get(Strings.HOME_VARIABLES_DESC, "命令里能读、也能改的值"),
+                    icon = TablerIcons.Outline.Variable,
+                    enabled = pageEnabled,
+                    arrow = true,
+                    //  这一趟是**管数据**：点列表里的一颗会弹「编辑 / 删除 + 当场改值」那张窗
+                    onClick = { openVariablesForManage() },
+                ),
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_OPTIONS_TITLE, "更多选项"),
                     // 副标题只报这一页有什么，不交代机制（「一起改短」）
@@ -139,14 +152,7 @@ internal fun SettingsPage.HomeOtherCard(
                     // 菜单的落点由这一行记下的触点给（`MenuPopup` 的 `preciseClick`）。
                     //  少了它，锚点永远是空的 ⇒ 菜单退回库的默认位置，读起来就是「没有跟随手指」。
                     modifier = Modifier.preciseClickAnchor(ui.donateClick),
-                    trailing = {
-                        Icon(
-                            PageIcons.Selector,
-                            contentDescription = null,
-                            modifier = Modifier.size(ROW_END_ICON_SIZE),
-                            tint = COUITheme.colorScheme.onSurfaceVariantActions,
-                        )
-                    },
+                    trailing = { RowEndIcon(PageIcons.Selector) },
                     onClick = {
                         ui.showDonateMenu = true
                     },

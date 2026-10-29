@@ -177,7 +177,10 @@ object Strings {
     /** 首页那一行的副标题：已经配了几组（格式：组数）。 */
     const val COMBO_COUNT = "combo.count"
 
-    /** 列表页筛选菜单的第一行：不筛（列出全部组合）。 */
+    /** 列表页筛选菜单的小标题（置顶那一行；组里有「全部」与真正的那几颗键）。 */
+    const val COMBO_FILTER_SECTION = "combo.filter_section"
+
+    /** 筛选菜单里「不筛」那一行（列出全部组合）。 */
     const val COMBO_FILTER_ALL = "combo.filter_all"
 
     /**
@@ -241,6 +244,7 @@ object Strings {
     const val CATALOG_QUICK_TOOLS = "catalog.quick_tools"
     const val CATALOG_RECORDING = "catalog.recording"
     const val CATALOG_SCREEN_RECORD = "catalog.screen_record"
+    const val CATALOG_SCREEN_TRANSLATE = "catalog.screen_translate"
     const val CATALOG_SCREENSHOT = "catalog.screenshot"
     const val CATALOG_SYSTEM_ACTIONS = "catalog.system_actions"
     const val CATALOG_SYSTEM_KEYS = "catalog.system_keys"
@@ -304,6 +308,9 @@ object Strings {
 
     /** 停在「命令列表」那一页点重置时的说法 —— 那一页没有表单，清不了什么。 */
     const val COMMAND_RESET_LIST_PAGE = "command.reset_list_page"
+
+    /** 步骤排序态下点重置时的说法 —— 那时改的是顺序、不是内容，重置没有宾语。 */
+    const val COMMAND_RESET_SORTING = "command.reset_sorting"
 
     /** 表单第一条小标题：名称输入框（原先这里写的是「修改命令 / 新增命令」）。 */
     const val COMMAND_NAME_TITLE = "command.name_title"
@@ -888,4 +895,109 @@ object Strings {
     const val SYS_SETTING_FLASHLIGHT = "system_setting.flashlight"
     const val SYS_SETTING_DARKMODE = "system_setting.darkmode"
     const val SYS_SETTING_POWERSAVE = "system_setting.powersave"
+
+    // —— 自定义变量（`ui/screen/variables/`）——
+
+    /** 「快捷功能」组里那一格的名字（也是这一页在顶栏上的名字）。 */
+    const val TOOL_VARIABLES = "tool.variables"
+
+    /** 步骤抽屉里「变量」那一组的组名。 */
+    const val CATEGORY_VARIABLES = "category.variables"
+
+    /** 变量操作落成一步之后，步骤行上那句标题（`%1$s` 变量名 / `%2$s` 值）。 */
+    const val VAR_STEP_SET = "var.step.set"
+    const val VAR_STEP_ADD = "var.step.add"
+    const val VAR_STEP_SUB = "var.step.sub"
+
+    /** 取反没有值，`%1$s` 只是变量名。 */
+    const val VAR_STEP_NOT = "var.step.not"
+
+    /** 首页「其他」卡里「自定义变量」那一行的副标题。 */
+    const val HOME_VARIABLES_DESC = "home.variables_desc"
+
+    /**
+     * 变量页**页内**那句小标题。
+     *
+     *  与 [TOOL_VARIABLES] 分开：顶栏已经写着「自定义变量」，页内小标题再原样重复一遍等于白占一行；
+     *  网格那一格也还用着 [TOOL_VARIABLES]，跟着改会把它撑长。
+     */
+    const val VARIABLES_TITLE = "variables.title"
+
+    /** 「变量操作」页的顶栏标题（与清单页不同名：一眼能看出在哪一层）。 */
+    const val VAR_OPS_TITLE = "var.ops_title"
+
+    /** 操作页一颗变量都没有时的说明与去处。 */
+    const val VAR_OPS_EMPTY = "var.ops_empty"
+    const val VAR_OPS_CREATE = "var.ops_create"
+
+    /** 操作区那个小标题的后半段（前半段是变量名，中间用「 - 」隔开）。 */
+    const val VAR_OPS_SECTION = "var.ops_section"
+
+    /** 没选变量时点操作行的提示语。 */
+    const val VAR_OPS_PICK_FIRST = "var.ops_pick_first"
+
+    /** 右下角那颗 FAB 的无障碍描述。 */
+    const val VAR_OPS_CONFIRM = "var.ops_confirm"
+
+    /** 变量页空态。 */
+    const val VARIABLES_EMPTY = "variables.empty"
+
+    /** 新建变量（抽屉标题与右下角那颗加法入口共用）。 */
+    const val VARIABLES_ADD = "variables.add"
+
+    /** 新建抽屉右上角那颗按钮 —— 动词，不是标题（标题已经写了「新建变量」）。 */
+    const val VARIABLES_CREATE = "variables.create"
+
+    /** 变量类型三档。 */
+    const val VAR_TYPE_STRING = "var.type_string"
+    const val VAR_TYPE_NUMBER = "var.type_number"
+    const val VAR_TYPE_BOOLEAN = "var.type_boolean"
+
+    /** 抽屉里的操作。 */
+    const val VAR_OP_SET = "var.op_set"
+    const val VAR_OP_TOGGLE = "var.op_toggle"
+    const val VAR_OP_INC = "var.op_inc"
+    const val VAR_OP_DEC = "var.op_dec"
+    const val VAR_OP_RESET = "var.op_reset"
+    const val VAR_OP_DELETE = "var.op_delete"
+
+    /** 表单里的三块小标题（也是三格输入 / 那一行的标题）。 */
+    const val VAR_FIELD_NAME = "var.field_name"
+    const val VAR_FIELD_VALUE = "var.field_value"
+    const val VAR_FIELD_INITIAL = "var.field_initial"
+    const val VAR_FIELD_TYPE = "var.field_type"
+
+    /** 两格输入的占位文案 —— 小标题已经写了「名字 / 初始值」，占位里不再重复一遍。 */
+    const val VAR_NAME_HINT = "var.name_hint"
+    const val VAR_INITIAL_HINT = "var.initial_hint"
+
+    /** 布尔的两种取值（存储里是 `true` / `false`，见 `VarType.TEXT_TRUE`）。 */
+    const val VAR_VALUE_TRUE = "var.value_true"
+    const val VAR_VALUE_FALSE = "var.value_false"
+
+    /** 结果提示。 */
+    const val VAR_SAVED = "var.saved"
+    const val VAR_FAILED = "var.failed"
+    const val VAR_NAME_INVALID = "var.name_invalid"
+    const val VAR_VALUE_INVALID = "var.value_invalid"
+
+    /**
+     * 绑上一步变量操作之后那句回执（`%s` = 那一步的正文）。
+     *
+     *  **不复用 `toast.bound`**：那一句自带「」，而变量那一步的正文自己已经用「」框住了变量名
+     *  （见 [VAR_STEP_SET]），套两层就成了「已绑定「「计数」+= 1」」。
+     */
+    const val VAR_BOUND = "var.bound"
+
+    /** 删除二次确认（标题带变量名，用 `I18n.format`）。 */
+    const val VAR_DELETE_TITLE = "var.delete_title"
+    const val VAR_DELETE_SUMMARY = "var.delete_summary"
+
+    /**
+     * 还有人在引用这颗变量，删不了（`%d` = 引用处数）。
+     *
+     *  比「删掉之后引用它的命令会当它不存在」更进一步：那一句是**告知后果**，这一句是**拦住**——
+     *  留下空引用的话，按下去那条命令只会得到一句「变量不存在」，用户还得回头找是谁在用它。
+     */
+    const val VAR_DELETE_BLOCKED = "var.delete_blocked"
 }

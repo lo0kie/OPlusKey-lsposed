@@ -12,6 +12,7 @@ import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec

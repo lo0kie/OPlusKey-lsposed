@@ -4,6 +4,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.appNameOf
@@ -12,6 +13,7 @@ import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.binding.pick
 import com.lookie.opluskey.ui.screen.command.writeBranchCommand
 import com.lookie.opluskey.ui.screen.command.writeBranchCondition
+import com.lookie.opluskey.ui.screen.variables.VarManageState
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.PickTarget
 import com.lookie.opluskey.ui.state.PickedDetail
@@ -167,4 +169,36 @@ internal fun SettingsPage.onDraftPicked(
     picker.draft = detail
     appPickerUi.pending = detail
     goBack()
+}
+
+/**
+ * 网格里点「自定义变量」那一格 → 进「自定义变量」列表页（**为这一格**挑一步）。
+ *
+ *  与 `openAppPickerForTarget` 一样先记下「为谁挑」，但**不碰挑应用那几笔账**
+ *  （搜索词 / 小窗口 / 列表选中复位）—— 那些只属于那一页。
+ *
+ *  变量只有**那一个页面**：两趟入口的区别只写进 `VarManageState.enter`（这一趟是「挑一步」），
+ *  点列表里的一颗才会弹那张操作窗，挑完落成一步。
+ */
+internal fun SettingsPage.openVarOpsForTarget(target: BindingTarget) {
+    picker.openForGesture(target.gesture, (target as? BindingTarget.Combo)?.id)
+    VarManageState.enter(VarManageState.Mode.Step)
+    navTo(Screen.VARIABLES)
+}
+
+/**
+ * 「添加 / 选择命令」抽屉里点「自定义变量」那一行 → 进同一页，挑完**落成一步**
+ * （[replaceIndex] `< 0` = 追加一步，否则换掉那一步）。
+ */
+internal fun SettingsPage.openVarOpsForStep(replaceIndex: Int) {
+    picker.openForStep(replaceIndex)
+    VarManageState.enter(VarManageState.Mode.Step)
+    navTo(Screen.VARIABLES)
+}
+
+/** 「条件执行」页那条动作 → 进同一页，挑完写成第 [index] 条规则的**动作**。 */
+internal fun SettingsPage.openVarOpsForBranch(index: Int) {
+    picker.openForBranch(index, forCommand = true)
+    VarManageState.enter(VarManageState.Mode.Step)
+    navTo(Screen.VARIABLES)
 }

@@ -39,6 +39,9 @@ object ActionCatalog {
 
         /** 「小布 AI」入口格（`sparkle-highlight`）：四件小布能力收在这一格后面。 */
         XiaobuAi,
+
+        /** 「自定义变量」入口格（`variable`）：点它当场挑一步变量操作，不是取值。 */
+        Variables,
     }
 
     /**
@@ -100,6 +103,15 @@ object ActionCatalog {
     const val SWITCH_TILE = Action.SETTING_PREFIX
 
     /**
+     * 「自定义变量」这一格的取值 —— 与 [APP_TILE] 同一个性质：**永不写进配置**，
+     * 只是「点它当场挑一步变量操作」的关卡标记（见 `ui/screen/variables/`）。
+     *
+     *  与别的入口格不同，它那一族取值（`setvar:`）**不在静态菜单里**：变量是运行时收集的，
+     *  所以「点开之后列什么」由界面层现读变量清单，`MODE_MENUS` 里没有它。
+     */
+    const val VARS_TILE = "vars:"
+
+    /**
      * 小布识屏那条 shell 命令 —— 取值照搬 KSU 模块，但模块侧不走 shell，
      * 而是把同一串 intent 直接 `startForegroundService`（见 `host/action/AppLauncher.startSidebar`）。
      */
@@ -137,6 +149,9 @@ object ActionCatalog {
 
     /** 录屏 —— 与其它 `oplus:` 档同一条：名字在 [RomProfile] 那一处，这里只拼 token。 */
     private val SCREEN_RECORD = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD
+
+    /** 屏幕翻译（侧边栏那一项）：起 ColorOS 翻译的前台服务，屏上出翻译胶囊。 */
+    private val SCREEN_TRANSLATE = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_TRANSLATE
     private val RECORDING = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING
 
     /**
@@ -232,6 +247,8 @@ object ActionCatalog {
                     Spec(name = Strings.CATALOG_RECORDING, token = RECORDING),
                     // 录屏：起 ColorOS 录屏应用自己的 JumpActivity，一起就进录制（落点见 RomProfile）
                     Spec(name = Strings.CATALOG_SCREEN_RECORD, token = SCREEN_RECORD),
+                    // 屏幕翻译：系统侧边栏那一项，起翻译包的前台服务（配方与判据见 RomProfile）
+                    Spec(name = Strings.CATALOG_SCREEN_TRANSLATE, token = SCREEN_TRANSLATE),
                     // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
                     // 两档尺寸（展开 / 收起）各不相同，格子代表不了其中任何一个 ⇒ 按 [MINI_TILE] 当入口格、弹菜单
                     Spec(name = Strings.TOOL_MINI_WINDOW, token = MINI_TILE, glyph = Glyph.MiniWindow),
@@ -239,6 +256,9 @@ object ActionCatalog {
                     // 网格点击靠比这个常量认领；不能靠「`Action.parse` 能否匹配」——`app:` 本身就是合法
                     // 的空 App 动作，走 `select()` 会把配置写成 `app:`（拉不起任何应用）。
                     Spec(name = Strings.TOOL_OPEN_APP, token = APP_TILE),
+                    // 同为入口不是取值：点它当场挑一颗变量、再挑对它做什么（见 `ui/screen/variables/`）。
+                    //  与 [APP_TILE] 一样按 token 认领 —— `vars:` 不是任何动作的写法。
+                    Spec(name = Strings.TOOL_VARIABLES, token = VARS_TILE, glyph = Glyph.Variables),
                 ),
         )
 
@@ -496,6 +516,11 @@ object ActionCatalog {
      * 「无操作」剔掉（它代表「吞掉按键」、不是一步动作），「打开应用」那格**就地换成** [APP_STEP]
      * （同一个 token，点它进「打开应用」页挑一个）。
      *
+     * 「自定义变量」那一格**留在表里**：它在抽屉里同样是个关卡 —— 点它弹「变量操作」窗挑一步
+     * （见 `ui/screen/variables/VarOpsDialog`），抽屉自己**不**把它落成 token。所以它既不能剔掉，
+     * 也不能摆成普通一行（`vars:` 落成一步只会写出一个 `Action.parse` 认不出的废串）——
+     * 落地那一支在 `StepPickerSheet` 的 `land()` 里单独接走。
+     *
      * 注意：入口格在这里保持收拢：点开二级菜单，二级与网格格子弹的是同一张 [MODE_MENUS]。
      * 把档位平铺成独立行会让同一个清单长出两副面孔，**别这么做**。
      */
@@ -526,6 +551,9 @@ object ActionCatalog {
     ): Boolean {
         // 「打开应用」那格是入口：只要绑任意 `app:` / `window:` 动作就算选中，否则绑完回来一个亮的都没有
         if (spec.token == APP_TILE) return action.isAppOpen
+        // 「自定义变量」那一格代表**一整族**取值（`setvar:` 有无数种写法，清单里列不出来）：
+        //  绑了任意一步变量操作就算这一格选中 —— 与入口格同一套判据，只是那一族由运行时收集。
+        if (spec.token == VARS_TILE) return action is Action.VarSet
         // 入口格代表**一整组取值**：绑其中任意一档就算选中，否则格里一个亮的都没有
         return modeMenu(spec.token)?.any { isBound(it, action) } ?: isBound(spec, action)
     }
@@ -756,6 +784,23 @@ object ActionCatalog {
     fun specOf(action: Action): Spec? = ALL.firstOrNull { isSelected(it, action) }
 
     /**
+     * 这个动作落在入口格的**哪一档**上（`循环` / `静音` / `Wi-Fi 打开` …）；入口格之外返回 `null`。
+     *
+     *  **网格格子与步骤抽屉那一行的行首字形共用它**：两处摆的是同一张清单，行首就得同一个判据。
+     *  原先网格里就地写了一遍 `modes.firstOrNull { isBound(…) }`、抽屉里没写，于是同一个
+     *  「响铃状态」在两处长得不一样（真机口径「抽屉和网格的图标不一致」）。
+     *
+     * @param action 当前绑的动作；`null`（抽屉那边的草稿还没有当前值）⇒ 也当作没命中
+     */
+    fun boundModeOf(
+        spec: Spec,
+        action: Action?,
+    ): Spec? {
+        if (action == null) return null
+        return modeMenu(spec.token)?.firstOrNull { isBound(it, action) }
+    }
+
+    /**
      * 这个动作在**人前**叫什么 —— 优先级只有一处：档位名（入口格那些 `nav:` / `key:` / `panel:` /
      * `zoom:` 的「主屏幕」「音量+」）→ 清单里的标题 → `null`（认不出来，交给调用方的兜底写法）。
      *
@@ -763,5 +808,16 @@ object ActionCatalog {
      *  执行时提示那一侧显示 `action.token`（规范化后的写法）。两处以前各写一遍 `?:` 链 ——
      *  真机踩过「界面上叫主屏幕、提示里蹦出 `nav:home`」，就是其中一处少判了档位名那一档。
      */
-    fun label(action: Action): String? = modeName(action) ?: specOf(action)?.label
+    fun label(action: Action): String? =
+        when (action) {
+            //  变量操作不是清单里的条目（变量是运行时收集的，`setvar:` 又有无数种写法），
+            //  「人前叫什么」只能由动作自己按变量名与运算符拼 —— 与执行时提示同一支（`actionTitle`）。
+            is Action.VarSet -> {
+                actionTitle(action, { "" }, action.token)
+            }
+
+            else -> {
+                modeName(action) ?: specOf(action)?.label
+            }
+        }
 }

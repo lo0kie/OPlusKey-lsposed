@@ -162,11 +162,14 @@ internal fun SettingsPage.ActionTile(
                         //  入口格不再画单选圈（那读作「这一格是一个可选项」），按**点开去哪**分两种字形：
                         //  · 弹一层菜单（系统导航 / 系统按键 / 媒体控制 / 响铃状态）→ 选择器字形
                         //    （[PageIcons.Selector]：一个框 + 右下角小三角，读作「点了要选点什么」）；
-                        //  · 进另一个页面（「打开应用」→ 挑应用）→ **右箭头**（与菜单、列表那几处同一颗）。
+                        //  · 进另一个页面（「打开应用」→ 挑应用、「自定义变量」→ 变量操作）→
+                        //    **右箭头**（与菜单、列表那几处同一颗）。
                         //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
                         // 换掉之后占位与观感不变。
                         when {
-                            spec.token == ActionCatalog.APP_TILE -> {
+                            //  这两格都是**跳页**的入口（去挑应用那一页 / 去「变量操作」那一页）
+                            //  ⇒ 行尾那颗是右箭头（与菜单、列表那几处同一颗）。
+                            spec.token == ActionCatalog.APP_TILE || spec.token == ActionCatalog.VARS_TILE -> {
                                 Icon(
                                     PageIcons.EnterArrow,
                                     contentDescription = null,
@@ -175,6 +178,8 @@ internal fun SettingsPage.ActionTile(
                                 )
                             }
 
+                            //  其余档位那一层菜单是**原地弹**（底部抽屉里那几行同理），不跳页 ——
+                            //  所以是选择器字形而不是箭头。
                             ActionCatalog.modeMenu(spec.token) != null -> {
                                 Icon(
                                     PageIcons.Selector,

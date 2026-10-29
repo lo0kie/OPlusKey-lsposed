@@ -30,5 +30,5 @@ object ModuleInfo {
      *  原来挂在 `KeyModule` 上：那是「版本身份」，不是「入口派发」——而挂在那里会让
      *  界面为了一个版本号去 import 注入入口那个类（`ui → root` 也是审计要清的边）。
      */
-    const val BUILD_ID = "2026-10-28-0001"
+    const val BUILD_ID = "2026-10-28-0002"
 }

@@ -37,6 +37,7 @@ import com.lookie.opluskey.ui.screen.command.CommandHeaderReset
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.command.branchDefaultLabel
 import com.lookie.opluskey.ui.screen.home.ResetMenu
+import com.lookie.opluskey.ui.screen.variables.VariableHeaderAdd
 import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.state.KeyWatchState
 import dev.chrisbanes.haze.HazeState
@@ -163,6 +164,9 @@ private fun SettingsPage.pageTitle(s: Screen): String =
         Screen.COMBOS -> COMBO_TITLE
 
         Screen.COMBO_EDIT -> COMBO_TITLE
+
+        // 变量页标题与「快捷功能」里那一格同名：用户是从那一格进来的，两处叫法要一致
+        Screen.VARIABLES -> I18n.get(Strings.TOOL_VARIABLES, "自定义变量")
     }
 
 /**
@@ -290,6 +294,11 @@ private fun SettingsPage.PageActions(
         // 组合键编辑页的 ⋮：只有「删除组合键」一行（见 [ComboEditMenu]）
         Screen.COMBO_EDIT -> ComboEditMenu()
 
+        // 「自定义变量」页那颗「新建」：这一页唯一的加法入口（原先在右下角那颗 FAB 上）
+        Screen.VARIABLES -> VariableHeaderAdd()
+
+        // 「变量操作」页顶栏没有动作：那一页只剩「挑一步」（挑完点页里那颗 FAB 落盘）。
+        //  删掉一颗变量的入口在「自定义变量」页点一行弹的那张窗里（见 `VarManageDialog`）。
         else -> Unit
     }
 }
@@ -351,8 +360,9 @@ private fun SettingsPage.PageBottomBand(
 
         // 首页 / 「关于模块」/「捐赠列表」都没有固定带（后两页都是「短内容」页，见 [pageScrollBehavior]）。
         //  「条件执行」也没有：它没有类型可选，那一页的内容直接顶在顶栏下面。
+        //  「自定义变量」同样没有：那一页没有分页器，也就没有带子。
         Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL, Screen.BRANCHES,
-        Screen.COMBOS,
+        Screen.COMBOS, Screen.VARIABLES,
         -> {
             // 这几页不摆固定带
         }

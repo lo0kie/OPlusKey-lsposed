@@ -22,6 +22,7 @@ import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.conditionIcon
 import com.lookie.opluskey.ui.model.conditionKindLabel
+import com.lookie.opluskey.ui.screen.openVarOpsForBranch
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.ResumeSheet
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
@@ -427,10 +428,16 @@ private fun SettingsPage.BranchCommandMenu(
             StepSheetSpec(
                 title = I18n.get(Strings.COMMAND_STEP_REPLACE_TITLE, "选择命令"),
                 current = rules.getOrNull(at)?.action,
-                onOpenApp = {
-                    //  压一页之前记下「回来要开哪一条」，抽屉本身**不关**
+                //  两行关卡同上（见 `CommandSteps`）：压页之前记下「回来要开哪一条」，抽屉本身**不关**。
+                //  挑成了由 `commitVarOp` / `onAppPicked` 清掉这笔账，直接返回时它才会兑现。
+                onOpenPicker = { page ->
+                    //  压页之前记下「回来要开哪一条」，抽屉本身**不关**：挑成了由
+                    //  `commitStep` / `onAppPicked` 清掉这笔账，直接返回时它才会兑现。
                     picker.resumeSheetAt.value = ResumeSheet(Screen.BRANCHES, at)
-                    openAppPickerForBranch(at, forCommand = true)
+                    when (page) {
+                        StepPickerPage.App -> openAppPickerForBranch(at, forCommand = true)
+                        StepPickerPage.Vars -> openVarOpsForBranch(at)
+                    }
                 },
                 //  这一支**只由「确定」调**（点行只换高亮）：确定那一刻才把动作写到这一条规则上
                 onPick = { token ->

@@ -1,26 +1,20 @@
 package com.lookie.opluskey.ui.screen.general
 
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SHOW_HOME_MINI_ANIM
 import com.lookie.opluskey.ui.screen.pageWritable
@@ -31,7 +25,6 @@ import com.lookie.opluskey.ui.setVibrate
 import com.lookie.opluskey.ui.setVibrateStrength
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 /**
  * 「通用设置」页 —— 从首页「其他」卡第一行进来（**唯一入口**，在「更多选项」上面，见 `HomeCards`）。
@@ -48,15 +41,7 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
     // 与首页 `pageEnabled` 同一条判据（含主开关自己）：这几项改的是「执行时怎么动」，
     //  模块没启用时改了也不会生效，放用户去改只会误导。
     val pageEnabled = pageWritable()
-    Column(
-        Modifier
-            .fillMaxSize()
-            // 大标题随滚动折叠：`nestedScroll` 必须在 `verticalScroll` 之前（与「更多选项」页同一条）
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
-            .overScrollVertical()
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = PAGE_BOTTOM_PADDING),
-    ) {
+    PageScrollColumn(scrollBehavior = scrollBehavior) {
         // 顶栏叠在内容上，顶部要自己让出（动态值）。
         //  **不再另加 [PAGE_TOP_PADDING]**：这一页首行就是小标题，它自带的上间距（16 + 8）
         //  已经够撑开（与首页、更多选项同一笔账）。

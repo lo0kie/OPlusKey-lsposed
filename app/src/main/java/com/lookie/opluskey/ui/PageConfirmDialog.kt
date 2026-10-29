@@ -27,15 +27,17 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 /**
  * 项目自己的弹窗外壳 —— **面板 + 居中标题 + 正文槽**，库只管宿主、压暗、进出场与圆角。
  *
- *  面板两档：磨砂（默认，确认窗那一类）与不磨砂（`blurred = false`，库自己那块不透明底，
- *  给选择器用 —— 见该参数）。两档的标题度量、进出场、返回与页面离开时自动收掉都是同一份。
+ *  **全项目只有这一档面板：磨砂**。确认窗、起名窗、选择器（含动作选择器）都用它 ——
+ *  同一个页面里弹出来的东西长得不一样，会像两个应用的控件（用户口径「添加按键/重命名的 dialog
+ *  用项目通用那个，不然没有模糊」）。以前选择器那一档是不磨砂的（库自己那块不透明底），
+ *  理由是「一列贴着读的选项糊上去会发虚」；真机上两档摆在同一页里更像出了错，已收成一档。
  *
- *  全项目所有弹窗都走它（确认窗、重命名、添加按键）。以前重命名 / 添加按键直接用库的
- *  `OverlayDialog(title = …)`，那样面板是库画的不透明底，**磨砂没地方挂** —— 同一页里
- *  确认窗是糊的、起名窗是不透明的，看着像两个应用的控件（用户口径「添加按键/重命名的
+ *  全项目所有弹窗都走它（确认窗、重命名、添加按键、选择器、卡片行弹窗）。以前重命名 / 添加按键
+ *  直接用库的 `OverlayDialog(title = …)`，那样面板是库画的不透明底，**磨砂没地方挂** ——
+ *  同一页里确认窗是糊的、起名窗是不透明的，看着像两个应用的控件（用户口径「添加按键/重命名的
  *  dialog 用项目通用那个，不然没有模糊」）。
  *
- * ## 为什么参数到 6 个（`@Suppress("LongParameterList")`）
+ * ## 为什么参数到 5 个（`@Suppress("LongParameterList")` —— 已不需要，留着这条只解释分工）
  *
  *  `show` / `title` / `onDismiss` 之外，`hideImeOnShow`、`onDismissFinished` 都是**这一个外壳
  *  自己的开关**（键盘怎么处理、退场播完要不要回报），`content` 是正文槽。这些拆成 options
@@ -53,8 +55,8 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  会把我们这个盒子一并裁成面板那个圆角，所以这里不必自己裁形状。
  *  代价：标题得自己画，度量照抄库 `DialogContent` 那一份（见 [DIALOG_TITLE_MARGIN_BOTTOM] 等）。
  *
- * @param content 正文槽 —— 它是 `ColumnScope`：需要「贴着按钮栏、可滚动」的正文用
- *   `Modifier.weight(1f, fill = false)`（见 [DialogBody]）。
+ * @param content 正文槽 —— 它是 `ColumnScope`：需要「可滚动、能收缩」的正文用
+ *   `Modifier.weight(1f, fill = false)`（见 [DialogBody] 与 `PickerRows`）。
  */
 @Suppress("LongParameterList")
 @Composable
@@ -84,14 +86,6 @@ internal fun SettingsPage.FrostedDialog(
      *  （聚焦那一侧见 `FocusOnShow`：它按 `show` 变化重抢一次）。
      */
     onDismissFinished: (() -> Unit)? = null,
-    /**
-     * 面板要不要磨砂。
-     *
-     *  `true`（默认）：糊 + 半透本色，确认窗那一类都是它 —— 面板大、底色平，糊上去能看出「底下是我刚在看的那页」。
-     *  `false`：**库自己那块不透明面板**，不挂糊。给「一整列可点的选项」那种选择器用：
-     *  一行行贴着读的东西不需要糊，糊了反而把底下那页的内容透过面板边缘晃进来、字也发虚。
-     */
-    blurred: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // 弹之前先把软键盘收掉：确认窗是**模态**的，键盘留在下面会跟它抢地方（「选择应用」页那两句
@@ -116,9 +110,8 @@ internal fun SettingsPage.FrostedDialog(
     OverlayDialog(
         show = show,
         title = null,
-        // 磨砂那档的面板底色由我们画（压在糊上），所以库那一层给它透明；
-        //  不磨砂那档**交给库**画它自己那块不透明面板（见 [blurred]）。
-        backgroundColor = if (blurred) Color.Transparent else DialogDefaults.backgroundColor(),
+        // 面板底色由我们画（压在糊上），所以库那一层给它透明
+        backgroundColor = Color.Transparent,
         onDismissRequest = onDismiss,
         onDismissFinished = onDismissFinished,
     ) {
@@ -130,16 +123,8 @@ internal fun SettingsPage.FrostedDialog(
                 // ——暗色下不能拿 `background`（纯黑）：糊的是接近纯黑的页面，纯黑底会把糊盖成一片黑，
                 //  与菜单那边同一条教训。
                 //  第二参数给矩形：形状交给库的圆角 mask（见上）。
-                //  不磨砂时这两层都不挂：面板是库那块不透明的，糊上去反而把内容糊花。
-                .then(
-                    if (blurred) {
-                        Modifier
-                            .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
-                            .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA))
-                    } else {
-                        Modifier
-                    },
-                ),
+                .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
+                .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
         ) {
             // 标题：与库 `DialogContent` 里那一份同度量（`insideMargin` 24dp 内缩、下边距 6dp、
             //  `title4` 字号、Medium、居中、1.29em 行高）——那几条在库里是 private 常量，
@@ -184,6 +169,18 @@ internal fun SettingsPage.ConfirmDialog(
     /** 动作项文案（「重置」/「删除」…）。 */
     action: String,
     positiveDanger: Boolean = true,
+    /**
+     * 动作项能不能点（`false` = 灰着）—— 给「前置条件不成立，这一步现在做不了」的确认窗用
+     * （例如「还有人在引用这颗变量，先别删」）。
+     */
+    positiveEnabled: Boolean = true,
+    /**
+     * 动作项灰着时点一下要做什么（`null` = 按钮真的按不动）。
+     *
+     *  与 `DialogPositiveStyle.onDisabledClick` 同一个意思：灰着一颗按钮、点了没反应，
+     *  最容易让人以为界面坏了 —— 给一句「为什么还不行」比什么都不说好。
+     */
+    onBlocked: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
     /**
@@ -203,7 +200,7 @@ internal fun SettingsPage.ConfirmDialog(
             positive = action,
             onNegative = onDismiss,
             onPositive = onConfirm,
-            positiveStyle = DialogPositiveStyle(danger = positiveDanger),
+            positiveStyle = DialogPositiveStyle(danger = positiveDanger, enabled = positiveEnabled, onDisabledClick = onBlocked),
         )
     }
 }

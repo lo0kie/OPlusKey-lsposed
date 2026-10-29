@@ -327,7 +327,7 @@ internal class ActionRunner(
         //  改成请**注入侧**代注入：那边在 `system_server`，注入身份就是系统本身，与 `input keyevent`
         //  同级（见 `ModuleWire.ACTION_INJECT_KEY` 与 `inject/KeyInject`）。
         if (KsuCompat.isScreenshotAlias(cmd)) {
-            XLog.w("截图：请注入侧注入 KEYCODE_SYSRQ（不走 shell，也不需要 root）")
+            XLog.w("截图：请注入侧代截（优先 system_server 内部截图，没成再注入 SYSRQ；都不走 shell、不需要 root）")
             requestSystemInject(KeyId.KEYCODE_SYSRQ)
             return
         }

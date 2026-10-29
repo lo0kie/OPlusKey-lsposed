@@ -3,11 +3,8 @@ package com.lookie.opluskey.ui.screen.combo
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -16,7 +13,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -30,6 +26,7 @@ import com.lookie.opluskey.ui.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.MultiPickerDialog
 import com.lookie.opluskey.ui.PageMenu
+import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SectionTitleClick
@@ -38,17 +35,18 @@ import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.keyBrackets
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.switchNotice
 import com.lookie.opluskey.ui.writeAndNotice
+import io.github.lyxnx.compose.ui.tablericons.TablerIcons
+import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
-import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「组合按键」列表页 —— 从首页「按键操作」卡里那一行进来。
 //
@@ -78,15 +76,7 @@ internal fun SettingsPage.ComboScreen(scrollBehavior: ScrollBehavior) {
         if (filterKey != null && cfg.combos.none { filterKey in it.keys }) ComboEditState.filterKey = null
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
-            .overScrollVertical()
-            .verticalScroll(scroll)
-            //  页底留白 —— 与全项目同一档、同一种写法（挂在滚动内容里，不用尾部 Spacer）
-            .padding(bottom = PAGE_BOTTOM_PADDING),
-    ) {
+    PageScrollColumn(scrollBehavior = scrollBehavior, state = scroll) {
         //  与其它页同一档：顶栏叠在内容上，顶部这一块自己让出来（动态值）。
         //  **不再另加 [PAGE_TOP_PADDING]**：这一页首行就是小标题，它自己带 16 + 8 的上间距
         //  （与首页、更多选项两页同一笔账）；再加一档就比别的页多出 8dp。
@@ -267,10 +257,12 @@ private fun SettingsPage.comboRows(
     }
 
 /**
- * 列表标题 —— 筛着的时候把「在看哪颗键」接在后面（`组合按键列表 - 侧键`）。
+ * 列表标题 —— 筛着的时候把「在看哪颗键」接在后面（`组合按键列表 - 「侧键」`）。
  *
  *  不写的话，从别处回到这一页只会看到一张短了的表：不知道那是筛出来的，第一反应是「组合丢了」。
- *  连接符用半角连字符（用户口径），与页内别处的「键 - 手势」同一套写法。
+ *  连接符用半角连字符（用户口径），与页内别处的「键 - 手势」同一套写法；
+ *  **键名照例带括号**（[keyBrackets]，与列表行、删除确认窗同一个口径）—— 不带的话
+ *  「组合按键列表 - 侧键」读起来像一句话，看不出后面那一段是**一颗键的名字**。
  */
 private fun SettingsPage.comboListTitle(
     cfg: Config,
@@ -278,7 +270,8 @@ private fun SettingsPage.comboListTitle(
 ): String {
     val base = I18n.get(Strings.COMBO_LIST_TITLE, "组合按键列表")
     val key = filter?.let { cfg.keyIdOf(it) } ?: return base
-    return "$base - ${keyName(key)}"
+    val (open, close) = keyBrackets()
+    return "$base - $open${keyName(key)}$close"
 }
 
 /**
@@ -296,30 +289,46 @@ private fun SettingsPage.comboFilterEntries(
     onPick: (String?) -> Unit,
 ): List<MenuEntry> =
     buildList {
-        add(
-            MenuEntry.Row(
-                title = I18n.get(Strings.COMBO_FILTER_ALL, "全部"),
-                icon = PageIcons.MenuComboFingers,
-                selected = filter == null,
-            ) { onPick(null) },
-        )
-        //  顺序按**首页「按键列表」那一套**：侧键在前，自定义键按收集顺序（即「第几颗」的号）。
+        //  小标题**在最顶上**：这一张菜单整体就是「按按键筛这一列」，先给它一个名字，
+        //  下面才是「全部」与那几颗键。不留标题的话，一列裸选项看不出它们是一件事。
+        //
+        //  顺序仍按**首页「按键列表」那一套**：侧键在前，自定义键按收集顺序（即「第几颗」的号）。
         //  直接拿 `combos.flatMap { it.keys }.distinct()` 的次序是「在组合表里第一次出现的顺序」，
         //  真机上就成了「侧键 / 1 / 3 / 2」这种看不懂的序 —— 那不是任何一处列表的顺序。
-        cfg.combos
-            .flatMap { it.keys }
-            .distinct()
-            .mapNotNull { cfg.keyIdOf(it) }
-            .sortedBy { key -> cfg.customKeys.indexOfFirst { it.id == key.id } }
-            .forEach { key ->
-                add(
-                    MenuEntry.Row(
-                        title = keyName(key),
-                        icon = keyFilterIcon(cfg, key),
-                        selected = filter == key.id,
-                    ) { onPick(key.id) },
-                )
-            }
+        add(
+            MenuEntry.Section(
+                title = I18n.get(Strings.COMBO_FILTER_SECTION, "筛选按键"),
+                rows =
+                    buildList {
+                        //  「不筛」那一行也在这一组里（它同样是「按按键筛」的一个档位）；
+                        //  与下面真正的键之间用一条**加深带**断开 —— 见下一行那个 `dividerBefore`。
+                        add(
+                            MenuEntry.Row(
+                                title = I18n.get(Strings.COMBO_FILTER_ALL, "全部"),
+                                //  这一行的意思是「不筛」（与「已保存的命令」那张菜单同一颗 `select-all`）
+                                icon = TablerIcons.Outline.SelectAll,
+                                selected = filter == null,
+                            ) { onPick(null) },
+                        )
+                        cfg.combos
+                            .flatMap { it.keys }
+                            .distinct()
+                            .mapNotNull { cfg.keyIdOf(it) }
+                            .sortedBy { key -> cfg.customKeys.indexOfFirst { it.id == key.id } }
+                            .forEachIndexed { index, key ->
+                                add(
+                                    MenuEntry.Row(
+                                        title = keyName(key),
+                                        icon = keyFilterIcon(cfg, key),
+                                        selected = filter == key.id,
+                                        //  第一颗键与上面那行「全部」之间来一条加深带
+                                        dividerBefore = index == 0,
+                                    ) { onPick(key.id) },
+                                )
+                            }
+                    },
+            ),
+        )
     }
 
 /** 筛选菜单里那颗键的行首图标 —— 与首页「按键列表」同一套（侧键那颗 / 第几颗自定义键）。 */

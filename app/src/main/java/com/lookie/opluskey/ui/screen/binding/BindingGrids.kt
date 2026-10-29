@@ -38,6 +38,7 @@ import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.durationText
+import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
@@ -131,7 +132,9 @@ private fun SettingsPage.BuiltInTile(
         //  —— **小字与小字前面那枚图标共用它**，同源就不会各说各的。
         val modes = ActionCatalog.modeMenu(spec.token, withLongOnly = st.g == Gesture.LONG)
         val popsMenu = modes != null
-        val boundMode = modes?.firstOrNull { ActionCatalog.isBound(it, current) }
+        //  这一格绑的是哪一档 —— 判据只在 `ActionCatalog` 一处（步骤抽屉那一行也用同一个），
+        //  网格里再就地写一遍就会两边各长一套（真机口径「抽屉和网格的图标不一致」）。
+        val boundMode = ActionCatalog.boundModeOf(spec, current)
         val boundAppLabel = rememberBoundAppLabel(current)
         ActionTile(
             spec = spec,
@@ -171,6 +174,13 @@ private fun SettingsPage.BuiltInTile(
                         listOfNotNull(boundMode?.label, ActionCatalog.switchStateLabel(current))
                             .joinToString(" - ")
                             .ifEmpty { null }
+                    }
+
+                    //  变量那一格：小字写**绑的是哪一步**（`「计数」+= 1`）。
+                    //  只写格名「自定义变量」的话，绑没绑、绑的是加法还是取反，网格里一点都看不出来。
+                    //  这一句走 [stepTitle]（步骤行那一套叫法），不在这里另拼一遍文案。
+                    ActionCatalog.VARS_TILE -> {
+                        (current as? Action.VarSet)?.let { stepTitle(it.token) { "" } }
                     }
 
                     else -> {

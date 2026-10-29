@@ -49,10 +49,13 @@ private const val ERROR_FADE_OUT_MS = 283
 /**
  * [ImeGuard] 的观察窗口（毫秒）—— 从弹窗打开算起，这段时间内每 [IME_GUARD_TICK_FRAMES] 帧看一眼。
  *
- *  取 2s：真机上「按电源键 → 命名窗弹出 → 键盘被 ROM 收走」那一串发生在开窗后 0.3~1s 内，
- *  2s 留一倍余量。窗口再长就开始具扰民：用户在弹窗里主动收键盘也会被弹回来。
+ *  取 800ms：真机上「按电源键 → 命名窗弹出 → 键盘被 ROM 收走」那一串发生在开窗后 0.3s 上下，
+ *  这里留一倍半余量。**再长就抢用户的手了** —— 键盘打开时按返回（只收键盘、弹窗还开着）也会被
+ *  这一段看成「聚焦着但键盘没了」，于是补叫一次，表现成「键盘关了又自己弹起来」（真机口径）。
+ *  原先取 2s，任何在这两秒内按返回的人都会撞上；收到 800ms 之后还落在窗口里的，只有「开窗后
+ *  立刻按返回」这一种 —— 那本来也不该等键盘。
  */
-private const val IME_GUARD_WINDOW_MS = 2_000L
+private const val IME_GUARD_WINDOW_MS = 800L
 
 /** [ImeGuard] 隔几帧看一眼 —— 6 帧 ≈ 100ms，比 IME 收放动画的一帧一步粗，够用且不烧 CPU。 */
 private const val IME_GUARD_TICK_FRAMES = 6
@@ -219,7 +222,14 @@ internal fun SettingsPage.IconInputView(
  *
  *  盯 `focused` / IME 高度当 key 的话，IME 收放动画每帧都在变 —— effect 会被反复取消重启，
  *  最后谁也不确定它跑没跑完。改成在固定窗口内每 [IME_GUARD_TICK_FRAMES] 帧看一眼：
- *  键盘露着 + 焦点在 ⇒ 什么都不做；失焦 ⇒ 抢回来；聚焦着但键盘没了 ⇒ 补叫。
+ *  键盘露着 + 焦点在 ⇒ 什么都不做；失焦 ⇒ 抢回来；聚焦着但键盘没了 ⇒ 补叫**一次**。
+ *
+ * ## 为什么只补一次
+ *
+ *  这一支治的是「刚打开那一下被 ROM 收走」。补回来就该收手 —— 一直盯着补的话，用户**按返回**
+ *  收掉键盘（弹窗还开着）会被它当成同一种现象再叫回来，表现成「键盘关了又自己弹起来」。
+ *  窗口（[IME_GUARD_WINDOW_MS]）与「只补一次」两道闸一起用：窗口管住「什么时候」，一次管住
+ *  「补几回」。
  *
  * @param show 弹窗开着没有（`null` = 这不是弹窗输入框，整段不挂）
  * @param focusRequester 聚焦入口（`null` 同上）
@@ -240,15 +250,39 @@ private fun ImeGuard(
     LaunchedEffect(show, focusRequester) {
         if (!show) return@LaunchedEffect
         val start = SystemClock.uptimeMillis()
+        //  这一次弹窗里键盘**露过**没有 —— 决定「键盘没了」要不要补（见下面那一支）
+        var imeSeen = false
         while (SystemClock.uptimeMillis() - start < IME_GUARD_WINDOW_MS) {
             repeat(IME_GUARD_TICK_FRAMES) { withFrameNanos { } }
-            // 键盘露着、焦点也在：这一眼没有要补的
-            if (insets.getBottom(density) > 0 && focusedNow) continue
-            if (!focusedNow) {
-                runCatching { focusRequester.requestFocus() }
-            } else {
-                keyboard?.show()
-            }
+            val imeVisible = insets.getBottom(density) > 0
+            if (imeVisible) imeSeen = true
+            //  一眼只判一件事：
+            //   · 键盘露着 + 焦点在 ⇒ 没有要补的，接着看；
+            //   · 焦点还没到（`FocusOnShow` 排在下一帧）⇒ 抢回来，不算「补过」，接着看；
+            //   · 焦点在、键盘没了、而且**先露过** ⇒ ROM 刚把它收走，补叫这一次然后收手。
+            //     还没露过就补，等于在开窗那一刻先叫一遍，真正要被补的那一下（ROM 在 300ms
+            //     后抢收）反而没人接。
+            val done =
+                when {
+                    imeVisible && focusedNow -> {
+                        false
+                    }
+
+                    !focusedNow -> {
+                        runCatching { focusRequester.requestFocus() }
+                        false
+                    }
+
+                    imeSeen -> {
+                        keyboard?.show()
+                        true
+                    }
+
+                    else -> {
+                        false
+                    }
+                }
+            if (done) break
         }
     }
 }

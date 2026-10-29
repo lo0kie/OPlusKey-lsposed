@@ -40,6 +40,7 @@ import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.MoreButton
+import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
@@ -400,11 +401,13 @@ private fun RuleTitleRow(
             MoreButton(
                 onClick = cells.onMenu,
                 anchor = cells.anchors.menu,
-                //  **补 20dp 右边距**（回到改之前那一档）。中间试过归零、让这颗与它上面那一行
-                //  的右边线都落在 `PAGE_MARGIN` 上，但这一页的正文（那些卡片）自己有内边距、
-                //  字头离屏幕边缘本来就更远一截 —— 归零之后这颗反倒比左邻的内容更贴边。
-                //  用户口径：右缩进多一点就多一点，宁可它往左收，也不要它探到最右边。
-                endPadding = 20.dp,
+                //  **与「多条命令」那颗「命令列表」小标题的「更多」落在同一位置**（同一套几何）：
+                //  那一颗的标题行贴满页宽、`endPadding = PAGE_MARGIN(12)`，字形在 40dp 点击区里
+                //  居中 ⇒ 字形右边缘在**页边 − 22dp**。
+                //  这一行的标题在外层 `PAGE_MARGIN` 里面（行右边缘已经是页边 − 12），所以
+                //  **一个 endPadding 都不给**（默认 0）：点击区贴住行右边缘、字形居中 ⇒ 同样是
+                //  页边 − 22dp。给 20 或补 `flushEnd` 都会把它往左推 10dp（「右缩进太多」）。
+                //  别按「与字头对称」去调 —— 这一页字头在 32dp，两者本来就不对称，跟多条命令一致才是口径。
             )
         },
     )
@@ -606,7 +609,7 @@ private fun RuleBlock(
                             icon = text.actionIcon,
                             iconTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
                             titleTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                            trailing = { SelectorGlyph() },
+                            trailing = { RowEndIcon(PageIcons.Selector) },
                             modifier = Modifier.preciseClickAnchor(cells.anchors.right),
                             onClick = cells.onAction,
                         ),

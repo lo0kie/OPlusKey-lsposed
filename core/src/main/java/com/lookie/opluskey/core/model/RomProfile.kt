@@ -206,6 +206,16 @@ object RomProfile {
     const val NAME_SCREEN_RECORD = "screen_record"
 
     /**
+     * 屏幕翻译（ColorOS「智能侧边栏」里那一项）—— 把当前整屏文字认出来翻掉，浮一层胶囊在屏上。
+     *
+     *  **不是** `com.coloros.translate` 的某个界面：它是一条**前台服务**
+     *  （`ScreenTranslationService`，清单里声明 special-use 前台类型），起了就出悬浮窗。
+     *  侧边栏那一项走的就是这条路（反编译 `com.coloros.smartsidebar` 的
+     *  `GlobalTranslationTool.handle()` 逐字抄的配方）。
+     */
+    const val NAME_SCREEN_TRANSLATE = "screen_translate"
+
+    /**
      * 一键闪记（场景表 `flash_memory`）。`triggerType=1` 是它的 `TriggerType.MAGIC_KEY`。
      *
      * 落点取 Gleaner 自己那份 `DataCollectService`：场景表写的那个 `scene_owner` 已经过期，
@@ -325,6 +335,41 @@ object RomProfile {
         )
 
     /**
+     * 屏幕翻译（`com.coloros.translate` 的 `ScreenTranslationService`）—— 起前台服务，屏上出胶囊。
+     *
+     *  ## 配方照抄侧边栏
+     *
+     *  `com.coloros.smartsidebar` 的 `GlobalTranslationTool.handle()` 只有三步：
+     *
+     *  ```java
+     *  new Intent("oplus.intent.action.GLOBAL_TRANSLATION").setPackage(validPkg)
+     *      .putExtra("extra_from_package", context.getPackageName());
+     *  context.startForegroundService(intent);      // ServiceNotFoundException 只记一行日志
+     *  ```
+     *
+     *  `validPkg` 就是本包（清单里那一条 `<meta-data name="support_screen_translation" value="1">`）。
+     *  服务带 `com.oplus.permission.safe.AI_APP` —— 宿主持有（`granted=true`），所以从宿主进程直接起即可。
+     *
+     *  `extra_from_package` **只用于统计**（服务里只把它塞进 `source_appname`，并按值映射
+     *  `com.coloros.smartsidebar` → `source=sidebar` 之类的来源标记），不参与任何放行判断 ——
+     *  所以这里报真实调用方（宿主），不冒充侧边栏。
+     *
+     *  ## 它不是开关
+     *
+     *  退出是**它自己胶囊上那颗关闭**（或者系统那边停服务）。宿主不代它停：这条服务的会话状态
+     *  （悬浮窗、识别进度）在它自己手里，从外面硬停会把界面留在半截。
+     */
+    private val SCREEN_TRANSLATE =
+        BuiltIn(
+            owner = "com.coloros.translate",
+            //  清单里这个 action 既是服务的 intent-filter，也是唯一入口 —— 两格写同一个串
+            service = "oplus.intent.action.GLOBAL_TRANSLATION",
+            action = "oplus.intent.action.GLOBAL_TRANSLATION",
+            extras = mapOf("extra_from_package" to HostApp.PACKAGE),
+            foreground = true,
+        )
+
+    /**
      * **各版本的表 —— 加一档就在这里加一个 [Profile]**。
      *
      * 落点的来路：系统自己的侧键场景表（真机 `content://uri.gesturemanagerprovider/action_button`
@@ -351,6 +396,7 @@ object RomProfile {
                         NAME_SCREEN_OCR to SCREEN_OCR,
                         NAME_KEY_FLASHLIGHT to KEY_FLASHLIGHT,
                         NAME_SCREEN_RECORD to SCREEN_RECORD,
+                        NAME_SCREEN_TRANSLATE to SCREEN_TRANSLATE,
                     ),
                 reflection =
                     Reflection(

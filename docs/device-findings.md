@@ -4166,8 +4166,12 @@ adb shell "su -c 'kill -9 \$(pidof com.android.nfc)'"
 - `adb shell input keyevent 120` 能截出图（`/sdcard/Pictures/Screenshots/` 多一张）⇒ SYSRQ 这个码
   ColorOS 照样处理，问题不在键码；
 - 宿主注入时日志只有「截图：注入…」一行、**没有任何「被拒」**——事件发出去了但不被处理；
-- 注入侧的注入模式要 `INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH`（`1`），与 `input` 命令一致；
-  宿主那份用的是 `0`（ASYNC）。
+- 注入侧的注入模式要 `INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH`（**`2`**），与 `input` 命令一致；
+  宿主那份用的是 `0`（ASYNC）。三个值是 `0` = ASYNC、`1` = WAIT_FOR_RESULT、`2` = WAIT_FOR_FINISH ——
+  这里**曾经写成 `1`**（WAIT_FOR_RESULT，等「分发到目标窗口」）：截图这类被 policy 吞掉的事件没有
+  窗口消费，必然拿到 `INPUT_EVENT_INJECTION_FAILED`。
+- `injectInputEvent` 的返回值是 `InputEventInjectionResult`：**`0` = 成功**、`1` = 失败、
+  `-1` = 无权限。早先判据写反了（把 `0` 当失败），于是真正失败的那一次（返回 `1`）一行日志都不打。
 
 **取 `InputManager` 的入口（这条 ROM 上的实测）**
 
@@ -4182,7 +4186,81 @@ adb shell "su -c 'kill -9 \$(pidof com.android.nfc)'"
 单写任一条都会让一半机器静默失效。命中时打一行「注入侧注入：入口用 …」，日志里看得出走哪条
 （本机是第一条）。
 
+## 三十四、个别机型（PLG110）注入 `KEYCODE_SYSRQ` 不截，得改走 `ScreenshotHelper`（实测，2026-10-28，PLG110 / ColorOS）
+
+三十三节那条「注入侧注入正常截图」**不是每台机器都成立**。同一份代码在 PLG110 上的日志：
+
+```
+[host]   截图：请注入侧注入 KEYCODE_SYSRQ
+[system] 按键（…StrategyActionButtonKeyLaunchApp#actionInterceptKeyBeforeQueueing）：合成事件（deviceId=-1 keyCode=120），放行给系统   ← DOWN
+[system] 同上                                                                                                                  ← UP
+```
+
+也就是说：`injectInputEvent` **返回成功**（`0`）、事件**确实进了** policy 的
+`interceptKeyBeforeQueueing`、我们这边也按「合成事件」放行了两次 —— 屏幕就是不截。
+不是参数问题：补 `FLAG_FROM_SYSTEM`、换注入模式都试过，都不行；而 `input keyevent 120` 在这台机器上
+照样能截。所以这是该 ROM 对「非 shell 注入」的口径，主路径不必为它改（多数机器上注入是好的）。
+
+**能用的那条：直接调系统的 `ScreenshotHelper`**
+
+`system_server` 自己截图用的就是它，与按键完全无关。这台机器上的形状（反射打出来的签名）：
+
+| 项 | 值 |
+| --- | --- |
+| 构造器 | `ScreenshotHelper(Context)` |
+| 方法 | `takeScreenshot(int, Handler, Consumer<Uri>)` 与 `takeScreenshot(ScreenshotRequest, Handler, Consumer<Uri>)` —— **3 参** |
+| 常量 | 只有 `SCREENSHOT_MSG_PROCESS_COMPLETE=2`、`SCREENSHOT_MSG_URI=1`、`SCREENSHOT_TIMEOUT_MS=-1` —— **没有** `SCREENSHOT_GLOBAL_ACTION` |
+| 有效调用 | `takeScreenshot(1, Handler(mainLooper), Consumer)` ⇒ 截图成功 |
+
+要点：
+
+- **不要按 AOSP 14 的 5 参签名找**（那份多 `hasStatus` / `hasNav`），这台机器上不存在；
+- `type` 传 `1` 有效，但常量表里没有 `SCREENSHOT_GLOBAL_ACTION` 这个名字 —— 只能写死 `1`，
+  并在日志里把整张常量表打出来，换 ROM 时好对；
+- `Context` 用注入侧借来的那份 **Application Context 就够**（这条路只要 binder 与 Looper，
+  不碰 `ContentResolver`）；
+- `Consumer` 用动态代理实现，`accept` 那一行是「系统到底截没截」的最终判据（这台机器上发起成功
+  但回调没来，截图仍然出了 —— 所以**不能**用「没回调」判失败）。
+
+实现见 `inject/ScreenshotViaHelper`：截图先试它，没成再退回注入（两条都在日志里留判据）。
+
 **纪律**
 
 - 注入**不要放在 `system_server` 主线程上**：`WAIT_FOR_FINISH` 会等事件被处理完，那一下等于把整机挂住；
 - 全程不抛：调用点在 AMS 的广播入口，漏一个异常出去就是 `system_server` 崩。
+
+## 三十五、屏幕翻译（侧边栏那一项）的启动配方：起翻译包的前台服务（反编译 `com.coloros.smartsidebar` + 真机，2026-10-29，PLK110 / ColorOS 17）
+
+侧边栏里的「屏幕翻译」不是一个界面，而是一条**前台服务**：`com.coloros.translate` 的
+`ScreenTranslationService`（清单里带 `com.oplus.permission.safe.AI_APP`、special-use 前台类型，
+`<meta-data name="support_screen_translation" value="1">`）。
+
+**配方原文**（`com.coloros.smartsidebar` 的
+`panelview/edgepanel/data/entrybeans/models/tools/GlobalTranslationTool.handle()`）：
+
+```java
+Intent i = new Intent("oplus.intent.action.GLOBAL_TRANSLATION");
+i.setPackage(mValidPkg);                              // = com.coloros.translate
+i.putExtra("extra_from_package", context.getPackageName());
+context.startForegroundService(i);                    // 只捕获 ServiceNotFoundException，记一行日志
+```
+
+**要点**
+
+- `extra_from_package` **只进统计**：服务里只把它塞进 `source_appname`，再按值映射来源
+  （`com.coloros.smartsidebar` → `source=sidebar`、`com.coloros.colordirectservice` → `recog_screen`、
+  `com.coloros.gallery3d` → `photo`），**不参与任何放行判断** —— 报真实调用方即可，不必冒充侧边栏；
+- 权限 `com.oplus.permission.safe.AI_APP` 宿主持有（`dumpsys package com.oplus.gesture` 里
+  `granted=true`），所以从宿主进程直接起就行，不用绕 system_server；
+- **它是「起一次」不是「开关」**：退出走它自己胶囊上那颗关闭。`oplus.intent.action.GLOBAL_TRANSLATION_EXIT`
+  那条广播在真机上发出去没反应（`result=0`、悬浮窗仍在），`am stop-service` 才真的收掉 ——
+  所以宿主**不要**代它停（会话状态在它手里，硬停会把界面留在半截）。
+
+**真机核对方式**（root 起一次即可，不需要重启）：
+
+```
+adb shell su -c 'am start-foreground-service -a oplus.intent.action.GLOBAL_TRANSLATION   -p com.coloros.translate --es extra_from_package com.coloros.smartsidebar'
+# dumpsys window windows | grep ScreenTranslation  ⇒ ScreenTranslationToolCapsule / ScreenTranslationFullImageHolder
+```
+
+实现见 `core/model/RomProfile` 的 `NAME_SCREEN_TRANSLATE` / `SCREEN_TRANSLATE`。
