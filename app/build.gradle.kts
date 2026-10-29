@@ -389,7 +389,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.0")
     implementation("androidx.savedstate:savedstate-ktx:1.3.0")
     // COUI 浮层菜单依赖 LocalNavigationEventDispatcherOwner（页面自建根 dispatcher）
-    implementation("androidx.navigationevent:navigationevent-compose:1.1.2")
+    implementation("androidx.navigationevent:navigationevent-compose:1.2.0")
 
     // androidx 只出现在 `ui/`：`:core` 里一个 androidx import 都没有（`tools/audit-arch.py`
     //  把这条当判据在 CI 里核）。`ui/` 在 system_server 里从不执行（KeyModule 只在设置页那个
