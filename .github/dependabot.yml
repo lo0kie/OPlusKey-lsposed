@@ -9,9 +9,12 @@ version: 2
 #  这个仓库一共 11 个依赖，一周能堆出十来个 PR 没人看。分组后一个 PR 一次升完，
 #  真跑不动就整体回退，不会出现「升了 A 结果要配 B」的半吊子状态。
 #
-#  注意：本项目开了 Gradle 依赖锁定（`app/gradle.lockfile`）。dependabot 改
-#  build.gradle.kts 里的版本时**会一并更新锁文件**；如果它只改了版本号而锁文件没动，
-#  CI 的 `--write-locks` 校验会直接失败 —— 这是故意的，别把校验放宽成 warn。
+#  ⚠️ 本项目开了 Gradle 依赖锁定（`app/gradle.lockfile` + `core/gradle.lockfile`），而
+#  **dependabot 不跑 Gradle** —— 它只改 `build.gradle.kts` 里的版本号，锁文件不会动。
+#  所以每一个自动升级 PR 都必然在 CI 的「校验依赖锁定」那一步红灯，这不是故障，是设计：
+#  **收到 PR 之后本地跑 `./gradlew :app:dependencies --write-locks` 与
+#  `./gradlew :core:dependencies --write-locks`，把两份锁文件的 diff 一并提交**，
+#  那条 PR 才会转绿。别把校验放宽成 warn —— 锁文件一旦漂了，构建就不再可复现。
 updates:
   - package-ecosystem: gradle
     directory: /

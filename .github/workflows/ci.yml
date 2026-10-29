@@ -89,8 +89,17 @@ jobs:
           set -o pipefail
           log="${RUNNER_TEMP:-/tmp}/gate.log"
           ./gradlew gate --warning-mode all 2>&1 | tee "$log"
-          extra=$(grep -i "has been deprecated" "$log" \
-                  | grep -v "ReportingExtension.file(String)" || true)
+          #  **`grep -v` 无命中时返回 1**（那正是「没有新的弃用」），但 `|| true` 也会把
+          #  退出码 2（正则写坏 / 文件读不了）吞成空结果 —— 那一步就成了一条空转的闸。
+          #  所以分开判：0 与 1 都算正常，2 及以上报错。
+          set +e
+          extra=$(grep -i "has been deprecated" "$log" | grep -v "ReportingExtension.file(String)")
+          extra_status=$?
+          set -e
+          if [ "$extra_status" -gt 1 ]; then
+            echo "::error::弃用扫描本身出错（grep 退出码 $extra_status）"
+            exit 1
+          fi
           if [ -n "$extra" ]; then
             echo "::error::出现了新的 Gradle 弃用用法（已知的那条只有 detekt 的 ReportingExtension.file）"
             echo "$extra"
@@ -123,13 +132,13 @@ jobs:
       - name: 耦合审计（禁止边 / 包级环）
         run: python3 tools/audit-coupling.py
 
-      # 架构判据（趋势线）：耦合审计管**包与包之间**的方向，管不了「同一条业务规则在几个地方
-      #   各写了一遍」—— 包依赖图完全干净的时候，一条规则仍然可能有四五份手写实现，而漏改
-      #   其中一处的表现是「某条路径上行为不一致」，编译期与 detekt 都看不见。
-      #   这一步只打印不阻断（数值稳定之后再改成 `--strict`），目的是让「规则副本数」出现在
-      #   每次 CI 日志里，改坏了当场看得见。
+      # 架构判据（规则副本数 / 规模趋势）：耦合审计管**包与包之间**的方向，管不了「同一条业务规则
+      #   在几个地方各写了一遍」—— 包依赖图完全干净的时候，一条规则仍然可能有四五份手写实现，
+      #   而漏改其中一处的表现是「某条路径上行为不一致」，编译期与 detekt 都看不见。
+      #   **现在带 `--strict`**：数值已经全部达标（本地跑一遍是「全部达标 / exit 0」），
+      #   所以它是一道真闸 —— 副本数涨上去当场红。规模那几行仍只是趋势线，不参与判定。
       - name: 架构判据（规则副本数 / 规模趋势）
-        run: python3 tools/audit-arch.py
+        run: python3 tools/audit-arch.py --strict
 
       # i18n 缓存审计：`remember { … }` 里缓存了字典文案、键里却没有语言档 ⇒ 切语言后那几行
       #   还是旧语言（真机上「关于」页那两行这么踩过）。detekt / lint 管不了这种跨语句的判据。
@@ -188,9 +197,9 @@ jobs:
       # 两档 APK 的区分度（`tools/check_variants.py`）：详细日志 / 调试通道 / 明文收款码 /
       #   封存资产必须**只在各自那一档**出现。原先这个脚本既不在 gate 也不在 CI，
       #   等于「档配反了没人拦」—— 而 debug 档带着任意反射执行，串档是安全问题。
-      #   只在签名那一轮跑：没签名就没有 release 产物，脚本会直接报「缺产物」。
+      #   **每一轮都跑**：脚本现在按「造出来的那几档」判，缺档只跳过那一档（不再整步失败）——
+      #   以前挂在签名那一轮，PR 里档配反了要等到发版才拦。
       - name: 校验两档差异（debug / release）
-        if: steps.sign.outputs.signed == 'true'
         run: python3 tools/check_variants.py
 
       # 验收底线：脚本在 `tools/verify-apk.sh`，`release.yml` 发版前也调它 —— 一套判据一处实现。

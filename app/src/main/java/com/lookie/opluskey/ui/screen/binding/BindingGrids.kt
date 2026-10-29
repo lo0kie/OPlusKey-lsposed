@@ -359,14 +359,6 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
 }
 
 /**
- * 一个绑定目标在网格里显示的那行字（`微信 1` / `扫一扫`）。
- *
- *  优先级只有一处（`appNameOf`）：存下来的名字 → 老配置 token 里的 `|名字` → 现查 → 包名。
- *  这里只留一个转发，是因为调用点读起来要的是「这格该写什么字」，不是「名字怎么来的」。
- */
-private fun SettingsPage.boundAppText(target: String): String = appNameOf(target)
-
-/**
  * 「打开应用」格的行首字形 —— 绑成哪一档就画哪一颗；绑的是**整个应用**时返回 `null`，
  * 由调用点退回格子自己的默认字形。
  *
@@ -407,26 +399,22 @@ private fun appTileIcon(action: Action): ImageVector? =
 private fun SettingsPage.rememberBoundAppLabel(current: Action): String? =
     remember(current, configState.config.value.appNames) {
         when (current) {
-            is Action.App, is Action.AppWindow -> current.appTarget?.let { boundAppText(it) }
+            is Action.App, is Action.AppWindow -> {
+                current.appTarget?.let { appNameOf(it) }
+            }
 
-            // 快捷方式（`appshortcut:`）也算「打开应用」那一族，小字写「应用: 快捷方式」
-            is Action.AppShortcut -> shortcutTitle(current)
+            // 快捷方式（`appshortcut:`）也算「打开应用」那一族，小字写「应用: 快捷方式」。
+            //  快捷方式**自己的名字**只存在 `appNames`（键是身份，挑的时候与绑定同一次落盘）——
+            //  token 里没有它，现查也查不到（`appNameOf` 对快捷方式目标会退回应用名）。
+            //  拿不到名字、或拿到的就是应用名时**只写应用名**，别写成「微信: 微信」。
+            is Action.AppShortcut -> {
+                val app = appNameOf(AppTarget.format(current.pkg, current.userId))
+                val own = configState.config.value.appName(current.plainTarget)
+                if (own.isNullOrBlank() || own == app) app else "$app: $own"
+            }
 
-            else -> null
+            else -> {
+                null
+            }
         }
     }
-
-/**
- * 快捷方式那一档的小字：`微信: 扫一扫`。
- *
- *  快捷方式**自己的名字**只存在 `Config.appNames`（键是身份，挑的时候与绑定同一次落盘）——
- *  token 里没有它，现查也查不到（`appNameOf` 对快捷方式目标会退回**应用名**）。
- *  所以拿不到名字、或者拿到的就是应用名时**只写应用名**，别写成「微信: 微信」。
- *
- *  应用名那一边带上用户前缀：分身（`999@`）要在名字后面缀「2」，走 `appNameOf` 才认得出。
- */
-private fun SettingsPage.shortcutTitle(action: Action.AppShortcut): String {
-    val app = boundAppText(AppTarget.format(action.pkg, action.userId))
-    val own = configState.config.value.appName(action.plainTarget)
-    return if (own.isNullOrBlank() || own == app) app else "$app: $own"
-}

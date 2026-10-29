@@ -112,6 +112,29 @@ internal class PageOverlays {
     }
 
     /**
+     * **系统返回**：只收**最上面那一层**。
+     *
+     *  [closeAll] 是给「页面离开」用的 —— 那一趟本来就该把整页的浮层收干净。系统返回不一样：
+     *  用户按一次返回，期望的是**退一层**（对话框关掉、底下那层菜单还在）。一次收光的话，
+     *  从「切到某一份配置」这种两层叠着的位置按返回，会连菜单一起消失，看着像返回跳了两级。
+     *
+     *  「最上面」按登记顺序取**最后一个真的关掉了的**：同一页里子层总是比父层后组合出来
+     *  （父菜单点开才建子层），所以登记表末尾就是最上面那层。
+     *
+     *  @return 有没有收掉一层（`false` = 一层都没真的开着）
+     */
+    fun closeTop(reason: String): Boolean {
+        val snapshot = closers.toList()
+        for (closer in snapshot.asReversed()) {
+            if (runCatching { closer() }.getOrDefault(false)) {
+                XLog.w("浮层（$reason）：收掉最上面一层")
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
      * 浮窗在**组合期**把自己登记进 [closers] —— 各浮窗调用点只需要加一行：
      * `overlays.Closer(show = open) { open = false }`。
      *

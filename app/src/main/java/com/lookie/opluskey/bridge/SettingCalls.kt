@@ -64,6 +64,13 @@ internal object SettingCalls {
                 dnd(loader, on)
             }
 
+            // 极暗：**只能**从 system_server 调 —— 颜色显示服务要
+            // `CONTROL_DISPLAY_COLOR_TRANSFORMS`（signature|privileged），宿主那份是拿不到的
+            // （宿主侧调过一次：`SecurityException: Access denied, requires: ...CONTROL_DISPLAY_COLOR_TRANSFORMS`）。
+            "extradim" -> {
+                extraDim(loader, on)
+            }
+
             else -> {
                 XLog.w("系统开关：$id 没有接执行")
                 false
@@ -196,6 +203,39 @@ internal object SettingCalls {
         loader: ClassLoader,
         target: Boolean?,
     ): Boolean = NfcToggle.run(loader, target)
+
+    /**
+     * 极暗：`color_display` 服务的 `isReduceBrightColorsActivated()` 读、
+     * `setReduceBrightColorsActivated(boolean)` 写。
+     *
+     *  这就是「设置 → 显示与亮度 → 极暗」那一颗开关的后台（`dumpsys color_display` 里的
+     *  `Reduce bright colors: Activated: ...`）。它要 `CONTROL_DISPLAY_COLOR_TRANSFORMS`，
+     *  宿主（普通系统应用）调会被 `SecurityException` 挡掉，所以走这一侧（uid 1000 自带该权限）。
+     *
+     *  `target` 为空 = 切换：**在服务这边读一次再取反**（与 rotation / nfc 同一条），
+     *  宿主那边不读 —— `Settings.*.reduce_brightness` 那两个键在这台机器上没人维护，读了是假的。
+     */
+    private fun extraDim(
+        loader: ClassLoader,
+        target: Boolean?,
+    ): Boolean {
+        val s =
+            ServiceCalls.service(loader, "color_display", "android.hardware.display.IColorDisplayManager") ?: run {
+                XLog.w("extradim：取不到 color_display 服务")
+                return false
+            }
+        val on =
+            target ?: run {
+                val now =
+                    ServiceCalls.call(s, "isReduceBrightColorsActivated")?.value as? Boolean ?: run {
+                        XLog.w("extradim：读不到 isReduceBrightColorsActivated")
+                        return false
+                    }
+                XLog.w("extradim：现在=${if (now) "开" else "关"}，取反")
+                !now
+            }
+        return ServiceCalls.call(s, "setReduceBrightColorsActivated", listOf(on)) != null
+    }
 
     /**
      * 自动旋转：读「现在锁没锁」→ 取反。

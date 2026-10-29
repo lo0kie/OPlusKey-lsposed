@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui
 import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.state.PageLoadSnapshot
@@ -33,7 +34,13 @@ internal suspend fun SettingsPage.loadPageState() {
     // 「装好后没动过任何设置」的状态下，注入侧只能等宿主进程的解锁广播 ——
     // 打开这一页就立刻同步一次，作为兜底（判定在注入侧，见 [publishConfig]）。
     val sent = withContext(Dispatchers.IO) { publishConfig(snapshot.config) }
-    if (!sent) XLog.w("建页同步配置：广播没发出去（注入侧还停在上一份）")
+    if (!sent) {
+        XLog.w("建页同步配置：广播没发出去（注入侧还停在上一份）")
+        //  只说一句日志的话，用户看到的是**整页灰掉**：注入侧手上还是旧配置、两边指纹对不上
+        //  ⇒ `configSideOk=false` ⇒ `pageWritable()` false，而页面上没有任何话解释这件事。
+        //  与 `finishWrite` 那条广播失败同一个口径：给一句能自救的话。
+        hint(I18n.get(Strings.TOAST_CONFIG_SYNC_FAILED, "配置没能同步给注入侧，退出重进本页即可"))
+    }
 }
 
 /**

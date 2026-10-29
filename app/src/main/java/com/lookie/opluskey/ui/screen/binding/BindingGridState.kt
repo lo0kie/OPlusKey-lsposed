@@ -291,7 +291,7 @@ internal fun SettingsPage.rememberBindingKeyHandler(
         if (!enabled) return@onKey false
         // 非当前页不吃键：pager 的相邻页在组合里，不拦的话按键会被它抢先消费
         if (!active) return@onKey false
-        // 浮层开着时把键交给浮层（浮层自己处理上下 + 确认）
+        // 浮层开着时把键交给浮层（浮层自己处理上下 + 确认）。
         if (st.tileMenu != null) return@onKey false
         val intent = KeyIntent.of(e.key) ?: return@onKey false
 

@@ -74,7 +74,13 @@ internal fun defaultPickOf(
     target: String,
     selectedShortcutId: String? = null,
 ): PickedDetail {
-    val hit = all.firstOrNull { AppTarget.same(it.target, selected) }
+    //  **先按快捷方式 id 找，再按 target 找**：同一个 target 底下可能既有「应用本身」那一行、
+    //  又有快捷方式那几行（`app:pkg/活动` 与它的快捷方式用同一个 target）。只按 target 取第一行的话，
+    //  用户选的那个快捷方式会被当成应用本身 —— id 丢了、名字退回应用名，写回去成了 `app:`。
+    val hit =
+        selectedShortcutId
+            ?.let { id -> all.firstOrNull { it.shortcutId == id } }
+            ?: all.firstOrNull { AppTarget.same(it.target, selected) }
     return when {
         // 快捷方式那一行要把它**自己的名字**（「扫一扫」）带上：不点行直接按 FAB 时，
         //  名字不能丢 —— 丢了就退回应用名，用户会看到「扫一扫」变成「微信」。
@@ -88,7 +94,9 @@ internal fun defaultPickOf(
         //  绑定却被换成了一条永远解析不了的 token（图标与名字同时变）。
         //  清单已经查到「这一项真不在了」时调用点不会给 [selectedShortcutId]（见那里的注释），
         //  所以这里不会替一个不存在的 id 拼 token。
-        selectedShortcutId != null -> PickedDetail(selected ?: target, selectedShortcutId, hit?.label)
+        //  **名字这一档拿不到**（清单里没有这一行，`hit` 必然是 null）：退回应用名。
+        //  以前这里写 `hit?.label`，读起来像「带了名字」，其实恒为 null —— 是同一个结果的另一种写法。
+        selectedShortcutId != null -> PickedDetail(selected ?: target, selectedShortcutId, null)
 
         else -> PickedDetail(selected ?: target, null)
     }

@@ -103,7 +103,9 @@ internal fun EmphasisText(
         horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
     ) {
         // 段 = 两条（及以上）换行切开。段内一行一行画：「- xxx」那一行的圆点由 [EmphasisLine] 补。
-        val paragraphs = if (centered) text.split("\n\n") else listOf(text)
+        //  **分段与对齐方式无关**：只按居中档分段的话，同一段文案在左对齐时会被压成一整块
+        //  （免责声明那种长正文正是左对齐的）—— 同一句话两处排版，读起来不像一份文件。
+        val paragraphs = text.split("\n\n")
         paragraphs.forEachIndexed { index, para ->
             if (index > 0) Spacer(Modifier.height(PARAGRAPH_GAP))
             para.lines().forEach { raw -> EmphasisLine(raw.trim(), style) }

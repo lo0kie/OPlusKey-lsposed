@@ -207,8 +207,13 @@ fi
 #    —— 直接并进上面那圈扫描会误报。这里只禁「一加载就崩」的那三类。
 km="app/src/main/java/com/lookie/opluskey/KeyModule.kt"
 if [ -f "$km" ]; then
-  kmhits=$(grep -n "^import \(androidx\|io\.github\.suqi8\|io\.github\.lyxnx\|com\.composables\)" "$km" || true)
-  if [ -n "$kmhits" ]; then
+  #  与上面那条长扫描同一个写法（0 / 1 / 2 分开判）：`|| true` 会把「正则写坏 / 文件读不了」
+  #  的退出码 2 一起吞成空结果 —— 而那正是「这条闸在空转」的表现。
+  km_status=0
+  kmhits=$(grep -n "^import \(androidx\|io\.github\.suqi8\|io\.github\.lyxnx\|com\.composables\)" "$km") || km_status=$?
+  if [ "$km_status" -gt 1 ]; then
+    bad "KeyModule.kt 的 import 扫描出错（grep 退出码 $km_status）—— 这条闸不能空转"
+  elif [ -n "$kmhits" ]; then
     printf '%s\n' "$kmhits"
     bad "KeyModule.kt 引用了 androidx / COUI / 图标库 —— 它在 system_server 里会被加载"
   else

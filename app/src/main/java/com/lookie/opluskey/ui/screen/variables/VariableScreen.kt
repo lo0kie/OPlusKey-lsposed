@@ -47,12 +47,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// 「自定义变量」页 —— 管清单的那一页：首页「其他」卡那一行，以及绑定页变量那格弹出的抽屉
-// 右上角那颗 + 都落到这里（`ActionCatalog.VARS_TILE` 那一格本身是「挑一步操作绑上去」）。
+// 「自定义变量」页 —— 管清单的那一页：首页「其他」卡那一行，以及命令里引用变量那几条入口
+// （绑定网格那一格 / 命令步骤抽屉那一行 / 条件分支那条动作）都落到这里。
 //
-// 这一页只做三件事：**列出**变量、点一颗**改它**（进「变量操作」页的管理模式）、顶栏右上角**新建**。
-//  变量的语义与存储全在 `core/config/VariableStore` + `core/model/Variable`：这里一条规则都不重写
-//  —— 包括「值怎么归一」（走 `Vars.assign`，与命令执行侧同一支）与「名字能不能用」（`VariableName`）。
+// 这一页做三件事：**列出**变量、点一颗**弹窗管它**（改值 / 删除 / 挑一步，见 `VarManageDialog`）、
+//  顶栏右上角**新建**。变量的语义与存储全在 `core/config/VariableStore` + `core/model/Variable`：
+//  这里一条规则都不重写 —— 包括「值怎么归一」（走 `Vars.assign`）与「名字能不能用」（`VariableName`）。
+//
+//  **写盘一律走 `VariableStore` 的那几个口子**（`add` / `remove` / `apply`），不在这里拼整表再
+//  `save`：页面手里那份清单是**进页那一刻**的快照，而执行侧的 `setvar:` 是现读盘的 —— 拿快照
+//  整表写回，就会把「页面开着时按侧键改的值」整表退回去。
 
 /**
  * 变量列表页。
@@ -66,33 +70,48 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
     val scope = rememberCoroutineScope()
     var vars by remember { mutableStateOf<List<Variable>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
+    //  文件在、但读不出来（截断 / 手改坏）—— **与「还没有变量」分开**：那种状态下列表不能说成
+    //  空表（那份空表会被当成写路径的输入），空态也不能写「点右上角 + 新建」
+    var unreadable by remember { mutableStateOf(false) }
 
     /**
-     * 落盘并刷新。`block` 返回 `null` = 这次改不了（名字 / 值不符合类型，原因已经进日志）——
-     * 界面只说一句「改不了」，不猜是哪一条规则。
+     * 新建一颗。落盘走 [VariableStore.add]（读 → 追加 → 写）：读不懂时它自己不写，
+     * 所以这一页开着、盘上那份坏了的情况下点新建，也不会把那份覆盖掉。
      */
-    fun apply(block: (List<Variable>) -> List<Variable>?) {
+    fun create(
+        name: String,
+        type: VarType,
+        initial: String,
+    ) {
+        val fresh = Variable.create(name, type, initial)
+        if (fresh == null) {
+            XLog.w("变量：新建被拒（名字或初始值不合法）—— $name / $type")
+            hint(I18n.get(Strings.VAR_FAILED, "改不了"))
+            return
+        }
         scope.launch {
-            val next = withContext(Dispatchers.IO) { block(vars) }
-            if (next == null) {
-                hint(I18n.get(Strings.VAR_FAILED, "改不了"))
-            } else {
-                //  不在这里直接改 `vars`：让下面那个 `LaunchedEffect` 按记号重读一遍 ——
-                //  「这一页自己新建」与「变量操作页改值 / 换配置」就落到同一份刷新逻辑上
+            val ok = withContext(Dispatchers.IO) { VariableStore.add(fresh) }
+            if (ok) {
                 VarListSignal.bump()
                 hint(I18n.get(Strings.VAR_SAVED, "已保存"))
+            } else {
+                hint(I18n.get(Strings.VAR_FAILED, "改不了"))
             }
         }
     }
 
-    //  **跟着记号重读**：去「变量操作」页改过值 / 删过一颗、或换了一份配置（变量跟着配置走）之后
-    //  回来，这一页的组合还在栈里（没注销），不重读就还是改之前那份清单。
+    //  **跟着记号重读**：弹窗里改过值 / 删过一颗、或换了一份配置（变量跟着配置走）之后回来，
+    //  这一页的组合还在栈里（没注销），不重读就还是改之前那份清单。
     //  首次进页同样走这一支（初值 0）。
     LaunchedEffect(VarListSignal.generation) {
         //  换页时页面级浮窗表会把抽屉收掉（见 `PageEffects` 的 `closeOverlays`）——
         //  「新建」这个开关得跟着回位，否则下次进这一页会看到一个自己弹出来的抽屉。
         VariablePageState.creating = false
-        vars = withContext(Dispatchers.IO) { readVars() }
+        //  三态一起收在这里：读到 / 没写过 / 读不懂。后两者列表都是空的，但**读不懂不算空态**
+        //  （见上面的 `unreadable`）—— 那份空表会被当成写路径的输入。
+        val l = withContext(Dispatchers.IO) { VariableStore.load() }
+        vars = (l as? VariableStore.Load.Ok)?.snapshot?.vars.orEmpty()
+        unreadable = l == VariableStore.Load.Unreadable
         loaded = true
     }
 
@@ -104,7 +123,7 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
         val viewport = maxHeight
         val topInset = currentHeaderHeight(scrollBehavior)
         //  `loaded` 之前不判空：读盘那几毫秒里闪一下整屏空态，比什么都不显示更像出错
-        val empty = loaded && vars.isEmpty()
+        val fullscreen = loaded && (vars.isEmpty() || unreadable)
         Column(
             Modifier
                 .fillMaxSize()
@@ -115,7 +134,7 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
             //  **让出顶栏**：它是压在内容上的浮层，滚动内容的第一项仍从 y=0 起 ——
             //  不先垫这一档，下面那块的中线就会整体偏上（真机口径「没有垂直居中」）。
             Spacer(Modifier.height(topInset))
-            if (empty) {
+            if (fullscreen) {
                 //  高度取「视口 − 顶栏」：与上面那个 `Spacer` 加在一起**正好一屏**，
                 //  于是这块的中心就是可见区的中心（不多不少），同时内容高度不小于视口 ——
                 //  手一拖照样能越界回弹（这正是空态不做成浮层的原因）。
@@ -134,7 +153,12 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
                                 tint = tint,
                             )
                         },
-                        text = I18n.get(Strings.VARIABLES_EMPTY, "还没有变量，点右上角那颗 + 新建一颗"),
+                        text =
+                            if (unreadable) {
+                                I18n.get(Strings.VARIABLES_UNREADABLE, "变量表读不出来，先别在这里新建（那会盖掉盘上那份）")
+                            } else {
+                                I18n.get(Strings.VARIABLES_EMPTY, "还没有变量，点右上角那颗 + 新建一颗")
+                            },
                     )
                 }
             } else {
@@ -147,23 +171,23 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
         }
     }
 
-    VariableOverlays(onApply = ::apply)
+    VariableOverlays(onCreate = ::create)
 }
 
 /**
- * 这一页那两层浮层：**新建**（抽屉）与**改一颗**（居中弹窗）。
+ * 这一页那两层浮层：**新建**（抽屉）与**管一颗**（居中弹窗）。
  *
  *  点一颗变量不再进「变量操作」页 —— 那条路（挑一步）留给按键绑定 / 命令步骤 / 条件分支，
  *  这一页面对的永远是「已经有了的这一颗」，弹一张小窗就够了。
  */
 @Composable
-private fun SettingsPage.VariableOverlays(onApply: ((List<Variable>) -> List<Variable>?) -> Unit) {
+private fun SettingsPage.VariableOverlays(onCreate: (String, VarType, String) -> Unit) {
     CreateSheet(
         show = VariablePageState.creating,
         onDismiss = { VariablePageState.creating = false },
         onCreate = { name, type, initial ->
             VariablePageState.creating = false
-            onApply { old -> createVar(old, name, type, initial) }
+            onCreate(name, type, initial)
         },
     )
     VarManageDialog()
@@ -192,7 +216,7 @@ internal fun typeLabel(type: VarType): String =
     when (type) {
         VarType.STRING -> I18n.get(Strings.VAR_TYPE_STRING, "文本")
         VarType.NUMBER -> I18n.get(Strings.VAR_TYPE_NUMBER, "数字")
-        VarType.BOOLEAN -> I18n.get(Strings.VAR_TYPE_BOOLEAN, "Boolean")
+        VarType.BOOLEAN -> I18n.get(Strings.VAR_TYPE_BOOLEAN, "布尔")
     }
 
 /**
@@ -211,46 +235,3 @@ internal fun typeIcon(type: VarType): ImageVector =
         VarType.NUMBER -> TablerIcons.Outline.Number
         VarType.BOOLEAN -> TablerIcons.Outline.ToggleLeft
     }
-
-/**
- * 读全部变量；没写过 / 读不懂都当空表。
- *
- *  三个调用点：「自定义变量」页自己（列表与空态）、**「变量操作」页**（挑哪一颗 / 改它的值）、
- *  以及命令的步骤抽屉 —— 几处必须读同一份，否则能挑到一颗已经不存在的变量。
- */
-internal fun readVars(): List<Variable> =
-    when (val l = VariableStore.load()) {
-        is VariableStore.Load.Ok -> {
-            l.snapshot.vars
-        }
-
-        VariableStore.Load.Absent, VariableStore.Load.Unreadable -> {
-            emptyList()
-        }
-    }
-
-/**
- * 新建一颗：重名 / 名字或初始值不合法都不写盘（原因进日志，界面只说「改不了」）。
- *
- *  判重名按名字来 —— 同名的两颗永远只有第一颗会被引用（与命令库那条同名纪律同一个道理）。
- */
-private fun createVar(
-    old: List<Variable>,
-    name: String,
-    type: VarType,
-    initial: String,
-): List<Variable>? {
-    if (old.any { it.name == name }) {
-        XLog.w("变量：新建被拒（已有同名）—— $name")
-        return null
-    }
-    val fresh = Variable.create(name, type, initial)
-    if (fresh == null) {
-        XLog.w("变量：新建被拒（名字或初始值不合法）—— $name / $type")
-        return null
-    }
-    return saveVars(old + fresh)
-}
-
-/** 落盘；失败返回 `null`（写不进去时调用方按「没改」处理）。 */
-private fun saveVars(next: List<Variable>): List<Variable>? = if (VariableStore.save(next)) next else null

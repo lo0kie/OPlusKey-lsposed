@@ -178,9 +178,10 @@ internal fun SettingsPage.ActionTile(
                                 )
                             }
 
-                            //  其余档位那一层菜单是**原地弹**（底部抽屉里那几行同理），不跳页 ——
-                            //  所以是选择器字形而不是箭头。
-                            ActionCatalog.modeMenu(spec.token) != null -> {
+                            //  其余档位那一层是**原地弹**（底部抽屉里那几行同理），不跳页 ——
+                            //  所以是选择器字形而不是箭头（判据在 `ActionCatalog.popsSelector`，
+                            //  别在这里再列一遍 token）。
+                            ActionCatalog.popsSelector(spec.token) -> {
                                 Icon(
                                     PageIcons.Selector,
                                     contentDescription = null,

@@ -64,6 +64,14 @@ internal class AboutUiState {
     var showDeleteConfirm by mutableStateOf(false)
 
     /**
+     * 「读不出来的那一份」的删除确认 —— `null` = 关着。
+     *
+     *  那一份切不过去、也没有名字可改，列表里点它只剩「删掉」这一条路；删掉之后那个槽才腾出来
+     *  （`isFull` 按槽位算，不删的话「新建 / 导入」会永久灰着）。
+     */
+    var brokenToDelete by mutableStateOf<ConfigProfiles.Item?>(null)
+
+    /**
      * 「导出配置」那一行 —— 先选一份（同样是菜单）。
      *
      *  只有一份时这层菜单里也只有一行（「默认」）—— 仍然照常弹：**配置列表永远是同一形状**，

@@ -219,9 +219,11 @@ internal object ConfigTransfer {
             XLog.w("导出配置：页面没了，放弃")
             return
         }
-        // 导出**当前这份**就用页面手上这份（= 用户看到的），不是重读一遍文件：两边正常时等价，
-        // 而页面这份已经过 `configReadOnly` 那道闸 —— 读不懂的状态下压根进不来这一页。
-        if (slot == ConfigProfiles.CURRENT_SLOT) {
+        // 导出**当前这份**就用页面手上这份（= 用户看到的），不是重读一遍文件：两边正常时等价。
+        //  **只读态例外**：那时 `configState.config.value` 是默认值 + 空命令表（建页那次没读成功），
+        //  导出来是一份「默认配置」还报「已导出」—— 那种情况走下面那条从盘上读的路，
+        //  读得出来就导盘上那份，读不懂就明确失败。
+        if (slot == ConfigProfiles.CURRENT_SLOT && !page.configState.readOnly) {
             openConfigExport(activity, page.configState.config.value, page.configState.commands.value)
             return
         }

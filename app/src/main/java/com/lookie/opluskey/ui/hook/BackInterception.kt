@@ -260,11 +260,12 @@ internal object BackInterception {
                     // 收掉键盘就是这一下的全部处理
                 }
 
-                // 浮窗开着 ⇒ 自己消费这次返回：把浮窗收掉，不退页面
+                // 浮窗开着 ⇒ 自己消费这次返回：**只收最上面那一层**，不退页面。
                 // 用户定案：不接的话，浮窗盖在上面、底下的页面却被退掉。
+                // 只收一层也是用户口径：按一次返回退一步 —— 对话框关掉、底下那层菜单还在。
                 HostSession.page?.hasOpenOverlays() == true -> {
-                    XLog.w("系统返回：浮窗开着 ⇒ 收掉浮窗，不退页面")
-                    HostSession.page?.closeOverlays("系统返回收浮窗")
+                    XLog.w("系统返回：浮窗开着 ⇒ 收掉最上面一层，不退页面")
+                    HostSession.page?.closeTopOverlay("系统返回收浮窗")
                 }
 
                 HostSession.page?.goBack() == true -> {

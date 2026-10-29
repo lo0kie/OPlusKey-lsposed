@@ -37,6 +37,15 @@ val ktlintRules =
     )
 
 /**
+ * 构建脚本（`*.gradle.kts`）那一档的规则 = 上面那份 + **关掉 `standard:kdoc`**。
+ *
+ *  `.kts` 的语法树把**所有顶层语句**包在脚本自己的 block 里，于是任何顶层 KDoc 都会被
+ *  `standard:kdoc` 判成「KDoc 不许出现在 block 内」—— 这不是写法问题，是 `.kts` 的结构
+ *  与这条规则不合（`.kt` 源码里同样的写法完全合法）。只对这一档关掉它，源码那一档照旧。
+ */
+val ktlintRulesForScripts = ktlintRules + ("ktlint_standard_kdoc" to "disabled")
+
+/**
  * lint 的项目策略（`:app` 与 `:core` **同一份**，不各写一遍）。
  *
  *  写成扩展函数而不是在两边各贴一段：这两处早先逐字相同，唯一的差别是 `:app` 那边多了几句注释。
@@ -53,12 +62,7 @@ fun com.android.build.api.dsl.Lint.applyProjectPolicy() {
     // 与本项目无关的检查：
     //  · `GradleDependency` / `NewerVersionAvailable` 是「有新版可升」，不是缺陷
     //  · `AndroidGradlePluginVersion` 同上（AGP 版本由 compileSdk 37 这条硬约束钉着）
-    disable +=
-        setOf(
-            "GradleDependency",
-            "NewerVersionAvailable",
-            "AndroidGradlePluginVersion",
-        )
+    disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion")
 }
 
 /**
@@ -83,6 +87,8 @@ tasks.register("gate") {
     group = "verification"
     description = "三道闸（格式 / 静态检查 / lint），不打包"
     dependsOn(
+        // 根脚本自己那一份（`spotlessKotlinGradle*`）—— 见文件末尾那段 configure
+        "spotlessCheck",
         ":app:spotlessCheck",
         ":app:detekt",
         ":app:lintDebug",
@@ -150,7 +156,7 @@ subprojects {
             }
             kotlinGradle {
                 target("*.gradle.kts")
-                ktlint(ktlintVersion).editorConfigOverride(ktlintRules)
+                ktlint(ktlintVersion).editorConfigOverride(ktlintRulesForScripts)
                 trimTrailingWhitespace()
                 endWithNewline()
             }
@@ -172,6 +178,19 @@ subprojects {
         tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
             // 与 Kotlin 的 jvmTarget 一档：detekt 自己也要能读 Java 21 的字节码
             jvmTarget = "21"
+            //  **把所有变体源集都扫进来**：detekt 对 Android 项目默认只看 `src/main/java`，
+            //  而「哪一档有什么能力」正是由 `src/{debug,release,releaseLog}/…/BuildFlags.kt` 决定的
+            //  —— 那十来个文件从没进过静态检查，等于最该被管的代码正好在规则之外
+            //  （`release` 与 `releaseLog` 那两份 `PageDebugChannel.kt` 逐字重复也是这么漏过去的）。
+            //  按目录扫而不是按变体：同一个文件在三档里各有一份，语义上是同一份代码的三个版本。
+            //  `setSource` 而不是 `source(...)`：后者是**追加**，会把默认的 `src/main/java`
+            //  再扫一遍（同一份文件进两次，判据数跟着翻倍）。
+            setSource(
+                project.fileTree("src") {
+                    include("*/java/**/*.kt")
+                    exclude("**/build/**")
+                },
+            )
             // 扫源码与构建脚本；`build/` 之类的产物本来就在 target 之外
             reports {
                 html.required.set(true)
@@ -194,5 +213,21 @@ subprojects {
         extensions.configure<com.android.build.api.dsl.LibraryExtension> {
             lint { applyProjectPolicy() }
         }
+    }
+}
+
+// —— 根脚本自己进格式闸 ——
+//
+//  `subprojects { }` 里那份 `kotlinGradle { target("*.gradle.kts") }` 只作用于两个子模块，
+//  根目录这一份（所有共用约束都定义在这里）从来没进过 `spotlessCheck`：它是最该被管的那份
+//  构建脚本，却一条格式判据都不吃。这里把它接进来，`gate` 里也跟着多一道。
+apply(plugin = "com.diffplug.spotless")
+
+configure<com.diffplug.gradle.spotless.SpotlessExtension> {
+    kotlinGradle {
+        target("*.gradle.kts")
+        ktlint(ktlintVersion).editorConfigOverride(ktlintRulesForScripts)
+        trimTrailingWhitespace()
+        endWithNewline()
     }
 }

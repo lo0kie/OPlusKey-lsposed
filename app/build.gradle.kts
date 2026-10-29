@@ -228,6 +228,19 @@ android {
         }
     }
 
+    //  **`releaseLog` 不再放自己那份 `PageDebugChannel.kt`**：它原先与 `src/release/` 的逐字相同
+    //  （两档的差别只在 `:core` 的 `BuildFlags.VERBOSE_LOG`），复制一份的结果是两份一模一样的代码
+    //  —— 而变体源集不在 detekt 的默认扫描范围里，这份重复一直没人看见（现在扫了）。
+    //  直接复用 release 那份：改一处就是改两档。
+    //
+    //  两个源集都要加：AGP 9 内置 Kotlin 之后，`.kt` 走的是 `kotlin` 目录集，只写 `java.srcDir`
+    //  编译期**看不见**这些文件（真机前先踩了一次：`compileReleaseLogKotlin` 报
+    //  `Unresolved reference 'PageDebugChannel'`）。
+    sourceSets.getByName("releaseLog") {
+        java.srcDir("src/release/java")
+        kotlin.srcDir("src/release/java")
+    }
+
     buildFeatures {
         // 详细日志开关用按构建类型各放一份的 const val，编译期折掉
         buildConfig = false

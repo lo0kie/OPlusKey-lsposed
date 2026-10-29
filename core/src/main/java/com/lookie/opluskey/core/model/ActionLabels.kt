@@ -69,14 +69,7 @@ fun actionTitle(
 
         // 系统开关：切换 / 打开 / 关闭三档各一句话 —— 名字在清单里，认不出就退回 id
         is Action.Setting -> {
-            I18n.format(
-                when (action.on) {
-                    true -> Strings.COMMON_TURN_ON_SETTING_FORMAT
-                    false -> Strings.COMMON_TURN_OFF_SETTING_FORMAT
-                    null -> Strings.COMMON_TOGGLE_SETTING_FORMAT
-                },
-                SystemSwitches.titleOfId(action.id) ?: action.id,
-            )
+            settingTitle(action)
         }
 
         // 其余内置动作：档位名 → 清单标题 → 认不出来。
@@ -85,6 +78,22 @@ fun actionTitle(
             ActionCatalog.label(action) ?: fallback
         }
     }
+
+/**
+ * 系统开关那一档的说法（切换 / 打开 / 关闭）。
+ *
+ *  从 [actionTitle] 里拆出来：那一支的三个子档位自己就带着一层 `when`，留在主 `when` 里
+ *  会让整个函数的圈复杂度顶破 detekt 的阈值（18 > 15）。
+ */
+private fun settingTitle(action: Action.Setting): String =
+    I18n.format(
+        when (action.on) {
+            true -> Strings.COMMON_TURN_ON_SETTING_FORMAT
+            false -> Strings.COMMON_TURN_OFF_SETTING_FORMAT
+            null -> Strings.COMMON_TOGGLE_SETTING_FORMAT
+        },
+        SystemSwitches.titleOfId(action.id) ?: action.id,
+    )
 
 /**
  * 一步变量操作在界面上的说法 —— 四档各一句，值是配置里的原文（可能还写着 `${其它变量}`）。

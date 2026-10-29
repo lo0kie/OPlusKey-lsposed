@@ -22,7 +22,7 @@
 1. **只在 debug 包存在** —— `DEBUG_PROBE`
    是编译期常量，release 里这些代码连同调用点一起被 R8 折掉（不是运行时判断，是根本不存在）。
 2. **只收 root / system 发的**
-   —— 发送方不是宿主（调试从 adb 发），所以它单有一套来源校验（`KeyHooks.isFromRootOrSystem`）；宿主那几条通道的校验（`isFromHost`）不受影响。普通 App（uid
+   —— 发送方不是宿主（调试从 adb 发），所以它单有一套来源校验（`BroadcastSender.isFromRootOrSystem`，定义在 `inject/BroadcastSender.kt`)；宿主那几条通道的校验（`isFromHost`）不受影响。普通 App（uid
    ≥ 10000）发同名广播进不来。
 3. **每个 op 整体包 catch** —— 调用点在 AMS 广播入口，漏一个异常出去就是系统崩 / 开机循环。
 

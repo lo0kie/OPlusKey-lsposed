@@ -213,7 +213,6 @@ internal fun SettingsPage.StepPickerSheet(
     //  边输边筛，清空即回到分组列表。关抽屉时一并清掉：下一次打开还挂着上一个词的话，
     //  用户会以为「列表少了东西」。
     var query by remember { mutableStateOf("") }
-    LaunchedEffect(show) { if (!show) query = "" }
 
     //  这一行画不画成「选中」（行首对勾 + 整行主题色）：看当前动作。
     //  点一下就落盘、抽屉随即收掉（见 `land`），所以这里没有「刚点过、还没生效」那一档了。
@@ -246,6 +245,17 @@ internal fun SettingsPage.StepPickerSheet(
     //  没记录到就给 [coldAnchor] 兜一下（真走到那里说明触点丢了）
     var subAnchor by remember { mutableStateOf<PreciseClickState?>(null) }
     val coldAnchor = remember { PreciseClickState() }
+
+    //  关抽屉时**三样一起复位**：搜索词、开着二级菜单的那一格、它的锚点。
+    //  只清 `query` 的话，系统返回 / 下拉把抽屉收掉之后 `subTile` 还挂着 —— 而 `show` 是行参、
+    //  这个组合并不随之销毁，于是那一层菜单仍开在半空：随手选一档就把一步**静默加进草稿末尾**。
+    LaunchedEffect(show) {
+        if (!show) {
+            query = ""
+            subTile = null
+            subAnchor = null
+        }
+    }
 
     fun land(
         spec: ActionCatalog.Spec,

@@ -145,7 +145,10 @@ internal class MiniWindowLauncher(
             if (code == START_DELIVERED_TO_TOP) retryAfterHome(ctx, intent, target)
             return
         }
-        if (startFreeform(ctx, intent)) return
+        //  **分身不走 freeform**：那条路用的是主用户的 `ctx`，`userId != 0` 时它起的是主用户
+        //  那一份实例 —— 屏幕上看着「打开了」，其实开的是另一个人，用户在那份里点的东西全不对。
+        //  分身一律落到下面 ATMS 那条能带 `userId` 的路。
+        if (userId == 0 && startFreeform(ctx, intent)) return
         XLog.w("window:$target 的小窗两条路都没走通，退成普通打开")
         try {
             // 主用户与分身都走 ATMS（理由同 `AppLauncher.launchApp`：装了分身的应用在主用户下

@@ -70,8 +70,14 @@ private const val DONORS_ASSET = "donors.json"
 @Volatile
 private var cache: List<Donor>? = null
 
-/** 读出名单（进程内只读一次）。读不到时是空表，不抛。 */
-internal fun donors(context: Context): List<Donor> = cache ?: readDonors(context).also { cache = it }
+/**
+ * 读出名单（进程内只读一次）。读不到时是空表，不抛。
+ *
+ *  **只有真读到才缓存**：`Seal.open` 返回 `null` 是「这一次没读到」（资产不在包里 / 签名那一关
+ *  没过，后者可能是瞬时状态），把它当成「名单是空的」缓存下来的话，这一次进入页面之后
+ *  就再也不会重读了 —— 表现是「某次之后捐赠名单一直是空的」。
+ */
+internal fun donors(context: Context): List<Donor> = cache ?: (readDonors(context)?.also { cache = it } ?: emptyList())
 
 /**
  * 取出一个字段的文本；缺项 / 不是标量 / 是 JSON `null` 都算空串。
@@ -81,9 +87,9 @@ internal fun donors(context: Context): List<Donor> = cache ?: readDonors(context
  */
 private fun JsonElement?.text(): String = (this as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty()
 
-/** 真读一次：`assets/donors.json` → 对象数组 → 名字非空的行。 */
-private fun readDonors(context: Context): List<Donor> {
-    val bytes = Seal.open(context, DONORS_ASSET) ?: return emptyList()
+/** 真读一次：`assets/donors.json` → 对象数组 → 名字非空的行；`null` = 读不到（不缓存）。 */
+private fun readDonors(context: Context): List<Donor>? {
+    val bytes = Seal.open(context, DONORS_ASSET) ?: return null
     return try {
         val rows = Json.parseToJsonElement(String(bytes, Charsets.UTF_8)).jsonArray
         rows.mapNotNull { row ->
@@ -109,7 +115,7 @@ private fun readDonors(context: Context): List<Donor> {
             }
         }
     } catch (e: Throwable) {
-        XLog.w("捐赠列表：$DONORS_ASSET 解不成名单（退成空态）：${e.javaClass.simpleName}: ${e.message}")
-        emptyList()
+        XLog.w("捐赠列表：$DONORS_ASSET 解不成名单（退成空态，下次进页重试）：${e.javaClass.simpleName}: ${e.message}")
+        null
     }
 }

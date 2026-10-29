@@ -383,9 +383,9 @@ object ActionCatalog {
         )
 
     /**
-     * 「系统开关」那一格的二级菜单 —— 十条开关，名字与顺序都跟着 [SystemSwitches.ITEMS]。
+     * 「系统开关」那一格的二级菜单 —— 每一条都跟着 [SystemSwitches.ITEMS]（名字与顺序同源）。
      *
-     *  与别的入口格同一套：一格代表不了十个取值，就不在网格里摊成十格；
+     *  与别的入口格同一套：一格代表不了这么多个取值，就不在网格里摊成十几格；
      *  菜单里的行**本身就是真取值**（`setting:<id>` / `flashlight`），点中即写配置。
      */
     val SWITCH_MODES: List<Spec> =
@@ -548,15 +548,20 @@ object ActionCatalog {
     fun isSelected(
         spec: Spec,
         action: Action,
-    ): Boolean {
-        // 「打开应用」那格是入口：只要绑任意 `app:` / `window:` 动作就算选中，否则绑完回来一个亮的都没有
-        if (spec.token == APP_TILE) return action.isAppOpen
-        // 「自定义变量」那一格代表**一整族**取值（`setvar:` 有无数种写法，清单里列不出来）：
-        //  绑了任意一步变量操作就算这一格选中 —— 与入口格同一套判据，只是那一族由运行时收集。
-        if (spec.token == VARS_TILE) return action is Action.VarSet
-        // 入口格代表**一整组取值**：绑其中任意一档就算选中，否则格里一个亮的都没有
-        return modeMenu(spec.token)?.any { isBound(it, action) } ?: isBound(spec, action)
-    }
+    ): Boolean =
+        // 写成表达式而不是「一串 `if (...) return`」：后者五个出口，detekt 的 ReturnCount
+        //  按 4 计（这条是入口格的判据，本来也没有「中途返回」要表达）。
+        if (spec.token == APP_TILE) {
+            // 「打开应用」那格是入口：只要绑任意 `app:` / `window:` 动作就算选中，否则绑完回来一个亮的都没有
+            action.isAppOpen
+        } else if (spec.token == VARS_TILE) {
+            // 「自定义变量」那一格代表**一整族**取值（`setvar:` 有无数种写法，清单里列不出来）：
+            //  绑了任意一步变量操作就算这一格选中 —— 与入口格同一套判据，只是那一族由运行时收集。
+            action is Action.VarSet
+        } else {
+            // 入口格代表**一整组取值**：绑其中任意一档就算选中，否则格里一个亮的都没有
+            modeMenu(spec.token)?.any { isBound(it, action) } ?: isBound(spec, action)
+        }
 
     /**
      * 一行一行地比某一项是不是当前绑定 —— 菜单打勾用它，不用 [isSelected]。
@@ -778,7 +783,20 @@ object ActionCatalog {
      * 「添加命令」抽屉**不用它**：那里先把「选择应用」那一格接走，剩下的判据正好是
      * 「这一档有没有一层菜单」，直接看 [modeMenu] 更贴切。网格的绑定路径用它。
      */
-    fun isEntryTile(spec: Spec): Boolean = spec.token == APP_TILE || modeMenu(spec.token) != null
+    fun isEntryTile(spec: Spec): Boolean =
+        spec.token == APP_TILE ||
+            modeMenu(spec.token) != null
+
+    /**
+     * 行尾那颗指示画成**选择器**（`PageIcons.Selector`：一个框 + 右下角小三角）的那几格。
+     *
+     *  判据是「点开的东西是**原地**弹出的一层」：入口格的档位菜单（系统导航 / 系统按键 / 媒体控制 /
+     *  响铃状态…）—— 都在这一页里选完，不跳页。
+     *
+     *  与 [isEntryTile] **不是一回事**：同样是入口，「打开应用」（去挑应用）与「自定义变量」是跳页 /
+     *  换一层，行尾画的是右箭头。两处判据分开写，才不会因为多加一格入口就把箭头换成选择器。
+     */
+    fun popsSelector(token: String): Boolean = modeMenu(token) != null
 
     /** 按动作找展示信息；清单外一律返回 null（清单是照搬的封闭集合，不为自定义写法现造条目）。 */
     fun specOf(action: Action): Spec? = ALL.firstOrNull { isSelected(it, action) }

@@ -111,6 +111,11 @@ object ConfigBroadcast {
      *  本包因此**不认识落盘那包** —— 注入侧要 import 它，这条编译期保证不能靠传递依赖绕开
      *  （见 `docs/decoupling.md` 动作 3）。
      *
+     *  ⚠️ **这个 Intent 没有 `setPackage`，不要直接 `sendBroadcast`**：那样它就是一条**隐式广播**，
+     *  任何 App 都收得到 —— 而 payload 里有整份配置（自定义键名、绑定动作、命令引用）。
+     *  一律经 [PageWire.send] 发（它负责 `setPackage(宿主包名)` 与「发不出去不外抛」）。
+     *  今天唯一的发送点是 `host/GestureReceiver`，走的就是那条路（见 `PageWire` 的类注释）。
+     *
      *  注意：`longIsSerial` 是**发送侧现算**的一位，不是 `KeyConfig` 上存着的那个属性 ——
      *  所以这里按调用方给的值覆盖掉，读属性的话这一位恒为 `false`（它只由注入侧从广播解出来）。
      */

@@ -324,8 +324,6 @@ object Strings {
     const val COMMAND_TYPE_BRANCH = "command.type_branch"
 
     const val COMMAND_BRANCH_ADD = "command.branch_add"
-    const val COMMAND_BRANCH_WHEN_APP = "command.branch_when_app"
-    const val COMMAND_BRANCH_ELSE = "command.branch_else"
     const val COMMAND_BRANCH_ANY = "command.branch_any"
 
     /** 一条条件的小标题（「条件 1」）。 */
@@ -395,7 +393,9 @@ object Strings {
     const val COMMAND_COND_ORIENTATION_NAME = "command.cond_orientation_name"
     const val COMMAND_COND_SCREEN_ON = "command.cond_screen_on"
     const val COMMAND_COND_LOCKED = "command.cond_locked"
-    const val COMMAND_COND_SCREEN = "command.cond_screen"
+
+    /** 条件取值还没配（空串）时的那几个字 —— 认不出的取值不走它，直接显示原文。 */
+    const val COMMAND_COND_VALUE_UNSET = "command.cond_value_unset"
     const val COMMAND_COND_SCREEN_NAME = "command.cond_screen_name"
     const val COMMAND_COND_CHARGING = "command.cond_charging"
     const val COMMAND_COND_CHARGING_NAME = "command.cond_charging_name"
@@ -403,33 +403,22 @@ object Strings {
     const val COMMAND_COND_HEADSET = "command.cond_headset"
     const val COMMAND_COND_HEADSET_NAME = "command.cond_headset_name"
     const val COMMAND_COND_HEADSET_OFF = "command.cond_headset_off"
-    const val COMMAND_COND_MEDIA = "command.cond_media"
     const val COMMAND_COND_MEDIA_NAME = "command.cond_media_name"
     const val COMMAND_COND_MEDIA_PLAYING = "command.cond_media_playing"
     const val COMMAND_COND_MEDIA_PAUSED = "command.cond_media_paused"
-    const val COMMAND_COND_WIFI = "command.cond_wifi"
     const val COMMAND_COND_WIFI_NAME = "command.cond_wifi_name"
     const val COMMAND_COND_WIFI_ON = "command.cond_wifi_on"
     const val COMMAND_COND_WIFI_OFF = "command.cond_wifi_off"
-    const val COMMAND_COND_RINGER = "command.cond_ringer"
     const val COMMAND_COND_RINGER_NORMAL = "command.cond_ringer_normal"
     const val COMMAND_COND_RINGER_VIBRATE = "command.cond_ringer_vibrate"
     const val COMMAND_COND_RINGER_SILENT = "command.cond_ringer_silent"
-    const val COMMAND_COND_ORIENTATION = "command.cond_orientation"
     const val COMMAND_COND_ORIENTATION_PORTRAIT = "command.cond_orientation_portrait"
     const val COMMAND_COND_ORIENTATION_LANDSCAPE = "command.cond_orientation_landscape"
 
-    //  时间区间与另外三个系统开关（蓝牙 / 移动数据 / 飞行模式）——
-    //  `_name` 是菜单里那种类名（「时间区间」「蓝牙」），不带 `_name` 的是格子里那句话
-    //  （「时间 22:00-07:00」「蓝牙 开」）。
-    const val COMMAND_COND_TIME = "command.cond_time"
     const val COMMAND_COND_TIME_NAME = "command.cond_time_name"
     const val COMMAND_COND_TIME_OVERLAP = "command.cond_time_overlap"
-    const val COMMAND_COND_BLUETOOTH = "command.cond_bluetooth"
     const val COMMAND_COND_BLUETOOTH_NAME = "command.cond_bluetooth_name"
-    const val COMMAND_COND_CELLULAR = "command.cond_cellular"
     const val COMMAND_COND_CELLULAR_NAME = "command.cond_cellular_name"
-    const val COMMAND_COND_AIRPLANE = "command.cond_airplane"
     const val COMMAND_COND_AIRPLANE_NAME = "command.cond_airplane_name"
 
     /** 一块条件里再分几条时的那几句（第几条 / 添加条件）。 */
@@ -476,7 +465,6 @@ object Strings {
     const val COMMON_DISCARD = "common.discard"
     const val COMMON_EDIT = "common.edit"
     const val COMMON_MENU = "common.menu"
-    const val COMMON_MODIFY = "common.modify"
     const val COMMON_MOVE_DOWN = "common.move_down"
     const val COMMON_MORE = "common.more"
     const val COMMON_MOVE_UP = "common.move_up"
@@ -492,7 +480,6 @@ object Strings {
     const val COMMON_TURN_OFF_SETTING_FORMAT = "common.turn_off_setting_format"
     const val COMMON_REPLACE = "common.replace"
     const val COMMON_RESET = "common.reset"
-    const val COMMON_SAVE = "common.save"
     const val COMMON_STEP_INDEX = "common.step_index"
     const val COMMON_TIME_MS = "common.time_ms"
     const val COMMON_TIME_SEC = "common.time_sec"
@@ -545,6 +532,12 @@ object Strings {
     /** 多配置：默认 */
     const val PROFILE_DEFAULT = "profile.default"
 
+    /** 多配置：文件读不出来的那一份在列表里的名字（仍然可点、可删）。 */
+    const val PROFILE_BROKEN = "profile.broken"
+
+    /** 多配置：删掉读不出来的那一份时的说明。 */
+    const val PROFILE_BROKEN_DELETE = "profile.broken_delete"
+
     /** 多配置：配置 %d */
     const val PROFILE_NEW_NAME = "profile.new_name"
 
@@ -583,6 +576,9 @@ object Strings {
 
     /** 多配置：已删除「%1$s」，切到「%2$s」 */
     const val PROFILE_DELETED_SWITCHED = "profile.deleted_switched"
+
+    /** 多配置：已删除（删的是读不出来的那一份，没有名字可点） */
+    const val PROFILE_DELETED = "profile.deleted"
 
     /** 多配置：最多三份配置（除「默认」之外） */
     const val PROFILE_FULL = "profile.full"
@@ -815,6 +811,9 @@ object Strings {
     const val TOAST_CONFIG_IMPORT_FAILED = "toast.config_import_failed"
     const val TOAST_CONFIG_READ_FAILED = "toast.config_read_failed"
     const val TOAST_CONFIG_SAVE_BROADCAST_FAILED = "toast.config_save_broadcast_failed"
+
+    /** 建页那次同步配置没发出去（页面会因此整页灰着，要告诉用户怎么办）。 */
+    const val TOAST_CONFIG_SYNC_FAILED = "toast.config_sync_failed"
     const val TOAST_CONFIG_SAVE_FAILED = "toast.config_save_failed"
     const val TOAST_COMMANDS_READ_FAILED = "toast.commands_read_failed"
     const val TOAST_LOG_EMPTY = "toast.log_empty"
@@ -877,12 +876,15 @@ object Strings {
     const val KEY_WATCH_WAITING = "key_watch.waiting"
     const val KEY_WATCH_COUNTDOWN = "key_watch.countdown"
     const val KEY_WATCH_RESERVED = "key_watch.reserved"
+
+    /** 收集按键时广播里没带按键码（`keyCode <= 0`）。 */
+    const val KEY_WATCH_NO_CODE = "key_watch.no_code"
     const val KEY_WATCH_LIMIT = "key_watch.limit"
     const val KEY_WATCH_ADDED = "key_watch.added"
     const val KEY_WATCH_DUPLICATE = "key_watch.duplicate"
 
     /**
-     * 「系统开关」那一格点开的菜单里那十条的名字 ——
+     * 「系统开关」那一格点开的菜单里那几条的名字 ——
      * 与 `core/model/SystemSwitches.ITEMS` 一一对应（加一条时两边一起改）。
      */
     const val SYS_SETTING_BT = "system_setting.bt"
@@ -895,14 +897,14 @@ object Strings {
     const val SYS_SETTING_FLASHLIGHT = "system_setting.flashlight"
     const val SYS_SETTING_DARKMODE = "system_setting.darkmode"
     const val SYS_SETTING_POWERSAVE = "system_setting.powersave"
+    const val SYS_SETTING_EXTRADIM = "system_setting.extradim"
+    const val SYS_SETTING_AUTOBRIGHTNESS = "system_setting.autobrightness"
+    const val SYS_SETTING_LOCATION = "system_setting.location"
 
     // —— 自定义变量（`ui/screen/variables/`）——
 
     /** 「快捷功能」组里那一格的名字（也是这一页在顶栏上的名字）。 */
     const val TOOL_VARIABLES = "tool.variables"
-
-    /** 步骤抽屉里「变量」那一组的组名。 */
-    const val CATEGORY_VARIABLES = "category.variables"
 
     /** 变量操作落成一步之后，步骤行上那句标题（`%1$s` 变量名 / `%2$s` 值）。 */
     const val VAR_STEP_SET = "var.step.set"
@@ -923,24 +925,11 @@ object Strings {
      */
     const val VARIABLES_TITLE = "variables.title"
 
-    /** 「变量操作」页的顶栏标题（与清单页不同名：一眼能看出在哪一层）。 */
-    const val VAR_OPS_TITLE = "var.ops_title"
-
-    /** 操作页一颗变量都没有时的说明与去处。 */
-    const val VAR_OPS_EMPTY = "var.ops_empty"
-    const val VAR_OPS_CREATE = "var.ops_create"
-
-    /** 操作区那个小标题的后半段（前半段是变量名，中间用「 - 」隔开）。 */
-    const val VAR_OPS_SECTION = "var.ops_section"
-
-    /** 没选变量时点操作行的提示语。 */
-    const val VAR_OPS_PICK_FIRST = "var.ops_pick_first"
-
-    /** 右下角那颗 FAB 的无障碍描述。 */
-    const val VAR_OPS_CONFIRM = "var.ops_confirm"
-
     /** 变量页空态。 */
     const val VARIABLES_EMPTY = "variables.empty"
+
+    /** 变量文件读不懂时那一屏（与空态分开：这一档不能引导新建，那样会盖掉盘上那份）。 */
+    const val VARIABLES_UNREADABLE = "variables.unreadable"
 
     /** 新建变量（抽屉标题与右下角那颗加法入口共用）。 */
     const val VARIABLES_ADD = "variables.add"
@@ -959,7 +948,6 @@ object Strings {
     const val VAR_OP_INC = "var.op_inc"
     const val VAR_OP_DEC = "var.op_dec"
     const val VAR_OP_RESET = "var.op_reset"
-    const val VAR_OP_DELETE = "var.op_delete"
 
     /** 表单里的三块小标题（也是三格输入 / 那一行的标题）。 */
     const val VAR_FIELD_NAME = "var.field_name"

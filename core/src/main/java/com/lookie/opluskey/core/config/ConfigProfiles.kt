@@ -63,6 +63,8 @@ object ConfigProfiles {
      * @param isCurrent 是不是当前生效的配置
      * @param isDefault 是不是「默认」配置（名字为空）—— 不许改名、不许删除
      * @param order 列表位次（[Config.profileOrder]；0 = 「默认」配置）
+     * @param broken 文件在、但读不出来（截断 / 手改坏）—— 名字与位次都取不到，只剩槽名可信。
+     *   这一档仍然要出现在列表里：它占着槽位，删不掉就等于永久少一格（见 [isFull]）
      */
     data class Item(
         val slot: String,
@@ -70,14 +72,22 @@ object ConfigProfiles {
         val isCurrent: Boolean,
         val isDefault: Boolean,
         val order: Int,
+        val broken: Boolean = false,
     ) {
         /**
-         * 界面上怎么写它 —— 名字为空的配置（[isDefault]）写「默认配置」，其余写用户起的名字。
+         * 界面上怎么写它 —— 名字为空的配置（[isDefault]）写「默认配置」，其余写用户起的名字；
+         * 读不出来的那一份写「（读不出来）」。
          *
          *  放在这里而不是各页各写一份：切换 / 导出那几层菜单与删除提示都要这一行，
          *  各写一遍就会有一处忘了处理空名字，界面上出现一个空格子。
          */
-        val displayName: String get() = if (isDefault) I18n.get(Strings.PROFILE_DEFAULT, "默认配置") else name
+        val displayName: String
+            get() =
+                when {
+                    broken -> I18n.get(Strings.PROFILE_BROKEN, "（读不出来）")
+                    isDefault -> I18n.get(Strings.PROFILE_DEFAULT, "默认配置")
+                    else -> name
+                }
     }
 
     /**
@@ -103,7 +113,24 @@ object ConfigProfiles {
                 .filter { it == CURRENT_SLOT || it.startsWith(SLOT_PREFIX) }
         return slots
             .mapNotNull { slot ->
-                val config = readOf(slot) ?: return@mapNotNull null
+                val config = readOf(slot)
+                if (config == null) {
+                    //  **读不出来的那一份也要列出来**：它占着槽位（[isFull] 按槽位算），
+                    //  不列就既看不见也删不掉 —— 新建 / 导入会永久灰着，用户没有任何自救入口。
+                    //  当前那一槽读不出来时不列：那不是「一份配置」，是整页只读态（见 `ConfigStore`）。
+                    if (slot == CURRENT_SLOT) {
+                        return@mapNotNull null
+                    }
+                    XLog.w("配置列表：$slot 读不出来，按「（读不出来）」列出（可删）")
+                    return@mapNotNull Item(
+                        slot = slot,
+                        name = "",
+                        isCurrent = false,
+                        isDefault = false,
+                        order = Int.MAX_VALUE,
+                        broken = true,
+                    )
+                }
                 Item(
                     slot = slot,
                     name = config.profileName,
@@ -134,15 +161,30 @@ object ConfigProfiles {
                 XLog.w("配置切换：$slot 读不出来，不动")
                 return null
             }
-        //  **顺序是有意的**：先把旧当前存进目标槽，再拿目标内容覆盖当前。
-        //  中断在第一步 ⇒ 当前还是旧配置（等于没切）；中断在第二步 ⇒ 目标槽里已是旧当前、
-        //  当前已是新内容，两份都完整。反过来写的话，中断时当前配置会被写成「目标内容 + 旧当前丢失」，
-        //  那是最坏的一种。
+        //  **顺序是有意的**：先把旧当前存进目标槽，再拿目标内容覆盖当前 —— 反过来写的话，
+        //  中断时当前配置是「目标内容」而旧当前已经没了，那是最坏的一种。
+        //  但只靠顺序不够：第二步失败时目标槽里已经是旧当前、原来那份只在这一次调用的 `target`
+        //  里 —— 所以第二步失败要**把目标槽还原**，否则那份配置就永久被覆盖了。
         val current = readOf(CURRENT_SLOT)
-        //  两步都要成：先存旧当前、再换新（顺序的理由见上）。任意一步失败就当没切。
-        val ok = (current == null || writeConfig(slot, current)) && writeConfig(CURRENT_SLOT, target)
-        if (!ok) {
-            XLog.w("配置切换：$slot 没换成（写盘失败），不动")
+        //  **两步都要成，第一步成了第二步失败要把第一步退回去**：
+        //  第一步已经把旧当前写进了目标槽 —— 此时若不还原，那份目标配置就**永久没了**
+        //  （目标内容已经被旧当前盖掉，内存里还留着的那个 `target` 只在这一次调用里有效）。
+        val staged = current != null
+        val firstOk = !staged || writeConfig(slot, current)
+        if (!firstOk || !writeConfig(CURRENT_SLOT, target)) {
+            //  第一步没写（当前配置读不出来）时目标槽还是原样，没什么要还原的
+            val restored = !(staged && firstOk) || writeConfig(slot, target)
+            XLog.w(
+                when {
+                    !firstOk -> "配置切换：$slot 没换成（第一步写盘失败），不动"
+
+                    restored -> "配置切换：$slot 没换成（第二步写盘失败），目标槽已还原"
+
+                    //  最坏的一种：两份都写不进去。目标槽里现在是旧当前的内容，而它原来那份
+                    //  只在这一行日志里留了个名字 —— 让排查的人知道丢了什么
+                    else -> "配置切换：$slot 没换成，且还原失败 —— 目标槽里现在是旧当前的内容，原来的「${target.profileName}」已丢"
+                },
+            )
             return null
         }
         //  命令库跟着走（见 [ProfileCommands] 的类注释）：配置里绑定的是 `cmd:<名字>` 这种引用，
@@ -184,6 +226,10 @@ object ConfigProfiles {
      *
      *  两条不许：**当前配置**（删了就没配置可跑）与**「默认」配置**（升级时落下的退路）。
      *
+     *  **读不出来也要能删**：文件坏了的时候 `readOf` 返回 `null`，按「读不出来 ⇒ 不给删」处理的话，
+     *  那个槽就永远删不掉；而 [isFull] 按**槽位**数，于是「新建 / 导入」永久灰着 —— 用户没有任何
+     *  自救入口。坏文件里已经没有可用的内容了，删掉是唯一合理的出路。
+     *
      * @return 真的删掉了吗
      */
     fun delete(slot: String): Boolean {
@@ -191,8 +237,9 @@ object ConfigProfiles {
             XLog.w("配置删除：当前配置不许删")
             return false
         }
-        val target = readOf(slot) ?: return false
-        if (target.profileName.isBlank()) {
+        //  读得出来就按名字拦「默认配置」；读不出来无法判断，按「坏了的普通配置」处理
+        val target = readOf(slot)
+        if (target != null && target.profileName.isBlank()) {
             XLog.w("配置删除：默认配置不许删")
             return false
         }
@@ -201,7 +248,9 @@ object ConfigProfiles {
         if (ok) ProfileCommands.delete(slot)
         //  变量表同理（见 [ProfileVars]）：孤儿槽一样不会被回收
         if (ok) ProfileVars.delete(slot)
-        if (ok) XLog.w("配置删除：已删 ${target.profileName}（槽 $slot）")
+        if (ok) {
+            XLog.w("配置删除：已删 ${target?.profileName ?: "（读不出来的那一份）"}（槽 $slot）")
+        }
         return ok
     }
 
@@ -263,10 +312,13 @@ object ConfigProfiles {
         val (slot, order) = nextSlot() ?: return null
         val base = name.trim().ifEmpty { "导入配置" }
         //  同名会让列表里出现两行一样的名字 —— 加个序号区分（导入的那份仍然插在最末）
+        //  **只扫配置槽**：`slots()` 里还有 commands / vars / logs 那些，拿它们去 `readOf`
+        //  是把命令库当配置解析 —— 既白读一遍，又会每次导入都刷出一条「读不懂」的 W
         val taken =
             ConfigStore
                 .files()
                 .slots()
+                .filter { it == CURRENT_SLOT || it.startsWith(SLOT_PREFIX) }
                 .mapNotNull { readOf(it)?.profileName }
                 .toSet()
         var trimmed = base
@@ -302,15 +354,16 @@ object ConfigProfiles {
     /**
      * 除「默认」之外还能不能再建一份 —— 按**槽位数**，不按「能读出来的内容」。
      *
-     *  某一份文件损坏时它读不出来（`list()` 会把那一行丢掉），但那个槽仍然占着一个位置：
-     *  按内容数会让用户以为还有空位、建出来的新一份却把别人的位置顶了。
+     *  某一份文件损坏时它读不出内容，但那个槽仍然占着一个位置：按内容数会让用户以为还有空位、
+     *  建出来的新一份却把别人的位置顶了。
+     *
+     *  这一档与 [list] 的口径必须一致：那边**也**把读不出来的那份列出来（带 `broken`），
+     *  用户看到几行就是几个槽位、删掉一行就腾出一格 —— 否则「已满」与「只看到两份」会
+     *  同时出现在一屏里，而中间那一格既看不见也删不掉。
      *
      *  界面拿它做「新建 / 导入」的闸（灰掉 + 一句提示），`nextSlot` 里还有同一道判据。
      */
-    fun isFull(): Boolean {
-        val configs = ConfigStore.files().slots().count { it == CURRENT_SLOT || it.startsWith(SLOT_PREFIX) }
-        return configs - 1 >= MAX_PROFILES
-    }
+    fun isFull(): Boolean = ConfigStore.files().slots().count { it == CURRENT_SLOT || it.startsWith(SLOT_PREFIX) } - 1 >= MAX_PROFILES
 
     /**
      * 下一份新配置该用的**槽名与位次**（新建与导入都要这两个，所以一起算）。
@@ -320,15 +373,17 @@ object ConfigProfiles {
      */
     private fun nextSlot(): Pair<String, Int>? {
         val slots = ConfigStore.files().slots()
+        //  **与 [isFull] 同一把尺子**（都是槽位数，不是「读得出来的份数」）：
+        //  两处各数各的时，刚好在「有一份文件坏了」的时候给出不同答案
+        //  （界面按已满灰掉，内部却还以为有空位）。
+        if (isFull()) {
+            XLog.w("配置新建：除「默认」之外已经有 $MAX_PROFILES 份，不再新增")
+            return null
+        }
         val configs =
             slots
                 .filter { it == CURRENT_SLOT || it.startsWith(SLOT_PREFIX) }
                 .mapNotNull { slot -> readOf(slot)?.let { slot to it } }
-        //  按**槽位**数（不是按能读出来的内容）：坏文件读不出来，但那个槽仍然占着位置
-        if (configs.size - 1 >= MAX_PROFILES) {
-            XLog.w("配置新建：除「默认」之外已经有 $MAX_PROFILES 份，不再新增")
-            return null
-        }
         val maxIndex =
             slots
                 .filter { it.startsWith(SLOT_PREFIX) }

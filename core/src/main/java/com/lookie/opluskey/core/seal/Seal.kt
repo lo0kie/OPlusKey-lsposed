@@ -84,7 +84,9 @@ object Seal {
                 true -> Verdict.OFFICIAL
                 false -> Verdict.UNOFFICIAL
             }
-        judgement = result
+        //  **只缓存有结论的那两档**：`UNKNOWN` 是「这一次判不出来」（签名读不到，可能是瞬时故障），
+        //  缓存下来就永远不再重判了 —— 一次偶发失败会让整页后续一直显示「读不到签名」。
+        if (result != Verdict.UNKNOWN) judgement = result
         return result
     }
 
@@ -104,7 +106,13 @@ object Seal {
             return null
         }
         val key = SealCertificate.sha256(context) ?: return deny(name)
-        val all = entries ?: decryptContainer(context, key)?.also { entries = it } ?: return null
+        val all =
+            entries ?: decryptContainer(context, key)?.also { entries = it } ?: run {
+                //  `decryptContainer` 自己会为「解不开」记一条 e；走到这里只剩「容器没进包」
+                //  —— 那是打包配置的问题，必须留一行，否则表现只是「那份资产是空的」
+                XLog.e("封存容器不在包里（$CONTAINER）—— 资产 $name 读不到，检查 SealReleaseAssets 有没有生成")
+                return null
+            }
         return all[name] ?: deny(name)
     }
 
@@ -113,7 +121,11 @@ object Seal {
         context: Context,
         key: ByteArray,
     ): Map<String, ByteArray>? {
-        val container = SealAssets.bytes(context, CONTAINER) ?: return null
+        val container =
+            SealAssets.bytes(context, CONTAINER) ?: run {
+                XLog.e("封存容器不在包里（asset/$CONTAINER）—— 整份受保护资产都读不到")
+                return null
+            }
         return try {
             DataInputStream(ByteArrayInputStream(container)).use { readEntries(it, key) }
         } catch (e: Throwable) {

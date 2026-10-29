@@ -365,15 +365,20 @@ private fun LazyListScope.activityRows(
 ) {
     val activityEntries =
         buildList {
-            add(
-                ActivityEntry(
-                    title = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO, "自动"),
-                    summary = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO_HINT, "直接打开应用"),
-                    // 「自动」= 这个应用本身：绑定里存的是 `包名|名字`，比的是身份不是字符串
-                    picked = current?.let { AppTarget.same(it.target, data.target) } == true,
-                    onClick = { onSelect(PickedDetail(data.target, null)) },
-                ),
-            )
+            //  **搜索时不列「自动」**：它说的是「这个应用本身」，与「界面名」不是一类东西。
+            //  列着的话，搜一个界面名而界面那一节全空时，页面上会同时出现「没有界面」和
+            //  这一行可点的「自动」—— 看着像筛选没生效。下标账（[rowIndexOf]）跟着同一判据。
+            if (!data.filterActive) {
+                add(
+                    ActivityEntry(
+                        title = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO, "自动"),
+                        summary = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO_HINT, "直接打开应用"),
+                        // 「自动」= 这个应用本身：绑定里存的是 `包名|名字`，比的是身份不是字符串
+                        picked = current?.let { AppTarget.same(it.target, data.target) } == true,
+                        onClick = { onSelect(PickedDetail(data.target, null)) },
+                    ),
+                )
+            }
             data.interfaces.forEach { activity ->
                 add(
                     ActivityEntry(
@@ -469,9 +474,11 @@ private fun rowIndexOf(
         index += data.shortcuts.size
     }
     index += 1 // 「Activity」小节标题
-    // 「自动（启动图标）」那一项：它的取值就是应用本身
-    if (AppTarget.same(selected, data.target)) return index
-    index += 1
+    // 「自动（启动图标）」那一项：它的取值就是应用本身 —— **搜索时不列**（与 [activityRows] 同一判据）
+    if (!data.filterActive) {
+        if (AppTarget.same(selected, data.target)) return index
+        index += 1
+    }
     val hit = data.interfaces.indexOfFirst { AppTarget.same(it.target, selected) }
     return if (hit >= 0) index + hit else null
 }

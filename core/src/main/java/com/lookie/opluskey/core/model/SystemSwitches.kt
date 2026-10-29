@@ -4,7 +4,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 
 /**
- * 「系统开关」那一格点开的十条 —— **由项目自己维护**的一份固定清单：有哪些开关、叫什么、
+ * 「系统开关」那一格点开的那一列开关 —— **由项目自己维护**的一份固定清单：有哪些开关、叫什么、
  * 拿什么 token 落盘，全在这一处。
  *
  * ## 为什么不是「控制中心磁贴」
@@ -60,7 +60,22 @@ object SystemSwitches {
     /** 免打扰的 id（落盘 `setting:dnd`）—— system_server 侧走 `notification.setZenMode`。 */
     const val ID_DND = "dnd"
 
-    /** 页面上的十条，顺序即显示顺序。 */
+    /** 极暗模式的 id（落盘 `setting:extradim`）—— 走 `PowerManager` 的 reduce-brightness。 */
+    const val ID_EXTRADIM = "extradim"
+
+    /** 自动亮度的 id（落盘 `setting:autobrightness`）—— 写 `screen_brightness_mode`。 */
+    const val ID_AUTOBRIGHTNESS = "autobrightness"
+
+    /**
+     * 定位服务的 id（落盘 `setting:location`）。
+     *
+     *  开关的真身是 `Settings.Secure.location_mode`（0 = 关，1 = 仅设备、2 = 省电、3 = 高精度）。
+     *  `LocationManagerService` 盯着这个键：写完那一刻 `cmd location is-location-enabled` 当场就翻，
+     *  所以宿主写它等于按了那颗开关，不必借 system_server 调 `ILocationManager`。
+     */
+    const val ID_LOCATION = "location"
+
+    /** 页面上的开关清单，顺序即显示顺序。 */
     val ITEMS: List<Item> =
         listOf(
             Item(settingToken("bt"), Strings.SYS_SETTING_BT, "蓝牙"),
@@ -69,6 +84,9 @@ object SystemSwitches {
             Item(settingToken("rotation"), Strings.SYS_SETTING_ROTATION, "自动旋转"),
             Item(settingToken("nfc"), Strings.SYS_SETTING_NFC, "NFC"),
             Item(settingToken("airplane"), Strings.SYS_SETTING_AIRPLANE, "飞行模式"),
+            //  定位服务：紧挨着飞行模式（两者都是「无线电开不开」那一类）。宿主能直接写
+            //  `Settings.Secure.location_mode`，见 [ID_LOCATION]。
+            Item(settingToken(ID_LOCATION), Strings.SYS_SETTING_LOCATION, "定位服务"),
             //  免打扰与手电筒**也收进 `setting:` 这一族** —— 三态（切换 / 打开 / 关闭）要求
             //  「目标状态」能写在 token 里，而 `oplus:no_disturb` / `flashlight` 这两种老写法
             //  只能表达「切一下」。执行侧各自分派（见 `ActionRunner` 与 `SettingCalls`），
@@ -77,6 +95,17 @@ object SystemSwitches {
             Item(settingToken(ID_FLASHLIGHT), Strings.SYS_SETTING_FLASHLIGHT, "手电筒"),
             Item(settingToken("darkmode"), Strings.SYS_SETTING_DARKMODE, "暗色模式"),
             Item(settingToken("powersave"), Strings.SYS_SETTING_POWERSAVE, "省电模式"),
+            //  极暗：真开关在**颜色显示服务**里（AOSP 的 reduce bright colors）——
+            //  `dumpsys color_display` 有一节 `Reduce bright colors: Activated: ...`。
+            //  它要 `CONTROL_DISPLAY_COLOR_TRANSFORMS`（signature|privileged），宿主拿不到这个权限
+            //  （宿主侧调过一次：SecurityException），所以这一条整条转给 system_server
+            //  （`SettingCalls.extraDim` 调 `color_display` 服务）。
+            //  注意 **不是** `PowerManager`（这台机器上反射不到），也**不是**
+            //  `Settings.*.reduce_brightness`（那两个键没人维护，写了没反应）。
+            Item(settingToken(ID_EXTRADIM), Strings.SYS_SETTING_EXTRADIM, "极暗模式"),
+            //  自动亮度：`Settings.System.SCREEN_BRIGHTNESS_MODE`（1 = 自动）。宿主有
+            //  `WRITE_SETTINGS`，写这个键 DisplayPowerController 自己会跟。
+            Item(settingToken(ID_AUTOBRIGHTNESS), Strings.SYS_SETTING_AUTOBRIGHTNESS, "自动亮度"),
         )
 
     /** 某个落盘 token 对应清单里的哪一条（不是这十种写法就返回 `null`）。 */

@@ -100,6 +100,8 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         ProfileNamingDialog(ui)
         // 删除配置的确认窗（同一个位置点进来，删完才真删）
         ProfileDeleteConfirmDialog(ui)
+        // 删「读不出来的那一份」的确认窗（那一行点进去只剩这一条路）
+        ProfileBrokenDeleteDialog(ui)
     }
 }
 

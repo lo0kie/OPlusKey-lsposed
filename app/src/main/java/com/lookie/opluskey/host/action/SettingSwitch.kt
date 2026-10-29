@@ -40,6 +40,17 @@ internal object SettingSwitch {
             "powersave" to "low_power",
         )
 
+    /** 自动亮度那个键（`Settings.System`）—— 1 = 自动、0 = 手动。 */
+    private const val KEY_BRIGHTNESS_MODE = "screen_brightness_mode"
+
+    /** 定位那个键（`Settings.Secure`）—— 由 `LocationManagerService` 维护，见 [SystemSwitches.ID_LOCATION]。 */
+    private const val KEY_LOCATION_MODE = "location_mode"
+
+    /** `location_mode` 的两档：0 = 关；3 = 高精度（1 仅设备 / 2 省电也算开着）。 */
+    private const val LOCATION_MODE_OFF = 0
+
+    private const val LOCATION_MODE_HIGH_ACCURACY = 3
+
     /**
      * `setting:<id>[:on|:off]` 的分派 —— 手电筒那一支**不走**下面那条链路。
      *
@@ -86,9 +97,10 @@ internal object SettingSwitch {
             write(context, id, on, onFailure)
             return
         }
-        // 这两条没有可读的 Settings 键（旋转锁不在 Settings 里、`nfc_on` 也读不到），
-        // 状态由 system_server 那边的服务自己报，这里只把 id 转过去
-        if (id == "rotation" || id == "nfc") {
+        // 这三条没有宿主读得到的当前状态（旋转锁不在 Settings 里、`nfc_on` 读不到、
+        // 极暗的状态只有颜色显示服务自己知道），状态由 system_server 那边的服务自己报，
+        // 这里只把 id 转过去。
+        if (id == "rotation" || id == "nfc" || id == SystemSwitches.ID_EXTRADIM) {
             XLog.w("系统开关：$id 交给 system_server 自己读状态取反")
             SettingBridge.send(context, id, null)
             return
@@ -105,10 +117,11 @@ internal object SettingSwitch {
     }
 
     /**
-     * 把目标状态写下去：能直接写 `Settings.Global` 的就写，其余交给 system_server。
+     * 把目标状态写下去：能直接写 `Settings` 的就写，其余交给 system_server。
      *
-     *  这两条系统自己盯着 Settings 里的键（Phone 的 `DataEnabledSettings` / `PowerManagerService`
-     *  都有 ContentObserver），宿主有 `WRITE_SECURE_SETTINGS`，写一下就够了。
+     *  这几条系统自己盯着 Settings 里的键（Phone 的 `DataEnabledSettings` / `PowerManagerService`
+     *  都有 ContentObserver，`LocationManagerService` 也盯着 `location_mode`），宿主有
+     *  `WRITE_SECURE_SETTINGS`，写一下就够了。
      */
     private fun write(
         context: Context,
@@ -116,6 +129,27 @@ internal object SettingSwitch {
         target: Boolean,
         onFailure: (CommandFailure) -> Unit,
     ) {
+        //  自动亮度写的是**别的表**（`Settings.System`），所以不进 [SETTINGS_KEYS]
+        //  （那张表是「`Settings.Global` 键名」）。
+        //  极暗**没有**这一支：它要 `CONTROL_DISPLAY_COLOR_TRANSFORMS`，宿主拿不到这个权限，
+        //  所以落到最后那句 `SettingBridge.send`，由 system_server 去调颜色显示服务
+        //  （见 `SettingCalls.extraDim`）。
+        if (id == SystemSwitches.ID_AUTOBRIGHTNESS) {
+            writeInt(context, secure = false, key = KEY_BRIGHTNESS_MODE, value = if (target) 1 else 0, onFailure = onFailure)
+            return
+        }
+        //  定位：`location_mode` 不是 0/1 —— 0 = 关，1 = 仅设备 / 2 = 省电 / 3 = 高精度都算开。
+        //  打开时给 3（高精度，系统默认那一档）；关闭只需把模式压成 0。
+        if (id == SystemSwitches.ID_LOCATION) {
+            writeInt(
+                context,
+                secure = true,
+                key = KEY_LOCATION_MODE,
+                value = if (target) LOCATION_MODE_HIGH_ACCURACY else LOCATION_MODE_OFF,
+                onFailure = onFailure,
+            )
+            return
+        }
         val key = SETTINGS_KEYS[id]
         if (key != null) {
             // `putInt` 自己返回布尔：false = 写入被拒（权限 / 只读档），它与「抛异常」是两件事，
@@ -137,6 +171,37 @@ internal object SettingSwitch {
     }
 
     /**
+     * 写 `Settings.System` / `Settings.Secure` 里的一个 int 键（自动亮度、定位走这里）——
+     * 与 [write] 那条 Global 同一种报错口径。
+     *
+     * @param secure true = 写 `Settings.Secure`（定位）、false = `Settings.System`（自动亮度）
+     * @param value 要写的值；**不一定是 0/1**（定位的模式是 0..3），所以这一层收 int 而不是布尔
+     */
+    private fun writeInt(
+        context: Context,
+        secure: Boolean,
+        key: String,
+        value: Int,
+        onFailure: (CommandFailure) -> Unit,
+    ) {
+        val wrote =
+            try {
+                if (secure) {
+                    Settings.Secure.putInt(context.contentResolver, key, value)
+                } else {
+                    Settings.System.putInt(context.contentResolver, key, value)
+                }
+            } catch (e: Throwable) {
+                XLog.w("系统开关：写 $key 失败：${e.javaClass.simpleName}")
+                false
+            }
+        if (!wrote) {
+            XLog.w("系统开关：写 $key 被拒（putInt=false），这次没切成")
+            onFailure(CommandFailure.UNKNOWN)
+        }
+    }
+
+    /**
      * 读当前状态；读不到（键不存在 / 值不是 0/1）返回 `null`。
      *
      *  这几个键都由对应服务自己维护（`svc` / `cmd` 切过之后会跟着翻，真机验过其中四个），
@@ -154,25 +219,56 @@ internal object SettingSwitch {
             secure: Boolean = false,
         ): Int = if (secure) Settings.Secure.getInt(cr, key, -1) else Settings.Global.getInt(cr, key, -1)
         return when (id) {
-            "wifi" -> onOff(value("wifi_on"))
+            "wifi" -> {
+                onOff(value("wifi_on"))
+            }
 
-            "bt" -> onOff(value("bluetooth_on"))
+            "bt" -> {
+                onOff(value("bluetooth_on"))
+            }
 
-            "cell" -> onOff(value("mobile_data"))
+            "cell" -> {
+                onOff(value("mobile_data"))
+            }
 
-            "airplane" -> onOff(value("airplane_mode_on"))
+            "airplane" -> {
+                onOff(value("airplane_mode_on"))
+            }
 
-            "powersave" -> onOff(value("low_power"))
+            "powersave" -> {
+                onOff(value("low_power"))
+            }
 
             // ui_night_mode：MODE_NIGHT_NO = 1、MODE_NIGHT_YES = 2（0 / auto 都算没开）
-            "darkmode" -> nightMode(value("ui_night_mode", secure = true))
+            "darkmode" -> {
+                nightMode(value("ui_night_mode", secure = true))
+            }
 
             // 免打扰：`Settings.Global.zen_mode` 由 NotificationManagerService 自己维护
             //  （ZEN_MODE_OFF=0，其余三档都算「开着」）。
             //  写不走 Settings，得由 system_server 调 `setZenMode` —— 见 `SettingCalls.dnd`。
-            "dnd" -> onOff(value("zen_mode"))
+            "dnd" -> {
+                onOff(value("zen_mode"))
+            }
 
-            else -> null
+            // 自动亮度：`Settings.System.screen_brightness_mode`（1 = 自动、0 = 手动）
+            SystemSwitches.ID_AUTOBRIGHTNESS -> {
+                val mode = Settings.System.getInt(cr, KEY_BRIGHTNESS_MODE, -1)
+                if (mode < 0) null else mode == 1
+            }
+
+            // 定位：`Settings.Secure.location_mode`（0 = 关，1 / 2 / 3 都是开着）
+            SystemSwitches.ID_LOCATION -> {
+                onOff(value(KEY_LOCATION_MODE, secure = true))
+            }
+
+            // 极暗**不在这里读**：状态只有颜色显示服务知道，宿主没有那个权限（见 `toggle` 里
+            //  把它整条转给 system_server 的那一支）。`Settings.*.reduce_brightness` 这两个键
+            //  在这台机器上没人维护，读它只会得到假的「关着」。
+
+            else -> {
+                null
+            }
         }
     }
 

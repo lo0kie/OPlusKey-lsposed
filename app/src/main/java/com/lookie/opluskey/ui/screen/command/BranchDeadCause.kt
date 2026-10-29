@@ -64,6 +64,11 @@ internal fun deadIndexesOf(rules: List<StateRule>): Set<Int> {
  *  `[亮屏, 锁屏, 充电中]` 里第三行自己的档（充电）当然没凑齐，可屏幕那两条已经把每一下都接走了。
  *  （这一条写错过一次，用户报「死分支判断怎么没了」，所以摆在最显眼的地方。）
  *
+ *  **只有取值互斥且穷尽的档才能这么推**（见 `ConditionKind.exhaustive`）：屏幕那两档在
+ * 「熄屏且没有锁屏」时两边都不成立、充电 / 耳机 / 媒体 / 响铃在系统服务取不到时两边也都不成立 ——
+ * 那几档「凑齐」并不等于「恒成立」，把后面的行标死就是误报（而保存那道闸拿它当判据，
+ * 会直接拒绝一条本来合法的规则）。所以记账只认 [`exhaustive`][ConditionKind.exhaustive] 的那几档。
+ *
  *  ## 二、前面某一条**更宽**，把这一条整个包含住了
  *
  *  这是「组合条件」要的细致判定：只看「某一档凑齐」抓不到 `[亮屏]` 之后那条 `[亮屏 + 微信]` ——
@@ -98,9 +103,10 @@ private fun deadEndOf(rules: List<StateRule>): Pair<Int, BranchDeadCause>? {
             return index to BranchDeadCause.SUBSUMED
         }
         if (signature != null) earlier += signature
-        //  记账：只有「单条件、取值可用」的行才替它那一档凑数
+        //  记账：只有「单条件、取值可用」的行才替它那一档凑数；
+        //  而且只有取值互斥且穷尽的那几档（`exhaustive`）才记 —— 「凑齐 = 恒成立」只在它们身上成立
         val only = rule.conditions.singleOrNull()?.takeIf { it.isUsable }
-        val kind = only?.kind?.takeIf { it.choices.isNotEmpty() }
+        val kind = only?.kind?.takeIf { it.choices.isNotEmpty() && it.exhaustive }
         if (only != null && kind != null) {
             val mine = seen.getOrPut(kind) { mutableSetOf() }
             mine += only.effectiveValue

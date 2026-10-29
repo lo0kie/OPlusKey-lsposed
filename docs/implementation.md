@@ -245,23 +245,29 @@ framework 私有类**一律按字符串名解析**：它们会被 ROM 改名，�
 
 ### 构建档位
 
-| 档      | 落点允许猜 | 调试通道 | 详细日志 | 防篡改 | 签名 |
-| ------- | ---------- | -------- | -------- | ------ | ---- |
-| debug   | 开         | 开       | 开       | 无     | 调试 |
-| release | 关         | 关       | 关       | 有     | 发布 |
+| 档         | 落点允许猜 | 调试通道 | 详细日志 | 防篡改 | 签名 |
+| ---------- | ---------- | -------- | -------- | ------ | ---- |
+| debug      | 开         | 开       | 开       | 无     | 调试 |
+| release    | 关         | 关       | 关       | 有     | 发布 |
+| releaseLog | 关         | 关       | **开**   | 有     | 发布 |
 
-判据不是「运行时判断」而是**源集文件是否存在**：`core/src/{debug,release}/java/com/lookie/opluskey/core/BuildFlags.kt`
-各一份同名常量，打包时只有一份进产物；`SealPin` 由 `:core` 的 `SealReleaseAssets` 为 `release` 生成
+`releaseLog` 是给用户排查用的「正式包 + 详细日志」：与 `release` 只差 `VERBOSE_LOG = true`
+（`XLog.d` / `XLog.i` 重新进包，其余一样 —— `DEBUG_PROBE` / `STRICT_UI` 仍为 false）。产物名与
+「应用信息」里的版本带 `-log` 后缀。它同样需要 `:core` 声明同名 buildType，否则变体匹配失败。
+
+判据不是「运行时判断」而是**源集文件是否存在**：`core/src/{debug,release,releaseLog}/java/com/lookie/opluskey/core/BuildFlags.kt`
+各一份同名常量，打包时只有一份进产物；`SealPin` 由 `:core` 的 `SealReleaseAssets` 为 `release` / `releaseLog` 生成
 （`core/src/debug` 那份是 `SEAL_ENABLED=false` 的明文直通）。
-复核：`ls core/src/{debug,release}/java/com/lookie/opluskey/core/BuildFlags.kt` 两份都在；
+复核：`ls core/src/{debug,release,releaseLog}/java/com/lookie/opluskey/core/BuildFlags.kt` 三份都在；
 两档区分是否真的生效，`python tools/check_variants.py` 一次跑完（它按「该串只应出现在哪一档」逐项判定）。
 
 - **两条 workflow，各管一段**：`.github/workflows/ci.yml`（推 master / PR）只做「构建 + 验证 +
   留产物」，里面没有任何发布步骤；`.github/workflows/release.yml`（打 tag）只做「取 + 验 + 发」。
     - `release.yml` 按**提交 SHA** 去 `ci.yml` 在 master 上那条 run 取产物（`gh run download`），
       本 job 里再用 `tools/verify-apk.sh` 把两个包解一遍才发 —— 同一份提交不构建两遍。
-    - tag 常紧跟 master 推，两条 run 并发，所以取产物前先等，最多 10 分钟；等不到、那条 run 失败、
-      或产物过保留期（release 包留 90 天）—— 一律**红**，不退回自己构建（构建只归 `ci.yml`）。
+    - tag 常紧跟 master 推，两条 run 并发，所以取产物前先等：**那条 run 还在跑就一直等**（构建没跑完是常态，
+      不该按分钟数掐断）；「没有这条 run」（给 60 秒宽限再判，刚推完 master 时 run 可能还没被创建出来）、
+      那条 run 失败、或产物过保留期（release 包留 90 天）—— 一律**红**，不退回自己构建（构建只归 `ci.yml`）。
     - 查询带 `branch=master`：推 tag 本身也是 push 事件，不带它会把别的 ref 的 run 捞进来。
     - `release.yml` 的 `concurrency` 是 `cancel-in-progress: false`：发布半路被掐会留下
       「tag 推了、Release 没建」。
@@ -310,9 +316,9 @@ framework 私有类**一律按字符串名解析**：它们会被 ROM 改名，�
   （如 `1.1.0-beta.1`）会被自动标成 prerelease、不抢 latest。
 - **tag 推上去就不再移动**：`git tag -f` + 强推会让历史版本指向漂移。打错了删远端 tag 重打
   （`git push origin :refs/tags/<tag>`），并把那两条 Release 一并处理。
-- 当前基线（2026-10-18）：模块仓库与本仓库此前都是 **0 条 release**；`0.1.0` 是**手动**发的、
-  没走模块仓库，`0.2.0` 没发过。所以 `1.0.0`（tag `3-1.0.0`）是两边各自的第一条，
-  `versionCode` 取 3（1 / 2 已被历史包占用）。此后每涨一次版本，两边各多一条、一一对应。
+- 当前基线（2026-10-29）：`versionName = 1.3.0`、`versionCode = 8`（见 `app/build.gradle.kts`）。
+  历史：第一个进仓库的版本是 `1.0.0`（tag `3-1.0.0`），`versionCode` 取 3 —— 1 / 2 已被历史包
+  （手动发的 `0.1.0`、本地出的 `0.2.0`）占用。此后每涨一次版本，两边各多一条 Release、一一对应。
 
 ## 八之二、多版本适配：档位表
 
@@ -390,12 +396,13 @@ ROM 私有的东西分三类，**各自按 ROM 系列（`17.0.0` 这种）分档
   有用）与 `cfg.key()`（成员调用，import 无用）。
 - 「注入侧不得引用界面层依赖」的复核命令见 `architecture-refactor.md` §六。
 
-### 依赖锁定（`app/gradle.lockfile`）
+### 依赖锁定（`app/gradle.lockfile` + `core/gradle.lockfile`）
 
 - 开关在根目录 `build.gradle.kts` 的 `subprojects { dependencyLocking { lockAllConfigurations() } }`；
-  锁文件是 `app/gradle.lockfile`（**入库**，258~414 条，一条 = 一个 `group:artifact:version` + 用到它的配置）。
-- 改了 `dependencies { }` 之后：`./gradlew :app:dependencies --write-locks`，把锁文件的 diff 一起提交
-  —— 那份 diff 就是「这次升了什么」的清单。
+  **两个模块各一份锁文件**（都在仓库里，`app/` 与 `core/` 各一，`app` 那份随界面库涨到几百条）。
+  `core` 也必须锁：它是注入侧能不能进 androidx 的那道边界（见 AGENTS 二、1.2），只锁 `app` 等于漏了一半。
+- 改了 `dependencies { }` 之后：`./gradlew :app:dependencies --write-locks` **和**
+  `./gradlew :core:dependencies --write-locks`，把两份 diff 一起提交 —— 那份 diff 就是「这次升了什么」的清单。
 - **忘了锁的那次本地照样编得过**：Gradle 对「没进锁文件的配置」是宽松的（按解析结果走，只有 STRICT
   模式才当场失败）。所以 CI 里有一道「校验依赖锁定」：重写一遍锁文件再和库里那份比对，变了就红灯。
 - 插件（AGP / Kotlin / detekt / spotless）与它们的工具链**不在锁定范围**：那些版本写在 `plugins { }`

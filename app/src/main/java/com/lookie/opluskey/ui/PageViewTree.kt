@@ -129,10 +129,16 @@ internal class PageViewTree {
             if (replace || target.findViewTreeSavedStateRegistryOwner() == null) {
                 target.setViewTreeSavedStateRegistryOwner(own)
             }
-            //  **只在真的写过时才记账**：宿主本来就给了三个 owner 的那一层，我们一个 setter 都没调，
-            //  却把 `own` 记在账上的话，下一页会把它当成「上一页留下的兜底 owner」⇒ `replace = true`
-            //  ⇒ 反过来把**宿主提供的** Lifecycle / ViewModelStore 覆盖掉。
-            if (replace || target.findViewTreeLifecycleOwner() === own) {
+            //  **只要三个里有一个是我们写的，就要记账**：只看 lifecycle 的话，宿主给了 lifecycle、
+            //  却缺 ViewModelStore / SavedState 的那种树会漏记 —— 下一页 `replace` 判不出来，
+            //  而它要找的那两个 owner 已经被上一页 `dispose()` 过了（新页拿到一个已销毁的 store）。
+            //  三个都不是我们的（宿主本来就给全了），那就一个 setter 都没调，不记 ——
+            //  否则下一页会把 `own` 当成「上一页留下的兜底 owner」，反过来覆盖宿主的。
+            val wrote =
+                target.findViewTreeLifecycleOwner() === own ||
+                    target.findViewTreeViewModelStoreOwner() === own ||
+                    target.findViewTreeSavedStateRegistryOwner() === own
+            if (replace || wrote) {
                 attachedTo[target] = own
             } else {
                 attachedTo.remove(target)

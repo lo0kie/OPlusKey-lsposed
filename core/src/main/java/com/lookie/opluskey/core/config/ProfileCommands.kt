@@ -65,8 +65,9 @@ object ProfileCommands {
     /**
      * 切换配置时的命令库对调 —— 对称于 [ConfigProfiles.switchTo] 对主配置做的那件事。
      *
-     *  顺序与那边同一个道理：先把**当前这份**存进目标槽、再把目标配置的命令库换进来。中断在第一步 ⇒
-     *  当前还是原来的命令库；中断在第二步 ⇒ 两份都完整，只是当前这份换掉了。
+     *  顺序与那边同一个道理：先把**当前这份**存进目标槽、再把目标配置的命令库换进来。
+     *  第一步失败 ⇒ 什么都没动；第一步成了、第二步失败 ⇒ **把目标槽还原**（不还原的话目标那份
+     *  命令库就被当前这份永久盖掉了，切回去看到的是一堆指向别人命令的绑定）。
      *
      * @return 对调是否成功（目标配置没有自己的命令库时，「存过去」成功就算成功）
      */
@@ -74,28 +75,28 @@ object ProfileCommands {
         val target = slotOf(configSlot)
         val live = rawOf(ConfigStore.SLOT_COMMANDS)
         val mine = rawOf(target)
-        val ok =
-            when (mine) {
-                //  老配置：目标槽是空的 ⇒ 把当前这份存过去，当前配置的命令库不动（理由见类注释）
-                null -> {
-                    live == null || writeRaw(target, live)
-                }
-
-                else -> {
-                    (live == null || writeRaw(target, live)) && writeRaw(ConfigStore.SLOT_COMMANDS, mine)
-                }
-            }
-        if (!ok) XLog.w("配置切换：命令库没跟过去（槽 $target，live=${live != null}, mine=${mine != null}）")
-        return ok
-    }
-
-    /** 把当前生效配置的命令库复制到新配置的槽（「新建配置 = 复制当前」用）。 */
-    fun copy(
-        fromConfigSlot: String,
-        toConfigSlot: String,
-    ): Boolean {
-        val raw = rawOf(slotOf(fromConfigSlot)) ?: return true
-        return writeRaw(slotOf(toConfigSlot), raw)
+        if (mine == null) {
+            //  老配置：目标槽是空的 ⇒ 把当前这份存过去，当前配置的命令库不动（理由见类注释）
+            val ok = live == null || writeRaw(target, live)
+            //  走到这里 `live` 一定非空（`live == null` 时 `ok` 恒为 true、进不来），
+            //  所以日志里不再重复那一位 —— 编译器会把它报成「条件恒真」。
+            if (!ok) XLog.w("配置切换：命令库没跟过去（槽 $target，mine=false）")
+            return ok
+        }
+        if (live != null && !writeRaw(target, live)) {
+            XLog.w("配置切换：命令库没跟过去（第一步写盘失败，槽 $target）")
+            return false
+        }
+        if (!writeRaw(ConfigStore.SLOT_COMMANDS, mine)) {
+            //  第二步失败：目标槽里此刻是当前这份，原来那份只在内存里 —— 必须还原，否则它没了
+            val restored = live == null || writeRaw(target, mine)
+            XLog.w(
+                "配置切换：命令库没换进来（第二步写盘失败，槽 $target）—— " +
+                    if (restored) "已还原目标槽" else "还原也失败，目标槽里现在是当前这份",
+            )
+            return false
+        }
+        return true
     }
 
     /** 删掉某份配置的命令库（连 `.bak` / `.new` 一起，走 [ModuleFiles.delete]）。 */

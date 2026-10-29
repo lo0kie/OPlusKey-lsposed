@@ -32,18 +32,18 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 REPO = Path(__file__).resolve().parent.parent
-# 两个 Gradle 模块、每个模块的**三个**源集都要扫（构建类型是 debug / release / releaseLog）：
-#   · `:app`  —— 界面 / 宿主侧 / 注入侧（debug / releaseLog / release 里各有一份 ui 的变体副本）；
-#   · `:core` —— 两个进程共用的那一层（三个变体里各有一份 BuildFlags 与 HostFilePerms 的副本，
+# 两个 Gradle 模块、每个模块**现有的每个源集**都要扫（构建类型是 debug / release / releaseLog）：
+#   · `:app`  —— 界面 / 宿主侧 / 注入侧（`debug` / `release` 各有一份 ui 的变体副本；
+#     `releaseLog` 这一档不再放自己的源码，它借 `release` 那份，见 `app/build.gradle.kts`）；
+#   · `:core` —— 两个进程共用的那一层（三档变体里各有一份 BuildFlags 与 HostFilePerms 的副本，
 #     同样在注入侧执行）。
 #   注意：`:core` 自成一个**编译单元**之后，「它不许引 `ui/`」已经是编译期约束（它的 classpath
 #   里没有 `:app`）；这里再扫一遍是因为这条脚本还管着「包级环」与「注入侧禁引 androidx」，
 #   而那两条编译期管不了。
-#   **三个源集一个都不能少**：漏了 releaseLog，往那一份里加一个 androidx import 就没人拦。
+#   **现有的源集一个都不能少**：漏一份，往那一份里加一个 androidx import 就没人拦。
 SOURCE_ROOTS = [
     REPO / "app/src/main/java/com/lookie/opluskey",
     REPO / "app/src/debug/java/com/lookie/opluskey",
-    REPO / "app/src/releaseLog/java/com/lookie/opluskey",
     REPO / "app/src/release/java/com/lookie/opluskey",
     REPO / "core/src/main/java/com/lookie/opluskey",
     REPO / "core/src/debug/java/com/lookie/opluskey",
@@ -167,8 +167,12 @@ def bucket_of_target(target: str) -> str:
 def source_files() -> list[Path]:
     out: list[Path] = []
     for root in SOURCE_ROOTS:
-        if root.is_dir():
-            out.extend(sorted(root.rglob("*.kt")))
+        if not root.is_dir():
+            #  **目录不存在就报错退出**：以前是静默跳过，于是「路径写错 / 目录改名」的表现是
+            #  「0 个文件、0 条边、审计通过」—— 判据全绿，其实一条都没跑（`check-i18n-fallbacks`
+            #  与 `audit-arch` 同一条纪律，那两处也改成了同一个写法）。
+            sys.exit(f"耦合审计：源码目录不存在：{root}")
+        out.extend(sorted(root.rglob("*.kt")))
     return out
 
 

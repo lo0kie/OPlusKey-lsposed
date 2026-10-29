@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.model
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.suqi8.coui.kmp.basic.SliderDefaults
 
@@ -75,6 +76,27 @@ private val CARD_EDGE_PADDING = 2.dp
 
 /** 「点轨道跳值」认作滑杆的那条带子的高度。 */
 internal val SLIDER_TAP_ZONE = SliderDefaults.MinHeight + SLIDER_BOTTOM_INSET + CARD_EDGE_PADDING
+
+/**
+ * 「点轨道跳值」要的那条轨道几何 —— 手势节点边缘到轨道两端让出多少，以及贴着底边多高一条算滑杆。
+ *
+ *  手势挂在**外层节点**上（不挂滑杆自己的 `Modifier`，见 [com.lookie.opluskey.ui.tapSliderToSeek]），
+ *  节点比滑杆大；两端让位与带子高度都是「那个节点的排版」决定的，所以按调用点各给一份，
+ *  手势本身只认这三个数。
+ */
+internal class SliderTapTrack(
+    val startInset: Dp,
+    val endInset: Dp,
+    val zone: Dp,
+)
+
+/** 滑杆行（[com.lookie.opluskey.ui.SettingsPage.SliderRow]）那份 —— 行内边距 + 行首图标。 */
+internal val SLIDER_ROW_TAP_TRACK =
+    SliderTapTrack(
+        startInset = SLIDER_SIDE_INSET + SLIDER_ICON_INSET,
+        endInset = SLIDER_SIDE_INSET,
+        zone = SLIDER_TAP_ZONE,
+    )
 
 /**
  * 「添加命令」选择器浮层的最大高度 —— 取 320dp。

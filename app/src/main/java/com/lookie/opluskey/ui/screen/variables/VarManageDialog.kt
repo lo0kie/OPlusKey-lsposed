@@ -299,16 +299,18 @@ private fun SettingsPage.commitStep(set: Action.VarSet) {
     goBack()
 }
 
-/** 删一颗变量：重读 → 摘掉它 → 落盘，成功才刷新清单（`VarListSignal`）。 */
+/**
+ * 删一颗变量：走 [VariableStore.remove]（读 → 摘掉 → 写）。
+ *
+ *  不在这一页拼整表再 `save`：页面手里那份是进页快照，而执行侧的 `setvar:` 是现读盘的 ——
+ *  拿快照整表写回会把「页面开着时按侧键改的值」一起退回去。读不懂时 `remove` 自己就不写。
+ */
 private fun SettingsPage.deleteVar(
     scope: CoroutineScope,
     gone: Variable,
 ) {
     scope.launch {
-        val ok =
-            withContext(Dispatchers.IO) {
-                VariableStore.save(readVars().filterNot { it.name == gone.name })
-            }
+        val ok = withContext(Dispatchers.IO) { VariableStore.remove(gone.name) }
         //  删掉了不另说一句：那一行**当场从列表里消失**，比一条提示更直接
         if (ok) {
             VarListSignal.bump()

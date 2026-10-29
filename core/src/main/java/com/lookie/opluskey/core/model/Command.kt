@@ -53,6 +53,21 @@ enum class ConditionKind(
     val choices: List<String> = emptyList(),
     /** 空取值时按哪一档解释（空 = 没有默认档，空取值即「用不了」）。 */
     val defaultChoice: String = "",
+    /**
+     * 这几档的取值是不是**互斥且穷尽** —— 也就是「每个取值都有人接」就等于「这条恒成立」。
+     *
+     *  只有读 `Settings.Global` 的那几个开关键算：取不到时按 `0` 解释（见 `switchMatches`），
+     *  所以任何时刻都恰好落在其中一档上。
+     *
+     *  其余档都**不是**：
+     *   · 屏幕：熄屏且没有锁屏时 `on` / `locked` 两边都不成立；
+     *   · 充电 / 耳机 / 媒体 / 响铃：系统服务取不到时两边都不成立（判不出就不成立，见 `ConditionProbe`）；
+     *   · 方向：`ORIENTATION_UNDEFINED` 时两档都不成立。
+     *
+     *  这一位只给「死分支」判据用（见 `BranchDeadCause`）：拿它当闸，才不会把一条本来合法的
+     *  兜底规则判成死的。
+     */
+    val exhaustive: Boolean = false,
 ) {
     /** 某个应用在前台；取值为包名。 */
     APP("app"),
@@ -76,7 +91,7 @@ enum class ConditionKind(
     MEDIA("media", choices = listOf("playing", "paused"), defaultChoice = "playing"),
 
     /** Wi-Fi **开关状态**：`on` / `off`（老配置没有取值 ⇒ 按 `on` 解释）。 */
-    WIFI("wifi", choices = listOf("on", "off"), defaultChoice = "on"),
+    WIFI("wifi", choices = listOf("on", "off"), defaultChoice = "on", exhaustive = true),
 
     /** 响铃状态等于取值（`normal` / `vibrate` / `silent`）。 */
     RINGER("ringer", choices = listOf("normal", "vibrate", "silent")),
@@ -96,7 +111,7 @@ enum class ConditionKind(
     TIME("time"),
 
     /** 蓝牙**开关状态**：`on` / `off`。读 `Settings.Global.bluetooth_on`，与 WIFI 同一条路。 */
-    BLUETOOTH("bluetooth", choices = listOf("on", "off")),
+    BLUETOOTH("bluetooth", choices = listOf("on", "off"), exhaustive = true),
 
     /**
      * 移动数据**开关状态**：`on` / `off`。读 `Settings.Global.mobile_data`。
@@ -104,10 +119,10 @@ enum class ConditionKind(
      *  注意它和「飞行模式」不是互补：飞行模式开着时移动数据也可能是 1（只是没网）。
      *  要表达「现在没网」应当两条都判，别拿其中一条取反。
      */
-    CELLULAR("cell", choices = listOf("on", "off")),
+    CELLULAR("cell", choices = listOf("on", "off"), exhaustive = true),
 
     /** 飞行模式**开关状态**：`on` / `off`。读 `Settings.Global.airplane_mode_on`。 */
-    AIRPLANE("airplane", choices = listOf("on", "off")),
+    AIRPLANE("airplane", choices = listOf("on", "off"), exhaustive = true),
     ;
 
     companion object {

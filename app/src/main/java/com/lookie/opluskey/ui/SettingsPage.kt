@@ -599,9 +599,12 @@ internal class SettingsPage(
             // 「一串页面依次滑过去」。所以不需要那个「跳过转场直落」的开关
             // （手写那套只能播一条跨级的长滑页，才必须直落；见 [PAGE_TRANSITION]）。
             // 这一趟停留到此结束：每一页都走一遍离栈收尾（命令表单页的草稿出栈即销）。
+            //  **与另两条离栈路径（popBackStack / navTo 的批量回退）同一时机**：都交给
+            //  `discardAfterExit` 推迟到转场结束 —— 转场那 350ms 里这几页还在画，
+            //  就地清掉的话表单会先变成空白再滑走（真机上看得见）。
             while (navStack.size > 1) {
-                discardPageStateOf(navStack[navStack.lastIndex] as Screen)
-                navStack.removeAt(navStack.lastIndex)
+                val leaving = navStack.removeAt(navStack.lastIndex) as Screen
+                discardAfterExit(leaving)
             }
         }
     }
@@ -614,6 +617,14 @@ internal class SettingsPage(
      *  不该各自知道「离开时要收浮层」这个细节。
      */
     internal fun closeOverlays(reason: String) = overlays.closeAll(reason)
+
+    /**
+     * **系统返回**收一层浮窗（只收最上面那层）—— 实现与理由都在 [PageOverlays.closeTop]。
+     *
+     *  与 [closeOverlays] 分开是有意的：那个是「页面要走了，全部收干净」，这个是「退一步」，
+     *  用户按一次返回不该把两层一起关掉。
+     */
+    internal fun closeTopOverlay(reason: String): Boolean = overlays.closeTop(reason)
 
     /**
      * 浮窗在组合期登记自己（见 [PageOverlays.Closer]）—— 同样只留一层转发，调用点写法不变。

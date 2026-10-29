@@ -256,23 +256,34 @@ enum class VarOp(
 
     companion object {
         /**
-         * 从 `名字<符号>值` 里切出三段；**符号先按长的认**（`+=` 在 `=` 之前），
-         * 认不出符号返回 `null`。
+         * 从 `名字<符号>值` 里切出三段；认不出符号返回 `null`。
+         *
+         *  **按符号出现的位置认，不按符号种类试**：`setvar:msg=hi!` 里那个 `!` 在 `=` 后面，
+         *  它是**值的一部分**（`hi!`），不是取反运算符。按种类先试 `!` 的话，名字会被切成
+         *  `msg=hi` —— 那条动作存下去就读不回来（拼 token 的那一侧是直接拼的），
+         *  下一次按这颗键什么都不做。
+         *
+         *  同一位置不会有歧义：四个符号的首字符互不相同，`+=` / `-=` 天然比它们的 `=` 更靠前。
+         *  位置相同时取更长的那个（纯防御，当前四个符号构不成这种情况）。
          */
         fun split(body: String): Triple<String, VarOp, String>? {
-            //  「长符号优先」不靠顺序巧合：先试 `+=` / `-=` / `!`，最后才是 `=`
-            val bySymbol = listOf(ADD, SUB, NOT).firstOrNull { body.contains(it.symbol) }
-            if (bySymbol != null) {
-                val at = body.indexOf(bySymbol.symbol)
-                val name = body.substring(0, at)
-                val rest = body.substring(at + bySymbol.symbol.length)
-                //  `!` 后面不跟值：多写的部分当作「写法有问题」，不猜
-                if (bySymbol == NOT && rest.isNotBlank()) return null
-                return Triple(name.trim(), bySymbol, rest.trim())
+            var picked: VarOp? = null
+            var at = Int.MAX_VALUE
+            for (op in entries) {
+                val i = body.indexOf(op.symbol)
+                if (i < 0) continue
+                val longer = i == at && op.symbol.length > (picked?.symbol?.length ?: 0)
+                if (i < at || longer) {
+                    at = i
+                    picked = op
+                }
             }
-            val at = body.indexOf(SET.symbol)
-            if (at < 0) return null
-            return Triple(body.substring(0, at).trim(), SET, body.substring(at + SET.symbol.length).trim())
+            val op = picked ?: return null
+            val name = body.substring(0, at)
+            val rest = body.substring(at + op.symbol.length)
+            //  `!` 后面不跟值：多写的部分当作「写法有问题」，不猜
+            if (op == NOT && rest.isNotBlank()) return null
+            return Triple(name.trim(), op, rest.trim())
         }
     }
 }

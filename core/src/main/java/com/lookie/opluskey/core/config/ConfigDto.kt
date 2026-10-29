@@ -73,6 +73,14 @@ internal data class ConfigDto(
             XLog.w("配置：${customKeys.size - custom.size} 个自定义键认不出（已丢弃）")
         }
         val allKeys = (KeyId.builtins + custom).distinctBy { it.id }
+        //  `keys` 里有、但 `allKeys` 里没有的条目（自造的 id、或某一颗内置键在本版被删掉了）
+        //  会**整个丢掉** —— 与上面自定义键、下面组合键同一条纪律：丢东西要留一行账，
+        //  否则用户只会看到「那颗键的绑定没了」，找不到是哪儿丢的
+        val known = allKeys.mapTo(HashSet()) { it.id }
+        val orphans = keys.keys.filterNot { it in known }
+        if (orphans.isNotEmpty()) {
+            XLog.w("配置：${orphans.size} 个按键条目认不出（已丢弃）：${orphans.joinToString()}")
+        }
         // 老文件把「单击延迟 / 忽视双击」放在 `global` 里：逐键字段缺失时拿它兜底（迁移用）
         val legacyDouble = global.doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS
         val legacyInstant = global.instantSingle ?: KeyConfig.DEFAULT_INSTANT_SINGLE

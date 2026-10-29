@@ -167,8 +167,16 @@ internal fun CardList(
         modifier = modifier.fillMaxWidth().padding(horizontal = margin),
         colors = colors ?: CardDefaults.defaultColors(),
     ) {
+        //  **行序只按「此刻画得出来的行」算**，不按 `rows.size`：`visible = false` 的行只是
+        //  还挂着把退场播完，它不占位置。拿总行数算的话，卡片末行藏起来时上面那行会被画成
+        //  Middle —— 少掉 Tail 那一档的内缩与圆角，看着像卡片缺了一个角
+        //  （真机上「更多 → 外观」那张卡就是这么看出来的）。
+        val shown = rows.indices.filter { rows[it].visible() != false }
+        val positionOf =
+            shown.withIndex().associate { (order, index) -> index to cardListPositionOf(order, shown.size) }
         rows.forEachIndexed { index, row ->
-            val position = cardListPositionOf(index, rows.size)
+            //  看不见的行仍在退场那一小段里要画：它按全表算（= 改之前的行为），只活这段时间
+            val position = positionOf[index] ?: cardListPositionOf(index, rows.size)
             // 分隔线与行本身一起进出场（见各行的 `visible`）—— 所以它们必须同在一个块里
             val block: @Composable ColumnScope.() -> Unit = {
                 // 首行之上不画线；其余每一行之前一条（左端与卡片内容对齐的细线）

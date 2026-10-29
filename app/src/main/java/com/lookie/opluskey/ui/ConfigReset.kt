@@ -36,7 +36,9 @@ internal fun SettingsPage.resetAll() {
         return
     }
     // 命令库是**另一份文件**、另有自己的只读位（[ConfigState.commandsReadOnly]），清空前一起放开；
-    //  这里不还原：主配置已经重建，再退回只读态自相矛盾 —— 失败由下面那句 toast 报出去。
+    //  写失败时**要还原**（见下）：清着不放的话，之后任何一次普通写入都会拿这份空表落盘，
+    //  把用户原来那份（只是暂时读不懂的）命令库整份抹掉 —— 与主配置那一支同一条纪律。
+    val wasCommandsReadOnly = configState.commandsReadOnly
     if (configState.commandsReadOnly) {
         XLog.w("清空：命令库原处在只读态（读不懂）—— 明说要重来，放行写回")
         configState.commandsReadOnly = false
@@ -44,6 +46,10 @@ internal fun SettingsPage.resetAll() {
     // 命令库清空：空表就是重建后的状态，文件仍按同一份 JSON 格式写一份（不删文件 —— 删了
     // 下次读取走的是「文件不存在」那条分支，与写一份空表不是同一条路，排查时对不上）。
     val cleared = saveCommands(emptyList(), "reset_all")
+    if (cleared == CommandsSave.Failed && wasCommandsReadOnly) {
+        configState.commandsReadOnly = true
+        XLog.w("清空：命令库没写成，只读位已还原（避免空表被后续写入固化到盘）")
+    }
     XLog.w("清空：主配置已重建=$rebuilt，命令库清空=$cleared")
     // 三态各报各的：`BroadcastFailed` 那两位已经由 [write] / [saveCommands] 报过
     // 「已保存，但通知注入侧失败」，这里再补一句「已清空」会把它顶掉（底部只有一行回执）。

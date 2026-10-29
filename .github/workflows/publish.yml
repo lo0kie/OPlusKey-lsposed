@@ -31,8 +31,9 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  # 取本仓库那条 Release 的资产（读）与 checkout（读）。
-  contents: write
+  # 只读：这一步只**取**本仓库那条 Release 的资产（checkout 也是读）—— 写权限会给
+  #   `GITHUB_TOKEN` 多余的、这条流水线用不到的权力。
+  contents: read
 
 jobs:
   publish:

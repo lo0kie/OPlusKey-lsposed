@@ -442,7 +442,9 @@ private fun SettingsPage.BranchCommandMenu(
                 //  这一支**只由「确定」调**（点行只换高亮）：确定那一刻才把动作写到这一条规则上
                 onPick = { token ->
                     tick()
-                    applyBranchAction(at, token)
+                    //  `at` 是打开抽屉那一刻的下标：越界就什么都不写（规则表在此期间变过的话，
+                    //  那个下标已经不是原来那一条了 —— 宁可不落，也别改到别人的行上）
+                    if (at in rules.indices) applyBranchAction(at, token)
                 },
                 onDismiss = { menus.commandAt = -1 },
             ),

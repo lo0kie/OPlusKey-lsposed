@@ -13,6 +13,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.VarListSignal
 import com.lookie.opluskey.ui.write
 
@@ -32,17 +33,24 @@ import com.lookie.opluskey.ui.write
  *  显示上一份配置的那几颗 —— 而这一位（`VarListSignal`）同时管「改过值」与「换过配置」，
  *  两页各自 `LaunchedEffect` 跟着它重读。
  *
+ *  **写失败（含只读态）时不再往下接**：那两份表该留在旧的那份上 —— 接着读盘只会让界面变成
+ *  「提示保存失败、内容却换了」。
+ *
  *  只读态不动命令表：那时手上这份本来就不是盘上的真相（变量那两页是只读显示的，照读即可）。
+ *
+ * @return [CommandsSave.Ok] 才说明「换成了」；调用方据此决定要不要报成功
  */
 internal fun SettingsPage.applySwitchedConfig(
     next: Config,
     what: String,
-) {
-    write(next, what)
+): CommandsSave {
+    val saved = write(next, what)
+    if (saved == CommandsSave.Failed) return saved
     if (!configState.commandsReadOnly) {
         ProfileCommands.read(ConfigProfiles.CURRENT_SLOT)?.let { configState.commands.value = it }
     }
     VarListSignal.bump()
+    return saved
 }
 
 /** 切到某一份：写进当前（连同广播），失败就只提示不动界面。 */
@@ -53,7 +61,8 @@ internal fun SettingsPage.switchToProfile(item: ConfigProfiles.Item) {
                 hint(I18n.get(Strings.PROFILE_SWITCH_FAILED, "切换失败：这一份读不出来"))
                 return
             }
-    applySwitchedConfig(next, "切换配置 → ${item.displayName}")
+    //  落盘那一步失败时 `write` 已经说过一句（「保存失败」/「只读态」），这里不再盖掉它
+    if (applySwitchedConfig(next, "切换配置 → ${item.displayName}") == CommandsSave.Failed) return
     hint(I18n.format(Strings.PROFILE_SWITCHED, item.displayName))
 }
 
@@ -89,7 +98,8 @@ internal fun SettingsPage.createProfile(name: String) {
                 hint(I18n.format(Strings.PROFILE_CREATED, name))
                 return
             }
-    applySwitchedConfig(next, "新建配置并切换 → $name")
+    //  写失败时 `write` 已经提示过 —— 再报一句「已新建」会把它盖掉，用户以为切过去了
+    if (applySwitchedConfig(next, "新建配置并切换 → $name") == CommandsSave.Failed) return
     hint(I18n.format(Strings.PROFILE_CREATED, name))
 }
 
@@ -110,8 +120,23 @@ internal fun SettingsPage.renameProfile(name: String) {
             }
     //  名字没变就什么都不做：不落盘、也不报「已重命名」
     if (next == current) return
-    write(next, "重命名配置 → ${next.profileName}")
+    if (write(next, "重命名配置 → ${next.profileName}") == CommandsSave.Failed) return
     hint(I18n.format(Strings.PROFILE_RENAMED, next.profileName))
+}
+
+/**
+ * 删掉一条**读不出来的**配置 —— 它切不过去、也没有名字，列表里点它只剩这一条路。
+ *
+ *  这一条存在本身就是「自救入口」：文件坏了的那一格占着位置（`isFull` 按槽位算），
+ *  不给删的话「新建 / 导入」会永久灰着。
+ */
+internal fun SettingsPage.deleteBrokenProfile(item: ConfigProfiles.Item) {
+    if (!item.broken) return
+    if (!ConfigProfiles.delete(item.slot)) {
+        hint(I18n.get(Strings.PROFILE_DELETE_FAILED, "删除失败"))
+        return
+    }
+    hint(I18n.get(Strings.PROFILE_DELETED, "已删除"))
 }
 
 /**
@@ -147,13 +172,17 @@ internal fun SettingsPage.deleteCurrentProfile() {
                 hint(I18n.get(Strings.PROFILE_SWITCH_FAILED, "切换失败：这一份读不出来"))
                 return
             }
-    applySwitchedConfig(next, "删除当前配置 → 先切到 ${fallback.displayName}")
-    //  这时候要删的配置在 `fallback.slot` 里（见上面那张图），删它连同它自己的命令库
-    if (!ConfigProfiles.delete(fallback.slot)) {
+    val switched = applySwitchedConfig(next, "删除当前配置 → 先切到 ${fallback.displayName}")
+    //  **没落盘就不能接着删**：那一步删的是 `fallback.slot`，而切换没成时那一槽里还是退路配置本身
+    //  —— 接着删就是「本来只想删当前，结果把退路删了」。
+    val deleted = switched != CommandsSave.Failed && ConfigProfiles.delete(fallback.slot)
+    //  切换本身没成时 `write` 已经说过一句（保存失败 / 只读态），这里不再盖掉它；
+    //  广播没通知到注入侧时那条提示也占着底部那一行，同样不补「已删除」。
+    if (switched != CommandsSave.Failed && !deleted) {
         hint(I18n.get(Strings.PROFILE_DELETE_FAILED, "删除失败"))
-        return
+    } else if (deleted && switched == CommandsSave.Ok) {
+        hint(I18n.format(Strings.PROFILE_DELETED_SWITCHED, current.profileName, fallback.displayName))
     }
-    hint(I18n.format(Strings.PROFILE_DELETED_SWITCHED, current.profileName, fallback.displayName))
 }
 
 /**
@@ -180,6 +209,28 @@ internal fun SettingsPage.ProfileDeleteConfirmDialog(ui: AboutUiState) {
         onConfirm = {
             ui.showDeleteConfirm = false
             deleteCurrentProfile()
+        },
+    )
+}
+
+/**
+ * 「读不出来的那一份」的删除确认 —— 与 [ProfileDeleteConfirmDialog] 同一套控件（取消中性色 +
+ * 动作项红），但删的是**指定那一槽**，不是当前配置：那一份已经读不出来了，删掉不会影响当前这份。
+ */
+@Composable
+internal fun SettingsPage.ProfileBrokenDeleteDialog(ui: AboutUiState) {
+    val item = ui.brokenToDelete
+    ConfirmDialog(
+        show = item != null,
+        title = I18n.get(Strings.DIALOG_DELETE_PROFILE_TITLE, "删除配置"),
+        summary = I18n.get(Strings.PROFILE_BROKEN_DELETE, "这一份已经读不出来了，删掉它才能腾出位置新建配置"),
+        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        onDismiss = { ui.brokenToDelete = null },
+        onConfirm = {
+            ui.brokenToDelete = null
+            item?.let { deleteBrokenProfile(it) }
+            //  删完重读一遍：那一行要从菜单里消失（下次点开时是新的列表）
+            ui.profiles = ConfigProfiles.list()
         },
     )
 }

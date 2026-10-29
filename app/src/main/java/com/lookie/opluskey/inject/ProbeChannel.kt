@@ -39,7 +39,7 @@ import com.lookie.opluskey.core.reflect.Reflect
  * **安全边界（四条，缺一条都不能上）**：
  * 1. **只在 debug 包存在** —— [DEBUG_PROBE] 是编译期常量，release 里这些代码连同调用点一起被折掉；
  * 2. **只收 root / system 发的** —— 发送方不是宿主，所以来源校验单列一条
- *    （`KeyHooks.isFromRootOrSystem`），普通 App（uid ≥ 10000）进不来；
+ *    （`BroadcastSender.isFromRootOrSystem`，见 `inject/BroadcastSender.kt`），普通 App（uid ≥ 10000）进不来；
  * 3. **每个 op 整体包 catch** —— 调用点在 AMS 广播入口，漏一个异常出去就是系统崩 / 开机循环。
  * 4. **凡是要实例化宿主类的 op 都有一道准入闸** —— `call` 会对广播指定的类直接 `invoke`，
  *    `state` / `corner` / `dress` / `zoom` 则经 `FlexibleWindowManagerService.getInstance()`；两者都会

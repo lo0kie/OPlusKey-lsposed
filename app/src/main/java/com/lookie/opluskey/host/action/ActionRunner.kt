@@ -216,22 +216,39 @@ internal class ActionRunner(
             //  放在 `when` 之前而不是每个分支里：漏一个分支就是「那一种动作里写变量不生效」，
             //  而这种事在界面上完全看不出来。
             when (val act = action.expandedWith(VariableStore.cached())) {
+                //  「无操作」：什么都不做（保留这一支只为让 `when` 覆盖全部子类）
                 is Action.None -> Unit
+
                 is Action.KeyEvent -> runKeyEvent(act.keyCode)
+
                 is Action.Shell -> runShell(act.command)
+
                 is Action.Custom -> custom.run(act.name, depth)
+
                 is Action.Intent -> launcher.openIntent(act.action)
+
                 is Action.App -> launcher.launchApp(act.target)
+
                 is Action.AppWindow -> launcher.launchAppInWindow(act.target)
+
                 is Action.AppShortcut -> runAppShortcut(act)
+
                 is Action.MiniWindow -> launcher.putForegroundInMiniWindow(act.collapsed)
+
                 is Action.Shortcut -> launcher.runShortcut(act.shortcutId)
+
                 is Action.Flashlight -> flashlight.toggle()
+
                 is Action.Ringer -> ringer.setMode(act.mode)
+
                 is Action.PowerMenu -> sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
+
                 is Action.Oplus -> runOplus(act.feature)
+
                 is Action.Panel -> runPanel(act.mode)
+
                 is Action.Setting -> SettingSwitch.toggleOrFlashlight(context, act, flashlight, ::notifyFailure)
+
                 is Action.VarSet -> runVarSet(act)
             }
         } catch (e: Throwable) {

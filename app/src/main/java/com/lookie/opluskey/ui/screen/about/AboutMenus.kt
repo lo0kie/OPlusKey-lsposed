@@ -256,7 +256,7 @@ private fun SettingsPage.profileManageRows(
 internal fun SettingsPage.ProfileExportMenu(ui: AboutUiState) {
     PageMenu(
         entries =
-            profileRows(ui, markCurrent = false) { item ->
+            profileRows(ui, markCurrent = false, brokenDeletable = false) { item ->
                 ui.showExportMenu = false
                 hooks.onExportConfig?.invoke(item.slot)
             }.takeIf { ui.showExportMenu }
@@ -272,17 +272,37 @@ internal fun SettingsPage.ProfileExportMenu(ui: AboutUiState) {
  *  行首按**第几份**取数字牌面（`number-1` / `number-2` / `number-3`），与列表顺序一致；
  *  「默认」不参与编号，仍用「一叠纸」—— 它是升级时落下的退路，不是用户建的第 N 份。
  *
+ *  **读不出来的那一份**（`broken`）只在切换那层出现，且按危险色画、点了直接弹删除确认 ——
+ *  它切不过去、也没有名字可改，留着只是占一个槽位（`isFull` 按槽位算）。导出那层不列它：
+ *  导出来的只会是一份空配置。
+ *
  * @param markCurrent 要不要标出当前生效的那份（[MenuEntry.Row.selected]：行首换成对勾、
  *   文字走主色，并**滚进视窗**）。切换那层要；导出那层不要 —— 那一层与「当前」无关。
+ * @param brokenDeletable 读不出来的那几份要不要列出来（切换那层 `true`，导出那层 `false`）
  */
 private fun SettingsPage.profileRows(
     ui: AboutUiState,
     markCurrent: Boolean,
+    brokenDeletable: Boolean = true,
     onPick: (ConfigProfiles.Item) -> Unit,
 ): List<MenuEntry> {
     //  只给自定义的那几份编号（默认那份排在首行，跳过后序号从 1 开始）
     val numbered = ui.profiles.filter { !it.isDefault }
-    return ui.profiles.map { item ->
+    return ui.profiles.mapNotNull { item ->
+        if (item.broken) {
+            if (!brokenDeletable) return@mapNotNull null
+            return@mapNotNull MenuEntry.Row(
+                title = item.displayName,
+                icon = PageIcons.ProfileDelete,
+                danger = true,
+                dividerBefore = item == ui.profiles.first(),
+            ) {
+                //  这一行唯一的动作是「删掉这个坏掉的槽」，不问切换。
+                //  只在切换那层出现，所以这里直接收掉那层菜单（导出层不列它，见 `brokenDeletable`）
+                ui.showProfileMenu = false
+                ui.brokenToDelete = item
+            }
+        }
         MenuEntry.Row(
             title = item.displayName,
             icon =

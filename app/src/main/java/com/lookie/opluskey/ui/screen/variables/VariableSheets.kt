@@ -93,7 +93,7 @@ internal fun SettingsPage.CreateSheet(
                     }
 
                     !VariableName.isValid(draft.name) -> {
-                        I18n.get(Strings.VAR_NAME_INVALID, "不能含空格与 = + - ! $ : { } 这些符号")
+                        I18n.get(Strings.VAR_NAME_INVALID, "不能含空格与 = + - ! $ : { } 这些符号，最多 32 个字")
                     }
 
                     draft.type.coerce(draft.initial) == null -> {
@@ -148,7 +148,7 @@ private fun SettingsPage.CreateSheetBody(draft: VarDraft) {
                 if (draft.name.isNotEmpty() &&
                     !nameOk
                 ) {
-                    I18n.get(Strings.VAR_NAME_INVALID, "不能含空格与 = + - ! $ : { } 这些符号")
+                    I18n.get(Strings.VAR_NAME_INVALID, "不能含空格与 = + - ! $ : { } 这些符号，最多 32 个字")
                 } else {
                     ""
                 },

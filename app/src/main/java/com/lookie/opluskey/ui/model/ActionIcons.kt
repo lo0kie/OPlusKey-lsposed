@@ -35,6 +35,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
 import io.github.lyxnx.compose.ui.tablericons.outline.Language
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
+import io.github.lyxnx.compose.ui.tablericons.outline.Location
 import io.github.lyxnx.compose.ui.tablericons.outline.MessageAi
 import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
@@ -57,6 +58,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Screenshot
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.SparkleHighlight
 import io.github.lyxnx.compose.ui.tablericons.outline.Sparkles
+import io.github.lyxnx.compose.ui.tablericons.outline.Sun
+import io.github.lyxnx.compose.ui.tablericons.outline.SunLow
 import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TextScanAi
@@ -312,57 +315,39 @@ private fun systemSettingIcon(token: String): ImageVector {
     }
 }
 
-/** 开关**种类**那一层的字形表。 */
-private fun systemSwitchKindIcon(id: String): ImageVector =
-    when (id) {
-        "bt" -> {
-            TablerIcons.Outline.Bluetooth
-        }
+/**
+ * 开关**种类**那一层的字形表 —— 一条开关一颗字形，表里没有的掉到 [TablerIcons.Outline.Dots]。
+ *
+ *  表里存的是 **lambda 而不是现成的矢量**：这些都是顶层 `val`，写成 `"bt" to TablerIcons.Outline.Bluetooth`
+ *  就会在类初始化那一刻把十几颗全建出来 —— 与 [specIcon] 那条「读一颗建一颗」的取舍正好相反
+ *  （整张表预建是冷启动后第一次进页掉帧的那笔账）。
+ *
+ *  「老配置里可能还留着 `setting:dnd`」那一支与「手电筒用网格里同一颗字形」那两条理由，
+ *  原先写在各支注释里，搬到这里一并保留：
+ *   · `dnd` —— 现在「免打扰」走 `oplus:` 那条（见 [actionIcon]），留着只为旧文件的图标不变成 Dots；
+ *   · `flashlight` —— 与网格里那一格（`Action.FLASHLIGHT`）同一颗，同一个意思不该有两个长相；
+ *   · `extradim` —— 半个太阳（「再压一档亮度」），与 `darkmode` 的月亮分开：那条改配色，这条改屏幕暗到什么程度。
+ */
+private val SWITCH_KIND_ICONS: Map<String, () -> ImageVector> =
+    mapOf(
+        "bt" to { TablerIcons.Outline.Bluetooth },
+        "wifi" to { TablerIcons.Outline.Wifi },
+        "cell" to { TablerIcons.Outline.CellSignal4 },
+        "rotation" to { TablerIcons.Outline.RotateRectangle },
+        "nfc" to { TablerIcons.Outline.Nfc },
+        "airplane" to { TablerIcons.Outline.Plane },
+        // 定位服务：与系统「位置信息」那颗准星同一套读法
+        "location" to { TablerIcons.Outline.Location },
+        "dnd" to { TablerIcons.Outline.Moon },
+        "flashlight" to { TablerIcons.Outline.Bulb },
+        "darkmode" to { TablerIcons.Outline.MoonStars },
+        "powersave" to { TablerIcons.Outline.BatteryEco },
+        "extradim" to { TablerIcons.Outline.SunLow },
+        "autobrightness" to { TablerIcons.Outline.Sun },
+    )
 
-        "wifi" -> {
-            TablerIcons.Outline.Wifi
-        }
-
-        "cell" -> {
-            TablerIcons.Outline.CellSignal4
-        }
-
-        "rotation" -> {
-            TablerIcons.Outline.RotateRectangle
-        }
-
-        "nfc" -> {
-            TablerIcons.Outline.Nfc
-        }
-
-        "airplane" -> {
-            TablerIcons.Outline.Plane
-        }
-
-        // 老配置里可能还留着 `setting:dnd`（现在「免打扰」走 `oplus:` 那条，见上方 actionIcon），
-        //  留着这一支只为旧文件的图标不变成 Dots。
-        "dnd" -> {
-            TablerIcons.Outline.Moon
-        }
-
-        // 手电筒：与网格里那一格（`Action.FLASHLIGHT`）同一颗字形 ——
-        //  同一个意思在两个入口里长得不一样，用户会以为是两件事。
-        "flashlight" -> {
-            TablerIcons.Outline.Bulb
-        }
-
-        "darkmode" -> {
-            TablerIcons.Outline.MoonStars
-        }
-
-        "powersave" -> {
-            TablerIcons.Outline.BatteryEco
-        }
-
-        else -> {
-            TablerIcons.Outline.Dots
-        }
-    }
+/** 开关**种类**那一层的字形 —— 查 [SWITCH_KIND_ICONS]。 */
+private fun systemSwitchKindIcon(id: String): ImageVector = SWITCH_KIND_ICONS[id]?.invoke() ?: TablerIcons.Outline.Dots
 
 /**
  * 界面处处共用的那一颗图标 —— [specIcon] 的**按需版**，带进程内缓存。

@@ -154,8 +154,15 @@ class ModuleFiles internal constructor(
      */
     fun delete(slot: String): Boolean {
         val f = file(slot)
-        listOf(f, File(f.path + BAK), File(f.path + NEW)).forEach { runCatching { it.delete() } }
-        return !f.exists()
+        val all = listOf(f, File(f.path + BAK), File(f.path + NEW))
+        all.forEach { runCatching { it.delete() } }
+        //  **三个都要判**：只判主文件的话，`.bak` 删不掉也照样返 true —— 而 `AtomicFile.openRead()`
+        //  在主文件缺失时会拿 `.bak` 还原（见 [read] 的注释），于是那份配置「删掉之后又活了」。
+        val leftover = all.filter { it.exists() }
+        if (leftover.isNotEmpty()) {
+            XLog.w("模块文件：${f.name} 没删干净（还剩 ${leftover.joinToString { it.name }}）")
+        }
+        return leftover.isEmpty()
     }
 
     /**

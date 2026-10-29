@@ -9,38 +9,50 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
-import com.lookie.opluskey.ui.model.SLIDER_ICON_INSET
-import com.lookie.opluskey.ui.model.SLIDER_SIDE_INSET
-import com.lookie.opluskey.ui.model.SLIDER_TAP_ZONE
+import com.lookie.opluskey.ui.model.SliderTapTrack
 import kotlin.math.roundToInt
 
 /**
- * 「点轨道跳值」手势：滑杆是 [SliderRow] 自己画的，但这条手势挂在整行外层 —— 挂到滑杆
- * 自己的 `Modifier` 上会与它内部的拖动争事件。这里按几何圈出滑杆占的那条带子
- * （[SLIDER_TAP_ZONE]），只有落在带子里的轻点才跳值；几何取自 [SliderRow] 的排版，
- * 排版若变、最坏是带子偏几 dp —— 跳值不灵或略微提前生效，不会崩。
- * 不消费事件（`requireUnconsumed = false` 且不调 `consume`）：拖动仍全归滑杆；
- * 也正因为不消费，这条挂在外层的手势才不会把滑杆的 `draggable` 顶掉。
+ * 「点轨道跳值」手势（滑杆行那条路）：值域整份取自 [SliderSpec]，几何取 [SLIDER_ROW_TAP_TRACK]。
+ *
+ *  这个重载只负责「别把 [spec] 拆开抄」：以前这里是逐个形参，滑杆支持自定义步长时漏抄了
+ *  `step` —— 触点折算用的是写死的毫秒步长，三档滑杆上 `(max-min)/step` 算成 0、夹到 1，
+ *  点中间只能落到端点上。
  */
 internal fun Modifier.tapSliderToSeek(
     spec: SliderSpec,
+    track: SliderTapTrack,
+    onSeek: (Int) -> Unit,
+): Modifier = tapSliderToSeek(spec.min, spec.max, spec.step, spec.enabled, track, onSeek)
+
+/**
+ * 「点轨道跳值」手势：手势节点比滑杆大（整行），这里按 [track] 圈出滑杆占的那条带子，
+ * 只有落在带子里的轻点才跳值。
+ *
+ *  手势挂在**外层节点**上，不挂滑杆自己的 `Modifier` —— 那会与它内部的拖动争事件。
+ *  几何由调用方按自己的排版给（行里要算行内边距与行首图标，弹窗里那根滑杆就是节点本身）。
+ *
+ *  不消费事件（`requireUnconsumed = false` 且不调 `consume`）：拖动仍全归滑杆；
+ *  也正因为不消费，这条挂在外层的手势才不会把滑杆的 `draggable` 顶掉。
+ */
+@Suppress("LongParameterList")
+internal fun Modifier.tapSliderToSeek(
+    min: Int,
+    max: Int,
+    step: Int,
+    enabled: Boolean,
+    track: SliderTapTrack,
     onSeek: (Int) -> Unit,
 ): Modifier =
-    pointerInput(spec.min, spec.max, spec.step, spec.enabled) {
-        // 全部取值都从 [spec] 现读，**不再逐个收成形参**：以前这里手抄了 `min/max/enabled`，
-        //  后来滑杆支持自定义步长时漏抄了 `step` —— 触点折算用的是写死的毫秒步长，
-        //  三档滑杆上 `(max-min)/step` 算成 0、夹到 1，点中间只能落到端点上。
-        val min = spec.min
-        val max = spec.max
-        val step = spec.step
+    pointerInput(min, max, step, enabled) {
         // 禁用时这条手势也得停 —— 它是**自己挂的**、不走滑杆的 `enabled`，
         // 不停的话置灰的滑杆照样能点着跳值（多条命令下的「触发间隔」）。
-        if (!spec.enabled) return@pointerInput
+        if (!enabled) return@pointerInput
         val slop = viewConfiguration.touchSlop
-        // 轨道的左右边界：左边比右边多一个 [SLIDER_ICON_INSET]（行首图标把滑杆挤开的那一段）
-        val trackStart = (SLIDER_SIDE_INSET + SLIDER_ICON_INSET).toPx()
-        val trackEnd = SLIDER_SIDE_INSET.toPx()
-        val zone = SLIDER_TAP_ZONE.toPx()
+        // 轨道两端：手势节点边缘往里让出的距离（行里是行内边距 + 行首图标，弹窗里是 0）
+        val trackStart = track.startInset.toPx()
+        val trackEnd = track.endInset.toPx()
+        val zone = track.zone.toPx()
         awaitPointerEventScope {
             while (true) {
                 val down =
@@ -57,8 +69,8 @@ internal fun Modifier.tapSliderToSeek(
                 if (down.position.x < trackStart || down.position.x > size.width - trackEnd) continue
                 // 滑动 / 没正常抬手 ⇒ 不算轻点（拖动全归滑杆）
                 val at = awaitTapUp(down, slop) ?: continue
-                val track = (size.width - trackStart - trackEnd).coerceAtLeast(1f)
-                val frac = ((at.x - trackStart) / track).coerceIn(0f, 1f)
+                val span = (size.width - trackStart - trackEnd).coerceAtLeast(1f)
+                val frac = ((at.x - trackStart) / span).coerceIn(0f, 1f)
                 onSeek(seekValue(frac, min, max, step))
             }
         }

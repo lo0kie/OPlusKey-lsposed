@@ -648,7 +648,7 @@ java.io.FileNotFoundException: /data/system/OPlusKey/config.conf: open failed: E
 真正原因：设置页跑在宿主域 **`u:r:platform_app:s0`**，该域读不了 **`system_data_file`** （`/data/system`
 下全是这个类型）。
 
-**解法：用 LSPosed 官方 `RemotePreferences` 做跨进程共享存储。** 选它的关键理由 —— 它的实现**只走 binder**
+**当时设想的解法（后来证伪，见下方批注）：用 LSPosed 官方 `RemotePreferences` 做跨进程共享存储。** 选它的关键理由 —— 它的实现**只走 binder**
 （`RemotePreferences` → `IXposedService.requestRemotePreferences`）， **完全不用 `ContentResolver`**，因此在
 `system_server` 里也能用（`ContentResolver` 那条路在 system_server 里必 NPE，见 六之五）。
 
@@ -661,6 +661,12 @@ XposedServiceHelper.registerListener(object : OnServiceListener {
 ```
 
 binder 由框架异步下发，**拿不到时退回读本地文件**（文件通道只有 system_server 用得了）。
+
+> **⚠ 这一段已被实测推翻，别再照着做。** `getRemotePreferences()` 拿到的那个容器在**注入侧是只读的**，
+> 写入直接抛 `UnsupportedOperationException: Read only implementation`（实测见本节末那张通道对照表里
+> `getRemotePreferences()` 那一行）；libxposed 的设计前提是「模块 App 写、注入侧读」，而我们的界面在
+> **宿主进程**、注入侧在 `system_server` —— 两边都不是它预设的用法。`AGENTS.md` 一、9 也已明令禁止走它。
+> 真正落地的是「宿主写文件 + 配置广播」，见「跨进程通道：四条里只有广播通」那一节。
 
 宿主 UI 全用 COUI（`COUIRecyclerView` / `COUILinearLayoutManager` / `COUIButton` / `COUIToolbar` /
 `ActionButtonOvalDrawable`），但**方法名被混淆**成 `a()` / `b()` / `c()`：
@@ -770,8 +776,10 @@ dimen/coui_segment_shadow_offset       = 2dp
 > **52dp**（宽度按文字自然宽算、至少 52dp 后铺满整行）。它的 `MarkPreference`（对应 COUI 的
 > `COUIMarkPreference`）说明标记用 `coui_btn_check_mark` → radio 矢量
 > **24dp**（选中=主色圆盘+白心、未选中=灰描边圆环），也与本模块的 24dp 单选圈一致。该库依赖 Compose
-> Multiplatform，**不能引进本模块**（红线：不得引入 androidx / Compose，且验收要求 dex 里 `Landroidx/`
-> 出现次数为 0；何况本页面是塞进宿主 Activity 的，没有 Compose 宿主）—— 只能当规格参照。
+> Multiplatform，**不能引进本模块**：它自带一整套 Compose Multiplatform 运行时，与本项目 `ui/` 用的
+> Jetpack Compose 撞车（两条运行时同时在场，`ComposeView` 那边会拿到对方的 `Recomposer`）—— 只能当规格参照。
+> 另注：项目里另有一条「**注入侧不得 import 界面层依赖**」的边界（见 `AGENTS.md` 第一部分），
+> 那条管的是 `inject/` 那几个包；`ui/` 用 Compose 是**当前实现**，不违反它。
 
 COUI 里**没有**给分段控件滑动时长的 dimen（那套 `touchanimation` 类是混淆的， `COUITouchMotionAnimator` 的方法名是
 `A/B/C/D`、字段 `j/k/l`，靠反射调等于猜 ——宿主进程里虽然有这个类，但**没用它**）。本模块自己定 260ms +
@@ -869,7 +877,9 @@ libxposed 的设计前提是「**模块 App 写、注入侧读**」；我们的�
    `plus_enabled=0`（"装上模块不改变行为" 是刻意的默认值），
 
 > **这一节是历史记录，不是当前实现**（2026-10-11「全量迁移」后已弃用）。设置页现在是「**宿主真·COUI 控件 + 平台组件**」的纯 View 树，见
-> **第十节**； `Md3eSettingsPage.kt` 与全部 Compose 依赖已删，产物里 `Landroidx/` 为 0。
+> **第十节**； `Md3eSettingsPage.kt` 与当时那套 Compose 页面一起删了，那一刻的产物里 `Landroidx/` 为 0。
+> **注意这条只记录 2026-10-11 那一刻**：界面后来迁回了 Compose（`ui/` 那一套，`ComposeView` 塞进宿主页），
+> 现在产物里**有** android 依赖 —— 别拿这句当「不许用 Compose」的判据。
 
 设置页最终改用 Compose + Material 3 渲染（`page/Md3eSettingsPage.kt`）。 `ComposeView` 的崩点在 `onAttachedToWindow` →
 `ensureCompositionCreated` → `resolveParentCompositionContext` →
@@ -3521,7 +3531,7 @@ resolveActivityForMultiApp, has cached userId: 998
 
 ## 二十三、ColorOS 底层接口取证：手电筒、免打扰与响铃模式（实测，2026-10-17）
 
-> 反编译取证目标：OnePlus 15（PLK110 / ColorOS 15 / Android 15）真机上的
+> 反编译取证目标：OnePlus 15（PLK110 / ColorOS 17 / Android 17）真机上的
 > `/system_ext/priv-app/SystemUI/SystemUI.apk`、`/system/framework/oplus-framework.jar`、
 > `/system/framework/oplus-services.jar`。
 
@@ -3538,7 +3548,7 @@ resolveActivityForMultiApp, has cached userId: 998
     - 机制：`KeyBaseService` 族，通过 Messenger IPC 绑定后发 `Message(what=2)`（长按），
       由 `KeyFlashlightController` 调用 `FlashlightControllerImpl` 切换状态。
 3. **遗留空桩**：
-   `android.os.OplusFlashLightManager`（调用 Binder `additionald`）在 ColorOS 15 上方法体已返回固定假值/空值，已废弃。
+   `android.os.OplusFlashLightManager`（调用 Binder `additionald`）在 ColorOS 17 上方法体已返回固定假值/空值，已废弃。
 
 ### 23.2 免打扰状态与专属通道
 
@@ -3579,6 +3589,7 @@ resolveActivityForMultiApp, has cached userId: 998
 | 省电模式 | `Global.low_power`                 | `power` · `setPowerMode`（1 = 开、0 = 关）                                                     |
 | 自动旋转 | —（见下）                          | `window` · `freezeDisplayRotation` / `thawDisplayRotation`                                     |
 | NFC      | —（`nfc_on` 读不到，见下）         | `nfc` · `isEnabled` 读、`enable` / `disable` 写                                                |
+| 极暗     | —（见下）                          | `color_display` · `isReduceBrightColorsActivated` 读、`setReduceBrightColorsActivated` 写     |
 
 几个容易走错的方向：
 
@@ -3595,6 +3606,17 @@ resolveActivityForMultiApp, has cached userId: 998
    （宿主是 `platform_app`，只有 `WRITE_SECURE_SETTINGS`）。界面因此不列热点。
 5. **`setAirplaneMode` 不在 framework.jar 里**（Android 14+ 把 connectivity 挪进了大模块），
    所以「framework 里 grep 不到」不等于运行时没有 —— 按名字反射仍然打得到，验证要在真机上做。
+6. **极暗在颜色显示服务里，而且宿主调不动**（2026-10-29 实测，PLK110 / ColorOS 17.0.0）：
+   真开关是 AOSP 的 reduce bright colors，状态看 `dumpsys color_display` 的
+   `Reduce bright colors: Activated: ...`。三条错路都试过 ——
+   `PowerManager.setReduceBrightColorsActivated` 反射不到（`NoSuchMethodException`，
+   `dumpsys display` 的 `mEvenDimmerEnabled` 恒 false、`mNitsToEvenDimmerStrength` 是 null）；
+   `Settings.Secure.reduce_brightness` 与 `Settings.System.reduce_brightness` 两个键都**没人维护**
+   （写了 `dumpsys` 不变，读它恒为 0 —— 以前「读 Secure、写 System」于是永远判「关」）。
+   正确入口是 `color_display` 服务的 `setReduceBrightColorsActivated(boolean)`，但它要
+   `CONTROL_DISPLAY_COLOR_TRANSFORMS`（signature|privileged）：宿主（`com.oplus.gesture`，
+   `platform_app`）调会抛 `SecurityException: Access denied, requires: ...`，只能由 system_server 调
+   （uid 1000 自带该权限）。LuckyTool 的「极暗」磁贴走的也是这个后台。
 
 ## 二十五、真实侧键事件的 deviceId 可以是 -1（实测，2026-10-18，PLQ110 / ColorOS 17.0.0）
 
@@ -3793,7 +3815,7 @@ PKU110（Find X8 Ultra 卫星通信版）机身侧面的拍照键是**压感键*
 只有 `cfg.isLive(KeyId.PLUS)` —— **不看这条派发是哪颗键的**。于是「接管了侧键」会连带吞掉
 拍照键的系统原生动作。
 
-## 二十六、`LauncherApps.startShortcut` 在 Android 16 上被 BAL 静默拦掉（实测，2026-10-20，PLK110 / ColorOS 17.0.0）
+## 二十九、`LauncherApps.startShortcut` 在 Android 16 上被 BAL 静默拦掉（实测，2026-10-20，PLK110 / ColorOS 17.0.0）
 
 现象：`appshortcut:com.eg.android.AlipayGphone/1002`（支付宝「收付款」）按下侧键**什么都不发生** ——
 宿主侧日志停在「快捷方式 → com.eg.android.AlipayGphone/1002（user=0）」，没有异常、没有失败提示。
@@ -3820,7 +3842,7 @@ I ActivityTaskManager: START … (BAL_BLOCK) result code=102
 **判据**：宿主日志里「快捷方式（直起 intent）→ …」= 走的是能过的那条；「快捷方式（系统代发）→ …」=
 退路，仍可能被拦。后者只应出现在 `getIntent()` 为 `null` 的应用上。
 
-### 二十六之二、「options 起法其实成了，是**验收**在骗人」（实测，2026-10-20 补，同机）
+### 二十九之二、「options 起法其实成了，是**验收**在骗人」（实测，2026-10-20 补，同机）
 
 同一支动作下一轮（宿主 pid 21448，`appshortcut:w:com.eg.android.AlipayGphone/1002`）：
 
@@ -3845,7 +3867,7 @@ I ActivityTaskManager: START … (BAL_BLOCK) result code=102
    ⇒ 「先起再收」只在第 0 轮真起，重试轮**只等不发**。
 
 
-## 二十七、录屏只有 `MainActivity` 一个入口管用（实测，2026-10-21，PLK110 / ColorOS 17.0.0）
+## 三十、录屏只有 `MainActivity` 一个入口管用（实测，2026-10-21，PLK110 / ColorOS 17.0.0）
 
 `com.oplus.screenrecorder` 对外有三个入口，逐个试过：
 
@@ -3867,7 +3889,7 @@ I ActivityTaskManager: START … (BAL_BLOCK) result code=102
 
 **别用 `force-stop` 停**：那是硬杀，正在写的文件会留下半截。
 
-## 二十九、压感拍照键（SPRUCE）的**整族键码**：手势由 ROM 判好（反编译 `android.view.OplusKeyEvent` + 用户机日志，2026-10-21）
+## 三十一、压感拍照键（SPRUCE）的**整族键码**：手势由 ROM 判好（反编译 `android.view.OplusKeyEvent` + 用户机日志，2026-10-21）
 
 第二十八节只看到这颗键的 134 / 767 两个码，于是当时把结论下成「只能给单击和双击」。
 用户机（PKU110）的日志把另一半补上了：**双击这颗键时 ROM 只发一个 769，不再发两次 767**，
@@ -3942,7 +3964,7 @@ I ActivityTaskManager: START … (BAL_BLOCK) result code=102
 模块会把它当成「又一次按下」，判出单击而不是长按。真要撞上，按拍照键这套
 （`RomKeyFamilies.gestureOf` + `Decision.RomGesture`）把 782 映射成长按即可。
 
-## 三十、唤醒小布：ROM「长按电源键」的启动配方（反编译 `oplus-services.jar` + 真机核对，2026-10-24）
+## 三十二、唤醒小布：ROM「长按电源键」的启动配方（反编译 `oplus-services.jar` + 真机核对，2026-10-24）
 
 动作 `oplus:voice_assist` 走这一节。**界面上的名字是「小布助手」**（英文名 `Breeno`；收在
 「小布 AI」那一格里，与「小布识屏 / 一键闪记 / 灵感语音」并列）；代码、日志与本节沿用
@@ -4058,7 +4080,7 @@ adb shell 'dumpsys window windows | grep -c speech'      # 0 = 没起界面
 `oplus.permission.OPLUS_COMPONENT_SAFE`），所以从宿主起大概率也能起。模块仍然留在 system_server 起
 （理由见 30.3），但这条意味着「宿主起不通」并不是死路，真出问题时可以退到那条。
 
-## 三十一、把音量设成某个值只有 `cmd audio set-volume` 这一条路（实测，2026-10-24，PLK110 / ColorOS 17.0.0）
+## 三十三、把音量设成某个值只有 `cmd audio set-volume` 这一条路（实测，2026-10-24，PLK110 / ColorOS 17.0.0）
 
 用户想用「自定义命令」把音量直接设成 0（不是按一下减一格）。真机上把三条候选逐个试了一遍：
 
@@ -4099,7 +4121,7 @@ shell:cmd audio set-volume 3 0 && input keyevent 25
 顺带量到的一条：这台机器 STREAM_MUSIC 是 `0..160`，**一次音量键走 10 格**（实测 `40 → 30`），
 也就是界面上那 16 级。所以「按一下减一格」在数值上是减 10，`--set` 用的才是原始下标。
 
-## 三十二、NFC 的「关」不会被记住，重启自己开回来（实测，2026-10-24，PLK110 / ColorOS 17.0.0）
+## 三十四、NFC 的「关」不会被记住，重启自己开回来（实测，2026-10-24，PLK110 / ColorOS 17.0.0）
 
 用户口径：「侧键绑定切换 NFC，重启会自动打开 NFC」。
 
@@ -4147,7 +4169,7 @@ adb shell "su -c 'kill -9 \$(pidof com.android.nfc)'"
 
 同一招对 `com.android.bluetooth` / `com.android.phone` 这类常驻进程都成立。
 
-## 三十三、截图：宿主注入无效，得由注入侧（system_server）注入；`InputManager.getInstance()` 在那侧返回 null（实测，2026-10-25，3B15BR005FN00000 / ColorOS）
+## 三十五、截图：宿主注入无效，得由注入侧（system_server）注入；`InputManager.getInstance()` 在那侧返回 null（实测，2026-10-25，3B15BR005FN00000 / ColorOS）
 
 **结论**
 
@@ -4186,7 +4208,7 @@ adb shell "su -c 'kill -9 \$(pidof com.android.nfc)'"
 单写任一条都会让一半机器静默失效。命中时打一行「注入侧注入：入口用 …」，日志里看得出走哪条
 （本机是第一条）。
 
-## 三十四、个别机型（PLG110）注入 `KEYCODE_SYSRQ` 不截，得改走 `ScreenshotHelper`（实测，2026-10-28，PLG110 / ColorOS）
+## 三十六、个别机型（PLG110）注入 `KEYCODE_SYSRQ` 不截，得改走 `ScreenshotHelper`（实测，2026-10-28，PLG110 / ColorOS）
 
 三十三节那条「注入侧注入正常截图」**不是每台机器都成立**。同一份代码在 PLG110 上的日志：
 
@@ -4229,7 +4251,7 @@ adb shell "su -c 'kill -9 \$(pidof com.android.nfc)'"
 - 注入**不要放在 `system_server` 主线程上**：`WAIT_FOR_FINISH` 会等事件被处理完，那一下等于把整机挂住；
 - 全程不抛：调用点在 AMS 的广播入口，漏一个异常出去就是 `system_server` 崩。
 
-## 三十五、屏幕翻译（侧边栏那一项）的启动配方：起翻译包的前台服务（反编译 `com.coloros.smartsidebar` + 真机，2026-10-29，PLK110 / ColorOS 17）
+## 三十七、屏幕翻译（侧边栏那一项）的启动配方：起翻译包的前台服务（反编译 `com.coloros.smartsidebar` + 真机，2026-10-29，PLK110 / ColorOS 17）
 
 侧边栏里的「屏幕翻译」不是一个界面，而是一条**前台服务**：`com.coloros.translate` 的
 `ScreenTranslationService`（清单里带 `com.oplus.permission.safe.AI_APP`、special-use 前台类型，
@@ -4264,3 +4286,97 @@ adb shell su -c 'am start-foreground-service -a oplus.intent.action.GLOBAL_TRANS
 ```
 
 实现见 `core/model/RomProfile` 的 `NAME_SCREEN_TRANSLATE` / `SCREEN_TRANSLATE`。
+
+## 三十八、亮度百分比 = `screen_brightness` 在量程上的位置；`get-brightness --unit percentage` 报的是另一套 HLG 值（实测，2026-10-29，PLK110 / ColorOS 17）
+
+「亮度百分比」有**两个不同的数**，混用就会「加 10% 加了一大截」：
+
+| 数 | 怎么取 | 本机在 raw 2037 时 |
+| --- | --- | --- |
+| **亮度条的位置**（用户看到的那把尺子） | `(raw − min) / (max − min)` | **50%** |
+| 框架报的感知百分比 | `cmd display get-brightness --unit percentage` | **87%** |
+
+**判据（量一次就够）**：让亮度条拖到**大约中间**，读 `settings get system screen_brightness`
+—— 实测写进去的是 **2037**，正好是 `2..4095` 的一半 ⇒ 条的位置就是量程的线性刻度。
+`get-brightness --unit percentage` 在同一时刻报 87%，**它不是条上的位置**。
+
+**量程**
+
+- `settings get system screen_brightness_range` = `"2,4095"`（与 `screen_brightness` 同量纲）；
+- `dumpsys display` 里 `mScreenBrightnessRangeMinimum=2.0`、`mScreenBrightnessNormalMaximum=4095.0`
+  —— `mScreenBrightnessRangeMaximum=4674.0` 是激发态那一档，普通写值用不到；
+- 框架资源 `config_screenBrightnessSettingMaximum` 是 **AOSP 默认的 255**，与本机量程差一个数量级，
+  `config_screenBrightnessNits` / `config_screenBrightnessBacklight` 两个数组在这台机器上是**空的**；
+- 内核 `/sys/class/backlight/panel0-backlight/max_brightness` = 4094，与 raw 同一把尺子。
+
+**框架那个感知百分比是什么**（逐点 `settings put` 后读 `cmd display get-brightness --unit percentage`）
+
+| raw | 报的 % | raw | 报的 % |
+| --- | --- | --- | --- |
+| 2 | 0.00 | 500 | 58.88 |
+| 50 | 18.76 | 800 | 68.87 |
+| 100 | 26.80 | 1200 | 76.95 |
+| 200 | 38.10 | 2037 | 87.06 |
+| 300 | 46.74 | 3000 | 94.27 |
+| 2500 | 90.89 | 4095 | 100.00 |
+
+这条曲线是 **HLG 的 OETF**（`x` = 原始值在量程上的比例、`g` = 报的百分比 / 100）：
+
+```
+x ≤ 1/12 :  g = √(3x)
+x > 1/12 :  g = a·ln(12x − b) + c      a = 0.17883277  b = 0.28466892  c = 0.55991073
+```
+
+三个常数与 AOSP `BrightnessUtils` 同值，逐点误差小于 0.01 个百分点。它只是**框架对外的感知读数**
+（`get-brightness` 用），亮度条并不按它画 —— 按它算 `+10%`，条上会走三十多格。
+
+**面板的真实亮度**（`logcat` 里 `CasManager: DBV changed …` 与 `OplusGammaRemappingDbv2Nit`）
+
+- 背光 DBV 与 raw 基本 1:1：raw 4000 → DBV 3413~3515，raw 250 → DBV 182；
+- DBV→nit 是 **gamma 2.2**：DBV 3515 = 800 nit，所以 DBV 182 ≈ **1.5 nit**。
+  低亮度处屏幕本来就很暗，那是面板行为，不是写错了值。
+
+**结论**
+
+- 要按「亮度条上的位置」换算，就得在**量程**上算：`+10%` = 条上走 10 格、`−10%` = 退 10 格、
+  `设为 X%` = 落到条上的 X% 位置。
+- **别用 `cmd display get-brightness --unit percentage` 当尺子**（踩过：按它算 `+10%` 在条上走了
+  35 格，真机口径「加了一大截」）。它只用来查「框架的感知百分比」，不是条的位置。
+- `real_screen_brightness`（本机一直是 2403）**不驱动显示**：写它不改 `Display Brightness`；
+  SystemUI 与 Settings 的 dex 里也都只有 `screen_brightness`，没有这个键 —— 它不是亮度 UI 的输入。
+- 核对一次不用重启、也不用界面：拖条到中间读 `screen_brightness`（≈ 2048），
+  或 `settings put` 几个点看 `Display Brightness` 是否跟上。
+
+**这一族动作已整条移除**（2026-10-29，用户口径）：自动亮度开着时 `screen_brightness` 会被 ROM
+持续改写，做不到稳定的「加 10%」。上面这些结论仍然有效，留给以后重做时用。
+
+### 38.1 自动亮度开着时，写 `screen_brightness` 会被 ROM 改掉（实测，2026-10-29）
+
+- 自动亮度开着（`screen_brightness_mode = 1`）时，`DisplayPowerController` 走的是
+  `AutomaticBrightnessStrategy`，`dumpsys display` 里能看到
+  `OplusAutomaticBrightnessController`、`mAutoStrategyEnable`、`BRIGHTNESS_DRAG_RESET_INTERVAL`
+  这些状态。
+- 往 `screen_brightness` 写一个值之后，**约 1 秒**会被它改成自己算的值：
+  `DpcExtImpl: Animating brightness: target=248.0->3983.0`，随后 `OplusBrightnessAmbientAdapter`
+  再动一次。真机现象就是「设为 6% 直接最高亮度」。
+- **用 shell（uid 2000）写同一个值不会被改** —— 所以区分的是「谁写的」，不是值本身。
+- `DisplayManager.setBrightness(displayId, value, unit)` 两条路都走不通：
+  `unit = 0` → `IllegalArgumentException`；`unit = BRIGHTNESS_UNIT_PERCENTAGE` → `SecurityException`
+  （宿主有 `DEVICE_POWER` 也不够）。
+- 宿主进程读 `Settings.System` 的值**有几秒延迟**（同一时刻 shell 读到 1589、宿主读到 249），
+  所以「按当前值算目标值」这一步本身就可能基于旧值。
+
+### 38.2 小布助手怎么调亮度（反编译 `com.heytap.speechassist`，2026-10-29）
+
+入口 `skill/device/operation/BrightnessOperation.adjustBrightness()`，实际写入在 `j40.j.r(int)`：
+
+1. 读当前值用反射调 `android.os.OplusPowerManager.getDisplaysBrightnessByNit(float)`（返回 `float[]`）；
+2. **`screen_brightness_mode == 1` 时先写 `screen_auto_brightness_adj`**，值是**亮度值本身**
+   （不是 -1..1 的偏移）—— 自动亮度下的「用户想要的亮度」就存在这个键里；
+3. 再写 `screen_brightness`（`putString` / `putInt` 二选一，按一个 feature 开关决定）。
+
+另有一条 `Bundle{name=setBrightness / setBrightnessAdj}` 走 PlatformAgent
+（`com.heytap.speechassist.engine`），那个包**本机没装**，所以本机走的是上面那条。
+
+注意 `Settings.System.putFloat` **写不了** `screen_auto_brightness_adj`（它只认 AOSP 那张 float 键
+白名单，实测 `IllegalArgumentException`）；要按**字符串**写（`putString`），它在库里本来就是字符串。

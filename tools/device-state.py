@@ -208,7 +208,9 @@ def diagnose(intent, facts, install, framework, timeline):
             )
         else:
             notes.append(('apk_path 一致', '库里与 pm path 逐字相同'))
-    if not counts.get('system') and 'system' in scope and install.get('apk_path') == intent.get('apk_path'):
+    #  `read_install()` 返回的键叫 `pm_path`（见上面那条比对）—— 这里原来取的是 `apk_path`，
+    #  恒为 None ⇒ 这条结论永远不成立（「路径对的但 system 没注入」在任何情况下都不会出现）。
+    if not counts.get('system') and 'system' in scope and install.get('pm_path') == intent.get('apk_path'):
         notes.append(
             (
                 '路径对的但 system 没注入',

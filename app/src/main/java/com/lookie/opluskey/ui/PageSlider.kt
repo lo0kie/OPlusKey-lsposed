@@ -17,6 +17,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.SLIDER_ICON_INSET
 import com.lookie.opluskey.ui.model.SLIDER_INSIDE_MARGIN
+import com.lookie.opluskey.ui.model.SLIDER_ROW_TAP_TRACK
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -124,7 +125,7 @@ internal fun SettingsPage.SliderRow(
         //  注意：传**稳定的那份回调**（见上面 `seekLatest` 的注释）：`tick()` / `commit()` 每次重组
         //  都是新实例，直接捕获就停在首次组合那一刻了。
         modifier =
-            Modifier.tapSliderToSeek(spec) { v ->
+            Modifier.tapSliderToSeek(spec, SLIDER_ROW_TAP_TRACK) { v ->
                 seekLatest(v)
             },
     ) {
