@@ -320,6 +320,9 @@ object Strings {
 
     /** 表单第二条小标题：命令正文（单条命令那个输入框）。 */
     const val COMMAND_DETAIL_TITLE = "command.detail_title"
+
+    /** 「命令详情」菜单里那一行：打开全屏编辑弹窗。 */
+    const val COMMAND_FULLSCREEN_EDIT = "command.fullscreen_edit"
     const val COMMAND_TYPE_SERIAL = "command.type_serial"
     const val COMMAND_TYPE_BRANCH = "command.type_branch"
 

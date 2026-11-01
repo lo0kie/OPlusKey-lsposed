@@ -1,20 +1,24 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Constraints
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -86,6 +90,24 @@ internal fun SettingsPage.FrostedDialog(
      *  （聚焦那一侧见 `FocusOnShow`：它按 `show` 变化重抢一次）。
      */
     onDismissFinished: (() -> Unit)? = null,
+    /**
+     * 标题行**行尾**那一格（如输入框的字数统计）；`null` = 不占位。
+     *
+     *  它**叠**在标题那一行的右边线上（`align(CenterEnd)`），**不参与居中计算** ——
+     *  标题永远是整行的水平中心，不会因为它多宽就往左让多少。
+     *  代价是它不占位：只适合放很短的东西（字数统计那种），标题很长时两者会撞上。
+     */
+    titleTrailing: (@Composable () -> Unit)? = null,
+    /**
+     * 底部那一区（通常是 [DialogButtonRow]）；`null` = 这个窗没有底部。
+     *
+     *  三个区（头 / 正文 / 底）的**竖向留白由这一层统一给**：四个间隙全用
+     *  [DIALOG_REGION_GAP]（面板上沿→标题、标题→正文、正文→按钮、按钮→下沿），
+     *  于是每个区的内容在自己那一格里必然居中、上下留白总量也必然相等。
+     *  调用方只往 [content] 里放东西，**不再各自补上下边距** —— 各补一份正是
+     *  「gap 一叠加、上下对不齐」的来源。
+     */
+    footer: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // 弹之前先把软键盘收掉：确认窗是**模态**的，键盘留在下面会跟它抢地方（「选择应用」页那两句
@@ -126,26 +148,121 @@ internal fun SettingsPage.FrostedDialog(
                 .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
                 .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
         ) {
-            // 标题：与库 `DialogContent` 里那一份同度量（`insideMargin` 24dp 内缩、下边距 6dp、
-            //  `title4` 字号、Medium、居中、1.29em 行高）——那几条在库里是 private 常量，
-            //  抄的是它们的值，改库时这里要跟着看。
-            Text(
+            //  —— 第一区：标题 ——
+            //  上下**同一档留白**（[DIALOG_REGION_GAP]）：标题自然落在这一格正中，
+            //  不用固定高度去算余量 —— 固定高度那一版算出来的上边距（15dp）比下边距（16dp）小，
+            //  与正文自己的间距一叠，就成了「上边距比下边距少」。
+            Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = DialogDefaults.insideMargin.width)
-                        .padding(
-                            top = DialogDefaults.insideMargin.height,
-                            bottom = DIALOG_TITLE_MARGIN_BOTTOM,
-                        ),
-                text = title,
-                fontSize = COUITheme.textStyles.title4.fontSize,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center,
-                lineHeight = DIALOG_LINE_HEIGHT,
-                color = COUITheme.colorScheme.onBackground,
+                        .padding(vertical = DIALOG_REGION_GAP),
+            ) {
+                CenteredTitle(trailing = titleTrailing) {
+                    Text(
+                        text = title,
+                        fontSize = COUITheme.textStyles.title4.fontSize,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center,
+                        lineHeight = DIALOG_LINE_HEIGHT,
+                        color = COUITheme.colorScheme.onBackground,
+                    )
+                }
+            }
+            //  —— 第二区：正文 ——
+            //  `weight(fill = false)`：内容短时窗跟着内容长，长了才吃满剩余空间（可滚动的那几处
+            //  自己在正文里给 `weight(1f)`）。竖向留白不在这里补，见 [footer] 的说明。
+            Column(Modifier.fillMaxWidth().weight(1f, fill = false)) {
+                content()
+            }
+            //  —— 第三区：底部 ——
+            DialogFooterSlot(footer)
+        }
+    }
+}
+
+/**
+ * 三区里的**底部**那一区：有 `footer` 就按「上下同一档留白 + 左右内缩」摆它，
+ * 没有就补上同一档留白（正文与面板下沿之间也要有这一档，上下才对称）。
+ *
+ *  单独抽出来只为把 [FrostedDialog] 的行数压在 detekt 的 `LongMethod` 之下。
+ */
+@Composable
+private fun DialogFooterSlot(footer: (@Composable () -> Unit)?) {
+    if (footer == null) {
+        Spacer(Modifier.height(DIALOG_REGION_GAP))
+        return
+    }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = DialogDefaults.insideMargin.width)
+                .padding(vertical = DIALOG_REGION_GAP),
+        contentAlignment = Alignment.Center,
+    ) {
+        footer()
+    }
+}
+
+/**
+ * 标题 + **紧随其后**的那一格（如字数统计）：标题钉在整行的水平中心，那一格跟在标题屁股后面。
+ *
+ * ## 为什么不能直接用 `Row`
+ *
+ *  把两者放进 `Row` 再整体居中，那一格多宽标题就往左偏多少 —— 用户口径「不要影响居中」。
+ *
+ * ## 也不能贴到行尾
+ *
+ *  `align(CenterEnd)` 那种叠法居中是对的，但那一格跑到面板右边线上去了，与标题隔着一整段空白，
+ *  读起来像另一条信息。用户口径「标题改回要尾随」。
+ *
+ * ## 所以：左右各让出同样一格，再把那一格摆在标题后面
+ *
+ *  标题的测量宽度扣掉 `2 × (尾随宽 + 间隙)`，两边的让位**相等**，中心仍是整行中心；
+ *  于是「居中」与「紧随」同时成立，不需要记录标题宽度、也不会多一次重组。
+ *  代价是标题可用宽度少了两格尾随 —— 它本来只是很短的一段字（`0/200` 那种），
+ *  真长到要换行时仍是居中的。
+ */
+@Composable
+private fun CenteredTitle(
+    trailing: (@Composable () -> Unit)? = null,
+    title: @Composable () -> Unit,
+) {
+    Layout(
+        content = {
+            title()
+            trailing?.invoke()
+        },
+    ) { measurables, constraints ->
+        val gap = DIALOG_TITLE_TRAILING_GAP.roundToPx()
+        val trailingPlaceable =
+            measurables.getOrNull(1)?.measure(Constraints(maxWidth = constraints.maxWidth))
+        val reserve = trailingPlaceable?.let { it.width + gap } ?: 0
+        val titlePlaceable =
+            measurables[0].measure(
+                constraints.copy(
+                    minWidth = 0,
+                    maxWidth = (constraints.maxWidth - reserve * 2).coerceAtLeast(0),
+                ),
             )
-            content()
+        val width =
+            if (constraints.hasBoundedWidth) {
+                constraints.maxWidth
+            } else {
+                titlePlaceable.width + reserve
+            }
+        val height = maxOf(titlePlaceable.height, trailingPlaceable?.height ?: 0)
+        layout(width, height) {
+            //  标题落在整行正中（让位左右相等 ⇒ 中心不变）
+            val titleX = (width - titlePlaceable.width) / 2
+            titlePlaceable.place(titleX, (height - titlePlaceable.height) / 2)
+            //  尾随那一格紧随标题，垂直与标题同一中线
+            trailingPlaceable?.place(
+                titleX + titlePlaceable.width + gap,
+                (height - trailingPlaceable.height) / 2,
+            )
         }
     }
 }
@@ -192,15 +309,28 @@ internal fun SettingsPage.ConfirmDialog(
      */
     onDismissFinished: (() -> Unit)? = null,
 ) {
-    FrostedDialog(show = show, title = title, onDismiss = onDismiss, onDismissFinished = onDismissFinished) {
-        // 正文走 [DialogBody]（可滚、可收缩；按钮栏钉在下面）
+    FrostedDialog(
+        show = show,
+        title = title,
+        onDismiss = onDismiss,
+        onDismissFinished = onDismissFinished,
+        //  按钮是**底部那一区**（不是正文的尾巴）：三段式里竖向留白由弹窗统一给
+        footer = {
+            DialogButtonRow(
+                negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
+                positive = action,
+                onNegative = onDismiss,
+                onPositive = onConfirm,
+                positiveStyle =
+                    DialogPositiveStyle(
+                        danger = positiveDanger,
+                        enabled = positiveEnabled,
+                        onDisabledClick = onBlocked,
+                    ),
+            )
+        },
+    ) {
+        // 正文走 [DialogBody]（可滚、可收缩）
         summary?.let { DialogBody(it) }
-        DialogButtonRow(
-            negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
-            positive = action,
-            onNegative = onDismiss,
-            onPositive = onConfirm,
-            positiveStyle = DialogPositiveStyle(danger = positiveDanger, enabled = positiveEnabled, onDisabledClick = onBlocked),
-        )
     }
 }

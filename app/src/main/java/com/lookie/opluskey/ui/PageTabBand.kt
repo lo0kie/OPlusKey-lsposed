@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
@@ -52,6 +53,7 @@ internal fun SettingsPage.PageTabBand(
 ) {
     val tick = rememberTick()
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     val disabledAlpha by animateFloatAsState(
         targetValue = if (enabled) 1f else DISABLED_ALPHA,
         label = "PageTabBandDisabledAlpha",
@@ -77,6 +79,11 @@ internal fun SettingsPage.PageTabBand(
             selectedTabPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
             onTabSelected = {
                 tick()
+                //  点这一下就**摘焦点**：输入框失焦后不再为光标发 `bringIntoView`，
+                //  否则分页器（也是滚动容器）会把刚翻过去的那一页又拽回焦点所在那一页
+                //  —— 真机口径「输入框有值时切 tab 点也回弹、滑也回弹」。
+                //  放在起动画之前：让键盘先收，别在动画半途改布局。
+                focusManager.clearFocus()
                 scope.launch { pagerState.animateScrollToPage(it) }
             },
             modifier =

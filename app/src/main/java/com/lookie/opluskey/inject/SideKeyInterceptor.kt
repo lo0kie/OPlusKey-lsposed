@@ -55,6 +55,12 @@ internal class SideKeyInterceptor(
      *  组合没有单颗键的 `KeyConfig`（动作在 `ComboKey` 上、执行在宿主），所以走这条独立回调。
      */
     private val onCombo: (ComboKey, Gesture, Boolean) -> Unit,
+    /**
+     * 屏幕此刻亮着没有（由 `KeyHooks` 注入 `PowerManager.isInteractive`）。
+     *
+     * 熄屏时判定器不等双击窗口（抬手后设备会睡，那一枪不会到点）—— 见 `GestureDetector` 类注释。
+     */
+    private val isScreenOn: () -> Boolean,
 ) {
     /**
      * 手势判定器 —— 拿到的是 hook 回调里的原始事件，时序是真的，不会被「解冻灌包」搅乱。
@@ -72,6 +78,7 @@ internal class SideKeyInterceptor(
             onGestureNoted = onGestureNoted,
             onGesture = { id, gesture, _, repeat -> forward(id, gesture, repeat) },
             onLongReleased = onRelease,
+            isScreenOn = isScreenOn,
         )
 
     /**

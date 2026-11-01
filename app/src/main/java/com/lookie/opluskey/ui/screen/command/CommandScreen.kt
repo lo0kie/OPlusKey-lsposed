@@ -16,6 +16,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.i18n.I18n
@@ -248,12 +249,28 @@ private fun SettingsPage.CommandFloatingButton(
 }
 
 /**
- * 分页器停下时把 `draft.kind` 拨到那一页，顺带处理「换 tab」的两件事。
+ * 分页器停下时把 `draft.kind` 拨到那一页，顺带处理「换 tab」的那几件事。
+ *
+ * ## 换页第一件事是**摘焦点**
+ *
+ *  真机反馈：「三个输入框任意一个有值（= 键盘正开着）时切不了 tab，点也回弹、滑也回弹」。
+ *
+ *  原因不在分页器，在**焦点**：输入框每次重新布局（键盘收放、窗口 resize 都算）都会为光标发一次
+ *  `bringIntoView`，而 `Pager` 本身也是滚动容器 —— 它会把「焦点所在那一页」重新滚回视野，
+ *  于是刚滑过去的那一页被拽回来。键盘露着时才有这一下（空表单没人聚焦、没有键盘），
+ *  正好对上「有值才复现」。
+ *
+ *  所以这一层**先** `clearFocus()`、**再**收键盘：失焦之后输入框不再发 `bringIntoView`，
+ *  收键盘引起的那次重新布局就没人抢滚动条了。
  */
 @Composable
 private fun SettingsPage.CommandTabSync(pagerState: PagerState) {
-    LaunchedEffect(pagerState) {
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(pagerState, focusManager) {
         snapshotFlow { pagerState.currentPage }.collect { page ->
+            //  摘焦点放在最前面：后面两条路（列表页 / 表单页）都会收键盘，那一下就是
+            //  「输入框重新布局 → bringIntoView → 分页器回弹」的触发点（见上面那段）。
+            focusManager.clearFocus()
             //  「命令列表」那一页不是表单：**草稿一点不动**（`kind` 属于表单那两页），
             //  只把排序态收掉 —— 它属于「多条」那一页的步骤列表，带着过页只会让列表页莫名其妙地
             //  整屏禁用（`userScrollEnabled` 也读它）。软键盘同理要收：这一页没有输入框。

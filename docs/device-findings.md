@@ -4380,3 +4380,22 @@ x > 1/12 :  g = a·ln(12x − b) + c      a = 0.17883277  b = 0.28466892  c = 0.
 
 注意 `Settings.System.putFloat` **写不了** `screen_auto_brightness_adj`（它只认 AOSP 那张 float 键
 白名单，实测 `IllegalArgumentException`）；要按**字符串**写（`putString`），它在库里本来就是字符串。
+
+## 三十九、熄屏按键：`uptimeMillis` 在深度睡眠里不走（实测，2026-10-31，PKX110 / ColorOS 17）
+
+用户机日志（`1.2.0-release`，`立即单击=false`、双击窗口 300ms）：
+
+```
+03:11:54.945 侧键 DOWN
+03:11:55.055 侧键 UP（按住 108ms）
+03:11:59.695 侧键 DOWN → 立刻判「双击」        ← 真实间隔 4.6 秒
+03:12:04.523 侧键 DOWN → 宿主丢弃（age=4824ms）
+```
+
+- 4.6 秒的间隔能落进 300ms 的双击窗口 ⇒ 判定用的时钟在两次按下之间只走了不到 300ms
+  ⇒ 那段时间设备在**深度睡眠**（`uptimeMillis()` 不含睡眠，`elapsedRealtime()` 才含）。
+- 抬手后排的那一枪（`postDelayed`，按 uptime 排）在睡眠里不会到点；下一次按下先到，
+  `onKeyDown` 判成双击 → `reset()` 把那一枪摘掉 ⇒ **第一下的单击永远不派发**，用户看到的就是
+  「熄屏按下没反应」。
+- 结论：手势窗口一律用 `elapsedRealtime()`；**熄屏时不等双击窗口**（抬手即判单击）。
+  实现见 `inject/input/GestureDetector`（类注释里那两段）。

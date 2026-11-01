@@ -170,6 +170,7 @@
   "command.type_serial": "Multi-step command",
   "command.name_title": "Command name",
   "command.detail_title": "Command details",
+  "command.fullscreen_edit": "Full-screen edit",
   "command.settings_title": "Command settings",
   "command.name_hint": "Enter a name",
   "command.name_duplicate": "That name is taken, pick another one",

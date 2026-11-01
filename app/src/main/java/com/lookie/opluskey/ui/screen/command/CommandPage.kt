@@ -39,6 +39,7 @@ import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SectionTitle
+import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
@@ -83,6 +84,11 @@ internal fun SettingsPage.CommandPage(
     //  点它弹一层菜单，排序态从菜单里进出 —— 原先挂在右下角那颗 FAB 上，用户口径挪到这里。
     val listAnchor = rememberPreciseClickState()
     var listMenu by remember { mutableStateOf(false) }
+    //  「命令详情」那颗展开键点开的全屏编辑弹窗（见 `CommandFullscreenDialog`）。
+    var fullscreenEdit by remember { mutableStateOf(false) }
+    //  「命令详情」小标题行尾那颗「更多」：菜单里是「全屏编辑 / 测试命令」。
+    val detailAnchor = rememberPreciseClickState()
+    var detailMenu by remember { mutableStateOf(false) }
     //  排序那颗 FAB 只在**有步骤可排**时出现：列表空着没什么可排的，摆一颗「调整顺序」只是噪音。
     //  但排序态里即使把步骤删空也要留着 —— 那时工具条是隐藏的，它是**唯一的出口**，藏了就出不来。
 
@@ -104,7 +110,12 @@ internal fun SettingsPage.CommandPage(
 
             // 单条命令的正文 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
             if (kind == CommandKind.SINGLE) {
-                SectionTitle(I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"))
+                CommandDetailTitle(
+                    sorting = sorting,
+                    anchor = detailAnchor,
+                    onFullscreen = { fullscreenEdit = true },
+                    onMenu = { detailMenu = true },
+                )
                 SingleCommandField(ui, scroll, enabled = !sorting)
             }
 
@@ -125,21 +136,7 @@ internal fun SettingsPage.CommandPage(
 
             // 多条命令的步骤单独一张卡：它是一串行，塞进上面那张卡会多嵌两层内边距。
             if (kind == CommandKind.SERIAL) {
-                SectionTitle(
-                    text = I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"),
-                    trailing = {
-                        MoreButton(
-                            onClick = { listMenu = true },
-                            anchor = listAnchor,
-                            endPadding = PAGE_MARGIN,
-                        )
-                    },
-                )
-                //  加 / 删步骤的过渡不在这里：行让位 / 回位由 SerialSteps 每行的 expand / shrink 驱动，
-                // 两层高度动画叠在一起会让卡片背景慢半拍。
-                Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-                    SerialSteps()
-                }
+                CommandStepListSection(anchor = listAnchor, onMenu = { listMenu = true })
             }
 
             //  「已保存的命令」不在这里了 —— 它是第三个页签（见 [CommandListPage]）：
@@ -147,6 +144,17 @@ internal fun SettingsPage.CommandPage(
         }
         //  排序态的入口在「命令列表」那条小标题的行尾（见它上面那个 `trailing`），
         //  不再用右下角那颗 FAB —— 与「条件执行」页的场景块同一个形态。
+        CommandFullscreenDialog(
+            show = fullscreenEdit,
+            onDismiss = { fullscreenEdit = false },
+        )
+        DetailMenu(
+            open = detailMenu,
+            anchor = detailAnchor,
+            tick = tick,
+            onClose = { detailMenu = false },
+            onFullscreen = { fullscreenEdit = true },
+        )
         StepListMenu(
             open = listMenu,
             sorting = sorting,
@@ -154,6 +162,66 @@ internal fun SettingsPage.CommandPage(
             tick = tick,
             onClose = { listMenu = false },
         )
+    }
+}
+
+/**
+ * 「命令详情」那条小标题（单条命令页）—— 标题自己可点（开全屏编辑），行尾一颗「更多」。
+ *
+ *  抽出来只为把 [CommandPage] 的行数压在 detekt 的 `LongMethod` 之下：这一块的条件与文案
+ *  都在这里，页面那一支只剩「单条这一栏要不要画」。
+ */
+@Composable
+private fun SettingsPage.CommandDetailTitle(
+    sorting: Boolean,
+    anchor: PreciseClickState,
+    onFullscreen: () -> Unit,
+    onMenu: () -> Unit,
+) {
+    SectionTitle(
+        text = I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"),
+        //  「点标题」这件事走 [SectionTitleClick] 那一套（与「已保存的命令」同一条）：
+        //  标题自己可点，行尾那颗指示按这一档画成**全屏**（`Expand`）——
+        //  它是在原地弹一层，不是跳页，所以不用跳页那颗右箭头。
+        click = if (sorting) null else SectionTitleClick.Expand(onFullscreen),
+        //  行尾那颗「更多」：与「命令列表」同一套（`MoreButton` + 一层菜单）。
+        //  标题自己可点（开全屏编辑），菜单里再给一次同样的入口 + 测试命令 ——
+        //  「测试」这一档只有菜单里放得下。
+        trailing = {
+            MoreButton(
+                onClick = onMenu,
+                anchor = anchor,
+                endPadding = PAGE_MARGIN,
+                enabled = !sorting,
+            )
+        },
+    )
+}
+
+/**
+ * 「命令列表」那条小标题 + 步骤卡（多条命令页）—— 行尾那颗「更多」进排序态。
+ *
+ *  与 [CommandDetailTitle] 同一个理由抽出来：`CommandPage` 只管「哪一栏画什么」。
+ */
+@Composable
+private fun SettingsPage.CommandStepListSection(
+    anchor: PreciseClickState,
+    onMenu: () -> Unit,
+) {
+    SectionTitle(
+        text = I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"),
+        trailing = {
+            MoreButton(
+                onClick = onMenu,
+                anchor = anchor,
+                endPadding = PAGE_MARGIN,
+            )
+        },
+    )
+    //  加 / 删步骤的过渡不在这里：行让位 / 回位由 SerialSteps 每行的 expand / shrink 驱动，
+    //  两层高度动画叠在一起会让卡片背景慢半拍。
+    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
+        SerialSteps()
     }
 }
 
@@ -254,6 +322,98 @@ private fun SettingsPage.StepListMenu(
                                     tick()
                                     commandDraft.stepEditing = !sorting
                                     XLog.w(if (sorting) "多条命令：退出排序态" else "多条命令：进入排序态")
+                                },
+                                MenuEntry.Row(
+                                    title = I18n.get(Strings.COMMAND_TEST_BUTTON, "测试命令"),
+                                    icon = PageIcons.TestCommand,
+                                    enabled = commandTestable,
+                                    disabledHint = commandTestHint,
+                                ) {
+                                    onClose()
+                                    //  跑的是**眼前这份草稿**，不是库里那一条 —— 草稿没保存也测得了
+                                    testCommand(draftCommand())
+                                },
+                            ),
+                    ),
+                )
+            } else {
+                emptyList()
+            },
+        preciseClick = anchor,
+        onDismiss = onClose,
+    )
+}
+
+/**
+ * 「测试命令」那一行的可用判据 —— 两个菜单（「命令列表」与「命令详情」）共用这一处。
+ *
+ *  测试跑的是**眼前这份草稿**（`testCommand(draftCommand())`，见 `draftCommand`）：草稿没保存也能测，
+ *  所以判据只剩「有没有东西可测」—— 单条要写了正文、多条要至少一步；排序态下整页控件都停着，
+ *  也一并排掉。
+ */
+private val SettingsPage.commandTestable: Boolean
+    get() {
+        if (commandDraft.stepEditing) return false
+        val draft = commandDraft.draft
+        return when (draft.kind) {
+            CommandKind.SINGLE -> draft.single.isNotBlank()
+            CommandKind.SERIAL -> draft.steps.isNotEmpty()
+        }
+    }
+
+/** 灰着时那句「为什么」—— 与 [commandTestable] 同源，别让两处各写一份条件。 */
+private val SettingsPage.commandTestHint: String
+    get() =
+        if (commandDraft.stepEditing) {
+            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
+        } else if (commandDraft.draft.kind == CommandKind.SERIAL) {
+            I18n.get(Strings.COMMAND_NEED_STEP, "还没添加步骤")
+        } else {
+            I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE, "命令内容还不完整")
+        }
+
+/**
+ * 「命令详情」小标题行尾那颗「更多」弹出来的菜单 —— 全屏编辑 + 测试命令。
+ *
+ *  标题自己已经可点（开全屏编辑），菜单里这一档是给「手上正在这一行」的人一个统一入口；
+ *  真正只有菜单里才有的那一档是**测试命令**。
+ */
+@Composable
+private fun SettingsPage.DetailMenu(
+    open: Boolean,
+    anchor: PreciseClickState,
+    tick: () -> Unit,
+    onClose: () -> Unit,
+    onFullscreen: () -> Unit,
+) {
+    PageMenu(
+        entries =
+            if (open) {
+                listOf(
+                    MenuEntry.Section(
+                        title = I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"),
+                        rows =
+                            listOf(
+                                MenuEntry.Row(
+                                    title = I18n.get(Strings.COMMAND_FULLSCREEN_EDIT, "全屏编辑"),
+                                    icon = PageIcons.CommandEdit,
+                                    enabled = !commandDraft.stepEditing,
+                                    disabledHint =
+                                        I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成"),
+                                ) {
+                                    onClose()
+                                    tick()
+                                    onFullscreen()
+                                },
+                                MenuEntry.Row(
+                                    title = I18n.get(Strings.COMMAND_TEST_BUTTON, "测试命令"),
+                                    icon = PageIcons.TestCommand,
+                                    enabled = commandTestable,
+                                    disabledHint = commandTestHint,
+                                ) {
+                                    onClose()
+                                    //  同样跑草稿：编辑到一半要试一下，不必先保存
+                                    testCommand(draftCommand())
                                 },
                             ),
                     ),
@@ -397,8 +557,8 @@ private fun SettingsPage.SingleCommandField(
     }
 }
 
-/** 单条命令能输入多少字（超出的部分在输入框里直接吃掉）。 */
-private const val MAX_SINGLE_LENGTH = 512
+/** 单条命令能输入多少字（超出的部分在输入框里直接吃掉）—— 取 1024，够放下一条带好几个参数的长命令。 */
+internal const val MAX_SINGLE_LENGTH = 1024
 
 /**
  * 「等页面窗口重新拿到焦点」最多等几帧（60fps 下约半秒）。

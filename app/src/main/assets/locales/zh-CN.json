@@ -170,6 +170,7 @@
   "command.type_serial": "多条命令",
   "command.name_title": "命令名称",
   "command.detail_title": "命令详情",
+  "command.fullscreen_edit": "全屏编辑",
   "command.settings_title": "命令设置",
   "command.name_hint": "请输入名称",
   "command.name_duplicate": "与已有命令重名，请换个名字",

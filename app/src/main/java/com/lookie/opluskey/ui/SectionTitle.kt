@@ -50,6 +50,15 @@ private val SECTION_TITLE_SHAPE = RoundedCornerShape(8.dp)
 private val SECTION_TITLE_TAP_H = 12.dp
 
 /**
+ * 点击区往**右**（箭头那一侧）多出多少。
+ *
+ *  比左边那档小一截：左边那 12dp 被 `offset` 抵消掉了、**看不见**；右边这 12dp 是实打实
+ *  多出来的空白 —— 按下去时状态层一直铺到箭头右边 12dp 外，真机口径「右边留白过多」。
+ *  收到 4dp：箭头（16dp 的框）后面只留一线，够按住、又不显空。
+ */
+private val SECTION_TITLE_TAP_END = 4.dp
+
+/**
  * 同上，纵向 —— 2dp。
  *
  *  只留一线：竖着的余量（6dp 那一版）按下去「上下太厚」，涟漪比字高出一大圈。
@@ -112,6 +121,18 @@ internal sealed interface SectionTitleClick {
      * @param onClick 点标题去哪
      */
     class Jump(
+        override val onClick: () -> Unit,
+    ) : SectionTitleClick
+
+    /**
+     * **原地撑开一层**（弹窗 / 全屏编辑）：行尾那颗箭头与 [Jump] 同一个字形，恒不动。
+     *
+     *  与 [Jump] 的区别只在**去哪儿**：那个去另一页，这个在原地弹一层；两者都不带开合状态
+     *  —— 不像 [Menu] 那样有「开着 / 关着」。分两档是为了让调用点说清自己在做哪件事。
+     *
+     * @param onClick 点标题撑开什么
+     */
+    class Expand(
         override val onClick: () -> Unit,
     ) : SectionTitleClick
 }
@@ -207,14 +228,16 @@ internal fun MoreButton(
  *  这里**不重画样式**：文字、字号、行高、内边距仍是库那一份，补的只有三件事 ——
  *  可点、文字末尾那颗箭头、行尾那一格。
  *
- *  可点分两档，形状一样、只有箭头不同：**开菜单**（[SectionTitleClick.Menu]，行尾一颗
- *  `chevron-down`，开合时转 180°）与**跳转**（[SectionTitleClick.Jump]，行尾一颗右箭头，
- *  恒不动 —— 与列表里「点了会进另一页」那颗同形）。两档合成 [SectionTitleClick] 一个类型。
+ *  可点分三档，形状一样、只有箭头不同：**开菜单**（[SectionTitleClick.Menu]，行尾一颗
+ *  `chevron-down`，开合时转 180°）、**跳转**（[SectionTitleClick.Jump]，行尾一颗右箭头，
+ *  恒不动 —— 与列表里「点了会进另一页」那颗同形）与**原地撑开**（[SectionTitleClick.Expand]，
+ *  行尾一颗全屏图标）。三档合成 [SectionTitleClick] 一个类型。
  *
  * ## 点击区只包住标题本身
  *
- *  可点时，按压面积 = **文字 + 箭头 + 左右 12dp / 上下 2dp**
- *  （[SECTION_TITLE_TAP_H] / [SECTION_TITLE_TAP_V]），**页面缩进与行高余量都留在外面**——
+ *  可点时，按压面积 = **文字 + 箭头 + 左 12dp / 右 4dp / 上下 2dp**
+ *  （[SECTION_TITLE_TAP_H] / [SECTION_TITLE_TAP_END] / [SECTION_TITLE_TAP_V]），
+ *  **页面缩进与行高余量都留在外面**——
  *  上一版把它们包在可点区里，真机上就成了「点标题左边一大片空白、点上下一整行也弹菜单」。
  *  行高不变：缩进与余量由外面那层 padding 提供，总高仍是库那一份（16 + 8 + 8 ≈ 33dp）。
  *
@@ -302,7 +325,12 @@ private fun ClickableTitleRow(
                     .clickable {
                         tick()
                         click.onClick()
-                    }.padding(horizontal = SECTION_TITLE_TAP_H, vertical = SECTION_TITLE_TAP_V),
+                    }.padding(
+                        start = SECTION_TITLE_TAP_H,
+                        end = SECTION_TITLE_TAP_END,
+                        top = SECTION_TITLE_TAP_V,
+                        bottom = SECTION_TITLE_TAP_V,
+                    ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             //  文字本身零内边距：缩进已经在外面了，右边紧接箭头。
@@ -318,12 +346,15 @@ private fun ClickableTitleRow(
 /**
  * 文字末尾那颗箭头 —— 两档各一颗：
  *  · [SectionTitleClick.Menu]：`chevron-down`，开合时转 180°；
- *  · [SectionTitleClick.Jump]：右箭头、恒不动 —— 与列表里「点了会进另一页」那一颗同一字形。
+ *  · [SectionTitleClick.Jump] / [SectionTitleClick.Expand]：右箭头、恒不动 —— 与列表里
+ *    「点了会进另一页」那一颗同一字形（撑开弹窗那档也是这颗：它只表示「点了还有内容」）。
  */
 @Composable
 private fun TitleArrow(click: SectionTitleClick) {
     val box = Modifier.padding(start = SECTION_TITLE_ARROW_GAP).size(SECTION_TITLE_ARROW_SIZE)
     val tint = COUITheme.colorScheme.onBackgroundVariant
+    //  不开合的那两档（跳页 / 原地撑开）画**同一颗右箭头**：它读作「点了还有内容」，
+    //  不承诺是换页还是弹一层；两档的区别只在语义与点击行为上。
     if (click !is SectionTitleClick.Menu) {
         Icon(PageIcons.EnterArrow, contentDescription = null, modifier = box, tint = tint)
         return

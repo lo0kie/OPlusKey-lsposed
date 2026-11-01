@@ -1,14 +1,10 @@
 package com.lookie.opluskey.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -27,9 +24,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.lookie.opluskey.core.log.XLog
+import io.github.suqi8.coui.kmp.basic.Button
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextButton
-import io.github.suqi8.coui.kmp.layout.DialogButtonBarDefaults
 import io.github.suqi8.coui.kmp.layout.DialogDefaults
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -63,17 +61,24 @@ internal fun ColumnScope.DialogBody(text: String) {
                     // 左右留白**自己补**：库把标题与摘要按 `insideMargin.width`（24dp）内缩，
                     //  而 `content` 槽它是不垫的 —— 不补这一步正文就贴着弹窗边（用户报的）。
                     //  用库那个值而不是写 24.dp，正文左边缘才与标题严格对齐。
-                    .dialogSideMargin()
-                    .padding(top = 4.dp, bottom = 8.dp),
+                    //  只补左右：竖向留白由 `FrostedDialog` 那三区统一给
+                    //  （自己再补一份，与标题 / 按钮之间就对不齐了）
+                    .dialogSideMargin(),
         )
     }
 }
 
 /**
- * 弹窗底部那条**横向按钮栏**：左「取消」中性色 + 竖分隔线 + 右动作项。
+ * 弹窗底部那组**标准按钮**：左「取消」+ 右动作项，两颗平分横向空间。
  *
- * 库的 `DialogButtonBar` 只能给 negative / neutral / positive **同一套** `TextButtonColors`，
- * 分不出「取消是中性色、动作项是红/主题色」，所以整条自己拼（见其 KDoc 里的实测记录）。
+ * ## 为什么不再用「两半平分 + 分隔线」那一版
+ *
+ *  那一版贴边、无圆角、中间一条分隔线，是给「确认一个动作」的小弹窗做的；放到内容更重
+ *  （编辑区 / 列表 / 表单）的弹窗里就显得过重。现在统一成 COUI 的两颗标准按钮：
+ *  取消是文本按钮、动作项是填充按钮（破坏性动作填错误色），各占一半、垂直居中。
+ *
+ *  库的 `DialogButtonBar` 仍然用不了：它只给 negative / neutral / positive **同一套**
+ *  `TextButtonColors`，分不出「取消是中性色、动作项是红/主题色」（见其 KDoc 里的实测记录）。
  *
  * @param positiveStyle 动作项那一格怎么画：是否按破坏性上色（红）、能不能点。
  *   两件都是「动作项自己的状态」，打成一个类只是为了让这个函数的参数个数留在
@@ -87,66 +92,69 @@ internal fun DialogButtonRow(
     onPositive: () -> Unit,
     positiveStyle: DialogPositiveStyle = DialogPositiveStyle(),
 ) {
+    //  **竖向留白与左右内缩都不在这里**：那一层由 `FrostedDialog` 的 `footer` 槽统一给
+    //  （上下 [DIALOG_REGION_GAP]、左右 `insideMargin`）。
+    //  自己再补一份，两个窗叠起来就对不齐 —— 那正是「上下留白总量不一致」的来源。
     Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(DIALOG_BUTTON_GAP),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         TextButton(
             text = negative,
             onClick = onNegative,
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-            pressScaleEnabled = false,
-            cornerRadius = DialogButtonBarDefaults.ButtonCornerRadius,
-            minHeight = DialogDefaults.ButtonBarMinHeight,
-            colors =
-                ButtonDefaults.textButtonColorsBorderless(
-                    textColor = COUITheme.colorScheme.onSurfaceSecondary,
-                    disabledTextColor = COUITheme.colorScheme.disabledOnSurface,
-                ),
-            insideMargin = DialogDefaults.ButtonBarInsideMargin,
+            modifier = Modifier.weight(1f),
+            cornerRadius = DIALOG_BUTTON_RADIUS,
+            minHeight = DIALOG_BUTTON_HEIGHT,
         )
-        Box(
-            modifier =
-                Modifier
-                    .padding(
-                        top = DialogDefaults.ButtonBarDividerInsetTop,
-                        bottom = DialogDefaults.ButtonBarDividerInsetBottom,
-                    ).width(DialogDefaults.ButtonBarDividerThickness)
-                    .fillMaxHeight()
-                    .background(COUITheme.colorScheme.dividerLine),
-        )
-        TextButton(
-            text = positive,
-            //  「禁用了但点了要有说法」：给了 `onDisabledClick` 时按钮仍可点，
-            //  只是按禁用色画 —— 用户点下去就能听到「为什么不能确定」。
-            onClick = if (positiveStyle.enabled) onPositive else positiveStyle.onDisabledClick ?: onPositive,
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-            enabled = positiveStyle.enabled || positiveStyle.onDisabledClick != null,
-            pressScaleEnabled = false,
-            cornerRadius = DialogButtonBarDefaults.ButtonCornerRadius,
-            minHeight = DialogDefaults.ButtonBarMinHeight,
-            colors =
-                ButtonDefaults.textButtonColorsBorderless(
-                    textColor =
-                        when {
-                            !positiveStyle.enabled -> COUITheme.colorScheme.disabledOnSurface
-                            positiveStyle.danger -> COUITheme.colorScheme.error
-                            else -> COUITheme.colorScheme.primary
-                        },
-                    disabledTextColor = COUITheme.colorScheme.disabledOnSurface,
-                ),
-            insideMargin = DialogDefaults.ButtonBarInsideMargin,
-        )
+        //  「禁用了但点了要有说法」：给了 `onDisabledClick` 时这一颗仍可点、只是按禁用色画 ——
+        //  用户点下去就能听到「为什么不能确定」。用文本按钮画这一档：填充按钮没有「灰着还能点」
+        //  的形态，硬凑要么看起来能用（填色照旧）、要么点不动。
+        if (positiveStyle.enabled || positiveStyle.onDisabledClick == null) {
+            Button(
+                onClick = onPositive,
+                modifier = Modifier.weight(1f),
+                enabled = positiveStyle.enabled,
+                cornerRadius = DIALOG_BUTTON_RADIUS,
+                minHeight = DIALOG_BUTTON_HEIGHT,
+                colors =
+                    if (positiveStyle.danger) {
+                        ButtonDefaults.buttonColors(color = COUITheme.colorScheme.error)
+                    } else {
+                        ButtonDefaults.buttonColorsPrimary()
+                    },
+            ) {
+                Text(positive)
+            }
+        } else {
+            TextButton(
+                text = positive,
+                onClick = positiveStyle.onDisabledClick,
+                modifier = Modifier.weight(1f),
+                cornerRadius = DIALOG_BUTTON_RADIUS,
+                minHeight = DIALOG_BUTTON_HEIGHT,
+                colors =
+                    ButtonDefaults.textButtonColors(
+                        textColor = COUITheme.colorScheme.disabledOnSurface,
+                    ),
+            )
+        }
     }
 }
+
+/** 两颗标准按钮之间的间距 —— 两颗都占一半宽，间距太小会读成一整块。 */
+private val DIALOG_BUTTON_GAP = 12.dp
+
+/**
+ * 按钮高度 —— 比库默认的 44dp 收一档。
+ *
+ *  弹窗底那两颗是「收尾操作」，不是主行动：44dp 在小弹窗里几乎占掉四分之一屏，
+ *  与上面那行内容抢注意力。40dp 仍过得了 40dp 的最小触达线。
+ */
+private val DIALOG_BUTTON_HEIGHT = 40.dp
+
+/** 与高度配套的圆角（胶囊形）：取高度的一半，与库那套 44 / 22 的比例同源。 */
+private val DIALOG_BUTTON_RADIUS = DIALOG_BUTTON_HEIGHT / 2
 
 /**
  * 弹窗动作项（右半边那颗按钮）的两种状态。
@@ -169,8 +177,26 @@ internal data class DialogPositiveStyle(
 /** 与库 `DialogContent` 同度量：标题与正文的行高（库 `DialogLineHeight = 1.29.em`）。 */
 internal val DIALOG_LINE_HEIGHT = 1.29f.em
 
-/** 与库 `DialogContent` 同度量：标题的下边距（库 `TitleMarginBottom = 6.dp`）。 */
-internal val DIALOG_TITLE_MARGIN_BOTTOM = 6.dp
+/**
+ * 弹窗三区（头 / 正文 / 底）之间的**唯一一档**竖向留白。
+ *
+ *  四个间隙全用它：面板上沿→标题、标题→正文、正文→按钮、按钮→面板下沿。
+ *  取同一个数是为了「上下留白总量一致」：两个不同的数（外沿 16 / 区内 12）看着是「里面紧外面松」，
+ *  但落到真机上，头部那一区再叠上正文自己的边距，上下就对不齐了 —— 真机口径
+ *  「content 和 header 的 gap 一叠加，上边距比下边距少」。
+ *
+ *  顺带把「每个区自己垂直居中」也变成**结构上必然**：头部与底部都是这一档的上下等边距，
+ *  中间那一格天然居中，不用再给固定高度去算余量。
+ */
+internal val DIALOG_REGION_GAP = 16.dp
+
+/**
+ * 标题与它**紧随的那一格**（如字数统计）之间的间隙。
+ *
+ *  取 6dp：那一格比标题小一档（10sp 对 title4），挨得太近会与标题末字黏在一起；
+ *  再宽就会读成「另一条信息」—— 它本来只是这条标题的附注。
+ */
+internal val DIALOG_TITLE_TRAILING_GAP = 6.dp
 
 /**
  * 弹窗正文的左右内缩 —— 用库自己那一档，正文才与标题左缘对齐。
@@ -182,14 +208,6 @@ internal fun Modifier.dialogSideMargin(): Modifier =
         start = DialogDefaults.insideMargin.width,
         end = DialogDefaults.insideMargin.width,
     )
-
-/**
- * 弹窗正文的**底部**内缩 —— 只给「没有底部按钮」的那一档用。
- *
- *  库把 `content` 槽留空，而标题上边距是 `insideMargin.height`：没有按钮条时正文会直接贴到
- *  面板底边，比标题上边距紧一大截。这里补同一档，上下才对称。
- */
-internal fun Modifier.dialogBottomMargin(): Modifier = padding(bottom = DialogDefaults.insideMargin.height)
 
 /** [FocusOnShow] 最多试几帧 —— 浮层通常一两帧就挂好，十帧是给慢机器留的余量。 */
 private const val FOCUS_ATTEMPTS = 10

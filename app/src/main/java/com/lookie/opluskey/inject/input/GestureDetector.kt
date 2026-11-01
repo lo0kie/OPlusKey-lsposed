@@ -41,6 +41,19 @@ private const val REPEAT_MAX_MS = 30_000L
  *  · 但 `check → act` 那几段仍无锁，极端竞态下「既判长按又判单击」只是变小、没消失 ——
  *    彻底收口要把状态机归到一个线程上。也不能改用 `handler.post`（`onIntercept` 须同步返回是否接管）。
  *
+ * ## 时间基准一律 `elapsedRealtime()`
+ *
+ *  不用 `uptimeMillis()`：它在**深度睡眠里不走**。熄屏按一下、抬手之后设备立刻睡着时，
+ *  「双击窗口」那一枪（`postDelayed`，按 uptime 排）根本不会到点，而窗口的截止时刻却还停在
+ *  「刚刚」—— 下一次按下（真实过了几秒）会被判成双击、并把前一下的单击吞掉。真机日志：
+ *  熄屏按一下没有单击，4.6 秒后再按一下却判成「双击」。
+ *  `elapsedRealtime()` 含睡眠，窗口按真实时间走，两处口径也就一致了（转发给宿主的
+ *  `sent_at` 用的也是它）。
+ *
+ * ## 熄屏时不等双击窗口
+ *
+ *  见 [onKeyUp] 里 `screenOff` 那一支：抬手后设备会睡，窗口那一枪不可靠，只能当场判单击。
+ *
  *  成员数贴着 `TooManyFunctions` 的阈值：单击 / 双击 / 长按 / 连续触发各有一套计时与取消，
  *  拆文件就得把 `Pending` 与那三个 `Runnable` 一起搬出去 —— 状态机被切成两半更难跟。
  */
@@ -69,6 +82,13 @@ internal class GestureDetector(
      * `ModuleWire.PHASE_RELEASE` 这个独立 phase 转过去。
      */
     private val onLongReleased: (KeyId) -> Unit,
+    /**
+     * 屏幕此刻是不是亮着（`PowerManager.isInteractive`，由装配方注入）。
+     *
+     * 取不到时返回 `true`（按「亮着」处理）：那条路上还有双击窗口兜着，宁可等 300ms，
+     * 也不要因为拿不到状态就把双击判成两次单击。
+     */
+    private val isScreenOn: () -> Boolean,
 ) {
     /**
      * 一个键的待定状态 —— 字段被两条线程读写，跨线程的一律 `@Volatile`（见类注释）。
@@ -176,7 +196,7 @@ internal class GestureDetector(
     fun onKeyDown(
         id: KeyId,
         config: KeyConfig,
-        now: Long = SystemClock.uptimeMillis(),
+        now: Long = SystemClock.elapsedRealtime(),
     ) {
         val p = pending(id)
 
@@ -215,7 +235,7 @@ internal class GestureDetector(
     fun onKeyUp(
         id: KeyId,
         config: KeyConfig,
-        now: Long = SystemClock.uptimeMillis(),
+        now: Long = SystemClock.elapsedRealtime(),
     ) {
         val p = pending(id)
         //  **孤立抬手**（只看到 UP、没看到 DOWN）：`pressAt` 只在 `onKeyDown` 里写。
@@ -269,10 +289,14 @@ internal class GestureDetector(
             return
         }
 
-        // 「双击 = 无操作」且开了「立即触发单击」⇒ 不必再等双击窗口：抬手当场判单击。
-        // 代价：不等就没法再判双击 —— 连按两下会变成两次单击（关着时第二下被吞掉）。
-        // 两种语义都说得通，由配置项 instantSingle 决定。
-        if (config.instantSingle && config.actionOf(Gesture.DOUBLE) is Action.None) {
+        // 两种情形**不等**双击窗口、抬手当场判单击：
+        //  1) 「双击 = 无操作」且开了「立即触发单击」—— 等下去也没有第二下可用；
+        //  2) **屏幕熄着**——抬手之后设备可能立刻进深度睡眠，而窗口那一枪是 `postDelayed`
+        //     （按 `uptimeMillis` 排，深度睡眠里不走），它根本不会到点，用户看到的就是
+        //     「熄屏按下没反应」（真机：熄屏按一下没有单击，4.6 秒后按第二下才判成双击）。
+        //     代价：熄屏下连按两下算两次单击，判不出双击 —— 那本来也没法可靠判。
+        val screenOff = !isScreenOn()
+        if (screenOff || (config.instantSingle && config.actionOf(Gesture.DOUBLE) is Action.None)) {
             // 这一下是不是已经被直判过了（同一次按压被转发两遍）：
             // 记到了按下时刻 ⇒ 判「按下那一刻前后 DIRECT_BURST_MS 之内有没有直判」，用本次按下当锚点，
             //   才不会把上一次按压的直判算到这一下头上；
@@ -292,7 +316,7 @@ internal class GestureDetector(
                 XLog.w("${id.label}：这次按压已直判过单击，不再补判（双击为无操作）")
                 return
             }
-            XLog.w("${id.label}：单击（双击为无操作 ⇒ 不等双击窗口）")
+            XLog.w("${id.label}：单击（${if (screenOff) "熄屏，不等双击窗口" else "双击为无操作 ⇒ 不等双击窗口"}）")
             // 与上面那条直判去重同一笔账：这一下已经派发过单击了，
             // 紧接着那次 DOWN/UP（同一次按压被转发两遍时）与长按计时器都要据此让路。
             p.lastDirectSingleAt = now
@@ -380,7 +404,7 @@ internal class GestureDetector(
                     // 若转发顺序是先 SINGLE 后 DOWN，那个 DOWN 会把 `longPressAt` 重新排上，
                     // 一个 `longPressMs` 之后照样判长按 ⇒ 又是两个动作。
                     val directJustFired =
-                        SystemClock.uptimeMillis() - p.lastDirectSingleAt < config.longPressMs
+                        SystemClock.elapsedRealtime() - p.lastDirectSingleAt < config.longPressMs
                     // 状态位在锁里读改（与抬手那一段互斥），**派发留在锁外**：
                     //  dispatch 会发广播，不该占着这把锁。
                     //
@@ -458,7 +482,7 @@ internal class GestureDetector(
                     }
                     // 外部终止：UP 丢失（锁屏打断 / 非FLAG_CANCELED 的丢弃）时没有任何回调会停这条链，
                     // 每 interval 自循环派发 —— 距按下超过 30s 视为抬手事件已丢，强制停止。
-                    if (p.pressAt != 0L && SystemClock.uptimeMillis() - p.pressAt > REPEAT_MAX_MS) {
+                    if (p.pressAt != 0L && SystemClock.elapsedRealtime() - p.pressAt > REPEAT_MAX_MS) {
                         XLog.w("${id.label}：连续触发超过 ${REPEAT_MAX_MS}ms 未见抬手，强制停止（UP 可能已丢）")
                         p.repeatRunnable = null
                         // **finish 而不是 reset**：这一档等价于「替系统补一次抬手」，
@@ -517,7 +541,7 @@ internal class GestureDetector(
                         // 这次按压已经当场判过单击（同一次按压被转发两遍）
                         // ⇒ 不再补一次单击，否则一次按压会执行两个单击动作。
                         // 这里的窗口同样用定格值 —— 与排窗一致。
-                        if (SystemClock.uptimeMillis() - p.lastDirectSingleAt < p.doubleWindowMs) {
+                        if (SystemClock.elapsedRealtime() - p.lastDirectSingleAt < p.doubleWindowMs) {
                             XLog.w("${id.label}：这次按压已直判过单击，跳过补判")
                             p.sawFirstRelease = false
                             p.doubleWindowAt = 0L

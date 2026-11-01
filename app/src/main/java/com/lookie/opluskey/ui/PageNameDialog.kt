@@ -2,7 +2,6 @@ package com.lookie.opluskey.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -11,7 +10,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 
@@ -64,6 +62,17 @@ internal fun SettingsPage.NameDialog(
         onDismiss = onDismiss,
         // 带输入框：键盘由输入框那侧的 `ImeGuard` 叫，这里不能收（收晚一步就是「聚焦后又失焦」）
         hideImeOnShow = false,
+        //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
+        footer = {
+            DialogButtonRow(
+                negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
+                positive = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
+                onNegative = onDismiss,
+                onPositive = { onConfirm(text.trim()) },
+                //  空名字没有意义（菜单里会变成一行空白），此时「确定」是灰的
+                positiveStyle = DialogPositiveStyle(enabled = text.trim().isNotEmpty()),
+            )
+        },
     ) {
         NameInputBody(
             text = text,
@@ -73,8 +82,6 @@ internal fun SettingsPage.NameDialog(
             focus = focus,
             // 键盘与「失焦补焦点」需要知道弹窗关没关（见 `IconInputView` 的 `show`）
             show = show,
-            onCancel = onDismiss,
-            onConfirm = { onConfirm(text.trim()) },
         )
     }
 }
@@ -102,10 +109,7 @@ internal fun SettingsPage.NameInputBody(
     icon: ImageVector,
     focus: FocusRequester,
     show: Boolean,
-    onCancel: () -> Unit,
-    onConfirm: () -> Unit,
 ) {
-    val trimmed = text.trim()
     Column(Modifier.fillMaxWidth()) {
         // 与「名称 / 命令」那两栏**同一个组件**：长度上限与计数也就跟着一起有了。
         //  清除键仍由库自己画（不传 `trailingIcon`）。
@@ -122,16 +126,7 @@ internal fun SettingsPage.NameInputBody(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .dialogSideMargin()
-                    .padding(top = 4.dp),
-        )
-        DialogButtonRow(
-            negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
-            positive = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
-            onNegative = onCancel,
-            onPositive = onConfirm,
-            // 空名字没有意义（菜单里会变成一行空白），此时「确定」是灰的
-            positiveStyle = DialogPositiveStyle(enabled = trimmed.isNotEmpty()),
+                    .dialogSideMargin(),
         )
     }
 }

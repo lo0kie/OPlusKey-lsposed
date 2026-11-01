@@ -11,6 +11,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.bindsToken
 import com.lookie.opluskey.core.model.mapActions
@@ -35,7 +36,7 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     // 页面动作失败绝不外抛（本文件里其它入口都是这条纪律）：测试命令直接跑在点击回调上，
     //  从执行器里抛出来会打到 Compose 的点击处理里。
     try {
-        testRunner(context).runTest(cmd.name)
+        testRunner(context).runTest(cmd)
     } catch (e: Throwable) {
         XLog.w("测试命令失败（已忽略）：${cmd.name}", e)
         hint(I18n.get(Strings.TOAST_COMMAND_TEST_FAILED, "测试没触发"), slot = HINT_SLOT_COMMAND)
@@ -54,6 +55,35 @@ internal fun SettingsPage.testCommand(cmd: Command) {
  * Handler、系统服务与手电筒回调注册，每点一次新建会平白多出注册），页面关掉时释放。
  */
 private fun testRunner(context: android.content.Context): ActionRunner = TestRunnerCache.acquire(context)
+
+/**
+ * 草稿 → 一条**可执行**的 [Command]（不落盘、不查重）—— 给「测试命令」用。
+ *
+ *  与 `draftToLibrary`（在 `PageText.kt`）的分工：那个回答「存下去之后长什么样」
+ *  （要名字、要处理改名后的引用图），这个只回答「眼前这份内容能不能跑」，
+ *  所以名字可以空着 —— 新命令写到一半就想试是常事。
+ *
+ *  住在这一份文件里而不是跟着 `draftToLibrary`：它是「测试」这条路的入口，
+ *  与 [testCommand] 是一对；`PageText.kt` 那边函数数已经顶到 detekt 的上限。
+ */
+internal fun SettingsPage.draftCommand(): Command {
+    val draft = commandDraft.draft
+    val name = CommandLibrary.sanitizeName(draft.name)
+    return when (draft.kind) {
+        CommandKind.SINGLE -> {
+            Command(name, CommandKind.SINGLE, single = draft.single.trim())
+        }
+
+        CommandKind.SERIAL -> {
+            Command(
+                name = name,
+                kind = CommandKind.SERIAL,
+                steps = draft.steps.toList(),
+                stepDelayMs = draft.stepDelayMs,
+            )
+        }
+    }
+}
 
 /**
  * 「名称与某条已有命令重名」的判定（单一来源）：编辑态下与原命令同名不算重复，

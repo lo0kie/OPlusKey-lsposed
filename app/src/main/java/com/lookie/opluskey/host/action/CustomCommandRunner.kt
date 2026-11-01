@@ -30,7 +30,7 @@ internal class CustomCommandRunner(
             .newKeySet()
 
     /**
-     * 执行一条自定义命令。
+     * 按**名字**执行一条自定义命令（从库里查那一条）。
      *
      * @param depth 递归深度（界面只允许「多条引用单条」，手改文件可能成环，故须有上限）
      */
@@ -57,45 +57,27 @@ internal class CustomCommandRunner(
             onFailure(CommandFailure.NOT_FOUND)
             return
         }
+        run(cmd, depth)
+    }
+
+    /**
+     * 跑一条**已经在手上**的命令 —— 不再回库里按名字查。
+     *
+     *  设置页「测试命令」走这里：草稿态下这条命令还没保存，库里要么没有它、要么存的是**改之前**
+     *  那一版，按名字跑测的就不是眼前这份（最容易骗人的一种「看起来测过了」）。
+     *  列表菜单那条传进来的也是当前配置里那一条，与按名字查等价。
+     *
+     *  深度闸在上一条 [run] 里查过；这里的入口深度都是已知的（测试是 0，`cmd:` 引用是 `depth + 1`）。
+     */
+    fun run(
+        cmd: Command,
+        depth: Int,
+    ) {
+        // 草稿可以还没名字（新命令写到一半就要试）—— 名字只进日志与「正在跑」那张表
+        val name = cmd.name.ifBlank { UNNAMED }
 
         if (cmd.kind == CommandKind.SINGLE) {
-            // 空命令也是「按下去什么都没发生」的一种，同样要说一声
-            if (cmd.single.isBlank()) {
-                XLog.w("自定义命令「$name」（单条）是空的，跳过")
-                onFailure(CommandFailure.EMPTY)
-                return
-            }
-            XLog.w("自定义命令「$name」（单条）→ ${XLog.redactCommand(cmd.single)}")
-            // 与多条步骤同一套语义（Action.parse）：keyevent: / intent: / app: / shortcut: /
-            // cmd: / shell: 六种前缀写法在单条里同样成立。**没有前缀的写法不再兜底成 shell**
-            // （解析成 `none`、不执行）—— 界面在「命令详情」那一栏就拦住了（`Action.hasSupportedFormat`），
-            // 这里能收到说明是老配置 / 手改文件，执行侧只留日志。
-            // 注意：这里必须 `depth + 1`（与 `runSteps` 里那条 `cmd:` 步骤同口径）：单条正文里的
-            // `cmd:` 引用会在派发侧再进 `run()`，**是一次同步重入**；把 `depth` 原样传下去等于
-            // 「每层都还是 0」，上面那道 `depth > MAX_COMMAND_DEPTH` 永远不成立 ——
-            // 单条自引（A 的正文写 `cmd:A`）或互引（A→B→A）会一路同步递归到 StackOverflowError，
-            // 每层还各读一次配置文件。传别的动作时这个数没人用，多 `+1` 不产生副作用。
-            val parsed = Action.parse(cmd.single)
-            if (parsed is Action.Custom) {
-                //  正文引用另一条命令 ⇒ 这一下也是一次「起一条链」，必须走同一道链闸：
-                //  `enterChain` 里「已有链在跑」那条只在 depth == 0 时生效，而这里是 depth+1，
-                //  不占位就会绕过它 —— 两条链（一条由单条拉起、一条直接按下）交错执行。
-                //
-                //  **这里必须传 `depth + 1`，不能传 0**：传 0 会让这道闸把「本层是一次嵌套」
-                //  误判成「本层是最外层」—— 上一条链还占着 `runningSerial`（多条命令的步骤
-                //  之间要等 gapMs，占位一直持续到整条链跑完），于是这一层永远判 OVERLOADED、
-                //  永远不执行：`A(多条) → cmd:B(单条, 正文又是 cmd:C)` 里的 C 一次也不会跑。
-                //  传 `depth + 1` 时只做 `runningSerial.add(name)` 那半（防同名重入），正是本意。
-                if (!enterChain(name, depth + 1)) return
-                try {
-                    dispatch(parsed, depth + 1)
-                } finally {
-                    //  同步段结束就还回去（与多条那条 catch 同一口径），否则这条单条从此永久被自己挡住
-                    runningSerial.remove(name)
-                }
-                return
-            }
-            dispatch(parsed, depth + 1)
+            runSingle(cmd, name, depth)
             return
         }
 
@@ -115,6 +97,56 @@ internal class CustomCommandRunner(
             runningSerial.remove(name)
             throw e
         }
+    }
+
+    /**
+     * 单条命令那一支（从 [run] 拆出来的，只为让它的 `return` 条数留在 detekt 的 `ReturnCount` 之下）。
+     *
+     * @param name 日志与「正在跑」那张表用的名字（草稿没名字时是 `UNNAMED`）
+     */
+    private fun runSingle(
+        cmd: Command,
+        name: String,
+        depth: Int,
+    ) {
+        // 空命令也是「按下去什么都没发生」的一种，同样要说一声
+        if (cmd.single.isBlank()) {
+            XLog.w("自定义命令「$name」（单条）是空的，跳过")
+            onFailure(CommandFailure.EMPTY)
+            return
+        }
+        XLog.w("自定义命令「$name」（单条）→ ${XLog.redactCommand(cmd.single)}")
+        // 与多条步骤同一套语义（Action.parse）：keyevent: / intent: / app: / shortcut: /
+        // cmd: / shell: 六种前缀写法在单条里同样成立。**没有前缀的写法不再兜底成 shell**
+        // （解析成 `none`、不执行）—— 界面在「命令详情」那一栏就拦住了（`Action.hasSupportedFormat`），
+        // 这里能收到说明是老配置 / 手改文件，执行侧只留日志。
+        // 注意：这里必须 `depth + 1`（与 `runSteps` 里那条 `cmd:` 步骤同口径）：单条正文里的
+        // `cmd:` 引用会在派发侧再进 `run()`，**是一次同步重入**；把 `depth` 原样传下去等于
+        // 「每层都还是 0」，上面那道 `depth > MAX_COMMAND_DEPTH` 永远不成立 ——
+        // 单条自引（A 的正文写 `cmd:A`）或互引（A→B→A）会一路同步递归到 StackOverflowError，
+        // 每层还各读一次配置文件。传别的动作时这个数没人用，多 `+1` 不产生副作用。
+        val parsed = Action.parse(cmd.single)
+        if (parsed is Action.Custom) {
+            //  正文引用另一条命令 ⇒ 这一下也是一次「起一条链」，必须走同一道链闸：
+            //  `enterChain` 里「已有链在跑」那条只在 depth == 0 时生效，而这里是 depth+1，
+            //  不占位就会绕过它 —— 两条链（一条由单条拉起、一条直接按下）交错执行。
+            //
+            //  **这里必须传 `depth + 1`，不能传 0**：传 0 会让这道闸把「本层是一次嵌套」
+            //  误判成「本层是最外层」—— 上一条链还占着 `runningSerial`（多条命令的步骤
+            //  之间要等 gapMs，占位一直持续到整条链跑完），于是这一层永远判 OVERLOADED、
+            //  永远不执行：`A(多条) → cmd:B(单条, 正文又是 cmd:C)` 里的 C 一次也不会跑。
+            //  传 `depth + 1` 时只做 `runningSerial.add(name)` 那半（防同名重入），正是本意。
+            if (!enterChain(name, depth + 1)) return
+            try {
+                dispatch(parsed, depth + 1)
+            } finally {
+                //  同步段结束就还回去（与多条那条 catch 同一口径），否则这条单条从此永久被自己挡住
+                runningSerial.remove(name)
+            }
+            return
+        }
+        dispatch(parsed, depth + 1)
+        return
     }
 
     /**
@@ -274,5 +306,8 @@ internal class CustomCommandRunner(
     private companion object {
         /** 自定义命令展开最大深度 —— 界面不成环，但命令库是纯文本、可能被手改出环。 */
         const val MAX_COMMAND_DEPTH = 4
+
+        /** 草稿还没起名时在日志 / 「正在跑」表里用的占位 —— 只给人看，不落盘。 */
+        const val UNNAMED = "（未命名）"
     }
 }

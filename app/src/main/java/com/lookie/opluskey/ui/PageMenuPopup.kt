@@ -200,6 +200,8 @@ internal fun SettingsPage.MenuPopup(
         //  注意：取样的是页面那一层，本节点画在 Scaffold 的 `COUIPopupHost` 里（页面那层之外）——
         //  落进自己取样的那一层就是渲染节点链无限增长、RenderThread 栈溢出（真机崩过一次）。
         val panelShape = remember { RoundedCornerShape(POPUP_PANEL_RADIUS) }
+        //  抽屉开着时取样层里还有**抽屉自己**那一份（`PageSheet` 把它也登记进同一个 state），
+        //  所以这里照旧只认 `pageHazeState`：菜单糊出来的是「页面 + 抽屉」叠在一起的那一层。
         val source = chrome.pageHazeState
         if (source == null && !chrome.frostDegradeLogged) {
             chrome.frostDegradeLogged = true

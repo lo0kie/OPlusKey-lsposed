@@ -201,6 +201,18 @@ object ActionCatalog {
         Spec(name = Strings.TOOL_SYSTEM_SWITCHES, token = SWITCH_TILE, glyph = Glyph.SystemSwitch)
 
     /**
+     * 「自定义变量」的入口露不露出来 —— 现行 `false`（这个功能还没发布，入口先收起来）。
+     *
+     *  **一处开关管三道入口**：按键行为网格里那一格（[VARS_TILE]）、「添加命令」菜单里那一样
+     * （都来自 [GROUPS]）、首页「其他」卡那一条（`HomeCards` 读同一个常量）。
+     *  变量本身（存储、`setvar:`、`${名字}`）一律不动 —— 已经用上变量的命令照常跑。
+     *
+     *  改回 `true` 三处一起回来；那时 `BindingGrids` / `CommandMenus` 里对 [VARS_TILE] 的分支
+     *  也还是齐的，不必重写。
+     */
+    const val SHOW_VARIABLES = false
+
+    /**
      * 内置命令分成两类 —— 界面上各一个小标题，组内顺序即显示顺序。
      *
      * [ALL] 是把两组按顺序拍平的**扁平表**：焦点索引、图标预热等调用方只看它，
@@ -237,7 +249,7 @@ object ActionCatalog {
                 ),
             // 后三项是系统侧键场景表里的档位：起的是各功能自己的 KeyMagic / 闪记服务
             Strings.CATALOG_QUICK_TOOLS to
-                listOf(
+                listOfNotNull(
                     // 取值是 KSU 的 `service call`，模块侧换成注入 `KEYCODE_SYSRQ`
                     Spec(name = Strings.CATALOG_SCREENSHOT, token = SCREENSHOT),
                     // 小布 AI 入口格：识屏 / 语音 / 闪记 / 灵感语音四件都收在这一格后面
@@ -258,7 +270,13 @@ object ActionCatalog {
                     Spec(name = Strings.TOOL_OPEN_APP, token = APP_TILE),
                     // 同为入口不是取值：点它当场挑一颗变量、再挑对它做什么（见 `ui/screen/variables/`）。
                     //  与 [APP_TILE] 一样按 token 认领 —— `vars:` 不是任何动作的写法。
-                    Spec(name = Strings.TOOL_VARIABLES, token = VARS_TILE, glyph = Glyph.Variables),
+                    //  **不发布**：这一格随 [SHOW_VARIABLES] 收起来（网格与「添加命令」菜单同源，
+                    //  一处关掉两边都没有）。
+                    if (SHOW_VARIABLES) {
+                        Spec(name = Strings.TOOL_VARIABLES, token = VARS_TILE, glyph = Glyph.Variables)
+                    } else {
+                        null
+                    },
                 ),
         )
 

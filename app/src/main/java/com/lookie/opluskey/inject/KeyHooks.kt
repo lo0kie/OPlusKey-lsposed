@@ -1,8 +1,10 @@
 package com.lookie.opluskey.inject
 
+import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import com.lookie.opluskey.bridge.FlexibleWindowBridge
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.bridge.StatusBarBridge
@@ -97,6 +99,7 @@ internal object KeyHooks {
         val interceptor =
             SideKeyInterceptor(
                 handler,
+                isScreenOn = { screenInteractive(loader) },
                 forward = { id, gesture, repeat ->
                     forwarder.forward(id, gesture, repeat)
                 },
@@ -420,4 +423,22 @@ internal object KeyHooks {
             Reflect.zeroOf((chain.executable as? java.lang.reflect.Method)?.returnType)
         }
     }
+}
+
+/**
+ * 屏幕此刻亮着没有（`PowerManager.isInteractive`）—— 判定器用它决定「熄屏时不等双击窗口」。
+ *
+ *  为什么熄屏要区别对待：抬手之后设备会进深度睡眠，`postDelayed` 排的那一枪（按
+ *  `uptimeMillis` 走）不会到点，单击就丢了（真机口径「熄屏按下没反应」）。
+ *
+ *  **拿不到一律按「亮着」**：那条路上还有双击窗口兜着，宁可多等 300ms，也别因为借不到
+ *  Context 就把双击拆成两次单击。`getSystemService` 在注入侧是允许的（见 `SystemContext`），
+ *  `ContentResolver` 那类才不行。
+ */
+private fun screenInteractive(loader: ClassLoader): Boolean {
+    val pm =
+        runCatching {
+            SystemContext.get(loader)?.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        }.getOrNull() ?: return true
+    return runCatching { pm.isInteractive }.getOrDefault(true)
 }

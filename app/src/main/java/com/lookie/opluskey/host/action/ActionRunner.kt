@@ -195,10 +195,13 @@ internal class ActionRunner(
     /**
      * 设置页「测试命令」按钮走这里，日志不套「侧键 -」前缀（那一条是「侧键真被按了」的判据）。
      * 只在设置页进程（`:ui`）里跑，不走广播给宿主主进程那条路（那个进程开机后可能还没起来）。
+     *
+     * **跑的是传进来的这条命令本身**，不回库里按名字查 —— 草稿态下它还没保存（或者库里存的是
+     * 改之前那一版），按名字跑测的就不是眼前这份。
      */
-    fun runTest(name: String) {
-        XLog.w("测试命令 → ${Command.PREFIX}$name")
-        dispatch(Action.Custom(name))
+    fun runTest(cmd: Command) {
+        XLog.w("测试命令 → ${cmd.name.ifBlank { "（未命名）" }}")
+        custom.run(cmd, 0)
     }
 
     /**
@@ -349,7 +352,11 @@ internal class ActionRunner(
             return
         }
         //  原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分
-        ShellRunner.exec(command, ::notifyFailure)
+        //  命令里写 `echo 'tip: …'` 的那一行，成功时弹成 Toast —— 这是 shell 动作唯一能回显结果的
+        //  通道（`ShellRunner.TIP_PREFIX`），失败那一侧由 [notifyFailure] 报。
+        ShellRunner.exec(command, ::notifyFailure) { tip ->
+            FailureNotice.toast(context, tip)
+        }
     }
 
     /**

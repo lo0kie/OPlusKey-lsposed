@@ -27,6 +27,7 @@ import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.isDarkScheme
+import dev.chrisbanes.haze.hazeSource
 import io.github.suqi8.coui.kmp.basic.CardColors
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -124,8 +125,16 @@ internal fun SettingsPage.PageSheet(
 ) {
     overlays.Closer(show = show, onDismiss = onDismiss)
     overlays.BackCapturing(show = show)
+    //  **抽屉自己也要进磨砂取样层**：它画在 `COUIPopupHost` 里（页面那层之外），不登记的话，
+    //  抽屉里弹出来的菜单采到的还是**抽屉底下那一页** —— 菜单上看到的是页面内容，
+    //  看上去就像抽屉被穿透了（真机反馈）。
+    //  登记进页面那一份（`pageHazeState`）：菜单本来就采样它，多一个源之后
+    //  「页面（含抽屉外的部分）+ 抽屉」一起糊，菜单盖到抽屉外沿时也不会缺一块。
+    //  时序上页面先登记、抽屉后登记，Haze 按登记顺序叠，抽屉在页面之上 ✓。
+    val frostState = chrome.pageHazeState
     OverlayBottomSheet(
         show = show,
+        modifier = frostState?.let { Modifier.hazeSource(it) } ?: Modifier,
         title = title,
         //  标题行右端那一格（右上角）—— 库自己的槽，不从标题里抢位置
         endAction = endAction,

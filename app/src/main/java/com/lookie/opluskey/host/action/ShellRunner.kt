@@ -17,10 +17,13 @@ internal object ShellRunner {
      *
      * @param onFailure 失败回调（后台线程里调 —— 实现方自己负责切线程）。
      *   两类时机：`ProcessBuilder.start()` 直接失败；子进程退出码非 0；等待超时。
+     * @param onTip 命令自己写的那行提示（[TIP_PREFIX]），**只在退出码 0 时**回调一次；
+     *   同样在后台线程上 —— 要弹 Toast 的那一侧自己负责切主线程（`FailureNotice.toast` 已经切了）。
      */
     fun exec(
         command: String,
         onFailure: (CommandFailure) -> Unit = {},
+        onTip: (String) -> Unit = {},
     ) {
         if (command.isBlank()) {
             //  空命令不该走到这里（`shell:` 那一支解析时已经掉空值）；真走到就是配置里有条空的，
@@ -32,13 +35,14 @@ internal object ShellRunner {
         //  （首次 `su` 会停在等授权，可能几秒）。这两步原先在**调用线程**上同步做，而调用链是
         //  宿主主线程的广播回调（`GestureReceiver` 的 Handler 建在主 Looper）—— 一条慢命令
         //  就能把整个宿主卡住。
-        runnerPool.execute { execBlocking(command, onFailure) }
+        runnerPool.execute { execBlocking(command, onFailure, onTip) }
     }
 
     /** [exec] 的实现体 —— 跑在 [runnerPool] 上，所以这里允许阻塞。 */
     private fun execBlocking(
         command: String,
         onFailure: (CommandFailure) -> Unit,
+        onTip: (String) -> Unit,
     ) {
         // 先占坑再起进程。`if (running.get() >= MAX) …` 那种**先查后加**在并发下会一起放行：两条
         //  会同时看到「没满」一起放行。占坑本身见 [acquireSlot]。
@@ -61,7 +65,7 @@ internal object ShellRunner {
             //  必须在等结束**之前**打：命令挂到超时的那一档，用户要知道它确实起过。
             XLog.w("shell 命令已在后台启动（走的是 $via）：${XLog.redactCommand(command)}")
 
-            awaitProcess(proc, via, command, onFailure)
+            awaitProcess(proc, via, command, onFailure, onTip)
         } catch (e: Throwable) {
             // 起进程这一步就失败：槽位由下面的 finally 还（只此一处释放，避免两条路径各记一次）
             XLog.w("执行 shell 失败：${XLog.redactCommand(command)}", e)
@@ -97,6 +101,7 @@ internal object ShellRunner {
         via: String,
         command: String,
         onFailure: (CommandFailure) -> Unit,
+        onTip: (String) -> Unit,
     ) {
         // 读输出必须另起一条线程与等待**并行**：`forEachLine` 要读到 EOF 才返回，
         // 而 logcat 不带 -d / 常驻进程 / `tail -f` 这类命令根本不关 stdout ——
@@ -112,7 +117,11 @@ internal object ShellRunner {
         // 输出的**尾部**（最多 [SHELL_TAIL_LINES] 行）：只在失败时以 `w` 回放，
         //  理由见那个常量的注释。读写都在读线程里，主线程在 `reader.get` 之后才拿。
         val tail = java.util.Collections.synchronizedList(ArrayDeque<String>())
-        val reader = startOutputReader(proc, denied, tail)
+        // 命令自己写的那行提示（见 [TIP_PREFIX]）：只留**最后一条**，一个动作只弹一次
+        val tip =
+            java.util.concurrent.atomic
+                .AtomicReference<String>()
+        val reader = startOutputReader(proc, denied, tail, tip)
 
         try {
             // 必须带超时：有些命令在这个身份下会直接挂住（真机实测 `cmd audio set-ringer-mode` 就是）；
@@ -159,6 +168,12 @@ internal object ShellRunner {
                 XLog.w("shell 退出码 $code（走的是 $via）：${XLog.redactCommand(command)}")
                 logOutputTail(tail)
                 onFailure(classifyFailure(code, via, denied.get()))
+            } else {
+                // 成功才弹提示：失败那边已经有失败提示，这里再弹一句「已切换」就是报喜不报忧
+                tip.get()?.takeIf { it.isNotEmpty() }?.let { line ->
+                    XLog.w("shell 提示：$line")
+                    onTip(line)
+                }
             }
         } finally {
             // 收尾时**强关管道**：脚本派生的常驻子进程（`cmd &` / 没有 `nohup` 解除 stdout）
@@ -229,11 +244,12 @@ internal object ShellRunner {
         XLog.w("shell 输出（尾 ${lines.size} 行）：\n" + lines.joinToString("\n"))
     }
 
-    /** 读输出并逐行匹配权限拒绝提示。 */
+    /** 读输出并逐行匹配权限拒绝提示，顺带收命令自己那行提示（[TIP_PREFIX]）。 */
     private fun startOutputReader(
         proc: Process,
         denied: java.util.concurrent.atomic.AtomicReference<String>,
         tail: MutableList<String>,
+        tip: java.util.concurrent.atomic.AtomicReference<String>,
     ): Future<*> =
         readerPool.submit {
             runCatching {
@@ -251,6 +267,11 @@ internal object ShellRunner {
                             DENIED_HINTS
                                 .firstOrNull { line.contains(it, ignoreCase = true) }
                                 ?.let { denied.compareAndSet(null, it) }
+                        }
+                        //  命令自己的提示行（`echo 'tip: …'`）—— 覆盖式记录，只弹最后一条
+                        val trimmed = line.trim()
+                        if (trimmed.startsWith(TIP_PREFIX)) {
+                            tip.set(trimmed.removePrefix(TIP_PREFIX).trim())
                         }
                     }
                 }
@@ -442,6 +463,19 @@ internal object ShellRunner {
 
     /** `su` 这个解释器的名字 —— [LAUNCHERS] 与 [classifyFailure] 共用，别各写一份字面量。 */
     private const val SU = "su"
+
+    /**
+     * 命令自己给的那行提示 —— 写法是 `echo 'tip: 屏幕超时 · 30 分钟'`。
+     *
+     *  存在的理由：`shell:` 跑完**没有任何回执**，而「屏幕超时 / 亮度 / 音量」这类改动屏幕上
+     *  一点反应都没有 —— 按完不知道切成了哪一档。Toast 只能由应用身份弹，root shell 里没有这条
+     *  命令（`cmd notification` 发的是通知，不会浮起来），所以约定由命令自己写进输出、模块负责弹。
+     *
+     *  口径：前缀**精确** `tip:`（前导空白先去掉），一条命令只取**最后一条**，且**只在退出码 0
+     *  时**弹（失败那边已经有失败提示）。与「执行时提示」（`GlobalConfig.toastOnRun`）互不影响：
+     *  那个报「执行了哪个动作」，这条报「命令算出来的结果」，两个都开会连弹两条。
+     */
+    private const val TIP_PREFIX = "tip:"
 
     /** 输出里出现这几句 = 权限拒绝（`am` 在 App uid 下就是那句 `Permission Denial`）。 */
     private val DENIED_HINTS =

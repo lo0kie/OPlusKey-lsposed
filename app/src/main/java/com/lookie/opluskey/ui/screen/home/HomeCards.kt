@@ -5,6 +5,7 @@ import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.RowEndIcon
@@ -125,12 +126,15 @@ internal fun SettingsPage.HomeOtherCard(
                 //  在命令里用），摆在一起比塞进「更多选项」更好找。
                 //  这一页只有变量的清单与新建，不吃整页总闸以外的东西：建 / 改变量要写盘，
                 //  所以与上面两行同一档（`pageEnabled`）。
+                //  **入口临时收起来**（[ActionCatalog.SHOW_VARIABLES]，用户口径「UI 入口先藏、功能不动」）：
+                //  走行的 `visible`，连它下面那条细线一起藏，不留孤零零一条线。
                 CardRow.Item(
                     title = I18n.get(Strings.TOOL_VARIABLES, "自定义变量"),
                     summary = I18n.get(Strings.HOME_VARIABLES_DESC, "命令里能读、也能改的值"),
                     icon = TablerIcons.Outline.Variable,
                     enabled = pageEnabled,
                     arrow = true,
+                    visible = ActionCatalog.SHOW_VARIABLES,
                     //  这一趟是**管数据**：点列表里的一颗会弹「编辑 / 删除 + 当场改值」那张窗
                     onClick = { openVariablesForManage() },
                 ),

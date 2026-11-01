@@ -31,7 +31,6 @@ import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialogBottomMargin
 import com.lookie.opluskey.ui.dialogSideMargin
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.state.CommandsSave
@@ -351,9 +350,8 @@ private fun CollectKeyBody(secondsLeft: Int) {
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .dialogSideMargin()
-                    // 这一档**没有底部按钮**：底部内缩与标题上边距取同一档，上下才对称
-                    .dialogBottomMargin(),
+                    //  竖向留白交给 `FrostedDialog`（没有底部按钮时它会补同一档外沿留白）
+                    .dialogSideMargin(),
         )
     }
 }
@@ -373,8 +371,7 @@ private fun DuplicateBody(name: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .dialogSideMargin()
-                .dialogBottomMargin(),
+                .dialogSideMargin(),
     )
 }
 

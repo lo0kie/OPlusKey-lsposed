@@ -125,9 +125,9 @@ internal fun ColumnScope.PickerRows(
         Modifier
             .weight(1f, fill = false)
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            //  最后一行下面留一点面板本色：行铺到面板底边的话，圆角那两处会显得被切平
-            .padding(bottom = PICKER_ROW_BOTTOM_GAP),
+            //  这里**不再自己补底部留白**：上下外沿那一档由 `FrostedDialog` 的三区统一给
+            //  （自己再补一份，上下就一边多一边少）。
+            .verticalScroll(rememberScrollState()),
     ) {
         labels.forEachIndexed { index, label ->
             //  行之间那条细线：与各页卡片里同一档（`CardList` 那条 `HorizontalDivider` +
@@ -259,6 +259,21 @@ internal fun SettingsPage.MultiPickerDialog(
         show = show,
         title = title,
         onDismiss = onDismiss,
+        //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
+        footer = {
+            DialogButtonRow(
+                negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
+                positive = confirmText,
+                onNegative = onDismiss,
+                onPositive = onConfirm,
+                positiveStyle =
+                    DialogPositiveStyle(
+                        enabled = confirmEnabled,
+                        //  禁用了也要能点一下问为什么（见 `DialogPositiveStyle.onDisabledClick`）
+                        onDisabledClick = onBlockedClick,
+                    ),
+            )
+        },
     ) {
         if (hint != null) {
             Text(
@@ -280,18 +295,6 @@ internal fun SettingsPage.MultiPickerDialog(
             isSelected = { it in selected },
             onClick = onToggle,
         )
-        DialogButtonRow(
-            negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
-            positive = confirmText,
-            onNegative = onDismiss,
-            onPositive = onConfirm,
-            positiveStyle =
-                DialogPositiveStyle(
-                    enabled = confirmEnabled,
-                    //  禁用了也要能点一下问为什么（见 `DialogPositiveStyle.onDisabledClick`）
-                    onDisabledClick = onBlockedClick,
-                ),
-        )
     }
 }
 
@@ -303,6 +306,3 @@ private val PICKER_ROW_VERTICAL_PADDING = 8.dp
 
 /** 选择器里一行的高度下限 —— 与卡片行同一档（56dp），点起来手指不局促。 */
 private val PICKER_ROW_MIN_HEIGHT = 56.dp
-
-/** 最后一行下面那一点面板本色 —— 行铺到面板底边的话，圆角那两处会显得被切平。 */
-private val PICKER_ROW_BOTTOM_GAP = 8.dp

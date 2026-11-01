@@ -69,36 +69,8 @@ internal fun SettingsPage.BranchTimeRangeDialog(
         onDismiss = onDismiss,
         // 没有输入框，弹窗照常把键盘收掉
         hideImeOnShow = true,
-    ) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().dialogSideMargin(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TimeWheel(
-                    spec =
-                        TimeWheelSpec(
-                            label = I18n.get(Strings.COMMAND_COND_TIME_START, "开始"),
-                            hour = startHour,
-                            minute = startMinute,
-                            onHourChange = { startHour = it },
-                            onMinuteChange = { startMinute = it },
-                        ),
-                    modifier = Modifier.weight(1f),
-                )
-                TimeWheel(
-                    spec =
-                        TimeWheelSpec(
-                            label = I18n.get(Strings.COMMAND_COND_TIME_END, "结束"),
-                            hour = endHour,
-                            minute = endMinute,
-                            onHourChange = { endHour = it },
-                            onMinuteChange = { endMinute = it },
-                        ),
-                    modifier = Modifier.weight(1f),
-                )
-            }
+        //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
+        footer = {
             DialogButtonRow(
                 negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
                 positive = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
@@ -113,6 +85,36 @@ internal fun SettingsPage.BranchTimeRangeDialog(
                         ),
                     )
                 },
+            )
+        },
+    ) {
+        //  内容槽本身就是 `ColumnScope`，不必再套一层 `Column`（多那一层只是多两行）。
+        Row(
+            modifier = Modifier.fillMaxWidth().dialogSideMargin(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TimeWheel(
+                spec =
+                    TimeWheelSpec(
+                        label = I18n.get(Strings.COMMAND_COND_TIME_START, "开始"),
+                        hour = startHour,
+                        minute = startMinute,
+                        onHourChange = { startHour = it },
+                        onMinuteChange = { startMinute = it },
+                    ),
+                modifier = Modifier.weight(1f),
+            )
+            TimeWheel(
+                spec =
+                    TimeWheelSpec(
+                        label = I18n.get(Strings.COMMAND_COND_TIME_END, "结束"),
+                        hour = endHour,
+                        minute = endMinute,
+                        onHourChange = { endHour = it },
+                        onMinuteChange = { endMinute = it },
+                    ),
+                modifier = Modifier.weight(1f),
             )
         }
     }

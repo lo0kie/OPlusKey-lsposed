@@ -341,6 +341,9 @@ private fun CommandTileHeadline(
 ) {
     //  **读在这一层**（不是它的调用点）：动画值一变只有这一行重组，卡片正文与摘要不跟着走。
     val accent = accentColor.value
+    //  名字比页面里的行标题小一档（`headline1` 16sp → `body2` 14sp）：卡片本身窄，名字再和
+    //  行标题一样大，两行名字就把格子塞满了。字号只在这一处定，光学修正跟着同一个 style 走。
+    val titleStyle = COUITheme.textStyles.body2
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(
             commandIcon(cmd.kind, cmd.steps.size),
@@ -354,14 +357,14 @@ private fun CommandTileHeadline(
         //  多条命令独有那位「步骤间隔」挪到名字下面那行小字里去（见卡片正文那一段）。
         Text(
             text = cmd.name,
-            style = COUITheme.textStyles.headline1,
+            style = titleStyle,
             fontWeight = FontWeight.Medium,
             // 选中时上主题色，与类型图标同色、同一动画值。
             color = accent,
             maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
             overflow = TextOverflow.Ellipsis,
             // 与行首那枚类型图标同一行、竖居中：补一档光学修正（见 `opticalCenter`）
-            modifier = Modifier.opticalCenter(COUITheme.textStyles.headline1),
+            modifier = Modifier.opticalCenter(titleStyle),
         )
     }
 }
