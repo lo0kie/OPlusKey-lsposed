@@ -5,21 +5,27 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.PageScrollColumn
+import com.lookie.opluskey.ui.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.screen.binding.BindingGridFocus
 import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.binding.BindingTileMenu
@@ -27,6 +33,7 @@ import com.lookie.opluskey.ui.screen.binding.BuiltInGrid
 import com.lookie.opluskey.ui.screen.binding.CustomCommandsGrid
 import com.lookie.opluskey.ui.screen.binding.SavedCommandsTitle
 import com.lookie.opluskey.ui.screen.binding.rememberBindingGridState
+import com.lookie.opluskey.ui.screen.command.comboScenarioNotice
 import com.lookie.opluskey.ui.screen.openAppPickerForTarget
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -95,6 +102,23 @@ internal fun SettingsPage.ComboEditScreen(
         BindingGridFocus(grid, pager.currentPage == page, "组合按键")
         PageScrollColumn(scrollBehavior = scrollBehavior, state = scrolls[page]) {
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + bandBlock))
+            //  这一档（短按 / 长按）配了「系统场景」时那张**提示卡** —— 与「按键绑定」页同一句、
+            //  同一个位置：场景先判、命中就轮不到下面这些绑定。点它进那一档的条件表，
+            //  走的还是 ⋮ 菜单那条现成的路（`openBranchesForCombo`）。
+            comboScenarioNotice(combo.id, if (page == 0) Gesture.SINGLE else Gesture.LONG)?.let { notice ->
+                CardList(
+                    modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
+                    rows =
+                        listOf(
+                            CardRow.Item(
+                                title = notice,
+                                icon = PageIcons.CommandBranch,
+                                arrow = true,
+                                onClick = { openBranchesForCombo(combo.id) },
+                            ),
+                        ),
+                )
+            }
             //  长按那一档：设置卡在网格**上面**（与「按键绑定」页同一个顺序 ——
             //  先「这一档怎么判」，再挑「绑什么」）。短按没有可调的东西，直接是网格。
             //  块与块之间的间距由小标题自带；网格自己那几组由网格内部管。

@@ -258,7 +258,7 @@ private fun SettingsPage.comboMenuEntries(
  *  用户停在短按页还是长按页，就编哪一档 —— 组合键只有这两档；`Gesture.entries` 是
  *  单击(0) / 双击(1) / 长按(2)，长按不是页号 1，必须按枚举取。
  */
-private fun SettingsPage.openBranchesForCombo(id: String) {
+internal fun SettingsPage.openBranchesForCombo(id: String) {
     branchDraft.comboId = id
     branchGesture = if (ComboEditState.page == 0) Gesture.SINGLE.ordinal else Gesture.LONG.ordinal
     XLog.w("组合键：进「$BRANCHES_TITLE」页（$id）")

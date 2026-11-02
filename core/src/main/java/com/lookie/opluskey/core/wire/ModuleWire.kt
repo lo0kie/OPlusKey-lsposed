@@ -276,4 +276,47 @@ object ModuleWire {
 
     /** [ACTION_LOG_CHUNK] 里带「这一段的正文」。 */
     const val EXTRA_LOG_TEXT = "log_text"
+
+    // ── 注入侧代发网络请求：宿主没 INTERNET，只有 system_server 有 ──
+    //
+    //  宿主的清单里**没有** `INTERNET`（`reference/gesture.apk` 的 49 条权限里只有
+    //  `ACCESS_NETWORK_STATE`），而界面代码跑在宿主进程 —— 所以「检查更新」这类要出网的事，
+    //  只能请注入侧代取。能力本身在 `inject/NetChannel`，实测结论见 `device-findings.md` 四十一
+    //  （能连，但必须先绑默认网络再解析 DNS）。
+    //
+    //  一问一答：[ACTION_NET_REQUEST] 由宿主发（同 uid 的设置页也行），注入侧取回正文后
+    //  用 [ACTION_NET_RESULT] 回给宿主。**只做 GET、只认 https** —— 这是一个「取一段文本」的
+    //  通道，不是通用代理。
+
+    /** 宿主 → 注入侧：**替我取一个 URL**（GET，只接受 https）。 */
+    const val ACTION_NET_REQUEST = "com.lookie.opluskey.NET_REQUEST"
+
+    /** 注入侧 → 宿主：上面那条的结果。 */
+    const val ACTION_NET_RESULT = "com.lookie.opluskey.NET_RESULT"
+
+    /** 两条都带：**这一趟的编号** —— 一次可能并发好几条，靠它配对（谁发谁收）。 */
+    const val EXTRA_NET_ID = "net_id"
+
+    /** [ACTION_NET_REQUEST] 里带「要取的地址」。 */
+    const val EXTRA_NET_URL = "net_url"
+
+    /** [ACTION_NET_RESULT] 里带「HTTP 状态码」；`0` = 压根没连上（原因见 [EXTRA_NET_ERROR]）。 */
+    const val EXTRA_NET_STATUS = "net_status"
+
+    /** [ACTION_NET_RESULT] 里带「正文」（超过 [NET_BODY_LIMIT] 的部分截掉）。 */
+    const val EXTRA_NET_BODY = "net_body"
+
+    /** [ACTION_NET_RESULT] 里带「失败原因」；成功时是空串。 */
+    const val EXTRA_NET_ERROR = "net_error"
+
+    /**
+     * 正文上限（字符数）—— 一次广播塞几百 KB 会撞 binder 事务上限。
+     *
+     *  检查更新只要几 KB（releases 那个 JSON），32 KB 留了十倍余量；超了截断并把
+     *  `error` 写成「正文超长已截断」，让调用方知道这不是完整正文。
+     */
+    const val NET_BODY_LIMIT = 32 * 1024
+
+    /** 这一趟最多等多久（毫秒）—— 连接与读取各用这一个值。 */
+    const val NET_TIMEOUT_MS = 8_000
 }

@@ -25,7 +25,7 @@ internal object ComboEditState {
      * 列表页的**筛选**：只看含这颗键的组合（`null` = 全部）。
      *
      *  不落盘 —— 它是「这一趟想找哪一组」，不是配置的一部分。单选（菜单里打勾的那一行）。
-     *  那一组被删掉 / 那颗键不再出现在任何组合里时，列表页会把它退回 `null`（见 `ComboScreen`）。
+     *  那一组被删掉 / 那颗键不再出现在任何组合里时，列表页会把它退回 `null`（见 `KeysScreen`）。
      */
     var filterKey by mutableStateOf<String?>(null)
 

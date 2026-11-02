@@ -22,6 +22,7 @@ import com.lookie.opluskey.ui.model.COMBO_TITLE
 import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.GENERAL_TITLE
+import com.lookie.opluskey.ui.model.KEYS_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SUBTITLE_DIM_FACTOR
 import com.lookie.opluskey.ui.model.gestureLabel
@@ -30,6 +31,7 @@ import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
 import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
+import com.lookie.opluskey.ui.screen.combo.KeysHeaderSettings
 import com.lookie.opluskey.ui.screen.combo.comboLabel
 import com.lookie.opluskey.ui.screen.command.BranchHeaderAdd
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
@@ -162,7 +164,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         // 两页不同名：列表页写「组合键列表」，编辑页写「组合键」——
         //  顶栏一眼能看出自己在哪一层（在编哪一组由尾随小标题说，见 [pageSubtitle]）。
-        Screen.COMBOS -> COMBO_TITLE
+        Screen.KEYS -> KEYS_TITLE
 
         Screen.COMBO_EDIT -> COMBO_TITLE
 
@@ -297,6 +299,10 @@ private fun SettingsPage.PageActions(
         // 组合键编辑页的 ⋮：只有「删除组合键」一行（见 [ComboEditMenu]）
         Screen.COMBO_EDIT -> ComboEditMenu()
 
+        // 「按键功能」页那颗「设置」：直接进「按键设置」—— 组合按键那两项就在那一页，
+        //  改完组合键不必先退回首页再点「按键设置」（见 [KeysHeaderSettings]）
+        Screen.KEYS -> KeysHeaderSettings()
+
         // 「自定义变量」页那颗「新建」：这一页唯一的加法入口（原先在右下角那颗 FAB 上）
         Screen.VARIABLES -> VariableHeaderAdd()
 
@@ -376,7 +382,7 @@ private fun SettingsPage.PageBottomBand(
         // 首页 / 「关于模块」/「捐赠列表」都没有固定带（后两页都是「短内容」页，见 [pageScrollBehavior]）。
         //  「自定义变量」同样没有：那一页没有分页器，也就没有带子。
         Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL,
-        Screen.COMBOS, Screen.VARIABLES,
+        Screen.KEYS, Screen.VARIABLES,
         -> {
             // 这几页不摆固定带
         }

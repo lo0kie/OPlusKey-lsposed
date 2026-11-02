@@ -59,6 +59,21 @@ internal object ProbeChannel {
     internal const val OP_DRESS = "dress"
     internal const val OP_ZOOM = "zoom"
 
+    /**
+     * `net` —— 在**本进程**（system_server）里连一次网络。
+     *
+     *  存在的理由只有一个：验「注入侧能不能查更新」。界面层跑在宿主进程，宿主没有 `INTERNET`
+     *  （真机实证 `SecurityException`），所以「检查更新」能不能自动做，取决于 system_server
+     *  这一侧能不能连出去 —— 权限层 uid 1000 有 `INTERNET`，真正卡人的是 SELinux 域。
+     */
+    internal const val OP_NET = "net"
+
+    /** `net` 的目标地址（不填就用模块仓库的 releases 接口 —— 检查更新真正要打的那个）。 */
+    internal const val EXTRA_URL = "url"
+
+    internal const val DEFAULT_PROBE_URL =
+        "https://api.github.com/repos/Xposed-Modules-Repo/io.github.lo0kie.opluskey/releases/latest"
+
     internal const val EXTRA_OP = "op"
     internal const val EXTRA_CLS = "cls"
     internal const val EXTRA_NAME = "name"
@@ -170,6 +185,28 @@ internal object ProbeChannel {
     // ── 接收侧：system_server（经 KeyHooks 的 AMS 广播入口） ────────────────────
 
     /**
+     * 广播入口那一层的**分派**：丢到主线程跑、整段兜住（`KeyHooks.dispatchAction` 只留一行调用）。
+     *
+     *  为什么兜底与 `post` 都收在这里：调用点那个 `when` 贴着 detekt 的
+     *  `CyclomaticComplexMethod` 上限，多一个 `try / catch` 就超一格；而「注入侧任何一环
+     * 抛出去就是 system_server 崩」这条纪律本来就该跟着这条通道走（五之二、2）。
+     *
+     *  不能就地执行：`handle` 里是反射与探针，放在 AMS 的广播入口上跑等于把广播分发停住。
+     */
+    fun dispatch(
+        intent: Intent,
+        loader: ClassLoader?,
+    ) {
+        handler.post {
+            try {
+                handle(intent, loader)
+            } catch (e: Throwable) {
+                XLog.w("探针指令执行失败（已忽略）：${e.javaClass.simpleName}", e)
+            }
+        }
+    }
+
+    /**
      * @param loader system_server / 桌面进程的 ClassLoader
      * @return 是否吃掉了这条广播（action 不匹配返回 false）
      */
@@ -197,6 +234,7 @@ internal object ProbeChannel {
                 OP_CORNER -> corner(loader, intent)
                 OP_DRESS -> dress(loader, intent)
                 OP_ZOOM -> zoomFromHere(loader, intent)
+                OP_NET -> net(intent, loader)
                 else -> XLog.w("${describe(op)}：不认识的 op")
             }
         } catch (e: Throwable) {

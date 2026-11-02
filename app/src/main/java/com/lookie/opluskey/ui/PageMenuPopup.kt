@@ -421,10 +421,12 @@ private fun SettingsPage.MenuRow(
                         }
                     Box(tracked, contentAlignment = Alignment.Center) {
                         Icon(
-                            // 选中那一行：行首这颗直接换成对勾（行尾那颗已经关掉了，见上面的 `showCheck`）。
-                            //  自带颜色的行（系统配色的色块）**不换**：那块颜色就是这一行的身份，
-                            //  换成对勾等于把「哪一套色」抹掉；选中由库的 `isSelected` 表达。
-                            if (row.selected && row.iconTint == null) PageIcons.MenuCheck else row.icon,
+                            // 选中那一行：行首这颗**一律**换成对勾（行尾那颗已经关掉了，见上面的 `showCheck`）。
+                            //  自带颜色的行（系统配色那几行的色块）也换 —— 但**颜色仍用这一行的色**
+                            //  （`iconTint`，见下面的 `tint`）：对勾的**形状**说「当前是这一项」，
+                            //  对勾的**颜色**说「是哪一套色」，两条信息都留着
+                            //  （用户口径：「强调色菜单选中项行首用 checked」）。
+                            if (row.selected) PageIcons.MenuCheck else row.icon,
                             null,
                             Modifier.size(MENU_ICON_SIZE),
                             //  随机配色只在「能点、不是危险项、不是选中项」时生效：

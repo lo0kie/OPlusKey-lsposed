@@ -57,8 +57,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flag
 import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
+import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
-import io.github.lyxnx.compose.ui.tablericons.outline.HandTwoFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
@@ -117,7 +117,7 @@ internal object PageIcons {
     val Back: ImageVector get() = TablerIcons.Outline.ArrowLeft
 
     /**
-     * 「通用设置」那一行 / 那一页 —— `settings-2`（两颗滑块的齿轮）。
+     * 「按键设置」那一行 / 那一页 —— `settings-2`（两颗滑块的齿轮）。
      *
      *  用户口径指定这一颗：这一页装的是「整个模块怎么跑」的全局项（接口选择、振动、执行提示）。
      *  换掉了原来的 `settings-cog` —— 那颗与「语言自动」那行的 `settings` 太像，两行摆在一起
@@ -311,7 +311,7 @@ internal object PageIcons {
         }
 
     /**
-     * 首页「按键」卡末行「添加按键」—— `plus`（加号）。
+     * 「按键功能」页「按键列表」末行「添加按键」—— `plus`（加号）。
      *
      *  这一行是**往清单里再加一颗**（弹收集弹窗），加号直接说这件事；
      *  收集到的那几行用 [menuKeyNumber]，两者不共用同一颗字形。
@@ -319,15 +319,15 @@ internal object PageIcons {
     val MenuKeyAdd: ImageVector get() = TablerIcons.Outline.Plus
 
     /**
-     * 首页「按键操作」卡里那一行「组合按键」—— `hand-two-fingers`（两只手指）。
+     * 首页「按键操作」卡那一行「按键功能」（指向「按键功能」页）—— `hand-finger`（一根手指）。
      *
-     *  用户口径指定这一颗：这一行说的是「**两颗键一起按**」，两只手指比 ⌘ 更直接 ——
-     *  ⌘ 是桌面键盘的组合键符号，手机上不出现在任何系统界面里。
+     *  用户口径指定这一颗：这一行现在说的是**按键本身**（那一页里有按键列表与组合按键），
+     *  不再是「两颗键一起按」；⌘ 那种桌面组合键符号手机上不出现在任何系统界面里，不用。
      *
      *  页内那两处（列表的空态行、设置卡的行首）用全项目通用那颗空态字形
      *  （[NoMatch]，`mood-empty`）—— 那里说的是「这一类东西 / 还没配」，不是「按键」。
      */
-    val MenuComboFingers: ImageVector get() = TablerIcons.Outline.HandTwoFingers
+    val MenuKeyFinger: ImageVector get() = TablerIcons.Outline.HandFinger
 
     /**
      * 首页「其他 → 更多选项」那一行的行首 —— 圈里三点（`dots-circle-horizontal`，
@@ -405,6 +405,9 @@ internal object PageIcons {
      *    「一整套」，四档透明度正好是同一套色的色阶；
      *  · 其余主题档：**一个整块**（[PaletteBlock]）—— 那一档只有「强调色」这一个颜色被换掉
      *    （底子仍是 COUI 的），画成四格会读成「四块互不相干的色」。
+     *
+     *  当前生效的那一行行首**换成对勾**（见 `PageMenuPopup.kt` 的 `MenuRow`），但颜色仍是这一套的色
+     *  —— 「是哪一套色」由对勾的颜色给，不靠那块形状。
      */
     fun accentSwatch(theme: AppTheme): ImageVector = if (theme == AppTheme.MONET) PaletteSwatch else PaletteBlock
 

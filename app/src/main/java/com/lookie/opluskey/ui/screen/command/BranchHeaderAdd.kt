@@ -9,7 +9,6 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.HEADER_ICON_SIZE
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
 
@@ -31,11 +30,10 @@ import io.github.suqi8.coui.kmp.basic.IconButton
  */
 @Composable
 internal fun SettingsPage.BranchHeaderAdd() {
-    val tick = rememberTick()
+    //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`），这里不再自己振
     IconButton(
         onClick = {
-            tick()
-            addBranchRule(branchDraftNow().rules, tick) { branchDraftNow().freshId = it }
+            addBranchRule(branchDraftNow().rules) { branchDraftNow().freshId = it }
         },
         minWidth = HEADER_ICON_SIZE,
         minHeight = HEADER_ICON_SIZE,

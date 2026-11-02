@@ -18,7 +18,6 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
@@ -31,41 +30,41 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SliderRow
-import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.keyBrackets
+import com.lookie.opluskey.ui.screen.binding.CollectKeyDialog
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
-import com.lookie.opluskey.ui.switchNotice
-import com.lookie.opluskey.ui.writeAndNotice
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
-import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
-// 「组合按键」列表页 —— 从首页「按键操作」卡里那一行进来。
+// 「按键功能」页 —— **按键列表 + 组合按键列表**收在同一页，从首页「按键操作」卡里那一行进来。
 //
-// 一档组合一行；点一行进编辑页（`Screen.COMBO_EDIT`）。
-// 末行「添加组合按键」弹选键窗；选完落盘之后停在列表（新加的那一行就在眼前）。
+// 上面是「这台机器上有哪几颗键」（点一颗进它的绑定页），下面是组合按键那一列
+// （一档一行，点一行进编辑页 `Screen.COMBO_EDIT`；末行「添加组合按键」弹选键窗）。
+// 两个清单本来就是同一个问题（有哪些「按键」可配），拆两处要在首页摆一列清单占掉半屏。
 
 /**
- * 组合按键列表。
+ * 「按键功能」页 —— 两张清单上下排：先按键、后组合按键。
  *
- *  **一行都没有时什么都不摆**（用户口径：那句「还没有组合按键」去掉）——只剩末行
+ *  **组合那一列一行都没有时什么都不摆**（用户口径：那句「还没有组合按键」去掉）——只剩末行
  * 「添加组合按键」。这一页本来就只有两件事（这一列有哪几组 / 再加一组），
  * 空的时候「加一组」这一行自己就把话说完了，再补一句说明只是多一句废话。
  */
 @Composable
-internal fun SettingsPage.ComboScreen(scrollBehavior: ScrollBehavior) {
+internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     val cfg = configState.config.value
     val writable = pageWritable()
     val atLimit = cfg.combos.size >= MAX_COMBOS
     val scroll: ScrollState = rememberScrollState()
+    //  「添加按键」那一行弹的收集窗（等按键 → 起名字 → 落盘，见 `CollectKeyDialog`）。
+    //  状态就住这一页：它是这一页上的一个浮层，不跨页存活。
+    var collectPending by remember { mutableStateOf(false) }
     //  筛选：点小标题挑一颗键，只看含这颗键的组合（单选，不落盘）
     var filterMenu by remember { mutableStateOf(false) }
     val filterAnchor = rememberPreciseClickState()
@@ -81,6 +80,10 @@ internal fun SettingsPage.ComboScreen(scrollBehavior: ScrollBehavior) {
         //  **不再另加 [PAGE_TOP_PADDING]**：这一页首行就是小标题，它自己带 16 + 8 的上间距
         //  （与首页、更多选项两页同一笔账）；再加一档就比别的页多出 8dp。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
+        //  第一块：按键列表（从首页搬来）—— 一颗键一行，点一行进那颗键的绑定页
+        SectionTitle(I18n.get(Strings.HOME_KEYS_SECTION, "按键列表"))
+        KeysListCard(writable) { collectPending = true }
+        //  第二块：组合按键那一列
         //  小标题在这张卡上方（用户口径）：一列「有哪几档」需要一个名字，
         //  滚起来之后顶栏折成一条，只看行名认不出这一列是什么。
         //  **点它弹筛选菜单**（用户口径：按按键筛这一列，单选）—— 小标题是这一列唯一的名字，
@@ -94,9 +97,6 @@ internal fun SettingsPage.ComboScreen(scrollBehavior: ScrollBehavior) {
                 )
                 CardList(rows = comboRows(cfg, writable, atLimit, filterKey))
             }
-            //  设置块：这一页唯一一个「不针对某一组」的项（见 [ComboPassthroughCard]）
-            SectionTitle(I18n.get(Strings.COMBO_SETTINGS_SECTION, "组合按键设置"))
-            ComboSettingsCard(writable)
         }
     }
 
@@ -113,6 +113,11 @@ internal fun SettingsPage.ComboScreen(scrollBehavior: ScrollBehavior) {
             },
         preciseClick = filterAnchor,
         onDismiss = { filterMenu = false },
+    )
+
+    CollectKeyDialog(
+        show = collectPending,
+        onDismiss = { collectPending = false },
     )
 
     ComboKeysDialog(
@@ -193,7 +198,7 @@ private fun SettingsPage.ComboKeysDialog(
 /**
  * 这张卡的每一行 —— 一档组合一行，末行「添加组合键」。
  *
- *  抽出来只为让 [ComboScreen] 留在 detekt 的 `LongMethod` 阈值内：这一页只有一件正事
+ *  抽出来只为让 [KeysScreen] 留在 detekt 的 `LongMethod` 阈值内：这一页只有一件正事
  *  （摆一张卡），而「每一行写什么」本身就有一屏。
  */
 private fun SettingsPage.comboRows(
@@ -235,20 +240,32 @@ private fun SettingsPage.comboRows(
                 ),
             )
         }
+        //  组合要**两颗键**：只有内置侧键、又一组都没配过时这一行按不动 —— 选键弹窗里只有一行，
+        //  根本配不出来（与首页「按键操作」卡那一行同一条判据）。
+        //  **已经配过的那几组要放行**：收着的自定义键删光之后它们成了废配置，删除入口在列表里，
+        //  这里也禁掉的话用户就再也删不掉了。
+        val canCombo = cfg.customKeys.isNotEmpty() || cfg.combos.isNotEmpty()
+        val needKey = I18n.get(Strings.COMBO_NEED_KEY, "先添加一颗按键")
         add(
             CardRow.Item(
                 title = I18n.get(Strings.COMBO_ADD, "添加组合按键"),
-                //  副标题两档都有：满员说清为什么加不了，没满就说这一步做什么
+                //  副标题两档都有：配不出来 / 满员各说清为什么加不了，能加就说这一步做什么
                 summary =
-                    if (atLimit) {
-                        I18n.format(Strings.COMBO_LIMIT, MAX_COMBOS)
-                    } else {
-                        I18n.get(Strings.COMBO_ADD_DESC, "选两颗键一起按")
+                    when {
+                        !canCombo -> needKey
+                        atLimit -> I18n.format(Strings.COMBO_LIMIT, MAX_COMBOS)
+                        else -> I18n.get(Strings.COMBO_ADD_DESC, "选两颗键一起按")
                     },
                 icon = PageIcons.MenuKeyAdd,
-                enabled = writable && !atLimit,
-                //  这一行自己的原因只有「满员」那一档
-                disabledHint = if (atLimit) I18n.format(Strings.COMBO_LIMIT, MAX_COMBOS) else null,
+                enabled = writable && !atLimit && canCombo,
+                //  这一行自己的原因：「只有一颗键」优先于「满员」（满员时那一组也已存在，两说都对，
+                //  但用户眼前的事实是弹窗挑不出第二颗键）
+                disabledHint =
+                    when {
+                        !canCombo -> needKey
+                        atLimit -> I18n.format(Strings.COMBO_LIMIT, MAX_COMBOS)
+                        else -> null
+                    },
                 onClick = {
                     ComboEditState.pickKeysPending = true
                 },
@@ -354,73 +371,3 @@ private fun comboStateSummary(enabled: Boolean): String =
     } else {
         I18n.get(Strings.BINDING_KEY_DISABLED_STATE, "已停用")
     }
-
-/**
- * 「组合键设置」那张卡 —— 两行，都不针对某一组：
- *
- *  1. **无操作时执行按键命令**：组合绑的是「无操作」时，两颗键怎么办（开关打开 = 各按自己那一档
- *     照常执行；关闭 = 什么都不做）。为什么值得一个开关：「配了组合、但只给长按绑了动作」很常见，
- *     这时短按那一格是空的，用户要么希望「两颗键各干各的」，要么希望「这颗组合键短按没功能」。
- *  2. **按键之间的等待**：两颗键最多隔多久才算「一起按下」。这一行有代价，副标题里写清楚了。
- */
-@Composable
-private fun SettingsPage.ComboSettingsCard(enabled: Boolean) {
-    val cfg = configState.config.value
-    CardList(
-        rows =
-            listOf(
-                CardRow.Switch(
-                    title = I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"),
-                    summaryOn =
-                        I18n.get(Strings.COMBO_PASSTHROUGH_DESC_ON, "组合按键绑定无操作时，两颗键各执行自己的绑定"),
-                    summaryOff = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_OFF, "组合按键绑定无操作时什么都不做"),
-                    icon = PageIcons.NoMatch,
-                    checked = cfg.global.comboPassthrough,
-                    enabled = enabled,
-                ) { on ->
-                    writeAndNotice(
-                        cfg.copy(global = cfg.global.copy(comboPassthrough = on)),
-                        "combo_passthrough=${if (on) 1 else 0}",
-                        slot = HINT_SLOT_COMBO,
-                    ) {
-                        switchNotice(I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"), on)
-                    }
-                },
-                //  第 2 行：两颗键之间的等待窗口 —— 滑杆另起一支（这一行比开关长得多）
-                CardRow.Custom { position -> ComboWindowRow(position, enabled) },
-            ),
-    )
-}
-
-/**
- * 「按键之间的等待」那一行 —— 两颗键按下最多隔多久才算「一起按下」。
- *
- *  **这一行有代价**，副标题里写明：参与组合的键按下去要先等这么久（等第二颗键会不会来），
- *  这段时间里它自己的单击 / 长按都还没开始判。不参与任何组合的键一点不受影响 ——
- *  这一点也得说，否则用户会以为整页都变慢。
- */
-@Composable
-private fun SettingsPage.ComboWindowRow(
-    position: CardListPosition,
-    enabled: Boolean,
-) {
-    SliderRow(
-        position = position,
-        spec =
-            SliderSpec(
-                title = I18n.get(Strings.COMBO_WINDOW_TITLE, "按键之间的等待"),
-                summary = I18n.get(Strings.COMBO_WINDOW_DESC, "调大会让参与组合的按键多等这么久"),
-                //  「等一段时间再继续」那一颗钟（与「命令间隔时长」同一个字形）
-                icon = PageIcons.DelayStep,
-                min = GlobalConfig.COMBO_WINDOW_MIN_MS,
-                max = GlobalConfig.COMBO_WINDOW_MAX_MS,
-                value = configState.config.value.global.comboWindowMs,
-                default = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-                //  10ms 一档：20~300 之间 29 档，够细也不至于挪一格要半天
-                step = 10,
-                enabled = enabled,
-                //  行尾写「80 ms」—— 这一行问的就是「等多久」，不写数看不出来
-                valueText = { "$it ms" },
-            ),
-    ) { setComboWindow(it) }
-}

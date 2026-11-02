@@ -27,7 +27,7 @@ import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingScreen
 import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.combo.ComboEditScreen
-import com.lookie.opluskey.ui.screen.combo.ComboScreen
+import com.lookie.opluskey.ui.screen.combo.KeysScreen
 import com.lookie.opluskey.ui.screen.command.BranchScreen
 import com.lookie.opluskey.ui.screen.command.CommandScreen
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
@@ -168,7 +168,7 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
         //  那几页本来就是「短内容」页，没什么可折的。
         //  （名单长起来之后要放开折叠，改的就是这一行。）
         //
-        //  **「组合键列表」与「通用设置」原先也在这份名单里**，用户口径两页都改成允许折叠：
+        //  **「组合键列表」与「按键设置」原先也在这份名单里**，用户口径两页都改成允许折叠：
         //  前者五档加设置块也过一屏；后者本来就一屏多一点，折起来能多露几行。
         //  编辑页一类的长内容页一直照常折叠。
         canScroll = {
@@ -241,14 +241,14 @@ private fun SettingsPage.PageBody(
             DonateListScreen(scrollBehavior)
         }
 
-        // 「通用设置」：接口选择 + 按键行为（两节都是全局项）
+        // 「按键设置」：接口选择 + 按键行为 + 组合按键（三节都是全局项）
         Screen.GENERAL -> {
             GeneralScreen(scrollBehavior)
         }
 
-        // 「组合键」列表：一档一行 + 末行「添加组合键」
-        Screen.COMBOS -> {
-            ComboScreen(scrollBehavior)
+        // 「按键功能」页：按键列表 + 组合按键列表（两个清单收在一页）
+        Screen.KEYS -> {
+            KeysScreen(scrollBehavior)
         }
 
         // 「组合键」编辑：上面一行成员（只读），下面短按 / 长按两张网格
@@ -278,7 +278,7 @@ internal fun SettingsPage.keyEnabled(id: KeyId): Boolean =
 /**
  * 「这一页现在能不能改」—— 主开关开着、链路就绪、配置不是只读。
  *
- *  首页与「通用设置」都要它：两处各写一遍时，加一条闸门（比如以后只读再加一档）就得记得改两处，
+ *  首页与「按键设置」都要它：两处各写一遍时，加一条闸门（比如以后只读再加一档）就得记得改两处，
  *  漏一处的那一页会「看起来能改、点了被拦」。
  */
 internal fun SettingsPage.pageWritable(): Boolean = configState.config.value.global.enabled && linkReady && !configState.readOnly

@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.screen.binding
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshotFlow
@@ -10,9 +11,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.PageScrollColumn
+import com.lookie.opluskey.ui.SECTION_TITLE_PAD_TOP
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.screen.command.branchScenarioNotice
 import com.lookie.opluskey.ui.state.KeyWatchState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
@@ -96,6 +103,27 @@ internal fun SettingsPage.BindingList(
         // 那是**分段控件那条固定带**的高度，它**含自己那 8dp 下内边距**，
         // 所以「带子与内容之间」那一档已经在里面了，这里不再另加 `PAGE_TOP_PADDING`。
         Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlock))
+        //  这一档配了「系统场景」时那张**提示卡**：场景先判、命中就轮不到下面这些绑定，
+        //  不说一句，用户改完绑定按下去走的不是它；没配（或全停用）时不画。
+        //  上边距取小标题那一档（这一张上面没有小标题，不让位就会贴着分段带）；
+        //  点一行进「系统场景」的**这一档**（档位先写成眼前这一页，否则那边编的是 pager 停的那一档）。
+        branchScenarioNotice(KeyWatchState.editing(configState.config.value), g)?.let { notice ->
+            CardList(
+                modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
+                rows =
+                    listOf(
+                        CardRow.Item(
+                            title = notice,
+                            icon = PageIcons.CommandBranch,
+                            arrow = true,
+                            onClick = {
+                                branchGesture = g.ordinal
+                                navTo(Screen.BRANCHES)
+                            },
+                        ),
+                    ),
+            )
+        }
         BindingGroups(g, page.enabled, st, onCreateCommand)
     }
 }

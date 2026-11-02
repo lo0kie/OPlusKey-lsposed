@@ -224,12 +224,10 @@ private val BRANCH_BODY_TRANSFORM: ContentTransform =
  */
 internal fun SettingsPage.addBranchRule(
     rules: List<StateRule>,
-    tick: () -> Unit,
     onAdded: (Int) -> Unit,
 ) {
     val tail = rules.lastOrNull()
     if (tail != null && tail.conditions.isEmpty() && tail.action == Action.None) {
-        tick()
         //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
         hint(
             I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有场景没选完"),

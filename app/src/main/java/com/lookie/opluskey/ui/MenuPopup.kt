@@ -142,11 +142,13 @@ internal fun popupSurfaceColor(): Color {
     val scheme = COUITheme.colorScheme
     //  **Monet 那一档跟着系统取色**：整页底色已经被系统染过（见 `PagePalette.colorsOf`），
     //  面板再摆一块固定的白 / 灰，就成了「页面上飘着的外来板」。
-    //  取的就是**页面底色**（`surface`，页面背景读的也是它）：容器档（`surfaceContainerHighest`）
-    //  实测压上来偏深，而面板本来就靠磨砂与阴影跟页面分开，不需要再暗一档。
+    //  · 浅色：取**页面底色**（`surface`）—— 那一档页面本来就亮，面板靠阴影与磨砂分得开；
+    //    再往上抬一档会比页面更白，反而突兀。
+    //  · 深色：页面底色几乎与面板同深，取它等于「菜单看不见」—— 抬到 `surfaceContainerHighest`
+    //    （容器里最亮的一档），才与页面拉开。深色下明暗差就是唯一的分层线索。
     //  其余主题档仍用那两档常量 —— 它们是为 COUI 底子标定的（见 `PageColors`），换色号会走形。
     if (LocalAppTheme.current == AppTheme.MONET) {
-        return scheme.surface
+        return if (scheme.isDarkScheme) scheme.surfaceContainerHighest else scheme.surface
     }
     return if (scheme.isDarkScheme) {
         POPUP_SURFACE_DARK
@@ -189,8 +191,9 @@ internal sealed interface MenuEntry {
          * 行首图标的**指定颜色**；`null` = 按这一行的状态走（禁用灰 / 危险红 / 选中主色 / 常规色）。
          *
          *  只有「这一行的图形本身就在表达一个颜色」时才给（系统配色那五行：色块就是它的身份）——
-         *  给了之后图标不再跟着状态变色，选中也不再换成对勾（换了就看不见颜色了），
-         *  选中那件事由库的 `isSelected`（文字与底色）负责。
+         *  给了之后图标**不跟着状态变色**，恒是这一行的色；但**字形**该换还是换：
+         *  选中时行首换成对勾、对勾仍用这一行的色（见 `PageMenuPopup.kt` 的 `MenuRow`），
+         *  「当前是这一项」与「是哪一套色」两条信息各由形状 / 颜色承担。
          */
         val iconTint: Color? = null,
         val enabled: Boolean = true,

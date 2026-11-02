@@ -27,13 +27,15 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
 /**
- * 「通用设置」页 —— 从首页「其他」卡第一行进来（**唯一入口**，在「更多选项」上面，见 `HomeCards`）。
+ * 「按键设置」页 —— 从首页「按键操作」卡第二行进来（**首页唯一入口**，见 `HomeKeyOpsCard`）；
+ * 「按键功能」页顶栏那颗齿轮也进这一页。
  *
- *  单独成页的原因：那几项（接口选择、振动、执行提示）是**全局**开关，与「这颗键绑了什么」无关；
- *  摆在首页会把常用的「启用 / 按键绑定」两行挤在中间，也不好在同一张卡里解释它们各自管什么。
+ *  单独成页的原因：那几项（接口选择、振动、执行提示、组合键）是**全局**开关，与「这颗键绑了什么」无关；
+ *  摆在首页会把常用的「启用 / 按键操作」两行挤在中间，也不好在同一张卡里解释它们各自管什么。
  *
- *  两节：**接口选择**（走 ColorOS 专属接口还是 AOSP 标准接口）与**按键行为**（振动 / 执行提示）。
- *  两节吃同一道闸 —— 与首页原来那几行完全一致（模块总闸 + 链路齐 + 配置可写）。
+ *  三节：**接口选择**（走 ColorOS 专属接口还是 AOSP 标准接口）、**按键行为**（振动 / 执行提示）
+ *  与**组合按键设置**（无操作时怎么走 / 两颗键之间等多久）。三节吃同一道闸 ——
+ *  与首页那几行完全一致（模块总闸 + 链路齐 + 配置可写）。
  */
 @Composable
 internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
@@ -52,6 +54,10 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
         InterfaceCard(pageEnabled)
         SectionTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"))
         ActionsCard(pageEnabled)
+        //  组合键那两项（无操作时怎么走 / 两颗键之间等多久）—— 从「按键功能」页搬来：
+        //  它们是**全局**设置，与「有哪几颗键」无关，与上面两节同一类。
+        SectionTitle(I18n.get(Strings.COMBO_SETTINGS_SECTION, "组合按键设置"))
+        ComboSettingsCard(pageEnabled)
     }
 }
 

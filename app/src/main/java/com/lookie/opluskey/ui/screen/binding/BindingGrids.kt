@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.screen.binding
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +14,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -34,6 +36,7 @@ import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.model.GRID_GAP
+import com.lookie.opluskey.ui.model.GRID_MIN_TILE_WIDTH
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
@@ -58,7 +61,7 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *  里了」）。分组与清单必须同源，见 `ActionCatalog.groupsFor`。
  *
  * 焦点格索引仍与 `st.specs` 下标一一对应（见 `BindingList` 里「扁平焦点索引的账」）——
- * 分组只是展示层切分，组里的格子用的还是**全局**下标（`builtInBase` 跨组连续累计），
+ * 分组只是展示层切分，组里的格子用的还是**全局**下标（每组的起点见 groupBases），
  * 不能在组内从 0 数。
  */
 @Composable
@@ -67,7 +70,20 @@ internal fun SettingsPage.BuiltInGrid(
     enabled: Boolean,
 ) {
     val groups = remember { ActionCatalog.groupsFor() }
-    var builtInBase = 0
+    //  **每一组的起始下标预先算好**，不用跨组累加的可变变量。
+    //  BoxWithConstraints 的 content 是另起的子组合：在那里读外层那个累加变量，拿到的是
+    //  **首次组合那一刻的值**，而父作用域每帧又把它重新初始化成 0 —— 结果两组都从同一个起点取格子
+    //  （真机：系统操作与快捷功能渲染的是同一批「已保存的命令」）。起点必须是纯数据。
+    val groupBases =
+        remember(groups) {
+            val starts = ArrayList<Int>(groups.size)
+            var base = 0
+            groups.forEach {
+                starts += base
+                base += it.second.size
+            }
+            starts
+        }
     //  每一组 = 标题 + 网格，包成一块；组与组之间的间距由小标题自带，不做首尾特判。
     Column {
         groups.forEachIndexed { groupIndex, (groupTitle, group) ->
@@ -75,27 +91,34 @@ internal fun SettingsPage.BuiltInGrid(
 
             // 这一段用一个**内层 Column** 单独带 `PAGE_MARGIN` 横向 padding，
             // 标题在外层不受影响。
-            Column(
+            //
+            //  **列数按可用宽度算**（[GRID_MIN_TILE_WIDTH]）：最少一列，横屏 / 平板 / 大字模式下
+            //  宽过一档就自动多一列 —— 固定两列时右边会空出一大片，格子里那点字却还是被挤着。
+            BoxWithConstraints(
                 Modifier.padding(horizontal = PAGE_MARGIN),
-                verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
             ) {
-                for (rowIndices in (builtInBase until builtInBase + group.size).chunked(COLUMNS)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        // 上下左右间距保持一致；不再给焦点圈留补偿（见 `GRID_GAP` 的注释）
-                        horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
-                    ) {
-                        rowIndices.forEach { index ->
-                            BuiltInTile(st, index, enabled, Modifier.weight(1f))
-                        }
-                        // 最后一行不满时补空位：不补的话剩下那格会被 weight 撑到整行宽
-                        repeat(COLUMNS - rowIndices.size) {
-                            Spacer(Modifier.weight(1f))
+                val columns = gridColumnCount(maxWidth)
+                val base = groupBases[groupIndex]
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
+                ) {
+                    for (rowIndices in (base until base + group.size).chunked(columns)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            // 上下左右间距保持一致；不再给焦点圈留补偿（见 `GRID_GAP` 的注释）
+                            horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
+                        ) {
+                            rowIndices.forEach { index ->
+                                BuiltInTile(st, index, enabled, Modifier.weight(1f))
+                            }
+                            // 最后一行不满时补空位：不补的话剩下那格会被 weight 撑到整行宽
+                            repeat(columns - rowIndices.size) {
+                                Spacer(Modifier.weight(1f))
+                            }
                         }
                     }
                 }
             }
-            builtInBase += group.size
         }
     }
 }
@@ -208,30 +231,45 @@ internal fun SettingsPage.CustomCommandsGrid(
         remember(configState.commands.value) {
             configState.commands.value.associateBy { it.token }
         }
-    Column(
+    //  与内置网格同一条规则：列数按可用宽度算（[GRID_MIN_TILE_WIDTH]），最少一列。
+    BoxWithConstraints(
         Modifier.padding(horizontal = PAGE_MARGIN),
-        verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
     ) {
-        if (st.specs.size <= st.builtInCount) {
-            CreateCommandRow(enabled, onCreateCommand)
-        } else {
-            // 焦点索引 `[builtInCount, totalCount)` —— 与 `specs` 下标一一对应
-            for (rowIndices in (st.builtInCount until st.totalCount).chunked(COLUMNS)) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
-                ) {
-                    rowIndices.forEach { index ->
-                        CustomTile(st, index, enabled, commandsByToken, Modifier.weight(1f))
-                    }
-                    repeat(COLUMNS - rowIndices.size) {
-                        Spacer(Modifier.weight(1f))
+        val columns = gridColumnCount(maxWidth)
+        Column(
+            verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
+        ) {
+            if (st.specs.size <= st.builtInCount) {
+                CreateCommandRow(enabled, onCreateCommand)
+            } else {
+                // 焦点索引 `[builtInCount, totalCount)` —— 与 `specs` 下标一一对应
+                for (rowIndices in (st.builtInCount until st.totalCount).chunked(columns)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(GRID_GAP),
+                    ) {
+                        rowIndices.forEach { index ->
+                            CustomTile(st, index, enabled, commandsByToken, Modifier.weight(1f))
+                        }
+                        repeat(columns - rowIndices.size) {
+                            Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
             }
         }
     }
 }
+
+/**
+ * 一行放几格 —— 可用宽度除以 [GRID_MIN_TILE_WIDTH] 向下取整，**最少一列**。
+ *
+ *  不拿 [COLUMNS]（2）当下限：窗口窄到一格都塞不下两列时（分屏 / 超大字号）硬排两列，
+ *  每格只剩百来 dp，标题全被省略号截掉 —— 那种宽度下排成一列反而读得全。
+ *
+ *  两处网格共用这一份算式：分开写迟早一边改了另一边没改，同一个页面上两种排法。
+ */
+private fun gridColumnCount(availableWidth: Dp): Int = (availableWidth.value / GRID_MIN_TILE_WIDTH.value).toInt().coerceAtLeast(1)
 
 /** 还没保存过任何命令时那一行 —— 整行可点，进「自定义命令」页新增一条（与 FAB 同一个去处）。 */
 @Composable

@@ -4454,3 +4454,31 @@ W NotificationService: Package com.oplus.gesture is above allowed toast quota, t
 - 失败提示（`FailureNotice`）仍由宿主自己弹：它不受「连按」影响，而换成注入侧弹的话，
   注入侧没起来时连失败都看不见。
 
+
+## 四十一、注入侧能不能联网：**能，但必须先绑默认网络再解析 DNS**（实测，2026-11-02，PLK110 / ColorOS 17）
+
+「检查更新」这类功能要不要放注入侧，取决于 system_server 这一侧到底能不能连出去。三件事一次验完
+（探针：调试通道的 `net` op，见 `docs/debug-channel.md`；同一条广播里连打三步）：
+
+```
+probe/net：uid=1000 activeNetwork=103
+probe/net：裸 TCP 223.5.5.5:443 通了
+probe/net：DNS api.github.com → api.github.com/20.205.243.168
+probe/net：HTTP 200（…/releases/latest，DNS 拿到 1 个地址）
+```
+
+- **权限层**：`dumpsys package android` 里 `android.permission.INTERNET: granted=true` —— uid 1000
+  （system）持有 `INTERNET`，这一层从来不是问题。
+- **SELinux 层**：`system_server` 域**允许** inet socket —— 字面 IP 的裸 TCP 直接连通，
+  没有 `avc: denied`。⚠️ 这一条**只能在这个域里真跑一次才算数**：域里 `exec` 外部程序会被拒
+  （`runcon u:r:system_server:s0 toybox nc …` 报 `exec … Permission denied`，rc=126），
+  而 `plat_sepolicy.cil` 也不是全貌（连 `untrusted_app` 的 inet 规则都不在里面）——
+  两条「看策略推结论」的路都走过，都不可靠。
+- **DNS 层才是坑**：直接 `HttpURLConnection` 打开 URL 会
+  `java.net.UnknownHostException: Unable to resolve host "api.github.com": No address associated with hostname`。
+  不是权限拒绝，是 **system_server 的 socket 没有「进程默认网络」**（app 那份默认网络由
+  `ConnectivityManager` 绑在进程上，system_server 没有）——裸 `InetAddress.getByName` 没有网络可查。
+  正确姿势：先取 `ConnectivityManager.activeNetwork`，再用 `Network#getAllByName` 解析
+  （它把这次查询绑在那一张网络上），拿到地址后照常连。
+- 对照：`dumpsys network_time_update_service` 里 NTP 也「成功」，但它连的是
+  `127.0.0.1:123`（ROM 自己的本地代理）—— **loopback 通不代表能出网**，别拿它当证据。

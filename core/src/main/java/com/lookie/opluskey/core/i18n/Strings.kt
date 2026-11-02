@@ -122,6 +122,15 @@ object Strings {
      */
     const val COMBO_TITLE = "combo.title"
 
+    /** 「按键」页的标题 —— 按键列表与组合按键列表收在同一页（见 `Screen.KEYS`）。 */
+    const val KEYS_TITLE = "keys.title"
+
+    /** 首页「按键操作」卡里那一行的标题 —— 「按键功能」（指向「按键」页）。 */
+    const val KEYS_ENTRY = "keys.entry"
+
+    /** 同一行在「一组组合都还没配」时的副标题：这一页里有什么。 */
+    const val KEYS_ENTRY_DESC = "keys.entry_desc"
+
     /**
      * 列表页的标题 —— 「组合按键列表」。
      *
@@ -130,11 +139,11 @@ object Strings {
      */
     const val COMBO_LIST_TITLE = "combo.list_title"
 
-    /** 首页「按键操作」卡里那一行的标题 —— 「组合按键」。 */
-    const val COMBO_ENTRY = "combo.entry"
-
     /** 列表末行「添加组合按键」。 */
     const val COMBO_ADD = "combo.add"
+
+    /** 组合要两颗键时的那句：只有内置侧键、配不出组合（「添加组合按键」那一行的副标题与禁用原因）。 */
+    const val COMBO_NEED_KEY = "combo.need_key"
 
     /** 选键弹窗那颗确认按钮 —— 只写「添加」（窗里已经说了选的是按键，再补三个字太挤）。 */
     const val COMBO_ADD_CONFIRM = "combo.add_confirm"
@@ -174,22 +183,11 @@ object Strings {
     /** 组合键满员时「添加组合键」那一行的副标题（格式：上限组数）。 */
     const val COMBO_LIMIT = "combo.limit"
 
-    /** 首页那一行的副标题：已经配了几组（格式：组数）。 */
-    const val COMBO_COUNT = "combo.count"
-
     /** 列表页筛选菜单的小标题（置顶那一行；组里有「全部」与真正的那几颗键）。 */
     const val COMBO_FILTER_SECTION = "combo.filter_section"
 
     /** 筛选菜单里「不筛」那一行（列出全部组合）。 */
     const val COMBO_FILTER_ALL = "combo.filter_all"
-
-    /**
-     * 一颗自定义键都还没收时，首页那行「组合按键」的副标题与「为什么灰着」的说明。
-     *
-     *  组合要**两颗键**：只有默认侧键时根本配不出来（选键弹窗里只有一行），
-     *  所以那一行在这一档直接置灰，并把原因写在副标题上 —— 不用用户去点一下才发现。
-     */
-    const val COMBO_NEED_KEY = "combo.need_key"
 
     /** 同一组键再加一遍时那句 —— 判定那边只会认第一档，第二档永远轮不到。 */
     const val COMBO_DUPLICATE = "combo.duplicate"
@@ -331,6 +329,9 @@ object Strings {
     const val COMMAND_TYPE_BRANCH = "command.type_branch"
 
     const val COMMAND_BRANCH_ADD = "command.branch_add"
+
+    /** 绑定页横幅：这一档有几个启用中的系统场景。 */
+    const val COMMAND_BRANCH_SCENARIO_COUNT = "command.branch_scenario_count"
     const val COMMAND_BRANCH_ANY = "command.branch_any"
 
     /** 一条条件的小标题（「条件 1」）。 */
@@ -727,11 +728,11 @@ object Strings {
     const val MORE_ABOUT_AUTHOR = "more.about_author"
     const val MORE_ABOUT_FEEDBACK = "more.about_feedback"
 
-    /** 「通用设置」页（标题与首页那一行共用）与它里面那节「接口选择」。 */
+    /** 「按键设置」页（标题与首页「按键操作」卡那一行共用）与它里面那节「接口选择」。 */
     const val GENERAL_TITLE = "general.title"
     const val GENERAL_SECTION_INTERFACE = "general.section_interface"
 
-    /** 首页「通用设置」那一行的摘要。 */
+    /** 首页「按键设置」那一行的摘要。 */
     const val HOME_GENERAL_DESC = "home.general_desc"
 
     const val MORE_ABOUT_SIGNATURE = "more.about_signature"

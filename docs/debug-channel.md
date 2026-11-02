@@ -51,7 +51,7 @@ debug 源集里那份为它加行的覆盖文件也删了。桌面进程里不�
 
 ⏭️ 若某次实验又需要「从桌面进程发起」，先决定值不值得再走这三步 —— 只有那条 A 方案要这个身份。
 
-## 四、六个 op
+## 四、七个 op
 
 统一前缀 `probe`，日志在 `/data/adb/lspd/log/modules_*.log`（**不在 logcat**）：
 
@@ -128,6 +128,28 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE -p com.oplus.gesture
 
 > ⚠️ 数值型 extra 的旗标：`--ei` int、`--el` long、`--ef` float、`--ez` boolean。用 `--el` 传 `task_id`
 > 会读不到（`getIntExtra` 找不到 long 型会退成默认值 `-1`，症状是「拿不到任务 #-1」）—— 这个坑真机上踩过一次。
+
+### `net` —— 在 system_server 里连一次网络（2026-11-02）
+
+验「注入侧能不能查更新」用的：界面层跑在宿主进程、宿主**没有** `INTERNET`（真机实证
+`SecurityException`），所以能不能自动查更新，取决于 system_server 这一侧能不能连出去。
+权限层 uid 1000 有 `INTERNET`（`dumpsys package android` 里 `granted=true`），卡人的是
+SELinux 域 —— 这一条**只在这个域里真跑一次才算验过**（域里 `exec` 外部程序会被拒，
+`runcon … toybox nc` 走不通；`plat_sepolicy.cil` 也不是全貌，app 域的 inet 规则都不在里面）。
+
+```bash
+adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE   --es op net --es url https://api.github.com/repos/Xposed-Modules-Repo/io.github.lo0kie.opluskey/releases/latest'"
+adb shell "su -c 'grep -a probe/net /data/adb/lspd/log/modules_*.log | tail -3'"
+```
+
+- `url` 不填就打模块仓库的 releases 接口（检查更新真正要打的那个）。
+- 联网在**另起的线程**上跑：这条广播在 AMS 入口上，阻塞 IO 放主线程等于把广播分发停住几秒。
+- 判读：`uid=1000 连上了 … HTTP 200` ⇒ 域放行；`连不上 … EACCES / EPERM`（同时 dmesg 里有
+  `avc: denied`）⇒ 域被 ROM 收紧，检查更新只能走「跳浏览器」那一档。
+- **2026-11-02 实测（PLK110 / ColorOS 17）：能连**。`uid=1000`、`activeNetwork=103`、
+  裸 TCP 通、`Network#getAllByName` 拿到地址、`HTTP 200`。⚠️ 直接 `HttpURLConnection` 打开 URL
+  会 `UnknownHostException` —— system_server 的 socket 没有进程默认网络，必须先用
+  `ConnectivityManager.activeNetwork` 取网络再解析。完整结论见 `device-findings.md` 四十一。
 
 ### `zoom` —— 从**当前进程**发起「把某任务收成小窗」
 

@@ -10,7 +10,6 @@ import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.HEADER_ICON_SIZE
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -34,7 +33,6 @@ internal fun SettingsPage.CommandHeaderReset(
     /** 现在停在「命令列表」那一页吗 —— 那一页没有表单可清，这颗始终置灰。 */
     onListPage: Boolean,
 ) {
-    val tick = rememberTick()
     val draft = commandDraft.draft
     //  三种情况都没有可清的东西：停在「命令列表」那一页（没有表单）、步骤排序态（改的是顺序，
     //  不是内容 —— 那一状态下页里别的控件也都禁用，见 `CommandFloatingButton`）、以及表单本身就空着。
@@ -53,10 +51,8 @@ internal fun SettingsPage.CommandHeaderReset(
         }
     DisabledHint(if (canReset) null else blocked) {
         IconButton(
-            onClick = {
-                tick()
-                resetCommandDraft()
-            },
+            //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`）
+            onClick = { resetCommandDraft() },
             enabled = canReset,
             minWidth = HEADER_ICON_SIZE,
             minHeight = HEADER_ICON_SIZE,

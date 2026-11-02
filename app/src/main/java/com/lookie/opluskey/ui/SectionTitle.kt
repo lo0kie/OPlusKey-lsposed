@@ -86,7 +86,7 @@ private val SECTION_TITLE_ARROW_GAP = 2.dp
  *  这两档由标题自己声明：调用点（页面）不需要在标题前后补 `Spacer`，也不需要判断
  *  「上面那一块带不带行距」—— 这一层就是唯一的地方。
  */
-private val SECTION_TITLE_PAD_TOP = 16.dp
+internal val SECTION_TITLE_PAD_TOP = 16.dp
 private val SECTION_TITLE_PAD_BOTTOM = 0.dp
 
 /** 箭头字号 —— 跟 12sp 的小标题相称（比行尾那颗 24dp 的选择器小一档）。 */

@@ -238,3 +238,82 @@ internal fun ProbeChannel.dress(
         work.run()
     }
 }
+
+// ── op: net ──────────────────────────────────────────────────────────────
+
+/**
+ * 在本进程（system_server）里试一次联网 —— 验「注入侧能不能查更新」。
+ *
+ *  **必须另起线程**：这条广播在 AMS 的广播入口上跑，而联网是阻塞 IO —— 在主线程上做等于
+ *  把整个系统的广播分发停住几秒（五之二、3：注入侧绝不拖慢系统，更不能把异常抛回去）。
+ *
+ *  分三步打日志，因为这三步是三个不同的闸，一次问清：
+ *  1. **裸 TCP**（字面 IP、不经 DNS）—— 过了就说明域允许 inet socket，与 DNS 无关；
+ *  2. **DNS**（`Network#getAllByName`，绑在默认网络上解析）—— system_server 自己的 socket
+ *     没有「进程默认网络」，裸 `InetAddress.getByName` 会 `UnknownHostException`（实测），
+ *     必须走这个 API；
+ *  3. **HTTP**（拿第 2 步的地址走 `HttpURLConnection`）—— 真正要用的那一步。
+ *
+ *  `MissingPermission`（下面那颗抑制）：这段跑在 **system_server**（uid 1000），
+ *  `ACCESS_NETWORK_STATE` 它本来就有（`device-findings.md` 四十一）；模块清单里不声明任何权限，
+ *  同 `NetChannel.activeNetwork`。
+ */
+@android.annotation.SuppressLint("MissingPermission")
+internal fun ProbeChannel.net(
+    intent: Intent,
+    loader: ClassLoader,
+) {
+    val url = intent.getStringExtra(EXTRA_URL)?.takeIf { it.isNotBlank() } ?: DEFAULT_PROBE_URL
+    val host = runCatching { java.net.URI(url).host }.getOrNull() ?: "api.github.com"
+    val uid = android.os.Process.myUid()
+    Thread(
+        {
+            val cm =
+                runCatching {
+                    com.lookie.opluskey.bridge.inject.SystemContext
+                        .get(loader)
+                        ?.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                }.getOrNull()
+            val network = cm?.activeNetwork
+            XLog.w("probe/net：uid=$uid activeNetwork=$network")
+
+            // 1) 裸 TCP：字面 IP，不经 DNS —— 验的是「域允不允许 inet socket」
+            try {
+                java.net.Socket().use { s ->
+                    s.connect(java.net.InetSocketAddress("223.5.5.5", 443), PROBE_NET_TIMEOUT_MS)
+                    XLog.w("probe/net：裸 TCP 223.5.5.5:443 通了")
+                }
+            } catch (e: Throwable) {
+                XLog.w("probe/net：裸 TCP 不通 → ${e.javaClass.name}: ${e.message}")
+            }
+
+            // 2) DNS：必须绑在默认网络上解析（system_server 的 socket 没有进程默认网络）
+            val addrs =
+                try {
+                    network?.getAllByName(host).also {
+                        XLog.w("probe/net：DNS $host → ${it?.joinToString() ?: "null"}")
+                    }
+                } catch (e: Throwable) {
+                    XLog.w("probe/net：DNS 失败 → ${e.javaClass.name}: ${e.message}")
+                    null
+                }
+
+            // 3) 真正要用的那一步：HTTP
+            try {
+                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = PROBE_NET_TIMEOUT_MS
+                conn.readTimeout = PROBE_NET_TIMEOUT_MS
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("User-Agent", "OPlusKey-probe")
+                XLog.w("probe/net：HTTP ${conn.responseCode}（$url，DNS 拿到 ${addrs?.size ?: 0} 个地址）")
+                conn.disconnect()
+            } catch (e: Throwable) {
+                XLog.w("probe/net：HTTP 失败 → ${e.javaClass.name}: ${e.message}")
+            }
+        },
+        "probe-net",
+    ).start()
+}
+
+/** `net` 那一趟的超时 —— 5 秒：够一次 DNS + TLS，又不至于把线程吊在那儿。 */
+private const val PROBE_NET_TIMEOUT_MS = 5_000

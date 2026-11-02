@@ -73,18 +73,15 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         // 动态行数（`homeBindingRows`）一并删掉，别再按「静音要授权」加回来。
         HomeBindingCard(ui)
 
-        // 「按键列表」那一节 —— **只有按键清单**（用户口径）：原先它在
-        // 「按键绑定」页顶栏那份 ⋮ 菜单里，而那一页只回答「这颗键现在绑了什么」；
-        // 有哪几颗键是总览，属于首页。一颗键一行，点哪颗进哪颗。
-        SectionTitle(I18n.get(Strings.HOME_KEYS_SECTION, "按键列表"))
-        HomeKeysCard(pageEnabled)
+        //  按键列表搬去了「按键功能」页（与组合按键列表收在同一页）：首页只留「按键操作」这一节，
+        //  两列清单挤在首页会把常用入口推下去。
 
         // 「按键操作」那一节 —— 组合按键与「添加按键」两行（用户口径：与清单分开一张卡）。
         //  这两行不是清单里的东西，是**对这颗键 / 这组键做的事**。
         SectionTitle(I18n.get(Strings.HOME_KEY_OPS_SECTION, "按键操作"))
-        HomeKeyOpsCard(pageEnabled, ui)
+        HomeKeyOpsCard(pageEnabled)
 
-        // 「按键行为」那一整块搬进了「通用设置」页（入口在下面「其他」卡的第一行）——
+        // 「按键行为」那一整块搬进了「按键设置」页（入口在上一张「按键操作」卡的第二行）——
         //  它是**全局**开关，与「这颗键绑了什么」无关，摆在这里会把常用的入口挤下去。
 
         // 版本 / 仓库地址那两行搬去**独立的「更多选项」页**（`AboutScreen`，从顶栏 ⋮ 菜单进）——

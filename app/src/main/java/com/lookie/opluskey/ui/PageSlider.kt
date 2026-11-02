@@ -184,16 +184,18 @@ private fun SliderTrack(
     //    而 `sliderBackground` 是 5% 黑压在卡片上，合成出来**正好也是 `#F2F2F2`**：
     //    同一个颜色，于是「出厂默认值」那个圆点只要落在滑块右边就整个消失
     //    （页面缩放滑杆默认 100%、拖到 70% 时那一格就在白区里，看不见）。
-    //  取**轨道那一色**、只把不透明度压厚一档：同一族色（浅色档是黑、深色档是白），
-    //  于是它在两种深浅下都自动朝着「远离底色」的方向走 —— 浅轨道上是个淡灰点、
-    //  深轨道上是个淡白点，都比轨道实一档，不抢眼也不会看不见。
+    //  **取前景色（`onSurface`）、按固定不透明度画，不再从 `sliderBackground` 的 alpha 推**：
+    //  「同色 × 4」这条路只在库那套自带色板下成立（那边 `sliderBackground` 是 5% / 10% 的
+    //  前景色）；Monet 那一档整套 `Colors` 是库按系统配色另算的，`sliderBackground` 在那里是
+    //  不透明实色 —— 乘几倍还是同一个颜色，圆点与轨道一模一样，整个看不见
+    //  （用户口径「slider 的 step 在 Monet 下看不见」）。
+    //  前景色天然与底子反向：浅底上是淡灰点、深底上是淡白点，与主题怎么算配色无关。
     //  不直接用强调色：那一点只是「出厂值在这儿」的记号，染成主题色会亮到像个可点的把手。
-    //  置灰时同一色再**压薄**一档（[TRACK_TICK_DIM_FACTOR]）：禁用态的轨道本来就淡
+    //  置灰时压薄一档（[TRACK_TICK_DIM_ALPHA]）：禁用态的轨道本来就淡
     //  （`disabledSecondary` / `disabledPrimarySlider`），点若还用「启用那一档」的浓度，
     //  会比旁边那根灰轨道还显眼 —— 看着像还能点。压薄之后它只是「隐约还在那儿」。
-    val baseTickAlpha = scheme.sliderBackground.alpha
-    val trackTick = scheme.sliderBackground.copy(alpha = (baseTickAlpha * TRACK_TICK_ALPHA_FACTOR).coerceAtMost(1f))
-    val trackTickDim = scheme.sliderBackground.copy(alpha = (baseTickAlpha * TRACK_TICK_DIM_FACTOR).coerceAtMost(1f))
+    val trackTick = scheme.onSurface.copy(alpha = TRACK_TICK_ALPHA)
+    val trackTickDim = scheme.onSurface.copy(alpha = TRACK_TICK_DIM_ALPHA)
     Slider(
         value = value,
         onValueChange = onValueChange,
@@ -240,21 +242,21 @@ private fun SliderTrack(
 }
 
 /**
- * 轨道上那个刻度点比轨道**厚几倍**（见 [SliderTrack] 里 `trackTick` 的说明）。
+ * 轨道上那个刻度点的**不透明度**（颜色取 `onSurface`，见 [SliderTrack] 里 `trackTick` 的说明）。
  *
- *  库的浅色档两处同色（点 `#F2F2F2`、轨道合成出来也是 `#F2F2F2`）⇒ 点整个消失；
- *  乘 4 之后：浅色档 5% → 20% 黑（淡灰点），深色档 10% → 40% 白（淡白点）。
- *  只动不透明度、不动色相，两种深浅下都朝「远离底色」的方向走，不必分主题判。
+ *  20%：浅底上是淡灰点、深底上是淡白点 —— 比轨道实一档，不抢眼也不会看不见。
+ *  库的浅色档两处同色（点 `#F2F2F2`、轨道合成出来也是 `#F2F2F2`）会整个消失，这一档就是
+ *  为了把它拉开；Monet 那套配色下 `sliderBackground` 是不透明实色，只能改用前景色才分得开。
  */
-private const val TRACK_TICK_ALPHA_FACTOR = 4f
+private const val TRACK_TICK_ALPHA = 0.20f
 
 /**
- * 置灰时那个点再压薄到几倍（同上，取轨道那一色）。
+ * 置灰时那个点的不透明度（同上，取 `onSurface`）。
  *
- *  2 倍 = 浅色档 10% 黑、深色档 20% 白：比「启用那一档」淡一半，压在禁用态的浅灰轨道上
- *  只剩一个若有若无的点 —— 与「这一行现在不能动」对得上，又还看得出出厂值在哪儿。
+ *  10%：比「启用那一档」淡一半，压在禁用态的浅灰轨道上只剩一个若有若无的点 ——
+ *  与「这一行现在不能动」对得上，又还看得出出厂值在哪儿。
  */
-private const val TRACK_TICK_DIM_FACTOR = 2f
+private const val TRACK_TICK_DIM_ALPHA = 0.10f
 
 /** 滑杆那一行三处文字的颜色 —— 一份，三处同源（理由见 [SliderRow] 里那段注释）。 */
 private class SliderTextColors(

@@ -1,6 +1,9 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -13,10 +16,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -151,6 +156,9 @@ internal fun SettingsPage.PageHeader(
     actions: @Composable RowScope.() -> Unit = {},
     bottomContent: @Composable () -> Unit = {},
 ) {
+    //  两侧按钮的「按一下振一下」在这一层挂好（见 [headerPressTick]）—— 这一页所有顶栏按钮
+    //  都走它，调用点不必各自 rememberTick。
+    val tick = rememberTick()
     // 顶栏里那条固定带的高度（没有带子时为 0）：上报顶栏高度时扣掉它。
     val bandHeightPx = remember { mutableIntStateOf(0) }
     val headerBand = currentHeaderBand()
@@ -177,28 +185,64 @@ internal fun SettingsPage.PageHeader(
                 //  带子高度各页已各自读过一遍，这里必须扣掉，否则有带子的页面让两次。
                 .onSizeChanged { headerBand.report(it.height - bandHeightPx.value) },
         navigationIcon = {
-            IconButton(
-                onClick = {
-                    if (!goBack()) {
-                        XLog.w("顶栏返回：已在首页，关页面")
-                        closeOverlays("顶栏返回关页面")
-                        activity?.finish()
-                    }
-                },
-                minWidth = HEADER_ICON_SIZE,
-                minHeight = HEADER_ICON_SIZE,
-                cornerRadius = HEADER_ICON_SIZE / 2,
-                modifier = Modifier.padding(start = 8.dp),
-            ) {
-                Icon(PageIcons.Back, contentDescription = I18n.get(Strings.COMMON_BACK, "返回"))
+            //  盒子只负责挂振动：单子节点，排版与不加这一层完全一样
+            Box(Modifier.headerPressTick(tick)) {
+                IconButton(
+                    onClick = {
+                        if (!goBack()) {
+                            XLog.w("顶栏返回：已在首页，关页面")
+                            closeOverlays("顶栏返回关页面")
+                            activity?.finish()
+                        }
+                    },
+                    minWidth = HEADER_ICON_SIZE,
+                    minHeight = HEADER_ICON_SIZE,
+                    cornerRadius = HEADER_ICON_SIZE / 2,
+                    modifier = Modifier.padding(start = 8.dp),
+                ) {
+                    Icon(PageIcons.Back, contentDescription = I18n.get(Strings.COMMON_BACK, "返回"))
+                }
             }
         },
-        actions = actions,
+        actions = {
+            //  右侧那一组同样只挂振动：`Row` 保持「一个挨一个靠右」，与库那排的排法一致
+            Row(
+                modifier = Modifier.headerPressTick(tick),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End,
+                content = actions,
+            )
+        },
         bottomContent = {
             Box(Modifier.onSizeChanged { bandHeightPx.value = it.height }) { bottomContent() }
         },
     )
 }
+
+/**
+ * 顶栏两侧按钮共用的「按一下振一下」—— 挂在两个槽位的**容器**上，一次管住这一页所有顶栏按钮。
+ *
+ *  为什么不是逐个按钮加：顶栏按钮有六七处（返回 / ⋮ / 添加 / 新建 / 重置 / 设置），
+ *  漏一处就是「这一颗按下去没手感」，而它们长得一模一样，用户分不出哪颗有哪颗没有；
+ *  挂在容器上之后，**新加一颗顶栏按钮自动带振动**，调用点只写自己的 onClick。
+ *
+ *  不消费事件、不改排版：只在按下那一刻振一下，点击照旧由里面的按钮自己处理
+ *  （`Main` 那一趟里子节点先拿到事件，这里既不会抢走点击、也不会重复触发）。
+ *  代价是**置灰的按钮也会振一下** —— 那颗按钮此刻确实被按到了，只是不做任何事。
+ */
+private fun Modifier.headerPressTick(tick: () -> Unit): Modifier =
+    pointerInput(tick) {
+        awaitPointerEventScope {
+            while (true) {
+                awaitFirstDown(requireUnconsumed = false)
+                tick()
+                // 等这一下收场再收下一按下：拖动 / 取消都不额外振
+                do {
+                    val event = awaitPointerEvent()
+                } while (event.changes.any { it.pressed })
+            }
+        }
+    }
 
 /**
  * 顶栏右侧那颗 ⋮ ——「选择应用」与「重置」两处菜单的触发键**逐字相同**（同一颗图标、同一个

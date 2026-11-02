@@ -177,6 +177,25 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
 
 不能用 `SharedPreferences`：它每个进程各缓存一份，写进去的值别的进程看不到。
 
+### 注入侧代取网络（`inject/NetChannel`）
+
+界面代码跑在**宿主进程**，而宿主的清单里没有 `INTERNET`（`reference/gesture.apk` 的 49 条权限里
+只有 `ACCESS_NETWORK_STATE`）—— 页面自己发请求必然 `SecurityException`。要出网只能请注入侧代取：
+system_server 这一侧实测能连（`device-findings.md` 四十一）。
+
+- 线格式（`core/wire/ModuleWire`）：`ACTION_NET_REQUEST` 问、`ACTION_NET_RESULT` 答，两条都带
+  `EXTRA_NET_ID` 配对（可能并发几条）。结果里 `EXTRA_NET_STATUS` = HTTP 码（0 = 没连上）、
+  `EXTRA_NET_BODY` = 正文、`EXTRA_NET_ERROR` = 原因。
+- **只做 GET、只认 https**、正文截到 `NET_BODY_LIMIT`（32 KB，binder 事务上限）、
+  连接与读取各 `NET_TIMEOUT_MS`（8 秒）。这条通道能干的**正好**是「读一段公开文本」，
+  多一样能力就多一份被别的代码借去干别的事的机会。
+- **DNS 必须走 `Network#openConnection`**：system_server 的 socket 没有「进程默认网络」，
+  裸 `HttpURLConnection` 会 `UnknownHostException`（四十一）。先 `ConnectivityManager.activeNetwork`
+  取网络，再由它开连接 —— 解析与连接都绑在那张网络上。
+- 纪律：**另起线程**（这条广播在 AMS 入口上，阻塞 IO 放主线程等于停住广播分发）、整段兜
+  `Throwable`、回包 `post` 到主线程再 `sendBroadcast`（不在 hooker 体内重入 AMS）。
+- 没有默认网络时**直接回一条「当前没有网络」**，不去等超时。
+
 ## 五、注入侧引用的红线
 
 `inject/` 下的一切都会随注入进入 system_server，因此：

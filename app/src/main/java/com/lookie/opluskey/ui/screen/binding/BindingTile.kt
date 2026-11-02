@@ -23,10 +23,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.ui.LocalAppTheme
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TILE_HEIGHT
 import com.lookie.opluskey.ui.TILE_SIDE_PADDING
 import com.lookie.opluskey.ui.TileFocusRing
+import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
@@ -88,9 +90,24 @@ internal fun SettingsPage.ActionTile(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "TileContent",
     )
-    // 行尾箭头与选中小字共用的那档「弱化色」，可用/禁用切换带过渡
+    // 标题下面那行**小字**的配色（应用名 / 入口格档位 / 命令间隔），可用/禁用切换带过渡。
+    //
+    //  **Monet 那一档换用强调色**：主题选 Monet 时 COUI 把 `onSurfaceVariantSummary` 映射到
+    //  MD3 的 `onSurfaceVariant`（见库里 `MonetMapping.kt`）—— 那是一档「近乎无彩」的灰。
+    //  整页底色、卡片、边线都被壁纸染过了，只有这行字还是灰的，读起来像没跟上配色
+    //  （真机反馈「格子的小标题没有 monet 配色」）。换成 `primary`：它才是这一套里**有色**的
+    //  那一档，与选中格的行尾指示、菜单里的选中行同源；标题仍是中性的 `onSurfaceContainer`，
+    //  有色的小字压在中性标题下面，主次反而更清楚。
+    //  其余主题档保持 COUI 的 `onSurfaceVariantSummary`（`0x66000000` / `0x66FFFFFF`）：
+    //  那一档是压在中性底子上标定出来的弱化色，换成强调色会在浅色底上糊成一片蓝。
+    val mutedBase =
+        if (LocalAppTheme.current == AppTheme.MONET) {
+            scheme.primary
+        } else {
+            scheme.onSurfaceVariantSummary
+        }
     val tileMutedColor by animateColorAsState(
-        targetValue = if (enabled) scheme.onSurfaceVariantSummary else contentColor,
+        targetValue = if (enabled) mutedBase else contentColor,
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "TileMuted",
     )

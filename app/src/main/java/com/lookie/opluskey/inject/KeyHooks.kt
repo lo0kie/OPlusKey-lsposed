@@ -284,7 +284,7 @@ internal object KeyHooks {
                 val action = intent.action ?: continue
                 // debug 通道（只 debug 包存在）单独一路：它的发送方**不是宿主**，来源校验也不同。
                 val isProbe = DEBUG_PROBE && action == ProbeChannel.ACTION
-                // 我们认识的广播就这四条 —— 不在表里的直接丢。注意**不含** ACTION_INJECT_READY：
+                // 我们认识的广播就这几条 —— 不在表里的直接丢。注意**不含** ACTION_INJECT_READY：
                 // 那是我们自己发出去的答，认它只会多绕一圈（见 `core/wire/ModuleWire` 那两条常量）。
                 val isOurs =
                     action == ConfigBroadcast.ACTION_CONFIG ||
@@ -294,6 +294,7 @@ internal object KeyHooks {
                         action == ModuleWire.ACTION_KEY_WATCH ||
                         action == ModuleWire.ACTION_LOG_PULL ||
                         action == ModuleWire.ACTION_INJECT_KEY ||
+                        action == ModuleWire.ACTION_NET_REQUEST ||
                         action == ModuleWire.ACTION_TOAST
                 if (!isProbe && !isOurs) {
                     continue
@@ -363,10 +364,13 @@ internal object KeyHooks {
 
             // 导出日志：把注入侧（system_server）那份缓冲切片发回设置页。
             //  判据与纪律都在 [pullLogs] 里。
+            //  **写成 `?.let` 而不是两个 `?: return@`**：这一层（`dispatchAction`）的圈复杂度贴着
+            //  detekt 的上限，少一个分叉就少一格（多出来的分叉连 `when` 自己都算）。
             ModuleWire.ACTION_LOG_PULL -> {
                 postGuarded("导出日志（注入侧）") {
-                    val ctx = SystemContext.get(systemLoader ?: return@postGuarded) ?: return@postGuarded
-                    LogWire.reply(ctx, HostApp.PACKAGE, "system")
+                    SystemContext.get(systemLoader ?: return@postGuarded)?.let { ctx ->
+                        LogWire.reply(ctx, HostApp.PACKAGE, "system")
+                    }
                 }
             }
 
@@ -387,15 +391,15 @@ internal object KeyHooks {
                 }
             }
 
+            // 宿主请我们代取一个地址（宿主没 INTERNET，见 `NetChannel`）。
+            ModuleWire.ACTION_NET_REQUEST -> {
+                NetChannel.dispatch(intent, systemLoader)
+            }
+
             // debug 通道：反射 / 探针，见 docs/debug-channel.md
+            //  `post` 与兜底都在 [ProbeChannel.dispatch] 里（这一层只留一行分派）
             ProbeChannel.ACTION -> {
-                handler.post {
-                    try {
-                        ProbeChannel.handle(intent, systemLoader)
-                    } catch (e: Throwable) {
-                        XLog.w("探针指令执行失败（已忽略）：${e.javaClass.simpleName}", e)
-                    }
-                }
+                ProbeChannel.dispatch(intent, systemLoader)
             }
         }
     }

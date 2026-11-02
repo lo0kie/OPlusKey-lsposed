@@ -26,23 +26,32 @@ internal val BRANCHES_TITLE: String
     get() = I18n.get(Strings.COMMAND_TYPE_BRANCH, "系统场景")
 
 /**
- * 「通用设置」页的标题 —— 首页「其他」卡第一行进来（**唯一入口**，在「更多选项」上面）。
+ * 「按键设置」页的标题 —— 首页「按键操作」卡第二行进来（**首页唯一入口**，
+ * 「按键功能」页顶栏那颗齿轮也进同一页）。
  *
  *  那一行与这一页顶上的标题**共用同一个键**：进去之后看到的与点的那一行同名。
  */
 internal val GENERAL_TITLE: String
-    get() = I18n.get(Strings.GENERAL_TITLE, "通用设置")
+    get() = I18n.get(Strings.GENERAL_TITLE, "按键设置")
 
 /**
  * 「组合按键」—— **列表页与编辑页共用这一个标题**（用户口径：顶栏不要「列表」两个字）。
  *
  *  两页看顶栏会觉得同名，但认得出在哪一层：编辑页顶栏底下一行副标题写着「在编哪一组」
  *  （`「侧键」+「电量 +」`），列表页没有；再往下还有一个短按 / 长按的分段控件。
- *  列表页卡上方那句小标题仍是「组合按键列表」（见 `ComboScreen`），说的是**那一列是什么**，
+ *  列表页卡上方那句小标题仍是「组合按键列表」（见 `KeysScreen`），说的是**那一列是什么**，
  *  与顶栏的「这一页叫什么」不是同一件事。
  */
 internal val COMBO_TITLE: String
     get() = I18n.get(Strings.COMBO_TITLE, "组合按键")
+
+/**
+ * 「按键功能」页的标题 —— 那页两张清单：按键列表 + 组合按键列表。
+ *
+ *  与首页那一行同名（[Strings.KEYS_ENTRY] 那一行）：点进来看到的标题与点的那一行一致。
+ */
+internal val KEYS_TITLE: String
+    get() = I18n.get(Strings.KEYS_TITLE, "按键功能")
 
 /** 「选择应用」页的标题。 */
 internal val APP_PICKER_TITLE: String
