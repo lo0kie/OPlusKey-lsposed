@@ -291,6 +291,14 @@ data class GlobalConfig(
      *  只改模块这一棵页面树，宿主的顶栏 / 状态栏不动。
      */
     val pageScale: Int = DEFAULT_PAGE_SCALE,
+    /**
+     * **随机图标配色** —— `0` = 关；非 0 = 开，且这一份随机结果就是由它派生出来的。
+     *
+     *  为什么存的是**种子**而不是一张「图标 → 颜色」的表：颜色本来就是从种子 + 图标身份算出来的，
+     *  存表既大又会跟图标改名脱钩；存种子等于「一次生成、永久复用」，关掉再打开才换一批。
+     *  只在界面层用（注入侧没有图标），所以**只有落盘那一列**。
+     */
+    val iconTintSeed: Int = DEFAULT_ICON_TINT_SEED,
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
     /**
@@ -337,6 +345,7 @@ data class GlobalConfig(
                 ConfigFields.F_MINI_WINDOW_ANIM to miniWindowAnim,
                 ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
                 ConfigFields.F_PAGE_SCALE to pageScale,
+                ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
             ),
@@ -386,6 +395,9 @@ data class GlobalConfig(
 
         /** 页面缩放的三档：下限 / 出厂值 / 上限（百分比）。 */
         const val PAGE_SCALE_MIN = 70
+
+        /** 随机图标配色：`0` = 关（默认），其余值当种子用。 */
+        const val DEFAULT_ICON_TINT_SEED = 0
         const val DEFAULT_PAGE_SCALE = 100
         const val PAGE_SCALE_MAX = 150
 
@@ -435,6 +447,8 @@ data class GlobalConfig(
                 followDisplaySize = v.bool(ConfigFields.F_FOLLOW_DISPLAY_SIZE),
                 // 与 vibrateStrength 同一档：手改文件写进越界值，在这一层就钳回滑杆两端
                 pageScale = v.number(ConfigFields.F_PAGE_SCALE).coerceIn(PAGE_SCALE_MIN, PAGE_SCALE_MAX),
+                // 与 pageScale 同一档：手改文件写进负数在这一层钳回「关」
+                iconTintSeed = v.number(ConfigFields.F_ICON_TINT_SEED).coerceAtLeast(0),
                 comboPassthrough = v.bool(ConfigFields.F_COMBO_PASSTHROUGH),
                 //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
                 comboWindowMs = v.number(ConfigFields.F_COMBO_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),

@@ -1,5 +1,7 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,6 +24,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -306,6 +309,13 @@ private fun SettingsPage.pickRow(
  *  单独成函数还有两个原因：两页同一份几何不必各写一遍；以及两个调用点的组合函数都已经贴着
  *  detekt 的 `LongMethod` 上限。
  *
+ *  按住**滑块**这一下也走通用振动通道（[rememberTick]，与行、开关同一条）：抓住滑块时才振，
+ *  按在轨道空白处不振（那里按下去什么都不会发生，振一下等于骗人）。
+ *
+ *  判据是那个 DOWN **有没有被 consume**：滚动条自己的指针处理在内层，只有按在滑块上时它才
+ *  `consume()` 这个事件（按在轨道上它直接 return）。外层在 Main 阶段拿到的就是那个结果，
+ *  于是不必在这里再算一遍滑块的几何 —— 库里改了尺寸，这里跟着对。
+ *
  * @param modifier 只用来传 `align`（调用点在 `Box` 里右对齐）
  */
 @OptIn(ExperimentalScrollBarApi::class)
@@ -316,12 +326,19 @@ internal fun SettingsPage.PickerScrollBar(
     searchBandDp: Dp,
     modifier: Modifier = Modifier,
 ) {
+    val tick = rememberTick()
     VerticalScrollBar(
         adapter = rememberScrollBarAdapter(listState),
         modifier =
             modifier
                 .fillMaxHeight()
-                .padding(top = currentHeaderHeight(scrollBehavior) + searchBandDp),
+                .padding(top = currentHeaderHeight(scrollBehavior) + searchBandDp)
+                .pointerInput(tick) {
+                    awaitEachGesture {
+                        //  `requireUnconsumed = false`：要的正是「**已经**被 consume」的那一次按下
+                        if (awaitFirstDown(requireUnconsumed = false).isConsumed) tick()
+                    }
+                },
     )
 }
 

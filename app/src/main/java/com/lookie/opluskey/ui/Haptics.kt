@@ -4,7 +4,9 @@ import android.content.Context
 import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -68,4 +70,57 @@ internal fun NoSwitchHaptic(content: @Composable () -> Unit) {
         LocalView provides view,
         LocalHapticFeedback provides NoHapticFeedback,
     ) { content() }
+}
+
+/**
+ * 把库那一次振动**转投到通用通道**的 `LocalView` —— 与 [NoHapticView] 是一对：那个吞掉，这个转投。
+ *
+ * ## 治的是什么
+ *
+ *  浮层菜单「按住不放、上下滑动换行」时，每换一行库就振一次（`PopupListGestureHost.willChangeRow`
+ *  → `CouiHaptic` → `LocalView.performHapticFeedback`）。那条路**不看** [PageHaptics.allowed]
+ *  （系统静音照样振），也不与页面里其它点击同一档 —— 用户口径「菜单按住滑动时的振动没走通用振动」。
+ *
+ *  库那条路读的是 `LocalView`、不是 `LocalHapticFeedback`，所以 [NoHapticFeedback] 拦不住；
+ *  把浮层内容那一层的 `LocalView` 换成这一份，那一次振动就落到 [LocalTick] 上，
+ *  判据与时长跟点一下菜单行完全一致。
+ *
+ * ## 为什么换掉 `LocalView` 是安全的
+ *
+ *  库整个 `coui-ui` 里读 `LocalView` 的只有 `CouiHaptic`（另有一处是导航层的
+ *  `WindowNavigationEventScope`，不在这棵子树里）；圆角那一支读的是 `LocalContext`。
+ *  浮层内容里没有输入框（`IconInput` 那两处 `LocalView` 用法都在页面 / 弹窗上）。
+ *
+ * @param onHaptic 转投的去处 —— 调用点给 `LocalTick` 那一条（见 [TickHapticScope]）
+ */
+internal class TickHapticView(
+    context: Context,
+    private val onHaptic: () -> Unit,
+) : View(context) {
+    override fun performHapticFeedback(feedbackConstant: Int): Boolean {
+        onHaptic()
+        return true
+    }
+
+    override fun performHapticFeedback(
+        feedbackConstant: Int,
+        flags: Int,
+    ): Boolean {
+        onHaptic()
+        return true
+    }
+}
+
+/**
+ * 把这一层里**库自己发出的振动**改走通用通道（见 [TickHapticView]）。
+ *
+ *  `LocalTick` 在这里**跟着读**（`rememberUpdatedState`）：它由页面提供、每次重组可能是新实例，
+ *  而这个 View 是 `remember` 住的 —— 直接闭包会把创建那一刻的那个钉死。
+ */
+@Composable
+internal fun TickHapticScope(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val tick by rememberUpdatedState(LocalTick.current)
+    val view = remember(context) { TickHapticView(context) { tick() } }
+    CompositionLocalProvider(LocalView provides view) { content() }
 }

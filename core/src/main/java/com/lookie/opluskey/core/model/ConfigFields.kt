@@ -294,6 +294,13 @@ object ConfigFields {
             Kind.Number(GlobalConfig.DEFAULT_PAGE_SCALE, GlobalConfig.PAGE_SCALE_MIN, GlobalConfig.PAGE_SCALE_MAX),
         )
 
+    /**
+     * 随机图标配色的种子（`0` = 关）—— 同样只有落盘那一列：颜色只在界面层算，
+     * 注入侧没有图标可上色。
+     */
+    val F_ICON_TINT_SEED =
+        Field(null, Kind.Number(GlobalConfig.DEFAULT_ICON_TINT_SEED, 0, Int.MAX_VALUE))
+
     /** `GlobalConfig` 的全部广播字段。 */
     val GLOBAL_FIELDS: List<Field> =
         listOf(
@@ -310,6 +317,7 @@ object ConfigFields {
             F_COMBO_WINDOW_MS,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
+            F_ICON_TINT_SEED,
         )
 
     // ── `Config` 自己那两位（正文顶层、都只落盘，不进广播）

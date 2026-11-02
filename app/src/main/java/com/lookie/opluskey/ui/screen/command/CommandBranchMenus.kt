@@ -447,6 +447,8 @@ private fun SettingsPage.BranchCommandMenu(
                     if (at in rules.indices) applyBranchAction(at, token)
                 },
                 onDismiss = { menus.commandAt = -1 },
+                //  场景这一支要列出「无操作」：它是「命中也不做事」这一档（多条命令的步骤不列）
+                filter = StepSheetFilter(includeNone = true),
             ),
     )
 }
@@ -460,7 +462,9 @@ private fun SettingsPage.applyBranchAction(
 ) {
     val old = branchDraft.draft.rules.getOrNull(index) ?: return
     val parsed = Action.parse(token)
-    if (parsed is Action.None) {
+    //  「无操作」在这一档是**真取值**（场景命中也不做事，用来盖住后面的兜底场景，
+    //  见 `ActionCatalog.BRANCH_GROUPS`）；只有认不出的 token 才保持原样。
+    if (parsed is Action.None && token.trim() != Action.NONE) {
         //  认不出的 token（老配置 / 菜单给错了）不能静默落成「无操作」：那样保存时才报
         //  「每条条件都要选一个动作」，既指不出是哪一条、也看不出是解析失败。
         //  这里保留原来那一档不动，只留一行判据日志。

@@ -8,7 +8,6 @@ import android.widget.Toast
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.HostApp
 
 /**
  * 失败提示表：Toast 里只出现 [hint]（说清哪里不对 + 怎么办），原始信息照旧进日志
@@ -40,29 +39,24 @@ internal enum class CommandFailure(
     SHELL_NO_PERMISSION(Strings.COMMAND_FAILURE_SHELL_NO_PERMISSION, "这条命令要更高权限：检查文件执行位，或给「手势体感」授权"),
 
     /**
-     * 起不了任何 shell 解释器 —— 最常见的原因是**没有 root 授权**。
+     * 起不了**选定的**那个 shell 解释器 —— 最常见的原因是**没有 root 授权**。
      *
      *  未授权时 KernelSU 直接让 `/system/bin/su` **不可见**（`sh` 报 `inaccessible or not found`），
-     *  而宿主所在的 `platform_app` 域又没有 `/system/bin/sh` 的执行权 ⇒ 两条路同时断。
-     *  这一档原来并进 [SHELL_REJECTED]（「系统不让执行这条命令」），会把人往 SELinux 方向带，
-     *  而实际该做的是去 root 管理器给宿主授权。
+     *  而宿主所在的 `platform_app` 域又没有 `/system/bin/sh` 的执行权 ⇒ 两条路各自都断，
+     *  所以这里没有「换另一个解释器再试一次」这种退路（见 `ShellRunner.startProcess`）。
+     *  提示里只说**宿主**「手势体感」：命令跑在宿主进程里，授权要授给那个包，不是模块自己的包
+     *  （真机实测两条授权互不影响，见 `docs/implementation.md`）。
      */
-    SHELL_NO_ROOT(
-        Strings.COMMAND_FAILURE_SHELL_NO_ROOT,
-        "权限不够：root 要授给「手势体感」（%1\$s）",
-    ) {
-        /**
-         * 这一档必须说出**授给谁**：「这条命令要 root」对「我已经授权了」的人等于没说 ——
-         *  他多半授给了模块自己的包（`io.github.lo0kie.opluskey`），而命令其实跑在**宿主进程**
-         *  （`com.oplus.gesture` / `:ui`）里，那是另一个 uid。
-         *
-         *  只提宿主，**不提 shell**：2026-10-19 实测过 —— 把 root 管理器里 shell 那条授权
-         *  撤掉（`adb shell su` 立刻变成 `su: inaccessible or not found`）之后，模块照样
-         *  `走的是 su` 并把 `am start` 跑成功。两条授权互不影响，模块只需要宿主那一条；
-         *  shell 那条只影响**在终端里调试**（`adb shell su`），写进用户提示只会让人多开一个口子。
-         */
-        override val hint: String get() = I18n.format(key, HostApp.PACKAGE)
-    },
+    SHELL_NO_ROOT(Strings.COMMAND_FAILURE_SHELL_NO_ROOT, "「手势体感」没有 root 权限"),
+
+    /**
+     * 命令自己**没勾**「以 root 执行」，而它要 root 才跑得起来。
+     *
+     *  与 [SHELL_NO_ROOT] 分开是因为**该做的事完全不同**：这一档去「命令设置」里把「以 root 执行」
+     *  打开就行，`root` 早就在了；那一档才是去 root 管理器给宿主授权。
+     *  两者按「先看命令的开关，再看机器有没有 root」的顺序判（见 `ShellRunner.classifyFailure`）。
+     */
+    SHELL_ROOT_OFF(Strings.COMMAND_FAILURE_SHELL_ROOT_OFF, "此命令需要 root 权限"),
 
     /** 其它非 0 退出码 —— 命令跑起来了但自己报错。 */
     SHELL_FAILED(Strings.COMMAND_FAILURE_SHELL_FAILED, "命令没跑成功，检查一下内容"),
@@ -165,6 +159,21 @@ internal object FailureNotice {
     private var lastToastText: String? = null
     private var lastToastAt = 0L
 
+    /**
+     * 全模块**共用同一个** `Toast` 实例（[shared]），只换文字 —— 不是每次新建一条。
+     *
+     * 这个包的 toast 有两个系统侧的硬约束（`NotificationManagerService`，反编译与真机日志都对上，
+     * 见 `docs/device-findings.md` 四十）：
+     * 1) **每包限流**：`TOAST_RATE_LIMITS` = 3 条 / 20s、5 条 / 42s、6 条 / 68s，超出的那条被
+     *    `tryShowToast` 直接丢弃（logcat 里 `is above allowed toast quota`）。豁免只给持有
+     *    `android.permission.UNLIMITED_TOASTS` 的包，改不了 —— 连按超过这个数就必然有几下没有提示。
+     * 2) **正在显示时新的只能排队**：`showNextToastLocked` 见到 `mIsCurrentToastShown` 就直接返回，
+     *    所以每次弹之前要先 `cancel()` 掉上一条，否则连按时看到的是两秒前的旧内容。
+     *
+     *  只在主线程（[main] 的 post 里）读写，不加锁。
+     */
+    private var shared: Toast? = null
+
     /** 同一句话在这么久之内不重复弹（`Toast.LENGTH_SHORT` 大约 2s，取略短的一档）。 */
     private const val TOAST_DEDUP_MS = 1500L
 
@@ -179,8 +188,9 @@ internal object FailureNotice {
     }
 
     /**
-     * 弹一条普通提示（非失败），目前只给「执行时提示」（`GlobalConfig.toastOnRun`）用
-     * —— 调用点在 `host/GestureExec.runAction`，内容由 [actionNoticeText] 给。
+     * 弹一条普通提示（非失败），目前只给「执行时提示」（`GlobalConfig.toastOnRun`）与
+     * 命令自己那行 `tip:` 用 —— 调用点在 `host/GestureExec.noticeIfNeeded` 与
+     * `host/action/ActionRunner.runShell`，内容由 [actionNoticeText] / 命令输出给。
      *
      * @param context 宿主 Context；null 或空串时什么都不做。
      */
@@ -203,7 +213,17 @@ internal object FailureNotice {
         try {
             handler.post {
                 try {
-                    Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+                    // 复用同一个实例：见 [shared] 字段的注释（否则会被系统的配额丢掉）
+                    val t =
+                        shared ?: Toast
+                            .makeText(context.applicationContext, text, Toast.LENGTH_SHORT)
+                            .also { shared = it }
+                    // 先收掉上一条再弹新的：正在显示的那条不撤掉的话，`showNextToastLocked` 会在
+                    //  `mIsCurrentToastShown` 上直接返回，新的一条只能排在它后面 —— 连按时看到的是
+                    //  两秒前的旧内容，甚至「按了没弹」。
+                    t.cancel()
+                    t.setText(text)
+                    t.show()
                 } catch (e: Throwable) {
                     XLog.d("弹 Toast 失败：${e.message}")
                 }

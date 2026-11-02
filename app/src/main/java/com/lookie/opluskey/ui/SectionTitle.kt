@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
@@ -150,16 +151,34 @@ private val MORE_BUTTON_HEIGHT = 20.dp
 private val MORE_BUTTON_END_SHIFT = (MORE_BUTTON_WIDTH - MORE_BUTTON_HEIGHT) / 2
 
 /**
+ * 行尾那一格里**字形右侧的留白** —— 与 [MORE_BUTTON_END_SHIFT] 同一个数（`(40 − 20) / 2`），
+ * 但意思不同：那一格是 40 宽、字形 20 居中，所以字形的右边线比格子的右边线还要往里 10dp。
+ *
+ *  同一行里要跟那颗菜单对齐的**纯文字**（如「命令名称」行尾的字数统计）得把这 10dp 一起算进去，
+ *  否则它比菜单的字形更靠外，两个页面的行尾看着不在一条线上。
+ */
+internal val SECTION_TITLE_TRAILING_GLYPH_INSET = (MORE_BUTTON_WIDTH - MORE_BUTTON_HEIGHT) / 2
+
+/**
+ * 小标题**行尾那一格**的右内缩 —— 与 [MORE_BUTTON_WIDTH] 那套几何同源：
+ * 页面缩进 [PAGE_MARGIN]（12）再加字形在格内的那一档（10）= **22**。
+ *
+ *  取 22 而不是 12，是因为「一颗 40 宽点击格、20 宽字形居中」的字形右边线本来就比格子右边线
+ *  往里 10dp：**文字行尾要与那颗字形的右边缘落在一条线上**，就得补这 10dp。
+ *  两者共用同一个数之后，「行尾放菜单」与「行尾放计数」在同一列，不用谁再各调各的。
+ */
+internal val SECTION_TITLE_TRAILING_END = PAGE_MARGIN + SECTION_TITLE_TRAILING_GLYPH_INSET
+
+/**
  * 那颗**横向三个点**（「更多」）—— 尺寸 / 字形 / 圆角 / 取色**只在这里定义**。
  *
  *  两处共用：小标题行尾（「命令列表」「场景」那块）与「已保存的命令」卡片右上角。
  *  点击区就是它自己那一格（不把整行做成可点）；字形与点击区同高，库默认 24dp 塞不进 20dp 的框。
  *
  * @param anchor 触点锚点：浮层菜单弹在按下那一点（只看不消费，见 [preciseClickAnchor]）
- * @param endPadding 右侧留白 —— 要与所在那一行的右边距对齐时由调用点给
+ * @param flushEnd 字形贴住**内容右边线**而不是在那一格里居中 —— 卡片右上角那颗用；行尾那一格
+ *   由 [SectionTitle] 的内缩负责，传 `true` 时字形正好落在小标题那条行尾线上。
  * @param enabled `false` = 置灰且**不吃点击**（卡片在排序态时整片禁用）
- * @param flushEnd 字形贴住**内容右边线**而不是在那一格里居中 —— 卡片右上角那颗用：那一格外面还有
- *   16dp 的卡片内边距，居中的话字形会比左边的类型图标多缩进 10dp（肉眼一看就不对称）。
  *
  *   实现见 [MORE_BUTTON_END_SHIFT]：移动的是**整个点击区**，不是格子里的字形。
  */
@@ -167,7 +186,6 @@ private val MORE_BUTTON_END_SHIFT = (MORE_BUTTON_WIDTH - MORE_BUTTON_HEIGHT) / 2
 internal fun MoreButton(
     onClick: () -> Unit,
     anchor: PreciseClickState,
-    endPadding: Dp = 0.dp,
     enabled: Boolean = true,
     flushEnd: Boolean = false,
 ) {
@@ -182,10 +200,7 @@ internal fun MoreButton(
     //  同一行两种手感（真机口径「小标题菜单点击时没有通用振动」）。
     val tick = LocalTick.current
     Box(
-        modifier =
-            Modifier
-                .padding(end = endPadding)
-                .offset(x = endShift),
+        modifier = Modifier.offset(x = endShift),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -249,11 +264,14 @@ internal fun MoreButton(
  * @param text 小标题的文字（调用方自己 `I18n` 取好）
  * @param insideMargin 库那份内边距（左右版式缩进 + 上下留白）；页面里用默认值
  * @param click 点标题做什么（开菜单 / 跳去别页）；`null` = 纯标题（绝大多数调用点）
- * @param trailing 行尾那一格（一颗「更多」之类）；`null` = 不占位
+ * @param trailing 行尾那一格（一颗「更多」或一格计数）；`null` = 不占位
+ * @param trailingEndPadding 行尾那一格的右内缩 —— **默认就对了**，页面里不用给。
+ *   嵌在卡片里的标题（条件执行页那几条规则）自己要传 `0.dp`：那一行的右边缘已经让过一档了。
  *
  *  注意：**这一层不管块与块之间的间距**（它以前带过 `gapTop` / `gapBottom`，结果每个调用点
  *  都要算「上一块带不带行距」）。
  */
+@Suppress("LongParameterList") // 行尾那一格的右内缩也是「这一行怎么画」，拆成 spec 只会让六个调用点各多一层壳
 @Composable
 internal fun SectionTitle(
     text: String,
@@ -261,6 +279,7 @@ internal fun SectionTitle(
     insideMargin: PaddingValues = SmallTitleDefaults.InsideMargin,
     click: SectionTitleClick? = null,
     trailing: (@Composable () -> Unit)? = null,
+    trailingEndPadding: Dp = SECTION_TITLE_TRAILING_END,
 ) {
     //  **区块间距由组件统一给**（上 16 / 下 0，见常量那段）：页面里不再为标题补 `Spacer`，
     //  第一个标题也不做特例 —— 页面顶上那一档由各页的顶栏占位量管，标题这一层只管「两块之间」。
@@ -282,7 +301,11 @@ internal fun SectionTitle(
         }
         //  把行尾那一格推到右边（标题自己只占它本身的宽度）
         Spacer(Modifier.weight(1f))
-        trailing?.invoke()
+        //  **右内缩由这一层统一给**：调用点不再各传一个 `endPadding`（同一个数写七八份，
+        //  漏一处就是那一行行尾贴边）。见 [SECTION_TITLE_TRAILING_END]。
+        trailing?.let {
+            Box(Modifier.padding(end = trailingEndPadding)) { it() }
+        }
     }
 }
 

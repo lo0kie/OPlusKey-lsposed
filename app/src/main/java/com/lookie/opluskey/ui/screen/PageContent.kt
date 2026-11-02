@@ -23,6 +23,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.navigationevent.NavigationEventDispatcherOwner
@@ -36,6 +38,7 @@ import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.LocalDisabledHint
 import com.lookie.opluskey.ui.LocalHint
+import com.lookie.opluskey.ui.LocalIconTint
 import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.PageDebugChannel
 import com.lookie.opluskey.ui.Screen
@@ -43,6 +46,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SyncToHost
 import com.lookie.opluskey.ui.disabledClickReason
 import com.lookie.opluskey.ui.hint
+import com.lookie.opluskey.ui.model.IconTint
 import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION
 import com.lookie.opluskey.ui.model.PagePalette
@@ -128,6 +132,7 @@ internal fun SettingsPage.PageContent() {
     //  里面调 `statusBarsPadding()` 拿到的是 **0**，提示条于是画到 y=0 —— 真机视频里它盖住了
     //  系统状态栏的时间与电量。所以在这一层（页面级、Scaffold 之外）读好，按 Dp 传下去。
     val statusBarTop = with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() }
+    val iconTint = rememberIconTint(global.iconTintSeed, night)
     COUITheme(colors = colorsOf(night, palette)) {
         CompositionLocalProvider(
             LocalDensity provides pageDensity,
@@ -145,6 +150,8 @@ internal fun SettingsPage.PageContent() {
             //  能点的行默认振一下（见 `LocalTick`）：控件层拿不到页面实例，走这一条下来。
             //  `remember` 住同一个理由：每次重组换新实例会让读它的控件白白重组。
             LocalTick provides remember { { tickNow() } },
+            //  图标配色（见上面那段）：关着时是恒 `null` 的一支
+            LocalIconTint provides iconTint,
             //  禁用态被点一下要说的话：库里所有可点控件（`BasicComponent` / `IconButton` /
             //  可交互 `Card` / 菜单行）在 `enabled = false` 时把这一下点击交给它
             //  —— 见 `patches/coui/0008-disabled-click-explains.patch`。
@@ -388,6 +395,25 @@ private fun SettingsPage.onInjectReady(intent: Intent) {
     if (status.configTag == link.pendingConfigTag) link.clearConfigPending()
     link.injectAliveToken++
 }
+
+/**
+ * 「外观 → 随机图标配色」的那一支 —— 种子 `0` = 关（返回恒 `null` 的 lambda，控件照旧跟主题走）。
+ *
+ *  `remember` 住：每次重组换一个新 lambda，所有读 [LocalIconTint] 的图标都会白白重组一遍。
+ *  单独抽出来只为让 `PageContent` 留在 detekt 的 `LongMethod` 长度线内。
+ */
+@Composable
+private fun rememberIconTint(
+    seed: Int,
+    night: Boolean,
+): (ImageVector) -> Color? =
+    remember(seed, night) {
+        if (seed == 0) {
+            { _: ImageVector -> null }
+        } else {
+            { icon: ImageVector -> IconTint.colorOf(seed, icon.name, night) }
+        }
+    }
 
 /**
  * 调试通道要切手势 tab —— `pagerState` 活在组合里，只能这样接：

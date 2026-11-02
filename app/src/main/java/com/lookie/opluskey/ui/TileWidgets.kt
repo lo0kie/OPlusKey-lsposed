@@ -108,15 +108,21 @@ internal fun IconAction(
 @Composable
 internal fun rememberRowIconColor(
     enabled: Boolean,
+    /**
+     * 这一行的图标 —— 给了才参与「随机图标配色」（见 `LocalIconTint`）。
+     *  `null` = 这一处没有具体图标（或不想让它参与），照旧走主题色。
+     */
+    icon: ImageVector? = null,
     label: String = "RowIcon",
 ): State<Color> =
     animateColorAsState(
         targetValue =
-            if (enabled) {
-                COUITheme.colorScheme.onSurfaceContainer
-            } else {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            },
+            icon?.takeIf { enabled }?.tinted()
+                ?: if (enabled) {
+                    COUITheme.colorScheme.onSurfaceContainer
+                } else {
+                    COUITheme.colorScheme.disabledOnSecondaryVariant
+                },
         animationSpec = COLOR_TRANSITION_SPEC,
         label = label,
     )

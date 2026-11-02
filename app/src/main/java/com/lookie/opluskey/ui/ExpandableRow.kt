@@ -13,17 +13,39 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
+
+/**
+ * 可展开行行首那颗图标 —— 与 `CardRow` / `SwitchRow` 那颗同一档：库只给 8dp，左边距是 16dp
+ * （见 [ROW_START_ICON_GAP]）。
+ *
+ *  抽成一支只为让 [ExpandableRow] 留在 detekt 的 `LongMethod` 长度线内。
+ */
+@Composable
+private fun ExpandableRowIcon(
+    icon: ImageVector,
+    tint: Color,
+) {
+    Icon(
+        icon,
+        contentDescription = null,
+        tint = tint,
+        modifier = Modifier.padding(end = ROW_START_ICON_GAP),
+    )
+}
 
 /**
  * 一行长文本的**折行展开 / 收起** —— 收起时压成一行（末尾省略号），展开后原样折行。
@@ -47,6 +69,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  判据是收起状态下那次排版有没有溢出（`TextLayoutResult.hasVisualOverflow`），
  *  量一次就够，不必自己算宽度。
  */
+
 @Composable
 internal fun SettingsPage.ExpandableRow(
     spec: ExpandableRowSpec,
@@ -60,9 +83,11 @@ internal fun SettingsPage.ExpandableRow(
         tick()
         onToggle()
     }
+    //  语义色（如「不是这包」的红）→ 随机配色 → 常规内容色，与 `CardRow` / `SwitchRow` 同序
+    val iconTint = spec.iconTint ?: spec.icon.tinted() ?: COUITheme.colorScheme.onSurfaceContainer
     BasicComponent(
         onClick = toggle,
-        startAction = { Icon(spec.icon, contentDescription = null, tint = spec.iconTint) },
+        startAction = { ExpandableRowIcon(spec.icon, iconTint) },
         endActions =
             if (expanded || overflowed) {
                 {

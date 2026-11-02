@@ -25,6 +25,7 @@ import com.lookie.opluskey.ui.model.paletteLabel
 import com.lookie.opluskey.ui.model.themeLabel
 import com.lookie.opluskey.ui.setFollowDisplaySize
 import com.lookie.opluskey.ui.setPageScale
+import com.lookie.opluskey.ui.setRandomIconTint
 import com.lookie.opluskey.ui.state.deviceModel
 import com.lookie.opluskey.ui.state.deviceSupport
 import com.lookie.opluskey.ui.switchToNotice
@@ -273,7 +274,22 @@ internal fun SettingsPage.AppearanceCard(
                         ui.showPaletteMenu = true
                     },
                 ),
-                // 第 3 行：跟随系统显示大小 —— 关掉后模块页面按出厂标准大小渲染（见 GlobalConfig）
+                // 第 3 行：随机图标配色 —— 开的那一下生成一个种子并落盘，之后一直用这一份
+                //  （关掉再打开才换一批，见 `setRandomIconTint`）。颜色本身是手挑的色相，
+                //  不是随机 RGB（见 `IconTint`）。
+                CardRow.Switch(
+                    title = I18n.get(Strings.MORE_RANDOM_ICON_TINT, "随机图标配色"),
+                    summaryOn =
+                        I18n.get(
+                            Strings.MORE_RANDOM_ICON_TINT_ON,
+                            "随机生成图标颜色，重新打开会生成新配色",
+                        ),
+                    summaryOff = I18n.get(Strings.MORE_RANDOM_ICON_TINT_OFF, "图标跟随主题色"),
+                    icon = PageIcons.RandomIconTint,
+                    checked = configState.config.value.global.iconTintSeed != 0,
+                    onCheckedChange = { setRandomIconTint(it) },
+                ),
+                // 第 4 行：跟随系统显示大小 —— 关掉后模块页面按出厂标准大小渲染（见 GlobalConfig）
                 CardRow.Switch(
                     title = I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE, "跟随系统显示大小"),
                     summaryOn =
@@ -286,7 +302,7 @@ internal fun SettingsPage.AppearanceCard(
                         setFollowDisplaySize(it)
                     },
                 ),
-                // 第 4 行：页面缩放 —— **只在「跟随系统显示大小」关掉时出现**（跟着它一起进出场）。
+                // 第 5 行：页面缩放 —— **只在「跟随系统显示大小」关掉时出现**（跟着它一起进出场）。
                 //  跟随开着时再摆一根缩放，等于两处都能调页面大小，谁也说不清最后是多少。
                 //  整行另起一支（[PageScaleRow]）：这一卡已经四行了，再平铺下去就数不清行序。
                 CardRow.Custom(visible = !configState.config.value.global.followDisplaySize) { position ->

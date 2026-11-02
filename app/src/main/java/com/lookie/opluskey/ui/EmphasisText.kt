@@ -13,6 +13,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.suqi8.coui.kmp.basic.Text
@@ -105,13 +106,36 @@ internal fun EmphasisText(
         // 段 = 两条（及以上）换行切开。段内一行一行画：「- xxx」那一行的圆点由 [EmphasisLine] 补。
         //  **分段与对齐方式无关**：只按居中档分段的话，同一段文案在左对齐时会被压成一整块
         //  （免责声明那种长正文正是左对齐的）—— 同一句话两处排版，读起来不像一份文件。
-        val paragraphs = text.split("\n\n")
-        paragraphs.forEachIndexed { index, para ->
+        //  空行不进排版（画出来也只是一行空白），段间那道 [PARAGRAPH_GAP] 照旧。
+        val paragraphs = text.split("\n\n").map { para -> para.lines().map { it.trim() }.filter { it.isNotEmpty() } }
+        val total = paragraphs.sumOf { it.size }
+        var drawn = 0
+        paragraphs.forEachIndexed { index, lines ->
             if (index > 0) Spacer(Modifier.height(PARAGRAPH_GAP))
-            para.lines().forEach { raw -> EmphasisLine(raw.trim(), style) }
+            lines.forEach { line ->
+                drawn++
+                EmphasisLine(line, style, lineHeightStyle(drawn, total))
+            }
         }
     }
 }
+
+/**
+ * 正文第 [index] 行（共 [total] 行）的行盒裁剪。
+ *
+ *  行盒比字形高，多出来的白会算进「区与区之间」：整段正文只有首行上沿、末行下沿贴着弹窗的
+ *  间距（见 `DIALOG_LINE_HEIGHT_STYLE`），中间那些行的行距由行高自己撑，一点都不能裁。
+ */
+private fun lineHeightStyle(
+    index: Int,
+    total: Int,
+): LineHeightStyle =
+    when {
+        total <= 1 -> DIALOG_LINE_HEIGHT_STYLE
+        index == 1 -> LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.FirstLineTop)
+        index == total -> LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.LastLineBottom)
+        else -> LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)
+    }
 
 /**
  * 正文里的一行 —— [text] 已去过首尾空白，空行不画。
@@ -123,21 +147,23 @@ internal fun EmphasisText(
 private fun EmphasisLine(
     text: String,
     style: TextStyle,
+    lineHeightStyle: LineHeightStyle,
 ) {
     if (text.isEmpty()) return
+    val lineStyle = style.copy(lineHeightStyle = lineHeightStyle, platformStyle = DIALOG_PLATFORM_STYLE)
     if (text.startsWith(BULLET_MARK)) {
         Row(Modifier.fillMaxWidth()) {
-            Text(text = BULLET_GLYPH, style = style)
+            Text(text = BULLET_GLYPH, style = lineStyle)
             Text(
                 text = emphasis(text.removePrefix(BULLET_MARK)),
-                style = style,
+                style = lineStyle,
                 modifier = Modifier.weight(1f),
             )
         }
     } else {
         Text(
             text = emphasis(text),
-            style = style,
+            style = lineStyle,
             modifier = Modifier.fillMaxWidth(),
         )
     }

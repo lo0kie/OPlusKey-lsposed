@@ -38,7 +38,7 @@ internal fun SettingsPage.comboLabel(
     cfg: Config,
     combo: ComboKey,
     /**
-     * 每个键名外面套一对括号（中文 `「」`、英文 `“”`，见 [keyBrackets]）。
+     * 每个键名外面套一对括号（中文 `「」`、英文 `｢｣`，见 [keyBrackets]）。
      *
      *  **除了纯日志之外一律要它**（用户口径）：列表行、顶栏副标题、删除确认窗、
      *  「已添加 / 已删除」的回执 —— `侧键 + 电量 +` 读起来像一句话，

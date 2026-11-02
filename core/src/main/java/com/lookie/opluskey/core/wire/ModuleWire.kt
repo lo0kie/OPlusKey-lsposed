@@ -197,6 +197,21 @@ object ModuleWire {
     /** [ACTION_INJECT_KEY] 里带「要注入的键码」（`KeyId.KEYCODE_SYSRQ` 之类）。 */
     const val EXTRA_INJECT_CODE = "inject_code"
 
+    /**
+     * 宿主 → 注入侧：**替它弹一条提示**（[EXTRA_TOAST_TEXT]）。
+     *
+     *  为什么挪到注入侧弹：系统 toast 按**包**限流（3 条 / 20 秒、5 条 / 42 秒、6 条 / 68 秒，
+     *  见 `docs/device-findings.md` 四十），宿主的包连按几下之后后面那些直接被丢。注入侧跑在
+     *  `system_server`，用 `ActivityThread.getSystemContext()`（包名 `android`）弹，那个包持有
+     *  `UNLIMITED_TOASTS` ⇒ 免限流。同一句话、同一个模块，只是换了发话人。
+     *
+     *  收方同样是 `inject/KeyHooks` 那个 AMS 广播入口，宿主直接 `sendBroadcast` 即可。
+     */
+    const val ACTION_TOAST = "com.lookie.opluskey.TOAST"
+
+    /** [ACTION_TOAST] 里带「要弹的那句话」。 */
+    const val EXTRA_TOAST_TEXT = "toast_text"
+
     /** [ACTION_HOST_SERVICE_UP] 里带「宿主进程的启动时刻」（同上）。宿主是普通应用进程，重开即可，不必重启手机。 */
     const val EXTRA_HOST_PROC_START = "host_proc_start"
 

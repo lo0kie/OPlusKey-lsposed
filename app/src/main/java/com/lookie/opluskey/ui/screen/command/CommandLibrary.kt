@@ -33,6 +33,14 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     XLog.w("测试命令：${cmd.name}（${cmd.kind.id}）—— 在设置页进程里直接执行")
     // 与页面其它点击同一条触觉通道（判据只有系统状态）
     tickNow()
+    //  **空命令在派发之前就拦掉**：没有正文 / 没有步骤时点「测试」什么都不会发生，
+    //  派发下去也只会走到执行器那条失败提示上，界面还要先弹一句「已触发」——
+    //  先派发再报错，读起来像「试过了，没反应」。
+    if (!cmd.hasContent) {
+        XLog.w("测试命令：这条命令是空的，不派发")
+        hint(I18n.get(Strings.COMMAND_FAILURE_EMPTY, "这条命令是空的，补上内容再试"), slot = HINT_SLOT_COMMAND)
+        return
+    }
     // 页面动作失败绝不外抛（本文件里其它入口都是这条纪律）：测试命令直接跑在点击回调上，
     //  从执行器里抛出来会打到 Compose 的点击处理里。
     try {
@@ -71,7 +79,7 @@ internal fun SettingsPage.draftCommand(): Command {
     val name = CommandLibrary.sanitizeName(draft.name)
     return when (draft.kind) {
         CommandKind.SINGLE -> {
-            Command(name, CommandKind.SINGLE, single = draft.single.trim())
+            Command(name, CommandKind.SINGLE, single = draft.single.trim(), root = draft.root)
         }
 
         CommandKind.SERIAL -> {

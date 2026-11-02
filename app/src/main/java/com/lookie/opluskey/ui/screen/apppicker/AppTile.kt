@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -31,7 +30,6 @@ import com.lookie.opluskey.ui.model.APP_KIND_MODULE_LIGHT
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_BG_ALPHA
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_INSIDE
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_RADIUS
-import com.lookie.opluskey.ui.model.APP_KIND_TAG_SINK
 import com.lookie.opluskey.ui.model.CLONE_TAG_DARK
 import com.lookie.opluskey.ui.model.CLONE_TAG_LIGHT
 import com.lookie.opluskey.ui.model.LaunchableApp
@@ -223,6 +221,11 @@ internal fun cloneTagTint(): Color =
  * 的筛选控件，这里要的只是纯展示的小标记。底色由**文字色的低透明度**派生，所以调用点
  * 只需要给颜色。
  *
+ * **竖向对齐全交给 [opticalCenter]**（与旁边那行标题同一条通道）：胶囊高度 = 行盒 + 上下对称
+ * padding、里面的字再按字形边界修正，于是胶囊中线就是墨迹中线，行里 `CenterVertically` 摆上去
+ * 就与标题齐 —— 这里**不再另加偏移量**。再多压一档就是重复补偿：标题按字形修正、胶囊也在按
+ * 字形修正，那 3px 的旧账只在「按行盒居中」的年代成立。
+ *
  * @param text 标签文字
  * @param tint 标签色（文字与底色都由它派生）—— 三档的配色见 [appKindTagTint]，
  *   警告档（「不可打开」）传 `error`
@@ -236,9 +239,6 @@ internal fun SettingsPage.AppKindTag(
     Box(
         modifier =
             modifier
-                // 胶囊自己比旁边那行 16sp 标题的墨迹中线高 3px（实测），整体让下来这一档两者才齐
-                //  （见 [APP_KIND_TAG_SINK]）
-                .offset(y = APP_KIND_TAG_SINK)
                 .background(
                     color = tint.copy(alpha = APP_KIND_TAG_BG_ALPHA),
                     shape = RoundedCornerShape(APP_KIND_TAG_RADIUS),

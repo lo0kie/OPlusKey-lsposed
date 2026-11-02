@@ -63,6 +63,14 @@ object ActionCatalog {
         val token: String,
         val commandKind: CommandKind? = null,
         val commandSteps: Int = 0,
+        /**
+         * 这条自定义命令**是否以 root 执行**（`Command.root`）—— 只有单条命令用得上。
+         *
+         *  界面据此把「su / 非 su」画成两颗字形（见 `ui/model/ActionIcons.commandIcon`），
+         *  所以它必须跟着条目一起走到渲染层：抽屉与网格里那一行也是从命令库来的，
+         *  光有类型与步数分不出这一档。
+         */
+        val commandRoot: Boolean = false,
         val dividerBefore: Boolean = false,
         /**
          * 这一格用哪支字形 —— **只写名字**，不引图标库类型（`core` 在注入侧也会被加载，一、1 那条
@@ -527,6 +535,8 @@ object ActionCatalog {
             token = command.token,
             commandKind = command.kind,
             commandSteps = command.steps.size,
+            //  单条命令的两档字形靠它分（su / 非 su），抽屉与网格摆的就是这张候选表
+            commandRoot = command.root,
         )
 
     /**
@@ -555,6 +565,26 @@ object ActionCatalog {
                             else -> it
                         }
                     }
+        }
+
+    /**
+     * 「系统场景」那一档的候选表 —— 与 [STEP_GROUPS] 同一张表，只把**「无操作」加回来**。
+     *
+     *  场景的一条规则必须有个动作，而「无操作」在那里是一档真取值：它说的是「这个场景命中时
+     *  什么都不做」，用来盖住排在后面的兜底场景。所以保存校验不再要求「每条场景都要选一个动作」。
+     *
+     *  **只在场景里加**：多条命令的步骤仍走 [STEP_GROUPS]（剔掉它）—— 步骤不是按键，
+     *  「无操作」那一步等于白占一格，还让「有几步」这件事数不准。
+     */
+    val BRANCH_GROUPS: List<Pair<String, List<Spec>>> =
+        GROUPS.map { (title, group) ->
+            title to
+                group.map {
+                    when (it.token) {
+                        APP_TILE -> APP_STEP
+                        else -> it
+                    }
+                }
         }
 
     /**

@@ -59,11 +59,15 @@ internal val SLIDER_SIDE_INSET = 16.dp
 internal val SLIDER_BOTTOM_INSET = 10.dp
 
 /**
- * 行首图标把滑杆挤开的距离 —— 图标本身 22dp + 库在图标与标题之间固定的那 8dp（`Component.kt` 的 `spacerPx`）。
+ * 行首图标把滑杆挤开的距离 —— 图标本身 24dp（Tabler 的默认视口）+ 图标右侧那两道 8dp：
+ * 库在图标与标题之间固定的 8dp（`Component.kt` 的 `spacerPx`），加上 [ROW_START_ICON_GAP]
+ * 补到左边距的那 8dp。
+ * **[ROW_START_ICON_GAP] 改了这里要跟着改**（写成字面量是因为它定义在本文件更后面，
+ * 直接引用会踩到顶层属性「先初始化后声明」）。
  *
  * [SliderRow] 的滑杆按它左内缩，于是滑杆与标题文字同一个左边界；「点轨道跳值」的账里也要带上它。
  */
-internal val SLIDER_ICON_INSET = 30.dp
+internal val SLIDER_ICON_INSET = 40.dp
 
 internal val SLIDER_INSIDE_MARGIN =
     PaddingValues(
@@ -202,18 +206,6 @@ internal val APP_STATE_TEXT_GAP = 12.dp
  */
 internal val APP_KIND_TAG_GAP = 6.dp
 
-/**
- * 种类标签胶囊整体**往下让**的这一档 —— 0.85dp（560dpi 下 3px）。
- *
- *  胶囊里的字按行盒竖直居中，
- *  但胶囊**自己**与旁边那个 16sp 大标题还差一档：真机量到标题墨迹中线在 2021px、
- *  胶囊中线在 2018px —— 差 3px，看着就是「标签整体偏高一点点」。
- *
- *  这个数**跟着标题那档字号走**：标题改成别的档位要重新量（它是「16sp Medium 的墨迹中线
- *  − 11sp Regular 胶囊中线」的差，两个字体文件的 descent 不一样，不能按字号等比推）。
- */
-internal val APP_KIND_TAG_SINK = 0.85.dp
-
 internal val APP_KIND_TAG_RADIUS = 4.dp
 
 internal val APP_KIND_TAG_INSIDE = PaddingValues(horizontal = 5.dp, vertical = 1.dp)
@@ -271,3 +263,24 @@ internal val DONATE_CODE_SIZE = 220.dp
  *  比整体偏大偏小更明显。原来几处各写一遍 `22.dp`（或各留一个私有常量）。
  */
 internal val ROW_ICON_SIZE = 22.dp
+
+/**
+ * 卡片行里行首图标**右侧补的那一档** —— 8dp。
+ *
+ *  卡片行的左右内边距都是 16dp（库的 `BasicComponentDefaults.InsideMargin`），而库在 `startAction`
+ *  与文字之间只留 8dp（`Component.kt` 里那个 `spacerPx`）⇒ 图标左边看着比右边宽一倍，整行偏右。
+ *  补上这 8dp，图标两侧的视觉留白才一样宽。
+ *
+ *  它不是「图标与文字的间距」，而是**把这处间距拉齐到左边距**的差额；行内边距若变了，
+ *  这个数要跟着重算。
+ */
+internal val ROW_START_ICON_GAP = 8.dp
+
+/**
+ * 卡片行里**标题左缘**距卡片左缘多少 —— 56dp。
+ *
+ *  行内边距 16 + 行首图标那一列 24（Tabler 图标的默认视口）+ 库在图标后固定的 8（`spacerPx`）
+ *  + 上面那档 [ROW_START_ICON_GAP] 8。行间那条细分隔线的左端按它缩进，线才从**标题最左处**起，
+ *  不会伸进图标那一格里。
+ */
+internal val ROW_TITLE_INSET = 56.dp

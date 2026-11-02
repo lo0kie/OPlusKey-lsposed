@@ -22,10 +22,10 @@ import com.lookie.opluskey.ui.DialogButtonRow
 import com.lookie.opluskey.ui.FocusOnShow
 import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.dialogSideMargin
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TextField
 import io.github.suqi8.coui.kmp.basic.TextFieldDefaults
 import io.github.suqi8.coui.kmp.basic.TextFieldMode
@@ -120,13 +120,7 @@ internal fun SettingsPage.CommandFullscreenDialog(
                 },
             )
         },
-        titleTrailing = {
-            Text(
-                text = "${text.text.length}/$MAX_SINGLE_LENGTH",
-                fontSize = TextFieldDefaults.CounterFontSize,
-                color = COUITheme.colorScheme.onSurfaceContainerHigh,
-            )
-        },
+        titleTrailing = { TitleCounter(text.text.length, MAX_SINGLE_LENGTH) },
     ) {
         //  **侧边距只给输入框**：库的按钮条是「两半平分整个宽度」（自己带内部边距），
         //  套在侧边距里就缩进一圈、与弹窗边缘对不上（`NameInputBody` 也是这么摆的）。

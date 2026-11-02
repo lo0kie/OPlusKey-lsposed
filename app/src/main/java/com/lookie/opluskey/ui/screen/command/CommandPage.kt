@@ -50,7 +50,6 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.moveCaretToEnd
 import com.lookie.opluskey.ui.state.CommandUiState
-import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
@@ -101,7 +100,12 @@ internal fun SettingsPage.CommandPage(
             //  （「请输入名称」），滚到这一屏时那行字可能已经被填满，光看框分不清哪个是名字、
             //  哪个是命令本体。原先这一条写的是「修改命令 / 新增命令」—— 那说的是**这一页在干什么**，
             //  而顶栏已经写着「自定义命令」、工具栏那颗键写着「保存 / 修改」，这里该说的是**这一栏是什么**。
-            SectionTitle(I18n.get(Strings.COMMAND_NAME_TITLE, "命令名称"))
+            SectionTitle(
+                text = I18n.get(Strings.COMMAND_NAME_TITLE, "命令名称"),
+                //  行尾是**字数统计**：输入框本身不画计数（`InputSpec.maxLength` 只截断），
+                //  上限写在这一行才读得到 —— 与弹窗标题行那一格同一套画法（`TitleCounter`）。
+                trailing = { CommandNameCounter() },
+            )
 
             // 输入项用 COUI 的「卡片输入」形态（[IconInputView]）：一个输入项一张卡、无边框，
             // 行首图标会把标题与输入框一起挤开 —— 库的 `InputView` 做不到，所以自己拼。
@@ -117,6 +121,11 @@ internal fun SettingsPage.CommandPage(
                     onMenu = { detailMenu = true },
                 )
                 SingleCommandField(ui, scroll, enabled = !sorting)
+                //  「命令设置」对单条只有一件事：这条命令要不要以 root 执行。
+                //  它是**每条命令自己的**开关（存在命令上、随命令一起落盘），所以摆在这里、
+                //  只在单条页出现；多条命令的步骤没有各自的开关。
+                SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
+                RootSwitchCard(enabled = !sorting)
             }
 
             // `keyevent:` 注入同毫秒生效，而「最近任务 / 通知中心 / 控制中心」要跨四个进程、`shell:` 更
@@ -191,7 +200,7 @@ private fun SettingsPage.CommandDetailTitle(
             MoreButton(
                 onClick = onMenu,
                 anchor = anchor,
-                endPadding = PAGE_MARGIN,
+                flushEnd = true,
                 enabled = !sorting,
             )
         },
@@ -214,15 +223,15 @@ private fun SettingsPage.CommandStepListSection(
             MoreButton(
                 onClick = onMenu,
                 anchor = anchor,
-                endPadding = PAGE_MARGIN,
+                flushEnd = true,
             )
         },
     )
-    //  加 / 删步骤的过渡不在这里：行让位 / 回位由 SerialSteps 每行的 expand / shrink 驱动，
-    //  两层高度动画叠在一起会让卡片背景慢半拍。
-    Card(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
-        SerialSteps()
-    }
+    //  **不要再套一层 `Card`**：`SerialSteps` 现在自己就是一张 `CardList`（它自带卡片、
+    //  分隔线与左右 `PAGE_MARGIN`）。外面再包一层就成了「卡里还有一张卡」——
+    //  观感是两层卡片、行看着一颗颗独立（真机反馈「看起来有两层 cardlist」）。
+    //  加 / 删步骤的过渡仍由 `SerialSteps` 每行的 expand / shrink 驱动，不在这里。
+    SerialSteps()
 }
 
 /**
@@ -271,7 +280,9 @@ internal fun SettingsPage.CommandListPage(
                 CommandKind.FORM_TABS.forEach { kind ->
                     val group = commands.filter { it.kind == kind }
                     if (group.isEmpty()) return@forEach
-                    SectionTitle(commandKindLabel(kind))
+                    //  小标题只有名字，不带条数：网格自己就把「有几条」摆在那儿了，标题再报一遍
+                    //  等于同一个数写两处；`TitleCounter` 留给有上限的地方（名称 / 命令正文的字数）。
+                    SectionTitle(text = commandKindLabel(kind))
                     //  这一页没有表单要禁用：排序态只属于「多条」那张表单，进这一页时已经收掉了。
                     SavedCommandsSection(saved = group, ui = ui, tick = tick, onOpen = onOpen)
                 }
@@ -452,6 +463,32 @@ private fun SettingsPage.CommandSettingsSection(
 }
 
 /**
+ * 「以 root 执行」那张卡 —— 单条命令**自己**的一项设置（多条命令的步骤没有各自的开关）。
+ *
+ *  两档互不兜底：开 = 只走 `su`（拿不到 root 就是这次失败，**不**退回 `sh`），关 = 只走 `sh`。
+ *  这台机器的宿主域没有 `/system/bin/sh` 的执行权，关掉之后多数命令会**起不来**
+ *  （失败提示会报「要 root」），所以副标题把两种走法都写清楚，不替用户做判断。
+ */
+@Composable
+private fun SettingsPage.RootSwitchCard(enabled: Boolean) {
+    CardList(
+        rows =
+            listOf(
+                CardRow.Switch(
+                    title = I18n.get(Strings.COMMAND_ROOT_TITLE, "以 root 执行"),
+                    summaryOn = I18n.get(Strings.COMMAND_ROOT_DESC_ON, "只用 su，不再退回 sh"),
+                    summaryOff = I18n.get(Strings.COMMAND_ROOT_DESC_OFF, "只用 sh，不申请 root"),
+                    icon = PageIcons.CommandRoot,
+                    checked = commandDraft.draft.root,
+                    // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
+                    enabled = enabled,
+                    onCheckedChange = { on -> commandDraft.draft.root = on },
+                ),
+            ),
+    )
+}
+
+/**
  * 单条命令的正文输入（「命令」那一栏）—— **单行**（多行那一档已按用户口径撤掉）。
  *
  *  输入框本体是库的搜索框样式（见 `IconInputView`），一行就够：命令本身不该带换行 ——
@@ -505,6 +542,10 @@ private fun SettingsPage.SingleCommandField(
         withFrameNanos { }
         withFrameNanos { }
         moveCaretToEnd(view)
+        //  **一次举手只兑现一次**：清回 0。这个组合会随翻页被销毁 / 重建，而计数是页面级的
+        //  —— 不清的话「切走再切回来」会按旧计数再抢一次焦点，键盘刚弹起来就被换 tab 那一下
+        //  收掉（真机看到的就是「键盘闪一下」）。
+        ui.singleFocusRequest = 0
     }
     // 格式不对时在这一栏下面出红字 —— 保存按钮同时是灰的（见 `commandPayloadReady`），
     //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。

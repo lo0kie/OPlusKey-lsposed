@@ -33,6 +33,14 @@ internal class CommandForm(
     var stepDelayMs by mutableStateOf(Command.DEFAULT_STEP_DELAY_MS)
 
     /**
+     * 这条命令要不要以 root 执行（单条页那行开关）。
+     *
+     *  只对单条有意义：多条命令的步骤没有各自的开关，读它的是 `CustomCommandRunner` 的单条那一支。
+     *  默认 `true` = 以 root 执行（只走 `su`，拿不到 root 就报失败，不退回 `sh`）。
+     */
+    var root by mutableStateOf(true)
+
+    /**
      * 「点击已保存的命令时可编辑」—— 加载后记着原名，UI 据此把卡片标题 / 提交按钮切成
      * 「修改命令 / 修改」；`addCommand` 据此判「名字改没改」（改了 = 真替换，没改 = 原地覆盖）。
      *
@@ -63,6 +71,7 @@ internal class CommandForm(
         single = ""
         steps.clear()
         stepDelayMs = Command.DEFAULT_STEP_DELAY_MS
+        root = true
         editingName = null
         loaded = null
     }
@@ -74,6 +83,7 @@ internal class CommandForm(
         steps.clear()
         steps.addAll(cmd.steps)
         stepDelayMs = cmd.stepDelayMs
+        root = cmd.root
         editingName = cmd.name
         // 快照按**载入进来那一份**记：之后只改表单不动它，[CommandDraft.dirty] 就是「与它比有没有变」
         loaded = cmd
@@ -131,6 +141,12 @@ internal class CommandDraft {
             form.stepDelayMs = value
         }
 
+    var root: Boolean
+        get() = form.root
+        set(value) {
+            form.root = value
+        }
+
     var editingName: String?
         get() = form.editingName
         set(value) {
@@ -156,7 +172,7 @@ internal class CommandDraft {
             val base = form.loaded ?: return form.hasContent
             return when (form.kind) {
                 CommandKind.SINGLE -> {
-                    form.name != base.name || form.single != base.single
+                    form.name != base.name || form.single != base.single || form.root != base.root
                 }
 
                 CommandKind.SERIAL -> {

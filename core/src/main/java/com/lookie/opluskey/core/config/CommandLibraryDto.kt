@@ -35,6 +35,11 @@ internal data class CommandDto(
     val single: String = "",
     val steps: List<String?> = emptyList(),
     val stepDelayMs: Int = Command.DEFAULT_STEP_DELAY_MS,
+    /**
+     * 是否以 root 执行（`shell:` 那一族才用得上）。缺键走默认 `true` ——
+     * 老文件里没有这一位，读出来就是「以 root 执行」那一档（只走 `su`，不降级到 `sh`）。
+     */
+    val root: Boolean = true,
 ) {
     companion object {
         fun of(c: Command): CommandDto =
@@ -44,6 +49,7 @@ internal data class CommandDto(
                 single = c.single,
                 steps = c.steps,
                 stepDelayMs = c.stepDelayMs,
+                root = c.root,
             )
     }
 }

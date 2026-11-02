@@ -54,7 +54,7 @@ object ConfigCodec {
      *  14 = `ComboDto` 多了 `rules`（组合键的条件执行）；
      *  18 = `StateRuleDto` 多了 `enabled`（场景可以停用；15~17 见代码历史）。
      */
-    const val VERSION = 18
+    const val VERSION = 19
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

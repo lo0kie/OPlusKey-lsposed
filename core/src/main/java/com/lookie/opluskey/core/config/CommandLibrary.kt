@@ -104,7 +104,7 @@ object CommandLibrary {
         //  被静默读成单条，而用户下一次保存就把它固化进文件。
         return when (kind) {
             CommandKind.SINGLE -> {
-                Command(name = name, kind = CommandKind.SINGLE, single = dto.single)
+                Command(name = name, kind = CommandKind.SINGLE, single = dto.single, root = dto.root)
             }
 
             CommandKind.SERIAL -> {
@@ -113,6 +113,7 @@ object CommandLibrary {
                     kind = CommandKind.SERIAL,
                     steps = dto.steps.map { it?.trim().orEmpty() }.filter { it.isNotEmpty() },
                     stepDelayMs = dto.stepDelayMs.coerceIn(Command.MIN_STEP_DELAY_MS, Command.MAX_STEP_DELAY_MS),
+                    root = dto.root,
                 )
             }
         }

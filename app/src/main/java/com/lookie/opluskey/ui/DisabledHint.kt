@@ -65,7 +65,9 @@ internal fun DisabledHint(
     text: String?,
     content: @Composable () -> Unit,
 ) {
-    if (text == null) {
+    //  **空串与 `null` 同档**：这一条通道只负责「这一块有自己的说法」；给一句空话等于让这次点击
+    //  什么都不说，而屏幕上还留着上一条提示 —— 用户看到的就是「回退到上一个消息文案」。
+    if (text.isNullOrBlank()) {
         content()
     } else {
         val say = LocalDisabledHint.current

@@ -11,7 +11,8 @@ internal object ShellRunner {
     /**
      * 跑一条命令。
      *
-     * 起进程用哪个解释器见 [startProcess] —— **优先 `su`**，没有 root 才退回 `sh`。
+     * 起进程用哪个解释器见 [startProcess] —— 只试**这一个**（`su` 或 `sh`），不降级；
+     * 调用方可以按**每条命令自己的开关**要求「只用 `sh`」（[preferRoot] = false）。
      *
      * 本函数**立刻返回**：占坑、起进程、等结束全在 [runnerPool] 上做（理由见 [execBlocking]）。
      *
@@ -19,11 +20,16 @@ internal object ShellRunner {
      *   两类时机：`ProcessBuilder.start()` 直接失败；子进程退出码非 0；等待超时。
      * @param onTip 命令自己写的那行提示（[TIP_PREFIX]），**只在退出码 0 时**回调一次；
      *   同样在后台线程上 —— 要弹 Toast 的那一侧自己负责切主线程（`FailureNotice.toast` 已经切了）。
+     * @param preferRoot false ⇒ **只试 `sh`**，不再申请 root（命令库里「以 root 执行」关掉的那一档）。
+     *   注意这台机器的宿主域没有 `/system/bin/sh` 的执行权，关掉之后多数命令会起不来 ——
+     *   那是用户的选择，失败按「这条命令没开『以 root 执行』」报（见 [classifyFailure]）；
+     *   只有**勾了** root 却起不了 `su` 时才报「root 要授给宿主」（[CommandFailure.SHELL_NO_ROOT]）。
      */
     fun exec(
         command: String,
         onFailure: (CommandFailure) -> Unit = {},
         onTip: (String) -> Unit = {},
+        preferRoot: Boolean = true,
     ) {
         if (command.isBlank()) {
             //  空命令不该走到这里（`shell:` 那一支解析时已经掉空值）；真走到就是配置里有条空的，
@@ -35,7 +41,7 @@ internal object ShellRunner {
         //  （首次 `su` 会停在等授权，可能几秒）。这两步原先在**调用线程**上同步做，而调用链是
         //  宿主主线程的广播回调（`GestureReceiver` 的 Handler 建在主 Looper）—— 一条慢命令
         //  就能把整个宿主卡住。
-        runnerPool.execute { execBlocking(command, onFailure, onTip) }
+        runnerPool.execute { execBlocking(command, onFailure, onTip, preferRoot) }
     }
 
     /** [exec] 的实现体 —— 跑在 [runnerPool] 上，所以这里允许阻塞。 */
@@ -43,6 +49,7 @@ internal object ShellRunner {
         command: String,
         onFailure: (CommandFailure) -> Unit,
         onTip: (String) -> Unit,
+        preferRoot: Boolean,
     ) {
         // 先占坑再起进程。`if (running.get() >= MAX) …` 那种**先查后加**在并发下会一起放行：两条
         //  会同时看到「没满」一起放行。占坑本身见 [acquireSlot]。
@@ -57,7 +64,7 @@ internal object ShellRunner {
         }
 
         try {
-            val (proc, via) = startProcess(command)
+            val (proc, via) = startProcess(command, preferRoot)
             // 不给子进程留 stdin：我们从不用它，而有些命令会**等 stdin 到 EOF** 才肯退出
             // （`sh -c "cat"` 之类）—— 管道一直开着就是一条挂到超时的 shell，每次还漏一对管道。
             runCatching { proc.outputStream.close() }
@@ -69,7 +76,7 @@ internal object ShellRunner {
         } catch (e: Throwable) {
             // 起进程这一步就失败：槽位由下面的 finally 还（只此一处释放，避免两条路径各记一次）
             XLog.w("执行 shell 失败：${XLog.redactCommand(command)}", e)
-            // 两个解释器**都起不来**时按 errno 分档（`ProcessBuilder.start()` 抛的 `error=N`）：
+            // 选定的那个解释器起不来时按 errno 分档（`ProcessBuilder.start()` 抛的 `error=N`）：
             //  · 2  = ENOENT —— 没有 root：KernelSU 对未授权应用直接让 `/system/bin/su` **不可见**
             //  · 13 = EACCES —— `platform_app` 域没有 `/system/bin/sh` 的执行权
             // 两种都是「这台机器上现在没有可用的 shell」，该提示去授权 root，而不是「系统不让执行
@@ -80,9 +87,17 @@ internal object ShellRunner {
                     ?.groupValues
                     ?.getOrNull(1)
                     ?.toIntOrNull()
-            launcher = null
             onFailure(
-                if (errno == 2 || errno == 13) CommandFailure.SHELL_NO_ROOT else CommandFailure.SHELL_REJECTED,
+                when {
+                    // 没勾「以 root 执行」⇒ 这次走的是 `sh`：先让用户去把那条命令的开关打开，
+                    //  别一上来就怀疑机器没 root（顺序见 [classifyFailure]）
+                    !preferRoot -> CommandFailure.SHELL_ROOT_OFF
+
+                    // 勾了却连 `su` 都起不来 ⇒ 这台机器没给宿主授权
+                    errno == 2 || errno == 13 -> CommandFailure.SHELL_NO_ROOT
+
+                    else -> CommandFailure.SHELL_REJECTED
+                },
             )
         } finally {
             // 唯一的释放点：占坑成功之后，无论从哪条出口离开都还回去。
@@ -161,19 +176,21 @@ internal object ShellRunner {
             // 进程已退出，但 stdout 可能被子进程继承后仍开着（`sh -c "... &"`）：
             // 只给读线程一个有限宽限把剩余输出收完，不用它来判定成败。
             runCatching { reader.get(SHELL_DRAIN_JOIN_MS, TimeUnit.MILLISECONDS) }
-            // 只有非 0 才算失败：0 是常规路径，不该有任何提示。
             // 合并成一条 `a; b` 的步骤取的是最后一条的退出码（`sh` 的规矩）。
-            if (proc.exitValue() != 0) {
-                val code = proc.exitValue()
-                XLog.w("shell 退出码 $code（走的是 $via）：${XLog.redactCommand(command)}")
+            val code = proc.exitValue()
+            // 退出码 0 也可能是**假成功**：最后那句 `echo …` 成功就把前面那句的失败盖掉了
+            //  （见 [FAILURE_HINTS]）。那一档同样算失败，并且**不弹提示**。
+            val silentFail = if (code == 0) denied.get() else null
+            if (code != 0 || silentFail != null) {
+                XLog.w("shell 没成功（退出码 $code，走的是 $via）：${XLog.redactCommand(command)}")
                 logOutputTail(tail)
                 onFailure(classifyFailure(code, via, denied.get()))
-            } else {
-                // 成功才弹提示：失败那边已经有失败提示，这里再弹一句「已切换」就是报喜不报忧
-                tip.get()?.takeIf { it.isNotEmpty() }?.let { line ->
-                    XLog.w("shell 提示：$line")
-                    onTip(line)
-                }
+                return
+            }
+            // 成功才弹提示：失败那边已经有失败提示，这里再弹一句「已切换」就是报喜不报忧
+            tip.get()?.takeIf { it.isNotEmpty() }?.let { line ->
+                XLog.w("shell 提示：$line")
+                onTip(line)
             }
         } finally {
             // 收尾时**强关管道**：脚本派生的常驻子进程（`cmd &` / 没有 `nohup` 解除 stdout）
@@ -186,46 +203,40 @@ internal object ShellRunner {
     }
 
     /**
-     * 起一个执行 [command] 的子进程，返回「进程 + 实际用的解释器」。
+     * 起一个执行 [command] 的子进程，返回「进程 + 用的解释器」。
      *
-     * **优先 `su -c`，没有 root 才退回 `sh -c`。**
+     * **解释器由这条命令自己的开关选定，不降级**：允许升权就只试 `su -c`，否则只试 `sh -c`。
+     *  `su` 起不来（没 root / 拒绝授权）就是这一次执行失败，**不会**偷偷退回 `sh` ——
+     *  「以 root 执行」是用户勾上的，退回普通身份等于换了执行条件还不告诉他。
      *
-     * 注意：为什么必须优先 `su`：宿主跑在 `platform_app` 域，那个域**没有 `/system/bin/sh` 的执行权**
-     * （`system_app` 域同样没有），`ProcessBuilder("sh","-c",…)` 必然 `EACCES`。真机实测：
-     * `runcon u:r:platform_app:s0 /system/bin/sh` → `Permission denied`。所以「非 root 的 shell」
-     * 在这台机器上**根本起不来**，不是命令写错了。
+     * 注意：为什么这条路必须走 `su`：宿主跑在 `platform_app` 域，那个域**没有
+     * `/system/bin/sh` 的执行权**（`system_app` 域同样没有），`ProcessBuilder("sh","-c",…)` 必然
+     * `EACCES`。真机实测：`runcon u:r:platform_app:s0 /system/bin/sh` → `Permission denied`。
      * 而 `/system/bin/su` 不受这条限制 —— KernelSU 的 `su_compat` 在 `execve` 上就接管了，
-     * 不看域；拿到 uid 0 之后 `am` / `cmd` / `settings` 才跑得起来（真机实测 `am start -a VIEW
-     * -d weixin://dl/scan` 退出码 0）。
-     *
-     * 没有 root 的机器上 `su` 这个二进制压根不存在 ⇒ `start()` 抛 `IOException` ⇒ 自然落到 `sh`。
-     * 选中的那个记进 [launcher]，之后不再每次试错（否则非 root 机器每条命令都白起一次失败进程）。
+     * 不看域；拿到 uid 0 之后 `am` / `cmd` / `settings` 才跑得起来（真机实测
+     * `am start -a VIEW -d weixin://dl/scan` 退出码 0）。
+     * 所以把「以 root 执行」关掉之后，多数命令在这台机器上会直接起不来 —— 那是用户的选择，
+     * 失败按「这条命令要 root」报（见 [classifyFailure]）。
      *
      * 注意：走 `su` 时每次调用都会经 KernelSU 授权一次：如果装了「授权提示」那类模块，每条命令会弹一次
      * toast —— 那是 root 管理器侧的行为，不是本模块的。
      */
-    private fun startProcess(command: String): Pair<Process, String> {
-        var last: Throwable? = null
-        // 上次成功的那个排最前，其余留作兜底（它之后失效时还能退回去）
-        val order = launcher?.let { ok -> listOf(ok) + LAUNCHERS.filter { it != ok } } ?: LAUNCHERS
-        for (binary in order) {
-            try {
-                val proc =
-                    ProcessBuilder(binary, "-c", command)
-                        .redirectErrorStream(true)
-                        .start()
-                if (launcher != binary) {
-                    launcher = binary
-                    XLog.w("shell 解释器定为 $binary")
-                }
-                return proc to binary
-            } catch (e: Throwable) {
-                last = e
-                // 只在**还没定下来**时记：定下来之后那条路不会再试第二个，这一行也就不会重复刷
-                XLog.w("用 $binary 起进程失败（${e.javaClass.simpleName}: ${e.message}），试下一个")
-            }
+    private fun startProcess(
+        command: String,
+        preferRoot: Boolean,
+    ): Pair<Process, String> {
+        val binary = if (preferRoot) SU else SH
+        try {
+            val proc =
+                ProcessBuilder(binary, "-c", command)
+                    .redirectErrorStream(true)
+                    .start()
+            return proc to binary
+        } catch (e: Throwable) {
+            //  分档靠调用方看 errno（2 / 13 = 这个身份起不来，见 `execBlocking` 的 catch）
+            XLog.w("用 $binary 起进程失败（${e.javaClass.simpleName}: ${e.message}）")
+            throw e
         }
-        throw last ?: error("没有可用的 shell 解释器")
     }
 
     /**
@@ -264,7 +275,7 @@ internal object ShellRunner {
                             tail.add(line)
                         }
                         if (denied.get() == null) {
-                            DENIED_HINTS
+                            FAILURE_HINTS
                                 .firstOrNull { line.contains(it, ignoreCase = true) }
                                 ?.let { denied.compareAndSet(null, it) }
                         }
@@ -279,13 +290,16 @@ internal object ShellRunner {
         }
 
     /**
-     * 非 0 退出码 → 失败提示。
+     * 失败分档 —— **顺序是「先看命令的开关，再看机器有没有 root」**。
      *
      * 注意：**优先看输出，不只看退出码**：`am` / `cmd` 这类在 App uid 下被系统拒时打的是
      * `Permission Denial: …` / `SecurityException`，而退出码只是 255 —— 按退出码分档会报成
      * 「命令没跑成功，检查一下内容」，把「权限不够」说成「内容写错了」。
      *
-     * @param deniedHint 读输出时**逐行**认出来的那句权限拒绝（见读线程），`null` = 没认出来。
+     * @param via 这次用的解释器（`su` / `sh`）—— 它就是「命令有没有勾『以 root 执行』」的凭证：
+     *   走 `sh` 说明那条命令自己关掉了 root，此时该说的是「去把开关打开」（[CommandFailure.SHELL_ROOT_OFF]），
+     *   而不是「root 要授给宿主」（那是勾了 root、但机器上没授权的情形，见 [CommandFailure.SHELL_NO_ROOT]）。
+     * @param deniedHint 读输出时**逐行**认出来的那句失败签名（见读线程），`null` = 没认出来。
      *   不在事后扫输出尾巴：`Permission Denial` 后面还有十几行栈帧，尾巴一裁就没了。
      */
     private fun classifyFailure(
@@ -294,19 +308,19 @@ internal object ShellRunner {
         deniedHint: String?,
     ): CommandFailure {
         if (deniedHint != null) {
-            // 走的是 `sh` ⇒ 这台机器上没拿到 su ⇒ 这条命令要 root；
+            // 走的是 `sh` ⇒ 这条命令自己关掉了「以 root 执行」⇒ 报「把开关打开」；
             // 走的是 `su` 还被拒 ⇒ 那就是这条命令自己没有权限。
-            XLog.w("shell 输出里认出权限拒绝（$deniedHint），按「权限不够」报（走的是 $via）")
-            return if (via == SU) CommandFailure.SHELL_NO_PERMISSION else CommandFailure.SHELL_NO_ROOT
+            XLog.w("shell 输出里认出失败签名（$deniedHint），按「权限不够」报（走的是 $via）")
+            return if (via == SU) CommandFailure.SHELL_NO_PERMISSION else CommandFailure.SHELL_ROOT_OFF
         }
         val byCode = CommandFailure.ofShellExit(code)
-        // 退出码落在「泛型失败」那一档、而这次**压根没拿到 root**（`su` 起不来才退回 `sh`）：
+        // 退出码落在「泛型失败」那一档、而这次**没升权**（命令自己关掉了「以 root 执行」）：
         //   报「命令没跑成功，检查一下内容」等于让用户去改一条本来就是对的命令。
-        //   `am` / `cmd` / `settings` 这类没有 root 基本都失败，所以这一档按「要 root」报。
+        //   `am` / `cmd` / `settings` 这类没有 root 基本都失败，所以这一档按「把开关打开」报。
         //   126 / 127 不在这里改口 —— 那两档说的是命令本身（不存在 / 没有执行位），比「要 root」更准。
         if (via != SU && byCode == CommandFailure.SHELL_FAILED) {
-            XLog.w("shell 退出码 $code、且走的是 sh（没拿到 root）⇒ 按「权限不够」报")
-            return CommandFailure.SHELL_NO_ROOT
+            XLog.w("shell 退出码 $code、且走的是 sh（这条命令没勾「以 root 执行」）⇒ 按「要 root」报")
+            return CommandFailure.SHELL_ROOT_OFF
         }
         return byCode
     }
@@ -454,15 +468,11 @@ internal object ShellRunner {
     /** [acquireSlot] 的「一个都没占上、且不是锁坏了」—— 调用方据此报 OVERLOADED。 */
     private const val NO_SLOT = -1
 
-    /**
-     * 起进程时按顺序试的解释器 —— **`su` 在前**（理由见 [startProcess]）。
-     *
-     * 两个都认 `-c <命令>`：KernelSU / Magisk 的 `su` 与 Android 的 `sh` 同一种用法。
-     */
-    private val LAUNCHERS = listOf(SU, "sh")
-
-    /** `su` 这个解释器的名字 —— [LAUNCHERS] 与 [classifyFailure] 共用，别各写一份字面量。 */
+    /** `su` 这个解释器的名字 —— [startProcess] 与 [classifyFailure] 共用，别各写一份字面量。 */
     private const val SU = "su"
+
+    /** 不提权那个解释器 —— 「以 root 执行」关掉的命令只试它。 */
+    private const val SH = "sh"
 
     /**
      * 命令自己给的那行提示 —— 写法是 `echo 'tip: 屏幕超时 · 30 分钟'`。
@@ -471,24 +481,40 @@ internal object ShellRunner {
      *  一点反应都没有 —— 按完不知道切成了哪一档。Toast 只能由应用身份弹，root shell 里没有这条
      *  命令（`cmd notification` 发的是通知，不会浮起来），所以约定由命令自己写进输出、模块负责弹。
      *
-     *  口径：前缀**精确** `tip:`（前导空白先去掉），一条命令只取**最后一条**，且**只在退出码 0
-     *  时**弹（失败那边已经有失败提示）。与「执行时提示」（`GlobalConfig.toastOnRun`）互不影响：
-     *  那个报「执行了哪个动作」，这条报「命令算出来的结果」，两个都开会连弹两条。
+     *  口径：前缀**精确** `tip:`（前导空白先去掉），一条命令只取**最后一条**，且**只在这一次算成功
+     *  时**弹（失败那边已经有失败提示）。「算成功」不只是退出码 0 —— 输出里认出失败签名
+     *  （[FAILURE_HINTS]）也算失败，见 [awaitProcess] 那一支。
+     *
+     *  **只认显式写的 `tip:`**：命令没写就一条都不弹，不拿它的输出去猜（`am start` 那句
+     *  `Starting: Intent {…}` 就是单行输出，猜了只会弹一串没人要的东西）。写法上引号可以省 ——
+     *  `echo tip: 屏幕超时 · 30 分钟` 与 `echo 'tip: 屏幕超时 · 30 分钟'` 等价（`echo` 会把几个词
+     *  用空格连起来）。
+     *
+     *  与「执行时提示」（`GlobalConfig.toastOnRun`）互不影响：那个报「执行了哪个动作」，
+     *  这条报「命令算出来的结果」，两个都开会连弹两条。
      */
     private const val TIP_PREFIX = "tip:"
 
-    /** 输出里出现这几句 = 权限拒绝（`am` 在 App uid 下就是那句 `Permission Denial`）。 */
-    private val DENIED_HINTS =
+    /**
+     * 输出里出现这几句 = 这条命令**失败了**，与退出码无关。
+     *
+     *  · `Permission Denial` / `SecurityException` / `Permission denied` / `Operation not permitted`
+     *    是权限那一档（`am` 在 App uid 下就是第一句）；
+     *  · `Exception occurred while executing` 是 `settings` / `cmd` 自己的错误横幅（真机：`settings get`
+     *    在 AppOps 里抛 NPE 时打的就是它，后面跟一串栈帧）。
+     *
+     *  为什么**退出码 0 也要看这里**：shell 脚本常写成 `cmd; echo 'tip: …'`，最后那句 `echo` 成功
+     *  就把前面那句的失败盖掉了 —— 只看退出码会把它当成功，还弹一句「成了」的提示（用户报过：
+     *  「不使用 su 执行时是失败的，但没有提示失败，看起来 tip 的优先级比错误的高」）。
+     */
+    private val FAILURE_HINTS =
         listOf(
             "Permission Denial",
             "SecurityException",
             "Permission denied",
             "Operation not permitted",
+            "Exception occurred while executing",
         )
-
-    /** 上一次成功用过的解释器（`null` = 还没定）。定下来之后不再每条命令都试错。 */
-    @Volatile
-    private var launcher: String? = null
 
     /** 从 `ProcessBuilder.start()` 的异常里抠 errno（`Cannot run program "su": error=2, …`）。 */
     private val ERRNO = Regex("error=(\\d+)")

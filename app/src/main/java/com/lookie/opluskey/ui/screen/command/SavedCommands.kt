@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen.command
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,12 +19,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -37,9 +34,7 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.TileFocusRing
 import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
@@ -57,6 +52,7 @@ import com.lookie.opluskey.ui.model.serialSummarySteps
 import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.state.CommandUiState
 import com.lookie.opluskey.ui.state.TileMenu
+import com.lookie.opluskey.ui.tinted
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Card
@@ -164,13 +160,16 @@ internal fun SettingsPage.SavedCommandsSection(
 }
 
 /**
- * 一张「已保存的命令」卡 —— 卡片本体 + 选中那圈边框。
+ * 一张「已保存的命令」卡。
  *
  *  交互走库的交互式 `Card`（自带 `onClick` 与涟漪）；`preciseClickAnchor`
  *  挂在外层，只看不消费（浮层菜单的落点由它给）。
  *
  *  这张卡只有轻点一个手势：长按不接，菜单只从右上角那颗「更多」进 ——
  *  卡片本身不大，长按与轻点抢同一片区域时（草稿脏了要先问一句）容易点错。
+ *
+ *  **不画「正在编辑」的选中态**：点开一条就跳回表单页去改它，列表本身不停在任何「选中」
+ *  状态上，所以卡片既不画边框、标题与类型图标也不随草稿变色。
  */
 @Composable
 private fun SettingsPage.CommandTile(
@@ -185,20 +184,6 @@ private fun SettingsPage.CommandTile(
     val tilePreciseClick = remember(cmd.name) { PreciseClickState() }
     // 右上角那颗「更多」另记一份：菜单要弹在**那颗字上**，不是整张卡上随便一点的位置。
     val dotsAnchor = remember(cmd.name) { PreciseClickState() }
-    // 选中态（正在表单里编辑的那一条）：三处共用，只算一次 —— 判据是 `draft.editingName`。
-    val editing = commandDraft.draft.editingName == cmd.name
-    // 选中时类型图标与标题一起上主题色，带过渡（一处动画喂两个组件）。
-    //
-    //  **传状态对象、不在这一层解构**：`by` 那个委托读发生在 `CommandTile` 自己的作用域里，
-    //  读一次就把整张卡绑在这条动画上 —— 选中 / 取消那 200ms 里摘要与步骤行会跟着每帧重组一遍
-    //  （它们一个像素都不变）。传 `State` 下去之后，读 `.value` 的只剩
-    //  `CommandTileHeadline` 那两处，重组范围收到那一行里。
-    val accentColor =
-        animateColorAsState(
-            targetValue = if (editing) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurfaceContainer,
-            animationSpec = COLOR_TRANSITION_SPEC,
-            label = "CommandTileAccent",
-        )
     //  这一页（「命令列表」）没有禁用态：排序态只属于「多条」那张表单，进这一页时已经收掉了。
     Box(Modifier.fillMaxWidth()) {
         Card(
@@ -220,7 +205,7 @@ private fun SettingsPage.CommandTile(
                 onOpen(cmd)
             },
         ) {
-            CommandTileBody(cmd, accentColor, dotsAnchor) {
+            CommandTileBody(cmd, dotsAnchor) {
                 tick()
                 XLog.w("已保存命令菜单：${cmd.name}（右上角那颗「更多」）")
                 ui.menu = TileMenu(cmd.name, dotsAnchor)
@@ -242,10 +227,6 @@ private fun SettingsPage.CommandTile(
                 onDismiss = { ui.menu = null },
             )
         }
-        // 选中态：正在表单里编辑的那一条画一圈内缩边框（[TileFocusRing]），
-        // 标题与类型图标一起上 `primary`，三处都是渐变过去的。
-        // 画在最后才盖得住卡片圆角；未选中时整圈透明，不吃触摸。
-        TileFocusRing(editing)
     }
 }
 
@@ -265,8 +246,6 @@ private fun commandTileColors(): CardColors =
 @Composable
 private fun SettingsPage.CommandTileBody(
     cmd: Command,
-    /** 强调色的**状态对象**（不是当前值）：只有标题那一行读它，见 `CommandTile` 的注释。 */
-    accentColor: State<Color>,
     /** 右上角那颗「更多」的触点锚点（菜单弹在它上面）。 */
     menuAnchor: PreciseClickState,
     /** 点那颗「更多」：开这一张卡的菜单（测试 / 编辑 / 删除）。 */
@@ -280,7 +259,7 @@ private fun SettingsPage.CommandTileBody(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CommandTileHeadline(cmd, accentColor, Modifier.weight(1f))
+            CommandTileHeadline(cmd, Modifier.weight(1f))
             // 右上角那颗「横向三个点」—— 测试 / 编辑 / 删除都收进它的菜单
             //  （原先这里是单独一颗「测试」）。它自己吃掉这一下，不会触发整张卡的 `onClick`。
             //  **flushEnd**：字形贴住这一格的右边线，右边线才与卡片左侧那颗类型图标对称
@@ -336,22 +315,25 @@ private fun SettingsPage.CommandTileBody(
 @Composable
 private fun CommandTileHeadline(
     cmd: Command,
-    accentColor: State<Color>,
     modifier: Modifier,
 ) {
-    //  **读在这一层**（不是它的调用点）：动画值一变只有这一行重组，卡片正文与摘要不跟着走。
-    val accent = accentColor.value
     //  名字比页面里的行标题小一档（`headline1` 16sp → `body2` 14sp）：卡片本身窄，名字再和
     //  行标题一样大，两行名字就把格子塞满了。字号只在这一处定，光学修正跟着同一个 style 走。
     val titleStyle = COUITheme.textStyles.body2
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            commandIcon(cmd.kind, cmd.steps.size),
-            null,
-            Modifier.size(ROW_ICON_SIZE),
-            // 选中时跟着标题走主题色 —— 不给 tint 会吃 `Card` 的 `contentColor`。
-            tint = accent,
-        )
+        //  「随机图标配色」开着时，类型图标用**它自己那一色**；关着时退回 `null`，
+        //  与标题一起吃 `Card` 的 `contentColor`（`commandTileColors()` 里的
+        //  `onSurfaceContainer`），与摘要那一档同源。
+        //  单条命令按**自己的 root 档**取字形（su / 非 su 两颗字，见 `commandIcon`）：
+        //  列表里要能一眼看出哪几条会提权。
+        val tileIcon = commandIcon(cmd.kind, cmd.steps.size, cmd.root)
+        val tint = tileIcon.tinted()
+        if (tint == null) {
+            //  关着（或这颗图标没配色）：**不给 `tint`** —— 与标题一起吃 `Card` 的 contentColor
+            Icon(tileIcon, null, Modifier.size(ROW_ICON_SIZE))
+        } else {
+            Icon(tileIcon, null, Modifier.size(ROW_ICON_SIZE), tint = tint)
+        }
         Spacer(Modifier.width(TILE_TITLE_GAP))
         // 两种命令的标题都**跟图标同一行**：名字是这张卡的主键，一眼要能认出来。
         //  多条命令独有那位「步骤间隔」挪到名字下面那行小字里去（见卡片正文那一段）。
@@ -359,8 +341,6 @@ private fun CommandTileHeadline(
             text = cmd.name,
             style = titleStyle,
             fontWeight = FontWeight.Medium,
-            // 选中时上主题色，与类型图标同色、同一动画值。
-            color = accent,
             maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
             overflow = TextOverflow.Ellipsis,
             // 与行首那枚类型图标同一行、竖居中：补一档光学修正（见 `opticalCenter`）

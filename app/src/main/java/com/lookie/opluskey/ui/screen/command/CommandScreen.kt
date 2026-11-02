@@ -31,6 +31,7 @@ import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.PageTabBand
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.addCommand
 import com.lookie.opluskey.ui.hideIme
 import com.lookie.opluskey.ui.hint
@@ -213,9 +214,9 @@ private fun SettingsPage.CommandFloatingButton(
 ) {
     val sortingSteps = commandDraft.stepEditing
     with(scope) {
-        //  这一页不做滑入滑出：它的显隐跟着**当前这一页的表单内容**走，翻 tab 会让它进 / 出一次，
-        //  每切一次就滑一遍只是噪音（见 `PageCornerFab` 的 `animate`）。
-        PageCornerFab(visible = !onListPage && (commandDraftHasContent() || sortingSteps), animate = false) {
+        //  与其它页那颗 FAB 同一档滑入滑出（[PageCornerFab] 的默认规格）：硬切在真机上像「闪了一下」，
+        //  页脚那颗按钮本来就在同一角落，进出不带过渡会读成两次不同的东西。
+        PageCornerFab(visible = !onListPage && (commandDraftHasContent() || sortingSteps)) {
             PageFabButton(
                 onClick = {
                     tick()
@@ -304,6 +305,20 @@ private fun SettingsPage.hideCommandIme() {
         XLog.w("自定义命令：换 tab ⇒ 收键盘")
         hideIme(host)
     }
+}
+
+/**
+ * 「命令名称」小标题**行尾**的字数统计 —— 上限与那个输入框同一档（[MAX_NAME_LENGTH]）。
+ *
+ *  单独一个 composable 只为把 `draft.name` 的读取关在这一层：直接写在 `CommandPage` 里，
+ *  每敲一个字符都会把整页（两个表单页 + 列表网格）打脏一次 —— 与 [CommandNameField] 同一条理由。
+ *
+ *  右内缩**不用这里给**：`SectionTitle` 自己按 `SECTION_TITLE_TRAILING_END`（22dp）摆行尾那一格 ——
+ *  与那颗「更多」的字形落在同一条线上。这一格只管把数字画出来。
+ */
+@Composable
+internal fun SettingsPage.CommandNameCounter() {
+    TitleCounter(commandDraft.draft.name.length, MAX_NAME_LENGTH)
 }
 
 /** 命令名能输入多少字（超出的部分在输入框里直接吃掉）。 */

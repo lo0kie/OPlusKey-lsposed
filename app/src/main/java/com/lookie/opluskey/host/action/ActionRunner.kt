@@ -325,8 +325,15 @@ internal class ActionRunner(
      *
      *  「小布识屏」那条别名换成原生调用（`startForegroundService`，不走 shell）。
      *  **「截图」那条别名走真的 shell** —— 见下面 [KsuCompat.isSidebarAlias] 那一支上方的说明。
+     *
+     * @param preferRoot 是否以 root 执行（`true` = 只走 `su`，`false` = 只走 `sh`；两者互不兜底）。
+     *   单条命令按它**自己**那个开关传进来（`Command.root`，界面在「命令设置 → 以 root 执行」）；
+     *   内置 `shell:` 动作与多条命令的步骤没有这个开关，一直按默认 `true` 走。
      */
-    private fun runShell(command: String) {
+    private fun runShell(
+        command: String,
+        preferRoot: Boolean = true,
+    ) {
         if (command.isBlank()) {
             // 空命令按下去什么都没发生，要提示一下
             notifyFailure(CommandFailure.EMPTY)
@@ -352,11 +359,39 @@ internal class ActionRunner(
             return
         }
         //  原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分
-        //  命令里写 `echo 'tip: …'` 的那一行，成功时弹成 Toast —— 这是 shell 动作唯一能回显结果的
+        //  命令里写 `echo 'tip: …'` 的那一行，成功时弹成提示 —— 这是 shell 动作唯一能回显结果的
         //  通道（`ShellRunner.TIP_PREFIX`），失败那一侧由 [notifyFailure] 报。
-        ShellRunner.exec(command, ::notifyFailure) { tip ->
-            FailureNotice.toast(context, tip)
-        }
+        //  提示**交给注入侧弹**（[requestSystemToast]）：宿主的包受系统 toast 配额，连按会丢。
+        ShellRunner.exec(
+            command = command,
+            onFailure = ::notifyFailure,
+            onTip = ::requestSystemToast,
+            //  「以 root 执行」是**每条命令自己的**开关（见 `Command.root`）；内置的 `shell:` 动作没有
+            //  这个开关，一直按默认走（`su`）。`su` 起不来就报失败，不退回 `sh`（见 `ShellRunner.startProcess`）。
+            preferRoot = preferRoot,
+        )
+    }
+
+    /**
+     * 请注入侧（`system_server`）替我们弹这条提示（[ModuleWire.ACTION_TOAST]）。
+     *
+     *  为什么不在这儿自己 `Toast`：系统的 toast 是**按包限流**的（3 条 / 20 秒、5 条 / 42 秒、
+     *  6 条 / 68 秒，见 `docs/device-findings.md` 四十），宿主连按几下之后后面那些被
+     *  `NotificationService` 直接丢掉 —— 用户报的「短时间内只有一条」。注入侧用系统 Context
+     *  （包名 `android`）弹，那个包持有 `UNLIMITED_TOASTS`，不受这条配额。
+     *
+     *  收方是注入侧挂在 AMS 广播入口上的 hook（`inject/KeyHooks.readBroadcast`），它看得见
+     *  全系统每一条广播，所以这里**不必 `setPackage`**。发不出去只记一行：提示丢了不报错。
+     */
+    private fun requestSystemToast(text: String) {
+        val ctx = context ?: return
+        runCatching {
+            ctx.sendBroadcast(
+                android.content
+                    .Intent(ModuleWire.ACTION_TOAST)
+                    .putExtra(ModuleWire.EXTRA_TOAST_TEXT, text),
+            )
+        }.onFailure { XLog.w("提示没发出去（注入侧弹不了）：${it.javaClass.simpleName}", it) }
     }
 
     /**

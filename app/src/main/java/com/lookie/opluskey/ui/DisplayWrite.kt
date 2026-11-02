@@ -4,6 +4,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.ui.state.CommandsSave
+import kotlin.random.Random
 
 // 「页面大小」这一族的两颗写入口：**跟随系统显示大小** + **页面缩放**。
 //
@@ -22,6 +23,22 @@ internal fun SettingsPage.setPageScale(pct: Int): Boolean {
     val value = pct.coerceIn(GlobalConfig.PAGE_SCALE_MIN, GlobalConfig.PAGE_SCALE_MAX)
     if (cfg.global.pageScale == value) return true
     return write(cfg.copy(global = cfg.global.copy(pageScale = value)), "page_scale=$value") != CommandsSave.Failed
+}
+
+/**
+ * 切「随机图标配色」（外观那一行）。
+ *
+ *  开：**当场生成一个种子**再落盘 —— 这就是「一次生成、之后一直一样」的那一下；
+ *      关掉再打开会重新生成，等于「换一批」。
+ *  关：写回 0（`0` 就是「关」，见 [GlobalConfig.iconTintSeed]），不另存一个布尔位。
+ */
+internal fun SettingsPage.setRandomIconTint(on: Boolean) {
+    val cfg = configState.config.value
+    val seed = if (on) Random.nextInt(1, Int.MAX_VALUE) else GlobalConfig.DEFAULT_ICON_TINT_SEED
+    if (cfg.global.iconTintSeed == seed) return
+    writeAndNotice(cfg.copy(global = cfg.global.copy(iconTintSeed = seed)), "icon_tint_seed=$seed") {
+        switchNotice(I18n.get(Strings.MORE_RANDOM_ICON_TINT, "随机图标配色"), on)
+    }
 }
 
 /**

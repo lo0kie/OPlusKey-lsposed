@@ -89,7 +89,15 @@ internal class HintQueue(
         slot: String? = null,
         holdMs: Long? = null,
     ) {
-        if (text.isEmpty()) return
+        if (text.isBlank()) {
+            //  空文案**不是一条提示**，但也**不能什么都不做**：直接 `return` 的话，屏幕上那一条
+            //  就原样留着 —— 用户点一下灰控件，看到的还是上一条（真机：「主开关关着、点卡片，
+            //  弹的却是『系统侧还是旧版』」，其实是那一条还没到点、新的一条压根没进来）。
+            //  宁可不说话，也不能让旧话冒充这一次的回答：把这一位上那条撤掉。
+            XLog.w("提示：文案是空的（位：$slot）⇒ 丢弃，并撤掉这一位上原来那条")
+            if (slot != null) retire(slot)
+            return
+        }
         //  作用域已经收掉（页面关了）就**不写**：写进去没人计时，会留一条永不过期的提示。
         if (!scope.isActive) return
         //  同一个位上已经有一条（还没开始退场）⇒ 改那条的字，不新开一条

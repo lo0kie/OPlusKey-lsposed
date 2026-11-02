@@ -257,6 +257,16 @@ data class Command(
      * [CommandKind.SINGLE] 用不到它。
      */
     val stepDelayMs: Int = DEFAULT_STEP_DELAY_MS,
+    /**
+     * 这条命令**要不要以 root 执行** —— 只有 `shell:` 那一族用得上的**每条命令自己的**开关。
+     *
+     *  `true`（默认）= 只走 `su`，拿不到 root 就是这次执行失败；`false` = 只走 `sh`，不升权。
+     *  **两档互不兜底**：`su` 起不来不会偷偷换成 `sh` —— 换了执行身份却不告诉用户，
+     *  同一份配置在两台机器上就成了两种结果。
+     *  默认 `true` 是为了让老配置仍落在「以 root 执行」那一档（文件里缺这个键也一样）。
+     *  多条命令的步骤不读这一位：步骤没有各自的开关（见 `CustomCommandRunner`）。
+     */
+    val root: Boolean = true,
 ) {
     /**
      * 写进配置文件 `single` / `double` / `long` 那一档的取值。
@@ -265,6 +275,20 @@ data class Command(
      *  的键名，这三个是「命令类型」。别顺手并成一个 —— 它们各自会变。
      */
     val token: String get() = "$PREFIX$name"
+
+    /**
+     * 这条命令**有没有内容可跑**（单条正文非空 / 多条至少一步）。
+     *
+     *  执行侧与界面侧共用这一份判据：按键派发、`cmd:` 引用、以及「测试」按钮都要在**跑之前**
+     *  认出「这是一条空命令」—— 三种入口各写一遍的话，总有一处会把空命令当成「跑完了但没动静」，
+     *  或者反过来报成「这条命令已经不在了」（那是「库里查不到」，是另一件事）。
+     */
+    val hasContent: Boolean
+        get() =
+            when (kind) {
+                CommandKind.SINGLE -> single.isNotBlank()
+                CommandKind.SERIAL -> steps.isNotEmpty()
+            }
 
     /**
      * 把「对 [from] 这条命令的引用」改成指向 [to]（改名时用）。

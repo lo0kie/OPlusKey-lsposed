@@ -61,7 +61,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Sparkles
 import io.github.lyxnx.compose.ui.tablericons.outline.Sun
 import io.github.lyxnx.compose.ui.tablericons.outline.SunLow
 import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
-import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TextScanAi
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
@@ -241,13 +240,15 @@ internal fun actionIcon(token: String): ImageVector =
                     TablerIcons.Outline.TextScanAi
                 }
 
+                //  单条命令那一族（`shell:` 原文 / `cmd:` 名字）与类型图标**同一颗** —— 字形只定义
+                //  在 `PageIcons.CommandSingle` 一处，这里引用它，别再各写一个终端字形
                 token.startsWith(Action.SHELL_PREFIX) -> {
-                    TablerIcons.Outline.Terminal2
+                    PageIcons.CommandSingle
                 }
 
                 // 区别只在内容存哪（`shell:` 是原文，`cmd:` 是名字）
                 token.startsWith(Command.PREFIX) -> {
-                    TablerIcons.Outline.Terminal2
+                    PageIcons.CommandSingle
                 }
 
                 // 快捷方式（`appshortcut:`）与「打开应用」共用一颗字形：都是「把某个东西叫起来」。
@@ -387,7 +388,8 @@ internal fun specIcon(spec: ActionCatalog.Spec): ImageVector {
     val commandKind = spec.commandKind
     val glyph = spec.glyph
     return when {
-        commandKind != null -> commandIcon(commandKind, spec.commandSteps)
+        //  单条命令按它自己的 root 档取字形 —— 抽屉里那一行与命令列表里那张卡必须是同一颗
+        commandKind != null -> commandIcon(commandKind, spec.commandSteps, spec.commandRoot)
 
         // 注册时声明过字形的（入口格 / 标记格 / 一处 token 两支字形那几种），按声明给
         glyph != null -> glyphIcon(glyph)
@@ -430,18 +432,26 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
     }
 
 /**
- * 一条自定义命令的类型图标：单条 → [PageIcons.CommandSingle]，多条 → 按步骤数的 [commandSerialIcon]。
+ * 一条自定义命令的类型图标：单条 → [PageIcons.CommandSingle] / [PageIcons.CommandRoot]，
+ * 多条 → 按步骤数的 [commandSerialIcon]。
  *
- * 三个地方共用这一份：网格格子与「已保存的命令」卡片（[ActionCatalog.Spec] 带过来的类型 / 步数）、
- * 步骤行里引用另一条命令的那枚小图标（[stepIcon] 从命令库查出被引用的那条之后转给它）。
+ *  **单条分两档**：以 root 执行（只走 `su`）与不申请 root（只走 `sh`）是两颗字 —— 命令列表里
+ *  一眼要能看出哪几条会提权。多条命令没有这一档（它的 `root` 只管正文里那些 `shell:` 步骤，
+ *  不是这条命令的身份），仍按步骤数取方框。
+ *
+ * 三个地方共用这一份：网格格子与「已保存的命令」卡片、步骤行里引用另一条命令的那枚小图标
+ * （[stepIcon] 从命令库查出被引用的那条之后转给它）。
+ *
+ * @param root 单条命令是否以 root 执行（`Command.root`）；多条忽略
  */
 internal fun commandIcon(
     kind: CommandKind,
     steps: Int,
+    root: Boolean = false,
 ): ImageVector =
     when (kind) {
         CommandKind.SERIAL -> commandSerialIcon(steps)
-        CommandKind.SINGLE -> PageIcons.CommandSingle
+        CommandKind.SINGLE -> if (root) PageIcons.CommandRoot else PageIcons.CommandSingle
     }
 
 /**

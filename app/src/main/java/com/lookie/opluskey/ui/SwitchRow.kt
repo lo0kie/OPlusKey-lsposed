@@ -1,8 +1,11 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
@@ -69,7 +72,7 @@ internal fun SwitchRow(
     val tick = LocalTick.current
     // 颜色带过渡，与 [SliderRow] 同一套参数：主开关一拨，这个图标与库里那些标题一起渐变。
     //  硬切会出现「图标在淡、字在跳」——长按那张卡里 SwitchRow 与 SliderRow 就是挨着的。
-    val iconColor by rememberRowIconColor(enabled, label = "SwitchIcon")
+    val iconColor by rememberRowIconColor(enabled, icon = icon, label = "SwitchIcon")
 
     NoSwitchHaptic {
         SwitchPreference(
@@ -86,6 +89,8 @@ internal fun SwitchRow(
                     icon,
                     contentDescription = null,
                     tint = iconColor,
+                    //  与 `CardRow` 那颗行首图标同一档：补上库少给的那 8dp（见 [ROW_START_ICON_GAP]）
+                    modifier = Modifier.padding(end = ROW_START_ICON_GAP),
                 )
             },
             // `enabled = false` 由 COUI 负责：标题与副标题走 `disabledColor`、

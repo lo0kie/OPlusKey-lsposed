@@ -293,7 +293,8 @@ internal object KeyHooks {
                         action == ModuleWire.ACTION_INJECT_QUERY ||
                         action == ModuleWire.ACTION_KEY_WATCH ||
                         action == ModuleWire.ACTION_LOG_PULL ||
-                        action == ModuleWire.ACTION_INJECT_KEY
+                        action == ModuleWire.ACTION_INJECT_KEY ||
+                        action == ModuleWire.ACTION_TOAST
                 if (!isProbe && !isOurs) {
                     continue
                 }
@@ -366,6 +367,16 @@ internal object KeyHooks {
                 postGuarded("导出日志（注入侧）") {
                     val ctx = SystemContext.get(systemLoader ?: return@postGuarded) ?: return@postGuarded
                     LogWire.reply(ctx, HostApp.PACKAGE, "system")
+                }
+            }
+
+            // 宿主请我们替它弹一条提示（toast 按包限流，注入侧用系统身份弹才免限流，见 ModuleWire）
+            ModuleWire.ACTION_TOAST -> {
+                postGuarded("替宿主弹提示") {
+                    SystemToast.show(
+                        systemLoader ?: return@postGuarded,
+                        intent.getStringExtra(ModuleWire.EXTRA_TOAST_TEXT).orEmpty(),
+                    )
                 }
             }
 

@@ -412,6 +412,9 @@ internal data class GlobalDto(
     /** 组合键两颗键之间的等待窗口（毫秒）—— 老文件没有这一项，退回出厂值 80。 */
     @SerialName("combo_window_ms")
     val comboWindowMs: Int = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
+    /** 随机图标配色的种子（`0` = 关）—— 老文件没有这一项，退回默认（关）。 */
+    @SerialName("icon_tint_seed")
+    val iconTintSeed: Int = GlobalConfig.DEFAULT_ICON_TINT_SEED,
 ) {
     fun toValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -431,6 +434,7 @@ internal data class GlobalDto(
                 ConfigFields.F_PAGE_SCALE to pageScale,
                 ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
+                ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
             ),
         )
 
@@ -450,6 +454,7 @@ internal data class GlobalDto(
                 pageScale = g.pageScale,
                 comboPassthrough = g.comboPassthrough,
                 comboWindowMs = g.comboWindowMs,
+                iconTintSeed = g.iconTintSeed,
             )
     }
 }

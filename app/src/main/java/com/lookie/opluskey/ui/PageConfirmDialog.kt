@@ -4,9 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -15,7 +13,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.IntrinsicMeasurable
+import androidx.compose.ui.layout.IntrinsicMeasureScope
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Measurable
+import androidx.compose.ui.layout.MeasurePolicy
+import androidx.compose.ui.layout.MeasureResult
+import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
@@ -57,10 +61,10 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  关是一下子消失、全程钉住不动。所以把面板那一串绘制挪进 `content` 槽（它在 Column 里面）。
  *  库仍然负责宿主、压暗、进出场、返回与圆角 —— `squircleSurface` 走的是 shader mask，
  *  会把我们这个盒子一并裁成面板那个圆角，所以这里不必自己裁形状。
- *  代价：标题得自己画，度量照抄库 `DialogContent` 那一份（见 [DIALOG_TITLE_MARGIN_BOTTOM] 等）。
+ *  代价：标题得自己画，三区的度量也归我们（见 `DialogPanel` 与 [DIALOG_REGION_GAP]）。
  *
- * @param content 正文槽 —— 它是 `ColumnScope`：需要「可滚动、能收缩」的正文用
- *   `Modifier.weight(1f, fill = false)`（见 [DialogBody] 与 `PickerRows`）。
+ * @param content 正文槽 —— 它是 `ColumnScope`。高度超出剩余空间时由 `DialogPanel` 压到剩余高度，
+ *   正文自己的滚动留在正文里（见 [DialogBody] 与 `PickerRows`）；这一层不会把窗撑出可视区。
  */
 @Suppress("LongParameterList")
 @Composable
@@ -101,10 +105,9 @@ internal fun SettingsPage.FrostedDialog(
     /**
      * 底部那一区（通常是 [DialogButtonRow]）；`null` = 这个窗没有底部。
      *
-     *  三个区（头 / 正文 / 底）的**竖向留白由这一层统一给**：四个间隙全用
-     *  [DIALOG_REGION_GAP]（面板上沿→标题、标题→正文、正文→按钮、按钮→下沿），
-     *  于是每个区的内容在自己那一格里必然居中、上下留白总量也必然相等。
-     *  调用方只往 [content] 里放东西，**不再各自补上下边距** —— 各补一份正是
+     *  三个区（头 / 正文 / 底）的**竖向留白归排版那一层**（`DialogPanel`）：相邻两区之间、
+     *  以及面板上下沿到相邻控件，各一档 [DIALOG_REGION_GAP]；高度为 0 的那一区不参与排版、
+     *  也不带走间隙。调用方只往 [content] 里放东西，**不再各自补上下边距** —— 各补一份正是
      *  「gap 一叠加、上下对不齐」的来源。
      */
     footer: (@Composable () -> Unit)? = null,
@@ -137,74 +140,183 @@ internal fun SettingsPage.FrostedDialog(
         onDismissRequest = onDismiss,
         onDismissFinished = onDismissFinished,
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                // 糊 → 半透本色 → 内容。本色与浮层菜单共用（[popupSurfaceColor]），alpha 走弹窗
-                //  自己那一档（[DIALOG_FROSTED_ALPHA]，比菜单更透 —— 面板大、底下平，同档看不出糊）
-                // ——暗色下不能拿 `background`（纯黑）：糊的是接近纯黑的页面，纯黑底会把糊盖成一片黑，
-                //  与菜单那边同一条教训。
-                //  第二参数给矩形：形状交给库的圆角 mask（见上）。
-                .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
-                .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
-        ) {
-            //  —— 第一区：标题 ——
-            //  上下**同一档留白**（[DIALOG_REGION_GAP]）：标题自然落在这一格正中，
-            //  不用固定高度去算余量 —— 固定高度那一版算出来的上边距（15dp）比下边距（16dp）小，
-            //  与正文自己的间距一叠，就成了「上边距比下边距少」。
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = DialogDefaults.insideMargin.width)
-                        .padding(vertical = DIALOG_REGION_GAP),
-            ) {
+        DialogPanel(
+            title = {
                 CenteredTitle(trailing = titleTrailing) {
                     Text(
                         text = title,
-                        fontSize = COUITheme.textStyles.title4.fontSize,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        lineHeight = DIALOG_LINE_HEIGHT,
-                        color = COUITheme.colorScheme.onBackground,
+                        //  一个 style 决定全部：参数里再给一遍 `lineHeight` 会与 style 里的
+                        //  `lineHeightStyle` / `platformStyle` 打架（后者的裁剪就白做了）。
+                        style =
+                            COUITheme.textStyles.title4.copy(
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center,
+                                lineHeight = DIALOG_LINE_HEIGHT,
+                                lineHeightStyle = DIALOG_LINE_HEIGHT_STYLE,
+                                platformStyle = DIALOG_PLATFORM_STYLE,
+                                color = COUITheme.colorScheme.onBackground,
+                            ),
                     )
                 }
-            }
-            //  —— 第二区：正文 ——
-            //  `weight(fill = false)`：内容短时窗跟着内容长，长了才吃满剩余空间（可滚动的那几处
-            //  自己在正文里给 `weight(1f)`）。竖向留白不在这里补，见 [footer] 的说明。
-            Column(Modifier.fillMaxWidth().weight(1f, fill = false)) {
-                content()
-            }
-            //  —— 第三区：底部 ——
-            DialogFooterSlot(footer)
-        }
+            },
+            content = content,
+            footer = footer,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    // 糊 → 半透本色 → 内容。本色与浮层菜单共用（[popupSurfaceColor]），alpha 走弹窗
+                    //  自己那一档（[DIALOG_FROSTED_ALPHA]，比菜单更透 —— 面板大、底下平，同档看不出糊）
+                    // ——暗色下不能拿 `background`（纯黑）：糊的是接近纯黑的页面，纯黑底会把糊盖成一片黑，
+                    //  与菜单那边同一条教训。
+                    //  第二参数给矩形：形状交给库的圆角 mask（见上）。
+                    .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
+                    .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
+        )
     }
 }
 
 /**
- * 三区里的**底部**那一区：有 `footer` 就按「上下同一档留白 + 左右内缩」摆它，
- * 没有就补上同一档留白（正文与面板下沿之间也要有这一档，上下才对称）。
+ * 面板三区（标题 / 正文 / 底）的排版与留白。
  *
- *  单独抽出来只为把 [FrostedDialog] 的行数压在 detekt 的 `LongMethod` 之下。
+ * ## 判据：三处间距**恒为一档**，与「中间有几区」无关
+ *
+ *  面板上沿→标题、标题→相邻的那一区、相邻的那一区→面板下沿，全部是 [DIALOG_REGION_GAP]。
+ *  只写「标题 + 按钮」的窗、带正文的窗、连按钮都没有的窗，量出来都是同一档 —— 视觉上等高。
+ *
+ * ## 为什么不能各区内缩补一档
+ *
+ *  每区自己上下各补一档时，两档会在**空区**处叠加：没有正文的窗，标题区下边距 + 底部区上边距
+ *  = 两档，而标题上方只有一档 —— 用户看到的是「标题到按钮太远」。
+ *
+ * ## 所以：间隙归这一层所有，且只插在真实存在的相邻区之间
+ *
+ *  三区先按自然高度各量一遍，高度为 0 的那一区（正文 lambda 什么都没发射、`footer` 传了个空壳）
+ *  当作不存在：不参与排版，也不带走它两侧的间隙。
+ *
+ *  正文仍保留「短则窗随内容长、长则吃满剩余高度」：量完标题与底部之后把剩下的给它，超出就按
+ *  剩余高度重测（正文自己的滚动在它内部，见 [DialogBody]）。
+ *
+ *  宽度一律取 [Constraints.maxWidth]：面板永远 `fillMaxWidth`。
  */
 @Composable
-private fun DialogFooterSlot(footer: (@Composable () -> Unit)?) {
-    if (footer == null) {
-        Spacer(Modifier.height(DIALOG_REGION_GAP))
-        return
+private fun DialogPanel(
+    title: @Composable () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+    footer: (@Composable () -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    Layout(
+        modifier = modifier,
+        content = {
+            // 左右内缩只在这一层给一次（与库的 `insideMargin` 同值，正文左缘才与标题左缘对齐）
+            Box(Modifier.fillMaxWidth().padding(horizontal = DialogDefaults.insideMargin.width)) {
+                title()
+            }
+            Column(Modifier.fillMaxWidth()) { content() }
+            if (footer != null) {
+                Box(
+                    Modifier.fillMaxWidth().padding(horizontal = DialogDefaults.insideMargin.width),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    footer()
+                }
+            }
+        },
+        measurePolicy = DialogPanelMeasure,
+    )
+}
+
+/**
+ * [DialogPanel] 的测量策略。
+ *
+ *  单独成一个对象（不用 `Layout { }` 那个 lambda 重载）只为**同时**给出四口 intrinsic：
+ *  lambda 只实现 `measure`，父级一旦请求 intrinsic 就直接抛 —— 弹窗外面还套着库的
+ *  `DialogContentLayout`，它会不会请求不由我们决定。
+ *
+ *  子项下标固定为：0 = 标题、1 = 正文、2 = 底部（没有底部时只有两个）。
+ */
+private object DialogPanelMeasure : MeasurePolicy {
+    override fun MeasureScope.measure(
+        measurables: List<Measurable>,
+        constraints: Constraints,
+    ): MeasureResult {
+        val gap = DIALOG_REGION_GAP.roundToPx()
+        val width = constraints.maxWidth
+        val heightLimit = if (constraints.hasBoundedHeight) constraints.maxHeight else Int.MAX_VALUE
+        val loose = Constraints(minWidth = 0, maxWidth = width, minHeight = 0, maxHeight = heightLimit)
+
+        val titleRow = measurables[TITLE_ROW].measure(loose)
+        val bodyRow = measurables[BODY_ROW]
+        val footerRow = measurables.getOrNull(FOOTER_ROW)?.measure(loose)?.takeIf { it.height > 0 }
+        // 先按「标题 + 上下一档 + 底部那一区」算出正文能占多少，再决定要不要压它
+        val reserved = gap * PANEL_EDGE_GAPS + titleRow.height + (footerRow?.let { gap + it.height } ?: 0)
+        val bodySpace = (heightLimit - reserved).coerceAtLeast(0)
+        val body =
+            bodyRow.measure(loose).takeIf { it.height > 0 }?.let { natural ->
+                if (natural.height > bodySpace) bodyRow.measure(loose.copy(maxHeight = bodySpace)) else natural
+            }
+        val bodyHeight = body?.height ?: 0
+        val footerHeight = footerRow?.height ?: 0
+        // 上下一档固定，另外每有一个真实存在的相邻区就多一档
+        val gaps = PANEL_EDGE_GAPS + (if (bodyHeight > 0) 1 else 0) + (if (footerHeight > 0) 1 else 0)
+        val total = titleRow.height + bodyHeight + footerHeight + gap * gaps
+        return layout(width, total.coerceAtMost(heightLimit)) {
+            var y = gap
+            titleRow.place(0, y)
+            y += titleRow.height
+            if (body != null && bodyHeight > 0) {
+                y += gap
+                body.place(0, y)
+                y += bodyHeight
+            }
+            if (footerRow != null && footerHeight > 0) {
+                y += gap
+                footerRow.place(0, y)
+            }
+        }
     }
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = DialogDefaults.insideMargin.width)
-                .padding(vertical = DIALOG_REGION_GAP),
-        contentAlignment = Alignment.Center,
-    ) {
-        footer()
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(
+        measurables: List<IntrinsicMeasurable>,
+        height: Int,
+    ): Int = measurables.maxOf { it.minIntrinsicWidth(height) }
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(
+        measurables: List<IntrinsicMeasurable>,
+        height: Int,
+    ): Int = measurables.maxOf { it.maxIntrinsicWidth(height) }
+
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(
+        measurables: List<IntrinsicMeasurable>,
+        width: Int,
+    ): Int = intrinsicHeight(measurables, width)
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(
+        measurables: List<IntrinsicMeasurable>,
+        width: Int,
+    ): Int = intrinsicHeight(measurables, width)
+
+    /** 与 [measure] 同一套算法：空区不带走间隙。 */
+    private fun IntrinsicMeasureScope.intrinsicHeight(
+        measurables: List<IntrinsicMeasurable>,
+        width: Int,
+    ): Int {
+        val gap = DIALOG_REGION_GAP.roundToPx()
+        val titleHeight = measurables[TITLE_ROW].minIntrinsicHeight(width)
+        val bodyHeight = measurables[BODY_ROW].minIntrinsicHeight(width)
+        val footerHeight = measurables.getOrNull(FOOTER_ROW)?.minIntrinsicHeight(width) ?: 0
+        val gaps = PANEL_EDGE_GAPS + (if (bodyHeight > 0) 1 else 0) + (if (footerHeight > 0) 1 else 0)
+        return titleHeight + bodyHeight + footerHeight + gap * gaps
     }
 }
+
+/** [DialogPanelMeasure] 里三个区的下标 —— 三处写一串数字容易串位。 */
+private const val TITLE_ROW = 0
+private const val BODY_ROW = 1
+private const val FOOTER_ROW = 2
+
+/** [DialogPanelMeasure] 里那两档**固定**的间距：面板上沿→标题、最后一个区→面板下沿。 */
+private const val PANEL_EDGE_GAPS = 2
 
 /**
  * 标题 + **紧随其后**的那一格（如字数统计）：标题钉在整行的水平中心，那一格跟在标题屁股后面。

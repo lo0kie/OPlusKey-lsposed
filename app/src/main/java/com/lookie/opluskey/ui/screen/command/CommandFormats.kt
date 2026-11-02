@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.COMMAND_FORMAT_LINES
 import com.lookie.opluskey.ui.model.CommandFormatLine
@@ -38,8 +39,9 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  左列宽度是**量出来的**（取最宽那一行的墨迹宽度）：写死一个 dp，换语言（`keyevent:<按键>` ↔
  *  `keyevent:<key>`）或系统放大字号都会错位，而两列一旦不齐，整张卡就成了斜的。
  *
- *  点某一行 = 把它讲的前缀**整段替换**进「命令」输入框（不是追加 —— 前缀拼在已有内容前面会得到
- *  一条跑不通的命令）。输入框里已经有别的内容时先问一句（`ui.pendingFormatPrefix`）：
+ *  点某一行 = 把它讲的前缀填进「命令」输入框：输入框里**已经带了别的格式**时只换开头那一段前缀，
+ *  后面的正文留着（见 [fillPrefix]）；不带格式的别的内容会被**整段换掉**（不是追加 —— 前缀拼在
+ *  已有内容前面会得到一条跑不通的命令），所以那一种情况先问一句（`ui.pendingFormatPrefix`）：
  *  这一下是不可逆的，已经敲进去的命令会被一键清掉，没有撤销。
  *
  *  填完之后**输入框自己**会滚回视野、拿焦点（键盘起来）、把光标挪到末尾 —— 三件事都挂在
@@ -134,17 +136,27 @@ private fun rememberLabelColumnWidth(
 }
 
 /**
- * 把 [prefix] 填进「命令」输入框 —— **已有内容就先问**。
+ * 把 [prefix] 填进「命令」输入框。
  *
- *  判据是「非空且不等于这个前缀」：输入框里正好就是这个前缀时再点一次，替换的是它自己，
- *  没有东西可丢，不该拦着问。
+ *  分三种情况：
+ *  - 输入框里**已经带了前缀**（`Action.prefixOf` 认得出来）：只把开头那一段前缀换掉，
+ *    后面的正文原样留着（`shell:pm list` 点 `keyevent:` ⇒ `keyevent:pm list`）。没有东西可丢，
+ *    不弹确认窗 —— 用户点格式列表的意图就是「换个格式」，重打一遍正文正是这一步想省掉的。
+ *  - 输入框里是**不带格式的别的内容**：整段替换不可逆，先问一句（`ui.pendingFormatPrefix`）。
+ *  - 空着 / 正好就是这个前缀：直接填，不必问。
  */
 private fun SettingsPage.fillPrefix(
     prefix: String,
     ui: CommandUiState,
 ) {
-    val current = commandDraft.draft.single
-    if (current.isNotBlank() && current != prefix) {
+    val current = commandDraft.draft.single.trim()
+    val existing = Action.prefixOf(current)
+    if (existing != null) {
+        XLog.w("命令格式：输入框已带前缀 $existing，只把它换成 $prefix")
+        applyFormatPrefix(prefix + current.removePrefix(existing).trim(), ui)
+        return
+    }
+    if (current.isNotEmpty()) {
         XLog.w("命令格式：输入框里已有内容，填前缀 $prefix 之前先问一句")
         ui.pendingFormatPrefix = prefix
         return

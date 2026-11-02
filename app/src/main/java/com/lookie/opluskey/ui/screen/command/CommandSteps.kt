@@ -1,30 +1,22 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterTransition
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.DisabledHint
+import com.lookie.opluskey.ui.GestureProbe
 import com.lookie.opluskey.ui.IconAction
 import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.Screen
@@ -33,28 +25,18 @@ import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.gestureProbe
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
-import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
-import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
+import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.openAppPickerForStep
 import com.lookie.opluskey.ui.rememberGestureProbe
-import com.lookie.opluskey.ui.rememberRowIconColor
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.replaceStep
 import com.lookie.opluskey.ui.screen.openVarOpsForStep
 import com.lookie.opluskey.ui.state.ResumeSheet
-import io.github.suqi8.coui.kmp.basic.BasicComponent
-import io.github.suqi8.coui.kmp.basic.CardListPosition
-import io.github.suqi8.coui.kmp.basic.DividerDefaults
-import io.github.suqi8.coui.kmp.basic.HorizontalDivider
-import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
-import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.delay
 
 /** [SerialSteps] 里「开着的是添加命令那一行」的哨兵值（步骤下标从 0 起，撞不上）。 */
 private const val STEP_PICK_APPEND = -1
@@ -106,19 +88,6 @@ internal fun SettingsPage.SerialSteps() {
     //  组合会被注销，展示层跟着没了 —— 切回来重新建一遍就是**整张表重播进场动画**。
     val display = commandDraft.stepRows.rows
 
-    //  这一支组合是「刚进来」还是「已经在页上了」：进来的**第一帧**不播入场动画。
-    //
-    //  展示层住在页面级、行对象也还是原来那些，可切 tab 时这一页的组合会被注销 ——
-    //  回来重新组合时 `AnimatedVisibility` 在**新的**组合里仍会把整张表从头展开一遍
-    //  （用户口径「每次切到多条命令，列表都重新展开」）。这里只放行「进来之后才新增的行」：
-    //  第一帧把所有已有行直接摆到位，之后插入 / 删除仍走 [STEP_ROW_ENTER] / [STEP_ROW_EXIT]。
-    var entered by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        //  等这一帧画完再放开：第一帧里出现的行（含 `sync` 刚补上的那些）一律直接到位
-        withFrameNanos { }
-        entered = true
-    }
-
     //  `toList()` **只算一次**：它既是下面那个 effect 的 key，也是差分要用的那份快照。
     //  原来 key 与函数体各算一遍 —— 每遍都要读完整张 `SnapshotStateList` 再新建一个 List。
     val stepsNow = steps.toList()
@@ -130,164 +99,72 @@ internal fun SettingsPage.SerialSteps() {
         commandDraft.stepRows.sync(stepsNow)
     }
 
-    display.forEachIndexed { index, item ->
-        // 每行按 `item.id` 认身份 —— 展示层每轮都 `clear()` 再按新次序重填，槽位就是**位次**：
-        //  不套 key 的话，循环体里那个逐行的 `LaunchedEffect`（负责退场播完摘除）与
-        //  `AnimatedVisibility` 都挂在位次上，增删 / 上移下移之后会落到另一条命令身上 ——
-        //  留幽灵行、分隔线错位（行内那份 `remember(item.id)` 只护住 PreciseClickState，护不到这一层）。
-        //  写法同 `BindingScreen` 里的 `key(spec.token)`。
-        key(item.id) {
-            // 退场播完（currentState 收到 false）→ 从展示层摘除；此刻行高已收到 0，下面的行不会跳
-            LaunchedEffect(item.state.currentState) {
-                if (item.exiting && !item.state.currentState && !item.state.targetState) {
-                    display.remove(item)
-                }
-            }
-            AnimatedVisibility(
-                visibleState = item.state,
-                //  刚进来那一帧直接到位，之后新增的行才播展开（见上面 `entered`）
-                enter = if (entered) STEP_ROW_ENTER else EnterTransition.None,
-                exit = STEP_ROW_EXIT,
-            ) {
-                Column {
-                    // 卡片顶边本身就是边界，再画一条就多出来；分隔线的职责只有「行与行之间」。
-                    if (index > 0) HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-                    // 每一行各自一份 `PreciseClickState`（按行 id 做 key）：`anchorCoordinates` 只有一格，
-                    // 共用一份会把触点换算到别的行上去。
-                    val rowPreciseClick = remember(item.id) { PreciseClickState() }
-                    // 这一行在 steps 里的下标：展示层里排在它前面的未退场行数 ——
-                    // 退场行还在展示层里占位（收缩中），但已经不在 steps 里了。
-                    val displayIndex = display.indexOf(item)
-                    val stepsIndex = display.take(displayIndex).count { !it.exiting }
-                    Box(Modifier.fillMaxWidth().preciseClickAnchor(rowPreciseClick).gestureProbe(probe)) {
-                        BasicComponent(
-                            cardListPosition = cardListPositionOf(index, display.size + 1),
-                            // 轻点整行 = 弹选择菜单（挑一个替换这一步）；行尾只剩一颗竖三点（更多菜单）。
-                            onClick = {
-                                if (item.exiting) return@BasicComponent
-                                // 排序态下这一行只让位给行尾那三颗按钮：轻点整行不再换命令，
-                                //  否则「改顺序」与「换这一步」两种意图会撞在同一下手上。
-                                if (sorting) return@BasicComponent
-                                tick()
-                                XLog.w(
-                                    "多条命令：点第 ${stepsIndex + 1} 步（弹选择菜单，替换模式）—— ${probe.describe()}",
-                                )
-                                //  抽屉是按**下标**做事（换这一步算下标），而列表一变
-                                //  下标就挪位 —— 所以上面那个 effect 会在列表变化时把抽屉收掉。
+    //  **整张卡交给 [CardList]**（与页面上其它卡同一套：分隔线、首尾圆角、每行位置都由它算）。
+    //
+    //  行的进出场仍用这一页自己的状态（`item.state`，规格见 `STEP_ROW_ENTER` / `STEP_ROW_EXIT`）——
+    //  以 `visibleState` 传进去，`CardList` 就按它播，不会再用布尔重播一遍。
+    //  `visible` 那一位只用来算行位置：退场行（`targetState` 已 false）立刻从「行数」里退出去，
+    //  下面那行「添加命令」于是**在过渡开始那一帧**就翻成 `Tail`（原先按展示层行数算，
+    //  要等退场播完才翻，卡片高度会在动画结束那一刻再跳 4dp）。
+    //  退场播完的行从展示层摘除（`currentState` 收到 false 之后再等一档退场时长）。
+    //  按「正在退场的 id 集合」做 key：只在有新行开始退场时才重启这个 effect，
+    //  比每行各挂一个 `LaunchedEffect` 少一层组合（行现在是通用的 `CardRow.Item`，
+    //  没有可以挂 effect 的内容槽）。
+    val exitingIds = display.filter { it.exiting }.map { it.id }
+    LaunchedEffect(exitingIds) {
+        if (exitingIds.isEmpty()) return@LaunchedEffect
+        delay(VISIBILITY_EXIT_MS + STEP_EXIT_SETTLE_MS)
+        display.removeAll { it.exiting && it.id in exitingIds && !it.state.currentState }
+    }
+
+    //  **整张卡交给 [CardList]**，每一行就是通用的 [CardRow.Item] —— 与页面上其它卡同一套：
+    //  卡片、分隔线、行位置、图标与文字的间距都由它给，这里只填「这一行是什么」。
+    //  行的进出场仍用这一页自己的状态（`item.state`，规格见 `STEP_ROW_ENTER` / `STEP_ROW_EXIT`）：
+    //  以 `visibleState` 传进去，`CardList` 就按它播，不会再用布尔重播一遍。
+    CardList(
+        rows =
+            display.map { item ->
+                // 这一行在 steps 里的下标：展示层里排在它前面的未退场行数 ——
+                // 退场行还在展示层里占位（收缩中），但已经不在 steps 里了。
+                val displayIndex = display.indexOf(item)
+                val stepsIndex = display.take(displayIndex).count { !it.exiting }
+                // 每一行各自一份 `PreciseClickState`（按行 id 做 key）：`anchorCoordinates` 只有一格，
+                // 共用一份会把触点换算到别的行上去。
+                val rowPreciseClick = remember(item.id) { PreciseClickState() }
+                CardRow.Item(
+                    title = stepTitle(item.token, ::appNameOf),
+                    summary = I18n.format(Strings.COMMON_STEP_INDEX, stepsIndex + 1),
+                    icon = stepIcon(item.token, configState.commands.value),
+                    // 排序态与退场中的行**不吃点击**（`onClick = null` = 纯展示行，也不挂按压反馈）：
+                    // 排序态下这一行只让位给行尾那三颗按钮，否则「改顺序」与「换这一步」会撞在同一只手上。
+                    onClick =
+                        if (sorting || item.exiting) {
+                            null
+                        } else {
+                            {
+                                XLog.w("多条命令：点第 ${stepsIndex + 1} 步（弹选择菜单，替换模式）—— ${probe.describe()}")
+                                //  抽屉是按**下标**做事（换这一步算下标），而列表一变下标就挪位 ——
+                                //  所以上面那个 effect 会在列表变化时把抽屉收掉。
                                 stepSheet = stepsIndex
-                            },
-                            // 行首图标 = 这一步是什么（内置动作取动作图标、`cmd:` 取**被引用那条命令**的类型图标）。
-                            // 没有它标题会顶到卡片左边，与下面那行带 `+` 图标的「添加命令」差一个图标宽，
-                            // 同一张卡里两行左边缘不齐。
-                            startAction = { Icon(stepIcon(item.token, configState.commands.value), null, Modifier.size(ROW_ICON_SIZE)) },
-                            endActions = {
-                                // 只读态行尾与「添加命令」那一行**同一颗**选择器指示：整行可点、
-                                //  点了弹抽屉换这一步，这件事得有视觉交代。
-                                //  排序态换成上移 / 下移 / 删除三颗（原来那颗竖三点菜单已经撤掉）。
-                                if (sorting) {
-                                    if (!item.exiting) {
-                                        StepRowButtons(
-                                            index = stepsIndex,
-                                            lastIndex = steps.lastIndex,
-                                            tick = tick,
-                                        )
-                                    }
-                                } else {
-                                    RowEndIcon(PageIcons.Selector)
-                                }
-                            },
-                        ) {
-                            // 标题自己画：`BasicComponent(title = String)` 那个重载不给 `maxLines`，标题长了会折行，
-                            // 而这一列宽度由行内布局定死（≈173dp，≈13 个汉字格）。样式照抄库的 `BasicComponent`：
-                            // 标题 `headline1` + Medium + `onBackground`，摘要 `body2` + `onSurfaceVariantSummary`，
-                            // 与标题隔 2dp。
-                            Text(
-                                text = stepTitle(item.token, ::appNameOf),
-                                style = COUITheme.textStyles.headline1,
-                                fontWeight = FontWeight.Medium,
-                                color = COUITheme.colorScheme.onBackground,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = I18n.format(Strings.COMMON_STEP_INDEX, stepsIndex + 1),
-                                modifier = Modifier.padding(top = 2.dp),
-                                style = COUITheme.textStyles.body2,
-                                color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                            )
+                            }
+                        },
+                    trailing = {
+                        // 只读态行尾与「添加命令」那一行**同一颗**选择器指示：整行可点、点了弹抽屉换这一步。
+                        // 排序态换成上移 / 下移 / 删除三颗。
+                        if (sorting) {
+                            if (!item.exiting) {
+                                StepRowButtons(index = stepsIndex, lastIndex = steps.lastIndex, tick = tick)
+                            }
+                        } else {
+                            RowEndIcon(PageIcons.Selector)
                         }
-                    }
-                }
-            }
-        }
-    }
-    // 没有步骤时它就成了卡片里的第一条，所以那时不画 —— 它的职责是把步骤与下面那行
-    // 「添加命令」分开，没有步骤就没有要分的东西。
-    //  注意：判据取**展示层**（`display`）而不是数据（`steps`）：退场行在动画期间还留在展示层里、
-    //  还在占位，那条线要陪着它一起走完；按数据算的话行才刚开始缩、线先没了（少一档分隔）。
-    if (display.isNotEmpty()) HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
-
-    // 置灰不改变行数（这一行还在，只是不吃点击），所以上面的 cardListPosition 不用动。
-    val stepsFull = steps.size >= Command.MAX_STEPS
-    // 行首那颗 `+` 的颜色随「满没满」切换、带过渡 —— 否则第 5 步一加它是「啪」地灰下去的。
-    //  两档色走全项目那一对（[rememberRowIconColor]）：禁用态与 `IconAction` 的禁用色同一档，
-    //  正常态那一档就是外层的 `onSurfaceContainer`（`contentColor`）。
-    //  标题与副标题**不再自己上色**：改走库的 `title` / `summary` 槽之后，置灰由 `enabled` 管
-    //  （与「捐赠打赏」那些行同一套，见 `CardRow.Item`）。
-    val addIconTint by rememberRowIconColor(enabled = !stepsFull && !sorting, label = "StepAddIcon")
-
-    // 整行挂上手指锚点 —— 浮层弹在按下那一点（只记不看，行自己的点击照常）。
-    //  两种点不动的情形各说一句：排序态下「先退出排序」，满员时说「最多几步」。
-    //  **文案先算在 remember 外面**：它跟着语言档变，缓存在 `remember(sorting)` 里会在切语言后
-    //  留着旧语言那一句（`tools/check-i18n-cache.py` 盯的就是这个）；lambda 与语义位都收在 `DisabledHint` 里。
-    val addBlockedHint =
-        if (sorting) {
-            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
-        } else {
-            I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS)
-        }
-    DisabledHint(addBlockedHint) {
-        Box(Modifier.fillMaxWidth().gestureProbe(probe)) {
-            BasicComponent(
-                //  注意：位置按**数据**（`draft.steps`）算，不按展示层行数（原 `cardListPositionOf(display.size, display.size + 1)`）：
-                //  退场行在动画期间仍留在 `display` 里，按展示层算会让这一行停在 `Tail`，**等退场动画播完、
-                //  那行被摘除**才翻成 `Full` —— 而库给圆角边的额外内边距是 `HeadOrTailPadding`（2dp，
-                //  且行最小高度同步抬高），`Full` 比 `Tail` 多一份**顶边** ⇒ 卡片高度在动画结束那一刻
-                //  又跳 4dp。真机逐帧量过：底边从 2058 一路收到 1847 后**又弹回 1854**，就是这一跳，
-                //  看着像「加号行先移过头、再被拉回来」。
-                //  按数据算 ⇒ 翻档发生在过渡**开始**那一帧，与行高动画同时进行，看不出来。
-                cardListPosition =
-                    if (steps.isEmpty()) {
-                        CardListPosition.Full
-                    } else {
-                        CardListPosition.Tail
                     },
-                // 标题与副标题走库的两个槽（不再自己画 `Text`）—— 与首页「捐赠打赏」那一行
-                //  （`CardRow.Item`）同一套排版：标题 `headline1`、副标题 `body2`、间隙由库给，
-                //  置灰也由 `enabled` 负责。
-                title = I18n.get(Strings.COMMAND_ADD, "添加命令"),
-                summary = I18n.get(Strings.COMMAND_STEP_SELECT_TITLE, "从内置命令与自定义命令里选择"),
-                // 行首 `+` 的 tint 由上面 `addIconTint` 给（两档都显式写出来，为了过渡）：禁用态取
-                // `disabledOnSecondaryVariant`（库 `disabledColor` 的取值，与 `IconAction` 禁用色一致），
-                // 正常态取 `onSurfaceContainer`（外层 `contentColor`）。正常态不能用 `Color.Unspecified`
-                // 顶替 —— 那会变成完全不上色。
-                startAction = {
-                    Icon(PageIcons.StepAdd, null, Modifier.size(ROW_ICON_SIZE), tint = addIconTint)
-                },
-                // 行尾那颗选择器指示 —— 见 [RowEndIcon]：步骤行与这一行**同一颗**。
-                endActions = { RowEndIcon(PageIcons.Selector) },
-                // `enabled = false` 时 COUI 不挂 `clickableModifier` ⇒ 点不进去，浮层也就打不开。
-                enabled = !stepsFull && !sorting,
-                onClick = {
-                    tick()
-                    // 诊断：这一下是点出来的还是滑出来的（见 [GestureProbe]）
-                    XLog.w("添加命令：行被点开 —— ${probe.describe()}")
-                    // **临时**：改成弹底部抽屉（原来 `stepPicker = STEP_PICK_APPEND`）
-                    stepSheet = STEP_PICK_APPEND
-                },
-            )
-        }
-    }
+                    modifier = Modifier.preciseClickAnchor(rowPreciseClick).gestureProbe(probe),
+                    visible = item.state.targetState,
+                    visibleState = item.state,
+                )
+            } + stepAddRow(steps = steps, sorting = sorting, probe = probe) { stepSheet = STEP_PICK_APPEND },
+    )
 
     // 这一页的「挑一步」只有这一支抽屉 —— 两条入口共用（追加 / 换一步），由 [stepSheet] 说清是哪一种。
     //  挂在这里而不是某一行里：它是浮层，与宿主位置无关，而按行挂会在行退场时连抽屉一起被带走。
@@ -339,12 +216,58 @@ internal fun SettingsPage.SerialSteps() {
                 //  正在编辑的就是这条命令：候选里不再列它（引用自己＝环，执行侧只会报「套太深」）。
                 //  **两个名字都排除**：草稿名是用户刚改的、库里那条还叫 `editingName` —— 只排除草稿名
                 //  的话，旧名字那一行仍在候选里，选中它会把旧命令塞进新命令的步骤（见 `excludeTokens`）。
-                excludeTokens =
-                    setOfNotNull(
-                        Command(commandDraft.draft.name, commandDraft.draft.kind).token,
-                        commandDraft.draft.editingName?.let { Command(it, commandDraft.draft.kind).token },
+                filter =
+                    StepSheetFilter(
+                        excludeTokens =
+                            setOfNotNull(
+                                Command(commandDraft.draft.name, commandDraft.draft.kind).token,
+                                commandDraft.draft.editingName?.let { Command(it, commandDraft.draft.kind).token },
+                            ),
                     ),
             ),
+    )
+}
+
+/** 退场动画播完之后再摘的余量 —— 与 `HintQueue` 的 `EXIT_SETTLE_MS` 同一个意思（早摘一帧就是硬切）。 */
+private const val STEP_EXIT_SETTLE_MS = 40L
+
+/**
+ * 步骤卡最下面那行「添加命令」—— 同样是通用的 [CardRow.Item]。
+ *
+ *  满员 / 排序态两档禁用的说法走 `disabledHint`（那一行自己的限制，与 `CardRow.Item` 的读法一致），
+ *  点开的动作交给调用点。
+ *
+ * @param onAdd 点开「挑一步」抽屉（追加模式）
+ */
+@Composable
+private fun SettingsPage.stepAddRow(
+    steps: List<String>,
+    sorting: Boolean,
+    probe: GestureProbe,
+    onAdd: () -> Unit,
+): CardRow {
+    val stepsFull = steps.size >= Command.MAX_STEPS
+    //  两种点不动的情形各说一句：排序态下「先退出排序」，满员时说「最多几步」。
+    //  **文案先算在 remember 外面**：它跟着语言档变，缓存在 `remember` 里会在切语言后留着旧语言那一句。
+    val blockedHint =
+        if (sorting) {
+            I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
+        } else {
+            I18n.format(Strings.TOAST_COMMAND_STEP_FULL, Command.MAX_STEPS)
+        }
+    return CardRow.Item(
+        title = I18n.get(Strings.COMMAND_ADD, "添加命令"),
+        summary = I18n.get(Strings.COMMAND_STEP_SELECT_TITLE, "从内置命令与自定义命令里选择"),
+        icon = PageIcons.StepAdd,
+        trailing = { RowEndIcon(PageIcons.Selector) },
+        enabled = !stepsFull && !sorting,
+        disabledHint = blockedHint,
+        onClick = {
+            // 诊断：这一下是点出来的还是滑出来的（见 [GestureProbe]）
+            XLog.w("添加命令：行被点开 —— ${probe.describe()}")
+            onAdd()
+        },
+        modifier = Modifier.gestureProbe(probe),
     )
 }
 

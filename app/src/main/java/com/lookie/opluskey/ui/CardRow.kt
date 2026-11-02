@@ -1,11 +1,14 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,6 +20,10 @@ import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
+import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
+import com.lookie.opluskey.ui.model.ROW_TITLE_INSET
+import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
+import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentColors
@@ -106,6 +113,8 @@ internal sealed interface CardRow {
          * 只藏行会在卡里留一条孤零零的线。
          */
         val visible: Boolean? = null,
+        /** 同 [Custom.visibleState]：这一行自带进出场状态时按它播（`visible` 仍用来算行位置）。 */
+        val visibleState: MutableTransitionState<Boolean>? = null,
     ) : CardRow
 
     /**
@@ -138,6 +147,13 @@ internal sealed interface CardRow {
     class Custom(
         /** 同 [Item.visible]：非 `null` 时这一行（连分隔线）跟着它进出场。 */
         val visible: Boolean? = null,
+        /**
+         * 这一行**自带**一份进出场状态时按它播（`visible` 仍用来算行位置）。
+         *
+         *  给「行的展开 / 收缩规格是这一页单独调的」那种用（自定义命令的步骤行）：
+         *  用布尔重播一遍会把它自己的规格换掉。
+         */
+        val visibleState: MutableTransitionState<Boolean>? = null,
         val content: @Composable (CardListPosition) -> Unit,
     ) : CardRow
 }
@@ -172,6 +188,9 @@ internal fun CardList(
         //  Middle —— 少掉 Tail 那一档的内缩与圆角，看着像卡片缺了一个角
         //  （真机上「更多 → 外观」那张卡就是这么看出来的）。
         val shown = rows.indices.filter { rows[it].visible() != false }
+        //  行间那条细线的左起点：这张卡的行首有没有图标那一列 —— 有就缩进到**标题左缘**
+        //  （[ROW_TITLE_INSET]），没有就与卡片自己的内边距对齐，别凭空让出一格。
+        val hasIconColumn = rows.any { row -> row is CardRow.Switch || (row as? CardRow.Item)?.icon != null }
         val positionOf =
             shown.withIndex().associate { (order, index) -> index to cardListPositionOf(order, shown.size) }
         rows.forEachIndexed { index, row ->
@@ -179,8 +198,15 @@ internal fun CardList(
             val position = positionOf[index] ?: cardListPositionOf(index, rows.size)
             // 分隔线与行本身一起进出场（见各行的 `visible`）—— 所以它们必须同在一个块里
             val block: @Composable ColumnScope.() -> Unit = {
-                // 首行之上不画线；其余每一行之前一条（左端与卡片内容对齐的细线）
-                if (index > 0) HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+                // 首行之上不画线；其余每一行之前一条（左端从**标题最左处**起，右端与卡片内边距对齐）
+                if (index > 0) {
+                    HorizontalDivider(
+                        Modifier.padding(
+                            start = if (hasIconColumn) ROW_TITLE_INSET else DividerDefaults.CardInset,
+                            end = DividerDefaults.CardInset,
+                        ),
+                    )
+                }
                 //  行高**不做过渡**（用户口径：试过 `animateContentSize`，观感不好，直接去掉）。
                 //  试出来的结论留在这里，免得下次又走一遍：
                 //   · 默认 `Alignment.TopStart`：内容按最终高度摆好、只有外框在动
@@ -191,9 +217,30 @@ internal fun CardList(
                 //  根本原因是文本重排不可能逐帧渐变 —— 要么裁字，要么控件瞬移。不值得，去掉。
                 RowContent(row, position)
             }
-            when (val visible = row.visible()) {
-                null -> block()
-                else -> AnimatedColumn(visible = visible, content = block)
+            //  自带状态的行按它播（规格由调用点定），其余按 `visible` 用统一那一档
+            val ownState =
+                when (row) {
+                    is CardRow.Item -> row.visibleState
+                    is CardRow.Custom -> row.visibleState
+                    is CardRow.Switch -> null
+                }
+            when {
+                ownState != null -> {
+                    AnimatedVisibility(
+                        visibleState = ownState,
+                        enter = VISIBILITY_ENTER,
+                        exit = VISIBILITY_EXIT,
+                    ) {
+                        block()
+                    }
+                }
+
+                else -> {
+                    when (val visible = row.visible()) {
+                        null -> block()
+                        else -> AnimatedColumn(visible = visible, content = block)
+                    }
+                }
             }
         }
     }
@@ -242,6 +289,29 @@ private fun ColumnScope.RowContent(
 }
 
 /**
+ * 卡片行行首图标的颜色 —— 行自己指定的 → 随机配色（**仅启用的行**）→ 常规 / 禁用两档，带过渡。
+ *
+ *  行自己指定了 `iconTint` 的（强调色色块那几行）以它为准：那块色就是这一行的身份。
+ *  禁用行不上随机色 —— 给一颗灰着的行上彩色，读起来像「这一行能用」。
+ *
+ *  抽成一支只为让 [ItemRow] 留在 detekt 的 `LongMethod` 长度线内。
+ */
+@Composable
+private fun rememberCardRowIconColor(row: CardRow.Item): State<Color> =
+    animateColorAsState(
+        targetValue =
+            row.iconTint
+                ?: row.icon?.takeIf { row.enabled }?.tinted()
+                ?: if (row.enabled) {
+                    COUITheme.colorScheme.onSurfaceContainer
+                } else {
+                    COUITheme.colorScheme.disabledOnSecondaryVariant
+                },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "CardRowIcon",
+    )
+
+/**
  * 普通行 —— 库的 [BasicComponent] 加两样项目口径：行首图标自己上色、行尾箭头自己画。
  *
  *  单独一支只为让 [CardList] 那支短下来；它与 `SwitchRow` 是同级的两条分支。
@@ -253,16 +323,7 @@ private fun ItemRow(
 ) {
     // 两档色自己管（与整页其余行同一套）：库的箭头图标集与本项目的 Tabler 图标不是一支笔，
     //  而 `startAction` 槽位库不会按 `enabled` 上色 —— 不给就成了「字灰了、图标还亮着」。
-    val iconTint by animateColorAsState(
-        targetValue =
-            row.iconTint ?: if (row.enabled) {
-                COUITheme.colorScheme.onSurfaceContainer
-            } else {
-                COUITheme.colorScheme.disabledOnSecondaryVariant
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "CardRowIcon",
-    )
+    val iconTint by rememberCardRowIconColor(row)
     val arrowTint by animateColorAsState(
         targetValue =
             if (row.enabled) {
@@ -282,7 +343,19 @@ private fun ItemRow(
     val summaryColors = BasicComponentDefaults.summaryColor()
     BasicComponent(
         modifier = row.modifier,
-        startAction = row.icon?.let { { Icon(it, contentDescription = null, tint = iconTint) } },
+        //  图标右侧补一档 [ROW_START_ICON_GAP]：库在 `startAction` 与文字之间只留 8dp，
+        //  而行内左边距是 16dp —— 不补的话图标左边看着比右边宽一倍（见那个常量的说明）。
+        startAction =
+            row.icon?.let {
+                {
+                    Icon(
+                        it,
+                        contentDescription = null,
+                        tint = iconTint,
+                        modifier = Modifier.padding(end = ROW_START_ICON_GAP),
+                    )
+                }
+            },
         endActions = {
             // `when` 在这里是**语句**（`endActions` 的返回值就是 Unit），不需要 `else` 兜底
             when {

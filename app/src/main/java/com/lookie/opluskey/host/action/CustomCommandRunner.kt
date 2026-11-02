@@ -11,8 +11,13 @@ import com.lookie.opluskey.core.model.KsuCompat
 internal class CustomCommandRunner(
     /** 主线程 Handler，步骤间等待走它（不能用 `Thread.sleep`）。 */
     private val handler: Handler,
-    /** 跑一条 shell 命令（含 KSU 别名翻译）。 */
-    private val execShell: (String) -> Unit,
+    /**
+     * 跑一条 shell 命令（含 KSU 别名翻译）。
+     *
+     *  第二参 = **是否以 root 执行**（`true` 只走 `su`、`false` 只走 `sh`，互不兜底）：单条命令按
+     *  它自己那个开关给（`Command.root`），多条命令的步骤没有各自的开关、一律 `true`。
+     */
+    private val execShell: (String, Boolean) -> Unit,
     /** 派发一个非 shell 的内置动作（第二参是当前自定义命令的嵌套深度，`cmd:` 引用时继续加深）。 */
     private val dispatch: (Action, Int) -> Unit,
     /** 展开失败时的通知出口。 */
@@ -39,10 +44,11 @@ internal class CustomCommandRunner(
         depth: Int,
     ) {
         if (name.isBlank()) {
-            // 空名不是「合法但什么都不做」：配置里写了空的 `cmd:`（手改坏了 / 老版本残留）时
-            //  按下去应当有反馈，而不是静默无痕。
-            XLog.w("自定义命令名为空（配置里写了空的 ${Command.PREFIX}），跳过")
-            onFailure(CommandFailure.NOT_FOUND)
+            // 空名不是「库里没有」：配置里写了空的 `cmd:`（后面没写名字，手改坏了 / 老版本残留）
+            //  按下去要有反馈，而那句话说的是**这条引用是空的**，不是「命令已经不在了」
+            //  —— 后者会让人去命令库里找一条根本没被写进名字的东西。
+            XLog.w("自定义命令名为空（配置里写了空的 ${Command.PREFIX}，后面没写名字），跳过")
+            onFailure(CommandFailure.EMPTY)
             return
         }
         if (depth > MAX_COMMAND_DEPTH) {
@@ -76,14 +82,16 @@ internal class CustomCommandRunner(
         // 草稿可以还没名字（新命令写到一半就要试）—— 名字只进日志与「正在跑」那张表
         val name = cmd.name.ifBlank { UNNAMED }
 
-        if (cmd.kind == CommandKind.SINGLE) {
-            runSingle(cmd, name, depth)
+        // 空命令在这里一次判掉：单条没正文 / 多条没步骤是**同一件事**（这条命令没有可跑的内容），
+        //  两个分支各写一遍时，总有一处会漏成「跑完了但没动静」。
+        if (!cmd.hasContent) {
+            XLog.w("自定义命令「$name」（${cmd.kind.id}）是空的，跳过")
+            onFailure(CommandFailure.EMPTY)
             return
         }
 
-        if (cmd.steps.isEmpty()) {
-            XLog.w("自定义命令「$name」（多条）一步都没有，跳过")
-            onFailure(CommandFailure.EMPTY)
+        if (cmd.kind == CommandKind.SINGLE) {
+            runSingle(cmd, name, depth)
             return
         }
 
@@ -109,12 +117,7 @@ internal class CustomCommandRunner(
         name: String,
         depth: Int,
     ) {
-        // 空命令也是「按下去什么都没发生」的一种，同样要说一声
-        if (cmd.single.isBlank()) {
-            XLog.w("自定义命令「$name」（单条）是空的，跳过")
-            onFailure(CommandFailure.EMPTY)
-            return
-        }
+        // 空命令已在上一步（`run` 的 `hasContent`）判过，这里只剩真正要跑的正文
         XLog.w("自定义命令「$name」（单条）→ ${XLog.redactCommand(cmd.single)}")
         // 与多条步骤同一套语义（Action.parse）：keyevent: / intent: / app: / shortcut: /
         // cmd: / shell: 六种前缀写法在单条里同样成立。**没有前缀的写法不再兜底成 shell**
@@ -126,6 +129,12 @@ internal class CustomCommandRunner(
         // 单条自引（A 的正文写 `cmd:A`）或互引（A→B→A）会一路同步递归到 StackOverflowError，
         // 每层还各读一次配置文件。传别的动作时这个数没人用，多 `+1` 不产生副作用。
         val parsed = Action.parse(cmd.single)
+        if (parsed is Action.Shell) {
+            //  单条自己的「以 root 执行」只在这一支生效：它是**整条命令**的开关，不跟着正文的
+            //  `shell:` 前缀走（前缀只是格式，同一个前缀在「多条」的步骤里也一样用）。
+            execShell(parsed.command, cmd.root)
+            return
+        }
         if (parsed is Action.Custom) {
             //  正文引用另一条命令 ⇒ 这一下也是一次「起一条链」，必须走同一道链闸：
             //  `enterChain` 里「已有链在跑」那条只在 depth == 0 时生效，而这里是 depth+1，
@@ -146,7 +155,6 @@ internal class CustomCommandRunner(
             return
         }
         dispatch(parsed, depth + 1)
-        return
     }
 
     /**
@@ -177,19 +185,20 @@ internal class CustomCommandRunner(
             //  后面那些真正要跑的 shell 步骤随整串一起被吞掉。
             //  （截图那条别名不在此列：它现在就是一条普通的 `service call`，走 shell 合并没问题。）
             XLog.w("  第 ${index + 1} 步（KSU 别名）→ $shell")
-            execShell(shell)
+            //  多条命令的步骤没有各自的开关 ⇒ 一律按默认（`su`，起不来不退回 `sh`）
+            execShell(shell, true)
             next = index + 1
         } else if (shell != null && gapMs <= 0) {
             // 只有「没有步骤间隔」时才合并：`a; b` 是零延迟，合并等于把用户配的 stepDelayMs 抹掉。
             val (joined, nextIndex) = collectShellRun(steps, index)
             XLog.w("  第 ${index + 1}~$nextIndex 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
-            execShell(joined)
+            execShell(joined, true)
             next = nextIndex
         } else if (shell != null) {
             // 有步骤间隔（gapMs > 0）：这一步单独派发，间隔由末尾那次 postDelayed 撑住。
             // 与别名那条同理 —— 间隔是配置的一部分，不能靠 `;` 的零延迟糊过去。
             XLog.w("  第 ${index + 1} 步（shell，按间隔单独派发）→ ${XLog.redactCommand(shell)}")
-            execShell(shell)
+            execShell(shell, true)
             next = index + 1
         } else {
             val action = Action.parse(steps[index])

@@ -200,7 +200,12 @@ internal fun SettingsPage.draftToLibrary(): Pair<Command, List<Command>>? {
     val cmd =
         when (commandDraft.draft.kind) {
             CommandKind.SINGLE -> {
-                Command(name, CommandKind.SINGLE, single = commandDraft.draft.single.trim())
+                Command(
+                    name,
+                    CommandKind.SINGLE,
+                    single = commandDraft.draft.single.trim(),
+                    root = commandDraft.draft.root,
+                )
             }
 
             CommandKind.SERIAL -> {

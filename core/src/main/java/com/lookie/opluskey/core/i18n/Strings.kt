@@ -257,6 +257,11 @@ object Strings {
     const val COMMAND_CYCLE_ERROR = "command.cycle_error"
     const val COMMAND_DELAY_DESC = "command.delay_desc"
     const val COMMAND_DELAY_LABEL = "command.delay_label"
+
+    /** 「以 root 执行」那一行（每条命令自己的开关）：标题 + 真假两句副标题。 */
+    const val COMMAND_ROOT_TITLE = "command.root_title"
+    const val COMMAND_ROOT_DESC_ON = "command.root_desc_on"
+    const val COMMAND_ROOT_DESC_OFF = "command.root_desc_off"
     const val COMMAND_FORMAT_CMD = "command.format_cmd"
 
     /** 「支持的命令格式」卡右列那一句说明 —— 与左列的前缀文案分开两条，好在界面上对成一列。 */
@@ -453,6 +458,9 @@ object Strings {
     const val COMMAND_FAILURE_SHELL_MISSING = "command_failure.shell_missing"
     const val COMMAND_FAILURE_SHELL_NO_PERMISSION = "command_failure.shell_no_permission"
     const val COMMAND_FAILURE_SHELL_NO_ROOT = "command_failure.shell_no_root"
+
+    /** 命令自己**没勾**「以 root 执行」，而它要 root 才能跑（与 [COMMAND_FAILURE_SHELL_NO_ROOT] 分开）。 */
+    const val COMMAND_FAILURE_SHELL_ROOT_OFF = "command_failure.shell_root_off"
     const val COMMAND_FAILURE_SHELL_REJECTED = "command_failure.shell_rejected"
     const val COMMAND_FAILURE_SHELL_TIMEOUT = "command_failure.shell_timeout"
     const val COMMAND_FAILURE_SHORTCUT_FAILED = "command_failure.shortcut_failed"
@@ -754,6 +762,11 @@ object Strings {
     const val MORE_FOLLOW_DISPLAY_SIZE = "more.follow_display_size"
     const val MORE_FOLLOW_DISPLAY_SIZE_ON = "more.follow_display_size_on"
     const val MORE_FOLLOW_DISPLAY_SIZE_OFF = "more.follow_display_size_off"
+
+    /** 「随机图标配色」那一行（外观卡）：标题 + 开 / 关两句副标题。 */
+    const val MORE_RANDOM_ICON_TINT = "more.random_icon_tint"
+    const val MORE_RANDOM_ICON_TINT_ON = "more.random_icon_tint_on"
+    const val MORE_RANDOM_ICON_TINT_OFF = "more.random_icon_tint_off"
 
     /** 「页面缩放」那一行（只在「跟随系统显示大小」关掉时出现）。 */
     const val MORE_PAGE_SCALE = "more.page_scale"

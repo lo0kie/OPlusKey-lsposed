@@ -1,13 +1,11 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,7 +13,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -31,21 +28,16 @@ import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.PageSheet
+import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SHEET_TITLE_MARGIN
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.sheetCardColors
-import io.github.suqi8.coui.kmp.basic.BasicComponent
-import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
-import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -128,6 +120,35 @@ internal fun SettingsPage.CommandMenuPopup(
 // --------------------------------------------------------------- 添加命令（底部抽屉）
 
 /**
+ * 抽屉候选表的两个开关 —— 与 [StepSheetSpec] 分开，只为把那个类的参数个数留在 detekt 的上限之下。
+ *
+ *  两样都是「这次列什么」：排除哪几条已保存命令、要不要列「无操作」。
+ */
+internal class StepSheetFilter(
+    /**
+     * 这一次**不要列出来**的那几条命令（`cmd:<名字>`），空集 = 不排除。
+     *
+     *  编辑「命令 A」时，它自己也会出现在「已保存的命令」那一组里 —— 选中它就是把 A 塞进 A 的
+     *  某一步。执行侧虽然有一道环闸（`CommandFailure.TOO_DEEP`）会拦住，但那是**事后**报错：
+     *  用户点完才收到「套太深」。界面上直接不给这一行，比让他撞一次墙更省事。
+     *
+     *  **为什么是集合而不是一个名字**：编辑态下草稿名与库里那条的名字可以不同 —— 用户把 A 改成
+     *  B、还没保存时，草稿叫 B、库里那条叫 A。只按草稿名排除的话，A 仍留在候选里：选中它会把
+     *  A 塞进 B 的步骤，保存时 A 被摘掉、B 里留下一条悬空的 `cmd:A`，而成环检查按名字也查不出来
+     *  （目标已经不存在）。两个名字都要排除。
+     */
+    val excludeTokens: Set<String> = emptySet(),
+    /**
+     * 候选表里**要不要列「无操作」**。
+     *
+     *  只有「系统场景」传 `true`：那里的动作是「这条场景命中后干什么」，「无操作」是一档真取值
+     *  （命中也不做事，用来盖住后面的兜底场景）。多条命令的步骤不传 —— 步骤不是按键，
+     *  那一档在那里等于白占一格（见 [ActionCatalog.BRANCH_GROUPS] / `STEP_GROUPS`）。
+     */
+    val includeNone: Boolean = false,
+)
+
+/**
  * 「添加命令 / 选择命令」那张抽屉的入参 —— 合成一个对象只为把参数个数压回 detekt 的上限，
  * 也为了让两个调用点一眼看出「这几样是这一趟的来处」。
  *
@@ -145,19 +166,7 @@ internal class StepSheetSpec(
     val onOpenPicker: (StepPickerPage) -> Unit,
     val onPick: (String) -> Unit,
     val onDismiss: () -> Unit,
-    /**
-     * 这一次**不要列出来**的那几条命令（`cmd:<名字>`），空集 = 不排除。
-     *
-     *  编辑「命令 A」时，它自己也会出现在「已保存的命令」那一组里 —— 选中它就是把 A 塞进 A 的
-     *  某一步。执行侧虽然有一道环闸（`CommandFailure.TOO_DEEP`）会拦住，但那是**事后**报错：
-     *  用户点完才收到「套太深」。界面上直接不给这一行，比让他撞一次墙更省事。
-     *
-     *  **为什么是集合而不是一个名字**：编辑态下草稿名与库里那条的名字可以不同 —— 用户把 A 改成
-     *  B、还没保存时，草稿叫 B、库里那条叫 A。只按草稿名排除的话，A 仍留在候选里：选中它会把
-     *  A 塞进 B 的步骤，保存时 A 被摘掉、B 里留下一条悬空的 `cmd:A`，而成环检查按名字也查不出来
-     *  （目标已经不存在）。两个名字都要排除。
-     */
-    val excludeTokens: Set<String> = emptySet(),
+    val filter: StepSheetFilter = StepSheetFilter(),
 )
 
 /**
@@ -182,8 +191,9 @@ internal enum class StepPickerPage {
  *  某一条的「动作」。三者的差别只在 [title] / [current] / [onOpenPicker] / [onPick] 由调用点给，
  *  抽屉自己不读草稿 —— 「选了之后写回哪儿」是各页的语义，不归容器。
  *
- *  行用 `CardList` + [StepSheetRow]，与页面里其它卡同一套行高与分隔线。行尾字形按「点开去哪」分：
- *  选择应用 / 自定义变量给右箭头（进另一页）、入口格给选择器字形（还有一层菜单）、直接落成一步的不给。
+ *  行用项目通用的 `CardList` + `CardRow.Item`，与页面里其它卡同一套行高与分隔线。行尾字形按
+ *  「点开去哪」分：选择应用 / 自定义变量给右箭头（进另一页）、入口格给选择器字形（还有一层菜单）、
+ *  直接落成一步的不给。
  *
  *  内置动作那几组之后是**「已保存的命令」**：多命令的步骤、条件执行的动作，挑的多半是自己写的那几条，
  *  摆在末尾不用先翻过整张内置表。这一组来自命令库（`configState.commands`），点一行落成 `cmd:<名字>`；
@@ -213,6 +223,9 @@ internal fun SettingsPage.StepPickerSheet(
     //  边输边筛，清空即回到分组列表。关抽屉时一并清掉：下一次打开还挂着上一个词的话，
     //  用户会以为「列表少了东西」。
     var query by remember { mutableStateOf("") }
+    //  这一次列哪张候选表：系统场景那一支要把「无操作」列出来，多条命令的步骤不列
+    //  （见 [StepSheetFilter.includeNone]）。
+    val groups = if (sheet.filter.includeNone) ActionCatalog.BRANCH_GROUPS else ActionCatalog.STEP_GROUPS
 
     //  这一行画不画成「选中」（行首对勾 + 整行主题色）：看当前动作。
     //  点一下就落盘、抽屉随即收掉（见 `land`），所以这里没有「刚点过、还没生效」那一档了。
@@ -223,8 +236,8 @@ internal fun SettingsPage.StepPickerSheet(
     //  不相干的位置，菜单也就不跟手指。
     //  一次按候选表建好，行的 `modifier` 直接取自己那份。
     val anchors =
-        remember {
-            ActionCatalog.STEP_GROUPS
+        remember(groups) {
+            groups
                 .flatMap { it.second }
                 .associateWith { PreciseClickState() }
         }
@@ -236,9 +249,9 @@ internal fun SettingsPage.StepPickerSheet(
             //  多条命令的「某一步」引用另一条多条命令，执行侧也认（深度与环都有闸）。
             //  以前这里只留单条，抽屉里于是看不到自己写的命令链。
             //
-            //  **正在编辑的那条自己除外**（见 [StepSheetSpec.excludeTokens]）：引用自己就是环，
+            //  **正在编辑的那条自己除外**（见 [StepSheetFilter.excludeTokens]）：引用自己就是环，
             //  执行侧会报「套太深」，不如别让它出现在候选里。
-            .filter { it.token !in sheet.excludeTokens }
+            .filter { it.token !in sheet.filter.excludeTokens }
             .map { ActionCatalog.commandSpec(it) }
     val savedAnchors = remember(savedSpecs) { savedSpecs.associateWith { PreciseClickState() } }
     // 开着二级菜单那一行的锚点（开的时候记下来，`ModeMenuPopups` 用）；
@@ -301,6 +314,7 @@ internal fun SettingsPage.StepPickerSheet(
             isCurrent = { isCurrent(it) },
             onLand = { spec, anchor -> land(spec, anchor) },
             current = sheet.current,
+            groups = groups,
         )
     //  「已保存的命令」那一组的锚点是另外一份（见 `savedAnchors`），其余上下文相同
     val savedCtx =
@@ -309,6 +323,7 @@ internal fun SettingsPage.StepPickerSheet(
             isCurrent = { isCurrent(it) },
             onLand = { spec, anchor -> land(spec, anchor) },
             current = sheet.current,
+            groups = groups,
         )
     //  搜索态：分组标题全部让位，命中的行拍成**一张卡**（找东西时按组切反而要多扫几行标题）。
     //  两组候选的锚点不在同一张表里，这里按「先查命令、再查动作」挑一份；
@@ -319,14 +334,15 @@ internal fun SettingsPage.StepPickerSheet(
             isCurrent = { isCurrent(it) },
             onLand = { spec, anchor -> land(spec, anchor) },
             current = sheet.current,
+            groups = groups,
         )
     val term = query.trim()
     val hits =
         if (term.isEmpty()) {
             emptyList()
         } else {
-            //  内置那几组按 STEP_GROUPS 的顺序，后面接已保存命令 —— 与不搜时的相对顺序一致
-            (ActionCatalog.STEP_GROUPS.flatMap { it.second } + savedSpecs)
+            //  内置那几组按候选表自己的顺序，后面接已保存命令 —— 与不搜时的相对顺序一致
+            (groups.flatMap { it.second } + savedSpecs)
                 .filter { it.label.contains(term, ignoreCase = true) }
         }
 
@@ -424,10 +440,12 @@ private class StepSheetCtx(
     val onLand: (ActionCatalog.Spec, PreciseClickState) -> Unit,
     /** 当前那一个动作 —— 入口格那几行的行首字形按它算（见 `StepSheetCard`）。 */
     val current: Action?,
+    /** 这一次列哪张候选表（场景那张多一个「无操作」，见 [StepSheetFilter.includeNone]）。 */
+    val groups: List<Pair<String, List<ActionCatalog.Spec>>>,
 )
 
 /**
- * 内置动作那几组 —— 分组与网格同一张表（[ActionCatalog.STEP_GROUPS]），组名与组内顺序逐项一致。
+ * 内置动作那几组 —— 分组与网格同一张表（[StepSheetCtx.groups]），组名与组内顺序逐项一致。
  *
  *  组与组之间要断开：这一档由小标题自己给（上 16 / 下 0，见 `SectionTitle`）——
  *  与各页同一套，抽屉里也不再单独补 `Spacer`，第一组同样带（不特例）。
@@ -435,7 +453,7 @@ private class StepSheetCtx(
 @Composable
 private fun SettingsPage.StepSheetGroups(ctx: StepSheetCtx) {
     Column {
-        ActionCatalog.STEP_GROUPS.forEach { (groupTitle, group) ->
+        ctx.groups.forEach { (groupTitle, group) ->
             //  小标题收一档（左右各一档 `PAGE_MARGIN`）：抽屉自己已经给过一档，再叠库默认那
             //  32dp 就比卡片行文字右移一档（见 `SHEET_TITLE_MARGIN`）
             SectionTitle(ActionCatalog.groupTitleLabel(groupTitle), insideMargin = SHEET_TITLE_MARGIN)
@@ -456,8 +474,8 @@ private fun SettingsPage.SavedCommandsGroup(
 }
 
 /**
- * 抽屉里的一张候选卡 —— 行用项目标准那套（`CardList` + [StepSheetRow]）：
- * 行高 / 内边距 / 分隔线 / 按下反馈都由它给，不再自己手搓 `Row`。
+ * 抽屉里的一张候选卡 —— 行用项目通用的 [CardList] + [CardRow.Item]：
+ * 行高 / 内边距 / 分隔线 / 按下反馈 / 行首与行尾的配色都由那一层给，这里不另立行组件。
  *
  *  `margin = 0.dp`：抽屉自己已有 `PAGE_MARGIN` 的左右内边距（`insideMargin`）。
  */
@@ -470,65 +488,73 @@ private fun SettingsPage.StepSheetCard(
         margin = 0.dp,
         //  暗色下卡片比抽屉面再亮一档（见 `sheetCardColors`）；浅色传 null = 库默认，与页面同一档
         colors = sheetCardColors(),
-        rows =
-            specs.map { spec ->
-                val anchor = ctx.anchorOf(spec)
-                //  **行首字形与网格那一格同一判据**：入口格（响铃状态 / 媒体控制 / 系统开关…）
-                //  按**当前绑的是哪一档**给，其余按清单条目给 —— 抽屉与网格摆的是同一张清单，
-                //  同一个「响铃状态」在两处长成两个样子的唯一原因就是这里少判了一下。
-                val glyph = tileIcon(ActionCatalog.boundModeOf(spec, ctx.current) ?: spec)
-                // 行尾那颗字形按「点开去哪」分（与页面里那几行同一套口径）：
-                //  · 「选择应用」/「自定义变量」进的是**另一个页面**去挑 → 右箭头（[PageIcons.EnterArrow]）；
-                //  · 入口格那几档（系统开关 / 媒体控制…）点开还有**一层菜单** → 选择器字形；
-                //  · 其余动作点一下就落成一步、`cmd:<名字>` 同样落成一步 → 不给。
-                //  **选中那一行也照画**：选中只把行首换成对勾，行尾该不该有指示不变。
-                val trailingIcon =
-                    when {
-                        spec.token == ActionCatalog.APP_TILE || spec.token == ActionCatalog.VARS_TILE -> {
-                            PageIcons.EnterArrow
-                        }
-
-                        ActionCatalog.modeMenu(spec.token) != null -> {
-                            PageIcons.Selector
-                        }
-
-                        else -> {
-                            null
-                        }
-                    }
-                //  **当前这一步**那一行整行上主题色、**行首**那颗图标换成对勾
-                //  （与浮层菜单里 `PageMenuPopup` 的选中态同一套）。
-                //
-                //  两种状态走**同一支** [StepSheetRow]，这里不再二选一 ——
-                //  以前选中行走 `CardRow.Custom`、未选中走 `CardRow.Item`，一换就是整棵
-                //  子树被替换，`animateColorAsState` 的状态跟着重建，颜色只能硬切。
-                CardRow.Custom { position ->
-                    StepSheetRow(
-                        item = StepSheetItem(spec.label, glyph, trailingIcon),
-                        selected = ctx.isCurrent(spec),
-                        anchor = anchor,
-                        position = position,
-                    ) { ctx.onLand(spec, anchor) }
-                }
-            },
+        rows = specs.map { stepSheetRow(it, ctx) },
     )
 }
 
-/** 抽屉里一行的那三样「长什么样」—— 合成一个对象，行组件的参数才压得回 6 个以内。 */
-private class StepSheetItem(
-    val label: String,
-    val glyph: ImageVector,
-    val trailingIcon: ImageVector?,
-)
-
 /**
- * 抽屉里行首图标的尺寸 —— **与 `CardRow.Item` 那颗一致**。
+ * 候选卡里的一行 —— 直接产出通用的 [CardRow.Item]，选中态只换三样：
+ * **行首字形**（原图标 ↔ 对勾）、**标题色**与**行尾色**（主题色）。
  *
- *  普通行走 `CardRow.Item` → `ItemRow` → `Icon(vec)` 不给尺寸，按 Tabler 图标的固有尺寸
- *  24dp 画。选中那一行是自绘的，这颗对勾要是用别的数（原先误用了 `ROW_ICON_SIZE` = 22dp），
- *  选中 / 取消一切换整行宽度就跳 2dp，看着像「来回缩」。
+ *  选中态不另立行组件：`CardRow.Item` 已经带 `iconTint` / `titleTint` / `trailing` 三个槽，
+ *  整行上主题色这件事在那里就表达得完 —— 抽屉与各页共用同一份行实现，改一处两边一起变。
+ *
+ *  振动仍由 `land` 统一发（[CardRow.Item.vibrate] 传 `false`）：那三档去向（挑应用 / 开二级 /
+ *  直接落一步）都走它，行组件再振一次就是两下。
  */
-private val STEP_SHEET_ICON_SIZE = 24.dp
+@Composable
+private fun stepSheetRow(
+    spec: ActionCatalog.Spec,
+    ctx: StepSheetCtx,
+): CardRow.Item {
+    val anchor = ctx.anchorOf(spec)
+    val selected = ctx.isCurrent(spec)
+    val colors = COUITheme.colorScheme
+    //  **行首字形与网格那一格同一判据**：入口格（响铃状态 / 媒体控制 / 系统开关…）
+    //  按**当前绑的是哪一档**给，其余按清单条目给 —— 抽屉与网格摆的是同一张清单，
+    //  同一个「响铃状态」在两处长成两个样子的唯一原因就是这里少判了一下。
+    val glyph = tileIcon(ActionCatalog.boundModeOf(spec, ctx.current) ?: spec)
+    // 行尾那颗字形按「点开去哪」分（与页面里那几行同一套口径）：
+    //  · 「选择应用」/「自定义变量」进的是**另一个页面**去挑 → 右箭头（[PageIcons.EnterArrow]）；
+    //  · 入口格那几档（系统开关 / 媒体控制…）点开还有**一层菜单** → 选择器字形；
+    //  · 其余动作点一下就落成一步、`cmd:<名字>` 同样落成一步 → 不给。
+    //  **选中那一行也照画**：选中只把行首换成对勾，行尾该不该有指示不变。
+    val trailingIcon =
+        when {
+            spec.token == ActionCatalog.APP_TILE || spec.token == ActionCatalog.VARS_TILE -> {
+                PageIcons.EnterArrow
+            }
+
+            ActionCatalog.modeMenu(spec.token) != null -> {
+                PageIcons.Selector
+            }
+
+            else -> {
+                null
+            }
+        }
+    return CardRow.Item(
+        title = spec.label,
+        //  **当前这一步**那一行：行首那颗换成对勾、整行上主题色（与浮层菜单的选中态同一套）
+        icon = if (selected) PageIcons.MenuCheck else glyph,
+        //  未选中时给 `null`，让行组件按启用态走默认那档灰
+        iconTint = if (selected) colors.primary else null,
+        titleTint = if (selected) colors.primary else null,
+        modifier = Modifier.preciseClickAnchor(anchor),
+        trailing =
+            trailingIcon?.let { end ->
+                {
+                    RowEndIcon(
+                        icon = end,
+                        tint = if (selected) colors.primary else colors.onSurfaceVariantActions,
+                    )
+                }
+            },
+        //  振一下由 `land` 统一发，这一层不再振（见本函数的说明）
+        vibrate = false,
+        onClick = { ctx.onLand(spec, anchor) },
+    )
+}
 
 /** 搜索框与下面那串候选之间的距离 —— 比小标题自带的那档（12dp）再紧一点：它俩是一块儿。 */
 private val STEP_SHEET_SEARCH_GAP = 8.dp
@@ -566,87 +592,3 @@ private fun SettingsPage.StepSheetEmptyHint(term: String) {
 
 /** 搜不到时那行字的上下留白 —— 与各页空态同一档（24dp）。 */
 private val STEP_SHEET_EMPTY_PADDING = 24.dp
-
-/**
- * 抽屉里的一行 —— **选中 / 未选中是同一棵子树**，会变的颜色全部过 `animateColorAsState`。
- *
- *  为什么要合成一支：以前选中行走 `CardRow.Custom` + `BasicComponent`（写死主题色）、未选中走
- *  `CardRow.Item`，两者是两个不同的 composable —— 切换选中时整棵子树被替换，动画状态跟着重建，
- *  颜色只能硬切。收成一支之后动画状态在那个位置连续存在：
- *
- *   · **标题**、**行首图标**、**行尾字形**三处 tint 各一条动画（[COLOR_TRANSITION_SPEC]）；
- *   · 行首那一格换的是**字形**（原图标 ↔ 对勾），形状没法插值 —— 用 [Crossfade] 淡过去。
- *     两个字形都是 [STEP_SHEET_ICON_SIZE]（24dp），交叉期间盒子宽度不变，文字不会被推一下。
- *
- *  未选中时那三档取值与 `CardRow.Item` 完全一致（`onBackground` / `onSurfaceContainer` /
- *  `onSurfaceVariantActions`），所以合并之后配色没有任何变化，只是多了过渡。
- *
- *  @param position 这一行在卡里的位置（首行 / 中间 / 末行，卡片圆角与内缩看它）
- */
-@Composable
-private fun SettingsPage.StepSheetRow(
-    item: StepSheetItem,
-    selected: Boolean,
-    anchor: PreciseClickState,
-    position: CardListPosition,
-    onClick: () -> Unit,
-) {
-    val colors = COUITheme.colorScheme
-    val titleTint by animateColorAsState(
-        targetValue = if (selected) colors.primary else colors.onBackground,
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "StepSheetTitle",
-    )
-    val iconTint by animateColorAsState(
-        targetValue = if (selected) colors.primary else colors.onSurfaceContainer,
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "StepSheetIcon",
-    )
-    //  行尾那颗选中时也上主题色：整行只有它还是灰的话，那一行看着只亮了一半
-    //  未选中态与 `CardRow.Item` 的箭头同值。
-    val endTint by animateColorAsState(
-        targetValue = if (selected) colors.primary else colors.onSurfaceVariantActions,
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "StepSheetEnd",
-    )
-    BasicComponent(
-        title = item.label,
-        titleColor = BasicComponentDefaults.titleColor(color = titleTint),
-        startAction = {
-            Crossfade(
-                targetState = selected,
-                animationSpec = COLOR_FADE_SPEC,
-                label = "StepSheetLead",
-            ) { on ->
-                if (on) {
-                    Icon(
-                        PageIcons.MenuCheck,
-                        contentDescription = null,
-                        modifier = Modifier.size(STEP_SHEET_ICON_SIZE),
-                        tint = iconTint,
-                    )
-                } else {
-                    Icon(
-                        item.glyph,
-                        contentDescription = null,
-                        modifier = Modifier.size(STEP_SHEET_ICON_SIZE),
-                        tint = iconTint,
-                    )
-                }
-            }
-        },
-        endActions = {
-            item.trailingIcon?.let { endGlyph ->
-                Icon(
-                    endGlyph,
-                    contentDescription = null,
-                    modifier = Modifier.size(ROW_END_ICON_SIZE),
-                    tint = endTint,
-                )
-            }
-        },
-        cardListPosition = position,
-        modifier = Modifier.preciseClickAnchor(anchor),
-        onClick = onClick,
-    )
-}

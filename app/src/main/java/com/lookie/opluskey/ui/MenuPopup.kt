@@ -1,19 +1,28 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.MENU_ROW_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.MENU_ROW_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_DARK
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_LIGHT
 import com.lookie.opluskey.ui.model.isDarkScheme
+import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 浮层菜单那一族：分隔线、配色、菜单项模型、菜单本体与其中一行。
@@ -21,9 +30,9 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 /**
  * 浮层菜单两项之间的细线 —— 顶栏 ⋮ 菜单、已保存命令的长按菜单、「添加命令」选择器都用它。
  *
- * 左端从**行的内容左边界**起（库的 `InsideHorizontalPadding`）—— 于是它会**穿过行首图标那一格**。
- * 不要缩进到标题文字的左边界（16 + 24 + 12 = 52dp）：那样线只在文字下面那一段，图标区会把线切断。
- * 右端仍让出行尾那一格（对勾 / 右箭头 / 提示），与左端同取库的内边距。
+ * 左端从**标题文字的左缘**起（内边距 16 + 行首图标 24 + 图标后那一档 12 = 52dp，
+ * 见 [MENU_TITLE_INSET]）：线与每一行的标题同一条竖线，图标那一格留空。
+ * 右端仍让出行尾那一格（对勾 / 右箭头 / 提示），取库的内边距。
  *
  * 颜色自己给（见 [popupDividerColor]）：面板磨砂后半透明，库默认那一档暗色下几乎看不见。
  *
@@ -34,12 +43,74 @@ internal fun PopupRowDivider(modifier: Modifier = Modifier) {
     HorizontalDivider(
         modifier =
             modifier.padding(
-                start = DropdownDefaults.InsideHorizontalPadding,
+                start = MENU_TITLE_INSET,
                 end = DropdownDefaults.InsideHorizontalPadding,
             ),
         color = popupDividerColor(darkAlpha = MENU_ROW_LINE_DARK_ALPHA, lightAlpha = MENU_ROW_LINE_LIGHT_ALPHA),
     )
 }
+
+/**
+ * 浮层菜单里**小标题下面**那条线 —— 与 [PopupRowDivider] 同一档颜色与粗细，左端**放宽**到
+ * 面板自己的内边距（`InsideHorizontalPadding`），也就是把行首图标那一格一起画进去。
+ *
+ *  为什么不与行间那条共用缩进：小标题自己顶在面板左缘，线却从「行标题」那条竖线起，
+ *  看上去是「标题下面只划了半截」。右端与左右留白仍与行间那条一致 —— 只放宽到面板边距，
+ *  不贴着面板两侧画满。
+ */
+@Composable
+internal fun PopupSectionDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = DropdownDefaults.InsideHorizontalPadding),
+        color = popupDividerColor(darkAlpha = MENU_ROW_LINE_DARK_ALPHA, lightAlpha = MENU_ROW_LINE_LIGHT_ALPHA),
+    )
+}
+
+/**
+ * 浮层菜单里的小标题 —— 排版与库的 `DropdownHeaderItem` 同一条（11sp Medium、左右
+ * `InsideHorizontalPadding`），但**上下留白收一档、且上下同值**：
+ *
+ *  库那版上下各 8dp、最小高 32dp，组与组之间的标题压在两段行距里显得松；而首条又额外拿
+ *  `FirstLastVerticalPadding`（10dp）只加在上沿 —— 加上光学修正把墨迹往下压的那一档，
+ *  首条看着「上多下少」。所以这里不再分首条，上下都是 [POPUP_SECTION_TITLE_GAP]。
+ */
+@Composable
+internal fun PopupSectionTitle(text: String) {
+    // 与库那一版**同一份样式**：只取 `footnote2` 的字号（11sp）+ Medium —— 库那版也是只传
+    // `fontSize`，**不带** `footnote2` 的 `lineHeight`（1.143em，比中文字体的自然行高还小，
+    // 套上去字形会溢出那一行盒）。光学修正必须按**实际渲染的这份样式**量，量错了修正量就偏。
+    val style = TextStyle(fontSize = COUITheme.textStyles.footnote2.fontSize, fontWeight = FontWeight.Medium)
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = DropdownDefaults.InsideHorizontalPadding)
+                .padding(vertical = POPUP_SECTION_TITLE_GAP),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            text = text,
+            style = style,
+            color = DropdownDefaults.dropdownColors().headerColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            //  这一格是**竖居中**（`CenterStart`）：行盒居中不等于墨迹居中，补一档光学修正
+            //  （与页面里那些单行标题同一支笔 —— 见 `opticalCenter`）
+            modifier = Modifier.opticalCenter(style),
+        )
+    }
+}
+
+/** 小标题上下那档留白 —— 6dp（库那版上下各 8dp + 最小高 32dp，见 [PopupSectionTitle]）。 */
+private val POPUP_SECTION_TITLE_GAP = 6.dp
+
+/**
+ * 浮层菜单里标题左缘距面板左缘的距离 —— 52dp。
+ *
+ *  库的 `InsideHorizontalPadding` 16 + 行首图标 24（Tabler 的默认视口）+ 图标后那一档 12
+ *  （`DropdownDefaults`）。分隔线按它缩进，线才从标题最左处起。
+ */
+private val MENU_TITLE_INSET = 52.dp
 
 /**
  * 浮层里分隔的颜色：暗色走**亮**线、浅色走黑线。

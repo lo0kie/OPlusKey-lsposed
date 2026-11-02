@@ -4399,3 +4399,53 @@ x > 1/12 :  g = a·ln(12x − b) + c      a = 0.17883277  b = 0.28466892  c = 0.
   「熄屏按下没反应」。
 - 结论：手势窗口一律用 `elapsedRealtime()`；**熄屏时不等双击窗口**（抬手即判单击）。
   实现见 `inject/input/GestureDetector`（类注释里那两段）。
+
+## 四十、Toast 的两个系统侧硬约束：**每包限流**与**显示中不推进队列**（反编译 NMS + 真机，2026-11-02，3B15BR005FN00000 / ColorOS 17）
+
+用户报「桌面连按侧键，只有一两下弹提示」。侧键单击绑的是一条 `cmd:` 命令，命令里 `echo 'tip: …'`
+让模块弹提示（`ShellRunner.TIP_PREFIX`）。
+
+判据在**系统侧**的 logcat（不是本模块发的）：
+
+```
+W NotificationService: Package com.oplus.gesture is above allowed toast quota, the following toast
+  was blocked and discarded: TextToastRecord{… text=屏幕超时 · 30 秒 duration=0}
+```
+
+同一批按压里模块侧 `shell 提示：…` **每按一次都有一行**、`Toast.show()` 也确实调到了
+⇒ 提示生成这一侧没问题。**排查「提示没弹」先看这一行**，别再往「tip 没生成 / 去重吞了」的方向找。
+
+反编译 `services.jar`（`com.android.server.notification.NotificationManagerService`）得到两条规则：
+
+1. **每包限流**（`<clinit>` 里那张 `TOAST_RATE_LIMITS`，`showNextToastLocked` → `tryShowToast` 判）：
+   **3 条 / 20 秒、5 条 / 42 秒、6 条 / 68 秒**，任一条超了这条 toast 就被 `blocked and discarded`。
+   计数（`noteEvent`）只在实际显示、且包在前台时记 —— 也就是说**连按超过这个密度必然有几下没有提示**，
+   这是系统行为，改不了。
+   - 豁免只有一条路：`isExemptFromRateLimiting` 查包有没有 `android.permission.UNLIMITED_TOASTS`。
+     普通应用拿不到；`cmd notification` 在这个 ROM 上也**没有** `set_toast_rate_limit` 子命令
+     （`cmd notification` 的子命令表里只有 listener / dnd / bubbles 那几档）。
+2. **正在显示时不推进队列**：`showNextToastLocked` 一进来就 `if (mIsCurrentToastShown) return`，
+   新记录只能等前一条走完（`LENGTH_SHORT` 2 秒）—— 连按时看到的是两秒前的旧内容，
+   严重时表现为「按了没弹」。所以弹新的之前必须先 `cancel()` 上一条。
+
+处置（`host/action/CommandFailure.FailureNotice`）：全模块共用**一个** `Toast` 实例，每次
+`cancel()` → `setText()` → `show()`：队列里始终只有这一条、内容就是当前这一次的。
+注意**复用同一实例并不会让 NMS 就地更新那一条**（真机上仍然看到 `Show next toast` 走了排队分支），
+所以「只换文字」省不了配额，只是省掉新建实例。
+
+### 40.1 提示改由**注入侧**弹：包名 `android` 天然免限流
+
+先在注入侧试过「把宿主 uid 塞进 `NotificationManagerService.mToastRateLimitingDisabledUids`」，
+**这条路走不通**：`ServiceManager.getService("notification")` 拿到的不是实现类，反射走类链到
+`NotificationManagerService$Stub` 就断了（真机日志：`找不到字段：…NotificationManagerService$Stub#mToastRateLimitingDisabledUids`）。
+
+改成**换发话人**：提示不再由宿主弹，而是宿主发一条 [ACTION_TOAST] 给注入侧，由注入侧用
+`ActivityThread.getSystemContext()`（包名 `android`）弹 —— `android` 持有 `UNLIMITED_TOASTS`，
+`isExemptFromRateLimiting` 直接放行，`noteEvent` 也不记，所以**连按几下都弹得出来**。
+
+- 实现：`inject/SystemToast`（主线程 + 共用一个 `Toast` 实例 + `cancel()` 后再 `setText`/`show`），
+  宿主侧出口是 `host/action/ActionRunner.requestSystemToast`，线格式在 `core/wire/ModuleWire`。
+- 这条通道只在**注入侧是新包**时存在：换了包没重启，注入侧还是旧代码，提示会没有（重启即恢复）。
+- 失败提示（`FailureNotice`）仍由宿主自己弹：它不受「连按」影响，而换成注入侧弹的话，
+  注入侧没起来时连失败都看不见。
+

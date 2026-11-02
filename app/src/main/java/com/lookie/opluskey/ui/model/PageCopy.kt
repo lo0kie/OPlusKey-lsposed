@@ -301,7 +301,8 @@ internal val COMMAND_DISCLAIMER_TEXT: String
  *  `zoom:mini[:collapse]` 有「前台转小窗」那两档 —— 同一个能力摆两个入口，手写那条还更容易写错。
  *  剩下的这几行是**没有图形入口**的：shell / keyevent / intent / shortcut / cmd。
  *
- *  点带 `prefix` 的那一行 = 把前缀**替换**进命令输入框（不是追加，见渲染点的注释）。
+ *  点带 `prefix` 的那一行 = 把前缀填进命令输入框；输入框里已经带了格式时只换前缀、正文留着
+ *  （不是追加，见 `CommandFormats.fillPrefix`）。
  */
 internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
     get() =
@@ -398,10 +399,13 @@ internal fun themeLabel(theme: AppTheme): String =
     }
 
 /**
- * 键名外面那对括号 —— 中文用对角方括号（`「」`，与停用提示「「侧键」已停用…」同一对），
- * 英文用弯引号（`“”`，正是英文停用提示里那一对）。同一句话在两种语言里各自像本地写法。
+ * 键名外面那对括号 —— 两种语言都套**对角方框**：中文是全角（`「」`），英文是半角（`｢｣`，
+ * U+FF62 / U+FF63，与英文停用提示 `｢…｣ is disabled` 同一对）。
+ *
+ *  英文不用弯引号（`“”`）：那是「引一句话」的记号，和键名、命令名混在一起就分不出被框的是哪一段；
+ *  半角对角方框才是同一件事在英文里的写法。
  *
  *  全项目只有这一处：条件执行的空态、组合键列表那一行与顶栏副标题都读它 ——
  *  同一个「一颗键的名字」在三处不该有三种长相。
  */
-internal fun keyBrackets(): Pair<String, String> = if (I18n.effectiveLanguage == AppLanguage.ZH_CN) "「" to "」" else "“" to "”"
+internal fun keyBrackets(): Pair<String, String> = if (I18n.effectiveLanguage == AppLanguage.ZH_CN) "「" to "」" else "｢" to "｣"

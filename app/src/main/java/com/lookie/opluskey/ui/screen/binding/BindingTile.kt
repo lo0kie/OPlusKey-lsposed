@@ -35,6 +35,7 @@ import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.model.opticalCenter
+import com.lookie.opluskey.ui.tinted
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
@@ -155,7 +156,16 @@ internal fun SettingsPage.ActionTile(
                 startAction = {
                     // 图标列只有这一枚 22dp（尺寸沿用全页的 22dp 纪律，见 ActionIcons 的注释）。
                     //  入口格的行首随档位变，见网格里 `icon = boundMode ?: spec` 那一句。
-                    icon?.let { Icon(it, null, Modifier.size(ROW_ICON_SIZE)) }
+                    //  「随机图标配色」开着时这一格的行首图标用**它自己那一色**；
+                    //  禁用 / 选中两档不上色（灰与主色各自带语义），退回整格的内容色。
+                    icon?.let {
+                        Icon(
+                            it,
+                            null,
+                            Modifier.size(ROW_ICON_SIZE),
+                            tint = it.takeIf { enabled && !selected }?.tinted() ?: contentColor,
+                        )
+                    }
                 },
                 endActions = {
                     Row(verticalAlignment = Alignment.CenterVertically) {

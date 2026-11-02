@@ -463,6 +463,17 @@ sealed interface Action {
         }
 
         /**
+         * 这段文本开头那个**支持的前缀**（`shell:` / `cmd:` …）；没有前缀、认不出时返回 `null`。
+         *
+         *  与 [hasSupportedFormat] 同一份 [PREFIXES]：格式列表点一下要「只换前缀、正文留着」时，
+         *  靠它找到该被换掉的那一段 —— 自己再列一遍前缀就会与 [parse] 漂移。
+         */
+        fun prefixOf(raw: String?): String? {
+            val text = raw?.trim().orEmpty()
+            return PREFIXES.firstOrNull { text.startsWith(it) }
+        }
+
+        /**
          * [parse] 认的所有前缀 —— 与那串 `startsWith` 分支一一对应（顺序无关，只用来判断
          * 「这段字有没有带格式」）。[Command.PREFIX]（`cmd:`）也在这一列里。
          */

@@ -160,7 +160,8 @@ private fun SettingsPage.DeleteCommandDialog(ui: CommandUiState) {
 }
 
 /**
- * 点「支持的命令格式」那一行要整段替换输入框 ⇒ 里面有东西时先确认（不是插入，没有撤销）。
+ * 点「支持的命令格式」那一行要**整段替换**输入框（输入框里不带格式、却有别的内容）⇒ 先确认
+ *（不是插入，没有撤销）。已经带格式的那种走「只换前缀」，不经过这里（见 `CommandFormats.fillPrefix`）。
  *
  * ## 为什么「聚焦」要等窗收场
  *

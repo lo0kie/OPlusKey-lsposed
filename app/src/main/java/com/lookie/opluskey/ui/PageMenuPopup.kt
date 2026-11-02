@@ -34,7 +34,6 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_PICKER_MAX_HEIGHT
 import com.lookie.opluskey.ui.model.isDarkScheme
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
-import io.github.suqi8.coui.kmp.basic.DropdownHeaderItem
 import io.github.suqi8.coui.kmp.basic.DropdownImpl
 import io.github.suqi8.coui.kmp.basic.DropdownItem
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -46,7 +45,7 @@ import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 展开之后的一项 —— 渲染层只认这四种（调用方永远看不到它们）。 */
+/** 展开之后的一项 —— 渲染层只认这五种（调用方永远看不到它们）。 */
 private sealed interface MenuPart {
     data class Title(
         val text: String,
@@ -57,6 +56,13 @@ private sealed interface MenuPart {
     ) : MenuPart
 
     data object Line : MenuPart
+
+    /**
+     * 小标题下面那条线 —— 与 [Line] 同一档颜色 / 粗细，但**通栏**（连行首图标那一格一起画）。
+     *
+     *  标题本身顶在面板左缘，线若也缩进到「行标题」那条竖线，读起来是「标题下面只划了半截」。
+     */
+    data object TitleLine : MenuPart
 
     data object HeavyLine : MenuPart
 }
@@ -84,8 +90,10 @@ private fun expandMenu(entries: List<MenuEntry>): List<MenuPart> =
                 is MenuEntry.Section -> {
                     if (isNotEmpty()) add(MenuPart.HeavyLine)
                     add(MenuPart.Title(entry.title))
-                    // 小标题下**默认**一条细线：标题与第一行贴在一起时读成「这一行是标题的一部分」
-                    add(MenuPart.Line)
+                    // 小标题下**默认**一条细线：标题与第一行贴在一起时读成「这一行是标题的一部分」。
+                    //  这条线是**通栏**的（`TitleLine`）：标题顶在面板左缘，线只划到行标题那条竖线
+                    //  就止住，看着像半截。
+                    add(MenuPart.TitleLine)
                     entry.rows.forEachIndexed { index, row ->
                         if (index > 0) add(if (row.dividerBefore) MenuPart.HeavyLine else MenuPart.Line)
                         add(MenuPart.Item(row))
@@ -188,7 +196,13 @@ internal fun SettingsPage.MenuPopup(
         // 退场期间用的就是 held 里那一次的内容（见上）。
         val shown = held.entries
         val column: @Composable () -> Unit = {
-            ListPopupColumn { MenuEntries(shown, interactive = show, probe = probe) }
+            //  **库自己那次振动改走通用通道**：按住不放、上下滑动换行时，库每换一行振一次
+            //  （`willChangeRow` → `CouiHaptic` → `LocalView.performHapticFeedback`），
+            //  那条路不看系统静音、也不与其它点击同一档 —— 用户口径「按住滑动时的振动没走通用振动」。
+            //  这一层把 `LocalView` 换掉之后，那一下落到 `LocalTick` 上（见 [TickHapticView]）。
+            TickHapticScope {
+                ListPopupColumn { MenuEntries(shown, interactive = show, probe = probe) }
+            }
         }
         // `ListPopupColumn` 没有 `modifier` 参数 ⇒ 整列锚点 / 手势账本 / 磨砂只能套在它外面。
         //
@@ -266,11 +280,15 @@ private fun SettingsPage.MenuEntries(
             }
 
             is MenuPart.Title -> {
-                DropdownHeaderItem(part.text, isFirst = position == 0)
+                PopupSectionTitle(part.text)
             }
 
             MenuPart.Line -> {
                 PopupRowDivider()
+            }
+
+            MenuPart.TitleLine -> {
+                PopupSectionDivider()
             }
 
             MenuPart.HeavyLine -> {
@@ -409,7 +427,12 @@ private fun SettingsPage.MenuRow(
                             if (row.selected && row.iconTint == null) PageIcons.MenuCheck else row.icon,
                             null,
                             Modifier.size(MENU_ICON_SIZE),
-                            tint = row.iconTint ?: iconColor,
+                            //  随机配色只在「能点、不是危险项、不是选中项」时生效：
+                            //  那三档的颜色各自带语义（灰 / 红 / 主色），染成随机色就丢了意思。
+                            tint =
+                                row.iconTint
+                                    ?: row.icon.takeIf { row.enabled && !row.danger && !row.selected }?.tinted()
+                                    ?: iconColor,
                         )
                     }
                 },
@@ -494,5 +517,8 @@ private fun SettingsPage.tapDisabledRow(
             },
     )
     if (!interactive || dragged) return
-    hint(hintText ?: disabledClickReason(), slot = HINT_SLOT_DISABLED)
+    //  **空串当没有**：`?:` 只在 `null` 时才落到页面那条统一原因，写成 `""` 的行会让这次点击
+    //  变成「什么都没说」，而屏幕上还留着上一条提示（用户口径：空文案会回退到上一个消息文案）。
+    val say = hintText?.takeIf { it.isNotBlank() } ?: disabledClickReason()
+    hint(say, slot = HINT_SLOT_DISABLED)
 }

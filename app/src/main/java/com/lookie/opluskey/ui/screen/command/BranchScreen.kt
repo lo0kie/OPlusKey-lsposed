@@ -271,7 +271,7 @@ internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
  *
  *  同一句也挂在顶栏的尾随小标题上：那里说的是「这一页在编哪一档」，与表尾那一行是同一件事。
  *
- *  **键名两边套一对括号**（[keyBrackets]，中文 `「」` / 英文 `“”`）—— 与页里空态那句
+ *  **键名两边套一对括号**（[keyBrackets]，中文 `「」` / 英文 `｢｣`）—— 与页里空态那句
  *  （[branchEmptyText]）、组合键编辑页的 `「侧键」+「电量 +」` 同一个长相：`快捷键 - 单击`
  *  单看像一句话，套上括号才看得出「快捷键」是那颗键的名字。用户口径「header 子标题的按键名
  *  用方框框起来，和其他页面一样」。
@@ -390,7 +390,8 @@ internal fun SettingsPage.BranchEmptyHint() {
  *  一档的规则整段清掉，行为回落到按键绑定。所以这里不再把空表当成「还没配完」，
  *  否则最后一条永远删不掉，也没有别的入口能做这件事。
  *
- *  剩下两种半成品各说一句：条件没配完 / 有动作没选。
+ *  半成品只剩「条件没配完」一种：**动作可以留空**（= 无操作，见 `ActionCatalog.BRANCH_GROUPS`），
+ *  它不是没配完，而是「这一条命中时什么都不做」。
  *
  *  「条件没配完」这一支同时管两件事：**整块还没选条件**（[StateRule.conditions] 为空）与
  *  **选了要取值的档但取值还空着**（响铃状态 / 屏幕方向）。两种情况都落不下去 ——
@@ -407,10 +408,6 @@ internal fun SettingsPage.branchRulesBlockedReason(): String? {
         //  那种表里两条重叠的区间，后一条永远轮不到，界面上却看不出来。
         branchTimesOverlap() -> {
             I18n.get(Strings.COMMAND_COND_TIME_OVERLAP, "时间区间不允许重叠")
-        }
-
-        rules.any { it.action == com.lookie.opluskey.core.model.Action.None } -> {
-            I18n.get(Strings.COMMAND_BRANCH_NEED_COMMAND, "每条场景都要选一个动作")
         }
 
         else -> {

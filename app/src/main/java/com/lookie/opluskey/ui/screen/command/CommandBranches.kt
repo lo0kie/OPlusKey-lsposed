@@ -334,8 +334,15 @@ private fun SettingsPage.BranchRow(
             //  以前是用 ` + ` 拼在同一行里 —— 两条以上时读起来像一句话，看不出是「且」的关系。
             val conditionLines = ruleConditionLines(rule)
             //  命令那格写成「父级 - 子级」（响铃状态 - 循环）：与条件那格同一套写法，
-            //  光写「循环」看不出是谁在循环（见 `actionCellTitle`）
-            val actionText = if (rule.action == Action.None) null else actionCellTitle(rule.action, ::appNameOf)
+            //  光写「循环」看不出是谁在循环（见 `actionCellTitle`）。
+            //  **留空 = 「无操作」**（场景命中也不做事），它与「还没选」是同一档数据，
+            //  这一格就一律写名字 —— 不再有灰着的「未选择命令」那种半成品提示。
+            val actionText =
+                if (rule.action == Action.None) {
+                    I18n.get(Strings.ACTION_NONE, "无操作")
+                } else {
+                    actionCellTitle(rule.action, ::appNameOf)
+                }
             RuleBlock(
                 // 「条件 1」「条件 2」—— 一份表里第几条，标题上直接写出来
                 index = spec.index,
@@ -343,15 +350,11 @@ private fun SettingsPage.BranchRow(
                 text =
                     RuleText(
                         conditionLines = conditionLines,
-                        action = actionText ?: I18n.get(Strings.COMMAND_BRANCH_NO_COMMAND, "未选择命令"),
-                        actionEmpty = actionText == null,
-                        actionIcon =
-                            if (rule.action == Action.None) {
-                                PageIcons.CommandSingle
-                            } else {
-                                //  图标跟着**档位**走：循环是重复箭头，不是响铃那格那颗
-                                actionCellIcon(rule.action, configState.commands.value)
-                            },
+                        action = actionText,
+                        actionEmpty = false,
+                        //  图标跟着**动作**走（「无操作」是 `ban`，循环是重复箭头，不是响铃那格那颗）——
+                        //  一律走同一支，别在这一层为某一档开特例
+                        actionIcon = actionCellIcon(rule.action, configState.commands.value),
                     ),
                 cells =
                     RuleCells(
@@ -397,16 +400,18 @@ private fun RuleTitleRow(
         insideMargin = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
         //  行尾那颗「更多」—— 通用小标题的 `trailing` 槽位（这一行菜单就挂在小标题右侧，
         //  不再自己套一层 `Row` + 一份 `weight`）；样式在 `MoreButton` 里（场景 / 命令列表共用一份）。
+        //  行尾的内缩**要归零**：这一行本身已经在外层 `PAGE_MARGIN` 里面（行右边缘 = 页边 − 12），
+        //  小标题默认那 22dp 是按「整幅宽的一行」算的，再补一次就成了页边 − 34。
+        trailingEndPadding = 0.dp,
         trailing = {
             MoreButton(
                 onClick = cells.onMenu,
                 anchor = cells.anchors.menu,
                 //  **与「多条命令」那颗「命令列表」小标题的「更多」落在同一位置**（同一套几何）：
-                //  那一颗的标题行贴满页宽、`endPadding = PAGE_MARGIN(12)`，字形在 40dp 点击区里
-                //  居中 ⇒ 字形右边缘在**页边 − 22dp**。
-                //  这一行的标题在外层 `PAGE_MARGIN` 里面（行右边缘已经是页边 − 12），所以
-                //  **一个 endPadding 都不给**（默认 0）：点击区贴住行右边缘、字形居中 ⇒ 同样是
-                //  页边 − 22dp。给 20 或补 `flushEnd` 都会把它往左推 10dp（「右缩进太多」）。
+                //  那一颗的内缩由 `SectionTitle` 给到 22dp，`flushEnd` 再把点击格右移 10dp
+                //  ⇒ 字形右边缘在**页边 − 22dp**。
+                //  这一行不给内缩、也不给 `flushEnd`：点击区贴住行右边缘（页边 − 12）、字形居中
+                //  ⇒ 同样是页边 − 22dp。补 `flushEnd` 会把它往左推 10dp（「右缩进太多」）。
                 //  别按「与字头对称」去调 —— 这一页字头在 32dp，两者本来就不对称，跟多条命令一致才是口径。
             )
         },

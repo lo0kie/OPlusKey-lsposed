@@ -367,23 +367,40 @@ internal fun SettingsPage.noticeReason(): LinkNotice? {
 }
 
 /**
- * 「这一下点不动」时该说什么 —— 整页总闸优先，其次是**当前编辑的那颗键自己停用了**。
+ * 「**这一下**点不动」时该说什么 —— 先说**眼前这个控件**的原因，最后才轮到整页那条。
  *
- *  为什么不能沿用 `blockedReason() ?: "页面还没就绪"`：页面上被置灰的控件分两种 ——
- *  整页被闸住（[blockedReason] 有话说），或者只是**这一颗键被停用**（总闸是通的）。
- *  第二种落到「页面还没就绪」会把人引去重进页面，而真正要做的是到 ⋮ 菜单里把键启用回来。
+ * ## 为什么不是「整页总闸优先」
  *
- *  两种键同一句话：停用**任何一颗**（含侧键）之后，打开它的入口都是同一个 ⋮ 菜单里那一行。
+ *  以前第一句就是 `blockedReason()`，于是换包没重启那阵子，点**任何**一个灰控件都会回一句
+ *  「系统侧还是旧版，重启手机后生效」。用户口径：「点禁用的控件却提示要重启」—— 他点的是一个
+ *  **因为主开关关着才灰**的行，那句重启既不是他问的、也不是他刚做的事，只剩下疑惑。
+ *
+ *  分档按「用户能就地做什么」排：配置没读成功（什么都改不了）→ 总闸关 → 这一颗键停用 →
+ *  最后才是链路那几句（宿主没起 / 没注入 / 接管点 0 / 系统侧旧包 / 设置没同步）。
+ *  链路那几句解释的是**整页为什么都不对**，进页那一次 [noticeReason] 已经说过一遍，
+ *  不必在每一次点击上重复。
+ *
+ * ## 两种键同一句话
+ *
+ *  停用**任何一颗**（含侧键）之后，打开它的入口都是同一个 ⋮ 菜单里那一行。
  */
 internal fun SettingsPage.disabledClickReason(): String {
-    blockedReason()?.let { return it }
+    val f = linkFacts
     val cfg = configState.config.value
     val key = KeyWatchState.editing(cfg)
-    if (!cfg.key(key).enabled) {
-        return I18n.format(Strings.KEY_DISABLED_ITEM, key.label)
+    return when {
+        //  配置都没读成功：什么都改不了，说别的都是空话
+        f.readOnly -> CONFIG_READ_FAILED_HINT
+
+        //  总闸关着：用户自己关的，能就地开回来
+        f.masterOff -> KEY_DISABLED_HINT
+
+        !cfg.key(key).enabled -> I18n.format(Strings.KEY_DISABLED_ITEM, key.label)
+
+        //  这一项自己没有原因 ⇒ 才轮到「整页为什么不对」（重启 / 勾作用域那几句）；
+        //  页面是通的、这一项仍然点不动（比如行要求先选一颗键）：说结论，不编一个「没就绪」
+        else -> blockedReason() ?: I18n.get(Strings.CONTROL_UNAVAILABLE, "这一项现在不可用")
     }
-    //  页面是通的、这一项仍然点不动（比如行要求先选一颗键）：说结论，不编一个「没就绪」
-    return I18n.get(Strings.CONTROL_UNAVAILABLE, "这一项现在不可用")
 }
 
 /**

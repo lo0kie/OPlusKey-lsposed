@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
 import com.lookie.opluskey.ui.model.SLIDER_ICON_INSET
 import com.lookie.opluskey.ui.model.SLIDER_INSIDE_MARGIN
 import com.lookie.opluskey.ui.model.SLIDER_ROW_TAP_TRACK
@@ -27,18 +28,17 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.roundToInt
 
-@Composable
-internal fun SettingsPage.SliderRow(
-    position: CardListPosition,
+/**
+ * 滑杆提交结果的统一出口：成功不动（等重组把 `dragging` 归位到新值），失败拨回当前真实值。
+ *
+ *  抽成一支只为让 [SliderRow] 留在 detekt 的 `LongMethod` 长度线内。
+ */
+private fun sliderCommit(
+    dragging: androidx.compose.runtime.MutableFloatState,
     spec: SliderSpec,
     onCommit: (Int) -> Boolean,
-) {
-    // 以 config 里的值为 key：写盘成功重组后回到真实值；拖动过程中 config 不变、不受干扰。
-    //  注意：只靠这一个 key 不够：**写盘失败时 config 不变** ⇒ key 不变 ⇒ 拖出来的那个值留在滑杆上。
-    //  所以下面 commit 失败还要手动拨回 [SliderSpec.value]，那条路不走重组。
-    val dragging = remember(spec.value) { mutableFloatStateOf(spec.value.toFloat()) }
-    // 提交结果的统一出口：成功不动（等重组把 dragging 归位到新值），失败拨回当前真实值。
-    val commit: (Int) -> Unit = { raw ->
+): (Int) -> Unit =
+    { raw ->
         val v = raw.coerceIn(spec.min, spec.max)
         // 判据级：滑杆是「拖了没反应 / 值自己跳」这类问题的唯一锚点 ——
         //  它一次交互只有一条（抬手或点轨道各一条），不会刷屏。
@@ -49,6 +49,18 @@ internal fun SettingsPage.SliderRow(
             XLog.w("滑杆值未提交成功，界面拨回 ${spec.value}（滑杆：${spec.title}）")
         }
     }
+
+@Composable
+internal fun SettingsPage.SliderRow(
+    position: CardListPosition,
+    spec: SliderSpec,
+    onCommit: (Int) -> Boolean,
+) {
+    // 以 config 里的值为 key：写盘成功重组后回到真实值；拖动过程中 config 不变、不受干扰。
+    //  注意：只靠这一个 key 不够：**写盘失败时 config 不变** ⇒ key 不变 ⇒ 拖出来的那个值留在滑杆上。
+    //  所以下面 commit 失败还要手动拨回 [SliderSpec.value]，那条路不走重组。
+    val dragging = remember(spec.value) { mutableFloatStateOf(spec.value.toFloat()) }
+    val commit = sliderCommit(dragging, spec, onCommit)
     val tick = rememberTick()
     //  注意：「点轨道跳值」那条手势的回调必须走 `rememberUpdatedState`：
     //  `tapSliderToSeek` 的 `pointerInput` 键里只有 `min/max/enabled`，闭包**停留在首次组合**
@@ -64,7 +76,7 @@ internal fun SettingsPage.SliderRow(
     }
     // 拖动触觉与「点轨道跳值」共用同一条通道（`rememberTick`）：判据只有系统静音，
     //  与模块的「振动反馈」开关无关（完整口径见 `tickNow`）。
-    val sliderIconColor by rememberRowIconColor(spec.enabled, label = "SliderIcon")
+    val sliderIconColor by rememberRowIconColor(spec.enabled, icon = spec.icon, label = "SliderIcon")
     // 文字三档色，与库的 `BasicComponentDefaults.titleColor()` / `summaryColor()`、
     // 以及 `SliderPreference` 里给当前值用的那一档**同源**（它们那个 `color(enabled)`
     // 是库的内部成员，取不到，所以自己按 `enabled` 选）。
@@ -92,6 +104,8 @@ internal fun SettingsPage.SliderRow(
                 spec.icon,
                 contentDescription = null,
                 tint = sliderIconColor,
+                //  补上库少给的那 8dp，图标两侧留白才一样宽（见 [ROW_START_ICON_GAP]）
+                modifier = Modifier.padding(end = ROW_START_ICON_GAP),
             )
         },
         // 行尾当前值。文案走 `spec.valueText`（毫秒那几档是 `durationText`：1000ms 以上写成秒；

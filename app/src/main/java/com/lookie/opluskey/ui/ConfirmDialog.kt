@@ -19,6 +19,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -92,8 +93,8 @@ internal fun DialogButtonRow(
     onPositive: () -> Unit,
     positiveStyle: DialogPositiveStyle = DialogPositiveStyle(),
 ) {
-    //  **竖向留白与左右内缩都不在这里**：那一层由 `FrostedDialog` 的 `footer` 槽统一给
-    //  （上下 [DIALOG_REGION_GAP]、左右 `insideMargin`）。
+    //  **竖向留白与左右内缩都不在这里**：竖向归 `DialogPanel`（相邻两区之间各一档
+    //  [DIALOG_REGION_GAP]），左右由底部那一槽自己给（`insideMargin`）。
     //  自己再补一份，两个窗叠起来就对不齐 —— 那正是「上下留白总量不一致」的来源。
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -119,7 +120,14 @@ internal fun DialogButtonRow(
                 minHeight = DIALOG_BUTTON_HEIGHT,
                 colors =
                     if (positiveStyle.danger) {
-                        ButtonDefaults.buttonColors(color = COUITheme.colorScheme.error)
+                        //  **字要跟着底色走**：不给 `contentColor` 时库取的是常规内容色（深色档是近黑），
+                        //  压在饱和的 `error` 红上就是「红配黑」—— 浅色模式下几乎看不清（真机反馈）。
+                        //  危险按钮的底在两种深浅下都是饱和红，所以字恒用白；跟着 `onPrimary` 走不行 ——
+                        //  深色档那个值是深色，换到红底上又成了同一种毛病。
+                        ButtonDefaults.buttonColors(
+                            color = COUITheme.colorScheme.error,
+                            contentColor = Color.White,
+                        )
                     } else {
                         ButtonDefaults.buttonColorsPrimary()
                     },
@@ -178,15 +186,39 @@ internal data class DialogPositiveStyle(
 internal val DIALOG_LINE_HEIGHT = 1.29f.em
 
 /**
- * 弹窗三区（头 / 正文 / 底）之间的**唯一一档**竖向留白。
+ * 弹窗文字的行盒裁剪 —— **行高只用来定行距，不再计入上下间距**。
  *
- *  四个间隙全用它：面板上沿→标题、标题→正文、正文→按钮、按钮→面板下沿。
+ *  一行字实际占的高度是 [DIALOG_LINE_HEIGHT]，墨迹只占其中一段，剩下的白落在文字上方与下方。
+ *  面板的三档间距按**区的外框**给，于是「字形到字形」看着比一档宽 —— 字号越大白得越多
+ *  （标题吃的比正文多），用户看到的就是「有正文时标题离正文比别处远」。
+ *
+ *  `Trim` 只裁首行上方与末行下方那两段，行与行之间的行距一点不动（多行标题、正文段落都不受影响）。
+ *
+ *  `includeFontPadding = false` 是同一件事的另一半：行盒里的**字体框本身**还带一层上下 padding，
+ *  `Trim` 只裁 `行高 − 字体框` 那部分，裁不掉嵌在框里的这层白 —— 而它同样按字号放大，
+ *  光裁行高的话标题那侧仍比正文多。
+ */
+internal val DIALOG_LINE_HEIGHT_STYLE =
+    androidx.compose.ui.text.style.LineHeightStyle(
+        androidx.compose.ui.text.style.LineHeightStyle.Alignment.Center,
+        androidx.compose.ui.text.style.LineHeightStyle.Trim.Both,
+    )
+
+/** 与 [DIALOG_LINE_HEIGHT_STYLE] 配套：字体框不再自带上下留白。 */
+internal val DIALOG_PLATFORM_STYLE =
+    androidx.compose.ui.text
+        .PlatformTextStyle(includeFontPadding = false)
+
+/**
+ * 弹窗各段之间的**唯一一档**竖向留白。
+ *
+ *  面板上沿→标题、标题→相邻的那一区（正文或按钮）、那一区→面板下沿，全部取这一个数 ——
+ *  与中间有没有正文无关，所以「标题 + 按钮」与「标题 + 正文 + 按钮」量出来视觉等高。
  *  取同一个数是为了「上下留白总量一致」：两个不同的数（外沿 16 / 区内 12）看着是「里面紧外面松」，
- *  但落到真机上，头部那一区再叠上正文自己的边距，上下就对不齐了 —— 真机口径
- *  「content 和 header 的 gap 一叠加，上边距比下边距少」。
+ *  落到真机上就是「上边距比下边距少」。
  *
- *  顺带把「每个区自己垂直居中」也变成**结构上必然**：头部与底部都是这一档的上下等边距，
- *  中间那一格天然居中，不用再给固定高度去算余量。
+ *  所有权在排三区的那一层（`PageConfirmDialog.kt` 的 `DialogPanel`）：各区**不再自己补**上下边距，
+ *  因为空区处两份边距会叠成两档 —— 用户看到的就是「没有正文时标题离按钮太远」。
  */
 internal val DIALOG_REGION_GAP = 16.dp
 

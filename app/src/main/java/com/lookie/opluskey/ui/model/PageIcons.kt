@@ -30,9 +30,15 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber1
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber2
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber3
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber4
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber5
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
+import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobilePause
@@ -68,11 +74,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.MoodHeart
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
 import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Notes
-import io.github.lyxnx.compose.ui.tablericons.outline.Number1
-import io.github.lyxnx.compose.ui.tablericons.outline.Number2
-import io.github.lyxnx.compose.ui.tablericons.outline.Number3
-import io.github.lyxnx.compose.ui.tablericons.outline.Number4
-import io.github.lyxnx.compose.ui.tablericons.outline.Number5
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
@@ -85,6 +86,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
+import io.github.lyxnx.compose.ui.tablericons.outline.ShieldCode
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
@@ -267,27 +269,32 @@ internal object PageIcons {
                     strokeLineJoin = StrokeJoin.Round,
                 )
                 addPath(
-                    // 一条圆头短线：圆帽就是这颗键的两端
+                    // 一条圆头短线：圆帽就是这颗键的两端。比手机外框那一竖的 1/6 略长一点就够 ——
+                    //  再长就像贴在边框上的第三条边，短了又只剩一个圆点。
                     pathData =
                         PathData {
-                            moveTo(5.6f, 8.4f)
-                            lineTo(5.6f, 12.4f)
+                            moveTo(5.6f, 9.2f)
+                            lineTo(5.6f, 11.6f)
                         },
                     stroke = SolidColor(Color.Black),
-                    strokeLineWidth = SIDE_KEY_STROKE,
+                    strokeLineWidth = SIDE_KEY_BAR_STROKE,
                     strokeLineCap = StrokeCap.Round,
                 )
             }.build()
     }
 
     /**
-     * 清单里「第几条」—— 按它在这一列里的位置取数字：`number-1` … `number-5`
+     * 清单里「第几条」—— 按它在这一列里的位置取**圈里数字**：`circle-number-1` … `circle-number-5`
      * （[index] 从 0 起）。
      *
      *  两个调用点共用这一支笔：首页「按键」卡里**收集到的键**（上限三颗，
      *  `KeyId.MAX_CUSTOM_KEYS`）、以及「组合键」列表里的**第几组**（上限五组，
      *  `MAX_COMBOS`）。数字跟着**列表位置**走，删掉中间那条之后后面的各自前移一位 ——
      *  与清单里看到的顺序一致。
+     *
+     *  用**圈里**数字而不是裸数字（`number-N`）：裸数字在 22dp 上只剩几根细笔画、外面没有任何
+     *  轮廓，与旁边那些有外框的字形（手机 + 侧键、加号）不是一个体量，一行里看着像掉了个字。
+     *  圈给它一个与别的图标同样的外轮廓，这一排才读得成同一组条目。
      *
      *  只到 5：五组是组合键的上限（用户口径），再往上那一档没有图标可用，
      *  越界就兜到 5 —— 真的越界说明上限判据与这排数字又各说了一个数。
@@ -296,11 +303,11 @@ internal object PageIcons {
      */
     fun menuKeyNumber(index: Int): ImageVector =
         when (index) {
-            0 -> TablerIcons.Outline.Number1
-            1 -> TablerIcons.Outline.Number2
-            2 -> TablerIcons.Outline.Number3
-            3 -> TablerIcons.Outline.Number4
-            else -> TablerIcons.Outline.Number5
+            0 -> TablerIcons.Outline.CircleNumber1
+            1 -> TablerIcons.Outline.CircleNumber2
+            2 -> TablerIcons.Outline.CircleNumber3
+            3 -> TablerIcons.Outline.CircleNumber4
+            else -> TablerIcons.Outline.CircleNumber5
         }
 
     /**
@@ -401,6 +408,9 @@ internal object PageIcons {
 
     // 「界面颜色」菜单里那三项各自的字形 —— 与语言那三颗同一个道理：共用一颗的话菜单三行长得一样。
 
+    // 「随机图标配色」那一行 —— 一块色板（`ColorSwatch`），与强调色那颗色块区分开
+    val RandomIconTint: ImageVector get() = TablerIcons.Outline.ColorSwatch
+
     /** 「跟随系统」—— `brightness-auto`（自动亮度那种「A」）。 */
     val ThemeAuto: ImageVector get() = TablerIcons.Outline.BrightnessAuto
 
@@ -455,8 +465,24 @@ internal object PageIcons {
     /** 「自定义命令」页里命令行尾的删除图标 —— `Trash`，用 `error` 色，调用点给 20dp。 */
     val CommandDelete: ImageVector get() = TablerIcons.Outline.Trash
 
-    /** 命令类型「单条命令」—— `Terminal2`，当列表行首（网格里自定义命令格子也按类型取它）。 */
+    /**
+     * 命令类型「单条命令」，**不申请 root**（只走 `sh`）—— `Terminal2`（带框的终端）。
+     *
+     *  列表行首、网格里自定义命令格子、步骤行里引到单条命令的那一行都取它（见 `commandIcon`
+     *  与 `stepIcon`）。以 root 执行的那一档换成 [CommandRoot]，两种身份必须是两颗字。
+     */
     val CommandSingle: ImageVector get() = TablerIcons.Outline.Terminal2
+
+    /**
+     * 「以 root 执行」—— `ShieldCode`（盾牌 + 代码 = 换一个身份跑命令）。
+     *
+     *  两处说的是同一件事「这条命令换个身份跑」：命令设置里那张开关行的行首，以及命令列表里
+     *  **以 root 执行**的单条命令卡的行首（见 `commandIcon` 的 `root`）。
+     *
+     *  与 [CommandSingle] 的差别只在**形状**：一个是盾、一个是终端框，都是同一档 outline 描边。
+     *  不用钥匙：钥匙读起来是「密码 / 密钥」，与「用哪种身份执行」不是一回事。
+     */
+    val CommandRoot: ImageVector get() = TablerIcons.Outline.ShieldCode
 
     /**
      * 「条件执行」那条命令的类型图标 —— `arrows-split`（一路分两岔）。
@@ -712,3 +738,11 @@ internal object PageIcons {
  * 收 0.1 是为了让圆头笔画的两端不顶到 24 格的边界。
  */
 private const val SIDE_KEY_STROKE = 1.9f
+
+/**
+ * 侧键那一条的笔画宽度 —— 比外框细一档。
+ *
+ *  外框是**轮廓**、侧键是**贴着轮廓凸出来的那一条**；两者同宽时，那条短线读起来像外框
+ *  拐过来的一段（这颗键就消失了），细一点才分得开。它不跟外框共用同一个常量。
+ */
+private const val SIDE_KEY_BAR_STROKE = 1.4f
