@@ -5,12 +5,15 @@ import com.lookie.opluskey.core.model.GlobalConfig
 /**
  * 界面颜色的三档 —— 与 `GlobalConfig.theme` 的取值一一对应（那边只存字符串）。
  *
- *  三档的**顺序**就是菜单里的顺序，也是「从松到紧」的顺序：跟随系统 → 固定浅 → 固定深。
+ *  顺序就是菜单里的顺序，也是「从松到紧」的顺序：跟随系统 → 跟随系统(Monet) → 固定浅 → 固定深。
  */
 internal enum class AppTheme(
     val code: String,
 ) {
     AUTO(GlobalConfig.DEFAULT_THEME),
+
+    /** 跟随系统，且整页用系统那套 Monet 配色（见 `PagePalette.colorsOf`）。 */
+    MONET(GlobalConfig.THEME_MONET),
     LIGHT(GlobalConfig.THEME_LIGHT),
     DARK(GlobalConfig.THEME_DARK),
     ;

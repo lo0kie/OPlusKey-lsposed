@@ -35,7 +35,8 @@ import com.lookie.opluskey.ui.screen.command.BranchHeaderAdd
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
 import com.lookie.opluskey.ui.screen.command.CommandHeaderReset
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
-import com.lookie.opluskey.ui.screen.command.branchDefaultLabel
+import com.lookie.opluskey.ui.screen.command.branchGestures
+import com.lookie.opluskey.ui.screen.command.branchOwnerLabel
 import com.lookie.opluskey.ui.screen.home.ResetMenu
 import com.lookie.opluskey.ui.screen.variables.VariableHeaderAdd
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -171,16 +172,14 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
 /**
  * 大标题**下面**那行小标题按页分派（库原本那个槽位，折叠后跟着标题缩）：
- *  · 首页 = 模块版本 —— **只读一次**：它要读包信息，首页每重组一帧都重读一遍没有意义；
- *  · 条件执行 = **在编哪一档**（`「侧键」-单击`）—— 这一行比其它页的尾随标题长（键名 + 手势），
- *    挂在大标题右边要跟标题抢宽度，放到下面独占一行才读得完整；
- *  · 其余页都不占这一槽（「按键绑定」那一组名在大标题右边的尾随标题，见 [pageSubtitle]）。
+ *  只有首页占这一槽 = 模块版本 —— **只读一次**：它要读包信息，首页每重组一帧都重读一遍没有意义；
+ *  其余页都不占（「条件执行」原来在这里写「键名 - 手势」，现在那一档由顶栏下的手势带说，
+ *  见 [PageBottomBand]）。
  */
 @Composable
 private fun SettingsPage.largeTitleSubtitle(s: Screen): String =
     when (s) {
         Screen.SHORTCUTS -> remember { appVersionLabel() }
-        Screen.BRANCHES -> branchDefaultLabel()
         else -> ""
     }
 
@@ -221,9 +220,13 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             }
         }
 
-        // 分叉页那一行不在这里：它写的是「在编哪一档」（`「侧键」-单击`），键名 + 手势连起来
-        //  比其它页的尾随标题长得多，挂在大标题右边要跟标题抢宽度 —— 放到大标题下面独占一行
-        //  （[largeTitleSubtitle]）。
+        // 「条件执行」页这一行写**在编哪一颗键**（`「快捷键」` / `「侧键」+「电量 +」`）：
+        //  这一页是从「按键绑定」的某颗键上进来的，进来之后整页再没有别处提过它是哪一颗 ——
+        //  而「改的是哪一颗键」正是这一页最容易搞错的东西。哪一档手势不写在这里：它由顶栏下
+        //  那条手势带说，两边各说一半，也就不会跟大标题抢宽度（见 [branchOwnerLabel]）。
+        Screen.BRANCHES -> {
+            branchOwnerLabel()
+        }
 
         // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
         Screen.ACTIVITY_PICKER -> {
@@ -333,6 +336,18 @@ private fun SettingsPage.PageBottomBand(
             CommandKindBand(pagers.commands)
         }
 
+        // 「条件执行」页：手势那几页 —— 与「按键绑定」同一套（横滑换档、滑块跟手）。
+        //  单键三档、组合键只有短按 / 长按（见 `branchGestures`），页数由分页器那边定，
+        //  这里的标签跟着它走，两边不会对不上。
+        Screen.BRANCHES -> {
+            PageTabBand(
+                pagerState = pagers.branches,
+                labels = branchGestures().map { gestureLabel(it) },
+                enabled = pageWritable(),
+                band = branchesBandHeight,
+            )
+        }
+
         // 「组合键」编辑页：短按 / 长按两档，与「按键绑定」那条带子同一个组件、同一个落点
         Screen.COMBO_EDIT -> {
             PageTabBand(
@@ -359,9 +374,8 @@ private fun SettingsPage.PageBottomBand(
         }
 
         // 首页 / 「关于模块」/「捐赠列表」都没有固定带（后两页都是「短内容」页，见 [pageScrollBehavior]）。
-        //  「条件执行」也没有：它没有类型可选，那一页的内容直接顶在顶栏下面。
         //  「自定义变量」同样没有：那一页没有分页器，也就没有带子。
-        Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL, Screen.BRANCHES,
+        Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL,
         Screen.COMBOS, Screen.VARIABLES,
         -> {
             // 这几页不摆固定带

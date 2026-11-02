@@ -53,18 +53,6 @@ internal class BranchDraft {
      */
     var owner: String? by mutableStateOf(null)
 
-    /**
-     * 这一趟在编的是**哪一档组合键**（`ComboKey.id`）；`null` = 在编某颗单键的某一档。
-     *
-     *  两个来源（`Config.keys` / `Config.combos`）的规则表形状完全一样，只有「从哪张表读、
-     *  写回哪张表」不同 —— 这一位就是那个判据。
-     *
-     *  放在草稿里而不是页面局部状态：它必须和 [owner] 同生共死。出栈时 [reset] 一起清，
-     *  否则下次从单键进条件执行页时会带着上一趟的组合键 id 去 `combos` 里找规则、再把结果
-     *  写回配置。
-     */
-    var comboId: String? by mutableStateOf(null)
-
     /** [load] 进来的那份快照 —— 只服务 [dirty]。 */
     private var loaded: List<StateRule> = emptyList()
 
@@ -76,19 +64,16 @@ internal class BranchDraft {
     /**
      * 载入某颗键某一档的条件表。
      *
-     * [owner] 是「键 + 手势」的标识：同一份草稿在页面里只建一次，换键 / 换手势时靠它
-     * 判「要不要重灌」—— 否则从另一档进来会看到上一档的规则。
+     * [owner] 是「键 + 手势」的标识：换键 / 换手势时靠它判「要不要重灌」—— 否则会看到
+     * 上一档的规则。
      *
      * 行身份一起重发：换了一档就是新的一批行，动画没必要接着上一档的账算。
      */
     fun load(
         owner: String,
         source: List<StateRule>,
-        comboId: String? = null,
     ) {
         this.owner = owner
-        //  与 owner 一起写：两者必须同时成立，分两次写会有一帧「owner 是组合的、comboId 还是空的」
-        this.comboId = comboId
         rules.clear()
         ids.clear()
         nextId = 0
@@ -105,7 +90,6 @@ internal class BranchDraft {
         nextId = 0
         loaded = emptyList()
         owner = null
-        comboId = null
     }
 
     /**
@@ -169,7 +153,37 @@ internal class BranchDraft {
 
 /** 页面级那一份（见 `SettingsPage.branchDraft`）。 */
 internal class BranchDraftState {
-    val draft = BranchDraft()
+    /**
+     * **一档手势一份草稿** —— 这一页是三页横滑（单击 / 双击 / 长按），三页同时在场，
+     *  各编各的表：共用一个对象的话，滑到哪一页就会把上一页没保存的东西冲掉。
+     */
+    private val drafts = Gesture.entries.associateWith { BranchDraft() }
+
+    /**
+     * 这一趟在编的是**哪一档组合键**（`ComboKey.id`）；`null` = 在编某颗单键。
+     *
+     *  两个来源（`Config.keys` / `Config.combos`）的规则表形状完全一样，只有「从哪张表读、
+     *  写回哪张表」不同 —— 这一位就是那个判据。**住在这一层而不是草稿里**：三档共用同一个
+     *  来源（同一趟不可能一半编单键、一半编组合键），分三份只会让「哪份才算数」变成一个问题。
+     */
+    var comboId: String? by mutableStateOf(null)
+
+    /** 这一档手势那份草稿。 */
+    fun of(gesture: Gesture): BranchDraft = drafts.getValue(gesture)
+
+    /**
+     * 按**档位序号**取那一份（页面级那个 `branchGesture` 存的就是序号）—— 认不出的序号落回单击。
+     *
+     *  页外那几个判据（退出要不要问、挑应用回来点亮哪一行）走这一处：它们手里只有序号，
+     *  不该为了拿一份草稿去认识「这一页在编谁」。
+     */
+    fun at(gestureIndex: Int): BranchDraft = of(Gesture.entries.getOrElse(gestureIndex) { Gesture.SINGLE })
+
+    /** 出栈时把三份与组合键来源一起清掉（下次进来是重新载入的三份）。 */
+    fun discard() {
+        drafts.values.forEach { it.reset() }
+        comboId = null
+    }
 }
 
 /** 「没有刚加的那一行」的哨兵值（行身份从 0 起，撞不上）。 */

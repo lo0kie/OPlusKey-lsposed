@@ -24,6 +24,7 @@ import com.lookie.opluskey.ui.model.conditionIcon
 import com.lookie.opluskey.ui.model.conditionKindLabel
 import com.lookie.opluskey.ui.screen.openVarOpsForBranch
 import com.lookie.opluskey.ui.state.AppPickerState
+import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.ResumeSheet
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowDown
@@ -46,13 +47,15 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
  */
 @Composable
 internal fun SettingsPage.BranchMenus(
+    /** **这一页**那一份草稿 —— 三页同时在场，各改各的表（见 `BranchScreen`）。 */
+    draft: BranchDraft,
     rules: List<StateRule>,
     menus: BranchMenuState,
     tick: () -> Unit,
 ) {
-    BranchConditionFlow(rules = rules, menus = menus, tick = tick)
-    BranchCommandMenu(rules = rules, menus = menus, tick = tick)
-    BranchRowMenu(rules = rules, menus = menus)
+    BranchConditionFlow(draft = draft, rules = rules, menus = menus, tick = tick)
+    BranchCommandMenu(draft = draft, rules = rules, menus = menus, tick = tick)
+    BranchRowMenu(draft = draft, rules = rules, menus = menus)
 }
 
 /**
@@ -66,6 +69,7 @@ internal fun SettingsPage.BranchMenus(
  */
 @Composable
 private fun SettingsPage.BranchRowMenu(
+    draft: BranchDraft,
     rules: List<StateRule>,
     menus: BranchMenuState,
 ) {
@@ -87,7 +91,7 @@ private fun SettingsPage.BranchRowMenu(
                 //  `lastOrNull()` 的话它返回 null、判不出「已经有待配的那一行」，于是照样插进去，
                 //  变成两行「未选择条件」，用户还得分清哪行是刚加的）。
                 //  两种情况都给同一句提示，把注意力推回那一行。
-                add(addConditionRow(at, menus))
+                add(addConditionRow(draft, at, menus))
                 //  停用 / 启用紧跟在「添加场景」下面（同属「这一行现在怎么样」）——
                 //  行本体在 `CommandBranchParts.kt`：这一支的行数已经到了 detekt 的上限。
                 add(branchToggleRow(rules, at, menus))
@@ -100,7 +104,7 @@ private fun SettingsPage.BranchRowMenu(
                         disabledHint = I18n.get(Strings.COMMAND_BRANCH_TOP_REACHED, "已经在最上面"),
                         dividerBefore = true,
                     ) {
-                        branchDraft.draft.move(at, at - 1)
+                        draft.move(at, at - 1)
                         menus.menuAt = -1
                     },
                 )
@@ -111,7 +115,7 @@ private fun SettingsPage.BranchRowMenu(
                         enabled = at >= 0 && at < rules.lastIndex,
                         disabledHint = I18n.get(Strings.COMMAND_BRANCH_BOTTOM_REACHED, "已经在最下面"),
                     ) {
-                        branchDraft.draft.move(at, at + 1)
+                        draft.move(at, at + 1)
                         menus.menuAt = -1
                     },
                 )
@@ -145,11 +149,12 @@ private fun SettingsPage.BranchRowMenu(
  */
 @Composable
 private fun SettingsPage.BranchConditionFlow(
+    draft: BranchDraft,
     rules: List<StateRule>,
     menus: BranchMenuState,
     tick: () -> Unit,
 ) {
-    BranchConditionMenu(rules = rules, menus = menus, tick = tick)
+    BranchConditionMenu(draft = draft, rules = rules, menus = menus, tick = tick)
 
     //  时间区间那个选择窗 —— 独立弹窗，不挂在菜单上（菜单在点它的时候已经关掉了）。
     //  初值取**这一条**现在的区间：改时间时看到的是当前值，而不是又跳回默认。
@@ -175,7 +180,7 @@ private fun SettingsPage.BranchConditionFlow(
             if (branchTimeOverlaps(range, timeAt, condIndex)) {
                 hint(I18n.get(Strings.COMMAND_COND_TIME_OVERLAP, "时间区间不允许重叠"))
             } else {
-                applyBranchCondition(rules, timeAt, condIndex, BranchCondition.of(ConditionKind.TIME, range), menus)
+                applyBranchCondition(draft, timeAt, condIndex, BranchCondition.of(ConditionKind.TIME, range), menus)
             }
         },
     )
@@ -213,6 +218,7 @@ private fun SettingsPage.BranchConditionFlow(
  */
 @Composable
 private fun SettingsPage.BranchConditionMenu(
+    draft: BranchDraft,
     rules: List<StateRule>,
     menus: BranchMenuState,
     tick: () -> Unit,
@@ -275,7 +281,7 @@ private fun SettingsPage.BranchConditionMenu(
 
             else -> {
                 tick()
-                applyBranchCondition(rules, ruleAt, slot, BranchCondition.of(kind, value), menus)
+                applyBranchCondition(draft, ruleAt, slot, BranchCondition.of(kind, value), menus)
             }
         }
     }
@@ -340,6 +346,7 @@ private fun SettingsPage.BranchConditionMenu(
  *  这一行**还没有可用的条件**时不再插，只给一句提示把注意力推回那一行。
  */
 private fun SettingsPage.addConditionRow(
+    draft: BranchDraft,
     at: Int,
     menus: BranchMenuState,
 ): MenuEntry.Row =
@@ -348,7 +355,7 @@ private fun SettingsPage.addConditionRow(
         icon = TablerIcons.Outline.Plus,
         onPick = {
             menus.menuAt = -1
-            val old = branchDraft.draft.rules.getOrNull(at) ?: return@Row
+            val old = draft.rules.getOrNull(at) ?: return@Row
             //  判据是「**还没有可用的条件**」，不是「最后一条是空的」：条件列表为空时页面
             //  同样已经摆了一行「未选择条件」占位，那也是「有待配的一行」。
             val pending = old.conditions.isEmpty() || old.conditions.lastOrNull()?.isUsable == false
@@ -361,7 +368,7 @@ private fun SettingsPage.addConditionRow(
                 return@Row
             }
             val next = old.addingCondition(BranchCondition(""))
-            branchDraft.draft.update(at, next)
+            draft.update(at, next)
             //  刚插的那一条先收起再展开（见 `BranchMenuState.freshCond`）
             menus.freshCond = CondRef(at, next.conditions.lastIndex)
         },
@@ -408,6 +415,7 @@ private fun SettingsPage.conditionDeleteRow(
  */
 @Composable
 private fun SettingsPage.BranchCommandMenu(
+    draft: BranchDraft,
     rules: List<StateRule>,
     menus: BranchMenuState,
     tick: () -> Unit,
@@ -444,7 +452,7 @@ private fun SettingsPage.BranchCommandMenu(
                     tick()
                     //  `at` 是打开抽屉那一刻的下标：越界就什么都不写（规则表在此期间变过的话，
                     //  那个下标已经不是原来那一条了 —— 宁可不落，也别改到别人的行上）
-                    if (at in rules.indices) applyBranchAction(at, token)
+                    if (at in rules.indices) applyBranchAction(draft, at, token)
                 },
                 onDismiss = { menus.commandAt = -1 },
                 //  场景这一支要列出「无操作」：它是「命中也不做事」这一档（多条命令的步骤不列）
@@ -457,10 +465,11 @@ private fun SettingsPage.BranchCommandMenu(
  * 把某一档动作写到第 [index] 条规则上 —— 关菜单之前调用（关掉之后下标就取不到了）。
  */
 private fun SettingsPage.applyBranchAction(
+    draft: BranchDraft,
     index: Int,
     token: String,
 ) {
-    val old = branchDraft.draft.rules.getOrNull(index) ?: return
+    val old = draft.rules.getOrNull(index) ?: return
     val parsed = Action.parse(token)
     //  「无操作」在这一档是**真取值**（场景命中也不做事，用来盖住后面的兜底场景，
     //  见 `ActionCatalog.BRANCH_GROUPS`）；只有认不出的 token 才保持原样。
@@ -471,7 +480,7 @@ private fun SettingsPage.applyBranchAction(
         XLog.w("系统场景：认不出的动作 token（第 ${index + 1} 条保持原样）：$token")
         return
     }
-    branchDraft.draft.update(index, old.copy(action = parsed))
+    draft.update(index, old.copy(action = parsed))
 }
 
 /**
@@ -485,7 +494,7 @@ private fun SettingsPage.applyBranchAction(
  *  比「先逼用户挑一条命令」顺。
  */
 private fun SettingsPage.applyBranchCondition(
-    rules: List<StateRule>,
+    draft: BranchDraft,
     index: Int,
     condIndex: Int,
     condition: BranchCondition,
@@ -493,18 +502,19 @@ private fun SettingsPage.applyBranchCondition(
     menus: BranchMenuState,
 ) {
     val gesture = branchGestureNow()
-    val old = rules.getOrNull(index)
+    //  这张表就是这一页那一份草稿的表（调用点传进来的 `rules` 与它同一个对象）
+    val old = draft.rules.getOrNull(index)
     //  `NEW_BRANCH` 是 -1，`getOrNull` 对它本来就给 null —— 不必再单判一次
     if (old == null) {
-        branchDraft.draft.add(StateRule.single(gesture, condition, Action.None))
+        draft.add(StateRule.single(gesture, condition, Action.None))
     } else if (condIndex in old.conditions.indices) {
         //  改第 condIndex 条：只换那一个槽位，其余几条原样留着
-        branchDraft.draft.update(index, old.replacingCondition(condIndex, condition))
+        draft.update(index, old.replacingCondition(condIndex, condition))
     } else {
         //  追加一条（「再加一条条件」进来的）。不走 `replacingCondition`：那支越界会退回改第 0 条，
         //  等于把用户已有的第一条悄悄换掉 —— 多条件里这是最不能接受的一种「猜」。
         val next = old.addingCondition(condition)
-        branchDraft.draft.update(index, next)
+        draft.update(index, next)
         //  记下「刚插的是第几条」：界面据此让这一行先以不可见组合一帧、再展开
         menus.freshCond = CondRef(index, next.conditions.lastIndex)
     }
@@ -517,12 +527,13 @@ private fun SettingsPage.applyBranchCondition(
  * 而用户想表达的「不要这条规则」有行尾菜单里那个删除。这里再兜一次，免得以后多一个入口忘了。
  */
 internal fun SettingsPage.deleteBranchCondition(
+    draft: BranchDraft,
     index: Int,
     condIndex: Int,
 ) {
-    val old = branchDraft.draft.rules.getOrNull(index) ?: return
+    val old = draft.rules.getOrNull(index) ?: return
     if (old.conditions.size <= 1) return
     if (condIndex !in old.conditions.indices) return
-    branchDraft.draft.update(index, old.withoutCondition(condIndex))
+    draft.update(index, old.withoutCondition(condIndex))
     XLog.w("系统场景：第 ${index + 1} 条规则删掉第 ${condIndex + 1} 条场景（剩 ${old.conditions.size - 1} 条）")
 }

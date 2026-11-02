@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.toArgb
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.AppTheme
@@ -28,6 +29,15 @@ import kotlinx.coroutines.launch
 /** 页面底色 —— COUI 色板的 `surface`（深色 `#000000`、浅色 `#F0F1F2`，与系统设置页一致）。 */
 internal val SettingsPage.pageBackgroundColor: Int
     get() = colorsFor(chrome.dark).surface.toArgb()
+
+/**
+ * 这一页现在用的是哪一档界面颜色（[AppTheme]）。
+ *
+ *  只有**自己定底色的浮层**要它：菜单 / 确认弹窗的面板不走 `COUITheme` 的 `surface`（那一档
+ *  要比页面亮一档，见 `PageColors`），而 Monet 那一档又得跟着系统取色。
+ *  由 `PageContent` 在页面级提供；取不到时是默认档（按传统那套中性面板画）。
+ */
+internal val LocalAppTheme = staticCompositionLocalOf { AppTheme.AUTO }
 
 internal fun SettingsPage.colorsFor(night: Boolean) = if (night) DARK_SCHEME else LIGHT_SCHEME
 
@@ -133,6 +143,11 @@ internal fun SettingsPage.syncNight(from: String): Boolean {
 internal fun SettingsPage.effectiveNight(): Boolean =
     when (AppTheme.ofCode(configState.config.value.global.theme)) {
         AppTheme.AUTO -> systemNight()
+
+        // Monet 也是「跟随系统」：深浅同样跟着系统走，只是配色换成系统那套（见 `colorsOf`）
+        AppTheme.MONET -> systemNight()
+
         AppTheme.LIGHT -> false
+
         AppTheme.DARK -> true
     }

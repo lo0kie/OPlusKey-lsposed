@@ -214,7 +214,7 @@ private fun SettingsPage.PageBody(
         // 「条件执行」：与「自定义命令」页同一套表单骨架，只是固定成 BRANCH 那一档，
         //  没有类型选择器带子（见 [BranchScreen]）。
         Screen.BRANCHES -> {
-            BranchScreen(scrollBehavior)
+            BranchScreen(scrollBehavior, pagers.branches)
         }
 
         // 挑应用。**两个入口共用这一页**（挑中的东西不一样）；点一行进下一级，

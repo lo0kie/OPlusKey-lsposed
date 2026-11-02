@@ -151,7 +151,10 @@ internal class SettingsPage(
     private fun hasUnsavedDraft(s: Screen): Boolean =
         when (s) {
             Screen.COMMANDS -> commandDraft.draft.dirty
-            Screen.BRANCHES -> branchDraft.draft.dirty
+
+            //  只看**当前这一档**：三档各有各的草稿，别的档改没改与这一退无关
+            Screen.BRANCHES -> branchDraft.at(branchGesture).dirty
+
             else -> false
         }
 
@@ -231,6 +234,9 @@ internal class SettingsPage(
     internal val comboBandHeight = BandHeight()
     internal val commandBandHeight = BandHeight()
     internal val appSearchBandHeight = BandHeight()
+
+    /** 「条件执行」页那条手势带 —— 同上，各页一份。 */
+    internal val branchesBandHeight = BandHeight()
 
     /** 「选择界面」页那条搜索带 —— 与「选择应用」那条同一套版式，高度各量各的。 */
     internal val activitySearchBandHeight = BandHeight()
@@ -312,10 +318,11 @@ internal class SettingsPage(
     internal val branchDraft = BranchDraftState()
 
     /**
-     * 「按键绑定」页**当前停在哪一档手势**（0 = 单击 / 1 = 双击 / 2 = 长按）。
+     * 「条件执行」页**现在编的是哪一档手势**（0 = 单击 / 1 = 双击 / 2 = 长按）。
      *
-     *  分叉页要它：从哪个手势页签进来，编的就是哪一档的条件表，顶栏小标题也写这一档
-     *  （`侧键-单击`）。pager 状态在 `PageContent` 里 remember、跨页拿不到，所以在这一层记一份。
+     *  两个写入方：进页时由「按键绑定」页的 pager 同步一份（从哪一档点进来就编哪一档），
+     *  进页之后由这一页顶栏那条手势带改（切 tab 就是换一档草稿）。
+     *  pager 状态在 `PageContent` 里 remember、跨页拿不到，所以在这一层记一份。
      */
     internal var branchGesture by mutableIntStateOf(0)
 
@@ -389,7 +396,7 @@ internal class SettingsPage(
 
             Screen.BRANCHES -> {
                 // 条件执行页用另一份草稿（分叉不是命令库的一条记录），同样出栈即销
-                branchDraft.draft.reset()
+                branchDraft.discard()
                 //  **不碰 [branchGesture]**：它是「按键绑定页当前停在哪一档」，不是这一页的状态。
                 //  在这里清成 0 的话，退出去再进来读到的是单击 —— 而那个值的唯一写入方
                 //  （`BindingScreen` 里 `LaunchedEffect(pagerState.currentPage)`）**不会重跑**
@@ -514,7 +521,7 @@ internal class SettingsPage(
         val forCommand = picker.branchCommandTarget != AppPickerState.NOT_FOR_BRANCH
         val branchAt = if (forCommand) picker.branchCommandTarget else picker.branchTarget
         if (branchAt != AppPickerState.NOT_FOR_BRANCH) {
-            val rule = branchDraft.draft.rules.getOrNull(branchAt)
+            val rule = branchDraft.at(branchGesture).rules.getOrNull(branchAt)
             return when {
                 rule == null -> {
                     null

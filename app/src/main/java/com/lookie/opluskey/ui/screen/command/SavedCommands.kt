@@ -117,41 +117,46 @@ internal fun SettingsPage.SavedCommandsSection(
         if (list.isEmpty()) {
             SavedCommandEmptyState()
         } else {
+            //  **必须自己套一层 `Column`**：`AnimatedContent` 的内容位是**叠放式**的（所有子项都摆
+            //  在左上角），直接往里发多行网格会让第 2 行起与第 1 行叠在一起 —— 两条命令（一行）时
+            //  看不出来，三条起就糊成一坨（真机反馈「命令列表里超过两条时卡片会叠在一起」）。
             //  两列卡片网格：每条命令一张卡，宽度平分、高度下限按类型给（单条 = 半个正方形，
             // 多条 = 正方形），内容更高时以内容为准；行 / 列间距用 [GRID_GAP] / [GRID_ROW_GAP]。
             //  注意：画的是 [list]（目标态那份），不是外层的 `saved` —— 过渡期间退场那一侧
             //  拿到的正是旧列表，用 `saved` 会让它渲染成空网格。
-            list.chunked(COLUMNS).forEachIndexed { rowIndex, row ->
-                if (rowIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
-                CommandTileRow(
-                    tileCount = row.size,
-                    // 行高下限按**这一行里那些命令自己的类型**算，不按「当前正在编辑的草稿」是什么：
-                    //  网格与草稿是两件事 —— 以前取 `commandDraft.draft.kind`，于是翻到「单条」那栏
-                    //  时整片网格的多条命令卡都被压成半个正方形（反过来也一样）。
-                    //  一行里两种类型混着时取高的那一档（`1f`）：宁可单条卡偏高，不能把多条卡压扁。
-                    minHeightRatio =
-                        if (row.any { it.kind != CommandKind.SINGLE }) {
-                            1f
-                        } else {
-                            SINGLE_CARD_MIN_HEIGHT_RATIO
-                        },
-                    // 上限只压单条那一档（= 卡宽，正方形）；混排与多条都不封顶 —— 多条卡的步骤是
-                    //  逐条列出来的，截掉就把「有几步」藏了。
-                    maxHeightRatio =
-                        if (row.any { it.kind != CommandKind.SINGLE }) {
-                            0f
-                        } else {
-                            1f
-                        },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
-                ) { tileIndex ->
-                    val cmd = row[tileIndex]
-                    // 每格按 `key(cmd.name)` 认身份（命令名是这条命令的主键）—— 与步骤行 `key(item.id)`
-                    //  同一个理由：这一片是按**位次**排出来的，卡里的 `animateColorAsState` 与卡片槽位都按
-                    //  位次记身份 ⇒ 删一条 / 改名之后后面的格子会继承前一格的位置，强调色从上一格的颜色
-                    //  动画过去（一帧闪色）。
-                    key(cmd.name) {
-                        CommandTile(cmd, ui, tick, onOpen)
+            Column {
+                list.chunked(COLUMNS).forEachIndexed { rowIndex, row ->
+                    if (rowIndex > 0) Spacer(Modifier.height(GRID_ROW_GAP))
+                    CommandTileRow(
+                        tileCount = row.size,
+                        // 行高下限按**这一行里那些命令自己的类型**算，不按「当前正在编辑的草稿」是什么：
+                        //  网格与草稿是两件事 —— 以前取 `commandDraft.draft.kind`，于是翻到「单条」那栏
+                        //  时整片网格的多条命令卡都被压成半个正方形（反过来也一样）。
+                        //  一行里两种类型混着时取高的那一档（`1f`）：宁可单条卡偏高，不能把多条卡压扁。
+                        minHeightRatio =
+                            if (row.any { it.kind != CommandKind.SINGLE }) {
+                                1f
+                            } else {
+                                SINGLE_CARD_MIN_HEIGHT_RATIO
+                            },
+                        // 上限只压单条那一档（= 卡宽，正方形）；混排与多条都不封顶 —— 多条卡的步骤是
+                        //  逐条列出来的，截掉就把「有几步」藏了。
+                        maxHeightRatio =
+                            if (row.any { it.kind != CommandKind.SINGLE }) {
+                                0f
+                            } else {
+                                1f
+                            },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
+                    ) { tileIndex ->
+                        val cmd = row[tileIndex]
+                        // 每格按 `key(cmd.name)` 认身份（命令名是这条命令的主键）—— 与步骤行 `key(item.id)`
+                        //  同一个理由：这一片是按**位次**排出来的，卡里的 `animateColorAsState` 与卡片槽位都按
+                        //  位次记身份 ⇒ 删一条 / 改名之后后面的格子会继承前一格的位置，强调色从上一格的颜色
+                        //  动画过去（一帧闪色）。
+                        key(cmd.name) {
+                            CommandTile(cmd, ui, tick, onOpen)
+                        }
                     }
                 }
             }

@@ -381,6 +381,9 @@ data class GlobalConfig(
 
         /** [GlobalConfig.theme] 的三档 —— 与界面层 `AppTheme` 的 code 一一对应。 */
         const val THEME_AUTO = "auto"
+
+        /** 跟随系统，但**整页用系统那套 Monet 配色**（底色 / 卡片 / 强调色全换）。 */
+        const val THEME_MONET = "monet"
         const val THEME_LIGHT = "light"
         const val THEME_DARK = "dark"
 

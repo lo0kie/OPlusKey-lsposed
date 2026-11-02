@@ -60,7 +60,7 @@ enum class ConditionKind(
      *  所以任何时刻都恰好落在其中一档上。
      *
      *  其余档都**不是**：
-     *   · 屏幕：熄屏且没有锁屏时 `on` / `locked` 两边都不成立；
+     *   · 屏幕：亮着没锁时 `off` / `locked` 不成立、灭屏时 `on` 不成立（锁屏那一格还会同时命中 `off`）；
      *   · 充电 / 耳机 / 媒体 / 响铃：系统服务取不到时两边都不成立（判不出就不成立，见 `ConditionProbe`）；
      *   · 方向：`ORIENTATION_UNDEFINED` 时两档都不成立。
      *
@@ -72,8 +72,16 @@ enum class ConditionKind(
     /** 某个应用在前台；取值为包名。 */
     APP("app"),
 
-    /** **屏幕状态**：`on`（亮屏）/ `locked`（锁屏）。原来是「亮屏」「锁屏」两档，合成一档带取值。 */
-    SCREEN("screen", choices = listOf("on", "locked"), defaultChoice = "on"),
+    /**
+     * **屏幕状态**：`on`（亮屏）/ `off`（熄屏）/ `locked`（锁屏）。原来是「亮屏」「锁屏」两档，
+     * 合成一档带取值。
+     *
+     *  这三档**不是互斥**的：`off` 说的是「屏幕不可用」，而**锁屏算熄屏的一种** —— `locked` 成立时
+     *  `off` 一定成立（锁屏上亮着的那一屏也算「现在用不了」）。于是三种状态分别落成：
+     *  亮着没锁 ⇒ 只有 `on`；亮着但锁着 ⇒ `on` + `off` + `locked`；灭屏 ⇒ `off`（锁着的话再加 `locked`）。
+     *  `isInteractive` 读不到时按「判不出」处理，`on` 不成立。
+     */
+    SCREEN("screen", choices = listOf("on", "off", "locked"), defaultChoice = "on"),
 
     /** **充电状态**：`charging`（充电中，含充满）/ `idle`（没在充电）。老配置没有取值 ⇒ 按 `charging` 解释。 */
     CHARGING("charging", choices = listOf("charging", "idle"), defaultChoice = "charging"),

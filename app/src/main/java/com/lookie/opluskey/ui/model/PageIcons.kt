@@ -6,10 +6,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathData
+import androidx.compose.ui.graphics.vector.PathNode
 import androidx.compose.ui.unit.dp
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
-import io.github.lyxnx.compose.ui.tablericons.filled.Square
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
 import io.github.lyxnx.compose.ui.tablericons.outline.Adjustments
 import io.github.lyxnx.compose.ui.tablericons.outline.AlignBoxCenterMiddle
@@ -387,15 +387,104 @@ internal object PageIcons {
     val Language: ImageVector get() = TablerIcons.Outline.World
 
     /** 「更多选项」页「系统配色」—— `palette`（这一行改的是配色）。 */
-    val Palette: ImageVector get() = TablerIcons.Outline.Palette
+    val ThemeMonet: ImageVector get() = TablerIcons.Outline.Palette
 
     /**
-     * 「系统配色」菜单里每一行行首那块**色块** —— `square-filled`（实心方块）。
+     * 「系统配色」菜单里每一行行首那块**色块** —— **四个小方块拼成一大块**（2×2）。
      *
-     *  形状五套共用，颜色由 `MenuEntry.Row.iconTint` 逐行给（色块本身就是这一行的身份）。
-     *  用**实心**那一档：描边的图标上色之后只是一圈彩线，看不出是「这一套色」。
+     *  形状各档共用，颜色由 `MenuEntry.Row.iconTint` 逐行给（色块本身就是这一行的身份）。
+     *  四格是**同一个色的四档透明度**（100% / 55% / 30% / 12%）：读起来是「这一套色的一个色板」，
+     *  而不是四块互不相干的色；`Icon` 上色走 `SrcIn`，透明度原样保留。
+     *  用实心方块：描边的图标上色之后只是一圈彩线，看不出是「这一套色」。
      */
-    val PaletteSwatch: ImageVector get() = TablerIcons.Filled.Square
+    val PaletteSwatch: ImageVector get() = paletteSwatch()
+
+    /**
+     * 强调色那一行的色块 —— **按主题选**：
+     *  · Monet：四格色阶（[PaletteSwatch]）—— 那一档是系统按壁纸生成**一整套**色，色块要读得出
+     *    「一整套」，四档透明度正好是同一套色的色阶；
+     *  · 其余主题档：**一个整块**（[PaletteBlock]）—— 那一档只有「强调色」这一个颜色被换掉
+     *    （底子仍是 COUI 的），画成四格会读成「四块互不相干的色」。
+     */
+    fun accentSwatch(theme: AppTheme): ImageVector = if (theme == AppTheme.MONET) PaletteSwatch else PaletteBlock
+
+    /** 单个整块（20 见方、圆角 [SWATCH_BLOCK_CORNER]）—— 强调色只有一种颜色时用它。 */
+    val PaletteBlock: ImageVector get() = paletteBlock()
+
+    private fun paletteBlock(): ImageVector {
+        val builder =
+            ImageVector.Builder(
+                name = "PaletteBlock",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f,
+            )
+        builder.addPath(
+            //  四格那块整体也占 20 见方（2..22）：整块与它同尺寸，换档时行首不会忽大忽小
+            pathData = roundedTile(2f, 2f, side = SWATCH_SPAN, corner = SWATCH_BLOCK_CORNER),
+            fill = SolidColor(Color.Black),
+        )
+        return builder.build()
+    }
+
+    /** 色块里的四格（2×2，边长 9、间距 2，整体 20×20 居中）—— 逐格给一档透明度。 */
+    private fun paletteSwatch(): ImageVector {
+        val builder =
+            ImageVector.Builder(
+                name = "PaletteSwatch",
+                defaultWidth = 24.dp,
+                defaultHeight = 24.dp,
+                viewportWidth = 24f,
+                viewportHeight = 24f,
+            )
+        listOf(2f to 2f, 13f to 2f, 2f to 13f, 13f to 13f)
+            .forEachIndexed { i, (x, y) ->
+                builder.addPath(
+                    pathData = roundedTile(x, y),
+                    fill = SolidColor(Color.Black.copy(alpha = SWATCH_ALPHAS[i])),
+                )
+            }
+        return builder.build()
+    }
+
+    /** 四格的透明度：左上最实、右下最淡（与真机上「一个色块的四档色阶」同一个读法）。 */
+    private val SWATCH_ALPHAS = listOf(1f, 0.55f, 0.3f, 0.12f)
+
+    /** 一格圆角方块（边长 [SWATCH_TILE]、圆角 [SWATCH_CORNER]）—— 四角各画一段四分之一圆。 */
+    private fun roundedTile(
+        x: Float,
+        y: Float,
+        side: Float = SWATCH_TILE,
+        corner: Float = SWATCH_CORNER,
+    ): List<PathNode> {
+        val r = corner
+        val far = side - r
+        return PathData {
+            moveTo(x + r, y)
+            lineTo(x + far, y)
+            arcToRelative(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, r, r)
+            lineTo(x + side, y + far)
+            arcToRelative(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, -r, r)
+            lineTo(x + r, y + side)
+            arcToRelative(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, -r, -r)
+            lineTo(x, y + r)
+            arcToRelative(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, r, -r)
+            close()
+        }
+    }
+
+    /** 一格边长（四格 2×2、间距 2，整体 20 见方居中）。 */
+    private const val SWATCH_TILE = 9f
+
+    /** 四格整体的边长 —— 整块那一档与它同尺寸，换档时行首不会忽大忽小。 */
+    private const val SWATCH_SPAN = 20f
+
+    /** 圆角半径 —— 与页面里卡片 / 色块的圆角同一档观感（24 视口里 2）。 */
+    private const val SWATCH_CORNER = 2f
+
+    /** 整块的圆角：色块大了要跟着放大，否则读起来像「四个小格之一」被放大了。 */
+    private const val SWATCH_BLOCK_CORNER = 5f
 
     /** 「外观」卡「页面缩放」—— `zoom-in`（放大镜加号：这一行是缩放）。 */
     val ZoomIn: ImageVector get() = TablerIcons.Outline.ZoomIn

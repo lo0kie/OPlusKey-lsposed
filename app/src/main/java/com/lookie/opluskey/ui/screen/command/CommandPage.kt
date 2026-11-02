@@ -21,7 +21,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -51,9 +50,7 @@ import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.moveCaretToEnd
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「自定义命令」页的一页（单条 / 多条各一份）—— 从 `CommandScreen.kt` 拆出来。
 //
@@ -577,24 +574,6 @@ private fun SettingsPage.SingleCommandField(
             focusRequester = focusRequester,
             modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
         )
-        // 权限边界的提示：这一栏写的是 shell 命令，而它跑在宿主进程里、身份是「手势体感」这个 App ——
-        // `am` / `cmd` / `settings` 这类要 shell 身份的命令会失败，得提权（root）才跑得起来。
-        // 放在输入框下面一行小字：不占卡片、也不挡输入。
-        //  左右缩进取 `SmallTitleDefaults.InsideMargin`（32dp），但**文字在这条带子里居中**
-        //  —— 与输入框那边对齐的是**边界**，不是第一个字（用户口径：像 CSS 的
-        //  `padding: 0 32px` + `text-align: center`）。所以要先铺满再居中，只给 padding 的话
-        //  Text 的宽度就是文字本身，居中没有可居的余量。
-        //  上下**不取那一档**（32dp 会把提示推得离输入框很远）：只留 6dp，贴着输入框说话。
-        Text(
-            text = I18n.get(Strings.COMMAND_SINGLE_HINT, "am / cmd 等命令需 root 给「手势体感」授权"),
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = HINT_SIDE_PADDING, end = HINT_SIDE_PADDING, top = 6.dp),
-            textAlign = TextAlign.Center,
-            style = COUITheme.textStyles.footnote1,
-            color = COUITheme.colorScheme.onSurfaceVariantSummary,
-        )
     }
 }
 
@@ -609,9 +588,6 @@ internal const val MAX_SINGLE_LENGTH = 1024
  *  用户看到的就是「键盘弹一下又没了」。等不到（比如通知栏被拉下来）就照常往下走，不强求。
  */
 private const val FOCUS_WAIT_FRAMES = 30
-
-/** 权限提示那行字的左右缩进 —— 与 `SmallTitleDefaults.InsideMargin` 同值（32dp）。 */
-private val HINT_SIDE_PADDING = 32.dp
 
 /** 多条命令的「命令间隔时长」卡 —— 只有一行：等多久再派发下一条。 */
 @Composable

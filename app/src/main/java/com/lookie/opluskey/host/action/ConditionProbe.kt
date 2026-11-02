@@ -112,7 +112,7 @@ internal object ConditionProbe {
      * **耳机状态**：`connected`（接着）/ `disconnected`（没接）。
      *
      *  `disconnected` 直接取反 —— 设备要么在、要么不在，没有「第三种都不知道」的状态
-     *  （与屏幕那两档不同：熄屏且无锁屏时两边都不成立）。
+     *  （与屏幕那三档不同：探针读不到时那三档都不成立）。
      */
     private fun headsetMatches(
         ctx: Context,

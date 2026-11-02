@@ -180,7 +180,7 @@ internal fun SettingsPage.branchToggleRow(
     ) {
         menus.menuAt = -1
         if (off) {
-            rules.getOrNull(at)?.let { branchDraft.draft.update(at, it.copy(enabled = true)) }
+            rules.getOrNull(at)?.let { branchDraftNow().update(at, it.copy(enabled = true)) }
         } else {
             //  停用先弹确认窗（`BranchToggleDialog`，由 `BranchCards` 挂在页面里）
             menus.toggleAt = at

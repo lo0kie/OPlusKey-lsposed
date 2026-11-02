@@ -27,6 +27,14 @@ private const val DIRECT_BURST_MS = 50L
 private const val REPEAT_MAX_MS = 30_000L
 
 /**
+ * 唤醒锁比双击窗口多留的余量（毫秒）。
+ *
+ *  窗口那一枪要等 `postDelayed` 到点才会跑主 looper 上的回调，末段那几毫秒落在余量里，
+ *  否则窗口走完、枪还没响的那一瞬设备就能睡着，窗口又白等。
+ */
+private const val AWAKE_MARGIN_MS = 500L
+
+/**
  * 按键的手势判定状态机 —— 本模块的核心逻辑。
  *
  * 线程归属：`interceptKeyBeforeQueueing` 由 InputReader / Dispatcher 线程调，计时器走调用方
@@ -50,9 +58,12 @@ private const val REPEAT_MAX_MS = 30_000L
  *  `elapsedRealtime()` 含睡眠，窗口按真实时间走，两处口径也就一致了（转发给宿主的
  *  `sent_at` 用的也是它）。
  *
- * ## 熄屏时不等双击窗口
+ * ## 熄屏也判双击（窗口那一段把 CPU 顶醒）
  *
- *  见 [onKeyUp] 里 `screenOff` 那一支：抬手后设备会睡，窗口那一枪不可靠，只能当场判单击。
+ *  熄屏后设备很快进深睡，`postDelayed` 按 uptime 排、深睡里不走 ⇒ 窗口那一枪不到点。
+ *  所以排窗时先请装配方顶住 CPU（[holdAwake]，屏幕亮着时它什么都不做），让 CPU 在这一个
+ *  窗口里继续走：熄屏也能判双击，代价是熄屏单击要晚一个窗口（`doubleClickMs`）才执行。
+ *  这是取舍 —— 当初「熄屏抬手就当单击」是为了熄屏即时响应，但它把双击整档废掉了。
  *
  *  成员数贴着 `TooManyFunctions` 的阈值：单击 / 双击 / 长按 / 连续触发各有一套计时与取消，
  *  拆文件就得把 `Pending` 与那三个 `Runnable` 一起搬出去 —— 状态机被切成两半更难跟。
@@ -83,12 +94,15 @@ internal class GestureDetector(
      */
     private val onLongReleased: (KeyId) -> Unit,
     /**
-     * 屏幕此刻是不是亮着（`PowerManager.isInteractive`，由装配方注入）。
+     * 「屏幕黑着的话，这段时间里别让 CPU 睡」—— 熄屏排双击窗口时用（见类注释「熄屏也判双击」）。
      *
-     * 取不到时返回 `true`（按「亮着」处理）：那条路上还有双击窗口兜着，宁可等 300ms，
-     * 也不要因为拿不到状态就把双击判成两次单击。
+     *  亮着时实现里什么都不做：判定器于是不需要单独知道屏幕状态 —— **「熄屏才顶」是唤醒锁
+     *  自己的前置条件**，那件事归装配方（它才拿得到 `PowerManager`）。
+     *  由装配方注入（拿借来的 Context 取服务，见 `KeyHooks.holdAwake`）：判定器不碰 Context，
+     *  注入侧也不许拿系统进程自己的 Context 取服务。实现必须是「带超时、不主动放」的那种 ——
+     *  漏放一次就是 CPU 再也不睡，比多醒几百毫秒严重得多。
      */
-    private val isScreenOn: () -> Boolean,
+    private val holdAwake: (Long) -> Unit,
 ) {
     /**
      * 一个键的待定状态 —— 字段被两条线程读写，跨线程的一律 `@Volatile`（见类注释）。
@@ -289,14 +303,10 @@ internal class GestureDetector(
             return
         }
 
-        // 两种情形**不等**双击窗口、抬手当场判单击：
-        //  1) 「双击 = 无操作」且开了「立即触发单击」—— 等下去也没有第二下可用；
-        //  2) **屏幕熄着**——抬手之后设备可能立刻进深度睡眠，而窗口那一枪是 `postDelayed`
-        //     （按 `uptimeMillis` 排，深度睡眠里不走），它根本不会到点，用户看到的就是
-        //     「熄屏按下没反应」（真机：熄屏按一下没有单击，4.6 秒后按第二下才判成双击）。
-        //     代价：熄屏下连按两下算两次单击，判不出双击 —— 那本来也没法可靠判。
-        val screenOff = !isScreenOn()
-        if (screenOff || (config.instantSingle && config.actionOf(Gesture.DOUBLE) is Action.None)) {
+        // 「双击 = 无操作」且开了「立即触发单击」时**不等**双击窗口：等下去也没有第二下可用。
+        //  **熄屏不再走这一支** —— 那会把双击整档废掉（熄屏下每一下都是一次单击）。
+        //  熄屏改由窗口期顶住 CPU（见下面 `holdAwake` 那一段）。
+        if (config.instantSingle && config.actionOf(Gesture.DOUBLE) is Action.None) {
             // 这一下是不是已经被直判过了（同一次按压被转发两遍）：
             // 记到了按下时刻 ⇒ 判「按下那一刻前后 DIRECT_BURST_MS 之内有没有直判」，用本次按下当锚点，
             //   才不会把上一次按压的直判算到这一下头上；
@@ -316,7 +326,7 @@ internal class GestureDetector(
                 XLog.w("${id.label}：这次按压已直判过单击，不再补判（双击为无操作）")
                 return
             }
-            XLog.w("${id.label}：单击（${if (screenOff) "熄屏，不等双击窗口" else "双击为无操作 ⇒ 不等双击窗口"}）")
+            XLog.w("${id.label}：单击（双击为无操作 ⇒ 不等双击窗口）")
             // 与上面那条直判去重同一笔账：这一下已经派发过单击了，
             // 紧接着那次 DOWN/UP（同一次按压被转发两遍时）与长按计时器都要据此让路。
             p.lastDirectSingleAt = now
@@ -330,6 +340,15 @@ internal class GestureDetector(
         val window = config.doubleClickMs.toLong()
         p.doubleWindowMs = window
         p.doubleWindowAt = now + window
+        //  熄屏时窗口这一枪要在 uptime 上真走到点 —— 深睡里 `postDelayed` 不走，干等就是
+        //  「按了没反应」。整段窗口期让 CPU 醒着：熄屏也能判双击，代价是熄屏单击要晚一个
+        //  窗口才执行（用户定的取舍：双击不能没有）。亮着时这一下什么都不做。
+        //  这一下在输入线程上跑：顶不住最多是「熄屏判不出双击」，绝不能把异常抛回去
+        try {
+            holdAwake(window + AWAKE_MARGIN_MS)
+        } catch (e: Throwable) {
+            XLog.w("${id.label}：没顶住 CPU，熄屏这一按可能判不出双击：${e.javaClass.simpleName}", e)
+        }
         scheduleDoubleWindow(id, config)
     }
 

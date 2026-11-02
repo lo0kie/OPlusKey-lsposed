@@ -42,7 +42,8 @@ internal fun SettingsPage.openAppPickerForBranch(
         if (forCommand) {
             emptySet()
         } else {
-            branchDraft.draft.rules
+            branchDraftNow()
+                .rules
                 .getOrNull(index)
                 ?.appCondition
                 ?.appPackages
@@ -69,7 +70,8 @@ internal fun SettingsPage.branchConditionUsed(
     pkg: String,
     exceptIndex: Int,
 ): Boolean =
-    branchDraft.draft.rules
+    branchDraftNow()
+        .rules
         .filterIndexed { at, _ -> at != exceptIndex }
         // 一条条件可以带好几个包名（多选，`包1||包2`）：判「用过了没有」要看**整组**，
         //  只比 `value == pkg` 在多选之后永远不成立。
@@ -95,7 +97,7 @@ internal fun SettingsPage.branchTimeOverlaps(
     //  改成「先滤出别的那些时间区间、再看有没有重叠」：循环里两个 `continue` + 一个
     //  `return` 会顶到 detekt 的 `LoopWithTooManyJumpStatements`
     val others =
-        branchDraft.draft.rules.withIndex().flatMap { (at, rule) ->
+        branchDraftNow().rules.withIndex().flatMap { (at, rule) ->
             rule.conditions.withIndex().mapNotNull { (condAt, cond) ->
                 //  跳过正在改的那一条，只留时间区间
                 val skip = at == exceptAt && condAt == exceptCond
@@ -110,7 +112,7 @@ internal fun SettingsPage.branchTimeOverlaps(
  * 但配置可以是手改 / 导入来的，那一步不经过界面）。
  */
 internal fun SettingsPage.branchTimesOverlap(): Boolean =
-    branchDraft.draft.rules.withIndex().any { (at, rule) ->
+    branchDraftNow().rules.withIndex().any { (at, rule) ->
         rule.conditions.withIndex().any { (condAt, cond) ->
             cond.kind == ConditionKind.TIME && branchTimeOverlaps(cond.effectiveValue, at, condAt)
         }
@@ -150,9 +152,9 @@ internal fun SettingsPage.writeBranchCondition(
         return false
     }
     val condition = BranchCondition.apps(pkgs)
-    val old = branchDraft.draft.rules.getOrNull(index)
+    val old = branchDraftNow().rules.getOrNull(index)
     if (old == null) {
-        branchDraft.draft.add(StateRule.single(branchGestureNow(), condition, Action.None))
+        branchDraftNow().add(StateRule.single(branchGestureNow(), condition, Action.None))
     } else {
         //  **写进哪一条**（一块可以带好几条条件，逐条都要成立）：
         //   · 这一趟明确指了槽位（从「条件 2」那一行进来的）⇒ 换那一条；
@@ -168,7 +170,7 @@ internal fun SettingsPage.writeBranchCondition(
                 old.appConditionIndex >= 0 -> old.appConditionIndex
                 else -> -1
             }
-        branchDraft.draft.update(
+        branchDraftNow().update(
             index,
             if (slot >= 0) old.replacingCondition(slot, condition) else old.addingCondition(condition),
         )
@@ -192,12 +194,12 @@ internal fun SettingsPage.writeBranchCommand(
         XLog.w("分叉动作：挑中的应用解析不出动作（token=${XLog.redactToken(token)}），不改这一条")
         return false
     }
-    val old = branchDraft.draft.rules.getOrNull(index)
+    val old = branchDraftNow().rules.getOrNull(index)
     if (old == null) {
         XLog.w("分叉动作：要改的第 $index 条已经不在了（草稿被重置过），不改")
         return false
     }
-    branchDraft.draft.update(index, old.copy(action = action))
+    branchDraftNow().update(index, old.copy(action = action))
     picker.clearTarget()
     popBackStack()
     return true

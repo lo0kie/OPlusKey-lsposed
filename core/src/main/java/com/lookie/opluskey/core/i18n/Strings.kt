@@ -294,7 +294,6 @@ object Strings {
     const val COMMAND_PREFIX_FILL = "command.prefix_fill"
     const val COMMAND_SAVED_COMMANDS = "command.saved_commands"
     const val COMMAND_SAVED_COUNT = "command.saved_count"
-    const val COMMAND_SINGLE_HINT = "command.single_hint"
     const val COMMAND_STEP_SELECT_TITLE = "command.step_select_title"
 
     /** 「换掉这一步 / 换掉这一条动作」那张抽屉的标题 —— 与 [COMMAND_STEP_SELECT_TITLE] 同一处、两种来处。 */
@@ -393,6 +392,9 @@ object Strings {
     const val COMMAND_BRANCH_PICK_CONDITION = "command.branch_pick_condition"
     const val COMMAND_BRANCH_NEED_COMMAND = "command.branch_need_command"
     const val COMMAND_BRANCH_NEED_CONDITION = "command.branch_need_condition"
+
+    /** 点「确认」把这档条件表写回去之后的那句回执（写完留在这一页）。 */
+    const val COMMAND_BRANCH_SAVED = "command.branch_saved"
     const val COMMAND_BRANCH_DEFAULT = "command.branch_default"
 
     /** 条件执行里每一种条件的叫法（分支行、条件菜单、摘要共用）。 */
@@ -400,6 +402,7 @@ object Strings {
     const val COMMAND_COND_RINGER_NAME = "command.cond_ringer_name"
     const val COMMAND_COND_ORIENTATION_NAME = "command.cond_orientation_name"
     const val COMMAND_COND_SCREEN_ON = "command.cond_screen_on"
+    const val COMMAND_COND_SCREEN_OFF = "command.cond_screen_off"
     const val COMMAND_COND_LOCKED = "command.cond_locked"
 
     /** 条件取值还没配（空串）时的那几个字 —— 认不出的取值不走它，直接显示原文。 */
@@ -754,6 +757,7 @@ object Strings {
     const val MORE_PALETTE_ORANGE = "more.palette_orange"
     const val MORE_PALETTE_PURPLE = "more.palette_purple"
     const val MORE_PALETTE_PINK = "more.palette_pink"
+    const val MORE_PALETTE_DEFAULT = "more.palette_default"
 
     /** 「更多选项」页「外观」那一卡：界面颜色（跟随系统 / 浅色 / 深色）。 */
     const val MORE_THEME = "more.theme"
@@ -772,6 +776,9 @@ object Strings {
     const val MORE_PAGE_SCALE = "more.page_scale"
     const val MORE_PAGE_SCALE_DESC = "more.page_scale_desc"
     const val MORE_THEME_AUTO = "more.theme_auto"
+
+    /** 「跟随系统 (Monet)」—— 跟随系统，且整页用系统那套壁纸取色。 */
+    const val MORE_THEME_MONET = "more.theme_monet"
     const val MORE_THEME_LIGHT = "more.theme_light"
     const val MORE_THEME_DARK = "more.theme_dark"
     const val MORE_SIGNATURE_DEBUG = "more.signature_debug"

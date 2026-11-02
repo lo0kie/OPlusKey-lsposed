@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -38,6 +39,29 @@ internal fun AnimatedColumn(
 ) {
     AnimatedVisibility(
         visible = visible,
+        modifier = modifier,
+        enter = VISIBILITY_ENTER,
+        exit = VISIBILITY_EXIT,
+    ) {
+        Column(content = content)
+    }
+}
+
+/**
+ * 同 [AnimatedColumn]，但显隐状态由调用方**持有**（`MutableTransitionState`）。
+ *
+ *  给「除了播动画，还要读 `currentState` 判『这一行此刻还在不在场上』」的容器用 ——
+ *  `CardList` 靠它决定行序（首 / 中 / 末行）什么时候换档：换早了，末行一藏上面那行就
+ *  多出一档内缩，把还在收缩的行顶一下。
+ */
+@Composable
+internal fun AnimatedColumn(
+    visibleState: MutableTransitionState<Boolean>,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    AnimatedVisibility(
+        visibleState = visibleState,
         modifier = modifier,
         enter = VISIBILITY_ENTER,
         exit = VISIBILITY_EXIT,

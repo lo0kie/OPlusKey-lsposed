@@ -62,10 +62,11 @@ internal fun mediaLabel(value: String): String =
         else -> unknownValue(value)
     }
 
-/** 屏幕状态两档在界面上叫什么（亮屏 / 锁屏）。 */
+/** 屏幕状态三档在界面上叫什么（亮屏 / 熄屏 / 锁屏）。 */
 internal fun screenLabel(value: String): String =
     when (value) {
         "locked" -> I18n.get(Strings.COMMAND_COND_LOCKED, "锁屏")
+        "off" -> I18n.get(Strings.COMMAND_COND_SCREEN_OFF, "熄屏")
         "on" -> I18n.get(Strings.COMMAND_COND_SCREEN_ON, "亮屏")
         else -> unknownValue(value)
     }

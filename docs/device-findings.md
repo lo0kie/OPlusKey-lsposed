@@ -4397,8 +4397,13 @@ x > 1/12 :  g = a·ln(12x − b) + c      a = 0.17883277  b = 0.28466892  c = 0.
 - 抬手后排的那一枪（`postDelayed`，按 uptime 排）在睡眠里不会到点；下一次按下先到，
   `onKeyDown` 判成双击 → `reset()` 把那一枪摘掉 ⇒ **第一下的单击永远不派发**，用户看到的就是
   「熄屏按下没反应」。
-- 结论：手势窗口一律用 `elapsedRealtime()`；**熄屏时不等双击窗口**（抬手即判单击）。
-  实现见 `inject/input/GestureDetector`（类注释里那两段）。
+- 结论：手势窗口一律用 `elapsedRealtime()`；熄屏**不再**「抬手即判单击」，改为排窗期间持一段
+  带超时的 `PARTIAL_WAKE_LOCK` 把窗口顶到点（见下一条）。
+  实现见 `inject/input/GestureDetector`（类注释里那两段）与 `KeyHooks.holdAwake`。
+- 后续（1.3.3）：抬手即判单击那一档把**双击整档**废掉了（熄屏下每一下都算单击），所以改成
+  `PowerManager.newWakeLock(PARTIAL_WAKE_LOCK)` + `acquire(窗口 + 500ms)`：CPU 在窗口里继续走，
+  窗口那一枪才到点。代价是熄屏单击晚一个双击窗口才执行；取不到 `PowerManager` 时静默降级回
+  「熄屏判不出双击」。
 
 ## 四十、Toast 的两个系统侧硬约束：**每包限流**与**显示中不推进队列**（反编译 NMS + 真机，2026-11-02，3B15BR005FN00000 / ColorOS 17）
 

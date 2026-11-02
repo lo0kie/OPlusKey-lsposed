@@ -102,12 +102,18 @@ LSPosed 这边拿到的只是「framework 调了一次侧键策略方法」，�
 定时器全跑在 system_server 的 `Handler` 上，**回调里绝不阻塞**
 （一次按键处理必须立刻返回，否则整个系统的按键都会变卡）。
 
-**时间基准一律 `elapsedRealtime()`，熄屏时不等双击窗口。** `uptimeMillis()` 在深度睡眠里不走，
-而抬手之后设备会立刻睡：双击窗口那一枪（`postDelayed`）不到点，窗口的截止时刻却还停在「刚刚」——
-下一次按下（真实过了几秒）会被判成双击，前一下的单击则永远不派发（真机：熄屏按一下没反应，
-4.6 秒后按第二下却判成双击）。所以所有窗口与比较都走 `elapsedRealtime()`；并且
-`PowerManager.isInteractive` 为假时**抬手当场判单击**（代价：熄屏下连按两下算两次单击，
-判不出双击 —— 那本来也没法可靠判）。
+**时间基准一律 `elapsedRealtime()`；熄屏排双击窗口时持一段唤醒锁把 CPU 顶住。**
+`uptimeMillis()` 在深度睡眠里不走，而抬手之后设备会立刻睡：双击窗口那一枪（`postDelayed`）不到点，
+窗口的截止时刻却还停在「刚刚」—— 下一次按下（真实过了几秒）会被判成双击，前一下的单击则永远不派发
+（真机：熄屏按一下没反应，4.6 秒后按第二下却判成双击）。所以所有窗口与比较都走 `elapsedRealtime()`；
+并且 `PowerManager.isInteractive` 为假时，排窗那一步先要一段**带超时**的 `PARTIAL_WAKE_LOCK`
+（窗口 + 500ms 余量，不计引用数、不主动放），让窗口那一枪在 uptime 上真走到点。
+
+- **代价**：熄屏单击要晚一个双击窗口（`doubleClickMs`）才执行。曾经是「熄屏抬手当场判单击」，
+  熄屏即时响应但双击整档作废（熄屏下每一下都是单击）—— 双击不能没有，改走顶醒 CPU。
+- 取不到 `PowerManager` 时静默降级回「熄屏判不出双击」，按键本身不受影响；判定侧不为了顶醒 CPU
+  把异常抛回输入线程。
+- 唤醒锁由装配方注入（`KeyHooks.holdAwake` 借 `SystemContext` 取服务），判定器不碰 Context。
 
 ## 三、「交还系统」为什么不提供（2026-10-14 删除）
 
@@ -323,7 +329,7 @@ framework 私有类**一律按字符串名解析**：它们会被 ROM 改名，�
   （如 `1.1.0-beta.1`）会被自动标成 prerelease、不抢 latest。
 - **tag 推上去就不再移动**：`git tag -f` + 强推会让历史版本指向漂移。打错了删远端 tag 重打
   （`git push origin :refs/tags/<tag>`），并把那两条 Release 一并处理。
-- 当前基线（2026-10-29）：`versionName = 1.3.0`、`versionCode = 8`（见 `app/build.gradle.kts`）。
+- 当前基线（2026-11-02）：`versionName = 1.3.3`、`versionCode = 11`（见 `app/build.gradle.kts`）。
   历史：第一个进仓库的版本是 `1.0.0`（tag `3-1.0.0`），`versionCode` 取 3 —— 1 / 2 已被历史包
   （手动发的 `0.1.0`、本地出的 `0.2.0`）占用。此后每涨一次版本，两边各多一条 Release、一一对应。
 

@@ -52,6 +52,7 @@ import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.actionCellIcon
 import com.lookie.opluskey.ui.model.actionCellTitle
+import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.NO_FRESH_ROW
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
@@ -65,14 +66,13 @@ import kotlinx.coroutines.delay
 // 「条件执行」那一页的编辑区 —— 从 `CommandPage.kt` 拆出来：那边是「一页的骨架」，
 // 这一块是分叉特有的那张卡；四张菜单在 `CommandBranchMenus.kt`。
 
-/** 分叉页在编辑哪一档 —— 当前这颗键（或组合键）与这一档手势，两处（卡片与顶栏小标题）同一份判据。 */
-internal fun SettingsPage.branchGestureNow(): Gesture {
-    val now = Gesture.entries.getOrElse(branchGesture) { Gesture.SINGLE }
-    //  组合键只有短按 / 长按两档（双击在组合上没有定义，见 `ComboKey` 的类注释）。
-    //  在编组合键时双击那一档自动落回短按：页面停在一个「写进去也永远不会命中」的档上
-    //  比落回短按更糟 —— 用户会以为配了双击。
-    return if (now == Gesture.DOUBLE && branchDraft.draft.comboId != null) Gesture.SINGLE else now
-}
+/**
+ * 分叉页在编辑哪一档 —— 由分页器当前那一页同步过来（见 `BranchScreen` 里那个 effect），
+ *  页内卡片、顶栏小标题与保存都读它。
+ *
+ *  组合键那一趟只有两页（短按 / 长按，见 `branchGestures`），所以这里不需要再把双击折成短按。
+ */
+internal fun SettingsPage.branchGestureNow(): Gesture = Gesture.entries.getOrElse(branchGesture) { Gesture.SINGLE }
 
 /** 分叉页在编辑哪一颗键。 */
 internal fun SettingsPage.branchKeyNow(): KeyId = KeyWatchState.editing(configState.config.value)
@@ -96,10 +96,11 @@ internal fun SettingsPage.branchKeyNow(): KeyId = KeyWatchState.editing(configSt
  */
 @Composable
 internal fun SettingsPage.BranchCards(
+    /** **这一页**那一份草稿（三页同时在场，各编各的表，见 `BranchScreen`）。 */
+    draft: BranchDraft,
     tick: () -> Unit,
     emptyHeight: Dp,
 ) {
-    val draft = branchDraft.draft
     //  **草稿载入之前整块不画**：第一帧 `rules` 必为空（草稿在 `LaunchedEffect` 里才灌进来），
     //  于是先画空态、载入后再换成表格 —— 那一换会把整块内容播一遍转场，
     //  表现就是「刚进页，内容从顶部滑下来」。载入完成后再画，第一帧就是最终形态，
@@ -147,7 +148,7 @@ internal fun SettingsPage.BranchCards(
         val target = menus.exitingCond ?: return@LaunchedEffect
         delay(VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS)
         if (menus.exitingCond == target) {
-            deleteBranchCondition(target.at, target.index)
+            deleteBranchCondition(draft, target.at, target.index)
             menus.exitingCond = null
         }
     }
@@ -186,10 +187,10 @@ internal fun SettingsPage.BranchCards(
             }
         }
     }
-    BranchMenus(rules = rules, menus = menus, tick = tick)
+    BranchMenus(draft = draft, rules = rules, menus = menus, tick = tick)
     BranchDeleteDialog(menus)
     //  停用 / 启用一条场景 —— 与删除同一条路（菜单里点、窗里确认），但改的是这一条自己的开合位
-    BranchToggleDialog(menus)
+    BranchToggleDialog(draft, menus)
     //  删「一条条件」是另一件事（只摘一块里的一条，不连动作、不动下面的行），窗也另开一个
     BranchConditionDeleteDialog(menus)
 }
@@ -237,7 +238,7 @@ internal fun SettingsPage.addBranchRule(
         return
     }
     val first = rules.isEmpty()
-    val id = branchDraft.draft.add(StateRule.single(branchGestureNow(), null, Action.None))
+    val id = branchDraftNow().add(StateRule.single(branchGestureNow(), null, Action.None))
     onAdded(if (first) NO_FRESH_ROW else id)
 }
 
@@ -319,7 +320,7 @@ private fun SettingsPage.BranchRow(
     //  真机表现：「刚加一行 → 去挑动作 → 回来整行又展开一次」。
     //  清在这里而不是 `BranchRow` 之外：只有这一行知道自己已经上过场了。
     LaunchedEffect(Unit) {
-        if (spec.fresh) branchDraft.draft.freshId = NO_FRESH_ROW
+        if (spec.fresh) branchDraftNow().freshId = NO_FRESH_ROW
     }
     LaunchedEffect(state, spec.exiting) { state.targetState = !spec.exiting }
     AnimatedVisibility(visibleState = state, enter = STEP_ROW_ENTER, exit = STEP_ROW_EXIT) {

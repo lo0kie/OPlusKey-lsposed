@@ -99,7 +99,7 @@ internal object KeyHooks {
         val interceptor =
             SideKeyInterceptor(
                 handler,
-                isScreenOn = { screenInteractive(loader) },
+                holdAwake = { ms -> holdAwake(loader, ms) },
                 forward = { id, gesture, repeat ->
                     forwarder.forward(id, gesture, repeat)
                 },
@@ -437,10 +437,10 @@ internal object KeyHooks {
 }
 
 /**
- * 屏幕此刻亮着没有（`PowerManager.isInteractive`）—— 判定器用它决定「熄屏时不等双击窗口」。
+ * 屏幕此刻亮着没有（`PowerManager.isInteractive`）—— [holdAwake] 用它决定「这一下要不要顶住 CPU」。
  *
- *  为什么熄屏要区别对待：抬手之后设备会进深度睡眠，`postDelayed` 排的那一枪（按
- *  `uptimeMillis` 走）不会到点，单击就丢了（真机口径「熄屏按下没反应」）。
+ *  熄屏时抬手之后设备会进深度睡眠，`postDelayed` 排的那一枪（按 `uptimeMillis` 走）不会到点；
+ *  所以要配一段唤醒锁把窗口期顶住（见 [holdAwake] 与 `GestureDetector` 类注释）。
  *
  *  **拿不到一律按「亮着」**：那条路上还有双击窗口兜着，宁可多等 300ms，也别因为借不到
  *  Context 就把双击拆成两次单击。`getSystemService` 在注入侧是允许的（见 `SystemContext`），
@@ -452,4 +452,36 @@ private fun screenInteractive(loader: ClassLoader): Boolean {
             SystemContext.get(loader)?.getSystemService(Context.POWER_SERVICE) as? PowerManager
         }.getOrNull() ?: return true
     return runCatching { pm.isInteractive }.getOrDefault(true)
+}
+
+/**
+ * 屏幕黑着就让 CPU 在这段窗口里别睡 —— 熄屏判双击用（见 `GestureDetector` 类注释的「熄屏也判双击」）。
+ *
+ *  **屏幕亮着时什么都不做**：窗口那一枪本来就到得了点，不必为此付一段唤醒锁。
+ *
+ *  **带超时、不主动放**：漏放一次就是 CPU 再也不睡（只有重启能救），多醒几百毫秒则是这一档
+ *  付得起的代价。`setReferenceCounted(false)` 保证超时那一次是真释放，不受此前叠加过几次影响。
+ *
+ *  取不到 Context / 服务时**静默降级**：这一下退化成「熄屏这一按判不出双击」，按键本身不受影响 ——
+ *  判定侧绝不为了顶醒 CPU 把异常抛回输入线程（那会把系统进程带下去）。
+ */
+private fun holdAwake(
+    loader: ClassLoader,
+    ms: Long,
+) {
+    try {
+        if (screenInteractive(loader)) return
+        val pm =
+            SystemContext.get(loader)?.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        if (pm == null) {
+            XLog.w("熄屏双击的唤醒锁没拿到（取不到 PowerManager，这一按可能判不出双击）")
+            return
+        }
+        val lock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "OPlusKey:doubleWindow")
+        lock.setReferenceCounted(false)
+        lock.acquire(ms)
+        XLog.w("熄屏，排窗期间顶住 CPU ${ms}ms（判双击用）")
+    } catch (e: Throwable) {
+        XLog.w("熄屏双击的唤醒锁没拿到（这一按可能判不出双击，按键本身不受影响）：${e.javaClass.simpleName}", e)
+    }
 }

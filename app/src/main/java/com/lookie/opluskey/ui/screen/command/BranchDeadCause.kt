@@ -31,7 +31,7 @@ internal enum class BranchDeadCause {
  *  永远是同一批行：一处改了另一处不会各说各的。
  */
 internal fun SettingsPage.branchDeadReason(): String? =
-    when (deadEndOf(branchDraft.draft.rules)?.second) {
+    when (deadEndOf(branchDraftNow().rules)?.second) {
         null -> {
             null
         }

@@ -92,7 +92,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         AuthorMenu(ui)
         LanguageMenu(ui, currentLang)
         ThemeMenu(ui, currentTheme)
-        PaletteMenu(ui, currentPalette)
+        PaletteMenu(ui, currentTheme, currentPalette)
         // 「配置」卡里中间那两行：切换配置 / 导出配置，都是同一份配置列表的菜单
         ProfileMenu(ui)
         ProfileExportMenu(ui)

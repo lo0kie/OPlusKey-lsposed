@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -183,19 +184,41 @@ internal fun CardList(
         modifier = modifier.fillMaxWidth().padding(horizontal = margin),
         colors = colors ?: CardDefaults.defaultColors(),
     ) {
-        //  **行序只按「此刻画得出来的行」算**，不按 `rows.size`：`visible = false` 的行只是
-        //  还挂着把退场播完，它不占位置。拿总行数算的话，卡片末行藏起来时上面那行会被画成
-        //  Middle —— 少掉 Tail 那一档的内缩与圆角，看着像卡片缺了一个角
-        //  （真机上「更多 → 外观」那张卡就是这么看出来的）。
-        val shown = rows.indices.filter { rows[it].visible() != false }
+        //  **行序按「这一行此刻还在（或正赶来）」算** —— 既不是 `rows.size`，也不是 `visible`
+        //  一变就让位。两个边界各自对应一种真机上能看出来的毛病：
+        //   · 按 `rows.size` 算：末行藏起来时上面那行还是 Middle —— 少掉 Tail 那一档的内缩与圆角，
+        //     看着像卡片缺了一个角（真机上「更多 → 外观」那张卡就是这么看出来的）；
+        //   · 让位时机对不上：这一档内缩在换档那一帧整体挪到另一行身上，谁在它下面谁就被顶一下。
+        //     退场行让位太早 ⇒ 还在收缩的行先被顶下去；进场行算得太晚 ⇒ 它自己先在低一档的位置
+        //     出现、长完再弹回原位。
+        //  所以判据是 `currentState || targetState`：**退场要播完才让位，进场从第一帧就算在场**。
+        //  两个方向换档都是净零 —— 多出来 / 少掉的那一档落在卡片的边上，那儿没有别的内容。
+        val states = arrayOfNulls<MutableTransitionState<Boolean>>(rows.size)
+        rows.forEachIndexed { index, row ->
+            val visible = row.visible()
+            val state = remember(index) { MutableTransitionState(visible ?: true) }
+            //  自带状态的行走它自己那一份（见下面 `ownState`），这里只接管由 `visible` 驱动的行
+            if (visible != null && row.explicitState() == null) {
+                state.targetState = visible
+                states[index] = state
+            }
+        }
+        val shown =
+            rows.indices.filter { index ->
+                //  自带状态的那几行（步骤行）仍按 `visible` 算：它们的状态从 `false` 起步、
+                //  一插进来就要算在场（见 `CommandSteps`），与这里的判据是同一个意思。
+                val state = states[index]
+                if (state != null) state.currentState || state.targetState else rows[index].visible() != false
+            }
         //  行间那条细线的左起点：这张卡的行首有没有图标那一列 —— 有就缩进到**标题左缘**
         //  （[ROW_TITLE_INSET]），没有就与卡片自己的内边距对齐，别凭空让出一格。
         val hasIconColumn = rows.any { row -> row is CardRow.Switch || (row as? CardRow.Item)?.icon != null }
         val positionOf =
             shown.withIndex().associate { (order, index) -> index to cardListPositionOf(order, shown.size) }
         rows.forEachIndexed { index, row ->
-            //  看不见的行仍在退场那一小段里要画：它按全表算（= 改之前的行为），只活这段时间
-            val position = positionOf[index] ?: cardListPositionOf(index, rows.size)
+            //  已经彻底藏好、但这一帧还挂在组合里的行（退场刚播完那一刻）取
+            //  [CardListPosition.Middle]：它一高都没有，也不该再去争首 / 末那一档内缩。
+            val position = positionOf[index] ?: CardListPosition.Middle
             // 分隔线与行本身一起进出场（见各行的 `visible`）—— 所以它们必须同在一个块里
             val block: @Composable ColumnScope.() -> Unit = {
                 // 首行之上不画线；其余每一行之前一条（左端从**标题最左处**起，右端与卡片内边距对齐）
@@ -207,7 +230,7 @@ internal fun CardList(
                         ),
                     )
                 }
-                //  行高**不做过渡**（用户口径：试过 `animateContentSize`，观感不好，直接去掉）。
+                //  行高**不做过渡**（用户口径：加上之后开关行自己的动画就没了，观感更差，去掉）。
                 //  试出来的结论留在这里，免得下次又走一遍：
                 //   · 默认 `Alignment.TopStart`：内容按最终高度摆好、只有外框在动
                 //     ⇒ 行首图标 / 行尾开关在动画第一帧就跳到最终位置（「瞬移」）；
@@ -217,13 +240,8 @@ internal fun CardList(
                 //  根本原因是文本重排不可能逐帧渐变 —— 要么裁字，要么控件瞬移。不值得，去掉。
                 RowContent(row, position)
             }
-            //  自带状态的行按它播（规格由调用点定），其余按 `visible` 用统一那一档
-            val ownState =
-                when (row) {
-                    is CardRow.Item -> row.visibleState
-                    is CardRow.Custom -> row.visibleState
-                    is CardRow.Switch -> null
-                }
+            //  自带状态的行按它播（规格由调用点定），其余按上面那份 `visible` 状态播
+            val ownState = row.explicitState()
             when {
                 ownState != null -> {
                     AnimatedVisibility(
@@ -236,10 +254,8 @@ internal fun CardList(
                 }
 
                 else -> {
-                    when (val visible = row.visible()) {
-                        null -> block()
-                        else -> AnimatedColumn(visible = visible, content = block)
-                    }
+                    val state = states[index]
+                    if (state == null) block() else AnimatedColumn(visibleState = state, content = block)
                 }
             }
         }
@@ -252,6 +268,14 @@ private fun CardRow.visible(): Boolean? =
         is CardRow.Item -> visible
         is CardRow.Switch -> visible
         is CardRow.Custom -> visible
+    }
+
+/** 这一行是不是自带一份进出场状态（步骤行那种，规格由调用点定）；`null` = 由 [CardList] 自己管。 */
+private fun CardRow.explicitState(): MutableTransitionState<Boolean>? =
+    when (this) {
+        is CardRow.Item -> visibleState
+        is CardRow.Switch -> null
+        is CardRow.Custom -> visibleState
     }
 
 /** 把一行画出来（位置由列表算好递进来）。 */

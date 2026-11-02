@@ -35,7 +35,7 @@ internal fun SettingsPage.BranchHeaderAdd() {
     IconButton(
         onClick = {
             tick()
-            addBranchRule(branchDraft.draft.rules, tick) { branchDraft.draft.freshId = it }
+            addBranchRule(branchDraftNow().rules, tick) { branchDraftNow().freshId = it }
         },
         minWidth = HEADER_ICON_SIZE,
         minHeight = HEADER_ICON_SIZE,

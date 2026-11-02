@@ -13,6 +13,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.MENU_ROW_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.MENU_ROW_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_DARK
@@ -68,11 +69,12 @@ internal fun PopupSectionDivider() {
 
 /**
  * 浮层菜单里的小标题 —— 排版与库的 `DropdownHeaderItem` 同一条（11sp Medium、左右
- * `InsideHorizontalPadding`），但**上下留白收一档、且上下同值**：
+ * `InsideHorizontalPadding`），但**上下留白上下同值、且比库那版更松一档**：
  *
- *  库那版上下各 8dp、最小高 32dp，组与组之间的标题压在两段行距里显得松；而首条又额外拿
- *  `FirstLastVerticalPadding`（10dp）只加在上沿 —— 加上光学修正把墨迹往下压的那一档，
- *  首条看着「上多下少」。所以这里不再分首条，上下都是 [POPUP_SECTION_TITLE_GAP]。
+ *  库那版上下各 8dp + 最小高 32dp，且首条又额外拿 `FirstLastVerticalPadding`（10dp）只加在
+ *  上沿 —— 加上光学修正把墨迹往下压的那一档，首条看着「上多下少」。这里不分首条，
+ *  上下都按 [POPUP_SECTION_TITLE_GAP]；那一档按用户口径**再加宽**：小标题是分组的分界，
+ *  上下松一点，组与组之间才看得出「这是另一段」。
  */
 @Composable
 internal fun PopupSectionTitle(text: String) {
@@ -101,8 +103,8 @@ internal fun PopupSectionTitle(text: String) {
     }
 }
 
-/** 小标题上下那档留白 —— 6dp（库那版上下各 8dp + 最小高 32dp，见 [PopupSectionTitle]）。 */
-private val POPUP_SECTION_TITLE_GAP = 6.dp
+/** 小标题上下那档留白 —— 10dp（库那版 8dp；用户口径要更松，见 [PopupSectionTitle]）。 */
+private val POPUP_SECTION_TITLE_GAP = 10.dp
 
 /**
  * 浮层菜单里标题左缘距面板左缘的距离 —— 52dp。
@@ -136,12 +138,22 @@ private fun popupDividerColor(
  *  浮层菜单与确认弹窗**共用这一份**：两处都要「半透本色压在糊上」，色号分家迟早走形。
  */
 @Composable
-internal fun popupSurfaceColor(): Color =
-    if (COUITheme.colorScheme.isDarkScheme) {
+internal fun popupSurfaceColor(): Color {
+    val scheme = COUITheme.colorScheme
+    //  **Monet 那一档跟着系统取色**：整页底色已经被系统染过（见 `PagePalette.colorsOf`），
+    //  面板再摆一块固定的白 / 灰，就成了「页面上飘着的外来板」。
+    //  取的就是**页面底色**（`surface`，页面背景读的也是它）：容器档（`surfaceContainerHighest`）
+    //  实测压上来偏深，而面板本来就靠磨砂与阴影跟页面分开，不需要再暗一档。
+    //  其余主题档仍用那两档常量 —— 它们是为 COUI 底子标定的（见 `PageColors`），换色号会走形。
+    if (LocalAppTheme.current == AppTheme.MONET) {
+        return scheme.surface
+    }
+    return if (scheme.isDarkScheme) {
         POPUP_SURFACE_DARK
     } else {
         POPUP_SURFACE_LIGHT
     }
+}
 
 /**
  * 浮层菜单的**一行**（[MenuPopup] 的入参模型）—— 四处菜单（顶栏 ⋮ / 命令长按 / 响铃档位 /

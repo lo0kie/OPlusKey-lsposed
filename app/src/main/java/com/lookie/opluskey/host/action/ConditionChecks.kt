@@ -16,20 +16,39 @@ import android.provider.Settings
 //  与 `ConditionProbe` 里原来那几个私有函数一一对应（逻辑一字未改）。
 
 /**
- * **屏幕状态**：`on`（亮屏）/ `locked`（锁屏）。
+ * **屏幕状态**：`on`（亮屏）/ `off`（熄屏）/ `locked`（锁屏）—— **三档互斥**。
  *
- *  两者**不是互补**：熄屏且无锁屏时两个都不成立。判据分开读（`isInteractive` / `isKeyguardLocked`），
- *  不拿其中一个取反 —— 那会把「熄屏」错认成「锁屏」。
+ *  判据是两个探针的组合，不能只看其中一个（真机上三种状态各错判过一次）：
+ *  · `PowerManager.isInteractive` = 屏幕亮着没有；
+ *  · `KeyguardManager.isKeyguardLocked` = **要解锁没有** —— 注意它**灭屏时也是 true**
+ *    （点亮之后仍然要解锁），所以它单独不能当「锁屏」用，否则熄屏会被判成锁屏。
+ *
+ *  于是三档这样切：
+ *  · `off`：灭着（**只看** `isInteractive`，不读锁屏）；
+ *  · `locked`：**亮着且锁着**（锁屏界面就在眼前）；
+ *  · `on`：亮着且没锁。
+ *
+ *  探针读不到 = **判不出**：用到它的那几档不成立（契约见 `ConditionProbe` 头部）。
  */
 internal fun screenMatches(
     ctx: Context,
     value: String,
-): Boolean =
-    when (value) {
-        "locked" -> keyguard(ctx)?.isKeyguardLocked == true
-        "on" -> power(ctx)?.isInteractive == true
+): Boolean {
+    val interactive = power(ctx)?.isInteractive
+    val locked = keyguard(ctx)?.isKeyguardLocked
+    return when (value) {
+        //  锁屏必须**同时**亮着：灭屏时系统同样报 locked（要点亮才谈得上解锁）
+        "locked" -> interactive == true && locked == true
+
+        //  亮屏 = 亮着且没锁
+        "on" -> interactive == true && locked == false
+
+        //  熄屏只看屏幕本身 —— 这一档不读锁屏，灭着时 `locked` 恰好也是真的
+        "off" -> interactive == false
+
         else -> false
     }
+}
 
 /**
  * **充电状态**：`charging`（充电中，含充满）/ `idle`（没在充电）。

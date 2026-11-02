@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.screen.about
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
@@ -115,10 +116,10 @@ internal fun SettingsPage.LanguageMenu(
 }
 
 /**
- * 「界面颜色」那一行的菜单（跟随系统 / 浅色 / 深色）。
+ * 「界面颜色」那一行的菜单（跟随系统 / 跟随系统 (Monet) / 浅色 / 深色）。
  *
- *  与 [LanguageMenu] 同一套：三档全列出来、当前那一档打勾、点别的档才写配置。
- *  三档各有各的字形 —— 共用一颗的话菜单里三行长得一模一样（语言那边踩过同一个坑）。
+ *  与 [LanguageMenu] 同一套：各档全列出来、当前那一档打勾、点别的档才写配置。
+ *  各档各有各的字形 —— 共用一颗的话菜单里几行长得一模一样（语言那边踩过同一个坑）。
  */
 @Composable
 internal fun SettingsPage.ThemeMenu(
@@ -134,6 +135,7 @@ internal fun SettingsPage.ThemeMenu(
                         icon =
                             when (theme) {
                                 AppTheme.AUTO -> PageIcons.ThemeAuto
+                                AppTheme.MONET -> PageIcons.ThemeMonet
                                 AppTheme.LIGHT -> PageIcons.ThemeLight
                                 AppTheme.DARK -> PageIcons.ThemeDark
                             },
@@ -319,26 +321,33 @@ private fun SettingsPage.profileRows(
 }
 
 /**
- * 「系统配色」那一行的菜单（五套强调色）。
+ * 「系统配色」那一行的菜单（五套常量色 + 一档「系统取色」）。
  *
  *  与 [ThemeMenu] 同一套：全列出来、当前那一套打勾、点别的才写配置。
- *  行首是**这一套的色块**（[PageIcons.PaletteSwatch] 的方块 + `iconTint` 给的那个种子色），
+ *  行首是**这一套的色块**（[PageIcons.accentSwatch]，颜色由 `iconTint` 给的那个种子色），
  *  于是「蓝 / 绿 / 橙 / 紫 / 玫红」不用读字也分得出来。
+ *
+ *  色块形状跟主题走：Monet 那一档整页按系统取色，色块画成四格色阶；其余档只有一个强调色，
+ *  画成**一个整块** —— 四格在那几档会被读成「四块不同的色」。
+ *
+ * @param currentTheme 只用来选色块形状（见 `PageIcons.accentSwatch`）
  */
 @Composable
 internal fun SettingsPage.PaletteMenu(
     ui: AboutUiState,
+    currentTheme: AppTheme,
     currentPalette: PagePalette,
 ) {
+    val context = LocalContext.current
     PageMenu(
         entries =
             PagePalette.entries
                 .map { palette ->
                     MenuEntry.Row(
                         title = paletteLabel(palette),
-                        icon = PageIcons.PaletteSwatch,
-                        // 行首那块色就是这一套的强调色
-                        iconTint = palette.seed,
+                        icon = PageIcons.accentSwatch(currentTheme),
+                        // 行首那块色就是这一套的强调色（「系统取色」那一档现取系统强调色）
+                        iconTint = palette.seed(context),
                         selected = palette == currentPalette,
                     ) {
                         ui.showPaletteMenu = false

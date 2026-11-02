@@ -259,7 +259,7 @@ private fun SettingsPage.comboMenuEntries(
  *  单击(0) / 双击(1) / 长按(2)，长按不是页号 1，必须按枚举取。
  */
 private fun SettingsPage.openBranchesForCombo(id: String) {
-    branchDraft.draft.comboId = id
+    branchDraft.comboId = id
     branchGesture = if (ComboEditState.page == 0) Gesture.SINGLE.ordinal else Gesture.LONG.ordinal
     XLog.w("组合键：进「$BRANCHES_TITLE」页（$id）")
     navTo(Screen.BRANCHES)

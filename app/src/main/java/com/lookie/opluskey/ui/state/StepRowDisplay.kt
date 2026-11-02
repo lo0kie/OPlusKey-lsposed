@@ -13,8 +13,16 @@ import androidx.compose.runtime.setValue
  */
 internal class StepRowItem(
     val id: Int,
-    val token: String,
+    token: String,
 ) {
+    /**
+     * 这一步的动作 token。
+     *
+     *  **可写**：换一步（同长度、只有一个位置对不上）时那一行**就地换字**，不播退场 / 入场
+     *  （见 [StepRowDisplay.sync]）。是 state 因为组合期要读它取标题与图标。
+     */
+    var token by mutableStateOf(token)
+
     val state = MutableTransitionState(false).apply { targetState = true }
 
     /**
@@ -52,12 +60,38 @@ internal class StepRowItem(
 internal class StepRowDisplay {
     val rows = mutableStateListOf<StepRowItem>()
 
+    /**
+     * 「换一步」在下标几 —— 判据是**同长度、恰好一个位置对不上、其余按 token 完全对上**。
+     *
+     *  只认这一个形态：多出 / 少掉一行、或顺序变了（上移下移）都仍然走差分那条路，
+     *  那些要的是进 / 出场与位移动画，不是就地换字。
+     *
+     *  @return 那个下标；不是「换一步」时 `null`
+     */
+    private fun replaceIndex(
+        kept: List<StepRowItem>,
+        steps: List<String>,
+    ): Int? {
+        if (kept.size != steps.size) return null
+        val diff = kept.indices.filter { kept[it].token != steps[it] }
+        if (diff.size != 1) return null
+        val at = diff[0]
+        val rest = kept.indices.filter { it != at }
+        return if (rest.all { kept[it].token == steps[it] }) at else null
+    }
+
     /** 下一个新行的 id。只在 [sync] 里读写（组合期不读）⇒ 普通 `var` 就够。 */
     private var nextId = 0
 
     /** 与 [steps] 对齐（见类注释里那段差分规则）。 */
     fun sync(steps: List<String>) {
         val kept = rows.filter { !it.exiting }
+        //  **换一步**：同长度、只有一个位置对不上 ⇒ 那一行就地换字。
+        //  走差分的话旧行收缩、新行展开，用户看到的是「这一行先变矮又长回来」。
+        replaceIndex(kept, steps)?.let { at ->
+            kept[at].token = steps[at]
+            return
+        }
         val matched = arrayOfNulls<StepRowItem>(steps.size)
         val pool = kept.toMutableList()
         steps.forEachIndexed { si, token ->

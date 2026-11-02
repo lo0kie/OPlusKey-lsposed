@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.pager.PagerState
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -25,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.navigationevent.NavigationEventDispatcherOwner
@@ -33,9 +33,9 @@ import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
 import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.LocalAppTheme
 import com.lookie.opluskey.ui.LocalDisabledHint
 import com.lookie.opluskey.ui.LocalHint
 import com.lookie.opluskey.ui.LocalIconTint
@@ -46,6 +46,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SyncToHost
 import com.lookie.opluskey.ui.disabledClickReason
 import com.lookie.opluskey.ui.hint
+import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.IconTint
 import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION
@@ -53,7 +54,8 @@ import com.lookie.opluskey.ui.model.PagePalette
 import com.lookie.opluskey.ui.model.colorsOf
 import com.lookie.opluskey.ui.onDebugCommand
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
-import com.lookie.opluskey.ui.screen.command.COMMAND_PAGE_COUNT
+import com.lookie.opluskey.ui.screen.command.branchGestureNow
+import com.lookie.opluskey.ui.screen.command.branchGestures
 import com.lookie.opluskey.ui.screen.home.HomeLinkSelfCheck
 import com.lookie.opluskey.ui.state.CONFIG_IN_FLIGHT_GRACE_MS
 import com.lookie.opluskey.ui.state.InjectStatus
@@ -96,6 +98,8 @@ internal fun SettingsPage.PageContent() {
     //  系统配色：配置里存的是 id 字符串（共用层不认识色板清单），认不出就落回默认档。
     //  读的是 `configState.config`，所以选完色当场重组、整页配色跟着换 —— 不需要重进页面。
     val palette = PagePalette.ofId(configState.config.value.global.palette)
+    //  主题档也在这里读：`MONET` 那一档整页换底子（见 `colorsOf`）
+    val theme = AppTheme.ofCode(configState.config.value.global.theme)
 
     // 「跟随系统显示大小」：**开着**时把整棵页面树换成系统那份 `Density`，关着时保持宿主这一份。
     //
@@ -112,7 +116,6 @@ internal fun SettingsPage.PageContent() {
     //  跟随开着时页面大小由系统那一档说了算，再乘一个缩放等于两处都能调、谁也说不清最后是多少。
     //  乘的是 `Density.density` ⇒ dp 与 sp 一起缩（字号也跟着变，这才是「缩放」而不是「只缩间距」）。
     val global = configState.config.value.global
-    val followDisplaySize = global.followDisplaySize
     val hostDensity = LocalDensity.current
     val systemDensity =
         remember {
@@ -120,9 +123,9 @@ internal fun SettingsPage.PageContent() {
             Density(res.displayMetrics.density, res.configuration.fontScale)
         }
     val pageDensity =
-        remember(hostDensity, systemDensity, followDisplaySize, global.pageScale) {
-            val base = if (followDisplaySize) systemDensity else hostDensity
-            val factor = if (followDisplaySize) 1f else global.pageScale / 100f
+        remember(hostDensity, systemDensity, global.followDisplaySize, global.pageScale) {
+            val base = if (global.followDisplaySize) systemDensity else hostDensity
+            val factor = if (global.followDisplaySize) 1f else global.pageScale / 100f
             // 100% 时原样返回：否则每重组一次都会换一个新 `Density` 实例，
             //  下面那层 `CompositionLocalProvider` 就得把整棵页面树重画一遍。
             if (factor == 1f) base else Density(base.density * factor, base.fontScale)
@@ -133,9 +136,12 @@ internal fun SettingsPage.PageContent() {
     //  系统状态栏的时间与电量。所以在这一层（页面级、Scaffold 之外）读好，按 Dp 传下去。
     val statusBarTop = with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() }
     val iconTint = rememberIconTint(global.iconTintSeed, night)
-    COUITheme(colors = colorsOf(night, palette)) {
+    COUITheme(colors = colorsOf(night, palette, theme, LocalContext.current)) {
         CompositionLocalProvider(
             LocalDensity provides pageDensity,
+            //  浮层（菜单 / 确认弹窗）自己定底色，不吃 `COUITheme.surface`：它们要知道这一页
+            //  处在哪一档，Monet 那一档才跟着系统取色（见 `LocalAppTheme` 与 `popupSurfaceColor`）
+            LocalAppTheme provides theme,
             LocalNavigationEventDispatcherOwner provides navOwner,
             //  禁用态那几格点一下要说明原因（见 `ui/DisabledHint.kt`）：
             //  提示怎么弹、以及「整页现在为什么改不了」，都从页面这一层传下去 ——
@@ -192,14 +198,8 @@ internal fun SettingsPage.PageContent() {
                         //  裁掉转场出画的部分：push/pop 时旧页滑出、新页滑入，
                         .clipToBounds(),
                 ) {
-                    //  三个分页器一次建好、打成一个包往下传（见 [PagePagers]）
-                    val pagers =
-                        PagePagers(
-                            gestures = rememberPagerState(pageCount = { Gesture.entries.size }),
-                            commands = rememberPagerState(pageCount = { COMMAND_PAGE_COUNT }),
-                            //  组合键只有短按 / 长按两档（`Gesture.entries` 是三档，别直接借它）
-                            combos = rememberPagerState(pageCount = { 2 }),
-                        )
+                    //  分页器一次建好、打成一个包往下传（见 [rememberPagePagers]）
+                    val pagers = rememberPagePagers()
                     PageEffects(navOwner, pagers)
                     PageBackStack(pagers)
                 }
@@ -467,6 +467,14 @@ private fun SettingsPage.PushResetsPagers(pagers: PagePagers) {
             //  从 FAB 进来时草稿刚 `reset()`（kind = SINGLE），等价于回第一页。
             //  分叉那一档不在这个分页器里（它是独立页）：`indexOf` 给出 -1 ⇒ 落到第一页，
             //  紧接着 `CommandTabSync` 会把 `draft.kind` 拨回单条 —— 这一页本来也只认这两档。
+            //  从「按键绑定」某一档 / 某组组合键进来时，停在**那一档**：`branchGesture` 是进页前
+            //  由那一页同步过来的（见 `BindingScreen` 与 `ComboEditMenu`）。组合键只有两页，
+            //  按档位取下标，取不到就回第一页。
+            Screen.BRANCHES -> {
+                val page = branchGestures().indexOf(branchGestureNow()).coerceAtLeast(0)
+                pagers.branches.scrollToPage(page)
+            }
+
             Screen.COMMANDS -> {
                 val page =
                     if (commandDraft.consumeOpenListPage()) {

@@ -1,11 +1,15 @@
 package com.lookie.opluskey.ui.model
 
+import android.content.Context
+import android.os.Build
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import com.lookie.opluskey.core.model.GlobalConfig
+import io.github.suqi8.coui.kmp.theme.ColorSchemeMode
 import io.github.suqi8.coui.kmp.theme.Colors
-import io.github.suqi8.coui.kmp.theme.darkColorScheme
-import io.github.suqi8.coui.kmp.theme.lightColorScheme
+import io.github.suqi8.coui.kmp.theme.ThemeController
+import io.github.suqi8.coui.kmp.theme.platformDynamicColors
 
 // 「系统配色」—— 页面强调色的几套预设，以及由强调色推出整套色板的那一个函数。
 //
@@ -15,20 +19,39 @@ import io.github.suqi8.coui.kmp.theme.lightColorScheme
 /**
  * 一套配色 —— 界面上一个色点，配置里一个 [id]。
  *
- *  [seed] 就是这一套的**强调色**（主色），其余颜色按它推（见 [colorsOf]）。
- *  顺序即色点顺序：第一档必须是默认档（用户最先看到的就是「原来那个蓝」）。
+ *  [seed] 给出这一套的**强调色**（主色），其余颜色按它推（见 [colorsOf]）。
+ *  顺序即色点顺序：第一档是默认档（认不出的 id 也落回它）。
  */
 internal enum class PagePalette(
     val id: String,
-    val seed: Color,
+    /** 常量种子色；`null` = 这一档的种子要现取（见 [seed]）。 */
+    private val fixedSeed: Color?,
 ) {
+    /**
+     * **默认** —— 跟随系统取色：种子取系统的强调色（`android.R.color.system_accent1_500`），
+     * 也就是「壁纸取色」那一族的主色。用户换了壁纸 / 换了系统配色，这一档跟着变。
+     *
+     *  取的是**资源里的色值**、不是 Material3 的整套 dynamic scheme：整套色板仍由 [colorsOf] 按种子推。
+     *  Android 12 以下没有这组资源，[systemAccent] 落回 COUI 那个蓝。
+     *
+     *  这是第一档（菜单里排最上）：没选过、或者配置里是认不出的 id 都落回它。
+     */
+    DEFAULT(GlobalConfig.DEFAULT_PALETTE, null),
+
     /** COUI 自己那套蓝 —— 与 `lightColorScheme()` / `darkColorScheme()` 的 `primary` 是同一个值。 */
-    DEFAULT(GlobalConfig.DEFAULT_PALETTE, Color(0xFF0066FF)),
+    BLUE("blue", PALETTE_DEFAULT_SEED),
     GREEN("green", Color(0xFF0C9A5B)),
     ORANGE("orange", Color(0xFFE0700B)),
     PURPLE("purple", Color(0xFF7C4DFF)),
     PINK("pink", Color(0xFFD4407E)),
     ;
+
+    /**
+     * 这一套的强调色。
+     *
+     * @param context 只有 [DEFAULT] 用它（其余档是常量，取不取都一样）
+     */
+    fun seed(context: Context): Color = fixedSeed ?: systemAccent(context)
 
     companion object {
         /**
@@ -42,60 +65,94 @@ internal enum class PagePalette(
 }
 
 /**
- * 某个配色在某个深浅下对应的整套色板（`COUITheme(colors = …)` 的入参）。
+ * 某一档配色 + 某一档主题在某个深浅下对应的整套色板（`COUITheme(colors = …)` 的入参）。
  *
- * ## 只换「强调色那一族」
+ * ## 底子分两种
  *
- *  主色 / 主色变体 / 主色容器 / 三档禁用主色 / 三级色容器 / 滑块关键点前景 —— 就这些。
- *  背景、表面、文本、分隔线、错误色**一律不动**：它们与强调色无关，跟着换等于整页换皮
- *  （深浅两套的 `surface` 是页面底色的来源，动了它连宿主那条状态栏配色都要跟着重算）。
+ *  · **主题 = 跟随系统 (Monet)**：底子取系统那套 MD3 角色映射（`platformDynamicColors`）——
+ *    底色、卡片、文本、分隔线全都跟着系统的壁纸取色走（用户口径：「Moment 配色要把应用底色 /
+ *    cardlist 的背景色都换了」）。
+ *  · 其余主题档：底子是 COUI 的 `LIGHT_SCHEME` / `DARK_SCHEME`，只有强调色那一族被换掉。
  *
- * ## 默认档原样返回库色板
+ * ## 强调色一律由「强调色」那一行说了算
  *
- *  「没选过」与「选了默认档」必须是同一个像素结果，所以这一档**不经过任何推导**、直接返回
- *  `LIGHT_SCHEME` / `DARK_SCHEME`。其它档是推导出来的，色值与原色板的对应关系按「同一个明暗
- *  关系」贴着抄（注释里的原值就是被抄的那一个）。
+ *  主色 / 主色变体 / 主色容器 / 三档禁用主色 / 三级色容器 / 滑块关键点前景 —— 就这些被盖上去
+ *  （见 [withAccent]）。选中「默认」时种子就是系统强调色，与 Monet 的底子同源；选了蓝 / 绿 / …
+ *  则是在底子上换一个点缀。
  */
+@Composable
 internal fun colorsOf(
     night: Boolean,
     palette: PagePalette,
+    theme: AppTheme,
+    context: Context,
 ): Colors {
-    if (palette == PagePalette.DEFAULT) return if (night) DARK_SCHEME else LIGHT_SCHEME
-    return if (night) darkWith(palette.seed) else lightWith(palette.seed)
+    val seed = palette.seed(context)
+    //  **只有主题选了 Monet** 才整套走系统取色：默认档 = 系统那套原样（含系统自己选的调色风格），
+    //  选了别的色 = 按那个种子重新生成整套（换强调色时底子也跟着换）。
+    //  其余主题档一律是 COUI 的底子 —— 强调色只换那一族，不会把底色也染成 Monet。
+    if (theme == AppTheme.MONET) {
+        return if (palette == PagePalette.DEFAULT) {
+            platformDynamicColors(dark = night)
+        } else {
+            ThemeController(
+                colorSchemeMode = if (night) ColorSchemeMode.MonetDark else ColorSchemeMode.MonetLight,
+                keyColor = seed,
+            ).currentColors()
+        }
+    }
+    val base = if (night) DARK_SCHEME else LIGHT_SCHEME
+    return base.withAccent(seed, night)
+}
+
+/** 默认档那个蓝 —— 也是「系统取色」取不到时的兜底。 */
+private val PALETTE_DEFAULT_SEED = Color(0xFF0066FF)
+
+/**
+ * 系统强调色（Android 12 起由壁纸取色生成的那一族）。
+ *
+ *  取 `system_accent1_500`：它是那套调色板的**主色档**，与页面强调色的角色一一对应。
+ *  取不到（Android 12 以下、或资源被裁掉的 ROM）就落回默认蓝 —— 配色这一档不该因为取不到色
+ *  而让整页读不出来。
+ */
+private fun systemAccent(context: Context): Color {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return PALETTE_DEFAULT_SEED
+    return runCatching { Color(context.getColor(android.R.color.system_accent1_500)) }
+        .getOrDefault(PALETTE_DEFAULT_SEED)
 }
 
 /**
- * 浅色档：种子色直接当主色。
+ * 把**强调色那一族**盖到任意底子上（底子可能是 COUI 的色板，也可能是 Monet 那套）。
  *
- * 括号里的原值是默认档（默认蓝）在同一位置上的值 —— 提亮比例按它反推，换色后明暗关系不走形。
+ *  浅色档：种子色直接当主色；深色档：主色比种子色亮一档、容器再亮一档。
+ *  括号里的原值是默认档（默认蓝）在同一位置上的值 —— 提亮比例按它反推，换色后明暗关系不走形。
  */
-private fun lightWith(seed: Color): Colors =
-    lightColorScheme(
-        primary = seed,
-        primaryVariant = seed,
-        primaryContainer = seed,
-        // 0x4D ≈ 30% —— 原 `disabledPrimary` 就是 `0x4D0066FF`
-        disabledPrimary = seed.copy(alpha = PALETTE_DISABLED_ALPHA),
-        disabledPrimaryButton = seed.copy(alpha = PALETTE_DISABLED_ALPHA),
-        // 原值是中性灰 `#EBEBEB`（很淡的一格）：换色后保持「淡到只剩个形」，不跟着染成彩色
-        disabledPrimarySlider = seed.copy(alpha = PALETTE_DIMMEST_ALPHA),
-        // 原 `#AECDFF` ≈ 主色朝白 0.68
-        onPrimaryVariant = seed.paletteLift(0.68f),
-        // 0x26 ≈ 15% —— 原 `tertiaryContainer` 就是 `0x260066FF`
-        tertiaryContainer = seed.copy(alpha = PALETTE_TERTIARY_ALPHA),
-        onTertiaryContainer = seed,
-        // 原 `#6EB5FF` ≈ 主色朝白 0.45
-        sliderKeyPointForeground = seed.paletteLift(0.45f),
-    )
-
-/**
- * 深色档：主色要比浅色档**亮一档**（原 `#247CFF` 之于 `#0066FF` 就是朝白 0.14），
- * 主色容器再亮一档（原 `#5C9DFF` ≈ 深色主色朝白 0.26）。
- */
-private fun darkWith(seed: Color): Colors {
+private fun Colors.withAccent(
+    seed: Color,
+    night: Boolean,
+): Colors {
+    if (!night) {
+        return copy(
+            primary = seed,
+            primaryVariant = seed,
+            primaryContainer = seed,
+            // 0x4D ≈ 30% —— 原 `disabledPrimary` 就是 `0x4D0066FF`
+            disabledPrimary = seed.copy(alpha = PALETTE_DISABLED_ALPHA),
+            disabledPrimaryButton = seed.copy(alpha = PALETTE_DISABLED_ALPHA),
+            // 原值是中性灰 `#EBEBEB`（很淡的一格）：换色后保持「淡到只剩个形」，不跟着染成彩色
+            disabledPrimarySlider = seed.copy(alpha = PALETTE_DIMMEST_ALPHA),
+            // 原 `#AECDFF` ≈ 主色朝白 0.68
+            onPrimaryVariant = seed.paletteLift(0.68f),
+            // 0x26 ≈ 15% —— 原 `tertiaryContainer` 就是 `0x260066FF`
+            tertiaryContainer = seed.copy(alpha = PALETTE_TERTIARY_ALPHA),
+            onTertiaryContainer = seed,
+            // 原 `#6EB5FF` ≈ 主色朝白 0.45
+            sliderKeyPointForeground = seed.paletteLift(0.45f),
+        )
+    }
     val main = seed.paletteLift(PALETTE_DARK_LIFT)
     val container = main.paletteLift(PALETTE_CONTAINER_LIFT)
-    return darkColorScheme(
+    return copy(
         primary = main,
         primaryVariant = main,
         primaryContainer = container,

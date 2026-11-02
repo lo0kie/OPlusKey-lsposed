@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
@@ -266,8 +267,9 @@ internal fun SettingsPage.AppearanceCard(
                 CardRow.Item(
                     title = I18n.get(Strings.MORE_PALETTE, "强调色"),
                     summary = paletteLabel(currentPalette),
-                    icon = PageIcons.PaletteSwatch,
-                    iconTint = currentPalette.seed,
+                    //  色块按主题选：Monet 那档是四格色阶，其余档是**一个整块**（见 `accentSwatch`）
+                    icon = PageIcons.accentSwatch(currentTheme),
+                    iconTint = currentPalette.seed(LocalContext.current),
                     trailing = { RowEndIcon(PageIcons.Selector) },
                     modifier = Modifier.preciseClickAnchor(ui.paletteClick),
                     onClick = {

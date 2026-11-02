@@ -56,11 +56,11 @@ internal class SideKeyInterceptor(
      */
     private val onCombo: (ComboKey, Gesture, Boolean) -> Unit,
     /**
-     * 屏幕此刻亮着没有（由 `KeyHooks` 注入 `PowerManager.isInteractive`）。
+     * 「屏幕黑着的话，这段时间里别让 CPU 睡」（熄屏排双击窗口时用，见 `KeyHooks.holdAwake`）。
      *
-     * 熄屏时判定器不等双击窗口（抬手后设备会睡，那一枪不会到点）—— 见 `GestureDetector` 类注释。
+     *  熄屏时判定器要靠它把双击窗口那一段顶住 —— 见 `GestureDetector` 类注释。
      */
-    private val isScreenOn: () -> Boolean,
+    private val holdAwake: (Long) -> Unit,
 ) {
     /**
      * 手势判定器 —— 拿到的是 hook 回调里的原始事件，时序是真的，不会被「解冻灌包」搅乱。
@@ -78,7 +78,7 @@ internal class SideKeyInterceptor(
             onGestureNoted = onGestureNoted,
             onGesture = { id, gesture, _, repeat -> forward(id, gesture, repeat) },
             onLongReleased = onRelease,
-            isScreenOn = isScreenOn,
+            holdAwake = holdAwake,
         )
 
     /**

@@ -379,7 +379,8 @@ internal fun languageLabel(lang: AppLanguage): String =
  */
 internal fun paletteLabel(palette: PagePalette): String =
     when (palette) {
-        PagePalette.DEFAULT -> I18n.get(Strings.MORE_PALETTE_BLUE, "蓝色")
+        PagePalette.DEFAULT -> I18n.get(Strings.MORE_PALETTE_DEFAULT, "默认")
+        PagePalette.BLUE -> I18n.get(Strings.MORE_PALETTE_BLUE, "蓝色")
         PagePalette.GREEN -> I18n.get(Strings.MORE_PALETTE_GREEN, "绿色")
         PagePalette.ORANGE -> I18n.get(Strings.MORE_PALETTE_ORANGE, "橙色")
         PagePalette.PURPLE -> I18n.get(Strings.MORE_PALETTE_PURPLE, "紫色")
@@ -394,6 +395,7 @@ internal fun paletteLabel(palette: PagePalette): String =
 internal fun themeLabel(theme: AppTheme): String =
     when (theme) {
         AppTheme.AUTO -> I18n.get(Strings.MORE_THEME_AUTO, "跟随系统")
+        AppTheme.MONET -> I18n.get(Strings.MORE_THEME_MONET, "跟随系统 (Monet)")
         AppTheme.LIGHT -> I18n.get(Strings.MORE_THEME_LIGHT, "浅色")
         AppTheme.DARK -> I18n.get(Strings.MORE_THEME_DARK, "深色")
     }

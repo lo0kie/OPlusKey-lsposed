@@ -20,11 +20,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal5
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignalOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Clock
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobile
+import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileOff
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Headphones
 import io.github.lyxnx.compose.ui.tablericons.outline.HeadphonesOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Headset
-import io.github.lyxnx.compose.ui.tablericons.outline.Lock
+import io.github.lyxnx.compose.ui.tablericons.outline.LockSquare
 import io.github.lyxnx.compose.ui.tablericons.outline.Music
 import io.github.lyxnx.compose.ui.tablericons.outline.Plane
 import io.github.lyxnx.compose.ui.tablericons.outline.PlaneInflight
@@ -64,7 +65,7 @@ internal fun conditionIcon(kind: ConditionKind): ImageVector =
     when (kind) {
         ConditionKind.APP -> PageIcons.AppFront
 
-        // 屏幕状态：一颗「亮度」当类别，亮屏 / 锁屏那两颗在取值那边
+        // 屏幕状态：一颗「亮度」当类别，亮屏 / 熄屏 / 锁屏那三颗在取值那边
         ConditionKind.SCREEN -> TablerIcons.Outline.Brightness
 
         // 充电：一颗插头（类别）；电池 / 充电中那是**状态**
@@ -119,11 +120,28 @@ internal fun conditionChoiceIcon(
             orientationChoiceIcon(value)
         }
 
+        ConditionKind.SCREEN -> {
+            screenChoiceIcon(value)
+        }
+
         //  其余「两档」条件全在下面那张表里：一档一个 `if` 写在这里，复杂度会跟着
         //  `ConditionKind` 一路涨（加两档就从 18 到 20，detekt 是 15）
         else -> {
             choiceIconsOf(kind, value) ?: conditionIcon(kind)
         }
+    }
+
+/**
+ * 屏幕状态三档：亮屏（手机本体）、熄屏（本体打叉）、锁屏（带锁的方块）。
+ *
+ *  锁屏**不能**用那颗普通的 `lock`：那颗是「这颗键被停用」的字形（`PageIcons.KeyLocked`），
+ *  两处撞在一起会读成「这一档被禁用了」（真机口径「锁屏和停用的图标重叠了」）。
+ */
+private fun screenChoiceIcon(value: String): ImageVector =
+    when (value) {
+        "off" -> TablerIcons.Outline.DeviceMobileOff
+        "locked" -> TablerIcons.Outline.LockSquare
+        else -> TablerIcons.Outline.DeviceMobile
     }
 
 /** 两档条件的一对字形：取 [firstValue] 时用 [onFirst]，其余用 [onSecond]。 */
@@ -134,7 +152,7 @@ private class ChoiceIcons(
 )
 
 /**
- * 「只有两档」的那些条件 —— 关 / 开、暂停 / 播放、未连接 / 已连接、锁屏 / 亮屏、未充电 / 充电中。
+ * 「只有两档」的那些条件 —— 关 / 开、暂停 / 播放、未连接 / 已连接、未充电 / 充电中。
  *
  *  做成表而不是 `when` 分支：每加一种条件只是多一行数据，不会把谁的分析复杂度顶上去。
  *
@@ -148,7 +166,6 @@ private val CHOICE_ICONS: Map<ConditionKind, ChoiceIcons> =
         ConditionKind.MEDIA to ChoiceIcons("paused", TablerIcons.Outline.PlayerPause, TablerIcons.Outline.PlayerPlay),
         ConditionKind.HEADSET to
             ChoiceIcons("disconnected", TablerIcons.Outline.HeadphonesOff, TablerIcons.Outline.Headphones),
-        ConditionKind.SCREEN to ChoiceIcons("locked", TablerIcons.Outline.Lock, TablerIcons.Outline.DeviceMobile),
         ConditionKind.CHARGING to
             ChoiceIcons("idle", TablerIcons.Outline.Battery, TablerIcons.Outline.BatteryCharging),
         //  蓝牙「开」用带连接记号的 `bluetooth-connected`：类别那一档已经占着 `bluetooth`
