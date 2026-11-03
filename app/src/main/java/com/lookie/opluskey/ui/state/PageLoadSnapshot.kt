@@ -107,6 +107,7 @@ internal fun readPageLoadSnapshot(context: Context): PageLoadSnapshot =
                     showUnopenable = false,
                     injectEverAlive = false,
                     injectAliveBoot = 0L,
+                    skipUpdateVersion = null,
                 ),
             linkBaseline = LinkBaseline(installedAt = 0L, injectEverAlive = false, injectAliveBoot = 0L),
         )

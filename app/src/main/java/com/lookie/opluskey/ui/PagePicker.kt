@@ -1,7 +1,10 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -12,12 +15,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.opticalCenter
@@ -55,18 +62,37 @@ internal fun PickerRow(
     val colors = COUITheme.colorScheme
     //  弹窗里这一列也算「能点的行」：默认振一下（见 `LocalTick`）
     val tick = LocalTick.current
+    //  选中是**在这一层就地发生**的（多选窗点一行不关窗，勾 / 取消勾都看得见）：
+    //  底色、文字色、行尾那枚对勾三样一起渐变 / 淡入，与别处状态色同一条曲线。
+    val selectedFill by animateColorAsState(
+        targetValue =
+            if (selected) {
+                colors.primary.copy(alpha = PICKER_ROW_TINT_ALPHA)
+            } else {
+                Color.Transparent
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "PickerRowFill",
+    )
+    val labelColor by animateColorAsState(
+        targetValue = if (selected) colors.primary else colors.onSurface,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "PickerRowLabel",
+    )
+    //  对勾那一格**恒占位**（淡出到 0 也在）：行尾突然多出一颗字会把文字那列挤窄、
+    //  长名字当场重排一次。留一格之后只有它自己在淡。
+    val checkAlpha by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = COLOR_FADE_SPEC,
+        label = "PickerRowCheck",
+    )
     Row(
         modifier =
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = PICKER_ROW_MIN_HEIGHT)
-                .background(
-                    if (selected) {
-                        colors.primary.copy(alpha = PICKER_ROW_TINT_ALPHA)
-                    } else {
-                        Color.Transparent
-                    },
-                ).clickable(
+                .background(selectedFill)
+                .clickable(
                     onClick = {
                         tick()
                         onClick()
@@ -80,16 +106,16 @@ internal fun PickerRow(
         Text(
             text = label,
             style = COUITheme.textStyles.body1,
-            color = if (selected) colors.primary else colors.onSurface,
+            color = labelColor,
             //  行高由 [PICKER_ROW_MIN_HEIGHT] 定住、字在里面竖居中 —— 行盒居中不等于墨迹居中，
             //  汉字会看着偏高那一点点。与网格格 / 胶囊 / 表格单元格同一档光学修正（见 `opticalCenter`）。
             modifier = Modifier.weight(1f).opticalCenter(COUITheme.textStyles.body1),
         )
-        if (selected) {
+        Box(Modifier.size(ROW_END_ICON_SIZE), contentAlignment = Alignment.Center) {
             Icon(
                 PageIcons.MenuCheck,
                 contentDescription = null,
-                modifier = Modifier.size(ROW_END_ICON_SIZE),
+                modifier = Modifier.size(ROW_END_ICON_SIZE).alpha(checkAlpha),
                 tint = colors.primary,
             )
         }

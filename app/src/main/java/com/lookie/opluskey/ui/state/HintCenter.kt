@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.state
 
+import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,13 +45,15 @@ internal class HintCenter {
      *
      * @param slot 语义位：同一个位上再来一句话是**改那一条的字**，不是再加一条（见 [HintQueue.push]）。
      *   不传 = 每次都是新的一条（保存失败这类一次性回执就该这样）。
+     * @param icon 前置图标（`null` = 界面画默认的 alert-circle，见 `HintItem.icon`）。
      */
     fun hint(
         text: String,
         slot: String? = null,
         holdMs: Long? = null,
+        icon: ImageVector? = null,
     ) {
-        queue.push(text, slot, holdMs)
+        queue.push(text, slot, holdMs, icon)
     }
 
     /** 把某个语义位上的提示提前收掉（见 [HintQueue.retire]）。 */

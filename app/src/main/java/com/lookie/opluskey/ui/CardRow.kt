@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
@@ -369,6 +371,14 @@ private fun rememberCardRowIconColor(row: CardRow.Item): State<Color> =
     )
 
 /**
+ * 行尾那一格现在是哪一种形态 —— 只用来给 [Crossfade] 一个稳定的目标值（见 [ItemRow] 的 `endActions`）。
+ *
+ *  `trailing` 那个 lambda 每次重组都是新的，拿它当 `targetState` 会让交叉淡入每帧重启一遍；
+ *  这一格真正会换的只有「是哪一档」，所以按档记身份。自有控件优先于箭头（与原来那个 `when` 同序）。
+ */
+private enum class RowEndSlot { None, Arrow, Content }
+
+/**
  * 普通行 —— 库的 [BasicComponent] 加两样项目口径：行首图标自己上色、行尾箭头自己画。
  *
  *  单独一支只为让 [CardList] 那支短下来；它与 `SwitchRow` 是同级的两条分支。
@@ -402,19 +412,23 @@ private fun ItemRow(
         modifier = row.modifier,
         startAction = cardRowStartAction(row, iconTint),
         endActions = {
-            // `when` 在这里是**语句**（`endActions` 的返回值就是 Unit），不需要 `else` 兜底
-            when {
-                row.trailing != null -> {
-                    row.trailing.invoke()
-                }
-
-                row.arrow -> {
-                    Icon(
-                        PageIcons.EnterArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(ROW_END_ICON_SIZE),
-                        tint = arrowTint,
-                    )
+            //  行尾那一格在「箭头 / 自有控件 / 空」三档之间是**就地换控件**（编辑态把箭头换成多选框、
+            //  只读时收起箭头都走这里）。箭头与多选框同尺寸 ⇒ 交叉淡过去时盒宽不变，
+            //  右侧不会「啪」地换一块，标题也不会被推一下。
+            Crossfade(
+                targetState =
+                    when {
+                        row.trailing != null -> RowEndSlot.Content
+                        row.arrow -> RowEndSlot.Arrow
+                        else -> RowEndSlot.None
+                    },
+                animationSpec = COLOR_FADE_SPEC,
+                label = "CardRowEnd",
+            ) { slot ->
+                when (slot) {
+                    RowEndSlot.Arrow -> RowEndIcon(tint = arrowTint)
+                    RowEndSlot.Content -> row.trailing?.invoke()
+                    RowEndSlot.None -> Unit
                 }
             }
         },
@@ -464,6 +478,19 @@ private fun ItemText(
     //  摆在一起读作「标签没有中线对齐标题」。有副标题时也照压：修正只挪这一行字的墨迹，
     //  副标题是另一段、不受影响。
     val titleNeedsOpticalCenter = row.summary == null || row.titleExtra != null
+    //  标题 / 副标题两档色同样带过渡：整页闸门一拨、或这一行自己从「待补条件」变成「填好了」时，
+    //  行首图标与行尾箭头本来就在渐变（见 [rememberCardRowIconColor] 与 `arrowTint`）——
+    //  文字硬切就成了「图标在淡、字在跳」。
+    val titleColor by animateColorAsState(
+        targetValue = if (row.enabled) titleColors.color else titleColors.disabledColor,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "CardRowTitle",
+    )
+    val summaryColor by animateColorAsState(
+        targetValue = if (row.enabled) summaryColors.color else summaryColors.disabledColor,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "CardRowSummary",
+    )
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (row.titleContent != null) {
             //  **整列占满**：自己画的那一块要能按列分宽度（见 [CardRow.Item.titleContent]），
@@ -474,7 +501,7 @@ private fun ItemText(
                 text = row.title,
                 style = titleStyle,
                 fontWeight = FontWeight.Medium,
-                color = if (row.enabled) titleColors.color else titleColors.disabledColor,
+                color = titleColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier =
@@ -493,7 +520,7 @@ private fun ItemText(
             text = row.summary,
             modifier = Modifier.padding(top = ROW_LINE_GAP),
             style = COUITheme.textStyles.body2,
-            color = if (row.enabled) summaryColors.color else summaryColors.disabledColor,
+            color = summaryColor,
         )
     }
 }
@@ -510,29 +537,32 @@ private fun ItemText(
 private fun cardRowStartAction(
     row: CardRow.Item,
     iconTint: Color,
-): (@Composable () -> Unit)? =
-    when {
-        row.startIcon != null -> {
-            {
-                Box(Modifier.padding(end = ROW_START_ICON_GAP)) { row.startIcon() }
-            }
-        }
-
-        row.icon != null -> {
-            {
-                Icon(
-                    row.icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.padding(end = ROW_START_ICON_GAP),
-                )
-            }
-        }
-
-        else -> {
-            null
+): (@Composable () -> Unit)? {
+    val startIcon = row.startIcon
+    if (startIcon != null) {
+        return {
+            Box(Modifier.padding(end = ROW_START_ICON_GAP)) { startIcon() }
         }
     }
+    val glyph = row.icon ?: return null
+    return {
+        //  字形会随状态换（停用的键换成禁用图标、序号键换成禁用图标那几处）：形状没法插值，
+        //  只能交叉淡过去 —— 与旁边那片图标色同一条曲线（[COLOR_FADE_SPEC]），否则同一次切换
+        //  看着是「色在渐变、字形啪地换掉」。两种字形同尺寸，交叉期间这一格宽度不变。
+        Crossfade(
+            targetState = glyph,
+            animationSpec = COLOR_FADE_SPEC,
+            label = "CardRowIconGlyph",
+        ) { shown ->
+            Icon(
+                shown,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.padding(end = ROW_START_ICON_GAP),
+            )
+        }
+    }
+}
 
 /** 标题与副标题之间那一档 —— 与库的 `MarginBetweenLine` 同一值（2dp）。 */
 private val ROW_LINE_GAP = 2.dp

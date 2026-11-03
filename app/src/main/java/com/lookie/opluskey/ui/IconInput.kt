@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import io.github.suqi8.coui.kmp.anim.SinOutEasing
@@ -159,7 +161,14 @@ internal fun SettingsPage.IconInputView(
 
     // 禁用时整栏压暗（库的 `enabled = false` 只把字与图标换成灰档，观感上仍像「可以点」）——
     //  与「按键绑定」那条分段控件、排序态下的命令卡同一档 [DISABLED_ALPHA]。
-    Column(modifier = modifier.alpha(if (enabled) 1f else DISABLED_ALPHA)) {
+    //  这一档带过渡：同一张卡里别的行都是渐变过去的（行首图标 / 标题 / 开关），只有这一栏
+    //  硬闪一下会很扎眼。
+    val dim by animateFloatAsState(
+        targetValue = if (enabled) 1f else DISABLED_ALPHA,
+        animationSpec = COLOR_FADE_SPEC,
+        label = "InputRowDim",
+    )
+    Column(modifier = modifier.alpha(dim)) {
         InputField(
             query = value,
             // **长度上限在这一层兜**（不靠各调用点自己截）：超出的部分直接吃掉，

@@ -70,6 +70,12 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     //  编辑态：勾中的项数 + 删除确认窗开着没有（0 项时右下角那颗「删除」不出现，见下）
     val pickedCount = KeysEditState.count
     var confirmDelete by remember { mutableStateOf(false) }
+    //  勾中的键会**连带删掉**「用到它的」组合（少一颗键的组合是废配置，见 `removePicked`）：
+    //  确认窗要把这个数报出来，别让人以为只少两颗键。已经勾上的组合不重复算。
+    val cascadeCombos =
+        cfg.combos.count { combo ->
+            combo.id !in KeysEditState.pickedCombos && combo.keys.any { it in KeysEditState.pickedKeys }
+        }
     //  离开这一页时把编辑态收干净：下次进来是正常的一页，而不是顶栏写着「完成」、
     //  清单上还挂着一排勾。
     DisposableEffect(Unit) { onDispose { KeysEditState.clear() } }
@@ -95,6 +101,7 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     KeysDeleteConfirm(
         show = confirmDelete,
         count = pickedCount,
+        cascadeCombos = cascadeCombos,
         onDismiss = { confirmDelete = false },
         onConfirm = {
             confirmDelete = false
@@ -147,19 +154,31 @@ private fun BoxScope.KeysDeleteFab(
 /**
  * 删掉选中那几项之前的确认窗 —— 那几项的绑定一起没，删了不能撤销。
  *
+ *  勾了键时还要说清**连带的组合按键**（见 [removePicked]：少一颗键的组合会被一起删掉）——
+ *  只在真有组合被带走时才多出那一句，没勾键 / 没有组合受影响时正文仍是一句话。
+ *
  * @param count 选中几项（正文里报出来：确认窗要让人看清「这一下会删掉几条」）
+ * @param cascadeCombos 顺带被删掉的组合按键数（`0` = 不写那一句）
  */
 @Composable
 private fun SettingsPage.KeysDeleteConfirm(
     show: Boolean,
     count: Int,
+    cascadeCombos: Int,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    val body = I18n.format(Strings.KEYS_DELETE_CONFIRM, count)
     ConfirmDialog(
         show = show,
         title = I18n.get(Strings.KEYS_DELETE_TITLE, "删除选中的项目"),
-        summary = I18n.format(Strings.KEYS_DELETE_CONFIRM, count),
+        //  段与段用空行切开（`EmphasisText` 的分段规则）：第二段是连带影响，单独读得清
+        summary =
+            if (cascadeCombos > 0) {
+                body + "\n\n" + I18n.format(Strings.KEYS_DELETE_COMBOS, cascadeCombos)
+            } else {
+                body
+            },
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = onDismiss,
         onConfirm = onConfirm,

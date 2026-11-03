@@ -53,8 +53,10 @@ object ConfigCodec {
      *  13 = 当前上一版；
      *  14 = `ComboDto` 多了 `rules`（组合键的条件执行）；
      *  18 = `StateRuleDto` 多了 `enabled`（场景可以停用；15~17 见代码历史）。
+     *  19 = （见代码历史，本次未改动）；
+     *  20 = 顶层多了 `profile_id`（多配置的身份从「名字空 + 位次」换成显式 id）。
      */
-    const val VERSION = 19
+    const val VERSION = 20
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

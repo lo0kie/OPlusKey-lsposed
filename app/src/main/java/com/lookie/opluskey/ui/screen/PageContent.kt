@@ -39,6 +39,7 @@ import com.lookie.opluskey.ui.LocalAppTheme
 import com.lookie.opluskey.ui.LocalDisabledHint
 import com.lookie.opluskey.ui.LocalHint
 import com.lookie.opluskey.ui.LocalIconTint
+import com.lookie.opluskey.ui.LocalSwitchPositions
 import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.PageDebugChannel
 import com.lookie.opluskey.ui.Screen
@@ -57,6 +58,8 @@ import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
 import com.lookie.opluskey.ui.screen.command.branchGestureNow
 import com.lookie.opluskey.ui.screen.command.branchGestures
 import com.lookie.opluskey.ui.screen.home.HomeLinkSelfCheck
+import com.lookie.opluskey.ui.screen.update.UpdateDialog
+import com.lookie.opluskey.ui.screen.update.UpdateSelfCheck
 import com.lookie.opluskey.ui.state.CONFIG_IN_FLIGHT_GRACE_MS
 import com.lookie.opluskey.ui.state.InjectStatus
 import com.lookie.opluskey.ui.state.UiState
@@ -65,6 +68,7 @@ import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.Scaffold
 import io.github.suqi8.coui.kmp.nav.core.NavDisplay
 import io.github.suqi8.coui.kmp.nav.core.NavDisplayEffects
+import io.github.suqi8.coui.kmp.nav.core.NavEntryBuilder
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.COUIPopupUtils.Companion.COUIPopupHost
 import kotlinx.coroutines.delay
@@ -158,6 +162,8 @@ internal fun SettingsPage.PageContent() {
             LocalTick provides remember { { tickNow() } },
             //  图标配色（见上面那段）：关着时是恒 `null` 的一支
             LocalIconTint provides iconTint,
+            //  开关「上一次落定的位置」：页面级一份，供开关行在被重建时复位（见 `LocalSwitchPositions`）
+            LocalSwitchPositions provides remember { mutableMapOf<String, Boolean>() },
             //  禁用态被点一下要说的话：库里所有可点控件（`BasicComponent` / `IconButton` /
             //  可交互 `Card` / 菜单行）在 `enabled = false` 时把这一下点击交给它
             //  —— 见 `patches/coui/0008-disabled-click-explains.patch`。
@@ -287,6 +293,10 @@ private fun SettingsPage.PageEffects(
     //  （「系统侧还是旧版」「页面还在检查」都等它）。挂在首页时一离开那一页就被取消 ——
     //  于是「留在首页才看得到提示」，与本意（一趟进程只说一次）相反。
     HomeLinkSelfCheck()
+    //  检查更新也在这一层、也是「一趟进程一次」：与链路自检同一类事（打开页面时问一句外面），
+    //  而且同样只在**有结论**时才出声（见 `UpdateState`）。
+    UpdateSelfCheck()
+    UpdateDialog()
     PageNoticeHint()
     PageCheckingHint()
 }
@@ -499,6 +509,21 @@ private fun SettingsPage.PushResetsPagers(pagers: PagePagers) {
  */
 @Composable
 private fun SettingsPage.PageBackStack(pagers: PagePagers) {
+    //  这份 DSL **必须稳住身份**：库那边的写法是 `remember(content) { entryProvider(content) }`
+    //  （`NavDisplay.kt`），键就是这枚 lambda 的引用。每次重组换一个新 lambda，库就会把 entry 表
+    //  整份重建 ⇒ **每一页的内容都被销毁重建**。真机上的代价：
+    //   · 页内的 `remember` 全没了（正在播的动画被从中间掐掉、滑杆 / 滚动位置复位）；
+    //   · 库的 `animateXxAsState` 那一族在新组合里从目标值起步 ⇒ 拨开关时滑块刚动一点就被重置成
+    //     终值，看着就是「这颗开关没有动画」（「随机图标配色」那颗正是因为它的写盘会重组合本页）。
+    //  键只需 `pagers`：它是页面级 `remember` 出来的，其余都是稳定值。
+    val routes: NavEntryBuilder.() -> Unit =
+        remember(pagers) {
+            {
+                entry<Screen> { s ->
+                    PageEntry(s, pagers)
+                }
+            }
+        }
     NavDisplay(
         backStack = navStack,
         //  系统返回那条链在本集成方式下是断的（见 [navStack] 的注释），这个回调
@@ -514,9 +539,6 @@ private fun SettingsPage.PageBackStack(pagers: PagePagers) {
                 dimAmount = PAGE_COVER_DIM,
             ),
         modifier = Modifier.fillMaxSize(),
-    ) {
-        entry<Screen> { s ->
-            PageEntry(s, pagers)
-        }
-    }
+        content = routes,
+    )
 }

@@ -34,6 +34,14 @@ internal object UiState {
     private const val KEY_INJECT_ALIVE_BOOT = "inject_alive_boot"
 
     /**
+     * 「不再提示」的那个版本号 —— 用户在这一版上勾过「不再提示」就记在这儿。
+     *
+     *  只在**版本号相等**时压住提示：下一版出来还照常提示（「不再提示」说的是「这一版我装了」，
+     *  不是「以后都别问」）。
+     */
+    private const val KEY_SKIP_UPDATE_VERSION = "skip_update_version"
+
+    /**
      * 界面状态的一次读全 —— **建页那一次用的唯一入口**。
      *
      * 逐项各读一遍的话会把同一个文件 open + parse 好几遍；建页那次读现在整个挪到了
@@ -50,6 +58,7 @@ internal object UiState {
             showUnopenable = map[KEY_SHOW_UNOPENABLE]?.toBooleanStrictOrNull() ?: false,
             injectEverAlive = map[KEY_INJECT_EVER_ALIVE]?.toBooleanStrictOrNull() ?: false,
             injectAliveBoot = map[KEY_INJECT_ALIVE_BOOT]?.toLongOrNull() ?: 0L,
+            skipUpdateVersion = map[KEY_SKIP_UPDATE_VERSION]?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -66,19 +75,17 @@ internal object UiState {
      *   丢了这个返回值就变成了「明明没写进去却说已落盘」。吞掉返回值、那三处又用
      *  `XLog.d` 打一句，release 下那行被编译期消除，是最难发现的一类谎报。
      */
-    fun writeShowSystemApps(value: Boolean): Boolean {
-        val text = readTextOrNull() ?: return refuseWrite(KEY_SHOW_SYSTEM_APPS, value)
-        val map = parse(text)
-        map[KEY_SHOW_SYSTEM_APPS] = value.toString()
-        return writeText(render(map))
-    }
+    fun writeShowSystemApps(value: Boolean): Boolean = write(KEY_SHOW_SYSTEM_APPS, value.toString(), refuse = { refuseWrite(it, value) })
 
-    fun writeShowUnopenable(value: Boolean): Boolean {
-        val text = readTextOrNull() ?: return refuseWrite(KEY_SHOW_UNOPENABLE, value)
-        val map = parse(text)
-        map[KEY_SHOW_UNOPENABLE] = value.toString()
-        return writeText(render(map))
-    }
+    /**
+     * 记下「这一版的更新提示别再弹了」。
+     *
+     * @return 是否真的落盘 —— 调用方据此决定要不要说一句「已记下」
+     */
+    fun writeSkipUpdateVersion(version: String): Boolean =
+        write(KEY_SKIP_UPDATE_VERSION, version, refuse = { refuseWrite(it, version.isNotEmpty()) })
+
+    fun writeShowUnopenable(value: Boolean): Boolean = write(KEY_SHOW_UNOPENABLE, value.toString(), refuse = { refuseWrite(it, value) })
 
     /**
      * 记下「系统那一侧回话了，就在这一轮开机里」。
@@ -96,7 +103,19 @@ internal object UiState {
         val map = parse(text)
         map[KEY_INJECT_EVER_ALIVE] = true.toString()
         map[KEY_INJECT_ALIVE_BOOT] = bootWall.toString()
-        return writeText(render(map))
+        return writeText(map)
+    }
+
+    /** 四个 public 写法的共同尾巴：读不出就 [refuse]，否则改一个键、整份写回。 */
+    private fun write(
+        key: String,
+        value: String,
+        refuse: (String) -> Boolean,
+    ): Boolean {
+        val text = readTextOrNull() ?: return refuse(key)
+        val map = parse(text)
+        map[key] = value
+        return writeText(map)
     }
 
     /** 读失败时不写回，只报一声（判据级，用 `w`：`d` 在 release 被编译期消除）。 */
@@ -119,7 +138,7 @@ internal object UiState {
      *  「文件在但读不出」与「文件真不在」分开判（同一个 `FileNotFoundException` 两种来路）。
      */
     private fun readTextOrNull(): String? =
-        when (val r = files().read(ConfigStore.SLOT_UI)) {
+        when (val r = ConfigStore.files().read(ConfigStore.SLOT_UI)) {
             is ModuleFiles.Load.Ok -> {
                 r.text
             }
@@ -137,11 +156,16 @@ internal object UiState {
             }
         }
 
-    /** @return 是否真的落盘 —— 只意味着「这次改动活过了本进程」，失败由 [ModuleFiles.write] 记日志。 */
-    private fun writeText(text: String): Boolean = files().write(ConfigStore.SLOT_UI, text, openReadable = false)
-
-    /** 本模块的文件句柄（[ConfigStore] 是它的门面，这里只要知道「哪个槽」）。 */
-    private fun files(): ModuleFiles = ConfigStore.files()
+    /** 把改好的表渲染并整份写回；失败由 [ModuleFiles.write] 记日志。 */
+    private fun writeText(map: Map<String, String>): Boolean =
+        ConfigStore.files().write(
+            ConfigStore.SLOT_UI,
+            buildString {
+                appendLine("# OPlusKey 界面状态 —— 模块自己的显示偏好，不是用户配置（见 ui/state/UiState.kt）")
+                map.forEach { (key, value) -> appendLine("$key=$value") }
+            },
+            openReadable = false,
+        )
 
     /** `key=value` 逐行解析；注释 / 空行 / 没有 `=` 的行一律跳过（半截文件也只是少几个键）。 */
     private fun parse(text: String): MutableMap<String, String> {
@@ -154,12 +178,6 @@ internal object UiState {
         }
         return map
     }
-
-    private fun render(map: Map<String, String>): String =
-        buildString {
-            appendLine("# OPlusKey 界面状态 —— 模块自己的显示偏好，不是用户配置（见 ui/state/UiState.kt）")
-            map.forEach { (key, value) -> appendLine("$key=$value") }
-        }
 }
 
 /**
@@ -174,4 +192,6 @@ internal class UiPrefs(
     val showUnopenable: Boolean,
     val injectEverAlive: Boolean,
     val injectAliveBoot: Long,
+    /** 「不再提示」过的那个版本号（`null` = 没勾过）。见 [UiState.writeSkipUpdateVersion]。 */
+    val skipUpdateVersion: String?,
 )

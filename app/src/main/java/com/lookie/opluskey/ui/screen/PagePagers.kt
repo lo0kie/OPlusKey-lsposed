@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.screen
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.screen.command.COMMAND_PAGE_COUNT
@@ -36,11 +37,17 @@ internal class PagePagers(
  *  摆一页写进去也永远不会命中的表，比少一页更糟。
  */
 @Composable
-internal fun SettingsPage.rememberPagePagers(): PagePagers =
-    PagePagers(
-        gestures = rememberPagerState(pageCount = { Gesture.entries.size }),
-        commands = rememberPagerState(pageCount = { COMMAND_PAGE_COUNT }),
-        //  组合键只有短按 / 长按两档（`Gesture.entries` 是三档，别直接借它）
-        combos = rememberPagerState(pageCount = { 2 }),
-        branches = rememberPagerState(pageCount = { if (branchDraft.comboId != null) 2 else Gesture.entries.size }),
-    )
+internal fun SettingsPage.rememberPagePagers(): PagePagers {
+    val gestures = rememberPagerState(pageCount = { Gesture.entries.size })
+    val commands = rememberPagerState(pageCount = { COMMAND_PAGE_COUNT })
+    //  组合键只有短按 / 长按两档（`Gesture.entries` 是三档，别直接借它）
+    val combos = rememberPagerState(pageCount = { 2 })
+    val branches = rememberPagerState(pageCount = { if (branchDraft.comboId != null) 2 else Gesture.entries.size })
+    //  **这个包本身也要 remember**：`PagePagers` 是普通类（按引用相等），每次重组新建一个实例
+    //  就等于「分页器包换了」—— 凡是拿它当 `remember` 键的地方（路由 DSL 那一份）都会跟着重建，
+    //  而库那边的路由表是按 lambda 引用记的 ⇒ 整页内容被销毁重建。包里的四个分页器本来就是
+    //  `remember` 出来的，这个包只是把它们捆在一起，理应与它们同寿命。
+    return remember(gestures, commands, combos, branches) {
+        PagePagers(gestures = gestures, commands = commands, combos = combos, branches = branches)
+    }
+}

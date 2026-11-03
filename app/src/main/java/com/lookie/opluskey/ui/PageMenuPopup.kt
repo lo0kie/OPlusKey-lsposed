@@ -442,6 +442,14 @@ private fun SettingsPage.MenuRow(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "MenuRowIcon",
     )
+    //  「随机图标配色」那一档（见 [LocalIconTint]）同样要过渡：开关一拨，整列图标的色相一起换，
+    //  硬切就是一列字在跳。与上面那几档合成一个目标，避免两条动画各走各的。
+    val randomTint = row.icon.takeIf { row.enabled && !row.danger && !row.selected }?.tinted()
+    val rowIconTint by animateColorAsState(
+        targetValue = row.iconTint ?: randomTint ?: iconColor,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "MenuRowTint",
+    )
     // 进场定位到当前那一行：requester 挂在**整行内容区一样高**的盒子上，请求的是**上下各
     // 扩一档内边距**的矩形 —— 无参的 `bringIntoView()` 只保证「这个节点」可见，行的上下
     // 内边距会被裁掉（真机反馈「当前行没有整行（包括上下内边距）显示出来」）。
@@ -519,10 +527,8 @@ private fun SettingsPage.MenuRow(
                             Modifier.size(MENU_ICON_SIZE),
                             //  随机配色只在「能点、不是危险项、不是选中项」时生效：
                             //  那三档的颜色各自带语义（灰 / 红 / 主色），染成随机色就丢了意思。
-                            tint =
-                                row.iconTint
-                                    ?: row.icon.takeIf { row.enabled && !row.danger && !row.selected }?.tinted()
-                                    ?: iconColor,
+                            //  三档合出来的目标见 [rowIconTint]。
+                            tint = rowIconTint,
                         )
                     }
                 },

@@ -58,7 +58,9 @@ internal data class ConfigDto(
     @SerialName("app_names") val appNames: Map<String, String> = emptyMap(),
     /** 组合按键（`Config.combos`）—— 与 `app_names` 同一套：单独一段，只走落盘。 */
     val combos: List<ComboDto> = emptyList(),
-    /** 这份配置的名字（`Config.profileName`）；空串 = 「默认」那一份。 */
+    /** 这份配置的唯一标识（`Config.profileId`）；空串 = 老文件，读的时候按规则补。 */
+    @SerialName("profile_id") val profileId: String = "",
+    /** 这份配置的名字（`Config.profileName`）；空串 = 还没起名字（**不等于**「默认」那份）。 */
     @SerialName("profile_name") val profileName: String = "",
     /** 这份配置在列表里的位次（`Config.profileOrder`）；0 = 「默认」那份。 */
     @SerialName("profile_order") val profileOrder: Int = 0,
@@ -120,7 +122,7 @@ internal data class ConfigDto(
             )
             //  名字与位次都不进 `ConfigFields`（那不是「一按就生效」的东西，也不需要广播给注入侧），
             //  只走落盘这一列 —— 与 `appNames` / `combos` 同一条。
-            .copy(profileName = profileName, profileOrder = profileOrder)
+            .copy(profileId = profileId, profileName = profileName, profileOrder = profileOrder)
     }
 
     companion object {
@@ -139,6 +141,7 @@ internal data class ConfigDto(
                 commandDisclaimerAccepted = config.commandDisclaimerAccepted,
                 appNames = config.appNames,
                 combos = config.combos.map { ComboDto.of(it) },
+                profileId = config.profileId,
                 profileName = config.profileName,
                 profileOrder = config.profileOrder,
                 md5 = md5,

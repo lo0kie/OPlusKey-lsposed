@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.screen.about
 import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.config.ProfileCommands
+import com.lookie.opluskey.core.config.isDefaultProfile
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -13,11 +14,12 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.resetCurrentProfile
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.VarListSignal
 import com.lookie.opluskey.ui.write
 
-// 「配置」那四个**动作**（切换 / 新建 / 重命名 / 删除）与命名窗。
+// 「配置」那几个**动作**（切换 / 新建 / 重命名 / 重置 / 删除）与命名窗。
 //
 // 入口都在「切换配置」那一层菜单里（见 `AboutMenus` 的 `ProfileMenu`）：它们只对「配置」这个东西
 // 有意义，与列表放在同一层里，卡片上就只剩「切换 / 导出 / 导入」三件事。
@@ -82,11 +84,12 @@ internal fun SettingsPage.createProfile(name: String) {
         ConfigProfiles.createAs(name)
             ?: run {
                 //  满额与写盘失败分开报：已经三份时用户该知道的是「到上限了」，不是「失败了」
+                //  三种拒绝理由分开报：满了 / 重名 / 真失败 —— 报错要能指导下一步动作
                 val reason =
-                    if (ConfigProfiles.isFull()) {
-                        I18n.get(Strings.PROFILE_FULL, "最多三份配置")
-                    } else {
-                        I18n.get(Strings.PROFILE_NEW_FAILED, "新建失败")
+                    when {
+                        ConfigProfiles.isFull() -> I18n.get(Strings.PROFILE_FULL, "最多三份配置")
+                        ConfigProfiles.nameTaken(name) -> I18n.get(Strings.PROFILE_NAME_TAKEN, "这个名字已经有了")
+                        else -> I18n.get(Strings.PROFILE_NEW_FAILED, "新建失败")
                     }
                 hint(reason)
                 return
@@ -111,11 +114,18 @@ internal fun SettingsPage.createProfile(name: String) {
  */
 internal fun SettingsPage.renameProfile(name: String) {
     val current = configState.config.value
+    //  默认配置改名：菜单那一行已经灰了，这里只兜底（不弹文案，见 `ConfigProfiles.renamed`）
+    if (current.isDefaultProfile) {
+        XLog.w("配置改名：默认配置不许改名")
+        return
+    }
     val next =
         ConfigProfiles.renamed(current, name)
             ?: run {
-                //  只有「默认」配置会走到这儿 —— 空名字在弹窗里点不动「确定」
-                hint(I18n.get(Strings.PROFILE_RENAME_DEFAULT, "默认配置不许改名"))
+                //  两种拒绝：名字空（弹窗里点不动「确定」，走不到）与**重名**
+                if (ConfigProfiles.nameTaken(name, excludeId = current.profileId.ifBlank { null })) {
+                    hint(I18n.get(Strings.PROFILE_NAME_TAKEN, "这个名字已经有了"))
+                }
                 return
             }
     //  名字没变就什么都不做：不落盘、也不报「已重命名」
@@ -155,10 +165,12 @@ internal fun SettingsPage.deleteBrokenProfile(item: ConfigProfiles.Item) {
  */
 internal fun SettingsPage.deleteCurrentProfile() {
     val current = configState.config.value
-    if (current.profileName.isBlank()) {
-        hint(I18n.get(Strings.PROFILE_DELETE_DEFAULT, "默认配置不许删除"))
+    //  默认配置不许删（用户口径）：它是升级时落下的退路 —— 菜单那一行已经灰了，这里兜底
+    if (current.isDefaultProfile) {
+        XLog.w("配置删除：默认配置不许删")
         return
     }
+
     val others = ConfigProfiles.list().filter { !it.isCurrent }
     val fallback = others.firstOrNull { it.isDefault } ?: others.firstOrNull()
     if (fallback == null) {
@@ -181,19 +193,19 @@ internal fun SettingsPage.deleteCurrentProfile() {
     if (switched != CommandsSave.Failed && !deleted) {
         hint(I18n.get(Strings.PROFILE_DELETE_FAILED, "删除失败"))
     } else if (deleted && switched == CommandsSave.Ok) {
-        hint(I18n.format(Strings.PROFILE_DELETED_SWITCHED, current.profileName, fallback.displayName))
+        //  名字可能空着（名字被抹过的那一份）—— 走同一个取名口径，别留一对空书名号
+        hint(I18n.format(Strings.PROFILE_DELETED_SWITCHED, currentProfileName(), fallback.displayName))
     }
 }
 
 /**
  * 「删除配置」的确认窗 —— 删的是**当前配置**，正文里点名是哪一份。
  *
- *  与「删除命令」「清空配置」同一套控件（取消中性色 + 动作项红）：一整份配置连同它的命令库
+ *  与「删除命令」「重置配置」同一套控件（取消中性色 + 动作项红）：一整份配置连同它的命令库
  *  一起消失，且没有回收站，点一下就走太轻。
  */
 @Composable
 internal fun SettingsPage.ProfileDeleteConfirmDialog(ui: AboutUiState) {
-    val name = configState.config.value.profileName
     ConfirmDialog(
         show = ui.showDeleteConfirm,
         title = I18n.get(Strings.DIALOG_DELETE_PROFILE_TITLE, "删除配置"),
@@ -202,13 +214,44 @@ internal fun SettingsPage.ProfileDeleteConfirmDialog(ui: AboutUiState) {
                 Strings.DIALOG_DELETE_PROFILE_MESSAGE,
                 //  「默认」配置没有名字（这时菜单里那一行本来就是灰的，走不到这里）——
                 //  仍然给一个能读的说法，免得万一出现一个空书名号
-                escapeEmphasis(name.ifBlank { I18n.get(Strings.PROFILE_DEFAULT, "默认配置") }),
+                //  按身份取名（默认 / 未命名 / 真名），不按「名字空不空」判 —— 见 `currentProfileName`
+                escapeEmphasis(currentProfileName()),
             ),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { ui.showDeleteConfirm = false },
         onConfirm = {
             ui.showDeleteConfirm = false
             deleteCurrentProfile()
+        },
+    )
+}
+
+/**
+ * 「重置配置」的确认窗 —— 与 [ProfileDeleteConfirmDialog] 同一套控件（取消中性色 + 动作项红）。
+ *
+ *  重置的**只有当前选中的那一份**：主配置按 `DEFAULT` 重建、它自己的命令库清空，别的配置
+ *  一个字节都不动（`ConfigStore.write` 与 `CommandLibrary.save` 都只认当前槽，见 `resetCurrentProfile`）。
+ *  所以正文里点名是哪一份 —— 不点名的话，「重置」很容易被读成「把所有配置都重置了」。
+ *
+ *  菜单里它夹在「重命名」与「删除配置」中间、与那几行同属一块（见 `AboutMenus.profileManageRows`）。
+ */
+@Composable
+internal fun SettingsPage.ProfileResetConfirmDialog() {
+    ConfirmDialog(
+        show = overlays.confirmReset,
+        title = I18n.get(Strings.DIALOG_CLEAR_CONFIG_TITLE, "重置配置"),
+        summary =
+            I18n.format(
+                Strings.DIALOG_CLEAR_CONFIG_MESSAGE,
+                //  「默认」配置没有名字 —— 仍然给一个能读的说法，免得正文出现一对空书名号
+                //  按身份取名（默认 / 未命名 / 真名），不按「名字空不空」判 —— 见 `currentProfileName`
+                escapeEmphasis(currentProfileName()),
+            ),
+        action = I18n.get(Strings.DIALOG_CLEAR_CONFIG_CONFIRM, "重置"),
+        onDismiss = { overlays.confirmReset = false },
+        onConfirm = {
+            overlays.confirmReset = false
+            resetCurrentProfile()
         },
     )
 }

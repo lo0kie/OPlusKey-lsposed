@@ -29,6 +29,10 @@ internal class AboutUiState {
     val authorClick = PreciseClickState()
     var showAuthorMenu by mutableStateOf(false)
 
+    /** 「版本」那一行的菜单（检查更新 / 项目仓库两个去处）。 */
+    val versionClick = PreciseClickState()
+    var showVersionMenu by mutableStateOf(false)
+
     /**
      * 等用户点头才跳的**外部地址**（`null` = 没有待确认的）—— 见 `ExternalLinkDialog`。
      *
@@ -65,7 +69,7 @@ internal class AboutUiState {
     /**
      * 「删除配置」的确认窗开着没有。
      *
-     *  删掉一整份配置（连同它自己的命令库）不可恢复，与「清空配置」「删除命令」同一档代价：
+     *  删掉一整份配置（连同它自己的命令库）不可恢复，与「重置配置」「删除命令」同一档代价：
      *  点一下就走太轻，所以先问一句。
      */
     var showDeleteConfirm by mutableStateOf(false)
@@ -101,6 +105,9 @@ internal class AboutUiState {
      *  与上面几个菜单开关同一档。
      */
     var signatureExpanded by mutableStateOf(false)
+
+    /** 「检查更新」那一行被点了 —— 由页面级副作用去跑一趟（见 `AboutScreen`）。 */
+    var checkUpdateNow by mutableStateOf(false)
 }
 
 /**

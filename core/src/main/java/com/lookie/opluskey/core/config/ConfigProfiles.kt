@@ -5,6 +5,32 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
+import java.util.UUID
+
+/**
+ * 这份配置是不是「默认」那份 —— **名字空且位次 0**，两个条件都要。
+ *
+ *  只按名字空判过一次，代价是：任何一次把名字写丢（按 `DEFAULT` 重建内容、或导入一份没名字的
+ *  配置）都会让一份**普通配置「变成」默认** —— 不许改名、不许删除，列表里还与真默认撞名，
+ *  用户看到的是「两份默认配置，我这份动不了」。位次 0 固定留给默认（见 [Config.profileOrder]），
+ *  拿它一起判才不会误伤。
+ *
+ *  反过来也要成立：名字空的普通配置（位次 ≥ 1）**不是**默认，它该能被改名、能被删除。
+ */
+val Config.isDefaultProfile: Boolean
+    get() =
+        profileId == ConfigProfiles.DEFAULT_PROFILE_ID ||
+            //  老文件没有 `profile_id`：退回老口径（名字空 + 位次 0），读到之后由 [ConfigProfiles.list]
+            //  分配一个稳定 id、下一次写盘就带上
+            (profileId.isBlank() && profileName.isBlank() && profileOrder == 0)
+
+/**
+ * 老数据 / id 撞车时用的槽位 id 前缀（`slot:config-2`）。
+ *
+ *  它**稳定且唯一**，但不「跟着内容走」（切换会换槽）—— 只当兜底用，下一次写盘就会被换成
+ *  [newProfileId] 那种真 id。
+ */
+private const val SLOT_ID_PREFIX = "slot:"
 
 /**
  * **多份配置**的切换与管理 —— 建在 [ModuleFiles] 之上的一层业务规则，自己不碰任何文件路径。
@@ -39,6 +65,14 @@ object ConfigProfiles {
     /** 当前生效那一份的槽名 —— 与 [ConfigStore.SLOT_CONFIG] 同一个，别各写一份字面量。 */
     const val CURRENT_SLOT: String = ConfigStore.SLOT_CONFIG
 
+    /**
+     * 「默认」那一份的固定 id —— 升级时自动落下的退路，删不掉也改不了名。
+     *
+     *  用 id 而不是「名字空」表达这个身份：名字是可以被抹空的（按 `DEFAULT` 重建内容就会），
+     *  一空就会被当成默认，两份撞在一起（真机踩过）。
+     */
+    const val DEFAULT_PROFILE_ID: String = "default"
+
     /** 其余配置的槽名前缀（`config-2` / `config-3` …）。 */
     private const val SLOT_PREFIX = "${ConfigStore.SLOT_CONFIG}-"
 
@@ -68,6 +102,13 @@ object ConfigProfiles {
      */
     data class Item(
         val slot: String,
+        /**
+         * 这份配置的**身份**（[Config.profileId]；老文件由 [list] 现算一个）。
+         *
+         *  界面上凡是「是不是同一份」的判断都该用它 —— 名字会被改、会被抹空，槽号会随内容搬家，
+         *  只有它是跟着内容走且唯一的那一个。
+         */
+        val id: String,
         val name: String,
         val isCurrent: Boolean,
         val isDefault: Boolean,
@@ -85,7 +126,13 @@ object ConfigProfiles {
             get() =
                 when {
                     broken -> I18n.get(Strings.PROFILE_BROKEN, "（读不出来）")
+
                     isDefault -> I18n.get(Strings.PROFILE_DEFAULT, "默认配置")
+
+                    //  名字空的**普通**配置（位次 ≥ 1）：不是默认，但也没有名字可显示 ——
+                    //  必须给一句话，否则菜单里出现一个空格子（名字被抹过之后就是这一档）
+                    name.isBlank() -> I18n.get(Strings.PROFILE_UNNAMED, "未命名")
+
                     else -> name
                 }
     }
@@ -111,19 +158,22 @@ object ConfigProfiles {
                 .files()
                 .slots()
                 .filter { it == CURRENT_SLOT || it.startsWith(SLOT_PREFIX) }
-        return slots
-            .mapNotNull { slot ->
-                val config = readOf(slot)
+        //  先读出能读的那几份，**统一分配唯一 id**（见 [assignIds]），再拼 Item —— 分配要看全局，
+        //  一份一份地拼没法知道「这个 id 是不是已经被别人占了」。
+        val readable = slots.mapNotNull { slot -> readOf(slot)?.let { slot to it } }
+        val ids = assignProfileIds(readable)
+        val items =
+            slots.mapNotNull { slot ->
+                val config = readable.firstOrNull { it.first == slot }?.second
                 if (config == null) {
                     //  **读不出来的那一份也要列出来**：它占着槽位（[isFull] 按槽位算），
                     //  不列就既看不见也删不掉 —— 新建 / 导入会永久灰着，用户没有任何自救入口。
                     //  当前那一槽读不出来时不列：那不是「一份配置」，是整页只读态（见 `ConfigStore`）。
-                    if (slot == CURRENT_SLOT) {
-                        return@mapNotNull null
-                    }
+                    if (slot == CURRENT_SLOT) return@mapNotNull null
                     XLog.w("配置列表：$slot 读不出来，按「（读不出来）」列出（可删）")
                     return@mapNotNull Item(
                         slot = slot,
+                        id = SLOT_ID_PREFIX + slot,
                         name = "",
                         isCurrent = false,
                         isDefault = false,
@@ -131,19 +181,40 @@ object ConfigProfiles {
                         broken = true,
                     )
                 }
+                val id = ids.getValue(slot)
                 Item(
                     slot = slot,
+                    id = id,
                     name = config.profileName,
                     isCurrent = slot == CURRENT_SLOT,
-                    isDefault = config.profileName.isBlank(),
+                    //  **按 id 判默认**，不按「名字空」：两份都名字空时，只有拿到 [DEFAULT_PROFILE_ID]
+                    //  的那一份是默认，另一份在界面上显示成「未命名」（见 [Item.displayName]）。
+                    isDefault = id == DEFAULT_PROFILE_ID,
                     order = config.profileOrder,
                 )
-            }.sortedWith(
-                compareBy<Item> { if (it.isDefault) 0 else 1 }
-                    .thenBy { it.order }
-                    //  老配置没有位次（都是 0）：再按槽号兜一层（`config` 是原始那一槽 = 1）
-                    .thenBy { if (it.slot == CURRENT_SLOT) 1 else it.slot.removePrefix(SLOT_PREFIX).toIntOrNull() ?: Int.MAX_VALUE },
-            )
+            }
+        return items.sortedWith(
+            compareBy<Item> { if (it.isDefault) 0 else 1 }
+                .thenBy { it.order }
+                //  老配置没有位次（都是 0）：再按槽号兜一层（`config` 是原始那一槽 = 1）
+                .thenBy { if (it.slot == CURRENT_SLOT) 1 else it.slot.removePrefix(SLOT_PREFIX).toIntOrNull() ?: Int.MAX_VALUE },
+        )
+    }
+
+    /**
+     * 这个名字被别的配置占了吗（新建 / 改名之前问一次）。
+     *
+     *  **按 id 排除自己**：改名时新名字与自己原名相同，不该判成重名。
+     *
+     *  @param excludeId 自己那份的 id（新建时传 `null`）
+     */
+    fun nameTaken(
+        name: String,
+        excludeId: String? = null,
+    ): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return false
+        return list().any { !it.broken && it.name == trimmed && it.id != excludeId }
     }
 
     /**
@@ -170,10 +241,10 @@ object ConfigProfiles {
         //  第一步已经把旧当前写进了目标槽 —— 此时若不还原，那份目标配置就**永久没了**
         //  （目标内容已经被旧当前盖掉，内存里还留着的那个 `target` 只在这一次调用里有效）。
         val staged = current != null
-        val firstOk = !staged || writeConfig(slot, current)
-        if (!firstOk || !writeConfig(CURRENT_SLOT, target)) {
+        val firstOk = !staged || writeProfileConfig(slot, current)
+        if (!firstOk || !writeProfileConfig(CURRENT_SLOT, target)) {
             //  第一步没写（当前配置读不出来）时目标槽还是原样，没什么要还原的
-            val restored = !(staged && firstOk) || writeConfig(slot, target)
+            val restored = !(staged && firstOk) || writeProfileConfig(slot, target)
             XLog.w(
                 when {
                     !firstOk -> "配置切换：$slot 没换成（第一步写盘失败），不动"
@@ -214,11 +285,21 @@ object ConfigProfiles {
     ): Config? {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return null
-        if (config.profileName.isBlank()) {
+        //  默认配置**不许改名**：名字空着就是它的身份（见 [Config.isDefaultProfile]），
+        //  改了名之后「升级时落下的退路」在列表里就再也认不出来了。
+        //  曾经为救「名字被抹掉的那一份」放开过这条（它顶着默认身份卡死）；现在按用户口径收紧 ——
+        //  那种情况的自救入口是「新建一份配置」再配，而不是给退路改名。
+        if (config.isDefaultProfile) {
             XLog.w("配置改名：默认配置不许改名")
             return null
         }
-        return config.copy(profileName = trimmed)
+        //  **名字不许重**（按 id 排除自己）：两份同名时菜单里两行一模一样，切错了只能靠猜
+        if (nameTaken(trimmed, excludeId = config.profileId.ifBlank { null })) {
+            XLog.w("配置改名：「$trimmed」已被占用，不改")
+            return null
+        }
+        //  老文件没有 id：改名顺手补一个（这一份从此有了稳定身份）
+        return config.copy(profileId = config.profileId.ifBlank { newProfileId() }, profileName = trimmed)
     }
 
     /**
@@ -237,9 +318,11 @@ object ConfigProfiles {
             XLog.w("配置删除：当前配置不许删")
             return false
         }
-        //  读得出来就按名字拦「默认配置」；读不出来无法判断，按「坏了的普通配置」处理
+        //  **默认配置不许删**（用户口径）：它是升级时落下的退路 —— 删掉之后「新建 / 导入失败时
+        //  退回到哪一份」就没有答案了。读不出来（`readOf` 为 null）的槽按「坏了的普通配置」处理、照删：
+        //  那是自救入口，堵掉会让「新建 / 导入」永久灰着。
         val target = readOf(slot)
-        if (target != null && target.profileName.isBlank()) {
+        if (target != null && target.isDefaultProfile) {
             XLog.w("配置删除：默认配置不许删")
             return false
         }
@@ -270,18 +353,24 @@ object ConfigProfiles {
      */
     fun createAs(name: String): String? {
         val trimmed = name.trim()
-        if (trimmed.isEmpty()) return null
+        //  两道前置一次判完（名字空 / 已到上限都由下面这一支与 [nextSlot] 各自拦住）：
+        //  **名字不许重** —— 列表里两行一样，用户分不出哪行是哪份（切错了只能靠猜）
+        if (trimmed.isEmpty() || nameTaken(trimmed)) {
+            XLog.w("配置新建：名字「$trimmed」不可用（为空 / 已被占用），不建")
+            return null
+        }
         val (slot, order) = nextSlot() ?: return null
         val current = readOf(CURRENT_SLOT)
         val blank =
             Config.DEFAULT.copy(
+                profileId = newProfileId(),
                 profileName = trimmed,
                 profileOrder = order,
                 global = current?.global ?: Config.DEFAULT.global,
                 disclaimerAccepted = current?.disclaimerAccepted ?: false,
                 commandDisclaimerAccepted = current?.commandDisclaimerAccepted ?: false,
             )
-        if (!writeConfig(slot, blank)) return null
+        if (!writeProfileConfig(slot, blank)) return null
         //  命令库留空（而不是复制当前那份）：空白配置里没有任何 `cmd:` 引用，把旧命令带过去
         //  会让它看着像「复制了一份」—— 与上一版的行为正好相反。
         ProfileCommands.save(slot, emptyList())
@@ -327,8 +416,9 @@ object ConfigProfiles {
             trimmed = "$base $seq"
             seq++
         }
-        val ordered = config.copy(profileName = trimmed, profileOrder = order)
-        val ok = ProfileCommands.save(slot, commands) && writeConfig(slot, ordered)
+        //  **必须换新 id**：导入的文件里带着别人的 `profile_id`，照抄下来会和本机已有的撞车
+        val ordered = config.copy(profileId = newProfileId(), profileName = trimmed, profileOrder = order)
+        val ok = ProfileCommands.save(slot, commands) && writeProfileConfig(slot, ordered)
         if (!ok) {
             ConfigStore.files().delete(slot)
             ProfileCommands.delete(slot)
@@ -392,15 +482,64 @@ object ConfigProfiles {
         val maxOrder = configs.maxOfOrNull { it.second.profileOrder } ?: 0
         return "$SLOT_PREFIX${maxOf(maxIndex + 1, FIRST_INDEX)}" to (maxOrder + 1)
     }
-
-    /** 写某一份（与 [ConfigStore.write] 同一层外皮与 `openReadable`：宿主主进程要读得到）。 */
-    private fun writeConfig(
-        slot: String,
-        config: Config,
-    ): Boolean =
-        ConfigStore.files().write(
-            slot,
-            FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, ConfigCodec.serialize(config)),
-            openReadable = true,
-        )
 }
+
+/**
+ * 写某一份（与 [ConfigStore.write] 同一层外皮与 `openReadable`：宿主主进程要读得到）。
+ *
+ *  与 [assignProfileIds] / [newProfileId] 一样放在文件级：它们都是纯帮手，不碰这个对象的状态 ——
+ *  对象只留「对外的那套业务动作」（`detekt` 的函数数阈值也是这个口径）。
+ */
+private fun writeProfileConfig(
+    slot: String,
+    config: Config,
+): Boolean =
+    ConfigStore.files().write(
+        slot,
+        FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, ConfigCodec.serialize(config)),
+        openReadable = true,
+    )
+
+/**
+ * 给每一份配置分配一个**唯一** id（[ConfigProfiles.Item.id]）。
+ *
+ *  三条规则，顺序不能换：
+ *  1. 文件里已经有 id 的照用（id 跟着内容走，切换后仍然是同一份）；
+ *  2. 老文件没有 id：满足「名字空 + 位次 0」的算默认，拿 [ConfigProfiles.DEFAULT_PROFILE_ID]；
+ *     其余拿槽位 id（下一次写盘就会被补成随机 id，见 [ConfigProfiles.renamed] / `createAs`）；
+ *  3. **撞了就往槽位 id 退**：真机上出现过两份都满足「名字空 + 位次 0」的数据（名字被抹过两次），
+ *     那时两份都想当默认 —— id 必须唯一，否则菜单里两行分不出谁是谁。
+ *
+ *  「默认」优先分给**非当前槽**那一份：它是退路，本来就该待在非当前槽；当前槽那份如果是老数据
+ *  没名字，宁可给它槽位 id、让界面显示「未命名」，也不要让它把「默认」抢走。
+ */
+private fun assignProfileIds(readable: List<Pair<String, Config>>): Map<String, String> {
+    val taken = mutableSetOf<String>()
+    val out = mutableMapOf<String, String>()
+    for ((slot, config) in readable.sortedBy { if (it.first == ConfigProfiles.CURRENT_SLOT) 1 else 0 }) {
+        var id = config.profileId
+        if (id.isBlank()) {
+            id =
+                if (config.profileName.isBlank() && config.profileOrder == 0) {
+                    ConfigProfiles.DEFAULT_PROFILE_ID
+                } else {
+                    SLOT_ID_PREFIX + slot
+                }
+        }
+        if (!taken.add(id)) {
+            id = SLOT_ID_PREFIX + slot
+            taken.add(id)
+        }
+        out[slot] = id
+    }
+    return out
+}
+
+/** 新配置的 id —— 与名字、槽号都无关，切换后跟着内容走。 */
+private fun newProfileId(): String =
+    "p-" +
+        UUID
+            .randomUUID()
+            .toString()
+            .replace("-", "")
+            .take(10)

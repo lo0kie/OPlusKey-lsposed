@@ -12,7 +12,9 @@ import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.HostApp
 import io.github.suqi8.coui.kmp.theme.ColorSchemeMode
 import io.github.suqi8.coui.kmp.theme.Colors
+import io.github.suqi8.coui.kmp.theme.ThemeColorSpec
 import io.github.suqi8.coui.kmp.theme.ThemeController
+import io.github.suqi8.coui.kmp.theme.ThemePaletteStyle
 import io.github.suqi8.coui.kmp.theme.platformDynamicColors
 
 // 「系统配色」—— 页面强调色的几套预设，以及由强调色推出整套色板的那一个函数。
@@ -32,11 +34,9 @@ internal enum class PagePalette(
     private val fixedSeed: Color?,
 ) {
     /**
-     * **默认** —— 跟随系统取色：种子取系统当前那套强调色（取法见 [systemAccent]），
-     * 也就是「壁纸取色」那一族的主色。用户换了壁纸 / 换了系统配色，这一档跟着变。
-     *
-     *  取的是**一个强调色**、不是 Material3 的整套 dynamic scheme：整套色板仍由 [colorsOf]
-     *  按种子推（Monet 那一档的底子才吃系统那套角色映射）。
+     * **默认** —— 跟随系统取色。在 [colorsOf] 里，Monet 档走 [platformDynamicColors] 拿系统
+     *  那整套（含调色风格与 colorSpec）；非 Monet 档的强调色用 [seed]（取 [systemAccent]）换到
+     *  COUI 底子上。用户换了壁纸 / 换了系统配色，这一档跟着变。
      *
      *  这是第一档（菜单里排最上）：没选过、或者配置里是认不出的 id 都落回它。
      */
@@ -71,19 +71,16 @@ internal enum class PagePalette(
 /**
  * 某一档配色 + 某一档主题在某个深浅下对应的整套色板（`COUITheme(colors = …)` 的入参）。
  *
- * ## 底子分两种
+ * ## 两条路，一条换整套、一条只换强调色
  *
- *  · **主题 = 跟随系统 (Monet)**：底子取系统那套 MD3 角色映射（`platformDynamicColors`）——
- *    底色、卡片、文本、分隔线全都跟着系统的壁纸取色走（用户口径：「Moment 配色要把应用底色 /
- *    cardlist 的背景色都换了」）。
- *  · 其余主题档：底子是 COUI 的 `LIGHT_SCHEME` / `DARK_SCHEME`。
- *
- * ## 强调色一律由「强调色」那一行说了算
- *
- *  主色 / 主色变体 / 主色容器 / 三档禁用主色 / 三级色容器 / 滑块关键点前景 —— 就这些被盖上去
- *  （见 [withAccent]），**两档底子都盖**。底子自己算出来的主色不算数：Monet 那套是按
- *  它自己的种子推的，用户选了「蓝色」却在页面上看到系统那个色，就是这一处漏盖的结果
- *  （选「默认」时种子本来就是系统强调色，两者同源，盖上去等于没动）。
+ *  · **主题 = 跟随系统 (Monet)**：底子与强调色**整套**交给库的权威实现（[platformDynamicColors] /
+ *    [ThemeController]）—— 那是按 MD3 的 HCT tone 映射生成的，容器色 / 前景色都是配好对的一组，
+ *    **不再手搓**。默认档 = 系统那套原样（含系统选的调色风格与 colorSpec）；选了预设色 =
+ *    按那个种子重推整套，调色风格与 colorSpec 仍跟系统（见 [systemPaletteSpec]）。
+ *  · **其余主题档**：底子是 COUI 固定的 `LIGHT_SCHEME` / `DARK_SCHEME`，**只换强调色那一族**
+ *    （[withAccent]）—— 浅色 / 深色主题的底色、卡片、文字、分隔线不跟着染，只有主色那一族
+ *    按「强调色」那一行变。这一档的 `primaryContainer` 语义是 COUI 自己的（主色本身），
+ *    不套 MD3 的 tone 90 / 30。
  */
 @Composable
 internal fun colorsOf(
@@ -92,30 +89,33 @@ internal fun colorsOf(
     theme: AppTheme,
     context: Context,
 ): Colors {
-    val seed = palette.seed(context)
-    //  **只有主题选了 Monet** 底子才整套走系统取色：默认档 = 系统那套原样（含系统自己选的
-    //  调色风格），选了别的色 = 按那个种子重新生成整套（换强调色时底子也跟着换）。
-    //  其余主题档一律是 COUI 的底子 —— 底色不跟着染，只有强调色那一族被换掉。
+    //  Monet 那一档整套走系统 / 种子取色；其余档是 COUI 底子 + 只换强调色族。
     val base =
         when {
             theme != AppTheme.MONET -> {
-                if (night) DARK_SCHEME else LIGHT_SCHEME
+                (if (night) DARK_SCHEME else LIGHT_SCHEME).withAccent(palette.seed(context), night)
             }
 
             palette == PagePalette.DEFAULT -> {
+                //  默认档：系统那套原样（含系统选的调色风格与 colorSpec），一个字节都不改
                 platformDynamicColors(dark = night)
             }
 
             else -> {
+                //  预设色：按种子整套重推；调色风格与 colorSpec 跟系统那一套（见 [systemPaletteSpec]），
+                //  不传就落到库默认（TonalSpot + Spec2021），系统在 Android 13+ 的对比度 / 鲜艳度
+                //  设置就不生效。
+                val (spec, style) = systemPaletteSpec(context)
                 ThemeController(
                     colorSchemeMode = if (night) ColorSchemeMode.MonetDark else ColorSchemeMode.MonetLight,
-                    keyColor = seed,
+                    keyColor = palette.seed(context),
+                    colorSpec = spec,
+                    paletteStyle = style,
                 ).currentColors()
             }
         }
-    val colors = base.withAccent(seed, night)
-    logSchemeOnce(theme, palette, night, colors)
-    return colors
+    logSchemeOnce(theme, palette, night, base)
+    return base
 }
 
 /** 上一次打出去的那一行（见 [logSchemeOnce]）—— `null` = 还没打过。 */
@@ -145,22 +145,60 @@ private fun logSchemeOnce(
 private val PALETTE_DEFAULT_SEED = Color(0xFF0066FF)
 
 /**
- * 系统强调色 —— 「默认」那一档的种子，也是 [AppTheme.MONET] 底子的种子。
+ * 系统「调色风格 + colorSpec」那一对 —— 给「Monet + 预设色」那一档按种子重推整套时用。
  *
- *  按顺序取第一个能拿到的：
+ *  为什么读它：Android 13 起系统在「壁纸与样式」里能调**调色风格**（TonalSpot / Vibrant /
+ *  Expressive …）与**对比度 / 鲜艳度**（colorSpec）。「默认」档直接 [platformDynamicColors]
+ *  已经跟上了；但「预设色」档是拿项目自己的种子重推，不读这一对的话，用户的调色风格设置
+ *  在这一档就丢了（库默认 TonalSpot + Spec2021）。
  *
- *  1. **框架动态色** `android.R.color.system_accent1_500`（Android 12+ 的壁纸取色）——
- *     与现代 Android 上「系统强调色」的定义一致；
- *  2. **宿主主题主色**（`couiColorPrimary`，宿主自己的 COUI 主题属性）—— 有些 ROM 不做上面
- *     那套动态色，但会把自己主题里的主色跟着系统配色换（`docs/device-findings.md` 里那节
- *     「改为用宿主主题属性取色」就是这条路拿到的「与系统原页面相同」的色）；
- *  3. 常量蓝 [PALETTE_DEFAULT_SEED]。
+ *  数据源与库内部（`platformDynamicColors` 的 `readSystemPaletteInfo`）同一处：settings 里的
+ *  `theme_customization_overlay_packages`，取 `theme_style` 映射成 [ThemePaletteStyle]，
+ *  colorSpec 按 SDK 分档（36 起 Spec2025，否则 Spec2021）。
+ *  **读不到就退默认**（TonalSpot + Spec2021），不因此报错 —— 调色参数不是主色，退默认只是
+ *  少了「跟系统」这一层，配色本身照常。
  *
- *  三级都要有：ROM 可能没有那组资源、可能没有那个属性、也可能压根不做动态取色 ——
- *  取不到就往下一档退，配色这一档不该让整页读不出来。
+ * @return `(colorSpec, paletteStyle)` 一对
+ */
+private fun systemPaletteSpec(context: Context): Pair<ThemeColorSpec, ThemePaletteStyle> {
+    val style =
+        runCatching {
+            android.provider.Settings.Secure.getString(
+                context.contentResolver,
+                "theme_customization_overlay_packages",
+            )
+        }.getOrNull()
+            ?.let { json ->
+                runCatching { org.json.JSONObject(json) }.getOrNull()
+            }?.optString("android.theme.customization.theme_style")
+            ?.uppercase()
+            ?.let { name ->
+                //  系统的 style 字符串 → [ThemePaletteStyle]；认不出退回 TonalSpot（与库内部同一张表）
+                when (name) {
+                    "VIBRANT" -> ThemePaletteStyle.Vibrant
+                    "EXPRESSIVE" -> ThemePaletteStyle.Expressive
+                    "SPRITZ", "NEUTRAL" -> ThemePaletteStyle.Neutral
+                    "RAINBOW" -> ThemePaletteStyle.Rainbow
+                    "FRUIT_SALAD" -> ThemePaletteStyle.FruitSalad
+                    "MONOCHROMATIC", "MONOCHROME" -> ThemePaletteStyle.Monochrome
+                    "FIDELITY" -> ThemePaletteStyle.Fidelity
+                    "CONTENT" -> ThemePaletteStyle.Content
+                    else -> ThemePaletteStyle.TonalSpot
+                }
+            }
+            ?: ThemePaletteStyle.TonalSpot
+    val spec = if (Build.VERSION.SDK_INT >= 36) ThemeColorSpec.Spec2025 else ThemeColorSpec.Spec2021
+    return spec to style
+}
+
+/**
+ * 系统强调色 —— 「默认」那一档在**配色菜单色块**上要显示的色。
  *
- *  取到哪一档、色值是多少，打一行 W（一个进程只打一次）：用户报「系统那个色和某个预设一样」
- *  时，先看这一行到底是取了哪个源，还是三级全落空退到了常量蓝。
+ *  注意：**不再参与 [colorsOf] 的主取色**（那一处 Monet 档已交给 [platformDynamicColors] /
+ *   [ThemeController] 的权威实现）。这里只回答「菜单里『系统取色』那一档的色点画什么」，
+ *  所以取 `system_accent1_500`（≈ 系统强调色，比主色 tone 40 更贴近「壁纸那个色」的直觉）。
+ *
+ *  按顺序取第一个能拿到的：框架动态色 → 宿主主题主色 → 常量蓝。
  */
 private fun systemAccent(context: Context): Color {
     frameworkAccent(context)?.let { return it }
@@ -236,7 +274,14 @@ private fun logAccentOnce(
 }
 
 /**
- * 把**强调色那一族**盖到任意底子上（底子可能是 COUI 的色板，也可能是 Monet 那套）。
+ * 把**强调色那一族**盖到 COUI 底子上（只服务**非 Monet** 主题档 —— Monet 档整套走库的权威实现，
+ * 不经过这里）。
+ *
+ *  底子是 COUI 的 `LIGHT_SCHEME` / `DARK_SCHEME`，它的主色族是「固定蓝」手搓出来的一族：
+ *  `primaryContainer` 就是主色本身（不是 MD3 的 tone 90 / 30）、`tertiaryContainer` 是 15% 透明、
+ *  `onPrimaryVariant` 是主色朝白提亮。这里保持**同一套 COUI 语义**，只把「蓝」换成用户选的种子色
+ *  —— 所以是「同族换色」而非「按 MD3 重推」，`primaryContainer` 仍等于主色、前景仍跟着原来那套
+ *  透明度走。要 MD3 的容器 tone 映射请走 Monet 那一档（[colorsOf]）。
  *
  *  浅色档：种子色直接当主色；深色档：主色比种子色亮一档、容器再亮一档。
  *  括号里的原值是默认档（默认蓝）在同一位置上的值 —— 提亮比例按它反推，换色后明暗关系不走形。

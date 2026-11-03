@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
@@ -83,8 +85,10 @@ internal fun SettingsPage.ExpandableRow(
         tick()
         onToggle()
     }
-    //  语义色（如「不是这包」的红）→ 随机配色 → 常规内容色，与 `CardRow` / `SwitchRow` 同序
-    val iconTint = spec.iconTint ?: spec.icon.tinted() ?: COUITheme.colorScheme.onSurfaceContainer
+    //  语义色（如「不是这包」的红）→ 随机配色 → 常规内容色，与 `CardRow` / `SwitchRow` 同序；
+    //  这条色也带过渡 —— 它与同一张卡里那些行首图标一起变，不能只有这一颗硬切。
+    val tintTarget = spec.iconTint ?: spec.icon.tinted() ?: COUITheme.colorScheme.onSurfaceContainer
+    val iconTint by animateColorAsState(tintTarget, COLOR_TRANSITION_SPEC, label = "ExpandableRowIcon")
     BasicComponent(
         onClick = toggle,
         startAction = { ExpandableRowIcon(spec.icon, iconTint) },

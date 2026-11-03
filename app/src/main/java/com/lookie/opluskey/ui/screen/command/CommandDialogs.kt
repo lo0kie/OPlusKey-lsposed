@@ -122,7 +122,7 @@ private fun SettingsPage.SwitchDraftDiscardDialog() {
     )
 }
 
-/** 删除确认：与「清空配置」同一套控件（取消中性色 + 动作项红）。 */
+/** 删除确认：与「重置配置」同一套控件（取消中性色 + 动作项红）。 */
 @Composable
 private fun SettingsPage.DeleteCommandDialog(ui: CommandUiState) {
     val target = ui.deleting

@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -105,10 +106,12 @@ internal fun SettingsPage.hint(
     slot: String? = HINT_SLOT_PAGE,
     /** 这一条自己的停留时长（`null` = 队列统一那一档）。见 [HintQueue.push] 的 `holdMs`。 */
     holdMs: Long? = null,
+    /** 前置图标（`null` = 界面画默认的 alert-circle）。见 `HintItem.icon`。 */
+    icon: ImageVector? = null,
 ) {
     // 留一行判据：提示条有没有被弹出来，从日志就能答。
     XLog.w("提示：$text${if (slot != null) "（位：$slot）" else ""}")
-    hints.hint(text, slot, holdMs)
+    hints.hint(text, slot, holdMs, icon)
 }
 
 /** 把某个语义位上的提示**提前收掉**（播完退场再摘，不硬切）—— 见 [HintQueue.retire]。 */

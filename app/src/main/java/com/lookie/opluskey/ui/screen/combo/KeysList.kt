@@ -41,8 +41,8 @@ import io.github.suqi8.coui.kmp.basic.Checkbox
  * ## 编辑态（见 [KeysEditState]）
  *
  *  顶栏那颗「编辑」按下去之后，**收集来的键**每行末尾换成多选框、点一行是勾选而不是进页；
- *  侧键那行置灰并说明它删不掉（内置键没有删除这回事），「添加按键」那一行整行退场
- *  （编辑态在改「已有哪几颗」，不是加一颗）。勾了任意一颗，页面那一层就从右下角滑进「删除」。
+ *  侧键那行置灰并说明它删不掉（内置键没有删除这回事），「添加按键」那一行禁用（不是退场）——
+ *  编辑态在改「已有哪几颗」，不是加一颗。勾了任意一颗，页面那一层就从右下角滑进「删除」。
  *
  * ## 末行「添加按键」
  *
@@ -115,7 +115,7 @@ internal fun SettingsPage.KeysListCard(
                         ),
                     )
                 }
-                add(addKeyRow(cfg, pageEnabled, onAddKey, visible = !editing))
+                add(addKeyRow(cfg, pageEnabled, onAddKey, editing = editing))
             },
     )
 }
@@ -126,13 +126,14 @@ internal fun SettingsPage.KeysListCard(
  *  副标题两档说的都是「这一行现在是什么状态」：满员 ⇒ 为什么加不了；
  *  没满 ⇒ 点下去是开一次**按键收集**（标题四个字看不出这一步在模块外面）。
  *
- * @param visible 编辑态下整行退场（连它上面那条细线一起，见 `CardRow.Item.visible`）
+ * @param editing 编辑态下**禁用**而不是退场（用户口径）：编辑态在删、不在加，但这一行要一直
+ *   在，用户才知道「这一列还能再添东西」。
  */
 private fun SettingsPage.addKeyRow(
     cfg: Config,
     pageEnabled: Boolean,
     onAddKey: () -> Unit,
-    visible: Boolean,
+    editing: Boolean,
 ): CardRow.Item {
     val atLimit = cfg.customKeys.size >= KeyId.MAX_CUSTOM_KEYS
     return CardRow.Item(
@@ -144,10 +145,14 @@ private fun SettingsPage.addKeyRow(
             } else {
                 I18n.get(Strings.BINDING_ADD_KEY_DESC, "收集自定义按键")
             },
-        enabled = pageEnabled && !atLimit,
-        //  这一行自己的原因只有「满员」那一档；整页闸门关着时留给整页那条
-        disabledHint = if (atLimit) I18n.format(Strings.KEY_WATCH_LIMIT, KeyId.MAX_CUSTOM_KEYS) else null,
-        visible = visible,
+        enabled = pageEnabled && !atLimit && !editing,
+        //  这一行自己的原因：满员 > 编辑态（编辑态里满员也是先报满员，更贴近眼前的事实）
+        disabledHint =
+            when {
+                atLimit -> I18n.format(Strings.KEY_WATCH_LIMIT, KeyId.MAX_CUSTOM_KEYS)
+                editing -> I18n.get(Strings.KEYS_EDIT_NO_ADD, "编辑中不能添加，请先完成")
+                else -> null
+            },
         onClick = onAddKey,
     )
 }
@@ -189,26 +194,35 @@ private fun SettingsPage.openKey(key: KeyId) {
  *  **一次落盘**：勾了几项就写一遍，回执报总数（「已删除 3 项」）。分两次写会播两条通知、
  *  「谁删了谁」还会互相盖掉。
  *
- *  两类的连带影响不一样，各自写清：
- *   · **按键** —— 内置侧键不在其中（编辑态里它勾不到）。引用了这些键的组合**保留**、变成
- *     「成员缺失」那一档：组合的删除入口在组合列表里，顺手级联删掉别的配置，用户在别处就再也
- *     看不到「我配过这么一组」这件事了。正在编辑的那颗键被删掉时，选中态收回侧键
- *     （[KeyWatchState.forget]）—— 不收回的话绑定页会指着一颗不存在的键去读写。
+ *  连带影响：
+ *   · **按键** —— 内置侧键不在其中（编辑态里它勾不到）。删掉一颗自定义键，**用到它的组合按键
+ *     一起删掉**：组合少一颗成员就是废配置（列表里只会画成停用图标、点了也进不去），
+ *     留着唯一的作用是让用户困惑「这组怎么还在」。会被带走几个由确认窗提前报出
+ *     （见 `KeysScreen` 的 `cascadeCombos`）。
+ *     正在编辑的那颗键被删掉时，选中态收回侧键（[KeyWatchState.forget]）—— 不收回的话
+ *     绑定页会指着一颗不存在的键去读写。
  *   · **组合** —— 整组连它的动作一起没；正在编辑的是它时，把 `ComboEditState` 的编辑目标清掉
  *     （否则「组合键」编辑页还停在一个已经删掉的 id 上）。
  */
 internal fun SettingsPage.removePicked() {
     val cfg = configState.config.value
     val keyIds = KeysEditState.pickedKeys
-    val comboIds = KeysEditState.pickedCombos
+    val pickedCombos = KeysEditState.pickedCombos
+    if (keyIds.isEmpty() && pickedCombos.isEmpty()) return
+    //  勾中的键连带带走「含有它们」的组合；已经勾上的不重复算（它们本来就在这一趟里）
+    val cascaded =
+        cfg.combos
+            .filter { it.id !in pickedCombos && it.keys.any { keyId -> keyId in keyIds } }
+            .map { it.id }
+    val comboIds = pickedCombos + cascaded
     val count = keyIds.size + comboIds.size
-    if (count == 0) return
     val victims = cfg.customKeys.filter { it.id in keyIds }
     victims.forEach { KeyWatchState.forget(it.id) }
     if (ComboEditState.editingId in comboIds) ComboEditState.clear()
     XLog.w(
         "按键页：删除 $count 项" +
-            "（按键 ${victims.joinToString { it.label }}；组合 ${comboIds.joinToString()}）",
+            "（按键 ${victims.joinToString { it.label }}；" +
+            "组合 ${pickedCombos.joinToString()}；连带 ${cascaded.joinToString()}）",
     )
     val next =
         cfg.copy(

@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.screen.command
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -36,6 +38,7 @@ import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
@@ -335,19 +338,19 @@ private fun CommandTileHeadline(
     //  行标题一样大，两行名字就把格子塞满了。字号只在这一处定，光学修正跟着同一个 style 走。
     val titleStyle = COUITheme.textStyles.body2
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        //  「随机图标配色」开着时，类型图标用**它自己那一色**；关着时退回 `null`，
-        //  与标题一起吃 `Card` 的 `contentColor`（`commandTileColors()` 里的
-        //  `onSurfaceContainer`），与摘要那一档同源。
+        //  「随机图标配色」开着时，类型图标用**它自己那一色**；关着时退回卡片的内容色
+        //  （`commandTileColors()` 里的 `onSurfaceContainer`，与摘要那一档同源）。
         //  单条命令按**自己的 root 档**取字形（su / 非 su 两颗字，见 `commandIcon`）：
         //  列表里要能一眼看出哪几条会提权。
         val tileIcon = commandIcon(cmd.kind, cmd.steps.size, cmd.root)
-        val tint = tileIcon.tinted()
-        if (tint == null) {
-            //  关着（或这颗图标没配色）：**不给 `tint`** —— 与标题一起吃 `Card` 的 contentColor
-            Icon(tileIcon, null, Modifier.size(ROW_ICON_SIZE))
-        } else {
-            Icon(tileIcon, null, Modifier.size(ROW_ICON_SIZE), tint = tint)
-        }
+        //  「随机图标配色」那一档同样要过渡：一次拨开关，整屏卡片的类型图标一起换色 ——
+        //  硬切在这里是一整片跳，比单颗图标明显得多。关着时退回卡片的内容色（见 `commandTileColors`）。
+        val iconTint by animateColorAsState(
+            targetValue = tileIcon.tinted() ?: COUITheme.colorScheme.onSurfaceContainer,
+            animationSpec = COLOR_TRANSITION_SPEC,
+            label = "CommandTileIcon",
+        )
+        Icon(tileIcon, null, Modifier.size(ROW_ICON_SIZE), tint = iconTint)
         Spacer(Modifier.width(TILE_TITLE_GAP))
         // 两种命令的标题都**跟图标同一行**：名字是这张卡的主键，一眼要能认出来。
         //  多条命令独有那位「步骤间隔」挪到名字下面那行小字里去（见卡片正文那一段）。

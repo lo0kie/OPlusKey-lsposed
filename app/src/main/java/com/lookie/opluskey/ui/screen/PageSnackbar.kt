@@ -6,10 +6,13 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,6 +31,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -47,6 +51,7 @@ import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.CHECKING_HINT
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
 import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
+import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.QUERY_ROUNDS
 import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.noticeReason
@@ -56,6 +61,7 @@ import dev.chrisbanes.haze.HazePerformanceMode
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SnackbarDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.squircle.addSquircleRect
@@ -284,13 +290,13 @@ private fun HintSlot(
                 bottom = HINT_SHADOW_CAP,
             ),
         ) {
-            HintCapsule(item.text, backdrop)
+            HintCapsule(item.text, item.icon, backdrop)
         }
     }
 }
 
 /**
- * 一枚提示胶囊 —— 底色 + 磨砂 + 圆角 + 阴影 + 文字，几何照抄库的 `Snackbar`。
+ * 一枚提示胶囊 —— 前置图标 + 底色 + 磨砂 + 圆角 + 阴影 + 文字，几何照抄库的 `Snackbar`。
  *
  *  修饰符顺序就是绘制顺序，四处顺序都不能换：
  *   · 外圈 [HINT_SIDE_MARGIN] / [HINT_ITEM_MARGIN] **必须在磨砂前面**，否则糊的范围会带上一圈外边距；
@@ -324,6 +330,7 @@ private fun HintSlot(
 @Composable
 private fun HintCapsule(
     message: String,
+    icon: ImageVector?,
     backdrop: HazeState?,
 ) {
     val shape = remember { SquircleShape(HINT_CAPSULE_RADIUS) }
@@ -332,15 +339,17 @@ private fun HintCapsule(
     val container = if (backdrop == null) colors.containerColor else frostedContainer(colors.containerColor)
     // 换句三段：淡出 → 换内容（宽度在这一段过渡）→ 淡入（见上面那段注释）
     var shownText by remember { mutableStateOf(message) }
-    val textAlpha = remember { Animatable(1f) }
-    LaunchedEffect(message) {
-        if (message == shownText) return@LaunchedEffect
-        textAlpha.animateTo(0f, tween(HINT_TEXT_FADE_MS, easing = AccelerateEasing()))
+    var shownIcon by remember { mutableStateOf(icon) }
+    val contentAlpha = remember { Animatable(1f) }
+    LaunchedEffect(message, icon) {
+        if (message == shownText && icon == shownIcon) return@LaunchedEffect
+        contentAlpha.animateTo(0f, tween(HINT_TEXT_FADE_MS, easing = AccelerateEasing()))
         shownText = message
+        shownIcon = icon
         //  只等到宽度过渡的**尾巴**：淡入与最后那几十毫秒重叠，否则「等都等完了文字才出来」
         //  会有一拍发条感。这时宽度已经走到九成，配上刚开始涨的 alpha，看不出不同步。
         delay((HINT_RESIZE_MS - HINT_TEXT_FADE_MS).toLong())
-        textAlpha.animateTo(1f, tween(HINT_TEXT_FADE_MS, easing = DecelerateEasing()))
+        contentAlpha.animateTo(1f, tween(HINT_TEXT_FADE_MS, easing = DecelerateEasing()))
     }
     Box(
         modifier =
@@ -380,18 +389,34 @@ private fun HintCapsule(
         //  （用户反馈「文字没有垂直居中」）。水平方向本来就贴着文字宽度，居中与否看不出。
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = shownText,
-            color = colors.contentColor,
-            // 库 `couiTextAppearanceButton`：14sp Medium —— 与真机上的提示同一档字号
-            style = SnackbarDefaults.textStyle(),
-            // 只动文字这一层的 alpha：磨砂 / 底色 / 描边不跟着淡，换句时糊不会消失。
-            modifier =
-                Modifier
-                    // 胶囊高度是设计值，字在里头竖居中 —— 补一档光学修正（见 `opticalCenter`）
-                    .opticalCenter(SnackbarDefaults.textStyle())
-                    .graphicsLayer { alpha = textAlpha.value },
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(HINT_ICON_GAP),
+            //  图标与文字**共用这一层 alpha**：换句时它们是一整条内容在换，图标单独留在原地
+            //  （或单独淡一次）比整条一起换更怪。这一层仍然只套内容 —— 磨砂 / 底色 / 描边在
+            //  父 `Box` 上，换句时糊不会消失。
+            modifier = Modifier.graphicsLayer { alpha = contentAlpha.value },
+        ) {
+            //  图标**不套容器**，直接按 [HINT_ICON_SIZE] 画：库的 `Snackbar` 用 30dp 的容器给
+            //  前置图标占位，照抄会把胶囊整条撑高 10dp（真机口径「被撑高太多了」）。这里只让
+            //  图标站在一行字的高度里 —— 它比文字略高一点就够，胶囊的高度仍由那行字说了算。
+            Icon(
+                //  调用方没指定就画默认的 alert-circle（见 `PageIcons.HintAlert`）
+                imageVector = shownIcon ?: PageIcons.HintAlert,
+                contentDescription = null,
+                modifier = Modifier.size(HINT_ICON_SIZE),
+                //  与文字同色：图标是这句话的性质记号，不该比正文更抢眼
+                tint = colors.contentColor,
+            )
+            Text(
+                text = shownText,
+                color = colors.contentColor,
+                // 库 `couiTextAppearanceButton`：14sp Medium —— 与真机上的提示同一档字号
+                style = SnackbarDefaults.textStyle(),
+                // 胶囊高度是设计值，字在里头竖居中 —— 补一档光学修正（见 `opticalCenter`）
+                modifier = Modifier.opticalCenter(SnackbarDefaults.textStyle()),
+            )
+        }
     }
 }
 
@@ -480,10 +505,12 @@ private const val HINT_BORDER_ALPHA = 0.12f
 /**
  * 胶囊上下各多留的一档 —— 为的是把 squircle 的半径上限抬起来。
  *
- *  `addSquircleRect` 会把半径钳到 `min(宽, 高) / 2`：提示条只有一行字时，高度那一半
- *  （约 18dp）比 `SnackbarDefaults.SingleLineCornerRadius`（24dp × 1.28 = 30.8dp）小，
- *  于是半径被压到 18dp，超椭圆看上去比同半径的圆弧「更方」（用户反馈「圆角变小了」）。
- *  上下各 2dp 把这个上限抬到 20dp，角就能撑大一点；代价是胶囊略胖。
+ *  `addSquircleRect` 会把半径钳到 `min(宽, 高) / 2`，而 `SnackbarDefaults.SingleLineCornerRadius`
+ *  换算出来的半径比单行胶囊高度的一半还大，角看上去就比同半径的圆弧「更方」（用户反馈
+ *  「圆角变小了」）。上下各 2dp 把这个上限抬起来，角能撑大一点；代价是胶囊略胖。
+ *
+ *  图标**不参与**这一档的高度：它按 [HINT_ICON_SIZE] 画、比那行字还矮，胶囊的高度仍然只由
+ *  文字决定（见 `HintCapsule` 里那条「图标不套容器」的注释）。
  */
 private val HINT_TALLER_BY = 2.dp
 
@@ -519,6 +546,20 @@ private val HINT_ITEM_MARGIN = 4.dp
  *  真换行时保持同一颗圆角的观感也比中途变一次圆角稳。
  */
 private val HINT_CAPSULE_RADIUS = SnackbarDefaults.SingleLineCornerRadius
+
+/**
+ * 图标本体尺寸 —— 18dp，比 14sp 那行字（行高约 20dp）矮一点点。
+ *
+ *  这个尺寸**不许**跟着库的 `SnackbarDefaults.IconSize`（30dp）走：那是「图标容器」的边长，
+ *  照它画，胶囊会从一行字的高度长到 30dp 容器的高度（真机口径「被撑高太多了」）。图标只要
+ *  和那行字一般高、看着是同一条内容就行。
+ */
+private val HINT_ICON_SIZE = 18.dp
+
+/**
+ * 图标与文字之间的间距 —— 6dp。图标已经贴着一行字的高度，间距再大就把两者读成两件事。
+ */
+private val HINT_ICON_GAP = 6.dp
 
 /** 胶囊的阴影 —— 库 `Snackbar` 那笔 COUI ShadowUtils level 3（半径 26dp / 黑 14% / 下移 4dp）。 */
 private val HINT_SHADOW: Shadow =

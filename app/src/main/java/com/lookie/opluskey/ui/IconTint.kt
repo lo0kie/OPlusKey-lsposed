@@ -1,6 +1,6 @@
 package com.lookie.opluskey.ui
 
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -12,8 +12,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
  *
  *  按**图标身份**取色（[ImageVector.name]），不按调用点位置：同一颗图标在菜单里、在卡片里
  *  颜色一致，挪个位置也不会换色。
+ *
+ *  动态档（不是 `staticCompositionLocalOf`）：这一位**会变** —— 拨「随机图标配色」那一下换种子，
+ *  而静态 local 一变会把 provide 处**整棵内容**重组合一遍（那一页每个控件都跟着重跑）。
+ *  动态 local 只把订阅过它的图标标脏，页面其余部分不动 —— 换一批图标颜色不该拖着整页重画。
+ *  代价是每个读者各登记一条，几十颗图标值这个开销。
  */
-internal val LocalIconTint = staticCompositionLocalOf<(ImageVector) -> Color?> { { null } }
+internal val LocalIconTint = compositionLocalOf<(ImageVector) -> Color?> { { null } }
 
 /**
  * 一颗图标的**随机配色**（见 [LocalIconTint]）—— 关着时返回 `null`。

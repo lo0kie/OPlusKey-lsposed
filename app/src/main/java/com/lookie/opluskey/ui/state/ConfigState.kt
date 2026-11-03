@@ -58,9 +58,9 @@ internal class ConfigState {
      *（真机上真的发生过，先丢的是「振动反馈」）。
      *
      * 退出方式：**重进页面**（会重读一次）；或走 ⋮ 菜单的「默认界面」离开；或点「清空配置」
-     * ——那是用户明说要丢掉重来，`ConfigWrite.resetAll` 会先把这一位清掉再写。
+     * ——那是用户明说要丢掉重来，`resetCurrentProfile` 会先把这一位清掉再写。
      *
-     *  全项目只有两处写它：建页按读到的那一态赋值、以及 `resetAll` 的放行 —— 别在别处顺手置 false，
+     *  全项目只有两处写它：建页按读到的那一态赋值、以及 `resetCurrentProfile` 的放行 —— 别在别处顺手置 false，
      *  那正是这道闸要防的事。
      */
     var readOnly by mutableStateOf(false)

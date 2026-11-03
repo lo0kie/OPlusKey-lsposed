@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.config.ConfigProfiles
+import com.lookie.opluskey.core.config.isDefaultProfile
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -166,6 +167,10 @@ internal fun SettingsPage.ConfigCard(
     //  除「默认」之外已满三份 ⇒ 「导入配置」这一行也灰掉（「新建配置」在切换菜单里，同一道闸）。
     //  只能放进 remember：判一次要列目录，不能每次重组都去碰文件系统。
     val profilesFull = remember(configState.config.value, ui.profiles.size) { ConfigProfiles.isFull() }
+    //  副标题与那层菜单写的是**同一份**「当前是哪份、叫什么」：都从 `list()` 取（它按 id 判身份），
+    //  只在配置本身变了的时候读一次盘。以前这里自己按「名字空不空」拼，名字一丢就自称「默认配置」，
+    //  与菜单里那行「未命名」对不上。
+    val currentDisplay = remember(configState.config.value) { ConfigProfiles.list().firstOrNull { it.isCurrent }?.displayName }
     CardList(
         rows =
             listOf(
@@ -183,7 +188,7 @@ internal fun SettingsPage.ConfigCard(
                 CardRow.Item(
                     title = I18n.get(Strings.PROFILE_SWITCH_TITLE, "切换配置"),
                     // 副标题写**当前配置**的名字 —— 与「语言」那一行写当前语言同一档
-                    summary = currentProfileName(),
+                    summary = currentDisplay ?: currentProfileName(),
                     icon = PageIcons.Profiles,
                     trailing = { RowEndIcon(PageIcons.Selector) },
                     modifier = Modifier.preciseClickAnchor(ui.profileClick),
@@ -223,10 +228,20 @@ internal fun SettingsPage.ConfigCard(
     )
 }
 
-/** 当前配置在界面上的叫法（「切换配置」那一行的副标题）。 */
-private fun SettingsPage.currentProfileName(): String =
-    configState.config.value.profileName
-        .ifBlank { I18n.get(Strings.PROFILE_DEFAULT, "默认配置") }
+/**
+ * 当前配置在界面上的叫法（「切换配置」那一行的副标题、两个重置确认窗的正文）。
+ *
+ *  **按身份判，不按「名字空不空」判**：名字空的普通配置（位次 ≥ 1，名字被抹过）不是默认那份，
+ *  写成「默认配置」会让它与真默认撞名 —— 用户看到的正是「两份默认配置、我这份动不了」。
+ */
+internal fun SettingsPage.currentProfileName(): String {
+    val current = configState.config.value
+    return when {
+        current.isDefaultProfile -> I18n.get(Strings.PROFILE_DEFAULT, "默认配置")
+        current.profileName.isBlank() -> I18n.get(Strings.PROFILE_UNNAMED, "未命名")
+        else -> current.profileName
+    }
+}
 
 /**
  * 「外观」那张卡 —— 主题（跟随系统 / 浅色 / 深色）+ 强调色（页面强调色）。

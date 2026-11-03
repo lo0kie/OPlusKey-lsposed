@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
 import com.lookie.opluskey.ui.model.HEADER_ICON_SIZE
 import com.lookie.opluskey.ui.model.PageIcons
@@ -276,15 +278,25 @@ internal fun HeaderIconButton(
     content: @Composable () -> Unit,
 ) {
     val scheme = COUITheme.colorScheme
-    val fill = if (enabled) scheme.surfaceContainer else scheme.disabledSecondaryVariant
+    //  圆底与描边随 `enabled` 两档（顶栏的「重置」那颗会在编辑途中变灰 / 变亮），带过渡 ——
+    //  页里其它禁用来回都走同一条曲线（[COLOR_TRANSITION_SPEC]），顶栏这一颗不能「啪」一下。
+    val fill by animateColorAsState(
+        targetValue = if (enabled) scheme.surfaceContainer else scheme.disabledSecondaryVariant,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "HeaderButtonFill",
+    )
     //  描边：整档 `dividerLine` 压在磨砂顶栏上仍会勾出一圈清楚的轮廓，减半只留「圆有个边界」
     //  （用户口径「边框再淡」）。按当前档的 alpha 折半，Monet 与 COUI 那两套都跟着淡下去。
-    val border =
-        if (enabled) {
-            scheme.dividerLine.copy(alpha = scheme.dividerLine.alpha * 0.5f)
-        } else {
-            scheme.disabledSecondaryVariant
-        }
+    val border by animateColorAsState(
+        targetValue =
+            if (enabled) {
+                scheme.dividerLine.copy(alpha = scheme.dividerLine.alpha * 0.5f)
+            } else {
+                scheme.disabledSecondaryVariant
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "HeaderButtonBorder",
+    )
     //  **圆底与描边必须用 `CircleShape` 自己画**：库的 `IconButton` 走的是 squircle（超椭圆），
     //  圆角取边长一半时也只是「很圆的方」，四角仍比正圆鼓一点（用户口径「感觉这个按钮不是圆的」）。
     //  所以库那层底色置透明，圆底 / 描边 / 裁剪全在这里做。

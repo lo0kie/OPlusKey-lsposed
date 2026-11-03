@@ -570,6 +570,11 @@ internal fun LazyListState.rowFullyVisible(
  *
  *  名字本身走 `CardRow.Item.title`（通用行的那一档字体），这一块只补名字后面那串标记 ——
  *  排在同一个 `Row` 里，名字长了先缩名字（见 `CardRow` 的 `titleExtra`）。
+ *
+ *  名字与**第一枚**标签之间的间隙由 `CardRow` 的 `titleExtra` 那一档给（[ROW_TITLE_EXTRA_GAP]），
+ *  这里只管**标签之间**的间隙：只有第二枚起才在前面补 [APP_KIND_TAG_GAP]。
+ *  每个标签前都加的话，名字到第一枚之间会是两档叠加（6 + 6 = 12dp），读着「标签离名字远了」
+ *  （真机口径）。
  */
 @Composable
 private fun SettingsPage.AppRowTags(
@@ -581,7 +586,6 @@ private fun SettingsPage.AppRowTags(
         //  比「模块 / 系统 / 用户」更该靠近名字（那几枚排在它后面）。
         //  第几个不看标签：名字里已经写着（`微信 1`），标签再用五种颜色区分只会让整屏更花。
         if (app.clone) {
-            Spacer(Modifier.width(APP_KIND_TAG_GAP))
             AppKindTag(
                 text = I18n.get(Strings.APP_PICKER_CLONE_TAG, "分身"),
                 tint = cloneTagTint(),
@@ -592,7 +596,8 @@ private fun SettingsPage.AppRowTags(
         // 「模块 / 系统 / 用户」只在「显示系统应用」开着时画；「模块」不看那个开关
         // —— 模块默认就在列表里，开关关着也得分得出来。
         if (withSystem || app.xposed) {
-            Spacer(Modifier.width(APP_KIND_TAG_GAP))
+            //  前面已经画过一枚（分身）才补间隙；它是第一枚时由 `CardRow` 的 titleExtra 那档负责
+            if (app.clone) Spacer(Modifier.width(APP_KIND_TAG_GAP))
             // 三选一：「模块」压过「系统」压过「用户」
             AppKindTag(
                 text =
@@ -606,7 +611,8 @@ private fun SettingsPage.AppRowTags(
         }
         // 「不可打开」不看那个开关：用户应用里也有拉不起来的，每一行都该有。
         if (!app.launchable) {
-            Spacer(Modifier.width(APP_KIND_TAG_GAP))
+            //  前面画过任意一枚（分身 / 模块·系统·用户）才补间隙
+            if (app.clone || withSystem || app.xposed) Spacer(Modifier.width(APP_KIND_TAG_GAP))
             AppKindTag(
                 text = I18n.get(Strings.APP_PICKER_TAG_UNOPENABLE, "不可打开"),
                 tint = COUITheme.colorScheme.error,

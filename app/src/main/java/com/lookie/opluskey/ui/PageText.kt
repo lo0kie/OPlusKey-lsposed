@@ -239,7 +239,7 @@ internal fun SettingsPage.draftToLibrary(): Pair<Command, List<Command>>? {
  *  `BuildConfig` 在本工程是**关掉**的（见 `build.gradle.kts` 的 `buildFeatures`），所以只能
  * 从 `PackageManager` 读。
  */
-private fun SettingsPage.moduleVersionName(): String? =
+internal fun SettingsPage.moduleVersionName(): String? =
     try {
         context.packageManager
             .getPackageInfo(ModuleInfo.PACKAGE, 0)

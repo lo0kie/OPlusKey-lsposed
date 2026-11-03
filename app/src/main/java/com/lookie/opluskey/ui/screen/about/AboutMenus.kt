@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.config.ConfigProfiles
+import com.lookie.opluskey.core.config.isDefaultProfile
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -15,6 +16,7 @@ import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.AuthorTarget
 import com.lookie.opluskey.ui.model.FeedbackTarget
@@ -195,24 +197,23 @@ internal fun SettingsPage.ThemeMenu(
 }
 
 /**
- * 「切换配置」那一行的菜单 —— 上半是配置列表（当前配置打勾），底部压着管理那三行。
+ * 「切换配置」那一行的菜单 —— 上半是配置列表（当前配置打勾），底部压着管理那几行。
  *
  *  与 [LanguageMenu] 同一个形状（一行一档、点一下即作数）：配置也是「挑一档」这件事，不该用弹窗。
- *  管理动作（新建 / 重命名 / 删除）**不单独占卡片里的行** —— 它们只对「配置」这东西有意义，
- *  跟着列表一起放进这一层，卡片里就只剩「切换 / 导出 / 导入」三件事。
+ *  管理动作（新建 / 重命名 / 重置 / 删除）**不单独占卡片里的行** —— 它们只对「配置」这东西
+ *  有意义，跟着列表一起放进这一层，卡片里就只剩「切换 / 导出 / 导入」三件事。
  *
- *  三行都作用于**当前配置**：新建是「复制当前、起个名字、切过去」，重命名与删除也是当前这份 ——
- *  菜单里点过的哪一份就是哪一份，不用再选一次（删除也不再开二级菜单）。
+ *  四行都作用于**当前配置**：新建是「复制当前、起个名字、切过去」，重命名、重置与删除也是当前
+ *  这份 —— 菜单里点过的哪一份就是哪一份，不用再选一次（删除也不再开二级菜单）。
  */
 @Composable
 internal fun SettingsPage.ProfileMenu(ui: AboutUiState) {
-    //  当前配置是不是「默认」（名字为空）—— 是的话不许改名、也不许删（删了就没地方回去了）
-    val currentIsDefault =
-        configState.config.value.profileName
-            .isBlank()
-    //  除「默认」之外还能不能再建一份（列表是本层菜单打开时读的那一份）
-    val named = ui.profiles.count { !it.isDefault }
-    val full = named >= ConfigProfiles.MAX_PROFILES
+    //  到上限了没有 —— **与 `ConfigProfiles.createAs` 内部那把尺子同一个**（按**槽位数**，
+    //  不按「有名字的份数」）。名字丢过的那几份同样是占着槽位的配置，按名字数会算少，
+    //  菜单里于是不灰、点下去才报「最多三份配置」（真机踩过）。
+    //  `ui.profiles` 是本层菜单打开时刚读的那一份，`remember` 的 key 就是它 —— 每次打开重算一次，
+    //  不是每帧读盘。
+    val full = remember(ui.profiles) { ConfigProfiles.isFull() }
     PageMenu(
         entries =
             if (!ui.showProfileMenu) {
@@ -227,7 +228,7 @@ internal fun SettingsPage.ProfileMenu(ui: AboutUiState) {
                         },
                     )
                     //  一条加深带隔开「列表」与「对列表动手」—— 上面是选一份，下面三行是改这份清单
-                    addAll(profileManageRows(ui, currentIsDefault, full))
+                    addAll(profileManageRows(ui, full))
                 }
             },
         preciseClick = ui.profileClick,
@@ -236,19 +237,27 @@ internal fun SettingsPage.ProfileMenu(ui: AboutUiState) {
 }
 
 /**
- * 菜单底部那三行**管理动作**（新建 / 重命名 / 删除）—— 从 [ProfileMenu] 里分出来：
- * 三个 `MenuEntry.Row` 连着写会把那个函数顶过 detekt 的 `LongMethod`。
+ * 菜单底部那几行**管理动作**（新建 / 重命名 / 重置配置 / 删除配置）—— 从 [ProfileMenu] 里分出来：
+ * 连着写几个 `MenuEntry.Row` 会把那个函数顶过 detekt 的 `LongMethod`。
  *
- *  三行都作用于**当前配置**：新建是复制当前这份、重命名与删除也认当前那一行。
+ *  四行都作用于**当前这份配置**，顺序按代价从小到大排：新建（复制当前、切过去）→ 改名 →
+ *  重置（内容清空、按默认重建）→ 删除（整份消失）。重置与删除都吃危险色，但**不另起分隔带** ——
+ *  它们与上面两行是同一类动作（对这份配置动手），隔开反而读成两件事。
  *
  * @param full 除「默认」之外已经三份了 ⇒ 「新建配置」灰掉
  */
 private fun SettingsPage.profileManageRows(
     ui: AboutUiState,
-    currentIsDefault: Boolean,
     full: Boolean,
-): List<MenuEntry> =
-    listOf(
+): List<MenuEntry> {
+    //  「重置配置」原来挂在首页 `⋮` 菜单上（那会儿叫「清空配置」），闸还是同一个：链路没通、
+    //  或这次配置读不出来时不放出来点 —— 只读态下点它，正好会把「读不懂的那份」当成用户的意图覆盖掉
+    //  （见 `resetCurrentProfile`）。
+    val canReset = linkReady && !configState.readOnly
+    //  默认配置是升级时落下的退路，**不许改名、不许删除**（用户口径）。这两行直接灰掉并说明，
+    //  而不是点了再被拒 —— 拦在门口比事后报错省一轮。
+    val isDefault = configState.config.value.isDefaultProfile
+    return listOf(
         MenuEntry.Row(
             title = I18n.get(Strings.PROFILE_NEW, "新建配置"),
             icon = PageIcons.ProfileAdd,
@@ -266,26 +275,45 @@ private fun SettingsPage.profileManageRows(
         MenuEntry.Row(
             title = I18n.get(Strings.PROFILE_RENAME, "重命名"),
             icon = PageIcons.MenuRename,
-            //  「默认」配置是升级时落下的退路，它的名字空着才认得出 —— 不给改
-            enabled = !currentIsDefault,
-            disabledHint = if (currentIsDefault) I18n.get(Strings.PROFILE_RENAME_DEFAULT, "默认配置不许改名") else null,
+            //  默认配置的名字空着就是它的身份（见 `Config.isDefaultProfile`）：改了名之后
+            //  「升级时落下的退路」在列表里就认不出来了 —— 所以这一行在默认配置上直接灰掉。
+            //  置灰行必须带自己的说法：不给的话点了会弹**整页那条**（「这一页现在为什么改不了」），
+            //  那是答非所问。
+            enabled = !isDefault,
+            disabledHint = if (isDefault) I18n.get(Strings.PROFILE_DEFAULT_RENAME_LOCKED, "默认配置不能改名") else null,
         ) {
             ui.showProfileMenu = false
             val now = configState.config.value.profileName
             ui.naming = ProfileNaming(ProfileNaming.Kind.RENAME, now)
         },
+        //  夹在「重命名」与「删除」中间：这三行都是**对当前这份配置动手**，按代价从小到大排
+        //  （改名 → 清空内容 → 删掉整份）。它清的是主配置 + 命令库两份文件（见 `resetCurrentProfile`），
+        //  所以 `danger` 照给 —— 名字叫「重置」，代价由确认窗那句话交代（`ProfileClearConfirmDialog`）。
+        MenuEntry.Row(
+            title = I18n.get(Strings.MENU_RESET_CONFIG, "重置配置"),
+            icon = PageIcons.MenuReset,
+            danger = true,
+            enabled = canReset,
+            disabledHint = if (canReset) null else I18n.get(Strings.MENU_RESET_CONFIG_OFF, "模块未就绪"),
+        ) {
+            ui.showProfileMenu = false
+            overlays.confirmReset = true
+        },
         MenuEntry.Row(
             title = I18n.get(Strings.PROFILE_DELETE, "删除配置"),
             icon = PageIcons.ProfileDelete,
             danger = true,
-            //  删的是**当前配置**：先换「默认」上来，再把原来配置删掉（见 `deleteCurrentProfile`）
-            enabled = !currentIsDefault,
-            disabledHint = if (currentIsDefault) I18n.get(Strings.PROFILE_DELETE_DEFAULT, "默认配置不许删除") else null,
+            //  删的是**当前配置**：先换一份上来，再把原来配置删掉（见 `deleteCurrentProfile`）。
+            //  闸两道：还有别的配置能退回去；以及当前这份**不是默认配置**（退路不许删）。
+            //  原因是「默认配置」时才给这一行自己的说法（同上一行）；「只剩一份」不另写文案。
+            enabled = ui.profiles.size > 1 && !isDefault,
+            disabledHint = if (isDefault) I18n.get(Strings.PROFILE_DEFAULT_DELETE_LOCKED, "默认配置不能删除") else null,
         ) {
             ui.showProfileMenu = false
             ui.showDeleteConfirm = true
         },
     )
+}
 
 /**
  * 「导出配置」那一行的菜单 —— 铺的是**同一份**配置列表，点哪份就导出哪份。

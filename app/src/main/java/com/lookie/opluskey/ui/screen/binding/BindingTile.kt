@@ -144,6 +144,21 @@ internal fun SettingsPage.ActionTile(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "TileEntryIndicator",
     )
+    //  行首那颗图标：整格的内容色（启用 / 选中 / 禁用三档）与「随机图标配色」那一档合成一个目标。
+    //
+    //  **随机配色必须也走这里**：它换的是整屏格子的图标色（用户一拨开关，几十颗一起变），
+    //  直接拿 `tinted()` 的结果去画就是整片硬切 —— 硬切在这页最扎眼，比任何一档状态色都明显。
+    //  三档语义色仍优先：灰 / 主色是这一格「能不能点、选没选中」的说法，随机色只管剩下的常规态。
+    val iconTint by animateColorAsState(
+        targetValue =
+            when {
+                !enabled -> scheme.disabledOnSecondaryVariant
+                selected -> scheme.primary
+                else -> icon?.tinted() ?: scheme.onSurfaceContainer
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "TileIcon",
+    )
 
     // 外层 `Box` **只为焦点圈**留一个浮层位置（见 [TileFocusRing]）。
     //
@@ -190,13 +205,13 @@ internal fun SettingsPage.ActionTile(
                     // 图标列只有这一枚 22dp（尺寸沿用全页的 22dp 纪律，见 ActionIcons 的注释）。
                     //  入口格的行首随档位变，见网格里 `icon = boundMode ?: spec` 那一句。
                     //  「随机图标配色」开着时这一格的行首图标用**它自己那一色**；
-                    //  禁用 / 选中两档不上色（灰与主色各自带语义），退回整格的内容色。
+                    //  禁用 / 选中两档不上色（灰与主色各自带语义）—— 三档合出来的目标见 [iconTint]。
                     icon?.let {
                         Icon(
                             it,
                             null,
                             Modifier.size(ROW_ICON_SIZE),
-                            tint = it.takeIf { enabled && !selected }?.tinted() ?: contentColor,
+                            tint = iconTint,
                         )
                     }
                 },

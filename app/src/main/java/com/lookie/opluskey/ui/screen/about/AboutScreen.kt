@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.i18n.AppLanguage
@@ -18,9 +20,14 @@ import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appVersionBadge
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.PagePalette
+import com.lookie.opluskey.ui.state.UpdateState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+
+/** 「正在检查更新…」那条提示的兜底时长 —— 检查最多 10 秒（见 `UpdateState`），再加 1 秒余量。 */
+private const val UPDATE_CHECKING_HOLD_MS = 11_000L
 
 // 「更多选项」页 —— 从首页「其他 → 更多选项」那一行进来（见 `Screen.ABOUT`）。
 //
@@ -64,6 +71,31 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
     // 三行菜单的锚点与开关（语言 / 反馈问题 / 作者）—— 行与菜单共用一份，见 [AboutUiState]。
     val ui = remember { AboutUiState() }
 
+    //  「检查更新」点下去就跑一趟（绕过「每进程一次」的闸）：先给一句「正在检查」，查完按结局
+    //  给回执（有新版弹窗、已最新 / 没查到给提示）。跑在 `LaunchedEffect` 里是因为它要等回包。
+    //
+    //  **不能用 `checkUpdateNow` 当 effect 的 key**：里面会把这一位改回 false，等于在检查跑到
+    //  一半时把 effect 自己取消重启 —— `checkManually` 之后的回执永远执行不到（真机口径
+    //  「检查结束还是没有任何提示」）。所以 key 用 `Unit`，改用 `snapshotFlow` 盯这个触发位。
+    LaunchedEffect(Unit) {
+        snapshotFlow { ui.checkUpdateNow }
+            .collect { want ->
+                if (!want) return@collect
+                ui.checkUpdateNow = false
+                //  「正在检查」这条用「本页杂项」那一档 holdMs 撑不住 10 秒的检查（2 秒就自己没了，
+                //  中间空一截）；给它一个长兜底，真正的收场是查完那句回执顶上来。
+                hint(I18n.get(Strings.UPDATE_CHECKING, "正在检查更新…"), holdMs = UPDATE_CHECKING_HOLD_MS)
+                val outcome = UpdateState.checkManually(this@AboutScreen)
+                val text =
+                    when (outcome) {
+                        UpdateState.CheckOutcome.LATEST -> I18n.get(Strings.UPDATE_LATEST, "已是最新版本")
+                        else -> I18n.get(Strings.UPDATE_FAILED, "没查到（网络或源不可用）")
+                    }
+                //  有新版时已经弹窗了，不再叠一条提示
+                if (outcome != UpdateState.CheckOutcome.OFFERED) hint(text)
+            }
+    }
+
     PageScrollColumn(scrollBehavior = scrollBehavior) {
         // 顶栏叠在内容上，顶部要自己让出（动态值）。这一页首行是 `SmallTitle`（下面「运行状态」
         // 那一个），它自带 8dp 上内边距，**不另加** [PAGE_TOP_PADDING] —— 那一档是给首行是卡片的
@@ -90,6 +122,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         //  **浮层宿主**（本身不占布局）：摆在列容器外面，否则块间距会在它们前后各留一档空档。
         FeedbackMenu(ui)
         AuthorMenu(ui)
+        VersionMenu(ui)
         LanguageMenu(ui, currentLang)
         ThemeMenu(ui, currentTheme)
         PaletteMenu(ui, currentTheme, currentPalette)
@@ -102,6 +135,8 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         ExternalLinkDialog(ui)
         // 删除配置的确认窗（同一个位置点进来，删完才真删）
         ProfileDeleteConfirmDialog(ui)
+        // 重置配置的确认窗（入口在「切换配置」菜单里，与删除同一套控件）
+        ProfileResetConfirmDialog()
         // 删「读不出来的那一份」的确认窗（那一行点进去只剩这一条路）
         ProfileBrokenDeleteDialog(ui)
     }

@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
@@ -199,6 +201,17 @@ internal fun MoreButton(
     //  漏这一下时这颗是**唯一**点了不响的控件：它挂在标题行尾，与旁边那颗可点标题挨着，
     //  同一行两种手感（真机口径「小标题菜单点击时没有通用振动」）。
     val tick = LocalTick.current
+    //  置灰 / 恢复带过渡（卡片排序态、整页闸门关着时这颗会变灰）：与旁边那些行首图标同一档。
+    val dotsTint by animateColorAsState(
+        targetValue =
+            if (enabled) {
+                COUITheme.colorScheme.onSurfaceVariantSummary
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "MoreButtonTint",
+    )
     Box(
         modifier = Modifier.offset(x = endShift),
         contentAlignment = Alignment.Center,
@@ -220,12 +233,7 @@ internal fun MoreButton(
                 TablerIcons.Outline.Dots,
                 contentDescription = I18n.get(Strings.COMMON_MORE, "更多"),
                 //  置灰取库那一档（与行首图标、菜单行同一个禁用色），不做第三种灰
-                tint =
-                    if (enabled) {
-                        COUITheme.colorScheme.onSurfaceVariantSummary
-                    } else {
-                        COUITheme.colorScheme.disabledOnSecondaryVariant
-                    },
+                tint = dotsTint,
                 modifier = Modifier.size(MORE_BUTTON_HEIGHT),
             )
         }

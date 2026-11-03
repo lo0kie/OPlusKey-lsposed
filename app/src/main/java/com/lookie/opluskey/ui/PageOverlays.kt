@@ -22,10 +22,11 @@ import com.lookie.opluskey.core.model.Command
  *
  *  ## 几样「问一句」的开关
  *
- *  [confirmReset] / [confirmRestart] / [confirmLeaveCommands] / [confirmLeaveEdit] / [pendingDraftLoad]
- *  都是「要不要弹一张确认窗」，
+ *  [confirmReset] / [confirmResetModule] / [confirmRestart] / [confirmLeaveCommands] /
+ *  [confirmLeaveEdit] / [pendingDraftLoad] 都是「要不要弹一张确认窗」，
  *  但问的是不同的事，**不能合并**：
- *   · [confirmReset] —— 清空配置（由 `⋮` 菜单或调试通道置位）；
+ *   · [confirmReset] —— 重置配置（由「更多选项 → 切换配置」菜单或调试通道置位）；
+ *   · [confirmResetModule] —— 重置模块（由首页 `⋮` 菜单置位，范围比上面那个大：连变量表一起清）；
  *   · [confirmRestart] —— 重启服务（由 `⋮` 菜单置位）；
  *   · [confirmLeaveCommands] —— 退不退页（表单改过还没保存时由 [SettingsPage.goBack] 置位）；
  *   · [confirmLeaveEdit] —— 退不退页（「按键功能」页编辑态里由 [SettingsPage.goBack] 置位）；
@@ -58,14 +59,25 @@ internal class PageOverlays {
      */
     val closers = mutableListOf<() -> Boolean>()
 
-    /** 「清空配置」确认弹窗（调试通道经 `action=CONFIRM_RESET` 置 true 弹出）。 */
+    /**
+     * 「重置配置」确认弹窗 —— 由「切换配置」菜单里那一行或调试通道（`action=CONFIRM_RESET`）置位，
+     * 窗在「更多选项」页画（见 `ConfigProfileActions.ProfileResetConfirmDialog`）。
+     */
     var confirmReset by mutableStateOf(false)
+
+    /**
+     * 「重置模块」确认弹窗 —— 由首页 `⋮` 菜单那一项置位，窗在 `HomeHeaderMenu` 里画。
+     *
+     *  与 [confirmReset] **分开**：两者作用范围不同（一个只重建当前配置，一个连变量表一起清），
+     *  文案也不同；混用一个开关会让首页那一项弹出「重置配置」的话。
+     */
+    var confirmResetModule by mutableStateOf(false)
 
     /**
      * 「重启服务」确认弹窗 —— 由首页 `⋮` 菜单那一项置位，窗在 `HomeHeaderMenu` 里画。
      *
      *  为什么这一下也要问：它会**杀掉设置页进程**再让宿主把它拉回来（页面会闪一下重开），
-     *  正在编辑、还没保存的内容跟着丢 —— 与「清空配置」同一档代价，菜单里点一下就走太轻了。
+     *  正在编辑、还没保存的内容跟着丢 —— 与「重置配置」同一档代价，菜单里点一下就走太轻了。
      */
     var confirmRestart by mutableStateOf(false)
 

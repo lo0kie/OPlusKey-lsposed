@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.model.AppTheme
 import io.github.suqi8.coui.kmp.basic.Button
 import io.github.suqi8.coui.kmp.basic.ButtonDefaults
 import io.github.suqi8.coui.kmp.basic.Text
@@ -96,6 +97,8 @@ internal fun DialogButtonRow(
     //  **竖向留白与左右内缩都不在这里**：竖向归 `DialogPanel`（相邻两区之间各一档
     //  [DIALOG_REGION_GAP]），左右由底部那一槽自己给（`insideMargin`）。
     //  自己再补一份，两个窗叠起来就对不齐 —— 那正是「上下留白总量不一致」的来源。
+    val negFill = negativeFill()
+    val negText = negativeText()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(DIALOG_BUTTON_GAP),
@@ -107,6 +110,12 @@ internal fun DialogButtonRow(
             modifier = Modifier.weight(1f),
             cornerRadius = DIALOG_BUTTON_RADIUS,
             minHeight = DIALOG_BUTTON_HEIGHT,
+            //  底色**不用库的 `secondaryVariant`**：那是一个**绝对**色号（浅色 `#E6E6E6`、
+            //  深色 20% 白），压在磨砂面板上分不出来 —— 面板在深色下本来就是比它更亮的那一档
+            //  （`surfaceContainerHighest`），按钮反而比面板还暗，看着就是「取消那颗没有底」
+            //  （真机口径「取消按钮和底色太接近」）。
+            //  分两档取色，判据见 [negativeFill] / [negativeText]。
+            colors = ButtonDefaults.textButtonColors(color = negFill, textColor = negText),
         )
         //  「禁用了但点了要有说法」：给了 `onDisabledClick` 时这一颗仍可点、只是按禁用色画 ——
         //  用户点下去就能听到「为什么不能确定」。用文本按钮画这一档：填充按钮没有「灰着还能点」
@@ -121,12 +130,13 @@ internal fun DialogButtonRow(
                 colors =
                     if (positiveStyle.danger) {
                         //  **字要跟着底色走**：不给 `contentColor` 时库取的是常规内容色（深色档是近黑），
-                        //  压在饱和的 `error` 红上就是「红配黑」—— 浅色模式下几乎看不清（真机反馈）。
-                        //  危险按钮的底在两种深浅下都是饱和红，所以字恒用白；跟着 `onPrimary` 走不行 ——
-                        //  深色档那个值是深色，换到红底上又成了同一种毛病。
+                        //  压在 `error` 红上就是「红配黑」—— 浅色模式下几乎看不清（真机反馈）。
+                        //  取 `onError` 而不是写死白色：Monet 深色档的 `error` 是一档**浅**红
+                        //  （tone 80），配白字同样糊；`onError` 才是与它成对的那一档（深红），
+                        //  浅色档仍是白色 —— 两种主题、两种深浅都自己跟着走。
                         ButtonDefaults.buttonColors(
                             color = COUITheme.colorScheme.error,
-                            contentColor = Color.White,
+                            contentColor = COUITheme.colorScheme.onError,
                         )
                     } else {
                         ButtonDefaults.buttonColorsPrimary()
@@ -160,6 +170,40 @@ private val DIALOG_BUTTON_GAP = 12.dp
  *  与上面那行内容抢注意力。40dp 仍过得了 40dp 的最小触达线。
  */
 private val DIALOG_BUTTON_HEIGHT = 40.dp
+
+/** 非 Monet 档「取消」那颗的底透明度 —— 与库那两档绝对色号（10% / 20%）同一个量级。 */
+private const val DIALOG_NEGATIVE_FILL_ALPHA = 0.15f
+
+/**
+ * 「取消」那颗的底色 —— **Monet 与其余主题档取法不同**，因为两套色板的「次要容器」不是一个量级。
+ *
+ *  · Monet：`secondaryContainer`。MD3 那一档就是「比页面容器整整一级」的色（浅色 tone 90 /
+ *    深色 tone 30），压在磨砂面板上差得出来，而且跟着壁纸取色。
+ *    这里**不能用 `onSurface` 的半透明**：Monet 的 `onSurface` 与面板只差几级，15% 叠上去
+ *    「几乎看不出有底」（真机口径「monet 下取消按钮太淡」）。
+ *  · 其余主题档：`onSurface` 的 15% —— COUI 的 `secondaryContainer` 只有 8% 黑，
+ *    比这还淡；而 `onSurface` 叠在面板上，面板亮就压暗、暗就提亮，两种深浅都稳。
+ */
+@Composable
+private fun negativeFill(): Color {
+    val scheme = COUITheme.colorScheme
+    return if (LocalAppTheme.current == AppTheme.MONET) {
+        scheme.secondaryContainer
+    } else {
+        scheme.onSurface.copy(alpha = DIALOG_NEGATIVE_FILL_ALPHA)
+    }
+}
+
+/** 「取消」那颗的字色 —— 跟着 [negativeFill] 那一档走（Monet 用成对的 `onSecondaryContainer`）。 */
+@Composable
+private fun negativeText(): Color {
+    val scheme = COUITheme.colorScheme
+    return if (LocalAppTheme.current == AppTheme.MONET) {
+        scheme.onSecondaryContainer
+    } else {
+        scheme.onSurface
+    }
+}
 
 /** 与高度配套的圆角（胶囊形）：取高度的一半，与库那套 44 / 22 的比例同源。 */
 private val DIALOG_BUTTON_RADIUS = DIALOG_BUTTON_HEIGHT / 2

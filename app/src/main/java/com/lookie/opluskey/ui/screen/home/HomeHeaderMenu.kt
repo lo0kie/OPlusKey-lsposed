@@ -16,21 +16,26 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.openStockPage
-import com.lookie.opluskey.ui.resetAll
+import com.lookie.opluskey.ui.resetModule
 import com.lookie.opluskey.ui.restartModule
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
 /**
- * 首页顶栏右侧的菜单按钮 + 浮层菜单 —— 四项：「默认界面」「重启服务」「导出日志」「清空配置」。
+ * 首页顶栏右侧的菜单按钮 + 浮层菜单 —— 四项：「默认界面」「重启服务」「导出日志」「重置模块」。
  *
  *  只服务**首页**（`Screen.SHORTCUTS`）那一条顶栏，所以跟着这一屏放 ——
  *  原先它和「选择应用」页那份菜单一起长在那个公共的顶栏文件里，
  *  于是那个「公共组件」文件里躺着两块业务菜单、约 30 处页面字段触点。
  *  现在顶栏只提供 `actions` 槽位，菜单由各页自己摆（口径见 [PageHeader]）。
  *
+ *  **「重置配置」与「重置模块」是两个入口、两个范围**：
+ *   · 「重置配置」在「更多选项 → 切换配置」菜单的管理行里（见 `AboutMenus.profileManageRows`）——
+ *     只重建当前选中的那一份（内容 + 它的命令库），确认窗也在那一页；
+ *   · 「重置模块」在这一层（第四行）—— 在它之上再清掉**变量表**（见 `resetModule`）。
+ *
  *  ⋮ **本身永远可点**：「默认界面」那一项必须始终够得着
  *  —— 它是模块彻底坏掉时唯一的逃生口（回宿主原版页面）。
- *  跟着 [rowsEnabled] 走的只有那三项**动模块运行时 / 数据**的（重启服务 / 导出日志 / 清空配置）：
+ *  跟着 [rowsEnabled] 走的只有那三项**动模块运行时 / 数据**的（重启服务 / 导出日志 / 重置模块）：
  *  模块没就绪时它们改不了什么，放用户去点只会以为生效了。
  *
  *  注意：「更多选项」那一项**已从菜单里删掉**：它只留首页那一行，
@@ -38,8 +43,7 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *  （见 [HomeScreen] 里那一行的注释）。
  *
  *  注意：判据是两个条件的与：`linkReady`（链路）**且** `!configReadOnly`（配置这次读成功了）。
- *  只读态下**只留那两项**：那时什么都写不进去，放「清空配置」出来点，正好会把「读不懂的那份」
- *  当成用户的意图覆盖掉。
+ *  只读态下这三项也不放出来点：那时什么都写不进去，点了只会得到一句失败。
  *  **「适配清单」不在判据里**（AGENTS 一、13：清单只是「验过没有」的提示，不许拿去置灰 / 禁用）——
  *  清单外的机器照样能点这三项，只注入了界面层时它们本来就会失败并报出来。
  *  这个状态的退出方式是重进页面（会重读一次）或走「默认界面」。
@@ -50,7 +54,7 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *  ⋮ 与返回箭头同为 `(24,24,24)`）—— 真要禁用它，得像 `IconAction` 那样自己算 tint。
  */
 @Composable
-internal fun SettingsPage.ResetMenu() {
+internal fun SettingsPage.HomeHeaderMenu() {
     var open by remember { mutableStateOf(false) }
     // 两层的「页面离开收起」各自登记：⋮ 菜单由 MenuPopup 管，确认弹窗由 ConfirmDialog 管（都不是本函数登记）
     val preciseClick = rememberPreciseClickState()
@@ -95,19 +99,18 @@ internal fun SettingsPage.ResetMenu() {
                     // 「更多」那一项**已删**（「去掉菜单里的更多」）：
                     // 进「更多选项」页只留首页那一行，且那一行**不吃任何闸**（见 [HomeScreen]）——
                     // 它现在同时承担「日常入口」与「模块坏掉时看运行状态的地方」两个角色。
-                    // 第四项：跟着 [rowsEnabled] —— 未就绪时置灰且吃掉点击（由 MenuRow 那层透明吃事件 Box 兜住，菜单不关、不派发）
-                    //  文案是「清空」不是「重置」：这一下**真的把两份配置都清掉**
-                    // （含已保存的命令），叫「重置」会让人以为只是恢复默认、数据还在。
+                    // 「重置配置」在「更多选项 → 切换配置」那层菜单里（只重建当前那一份）；
+                    // 这一行是**另一件事**：重置模块 —— 连变量表一起清（见 `resetModule`）。
                     //  `dividerBefore`：它是破坏性动作，与上面三项不是一类 —— 上面一条加深带。
                     MenuEntry.Row(
-                        title = I18n.get(Strings.MENU_CLEAR_CONFIG, "清空配置"),
+                        title = I18n.get(Strings.MENU_RESET_MODULE, "重置模块"),
                         icon = PageIcons.MenuReset,
                         enabled = rowsEnabled,
                         danger = true,
                         dividerBefore = true,
                     ) {
                         open = false
-                        overlays.confirmReset = true
+                        overlays.confirmResetModule = true
                     },
                 ).takeIf { open }
                     .orEmpty(),
@@ -115,28 +118,42 @@ internal fun SettingsPage.ResetMenu() {
             onDismiss = { open = false },
         )
 
-        ConfirmDialog(
-            show = overlays.confirmRestart,
-            title = I18n.get(Strings.DIALOG_RESTART_TITLE, "重启服务"),
-            summary = I18n.get(Strings.DIALOG_RESTART_MESSAGE, "未保存的内容会丢。"),
-            action = I18n.get(Strings.DIALOG_RESTART_CONFIRM, "重启"),
-            onDismiss = { overlays.confirmRestart = false },
-            onConfirm = {
-                overlays.confirmRestart = false
-                restartModule()
-            },
-        )
-
-        ConfirmDialog(
-            show = overlays.confirmReset,
-            title = I18n.get(Strings.DIALOG_CLEAR_CONFIG_TITLE, "清空配置"),
-            summary = I18n.get(Strings.DIALOG_CLEAR_CONFIG_MESSAGE, "设置与已保存的命令都会被清空，**不可恢复**。"),
-            action = I18n.get(Strings.DIALOG_CLEAR_CONFIG_CONFIRM, "清空"),
-            onDismiss = { overlays.confirmReset = false },
-            onConfirm = {
-                overlays.confirmReset = false
-                resetAll()
-            },
-        )
+        HomeHeaderConfirmDialogs()
     }
+}
+
+/**
+ * 首页 ⋮ 底下那两颗确认窗（「重启服务」/「重置模块」）—— 与菜单同一层 `Box`，各自由
+ * `overlays` 里那一位开关控制。
+ *
+ *  抽出来只为把 [HomeHeaderMenu] 的行数压在 detekt 的 `LongMethod` 之下：菜单只负责「摆哪几行」，
+ *  两句「点确定之后会发生什么」在这里。
+ */
+@Composable
+private fun SettingsPage.HomeHeaderConfirmDialogs() {
+    ConfirmDialog(
+        show = overlays.confirmRestart,
+        title = I18n.get(Strings.DIALOG_RESTART_TITLE, "重启服务"),
+        summary = I18n.get(Strings.DIALOG_RESTART_MESSAGE, "未保存的内容会丢。"),
+        action = I18n.get(Strings.DIALOG_RESTART_CONFIRM, "重启"),
+        onDismiss = { overlays.confirmRestart = false },
+        onConfirm = {
+            overlays.confirmRestart = false
+            restartModule()
+        },
+    )
+
+    //  「重置模块」：与「重置配置」两个入口、两句话 —— 这一句要点名**变量**也会没
+    //  （那是它与「重置配置」唯一的差别，不写出来用户看不出两个入口为什么并存）。
+    ConfirmDialog(
+        show = overlays.confirmResetModule,
+        title = I18n.get(Strings.DIALOG_RESET_MODULE_TITLE, "重置模块"),
+        summary = I18n.get(Strings.DIALOG_RESET_MODULE_MESSAGE, "当前配置、已保存的命令与变量都会被清空，**不可恢复**。"),
+        action = I18n.get(Strings.DIALOG_RESET_MODULE_CONFIRM, "重置"),
+        onDismiss = { overlays.confirmResetModule = false },
+        onConfirm = {
+            overlays.confirmResetModule = false
+            resetModule()
+        },
+    )
 }

@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.screen
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -18,6 +19,7 @@ import com.lookie.opluskey.ui.model.ACTIVITY_PICKER_TITLE
 import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
 import com.lookie.opluskey.ui.model.BINDING_TITLE
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.COMBO_TITLE
 import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
@@ -39,7 +41,7 @@ import com.lookie.opluskey.ui.screen.command.CommandHeaderReset
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.command.branchGestures
 import com.lookie.opluskey.ui.screen.command.branchOwnerLabel
-import com.lookie.opluskey.ui.screen.home.ResetMenu
+import com.lookie.opluskey.ui.screen.home.HomeHeaderMenu
 import com.lookie.opluskey.ui.screen.variables.VariableHeaderAdd
 import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -68,6 +70,17 @@ internal fun SettingsPage.PageTopBar(
             Screen.COMBO_EDIT -> editingComboOff()
             else -> false
         }
+    //  这行小标题的压暗带过渡：拔掉这一颗键 / 这一组时，页内内容整片在渐变，只有它硬切会像闪了一下。
+    val subtitleTint by animateColorAsState(
+        targetValue =
+            if (editingDisabled) {
+                COUITheme.colorScheme.onSurfaceVariantSummary.let { it.copy(alpha = it.alpha * SUBTITLE_DIM_FACTOR) }
+            } else {
+                COUITheme.colorScheme.onSurfaceVariantSummary
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "HeaderSubtitle",
+    )
     PageHeader(
         title = pageTitle(s),
         // 大标题**下面**那行（库原本的底线副标题槽位，自己占一行）：首页 = 模块版本。
@@ -81,13 +94,8 @@ internal fun SettingsPage.PageTopBar(
         //
         //  **压暗是「乘」不是「盖」**：`onSurfaceVariantSummary` 本身就是 `0x66000000`（alpha 0.4，
         //  见 coui 的 `Colors.kt`）。第一版写成 `copy(alpha = 0.5f)` —— 那是把它从 0.4 **抬**到 0.5，
-        //  比原来还清楚，看起来当然「没生效」。所以按现有 alpha 乘一个系数。
-        subtitleColor =
-            if (editingDisabled) {
-                COUITheme.colorScheme.onSurfaceVariantSummary.let { it.copy(alpha = it.alpha * SUBTITLE_DIM_FACTOR) }
-            } else {
-                COUITheme.colorScheme.onSurfaceVariantSummary
-            },
+        //  比原来还清楚，看起来当然「没生效」。所以按现有 alpha 乘一个系数（目标值在 [subtitleTint] 里算）。
+        subtitleColor = subtitleTint,
         // 尾随标题后面那枚小图标 —— 现在两处：
         //  · 「选择应用」页开着小窗打开时补一枚「小窗起」：与网格里「打开应用」那格同一口径
         //    （见 `BindingScreen` 的 `appSmallWindow`）。那一行字只说明「选了哪个应用」，
@@ -112,10 +120,10 @@ internal fun SettingsPage.PageTopBar(
                 }
             },
         // 右上角那几颗动作键按页分派：**首页 / 「按键绑定」/「选择应用」三页有**
-        // （首页是打开默认界面 / 清空配置，「按键绑定」是「快捷键」「自定义按键」两组，
+        // （首页是打开默认界面 / 重启服务 / 导出日志，「按键绑定」是「快捷键」「自定义按键」两组，
         // 「选择应用」是「显示系统应用」那三项）。
         // 顶栏只留一个 `actions` 槽位、不认识页面（见 [PageHeader]），
-        // 两份菜单各自跟着自己那一屏走（[ResetMenu] / [AppPickerMenu]）。
+        // 两份菜单各自跟着自己那一屏走（[HomeHeaderMenu] / [AppPickerMenu]）。
         //
         //  「按键绑定」页那一套「新增命令」菜单晚些时候**撤掉了**，不再有 ⋮。
         // 进「自定义命令」页的唯一入口现在是那一页右下角的那颗 FAB（见 [BindingScreen]）。
@@ -281,7 +289,7 @@ private fun SettingsPage.PageActions(
     pagers: PagePagers,
 ) {
     when (s) {
-        Screen.SHORTCUTS -> ResetMenu()
+        Screen.SHORTCUTS -> HomeHeaderMenu()
 
         // 「按键绑定」页的 ⋮ 只管**分组**（快捷键 / 自定义按键），不发命令 ——
         // 进「自定义命令」页的唯一入口仍是那一页右下角那颗 FAB（见 [BindingScreen]）。

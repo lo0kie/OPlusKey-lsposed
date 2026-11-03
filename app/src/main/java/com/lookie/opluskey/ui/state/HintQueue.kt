@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.state
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.log.XLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -21,6 +22,13 @@ import kotlinx.coroutines.launch
 internal data class HintItem(
     val id: Long,
     val text: String,
+    /**
+     * 前置图标（`null` = 这一条没指定，界面画默认的那一颗 alert-circle）。
+     *
+     *  与 [text] 是**同一条提示的内容**：同一个位上改字时它一起改（见 [HintQueue.push]），
+     *  否则会出现「字换了、图标还是上一句的」。
+     */
+    val icon: ImageVector? = null,
     val slot: String? = null,
     /** 正在退场（180ms）。这段时间它仍占一格，界面按它播退场。 */
     val exiting: Boolean = false,
@@ -83,11 +91,14 @@ internal class HintQueue(
      * @param slot 语义位（见 [HintItem.slot]）。给了位、且那个位上已经挂着一条时**不新增**：
      *   把那条的字换掉、重新计时（id 不变 ⇒ 界面走换句动画）。同一个开关连点两下，
      *   屏幕上应当是一条在改字，而不是两条「已开启 / 已关闭」叠着。
+     * @param icon 前置图标（见 [HintItem.icon]）。同一位上改字时**跟着一起换** —— 它属于这一条
+     *   的内容，不是那一条的装饰。
      */
     fun push(
         text: String,
         slot: String? = null,
         holdMs: Long? = null,
+        icon: ImageVector? = null,
     ) {
         if (text.isBlank()) {
             //  空文案**不是一条提示**，但也**不能什么都不做**：直接 `return` 的话，屏幕上那一条
@@ -103,8 +114,8 @@ internal class HintQueue(
         //  同一个位上已经有一条（还没开始退场）⇒ 改那条的字，不新开一条
         val same = if (slot == null) null else items.firstOrNull { it.slot == slot && !it.exiting }
         if (same != null) {
-            if (same.text != text) {
-                items = items.map { if (it.id == same.id) it.copy(text = text) else it }
+            if (same.text != text || same.icon != icon) {
+                items = items.map { if (it.id == same.id) it.copy(text = text, icon = icon) else it }
             }
             schedule(same.id, holdMs)
             return
@@ -117,7 +128,8 @@ internal class HintQueue(
         val rest = items.filterNot { it.text == text }
         items =
             enqueue(
-                listOf(HintItem(id, text, slot = slot)) + rest + duplicates.map { it.copy(exiting = true) },
+                listOf(HintItem(id, text, icon = icon, slot = slot)) + rest +
+                    duplicates.map { it.copy(exiting = true) },
             )
         //  被顶掉的旧条目要先摘掉它的计时，否则那个协程到点还会去改一个不存在的 id（无害但白跑）
         pruneTimers()

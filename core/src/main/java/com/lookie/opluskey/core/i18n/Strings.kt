@@ -3,7 +3,13 @@ package com.lookie.opluskey.core.i18n
 /**
  * 集中管理所有多语言文案 Key 常量。
  * 对应多语言字典存放在 assets/locales/zh-CN.json 等 JSON 文件中。
+ *
+ *  **`LargeClass` 是有意压住的**：这里一行一个常量、按页面分组、组内按字母序 —— 它是一张
+ *  「键名 → 字典条目」的表，没有任何行为，行数只会随页面数量单调长。拆成几个对象（`Strings.Keys`
+ *  那种）能把行数分散掉，代价是每个调用点多一层前缀、而键名字符串的守卫要靠人记 —— 这层前缀
+ *  不对应任何职责。真正该拆的信号是「这里开始出现逻辑」，那时单开文件，而不是给常量换个门牌。
  */
+@Suppress("LargeClass")
 object Strings {
     const val ACTION_CUSTOM_COMMAND = "action.custom_command"
     const val ACTION_NONE = "action.none"
@@ -137,8 +143,14 @@ object Strings {
     /** 删完的回执 —— 「已删除 2 颗按键」。 */
     const val KEYS_DELETED = "keys.deleted"
 
+    /** 确认窗正文里「连带删掉几个组合键」那一句（带个数）—— 只在真有组合被带走时才出现。 */
+    const val KEYS_DELETE_COMBOS = "keys.delete_combos"
+
     /** 内置侧键在编辑态下的说明 —— 它删不掉。 */
     const val KEYS_BUILTIN_KEEP = "keys.builtin_keep"
+
+    /** 编辑态里「添加按键 / 添加组合按键」两行被禁用时的说明 —— 编辑态在删、不在加。 */
+    const val KEYS_EDIT_NO_ADD = "keys.edit_no_add"
 
     /** 编辑态里按返回：确认窗的标题 / 正文 / 动作。 */
     const val KEYS_LEAVE_EDIT_TITLE = "keys.leave_edit_title"
@@ -549,6 +561,11 @@ object Strings {
     const val DIALOG_CANCEL = "dialog.cancel"
     const val DIALOG_CLEAR_CONFIG_CONFIRM = "dialog.clear_config_confirm"
 
+    /** 「重置模块」确认窗（首页 `⋮` 菜单那一项）。 */
+    const val DIALOG_RESET_MODULE_CONFIRM = "dialog.reset_module_confirm"
+    const val DIALOG_RESET_MODULE_MESSAGE = "dialog.reset_module_message"
+    const val DIALOG_RESET_MODULE_TITLE = "dialog.reset_module_title"
+
     /** 「重启服务」确认窗：动作（按钮上的那个词）。 */
     const val DIALOG_RESTART_CONFIRM = "dialog.restart_confirm"
 
@@ -567,6 +584,12 @@ object Strings {
     /** 多配置：删除配置 */
     const val PROFILE_DELETE = "profile.delete"
 
+    /** 多配置：默认配置那一行的「重命名」为什么点不了（提示条上那句）。 */
+    const val PROFILE_DEFAULT_RENAME_LOCKED = "profile.default_rename_locked"
+
+    /** 多配置：默认配置那一行的「删除」为什么点不了（提示条上那句）。 */
+    const val PROFILE_DEFAULT_DELETE_LOCKED = "profile.default_delete_locked"
+
     /** 多配置：默认 */
     const val PROFILE_DEFAULT = "profile.default"
 
@@ -579,8 +602,14 @@ object Strings {
     /** 多配置：配置 %d */
     const val PROFILE_NEW_NAME = "profile.new_name"
 
+    /** 新建 / 改名时名字被别的配置占了。 */
+    const val PROFILE_NAME_TAKEN = "profile.name_taken"
+
     /** 多配置：已切到「%s」 */
     const val PROFILE_SWITCHED = "profile.switched"
+
+    /** 多配置：没名字的那份在列表里的称呼。 */
+    const val PROFILE_UNNAMED = "profile.unnamed"
 
     /** 多配置：已新建「%s」 */
     const val PROFILE_CREATED = "profile.created"
@@ -741,10 +770,16 @@ object Strings {
     const val MEDIA_PLAY_PAUSE = "media.play_pause"
     const val MEDIA_PREV = "media.prev"
     const val MEDIA_VOL_UP = "media.vol_up"
-    const val MENU_CLEAR_CONFIG = "menu.clear_config"
     const val MENU_DEFAULT_PAGE = "menu.default_page"
     const val MENU_EXPORT_LOG = "menu.export_log"
     const val MENU_OPEN_IN_MINI_WINDOW = "menu.open_in_mini_window"
+    const val MENU_RESET_CONFIG = "menu.reset_config"
+
+    /** 「重置配置」那一行置灰时的说明 —— 链路没通、或这次配置读不出来（见 `AboutMenus.profileManageRows`）。 */
+    const val MENU_RESET_CONFIG_OFF = "menu.reset_config_off"
+
+    /** 首页 `⋮` 菜单那一项 —— 重置**整个模块**（当前配置 + 命令库 + 变量），与「重置配置」是两个入口。 */
+    const val MENU_RESET_MODULE = "menu.reset_module"
     const val MENU_RESTART_SERVICE = "menu.restart_service"
     const val MENU_SHOW_INVALID_APPS = "menu.show_invalid_apps"
     const val MENU_SHOW_SYSTEM_APPS = "menu.show_system_apps"
@@ -857,6 +892,7 @@ object Strings {
     const val TOAST_COMMAND_TEST_FAILED = "toast.command_test_failed"
     const val TOAST_CONFIG_CLEAR_FAILED = "toast.config_clear_failed"
     const val TOAST_CONFIG_CLEARED = "toast.config_cleared"
+    const val TOAST_MODULE_RESET = "toast.module_reset"
     const val TOAST_CONFIG_EXPORT_FAILED = "toast.config_export_failed"
     const val TOAST_CONFIG_EXPORTED = "toast.config_exported"
     const val TOAST_CONFIG_IMPORT_FAILED = "toast.config_import_failed"
@@ -1039,4 +1075,39 @@ object Strings {
      *  留下空引用的话，按下去那条命令只会得到一句「变量不存在」，用户还得回头找是谁在用它。
      */
     const val VAR_DELETE_BLOCKED = "var.delete_blocked"
+
+    // ── 检查更新 ──
+
+    /** 弹窗标题：查到新版本。 */
+    const val UPDATE_TITLE = "update.title"
+
+    /** 正文：「当前 1.3.3 · 最新 1.4.0」（两个 `%s`）。 */
+    const val UPDATE_BODY = "update.body"
+
+    /** 更新说明那一小块的小标题。 */
+    const val UPDATE_NOTES = "update.notes"
+
+    /** 动作项：去浏览器打开这条发布。 */
+    const val UPDATE_DOWNLOAD = "update.download"
+
+    /** 取消项：这次不更新。 */
+    const val UPDATE_LATER = "update.later"
+
+    /** 勾选框：这一版别再提示了。 */
+    const val UPDATE_DONT_REMIND = "update.dont_remind"
+
+    /** 「关于」卡里的「检查更新」那一行（标题，也用在「版本」菜单里）。 */
+    const val UPDATE_CHECK_ROW = "update.check_row"
+
+    /** 「版本」菜单里的「项目仓库」那一行。 */
+    const val MORE_ABOUT_REPO = "more.about_repo"
+
+    /** 手动点「检查更新」、开始查的那一刻那句提示。 */
+    const val UPDATE_CHECKING = "update.checking"
+
+    /** 手动点「检查更新」、已经是最新时的那句回执。 */
+    const val UPDATE_LATEST = "update.latest"
+
+    /** 手动点「检查更新」、没查到（没网 / 接口失败）时的那句回执。 */
+    const val UPDATE_FAILED = "update.failed"
 }

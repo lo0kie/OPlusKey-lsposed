@@ -12,7 +12,6 @@ import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.AUTHOR
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.REPO_URL
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -37,16 +36,16 @@ internal fun SettingsPage.MachineCard(
     CardList(
         rows =
             buildList {
-                // 版本那一行 —— 点一下开项目仓库（与「作者 / 反馈问题」一样是跳外部链接）。
+                // 版本那一行 —— 点一下开一层菜单（检查更新 / 项目仓库），不再直接跳外链。
                 add(
                     CardRow.Item(
                         title = I18n.get(Strings.MORE_ABOUT_VERSION, "版本"),
                         summary = version,
                         icon = PageIcons.Versions,
-                        trailing = { RowEndIcon(PageIcons.Link) },
+                        trailing = { RowEndIcon(PageIcons.Selector) },
+                        modifier = Modifier.preciseClickAnchor(ui.versionClick),
                         onClick = {
-                            //  外链先问一句（见 `ExternalLinkDialog`），不直接跳浏览器
-                            ui.pendingUrl = REPO_URL
+                            ui.showVersionMenu = true
                         },
                     ),
                 )

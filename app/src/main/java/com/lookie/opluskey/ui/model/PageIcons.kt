@@ -12,6 +12,7 @@ import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
 import io.github.lyxnx.compose.ui.tablericons.outline.Adjustments
+import io.github.lyxnx.compose.ui.tablericons.outline.AlertCircle
 import io.github.lyxnx.compose.ui.tablericons.outline.AlignBoxCenterMiddle
 import io.github.lyxnx.compose.ui.tablericons.outline.AlphabetChinese
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
@@ -218,7 +219,7 @@ internal object PageIcons {
     /** 浮层菜单「打开默认界面」—— 窗口框，读作「另一个界面」。 */
     val MenuStock: ImageVector get() = TablerIcons.Outline.AppWindow
 
-    /** 浮层菜单「清空配置」—— `eraser`（橡皮擦）。 */
+    /** 浮层菜单「重置配置」—— `eraser`（橡皮擦）。 */
     val MenuReset: ImageVector get() = TablerIcons.Outline.Eraser
 
     /** 浮层菜单「导出日志」—— `logs`（一叠日志行）。 */
@@ -680,6 +681,15 @@ internal object PageIcons {
 
     /** 「执行时提示」行的行首 —— `tooltip`（气泡提示）。 */
     val CommandToast: ImageVector get() = TablerIcons.Outline.Tooltip
+
+    /**
+     * 提示条的前置图标**默认档** —— `alert-circle`（圈里一个感叹号）。
+     *
+     *  提示条上的图标是「这句话是什么性质」的记号，不是每条都要单独挑一颗：调用方不指定时
+     *  一律用它（见 `PageSnackbar.HintCapsule`）。圈里感叹号读作「告诉你一件事」，比打勾 / 打叉
+     *  中性 —— 绝大多数回执（已保存、已删除、已切换）本来就没有成败可言。
+     */
+    val HintAlert: ImageVector get() = TablerIcons.Outline.AlertCircle
 
     /**
      * 「名称」这一类输入框的行首图标 —— `label-important`（标签）。

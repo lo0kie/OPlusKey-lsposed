@@ -62,6 +62,9 @@ internal fun SettingsPage.NameDialog(
         onDismiss = onDismiss,
         // 带输入框：键盘由输入框那侧的 `ImeGuard` 叫，这里不能收（收晚一步就是「聚焦后又失焦」）
         hideImeOnShow = false,
+        //  字数统计挂在**标题行行尾**（与「命令详情」编辑窗同一套、同一个位置）：
+        //  上限本来只在输入框里静默截断，看不到还剩几个字；摆在标题那一行也不占正文高度。
+        titleTrailing = { TitleCounter(text.length, MAX_NAME_LENGTH) },
         //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
         footer = {
             DialogButtonRow(

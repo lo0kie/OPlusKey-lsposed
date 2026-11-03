@@ -11,13 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -76,18 +76,27 @@ internal fun SettingsPage.CommandPage(
 ) {
     // 排序态（只可能出现在「多条命令」这一页）：表单与列表一律禁用，底部工具条滑出隐藏。
     val sorting = commandDraft.stepEditing
-    //  命令列表那一行的小标题右侧那颗「更多」（与条件执行页的场景块同一套）：
-    //  点它弹一层菜单，排序态从菜单里进出 —— 原先挂在右下角那颗 FAB 上，用户口径挪到这里。
+    //  这一页那三层浮层的开合位（见 [CommandPageOverlays]）：全屏编辑 / 详情菜单 / 步骤菜单。
+    val overlays = remember { CommandPageOverlays() }
+    //  两颗「更多」的锚点：浮层弹在**按下的那一点**（与条件执行页的场景块同一套）。
     val listAnchor = rememberPreciseClickState()
-    var listMenu by remember { mutableStateOf(false) }
-    //  「命令详情」那颗展开键点开的全屏编辑弹窗（见 `CommandFullscreenDialog`）。
-    var fullscreenEdit by remember { mutableStateOf(false) }
-    //  「命令详情」小标题行尾那颗「更多」：菜单里是「全屏编辑 / 测试命令」。
     val detailAnchor = rememberPreciseClickState()
-    var detailMenu by remember { mutableStateOf(false) }
+    //  开 / 关「命令详情」编辑弹窗时都要用它摘焦点（见下面 `openFullscreen` 与 [CommandOverlayLayer]）
+    val focusManager = LocalFocusManager.current
+    //  开这个弹窗时**先摘掉页面的焦点**（两条入口都走它）。
+    //
+    //  页面那个「命令详情」若还握着焦点，库在关窗时会无条件收键盘，那一次重新布局会让输入框
+    //  为光标发一次 `bringIntoView` —— 而这一页本身在 `Pager` 里，分页器会把「焦点所在那一页」
+    //  重新滚回视野，整行字于是**横向滑一下**（真机口径「关掉弹窗后那行字从左往右动了一下」）。
+    //  开窗之前就摘掉，等到关窗时它早就不是焦点，那一下没人发。
+    //  与 `CommandScreen` 里「换 tab 先 clearFocus」是同一条账。
+    val openFullscreen = {
+        focusManager.clearFocus()
+        overlays.fullscreen = true
+    }
+
     //  排序那颗 FAB 只在**有步骤可排**时出现：列表空着没什么可排的，摆一颗「调整顺序」只是噪音。
     //  但排序态里即使把步骤删空也要留着 —— 那时工具条是隐藏的，它是**唯一的出口**，藏了就出不来。
-
     Box(Modifier.fillMaxSize()) {
         PageScrollColumn(scrollBehavior = scroll.behavior, state = scroll.state) {
             // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带（`tabBlockDp`）一起让出。
@@ -109,13 +118,13 @@ internal fun SettingsPage.CommandPage(
             // 抽成独立的 composable 是为了把 `draft.name` 的读取关在里面（见它的注释）。
             CommandNameField(enabled = !sorting)
 
-            // 单条命令的正文 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
+            // 单条命令的那几栏 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
             if (kind == CommandKind.SINGLE) {
                 CommandDetailTitle(
                     sorting = sorting,
                     anchor = detailAnchor,
-                    onFullscreen = { fullscreenEdit = true },
-                    onMenu = { detailMenu = true },
+                    onFullscreen = openFullscreen,
+                    onMenu = { overlays.detailMenu = true },
                 )
                 SingleCommandField(ui, scroll, enabled = !sorting)
                 //  「命令设置」对单条只有一件事：这条命令要不要以 root 执行。
@@ -142,7 +151,7 @@ internal fun SettingsPage.CommandPage(
 
             // 多条命令的步骤单独一张卡：它是一串行，塞进上面那张卡会多嵌两层内边距。
             if (kind == CommandKind.SERIAL) {
-                CommandStepListSection(anchor = listAnchor, onMenu = { listMenu = true })
+                CommandStepListSection(anchor = listAnchor, onMenu = { overlays.listMenu = true })
             }
 
             //  「已保存的命令」不在这里了 —— 它是第三个页签（见 [CommandListPage]）：
@@ -150,24 +159,7 @@ internal fun SettingsPage.CommandPage(
         }
         //  排序态的入口在「命令列表」那条小标题的行尾（见它上面那个 `trailing`），
         //  不再用右下角那颗 FAB —— 与「条件执行」页的场景块同一个形态。
-        CommandFullscreenDialog(
-            show = fullscreenEdit,
-            onDismiss = { fullscreenEdit = false },
-        )
-        DetailMenu(
-            open = detailMenu,
-            anchor = detailAnchor,
-            tick = tick,
-            onClose = { detailMenu = false },
-            onFullscreen = { fullscreenEdit = true },
-        )
-        StepListMenu(
-            open = listMenu,
-            sorting = sorting,
-            anchor = listAnchor,
-            tick = tick,
-            onClose = { listMenu = false },
-        )
+        CommandOverlayLayer(overlays, sorting, tick, detailAnchor, listAnchor)
     }
 }
 
@@ -296,7 +288,7 @@ internal fun SettingsPage.CommandListPage(
  *  单独抽一支只为让 [CommandPage] 留在 detekt 的长度上限之内。
  */
 @Composable
-private fun SettingsPage.StepListMenu(
+internal fun SettingsPage.StepListMenu(
     open: Boolean,
     sorting: Boolean,
     anchor: PreciseClickState,
@@ -387,7 +379,7 @@ private val SettingsPage.commandTestHint: String
  *  真正只有菜单里才有的那一档是**测试命令**。
  */
 @Composable
-private fun SettingsPage.DetailMenu(
+internal fun SettingsPage.DetailMenu(
     open: Boolean,
     anchor: PreciseClickState,
     tick: () -> Unit,

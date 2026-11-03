@@ -1,12 +1,17 @@
 package com.lookie.opluskey.ui.screen.combo
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.disabledClickReason
+import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.KeysEditState
@@ -30,27 +35,40 @@ internal fun SettingsPage.KeysHeaderEdit() {
     val editing = KeysEditState.editing
     val canEdit = pageWritable()
     //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`），这里不再自己振
+    //  字形随编辑态换（编辑 ↔ 完成）：形状没法插值 ⇒ 交叉淡过去；图标色与它同一条曲线，
+    //  免得「色在渐变、字形啪地换掉」。
+    val iconTint by animateColorAsState(
+        targetValue =
+            if (canEdit) {
+                COUITheme.colorScheme.onSurfaceContainer
+            } else {
+                COUITheme.colorScheme.disabledOnSecondaryVariant
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "KeysEditIcon",
+    )
     DisabledHint(if (canEdit) null else disabledClickReason()) {
         HeaderIconButton(
             onClick = { KeysEditState.toggleEditing() },
             enabled = canEdit,
         ) {
-            Icon(
-                if (editing) PageIcons.Confirm else PageIcons.CommandEdit,
-                contentDescription =
-                    if (editing) {
-                        I18n.get(Strings.COMMON_DONE, "完成")
-                    } else {
-                        I18n.get(Strings.COMMON_EDIT, "编辑")
-                    },
-                // 顶栏按钮不给图标上色 ⇒ 禁用态得自己给（与行首图标同一个禁用色）
-                tint =
-                    if (canEdit) {
-                        COUITheme.colorScheme.onSurfaceContainer
-                    } else {
-                        COUITheme.colorScheme.disabledOnSecondaryVariant
-                    },
-            )
+            Crossfade(
+                targetState = editing,
+                animationSpec = COLOR_FADE_SPEC,
+                label = "KeysEditGlyph",
+            ) { on ->
+                Icon(
+                    if (on) PageIcons.Confirm else PageIcons.CommandEdit,
+                    contentDescription =
+                        if (on) {
+                            I18n.get(Strings.COMMON_DONE, "完成")
+                        } else {
+                            I18n.get(Strings.COMMON_EDIT, "编辑")
+                        },
+                    // 顶栏按钮不给图标上色 ⇒ 禁用态得自己给（与行首图标同一个禁用色）
+                    tint = iconTint,
+                )
+            }
         }
     }
 }

@@ -2,13 +2,36 @@ package com.lookie.opluskey.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
+import kotlinx.coroutines.delay
+
+/**
+ * 每颗开关**上一次落定的位置** —— 页面级一份，按行标题记（见 `PageContent` 的 provide）。
+ *
+ * ## 为什么需要它
+ *
+ *  写配置会让整页内容重新挂一遍（`PageContent` 读整份 `config` ⇒ 任何一次写都重组整页，
+ *  库那边的 entry 内容跟着重新录制）。库的 `Switch` 在新组合里把那次当成「首次组合」，
+ *  直接跳过动画（`Switch.kt` 的 `isFirstComposition`）—— 滑块与轨道于是停在终值，看起来是硬切。
+ *
+ *  把「上一个位置」记在**行的组合之外**：行被重建时先摆回那个位置（新组合因此是「旧态」），
+ *  下一帧再把真值交回去，库就有一条真正的「旧 → 新」可以播。
+ */
+internal val LocalSwitchPositions = staticCompositionLocalOf<MutableMap<String, Boolean>> { mutableMapOf() }
+
+/** 库 `Switch` 那两条动画（滑块 383ms / 轨道 450ms）落定所需的时间 —— 之后才算「用户看到的」。 */
+private const val SWITCH_SETTLE_MS = 500L
 
 /**
  * 单行开关（库 `SwitchPreference` 的项目包装）。
@@ -74,11 +97,24 @@ internal fun SwitchRow(
     //  硬切会出现「图标在淡、字在跳」——长按那张卡里 SwitchRow 与 SliderRow 就是挨着的。
     val iconColor by rememberRowIconColor(enabled, icon = icon, label = "SwitchIcon")
 
+    //  这一行画出来的那个位置由 [shown] 说了算：稳态下它就是 `checked`；只有「行刚被重建」的
+    //  那一帧，它是页面级记下的**上一个位置**，随后再切回真值 —— 库的开关因此总有一条能播的
+    //  「旧 → 新」（见 [LocalSwitchPositions] 与 [SWITCH_SETTLE_MS]）。
+    val positions = LocalSwitchPositions.current
+    var shown by remember { mutableStateOf(positions[title] ?: checked) }
+    LaunchedEffect(checked) {
+        if (shown == checked) return@LaunchedEffect
+        positions[title] = shown
+        shown = checked
+        delay(SWITCH_SETTLE_MS)
+        positions[title] = checked
+    }
+
     NoSwitchHaptic {
         SwitchPreference(
             title = title,
             summary = if (checked) summaryOn else summaryOff,
-            checked = checked,
+            checked = shown,
             onCheckedChange = { on ->
                 if (vibrate) tick()
                 onCheckedChange(on)

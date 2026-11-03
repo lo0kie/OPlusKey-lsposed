@@ -263,7 +263,7 @@ internal val GRID_ROW_GAP = GRID_GAP
  *  仍留一个独立常量而不是直接引用 [ROW_ICON_SIZE]：浮层行高比网格格子矮得多，将来若要单独
  *  回调这一档，有名字可改。
  *
- * 库没有「每项图标尺寸」参数，只能从 `DropdownItem.icon` 的 `(Modifier) -> Unit` 槽位补（见 [ResetMenu]）。
+ * 库没有「每项图标尺寸」参数，只能从 `DropdownItem.icon` 的 `(Modifier) -> Unit` 槽位补（见 [HomeHeaderMenu]）。
  */
 internal val MENU_ICON_SIZE = 22.dp
 
