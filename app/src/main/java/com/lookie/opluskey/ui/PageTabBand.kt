@@ -13,11 +13,16 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalFocusManager
+import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
+import com.lookie.opluskey.ui.model.isDarkScheme
 import com.lookie.opluskey.ui.state.BandHeight
+import io.github.suqi8.coui.kmp.basic.TabRowColors
+import io.github.suqi8.coui.kmp.basic.TabRowDefaults
 import io.github.suqi8.coui.kmp.basic.TabRowWithContour
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.launch
 
 // 顶栏底下那条**分段控件带子** —— 「按键绑定」（三个手势）、「组合键」编辑页（短按 / 长按）、
@@ -150,6 +155,7 @@ private fun TabBandSurface(
             selectedTabIndex = selectedIndex,
             selectedTabPosition = selectedPosition,
             onTabSelected = onSelect,
+            colors = tabBandColors(),
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -177,5 +183,38 @@ private fun TabBandSurface(
                     },
             )
         }
+    }
+}
+
+/**
+ * 这条带子的配色 —— 其余主题档交给库的默认值，**Monet 那一档自己给**。
+ *
+ *  库的默认是两块固定灰（轨道 `0x0F000000` / 滑块纯白，深色下 `0x1FFFFFFF` / `0x1AFFFFFF`）：
+ *  整页底色被壁纸染过之后，这条带子是页面上唯一一块「没跟上配色」的灰（与格子小字、浮层面板
+ *  同一类问题）。
+ *
+ *  取法沿用 `popupSurfaceColor` 那条判据 —— **深色必须抬一档**才分得开：
+ *  · 浅色：轨道 `surfaceContainerHighest`（比页面底色低一档）、滑块 `surface`（页面底色本身，
+ *    读作「从轨道里抠出来的一格」）；
+ *  · 深色：轨道 `surfaceContainer`、滑块 `surfaceContainerHighest` —— 深色下明暗差是唯一的分层
+ *    线索，滑块必须比轨道**亮**（浅色是反过来的：越亮越靠上）。
+ *
+ *  文字两档都保持库默认的 `onSurface`：轨道与滑块都在 surface 那一族里，中性字在两者上都读得清，
+ *  换成强调色反而会和「选中」这件事抢注意力。
+ */
+@Composable
+private fun tabBandColors(): TabRowColors {
+    val scheme = COUITheme.colorScheme
+    if (LocalAppTheme.current != AppTheme.MONET) return TabRowDefaults.tabRowColors()
+    return if (scheme.isDarkScheme) {
+        TabRowDefaults.tabRowColors(
+            backgroundColor = scheme.surfaceContainer,
+            selectedBackgroundColor = scheme.surfaceContainerHighest,
+        )
+    } else {
+        TabRowDefaults.tabRowColors(
+            backgroundColor = scheme.surfaceContainerHighest,
+            selectedBackgroundColor = scheme.surface,
+        )
     }
 }

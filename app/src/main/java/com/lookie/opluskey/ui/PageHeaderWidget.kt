@@ -1,5 +1,7 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -185,9 +189,13 @@ internal fun SettingsPage.PageHeader(
                 //  带子高度各页已各自读过一遍，这里必须扣掉，否则有带子的页面让两次。
                 .onSizeChanged { headerBand.report(it.height - bandHeightPx.value) },
         navigationIcon = {
-            //  盒子只负责挂振动：单子节点，排版与不加这一层完全一样
-            Box(Modifier.headerPressTick(tick)) {
-                IconButton(
+            //  盒子只负责挂振动：单子节点，排版与不加这一层完全一样。
+            //  **末端那 8dp 是给折叠后的标题让位**：库把折叠标题放在「导航图标宽 + 4dp」处
+            //  （`TopAppBarDefaults.NavigationIconGap`），那颗圆键收进栏里之后离标题只有 4dp，
+            //  挤成一团；把这 8dp 加在**图标槽内部**，圆键本身距屏幕边缘仍是 16dp（与展开的
+            //  大标题同一条线），只有折叠标题的起点右移。
+            Box(Modifier.headerPressTick(tick).padding(end = 8.dp)) {
+                HeaderIconButton(
                     onClick = {
                         if (!goBack()) {
                             XLog.w("顶栏返回：已在首页，关页面")
@@ -195,10 +203,6 @@ internal fun SettingsPage.PageHeader(
                             activity?.finish()
                         }
                     },
-                    minWidth = HEADER_ICON_SIZE,
-                    minHeight = HEADER_ICON_SIZE,
-                    cornerRadius = HEADER_ICON_SIZE / 2,
-                    modifier = Modifier.padding(start = 8.dp),
                 ) {
                     Icon(PageIcons.Back, contentDescription = I18n.get(Strings.COMMON_BACK, "返回"))
                 }
@@ -245,6 +249,66 @@ private fun Modifier.headerPressTick(tick: () -> Unit): Modifier =
     }
 
 /**
+ * 顶栏上的一颗圆键 —— 返回 / ⋮ / 添加 / 新建 / 重置 / 设置全走这一份。
+ *
+ *  顶栏底下是**磨砂**（半透的页面底色 + 模糊），纯透明的圆键压在上面只剩一个字形，看不出
+ *  「这里按得动」；所以垫一层**纯色圆底 + 一圈细描边**。
+ *
+ *  ## 配色只认角色，不判主题
+ *
+ *  底色 `surfaceContainer`（不是 `surfaceContainerHigh`：高一档压在磨砂顶栏上偏亮，深色下尤其
+ *  刺眼），描边 `dividerLine`（分隔线那一档，比 `outline` 弱一级 —— 顶栏上要的只是「这里有一块
+ *  可按的地方」，不是一枚端着的按钮）。这两个角色在 Monet 那一档就是 MD3 的
+ *  `surfaceContainer` / `outlineVariant`（跟着壁纸走），其余主题档是 COUI 标定过的那两档 ——
+ *  所以这里**不需要**按 `LocalAppTheme` 分支，换主题时颜色自己跟着换。
+ *
+ *  禁用时退到 `disabledSecondaryVariant`（被冲淡的那一档容器色）：灰着的键不该还亮着
+ *  （顶栏的「重置」有这一档，见 `CommandHeaderReset`）。
+ *
+ * @param enabled 与按钮自己的可用性同一判据 —— 只影响这两层配色，点不点得动由 `onClick` 那边定
+ * @param content 图标本体（`Icon` 自带 `contentDescription`，不在这一层传）
+ */
+@Composable
+internal fun HeaderIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    val scheme = COUITheme.colorScheme
+    val fill = if (enabled) scheme.surfaceContainer else scheme.disabledSecondaryVariant
+    //  描边：整档 `dividerLine` 压在磨砂顶栏上仍会勾出一圈清楚的轮廓，减半只留「圆有个边界」
+    //  （用户口径「边框再淡」）。按当前档的 alpha 折半，Monet 与 COUI 那两套都跟着淡下去。
+    val border =
+        if (enabled) {
+            scheme.dividerLine.copy(alpha = scheme.dividerLine.alpha * 0.5f)
+        } else {
+            scheme.disabledSecondaryVariant
+        }
+    //  **圆底与描边必须用 `CircleShape` 自己画**：库的 `IconButton` 走的是 squircle（超椭圆），
+    //  圆角取边长一半时也只是「很圆的方」，四角仍比正圆鼓一点（用户口径「感觉这个按钮不是圆的」）。
+    //  所以库那层底色置透明，圆底 / 描边 / 裁剪全在这里做。
+    Box(
+        modifier
+            .background(color = fill, shape = CircleShape)
+            .border(width = 1.dp, color = border, shape = CircleShape)
+            //  最后这一档裁子级：按压涟漪是画在按钮节点上的，不裁就会从圆的四角溢出去
+            .clip(CircleShape),
+    ) {
+        IconButton(
+            onClick = onClick,
+            enabled = enabled,
+            backgroundColor = Color.Transparent,
+            minWidth = HEADER_ICON_SIZE,
+            minHeight = HEADER_ICON_SIZE,
+            cornerRadius = HEADER_ICON_SIZE / 2,
+        ) {
+            content()
+        }
+    }
+}
+
+/**
  * 顶栏右侧那颗 ⋮ ——「选择应用」与「重置」两处菜单的触发键**逐字相同**（同一颗图标、同一个
  * 按压槽位、浮层都锚在按下的那一点），收在这里一处。
  */
@@ -253,15 +317,9 @@ internal fun SettingsPage.HeaderMenuButton(
     preciseClick: PreciseClickState,
     onOpen: () -> Unit,
 ) {
-    IconButton(
+    HeaderIconButton(
         onClick = onOpen,
-        minWidth = HEADER_ICON_SIZE,
-        minHeight = HEADER_ICON_SIZE,
-        cornerRadius = HEADER_ICON_SIZE / 2,
-        modifier =
-            Modifier
-                .padding(end = 8.dp)
-                .preciseClickAnchor(preciseClick),
+        modifier = Modifier.preciseClickAnchor(preciseClick),
     ) {
         Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
     }

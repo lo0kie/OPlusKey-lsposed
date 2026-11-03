@@ -1,13 +1,20 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,10 +26,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_DARK_ALPHA
@@ -41,7 +50,10 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ListPopupColumn
 import io.github.suqi8.coui.kmp.basic.ListPopupDefaults
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
+import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.basic.rememberScrollBarAdapter
+import io.github.suqi8.coui.kmp.interfaces.ExperimentalScrollBarApi
 import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -195,13 +207,18 @@ internal fun SettingsPage.MenuPopup(
     ) {
         // 退场期间用的就是 held 里那一次的内容（见上）。
         val shown = held.entries
+        //  整列的滚动状态 —— 一处建、两处用：库的 `ListPopupColumn` 用它滚，右边那条滚动条
+        //  用它画。库自己 `remember` 一份的话，外面就再也拿不到「这一列现在能不能滚」。
+        val menuScroll = rememberScrollState()
         val column: @Composable () -> Unit = {
             //  **库自己那次振动改走通用通道**：按住不放、上下滑动换行时，库每换一行振一次
             //  （`willChangeRow` → `CouiHaptic` → `LocalView.performHapticFeedback`），
             //  那条路不看系统静音、也不与其它点击同一档 —— 用户口径「按住滑动时的振动没走通用振动」。
             //  这一层把 `LocalView` 换掉之后，那一下落到 `LocalTick` 上（见 [TickHapticView]）。
             TickHapticScope {
-                ListPopupColumn { MenuEntries(shown, interactive = show, probe = probe) }
+                ListPopupColumn(scrollState = menuScroll) {
+                    MenuEntries(shown, interactive = show, probe = probe)
+                }
             }
         }
         // `ListPopupColumn` 没有 `modifier` 参数 ⇒ 整列锚点 / 手势账本 / 磨砂只能套在它外面。
@@ -234,13 +251,84 @@ internal fun SettingsPage.MenuPopup(
                     )
             } ?: Modifier
         val anchor = options.columnAnchor
-        if (anchor == null) {
-            Box(Modifier.gestureProbe(probe).then(frost)) { column() }
-        } else {
-            Box(Modifier.preciseClickAnchor(anchor).gestureProbe(probe).then(frost)) { column() }
+        val boxModifier = if (anchor == null) Modifier.gestureProbe(probe) else Modifier.preciseClickAnchor(anchor).gestureProbe(probe)
+        Box(boxModifier.then(frost)) {
+            column()
+            //  滚动条那一层自成一支（见 [MenuScrollBarLayer]）：它压在行上面，占了多宽就吃掉多宽的行点击
+            if (menuScroll.maxValue > 0) MenuScrollBarLayer(menuScroll, Modifier.matchParentSize())
         }
     }
 }
+
+/**
+ * 浮层右侧那条滚动条所在的**一层** —— 与面板同框，里层只占右边一条窄带。
+ *
+ *  外层 `matchParentSize` 只吃父级量出来的尺寸（不参与测量，换成 `fillMaxHeight` 会把面板顶到
+ *  `maxHeight`，菜单会变成永远满高）；里层那条窄带见 [MENU_SCROLLBAR_WIDTH]。
+ *
+ * @param modifier 由调用点给（`matchParentSize` 只能在 `BoxScope` 里取到）
+ */
+@Composable
+private fun SettingsPage.MenuScrollBarLayer(
+    scrollState: ScrollState,
+    modifier: Modifier,
+) {
+    Box(modifier, contentAlignment = Alignment.CenterEnd) {
+        MenuScrollBar(scrollState, Modifier.fillMaxHeight().width(MENU_SCROLLBAR_WIDTH))
+    }
+}
+
+/**
+ * 浮层右侧那条滚动条 —— 只在**这一列真的能滚**时出现（调用点按 `maxValue` 判），且**始终显示**：
+ * 浮层那种面板里，滚动条不是「你滑动时给你的反馈」，而是「这下面还有内容」的唯一提示 ——
+ * 按 COUI 默认那种「不碰它就淡出」等于没有提示（用户口径）。
+ *
+ *  与页面里那条（`PickerScrollBar`）同一套用法，差别只有两处：
+ *   · 这里只占面板右侧一条窄带、与面板同高（由调用点给，见上）；
+ *   · 按住滑块那一下同样走通用振动通道（[rememberTick]）—— 判据仍是「DOWN 有没有被库里 consume」，
+ *     按在轨道空白处不振。
+ *
+ * @param scrollState 与 `ListPopupColumn` 共用的那一份（见调用点）
+ * @param modifier 几何由调用点定（宽窄与高度见调用点那段注释）
+ */
+@OptIn(ExperimentalScrollBarApi::class)
+@Composable
+private fun SettingsPage.MenuScrollBar(
+    scrollState: ScrollState,
+    modifier: Modifier,
+) {
+    val tick = rememberTick()
+    VerticalScrollBar(
+        adapter = rememberScrollBarAdapter(scrollState),
+        //  上下各让出一档：轨道与拇指都收在面板圆角之内，滑到顶 / 底时不会顶到那圈弧
+        trackPadding = PaddingValues(vertical = MENU_SCROLLBAR_TRACK_PADDING),
+        modifier =
+            modifier.pointerInput(tick) {
+                awaitEachGesture {
+                    //  `requireUnconsumed = false`：要的正是「**已经**被 consume」的那一次按下
+                    if (awaitFirstDown(requireUnconsumed = false).isConsumed) tick()
+                }
+            },
+        alwaysVisible = true,
+    )
+}
+
+/**
+ * 滚动条那条窄带的宽度 —— 12dp。
+ *
+ *  不能按库的触摸目标（48dp）给：这一层压在菜单行上面，它有多宽就吃掉多宽的行点击。
+ *  12dp 只盖住面板右内边距（库的 `InsideHorizontalPadding` = 16dp）里的一小条，行文字碰不到；
+ *  拇指本身 3dp + 右端 5.5dp 留白，量起来仍够点中。
+ */
+private val MENU_SCROLLBAR_WIDTH = 12.dp
+
+/**
+ * 滚动条轨道上下让出去的留白 —— 8dp（`trackPadding`，库自带的那一档）。
+ *
+ *  面板圆角是 [POPUP_PANEL_RADIUS]：轨道贴着边画时，拇指滑到顶 / 底会压在那圈弧上，
+ *  看起来像「滑出面板」。上下各收一档，两端都停在圆角之内。
+ */
+private val MENU_SCROLLBAR_TRACK_PADDING = 8.dp
 
 /**
  * 一列菜单的**内容** —— 先把调用方那份「只有行与小标题」的列表展开成「内容 + 分隔」的展示序列

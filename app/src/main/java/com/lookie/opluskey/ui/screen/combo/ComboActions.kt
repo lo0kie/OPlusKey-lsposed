@@ -29,10 +29,21 @@ import com.lookie.opluskey.ui.writeAndNotice
 internal const val MAX_COMBOS = 5
 
 /**
- * 一档组合的显示名 —— 成员键名连起来（`侧键 + 电量 +`）。
+ * 一档组合里两颗键之间的分隔符 —— 用「×」不用「+」。
+ *
+ *  键名本身就可能带加号（用户把一颗键叫「电量 +」），用「+」拼出来
+ *  `「侧键」+「电量 +」` 分不清哪个加号是分隔符（用户口径「中间的 + 改成 x」）。
+ */
+internal const val COMBO_PAIR_SEPARATOR = "×"
+
+/**
+ * 一档组合的显示名 —— 成员键名连起来（`侧键 × 电量 +`）。
  *
  *  内置键的名字走字典（`侧键` 在英文界面下是 `Side key`），自定义键用用户起的名字：
  *  与 `GestureExec.comboTriggerLabel`（执行时提示的主语）同一套口径。
+ *
+ *  **列表行不用这一份**：那一列要两列对齐（见 `ComboPairTitle`），拼成一整串做不到。
+ *  这里是给弹窗 / 回执 / 顶栏副标题那些「只有一句话」的地方用的。
  */
 internal fun SettingsPage.comboLabel(
     cfg: Config,
@@ -41,8 +52,8 @@ internal fun SettingsPage.comboLabel(
      * 每个键名外面套一对括号（中文 `「」`、英文 `｢｣`，见 [keyBrackets]）。
      *
      *  **除了纯日志之外一律要它**（用户口径）：列表行、顶栏副标题、删除确认窗、
-     *  「已添加 / 已删除」的回执 —— `侧键 + 电量 +` 读起来像一句话，
-     *  `「侧键」+「电量 +」` 才看得出这是两颗键的名字。
+     *  「已添加 / 已删除」的回执 —— `侧键 × 电量 +` 读起来像一句话，
+     *  `「侧键」×「电量 +」` 才看得出这是两颗键的名字。
      *  模板里**不要再套一层引号**（`删除 %s？`，不是 `删除「%s」？`）：套两层会把两颗键读成一个名字。
      */
     bracketed: Boolean = false,
@@ -52,7 +63,7 @@ internal fun SettingsPage.comboLabel(
     // 成员全被删掉时（手改的配置）至少给一句能认出来的话，不能是空串
     return names
         .ifEmpty { listOf(combo.id) }
-        .joinToString(" + ") { "$open$it$close" }
+        .joinToString(" $COMBO_PAIR_SEPARATOR ") { "$open$it$close" }
 }
 
 /** 一颗键在界面上的名字（内置键走字典，自定义键用用户起的名字）。 */

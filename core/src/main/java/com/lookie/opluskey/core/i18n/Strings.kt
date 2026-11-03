@@ -125,6 +125,26 @@ object Strings {
     /** 「按键」页的标题 —— 按键列表与组合按键列表收在同一页（见 `Screen.KEYS`）。 */
     const val KEYS_TITLE = "keys.title"
 
+    /** 顶栏那颗「编辑」/「完成」里**完成**那一档（`common.edit` 是另一档）。 */
+    const val COMMON_DONE = "common.done"
+
+    /** 编辑态里那颗「删除」的确认窗标题。 */
+    const val KEYS_DELETE_TITLE = "keys.delete_title"
+
+    /** 确认窗正文 —— 删掉选中的几颗（带颗数）。 */
+    const val KEYS_DELETE_CONFIRM = "keys.delete_confirm"
+
+    /** 删完的回执 —— 「已删除 2 颗按键」。 */
+    const val KEYS_DELETED = "keys.deleted"
+
+    /** 内置侧键在编辑态下的说明 —— 它删不掉。 */
+    const val KEYS_BUILTIN_KEEP = "keys.builtin_keep"
+
+    /** 编辑态里按返回：确认窗的标题 / 正文 / 动作。 */
+    const val KEYS_LEAVE_EDIT_TITLE = "keys.leave_edit_title"
+    const val KEYS_LEAVE_EDIT_DESC = "keys.leave_edit_desc"
+    const val KEYS_LEAVE_EDIT_OK = "keys.leave_edit_ok"
+
     /** 首页「按键操作」卡里那一行的标题 —— 「按键功能」（指向「按键」页）。 */
     const val KEYS_ENTRY = "keys.entry"
 
@@ -332,6 +352,9 @@ object Strings {
 
     /** 绑定页横幅：这一档有几个启用中的系统场景。 */
     const val COMMAND_BRANCH_SCENARIO_COUNT = "command.branch_scenario_count"
+
+    /** 绑定页横幅的另一档：这一档一条都没配（那一行**始终**在，见 `BindingList`）。 */
+    const val COMMAND_BRANCH_SCENARIO_NONE = "command.branch_scenario_none"
     const val COMMAND_BRANCH_ANY = "command.branch_any"
 
     /** 一条条件的小标题（「条件 1」）。 */
@@ -745,6 +768,10 @@ object Strings {
     const val MORE_LANGUAGE_AUTO = "more.language_auto"
     const val MORE_LANGUAGE_EN = "more.language_en"
     const val MORE_LANGUAGE_ZH = "more.language_zh"
+
+    /** 跳浏览器的确认窗（外链一律先问一句，见 `ExternalLinkDialog`）。 */
+    const val MORE_LINK_OPEN_TITLE = "more.link_open_title"
+    const val MORE_LINK_OPEN_ACTION = "more.link_open_action"
     const val MORE_OPTIONS_TITLE = "more.title"
     const val MORE_SECTION_ABOUT = "more.section_about"
     const val MORE_SECTION_APPEARANCE = "more.section_appearance"

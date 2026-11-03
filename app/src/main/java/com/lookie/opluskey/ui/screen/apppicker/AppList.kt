@@ -257,21 +257,40 @@ private fun hanLatin(): android.icu.text.Transliterator? =
     }
 
 /** 兜底比较器（排序键相同时比原名）；取不到就只按键比，仍稳定。 */
-private fun chinaCollator(): java.text.Collator? =
+internal fun chinaCollator(): java.text.Collator? =
     try {
         java.text.Collator.getInstance(java.util.Locale.CHINA)
     } catch (e: Throwable) {
         null
     }
 
-/** 应用列表的排序：拼音键 → 原名 → 包名（三级都相同才算并列）。 */
-private fun appOrder(collator: java.text.Collator?): Comparator<LaunchableApp> =
+/**
+ * 「按名字排」的那把尺子 —— 应用那一级与界面那一级**共用这一份**：拼音键 → 原名 → 兜底键。
+ *
+ *  排序规则只有一处口径：拼音键让中文按拼音、拉丁字母按字母混排（见 [sortKeyOf]），键相同时
+ *  用 [Collator] 比原名，再相同才比兜底键（应用比包名、界面比类名）。两级各写一份的话，
+ *  改动会只落在一级上 —— 同一个应用里「应用列表按拼音、界面列表按别的」就是那么来的。
+ *
+ * @param sortKey 这一项的名字排序键
+ * @param label 这一项的展示名
+ * @param tieBreak 前两级都相同时的兜底键（必须唯一，否则顺序不稳定）
+ */
+internal fun <T> nameOrder(
+    sortKey: (T) -> String,
+    label: (T) -> String,
+    tieBreak: (T) -> String,
+    collator: java.text.Collator?,
+): Comparator<T> =
     Comparator { a, b ->
-        val byKey = a.sortKey.compareTo(b.sortKey)
+        val byKey = sortKey(a).compareTo(sortKey(b))
         if (byKey != 0) {
             byKey
         } else {
-            val byName = collator?.compare(a.label, b.label) ?: 0
-            if (byName != 0) byName else a.packageName.compareTo(b.packageName)
+            val byName = collator?.compare(label(a), label(b)) ?: 0
+            if (byName != 0) byName else tieBreak(a).compareTo(tieBreak(b))
         }
     }
+
+/** 应用列表的排序：见 [nameOrder]（兜底键是包名）。 */
+private fun appOrder(collator: java.text.Collator?): Comparator<LaunchableApp> =
+    nameOrder({ it.sortKey }, { it.label }, { it.packageName }, collator)

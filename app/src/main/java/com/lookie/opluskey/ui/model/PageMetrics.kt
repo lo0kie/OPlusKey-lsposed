@@ -111,8 +111,12 @@ internal val SLIDER_ROW_TAP_TRACK =
 internal val STEP_PICKER_MAX_HEIGHT = 320.dp
 
 /**
- * 「按键行为」网格的列数 —— 取 2：机身 363dp 宽下每格 ≈163dp（焦点圈不占宽度），14sp 放得下最长的一行；
- * 16sp（库 `title` 槽位写死那档）会被省略号截掉，所以 [ActionTile] 用 content 重载自己放 `Text`。
+ * 焦点账本用的**基准列数** —— 取 2。
+ *
+ *  网格本身按宽度算列数（见 [gridColumnCount]），这个常数只剩「按行切块」那一处用它：
+ *  `BindingGridState.rows` 把扁平下标切成「行」时用的仍是它。机身 363dp 宽下每格 ≈163dp
+ *  （焦点圈不占宽度），14sp 放得下最长的一行；16sp（库 `title` 槽位写死那档）会被省略号截掉，
+ *  所以格子（`ActionTile`）用 content 重载自己放 `Text`。
  */
 internal const val COLUMNS = 2
 
@@ -125,6 +129,19 @@ internal const val COLUMNS = 2
  *  14sp 的标题会被省略号截掉。
  */
 internal val GRID_MIN_TILE_WIDTH = 150.dp
+
+/**
+ * 一行放几格 —— 可用宽度除以 [GRID_MIN_TILE_WIDTH] 向下取整，**最少一列**。
+ *
+ *  不拿 [COLUMNS]（2）当下限：窗口窄到一格都塞不下两列时（分屏 / 超大字号）硬排两列，
+ *  每格只剩百来 dp，标题全被省略号截掉 —— 那种宽度下排成一列反而读得全。
+ *
+ *  动作网格与「命令列表」网格共用这一份算式：分开写迟早一边改了另一边没改，同一个页面里
+ *  两种排法。算列数与分块必须用**同一个**返回值，否则最后一行会错位。
+ *
+ * @param availableWidth 已经扣掉页面左右边距之后的可用宽度
+ */
+internal fun gridColumnCount(availableWidth: Dp): Int = (availableWidth.value / GRID_MIN_TILE_WIDTH.value).toInt().coerceAtLeast(1)
 
 /**
  * 首页「按键行为」卡里「前台转小窗时使用动画」那一行**是否露出来** —— 现行 `false`（先隐藏）。

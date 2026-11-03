@@ -1,0 +1,29 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ListPopup.kt
+@@ -6,6 +6,7 @@ import androidx.compose.animation.core.Animatable
+ import androidx.compose.animation.core.AnimationVector1D
+ import androidx.compose.animation.core.spring
+ import androidx.compose.animation.core.tween
++import androidx.compose.foundation.ScrollState
+ import androidx.compose.foundation.focusGroup
+ import androidx.compose.foundation.gestures.awaitFirstDown
+ import androidx.compose.foundation.layout.Box
+@@ -521,13 +522,16 @@ internal fun Modifier.popupListItem(
+  * during layout and are published to the host directly — no cross-node coordinate resolution, which
+  * is what previously left the bounds at zero (a child is positioned before its parent).
+  *
++ * @param scrollState The vertical scroll state of the column. Pass one in to drive an external
++ *   scrollbar (or to read whether the column currently fits); the column reads it for the
++ *   drag-to-select decision, so it must stay the same instance the column scrolls with.
+  * @param content The items
+  */
+ @Composable
+ fun ListPopupColumn(
++    scrollState: ScrollState = rememberScrollState(),
+     content: @Composable () -> Unit,
+ ) {
+-    val scrollState = rememberScrollState()
+     val host = remember { PopupListGestureHost() }
+     val coroutineScope = rememberCoroutineScope()
+     val performHaptic = rememberCouiHaptic()

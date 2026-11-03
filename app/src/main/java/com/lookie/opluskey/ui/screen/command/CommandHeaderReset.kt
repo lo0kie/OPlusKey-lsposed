@@ -1,17 +1,13 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.DisabledHint
+import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.HEADER_ICON_SIZE
 import com.lookie.opluskey.ui.model.PageIcons
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
@@ -50,15 +46,10 @@ internal fun SettingsPage.CommandHeaderReset(
             else -> I18n.get(Strings.COMMAND_RESET_EMPTY, "表单是空的，没有可重置的内容")
         }
     DisabledHint(if (canReset) null else blocked) {
-        IconButton(
+        HeaderIconButton(
             //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`）
             onClick = { resetCommandDraft() },
             enabled = canReset,
-            minWidth = HEADER_ICON_SIZE,
-            minHeight = HEADER_ICON_SIZE,
-            cornerRadius = HEADER_ICON_SIZE / 2,
-            // 与顶栏那颗 ⋮ 同一档右边距（见 `HeaderMenuButton`）
-            modifier = Modifier.padding(end = 8.dp),
         ) {
             Icon(
                 PageIcons.MenuReset,

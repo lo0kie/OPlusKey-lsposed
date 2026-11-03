@@ -1,16 +1,12 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.HEADER_ICON_SIZE
 import com.lookie.opluskey.ui.model.PageIcons
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.IconButton
 
 // 「条件执行」页顶栏右上角那颗「添加」—— 与 `PageTopBar` 的 `PageActions` 那几颗同一位置、同一尺寸。
 
@@ -31,15 +27,10 @@ import io.github.suqi8.coui.kmp.basic.IconButton
 @Composable
 internal fun SettingsPage.BranchHeaderAdd() {
     //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`），这里不再自己振
-    IconButton(
+    HeaderIconButton(
         onClick = {
             addBranchRule(branchDraftNow().rules) { branchDraftNow().freshId = it }
         },
-        minWidth = HEADER_ICON_SIZE,
-        minHeight = HEADER_ICON_SIZE,
-        cornerRadius = HEADER_ICON_SIZE / 2,
-        // 与顶栏那颗 ⋮ 同一档右边距（见 `HeaderMenuButton`）—— 这一页只有这一颗，不用再让位
-        modifier = Modifier.padding(end = 8.dp),
     ) {
         Icon(
             PageIcons.StepAdd,

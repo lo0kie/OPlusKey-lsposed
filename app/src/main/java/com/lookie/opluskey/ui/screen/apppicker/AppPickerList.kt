@@ -26,15 +26,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.Feedback
+import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.collapseHeader
 import com.lookie.opluskey.ui.collapsedHeaderHeight
@@ -43,35 +44,26 @@ import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_GAP
 import com.lookie.opluskey.ui.model.APP_LIST_HEADER_ITEMS
 import com.lookie.opluskey.ui.model.APP_ROW_HEIGHT
-import com.lookie.opluskey.ui.model.APP_TITLE_SUMMARY_GAP
 import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.model.LaunchableApp
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
-import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.command.branchConditionUsed
 import com.lookie.opluskey.ui.spacedItems
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.PickedDetail
-import io.github.suqi8.coui.kmp.basic.BasicComponent
-import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PullToRefresh
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
 import io.github.suqi8.coui.kmp.basic.rememberPullToRefreshState
 import io.github.suqi8.coui.kmp.basic.rememberScrollBarAdapter
 import io.github.suqi8.coui.kmp.interfaces.ExperimentalScrollBarApi
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
 // 「选择应用」页的列表 —— 下拉刷新、行、以及进场的「滚到已选中那一行」。
@@ -415,7 +407,12 @@ private class RowState(
 }
 
 /**
- * 一行应用：图标 + 名字（带「模块 / 系统 / 用户」「不可打开」标签）+ 包名 + 行尾指示。
+ * 一行应用 —— 走**通用的一行卡**（[CardRow.Item] + [CardList]），不再自己拼
+ * `Card + BasicComponent`：整页的行距、行高、按压与振动、行首 / 行尾的槽位都由那一份定义。
+ *
+ *  内容仍是原来的四段：行首那颗应用图标（[AppIcon]，不是 `ImageVector` ⇒ 走 `startIcon`）、
+ *  名字 + 「分身 / 模块 / 系统 / 用户 / 不可打开」小标签（`titleExtra`）、包名（副标题）、
+ *  行尾**当前选中**的那四档图标（`trailing`，判据见 [RowState.iconFor]）。
  *
  *  **点一行即进下一级**（挑这个应用里的具体界面 / 快捷方式），所以行尾那枚图标画的是**当前选中**
  *  的四档之一（箭头 = 没选中 / 勾 = 整个应用 / 一块屏 = 里面某个界面 / 表格+箭头 = 某个快捷方式）。
@@ -439,75 +436,43 @@ private fun SettingsPage.AppRow(
     /** 点这一行：进二级页挑具体界面（拉不起来的应用由调用点拦下）。 */
     onClick: () -> Unit,
 ) {
-    val tick = rememberTick()
     val withSystem = picker.showSystemApps.value
-    // 这一行是不是当前选中的那个应用 —— 标题与行尾那枚图标共用这一个判据（两处必须同色）
+    // 这一行是不是当前选中的那个应用 —— 行尾那枚图标据此上色
     val picked = row.pickedBy(app.target)
-    Card(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = PAGE_MARGIN)
-            // 间距在高度之前给：这样 [APP_ROW_HEIGHT] 量的是卡片自己，那 12dp
-            // 是卡片外面的行距（顺序反了会把卡片压矮 12dp）。
-            //  **行自己不带外边距**：行距由 [spacedItems] 给（首行不加、末行不加）。
-            // 行高定死 ⇒ 行首那枚图标才能整高（见 [APP_ROW_HEIGHT]）
-            .height(APP_ROW_HEIGHT),
-        // 按压反馈只要涟漪，与换之前 `BasicComponent` 那份同一套。
-        // 不再有长按：点一下就是进下一级，「轻点 = 选中」那套已经没有了。
-        pressFeedbackType = PressFeedbackType.None,
-        showIndication = true,
-        onClick = {
-            tick()
-            onClick()
-        },
-    ) {
-        BasicComponent(
-            startAction = { AppIcon(app) },
-            // 行尾四档（判据见 [RowState.iconFor]）：
-            //  · 里面某个**快捷方式** ⇒ 表格 + 箭头；
-            //  · 里面某个**界面** ⇒ 一块屏；
-            //  · 这个应用本身 ⇒ 一颗勾；
-            //  · 没选中 ⇒ 箭头（点下去能看到里面有什么）。
-            endActions = {
-                //  `null` = 这一行不画图标（给「条件执行」挑时，没选中的行没有「点进去」这回事）。
-                //  **但槽位照占同样大小**：库按行尾的实际宽度算中间那列能用多宽（见
-                //  `BasicComponent` 的 `Layout`：`endIntrinsicWidth` + 8dp spacer），
-                //  宽度从 0 跳到 24dp 会让长包名折行、整块内容跟着上下窜 ——
-                //  真机表现就是「勾一出现，应用名与包名两个标题一起往上移」。
-                val icon = row.iconFor(app.target)
-                if (icon == null) {
-                    Spacer(Modifier.size(ROW_END_ICON_SIZE))
-                } else {
-                    Icon(
-                        icon,
-                        contentDescription = null,
-                        // 与网格那颗同尺寸：24dp，即原先 COUI `RadioButton` 的 `requiredSize`
-                        modifier = Modifier.size(ROW_END_ICON_SIZE),
-                        tint =
-                            if (picked) {
-                                COUITheme.colorScheme.primary
-                            } else {
-                                COUITheme.colorScheme.onSurfaceVariantActions
-                            },
-                    )
-                }
-            },
-            cardListPosition = CardListPosition.Full,
-            // 不给 `onClick` —— 点击在外面那个 `Card` 上（理由见那里的注释）
-        ) {
-            AppRowTitle(app, withSystem)
-            Text(
-                text = app.packageName,
-                modifier = Modifier.padding(top = APP_TITLE_SUMMARY_GAP),
-                style = COUITheme.textStyles.body2,
-                color = BasicComponentDefaults.summaryColor().color,
-                //  单行省略：包名是给人对号的，折成两行既难读、又会把这一行撑得比别的高
-                //  （行高定死 ⇒ 内容一高就居中上移，与上面行尾那笔同一个症状）。
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    CardList(
+        rows =
+            listOf(
+                CardRow.Item(
+                    title = app.label,
+                    summary = app.packageName,
+                    startIcon = { AppIcon(app) },
+                    titleExtra = { AppRowTags(app, withSystem) },
+                    //  行高定死 ⇒ 行首那枚图标才能整高（见 [APP_ROW_HEIGHT]）。
+                    //  行自己不带外边距：行距由 [spacedItems] 给（首行不加、末行不加）。
+                    modifier = Modifier.height(APP_ROW_HEIGHT),
+                    trailing = {
+                        //  `null` = 这一行不画图标（给「条件执行」挑时，没选中的行没有「点进去」这回事）。
+                        //  **但槽位照占同样大小**：库按行尾的实际宽度算中间那列能用多宽，
+                        //  宽度从 0 跳到 24dp 会让长包名折行 —— 真机表现是「勾一出现，两个标题一起上移」。
+                        val icon = row.iconFor(app.target)
+                        if (icon == null) {
+                            Spacer(Modifier.size(ROW_END_ICON_SIZE))
+                        } else {
+                            RowEndIcon(
+                                icon = icon,
+                                tint =
+                                    if (picked) {
+                                        COUITheme.colorScheme.primary
+                                    } else {
+                                        COUITheme.colorScheme.onSurfaceVariantActions
+                                    },
+                            )
+                        }
+                    },
+                    onClick = onClick,
+                ),
+            ),
+    )
 }
 
 /**
@@ -601,31 +566,17 @@ internal fun LazyListState.rowFullyVisible(
 }
 
 /**
- * 行标题：名字 + 「模块 / 系统 / 用户」+「不可打开」两枚小标签。
+ * 行标题右边那几枚小标签： 「分身」+「模块 / 系统 / 用户」+「不可打开」。
  *
- *  自己排而不是走库的 `title` 参数：那两个参数只吃 `String`，而这里要在名字右边挂标签。
- *  样式照库的默认内容来。
+ *  名字本身走 `CardRow.Item.title`（通用行的那一档字体），这一块只补名字后面那串标记 ——
+ *  排在同一个 `Row` 里，名字长了先缩名字（见 `CardRow` 的 `titleExtra`）。
  */
 @Composable
-private fun SettingsPage.AppRowTitle(
+private fun SettingsPage.AppRowTags(
     app: LaunchableApp,
     withSystem: Boolean,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = app.label,
-            // `weight` 让长名字先缩，标签始终留在行内可见
-            // （`fill = false`：名字短时不去撑满，标签紧跟在右边）。
-            modifier =
-                Modifier
-                    .weight(1f, fill = false)
-                    .opticalCenter(COUITheme.textStyles.headline1),
-            style = COUITheme.textStyles.headline1,
-            fontWeight = FontWeight.Medium,
-            color = BasicComponentDefaults.titleColor().color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
         // 分身：一枚固定色的「分身」标签，**紧贴名字** —— 它回答的是「这一行是不是多开的那一份」，
         //  比「模块 / 系统 / 用户」更该靠近名字（那几枚排在它后面）。
         //  第几个不看标签：名字里已经写着（`微信 1`），标签再用五种颜色区分只会让整屏更花。

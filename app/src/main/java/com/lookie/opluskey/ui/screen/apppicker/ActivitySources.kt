@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
-import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import com.lookie.opluskey.bridge.AppClonePackages
@@ -39,36 +38,3 @@ internal fun SettingsPage.packageInfoOf(
     } else {
         AppClonePackages.packageInfoAsUser(pkg, PackageManager.GET_ACTIVITIES.toLong(), userId)
     }
-
-/**
- * 分身那一档的排位 —— 与 `launcherRanks` 同一张表，只是查询走 binder。
- *
- *  两次 `queryIntentActivities`：一次 `MAIN`、一次 `MAIN + LAUNCHER`。查不到就返回空表
- *  （所有行排最后）—— 排位只影响顺序，不该因为它失败把清单也丢了。
- */
-internal fun launcherRanksAsUser(
-    pkg: String,
-    userId: Int,
-): Map<String, Int> {
-    val ranks = HashMap<String, Int>()
-
-    //  **键必须是 `包名/类名`**，与主档 `componentsOf` 和查表那处（`entryOf` 里 `"${query.pkg}/${ai.name}"`）
-    //  同一个写法：这里原先存的是裸类名，于是分身那一档的排位**一条都对不上** —— 排序退成原序、
-    //  「是不是启动图标」恒为 false，而主档一切正常，看着像「分身里几个入口没排上来」。
-    fun record(
-        ri: android.content.pm.ResolveInfo,
-        rank: Int,
-    ) {
-        val name = ri.activityInfo?.name ?: return
-        ranks["$pkg/$name"] = rank
-    }
-    AppClonePackages
-        .queryLaunchablesAsUser(Intent(Intent.ACTION_MAIN).setPackage(pkg), userId)
-        ?.forEach { ri -> record(ri, RANK_MAIN) }
-    AppClonePackages
-        .queryLaunchablesAsUser(
-            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(pkg),
-            userId,
-        )?.forEach { ri -> record(ri, RANK_LAUNCHER) }
-    return ranks
-}

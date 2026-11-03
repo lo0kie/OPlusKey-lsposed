@@ -102,23 +102,26 @@ internal fun SettingsPage.ComboEditScreen(
         BindingGridFocus(grid, pager.currentPage == page, "组合按键")
         PageScrollColumn(scrollBehavior = scrollBehavior, state = scrolls[page]) {
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + bandBlock))
-            //  这一档（短按 / 长按）配了「系统场景」时那张**提示卡** —— 与「按键绑定」页同一句、
-            //  同一个位置：场景先判、命中就轮不到下面这些绑定。点它进那一档的条件表，
-            //  走的还是 ⋮ 菜单那条现成的路（`openBranchesForCombo`）。
-            comboScenarioNotice(combo.id, if (page == 0) Gesture.SINGLE else Gesture.LONG)?.let { notice ->
-                CardList(
-                    modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
-                    rows =
-                        listOf(
-                            CardRow.Item(
-                                title = notice,
-                                icon = PageIcons.CommandBranch,
-                                arrow = true,
-                                onClick = { openBranchesForCombo(combo.id) },
-                            ),
+            //  这一档（短按 / 长按）的**系统场景入口卡** —— 与「按键绑定」页同一句、同一个位置：
+            //  场景先判、命中就轮不到下面这些绑定。点它进那一档的条件表，走的还是 ⋮ 菜单那条
+            //  现成的路（`openBranchesForCombo`）。
+            //  与那一页同一个口径：**一条场景都没配时这一行也留着**（它是这一档进「系统场景」的
+            //  入口，只配过才出现的话，没配过的人找不到它）。
+            val notice =
+                comboScenarioNotice(combo.id, if (page == 0) Gesture.SINGLE else Gesture.LONG)
+                    ?: I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE, "当前手势没有添加系统场景")
+            CardList(
+                modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
+                rows =
+                    listOf(
+                        CardRow.Item(
+                            title = notice,
+                            icon = PageIcons.CommandBranch,
+                            arrow = true,
+                            onClick = { openBranchesForCombo(combo.id) },
                         ),
-                )
-            }
+                    ),
+            )
             //  长按那一档：设置卡在网格**上面**（与「按键绑定」页同一个顺序 ——
             //  先「这一档怎么判」，再挑「绑什么」）。短按没有可调的东西，直接是网格。
             //  块与块之间的间距由小标题自带；网格自己那几组由网格内部管。

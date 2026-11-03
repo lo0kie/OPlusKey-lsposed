@@ -20,7 +20,6 @@ import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.draftToLibrary
 import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.saveCommands
 import com.lookie.opluskey.ui.state.CommandsSave
@@ -127,43 +126,59 @@ internal fun SettingsPage.commandReferenceCycle(): List<String>? {
 }
 
 /**
+ * 一行命令卡的**布局参数** —— 从签名里挪出来的一格。
+ *
+ *  一半是 detekt 的 `LongParameterList`（再加一颗格子 lambda 就是七个，`Modifier` 与它挤在一起
+ *  按顺序排错一位编译照样过），另一半是这几个值本来就是**一起**定的：卡数与列数由同一个
+ *  `chunked(columns)` 与分宽共用，两个上下限由「这一行里有没有多条命令」一起算
+ *  （见 `SavedCommands`）。散成四个参数时，调用点读起来像四件互不相干的事。
+ *
+ * @param tileCount 这一行的卡数（不足 [columns] 时右侧留空）
+ * @param columns 这一行按几列分宽度 —— 由调用点用 `gridColumnCount` 算好传进来，
+ *   与它 `chunked` 用的是**同一个**数（分块与分宽各算一遍会在宽度卡在临界点时让最后一行错位）。
+ * @param minHeightRatio 行高下限 = 卡宽 × 本值（单条给 [SINGLE_CARD_MIN_HEIGHT_RATIO]，多条给 `1f`）。
+ * @param maxHeightRatio 行高上限 = 卡宽 × 本值；`0f` 表示不封顶。
+ *
+ *   单条命令那一行封在 `1f`（正方形）：一条命令的摘要长短差得很远，长的那几条能把卡片撑到
+ *   两三个正方形高，一列里只剩它一张，网格看着像断了。多条命令不封顶 —— 它的步骤是逐条列的，
+ *   截掉就等于把「有几步」这件事藏了。
+ */
+internal class TileRowSpec(
+    val tileCount: Int,
+    val columns: Int,
+    val minHeightRatio: Float,
+    val maxHeightRatio: Float = 0f,
+)
+
+/**
  * 命令卡片的一行：宽度平分、同行等高、且不矮于正方形。
  *
  * `Row` 做不到（`weight` 只分宽度、`IntrinsicSize.Min` 量不出正方形下限），所以自己量
  * 两趟：先按宽度平分量各卡自然高度，行高取「最高那张」与卡宽的较大者，再按行高重量。
  *
- * @param tileCount 这一行的卡数（不足 [COLUMNS] 时右侧留空）
+ * 布局参数收在 [TileRowSpec] 里（理由见那边）。
  */
 @Composable
 internal fun CommandTileRow(
-    tileCount: Int,
-    /** 行高下限 = 卡宽 × 本值（单条给 [SINGLE_CARD_MIN_HEIGHT_RATIO]，多条给 `1f`）。 */
-    minHeightRatio: Float,
-    /**
-     * 行高上限 = 卡宽 × 本值；`0f` 表示不封顶。
-     *
-     *  单条命令那一行封在 `1f`（正方形）：一条命令的摘要长短差得很远，长的那几条能把卡片撑到
-     *  两三个正方形高，一列里只剩它一张，网格看着像断了。多条命令不封顶 —— 它的步骤是逐条列的，
-     *  截掉就等于把「有几步」这件事藏了。
-     */
-    maxHeightRatio: Float = 0f,
+    spec: TileRowSpec,
     modifier: Modifier = Modifier,
     tile: @Composable (Int) -> Unit,
 ) {
     Layout(
-        content = { repeat(tileCount) { index -> tile(index) } },
+        content = { repeat(spec.tileCount) { index -> tile(index) } },
         modifier = modifier,
     ) { measurables, constraints ->
+        val columns = spec.columns
         val gapPx = GRID_GAP.roundToPx()
-        // 宽度平分：可用宽 − (COLUMNS−1) 个列距，除以 COLUMNS —— 与这行有几张卡无关。
-        val tileWidth = (constraints.maxWidth - gapPx * (COLUMNS - 1)) / COLUMNS
+        // 宽度平分：可用宽 − (列数−1) 个列距，除以列数 —— 与这行有几张卡无关。
+        val tileWidth = (constraints.maxWidth - gapPx * (columns - 1)) / columns
         // 各卡自然高度用固有测量（`minIntrinsicHeight`）拿，不能 `measure()` 两次 —— 真机 R8 包会
         // `IllegalStateException` 崩掉宿主进程；固有测量不占那次唯一的 measure 配额。
         val contentHeights = measurables.map { it.minIntrinsicHeight(tileWidth) }
-        val natural = maxOf((tileWidth * minHeightRatio).roundToInt(), contentHeights.max())
+        val natural = maxOf((tileWidth * spec.minHeightRatio).roundToInt(), contentHeights.max())
         val rowHeight =
-            if (maxHeightRatio > 0f) {
-                minOf(natural, (tileWidth * maxHeightRatio).roundToInt())
+            if (spec.maxHeightRatio > 0f) {
+                minOf(natural, (tileWidth * spec.maxHeightRatio).roundToInt())
             } else {
                 natural
             }

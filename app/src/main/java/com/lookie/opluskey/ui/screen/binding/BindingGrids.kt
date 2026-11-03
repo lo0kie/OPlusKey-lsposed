@@ -14,7 +14,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -34,13 +33,12 @@ import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.linkReady
-import com.lookie.opluskey.ui.model.COLUMNS
 import com.lookie.opluskey.ui.model.GRID_GAP
-import com.lookie.opluskey.ui.model.GRID_MIN_TILE_WIDTH
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.durationText
+import com.lookie.opluskey.ui.model.gridColumnCount
 import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.tickNow
@@ -92,7 +90,7 @@ internal fun SettingsPage.BuiltInGrid(
             // 这一段用一个**内层 Column** 单独带 `PAGE_MARGIN` 横向 padding，
             // 标题在外层不受影响。
             //
-            //  **列数按可用宽度算**（[GRID_MIN_TILE_WIDTH]）：最少一列，横屏 / 平板 / 大字模式下
+            //  **列数按可用宽度算**（`gridColumnCount`）：最少一列，横屏 / 平板 / 大字模式下
             //  宽过一档就自动多一列 —— 固定两列时右边会空出一大片，格子里那点字却还是被挤着。
             BoxWithConstraints(
                 Modifier.padding(horizontal = PAGE_MARGIN),
@@ -231,7 +229,7 @@ internal fun SettingsPage.CustomCommandsGrid(
         remember(configState.commands.value) {
             configState.commands.value.associateBy { it.token }
         }
-    //  与内置网格同一条规则：列数按可用宽度算（[GRID_MIN_TILE_WIDTH]），最少一列。
+    //  与内置网格同一条规则：列数按可用宽度算（`gridColumnCount`），最少一列。
     BoxWithConstraints(
         Modifier.padding(horizontal = PAGE_MARGIN),
     ) {
@@ -260,16 +258,6 @@ internal fun SettingsPage.CustomCommandsGrid(
         }
     }
 }
-
-/**
- * 一行放几格 —— 可用宽度除以 [GRID_MIN_TILE_WIDTH] 向下取整，**最少一列**。
- *
- *  不拿 [COLUMNS]（2）当下限：窗口窄到一格都塞不下两列时（分屏 / 超大字号）硬排两列，
- *  每格只剩百来 dp，标题全被省略号截掉 —— 那种宽度下排成一列反而读得全。
- *
- *  两处网格共用这一份算式：分开写迟早一边改了另一边没改，同一个页面上两种排法。
- */
-private fun gridColumnCount(availableWidth: Dp): Int = (availableWidth.value / GRID_MIN_TILE_WIDTH.value).toInt().coerceAtLeast(1)
 
 /** 还没保存过任何命令时那一行 —— 整行可点，进「自定义命令」页新增一条（与 FAB 同一个去处）。 */
 @Composable

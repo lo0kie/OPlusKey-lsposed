@@ -29,6 +29,13 @@ internal class AboutUiState {
     val authorClick = PreciseClickState()
     var showAuthorMenu by mutableStateOf(false)
 
+    /**
+     * 等用户点头才跳的**外部地址**（`null` = 没有待确认的）—— 见 `ExternalLinkDialog`。
+     *
+     *  跳浏览器这件事一律先问一句：地址是别人给的（仓库 / 群 / 频道），点错一下就把人送出应用。
+     */
+    var pendingUrl by mutableStateOf<String?>(null)
+
     /** 「界面颜色」那一行（跟随系统 / 浅色 / 深色）。 */
     val themeClick = PreciseClickState()
     var showThemeMenu by mutableStateOf(false)

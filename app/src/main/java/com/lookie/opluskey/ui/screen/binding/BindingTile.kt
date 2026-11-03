@@ -56,6 +56,15 @@ import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 internal val ENTRY_INDICATOR_SIZE = ROW_END_ICON_SIZE
 
 /**
+ * Monet 档里「格子小字」那行强调色的透明度 —— 取 0.70。
+ *
+ *  选中格的标题是实色 `primary`，小字若也取实色就与标题同色（真机反馈「小标题和主标题在
+ *  monet 下一样了」）。七成不透明度既留住「有色」，又比标题淡一级 —— 与 COUI 那几档弱化色
+ *  （`0x66` = 40%、`0x8A` = 54%）比它更亮，因为它压的是「同一色族的标题」，不是中性底。
+ */
+private const val MONET_MUTED_ALPHA = 0.70f
+
+/**
  * 动作网格里的一格。
  *
  * @param enabled 首页那个「按键绑定」主开关为关时传 false —— 整格置灰、不吃点击
@@ -80,11 +89,16 @@ internal fun SettingsPage.ActionTile(
     // 这一档是三态（禁用 / 选中 / 常规）切换，**带过渡** —— 与下面 [tileMutedColor]、
     // 外面那圈 [TileFocusRing]、以及页里其他状态色同一组参数。它同时是 `Card` 的
     // `contentColor`（标题 / 图标那一整片都吃它）⇒ 一次过渡整格同步。
+    //
+    //  选中那一档取 `primary`（强调色），与行尾指示字形、焦点圈同源 —— 全页「选中」只有这一个色。
+    //  **不能用 `onTertiaryContainer`**：那是压在三段容器（`tertiaryContainer`）底上的前景色，
+    //  而这张卡的底始终是 `surfaceContainer`，两者不是一对；Monet 那一档它还是三级色相
+    //  （与主色不是一个色族），选中格的标题会变成别的颜色（真机反馈「选中后标题取色不对」）。
     val contentColor by animateColorAsState(
         targetValue =
             when {
                 !enabled -> scheme.disabledOnSecondaryVariant
-                selected -> scheme.onTertiaryContainer
+                selected -> scheme.primary
                 else -> scheme.onSurfaceContainer
             },
         animationSpec = COLOR_TRANSITION_SPEC,
@@ -95,14 +109,16 @@ internal fun SettingsPage.ActionTile(
     //  **Monet 那一档换用强调色**：主题选 Monet 时 COUI 把 `onSurfaceVariantSummary` 映射到
     //  MD3 的 `onSurfaceVariant`（见库里 `MonetMapping.kt`）—— 那是一档「近乎无彩」的灰。
     //  整页底色、卡片、边线都被壁纸染过了，只有这行字还是灰的，读起来像没跟上配色
-    //  （真机反馈「格子的小标题没有 monet 配色」）。换成 `primary`：它才是这一套里**有色**的
-    //  那一档，与选中格的行尾指示、菜单里的选中行同源；标题仍是中性的 `onSurfaceContainer`，
-    //  有色的小字压在中性标题下面，主次反而更清楚。
+    //  （真机反馈「格子的小标题没有 monet 配色」）。换成强调色：它才是这一套里**有色**的那一档，
+    //  与选中格的行尾指示、菜单里的选中行同源。
+    //  **但要比标题弱一档**：选中格的标题本身就是 `primary`，小字若也取实色，两行会一模一样
+    //  （真机反馈「小标题和主标题在 monet 下一样了」）—— 所以这里取 70% 的强调色，
+    //  同一色族、淡一级，主次仍在。
     //  其余主题档保持 COUI 的 `onSurfaceVariantSummary`（`0x66000000` / `0x66FFFFFF`）：
     //  那一档是压在中性底子上标定出来的弱化色，换成强调色会在浅色底上糊成一片蓝。
     val mutedBase =
         if (LocalAppTheme.current == AppTheme.MONET) {
-            scheme.primary
+            scheme.primary.copy(alpha = MONET_MUTED_ALPHA)
         } else {
             scheme.onSurfaceVariantSummary
         }

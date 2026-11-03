@@ -13,7 +13,6 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.AUTHOR
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.REPO_URL
-import com.lookie.opluskey.ui.screen.home.openUrl
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -46,7 +45,8 @@ internal fun SettingsPage.MachineCard(
                         icon = PageIcons.Versions,
                         trailing = { RowEndIcon(PageIcons.Link) },
                         onClick = {
-                            openUrl(REPO_URL)
+                            //  外链先问一句（见 `ExternalLinkDialog`），不直接跳浏览器
+                            ui.pendingUrl = REPO_URL
                         },
                     ),
                 )

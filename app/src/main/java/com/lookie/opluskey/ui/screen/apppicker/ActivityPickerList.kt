@@ -4,9 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -23,40 +21,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.ui.CardList
+import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
+import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.collapseHeader
 import com.lookie.opluskey.ui.collapsedHeaderHeight
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.APP_TITLE_SUMMARY_GAP
 import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.model.LaunchableActivity
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.spacedItems
 import com.lookie.opluskey.ui.state.PickedDetail
-import io.github.suqi8.coui.kmp.basic.BasicComponent
-import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
-import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -306,7 +296,6 @@ private fun SettingsPage.ActivityRows(
     onSelect: (PickedDetail) -> Unit,
 ) {
     val listState = rememberLazyListState()
-    val tick = rememberTick()
     LocateActivitySelected(data, scrollBehavior, listState, searchBandDp)
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -325,7 +314,6 @@ private fun SettingsPage.ActivityRows(
                 data = data,
                 current = current,
                 headerInset = { currentHeaderHeight(scrollBehavior) + searchBandDp },
-                tick = tick,
                 onSelect = onSelect,
             )
         }
@@ -359,8 +347,6 @@ private fun LazyListScope.activityRows(
      *  组合里现算，订阅才落在那一项上、不会让整页跟着滚动重组。
      */
     headerInset: @Composable () -> Dp,
-    /** 点击触觉 —— 本层同样拿不到 `SettingsPage`，由调用方取好传来 */
-    tick: () -> Unit,
     onSelect: (PickedDetail) -> Unit,
 ) {
     val activityEntries =
@@ -414,7 +400,6 @@ private fun LazyListScope.activityRows(
                 title = shortcut.label,
                 summary = shortcut.summary,
                 picked = current?.let { AppTarget.same(shortcut.target, it.target) } == true,
-                tick = tick,
                 onClick = {
                     // 只带它自己的名字（「扫一扫」）：快捷方式名字与应用名是两回事，
                     //  落盘时按这一条的身份（`999@包名/id`）单独记
@@ -439,7 +424,6 @@ private fun LazyListScope.activityRows(
             title = entry.title,
             summary = entry.summary,
             picked = entry.picked,
-            tick = tick,
             onClick = entry.onClick,
         )
     }
@@ -551,7 +535,8 @@ private fun SettingsPage.LocateActivitySelected(
 }
 
 /**
- * 一行界面：名字 + 去包名的类名 + 单选圈。与一级那一行（`AppRow`）同一套版式。
+ * 一行界面 —— 与一级那一行（`AppRow`）同一个组件：**通用的一行卡**（[CardRow.Item] + [CardList]）。
+ * 名字走标题、去包名的类名走副标题、行尾是选中指示（空心 / 实心圈，不用 COUI 的单选圈）。
  *
  * ## 为什么这一页**不给** `Modifier.animateItem()`
  *
@@ -568,69 +553,37 @@ private fun SettingsPage.LocateActivitySelected(
  *
  * ## 为什么不是 `SettingsPage` 的扩展
  *
- *  它的调用点在 [activityRows]（`LazyListScope` 的扩展）里 —— 一个函数只能有一个显式接收者，
- *  所以触觉那一格由调用方用 `rememberTick()` 取好、按 [tick] 传进来。
- *
- * @param tick 点击触觉（`SettingsPage.rememberTick()` 的产物）
+ *  它的调用点在 [activityRows]（`LazyListScope` 的扩展）里 —— 一个函数只能有一个显式接收者。
+ *  按下那一声振动不再需要调用方传：`CardRow` 自己走页面那条 `LocalTick` 通道（与别页的行一致）。
  */
 @Composable
 private fun ActivityRow(
     title: String,
     summary: String,
     picked: Boolean,
-    tick: () -> Unit,
     onClick: () -> Unit,
 ) {
-    Card(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = PAGE_MARGIN),
-        //  **行自己不带任何外边距** —— 行距由 [spacedItems] 给（首行不加、末行不加）。
-        //  这一行**没有行首图标**，高度交给内容 —— `BasicComponent` 自己的内边距上下对称，
-        //  定死行高只会把两行字顶到上沿、底部空一截。
-        // 点击与涟漪挂在卡片上：`BasicComponent` 只包住内容，点击若挂在它身上，
-        // 涟漪画到内容底边就停了，卡片底部那一截摸不到反馈。
-        pressFeedbackType = PressFeedbackType.None,
-        showIndication = true,
-        onClick = {
-            tick()
-            onClick()
-        },
-    ) {
-        BasicComponent(
-            // 行尾选中指示与一级同一套字形（空心 / 实心圈），不用 COUI 的单选圈
-            endActions = {
-                Icon(
-                    if (picked) PageIcons.TileChecked else PageIcons.TileUnchecked,
-                    contentDescription = null,
-                    modifier = Modifier.size(ROW_END_ICON_SIZE),
-                    tint =
-                        if (picked) {
-                            COUITheme.colorScheme.primary
-                        } else {
-                            COUITheme.colorScheme.onSurfaceVariantActions
-                        },
-                )
-            },
-            cardListPosition = CardListPosition.Full,
-            // 不给 `onClick` —— 点击在外面那个 `Card` 上（理由见那里的注释）
-        ) {
-            Text(
-                text = title,
-                style = COUITheme.textStyles.headline1,
-                fontWeight = FontWeight.Medium,
-                color = BasicComponentDefaults.titleColor().color,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = summary,
-                modifier = Modifier.padding(top = APP_TITLE_SUMMARY_GAP),
-                style = COUITheme.textStyles.body2,
-                color = BasicComponentDefaults.summaryColor().color,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    CardList(
+        rows =
+            listOf(
+                CardRow.Item(
+                    title = title,
+                    summary = summary,
+                    //  **行自己不带任何外边距** —— 行距由 [spacedItems] 给（首行不加、末行不加）。
+                    //  这一行**没有行首图标**，高度交给内容（定死行高只会把两行字顶到上沿、底部空一截）。
+                    trailing = {
+                        RowEndIcon(
+                            icon = if (picked) PageIcons.TileChecked else PageIcons.TileUnchecked,
+                            tint =
+                                if (picked) {
+                                    COUITheme.colorScheme.primary
+                                } else {
+                                    COUITheme.colorScheme.onSurfaceVariantActions
+                                },
+                        )
+                    },
+                    onClick = onClick,
+                ),
+            ),
+    )
 }

@@ -20,13 +20,15 @@ import com.lookie.opluskey.core.model.Command
  *  摊开时那条对应关系在类定义上看不出来 —— 比如「浮层开着时系统返回要整个吞掉」需要同时知道
  *  [openCount] 与 [closers]，而它们隔着一百多行。
  *
- *  ## 三样「问一句」的开关
+ *  ## 几样「问一句」的开关
  *
- *  [confirmReset] / [confirmRestart] / [confirmLeaveCommands] / [pendingDraftLoad] 都是「要不要弹一张确认窗」，
- *  但问的是三件不同的事，**不能合并**：
+ *  [confirmReset] / [confirmRestart] / [confirmLeaveCommands] / [confirmLeaveEdit] / [pendingDraftLoad]
+ *  都是「要不要弹一张确认窗」，
+ *  但问的是不同的事，**不能合并**：
  *   · [confirmReset] —— 清空配置（由 `⋮` 菜单或调试通道置位）；
  *   · [confirmRestart] —— 重启服务（由 `⋮` 菜单置位）；
  *   · [confirmLeaveCommands] —— 退不退页（表单改过还没保存时由 [SettingsPage.goBack] 置位）；
+ *   · [confirmLeaveEdit] —— 退不退页（「按键功能」页编辑态里由 [SettingsPage.goBack] 置位）；
  *   · [pendingDraftLoad] —— 换不换内容（要载入另一条命令时由 [SettingsPage.loadDraft] 置位，
  *     存的是**待载入的那一条**，不是布尔）。
  *
@@ -72,6 +74,17 @@ internal class PageOverlays {
      * 触发点是 [SettingsPage.goBack]（草稿 `dirty` 时置位并**拦住不退**），窗由 `CommandScreen` 画。
      */
     var confirmLeaveCommands by mutableStateOf(false)
+
+    /**
+     * 「编辑态里要退出这一页」—— 待确认。
+     * 触发点是 [SettingsPage.goBack]（「按键功能」页正在编辑时置位并**拦住不退**），
+     * 窗由 `KeysScreen` 画（`KeysLeaveEditConfirm`）。
+     *
+     *  与 [confirmLeaveCommands] 分开：那个问的是「不要的命令草稿会不会丢」，这个问的是
+     *  「编辑态这一趟的勾选会不会丢」—— 两件事的正文、按钮文案都不同，混用一个开关会让
+     *  一边的话跑到另一边去。
+     */
+    var confirmLeaveEdit by mutableStateOf(false)
 
     /**
      * 「表单里有没保存的改动，但用户要换成另一条命令」—— 待确认的那一条（`null` = 没在弹）。

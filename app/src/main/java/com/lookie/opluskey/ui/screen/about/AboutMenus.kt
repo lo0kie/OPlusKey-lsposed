@@ -1,11 +1,17 @@
 package com.lookie.opluskey.ui.screen.about
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
@@ -49,7 +55,7 @@ internal fun SettingsPage.FeedbackMenu(ui: AboutUiState) {
                         trailingIcon = PageIcons.Link,
                     ) {
                         ui.showFeedbackMenu = false
-                        openUrl(target.url)
+                        ui.pendingUrl = target.url
                     }
                 }.takeIf { ui.showFeedbackMenu }
                 .orEmpty(),
@@ -72,12 +78,47 @@ internal fun SettingsPage.AuthorMenu(ui: AboutUiState) {
                         trailingIcon = PageIcons.Link,
                     ) {
                         ui.showAuthorMenu = false
-                        openUrl(target.url)
+                        ui.pendingUrl = target.url
                     }
                 }.takeIf { ui.showAuthorMenu }
                 .orEmpty(),
         preciseClick = ui.authorClick,
         onDismiss = { ui.showAuthorMenu = false },
+    )
+}
+
+/**
+ * 跳浏览器前的确认窗 —— **所有外链都走它**（用户口径）。
+ *
+ *  版本那一行、作者菜单、反馈菜单里点下去的都是别人给的地址：一下点歪就把人送出应用，
+ *  回来还得重新翻到这一页。所以先把地址原样摆出来、问一句「打开网页？」。
+ *
+ *  正文就是那串地址本身（不另写一句「将离开本应用」）：要确认的正是「去哪」，
+ *  而网址是唯一能核对的东西。
+ *
+ *  退场那一帧 `pendingUrl` 已经清空、正文会变空，所以**记一份最后一次的地址**给退场用
+ *  （[lastUrl]）；否则窗在关的那半秒里会先「瘪」成一句标题。
+ */
+@Composable
+internal fun SettingsPage.ExternalLinkDialog(ui: AboutUiState) {
+    val url = ui.pendingUrl
+    var lastUrl by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(url) {
+        if (url != null) lastUrl = url
+    }
+    ConfirmDialog(
+        show = url != null,
+        title = I18n.get(Strings.MORE_LINK_OPEN_TITLE, "打开网页？"),
+        summary = url ?: lastUrl,
+        action = I18n.get(Strings.MORE_LINK_OPEN_ACTION, "打开"),
+        //  跳个网页不是破坏性动作 —— 动作项用中性色，不用那档红
+        positiveDanger = false,
+        onDismiss = { ui.pendingUrl = null },
+        onConfirm = {
+            val target = url
+            ui.pendingUrl = null
+            if (target != null) openUrl(target)
+        },
     )
 }
 

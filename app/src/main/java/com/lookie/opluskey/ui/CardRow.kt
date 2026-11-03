@@ -3,18 +3,24 @@ package com.lookie.opluskey.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
@@ -62,6 +68,10 @@ internal sealed interface CardRow {
      *
      * @param summary `null` = 不写副标题
      * @param icon `null` = 这一行整张卡里都不放图标（同卡其余行也别放，否则标题左边缘不齐）
+     * @param startIcon 行首那一格**自己画**的东西 —— 应用图标这类不是 `ImageVector` 的图，
+     *   或者需要按行自己取色的字形。非空时**优先于** [icon]（两者只需给一个）。
+     * @param titleExtra 紧跟在标题右边的内容（「模块 / 系统 / 用户」这类小标签）。
+     *   标题长了先缩标题，这一块始终留在行内可见。
      * @param iconTint 行首图标的**指定颜色**（`null` = 跟着启用态走）。
      *   `enabled = false` 时不给就自动用禁用灰 —— 库只给它自己画的东西上色，行首槽位原样渲染。
      * @param danger 行尾 / 标题按危险色画（删除这类）
@@ -74,6 +84,21 @@ internal sealed interface CardRow {
         val title: String,
         val summary: String? = null,
         val icon: ImageVector? = null,
+        /** 行首那一格自己画（见 KDoc）；非空时优先于 [icon]。 */
+        val startIcon: (@Composable () -> Unit)? = null,
+        /** 紧跟标题右边的内容（见 KDoc）；`null` = 没有。 */
+        val titleExtra: (@Composable () -> Unit)? = null,
+        /**
+         * 标题那一块**自己画**；给了就代替 [title] 那颗 `Text`（[titleExtra] 照旧跟在它右边）。
+         *
+         *  给「一行里要摆**固定几列**」的那种行：组合按键那一列是「键名 × 键名」，
+         *  两个键名各占一列、分隔符落在列边界上 —— 一列下来才竖着对齐。
+         *  拼成一整串字符串做不到这件事：分隔符会跟着前一个名字的长短走（真机反馈
+         *  「单独某个名字过长时全部都没对齐」）。
+         *
+         *  [title] 仍要给：它是这一行的**文字内容**（无障碍、以及没给这一块时的兜底）。
+         */
+        val titleContent: (@Composable () -> Unit)? = null,
         val iconTint: Color? = null,
         /**
          * 标题的**非禁用**颜色（`null` = 库默认那档）。
@@ -212,7 +237,7 @@ internal fun CardList(
             }
         //  行间那条细线的左起点：这张卡的行首有没有图标那一列 —— 有就缩进到**标题左缘**
         //  （[ROW_TITLE_INSET]），没有就与卡片自己的内边距对齐，别凭空让出一格。
-        val hasIconColumn = rows.any { row -> row is CardRow.Switch || (row as? CardRow.Item)?.icon != null }
+        val hasIconColumn = rows.any { it.drawsStartIcon() }
         val positionOf =
             shown.withIndex().associate { (order, index) -> index to cardListPositionOf(order, shown.size) }
         rows.forEachIndexed { index, row ->
@@ -261,6 +286,14 @@ internal fun CardList(
         }
     }
 }
+
+/** 这一行会不会画行首那一格（决定分隔线要不要缩进到标题左缘）。 */
+private fun CardRow.drawsStartIcon(): Boolean =
+    when (this) {
+        is CardRow.Switch -> true
+        is CardRow.Item -> icon != null || startIcon != null
+        is CardRow.Custom -> false
+    }
 
 /** 这一行会不会时有时无（`null` = 一直在）—— 三种行同一条判定。 */
 private fun CardRow.visible(): Boolean? =
@@ -367,19 +400,7 @@ private fun ItemRow(
     val summaryColors = BasicComponentDefaults.summaryColor()
     BasicComponent(
         modifier = row.modifier,
-        //  图标右侧补一档 [ROW_START_ICON_GAP]：库在 `startAction` 与文字之间只留 8dp，
-        //  而行内左边距是 16dp —— 不补的话图标左边看着比右边宽一倍（见那个常量的说明）。
-        startAction =
-            row.icon?.let {
-                {
-                    Icon(
-                        it,
-                        contentDescription = null,
-                        tint = iconTint,
-                        modifier = Modifier.padding(end = ROW_START_ICON_GAP),
-                    )
-                }
-            },
+        startAction = cardRowStartAction(row, iconTint),
         endActions = {
             // `when` 在这里是**语句**（`endActions` 的返回值就是 Unit），不需要 `else` 兜底
             when {
@@ -424,8 +445,9 @@ private fun ItemRow(
  *  [opticalCenter] 按字形边界把它压回来。库那版 `BasicComponent` 的 `Text` 写在内部，
  *  修饰符插不进去，所以这一块自己拼。
  *
- *  有副标题时**不做**修正：那时行高由两行字一起撑，标题与副标题互相平衡，
- *  单独把标题压下来反而让两行的间距看着不匀。
+ *  只有「标题 + 副标题」那种**不做**修正：那时行高由两行字一起撑，标题与副标题互相平衡，
+ *  单独把标题压下来反而让两行的间距看着不匀。但标题右边挂了标签（`titleExtra`）时必须压 ——
+ *  标签自己那颗字已经按字形边界压过了，标题不压就与它差半档。
  */
 @Composable
 private fun ItemText(
@@ -434,13 +456,38 @@ private fun ItemText(
     summaryColors: BasicComponentColors,
 ) {
     val titleStyle = COUITheme.textStyles.headline1
-    Text(
-        text = row.title,
-        style = titleStyle,
-        fontWeight = FontWeight.Medium,
-        color = if (row.enabled) titleColors.color else titleColors.disabledColor,
-        modifier = if (row.summary == null) Modifier.opticalCenter(titleStyle) else Modifier,
-    )
+    //  标题 + 紧跟其后的那一块（小标签）：整块放进一个 `Row`，标题带 `weight(fill = false)`
+    //  —— 名字长了先缩标题，标签始终留在行内（与原来那一行自己排的规矩一致）。
+    //
+    //  这一行里**必须做光学修正**（与「只有标题」那一档同一个理由，见函数 KDoc）：
+    //  标签自己那颗字是按字形边界压过的（`AppKindTag`），标题不压就与它差半档 ——
+    //  摆在一起读作「标签没有中线对齐标题」。有副标题时也照压：修正只挪这一行字的墨迹，
+    //  副标题是另一段、不受影响。
+    val titleNeedsOpticalCenter = row.summary == null || row.titleExtra != null
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (row.titleContent != null) {
+            //  **整列占满**：自己画的那一块要能按列分宽度（见 [CardRow.Item.titleContent]），
+            //  这里就不能按内容宽度收缩。光学修正也不做 —— 里面是几列并排，不是一行字。
+            Box(Modifier.weight(1f)) { row.titleContent.invoke() }
+        } else {
+            Text(
+                text = row.title,
+                style = titleStyle,
+                fontWeight = FontWeight.Medium,
+                color = if (row.enabled) titleColors.color else titleColors.disabledColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier
+                        .weight(1f, fill = false)
+                        .then(if (titleNeedsOpticalCenter) Modifier.opticalCenter(titleStyle) else Modifier),
+            )
+        }
+        row.titleExtra?.let {
+            Spacer(Modifier.width(ROW_TITLE_EXTRA_GAP))
+            it()
+        }
+    }
     if (row.summary != null) {
         Text(
             text = row.summary,
@@ -451,8 +498,47 @@ private fun ItemText(
     }
 }
 
+/**
+ * 行首那一格 —— 自己画的（`startIcon`，应用图标那种）优先，否则是 `ImageVector` 那颗。
+ *
+ *  两者**都要补一档 [ROW_START_ICON_GAP]**：库在 `startAction` 与文字之间只留 8dp，而行内左边距
+ *  是 16dp —— 不补的话图标左边看着比右边宽一倍（见那个常量的说明）。两种行首走同一档，
+ *  同一张卡里的左缘才对得齐。
+ *
+ *  抽出来只为让 [ItemRow] 留在 detekt 的 `LongMethod` 长度线内。
+ */
+private fun cardRowStartAction(
+    row: CardRow.Item,
+    iconTint: Color,
+): (@Composable () -> Unit)? =
+    when {
+        row.startIcon != null -> {
+            {
+                Box(Modifier.padding(end = ROW_START_ICON_GAP)) { row.startIcon() }
+            }
+        }
+
+        row.icon != null -> {
+            {
+                Icon(
+                    row.icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.padding(end = ROW_START_ICON_GAP),
+                )
+            }
+        }
+
+        else -> {
+            null
+        }
+    }
+
 /** 标题与副标题之间那一档 —— 与库的 `MarginBetweenLine` 同一值（2dp）。 */
 private val ROW_LINE_GAP = 2.dp
+
+/** 标题与紧跟其后那一块（小标签）之间那一档 —— 与标签之间的间距同一值（6dp）。 */
+private val ROW_TITLE_EXTRA_GAP = 6.dp
 
 /**
  * 行尾那颗**指示性图标**（`trailing` / `endActions` 槽里那一颗）—— 全项目只此一份。

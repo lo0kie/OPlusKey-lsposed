@@ -1,7 +1,6 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
 import android.content.ComponentName
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -19,27 +18,11 @@ import com.lookie.opluskey.ui.model.LaunchableActivity
 // 这一层回答「这个应用里哪个界面」。分开成两个文件而不是塞进 `AppList.kt`：那一层的清单是
 // 200+ 应用、每个包 1~3 次 binder；这一层的清单是**一个包**、一次整包 parcel（声明了多少个活动
 // 就有多少个 `ActivityInfo`），成本形态完全不同，混在一起会把两种预算的注释搅成一团。
-
-/** 排位：带 `MAIN` + `LAUNCHER`（桌面图标那一个）—— 排最前。 */
-internal const val RANK_LAUNCHER = 0
-
-/** 排位：只带 `MAIN`（电视版入口这类）—— 排在其余之前。 */
-internal const val RANK_MAIN = 1
+//
+// 查询的附注（[LoadNotes]）在 `LoadNotes.kt`：这一份装的是「怎么查」，它是「查完带回来的那张纸」。
 
 /**
- * 一次查询的**附注** —— 目前只有一件：快捷方式那一节是不是没查出来。
- *
- *  为什么不并进返回值：清单本身是 `List<LaunchableActivity>?`（null = 整次失败），
- *  而「界面查到了、快捷方式没查到」是第三种状态。编码成哨兵行或改返回类型，会让每个
- *  只关心清单的调用点都跟着改；而它唯一的用处是「别把 `appshortcut:` 降级成 `app:`」
- *  （见 [resolveSelection]）。
- */
-internal class LoadNotes {
-    var shortcutsFailed = false
-}
-
-/**
- * 一个应用里**能从模块这边拉起来**的界面，按「启动图标 → 带 MAIN → 其余」再按名字排序。
+ * 一个应用里**能从模块这边拉起来**的界面，按名字排序（与应用那一级同一把尺子）。
  *
  * 目标写法带分身前缀（`999@包名/类名`）时，查询也走**那个用户的 `PackageManager`** ——
  * 主用户看不见分身里的包（见 [AppCloneCatalog]），拿主用户的 PM 查分身只会得到空清单。
@@ -104,20 +87,16 @@ private fun SettingsPage.loadActivitiesUnguarded(
             pm = pm,
             pkg = pkg,
             userId = userId,
-            ranks = if (pm != null) launcherRanks(pm, pkg) else launcherRanksAsUser(pkg, userId),
             romanizer = romanizerOrNull(),
+            collator = chinaCollator(),
         )
     val activities =
         visible
             .map { entryOf(query, it) }
-            .sortedWith(
-                compareBy<LaunchableActivity>(
-                    { !it.launcher },
-                    { !it.mainAction },
-                    { it.sortKey },
-                    { it.name },
-                ),
-            )
+            //  排序与应用那一级**同一把尺子**（[nameOrder]）：拼音键 → 原名 → 类名。
+            //  不按「启动图标 / 带 MAIN / 其余」分档 —— 那一档把同一个应用里的界面切成三段，
+            //  每段各自按名字排，整体读起来像没排过（用户口径「界面排序和应用用一样的」）。
+            .sortedWith(nameOrder({ it.sortKey }, { it.label }, { it.name }, query.collator))
     // 快捷方式（长按桌面图标那几个）另起一节 —— 它们不是界面，名字也由应用自己给（多半是中文）。
     //  `null` = 这一节没查到（第三种状态，见 [LoadNotes]）：页面据此**不把**已绑的
     //  `appshortcut:` 降级成 `app:`（见 `resolveSelection`）。
@@ -193,33 +172,10 @@ private fun SettingsPage.shortcutsOf(
                 label = label,
                 // 小字放 id：快捷方式之间就靠它区分（名字可能重）
                 summary = id,
-                launcher = false,
-                mainAction = false,
                 sortKey = sortKeyOf(label, romanizer),
                 shortcutId = id,
             )
         }.sortedBy { it.sortKey }
-}
-
-/**
- * 「启动图标 → 带 MAIN → 其余」三档排位：两个意图各查一次，命中的组件记进同一张表。
- *
- * 先写 `MAIN`、后写 `LAUNCHER` —— 后者覆盖前者，带启动图标的那一档自然排最前。
- * 单独一支是为了让 [loadActivities] 别顶破 detekt 的长度上限（那一支本来也够长）。
- */
-private fun launcherRanks(
-    pm: PackageManager,
-    pkg: String,
-): Map<String, Int> {
-    val ranks = HashMap<String, Int>()
-    for (component in componentsOf(pm, Intent(Intent.ACTION_MAIN).setPackage(pkg))) {
-        ranks[component] = RANK_MAIN
-    }
-    val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(pkg)
-    for (component in componentsOf(pm, launcherIntent)) {
-        ranks[component] = RANK_LAUNCHER
-    }
-    return ranks
 }
 
 /**
@@ -257,22 +213,6 @@ private fun dropShadowed(list: List<ActivityInfo>): List<ActivityInfo> {
     return list.filter { it.targetActivity != null || it.name !in aliasTargets }
 }
 
-/** 某个意图在这台机器上能命中的组件集合（`包名/类名`）—— 查失败当作一个都没有。 */
-private fun componentsOf(
-    pm: PackageManager,
-    intent: Intent,
-): Set<String> =
-    try {
-        pm
-            .queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0L))
-            .mapNotNullTo(HashSet()) { ri ->
-                ri.activityInfo?.let { "${it.packageName}/${it.name}" }
-            }
-    } catch (e: Throwable) {
-        XLog.d("查意图命中的组件失败（${intent.action}）：${e.javaClass.simpleName}")
-        emptySet()
-    }
-
 /**
  * 一次查询的固定上下文 —— 交给 [entryOf] 的那几样「整份清单共用」的东西。
  *
@@ -284,9 +224,9 @@ private class ActivityQuery(
     val pm: PackageManager?,
     val pkg: String,
     val userId: Int,
-    /** 组件 → 排位（[RANK_LAUNCHER] / [RANK_MAIN]）；不在这张表里的排最后。 */
-    val ranks: Map<String, Int>,
     val romanizer: Transliterator?,
+    /** 名字相同时的兜底比较器（与应用那一级同一份，见 `chinaCollator`）；取不到就只按键比。 */
+    val collator: java.text.Collator?,
 )
 
 /**
@@ -326,15 +266,11 @@ private fun SettingsPage.entryOf(
             null
         }
     val label = declared ?: simple
-    val rank = query.ranks[key]
     return LaunchableActivity(
         target = AppTarget.format(key, query.userId),
         name = ai.name,
         label = label,
         summary = path,
-        launcher = rank == RANK_LAUNCHER,
-        // 两个意图都是 `MAIN` 查出来的 ⇒ 在这张表里就等于「带 MAIN」
-        mainAction = rank != null,
         // 与 `loadLaunchableApps` 同一套排序键：拼音能搜到汉字名
         sortKey = sortKeyOf(label, query.romanizer),
     )

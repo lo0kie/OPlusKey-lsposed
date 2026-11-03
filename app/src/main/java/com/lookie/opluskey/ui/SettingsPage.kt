@@ -25,6 +25,7 @@ import com.lookie.opluskey.ui.state.ConfigState
 import com.lookie.opluskey.ui.state.HintCenter
 import com.lookie.opluskey.ui.state.HostLinkState
 import com.lookie.opluskey.ui.state.KeyWatchState
+import com.lookie.opluskey.ui.state.KeysEditState
 import io.github.suqi8.coui.kmp.nav.core.NavBackStack
 import io.github.suqi8.coui.kmp.nav.core.navBackStackOf
 
@@ -160,11 +161,12 @@ internal class SettingsPage(
 
     /**
      * 系统返回要交给**页面栈**处理吗 —— **只判断，不动手**（`onBackStarted` 那一刻不能有副作用，
-     * 所以不能调 [goBack] 来探）。**三种不接管**：
+     * 所以不能调 [goBack] 来探）。**四种不接管**：
      *
      *   · 栈里只剩一页（首页）⇒ 那是「关掉整个设置页」，归宿主；
      *   · 浮层开着 ⇒ COUI 的浮层自己不接返回，喂进去没人消费，最后仍是页面栈弹
      *     （表现为「浮层盖着、底下页面跟着手指滑」）；
+     *   · 「按键功能」页的**编辑态**（见下）；
      *   · 注意：**这一退会被 [goBack] 拦住**（「自定义命令」页草稿改过 ⇒ 先弹「放弃未保存的命令」）：
      *     库的提交是 `onCommit = { currentOnBack.value() }`，**弹栈交给 [goBack]** —— 接管了就等于
      *     页面先滑走、栈却没弹，页面停在滑出去的位置回不来。判据与 [goBack] 那条**同一份**，一起改。
@@ -175,10 +177,19 @@ internal class SettingsPage(
         //  「草稿脏 ⇒ 先弹问话」那条闸是给 `goBack` 的，而这一退根本走不到 `goBack`
         //  —— 条件执行页草稿一脏就走不到那一档。
         if (overlays.backCapturing.intValue > 0) return true
+        //  「按键功能」页的编辑态**且勾了东西**：这一退不会弹栈（[goBack] 先弹「退出编辑？」），
+        //  所以**不**喂进预测返回 —— 接管了就是页面跟着手指滑出去半截、提交时又被确认窗拦住，
+        //  停在滑出去的位置回不来（用户口径「预测手势停在一半」）。与「草稿脏」那一档同一条账，
+        //  只是它走「不给动」而不是「给动但不弹」。
+        //  **一项都没勾时不拦**（用户口径）：那时退页什么都不丢，照常走下面那条弹栈。
+        if (inKeysEdit() && KeysEditState.count > 0) return false
         return navStack.size > 1 &&
             overlays.openCount.intValue == 0 &&
             !hasUnsavedDraft(screen)
     }
+
+    /** 「按键功能」页现在是不是编辑态 —— [goBack] 与 [wouldConsumeBack] 共用这一条判据。 */
+    private fun inKeysEdit(): Boolean = screen == Screen.KEYS && KeysEditState.editing
 
     /** 此刻有浮窗开着吗 —— 开着时系统返回**整个吞掉**（见 `BackInterception.handleDiscreteBack`）。 */
     internal fun hasOpenOverlays(): Boolean = overlays.hasOpen()
@@ -199,10 +210,14 @@ internal class SettingsPage(
      *   · **有子页**（`navStack.size > 1`）⇒ 这一退是弹栈；
      *   · **浮层开着** ⇒ 这一退是收浮层（见 [hasOpenOverlays]）。
      *
+     *  「按键功能」页在编辑态里也走上面第一条（它本来就是压上来的一页）——**注册**照旧，
+     *  但**不进预测动画**：那条判据在 [wouldConsumeBack]，两件事别混。
+     *
      *  注意：判据与 [wouldConsumeBack] **不是同一份**，别合并：
      *   · 「草稿脏」那一档 [wouldConsumeBack] 为 false（那时库的提交是「先弹问话、不退页」，接管了
      *     反倒会把页面滑出去——理由见它自己的注释），但**这一退仍归我们处理**（问话是 [goBack] 弹的）
      *     ⇒ 这里必须**不带**那条判定；
+     *   · 「按键功能」页的编辑态同理（见 [wouldConsumeBack] 那一条）；
      *   · 键盘开着那一档这里**不用管**：能露键盘的输入框都在子页与浮层里（首页没有输入框），上面两种
      *     情况已经覆盖 —— `BackInterception.consumeBackByIme` 仍在回调里做兜底。
      */
@@ -340,6 +355,16 @@ internal class SettingsPage(
      */
     internal fun goBack(): Boolean {
         val current = screen
+        //  「按键功能」页的编辑态：**勾了东西才问**（勾选会没了）；一项都没勾时退页什么都不丢，
+        //  直接照常弹栈（用户口径「没有勾选时不要拦截」）。
+        //  问完由确认窗再调一次这里（那时编辑态已清，走到下面正常弹栈）。
+        if (inKeysEdit() && KeysEditState.count > 0) {
+            if (!overlays.confirmLeaveEdit) {
+                XLog.w("退出按键页编辑态：先问一句（已勾 ${KeysEditState.count} 项）")
+                overlays.confirmLeaveEdit = true
+            }
+            return true
+        }
         // 「打开应用」页那一趟的收尾（「为谁挑」、搜索词、临时的小窗口开关）**不在这一处**：
         //  统一归 [discardPageStateOf] —— 它挂在「真的离栈」那一刻，一次返回退两层（多级 pop）
         //  与从设置重进模块清栈也走同一条，不会漏。

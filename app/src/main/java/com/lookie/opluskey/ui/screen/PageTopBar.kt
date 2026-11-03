@@ -31,7 +31,7 @@ import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
 import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
-import com.lookie.opluskey.ui.screen.combo.KeysHeaderSettings
+import com.lookie.opluskey.ui.screen.combo.KeysHeaderEdit
 import com.lookie.opluskey.ui.screen.combo.comboLabel
 import com.lookie.opluskey.ui.screen.command.BranchHeaderAdd
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
@@ -299,9 +299,9 @@ private fun SettingsPage.PageActions(
         // 组合键编辑页的 ⋮：只有「删除组合键」一行（见 [ComboEditMenu]）
         Screen.COMBO_EDIT -> ComboEditMenu()
 
-        // 「按键功能」页那颗「设置」：直接进「按键设置」—— 组合按键那两项就在那一页，
-        //  改完组合键不必先退回首页再点「按键设置」（见 [KeysHeaderSettings]）
-        Screen.KEYS -> KeysHeaderSettings()
+        // 「按键功能」页那颗「编辑 / 完成」：进 / 出这一页的编辑态（勾选 → 删除按键，
+        //  见 [KeysHeaderEdit]）。编辑态里它自己换成「完成」。
+        Screen.KEYS -> KeysHeaderEdit()
 
         // 「自定义变量」页那颗「新建」：这一页唯一的加法入口（原先在右下角那颗 FAB 上）
         Screen.VARIABLES -> VariableHeaderAdd()

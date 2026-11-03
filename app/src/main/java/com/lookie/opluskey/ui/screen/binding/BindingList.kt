@@ -10,6 +10,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.Dp
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
@@ -89,6 +91,14 @@ internal fun SettingsPage.BindingList(
 
     val onKey = rememberBindingKeyHandler(st, page.enabled, page.active)
 
+    //  这一档的**系统场景入口卡** —— 场景先判、命中就轮不到下面这些绑定，所以这一页要摆一句；
+    //  而它同时是这一页进「系统场景」的入口，于是**一条都没配时也留着这一行**
+    //  （用户口径「不管有没有都显示」）：只配过才出现的话，没配过的人找不到这个功能。
+    //  有 N 条时说 N 条（只数启用中的），一条都没有时说「没有」—— 两档都是同一句话的位置。
+    val notice =
+        branchScenarioNotice(KeyWatchState.editing(configState.config.value), g)
+            ?: I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE, "当前手势没有添加系统场景")
+
     //  滚动状态用**外面递进来的**那份（三个手势页共用一份）—— 分段控件在 pager 之外，
     //  要靠它算自己该滑到哪儿；预览阶段的方向键接管挂在链尾（见 `rememberBindingKeyHandler`）。
     //  **不用 `Arrangement.spacedBy`**：它会在**每一对相邻子项**之间插间距，于是标题与它下面
@@ -100,30 +110,27 @@ internal fun SettingsPage.BindingList(
         modifier = Modifier.onPreviewKeyEvent(onKey),
     ) {
         //  顶栏叠在内容上，顶部这一块要自己让出来（动态值）；后面再加 `tabBlock` ——
-        // 那是**分段控件那条固定带**的高度，它**含自己那 8dp 下内边距**，
-        // 所以「带子与内容之间」那一档已经在里面了，这里不再另加 `PAGE_TOP_PADDING`。
+        //  那是**分段控件那条固定带**的高度，它**含自己那 8dp 下内边距**，
+        //  所以「带子与内容之间」那一档已经在里面了，这里不再另加 `PAGE_TOP_PADDING`。
         Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlock))
-        //  这一档配了「系统场景」时那张**提示卡**：场景先判、命中就轮不到下面这些绑定，
-        //  不说一句，用户改完绑定按下去走的不是它；没配（或全停用）时不画。
-        //  上边距取小标题那一档（这一张上面没有小标题，不让位就会贴着分段带）；
-        //  点一行进「系统场景」的**这一档**（档位先写成眼前这一页，否则那边编的是 pager 停的那一档）。
-        branchScenarioNotice(KeyWatchState.editing(configState.config.value), g)?.let { notice ->
-            CardList(
-                modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
-                rows =
-                    listOf(
-                        CardRow.Item(
-                            title = notice,
-                            icon = PageIcons.CommandBranch,
-                            arrow = true,
-                            onClick = {
-                                branchGesture = g.ordinal
-                                navTo(Screen.BRANCHES)
-                            },
-                        ),
+        CardList(
+            //  上边距取小标题那一档（这一张上面没有小标题，不让位就会贴着分段带）
+            modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
+            rows =
+                listOf(
+                    CardRow.Item(
+                        title = notice,
+                        icon = PageIcons.CommandBranch,
+                        arrow = true,
+                        //  点这一行进「系统场景」的**这一档**（档位先写成眼前这一页，
+                        //  否则那边编的是 pager 停的那一档）。
+                        onClick = {
+                            branchGesture = g.ordinal
+                            navTo(Screen.BRANCHES)
+                        },
                     ),
-            )
-        }
+                ),
+        )
         BindingGroups(g, page.enabled, st, onCreateCommand)
     }
 }

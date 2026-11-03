@@ -1,0 +1,82 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ScrollBar.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ScrollBar.kt
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ScrollBar.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/ScrollBar.kt
+@@ -128,6 +128,9 @@ data class ScrollBarColors(
+  * @param cornerRadius The corner radius. [Dp.Unspecified] defaults to half of [thumbWidth].
+  * @param thumbMinLength The minimum length of the thumb.
+  * @param endPadding The padding from the end edge.
++ * @param alwaysVisible Keep the thumb at its resting alpha instead of fading it out after
++ *   [ScrollBarDefaults.FadeDelayMillis] of no interaction. For floats that must show "there is more
++ *   content" without the user touching them first (a menu, a popup list).
+  */
+ @ExperimentalScrollBarApi
+ @Composable
+@@ -141,6 +144,7 @@ fun VerticalScrollBar(
+     cornerRadius: Dp = ScrollBarDefaults.CornerRadius,
+     thumbMinLength: Dp = ScrollBarDefaults.ThumbMinLength,
+     endPadding: Dp = ScrollBarDefaults.EndPadding,
++    alwaysVisible: Boolean = false,
+ ) {
+     ScrollBar(
+         adapter = adapter,
+@@ -153,6 +157,7 @@ fun VerticalScrollBar(
+         cornerRadius = cornerRadius,
+         thumbMinLength = thumbMinLength,
+         endPadding = endPadding,
++        alwaysVisible = alwaysVisible,
+     )
+ }
+ 
+@@ -168,6 +173,8 @@ fun VerticalScrollBar(
+  * @param cornerRadius The corner radius. [Dp.Unspecified] defaults to half of [thumbWidth].
+  * @param thumbMinLength The minimum length of the thumb.
+  * @param endPadding The padding from the end edge.
++ * @param alwaysVisible Keep the thumb at its resting alpha instead of fading it out (see
++ *   [VerticalScrollBar]).
+  */
+ @ExperimentalScrollBarApi
+ @Composable
+@@ -181,6 +188,7 @@ fun HorizontalScrollBar(
+     cornerRadius: Dp = ScrollBarDefaults.CornerRadius,
+     thumbMinLength: Dp = ScrollBarDefaults.ThumbMinLength,
+     endPadding: Dp = ScrollBarDefaults.EndPadding,
++    alwaysVisible: Boolean = false,
+ ) {
+     ScrollBar(
+         adapter = adapter,
+@@ -193,6 +201,7 @@ fun HorizontalScrollBar(
+         cornerRadius = cornerRadius,
+         thumbMinLength = thumbMinLength,
+         endPadding = endPadding,
++        alwaysVisible = alwaysVisible,
+     )
+ }
+ 
+@@ -237,6 +246,7 @@ private fun ScrollBar(
+     cornerRadius: Dp = ScrollBarDefaults.CornerRadius,
+     thumbMinLength: Dp = ScrollBarDefaults.ThumbMinLength,
+     endPadding: Dp = ScrollBarDefaults.EndPadding,
++    alwaysVisible: Boolean = false,
+ ) {
+     val density = LocalDensity.current
+     val baseThumbColor = if (colors.thumbColor != Color.Unspecified) colors.thumbColor else COUITheme.colorScheme.onSurface
+@@ -301,8 +311,8 @@ private fun ScrollBar(
+     var displayedThumbLength by remember { mutableFloatStateOf(0f) }
+     var thumbLengthAnimJob by remember { mutableStateOf<Job?>(null) }
+ 
+-    LaunchedEffect(isHighlighted) {
+-        if (isHighlighted) {
++    LaunchedEffect(isHighlighted, alwaysVisible) {
++        if (isHighlighted || alwaysVisible) {
+             hideJob?.cancel()
+             opacity = 1f
+         } else if (opacity > 0f) {
+@@ -325,7 +335,7 @@ private fun ScrollBar(
+             .drop(1)
+             .collect {
+                 opacity = 1f
+-                if (!isHighlighted) {
++                if (!isHighlighted && !alwaysVisible) {
+                     hideJob?.cancel()
+                     hideJob = coroutineScope.launch {
+                         delay(ScrollBarDefaults.FadeDelayMillis.toLong())
