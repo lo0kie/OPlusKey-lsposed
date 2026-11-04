@@ -168,11 +168,61 @@ private fun SliderRowTexts(
     )
 }
 
-/** 滑杆轨道 —— 从 [SliderRow] 里分出来，让那一支只留「整行怎么摆」。 */
+/** 滑杆轨道（行里那一根）—— 规格取自 [SliderSpec]，实现转给 [TrackSlider]。 */
 @Composable
 private fun SliderTrack(
     spec: SliderSpec,
     value: Float,
+    onValueChange: (Float) -> Unit,
+    onValueChangeFinished: () -> Unit,
+) {
+    TrackSlider(
+        value = value,
+        min = spec.min,
+        max = spec.max,
+        step = spec.step,
+        enabled = spec.enabled,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                // 行首图标把滑杆也挤开（见 [SLIDER_ICON_INSET]）
+                .padding(start = SLIDER_ICON_INSET),
+        // 不给调用方那份时只标出厂默认值一个点（毫秒那几档要的就是这个）
+        keyPoints = spec.keyPoints ?: listOf(spec.default.toFloat()),
+        onValueChange = onValueChange,
+        onValueChangeFinished = onValueChangeFinished,
+    )
+}
+
+/**
+ * 一根滑杆本身 —— **全项目唯一一处**直接碰库 `Slider` 的地方。
+ *
+ *  行里的那一根（[SliderTrack]）与弹窗里的那一根（`BrightnessDialog`）走同一份实现：
+ *  刻度点配色、`steps` 的算法、`magnetThreshold = 0`、触觉交给调用方（`hapticEffect = None`）
+ *  这些口径必须一致 —— 各写一份的话，同一个应用里的两根滑杆手感与配色会不一样。
+ *
+ *  **「点轨道跳值」不在这里**：它要挂在比滑杆大的外层节点上（见 `tapSliderToSeek`
+ *  与 `SLIDER_ROW_TAP_TRACK`），挂在滑杆自己的 `modifier` 上会与它内部的拖动争事件。
+ *  同理，跨档振动（`rememberTick`）也由调用方在 `onValueChange` 里给。
+ *
+ * ## 为什么参数到 8 个（`@Suppress("LongParameterList")`）
+ *
+ *  值域（min / max / step / enabled）、当前值、两个回调、`modifier`、刻度点 —— 全是行参，
+ *  拆成 options 对象只会让两个调用点各多一层壳（与 `NameInputBody` 那边同一个理由）。
+ *
+ * @param keyPoints 要在轨道上**画出来的**刻度点；`null` = 一个点都不画
+ *   （库那边 `showKeyPoints` 只在 `keyPoints` 非 null 时有效）
+ */
+@Suppress("LongParameterList")
+@Composable
+internal fun TrackSlider(
+    value: Float,
+    min: Int,
+    max: Int,
+    step: Int,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    keyPoints: List<Float>? = null,
     onValueChange: (Float) -> Unit,
     onValueChangeFinished: () -> Unit,
 ) {
@@ -199,12 +249,8 @@ private fun SliderTrack(
     Slider(
         value = value,
         onValueChange = onValueChange,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                // 行首图标把滑杆也挤开（见 [SLIDER_ICON_INSET]）
-                .padding(start = SLIDER_ICON_INSET),
-        enabled = spec.enabled,
+        modifier = modifier,
+        enabled = enabled,
         //  刻度点（`keyPoints`）的颜色库**不看 `enabled`**：`keyPointColor` /
         //  `keyPointForegroundColor` 各只有一对值，绘制处只按「这一点是不是当前值」二选一
         //  （见库 `Slider.kt` 里的 `kpColor`）—— 于是滑杆置灰时轨道灰了、那几个点还是主题色，
@@ -215,27 +261,26 @@ private fun SliderTrack(
         //  其余几项不传，走 `sliderColors` 的默认值（就是库本来用的那一套），不接管它们。
         colors =
             SliderDefaults.sliderColors(
-                keyPointColor = if (spec.enabled) trackTick else trackTickDim,
-                keyPointForegroundColor = if (spec.enabled) scheme.sliderKeyPointForeground else trackTickDim,
+                keyPointColor = if (enabled) trackTick else trackTickDim,
+                keyPointForegroundColor = if (enabled) scheme.sliderKeyPointForeground else trackTickDim,
             ),
-        valueRange = spec.min.toFloat()..spec.max.toFloat(),
+        valueRange = min.toFloat()..max.toFloat(),
         // 离散刻度：两端之间分 (max-min)/step 档（`steps` 不含两个端点）
-        steps = ((spec.max - spec.min) / spec.step - 1).coerceAtLeast(0),
-        // 出厂默认值在轨道上点一个圆点（库的 `keyPoints` + `showKeyPoints`）。
+        steps = ((max - min) / step - 1).coerceAtLeast(0),
+        // 调用方给了刻度点就画（库的 `keyPoints` + `showKeyPoints` 要一起给）。
         //  只标**不吸附**：`steps > 0` 时库的磁性吸附分支本来就走不到（它只在 `steps == 0`
         //  且 keyPoints 非空时吸附），这里再把 `magnetThreshold` 显式写 0f 兜一道 ——
         //  免得将来哪一档的 steps 变成 0，拖动手感被这个点悄悄改掉。
-        showKeyPoints = true,
-        // 不给调用方那份时只标出厂默认值一个点（毫秒那几档要的就是这个）
-        keyPoints = spec.keyPoints ?: listOf(spec.default.toFloat()),
+        showKeyPoints = keyPoints != null,
+        keyPoints = keyPoints.orEmpty(),
         magnetThreshold = 0f,
-        // 与库默认同值，显式写出来是因为下面「点轨道跳值」要按它们算几何 ——
+        // 与库默认同值，显式写出来是因为「点轨道跳值」要按它们算几何 ——
         // 账在 [SLIDER_TAP_ZONE] / [SLIDER_SIDE_INSET] 的注释里
         height = SliderDefaults.MinHeight,
         // 库那一档关掉：`SliderHapticState.handleStepHaptic` 是**二选一** —— `keyPoints` 非空
         //  就整条切到「只在关键点上振一次」，为空才按「跨一档振一次」。默认的圆点只有一个，
-        //  开着它就等于拖动全程只在拖回默认值时振。圆点要留，于是触觉由本行自己给
-        //  （见 `onValueChange` 里那次 tick，「点轨道跳值」本来也是这么给的）。
+        //  开着它就等于拖动全程只在拖回默认值时振。圆点要留，于是触觉由调用方自己给
+        //  （见 `SliderRow` 与 `BrightnessDialog` 的 `onValueChange` 里那次 tick）。
         hapticEffect = SliderDefaults.SliderHapticEffect.None,
         onValueChangeFinished = onValueChangeFinished,
     )

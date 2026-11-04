@@ -146,6 +146,14 @@ internal class StepSheetFilter(
      *  那一档在那里等于白占一格（见 [ActionCatalog.BRANCH_GROUPS] / `STEP_GROUPS`）。
      */
     val includeNone: Boolean = false,
+    /**
+     * 二级菜单里**要不要给「只在长按成立」的那几条**（此刻只有「灵感语音」）。
+     *
+     *  与按键绑定页同一个判据（`BindingGrids` 传 `st.g == Gesture.LONG`）：灵感语音起的是
+     *  麦克风采集，短按一下就开录不是这个能力的语义。系统场景的动作挂在**某一条规则的某一档手势**
+     *  上，所以由调用点按那条规则的 `gesture` 传 —— 长按那条规则才给。
+     */
+    val withLongOnly: Boolean = false,
 )
 
 /**
@@ -410,7 +418,7 @@ internal fun SettingsPage.StepPickerSheet(
     ModeMenuPopups(
         preciseClick = subAnchor ?: coldAnchor,
         // 命令链这一层**没有长按**这一档：灵感语音不在步骤链里出现
-        target = subTile?.let { ModeMenuTarget(it, withLongOnly = false) },
+        target = subTile?.let { ModeMenuTarget(it, withLongOnly = sheet.filter.withLongOnly) },
         current = sheet.current,
         onPick = { spec ->
             tick()

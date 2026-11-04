@@ -506,6 +506,23 @@ internal object Framework {
         /** 窗口服务内部持有的 `PhoneWindowManager` 字段。 */
         const val FIELD_M_POLICY = "mPolicy"
 
+        // ── 显示亮度：`DisplayManager` 的临时亮度（AOSP 公开类，方法 @hide；取值见 38.3） ──
+        //  控制中心的亮度条只在「这块屏的背光真的变了」时刷新（`DisplayPowerController`
+        //  `saveBrightnessInfo` → display 事件 128），而能把背光按指定值推过去的就是这两个方法。
+        //  系统自己拖动亮度条走的也是它们（`SystemUI/BrightnessController.setBrightness`）。
+
+        /** `android.hardware.display.DisplayManagerGlobal`（`DisplayManager` 的实现类）。 */
+        const val DISPLAY_MANAGER_GLOBAL = "android.hardware.display.DisplayManagerGlobal"
+
+        /** `DisplayManagerGlobal.getInstance()`。 */
+        const val GET_INSTANCE = "getInstance"
+
+        /** `setTemporaryBrightness(int displayId, float brightness)`。 */
+        const val SET_TEMPORARY_BRIGHTNESS = "setTemporaryBrightness"
+
+        /** `setTemporaryAutoBrightnessAdjustment(float adjustment)`。 */
+        const val SET_TEMPORARY_AUTO_ADJUSTMENT = "setTemporaryAutoBrightnessAdjustment"
+
         /** 长按电源那个全局菜单（走 `PhoneWindowManager`）。 */
         const val SHOW_GLOBAL_ACTIONS = "showGlobalActions"
 

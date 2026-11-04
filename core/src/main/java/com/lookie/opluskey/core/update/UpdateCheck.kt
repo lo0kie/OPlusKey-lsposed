@@ -3,44 +3,52 @@ package com.lookie.opluskey.core.update
 import org.json.JSONObject
 
 /**
- * 检查更新的**来源** —— 目前两路，指向同一份 releases 接口。
+ * 检查更新的**来源** —— 两路，各打各的 releases 接口。
  *
- *  为什么留两路：国内直连 GitHub 的接口不稳（DNS / 限流），Gitee 上会放一份同构的镜像。
- *  **镜像仓库还没建**（用户口径「gitee 暂时和 github 用同一个」），所以两路现在打的是同一个
- *  地址 —— 结构先按「两路各有各的地址」摆好，仓库一建好只改 [apiUrl] 一处，
- *  调用方与解析都不动。
+ *  为什么留两路：国内直连 GitHub 的接口不稳（DNS / 限流），Gitee 上有一份镜像。
+ *  两路**并行**发起（见 `UpdateState`），都回来之后按版本取较新的那一条 —— 不是「谁先回来算谁」：
+ *  镜像可能比 GitHub 晚几秒，先到的若是旧的，就会把真正的新版盖掉。
  *
- *  顺序即**尝试顺序**（见 `UpdateState`）：先 GitHub，取不到再走下一路。
+ *  **两路问的不是同一件事**：GitHub 那路问的是模块仓库（管理器认的那份，`publish.yml` 上架时才建）；
+ *  Gitee 那路问的是源码仓的 Release —— 那份在**钉版**时就建好了，早于上架。所以 Gitee 有可能
+ *  先看到一版还没上架的包。那包是正式签名、装得上，只是「还没对外宣布」。要严格对齐这个语义，
+ *  得在 Gitee 另建一个只放上架产物的镜像仓，把 [GITEE_MIRROR_REPO] 换过去。
  */
 enum class UpdateSource(
     /** 日志与「从哪一路取的」用的短标识。 */
     val id: String,
+    /** 这一路的 API 根（`…/repos/<owner>/<repo>`）。 */
+    private val apiBase: String,
+    /** 这一路的网页根（`…/<owner>/<repo>`），只在接口不给 `html_url` 时用来拼地址。 */
+    private val webBase: String,
 ) {
-    GITHUB("github"),
-    GITEE("gitee"),
+    GITHUB("github", "https://api.github.com/repos/$MODULE_REPO", "https://github.com/$MODULE_REPO"),
+    GITEE("gitee", "https://gitee.com/api/v5/repos/$GITEE_MIRROR_REPO", "https://gitee.com/$GITEE_MIRROR_REPO"),
     ;
 
-    /**
-     * 这一路的 releases 接口。
-     *
-     *  Gitee 的镜像仓库尚未建立，**暂时与 GitHub 同一个地址**（见类注释）。
-     */
+    /** 这一路的「最新 release」接口。 */
     val apiUrl: String
-        get() =
-            when (this) {
-                GITHUB -> GITHUB_LATEST_RELEASE
-                GITEE -> GITHUB_LATEST_RELEASE
-            }
+        get() = "$apiBase/releases/latest"
+
+    /**
+     * 这一路某条 release 的网页地址 —— 只在接口没给 `html_url` 时兜底。
+     *
+     *  Gitee 的 release 对象**没有** `html_url`（`tag_name` / `body` / `assets` 都有，就缺这个），
+     *  所以这一路必须自己拼；不拼的话「去下载」那颗按钮拿到的是空串。
+     */
+    fun tagPageUrl(tag: String): String = "$webBase/releases/tag/$tag"
 }
 
 /**
- * 模块仓库的「最新 release」接口。
+ * 模块仓库 —— 管理器认的那一份，`publish.yml` 上架时才建 release。
  *
- *  取的是 **Xposed-Modules-Repo 那个发布仓**（不 `api.github.com` 的源码仓）：用户下载页与
- *  发版产物都在那儿，版本号只有那份发布记录是权威的。
+ *  不取源码仓（`lo0kie/OPlusKey-lsposed`）：用户下载页与发版产物都在模块仓，版本号只有那份
+ *  发布记录是权威的。
  */
-private const val GITHUB_LATEST_RELEASE =
-    "https://api.github.com/repos/Xposed-Modules-Repo/io.github.lo0kie.opluskey/releases/latest"
+private const val MODULE_REPO = "Xposed-Modules-Repo/io.github.lo0kie.opluskey"
+
+/** Gitee 上那份镜像仓（`release.yml` 钉版时把同一批包发进去）。 */
+private const val GITEE_MIRROR_REPO = "look1e/opluskey-lsposed"
 
 /**
  * 一条发布记录里更新要用的三样东西。
@@ -59,25 +67,26 @@ data class ReleaseInfo(
 /**
  * 解析一次 releases 接口的返回。
  *
- *  GitHub 与 Gitee 的「最新 release」字段名一致（`tag_name` / `body` / `html_url`），
- *  所以一份解析管两路。**缺字段就返回 `null`**：宁可当作「这次没查到」，
- *  也不要拿一个空版本号去和当前版本比（那样每次都会判成「有新版」）。
+ *  GitHub 与 Gitee 的「最新 release」字段名基本一致（`tag_name` / `body`），**只有 `html_url`
+ *  是 GitHub 独有**：Gitee 不给，所以由调用方传 [fallbackPageUrl] 兜底（见 [UpdateSource.tagPageUrl]）。
+ *  **缺字段就返回 `null`**：宁可当作「这次没查到」，也不要拿一个空版本号去和当前版本比
+ *  （那样每次都会判成「有新版」）。
  *
+ * @param fallbackPageUrl 接口没给 `html_url` 时，用原始 `tag_name` 拼一个地址
  * @return 解析成功且版本号非空时返回记录，否则 `null`
  */
-fun parseLatestRelease(json: String): ReleaseInfo? {
+fun parseLatestRelease(
+    json: String,
+    fallbackPageUrl: (String) -> String = { "" },
+): ReleaseInfo? {
     val obj = runCatching { JSONObject(json) }.getOrNull() ?: return null
-    val version =
-        obj
-            .optString("tag_name")
-            .trim()
-            .removePrefix("v")
-            .removePrefix("V")
+    val tag = obj.optString("tag_name").trim()
+    val version = tag.removePrefix("v").removePrefix("V")
     if (version.isEmpty()) return null
     return ReleaseInfo(
         version = version,
         notes = obj.optString("body").trim(),
-        pageUrl = obj.optString("html_url").trim(),
+        pageUrl = obj.optString("html_url").trim().ifEmpty { fallbackPageUrl(tag) },
     )
 }
 

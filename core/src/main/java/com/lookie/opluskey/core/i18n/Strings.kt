@@ -247,6 +247,34 @@ object Strings {
 
     /** 唤醒小布 —— 与系统「长按电源键」同一个能力（`oplus:voice_assist`）。 */
     const val CATALOG_VOICE_ASSIST = "catalog.voice_assist"
+
+    /** 「屏幕亮度」那一格（点它弹 [CATALOG_BRIGHTNESS_ADD] / [_SUB] / [_SET] 三档）。 */
+    const val CATALOG_BRIGHTNESS = "catalog.brightness"
+    const val CATALOG_BRIGHTNESS_ADD = "catalog.brightness_add"
+    const val CATALOG_BRIGHTNESS_SUB = "catalog.brightness_sub"
+    const val CATALOG_BRIGHTNESS_SET = "catalog.brightness_set"
+
+    /**
+     * 同上的**带数值**写法（「增加 15%」）—— 网格小字、步骤标题、执行提示读它。
+     *
+     *  模板自己带 `%d%%`：数值与符号之间的写法各语言不同（英文 `Increase by 15%`），
+     *  拼字符串拼不出这个差别。
+     */
+    const val CATALOG_BRIGHTNESS_ADD_OF = "catalog.brightness_add_of"
+    const val CATALOG_BRIGHTNESS_SUB_OF = "catalog.brightness_sub_of"
+    const val CATALOG_BRIGHTNESS_SET_OF = "catalog.brightness_set_of"
+
+    /** 「音量」那一格与它菜单的三档 —— 与亮度同一套（点格子弹菜单，每一档再问一个百分比）。 */
+    const val CATALOG_VOLUME = "catalog.volume"
+    const val CATALOG_VOLUME_ADD = "catalog.volume_add"
+    const val CATALOG_VOLUME_SUB = "catalog.volume_sub"
+    const val CATALOG_VOLUME_SET = "catalog.volume_set"
+
+    /** 同上的**带数值**写法（「增加 10%」）。 */
+    const val CATALOG_VOLUME_ADD_OF = "catalog.volume_add_of"
+    const val CATALOG_VOLUME_SUB_OF = "catalog.volume_sub_of"
+    const val CATALOG_VOLUME_SET_OF = "catalog.volume_set_of"
+
     const val CATALOG_MODE_BACK = "catalog.mode_back"
     const val CATALOG_MODE_COLLAPSE = "catalog.mode_collapse"
     const val CATALOG_MODE_CONTROL_CENTER = "catalog.mode_control_center"
@@ -1081,6 +1109,22 @@ object Strings {
     /** 弹窗标题：查到新版本。 */
     const val UPDATE_TITLE = "update.title"
 
+    /**
+     * 首页顶部那条提示的正文（`%s` = 最新版本号）。
+     *
+     *  **不复用 [UPDATE_TITLE]**：那句是弹窗的标题、不带版号，两条信息各归一处 ——
+     *  钉在首页的那一条要让人一眼看出「新的是哪一版」，又塞不下「当前 / 最新」两行。
+     */
+    const val UPDATE_TIP = "update.tip"
+
+    /**
+     * 首页那条提示尾部的动作项。
+     *
+     *  **不叫「去下载」**：这一下开的是弹窗（说明、「稍后」、「不再提示」都在窗里），
+     *  真正开浏览器的是窗里那颗 —— 两处同名会让人以为点一下就直接开始下载。
+     */
+    const val UPDATE_VIEW = "update.view"
+
     /** 正文：「当前 1.3.3 · 最新 1.4.0」（两个 `%s`）。 */
     const val UPDATE_BODY = "update.body"
 
@@ -1098,6 +1142,14 @@ object Strings {
 
     /** 「关于」卡里的「检查更新」那一行（标题，也用在「版本」菜单里）。 */
     const val UPDATE_CHECK_ROW = "update.check_row"
+
+    /**
+     * 已经查到新版时，「版本」菜单里那一行的说法（顶掉 [UPDATE_CHECK_ROW]）。
+     *
+     *  这时候还写「检查更新」等于让人白点一次：结果早就有了。改口成「发现新版本」，
+     *  点下去仍然是查（会自动弹窗），但读起来是「这儿有新东西」。
+     */
+    const val UPDATE_FOUND_ROW = "update.found_row"
 
     /** 「版本」菜单里的「项目仓库」那一行。 */
     const val MORE_ABOUT_REPO = "more.about_repo"

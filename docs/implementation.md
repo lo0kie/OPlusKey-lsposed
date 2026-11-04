@@ -334,13 +334,18 @@ framework 私有类**一律按字符串名解析**：它们会被 ROM 改名，�
     - `publish.yml`（**手动触发**，填 tag）才把那一版推进
       `Xposed-Modules-Repo/io.github.lo0kie.opluskey` —— **更新通道**，管理器只读它，只放
       `release` + `releaseLog`。包从存档那条 Release 下，**不重新构建**：上架的就是当初钉住的那一份。
+    - `release.yml` 存完再**同步一份到 Gitee**（`look1e/opluskey-lsposed`，国内镜像）—— 同一个 tag、
+      同一批包，走 `tools/gitee-release.sh`。它**不进更新通道**：管理器不读它，Gitee 那份只是第二个
+      下载点。同一个 tag 重跑只更新正文、已传过的附件跳过。
     - 为什么分开：管理器一旦读到模块仓库那条 Release，所有装过的人立刻收到更新提示 —— 那不该跟
       「我打了个版本」绑在同一刻发生。钉完版继续写新功能，择日再上架。
 - 前置条件，缺了只是**静默跳过**、日志里不报错：Secrets 里 `KEYSTORE_BASE64` /
   `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`（属 `ci.yml`，缺则只出 debug，
   `signed != true` 时 `release.yml` 的「确认拿到的是这一版的正式签名包」直接红）；
   `MODULES_REPO_TOKEN` 对 `Xposed-Modules-Repo/io.github.lo0kie.opluskey` 有 `contents: write`
-  （属 `publish.yml`，缺则「检查模块仓库的前置条件」跳过，只发存档）。
+  （属 `publish.yml`，缺则「检查模块仓库的前置条件」跳过，只发存档）；
+  `GITEE_TOKEN`（Gitee 私人令牌，勾 `projects` 权限，属 `release.yml` 最后一步，缺则
+  「同步到 Gitee Release」整步跳过、只留一条 notice）。
 - **推的 tag 必须与源码里的版本号对上**（`<versionCode>-<versionName>` 或 `v<versionName>`），
   对不上时 `校验 tag 与版本号一致` 这一步直接红。放宽的后果是「Release 挂在另一个名字上 ⇒
   发了新版而管理器不提示更新」，且流水线全绿、看日志看不出来。

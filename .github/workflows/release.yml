@@ -5,6 +5,8 @@ run-name: 钉版 · ${{ github.ref_name }}
 
 # 只做「取 + 验 + 存档」：包由 `ci.yml` 构建好，这里按**提交 SHA** 把那条 run 的产物取过来，
 #   在**本条 run 里再解一遍**，存进本仓库的 Release。同一个提交不构建两遍。
+#   存完再同步一份到 Gitee 的 Release（国内镜像，`tools/gitee-release.sh`）—— 传的就是刚验过的
+#   那三个文件，不重新取、不重新验。
 #
 # **这里不碰模块仓库**：管理器只读模块仓库那条 Release，一旦推上去所有装过的人都会收到更新提示。
 #   「钉版」与「上架」因此分开两步 —— 打完 tag 想上架时，去跑 `publish.yml`（手动触发、填 tag）。
@@ -40,6 +42,8 @@ jobs:
       # LSPosed 模块仓库由机器人按 applicationId 自动建；Release 必须发在那个仓库里，
       # 发在本仓库不算数（管理器只读模块仓库的 release）。
       MODULE_REPO: Xposed-Modules-Repo/io.github.lo0kie.opluskey
+      # 国内镜像那一份发在这里。它不进更新通道（管理器不读它），只是同一个包的第二个下载点。
+      GITEE_REPO: look1e/opluskey-lsposed
 
     steps:
       - name: 检出代码
@@ -197,3 +201,19 @@ jobs:
           files: dist/*.apk
           # 正文由上一步组装（这一版的提交列表 + 版本号 + 三个包的说明）。
           body_path: dist/release-body.md
+
+      # Gitee 那份是**国内镜像**：同一条 run 里把刚验过的三个包同步过去，不重新取、不重新验。
+      #   它不进更新通道（管理器只读模块仓库），所以没配令牌时整步跳过、只留一条 notice ——
+      #   镜像没开通不算发版失败。配了却传不上去就让这条 run 变红：那条通道坏了得有人知道。
+      - name: 同步到 Gitee Release
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          # 预发布判定与上面那一步同一口径，规则只写在这里一处，脚本按这个值走。
+          PRERELEASE: ${{ contains(steps.dist.outputs.version_name, '-') }}
+        run: |
+          if [ -z "${GITEE_TOKEN:-}" ]; then
+            echo "::notice title=跳过 Gitee 同步::Secrets 里没有 GITEE_TOKEN，国内镜像这一份没发"
+            exit 0
+          fi
+          bash tools/gitee-release.sh "$GITEE_REPO" "${GITHUB_REF_NAME}" \
+            "${{ steps.dist.outputs.version_name }}" dist/release-body.md dist "${GITHUB_SHA}"

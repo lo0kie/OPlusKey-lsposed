@@ -12,6 +12,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
+import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.MenuEntry
@@ -455,8 +456,14 @@ private fun SettingsPage.BranchCommandMenu(
                     if (at in rules.indices) applyBranchAction(draft, at, token)
                 },
                 onDismiss = { menus.commandAt = -1 },
-                //  场景这一支要列出「无操作」：它是「命中也不做事」这一档（多条命令的步骤不列）
-                filter = StepSheetFilter(includeNone = true),
+                //  场景这一支要列出「无操作」：它是「命中也不做事」这一档（多条命令的步骤不列）。
+                //  「灵感语音」只在**长按**那一档给（它起的是麦克风采集）—— 这条规则挂在哪一档手势上，
+                //  就按哪一档决定（与按键绑定页同一个判据）。
+                filter =
+                    StepSheetFilter(
+                        includeNone = true,
+                        withLongOnly = rules.getOrNull(at)?.gesture == Gesture.LONG,
+                    ),
             ),
     )
 }

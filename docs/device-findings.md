@@ -4366,20 +4366,177 @@ x > 1/12 :  g = a·ln(12x − b) + c      a = 0.17883277  b = 0.28466892  c = 0.
 - 宿主进程读 `Settings.System` 的值**有几秒延迟**（同一时刻 shell 读到 1589、宿主读到 249），
   所以「按当前值算目标值」这一步本身就可能基于旧值。
 
-### 38.2 小布助手怎么调亮度（反编译 `com.heytap.speechassist`，2026-10-29）
+### 38.2 小布助手怎么读写亮度百分比（反编译 `com.heytap.speechassist` 13.3.5 + 真机，2026-11-04，PLK110 / ColorOS 17）
 
-入口 `skill/device/operation/BrightnessOperation.adjustBrightness()`，实际写入在 `j40.j.r(int)`：
+指令入口 `skill/device/operation/BrightnessOperation`：`process()` 按 header 分派
+`SystemScreen.AdjustBrightness` → `adjustBrightness()`、`SystemScreen.SwitchAutoAdjustBrightness` → `setAutoBrightness()`。
 
-1. 读当前值用反射调 `android.os.OplusPowerManager.getDisplaysBrightnessByNit(float)`（返回 `float[]`）；
-2. **`screen_brightness_mode == 1` 时先写 `screen_auto_brightness_adj`**，值是**亮度值本身**
-   （不是 -1..1 的偏移）—— 自动亮度下的「用户想要的亮度」就存在这个键里；
-3. 再写 `screen_brightness`（`putString` / `putInt` 二选一，按一个 feature 开关决定）。
+**载荷**：`AdjustBrightness{action, value, type}` 三个字符串；`action` 只有 `Add` / `Reduce` / `Fixed` /
+`Max` / `Min`，`value` 是**整数百分比**（`Add` / `Reduce` 缺省 10），`type` 不参与计算。
 
-另有一条 `Bundle{name=setBrightness / setBrightnessAdj}` 走 PlatformAgent
-（`com.heytap.speechassist.engine`），那个包**本机没装**，所以本机走的是上面那条。
+**尺子**（`j40.j`）：`min = g() = 1`、`max = e()`、`changeSize = max − min`；本机 `max = 4095` ⇒ `changeSize = 4094`。
 
-注意 `Settings.System.putFloat` **写不了** `screen_auto_brightness_adj`（它只认 AOSP 那张 float 键
-白名单，实测 `IllegalArgumentException`）；要按**字符串**写（`putString`），它在库里本来就是字符串。
+- `Fixed`：`v = pct*changeSize/100`；
+- `Add` / `Reduce`：`v = 当前值 ± pct*changeSize/100`；
+- `Max` / `Min`：`v = changeSize` / `v = 0`；
+- 结果夹到 `[0, changeSize]`（`clampBrightnessValue`），写入时再 `+min`。
+
+**读**：`j40.j.b()` 只读 `Settings.System` 的 `screen_brightness`（multibits 机型走 `getString` 再 `parseInt`，
+否则 `getInt`）；不读 `screen_brightness_float`（本机为 null），也不用 `cmd display get-brightness`。
+回复里的百分比是 `v*100/changeSize`（整数除法）。
+
+**写**（`j40.j.r(v)`，顺序固定）：
+
+1. `raw = v + 1`；
+2. `adj = raw*(realMax+1)/(max+1)`（整数除法；本机 `realMax` 与 `max` 同为 4095 ⇒ `adj = raw`）；
+3. `q()` 为真：先 `OplusosDisplayManager.setTemporaryBrightness(0, (int)adj)` +
+   `setTemporaryAutoBrightnessAdjustment(adj)`；
+4. `screen_brightness_mode == 1`：`q()` 真 → `putFloat("screen_auto_brightness_adj", adj)`；
+   否则（ColorOS）→ 把 `screen_brightness_mode` 写成 0（等于关掉自动亮度）；
+5. 最后写 `screen_brightness = raw`（multibits 走 `putString`，否则 `putInt`）。
+
+**本机这组值怎么来**：`min` 恒为 1；`max` 先看 `sys.oppo.multibrightness`（未设）→ `sys.oplus.multibrightness`
+（=4095），再由 `oplus.software.display.multibits_dimming_support` 决定是否采用；`q()` 看
+`oplus.software.display.autobrightctl_animation_support`。两个特性都在
+`/my_product/etc/permissions/oplus.product.display_features.xml` 里；`sec_max_brightness_rm` 不在，
+所以 600 nit 那一档限幅不生效。
+
+**真机核对**（自动亮度开着，`screen_brightness_mode=1`）：
+
+```
+settings put system screen_auto_brightness_adj 1800.0
+# 10ms 后 DpcExtImpl: Animating brightness: target=1242.0->1800.0 …, byUser=false
+# Display Brightness=1800.0，20 秒以上不回退
+settings put system screen_brightness 1500      # Display Brightness 仍是 1800.0，没动
+```
+
+⇒ 自动亮度下 **`screen_auto_brightness_adj` 才是目标亮度**，单位就是 raw（不是 -1..1 的偏移）；
+`screen_brightness` 在自动模式下不驱动显示，它存的是「关掉自动后要回到的值」。只写 `screen_brightness`
+的现象就是「写了没反应」，不是值算错了。
+
+**三条边界**
+
+- `screen_auto_brightness_adj` 在 `Settings.System.PRIVATE_SETTINGS` 里。`Settings.System.putFloat` 本身
+  没有 float 键白名单（framework 里它就是 `putStringForUser(..., Float.toString(v), ...)`），拦的是
+  SettingsProvider 的 `enforceRestrictedSystemSettingsMutationForCallingPackage`：`appId` 为 0 / 1000 /
+  2000 直接放行，其余包要求是 **privileged**（`privateFlags & PRIVATE_FLAG_PRIVILEGED`）或在 OPPO 的
+  白名单里，否则落到 `warnOrThrowForUndesiredSecureSettingsMutationForTargetSdk` —— `PRIVATE_SETTINGS`
+  里的键抛 `IllegalArgumentException: You cannot change private secure settings.`
+  真机实测：宿主 `com.oplus.gesture`（`SYSTEM_EXT`、**非** PRIVILEGED、装在 `/system_ext/app/`）写 adj
+  抛这句；同一段代码写 `screen_brightness`（`PUBLIC_SETTINGS`）成功。小布 `com.heytap.speechassist`
+  的 privateFlags 里有 `PRIVILEGED`（`/product/priv-app`）⇒ 它写得进去，不是用了什么特殊 API。
+  `settings` CLI 走 shell（uid 2000）也不受限。
+- 因此自动亮度那一档只有两条路：**走 root（uid 0）把两个键写下去**，或先关掉自动亮度再写
+  `screen_brightness`。注入侧接不了这一棒 —— system_server 里没有可用的 `ContentResolver`（六之五）。
+- SettingsProvider 的 `SettingsFilter` 只改写 `screen_off_timeout`，别的键原样放行 —— 写
+  `screen_brightness` 不会被换值，也不会被丢（仍要 `WRITE_SETTINGS`）。
+
+另有一组 `j40.j.c()` / `s(float)` 走 `screen_brightness_float`（`getFloatForUser` / `putFloatForUser`），
+不属于指令那条路；本机该键为空。
+
+### 38.3 控制中心亮度条为什么不动：它等的是 display 事件，不是写库（反编译 SystemUI + services，2026-11-04）
+
+**现象**：自动亮度开着时按键改亮度，屏幕确实变了，但控制中心那根亮度条停在旧位置；把控制中心关掉
+再拉开就对了。
+
+**那根条的数据源**（`com.android.systemui.qs.deprecated.brightness.BrightnessController`）：
+
+- 值：multibits 机型走 `OplusBrightnessControllerExImpl.getBrightness()` →
+  `QsSettingsValueProxy.getBrightness()` → `Settings.System.getInt("screen_brightness")`；
+- 刷新入口两条：
+  1. `BrightnessController$1 implements DisplayTracker.Callback`：`onDisplayChanged(displayId)` →
+     `post(mUpdateSliderRunnable)`；
+  2. `BrightnessObserver extends ContentObserver`：`screen_brightness` / `screen_brightness_mode` /
+     `screen_brightness_range` 三个 uri。
+
+**`onDisplayChanged` 的上游**（`com.android.server.display.DisplayManagerService`）：
+
+```
+DisplayPowerController.saveBrightnessInfo(...) 返回 true（这块屏的背光真的变了）
+  → mOnBrightnessChangeRunnable
+  → DisplayManagerService.handleBrightnessChange(display)
+  → sendDisplayEventsIfEnabledLocked(display, 128)      // DisplayManager 的 display 变化事件
+  → DisplayManager.DisplayListener.onDisplayChanged
+```
+
+⇒ 事件只在「实际背光变了」时发。自动亮度下 `screen_brightness` 只是「关掉自动后回到的值」，
+DPC 不拿它算背光（38.1 实测：写它背光不动）。所以只写 `screen_brightness`（连同 adj）时，
+`saveBrightnessInfo` 不一定判成变化 ⇒ 没有 display 事件 ⇒ 条不动。关掉重开控制中心会重新读一次
+settings，读到的正是写进去的新值 ⇒ 那一刻才对上（现象与这条链一致）。
+
+**小布为什么能实时刷新**：它在写库**之前**先调
+`OplusosDisplayManager.setTemporaryBrightness(0, (int) adj)` + `setTemporaryAutoBrightnessAdjustment(adj)`
+（38.2 的第 3 步）。`DisplayPowerController.setTemporaryBrightness()` 把背光**强行推到目标值**，
+`saveBrightnessInfo` 因此必然判成变化 ⇒ display 事件发出去 ⇒ 条跟着走；写库那两步只是把值存下来。
+
+**权限账**：`IDisplayManager.setTemporaryBrightness` / `setBrightness` 都
+`enforceCallingOrSelfPermission("android.permission.CONTROL_DISPLAY_BRIGHTNESS")`（signature|privileged）。
+宿主 `com.oplus.gesture` 只有 `WRITE_SETTINGS` 与 `DEVICE_POWER` ⇒ 调不了；小布带 `PRIVILEGED` ⇒ 能调。
+system_server（uid 1000）能调，模块已有跨进程桥（`StatusBarBridge` + `asSystem`）。
+
+**现在的做法（2026-11-04 实现）**：宿主算好 raw 之后先发一条
+`StatusBarBridge.CMD_BRIGHTNESS`（`brightness` extra = raw），注入侧 `BrightnessBridge.apply()`
+在 system_server 里以自身身份（`asSystem`）调 `setTemporaryBrightness(0, raw)` +
+`setTemporaryAutoBrightnessAdjustment(raw)`，然后再由宿主写库 —— 顺序与小布一致。
+
+写库仍留在宿主：自动亮度下要写的 `screen_auto_brightness_adj` 是 `PRIVATE_SETTINGS`，宿主只能走
+root；而 system_server 侧**没有可用的 `ContentResolver`**（六之五），写库这条它接不了。所以现在
+是「注入侧负责让条刷新、宿主负责把值存下来」，root 只在自动亮度那一档用。
+
+### 38.4 「有时候还是不更新」：自动亮度下 `screen_brightness` 的 onChange 被 SystemUI 丢掉（反编译 SystemUI + services + 真机，2026-11-04，PLK110 / ColorOS 17）
+
+**38.3 那个修法只能保证「有时候」** —— display 事件本身不是必发的。两条路各有一道闸。
+
+**闸一（SystemUI）**：`BrightnessObserver.onChange` 把活转给 `BrightnessController$$ExternalSyntheticLambda5`：
+
+```java
+mAutomatic = Settings.System.getIntForUser(cr, KEY_BRIGHTNESS_MODE, 0, userId) != 0;
+if (SCREEN_BRIGHTNESS_DURATION_URI.equals(uri) && mAutomatic) {
+    mUpdateSliderAnimationRunnable.run();          // 只有这个键能过
+} else {
+    if (mAutomatic && mIsScreenBrightnessAnimationSupport) return;   // 直接丢掉
+    mUpdateSliderRunnable.run();
+}
+```
+
+`mIsScreenBrightnessAnimationSupport = SystemProperties.getInt("ro.display.brightness.new.animation", 0) == 1`，
+本机该 prop 就是 `1` ⇒ **自动亮度开着时，`screen_brightness` 自己的变化一律不刷新滑杆**
+（`updateSlider` 本身是无条件的 `setValue`，问题不在值比较，而在根本走不到那儿）。
+
+**闸二（DPC）**：`saveBrightnessInfo()` 判成「背光变了」之后还有一道：
+
+```java
+z = (mBrightnessReasonTemp.getReason() != 7
+        || mAutomaticBrightnessStrategy.isTemporaryAutoBrightnessAdjustmentApplied());
+...
+if (zSaveBrightnessInfo && !z19) lambda$new$4();   // z == true 就不 post
+```
+
+⇒ 亮度原因不是 7、或「临时自动亮度调整已应用」时，即便背光真的变了也**不**发 display 通知。
+`setTemporaryBrightness` 换来的那下推送因此是看状态碰运气的 —— 这就是「有时候动、有时候不动」。
+
+**唯一稳定的口令是 `screen_brightness_duration`**。真机（PLK110）实测：
+
+```
+settings put system screen_brightness_duration "[2000,200,429740,2000,91.7,7]"
+→ I/SystemUi--QuickSettings: onChange uri: content://settings/system/screen_brightness_duration mAutomatic: true
+→ I/SystemUi--QuickSettings: mUpdateSliderAnimationRunnable sliderValue: 1398
+     screenBrightnessDuration: 200.0 startValue: 2000.0 startTime: 429740.0
+```
+
+`sliderValue` = `getBrightness() − getBrightnessMin()`，也就是**当场重读 `screen_brightness`** ⇒
+顺序必须是「先写值、再写 duration」，反了就会把旧值刷上去。
+
+值格式（`getScreenBrightnessArray()` 逐字解析）：`[?, duration, startTime, startValue, ?, ?]`，
+只有第 1 / 2 / 3 项被读走；系统自己写的是 6 项，例如 `[1530,4500,210196,1497,91.7,7]`。
+`startTime` 用 `SystemClock.uptimeMillis()` 并且**要取在过去**：`(now − start) / duration > 1`
+时滑杆一步落到目标位置；取在将来会停在 `startValue` 不动 —— 正好是要避免的那个现象。
+
+`services.jar` 里搜 `screen_brightness_duration` 命中 0 次，只有 SystemUI 用（3 处）⇒ 写它没有别的副作用。
+
+**现在的做法**：`BrightnessAction.nudgeSlider()` —— 值落库之后写一次
+`screen_brightness_duration`（`[target, 200, now − 500, 旧值, 上次的速率/模式]`）。手动亮度那一档
+也照写：那边本来就会因为 `screen_brightness` 的 onChange 刷新，多这一下只是再确认一次，无害。
 
 ## 三十九、熄屏按键：`uptimeMillis` 在深度睡眠里不走（实测，2026-10-31，PKX110 / ColorOS 17）
 
@@ -4482,3 +4639,58 @@ probe/net：HTTP 200（…/releases/latest，DNS 拿到 1 个地址）
   （它把这次查询绑在那一张网络上），拿到地址后照常连。
 - 对照：`dumpsys network_time_update_service` 里 NTP 也「成功」，但它连的是
   `127.0.0.1:123`（ROM 自己的本地代理）—— **loopback 通不代表能出网**，别拿它当证据。
+
+## 四十二、压感拍照键的中间态码在 ROM 里是**放给前台**的（反编译 `oplus-services.jar`，2026-11-04，PLK110 / ColorOS 17.0.0）
+
+用户机（PLG110）报「双击拍照键进相机，过几秒卡死、几秒后退回桌面」。日志里唯一与「相机起来之后」
+相关的现象是：进相机一次就有 1515 条族码被模块吞掉（765 轻按 7 / 766 重按 18 / 772 真实手指 48 /
+770 上滑 589 / 771 下滑 853）。顺着这条线反编译接管点，结论推翻了「这族码 ROM 自己会执行动作」。
+
+### 42.1 接管点对 765~772 只做两件事
+
+`StrategyActionButtonKeyLaunchApp#actionInterceptKeyBeforeQueueing(KeyEvent, int, int, boolean, boolean)`
+按 keyCode 分了几段，782 / 781 / 780 各走侧键那一套（长按枪、单击、唤醒），最后一段是：
+
+```
+const/16 v0, 765
+if-lt v10, v0, ...          # keyCode >= 765
+const/16 v0, 772
+if-le v10, v0, ...          # keyCode <= 772
+# 命中 765..772：
+invoke-virtual mOplusPowerKeyHandler.removeMessages(2)   # 只撤掉长按枪
+return v1                                                # v1 = 1
+```
+
+**它不派发任何动作、也不碰相机**。也就是说这族码在 ROM 的设计里是**放给前台的**：轻按对焦、
+重按快门、上滑下滑变焦，都由前台那个相机 App 收到码之后自己做。模块把这族码整族吞掉，
+相机在前台时就再也收不到按键 —— 与用户口述的「相机里按键没反应」一致。
+
+### 42.2 `mActionSwitchState` / `mActionSceneOwner` 是设置值，不是前台状态
+
+两个字段都是 `Ljava/lang/String;`，刷新路径是 `readActionButtonSwitchState(userId)`（懒加载）
+与 `ActionButtonProvider` 上的 ContentObserver —— 用户在系统按键页里选过相机，它就一直是
+`camera`。**拿它当「此刻前台是谁」用会变成永远成立**，这也是「无条件放行 ⇒ ROM 自己去拍照」
+那条旧结论的来源。
+
+### 42.3 前台怎么读（这一档**没有采用**，留作记录）
+
+读法与代价都记在这里，免得下次有人想「按前台分流」时从头再反编译一遍：
+
+| 步骤 | 反射目标 |
+| --- | --- |
+| 服务实例 | `android.app.ActivityTaskManager.getService()` —— system_server 里 `ServiceManager` 拿回的是本地 binder，`asInterface` 的 `queryLocalInterface` 返回的就是 `ActivityTaskManagerService` 本人 |
+| 首选取值 | 字段 `ActivityTaskManagerService.mLastResumedActivity`（`ActivityRecord`） |
+| 退路 | 字段 `mRootWindowContainer` → `RootWindowContainer.getTopResumedActivity()`（内部沿 `getTopDisplayFocusedRootTask()` 走两层虚调用，同样不取锁） |
+| 包名 | 字段 `ActivityRecord.packageName` |
+
+代价是一次字段读，落在按键热路径上也能接受（实现里再按 500ms 缓存）。
+
+### 42.4 处置：模块优先，**不放行**
+
+- 这颗键一旦被模块接管，整族码就都归模块：765~772 一律吞，**不因为「前台是相机」破例**。键交给了
+  模块，就该按模块的配置走，不能出现「有时候模块说了算、有时候相机说了算」。
+- 代价是相机里这颗键没有原生快门与变焦 —— 这是接管的应有之义，不算缺陷。要恢复，把键从模块里
+  摘掉即可。
+- 想让相机里也能用，正确做法不是放行，而是给中间态码也设计出可配的动作（另议）。**不能靠注入族码
+  实现**：族码不在 `KeyId.INJECTABLE_CODES` 里，注入出去会再走回认领路径成环
+  （见 `RomKeyFamilies.isFamilyCode`）。

@@ -140,38 +140,43 @@ internal fun SettingsPage.FrostedDialog(
         onDismissRequest = onDismiss,
         onDismissFinished = onDismissFinished,
     ) {
-        DialogPanel(
-            title = {
-                CenteredTitle(trailing = titleTrailing) {
-                    Text(
-                        text = title,
-                        //  一个 style 决定全部：参数里再给一遍 `lineHeight` 会与 style 里的
-                        //  `lineHeightStyle` / `platformStyle` 打架（后者的裁剪就白做了）。
-                        style =
-                            COUITheme.textStyles.title4.copy(
-                                fontWeight = FontWeight.Medium,
-                                textAlign = TextAlign.Center,
-                                lineHeight = DIALOG_LINE_HEIGHT,
-                                lineHeightStyle = DIALOG_LINE_HEIGHT_STYLE,
-                                platformStyle = DIALOG_PLATFORM_STYLE,
-                                color = COUITheme.colorScheme.onBackground,
-                            ),
-                    )
-                }
-            },
-            content = content,
-            footer = footer,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    // 糊 → 半透本色 → 内容。本色与浮层菜单共用（[popupSurfaceColor]），alpha 走弹窗
-                    //  自己那一档（[DIALOG_FROSTED_ALPHA]，比菜单更透 —— 面板大、底下平，同档看不出糊）
-                    // ——暗色下不能拿 `background`（纯黑）：糊的是接近纯黑的页面，纯黑底会把糊盖成一片黑，
-                    //  与菜单那边同一条教训。
-                    //  第二参数给矩形：形状交给库的圆角 mask（见上）。
-                    .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
-                    .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
-        )
+        //  弹窗里**库自己发的振动**（滑杆的关键点触觉、开关那一下…）一并转投通用通道：
+        //  与浮层菜单那一层（`PageMenuPopup` 的 `TickHapticScope`）同一套 —— 那条路不走
+        //  [PageHaptics.allowed]，静音时会漏出来；转投之后判据与时长都跟页面点击一致。
+        TickHapticScope {
+            DialogPanel(
+                title = {
+                    CenteredTitle(trailing = titleTrailing) {
+                        Text(
+                            text = title,
+                            //  一个 style 决定全部：参数里再给一遍 `lineHeight` 会与 style 里的
+                            //  `lineHeightStyle` / `platformStyle` 打架（后者的裁剪就白做了）。
+                            style =
+                                COUITheme.textStyles.title4.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = DIALOG_LINE_HEIGHT,
+                                    lineHeightStyle = DIALOG_LINE_HEIGHT_STYLE,
+                                    platformStyle = DIALOG_PLATFORM_STYLE,
+                                    color = COUITheme.colorScheme.onBackground,
+                                ),
+                        )
+                    }
+                },
+                content = content,
+                footer = footer,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        // 糊 → 半透本色 → 内容。本色与浮层菜单共用（[popupSurfaceColor]），alpha 走弹窗
+                        //  自己那一档（[DIALOG_FROSTED_ALPHA]，比菜单更透 —— 面板大、底下平，同档看不出糊）
+                        // ——暗色下不能拿 `background`（纯黑）：糊的是接近纯黑的页面，纯黑底会把糊盖成一片黑，
+                        //  与菜单那边同一条教训。
+                        //  第二参数给矩形：形状交给库的圆角 mask（见上）。
+                        .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
+                        .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
+            )
+        }
     }
 }
 

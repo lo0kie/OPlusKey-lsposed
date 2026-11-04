@@ -47,6 +47,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
+import io.github.lyxnx.compose.ui.tablericons.outline.Download
 import io.github.lyxnx.compose.ui.tablericons.outline.Edit
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
@@ -670,6 +671,14 @@ internal object PageIcons {
 
     /** 「版本」行的行首 —— `versions`（版本 / 分支符号，比通用信息符号更具体）。 */
     val Versions: ImageVector get() = TablerIcons.Outline.Versions
+
+    /**
+     * 「版本」菜单里**已经查到新版**时那一行 —— `download`（向下的箭头落进托盘）。
+     *
+     *  替掉平时那颗 `reload`（[ModuleRestart]）：那时这一行的意思已经变成「有新东西，
+     *  下一步是去拿」，再挂一个「重新查一遍」的图标就与它自己那句话对不上。
+     */
+    val Download: ImageVector get() = TablerIcons.Outline.Download
 
     /**
      * 「签名」行的行首 —— `fingerprint`（指纹）。
