@@ -1,5 +1,7 @@
 package com.lookie.opluskey.ui.state
 
+import androidx.compose.ui.graphics.vector.ImageVector
+
 // 链路自检的两种纯数据：注入侧回包与一段检查结果。
 
 /**
@@ -68,12 +70,27 @@ internal enum class InjectPendingKind {
  * 接管点 / 真配置 / 就绪 / 同步 / 读取」这类词，也不报时间戳；**「哪一段断了」这件事本身
  * 也只写到段名为止**，往下怎么坏的去看日志（`XLog`）。
  *
+ * @param icon 这一段自己的行首字形（**放进数据里**，不是界面按段名反查：段名跟着语言档走，
+ *   拿字符串当身份的话，换个语言就全掉到兜底那颗）
  * @param blocking 这一段不通**要不要报成故障**。「功能还没被验证过」是信息、不是故障 ——
  *   拿它去弹常驻提示会把一台正常的机器一直骂着（见 [SettingsPage.linkChecks]）。
+ * @param inSummary 这一段不 ok 时，**「整体状态」那一行该不该用它这句当结论**。
+ *   有些段不 ok 也不该报红（主开关关着是用户的意图），但那仍然是一句用户必须看见的话 ——
+ *   「自检全部正常」与「所有按键都不接管」同时出现，就是这一位没设对（真机撞过）。
  */
 internal data class LinkCheck(
+    val icon: ImageVector,
     val name: String,
     val ok: Boolean,
     val detail: String,
     val blocking: Boolean = true,
+    val inSummary: Boolean = false,
+    /**
+     * 这一条红，**只是「跑着旧版」的结果**（换包没重启 ⇒ 两边必然对不上）。
+     *
+     *  它仍然是真故障，但说「重启手机」比说「它异常了」有用得多 —— 首页那句话据此排序：
+     *  别的故障先说，只剩它一个时才说重启。没有这一位的话，「装完包没重启」会压住所有其它故障，
+     *  用户永远看不到真正坏在哪一环（真机撞过）。
+     */
+    val staleOnly: Boolean = false,
 )

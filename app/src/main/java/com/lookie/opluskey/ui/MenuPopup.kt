@@ -204,7 +204,7 @@ internal sealed interface MenuEntry {
         /**
          * [enabled] 为 false 时**点一下要说的话** —— 不填就用页面的统一原因（`blockedReason()`）。
          *
-         *  逐行填的那种（「最多三颗按键」「侧键不能改名」）是**这一行自己**的限制，
+         *  逐行填的那种（「最多只能添加 5 颗自定义按键」「侧键不能改名」）是**这一行自己**的限制，
          *  与「整页为什么改不了」是两回事，不能拿页面那句顶替。
          */
         val disabledHint: String? = null,

@@ -8,9 +8,11 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.RomKeyFamilies
+import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.inject.input.ComboDetector
 import com.lookie.opluskey.inject.input.GestureDetector
 import com.lookie.opluskey.inject.input.HeldPresses
@@ -44,7 +46,7 @@ internal class SideKeyInterceptor(
     /** 组合键那一块要把「压着的按下」延后一个窗口再喂给单键判定器，所以这条 Handler 要留着。 */
     private val handler: Handler,
     /** 判出手势后的去向（由 `KeyHooks` 注入，实现是 `GestureForwarder`）。 */
-    private val forward: (KeyId, Gesture, Boolean) -> Unit,
+    private val forward: (KeyId, GestureTrigger, Boolean) -> Unit,
     /** 每判出一个手势记一笔（`KeyHooks.noteGesture`）—— 链路自检用，由装配方注入。 */
     private val onGestureNoted: () -> Unit,
     /** 判过长按的这一按松手了（去处与 [forward] 同一处，见 `GestureDetector.onLongReleased`）。 */
@@ -107,7 +109,6 @@ internal class SideKeyInterceptor(
             // 这一组有没有绑定 —— 注入侧手上只有广播来的那份配置（配置文件它读不到），
             //  所以判据收在 `ConfigChannel.comboFor` 一处：没有这一档就交回单键判定器。
             bindingFor = { keys -> ConfigChannel.comboFor(keys) },
-            //  等待窗口可调（「组合按键设置」里那一行）；还没收到广播时是出厂值
             windowMs = { ConfigChannel.comboWindowMs() },
             //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
             joinsCombo = { id -> ConfigChannel.joinsCombo(id) },
@@ -292,7 +293,7 @@ internal class SideKeyInterceptor(
         keyEvent: KeyEvent,
     ): Boolean {
         if (keyEvent.action == KeyEvent.ACTION_UP) {
-            detector.onRomGesture(d.config.id, d.gesture, d.config)
+            detector.onRomGesture(d.config.id, d.gesture.trigger(), d.config)
         }
         return true
     }

@@ -325,6 +325,9 @@ object Strings {
     const val COMMAND_ROOT_TITLE = "command.root_title"
     const val COMMAND_ROOT_DESC_ON = "command.root_desc_on"
     const val COMMAND_ROOT_DESC_OFF = "command.root_desc_off"
+
+    /** 打开「以 root 执行」时那次探测成功：root 已授权（失败那一侧用 `COMMAND_FAILURE_SHELL_NO_ROOT`）。 */
+    const val COMMAND_ROOT_GRANTED = "command.root_granted"
     const val COMMAND_FORMAT_CMD = "command.format_cmd"
 
     /** 「支持的命令格式」卡右列那一句说明 —— 与左列的前缀文案分开两条，好在界面上对成一列。 */
@@ -397,6 +400,9 @@ object Strings {
 
     /** 绑定页横幅：这一档有几个启用中的系统场景。 */
     const val COMMAND_BRANCH_SCENARIO_COUNT = "command.branch_scenario_count"
+
+    /** 一个手势的系统场景到上限了（「添加场景」置灰 + 点一下说的那句）。 */
+    const val COMMAND_BRANCH_LIMIT = "command.branch_limit"
 
     /** 绑定页横幅的另一档：这一档一条都没配（那一行**始终**在，见 `BindingList`）。 */
     const val COMMAND_BRANCH_SCENARIO_NONE = "command.branch_scenario_none"
@@ -539,6 +545,19 @@ object Strings {
     const val COMMAND_FAILURE_TOO_DEEP = "command_failure.too_deep"
     const val COMMAND_FAILURE_UNKNOWN = "command_failure.unknown"
     const val COMMON_BACK = "common.back"
+
+    /**
+     * 亮度那几档在**步骤行 / 执行提示**里的写法（`亮度增加 15%`）。
+     *
+     *  这两处没有「这一格叫屏幕亮度」的上下文，只写「增加 15%」看不出动的是什么；
+     *  网格小字与百分比弹窗里则相反 —— 那里紧挨着「亮度」两个字，再加一遍是重复，
+     *  所以它们仍用不带主语的 `catalog.brightness_*_of`。
+     */
+    const val COMMON_BRIGHTNESS_FORMAT = "common.brightness_format"
+
+    /** 音量同上（`音量减少 10%`）。 */
+    const val COMMON_VOLUME_FORMAT = "common.volume_format"
+
     const val COMMON_CANCEL = "common.cancel"
     const val COMMON_CONFIRM = "common.confirm"
     const val COMMON_DELETE = "common.delete"
@@ -797,6 +816,15 @@ object Strings {
     const val LINK_CHECK_SERVICE_STATUS = "link_check.service_status"
     const val LINK_CHECK_SWITCH_OFF = "link_check.switch_off"
     const val LINK_CHECK_USAGE_VERIFIED = "link_check.usage_verified"
+
+    /** 「按键接管」这一段 —— 回答「现在到底有没有键会被模块接住」。 */
+    const val LINK_CHECK_TAKE_OVER = "link_check.take_over"
+
+    /** 总闸关着时那一段的副标题：**所有**按键都不接管（不是某一颗）。 */
+    const val LINK_CHECK_MASTER_OFF_ALL = "link_check.master_off_all"
+
+    /** 总闸开着、但每一颗键都停用了。 */
+    const val LINK_CHECK_ALL_KEYS_OFF = "link_check.all_keys_off"
     const val LINK_CHECK_VERIFIED = "link_check.verified"
     const val LINK_CHECK_WAITING_RESPONSE = "link_check.waiting_response"
     const val MEDIA_NEXT = "media.next"

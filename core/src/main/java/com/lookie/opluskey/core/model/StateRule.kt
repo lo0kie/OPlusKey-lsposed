@@ -147,6 +147,18 @@ data class StateRule(
         if (at !in conditions.indices) this else copy(conditions = conditions.filterIndexed { index, _ -> index != at })
 
     companion object {
+        /**
+         * 一个手势最多几条系统场景 —— 二十条（用户口径）。
+         *
+         *  两头都是成本：判定侧每按一次要走一遍这张表（时间区间 + 系统开关），而它是**顺序匹配、
+         *  第一条成立就赢**的，条数越多越绕；界面上二十条也已经要滚好几屏，再多自己也记不住
+         *  哪条管什么。
+         *
+         *  到这一档时「添加场景」那颗按钮**置灰并说明原因**（见 `BranchHeaderAdd`），
+         *  加行入口本身也拦一道（`addBranchRule`）—— 手改配置 / 别的入口不该能越过它。
+         */
+        const val MAX_PER_GESTURE = 20
+
         /** 单条件写法 —— 那批「一行只有一条条件」的入口用它，读起来比 `listOfNotNull` 直白。 */
         fun single(
             gesture: Gesture,

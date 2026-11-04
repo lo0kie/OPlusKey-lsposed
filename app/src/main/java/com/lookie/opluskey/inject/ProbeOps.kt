@@ -2,9 +2,18 @@ package com.lookie.opluskey.inject
 
 import android.content.Intent
 import android.os.Handler
+import android.view.MotionEvent
 import com.lookie.opluskey.bridge.extOf
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
+import com.lookie.opluskey.core.model.ComboPlan
+import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.inject.input.ComboDown
+import com.lookie.opluskey.inject.input.ComboSequence
+import com.lookie.opluskey.inject.input.RawInput
+import com.lookie.opluskey.inject.input.Swipe
+import com.lookie.opluskey.inject.input.TouchJudge
 
 // 探针的四个 op：看任务状态（`state`）、给窗口设圆角（`corner`）、「补壳」（`dress`）与其内部动作。
 // 从 ProbeChannel 分出来（object 不能用两个文件装，走扩展）；它用的那几个小工具留在那边。
@@ -317,3 +326,137 @@ internal fun ProbeChannel.net(
 
 /** `net` 那一趟的超时 —— 5 秒：够一次 DNS + TLS，又不至于把线程吊在那儿。 */
 private const val PROBE_NET_TIMEOUT_MS = 5_000
+
+// ── op: touch ────────────────────────────────────────────────────────────
+
+/**
+ * `touch` —— 判定层的**自检**：在进程内造几条合成轨迹，跑一遍
+ * 适配（`MotionEvent` → `RawInput`）→ 滑动判定，逐条打出「期望 / 实得」。
+ *
+ *  为什么在探针里做：触摸事件目前在系统进程里**没有采集点**（入口还没在真机上确认，见 `TouchJudge`
+ *  的类注释），可判定与适配不能是「写完没跑过」的代码。合成轨迹把这条链跑通，等于先证明
+ *  「同一个几何算出来的结论是对的」，等真实入口确认后只需接上线。
+ *
+ *  期望值写死在断言里（这些都是判据，不是手感）：点按不产出、快扫报方向、慢拖不产出、
+ *  多指整段作废。任何一条与期望不符，日志里那一行就是现场。
+ */
+internal fun ProbeChannel.touch() {
+    //  合成事件的时间轴：判定只取**同一条轨迹内**的差值，基准取哪儿都行
+    val down = android.os.SystemClock.uptimeMillis()
+
+    /** 造一条事件喂进去，返回这一段判出来的滑动（只有抬手那一条会有结论）。 */
+    fun feed(
+        action: Int,
+        atMs: Long,
+        x: Float,
+        y: Float,
+    ): Swipe? {
+        val e = MotionEvent.obtain(down, down + atMs, action, x, y, 0)
+        return try {
+            TouchJudge.onMotionEvent(e)
+        } finally {
+            runCatching { e.recycle() }
+        }
+    }
+
+    fun report(
+        name: String,
+        expected: String,
+        actual: Swipe?,
+    ) {
+        XLog.w("probe/touch：$name → 期望 $expected，实得 ${actual ?: "不产出"}")
+    }
+
+    // 1) 点按：位移 3px，还在 slop（28px）里
+    feed(MotionEvent.ACTION_DOWN, 0, 500f, 1000f)
+    report("点按", "不产出", feed(MotionEvent.ACTION_UP, 30, 503f, 1002f))
+
+    // 2) 快扫：向右 340px / 150ms
+    feed(MotionEvent.ACTION_DOWN, 200, 500f, 1500f)
+    feed(MotionEvent.ACTION_MOVE, 240, 600f, 1502f)
+    feed(MotionEvent.ACTION_MOVE, 280, 700f, 1508f)
+    feed(MotionEvent.ACTION_MOVE, 320, 840f, 1510f)
+    report("右扫", "RIGHT 340px", feed(MotionEvent.ACTION_UP, 350, 840f, 1510f))
+
+    // 3) 慢拖：同样的位移，但跨了 1000ms（超过 800ms 那一档）
+    feed(MotionEvent.ACTION_DOWN, 400, 500f, 2000f)
+    feed(MotionEvent.ACTION_MOVE, 800, 700f, 2000f)
+    feed(MotionEvent.ACTION_MOVE, 1200, 840f, 2000f)
+    report("慢拖", "不产出", feed(MotionEvent.ACTION_UP, 1400, 840f, 2000f))
+
+    // 4) 多指：`MotionEvent.obtain(down, …)` 只能造单指事件，这一档直接喂归一化事件
+    //    （判据是「手指数 > 1 就作废」，与走不走适配器无关）
+    TouchJudge.submit(RawInput.TouchDown(0, 500f, 2500f, pointers = 2, atMs = 2000))
+    TouchJudge.submit(RawInput.TouchUp(0, 900f, 2500f, pointers = 2, atMs = 2100))
+    XLog.w("probe/touch：多指 → 期望 不产出（上面「滑动：」那行不该出现第二条）")
+}
+
+// ── op: combo ────────────────────────────────────────────────────────────
+
+/**
+ * `combo` —— 组合键判定层的**自检**：造几档组合与几串按下，跑一遍「凑没凑齐」的判据。
+ *
+ *  为什么放在探针里：真机上组合判定由 `ComboDetector` 那条事件状态机扛着，一次按压只有一条
+ *  证据、判错了没人能重放。同一套规则在这里写成**无状态的纯判据**（`ComboSequence`），
+ *  合成序列跑通就等于先证明「同一串按下的结论是对的」—— 判据错了在这一步就红，而不是等真机。
+ *
+ *  **两边必须同改**（见 `ComboSequence` 的类注释）：这里期望的每一条都是判定器口径的镜像，
+ *  多成员（3 颗起）这一轮已经接线，所以「三颗」那一档现在就该凑齐。
+ *
+ *  期望值写死在断言里（都是判据，不是手感）：两颗窗口内凑齐、超窗不成立、只按一颗报还差、
+ *  中间夹一颗不相干的键不影响、三颗凑齐成员多的那一档。
+ */
+internal fun ProbeChannel.combo() {
+    //  成员键 id 全部取自 `KeyId`（内置侧键 + 第 1~3 颗自定义键）—— 这里不写字面量，
+    //  免得前缀一改这条自检就悄悄测了一堆不存在的键。
+    val plus = KeyId.PLUS.id
+    val ck1 = KeyId.customId(1)
+    val ck2 = KeyId.customId(2)
+    val ck3 = KeyId.customId(3)
+
+    fun plan(
+        id: String,
+        vararg keys: String,
+    ): ComboPlan =
+        ComboPlan(
+            id = id,
+            keys = keys.toSet(),
+            collectMs = 300,
+            longPressMs = 500,
+            //  与 `ComboKey.plan()` 同一条口径：够两颗就判（多成员已接线，上限不再卡在两颗）
+            judgeable = keys.size >= ComboKey.MIN_KEYS,
+        )
+
+    val plans = listOf(plan("cmb1", plus, ck1), plan("cmb2", plus, ck1, ck2), plan("cmb3", plus, ck1, ck2, ck3))
+
+    fun report(
+        name: String,
+        expected: String,
+        downs: List<Pair<String, Long>>,
+    ) {
+        val gather =
+            ComboSequence.resolve(
+                downs.map { (key, at) -> ComboDown(key, at) },
+                plans.filter { it.judgeable },
+            )
+        XLog.w("probe/combo：$name → 期望 $expected，实得 ${ComboSequence.describe(gather)}")
+    }
+
+    // 1) 两颗顺序按下、间隔 100ms（窗口 300）—— 真机上走的就是这条
+    report("两颗 / 间隔 100ms", "凑齐 cmb1", listOf(plus to 0L, ck1 to 100L))
+
+    // 2) 同一对超过窗口 ⇒ 哪一档都不成立
+    report("两颗 / 间隔 400ms", "不成立", listOf(plus to 0L, ck1 to 400L))
+
+    // 3) 只按了第一颗 ⇒ 这条路仍成立，还差一颗
+    report("只按一颗", "还差 1 颗", listOf(plus to 0L))
+
+    // 4) 中间夹一颗不相干的键 ⇒ 不影响（判定器那边叫「配不上的候选不占位」）
+    report("中间夹一颗别的键", "凑齐 cmb1", listOf(plus to 0L, KeyId.customId(9) to 50L, ck1 to 100L))
+
+    // 5) 三颗按顺序 ⇒ 凑齐成员多的那一档（`maxByOrNull { keys.size }` 那条）
+    report("三颗 / 间隔 80ms", "凑齐 cmb2", listOf(plus to 0L, ck1 to 80L, ck2 to 160L))
+
+    // 6) 同一颗按了两次 ⇒ 按最后那一次算（判定器的 `recent` 只留最后一条）
+    report("同一颗按两次", "凑齐 cmb1", listOf(plus to 0L, plus to 40L, ck1 to 80L))
+}

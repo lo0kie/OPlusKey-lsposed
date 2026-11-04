@@ -18,15 +18,15 @@ import com.lookie.opluskey.ui.writeAndNotice
 // 「组合键」那两页共用的读写 —— 列表页（加 / 删 / 摘要）与编辑页（标题上那行成员名）都走这里。
 
 /**
- * 一组组合键最多几档。
+ * 一组组合键最多几档 —— 九档（用户口径）。
  *
- *  取 5：列表行首用 1~5 的数字图标标「第几组」（用户口径），再多一个数字就不够用了 ——
- *  上限跟着那排数字走，界面与模型不会各说一个数。
+ *  列表行首用数字图标标「第几组」（1~9）：上限跟着那排数字走，界面与模型不会各说一个数
+ *  （`PageIcons.menuKeyNumber` 只到 9 —— 图标库的圈数字到这里为止，不为第 10 档手绘）。
  *
- *  为什么不是 9：一组组合要占两格动作（短按 + 长按），五组就是一整页网格的量；
+ *  为什么不再往下放：一组组合要占两格动作（短按 + 长按），九组已是一整页网格的量；
  *  再多用户自己也记不住哪一组是什么，列表行与数字图标都失去意义。
  */
-internal const val MAX_COMBOS = 5
+internal const val MAX_COMBOS = 9
 
 /**
  * 一档组合里两颗键之间的分隔符 —— 用「×」不用「+」。
@@ -82,7 +82,8 @@ internal fun SettingsPage.addCombo(keys: List<KeyId>): Boolean {
     val ids = keys.map { it.id }.distinct()
     if (ids.size !in ComboKey.MIN_KEYS..ComboKey.MAX_KEYS) {
         //  界面那边颗数不对时「添加」是灰的（点一下会说原因），走不到这里；
-        //  这一句是给调试通道与手改的配置兜底 —— 判定侧只认两颗，多的那颗永远等不到。
+        //  这一句是给**新增入口**兜底：判定侧认得更多成员，界面这一侧仍然只造两颗
+        //  （用户口径未定，见 `ComboKey.MAX_KEYS` 的注释）—— 别让某个新入口绕过这条线。
         XLog.w("组合键：成员 ${ids.size} 颗不在 ${ComboKey.MIN_KEYS}..${ComboKey.MAX_KEYS} 之内，不添加（${ids.joinToString("+")}）")
         hint(I18n.format(Strings.COMBO_MAX_KEYS, ComboKey.MAX_KEYS), slot = HINT_SLOT_COMBO)
         return false

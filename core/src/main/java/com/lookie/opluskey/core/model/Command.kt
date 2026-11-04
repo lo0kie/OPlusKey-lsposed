@@ -430,7 +430,7 @@ data class Command(
         const val MAX_STEP_DELAY_MS = 3000
 
         /** 多条命令的步骤数上限；执行侧按文件里实际步数执行。 */
-        const val MAX_STEPS = 5
+        const val MAX_STEPS = 9
     }
 }
 

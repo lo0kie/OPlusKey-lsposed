@@ -92,8 +92,6 @@ internal fun SettingsPage.CollectKeyDialog(
     val context = LocalContext.current
     // 听到一颗**能收**的键：收集到此为止，交给「添加按键」那个弹窗起名字。
     var pendingCode by remember(show) { mutableStateOf<Int?>(null) }
-    // 这颗键本来就在清单里：只提示一句（没有下一步可做，所以那一档不摆按钮）。
-    var duplicateName by remember(show) { mutableStateOf<String?>(null) }
     // 被拒（保留码 / 内置键 / 到上限）用**消息条**说，不写在弹窗正文里（用户口径）：
     //  正文里那句红字会把面板撑高、又跟下面的「正在等待按键…」挤在一起；而且它是
     //  「对刚才那一下的答复」，与底部的操作回执是同一类东西。
@@ -102,11 +100,11 @@ internal fun SettingsPage.CollectKeyDialog(
     // 「等按键」那个窗**退场动画播完了**没有 —— 命名的聚焦要等它（见 [AddKeyDialog] 的 `focusReady`）。
     //  库在退场动画结束时会收一次键盘：早于那一步聚焦，键盘就是「弹出来又被收走」。
     var collectClosed by remember(show) { mutableStateOf(false) }
-    // 那个窗此刻**该不该关** —— 听到键（或撞上重复）之后它就该退了。
+    // 那个窗此刻**该不该关** —— 听到一颗能收的键之后它就该退了。
     //  它和 `collectClosed` 一起决定「收场回调还作不作数」：弹窗被用户自己关掉（点遮罩 / 返回）
     //  时它也是开着→关着，那一刻的 `onDismissFinished` 与「听到键」没有任何关系。
-    val collectClosing = pendingCode != null || duplicateName != null
-    // 「还在等按键」= 既没听到能收的键、也没撞上重复的那一颗。
+    val collectClosing = pendingCode != null
+    // 「还在等按键」= 还没听到一颗能收的键（被拒与被重复的那两条都留在这里，见下面）。
     val waiting = !collectClosing
     val draftName = newKeyName()
 
@@ -118,16 +116,28 @@ internal fun SettingsPage.CollectKeyDialog(
     // 兜底 —— 这一档只在「收场回调根本没来」时才该跑，理由见 [CollectCloseFallback]。
     CollectCloseFallback(show = show, closing = collectClosing) { collectClosed = true }
 
-    // **只在「等按键」这一小段里监听**：一听到键就交给下一步，注入侧不该继续往外报。
-    //  被拒时留在等待态、用消息条说一句，用户可以再按一次。
+    // **只在「等按键」这一小段里监听**：一听到能收的键就交给下一步，注入侧不该继续往外报。
+    //  被拒（保留码 / 内置键 / 到上限）与「这颗键本来就在清单里」都不结束这一窗 ——
+    //  它们都是**对刚才那一下的答复**，走底部消息条说一句，用户接着按下一颗即可。
     KeyWatchWhileVisible(show && waiting, context) { code ->
         when (val check = checkKey(code)) {
             // 被拒：消息条说一句，继续等下一颗（弹窗不关）
-            is CollectCheck.Rejected -> check.message?.let { hint(it, slot = HINT_SLOT_BINDING) }
+            is CollectCheck.Rejected -> {
+                check.message?.let { hint(it, slot = HINT_SLOT_BINDING) }
+            }
 
-            is CollectCheck.Duplicate -> duplicateName = check.name
+            //  已经在清单里：同上一条（用户口径：**弹消息条，不要直接结束**）——
+            //  这一颗没有「下一步」可走，可前面那些键的关系还得看，直接收掉弹窗等于把人赶走。
+            is CollectCheck.Duplicate -> {
+                hint(
+                    I18n.get(Strings.KEY_WATCH_DUPLICATE, "「%s」已经在清单里了").format(check.name),
+                    slot = HINT_SLOT_BINDING,
+                )
+            }
 
-            CollectCheck.Ok -> pendingCode = code
+            CollectCheck.Ok -> {
+                pendingCode = code
+            }
         }
     }
     // 两个浮层都走**项目自己的外壳**（[FrostedDialog]）：面板底色 / 磨砂 / 标题由它画。
@@ -165,13 +175,6 @@ internal fun SettingsPage.CollectKeyDialog(
             if (addKey(pendingCode, name)) onDismiss()
         },
     )
-    FrostedDialog(
-        show = show && duplicateName != null,
-        title = I18n.get(Strings.KEY_WATCH_TITLE, "自定义按键"),
-        onDismiss = onDismiss,
-    ) {
-        duplicateName?.let { DuplicateBody(it) }
-    }
 }
 
 /**
@@ -188,7 +191,7 @@ internal fun SettingsPage.CollectKeyDialog(
  *
  *  单独成函数是为了让 [CollectKeyDialog] 留在 detekt 的圈复杂度阈值之内。
  *
- * @param closing 这个窗**此刻该不该关**（听到键 / 撞上重复之后）
+ * @param closing 这个窗**此刻该不该关**（听到一颗能收的键之后）
  * @param onTimedOut 确认回调丢了，放行
  */
 @Composable
@@ -364,25 +367,6 @@ private fun CollectKeyBody(secondsLeft: Int) {
                     .dialogSideMargin(),
         )
     }
-}
-
-/**
- * 「这颗键已经在清单里了」—— 一句提示，**没有底部按钮**（用户口径）。
- *
- *  没有下一步可做：键已经在清单里、也已经被选中了，关掉就是全部。
- */
-@Composable
-private fun DuplicateBody(name: String) {
-    Text(
-        text = I18n.get(Strings.KEY_WATCH_DUPLICATE, "「%s」已经在清单里了").format(name),
-        style = COUITheme.textStyles.body2,
-        color = COUITheme.colorScheme.onSurfaceSecondary,
-        textAlign = TextAlign.Center,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .dialogSideMargin(),
-    )
 }
 
 /**

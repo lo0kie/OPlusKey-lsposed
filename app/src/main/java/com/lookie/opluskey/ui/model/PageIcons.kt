@@ -13,6 +13,7 @@ import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
 import io.github.lyxnx.compose.ui.tablericons.outline.Adjustments
 import io.github.lyxnx.compose.ui.tablericons.outline.AlertCircle
+import io.github.lyxnx.compose.ui.tablericons.outline.AlertSquare
 import io.github.lyxnx.compose.ui.tablericons.outline.AlignBoxCenterMiddle
 import io.github.lyxnx.compose.ui.tablericons.outline.AlphabetChinese
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
@@ -36,6 +37,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber2
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber3
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber4
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber5
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber6
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber7
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber8
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber9
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
@@ -61,10 +66,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
+import io.github.lyxnx.compose.ui.tablericons.outline.History
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
 import io.github.lyxnx.compose.ui.tablericons.outline.InputX
+import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
@@ -83,11 +90,14 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
+import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
+import io.github.lyxnx.compose.ui.tablericons.outline.Server
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
+import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.ShieldCode
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
@@ -286,11 +296,11 @@ internal object PageIcons {
     }
 
     /**
-     * 清单里「第几条」—— 按它在这一列里的位置取**圈里数字**：`circle-number-1` … `circle-number-5`
+     * 清单里「第几条」—— 按它在这一列里的位置取**圈里数字**：`circle-number-1` … `circle-number-9`
      * （[index] 从 0 起）。
      *
-     *  两个调用点共用这一支笔：首页「按键」卡里**收集到的键**（上限三颗，
-     *  `KeyId.MAX_CUSTOM_KEYS`）、以及「组合键」列表里的**第几组**（上限五组，
+     *  两个调用点共用这一支笔：首页「按键」卡里**收集到的键**（上限五颗，
+     *  `KeyId.MAX_CUSTOM_KEYS`）、以及「组合键」列表里的**第几组**（上限九组，
      *  `MAX_COMBOS`）。数字跟着**列表位置**走，删掉中间那条之后后面的各自前移一位 ——
      *  与清单里看到的顺序一致。
      *
@@ -298,10 +308,8 @@ internal object PageIcons {
      *  轮廓，与旁边那些有外框的字形（手机 + 侧键、加号）不是一个体量，一行里看着像掉了个字。
      *  圈给它一个与别的图标同样的外轮廓，这一排才读得成同一组条目。
      *
-     *  只到 5：五组是组合键的上限（用户口径），再往上那一档没有图标可用，
-     *  越界就兜到 5 —— 真的越界说明上限判据与这排数字又各说了一个数。
-     *
-     *  与 [MenuKeyAdd]（加号）分工：那一行是「再加一颗」，这几行是「已经收下的那条」。
+     *  只到 9：图标库的圈数字正好到这里，而两个上限都没越过它（五颗键 / 九组组合）——
+     *  越界兜到 9 就说明上限判据与这排数字又各说了一个数，**不要在这里手绘第 10 档**。
      */
     fun menuKeyNumber(index: Int): ImageVector =
         when (index) {
@@ -309,7 +317,11 @@ internal object PageIcons {
             1 -> TablerIcons.Outline.CircleNumber2
             2 -> TablerIcons.Outline.CircleNumber3
             3 -> TablerIcons.Outline.CircleNumber4
-            else -> TablerIcons.Outline.CircleNumber5
+            4 -> TablerIcons.Outline.CircleNumber5
+            5 -> TablerIcons.Outline.CircleNumber6
+            6 -> TablerIcons.Outline.CircleNumber7
+            7 -> TablerIcons.Outline.CircleNumber8
+            else -> TablerIcons.Outline.CircleNumber9
         }
 
     /**
@@ -837,11 +849,49 @@ internal object PageIcons {
     /** 模块重启 —— `Reload`（回转箭头 + 竖线），读作「重新来一遍」。 */
     val ModuleRestart: ImageVector get() = TablerIcons.Outline.Reload
 
-    /** 「运行状态」里**正常**的那一段 —— `home-check`（房子 + 勾）。 */
+    /**
+     * 「运行状态」里**整体状态**那一行 —— 好不好看两颗字形：`home-check` / `home-cancel`。
+     *
+     *  下面四条明细各自有自己的字形（见 [LinkService] / [LinkKeyResponse] / [LinkConfig] /
+     *  [LinkUsage]），汇总这一行则回答「合起来怎么样」，所以它只分两档 ——
+     *  **字形说结论，颜色也一起说**（红 / 常规色）。
+     *
+     *  **首页那条顶栏提示不用这两颗**：它统一 `alert-square`（见 [HomeStatusAlert]）。
+     */
     val LinkOk: ImageVector get() = TablerIcons.Outline.HomeCheck
 
-    /** 「运行状态」里**不正常**的那一段 —— `home-cancel`（房子 + 叉）。 */
+    /** 同 [LinkOk]，整体状态**不正常**时那一颗 —— `home-cancel`。 */
     val LinkBroken: ImageVector get() = TablerIcons.Outline.HomeCancel
+
+    /**
+     * 首页顶部**那条「有一件事要处理」**的行首图标 —— `alert-square`（方框里一个叹号）。
+     *
+     *  只给这一条用：它可能是「系统侧旧版」，也可能是「某一段异常」，两种都是**待办**。
+     *  旁边那条「有新版本」仍是 `download`（[PageIcons.Download]）—— 那条说的是「有东西可取」，
+     *  与「有事要处理」不是一回事，别混成一颗。
+     */
+    val HomeStatusAlert: ImageVector get() = TablerIcons.Outline.AlertSquare
+
+    /** 「运行状态」明细：**服务运行** —— `server`（宿主那一侧有没有在跑）。 */
+    val LinkService: ImageVector get() = TablerIcons.Outline.Server
+
+    /** 「运行状态」明细：**按键响应** —— `keyboard`（按键那一侧的接管点）。 */
+    val LinkKeyResponse: ImageVector get() = TablerIcons.Outline.Keyboard
+
+    /** 「运行状态」明细：**设置生效** —— `settings-cancel`（设置没送到 / 不是这一份）。 */
+    val LinkConfig: ImageVector get() = TablerIcons.Outline.SettingsCancel
+
+    /** 「运行状态」明细：**使用验证** —— `history`（真按过的那笔痕迹）。 */
+    val LinkUsage: ImageVector get() = TablerIcons.Outline.History
+
+    /**
+     * 「运行状态」明细：**按键接管** —— `pointer`（按键到底落没落到模块手上）。
+     *
+     *  这一段回答的是前面几段答不了的那个问题：接管点挂上了（`hooks > 0`）、配置也送到了，
+     *  但只要总闸关着（或每颗键都停用），仍然**一颗键都不会被接住** —— 表现就是
+     *  「自检全绿、按下去却是系统的功能」。真机上撞到过一次。
+     */
+    val LinkTakeOver: ImageVector get() = TablerIcons.Outline.Pointer
 }
 
 /**

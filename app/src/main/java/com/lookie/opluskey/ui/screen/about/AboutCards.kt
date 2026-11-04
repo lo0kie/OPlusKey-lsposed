@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.config.isDefaultProfile
@@ -66,14 +67,20 @@ internal fun SettingsPage.LinkStatusCard() {
     val broken = checks.firstOrNull { !it.ok && it.blocking }
     val adapted = deviceSupport == DeviceSupport.Support.ADAPTED
     //  明细**只列真故障**：正常那几段不占地方 —— 这一段本来就只在出问题时才需要看。
-    //  「主开关已关闭」与「尚未使用」两种不 ok 不算故障（[LinkCheck.blocking] 那句），
-    //  留下它们会让这一页平时也恒挂两行，还与「整体状态」那句结论打架。
+    //  「主开关已关闭」与「尚未使用」两种不 ok 不算故障（[LinkCheck.blocking] 那句），所以不进明细；
+    //  但「主开关关着」会经 [LinkCheck.inSummary] 出现在**汇总行**（它意味着所有按键都不接管），
+    //  「尚未使用」不会（那只是还没拿到证据，不是结论）。
     //  汇总行常留：它负责回答「到底有没有事」，一行明细都没用时靠它报「全部正常」。
+    //  **不红不等于「一切正常」**：主开关关着 / 每颗键都停用这两档不报红（是用户的意图），
+    //  但它们意味着**一颗键都不会被接管** —— 那时说「全部正常」，用户按下去却是系统的功能，
+    //  而页面上一个字都没提为什么（真机撞过：自检全绿、所有按键都用不了）。
+    //  有这种话要说时，整行按「不 ok」画（常规色、不用红），副标题直接说那句话。
+    val offNote = checks.firstOrNull { !it.ok && it.inSummary }
     val detail =
-        if (broken == null) {
-            I18n.get(Strings.LINK_CHECK_ALL_NORMAL, "全部正常")
-        } else {
-            I18n.format(Strings.LINK_CHECK_BROKEN_FORMAT, broken.name)
+        when {
+            broken != null -> I18n.format(Strings.LINK_CHECK_BROKEN_FORMAT, broken.name)
+            offNote != null -> offNote.detail
+            else -> I18n.get(Strings.LINK_CHECK_ALL_NORMAL, "全部正常")
         }
     CardList(
         rows =
@@ -93,10 +100,23 @@ internal fun SettingsPage.LinkStatusCard() {
                         iconTint = COUITheme.colorScheme.onSurfaceContainer,
                     ),
                 )
-                // 整体结论那一行（缺哪一段直接点名）
-                add(statusRow(I18n.get(Strings.LINK_CHECK_OVERALL_STATUS, "整体状态"), broken == null, detail))
-                // 明细行：只有故障那几段
-                checks.filter { !it.ok && it.blocking }.forEach { add(statusRow(it.name, false, it.detail)) }
+                // 整体结论那一行（缺哪一段直接点名）。字形只分两档：正常 `home-check`、
+                //  不正常 `home-cancel` —— 这一行回答的就是「合起来好不好」，别去细分是哪一段
+                //  （那是下面明细行的活）。
+                val overallOk = broken == null && offNote == null
+                add(
+                    statusRow(
+                        icon = if (overallOk) PageIcons.LinkOk else PageIcons.LinkBroken,
+                        title = I18n.get(Strings.LINK_CHECK_OVERALL_STATUS, "整体状态"),
+                        ok = overallOk,
+                        detail = detail,
+                    ),
+                )
+                // 明细行：只有故障那几段。每段自带字形（`LinkCheck.icon`）—— 服务 / 按键 / 设置 /
+                //  使用各一颗，几段一起坏时也能一眼看出断在哪一环，而不是一整列一样的叉。
+                checks
+                    .filter { !it.ok && it.blocking }
+                    .forEach { add(statusRow(icon = it.icon, title = it.name, ok = false, detail = it.detail)) }
             },
     )
 }
@@ -134,11 +154,15 @@ private fun adaptVerdict(support: DeviceSupport.Support): String =
     }
 
 /**
- * 运行状态里的一行 —— 字形按「正常 / 故障」两档取色（明细进到这里只剩故障那一档，
- * 汇总行正常时走常规色）。
+ * 运行状态里的一行 —— **字形说的是「哪一段」、颜色说的是「好不好」**。
+ *
+ *  这两件事原先都由字形承担（正常一颗 `home-check`、故障一颗 `home-cancel`），于是几段一起坏时
+ *  排下来是一整列一模一样的叉，「断在哪一环」只能靠读字。现在环节由字形分（见 [icon]），
+ *  好坏由颜色与副标题分。
  */
 @Composable
 private fun statusRow(
+    icon: ImageVector,
     title: String,
     ok: Boolean,
     detail: String,
@@ -146,7 +170,7 @@ private fun statusRow(
     CardRow.Item(
         title = title,
         summary = detail,
-        icon = if (ok) PageIcons.LinkOk else PageIcons.LinkBroken,
+        icon = icon,
         iconTint = if (ok) COUITheme.colorScheme.onSurfaceContainer else COUITheme.colorScheme.error,
     )
 

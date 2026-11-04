@@ -492,8 +492,11 @@ internal object ShellRunner {
      *
      *  与「执行时提示」（`GlobalConfig.toastOnRun`）互不影响：那个报「执行了哪个动作」，
      *  这条报「命令算出来的结果」，两个都开会连弹两条。
+     *
+     *  `internal` 而不是 `private`：模块自己写的命令（[RootGrant] 那条探测）也要按同一个前缀
+     *  回执 —— 字面量只留这一处，改前缀时不会漏掉那边。
      */
-    private const val TIP_PREFIX = "tip:"
+    internal const val TIP_PREFIX = "tip:"
 
     /**
      * 输出里出现这几句 = 这条命令**失败了**，与退出码无关。

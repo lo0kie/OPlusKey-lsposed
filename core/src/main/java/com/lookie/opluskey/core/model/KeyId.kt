@@ -68,12 +68,12 @@ class KeyId private constructor(
         const val CUSTOM_ID_PREFIX = "ck"
 
         /**
-         * 自定义键的**数量上限** —— 三颗（用户口径）。
+         * 自定义键的**数量上限** —— 五颗（用户口径）。
          *
-         *  收集入口按它拦（`ui/screen/binding/CollectKeyDialog.collectKey`）；菜单里那几行一屏放得下，
-         *  也不至于一堆键去抢同一颗物理键。
+         *  收集入口按它拦（`ui/screen/binding/CollectKeyDialog.collectKey`）；清单行首的数字图标
+         *  （`PageIcons.menuKeyNumber`）也正好够画到这一档，不至于一堆键去抢同一颗物理键。
          */
-        const val MAX_CUSTOM_KEYS = 3
+        const val MAX_CUSTOM_KEYS = 5
 
         /** 第 [seq] 颗自定义键的 id —— 序号由调用方维护（它要保证不被复用）。 */
         fun customId(seq: Int): String = CUSTOM_ID_PREFIX + seq

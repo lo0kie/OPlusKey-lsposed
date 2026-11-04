@@ -25,34 +25,55 @@ private const val FALLBACK_WINDOW_MS = 80L
 private const val COMBO_REPEAT_MAX_MS = 30_000L
 
 /**
- * 组合键的判定 —— **任意两颗已接管的键**在窗口内先后按下，就当作一次组合，不再各自判单击 / 长按。
+ * 多成员组合的**最少成员数** —— 3 颗。
+ *
+ *  两颗那一档不走多成员这条路（见 [ComboDetector] 里 `pairFor` 与 `multiFor` 的分工）：
+ *  那边要在候选里挑「按下时刻由近到远」，结论更细。3 颗起才需要「整体凑齐」这个判据。
+ */
+private const val MULTI_MIN_KEYS = ComboKey.MIN_KEYS + 1
+
+/**
+ * 组合键的判定 —— **几颗已接管的键**在窗口内先后按下，就当作一次组合，不再各自判单击 / 长按。
  *
  *  判出组合之后执行什么，由装配方决定（`onCombo`）：这里只回答「哪一档 + 短按还是长按」。
  *
- *  与 [GestureDetector] 的分工：那个判单颗键的手势，这个只判「两颗键的重叠」。一旦认出组合，
- *  立刻把这两颗键的单键状态机**摘掉**（[resetKey]），否则先按下的那颗会在组合期间判出长按 ——
+ *  与 [GestureDetector] 的分工：那个判单颗键的手势，这个只判「几颗键的重叠」。一旦认出组合，
+ *  立刻把这几颗键的单键状态机**摘掉**（[resetKey]），否则先按下的那颗会在组合期间判出长按 ——
  *  一次按键执行两个动作。
  *
  * ## 先问 [bindingFor]
  *
- *  组合成立就会摘掉两颗键的单键状态机。没有绑定还照样摘，用户看到的就是「两键同按什么反应都没有」——
+ *  组合成立就会摘掉成员键的单键状态机。没有绑定还照样摘，用户看到的就是「几键同按什么反应都没有」——
  *  而这正是最容易被当成「模块坏了」的那种表现。所以**先判有没有这一档，再动任何状态**：
- *  查不到就把这一下原样交回单键判定器，两颗键各走各的。
+ *  查不到就把这一下原样交回单键判定器，那几颗键各走各的。
  *
  * ## 顺序按下也算组合（组合的等待压过单键的单击）
  *
- *  判据只是「两颗键的 DOWN 相差不超过窗口」，**不要求两颗同时按着**：先按 A、松手、紧接着按 B
+ *  判据只是「几颗键的 DOWN 相差不超过窗口」，**不要求同时按着**：先按 A、松手、紧接着按 B
  *  同样算这一档组合。代价面在单键那一侧 —— 参与组合的键按下后要**等满一个窗口**才进单键判定器
- *  （见 `HeldPresses`），所以「A 的单击」不会在 B 到来之前先跑掉。用户口径：先后按两颗组合键，
- *  只该触发组合，不该两个人各来一次。
+ *  （见 `HeldPresses`），所以「A 的单击」不会在 B 到来之前先跑掉。用户口径：先后按几颗组合键，
+ *  只该触发组合，不该每颗各来一次。
  *
- *  长按是另一条判据：必须两颗**都还按着**（读 [down]）—— 先松开一颗就凑不出「一起按住不放」。
+ *  窗口是**相对当前这一下**算的（`now - at <= window`），不是「相邻两颗之间」——
+ *  几颗键之间夹了一颗不相干的键时，这一档照样成立。
  *
- * ## 三颗键同时按着时只出一组
+ *  长按是另一条判据：必须成员**都还按着**（读 [down]）—— 先松开一颗就凑不出「一起按住不放」。
  *
- *  组合进行中再来的按键整条吞掉（按下 + 抬手），所以「三颗里有两组组合」也只出**先凑成的那一组**。
- *  配对时窗口内可能有好几颗候选：**配不上的候选不占位**（见 [onDown] 里那段），都配得上才按
- *  「按下时刻由近到远」取最近的一颗。
+ * ## 两颗走配对，3 颗起走凑齐
+ *
+ *  [pairFor]：窗口内挑一颗「配得上、且按下时刻最新」的同伴，两颗成一组 —— 这条是老路径，
+ *  「按下时刻由近到远」只在两颗这一档有意义（三颗以上的候选里挑谁都不是唯一的）。
+ *
+ *  [multiFor]：把窗口内按下的那一组**整体**递给绑定闸，「成员多的赢」由 `Config.comboFor`
+ *  判（`maxByOrNull { keys.size }`）。成员表按**命中那一档自己的清单**取，候选里夹的别的键
+ *  不算成员（它们还得自己走单键判定）。
+ *
+ *  界面上没有造三颗以上组合的入口（用户口径未定），这一条只对手改配置生效 —— 但判定、执行、
+ *  日志三处都是同一条真链路，不是旁路。
+ *
+ * ## 组合进行中再来的按键只出一组
+ *
+ *  组合进行中再来的按键整条吞掉（按下 + 抬手），所以「几颗里有两组组合」也只出**先凑成的那一组**。
  *
  * ## 长按阈值取组合自己的
  *
@@ -75,11 +96,13 @@ internal class ComboDetector(
     /**
      * 这几颗键凑成的是哪一档 —— `null` = 没有绑定，组合不成立（见类注释）。
      *
-     *  由装配方接 `ConfigChannel.comboFor`（读注入侧手上那份配置的 `combos`）。
+     *  由装配方接 `ConfigChannel.comboFor`（读注入侧手上那份配置的 `combos`）。**成员数不设限**：
+     *  两颗那一档一对一地问（`pairFor`），3 颗起把窗口内按下的那一组整体递进来（`multiFor`），
+     *  「成员多的赢」由 `Config.comboFor` 判。
      */
     private val bindingFor: (List<KeyId>) -> ComboKey?,
     /**
-     * 当前的等待窗口（毫秒）—— 两颗键的 DOWN 相差不超过它才算同时按下。
+     * 当前的等待窗口（毫秒）—— 几颗键的 DOWN 相差不超过它才算同时按下。
      *
      *  由装配方接 `ConfigChannel.comboWindowMs`（用户在「组合按键设置」里可调）。
      */
@@ -87,8 +110,10 @@ internal class ComboDetector(
     /**
      * 这一颗键参与某一组已启用的组合吗 —— 决定它按下之后要不要**先等一个窗口**。
      *
-     *  参与的键等着看「第二颗键会不会来」（这期间不喂单键判定器，用户能感觉到的就是
+     *  参与的键等着看「同伴键会不会来」（这期间不喂单键判定器，用户能感觉到的就是
      *  「参与组合的键按下去晚一点才有反应」）；不参与的键立刻交回单键，一点不受影响。
+     *
+     *  `multiFor` 也拿它当第一道闸：不参与任何组合的键，不可能是多成员那一档的成员。
      */
     private val joinsCombo: (KeyId) -> Boolean,
 ) {
@@ -158,6 +183,86 @@ internal class ComboDetector(
     )
 
     /**
+     * 一次**凑成**：哪一档、真要算成员的那几颗、以及「从最早那一颗到这一下」隔了多久（只进日志）。
+     *
+     *  [keys] 不一定是候选全体：多成员那条路把窗口内按下的所有键一起递给绑定闸
+     *  （`Config.comboFor` 只要求成员都在），夹在中间的不相干的键不算成员 —— 拿候选全体去摘
+     * 单键状态机，会把一颗本来该自己响的键也一起吞掉。
+     */
+    private class Hit(
+        val key: ComboKey,
+        val keys: List<KeyId>,
+        val spanMs: Long,
+    )
+
+    /**
+     * 在窗口内挑一颗「配得上、且按下时刻最新」的同伴 —— 配上了就是这一档组合。
+     *
+     *  写成**一趟扫描**而不是 `filter { } .sortedByDescending { } .firstNotNullOfOrNull { }`：
+     *  这是每次按下都要走的一段（参与组合的键全都从这儿过），三段流水线一次按压要建两个
+     *  中间列表 + 三个 lambda；而候选本来只有窗口内那几颗（常态一两颗），排序毫无意义。
+     *
+     *  取法与原来逐条相同：配得上（`bindingFor` 有值）的候选里取 `at` 最大的一颗；
+     *  `at` 相同时保留**先遇到**的那一颗（原来稳定排序后取第一个，也是先遇到的那一颗）。
+     */
+    private fun pairFor(
+        id: KeyId,
+        now: Long,
+        window: Long,
+    ): Hit? {
+        var best: Hit? = null
+        var bestAt = 0L
+        for ((key, at) in recent.entries) {
+            val candidate = if (key != id && now - at <= window) bindingFor(listOf(key, id)) else null
+            val current = best
+            if (candidate != null && (current == null || at > bestAt)) {
+                best = Hit(candidate, listOf(key, id), now - at)
+                bestAt = at
+            }
+        }
+        return best
+    }
+
+    /**
+     * 3 颗以上的组合：窗口内按下的这一组里，是不是正好凑齐了某一档（[MULTI_MIN_KEYS] 起）。
+     *
+     *  与 [pairFor] 的分工见类注释。两条判据与两颗那条**同一条口径**：每颗的 DOWN 与当前这一下
+     *  相差不超过窗口；夹在中间的不相干的键不作废这一档，但它也不算成员。
+     *
+     * ## 先数、后建表
+     *
+     *  第一趟只数不建表：窗口内凑不够 3 颗就直接收工。参与**两颗**组合的键每次按下都会走到
+     *  这里（[pairFor] 没配上就是这一条），那才是常态 —— 让它每次按压分配一个列表说不过去。
+     *  最外层还有一道 `joinsCombo`：不参与任何组合的键连数都不数。
+     */
+    private fun multiFor(
+        id: KeyId,
+        now: Long,
+        window: Long,
+    ): Hit? {
+        //  不参与任何组合的键不可能是多成员组合的成员 —— 这一位比扫一遍候选便宜得多
+        if (!joinsCombo(id)) return null
+        var count = 1
+        for ((key, at) in recent.entries) {
+            if (key != id && now - at <= window) count++
+        }
+        if (count < MULTI_MIN_KEYS) return null
+        //  候选 = 这一下 + 窗口内按下过的那些（含刚松手的：顺序按下也算凑齐，见 [recent] 的注释）
+        val pool = arrayListOf(id)
+        for ((key, at) in recent.entries) {
+            if (key != id && now - at <= window) pool.add(key)
+        }
+        //  「成员多的赢」「同数按配置顺序」都在 `Config.comboFor` 里，这一层不重复判。
+        //  比 [MULTI_MIN_KEYS] 小的结果不接：那说明这是一档**两颗**的组合，本该由 [pairFor]
+        //  认出来（它带着「按下时刻最近」的挑法），走到这里还认成两颗只会挑错成员。
+        val hit = bindingFor(pool)?.takeIf { it.keys.size >= MULTI_MIN_KEYS } ?: return null
+        //  成员按**命中那一档自己的清单**取：候选里夹的别的键不算成员（它们还得自己走单键判定）
+        val members = List(hit.keys.size) { i -> pool.first { it.id == hit.keys[i] } }
+        //  间隔按**成员**里最早那一颗算（候选里可能夹着不相干的键，那是别人的按下时刻）
+        return Hit(hit, members, now - members.minOf { recent[it] ?: now })
+    }
+
+    /**
      * @return 见 [Down]：`TAKEN` = 归组合（调用方不要再喂单键）；`HOLD` = 先压一个窗口；
      *   `PASS` = 与组合无关，立刻交给单键判定器。
      */
@@ -193,23 +298,18 @@ internal class ComboDetector(
         //  三颗键交错按（A → C → B，只有 A+B 配了组合）时 `ConcurrentHashMap` 的迭代序是散列序，
         //  可能先递给你 C —— 一配不上就整个落回单击，A+B 那一档直接落空（三颗各判各的）。
         //  多颗都配得上时按**按下时刻由近到远**取：最近按下的那颗与当前这一下最像同一次组合。
-        val paired =
-            recent.entries
-                .filter { (key, at) -> key != id && now - at <= window }
-                .sortedByDescending { it.value }
-                .firstNotNullOfOrNull { (key, at) ->
-                    bindingFor(listOf(key, id))?.let { Triple(key, at, it) }
-                }
+        //
+        //  先按**两颗**配（老路径）：认出来就用它，结论与顺序按下那条语义完全不变。
+        //  认不出再问**多成员**：窗口内这几颗 + 当前这一下正好凑齐某一档（3 颗起）。
+        val hit = pairFor(id, now, window) ?: multiFor(id, now, window)
         // 没凑成：只有「参与组合的键」才值得先等一个窗口，其余立刻交回单键
-        if (paired == null) return if (joinsCombo(id)) Down.HOLD else Down.PASS
-        val (other, otherAt, hit) = paired
-        val keys = listOf(other, id)
-        val c = Combo(hit, keys, pressedAt = now)
+        if (hit == null) return if (joinsCombo(id)) Down.HOLD else Down.PASS
+        val c = Combo(hit.key, hit.keys, pressedAt = now)
         combo = c
         //  只有**还按着**的那几颗需要吞抬手：早松开的那颗不会再有 UP 到来，记进 [consumed]
         //  会一直留着 —— 下一次按它时那条正常抬手就被吞了（表现是「这颗键偶尔按了没反应」）
-        keys.filterTo(consumed) { down.containsKey(it) }
-        for (k in keys) {
+        hit.keys.filterTo(consumed) { down.containsKey(it) }
+        for (k in hit.keys) {
             //  已经松手的那一颗这一下已经算进这档组合了，别再去配后面按下的键
             if (!down.containsKey(k)) recent.remove(k)
             //  先按下的那颗已经排上了长按枪，组合成立就把它摘掉 —— 否则组合期间会判出单键长按
@@ -217,8 +317,8 @@ internal class ComboDetector(
         }
         // 判据级：这一行是「组合键到底认没认出来」的唯一证据。
         XLog.w(
-            "组合键：${keys.joinToString(" + ") { it.label }} 同时按下（${hit.id}）" +
-                "（间隔 ${now - otherAt}ms，窗口 ${window}ms）",
+            "组合键：${hit.keys.joinToString(" + ") { it.label }} 同时按下（${hit.key.id}）" +
+                "（间隔 ${hit.spanMs}ms，窗口 ${window}ms）",
         )
         scheduleLong(c, startedAt = now)
         return Down.TAKEN

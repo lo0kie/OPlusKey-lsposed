@@ -54,6 +54,15 @@ internal object HostLinkState {
      */
     var hostServiceUp by mutableStateOf(true)
 
+    /**
+     * **调试**：把整条链路当成「所有段都坏了」—— 让「运行状态」那几条一起红，验排版与图标。
+     *
+     *  只有调试通道会写它（`--es tips broken`，传空串关掉）。读它在 `SettingsPage.linkFacts`
+     *  那一处：判据与渲染全都不动，只是**换一份事实**——所以看到的就是真的「全坏」时的样子
+     *  （包括整页只读、控件灰掉）。
+     */
+    var debugAllBroken by mutableStateOf(false)
+
     /** 宿主侧报活的**代次** —— 每收到一条报活就自增；进页时记下它、等一档再看变没变。 */
     var hostAliveToken by mutableIntStateOf(0)
 

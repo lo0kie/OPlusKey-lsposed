@@ -137,6 +137,17 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
     intent.getStringExtra("combo")?.let { raw ->
         applyDebugCombo(raw, intent.getStringExtra("combo_single"), intent.getStringExtra("combo_long"))
     }
+    // 首页那条「有一件事要处理」的模拟 —— **改数据源，不另加一套渲染**：
+    //   把「宿主服务在跑」置假，自检里「服务运行」那一段就红，首页那条提示照常由真实判据走到它。
+    //   「有新版本」那条不需要模拟口子：`settings put global opluskey_mock_update '<json>'` 就是
+    //   现成的一条（见 `debugMockRelease`），走的是真实的新旧 / 「不再提示」判据。
+    intent.getStringExtra("tips")?.let { raw ->
+        //  `broken` = 把**整份事实**换成「所有段都坏」（见 `ALL_BROKEN_FACTS`）：
+        //  判据与渲染都不动，所以看到的就是真的全坏时的样子 —— 整页只读、控件全灰、
+        //  「运行状态」里每条都红。空串关掉它。
+        link.debugAllBroken = raw.lowercase() == "broken"
+        XLog.w("调试：首页提示 → ${if (raw.isEmpty()) "恢复真实状态" else raw}")
+    }
     if (intent.getBooleanExtra("state", false)) logDebugState()
 }
 
@@ -146,8 +157,12 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
  *  走 [write] 而不是直接落盘：那条路同时做「落盘 + 广播」，注入侧与宿主拿到的才是同一份 ——
  *  只写文件的话，注入侧（system_server）手上仍是旧配置，组合键判断不成立，验出来就是假阴性。
  *
- *  @param raw `plus+ck1` 这种（`+` 连接的键 id）；**不是恰好两颗**（`ComboKey.MIN_KEYS..MAX_KEYS`）
- *  就清空所有组合键 —— 与界面那条路同一个规矩，调试通道不该能写出界面上不存在的形状
+ *  @param raw `plus+ck1` 这种（`+` 连接的键 id）；颗数不在 `ComboKey.MIN_KEYS..MAX_JUDGE_KEYS`
+ *  之内就清空所有组合键（一颗不叫组合、太多颗吃掉整块键盘）。
+ *
+ *  **这里放行到判定侧的上限（[ComboKey.MAX_JUDGE_KEYS]），不是界面的 `MAX_KEYS`**：三颗以上的
+ *  组合判定、执行、日志都已经跑得通，但界面上没有造它的入口（用户口径未定）—— 想在哪台机器上
+ *  验多成员，只能从这条调试通道造。它不是界面入口（要 adb 发广播），不会让普通用户撞见。
  */
 private fun SettingsPage.applyDebugCombo(
     raw: String,
@@ -156,7 +171,7 @@ private fun SettingsPage.applyDebugCombo(
 ) {
     val members = raw.split('+').map { it.trim() }.filter { it.isNotEmpty() }
     val combos =
-        if (members.size !in ComboKey.MIN_KEYS..ComboKey.MAX_KEYS) {
+        if (members.size !in ComboKey.MIN_KEYS..ComboKey.MAX_JUDGE_KEYS) {
             emptyList()
         } else {
             listOf(

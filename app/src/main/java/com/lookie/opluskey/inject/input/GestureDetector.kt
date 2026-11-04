@@ -4,7 +4,7 @@ import android.os.Handler
 import android.os.SystemClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import java.util.concurrent.ConcurrentHashMap
@@ -84,7 +84,7 @@ internal class GestureDetector(
      * 第四个参数是「长按连续触发」的重复派发标记：只有长按会重复，
      * 重复那几次不能当新的一次按键（据此跳过振动反馈）。
      */
-    private val onGesture: (KeyId, Gesture, KeyConfig, Boolean) -> Unit,
+    private val onGesture: (KeyId, GestureTrigger, KeyConfig, Boolean) -> Unit,
     /**
      * 「这一按松手了」——只对**已判过长按**的那一次回调（`oplus:voice_memory` 靠它停下来）。
      *
@@ -138,6 +138,13 @@ internal class GestureDetector(
          * `onKeyUp`，没有这个标记就会再开一个单击窗口、把双击变成「双击 + 单击」。
          */
         @Volatile var doubleFired: Boolean = false,
+        /**
+         * 这一次连击链已经数到第几击（`reset` 清零）。
+         *
+         *  「双击」是它的第 2 档特例：`clicks == 2` 时行为与原先完全一致。第 3 击起的档位
+         *  只有手改 / 导入的配置才有（`KeyConfig.extraClicks`），界面没有入口。
+         */
+        @Volatile var clicks: Int = 0,
         /**
          * 本次按下的时刻（`onKeyDown` 里写、`reset` 里清）。
          *
@@ -196,7 +203,7 @@ internal class GestureDetector(
      */
     fun onRomGesture(
         id: KeyId,
-        gesture: Gesture,
+        gesture: GestureTrigger,
         config: KeyConfig,
     ) {
         reset(id)
@@ -214,15 +221,27 @@ internal class GestureDetector(
     ) {
         val p = pending(id)
 
-        // 双击窗口内又来一次按下 → 双击
+        // 窗口内又来一次按下 → 连击链 +1；数到这颗键配的最高档就地派发（双击就是这一档的 n=2）
         if (p.sawFirstRelease && now <= p.doubleWindowAt) {
+            val maxClicks = maxOf(2, config.clicksForJudge)
+            p.clicks += 1
+            if (p.clicks < maxClicks) {
+                //  还没到最高档：继续等下一击。**不 reset、也不再排长按枪**（连击中不会变长按），
+                //  抬手上会照常再排一次窗口（见 onKeyUp）。
+                XLog.w("${id.label}：第 ${p.clicks} 击（这颗键配到第 $maxClicks 击）")
+                p.sawFirstRelease = false
+                p.doubleWindowAt = 0L
+                return
+            }
             // 「判出手势」这几行是验收判据链的第二环（见 AGENTS.md 二、1.2）——
             // 必须是 W：注入侧的 i/d 在 LSPosed 日志页里看不到。
-            XLog.w("${id.label}：双击")
+            XLog.w(if (p.clicks == 2) "${id.label}：双击" else "${id.label}：${p.clicks} 击")
+            val firedClicks = p.clicks
             reset(id)
-            // reset 会把这个标记清掉，所以在 reset 之后再置位：
-            // 这一下的抬手属于双击的第二下，`onKeyUp` 要据此**派发**双击（而不是再开单击窗口）。
+            // reset 会把这个标记与击数一起清掉，所以在 reset 之后再置位：
+            // 这一下的抬手属于连击链的最后一击，`onKeyUp` 要据此**派发**（而不是再开窗口）。
             p.doubleFired = true
+            p.clicks = firedClicks
             //  **派发挪到抬手**（见 onKeyUp 的 doubleFired 那一支）。原来在这里当场派发，
             //  真机踩到两条：
             //   · ROM 的组合键窗口：电源键按着的时候注入音量键，`PhoneWindowManager` 会把它当
@@ -237,6 +256,7 @@ internal class GestureDetector(
         p.sawFirstRelease = false
         p.longPressFired = false
         p.doubleFired = false
+        p.clicks = 1
         p.longPressAt = now + config.longPressMs
         p.doubleWindowAt = 0L
         // 记下这一下是什么时候按下的 —— onKeyUp 的「立即触发单击」靠它认领同一次按压的直判
@@ -297,16 +317,22 @@ internal class GestureDetector(
         // 双击已经判过 —— 这次抬手是双击的第二下：**到这里才派发**（理由见 onKeyDown 里那段）。
         // 也不能再开一个单击窗口，否则 `doubleClickMs` 之后会补一次单击，双击变成「双击 + 单击」两下
         if (p.doubleFired) {
+            val firedClicks = p.clicks
             p.doubleFired = false
             reset(id)
-            dispatch(id, Gesture.DOUBLE, config, repeat = false)
+            dispatch(id, GestureTrigger.Click(firedClicks), config, repeat = false)
             return
         }
 
         // 「双击 = 无操作」且开了「立即触发单击」时**不等**双击窗口：等下去也没有第二下可用。
         //  **熄屏不再走这一支** —— 那会把双击整档废掉（熄屏下每一下都是一次单击）。
         //  熄屏改由窗口期顶住 CPU（见下面 `holdAwake` 那一段）。
-        if (config.instantSingle && config.actionOf(Gesture.DOUBLE) is Action.None) {
+        //  判据多一条 `clicksForJudge <= 1`：配了第 3 击起的键**不能**在这里抢跑，
+        //  否则单击会立刻派发、后面的连击永远凑不齐。
+        if (config.instantSingle &&
+            config.clicksForJudge <= 1 &&
+            config.actionOf(GestureTrigger.Click(2)) is Action.None
+        ) {
             // 这一下是不是已经被直判过了（同一次按压被转发两遍）：
             // 记到了按下时刻 ⇒ 判「按下那一刻前后 DIRECT_BURST_MS 之内有没有直判」，用本次按下当锚点，
             //   才不会把上一次按压的直判算到这一下头上；
@@ -330,7 +356,7 @@ internal class GestureDetector(
             // 与上面那条直判去重同一笔账：这一下已经派发过单击了，
             // 紧接着那次 DOWN/UP（同一次按压被转发两遍时）与长按计时器都要据此让路。
             p.lastDirectSingleAt = now
-            dispatch(id, Gesture.SINGLE, config, repeat = false)
+            dispatch(id, GestureTrigger.Click(1), config, repeat = false)
             return
         }
 
@@ -399,6 +425,7 @@ internal class GestureDetector(
         p.sawFirstRelease = false
         p.longPressFired = false
         p.doubleFired = false
+        p.clicks = 0
         p.pressAt = 0L
     }
 
@@ -450,7 +477,7 @@ internal class GestureDetector(
                     missReason?.let { XLog.w(it) }
                     if (fire) {
                         XLog.w("${id.label}：长按")
-                        dispatch(id, Gesture.LONG, config, repeat = false)
+                        dispatch(id, GestureTrigger.LongPress, config, repeat = false)
                         // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
                         // 多条命令（`cmd:<名字>` 指串行命令）反复重放没意义 —— 界面长按 tab 也按同一条判定隐藏。
                         // `longIsSerial` 来自广播：注入侧读不到命令库文件，自己算必然恒 false。
@@ -510,7 +537,7 @@ internal class GestureDetector(
                         finish(id)
                         return@Runnable
                     }
-                    dispatch(id, Gesture.LONG, config, repeat = true)
+                    dispatch(id, GestureTrigger.LongPress, config, repeat = true)
                     scheduleRepeat(id, config)
                 } catch (e: Throwable) {
                     XLog.w("长按连续触发派发失败（已停止）：${id.label}", e)
@@ -565,10 +592,11 @@ internal class GestureDetector(
                             p.sawFirstRelease = false
                             p.doubleWindowAt = 0L
                         } else {
-                            XLog.w("${id.label}：单击")
+                            val firedClicks = p.clicks.coerceAtLeast(1)
+                            XLog.w(if (firedClicks == 1) "${id.label}：单击" else "${id.label}：$firedClicks 击")
                             p.sawFirstRelease = false
                             p.doubleWindowAt = 0L
-                            dispatch(id, Gesture.SINGLE, config, repeat = false)
+                            dispatch(id, GestureTrigger.Click(firedClicks), config, repeat = false)
                         }
                     }
                 } catch (e: Throwable) {
@@ -587,7 +615,7 @@ internal class GestureDetector(
      */
     private fun dispatch(
         id: KeyId,
-        gesture: Gesture,
+        gesture: GestureTrigger,
         config: KeyConfig,
         repeat: Boolean,
     ) {

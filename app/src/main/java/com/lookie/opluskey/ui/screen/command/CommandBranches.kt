@@ -226,6 +226,15 @@ internal fun SettingsPage.addBranchRule(
     rules: List<StateRule>,
     onAdded: (Int) -> Unit,
 ) {
+    //  **上限先判**：表满了就不该再听「还有场景没选完」那句 —— 那一句是「你可以再加，但先把这条填了」，
+    //  而满了的时候压根加不了，两件事说反了会让人以为填完还能加。
+    if (rules.size >= StateRule.MAX_PER_GESTURE) {
+        hint(
+            I18n.format(Strings.COMMAND_BRANCH_LIMIT, StateRule.MAX_PER_GESTURE),
+            slot = HINT_SLOT_DISABLED,
+        )
+        return
+    }
     val tail = rules.lastOrNull()
     if (tail != null && tail.conditions.isEmpty() && tail.action == Action.None) {
         //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串

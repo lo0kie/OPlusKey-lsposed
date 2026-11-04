@@ -63,9 +63,10 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         //  带子页那一档来自带子自己的 8dp 下内边距，两边视觉上正好齐平。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
-        //  查到新版的招呼**摆在第一块之前**：它是通知，不是这一页的内容（与「运行状态」那一类不同）——
-        //  内容往下推一档，走的时候整条退场，不留空槽（见 `HomeUpdateTip`）。
-        HomeUpdateTip()
+        //  顶栏提示**摆在第一块之前**：它们是通知，不是这一页的内容（与「运行状态」那一类不同）——
+        //  有几条就往下推几档，走的时候整条退场，不留空槽（见 `HomeTips`）。
+        //  最多两条：新的版本（有东西可取）+ 「有一件事要你处理」（系统侧旧版 / 自检异常，共用一格）。
+        HomeTips()
 
         //  块与块之间的间距由小标题自带（上 16 / 下 0），这一页不再写 `Spacer`。
         // 这一节只有模块总闸一行，小标题就按它叫（原先叫「按键绑定」，与那一页的页名混在一起）。

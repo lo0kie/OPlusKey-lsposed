@@ -9,6 +9,7 @@ import android.os.SystemClock
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.wire.ModuleWire
@@ -58,9 +59,11 @@ internal class GestureForwarder(
      */
     fun forward(
         id: KeyId,
-        gesture: Gesture,
+        gesture: GestureTrigger,
         repeat: Boolean,
     ) {
+        //  **线格式不变**：三档的档位 id（`single` / `double` / `long`）与 `Gesture.id` 逐字相同，
+        //  多击是新增的 `clickN` —— 老宿主收到它只会打一行「不认识的手势」，不会误执行。
         val phase = gesture.id
         // 补发那条**复用同一个 Intent**：两条必须带同一个 sent_at，宿主才认得出是一件事。
         //  `sent_at` 也就在这里（判定那一刻）打上 —— 挪进发送线程会变成「排到队里才开始计时」，

@@ -471,7 +471,12 @@ private fun SettingsPage.RootSwitchCard(enabled: Boolean) {
                     checked = commandDraft.draft.root,
                     // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
                     enabled = enabled,
-                    onCheckedChange = { on -> commandDraft.draft.root = on },
+                    //  打开这一档就顺手申请一次授权（没有 root 时那句提示会顶上来）；
+                    //  关掉那一档只用 `sh`，没有东西可申请。
+                    onCheckedChange = { on ->
+                        commandDraft.draft.root = on
+                        if (on) requestRootGrant()
+                    },
                 ),
             ),
     )

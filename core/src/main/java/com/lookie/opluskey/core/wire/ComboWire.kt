@@ -125,14 +125,16 @@ object ComboWire {
      * 一条 → [ComboKey]；认不出返回 `null`。
      *
      *  判据与 `ConfigDto.ComboDto.toCombo` 相同：没有 id 当不了身份（界面上选哪一行靠它），
-     *  成员不足 [ComboKey.MIN_KEYS] 颗判不出来（一颗不叫组合）。
+     *  成员不足 [ComboKey.MIN_KEYS] 颗判不出来（一颗不叫组合）；截断按**判定侧**的
+     *  [ComboKey.MAX_JUDGE_KEYS]（理由同那边：界面造不出三颗以上的组合，但手改文件写进来的
+     *  判定侧认，收口在界面的 `MAX_KEYS` 上等于让多成员形态永远到不了判定器）。
      */
     private fun WireCombo.toCombo(): ComboKey? {
         val members = keys.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (id.isEmpty() || members.size < ComboKey.MIN_KEYS) return null
         return ComboKey(
             id = id,
-            keys = members.take(ComboKey.MAX_KEYS),
+            keys = members.take(ComboKey.MAX_JUDGE_KEYS),
             enabled = enabled,
             single = Action.parse(single),
             long = Action.parse(long),

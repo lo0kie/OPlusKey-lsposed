@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
@@ -107,8 +108,14 @@ internal fun EmphasisText(
         //  **分段与对齐方式无关**：只按居中档分段的话，同一段文案在左对齐时会被压成一整块
         //  （免责声明那种长正文正是左对齐的）—— 同一句话两处排版，读起来不像一份文件。
         //  空行不进排版（画出来也只是一行空白），段间那道 [PARAGRAPH_GAP] 照旧。
-        val paragraphs = text.split("\n\n").map { para -> para.lines().map { it.trim() }.filter { it.isNotEmpty() } }
-        val total = paragraphs.sumOf { it.size }
+        //  分段只在**文案变了**才重算：这一层每次重组（弹窗按钮态、焦点、进出场动画）都会跑，
+        //  不记的话每次都要把整段正文再切一遍、再逐行 trim。对齐方式不参与分段（见下），
+        //  所以 `remember` 的键只给 `text`。
+        val paragraphs =
+            remember(text) {
+                text.split("\n\n").map { para -> para.lines().map { it.trim() }.filter { it.isNotEmpty() } }
+            }
+        val total = remember(paragraphs) { paragraphs.sumOf { it.size } }
         var drawn = 0
         paragraphs.forEachIndexed { index, lines ->
             if (index > 0) Spacer(Modifier.height(PARAGRAPH_GAP))
@@ -151,18 +158,20 @@ private fun EmphasisLine(
 ) {
     if (text.isEmpty()) return
     val lineStyle = style.copy(lineHeightStyle = lineHeightStyle, platformStyle = DIALOG_PLATFORM_STYLE)
+    //  加粗解析同理：只有这一行的文字变了才需要重扫
+    val rendered = remember(text) { emphasis(text) }
     if (text.startsWith(BULLET_MARK)) {
         Row(Modifier.fillMaxWidth()) {
             Text(text = BULLET_GLYPH, style = lineStyle)
             Text(
-                text = emphasis(text.removePrefix(BULLET_MARK)),
+                text = remember(text) { emphasis(text.removePrefix(BULLET_MARK)) },
                 style = lineStyle,
                 modifier = Modifier.weight(1f),
             )
         }
     } else {
         Text(
-            text = emphasis(text),
+            text = rendered,
             style = lineStyle,
             modifier = Modifier.fillMaxWidth(),
         )

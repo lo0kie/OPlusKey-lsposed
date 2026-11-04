@@ -12,8 +12,10 @@ import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.gestureOrNull
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.ConditionProbe
@@ -170,27 +172,16 @@ internal object GestureExec {
 
         if (staleOrDuplicate(key.id, phaseId, sentAt)) return
 
-        val gesture =
-            when (phaseId) {
-                Gesture.SINGLE.id -> {
-                    Gesture.SINGLE
-                }
-
-                Gesture.DOUBLE.id -> {
-                    Gesture.DOUBLE
-                }
-
-                Gesture.LONG.id -> {
-                    Gesture.LONG
-                }
-
-                else -> {
-                    XLog.w("不认识的手势：$phaseId")
-                    return
-                }
+        //  档位按**触发条件**解析：三档的 id 与 `Gesture.id` 逐字相同，多击是 `clickN`。
+        //  认不出才丢掉 —— 手搓的广播、以及将来更新的注入侧发来的新档都会落到这里。
+        val trigger =
+            com.lookie.opluskey.core.model.GestureTrigger
+                .ofId(phaseId) ?: run {
+                XLog.w("不认识的手势：$phaseId")
+                return
             }
 
-        dispatch(key, gesture, repeat)
+        dispatch(key, trigger, repeat)
     }
 
     /**
@@ -400,17 +391,17 @@ internal object GestureExec {
     /** 两级开关与执行 —— handle 的最后一站。 */
     private fun dispatch(
         key: KeyId,
-        gesture: Gesture,
+        trigger: GestureTrigger,
         repeat: Boolean,
     ) {
         val config = ConfigStore.read()
         val keyConfig = config.key(key)
         if (!config.isLive(key)) {
             val why = if (!config.global.enabled) "总闸已关" else "这颗键已停用"
-            XLog.w("${key.label}：$why，忽略这次 ${gesture.label}（模块不生效）")
+            XLog.w("${key.label}：$why，忽略这次 ${trigger.label}（模块不生效）")
             return
         }
-        runAction(key, gesture, keyConfig, repeat, config)
+        runAction(key, trigger, keyConfig, repeat, config)
     }
 
     /**
@@ -451,11 +442,14 @@ internal object GestureExec {
      */
     private fun runAction(
         id: KeyId,
-        gesture: Gesture,
+        trigger: GestureTrigger,
         keyConfig: KeyConfig,
         repeat: Boolean,
         config: Config,
     ) {
+        //  三档才走条件分支（`StateRule` 只认这三档）；多击直接取它自己那一档的绑定 ——
+        //  少配一档就少一档，不拿三档的动作顶替。
+        val gesture = trigger.gestureOrNull()
         // 条件执行：先在这颗键这一档的**顺序表**里找，命中第一条就执行它；一条都不中就走
         //  [KeyConfig.actionOf] 那一档本来的绑定 —— 所以分叉不占用绑定，两件事互不影响。
         //  判据现判（按下的那一刻）：缓存会让「切到微信再按」仍按上一次的应用走。
@@ -464,17 +458,21 @@ internal object GestureExec {
         //  缓存只活在这一下里（下面这个 map 是局部的）—— 跨次缓存会让「切到微信再按」仍按上一次的应用走。
         val judged = HashMap<BranchCondition, Boolean>()
         val action =
-            keyConfig.actionFor(gesture) { condition ->
-                judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
+            if (gesture == null) {
+                keyConfig.actionOf(trigger)
+            } else {
+                keyConfig.actionFor(gesture) { condition ->
+                    judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
+                }
             }
         val r =
             runner ?: run {
-                XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${gesture.id}")
+                XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${trigger.id}")
                 return
             }
         // 这条是按键的可见证据（release 里也保留），所以只在第一次执行时打 W；
         val log =
-            "${id.label} - ${gesture.label}${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}" +
+            "${id.label} - ${trigger.label}${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}" +
                 "（宿主进程执行）"
         if (repeat) XLog.d(log) else XLog.w(log)
         // 链路自检那一笔必须在 `run` **之后**，且「无操作」不算执行过：
@@ -484,9 +482,9 @@ internal object GestureExec {
         if (!repeat) {
             // 语言档在拼主语**之前**对一次：`triggerLabel` 里的键名 / 手势名走的都是字典。
             syncLanguage(config)
-            noticeIfNeeded(config, action, triggerLabel(id, gesture))
+            noticeIfNeeded(config, action, triggerLabel(id, trigger))
         }
-        r.run(action, "${id.label} - ${gesture.label}")
+        r.run(action, "${id.label} - ${trigger.label}")
         if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
         //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
         //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。
@@ -578,8 +576,8 @@ internal object GestureExec {
      */
     private fun triggerLabel(
         id: KeyId,
-        gesture: Gesture,
-    ): String = "${keyName(id)} - ${gestureName(gesture)}"
+        trigger: GestureTrigger,
+    ): String = "${keyName(id)} - ${trigger.gestureOrNull()?.let(::gestureName) ?: trigger.label}"
 
     /**
      * 组合键提示里的主语 —— 「侧键 + 音量上 - 短按」。

@@ -39,6 +39,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.opticalCenter
@@ -116,6 +117,10 @@ internal fun SettingsPage.ComboListSection(
         SectionTitle(
             text = comboListTitle(cfg, filterKey),
             click = SectionTitleClick.Menu(expanded = menu.open) { menu.show() },
+            //  行尾是**已用 / 上限**（与「命令名称」那行同一个 `TitleCounter`）：
+            //  标题本身是筛选入口（筛了某颗键时它显示的是那颗键的名字），计数只报「共配了几档 / 上限」，
+            //  与筛选无关 —— 否则筛一下就变成「已用 2 / 上限 9」，读起来像丢了几组。
+            trailing = { TitleCounter(cfg.combos.size, MAX_COMBOS) },
         )
         //  两列的宽度**整列量一次**（见 [comboPairWidths]）：每行各量各的就会一行一个宽度。
         CardList(rows = comboRows(cfg, writable, atLimit, filterKey, comboPairWidths(cfg)))
@@ -175,7 +180,7 @@ private fun SettingsPage.comboRow(
         //  动作摘要（`短按：手电筒 · 长按：…`）仍然不写：一列下来全是小字、每行还都不
         //  一样长，扫一眼只能看见一片灰 —— 两档动作进页面看。
         summary = comboStateSummary(combo.enabled),
-        //  行首用**第几组**的数字图标（1~5，与 `MAX_COMBOS` 同一档，用户口径）：一列下来能数清现在有几组，
+        //  行首用**第几组**的数字图标（1~9，与 `MAX_COMBOS` 同一档，用户口径）：一列下来能数清现在有几组，
         //  与首页「按键」卡那几颗自定义键同一套写法（`menuKeyNumber`）。
         //  停用的那一档换成禁用图标（与按键列表同一颗、同一个位置）；成员被删掉的那一档
         //  同样是禁用图标（判定那边凑不齐），数字就看不到了 —— 那一组本来就废了。

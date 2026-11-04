@@ -69,13 +69,63 @@ data class KeyConfig(
      *  空表（默认）= 与没有这一档完全相同。
      */
     val rules: List<StateRule> = emptyList(),
+    /**
+     * 第 3 击起的**额外档位**：连击次数 → 动作（`click3` / `click4` …）。
+     *
+     *  与 [rules] 同一套：它是张表，进不了 `ConfigFields` 那种「一格一个值」的字段表，于是只走落盘。
+     *  界面上**没有入口**（三格仍只编辑单击 / 双击 / 长按）—— 它服务的是「手改 / 导入配置」，
+     *  以及将来界面放开之后的判定与执行那一段。空表（默认）⇒ 行为与没有这一项完全相同。
+     *
+     *  动作**不广播**：注入侧只判手势、不挑动作，它要知道的只有 [judgeClicks]。
+     */
+    val extraClicks: Map<Int, Action> = emptyMap(),
+    /**
+     * 判定侧要认到第几击 —— **只由宿主算好、随配置广播带过来**（同 [longIsSerial] 那一套）。
+     *
+     *  0 = 这一位没给（老版本发的广播 / 从没写过这一项的配置）⇒ 判定侧退回 [boundClicks]
+     *  的兜底，也就是「只看三档」。
+     */
+    val judgeClicks: Int = 0,
 ) {
-    fun actionOf(gesture: Gesture): Action =
-        when (gesture) {
-            Gesture.SINGLE -> single
-            Gesture.DOUBLE -> double
-            Gesture.LONG -> long
+    fun actionOf(gesture: Gesture): Action = actionOf(gesture.trigger())
+
+    /**
+     * 按**触发条件**取动作 —— 自定义手势（第 3 击起）只有这一条通路。
+     *
+     *  三档与 [actionOf] 完全同源（那边就是转调这里）；`Click(n≥3)` 去 [extraClicks] 取，
+     *  没配就是「无操作」—— **不退回单击**：少配一档就少一档，拿单击顶替等于按两下执行了一下。
+     */
+    fun actionOf(trigger: GestureTrigger): Action =
+        when (trigger) {
+            GestureTrigger.LongPress -> {
+                long
+            }
+
+            is GestureTrigger.Click -> {
+                when (trigger.count) {
+                    1 -> single
+                    2 -> double
+                    else -> extraClicks[trigger.count] ?: Action.None
+                }
+            }
         }
+
+    /**
+     * 这颗键**真的绑了动作**的最高击数（0 = 连单击都没绑）—— 宿主的判据。
+     *
+     *  与 `KeyGesturePlan` 的取法同一个（那边按 `slots` 取），这里单独留一份是因为判定侧
+     *  只看得到广播里的 [judgeClicks]，取不到动作表。
+     */
+    val boundClicks: Int
+        get() =
+            maxOf(
+                if (single !is Action.None) 1 else 0,
+                if (double !is Action.None) 2 else 0,
+                extraClicks.filterValues { it !is Action.None }.keys.maxOrNull() ?: 0,
+            )
+
+    /** 判定侧实际要用的那一档：广播给了就用它，没给就按动作表算（老版本兼容）。 */
+    val clicksForJudge: Int get() = if (judgeClicks > 0) judgeClicks else boundClicks
 
     /**
      * 这次手势该执行哪个动作 —— **条件分支的唯一入口**。
@@ -130,6 +180,7 @@ data class KeyConfig(
                 ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
                 ConfigFields.F_INSTANT_SINGLE to instantSingle,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
+                ConfigFields.F_JUDGE_CLICKS to clicksForJudge,
             ),
         )
 
@@ -220,6 +271,7 @@ data class KeyConfig(
                 instantSingle = v.bool(ConfigFields.F_INSTANT_SINGLE),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
                 rules = rules,
+                judgeClicks = v.number(ConfigFields.F_JUDGE_CLICKS),
             )
     }
 }

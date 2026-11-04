@@ -152,6 +152,18 @@ jobs:
       - name: i18n 兜底一致性
         run: python3 tools/check-i18n-fallbacks.py
 
+      # 性能审计：主线程阻塞（界面层里的 IO / 跨进程查询）与注入侧热路径的每次分配，
+      #   这两类问题 detekt / lint 都看不见 —— 一个只看单文件、一个不看调用频率。
+      #   第三类（组合期重算）只报数，不判定：那是「按状态派生行表」的正常写法。
+      - name: 性能审计
+        run: python3 tools/audit-perf.py
+
+      # 配置结构闸：往 ConfigDto 里加 / 删 / 改字段，必须同一次改动抬 `ConfigCodec.VERSION`。
+      #   不抬的话，md5 那支会拿新 DTO 去校旧文件 —— 每一份已有配置当场判「读不懂」，
+      #   页面只读、注入侧不接管（真机上踩过两次，第二次是 `extra_clicks`）。编译期没有任何信号。
+      - name: 配置结构审计
+        run: python3 tools/audit-config-version.py
+
       # 补丁产物完整性：`patches/repo` 里那个 aar 是打完补丁重新发布的，不在任何上游仓库里，
       #   也没有上游签名可对 —— 仓库里那份就是唯一来源。校验和缺了 / 对不上，说明它被换过或传坏了。
       - name: 校验补丁产物

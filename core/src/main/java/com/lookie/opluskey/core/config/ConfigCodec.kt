@@ -55,8 +55,15 @@ object ConfigCodec {
      *  18 = `StateRuleDto` 多了 `enabled`（场景可以停用；15~17 见代码历史）。
      *  19 = （见代码历史，本次未改动）；
      *  20 = 顶层多了 `profile_id`（多配置的身份从「名字空 + 位次」换成显式 id）。
+     *  21 = `KeyDto` 多了 `extra_clicks`（第 3 击起的额外档位；界面没有入口，只对手改 / 导入生效）。
+     *
+     *  ⚠️ **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
+     *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
+     *  不抬版本的话，`version == VERSION` 那一支会拿新 DTO 去校旧文件，**每一份已有配置都当场
+     *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
+     *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 20
+    const val VERSION = 21
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

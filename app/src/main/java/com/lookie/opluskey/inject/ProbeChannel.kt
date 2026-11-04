@@ -68,6 +68,20 @@ internal object ProbeChannel {
      */
     internal const val OP_NET = "net"
 
+    /**
+     * `touch` —— 手势判定层的自检：进程内造几条合成轨迹，跑一遍「触摸适配 → 滑动判定」。
+     *
+     *  触摸事件目前在系统进程里还没有采集点（入口未确认，见 `TouchJudge` 的类注释），
+     *  所以这条链的唯一现成驱动就是它：先证明几何算得对，真实入口接上之后只剩一行线。
+     */
+    internal const val OP_TOUCH = "touch"
+
+    /**
+     * `combo` —— 组合键判定层的自检：造几档组合与几串按下，验「凑没凑齐」那条判据
+     * （`ComboSequence`，与成员数无关；判定器 `ComboDetector` 那两条路是它的镜像，两边必须同改）。
+     */
+    internal const val OP_COMBO = "combo"
+
     /** `net` 的目标地址（不填就用模块仓库的 releases 接口 —— 检查更新真正要打的那个）。 */
     internal const val EXTRA_URL = "url"
 
@@ -227,20 +241,35 @@ internal object ProbeChannel {
             return true
         }
         try {
-            when (op) {
-                OP_DUMP -> dump(loader, intent)
-                OP_CALL -> call(loader, intent)
-                OP_STATE -> state(loader, intent)
-                OP_CORNER -> corner(loader, intent)
-                OP_DRESS -> dress(loader, intent)
-                OP_ZOOM -> zoomFromHere(loader, intent)
-                OP_NET -> net(intent, loader)
-                else -> XLog.w("${describe(op)}：不认识的 op")
-            }
+            runOp(op, intent, loader)
         } catch (e: Throwable) {
             XLog.w("${describe(op)} 失败（已忽略）：${e.javaClass.simpleName}: ${e.message}")
         }
         return true
+    }
+
+    /**
+     * op 分发表 —— 单拎出来是因为**加一个 op 不该把 [handle] 推过 detekt 的
+     * `CyclomaticComplexMethod` 上限**（这一格当初就是这么顶上去的）：入口只保留
+     * 「action 对不对 / 有没有 loader / 兜住异常」三件事，这张表只回答「这个 op 交给谁」。
+     */
+    private fun runOp(
+        op: String,
+        intent: Intent,
+        loader: ClassLoader,
+    ) {
+        when (op) {
+            OP_DUMP -> dump(loader, intent)
+            OP_CALL -> call(loader, intent)
+            OP_STATE -> state(loader, intent)
+            OP_CORNER -> corner(loader, intent)
+            OP_DRESS -> dress(loader, intent)
+            OP_ZOOM -> zoomFromHere(loader, intent)
+            OP_NET -> net(intent, loader)
+            OP_TOUCH -> touch()
+            OP_COMBO -> combo()
+            else -> XLog.w("${describe(op)}：不认识的 op")
+        }
     }
 
     // ── 接收侧：桌面进程（自带一个接收器） ──────────────────────────────────────

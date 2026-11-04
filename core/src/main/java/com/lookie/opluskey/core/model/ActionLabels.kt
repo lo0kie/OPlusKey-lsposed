@@ -69,13 +69,15 @@ fun actionTitle(
 
         // 屏幕亮度（`bright:+15`）：三档各一句话，**数值编进句子** ——
         //  「增加」两个字看不出加了多少，而这里正是唯一能说清的地方。
+        //  外面再包一层主语：步骤行与执行提示里没有「这一格叫亮度」的上下文，
+        //  只写「增加 15%」看不出动的是什么（网格小字与百分比弹窗里有上下文，仍用不带主语那句）。
         is Action.Brightness -> {
-            brightnessTitle(action)
+            I18n.format(Strings.COMMON_BRIGHTNESS_FORMAT, brightnessTitle(action))
         }
 
         // 媒体音量（`volume:+10`）：与亮度同一套说法，数值编进句子
         is Action.Volume -> {
-            volumeTitle(action)
+            I18n.format(Strings.COMMON_VOLUME_FORMAT, volumeTitle(action))
         }
 
         // 系统开关：切换 / 打开 / 关闭三档各一句话 —— 名字在清单里，认不出就退回 id

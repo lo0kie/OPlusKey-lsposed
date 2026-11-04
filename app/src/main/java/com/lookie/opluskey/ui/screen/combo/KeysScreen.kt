@@ -27,6 +27,7 @@ import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
@@ -86,8 +87,13 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             //  **不再另加 [PAGE_TOP_PADDING]**：这一页首行就是小标题，它自己带 16 + 8 的上间距
             //  （与首页、更多选项两页同一笔账）；再加一档就比别的页多出 8dp。
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
-            //  第一块：按键列表（从首页搬来）—— 一颗键一行，点一行进那颗键的绑定页
-            SectionTitle(I18n.get(Strings.HOME_KEYS_SECTION, "按键列表"))
+            //  第一块：按键列表（从首页搬来）—— 一颗键一行，点一行进那颗键的绑定页。
+            //  行尾是**已用 / 上限**（与「命令名称」那行同一个 `TitleCounter`）：数的是收集来的
+            //  那几颗（上限只管它们），侧键是内置的、不占额度。
+            SectionTitle(
+                text = I18n.get(Strings.HOME_KEYS_SECTION, "按键列表"),
+                trailing = { TitleCounter(cfg.customKeys.size, KeyId.MAX_CUSTOM_KEYS) },
+            )
             KeysListCard(writable) { collectPending = true }
             //  第二块：组合按键那一列（标题本身就是筛选入口，见 [ComboListSection]）
             ComboListSection(cfg, writable, atLimit)
@@ -214,8 +220,9 @@ private fun SettingsPage.KeysLeaveEditConfirm() {
 /**
  * 「选择按键」弹窗 —— 这一档组合由哪几颗键组成。
  *
- *  成员数恒为 [ComboKey.MAX_KEYS]（两颗，用户口径）：判定侧也只认两颗，多勾的那颗永远等不到。
- *  所以**勾满两颗之后第三颗勾不上** —— 顺手弹条说「一个组合最多 2 颗按键」。
+ *  成员数恒为 [ComboKey.MAX_KEYS]（两颗，用户口径）。判定侧其实认得更多成员（3 颗起的组合
+ *  判定、执行、日志都已接线），但**界面上没有造它的入口**（用户口径未定）—— 所以勾满两颗
+ *  之后第三颗勾不上，顺手弹条说「一个组合最多 2 颗按键」。
  *  （让用户勾出个三颗的组合、再在「添加」那颗灰按钮上告诉他不行，等于把同一个规矩说两遍。）
  *
  *  「为什么还不能添加」只有 [blockedReason] 一处判据：已存在 / 还没选够。

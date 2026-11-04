@@ -27,6 +27,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple2
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple3
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple4
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple5
+import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple6
+import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple7
+import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple8
+import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple9
 import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
@@ -290,11 +294,43 @@ internal fun actionIcon(token: String): ImageVector =
                     TablerIcons.Outline.Variable
                 }
 
+                // 屏幕亮度 / 音量（`bright:+15` / `volume:+10`）：**token 带数值**，上面的常量分支
+                // 接不住，漏了这里就掉到下面那颗 `Dots` —— 步骤行里看着像「没配图标」。
+                // 三档的取法与菜单里那三行同一套（见 `Glyph` 那段）。
+                token.startsWith(Action.BRIGHT_PREFIX) -> {
+                    brightnessGlyph(token)
+                }
+
+                token.startsWith(Action.VOLUME_PREFIX) -> {
+                    volumeGlyph(token)
+                }
+
                 else -> {
                     TablerIcons.Outline.Dots
                 }
             }
         }
+    }
+
+/**
+ * 亮度那一档在步骤行里的图标 —— 与菜单里那三行同一套：更亮 `sun-high`、更暗 `sun-low`、
+ * 「设置为」整颗太阳。
+ *
+ *  认不出（手改坏了）时给整颗太阳：那是这一族的中性档，比掉到 `Dots` 好。
+ */
+private fun brightnessGlyph(token: String): ImageVector =
+    when ((ActionCatalog.actionOf(token) as? Action.Brightness)?.mode) {
+        Action.Brightness.Mode.ADD -> TablerIcons.Outline.SunHigh
+        Action.Brightness.Mode.SUB -> TablerIcons.Outline.SunLow
+        else -> TablerIcons.Outline.Sun
+    }
+
+/** 音量那一档同上：更响 / 更轻用推子带加减号 —— 与格子那颗喇叭分得开。 */
+private fun volumeGlyph(token: String): ImageVector =
+    when ((ActionCatalog.actionOf(token) as? Action.Volume)?.mode) {
+        Action.Volume.Mode.ADD -> TablerIcons.Outline.AdjustmentsPlus
+        Action.Volume.Mode.SUB -> TablerIcons.Outline.AdjustmentsMinus
+        else -> TablerIcons.Outline.Volume
     }
 
 /**
@@ -485,12 +521,17 @@ internal fun commandIcon(
 /**
  * 「多条命令」的类型图标 —— 按步骤数取 `box-multiple-N`，一眼能看出这条有几步。
  *
- * 档位与 `Command.MAX_STEPS` 同宽（1~5）；0 步（还没加步骤的草稿）与超出上限的都以首尾两档收口，
+ * 档位与 `Command.MAX_STEPS` 同宽（1~9）；0 步（还没加步骤的草稿）与超出上限的都以首尾两档收口，
  * 图标只说明「几步」，不承担校验。
  */
 internal fun commandSerialIcon(steps: Int): ImageVector = SERIAL_STEP_ICONS[steps.coerceIn(1, SERIAL_STEP_ICONS.size) - 1]
 
-/** 步骤数 → 字形，下标 0 是 1 步。长度必须等于 `Command.MAX_STEPS`，否则上一步的钳位会串档。 */
+/**
+ * 步骤数 → 字形，下标 0 是 1 步。长度必须等于 `Command.MAX_STEPS`，否则上一步的钳位会串档。
+ *
+ *  上限取 9 正是因为图标库的数字字形只画到这里：再多一步就没有「第 10 步」可画，
+ *  要么拿一颗不带数字的图标糊过去，要么上限跟着数字走 —— 这里选后者。
+ */
 private val SERIAL_STEP_ICONS: List<ImageVector> =
     listOf(
         TablerIcons.Outline.BoxMultiple1,
@@ -498,4 +539,8 @@ private val SERIAL_STEP_ICONS: List<ImageVector> =
         TablerIcons.Outline.BoxMultiple3,
         TablerIcons.Outline.BoxMultiple4,
         TablerIcons.Outline.BoxMultiple5,
+        TablerIcons.Outline.BoxMultiple6,
+        TablerIcons.Outline.BoxMultiple7,
+        TablerIcons.Outline.BoxMultiple8,
+        TablerIcons.Outline.BoxMultiple9,
     )

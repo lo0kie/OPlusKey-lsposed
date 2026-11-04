@@ -1,0 +1,8 @@
+# 配置结构基线 —— 由 tools/audit-config-version.py --update 生成，别手改。
+#
+# 记的是「上一次抬版本时，ConfigDto 的字段清单长什么样」。加字段之后：
+#   1) 抬 ConfigCodec.VERSION；2) 跑一次 --update 把这一份刷新 —— 两步缺一不可，
+#   否则下一个人接着加字段时，这道闸看不出来（它只比「相对上一次抬版本」有没有变）。
+version=21
+shape=ee8ce5a85e2f9e8d
+fields=58

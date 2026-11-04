@@ -175,6 +175,13 @@ internal data class KeyDto(
      *  老文件没有这一段 ⇒ 空表 ⇒ 行为与这一档出现之前完全一致。
      */
     val rules: List<StateRuleDto> = emptyList(),
+    /**
+     * 第 3 击起的额外档位（`KeyConfig.extraClicks`）—— 键是连击次数、值是动作 token。
+     *
+     *  与 [rules] 同一套：表结构进不了 `ConfigFields`，所以只走落盘。老文件没有这一段 ⇒ 空表 ⇒
+     *  行为与这一项出现之前完全一致。
+     */
+    @SerialName("extra_clicks") val extraClicks: Map<String, String> = emptyMap(),
 ) {
     /** 按 [ConfigFields] 那张表把取值钳进各自的上下限 —— 上下限只定义在表里。 */
     fun toValues(
@@ -202,7 +209,18 @@ internal data class KeyDto(
         id: KeyId,
         legacyDoubleClickMs: Int,
         legacyInstantSingle: Boolean,
-    ): KeyConfig = KeyConfig.ofFields(id, toValues(legacyDoubleClickMs, legacyInstantSingle), rules.mapNotNull { it.toRule() })
+    ): KeyConfig =
+        KeyConfig
+            .ofFields(id, toValues(legacyDoubleClickMs, legacyInstantSingle), rules.mapNotNull { it.toRule() })
+            .copy(
+                //  认不出的次数 / 动作整条丢掉（与 `rules`、`custom_keys` 同一条纪律：丢东西要留账，
+                //  账在 `ConfigDto.toConfig` 那一层打）
+                extraClicks =
+                    extraClicks
+                        .mapNotNull { (clicks, token) ->
+                            clicks.toIntOrNull()?.takeIf { it >= 3 }?.let { it to Action.parse(token) }
+                        }.toMap(),
+            )
 
     companion object {
         fun from(key: KeyConfig): KeyDto =
@@ -218,6 +236,7 @@ internal data class KeyDto(
                 doubleClickMs = key.doubleClickMs,
                 instantSingle = key.instantSingle,
                 rules = key.rules.map { StateRuleDto.of(it) },
+                extraClicks = key.extraClicks.mapKeys { it.key.toString() }.mapValues { it.value.token },
             )
     }
 }
@@ -338,14 +357,18 @@ internal data class ComboDto(
      * 线格式 → 一档组合键；id 空、或成员不足两颗的读不懂（返回 `null`）。
      *
      *  前者当不了身份（界面上选中哪一行、删哪一行都靠它），后者判不出来（一颗不叫组合）。
-     *  成员去重之后按 [ComboKey.MAX_KEYS] 截断 —— 手改文件写进十颗也不该让它进来。
+     *  成员去重之后按 [ComboKey.MAX_JUDGE_KEYS] 截断 —— 手改文件写进几十颗也不该让它进来。
+     *
+     *  截断用**判定侧**那个上限而不是界面的 `MAX_KEYS`：界面造不出三颗以上的组合，
+     *  但手改文件写进来的三颗组合判定侧认（判定 / 执行 / 日志都跑得通），读配置时截成两颗
+     *  等于让那条链路永远收不到多成员形态。
      */
     fun toCombo(): ComboKey? {
         val members = keys.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (id.isEmpty() || members.size < ComboKey.MIN_KEYS) return null
         return ComboKey(
             id = id,
-            keys = members.take(ComboKey.MAX_KEYS),
+            keys = members.take(ComboKey.MAX_JUDGE_KEYS),
             enabled = enabled,
             single = Action.parse(single),
             long = Action.parse(long),

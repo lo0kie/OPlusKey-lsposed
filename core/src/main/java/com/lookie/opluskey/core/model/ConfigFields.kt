@@ -62,6 +62,15 @@ object ConfigFields {
      */
     const val LONG_SERIAL_EXTRA = "long_is_serial"
 
+    /**
+     * 判定侧要认到**第几击**（`KeyConfig.judgeClicks`）—— **只有广播这一列**。
+     *
+     *  与 [LONG_SERIAL_EXTRA] 同一条道理：注入侧读不到配置文件，而它必须知道「这颗键最多
+     *  配到第几击」才能决定单击 / 双击要不要等着看后面的连击 —— 这个数由宿主从动作表算好带过来。
+     *  0 = 老版本发来的（不认识这一项）⇒ 注入侧退回「只认三档」。
+     */
+    const val JUDGE_CLICKS_EXTRA = "judge_clicks"
+
     // `GlobalConfig`。
     const val DOUBLE_CLICK_MS_EXTRA = "double_click_ms"
     const val VIBRATE_EXTRA = "vibrate"
@@ -192,6 +201,12 @@ object ConfigFields {
     /** 长按绑的是不是串行命令 —— **只有广播那一列**，见 [LONG_SERIAL_EXTRA] 的说明。 */
     val F_LONG_SERIAL = Field(LONG_SERIAL_EXTRA, Kind.Bool(false))
 
+    /**
+     * 判定要认到第几击（见 [JUDGE_CLICKS_EXTRA]）。上限 9 与「一屏步骤数」那档同宽：
+     * 再多击的判定链已经没有实际意义（人的连击上限就三五下），手改出来的值在这里就钳掉。
+     */
+    val F_JUDGE_CLICKS = Field(JUDGE_CLICKS_EXTRA, Kind.Number(0, 0, 9))
+
     /** `KeyConfig` 的全部广播字段。 */
     val KEY_FIELDS: List<Field> =
         listOf(
@@ -206,6 +221,7 @@ object ConfigFields {
             F_DOUBLE_CLICK_MS,
             F_INSTANT_SINGLE,
             F_LONG_SERIAL,
+            F_JUDGE_CLICKS,
         )
 
     // ── `GlobalConfig` 的字段

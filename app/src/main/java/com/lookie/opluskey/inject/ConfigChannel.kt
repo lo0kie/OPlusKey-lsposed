@@ -7,6 +7,8 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.comboPlans
+import com.lookie.opluskey.core.model.gesturePlan
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 
 /** 注入侧持有的配置：从宿主广播过来，供按键判定使用。 */
@@ -70,16 +72,20 @@ internal object ConfigChannel {
      * [keys] 这几颗键一起按下时，该由哪一档组合键接管 —— 没有就是 `null`。
      *
      *  这是 `ComboDetector` 那道「有没有绑定」的闸（见它的 `bindingFor`）：答否时**组合不成立**，
-     *  两颗键照旧各走各的单键判定。答是时会摘掉两颗键的单键状态机 —— 所以这道闸必须准：
+     *  那几颗键照旧各走各的单键判定。答是时会摘掉它们的单键状态机 —— 所以这道闸必须准：
      *  答错了，用户按下去什么反应都没有。
+     *
+     *  **成员数不设限**：两颗那一档由 `ComboDetector.pairFor` 一对一地问，三颗以上由
+     *  `multiFor` 把窗口内按下的那一组整体递进来 —— 「成员多的赢」由 [Config.comboFor] 判
+     *  （`maxByOrNull { keys.size }`），这一层不重复判。
      *
      *  三条判据：
      *  · 还没收到过配置 ⇒ 没有组合键（**不能**按「没配置 = 默认开着」处理：`enabledOf` 对未知键
-     *    返回 true，那样会拿一份空表判出「有绑定」，两颗键一起按就静默失效）；
+     *    返回 true，那样会拿一份空表判出「有绑定」，几颗键一起按就静默失效）；
      *  · 参与的那几颗都得归模块管（[enabledOf] 已含总闸）—— 一颗被停用或删掉，这一档就凑不齐；
      *  · 档位本身要算数（[ComboKey.isUsable]：没关掉、成员够数）。
      *
-     *  「成员数取多」与「同数按配置顺序」都在 [Config.comboFor] 里，这一层不重复判。
+     *  「同数按配置顺序」也在 [Config.comboFor] 里，这一层不重复判。
      */
     fun comboFor(keys: Collection<KeyId>): ComboKey? {
         val cfg = received ?: return null
@@ -226,6 +232,23 @@ internal object ConfigChannel {
         // 上面那行只打**侧键那份**参数；自定义键各有一份自己的键码与长按阈值（见 [logCustomKeys]）。
         logCustomKeys(fresh)
         logCombos(fresh)
+        logPlans(fresh)
+    }
+
+    /**
+     * 把每颗键的**判定计划**各打一行 `d`（`KeyGesturePlan` 的定义在 core）。
+     *
+     *  为什么要有：计划回答的是「这颗键最多等多久才敢派发、认哪几档」，它完全由配置推出来 ——
+     *  将来接自定义手势（多击）时，误判几乎都出在「等了几个窗 / 哪一档算绑了」这两件事上。
+     *  配置到达时记一笔，就能拿它跟真机上的手感对上。
+     *
+     *  用 `d` 不用 `w`：它**不是**判据（判定器现在还没读这份计划），只是给排查用的投影；
+     *  注入侧的 `d` 在 LSPosed 日志页看不到，要用 logcat 看（`docs/device-findings.md` 十五）。
+     */
+    private fun logPlans(fresh: Config) {
+        XLog.guard("判定计划") {
+            fresh.allKeys.forEach { id -> XLog.d("判定计划：${id.id} → ${fresh.key(id).gesturePlan()}") }
+        }
     }
 
     /**
@@ -262,6 +285,13 @@ internal object ConfigChannel {
                         " 阈值=${c.longPressMs}ms${if (c.enabled) "" else "（已停用）"}"
                 },
         )
+        //  每档组合的**判定计划**（`ComboPlan`）：要几颗、等多久、判定器认不认。
+        //  成员数已经不影响能不能判（两颗走配对、3 颗起走凑齐），所以这一行现在读的是
+        //  「这一档要几颗、窗口多大、长按阈值多少」——「按了没反应」时对得上按法就是配置问题，
+        //  对不上才是判定问题，两者靠它分开。
+        XLog.guard("组合判定计划") {
+            fresh.comboPlans().forEach { XLog.d("组合计划：$it") }
+        }
     }
 
     /**

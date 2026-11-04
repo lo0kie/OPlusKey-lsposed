@@ -36,9 +36,10 @@ internal class CommandForm(
      * 这条命令要不要以 root 执行（单条页那行开关）。
      *
      *  只对单条有意义：多条命令的步骤没有各自的开关，读它的是 `CustomCommandRunner` 的单条那一支。
-     *  默认 `true` = 以 root 执行（只走 `su`，拿不到 root 就报失败，不退回 `sh`）。
+     *  默认 `false` = 不申请 root（只走 `sh`）；要用 root 的由用户在那行开关上显式打开 ——
+     *  打开那一刻会申请一次授权（见 `ui/screen/command/RootRequest`）。
      */
-    var root by mutableStateOf(true)
+    var root by mutableStateOf(false)
 
     /**
      * 「点击已保存的命令时可编辑」—— 加载后记着原名，UI 据此把卡片标题 / 提交按钮切成
@@ -71,7 +72,7 @@ internal class CommandForm(
         single = ""
         steps.clear()
         stepDelayMs = Command.DEFAULT_STEP_DELAY_MS
-        root = true
+        root = false
         editingName = null
         loaded = null
     }

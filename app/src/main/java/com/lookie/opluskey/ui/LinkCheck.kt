@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.runtime.Composable
+import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.i18n.I18n
@@ -12,10 +13,12 @@ import com.lookie.opluskey.ui.model.API_MISMATCH_HINT
 import com.lookie.opluskey.ui.model.CHECKING_HINT
 import com.lookie.opluskey.ui.model.CONFIG_NOT_SYNCED_HINT
 import com.lookie.opluskey.ui.model.CONFIG_READ_FAILED_HINT
+import com.lookie.opluskey.ui.model.HOST_STALE_HINT
 import com.lookie.opluskey.ui.model.INJECT_NOT_LOADED_HINT
 import com.lookie.opluskey.ui.model.KEY_DISABLED_HINT
 import com.lookie.opluskey.ui.model.LinkNotice
 import com.lookie.opluskey.ui.model.PENDING_OR_SCOPE_HINT
+import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SERVICE_NOT_RUNNING_HINT
 import com.lookie.opluskey.ui.model.SYSTEM_STALE_HINT
 import com.lookie.opluskey.ui.state.InjectPendingKind
@@ -209,10 +212,17 @@ private const val BOOT_MATCH_EPSILON_MS = 5_000L
  * 读一遍上面那些信号 —— **全项目只有这一处**把它们凑成 [LinkFacts]。
  *
  *  `configSideOk` 自己已经封了只读态与「在途」宽限（见那里的注释），所以这里不再重复判。
+ *
+ *  调试通道把 [HostLinkState.debugAllBroken] 打开时，这里整份换成 [ALL_BROKEN_FACTS]：
+ *  判据（`linkChecks` / `blockedReason` / `linkReady`）与渲染都不动，只是**换一份事实** ——
+ *  所以「所有段都坏」时看到的就是真的那个样子（含整页只读、控件全灰）。
  */
 internal val SettingsPage.linkFacts: LinkFacts
-    get() =
-        LinkFacts(
+    get() {
+        //  `DEBUG_PROBE &&` 不是多余的：它是**编译期常量**，release 里这个分支连比较都不存在
+        //  （整套 `ALL_BROKEN_FACTS` 随之被裁掉）。少了它，这一段会在正式包里留着一个恒假判断。
+        if (DEBUG_PROBE && link.debugAllBroken) return ALL_BROKEN_FACTS
+        return LinkFacts(
             readOnly = configState.readOnly,
             masterOff = !configState.config.value.global.enabled,
             hostUp = link.hostServiceUp,
@@ -225,6 +235,29 @@ internal val SettingsPage.linkFacts: LinkFacts
             injectAliveBoot = link.injectAliveBoot,
             bootNow = link.bootWall,
         )
+    }
+
+/**
+ * 「所有段都坏」那份事实（**只给调试通道用**，见 [HostLinkState.debugAllBroken]）。
+ *
+ *  每一格都取「坏」的那一档，且`injectChecked = true`（否则会停在「正在检查」那句中性的，
+ *  看不到结论）；`installedAt` / `hostProcStart` 留 0 —— 那样不会判「跑着旧版」，
+ *  首页那句就不会被「重启手机」顶掉，能老实说「哪一段异常」。
+ */
+private val ALL_BROKEN_FACTS =
+    LinkFacts(
+        readOnly = true,
+        masterOff = false,
+        hostUp = false,
+        inject = null,
+        configSideOk = false,
+        injectChecked = true,
+        installedAt = 0L,
+        hostProcStart = 0L,
+        injectEverAlive = false,
+        injectAliveBoot = 0L,
+        bootNow = 0L,
+    )
 
 /**
  * **整页总闸**：「运行状态」里**任何一段**不 ok 就关。
@@ -277,8 +310,13 @@ internal val SettingsPage.linkReady: Boolean
 internal fun SettingsPage.blockedReason(): String? {
     val f = linkFacts
     return when {
+        //  读不懂有两条来路，要用户做的事完全不同：
+        //   · 文件真有问题（坏 / 手改 / 格式版本没抬）⇒ 重进页面会重读一次；
+        //   · **宿主跑着旧版** ⇒ 它按旧结构校 md5，任何一份新文件都判读不懂 —— 重进页面永远好不了，
+        //     要做的是「重启服务」。真机上撞过：页面说「配置读取失败，请重进页面」，
+        //     而实际是装完包宿主没重启，照那句话做多少次都没用。
         f.readOnly -> {
-            CONFIG_READ_FAILED_HINT
+            if (f.hostStale) HOST_STALE_HINT else CONFIG_READ_FAILED_HINT
         }
 
         !f.hostUp -> {
@@ -404,6 +442,63 @@ internal fun SettingsPage.disabledClickReason(): String {
 }
 
 /**
+ * 「按键接管」那一段 —— 回答「**现在到底有没有键会被模块接住**」。
+ *
+ *  前面几段都答不了这件事：服务在跑、接管点挂着、配置也送到了，只要总闸关着（或每颗键都停用），
+ *  按下去仍然是系统自己的功能。真机上撞过一次 —— 自检全绿、按侧键却打开了系统页面，因为总闸是关的，
+ *  而「主开关关着」当时被当成「用户意图」静默掉了：不报红、也不进明细。
+ *
+ *  **仍然不报红**（关开关是用户的意图，不该骂人），但走 [LinkCheck.inSummary]：
+ *  整体状态那一行会直接说「主开关已关闭，所有按键都不接管」。
+ *
+ *  单独一个函数只为让 [linkChecks] 留在 `LongMethod` 阈值内。
+ */
+private fun SettingsPage.takeOverCheck(): LinkCheck {
+    val cfg = configState.config.value
+    //  配置都没读出来时，`cfg` 是默认值（总闸 false）—— 那时说「主开关已关闭」是误诊：
+    //  用户看到的那一行明明是开的，说关了只会让他去查一个没问题的地方。
+    val readOnly = configState.readOnly
+    val masterOn = cfg.global.enabled
+    val anyKeyOn = cfg.allKeys.any { cfg.key(it).enabled }
+    return LinkCheck(
+        icon = PageIcons.LinkTakeOver,
+        name = I18n.get(Strings.LINK_CHECK_TAKE_OVER, "按键接管"),
+        ok = masterOn && anyKeyOn,
+        detail =
+            when {
+                readOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
+                !masterOn -> I18n.get(Strings.LINK_CHECK_MASTER_OFF_ALL, "主开关已关闭，所有按键都不接管")
+                !anyKeyOn -> I18n.get(Strings.LINK_CHECK_ALL_KEYS_OFF, "所有按键都已停用")
+                else -> I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+            },
+        blocking = false,
+        inSummary = true,
+    )
+}
+
+/**
+ * 「使用验证」那一段 —— 单独一个函数只为让 [linkChecks] 留在 `LongMethod` 阈值内
+ * （那一段本身与上面三段没有共享的判据，搬出去不改变任何结论）。
+ *
+ *  **永远不 block**：还没被验证过不是故障，只是一条还没拿到的证据。
+ *  文案里**不出现「按过没按过」**——那是内部证据的说法（用户点名删的）。
+ */
+private fun SettingsPage.usageCheck(inj: InjectStatus?): LinkCheck =
+    LinkCheck(
+        icon = PageIcons.LinkUsage,
+        name = I18n.get(Strings.LINK_CHECK_USAGE_VERIFIED, "使用验证"),
+        ok = link.hostLastActionAt > 0,
+        // 判到过手势、却一次都没执行 —— 多半是这一档绑的是「无操作」
+        detail =
+            when {
+                link.hostLastActionAt > 0 -> I18n.get(Strings.LINK_CHECK_VERIFIED, "已生效")
+                inj != null && inj.lastGestureAt > 0 -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
+                else -> I18n.get(Strings.LINK_CHECK_NOT_USED_YET, "尚未使用")
+            },
+        blocking = false,
+    )
+
+/**
  * 把设置页手上那几路信号翻成**逐段的**链路结论，顺序就是数据要走的顺序：
  * 服务 → 按键 → 设置 → 实际使用。
  *
@@ -437,6 +532,7 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
 
     return listOf(
         LinkCheck(
+            icon = PageIcons.LinkService,
             name = I18n.get(Strings.LINK_CHECK_SERVICE_STATUS, "服务运行"),
             ok = hostOk,
             detail =
@@ -447,6 +543,7 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                 },
         ),
         LinkCheck(
+            icon = PageIcons.LinkKeyResponse,
             name = I18n.get(Strings.LINK_CHECK_KEY_RESPONSE, "按键响应"),
             ok = respondOk,
             detail =
@@ -456,9 +553,13 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                     else -> I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
                 },
         ),
+        // 「按键接管」：接管点挂上 ≠ 按键真被接住 —— 总闸关着时上面那段照样绿，
+        //  而一颗键都不会被接住（真机撞过：自检全绿、所有按键都没反应）。
+        takeOverCheck(),
         // 「设置同步」（配置送到注入侧没有）与「设置读取」（宿主读到的不是默认值）
         // 合成一段：对用户来说都是「设置到底生效了没有」，分开报只是把内部结构摆到脸上。
         LinkCheck(
+            icon = PageIcons.LinkConfig,
             name = I18n.get(Strings.LINK_CHECK_CONFIG_EFFECTIVE, "设置生效"),
             // 与总闸**同源**：配置侧那半直接用 [configSideOk]，免得两边各写一份慢慢跑偏
             ok = configSide && link.hostEnabled,
@@ -468,10 +569,17 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
             //  一律 block（`blocking` 走默认值）的话，用户主动关掉主开关，
             //  整体状态就报「设置生效异常」—— 那是用户的意图，不是故障。
             blocking = !(configSide && !link.hostEnabled),
+            //  换包没重启时它必然红，而那句话就是「需要重启」—— 首页据此把它排到最后
+            //  （别的故障先说，只剩这条影子时才说重启）
+            staleOnly = restartNeeded,
             detail =
                 when {
                     // 真因优先：文件读不懂时宿主读到的是默认值（enabled=false），
                     // 再往下会报成「主开关已关闭」—— 那会把用户引到错的方向（他根本没关）。
+                    //  与 `blockedReason` 同一档分法：跑着旧版时「配置读取失败」是误诊 ——
+                    //  文件没问题，是这一侧的结构比文件旧。
+                    f.readOnly && f.hostStale -> I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
+
                     f.readOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
 
                     inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
@@ -492,18 +600,6 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
                 },
         ),
         // 这一段永远不 block：还没被验证过不是故障，只是一条还没拿到的证据。
-        //  文案里**不出现「按过没按过」**——那是内部证据的说法（用户点名删的）。
-        LinkCheck(
-            name = I18n.get(Strings.LINK_CHECK_USAGE_VERIFIED, "使用验证"),
-            ok = link.hostLastActionAt > 0,
-            // 判到过手势、却一次都没执行 —— 多半是这一档绑的是「无操作」
-            detail =
-                when {
-                    link.hostLastActionAt > 0 -> I18n.get(Strings.LINK_CHECK_VERIFIED, "已生效")
-                    inj != null && inj.lastGestureAt > 0 -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
-                    else -> I18n.get(Strings.LINK_CHECK_NOT_USED_YET, "尚未使用")
-                },
-            blocking = false,
-        ),
+        usageCheck(inj),
     )
 }
