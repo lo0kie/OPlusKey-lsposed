@@ -223,9 +223,9 @@ internal class SideKeyInterceptor(
             }
         // 合成事件（我们自己重注入的）不认领：认领就是自持循环（见 [isSynthetic]）
         if (isSynthetic(keyEvent)) {
-            // 提成 W：这条在 release 里也要能看到 —— 「遥控器式的真事件被当合成丢了」正是
+            // 这条是判据：release 里也要能看到 —— 「遥控器式的真事件被当合成丢了」正是
             //   这次 PLQ110 那种故障唯一的一行证据（d 级在正式包里被编译期消灭）。
-            XLog.d("按键（$point）：合成事件（deviceId=${keyEvent.deviceId} keyCode=${keyEvent.keyCode}），放行给系统")
+            XLog.w("按键（$point）：合成事件（deviceId=${keyEvent.deviceId} keyCode=${keyEvent.keyCode}），放行给系统")
             return false
         }
 

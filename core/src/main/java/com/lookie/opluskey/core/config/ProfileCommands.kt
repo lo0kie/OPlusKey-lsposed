@@ -42,15 +42,48 @@ object ProfileCommands {
     fun slotOf(configSlot: String): String = ConfigStore.SLOT_COMMANDS + configSlot.removePrefix(ConfigStore.SLOT_CONFIG)
 
     /**
-     * 读某份配置的命令库；该配置**还没有自己的命令库**时返回 `null`（老配置，见类注释）。
+     * 读某份配置的命令库，**三态**（导出那一路要用它分清「老配置没有库」与「库读不懂」）。
      *
-     *  读不懂也返回 `null`：导出时退回「当前这份的命令库」比导出一份空库有用。
+     *  · [Load.Absent] —— 该配置还没有自己的命令库（老配置，见类注释）；
+     *  · [Load.Unreadable] —— 文件在却读不懂（外皮 / 截断 / 解析失败）；
+     *  · [Load.Ok] —— 读出来了（空表也是合法的一档）。
+     *
+     *  为什么必须分开：老配置可以退回「当前这份的命令库」凑合导出，而**读不懂的那份不能**——
+     *  那样导出来的备份里是一份别人的命令库，用户拿它恢复时才发现对不上（真机上「导出的
+     *  配置少了几条命令」就是这么来的）。
      */
-    fun read(configSlot: String): List<Command>? {
-        val raw = rawOf(slotOf(configSlot)) ?: return null
-        val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw) ?: return null
-        return CommandLibrary.parseOrNull(text)
+    sealed interface Load {
+        data object Absent : Load
+
+        data object Unreadable : Load
+
+        class Ok(
+            val commands: List<Command>,
+        ) : Load
     }
+
+    /** 读某份配置的命令库（内容版，见 [load]）；只要内容、不关心是哪一种空时用它。 */
+    fun read(configSlot: String): List<Command>? = (load(configSlot) as? Load.Ok)?.commands
+
+    /** 读某份配置的命令库，分得清「没有」与「读不懂」。 */
+    fun load(configSlot: String): Load =
+        when (val r = ConfigStore.files().read(slotOf(configSlot))) {
+            ModuleFiles.Load.Absent -> {
+                Load.Absent
+            }
+
+            ModuleFiles.Load.Unreadable -> {
+                Load.Unreadable
+            }
+
+            is ModuleFiles.Load.Ok -> {
+                FileObfuscation
+                    .unwrap(FileObfuscation.MAGIC_RUNTIME, r.text)
+                    ?.let { CommandLibrary.parseOrNull(it) }
+                    ?.let { Load.Ok(it) }
+                    ?: Load.Unreadable
+            }
+        }
 
     /** 把一份命令库写进 [configSlot] 对应的槽（导入 / 新建时用）。 */
     fun save(
@@ -73,37 +106,52 @@ object ProfileCommands {
      */
     fun swap(configSlot: String): Boolean {
         val target = slotOf(configSlot)
-        val live = rawOf(ConfigStore.SLOT_COMMANDS)
-        val mine = rawOf(target)
-        if (mine == null) {
-            //  老配置：目标槽是空的 ⇒ 把当前这份存过去，当前配置的命令库不动（理由见类注释）
-            val ok = live == null || writeRaw(target, live)
-            //  走到这里 `live` 一定非空（`live == null` 时 `ok` 恒为 true、进不来），
-            //  所以日志里不再重复那一位 —— 编译器会把它报成「条件恒真」。
+        val live = ConfigStore.files().read(ConfigStore.SLOT_COMMANDS)
+        val mine = ConfigStore.files().read(target)
+        //  **读不懂 ≠ 没有**：任一槽读不懂就整趟不动 —— 按「没有」处理会把那份**可能还能救**的
+        //  文件用另一份盖掉（见 `ModuleFiles` 类注释里那条三态纪律）。
+        if (live is ModuleFiles.Load.Unreadable || mine is ModuleFiles.Load.Unreadable) {
+            XLog.w("配置切换：命令库有槽读不懂（槽 $target）⇒ 不动，先修那份文件")
+            return false
+        }
+        val liveText = live.textOrNull()
+        val mineText = mine.textOrNull()
+        //  目标槽空着 = 老配置：把当前这份存过去、当前配置的命令库不动（理由见类注释）。
+        //  `mineText == null` 时 `liveText` 若也空，则根本没东西要搬，直接算成功。
+        if (mineText == null) {
+            val ok = liveText == null || writeRaw(target, liveText)
             if (!ok) XLog.w("配置切换：命令库没跟过去（槽 $target，mine=false）")
             return ok
         }
-        if (live != null && !writeRaw(target, live)) {
+        return swapBoth(target, liveText, mineText)
+    }
+
+    /**
+     * 两份都在时的对调：先存当前、再换进目标；**第二步失败要把目标槽还原**。
+     *
+     *  抽出来只为让 [swap] 的返回点收在 detekt 的限制内；语义与它上面那段注释是一件事。
+     */
+    private fun swapBoth(
+        target: String,
+        liveText: String?,
+        mineText: String,
+    ): Boolean {
+        if (liveText != null && !writeRaw(target, liveText)) {
             XLog.w("配置切换：命令库没跟过去（第一步写盘失败，槽 $target）")
             return false
         }
-        if (!writeRaw(ConfigStore.SLOT_COMMANDS, mine)) {
-            //  第二步失败：目标槽里此刻是当前这份，原来那份只在内存里 —— 必须还原，否则它没了
-            val restored = live == null || writeRaw(target, mine)
-            XLog.w(
-                "配置切换：命令库没换进来（第二步写盘失败，槽 $target）—— " +
-                    if (restored) "已还原目标槽" else "还原也失败，目标槽里现在是当前这份",
-            )
-            return false
-        }
-        return true
+        if (writeRaw(ConfigStore.SLOT_COMMANDS, mineText)) return true
+        //  第二步失败：目标槽里此刻是当前这份，原来那份只在内存里 —— 必须还原，否则它没了
+        val restored = liveText == null || writeRaw(target, mineText)
+        XLog.w(
+            "配置切换：命令库没换进来（第二步写盘失败，槽 $target）—— " +
+                if (restored) "已还原目标槽" else "还原也失败，目标槽里现在是当前这份",
+        )
+        return false
     }
 
     /** 删掉某份配置的命令库（连 `.bak` / `.new` 一起，走 [ModuleFiles.delete]）。 */
     fun delete(configSlot: String): Boolean = ConfigStore.files().delete(slotOf(configSlot))
-
-    /** 读一个槽的磁盘原文；不在 / 读不出来都是 `null`。 */
-    private fun rawOf(slot: String): String? = ConfigStore.files().read(slot).textOrNull()
 
     /** 写一个槽的磁盘原文（`openReadable` 与主配置一致：宿主主进程也要读得到）。 */
     private fun writeRaw(

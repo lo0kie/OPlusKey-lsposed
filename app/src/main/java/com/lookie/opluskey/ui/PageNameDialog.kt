@@ -10,8 +10,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
 
 /** 一个名字最多能输多少字（超出的部分在输入框里直接吃掉）。 */
 internal const val MAX_NAME_LENGTH = 24
@@ -68,8 +66,6 @@ internal fun SettingsPage.NameDialog(
         //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
         footer = {
             DialogButtonRow(
-                negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
-                positive = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
                 onNegative = onDismiss,
                 onPositive = { onConfirm(text.trim()) },
                 //  空名字没有意义（菜单里会变成一行空白），此时「确定」是灰的

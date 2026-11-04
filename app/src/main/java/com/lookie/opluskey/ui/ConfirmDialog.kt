@@ -24,6 +24,8 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.AppTheme
 import io.github.suqi8.coui.kmp.basic.Button
@@ -85,14 +87,17 @@ internal fun ColumnScope.DialogBody(text: String) {
  * @param positiveStyle 动作项那一格怎么画：是否按破坏性上色（红）、能不能点。
  *   两件都是「动作项自己的状态」，打成一个类只是为了让这个函数的参数个数留在
  *   detekt 的 `LongParameterList` 之下。
+ * @param negative 左半边那颗的字。默认就是「取消」—— 全项目只有更新窗不这么叫（「稍后」），
+ *   其余七八处逐字一样，没必要每处各抄一遍 `I18n.get(Strings.DIALOG_CANCEL, "取消")`。
+ * @param positive 右半边那颗的字。默认「确定」；动作项有自己的说法时（「去下载」）才传。
  */
 @Composable
 internal fun DialogButtonRow(
-    negative: String,
-    positive: String,
     onNegative: () -> Unit,
     onPositive: () -> Unit,
     positiveStyle: DialogPositiveStyle = DialogPositiveStyle(),
+    negative: String = I18n.get(Strings.DIALOG_CANCEL, "取消"),
+    positive: String = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
 ) {
     //  **竖向留白与左右内缩都不在这里**：竖向归 `DialogPanel`（相邻两区之间各一档
     //  [DIALOG_REGION_GAP]），左右由底部那一槽自己给（`insideMargin`）。
@@ -202,24 +207,39 @@ private val DIALOG_BUTTON_GAP = 12.dp
  */
 private val DIALOG_BUTTON_HEIGHT = 40.dp
 
-/** 非 Monet 档「取消」那颗的底透明度 —— 与库那两档绝对色号（10% / 20%）同一个量级。 */
-private const val DIALOG_NEGATIVE_FILL_ALPHA = 0.15f
+/**
+ * 非 Monet 档「取消」那颗的底透明度 —— 比原先那档（0.15，与库的 10% / 20% 绝对色号同一量级）
+ * **再降一档**。
+ *
+ *  取消是「否定动作」，不该和右边那颗动作项争视线。这一档是有下限的：**别低于 0.1** ——
+ *  再淡就回到用户报过的「取消按钮和底色太接近」，那颗按钮看起来像没有底。
+ */
+private const val DIALOG_NEGATIVE_FILL_ALPHA = 0.10f
+
+/**
+ * Monet 档「取消」那颗的不透明度 —— 角色色（`secondaryContainer`）不动，只压一档浓度。
+ *
+ *  Monet 那一档是**跟着壁纸取色的实色容器**，整档压在磨砂面板上比动作项还跳；压到七成之后
+ *  仍是「一个色块」，只是退回次要动作的位置。压到 0.5 以下就会与 [DIALOG_NEGATIVE_FILL_ALPHA]
+ *  撞上同一个毛病（看着没底）。
+ */
+private const val DIALOG_NEGATIVE_MONET_ALPHA = 0.7f
 
 /**
  * 「取消」那颗的底色 —— **Monet 与其余主题档取法不同**，因为两套色板的「次要容器」不是一个量级。
  *
- *  · Monet：`secondaryContainer`。MD3 那一档就是「比页面容器整整一级」的色（浅色 tone 90 /
- *    深色 tone 30），压在磨砂面板上差得出来，而且跟着壁纸取色。
- *    这里**不能用 `onSurface` 的半透明**：Monet 的 `onSurface` 与面板只差几级，15% 叠上去
- *    「几乎看不出有底」（真机口径「monet 下取消按钮太淡」）。
- *  · 其余主题档：`onSurface` 的 15% —— COUI 的 `secondaryContainer` 只有 8% 黑，
- *    比这还淡；而 `onSurface` 叠在面板上，面板亮就压暗、暗就提亮，两种深浅都稳。
+ *  · Monet：`secondaryContainer` 压到 [DIALOG_NEGATIVE_MONET_ALPHA]。MD3 那一档是「比页面容器
+ *    整整一级」的色（浅色 tone 90 / 深色 tone 30），压在磨砂面板上差得出来，而且跟着壁纸取色；
+ *    但整档太跳，收一档只留浓度。这里**不能用 `onSurface` 的半透明**：Monet 的 `onSurface` 与
+ *    面板只差几级，叠上去「几乎看不出有底」（真机口径「monet 下取消按钮太淡」）。
+ *  · 其余主题档：`onSurface` 的 [DIALOG_NEGATIVE_FILL_ALPHA] —— COUI 的 `secondaryContainer`
+ *    只有 8% 黑，比这还淡；而 `onSurface` 叠在面板上，面板亮就压暗、暗就提亮，两种深浅都稳。
  */
 @Composable
 private fun negativeFill(): Color {
     val scheme = COUITheme.colorScheme
     return if (LocalAppTheme.current == AppTheme.MONET) {
-        scheme.secondaryContainer
+        scheme.secondaryContainer.copy(alpha = DIALOG_NEGATIVE_MONET_ALPHA)
     } else {
         scheme.onSurface.copy(alpha = DIALOG_NEGATIVE_FILL_ALPHA)
     }

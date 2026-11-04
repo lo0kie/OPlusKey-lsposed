@@ -611,7 +611,7 @@
   "update.title": "Update available",
   "update.tip": "Version %1$s is available",
   "update.view": "View",
-  "update.body": "Current %1$s - Latest %2$s",
+  "update.body": "Latest %1$s",
   "update.notes": "What's new",
   "update.download": "Download",
   "update.later": "Later",

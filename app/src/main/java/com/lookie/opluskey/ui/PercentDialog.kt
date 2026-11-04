@@ -104,8 +104,6 @@ internal fun SettingsPage.PercentDialog(
         onDismiss = onDismiss,
         footer = {
             DialogButtonRow(
-                negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
-                positive = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
                 onNegative = onDismiss,
                 onPositive = { onConfirm(percent) },
             )

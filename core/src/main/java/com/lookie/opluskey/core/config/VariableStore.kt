@@ -139,19 +139,28 @@ object VariableStore {
         }
 
     /**
-     * 写一份变量（顺带把开机标记更新成这一次）。失败只记日志、返回 `false`。
+     * 写一份变量。失败只记日志、返回 `false`。
      *
      *  `openReadable = false`：只有宿主这一侧（`:ui` 与宿主主进程，同 uid）读写它，
      *  注入侧（system_server）不碰变量 —— 它的执行请求仍然只走配置广播。
      *
+     *  **开机标记默认沿用文件里记着的那一次**，见 [markerForWrite]：值变了不等于「这一轮开机
+     *  已经重置过」。
+     *
      * @param slot 写哪一槽。默认就是**当前生效**那一槽（`vars`）；[ProfileVars.save] 会给
      *  别的配置那一槽落一份空表 —— 那条路与当前配置无关，所以只在写当前槽时清读缓存。
+     * @param stampBoot 把标记换成**当前这一轮**开机 —— 只有 [applyBootResets] 落地重置时才传
      */
     fun save(
         vars: List<Variable>,
         slot: String = ConfigStore.SLOT_VARS,
+        stampBoot: Boolean = false,
     ): Boolean {
-        val text = FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, encode(vars, ProcClock.bootWall()))
+        val text =
+            FileObfuscation.wrap(
+                FileObfuscation.MAGIC_RUNTIME,
+                encode(vars, markerForWrite(slot, stampBoot)),
+            )
         val ok = ConfigStore.files().write(slot, text, openReadable = false)
         if (!ok) {
             XLog.w("写变量失败：${vars.size} 颗（槽 $slot），这一次改动没落盘")
@@ -234,7 +243,8 @@ object VariableStore {
         if (sameBoot) return true
         val before = loaded.snapshot.vars
         val after = before.map { if (it.resetOnBoot) it.reset() else it }
-        val ok = save(after)
+        //  **这一次要盖章**：它就是「这一轮开机已重置」的凭据（见 markerForWrite）
+        val ok = save(after, stampBoot = true)
         if (ok) {
             XLog.w("变量：开机重置完成（${after.count { it.resetOnBoot }} 颗回到初始值，开机指纹 ${now.ifEmpty { "（无，按时刻判）" }}）")
         }
@@ -277,7 +287,7 @@ object VariableStore {
             save(next)
         }
 
-    /** 解析一份变量文件；版本不对 / 结构不对返回 `null`（= 读不懂）。坏条目单独丢掉。 */
+    /** 解析一份变量文件；版本不对 / 结构不对 / **有条目读不懂**都返回 `null`（= 读不懂，一个字都不写）。 */
     private fun decode(raw: String): Snapshot? {
         val root =
             try {
@@ -314,24 +324,27 @@ object VariableStore {
                 val reset = (obj[KEY_RESET_ON_BOOT] as? JsonPrimitive)?.booleanOrNull ?: false
                 Variable(name, type, initial, value, reset)
             }
-        if (vars.size != list.size) {
-            XLog.w("读变量：${list.size - vars.size} 颗名字 / 类型 / 值不合法，已丢弃（文件可能被手改过）")
-        }
-        return Snapshot(vars, boot, bootId)
+        //  **有一条不合法就整份判「读不懂」**：丢弃之后仍返回 `Ok` 的话，界面看到的是
+        //  「少了几颗」的残缺表，而下一次 `setvar` / `add` 会拿它整表写回 —— 被丢掉的那几颗
+        //  就永久没了（只留一行 w，用户完全不知道）。与上面「缺 `vars` 段」同一条口径：
+        //  不拿残表覆盖，宁可这一次什么都不写。
+        val dropped = list.size - vars.size
+        if (dropped > 0) XLog.w("读变量：$dropped 颗名字 / 类型 / 值不合法 ⇒ 按读不懂处理（不拿残表覆盖）")
+        return if (dropped > 0) null else Snapshot(vars, boot, bootId)
     }
 
     /** 序列化：信封版本 + 开机标记 + 变量表（缩进两格，与别的配置同一套写法）。 */
     private fun encode(
         vars: List<Variable>,
-        boot: Long,
+        marker: BootMark,
     ): String =
         json
             .encodeToString(
                 JsonObject.serializer(),
                 buildJsonObject {
                     put(KEY_VERSION, VERSION)
-                    put(KEY_BOOT, boot)
-                    put(KEY_BOOT_ID, bootIdOf())
+                    put(KEY_BOOT, marker.boot)
+                    put(KEY_BOOT_ID, marker.bootId)
                     put(
                         KEY_VARS,
                         buildJsonArray {
@@ -380,17 +393,38 @@ private fun JsonObject.int(key: String): Int? = (this[key] as? JsonPrimitive)?.c
 
 private fun JsonObject.long(key: String): Long = (this[key] as? JsonPrimitive)?.longOrNull ?: 0L
 
+/** 写进文件的那一对开机标记（见 [VariableStore.Snapshot]）。 */
+private data class BootMark(
+    val boot: Long,
+    val bootId: String,
+)
+
 /**
- * 本轮开机的**指纹** —— `/proc/sys/kernel/random/boot_id`（内核每次开机生成一个新的 UUID）。
+ * 这一次写盘该记哪一对开机标记。
  *
- *  为什么不拿 wall clock 当指纹（`ProcClock.bootWall()`）：NTP 对时 / 用户改系统时间会让那个值
- *  整体平移，看起来就像「换了一轮开机」—— 于是一次对时把 `resetOnBoot` 的计数器全拉回初始值，
- *  而用户什么都没做。boot_id 只在内核重启时变，和不看时钟。
+ *  **普通写入沿用文件里那一次**：`setvar` 只是改了值，不代表「这一轮开机的 `resetOnBoot`
+ *  已经跑过」—— 每次都盖成当前时刻的话，开机后先来一次 `setvar` 就把待办的重置抹掉了，
+ *  那颗变量这一整轮都不会回到初始值（真机上就是「开机计数没清零」）。
  *
- *  读不到（极少数内核配置）时返回空串，调用方退回 wall clock —— 那一路有误判风险，但好过完全不判。
+ *  只有 [VariableStore.applyBootResets] 落地那次重置要 [stampBoot] = true：那才是「这一轮
+ *  已经重置完」的凭据。别的槽（`ProfileVars.save` 落空表）读不到当前槽的标记，按当前时刻写。
  */
+private fun markerForWrite(
+    slot: String,
+    stampBoot: Boolean,
+): BootMark {
+    val current = BootMark(ProcClock.bootWall(), bootIdOf())
+    if (stampBoot || slot != ConfigStore.SLOT_VARS) return current
+    val existing = (VariableStore.load() as? VariableStore.Load.Ok)?.snapshot
+    return if (existing == null) current else BootMark(existing.boot, existing.bootId)
+}
+
 private fun bootIdOf(): String =
     try {
+        //  `/proc/sys/kernel/random/boot_id`：内核每次开机生成一个新 UUID。
+        //  不拿 wall clock（`ProcClock.bootWall()`）当指纹：NTP 对时 / 用户改系统时间会让那个值
+        //  整体平移，看起来像「换了一轮开机」—— 一次对时就把 `resetOnBoot` 的计数器全拉回初始值，
+        //  而用户什么都没做。boot_id 只在内核重启时变。
         File("/proc/sys/kernel/random/boot_id").readText().trim()
     } catch (e: Throwable) {
         XLog.w("变量：读不到 boot_id（${e.javaClass.simpleName}），开机判据退回墙上时钟")
@@ -416,13 +450,22 @@ private fun <T> withCrossProcessLock(block: () -> T): T {
             return block()
         }
     return channel.use { ch ->
+        //  **必须 `tryLock`**：`lock()` 会一直等下去 —— 另一个进程（`:ui` 或宿主主进程）
+        //  正拿着锁、而它刚好被冻结时，按键线程就卡在这儿了，与上面那条「宁可丢一次也不卡住」
+        //  正相反。拿不到（null）或同进程重入（`OverlappingFileLockException`）都当「不串行」。
         val lock =
             try {
-                ch.lock()
+                ch.tryLock()
             } catch (e: Throwable) {
-                XLog.w("变量：拿不到跨进程锁（${e.javaClass.simpleName}），这一次不串行")
-                return@use block()
+                //  `tryLock` 抛异常（通常是同进程重入的 `OverlappingFileLockException`）与
+                //  返回 null 是同一档：都当「拿不到锁、这次不串行」，不把异常往上带。
+                XLog.w("变量：拿跨进程锁失败（${e.javaClass.simpleName}），这一次不串行")
+                null
             }
+        if (lock == null) {
+            XLog.w("变量：拿不到跨进程锁（另一进程正在写），这一次不串行")
+            return@use block()
+        }
         try {
             block()
         } finally {

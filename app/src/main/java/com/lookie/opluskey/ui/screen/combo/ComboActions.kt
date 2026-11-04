@@ -172,14 +172,12 @@ internal fun SettingsPage.comboWriteFailed() {
 internal fun SettingsPage.comboWriteGuard(
     what: String,
     block: () -> Unit,
-) {
-    try {
-        block()
-    } catch (e: Throwable) {
-        XLog.w("组合键：$what 失败（忽略）：${e.javaClass.simpleName}", e)
-        comboWriteFailed()
-    }
-}
+) = XLog.guard(
+    what = "组合键：$what",
+    note = "这一次没写下去",
+    onError = { comboWriteFailed() },
+    block = block,
+)
 
 /**
  * 改一档组合的某个属性 —— 编辑页那几行（连续触发 / 振动 / 间隔 / 长按延迟）都走它。

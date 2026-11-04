@@ -232,11 +232,15 @@ internal object ConfigTransfer {
         val fallbackCommands = page.configState.commands.value
         fileScope.launch {
             val config = ConfigProfiles.readOf(slot)
-            // 目标配置没有自己的命令库（老配置）时退回当前这份：配置里的 `cmd:` 引用至少能对上一些
-            val commands = ProfileCommands.read(slot) ?: fallbackCommands
+            //  命令库要分清三档（见 `ProfileCommands.load`）：老配置**没有**自己的库才退回当前这份，
+            //  「库读不懂」则整趟放弃 —— 拿当前这份顶上去，导出来的备份里就是别人的命令，
+            //  用户恢复时才发现对不上（而且他不会知道这份备份是错的）。
+            val lib = ProfileCommands.load(slot)
+            if (lib is ProfileCommands.Load.Unreadable) XLog.w("导出配置：$slot 的命令库读不懂，放弃导出")
+            val commands = if (lib is ProfileCommands.Load.Ok) lib.commands else fallbackCommands
             mainHandler.post {
                 try {
-                    if (config == null) {
+                    if (config == null || lib is ProfileCommands.Load.Unreadable) {
                         XLog.w("导出配置：$slot 读不出来，放弃")
                         page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
                     } else {

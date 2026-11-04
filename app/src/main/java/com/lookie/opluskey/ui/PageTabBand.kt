@@ -159,7 +159,10 @@ private fun TabBandSurface(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    // 左右与卡片同一档 [PAGE_MARGIN]。纵向：**只带下边一档**（[PAGE_TOP_PADDING]）
+                    // 左右取**卡片那一档**（[PAGE_MARGIN]）：带子里的控件、下面那些卡片、顶栏
+                    //  两侧的按钮与大标题现在都在同一条竖线上（顶栏那三个 padding 也是这一档，
+                    //  见 `PageHeader`）。
+                    // 纵向：**只带下边一档**（[PAGE_TOP_PADDING]）
                     // —— 上边那 8dp 去掉，带子直接贴着折叠栏下沿；
                     // 下边这一档就是「带子与内容之间」的间距，与没有带子的页（首页 / 更多）
                     // 由内容 Spacer 加的是**同一档**，各页一致（见 [PAGE_TOP_PADDING]）。

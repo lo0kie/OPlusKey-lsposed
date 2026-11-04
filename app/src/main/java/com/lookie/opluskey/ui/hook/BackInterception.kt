@@ -337,18 +337,19 @@ internal object BackInterception {
          *  `onBackProgressed` / `onBackInvoked` 会照着那个值派发到错的地方；
          *  不补动作 —— 这几步语义各不相同（收键盘 / 喂进度 / 提交 / 取消），随手补一个
          *  `finish()` 会把「本该留在页内」的那几次也一起关掉。
+         *
+         *  try/catch 本体在 [XLog.guard] 里（界面层那几处兜底只有那一份实现），这里只给它的
+         *  两个口子：日志末尾的说明，以及「归零会话」这个本处专有的收尾。
          */
         private fun guarded(
             what: String,
             block: () -> Unit,
-        ) {
-            try {
-                block()
-            } catch (e: Throwable) {
-                session = SESSION_NONE
-                XLog.w("系统返回（$what）失败（已忽略，不补动作）：${e.javaClass.simpleName}: ${e.message}", e)
-            }
-        }
+        ) = XLog.guard(
+            what = "系统返回（$what）",
+            note = "不补动作",
+            onError = { session = SESSION_NONE },
+            block = block,
+        )
 
         override fun onBackStarted(backEvent: android.window.BackEvent) {
             guarded("手势开始") {

@@ -63,11 +63,6 @@ object XLog {
 
     private val buffer = java.util.concurrent.ConcurrentLinkedDeque<String>()
 
-    /** 缓冲条数 —— 用计数而不是 `buffer.size`（那是 O(n) 全表遍历，而每条日志都要判一次）。 */
-    private val buffered =
-        java.util.concurrent.atomic
-            .AtomicInteger()
-
     private val stamp =
         java.time.format.DateTimeFormatter
             .ofPattern("MM-dd HH:mm:ss.SSS")
@@ -97,11 +92,11 @@ object XLog {
         // 三处出口（缓冲 / logcat / 框架日志）都是尽力而为、失败即丢，绝不影响调用方。
         // 用 runCatching 是明确的丢弃语义，不是 AGENTS.md 五之二 2 禁的「以保护代 catch」。
         runCatching {
+            //  上界靠「先加再按数裁」，**不靠单独的计数器**：那一版用 `AtomicInteger` 记条数，
+            //  与 `ConcurrentLinkedDeque` 的增删不是同一次原子操作 —— 并发下计数会偏低 / 偏高，
+            //  环形缓冲于是少留几条、或多涨出去不受 [BUFFER_MAX] 约束（高频 `d` 路径尤其明显）。
             buffer.addLast("${level(priority)} ${java.time.LocalDateTime.now().format(stamp)} $text")
-            if (buffered.incrementAndGet() > BUFFER_MAX) {
-                buffer.pollFirst()
-                buffered.decrementAndGet()
-            }
+            while (buffer.size > BUFFER_MAX) buffer.pollFirst()
         }
         runCatching { Log.println(priority, TAG, text) }
         module?.let { m ->
@@ -115,17 +110,28 @@ object XLog {
      * 执行一段可能碰 system_server 类的代码，任何失败都吞掉、只打日志。读静态字段会触发宿主类
      * 初始化，可能抛 `ExceptionInInitializerError` / `NoClassDefFoundError`，一旦顺着
      * `onPackageReady` 抛回框架就是开机循环。本函数把「模块出错」与「宿主出错」彻底隔开。
+     *
+     *  界面层那几处「同一件事的兜底」也走这一份（系统回调、写盘），别再各写一遍 try/catch：
+     *  只是它们的失败含义不同，所以留了两个口子 —— [note] 换掉日志末尾那句说明（「不影响系统」
+     *  对界面侧并不成立），[onError] 用来做本处特有的收尾（归零会话、弹一句提示）。
+     *
+     * @param what 出问题的是哪一环（日志里原样带上）
+     * @param note 日志末尾那句说明 —— 说明的是「这次失败被怎么处理了」
+     * @param onError 失败时本处额外的收尾；同样的异常已经打过日志，这里不必再打
      */
     fun guard(
         what: String,
+        note: String = "不影响系统",
+        onError: () -> Unit = {},
         block: () -> Unit,
     ) {
         try {
             block()
-        } catch (e: Throwable) {
+        } catch (t: Throwable) {
             // Throwable 覆盖 Error（类初始化失败属于 Error）。文案写「失败」而非「安装失败」：
             // guard 也包着运行期动作，不能把排查方向带偏到「hook 没装上」。
-            e("「$what」失败（已忽略，不影响系统）：${e.javaClass.simpleName}", e)
+            e("「$what」失败（已忽略，$note）：${t.javaClass.simpleName}", t)
+            onError()
         }
     }
 

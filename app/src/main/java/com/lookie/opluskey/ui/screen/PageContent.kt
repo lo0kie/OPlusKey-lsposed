@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.res.Resources
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -54,6 +53,7 @@ import com.lookie.opluskey.ui.model.PAGE_TRANSITION
 import com.lookie.opluskey.ui.model.PagePalette
 import com.lookie.opluskey.ui.model.colorsOf
 import com.lookie.opluskey.ui.onDebugCommand
+import com.lookie.opluskey.ui.registerLocalReceiver
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
 import com.lookie.opluskey.ui.screen.command.branchGestureNow
 import com.lookie.opluskey.ui.screen.command.branchGestures
@@ -339,19 +339,12 @@ private fun SettingsPage.LinkCheckBridge() {
                     }
                 }
             }
-        val ok =
-            runCatching {
-                context.registerReceiver(
-                    receiver,
-                    IntentFilter().apply {
-                        addAction(ModuleWire.ACTION_HOST_SERVICE_UP)
-                        addAction(ModuleWire.ACTION_INJECT_READY)
-                    },
-                    // 同包广播，不必对外导出
-                    Context.RECEIVER_NOT_EXPORTED,
-                )
-            }.isSuccess
-        if (!ok) XLog.w("注册链路自检接收器失败（链路自检会一直显示未就绪）")
+        context.registerLocalReceiver(
+            "链路自检（链路会一直显示未就绪）",
+            receiver,
+            ModuleWire.ACTION_HOST_SERVICE_UP,
+            ModuleWire.ACTION_INJECT_READY,
+        )
         onDispose { runCatching { context.unregisterReceiver(receiver) } }
     }
 }

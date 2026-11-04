@@ -29,12 +29,12 @@ import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SheetAction
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.rememberMenuState
 import com.lookie.opluskey.ui.sheetCardColors
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
-import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
 /** 新建表单里「初始值」一格最多多少字 —— 比名字宽一档（值可能是「一段话」）。 */
 private const val VAR_VALUE_MAX = 64
@@ -190,8 +190,7 @@ private fun SettingsPage.BoolPicker(
     value: String,
     onPick: (String) -> Unit,
 ) {
-    var menu by remember { mutableStateOf(false) }
-    val anchor = rememberPreciseClickState()
+    val menu = rememberMenuState()
     CardList(
         rows =
             listOf(
@@ -199,33 +198,26 @@ private fun SettingsPage.BoolPicker(
                     title = boolLabel(value),
                     icon = boolIcon(value),
                     trailing = { RowEndIcon(PageIcons.Selector) },
-                    modifier = Modifier.preciseClickAnchor(anchor),
-                    onClick = { menu = true },
+                    modifier = Modifier.preciseClickAnchor(menu.anchor),
+                    onClick = { menu.show() },
                 ),
             ),
         margin = 0.dp,
         colors = sheetCardColors(),
     )
-    PageMenu(
-        entries =
-            if (menu) {
-                //  顺序恒为 True → False：按当前值排的话，点一次两项就换位置，第二次点会点错
-                listOf(VarType.TEXT_TRUE, VarType.TEXT_FALSE).map { candidate ->
-                    MenuEntry.Row(
-                        title = boolLabel(candidate),
-                        icon = boolIcon(candidate),
-                        selected = candidate == value,
-                    ) {
-                        onPick(candidate)
-                        menu = false
-                    }
-                }
-            } else {
-                emptyList()
-            },
-        preciseClick = anchor,
-        onDismiss = { menu = false },
-    )
+    PageMenu(menu) {
+        //  顺序恒为 True → False：按当前值排的话，点一次两项就换位置，第二次点会点错
+        listOf(VarType.TEXT_TRUE, VarType.TEXT_FALSE).map { candidate ->
+            MenuEntry.Row(
+                title = boolLabel(candidate),
+                icon = boolIcon(candidate),
+                selected = candidate == value,
+            ) {
+                onPick(candidate)
+                menu.dismiss()
+            }
+        }
+    }
 }
 
 /** 布尔的显示名：存的是 `true` / `false`，界面上是 `True` / `False`。 */
@@ -256,8 +248,7 @@ private fun SettingsPage.TypePicker(
     type: VarType,
     onPick: (VarType) -> Unit,
 ) {
-    var menu by remember { mutableStateOf(false) }
-    val anchor = rememberPreciseClickState()
+    val menu = rememberMenuState()
     CardList(
         rows =
             listOf(
@@ -265,32 +256,25 @@ private fun SettingsPage.TypePicker(
                     title = typeLabel(type),
                     icon = typeIcon(type),
                     trailing = { RowEndIcon(PageIcons.Selector) },
-                    modifier = Modifier.preciseClickAnchor(anchor),
-                    onClick = { menu = true },
+                    modifier = Modifier.preciseClickAnchor(menu.anchor),
+                    onClick = { menu.show() },
                 ),
             ),
         margin = 0.dp,
         colors = sheetCardColors(),
     )
-    PageMenu(
-        entries =
-            if (menu) {
-                VarType.entries.map { t ->
-                    MenuEntry.Row(
-                        title = typeLabel(t),
-                        icon = typeIcon(t),
-                        selected = t == type,
-                    ) {
-                        onPick(t)
-                        menu = false
-                    }
-                }
-            } else {
-                emptyList()
-            },
-        preciseClick = anchor,
-        onDismiss = { menu = false },
-    )
+    PageMenu(menu) {
+        VarType.entries.map { t ->
+            MenuEntry.Row(
+                title = typeLabel(t),
+                icon = typeIcon(t),
+                selected = t == type,
+            ) {
+                onPick(t)
+                menu.dismiss()
+            }
+        }
+    }
 }
 
 /**

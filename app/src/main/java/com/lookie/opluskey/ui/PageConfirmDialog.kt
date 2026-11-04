@@ -23,8 +23,6 @@ import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.DIALOG_FROSTED_ALPHA
 import io.github.suqi8.coui.kmp.basic.Text
@@ -140,43 +138,48 @@ internal fun SettingsPage.FrostedDialog(
         onDismissRequest = onDismiss,
         onDismissFinished = onDismissFinished,
     ) {
-        //  弹窗里**库自己发的振动**（滑杆的关键点触觉、开关那一下…）一并转投通用通道：
-        //  与浮层菜单那一层（`PageMenuPopup` 的 `TickHapticScope`）同一套 —— 那条路不走
-        //  [PageHaptics.allowed]，静音时会漏出来；转投之后判据与时长都跟页面点击一致。
-        TickHapticScope {
-            DialogPanel(
-                title = {
-                    CenteredTitle(trailing = titleTrailing) {
-                        Text(
-                            text = title,
-                            //  一个 style 决定全部：参数里再给一遍 `lineHeight` 会与 style 里的
-                            //  `lineHeightStyle` / `platformStyle` 打架（后者的裁剪就白做了）。
-                            style =
-                                COUITheme.textStyles.title4.copy(
-                                    fontWeight = FontWeight.Medium,
-                                    textAlign = TextAlign.Center,
-                                    lineHeight = DIALOG_LINE_HEIGHT,
-                                    lineHeightStyle = DIALOG_LINE_HEIGHT_STYLE,
-                                    platformStyle = DIALOG_PLATFORM_STYLE,
-                                    color = COUITheme.colorScheme.onBackground,
-                                ),
-                        )
-                    }
-                },
-                content = content,
-                footer = footer,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        // 糊 → 半透本色 → 内容。本色与浮层菜单共用（[popupSurfaceColor]），alpha 走弹窗
-                        //  自己那一档（[DIALOG_FROSTED_ALPHA]，比菜单更透 —— 面板大、底下平，同档看不出糊）
-                        // ——暗色下不能拿 `background`（纯黑）：糊的是接近纯黑的页面，纯黑底会把糊盖成一片黑，
-                        //  与菜单那边同一条教训。
-                        //  第二参数给矩形：形状交给库的圆角 mask（见上）。
-                        .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
-                        .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
-            )
-        }
+        //  **这里不许套 `TickHapticScope`**：它把 `LocalView` 换成一个**脱离窗口**的 `View`，
+        //  而弹窗正文里会出现输入框。Compose 的 `Popup`（输入框的光标 / 选区手柄就是它画的）
+        //  要从 `LocalView` 上取 `ViewTreeLifecycleOwner` 与窗口 token —— 假 View 两样都没有，
+        //  于是 `PopupLayout.onAttachedToWindow` 抛「Composed into the View which doesn't
+        //  propagate ViewTreeLifecycleOwner!」，**崩的是宿主进程**（真机表现：在名字弹窗里点一下
+        //  输入框、光标手柄一露就崩）。同一条路上，挪光标那几下按键事件也发给了假 View、等于没发。
+        //
+        //  库会振的那几处各自收口，不需要在弹窗这一层兜：开关走 `SwitchRow` 的 `NoSwitchHaptic`、
+        //  滑杆在 `TrackSlider` 里把库的触觉关成 `None`、勾选框传的是 `onClick = null`（不响应
+        //  点击也就不振）。
+        DialogPanel(
+            title = {
+                CenteredTitle(trailing = titleTrailing) {
+                    Text(
+                        text = title,
+                        //  一个 style 决定全部：参数里再给一遍 `lineHeight` 会与 style 里的
+                        //  `lineHeightStyle` / `platformStyle` 打架（后者的裁剪就白做了）。
+                        style =
+                            COUITheme.textStyles.title4.copy(
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center,
+                                lineHeight = DIALOG_LINE_HEIGHT,
+                                lineHeightStyle = DIALOG_LINE_HEIGHT_STYLE,
+                                platformStyle = DIALOG_PLATFORM_STYLE,
+                                color = COUITheme.colorScheme.onBackground,
+                            ),
+                    )
+                }
+            },
+            content = content,
+            footer = footer,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    // 糊 → 半透本色 → 内容。本色与浮层菜单共用（[popupSurfaceColor]），alpha 走弹窗
+                    //  自己那一档（[DIALOG_FROSTED_ALPHA]，比菜单更透 —— 面板大、底下平，同档看不出糊）
+                    // ——暗色下不能拿 `background`（纯黑）：糊的是接近纯黑的页面，纯黑底会把糊盖成一片黑，
+                    //  与菜单那边同一条教训。
+                    //  第二参数给矩形：形状交给库的圆角 mask（见上）。
+                    .then(frostSource?.let { Modifier.frosted(it, RectangleShape) } ?: Modifier)
+                    .background(popupSurfaceColor().copy(alpha = DIALOG_FROSTED_ALPHA)),
+        )
     }
 }
 
@@ -434,7 +437,6 @@ internal fun SettingsPage.ConfirmDialog(
         //  按钮是**底部那一区**（不是正文的尾巴）：三段式里竖向留白由弹窗统一给
         footer = {
             DialogButtonRow(
-                negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
                 positive = action,
                 onNegative = onDismiss,
                 onPositive = onConfirm,

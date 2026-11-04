@@ -1130,7 +1130,7 @@ object Strings {
      */
     const val UPDATE_VIEW = "update.view"
 
-    /** 正文：「当前 1.3.3 · 最新 1.4.0」（两个 `%s`）。 */
+    /** 正文：「最新 1.4.0」（一个 `%s`，版本号已去掉发布序号，见 `ReleaseInfo.displayVersion`）。 */
     const val UPDATE_BODY = "update.body"
 
     /** 更新说明那一小块的小标题。 */

@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
@@ -321,9 +322,12 @@ private fun Modifier.inputFocusBehavior(
     return this
         .focusRequester(focusRequester)
         .onFocusChanged { state ->
-            // 先回报状态，再处理光标：下面那两句在非首次聚焦时会提前 return
-            onFocusedChange(state.isFocused)
-            if (!state.isFocused || !caretToEnd || caretMoved) return@onFocusChanged
+            //  判据是 `hasFocus` 而不是 `isFocused`：这个修饰符挂在**外面的那一层**上，
+            //  真正拿到焦点的是库内部的输入框节点 —— 外层这一层只会看到 `isFocused = false`、
+            //  但 `hasFocus = true`（「焦点在我下面某处」）。原来用 `isFocused` 判，
+            //  那两行**一次都走不到**，光标于是永远停在开头（真机上就是这个表现）。
+            onFocusedChange(state.hasFocus)
+            if (!state.hasFocus || !caretToEnd || caretMoved) return@onFocusChanged
             caretMoved = true
             moveCaretToEnd(view)
         }
@@ -341,10 +345,11 @@ private fun Modifier.inputFocusBehavior(
  *  Compose 的 `defaultKeyMapping` 认 `KEYCODE_MOVE_END`（映射到「光标到末尾」那条命令），
  *  往**当前窗口**发一次即可，输入框外观一个字都不用改。
  *
- *  事件要发给**当前有焦点的那棵视图树**。`LocalView` 在这里拿到的是宿主那个 `ComposeView`
- *  —— COUI 的浮层挂在根 Scaffold 的 `popupHost` 上、不是独立的 `Dialog` 窗口（见
- *  `docs/device-findings.md` 第二十六节），所以页面与弹窗共用同一个 view，事件能到弹窗里
- *  那个焦点上。
+ *  事件要发给**这一层真实的那棵视图树**（`LocalView`）—— 页面里是宿主那个 `ComposeView`，
+ *  浮层里是浮层自己那一份；只要它是**在窗口里**的那个，事件就能沿焦点走到正在编辑的输入框。
+ *  反过来，浮层里有几处把 `LocalView` 顶替成脱离窗口的 `View`（`Haptics.kt` 的触觉作用域），
+ *  那里发按键就是空发 —— 判据与踩过的坑见 [moveCaretToEnd] 正文与
+ *  `docs/device-findings.md` 四十三。
  *
  *  排一帧再发：焦点刚到时 `CoreTextField` 内部那份状态还没跟上，这一下会被丢掉。
  *
@@ -353,6 +358,13 @@ private fun Modifier.inputFocusBehavior(
  *  后者是**每次点都挪**，所以不能只靠 `caretToEndOnFirstFocus` 那个一次性开关。
  */
 internal fun moveCaretToEnd(view: View) {
+    //  事件只沿**有窗口的那棵视图树**派发：拿到一个不在窗口里的 View（例如浮层里被顶替掉的
+    //  `LocalView`，见 `TickHapticView`）就等于把这两下按键扔了 —— 光标停在开头，且没有任何报错。
+    //  这一条是真机上「挪光标没反应」的成因，所以判据写在这里，不要等下次再从光标位置反推。
+    if (!view.isAttachedToWindow) {
+        XLog.w("挪光标失败：LocalView 不在窗口里（${view.javaClass.simpleName}）")
+        return
+    }
     view.post {
         view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MOVE_END))
         view.dispatchKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MOVE_END))

@@ -26,8 +26,9 @@ internal class KeyInjector(
         val down = construct(h, ACTION_DOWN, keyCode, now) ?: return
         val up = construct(h, ACTION_UP, keyCode, now) ?: return
         // 0 = INJECT_INPUT_EVENT_MODE_ASYNC
-        //  **看返回值**：新版 `injectInputEvent` 返回 int（0 = 失败），被拒时**不抛异常** ——
-        //  只判「没抛」会把拒绝当成注入成功，表现为「动作执行了、屏幕没反应」且日志无痕。
+        //  **看返回值**：新版 `injectInputEvent` 返回 `InputEventInjectionResult`（0 = 成功），
+        //  被拒时**不抛异常** —— 只判「没抛」会把拒绝当成注入成功，表现为
+        //  「动作执行了、屏幕没反应」且日志无痕。
         injectOnce(h, down, keyCode)
         injectOnce(h, up, keyCode)
     }
@@ -39,10 +40,28 @@ internal class KeyInjector(
         keyCode: Int,
     ) {
         val r = Reflect.call(h.manager, h.inject, event, INJECT_MODE_ASYNC)
-        when (r) {
-            null -> XLog.w("注入按键：injectInputEvent 没返回（按已下发处理）：keyevent:$keyCode")
-            false -> XLog.w("注入按键被系统拒（injectInputEvent=false）：keyevent:$keyCode")
-            0 -> XLog.w("注入按键被系统拒（RESULT_FAILED）：keyevent:$keyCode")
+        //  `injectInputEvent` 返回 `InputEventInjectionResult`：0 = SUCCEEDED，非 0 = 失败
+        //  （1 = FAILED、-1 = PERMISSION_DENIED…）。上一版把 0 记成「RESULT_FAILED」，于是
+        //  **真正成功的那一次刷一条「被拒」、真失败的那一次反而一行都不打**（见注入侧
+        //  `KeyInject.injectOnce` 里同一条教训，两处口径必须一致）。
+        when {
+            r == null -> {
+                XLog.w("注入按键：injectInputEvent 没返回（按已下发处理）：keyevent:$keyCode")
+            }
+
+            r is Boolean -> {
+                if (!r) XLog.w("注入按键被系统拒（老版 boolean=false）：keyevent:$keyCode")
+            }
+
+            r is Int -> {
+                if (r != INPUT_EVENT_INJECTION_SUCCEEDED) {
+                    XLog.w("注入按键被系统拒（结果码 $r）：keyevent:$keyCode")
+                }
+            }
+
+            else -> {
+                XLog.w("注入按键：结果类型认不出（${r.javaClass.simpleName}），按已下发处理：keyevent:$keyCode")
+            }
         }
     }
 
@@ -218,6 +237,9 @@ internal class KeyInjector(
 
         /** `InputManager.INJECT_INPUT_EVENT_MODE_ASYNC`。 */
         private const val INJECT_MODE_ASYNC = 0
+
+        /** `InputEventInjectionResult.INPUT_EVENT_INJECTION_SUCCEEDED`（= 0）—— 只有它算成功。 */
+        private const val INPUT_EVENT_INJECTION_SUCCEEDED = 0
 
         private const val SOURCE_KEYBOARD = 0x101
 

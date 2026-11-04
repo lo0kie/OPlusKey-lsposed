@@ -154,7 +154,16 @@ object CommandLibrary {
         //  跳过那一条、其余照常导入；真坏（名字空 / 结构不对）才整份判坏 ——
         //  否则用户拿着旧备份升级后就再也导不进来（报「未知的配置格式」）。
         val broken = arr.any { e -> decodeCommand(e) == null && !isUnknownKind(e) }
-        return if (broken) null else parse(text)
+        if (broken) return null
+        val parsed = parse(text)
+        //  **有元素、却一条都没剩下 ⇒ 读不懂**：全是「未知 kind」时 `broken` 上面那道判不出来，
+        //  交出去就是一张空表 —— 导入那一路会把它当成功落盘，用户的命令库被清空。
+        //  与 [parseState] 里那条护栏同一条判据（那一处是「读盘时按 Unreadable」）。
+        if (arr.isNotEmpty() && parsed.isEmpty()) {
+            XLog.w("导入命令库：${arr.size} 条一条都认不出 ⇒ 按读不懂处理（不拿空表覆盖）")
+            return null
+        }
+        return parsed
     }
 
     /** 这一条是不是「名字读得出来、只是类型认不出」—— 与「真坏」分开，见 [parseOrNull]。 */

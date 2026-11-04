@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen.binding
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -30,9 +29,12 @@ import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
 import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
+import com.lookie.opluskey.ui.NameDialog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialogSideMargin
 import com.lookie.opluskey.ui.hint
+import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.registerLocalReceiver
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
@@ -141,14 +143,22 @@ internal fun SettingsPage.CollectKeyDialog(
     ) {
         CollectKeyBody(secondsLeft)
     }
-    AddKeyDialog(
+    //  「添加按键」的命名窗 —— 正文（输入框 + 取消 / 确定）就是通用的 `NameDialog`。
+    //
+    //  **先命名、确认再保存**：按下就落盘太快，误按一下多出一颗键、还得再进菜单删一遍；
+    //  所以这一步既是「起名」也是「确认」，取消 = 这一步没写过配置 ⇒ 就是没加。
+    //  名字的起点是「按键 N」（`draftName`）：想改名直接打字，不想改就直接点确定。
+    NameDialog(
         //  **等收集窗彻底收场了再开这一个**：两个弹窗窗口同时在场的那几百毫秒里，键盘会被
         //  前一个窗口的销毁带走一次，而我们在后一个窗口里刚聚焦 ⇒ 用户看到的就是
         //  「键盘拉起又消失」。以前是「早开窗、晚抢焦点」（`focusReady`），窗口仍是叠着的；
         //  现在连窗都不叠 —— 收场回调（或它的兜底）一到，这一格才置位。
         show = show && pendingCode != null && collectClosed,
+        title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
+        label = I18n.get(Strings.BINDING_KEY_NAME, "按键名称"),
+        //  行首用标签（`label-important`）：这一格填的是**一个名字**
+        icon = PageIcons.LabelImportant,
         initial = draftName,
-        // 取消 = 不添加：这一步还没写过配置，关掉就是没加
         onDismiss = onDismiss,
         onConfirm = { name ->
             // 写盘失败时 `write` 自己已经提示过，这里不关窗：用户可以改个名再试一次
@@ -400,14 +410,12 @@ private fun KeyWatchWhileVisible(
         // 发送方是 system_server（uid 1000）：系统身份对 NOT_EXPORTED 接收器照样可达，
         // 普通 App 即便发同名广播也进不来 —— 与 `host/GestureReceiver` 同一口径。
         val registered =
-            runCatching {
-                context.registerReceiver(
-                    receiver,
-                    IntentFilter(ModuleWire.ACTION_KEY_SEEN),
-                    Context.RECEIVER_NOT_EXPORTED,
-                )
-            }.onFailure { XLog.w("收集按键：接收器没注册上（弹窗会一直显示「正在等待按键」）", it) }
-                .isSuccess
+            context.registerLocalReceiver(
+                //  后果写进日志：没注册上时弹窗会一直停在「正在等待按键」，用户只会觉得「按了没反应」
+                "收集按键（弹窗会一直停在正在等待按键）",
+                receiver,
+                ModuleWire.ACTION_KEY_SEEN,
+            )
         //  接收器没注册上就别开监听：注入侧照旧上报，但没有接收方，弹窗会一直停在
         //  「正在等待按键」直到 60 秒自动关 —— 用户看到的是「按了没反应」。
         if (!registered) return@DisposableEffect onDispose {}

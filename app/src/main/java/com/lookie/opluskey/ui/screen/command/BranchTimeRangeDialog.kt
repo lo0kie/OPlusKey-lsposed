@@ -72,8 +72,6 @@ internal fun SettingsPage.BranchTimeRangeDialog(
         //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
         footer = {
             DialogButtonRow(
-                negative = I18n.get(Strings.DIALOG_CANCEL, "取消"),
-                positive = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
                 onNegative = onDismiss,
                 onPositive = {
                     onConfirm(

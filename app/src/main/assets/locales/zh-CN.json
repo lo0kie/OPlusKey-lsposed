@@ -611,7 +611,7 @@
   "update.title": "发现新版本",
   "update.tip": "发现新版本 %1$s",
   "update.view": "查看",
-  "update.body": "当前 %1$s - 最新 %2$s",
+  "update.body": "最新 %1$s",
   "update.notes": "更新说明",
   "update.download": "去下载",
   "update.later": "稍后",

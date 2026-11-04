@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
@@ -53,19 +52,8 @@ internal suspend fun SettingsPage.fetchText(
                 )
             }
         }
-    val registered =
-        runCatching {
-            context.registerReceiver(
-                receiver,
-                IntentFilter(ModuleWire.ACTION_NET_RESULT),
-                // 同包一问一答，不必对外导出
-                Context.RECEIVER_NOT_EXPORTED,
-            )
-        }.isSuccess
-    if (!registered) {
-        XLog.w("网络代取：注册接收器失败（这一趟作罢）")
-        return null
-    }
+    val registered = context.registerLocalReceiver("网络代取（这一趟作罢）", receiver, ModuleWire.ACTION_NET_RESULT)
+    if (!registered) return null
     try {
         val sent =
             PageWire.send(

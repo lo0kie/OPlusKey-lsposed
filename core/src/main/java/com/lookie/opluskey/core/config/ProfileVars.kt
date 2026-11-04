@@ -41,28 +41,52 @@ object ProfileVars {
     /**
      * 切换配置时的变量表对调 —— 对称于 [ConfigProfiles.switchTo] 对主配置做的那件事。
      *
-     *  顺序与那边同一个道理：先把**当前这份**存进目标槽、再把目标的变量表换进来。中断在第一步 ⇒
-     *  当前还是原来的变量；中断在第二步 ⇒ 两份都完整，只是当前这份换掉了。
+     *  顺序与那边同一个道理：先把**当前这份**存进目标槽、再把目标的变量表换进来。
+     *  中断在第一步 ⇒ 当前还是原来的变量；**中断在第二步 ⇒ 把目标槽还原**（不还原的话，
+     *  目标那份原样只留在这一次调用的内存里，切回去看到的就是上一套的计数）。
+     *
+     *  **读不懂 ≠ 没有**：任一槽读不懂就整趟不动 —— 按「老配置」处理会把那份可能还能救的文件
+     *  用另一份盖掉（见 `ModuleFiles` 类注释里那条三态纪律）。
      *
      * @return 对调是否成功（目标配置没有自己的变量表时，「存过去」成功就算成功）
      */
     fun swap(configSlot: String): Boolean {
         val target = slotOf(configSlot)
-        val live = rawOf(ConfigStore.SLOT_VARS)
-        val mine = rawOf(target)
-        val ok =
-            when (mine) {
-                //  老配置：目标槽是空的 ⇒ 把当前这份存过去，当前配置的变量不动（理由见类注释）
-                null -> {
-                    live == null || writeRaw(target, live)
-                }
+        val live = ConfigStore.files().read(ConfigStore.SLOT_VARS)
+        val mine = ConfigStore.files().read(target)
+        if (live is ModuleFiles.Load.Unreadable || mine is ModuleFiles.Load.Unreadable) {
+            XLog.w("配置切换：变量表有槽读不懂（槽 $target）⇒ 不动，先修那份文件")
+            return false
+        }
+        val liveText = live.textOrNull()
+        val mineText = mine.textOrNull()
+        if (mineText == null) {
+            //  老配置：目标槽是空的 ⇒ 把当前这份存过去，当前配置的变量不动（理由见类注释）
+            val ok = liveText == null || writeRaw(target, liveText)
+            if (!ok) XLog.w("配置切换：变量表没跟过去（槽 $target）")
+            return ok
+        }
+        return swapBoth(target, liveText, mineText)
+    }
 
-                else -> {
-                    (live == null || writeRaw(target, live)) && writeRaw(ConfigStore.SLOT_VARS, mine)
-                }
-            }
-        if (!ok) XLog.w("配置切换：变量表没跟过去（槽 $target，live=${live != null}, mine=${mine != null}）")
-        return ok
+    /** 两份都在时的对调：先存当前、再换进目标；**第二步失败要把目标槽还原**。 */
+    private fun swapBoth(
+        target: String,
+        liveText: String?,
+        mineText: String,
+    ): Boolean {
+        if (liveText != null && !writeRaw(target, liveText)) {
+            XLog.w("配置切换：变量表没跟过去（第一步写盘失败，槽 $target）")
+            return false
+        }
+        if (writeRaw(ConfigStore.SLOT_VARS, mineText)) return true
+        //  第二步失败：目标槽里此刻是当前这份，原来那份只在内存里 —— 必须还原，否则它没了
+        val restored = liveText == null || writeRaw(target, mineText)
+        XLog.w(
+            "配置切换：变量表没换进来（第二步写盘失败，槽 $target）—— " +
+                if (restored) "已还原目标槽" else "还原也失败，目标槽里现在是当前这份",
+        )
+        return false
     }
 
     /**
@@ -78,9 +102,6 @@ object ProfileVars {
 
     /** 删掉某份配置的变量表（连 `.bak` / `.new` 一起，走 [ModuleFiles.delete]）。 */
     fun delete(configSlot: String): Boolean = ConfigStore.files().delete(slotOf(configSlot))
-
-    /** 读一个槽的磁盘原文；不在 / 读不出来都是 `null`。 */
-    private fun rawOf(slot: String): String? = ConfigStore.files().read(slot).textOrNull()
 
     /**
      * 写一个槽的磁盘原文。

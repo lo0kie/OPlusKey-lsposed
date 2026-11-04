@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -33,7 +35,6 @@ import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialogSideMargin
 import com.lookie.opluskey.ui.markdownToAnnotated
-import com.lookie.opluskey.ui.moduleVersionName
 import com.lookie.opluskey.ui.screen.home.openUrl
 import com.lookie.opluskey.ui.scrollBarTick
 import com.lookie.opluskey.ui.state.UpdateState
@@ -112,7 +113,7 @@ internal fun SettingsPage.UpdateDialog() {
             )
         },
     ) {
-        if (info != null) UpdateBody(info, moduleVersionName().orEmpty())
+        if (info != null) UpdateBody(info)
     }
 }
 
@@ -173,13 +174,10 @@ private fun NotesBlock(
 
 /** 窗里那块正文（拆出来只为让 [UpdateDialog] 那一支短一点）。 */
 @Composable
-private fun ColumnScope.UpdateBody(
-    info: ReleaseInfo,
-    current: String,
-) {
+private fun ColumnScope.UpdateBody(info: ReleaseInfo) {
     val summary = COUITheme.textStyles.body2
     val caption = COUITheme.textStyles.footnote2
-    DialogBody(I18n.format(Strings.UPDATE_BODY, current, info.displayVersion))
+    DialogBody(I18n.format(Strings.UPDATE_BODY, info.displayVersion))
     if (info.notes.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
         Text(
@@ -214,6 +212,10 @@ private fun ColumnScope.UpdateBody(
             Modifier
                 .fillMaxWidth()
                 .dialogSideMargin()
+                //  波纹跟着这一行的圆角走：不裁的话按下时是一片**直角**矩形铺到弹窗边上，
+                //  与弹窗自己的圆角、与这行内容的圆角都对不上。8dp 只收掉四个角，
+                //  不把这一行读成胶囊。
+                .clip(RoundedCornerShape(8.dp))
                 .clickable {
                     //  弹窗里的可点控件同样走页面那条通用振动通道（见 `LocalTick`）
                     tick()

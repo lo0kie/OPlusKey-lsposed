@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -43,12 +42,12 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.opticalCenter
+import com.lookie.opluskey.ui.rememberMenuState
 import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.state.KeysEditState
 import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
-import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /** 组合标题里分隔符两侧的间距 —— 比「贴在一起」松一档，`×` 才不像粘在两枚圆角框上。 */
@@ -111,31 +110,23 @@ internal fun SettingsPage.ComboListSection(
     atLimit: Boolean,
 ) {
     val filterKey = ComboEditState.filterKey
-    var menu by remember { mutableStateOf(false) }
-    val anchor = rememberPreciseClickState()
+    val menu = rememberMenuState()
 
-    Column(Modifier.preciseClickAnchor(anchor)) {
+    Column(Modifier.preciseClickAnchor(menu.anchor)) {
         SectionTitle(
             text = comboListTitle(cfg, filterKey),
-            click = SectionTitleClick.Menu(expanded = menu) { menu = true },
+            click = SectionTitleClick.Menu(expanded = menu.open) { menu.show() },
         )
         //  两列的宽度**整列量一次**（见 [comboPairWidths]）：每行各量各的就会一行一个宽度。
         CardList(rows = comboRows(cfg, writable, atLimit, filterKey, comboPairWidths(cfg)))
     }
     //  行表空着就是「不显示」（与别处 `PageMenu` 的用法一致）
-    PageMenu(
-        entries =
-            if (menu) {
-                comboFilterEntries(cfg, filterKey) { key ->
-                    ComboEditState.filterKey = key
-                    menu = false
-                }
-            } else {
-                emptyList()
-            },
-        preciseClick = anchor,
-        onDismiss = { menu = false },
-    )
+    PageMenu(menu) {
+        comboFilterEntries(cfg, filterKey) { key ->
+            ComboEditState.filterKey = key
+            menu.dismiss()
+        }
+    }
 }
 
 /**

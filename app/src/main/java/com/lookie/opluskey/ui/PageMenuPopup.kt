@@ -17,8 +17,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +51,7 @@ import io.github.suqi8.coui.kmp.basic.ListPopupDefaults
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.basic.rememberScrollBarAdapter
 import io.github.suqi8.coui.kmp.interfaces.ExperimentalScrollBarApi
 import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
@@ -153,6 +156,56 @@ internal fun SettingsPage.PageMenu(
 }
 
 /**
+ * 一个浮层菜单的「开 / 关 + 锚点」—— 这两样是同一件事的两面（「这块内容此刻弹没弹出来、
+ * 从哪个触点弹的」），三处调用点原先各写一遍 `remember { mutableStateOf(false) }` +
+ * `rememberPreciseClickState()`，再在 `PageMenu` 那处拼空表与 `onDismiss`。
+ *
+ *  取值一律走 [open] / [show] / [dismiss]：外部**没有**直接写这一位的口子 —— 写 false 与写 true
+ *  的时机必须与锚点、与调用方那份行表在同一帧上对齐，散在各处写迟早对不齐。
+ */
+internal class MenuState(
+    /** 开菜单那个控件自己的触点锚点（弹层定位用）。 */
+    val anchor: PreciseClickState,
+) {
+    var open by mutableStateOf(false)
+        private set
+
+    fun show() {
+        open = true
+    }
+
+    fun dismiss() {
+        open = false
+    }
+}
+
+/** 记住一份 [MenuState]（锚点跟着组合一起建）。 */
+@Composable
+internal fun rememberMenuState(): MenuState {
+    val anchor = rememberPreciseClickState()
+    return remember(anchor) { MenuState(anchor) }
+}
+
+/**
+ * 「有状态的菜单」—— [MenuState] 那一版：[entries] 只在开着时求值，空表自动当作关闭。
+ *
+ *  比裸 [PageMenu] 少掉三件每次都要写对的事：`if (menu) … else emptyList()`、把锚点递进去、
+ *  以及 `onDismiss` 复位。行表在关着时**根本不求值**（`entries` 是 lambda），所以里面可以放心
+ *  用「当前选中值」现算，不必在开合之间维持一份快照。
+ */
+@Composable
+internal fun SettingsPage.PageMenu(
+    state: MenuState,
+    entries: () -> List<MenuEntry>,
+) {
+    PageMenu(
+        entries = if (state.open) entries() else emptyList(),
+        preciseClick = state.anchor,
+        onDismiss = state::dismiss,
+    )
+}
+
+/**
  * [MenuPopup] 那三样「面板怎么摆」—— 合成一个对象，参数才压得回 detekt 的 5 个以内，
  * 也让调用点一眼看出「这几样只影响面板本身」。
  *
@@ -176,6 +229,12 @@ internal fun SettingsPage.MenuPopup(
 ) {
     // 页面离开时跟着一起收（见 [SettingsPage.closeOverlays]）
     OverlayCloser(show = show) { onDismiss() }
+    //  **这一退交给菜单自己接**（与底部抽屉同一档，见 `PageSheet` 的那一行）：
+    //  `OverlayListPopup` 内部挂着 `NavigationBackHandler`，只有把系统的预测返回进度喂进
+    //  dispatcher，菜单才是「跟着手势收掉」；不登记的话 `wouldConsumeBack` 会把这一退判成
+    //  「浮层自己不接」⇒ hook 侧直接把整段手势吞掉、只留一次性收起（用户口径：菜单没有预测手势）。
+    //  全项目的菜单都从这一处出（`PageMenu` / `ModeMenuPopups` / 各列表行菜单），所以登记一次就够。
+    overlays.BackCapturing(show = show)
     // 整列的手势账本 —— 抓「滑动被当成点一下」那种偶发现场（见 [GestureProbe]）。
     val probe = rememberGestureProbe("浮层列表")
     //  每开一次把账本归零：对象跨开合不重建，留着上一次的

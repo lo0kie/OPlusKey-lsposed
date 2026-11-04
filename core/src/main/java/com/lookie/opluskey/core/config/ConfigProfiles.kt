@@ -225,6 +225,7 @@ object ConfigProfiles {
      *
      * @return 切换后当前生效的配置；槽不存在 / 读不懂 / 写盘失败都返回 `null`（什么都不改）
      */
+    @Suppress("CyclomaticComplexMethod")
     fun switchTo(slot: String): Config? {
         if (slot == CURRENT_SLOT) return readOf(CURRENT_SLOT)
         val target =
@@ -236,17 +237,25 @@ object ConfigProfiles {
         //  中断时当前配置是「目标内容」而旧当前已经没了，那是最坏的一种。
         //  但只靠顺序不够：第二步失败时目标槽里已经是旧当前、原来那份只在这一次调用的 `target`
         //  里 —— 所以第二步失败要**把目标槽还原**，否则那份配置就永久被覆盖了。
-        val current = readOf(CURRENT_SLOT)
+        //  **当前那份读不懂就拒绝切换**（不是「当成没有」）：`staged = false` 会让下面直接用目标
+        //  内容盖掉当前槽 —— 而那份坏文件往往只是外皮 / 截断坏了，原样留着还能救回来。
+        //  它走的是**同一个失败出口**（不另起一个 return），所以「什么都没写」这一点由下面那个
+        //  `currentUnreadable ||` 短路保证：条件第一项就命中，后面的写盘一个都不会执行。
+        val currentUnreadable = ConfigStore.files().read(CURRENT_SLOT) is ModuleFiles.Load.Unreadable
+        val current = if (currentUnreadable) null else readOf(CURRENT_SLOT)
         //  **两步都要成，第一步成了第二步失败要把第一步退回去**：
         //  第一步已经把旧当前写进了目标槽 —— 此时若不还原，那份目标配置就**永久没了**
         //  （目标内容已经被旧当前盖掉，内存里还留着的那个 `target` 只在这一次调用里有效）。
         val staged = current != null
         val firstOk = !staged || writeProfileConfig(slot, current)
-        if (!firstOk || !writeProfileConfig(CURRENT_SLOT, target)) {
+
+        if (currentUnreadable || !firstOk || !writeProfileConfig(CURRENT_SLOT, target)) {
             //  第一步没写（当前配置读不出来）时目标槽还是原样，没什么要还原的
             val restored = !(staged && firstOk) || writeProfileConfig(slot, target)
             XLog.w(
                 when {
+                    currentUnreadable -> "配置切换：当前配置读不懂 ⇒ 拒绝切换（先修好它，别拿 $slot 盖掉）"
+
                     !firstOk -> "配置切换：$slot 没换成（第一步写盘失败），不动"
 
                     restored -> "配置切换：$slot 没换成（第二步写盘失败），目标槽已还原"
@@ -418,10 +427,16 @@ object ConfigProfiles {
         }
         //  **必须换新 id**：导入的文件里带着别人的 `profile_id`，照抄下来会和本机已有的撞车
         val ordered = config.copy(profileId = newProfileId(), profileName = trimmed, profileOrder = order)
-        val ok = ProfileCommands.save(slot, commands) && writeProfileConfig(slot, ordered)
+        val ok =
+            ProfileCommands.save(slot, commands) &&
+                writeProfileConfig(slot, ordered) &&
+                //  **变量表也落一份空表**：不落的话这一槽没有 vars 文件，切换时会被当成「老配置」，
+                //  于是导入的配置一上来就继承了当时那套计数（与 `createProfile` 同一条口径）
+                ProfileVars.save(slot, emptyList())
         if (!ok) {
             ConfigStore.files().delete(slot)
             ProfileCommands.delete(slot)
+            ProfileVars.delete(slot)
             XLog.w("配置导入：没写成（槽 $slot），已清理这一槽")
             return null
         }

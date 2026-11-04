@@ -85,11 +85,18 @@ internal fun NoSwitchHaptic(content: @Composable () -> Unit) {
  *  把浮层内容那一层的 `LocalView` 换成这一份，那一次振动就落到 [LocalTick] 上，
  *  判据与时长跟点一下菜单行完全一致。
  *
- * ## 为什么换掉 `LocalView` 是安全的
+ * ## 换掉 `LocalView` 的边界（重要）
  *
- *  库整个 `coui-ui` 里读 `LocalView` 的只有 `CouiHaptic`（另有一处是导航层的
- *  `WindowNavigationEventScope`，不在这棵子树里）；圆角那一支读的是 `LocalContext`。
- *  浮层内容里没有输入框（`IconInput` 那两处 `LocalView` 用法都在页面 / 弹窗上）。
+ *  这个作用域**只能包「没有输入框、也不会自己开窗口」的内容** —— 现在只有浮层菜单那一列
+ *  （`PageMenuPopup`）用它。**弹窗整体不能套**：
+ *
+ *   - Compose 的 `Popup`（输入框的光标 / 选区手柄就是它画的）从 `LocalView` 上取
+ *     `ViewTreeLifecycleOwner` 与窗口 token，假 View 两样都没有 ⇒ `PopupLayout` 在挂窗口那一刻
+ *     抛 `IllegalStateException`，**宿主进程直接崩**；
+ *   - 输入框那一侧的「把光标挪到末尾」是往 `LocalView` 派发按键事件，发给假 View 等于没发。
+ *
+ *  这两条都是真机踩出来的（见 `docs/device-findings.md` 四十三）。库会振的字面量控件各自收口：
+ *  开关在 `SwitchRow` 里、滑杆在 `TrackSlider` 里（关成 `None`），不必靠这一层兜整棵子树。
  *
  * @param onHaptic 转投的去处 —— 调用点给 `LocalTick` 那一条（见 [TickHapticScope]）
  */

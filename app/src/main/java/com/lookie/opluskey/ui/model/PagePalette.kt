@@ -76,7 +76,8 @@ internal enum class PagePalette(
  *  · **主题 = 跟随系统 (Monet)**：底子与强调色**整套**交给库的权威实现（[platformDynamicColors] /
  *    [ThemeController]）—— 那是按 MD3 的 HCT tone 映射生成的，容器色 / 前景色都是配好对的一组，
  *    **不再手搓**。默认档 = 系统那套原样（含系统选的调色风格与 colorSpec）；选了预设色 =
- *    按那个种子重推整套，调色风格与 colorSpec 仍跟系统（见 [systemPaletteSpec]）。
+ *    按那个种子重推整套，调色风格**固定 Fidelity**（系统的 TONAL_SPOT 会把种子色压成灰蓝，
+ *    与默认档分不出来），colorSpec 按 SDK 取（见 [monetColorSpec]）。
  *  · **其余主题档**：底子是 COUI 固定的 `LIGHT_SCHEME` / `DARK_SCHEME`，**只换强调色那一族**
  *    （[withAccent]）—— 浅色 / 深色主题的底色、卡片、文字、分隔线不跟着染，只有主色那一族
  *    按「强调色」那一行变。这一档的 `primaryContainer` 语义是 COUI 自己的（主色本身），
@@ -102,15 +103,17 @@ internal fun colorsOf(
             }
 
             else -> {
-                //  预设色：按种子整套重推；调色风格与 colorSpec 跟系统那一套（见 [systemPaletteSpec]），
-                //  不传就落到库默认（TonalSpot + Spec2021），系统在 Android 13+ 的对比度 / 鲜艳度
-                //  设置就不生效。
-                val (spec, style) = systemPaletteSpec(context)
+                //  预设色：按种子整套重推。**调色风格固定 Fidelity，不跟系统的 TONAL_SPOT** ——
+                //  那一档把种子色的彩度压到 ~50 上下，`#0066FF` 出来是 tone 40 的灰蓝，与
+                //  「默认」那一档（framework 基线的 `system_accent1_*`，同样是灰蓝那一族）几乎
+                //  分不出来：真机口径就是「选了蓝色，实际用的是深蓝种子」。
+                //  Fidelity 保留种子彩度，预设色才真的像它自己。`colorSpec`（系统那一档对比度 /
+                //  鲜艳度）照旧按 SDK 取，它与色相无关。
                 ThemeController(
                     colorSchemeMode = if (night) ColorSchemeMode.MonetDark else ColorSchemeMode.MonetLight,
                     keyColor = palette.seed(context),
-                    colorSpec = spec,
-                    paletteStyle = style,
+                    colorSpec = monetColorSpec(),
+                    paletteStyle = ThemePaletteStyle.Fidelity,
                 ).currentColors()
             }
         }
@@ -145,51 +148,15 @@ private fun logSchemeOnce(
 private val PALETTE_DEFAULT_SEED = Color(0xFF0066FF)
 
 /**
- * 系统「调色风格 + colorSpec」那一对 —— 给「Monet + 预设色」那一档按种子重推整套时用。
+ * 「Monet + 预设色」那一档按种子重推整套时用的 [ThemeColorSpec] —— 系统「对比度 / 鲜艳度」那一档。
  *
- *  为什么读它：Android 13 起系统在「壁纸与样式」里能调**调色风格**（TonalSpot / Vibrant /
- *  Expressive …）与**对比度 / 鲜艳度**（colorSpec）。「默认」档直接 [platformDynamicColors]
- *  已经跟上了；但「预设色」档是拿项目自己的种子重推，不读这一对的话，用户的调色风格设置
- *  在这一档就丢了（库默认 TonalSpot + Spec2021）。
- *
- *  数据源与库内部（`platformDynamicColors` 的 `readSystemPaletteInfo`）同一处：settings 里的
- *  `theme_customization_overlay_packages`，取 `theme_style` 映射成 [ThemePaletteStyle]，
- *  colorSpec 按 SDK 分档（36 起 Spec2025，否则 Spec2021）。
- *  **读不到就退默认**（TonalSpot + Spec2021），不因此报错 —— 调色参数不是主色，退默认只是
- *  少了「跟系统」这一层，配色本身照常。
- *
- * @return `(colorSpec, paletteStyle)` 一对
+ *  **只按 SDK 分档**：36 起 Spec2025、否则 Spec2021（与库内部 `platformDynamicColors` 同一张表）。
+ *  这一段原先还去 settings 的 `theme_customization_overlay_packages` 里读 `theme_style` 当调色风格，
+ *  结果是把种子色交到系统那一档 TONAL_SPOT 手上 —— 彩度被压掉，`#0066FF` 出来是灰蓝，
+ *  与「默认」档几乎一样（见 `colorsOf` 里那段）。调色风格现在固定 [ThemePaletteStyle.Fidelity]，
+ *  所以那段读 JSON 的映射表一并删掉了；对比度本来也不是从那里读的，仍按版本取。
  */
-private fun systemPaletteSpec(context: Context): Pair<ThemeColorSpec, ThemePaletteStyle> {
-    val style =
-        runCatching {
-            android.provider.Settings.Secure.getString(
-                context.contentResolver,
-                "theme_customization_overlay_packages",
-            )
-        }.getOrNull()
-            ?.let { json ->
-                runCatching { org.json.JSONObject(json) }.getOrNull()
-            }?.optString("android.theme.customization.theme_style")
-            ?.uppercase()
-            ?.let { name ->
-                //  系统的 style 字符串 → [ThemePaletteStyle]；认不出退回 TonalSpot（与库内部同一张表）
-                when (name) {
-                    "VIBRANT" -> ThemePaletteStyle.Vibrant
-                    "EXPRESSIVE" -> ThemePaletteStyle.Expressive
-                    "SPRITZ", "NEUTRAL" -> ThemePaletteStyle.Neutral
-                    "RAINBOW" -> ThemePaletteStyle.Rainbow
-                    "FRUIT_SALAD" -> ThemePaletteStyle.FruitSalad
-                    "MONOCHROMATIC", "MONOCHROME" -> ThemePaletteStyle.Monochrome
-                    "FIDELITY" -> ThemePaletteStyle.Fidelity
-                    "CONTENT" -> ThemePaletteStyle.Content
-                    else -> ThemePaletteStyle.TonalSpot
-                }
-            }
-            ?: ThemePaletteStyle.TonalSpot
-    val spec = if (Build.VERSION.SDK_INT >= 36) ThemeColorSpec.Spec2025 else ThemeColorSpec.Spec2021
-    return spec to style
-}
+private fun monetColorSpec(): ThemeColorSpec = if (Build.VERSION.SDK_INT >= 36) ThemeColorSpec.Spec2025 else ThemeColorSpec.Spec2021
 
 /**
  * 系统强调色 —— 「默认」那一档在**配色菜单色块**上要显示的色。

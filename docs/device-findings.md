@@ -4694,3 +4694,46 @@ return v1                                                # v1 = 1
 - 想让相机里也能用，正确做法不是放行，而是给中间态码也设计出可配的动作（另议）。**不能靠注入族码
   实现**：族码不在 `KeyId.INJECTABLE_CODES` 里，注入出去会再走回认领路径成环
   （见 `RomKeyFamilies.isFamilyCode`）。
+
+## 四十三、弹窗里把 `LocalView` 换成脱离窗口的 `View`：Compose 的 `Popup` 崩宿主，输入框光标也挪不动（真机 logcat + 字节码核对，2026-11-04，PLK110 / ColorOS 17.0.0）
+
+名字弹窗里点一下输入框（光标手柄一露）必崩，崩的是宿主进程 `com.oplus.gesture.ui`，三次复现同一栈：
+
+```
+java.lang.IllegalStateException: Composed into the View which doesn't propagate ViewTreeLifecycleOwner!
+  at androidx.compose.ui.platform.AbstractComposeView.resolveComposeViewContext(ComposeView.android.kt:355)
+  at androidx.compose.ui.platform.AbstractComposeView.attachedToWindow(ComposeView.android.kt:464)
+  at androidx.compose.ui.window.PopupLayout.onAttachedToWindow(AndroidPopup.android.kt:721)
+```
+
+- **手柄是 Compose `Popup` 画的**：`foundation/text/selection/AndroidSelectionHandles_androidKt.HandlePopup`
+  → `AndroidPopup_androidKt.Popup`（1.12.1 字节码核对）。所以只要浮层里有输入框，光标 / 选区手柄
+  一露就会新建一个 `Popup` 窗口。
+- **`PopupLayout` 的三个 owner 来自 `LocalView`**：构造里 `ViewTreeLifecycleOwner.get(composeView)`
+  然后 `set` 到自己身上（`ViewModelStore` / `SavedStateRegistry` 同样三条），`composeView` 就是
+  建这个 `Popup` 时的 `LocalView.current`。窗口 token 也从它身上取。
+- **踩点**：弹窗内容外层那层触觉作用域（`ui/Haptics.kt` 的 `TickHapticScope`）把 `LocalView`
+  顶替成 `View(context)`。那个 View 不在窗口里、也没有 owner tag ⇒ 复制到 `PopupLayout` 上的三个
+  owner 全是 null ⇒ 挂窗口那一刻抛上面的异常，宿主进程直接死。
+- **同一个坑的第二面**：光标挪到末尾是往 `LocalView` 派发 `KEYCODE_MOVE_END`。发给假 View 等于
+  没发 —— 表现为「自动聚焦后光标停在开头」，而且**一行日志都没有**。判据只有一条：
+  `LocalView.isAttachedToWindow == false` 时别派发，直接记一行 w。
+- **处置**：弹窗那一层不再套触觉作用域（库会自己振的几处各自收口：开关在 `SwitchRow`、滑杆在
+  `TrackSlider` 里关成 `None`、勾选框 `onClick = null`）；触觉作用域只留给浮层菜单那种
+  「没有输入框、也不开新窗口」的内容。
+
+## 四十四、Monet 的「系统取色」来自 framework 资源，不是 settings 里那个 `system_palette`（实测 + 资源表核对，2026-11-04，PLK110 / ColorOS 17.0.0）
+
+排查「选了蓝色，实际用的是深蓝」时先踩了一次误判，值得记下来。
+
+- **`theme_customization_overlay_packages` 里的 `system_palette` / `accent_color`（本机是 `ff0066ff`）
+  不是 `platformDynamicColors` 的输入**。它只是 ROM 自己的主题配置；`platformDynamicColors`
+  读的是 framework 的动态色资源（`system_accent1_100…900` / `system_neutral1|2`）。
+- 本机 `cmd overlay list` 里**没有**任何 `com.android.theme.color.*` 覆盖，也就是这套资源是
+  **framework 基线**：`system_accent1_500_light = #FF6476A5` 那一族（灰蓝），不是壁纸那个 #0066FF。
+  所以「默认」档看到的是**深蓝/灰蓝**，与「蓝色」档的种子本来就不是同一个值。
+- 真正的 bug 在预设色那一档：它把种子交给**系统那一档调色风格**（本机 `TONAL_SPOT`）重推，
+  TonalSpot 把种子彩度压到 50 上下，`#0066FF` 出 tone 40 也只是灰蓝 —— 与「默认」档肉眼不分。
+  处置：预设色固定走 `ThemePaletteStyle.Fidelity`（保留种子彩度），`colorSpec` 仍按 SDK 取。
+- 判据：模块 W 日志「页面配色：主题=monet 强调色=… 深色=… 主色=#…」两档主色是否同值；
+  以及 `aapt2 dump resources /system/framework/framework-res.apk` 里 `system_accent1_*` 的实际色值。

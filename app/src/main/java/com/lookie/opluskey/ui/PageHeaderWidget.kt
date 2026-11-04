@@ -37,6 +37,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
 import com.lookie.opluskey.ui.model.HEADER_ICON_SIZE
+import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.state.BandHeight
 import dev.chrisbanes.haze.HazeState
@@ -177,6 +178,15 @@ internal fun SettingsPage.PageHeader(
         trailingSubtitleIcon = trailingSubtitleIcon,
         trailingSubtitleAlignment = TopAppBarTrailingSubtitleAlignment.Bottom,
         hideSubtitleOnCollapse = false,
+        //  三个水平边距统一到**卡片那一档**（[PAGE_MARGIN]）：整页所有卡片的外边距、固定带里
+        //  的分段控件、选择应用页的搜索框都是这一档，顶栏两侧的圆键与大标题跟着走同一条竖线
+        //  （原来用库默认的 `TitlePadding` / `NavigationIconPadding` / `ActionIconPadding`
+        //  三处 16dp，比卡片多 4dp，左边一片看着「差一点点」）。
+        //  `navigationIcon` 那一格内部还额外垫了 8dp（见下面的注释）—— 那是给折叠标题让位，
+        //  不算外边距，别把它折算进这一档。
+        titlePadding = PAGE_MARGIN,
+        navigationIconPadding = PAGE_MARGIN,
+        actionIconPadding = PAGE_MARGIN,
         scrollBehavior = scrollBehavior,
         // 按比例缩这一档，不整个换 alpha（口径见 FROSTED_SURFACE_ALPHA）
         color =
@@ -194,8 +204,8 @@ internal fun SettingsPage.PageHeader(
             //  盒子只负责挂振动：单子节点，排版与不加这一层完全一样。
             //  **末端那 8dp 是给折叠后的标题让位**：库把折叠标题放在「导航图标宽 + 4dp」处
             //  （`TopAppBarDefaults.NavigationIconGap`），那颗圆键收进栏里之后离标题只有 4dp，
-            //  挤成一团；把这 8dp 加在**图标槽内部**，圆键本身距屏幕边缘仍是 16dp（与展开的
-            //  大标题同一条线），只有折叠标题的起点右移。
+            //  挤成一团；把这 8dp 加在**图标槽内部**，圆键本身距屏幕边缘仍是 [PAGE_MARGIN]
+            //  （与展开的大标题、与卡片同一条线），只有折叠标题的起点右移。
             Box(Modifier.headerPressTick(tick).padding(end = 8.dp)) {
                 HeaderIconButton(
                     onClick = {
@@ -251,6 +261,15 @@ private fun Modifier.headerPressTick(tick: () -> Unit): Modifier =
     }
 
 /**
+ * 顶栏圆键**描边**的不透明度系数 —— 乘在 `dividerLine` 自己那一档 alpha 上。
+ *
+ *  0.3：压在磨砂顶栏上只勾出「这儿有个圆」，不至于读成一枚端着的按钮（用户口径「边框再降
+ *  亮度」）。要再淡 / 再亮都只动这一个数，别去换颜色角色 —— 换角色会把 Monet 那一档的
+ *  `outlineVariant` 也一起换掉。
+ */
+private const val HEADER_BORDER_ALPHA = 0.3f
+
+/**
  * 顶栏上的一颗圆键 —— 返回 / ⋮ / 添加 / 新建 / 重置 / 设置全走这一份。
  *
  *  顶栏底下是**磨砂**（半透的页面底色 + 模糊），纯透明的圆键压在上面只剩一个字形，看不出
@@ -285,12 +304,13 @@ internal fun HeaderIconButton(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "HeaderButtonFill",
     )
-    //  描边：整档 `dividerLine` 压在磨砂顶栏上仍会勾出一圈清楚的轮廓，减半只留「圆有个边界」
-    //  （用户口径「边框再淡」）。按当前档的 alpha 折半，Monet 与 COUI 那两套都跟着淡下去。
+    //  描边：整档 `dividerLine` 压在磨砂顶栏上仍会勾出一圈清楚的轮廓，再压到三成一档就只剩
+    //  「圆有个边界」（用户口径「边框再淡」）。按当前档的 alpha 折算，Monet 与 COUI 那两套
+    //  都跟着淡下去；嫌淡 / 嫌亮都只改 [HEADER_BORDER_ALPHA] 这一个数。
     val border by animateColorAsState(
         targetValue =
             if (enabled) {
-                scheme.dividerLine.copy(alpha = scheme.dividerLine.alpha * 0.5f)
+                scheme.dividerLine.copy(alpha = scheme.dividerLine.alpha * HEADER_BORDER_ALPHA)
             } else {
                 scheme.disabledSecondaryVariant
             },

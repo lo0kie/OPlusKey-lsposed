@@ -176,17 +176,25 @@ class ModuleFiles internal constructor(
     /**
      * 这个模块有哪些槽（扫目录得来，不用注册表）。
      *
-     * `.bak` / `.new` 天然被排掉：它们以那两个后缀**结尾**，不匹配 [SUFFIX]。
-     * 目录不存在时返回空表。
+     *  主文件与 `.bak` / `.new` **都算这个槽还在**：只剩 `.bak`（写盘写到一半被杀）时主文件不在，
+     *  但 [read] 仍能还原出内容 —— 光按 `.conf` 结尾扫会把那份配置**从列表里抹掉**，它的槽号
+     *  随即被 [ConfigProfiles.nextSlot] 复用，用户那份配置就找不回来了。
+     *  `.new` 是写一半的临时文件，本身不含完整数据，只跟 `.bak` 一样当「槽号被占着」的标记。
+     *  目录不存在时返回空表。
      */
     fun slots(): List<String> {
         val files = dir().listFiles() ?: return emptyList()
         val prefix = "$id$SEP"
         return files
             .map { it.name }
-            .filter { it.startsWith(prefix) && it.endsWith(SUFFIX) }
-            .map { it.removePrefix(prefix).removeSuffix(SUFFIX) }
-            .filter { it.isNotEmpty() }
+            .filter { it.startsWith(prefix) }
+            .map { name ->
+                //  剥掉可能存在的 `.bak` / `.new` 尾巴，再剥掉 `.conf` —— 三种形态落到同一个槽名
+                val base = name.removeSuffix(BAK).removeSuffix(NEW).removeSuffix(SUFFIX)
+                name to base.removePrefix(prefix)
+            }.filter { it.second.isNotEmpty() }
+            .map { it.second }
+            .distinct()
             .sorted()
     }
 

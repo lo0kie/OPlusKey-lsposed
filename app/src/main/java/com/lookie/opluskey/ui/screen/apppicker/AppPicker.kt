@@ -145,7 +145,9 @@ internal fun SettingsPage.PickerSearchBand(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    // 只让开左右。纵向只带下边一档（[PAGE_TOP_PADDING]）：带子贴着折叠栏下沿，
+                    // 左右与顶栏标题同一条线（都是 [PAGE_MARGIN]）—— 搜索框、下面那些卡片、上面
+                    //  的大标题左对齐；顶栏那三个 padding 也是这一档（见 `PageHeader`）。
+                    // 纵向只带下边一档（[PAGE_TOP_PADDING]）：带子贴着折叠栏下沿，
                     // 下边这一档就是带子与内容之间的间距，各页同一档。
                     .padding(
                         start = PAGE_MARGIN,

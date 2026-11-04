@@ -3,10 +3,10 @@ package com.lookie.opluskey.ui.hook
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
+import com.lookie.opluskey.ui.registerLocalReceiver
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -63,14 +63,7 @@ internal object LogPull {
         // 发送方是宿主主进程（同 uid）与 system_server（uid 1000）—— 后者对 NOT_EXPORTED
         // 接收器照样可达，与 `CollectKeyDialog` 收按键上报同一条口径。
         val registered =
-            runCatching {
-                context.registerReceiver(
-                    receiver,
-                    IntentFilter(ModuleWire.ACTION_LOG_CHUNK),
-                    Context.RECEIVER_NOT_EXPORTED,
-                )
-            }.onFailure { XLog.w("导出日志：接收器没注册上（这次只能导本进程的）", it) }
-                .isSuccess
+            context.registerLocalReceiver("导出日志（这次只能导本进程的）", receiver, ModuleWire.ACTION_LOG_CHUNK)
         PageWire.send(context, pkg, Intent(ModuleWire.ACTION_LOG_PULL))
         Thread.sleep(WAIT_MS)
         if (registered) runCatching { context.unregisterReceiver(receiver) }

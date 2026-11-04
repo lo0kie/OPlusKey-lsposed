@@ -17,6 +17,7 @@ import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.HeaderMenuButton
 import com.lookie.opluskey.ui.MenuEntry
+import com.lookie.opluskey.ui.NameDialog
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -279,8 +280,14 @@ private fun SettingsPage.KeyMenuDialogHost(
     val config = configState.config.value
     val selected = KeyWatchState.editing(config)
 
-    RenameKeyDialog(
+    //  「重命名」与「添加按键」是同一件事（填一个名字），正文都走 `NameDialog`。
+    //  名字是**存下来的字面量**（见 `WatchedKey`）：改完就写进清单那一项，切界面语言不会再变，
+    //  所以这一格是用户自己的命名，不是一条字典文案。
+    NameDialog(
         show = dialog == KeyMenuDialog.RENAME,
+        title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
+        label = I18n.get(Strings.BINDING_KEY_NAME, "按键名称"),
+        icon = PageIcons.LabelImportant,
         initial = selected.label,
         onDismiss = onDismiss,
         onConfirm = { name ->
