@@ -10,6 +10,8 @@ import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.RomProfile
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsCog
+import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsMinus
+import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindowBottom
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
@@ -59,6 +61,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.SparkleHighlight
 import io.github.lyxnx.compose.ui.tablericons.outline.Sparkles
 import io.github.lyxnx.compose.ui.tablericons.outline.Sun
+import io.github.lyxnx.compose.ui.tablericons.outline.SunHigh
 import io.github.lyxnx.compose.ui.tablericons.outline.SunLow
 import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
 import io.github.lyxnx.compose.ui.tablericons.outline.TextScanAi
@@ -67,6 +70,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.lyxnx.compose.ui.tablericons.outline.Video
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume
+import io.github.lyxnx.compose.ui.tablericons.outline.Volume2
 import io.github.lyxnx.compose.ui.tablericons.outline.Volume4
 import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
 import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
@@ -191,7 +195,7 @@ internal fun actionIcon(token: String): ImageVector =
 
         // 音量 + / −
         Action.keyToken(KeyId.KEYCODE_VOLUME_UP) -> {
-            TablerIcons.Outline.Volume
+            TablerIcons.Outline.Volume2
         }
 
         Action.keyToken(KeyId.KEYCODE_VOLUME_DOWN) -> {
@@ -403,7 +407,14 @@ internal fun specIcon(spec: ActionCatalog.Spec): ImageVector {
  * 字形名 → 图标 —— **全项目唯一一处映射**（[ActionCatalog.Glyph] 是封闭枚举，加一档字形才碰它）。
  * 这几种「一个 token 两支字形」和「标记格」原来散在 [specIcon] 里用 `spec ===` / `token ==` 认领，
  * 那等于把注册信息漏在渲染层；现在字形随条目一起注册、这里只翻译。
+ *
+ * ## 为什么压掉 `CyclomaticComplexMethod`
+ *
+ *  这是一张**纯映射**：分支数恒等于 [ActionCatalog.Glyph] 的项数，加一档动作就多一支 ——
+ *  拆成几个小函数只是把计数挪走，既不降复杂度也不增可读性。保留 `when` 而不是改成查表，
+ *  是为了「加了枚举值忘了配图标」在**编译期**就报错（查表会退化成运行时的兜底图标）。
  */
+@Suppress("CyclomaticComplexMethod")
 private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
     when (glyph) {
         ActionCatalog.Glyph.RingerTile -> TablerIcons.Outline.BellCog
@@ -422,6 +433,23 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
 
         // 「系统开关」入口格：带齿的齿轮（`settings-cog`，这一格进的是清单，不是某个取值）
         ActionCatalog.Glyph.SystemSwitch -> TablerIcons.Outline.SettingsCog
+
+        // 「屏幕亮度」那一格与它菜单的「设置为」：`sun`（太阳本身 = 亮度条拨到某个位置）
+        ActionCatalog.Glyph.Brightness -> TablerIcons.Outline.Sun
+
+        // 菜单的「增加 / 减少」：太阳添一笔 / 少一笔 —— 与格子那颗（整颗太阳）分得开，
+        //  否则三行摆在一起全是同一颗图标，看不出哪一行是加、哪一行是减。
+        ActionCatalog.Glyph.BrightnessUp -> TablerIcons.Outline.SunHigh
+
+        ActionCatalog.Glyph.BrightnessDown -> TablerIcons.Outline.SunLow
+
+        // 「音量」那一格与它菜单的「设置为」：一颗喇叭（这一格说的就是音量本身）
+        ActionCatalog.Glyph.Volume -> TablerIcons.Outline.Volume
+
+        // 菜单的「增加 / 减少」：推子上一个加号 / 一个减号 —— 与格子那颗喇叭一眼分得开
+        ActionCatalog.Glyph.VolumeUp -> TablerIcons.Outline.AdjustmentsPlus
+
+        ActionCatalog.Glyph.VolumeDown -> TablerIcons.Outline.AdjustmentsMinus
 
         // 「小布 AI」入口格：`sparkle-highlight`（闪光带高亮框）—— 与「灵感语音」那颗普通闪光
         //  分得开：这一格是**一类东西**（四件小布能力），不是「灵感语音」那个取值本身。

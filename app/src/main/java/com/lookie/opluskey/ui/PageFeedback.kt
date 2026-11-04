@@ -1,8 +1,12 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -182,6 +186,24 @@ internal fun SettingsPage.writeAndNotice(
  */
 @Composable
 internal fun SettingsPage.rememberTick(): () -> Unit = remember { { tickNow() } }
+
+/**
+ * 点滚动条那一下的振动 —— 判据是「这次按下**已经被滚动条 consume**」。
+ *
+ *  滚动条把 DOWN 吃掉（点在拇指或轨道上）才会走到这里；页面别处、行与卡片都不 consume，
+ *  于是「按到滚动条」与「按到内容」靠这一条就能分开，不必自己算那条 12dp 的窄带。
+ *  两处滚动条共用它：浮层菜单（`MenuScrollBar`）与更新弹窗的说明区 —— 同一种手感只写一处。
+ */
+@Composable
+internal fun Modifier.scrollBarTick(): Modifier {
+    val tick = LocalTick.current
+    return pointerInput(tick) {
+        awaitEachGesture {
+            //  `requireUnconsumed = false`：要的正是「**已经**被 consume」的那一次按下
+            if (awaitFirstDown(requireUnconsumed = false).isConsumed) tick()
+        }
+    }
+}
 
 /**
  * 实际执行一次点击触觉。判据只有 [PageHaptics.allowed]（系统状态），与模块开关无关。

@@ -244,6 +244,10 @@ internal class ActionRunner(
 
                 is Action.Ringer -> ringer.setMode(act.mode)
 
+                is Action.Brightness -> BrightnessAction.run(context, act, ::notifyFailure)
+
+                is Action.Volume -> VolumeAction.run(context, act, ::notifyFailure)
+
                 is Action.PowerMenu -> sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
 
                 is Action.Oplus -> runOplus(act.feature)

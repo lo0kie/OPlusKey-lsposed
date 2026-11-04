@@ -67,6 +67,17 @@ fun actionTitle(
             varSetTitle(action)
         }
 
+        // 屏幕亮度（`bright:+15`）：三档各一句话，**数值编进句子** ——
+        //  「增加」两个字看不出加了多少，而这里正是唯一能说清的地方。
+        is Action.Brightness -> {
+            brightnessTitle(action)
+        }
+
+        // 媒体音量（`volume:+10`）：与亮度同一套说法，数值编进句子
+        is Action.Volume -> {
+            volumeTitle(action)
+        }
+
         // 系统开关：切换 / 打开 / 关闭三档各一句话 —— 名字在清单里，认不出就退回 id
         is Action.Setting -> {
             settingTitle(action)
@@ -93,6 +104,38 @@ private fun settingTitle(action: Action.Setting): String =
             null -> Strings.COMMON_TOGGLE_SETTING_FORMAT
         },
         SystemSwitches.titleOfId(action.id) ?: action.id,
+    )
+
+/**
+ * 屏幕亮度那一档的说法（「增加 15%」/「设置为 50%」）。
+ *
+ *  **公开**：除 [actionTitle] 之外，网格里那一格的小字也要同一句话（`ui/screen/binding/BindingGrids`
+ *  的 subtitle 分支）—— 两处各拼一遍的话，同一条绑定在步骤行与网格里会写成两种说法。
+ *  百分比用 `%d%%` 的模板自己带：英文 `Increase by 15%`、中文 `增加 15%`，拼接拼不出这个差别。
+ */
+fun brightnessTitle(action: Action.Brightness): String =
+    I18n.format(
+        when (action.mode) {
+            Action.Brightness.Mode.ADD -> Strings.CATALOG_BRIGHTNESS_ADD_OF
+            Action.Brightness.Mode.SUB -> Strings.CATALOG_BRIGHTNESS_SUB_OF
+            Action.Brightness.Mode.FIX -> Strings.CATALOG_BRIGHTNESS_SET_OF
+        },
+        action.percent,
+    )
+
+/**
+ * 音量那一档的说法（「增加 10%」/「设置为 50%」）—— 与 [brightnessTitle] 同一个形状。
+ *
+ *  **公开**：网格小字（`ui/screen/binding/BindingGrids`）与步骤标题都要同一句话。
+ */
+fun volumeTitle(action: Action.Volume): String =
+    I18n.format(
+        when (action.mode) {
+            Action.Volume.Mode.ADD -> Strings.CATALOG_VOLUME_ADD_OF
+            Action.Volume.Mode.SUB -> Strings.CATALOG_VOLUME_SUB_OF
+            Action.Volume.Mode.FIX -> Strings.CATALOG_VOLUME_SET_OF
+        },
+        action.percent,
     )
 
 /**

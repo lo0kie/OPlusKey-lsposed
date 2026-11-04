@@ -97,6 +97,10 @@ internal fun DialogButtonRow(
     //  **竖向留白与左右内缩都不在这里**：竖向归 `DialogPanel`（相邻两区之间各一档
     //  [DIALOG_REGION_GAP]），左右由底部那一槽自己给（`insideMargin`）。
     //  自己再补一份，两个窗叠起来就对不齐 —— 那正是「上下留白总量不一致」的来源。
+    //  **按下就振一下**：与页面里那些能点的行同一份判据（[LocalTick]）。弹窗是浮层，
+    //  它自己那一层拿不到页面实例，所以这一下必须从通用通道走 —— 之前这两颗按钮是全项目
+    //  唯一「点了没手感」的地方（用户口径「dialog 的点击控件也走通用振动」）。
+    val tick = LocalTick.current
     val negFill = negativeFill()
     val negText = negativeText()
     Row(
@@ -106,7 +110,10 @@ internal fun DialogButtonRow(
     ) {
         TextButton(
             text = negative,
-            onClick = onNegative,
+            onClick = {
+                tick()
+                onNegative()
+            },
             modifier = Modifier.weight(1f),
             cornerRadius = DIALOG_BUTTON_RADIUS,
             minHeight = DIALOG_BUTTON_HEIGHT,
@@ -122,7 +129,10 @@ internal fun DialogButtonRow(
         //  的形态，硬凑要么看起来能用（填色照旧）、要么点不动。
         if (positiveStyle.enabled || positiveStyle.onDisabledClick == null) {
             Button(
-                onClick = onPositive,
+                onClick = {
+                    tick()
+                    onPositive()
+                },
                 modifier = Modifier.weight(1f),
                 enabled = positiveStyle.enabled,
                 cornerRadius = DIALOG_BUTTON_RADIUS,
@@ -145,19 +155,40 @@ internal fun DialogButtonRow(
                 Text(positive)
             }
         } else {
-            TextButton(
+            DisabledPositiveButton(
                 text = positive,
                 onClick = positiveStyle.onDisabledClick,
                 modifier = Modifier.weight(1f),
-                cornerRadius = DIALOG_BUTTON_RADIUS,
-                minHeight = DIALOG_BUTTON_HEIGHT,
-                colors =
-                    ButtonDefaults.textButtonColors(
-                        textColor = COUITheme.colorScheme.disabledOnSurface,
-                    ),
             )
         }
     }
+}
+
+/**
+ * 「禁用了但点了要有说法」那一颗 —— 填充按钮没有「灰着还能点」的形态，
+ * 硬凑要么看起来能用、要么点不动，所以用文本按钮画这一档。
+ *
+ *  抽出来只为让 [DialogButtonRow] 收在 detekt 的 `LongMethod` 长度线内。
+ *  按下照样走通用振动通道：这一下虽然不执行动作，但它**有回话**（一句禁用原因）。
+ */
+@Composable
+private fun DisabledPositiveButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tick = LocalTick.current
+    TextButton(
+        text = text,
+        onClick = {
+            tick()
+            onClick()
+        },
+        modifier = modifier,
+        cornerRadius = DIALOG_BUTTON_RADIUS,
+        minHeight = DIALOG_BUTTON_HEIGHT,
+        colors = ButtonDefaults.textButtonColors(textColor = COUITheme.colorScheme.disabledOnSurface),
+    )
 }
 
 /** 两颗标准按钮之间的间距 —— 两颗都占一半宽，间距太小会读成一整块。 */

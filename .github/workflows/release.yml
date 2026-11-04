@@ -5,6 +5,8 @@ run-name: 钉版 · ${{ github.ref_name }}
 
 # 只做「取 + 验 + 存档」：包由 `ci.yml` 构建好，这里按**提交 SHA** 把那条 run 的产物取过来，
 #   在**本条 run 里再解一遍**，存进本仓库的 Release。同一个提交不构建两遍。
+#   存完再同步一份到 Gitee 的 Release（国内镜像，`tools/gitee-release.sh`）—— 传的就是刚验过的
+#   那三个文件，不重新取、不重新验。
 #
 # **这里不碰模块仓库**：管理器只读模块仓库那条 Release，一旦推上去所有装过的人都会收到更新提示。
 #   「钉版」与「上架」因此分开两步 —— 打完 tag 想上架时，去跑 `publish.yml`（手动触发、填 tag）。
@@ -36,10 +38,15 @@ jobs:
   publish:
     name: 取 CI 产物并存档
     runs-on: ubuntu-latest
+    # 上界：整条流水线正常 3~5 分钟。Gitee 那条同步一旦卡住，没有这个上界就是 6 小时
+    #   （脚本里的 curl 已经带超时，这一条是第二道保险）。
+    timeout-minutes: 30
     env:
       # LSPosed 模块仓库由机器人按 applicationId 自动建；Release 必须发在那个仓库里，
       # 发在本仓库不算数（管理器只读模块仓库的 release）。
       MODULE_REPO: Xposed-Modules-Repo/io.github.lo0kie.opluskey
+      # 国内镜像那一份发在这里。它不进更新通道（管理器不读它），只是同一个包的第二个下载点。
+      GITEE_REPO: look1e/opluskey-lsposed
 
     steps:
       - name: 检出代码
@@ -142,32 +149,23 @@ jobs:
       - name: 校验验收底线（AGENTS.md 二、1.2）
         run: bash tools/verify-apk.sh dist
 
-      # 这一版的更新说明 —— 与上架那条（`publish.yml`）**同一套口径**：
-      #   内容 = 上一个 tag 到这一个 tag 之间的提交标题，一行一条，不另维护说明文件。
+      # 这一版的更新说明 —— **手写维护的那一份**：`release-notes/<versionName>.md`。
+      #   管理器弹「有新版本」时显示的正文就是它（模块仓库那条 release 的 body，由 `publish.yml` 发），
+      #   本仓库这条存档用同一份，两处不会出现两种说法。
       #
-      #  存档这条也要有：用户点进本仓库的 Release 时，看到的应该和「更新提示」里那份一致，
-      #  而不是只有一串包名。包清单接在下面 —— 两者是两件事，合在一条正文里但分两段。
+      #   为什么要手写而不是从提交里拼：提交信息是**写给维护者**的（「收口」「对齐」这类词），
+      #   弹窗里要的是**写给用户**的一段话。同一个版本只维护一处文案。
       #
-      #  `--no-merges`：合并提交的标题是「Merge branch …」，对用户没有意义。
-      - name: 组装 Release 正文（上个 tag → 这个 tag 的提交）
+      #   缺文件就歇：公告是发版物的一部分，缺了弹窗里就是一片空白 —— 宁可不发。
+      - name: 取本版更新公告
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          prev=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
-          if [ -n "$prev" ]; then
-            log_args=("${prev}..${TAG}")
-            echo "提交范围：${prev}..${TAG}"
-          else
-            log_args=(-1 "${TAG}")
-            echo "没找到上一个 tag（首个版本），只列本 tag 那一条"
+          note="release-notes/${{ steps.dist.outputs.version_name }}.md"
+          if [ ! -f "$note" ]; then
+            echo "::error::没有这一版的公告 ${note} —— 先按 ${GITHUB_REF_NAME} 写一份（格式见已有那几份），再打 tag"
+            exit 1
           fi
           {
-            if [ -n "$prev" ]; then
-              echo "自 \`${prev}\` 以来的改动："
-            else
-              echo "首个版本。"
-            fi
-            echo
-            git log "${log_args[@]}" --no-merges --pretty='- %s' | sed '/^$/d'
+            cat "$note"
             echo
             echo "---"
             echo
@@ -197,3 +195,19 @@ jobs:
           files: dist/*.apk
           # 正文由上一步组装（这一版的提交列表 + 版本号 + 三个包的说明）。
           body_path: dist/release-body.md
+
+      # Gitee 那份是**国内镜像**：同一条 run 里把刚验过的三个包同步过去，不重新取、不重新验。
+      #   它不进更新通道（管理器只读模块仓库），所以没配令牌时整步跳过、只留一条 notice ——
+      #   镜像没开通不算发版失败。配了却传不上去就让这条 run 变红：那条通道坏了得有人知道。
+      - name: 同步到 Gitee Release
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          # 预发布判定与上面那一步同一口径，规则只写在这里一处，脚本按这个值走。
+          PRERELEASE: ${{ contains(steps.dist.outputs.version_name, '-') }}
+        run: |
+          if [ -z "${GITEE_TOKEN:-}" ]; then
+            echo "::notice title=跳过 Gitee 同步::Secrets 里没有 GITEE_TOKEN，国内镜像这一份没发"
+            exit 0
+          fi
+          bash tools/gitee-release.sh "$GITEE_REPO" "${GITHUB_REF_NAME}" \
+            "${{ steps.dist.outputs.version_name }}" dist/release-body.md dist "${GITHUB_SHA}"

@@ -3,8 +3,6 @@ package com.lookie.opluskey.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -26,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
@@ -297,18 +294,12 @@ private fun SettingsPage.MenuScrollBar(
     scrollState: ScrollState,
     modifier: Modifier,
 ) {
-    val tick = rememberTick()
     VerticalScrollBar(
         adapter = rememberScrollBarAdapter(scrollState),
         //  上下各让出一档：轨道与拇指都收在面板圆角之内，滑到顶 / 底时不会顶到那圈弧
         trackPadding = PaddingValues(vertical = MENU_SCROLLBAR_TRACK_PADDING),
-        modifier =
-            modifier.pointerInput(tick) {
-                awaitEachGesture {
-                    //  `requireUnconsumed = false`：要的正是「**已经**被 consume」的那一次按下
-                    if (awaitFirstDown(requireUnconsumed = false).isConsumed) tick()
-                }
-            },
+        //  按住滑块 / 点轨道那一下的振动：判据收在 `Modifier.scrollBarTick`，与更新弹窗共用
+        modifier = modifier.scrollBarTick(),
         alwaysVisible = true,
     )
 }

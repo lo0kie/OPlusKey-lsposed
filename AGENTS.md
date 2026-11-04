@@ -182,6 +182,12 @@
 - **改了 `dependencies { }` 必须重锁**：`./gradlew :app:dependencies :core:dependencies --write-locks`，把
   两份锁文件的 diff 一起提交。忘了锁的那次**本地照样编得过**（Gradle 对没进锁文件的配置是宽松的），
   CI 的「校验依赖锁定」那一步会重写一遍再比对，红灯在那里。
+    - **校验元数据是同一件事的另一半**：`gradle/verification-metadata.xml` 逐文件记 sha256，新版本一进来
+      就缺条目，CI 在**第一条**就红在「Dependency verification failed」上 —— 那时报错长在插件解析处，
+      看着像别的问题。一条命令把两半做完：**`bash tools/relock.sh`**（要求 JDK 21）。
+      **不许把它放宽成 `lenient` / `off`**：这份白名单是唯一拦得住「依赖被换掉」的东西。
+    - **补齐只覆盖「这一趟真正解析到的」配置**：只跑 `help` 会漏掉 lint / aapt2 那一批，于是补完还红、
+      表现成「一轮又一轮」。所以脚本带的是 `gate :app:assembleDebug` 那一整条，别自己简化成最小目标。
     - **删掉过构建类型 / 变体时要先删文件再重锁**：`--write-locks` 是**合并**进现有文件，
       已经消失的配置名（`beta*` 那一批）会原样留在里面，锁文件于是不再描述本项目；
       只有 `rm` 掉再重生成才会掉。
@@ -211,6 +217,8 @@
 - 提交信息：`<type>: <主题>，<主题>…`（type 用 feat / fix /
   refactor 等）；正文是每条一个改动的扁平要点（`- <主题>：<是什么>`，全角冒号），**只写「改了什么」，不写「怎么实现的」**
   —— 根因、机制、取舍、踩过的坑属于 `README.md` / `docs/` 与代码注释，不写 markdown 标题、不写 `Signed-off-by`。
+- **发版（打 tag）之前先写公告**：`release-notes/<versionName>.md`。管理器与设置页更新弹窗里显示的就是
+  这段字；钉版与上架两条流水线缺它直接红（口径见 `docs/implementation.md` 的「发版」）。
 - 每次提交都要在 `changelog/` 的**当前工作区片段**里落一条 `###`
   小节（分区与格式见「第一部分 三、变更日志片段的分区规则」）；用户可感知的行为变化另外写进 `README.md` 或 `docs/`
   的对应小节，并同步「已知限制」。

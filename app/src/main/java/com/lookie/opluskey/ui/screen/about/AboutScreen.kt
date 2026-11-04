@@ -15,6 +15,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.seal.SEAL_ENABLED
 import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.core.seal.Verdict
+import com.lookie.opluskey.ui.HINT_SLOT_PAGE
 import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
@@ -23,6 +24,7 @@ import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.PagePalette
+import com.lookie.opluskey.ui.retireHint
 import com.lookie.opluskey.ui.state.UpdateState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
@@ -91,8 +93,9 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                         UpdateState.CheckOutcome.LATEST -> I18n.get(Strings.UPDATE_LATEST, "已是最新版本")
                         else -> I18n.get(Strings.UPDATE_FAILED, "没查到（网络或源不可用）")
                     }
-                //  有新版时已经弹窗了，不再叠一条提示
-                if (outcome != UpdateState.CheckOutcome.OFFERED) hint(text)
+                //  有新版时已经弹窗了，不再叠一条提示 —— 而且要把「正在检查」那条**立刻收掉**：
+                //  它的 holdMs 是 11 秒的兜底（见上面那句），不该真让它在弹窗后面挂那么久。
+                if (outcome != UpdateState.CheckOutcome.OFFERED) hint(text) else retireHint(HINT_SLOT_PAGE)
             }
     }
 

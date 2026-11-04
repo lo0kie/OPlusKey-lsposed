@@ -24,6 +24,8 @@ import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.brightnessTitle
+import com.lookie.opluskey.core.model.volumeTitle
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.ModeMenuPopups
@@ -181,39 +183,67 @@ private fun SettingsPage.BuiltInTile(
             enabled = enabled && linkReady,
             // 「打开应用」格与入口格都要补一行小字：前者是绑的应用名，
             // 入口格那格只写组名，不点开菜单根本看不出绑的是哪一档。
-            subtitle =
-                when (spec.token) {
-                    ActionCatalog.APP_TILE -> {
-                        boundAppLabel
-                    }
-
-                    //  系统开关那一格再细一档：「WIFI · 打开」/「NFC · 切换」—— 只写开关名时
-                    //  看不出绑的是哪一档（三档里连「切换」也要写，不然它和只写名字没区别）。
-                    //  **必须判格子**：`switchStateLabel` 只看「当前绑的是什么」，而 `current` 每一格
-                    //  都相同 —— 不判的话绑一次「打开」，整片网格的每一格都会挂上「打开」。
-                    ActionCatalog.SWITCH_TILE -> {
-                        listOfNotNull(boundMode?.label, ActionCatalog.switchStateLabel(current))
-                            .joinToString(" - ")
-                            .ifEmpty { null }
-                    }
-
-                    //  变量那一格：小字写**绑的是哪一步**（`「计数」+= 1`）。
-                    //  只写格名「自定义变量」的话，绑没绑、绑的是加法还是取反，网格里一点都看不出来。
-                    //  这一句走 [stepTitle]（步骤行那一套叫法），不在这里另拼一遍文案。
-                    ActionCatalog.VARS_TILE -> {
-                        (current as? Action.VarSet)?.let { stepTitle(it.token) { "" } }
-                    }
-
-                    else -> {
-                        boundMode?.label
-                    }
-                },
+            subtitle = builtInSubtitle(spec, current, boundMode, boundAppLabel),
             // 入口格虽然是**入口**（点了进下一层），但**不画行尾箭头** ——
             // 走 `ActionTile` 的默认值 false，别顺手补回来。
             onClick = { bindingActivate(st, spec, tileAnchor, enabled) },
         )
     }
 }
+
+/**
+ * 内置网格那一格标题下面那行小字 —— 从 [BuiltInTile] 里拆出来（那一支贴着 detekt 的
+ * 圈复杂度上限，再加一格就顶破）。
+ *
+ *  只有「格子 + 当前绑定」一起看才知道该写什么：`current` 对每一格都是同一个动作，
+ *  不判格子的那类写法会让整片网格都挂上同一句（见下面「系统开关」那一段）。
+ *
+ * @param boundMode 这一格绑的是哪一档（入口格专用；非入口格为 `null`）
+ * @param appLabel 「打开应用」格那一行（应用名），由调用方按当前绑定解析
+ */
+private fun builtInSubtitle(
+    spec: ActionCatalog.Spec,
+    current: Action,
+    boundMode: ActionCatalog.Spec?,
+    appLabel: String?,
+): String? =
+    when (spec.token) {
+        ActionCatalog.APP_TILE -> {
+            appLabel
+        }
+
+        //  系统开关那一格再细一档：「WIFI · 打开」/「NFC · 切换」—— 只写开关名时
+        //  看不出绑的是哪一档（三档里连「切换」也要写，不然它和只写名字没区别）。
+        //  **必须判格子**：`switchStateLabel` 只看「当前绑的是什么」，而 `current` 每一格
+        //  都相同 —— 不判的话绑一次「打开」，整片网格的每一格都会挂上「打开」。
+        ActionCatalog.SWITCH_TILE -> {
+            listOfNotNull(boundMode?.label, ActionCatalog.switchStateLabel(current))
+                .joinToString(" - ")
+                .ifEmpty { null }
+        }
+
+        //  变量那一格：小字写**绑的是哪一步**（`「计数」+= 1`）。
+        //  只写格名「自定义变量」的话，绑没绑、绑的是加法还是取反，网格里一点都看不出来。
+        //  这一句走 `stepTitle`（步骤行那一套叫法），不在这里另拼一遍文案。
+        ActionCatalog.VARS_TILE -> {
+            (current as? Action.VarSet)?.let { stepTitle(it.token) { "" } }
+        }
+
+        //  亮度那一格：小字写**这一档 + 数值**（`增加 15%`）—— 只写「增加」看不出加多少。
+        //  与步骤标题、执行提示同一句（`brightnessTitle`），不在这里另拼一份。
+        ActionCatalog.BRIGHT_TILE -> {
+            (current as? Action.Brightness)?.let { brightnessTitle(it) }
+        }
+
+        //  音量那一格同理：小字写「增加 10%」，与步骤标题同一句
+        ActionCatalog.VOLUME_TILE -> {
+            (current as? Action.Volume)?.let { volumeTitle(it) }
+        }
+
+        else -> {
+            boundMode?.label
+        }
+    }
 
 /**
  * 「自定义命令」那一段 —— **始终在**：没有命令时给一行「去创建自定义命令」

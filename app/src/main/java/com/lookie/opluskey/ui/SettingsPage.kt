@@ -177,12 +177,11 @@ internal class SettingsPage(
         //  「草稿脏 ⇒ 先弹问话」那条闸是给 `goBack` 的，而这一退根本走不到 `goBack`
         //  —— 条件执行页草稿一脏就走不到那一档。
         if (overlays.backCapturing.intValue > 0) return true
-        //  「按键功能」页的编辑态**且勾了东西**：这一退不会弹栈（[goBack] 先弹「退出编辑？」），
-        //  所以**不**喂进预测返回 —— 接管了就是页面跟着手指滑出去半截、提交时又被确认窗拦住，
-        //  停在滑出去的位置回不来（用户口径「预测手势停在一半」）。与「草稿脏」那一档同一条账，
-        //  只是它走「不给动」而不是「给动但不弹」。
-        //  **一项都没勾时不拦**（用户口径）：那时退页什么都不丢，照常走下面那条弹栈。
-        if (inKeysEdit() && KeysEditState.count > 0) return false
+        //  「按键功能」页的编辑态：这一退**根本不弹栈**（[goBack] 把它收成「退出编辑态」，
+        //  勾了东西时先弹一句问话），所以**不**喂进预测返回 —— 接管了就是页面跟着手指滑出去半截、
+        //  提交时又被确认窗拦住，停在滑出去的位置回不来（用户口径「预测手势停在一半」）。
+        //  与「草稿脏」那一档同一条账，只是它走「不给动」而不是「给动但不弹」。
+        if (inKeysEdit()) return false
         return navStack.size > 1 &&
             overlays.openCount.intValue == 0 &&
             !hasUnsavedDraft(screen)
@@ -355,10 +354,15 @@ internal class SettingsPage(
      */
     internal fun goBack(): Boolean {
         val current = screen
-        //  「按键功能」页的编辑态：**勾了东西才问**（勾选会没了）；一项都没勾时退页什么都不丢，
-        //  直接照常弹栈（用户口径「没有勾选时不要拦截」）。
-        //  问完由确认窗再调一次这里（那时编辑态已清，走到下面正常弹栈）。
-        if (inKeysEdit() && KeysEditState.count > 0) {
+        //  「按键功能」页的编辑态：这一退是**退出编辑态**，人留在这页（用户口径）——
+        //  编辑态只是这一页的一种用法，退它不该把人一起带走；再退一次才是离开这一页。
+        //  勾了东西才问（勾选会没了）；一项都没勾时直接退，什么都不丢。
+        if (inKeysEdit()) {
+            if (KeysEditState.count == 0) {
+                XLog.w("退出按键页编辑态：没有勾选，直接退出")
+                KeysEditState.clear()
+                return true
+            }
             if (!overlays.confirmLeaveEdit) {
                 XLog.w("退出按键页编辑态：先问一句（已勾 ${KeysEditState.count} 项）")
                 overlays.confirmLeaveEdit = true

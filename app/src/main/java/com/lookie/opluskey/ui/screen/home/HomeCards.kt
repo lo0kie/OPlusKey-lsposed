@@ -137,6 +137,8 @@ internal fun SettingsPage.HomeOtherCard(
                     // 副标题只报这一页有什么，不交代机制（「一起改短」）
                     summary = I18n.get(Strings.HOME_MORE_OPTIONS_SUMMARY, "运行状态与配置备份"),
                     icon = PageIcons.MoreOptions,
+                    //  行尾**不挂红点**：有新版这件事由首页顶上那条提示说（见 `HomeUpdateTip`），
+                    //  同一条信息在一页里出现两处，读起来像两件事
                     arrow = true,
                     onClick = { navTo(Screen.ABOUT) },
                 ),

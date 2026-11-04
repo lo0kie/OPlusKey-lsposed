@@ -37,6 +37,24 @@ object ActionCatalog {
         /** 「系统开关」标记格。 */
         SystemSwitch,
 
+        /** 「屏幕亮度」标记格。 */
+        Brightness,
+
+        /** 亮度菜单的「增加」那一行（太阳加号），与格子同一族、方向不同。 */
+        BrightnessUp,
+
+        /** 亮度菜单的「减少」那一行。 */
+        BrightnessDown,
+
+        /** 「音量」标记格（与它菜单的「设置为」共用一个取值，同理只能按 glyph 分）。 */
+        Volume,
+
+        /** 音量菜单的「增加」那一行（声波多一道）。 */
+        VolumeUp,
+
+        /** 音量菜单的「减少」那一行。 */
+        VolumeDown,
+
         /** 「小布 AI」入口格（`sparkle-highlight`）：四件小布能力收在这一格后面。 */
         XiaobuAi,
 
@@ -209,6 +227,64 @@ object ActionCatalog {
         Spec(name = Strings.TOOL_SYSTEM_SWITCHES, token = SWITCH_TILE, glyph = Glyph.SystemSwitch)
 
     /**
+     * 「屏幕亮度」那一格的标记 —— 与 [NAV_TILE] / [KEY_TILE] 同类：**永不写进配置**。
+     *
+     *  三档（增加 / 减少 / 设置为）各不相同，格子代表不了其中任何一个，所以点它弹 [BRIGHT_MODES]。
+     *  取值就是 `bright:` 前缀本身：`Action.parse("bright:")` 认不出百分比、按 `none` 处理，
+     *  所以它不可能被当成一条真动作执行。
+     */
+    const val BRIGHT_TILE = Action.BRIGHT_PREFIX
+
+    /**
+     * 亮度菜单三行的**占位写法**（`bright:+` / `bright:-` / `bright:=`）—— 这三行不落盘。
+     *
+     *  点开一行之后还要在弹窗里挑一个百分比（用户口径「slider，step 5%」），落盘的才是
+     *  `bright:+15` 那种带数值的写法（见 `Action.Brightness`）。三行不能直接写成
+     *  「+10 / -10 / 50」：那会让人以为数值是写死的。
+     */
+    private const val BRIGHT_ADD_ROW = Action.BRIGHT_PREFIX + "+"
+    private const val BRIGHT_SUB_ROW = Action.BRIGHT_PREFIX + "-"
+    private const val BRIGHT_SET_ROW = Action.BRIGHT_PREFIX + "="
+
+    /**
+     * 「屏幕亮度」菜单的三行，顺序即行序。三行都是**入口**：点下去还要再问一个百分比。
+     *
+     *  与别的入口格菜单不同，这一层点完不是结论 —— 界面侧按 [brightnessModeOf] 认出这三行、
+     *  弹百分比弹窗，确认之后才把 `Action.Brightness` 交给调用方落盘（`ui/ModeMenuPopups`）。
+     */
+    val BRIGHT_MODES: List<Spec> =
+        listOf(
+            Spec(name = Strings.CATALOG_BRIGHTNESS_ADD, token = BRIGHT_ADD_ROW, glyph = Glyph.BrightnessUp),
+            Spec(name = Strings.CATALOG_BRIGHTNESS_SUB, token = BRIGHT_SUB_ROW, glyph = Glyph.BrightnessDown),
+            // 「设置为」用格子同一个字形：它说的是「把亮度条拨到某个位置」，就是这一格本身
+            Spec(name = Strings.CATALOG_BRIGHTNESS_SET, token = BRIGHT_SET_ROW, glyph = Glyph.Brightness),
+        )
+
+    /**
+     * 「音量」那一格的标记 —— 与 [BRIGHT_TILE] 同类：三档各不相同，格子代表不了任何一个，
+     * 点它弹 [VOLUME_MODES]。取值就是 `volume:` 前缀本身（`Action.parse("volume:")` 认不出、
+     * 按 `none` 处理，永远不会被当成一条真动作执行）。
+     */
+    const val VOLUME_TILE = Action.VOLUME_PREFIX
+
+    /** 音量菜单三行的占位写法（`volume:+` / `volume:-` / `volume:=`）—— 这三行不落盘。 */
+    private const val VOLUME_ADD_ROW = Action.VOLUME_PREFIX + "+"
+    private const val VOLUME_SUB_ROW = Action.VOLUME_PREFIX + "-"
+    private const val VOLUME_SET_ROW = Action.VOLUME_PREFIX + "="
+
+    /**
+     * 「音量」菜单的三行，顺序即行序 —— 与 [BRIGHT_MODES] 一模一样：三行都是入口，
+     * 点下去还要在弹窗里挑一个百分比，确认之后才落盘（`volume:+10`）。
+     */
+    val VOLUME_MODES: List<Spec> =
+        listOf(
+            Spec(name = Strings.CATALOG_VOLUME_ADD, token = VOLUME_ADD_ROW, glyph = Glyph.VolumeUp),
+            Spec(name = Strings.CATALOG_VOLUME_SUB, token = VOLUME_SUB_ROW, glyph = Glyph.VolumeDown),
+            // 「设置为」与格子同一颗字形：拨到某个位置，就是这一格本身
+            Spec(name = Strings.CATALOG_VOLUME_SET, token = VOLUME_SET_ROW, glyph = Glyph.Volume),
+        )
+
+    /**
      * 「自定义变量」的入口露不露出来 —— 现行 `false`（这个功能还没发布，入口先收起来）。
      *
      *  **一处开关管三道入口**：按键行为网格里那一格（[VARS_TILE]）、「添加命令」菜单里那一样
@@ -252,6 +328,12 @@ object ActionCatalog {
                     // 选完绑成 `setting:<id>` 或那条动作本身的 token（见 [SystemSwitches]）。
                     //  它属于「系统操作」这一组：动的是系统状态，不是某一颗按键。
                     SWITCH_TILE_SPEC,
+                    // 屏幕亮度：点它弹 [BRIGHT_MODES]（增加 / 减少 / 设置为），每一档再问一个百分比。
+                    //   与「系统开关」同一个理由归在这一组 —— 动的是系统状态，不是某一颗按键。
+                    Spec(name = Strings.CATALOG_BRIGHTNESS, token = BRIGHT_TILE, glyph = Glyph.Brightness),
+                    // 音量：与屏幕亮度同一个形状 —— 点它弹 [VOLUME_MODES]（增加 / 减少 / 设置为），
+                    //   每一档再问一个百分比，落盘成 `volume:+10` 这种带数值的写法。
+                    Spec(name = Strings.CATALOG_VOLUME, token = VOLUME_TILE, glyph = Glyph.Volume),
                     // KSU 没有这项；执行侧在 system_server 里反射调 PWM，不走按键长按
                     Spec(name = Strings.PANEL_POWER_MENU, token = POWER_MENU),
                 ),
@@ -474,6 +556,8 @@ object ActionCatalog {
             PANEL_TILE to PANEL_MODES,
             MINI_TILE to MINI_MODES,
             SWITCH_TILE to SWITCH_MODES,
+            BRIGHT_TILE to BRIGHT_MODES,
+            VOLUME_TILE to VOLUME_MODES,
             AI_TILE to AI_MODES,
         )
 
@@ -621,26 +705,120 @@ object ActionCatalog {
         spec: Spec,
         action: Action,
     ): Boolean {
+        //  「亮度 / 音量」这两族先判：它们比的是**占位写法的符号**，不是整串（见 [percentRowBound]）。
+        percentRowBound(spec.token, action)?.let { return it }
         val bound = canonicalToken(spec.token)
         //  「系统开关」那一族：`setting:wifi` 与 `setting:wifi:on` / `:off` 是**同一个开关**的三个状态
         //  —— 菜单那一行（「切换」）与网格那一格都得认得出「这个开关已经绑了」。
         //   只比整串的话，绑了「打开」之后勾子、高亮、格子里那行小字全都不出现，
         //   在真机上就是「三态没有效果」。具体落在哪一档另由 `isBoundExactly` 判。
-        if (bound.startsWith(Action.SETTING_PREFIX)) {
-            val mine = switchIdOf(bound)
-            //  绑的这一头也认**老写法**（`oplus:no_disturb` / `flashlight`）：老配置不迁移，
-            //  执行照旧，但界面不能因此认不出「这一格绑的就是那个开关」。
-            //  只在这一头放宽 —— 反过来（spec 是老写法）仍按整串比，否则「快捷功能」里的手电筒格
-            //  会和「系统开关」格同时亮。
-            val theirs =
-                if (action.token.startsWith(Action.SETTING_PREFIX)) {
-                    switchIdOf(action.token)
-                } else {
-                    SystemSwitches.idOfLegacy(action.token)
-                }
-            return mine == theirs
+        if (!bound.startsWith(Action.SETTING_PREFIX)) return bound == action.token
+        val mine = switchIdOf(bound)
+        //  绑的这一头也认**老写法**（`oplus:no_disturb` / `flashlight`）：老配置不迁移，
+        //  执行照旧，但界面不能因此认不出「这一格绑的就是那个开关」。
+        //  只在这一头放宽 —— 反过来（spec 是老写法）仍按整串比，否则「快捷功能」里的手电筒格
+        //  会和「系统开关」格同时亮。
+        val theirs =
+            if (action.token.startsWith(Action.SETTING_PREFIX)) {
+                switchIdOf(action.token)
+            } else {
+                SystemSwitches.idOfLegacy(action.token)
+            }
+        return mine == theirs
+    }
+
+    /**
+     * 「屏幕亮度」「音量」这两组的判定 —— 三行是**占位写法**（`bright:+` / `-` / `=`，不带数值），
+     * 真正落盘的是 `bright:+15` 这种带数值的串。按整串比的话，绑过之后菜单一行都不打勾、
+     * 格子里也没有小字，所以这两族**只比符号、不比数值**。
+     *
+     *  必须走在 [canonicalToken] 之前：占位写法 `Action.parse` 认不出，它被解析一次就会刷一行
+     *  「百分比认不出」的日志，而 `isBound` 是每格每次重组都会走的地方。
+     *
+     * @return `null` = 这一行不归这两族管，交给调用方接着判
+     */
+    private fun percentRowBound(
+        token: String,
+        action: Action,
+    ): Boolean? =
+        when {
+            token.startsWith(Action.BRIGHT_PREFIX) -> {
+                (action as? Action.Brightness)?.let { token == rowOf(it.mode) } ?: false
+            }
+
+            token.startsWith(Action.VOLUME_PREFIX) -> {
+                (action as? Action.Volume)?.let { token == rowOf(it.mode) } ?: false
+            }
+
+            else -> {
+                null
+            }
         }
-        return bound == action.token
+
+    /**
+     * 这一行是不是「屏幕亮度」那三档之一；是的话给出它对应的档位。
+     *
+     *  界面层据此决定「点这一行要不要再弹一个百分比」（`ui/ModeMenuPopups`）—— 判据留在模型里，
+     *  `ui` 不认 token 字面量。与 [rowOf] 互为逆。
+     */
+    fun brightnessModeOf(token: String): Action.Brightness.Mode? =
+        when (token) {
+            BRIGHT_ADD_ROW -> Action.Brightness.Mode.ADD
+            BRIGHT_SUB_ROW -> Action.Brightness.Mode.SUB
+            BRIGHT_SET_ROW -> Action.Brightness.Mode.FIX
+            else -> null
+        }
+
+    /** [brightnessModeOf] 的逆：某一档在菜单里占哪一行。 */
+    private fun rowOf(mode: Action.Brightness.Mode): String =
+        when (mode) {
+            Action.Brightness.Mode.ADD -> BRIGHT_ADD_ROW
+            Action.Brightness.Mode.SUB -> BRIGHT_SUB_ROW
+            Action.Brightness.Mode.FIX -> BRIGHT_SET_ROW
+        }
+
+    /** 这一行是不是「音量」那三档之一；是的话给出它对应的档位。与 [brightnessModeOf] 同一形状。 */
+    fun volumeModeOf(token: String): Action.Volume.Mode? =
+        when (token) {
+            VOLUME_ADD_ROW -> Action.Volume.Mode.ADD
+            VOLUME_SUB_ROW -> Action.Volume.Mode.SUB
+            VOLUME_SET_ROW -> Action.Volume.Mode.FIX
+            else -> null
+        }
+
+    /** [volumeModeOf] 的逆：某一档在菜单里占哪一行。 */
+    private fun rowOf(mode: Action.Volume.Mode): String =
+        when (mode) {
+            Action.Volume.Mode.ADD -> VOLUME_ADD_ROW
+            Action.Volume.Mode.SUB -> VOLUME_SUB_ROW
+            Action.Volume.Mode.FIX -> VOLUME_SET_ROW
+        }
+
+    /**
+     * 音量**选定数值之后**的那一条（`volume:+10`）—— 与 [brightnessSpecOf] 同一支：
+     * 菜单那三行不带数值，落盘的必须是拼好的那一条。
+     */
+    fun volumeSpecOf(
+        mode: Action.Volume.Mode,
+        percent: Int,
+    ): Spec {
+        val action = Action.Volume(mode, percent)
+        return Spec(name = volumeTitle(action), token = action.token)
+    }
+
+    /**
+     * 亮度**选定数值之后**的那一条（`bright:+15`）—— 弹窗按完「确定」时用它交给落盘那一侧。
+     *
+     *  菜单里那三行是占位写法（不带数值），所以不能拿行本身的 token 落盘；这一支把
+     *  「哪一档 + 几」拼成真正的取值。名字即 [brightnessTitle]（「增加 15%」）——
+     *  `label` 那一刻会再查一次字典、查不到就原样显示，正好是这句拼好的话。
+     */
+    fun brightnessSpecOf(
+        mode: Action.Brightness.Mode,
+        percent: Int,
+    ): Spec {
+        val action = Action.Brightness(mode, percent)
+        return Spec(name = brightnessTitle(action), token = action.token)
     }
 
     /**
@@ -787,7 +965,14 @@ object ActionCatalog {
      *（除「打开应用」外一律拍平，`系统导航:主屏幕` → `主屏幕`）。
      * 档位名与格子怎么配对由这一处决定，网格里那行小字走 [modeTitle]。
      */
-    fun modeName(action: Action): String? = modeHitOf(action)?.mode?.label
+    fun modeName(action: Action): String? =
+        //  亮度 / 音量那两档把**数值**一起带上（「增加 15%」）：光写「增加」看不出加了多少，
+        //  而这是步骤标题与执行提示唯一能表达数值的地方。
+        when (action) {
+            is Action.Brightness -> brightnessTitle(action)
+            is Action.Volume -> volumeTitle(action)
+            else -> modeHitOf(action)?.mode?.label
+        }
 
     /**
      * 这个动作落在「入口格 → 档位」两层的**哪一格、哪一行** —— `null` = 它不属于任何入口格菜单。

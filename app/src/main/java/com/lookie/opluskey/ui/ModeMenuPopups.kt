@@ -53,6 +53,10 @@ internal fun SettingsPage.ModeMenuPopups(
     // 弹窗开着的是哪一档（`null` = 没开）。只在组件内部流转，调用方看不见也不用管。
     //  它**不跟着 `target` 清**：菜单在点开弹窗那一下就已经收了，两者本来就不同生共死。
     var stateEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
+    // 亮度那一行点开的是哪一档（`null` = 没开）—— 与 `stateEntry` 同一套，两条线互不相干。
+    var brightEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
+    // 音量那一行点开的是哪一档 —— 与 `brightEntry` 完全平行的一条线
+    var volumeEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
 
     PageMenu(
         preciseClick = preciseClick,
@@ -62,8 +66,15 @@ internal fun SettingsPage.ModeMenuPopups(
                 ?.let { t ->
                     ActionCatalog.modeMenu(t.tile.token, t.withLongOnly)?.let { modes ->
                         modeEntries(t.tile.label, modes, current) { picked ->
-                            // 这一档还有后续：收菜单、起弹窗（顺序反了会闪一帧空菜单）
-                            if (ActionCatalog.stateMenu(picked.token) != null) {
+                            // 这一档还有后续：收菜单、起弹窗（顺序反了会闪一帧空菜单）。
+                            // 两种后续都在这两支里：亮度的百分比（滑杆）、系统开关的三态（选择器）。
+                            if (ActionCatalog.brightnessModeOf(picked.token) != null) {
+                                brightEntry = picked
+                                onDismiss()
+                            } else if (ActionCatalog.volumeModeOf(picked.token) != null) {
+                                volumeEntry = picked
+                                onDismiss()
+                            } else if (ActionCatalog.stateMenu(picked.token) != null) {
                                 stateEntry = picked
                                 onDismiss()
                             } else {
@@ -75,18 +86,35 @@ internal fun SettingsPage.ModeMenuPopups(
                 }.orEmpty(),
     )
 
-    // —— 系统开关的「后续写法」——
-    //  单档的开关（手电筒 / 免打扰，执行只有「切换」一种语义）走不到这里：`stateMenu` 在
-    //  只有一条时返回 `null`，它们在上一层点一下就是结论。
-    //
-    //  标题与那几行都照 [shown] 画，**不是照 `stateEntry`**：关窗是「先清数据、再播退场」，
-    //  `stateEntry = null` 当帧 `states` 就空了、标题也空，而库的退场还要走两百毫秒 ——
-    //  那一截里面板会塌成一条（真机反馈「选中器关闭时高度塌陷」）。所以退场期间照最后画过的
-    //  那一份画，与 `DonateDialog` 的 `Last` 同一个理由。
+    // 两条「点一行之后还有一问」的后续，各自一个弹窗组件（拆出去是为了让这一支只留接线，
+    //  两块的退场处理、标题取法都各自独立，混在一起时这一支会顶破 detekt 的长度 / 圈复杂度上限）。
+    SwitchStatePopup(stateEntry, current, onDismiss = { stateEntry = null }, onPick = onPick)
+    BrightnessPopup(brightEntry, current, onDismiss = { brightEntry = null }, onPick = onPick)
+    VolumePopup(volumeEntry, current, onDismiss = { volumeEntry = null }, onPick = onPick)
+}
+
+/**
+ * 系统开关的「后续写法」—— 切换 / 打开 / 关闭，单选即结论。
+ *
+ *  单档的开关（手电筒 / 免打扰，执行只有「切换」一种语义）走不到这里：`stateMenu` 在
+ *  只有一条时返回 `null`，它们在上一层点一下就是结论。
+ *
+ *  标题与那几行都照 `shown` 画，**不是照 [entry]**：关窗是「先清数据、再播退场」，
+ *  `entry = null` 当帧 `states` 就空了、标题也空，而库的退场还要走两百毫秒 ——
+ *  那一截里面板会塌成一条（真机反馈「选中器关闭时高度塌陷」）。所以退场期间照最后画过的
+ *  那一份画，与 `DonateDialog` 的 `Last` 同一个理由。
+ */
+@Composable
+private fun SettingsPage.SwitchStatePopup(
+    entry: ActionCatalog.Spec?,
+    current: Action?,
+    onDismiss: () -> Unit,
+    onPick: (ActionCatalog.Spec) -> Unit,
+) {
     val lastPick = remember { LastPick() }
-    stateEntry?.let { lastPick.entry = it }
-    val shown = stateEntry ?: lastPick.entry
-    val states = shown?.let { entry -> ActionCatalog.switchStates(entry.token) }.orEmpty()
+    entry?.let { lastPick.entry = it }
+    val shown = entry ?: lastPick.entry
+    val states = shown?.let { it1 -> ActionCatalog.switchStates(it1.token) }.orEmpty()
     val switchName = shown?.label.orEmpty()
     //  当前绑的是哪一行 —— 判据与各页网格同一把尺子：必须精确到状态（`isBoundExactly`），
     //  这几行之间只差一个后缀，用 `isBound`（把同一个开关的几档当一回事）会全部打勾。
@@ -95,13 +123,13 @@ internal fun SettingsPage.ModeMenuPopups(
             current?.let { ActionCatalog.isBoundExactly(state, it) } ?: false
         }
     //  单选选择器（公共组件，见 `PagePicker`）：点一行就选完、自己关窗。
-    //  退场期间画的是 `shown`（最后画过的那一份），不是 `stateEntry` —— 理由见上面那段说明。
+    //  退场期间画的是 `shown`（最后画过的那一份），不是 [entry] —— 理由见上面那段说明。
     SinglePickerDialog(
-        show = stateEntry != null,
+        show = entry != null,
         title = switchName,
         labels = states.map { state -> stateRowLabel(state, switchName) },
         selectedIndex = selectedIndex,
-        onDismiss = { stateEntry = null },
+        onDismiss = onDismiss,
         onPick = { index ->
             val state = states.getOrNull(index) ?: return@SinglePickerDialog
             onDismiss()
@@ -109,6 +137,84 @@ internal fun SettingsPage.ModeMenuPopups(
         },
     )
 }
+
+/**
+ * 亮度的「还要问一个百分比」—— 一根滑杆，确定之后才落盘。
+ *
+ *  与 [SwitchStatePopup] 同一个形状（菜单先收、弹窗再起），退场期间同样照最后画过的那一份画
+ *  （否则标题与数值会空一帧，面板塌陷）。
+ */
+@Composable
+private fun SettingsPage.BrightnessPopup(
+    entry: ActionCatalog.Spec?,
+    current: Action?,
+    onDismiss: () -> Unit,
+    onPick: (ActionCatalog.Spec) -> Unit,
+) {
+    val lastShown = remember { LastPick() }
+    entry?.let { lastShown.entry = it }
+    val shown = entry ?: lastShown.entry
+    val mode = ActionCatalog.brightnessModeOf(shown?.token.orEmpty())
+    //  初值：同一档已经绑过就用它自己的数值（打开就能在原来那个位置接着调），
+    //  没绑过才用各档的默认值 —— 每次都重置成 10 会让「改成 25、再微调」变成两步。
+    val initial =
+        mode?.let { m ->
+            (current as? Action.Brightness)?.takeIf { it.mode == m }?.percent
+                ?: if (m == Action.Brightness.Mode.FIX) DEFAULT_SET_PERCENT else DEFAULT_STEP_PERCENT
+        } ?: DEFAULT_STEP_PERCENT
+    BrightnessDialog(
+        show = entry != null,
+        mode = mode ?: Action.Brightness.Mode.ADD,
+        initial = initial,
+        onDismiss = onDismiss,
+        onConfirm = { percent ->
+            onDismiss()
+            //  mode 为空只可能是「退场途中又点了一次确定」，那种情况下什么都不落
+            if (mode != null) onPick(ActionCatalog.brightnessSpecOf(mode, percent))
+        },
+    )
+}
+
+/**
+ * 音量的「还要问一个百分比」—— 与 [BrightnessPopup] 同一个形状，只是换成 [SettingsPage.VolumeDialog]。
+ *
+ *  两块的退场处理各自独立（照最后画过的那一份画），理由见 [SwitchStatePopup]。
+ */
+@Composable
+private fun SettingsPage.VolumePopup(
+    entry: ActionCatalog.Spec?,
+    current: Action?,
+    onDismiss: () -> Unit,
+    onPick: (ActionCatalog.Spec) -> Unit,
+) {
+    val lastShown = remember { LastPick() }
+    entry?.let { lastShown.entry = it }
+    val shown = entry ?: lastShown.entry
+    val mode = ActionCatalog.volumeModeOf(shown?.token.orEmpty())
+    //  同一档已经绑过就接着用它自己的数值，没绑过才用各档的默认值
+    val initial =
+        mode?.let { m ->
+            (current as? Action.Volume)?.takeIf { it.mode == m }?.percent
+                ?: if (m == Action.Volume.Mode.FIX) DEFAULT_SET_PERCENT else DEFAULT_STEP_PERCENT
+        } ?: DEFAULT_STEP_PERCENT
+    VolumeDialog(
+        show = entry != null,
+        mode = mode ?: Action.Volume.Mode.ADD,
+        initial = initial,
+        onDismiss = onDismiss,
+        onConfirm = { percent ->
+            onDismiss()
+            //  mode 为空只可能是「退场途中又点了一次确定」，那种情况下什么都不落
+            if (mode != null) onPick(ActionCatalog.volumeSpecOf(mode, percent))
+        },
+    )
+}
+
+/** 亮度 / 音量「增加 / 减少」的默认百分比。 */
+private const val DEFAULT_STEP_PERCENT = 10
+
+/** 亮度「设置为」的默认百分比。 */
+private const val DEFAULT_SET_PERCENT = 50
 
 /**
  * 退场期间要画的那一份（见 [ModeMenuPopups] 里那段说明）。

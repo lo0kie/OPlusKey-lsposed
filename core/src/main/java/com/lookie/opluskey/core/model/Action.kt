@@ -50,6 +50,8 @@ sealed interface Action {
                 is AppShortcut -> pkg.isBlank() || shortcutId.isBlank()
                 is Shortcut -> shortcutId.isBlank()
                 is Ringer -> mode.isBlank()
+                is Brightness -> false
+                is Volume -> false
                 is Oplus -> feature.isBlank()
                 is Panel -> mode.isBlank()
                 is Setting -> id.isBlank()
@@ -192,6 +194,54 @@ sealed interface Action {
             const val VIBRATE = "vibrate"
             const val SILENT = "silent"
         }
+    }
+
+    /**
+     * 调屏幕亮度（`bright:50` / `bright:+10` / `bright:-10`）。
+     *
+     *  百分比说的是**亮度条上的位置**（`(raw − min) / (max − min)`），不是框架那个 HLG 感知
+     *  百分比；量程、换算与写入见 `host/action/BrightnessAction` 与
+     *  `docs/device-findings.md` 三十八、38.2。
+     *
+     *  [Mode.FIX] 是绝对值，[Mode.ADD] / [Mode.SUB] 在当前值上加减。三个档的百分比都按**量程**
+     *  算（`span * percent / 100`），不是按当前值的比例；越界夹到量程两端，不报错。
+     */
+    data class Brightness(
+        val mode: Mode,
+        val percent: Int,
+    ) : Action {
+        enum class Mode { FIX, ADD, SUB }
+
+        override val token: String =
+            when (mode) {
+                Mode.FIX -> "$BRIGHT_PREFIX$percent"
+                Mode.ADD -> "$BRIGHT_PREFIX+$percent"
+                Mode.SUB -> "$BRIGHT_PREFIX-$percent"
+            }
+    }
+
+    /**
+     * 调媒体音量（`volume:50` / `volume:+10` / `volume:-10`）。
+     *
+     *  百分比说的是**音量条上的位置**（`当前档 / 最大档`），与亮度那一档同一套口径：三个档都按
+     *  **整条量程**算（`max * percent / 100`），不是按当前值的比例；越界夹到两端，不报错。
+     *  落在哪一路流（本机是媒体流）与写入见 `host/action/VolumeAction`。
+     *
+     *  与 `keyevent:24` / `keyevent:25`（注入一次音量键）的区别：那两条走的是系统自己的「按一下」，
+     *  一次一格；这一条是「按百分比一段」，与屏幕亮度那一档成对。
+     */
+    data class Volume(
+        val mode: Mode,
+        val percent: Int,
+    ) : Action {
+        enum class Mode { FIX, ADD, SUB }
+
+        override val token: String =
+            when (mode) {
+                Mode.FIX -> "$VOLUME_PREFIX$percent"
+                Mode.ADD -> "$VOLUME_PREFIX+$percent"
+                Mode.SUB -> "$VOLUME_PREFIX-$percent"
+            }
     }
 
     /**
@@ -341,6 +391,18 @@ sealed interface Action {
         const val SETTING_PREFIX = "setting:"
 
         /**
+         * 调屏幕亮度，后接百分比：`bright:50`（设为 50%）、`bright:+10` / `bright:-10`
+         * （在当前值上按量程加减 10 个百分点）。
+         */
+        const val BRIGHT_PREFIX = "bright:"
+
+        /**
+         * 调媒体音量，后接百分比：`volume:50`（设为 50%）、`volume:+10` / `volume:-10`
+         * （在当前值上按整条量程加减 10 个百分点）。
+         */
+        const val VOLUME_PREFIX = "volume:"
+
+        /**
          * 改一个自定义变量（`setvar:<名字><符号><值>`）。
          *
          *  与 [SETTING_PREFIX] 一样是「认不出载荷就不落 shell」的那一类：名字 / 符号解析不出来时
@@ -414,6 +476,12 @@ sealed interface Action {
                 // 系统开关（`setting:<id>` / `setting:<id>:on` / `setting:<id>:off`）：
                 //  `id` 认不出时交给执行侧报「没接执行」，不落 shell
                 text.startsWith(SETTING_PREFIX) -> parseSetting(text)
+
+                // 屏幕亮度（`bright:50` / `bright:+10`）：百分比认不出就按不支持处理，不落 shell
+                text.startsWith(BRIGHT_PREFIX) -> parseBrightness(text)
+
+                // 媒体音量（`volume:50` / `volume:+10`）：与亮度同一套百分比写法
+                text.startsWith(VOLUME_PREFIX) -> parseVolume(text)
 
                 // 自定义变量（`setvar:计数+=1`）：认不出就按不支持处理，不落 shell
                 text.startsWith(SETVAR_PREFIX) -> parseVarSet(text)
@@ -491,6 +559,8 @@ sealed interface Action {
                 OPLUS_PREFIX,
                 PANEL_PREFIX,
                 SETTING_PREFIX,
+                BRIGHT_PREFIX,
+                VOLUME_PREFIX,
                 SETVAR_PREFIX,
             )
 
@@ -599,5 +669,62 @@ sealed interface Action {
             }
             return AppShortcut(pkg, id, AppTarget.userId(body), window)
         }
+    }
+}
+
+/**
+ * `<前缀>[+|-]<百分比>` 拆成「符号 + 数值」；认不出（空 / 不是数字 / 不在 `0..100`）返回 `null`。
+ *
+ *  亮度与音量两族共用这一处：同一段解析抄两遍，改一处漏一处是迟早的事。
+ *  放在文件级而不是 [Action.Companion] 里：它不碰任何 token 取值，只是纯字符串拆分，
+ *  塞进那个伴生对象只会让它的函数数一路涨（见 `config/detekt` 的 `TooManyFunctions`）。
+ */
+private fun splitPercent(
+    text: String,
+    prefix: String,
+): Pair<Char, Int>? {
+    val body = text.removePrefix(prefix).trim()
+    if (body.isEmpty()) return null
+    val sign = body.first()
+    val rest = if (sign == '+' || sign == '-') body.substring(1) else body
+    val percent = rest.trim().toIntOrNull() ?: return null
+    return if (percent in 0..100) sign to percent else null
+}
+
+/**
+ * `bright:<百分比>` / `bright:+<百分比>` / `bright:-<百分比>` 那一支 —— 与 [parseSetting]
+ * 同一个理由（[parse] 贴着长度上限）。
+ *
+ *  百分比只收 `0..100` 的整数：这是**人写的**一档，超出量程的写法（`bright:300`）几乎都是
+ *  笔误，按「认不出」处理比悄悄夹到 100 更像话。加减档的符号就是前缀后面那一个字符，
+ *  其余一律当绝对档。
+ */
+private fun parseBrightness(text: String): Action {
+    val (sign, percent) =
+        splitPercent(text, Action.BRIGHT_PREFIX) ?: run {
+            XLog.w("动作 bright: 的百分比认不出（按 none 处理）：$text")
+            return Action.None
+        }
+    return when (sign) {
+        '+' -> Action.Brightness(Action.Brightness.Mode.ADD, percent)
+        '-' -> Action.Brightness(Action.Brightness.Mode.SUB, percent)
+        else -> Action.Brightness(Action.Brightness.Mode.FIX, percent)
+    }
+}
+
+/**
+ * `volume:<百分比>` / `volume:+<百分比>` / `volume:-<百分比>` 那一支 —— 写法与
+ * [parseBrightness] 完全一致，拆法共用 [splitPercent]。
+ */
+private fun parseVolume(text: String): Action {
+    val (sign, percent) =
+        splitPercent(text, Action.VOLUME_PREFIX) ?: run {
+            XLog.w("动作 volume: 的百分比认不出（按 none 处理）：$text")
+            return Action.None
+        }
+    return when (sign) {
+        '+' -> Action.Volume(Action.Volume.Mode.ADD, percent)
+        '-' -> Action.Volume(Action.Volume.Mode.SUB, percent)
+        else -> Action.Volume(Action.Volume.Mode.FIX, percent)
     }
 }

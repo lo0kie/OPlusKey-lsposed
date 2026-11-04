@@ -9,12 +9,12 @@ version: 2
 #  这个仓库一共 11 个依赖，一周能堆出十来个 PR 没人看。分组后一个 PR 一次升完，
 #  真跑不动就整体回退，不会出现「升了 A 结果要配 B」的半吊子状态。
 #
-#  ⚠️ 本项目开了 Gradle 依赖锁定（`app/gradle.lockfile` + `core/gradle.lockfile`），而
-#  **dependabot 不跑 Gradle** —— 它只改 `build.gradle.kts` 里的版本号，锁文件不会动。
-#  所以每一个自动升级 PR 都必然在 CI 的「校验依赖锁定」那一步红灯，这不是故障，是设计：
-#  **收到 PR 之后本地跑 `./gradlew :app:dependencies --write-locks` 与
-#  `./gradlew :core:dependencies --write-locks`，把两份锁文件的 diff 一并提交**，
-#  那条 PR 才会转绿。别把校验放宽成 warn —— 锁文件一旦漂了，构建就不再可复现。
+#  ⚠️ 本项目开了 Gradle 依赖锁定（`app/gradle.lockfile` + `core/gradle.lockfile`）与依赖校验
+#  （`gradle/verification-metadata.xml`），而 **dependabot 不跑 Gradle** —— 它只改
+#  `build.gradle.kts` 里的版本号，锁文件与校验元数据都不会动。所以每一个自动升级 PR 都必然红，
+#  这不是故障，是设计：**收到 PR 之后跑 `bash tools/relock.sh`，把两处 diff 一并提交**，
+#  那条 PR 才会转绿。别把校验放宽成 warn / lenient —— 锁文件与白名单一旦漂了，构建就不再可复现。
+#  只补一半也不行，另一半照样红（见 AGENTS.md 二、1.2）。
 updates:
   - package-ecosystem: gradle
     directory: /
@@ -47,8 +47,14 @@ updates:
     # 大版本单独放行：AGP / Kotlin 的 major 升级必然带契约变化（比如 AGP 9 内置 Kotlin），
     # 不能混在「顺手升一下」那批里。
     ignore:
+      # AGP 与 Gradle wrapper **不进自动升级**：这两个一动就是**整条工具链换血**。实测 9.1→9.5
+      #   一次带进上百个新 artifact（元数据要整体重写），而且 AGP 9.5 与 Gradle 9.8 的配置缓存
+      #   序列化对不上（`Aapt2Input` 写不进缓存），自动 PR 上去必然是红的、还得人工回去补。
+      #   要升就人工升：改版本 → `bash tools/relock.sh` → 本地跑一遍 gate。
+      - dependency-name: "com.android.application"
+      - dependency-name: "com.android.library"
       - dependency-name: "com.android.tools.build:gradle"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: "gradle-wrapper"
 
   - package-ecosystem: github-actions
     directory: /

@@ -39,6 +39,8 @@ jobs:
   publish:
     name: 上架到模块仓库
     runs-on: ubuntu-latest
+    # 上界：正常 3~5 分钟；卡住时宁可变红也别挂到 6 小时。
+    timeout-minutes: 30
     env:
       # LSPosed 模块仓库由机器人按 applicationId 自动建；Release 必须发在那个仓库里，
       #   发在本仓库不算数（管理器只读模块仓库的 release）。
@@ -149,35 +151,18 @@ jobs:
 
       # 这一版的更新说明 —— **管理器弹「有新版本」时显示的就是它**（模块仓库那条 release 的正文）。
       #
-      #  内容 = **上一个 tag 到这一个 tag 之间的提交标题**，一行一条。不再维护单独的说明文件：
-      #  那些提交信息本来就要写，再抄一份到 `release-notes/` 只会两边分叉（改了代码忘了改文案，
-      #  或者反过来）。要调整弹窗里看到的东西，就改提交信息 —— 唯一真相只有一处。
-      #
-      #  「上一个 tag」用 `git describe --tags --abbrev=0 <tag>^` 取：从父提交往回找最近的 tag。
-      #  比按版本号排序可靠 —— 版本号是 `4-1.1.0` 这种带前缀的串，排序要靠解析；而 tag 本来就是
-      #  沿着提交链打的，`describe` 直接给出链上那一个。取不到（首个版本）就只列本 tag 的那一条。
-      #
-      #  `--no-merges`：合并提交的标题是「Merge branch …」，对用户没有意义。
-      - name: 组装 Release 正文（上个 tag → 这个 tag 的提交）
-        env:
-          TAG: ${{ steps.resolve.outputs.tag }}
+      #   来源是**手写维护**的 `release-notes/<versionName>.md`，与钉版那条（`release.yml`）同一个文件：
+      #   两处显示的永远是一样的字。为什么不从提交里拼 —— 提交信息是写给维护者的，
+      #   弹窗里要的是写给用户的一段话。缺文件就歇：公告是发版物的一部分。
+      - name: 取本版更新公告
         run: |
-          prev=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
-          if [ -n "$prev" ]; then
-            log_args=("${prev}..${TAG}")
-            echo "提交范围：${prev}..${TAG}"
-          else
-            log_args=(-1 "${TAG}")
-            echo "没找到上一个 tag（首个版本），只列本 tag 那一条"
+          note="release-notes/${{ steps.dist.outputs.version_name }}.md"
+          if [ ! -f "$note" ]; then
+            echo "::error::没有这一版的公告 ${note} —— 先写一份再上架"
+            exit 1
           fi
           {
-            if [ -n "$prev" ]; then
-              echo "自 \`${prev}\` 以来的改动："
-            else
-              echo "首个版本。"
-            fi
-            echo
-            git log "${log_args[@]}" --no-merges --pretty='- %s' | sed '/^$/d'
+            cat "$note"
             echo
             echo "---"
             echo

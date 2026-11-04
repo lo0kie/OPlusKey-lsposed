@@ -42,6 +42,7 @@ internal fun SettingsPage.MachineCard(
                         title = I18n.get(Strings.MORE_ABOUT_VERSION, "版本"),
                         summary = version,
                         icon = PageIcons.Versions,
+                        //  行尾不挂红点：有新版由首页顶上那条提示说（见 `HomeUpdateTip`）
                         trailing = { RowEndIcon(PageIcons.Selector) },
                         modifier = Modifier.preciseClickAnchor(ui.versionClick),
                         onClick = {

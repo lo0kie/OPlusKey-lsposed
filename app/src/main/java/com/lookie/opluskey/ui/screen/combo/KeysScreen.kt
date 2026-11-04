@@ -189,8 +189,8 @@ private fun SettingsPage.KeysDeleteConfirm(
  * 编辑态里按返回那一问 —— 「退出编辑？」。
  *
  *  置位在 [SettingsPage.goBack]（它同时**拦住了这一退**），窗画在这里：判据留在页面那一层，
- *  长什么样归这一页。确认之后才真的退页 —— 先把编辑态收干净（[KeysEditState.clear]），
- *  再调 [goBack]（这时它不再拦，正常弹栈）。
+ *  长什么样归这一页。确认之后**只退出编辑态**、人留在这页 —— 先把那一份收干净
+ *  （[KeysEditState.clear]，勾选一起清），不再调 [goBack]：这一退本来就不该把人带走。
  *
  *  不危险动作：退出编辑只是丢掉勾选，不动配置，所以动作项**不是**红的那一档。
  */
@@ -199,14 +199,14 @@ private fun SettingsPage.KeysLeaveEditConfirm() {
     ConfirmDialog(
         show = overlays.confirmLeaveEdit,
         title = I18n.get(Strings.KEYS_LEAVE_EDIT_TITLE, "退出编辑？"),
-        summary = I18n.get(Strings.KEYS_LEAVE_EDIT_DESC, "已勾选的项会被清空"),
-        action = I18n.get(Strings.KEYS_LEAVE_EDIT_OK, "退出"),
+        //  正文报个数（`%1$d`）：这一问只在勾了东西时出现，写清丢的是哪几项，比一句「会被清空」有用
+        summary = I18n.format(Strings.KEYS_LEAVE_EDIT_DESC, KeysEditState.count),
+        action = I18n.get(Strings.KEYS_LEAVE_EDIT_OK, "退出编辑"),
         positiveDanger = false,
         onDismiss = { overlays.confirmLeaveEdit = false },
         onConfirm = {
             overlays.confirmLeaveEdit = false
             KeysEditState.clear()
-            goBack()
         },
     )
 }

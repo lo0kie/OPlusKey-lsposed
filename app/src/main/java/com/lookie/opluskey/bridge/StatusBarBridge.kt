@@ -35,6 +35,19 @@ internal object StatusBarBridge {
     /** 状态栏指令：切一个系统开关（`setting:<id>`，见 [SettingBridge]）。 */
     const val CMD_SETTING = "setting"
 
+    /**
+     * 状态栏指令：把这块屏的背光推到某个 raw 值。
+     *
+     *  **只推不写库** —— 写库仍归宿主（自动亮度下要写的 `screen_auto_brightness_adj` 是
+     *  PRIVATE_SETTINGS，注入侧也没有 `ContentResolver`）。这条指令的唯一职责是让
+     *  `DisplayPowerController` 走一次**真实亮度变化**：控制中心的亮度条只在那一刻刷新
+     *  （见 `docs/device-findings.md` 38.3）。
+     */
+    const val CMD_BRIGHTNESS = "brightness"
+
+    /** [CMD_BRIGHTNESS] 里带「推到多少」（raw 尺度，不是 0..1）。 */
+    const val EXTRA_BRIGHTNESS = "brightness"
+
     /** [CMD_SETTING] 里带「哪一条」（`wifi` / `rotation` …）。 */
     const val EXTRA_SETTING_ID = "setting_id"
 
@@ -65,6 +78,31 @@ internal object StatusBarBridge {
             XLog.w("statusbar:$cmd 已转给 system_server 执行")
         } catch (e: Throwable) {
             XLog.w("发 statusbar 广播失败：$cmd", e)
+        }
+    }
+
+    /**
+     * 宿主进程调：把这块屏的背光推到 [raw]（raw 尺度，本机 `2..4095`）。
+     *
+     *  与 [send] 同一个通道、同一个接收器，区别只是带一个数值。
+     *  写库**不在这里**（见 [CMD_BRIGHTNESS] 的注释），所以这条指令失败最多是「控制中心没跟着刷新」，
+     *  亮度本身仍按宿主写下的值生效。
+     */
+    fun sendBrightness(
+        context: Context,
+        raw: Int,
+    ) {
+        try {
+            context.sendBroadcast(
+                Intent(ACTION_STATUSBAR)
+                    .setPackage(HostApp.PACKAGE)
+                    .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
+                    .putExtra(EXTRA_CMD, CMD_BRIGHTNESS)
+                    .putExtra(EXTRA_BRIGHTNESS, raw),
+            )
+            XLog.w("brightness:$raw 已转给 system_server 推背光")
+        } catch (e: Throwable) {
+            XLog.w("发 brightness 广播失败：$raw", e)
         }
     }
 
@@ -110,6 +148,10 @@ internal object StatusBarBridge {
 
                 CMD_SETTING -> {
                     SettingBridge.handle(intent, loader)
+                }
+
+                CMD_BRIGHTNESS -> {
+                    BrightnessBridge.apply(loader, intent.getIntExtra(EXTRA_BRIGHTNESS, -1))
                 }
 
                 else -> {
