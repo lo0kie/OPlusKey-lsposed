@@ -83,6 +83,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
+import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
+import io.github.lyxnx.compose.ui.tablericons.outline.PlayerStop
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
@@ -404,9 +406,17 @@ internal object PageIcons {
     /**
      * 「选择应用」页顶栏菜单的「显示失效应用」—— `input-x`（框里一个叉）。
      *
-     *  这一档是**纯显示过滤**（默认关）：读作「这些条目点下去也进不去」。
+     *  这一档是**纯显示过滤**（默认关，只在「打开应用」那一趟出现）：读作「这些条目点下去也进不去」。
      */
     val ShowUnopenable: ImageVector get() = TablerIcons.Outline.InputX
+
+    /**
+     * 「应用控制」那一格绑成**打开**那一档时格子里的字形 —— `player-play`（三角）。
+     *
+     *  与 [AppStop] 配成一对：打开 / 结束在网格里靠这两颗分开。绑的是某个界面或快捷方式时
+     *  不用它（那两档有自己更具体的标记），只有「就打开这个应用」才落到这里。
+     */
+    val AppOpen: ImageVector get() = TablerIcons.Outline.PlayerPlay
 
     /**
      * 「选择应用」菜单的「以小窗口打开」—— 画中画（`picture-in-picture-on`）。
@@ -668,6 +678,14 @@ internal object PageIcons {
      *  （一边是类名、一边是快捷方式 id），只能靠 `PickedDetail.shortcutId` 判断。
      */
     val ShortcutMark: ImageVector get() = TablerIcons.Outline.TableShortcut
+
+    /**
+     * 「应用控制」那一格绑成**结束**那一档时格子里的字形 —— `player-stop`（方块）。
+     *
+     *  与执行侧（`proc:stop:`）那颗同一设计：打开与结束两档在网格里靠这一颗分开，
+     *  只看应用名是分不出来的（两档写的是同一个应用）。
+     */
+    val AppStop: ImageVector get() = TablerIcons.Outline.PlayerStop
 
     /** 命令编辑页底部工具栏的主操作（「保存 / 修改」）—— `Check`，主次靠颜色分（主操作走 `primary`）。 */
     val Confirm: ImageVector get() = TablerIcons.Outline.Check

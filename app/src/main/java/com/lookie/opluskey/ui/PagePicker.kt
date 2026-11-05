@@ -50,12 +50,15 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  而两边各让出一条内缩会把选中那条带切成浮在中间的胶囊。
  *
  * @param selected 这一行是不是当前那个（多选时 = 已勾上）
+ * @param enabled 这一行能不能点（`false` = 置灰）。置灰行点击仍会走到 [onClick] —— 由调用方自己
+ *   判断要不要拦（「新增配置」到顶时点那一下报「最多三份」）
  */
 @Composable
 internal fun PickerRow(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    enabled: Boolean = true,
 ) {
     val colors = COUITheme.colorScheme
     //  弹窗里这一列也算「能点的行」：默认振一下（见 `LocalTick`）
@@ -73,7 +76,7 @@ internal fun PickerRow(
         label = "PickerRowFill",
     )
     val labelColor by animateColorAsState(
-        targetValue = if (selected) colors.primary else colors.onSurface,
+        targetValue = pickerRowLabelColor(selected, enabled),
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "PickerRowLabel",
     )
@@ -159,7 +162,7 @@ internal fun ColumnScope.PickerRows(
             if (index > 0) {
                 HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
             }
-            PickerRow(label = label, selected = isSelected(index)) { onClick(index) }
+            PickerRow(label = label, selected = isSelected(index), onClick = { onClick(index) })
         }
     }
 }
@@ -323,6 +326,20 @@ internal fun SettingsPage.MultiPickerDialog(
 
 /** 选中那一行的底色 —— 主色压一档，与「整行上主题色」那套观感一致，但不至于盖住面板本色。 */
 private const val PICKER_ROW_TINT_ALPHA = 0.12f
+
+/** 选择器一行的文字色：选中 → 主色，禁用 → 禁用灰，其余 → 常规。 */
+@Composable
+private fun pickerRowLabelColor(
+    selected: Boolean,
+    enabled: Boolean,
+): Color {
+    val colors = COUITheme.colorScheme
+    return when {
+        selected -> colors.primary
+        !enabled -> colors.disabledOnSecondaryVariant
+        else -> colors.onSurface
+    }
+}
 
 /** 行内上下留白 —— 高度不够时靠 [PICKER_ROW_MIN_HEIGHT] 撑，两行字时也不至于贴住。 */
 private val PICKER_ROW_VERTICAL_PADDING = 8.dp

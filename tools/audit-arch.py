@@ -90,13 +90,16 @@ def main() -> int:
     )
 
     # 3) 「一个动作怎么念」：唯一实现是 `core/model/actionTitle`（宿主与界面各一处调用）。
+    #    第三处是**绑定回执**（`boundNotice`）：它原来只写应用名，看不出「打开」还是「结束」——
+    #    用户口径要求带动作前缀，于是也走这一支。「带前缀」与「读同一句话」本来就是同一件事，
+    #    不该为它另起一份拼法。
     add(
         'actionTitle 的调用点',
         count(r'\bactionTitle\(', APP),
-        '= 2（执行时提示 / 步骤行）',
-        count(r'\bactionTitle\(', APP) == 2,
+        '= 3（执行时提示 / 步骤行 / 绑定回执）',
+        count(r'\bactionTitle\(', APP) == 3,
     )
-    # 另有 `boundNotice` 用清单名取**裸名**（不带「打开应用:」前缀），那是另一条规则，不并。
+    # 另有 `boundNotice` 里「不带前缀」那几档用清单名取裸名，那是另一条规则，不并。
     add(
         'ActionCatalog.label 的直接调用',
         count(r'ActionCatalog\.label\(', APP, CORE),

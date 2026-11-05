@@ -54,6 +54,15 @@ internal class AppPickerState {
     val activityFilter = mutableStateOf("")
 
     /**
+     * 「选择界面」页当前列出来的**条数** —— 搜索框占位里那个数字（`搜索应用组件 (12)`）。
+     *
+     *  提到页面级的原因与 [activityFilter] 一模一样：清单本身是页面里 `remember` 的
+     *  （`ActivityPickerList` 的 `loaded`），而占位文案挂在**顶栏**那条带子上，两棵树读不到彼此。
+     *  页面在清单到手那一刻写一次；离开这一页时留着的旧数字无害 —— 那条带子已经不在了。
+     */
+    val activityCount = mutableStateOf(0)
+
+    /**
      * 顶栏菜单里那一项「显示全部应用」。
      *
      *  与 [filter] 相反：它**不随进页清空** —— 那是「我想看到全部应用」这个**意图**，不是一次输入。
@@ -67,11 +76,18 @@ internal class AppPickerState {
     val showSystemApps = mutableStateOf(false)
 
     /**
-     * 顶栏菜单里那一项「显示失效应用」。
+     * 顶栏菜单里那一项「显示失效应用」—— **只在「打开应用」这一趟出现**。
      *
      *  与 [showSystemApps] 同一套账：**不随进页清空**、**落盘**、进页读一次。
-     *  判据是 `LaunchableApp.launchable`（执行端同一把尺子），关着时藏掉的正是「按下去必弹 toast」的那些。
-     *  **默认关**；落盘的键就叫 `show_unopenable`，改语义必须换键名（旧键作废，不做迁移）。
+     *  判据是 `LaunchableApp.launchable`（执行端同一把尺子）：关着时藏掉的正是「按下去必弹 toast」的那些。
+     *  **默认关**。
+     *
+     *  它只是**过滤**：清单一次就取全（见 `loadLaunchableApps`），拨它不触发查询、
+     *  也不换缓存 —— 曾经它和 [showSystemApps] 一起决定「查哪一档清单」，那套在真机上
+     *  表现为「开关按了没反应」，见 `changelog/2026-11-05-应用控制.md`。
+     *
+     *  「结束应用」那一趟**没有这一项、也不吃它**：停掉一个没有启动图标的应用正是它的用处，
+     *  所以那一趟一律全列（见 `AppPickerUiState.shown`）。
      */
     val showUnopenable = mutableStateOf(false)
 
@@ -82,11 +98,29 @@ internal class AppPickerState {
      *
      *  **它是临时的，不是偏好**：**不落盘**、**没有跨次记忆** —— 每次进这一页都由
      *  `SettingsPage.resetSmallWindowForPicker()` 按**正在编辑的那个动作**重算（本来就是 `window:`
-     *  就开着、`app:` 或新绑就关着）。与 [showSystemApps] / [showUnopenable] 那两项**相反**。
+     *  就开着、`app:` 或新绑就关着）。与 [showSystemApps] **相反**。
      *  理由：这一项描述的是「这一次要往哪个动作上写」，留着上一次的 `true` 会让下一次挑应用
      *  **静默**变成小窗，用户看不出自己什么时候开的。
      */
     val smallWindow = mutableStateOf(false)
+
+    /**
+     * 这一趟挑的应用要写成 **`proc:stop:包名`**（「结束应用」那一格），而不是 `app:`。
+     *
+     *  与 [forBranch] 同一条性质：**只认应用本身** —— 点一行就是选中它（没有「里面哪个界面」），
+     *  也**没有**「以小窗口打开」（那一档在这里没人读）。差别只在落盘的 token。
+     *
+     *  **必须是 compose 状态**：`AppPickerUiState.shown`（`derivedStateOf`）与列表那几处都读它，
+     *  而它是在**进页那一刻、组合之外**改的。普通 `var` 时那次改写不会让 `shown` 的缓存失效 ——
+     *  「结束那一趟全列」的算法会跟着上一趟留下来，拨「显示失效应用」就成了对着过期结果重算
+     *  （真机表现：从结束应用退出来再进选择应用，那个开关按了没反应）。
+     *
+     *  与 [gesture] / [comboId] 同生共死：挑完写回**进这一页时那颗键的那一档手势**。
+     */
+    private val stopAppState = mutableStateOf(false)
+
+    /** 这一趟是不是「结束应用」（见 [stopAppState]）。 */
+    val stopApp: Boolean get() = stopAppState.value
 
     /**
      * 进这一页时对应的**手势**（`null` = 没在挑应用，或者不是给手势挑的）。
@@ -166,6 +200,15 @@ internal class AppPickerState {
     val forBranch: Boolean
         get() = branchTarget != NOT_FOR_BRANCH || branchCommandTarget != NOT_FOR_BRANCH
 
+    /**
+     * 这一趟**只认应用本身**（[forBranch] 与 [stopApp] 两档）：点行即选中、没有二级页、也没有小窗。
+     *
+     *  三处读它（点行 / 行尾图标 / 菜单里那一项），判据只此一份 —— 两档共用一个位是因为它们
+     *  对「这一页怎么用」的要求一模一样，差别只在写出去的那个 token。
+     */
+    val appOnly: Boolean
+        get() = forBranch || stopApp
+
     // —— 「这趟为谁挑」那一组标记的三个改法 ——
     //
     //  三个字段同生共死（`forStep` 一起写着 `replaceStep` 才有意义，`gesture` 只归网格那条入口），
@@ -188,6 +231,22 @@ internal class AppPickerState {
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
         branchCommandTarget = NOT_FOR_BRANCH
+        stopAppState.value = false
+    }
+
+    /**
+     * 「结束应用」那一格的入口：给 [g] 这一档挑应用，挑中的写成 `proc:stop:包名`。
+     *
+     *  与 [openForGesture] 只差 [stopApp] 这一位 —— 落盘那一步按它换 token（见
+     *  `PageEntryWrite.onAppPicked`），其余「为谁挑」的账完全一样，所以两处各写一遍清场纪律
+     *  不如共用 [openForGesture] 再来一支。
+     */
+    fun openForStopApp(
+        g: Gesture,
+        comboId: String? = null,
+    ) {
+        openForGesture(g, comboId)
+        stopAppState.value = true
     }
 
     /** 「添加命令」那条入口：给多条命令**加一步**（[replaceIndex] `< 0`）或换掉第 [replaceIndex] 步。 */
@@ -198,6 +257,7 @@ internal class AppPickerState {
         replaceStep = replaceIndex
         branchTarget = NOT_FOR_BRANCH
         branchCommandTarget = NOT_FOR_BRANCH
+        stopAppState.value = false
     }
 
     /**
@@ -222,6 +282,7 @@ internal class AppPickerState {
         branchCommandTarget = if (forCommand) index else NOT_FOR_BRANCH
         //  挑动作那一趟不写条件槽位（两个落点互斥），留着上一趟的值只会在下一次条件挑选时误导
         branchConditionIndex = if (forCommand) -1 else conditionIndex
+        stopAppState.value = false
     }
 
     /** 这趟「为谁挑」整个作废 —— 挑完了、写失败留在原地、或干脆没挑就退出来。 */
@@ -233,6 +294,7 @@ internal class AppPickerState {
         branchTarget = NOT_FOR_BRANCH
         branchCommandTarget = NOT_FOR_BRANCH
         branchConditionIndex = -1
+        stopAppState.value = false
         // 本地选中与草稿一并作废：这一趟挑应用的账到此为止
         pending.value = null
         pickedApps.value = emptySet()
@@ -256,7 +318,7 @@ internal class AppPickerState {
      *  这一支连搜索词、二级页在看谁、临时的「以小窗口打开」一起收 —— 页面离栈之后再进，
      *  看到的应当是一张干净的列表，而不是上一次的搜索词与筛选。
      *
-     *  **不碰**两类：`showSystemApps` / `showUnopenable` 是落盘偏好（进页读一次，清了等于改设置）；
+     *  **不碰**两类：`showSystemApps` 是落盘偏好（进页读一次，清了等于改设置）；
      *  `resumeSheetAt` 是**来源页**的账（挑完要回去把抽屉支起来），归来源页出栈时清。
      */
     fun resetSession() {
@@ -403,14 +465,6 @@ internal class AppPickerState {
      *  裸 `var` 不会订阅读取 ⇒ 清单查完、缓存换了一茬，顶栏也不会重组，于是长期显示包名。
      */
     val cachedApps = mutableStateOf<List<LaunchableApp>?>(null)
-
-    /**
-     * [cachedApps] 是在哪个模式下查的（「显示全部应用」开没开）。
-     *
-     *  必须与清单一起写：否则会把「开着系统应用时查的清单」当成「关着时的首帧」用，
-     *  退出再进会先闪一屏系统应用。
-     */
-    var cachedAppsWithSystem = false
 
     /** 图标缓存。整块收在一个对象里，见 [AppIconCache]。 */
     val iconCache = AppIconCache()

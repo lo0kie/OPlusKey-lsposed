@@ -14,6 +14,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION_MS
 import com.lookie.opluskey.ui.state.AppPickerState
@@ -356,6 +357,25 @@ internal class SettingsPage(
     internal val hooks = PageHooks()
 
     /**
+     * 导入配置「读文件 → 校验通过 → 挑目标」里，**待挑目标**的那份内容 —— `null` = 没有待处理的导入。
+     *
+     *  导入现在是两段：文件在 hook 侧（`ConfigTransfer`）读进来、按本机状态合并好，先存到这里，
+     *  再由「更多选项」页弹出选择器让用户挑「盖到哪一份 / 新建一份」。所以它要挂在页面级
+     *  （`ConfigTransfer` 通过 [com.lookie.opluskey.ui.hook.HostSession.page] 只拿得到页面对象，
+     *  拿不到「更多选项」页里 `remember` 的那份 [com.lookie.opluskey.ui.screen.about.AboutUiState]）。
+     */
+    internal var pendingImport by mutableStateOf<PendingImport?>(null)
+
+    /**
+     * 导入**覆盖**某一份配置之前的那一次确认 —— `null` = 没有待确认的覆盖。
+     *
+     *  覆盖是整份配置（连同命令库）被换掉，代价与「删除配置」同档，所以点完选择器还要再问一句。
+     *  选择器关了之后这一位才置上（两层弹窗不叠着开，见 `FrostedDialog` 的 `onDismissFinished`），
+     *  确认窗由「更多选项」页画。
+     */
+    internal var pendingImportOverwrite by mutableStateOf<ImportOverwrite?>(null)
+
+    /**
      * 从子页返回上一级 —— 把**栈顶弹掉**。上一级就是压在当前页下面的那一页（不查表）。
      *
      * 注意：两处**拦住不让退**（都返回 true = 这次返回已被消费）：命令表单页（「自定义命令」/
@@ -439,7 +459,7 @@ internal class SettingsPage(
      *  都只对**被弹掉的那些**调它。
      *
      *  不在这里的两类：
-     *   · **落盘的偏好**（「显示系统应用」「显示失效应用」）是**意图**不是页面状态 —— 进页读一次、
+     *   · **落盘的偏好**（「显示系统应用」）是**意图**不是页面状态 —— 进页读一次、
      *     跨次留存，清了等于改用户设置；
      *   · **分页器位置**（手势 tab / 命令页 tab）是 `PageContent` 里 `remember` 的、这一层拿不到 ——
      *     它们的归位由 `PushResetsPagers` 在**下一次 push** 时按「这一页该从哪一档开始」做，
@@ -612,15 +632,26 @@ internal class SettingsPage(
         // 与「按键绑定」页那一格取应用名同口径。少认一种时，开着「以小窗口打开」挑完应用回来
         // 这页一行都不点亮、也不滚过去，看起来像没选过。
         //  来源与「以小窗口打开」的重算同源（[editingAction]）—— 两处判据必须一致。
+        //
+        //  **两档只认自己那一族**（[AppPickerState.stopApp]）：这一页两个状态共用，
+        //  点「结束应用」进来时那颗键绑的若是 `proc:stop:`，就**不该**在「打开应用」那一趟里
+        //  被点亮、更不该把列表滚过去 —— 那会让人以为这一趟要绑的是同一个动作。
+        val stopMode = picker.stopApp
         return when (val action = editingAction()) {
             is Action.App, is Action.AppWindow -> {
-                action.appTarget
+                action.appTarget.takeUnless { stopMode }
             }
 
             // 绑的是快捷方式时给出完整写法（`包名/id|名字`）—— 二级页靠它把那一行滚到眼前；
             //  应用那一级取 `substringBefore('/')`，仍然是包名
             is Action.AppShortcut -> {
-                action.plainTarget
+                action.plainTarget.takeUnless { stopMode }
+            }
+
+            // 结束应用（`proc:stop:包名`）只存包名：这一趟进来时把那一行点亮、滚到眼前，
+            //  用户才看得出这颗键现在管着谁（打开那一趟同理不认它）。
+            is Action.Process -> {
+                action.pkg.takeIf { stopMode }
             }
 
             else -> {
@@ -763,3 +794,32 @@ internal fun SettingsPage.rememberAppPickerUiState(): AppPickerUiState = appPick
  *  但 handler 的回调可能挤在转场最后一帧之前执行。
  */
 private const val PAGE_STATE_DISCARD_MARGIN_MS = 60L
+
+/**
+ * 导入配置「待挑目标」的那份内容 —— 见 [SettingsPage.pendingImport]。
+ *
+ *  放在 `ui/` 这一层（而不是 `core/` 或屏里）：它是「导入这条链路」的中间态，hook 侧
+ *  （`ConfigTransfer`）写它、「更多选项」页读它 —— 两边都在界面层，不需要下沉到共用层。
+ *
+ * @param config 已经按本机状态合并过的配置（总闸 / 逐键开关 / 免责协议都换回本机值），写盘前不再改
+ * @param commands 去重后的命令库
+ * @param name 那份配置的名字（「新建一份」时用；覆盖已有配置时保留目标自己的名字，这一位用不到）
+ */
+internal data class PendingImport(
+    val config: Config,
+    val commands: List<Command>,
+    val name: String,
+)
+
+/**
+ * 导入**覆盖**某一份配置之前的确认 —— 见 [SettingsPage.pendingImportOverwrite]。
+ *
+ * @param content 待写入的那份内容（选择器关掉之后仍要留着，等用户在这张窗里点头）
+ * @param slot 要覆盖的目标槽
+ * @param displayName 目标那份的显示名（窗里点名用，免得用户点错）
+ */
+internal data class ImportOverwrite(
+    val content: PendingImport,
+    val slot: String,
+    val displayName: String,
+)

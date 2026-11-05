@@ -63,10 +63,23 @@ import kotlinx.coroutines.withContext
  *  —— 版本号一动，下面那个 `remember` 就重新取值（缓存这时是空的 ⇒ 重新取）。
  */
 @Composable
-internal fun SettingsPage.AppIcon(app: LaunchableApp) {
-    val packageName = app.packageName
+internal fun SettingsPage.AppIcon(app: LaunchableApp) = AppIconByPkg(app.packageName, app.userId)
+
+/**
+ * 同 [AppIcon]，但入参只有**包名 + 用户** —— 手里没有 `LaunchableApp` 那一套查询结果时用它。
+ *
+ *  两者共用这一份：取图标、缓存、取不到画通用字形、清缓存后重取，四条规则各写一遍就是
+ *  「同一个应用在两处长得不一样」的来源。
+ *
+ * @param userId 这一份属于哪个用户（`0` = 主用户）—— 缓存键要带上它，见下面 `iconKey`
+ */
+@Composable
+internal fun SettingsPage.AppIconByPkg(
+    packageName: String,
+    userId: Int = 0,
+) {
     //  缓存键带 user：主用户与分身**同包名**，只按包名存会把主用户那份图发给分身那一行
-    val iconKey = "${app.userId}@$packageName"
+    val iconKey = "$userId@$packageName"
     // 读一次版本号 = 订阅「清缓存」（理由见 `AppIconCache.generation`）
     val generation = picker.iconCache.generation.intValue
     // 这一行自己那份图：初值先看缓存（滚回来那一轮就命中）。

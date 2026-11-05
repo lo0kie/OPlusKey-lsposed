@@ -34,7 +34,7 @@ import com.lookie.opluskey.ui.screen.binding.CustomCommandsGrid
 import com.lookie.opluskey.ui.screen.binding.SavedCommandsTitle
 import com.lookie.opluskey.ui.screen.binding.rememberBindingGridState
 import com.lookie.opluskey.ui.screen.command.comboScenarioNotice
-import com.lookie.opluskey.ui.screen.openAppPickerForTarget
+import com.lookie.opluskey.ui.screen.openAppPickerForControl
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -82,8 +82,8 @@ internal fun SettingsPage.ComboEditScreen(
     val scrolls = remember { List(2) { ScrollState(0) } }
 
     //  两段各一份网格状态：`remember` 的 key 里带着 `target`，互不影响（焦点、入口菜单、锚点）
-    val short = rememberBindingGridState(BindingTarget.Combo(combo.id, Gesture.SINGLE)) { openAppPickerForTarget(it) }
-    val long = rememberBindingGridState(BindingTarget.Combo(combo.id, Gesture.LONG)) { openAppPickerForTarget(it) }
+    val short = rememberBindingGridState(BindingTarget.Combo(combo.id, Gesture.SINGLE)) { t, stop -> openAppPickerForControl(t, stop) }
+    val long = rememberBindingGridState(BindingTarget.Combo(combo.id, Gesture.LONG)) { t, stop -> openAppPickerForControl(t, stop) }
     val onCreateCommand: () -> Unit = {
         //  与「按键绑定」页那颗 FAB 同一套：进命令页是**新增**那条路，草稿要先清干净
         commandDraft.draft.reset()

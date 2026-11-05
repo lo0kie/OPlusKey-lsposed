@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.screen.home
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
@@ -40,6 +42,8 @@ import com.lookie.opluskey.ui.model.CHECKING_HINT
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
+import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.model.isDarkScheme
 import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.setModuleEnabled
@@ -357,11 +361,8 @@ private val ACTIVATION_ACTION_TAP = 6.dp
  *
  *  ## 什么时候点不动
  *
- *  与原来那颗开关同一道闸：`linkReady`（宿主侧在跑 **且** 注入侧报到了）**外加** `!configReadOnly`。
- *  **不吃整页总闸** —— 后者含它自己：关掉之后全页禁用，它就再也开不回来了。
- *  `!configReadOnly` 这一条是被真机逼出来的：只读态下刚进页时链路还没报到 ⇒ 这一块是死的；
- *  等注入侧回包一到、`linkReady` 变 true，它就自己活过来，用户当场点了三下（每次都被 `write` 拒掉）。
- *  **「点了没反应」比「一开始就灰着」更难读**。
+ *  判据见 [activationToggleable]，只那一处：整块的 `onClick` 与「点按卡片即可开启」那句提示
+ *  都读它 —— 两处各写一遍就会出现「提示说能点、其实点不动」。
  */
 @Composable
 internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
@@ -394,7 +395,7 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
     val markColor by animateColorAsState(palette.mark, COLOR_TRANSITION_SPEC, label = "ActivationMark")
     val shown = palette.copy(container = container, title = titleColor, detail = detailColor, mark = markColor)
     //  点不动的档：库那个交互式重载**没有 enabled**，不给 `onClick` 就是非交互卡（不吃点击）
-    val canToggle = linkReady && !configState.readOnly
+    val canToggle = activationToggleable
     val tick = LocalTick.current
     Card(
         modifier =
@@ -426,6 +427,19 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
         ActivationBody(state, version, shown, release, status)
     }
 }
+
+/**
+ * 这一块现在**点不点得动** —— 判据只有这一处（整块可点的那个 `onClick` 与「点按即可开启」那句
+ * 提示都读它）：两处各写一遍的话，会出现「提示说能点、其实点不动」。
+ *
+ *  `linkReady`（宿主侧在跑 **且** 注入侧报到了）**外加** `!configReadOnly`；
+ *  **不吃整页总闸** —— 后者含它自己，关掉之后全页禁用，它就再也开不回来了。
+ *  `!configReadOnly` 这一条是被真机逼出来的：只读态下刚进页时链路还没报到 ⇒ 这一块是死的；
+ *  等注入侧回包一到、`linkReady` 变 true，它就自己活过来，用户当场点了三下（每次都被 `write` 拒掉）。
+ *  **「点了没反应」比「一开始就灰着」更难读**。
+ */
+private val SettingsPage.activationToggleable: Boolean
+    get() = linkReady && !configState.readOnly
 
 /**
  * 卡的里子：水印 + 上半段 + 下半段。
@@ -494,7 +508,7 @@ private fun SettingsPage.toggleMaster(ui: HomeUiState) {
  *  抽出来只为让 [SettingsPage.HomeActivationCard] 留在 detekt 的 `LongMethod` 长度线内。
  */
 @Composable
-private fun ActivationHead(
+private fun SettingsPage.ActivationHead(
     state: ActivationState,
     version: String,
     palette: ActivationPalette,
@@ -551,7 +565,42 @@ private fun ActivationHead(
                     .padding(top = ACTIVATION_LINE_GAP)
                     .opticalCenter(lineStyle),
         )
+        //  关着的那一档再补一句「怎么开回来」—— 这一块**整块就是开关**，可界面上没有任何记号
+        //  说明这件事：大字只写「已关闭」，用户看到的是一个「关掉的状态」，不会想到去点它。
+        //  点不动时不写（链路没就绪 / 只读态）：说「点按即可开启」却点不动，比不写更糟。
+        //
+        //  走 [VISIBILITY_ENTER] / [VISIBILITY_EXIT]（淡入 + 纵向展开 / 淡出 + 纵向收缩）：
+        //  这一行的来去会让**整张卡**高一档，硬切就是卡一秒钟跳一下 —— 开关自己切状态时
+        //  本来就有一条 200ms 的颜色过渡，高度这一下也得跟上同一条节奏。
+        AnimatedVisibility(
+            visible = state == ActivationState.Disabled && activationToggleable,
+            enter = VISIBILITY_ENTER,
+            exit = VISIBILITY_EXIT,
+        ) {
+            TapToEnableHint(lineStyle)
+        }
     }
+}
+
+/**
+ * 「点按卡片即可开启」—— 只在**关着且点得动**时出现的那一行。
+ *
+ *  颜色取主色、字重加半档：它是这一块里唯一一句「可以操作」的话，与下面提示段里那颗
+ *  「查看」同一族的观感（其余几行都是陈述）。位置跟在说明后面 —— 先说「现在是关着的、
+ *  意味着什么」，再说「怎么开回来」。
+ */
+@Composable
+private fun TapToEnableHint(lineStyle: TextStyle) {
+    Text(
+        text = I18n.get(Strings.HOME_ACTIVATION_TAP_TO_ENABLE, "点击启用此处模块"),
+        style = lineStyle,
+        fontWeight = FontWeight.Medium,
+        color = COUITheme.colorScheme.primary,
+        modifier =
+            Modifier
+                .padding(top = ACTIVATION_LINE_GAP)
+                .opticalCenter(lineStyle),
+    )
 }
 
 /**

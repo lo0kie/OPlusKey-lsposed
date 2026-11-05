@@ -5,12 +5,15 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.actionTitle
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.appLabelOf
 import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.linkReady
@@ -37,25 +40,27 @@ internal fun SettingsPage.pick(
 ): Boolean = writeBinding(spec.token, target, appName) { action -> boundNotice(spec, action, appName) }
 
 /**
- * **变量那一格**挑完之后落到配置上 —— 与 [pick] 同一条写盘路径，差别只在两处：
- * 取值是那一步 `setvar:`（没有对应的清单条目，`spec` 也就无从给起），回执自己那句话
- * （[Strings.VAR_BOUND]，不再套 [Strings.TOAST_BOUND] 那层「」）。
+ * 把**不在动作清单里**的一个 token 绑到 [target] 那一格上 —— 与 [pick] 同一条写盘路径。
  *
- *  不把这两样塞进 [pick] 的参数：它们在别的调用点上都没有意义，摆在那儿等于每个调用点
- *  都要看一眼一件与自己无关的事。
+ *  哪些动作走这一支：它们在清单里没有对应的 `Spec`（取值是运行时才有的，静态表里列不出来）——
+ *  · 变量那一步（`setvar:计数+=1`）；
+ *  · 结束应用（`proc:stop:包名`，由「应用控制」那一格挑出来）。
+ *
+ *  回执那句话走 [stepTitle]（「怎么念一个动作」全项目只有那一支实现），外面套
+ *  [Strings.TOAST_BOUND] 那层「」—— 与 [pick] 的回执同一个形状。
  */
-internal fun SettingsPage.pickVar(
+internal fun SettingsPage.pickToken(
     token: String,
     target: BindingTarget,
 ): Boolean =
     writeBinding(token, target, null) { _ ->
-        //  回执里那句正文走 [stepTitle]（步骤行那一套叫法）—— 「怎么念一个动作」全项目只有
-        //  那一支实现，这里不再为变量另拼一遍（`actionTitle` 的调用点有明文预算）。
-        I18n.format(Strings.VAR_BOUND, stepTitle(token) { "" })
+        //  名字走 `appLabelOf`：`proc:` 那一档的标题里要带应用名（`结束应用:微信`），
+        //  回调拿到的是**目标写法**（包名），与 `stepTitle` 的口径一致
+        I18n.format(Strings.TOAST_BOUND, stepTitle(token) { pkg -> appLabelOf(pkg) })
     }
 
 /**
- * 绑定的**唯一写盘路径**（[pick] / [pickVar] 都从这里过）。
+ * 绑定的**唯一写盘路径**（[pick] / [pickToken] 都从这里过）。
  *
  * @param token 要写进配置的动作写法
  * @param notice 成功回执那句话（参数是解析后的动作）—— 两种动作叫法不同，这一层不猜
@@ -222,15 +227,42 @@ private fun SettingsPage.bindingUnchanged(
  *
  *  **不能直接用 `spec.label`**：挑应用那条路传进来的 `spec` 只有 token（`name = token`），
  *  打出来会是「已绑定「app:com.tencent.mm」」。
+ *
+ *  **打开 / 结束应用那一族要带前缀**：只写应用名（「已绑定「微信」」）看不出这一趟是「打开」
+ *  还是「结束」—— 两件事读起来完全不同。所以那两档走 [actionTitle]（与步骤行、执行时提示
+ *  同一支实现），产出「已绑定「打开应用:微信」」「已绑定「结束应用:微信」」。
+ *
+ *  三档的差别只有「应用名从哪个字段取」，所以先把包名抽出来（[appPkgOf]），再共用**一次**
+ *  [actionTitle] —— 三处各写一遍的话，「怎么念一个动作」就又多出三份实现，而
+ *  `tools/audit-arch.py` 数正是这个数。
  */
-private fun boundNotice(
+private fun SettingsPage.boundNotice(
     spec: ActionCatalog.Spec,
     action: Action,
     appName: String?,
-): String =
-    I18n
-        .get(Strings.TOAST_BOUND, "已绑定「%s」")
-        .format(appName ?: ActionCatalog.label(action) ?: spec.label)
+): String {
+    val pkg = appPkgOf(action)
+    val shown =
+        if (pkg == null) {
+            appName ?: ActionCatalog.label(action) ?: spec.label
+        } else {
+            actionTitle(action, { appName ?: appLabelOf(pkg) }, action.token)
+        }
+    return I18n.get(Strings.TOAST_BOUND, "已绑定「%s」").format(shown)
+}
+
+/**
+ * 「带动作前缀」那三档各自的目标包名 —— 只有它们要前缀，其余动作没有这一层。
+ *
+ *  `null` = 这一档不归 [actionTitle] 管（清单名 / 挑应用带进来的名字已经够具体）。
+ */
+private fun appPkgOf(action: Action): String? =
+    when (action) {
+        is Action.App -> AppTarget.pkg(action.target)
+        is Action.AppWindow -> AppTarget.pkg(action.target)
+        is Action.Process -> action.pkg
+        else -> null
+    }
 
 /**
  * 停用 / 启用**一颗键** —— 按键菜单里那一行（「停用这颗键」/「启用这颗键」）。

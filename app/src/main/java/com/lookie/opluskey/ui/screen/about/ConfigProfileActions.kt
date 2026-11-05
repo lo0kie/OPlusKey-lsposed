@@ -1,6 +1,8 @@
 package com.lookie.opluskey.ui.screen.about
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.config.ProfileCommands
 import com.lookie.opluskey.core.config.isDefaultProfile

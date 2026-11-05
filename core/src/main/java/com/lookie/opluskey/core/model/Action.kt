@@ -42,19 +42,36 @@ sealed interface Action {
         get() =
             when (this) {
                 None, is KeyEvent, is MiniWindow, Flashlight, PowerMenu -> false
+
                 is Shell -> command.isBlank()
+
                 is Custom -> name.isBlank()
+
                 is Intent -> action.isBlank()
+
                 is App -> target.isBlank()
+
                 is AppWindow -> target.isBlank()
+
                 is AppShortcut -> pkg.isBlank() || shortcutId.isBlank()
+
                 is Shortcut -> shortcutId.isBlank()
+
                 is Ringer -> mode.isBlank()
+
                 is Brightness -> false
+
                 is Volume -> false
+
                 is Oplus -> feature.isBlank()
+
                 is Panel -> mode.isBlank()
+
                 is Setting -> id.isBlank()
+
+                //  包名在解析那一层就被校验过（`parseProcess` 认不出直接给 None），走到这里必然非空
+                is Process -> false
+
                 is VarSet -> name.isBlank()
             }
 
@@ -169,6 +186,20 @@ sealed interface Action {
         val shortcutId: String,
     ) : Action {
         override val token: String = Action.SHORTCUT_PREFIX + shortcutId
+    }
+
+    /**
+     * 结束一个**应用**（`proc:stop:包名`）—— 由「结束应用」那一格挑出来绑到按键上。
+     *
+     *  与 [App] 不是一回事：那一档要的是「把某个界面拉起来」，这一档管的是**这个应用还在不在**。
+     *  执行侧是整包范围：系统的强行停止（`am force-stop`）+ 把残留的子进程一起收掉，
+     *  `:push` / `:service` 那几份一起走 —— 所以它**没有「只结束某一条进程」这一档**。
+     *  **只存包名、不存 PID**：PID 每次开机都变，绑定时取的那个数过一夜就是别人的进程。
+     */
+    data class Process(
+        val pkg: String,
+    ) : Action {
+        override val token: String = Action.PROCESS_PREFIX + Action.STOP_SUFFIX + pkg
     }
 
     /** 切换手电筒（`flashlight`）：走 CameraManager 的 torch 接口而非 `/sys/class/leds`（后者需要 root）。 */
@@ -366,6 +397,23 @@ sealed interface Action {
         /** 快捷方式用小窗起 —— 紧跟在 [APP_SHORTCUT_PREFIX] 之后（`appshortcut:w:…`）。 */
         const val WINDOW_MARK = "w:"
 
+        /**
+         * 结束一个应用（`proc:stop:包名`）—— 见 [Action.Process]。
+         *
+         *  与「结束应用」那一格**不是同一个东西**：那一格是 `ActionCatalog.STOP_APP_TILE`
+         *  （进挑应用那一页的关卡，永不写进配置），这一档是**真动作**，可以绑到按键上。
+         */
+        const val PROCESS_PREFIX = "proc:"
+
+        /**
+         * [PROCESS_PREFIX] 之后那一档 —— **只认「结束」**。
+         *
+         *  原来还有一档 `start:`（按 launcher 入口把应用拉起来）；它与「打开应用」（`app:`）做的是
+         *  同一件事，两格并排只会让人以为「启动进程」和「打开应用」有区别，所以撤掉了。
+         *  老配置里残留的 `proc:start:` 由 [parseProcess] 按「认不出」处理（落 `None`，不凭空执行）。
+         */
+        const val STOP_SUFFIX = "stop:"
+
         /** 切换手电筒。 */
         const val FLASHLIGHT = "flashlight"
 
@@ -452,6 +500,9 @@ sealed interface Action {
                 text.startsWith(APP_SHORTCUT_PREFIX) -> parseAppShortcut(text)
 
                 text.startsWith(SHORTCUT_PREFIX) -> Shortcut(text.removePrefix(SHORTCUT_PREFIX).trim())
+
+                // 进程控制（`proc:start:包名` / `proc:stop:包名`）：认不出就按不支持处理，不落 shell
+                text.startsWith(PROCESS_PREFIX) -> parseProcess(text)
 
                 text == FLASHLIGHT -> Flashlight
 
@@ -562,7 +613,19 @@ sealed interface Action {
                 BRIGHT_PREFIX,
                 VOLUME_PREFIX,
                 SETVAR_PREFIX,
+                PROCESS_PREFIX,
             )
+
+        /**
+         * 这段字能不能当**包名**用 —— 至少两段、每段字母开头、只含标识符字符。
+         *
+         *  只挡两类东西：`ps` 里那些不是应用的进程名（`/system/bin/…`、`init`），
+         *  以及**拼进 shell 之前**那道注入校验（`proc:` 与进程控制页共用这一把尺子）。
+         */
+        fun isPackageName(text: String): Boolean = PACKAGE_NAME.matches(text)
+
+        /** 见 [isPackageName]。 */
+        private val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
         /**
          * `setting:<id>[:on|:off]` 那一支 —— 与 [parseKeyEvent] 同一个理由（[parse] 贴着长度上限）。
@@ -689,6 +752,27 @@ private fun splitPercent(
     val rest = if (sign == '+' || sign == '-') body.substring(1) else body
     val percent = rest.trim().toIntOrNull() ?: return null
     return if (percent in 0..100) sign to percent else null
+}
+
+/**
+ * `proc:stop:<包名>` 那一支 —— 与 [parseBrightness] 同一个理由
+ * （[Action.parse] 贴着长度上限，所以摊到文件级）。
+ *
+ *  认不出包名、或档位不是 `stop:`（包括老配置里的 `start:`）都按 `None` 处理：包名会被拼进
+ *  shell（`am force-stop <包名>`），猜错就是把一段看不懂的东西交给 root shell。
+ */
+private fun parseProcess(text: String): Action {
+    val body = text.removePrefix(Action.PROCESS_PREFIX).trim()
+    if (!body.startsWith(Action.STOP_SUFFIX)) {
+        XLog.w("动作 proc: 的档位认不出（只认 stop:，按 none 处理）：$text")
+        return Action.None
+    }
+    val pkg = body.removePrefix(Action.STOP_SUFFIX).trim()
+    if (!Action.isPackageName(pkg)) {
+        XLog.w("动作 proc: 的包名不像包名（按 none 处理）：$text")
+        return Action.None
+    }
+    return Action.Process(pkg)
 }
 
 /**

@@ -15,7 +15,7 @@ internal object UiState {
     /** 「选择应用」页是否列出系统应用。 */
     private const val KEY_SHOW_SYSTEM_APPS = "show_system_apps"
 
-    /** 「选择应用」页是否把**拉不起来**的应用也列出来（见 `SettingsPage.picker`）。 */
+    /** 「选择应用」页（**只有「打开应用」那一趟**）是否把拉不起来的应用也列出来。 */
     private const val KEY_SHOW_UNOPENABLE = "show_unopenable"
 
     /**
@@ -52,7 +52,7 @@ internal object UiState {
      * 它默认关、每次进「选择应用」页按「正在编辑的那个动作」重算，见 `SettingsPage.picker`。
      */
     fun readPrefs(): UiPrefs {
-        val map = parse(readTextOrNull().orEmpty())
+        val map = parsePrefs(readTextOrNull().orEmpty())
         return UiPrefs(
             showSystemApps = map[KEY_SHOW_SYSTEM_APPS]?.toBooleanStrictOrNull() ?: false,
             showUnopenable = map[KEY_SHOW_UNOPENABLE]?.toBooleanStrictOrNull() ?: false,
@@ -69,13 +69,15 @@ internal object UiState {
      *
      * 注意：**读不出来时一个字节都不写**：写回是「读 → 改一个键 → 整份写」，
      *  读失败时手上只有空表 —— 照写就把**另一个键一起抹掉**了（用户只是切了一下「显示系统应用」，
-     *  「显示失效应用」却悄悄回到默认）。
+     *  「不再提示」那一版却悄悄回到默认）。
      *
      * @return 是否真的落盘 —— 调用方（`PageHeader` 那三处切换）会紧接着向用户报「已…」，
      *   丢了这个返回值就变成了「明明没写进去却说已落盘」。吞掉返回值、那三处又用
      *  `XLog.d` 打一句，release 下那行被编译期消除，是最难发现的一类谎报。
      */
     fun writeShowSystemApps(value: Boolean): Boolean = write(KEY_SHOW_SYSTEM_APPS, value.toString(), refuse = { refuseWrite(it, value) })
+
+    fun writeShowUnopenable(value: Boolean): Boolean = write(KEY_SHOW_UNOPENABLE, value.toString(), refuse = { refuseWrite(it, value) })
 
     /**
      * 记下「这一版的更新提示别再弹了」。
@@ -84,8 +86,6 @@ internal object UiState {
      */
     fun writeSkipUpdateVersion(version: String): Boolean =
         write(KEY_SKIP_UPDATE_VERSION, version, refuse = { refuseWrite(it, version.isNotEmpty()) })
-
-    fun writeShowUnopenable(value: Boolean): Boolean = write(KEY_SHOW_UNOPENABLE, value.toString(), refuse = { refuseWrite(it, value) })
 
     /**
      * 记下「系统那一侧回话了，就在这一轮开机里」。
@@ -100,7 +100,7 @@ internal object UiState {
      */
     fun writeInjectAlive(bootWall: Long): Boolean {
         val text = readTextOrNull() ?: return refuseWrite(KEY_INJECT_EVER_ALIVE, true)
-        val map = parse(text)
+        val map = parsePrefs(text)
         map[KEY_INJECT_EVER_ALIVE] = true.toString()
         map[KEY_INJECT_ALIVE_BOOT] = bootWall.toString()
         return writeText(map)
@@ -113,7 +113,7 @@ internal object UiState {
         refuse: (String) -> Boolean,
     ): Boolean {
         val text = readTextOrNull() ?: return refuse(key)
-        val map = parse(text)
+        val map = parsePrefs(text)
         map[key] = value
         return writeText(map)
     }
@@ -166,24 +166,28 @@ internal object UiState {
             },
             openReadable = false,
         )
+}
 
-    /** `key=value` 逐行解析；注释 / 空行 / 没有 `=` 的行一律跳过（半截文件也只是少几个键）。 */
-    private fun parse(text: String): MutableMap<String, String> {
-        val map = LinkedHashMap<String, String>()
-        text.lineSequence().forEach { line ->
-            val t = line.trim()
-            if (t.isEmpty() || t.startsWith("#")) return@forEach
-            val i = t.indexOf('=')
-            if (i > 0) map[t.substring(0, i).trim()] = t.substring(i + 1).trim()
-        }
-        return map
+/**
+ * `key=value` 逐行解析；注释 / 空行 / 没有 `=` 的行一律跳过（半截文件也只是少几个键）。
+ *
+ *  摊在文件级只为不把 [UiState] 顶破 `TooManyFunctions`：它是纯解析，不碰这个对象的状态。
+ */
+private fun parsePrefs(text: String): MutableMap<String, String> {
+    val map = LinkedHashMap<String, String>()
+    text.lineSequence().forEach { line ->
+        val t = line.trim()
+        if (t.isEmpty() || t.startsWith("#")) return@forEach
+        val i = t.indexOf('=')
+        if (i > 0) map[t.substring(0, i).trim()] = t.substring(i + 1).trim()
     }
+    return map
 }
 
 /**
  * 界面状态的一次读全（见 [UiState.readPrefs]）。
  *
- * @param showUnopenable 「选择应用」页是否列出拉不起来的应用
+ * @param showUnopenable 「选择应用」页（只有「打开应用」那一趟）是否列出拉不起来的应用
  * @param injectEverAlive 系统那一侧**曾经**回过话（只增不减）
  * @param injectAliveBoot 上一次回话时的那轮开机（`ProcClock.bootWall()`，0 = 从没回话）
  */

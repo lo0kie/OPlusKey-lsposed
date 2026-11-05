@@ -69,6 +69,15 @@ object ActionCatalog {
 
         /** 「锁屏快捷」入口格（`lock`）：相机 / 计算器两档收在这一格后面。 */
         Keyguard,
+
+        /** 「应用控制」入口格（`appctl:`）：打开 / 结束两个状态收在这一格后面，点它弹一层菜单。 */
+        AppControl,
+
+        /** 「应用控制」菜单里「打开应用」那一行 —— 播放三角（与结束那颗方块配成一对）。 */
+        AppOpen,
+
+        /** 「应用控制」菜单里「结束应用」那一行 —— 与执行那一档（`proc:stop:`）同一颗字形。 */
+        StopApp,
     }
 
     /**
@@ -131,7 +140,12 @@ object ActionCatalog {
     //  做不到单个手势级的交还 —— 一交还就是整键，同一把键上双击 / 长按的命令也跟着被系统吞掉。
     //  取舍与依据写在 `docs/implementation.md` 的「交还系统为什么不提供」。
 
-    /** 「打开应用」这一格的取值 —— 永不写进配置，只是「点它去挑应用」的关卡标记。 */
+    /**
+     * 「打开应用」这一步的取值 —— 永不写进配置，只是「点它去挑应用」的关卡标记。
+     *
+     *  它**不再是网格里的一格**：网格那一格是 [APP_CONTROL_TILE]（应用控制，打开 / 结束两个状态）。
+     *  这一位现在只服务「添加命令」抽屉里那一行（[APP_STEP]），跳的是同一张挑应用页。
+     */
     const val APP_TILE = Action.APP_PREFIX
 
     /** 「系统开关」这一格的取值 —— 永不写进配置，只是「点它去挑一个开关」的关卡标记。 */
@@ -333,6 +347,31 @@ object ActionCatalog {
     const val SHOW_VARIABLES = false
 
     /**
+     * 「应用控制」那一格 —— 打开应用与结束应用**合成一格**，与 [APP_TILE] 同一个性质：
+     * **永不写进配置**，只是关卡标记。
+     *
+     *  点它先弹一层菜单（[APP_CONTROL_MODES]：打开应用 / 结束应用），选完进**同一张**挑应用页：
+     *  打开那一档落成 `app:<包名>`，结束那一档落成 `proc:stop:<包名>`。两档的页面是同一份，
+     *  差别只在写出去的 token（见 `AppPickerState.stopApp`）。
+     *
+     *  它不是一步动作：打开 / 结束哪个应用都要**当场挑一个**，格子本身代表不了任何一个包名。
+     *  所以 [STEP_GROUPS] / [BRANCH_GROUPS] 把它换成 [APP_STEP]（多步里的那一步只能是一个取值）。
+     */
+    const val APP_CONTROL_TILE = "appctl:"
+
+    /** [APP_CONTROL_TILE] 那一层菜单的两行 —— **都不是取值**，只是「这一趟去挑什么」。 */
+    const val APP_CONTROL_OPEN = "appctl:open"
+    const val APP_CONTROL_STOP = "appctl:stop"
+
+    /** 「应用控制」点开的那一层：打开应用 / 结束应用。 */
+    val APP_CONTROL_MODES: List<Spec> =
+        listOf(
+            // 打开：与「添加命令」里那一行同名同义，落成 `app:<包名>`
+            Spec(name = Strings.TOOL_OPEN_APP, token = APP_CONTROL_OPEN, glyph = Glyph.AppOpen),
+            Spec(name = Strings.TOOL_STOP_APP, token = APP_CONTROL_STOP, glyph = Glyph.StopApp),
+        )
+
+    /**
      * 内置命令分成两类 —— 界面上各一个小标题，组内顺序即显示顺序。
      *
      * [ALL] 是把两组按顺序拍平的**扁平表**：焦点索引、图标预热等调用方只看它，
@@ -393,10 +432,9 @@ object ActionCatalog {
                     // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
                     // 两档尺寸（展开 / 收起）各不相同，格子代表不了其中任何一个 ⇒ 按 [MINI_TILE] 当入口格、弹菜单
                     Spec(name = Strings.TOOL_MINI_WINDOW, token = MINI_TILE, glyph = Glyph.MiniWindow),
-                    // 这一条是入口不是取值：点它跳「打开应用」页挑应用，选完绑成 `app:<包名>`（[Action.App]）。
-                    // 网格点击靠比这个常量认领；不能靠「`Action.parse` 能否匹配」——`app:` 本身就是合法
-                    // 的空 App 动作，走 `select()` 会把配置写成 `app:`（拉不起任何应用）。
-                    Spec(name = Strings.TOOL_OPEN_APP, token = APP_TILE),
+                    // 应用控制：**一格两个状态** —— 点它先弹一层菜单（打开应用 / 结束应用），
+                    //  再进同一张挑应用页。格子代表不了任何一个应用 ⇒ 标记 token 永不写进配置。
+                    Spec(name = Strings.TOOL_APP_CONTROL, token = APP_CONTROL_TILE, glyph = Glyph.AppControl),
                     // 同为入口不是取值：点它当场挑一颗变量、再挑对它做什么（见 `ui/screen/variables/`）。
                     //  与 [APP_TILE] 一样按 token 认领 —— `vars:` 不是任何动作的写法。
                     //  **不发布**：这一格随 [SHOW_VARIABLES] 收起来（网格与「添加命令」菜单同源，
@@ -599,6 +637,7 @@ object ActionCatalog {
             VOLUME_TILE to VOLUME_MODES,
             AI_TILE to AI_MODES,
             KEYGUARD_TILE to KEYGUARD_MODES,
+            APP_CONTROL_TILE to APP_CONTROL_MODES,
         )
 
     /**
@@ -665,8 +704,8 @@ object ActionCatalog {
 
     /**
      * 「添加命令」浮层用的**分组** —— 就是网格那张 [GROUPS]，只做两处适配：
-     * 「无操作」剔掉（它代表「吞掉按键」、不是一步动作），「打开应用」那格**就地换成** [APP_STEP]
-     * （同一个 token，点它进「打开应用」页挑一个）。
+     * 「无操作」剔掉（它代表「吞掉按键」、不是一步动作），「应用控制」那一格**就地换成** [APP_STEP]
+     * （一步只能是一个取值：打开某个应用；结束那一档不出现在步骤里）。
      *
      * 「自定义变量」那一格**留在表里**：它在抽屉里同样是个关卡 —— 点它弹「变量操作」窗挑一步
      * （见 `ui/screen/variables/VarOpsDialog`），抽屉自己**不**把它落成 token。所以它既不能剔掉，
@@ -685,7 +724,10 @@ object ActionCatalog {
                     .filterNot { it.token == NONE_TOKEN }
                     .map {
                         when (it.token) {
-                            APP_TILE -> APP_STEP
+                            // 「应用控制」那一格是关卡，不是取值：多步里那一步只能是「打开某个应用」
+                            // （`app:`）。结束那一档不在这里 —— 它是另一条真动作，由那一格自己挑。
+                            APP_CONTROL_TILE -> APP_STEP
+
                             else -> it
                         }
                     }
@@ -703,12 +745,14 @@ object ActionCatalog {
     val BRANCH_GROUPS: List<Pair<String, List<Spec>>> =
         GROUPS.map { (title, group) ->
             title to
-                group.map {
-                    when (it.token) {
-                        APP_TILE -> APP_STEP
-                        else -> it
+                group
+                    //  同 [STEP_GROUPS]：「应用控制」是关卡，一条场景要落成一条真动作（打开应用）
+                    .map {
+                        when (it.token) {
+                            APP_CONTROL_TILE -> APP_STEP
+                            else -> it
+                        }
                     }
-                }
         }
 
     /**
@@ -724,12 +768,16 @@ object ActionCatalog {
         // 写成表达式而不是「一串 `if (...) return`」：后者五个出口，detekt 的 ReturnCount
         //  按 4 计（这条是入口格的判据，本来也没有「中途返回」要表达）。
         if (spec.token == APP_TILE) {
-            // 「打开应用」那格是入口：只要绑任意 `app:` / `window:` 动作就算选中，否则绑完回来一个亮的都没有
+            // 「打开应用」那一步是入口：只要绑任意 `app:` / `window:` 动作就算选中，否则绑完回来一个亮的都没有
             action.isAppOpen
         } else if (spec.token == VARS_TILE) {
             // 「自定义变量」那一格代表**一整族**取值（`setvar:` 有无数种写法，清单里列不出来）：
             //  绑了任意一步变量操作就算这一格选中 —— 与入口格同一套判据，只是那一族由运行时收集。
             action is Action.VarSet
+        } else if (spec.token == APP_CONTROL_TILE) {
+            // 「应用控制」代表**两族**：打开（`app:` / `window:` / 快捷方式）与结束（`proc:stop:`）。
+            //  两款任意一条都算这一格选中 —— 点开之后那一层菜单里再各自精确打勾。
+            action.isAppOpen || action is Action.Process
         } else {
             // 入口格代表**一整组取值**：绑其中任意一档就算选中，否则格里一个亮的都没有
             modeMenu(spec.token)?.any { isBound(it, action) } ?: isBound(spec, action)
@@ -747,6 +795,11 @@ object ActionCatalog {
     ): Boolean {
         //  「亮度 / 音量」这两族先判：它们比的是**占位写法的符号**，不是整串（见 [percentRowBound]）。
         percentRowBound(spec.token, action)?.let { return it }
+        //  「应用控制」那两行不是取值（`appctl:open` / `appctl:stop`），比的是**绑的是哪一族**：
+        //  打开那行认 `app:` / `window:` / 快捷方式，结束那行认 `proc:stop:`。菜单里的勾靠它。
+        if (spec.token == APP_CONTROL_OPEN || spec.token == APP_CONTROL_STOP) {
+            return if (spec.token == APP_CONTROL_OPEN) action.isAppOpen else action is Action.Process
+        }
         val bound = canonicalToken(spec.token)
         //  「系统开关」那一族：`setting:wifi` 与 `setting:wifi:on` / `:off` 是**同一个开关**的三个状态
         //  —— 菜单那一行（「切换」）与网格那一格都得认得出「这个开关已经绑了」。

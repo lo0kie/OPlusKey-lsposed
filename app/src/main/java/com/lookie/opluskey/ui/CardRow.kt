@@ -18,8 +18,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -29,7 +34,6 @@ import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
-import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
 import com.lookie.opluskey.ui.model.ROW_TITLE_INSET
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
@@ -46,6 +50,7 @@ import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
+import io.github.suqi8.coui.kmp.squircle.addSquircleRect
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 设置页那种「一张卡里一列行」的列表 —— 项目自己的一份实现（`CardRow` 是行，`CardList` 是那张卡）。
@@ -85,6 +90,17 @@ internal sealed interface CardRow {
     class Item(
         val title: String,
         val summary: String? = null,
+        /**
+         * 副标题行**行尾**那一块 —— 与 [summary] 同一行，`summary` 先给它让位。
+         *
+         *  给「这一行的信息里有一段**必须始终看得见**」那种用（例如进程页的「已运行 12 分钟」/
+         *  「128 MB」）：拼成一整串交给 [summary] 的话，名字一长，`Text` 的省略就把它从**尾部**
+         *  裁掉了 —— 那一段恰恰是用户按这个维度排序时想看的东西。拆成两块之后，被裁的是名字。
+         *
+         *  给了这一块时 `summary` 收成**单行省略**（原来是可折行的）：两块挤在一行里，折行会把
+         *  行高撑起来、也说不清谁是谁。没给时行为一切照旧。
+         */
+        val summaryExtra: (@Composable () -> Unit)? = null,
         val icon: ImageVector? = null,
         /** 行首那一格自己画（见 KDoc）；非空时优先于 [icon]。 */
         val startIcon: (@Composable () -> Unit)? = null,
@@ -515,60 +531,83 @@ private fun ItemText(
             it()
         }
     }
-    if (row.summary != null) {
-        Text(
-            text = row.summary,
-            modifier = Modifier.padding(top = ROW_LINE_GAP),
-            style = COUITheme.textStyles.body2,
-            color = summaryColor,
-        )
-    }
-}
-
-/**
- * 行首那一格 —— 自己画的（`startIcon`，应用图标那种）优先，否则是 `ImageVector` 那颗。
- *
- *  两者**都要补一档 [ROW_START_ICON_GAP]**：库在 `startAction` 与文字之间只留 8dp，而行内左边距
- *  是 16dp —— 不补的话图标左边看着比右边宽一倍（见那个常量的说明）。两种行首走同一档，
- *  同一张卡里的左缘才对得齐。
- *
- *  抽出来只为让 [ItemRow] 留在 detekt 的 `LongMethod` 长度线内。
- */
-private fun cardRowStartAction(
-    row: CardRow.Item,
-    iconTint: Color,
-): (@Composable () -> Unit)? {
-    val startIcon = row.startIcon
-    if (startIcon != null) {
-        return {
-            Box(Modifier.padding(end = ROW_START_ICON_GAP)) { startIcon() }
-        }
-    }
-    val glyph = row.icon ?: return null
-    return {
-        //  字形会随状态换（停用的键换成禁用图标、序号键换成禁用图标那几处）：形状没法插值，
-        //  只能交叉淡过去 —— 与旁边那片图标色同一条曲线（[COLOR_FADE_SPEC]），否则同一次切换
-        //  看着是「色在渐变、字形啪地换掉」。两种字形同尺寸，交叉期间这一格宽度不变。
-        Crossfade(
-            targetState = glyph,
-            animationSpec = COLOR_FADE_SPEC,
-            label = "CardRowIconGlyph",
-        ) { shown ->
-            Icon(
-                shown,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.padding(end = ROW_START_ICON_GAP),
-            )
-        }
-    }
+    ItemSummary(row, summaryColor)
 }
 
 /** 标题与副标题之间那一档 —— 与库的 `MarginBetweenLine` 同一值（2dp）。 */
-private val ROW_LINE_GAP = 2.dp
+internal val ROW_LINE_GAP = 2.dp
 
 /** 标题与紧跟其后那一块（小标签）之间那一档 —— 与标签之间的间距同一值（6dp）。 */
 private val ROW_TITLE_EXTRA_GAP = 6.dp
+
+/**
+ * 选中那一行外面那一圈**内边框** —— 「选择应用」与「选择界面」两页共用。
+ *
+ * ## 四角必须是**超椭圆**，不能用 `RoundedCornerShape`
+ *
+ *  COUI 的圆角全是 squircle（卡片 / 按钮 / 弹窗 / 顶栏都是），而 `Modifier.border` 配一个
+ *  `RoundedCornerShape` 画出来的是**正圆角**：两者在四角处的曲率不一样，正圆角那一段会伸到
+ *  卡片自己的轮廓**外面**，被卡片的裁剪切掉 ⇒ 描边在四个角上断一截（真机反馈「圆角处不完整」）。
+ *  所以这一圈用库的 `addSquircleRect` 自己拼路径 —— 形状定义只有库那一份，与卡片是同一族曲线。
+ *
+ * ## 为什么还要往里让 2dp
+ *
+ *  贴着边画等于把描边压在卡片的裁剪线上：抗锯齿会吃掉外侧那一半，深色下看着像「线不实」。
+ *  让出 [SELECTED_RING_AIR] 之后整圈描边都落在卡片轮廓**里面**，四个角是完整的弧。
+ *  半径同时减去这一档，内外两条曲线才同心 —— 不减的话四角又会被顶到轮廓外。
+ *
+ *  为什么整块收在这里：一级页的行尾是勾、二级页的行尾是圈，两页的「选中」只有颜色与字形不同，
+ *  这一圈必须一模一样（同一种状态在两页长得不一样，用户会以为选中的东西不同）。
+ *
+ *  @param selected 没选中时**一个修饰符都不挂** —— 这一页几百行，绝大多数都没选中，
+ *   不必为它们各加一层绘制节点。
+ */
+@Composable
+internal fun Modifier.selectedRowRing(selected: Boolean): Modifier {
+    if (!selected) return this
+    val color = COUITheme.colorScheme.primary
+    val ring =
+        with(LocalDensity.current) {
+            RingGeometry(
+                stroke = SELECTED_RING_WIDTH.toPx(),
+                inset = SELECTED_RING_AIR.toPx(),
+                radius = (CardDefaults.CornerRadius - SELECTED_RING_AIR).toPx(),
+            )
+        }
+    return drawWithContent {
+        //  `BasicComponent` 自己的底色画在这一层**之前**（真机确认：描边看得见），
+        //  所以先让它画完，再把这一圈压在最上面。
+        drawContent()
+        val width = size.width - ring.inset * 2
+        val height = size.height - ring.inset * 2
+        if (width <= 0f || height <= 0f) return@drawWithContent
+        val path =
+            Path().apply {
+                addSquircleRect(width = width, height = height, cornerRadius = ring.radius)
+            }
+        translate(ring.inset, ring.inset) {
+            drawPath(path, color, style = Stroke(width = ring.stroke))
+        }
+    }
+}
+
+/** 内边框的三档像素值 —— 每帧要用，先算好（density 变了会重新组合出来）。 */
+private class RingGeometry(
+    val stroke: Float,
+    val inset: Float,
+    val radius: Float,
+)
+
+/**
+ * 选中那一圈内边框的线宽 —— 2dp。
+ *
+ *  再细一档（1dp）在 2.5x 屏上是 2~3 个像素，与卡片自身的明暗差混在一起看不出来；
+ *  再粗就变成「按钮描边」，而这一圈说的是「这一行就是当前这个」，不是「按我」。
+ */
+private val SELECTED_RING_WIDTH = 2.dp
+
+/** 内边框离卡片边缘那一档 —— 2dp（见 [selectedRowRing] 的「为什么还要往里让」）。 */
+private val SELECTED_RING_AIR = 2.dp
 
 /**
  * 行尾那颗**指示性图标**（`trailing` / `endActions` 槽里那一颗）—— 全项目只此一份。

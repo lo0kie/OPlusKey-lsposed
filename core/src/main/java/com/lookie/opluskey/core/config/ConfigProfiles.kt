@@ -61,6 +61,7 @@ private const val SLOT_ID_PREFIX = "slot:"
  *  [Config.profileName] 存在配置自己里头，不绑槽号 —— 交换之后名字仍跟着内容走，不会错位。
  *  空串 = 「默认」配置（升级时自动落下的退路），它**不许改名、不许删除**：删掉就没地方回去了。
  */
+@Suppress("TooManyFunctions")
 object ConfigProfiles {
     /** 当前生效那一份的槽名 —— 与 [ConfigStore.SLOT_CONFIG] 同一个，别各写一份字面量。 */
     const val CURRENT_SLOT: String = ConfigStore.SLOT_CONFIG
@@ -399,7 +400,10 @@ object ConfigProfiles {
      *
      *  两段一起成、或一起不动：先落命令库、再落主配置，任一步失败就把这一槽清干净。
      *
-     * @param name 新配置的名字（调用方给；空白时按「导入配置」记）
+     *  **名字一定带序号**（「导入配置 1」/「导入配置 2」…）：序号从 1 起，第一份也带 ——
+     *  以前第一份不带号，列表里并排放着「导入配置」和「导入配置 2」，数不出这是第几份。
+     *
+     * @param name 打底的名字（调用方给；空白时用「导入配置」打底，序号一律另补）
      * @return 新槽名；写盘失败返回 `null`
      */
     fun importAs(
@@ -409,7 +413,7 @@ object ConfigProfiles {
     ): String? {
         val (slot, order) = nextSlot() ?: return null
         val base = name.trim().ifEmpty { "导入配置" }
-        //  同名会让列表里出现两行一样的名字 —— 加个序号区分（导入的那份仍然插在最末）
+        //  同名会让列表里出现两行一样的名字 —— 加个序号区分（导入的那份仍然插在最末）。
         //  **只扫配置槽**：`slots()` 里还有 commands / vars / logs 那些，拿它们去 `readOf`
         //  是把命令库当配置解析 —— 既白读一遍，又会每次导入都刷出一条「读不懂」的 W
         val taken =
@@ -419,11 +423,13 @@ object ConfigProfiles {
                 .filter { it == CURRENT_SLOT || it.startsWith(SLOT_PREFIX) }
                 .mapNotNull { readOf(it)?.profileName }
                 .toSet()
-        var trimmed = base
-        var seq = 2
+        //  **序号从 1 起**：第一份就叫「导入配置 1」。以前第一份不带号、第二份才从 2 开始，
+        //  列表里并排放着「导入配置」和「导入配置 2」，一眼数不出这是第几份（用户口径）。
+        var seq = 1
+        var trimmed = "$base $seq"
         while (trimmed in taken) {
-            trimmed = "$base $seq"
             seq++
+            trimmed = "$base $seq"
         }
         //  **必须换新 id**：导入的文件里带着别人的 `profile_id`，照抄下来会和本机已有的撞车
         val ordered = config.copy(profileId = newProfileId(), profileName = trimmed, profileOrder = order)
@@ -442,6 +448,62 @@ object ConfigProfiles {
         }
         XLog.w("配置导入：$trimmed（槽 $slot，插在最末）")
         return slot
+    }
+
+    /**
+     * **导入并覆盖到指定槽** —— 把外来配置盖到 [slot] 那一份上，替代「插在最末」。
+     *
+     *  与 [importAs] 的差别：目标是**一份已有配置**（含「默认」那一份，也可能就是当前生效的那份），
+     *  内容整个换成导入的。名字跟着内容走（[Config.profileName] 存在配置自己里头），所以：
+     *  · 覆盖「默认」配置时名字仍是空串、身份仍是默认（[DEFAULT_PROFILE_ID]）；
+     *  · 覆盖普通配置时保留那份的名字（换内容、不换名）—— 用户选的是「把这份换成导入的那套」，
+     *    不是「给导入的另起一个名字」。
+     *
+     *  两段一起成、或一起不动：先落命令库、再落主配置，任一步失败就把这一槽还原成原样
+     *  （不能像 [importAs] 那样删槽 —— 这里槽里本来就有东西，删了就丢了那份旧的）。
+     *
+     *  变量表也换成空表（与 [importAs] 同一条口径）：导入的那套不带走别人的计数。
+     *
+     *  **覆盖当前槽时**（`slot == CURRENT_SLOT`）：文件直接换成新内容，但**不广播、不动界面状态** ——
+     *  那一半交给调用方走通用写入通道（界面的 `write` / `saveCommands`），这一层只负责把文件写对。
+     *  这里返回写好的 [Config]，调用方拿去刷新。
+     *
+     * @param slot 目标槽（[CURRENT_SLOT] 或 [SLOT_PREFIX] 那一族）
+     * @return 覆盖后的配置（已换新 id、保留那份的名字）；写盘失败返回 `null`
+     */
+    fun importInto(
+        slot: String,
+        config: Config,
+        commands: List<Command>,
+    ): Config? {
+        val target =
+            readOf(slot) ?: run {
+                XLog.w("配置导入覆盖：$slot 读不出来，拒绝覆盖")
+                return null
+            }
+        //  换新 id：导入文件里带着别人的 profile_id，照抄会撞车。名字保留目标那份自己的
+        //  （换内容不换名），默认那份名字本来就是空串、身份照旧。
+        val ordered =
+            config.copy(
+                profileId = newProfileId(),
+                profileName = target.profileName,
+                profileOrder = target.profileOrder,
+            )
+        //  先落命令库、再落主配置，与 [importAs] 同一个顺序（命令库是「内容的一半」，先写它，
+        //  主配置失败时还可以按原样还原命令库）。
+        val previousCommands = ProfileCommands.read(slot)
+        val ok =
+            ProfileCommands.save(slot, commands) &&
+                writeProfileConfig(slot, ordered) &&
+                ProfileVars.save(slot, emptyList())
+        if (!ok) {
+            //  还原命令库（主配置失败时命令库已经被新内容盖掉了）
+            if (previousCommands != null) ProfileCommands.save(slot, previousCommands)
+            XLog.w("配置导入覆盖：$slot 没写成，已还原命令库")
+            return null
+        }
+        XLog.w("配置导入覆盖：已覆盖 ${target.profileName.ifBlank { "默认" }}（槽 $slot）")
+        return ordered
     }
 
     /** 读某一份（导出、以及列表里取名字都用它）。读不出来返回 `null`。 */

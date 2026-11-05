@@ -15,8 +15,8 @@ import com.lookie.opluskey.ui.model.LaunchableApp
  *  **写**它们的代码在四段 `LaunchedEffect` 里 —— 想弄清「`loaded` 变 null 有哪几种原因」
  *  得把整个函数扫一遍。
  *
- *  注意：**页面级的 `picker`（搜索词 / 两个落盘开关 / 小窗开关）不在这里**，它是跨进页持久的
- *  那一份（见 [AppPickerState]）。这里只有「这一趟」的东西。
+ *  注意：**页面级的 `picker`（搜索词 / 「显示系统应用」那个落盘开关 / 小窗开关）不在这里**，
+ *  它是跨进页持久的那一份（见 [AppPickerState]）。这里只有「这一趟」的东西。
  */
 internal class AppPickerUiState(
     private val picker: AppPickerState,
@@ -27,14 +27,6 @@ internal class AppPickerUiState(
      *  刷新**不**把它打回 null（那是模式翻转才做的事）：旧清单留着，只有指示器转圈。
      */
     var loaded by mutableStateOf<List<LaunchableApp>?>(null)
-
-    /**
-     * 上一轮查的是哪个模式（`null` = 还没查过）。
-     *
-     * 只有模式真的翻转才把列表收起来走加载态：那一刻列表来源换了，旧清单留着是错的。
-     * 进页那一次不收 —— 那是同一份清单的重查。
-     */
-    var lastMode by mutableStateOf<Boolean?>(null)
 
     /** 这一次查询失败了吗（`loadLaunchableApps` 返回 null）。 */
     var failed by mutableStateOf(false)
@@ -103,15 +95,34 @@ internal class AppPickerUiState(
     val apps: List<LaunchableApp> get() = loaded.orEmpty()
 
     /**
-     * 过滤之后要画的清单：两个落盘开关 + 搜索词（名字 / 包名 / 拼音）。
+     * 过滤之后要画的清单：两个显示开关 + 搜索词（名字 / 包名 / 拼音）。
      *
      *  用 `derivedStateOf` 而不是在调用点 `remember`：这一段被三处读（列表、空态文案、进场定位），
      *  各自 `remember` 会各算一份，而「哪些行该出现」必须三处一致。
+     *
+     * ## 两档显示开关都只是**过滤**
+     *
+     *  清单**一次就取全**（见 `loadLaunchableApps`），所以这里只做减法：
+     *  · [AppPickerState.showSystemApps]（「显示系统应用」）：放出**没有启动图标**的那一批
+     *    （`LaunchableApp.byDefault == false`）—— 系统应用、没有图标的第三方应用。有启动图标的
+     *    应用与 Xposed 模块不受它管，默认就该在；
+     *  · [AppPickerState.showUnopenable]（「显示失效应用」）：放出**点不开**的那一批
+     *    （`launchable == false`）；
+     *  · 结束那一趟（[AppPickerState.stopApp]）**一律全列** —— 停掉一个没有启动图标的应用
+     *    正是它的用处，藏起来反而没得选。
+     *
+     *  三个输入全是 compose 状态，**拨开关只是让这个派生值重算一次**：不查盘、不换缓存、
+     *  不需要重查。上一版把这两个开关当成「取哪一档清单」的输入（`includeAll`），于是
+     *  「拨了没反应」几乎必然会在某一趟之后出现（真机两次踩到，见 changelog）。
      */
     val shown: List<LaunchableApp> by derivedStateOf {
         // 首尾空格要去掉：粘贴 / 输入法回车常带一个尾空格，那时整表会「什么都没搜到」
         val filter = picker.filter.value.trim()
-        val showBroken = picker.showUnopenable.value
+        //  结束那一趟一律全列；打开那一趟听菜单里那两项（「显示系统应用」管没图标的，
+        //  「显示失效应用」管点不开的）
+        val stopTrip = picker.stopApp
+        val showInvalid = stopTrip || picker.showUnopenable.value
+        val showIconless = showInvalid || picker.showSystemApps.value
         // 拼音那一档要小写比：排序键是罗马化后的小写串（见 `LaunchableApp.sortKey`）。
         //  **必须钉 `Locale.ROOT`**：默认 locale 会把字母改成当地写法（土耳其语里 `I` → `ı`、
         //  `i` 的大写是 `İ`），而排序键是固定 ASCII 小写 —— 那台机器上按读音就搜不到东西。
@@ -120,7 +131,8 @@ internal class AppPickerUiState(
         loaded
             .orEmpty()
             .asSequence()
-            .filter { showBroken || it.launchable }
+            .filter { showIconless || it.byDefault }
+            .filter { showInvalid || it.launchable }
             .filter {
                 filter.isBlank() ||
                     it.label.contains(filter, ignoreCase = true) ||

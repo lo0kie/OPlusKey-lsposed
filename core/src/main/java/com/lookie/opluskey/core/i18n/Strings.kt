@@ -27,6 +27,7 @@ object Strings {
     const val APP_PICKER_BRANCH_MULTI_HINT = "app_picker.branch_multi_hint"
     const val APP_PICKER_CONFIRM_SELECTION = "app_picker.confirm_selection"
     const val APP_PICKER_EMPTY_HINT_BROKEN = "app_picker.empty_hint_broken"
+    const val APP_PICKER_EMPTY_HINT_ICONLESS = "app_picker.empty_hint_iconless"
     const val APP_PICKER_EMPTY_OPENABLE = "app_picker.empty_openable"
     const val APP_PICKER_LOAD_FAILED = "app_picker.load_failed"
     const val APP_PICKER_LOADING_APPS = "app_picker.loading_apps"
@@ -49,7 +50,6 @@ object Strings {
     /** 应用名旁边那枚「分身」标签（多开槽里的那一份）。 */
     const val APP_PICKER_CLONE_TAG = "app_picker.clone_tag"
     const val APP_PICKER_TITLE = "app_picker.title"
-    const val APP_PICKER_UNSELECTED = "app_picker.unselected"
     const val BINDING_CREATE_CUSTOM_COMMAND = "binding.create_custom_command"
 
     const val BINDING_CREATE_CUSTOM_COMMAND_DESC = "binding.create_custom_command_desc"
@@ -574,6 +574,14 @@ object Strings {
     /** 音量同上（`音量减少 10%`）。 */
     const val COMMON_VOLUME_FORMAT = "common.volume_format"
 
+    /**
+     * 搜索框的占位文案带条数：`%1$s` 原来的占位（`搜索应用`）、`%2$d` 条数 —— `搜索应用 (42)`。
+     *
+     *  两页共用（选择应用 / 应用组件），只在这一处定句式。只在**搜索框空着**
+     *  且条数大于 0 时才用（见 `labeledCount`）：一有输入，那行字读的是「你在搜什么」。
+     */
+    const val COMMON_SEARCH_COUNT_FORMAT = "common.search_count_format"
+
     const val COMMON_CANCEL = "common.cancel"
     const val COMMON_CONFIRM = "common.confirm"
     const val COMMON_DELETE = "common.delete"
@@ -694,6 +702,24 @@ object Strings {
     /** 多配置：已导入为「%s」 */
     const val PROFILE_IMPORTED = "profile.imported"
 
+    /** 多配置：已覆盖「%s」—— 导入时选了「盖到某一份」而不是「新增一份」的回执 */
+    const val PROFILE_OVERWRITTEN = "profile.overwritten"
+
+    /** 多配置：导入选目标那一窗的标题（也是「覆盖」二次确认窗的标题） */
+    const val PROFILE_IMPORT_OVERWRITE_TITLE = "profile.import_overwrite_title"
+
+    /** 多配置：导入选目标里最末那一行「新增配置」 */
+    const val PROFILE_IMPORT_NEW = "profile.import_new"
+
+    /** 多配置：导入选目标里还没选就点「确定」那句提示 */
+    const val PROFILE_IMPORT_PICK_FIRST = "profile.import_pick_first"
+
+    /** 多配置：覆盖确认窗的正文（`%s` = 要覆盖的那份的名字） */
+    const val PROFILE_IMPORT_OVERWRITE_MESSAGE = "profile.import_overwrite_message"
+
+    /** 多配置：覆盖确认窗的动作项文案 */
+    const val PROFILE_IMPORT_OVERWRITE_ACTION = "profile.import_overwrite_action"
+
     /** 多配置：重命名配置 */
     const val PROFILE_RENAME = "profile.rename"
 
@@ -793,6 +819,12 @@ object Strings {
     const val HOME_ACTIVATION_INACTIVE = "home.activation_inactive"
     const val HOME_ACTIVATION_INACTIVE_DESC = "home.activation_inactive_desc"
     const val HOME_ACTIVATION_CHECKING = "home.activation_checking"
+
+    /**
+     * 关着时那句「点击启用此处模块」—— 这一块整块是开关，但界面上没有任何记号说明这件事，
+     * 大字只写「已关闭」，用户不会想到去点它。
+     */
+    const val HOME_ACTIVATION_TAP_TO_ENABLE = "home.activation_tap_to_enable"
 
     /** 首页主开关（「启用按键绑定」）的副标题 —— 开 / 关各一句。 */
     const val HOME_SWITCH_DESC_OFF = "home.switch_desc_off"
@@ -1073,6 +1105,22 @@ object Strings {
 
     /** 「快捷功能」组里那一格的名字（也是这一页在顶栏上的名字）。 */
     const val TOOL_VARIABLES = "tool.variables"
+
+    // —— 应用控制（「打开应用」与「结束应用」合成一格，见 `ActionCatalog.APP_CONTROL_TILE`）——
+
+    /** 「快捷功能」组里那一格的名字：点它弹一层菜单（打开应用 / 结束应用）。 */
+    const val TOOL_APP_CONTROL = "tool.app_control"
+
+    /** 菜单里「结束应用」那一行（也是绑好之后那一档动作的名字前半句）。 */
+    const val TOOL_STOP_APP = "tool.stop_app"
+
+    /**
+     * 绑到按键上的那一档叫什么（`proc:stop:包名`）—— 步骤行、网格小字、执行提示同一句话。
+     *  `%s` 是应用名。
+     *
+     *  只有这一档：`proc:start:` 那一档撤掉了（与「打开应用」重复），见 `Action.Process`。
+     */
+    const val COMMON_STOP_PROCESS_FORMAT = "common.stop_process_format"
 
     /** 变量操作落成一步之后，步骤行上那句标题（`%1$s` 变量名 / `%2$s` 值）。 */
     const val VAR_STEP_SET = "var.step.set"

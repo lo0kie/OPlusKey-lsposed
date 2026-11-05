@@ -61,6 +61,12 @@ fun actionTitle(
             I18n.format(Strings.COMMON_OPEN_SHORTCUT_FORMAT, appName(action))
         }
 
+        // 结束应用（`proc:stop:包名`）：应用名从回调来。
+        //  「结束应用:微信」与「打开应用:微信」读起来是两件事，所以不共用那几档的格式键。
+        is Action.Process -> {
+            I18n.format(Strings.COMMON_STOP_PROCESS_FORMAT, appName(action))
+        }
+
         // 自定义变量（`setvar:计数+=1`）：四档各一句话。
         //  值是配置里的原文（里面可能还写着 `${其它变量}`），照原样显示 —— 展开是执行时的事。
         is Action.VarSet -> {

@@ -202,7 +202,7 @@ private fun SettingsPage.PageBody(
                 //  模块总闸另有一层（关着时整页走 `blockedReason`），这里只管这一颗键。
                 //  自定义键收集时默认不开，第一次绑动作时自动打开（见 `pick`）。
                 enabled = keyEnabled(KeyWatchState.editing(configState.config.value)),
-                onOpenAppPicker = { target -> openAppPickerForTarget(target) },
+                onAppControl = { target, stop -> openAppPickerForControl(target, stop) },
                 scrollBehavior = scrollBehavior,
             )
         }
@@ -353,7 +353,7 @@ private fun SettingsPage.ActivityPickerPage(scrollBehavior: ScrollBehavior) {
 }
 
 /**
- * 网格里点「打开应用」那一格 → 进「选择应用」页（**为这一格**挑）。
+ * 网格里点「应用控制」那一格 → 弹一层菜单（打开 / 结束），选完进**同一张**「选择应用」页。
  *
  *  三件事都得在进页那一刻做掉：记下为谁挑、清掉上一次的搜索词、「以小窗口打开」按这次要
  *  编辑的动作重算（见 [resetSmallWindowForPicker]）。父级不用记 —— 压它下面的是谁，返回就退到谁。
@@ -370,5 +370,35 @@ internal fun SettingsPage.openAppPickerForTarget(target: BindingTarget) {
     resetSmallWindowForPicker()
     // 进页唯一复位点：点过的行回到当前绑定，定位 / 拦人窗 / 刷新指示器归零（清单不清）
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
+    navTo(Screen.APP_PICKER)
+}
+
+/**
+ * 「应用控制」那一格的分派：打开走 [openAppPickerForTarget]，结束走 [openAppPickerForStopApp]。
+ *
+ *  两档进的是**同一张**页面，差别只在写出去的 token；这一支只是把「哪一档」翻成对应的入口，
+ *  免得每个调用点（按键绑定页 / 组合键页）各写一遍 `if (stop) … else …`。
+ */
+internal fun SettingsPage.openAppPickerForControl(
+    target: BindingTarget,
+    stop: Boolean,
+) {
+    if (stop) openAppPickerForStopApp(target) else openAppPickerForTarget(target)
+}
+
+/**
+ * 「应用控制」菜单里选了**结束**那一档 → 进同一张「选择应用」页，挑中的应用写成 `proc:stop:包名`。
+ *
+ *  与 [openAppPickerForTarget] 只差「这一趟写什么」：多记一位 [AppPickerState.stopApp]，
+ *  其余（为谁挑、搜索词、复位、进场定位）一字不差 —— 两档共用同一页正是这么落地的。
+ *
+ *  小窗那一档在这里没有意义（`proc:stop:` 不是打开动作），所以**不重算、恒关**：
+ *  菜单里那一行也不会出现（见 `AppPickerState.appOnly`）。
+ */
+internal fun SettingsPage.openAppPickerForStopApp(target: BindingTarget) {
+    picker.openForStopApp(target.gesture, (target as? BindingTarget.Combo)?.id)
+    picker.filter.value = ""
+    picker.smallWindow.value = false
+    appPickerUi.beginVisit(appPickerSelectedTarget(), shortcutId = null)
     navTo(Screen.APP_PICKER)
 }

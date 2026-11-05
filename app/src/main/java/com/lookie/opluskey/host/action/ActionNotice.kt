@@ -44,6 +44,11 @@ internal fun actionNoticeText(
                     appNames[AppTarget.identity(target)] ?: AppTarget.label(target) ?: appLabel(context, target)
                 }
 
+                //  结束应用（`proc:stop:`）：目标直接就是包名（没有 `/界面`、也没有分身前缀）
+                is Action.Process -> {
+                    appNames[AppTarget.identity(a.pkg)] ?: appLabel(context, a.pkg)
+                }
+
                 else -> {
                     ""
                 }

@@ -11,6 +11,7 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.ui.PendingImport
 import com.lookie.opluskey.ui.appVersionText
 import com.lookie.opluskey.ui.dedupeByName
 import com.lookie.opluskey.ui.hint
@@ -377,32 +378,18 @@ internal object ConfigTransfer {
                         disclaimerAccepted = previousConfig.disclaimerAccepted,
                         commandDisclaimerAccepted = previousConfig.commandDisclaimerAccepted,
                     )
-                //  **导入 = 存成新的一份、插在最末**，当前生效的配置一个字节都不动（用户口径
-                //  「导入时插到最末」）：导入是「把别人那套拿过来看看」，用户此刻正在用的这份
-                //  未必想丢。要换成它，导入完从菜单里切一下。
-                //  于是这里也不再需要「配置没写成就别动命令库」那套回滚账 —— 两样都写进同一个
-                //  新槽，`importAs` 里任一步失败会把这一槽清干净，当前的配置全程没被碰过。
+                //  **导入分两段**：读进来的内容先按本机状态合并好，暂存到页面级状态，弹出选择器
+                //  让用户挑「盖到哪一份 / 新建一份」—— 不再像以前那样直接「插在最末」。
+                //  真正写盘在用户点了选择器里的目标之后（见 `ImportTargetDialog.confirmImportTarget`）。
                 val name =
                     parsed.config.profileName
                         .trim()
                         .ifEmpty { I18n.get(Strings.MORE_IMPORT_CONFIG, "导入配置") }
-                //  除「默认」之外最多三份 —— 满了就只提示一句，不读不写（`importAs` 那边也会拦，
-                //  这里挡在前面是为了给一句能读懂的话：「导入失败」会让人以为文件坏了）
-                if (ConfigProfiles.list().count { !it.isDefault } >= ConfigProfiles.MAX_PROFILES) {
-                    XLog.w("导入配置：除「默认」之外已经有 ${ConfigProfiles.MAX_PROFILES} 份，不再导入")
-                    page.hint(I18n.get(Strings.PROFILE_FULL, "最多三份配置"))
-                    return@post
-                }
-                // 命令名去重这条闸原本在 `saveCommands` 里，导入不经过它，所以自己过一遍
-                // （同理：`cmd:<名字>` 只命中第一条）
-                val slot = ConfigProfiles.importAs(merged, dedupeByName(parsed.commands), name)
-                if (slot == null) {
-                    XLog.w("导入配置：没写成（存储不可写？），当前配置一点没动")
-                    page.hint(I18n.get(Strings.TOAST_CONFIG_IMPORT_FAILED, "导入失败"))
-                    return@post
-                }
-                //  报**落盘后**的名字：重名时 `importAs` 会加序号（「配置 2」那种）
-                page.hint(I18n.format(Strings.PROFILE_IMPORTED, ConfigProfiles.readOf(slot)?.profileName ?: name))
+                //  命令名去重这条闸原本在 `saveCommands` 里，导入不经过它，所以自己过一遍
+                //  （同理：`cmd:<名字>` 只命中第一条）
+                val commands = dedupeByName(parsed.commands)
+                page.pendingImport = PendingImport(merged, commands, name)
+                XLog.w("导入配置：校验通过，等用户挑目标（${commands.size} 条命令）")
             }
         }
     }

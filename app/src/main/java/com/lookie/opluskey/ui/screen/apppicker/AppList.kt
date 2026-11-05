@@ -8,20 +8,35 @@ import com.lookie.opluskey.ui.model.LaunchableApp
 import com.lookie.opluskey.ui.model.cloneLabel
 
 /**
- * 本机可启动的应用，按名字排序。
+ * 本机装着的应用，按名字排序 —— **一次取全**。
  *
- * 默认只有有启动图标的那些（`ACTION_MAIN` + `CATEGORY_LAUNCHER`），`includeSystem` 为 true
- * 时再追加一批系统应用。
+ * 两条来源：
+ *  1. 有启动图标的那一批（`ACTION_MAIN` + `CATEGORY_LAUNCHER`），外加 Xposed 模块
+ *     （模块默认就该在列表里，见 [xposedModules]）；
+ *  2. `getInstalledApplications` 补回来的其余应用 —— 没有启动图标的系统应用 / 第三方应用。
  *
- * @param includeSystem 顶栏菜单的「显示系统应用」
+ * ## 为什么不再「按开关分两档取」
+ *
+ *  上一版把「显示系统应用 / 显示失效应用」做成**取法**（`includeAll`）：拨开关 → 换一种查询 →
+ *  重查一遍 → 换缓存。这等于是把「这一行该不该出现」押在两件极容易对不上的账上 ——
+ *  上一趟留下的取法（`lastMode`）、缓存是哪一档查的（`cachedAppsIncludeAll`）、
+ *  以及「重查失败」时那句没人看得见的日志。任一处错位，用户看到的就是**开关按了没反应**；
+ *  「结束应用」那一趟更是直接踩坑：它的 `stopApp` 没被算进取法，于是要停那些没有启动图标的应用时，
+ *  清单里压根没有它们。
+ *
+ *  现在清单一次取全，两个开关都只是 `AppPickerUiState.shown` 上的**过滤**
+ *  （`LaunchableApp.byDefault` / `launchable`）。拨开关不触发查询、不看缓存是哪一档，
+ *  也就没有能对不上的账。
+ *
+ *  代价只有一处：全量取法要几百个 `ApplicationInfo` 与它们的 label。所以「点不点得开」
+ *  **不逐包问** [AppEntry.resolve]，改由 [AppEntry.launchablePackages] 一次问全机
+ *  —— 逐包问是几百次 binder 调用，一次问是三次查询。
+ *
  * @return 查到的清单；**查失败返回 null**（不是空清单）—— 空清单是一份有效结论
  *   （「这台机器上确实一个可启动的应用都没有」），拿它去覆盖缓存会把上一次的好清单抹掉，
  *   界面显示成「没有找到可以打开的应用」（见 [AppPickerScreen] 的调用点）。
  */
-internal fun loadLaunchableApps(
-    context: android.content.Context,
-    includeSystem: Boolean = false,
-): List<LaunchableApp>? {
+internal fun loadLaunchableApps(context: android.content.Context): List<LaunchableApp>? {
     val t0 = android.os.SystemClock.uptimeMillis()
     val pm = context.packageManager
     val intent =
@@ -41,32 +56,36 @@ internal fun loadLaunchableApps(
                 .filter { it.packageName != ModuleInfo.PACKAGE }
                 .toList()
         val (xposedList, xposedPkgs) = xposedModules(pm, launched)
-        // 「显示系统应用」开着时再追加的一批 —— 既不在上一批、也不是模块的其余应用（主体是没有
-        // launcher 图标的系统应用）。不筛「拉不拉得起来」：能拿到全量包列表靠宿主自己声明了
-        // `QUERY_ALL_PACKAGES` —— 界面代码跑在宿主进程，包可见性按宿主算。
+        // 默认档（两个开关都关着）就该出现的是这两批：有启动图标的、以及模块。
+        //  它同时是「其余应用」要排除的那一份。
+        val known =
+            (launched + xposedList).mapTo(HashSet()) { it.packageName }
+        // 其余装着的应用 —— 既不在上一批、也不是模块的那一批（主体是没有启动图标的系统应用）。
+        //  不在这里筛「拉不拉得起来」：能不能打开是列表那一层的事（`LaunchableApp.launchable`），
+        //  取清单这一层只负责把东西**取全**。能拿到全量包列表靠宿主自己声明了 `QUERY_ALL_PACKAGES`
+        //  —— 界面代码跑在宿主进程，包可见性按宿主算。
         val others =
-            if (!includeSystem) {
-                emptyList()
-            } else {
-                val known =
-                    (launched + xposedList).mapTo(HashSet()) { it.packageName }
-                pm
-                    .getInstalledApplications(0)
-                    .asSequence()
-                    .filter { it.packageName !in known }
-                    .filter { it.packageName != ModuleInfo.PACKAGE }
-                    .toList()
-            }
-        // 两条来源必须跨来源去重：Xposed 模块的规范写法是「一个 launcher activity + 一个挂
+            pm
+                .getInstalledApplications(0)
+                .asSequence()
+                .filter { it.packageName !in known }
+                .filter { it.packageName != ModuleInfo.PACKAGE }
+                .toList()
+        // 「点得开吗」一次问全机 —— 见 [AppEntry.launchablePackages]（逐包 `resolve` 太贵）
+        val launchable = AppEntry.launchablePackages(pm)
+        // 三条来源必须跨来源去重：Xposed 模块的规范写法是「一个 launcher activity + 一个挂
         // MODULE_SETTINGS 的 activity-alias」，同一个包在 launcher 与模块两批里各出现一次。
         // 不去重 ⇒ 列表两行同包名 ⇒ `items(key = ...)` 抛「Key ... was already used」，异常落在
-        // 宿主 Activity 的组合里 ⇒ 打开「选择应用」页即崩宿主页面（`others` 已按 known 滤过）。
+        // 宿主 Activity 的组合里 ⇒ 打开「选择应用」页即崩宿主页面。
         // 排序键在 `appRow` 里就算好了（罗马化不便宜）：这里只比，不重算。
-        // 抽成变量是因为**分身也要按同一把尺子排**（见函数末尾的 `all`）。
-        val order = appOrder(collator)
+        // `byDefault` 按包名现判、与这份拼接顺序无关，所以 `distinctBy` 留下哪一份都不影响它。
         val apps =
-            ((launched + xposedList).distinctBy { it.packageName } + others)
-                .map { appRow(pm, it, it.packageName in xposedPkgs, romanizer) }
+            (launched + xposedList + others)
+                .distinctBy { it.packageName }
+                .map { app ->
+                    val pkg = app.packageName
+                    appRow(pm, app, RowFacts(pkg in xposedPkgs, pkg in known, pkg in launchable), romanizer)
+                }
         // —— 分身：同一个应用在**别的用户**里的那一份 ——
         //
         //  分身是另一个 Android 用户，所以在主用户的清单里**根本看不到**：换用户查包、槽号、
@@ -79,13 +98,14 @@ internal fun loadLaunchableApps(
         //  抛「Key was already used」直接崩掉 `:ui` 进程（二级页在贴吧那一页真崩过一次，
         //  见 `loadActivities`）。主清单与分身理论上不会撞（分身带 `999@` 前缀），
         //  但合成两条来源之后补一道，比赌它不撞便宜。
-        val all = (apps + clones).distinctBy { it.target }.sortedWith(order)
+        val all = (apps + clones).distinctBy { it.target }.sortedWith(appOrder(collator))
         XLog.w("可启动应用：分身 ${clones.size} 行")
 
         // 打头几条 + 耗时便于核对（转写器是否生效、这次查了多久）
         XLog.w(
-            "可启动应用：${all.size} 个（显示系统应用=$includeSystem，模块 ${xposedList.size} 个、" +
-                "额外追加 ${others.size} 个），" +
+            "可启动应用：${all.size} 个（默认档 ${all.count { it.byDefault }} 个、" +
+                "有启动图标 ${launched.size} 个、模块 ${xposedList.size} 个、" +
+                "额外追加 ${others.size} 个、点得开 ${all.count { it.launchable }} 个），" +
                 "耗时 ${android.os.SystemClock.uptimeMillis() - t0}ms，" +
                 "排序（前 10）：" + all.take(10).joinToString(" / ") { it.label },
         )
@@ -202,11 +222,16 @@ private fun cloneRows(
         //   判不出来（取不到 per-user 的 PM）时仍按「能打开」算：分身与主用户同包名，
         //   拿主用户的 PM 问必抛，一律判 false 会把好端端的分身从列表里滤掉。
         val clonePm = AppCloneCatalog.packageManagerFor(context, entry.userId)
+        val launchable = clonePm?.let { AppEntry.resolve(it, entry.packageName) != null } ?: true
         LaunchableApp(
             packageName = entry.packageName,
             label = label,
             system = entry.system,
-            launchable = clonePm?.let { AppEntry.resolve(it, entry.packageName) != null } ?: true,
+            launchable = launchable,
+            //  分身的「默认档」跟着**能不能打开**走（与改造前一致：那时默认档是
+            //  「有启动图标的应用」再按 `launchable` 过一遍，而分身不属于那一批来源，
+            //  全靠这条过滤才进得来）。判成打不开的那一份要拨「显示失效应用」才看得到。
+            byDefault = launchable,
             xposed = false,
             sortKey = sortKeyOf(label, romanizer),
             userId = entry.userId,
@@ -214,40 +239,58 @@ private fun cloneRows(
     }
 
 /**
- * 一条 `ApplicationInfo` → 界面要的那一行。launcher / 模块 / 系统应用三条来源共用。
+ * 一条 `ApplicationInfo` 该是哪一档 —— 取清单时**一次判死**，不再往 `appRow` 里多塞参数
+ * （detekt 的 `LongParameterList` 上限是 6，而这一支本来就要五样）。
  *
  * @param xposed 这个包是不是 Xposed 模块（三个来源里只有模块那两批需要标）
+ * @param byDefault 默认档（两个显示开关都关着）该不该列出它 —— 有启动图标的、以及模块
+ * @param launchable 点不点得开。**整表一次判好**（[AppEntry.launchablePackages]），
+ *   不在 `appRow` 里逐包 [`AppEntry.resolve`]：几百行就是几百次 binder 调用
  */
+private class RowFacts(
+    val xposed: Boolean,
+    val byDefault: Boolean,
+    val launchable: Boolean,
+)
+
+/** 一条 `ApplicationInfo` → 界面要的那一行。launcher / 模块 / 系统应用三条来源共用。 */
 private fun appRow(
     pm: android.content.pm.PackageManager,
     ai: android.content.pm.ApplicationInfo,
-    xposed: Boolean,
+    facts: RowFacts,
     romanizer: android.icu.text.Transliterator?,
 ): LaunchableApp {
-    // 入口只解一次：`AppEntry.resolve` 自己就要 1~3 次 binder，解两遍纯属浪费
-    // （这一页会有 200+ 行，几百次 binder 已经在预算里）
-    val intent = AppEntry.resolve(pm, ai.packageName)
     val label =
         try {
             ai.loadLabel(pm).toString()
         } catch (e: Throwable) {
             ai.packageName
         }
+    // 没有代码的包（`android:hasCode="false"`）一个入口都给不出来：查得到活动、类却不在包里。
+    //  `AppEntry.resolve` 里同样有这一道（真机上 OPPO 的 `oplus` 就栽在这），这里补上以免
+    //  「批量算出能开、逐包问却说不能开」。
+    val hasCode = ai.flags and android.content.pm.ApplicationInfo.FLAG_HAS_CODE != 0
     return LaunchableApp(
         packageName = ai.packageName,
         label = label,
         system = ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0,
-        launchable = intent != null,
+        launchable = facts.launchable && hasCode,
+        byDefault = facts.byDefault,
         // 注意：这里**不再**顺手问「支不支持小窗」：那个问法自带一条系统提示（见 [MiniWindowSupport]），
         //    整表问一遍就是「进页弹一串 toast」。改到点确认键那一刻只问一次。
-        xposed = xposed,
+        xposed = facts.xposed,
         // 排序键在这里算一次（罗马化不便宜）：排序与搜索共用它，见 [LaunchableApp.sortKey]
         sortKey = sortKeyOf(label, romanizer),
     )
 }
 
-/** 汉字 → 拼音的转写器（ICU 自带，`icudt*.dat` 里有 `Han-Latin`）；取不到退回原名排序。 */
-private fun hanLatin(): android.icu.text.Transliterator? =
+/**
+ * 汉字 → 拼音的转写器（ICU 自带，`icudt*.dat` 里有 `Han-Latin`）；取不到退回原名排序。
+ *
+ *  两页共用同一把排序尺子（见 [nameOrder]）：各造一个转写器没有意义 —— 排序键必须是同一个来源，
+ *  否则同一个应用在两处排的位置不同。
+ */
+internal fun hanLatin(): android.icu.text.Transliterator? =
     try {
         android.icu.text.Transliterator
             .getInstance("Han-Latin")
@@ -265,15 +308,24 @@ internal fun chinaCollator(): java.text.Collator? =
     }
 
 /**
- * 「按名字排」的那把尺子 —— 应用那一级与界面那一级**共用这一份**：拼音键 → 原名 → 兜底键。
+ * 「按名字排」的那把尺子 —— 应用那一级、界面那一级、进程那一页**共用这一份**。
  *
- *  排序规则只有一处口径：拼音键让中文按拼音、拉丁字母按字母混排（见 [sortKeyOf]），键相同时
- *  用 [Collator] 比原名，再相同才比兜底键（应用比包名、界面比类名）。两级各写一份的话，
- *  改动会只落在一级上 —— 同一个应用里「应用列表按拼音、界面列表按别的」就是那么来的。
+ *  三个维度，**顺序不能换**：
+ *  1. **首字母**（`sortKey` 的第一个字符）—— 决定它落在哪一段；
+ *  2. 同一首字母下，**中文始终排在英文前面**（`微信` 在 `WeChat` 之前）——
+ *     只按拼音串比的话 `wechat` < `weixin`，中英会穿插着排（用户口径：不行）；
+ *  3. 同语言内部再按**拼音串**比下去（中文之间比的是第一个字之后的那些音，
+ *     也就是「取后面的字」—— `微博 weibo` 在 `微信 weixin` 之前）。
  *
- * @param sortKey 这一项的名字排序键
- * @param label 这一项的展示名
- * @param tieBreak 前两级都相同时的兜底键（必须唯一，否则顺序不稳定）
+ *  再往下才是 [Collator] 比原名、[tieBreak] 兜底键（应用比包名、界面比类名、进程比 PID）——
+ *  这两级只在前面完全打平时才用到，保证顺序稳定。
+ *
+ *  排序键本身**不含语言标记**：它还兼着搜索（`sortKey.contains(拼音)`），往里塞一位标记就把
+ *  搜索弄坏了。语言这件事在比较时现判（见 [containsHan]）。
+ *
+ * @param sortKey 这一项的名字排序键（纯拼音，见 [sortKeyOf]）
+ * @param label 这一项的展示名（判语言看它）
+ * @param tieBreak 前三级都相同时的兜底键（必须唯一，否则顺序不稳定）
  */
 internal fun <T> nameOrder(
     sortKey: (T) -> String,
@@ -282,13 +334,38 @@ internal fun <T> nameOrder(
     collator: java.text.Collator?,
 ): Comparator<T> =
     Comparator { a, b ->
-        val byKey = sortKey(a).compareTo(sortKey(b))
-        if (byKey != 0) {
-            byKey
+        val keyA = sortKey(a)
+        val keyB = sortKey(b)
+        val byHead = (keyA.firstOrNull() ?: ' ').compareTo(keyB.firstOrNull() ?: ' ')
+        if (byHead != 0) {
+            byHead
         } else {
-            val byName = collator?.compare(label(a), label(b)) ?: 0
-            if (byName != 0) byName else tieBreak(a).compareTo(tieBreak(b))
+            val hanA = containsHan(label(a))
+            val hanB = containsHan(label(b))
+            if (hanA != hanB) {
+                if (hanA) -1 else 1
+            } else {
+                val byKey = keyA.compareTo(keyB)
+                if (byKey != 0) {
+                    byKey
+                } else {
+                    val byName = collator?.compare(label(a), label(b)) ?: 0
+                    if (byName != 0) byName else tieBreak(a).compareTo(tieBreak(b))
+                }
+            }
         }
+    }
+
+/**
+ * 这个名字里有没有汉字 —— 「同一首字母下中文排前面」的判据。
+ *
+ *  判的是**原文**（不是罗马化之后的串）：`Han-Latin` 只转汉字，一个纯英文名不会因此多出汉字。
+ *  范围取 CJK 统一表意文字那一块（含扩展 A 与兼容区）：常见的中文应用名都落在 U+4E00–U+9FFF，
+ *  多扫两个区只为「生僻字名字也算中文」，代价可以忽略。
+ */
+private fun containsHan(text: String): Boolean =
+    text.any { ch ->
+        ch.code in 0x4E00..0x9FFF || ch.code in 0x3400..0x4DBF || ch.code in 0xF900..0xFAFF
     }
 
 /** 应用列表的排序：见 [nameOrder]（兜底键是包名）。 */

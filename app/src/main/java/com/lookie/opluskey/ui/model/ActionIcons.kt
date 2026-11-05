@@ -37,6 +37,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Cards
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
+import io.github.lyxnx.compose.ui.tablericons.outline.Cpu
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
@@ -302,6 +303,15 @@ internal fun actionIcon(token: String): ImageVector =
                     TablerIcons.Outline.Variable
                 }
 
+                // 结束应用（`proc:stop:包名`）—— 方块（「停掉」）；认不出（手改坏了）给那颗芯片
+                token.startsWith(Action.PROCESS_PREFIX) -> {
+                    if (ActionCatalog.actionOf(token) is Action.Process) {
+                        TablerIcons.Outline.PlayerStop
+                    } else {
+                        TablerIcons.Outline.Cpu
+                    }
+                }
+
                 // 屏幕亮度 / 音量（`bright:+15` / `volume:+10`）：**token 带数值**，上面的常量分支
                 // 接不住，漏了这里就掉到下面那颗 `Dots` —— 步骤行里看着像「没配图标」。
                 // 三档的取法与菜单里那三行同一套（见 `Glyph` 那段）。
@@ -516,6 +526,15 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         //  不用锁：锁是「锁屏」这个**状态**的读法，而这一格的动作是「打开」，摆一把锁会被读成
         //  「锁定 / 锁屏」那一档动作（也与「手电筒」那颗灯泡太近）。
         ActionCatalog.Glyph.Keyguard -> TablerIcons.Outline.Bolt
+
+        // 「应用控制」入口格：一叠方块（`apps`）—— 它管的是「哪一个应用」，两个状态在菜单里。
+        ActionCatalog.Glyph.AppControl -> TablerIcons.Outline.Apps
+
+        // 「应用控制」菜单里「打开应用」那一行：`player-play`（三角），与结束那颗方块配成一对
+        ActionCatalog.Glyph.AppOpen -> TablerIcons.Outline.PlayerPlay
+
+        // 「应用控制」菜单里「结束应用」那一行：`player-stop`（方块），与执行那一档同一颗。
+        ActionCatalog.Glyph.StopApp -> TablerIcons.Outline.PlayerStop
     }
 
 /**

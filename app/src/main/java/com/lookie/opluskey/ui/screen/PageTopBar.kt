@@ -14,7 +14,6 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.ABOUT_TITLE
 import com.lookie.opluskey.ui.model.ACTIVITY_PICKER_TITLE
-import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
 import com.lookie.opluskey.ui.model.BINDING_TITLE
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
@@ -146,32 +145,59 @@ private fun SettingsPage.pageTitle(s: Screen): String =
     when (s) {
         // 首页标题平时是**宿主 Activity 自己的标题**（hook 侧读来的，见 SettingsPageHooks）；
         // 字典里有这一档时按语言来，没有才用宿主那串。
-        Screen.SHORTCUTS -> I18n.get(Strings.HOME_TITLE, hooks.homeTitle)
+        Screen.SHORTCUTS -> {
+            I18n.get(Strings.HOME_TITLE, hooks.homeTitle)
+        }
 
-        Screen.BINDING -> BINDING_TITLE
+        Screen.BINDING -> {
+            BINDING_TITLE
+        }
 
-        Screen.COMMANDS -> COMMANDS_TITLE
+        Screen.COMMANDS -> {
+            COMMANDS_TITLE
+        }
 
-        Screen.BRANCHES -> BRANCHES_TITLE
+        Screen.BRANCHES -> {
+            BRANCHES_TITLE
+        }
 
-        Screen.APP_PICKER -> APP_PICKER_TITLE
+        Screen.APP_PICKER -> {
+            //  这一页两个状态共用，主标题直接说这一趟做什么（「打开应用」/「结束应用」），
+            //  挑的是谁交给行尾小标题（「已选择: 微信」）—— 原来两件事挤在标题一个「选择应用」里，
+            //  行尾再拼一遍「打开应用 · 微信」，重复。
+            if (picker.stopApp) I18n.get(Strings.TOOL_STOP_APP, "结束应用") else I18n.get(Strings.TOOL_OPEN_APP, "打开应用")
+        }
 
-        Screen.ACTIVITY_PICKER -> ACTIVITY_PICKER_TITLE
+        Screen.ACTIVITY_PICKER -> {
+            ACTIVITY_PICKER_TITLE
+        }
 
-        Screen.ABOUT -> ABOUT_TITLE
+        Screen.ABOUT -> {
+            ABOUT_TITLE
+        }
 
-        Screen.DONATE_LIST -> DONATE_LIST_TITLE
+        Screen.DONATE_LIST -> {
+            DONATE_LIST_TITLE
+        }
 
-        Screen.GENERAL -> GENERAL_TITLE
+        Screen.GENERAL -> {
+            GENERAL_TITLE
+        }
 
         // 两页不同名：列表页写「组合键列表」，编辑页写「组合键」——
         //  顶栏一眼能看出自己在哪一层（在编哪一组由尾随小标题说，见 [pageSubtitle]）。
-        Screen.KEYS -> KEYS_TITLE
+        Screen.KEYS -> {
+            KEYS_TITLE
+        }
 
-        Screen.COMBO_EDIT -> COMBO_TITLE
+        Screen.COMBO_EDIT -> {
+            COMBO_TITLE
+        }
 
         // 变量页标题与「快捷功能」里那一格同名：用户是从那一格进来的，两处叫法要一致
-        Screen.VARIABLES -> I18n.get(Strings.TOOL_VARIABLES, "自定义变量")
+        Screen.VARIABLES -> {
+            I18n.get(Strings.TOOL_VARIABLES, "自定义变量")
+        }
     }
 
 /**
@@ -201,14 +227,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         }
 
         Screen.APP_PICKER -> {
-            //  判据见 [appPickerChosenTarget]（草稿优先）。
-            val target = appPickerChosenTarget()
-            if (target == null) {
-                // 没选过就不摆一行「已选择: 无」—— 那种写法像是有个叫「无」的应用
-                I18n.get(Strings.APP_PICKER_UNSELECTED, "还未选择应用")
-            } else {
-                I18n.format(Strings.APP_PICKER_SELECTED_FORMAT, selectedLabel(target))
-            }
+            pickerSubtitle()
         }
 
         // 「条件执行」页这一行写**在编哪一颗键**（`「快捷键」` / `「侧键」+「电量 +」`）：
@@ -251,6 +270,18 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
  *  草稿在每次进页时由 `AppPickerUiState.beginVisit` 清掉，不会跨趟残留在这一行上。
  */
 private fun SettingsPage.appPickerChosenTarget(): String? = picker.draft?.target ?: appPickerSelectedPkg()
+
+/**
+ * 「选择应用」页那一行小标题 —— 这一页**两个状态共用**，主标题已经说清这一趟做什么（见
+ * [pageTitle]），这里只写「已选择: 谁」。
+ *
+ *  没挑过时**空着**：写「已选择: 无」会被读成有个叫「无」的应用；空着时行尾那枚「小窗起」
+ *  图标也不会出现（见 [PageHeader] 那一支的判据）。
+ */
+private fun SettingsPage.pickerSubtitle(): String {
+    val target = appPickerChosenTarget() ?: return ""
+    return I18n.format(Strings.APP_PICKER_SELECTED_FORMAT, selectedLabel(target))
+}
 
 /**
  * 「已选择」那一行要显示的名字 —— 优先级只有一处（[appNameOf]）：

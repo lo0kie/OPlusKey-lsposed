@@ -225,9 +225,11 @@ internal fun SettingsPage.ActionTile(
                         //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
                         // 换掉之后占位与观感不变。
                         when {
-                            //  这两格都是**跳页**的入口（去挑应用那一页 / 去「变量操作」那一页）
-                            //  ⇒ 行尾那颗是右箭头（与菜单、列表那几处同一颗）。
-                            spec.token == ActionCatalog.APP_TILE || spec.token == ActionCatalog.VARS_TILE -> {
+                            //  「自定义变量」是**跳页**的入口（去「变量操作」那一页）⇒ 行尾那颗是右箭头
+                            //  （与菜单、列表那几处同一颗）。
+                            //  「应用控制」不在这里：它弹的是**原地**一层菜单（打开 / 结束），
+                            //  走下面 `popsSelector` 那条、画选择器字形。
+                            spec.token == ActionCatalog.VARS_TILE -> {
                                 Icon(
                                     PageIcons.EnterArrow,
                                     contentDescription = null,

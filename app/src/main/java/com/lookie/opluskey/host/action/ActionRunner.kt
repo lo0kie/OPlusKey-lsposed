@@ -257,6 +257,9 @@ internal class ActionRunner(
                 is Action.Setting -> SettingSwitch.toggleOrFlashlight(context, act, flashlight, ::notifyFailure)
 
                 is Action.VarSet -> runVarSet(act)
+
+                // 结束应用（`proc:stop:…`）：异步发一条 `su`，不等结果
+                is Action.Process -> ProcessAction.run(act, ::notifyFailure)
             }
         } catch (e: Throwable) {
             // 必须 catch Throwable：执行环境（Runtime / 反射注入）出错可能是 Error 系，漏出去会崩系统

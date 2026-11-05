@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 
 /**
@@ -119,6 +120,46 @@ internal object AppEntry {
                 .minWithOrNull(compareBy({ hintRank(it.name) }, { it.name }))
                 ?: return null
         return Intent(Intent.ACTION_MAIN).setComponent(ComponentName(pkg, activity.name))
+    }
+
+    /**
+     * 「**哪些包点得开**」—— 一次问全机的快路，替代「逐包 [resolve]」。
+     *
+     *  判据与 [resolve] 同一份：`FLAG_HAS_CODE` 那一条由调用方按住手上那份 `ApplicationInfo`
+     *  判（这里只给包名，拿不到它），其余全在 [isLaunchable] 里。
+     *
+     *  为什么需要这一支：「选择应用」页现在**一次就取全部**装着的应用（几百个），
+     *  逐包 `resolve` 是几百次 binder 调用；而这里一共只有三次查询 —— 把「能不能打开」
+     *  从「每包一问」降成「一次问全机」，这一页才付得起「开关只是过滤、不再重查」那笔账。
+     *
+     *  `MAIN + LAUNCHER` 与 `MAIN + INFO` 是 [resolve] 前两层认的那两档
+     *  （`getLaunchIntentForPackage` 查的就是它们），那两层只要求活动**导出** ——
+     *  所以这里也只按导出判，不套 [isLaunchable] 后两条：那种包 [resolve] 一样会给出口子，
+     *  判严了就成了「列表标着打不开、其实点得开」。
+     */
+    fun launchablePackages(pm: PackageManager): Set<String> {
+        val pkgs = HashSet<String>()
+        // 判据级：这一次查询要是失败（列表太大撑爆 binder 也会走到这里），那一层就整个不作数 ——
+        //  行上会一片「不可打开」，日志里得有这句话，否则只能靠猜。
+        runCatching { pm.queryIntentActivities(Intent(Intent.ACTION_MAIN), 0) }
+            .onFailure { XLog.w("查「点得开」：MAIN 那一层没查成，这一层不作数", it) }
+            .getOrNull()
+            .orEmpty()
+            .asSequence()
+            .mapNotNull { it.activityInfo }
+            .filter { isLaunchable(it, it.packageName) }
+            .mapTo(pkgs) { it.packageName }
+        for (category in listOf(Intent.CATEGORY_LAUNCHER, Intent.CATEGORY_INFO)) {
+            runCatching { pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(category), 0) }
+                .onFailure { XLog.w("查「点得开」：$category 那一层没查成", it) }
+                .getOrNull()
+                .orEmpty()
+                .asSequence()
+                .mapNotNull { it.activityInfo }
+                .filter { it.exported }
+                .mapTo(pkgs) { it.packageName }
+        }
+        return pkgs
     }
 
     /**

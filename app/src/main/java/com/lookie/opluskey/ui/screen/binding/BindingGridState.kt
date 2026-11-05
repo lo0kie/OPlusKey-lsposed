@@ -38,8 +38,8 @@ internal class BindingGridState(
     val target: BindingTarget,
     /** 这一页的动作清单（内置 + 自定义，见 `ActionCatalog.forGesture`）。 */
     val specs: List<ActionCatalog.Spec>,
-    /** 入口格被点开时进「选择应用」页（为**这一档**挑，写回也落在 [target] 上）。 */
-    val onOpenAppPicker: (BindingTarget) -> Unit,
+    /** 「应用控制」格那一层菜单选完之后进「选择应用」页（为**这一档**挑，写回也落在 [target] 上）。 */
+    val onAppControl: (BindingTarget, Boolean) -> Unit,
     /** 入口格被点开时进「控制中心磁贴」页（为**这一档手势**挑）。 */
     initialFocus: Int,
 ) {
@@ -133,7 +133,7 @@ internal class BindingGridState(
 @Composable
 internal fun SettingsPage.rememberBindingGridState(
     target: BindingTarget,
-    onOpenAppPicker: (BindingTarget) -> Unit,
+    onAppControl: (BindingTarget, Boolean) -> Unit,
 ): BindingGridState {
     val specs =
         remember(target.gesture, configState.commands.value) {
@@ -147,7 +147,7 @@ internal fun SettingsPage.rememberBindingGridState(
         BindingGridState(
             target = target,
             specs = specs,
-            onOpenAppPicker = onOpenAppPicker,
+            onAppControl = onAppControl,
             initialFocus = if (selectedIndex in specs.indices) selectedIndex else 0,
         )
     }
@@ -245,14 +245,6 @@ internal fun SettingsPage.bindingActivate(
     anchor: PreciseClickState,
     enabled: Boolean,
 ) {
-    if (spec.token == ActionCatalog.APP_TILE) {
-        if (enabled) {
-            tickNow()
-            //  不挪焦点圈 —— 与 [bindingSelect] 同一条规矩：圈只跟随选中态。
-            st.onOpenAppPicker(st.target)
-        }
-        return
-    }
     // 「自定义变量」那一格同样是**入口**：当场挑一颗变量、再挑对它做哪一步，落成 `setvar:` 写进配置。
     //  它不进 [ActionCatalog.modeMenu]（变量是运行时收集的，静态表里列不出来），所以单独分派。
     if (spec.token == ActionCatalog.VARS_TILE) {
@@ -263,8 +255,9 @@ internal fun SettingsPage.bindingActivate(
         return
     }
     if (ActionCatalog.isEntryTile(spec)) {
-        // 入口格（系统导航 / 系统按键 / 媒体控制 / 响铃状态 / 前台转小窗）：
+        // 入口格（系统导航 / 系统按键 / 媒体控制 / 响铃状态 / 前台转小窗 / **应用控制**）：
         // 只弹二级菜单供选择，不直接改绑第一项；只有在弹出的菜单里真正点了某一项才改绑。
+        //  「应用控制」那一层点完不落盘，而是进挑应用页（见 `BindingTileMenu`）。
         if (enabled) {
             tickNow()
             st.tileMenu = OpenTileMenu(spec, anchor)

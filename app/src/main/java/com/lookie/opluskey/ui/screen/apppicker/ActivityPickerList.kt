@@ -35,17 +35,19 @@ import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.collapseHeader
-import com.lookie.opluskey.ui.collapsedHeaderHeight
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.headerStatusBarPadding
 import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.model.LaunchableActivity
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.selectedRowRing
 import com.lookie.opluskey.ui.spacedItems
 import com.lookie.opluskey.ui.state.PickedDetail
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -109,6 +111,9 @@ internal fun SettingsPage.ActivityPickerScreen(
         failed = fresh == null
         loaded = fresh ?: emptyList()
     }
+    //  条数交给顶栏那条搜索带（它读不到这里的 `loaded`）：清单没到手时写 0，占位就不显示数字。
+    //  写的是**这一页列出来的界面数**，不含快捷方式那一节 —— 占位写的是「搜索应用组件」。
+    LaunchedEffect(loaded) { picker.activityCount.value = loaded.orEmpty().size }
 
     val term = filter.trim()
     // 过滤与分节只在「清单 / 搜索词 / 选中项」变时算一次，**不能**留在这段组合体里直接算：
@@ -479,21 +484,17 @@ private fun SettingsPage.LocateActivitySelected(
     searchBandDp: Dp,
 ) {
     // 定位会顶到视窗顶部，而顶部被固定搜索带盖着 —— 不加负偏移就「滚了却看不见」。
-    //  取折叠后的顶栏高度：定位会把顶栏折叠到底（与一级那页同一笔）。
-    //  与一级页那一笔的差别：**不加 `GRID_GAP / 2`**。一级页每行是一张带行距的卡，
-    //  那半档是给卡片间距留的；这一页的行是紧贴的列表项，加上去目标行会高出一截
-    //  （真机反馈「定位位置不对」）。
-    val listTopInsetPx =
+    //  与一级页同一笔账（见 `LocateSelected`）：都取库的槽位常量、不读实测高度 —— 实测值会随
+    //  折叠变（展开 684 → 折叠 491），按它算落点会多让一整段折叠量。落点按**折叠后**的遮挡算，
+    //  判「看得见吗」按展开算。
+    //  与一级页那一笔的差别：**不加 [PAGE_TOP_PADDING]**，与上面那个 `header-space` 占位项
+    //  **逐字一致** —— 这一页的行是紧贴的列表项，多算一档目标行就偏下一截（真机反馈「定位位置不对」）。
+    val (expandedPx, listTopInsetPx) =
         with(LocalDensity.current) {
-            //  与上面那个 `header-space` 占位项**必须逐字一致**（它少了一档 [PAGE_TOP_PADDING]，
-            //  这里也跟着少）：多算一档，定位出来的行就会偏下一截。
-            (collapsedHeaderHeight(scrollBehavior) + searchBandDp).roundToPx()
-        }
-    // 「现在」被顶栏 + 搜索带挡住的那一段：此刻顶栏还是**展开**的，判「看不看得见」要用展开高
-    //  （与上面那个「滚过去之后该落在哪」是两笔账）。
-    val coveredPx =
-        with(LocalDensity.current) {
-            (currentHeaderHeight(scrollBehavior) + searchBandDp).roundToPx()
+            val head = headerStatusBarPadding()
+            val expanded = (TopAppBarDefaults.ExpandedHeight + head + searchBandDp).roundToPx()
+            val collapsed = (TopAppBarDefaults.CollapsedHeight + head + searchBandDp).roundToPx()
+            expanded to collapsed
         }
     var located by remember { mutableStateOf(false) }
     LaunchedEffect(data.selected, data.shortcuts, data.interfaces, searchBandDp) {
@@ -522,14 +523,16 @@ private fun SettingsPage.LocateActivitySelected(
         //  目标在头几行时，硬按「落到挡板下面」去滚会先折顶栏、再把上面那个小节标题顶出屏幕，
         //  进来那一下看着像页面自己跳了一下。只有真在屏幕外（或被挡板压着）才滚。
         //  首行（`index <= 0`）本就贴着顶上，滚一下只是多一次可见位移 —— 与「已可见」并成一条。
-        if (index <= 0 || listState.rowFullyVisible(index, coveredPx)) {
+        if (index <= 0 || listState.rowFullyVisible(index, expandedPx)) {
             located = true
             return@LaunchedEffect
         }
         // `scrollToItem` 是程序性跳转，不走嵌套滚动 ⇒ 顶栏不会自己折叠，这里直接拉满
         collapseHeader(scrollBehavior)
         listState.scrollToItem(index, scrollOffset = -listTopInsetPx)
-        XLog.w("选择界面：定位到已绑定的那一行 index=$index inset=$listTopInsetPx")
+        //  落点按**实测**校一次（见 [settleRowBelow]）
+        val landed = listState.settleRowBelow(index, listTopInsetPx)
+        XLog.w("选择界面：定位到已绑定的那一行 index=$index 目标=$listTopInsetPx 落点=$landed")
         located = true
     }
 }
@@ -571,6 +574,10 @@ private fun ActivityRow(
                     summary = summary,
                     //  **行自己不带任何外边距** —— 行距由 [spacedItems] 给（首行不加、末行不加）。
                     //  这一行**没有行首图标**，高度交给内容（定死行高只会把两行字顶到上沿、底部空一截）。
+                    //  选中那一行加一圈内边框（与一级页同一份，见 `selectedRowRing`）
+                    modifier = Modifier.selectedRowRing(picked),
+                    //  标题跟着上色（与一级页同一条口径）
+                    titleTint = if (picked) COUITheme.colorScheme.primary else null,
                     trailing = {
                         RowEndIcon(
                             icon = if (picked) PageIcons.TileChecked else PageIcons.TileUnchecked,

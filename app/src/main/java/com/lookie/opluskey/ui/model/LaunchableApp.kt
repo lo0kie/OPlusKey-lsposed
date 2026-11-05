@@ -22,7 +22,18 @@ internal data class LaunchableApp(
      */
     val xposed: Boolean,
     /**
-     * [AppEntry.resolve] 解得出来入口 —— `app:` 那一步真的拉得起来。
+     * **两个显示开关都关着时**，这一行该不该出现。
+     *
+     *  为 `true` 的两批：有启动图标的应用（`MAIN + CATEGORY_LAUNCHER` 查得到），以及 Xposed 模块
+     *  （模块默认就该在列表里，哪怕它没有启动图标）。其余是 `getInstalledApplications` 补回来的
+     *  那一批 —— 没有启动图标的应用 / 系统应用，要拨「显示系统应用」才列。
+     *
+     *  这一位是**取清单时一次判死的**（来源就决定了它），所以「显示」这件事不再需要在
+     *  「查哪一档清单」上做文章：清单一次取全，两个开关纯过滤（见 `AppPickerUiState.shown`）。
+     */
+    val byDefault: Boolean,
+    /**
+     * 解得出来入口 —— `app:` 那一步真的拉得起来。
      *
      * 与执行端（[AppLauncher.launchApp]）同一把尺子，拉不起来就在行尾挂「不可打开」提示。
      * 系统应用缺入口的居多，用户应用里也有（被停用 / 非导出入口 / 装了一半）。

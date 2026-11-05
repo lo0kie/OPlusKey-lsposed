@@ -24,12 +24,15 @@ internal object ShellRunner {
      *   注意这台机器的宿主域没有 `/system/bin/sh` 的执行权，关掉之后多数命令会起不来 ——
      *   那是用户的选择，失败按「这条命令没开『以 root 执行』」报（见 [classifyFailure]）；
      *   只有**勾了** root 却起不了 `su` 时才报「root 要授给宿主」（[CommandFailure.SHELL_NO_ROOT]）。
+     * @param onLine 每一行标准输出的回调（**后台线程**）。只在「要把输出拿回来给界面看」的
+     *   调用点传（此刻是进程控制页读 `ps` 那一条）；动作执行那一族不传 —— 它们的输出只进日志。
      */
     fun exec(
         command: String,
         onFailure: (CommandFailure) -> Unit = {},
         onTip: (String) -> Unit = {},
         preferRoot: Boolean = true,
+        onLine: ((String) -> Unit)? = null,
     ) {
         if (command.isBlank()) {
             //  空命令不该走到这里（`shell:` 那一支解析时已经掉空值）；真走到就是配置里有条空的，
@@ -41,7 +44,7 @@ internal object ShellRunner {
         //  （首次 `su` 会停在等授权，可能几秒）。这两步原先在**调用线程**上同步做，而调用链是
         //  宿主主线程的广播回调（`GestureReceiver` 的 Handler 建在主 Looper）—— 一条慢命令
         //  就能把整个宿主卡住。
-        runnerPool.execute { execBlocking(command, onFailure, onTip, preferRoot) }
+        runnerPool.execute { execBlocking(command, onFailure, onTip, preferRoot, onLine) }
     }
 
     /** [exec] 的实现体 —— 跑在 [runnerPool] 上，所以这里允许阻塞。 */
@@ -50,6 +53,7 @@ internal object ShellRunner {
         onFailure: (CommandFailure) -> Unit,
         onTip: (String) -> Unit,
         preferRoot: Boolean,
+        onLine: ((String) -> Unit)?,
     ) {
         // 先占坑再起进程。`if (running.get() >= MAX) …` 那种**先查后加**在并发下会一起放行：两条
         //  会同时看到「没满」一起放行。占坑本身见 [acquireSlot]。
@@ -72,7 +76,7 @@ internal object ShellRunner {
             //  必须在等结束**之前**打：命令挂到超时的那一档，用户要知道它确实起过。
             XLog.w("shell 命令已在后台启动（走的是 $via）：${XLog.redactCommand(command)}")
 
-            awaitProcess(proc, via, command, onFailure, onTip)
+            awaitProcess(proc, via, command, ShellSinks(onFailure, onTip, onLine))
         } catch (e: Throwable) {
             // 起进程这一步就失败：槽位由下面的 finally 还（只此一处释放，避免两条路径各记一次）
             XLog.w("执行 shell 失败：${XLog.redactCommand(command)}", e)
@@ -115,8 +119,7 @@ internal object ShellRunner {
         proc: Process,
         via: String,
         command: String,
-        onFailure: (CommandFailure) -> Unit,
-        onTip: (String) -> Unit,
+        sinks: ShellSinks,
     ) {
         // 读输出必须另起一条线程与等待**并行**：`forEachLine` 要读到 EOF 才返回，
         // 而 logcat 不带 -d / 常驻进程 / `tail -f` 这类命令根本不关 stdout ——
@@ -136,7 +139,7 @@ internal object ShellRunner {
         val tip =
             java.util.concurrent.atomic
                 .AtomicReference<String>()
-        val reader = startOutputReader(proc, denied, tail, tip)
+        val reader = startOutputReader(proc, denied, tail, tip, sinks.onLine)
 
         try {
             // 必须带超时：有些命令在这个身份下会直接挂住（真机实测 `cmd audio set-ringer-mode` 就是）；
@@ -149,7 +152,7 @@ internal object ShellRunner {
                     //  那对管道。与超时那条一样收掉（destroy 关管道 ⇒ 读到 EOF），并报一句给用户。
                     XLog.w("等 shell 结束失败，杀掉它：${e.message}")
                     runCatching { proc.destroy() }
-                    onFailure(CommandFailure.UNKNOWN)
+                    sinks.onFailure(CommandFailure.UNKNOWN)
                     return
                 }
             if (!done) {
@@ -170,7 +173,7 @@ internal object ShellRunner {
                         .onFailure { XLog.d("强杀 shell 进程失败（忽略）：${it.message}") }
                 }
                 logOutputTail(tail)
-                onFailure(CommandFailure.SHELL_TIMEOUT)
+                sinks.onFailure(CommandFailure.SHELL_TIMEOUT)
                 return
             }
             // 进程已退出，但 stdout 可能被子进程继承后仍开着（`sh -c "... &"`）：
@@ -184,13 +187,13 @@ internal object ShellRunner {
             if (code != 0 || silentFail != null) {
                 XLog.w("shell 没成功（退出码 $code，走的是 $via）：${XLog.redactCommand(command)}")
                 logOutputTail(tail)
-                onFailure(classifyFailure(code, via, denied.get()))
+                sinks.onFailure(classifyFailure(code, via, denied.get()))
                 return
             }
             // 成功才弹提示：失败那边已经有失败提示，这里再弹一句「已切换」就是报喜不报忧
             tip.get()?.takeIf { it.isNotEmpty() }?.let { line ->
                 XLog.w("shell 提示：$line")
-                onTip(line)
+                sinks.onTip(line)
             }
         } finally {
             // 收尾时**强关管道**：脚本派生的常驻子进程（`cmd &` / 没有 `nohup` 解除 stdout）
@@ -255,12 +258,13 @@ internal object ShellRunner {
         XLog.w("shell 输出（尾 ${lines.size} 行）：\n" + lines.joinToString("\n"))
     }
 
-    /** 读输出并逐行匹配权限拒绝提示，顺带收命令自己那行提示（[TIP_PREFIX]）。 */
+    /** 读输出并逐行匹配权限拒绝提示，顺带收命令自己那行提示（[TIP_PREFIX]）与调用方要的原始行。 */
     private fun startOutputReader(
         proc: Process,
         denied: java.util.concurrent.atomic.AtomicReference<String>,
         tail: MutableList<String>,
         tip: java.util.concurrent.atomic.AtomicReference<String>,
+        onLine: ((String) -> Unit)?,
     ): Future<*> =
         readerPool.submit {
             runCatching {
@@ -269,6 +273,9 @@ internal object ShellRunner {
                 proc.inputStream.bufferedReader().use { r ->
                     r.forEachLine { line ->
                         XLog.d("sh: $line")
+                        //  调用方要原始输出的那一档（进程控制页读 `ps`）：与下面几档同一线程、
+                        //  同一顺序 —— 于是「提示行」到来时，前面的行一定都已经交出去了。
+                        onLine?.let { sink -> runCatching { sink(line) } }
                         // 尾部环形保留（同步块在 [logOutputTail] 读的那一头）
                         synchronized(tail) {
                             if (tail.size >= SHELL_TAIL_LINES) tail.removeAt(0)
@@ -540,3 +547,16 @@ internal object ShellRunner {
      */
     private val slotLock = Any()
 }
+
+/**
+ * 一条 shell 的三种回调 —— 打成一个包只是为了让 [ShellRunner.awaitProcess] 的形参不超上限。
+ *
+ *  @param onFailure 失败回调
+ *  @param onTip 命令自己那行提示（[ShellRunner.TIP_PREFIX]）
+ *  @param onLine 每一行标准输出；不传就只进日志
+ */
+private class ShellSinks(
+    val onFailure: (CommandFailure) -> Unit,
+    val onTip: (String) -> Unit,
+    val onLine: ((String) -> Unit)?,
+)

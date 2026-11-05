@@ -142,6 +142,10 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
         ProfileResetConfirmDialog()
         // 删「读不出来的那一份」的确认窗（那一行点进去只剩这一条路）
         ProfileBrokenDeleteDialog(ui)
+        // 导入配置选目标那一窗（文件校验通过后由 hook 侧置位 [SettingsPage.pendingImport]）
+        ImportTargetDialog()
+        // 覆盖某一份之前的那一次确认（选择器关掉之后才弹，见 `ImportTargetDialog` 的 `onDismissFinished`）
+        ImportOverwriteConfirmDialog()
     }
 }
 

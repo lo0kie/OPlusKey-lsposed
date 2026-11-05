@@ -35,9 +35,10 @@ import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 //   · `BindingSettings.kt` / `InstantSingleCard.kt` / `LongRepeatCard.kt` —— 三档各一张设置卡；
 //   · `BindingSections.kt`  —— 纵向顺序（哪一段之间该给间距）。
 
-/** 选择器入口回调（应用 / 磁贴）—— 带上「哪一格」，组合键那一页也用这一份。 */
+/** 选择器入口回调（应用控制 / 磁贴）—— 带上「哪一格」与「打开还是结束」，组合键那一页也用这一份。 */
 internal data class BindingPickers(
-    val onOpenAppPicker: (BindingTarget) -> Unit,
+    /** @param stop `false` = 打开应用，`true` = 结束应用（「应用控制」那一层菜单选出来的）。 */
+    val onAppControl: (BindingTarget, Boolean) -> Unit,
 )
 
 /**
@@ -68,7 +69,7 @@ internal fun SettingsPage.BindingList(
     val st =
         rememberBindingGridState(
             BindingTarget.Key(KeyWatchState.editing(configState.config.value), g),
-            pickers.onOpenAppPicker,
+            pickers.onAppControl,
         )
     //  焦点圈跟着选中项走（进场 / 改了绑定都收回来）——
     //  与「组合按键」编辑页共用同一份实现，两页的圈只能有一套行为（见 [BindingGridFocus]）。

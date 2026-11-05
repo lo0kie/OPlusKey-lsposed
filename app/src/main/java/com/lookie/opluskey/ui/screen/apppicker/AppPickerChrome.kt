@@ -113,14 +113,21 @@ internal fun BoxScope.PickListFailedState(
 }
 
 /**
- * 空态那句话 —— 按「为什么一条都没有」分四档（真因优先：**没查出来**不是「一个都没有」）。
+ * 空态那句话 —— 按「为什么一条都没有」分几档（真因优先：**没查出来**不是「一个都没有」）。
  *
- *  注意：这一句用的是**页面级**的两个落盘开关（`showUnopenable`）与搜索词，所以放在
- *  `SettingsPage.` 扩展里算，而不是让空态组件自己取。
+ *  注意：这一句用的是**页面级**的开关与搜索词，所以放在 `SettingsPage.` 扩展里算，
+ *  而不是让空态组件自己取。
+ *
+ *  「清单里有东西、但一条都不显示」有两档原因（见 `AppPickerUiState.shown` 的两条过滤）：
+ *  点不开的被「显示失效应用」挡着、没有启动图标的被「显示系统应用」挡着 —— 说清是哪一档，
+ *  别让人去猜（两档都挡着时先说「显示失效应用」那一档，那是用户更常撞上的）。
  */
 internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
     val apps = ui.apps
-    val showBroken = picker.showUnopenable.value
+    //  结束那一趟一律全列，所以这两档只属于打开那一趟
+    val stopTrip = picker.stopApp
+    val showInvalid = stopTrip || picker.showUnopenable.value
+    val showIconless = showInvalid || picker.showSystemApps.value
     return when {
         // 真因优先：这次是**没查出来**，不是「一个都没有」（后者是有效结论）
         ui.failed && apps.isEmpty() -> {
@@ -130,17 +137,21 @@ internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
         apps.isEmpty() -> {
             // 不再说「系统限制了本页可见的应用列表」：那个前提不成立，
             // 这一页的包可见性跟着宿主走，真列不出来只会是别的原因。
-            I18n.get(Strings.APP_PICKER_EMPTY_OPENABLE, "没有找到可以打开的应用")
+            I18n.get(Strings.APP_PICKER_EMPTY_OPENABLE, "没有找到应用")
         }
 
-        // 措辞与菜单里那一项（「显示失效应用」）对齐，别让用户去猜是哪一个开关
-        !showBroken && apps.all { !it.launchable } -> {
+        // 用户输入会整体过一遍正文记号：先转义
+        picker.filter.value.isNotBlank() -> {
+            I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, escapeEmphasis(picker.filter.value.trim()))
+        }
+
+        // 打开那一趟藏着失效应用，而剩下的一条都打不开 —— 说清「开关在哪」
+        !showInvalid && apps.any { !it.launchable && (showIconless || it.byDefault) } -> {
             I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN, "可以打开的一个都没有；开「显示失效应用」能看到打不开的那些")
         }
 
         else -> {
-            // 用户输入会整体过一遍正文记号：先转义
-            I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, escapeEmphasis(picker.filter.value.trim()))
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "这一档里一条都没有；开「显示系统应用」能看到没有启动图标的应用")
         }
     }
 }
@@ -182,14 +193,19 @@ internal fun SettingsPage.AppConfirmFab(
                 }
             val target = picked.target
             val pkg = AppTarget.pkg(target)
+            // 结束应用那一趟**什么都不拦**：`proc:stop:` 要的就是「把它停掉」，
+            //  与这个应用有没有启动图标、支不支持小窗都无关。
+            if (picker.stopApp) {
+                onPick(picked, false)
+                return@PageFabButton
+            }
             // 一行一个应用：`pending` 可能带 `/类名`，所以按「同一个应用」找，不能按 `same`
             val app = ui.apps.firstOrNull { AppTarget.sameApp(it.target, target) }
             //  **只拦「整个应用都没有入口」那一档**：`launchable` 是**应用级**的判据
             //  （`LaunchableApp` 只有包名，没有具体界面），而用户可能是在二级页挑了一个
             //  具体界面 —— 那一页列出来的就是能起的入口。按应用行拦等于把页面自己提供的
-            //  可选项否掉：开了「显示失效应用」之后，挑一个可用的 Activity 却被弹
-            //  「此应用无法打开」，一个字节都不写。带 `/类名` 的 target 交给执行侧那把尺子
-            //  （`AppLauncher` 解析不出来会自己报「打不开」）。
+            //  可选项否掉：挑了一个可用的 Activity 却被弹「此应用无法打开」，一个字节都不写。
+            //  带 `/类名` 的 target 交给执行侧那把尺子（`AppLauncher` 解析不出来会自己报「打不开」）。
             if (app != null && !app.launchable && AppTarget.activity(target) == null) {
                 XLog.w("选择应用：$pkg 拉不起来，弹「此应用无法打开」")
                 ui.blockedUnopenable = app

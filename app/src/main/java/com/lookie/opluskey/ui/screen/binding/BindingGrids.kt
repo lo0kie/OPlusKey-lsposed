@@ -163,13 +163,12 @@ private fun SettingsPage.BuiltInTile(
             spec = spec,
             //  入口格的行首**随当前档位变**（主屏幕 / 静音 / 上一首 …）；
             //  一档都没绑时退回这一格自己的大类字形（媒体控制 → 音符、响铃状态 → 铃铛…）。
-            //  「打开应用」格再细一档：绑成什么样就画什么（小窗 / 快捷方式 / 某个界面 / 整个应用）——
-            //  这一格以前靠标题右边那枚「小窗起」标记，现在标记没了，信息全在这一颗图标上。
-            //  只对「打开应用」那一格生效：`appTileIcon` 看的是**当前绑定**，而每格的
-            //  `current` 都是同一个动作 —— 不判格子就会让整片网格（导航 / 响铃 / 媒体…）
-            //  全画成「打开应用」那一族的字形。
+            //  「应用控制」格再细一档：绑成什么样就画什么（结束 / 小窗 / 快捷方式 / 某个界面 / 整个应用）
+            //  —— 这一格以前靠标题右边那枚「小窗起」标记，现在标记没了，信息全在这一颗图标上。
+            //  只对这一格生效：`appTileIcon` 看的是**当前绑定**，而每格的 `current` 都是同一个动作
+            //  —— 不判格子就会让整片网格（导航 / 响铃 / 媒体…）全画成那一族的字形。
             icon =
-                (if (spec.token == ActionCatalog.APP_TILE) appTileIcon(current) else null)
+                (if (spec.token == ActionCatalog.APP_CONTROL_TILE) appTileIcon(current) else null)
                     ?: boundMode?.let { tileIcon(it) }
                     ?: tileIcon(spec),
             selected = ActionCatalog.isSelected(spec, current),
@@ -201,15 +200,18 @@ private fun SettingsPage.BuiltInTile(
  * @param boundMode 这一格绑的是哪一档（入口格专用；非入口格为 `null`）
  * @param appLabel 「打开应用」格那一行（应用名），由调用方按当前绑定解析
  */
-private fun builtInSubtitle(
+private fun SettingsPage.builtInSubtitle(
     spec: ActionCatalog.Spec,
     current: Action,
     boundMode: ActionCatalog.Spec?,
     appLabel: String?,
 ): String? =
     when (spec.token) {
-        ActionCatalog.APP_TILE -> {
-            appLabel
+        // 「应用控制」那一格：小字写**绑的是哪一档 + 哪个应用**（`打开应用:微信` / `结束应用:微信`）
+        // —— 只写应用名的话，网格里看不出这一格管的是打开还是结束。
+        //  这一句走 `stepTitle`（步骤行那一套叫法），不在这里另拼一遍文案。
+        ActionCatalog.APP_CONTROL_TILE -> {
+            appLabel?.let { name -> stepTitle(current.token) { name } }
         }
 
         //  系统开关那一格再细一档：「WIFI · 打开」/「NFC · 切换」—— 只写开关名时
@@ -408,7 +410,13 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
         //  不靠「选中项变了再由 effect 收回来」（那条路真机上没跑起来，见 `bindingSelect`）。
         onPick = { spec ->
             st.tileMenu?.spec?.let { st.focusOn(it.token) }
-            pick(spec, st.target)
+            // 「应用控制」那一层：两行都**不是取值**，选完进挑应用页（打开 / 结束各一趟），
+            //  真正的落盘在那张页面的确认键上（`app:` / `proc:stop:`）。
+            when (spec.token) {
+                ActionCatalog.APP_CONTROL_OPEN -> st.onAppControl(st.target, false)
+                ActionCatalog.APP_CONTROL_STOP -> st.onAppControl(st.target, true)
+                else -> pick(spec, st.target)
+            }
         },
         onDismiss = { st.tileMenu = null },
     )
@@ -436,15 +444,20 @@ private fun appTileIcon(action: Action): ImageVector? =
             if (AppTarget.activity(action.appTarget.orEmpty()) != null) PageIcons.ActivityScreen else null
         }
 
+        // 结束那一档：「停掉」的方块 —— 与执行侧那个动作同一颗，网格里一眼分得出绑的是哪一状态
+        is Action.Process -> {
+            PageIcons.AppStop
+        }
+
         else -> {
             null
         }
     }
 
 /**
- * 「打开应用」格选中时标题下面那行小字 = **当前绑的是哪一个**。
+ * 「应用控制」格选中时标题下面那行小字 = **当前绑的是哪一个应用**。
  *
- *  · 应用 / 某个界面：应用名（`微信`）；
+ *  · 应用 / 某个界面 / 结束：应用名（`微信`）—— 打开还是结束由 [builtInSubtitle] 那一句补上；
  *  · 快捷方式：`应用名: 快捷方式名`（`微信: 扫一扫`）—— 光写应用名的话，
  *    绑的是扫一扫还是收付款在网格里看不出来。
  *
@@ -457,6 +470,11 @@ private fun SettingsPage.rememberBoundAppLabel(current: Action): String? =
         when (current) {
             is Action.App, is Action.AppWindow -> {
                 current.appTarget?.let { appNameOf(it) }
+            }
+
+            // 结束那一档只存包名（没有界面 / 分身后缀），名字按包名现查
+            is Action.Process -> {
+                appNameOf(current.pkg)
             }
 
             // 快捷方式（`appshortcut:`）也算「打开应用」那一族，小字写「应用: 快捷方式」。

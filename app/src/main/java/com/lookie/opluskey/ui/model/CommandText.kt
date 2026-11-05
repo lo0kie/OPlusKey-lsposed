@@ -72,6 +72,7 @@ internal fun stepTitle(
                 is Action.App -> appName(a.target)
                 is Action.AppWindow -> appName(a.target)
                 is Action.AppShortcut -> appName(a.appTarget.orEmpty())
+                is Action.Process -> appName(a.pkg)
                 else -> ""
             }
         },

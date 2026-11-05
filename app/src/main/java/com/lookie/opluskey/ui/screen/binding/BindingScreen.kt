@@ -37,11 +37,11 @@ internal fun SettingsPage.BindingScreen(
     pagerState: androidx.compose.foundation.pager.PagerState,
     enabled: Boolean,
     /**
-     * 点「打开应用」那一格时跳「打开应用」页（见 [Screen.APP_PICKER]）；
-     * 带上的是**哪一格**点的（[BindingTarget]）—— 挑中写回哪一格、没挑就退回来都靠它。
+     * 点「应用控制」那一格 → 弹一层菜单（打开 / 结束）→ 选完跳「选择应用」页（见 [Screen.APP_PICKER]）；
+     * 带上的是**哪一格**点的（[BindingTarget]）与**哪一档**（打开 / 结束）—— 写回哪一格、没挑就退回来都靠它。
      * 组合键那一页用的是同一套网格，所以这里收目标而不是手势。
      */
-    onOpenAppPicker: (BindingTarget) -> Unit,
+    onAppControl: (BindingTarget, Boolean) -> Unit,
     /** 点「控制中心磁贴」那一格时跳「控制中心磁贴」页。 */
     scrollBehavior: ScrollBehavior,
 ) {
@@ -134,7 +134,7 @@ internal fun SettingsPage.BindingScreen(
                 // 该收浮层、该吃方向键。不给 `active` 的话进场三页各自 requestFocus，谁最后请求到
                 // 谁说了算（真机上表现为「翻页后方向键在动上一页的圈」）。
                 page = BindingPageState(enabled = enabled, active = pagerState.currentPage == page),
-                pickers = BindingPickers(onOpenAppPicker),
+                pickers = BindingPickers(onAppControl),
                 onCreateCommand = navigateToCommands,
                 // 分段控件在 pager 之外、由外层驱动 —— 它要的滚动量由**当前页**那一份给
                 // （见上面 `listScrolls` 的注释）。

@@ -40,6 +40,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.collapseHeader
 import com.lookie.opluskey.ui.collapsedHeaderHeight
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.headerStatusBarPadding
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_GAP
 import com.lookie.opluskey.ui.model.APP_LIST_HEADER_ITEMS
@@ -52,6 +53,7 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.command.branchConditionUsed
+import com.lookie.opluskey.ui.selectedRowRing
 import com.lookie.opluskey.ui.spacedItems
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.AppPickerUiState
@@ -59,6 +61,7 @@ import com.lookie.opluskey.ui.state.PickedDetail
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PullToRefresh
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
 import io.github.suqi8.coui.kmp.basic.rememberPullToRefreshState
 import io.github.suqi8.coui.kmp.basic.rememberScrollBarAdapter
@@ -244,12 +247,13 @@ private fun LazyItemScope.PickerEmptyItem(
 /**
  * 点一行做什么 —— 两种入口语义不同，判据只在这里。
  *
- *  · **给「条件执行」挑**（[AppPickerState.forBranch]）：那一支只存包名，没有「里面哪个
- *    界面」这回事 ⇒ 点一行就是**选中它**（行尾画勾），右下角那颗确认键再落盘。
+ *  · **只认应用本身的那几趟**（[AppPickerState.appOnly]：给「条件执行」挑、给「应用控制 → 结束」
+ *    挑）：那一支只存应用（条件是前台应用、动作是 `app:包名` 或 `proc:stop:包名`），没有
+ *    「里面哪个界面」这回事 ⇒ 点一行就是**选中它**（行尾画勾），右下角那颗确认键再落盘。
  *    · **给「前台应用」条件挑**（[AppPickerState.branchTarget]）：**多选**，点一下**切换**，
  *      可以亮好几行（一条条件存 `包1||包2`，任一在前台即通过）。去重仍生效：同一个应用
  *      已经用在**别的行**上就只提示、不选中 —— 已经在本条里的那颗必须能点掉，否则没法取消。
- *    · 给那一支要执行的应用挑（`branchCommandTarget`）：单选，与手势入口一样。
+ *    · 其余（给那一支要执行的应用挑 / 结束应用）：单选。
  *  · 其余入口：点一行只是往下一级走，真正的选择发生在「选择界面」那一页、那颗 FAB 才落盘
  *    —— 在那一页直接返回，这里什么都不会变（新绑时仍是「无选中」）。
  */
@@ -258,7 +262,7 @@ private fun SettingsPage.pickRow(
     ui: AppPickerUiState,
     onOpenActivities: (String) -> Unit,
 ) {
-    if (!picker.forBranch) {
+    if (!picker.appOnly) {
         onOpenActivities(app.target)
         return
     }
@@ -345,8 +349,8 @@ internal fun SettingsPage.PickerScrollBar(
 private fun SettingsPage.rememberRowState(pending: PickedDetail?): RowState {
     val multi = picker.branchTarget != AppPickerState.NOT_FOR_BRANCH
     val pickedPkgs = picker.pickedApps.value
-    return remember(pending, picker.forBranch, multi, pickedPkgs) {
-        RowState(pending, picker.forBranch, multi, pickedPkgs)
+    return remember(pending, picker.appOnly, multi, pickedPkgs) {
+        RowState(pending, picker.appOnly, multi, pickedPkgs)
     }
 }
 
@@ -356,8 +360,8 @@ private fun SettingsPage.rememberRowState(pending: PickedDetail?): RowState {
 private class RowState(
     /** **当前选中**的那一条（进页时等于已绑定的那一档；二级页确认后是刚挑的那一条）。 */
     val pending: PickedDetail?,
-    /** 这一趟是在给「条件执行」挑（[AppPickerState.forBranch]）：那一趟没有下一级、也没有小窗。 */
-    val forBranch: Boolean,
+    /** 这一趟**只认应用本身**（[AppPickerState.appOnly]）：那一趟没有下一级、也没有小窗。 */
+    val appOnly: Boolean,
     /** 这一趟是在给**条件**挑（而不是给那一支要执行的应用挑）—— 只有它支持多选。 */
     val multi: Boolean,
     /** 给条件挑时**已选的全部包名**；其余入口恒为空集（那时看 [pending]）。 */
@@ -381,7 +385,7 @@ private class RowState(
      * 只能靠 [PickedDetail.shortcutId] 判：有 id ⇒ 快捷方式（`table-shortcut`），
      * 没有 ⇒ 具体界面（`device-screen`）。
      *
-     *  **给「条件执行」挑时只有两档**：选中画勾、没选中**什么都不画**。那一趟点一行就是选中
+     *  **只认应用本身的那几趟只有两档**：选中画勾、没选中**什么都不画**。那些趟点一行就是选中
      *  （不进二级页），画「箭头 = 点进去能看到里面有什么」等于骗人。
      *
      * @return `null` = 这一行不画图标
@@ -389,11 +393,11 @@ private class RowState(
     fun iconFor(target: String): ImageVector? {
         // 先排除「没选中 / 选的是别的应用」——`pending` 收窄成非空之后才看它装的是哪一档
         if (!pickedBy(target)) {
-            // 没选中：给「条件执行」挑时没有下一级，不画箭头；其余入口画箭头（点进去能看到里面有什么）
-            return if (forBranch) null else PageIcons.EnterArrow
+            // 没选中：只认应用本身的那几趟没有下一级，不画箭头；其余入口画箭头（点进去能看到里面有什么）
+            return if (appOnly) null else PageIcons.EnterArrow
         }
         // 给条件挑（可多选）与给动作挑一样：选中就是一颗勾，没有「里面某个界面」那几档
-        if (multi || forBranch) return PageIcons.TileChecked
+        if (multi || appOnly) return PageIcons.TileChecked
         val picked = pending ?: return PageIcons.TileChecked
         return when {
             // 有快捷方式 id ⇒ 快捷方式；否则目标里带 `/类名` 就是某个具体界面
@@ -449,7 +453,12 @@ private fun SettingsPage.AppRow(
                     titleExtra = { AppRowTags(app, withSystem) },
                     //  行高定死 ⇒ 行首那枚图标才能整高（见 [APP_ROW_HEIGHT]）。
                     //  行自己不带外边距：行距由 [spacedItems] 给（首行不加、末行不加）。
-                    modifier = Modifier.height(APP_ROW_HEIGHT),
+                    //  选中那一行加一圈**内边框**（见 [selectedRowRing]）：行尾那颗勾说的是
+                    //  「选中了」，而三百行里一颗勾太不起眼，扫一眼看不出是自己挑的那个。
+                    modifier = Modifier.height(APP_ROW_HEIGHT).selectedRowRing(picked),
+                    //  标题也跟着上色：内框管「这一行是当前这个」，标题管「读哪个名字」——
+                    //  三百行里一眼扫下去，先落到的应该是字，不是那圈线。
+                    titleTint = if (picked) COUITheme.colorScheme.primary else null,
                     trailing = {
                         //  `null` = 这一行不画图标（给「条件执行」挑时，没选中的行没有「点进去」这回事）。
                         //  **但槽位照占同样大小**：库按行尾的实际宽度算中间那列能用多宽，
@@ -501,21 +510,24 @@ private fun SettingsPage.LocateSelected(
     val shown = ui.shown
     // 与 `ui.shown` 的过滤同口径：这里只用来判「有没有搜索词」，不去空格会把 `" "` 当成有词
     val filter = picker.filter.value.trim()
-    // 列表顶上那一整段（顶栏 + 固定搜索带 + 首行上边距）—— 进场定位时目标行要落在它下面。
-    // 取折叠后的顶栏高度（[collapsedHeaderHeight]）：定位会把顶栏折叠到底，按展开高度算会多
-    // 让出一整段。带子高度含它自己那 8dp 下内边距，再加列表头那个占位项补的 [PAGE_TOP_PADDING]。
-    // 再补半个行距（[GRID_GAP] / 2）：行距挂在每一行下边，目标行顶到带子下沿时上面那半个间距
-    // 正好被带子吃掉，补一半上下两行的间距才均匀。
-    // `scrollToItem` 收的是 px，而 `LocalDensity.current` 只能在组合期读，不能挪进 `LaunchedEffect`。
-    val listTopInsetPx =
+    // 顶上挡着的那两段 —— **都取库的常量，不读实测高度**：
+    //  · [expandedPx]（展开态）：进场那一刻顶栏是展开的，「这一行是不是已经看得见」按它判；
+    //  · [listTopInsetPx]（折叠态 + 一档 [PAGE_TOP_PADDING]）：`scrollToItem` 之前会先把顶栏折到底，
+    //    目标行按它落位。
+    //
+    //  为什么不再读 `currentHeaderHeight`：它是「顶栏盒子 − 固定带」的**实测**值，而折叠会改变
+    //  盒子的实测高度（库把外壳一起缩了：展开 684 → 折叠 491）。上报时机不同就读到不同的数 ——
+    //  真机同一条路径上出现过 491 与 684 两个「遮挡」值，按它算的落点就会多让一整段折叠量
+    //  （用户口径「滚动距离偏多」，目标行被塞到上一行下面）。两个常量是库自己的槽位高度，稳定；
+    //  常量与实际差的那几 dp 由 `settleRowBelow` 那次实测校准收掉。
+    //
+    //  `scrollToItem` 收的是 px，而 `LocalDensity.current` 只能在组合期读，不能挪进 `LaunchedEffect`。
+    val (expandedPx, listTopInsetPx) =
         with(LocalDensity.current) {
-            (collapsedHeaderHeight(scrollBehavior) + searchBandDp + PAGE_TOP_PADDING + GRID_GAP / 2).roundToPx()
-        }
-    // 「现在」被顶栏 + 搜索带挡住的那一段：此刻顶栏还是**展开**的，判「看不看得见」要用展开高
-    //  （与上面那个「滚过去之后该落在哪」是两笔账）。
-    val coveredPx =
-        with(LocalDensity.current) {
-            (currentHeaderHeight(scrollBehavior) + searchBandDp).roundToPx()
+            val head = headerStatusBarPadding()
+            val expanded = (TopAppBarDefaults.ExpandedHeight + head + searchBandDp).roundToPx()
+            val collapsed = (TopAppBarDefaults.CollapsedHeight + head + searchBandDp).roundToPx()
+            expanded to (collapsed + PAGE_TOP_PADDING.roundToPx())
         }
     LaunchedEffect(selected, shown, searchBandDp) {
         if (ui.located) return@LaunchedEffect
@@ -531,18 +543,20 @@ private fun SettingsPage.LocateSelected(
         //  下面」去滚只会把它顶上去半截：先折顶栏（列表整体上移一截）再按展开时的高度补偿，
         //  两边对不上，表现出来就是「选中第二、第三行时那一行被 header 压掉一半多」。
         //  二级页（`LocateActivitySelected`）一直是这么判的，一级页这边原先漏了。
-        if (index <= 0 || listState.rowFullyVisible(index + APP_LIST_HEADER_ITEMS, coveredPx)) {
+        if (index <= 0 || listState.rowFullyVisible(index + APP_LIST_HEADER_ITEMS, expandedPx)) {
             ui.located = true
             return@LaunchedEffect
         }
-        // `scrollToItem` 是程序性跳转，不走嵌套滚动那条路 ⇒ 顶栏不会自己折叠，跳完还是
-        // 展开的、把目标行压在下面，因此直接把折叠量拉满。
+        // `scrollToItem` 是程序性跳转，不走嵌套滚动那条路 ⇒ 顶栏不会自己折叠，这里直接把
+        //  折叠量拉满（标题跟着收成小字，固定带随外壳一起上移 —— 落点按折叠后的遮挡算）。
         collapseHeader(scrollBehavior)
-        XLog.w(
-            "定位到已选：index=$index 顶栏 offset=${scrollBehavior.state.heightOffset}" +
-                "/limit=${scrollBehavior.state.heightOffsetLimit} inset=$listTopInsetPx",
-        )
         listState.scrollToItem(index + APP_LIST_HEADER_ITEMS, scrollOffset = -listTopInsetPx)
+        //  落点按**实测**校一次：常量与实际差多少、滚动有没有被顶栏吃掉，都由布局结果说话
+        val landed = listState.settleRowBelow(index + APP_LIST_HEADER_ITEMS, listTopInsetPx)
+        XLog.w(
+            "定位到已选：index=$index 展开=$expandedPx 目标=$listTopInsetPx 落点=$landed" +
+                " 顶栏 offset=${scrollBehavior.state.heightOffset}/limit=${scrollBehavior.state.heightOffsetLimit}",
+        )
         ui.located = true
     }
 }
@@ -575,6 +589,8 @@ internal fun LazyListState.rowFullyVisible(
  *  这里只管**标签之间**的间隙：只有第二枚起才在前面补 [APP_KIND_TAG_GAP]。
  *  每个标签前都加的话，名字到第一枚之间会是两档叠加（6 + 6 = 12dp），读着「标签离名字远了」
  *  （真机口径）。
+ *
+ *  「不可打开」只在**打开应用**那一趟出现（见下面那一支）：结束那一趟标它没有意义。
  */
 @Composable
 private fun SettingsPage.AppRowTags(
@@ -609,8 +625,10 @@ private fun SettingsPage.AppRowTags(
                 tint = appKindTagTint(app.xposed, app.system),
             )
         }
-        // 「不可打开」不看那个开关：用户应用里也有拉不起来的，每一行都该有。
-        if (!app.launchable) {
+        // 「不可打开」：**只在「打开应用」那一趟标**（那一趟可能把这类应用藏起来，看得见的时候得
+        //  知道点下去会失败）。「结束应用」那一趟不标 —— 停掉一个没有启动图标的应用正是它的用处，
+        //  挂个红标签反而像在劝退。
+        if (!picker.stopApp && !app.launchable) {
             //  前面画过任意一枚（分身 / 模块·系统·用户）才补间隙
             if (app.clone || withSystem || app.xposed) Spacer(Modifier.width(APP_KIND_TAG_GAP))
             AppKindTag(

@@ -279,11 +279,26 @@ private fun modeEntries(
                         //  必须用 [ActionCatalog.isBound]（一行一行比），不能用 `isSelected` ——
                         // 后者对整组都算选中，会让菜单同时勾上多项。
                         selected = current?.let { ActionCatalog.isBound(spec, it) } ?: false,
-                        //  行尾**不留指示位**：点了还有后续的那几行（系统开关）后面跟着的是弹窗，
+                        //  行尾**默认不留指示位**：点了还有后续的那几行（系统开关）后面跟着的是弹窗，
                         //  不是第二层菜单，行尾再挂个「下一层」记号说反了；不留这一格，行也算得宽。
+                        //  例外只有「打开应用 / 结束应用」：它们点下去是**另一张页面**（挑应用），
+                        //  与网格里那些跳页的格子同一件事 —— 行尾留出那一格，字形用默认右箭头
+                        //  （`PageIcons.EnterArrow`，与网格、列表同一颗）。
+                        submenu = opensAppPicker(spec),
                         dividerBefore = spec.dividerBefore,
                         onPick = { onPick(spec) },
                     )
                 },
         ),
     )
+
+/**
+ * 这一行点下去是不是**另一张页面** —— 目前只有「应用控制」那一层菜单的两行
+ * （打开应用 / 结束应用，选完都进同一张挑应用页，见 `ActionCatalog.APP_CONTROL_MODES`）。
+ *
+ *  与「点了弹一层」的行分开判：那些行（系统开关 / 亮度 / 音量）后面跟的是弹窗，
+ *  行尾挂「下一层」记号说反了；而这两行确实要换页，行尾该有那颗右箭头。
+ *  判据用 token 而不是 glyph：glyph 是「画什么」，与「点了去哪」无关。
+ */
+private fun opensAppPicker(spec: ActionCatalog.Spec): Boolean =
+    spec.token == ActionCatalog.APP_CONTROL_OPEN || spec.token == ActionCatalog.APP_CONTROL_STOP

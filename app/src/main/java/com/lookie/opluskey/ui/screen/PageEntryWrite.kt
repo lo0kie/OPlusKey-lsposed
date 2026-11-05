@@ -120,15 +120,17 @@ internal fun SettingsPage.onAppPicked(
     //  （见 `writeBranchCondition` / `writeBranchCommand`）—— 这里不能再补一次
     //  `goBack()`，否则一次退两层、还会把「放弃未保存的命令」弹出来。
     val forBranch = picker.forBranch
+    // 「应用控制」→ 结束那一趟：写的是 `proc:stop:包名`（不挑界面、也没有小窗）
+    val stopApp = picker.stopApp
     // 刚在「选择界面」页确认过就照那一条写（`app:包名/类名` / `appshortcut:`）；
     // 没确认过就照 `pending` 这一份写 —— 它带着快捷方式的 id，不能退化成 `app:包名/id`。
     //  给「条件执行」挑的那一趟**没有二级页**（不挑界面），所以那边一律按 `pending` 写：
     //  草稿里若留着上一趟的 `包名/类名`，照它写会把条件弄成「某个界面」，而条件只认包名。
     val token =
-        if (forBranch) {
-            picked.token(window = false)
-        } else {
-            picker.draft?.token(picker.smallWindow.value) ?: picked.token(window)
+        when {
+            stopApp -> Action.Process(AppTarget.pkg(picked.target)).token
+            forBranch -> picked.token(window = false)
+            else -> picker.draft?.token(picker.smallWindow.value) ?: picked.token(window)
         }
     // 名字与绑定**同一次写盘**（`Config.appNames`）—— 分两次写要多落一次盘 + 一次广播，
     //  而中间那一下读到的配置只有新绑定、没有名字，顶栏会当场闪一下包名。

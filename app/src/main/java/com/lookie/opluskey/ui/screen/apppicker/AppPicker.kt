@@ -93,6 +93,8 @@ internal fun SettingsPage.AppSearchBand() {
         },
         label = I18n.get(Strings.APP_PICKER_SEARCH_APP, "搜索应用"),
         height = appSearchBandHeight,
+        //  空着搜索框时把「列出来几行」写上（那两个显示开关算过、搜索词不算 —— 空着时两者一样）
+        count = appPickerUi.shown.size,
     )
 }
 
@@ -110,14 +112,21 @@ internal fun SettingsPage.ActivitySearchBand() {
         },
         label = I18n.get(Strings.APP_PICKER_SEARCH_ACTIVITY, "搜索应用组件"),
         height = activitySearchBandHeight,
+        //  这一页的清单是页面里 `remember` 出来的（见 `ActivityPickerList`），顶栏这条带子读不到 ——
+        //  由那一页把条数交到页面对象上（`AppPickerState.activityCount`）
+        count = picker.activityCount.value,
     )
 }
 
 /**
  * 两条搜索带共用的那一份 —— 位置、边距、高度上报只有这一处。
  *
- *  两页的搜索框长得必须一样（用户在这两页之间来回跳），所以参数只留「搜什么」与「量到哪」，
- *  尺寸与边距都写死在这里。
+ *  两页的搜索框长得必须一样（用户在这两页之间来回跳），所以参数只留「搜什么」「量到哪」
+ *  与「现在有多少条」，尺寸与边距都写死在这里。
+ *
+ * @param count 把当前列出来的条数写进占位文案（`搜索应用 (42)`）。
+ *   只在**搜索框空着**时才加：一旦有输入，占位本来就该说的是「你在搜什么」，再挂个数字
+ *   反而让人以为那是搜出来的条数。`null` / 0 一律不加（清单还没读到时不摆一个 `(0)`）。
  */
 @Composable
 internal fun SettingsPage.PickerSearchBand(
@@ -125,6 +134,7 @@ internal fun SettingsPage.PickerSearchBand(
     onQueryChange: (String) -> Unit,
     label: String,
     height: BandHeight,
+    count: Int? = null,
 ) {
     Box(
         Modifier
@@ -154,10 +164,28 @@ internal fun SettingsPage.PickerSearchBand(
                         end = PAGE_MARGIN,
                         bottom = PAGE_TOP_PADDING,
                     ),
-            label = label,
+            label = labeledCount(label, count, query),
         )
     }
 }
+
+/**
+ * 占位文案带上条数：`搜索应用` → `搜索应用 (42)`。
+ *
+ *  三个条件全满足才加：给了数字、数字大于 0、**搜索框是空的**（有输入时那行占位读的是
+ *  「你在搜什么」，挂个数字会被当成搜索结果条数）。句式收在 [Strings.COMMON_SEARCH_COUNT_FORMAT]：
+ *  两个语言档同一写法，只有 `label` 那一截不同。
+ */
+private fun labeledCount(
+    label: String,
+    count: Int?,
+    query: String,
+): String =
+    if (count != null && count > 0 && query.isEmpty()) {
+        I18n.format(Strings.COMMON_SEARCH_COUNT_FORMAT, label, count)
+    } else {
+        label
+    }
 
 /**
  * 「打开应用」页 —— 列出本机可启动的应用。
@@ -232,7 +260,7 @@ internal fun SettingsPage.AppPickerScreen(
  *  [currentHeaderHeight] 读 `scrollBehavior.state.heightOffset`，它逐帧都变；在谁的作用域里读，
  *  谁就每帧重组。原先这句写在 [AppPickerScreen] 的组合体里，代价是本页每帧重组一遍 ——
  *  列表那棵树因为参数全稳被跳过了（所以只是略费），但空态文案（[emptyHint] 里那次
- *  `apps.all { !it.launchable }` 遍历）会跟着每帧算一次。
+ *  `apps.any { … }` 遍历）会跟着每帧算一次。
  *
  *  包 `Box` 是因为两个空态都是 `BoxScope` 扩展（靠 `align` 定位），本函数却要 `SettingsPage`。
  */
@@ -263,40 +291,44 @@ private fun SettingsPage.AppPickerPlaceholders(
 }
 
 /**
- * 取清单 —— 进页一次、模式翻转一次、下拉刷新一次。
+ * 取清单 —— 进页一次、下拉刷新一次。
  *
- *  「显示系统应用」开关一变，列表来源就变了，所以直接把它当重查的键。
- *  `refreshTick` 是下拉刷新那一头的触发键：两者复用这同一段逻辑。
+ * ## 为什么不再有「取法」这一档
+ *
+ *  上一版按「显示系统应用 / 显示失效应用」分两种取法（`includeAll`）：拨开关 = 换一种查询 +
+ *  把清单打回加载态 + 换成那一档的缓存。这套账有三处会跨趟留下痕迹 —— 上一趟的取法
+ *  （`ui.lastMode`）、缓存是哪一档查的（`cachedAppsIncludeAll`）、以及重查失败那一次没人看得见的
+ *  日志 —— 任一处错位，用户看到的就是**开关按了没反应**。而「结束应用」那一趟更直接：
+ *  `stopApp` 没进取法，它拿到的仍是「只有启动图标的那批」，于是要停那些没有图标的应用时
+ *  清单里压根没有它们。
+ *
+ *  现在清单**一次取全**，两个开关纯过滤（见 [AppPickerUiState.shown]）。这一段只剩三件事：
+ *  铺缓存 → 查一遍 → 覆盖。
+ *
+ *  代价原本在「全量取法要几百个 label + 逐包问入口」，现在入口那半已经换成一次问全机
+ *  （见 `AppEntry.launchablePackages`），整段仍在 IO 上跑，主线程一行都没有。
  */
 @Composable
 private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
-    val withSystem = picker.showSystemApps.value
-    LaunchedEffect(withSystem, ui.refreshTick) {
-        // 日志放在 effect 里而不是组合体里：组合体会随每次重组重跑，那几行会被打好几遍。
-        if (ui.lastMode != null && ui.lastMode != withSystem) {
-            XLog.w("选择应用：模式翻转（显示全部应用=$withSystem），清单回到加载态")
-            ui.loaded = null
-        }
-        ui.lastMode = withSystem
+    LaunchedEffect(ui.refreshTick) {
         //  重查之前先把上一次的失败摘掉：加载态的判据要求 `!failed`（见 `AppPickerChrome`），
         //  不清的话重试时界面还挂着「查询失败」，连转圈都不出现 —— 看起来像按了没反应。
         ui.failed = false
-        //  首帧先铺上一份缓存：**只在模式一致时**铺 —— 把「开着系统应用时查的清单」当关着时的
-        //  首帧用，退出再进会先闪一屏系统应用（与 `cachedAppsWithSystem` 同一个理由）。
-        //  下面照样重查并覆盖它，新装 / 卸载的应用不会因为这份缓存而看不见。
+        // 首帧先铺上一份缓存：退出再进时立刻有内容可画。下面照样重查并覆盖它，
+        //  新装 / 卸载的应用不会因为这份缓存而看不见。
         val cached = picker.cachedApps.value
-        if (ui.loaded == null && cached != null && picker.cachedAppsWithSystem == withSystem) {
+        if (ui.loaded == null && cached != null) {
             ui.loaded = cached
         }
         // 整段查询都在后台调度器上，一行都不许落在主线程：里面有 `getInstalledApplications`、
-        // 逐个 `getLaunchIntentForPackage`（开着系统应用时是几百次 binder 调用）与每个包的
-        // label 加载，全是阻塞式的。用 `IO` 而非 `Default`：这些活是 IO 型，而 `Default`
-        // 是按 CPU 核数限流的共享池，压满它会拖住别的 Default 任务（转场、各页动画）。
+        // 三次 bulk 意图查询与每个包的 label 加载，全是阻塞式的。用 `IO` 而非 `Default`：这些活
+        // 是 IO 型，而 `Default` 是按 CPU 核数限流的共享池，压满它会拖住别的 Default 任务
+        // （转场、各页动画）。
         //  图标不在这一轮：它是按行按需取的（见 [AppIcon]）。
-        XLog.w("打开应用页：取列表（显示全部应用=$withSystem，先用缓存 ${picker.cachedApps.value?.size ?: 0} 条）")
-        val fresh = withContext(Dispatchers.IO) { loadLaunchableApps(context, withSystem) }
+        XLog.w("选择应用页：取列表（先用缓存 ${cached?.size ?: 0} 条）")
+        val fresh = withContext(Dispatchers.IO) { loadLaunchableApps(context) }
         // 查失败（null）不覆盖缓存，也不把当前列表打回空态：那是「这次没查到」，
-        //  不是「没有应用可挑」。缓存里那份可能只是模式不同，留着比清空强；
+        //  不是「没有应用可挑」。缓存里那份仍然可用，留着比清空强；
         //  真要一份空清单，[loadLaunchableApps] 会正常返回 emptyList()。
         if (fresh == null) {
             XLog.w("选择应用：这次没查到（保留上一份清单 ${picker.cachedApps.value?.size ?: 0} 条）")
@@ -307,7 +339,6 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
             //  滚动回去又逐个问一遍 `PackageManager` —— 而清单没变时一个图标都不会变。
             if (fresh != picker.cachedApps.value) picker.iconCache.clear()
             picker.cachedApps.value = fresh
-            picker.cachedAppsWithSystem = withSystem
             ui.loaded = fresh
             ui.failed = false
         }
@@ -318,10 +349,12 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
 }
 
 /**
- * 已选的应用被两个落盘开关藏起来时，把选中清空。
+ * 已选的应用被这一趟的显示开关藏起来时，把选中清空。
  *
- *  开关一翻，「选中的那个」可能正好落进被藏起来的那一批：行没了，可右下角那颗 FAB 还亮着
- *  —— 按下去就把一个**已经看不见、也不该再选**的应用写进绑定。
+ *  「藏起来」有两种来源：拨开了「显示失效应用」（选中的正好点不开）、关着「显示系统应用」
+ *  （选中的是没有启动图标的那一批）；以及「显示系统应用」一翻，清单来源也变了 ——
+ *  这些情况都是「行没了、可右下角那颗 FAB 还亮着」，按下去就把一个**已经看不见**的应用写进绑定。
+ *  结束那一趟一律全列，两档都不生效。
  *
  *  注意：判据必须用 [AppTarget.sameApp]（只比用户 + 包名）：`pending` 可能是
  *  `包名/类名`（从二级页挑完退回来时就是），拿 [AppTarget.same] 去和「只有包名的应用行」比
@@ -329,18 +362,30 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
  *  再点一次应用还会因为「没有选中」而落到默认档位上（真机踩到：「每次都是主应用」）。
  *
  *  注意：判据里**不含搜索词**（[AppPickerState.filter]）：搜索是临时找东西用的，被它筛掉就清空
- *  选中反而莫名其妙 —— 换个词那条又会回来。只管两个落盘开关藏掉的那些。
- *  注意：清单还没到手时**不判**（`loaded == null`，含「显示系统应用」翻转之后的加载态）：那时
+ *  选中反而莫名其妙 —— 换个词那条又会回来。所以这里不复用 `shown`，只复用它的两条显示判据。
+ *  注意：清单还没到手时**不判**（`loaded == null`，含进页那一次重查之前的加载态）：那时
  *  手里没有清单，判了就是把「还没查完」当成「没有这个应用」。
  */
 @Composable
 private fun SettingsPage.SelectionPrune(ui: AppPickerUiState) {
-    val showBroken = picker.showUnopenable.value
-    LaunchedEffect(showBroken, ui.apps, ui.pending) {
+    //  与 `AppPickerUiState.shown` 同一口径的两条显示判据（结束那一趟一律全列）
+    val stopTrip = picker.stopApp
+    val showInvalid = stopTrip || picker.showUnopenable.value
+    val showIconless = showInvalid || picker.showSystemApps.value
+    LaunchedEffect(showInvalid, showIconless, ui.apps, ui.pending) {
         val pending = ui.pending?.target ?: return@LaunchedEffect
         if (ui.loaded == null) return@LaunchedEffect
-        if (ui.apps.none { AppTarget.sameApp(it.target, pending) && (showBroken || it.launchable) }) {
-            XLog.w("选择应用：选中的应用被这一档藏起来了（显示失效=$showBroken）⇒ 清空选中")
+        val kept =
+            ui.apps.any { app ->
+                AppTarget.sameApp(app.target, pending) &&
+                    (showIconless || app.byDefault) &&
+                    (showInvalid || app.launchable)
+            }
+        if (!kept) {
+            XLog.w(
+                "选择应用：选中的应用被这一趟的显示挡在外面" +
+                    "（显示失效=$showInvalid、显示无图标=$showIconless）⇒ 清空选中",
+            )
             //  给**条件**挑的那一趟按集合记选中（可多选）：只清 `pending` 会让集合里留着
             //  一个「看不见却还算选着」的包名 —— FAB 消失、确认时却仍把它写进去。
             //  摘掉这一个，剩下的继续亮着。
