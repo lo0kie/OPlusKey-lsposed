@@ -40,26 +40,35 @@ object ActionCatalog {
         /** 「屏幕亮度」标记格。 */
         Brightness,
 
-        /** 亮度菜单的「增加」那一行（太阳加号），与格子同一族、方向不同。 */
+        /** 亮度菜单的「增加」那一行（太阳带加号角标），与格子同一族、角标不同。 */
         BrightnessUp,
 
-        /** 亮度菜单的「减少」那一行。 */
+        /** 亮度菜单的「减少」那一行（太阳带减号角标）。 */
         BrightnessDown,
 
-        /** 「音量」标记格（与它菜单的「设置为」共用一个取值，同理只能按 glyph 分）。 */
+        /** 亮度菜单的「设置为」那一行（太阳带齿轮角标）—— 与格子那颗不是同一颗。 */
+        BrightnessSet,
+
+        /** 「音量」标记格 —— 三档各不相同，格子代表不了任何一个，只能按 glyph 分。 */
         Volume,
 
-        /** 音量菜单的「增加」那一行（声波多一道）。 */
+        /** 音量菜单的「增加」那一行（喇叭带向上箭头）。 */
         VolumeUp,
 
-        /** 音量菜单的「减少」那一行。 */
+        /** 音量菜单的「减少」那一行（喇叭带向下箭头）。 */
         VolumeDown,
+
+        /** 音量菜单的「设置为」那一行（喇叭带滑轨游标）—— 与格子那颗不是同一颗。 */
+        VolumeSet,
 
         /** 「小布 AI」入口格（`sparkle-highlight`）：四件小布能力收在这一格后面。 */
         XiaobuAi,
 
         /** 「自定义变量」入口格（`variable`）：点它当场挑一步变量操作，不是取值。 */
         Variables,
+
+        /** 「锁屏快捷」入口格（`lock`）：相机 / 计算器两档收在这一格后面。 */
+        Keyguard,
     }
 
     /**
@@ -181,6 +190,33 @@ object ActionCatalog {
     private val RECORDING = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING
 
     /**
+     * 相机 / 计算器 —— 走的是**锁屏快捷功能**那两条入口（左下 / 右下角那两颗）。
+     *
+     *  与别的 `oplus:` 档不同，这两条不是侧键场景表里的能力，而是照抄 SystemUI 那两颗快捷功能的
+     *  启动配方（动作 + extra + flag），于是锁屏下按侧键也能直接显示出来 —— 普通「打开应用」
+     *  在锁屏上会被键盘锁盖住（计算器），或者丢掉「从锁屏进来」的那一支界面（相机）。
+     *  取证与配方见 `docs/device-findings.md` 四十五。
+     *
+     *  界面里这两档收在 [KEYGUARD_TILE] 后面（点格子弹菜单）：它们都是「锁屏上直接打开某样东西」，
+     *  单独摆两格只会把「快捷功能」这一段撑成几条同类项。
+     */
+    private val CAMERA = Action.OPLUS_PREFIX + RomProfile.NAME_CAMERA
+    private val CALCULATOR = Action.OPLUS_PREFIX + RomProfile.NAME_CALCULATOR
+
+    /**
+     * 「锁屏快捷」那一格的标记（`lock:`）—— 与 [NAV_TILE] / [KEY_TILE] 同类：
+     * **永不写进配置**，点它弹 [KEYGUARD_MODES] 里那两档。
+     */
+    const val KEYGUARD_TILE = "lock:"
+
+    /** 「锁屏快捷」的二级菜单：相机 / 计算器，顺序即行序。两行都是真取值。 */
+    private val KEYGUARD_MODES: List<Spec> =
+        listOf(
+            Spec(name = Strings.CATALOG_CAMERA, token = CAMERA),
+            Spec(name = Strings.CATALOG_CALCULATOR, token = CALCULATOR),
+        )
+
+    /**
      * 灵感语音（AI 记忆的长按录音）。**只在长按格子出现**，也不能作为多条命令的一步 ——
      * 它起的是麦克风采集，短按一下、或排在命令链中间都没有语义（见 [forGesture] / [STEP_GROUPS]）。
      */
@@ -256,8 +292,8 @@ object ActionCatalog {
         listOf(
             Spec(name = Strings.CATALOG_BRIGHTNESS_ADD, token = BRIGHT_ADD_ROW, glyph = Glyph.BrightnessUp),
             Spec(name = Strings.CATALOG_BRIGHTNESS_SUB, token = BRIGHT_SUB_ROW, glyph = Glyph.BrightnessDown),
-            // 「设置为」用格子同一个字形：它说的是「把亮度条拨到某个位置」，就是这一格本身
-            Spec(name = Strings.CATALOG_BRIGHTNESS_SET, token = BRIGHT_SET_ROW, glyph = Glyph.Brightness),
+            // 「设置为」另有字形（太阳带齿轮角标）：与格子共用的话，菜单里两行看着像同一件事
+            Spec(name = Strings.CATALOG_BRIGHTNESS_SET, token = BRIGHT_SET_ROW, glyph = Glyph.BrightnessSet),
         )
 
     /**
@@ -280,8 +316,8 @@ object ActionCatalog {
         listOf(
             Spec(name = Strings.CATALOG_VOLUME_ADD, token = VOLUME_ADD_ROW, glyph = Glyph.VolumeUp),
             Spec(name = Strings.CATALOG_VOLUME_SUB, token = VOLUME_SUB_ROW, glyph = Glyph.VolumeDown),
-            // 「设置为」与格子同一颗字形：拨到某个位置，就是这一格本身
-            Spec(name = Strings.CATALOG_VOLUME_SET, token = VOLUME_SET_ROW, glyph = Glyph.Volume),
+            // 「设置为」另有字形（滑轨游标）：与格子那颗共用的话，菜单里两行看着像同一件事
+            Spec(name = Strings.CATALOG_VOLUME_SET, token = VOLUME_SET_ROW, glyph = Glyph.VolumeSet),
         )
 
     /**
@@ -342,6 +378,9 @@ object ActionCatalog {
                 listOfNotNull(
                     // 取值是 KSU 的 `service call`，模块侧换成注入 `KEYCODE_SYSRQ`
                     Spec(name = Strings.CATALOG_SCREENSHOT, token = SCREENSHOT),
+                    // 锁屏快捷：相机 / 计算器收在这一格后面（点它弹 [KEYGUARD_MODES]）。两档各是一个
+                    //  真取值，格子代表不了其中任何一个 ⇒ 与 [AI_TILE] 同类，是**标记格**，永不写进配置。
+                    Spec(name = Strings.CATALOG_KEYGUARD, token = KEYGUARD_TILE, glyph = Glyph.Keyguard),
                     // 小布 AI 入口格：识屏 / 语音 / 闪记 / 灵感语音四件都收在这一格后面
                     //  （点它弹 [AI_MODES]）。四件各是一个真取值，格子代表不了其中任何一个
                     //  ⇒ 与 [NAV_TILE] / [MINI_TILE] 同类，是**标记格**，永不写进配置。
@@ -559,6 +598,7 @@ object ActionCatalog {
             BRIGHT_TILE to BRIGHT_MODES,
             VOLUME_TILE to VOLUME_MODES,
             AI_TILE to AI_MODES,
+            KEYGUARD_TILE to KEYGUARD_MODES,
         )
 
     /**

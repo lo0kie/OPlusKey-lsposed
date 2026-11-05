@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -13,7 +12,6 @@ import com.lookie.opluskey.ui.PageTabBand
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.appVersionLabel
 import com.lookie.opluskey.ui.model.ABOUT_TITLE
 import com.lookie.opluskey.ui.model.ACTIVITY_PICKER_TITLE
 import com.lookie.opluskey.ui.model.APP_PICKER_TITLE
@@ -83,10 +81,6 @@ internal fun SettingsPage.PageTopBar(
     )
     PageHeader(
         title = pageTitle(s),
-        // 大标题**下面**那行（库原本的底线副标题槽位，自己占一行）：首页 = 模块版本。
-        // 与「更多选项」页的「版本」行**同源但不同串**：那边总是带构建时刻，这边按构建类型决定
-        // （见 appVersionLabel / appVersionText）。
-        largeTitleSubtitle = largeTitleSubtitle(s),
         // 大标题**右边**那行小标题（补丁新增的槽位，折叠后保留），内容见 [pageSubtitle]。
         subtitle = pageSubtitle(s),
         //  这一颗键 / 这一档组合停用 ⇒ 内容区整片压暗了，这行小标题也跟着**压低一档**：它是这一页上唯一还亮着的字，
@@ -178,19 +172,6 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         // 变量页标题与「快捷功能」里那一格同名：用户是从那一格进来的，两处叫法要一致
         Screen.VARIABLES -> I18n.get(Strings.TOOL_VARIABLES, "自定义变量")
-    }
-
-/**
- * 大标题**下面**那行小标题按页分派（库原本那个槽位，折叠后跟着标题缩）：
- *  只有首页占这一槽 = 模块版本 —— **只读一次**：它要读包信息，首页每重组一帧都重读一遍没有意义；
- *  其余页都不占（「条件执行」原来在这里写「键名 - 手势」，现在那一档由顶栏下的手势带说，
- *  见 [PageBottomBand]）。
- */
-@Composable
-private fun SettingsPage.largeTitleSubtitle(s: Screen): String =
-    when (s) {
-        Screen.SHORTCUTS -> remember { appVersionLabel() }
-        else -> ""
     }
 
 /**

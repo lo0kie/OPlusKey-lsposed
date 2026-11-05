@@ -104,7 +104,7 @@ com.lookie.opluskey
     ├── screen/               HomeScreen / BindingScreen / CommandScreen / AppPicker / AboutScreen
     ├── 共用件（在 `ui/` 根，原 `component/` 已并入）MenuPopup / ConfirmDialog / SliderRow / SwitchRow / IconInput /
     │                         SectionTitle / CardRow / Haptics / TextMetrics …
-    ├── model/                ActionCatalog / CommandText / ActionIcons / PageCopy
+    ├── model/                ActionCatalog / CommandText / ActionIcons / PageIcons / DrawnIcons / PageCopy
     ├── state/                PageState / UiState / ConfigActions / PageFeedback
     └── theme/                PageTheme
 ```

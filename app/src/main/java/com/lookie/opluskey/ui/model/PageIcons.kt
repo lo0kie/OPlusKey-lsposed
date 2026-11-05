@@ -1,13 +1,6 @@
 package com.lookie.opluskey.ui.model
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.PathData
-import androidx.compose.ui.graphics.vector.PathNode
-import androidx.compose.ui.unit.dp
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
@@ -32,6 +25,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
+import io.github.lyxnx.compose.ui.tablericons.outline.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber2
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber3
@@ -66,6 +60,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
+import io.github.lyxnx.compose.ui.tablericons.outline.Hash
 import io.github.lyxnx.compose.ui.tablericons.outline.History
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
@@ -98,7 +93,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Server
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
-import io.github.lyxnx.compose.ui.tablericons.outline.ShieldCode
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
@@ -116,6 +110,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.UserScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.UsersGroup
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
 import io.github.lyxnx.compose.ui.tablericons.outline.World
+import io.github.lyxnx.compose.ui.tablericons.outline.X
 import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
 
 // 页面自己的小图标 —— 从 `ActionIcons.kt` 分出来一支：那个文件已经贴着「单文件 ≤ 1000 行」
@@ -123,7 +118,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
 // 这里只放**页面骨架**用的图标（顶栏、行尾、行首、浮层菜单、状态标记），
 // **动作 → 图标**那张映射表留在 `ActionIcons.kt`。
 
-/** 页面自己的小图标（顶栏返回键 / 行尾箭头 / 「按键绑定」行首 / 浮层菜单两行）—— 同样出自 Tabler。 */
+/**
+ * 页面自己的小图标（顶栏返回键 / 行尾箭头 / 「按键绑定」行首 / 浮层菜单两行）—— 基本出自 Tabler。
+ *
+ *  图标库里没有、要靠 path 画的那几支**不在这里**：见 `DrawnIcons`。这一处只留「名字 → 图标」
+ *  的查表（外加 `accentSwatch` 那条按主题挑形状的判断）。
+ */
 internal object PageIcons {
     /** 顶栏返回键。 */
     val Back: ImageVector get() = TablerIcons.Outline.ArrowLeft
@@ -169,6 +169,14 @@ internal object PageIcons {
      *  [KeyLocked]（那是「停用这颗键」那**一行**的行首）—— 同一张菜单里同一个字形读两种意思。
      */
     val Cancel: ImageVector get() = TablerIcons.Outline.Cancel
+
+    /**
+     * 「关掉这一层」那一颗 —— 光秃秃的叉（`x`）。
+     *
+     *  与 [Cancel]（圆圈叉）分开用：圆圈叉读作「取消 / 停用」，是**动作的否定**；
+     *  全屏预览那种「收起这一屏」要的是一个不带圈的叉，读作「关掉」。
+     */
+    val Close: ImageVector get() = TablerIcons.Outline.X
 
     /** 「系统导航」格的行首 —— 指北针 + 齿轮（`navigation-cog`）：这一格后面是一组导航动作。 */
     val NavigationCog: ImageVector get() = TablerIcons.Outline.NavigationCog
@@ -235,65 +243,6 @@ internal object PageIcons {
 
     /** 浮层菜单「导出日志」—— `logs`（一叠日志行）。 */
     val MenuExport: ImageVector get() = TablerIcons.Outline.Logs
-
-    /**
-     * 首页「按键」卡里侧键那一行 —— **手绘**：手机外框 + 左边凸出来的一颗侧键。
-     *
-     *  与应用图标同一个 motif（那颗图标的字形就是「手机 + 凸起的侧键 + 面板」，见
-     *  `res/drawable/ic_module_foreground.xml`）；24 视口上只留最能读懂的两件：外框与那颗凸起，
-     *  面板与箭头在这种尺寸下会糊成一团。
-     *
-     *  笔画按 Tabler 那一档（1.9 圆头）落在 24 视口上，与相邻的 [menuKeyNumber] 那几颗数字
-     *  同一支笔；与它们必须不同字形：清单里第一行是侧键、往下是收集来的键，只靠行首这一颗分谁是谁。
-     */
-    val MenuSideKey: ImageVector by lazy {
-        //  构图：手机偏右（8.4～18.4），侧键在左边（x=5.6）与它并排 —— 整个字形左右居中在 24 格里
-        ImageVector
-            .Builder(
-                name = "MenuSideKey",
-                defaultWidth = 24.dp,
-                defaultHeight = 24.dp,
-                viewportWidth = 24f,
-                viewportHeight = 24f,
-            ).apply {
-                addPath(
-                    pathData =
-                        PathData {
-                            val left = 8.4f
-                            val top = 3f
-                            val right = left + 10f
-                            val bottom = 21f
-                            val corner = 2.6f
-                            moveTo(left + corner, top)
-                            lineTo(right - corner, top)
-                            quadTo(right, top, right, top + corner)
-                            lineTo(right, bottom - corner)
-                            quadTo(right, bottom, right - corner, bottom)
-                            lineTo(left + corner, bottom)
-                            quadTo(left, bottom, left, bottom - corner)
-                            lineTo(left, top + corner)
-                            quadTo(left, top, left + corner, top)
-                            close()
-                        },
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = SIDE_KEY_STROKE,
-                    strokeLineCap = StrokeCap.Round,
-                    strokeLineJoin = StrokeJoin.Round,
-                )
-                addPath(
-                    // 一条圆头短线：圆帽就是这颗键的两端。比手机外框那一竖的 1/6 略长一点就够 ——
-                    //  再长就像贴在边框上的第三条边，短了又只剩一个圆点。
-                    pathData =
-                        PathData {
-                            moveTo(5.6f, 9.2f)
-                            lineTo(5.6f, 11.6f)
-                        },
-                    stroke = SolidColor(Color.Black),
-                    strokeLineWidth = SIDE_KEY_BAR_STROKE,
-                    strokeLineCap = StrokeCap.Round,
-                )
-            }.build()
-    }
 
     /**
      * 清单里「第几条」—— 按它在这一列里的位置取**圈里数字**：`circle-number-1` … `circle-number-9`
@@ -379,17 +328,10 @@ internal object PageIcons {
     val DonateList: ImageVector get() = TablerIcons.Outline.Notes
 
     /**
-     * 「作者」菜单里「酷安」那一项的字形 —— `apps`（九宫格）。
-     *
-     *  Tabler 没有酷安的品牌字形，用通用的「应用集合」标记；**不要**借
-     *  `brand-google-play` / `brand-appgallery` 这类**具体品牌**（会把用户导去认另一个牌子）。
-     */
-    val BrandCoolapk: ImageVector get() = TablerIcons.Outline.Apps
-
-    /**
      * 捐赠菜单三行的品牌字形 —— 菜单里三行都是「一个去处」，只有品牌图能一眼分清。
      *
-     *  三支同族、各留一份名字（以后要分开改时不用先拆共用）。
+     *  三支同族、各留一份名字（以后要分开改时不用先拆共用）。「作者」菜单里酷安那一行的字形
+     *  **不在这张表里**：图标库没有它的品牌字形，那颗是手绘的（见 `DrawnIcons.BrandCoolapk`）。
      */
     val BrandQq: ImageVector get() = TablerIcons.Outline.BrandQq
 
@@ -404,104 +346,16 @@ internal object PageIcons {
     val ThemeMonet: ImageVector get() = TablerIcons.Outline.Palette
 
     /**
-     * 「系统配色」菜单里每一行行首那块**色块** —— **四个小方块拼成一大块**（2×2）。
-     *
-     *  形状各档共用，颜色由 `MenuEntry.Row.iconTint` 逐行给（色块本身就是这一行的身份）。
-     *  四格是**同一个色的四档透明度**（100% / 55% / 30% / 12%）：读起来是「这一套色的一个色板」，
-     *  而不是四块互不相干的色；`Icon` 上色走 `SrcIn`，透明度原样保留。
-     *  用实心方块：描边的图标上色之后只是一圈彩线，看不出是「这一套色」。
-     */
-    val PaletteSwatch: ImageVector get() = paletteSwatch()
-
-    /**
-     * 强调色那一行的色块 —— **按主题选**：
-     *  · Monet：四格色阶（[PaletteSwatch]）—— 那一档是系统按壁纸生成**一整套**色，色块要读得出
-     *    「一整套」，四档透明度正好是同一套色的色阶；
-     *  · 其余主题档：**一个整块**（[PaletteBlock]）—— 那一档只有「强调色」这一个颜色被换掉
+     * 强调色那一行的色块 —— **按主题选**（色块本身是手绘的，见 `PaletteIcons`）：
+     *  · Monet：四格色阶（[PaletteIcons.Swatch]）—— 那一档是系统按壁纸生成**一整套**色，
+     *    色块要读得出「一整套」，四档透明度正好是同一套色的色阶；
+     *  · 其余主题档：**一个整块**（[PaletteIcons.Block]）—— 那一档只有「强调色」这一个颜色被换掉
      *    （底子仍是 COUI 的），画成四格会读成「四块互不相干的色」。
      *
      *  当前生效的那一行行首**换成对勾**（见 `PageMenuPopup.kt` 的 `MenuRow`），但颜色仍是这一套的色
      *  —— 「是哪一套色」由对勾的颜色给，不靠那块形状。
      */
-    fun accentSwatch(theme: AppTheme): ImageVector = if (theme == AppTheme.MONET) PaletteSwatch else PaletteBlock
-
-    /** 单个整块（20 见方、圆角 [SWATCH_BLOCK_CORNER]）—— 强调色只有一种颜色时用它。 */
-    val PaletteBlock: ImageVector get() = paletteBlock()
-
-    private fun paletteBlock(): ImageVector {
-        val builder =
-            ImageVector.Builder(
-                name = "PaletteBlock",
-                defaultWidth = 24.dp,
-                defaultHeight = 24.dp,
-                viewportWidth = 24f,
-                viewportHeight = 24f,
-            )
-        builder.addPath(
-            //  四格那块整体也占 20 见方（2..22）：整块与它同尺寸，换档时行首不会忽大忽小
-            pathData = roundedTile(2f, 2f, side = SWATCH_SPAN, corner = SWATCH_BLOCK_CORNER),
-            fill = SolidColor(Color.Black),
-        )
-        return builder.build()
-    }
-
-    /** 色块里的四格（2×2，边长 9、间距 2，整体 20×20 居中）—— 逐格给一档透明度。 */
-    private fun paletteSwatch(): ImageVector {
-        val builder =
-            ImageVector.Builder(
-                name = "PaletteSwatch",
-                defaultWidth = 24.dp,
-                defaultHeight = 24.dp,
-                viewportWidth = 24f,
-                viewportHeight = 24f,
-            )
-        listOf(2f to 2f, 13f to 2f, 2f to 13f, 13f to 13f)
-            .forEachIndexed { i, (x, y) ->
-                builder.addPath(
-                    pathData = roundedTile(x, y),
-                    fill = SolidColor(Color.Black.copy(alpha = SWATCH_ALPHAS[i])),
-                )
-            }
-        return builder.build()
-    }
-
-    /** 四格的透明度：左上最实、右下最淡（与真机上「一个色块的四档色阶」同一个读法）。 */
-    private val SWATCH_ALPHAS = listOf(1f, 0.55f, 0.3f, 0.12f)
-
-    /** 一格圆角方块（边长 [SWATCH_TILE]、圆角 [SWATCH_CORNER]）—— 四角各画一段四分之一圆。 */
-    private fun roundedTile(
-        x: Float,
-        y: Float,
-        side: Float = SWATCH_TILE,
-        corner: Float = SWATCH_CORNER,
-    ): List<PathNode> {
-        val r = corner
-        val far = side - r
-        return PathData {
-            moveTo(x + r, y)
-            lineTo(x + far, y)
-            arcToRelative(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, r, r)
-            lineTo(x + side, y + far)
-            arcToRelative(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, -r, r)
-            lineTo(x + r, y + side)
-            arcToRelative(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, -r, -r)
-            lineTo(x, y + r)
-            arcToRelative(r, r, 0f, isMoreThanHalf = false, isPositiveArc = true, r, -r)
-            close()
-        }
-    }
-
-    /** 一格边长（四格 2×2、间距 2，整体 20 见方居中）。 */
-    private const val SWATCH_TILE = 9f
-
-    /** 四格整体的边长 —— 整块那一档与它同尺寸，换档时行首不会忽大忽小。 */
-    private const val SWATCH_SPAN = 20f
-
-    /** 圆角半径 —— 与页面里卡片 / 色块的圆角同一档观感（24 视口里 2）。 */
-    private const val SWATCH_CORNER = 2f
-
-    /** 整块的圆角：色块大了要跟着放大，否则读起来像「四个小格之一」被放大了。 */
-    private const val SWATCH_BLOCK_CORNER = 5f
+    fun accentSwatch(theme: AppTheme): ImageVector = if (theme == AppTheme.MONET) PaletteIcons.Swatch else PaletteIcons.Block
 
     /** 「外观」卡「页面缩放」—— `zoom-in`（放大镜加号：这一行是缩放）。 */
     val ZoomIn: ImageVector get() = TablerIcons.Outline.ZoomIn
@@ -580,15 +434,16 @@ internal object PageIcons {
     val CommandSingle: ImageVector get() = TablerIcons.Outline.Terminal2
 
     /**
-     * 「以 root 执行」—— `ShieldCode`（盾牌 + 代码 = 换一个身份跑命令）。
+     * 「以 root 执行」—— `Hash`（井号 = root 的提示符）。
      *
      *  两处说的是同一件事「这条命令换个身份跑」：命令设置里那张开关行的行首，以及命令列表里
      *  **以 root 执行**的单条命令卡的行首（见 `commandIcon` 的 `root`）。
      *
-     *  与 [CommandSingle] 的差别只在**形状**：一个是盾、一个是终端框，都是同一档 outline 描边。
-     *  不用钥匙：钥匙读起来是「密码 / 密钥」，与「用哪种身份执行」不是一回事。
+     *  为什么是井号：shell 里普通用户是 `$`、root 是 `#`，这颗字形就是那个提示符本身
+     *  （superuser 的经典图腾也是它），比任何「提权 / 权限」的转喻都直接。
+     *  与 [CommandSingle] 的终端框也一眼分得开：一个是**提示符**，一个是**命令框**。
      */
-    val CommandRoot: ImageVector get() = TablerIcons.Outline.ShieldCode
+    val CommandRoot: ImageVector get() = TablerIcons.Outline.Hash
 
     /**
      * 「条件执行」那条命令的类型图标 —— `arrows-split`（一路分两岔）。
@@ -791,6 +646,14 @@ internal object PageIcons {
     val TileChecked: ImageVector get() = TablerIcons.Filled.CircleCheck
 
     /**
+     * **空心**的圆圈勾（`circle-check`）—— 与 [TileChecked] 同一个字形、不填底。
+     *
+     *  给「压在整块色底上、面积很大」的那一处（首页状态卡的水印）：实心版放到 112dp 上是一整块
+     *  实心圆，读起来像一块色斑；空心版只有一圈线，压在底色上才像水印。
+     */
+    val CircleCheckOutline: ImageVector get() = TablerIcons.Outline.CircleCheck
+
+    /**
      * 「这一行绑的是某个**具体界面**」—— 行尾那枚提示（Tabler 的 `device-screen`）。
      *
      *  与 [TileChecked] 二选一：绑的是 `app:包名/类名` 时用它，一眼看出「不是打开首页，
@@ -893,17 +756,3 @@ internal object PageIcons {
      */
     val LinkTakeOver: ImageVector get() = TablerIcons.Outline.Pointer
 }
-
-/**
- * 手绘字形（[PageIcons.MenuSideKey]）的笔画宽度 —— 与 Tabler 那一档（2dp）对齐，
- * 收 0.1 是为了让圆头笔画的两端不顶到 24 格的边界。
- */
-private const val SIDE_KEY_STROKE = 1.9f
-
-/**
- * 侧键那一条的笔画宽度 —— 比外框细一档。
- *
- *  外框是**轮廓**、侧键是**贴着轮廓凸出来的那一条**；两者同宽时，那条短线读起来像外框
- *  拐过来的一段（这颗键就消失了），细一点才分得开。它不跟外框共用同一个常量。
- */
-private const val SIDE_KEY_BAR_STROKE = 1.4f

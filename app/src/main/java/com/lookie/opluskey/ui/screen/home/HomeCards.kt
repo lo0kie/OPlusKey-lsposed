@@ -4,17 +4,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.screen.variables.openVariablesForManage
-import com.lookie.opluskey.ui.setModuleEnabled
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
@@ -24,63 +21,6 @@ import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 // `HomeScreen` 原来是一个 434 行的函数：状态、链路自检、提示条、三张卡、两个确认窗、
 // 一个菜单全平铺在一起。按**一张卡**切开之后，页面只剩「铺顺序 + 那两条 effect」，
 // 卡里的人只管自己那几行。
-
-/**
- * 「按键绑定」那张卡 —— **只有一行**：模块总闸（`GlobalConfig.enabled`）。
- *
- *  「按键绑定」那个入口行**搬到了「按键功能」页**（见 `KeysScreen`）：一颗键一行，
- * 点哪颗进哪颗 —— 留着「总入口」的话，它会先带你去侧键，再让你在绑定页的菜单里找别的键。
- *
- *  这一行**不吃整页总闸**：主开关不能被自己锁死（见下）。接口 / 振动那一类全局项的入口
- *  「按键设置」在**上一张卡**（「按键操作」）里，见 `HomeKeyOpsCard`。
- */
-@Composable
-internal fun SettingsPage.HomeBindingCard(ui: HomeUiState) {
-    // 主开关写的是**模块总闸**（`GlobalConfig.enabled`），不是「侧键那颗键的开关」——
-    //  两者拆开之后，「停用这颗键」只停那一颗（⋮ 菜单里），这个开关停的是整个模块。
-    val moduleOn = configState.config.value.global.enabled
-    CardList(
-        rows =
-            listOf(
-                // 主开关是这张卡的第一行，**不能被自己锁死**：它一旦关掉，全页（含这一页其它控件、
-                // 「按键绑定」子页、顶栏菜单三项）都禁用 —— 它要是跟着一起禁用，就再也开不回来了。
-                //  所以它的 `enabled` 吃的是 [linkReady]（宿主侧在跑 **且** 注入侧报到了）**外加**
-                // `!configReadOnly`，**不吃 `pageEnabled`**（后者含它自己）。
-                //  这几个条件里都没有主开关的任何成分，所以「关掉它 ⇒ 它自己被禁用」这条死路不存在。
-                //
-                //  注意：`!configReadOnly` 这一条是被真机逼出来的：只读态下刚进页时链路还没报到
-                //  （`linkReady=false`）⇒ 主开关是灰的；等注入侧回包一到、`linkReady` 变 true，
-                //  它就**自己重新亮起来**了，用户当场拨了三下（每次都被 `write` 拒掉）。
-                //  **「拨了没反应」比「一开始就灰着」更难读**，所以这一档必须一起禁。
-                //
-                //  它写的是 [GlobalConfig.enabled] —— 执行侧的总闸（注入侧 `ConfigChannel.enabledOf`
-                //  与宿主侧各有一道 `if (!…enabled) return`），所以这一开关不只是界面置灰，是真的把功能关掉。
-                CardRow.Switch(
-                    title = I18n.get(Strings.SETTING_ENABLE_BINDING, "启用按键绑定"),
-                    // 真假各一句，都说「现在是什么状态」（口径见 `SwitchRow` 的说明）
-                    summaryOn = I18n.get(Strings.HOME_SWITCH_DESC_ON, "按键由模块接管，执行绑定动作"),
-                    summaryOff = I18n.get(Strings.HOME_SWITCH_DESC_OFF, "按键交还系统，不执行任何绑定"),
-                    // 拨到右的开关 = 「这一行是总开关」。
-                    icon = PageIcons.MasterSwitch,
-                    checked = moduleOn,
-                    enabled = linkReady && !configState.readOnly,
-                ) { on ->
-                    // 打开之前先要一次确认：没确认过就只弹窗、**不写盘**。
-                    //  顺序不能反过来 —— 先写后弹等于「先启用了再问你同不同意」。
-                    //  关闭不需要确认，直接写。
-                    if (on && !configState.config.value.disclaimerAccepted) {
-                        XLog.w("免责声明：还没确认过，弹窗（总闸先不打开）")
-                        ui.disclaimerPending = true
-                    } else {
-                        setModuleEnabled(on)
-                    }
-                },
-                //  这张卡**只有主开关这一行**：接口选择 / 振动 / 执行提示都是**全局**项、与「这颗键绑了
-                //  什么」无关，它们的入口「按键设置」在上一张卡（「按键操作」）里。
-                //  「响铃状态」那两档（`setRingerModeInternal`）已删，理由见「按键绑定」小标题上方那段注释。
-            ),
-    )
-}
 
 /**
  * 「其他」那张卡 —— 自定义命令 / 自定义变量 / 更多选项 / 捐赠打赏。
@@ -137,7 +77,7 @@ internal fun SettingsPage.HomeOtherCard(
                     // 副标题只报这一页有什么，不交代机制（「一起改短」）
                     summary = I18n.get(Strings.HOME_MORE_OPTIONS_SUMMARY, "运行状态与配置备份"),
                     icon = PageIcons.MoreOptions,
-                    //  行尾**不挂红点**：有新版这件事由首页顶上那条提示说（见 `HomeUpdateTip`），
+                    //  行尾**不挂红点**：有新版这件事由首页顶上那块「模块状态」说（见 `HomeActivationCard`），
                     //  同一条信息在一页里出现两处，读起来像两件事
                     arrow = true,
                     onClick = { navTo(Screen.ABOUT) },
@@ -169,5 +109,9 @@ internal fun SettingsPage.HomeOtherCard(
  */
 private fun SettingsPage.openCommandsPage() {
     commandDraft.draft.reset()
+    //  首页这个入口落**「命令列表」**那一页（用户口径）：从首页来多半是「看看都有哪些命令 /
+    //  改一条已经存在的」，而不是「现在就要新建一条」—— 新建在那一页右下角那颗 FAB 上，
+    //  点一下就进表单。与「按键绑定」页那条「已保存的命令」入口同一个落点（见 `SavedCommandsTitle`）。
+    commandDraft.openListPage = true
     navTo(Screen.COMMANDS)
 }

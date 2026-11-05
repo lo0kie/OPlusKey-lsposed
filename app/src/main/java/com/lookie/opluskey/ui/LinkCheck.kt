@@ -405,6 +405,50 @@ internal fun SettingsPage.noticeReason(): LinkNotice? {
 }
 
 /**
+ * 「有一件事需要你处理」那一句 —— **系统侧旧版与自检异常共用这一格**，首页状态卡的下半段读它。
+ *
+ *  两者本来就是同一件事的两种说法（跑着旧版必然让「设置生效」那一段红），各说一条会把同一件事
+ *  说两遍，而且上下两句还互相打架（一句说「异常」，一句说「重启就好」）。所以只在**同一个**
+ *  位置说一句，按这个顺序取：
+ *
+ *   1. **真故障** ⇒ 说哪一段异常（与「运行状态」那一页的汇总行**同一个格式串**）。
+ *      它排在「跑着旧版」前面：那条影子会把别的故障全盖住，用户就永远看不到真正坏在哪一环；
+ *   2. 只剩旧版影子时 —— 系统侧 ⇒ 说重启手机（[SYSTEM_STALE_HINT]）；
+ *   3. 宿主侧 ⇒ 说重启服务（[HOST_STALE_HINT]，比「异常」具体，且不用重启手机）。
+ *
+ *  与 [blockedReason] / [noticeReason] 同一族、同一个判据源（[linkFacts] + [linkChecks]）——
+ *  换一处展示（提示条 → 状态卡）不该把它搬成第二份。
+ *
+ * @return `null` = 没有要提的事
+ */
+@Composable
+internal fun SettingsPage.statusTipText(): String? {
+    val f = linkFacts
+    // **自检没跑完就不下结论**：这一趟的数据还没齐（注入侧的回包可能刚到、也可能还没到），
+    //  此时说「系统侧还是旧版」会跟同一块里那句「正在检查模块…」互相打架 ——
+    //  一句话说「它跑着旧包」、另一句又说「还在问」，读起来就是界面在乱猜。
+    //  等这一趟问完（[LinkFacts.injectChecked]）再判，结论与数据同源。
+    if (!f.injectChecked) return null
+    val blocking = linkChecks().filter { !it.ok && it.blocking }
+    //  **真故障排在「跑着旧版」前面**：换包没重启会让「设置生效」必然红，可它只是那件事的影子
+    //  （`LinkCheck.staleOnly`）—— 拿影子去压住别的故障，「哪一环真坏了」就永远看不到。
+    //  只剩影子时，才说「重启手机」那句（比「设置生效异常」有用得多）。
+    val real = blocking.firstOrNull { !it.staleOnly }
+    return when {
+        real != null -> I18n.format(Strings.LINK_CHECK_BROKEN_FORMAT, real.name)
+
+        f.restartNeeded -> SYSTEM_STALE_HINT
+
+        f.hostStale -> HOST_STALE_HINT
+
+        //  只剩那几条「旧版影子」：仍然说异常，别让整体红了、首页却说「一切正常」
+        blocking.isNotEmpty() -> I18n.format(Strings.LINK_CHECK_BROKEN_FORMAT, blocking.first().name)
+
+        else -> null
+    }
+}
+
+/**
  * 「**这一下**点不动」时该说什么 —— 先说**眼前这个控件**的原因，最后才轮到整页那条。
  *
  * ## 为什么不是「整页总闸优先」

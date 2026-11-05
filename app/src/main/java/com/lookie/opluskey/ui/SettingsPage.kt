@@ -21,6 +21,7 @@ import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.BranchDraftState
 import com.lookie.opluskey.ui.state.CommandDraftState
+import com.lookie.opluskey.ui.state.CommandListEditState
 import com.lookie.opluskey.ui.state.ConfigState
 import com.lookie.opluskey.ui.state.HintCenter
 import com.lookie.opluskey.ui.state.HostLinkState
@@ -182,6 +183,8 @@ internal class SettingsPage(
         //  提交时又被确认窗拦住，停在滑出去的位置回不来（用户口径「预测手势停在一半」）。
         //  与「草稿脏」那一档同一条账，只是它走「不给动」而不是「给动但不弹」。
         if (inKeysEdit()) return false
+        //  「命令列表」的编辑态同理：那一退是「退出编辑」，人留在这页
+        if (inCommandsEdit()) return false
         return navStack.size > 1 &&
             overlays.openCount.intValue == 0 &&
             !hasUnsavedDraft(screen)
@@ -189,6 +192,13 @@ internal class SettingsPage(
 
     /** 「按键功能」页现在是不是编辑态 —— [goBack] 与 [wouldConsumeBack] 共用这一条判据。 */
     private fun inKeysEdit(): Boolean = screen == Screen.KEYS && KeysEditState.editing
+
+    /**
+     * 「命令列表」那一页现在是不是编辑态 —— [goBack] 与 [wouldConsumeBack] 共用这一条判据。
+     *
+     *  与 [inKeysEdit] 同一档：那一页的三个页签共用一颗「编辑」按钮，编辑态只属于「命令列表」。
+     */
+    private fun inCommandsEdit(): Boolean = screen == Screen.COMMANDS && CommandListEditState.editing
 
     /** 此刻有浮窗开着吗 —— 开着时系统返回**整个吞掉**（见 `BackInterception.handleDiscreteBack`）。 */
     internal fun hasOpenOverlays(): Boolean = overlays.hasOpen()
@@ -357,18 +367,9 @@ internal class SettingsPage(
         //  「按键功能」页的编辑态：这一退是**退出编辑态**，人留在这页（用户口径）——
         //  编辑态只是这一页的一种用法，退它不该把人一起带走；再退一次才是离开这一页。
         //  勾了东西才问（勾选会没了）；一项都没勾时直接退，什么都不丢。
-        if (inKeysEdit()) {
-            if (KeysEditState.count == 0) {
-                XLog.w("退出按键页编辑态：没有勾选，直接退出")
-                KeysEditState.clear()
-                return true
-            }
-            if (!overlays.confirmLeaveEdit) {
-                XLog.w("退出按键页编辑态：先问一句（已勾 ${KeysEditState.count} 项）")
-                overlays.confirmLeaveEdit = true
-            }
-            return true
-        }
+        if (inKeysEdit()) return consumeKeysEditBack()
+        // 「命令列表」的编辑态：同一套账（见 [consumeCommandsEditBack]）。
+        if (inCommandsEdit()) return consumeCommandsEditBack()
         // 「打开应用」页那一趟的收尾（「为谁挑」、搜索词、临时的小窗口开关）**不在这一处**：
         //  统一归 [discardPageStateOf] —— 它挂在「真的离栈」那一刻，一次返回退两层（多级 pop）
         //  与从设置重进模块清栈也走同一条，不会漏。
@@ -387,6 +388,42 @@ internal class SettingsPage(
             return true
         }
         return popBackStack()
+    }
+
+    /**
+     * 「按键功能」页的编辑态里按返回：一项都没勾就直接退出，勾了就先把那一问支起来。
+     *
+     *  两条路都**返回 true**（这次返回已被消费，人留在这一页）—— 从 [goBack] 里抠出来，
+     *  只为把那个函数的 return 条数留在 detekt 的上限内。
+     */
+    private fun consumeKeysEditBack(): Boolean {
+        if (KeysEditState.count == 0) {
+            XLog.w("退出按键页编辑态：没有勾选，直接退出")
+            KeysEditState.clear()
+            return true
+        }
+        if (!overlays.confirmLeaveEdit) {
+            XLog.w("退出按键页编辑态：先问一句（已勾 ${KeysEditState.count} 项）")
+            overlays.confirmLeaveEdit = true
+        }
+        return true
+    }
+
+    /**
+     * 「命令列表」编辑态里按返回 —— 与 [consumeKeysEditBack] 完全同一套账：
+     * 没勾就退出编辑态，勾了先问一句，两条路都消费掉这次返回。
+     */
+    private fun consumeCommandsEditBack(): Boolean {
+        if (CommandListEditState.count == 0) {
+            XLog.w("退出命令列表编辑态：没有勾选，直接退出")
+            CommandListEditState.toggleEditing()
+            return true
+        }
+        if (!CommandListEditState.confirmLeaveEdit) {
+            XLog.w("退出命令列表编辑态：先问一句（已勾 ${CommandListEditState.count} 条）")
+            CommandListEditState.confirmLeaveEdit = true
+        }
+        return true
     }
 
     /**

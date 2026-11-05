@@ -38,6 +38,13 @@ internal class CommandUiState {
     var deleting by mutableStateOf<Command?>(null)
 
     /**
+     * 命令预览窗口：非空 = 开着（看的是这一条）。
+     *
+     *  与菜单**互斥**：开预览之前先把菜单收掉（见 `CommandTile`）。
+     */
+    var detail by mutableStateOf<Command?>(null)
+
+    /**
      * 待确认的「填前缀」：非空 = 弹着确认窗。
      *
      *  点「支持的命令格式」那一行是把前缀**整段替换**进输入框（不是插入），输入框里已经有内容时

@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -50,6 +51,8 @@ import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.TopAppBarTrailingSubtitleAlignment
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.utils.TiltFeedback
+import io.github.suqi8.coui.kmp.utils.pressable
 
 /**
  * 「本页顶栏实测高度」的通道 —— **每页一份**，由 `PageEntry` 提供。
@@ -150,14 +153,19 @@ internal fun SettingsPage.collapsedHeaderHeight(scrollBehavior: ScrollBehavior):
  *
  *  注：参数**不逐条写 KDoc** —— detekt 的基线 ID 会把参数上的注释一起抄进去，
  *  那段文字一改基线就得跟着改。要解释的写在这里。
+ *
+ *  `@Suppress("LongParameterList")`：这些参数就是**顶栏那几个槽位本身**（标题 / 副标题 /
+ *  行尾图标 / 动作 / 固定带），拆成一个 spec 对象只是把它们挪个地方、再让调用点多套一层壳。
+ *  这一条原先压在 detekt 基线里（按签名记的条目），动一个参数就得同步改基线 —— 就地改成注解
+ *  之后那一条基线随之删掉（条目数只减不增）。
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun SettingsPage.PageHeader(
     title: String,
     subtitle: String = "",
     subtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
     trailingSubtitleIcon: ImageVector? = null,
-    largeTitleSubtitle: String = "",
     scrollBehavior: ScrollBehavior,
     state: HazeState,
     actions: @Composable RowScope.() -> Unit = {},
@@ -172,7 +180,6 @@ internal fun SettingsPage.PageHeader(
     // 磨砂规格（含模糊半径）统一由 [frosted] 挂，见 [HAZE_FROSTED_STYLE]。
     TopAppBar(
         title = title,
-        subtitle = largeTitleSubtitle,
         trailingSubtitle = subtitle,
         trailingSubtitleColor = subtitleColor,
         trailingSubtitleIcon = trailingSubtitleIcon,
@@ -317,11 +324,19 @@ internal fun HeaderIconButton(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "HeaderButtonBorder",
     )
+    //  按下去跟着触点轻微倾斜 —— 与首页那张「模块状态」卡同一档手感（库的 `TiltFeedback`）：
+    //  卡片那边是 `pressFeedbackType = Tilt` 挂的，圆键这颗库没给这个参数，所以自己挂一层。
+    //  `pressable` 只做「按下 / 抬起」与那层指示，**不带 onClick、也不消费事件** ——
+    //  点击仍旧交给里面那颗库按钮（含它那条「禁用时给提示」的路）。
+    //  `delay = null` 与卡片一致：按下即倾，不等那一档长按判定。
+    val tiltSource = remember { MutableInteractionSource() }
     //  **圆底与描边必须用 `CircleShape` 自己画**：库的 `IconButton` 走的是 squircle（超椭圆），
     //  圆角取边长一半时也只是「很圆的方」，四角仍比正圆鼓一点（用户口径「感觉这个按钮不是圆的」）。
     //  所以库那层底色置透明，圆底 / 描边 / 裁剪全在这里做。
     Box(
         modifier
+            //  挂在底色**外面**：倾斜的是整颗圆（圆底 + 描边 + 字形），不是只有里面那支字
+            .pressable(interactionSource = tiltSource, indication = TiltFeedback(), delay = null)
             .background(color = fill, shape = CircleShape)
             .border(width = 1.dp, color = border, shape = CircleShape)
             //  最后这一档裁子级：按压涟漪是画在按钮节点上的，不裁就会从圆的四角溢出去

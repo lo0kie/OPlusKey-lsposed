@@ -7,6 +7,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,12 +21,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -35,7 +41,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.Feedback
-import com.lookie.opluskey.ui.MoreButton
+import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
@@ -54,14 +60,18 @@ import com.lookie.opluskey.ui.model.gridColumnCount
 import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.model.serialSummarySteps
 import com.lookie.opluskey.ui.model.stepIcon
+import com.lookie.opluskey.ui.state.CommandListEditState
 import com.lookie.opluskey.ui.state.CommandUiState
 import com.lookie.opluskey.ui.state.TileMenu
 import com.lookie.opluskey.ui.tinted
+import io.github.lyxnx.compose.ui.tablericons.TablerIcons
+import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardColors
 import io.github.suqi8.coui.kmp.basic.CardDefaults
+import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
@@ -213,37 +223,45 @@ private fun SettingsPage.CommandTile(
             colors = commandTileColors(),
             pressFeedbackType = PressFeedbackType.None,
             showIndication = true,
+            //  轻点这一张 = **看预览**（从这一片长出来的那一层）。改内容走顶行那颗铅笔 ——
+            //  看是「看一眼就走」，改是「进表单」；以前轻点直接跳表单，想看一眼全文就得进编辑态。
+            //  列表编辑态里轻点 = **勾选**（与「按键功能」页同一套）。
             onClick = {
                 tick()
-                // 草稿里有没保存的改动时先问一句（见 [loadDraft]）
-                loadDraft(cmd)
-                // 灌完草稿要跳回**这一条所属那一类**的表单页（见调用方）——
-                //  停在列表页等于「点开了一条，眼前什么都没变」。
-                onOpen(cmd)
+                if (CommandListEditState.editing) {
+                    CommandListEditState.toggle(cmd.name)
+                } else {
+                    XLog.w("命令预览：${cmd.name}（轻点卡片）")
+                    ui.detail = cmd
+                }
             },
         ) {
-            CommandTileBody(cmd, dotsAnchor) {
-                tick()
-                XLog.w("已保存命令菜单：${cmd.name}（右上角那颗「更多」）")
-                ui.menu = TileMenu(cmd.name, dotsAnchor)
-            }
-        }
-        // 浮层挂在零宽内层盒子里（落点由触点决定，这里只是宿主）。
-        Box(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(0.dp)) {
-            CommandMenuPopup(
+            CommandTileBody(
                 cmd = cmd,
-                show = ui.menu?.name == cmd.name,
-                //  开着的时候这里拿到的必然是**这一次**的锚点（名字对得上才画）
-                preciseClick = ui.menu?.anchor ?: tilePreciseClick,
-                // 与「轻点这一张」同一个去处：灌进表单后滚回顶部。
-                onEdited = { onOpen(cmd) },
-                onDelete = {
-                    ui.menu = null
-                    ui.deleting = cmd
+                menuAnchor = dotsAnchor,
+                onMenu = {
+                    tick()
+                    XLog.w("已保存命令菜单：${cmd.name}（右上角那颗「更多」）")
+                    ui.menu = TileMenu(cmd.name, dotsAnchor)
                 },
-                onDismiss = { ui.menu = null },
+                onEdit = {
+                    tick()
+                    // 草稿里有没保存的改动时先问一句（见 [loadDraft]）
+                    loadDraft(cmd)
+                    // 灌完草稿要跳回**这一条所属那一类**的表单页（见调用方）——
+                    //  停在列表页等于「点开了一条，眼前什么都没变」。
+                    onOpen(cmd)
+                },
             )
         }
+        // 浮层挂在零宽内层盒子里（落点由触点决定，这里只是宿主）。
+        CommandTileMenu(
+            scope = this,
+            cmd = cmd,
+            ui = ui,
+            tileAnchor = tilePreciseClick,
+            onOpen = onOpen,
+        )
     }
 }
 
@@ -259,35 +277,66 @@ private fun commandTileColors(): CardColors =
         pressedColor = COUITheme.colorScheme.surfaceContainerHigh,
     )
 
-/** 卡片内容：顶行（图标 + 标题或间隔 + 那颗「更多」）、多条命令另起一行的标题、以及摘要。 */
+/** 卡片内容：顶行（图标 + 两颗动作）、另起一行的名字、以及摘要。 */
 @Composable
 private fun SettingsPage.CommandTileBody(
     cmd: Command,
     /** 右上角那颗「更多」的触点锚点（菜单弹在它上面）。 */
     menuAnchor: PreciseClickState,
-    /** 点那颗「更多」：开这一张卡的菜单（测试 / 编辑 / 删除）。 */
+    /** 点那颗「更多」：开这一张卡的菜单（预览 / 测试 / 编辑 / 删除）。 */
     onMenu: () -> Unit,
+    /** 点那颗铅笔：进编辑态（灌草稿 + 跳表单页，由调用方做）。 */
+    onEdit: () -> Unit,
 ) {
     // 顶部对齐：顶行定高，同一行的标题永远是一条线；高度包住内容，下限由布局给。
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
-        // 顶行：左边类型图标，右边测试按钮；单条命令的标题也塞进这一行。
+        // 顶行：左边类型图标，右边那颗「更多」—— **名字不在这行**（见下）。
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CommandTileHeadline(cmd, Modifier.weight(1f))
-            // 右上角那颗「横向三个点」—— 测试 / 编辑 / 删除都收进它的菜单
-            //  （原先这里是单独一颗「测试」）。它自己吃掉这一下，不会触发整张卡的 `onClick`。
-            //  **flushEnd**：字形贴住这一格的右边线，右边线才与卡片左侧那颗类型图标对称
-            //  （卡片内容有 16dp 内边距，居中的话它会比左边多缩进半个点击区）。
-            //  挪的是整个点击区、不是格子里的字形 —— 详情见 `MoreButton`（上一版挪字形，
-            //  按下去的底色偏在字左边，看着像「波纹歪」）。
-            MoreButton(onClick = onMenu, anchor = menuAnchor, flushEnd = true)
+            CommandTileIcon(cmd)
+            //  右边两颗：铅笔（进编辑态）在前、「更多」在后 —— 铅笔是**改**，菜单里还收着
+            //  预览 / 测试 / 删除，越靠右越是「更多选择」的那一档。
+            //  两颗都是 24dp 的格子（20dp 字形 + 2dp 内边距）、格间 2dp：**间距由排版给**，
+            //  不是给某颗加偏移量 —— 偏移量只挪绘制，格子还占着原来的宽度，间距照样那么宽。
+            //
+            //  列表编辑态（见 `CommandListEditState`）里这一格换成**多选框**：与「按键功能」页
+            //  那一套一致 —— 勾选框自己不挂点击，整张卡都是它的点击区。
+            if (CommandListEditState.editing) {
+                Checkbox(
+                    state = if (cmd.name in CommandListEditState.picked) ToggleableState.On else ToggleableState.Off,
+                    onClick = null,
+                )
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(TILE_ACTION_GAP),
+                ) {
+                    TileActionButton(
+                        icon = PageIcons.CommandEdit,
+                        label = I18n.get(Strings.COMMON_EDIT, "编辑"),
+                        onClick = onEdit,
+                    )
+                    //  这颗就是原来右上角那颗「更多」（测试 / 编辑 / 删除都收进它的菜单）——
+                    //  换成本地这版只为一件事：`MoreButton` 那格是 40dp 宽、字形居中，与左边那颗
+                    //  之间必然空出 20dp 以上。菜单的落点仍然记在这颗字上（`menuAnchor`）。
+                    TileActionButton(
+                        icon = TablerIcons.Outline.Dots,
+                        label = I18n.get(Strings.COMMON_MORE, "更多"),
+                        onClick = onMenu,
+                        anchor = menuAnchor,
+                    )
+                }
+            }
         }
-        // 多条命令：**名字在图标那一行**，步骤间隔挪到下面另起一行（用户口径「名称和 delay
-        //  换个位置」—— 名字是这张卡的主键，跟类型图标同一行才读得出「这是哪一条」；
-        //  间隔是执行参数，放在名字下面当小字）
+        //  名字**另起一行**、独占整张卡的宽度：原先挤在图标那一行，格子一窄就只剩前几个字
+        //  （真机口径「命令名另起一行」）。它是这张卡的主键，值得自己一行。
+        Spacer(Modifier.height(TILE_TITLE_GAP))
+        CommandTileName(cmd)
+        // 多条命令：步骤间隔是执行参数，放在名字下面当小字
+        //  （用户口径「名称和 delay 换个位置」）。
         if (cmd.kind == CommandKind.SERIAL) {
             Spacer(Modifier.height(TILE_TITLE_GAP))
             //  行首那枚小图标与下面摘要行同一支笔、同一档尺寸（[SUMMARY_REF_ICON] / [SUMMARY_REF_GAP]）——
@@ -321,49 +370,107 @@ private fun SettingsPage.CommandTileBody(
 }
 
 /**
- * 卡片顶行左段：类型图标 + **标题**（单条 / 多条都一样）。
+ * 卡片顶行那颗**小动作键**（放大镜）—— 尺寸与右上角那颗「更多」同一格，只是字形不同。
  *
- *  多条命令的「步骤间隔」不在这一行 —— 它是执行参数，挪到名字下面那一行小字里
- *  （见卡片正文：用户口径「名称和 delay 换个位置」）。
- *
- *  挂在 [Modifier.weight] 上（调用点传进来）而不是自己声明 `RowScope`：
- *  同一个函数还要读 [SettingsPage] 的东西时，Kotlin 只允许一个显式接收者。
+ *  为什么不用库的 `IconButton`：那一档自带一圈自己的内边距与最小触达尺寸（48dp），
+ *  摆在 20dp 高的顶行里会把整行撑高，卡片跟着长一截。这里要的是「与「更多」并排、
+ *  高度一致」的一格，所以照 `MoreButton` 那套尺寸与手感来。
  */
 @Composable
-private fun CommandTileHeadline(
-    cmd: Command,
-    modifier: Modifier,
+private fun TileActionButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    /** 浮层菜单的落点锚（只有「更多」那颗要：菜单弹在它上面）。 */
+    anchor: PreciseClickState? = null,
 ) {
-    //  名字比页面里的行标题小一档（`headline1` 16sp → `body2` 14sp）：卡片本身窄，名字再和
-    //  行标题一样大，两行名字就把格子塞满了。字号只在这一处定，光学修正跟着同一个 style 走。
-    val titleStyle = COUITheme.textStyles.body2
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        //  「随机图标配色」开着时，类型图标用**它自己那一色**；关着时退回卡片的内容色
-        //  （`commandTileColors()` 里的 `onSurfaceContainer`，与摘要那一档同源）。
-        //  单条命令按**自己的 root 档**取字形（su / 非 su 两颗字，见 `commandIcon`）：
-        //  列表里要能一眼看出哪几条会提权。
-        val tileIcon = commandIcon(cmd.kind, cmd.steps.size, cmd.root)
-        //  「随机图标配色」那一档同样要过渡：一次拨开关，整屏卡片的类型图标一起换色 ——
-        //  硬切在这里是一整片跳，比单颗图标明显得多。关着时退回卡片的内容色（见 `commandTileColors`）。
-        val iconTint by animateColorAsState(
-            targetValue = tileIcon.tinted() ?: COUITheme.colorScheme.onSurfaceContainer,
-            animationSpec = COLOR_TRANSITION_SPEC,
-            label = "CommandTileIcon",
-        )
-        Icon(tileIcon, null, Modifier.size(ROW_ICON_SIZE), tint = iconTint)
-        Spacer(Modifier.width(TILE_TITLE_GAP))
-        // 两种命令的标题都**跟图标同一行**：名字是这张卡的主键，一眼要能认出来。
-        //  多条命令独有那位「步骤间隔」挪到名字下面那行小字里去（见卡片正文那一段）。
-        Text(
-            text = cmd.name,
-            style = titleStyle,
-            fontWeight = FontWeight.Medium,
-            maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
-            overflow = TextOverflow.Ellipsis,
-            // 与行首那枚类型图标同一行、竖居中：补一档光学修正（见 `opticalCenter`）
-            modifier = Modifier.opticalCenter(titleStyle),
+    //  振动走页面那条通用通道（[LocalTick]）—— 与卡片行、行尾动作同一份判据
+    val tick = LocalTick.current
+    Box(
+        modifier =
+            Modifier
+                .size(TILE_ACTION_BOX)
+                .then(if (anchor != null) Modifier.preciseClickAnchor(anchor) else Modifier)
+                .clip(RoundedCornerShape(TILE_ACTION_CORNER))
+                .clickable {
+                    tick()
+                    onClick()
+                },
+        //  字形**恒居中**：状态层与字形同心，按下去不会偏一半
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.size(TILE_ACTION_GLYPH),
         )
     }
+}
+
+/**
+ * 顶行那两颗小动作键的格子边长 —— 24dp：20dp 字形 + 四周 2dp。
+ *
+ *  这一格**就是排版用的宽度**（不像 `MoreButton` 那样留 40dp 宽、把字形摆在正中再靠偏移量
+ *  去挪）：两颗格子紧挨着排，间距由 `Row` 的 [TILE_ACTION_GAP] 给 —— 加偏移量只挪绘制，
+ *  格子仍占着原来的宽度，两颗字看着照样远（真机口径「还是太远没有变化」）。
+ */
+private val TILE_ACTION_BOX = 24.dp
+
+/** 格子里那颗字形的边长 —— 与「更多」原来那颗同档（20dp）。 */
+private val TILE_ACTION_GLYPH = 20.dp
+
+/**
+ * 两颗动作键之间的间距 —— 加上格子各 2dp 的内边距，两颗字之间是 12dp。
+ *
+ *  2dp（字之间 6dp）时两颗字挤在一起，读起来像一个控件的两个部分（真机口径「两个按钮太近了」）；
+ *  12dp 与卡片行里「图标 → 标题」那一档（[TILE_TITLE_GAP] 8dp）同一个量级，仍是两颗独立的键。
+ */
+private val TILE_ACTION_GAP = 8.dp
+
+/** 点击区圆角 —— 与「更多」、小标题同一档。 */
+private val TILE_ACTION_CORNER = 8.dp
+
+/**
+ * 卡片顶行左段：只有**类型图标**（名字在下一行，见 [CommandTileName]）。
+ *
+ *  「随机图标配色」开着时，类型图标用**它自己那一色**；关着时退回卡片的内容色
+ *  （`commandTileColors()` 里的 `onSurfaceContainer`，与摘要那一档同源）。
+ *  单条命令按**自己的 root 档**取字形（su / 非 su 两颗字，见 `commandIcon`）：
+ *  列表里要能一眼看出哪几条会提权。
+ */
+@Composable
+private fun CommandTileIcon(cmd: Command) {
+    val tileIcon = commandIcon(cmd.kind, cmd.steps.size, cmd.root)
+    //  「随机图标配色」那一档同样要过渡：一次拨开关，整屏卡片的类型图标一起换色 ——
+    //  硬切在这里是一整片跳，比单颗图标明显得多。关着时退回卡片的内容色（见 `commandTileColors`）。
+    val iconTint by animateColorAsState(
+        targetValue = tileIcon.tinted() ?: COUITheme.colorScheme.onSurfaceContainer,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "CommandTileIcon",
+    )
+    Icon(tileIcon, null, Modifier.size(ROW_ICON_SIZE), tint = iconTint)
+}
+
+/**
+ * 卡片上的**命令名** —— 独占一行，宽度吃满整张卡。
+ *
+ *  名字比页面里的行标题小一档（`headline1` 16sp → `body2` 14sp）：卡片本身窄，名字再和
+ *  行标题一样大，两行名字就把格子塞满了。字号只在这一处定，光学修正跟着同一个 style 走。
+ */
+@Composable
+private fun CommandTileName(cmd: Command) {
+    val titleStyle = COUITheme.textStyles.body2
+    Text(
+        text = cmd.name,
+        style = titleStyle,
+        fontWeight = FontWeight.Medium,
+        //  单条那一档的格子是正方形（见布局里的 `maxHeightRatio`），名字再折一行会顶到摘要上；
+        //  多条卡本来就按内容长高，给两行。
+        maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.opticalCenter(titleStyle),
+    )
 }
 
 /** 摘要：一行一条全部列出（卡会跟着长高）；每行截断交给 `Text`，这层不估宽度。 */

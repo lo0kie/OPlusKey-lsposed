@@ -33,7 +33,7 @@ internal fun SettingsPage.VersionMenu(ui: AboutUiState) {
                             I18n.get(Strings.UPDATE_CHECK_ROW, "检查更新")
                         },
                     icon = if (found) PageIcons.Download else PageIcons.ModuleRestart,
-                    //  行尾不挂红点：有新版这件事首页顶上那条提示已经说了（见 `HomeUpdateTip`），
+                    //  行尾不挂红点：有新版这件事首页顶上那块「模块状态」已经说了（见 `HomeActivationCard`），
                     //  这条只负责改口与换图标 —— 点进去照样会弹窗
                 ) {
                     ui.showVersionMenu = false

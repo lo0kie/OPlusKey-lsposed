@@ -245,12 +245,15 @@ internal class AppLauncher(
             return
         }
         val intent = buildFeatureIntent(target)
-        intent.putExtrasOf(target.extras, feature)
+        intent.putExtrasOf(target.extras + lockedExtras(target, ctx), feature)
 
         val short = "${target.owner}/${target.service.substringAfterLast('.')}"
         // 界面型目标：非 Activity 的 Context 起界面必须带 NEW_TASK，否则 ActivityNotFoundException
         if (target.activity) {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            //  登记了「先点亮屏幕」的那两档（锁屏相机 / 计算器）：灭着就先点一下，否则界面在幕后起来
+            if (target.wakeScreen) wakeForFeature(ctx, feature)
+            //  后面那几位由落点表自己声明（见 `RomProfile.BuiltIn.flags`），这里不按功能名分派
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or target.flags)
             try {
                 ctx.startActivity(intent)
                 XLog.w("oplus:$feature → startActivity($short)")
@@ -470,6 +473,57 @@ private fun buildFeatureIntent(target: RomProfile.BuiltIn): Intent =
         Intent(target.action).setPackage(target.owner)
     } else {
         Intent().setComponent(ComponentName(target.owner, target.service))
+    }
+
+/**
+ * 起界面之前先把屏幕点亮（[RomProfile.BuiltIn.wakeScreen] 那一档）。
+ *
+ *  侧键在**熄屏**时也照常被拦住（见 `docs/device-findings.md` 三十九），而 `startActivity`
+ *  本身不会点亮屏幕 —— 不补这一下，相机 / 计算器在幕后起来了，用户看到的仍是黑屏。
+ *  已经亮着就什么都不做（不亮屏比亮屏更不该发生的是「多改了一次屏幕状态」）。
+ *
+ *  点不亮**不拦着**起界面：那是两件事，界面在幕后起来总比连起都不起好，失败只落一行日志。
+ */
+private fun wakeForFeature(
+    ctx: Context,
+    feature: String,
+) {
+    try {
+        val power = ctx.getSystemService(android.os.PowerManager::class.java)
+        if (power == null || power.isInteractive) return
+        requestWake(power, "opluskey:$feature")
+        XLog.w("oplus:$feature → 熄屏，先点亮屏幕")
+    } catch (e: Throwable) {
+        XLog.w("oplus:$feature 点亮屏幕失败（界面仍会起来，但可能看不见）：${e.javaClass.simpleName}: ${e.message}")
+    }
+}
+
+/**
+ * 这一档**只在锁屏上带**的载荷（[RomProfile.BuiltIn.keyguardExtras]）—— 不在安全锁屏上就是空的。
+ *
+ *  为什么要现读状态而不是一律带上：相机那两个来源标记说的是「这一屏是从锁屏进来的」，它据此收起
+ *  解锁后才该有的那几样。解锁状态下按同一颗键就是一次普通启动，不能这么说。
+ */
+private fun lockedExtras(
+    target: RomProfile.BuiltIn,
+    ctx: Context,
+): Map<String, Any> = if (target.keyguardExtras.isEmpty() || !onSecureKeyguard(ctx)) emptyMap() else target.keyguardExtras
+
+/**
+ * 此刻是不是停在**安全锁屏**上（与 SystemUI 发锁屏来源标记的条件同口径：显示中 + 有锁）。
+ *
+ *  只给 [lockedExtras] 用：读不到 / 抛异常一律按「不在锁屏上」处理 —— 少带两个来源标记只影响
+ *  相机那一屏的形态，不影响起不起得来（相机的 `showWhenLocked` 写在清单里）。
+ *  这里用 `try/catch (Throwable)` 而不是 `runCatching`：读不到是**预期内的失败**，但也可能是
+ *  系统服务异常（`Error` 系），这一处必须自己收住，不能让异常漏到按键回调（五之二、3）。
+ */
+private fun onSecureKeyguard(ctx: Context): Boolean =
+    try {
+        val keyguard = ctx.getSystemService(android.app.KeyguardManager::class.java)
+        keyguard?.isKeyguardLocked == true && keyguard.isKeyguardSecure
+    } catch (e: Throwable) {
+        XLog.w("读锁屏状态失败（按未锁屏处理）：${e.javaClass.simpleName}: ${e.message}")
+        false
     }
 
 /**

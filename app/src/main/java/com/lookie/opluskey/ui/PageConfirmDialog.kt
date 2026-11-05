@@ -93,6 +93,13 @@ internal fun SettingsPage.FrostedDialog(
      */
     onDismissFinished: (() -> Unit)? = null,
     /**
+     * 强制**屏幕居中**（库在窄屏上默认是底部滑入）。
+     *
+     *  只有「内容型」窗口要它（命令预览那种要看一整段文字的）；确认窗维持库的默认档 ——
+     *  那些窗口的位置一直是库说了算，不在这次改动里动。
+     */
+    centered: Boolean = false,
+    /**
      * 标题行**行尾**那一格（如输入框的字数统计）；`null` = 不占位。
      *
      *  它**叠**在标题那一行的右边线上（`align(CenterEnd)`），**不参与居中计算** ——
@@ -135,6 +142,10 @@ internal fun SettingsPage.FrostedDialog(
         title = null,
         // 面板底色由我们画（压在糊上），所以库那一层给它透明
         backgroundColor = Color.Transparent,
+        //  **强制居中**：库在窗口宽度不到 840dp 时默认是**底部滑入**（见 COUI 文档
+        //  「OverlayDialog → 居中呈现（大屏）」），手机上一律拿不到「页面正中的窗口」。
+        //  不传这一位的调用点维持库的默认（底部滑入），需要居中的自己打开。
+        largeScreen = centered,
         onDismissRequest = onDismiss,
         onDismissFinished = onDismissFinished,
     ) {

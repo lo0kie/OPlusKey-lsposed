@@ -12,6 +12,7 @@ import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.DrawnIcons
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.screen.keyEnabled
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -78,7 +79,7 @@ internal fun SettingsPage.KeysListCard(
                             },
                         //  停用只把行首换成禁用图标，**不压色**：图标一灰，整行看起来像点不了，
                         //  而这一行恰恰还能点进去（停用也照样能进那一页开回来）。
-                        icon = keyIcon(PageIcons.MenuSideKey, keyEnabled(KeyId.PLUS)),
+                        icon = keyIcon(DrawnIcons.MenuSideKey, keyEnabled(KeyId.PLUS)),
                         enabled = pageEnabled && !editing,
                         disabledHint = I18n.get(Strings.KEYS_BUILTIN_KEEP, "内置侧键不能删除"),
                         arrow = !editing,

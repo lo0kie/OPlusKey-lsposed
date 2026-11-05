@@ -16,6 +16,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.config.CommandLibrary
@@ -40,6 +41,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.state.CommandListEditState
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -190,6 +192,9 @@ internal fun SettingsPage.CommandScreen(
         CommandDialogs(ui)
 
         CommandFloatingButton(scope = this, tick = tick, onListPage = pagerState.currentPage == COMMAND_LIST_PAGE)
+
+        //  详情浮层摆在**最上面**：它自己带遮罩，要盖住底下的 FAB 与列表
+        CommandDetailOverlay(ui)
     }
 }
 
@@ -209,45 +214,80 @@ private fun SettingsPage.CommandFloatingButton(
     /** 落点（页面右下角）由 [PageCornerFab] 决定，它要的是外层那个 `Box` 的作用域。 */
     scope: BoxScope,
     tick: () -> Unit,
-    /** 现在停在「命令列表」那一页 —— 那颗 FAB 属于表单，这一页不出。 */
+    /** 现在停在「命令列表」那一页 —— 那一页平时没有 FAB，编辑态里才有一颗「删除」。 */
     onListPage: Boolean,
 ) {
     val sortingSteps = commandDraft.stepEditing
+    //  列表编辑态那颗「删除」：**勾了任意一条就滑进**（与「按键功能」页同一套，见 `KeysScreen`）
+    val listEditing = onListPage && CommandListEditState.editing && CommandListEditState.count > 0
     with(scope) {
         //  与其它页那颗 FAB 同一档滑入滑出（[PageCornerFab] 的默认规格）：硬切在真机上像「闪了一下」，
         //  页脚那颗按钮本来就在同一角落，进出不带过渡会读成两次不同的东西。
-        PageCornerFab(visible = !onListPage && (commandDraftHasContent() || sortingSteps)) {
+        PageCornerFab(visible = listEditing || (!onListPage && (commandDraftHasContent() || sortingSteps))) {
             PageFabButton(
                 onClick = {
                     tick()
-                    if (sortingSteps) {
-                        commandDraft.stepEditing = false
-                        XLog.w("多条命令：退出排序态（FAB）")
-                    } else {
-                        val blocked = saveBlockedReason()
-                        if (blocked != null) {
-                            //  「为什么不能存」归到页面那个禁用原因位：与行级说法同一条提示
-                            hint(blocked, slot = HINT_SLOT_DISABLED)
-                        } else {
-                            addCommand()
-                        }
-                    }
+                    onFabTap(listEditing, sortingSteps)
                 },
             ) {
+                val face = fabFace(listEditing, sortingSteps)
                 Icon(
-                    PageIcons.Confirm,
-                    contentDescription =
-                        if (sortingSteps) {
-                            I18n.get(Strings.COMMAND_STEP_SORT_DONE, "完成")
-                        } else {
-                            I18n.get(Strings.COMMON_CONFIRM, "确定")
-                        },
+                    face.first,
+                    contentDescription = face.second,
                     tint = COUITheme.colorScheme.onPrimary,
                 )
             }
         }
     }
 }
+
+/**
+ * 这颗 FAB 按下去的三档去向 —— 抠成一支独立函数只为把 [CommandFloatingButton] 的圈复杂度
+ * 留在 detekt 的上限内（原先是同一个函数里套三层判断）。
+ *
+ *  列表编辑态 ⇒ 弹「删除选中」的确认（删了不可撤销，那几条的绑定一起改）；
+ *  步骤排序态 ⇒ 只退出排序（别的控件这时都禁用，这颗是唯一出路）；
+ *  其余 ⇒ 「保存」：不满足条件时把**为什么不能存**交给页内提示，与行级说法同一条。
+ */
+private fun SettingsPage.onFabTap(
+    listEditing: Boolean,
+    sortingSteps: Boolean,
+) {
+    when {
+        listEditing -> {
+            CommandListEditState.confirmDeletePicked = true
+        }
+
+        sortingSteps -> {
+            commandDraft.stepEditing = false
+            XLog.w("多条命令：退出排序态（FAB）")
+        }
+
+        else -> {
+            val blocked = saveBlockedReason()
+            if (blocked != null) {
+                hint(blocked, slot = HINT_SLOT_DISABLED)
+            } else {
+                addCommand()
+            }
+        }
+    }
+}
+
+/**
+ * 这颗 FAB 此刻长什么样：字形 + 无障碍文案（两样同一个判据，拆开写容易改一处忘一处）。
+ *
+ *  列表编辑态 ⇒ 「删除」；步骤排序态 ⇒ 「完成」；其余 ⇒ 「确定」。
+ */
+private fun fabFace(
+    listEditing: Boolean,
+    sortingSteps: Boolean,
+): Pair<ImageVector, String> =
+    when {
+        listEditing -> PageIcons.CommandDelete to I18n.get(Strings.COMMON_DELETE, "删除")
+        sortingSteps -> PageIcons.Confirm to I18n.get(Strings.COMMAND_STEP_SORT_DONE, "完成")
+        else -> PageIcons.Confirm to I18n.get(Strings.COMMON_CONFIRM, "确定")
+    }
 
 /**
  * 分页器停下时把 `draft.kind` 拨到那一页，顺带处理「换 tab」的那几件事。

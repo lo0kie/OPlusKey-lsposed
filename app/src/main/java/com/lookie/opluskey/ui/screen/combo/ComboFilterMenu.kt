@@ -7,6 +7,7 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.DrawnIcons
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.keyBrackets
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
@@ -101,5 +102,5 @@ internal fun keyFilterIcon(
     if (key.isCustom) {
         PageIcons.menuKeyNumber(cfg.customKeys.indexOfFirst { it.id == key.id }.coerceAtLeast(0))
     } else {
-        PageIcons.MenuSideKey
+        DrawnIcons.MenuSideKey
     }

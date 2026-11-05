@@ -47,7 +47,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
     // 「运行状态里除『主开关已关闭』与『使用验证』外每一段都 ok」）+ 配置可写
     // （建页那次没读成功 ⇒ 只读，写回一律被拒，见 `ConfigState.readOnly`）。
     // 有哪一条不满足时改配置不会生效，放用户去改只会误导（底部那条常驻提示会说明该怎么办）。
-    //  注意：**主开关也吃这个闸**（`linkReady` + 另两条，见 [HomeBindingCard]）。顶栏 ⋮ **不吃** ——
+    //  注意：**主开关也吃这个闸**（`linkReady` + 另两条，见 [HomeActivationCard] 里那一行）。顶栏 ⋮ **不吃** ——
     // 它本身永远可点，里面只有「重启服务 / 导出日志 / 清空配置」三项跟着灰，
     // 「默认界面」（逃生口）始终可用。
     //  适配清单**不再参与**这道闸：清单外的机器照样能改（见 `core/model/DeviceSupport`），
@@ -63,20 +63,10 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         //  带子页那一档来自带子自己的 8dp 下内边距，两边视觉上正好齐平。
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
-        //  顶栏提示**摆在第一块之前**：它们是通知，不是这一页的内容（与「运行状态」那一类不同）——
-        //  有几条就往下推几档，走的时候整条退场，不留空槽（见 `HomeTips`）。
-        //  最多两条：新的版本（有东西可取）+ 「有一件事要你处理」（系统侧旧版 / 自检异常，共用一格）。
-        HomeTips()
-
-        //  块与块之间的间距由小标题自带（上 16 / 下 0），这一页不再写 `Spacer`。
-        // 这一节只有模块总闸一行，小标题就按它叫（原先叫「按键绑定」，与那一页的页名混在一起）。
-        //  **不要借 `Strings.BINDING_TITLE`**：那是「按键绑定」子页的标题，改这里会把它一起改名。
-        SectionTitle(I18n.get(Strings.HOME_MASTER_SECTION, "主开关"))
-        // 「响铃状态」走的是公共 `AudioManager.setRingerMode`，ColorOS 的 ringer delegate 会把外来的
-        // 静音请求改写成振动，于是要靠「勿扰访问」权限绕。现在执行侧改走 `setRingerModeInternal`
-        // （宿主本来就持有 `STATUS_BAR_SERVICE`），**与勿扰再无关系** —— 那一行连同它引入的
-        // 动态行数（`homeBindingRows`）一并删掉，别再按「静音要授权」加回来。
-        HomeBindingCard(ui)
+        //  顶栏提示与「模块状态」那一块**已经合成一块**：新版本 / 有一件事要处理 / 激活状态 /
+        //  模块总闸四件事本来都在答「这个模块现在什么情况」，分成三四块摆读起来像三四件事。
+        //  它自带上面那一档间距（见 `ACTIVATION_TOP_GAP`），所以这一页仍不用写 `Spacer`。
+        HomeActivationCard(ui)
 
         //  按键列表搬去了「按键功能」页（与组合按键列表收在同一页）：首页只留「按键操作」这一节，
         //  两列清单挤在首页会把常用入口推下去。

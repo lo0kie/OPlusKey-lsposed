@@ -505,9 +505,7 @@ internal fun togglePower(
             cls.getMethod("goToSleep", Long::class.javaPrimitiveType).invoke(pm, now)
             XLog.w("电源键：已请求灭屏（goToSleep）")
         } else {
-            cls
-                .getMethod("wakeUp", Long::class.javaPrimitiveType, String::class.java)
-                .invoke(pm, now, POWER_WAKE_REASON)
+            requestWake(pm, POWER_WAKE_REASON)
             XLog.w("电源键：已请求亮屏（wakeUp）")
         }
     } catch (e: Throwable) {
@@ -519,3 +517,22 @@ internal fun togglePower(
 
 /** [togglePower] 亮屏那句 reason —— 系统日志里认得出是我们点起来的。 */
 private const val POWER_WAKE_REASON = "opluskey:power_key"
+
+/**
+ * 发一次 `PowerManager.wakeUp`（`@hide`，只能反射；`DEVICE_POWER` 靠宿主的系统应用身份持有）。
+ *
+ *  **只发请求，不判断屏幕状态** —— 「该不该点」由调用方判（电源键是「睡着就点」，
+ *  起界面那一档是「登记了 `wakeScreen` 且此刻灭着」），日志措辞与失败处理也各归各的。
+ *  两处共用这一格只为不让 `wakeUp` 的签名散成两份 —— 它是 `@hide`，改版时漏改一处就是
+ *  「亮屏永远失败」而另一处还正常，最难查的那种半坏。
+ *
+ *  失败按异常抛给调用方（两处都自己 `catch (Throwable)`）。
+ */
+internal fun requestWake(
+    pm: android.os.PowerManager,
+    reason: String,
+) {
+    android.os.PowerManager::class.java
+        .getMethod("wakeUp", Long::class.javaPrimitiveType, String::class.java)
+        .invoke(pm, android.os.SystemClock.uptimeMillis(), reason)
+}

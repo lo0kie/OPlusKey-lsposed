@@ -15,6 +15,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.model.COMMAND_DISCLAIMER_TEXT
 import com.lookie.opluskey.ui.model.COMMAND_DISCLAIMER_TITLE
+import com.lookie.opluskey.ui.state.CommandListEditState
 import com.lookie.opluskey.ui.state.CommandUiState
 import com.lookie.opluskey.ui.write
 import kotlinx.coroutines.delay
@@ -35,7 +36,59 @@ internal fun SettingsPage.CommandDialogs(ui: CommandUiState) {
     LeaveDiscardDialog()
     SwitchDraftDiscardDialog()
     DeleteCommandDialog(ui)
+    //  这两支的状态在 `CommandListEditState` 里（页面级的编辑态），不读 `ui`
+    DeletePickedDialog()
+    LeaveListEditDialog()
     FillPrefixDialog(ui)
+}
+
+/**
+ * 「命令列表」编辑态里删掉勾中的那几条 —— 删了不可撤销，而且**绑到按键上的会改成「无操作」**
+ * （见 [removeCommand]），所以先问一句。
+ *
+ *  一条一条调 [removeCommand]：它自带「三处引用一起清」的账（绑定、别的命令里的引用、单条正文里
+ *  的 `cmd:`），逐条走同一条路比自己在这里再写一份批量清理稳。代价是 N 次落盘，命令库本来就只有
+ *  个位数条，不值当为它再造一条批量通道。
+ */
+@Composable
+private fun SettingsPage.DeletePickedDialog() {
+    val picked = CommandListEditState.picked
+    ConfirmDialog(
+        show = CommandListEditState.confirmDeletePicked,
+        title = I18n.get(Strings.COMMAND_DELETE_PICKED_TITLE, "删除选中的命令"),
+        summary = I18n.format(Strings.COMMAND_DELETE_PICKED_BODY, picked.size),
+        action = I18n.get(Strings.COMMON_DELETE, "删除"),
+        onDismiss = { CommandListEditState.confirmDeletePicked = false },
+        onConfirm = {
+            CommandListEditState.confirmDeletePicked = false
+            val targets = configState.commands.value.filter { it.name in picked }
+            targets.forEach { removeCommand(it) }
+            CommandListEditState.clearPicked()
+            CommandListEditState.editing = false
+        },
+    )
+}
+
+/**
+ * 编辑态里按返回、且勾着东西时那一问 —— 退出编辑只丢勾选，不删东西，所以动作项不是红的。
+ *
+ *  与「按键功能」页那一问同一个口径（见 `KeysScreen` 的 `KeysLeaveEditDialog`）：
+ *  确认之后**只退出编辑态**，人留在这页。
+ */
+@Composable
+private fun SettingsPage.LeaveListEditDialog() {
+    ConfirmDialog(
+        show = CommandListEditState.confirmLeaveEdit,
+        title = I18n.get(Strings.COMMAND_LEAVE_EDIT_TITLE, "退出编辑"),
+        summary = I18n.format(Strings.COMMAND_LEAVE_EDIT_BODY, CommandListEditState.count),
+        action = I18n.get(Strings.COMMON_CONFIRM, "确定"),
+        positiveDanger = false,
+        onDismiss = { CommandListEditState.confirmLeaveEdit = false },
+        onConfirm = {
+            CommandListEditState.confirmLeaveEdit = false
+            CommandListEditState.toggleEditing()
+        },
+    )
 }
 
 /**

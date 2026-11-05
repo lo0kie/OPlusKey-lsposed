@@ -10,8 +10,6 @@ import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.RomProfile
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsCog
-import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsMinus
-import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindowBottom
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
@@ -22,6 +20,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BellCog
 import io.github.lyxnx.compose.ui.tablericons.outline.BellOff
 import io.github.lyxnx.compose.ui.tablericons.outline.BellRinging
 import io.github.lyxnx.compose.ui.tablericons.outline.Bluetooth
+import io.github.lyxnx.compose.ui.tablericons.outline.Bolt
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple1
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple2
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple3
@@ -31,7 +30,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple6
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple7
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple8
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple9
-import io.github.lyxnx.compose.ui.tablericons.outline.Bulb
+import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessAuto
+import io.github.lyxnx.compose.ui.tablericons.outline.Calculator
+import io.github.lyxnx.compose.ui.tablericons.outline.Camera
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
@@ -63,19 +64,14 @@ import io.github.lyxnx.compose.ui.tablericons.outline.RotateRectangle
 import io.github.lyxnx.compose.ui.tablericons.outline.Screenshot
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.SparkleHighlight
-import io.github.lyxnx.compose.ui.tablericons.outline.Sparkles
-import io.github.lyxnx.compose.ui.tablericons.outline.Sun
-import io.github.lyxnx.compose.ui.tablericons.outline.SunHigh
 import io.github.lyxnx.compose.ui.tablericons.outline.SunLow
 import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
 import io.github.lyxnx.compose.ui.tablericons.outline.TextScanAi
+import io.github.lyxnx.compose.ui.tablericons.outline.ThinkingLow
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.lyxnx.compose.ui.tablericons.outline.Video
-import io.github.lyxnx.compose.ui.tablericons.outline.Volume
-import io.github.lyxnx.compose.ui.tablericons.outline.Volume2
-import io.github.lyxnx.compose.ui.tablericons.outline.Volume4
 import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
 import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
 
@@ -87,9 +83,9 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.Ban
         }
 
-        // 手电筒（全项目只用 Tabler 一支笔，不混图标库）
+        // 手电筒 —— 自绘那颗（见 DrawnIcons.Flashlight）：图标库的 `flashlight` 是斜放的
         Action.FLASHLIGHT -> {
-            TablerIcons.Outline.Bulb
+            DrawnIcons.Flashlight
         }
 
         // 电源键（`keyevent:` 一律是数字形态）
@@ -114,10 +110,10 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.Moon
         }
 
-        // 灵感语音 —— `sparkles`（三颗闪光）读作「灵感 / 生成」，与「录音」那颗麦克风分开；
-        //  原来的 `record-mail` 是「录音带 + 信封」，在这一列小图标里读成「邮件」的概率更高。
+        // 灵感语音 —— `thinking-low`（侧脸 + 一个气泡点）：读作「在想点子」，与「录音」那颗麦克风、
+        //  「唤醒小布」那颗对话框都分得开。用户口径指定这一颗。
         Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY -> {
-            TablerIcons.Outline.Sparkles
+            TablerIcons.Outline.ThinkingLow
         }
 
         // 唤醒小布（语音助手）—— `message-ai`（带 AI 角标的对话框）：与「录音」的麦克风、
@@ -142,6 +138,16 @@ internal fun actionIcon(token: String): ImageVector =
         //  而这一格是「把屏上的字翻掉」这个动作，不是「选语言」。
         Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_TRANSLATE -> {
             TablerIcons.Outline.Language
+        }
+
+        // 相机 / 计算器 —— 就是那两件东西自己的字形，别与「打开应用」那颗四宫格混起来：
+        //  这两格的价值在于「锁屏上也能直接显示」，一颗通用图标看不出它和打开应用的区别。
+        Action.OPLUS_PREFIX + RomProfile.NAME_CAMERA -> {
+            TablerIcons.Outline.Camera
+        }
+
+        Action.OPLUS_PREFIX + RomProfile.NAME_CALCULATOR -> {
+            TablerIcons.Outline.Calculator
         }
 
         // 响铃状态（那一格；菜单里的「循环」见 [specIcon]）
@@ -197,13 +203,15 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.PlayerTrackNext
         }
 
-        // 音量 + / −
+        // 音量 + / −（注入一次音量键）—— 与「增加 / 减少音量」那两档**同一颗**：
+        //  菜单里那两行说的是「加一档 / 减一档」，这两条说的是「按一下音量键」，落到用户眼里都是
+        //  「让声音大一点 / 小一点」，给两套字形反而要多认一次；分开画的只有格子那颗（不带角标）。
         Action.keyToken(KeyId.KEYCODE_VOLUME_UP) -> {
-            TablerIcons.Outline.Volume2
+            DrawnIcons.VolumeAdd
         }
 
         Action.keyToken(KeyId.KEYCODE_VOLUME_DOWN) -> {
-            TablerIcons.Outline.Volume4
+            DrawnIcons.VolumeSub
         }
 
         // 把前台应用收成小窗 —— 展开档用「窗口 + 底部块」（`app-window-bottom`）
@@ -313,24 +321,29 @@ internal fun actionIcon(token: String): ImageVector =
     }
 
 /**
- * 亮度那一档在步骤行里的图标 —— 与菜单里那三行同一套：更亮 `sun-high`、更暗 `sun-low`、
- * 「设置为」整颗太阳。
+ * 亮度那一档在步骤行里的图标 —— 与菜单里那三行同一套（底图 + 右下角角标，见 `DrawnIcons`）：
+ * 更亮是加号、更暗是减号、「设置为」是齿轮。
  *
- *  认不出（手改坏了）时给整颗太阳：那是这一族的中性档，比掉到 `Dots` 好。
+ *  认不出（手改坏了）时给「设置为」那颗：那是这一族里最中性的一档。
  */
 private fun brightnessGlyph(token: String): ImageVector =
     when ((ActionCatalog.actionOf(token) as? Action.Brightness)?.mode) {
-        Action.Brightness.Mode.ADD -> TablerIcons.Outline.SunHigh
-        Action.Brightness.Mode.SUB -> TablerIcons.Outline.SunLow
-        else -> TablerIcons.Outline.Sun
+        Action.Brightness.Mode.ADD -> DrawnIcons.BrightnessAdd
+        Action.Brightness.Mode.SUB -> DrawnIcons.BrightnessSub
+        else -> DrawnIcons.BrightnessSet
     }
 
-/** 音量那一档同上：更响 / 更轻用推子带加减号 —— 与格子那颗喇叭分得开。 */
+/**
+ * 音量那一档同上：同一颗喇叭底图，右下角换角标（加 / 减 / 齿轮），格子那颗不带角标。
+ */
 private fun volumeGlyph(token: String): ImageVector =
     when ((ActionCatalog.actionOf(token) as? Action.Volume)?.mode) {
-        Action.Volume.Mode.ADD -> TablerIcons.Outline.AdjustmentsPlus
-        Action.Volume.Mode.SUB -> TablerIcons.Outline.AdjustmentsMinus
-        else -> TablerIcons.Outline.Volume
+        Action.Volume.Mode.ADD -> DrawnIcons.VolumeAdd
+
+        Action.Volume.Mode.SUB -> DrawnIcons.VolumeSub
+
+        //  认不出（手改坏了）时给「设置为」那颗：这一族里最中性的一档
+        else -> DrawnIcons.VolumeSet
     }
 
 /**
@@ -380,11 +393,12 @@ private val SWITCH_KIND_ICONS: Map<String, () -> ImageVector> =
         // 定位服务：与系统「位置信息」那颗准星同一套读法
         "location" to { TablerIcons.Outline.Location },
         "dnd" to { TablerIcons.Outline.Moon },
-        "flashlight" to { TablerIcons.Outline.Bulb },
+        "flashlight" to { DrawnIcons.Flashlight },
         "darkmode" to { TablerIcons.Outline.MoonStars },
         "powersave" to { TablerIcons.Outline.BatteryEco },
         "extradim" to { TablerIcons.Outline.SunLow },
-        "autobrightness" to { TablerIcons.Outline.Sun },
+        //  自动亮度：太阳 + 一个 A（与「跟随系统」那行同一颗），与上下两档「亮度本身」分开
+        "autobrightness" to { TablerIcons.Outline.BrightnessAuto },
     )
 
 /** 开关**种类**那一层的字形 —— 查 [SWITCH_KIND_ICONS]。 */
@@ -470,22 +484,26 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         // 「系统开关」入口格：带齿的齿轮（`settings-cog`，这一格进的是清单，不是某个取值）
         ActionCatalog.Glyph.SystemSwitch -> TablerIcons.Outline.SettingsCog
 
-        // 「屏幕亮度」那一格与它菜单的「设置为」：`sun`（太阳本身 = 亮度条拨到某个位置）
-        ActionCatalog.Glyph.Brightness -> TablerIcons.Outline.Sun
+        // 「屏幕亮度」那一格：一颗太阳（亮度本身）
+        ActionCatalog.Glyph.Brightness -> DrawnIcons.BrightnessTile
 
-        // 菜单的「增加 / 减少」：太阳添一笔 / 少一笔 —— 与格子那颗（整颗太阳）分得开，
-        //  否则三行摆在一起全是同一颗图标，看不出哪一行是加、哪一行是减。
-        ActionCatalog.Glyph.BrightnessUp -> TablerIcons.Outline.SunHigh
+        // 菜单的「增加 / 减少 / 设置为」：太阳缩一档，右下角换角标（加 / 减 / 齿轮）——
+        //  与「音量」那张菜单同一套角标，两族只有底图不同。
+        ActionCatalog.Glyph.BrightnessUp -> DrawnIcons.BrightnessAdd
 
-        ActionCatalog.Glyph.BrightnessDown -> TablerIcons.Outline.SunLow
+        ActionCatalog.Glyph.BrightnessDown -> DrawnIcons.BrightnessSub
 
-        // 「音量」那一格与它菜单的「设置为」：一颗喇叭（这一格说的就是音量本身）
-        ActionCatalog.Glyph.Volume -> TablerIcons.Outline.Volume
+        ActionCatalog.Glyph.BrightnessSet -> DrawnIcons.BrightnessSet
 
-        // 菜单的「增加 / 减少」：推子上一个加号 / 一个减号 —— 与格子那颗喇叭一眼分得开
-        ActionCatalog.Glyph.VolumeUp -> TablerIcons.Outline.AdjustmentsPlus
+        // 「音量」那一格：喇叭 + 两道声波（这一格说的就是音量本身）
+        ActionCatalog.Glyph.Volume -> DrawnIcons.VolumeTile
 
-        ActionCatalog.Glyph.VolumeDown -> TablerIcons.Outline.AdjustmentsMinus
+        // 菜单的「增加 / 减少 / 设置为」：同一颗喇叭缩一档 + 右下角角标，与亮度那张菜单同尺
+        ActionCatalog.Glyph.VolumeUp -> DrawnIcons.VolumeAdd
+
+        ActionCatalog.Glyph.VolumeDown -> DrawnIcons.VolumeSub
+
+        ActionCatalog.Glyph.VolumeSet -> DrawnIcons.VolumeSet
 
         // 「小布 AI」入口格：`sparkle-highlight`（闪光带高亮框）—— 与「灵感语音」那颗普通闪光
         //  分得开：这一格是**一类东西**（四件小布能力），不是「灵感语音」那个取值本身。
@@ -493,6 +511,11 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
 
         // 「自定义变量」入口格：`variable`（那个 `x` 里带 y 的符号本身）—— 这一格进的是变量清单
         ActionCatalog.Glyph.Variables -> TablerIcons.Outline.Variable
+
+        // 「锁屏快捷」入口格：一道闪电 —— 说的是「按一下就开」这件事本身（相机 / 计算器在菜单里）。
+        //  不用锁：锁是「锁屏」这个**状态**的读法，而这一格的动作是「打开」，摆一把锁会被读成
+        //  「锁定 / 锁屏」那一档动作（也与「手电筒」那颗灯泡太近）。
+        ActionCatalog.Glyph.Keyguard -> TablerIcons.Outline.Bolt
     }
 
 /**

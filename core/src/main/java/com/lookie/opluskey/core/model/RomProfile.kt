@@ -1,5 +1,6 @@
 package com.lookie.opluskey.core.model
 
+import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
 
 /**
@@ -71,6 +72,30 @@ object RomProfile {
          *  再按一下才重新开始。
          */
         val stopAction: String? = null,
+        /**
+         * 「只在锁屏上带」的 extra —— 起这一档时若停在安全锁屏上才并进 Intent（见 [NAME_CAMERA]）。
+         *
+         *  与 [extras] 分开的理由：相机那两个来源标记说的是「这一屏是从锁屏进来的」，它据此收界面。
+         *  解锁状态下按同一颗键就是一次普通启动，不能这么说 —— 那不叫降级，叫说谎。
+         */
+        val keyguardExtras: Map<String, Any> = emptyMap(),
+        /**
+         * 起这一档之前先把屏幕点亮（`false` = 不动屏幕状态）。
+         *
+         *  只给「让用户当场看见」的那两档（[NAME_CAMERA] / [NAME_CALCULATOR]）：侧键在**熄屏**时
+         *  也照常被拦住，而 `startActivity` 本身不会点亮屏幕 —— 不补这一下，界面在熄屏上起来了，
+         *  用户看到的仍是黑屏。录屏那一档不用它：按它不是为了看那一屏。
+         */
+        val wakeScreen: Boolean = false,
+        /**
+         * 起**界面**时额外挂的 `Intent` flag（服务型目标不读它）。
+         *
+         *  只登记「与系统自己起法不同就能看出差别」的那几位，例如 [NAME_CAMERA] / [NAME_CALCULATOR]
+         *  要的 `FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS`（从锁屏打开的那一屏不进最近任务）。
+         *  `FLAG_ACTIVITY_NEW_TASK` **不写在这里**：界面型目标由执行侧统一挂（非 Activity 的
+         *  Context 起界面必须带），写进表里会让人以为哪几档不用带。
+         */
+        val flags: Int = 0,
     )
 
     /**
@@ -214,6 +239,25 @@ object RomProfile {
      *  `GlobalTranslationTool.handle()` 逐字抄的配方）。
      */
     const val NAME_SCREEN_TRANSLATE = "screen_translate"
+
+    /**
+     * 相机 —— **不是侧键场景表里的条目**，抄的是锁屏左下 / 右下角那颗「相机」快捷功能的入口
+     * （见下面 [CAMERA]）。
+     */
+    const val NAME_CAMERA = "camera"
+
+    /** 计算器 —— 同上，抄的是锁屏那颗「计算器」快捷功能的入口（见 [CALCULATOR]）。 */
+    const val NAME_CALCULATOR = "calculator"
+
+    /**
+     * 相机那次启动用的「来源」extra —— 系统自己（SystemUI）发的就是这一个键。
+     *
+     *  相机读它来判断「这一屏是不是从锁屏进来的」，据此收起一部分只在解锁后才该出现的界面。
+     */
+    private const val CAMERA_LAUNCH_SOURCE = "com.android.systemui.camera_launch_source"
+
+    /** [CAMERA_LAUNCH_SOURCE] 表示「锁屏」的那一档（SystemUI 的 `CAMERA_SOURCE_KEYGUARD`）。 */
+    private const val CAMERA_SOURCE_KEYGUARD = 3
 
     /**
      * 一键闪记（场景表 `flash_memory`）。`triggerType=1` 是它的 `TriggerType.MAGIC_KEY`。
@@ -370,6 +414,69 @@ object RomProfile {
         )
 
     /**
+     * 相机 —— 与锁屏左下 / 右下角那颗「相机」快捷功能**同一条入口**。
+     *
+     *  ## 为什么要抄这条 intent，而不是「打开应用」那一条
+     *
+     *  相机清单里那个 Activity 自带 `showWhenLocked=true`，所以普通启动在锁屏下也能显示；
+     *  但系统那颗快捷功能发的**不是普通启动**：action 是 `STILL_IMAGE_CAMERA_SECURE`，另外带两个
+     *  来源标记，相机按它们判断「这一屏是从锁屏进来的」并据此收起解锁后才该出现的界面。
+     *  这里逐字对齐 SystemUI 的 `CameraGestureHelper.launchCamera(3)` +
+     *  `CameraIntents.getSecureCameraIntent()`（取证见 `docs/device-findings.md` 四十五）。
+     *
+     *  `activity` 一档不需要 `service` 参与定位（action + 包名由清单解析），但落点表里这一格
+     *  同时被日志与失败提示用来指认「试的是哪个组件」，所以填上它真正会起来的那个类。
+     */
+    private val CAMERA =
+        BuiltIn(
+            owner = "com.oplus.camera",
+            service = "com.oplus.camera.Camera",
+            action = "android.media.action.STILL_IMAGE_CAMERA_SECURE",
+            //  来源标记只在真停在安全锁屏上时带：解锁状态下按同一颗键是一次普通启动，
+            //  报「从锁屏来」会让相机收起解锁后才该有的那几样（见 keyguardExtras 的说明）
+            keyguardExtras =
+                mapOf(
+                    CAMERA_LAUNCH_SOURCE to CAMERA_SOURCE_KEYGUARD,
+                    "StartFromKeyguard" to true,
+                ),
+            activity = true,
+            //  熄屏按下时这一屏要让用户看见 ⇒ 先点亮屏幕（相机自己不会替我们把屏点亮）
+            wakeScreen = true,
+            flags = Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
+        )
+
+    /**
+     * 计算器 —— 与锁屏那颗「计算器」快捷功能**同一条入口**。
+     *
+     *  ## 锁屏下能显示，靠的是这条 action
+     *
+     *  计算器**不是**清单里写死「锁屏可见」的应用：它在 `Calculator.onCreate` 里按 action 现判 ——
+     *  action 是 `oplus.intent.action.CALCULATOR`（或 `coloros.intent.action.CALCULATOR`）才
+     *  `setShowWhenLocked(true)`。所以普通 `app:com.coloros.calculator` 在锁屏下会被键盘锁盖住，
+     *  而这一条能直接显示。两个 extra 也是系统自己带的（`BaseActivity` 会读 `comeFrom`），
+     *  取证见 `docs/device-findings.md` 四十五。
+     *
+     *  ## 少抄了一位 flag：`FLAG_ACTIVITY_CLEAR_TASK`
+     *
+     *  系统那颗只在锁屏上出现，按一次清一次任务没有代价；本模块这颗键在解锁状态下也会被按到，
+     *  带上它就会把用户**正在算的式子**清掉。所以只保留「同一份任务里置顶」的那几位。
+     */
+    private val CALCULATOR =
+        BuiltIn(
+            owner = "com.coloros.calculator",
+            service = "com.android.calculator2.Calculator",
+            action = "oplus.intent.action.CALCULATOR",
+            extras = mapOf("source" to "from_control_center", "comeFrom" to "mFromScreen"),
+            activity = true,
+            //  同上：熄屏按下要先点亮屏幕，否则计算器在幕后起来了、屏幕上还是黑的
+            wakeScreen = true,
+            flags =
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS,
+        )
+
+    /**
      * **各版本的表 —— 加一档就在这里加一个 [Profile]**。
      *
      * 落点的来路：系统自己的侧键场景表（真机 `content://uri.gesturemanagerprovider/action_button`
@@ -397,6 +504,8 @@ object RomProfile {
                         NAME_KEY_FLASHLIGHT to KEY_FLASHLIGHT,
                         NAME_SCREEN_RECORD to SCREEN_RECORD,
                         NAME_SCREEN_TRANSLATE to SCREEN_TRANSLATE,
+                        NAME_CAMERA to CAMERA,
+                        NAME_CALCULATOR to CALCULATOR,
                     ),
                 reflection =
                     Reflection(

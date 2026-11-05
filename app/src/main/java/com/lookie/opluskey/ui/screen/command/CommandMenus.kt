@@ -2,16 +2,21 @@ package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
@@ -38,37 +43,59 @@ import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.sheetCardColors
+import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
+// 各处下拉/浮层选择菜单（添加命令、响铃状态、命令卡菜单）。
+//
+// `CommandMenuPopup` 是**命令卡的唯一菜单**：从卡片右上角那颗「更多」进，
+// 四行固定是「预览 / 测试 / 编辑 / 删除」—— 菜单本身不关心从哪儿来（落点由调用点给的锚点决定）。
+// 三项动作走 `CommandMenuActions` 一个对象：这一支连同 `onDismiss` 原来是七格，而 detekt 的
+// 参数上限是六（本仓不许往基线里添条目，就只能把参数收进一个对象）。
+
 /**
- * 各处下拉/浮层选择菜单（添加命令、响铃状态、命令卡菜单）。
+ * 命令卡菜单里三行各自「点了往哪儿去」—— 合成一个对象只为把 [CommandMenuPopup] 的参数个数
+ * 压回 detekt 的上限，也为了让调用点一处看清这几行都通到哪里。
  *
- *  [CommandMenuPopup] 是**命令卡的唯一菜单**：从卡片右上角那颗「更多」进，
- *  三行固定是「测试 / 编辑 / 删除」—— 菜单本身不关心从哪儿来（落点由调用点给的锚点决定）。
+ *  三项都**不给默认值**：唯一调用点三样全给，默认值只会让「漏传」静默通过。
  *
- * 注：`onEdited` / `onDelete` 的 `= {}` 默认值**看起来是死的**（唯一调用点两个都显式传了），
- *  但它撑住的是参数个数这条线 —— 去掉默认值会让 detekt 的 `LongParameterList` 判据换成另一个
- *  签名匹配（基线里那条按**带默认值的签名**记着），而本仓不许往基线里添条目。留着。
+ *  @param onEdit 进编辑态之后调 —— 调用方借此把页面滚回顶部（表单在页面最上面）
+ *  @param onPreview 「预览」：与轻点卡片同一个去处（整屏那一层从卡片长出来）
+ *  @param onDelete 「删除」：交给调用点弹确认窗（真删在确认之后）
  */
+internal class CommandMenuActions(
+    val onEdit: () -> Unit,
+    val onPreview: () -> Unit,
+    val onDelete: () -> Unit,
+)
+
+/** 命令卡那张四行菜单 —— 行内容与去向在 [CommandMenuActions] 那边。 */
 @Composable
 internal fun SettingsPage.CommandMenuPopup(
     cmd: Command,
     show: Boolean,
     preciseClick: PreciseClickState,
-    /** 进编辑态之后调 —— 调用方借此把页面滚回顶部（表单在页面最上面）。 */
-    onEdited: () -> Unit = {},
-    /** 「删除」：交给调用点弹确认窗（真删在确认之后）。 */
-    onDelete: () -> Unit = {},
+    /** 点了哪一行之后往哪儿去（见 [CommandMenuActions]）。 */
+    actions: CommandMenuActions,
     onDismiss: () -> Unit,
 ) {
     // 页面离开时由 MenuPopup 自己登记收走
     PageMenu(
         entries =
             listOf(
+                // 「预览」排第一：与轻点卡片同一件事，菜单里再留一处入口 ——
+                //  手指停在卡片上时不必先挪开再点一下，直接从这儿进。
+                MenuEntry.Row(
+                    title = I18n.get(Strings.COMMAND_DETAIL_TITLE, "命令详情"),
+                    icon = PageIcons.ZoomIn,
+                ) {
+                    onDismiss()
+                    actions.onPreview()
+                },
                 // 「测试」—— 把这条命令当场跑一遍（不写配置、不改绑定）。原先它是卡片右上角单独一颗，
                 //  收进菜单之后那颗位置让给了「更多」。
                 MenuEntry.Row(
@@ -97,7 +124,7 @@ internal fun SettingsPage.CommandMenuPopup(
                         //  直接灌进去会把它整份覆盖掉。
                         loadDraft(cmd)
                     }
-                    onEdited()
+                    actions.onEdit()
                 },
                 // 两项之间那条细线由菜单自己加
                 MenuEntry.Row(
@@ -106,13 +133,60 @@ internal fun SettingsPage.CommandMenuPopup(
                     danger = true,
                 ) {
                     onDismiss()
-                    onDelete()
+                    actions.onDelete()
                 },
             ).takeIf { show }
                 .orEmpty(),
         preciseClick = preciseClick,
         onDismiss = onDismiss,
     )
+}
+
+/**
+ * 「已保存的命令」那张卡右上角的浮层菜单 —— [CommandMenuPopup] 的宿主。
+ *
+ *  单独一支、并且落在本文件的两个理由：`CommandTile` 与 `SavedCommands.kt` 都贴着 detekt 的
+ *  「单函数长度」「单文件函数数」上限；而这几行说的正是「菜单里点哪一行往哪儿去」，本来就属于
+ *  命令卡菜单这一支。
+ *
+ *  @param scope 卡外层那个 `Box` 的作用域 —— 浮层要贴右上角（`align`），落点仍由触点决定。
+ *  @param tileAnchor 整张卡那一份锚点：菜单自己那次没记到落点时兜一下。
+ *  @param onOpen 点「编辑」之后去哪（灌草稿在 `CommandTile` 里做，跳页由调用方做）。
+ */
+@Composable
+internal fun SettingsPage.CommandTileMenu(
+    scope: BoxScope,
+    cmd: Command,
+    ui: CommandUiState,
+    tileAnchor: PreciseClickState,
+    onOpen: (Command) -> Unit,
+) {
+    with(scope) {
+        Box(Modifier.align(Alignment.TopEnd).fillMaxHeight().width(0.dp)) {
+            CommandMenuPopup(
+                cmd = cmd,
+                show = ui.menu?.name == cmd.name,
+                //  开着的时候这里拿到的必然是**这一次**的锚点（名字对得上才画）
+                preciseClick = ui.menu?.anchor ?: tileAnchor,
+                actions =
+                    CommandMenuActions(
+                        // 与「轻点这一张」同一个去处：灌进表单后滚回顶部。
+                        onEdit = { onOpen(cmd) },
+                        // 与轻点卡片同一个去处：整屏预览（从这张卡长出来）
+                        onPreview = {
+                            ui.menu = null
+                            XLog.w("命令预览：${cmd.name}（菜单）")
+                            ui.detail = cmd
+                        },
+                        onDelete = {
+                            ui.menu = null
+                            ui.deleting = cmd
+                        },
+                    ),
+                onDismiss = { ui.menu = null },
+            )
+        }
+    }
 }
 
 // 行尾菜单那几张浮层同样用 `ListPopupDefaults.DropdownPositionProvider` + 触点锚点。

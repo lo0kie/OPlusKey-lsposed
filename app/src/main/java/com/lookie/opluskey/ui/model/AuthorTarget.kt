@@ -28,7 +28,7 @@ internal enum class AuthorTarget(
     val icon: ImageVector
         get() =
             when (this) {
-                COOLAPK -> PageIcons.BrandCoolapk
+                COOLAPK -> DrawnIcons.BrandCoolapk
                 GITHUB -> PageIcons.BrandGithub
             }
 

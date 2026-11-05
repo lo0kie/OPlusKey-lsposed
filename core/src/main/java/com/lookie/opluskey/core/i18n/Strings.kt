@@ -304,6 +304,11 @@ object Strings {
     const val CATALOG_MODE_SILENT = "catalog.mode_silent"
     const val CATALOG_MODE_VIBRATE = "catalog.mode_vibrate"
     const val CATALOG_MODE_VOL_DOWN = "catalog.mode_vol_down"
+
+    /** 「锁屏快捷」那一格与它菜单的两档（相机 / 计算器）。 */
+    const val CATALOG_KEYGUARD = "catalog.keyguard"
+    const val CATALOG_CAMERA = "catalog.camera"
+    const val CATALOG_CALCULATOR = "catalog.calculator"
     const val CATALOG_QUICK_TOOLS = "catalog.quick_tools"
     const val CATALOG_RECORDING = "catalog.recording"
     const val CATALOG_SCREEN_RECORD = "catalog.screen_record"
@@ -320,6 +325,9 @@ object Strings {
     const val COMMAND_CYCLE_ERROR = "command.cycle_error"
     const val COMMAND_DELAY_DESC = "command.delay_desc"
     const val COMMAND_DELAY_LABEL = "command.delay_label"
+
+    /** 命令预览里那一行间隔 —— 带前缀（`执行间隔：3 秒`）：单看一个「3 秒」不知道是谁的间隔。 */
+    const val COMMAND_DELAY_PREFIX = "command.delay_prefix"
 
     /** 「以 root 执行」那一行（每条命令自己的开关）：标题 + 真假两句副标题。 */
     const val COMMAND_ROOT_TITLE = "command.root_title"
@@ -357,6 +365,14 @@ object Strings {
     const val COMMAND_NEED_STEP = "command.need_step"
     const val COMMAND_NAME_HINT = "command.name_hint"
     const val COMMAND_NO_SAVED_COMMANDS = "command.no_saved_commands"
+
+    /** 「命令列表」编辑态：删掉勾中那几条的确认窗（标题 / 正文，正文里报条数）。 */
+    const val COMMAND_DELETE_PICKED_TITLE = "command.delete_picked_title"
+    const val COMMAND_DELETE_PICKED_BODY = "command.delete_picked_body"
+
+    /** 「命令列表」编辑态：按返回时那一问（正文里报已勾几条）。 */
+    const val COMMAND_LEAVE_EDIT_TITLE = "command.leave_edit_title"
+    const val COMMAND_LEAVE_EDIT_BODY = "command.leave_edit_body"
     const val COMMAND_PREFIX_FILL = "command.prefix_fill"
     const val COMMAND_SAVED_COMMANDS = "command.saved_commands"
     const val COMMAND_SAVED_COUNT = "command.saved_count"
@@ -767,12 +783,16 @@ object Strings {
     const val HOME_KEY_OPS_SECTION = "home.key_ops_section"
 
     /**
-     * 首页第一节的小标题 —— 那一节只有模块总闸一行。
+     * 首页顶上那块「模块状态」—— 四档状态各一句，外加「未激活」那一句说明。
      *
-     *  **不能复用 [BINDING_TITLE]**：那一个是「按键绑定」**子页**的标题（顶栏用，见 `PageTopBar`），
-     *  两处共用一个键的话，改首页小标题会顺手把子页也改名。
+     *  开 / 关那两句说明**不在这里**：它们就是主开关原来的副标题（[HOME_SWITCH_DESC_ON] /
+     *  [HOME_SWITCH_DESC_OFF]）—— 那一块现在就是主开关，同一件事不写两份文案。
      */
-    const val HOME_MASTER_SECTION = "home.master_section"
+    const val HOME_ACTIVATION_ACTIVE = "home.activation_active"
+    const val HOME_ACTIVATION_DISABLED = "home.activation_disabled"
+    const val HOME_ACTIVATION_INACTIVE = "home.activation_inactive"
+    const val HOME_ACTIVATION_INACTIVE_DESC = "home.activation_inactive_desc"
+    const val HOME_ACTIVATION_CHECKING = "home.activation_checking"
 
     /** 首页主开关（「启用按键绑定」）的副标题 —— 开 / 关各一句。 */
     const val HOME_SWITCH_DESC_OFF = "home.switch_desc_off"
