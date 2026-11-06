@@ -203,8 +203,13 @@ internal fun SettingsPage.SerialSteps() {
                     //  压页之前把「回来要开哪一档」记在页面级（这一页的组合会被注销）——没挑成、
                     //  直接返回时抽屉原样支起来；挑成了由落盘那一路把这笔账清掉（见 `commitStep`）。
                     picker.resumeSheetAt.value = ResumeSheet(Screen.COMMANDS, at)
+                    //  抽屉**先收掉**：留着的话它一直挂在下面，挑成了回来也照样弹出来
+                    //  （用户口径「点了确认，抽屉还在」）。回来要不要重开由上面那条
+                    //  `LaunchedEffect(screen)` 按这笔账决定 —— 挑成了账已被清，就不开。
+                    stepSheet = null
                     when (page) {
                         StepPickerPage.App -> openAppPickerForStep(at)
+                        StepPickerPage.AppStop -> openAppPickerForStep(at, stop = true)
                         StepPickerPage.Vars -> openVarOpsForStep(at)
                     }
                 },

@@ -3,17 +3,26 @@ package com.lookie.opluskey.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.AppTheme
+import com.lookie.opluskey.ui.model.MENU_ICON_SIZE
 import com.lookie.opluskey.ui.model.MENU_ROW_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.MENU_ROW_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_SURFACE_DARK
@@ -173,6 +182,8 @@ internal fun popupSurfaceColor(): Color {
  *    见 `showCheck` 的说明），进场时还会**滚进视窗**
  *    （「换一步」时当前那一步常在第 7 项之后，不滚就看不见自己选的是哪个）；
  *  - [danger]：删除 / 重置这类破坏性动作（红）；
+ *  - [summary]：标题下面一行小字（那一行的现状，如「绑的是哪个应用」）。既有的两条「说第二句」
+ *    的路子与它分工不同：[Section] 小标题是**组**的名字、`disabledHint` 是**点了才说**的话。
  *  - [submenu]：行尾**留出那一格**（库里就是 `DropdownImpl(hasSubmenu = …)`），不置时那一格不画。
  *  - [trailingIcon]：换掉那一格里的字形（`null` = 用默认的右箭头）。
  *    **注意：两位是分开的 —— 要行尾图标的行必须自己置上 [submenu]**。本组件只把 [submenu] 原样
@@ -187,6 +198,14 @@ internal sealed interface MenuEntry {
     data class Row(
         val title: String,
         val icon: ImageVector,
+        /**
+         * 标题下面那行小字（库的 `DropdownItem.summary`）；`null` = 单行。
+         *
+         *  只写**这一行代表的那件事的现状**（「应用控制 → 打开应用」绑的是哪个应用），
+         *  不写「为什么点不动」—— 那是 [disabledHint]，两者别混用：一条是常驻说明，一条是点了才说的话。
+         *  带子标题的行会比单行高，库那边是 `heightIn(min = …)`，字不会被裁。
+         */
+        val summary: String? = null,
         /**
          * 行首图标的**指定颜色**；`null` = 按这一行的状态走（禁用灰 / 危险红 / 选中主色 / 常规色）。
          *
@@ -250,24 +269,7 @@ private const val MENU_TITLE_MAX_WIDTH = 14
  * 只改**画出来的那一份** —— 功能不受影响，日志（[MenuRow] 里的点选那一行）仍写全名，
  * 否则截断后的名字在日志里认不出是哪一条命令。
  */
-internal fun ellipsizeMenuTitle(title: String): String {
-    if (displayWidth(title) <= MENU_TITLE_MAX_WIDTH) return title
-    var width = 0
-    // 按**码点**前进、只在码点边界上记可截位置：按 `Char` 数再 `take(chars)` 会把代理对
-    //  （emoji）从中间切开，留下半个代理字符（画出来是乱码）。
-    var cut = 0
-    var i = 0
-    while (i < title.length) {
-        val cp = title.codePointAt(i)
-        val step = Character.charCount(cp)
-        val next = width + if (isFullWidth(title[i])) 2 else 1
-        if (next > MENU_TITLE_MAX_WIDTH) break
-        width = next
-        i += step
-        cut = i
-    }
-    return title.take(cut) + "…"
-}
+internal fun ellipsizeMenuTitle(title: String): String = ellipsizeToColumns(title, MENU_TITLE_MAX_WIDTH)
 
 /**
  * 浮层行**内容区**的高度 —— 库的行高 `DropdownDefaults.PopupItemMinHeight`（48dp）
@@ -277,8 +279,9 @@ internal fun ellipsizeMenuTitle(title: String): String {
  * 的那个节点**可见，所以那个节点必须**和整行内容区一样高** —— 挂在 20dp 的图标上只会让
  * 图标可见，行被上下各裁掉一截（真机反馈「滚动位置不够，选中的行没有完整显示」）。
  *
- *  行高是 `heightIn(min = …)`，文本多行时会长高 ⇒ 这个常量算的是**单行**那一档；
- * 浮层里的行都是单行标题（动作名 / 命令名），够用。
+ *  行高是 `heightIn(min = …)`，带子标题的行会比这更高 ⇒ 这个常量只是**单行**那一档：
+ * 行首图标格定这么高（图标在行里垂直居中），而「滚进视窗」那个矩形是**按实测行高**给的
+ * （见 `PageMenuPopup.kt` 的 `rememberMenuRowBringIntoView`）。
  */
 internal val MENU_ROW_CONTENT_HEIGHT =
     DropdownDefaults.PopupItemMinHeight -
@@ -295,3 +298,55 @@ internal class MenuHold(
     var entries: List<MenuEntry>,
     var click: PreciseClickState,
 )
+
+/**
+ * 「进场把**选中那一行**滚进视窗」—— 那个矩形按**实测行高**给，不按单行常量猜。
+ *
+ * ## 为什么要量
+ *
+ *  `bringIntoView(rect)` 只保证**这个矩形**可见，所以矩形必须覆盖整行（含上下各一档内边距）。
+ *  行高原来是写死的 [MENU_ROW_CONTENT_HEIGHT]（单行 32dp）—— 带子标题的行比它高
+ *  （库的行是 `heightIn(min = …)`，标题下面多一行小字），拿 32dp 去请求，行尾那一截会留在
+ *  视口外。量的是图标格的**父节点**（库里那层内层 `Row`）：我们的图标格是定高 32dp，
+ *  父节点才是「这一行有多高」。
+ *
+ * ## 为什么是「先量、量到再请求」
+ *
+ *  组合刚结束时节点还没 attach / 布局，此时请求是空操作 ⇒ 等一帧；而高度要等布局完才有值，
+ *  于是把它写进 state，等它变成非零再来一次（同一行只会重排这一次：值不再变，state 也就不再通知）。
+ *
+ * @param selected 这一行是不是当前绑的那一档（只有它需要滚进视窗）
+ * @return 挂在图标格上的修饰符（会顺带量行高）
+ */
+@Composable
+internal fun rememberMenuRowBringIntoView(
+    selected: Boolean,
+    requester: BringIntoViewRequester,
+): Modifier {
+    val heightPx = remember { mutableFloatStateOf(0f) }
+    if (selected) {
+        val density = LocalDensity.current
+        LaunchedEffect(heightPx.floatValue) {
+            if (heightPx.floatValue <= 0f) return@LaunchedEffect
+            withFrameNanos { }
+            val pad = with(density) { DropdownDefaults.FirstLastVerticalPadding.toPx() }
+            val rect =
+                Rect(
+                    left = 0f,
+                    // 上下各扩一档：行的上下内边距不属于内容区，不给就只滚到内容区为止
+                    top = -pad,
+                    right = with(density) { MENU_ICON_SIZE.toPx() },
+                    bottom = heightPx.floatValue + pad,
+                )
+            runCatching { requester.bringIntoView(rect) }
+        }
+    }
+    return Modifier.onGloballyPositioned { c ->
+        if (selected) {
+            heightPx.floatValue = c.parentLayoutCoordinates
+                ?.size
+                ?.height
+                ?.toFloat() ?: 0f
+        }
+    }
+}

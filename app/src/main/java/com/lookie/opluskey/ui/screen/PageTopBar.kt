@@ -28,6 +28,7 @@ import com.lookie.opluskey.ui.model.gestureLabel
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
+import com.lookie.opluskey.ui.screen.apppicker.pickerSubtitle
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
 import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
 import com.lookie.opluskey.ui.screen.combo.KeysHeaderEdit
@@ -89,32 +90,25 @@ internal fun SettingsPage.PageTopBar(
         //  见 coui 的 `Colors.kt`）。第一版写成 `copy(alpha = 0.5f)` —— 那是把它从 0.4 **抬**到 0.5，
         //  比原来还清楚，看起来当然「没生效」。所以按现有 alpha 乘一个系数（目标值在 [subtitleTint] 里算）。
         subtitleColor = subtitleTint,
-        // 尾随标题后面那枚小图标 —— 现在两处：
-        //  · 「选择应用」页开着小窗打开时补一枚「小窗起」：与网格里「打开应用」那格同一口径
-        //    （见 `BindingScreen` 的 `appSmallWindow`）。那一行字只说明「选了哪个应用」，
-        //    看不出这一趟是要普通打开还是小窗起；
-        //  · 「按键绑定」页 /「组合键编辑」页**当前那一份被停用**时补一枚禁用标记：名字旁边不标的话，这一页
+        //  「选择应用」页那一行挪到**大标题下面**（用户口径）：它写的是「这一趟要做什么: 做给谁」，
+        //  比其余各页那行「我在哪一组」长得多，挤在大标题右边会把大标题压扁。
+        subtitleBelow = s == Screen.APP_PICKER,
+        // 尾随标题后面那枚小图标 —— 只剩一处：
+        //  「按键绑定」页 /「组合键编辑」页**当前那一份被停用**时补一枚禁用标记：名字旁边不标的话，这一页
         //    整片灰只能从「可能是模块关了 / 链路没通」里猜，而实际只是这一颗键 / 这一档组合不接管
         //    （与 ⋮ 菜单里那一行同一个字形）。
+        //  「选择应用」页那枚「小窗起」**撤掉了**：那一行已经挪到标题下面、文案本身写清
+        //  「以小窗打开应用: 微信」（见 `ui/screen/apppicker/PickerHeaderText.kt`），
+        //  再挂一枚图标就是同一件事说两遍。
         trailingSubtitleIcon =
-            when {
-                // 「小窗起」只在**真选中了应用**时才标（否则那行是「还未选择应用」，图标会读成
-                //  「这个还没选的应用会用小窗打开」）
-                s == Screen.APP_PICKER && picker.smallWindow.value && appPickerChosenTarget() != null -> {
-                    PageIcons.TileSmallWindow
-                }
-
-                editingDisabled -> {
-                    PageIcons.Cancel
-                }
-
-                else -> {
-                    null
-                }
+            if (editingDisabled) {
+                PageIcons.Cancel
+            } else {
+                null
             },
         // 右上角那几颗动作键按页分派：**首页 / 「按键绑定」/「选择应用」三页有**
         // （首页是打开默认界面 / 重启服务 / 导出日志，「按键绑定」是「快捷键」「自定义按键」两组，
-        // 「选择应用」是「显示系统应用」那三项）。
+        // 「选择应用」是「以小窗口打开」那颗开关 + ⋮「显示系统应用 / 显示失效应用」）。
         // 顶栏只留一个 `actions` 槽位、不认识页面（见 [PageHeader]），
         // 两份菜单各自跟着自己那一屏走（[HomeHeaderMenu] / [AppPickerMenu]）。
         //
@@ -240,7 +234,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
 
         // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
         Screen.ACTIVITY_PICKER -> {
-            picker.activityTarget?.let { selectedLabel(it) }.orEmpty()
+            picker.activityTarget?.let { appNameOf(it) }.orEmpty()
         }
 
         // 组合键编辑页：这一行写**在编哪一组**（`侧键 + 电量 +`）—— 标题只写「组合键」，
@@ -258,42 +252,6 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         }
     }
 
-/**
- * 「选择应用」页这一趟**已经选中**的目标（草稿优先）；`null` = 还没选。
- *
- *  顶栏那行小字与它后面那枚「小窗起」图标共用这一个判据：没选应用时那一行是「还未选择应用」，
- *  后面再挂一枚小窗图标，读起来就像「这个还没选的应用会用小窗打开」（真机反馈）。
- *
- *  **先看本次草稿**（二级页刚挑完、还没提交的那一条），没有才退回「当前绑定」：
- *  这一行说的是「这一趟将要绑成什么」，草稿才是那个答案。只看当前绑定的话，
- *  挑完某个具体界面 / 快捷方式退回来，顶栏仍写着上一个应用的名字（而页里已经亮了新的）。
- *  草稿在每次进页时由 `AppPickerUiState.beginVisit` 清掉，不会跨趟残留在这一行上。
- */
-private fun SettingsPage.appPickerChosenTarget(): String? = picker.draft?.target ?: appPickerSelectedPkg()
-
-/**
- * 「选择应用」页那一行小标题 —— 这一页**两个状态共用**，主标题已经说清这一趟做什么（见
- * [pageTitle]），这里只写「已选择: 谁」。
- *
- *  没挑过时**空着**：写「已选择: 无」会被读成有个叫「无」的应用；空着时行尾那枚「小窗起」
- *  图标也不会出现（见 [PageHeader] 那一支的判据）。
- */
-private fun SettingsPage.pickerSubtitle(): String {
-    val target = appPickerChosenTarget() ?: return ""
-    return I18n.format(Strings.APP_PICKER_SELECTED_FORMAT, selectedLabel(target))
-}
-
-/**
- * 「已选择」那一行要显示的名字 —— 优先级只有一处（[appNameOf]）：
- * 配置里单独存的名字 → 老配置 token 里的 `|名字` → 现查 → 包名。
- *
- *  以前这里是「存下的名字 → 本次清单 → 包名」，而**清单那一步用的是 `AppTarget.same`**
- *  （连 `/类名` 一起比）：绑了具体界面 / 快捷方式时，清单里那一行是纯包名，永远匹配不上
- *  ⇒ 落到包名兜底（真机反馈的「选完快捷方式 / 界面，再进来显示的是包名」就是这个）。
- *  现在名字随绑定一起落盘，这一位不再需要清单参与。
- */
-private fun SettingsPage.selectedLabel(target: String): String = appNameOf(target)
-
 /** 顶栏右上角那几颗动作键 —— 首页 / 「按键绑定」/「选择应用」三页各一颗。 */
 @Composable
 private fun SettingsPage.PageActions(
@@ -305,7 +263,7 @@ private fun SettingsPage.PageActions(
 
         // 「按键绑定」页的 ⋮ 只管**分组**（快捷键 / 自定义按键），不发命令 ——
         // 进「自定义命令」页的唯一入口仍是那一页右下角那颗 FAB（见 [BindingScreen]）。
-        Screen.BINDING -> BindingKeyMenu()
+        Screen.BINDING -> BindingKeyMenu(gesture = Gesture.entries[pagers.gestures.currentPage])
 
         Screen.APP_PICKER -> AppPickerMenu()
 

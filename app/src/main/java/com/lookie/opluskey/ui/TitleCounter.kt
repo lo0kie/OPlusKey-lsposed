@@ -35,8 +35,20 @@ internal fun TitleCounter(
     length: Int,
     max: Int? = null,
 ) {
+    TitleSmallText(if (max == null) "$length" else "$length/$max")
+}
+
+/**
+ * 行尾那格小字的**样式本体** —— 这一格要写的任何一句话都走它。
+ *
+ *  两处在用：字数统计 / 条数（[TitleCounter]），以及滑杆输入窗里的**取值区间**（`480–2000`
+ *  那种，见 `NameDialog` 的 `range`）。两者是同一格、同一个位置，样式必须一份 ——
+ *  各写一遍迟早走形，而这一格的字号本来就是照邻居（小标题）定的。
+ */
+@Composable
+internal fun TitleSmallText(text: String) {
     Text(
-        text = if (max == null) "$length" else "$length/$max",
+        text = text,
         fontSize = COUNTER_FONT_SIZE,
         color = COUITheme.colorScheme.onSurfaceContainerHigh,
     )

@@ -13,6 +13,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.BranchCondition
+import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.RowEndIcon
@@ -46,9 +47,17 @@ internal fun SettingsPage.ruleConditionLines(rule: StateRule): List<ConditionLin
                 I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择场景"),
                 PageIcons.Scene,
                 empty = true,
+                //  占位行与「配好之后的那一条」**共用同一个身份**（见下面 `single` 那一支）：
+                //  这一下不是插入，而是同一行换内容。
+                rowKey = CONDITION_PLACEHOLDER_KEY,
             ),
         )
     } else {
+        //  只剩一条时，这一行**就是**原来那个占位行 —— 位置、高度都没变，变的只有内容
+        //  （「未选择场景」→「亮屏中」）。给它同一个身份，行状态与子组合都接着用：
+        //  那一下才不会「先把高度塌掉、再把新行滑进来」，而是原地淡换内容。
+        //  第二条起才是真的往表里插一行，用条件自己当身份（见 `CardRow.Item.rowKey`）。
+        val single = rule.conditions.size == 1
         rule.conditions.map {
             ConditionLine(
                 //  插进来的空条件 / 只选了种类没选取值：这一行写「未选择条件」并压禁用色
@@ -60,9 +69,18 @@ internal fun SettingsPage.ruleConditionLines(rule: StateRule): List<ConditionLin
                     },
                 icon = conditionLineIcon(it),
                 empty = !it.isUsable,
+                //  「前台应用」能挑好几个，名字顿号连起来可能很长 —— 这一行正是用来核对挑了哪几个的，
+                //  单行省略等于把答案裁掉。其余条件一行字，照旧单行。
+                multiLine = it.kind == ConditionKind.APP,
+                //  这一行在列表里的身份：行进出场按它认「是不是同一行」，不按位次
+                //  （见 `CardRow.Item.rowKey`）。
+                rowKey = if (single) CONDITION_PLACEHOLDER_KEY else it,
             )
         }
     }
+
+/** 占位行「未选择场景」的身份 —— 与「这一块唯一那条条件」共用（见 [ruleConditionLines]）。 */
+private val CONDITION_PLACEHOLDER_KEY = Any()
 
 /**
  * 条件那一行的行首字形 —— **跟着取值给**（[conditionChoiceIcon]），不是只跟着种类。
@@ -85,6 +103,15 @@ internal class ConditionLine(
     val icon: ImageVector,
     /** 这一条还没配完（刚插进来的空条件 / 只选了种类没选取值）⇒ 图标与文字压禁用色。 */
     val empty: Boolean,
+    /** 标题放不限制行数（目前只有「前台应用」：那一行可能列好几个应用名）。 */
+    val multiLine: Boolean = false,
+    /**
+     * 这一行在卡片里的身份 —— 就是那条条件自己（占位行 / 「未选择条件」那一行给 `null`）。
+     *
+     *  行进场动画要靠它认「这是新插进来的一行，还是刚才就在这里的那一行」：
+     *  `CardList` 的进出场状态按位次记，新插一行会落到原来那一行的槽上（见 `CardRow.Item.rowKey`）。
+     */
+    val rowKey: Any? = null,
 )
 
 /**

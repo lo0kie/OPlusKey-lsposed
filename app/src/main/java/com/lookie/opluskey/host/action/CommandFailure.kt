@@ -1,13 +1,12 @@
 package com.lookie.opluskey.host.action
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Handler
-import android.os.Looper
-import android.widget.Toast
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.wire.ModuleWire
 
 /**
  * 失败提示表：Toast 里只出现 [hint]（说清哪里不对 + 怎么办），原始信息照旧进日志
@@ -136,47 +135,13 @@ internal fun appInstalled(
 /** 上面那个布尔 → 失败档位：「还在」= 没有可用入口，「不在」= 可能已卸载。 */
 internal fun entryFailure(installed: Boolean): CommandFailure = if (installed) CommandFailure.APP_NO_ENTRY else CommandFailure.APP_MISSING
 
-/** 把失败提示弹成 Toast。 */
+/**
+ * 把失败提示弹出来。
+ *
+ *  提示**不走本地 `Toast`**（那个受系统的按包限流）：统一交给注入侧的 [requestSystemToast]。
+ *  去重也一并交给它那一侧（`inject/SystemToast` 的 1 秒同句去重），这里不再自己记账。
+ */
 internal object FailureNotice {
-    /** 主线程 Handler；取不到（理论上不会）就是 null ⇒ 不弹。 */
-    private val main: Handler? by lazy {
-        try {
-            Handler(Looper.getMainLooper())
-        } catch (e: Throwable) {
-            XLog.d("拿不到主线程 Looper，失败提示只记日志：${e.message}")
-            null
-        }
-    }
-
-    /**
-     * 上一条弹过的提示与它的时刻 —— [toast] 的去重账（长按连续触发会反复派发同一句）。
-     *
-     * 注意：这两个字段**必须按同一把锁读写**：[toast] 不只从主线程进 ——
-     * `ShellRunner` 的失败回调跑在后台线程上，两条并发进来会**同时通过**「查重 → 记账」这段
-     * check-then-set，同一句话照样连弹两条。
-     */
-    private val dedupLock = Any()
-    private var lastToastText: String? = null
-    private var lastToastAt = 0L
-
-    /**
-     * 全模块**共用同一个** `Toast` 实例（[shared]），只换文字 —— 不是每次新建一条。
-     *
-     * 这个包的 toast 有两个系统侧的硬约束（`NotificationManagerService`，反编译与真机日志都对上，
-     * 见 `docs/device-findings.md` 四十）：
-     * 1) **每包限流**：`TOAST_RATE_LIMITS` = 3 条 / 20s、5 条 / 42s、6 条 / 68s，超出的那条被
-     *    `tryShowToast` 直接丢弃（logcat 里 `is above allowed toast quota`）。豁免只给持有
-     *    `android.permission.UNLIMITED_TOASTS` 的包，改不了 —— 连按超过这个数就必然有几下没有提示。
-     * 2) **正在显示时新的只能排队**：`showNextToastLocked` 见到 `mIsCurrentToastShown` 就直接返回，
-     *    所以每次弹之前要先 `cancel()` 掉上一条，否则连按时看到的是两秒前的旧内容。
-     *
-     *  只在主线程（[main] 的 post 里）读写，不加锁。
-     */
-    private var shared: Toast? = null
-
-    /** 同一句话在这么久之内不重复弹（`Toast.LENGTH_SHORT` 大约 2s，取略短的一档）。 */
-    private const val TOAST_DEDUP_MS = 1500L
-
     /** 弹一条失败提示；context 为 null 时只记日志。 */
     fun show(
         context: Context?,
@@ -188,9 +153,14 @@ internal object FailureNotice {
     }
 
     /**
-     * 弹一条普通提示（非失败），目前只给「执行时提示」（`GlobalConfig.toastOnRun`）与
-     * 命令自己那行 `tip:` 用 —— 调用点在 `host/GestureExec.noticeIfNeeded` 与
-     * `host/action/ActionRunner.runShell`，内容由 [actionNoticeText] / 命令输出给。
+     * 弹一条普通提示（非失败）：「执行时提示」（`GlobalConfig.toastOnRun`）、命令自己那行 `tip:`、
+     * 以及各类失败原因，全都从这里出去。
+     *
+     *  **不再本地 `Toast`：一律请注入侧替我们弹**（[requestSystemToast]）。宿主自己的包受系统
+     *  的按包限流（3 条 / 20 秒、5 条 / 42 秒、6 条 / 68 秒，见 `docs/device-findings.md` 四十），
+     *  连按几下之后后面那些被 `NotificationService` 直接丢掉 —— 真机表现就是「执行了但没有提示」。
+     *  系统自己（包名 `android`）持有 `UNLIMITED_TOASTS`，改由它发话这条路已经现成
+     *  （`inject/SystemToast`，命令里 `tip:` 一直走的就是它）。
      *
      * @param context 宿主 Context；null 或空串时什么都不做。
      */
@@ -199,37 +169,28 @@ internal object FailureNotice {
         text: String,
     ) {
         if (context == null || text.isEmpty()) return
-        // 同一句话短时间内的重复派发只弹一次：长按连续触发按「触发间隔」反复执行同一条命令，
-        //  不去重就是一条接一条排队刷屏。
-        //  查重与记账在同一把锁里（跨线程，见 [dedupLock]）。
-        val now = android.os.SystemClock.elapsedRealtime()
-        synchronized(dedupLock) {
-            if (text == lastToastText && now - lastToastAt < TOAST_DEDUP_MS) return
-            lastToastText = text
-            lastToastAt = now
-        }
-
-        val handler = main ?: return
-        try {
-            handler.post {
-                try {
-                    // 复用同一个实例：见 [shared] 字段的注释（否则会被系统的配额丢掉）
-                    val t =
-                        shared ?: Toast
-                            .makeText(context.applicationContext, text, Toast.LENGTH_SHORT)
-                            .also { shared = it }
-                    // 先收掉上一条再弹新的：正在显示的那条不撤掉的话，`showNextToastLocked` 会在
-                    //  `mIsCurrentToastShown` 上直接返回，新的一条只能排在它后面 —— 连按时看到的是
-                    //  两秒前的旧内容，甚至「按了没弹」。
-                    t.cancel()
-                    t.setText(text)
-                    t.show()
-                } catch (e: Throwable) {
-                    XLog.d("弹 Toast 失败：${e.message}")
-                }
-            }
-        } catch (e: Throwable) {
-            XLog.d("安排 Toast 失败：${e.message}")
-        }
+        requestSystemToast(context, text)
     }
+}
+
+/**
+ * 请注入侧（`system_server`）替我们弹这条提示 —— 全模块**唯一的提示出口**。
+ *
+ *  收方是注入侧挂在 AMS 广播入口上的 hook（`inject/KeyHooks.readBroadcast` → `inject/SystemToast`），
+ *  它用系统 Context（包名 `android`，免限流）弹；它自己还带一层 1 秒去重（长按连发时同一句
+ *  不刷屏）。两边都看得见整条链，所以这里**不必 `setPackage`**。
+ *
+ *  发不出去（没有 Context / 广播被拒）只记一行：提示丢了不报错 —— 它本来就是「顺带说一句」，
+ *  不该因为它把执行路径的意思反过来说成失败。
+ */
+internal fun requestSystemToast(
+    context: Context?,
+    text: String,
+) {
+    if (context == null || text.isEmpty()) return
+    runCatching {
+        context.sendBroadcast(
+            Intent(ModuleWire.ACTION_TOAST).putExtra(ModuleWire.EXTRA_TOAST_TEXT, text),
+        )
+    }.onFailure { XLog.w("提示没发出去（注入侧弹不了）：${it.javaClass.simpleName}", it) }
 }

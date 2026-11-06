@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.ui.model.STEP_MS
 import com.lookie.opluskey.ui.model.durationText
+import kotlin.math.roundToInt
 
 /**
  * 一根滑杆的**全部规格**：显示什么（标题 / 摘要 / 行首图标）+ 量什么（区间、当前值、出厂值、步长）。
@@ -29,4 +30,27 @@ internal data class SliderSpec(
     val enabled: Boolean = true,
     val valueText: ((Int) -> String)? = { durationText(it) },
     val keyPoints: List<Float>? = null,
-)
+) {
+    /** 把任意值**吸到这一根滑杆的刻度上** —— 手动输入那一档用它（见 [snapToStep]）。 */
+    fun snap(raw: Int): Int = snapToStep(raw, min, max, step)
+}
+
+/**
+ * 把任意值吸到**刻度**上：两端之间分 `(max-min)/step` 格（与库 `Slider.steps` 同一套，
+ * `steps` 不含两个端点）。区间不整除时按格数均分，不是拿 `step` 硬乘 —— 那两套值会差一格。
+ *
+ *  两个入口共用：`tapSliderToSeek` 把「点在轨道上的相对位置」折成值，以及**手动输入**把用户
+ *  打的数吸回档位上。后者是新加的那一档：不吸的话配置里会存进 260 这种「不在档位上」的数，
+ *  滑杆画出来滑块夹在两档之间 —— 看着就像 step 失效了。
+ */
+internal fun snapToStep(
+    value: Int,
+    min: Int,
+    max: Int,
+    step: Int,
+): Int {
+    val span = (max - min).coerceAtLeast(1)
+    val ticks = (span / step).coerceAtLeast(1)
+    val idx = ((value.coerceIn(min, max) - min).toFloat() / span * ticks).roundToInt()
+    return (min + idx * span.toDouble() / ticks).roundToInt().coerceIn(min, max)
+}

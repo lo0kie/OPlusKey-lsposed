@@ -1,35 +1,44 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.HeaderMenuButton
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.state.UiState
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
- * 「选择应用」页顶栏右侧的菜单按钮 + 浮层菜单：「显示系统应用」「显示失效应用」「以小窗口打开」，
- * 都是开关（行标题以本文件里的 `title` 为准）。
+ * 「选择应用」页顶栏右侧**两颗键**：
  *
- *  **按这一趟是做什么，三项各出现各的**：
- *  · 「显示系统应用」/「显示失效应用」只在**打开**那一趟出现 —— 结束那一趟**一律全列**
- *    （停掉一个没有启动图标的应用正是它的用处，藏起来反而没得选），所以那边这两项都没有、
- *    也不读这两个开关。曾经只藏了后一项，「显示系统应用」留着却拨不出任何变化
- *    （判据是 `stopApp || …`，那一趟恒为真）—— 一行拨了没反应的开关比没有这一行更糟；
- *  · 「以小窗口打开」只在**给手势挑应用**时出现（[AppPickerState.appOnly] 的两趟 —— 条件执行、
- *    结束应用 —— 写的是 `app:包名` / `proc:stop:包名`，`window:` 没人读）；
- *  · **三项都不适用时连按钮都不摆**（结束那一趟就是这个情形）：摘掉两颗开关之后它不剩一行，
- *    留一颗点开是空面板的按钮只会让人以为界面坏了。
+ *  · 左边那颗是「以小窗口打开」的开关（[SmallWindowToggle]）—— **从 ⋮ 菜单里摘出来的**
+ *    （用户口径：做成 header 右侧的第二颗）。它描述「这一趟往哪个动作上写」（`window:` 还是
+ *    `app:`），挑应用之前就得定下来，藏在菜单里等于每次多按一下；
+ *  · 右边那颗 ⋮ 里只剩「显示系统应用」「显示失效应用」—— 那两项是**列表怎么显示**，
+ *    与「写成哪个动作」不是一件事，不该挤在同一张菜单里。
+ *
+ *  两颗各出现各的：只认应用本身的那几趟（[AppPickerState.appOnly] —— 给条件挑、结束应用）
+ *  不写 `window:`，「以小窗口打开」不出现；⋮ 那两行只在「打开」那一趟出现，两行都不剩时
+ *  **连按钮一起摘掉**（留一颗点开是空面板的按钮只会让人以为界面坏了）。于是结束那一趟顶栏
+ *  右侧一颗都没有。
  *
  *  只服务**「选择应用」页**那一条顶栏，所以跟着这一屏放 —— 原先它长在
  *  那个公共的顶栏文件里（因此装了两块业务菜单）。顶栏现在只提供
@@ -45,7 +54,9 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 internal fun SettingsPage.AppPickerMenu() {
     var open by remember { mutableStateOf(false) }
     val preciseClick = rememberPreciseClickState()
-    //  一行都没有时整颗按钮都不摆（判据见类注释最后一条）
+    //  先摆开关那颗（`Row` 里先摆的靠左，⋮ 仍贴在最外角）
+    SmallWindowToggle()
+    //  一行都没有时整颗 ⋮ 都不摆（判据见类注释最后一条）
     val entries = pickerMenuEntries { open = false }
     if (entries.isEmpty()) return
     Box {
@@ -60,17 +71,55 @@ internal fun SettingsPage.AppPickerMenu() {
     }
 }
 
+/** 顶栏两颗圆键之间的间距 —— 与首页那排「圆键 + 圆键」同一档，两个圆不贴在一起。 */
+private val HEADER_ACTION_GAP = 8.dp
+
 /**
- * 菜单里那三行 —— 前两项是「列表怎么显示」，末一项是「挑中的写成哪个动作」。
+ * 「以小窗口打开」那颗顶栏开关 —— 点一下拨一档，**当下就决定挑中的应用写成哪个动作**。
+ *
+ *  **不落盘**（与菜单里原来那一行同一口径）：它描述「这一趟要往哪个动作上写」，
+ *  每次进页按正在编辑的动作重算（见 [resetSmallWindowForPicker]）。
+ *
+ *  开着长什么样：字形走**主色**（与菜单行选中、格子选中同一档），关着是顶栏按钮常规的内容色 ——
+ *  这颗键没有「禁用」档，所以只靠颜色分两态，与 `KeysHeaderEdit` 那颗同一个做法
+ *  （顶栏按钮不给图标上色，颜色得自己给）。
+ *
+ *  只认应用本身的那几趟（[AppPickerState.appOnly]）整颗不出现：那几趟写的是
+ *  `app:包名` / `proc:stop:包名`，`window:` 没人读，摆在那里只会让人以为能开小窗。
+ */
+@Composable
+private fun SettingsPage.SmallWindowToggle() {
+    if (picker.appOnly) return
+    val on = picker.smallWindow.value
+    val tint by animateColorAsState(
+        targetValue = if (on) COUITheme.colorScheme.primary else COUITheme.colorScheme.onSurfaceContainer,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "PickerMiniWindowTint",
+    )
+    HeaderIconButton(
+        onClick = {
+            picker.smallWindow.value = !on
+            XLog.w("选择应用：以小窗口打开 = ${picker.smallWindow.value}（顶栏开关，不落盘）")
+        },
+    ) {
+        Icon(
+            PageIcons.SmallWindow,
+            contentDescription = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW, "以小窗口打开"),
+            tint = tint,
+        )
+    }
+    Spacer(Modifier.width(HEADER_ACTION_GAP))
+}
+
+/**
+ * ⋮ 菜单里那两行 —— 都是「列表怎么显示」。
  *
  *  · 「显示系统应用」/「显示失效应用」都**落盘**（本地持久，不进用户配置，见 [UiState]）：
  *    写失败就把开关拨回去 —— 留着新值会让用户以为偏好已经存下来了，下次进页又变回去。
- *    两项又都**只在「打开」那一趟出现**：结束那一趟一律全列，它们在那边没有可改的东西。
- *  · 「以小窗口打开」**不落盘**：它描述「这一趟要往哪个动作上写」，每次进页按正在编辑的动作
- *    重算（见 `resetSmallWindowForPicker`）；开着时写成 `window:<包名>`。
- *  · 末一项在**只认应用本身**的几趟里不出现（[AppPickerState.appOnly]）：那几趟写的是
- *    `app:包名` / `proc:stop:包名`，`window:` 没人读，摆在那里只会让人以为能开小窗。
- *  · 三项可能**一行都不剩**（结束那一趟）—— 调用点据此连按钮一起摘掉。
+ *  · 两项又都**只在「打开」那一趟出现**：结束那一趟一律全列，它们在那边没有可改的东西。
+ *  · 可能**一行都不剩**（结束那一趟）—— 调用点据此连按钮一起摘掉。
+ *
+ *  「以小窗口打开」**不在这张表里**：它已经挪到顶栏，成了那一颗开关（见 [SmallWindowToggle]）。
  *
  * @param close 收掉菜单（调用点给的是 `open = false`）
  */
@@ -118,20 +167,4 @@ private fun SettingsPage.pickerMenuEntries(close: () -> Unit): List<MenuEntry> =
                 ),
             )
         }
-        // 给「条件执行」/「结束应用」挑时不出现：那两趟都不读 `window:`
-        if (picker.appOnly) {
-            return@buildList
-        }
-        add(
-            MenuEntry.Row(
-                title = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW, "以小窗口打开"),
-                icon = PageIcons.SmallWindow,
-                selected = picker.smallWindow.value,
-                onPick = {
-                    close()
-                    picker.smallWindow.value = !picker.smallWindow.value
-                    XLog.w("选择应用：以小窗口打开 = ${picker.smallWindow.value}（临时档，不落盘）")
-                },
-            ),
-        )
     }

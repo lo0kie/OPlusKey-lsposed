@@ -15,6 +15,7 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.model.gestureOrNull
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.ConditionProbe
@@ -281,7 +282,8 @@ internal object GestureExec {
             }
         // 语言档先对一次，下面拼主语才用得上新语言（与单键那条同一处口径）。
         syncLanguage(config)
-        val subject = comboTriggerLabel(combo, gesture, config)
+        val (keyLabel, gestureLabel) = comboParts(combo, gesture, config)
+        val subject = "$keyLabel - $gestureLabel"
         val log =
             "$subject${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}（宿主进程执行）"
         //  一次按住会来几十条，重复那条压到 d（release 裁掉），免得把判据行淹掉。
@@ -290,7 +292,7 @@ internal object GestureExec {
         //  · 重复派发只在「连续触发时振动」打开时振（否则一次按住会震几十下）；
         //  · 提示与报活只报第一次 —— 那是同一次按压，不是几十次操作。
         if (comboShouldVibrate(action, config) && (!repeat || combo.longRepeatVibrate)) haptic(config)
-        if (!repeat) noticeIfNeeded(config, action, subject)
+        if (!repeat) noticeIfNeeded(config, action, keyLabel, gestureLabel)
         r.run(action, subject)
         if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
         if (!repeat) onExecutedHook?.invoke(config)
@@ -329,10 +331,14 @@ internal object GestureExec {
                 keyConfig.actionFor(gesture) { condition ->
                     judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
                 }
-            val subject = "${keyName(key)} - ${gestureName(gesture)}（组合透传）"
+            //  「（组合透传）」挂在**手势**那一段上：模板里 `$gesture` 换成「单击（组合透传）」，
+            //  默认模板那句话于是与拆分之前逐字一致。
+            val keyLabel = keyName(key)
+            val gestureLabel = "${gestureName(gesture)}（组合透传）"
+            val subject = "$keyLabel - $gestureLabel"
             XLog.w("$subject → ${XLog.redactToken(action.token)}（宿主进程执行）")
             if (config.global.vibrate && action !is Action.None) haptic(config)
-            noticeIfNeeded(config, action, subject)
+            noticeIfNeeded(config, action, keyLabel, gestureLabel)
             r.run(action, subject)
             if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
         }
@@ -460,9 +466,10 @@ internal object GestureExec {
         //  「关于模块」的「使用验证」在什么都没发生时显示已生效（假绿灯）。
         if (shouldVibrate(repeat, keyConfig, action, config)) haptic(config)
         if (!repeat) {
-            // 语言档在拼主语**之前**对一次：`triggerLabel` 里的键名 / 手势名走的都是字典。
+            // 语言档在拼主语**之前**对一次：`triggerParts` 里的键名 / 手势名走的都是字典。
             syncLanguage(config)
-            noticeIfNeeded(config, action, triggerLabel(id, trigger))
+            val (keyLabel, gestureLabel) = triggerParts(id, trigger)
+            noticeIfNeeded(config, action, keyLabel, gestureLabel)
         }
         r.run(action, "${id.label} - ${trigger.label}")
         if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
@@ -507,30 +514,31 @@ internal object GestureExec {
     ): Boolean = action !is Action.None && !colorOsRinger(action, config)
 
     /**
-     * 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），内容是
-     * **这一下是哪颗键哪一档 + 执行了什么**（`侧键·单击 → 手电筒`）。
+     * 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），文案由
+     * [GlobalConfig.toastTemplate] 拼 —— `$key` / `$gesture` / `$action` 三段可自由摆放增删
+     * （见 `ToastNotice`；默认模板就是拆分之前那句 `侧键 - 单击 → 手电筒`）。
      *
      *  钉在这一处（一次手势只走一遍）而不是 `CustomCommandRunner` 里 —— 那一处只覆盖 `cmd:`
      *  自定义命令，绑的是内置动作（小布识屏 / 截图 / 手电筒 …）时按下去一直没动静
      *  （用户报「执行命令时系统提示没效果」）。连续触发的重复不弹：那是同一次按压。
      *
-     *  主语（[subject]）只在动作名之前加一段：只说「手电筒」时，连按几下不同手势
-     *  看不出分别是哪一下触发的。单键与组合键各拼各的（[triggerLabel] / [comboTriggerLabel]）——
-     *  这一层只管「这句提示要不要弹、弹什么」。
+     *  键名与手势分两段传进来（[triggerParts] / [comboParts]）：模板要能**单独**用其中一段，
+     *  拼成一句再拆回来做不到。日志那边照样拼成「侧键 - 单击」——它读的是同一对值。
      *
-     *  语言由调用方先对好（[syncLanguage]）：主语里那几段名字是字典查出来的，
-     *  在这里设语言就晚了半拍（调用方已经拼完主语）。
+     *  语言由调用方先对好（[syncLanguage]）：这里两段名字都是字典查出来的，
+     *  在这里设语言就晚了半拍（调用方已经拼完）。
      */
     private fun noticeIfNeeded(
         config: Config,
         action: Action,
-        subject: String,
+        keyLabel: String,
+        gestureLabel: String,
     ) {
         if (!config.global.toastOnRun) return
         // 名字表随配置来（`Config.appNames`）：快捷方式那档的名字只存在那里，token 里没有
         val what = actionNoticeText(appContext, action, config.appNames)
         if (what.isEmpty()) return
-        val notice = I18n.get(Strings.TOAST_RUN_ACTION, "%s → %s").format(subject, what)
+        val notice = ToastNotice.render(config.global.toastTemplate, keyLabel, gestureLabel, what)
         XLog.w("执行时提示：$notice")
         FailureNotice.toast(appContext, notice)
     }
@@ -548,32 +556,35 @@ internal object GestureExec {
     }
 
     /**
-     * 单键提示里的主语 —— 「侧键 - 单击」。
+     * 单键那次的「键名 / 手势」两段。
      *
      *  手势名与内置键名都走字典：`Gesture.label` 与 `KeyId.PLUS.label` 是写死的中文常量，
      *  直接拼会在英文界面下变成「侧键·单击 → Flashlight」这种半截。
      *  自定义键的名字是用户起的，原样用（[keyName]）。
      */
-    private fun triggerLabel(
+    private fun triggerParts(
         id: KeyId,
         trigger: GestureTrigger,
-    ): String = "${keyName(id)} - ${trigger.gestureOrNull()?.let(::gestureName) ?: trigger.label}"
+    ): Pair<String, String> = keyName(id) to gestureLabel(trigger)
 
     /**
-     * 组合键提示里的主语 —— 「侧键 + 音量上 - 短按」。
+     * 组合那次的「键名 / 手势」两段 —— 键名是「侧键 + 音量上」这一组。
      *
      *  组合没有「一颗键的名字」，就把成员的按键名连起来：用户配的就是这一组，日志与提示里
      *  也得是这一组。成员可能已经被删掉（配置里还指着它）：那样这一档根本走不到提示
      *  （[comboGate] 已经拦下），`mapNotNull` 只是不让它抛。
      */
-    private fun comboTriggerLabel(
+    private fun comboParts(
         combo: ComboKey,
         gesture: Gesture,
         config: Config,
-    ): String {
+    ): Pair<String, String> {
         val keys = combo.keys.mapNotNull { id -> config.keyIdOf(id)?.let(::keyName) }
-        return "${keys.joinToString(" + ")} - ${gestureName(gesture)}"
+        return keys.joinToString(" + ") to gestureName(gesture)
     }
+
+    /** 一档手势在提示里的名字 —— 第 3 击起的档位没有 `Gesture`，用它自己的标签。 */
+    private fun gestureLabel(trigger: GestureTrigger): String = trigger.gestureOrNull()?.let(::gestureName) ?: trigger.label
 
     /** 一颗键在提示里的名字（内置键走字典，自定义键用用户起的名字）。 */
     private fun keyName(id: KeyId): String = if (id.isCustom) id.label else I18n.get(Strings.KEY_SIDE, id.label)

@@ -25,14 +25,17 @@ import com.lookie.opluskey.ui.state.AppPickerState
  *  与 `openAppPickerForStep` 同一条路：进页前把搜索词清掉、「以小窗口打开」复位 ——
  *  这一页的状态提到页面级、不随出栈注销，不手动清的话下次进来就是一份被过滤过的列表。
  *
- *  那一趟**不挑界面、也不挑小窗**（判据是 `AppPickerState.forBranch`）：条件只认包名。
+ *  给**条件**挑的那一趟**不挑界面、也不挑小窗**（判据是 `AppPickerState.appOnly`）：条件只认包名。
+ *  给**那一支要执行的动作**挑（`forCommand = true`）不在此列 —— 它与网格同一套，可以挑组件 /
+ *  快捷方式、也可以用小窗起。
  */
 internal fun SettingsPage.openAppPickerForBranch(
     index: Int,
     forCommand: Boolean = false,
     conditionIndex: Int = -1,
+    stop: Boolean = false,
 ) {
-    picker.openForBranch(index, forCommand = forCommand, conditionIndex = conditionIndex)
+    picker.openForBranch(index, forCommand = forCommand, conditionIndex = conditionIndex, stop = stop)
     // 搜索词清空（页面级状态，不再随页面出栈注销）
     picker.filter.value = ""
     resetSmallWindowForPicker()

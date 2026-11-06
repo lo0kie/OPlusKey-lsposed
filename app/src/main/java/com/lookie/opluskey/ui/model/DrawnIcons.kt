@@ -126,6 +126,56 @@ internal object DrawnIcons {
     /** 「设置为」—— 底图 + 齿轮。 */
     val BrightnessSet: ImageVector by lazy { badgedIcon("BrightnessSet", Badge.Gear, ::sunBase) }
 
+    // —— 录屏：只是那颗摄像机，**不拼角标** ——
+    //
+    //  为什么不给三档各拼一颗（与音量 / 亮度同一套做法）：那三档是**同一个动作的三种状态**，
+    //  而状态已经由单选弹窗与小字说清了（`录屏 - 开始`）。拼角标的代价是底图必须让出右下角，
+    //  而摄像机最好认的那一笔（朝右张开的镜头）正好长在那儿 —— 让位之后它就不像摄像机了
+    //  （真机口径「效果太差了，缺角裁切呢，小图标也变形了」）。所以这一族只留底图
+    //  （用户口径「录屏不用换图标了，改成用选择器选三态」）。
+    //  底图与 [Glyph.ScreenRecord][ActionCatalog.Glyph.ScreenRecord] 那颗共用，格子与弹窗标题顺眼。
+
+    /**
+     * 录屏那一格 / 那一行：摄像机 —— 机身（圆角矩形）+ 右侧朝外张开的镜头。
+     *
+     *  **满格、不让位**：这一族只出格子与弹窗标题那一颗（三态不拼角标，见上面那段），
+     *  所以不需要给右下角腾地方 —— 机身 x 2~15.5 / y 6~17.5、镜头顶点落在 (21,16.5)，
+     *  与图标库那颗 `video` 同一个构图。**整颗在 24 格里居中**（横向 2~21、纵向 6~17.5）：
+     *  第一版压在 y 4~15.5，与旁边的音量 / 应用控制摆在一列里明显偏高。
+     *
+     *  形状直接写在 `by lazy` 里：只有这一颗用它，单独立一个 `cameraBase()` 只会让这个
+     *  object 的函数数顶破 detekt 的 `TooManyFunctions`。
+     */
+    val ScreenRecordTile: ImageVector by lazy {
+        flatIcon(
+            "ScreenRecordTile",
+            PathData {
+                //  机身：圆角矩形（四个角各 2 格）
+                val left = 2f
+                val top = 6f
+                val right = 15.5f
+                val bottom = 17.5f
+                val corner = 2f
+                moveTo(left + corner, top)
+                lineTo(right - corner, top)
+                quadTo(right, top, right, top + corner)
+                lineTo(right, bottom - corner)
+                quadTo(right, bottom, right - corner, bottom)
+                lineTo(left + corner, bottom)
+                quadTo(left, bottom, left, bottom - corner)
+                lineTo(left, top + corner)
+                quadTo(left, top, left + corner, top)
+                close()
+
+                //  镜头：机身后方向右张开的一笔（与图标库那颗 `video` 同一个形状）
+                moveTo(right, 10.5f)
+                lineTo(21f, 7.5f)
+                lineTo(21f, 16.5f)
+                lineTo(right, 13.5f)
+            },
+        )
+    }
+
     /** 一格铺满的字形（不带角标）—— 两族的底图与格子都用它，笔画同一档。 */
     private fun flatIcon(
         name: String,

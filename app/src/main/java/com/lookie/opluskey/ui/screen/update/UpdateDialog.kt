@@ -101,15 +101,19 @@ internal fun SettingsPage.UpdateDialog() {
         footer = {
             DialogButtonRow(
                 negative = I18n.get(Strings.UPDATE_LATER, "稍后"),
-                positive = I18n.get(Strings.UPDATE_DOWNLOAD, "去下载"),
                 onNegative = { UpdateState.dismiss() },
                 onPositive = {
                     //  先去浏览器，再收窗：`takeDownload` 会把勾选框那一笔一起记下
                     val url = UpdateState.takeDownload()
                     if (url != null) openUrl(url)
                 },
-                //  更新不是破坏性动作，动作项用中性色
-                positiveStyle = DialogPositiveStyle(danger = false, enabled = true),
+                //  更新不是破坏性动作，动作项用中性色；字换成「去下载」
+                positiveStyle =
+                    DialogPositiveStyle(
+                        danger = false,
+                        enabled = true,
+                        label = I18n.get(Strings.UPDATE_DOWNLOAD, "去下载"),
+                    ),
             )
         },
     ) {

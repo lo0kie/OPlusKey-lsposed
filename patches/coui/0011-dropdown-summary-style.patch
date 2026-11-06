@@ -1,0 +1,40 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+index f9f5a4c..e9bbd80 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.graphics.ColorFilter
+ import androidx.compose.ui.graphics.vector.ImageVector
+ import androidx.compose.ui.semantics.Role
++import androidx.compose.ui.text.TextStyle
+ import androidx.compose.ui.text.font.FontWeight
+ import androidx.compose.ui.text.style.TextOverflow
+ import androidx.compose.ui.unit.Dp
+@@ -203,7 +204,8 @@ fun DropdownImpl(
+                 item.summary?.let {
+                     Text(
+                         text = it,
+-                        style = COUITheme.textStyles.body2,
++                        //  补丁：子标题的样式可由调用点换掉（默认仍是 COUI 的 body2）。
++                        style = item.summaryStyle ?: COUITheme.textStyles.body2,
+                         color = summaryColor,
+                         // COUI DefaultAdapter.setDescription.
+                         maxLines = DropdownDefaults.SummaryMaxLines,
+@@ -432,6 +434,9 @@ data class DropdownEntry(
+  *   and non-empty (the click is consumed by the cascading layer to expand the submenu).
+  * @param icon Optional icon shown before [text].
+  * @param summary Optional summary shown below [text].
++ * @param summaryStyle Optional text style for [summary], which otherwise uses
++ *   [TextStyles.body2]. Host apps whose rows already use body2 for something else pass a
++ *   smaller tier here so the summary reads as a note rather than a second title.
+  * @param children Optional submenu items. When non-null and non-empty, this item becomes a
+  *   submenu trigger: cascading dropdown popups render a chevron and open a child popup on click,
+  *   recursively. Stabilize this list (e.g. via `remember`) to avoid unnecessary recomposition.
+@@ -463,6 +468,7 @@ data class DropdownItem(
+     val icon: @Composable ((Modifier) -> Unit)? = null,
+     val summary: String? = null,
+     val children: List<DropdownItem>? = null,
++    val summaryStyle: TextStyle? = null,
+     val hint: @Composable (() -> Unit)? = null,
+     val alert: Boolean = false,
+     val checkIcon: ImageVector? = null,

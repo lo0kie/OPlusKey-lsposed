@@ -92,7 +92,7 @@ internal class AppPickerState {
     val showUnopenable = mutableStateOf(false)
 
     /**
-     * 菜单里那一项「以小窗口打开」。
+     * 「选择应用」页顶栏那颗「以小窗口打开」开关（原先在 ⋮ 菜单里，现在单独一颗键）。
      *
      *  它不筛列表，只决定**挑中的应用写成哪个动作**：开着写 `window:<包名>`，关着写 `app:<包名>`。
      *
@@ -213,21 +213,24 @@ internal class AppPickerState {
     /**
      * 这一趟是在给「条件执行」挑 —— [branchTarget] 或 [branchCommandTarget] 有一头有效。
      *
-     *  那一页的两处**只认应用本身**：条件记的是包名，动作记的是 `app:包名`。所以这一页对它们
-     *  要关掉两件「把应用细化成别的东西」的事 —— **挑界面**（点行不再进二级页）与
-     *  **以小窗口打开**（`window:` 那一档在这里没人读）。判据只此一处，两个界面各读它。
+     *  只回答「写回走哪条路」（两个写回函数各管一头），**不代表「只认应用本身」**：
+     *  给**条件**挑只认包名，而给**那一支要执行的动作**挑与网格同一套（可以选组件 / 快捷方式、
+     *  也可以用小窗起）。
      */
     val forBranch: Boolean
         get() = branchTarget != NOT_FOR_BRANCH || branchCommandTarget != NOT_FOR_BRANCH
 
     /**
-     * 这一趟**只认应用本身**（[forBranch] 与 [stopApp] 两档）：点行即选中、没有二级页、也没有小窗。
+     * 这一趟**只认应用本身**（给条件挑 / 「结束应用」两档）：点行即选中、没有二级页、也没有小窗。
      *
      *  三处读它（点行 / 行尾图标 / 菜单里那一项），判据只此一份 —— 两档共用一个位是因为它们
      *  对「这一页怎么用」的要求一模一样，差别只在写出去的那个 token。
+     *
+     *  **给分支动作挑的那一趟不在这里**（`branchCommandTarget`）：那一支执行的就是一个普通动作，
+     *  与网格里绑的那一份没有区别，所以它照常能进二级页挑组件 / 快捷方式、也能开小窗。
      */
     val appOnly: Boolean
-        get() = forBranch || stopApp
+        get() = branchTarget != NOT_FOR_BRANCH || stopApp
 
     // —— 「这趟为谁挑」那一组标记的三个改法 ——
     //
@@ -269,15 +272,22 @@ internal class AppPickerState {
         stopAppState.value = true
     }
 
-    /** 「添加命令」那条入口：给多条命令**加一步**（[replaceIndex] `< 0`）或换掉第 [replaceIndex] 步。 */
-    fun openForStep(replaceIndex: Int) {
+    /**
+     * 「添加命令」那条入口：给多条命令**加一步**（[replaceIndex] `< 0`）或换掉第 [replaceIndex] 步。
+     *
+     * @param stop `true` = 这一趟写 `proc:stop:包名`（抽屉里「应用控制 → 结束应用」那一档）
+     */
+    fun openForStep(
+        replaceIndex: Int,
+        stop: Boolean = false,
+    ) {
         gesture = null
         comboId = null
         forStep = true
         replaceStep = replaceIndex
         branchTarget = NOT_FOR_BRANCH
         branchCommandTarget = NOT_FOR_BRANCH
-        stopAppState.value = false
+        stopAppState.value = stop
     }
 
     /**
@@ -293,6 +303,7 @@ internal class AppPickerState {
         index: Int,
         forCommand: Boolean = false,
         conditionIndex: Int = -1,
+        stop: Boolean = false,
     ) {
         gesture = null
         comboId = null
@@ -302,7 +313,8 @@ internal class AppPickerState {
         branchCommandTarget = if (forCommand) index else NOT_FOR_BRANCH
         //  挑动作那一趟不写条件槽位（两个落点互斥），留着上一趟的值只会在下一次条件挑选时误导
         branchConditionIndex = if (forCommand) -1 else conditionIndex
-        stopAppState.value = false
+        //  只有「这一支要执行的应用」才有结束那一档（条件存的是包名，与 stop 无关）
+        stopAppState.value = stop
     }
 
     /** 这趟「为谁挑」整个作废 —— 挑完了、写失败留在原地、或干脆没挑就退出来。 */

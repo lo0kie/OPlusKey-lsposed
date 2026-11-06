@@ -147,6 +147,10 @@ internal fun SettingsPage.collapsedHeaderHeight(scrollBehavior: ScrollBehavior):
 /**
  * 本页顶栏 —— 标题 / 副标题 / 右上角动作 / 底下那条固定带（内容按页在 `PageTopBar` 里分派）。
  *
+ *  **两种子标题都在这里夹最大宽度**（同一行那档 / 标题下面那档，见
+ *  [TRAILING_SUBTITLE_MAX_COLUMNS] 与 [BELOW_SUBTITLE_MAX_COLUMNS]）：它们装的是键名 / 应用名 /
+ *  命令名，长度不受控，调用点不该各自截一遍。
+ *
  *  `subtitleColor` 是尾随标题（大标题右边那行）的颜色，默认就是库那一档次要色。留成参数是为了
  *  「这一页整体按不动」时把它也压暗一档：内容区整片变灰了，这一行还按满亮度亮着，读起来像
  *  那一区仍然是活的（见 `PageTopBar` 里停用那支）。
@@ -165,6 +169,7 @@ internal fun SettingsPage.PageHeader(
     title: String,
     subtitle: String = "",
     subtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
+    subtitleBelow: Boolean = false,
     trailingSubtitleIcon: ImageVector? = null,
     scrollBehavior: ScrollBehavior,
     state: HazeState,
@@ -177,12 +182,28 @@ internal fun SettingsPage.PageHeader(
     // 顶栏里那条固定带的高度（没有带子时为 0）：上报顶栏高度时扣掉它。
     val bandHeightPx = remember { mutableIntStateOf(0) }
     val headerBand = currentHeaderBand()
+    //  两种子标题的**最大宽度**都在这一层夹，调用点只管传全文（键名 / 应用名 / 命令名都会很长）：
+    //  不夹的话，同一行那档会把大标题挤成省略号，标题下面那档会铺满整行、读起来像正文。
+    //  只改**画出来的那一份** —— 日志与配置仍是原文。
+    val shownSubtitle =
+        ellipsizeToColumns(
+            subtitle,
+            if (subtitleBelow) BELOW_SUBTITLE_MAX_COLUMNS else TRAILING_SUBTITLE_MAX_COLUMNS,
+        )
     // 磨砂规格（含模糊半径）统一由 [frosted] 挂，见 [HAZE_FROSTED_STYLE]。
     TopAppBar(
         title = title,
-        trailingSubtitle = subtitle,
+        //  库有两个副标题槽位，位置不同、不能互换（见补丁 `0001`）：
+        //   · `subtitle` 在标题**下面**、自己占一行（[subtitleBelow] = true 走这一档）；
+        //   · `trailingSubtitle` 跟大标题**同一行**、贴在大标题右边，随折叠一起缩（其余各页）。
+        //  同一页只用一个：两个都传的话会同时出现，读起来像写了两遍同一句话。
+        subtitle = if (subtitleBelow) shownSubtitle else "",
+        subtitleColor = subtitleColor,
+        trailingSubtitle = if (subtitleBelow) "" else shownSubtitle,
         trailingSubtitleColor = subtitleColor,
-        trailingSubtitleIcon = trailingSubtitleIcon,
+        //  行尾那枚小图标只跟在**同一行**的那个槽位上 —— 挪到下面那一行时它无处可挂，
+        //  也不该挂：需要说明的那件事（小窗起 / 停用）已经在正文里说了（调用点保证）。
+        trailingSubtitleIcon = if (subtitleBelow) null else trailingSubtitleIcon,
         trailingSubtitleAlignment = TopAppBarTrailingSubtitleAlignment.Bottom,
         hideSubtitleOnCollapse = false,
         //  三个水平边距统一到**卡片那一档**（[PAGE_MARGIN]）：整页所有卡片的外边距、固定带里
@@ -266,6 +287,22 @@ private fun Modifier.headerPressTick(tick: () -> Unit): Modifier =
             }
         }
     }
+
+/**
+ * 同一行那档子标题（`trailingSubtitle`）的**格数上限** —— 24 格 = 12 个汉字。
+ *
+ *  它与大标题分同一行：再长就只能把标题压成省略号。24 格放得下现用的那几行
+ *  （最长的一条是「「快捷键」+「电量 +」」，21 格），同时给标题留下大半行。
+ *  口径按**格**算（见 `displayWidth`），所以英文 / 数字不会被误砍。
+ */
+private const val TRAILING_SUBTITLE_MAX_COLUMNS = 24
+
+/**
+ * 标题下面那档子标题（`subtitleBelow`）的**格数上限** —— 32 格 = 16 个汉字。
+ *
+ *  它独占一行、本来就够宽，但铺满整屏时读起来像正文；留出两端空白，一眼还是「这一页的一句说明」。
+ */
+private const val BELOW_SUBTITLE_MAX_COLUMNS = 32
 
 /**
  * 顶栏圆键**描边**的不透明度系数 —— 乘在 `dividerLine` 自己那一档 alpha 上。

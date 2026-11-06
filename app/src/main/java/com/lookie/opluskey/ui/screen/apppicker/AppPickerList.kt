@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
@@ -23,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -50,7 +48,6 @@ import com.lookie.opluskey.ui.model.LaunchableApp
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.screen.command.branchConditionUsed
 import com.lookie.opluskey.ui.selectedRowRing
@@ -97,8 +94,8 @@ internal fun SettingsPage.AppPickerList(
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState()
     val searchBandDp = appSearchBandHeight.dp()
-    // 行尾那枚图标画的是**当前选中的那个**（[AppPickerUiState.pending]）：进页时它是已绑定的
-    // 那一档，在二级页点了确认之后换成刚挑的那一档。
+    // 选中那条的判据（[AppPickerUiState.pending]）：进页时它是已绑定的那一档，
+    // 在二级页点了确认之后换成刚挑的那一档。它只管一圈内框 + 标题上色，行尾恒是箭头。
     val pending = ui.pending
     val row = rememberRowState(pending)
     LocateSelected(ui, scrollBehavior, listState, searchBandDp)
@@ -249,7 +246,8 @@ private fun LazyItemScope.PickerEmptyItem(
  *
  *  · **只认应用本身的那几趟**（[AppPickerState.appOnly]：给「条件执行」挑、给「应用控制 → 结束」
  *    挑）：那一支只存应用（条件是前台应用、动作是 `app:包名` 或 `proc:stop:包名`），没有
- *    「里面哪个界面」这回事 ⇒ 点一行就是**选中它**（行尾画勾），右下角那颗确认键再落盘。
+ *    「里面哪个界面」这回事 ⇒ 点一行就是**选中它**（那一行亮起内框、标题转主题色），
+ *    右下角那颗确认键再落盘。
  *    · **给「前台应用」条件挑**（[AppPickerState.branchTarget]）：**多选**，点一下**切换**，
  *      可以亮好几行（一条条件存 `包1||包2`，任一在前台即通过）。去重仍生效：同一个应用
  *      已经用在**别的行**上就只提示、不选中 —— 已经在本条里的那颗必须能点掉，否则没法取消。
@@ -343,14 +341,14 @@ internal fun SettingsPage.PickerScrollBar(
  *
  *  不 remember 的话，每次重组都给每一行做一个新实例 ⇒ 行永远跳不过重组
  *  （`RowState` 是普通 class，只有引用相等）。
- *  给**条件**挑的那一趟按集合画勾（可多选），其余入口按单个 `pending`。
+ *  给**条件**挑的那一趟按集合算选中（可多选），其余入口按单个 `pending`。
  */
 @Composable
 private fun SettingsPage.rememberRowState(pending: PickedDetail?): RowState {
     val multi = picker.branchTarget != AppPickerState.NOT_FOR_BRANCH
     val pickedPkgs = picker.pickedApps.value
-    return remember(pending, picker.appOnly, multi, pickedPkgs) {
-        RowState(pending, picker.appOnly, multi, pickedPkgs)
+    return remember(pending, multi, pickedPkgs) {
+        RowState(pending, multi, pickedPkgs)
     }
 }
 
@@ -360,8 +358,6 @@ private fun SettingsPage.rememberRowState(pending: PickedDetail?): RowState {
 private class RowState(
     /** **当前选中**的那一条（进页时等于已绑定的那一档；二级页确认后是刚挑的那一条）。 */
     val pending: PickedDetail?,
-    /** 这一趟**只认应用本身**（[AppPickerState.appOnly]）：那一趟没有下一级、也没有小窗。 */
-    val appOnly: Boolean,
     /** 这一趟是在给**条件**挑（而不是给那一支要执行的应用挑）—— 只有它支持多选。 */
     val multi: Boolean,
     /** 给条件挑时**已选的全部包名**；其余入口恒为空集（那时看 [pending]）。 */
@@ -371,6 +367,9 @@ private class RowState(
      * 这一行（[target] 是应用那一级的 `包名` / `999@包名`）是不是当前选中的那个应用。
      *
      *  给**条件**挑的那一趟看集合（可以选中好几个）；其余入口看 [pending] 那一个目标。
+     *
+     *  这一位管三样：内框（[selectedRowRing]）、标题上色、以及行尾那一格换成实心圆勾
+     *  （见 [AppRow] 里那一段说明）。
      */
     fun pickedBy(target: String): Boolean =
         if (multi) {
@@ -378,36 +377,6 @@ private class RowState(
         } else {
             pending != null && AppTarget.sameApp(target, pending.target)
         }
-
-    /**
-     * 行尾那枚图标 —— 选中态四档：没选中 / 整个应用 / 里面某个界面 / 某个快捷方式。
-     * 后两者在配置里都长成 `包名/xxx`（一边是类名、一边是快捷方式 id），光看字符串分不出来，
-     * 只能靠 [PickedDetail.shortcutId] 判：有 id ⇒ 快捷方式（`table-shortcut`），
-     * 没有 ⇒ 具体界面（`device-screen`）。
-     *
-     *  **只认应用本身的那几趟只有两档**：选中画勾、没选中**什么都不画**。那些趟点一行就是选中
-     *  （不进二级页），画「箭头 = 点进去能看到里面有什么」等于骗人。
-     *
-     * @return `null` = 这一行不画图标
-     */
-    fun iconFor(target: String): ImageVector? {
-        // 先排除「没选中 / 选的是别的应用」——`pending` 收窄成非空之后才看它装的是哪一档
-        if (!pickedBy(target)) {
-            // 没选中：只认应用本身的那几趟没有下一级，不画箭头；其余入口画箭头（点进去能看到里面有什么）
-            return if (appOnly) null else PageIcons.EnterArrow
-        }
-        // 给条件挑（可多选）与给动作挑一样：选中就是一颗勾，没有「里面某个界面」那几档
-        if (multi || appOnly) return PageIcons.TileChecked
-        val picked = pending ?: return PageIcons.TileChecked
-        return when {
-            // 有快捷方式 id ⇒ 快捷方式；否则目标里带 `/类名` 就是某个具体界面
-            picked.shortcutId != null -> PageIcons.ShortcutMark
-
-            AppTarget.activity(picked.target) != null -> PageIcons.ActivityScreen
-
-            else -> PageIcons.TileChecked
-        }
-    }
 }
 
 /**
@@ -416,10 +385,12 @@ private class RowState(
  *
  *  内容仍是原来的四段：行首那颗应用图标（[AppIcon]，不是 `ImageVector` ⇒ 走 `startIcon`）、
  *  名字 + 「分身 / 模块 / 系统 / 用户 / 不可打开」小标签（`titleExtra`）、包名（副标题）、
- *  行尾**当前选中**的那四档图标（`trailing`，判据见 [RowState.iconFor]）。
+ *  行尾那支右箭头（`trailing`）。
  *
- *  **点一行即进下一级**（挑这个应用里的具体界面 / 快捷方式），所以行尾那枚图标画的是**当前选中**
- *  的四档之一（箭头 = 没选中 / 勾 = 整个应用 / 一块屏 = 里面某个界面 / 表格+箭头 = 某个快捷方式）。
+ *  **点一行即进下一级**（挑这个应用里的具体界面 / 快捷方式），所以行尾画箭头；
+ *  **选中那一行**换成实心圆勾（[PageIcons.TileChecked]，与按键列表的选中态同一颗）。
+ *  类型不再由行尾说（顶栏那行字已经写了，见 `PickerHeaderText`）—— 原来「勾 / 一块屏 /
+ *  表格 + 箭头」那三档区分类型，撤了之后行尾只回答「是不是它」。
  *
  * ## 为什么这一行**不给** `Modifier.animateItem()`
  *
@@ -441,7 +412,7 @@ private fun SettingsPage.AppRow(
     onClick: () -> Unit,
 ) {
     val withSystem = picker.showSystemApps.value
-    // 这一行是不是当前选中的那个应用 —— 行尾那枚图标据此上色
+    // 这一行是不是当前选中的那个应用 —— 行尾那支箭头的颜色据此走（选中那行给主题色）
     val picked = row.pickedBy(app.target)
     CardList(
         rows =
@@ -453,29 +424,23 @@ private fun SettingsPage.AppRow(
                     titleExtra = { AppRowTags(app, withSystem) },
                     //  行高定死 ⇒ 行首那枚图标才能整高（见 [APP_ROW_HEIGHT]）。
                     //  行自己不带外边距：行距由 [spacedItems] 给（首行不加、末行不加）。
-                    //  选中那一行加一圈**内边框**（见 [selectedRowRing]）：行尾那颗勾说的是
-                    //  「选中了」，而三百行里一颗勾太不起眼，扫一眼看不出是自己挑的那个。
+                    //  选中那一行加一圈**内边框**（见 [selectedRowRing]）：行尾那格已经不再
+                    //  顺带说「选中了」（见下），这一圈就是「我挑的是这一个」的主要凭据。
                     modifier = Modifier.height(APP_ROW_HEIGHT).selectedRowRing(picked),
                     //  标题也跟着上色：内框管「这一行是当前这个」，标题管「读哪个名字」——
                     //  三百行里一眼扫下去，先落到的应该是字，不是那圈线。
                     titleTint = if (picked) COUITheme.colorScheme.primary else null,
                     trailing = {
-                        //  `null` = 这一行不画图标（给「条件执行」挑时，没选中的行没有「点进去」这回事）。
-                        //  **但槽位照占同样大小**：库按行尾的实际宽度算中间那列能用多宽，
-                        //  宽度从 0 跳到 24dp 会让长包名折行 —— 真机表现是「勾一出现，两个标题一起上移」。
-                        val icon = row.iconFor(app.target)
-                        if (icon == null) {
-                            Spacer(Modifier.size(ROW_END_ICON_SIZE))
+                        //  行尾那一格**恒占位**，只换字形：
+                        //  · 选中那一行 → **实心圆勾**（`TileChecked`，与按键列表的选中态同一颗）：
+                        //    这一页的行是「挑一个」，勾比箭头更直接地说「就是它」；
+                        //  · 其余行 → 右箭头（点下去还进下一级：挑这个应用里的具体界面 / 快捷方式）。
+                        //  两档都是同一格 24dp，宽度不动 —— 否则库按行尾实际宽度算中间那列，
+                        //  长包名会折行（真机表现是「勾一出现，两个标题一起上移」）。
+                        if (picked) {
+                            RowEndIcon(PageIcons.TileChecked, tint = COUITheme.colorScheme.primary)
                         } else {
-                            RowEndIcon(
-                                icon = icon,
-                                tint =
-                                    if (picked) {
-                                        COUITheme.colorScheme.primary
-                                    } else {
-                                        COUITheme.colorScheme.onSurfaceVariantActions
-                                    },
-                            )
+                            RowEndIcon(tint = COUITheme.colorScheme.onSurfaceVariantActions)
                         }
                     },
                     onClick = onClick,

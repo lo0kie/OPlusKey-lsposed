@@ -284,6 +284,12 @@ object ConfigFields {
     /** 执行时提示 —— **只有落盘那一列**：它由宿主侧弹，注入侧不读它。 */
     val F_TOAST_ON_RUN = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
 
+    /**
+     * 「执行时提示」那一句的**文案模板**（`$key` / `$gesture` / `$action`，见 `ToastNotice`）
+     * —— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：它由宿主侧弹，注入侧不读它。
+     */
+    val F_TOAST_TEMPLATE = Field(null, Kind.Text(GlobalConfig.DEFAULT_TOAST_TEMPLATE))
+
     /** 界面语言。 */
     val F_LANGUAGE = Field(LANGUAGE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_LANGUAGE))
 

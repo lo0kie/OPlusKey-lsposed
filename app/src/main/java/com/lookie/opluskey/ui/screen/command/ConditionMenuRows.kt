@@ -21,12 +21,16 @@ import com.lookie.opluskey.ui.model.conditionKindLabel
  *  与「菜单开没开、二级挂在哪儿」无关。
  *
  * @param current 这一条现在那一档（画成选中）；`-1` 那一趟（再加一条）传 `null`
+ * @param currentSummary 选中那一行的**子标题**（已拼好：`打开` / `已选择 3 个应用` / `22:00-07:00`）——
+ *   一级菜单里那一行只写种类名，选中了之后看不出选的是哪一档（「开 / 关」这种字本身不带主语）。
+ *   `null` = 不出小字（还没选、或那一档不该列取值）。拼法见 `conditionMenuSummary`。
  * @param disabled 表里**取值已经全用掉**的档（点一下只说「这个条件已经加过了」）
  * @param onPick 种类定下来之后的落盘（挑应用页 / 时间窗 / 直接写，见 [BranchConditionMenu] 的 `commit`）
  * @param onSub 要开二级取值的那一档
  */
 internal fun conditionKindRows(
     current: ConditionKind?,
+    currentSummary: String?,
     disabled: Set<ConditionKind>,
     onPick: (ConditionKind, String) -> Unit,
     onSub: (ConditionKind) -> Unit,
@@ -34,6 +38,8 @@ internal fun conditionKindRows(
     ConditionKind.entries.map { kind ->
         MenuEntry.Row(
             title = conditionKindLabel(kind),
+            // 子标题只给**当前选中的那一档**：其余行写了「取值」会被读成「也选了」。
+            summary = if (kind == current) currentSummary else null,
             icon = conditionIcon(kind),
             // 取值全用掉了才置灰（本条自己原来那档不计入 —— 它算「还是它」）
             enabled = kind !in disabled,

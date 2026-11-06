@@ -41,7 +41,7 @@ object Strings {
     const val APP_PICKER_SECTION_SHORTCUTS = "app_picker.section_shortcuts"
     const val APP_PICKER_SEARCH_ACTIVITY = "app_picker.search_activity"
     const val APP_PICKER_SEARCH_APP = "app_picker.search_app"
-    const val APP_PICKER_SELECTED_FORMAT = "app_picker.selected_format"
+
     const val APP_PICKER_TAB_SYSTEM = "app_picker.tab_system"
     const val APP_PICKER_TAB_USER = "app_picker.tab_user"
     const val APP_PICKER_TAB_XPOSED = "app_picker.tab_xposed"
@@ -283,12 +283,6 @@ object Strings {
     /** 灵感语音 —— 菜单里那一行（点开再选开始 / 结束）。 */
     const val CATALOG_VOICE_MEMORY = "catalog.voice_memory"
 
-    /** 灵感语音 —— **开始**采集（AI 记忆的录音）。 */
-    const val CATALOG_VOICE_MEMORY_START = "catalog.voice_memory_start"
-
-    /** 灵感语音 —— **结束**采集（与上一档同一条服务的另一个事件）。 */
-    const val CATALOG_VOICE_MEMORY_STOP = "catalog.voice_memory_stop"
-
     /** 唤醒小布 —— 与系统「长按电源键」同一个能力（`oplus:voice_assist`）。 */
     const val CATALOG_VOICE_ASSIST = "catalog.voice_assist"
 
@@ -461,6 +455,25 @@ object Strings {
 
     /** 绑定页横幅的另一档：这一档一条都没配（那一行**始终**在，见 `BindingList`）。 */
     const val COMMAND_BRANCH_SCENARIO_NONE = "command.branch_scenario_none"
+
+    /**
+     * 「系统场景」那一行**在菜单里**的子标题 —— 一条都没配时那句。
+     *
+     *  与上面两条分开：那两条带「当前手势」四个字，是给页面横幅用的（那里有整行宽度）；
+     *  菜单行的子标题窄，带上那四个字会折行。
+     */
+    const val COMMAND_BRANCH_SCENARIO_NONE_MENU = "command.branch_scenario_none_menu"
+
+    /** 同上，配了 N 条时那句（只数启用中的）。 */
+    const val COMMAND_BRANCH_SCENARIO_COUNT_MENU = "command.branch_scenario_count_menu"
+
+    /**
+     * 「前台应用」那一行在菜单里的子标题 —— `已选择 3 个应用`。
+     *
+     *  那一档能选好几个应用，把名字全列出来比标题还长（菜单会被撑宽、还读不全），
+     *  所以子标题只报个数；具体是哪几个在条件表那一行里（那里不限行）。
+     */
+    const val COMMAND_BRANCH_APP_COUNT = "command.branch_app_count"
     const val COMMAND_BRANCH_ANY = "command.branch_any"
 
     /** 一条条件的小标题（「条件 1」）。 */
@@ -602,18 +615,6 @@ object Strings {
     const val COMMON_BACK = "common.back"
 
     /**
-     * 亮度那几档在**步骤行 / 执行提示**里的写法（`亮度增加 15%`）。
-     *
-     *  这两处没有「这一格叫屏幕亮度」的上下文，只写「增加 15%」看不出动的是什么；
-     *  网格小字与百分比弹窗里则相反 —— 那里紧挨着「亮度」两个字，再加一遍是重复，
-     *  所以它们仍用不带主语的 `catalog.brightness_*_of`。
-     */
-    const val COMMON_BRIGHTNESS_FORMAT = "common.brightness_format"
-
-    /** 音量同上（`音量减少 10%`）。 */
-    const val COMMON_VOLUME_FORMAT = "common.volume_format"
-
-    /**
      * 搜索框的占位文案带条数：`%1$s` 原来的占位（`搜索应用`）、`%2$d` 条数 —— `搜索应用 (42)`。
      *
      *  两页共用（选择应用 / 应用组件），只在这一处定句式。只在**搜索框空着**
@@ -633,16 +634,41 @@ object Strings {
     const val COMMON_MOVE_DOWN = "common.move_down"
     const val COMMON_MORE = "common.more"
     const val COMMON_MOVE_UP = "common.move_up"
-    const val COMMON_OPEN_APP_FORMAT = "common.open_app_format"
-    const val COMMON_OPEN_MINI_WINDOW_FORMAT = "common.open_mini_window_format"
-    const val COMMON_OPEN_SHORTCUT_FORMAT = "common.open_shortcut_format"
 
-    /** 「系统开关」里那几颗在执行提示 / 步骤行里的写法（`切换 WIFI`）。 */
-    const val COMMON_TOGGLE_SETTING_FORMAT = "common.toggle_setting_format"
+    /**
+     * 「**东西 - 状态**」的两段式（`手电筒 - 关闭` / `灵感语音 - 开始`）。
+     *
+     *  三处用它，都是「同一句里的两段」：系统开关（`系统开关: WIFI - 打开`）、
+     *  「应用控制」那一族（`应用控制: 打开应用 - 微信`）、以及「松手动作」那一行的取值。
+     */
+    const val COMMON_NAME_STATE_FORMAT = "common.name_state_format"
 
-    /** 系统开关「打开 / 关闭」那两档的步骤标题。 */
-    const val COMMON_TURN_ON_SETTING_FORMAT = "common.turn_on_setting_format"
-    const val COMMON_TURN_OFF_SETTING_FORMAT = "common.turn_off_setting_format"
+    /** 上面那条两段式里的状态词（短的那一档）。 */
+    const val COMMON_START = "common.start"
+    const val COMMON_STOP = "common.stop"
+
+    /**
+     * 「小窗」那一档的标记 —— 「打开应用」的目标里用它标「这一条是以小窗打开」
+     * （`微信(小窗 扫一扫)`）。
+     */
+    const val COMMON_WINDOW_TAG = "common.window_tag"
+
+    /**
+     * 「打开应用」的目标外层括号：`%1$s` 应用名、`%2$s` 括号里的附加段（空格分隔）。
+     *
+     *  括号里是**注记**（小窗 / 组件名 / 快捷方式名），不是主句的动作或状态 ——
+     *  所以不与 `common.name_state_format` 那条横杠混用（用户口径「写成 微信(小窗 扫一扫)，
+     *  不要再加横杠分隔」）。
+     */
+    const val COMMON_TARGET_PAREN_FORMAT = "common.target_paren_format"
+
+    /**
+     * 「**父名: 子名**」—— 一句动作文案的骨架（`系统开关: WIFI - 打开` / `应用控制: 打开应用 - 微信`）。
+     *
+     *  全项目只有 `core/model/ActionLabels` 的 `prefixName` 读它：所有「一个动作怎么念」的地方
+     *  因此逐字一致（步骤行 / 命令卡摘要 / 执行提示 / 系统场景格 / 选择应用页页头）。
+     */
+    const val COMMON_PREFIX_NAME_FORMAT = "common.prefix_name_format"
     const val COMMON_REPLACE = "common.replace"
     const val COMMON_RESET = "common.reset"
     const val COMMON_STEP_INDEX = "common.step_index"
@@ -816,6 +842,9 @@ object Strings {
 
     /** 通用那颗「确认」—— 目前只有「温馨提醒」用（两颗按钮都只是关窗，见 `ui/screen/HomeScreen`）。 */
     const val DIALOG_CONFIRM = "dialog.confirm"
+
+    /** 按钮区最左那颗「重置」—— 只在「这一格可以恢复默认」的地方出现（提示文案模板）。 */
+    const val DIALOG_RESET = "dialog.reset"
     const val DIALOG_DISCLAIMER_ACKNOWLEDGE = "dialog.disclaimer_acknowledge"
     const val DIALOG_DISCLAIMER_CONTENT = "dialog.disclaimer_content"
     const val DIALOG_DISCLAIMER_TITLE = "dialog.disclaimer_title"
@@ -881,6 +910,12 @@ object Strings {
     const val HOME_TOAST_DESC_OFF = "home.toast_desc_off"
     const val HOME_TOAST_DESC_ON = "home.toast_desc_on"
     const val HOME_TOAST_TITLE = "home.toast_title"
+
+    /** 「执行时提示」的**文案模板**：那一行的标题 / 输入框占位 / 弹窗里的占位符说明 / 为空时那句默认。 */
+    const val HOME_TOAST_TEMPLATE_TITLE = "home.toast_template_title"
+    const val HOME_TOAST_TEMPLATE_HINT = "home.toast_template_hint"
+    const val HOME_TOAST_TEMPLATE_DEFAULT = "home.toast_template_default"
+    const val HOME_TOAST_TEMPLATE_PLACEHOLDER = "home.toast_template_placeholder"
     const val HOME_VIBRATE_DESC_OFF = "home.vibrate_desc_off"
     const val HOME_VIBRATE_DESC_ON = "home.vibrate_desc_on"
     const val HOME_VIBRATE_STRENGTH_DESC = "home.vibrate_strength_desc"
@@ -994,6 +1029,14 @@ object Strings {
 
     /** 「跟随系统 (Monet)」—— 跟随系统，且整页用系统那套壁纸取色。 */
     const val MORE_THEME_MONET = "more.theme_monet"
+
+    /**
+     * 菜单里 Monet 那一行的**子标题**（`Monet`）—— 标题只写「跟随系统」。
+     *
+     *  那一行与上一档（纯跟随系统）标题本来就该一样，差别只在「用不用壁纸取色」；
+     *  把说明塞进标题会把一行字拉长，也让两行在标题上看不出是同一件事的两档。
+     */
+    const val MORE_THEME_MONET_TAG = "more.theme_monet_tag"
     const val MORE_THEME_LIGHT = "more.theme_light"
     const val MORE_THEME_DARK = "more.theme_dark"
     const val MORE_SIGNATURE_DEBUG = "more.signature_debug"
@@ -1005,6 +1048,14 @@ object Strings {
     const val SETTING_ENABLE_BINDING = "setting.enable_binding"
     const val SETTING_IGNORE_DOUBLE = "setting.ignore_double"
     const val SETTING_KEY_BINDING = "setting.key_binding"
+
+    /**
+     * 滑杆行「手动输入」小窗的输入框占位 —— 写清这一段的值域（两个 `%d` 由 `I18n.format` 填）。
+     *
+     *  手滑调不准是滑杆的天生短板（200–2000 一档 50ms，36 档挤在一根轨道上），所以每一根滑杆
+     *  点一下标题都能打字（用户口径）。小窗本体复用 `NameDialog`，它多收一个 `range`。
+     */
+    const val SLIDER_INPUT_LABEL = "slider.input_label"
     const val STATUS_API_MISMATCH = "status.api_mismatch"
     const val STATUS_CHECKING = "status.checking"
     const val STATUS_CONFIG_FAILED = "status.config_failed"
@@ -1090,14 +1141,6 @@ object Strings {
      */
     const val TOAST_SWITCHED_TO = "toast.switched_to"
 
-    /**
-     * 「执行时提示」那一条（`GlobalConfig.toastOnRun`）—— 两个占位符：
-     * **这次是哪一下**（`侧键·单击`）与**执行了什么**（`手电筒`）。
-     *
-     *  只说动作名时，连发几次不同的手势看不出分别（用户口径「换成更精确的」）；
-     *  触发源那一半用的是界面上的同一个词（`KeyId.label` · `Gesture.label`），不另造说法。
-     */
-    const val TOAST_RUN_ACTION = "toast.run_action"
     const val TOAST_LOG_EXPORT_FAILED = "toast.log_export_failed"
     const val TOAST_SERVICE_RESTART_FAILED = "toast.service_restart_failed"
     const val TOAST_SERVICE_RESTARTED = "toast.service_restarted"
@@ -1152,14 +1195,6 @@ object Strings {
 
     /** 菜单里「结束应用」那一行（也是绑好之后那一档动作的名字前半句）。 */
     const val TOOL_STOP_APP = "tool.stop_app"
-
-    /**
-     * 绑到按键上的那一档叫什么（`proc:stop:包名`）—— 步骤行、网格小字、执行提示同一句话。
-     *  `%s` 是应用名。
-     *
-     *  只有这一档：`proc:start:` 那一档撤掉了（与「打开应用」重复），见 `Action.Process`。
-     */
-    const val COMMON_STOP_PROCESS_FORMAT = "common.stop_process_format"
 
     /** 变量操作落成一步之后，步骤行上那句标题（`%1$s` 变量名 / `%2$s` 值）。 */
     const val VAR_STEP_SET = "var.step.set"

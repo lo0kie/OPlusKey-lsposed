@@ -66,7 +66,6 @@ internal fun SettingsPage.ImportTargetDialog() {
         },
         footer = {
             DialogButtonRow(
-                positive = I18n.get(Strings.COMMON_CONFIRM, "确定"),
                 onNegative = { pendingImport = null },
                 onPositive = {
                     val target = state.selected

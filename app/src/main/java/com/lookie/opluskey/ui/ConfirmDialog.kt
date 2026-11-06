@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -84,12 +85,14 @@ internal fun ColumnScope.DialogBody(text: String) {
  *  库的 `DialogButtonBar` 仍然用不了：它只给 negative / neutral / positive **同一套**
  *  `TextButtonColors`，分不出「取消是中性色、动作项是红/主题色」（见其 KDoc 里的实测记录）。
  *
- * @param positiveStyle 动作项那一格怎么画：是否按破坏性上色（红）、能不能点。
- *   两件都是「动作项自己的状态」，打成一个类只是为了让这个函数的参数个数留在
+ * @param positiveStyle 动作项那一格怎么画：是否按破坏性上色（红）、能不能点、写什么字。
+ *   这几件都是「动作项自己的状态」，打成一个类只是为了让这个函数的参数个数留在
  *   detekt 的 `LongParameterList` 之下。
  * @param negative 左半边那颗的字。默认就是「取消」—— 全项目只有更新窗不这么叫（「稍后」），
  *   其余七八处逐字一样，没必要每处各抄一遍 `I18n.get(Strings.DIALOG_CANCEL, "取消")`。
- * @param positive 右半边那颗的字。默认「确定」；动作项有自己的说法时（「去下载」）才传。
+ * @param onReset 最左那颗「重置」—— 不给就没有（那两颗仍是平分）。给「这一格有默认值、
+ *   用户可以一键回到默认」的格子用（此刻只有提示文案模板）。它不关窗：调用方自己决定
+ *   是写回去再关上，还是把输入框清空留在原地。
  */
 @Composable
 internal fun DialogButtonRow(
@@ -97,8 +100,10 @@ internal fun DialogButtonRow(
     onPositive: () -> Unit,
     positiveStyle: DialogPositiveStyle = DialogPositiveStyle(),
     negative: String = I18n.get(Strings.DIALOG_CANCEL, "取消"),
-    positive: String = I18n.get(Strings.DIALOG_CONFIRM, "确定"),
+    onReset: (() -> Unit)? = null,
 ) {
+    //  动作项那颗的字：默认「确定」，调用方要换时走 `positiveStyle.label`
+    val positive = positiveStyle.label ?: I18n.get(Strings.DIALOG_CONFIRM, "确定")
     //  **竖向留白与左右内缩都不在这里**：竖向归 `DialogPanel`（相邻两区之间各一档
     //  [DIALOG_REGION_GAP]），左右由底部那一槽自己给（`insideMargin`）。
     //  自己再补一份，两个窗叠起来就对不齐 —— 那正是「上下留白总量不一致」的来源。
@@ -113,6 +118,9 @@ internal fun DialogButtonRow(
         horizontalArrangement = Arrangement.spacedBy(DIALOG_BUTTON_GAP),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        //  「重置」那颗只在调用方给了 `onReset` 时出现（此刻只有「提示文案」）：三颗平分比
+        //  挤到标题栏去更好按 —— 标题栏那一格已经被字数统计占着。
+        onReset?.let { act -> ResetButton(act, negFill, negText) }
         TextButton(
             text = negative,
             onClick = {
@@ -167,6 +175,32 @@ internal fun DialogButtonRow(
             )
         }
     }
+}
+
+/**
+ * 按钮区最左那颗「重置」—— 只在调用方给了 `onReset` 时画（[DialogButtonRow] 的第三颗）。
+ *
+ *  与「取消」同一档配色：两颗都是中性动作，只有右边那颗是主操作。
+ *  抽出来只为让 [DialogButtonRow] 收在 detekt 的 `LongMethod` 长度线内。
+ */
+@Composable
+private fun RowScope.ResetButton(
+    onReset: () -> Unit,
+    fill: Color,
+    textColor: Color,
+) {
+    val tick = LocalTick.current
+    TextButton(
+        text = I18n.get(Strings.DIALOG_RESET, "重置"),
+        onClick = {
+            tick()
+            onReset()
+        },
+        modifier = Modifier.weight(1f),
+        cornerRadius = DIALOG_BUTTON_RADIUS,
+        minHeight = DIALOG_BUTTON_HEIGHT,
+        colors = ButtonDefaults.textButtonColors(color = fill, textColor = textColor),
+    )
 }
 
 /**
@@ -275,6 +309,15 @@ internal data class DialogPositiveStyle(
      *  灰着一颗按钮、点了没反应，是最容易被当成「坏了」的形态。
      */
     val onDisabledClick: (() -> Unit)? = null,
+    /**
+     * 这一颗的字（`null` = 「确定」）。
+     *
+     *  放进来而不是留在 [DialogButtonRow] 的参数表里：动作项这一格已经有「什么颜色 / 能不能点 /
+     *  点了怎么说」三件事，字是同一格的第四件 —— 挤在参数表里那一头就顶破 detekt 的
+     *  `LongParameterList`（口径与 `danger` / `enabled` 打进这个类时同一个理由）。
+     *  实际要换字的只有「去下载」「导入」那几处，其余沿用默认。
+     */
+    val label: String? = null,
 )
 
 /** 与库 `DialogContent` 同度量：标题与正文的行高（库 `DialogLineHeight = 1.29.em`）。 */

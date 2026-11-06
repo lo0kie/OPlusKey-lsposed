@@ -13,7 +13,7 @@ import com.lookie.opluskey.ui.LongPressSettingsCard
 import com.lookie.opluskey.ui.LongPressSpec
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appLabelOf
-import com.lookie.opluskey.ui.model.stepTitle
+import com.lookie.opluskey.ui.model.releaseActionTitle
 import com.lookie.opluskey.ui.screen.command.StepPickerSheet
 import com.lookie.opluskey.ui.screen.command.StepSheetFilter
 import com.lookie.opluskey.ui.screen.command.StepSheetSpec
@@ -32,12 +32,16 @@ import com.lookie.opluskey.ui.writeAndNotice
 /**
  * 「长按」tab 下**唯一**的那张卡 —— 把当前正在编辑的那一颗键的长按设置递给共用的那张卡。
  *
- * @param blockedReason 非 null ⇒ **整张卡**置灰、不吃点击（连续触发那行与长按延迟那行），
+ * @param blockedReason 非 null ⇒ **整张卡**置灰、不吃点击（时序两行、连续触发那族、长按延迟），
+ *   只放**整页级**的原因（主开关关 / 链路没通 / 配置只读）
+ * @param repeatBlockedReason 非 null ⇒ 只有「连续触发」那一族置灰：这一档的长按动作自己不支持连发
+ *   （多条命令 / 灵感语音）。它不连坐时序与延迟 —— 那三项跟连不连发无关
  * @param masterEnabled 首页那个「按键绑定」主开关 —— 与 [blockedReason] 一起决定「长按延迟」那行
  */
 @Composable
 internal fun SettingsPage.LongRepeatCard(
     blockedReason: String?,
+    repeatBlockedReason: String?,
     masterEnabled: Boolean,
 ) {
     val blocked = blockedReason != null
@@ -60,7 +64,7 @@ internal fun SettingsPage.LongRepeatCard(
             releaseOn = key.longReleaseOn,
             //  行上写的是**动作名**（与命令页那几步同一套念法）：用户挑的可能是某条命令，
             //  只写 token 等于让他自己读 `cmd:喝水`。
-            releaseLabel = releaseAction?.let { stepTitle(it.token) { pkg -> appLabelOf(pkg) } },
+            releaseLabel = releaseAction?.let { releaseActionTitle(it.token) { pkg -> appLabelOf(pkg) } },
             //  三条时序的互斥只在数据层有一份：这里把配置算好的结论递进去，界面不重算
             releaseBound = key.releaseBound,
             enabled = !blocked,
@@ -69,6 +73,7 @@ internal fun SettingsPage.LongRepeatCard(
             //  会让人以为「这行还能改 ⇒ 多条命令也许还能连续触发」（用户报的）。
             delayEnabled = masterEnabled && !blocked,
             blockedReason = blockedReason,
+            repeatBlockedReason = repeatBlockedReason,
             onRepeat = { setLongRepeat(it) },
             onVibrate = { setRepeatVibrate(it) },
             onInterval = { writeRepeatInterval(it) },

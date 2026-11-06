@@ -37,10 +37,11 @@ import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SHEET_TITLE_MARGIN
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.boundAppName
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
-import com.lookie.opluskey.ui.model.tileIcon
+import com.lookie.opluskey.ui.model.actionRowView
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.sheetCardColors
 import com.lookie.opluskey.ui.state.CommandUiState
@@ -259,8 +260,11 @@ internal class StepSheetSpec(
  *  而「去哪一页」本来就是调用点一个 `when` 里的事。
  */
 internal enum class StepPickerPage {
-    /** 「选择应用」→ 挑应用页（落 `app:` / `window:`）。 */
+    /** 「打开应用」→ 挑应用页（落 `app:` / `window:` 的一步）。 */
     App,
+
+    /** 「结束应用」→ **同一张**挑应用页，只是落 `proc:stop:包名`（见 `AppPickerState.stopApp`）。 */
+    AppStop,
 
     /** 「自定义变量」→ 「变量操作」页（落 `setvar:` 的一步）。 */
     Vars,
@@ -313,10 +317,15 @@ internal fun SettingsPage.StepPickerSheet(
                 if (!sheet.filter.excludeTiles) {
                     base
                 } else {
-                    //  这一趟没有「挑应用 / 挑变量」那两条去路（见 `StepSheetFilter.excludeTiles`）
+                    //  这一趟没有「挑应用 / 挑变量」那两条去路（见 `StepSheetFilter.excludeTiles`）；
+                    //  `APP_CONTROL_TILE` 也剔 —— 抽屉里那一行现在就是它（与网格同一张表）
                     base.map { (groupTitle, specs) ->
                         groupTitle to
-                            specs.filter { it.token != ActionCatalog.APP_TILE && it.token != ActionCatalog.VARS_TILE }
+                            specs.filter {
+                                it.token != ActionCatalog.APP_TILE &&
+                                    it.token != ActionCatalog.APP_CONTROL_TILE &&
+                                    it.token != ActionCatalog.VARS_TILE
+                            }
                     }
                 }
             }
@@ -402,12 +411,16 @@ internal fun SettingsPage.StepPickerSheet(
         }
     }
 
+    //  「应用控制」那一行的子标题要应用名：与网格那一格同一份（`boundAppName`），
+    //  同样带「具体是哪一个」（`微信 - 扫一扫`）—— 两边是同一句话。
+    val boundApp = sheet.current?.let { boundAppName(it, withDetail = false) }
     val ctx =
         StepSheetCtx(
             anchorOf = { anchors.getValue(it) },
             isCurrent = { isCurrent(it) },
             onLand = { spec, anchor -> land(spec, anchor) },
             current = sheet.current,
+            boundApp = boundApp,
             groups = groups,
         )
     //  「已保存的命令」那一组的锚点是另外一份（见 `savedAnchors`），其余上下文相同
@@ -417,6 +430,7 @@ internal fun SettingsPage.StepPickerSheet(
             isCurrent = { isCurrent(it) },
             onLand = { spec, anchor -> land(spec, anchor) },
             current = sheet.current,
+            boundApp = boundApp,
             groups = groups,
         )
     //  搜索态：分组标题全部让位，命中的行拍成**一张卡**（找东西时按组切反而要多扫几行标题）。
@@ -428,6 +442,7 @@ internal fun SettingsPage.StepPickerSheet(
             isCurrent = { isCurrent(it) },
             onLand = { spec, anchor -> land(spec, anchor) },
             current = sheet.current,
+            boundApp = boundApp,
             groups = groups,
         )
     val term = query.trim()
@@ -511,8 +526,24 @@ internal fun SettingsPage.StepPickerSheet(
             XLog.w("抽屉二级菜单：选中 ${spec.label} → 应用 ${spec.token}")
             subTile = null
             subAnchor = null
-            sheet.onPick(spec.token)
-            sheet.onDismiss()
+            //  「应用控制」那一层菜单的两行**不是取值**：打开 / 结束都还要再挑一个应用，
+            //  与网格那一格走同一支（收抽屉 → 压一页 → 挑完落一步）。
+            when (spec.token) {
+                ActionCatalog.APP_CONTROL_OPEN -> {
+                    sheet.onDismiss()
+                    sheet.onOpenPicker(StepPickerPage.App)
+                }
+
+                ActionCatalog.APP_CONTROL_STOP -> {
+                    sheet.onDismiss()
+                    sheet.onOpenPicker(StepPickerPage.AppStop)
+                }
+
+                else -> {
+                    sheet.onPick(spec.token)
+                    sheet.onDismiss()
+                }
+            }
         },
         onDismiss = {
             subTile = null
@@ -534,6 +565,11 @@ private class StepSheetCtx(
     val onLand: (ActionCatalog.Spec, PreciseClickState) -> Unit,
     /** 当前那一个动作 —— 入口格那几行的行首字形按它算（见 `StepSheetCard`）。 */
     val current: Action?,
+    /**
+     * 当前绑的应用名 —— 「选择应用 / 应用控制」那几行的子标题要它（与网格那一格同一份）。
+     * 只有那一两行用得到，但一次查好递进来比重组里按行判更省事（`boundAppName` 自己带缓存）。
+     */
+    val boundApp: String?,
     /** 这一次列哪张候选表（场景那张多一个「无操作」，见 [StepSheetFilter.includeNone]）。 */
     val groups: List<Pair<String, List<ActionCatalog.Spec>>>,
 )
@@ -587,11 +623,12 @@ private fun SettingsPage.StepSheetCard(
 }
 
 /**
- * 候选卡里的一行 —— 直接产出通用的 [CardRow.Item]，选中态只换三样：
- * **行首字形**（原图标 与 对勾）、**标题色**与**行尾色**（主题色）。
+ * 候选卡里的一行 —— 直接产出通用的 [CardRow.Item]。
  *
- *  选中态不另立行组件：`CardRow.Item` 已经带 `iconTint` / `titleTint` / `trailing` 三个槽，
- *  整行上主题色这件事在那里就表达得完 —— 抽屉与各页共用同一份行实现，改一处两边一起变。
+ *  **「这一行长什么样」不在这里算**：字形、小字、行尾箭头与选中态都由 [actionRowView] 给，
+ *  与网格那一格**同一个函数**。清单同源不等于展示同源 —— 两边各拼一半时走形过三次
+ *  （行首字形 / 行尾箭头 / 小字），所以这一层只负责把那几个值塞进 `CardRow.Item` 的槽：
+ *  选中态只换三样（行首换成对勾、标题色、行尾色），整行上主题色这件事在行组件里表达得完。
  *
  *  振动仍由 `land` 统一发（[CardRow.Item.vibrate] 传 `false`）：那三档去向（挑应用 / 开二级 /
  *  直接落一步）都走它，行组件再振一次就是两下。
@@ -602,48 +639,22 @@ private fun stepSheetRow(
     ctx: StepSheetCtx,
 ): CardRow.Item {
     val anchor = ctx.anchorOf(spec)
-    val selected = ctx.isCurrent(spec)
+    val view = actionRowView(spec, ctx.current, ctx.boundApp)
     val colors = COUITheme.colorScheme
-    //  **行首字形与网格那一格同一判据**：入口格（响铃状态 / 媒体控制 / 系统开关…）
-    //  按**当前绑的是哪一档**给，其余按清单条目给 —— 抽屉与网格摆的是同一张清单，
-    //  同一个「响铃状态」在两处长成两个样子的唯一原因就是这里少判了一下。
-    val glyph = tileIcon(ActionCatalog.boundModeOf(spec, ctx.current) ?: spec)
-    // 行尾那颗字形按「点开去哪」分（与页面里那几行同一套口径）：
-    //  · 「选择应用」/「自定义变量」进的是**另一个页面**去挑 → 右箭头（[PageIcons.EnterArrow]）；
-    //  · 入口格那几档（系统开关 / 媒体控制…）点开还有**一层菜单** → 选择器字形；
-    //  · 其余动作点一下就落成一步、`cmd:<名字>` 同样落成一步 → 不给。
-    //  **选中那一行也照画**：选中只把行首换成对勾，行尾该不该有指示不变。
-    val trailingIcon =
-        when {
-            spec.token == ActionCatalog.APP_TILE || spec.token == ActionCatalog.VARS_TILE -> {
-                PageIcons.EnterArrow
-            }
-
-            ActionCatalog.modeMenu(spec.token) != null -> {
-                PageIcons.Selector
-            }
-
-            else -> {
-                null
-            }
-        }
     return CardRow.Item(
-        title = spec.label,
+        title = view.title,
+        // 标题下面那行小字 = **当前绑的是什么**，只在这一行正是当前那一档时才有内容
+        summary = view.subtitle,
         //  **当前这一步**那一行：行首那颗换成对勾、整行上主题色（与浮层菜单的选中态同一套）
-        icon = if (selected) PageIcons.MenuCheck else glyph,
+        icon = if (view.selected) PageIcons.MenuCheck else view.icon,
         //  未选中时给 `null`，让行组件按启用态走默认那档灰
-        iconTint = if (selected) colors.primary else null,
-        titleTint = if (selected) colors.primary else null,
+        iconTint = if (view.selected) colors.primary else null,
+        titleTint = if (view.selected) colors.primary else null,
         modifier = Modifier.preciseClickAnchor(anchor),
-        trailing =
-            trailingIcon?.let { end ->
-                {
-                    RowEndIcon(
-                        icon = end,
-                        tint = if (selected) colors.primary else colors.onSurfaceVariantActions,
-                    )
-                }
-            },
+        //  行尾那一颗**照画**，不分选中与否：它说的是「点开还有一层」，而选中之后照样点得进去换一档
+        //  —— 藏起来那一行看着像死格子（用户反馈：抽屉里选中有二级菜单的项之后，行尾的选择器不见了）。
+        //  颜色仍用最弱那一档：行首的对勾才表示「就是这一档」，行尾只是路标（见 `RowEndIcon`）。
+        trailing = view.trailing?.let { end -> { RowEndIcon(icon = end) } },
         //  振一下由 `land` 统一发，这一层不再振（见本函数的说明）
         vibrate = false,
         onClick = { ctx.onLand(spec, anchor) },

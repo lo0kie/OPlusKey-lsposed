@@ -32,15 +32,20 @@ internal fun conditionRowTitle(
     appName: (String) -> String,
 ): String {
     val kind = condition.kind ?: return I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择")
-    val value = conditionValueLabel(kind, condition, appName)
+    val value = conditionValueText(kind, condition, appName)
     // 取值还没选（只选了种类就会存不下来，但草稿里有这一瞬间）：整句退回「未选择」，
     //  写成「屏幕状态 - 」比不写更让人以为配好了。
     if (value.isBlank()) return I18n.get(Strings.COMMAND_BRANCH_ANY, "未选择")
     return "${conditionKindLabel(kind)} - $value"
 }
 
-/** 二级那一半：这一档实际取到的值叫什么（「锁屏」「振动」「微信」…）。 */
-private fun conditionValueLabel(
+/**
+ * 二级那一半：这一档实际取到的值叫什么（「锁屏」「振动」「微信」…）。
+ *
+ *  [conditionRowTitle] 拿它拼整句；一级菜单也拿它给**选中那一行**当子标题
+ *  （那里只要取值、不要种类名，种类名已经在标题上了）。
+ */
+internal fun conditionValueText(
     kind: ConditionKind,
     condition: BranchCondition,
     appName: (String) -> String,
@@ -96,6 +101,23 @@ private fun conditionValueLabel(
         ConditionKind.AIRPLANE -> {
             switchLabel(condition.effectiveValue)
         }
+    }
+
+/**
+ * 一级菜单里**选中那一行**的子标题 —— 与 [conditionValueText] 同源，只有「前台应用」不同：
+ * 那一档能选好几个应用，名字顿号连起来比标题还长，于是只报个数（`已选择 3 个应用`）；
+ * 具体是哪几个在条件表那一行里（那里不限行）。空 = 这一行不出小字。
+ */
+internal fun conditionMenuSummary(
+    kind: ConditionKind,
+    condition: BranchCondition,
+    appName: (String) -> String,
+): String? =
+    if (kind == ConditionKind.APP) {
+        val count = condition.appPackages.count { it.isNotBlank() }
+        if (count == 0) null else I18n.format(Strings.COMMAND_BRANCH_APP_COUNT, count)
+    } else {
+        conditionValueText(kind, condition, appName).ifBlank { null }
     }
 
 /**

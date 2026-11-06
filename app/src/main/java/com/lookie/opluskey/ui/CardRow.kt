@@ -31,12 +31,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_DARK_ALPHA
+import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.ROW_TITLE_INSET
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
+import com.lookie.opluskey.ui.model.isDarkScheme
 import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentColors
@@ -46,6 +49,7 @@ import io.github.suqi8.coui.kmp.basic.CardColors
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
+import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -89,6 +93,19 @@ internal sealed interface CardRow {
     @Suppress("LongParameterList")
     class Item(
         val title: String,
+        /**
+         * 标题最多几行 —— 默认 1（单行省略，整页的常态）。
+         *
+         *  给 [Int.MAX_VALUE] 就是「不限制」：条件表里「前台应用」那一行会把挑中的几个应用名
+         *  顿号连起来，名字一多单行必然被省略号吃掉，而这一行正是用来核对自己挑了哪几个的。
+         *  放开之后行高由内容撑（库那条行本来就按内容高）。
+         */
+        val titleMaxLines: Int = 1,
+        /**
+         * 这一行前面画**加深带**而不是默认那条细线 —— 「这一组 / 下一组」之间断开时用
+         * （与浮层菜单里组间那条同一档）。默认 `false` = 细线。
+         */
+        val dividerBefore: Boolean = false,
         val summary: String? = null,
         /**
          * 副标题行**行尾**那一块 —— 与 [summary] 同一行，`summary` 先给它让位。
@@ -151,6 +168,20 @@ internal sealed interface CardRow {
         val onClick: (() -> Unit)? = null,
         /** 挂在这一行根上的修饰符（`preciseClickAnchor` 这类按行定位的东西）。 */
         val modifier: Modifier = Modifier,
+        /**
+         * 这一行**在列表里的身份**（`null` = 按位次认）。只服务进出场动画。
+         *
+         *  为什么需要：行的进出场状态（下面 [visible] / [visibleState]）在 [CardList] 里是
+         *  **按位次**（`remember(index)`）记的 —— 中间**插进**一行时，新行会落到原来那一行的槽上、
+         *  继承它的状态。那份状态的 `currentState` 多半是 `true`（旧行一直在场），于是新行一帧就
+         *  满高出现，再「收缩 → 展开」闪一下，看着就是生硬插入（真机口径「一块里加场景，是生硬
+         *  插进去的」）。
+         *
+         *  给了身份之后，状态按「是哪一行」认：新行拿到一份从 `visible` 起步的新状态，进退场
+         *  照常播。改动某一行自己的内容会改变这个值（例如条件行拿条件本身当身份）—— 那没关系，
+         *  它换出来的新状态从 `visible` 起步，不播动画。
+         */
+        val rowKey: Any? = null,
         /**
          * 这一行**会不会时有时无**。`null` = 一直在（不参与显隐动画）；
          * 非 `null` = 由这个布尔控制，**连它上面那条细线一起**做进出场——
@@ -244,7 +275,10 @@ internal fun CardList(
         val states = arrayOfNulls<MutableTransitionState<Boolean>>(rows.size)
         rows.forEachIndexed { index, row ->
             val visible = row.visible()
-            val state = remember(index) { MutableTransitionState(visible ?: true) }
+            //  状态按「位次 + 这一行的身份」认（身份见 [CardRow.Item.rowKey]）：只按位次的话，
+            //  中间**插进**一行会继承原槽那份状态（多半是「一直在场」），新行满高出现一帧、
+            //  再收缩再展开 —— 看着像生硬插入。
+            val state = remember(index, row.identity) { MutableTransitionState(visible ?: true) }
             //  自带状态的行走它自己那一份（见下面 `ownState`），这里只接管由 `visible` 驱动的行
             if (visible != null && row.explicitState() == null) {
                 state.targetState = visible
@@ -260,7 +294,7 @@ internal fun CardList(
             }
         //  行间那条细线的左起点：这张卡的行首有没有图标那一列 —— 有就缩进到**标题左缘**
         //  （[ROW_TITLE_INSET]），没有就与卡片自己的内边距对齐，别凭空让出一格。
-        val hasIconColumn = rows.any { it.drawsStartIcon() }
+        val hasIconColumn = rows.any { it.drawsStartIcon }
         val positionOf =
             shown.withIndex().associate { (order, index) -> index to cardListPositionOf(order, shown.size) }
         rows.forEachIndexed { index, row ->
@@ -269,14 +303,19 @@ internal fun CardList(
             val position = positionOf[index] ?: CardListPosition.Middle
             // 分隔线与行本身一起进出场（见各行的 `visible`）—— 所以它们必须同在一个块里
             val block: @Composable ColumnScope.() -> Unit = {
-                // 首行之上不画线；其余每一行之前一条（左端从**标题最左处**起，右端与卡片内边距对齐）
+                // 首行之上不画线；其余每一行之前一条（左端从**标题最左处**起，右端与卡片内边距对齐）。
+                //  这一行自己要求「加深带」时换成通栏那一档（见 [HeavyDivider]）。
                 if (index > 0) {
-                    HorizontalDivider(
-                        Modifier.padding(
-                            start = if (hasIconColumn) ROW_TITLE_INSET else DividerDefaults.CardInset,
-                            end = DividerDefaults.CardInset,
-                        ),
-                    )
+                    if (row.wantsHeavyDivider) {
+                        HeavyDivider()
+                    } else {
+                        HorizontalDivider(
+                            Modifier.padding(
+                                start = if (hasIconColumn) ROW_TITLE_INSET else DividerDefaults.CardInset,
+                                end = DividerDefaults.CardInset,
+                            ),
+                        )
+                    }
                 }
                 //  行高**不做过渡**（用户口径：加上之后开关行自己的动画就没了，观感更差，去掉）。
                 //  试出来的结论留在这里，免得下次又走一遍：
@@ -310,13 +349,46 @@ internal fun CardList(
     }
 }
 
-/** 这一行会不会画行首那一格（决定分隔线要不要缩进到标题左缘）。 */
-private fun CardRow.drawsStartIcon(): Boolean =
-    when (this) {
-        is CardRow.Switch -> true
-        is CardRow.Item -> icon != null || startIcon != null
-        is CardRow.Custom -> false
-    }
+/**
+ * 这一行会不会画行首那一格（决定分隔线要不要缩进到标题左缘）。
+ *
+ *  写成**计算属性**而不是 `fun drawsStartIcon()`：这三支（含下面两支）都只是「这一行是什么」的
+ *  纯读取，没有副作用也不带参数，属性才是它的自然形态；顺带把这个文件的函数条数留在
+ *  detekt 的 `TooManyFunctions` 之下（口径与 `CardRow.Item.visible` 那些字段一致）。
+ */
+private val CardRow.drawsStartIcon: Boolean
+    get() =
+        when (this) {
+            is CardRow.Switch -> true
+            is CardRow.Item -> icon != null || startIcon != null
+            is CardRow.Custom -> false
+        }
+
+/** 这一行前面要不要画**加深带**（`false` = 默认那条细线）。 */
+private val CardRow.wantsHeavyDivider: Boolean
+    get() =
+        when (this) {
+            is CardRow.Item -> dividerBefore
+            is CardRow.Switch -> false
+            is CardRow.Custom -> false
+        }
+
+/**
+ * 卡片里「这一组 / 下一组」之间那条**加深带** —— 与浮层菜单组间那条同一档（同两个 alpha、
+ * 同一档粗细），两处读起来才是同一种分隔。
+ */
+@Composable
+private fun HeavyDivider() {
+    HorizontalDivider(
+        thickness = DropdownDefaults.PopupGroupDividerThickness,
+        color =
+            if (COUITheme.colorScheme.isDarkScheme) {
+                Color.Black.copy(alpha = MENU_GROUP_LINE_DARK_ALPHA)
+            } else {
+                Color.Black.copy(alpha = MENU_GROUP_LINE_LIGHT_ALPHA)
+            },
+    )
+}
 
 /** 这一行会不会时有时无（`null` = 一直在）—— 三种行同一条判定。 */
 private fun CardRow.visible(): Boolean? =
@@ -333,6 +405,20 @@ private fun CardRow.explicitState(): MutableTransitionState<Boolean>? =
         is CardRow.Switch -> null
         is CardRow.Custom -> visibleState
     }
+
+/**
+ * 这一行**在列表里的身份**（见 [CardRow.Item.rowKey]）—— 只有条件行给了，
+ * 其余行按位次认（`null`），行为与加这一位之前完全一致。
+ *
+ *  与上面两支同一个理由：纯读取、无参，写成计算属性。
+ */
+private val CardRow.identity: Any?
+    get() =
+        when (this) {
+            is CardRow.Item -> rowKey
+            is CardRow.Switch -> null
+            is CardRow.Custom -> null
+        }
 
 /** 把一行画出来（位置由列表算好递进来）。 */
 @Composable
@@ -502,7 +588,9 @@ private fun ItemText(
     //  标签自己那颗字是按字形边界压过的（`AppKindTag`），标题不压就与它差半档 ——
     //  摆在一起读作「标签没有中线对齐标题」。有副标题时也照压：修正只挪这一行字的墨迹，
     //  副标题是另一段、不受影响。
-    val titleNeedsOpticalCenter = row.summary == null || row.titleExtra != null
+    //  多行标题不做光学修正：那一手是按**一行墨迹**的中线挪的，几行摞起来挪只会整体偏上。
+    val titleNeedsOpticalCenter =
+        (row.summary == null || row.titleExtra != null) && row.titleMaxLines == 1
     //  标题 / 副标题两档色同样带过渡：整页闸门一拨、或这一行自己从「待补条件」变成「填好了」时，
     //  行首图标与行尾箭头本来就在渐变（见 [rememberCardRowIconColor] 与 `arrowTint`）——
     //  文字硬切就成了「图标在淡、字在跳」。
@@ -522,18 +610,27 @@ private fun ItemText(
             //  这里就不能按内容宽度收缩。光学修正也不做 —— 里面是几列并排，不是一行字。
             Box(Modifier.weight(1f)) { row.titleContent.invoke() }
         } else {
-            Text(
-                text = row.title,
-                style = titleStyle,
-                fontWeight = FontWeight.Medium,
-                color = titleColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier =
-                    Modifier
-                        .weight(1f, fill = false)
-                        .then(if (titleNeedsOpticalCenter) Modifier.opticalCenter(titleStyle) else Modifier),
-            )
+            //  **标题换了就淡过去**，不硬切：同一行原地换内容的场合不少（条件行从「未选择场景」
+            //  换成真的那一档、动作格从「无操作」换成具体命令），硬切读起来像「这一行被删掉、
+            //  又插了一行新的」。行首那颗字形本来就在交叉淡（见 `cardRowStartAction`）——
+            //  文字不淡就成了「图标在淡、字在跳」。曲线与那一处同源（[COLOR_FADE_SPEC]）。
+            //  两种内容同字号、同边距 ⇒ 交叉期间盒宽取较大者，行高不变。
+            Crossfade(
+                targetState = row.title,
+                modifier = Modifier.weight(1f, fill = false),
+                animationSpec = COLOR_FADE_SPEC,
+                label = "CardRowTitleText",
+            ) { shown ->
+                Text(
+                    text = shown,
+                    style = titleStyle,
+                    fontWeight = FontWeight.Medium,
+                    color = titleColor,
+                    maxLines = row.titleMaxLines,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = if (titleNeedsOpticalCenter) Modifier.opticalCenter(titleStyle) else Modifier,
+                )
+            }
         }
         row.titleExtra?.let {
             Spacer(Modifier.width(ROW_TITLE_EXTRA_GAP))

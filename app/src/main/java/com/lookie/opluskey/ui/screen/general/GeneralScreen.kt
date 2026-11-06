@@ -3,12 +3,18 @@ package com.lookie.opluskey.ui.screen.general
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.NameDialog
 import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
@@ -21,6 +27,7 @@ import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.setColorOsApi
 import com.lookie.opluskey.ui.setMiniWindowAnim
 import com.lookie.opluskey.ui.setToastOnRun
+import com.lookie.opluskey.ui.setToastTemplate
 import com.lookie.opluskey.ui.setVibrate
 import com.lookie.opluskey.ui.setVibrateStrength
 import io.github.suqi8.coui.kmp.basic.CardListPosition
@@ -99,6 +106,8 @@ private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
 private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
     val cfg = configState.config.value
     val vibrate = cfg.global.vibrate
+    // 「提示文案」那一行开着编辑弹窗没有 —— 弹窗与这一行同一张卡，状态就留在这支里。
+    var editingToastTemplate by remember { mutableStateOf(false) }
     CardList(
         rows =
             buildList {
@@ -129,6 +138,7 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                     },
                 )
                 add(toastRow(cfg.global.toastOnRun, pageEnabled))
+                add(toastTemplateRow(cfg.global, pageEnabled) { editingToastTemplate = true })
                 // 「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。
                 //  关（默认）= 原地收、无动画；开 = 原地收成小窗后紧接着让框架自己的动画器播那一段
                 //  （插值 / 矩阵 / spring 全是框架在跑，模块只交起止参数，配方见 `docs/zoom-window.md` §十二）。
@@ -150,7 +160,85 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                 }
             },
     )
+    toastTemplateDialog(cfg.global.toastTemplate, editingToastTemplate) { editingToastTemplate = it }
 }
+
+/**
+ * 「提示文案」那一行 —— 只在「执行时提示」开着时出现（关着提示还摆一行改文案，
+ * 等于让人去调一个当前不生效的东西，与「振动强度」那一行同一条口径）。
+ *
+ *  行尾副标题写的就是**当前模板**：清空时退回默认那句，所以这一行同时也是「改回去」的入口。
+ *
+ *  单独一支只为让 [ActionsCard] 留在 detekt 的长度上限之内（与 [toastRow] 同一个理由）。
+ */
+@Composable
+private fun SettingsPage.toastTemplateRow(
+    global: GlobalConfig,
+    enabled: Boolean,
+    onEdit: () -> Unit,
+): CardRow =
+    CardRow.Item(
+        title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
+        //  这两句**不给兜底**：里面带 `$`，而兜底审计是按源码字面量逐字比的 —— 写成 `\$` 就与字典
+        //  对不上、不写反斜杠又编译不过。缺字典时显示的就是 key 本身，一眼看得出是哪一条。
+        summary = global.toastTemplate.ifBlank { I18n.get(Strings.HOME_TOAST_TEMPLATE_DEFAULT) },
+        icon = PageIcons.ToastTemplate,
+        //  行尾给箭头：这一行点开的是**一张弹窗**（改文案），与「页内下一层」同一档的读法
+        arrow = true,
+        enabled = enabled,
+        visible = global.toastOnRun,
+        onClick = onEdit,
+    )
+
+/**
+ * 「提示文案」的编辑窗 —— 填一个值那一套（与按键重命名 / 每条滑杆同一个形状）。
+ *
+ *  空格子 = 用默认那句，所以这一档**允许空**（「确定」不会灰着）；框下面那行常驻小字写三个
+ *  占位符各是什么，占位文案只写「留空将使用默认提示」（**不写默认那句本身**：那句随时会变，
+ *  摆进占位就是一处会过期的说明）。按钮区多一颗「重置」：按下即把默认值写进配置并关窗。
+ *
+ *  @param onShowChange 弹窗自己开关时回报（`false` = 关）：状态留在 [ActionsCard] 里，
+ *   因为它同时被那一行的点击用
+ */
+@Composable
+private fun SettingsPage.toastTemplateDialog(
+    initial: String,
+    show: Boolean,
+    onShowChange: (Boolean) -> Unit,
+) {
+    NameDialog(
+        show = show,
+        title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
+        //  占位只写「留空则用默认」，**不再把默认那句摆进去**：那句话随时会变，摆进占位就成了
+        //  一处会过期的说明；要看默认长什么样，清空（或按「重置」）之后行尾副标题就是它。
+        label = I18n.get(Strings.HOME_TOAST_TEMPLATE_PLACEHOLDER, "留空将使用默认提示"),
+        //  三个占位符各是什么写在下面那行小字里 —— 填着内容时也一直在（这才是「变量提示」）。
+        hint = I18n.get(Strings.HOME_TOAST_TEMPLATE_HINT),
+        icon = PageIcons.ToastTemplate,
+        initial = initial,
+        maxLength = MAX_TOAST_TEMPLATE_LENGTH,
+        allowEmpty = true,
+        //  「重置」= **把默认那句存进去、关窗**：与按「确定」落下别处一样是一次落盘，只是值取默认。
+        //  默认文案只在 `ToastNotice.DEFAULT_TEMPLATE` 存一份，这里不抄字面量。
+        onReset = {
+            onShowChange(false)
+            setToastTemplate(ToastNotice.DEFAULT_TEMPLATE)
+        },
+        onDismiss = { onShowChange(false) },
+        onConfirm = { text ->
+            onShowChange(false)
+            setToastTemplate(text)
+        },
+    )
+}
+
+/**
+ * 提示文案模板最多能输多少字。
+ *
+ *  比名字那档（`MAX_NAME_LENGTH`）长一截：模板是一整句话，`$key` / `$gesture` / `$action`
+ *  三段都摆上就已经二十来个字符，再前后加几个字就顶到名字那档的上限了。
+ */
+private const val MAX_TOAST_TEMPLATE_LENGTH = 60
 
 /**
  * 「执行时提示」那一行 —— 执行命令时弹一条 Toast（内容是**命令名**）。

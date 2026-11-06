@@ -59,6 +59,7 @@ object ConfigCodec {
      *  22 = `KeyDto` 多了 `long_release`（长按之后松手要执行的**另一个**动作；组合那一档没有这一项）。
      *  23 / 24 = `long_release` 收成动作 token（兼容早先写成布尔的那批），并拆出开关 `long_release_on`。
      *  25 = `KeyDto` 多了 `long_fire_on_release`（长按「松手才触发」，与连发 / 松手再执行互斥）。
+     *  26 = `GlobalDto` 多了 `toast_template`（执行时提示的文案模板，`$key` / `$gesture` / `$action`）。
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -66,7 +67,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 25
+    const val VERSION = 26
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

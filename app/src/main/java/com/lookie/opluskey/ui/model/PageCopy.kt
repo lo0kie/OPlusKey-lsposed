@@ -410,6 +410,20 @@ internal fun themeLabel(theme: AppTheme): String =
     }
 
 /**
+ * 主题菜单里那一行的**标题** —— 与 [themeLabel] 只差 Monet 那一档。
+ *
+ *  那一档的「Monet」是一句补充说明，挂进标题会把一行字拉长，也让相邻两档在标题上
+ *  看不出是同一件事的两档（都是「跟随系统」）。所以标题只留「跟随系统」，
+ *  说明挪到子标题（[themeTag]）。卡片那一行的副标题仍用 [themeLabel] —— 那一格只有一行字，
+ *  拆开就没地方放「Monet」了。
+ */
+internal fun themeTitle(theme: AppTheme): String =
+    if (theme == AppTheme.MONET) I18n.get(Strings.MORE_THEME_AUTO, "跟随系统") else themeLabel(theme)
+
+/** 主题菜单里那一行的**子标题** —— 只有 Monet 那一档有。 */
+internal fun themeTag(theme: AppTheme): String? = if (theme == AppTheme.MONET) I18n.get(Strings.MORE_THEME_MONET_TAG, "Monet") else null
+
+/**
  * 键名外面那对括号 —— 中英**同一对半角方括号** `[ ]`。
  *
  *  为什么不是引号族（`「」` / `“”`）：那是「引一句话」的记号，而键名是**一颗粒东西**的名字；

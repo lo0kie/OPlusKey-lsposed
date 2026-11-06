@@ -10,6 +10,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.withKeyName
 import com.lookie.opluskey.core.model.withoutKey
@@ -24,6 +25,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
@@ -59,9 +61,12 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *
  *  这一页的顶栏标题已经挂了一枚（见 `PageTopBar` 的 `trailingSubtitleIcon`），菜单里不再重复：
  *  菜单只剩四行，「这一颗键停用了」从页面整片变灰与标题旁那枚记号都看得出来。
+ *
+ * @param gesture 这一页**当前停在哪个手势** —— 「系统场景」那一行的子标题按它数条数
+ *   （与页面里那条横幅同一条判据：只看这一档手势的规则）。
  */
 @Composable
-internal fun SettingsPage.BindingKeyMenu() {
+internal fun SettingsPage.BindingKeyMenu(gesture: Gesture) {
     var open by remember { mutableStateOf(false) }
     // 菜单只负责「点了哪一项」，具体哪一个弹窗开着由这一位记 —— 一个变量就够：
     //  同一时刻只可能有一个弹窗，而且点任何一项都会先把菜单收掉。
@@ -82,6 +87,7 @@ internal fun SettingsPage.BindingKeyMenu() {
                 keyMenuEntries(
                     selected = editing,
                     cfg = configState.config.value,
+                    gesture = gesture,
                     actions =
                         KeyMenuActions(
                             onOpenBranches = {
@@ -175,6 +181,7 @@ private const val SHOW_BRANCHES_ENTRY = true
 private fun keyMenuEntries(
     selected: KeyId,
     cfg: Config,
+    gesture: Gesture,
     actions: KeyMenuActions,
 ): List<MenuEntry> =
     buildList {
@@ -190,6 +197,9 @@ private fun keyMenuEntries(
             add(
                 MenuEntry.Row(
                     title = BRANCHES_TITLE,
+                    //  子标题报这一档手势的条数（只数启用中的）—— 与页面里那条横幅同一份判据。
+                    //  这一行是**进下一页**，所以行尾给箭头；子标题只在菜单里出现（横幅那句在页面上）。
+                    summary = scenarioMenuSummary(cfg.key(selected).rules.filter { it.gesture == gesture }),
                     icon = PageIcons.Scene,
                     submenu = true,
                     enabled = keyEnabled,

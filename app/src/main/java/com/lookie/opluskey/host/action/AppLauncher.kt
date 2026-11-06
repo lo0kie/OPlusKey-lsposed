@@ -223,6 +223,20 @@ internal class AppLauncher(
                 XLog.w("没有 Context，oplus:$feature 跳过")
                 return
             }
+        // 「只停」那一档（录屏的「结束」）：没有启动落点，只发那条停止广播。
+        //  记账一起清掉 —— 之后按「切换」那一档要按「现在是关」算。
+        if (target.service.isEmpty()) {
+            val stop = target.stopAction
+            if (stop != null) {
+                ctx.sendBroadcast(Intent(stop).setPackage(target.owner))
+                toggledOn.remove(feature)
+                XLog.w("oplus:$feature → 停止（广播 $stop）")
+            } else {
+                XLog.w("oplus:$feature 没有启动落点、也没有停止广播 —— 什么都不做")
+            }
+            return
+        }
+
         // 「再点一次要关」那一档（此刻只有录屏）：登记了 [RomProfile.BuiltIn.stopAction] 的能力
         //  按开关语义走 —— 起过一次、还没发过停止 ⇒ 这一下是关。
         //  记账只在进程内：宿主没有 MANAGE_MEDIA_PROJECTION，查不到系统那边的投影会话。
@@ -266,6 +280,25 @@ internal class AppLauncher(
             return
         }
 
+        // 目标不是界面型：起服务那一条（两条起法 + 退路都在 [launchService] 里）
+        launchService(ctx, feature, target, intent)
+    }
+
+    /**
+     * 非界面型目标的起法 —— **先按清单声明的顺序**试前台 / 普通两条路，都被拒才退一层显式组件。
+     *
+     *  抽出来只为让 [startOplusFeature] 收在 detekt 的 `LongMethod` 长度线内：上面那条界面型
+     *  分支与这一支互不依赖，合在一起时这一支光起服务就占掉四十来行。
+     *
+     * @param intent 已经填好 extras / 目标组件的 Intent（两条起法共用同一个）
+     */
+    private fun launchService(
+        ctx: Context,
+        feature: String,
+        target: RomProfile.BuiltIn,
+        intent: Intent,
+    ) {
+        val short = "${target.owner}/${target.service.substringAfterLast('.')}"
         // 目标声明了 special-use 前台类型时先走前台 —— 那是它在清单里给自己定的起法，
         // 普通 startService 会被后台启动限制拒。没声明的反过来先试 startService：
         // 对方不调 startForeground 时，前台方式会让**它的进程**抛

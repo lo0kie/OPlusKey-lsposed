@@ -43,14 +43,14 @@ import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appNameOf
+import com.lookie.opluskey.ui.appTargetLabelOf
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
 import com.lookie.opluskey.ui.model.actionCellIcon
-import com.lookie.opluskey.ui.model.actionCellTitle
+import com.lookie.opluskey.ui.model.stepTitleWithTarget
 import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.NO_FRESH_ROW
@@ -338,7 +338,13 @@ private fun SettingsPage.BranchRow(
                 if (rule.action == Action.None) {
                     I18n.get(Strings.ACTION_NONE, "无操作")
                 } else {
-                    actionCellTitle(rule.action, ::appNameOf)
+                    //  应用那一族要带上「具体是哪一个」（`微信(小窗 扫一扫)`）：与网格小字、
+                    //  点开那层菜单的子标题、「选择应用」页页头**同一句**（见 `appTargetLabelOf`）。
+                    //  整句由 `stepTitleWithTarget`（= core 的 `actionTitle`）拼 —— 与步骤行、执行提示
+                    //  同一份实现，所以这里也是「父动作名: 子动作名」（`系统开关: NFC - 切换`）。
+                    //  目标**整段**交给它（`appTargetLabelOf(action)` 已含括号）—— 走 `stepTitle` 的话
+                    //  名字回调那层还会再补一次「(小窗)」，真机上就是 `应用(小窗 组件)(小窗)`。
+                    stepTitleWithTarget(rule.action.token) { action -> appTargetLabelOf(action) }
                 }
             RuleBlock(
                 // 「条件 1」「条件 2」—— 一份表里第几条，标题上直接写出来
@@ -539,19 +545,7 @@ private fun RuleBlock(
     /** 条件行的进出场要读它（刚插入的那条 / 正在退场的那条）。 */
     menus: BranchMenuState,
 ) {
-    //  **刚插入的那一条条件**：先以不可见组合、下一帧再显 —— `AnimatedVisibility` 首帧就可见
-    //  的话不播进场（与 `BranchRow` 那个 `MutableTransitionState(!spec.fresh)` 同一个道理）。
-    val freshIndex = menus.freshCond?.takeIf { it.at == index }?.index
-    var freshShown by remember(freshIndex) { mutableStateOf(freshIndex == null) }
-    LaunchedEffect(freshIndex) {
-        if (freshIndex == null) return@LaunchedEffect
-        withFrameNanos { }
-        freshShown = true
-        //  **播过就把这笔账清掉**（与上面 `freshId` 同一条教训）：不清的话页面一重建
-        //  （去「选择应用」页挑完动作返回、来源页的组合已经注销），这一行又按「刚插入」
-        //  收起来再展开一次 —— 用户看到的就是「选完命令后还要再播一遍动画」。
-        menus.freshCond = null
-    }
+    val fresh = rememberFreshRow(menus, index)
     Column(Modifier.fillMaxWidth()) {
         RuleTitleRow(index, cells)
         //  一行条件、一行命令，**同一张卡**（与各页的 listview 同一个壳：Card + 行间细线 +
@@ -569,6 +563,11 @@ private fun RuleBlock(
                         add(
                             CardRow.Item(
                                 title = line.text,
+                                //  这一行的进出场状态按**这条条件**认，不按位次 —— 中间插一行时
+                                //  它才不会接手上一行那份「一直在场」的状态（见 `CardRow.Item.rowKey`）。
+                                rowKey = line.rowKey,
+                                //  「前台应用」那一行不限制行数（可能列好几个应用名），其余照旧单行
+                                titleMaxLines = if (line.multiLine) Int.MAX_VALUE else 1,
                                 icon = line.icon,
                                 //  没配完的那一条：图标与文字**都压到禁用色**（同一档），不加别的记号 ——
                                 //  这一行本身仍可点，靠文案「未选择条件」说清缺什么就够了。
@@ -599,7 +598,7 @@ private fun RuleBlock(
                                 visible =
                                     when {
                                         menus.exitingCond == CondRef(index, condIndex) -> false
-                                        condIndex == freshIndex -> freshShown
+                                        condIndex == fresh.index -> fresh.shown
                                         else -> true
                                     },
                             ),
@@ -608,6 +607,12 @@ private fun RuleBlock(
                     add(
                         CardRow.Item(
                             title = text.action,
+                            //  命令那一行也**不限行**：`打开应用: 微信 - LauncherUI` 这种一长串，
+                            //  单行省略会把「做什么」裁掉一半 —— 这一行正是用来核对它做什么的。
+                            titleMaxLines = Int.MAX_VALUE,
+                            //  「场景」与「命令」是两件事：上面几行回答「什么情况下」，这一行回答
+                            //  「做什么」—— 一条加深带断开（与浮层菜单里组间那条同一档）。
+                            dividerBefore = true,
                             icon = text.actionIcon,
                             iconTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
                             titleTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
@@ -620,3 +625,44 @@ private fun RuleBlock(
         )
     }
 }
+
+/**
+ * 一块里「刚插入的那条条件」的进场开关 —— 首帧不可见、下一帧再显，播完把那笔账清掉。
+ *
+ *  `AnimatedVisibility` 首帧就可见的话不播进场（与 `BranchRow` 那个
+ *  `MutableTransitionState(!spec.fresh)` 同一个道理）。
+ *
+ *  抽出来只为让 [RuleBlock] 收在 detekt 的 `LongMethod` 长度线内 —— 这一支只管一条条件行的
+ *  进场时机，与那张卡片怎么排毫无关系。
+ *
+ * @param index 这是第几块（与 `BranchMenuState.freshCond` 里记的那一格对位）
+ */
+@Composable
+private fun rememberFreshRow(
+    menus: BranchMenuState,
+    index: Int,
+): FreshRow {
+    val freshIndex = menus.freshCond?.takeIf { it.at == index }?.index
+    var freshShown by remember(freshIndex) { mutableStateOf(freshIndex == null) }
+    LaunchedEffect(freshIndex) {
+        if (freshIndex == null) return@LaunchedEffect
+        withFrameNanos { }
+        freshShown = true
+        //  **播过就把这笔账清掉**（与上面 `freshId` 同一条教训）：不清的话页面一重建
+        //  （去「选择应用」页挑完动作返回、来源页的组合已经注销），这一行又按「刚插入」
+        //  收起来再展开一次 —— 用户看到的就是「选完命令后还要再播一遍动画」。
+        menus.freshCond = null
+    }
+    return FreshRow(freshIndex, freshShown)
+}
+
+/**
+ * [rememberFreshRow] 的两个答案：刚插入的是哪条条件（`null` = 没有）、它现在显不显示。
+ *
+ *  两个值一起返回而不是两次调用：它们出自同一笔账（`freshCond` + 那个 `LaunchedEffect`），
+ *  分两处各记一次就会一边清空、另一边还在按旧值画。
+ */
+private class FreshRow(
+    val index: Int?,
+    val shown: Boolean,
+)

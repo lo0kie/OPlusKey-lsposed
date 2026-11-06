@@ -1,18 +1,23 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
@@ -62,6 +67,10 @@ internal fun SettingsPage.SliderRow(
     val dragging = remember(spec.value) { mutableFloatStateOf(spec.value.toFloat()) }
     val commit = sliderCommit(dragging, spec, onCommit)
     val tick = rememberTick()
+    //  点标题 / 摘要（或行尾那个当前值）弹「手动输入」小窗 —— 滑杆在这些档上**像素不够分**
+    //  （长按延迟 200–2000 一档 50ms，36 档挤在一根轨道上），想落在「恰好 1250」几乎不可能。
+    //  小窗就是全项目那一个（`NameDialog` 多收一个 `range`），标题与图标**取原行**。
+    var typing by remember { mutableStateOf(false) }
     //  注意：「点轨道跳值」那条手势的回调必须走 `rememberUpdatedState`：
     //  `tapSliderToSeek` 的 `pointerInput` 键里只有 `min/max/enabled`，闭包**停留在首次组合**
     //  那一刻 —— 直接捕获 `commit` 就等于一直用旧的那份（写盘失败时「拨回」拨到的是旧的 `value`，
@@ -96,6 +105,14 @@ internal fun SettingsPage.SliderRow(
         insideMargin = SLIDER_INSIDE_MARGIN,
         cardListPosition = position,
         enabled = spec.enabled,
+        //  **整行可点**：点行的任何一处（含行首图标那一格、行内边距、行尾那个当前值）都弹
+        //  「手动输入」小窗，按下反馈与波纹由库这一层给 —— 与页面其余行同一条口径。
+        //  点轨道那一下不算：那条手势会把抬手消费掉（见 `tapSliderToSeek`），
+        //  否则点轨道会同时「跳到那个值」与「弹窗」。
+        onClick = {
+            tick()
+            typing = true
+        },
         //  行首图标要自己管颜色：库只给**它自己画的东西**按 `enabled` 上色，
         // `startAction` 槽位原样渲染 —— 不给的话 `enabled = false` 会「字灰了、图标还亮着」
         // （与 [ArrowPreference] 那一行同一个坑）。
@@ -145,27 +162,76 @@ internal fun SettingsPage.SliderRow(
     ) {
         SliderRowTexts(spec = spec, colors = colors)
     }
+
+    //  手动输入：小窗、落盘、触觉都在那一支里（见 [SliderValueInput]）
+    SliderValueInput(show = typing, spec = spec, onDismiss = { typing = false }, onValue = commit)
 }
 
-/** 标题 + 摘要那两行 —— 从 [SettingsPage.SliderRow] 里分出来，让那一支只留接线。 */
+/**
+ * 滑杆行那个「手动输入」小窗 —— 从 [SettingsPage.SliderRow] 里分出来，让那一支留在 detekt
+ * 的长度线内。
+ *
+ *  小窗本体是**全项目那一个**（`NameDialog` 多收一个 `range`），标题与图标**取原行**
+ *  （同一张卡里可能并着两根滑杆，弹出来的是哪一根要先认得出）。写回去走的还是滑杆那条
+ *  `commit`（见 `sliderCommit`）—— 钳制、写盘失败拨回、判据日志都在那一处，
+ *  手动输入不另开一条落盘路径。
+ *
+ *  **打进来的数要先吸到刻度上**（`spec.snap`）：不吸的话配置里会存进 260 这种「不在档位上」
+ *  的值，滑杆画出来滑块夹在两档之间 —— 看着就像 step 失效了。拖动与点轨道本来就落在刻度上，
+ *  所以这条只有手动输入这一路要补。
+ */
+@Composable
+private fun SettingsPage.SliderValueInput(
+    show: Boolean,
+    spec: SliderSpec,
+    onDismiss: () -> Unit,
+    onValue: (Int) -> Unit,
+) {
+    val tick = rememberTick()
+    NameDialog(
+        show = show,
+        title = spec.title,
+        label = I18n.format(Strings.SLIDER_INPUT_LABEL, spec.min, spec.max),
+        icon = spec.icon,
+        initial = spec.value.toString(),
+        range = spec.min..spec.max,
+        onDismiss = onDismiss,
+        onConfirm = { raw ->
+            onDismiss()
+            raw.toIntOrNull()?.let { v ->
+                tick()
+                onValue(spec.snap(v))
+            }
+        },
+    )
+}
+
+/**
+ * 标题 + 摘要那两行 —— 从 [SettingsPage.SliderRow] 里分出来，让那一支只留接线。
+ *
+ *  **本身不接点击**：整行的点击在 `BasicComponent` 那一层（`onClick`），波纹与按下反馈都归它 ——
+ *  在这里再挂一个 `clickable` 只会得到「只有文字那一小块有反馈」的半吊子效果。
+ */
 @Composable
 private fun SliderRowTexts(
     spec: SliderSpec,
     colors: SliderTextColors,
 ) {
     // 标题与摘要之间那 2dp 是库的私有常量 `MarginBetweenLine`（值取自 `Component.kt`）。
-    Text(
-        text = spec.title,
-        style = COUITheme.textStyles.headline1,
-        fontWeight = FontWeight.Medium,
-        color = colors.title,
-    )
-    Text(
-        text = spec.summary,
-        modifier = Modifier.padding(top = 2.dp),
-        style = COUITheme.textStyles.body2,
-        color = colors.summary,
-    )
+    Column {
+        Text(
+            text = spec.title,
+            style = COUITheme.textStyles.headline1,
+            fontWeight = FontWeight.Medium,
+            color = colors.title,
+        )
+        Text(
+            text = spec.summary,
+            modifier = Modifier.padding(top = 2.dp),
+            style = COUITheme.textStyles.body2,
+            color = colors.summary,
+        )
+    }
 }
 
 /** 滑杆轨道（行里那一根）—— 规格取自 [SliderSpec]，实现转给 [TrackSlider]。 */

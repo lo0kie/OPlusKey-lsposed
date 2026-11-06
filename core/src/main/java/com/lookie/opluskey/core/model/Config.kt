@@ -310,7 +310,16 @@ data class KeyConfig(
          * 下限抬到 200ms 就是为了堵掉这个组合，用户不必先踩一次才知道。
          */
         const val MIN_LONG_PRESS_MS = 200
-        const val MAX_LONG_PRESS_MS = 1000
+
+        /**
+         * 长按阈值上限 —— **2000ms**（用户口径）。
+         *
+         *  上一档是 1000ms：想「按住两秒才算长按」的人调到滑杆尽头也调不出来，只能手改配置，
+         *  而手改的值还会被 `ConfigFields` 的钳制压回 1000 —— 上限与滑杆必须同一个数。
+         *  上限本身不参与判定正确性：判定只拿它排长按那一枪，越长只是越不容易误判成长按，
+         *  代价是长按动作要等更久（`GestureDetector.scheduleLongPress`）。
+         */
+        const val MAX_LONG_PRESS_MS = 2000
         const val DEFAULT_REPEAT_INTERVAL_MS = 300
 
         /** 连发间隔下限 —— 50ms（用户口径）：再快就与「按住不放」的体感脱节，且按键注入本身也要时间。 */
@@ -406,6 +415,14 @@ data class GlobalConfig(
     val vibrateStrength: Int = DEFAULT_VIBRATE_STRENGTH,
     /** 执行**任意动作**时弹一条 Toast（内容是动作名；自定义命令取命令名）。 */
     val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
+    /**
+     * 「执行时提示」那一句的**文案模板** —— `$key` / `$gesture` / `$action` 三段可自由摆放与增删
+     *  （见 `ToastNotice`）。默认就是拆分之前那句 `侧键 - 单击 → 手电筒`。
+     *
+     *  与 [toastOnRun] 同一档：只在 [toastOnRun] 为真时有意义，读它的是宿主执行器，
+     *  所以**只走落盘那一列**、不进广播（注入侧不弹提示）。
+     */
+    val toastTemplate: String = DEFAULT_TOAST_TEMPLATE,
     /** 界面语言（auto = 跟随系统，zh_CN = 简体中文，en = English）。 */
     val language: String = DEFAULT_LANGUAGE,
     /**
@@ -498,6 +515,7 @@ data class GlobalConfig(
                 ConfigFields.F_VIBRATE to vibrate,
                 ConfigFields.F_VIBRATE_STRENGTH to vibrateStrength,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
+                ConfigFields.F_TOAST_TEMPLATE to toastTemplate,
                 ConfigFields.F_LANGUAGE to language,
                 ConfigFields.F_PALETTE to palette,
                 ConfigFields.F_THEME to theme,
@@ -517,6 +535,12 @@ data class GlobalConfig(
 
         /** [GlobalConfig.toastOnRun] 的默认值：默认不弹。 */
         const val DEFAULT_TOAST_ON_RUN = false
+
+        /**
+         * [GlobalConfig.toastTemplate] 的默认值 —— 与拆分之前那句话**逐字一致**，
+         * 老配置没有这一项时补的也是它（见 `ToastNotice.DEFAULT_TEMPLATE`）。
+         */
+        const val DEFAULT_TOAST_TEMPLATE = ToastNotice.DEFAULT_TEMPLATE
 
         /** [GlobalConfig.vibrateStrength] 的三档取值 —— 弱 / 中 / 强。 */
         const val VIBRATE_WEAK = 0
@@ -602,6 +626,7 @@ data class GlobalConfig(
                 //  所以在这一层就钳住（滑杆两端与这里同一个区间）。
                 vibrateStrength = v.number(ConfigFields.F_VIBRATE_STRENGTH).coerceIn(VIBRATE_STRENGTH_RANGE),
                 toastOnRun = v.bool(ConfigFields.F_TOAST_ON_RUN),
+                toastTemplate = v.text(ConfigFields.F_TOAST_TEMPLATE),
                 language = v.text(ConfigFields.F_LANGUAGE),
                 palette = v.text(ConfigFields.F_PALETTE),
                 theme = v.text(ConfigFields.F_THEME),

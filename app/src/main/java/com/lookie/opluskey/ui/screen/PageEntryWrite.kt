@@ -14,6 +14,7 @@ import com.lookie.opluskey.ui.screen.binding.pick
 import com.lookie.opluskey.ui.screen.command.writeBranchCommand
 import com.lookie.opluskey.ui.screen.command.writeBranchCondition
 import com.lookie.opluskey.ui.screen.variables.VarManageState
+import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.PickTarget
 import com.lookie.opluskey.ui.state.PickedDetail
@@ -126,25 +127,27 @@ internal fun SettingsPage.onAppPicked(
     // 没确认过就照 `pending` 这一份写 —— 它带着快捷方式的 id，不能退化成 `app:包名/id`。
     //  给「条件执行」挑的那一趟**没有二级页**（不挑界面），所以那边一律按 `pending` 写：
     //  草稿里若留着上一趟的 `包名/类名`，照它写会把条件弄成「某个界面」，而条件只认包名。
+    //  给**分支动作**挑的那一趟不在此列 —— 它与网格同一套（草稿 + 小窗都算数）。
+    val forCondition = picker.branchTarget != AppPickerState.NOT_FOR_BRANCH
     val token =
         when {
             stopApp -> Action.Process(AppTarget.pkg(picked.target)).token
-            forBranch -> picked.token(window = false)
+            forCondition -> picked.token(window = false)
             else -> picker.draft?.token(picker.smallWindow.value) ?: picked.token(window)
         }
     // 名字与绑定**同一次写盘**（`Config.appNames`）—— 分两次写要多落一次盘 + 一次广播，
     //  而中间那一下读到的配置只有新绑定、没有名字，顶栏会当场闪一下包名。
     //  快捷方式带的是它自己的名字（「扫一扫」），其余按目标现取应用名。
     val name = picker.draft?.label ?: picked.label ?: appNameOf(picked.target)
+    //  **这一笔账在写之前清**：`writeToken` 里那两条分支路径会当场 `popBackStack()` 退回来源页，
+    //  来源页的 effect 立刻读 `resumeSheetAt` 把抽屉支起来 —— 写成功后再清已经晚了一帧，
+    //  真机上就是「点了确认、抽屉照样弹出来」（用户口径）。
+    //  没写成的极小概率（配置只读 / 链路未就绪）会少一次「回来支抽屉」，那也比每次确认都弹好。
+    picker.cancelResume()
     if (!writeToken(token, name)) {
         XLog.w("选择应用：${picked.target} 没写进绑定，留在本页（不 goBack）")
         return
     }
-    //  **写成了就不再恢复抽屉**：抽屉那边记着「挑完回来把抽屉支起来」，那是**还没选完**时的账。
-    //  这一笔已经落盘（抽屉里现在是「选中即确认」），回去再把抽屉弹出来等于让人对着同一条命令
-    //  再选一遍（用户口径「从应用组件确认后返回，抽屉会显示出来」）。
-    //  没写成 / 中途退出时不清 —— 那时抽屉还是用户没走完的那一步，回去要原样支起来。
-    picker.cancelResume()
     if (forStep || forBranch) return
     picker.clearTarget()
     goBack()

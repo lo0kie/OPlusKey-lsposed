@@ -27,6 +27,10 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
  *  它挤在手指旁边、和第一层抢地方，两层窗口互相抢焦点还要额外的守卫。所以那一层改成
  *  **模态弹窗**：标题写这一档的名字、一行一个取值，当前绑的那一行行尾换成对勾、整行走主色。
  *
+ *  还有一层菜单都不给的那一档：**录屏**（[ActionCatalog.stateChoices]）。它的格子名就是动作名，
+ *  三行是同一个动作的三种状态 —— 中间再夹一张只写着「录屏」的菜单，等于把同一句话说两遍，
+ *  所以点格子直接起弹窗（见 [StateChoicesPopup]）。
+ *
  *  点那一行时菜单**先收**，弹窗紧接着起来：菜单留着的话它压在弹窗底下、还带着自己的锚点与
  *  退场动画，两层叠在一起只会显得脏；直接换成一个居中的弹窗，视线也就跟着定下来了。
  *
@@ -60,44 +64,110 @@ internal fun SettingsPage.ModeMenuPopups(
     // 点开的是「还要挑一档」的那一行（灵感语音：开始 / 结束）—— 同一套：菜单先收、选择器再起
     var nestedEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
 
+    //  这一格**本身就是那个动作**（录屏）—— 点开直接弹「开始 / 结束 / 切换」那个三行弹窗，
+    //  中间不再夹一层只写着「录屏」的菜单：一个动作不该有两层入口（用户口径「网格 / 菜单里
+    //  视为一个动作，点击弹 dialog 选」）。判据在 `ActionCatalog.stateChoices`，界面不认 token。
+    val stateTile = target?.tile?.takeIf { ActionCatalog.stateChoices(it.token) != null }
+
     PageMenu(
         preciseClick = preciseClick,
         onDismiss = onDismiss,
         entries =
-            target
-                ?.let { t ->
-                    ActionCatalog.modeMenu(t.tile.token)?.let { modes ->
-                        modeEntries(t.tile.label, modes, current) { picked ->
-                            // 这一档还有后续：收菜单、起弹窗（顺序反了会闪一帧空菜单）。
-                            // 两种后续都在这两支里：亮度的百分比（滑杆）、系统开关的三态（选择器）。
-                            if (ActionCatalog.brightnessModeOf(picked.token) != null) {
-                                brightEntry = picked
-                                onDismiss()
-                            } else if (ActionCatalog.volumeModeOf(picked.token) != null) {
-                                volumeEntry = picked
-                                onDismiss()
-                            } else if (ActionCatalog.stateMenu(picked.token) != null) {
-                                stateEntry = picked
-                                onDismiss()
-                            } else if (ActionCatalog.modeMenu(picked.token) != null) {
-                                // 这一行自己还带一层（灵感语音 → 开始 / 结束）：收菜单、起选择器
-                                nestedEntry = picked
-                                onDismiss()
-                            } else {
-                                onDismiss()
-                                onPick(picked)
+            if (stateTile != null) {
+                //  这一格走弹窗：菜单这一层不许它露面（`PageMenu` 只按 entries 非空才显示）
+                emptyList()
+            } else {
+                target
+                    ?.let { t ->
+                        ActionCatalog.modeMenu(t.tile.token)?.let { modes ->
+                            //  「应用控制」那两行要一枚子标题：当前绑的是哪个应用（用户口径：选中
+                            //  「打开应用 / 结束应用」之后再打开这层菜单，标题下面要写出是哪个应用）。
+                            //  别的行不查名字 —— `boundAppName` 要走 `PackageManager`（分身那档还问
+                            //  `UserManager`），没用到它的菜单不该为它掏 binder。
+                            val boundApp =
+                                if (t.tile.token == ActionCatalog.APP_CONTROL_TILE) {
+                                    //  菜单行宽，要带「具体是哪一个」：这两行的行标题只说打开 / 结束
+                                    current?.let { boundAppName(it, withDetail = true) }
+                                } else {
+                                    null
+                                }
+                            modeEntries(t.tile.label, modes, current, { spec -> boundRowSummary(spec, current, boundApp) }) { picked ->
+                                // 这一档还有后续：收菜单、起弹窗（顺序反了会闪一帧空菜单）。
+                                // 两种后续都在这两支里：亮度的百分比（滑杆）、系统开关的三态（选择器）。
+                                if (ActionCatalog.brightnessModeOf(picked.token) != null) {
+                                    brightEntry = picked
+                                    onDismiss()
+                                } else if (ActionCatalog.volumeModeOf(picked.token) != null) {
+                                    volumeEntry = picked
+                                    onDismiss()
+                                } else if (ActionCatalog.stateMenu(picked.token) != null) {
+                                    stateEntry = picked
+                                    onDismiss()
+                                } else if (ActionCatalog.hasDeeperLevel(picked)) {
+                                    // 这一行自己还带一层（灵感语音 → 开始 / 结束）：收菜单、起选择器
+                                    //  判据**不是** `modeMenu(picked.token) != null`：媒体控制那层菜单的
+                                    //  首行（「播放/暂停」）与格子共用同一串 token，那张表就是它自己所在的
+                                    //  这一层 —— 照 `modeMenu` 判会再弹一张一模一样的清单（真机反馈
+                                    //  「点播放/暂停时弹出个多余的选择器」）。见 `hasDeeperLevel`。
+                                    nestedEntry = picked
+                                    onDismiss()
+                                } else {
+                                    onDismiss()
+                                    onPick(picked)
+                                }
                             }
                         }
-                    }
-                }.orEmpty(),
+                    }.orEmpty()
+            },
     )
 
-    // 两条「点一行之后还有一问」的后续，各自一个弹窗组件（拆出去是为了让这一支只留接线，
+    // 三条「点一行之后还有一问」的后续，各自一个弹窗组件（拆出去是为了让这一支只留接线，
     //  两块的退场处理、标题取法都各自独立，混在一起时这一支会顶破 detekt 的长度 / 圈复杂度上限）。
+    //  录屏那一档在**最前面**：它没有菜单那一层，点格子就是它自己的三行。
+    StateChoicesPopup(stateTile, current, onDismiss = onDismiss, onPick = onPick)
     SwitchStatePopup(stateEntry, current, onDismiss = { stateEntry = null }, onPick = onPick)
     BrightnessPopup(brightEntry, current, onDismiss = { brightEntry = null }, onPick = onPick)
     VolumePopup(volumeEntry, current, onDismiss = { volumeEntry = null }, onPick = onPick)
     NestedPickerPopup(nestedEntry, current, onDismiss = { nestedEntry = null }, onPick = onPick)
+}
+
+/**
+ * 录屏那一档的后续 —— **一行一档的三行单选弹窗**（开始 / 结束 / 切换）。
+ *
+ *  与 [SwitchStatePopup] 同一个形状（点格子 → 弹窗直接起），区别只有「行从哪来」：
+ *  那一边是开关的三档（[ActionCatalog.stateMenu]），这一边是 [ActionCatalog.stateChoices]。
+ *
+ *  为什么不在菜单里露这三行：菜单意味着「这一格底下还有一层清单」，于是格子行尾挂着选择器
+ *  字形、菜单顶上还要写一遍「录屏」这个小标题 —— 而那三行本来就是这个动作的三种状态，
+ *  没有新东西可列（用户口径「录屏不用换图标了，改成用选择器选三态」「行尾不用 selector」）。
+ *
+ *  退场期间照最后画过的那一份画，理由见 [SwitchStatePopup]。
+ *  点行时 `SinglePickerDialog` 自己会先调 [onDismiss] 再回调，这一支不必再调一次。
+ */
+@Composable
+private fun SettingsPage.StateChoicesPopup(
+    tile: ActionCatalog.Spec?,
+    current: Action?,
+    onDismiss: () -> Unit,
+    onPick: (ActionCatalog.Spec) -> Unit,
+) {
+    val lastShown = remember { LastPick() }
+    tile?.let { lastShown.entry = it }
+    val shown = tile ?: lastShown.entry
+    val rows = shown?.let { ActionCatalog.stateChoices(it.token) }.orEmpty()
+    //  三档之间只差一个 token，逐行精确比即可
+    val selectedIndex = rows.indexOfFirst { row -> current?.let { ActionCatalog.isBound(row, it) } == true }
+    SinglePickerDialog(
+        show = tile != null,
+        title = shown?.label.orEmpty(),
+        labels = rows.map { row -> row.label },
+        selectedIndex = selectedIndex,
+        onDismiss = onDismiss,
+        onPick = { index ->
+            val row = rows.getOrNull(index) ?: return@SinglePickerDialog
+            onPick(row)
+        },
+    )
 }
 
 /**
@@ -302,11 +372,15 @@ private fun stateRowLabel(
  * @param parentTitle 父标题（一级菜单里那一行的标题）
  * 每一行的字形按需取（[tileIcon]）—— 这一层只建真被画到的那些行。
  * @param current 当前绑的动作（`null` = 不知道），用来把那一档标出来。
+ * @param selectedSummary 选中那一行标题下面的小字（那一行「现状」的一份说明）。每行自己算 ——
+ *   三种入口各问各的（见 [boundRowSummary]）。只有**被选中那一行**会显示它：其余行那个位置不放
+ *   东西，否则「这一行绑着什么」会读到别的行上去。
  */
 private fun modeEntries(
     parentTitle: String,
     modes: List<ActionCatalog.Spec>,
     current: Action?,
+    selectedSummary: (ActionCatalog.Spec) -> String? = { null },
     onPick: (ActionCatalog.Spec) -> Unit,
 ): List<MenuEntry> =
     // 这一层只有「标题 + 一组选项」：小标题下面那条细线与行间细线都由菜单自己加。
@@ -316,12 +390,15 @@ private fun modeEntries(
             title = parentTitle,
             rows =
                 modes.map { spec ->
+                    //  必须用 [ActionCatalog.isBound]（一行一行比），不能用 `isSelected` ——
+                    // 后者对整组都算选中，会让菜单同时勾上多项。
+                    val bound = current?.let { ActionCatalog.isBound(spec, it) } ?: false
                     MenuEntry.Row(
                         title = spec.label,
                         icon = tileIcon(spec),
-                        //  必须用 [ActionCatalog.isBound]（一行一行比），不能用 `isSelected` ——
-                        // 后者对整组都算选中，会让菜单同时勾上多项。
-                        selected = current?.let { ActionCatalog.isBound(spec, it) } ?: false,
+                        //  子标题只说「这一行现在是什么样」，且只在它正是当前那一档时给
+                        summary = if (bound) selectedSummary(spec) else null,
+                        selected = bound,
                         //  行尾**默认不留指示位**：点了还有后续的那几行（系统开关 / 灵感语音）后面跟着的是
                         //  弹窗，不是第二层菜单，行尾再挂个「下一层」记号说反了；不留这一格，行也算得宽。
                         //  例外只有「打开应用 / 结束应用」：它们点下去是**另一张页面**（挑应用），
@@ -334,6 +411,40 @@ private fun modeEntries(
                 },
         ),
     )
+
+/**
+ * 这一行「现在是什么样」—— 只在它被选中时写进子标题。
+ *
+ *  · 「应用控制」那两行（打开应用 / 结束应用）不是取值，绑的是哪个应用由调用方算好递进来
+ *    （[boundApp] 要走 `PackageManager`，只有那一层菜单才查）；
+ *  · 「系统开关」那一行（Wi‑Fi / 蓝牙…）→ 绑的那一档：`切换` / `打开` / `关闭`；
+ *  · 「灵感语音」那一行 → 绑的是 `开始灵感语音` 还是 `结束灵感语音`（那一行自己还带一层，
+ *    `boundModeOf` 会取到最里面那一档 —— 只写「灵感语音」看不出是开还是停）。
+ *
+ *  其余档位（响铃四档 / 媒体五档那些叶子）返回 `null`：行标题本身已经说完了。
+ *
+ * ## 系统开关为什么不走 [ActionCatalog.boundModeOf]
+ *
+ *  那一行本身**就是一个开关**（`setting:wifi`），不在 [ActionCatalog.MODE_MENUS] 那张入口格表里
+ *  —— `boundModeOf` 查的是「这一格点开的那一层」，对开关行只会返回 `null`（第一版就是这么写的，
+ *  真机上「系统开关选中时没有小字」）。它自己的三档要直接问 [ActionCatalog.stateMenu]。
+ *  读状态用 `switchStateLabel(current)`（按**动作**那一侧读），逐档 `isBoundExactly` 也能写，
+ *  但那样会漏掉老写法（`oplus:no_disturb` 那种 token 与任何一档都不完全相等）。
+ */
+private fun boundRowSummary(
+    spec: ActionCatalog.Spec,
+    current: Action?,
+    boundApp: String?,
+): String? {
+    if (current == null) return null
+    if (spec.token == ActionCatalog.APP_CONTROL_OPEN || spec.token == ActionCatalog.APP_CONTROL_STOP) {
+        return boundApp
+    }
+    //  系统开关那一行：`切换` / `打开` / `关闭`（单档开关没有这一层，`stateMenu` 为 null）
+    if (ActionCatalog.stateMenu(spec.token) != null) return ActionCatalog.switchStateLabel(current)
+    //  「这一行还带一层」的那些（灵感语音）：取最里面那一档；取到自己就不要（会与行标题重复）
+    return ActionCatalog.boundModeOf(spec, current)?.takeIf { it.token != spec.token }?.label
+}
 
 /**
  * 这一行点下去是不是**另一张页面** —— 目前只有「应用控制」那一层菜单的两行

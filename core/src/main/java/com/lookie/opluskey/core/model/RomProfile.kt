@@ -237,6 +237,22 @@ object RomProfile {
     const val NAME_SCREEN_RECORD = "screen_record"
 
     /**
+     * 录屏 —— **只开始**（`oplus:screen_record_start`）。
+     *
+     *  与 [NAME_SCREEN_RECORD]（开关）起的是同一个界面，差别只在**不登记停止广播**：
+     *  那一档的语义是「起一次」，第二次按还是起（已经录着时 ROM 自己会忽略）。
+     */
+    const val NAME_SCREEN_RECORD_START = "screen_record_start"
+
+    /**
+     * 录屏 —— **只停止**（`oplus:screen_record_stop`）。
+     *
+     *  没有启动落点（[BuiltIn.service] 是空串），执行侧只发 [BuiltIn.stopAction] 那条广播 ——
+     *  真机验过：发完之后 `dumpsys media_projection` 立刻变 null。
+     */
+    const val NAME_SCREEN_RECORD_STOP = "screen_record_stop"
+
+    /**
      * 屏幕翻译（ColorOS「智能侧边栏」里那一项）—— 把当前整屏文字认出来翻掉，浮一层胶囊在屏上。
      *
      *  **不是** `com.coloros.translate` 的某个界面：它是一条**前台服务**
@@ -395,6 +411,27 @@ object RomProfile {
             stopAction = "com.oplus.screenrecorder.ACTION_STOP_SCREEN_RECORDING",
         )
 
+    /** 录屏的**只开始**那一档：同一个界面，不登记 [BuiltIn.stopAction] ⇒ 不是开关。 */
+    private val SCREEN_RECORD_START =
+        BuiltIn(
+            owner = "com.oplus.screenrecorder",
+            service = "com.oplus.screenrecorder.MainActivity",
+            activity = true,
+        )
+
+    /**
+     * 录屏的**只停止**那一档：没有启动落点，执行侧只发那条停止广播。
+     *
+     *  `service` 空串就是这一档的标记（见 `AppLauncher.startOplusFeature` 开头那一支）——
+     *  不要给它编一个界面，那会变成「按停止反而弹录制界面」。
+     */
+    private val SCREEN_RECORD_STOP =
+        BuiltIn(
+            owner = "com.oplus.screenrecorder",
+            service = "",
+            stopAction = "com.oplus.screenrecorder.ACTION_STOP_SCREEN_RECORDING",
+        )
+
     /**
      * 屏幕翻译（`com.coloros.translate` 的 `ScreenTranslationService`）—— 起前台服务，屏上出胶囊。
      *
@@ -521,6 +558,8 @@ object RomProfile {
                         NAME_SCREEN_OCR to SCREEN_OCR,
                         NAME_KEY_FLASHLIGHT to KEY_FLASHLIGHT,
                         NAME_SCREEN_RECORD to SCREEN_RECORD,
+                        NAME_SCREEN_RECORD_START to SCREEN_RECORD_START,
+                        NAME_SCREEN_RECORD_STOP to SCREEN_RECORD_STOP,
                         NAME_SCREEN_TRANSLATE to SCREEN_TRANSLATE,
                         NAME_CAMERA to CAMERA,
                         NAME_CALCULATOR to CALCULATOR,

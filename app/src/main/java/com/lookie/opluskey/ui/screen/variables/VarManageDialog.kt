@@ -302,11 +302,12 @@ private fun SettingsPage.commitStep(set: Action.VarSet) {
     //  于是这里多走一次 `goBack()`，把来源页也弹掉，而草稿刚被改脏，退页会弹「放弃未保存」。
     val handedOff = picker.forStep || picker.forBranch
     VarManageState.close()
-    if (!writeToken(set.token, null)) return
-    //  落盘了就不再恢复抽屉：抽屉那边记着「挑完回来把抽屉支起来」，那是**还没选完**时的账
-    //  （见 `CommandSteps` 那笔 `resumeSheetAt`）。已经挑成一步了，回去再弹出来等于让人对着
-    //  同一条命令再选一遍 —— 与 `onAppPicked` 同一口径。
+    //  落盘了就不再恢复抽屉：抽屉那边记着「挑完回来把抽屉支起来」，那是**还没选完**时的账。
+    //  已经挑成一步了，回去再弹出来等于让人对着同一条命令再选一遍 —— 与 `onAppPicked` 同一口径。
+    //  **必须在 `writeToken` 之前清**：那里面加一步 / 换一步、分支那两条路会当场 `popBackStack()`，
+    //  来源页的 effect 立刻读 `resumeSheetAt` —— 写成功后再清已经晚了一帧，抽屉照样弹。
     picker.cancelResume()
+    if (!writeToken(set.token, null)) return
     //  加一步 / 换一步、分支那两条路自己会切页（与挑应用那条同一口径），这一页要被弹掉
     if (handedOff) return
     picker.clearTarget()

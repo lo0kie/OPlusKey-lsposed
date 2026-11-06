@@ -59,9 +59,12 @@ internal fun SettingsPage.replaceStep(
  * 与网格那条入口的区别只有两处：不记手势（[AppPickerState.gesture] = null），以及调用点在
  * 「自定义命令」页上 —— 压进栈之后「打开应用」下面那一页就是「自定义命令」，返回自然退到它。
  */
-internal fun SettingsPage.openAppPickerForStep(replaceIndex: Int = -1) {
-    XLog.w("添加命令：进「打开应用」页挑一步（替换行=$replaceIndex）")
-    picker.openForStep(replaceIndex)
+internal fun SettingsPage.openAppPickerForStep(
+    replaceIndex: Int = -1,
+    stop: Boolean = false,
+) {
+    XLog.w("添加命令：进「打开应用」页挑一步（替换行=$replaceIndex，结束=$stop）")
+    picker.openForStep(replaceIndex, stop)
     // 搜索词清空：它是页面级状态，不随页面出栈注销 —— 留着的话下次进来就是一份被过滤过的列表。
     picker.filter.value = ""
     // 「以小窗口打开」按**这次要编辑的那一步**重算（不落盘、不跨次记忆，见 [AppPickerState.smallWindow]；

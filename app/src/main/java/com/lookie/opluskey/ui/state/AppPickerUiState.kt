@@ -37,7 +37,7 @@ internal class AppPickerUiState(
     var refreshTick by mutableStateOf(0)
 
     /**
-     * **当前选中**的那一条（装 [PickedDetail]：行尾要靠 `shortcutId` 分开画两种字形）。
+     * **当前选中**的那一条（装 [PickedDetail]：写回时要靠 `shortcutId` 认「这是快捷方式」）。
      *
      *  存在页面级（[AppPickerState.pending]）：被二级页盖住时组合会被销毁，放在这里就会丢
      *  （挑过的行退回来变成「已绑定的那个」）。
@@ -69,7 +69,7 @@ internal class AppPickerUiState(
      */
     fun beginVisit(
         selection: String?,
-        /** 当前绑定是不是一条**快捷方式**；是就带上它的 id，行尾据此画 `table-shortcut`。 */
+        /** 当前绑定是不是一条**快捷方式**；是就带上它的 id（写回走 `appshortcut:` 那一档）。 */
         shortcutId: String? = null,
         /**
          * 这一趟「给条件挑前台应用」时，那条条件**已经选中的全部包名**（可多选，见

@@ -34,6 +34,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessAuto
 import io.github.lyxnx.compose.ui.tablericons.outline.Calculator
 import io.github.lyxnx.compose.ui.tablericons.outline.Camera
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
+import io.github.lyxnx.compose.ui.tablericons.outline.Category
+import io.github.lyxnx.compose.ui.tablericons.outline.CategoryMinus
+import io.github.lyxnx.compose.ui.tablericons.outline.CategoryPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
@@ -136,8 +139,15 @@ internal fun actionIcon(token: String): ImageVector =
 
         // 录屏 —— 与「录音」那颗麦克风分开：一个是录画面、一个是录声音，同字形会读错。
         //  用摄像机那一颗（`video`）：用户口径指定。
-        Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD -> {
+        Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD,
+        Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD_START,
+        -> {
             TablerIcons.Outline.Video
+        }
+
+        // 「只结束」那一档：停止那颗 —— 菜单里与上面两档并排时，一眼分得出哪一行是停。
+        Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD_STOP -> {
+            TablerIcons.Outline.PlayerStop
         }
 
         // 屏幕翻译 —— `language`（「A 文」那个字形）就是「翻译」的通用读法。
@@ -533,18 +543,28 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         //  「锁定 / 锁屏」那一档动作（也与「手电筒」那颗灯泡太近）。
         ActionCatalog.Glyph.Keyguard -> TablerIcons.Outline.Bolt
 
-        // 「应用控制」入口格：一叠方块（`apps`）—— 它管的是「哪一个应用」，两个状态在菜单里。
-        ActionCatalog.Glyph.AppControl -> TablerIcons.Outline.Apps
+        // 「应用控制」入口格：`category`（一个框 + 里面两小格）—— 管的是「哪一个应用」。
+        ActionCatalog.Glyph.AppControl -> TablerIcons.Outline.Category
 
-        // 「应用控制」菜单里「打开应用」那一行：`player-play`（三角），与结束那颗方块配成一对
-        ActionCatalog.Glyph.AppOpen -> TablerIcons.Outline.PlayerPlay
+        // 「应用控制」菜单里「打开应用」那一行：`category-plus`，与结束那一颗 `category-minus`
+        //  配成一对（同一族的底子、角上换符号）。
+        //  为什么不再自己拼（一叠方块 + 右下角三角 / 方块）：那套拼法的底图必须给右下角让位，
+        //  而这一族的辨识度全在「四块」上 —— 少一块就只剩三个方框，读不出是「应用」
+        //  （用户口径「别画了，换成 category / category-minus / category-plus」）。
+        ActionCatalog.Glyph.AppOpen -> TablerIcons.Outline.CategoryPlus
 
-        // 「应用控制」菜单里「结束应用」那一行：`player-stop`（方块），与执行那一档同一颗。
-        ActionCatalog.Glyph.StopApp -> TablerIcons.Outline.PlayerStop
+        // 「应用控制」菜单里「结束应用」那一行：`category-minus` —— 与打开那一颗同一族。
+        ActionCatalog.Glyph.StopApp -> TablerIcons.Outline.CategoryMinus
 
         // 「灵感语音」那一行（点开再选开始 / 结束）：与开始那一档同一颗侧脸，
         //  这一行代表的是**这一族**，具体哪一档在选择器里说。
         ActionCatalog.Glyph.VoiceMemory -> TablerIcons.Outline.ThinkingLow
+
+        // 「录屏」那一格 / 那一行 / 三态弹窗的标题：**同一颗摄像机**。
+        //  三档不再各画一颗（用户口径「录屏不用换图标了，改成用选择器选三态」）：它们是同一个
+        //  动作的三种状态，而这套角标在图里占的是右下角那块地 —— 一颗底图要同时给三角 / 方块
+        //  留位，底图本身就得缩，录屏那颗摄像机瘦下去之后反而认不出是摄像机了。
+        ActionCatalog.Glyph.ScreenRecord -> DrawnIcons.ScreenRecordTile
     }
 
 /**

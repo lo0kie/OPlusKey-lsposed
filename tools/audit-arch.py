@@ -89,15 +89,26 @@ def main() -> int:
         inline_failure == 0,
     )
 
-    # 3) 「一个动作怎么念」：唯一实现是 `core/model/actionTitle`（宿主与界面各一处调用）。
-    #    第三处是**绑定回执**（`boundNotice`）：它原来只写应用名，看不出「打开」还是「结束」——
-    #    用户口径要求带动作前缀，于是也走这一支。「带前缀」与「读同一句话」本来就是同一件事，
-    #    不该为它另起一份拼法。
+    # 3) 「一个动作怎么念」：唯一实现是 `core/model/actionTitle`。
+    #    四处调用它：执行时提示（`host/action/ActionNotice`）、步骤行 / 命令卡摘要
+    #    （`CommandText.stepTitle` + `stepTitleWithTarget` 两个包装：后者给目标已拼好括号的场景格）、
+    #    绑定回执（`BindingActions.boundNotice`）。
+    #    网格小字、菜单子标题、选择应用页页头走上面这几个包装（`stepTitle` / `appControlTitle`）
+    #    ，不直接喊 core 那一支 —— 所以这里只数「直连」的调用点。
     add(
-        'actionTitle 的调用点',
-        count(r'\bactionTitle\(', APP),
-        '= 3（执行时提示 / 步骤行 / 绑定回执）',
-        count(r'\bactionTitle\(', APP) == 3,
+        '「动作怎么念」的界面调用点',
+        count(r'\baction(?:Title|FinalTitle)\(', APP),
+        '= 4（执行时提示 / 步骤行 / 场景格 / 绑定回执）',
+        count(r'\baction(?:Title|FinalTitle)\(', APP) == 4,
+    )
+    #  实现处只有 core 那一份。原先为了「执行提示要带格子名」另有一份 `actionFinalTitle`，
+    #  结果同一个动作在步骤行说 `打开:Wi-Fi`、在提示里说 `系统开关: WIFI - 打开` ——
+    #  一句话两个样子。现在合成一份：**父动作名: 子动作名 - 状态**。
+    add(
+        '「动作怎么念」的实现处（core）',
+        count(r'fun action(?:Title|FinalTitle)\(', CORE),
+        '= 1（actionTitle）',
+        count(r'fun action(?:Title|FinalTitle)\(', CORE) == 1,
     )
     # 另有 `boundNotice` 里「不带前缀」那几档用清单名取裸名，那是另一条规则，不并。
     add(

@@ -67,6 +67,15 @@ object ActionCatalog {
         /** 「小布 AI」入口格（`sparkle-highlight`）：四件小布能力收在这一格后面。 */
         XiaobuAi,
 
+        /**
+         * 录屏那一格 / 挑三态那个弹窗的标题：摄像机底图。
+         *
+         *  **三档不再各画一颗**（用户口径「录屏不用换图标了，改成用选择器选三态」）：三档是
+         *  同一个动作的三种状态，格子、弹窗、步骤行画的都是这一颗；「是开始还是结束」由
+         *  小字 / 文案说（`录屏 - 开始`），不靠字形。
+         */
+        ScreenRecord,
+
         /** 「自定义变量」入口格（`variable`）：点它当场挑一步变量操作，不是取值。 */
         Variables,
 
@@ -202,6 +211,36 @@ object ActionCatalog {
     /** 录屏 —— 与其它 `oplus:` 档同一条：名字在 [RomProfile] 那一处，这里只拼 token。 */
     private val SCREEN_RECORD = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD
 
+    /** 录屏 —— **只开始** / **只结束**（三态里的另外两档，见 [SCREEN_RECORD_MODES]）。 */
+    private val SCREEN_RECORD_START = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD_START
+    private val SCREEN_RECORD_STOP = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_RECORD_STOP
+
+    /**
+     * 「录屏」那一行的标记（`ai:screen_record`）—— 与 [VOICE_TILE] 同类：**永不写进配置**。
+     *
+     *  开始 / 结束 / 切换是三档真取值，格子代表不了其中任何一档 —— 但这里**没有中间那层菜单**：
+     *  格子本身就是「录屏」这个动作，点它直接弹一个三行单选弹窗（见 [stateChoices]）。用户口径
+     *  「网格 / 菜单里视为一个动作，点击弹 dialog 选，行尾不用 selector」。
+     */
+    const val SCREEN_RECORD_TILE = "ai:screen_record"
+
+    /**
+     * 「录屏」那三档：开始 / 结束 / 切换，顺序即弹窗行序。
+     *
+     *  「切换」就是原来那一档（宿主按进程内记账翻面）：单绑一档手势时它最顺手；
+     *  拆出开始 / 结束之后，想「一键只开始」「一键只停」也有地方放 —— 前者给同一个界面、
+     *  不登记停止广播，后者只发那条停止广播（见 `RomProfile.BuiltIn`）。
+     *
+     *  **不带 `glyph`**：三行只在那个单选弹窗里露面，而弹窗是纯文字行（见 `SinglePickerDialog`）——
+     *  给一条用不上的字形，等于让下一个人以为菜单层还画图标。
+     */
+    val SCREEN_RECORD_MODES: List<Spec> =
+        listOf(
+            Spec(name = Strings.COMMON_START, token = SCREEN_RECORD_START),
+            Spec(name = Strings.COMMON_STOP, token = SCREEN_RECORD_STOP),
+            Spec(name = Strings.CATALOG_MODE_TOGGLE, token = SCREEN_RECORD),
+        )
+
     /** 屏幕翻译（侧边栏那一项）：起 ColorOS 翻译的前台服务，屏上出翻译胶囊。 */
     private val SCREEN_TRANSLATE = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_TRANSLATE
     private val RECORDING = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING
@@ -253,11 +292,18 @@ object ActionCatalog {
      */
     const val VOICE_TILE = "ai:voice_memory"
 
-    /** 「灵感语音」那一层：开始 / 结束两档，顺序即行序。 */
+    /**
+     * 「灵感语音」那一层：开始 / 结束两档，顺序即行序。
+     *
+     *  两行的名字**只写「开始」「结束」**（用户口径）：它们在「灵感语音」那一行点开的选择器
+     *  里，标题已经写着「灵感语音」—— 再写成「开始灵感语音」是把同一句话说两次，
+     *  而那条选择器里两行并排，短的那版一眼就分得清。整句仍由 [actionTitle] 拼成
+     *  `小布 AI: 灵感语音 - 开始`（父格 → 中间层 → 状态）。
+     */
     val VOICE_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.CATALOG_VOICE_MEMORY_START, token = VOICE_MEMORY),
-            Spec(name = Strings.CATALOG_VOICE_MEMORY_STOP, token = VOICE_MEMORY_STOP),
+            Spec(name = Strings.COMMON_START, token = VOICE_MEMORY),
+            Spec(name = Strings.COMMON_STOP, token = VOICE_MEMORY_STOP),
         )
 
     /**
@@ -459,7 +505,12 @@ object ActionCatalog {
                     Spec(name = Strings.TOOL_XIAOBU_AI, token = AI_TILE, glyph = Glyph.XiaobuAi),
                     Spec(name = Strings.CATALOG_RECORDING, token = RECORDING),
                     // 录屏：起 ColorOS 录屏应用自己的 JumpActivity，一起就进录制（落点见 RomProfile）
-                    Spec(name = Strings.CATALOG_SCREEN_RECORD, token = SCREEN_RECORD),
+                    // 入口行：**永不写进配置**，点它弹 [SCREEN_RECORD_MODES]（开始 / 结束 / 切换）
+                    Spec(
+                        name = Strings.CATALOG_SCREEN_RECORD,
+                        token = SCREEN_RECORD_TILE,
+                        glyph = Glyph.ScreenRecord,
+                    ),
                     // 屏幕翻译：系统侧边栏那一项，起翻译包的前台服务（配方与判据见 RomProfile）
                     Spec(name = Strings.CATALOG_SCREEN_TRANSLATE, token = SCREEN_TRANSLATE),
                     // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
@@ -670,6 +721,7 @@ object ActionCatalog {
             VOLUME_TILE to VOLUME_MODES,
             AI_TILE to AI_MODES,
             VOICE_TILE to VOICE_MODES,
+            SCREEN_RECORD_TILE to SCREEN_RECORD_MODES,
             KEYGUARD_TILE to KEYGUARD_MODES,
             APP_CONTROL_TILE to APP_CONTROL_MODES,
         )
@@ -737,9 +789,14 @@ object ActionCatalog {
         )
 
     /**
-     * 「添加命令」浮层用的**分组** —— 就是网格那张 [GROUPS]，只做两处适配：
-     * 「无操作」剔掉（它代表「吞掉按键」、不是一步动作），「应用控制」那一格**就地换成** [APP_STEP]
-     * （一步只能是一个取值：打开某个应用；结束那一档不出现在步骤里）。
+     * 「添加命令」浮层用的**分组** —— 与网格**同一张表**（[GROUPS]），只剔掉一样：
+     * 「无操作」（它代表「吞掉按键」、不是一步动作）。
+     *
+     *  **不再有第二处适配**。原来这里把「应用控制」就地换成 [APP_STEP]（`app:`「选择应用」）——
+     * 那条替换是「一步只能是一个取值」的老解释，代价是同一个入口在网格里叫「应用控制」、在抽屉里
+     * 叫「选择应用」，点开的层级也不一样（网格有 打开 / 结束 那一层，抽屉直接进挑应用页），
+     * 于是「结束应用」根本做不成一步。现在两边同源：那一行在抽屉里也叫「应用控制」，
+     * 点开同样是 打开 / 结束 两层，结束那一档落成 `proc:stop:包名`。
      *
      * 「自定义变量」那一格**留在表里**：它在抽屉里同样是个关卡 —— 点它弹「变量操作」窗挑一步
      * （见 `ui/screen/variables/VarOpsDialog`），抽屉自己**不**把它落成 token。所以它既不能剔掉，
@@ -751,20 +808,9 @@ object ActionCatalog {
      */
     val STEP_GROUPS: List<Pair<String, List<Spec>>> =
         GROUPS.map { (title, group) ->
-            title to
-                group
-                    // 「无操作」代表吞掉按键、不是一步动作
-                    // （「灵感语音」不在顶层 —— 它落在小布 AI 那层菜单里，那里两行都是真动作）
-                    .filterNot { it.token == NONE_TOKEN }
-                    .map {
-                        when (it.token) {
-                            // 「应用控制」那一格是关卡，不是取值：多步里那一步只能是「打开某个应用」
-                            // （`app:`）。结束那一档不在这里 —— 它是另一条真动作，由那一格自己挑。
-                            APP_CONTROL_TILE -> APP_STEP
-
-                            else -> it
-                        }
-                    }
+            // 「无操作」代表吞掉按键、不是一步动作
+            // （「灵感语音」不在顶层 —— 它落在小布 AI 那层菜单里，那里两行都是真动作）
+            title to group.filterNot { it.token == NONE_TOKEN }
         }
 
     /**
@@ -777,17 +823,8 @@ object ActionCatalog {
      *  「无操作」那一步等于白占一格，还让「有几步」这件事数不准。
      */
     val BRANCH_GROUPS: List<Pair<String, List<Spec>>> =
-        GROUPS.map { (title, group) ->
-            title to
-                group
-                    //  同 [STEP_GROUPS]：「应用控制」是关卡，一条场景要落成一条真动作（打开应用）
-                    .map {
-                        when (it.token) {
-                            APP_CONTROL_TILE -> APP_STEP
-                            else -> it
-                        }
-                    }
-        }
+        //  与 [STEP_GROUPS] 同一张表：场景要落成的也是一条**动作**，所以「应用控制」照样留在表里
+        GROUPS.map { (title, group) -> title to group }
 
     /**
      * 某一项是不是当前选中的动作。
@@ -833,9 +870,14 @@ object ActionCatalog {
         modeMenu(spec.token)?.let { leaves ->
             //  **排除这一行自己**：取值表里可能含与它同 token 的那一项 —— 「媒体控制」那一格与菜单
             //  首行共用 `media:` 这串 token（见 `MEDIA_TILE_SPEC`），直接展开就是无限递归
-            //  （真机：打开设置页当场 StackOverflowError）。排除之后若一条都不剩，就走下面那套常规判据。
+            //  （真机：打开设置页当场 StackOverflowError）。
             val nested = leaves.filter { it.token != spec.token }
-            if (nested.isNotEmpty()) return nested.any { isBound(it, action) }
+            //  只有**一条都没剔**（= 它是标记行，表里那几行才是它的子档）才展开。
+            //  剔掉了东西 ⇒ 这一行本身就是那张表里的一行（取值格的首行：媒体控制「播放/暂停」、
+            //  响铃状态「循环」），剩下的几条是它的**兄弟**、不是它的子档 —— 展开会让「绑了播放」
+            //  把「播放/暂停」一起点亮（真机反馈「点播放会同时选中播放/暂停」）。这种行落到下面
+            //  按整串比，与其余叶子同一把尺子。
+            if (nested.size == leaves.size && nested.isNotEmpty()) return nested.any { isBound(it, action) }
         }
         //  「亮度 / 音量」这两族先判：它们比的是**占位写法的符号**，不是整串（见 [percentRowBound]）。
         percentRowBound(spec.token, action)?.let { return it }
@@ -1130,15 +1172,45 @@ object ActionCatalog {
         //  `tile` 是按「token 在 MODE_MENUS 里」挑出来的，那一层菜单必然存在 —— 不写
         //  `?: action.token` 那种回退：回退出来的不是档位名（是整串 token），调用方会当名字用。
         val tile = ALL.firstOrNull { it.token in MODE_MENUS && isSelected(it, action) } ?: return null
-        //  「落在哪一行」只有 [boundModeOf] 一处实现（它已经会往下探一层：灵感语音 → 开始 / 结束）
-        val mode = boundModeOf(tile, action) ?: return null
-        return ModeHit(tile, mode)
+        val path = modePathOf(tile, action)
+        return ModeHit(tile, path.last(), path)
     }
 
-    /** 见 [modeHitOf]：父格 + 那一行。 */
+    /**
+     * 这个动作从**格子**一路落到**最里面那一档**经过的每一行 —— `[格, 中间层?, 档]`。
+     *
+     *  为什么不能只留两头（[ModeHit.tile] / [ModeHit.mode]）：有的格子里还夹着一层
+     *  「一个东西 + 一个状态」—— 灵感语音就是（`小布 AI: 灵感语音 - 开始`）。只给两头时，
+     *  中间那层「灵感语音」没地方放，句子只剩「小布 AI: 开始」，读不出在说哪个功能。
+     *
+     *  自指的那一行（媒体控制 / 响铃状态的首行与格子共用同一串 token）**收在最后一段就停**：
+     *  再往下就是它自己那张表，会绕回去。
+     */
+    private fun modePathOf(
+        tile: Spec,
+        action: Action,
+    ): List<Spec> {
+        val path = mutableListOf(tile)
+        //  逐层往下：每轮先问「落到哪一行」，到站时 `current` 置空、循环自然收尾。
+        //  用「下一轮还走不走」表达两个终点（没有下一行 / 下一行就是它自己），不在循环里写早退。
+        var current: Spec? = tile
+        while (current != null) {
+            val from = current
+            val row = modeMenu(from.token)?.firstOrNull { isBound(it, action) }
+            if (row != null) path += row
+            //  同 token ⇒ 它是「取值格的首行」（媒体控制 / 响铃状态那一行）：加进路径（它自己的
+            //  字形与格子那颗不同），但不再往下 —— 再往下就是它自己那张表，会绕回去。
+            current = row?.takeIf { it.token != from.token }
+        }
+        return path
+    }
+
+    /** 见 [modeHitOf]：父格 + 那一行（+ 中间层，见 [path]）。 */
     data class ModeHit(
         val tile: Spec,
         val mode: Spec,
+        /** 从格到最里面那一档的整条链（含两头的 `[格, …, 档]`），见 [modePathOf]。 */
+        val path: List<Spec>,
     )
 
     /**
@@ -1159,8 +1231,55 @@ object ActionCatalog {
      *
      *  与 [isEntryTile] **不是一回事**：同样是入口，「打开应用」（去挑应用）与「自定义变量」是跳页 /
      *  换一层，行尾画的是右箭头。两处判据分开写，才不会因为多加一格入口就把箭头换成选择器。
+     *
+     *  也**不认层级**：问的是「这一格点开有没有菜单」，取值格（媒体控制 / 响铃状态）正该为真。
+     *  「这一**行**点下去还有没有它自己那一问」是另一件事，见 [hasDeeperLevel]。
+     *
+     *  [stateChoices] 那几格**不算**：它们点开弹的是三行单选**弹窗**，而那颗字形读作「点了要
+     *  选点什么、后面还有一层清单」—— 让一个动作挂上「还有一层」的记号，用户第一眼就会去找那层
+     *  清单（用户口径「网格 / 菜单里视为一个动作…行尾不用 selector」）。它们照取值格画勾选框。
      */
-    fun popsSelector(token: String): Boolean = modeMenu(token) != null
+    fun popsSelector(token: String): Boolean = modeMenu(token) != null && stateChoices(token) == null
+
+    /**
+     * 这几格**点开直接弹一行一档的单选弹窗**（此刻只有录屏：开始 / 结束 / 切换）。
+     *
+     *  「一个动作的几种状态」与「一整类动作的清单」不是一回事：灵感语音那层菜单里有「灵感语音」
+     *  这个中间层，小布 AI 那一格才有东西可列；而录屏的格子名就是动作名，中间再夹一张只写着
+     *  「录屏」的小标题 + 三行的菜单，等于把同一句话说两遍 —— 所以这一档直接弹弹窗
+     *  （用户口径「用 dialog 选择器，网格 / 菜单里视为一个动作，点击弹 dialog 选」）。
+     *
+     *  **仍然留在 [MODE_MENUS] 里**：那一张表同时喂着「这一格算不算选中」（[isSelected]）、
+     *  格子里那行小字（`TileSubtitle`）与文案的父名（`modeHitOf`）—— 只是**露出的方式**不同。
+     *
+     *  @return 弹窗里那几行（顺序即行序）；不是这一类格返回 `null`
+     */
+    fun stateChoices(token: String): List<Spec>? = MODE_MENUS[token]?.takeIf { token in STATE_ONLY_TILES }
+
+    /**
+     * 这几格**本身就是那个动作**，菜单里那几行只是它的三种状态（录屏）。
+     *
+     *  三件事都由它决定，所以只能有一份名单：
+     *   · 点开弹的是弹窗不是菜单（[stateChoices]）；
+     *   · 文案没有「父动作」可写 —— `录屏 - 开始`，而不是 `录屏: 开始`（`actionTitle`）；
+     *   · 格子行尾不挂选择器字形（[popsSelector]）。
+     */
+    private val STATE_ONLY_TILES: Set<String> = setOf(SCREEN_RECORD_TILE)
+
+    /**
+     * 这一行点下去**还有它自己那一层**的下一问 —— 此刻只有灵感语音（开始 / 结束）。
+     *
+     *  与 [modeMenu] 不是一回事，差别全在**取值格的首行**上：媒体控制那层菜单的第一行
+     *  （「播放/暂停」）与格子自己共用同一串 token（[MEDIA_TILE]），`modeMenu(那一行.token)`
+     *  同样非空 —— 可那是**它所属的那张表**，不是它的下一层。照 `modeMenu != null` 判，
+     *  点「播放/暂停」会在菜单上面再弹一张一模一样的清单（真机口径「点播放/暂停时弹出个多余的
+     *  选择器」）。响铃状态的首行（「循环」）同理。
+     *
+     *  判据：那张表里**没有一行与它同 token** ⇒ 它是标记行（永不写进配置），表里那几行才是它的
+     *  子档。取值格那两行的 `modeMenu` 由 [isEntryTile] / [popsSelector] 用（那里问的是「这一格
+     *  点开有没有菜单」，正该是真的）。
+     */
+    fun hasDeeperLevel(spec: Spec): Boolean = modeMenu(spec.token)?.let { leaves -> leaves.none { it.token == spec.token } } ?: false
 
     /** 按动作找展示信息；清单外一律返回 null（清单是照搬的封闭集合，不为自定义写法现造条目）。 */
     fun specOf(action: Action): Spec? = ALL.firstOrNull { isSelected(it, action) }

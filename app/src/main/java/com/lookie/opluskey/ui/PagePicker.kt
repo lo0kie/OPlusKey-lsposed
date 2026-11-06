@@ -289,7 +289,6 @@ internal fun SettingsPage.MultiPickerDialog(
         //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）
         footer = {
             DialogButtonRow(
-                positive = confirmText,
                 onNegative = onDismiss,
                 onPositive = onConfirm,
                 positiveStyle =
@@ -297,6 +296,8 @@ internal fun SettingsPage.MultiPickerDialog(
                         enabled = confirmEnabled,
                         //  禁用了也要能点一下问为什么（见 `DialogPositiveStyle.onDisabledClick`）
                         onDisabledClick = onBlockedClick,
+                        //  动作项那颗的字（调用方可能有自己的说法，如「确定删除」）
+                        label = confirmText,
                     ),
             )
         },

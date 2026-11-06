@@ -24,7 +24,8 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.PagePalette
 import com.lookie.opluskey.ui.model.languageLabel
 import com.lookie.opluskey.ui.model.paletteLabel
-import com.lookie.opluskey.ui.model.themeLabel
+import com.lookie.opluskey.ui.model.themeTag
+import com.lookie.opluskey.ui.model.themeTitle
 import com.lookie.opluskey.ui.screen.home.openUrl
 import com.lookie.opluskey.ui.setLanguage
 
@@ -174,7 +175,9 @@ internal fun SettingsPage.ThemeMenu(
             AppTheme.entries
                 .map { theme ->
                     MenuEntry.Row(
-                        title = themeLabel(theme),
+                        title = themeTitle(theme),
+                        //  Monet 那一档的说明放在子标题（标题只写「跟随系统」，与上一档同一句）
+                        summary = themeTag(theme),
                         icon =
                             when (theme) {
                                 AppTheme.AUTO -> PageIcons.ThemeAuto

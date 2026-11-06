@@ -45,3 +45,19 @@ private fun scenarioNotice(rules: List<StateRule>): String? {
     if (count == 0) return null
     return I18n.format(Strings.COMMAND_BRANCH_SCENARIO_COUNT, count)
 }
+
+/**
+ * 菜单里「系统场景」那一行的**子标题** —— 与 [scenarioNotice] 同一条判据（只数启用中的），
+ * 差别只在一条都没有时**不返回 null**：菜单里那一行始终在，子标题得有个说法
+ * （「没有添加系统场景」），空着会读成「这一行没有说明」。
+ *
+ *  措辞比页面横幅短一档（不带「当前手势」）：菜单行的子标题窄，带上那四个字会折行。
+ */
+internal fun scenarioMenuSummary(rules: List<StateRule>): String {
+    val count = rules.count { it.enabled }
+    return if (count == 0) {
+        I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE_MENU, "没有添加系统场景")
+    } else {
+        I18n.format(Strings.COMMAND_BRANCH_SCENARIO_COUNT_MENU, count)
+    }
+}

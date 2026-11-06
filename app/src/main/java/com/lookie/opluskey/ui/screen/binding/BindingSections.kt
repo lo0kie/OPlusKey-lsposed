@@ -85,31 +85,17 @@ internal fun SettingsPage.BindingGroups(
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
             LongRepeatCard(
                 blockedReason =
-                    when {
-                        // 主开关为关 ⇒ 整页禁用，这张卡也跟着置灰
-                        !enabled -> {
-                            // 这里是**主开关自己关着**，不是「模块没生效」：`STATUS_DISABLED` 的正文是
-                            //  「确认作用域含 system，换包后需重启」—— 拿它来报这一档，等于把用户赶去
-                            //  LSPosed 里翻一圈，而他要做的只是把开关拨回来。
-                            I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，侧键交还系统")
-                        }
-
-                        isSerialCommand(configState.commands.value, current.token) -> {
-                            I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT, "多条命令不支持连续触发")
-                        }
-
-                        //  判定侧对「灵感语音那一族」（开始 / 结束）也关着连续触发
-                        //  （`KeyConfig.longIsVoiceMemory`，见 `GestureDetector` 那条）——
-                        //  界面不置灰的话，用户能拨开一个永远不生效的开关。
-                        //  判据与 `KeyConfig` 同一个口径（`RomProfile.isVoiceMemory`）。
-                        (current as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true -> {
-                            I18n.get(Strings.BINDING_VOICE_UNSUPPORTED_REPEAT, "灵感语音不支持连续触发")
-                        }
-
-                        else -> {
-                            null
-                        }
+                    if (enabled) {
+                        null
+                    } else {
+                        // 这里是**主开关自己关着**，不是「模块没生效」：`STATUS_DISABLED` 的正文是
+                        //  「确认作用域含 system，换包后需重启」—— 拿它来报这一档，等于把用户赶去
+                        //  LSPosed 里翻一圈，而他要做的只是把开关拨回来。
+                        I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，侧键交还系统")
                     },
+                // 长按动作**自己**不支持连发（多条命令 / 灵感语音）—— 只置灰「连续触发」那一族，
+                //  不连坐时序那两行与长按延迟（见 [LongPressSpec.repeatBlockedReason]）。
+                repeatBlockedReason = longActionNoRepeatReason(current),
                 // 「长按延迟」那行只看主开关（与「是不是多条命令」无关）
                 masterEnabled = enabled,
             )
@@ -131,4 +117,23 @@ internal fun SettingsPage.BindingGroups(
     BindingTileMenu(st)
 
     // 「自定义变量」那一格点开的两层抽屉（挑变量 → 挑对它做什么），同样不占布局。
+}
+
+/**
+ * 这一档的长按动作**自己**不支持「连续触发」的原因；`null` = 支持。
+ *
+ *  两条判据与判定侧同一个口径（`KeyConfig.longIsSerial` / `KeyConfig.longIsVoiceMemory`）：
+ *  · 多条命令：反复重放整条命令链没有意义；
+ *  · 灵感语音那一族（开始 / 结束）：按一下就完事，重复拨没有语义。
+ *
+ *  **它只该管「连续触发」那一族**（开关 + 振动 + 间隔），不该连坐「松手才触发」「松手再执行」
+ *  与「长按延迟」—— 那三项跟连不连发没有关系。真机上撞到过：长按=开始灵感语音、松手=结束
+ *  灵感语音，整张卡全灰，用户刚配好的松手那一行点都点不了。
+ */
+private fun SettingsPage.longActionNoRepeatReason(current: Action): String? {
+    if (isSerialCommand(configState.commands.value, current.token)) {
+        return I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT, "多条命令不支持连续触发")
+    }
+    val voice = (current as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true
+    return if (voice) I18n.get(Strings.BINDING_VOICE_UNSUPPORTED_REPEAT, "灵感语音不支持连续触发") else null
 }

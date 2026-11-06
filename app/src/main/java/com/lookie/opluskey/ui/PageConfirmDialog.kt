@@ -448,7 +448,6 @@ internal fun SettingsPage.ConfirmDialog(
         //  按钮是**底部那一区**（不是正文的尾巴）：三段式里竖向留白由弹窗统一给
         footer = {
             DialogButtonRow(
-                positive = action,
                 onNegative = onDismiss,
                 onPositive = onConfirm,
                 positiveStyle =
@@ -456,6 +455,8 @@ internal fun SettingsPage.ConfirmDialog(
                         danger = positiveDanger,
                         enabled = positiveEnabled,
                         onDisabledClick = onBlocked,
+                        //  动作项那颗的字（「删除」「停止」这类动词由调用方给）
+                        label = action,
                     ),
             )
         },

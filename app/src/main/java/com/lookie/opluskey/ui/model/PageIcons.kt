@@ -8,6 +8,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Adjustments
 import io.github.lyxnx.compose.ui.tablericons.outline.AlertCircle
 import io.github.lyxnx.compose.ui.tablericons.outline.AlertSquare
 import io.github.lyxnx.compose.ui.tablericons.outline.AlignBoxCenterMiddle
+import io.github.lyxnx.compose.ui.tablericons.outline.AlignLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.AlphabetChinese
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
@@ -20,6 +21,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BrandTelegram
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandWechat
 import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessAuto
 import io.github.lyxnx.compose.ui.tablericons.outline.Cancel
+import io.github.lyxnx.compose.ui.tablericons.outline.CategoryMinus
+import io.github.lyxnx.compose.ui.tablericons.outline.CategoryPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Check
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
@@ -43,7 +46,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobilePause
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
-import io.github.lyxnx.compose.ui.tablericons.outline.DeviceScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsCircleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
 import io.github.lyxnx.compose.ui.tablericons.outline.Download
@@ -83,8 +85,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
-import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
-import io.github.lyxnx.compose.ui.tablericons.outline.PlayerStop
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
@@ -104,7 +104,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber3
 import io.github.lyxnx.compose.ui.tablericons.outline.Stack2
 import io.github.lyxnx.compose.ui.tablericons.outline.Sun
 import io.github.lyxnx.compose.ui.tablericons.outline.SunMoon
-import io.github.lyxnx.compose.ui.tablericons.outline.TableShortcut
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TextSize
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
@@ -413,17 +412,18 @@ internal object PageIcons {
     val ShowUnopenable: ImageVector get() = TablerIcons.Outline.InputX
 
     /**
-     * 「应用控制」那一格绑成**打开**那一档时格子里的字形 —— `player-play`（三角）。
+     * 「应用控制」那一格绑成**打开**那一档时格子里的字形 —— `category-plus`。
      *
-     *  与 [AppStop] 配成一对：打开 / 结束在网格里靠这两颗分开。绑的是某个界面或快捷方式时
-     *  不用它（那两档有自己更具体的标记），只有「就打开这个应用」才落到这里。
+     *  与 [AppStop] 配成一对：打开 / 结束在网格里靠这两颗分开，与菜单里那两行同一对
+     *  （同一族图标，见 [ActionIcons] 里那三支）。绑的是某个界面或快捷方式时也用这一对
+     *  （用户口径：格子里不按组件 / 快捷方式换字形，只用菜单那两个状态的图标）。
      */
-    val AppOpen: ImageVector get() = TablerIcons.Outline.PlayerPlay
+    val AppOpen: ImageVector get() = TablerIcons.Outline.CategoryPlus
 
     /**
-     * 「选择应用」菜单的「以小窗口打开」—— 画中画（`picture-in-picture-on`）。
+     * 「选择应用」页顶栏那颗**「以小窗口打开」开关** —— 画中画（`picture-in-picture-on`）。
      *
-     *  与 [TileSmallWindow] / [MiniWindow] 同字形但**各留一份名字**（三处语义不同：菜单项 /
+     *  与 [TileSmallWindow] / [MiniWindow] 同字形但**各留一份名字**（三处语义不同：顶栏开关 /
      * 格子上的状态标记 / 入口格），以后要分开改的时候不用先拆共用。
      */
     val SmallWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
@@ -571,6 +571,14 @@ internal object PageIcons {
     val CommandToast: ImageVector get() = TablerIcons.Outline.Tooltip
 
     /**
+     * 「提示文案」行的行首 —— `align-left`（四条参差的横线）。
+     *
+     *  那一行改的是**这句话怎么写**，不是「弹不弹」：与上面那颗气泡分开，一眼才看得出
+     *  「这一行是文字设置」。不用 `notes` / `pencil`：前者是捐赠名单那颗，后者是「编辑命令」。
+     */
+    val ToastTemplate: ImageVector get() = TablerIcons.Outline.AlignLeft
+
+    /**
      * 提示条的前置图标**默认档** —— `alert-circle`（圈里一个感叹号）。
      *
      *  提示条上的图标是「这句话是什么性质」的记号，不是每条都要单独挑一颗：调用方不指定时
@@ -666,28 +674,12 @@ internal object PageIcons {
     val CircleCheckOutline: ImageVector get() = TablerIcons.Outline.CircleCheck
 
     /**
-     * 「这一行绑的是某个**具体界面**」—— 行尾那枚提示（Tabler 的 `device-screen`）。
+     * 「应用控制」那一格绑成**结束**那一档时格子里的字形 —— `category-minus`。
      *
-     *  与 [TileChecked] 二选一：绑的是 `app:包名/类名` 时用它，一眼看出「不是打开首页，
-     *  是打开里面某一页」；绑的是纯包名 / 快捷方式时仍是那颗勾。
-     */
-    val ActivityScreen: ImageVector get() = TablerIcons.Outline.DeviceScreen
-
-    /**
-     * 「这一行绑的是某个**快捷方式**」—— 行尾那枚提示（Tabler 的 `table-shortcut`）。
-     *
-     *  与 [ActivityScreen] 二选一：两者在配置里都写成长度相近的 `包名/xxx`，光看字符串分不出来
-     *  （一边是类名、一边是快捷方式 id），只能靠 `PickedDetail.shortcutId` 判断。
-     */
-    val ShortcutMark: ImageVector get() = TablerIcons.Outline.TableShortcut
-
-    /**
-     * 「应用控制」那一格绑成**结束**那一档时格子里的字形 —— `player-stop`（方块）。
-     *
-     *  与执行侧（`proc:stop:`）那颗同一设计：打开与结束两档在网格里靠这一颗分开，
+     *  与 [AppOpen] 同一族：打开与结束两档在网格里靠这一颗分开，
      *  只看应用名是分不出来的（两档写的是同一个应用）。
      */
-    val AppStop: ImageVector get() = TablerIcons.Outline.PlayerStop
+    val AppStop: ImageVector get() = TablerIcons.Outline.CategoryMinus
 
     /** 命令编辑页底部工具栏的主操作（「保存 / 修改」）—— `Check`，主次靠颜色分（主操作走 `primary`）。 */
     val Confirm: ImageVector get() = TablerIcons.Outline.Check

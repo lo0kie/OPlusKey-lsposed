@@ -10,24 +10,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
-import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.brightnessTitle
-import com.lookie.opluskey.core.model.volumeTitle
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.ModeMenuPopups
@@ -35,21 +27,19 @@ import com.lookie.opluskey.ui.ModeMenuTarget
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appNameOf
+import com.lookie.opluskey.ui.boundAppName
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.actionRowView
 import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.model.gridColumnCount
-import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 // 「按键绑定」页的两张网格 —— 内置动作一组组排下来，再加最下面「已保存的命令」那一组。
 //
@@ -158,27 +148,20 @@ private fun SettingsPage.BuiltInTile(
         // 登记给确认键那条路用（见 `BindingGridState.tileAnchors`）—— 写的是普通 map、不是 state。
         st.tileAnchors[spec.token] = tileAnchor
         val current = st.target.actionIn(configState.config.value)
-        //  入口格（点了弹二级菜单的那几格）：`modes` 非空。这一格绑在哪一档也从这里算一次
-        //  —— **小字与小字前面那枚图标共用它**，同源就不会各说各的。
+        //  入口格（点了弹二级菜单的那几格）：`modes` 非空。要不要挂锚点也从这里算
         val modes = ActionCatalog.modeMenu(spec.token)
         val popsMenu = modes != null
-        //  这一格绑的是哪一档 —— 判据只在 `ActionCatalog` 一处（步骤抽屉那一行也用同一个），
-        //  网格里再就地写一遍就会两边各长一套（真机口径「抽屉和网格的图标不一致」）。
-        val boundMode = ActionCatalog.boundModeOf(spec, current)
-        val boundAppLabel = rememberBoundAppLabel(current)
+        //  「这一行长什么样」（字形 / 小字 / 选中态）全交给 [actionRowView] ——
+        //  抽屉那一行调的是同一个函数，两处不再是各拼一半的复印件。
+        //  小字写「应用名 - 组件名 / 快捷方式名」（`微信 - 扫一扫`）：与「选择应用」页页头、
+        //  点开那层菜单的子标题是同一段（父名「应用控制」不写 —— 格子的标题就是它）
+        val view = actionRowView(spec, current, boundAppName(current, withDetail = false))
         ActionTile(
             spec = spec,
-            //  入口格的行首**随当前档位变**（主屏幕 / 静音 / 上一首 …）；
-            //  一档都没绑时退回这一格自己的大类字形（媒体控制 → 音符、响铃状态 → 铃铛…）。
-            //  「应用控制」格再细一档：绑成什么样就画什么（结束 / 小窗 / 快捷方式 / 某个界面 / 整个应用）
-            //  —— 这一格以前靠标题右边那枚「小窗起」标记，现在标记没了，信息全在这一颗图标上。
-            //  只对这一格生效：`appTileIcon` 看的是**当前绑定**，而每格的 `current` 都是同一个动作
-            //  —— 不判格子就会让整片网格（导航 / 响铃 / 媒体…）全画成那一族的字形。
-            icon =
-                (if (spec.token == ActionCatalog.APP_CONTROL_TILE) appTileIcon(current) else null)
-                    ?: boundMode?.let { tileIcon(it) }
-                    ?: tileIcon(spec),
-            selected = ActionCatalog.isSelected(spec, current),
+            //  入口格的行首随当前档位变（主屏幕 / 静音 / 上一首 …）；「应用控制」格再细一档：
+            //  绑成什么样就画什么（结束 / 快捷方式 / 某个界面）。规则全在 `actionRowView` 里。
+            icon = view.icon,
+            selected = view.selected,
             focused = index == st.focusedIndex,
             focusRequester = st.focusers[index],
             //  锚点**每格一份**：取值格点了不弹浮层，所以只有会弹菜单的格子才挂（`popsMenu`），
@@ -187,72 +170,14 @@ private fun SettingsPage.BuiltInTile(
             //  可用性与 `pick` 同一判据（主开关 + 链路就绪）：少判一道就会
             //  「亮着、点了被拦」—— 点了只弹一句提示，不如先灰着。
             enabled = enabled && linkReady,
-            // 「打开应用」格与入口格都要补一行小字：前者是绑的应用名，
-            // 入口格那格只写组名，不点开菜单根本看不出绑的是哪一档。
-            subtitle = builtInSubtitle(spec, current, boundMode, boundAppLabel),
+            // 小字 = 当前绑的是什么，与抽屉那一行同一句（`actionRowView.subtitle`）
+            subtitle = view.subtitle,
             // 入口格虽然是**入口**（点了进下一层），但**不画行尾箭头** ——
             // 走 `ActionTile` 的默认值 false，别顺手补回来。
             onClick = { bindingActivate(st, spec, tileAnchor, enabled) },
         )
     }
 }
-
-/**
- * 内置网格那一格标题下面那行小字 —— 从 [BuiltInTile] 里拆出来（那一支贴着 detekt 的
- * 圈复杂度上限，再加一格就顶破）。
- *
- *  只有「格子 + 当前绑定」一起看才知道该写什么：`current` 对每一格都是同一个动作，
- *  不判格子的那类写法会让整片网格都挂上同一句（见下面「系统开关」那一段）。
- *
- * @param boundMode 这一格绑的是哪一档（入口格专用；非入口格为 `null`）
- * @param appLabel 「打开应用」格那一行（应用名），由调用方按当前绑定解析
- */
-private fun SettingsPage.builtInSubtitle(
-    spec: ActionCatalog.Spec,
-    current: Action,
-    boundMode: ActionCatalog.Spec?,
-    appLabel: String?,
-): String? =
-    when (spec.token) {
-        // 「应用控制」那一格：小字写**绑的是哪一档 + 哪个应用**（`打开应用:微信` / `结束应用:微信`）
-        // —— 只写应用名的话，网格里看不出这一格管的是打开还是结束。
-        //  这一句走 `stepTitle`（步骤行那一套叫法），不在这里另拼一遍文案。
-        ActionCatalog.APP_CONTROL_TILE -> {
-            appLabel?.let { name -> stepTitle(current.token) { name } }
-        }
-
-        //  系统开关那一格再细一档：「WIFI · 打开」/「NFC · 切换」—— 只写开关名时
-        //  看不出绑的是哪一档（三档里连「切换」也要写，不然它和只写名字没区别）。
-        //  **必须判格子**：`switchStateLabel` 只看「当前绑的是什么」，而 `current` 每一格
-        //  都相同 —— 不判的话绑一次「打开」，整片网格的每一格都会挂上「打开」。
-        ActionCatalog.SWITCH_TILE -> {
-            listOfNotNull(boundMode?.label, ActionCatalog.switchStateLabel(current))
-                .joinToString(" - ")
-                .ifEmpty { null }
-        }
-
-        //  变量那一格：小字写**绑的是哪一步**（`「计数」+= 1`）。
-        //  只写格名「自定义变量」的话，绑没绑、绑的是加法还是取反，网格里一点都看不出来。
-        //  这一句走 `stepTitle`（步骤行那一套叫法），不在这里另拼一遍文案。
-        ActionCatalog.VARS_TILE -> {
-            (current as? Action.VarSet)?.let { stepTitle(it.token) { "" } }
-        }
-
-        //  亮度那一格：小字写**这一档 + 数值**（`增加 15%`）—— 只写「增加」看不出加多少。
-        //  与步骤标题、执行提示同一句（`brightnessTitle`），不在这里另拼一份。
-        ActionCatalog.BRIGHT_TILE -> {
-            (current as? Action.Brightness)?.let { brightnessTitle(it) }
-        }
-
-        //  音量那一格同理：小字写「增加 10%」，与步骤标题同一句
-        ActionCatalog.VOLUME_TILE -> {
-            (current as? Action.Volume)?.let { volumeTitle(it) }
-        }
-
-        else -> {
-            boundMode?.label
-        }
-    }
 
 /**
  * 「自定义命令」那一段 —— **始终在**：没有命令时给一行「去创建自定义命令」
@@ -430,86 +355,4 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
         },
         onDismiss = { st.tileMenu = null },
     )
-}
-
-/**
- * 「打开应用」格的行首字形 —— 绑成哪一档就画哪一颗；绑的是**整个应用**时返回 `null`，
- * 由调用点退回格子自己的默认字形。
- *
- *  **只有三档**（「小窗」不参与：它只说明「用哪种方式起」，不是「绑到了什么」——
- *  以前它单独占一档，于是 `window:包名/类名` 会被画成小窗、看不出绑的是某个界面）：
- *  · 快捷方式（`appshortcut:`，带不带 `w:` 都一样）→ 表格 + 箭头那颗；
- *  · 应用里某个具体界面（`包名/类名`，`app:` 与 `window:` 都算）→ 屏幕；
- *  · 整个应用（纯包名）→ 不覆盖，用默认那颗。
- *
- *  单独一支只为让 `BuiltInTile` 别顶破 detekt 的圈复杂度上限。
- */
-private fun appTileIcon(action: Action): ImageVector? =
-    when (action) {
-        is Action.AppShortcut -> {
-            PageIcons.ShortcutMark
-        }
-
-        is Action.App, is Action.AppWindow -> {
-            if (AppTarget.activity(action.appTarget.orEmpty()) != null) PageIcons.ActivityScreen else null
-        }
-
-        // 结束那一档：「停掉」的方块 —— 与执行侧那个动作同一颗，网格里一眼分得出绑的是哪一状态
-        is Action.Process -> {
-            PageIcons.AppStop
-        }
-
-        else -> {
-            null
-        }
-    }
-
-/**
- * 「应用控制」格选中时标题下面那行小字 = **当前绑的是哪一个应用**。
- *
- *  · 应用 / 某个界面 / 结束：应用名（`微信`）—— 打开还是结束由 [builtInSubtitle] 那一句补上；
- *  · 快捷方式：`应用名: 快捷方式名`（`微信: 扫一扫`）—— 光写应用名的话，
- *    绑的是扫一扫还是收付款在网格里看不出来。
- *
- *  名字查一次就缓存（PM 查询，入参是动作所以只在换动作 / 名字表变了时重查）。
- *  少认一种时那一格就没有小标题（实证：开着小窗挑完应用回来，标题下面是空的）。
- *
- *  **查询放 IO**：`appNameOf` 走 `PackageManager`（分身那档还要问 `UserManager`），
- *  在组合期做就是每次进页几十次 binder。这里先给空串、查到了再填 —— 小标题晚一帧出现，
- *  比首帧卡在 binder 上强。
- */
-@Composable
-private fun SettingsPage.rememberBoundAppLabel(current: Action): String? {
-    val appNames = configState.config.value.appNames
-    var label by remember(current, appNames) { mutableStateOf<String?>(null) }
-    LaunchedEffect(current, appNames) {
-        label =
-            withContext(Dispatchers.IO) {
-                when (current) {
-                    is Action.App, is Action.AppWindow -> {
-                        current.appTarget?.let { appNameOf(it) }
-                    }
-
-                    // 结束那一档只存包名（没有界面 / 分身后缀），名字按包名现查
-                    is Action.Process -> {
-                        appNameOf(current.pkg)
-                    }
-
-                    // 快捷方式（`appshortcut:`）也算「打开应用」那一族，小字写「应用: 快捷方式」。
-                    //  快捷方式**自己的名字**只存在 `appNames`（键是身份，挑的时候与绑定同一次落盘）——
-                    //  token 里没有它，现查也查不到（`appNameOf` 对快捷方式目标会退回应用名）。
-                    //  拿不到名字、或拿到的就是应用名时**只写应用名**，别写成「微信: 微信」。
-                    is Action.AppShortcut -> {
-                        val app = appNameOf(AppTarget.format(current.pkg, current.userId))
-                        val own = configState.config.value.appName(current.plainTarget)
-                        if (own.isNullOrBlank() || own == app) app else "$app: $own"
-                    }
-
-                    else -> {
-                        null
-                    }
-                }
-            }
-    }
-    return label
 }

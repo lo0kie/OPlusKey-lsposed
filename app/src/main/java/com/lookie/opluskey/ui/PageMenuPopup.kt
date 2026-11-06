@@ -21,14 +21,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
@@ -504,27 +501,18 @@ private fun SettingsPage.MenuRow(
     // 扩一档内边距**的矩形 —— 无参的 `bringIntoView()` 只保证「这个节点」可见，行的上下
     // 内边距会被裁掉（真机反馈「当前行没有整行（包括上下内边距）显示出来」）。
     // 行内边距有两档（中间行 8dp、首尾行 10dp），取大的那档一次覆盖。
+    //  **行高按实测**，不按单行那条常量猜（带子标题的行更高），见 [rememberMenuRowBringIntoView]。
     val bringIntoView = remember { BringIntoViewRequester() }
-    if (row.selected) {
-        val rowRect =
-            with(LocalDensity.current) {
-                val pad = DropdownDefaults.FirstLastVerticalPadding.toPx()
-                Rect(
-                    left = 0f,
-                    top = -pad,
-                    right = MENU_ICON_SIZE.toPx(),
-                    bottom = MENU_ROW_CONTENT_HEIGHT.toPx() + pad,
-                )
-            }
-        // 等一帧再请求：组合刚结束时节点还没 attach / 布局，此时 `bringIntoView()` 是空操作。
-        LaunchedEffect(bringIntoView) {
-            withFrameNanos { }
-            runCatching { bringIntoView.bringIntoView(rowRect) }
-        }
-    }
+    val measureRow = rememberMenuRowBringIntoView(row.selected, bringIntoView)
+    //  小字比库默认的 `body2`（14sp）**降一档**到 `footnote1`（13sp）：body2 与行标题
+    //  （`body1` 16sp）只差 2sp，两行摞在一起读起来像两个标题；降一档之后是「注解」。
+    //  在 `remember` 外面取：`COUITheme.textStyles` 是 @Composable 的，而下面那块不是组合上下文。
+    val summaryStyle = COUITheme.textStyles.footnote1
     val item =
         remember(
             row.title,
+            row.summary,
+            summaryStyle,
             row.icon,
             row.iconTint,
             row.enabled,
@@ -536,6 +524,9 @@ private fun SettingsPage.MenuRow(
             DropdownItem(
                 // 显示文本过一道截断（[ellipsizeMenuTitle]）：库里标题最多三行，长名字会撑宽整张菜单
                 text = ellipsizeMenuTitle(row.title),
+                // 标题下面那行小字（现状说明）；`null` = 单行。库自己管行数（标题 2 行、小字 2 行）
+                summary = row.summary,
+                summaryStyle = summaryStyle,
                 enabled = row.enabled,
                 // 禁用行照样能点：点一下先说清「为什么不能点」，再把菜单收掉
                 //  （不收的话提示条被浮层压着，等于没说）。
@@ -556,7 +547,11 @@ private fun SettingsPage.MenuRow(
                 //  逐行可换（[MenuEntry.Row.trailingIcon]）：跳页面那些行用「窗口 + 加号」，与网格一致。
                 chevronIcon = row.trailingIcon ?: PageIcons.EnterArrow,
                 icon = { m ->
-                    val base = m.height(MENU_ROW_CONTENT_HEIGHT).bringIntoViewRequester(bringIntoView)
+                    val base =
+                        m
+                            .height(MENU_ROW_CONTENT_HEIGHT)
+                            .bringIntoViewRequester(bringIntoView)
+                            .then(measureRow)
                     // 第 0 行兼当「列表滚了没有」的探针：挂在行内容上 —— 滚的是列表**内层**，
                     // 外层那一圈与浮层窗口自己都不动（见 [GestureProbe.onContentPosition]）。
                     val tracked =

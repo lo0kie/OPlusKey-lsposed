@@ -44,3 +44,30 @@ internal fun displayWidth(text: String): Int {
     for (c in text) width += if (isFullWidth(c)) 2 else 1
     return width
 }
+
+/**
+ * 把文本砍到 [maxColumns] 格以内，末尾补一个省略号；没超就原样返回。
+ *
+ *  只改**画出来的那一份**：日志与配置里仍是全文（否则截断后的名字在日志里认不出是哪一条）。
+ *  按**码点**前进、只在码点边界上记可截位置 —— 按 `Char` 数再 `take(chars)` 会把代理对
+ *  （emoji）从中间切开，留下半个代理字符（画出来是乱码）。
+ */
+internal fun ellipsizeToColumns(
+    text: String,
+    maxColumns: Int,
+): String {
+    if (displayWidth(text) <= maxColumns) return text
+    var width = 0
+    var cut = 0
+    var i = 0
+    while (i < text.length) {
+        val cp = text.codePointAt(i)
+        val step = Character.charCount(cp)
+        val next = width + if (isFullWidth(text[i])) 2 else 1
+        if (next > maxColumns) break
+        width = next
+        i += step
+        cut = i
+    }
+    return text.take(cut) + "…"
+}

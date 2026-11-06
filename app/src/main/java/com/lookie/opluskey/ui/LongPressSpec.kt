@@ -20,7 +20,9 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
  *
  * @param enabled 上面那几行能不能点（各自还要看与别人是否互斥）
  * @param delayEnabled 「长按延迟」那一行能不能点 —— 它比上面几行多一道闸：单键页还看首页那个主开关
- * @param blockedReason 非 null ⇒ 整张卡置灰，且「长按连续触发」的副标题换成它（说清为什么点不了）
+ * @param blockedReason 非 null ⇒ **整张卡**置灰（主开关关 / 链路没通 / 配置只读）—— 只放整页级的原因
+ * @param repeatBlockedReason 非 null ⇒ 只有「连续触发」那一族置灰：这一档的长按动作**自己**不支持
+ *   连发（多条命令 / 灵感语音）。它**不连坐**时序两行与长按延迟 —— 那三项跟连不连发无关
  * @param onInterval / @param onPressMs 返回 `false` ⇒ 这一档没落盘（滑杆拨回真实值）
  * @param fireOnRelease 「松手才触发」—— 长按动作本身等抬手才执行（与连续触发、松手再加动作互斥）
  * @param onFireOnReleaseToggle 拨「松手才触发」
@@ -48,6 +50,7 @@ internal class LongPressSpec(
     val enabled: Boolean,
     val delayEnabled: Boolean,
     val blockedReason: String? = null,
+    val repeatBlockedReason: String? = null,
     val onRepeat: (Boolean) -> Unit,
     val onVibrate: (Boolean) -> Unit,
     val onInterval: (Int) -> Boolean,
@@ -81,8 +84,9 @@ private class LongPressGates(
     /** 「松手后再执行」能不能拨 —— 「松手才触发」开着时它没有意义。 */
     val releaseEnabled: Boolean = spec.enabled && !spec.fireOnRelease
 
-    /** 连续触发那一族能不能点。 */
-    val repeatEnabled: Boolean = spec.enabled && !spec.fireOnRelease && !releaseBound
+    /** 连续触发那一族能不能点 —— 三种情形：整张卡被闸住 / 时序被占着 / 动作本身不支持连发。 */
+    val repeatEnabled: Boolean =
+        spec.enabled && !spec.fireOnRelease && !releaseBound && spec.repeatBlockedReason == null
 
     /** 「松手才触发」灰着被点一下时的说法（`null` = 用整页那句）。 */
     val fireHint: String? =
@@ -101,7 +105,8 @@ private class LongPressGates(
         }
 
     /**
-     * 连续触发那一族的副标题 / 置灰原因 —— 有**三个来源**：整张卡的原因优先，其次是占着时序的那一位。
+     * 连续触发那一族的副标题 / 置灰原因 —— 有**四个来源**，按「越靠前越该先看到」排：整张卡的原因、
+     * 占着时序的那一位、动作本身不支持连发（[LongPressSpec.repeatBlockedReason]）。
      */
     val repeatBlocked: String? =
         spec.blockedReason
@@ -115,7 +120,7 @@ private class LongPressGates(
                 }
 
                 else -> {
-                    null
+                    spec.repeatBlockedReason
                 }
             }
 }

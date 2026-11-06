@@ -61,16 +61,6 @@ internal fun SettingsPage.setVibrateStrength(level: Int): Boolean {
 }
 
 /**
- * 切「执行时提示」（执行命令时弹一条 Toast）—— 行点击与开关共用这一个入口。
- * 起从每条命令自己的字段提成全局开关（见 `GlobalConfig.toastOnRun`）；
- * 判定侧在 `host/action/CustomCommandRunner`，宿主进程每次执行现读配置，拨完立刻生效。
- */
-internal fun SettingsPage.setToastOnRun(on: Boolean) =
-    toggleGlobal("toast_on_run=${if (on) 1 else 0}", I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), on) {
-        it.copy(toastOnRun = on)
-    }
-
-/**
  * 切换界面语言。
  *
  *  回执的名字**必须在写盘之后取**：[write] 里那一下 `I18n.currentLanguage` 换了档，

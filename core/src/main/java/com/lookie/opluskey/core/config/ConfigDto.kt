@@ -451,6 +451,9 @@ internal data class GlobalDto(
     val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
     val instantSingle: Boolean? = null,
     val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
+    /** 「执行时提示」的文案模板（见 `GlobalConfig.toastTemplate`）—— 老文件没有这一项，退回默认那句。 */
+    @SerialName("toast_template")
+    val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
     val language: String = GlobalConfig.DEFAULT_LANGUAGE,
     /** 系统配色的 id（见 `GlobalConfig.palette`）—— 老文件没有这一项，取值退回默认档。 */
     val palette: String = GlobalConfig.DEFAULT_PALETTE,
@@ -483,6 +486,7 @@ internal data class GlobalDto(
                 ConfigFields.F_VIBRATE to vibrate,
                 ConfigFields.F_VIBRATE_STRENGTH to vibrateStrength,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
+                ConfigFields.F_TOAST_TEMPLATE to toastTemplate,
                 ConfigFields.F_LANGUAGE to language,
                 ConfigFields.F_PALETTE to palette,
                 ConfigFields.F_THEME to theme,
@@ -503,6 +507,7 @@ internal data class GlobalDto(
                 vibrate = g.vibrate,
                 vibrateStrength = g.vibrateStrength,
                 toastOnRun = g.toastOnRun,
+                toastTemplate = g.toastTemplate,
                 language = g.language,
                 palette = g.palette,
                 theme = g.theme,

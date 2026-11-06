@@ -5,6 +5,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.actionTitle
+import com.lookie.opluskey.core.model.appTargetLabel
 
 /**
  * 「执行时提示」（`GlobalConfig.toastOnRun`）里那行字：**这次执行的是哪个动作**。
@@ -12,6 +13,10 @@ import com.lookie.opluskey.core.model.actionTitle
  *  名字与界面上那一格同一来源（[ActionCatalog] 是**纯数据** —— 只有取值 / 标题 / 宿主 drawable 名，
  * 不引 androidx，宿主进程取它不会把界面那一层拉进来），免得出现「界面上叫小布识屏、提示里换个说法」。
  * 认不出来的取值（手改过配置文件）原样显示 —— 与界面 `ui/model/CommandText.stepTitle` 同一条兜底。
+ *
+ *  用的是 `actionTitle` —— 全项目唯一那一份「一个动作怎么念」：入口格带父名
+ *  （`系统开关: WIFI - 打开`），与步骤行、命令卡摘要、系统场景那一格说的是同一句。
+ *  以前这里调的是只在两处用的 `actionFinalTitle`，同一个动作因此在提示里和步骤行里两个样子。
  */
 internal fun actionNoticeText(
     context: Context?,
@@ -31,17 +36,31 @@ internal fun actionNoticeText(
         //  绑的快捷方式在提示里显示成应用名，而界面上显示的是快捷方式名）。
         appName = { a ->
             when (a) {
+                //  整个应用 / 某个界面：`微信` / `微信(LauncherUI)`。界面那一截由
+                //  「具体是哪一个」补上（与界面那边 `appTargetLabelOf` 同一个拼法）。
                 is Action.App -> {
-                    appLabel(context, a.target)
+                    appTargetLabel(
+                        appLabel(context, a.target),
+                        window = false,
+                        AppTarget.activity(a.target)?.substringAfterLast('.'),
+                    )
                 }
 
+                //  以小窗打开：动词只有「打开应用」一个词，小窗是目标的注记（`微信(小窗)`）
                 is Action.AppWindow -> {
-                    appLabel(context, a.target)
+                    appTargetLabel(
+                        appLabel(context, a.target),
+                        window = true,
+                        AppTarget.activity(a.target)?.substringAfterLast('.'),
+                    )
                 }
 
+                //  快捷方式：应用名 + 它自己的名字（`微信(扫一扫)`）—— 名字只在 `appNames` /
+                //  老写法的 `|名字` 里，拿不到就只写应用名。
                 is Action.AppShortcut -> {
                     val target = a.appTarget.orEmpty()
-                    appNames[AppTarget.identity(target)] ?: AppTarget.label(target) ?: appLabel(context, target)
+                    val own = appNames[AppTarget.identity(target)] ?: AppTarget.label(target)
+                    appTargetLabel(appLabel(context, target), window = a.window, own)
                 }
 
                 //  结束应用（`proc:stop:`）：目标直接就是包名（没有 `/界面`、也没有分身前缀）

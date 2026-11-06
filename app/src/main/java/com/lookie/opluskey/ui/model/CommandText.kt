@@ -6,7 +6,9 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.SystemSwitches
 import com.lookie.opluskey.core.model.actionTitle
+import com.lookie.opluskey.core.model.appTargetLabel
 
 // 命令文本的显示层：把一条命令 / 一个步骤压成界面上要显示的那几行字。
 // 与 Compose、与页面状态无关 —— 输入是 `Command` / 字符串，输出是字符串 / 图标。
@@ -66,19 +68,110 @@ internal fun stepTitle(
     val action = ActionCatalog.actionOf(token)
     return actionTitle(
         action = action,
-        // 名字从哪儿来是**界面侧**的事（宿主那边现查 PM）：这里先查这次清单、再查配置里记的名字
-        appName = { a ->
-            when (a) {
-                is Action.App -> appName(a.target)
-                is Action.AppWindow -> appName(a.target)
-                is Action.AppShortcut -> appName(a.appTarget.orEmpty())
-                is Action.Process -> appName(a.pkg)
-                else -> ""
-            }
-        },
+        appName = appTargetName(appName),
         // 认不出来时用**配置里那串原始写法**（宿主那边用规范化后的 token）
         fallback = token,
     )
+}
+
+/**
+ * 同 [stepTitle]，但**目标那一段由调用方整段给**（`完整目标`，例如已经拼好括号的
+ * `微信(小窗 扫一扫)`）。
+ *
+ *  为什么要这一支：[stepTitle] 的 `appName` 回调收的是「目标 → 名字」，它自己还会按动作类型
+ *  补「(小窗)」注记。而系统场景那一格用 [appTargetLabelOf][com.lookie.opluskey.ui.appTargetLabelOf]
+ *  已经把括号拼全了 —— 再从 [appTargetName] 走一遍就会套两层
+ *  （真机口径「应用控制: 打开应用 - 应用(小窗 组件)(小窗)，多了一个」）。
+ *  所以「谁拼括号」只能有一处：要么这里，要么 `appName` 回调。
+ */
+internal fun stepTitleWithTarget(
+    token: String,
+    target: (Action) -> String,
+): String {
+    if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
+    return actionTitle(
+        action = ActionCatalog.actionOf(token),
+        appName = target,
+        fallback = token,
+    )
+}
+
+/**
+ * 界面侧那份「目标 → 名字」的回调，包成 [actionTitle] 要的形状。
+ *
+ *  名字从哪儿来是**界面侧**的事（宿主那边现查 PM）：这里先查这次清单、再查配置里记的名字。
+ *  只有这一份 —— 各写一遍时，「哪几种动作要名字」这种判据就会各长一套（漏一档的表现是
+ *  提示里多出一个空括号）。
+ *
+ *  **「小窗」在这一层标**（`微信(小窗)`）：动词那一侧只有「打开应用」一个词，小窗是目标的注记。
+ *  这条回调只给「名字」—— 已经有完整目标的调用点走 [stepTitleWithTarget]。
+ */
+private fun appTargetName(appName: (String) -> String): (Action) -> String =
+    { a ->
+        when (a) {
+            is Action.App -> appTargetLabel(appName(a.target), window = false, detail = null)
+            is Action.AppWindow -> appTargetLabel(appName(a.target), window = true, detail = null)
+            is Action.AppShortcut -> appTargetLabel(appName(a.appTarget.orEmpty()), window = a.window, detail = null)
+            is Action.Process -> appName(a.pkg)
+            else -> ""
+        }
+    }
+
+/**
+ * 「松手动作」那一行的值怎么写 —— 三族各换一种「取值」的写法，其余照 [stepTitle]：
+ *
+ *  · 系统开关 / 灵感语音 → **东西 - 状态**（`手电筒 - 关闭` / `灵感语音 - 开始`）；
+ *  · 锁屏快捷 → **大类: 具体**（`锁屏快捷: 相机`）。
+ *
+ *  为什么这两族要换语序：它们都是「一个东西 + 一个状态」的两段式（东西不改、改的是状态），
+ *  而 `关闭:手电筒` 那种写法是**一条命令**的名字 —— 那一行上面就是「松手动作」四个字，
+ *  下面再写成动词开头的一条命令，等于把「做什么」说了两遍；写在标题下面的是**取值**，
+ *  先给「是哪个东西」才扫得下去。
+ *
+ *  锁屏快捷为什么用冒号而不是横杠：它后半截是**名字**（相机 / 计算器），不是状态 ——
+ *  读法与 `打开应用:微信` 那一族一致；而且不带前缀时只写「相机」，会被读成「打开相机」，
+ *  它其实只在**锁屏**上出现。
+ *
+ *  只用于这一处：步骤行、执行提示里仍是 [stepTitle]（那些地方读的是「执行了什么事」）。
+ */
+internal fun releaseActionTitle(
+    token: String,
+    appName: (String) -> String,
+): String {
+    val action = ActionCatalog.actionOf(token)
+    if (action is Action.Setting) {
+        //  开关名取清单里那一份（认不出就退回 id），状态词与网格小字同一处（`switchStateLabel`）
+        val state = ActionCatalog.switchStateLabel(action)
+        val name = SystemSwitches.titleOfId(action.id) ?: action.id
+        if (state != null) return I18n.format(Strings.COMMON_NAME_STATE_FORMAT, name, state)
+    }
+    //  灵感语音那两档（开始 / 结束）：配方里两个 token 只差结尾，形状上与「开关」同构
+    val voice = ActionCatalog.modeMenu(ActionCatalog.VOICE_TILE).orEmpty()
+    val index = voice.indexOfFirst { it.token == action.token }
+    if (index >= 0) {
+        val name = I18n.get(Strings.CATALOG_VOICE_MEMORY, "灵感语音")
+        val state =
+            if (index == 0) {
+                I18n.get(Strings.COMMON_START, "开始")
+            } else {
+                I18n.get(Strings.COMMON_STOP, "结束")
+            }
+        return I18n.format(Strings.COMMON_NAME_STATE_FORMAT, name, state)
+    }
+    //  锁屏快捷（相机 / 计算器）：前缀必须写出来，见上面那段说明
+    val shortcut =
+        ActionCatalog
+            .modeMenu(ActionCatalog.KEYGUARD_TILE)
+            .orEmpty()
+            .firstOrNull { it.token == action.token }
+    if (shortcut != null) {
+        return I18n.format(
+            Strings.COMMON_PREFIX_NAME_FORMAT,
+            I18n.get(Strings.CATALOG_KEYGUARD, "锁屏快捷"),
+            shortcut.label,
+        )
+    }
+    return stepTitle(token, appName)
 }
 
 /**
@@ -105,24 +198,7 @@ internal fun stepIcon(
 }
 
 /**
- * 「条件执行」那种**一行两格**的列表里，命令那一格怎么写 —— **父级 - 子级**（「响铃状态 - 循环」）。
- *
- *  为什么这一处要带父名：那一格紧挨着条件那格（「响铃状态 - 亮屏」），两格同一套写法才读得顺；
- *  而且「循环」「静音」这种词单摆着看不出是谁在循环、谁在静音。**其余地方仍走 [stepTitle]**
- *  （「已保存的命令」那些步骤行窄，只写取值更省地方）。
- *
- *  没有父格的动作（`nav:` 那些入口格以外的一切、`cmd:` 引用、自定义命令）原样退回 [stepTitle]。
- */
-internal fun actionCellTitle(
-    action: Action,
-    appName: (String) -> String,
-): String {
-    val hit = ActionCatalog.modeHitOf(action)
-    return if (hit == null) stepTitle(action.token, appName) else "${hit.tile.label} - ${hit.mode.label}"
-}
-
-/**
- * 与 [actionCellTitle] 一一对应的行首图标 —— 有父格时用**那一行自己的**字形。
+ * 与 [stepIcon] 一一对应的行首图标 —— 有父格时用**那一行自己的**字形。
  *
  *  「循环」写的是 `keyevent:164`，与响铃那一格**同一个 token**：按 token 取图标只能拿到格子那颗
  *  （响铃状态），档位自己的字形（重复箭头）只登记在 `Spec.glyph` 上。所以这里先问
