@@ -8,7 +8,6 @@ import android.os.HandlerThread
 import android.os.SystemClock
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyId
@@ -109,10 +108,10 @@ internal class GestureForwarder(
      */
     fun forwardCombo(
         comboId: String,
-        gesture: Gesture,
+        trigger: GestureTrigger,
         repeat: Boolean,
     ) {
-        val intent = comboIntent(comboId, gesture.id, repeat)
+        val intent = comboIntent(comboId, trigger.id, repeat)
         sender.post {
             try {
                 val ctx =
@@ -127,7 +126,7 @@ internal class GestureForwarder(
                 //  补发只会在松手后积一串废消息（与单键那条同一条规矩）。
                 if (!repeat) send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
             } catch (e: Throwable) {
-                XLog.w("转交组合键失败（已忽略）：$comboId ${gesture.id}", e)
+                XLog.w("转交组合键失败（已忽略）：$comboId ${trigger.id}", e)
             }
         }
     }

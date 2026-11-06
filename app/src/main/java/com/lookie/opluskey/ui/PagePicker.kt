@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -20,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
@@ -41,9 +44,23 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 // 「样式参考系统开关」而不是「再用一套」的原因。所以抽到这里，两边都用它。
 
 /**
- * 选择器里的一行 —— **整行通栏可点**，标题左起、选中的行行尾一个对勾。
+ * 选择器里的一行 —— 文案 + （可选）行首字形 + 能不能点。
  *
- *  不挂行首图标：这一列说的是同一类东西的不同取值，图标会让取值看着像不同类型。
+ *  为什么要这一个对象：取值那一列的行自带一颗字形（「亮屏」「锁屏」各是那块屏的两种状态），
+ *  而纯文字那一列（系统开关三档、语言）没有。两种都是「从一列同族取值里挑一个」，
+ *  所以**壳只有一份**（[SinglePickerDialog]），差别只在每一行带不带图标、点不点得动。
+ */
+internal class PickerOption(
+    val label: String,
+    val icon: ImageVector? = null,
+    /** `false` = 置灰（点了不响应）：这一档在这一趟里不可选（例如取值已经用过了）。 */
+    val enabled: Boolean = true,
+)
+
+/**
+ * 画 [PickerOption] 那一行 —— **整行通栏可点**，标题左起、选中的行行尾一个对勾。
+ *
+ *  不挂行首图标以外的装饰：这一列说的是同一类东西的不同取值，多挂图标会让取值看着像不同类型。
  *  行与行之间那条细线由 [PickerRows] 插（与各页卡片同一档），行自己不画。
  *
  *  通栏是**故意**的：面板的圆角由库那层 shader mask 裁，行铺到边也不会出角，
@@ -59,6 +76,7 @@ internal fun PickerRow(
     selected: Boolean,
     onClick: () -> Unit,
     enabled: Boolean = true,
+    icon: ImageVector? = null,
 ) {
     val colors = COUITheme.colorScheme
     //  弹窗里这一列也算「能点的行」：默认振一下（见 `LocalTick`）
@@ -94,6 +112,7 @@ internal fun PickerRow(
                 .heightIn(min = PICKER_ROW_MIN_HEIGHT)
                 .background(selectedFill)
                 .clickable(
+                    enabled = enabled,
                     onClick = {
                         tick()
                         onClick()
@@ -104,6 +123,16 @@ internal fun PickerRow(
                 ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        //  行首那颗可选：取值那一列（亮屏 / 锁屏）靠它分档，纯文字那几列不给
+        icon?.let { glyph ->
+            Icon(
+                glyph,
+                contentDescription = null,
+                modifier = Modifier.size(PICKER_ROW_ICON_SIZE),
+                tint = labelColor,
+            )
+            Spacer(Modifier.width(PICKER_ROW_ICON_GAP))
+        }
         Text(
             text = label,
             style = COUITheme.textStyles.body1,
@@ -122,6 +151,10 @@ internal fun PickerRow(
         }
     }
 }
+
+/** 行首那颗可选字形的尺寸与它到文字的间距（只有带图标的列会用到）。 */
+private val PICKER_ROW_ICON_SIZE = 22.dp
+private val PICKER_ROW_ICON_GAP = 12.dp
 
 /**
  * 一列选项 —— 行 + 行间细线 + 底部那一点面板本色。
@@ -148,6 +181,17 @@ internal fun ColumnScope.PickerRows(
     isSelected: (Int) -> Boolean,
     onClick: (Int) -> Unit,
 ) {
+    PickerRows(labels.map { PickerOption(it) }, isSelected, onClick)
+}
+
+/** 带图标 / 置灰的那一版（见 [PickerOption]）—— 行怎么画仍然只有 [PickerRow] 一处。 */
+@JvmName("PickerRowsWithOptions")
+@Composable
+internal fun ColumnScope.PickerRows(
+    options: List<PickerOption>,
+    isSelected: (Int) -> Boolean,
+    onClick: (Int) -> Unit,
+) {
     Column(
         Modifier
             .weight(1f, fill = false)
@@ -156,13 +200,19 @@ internal fun ColumnScope.PickerRows(
             //  （自己再补一份，上下就一边多一边少）。
             .verticalScroll(rememberScrollState()),
     ) {
-        labels.forEachIndexed { index, label ->
+        options.forEachIndexed { index, option ->
             //  行之间那条细线：与各页卡片里同一档（`CardList` 那条 `HorizontalDivider` +
             //  同一份两端内缩），不自己另调一道色。第一行之上不画。
             if (index > 0) {
                 HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
             }
-            PickerRow(label = label, selected = isSelected(index), onClick = { onClick(index) })
+            PickerRow(
+                label = option.label,
+                selected = isSelected(index),
+                onClick = { onClick(index) },
+                enabled = option.enabled,
+                icon = option.icon,
+            )
         }
     }
 }
@@ -235,13 +285,35 @@ internal fun SettingsPage.SinglePickerDialog(
     onDismiss: () -> Unit,
     onPick: (Int) -> Unit,
 ) {
+    SinglePickerDialog(
+        show = show,
+        title = title,
+        options = labels.map { PickerOption(it) },
+        selectedIndex = selectedIndex,
+        onDismiss = onDismiss,
+        onPick = onPick,
+    )
+}
+
+/** 带图标 / 置灰的那一版（见 [PickerOption]）—— 壳与上面那个完全同一份。 */
+@Suppress("LongParameterList")
+@JvmName("SinglePickerDialogWithOptions")
+@Composable
+internal fun SettingsPage.SinglePickerDialog(
+    show: Boolean,
+    title: String,
+    options: List<PickerOption>,
+    selectedIndex: Int,
+    onDismiss: () -> Unit,
+    onPick: (Int) -> Unit,
+) {
     FrostedDialog(
         show = show,
         title = title,
         onDismiss = onDismiss,
     ) {
         PickerRows(
-            labels = labels,
+            options = options,
             isSelected = { it == selectedIndex },
             onClick = { index ->
                 onDismiss()

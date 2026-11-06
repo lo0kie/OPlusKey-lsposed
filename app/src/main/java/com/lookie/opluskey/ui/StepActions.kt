@@ -74,3 +74,22 @@ internal fun SettingsPage.openAppPickerForStep(
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
     navTo(Screen.APP_PICKER)
 }
+
+/**
+ * 长按卡「松手执行额外动作」那一行进「打开应用」页 —— 挑中的应用 / 组件 / 快捷方式写进这颗键的
+ * `longRelease`（落点见 `PickTarget.Release`）。
+ *
+ *  与 [openAppPickerForStep] 同一套进页复位：搜索词清空、小窗开关按当前那一条重算。
+ *  「以小窗口打开」在这一趟是**真生效**的（`window:` 是合法的额外动作）。
+ */
+internal fun SettingsPage.openAppPickerForRelease(
+    stop: Boolean = false,
+    combo: String? = null,
+) {
+    XLog.w("额外动作：进「打开应用」页挑一条（结束=$stop，组合=$combo）")
+    picker.openForRelease(stop, combo)
+    picker.filter.value = ""
+    resetSmallWindowForPicker()
+    appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
+    navTo(Screen.APP_PICKER)
+}

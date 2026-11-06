@@ -232,9 +232,12 @@ private fun SettingsPage.bindingUnchanged(
  *  还是「结束」—— 两件事读起来完全不同。所以那两档走 [actionTitle]（与步骤行、执行时提示
  *  同一支实现），产出「已绑定「打开应用:微信」」「已绑定「结束应用:微信」」。
  *
- *  三档的差别只有「应用名从哪个字段取」，所以先把包名抽出来（[appPkgOf]），再共用**一次**
- *  [actionTitle] —— 三处各写一遍的话，「怎么念一个动作」就又多出三份实现，而
- *  `tools/audit-arch.py` 数正是这个数。
+ *  **其余动作走 [stepTitle]**：「一个动作怎么念」全项目只有那一份规则，步骤行、命令卡摘要、
+ *  执行时提示念的都是同一句，这一条回执没有理由例外。自定义命令尤其明显 —— 裸名是
+ *  「已绑定「录音」」，而步骤行里那一行写的是「自定义命令: 录音」，两处叫法不该是两种。
+ *
+ *  「应用名从哪个字段取」是唯一的差别，所以先把包名抽出来（[appPkgOf]），两档各自走**同一支**
+ *  标题实现 —— 各写一遍的话，「怎么念一个动作」就又多出几份，而 `tools/audit-arch.py` 数正是这个数。
  */
 private fun SettingsPage.boundNotice(
     spec: ActionCatalog.Spec,
@@ -244,7 +247,9 @@ private fun SettingsPage.boundNotice(
     val pkg = appPkgOf(action)
     val shown =
         if (pkg == null) {
-            appName ?: ActionCatalog.label(action) ?: spec.label
+            //  挑应用那条路带进来的名字优先（它是口令表里的写法，`stepTitle` 认不出来）；
+            //  都没有时 `stepTitle` 会把 token 原样吐回来（手改过的配置），那也比空串好。
+            appName ?: stepTitle(action.token) { p -> appLabelOf(p) }.ifBlank { spec.label }
         } else {
             actionTitle(action, { appName ?: appLabelOf(pkg) }, action.token)
         }
@@ -296,7 +301,7 @@ internal fun SettingsPage.setKeyEnabledFromMenu(
         I18n
             .get(
                 if (on) Strings.TOAST_KEY_ENABLED else Strings.TOAST_KEY_DISABLED,
-                if (on) "已启用「%s」" else "已停用「%s」",
+                if (on) "已启用 [%s]" else "已停用 [%s]",
             ).format(id.label)
     }
 }

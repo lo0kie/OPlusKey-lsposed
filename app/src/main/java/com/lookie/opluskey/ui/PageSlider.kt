@@ -191,10 +191,12 @@ private fun SettingsPage.SliderValueInput(
     NameDialog(
         show = show,
         title = spec.title,
-        label = I18n.format(Strings.SLIDER_INPUT_LABEL, spec.min, spec.max),
+        label = I18n.get(Strings.SLIDER_INPUT_LABEL, "手动输入"),
         icon = spec.icon,
         initial = spec.value.toString(),
         range = spec.min..spec.max,
+        //  值域与步进放在框下面**常驻**：占位在填着字时就看不见了，而这两件事正是打字时要看的。
+        hint = I18n.format(Strings.SLIDER_INPUT_RANGE, spec.min, spec.max, spec.step),
         onDismiss = onDismiss,
         onConfirm = { raw ->
             onDismiss()

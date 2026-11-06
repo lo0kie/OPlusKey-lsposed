@@ -11,6 +11,8 @@ import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.replaceStep
 import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.binding.pick
+import com.lookie.opluskey.ui.screen.binding.writeLongRelease
+import com.lookie.opluskey.ui.screen.combo.writeComboLongRelease
 import com.lookie.opluskey.ui.screen.command.writeBranchCommand
 import com.lookie.opluskey.ui.screen.command.writeBranchCondition
 import com.lookie.opluskey.ui.screen.variables.VarManageState
@@ -54,6 +56,20 @@ internal fun SettingsPage.writeToken(
                 false
             } else {
                 true
+            }
+        }
+
+        // 「松手执行额外动作」：写这颗键（或那一档组合键）的 `longRelease`，然后自己退页
+        //  （与分支那两条同一条纪律 —— 调用方拿到 true 就不要再补一次 `goBack()`）。
+        //  写哪一位由 [writeLongReleaseTo] 分（组合键与单键是两个不同的槽位）。
+        is PickTarget.Release -> {
+            if (writeLongReleaseTo(target.comboId, Action.parse(token))) {
+                popBackStack()
+                true
+            } else {
+                //  写失败：把「为谁挑」放回去，留在这一页（否则这一页会退化成普通挑应用）
+                picker.openForRelease(combo = target.comboId)
+                false
             }
         }
 
@@ -152,6 +168,20 @@ internal fun SettingsPage.onAppPicked(
     picker.clearTarget()
     goBack()
 }
+
+/**
+ * 「松手执行额外动作」写到哪一位 —— 组合键写 `combo.longRelease`，单键写 `key.longRelease`。
+ *
+ *  两个槽位是**两种键**上的字段（组合键有它自己那一份），调用方不该自己判那一下；
+ *  抽出来也顺手把 [writeToken] 那一支的圈复杂度压回阈值内。
+ *
+ * @param comboId 这一趟绑的是哪一档组合键（`null` = 单键那一档）
+ * @return 写下去没有（`false` = 链路未就绪 / 写盘失败）
+ */
+private fun SettingsPage.writeLongReleaseTo(
+    comboId: String?,
+    action: Action,
+): Boolean = if (comboId != null) writeComboLongRelease(comboId, action) else writeLongRelease(action)
 
 /**
  * 「选择界面」页点确认 —— **只记草稿，不写配置**。

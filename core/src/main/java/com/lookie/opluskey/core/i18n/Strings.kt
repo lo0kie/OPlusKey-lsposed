@@ -103,7 +103,7 @@ object Strings {
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
 
     /**
-     * 「松手后再执行」那一族 —— 开关（开 / 关各一句）+ 开关为真时滑入的「松手动作」那一行。
+     * 「松手执行额外动作」那一族 —— 开关（开 / 关各一句）+ 开关为真时滑入的「额外动作」那一行。
      *
      *  动作那一行的副标题配了之后直接写动作名（与命令页的步骤同一套念法），所以只有「空」这一句。
      */
@@ -118,6 +118,7 @@ object Strings {
      *
      *  与上面那一族是**两种互斥的时序**：开了它，长按动作只执行一次且在抬手那一刻；关着则是
      *  到点即执行（那一档才谈得上连续触发）。副标题同样真假各一句。
+     *  它也与连续触发互斥，与「松手执行额外动作」互斥 —— 三者都由 `KeyConfig` 那两位属性收口。
      */
     const val BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE = "binding.long_press_fire_on_release_title"
     const val BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_ON = "binding.long_press_fire_on_release_desc_on"
@@ -136,16 +137,13 @@ object Strings {
     const val BINDING_SERIAL_UNSUPPORTED_REPEAT = "binding.serial_unsupported_repeat"
     const val BINDING_VOICE_UNSUPPORTED_REPEAT = "binding.voice_unsupported_repeat"
 
-    /** 配了松手动作时，连续触发那一行的副标题（说清为什么点不了）。 */
-    const val BINDING_RELEASE_UNSUPPORTED_REPEAT = "binding.release_unsupported_repeat"
-
-    /** 「松手才触发」开着时，连续触发那一行的副标题（同上）。 */
+    /** 「松手才触发」开着时，连续触发那一行的副标题（说清为什么点不了）。 */
     const val BINDING_FIRE_ON_RELEASE_UNSUPPORTED_REPEAT = "binding.fire_on_release_unsupported_repeat"
 
-    /** 同一时刻「松手才触发」开着 —— 「松手后再执行」那一行为什么点不了。 */
+    /** 同一时刻「松手才触发」开着 —— 「松手执行额外动作」那一行为什么点不了。 */
     const val BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE = "binding.fire_on_release_unsupported_release"
 
-    /** 反过来：配了松手动作时，「松手才触发」那一行为什么点不了。 */
+    /** 反过来：配了松手额外动作时，「松手才触发」那一行为什么点不了。 */
     const val BINDING_RELEASE_UNSUPPORTED_FIRE = "binding.release_unsupported_fire"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
     const val BINDING_TITLE = "binding.title"
@@ -345,6 +343,17 @@ object Strings {
     const val CATALOG_QUICK_TOOLS = "catalog.quick_tools"
     const val CATALOG_RECORDING = "catalog.recording"
     const val CATALOG_SCREEN_RECORD = "catalog.screen_record"
+
+    /**
+     * 录屏那一层选择器的三档 —— **带后缀**（`开始录屏` / `结束录屏` / `切换录屏`）。
+     *
+     *  与「灵感语音」那两档（只写「开始」「结束」）不同：那一层的小标题已经写着「灵感语音」，
+     *  而录屏这一层是从「小布 AI」菜单里点开的，那一行只写「录屏」—— 三行都短到只剩一个动词时，
+     *  一眼扫过去分不出说的是录屏还是别的（用户口径）。
+     */
+    const val CATALOG_SCREEN_RECORD_START = "catalog.screen_record_start"
+    const val CATALOG_SCREEN_RECORD_STOP = "catalog.screen_record_stop"
+    const val CATALOG_SCREEN_RECORD_TOGGLE = "catalog.screen_record_toggle"
     const val CATALOG_SCREEN_TRANSLATE = "catalog.screen_translate"
     const val CATALOG_SCREENSHOT = "catalog.screenshot"
     const val CATALOG_SYSTEM_ACTIONS = "catalog.system_actions"
@@ -639,7 +648,7 @@ object Strings {
      * 「**东西 - 状态**」的两段式（`手电筒 - 关闭` / `灵感语音 - 开始`）。
      *
      *  三处用它，都是「同一句里的两段」：系统开关（`系统开关: WIFI - 打开`）、
-     *  「应用控制」那一族（`应用控制: 打开应用 - 微信`）、以及「松手动作」那一行的取值。
+     *  「应用控制」那一族（`应用控制: 打开应用 - 微信`）、以及「额外动作」那一行的取值。
      */
     const val COMMON_NAME_STATE_FORMAT = "common.name_state_format"
 
@@ -831,6 +840,15 @@ object Strings {
 
     /** 「条件执行」页那一份（那一页草稿里是条件表，不是命令）—— 与上面那条各说各的页。 */
     const val DIALOG_DISCARD_CONDITION_TITLE = "dialog.discard_condition_title"
+
+    /**
+     * 「选择应用」页那一份：二级页已点过确认、还没按提交键就要退页。
+     *
+     *  正文里那一个是**将要丢掉的那一条**（`%s`，形如 `微信(扫一扫)`）—— 只说「放弃未保存的选择」
+     *  的话，用户看不出丢的是哪一个，而这一页列表很长、挑错了往往要滚回去重新找。
+     */
+    const val DIALOG_DISCARD_PICK_TITLE = "dialog.discard_pick_title"
+    const val DIALOG_DISCARD_PICK_MESSAGE = "dialog.discard_pick_message"
 
     /** 「支持的命令格式」点前缀时输入框里已有内容 —— 覆盖前问一句（那里是整段替换，不是插入）。 */
     const val DIALOG_FILL_PREFIX_TITLE = "dialog.fill_prefix_title"
@@ -1050,12 +1068,20 @@ object Strings {
     const val SETTING_KEY_BINDING = "setting.key_binding"
 
     /**
-     * 滑杆行「手动输入」小窗的输入框占位 —— 写清这一段的值域（两个 `%d` 由 `I18n.format` 填）。
+     * 滑杆行「手动输入」小窗的输入框占位（不带值域 —— 那一句在框下面常驻，见 [SLIDER_INPUT_RANGE]）。
      *
      *  手滑调不准是滑杆的天生短板（200–2000 一档 50ms，36 档挤在一根轨道上），所以每一根滑杆
      *  点一下标题都能打字（用户口径）。小窗本体复用 `NameDialog`，它多收一个 `range`。
      */
     const val SLIDER_INPUT_LABEL = "slider.input_label"
+
+    /**
+     * 同一个弹窗里输入框下面那行常驻说明 —— 值域与步进（三个 `%d`：最小 / 最大 / 步长）。
+     *
+     *  为什么放框下面而不是写进占位：占位在填着字时就看不见了，而「能填多大」与「打进去的数
+     *  会被吸到哪一档」正是打字时要看的两件事（用户口径「range 提示优化」）。
+     */
+    const val SLIDER_INPUT_RANGE = "slider.input_range"
     const val STATUS_API_MISMATCH = "status.api_mismatch"
     const val STATUS_CHECKING = "status.checking"
     const val STATUS_CONFIG_FAILED = "status.config_failed"

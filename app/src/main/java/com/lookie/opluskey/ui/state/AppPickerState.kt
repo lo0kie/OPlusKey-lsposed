@@ -167,6 +167,19 @@ internal class AppPickerState {
         private set
 
     /**
+     * 这次是给**长按卡的「松手执行额外动作」**挑动作（挑中的写进这颗键的 `longRelease`）。
+     *
+     *  与 [forStep] 同一档性质（都是「往某个动作字段里写一条」），但落点不同：
+     *  那不是命令库里的步骤，而是这一颗键自己的一个字段。
+     */
+    var forRelease = false
+        private set
+
+    /** 松手那一趟是给哪一档组合键挑（`null` = 给当前这一颗键，见 [forRelease]）。 */
+    var releaseComboId: String? = null
+        private set
+
+    /**
      * 这次是给「条件执行」的某一支挑**条件应用**：`>= 0` = 改第几支，[NEW_BRANCH] = 新加一支。
      * [NOT_FOR_BRANCH] = 不是在给分叉挑。与 [forStep] 一样同生共死。
      */
@@ -273,6 +286,26 @@ internal class AppPickerState {
     }
 
     /**
+     * 「松手执行额外动作」那一趟：挑中的应用 / 组件 / 快捷方式写进这颗键的 `longRelease`。
+     *
+     *  清场纪律与 [openForStep] 完全一样（那几位互斥，留着上一次的值会让写回落到别人头上）。
+     */
+    fun openForRelease(
+        stop: Boolean = false,
+        combo: String? = null,
+    ) {
+        gesture = null
+        comboId = null
+        releaseComboId = combo
+        forStep = false
+        replaceStep = -1
+        branchTarget = NOT_FOR_BRANCH
+        branchCommandTarget = NOT_FOR_BRANCH
+        stopAppState.value = stop
+        forRelease = true
+    }
+
+    /**
      * 「添加命令」那条入口：给多条命令**加一步**（[replaceIndex] `< 0`）或换掉第 [replaceIndex] 步。
      *
      * @param stop `true` = 这一趟写 `proc:stop:包名`（抽屉里「应用控制 → 结束应用」那一档）
@@ -288,6 +321,7 @@ internal class AppPickerState {
         branchTarget = NOT_FOR_BRANCH
         branchCommandTarget = NOT_FOR_BRANCH
         stopAppState.value = stop
+        forRelease = false
     }
 
     /**
@@ -315,6 +349,7 @@ internal class AppPickerState {
         branchConditionIndex = if (forCommand) -1 else conditionIndex
         //  只有「这一支要执行的应用」才有结束那一档（条件存的是包名，与 stop 无关）
         stopAppState.value = stop
+        forRelease = false
     }
 
     /** 这趟「为谁挑」整个作废 —— 挑完了、写失败留在原地、或干脆没挑就退出来。 */
@@ -327,6 +362,8 @@ internal class AppPickerState {
         branchCommandTarget = NOT_FOR_BRANCH
         branchConditionIndex = -1
         stopAppState.value = false
+        forRelease = false
+        releaseComboId = null
         // 本地选中与草稿一并作废：这一趟挑应用的账到此为止
         pending.value = null
         pickedApps.value = emptySet()
@@ -386,6 +423,13 @@ internal class AppPickerState {
                 val index = replaceStep
                 replaceStep = -1
                 PickTarget.Step(index)
+            }
+
+            forRelease -> {
+                forRelease = false
+                val combo = releaseComboId
+                releaseComboId = null
+                PickTarget.Release(combo)
             }
 
             else -> {
@@ -621,6 +665,14 @@ internal sealed interface PickTarget {
     /** 条件执行的某一支要**执行的应用**：写的是那一支的**命令**（`app:` / `window:` token）。 */
     data class BranchCommand(
         val index: Int,
+    ) : PickTarget
+
+    /**
+     * 长按卡的「松手执行额外动作」：写的是**这一颗键**（`comboId = null`）或**那一档组合键**
+     * （`comboId` 非空）的 `longRelease` —— 同一个字段名，挂在两个不同的对象上。
+     */
+    data class Release(
+        val comboId: String? = null,
     ) : PickTarget
 }
 

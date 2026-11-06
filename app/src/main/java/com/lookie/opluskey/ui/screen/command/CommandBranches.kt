@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -520,19 +521,23 @@ private class RuleText(
 )
 
 /**
- * 一条规则那一块 —— **小标题 + 上下两格**：上面是条件、下面是命令。
+ * 一条规则那一块 —— **小标题 + 两张卡**：上面一张是条件、下面一张是命令。
  *
  *  为什么不再左右并排：条件与命令都是长句（「微信 在前台」/「以小窗口打开 微信」），
  *  一行里各占一半时两边都在打省略号，看不出选的是哪一条；竖下来各自整行，读起来才是
  *  「这一条什么时候、做什么」。小标题写「条件 N」，删掉一条之后序号也跟着重排。
  *
+ *  为什么拆成两张卡：条件回答「什么情况下」、命令回答「做什么」，是同一个场景的两个问题。
+ *  合成一张、中间加一条加深带时，读起来还是「一件事的两段」；拆开之后两问各自成块
+ *  （用户口径「场景和动作分隔开，用两个卡片」）。
+ *
  *  两格各自可点（上面换条件、下面换动作），所以是两个独立的触点，各挂一份
  *  [preciseClickAnchor]：菜单弹在**被点的那一格**旁边，而不是整块。
  *
- *  这一条自己的菜单（上移 / 下移 / 删除）挪到小标题那一行右端：两格都通栏之后，
+ *  这一条自己的菜单（上移 / 下移 / 删除）挪到小标题那一行右端：两张卡都通栏之后，
  *  中间没有位置再放那颗三点了；挂在标题行也不会和两格的点击区抢。
  *
- *  @param text 上下两行写什么、各配哪颗字形（见 [RuleText]）
+ *  @param text 两张卡写什么、各配哪颗字形（见 [RuleText]）
  *  @param cells 两格与那颗「更多」的触点（见 [RuleCells]）
  */
 @Composable
@@ -548,9 +553,10 @@ private fun RuleBlock(
     val fresh = rememberFreshRow(menus, index)
     Column(Modifier.fillMaxWidth()) {
         RuleTitleRow(index, cells)
-        //  一行条件、一行命令，**同一张卡**（与各页的 listview 同一个壳：Card + 行间细线 +
-        //  首尾圆角），不再拆成两个胶囊 —— 拆开时中间那道缝读起来像两件不相干的事。
-        //  两行各自可点，行尾那枚选择器说明「点开还有一层」（换条件 / 换动作）。
+        //  场景与动作**各一张卡**（用户口径「场景和动作分隔开，用两个卡片」）：
+        //  上面回答「什么情况下」，下面回答「做什么」。原先合成一张、靠一条加深带断开，
+        //  读起来仍是同一件事的两段；拆成两张之后「这条场景命中会做什么」一眼分成两问。
+        //  两张卡各自可点，行尾那枚选择器说明「点开还有一层」（换条件 / 换动作）。
         CardList(
             margin = 0.dp,
             rows =
@@ -604,27 +610,32 @@ private fun RuleBlock(
                             ),
                         )
                     }
-                    add(
-                        CardRow.Item(
-                            title = text.action,
-                            //  命令那一行也**不限行**：`打开应用: 微信 - LauncherUI` 这种一长串，
-                            //  单行省略会把「做什么」裁掉一半 —— 这一行正是用来核对它做什么的。
-                            titleMaxLines = Int.MAX_VALUE,
-                            //  「场景」与「命令」是两件事：上面几行回答「什么情况下」，这一行回答
-                            //  「做什么」—— 一条加深带断开（与浮层菜单里组间那条同一档）。
-                            dividerBefore = true,
-                            icon = text.actionIcon,
-                            iconTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                            titleTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                            trailing = { RowEndIcon(PageIcons.Selector) },
-                            modifier = Modifier.preciseClickAnchor(cells.anchors.right),
-                            onClick = cells.onAction,
-                        ),
-                    )
                 },
+        )
+        Spacer(Modifier.height(RULE_CARD_GAP))
+        CardList(
+            margin = 0.dp,
+            rows =
+                listOf(
+                    CardRow.Item(
+                        title = text.action,
+                        //  命令那一行也**不限行**：`打开应用: 微信 - LauncherUI` 这种一长串，
+                        //  单行省略会把「做什么」裁掉一半 —— 这一行正是用来核对它做什么的。
+                        titleMaxLines = Int.MAX_VALUE,
+                        icon = text.actionIcon,
+                        iconTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
+                        titleTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
+                        trailing = { RowEndIcon(PageIcons.Selector) },
+                        modifier = Modifier.preciseClickAnchor(cells.anchors.right),
+                        onClick = cells.onAction,
+                    ),
+                ),
         )
     }
 }
+
+/** 场景卡与动作卡之间的间距 —— 与「块与块之间」同一档（小标题自带的上间距是 16dp，这里取更紧的一档）。 */
+private val RULE_CARD_GAP = 8.dp
 
 /**
  * 一块里「刚插入的那条条件」的进场开关 —— 首帧不可见、下一帧再显，播完把那笔账清掉。

@@ -328,7 +328,7 @@ private fun SettingsPage.KeyMenuDialogHost(
             I18n
                 .get(
                     Strings.BINDING_DELETE_KEY_CONFIRM,
-                    "「%s」会从按键清单里删掉。",
+                    "[%s] 会从按键清单里删掉。",
                 ).format(selected.label),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = onDismiss,
@@ -345,7 +345,7 @@ private fun SettingsPage.KeyMenuDialogHost(
                     if (deleted == CommandsSave.Ok) {
                         // 名字得在 forget 之后取，否则 `selected` 已经指向不存在的键
                         hint(
-                            I18n.get(Strings.TOAST_KEY_DELETED, "已删除「%s」").format(selected.label),
+                            I18n.get(Strings.TOAST_KEY_DELETED, "已删除 [%s]").format(selected.label),
                             slot = HINT_SLOT_BINDING,
                         )
                     }

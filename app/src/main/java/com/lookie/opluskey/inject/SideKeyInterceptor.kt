@@ -54,7 +54,7 @@ internal class SideKeyInterceptor(
      *
      *  组合没有单颗键的 `KeyConfig`（动作在 `ComboKey` 上、执行在宿主），所以走这条独立回调。
      */
-    private val onCombo: (ComboKey, Gesture, Boolean) -> Unit,
+    private val onCombo: (ComboKey, GestureTrigger, Boolean) -> Unit,
     /**
      * 「屏幕黑着的话，这段时间里别让 CPU 睡」（熄屏排双击窗口时用，见 `KeyHooks.holdAwake`）。
      *

@@ -19,7 +19,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandTelegram
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandWechat
-import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessAuto
 import io.github.lyxnx.compose.ui.tablericons.outline.Cancel
 import io.github.lyxnx.compose.ui.tablericons.outline.CategoryMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.CategoryPlus
@@ -42,6 +41,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
+import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceIpadCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobilePause
@@ -374,8 +374,13 @@ internal object PageIcons {
     // 「随机图标配色」那一行 —— 一块色板（`ColorSwatch`），与强调色那颗色块区分开
     val RandomIconTint: ImageVector get() = TablerIcons.Outline.ColorSwatch
 
-    /** 「跟随系统」—— `brightness-auto`（自动亮度那种「A」）。 */
-    val ThemeAuto: ImageVector get() = TablerIcons.Outline.BrightnessAuto
+    /**
+     * 「跟随系统」—— `contrast`（半黑半白的圆：明暗随系统那一档）。
+     *
+     *  原先用 `brightness-auto`（一个「A」+ 太阳），那颗读作「自动亮度」而不是「界面颜色
+     *  跟随系统」—— 与浅色 `sun` / 深色 `moon` 摆在一起时，它是四档里唯一不像明暗的那颗。
+     */
+    val ThemeAuto: ImageVector get() = TablerIcons.Outline.Contrast
 
     /** 「浅色」—— `sun`。 */
     val ThemeLight: ImageVector get() = TablerIcons.Outline.Sun
@@ -710,7 +715,7 @@ internal object PageIcons {
     val LongRepeat: ImageVector get() = TablerIcons.Outline.Infinity2
 
     /**
-     * 「松手后再执行」行的行首 —— `pointer-up`（一根手指点着、上方一支向上的箭头）。
+     * 「松手执行额外动作」行的行首 —— `pointer-up`（一根手指点着、上方一支向上的箭头）。
      *
      *  读作「抬手那一下」：与「长按延迟」那只 [DelayHold]（`hand-grab`，一把抓住）分开 ——
      *  那一行管「按住多久算长按」，这一行管「松手才执行」。

@@ -49,6 +49,16 @@ data class ComboKey(
     /** 连续触发时每一次重复都振动（关 = 只在判出长按那一下振一次）。 */
     val longRepeatVibrate: Boolean = false,
     /**
+     * 「长按**松手才触发**」—— 与单键 `KeyConfig.longFireOnRelease` 同一档语义。
+     *
+     *  开着时长按那一下不立即执行，抬手时补发一次；与 [longRelease] 互斥（同一刻只能有一个）。
+     */
+    val longFireOnRelease: Boolean = false,
+    /** 「松手执行额外动作」的开关 —— 与单键 `KeyConfig.longReleaseOn` 同一档语义。 */
+    val longReleaseOn: Boolean = false,
+    /** 松手那一档执行的动作（`Action.None` = 没挑）。 */
+    val longRelease: Action = Action.None,
+    /**
      * **条件执行**（与单键 `KeyConfig.rules` 同一套 [StateRule]、同一个判定口径）。
      *
      *  按顺序匹配、第一条成立的赢；一条都不中才走 [actionOf] 那一档绑定。
@@ -73,6 +83,14 @@ data class ComboKey(
             Gesture.LONG -> long
             Gesture.DOUBLE -> Action.None
         }
+
+    /**
+     * 松手那一下**真的有事可做** —— 开关开着、挑过动作、且不是「松手才触发」那条。
+     *
+     *  与单键 `KeyConfig.releaseBound` 同一份判据（那一边的解释更细）：三位缺一位都不算。
+     */
+    val releaseBound: Boolean
+        get() = longReleaseOn && longRelease !is Action.None && !longFireOnRelease
 
     /**
      * **带条件表**的取动作：先看 [rules]（顺序、第一条赢），都不中才落到 [actionOf]。

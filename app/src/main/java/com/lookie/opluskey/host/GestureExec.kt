@@ -201,19 +201,25 @@ internal object GestureExec {
         repeat: Boolean,
     ) {
         val config = ConfigStore.read()
-        val combo = liveCombo(config, comboId) ?: return
-        if (staleOrDuplicate("combo:${combo.id}", phaseId, sentAt)) return
+        //  两道上游守卫并成一处判：认不出 / 已停用 / 闸门不过，或这一下是过期或重复的广播。
+        val combo = liveCombo(config, comboId)?.takeIf { !staleOrDuplicate("combo:${it.id}", phaseId, sentAt) } ?: return
         // 双击在组合上没有定义（`ComboKey.actionOf` 恒返回「无操作」）；认不出的 phase
-        //  只可能来自手搓的广播。
-        val gesture = comboGesture(phaseId) ?: return
+        //  只可能来自手搓的广播。松手那一档（`release`）与单键同一条口径：它是**另一个槽位**。
+        val trigger = comboTrigger(phaseId) ?: return
+        val gesture = trigger.gestureOrNull()
         //  条件执行：与单键那一支同一套 —— 先在这档的顺序表里找，第一条成立的就执行它，
         //  一条都不中才落到 `actionOf` 那一档绑定。判据现判（按下的那一刻），且**一次按下的
         //  一次判定里同一个条件只判一次**（一块可以带好几条，几条规则之间又常重复）。
         val judged = HashMap<BranchCondition, Boolean>()
-        val action =
-            combo.resolve(gesture) { condition ->
-                judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
-            }
+
+        fun matchesCondition(condition: BranchCondition): Boolean =
+            judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
+        if (gesture == null) {
+            //  「松手执行额外动作」这一档：与上面那几档互斥，单独一支（见 [runComboRelease]）。
+            runComboRelease(combo, trigger, config, repeat, ::matchesCondition)
+            return
+        }
+        val action = combo.resolve(gesture, ::matchesCondition)
         //  这一格是「无操作」且开关打开 ⇒ **不吞键**：两颗键各按自己这一档照常执行
         //  （见 `GlobalConfig.comboPassthrough`）。这就是「配了组合、但只给长按绑了动作」时
         //   短按那颗依旧能用的那条路 —— 为假时什么都不做，与这一位出现之前一致。
@@ -221,7 +227,31 @@ internal object GestureExec {
             runComboMembers(combo, gesture, config)
             return
         }
-        executeCombo(combo, gesture, action, config, repeat)
+        executeCombo(combo, trigger, action, config, repeat)
+    }
+
+    /**
+     * 松手那一档（[GestureTrigger.Release]）—— 长按之后抬手才到，与单击 / 长按那一支互斥。
+     *
+     *  两条判据与单键同一条口径：
+     *  · 长按那一档**命中系统场景**时让位（那时这一按已经交给了系统，松手不该再补一刀）；
+     *  · 否则执行 `combo.longRelease` 那个槽位。
+     *
+     *  单独抽一支只为让 [handleCombo] 的 `return` 数留在 detekt 的额度里，而这一档本来就
+     *  只在 `trigger.gestureOrNull() == null` 时进来。
+     */
+    private fun runComboRelease(
+        combo: ComboKey,
+        trigger: GestureTrigger,
+        config: Config,
+        repeat: Boolean,
+        matches: (BranchCondition) -> Boolean,
+    ) {
+        if (combo.rules.any { rule -> rule.appliesTo(Gesture.LONG, matches) }) {
+            XLog.w("组合键 ${combo.id} - 松手：长按那一档命中了系统场景，这一下不执行")
+            return
+        }
+        executeCombo(combo, trigger, combo.longRelease, config, repeat)
     }
 
     /**
@@ -246,14 +276,19 @@ internal object GestureExec {
     }
 
     /** 组合键上认得出的两档（双击在组合上没有定义，见 `ComboKey`）。 */
-    private fun comboGesture(phaseId: String?): Gesture? =
+    private fun comboTrigger(phaseId: String?): GestureTrigger? =
         when (phaseId) {
             Gesture.SINGLE.id -> {
-                Gesture.SINGLE
+                GestureTrigger.Click(1)
             }
 
             Gesture.LONG.id -> {
-                Gesture.LONG
+                GestureTrigger.LongPress
+            }
+
+            //  松手那一档：动作在 `ComboKey.longRelease`（另一个槽位），见 `handleCombo`
+            GestureTrigger.RELEASE_ID -> {
+                GestureTrigger.Release
             }
 
             else -> {
@@ -270,19 +305,19 @@ internal object GestureExec {
      */
     private fun executeCombo(
         combo: ComboKey,
-        gesture: Gesture,
+        trigger: GestureTrigger,
         action: Action,
         config: Config,
         repeat: Boolean,
     ) {
         val r =
             runner ?: run {
-                XLog.w("ActionRunner 还没建好，忽略组合键 ${combo.id} 的 ${gesture.id}")
+                XLog.w("ActionRunner 还没建好，忽略组合键 ${combo.id} 的 ${trigger.id}")
                 return
             }
         // 语言档先对一次，下面拼主语才用得上新语言（与单键那条同一处口径）。
         syncLanguage(config)
-        val (keyLabel, gestureLabel) = comboParts(combo, gesture, config)
+        val (keyLabel, gestureLabel) = comboParts(combo, trigger, config)
         val subject = "$keyLabel - $gestureLabel"
         val log =
             "$subject${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}（宿主进程执行）"
@@ -443,13 +478,24 @@ internal object GestureExec {
         //  重复（好几条都要求「亮屏」）。判据里有反射与小窗那张表，不是纯函数级别的便宜货。
         //  缓存只活在这一下里（下面这个 map 是局部的）—— 跨次缓存会让「切到微信再按」仍按上一次的应用走。
         val judged = HashMap<BranchCondition, Boolean>()
+
+        fun matchesCondition(condition: BranchCondition): Boolean =
+            judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
+        //  「松手执行额外动作」与系统场景的先后：**场景命中 ⇒ 这一下让位**（用户口径）。
+        //  长按那一下已经按场景分过流了，松手再补一个动作等于一次按压两个结果；
+        //  场景一条都不中时松手照常执行 —— 它只做「没配场景 / 场景没命中」时的补充。
+        //  判据与长按那一档完全同一份，且共用同一次按压里的 `judged` 缓存（不多判一轮）。
+        if (trigger == GestureTrigger.Release &&
+            keyConfig.rules.any { rule -> rule.appliesTo(Gesture.LONG, ::matchesCondition) }
+        ) {
+            XLog.w("${id.label} - 松手：长按那一档命中了系统场景，这一下不执行 ${keyConfig.longRelease.token}")
+            return
+        }
         val action =
             if (gesture == null) {
                 keyConfig.actionOf(trigger)
             } else {
-                keyConfig.actionFor(gesture) { condition ->
-                    judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
-                }
+                keyConfig.actionFor(gesture, ::matchesCondition)
             }
         val r =
             runner ?: run {
@@ -576,11 +622,11 @@ internal object GestureExec {
      */
     private fun comboParts(
         combo: ComboKey,
-        gesture: Gesture,
+        trigger: GestureTrigger,
         config: Config,
     ): Pair<String, String> {
         val keys = combo.keys.mapNotNull { id -> config.keyIdOf(id)?.let(::keyName) }
-        return keys.joinToString(" + ") to gestureName(gesture)
+        return keys.joinToString(" + ") to gestureLabel(trigger)
     }
 
     /** 一档手势在提示里的名字 —— 第 3 击起的档位没有 `Gesture`，用它自己的标签。 */

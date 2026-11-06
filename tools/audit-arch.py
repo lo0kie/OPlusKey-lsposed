@@ -110,12 +110,14 @@ def main() -> int:
         '= 1（actionTitle）',
         count(r'fun action(?:Title|FinalTitle)\(', CORE) == 1,
     )
-    # 另有 `boundNotice` 里「不带前缀」那几档用清单名取裸名，那是另一条规则，不并。
+    #  原先这里允许 2（`actionTitle` + 绑定回执那一处 `boundNotice` 的裸名）。回执现在也走
+    #  `stepTitle`，与步骤行 / 命令卡摘要同一句 —— 全项目只剩 `actionTitle` 一族在念动作，
+    #  所以上限收到 1：再多一处就是又有人自己拼了一套说法。
     add(
         'ActionCatalog.label 的直接调用',
         count(r'ActionCatalog\.label\(', APP, CORE),
-        '= 2（actionTitle + 绑定回执的裸名）',
-        count(r'ActionCatalog\.label\(', APP, CORE) == 2,
+        '= 1（只在 actionTitle 一族里）',
+        count(r'ActionCatalog\.label\(', APP, CORE) == 1,
     )
 
     # 4) 「链路结论」：两处渲染共用一份事实 —— `LinkFacts` 的构造点只有一处。

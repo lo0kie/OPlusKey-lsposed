@@ -116,5 +116,10 @@
     <ID>TooManyFunctions:Reflect.kt$Reflect</ID>
     <ID>TooManyFunctions:SettingsPage.kt$SettingsPage</ID>
     <ID>TooManyFunctions:XLog.kt$XLog</ID>
+    <ID>LongMethod:PagePicker.kt$@Composable internal fun PickerRow( label: String, selected: Boolean, onClick: () -&gt; Unit, enabled: Boolean = true, icon: ImageVector? = null, )</ID>
+    <ID>LongMethod:CommandConditionMenus.kt$@Composable internal fun SettingsPage.BranchConditionMenu( draft: BranchDraft, rules: List&lt;StateRule&gt;, menus: BranchMenuState, tick: () -&gt; Unit, )</ID>
+    <ID>MatchingDeclarationName:PagePicker.kt$PickerOption</ID>
+    <ID>TooManyFunctions:AppPickerState.kt$AppPickerState</ID>
+    <ID>LongParameterList:PagePicker.kt$@Suppress("LongParameterList") @JvmName("SinglePickerDialogWithOptions") @Composable internal fun SettingsPage.SinglePickerDialog( show: Boolean, title: String, options: List&lt;PickerOption&gt;, selectedIndex: Int, onDismiss: () -&gt; Unit, onPick: (Int) -&gt; Unit, )</ID>
   </CurrentIssues>
 </SmellBaseline>

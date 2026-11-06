@@ -36,7 +36,7 @@ internal const val MAX_NAME_LENGTH = 24
  * @param label 输入框左边的标签（填的是什么名字 / 这一段的值域）
  * @param initial 打开时输入框里的初值
  * @param range 数值那一档的取值区间；`null` = 填名字。非 `null` 时：只收数字、位数按上限算、
- *   标题行尾那格小字改成显示区间（而不是字数统计）、越界时「确定」按禁用色画且按不动
+ *   标题行尾**不画**那格小字（值域由 [hint] 常驻说明）、越界时「确定」按禁用色画且按不动
  * @param maxLength 名字那档能输多少字（默认 [MAX_NAME_LENGTH]）。比名字长的那种**一句话**
  *   （提示文案模板）单独传一个更大的数
  * @param allowEmpty 允不允许**填空**（默认不许）。给「空 = 用默认那句」的模板用：清空本身就是一种
@@ -90,14 +90,12 @@ internal fun SettingsPage.NameDialog(
         onDismiss = onDismiss,
         // 带输入框：键盘由输入框那侧的 `ImeGuard` 叫，这里不能收（收晚一步就是「聚焦后又失焦」）
         hideImeOnShow = false,
-        //  行尾那格：填名字数**字数**（「命令详情」编辑窗同一个位置、同一套）；
-        //  填数值时换成**取值区间** —— 那个数比「还能打几个字」有用得多，而且打字打到一半
-        //  占位文案已经被盖住了，区间再不给就只剩「范围是多少」靠记。
+        //  行尾那格只在**填名字**时画（字数统计，与「命令详情」编辑窗同一个位置、同一套）。
+        //  填数值时**不画**：值域与步进已经常驻在输入框下面那行（[hint]），再把同一句区间
+        //  挂到标题行尾就是两处一样的字（用户口径「现在有两个一样的文案」）。
         titleTrailing = {
             if (range == null) {
                 TitleCounter(text.length, maxLength)
-            } else {
-                TitleSmallText("${range.first}–${range.last}")
             }
         },
         //  按钮是**底部那一区**（三段式里竖向留白由弹窗统一给）

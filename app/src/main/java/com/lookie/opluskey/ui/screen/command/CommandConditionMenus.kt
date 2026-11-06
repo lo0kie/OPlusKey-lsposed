@@ -13,13 +13,14 @@ import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.PageMenu
+import com.lookie.opluskey.ui.PickerOption
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.SinglePickerDialog
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.conditionKindLabel
 import com.lookie.opluskey.ui.model.conditionMenuSummary
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.BranchDraft
-import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
 // 条件那两张菜单 —— 一级选「种类」、二级选「那一档取值」，外加它们选完之后往哪儿落。
 //
@@ -74,8 +75,9 @@ internal fun SettingsPage.BranchConditionMenu(
     //  一级那一半：打开前 `onCondition` 已经指了下标（点的是第几行），保持不动 —— 绝不能重置成 0，
     //  那样点第二行改的还是第一条；上一趟的下标越界 / 首次打开时回到「改第一条」，0 条时是「追加」。
     LaunchedEffect(show) {
+        //  **`subKind` 不跟着菜单关**：选完种类时菜单会收起来（让位给取值弹窗），
+        //  在这里清掉等于把刚弹出来的弹窗一起关掉。它由弹窗自己收（见 `ctx.onDismiss`）。
         if (!show) {
-            subKind = null
             return@LaunchedEffect
         }
         if (menus.condIndexAt !in conditions.indices) {
@@ -86,8 +88,6 @@ internal fun SettingsPage.BranchConditionMenu(
     val condIndex = menus.condIndexAt.coerceIn(-1, conditions.lastIndex.coerceAtLeast(-1))
     val editing = conditions.getOrNull(condIndex)
     val avail = conditionAvailability(rules, at, conditions, condIndex)
-    //  二级挂在**一级菜单里的触点**上（触发点在菜单里，没有卡片触点可用）
-    val panelTouch = remember { PreciseClickState() }
     //  选中种类之后怎么落盘 —— 三个去处都在 [commitCondition] 里（挑应用页 / 时间窗 / 直接写）。
     //  顺带把二级收掉：一级点「前台应用 / 时间区间」时二级本来就还没开。
     val commit: (ConditionKind, String) -> Unit = { kind, value ->
@@ -120,23 +120,34 @@ internal fun SettingsPage.BranchConditionMenu(
                                     currentSummary = conditionSummaryOf(editing),
                                     disabled = avail.disabled,
                                     onPick = commit,
-                                ) { subKind = it },
+                                ) {
+                                    //  弹窗要出来了，菜单让位（用户口径「选择器出现时关掉菜单」）
+                                    subKind = it
+                                    menus.closeConditionMenu()
+                                },
                         ),
                     )
                     conditionDeleteRow(conditions, condIndex, at, menus)?.let(::add)
                 }
             },
         preciseClick = menus.condAnchor,
-        columnAnchor = panelTouch,
         // 二级开着时这一层不接关闭请求 —— 否则同一毫秒又把它收回去，菜单打不开。
-        onDismiss = { if (subKind == null) menus.closeConditionMenu() },
+        onDismiss = { menus.closeConditionMenu() },
     )
 
     // 二级：这一档的取值（一级选中的种类 + 这里选的档位 = 一条完整条件）
     //  当前这一档的取值也标出来（老配置里 WIFI / 媒体没有取值 ⇒ 按默认档高亮）
-    subKind?.let { kind ->
+    //  **退场要播完**：`subKind` 一变 null 就把这一支从组合里摘掉的话，弹窗是**直接消失**的
+    //  （没有收起动画）。所以记住最后那一档、`show` 单独给 —— 与系统开关那三档同一个做法。
+    var lastKind by remember { mutableStateOf<ConditionKind?>(null) }
+    subKind?.let { lastKind = it }
+    val shownKind = subKind ?: lastKind
+    shownKind?.let { kind ->
         val current = editing?.takeIf { it.kind == kind }?.effectiveValue.orEmpty()
-        BranchValueMenu(BranchValueCtx(kind, current, avail.used, { v -> commit(kind, v) }, { subKind = null }), panelTouch)
+        BranchValuePicker(
+            show = subKind != null,
+            ctx = BranchValueCtx(kind, current, avail.used, { v -> commit(kind, v) }, { subKind = null }),
+        )
     }
 }
 
@@ -151,30 +162,26 @@ private fun SettingsPage.conditionSummaryOf(editing: BranchCondition?): String? 
     editing?.let { condition -> condition.kind?.let { kind -> conditionMenuSummary(kind, condition) { appNameOf(it) } } }
 
 /**
- * 二级那张取值表 —— 独立一层浮层，挂在 [BranchConditionMenu] 里一级菜单的触点上。
+ * 二级：这一档的取值 —— **选择器弹窗**（用户口径：不用第二层菜单来选）。
  *
- *  **顶部小标题写的是「一级里刚点的那一档」**：二级是独立一张菜单，不写这一行的话，它看着与
- *  「独立的一张取值表」没区别（尤其是「开 / 关」这种文字本身不带主语的档）。
+ *  壳用 [SinglePickerDialog] 那一份（与系统开关三档、语言、组合键同一套）：取值这一列每行
+ *  自带一颗字形、用过的档置灰 —— 这两样是 [PickerOption] 带来的，壳本身只有一份。
  *
  * @param ctx 这一层要的那五样（见 [BranchValueCtx]）
- * @param anchor 一级菜单里那一行的触点 —— 二级贴着它弹，两层不抢位置
  */
 @Composable
-private fun SettingsPage.BranchValueMenu(
+private fun SettingsPage.BranchValuePicker(
+    show: Boolean,
     ctx: BranchValueCtx,
-    anchor: PreciseClickState,
 ) {
-    PageMenu(
-        entries =
-            listOf(
-                MenuEntry.Section(
-                    title = conditionKindLabel(ctx.kind),
-                    rows = conditionChoiceRows(ctx.kind, ctx.currentValue, ctx.used, ctx.onPick),
-                ),
-            ),
-        preciseClick = anchor,
+    val rows = conditionChoiceRows(ctx.kind, ctx.currentValue, ctx.used, ctx.onPick)
+    SinglePickerDialog(
+        show = show,
+        title = conditionKindLabel(ctx.kind),
+        options = rows.map { row -> PickerOption(label = row.title, icon = row.icon, enabled = row.enabled) },
+        selectedIndex = rows.indexOfFirst { it.selected },
         onDismiss = ctx.onDismiss,
-        dim = true,
+        onPick = { index -> rows.getOrNull(index)?.onPick?.invoke() },
     )
 }
 

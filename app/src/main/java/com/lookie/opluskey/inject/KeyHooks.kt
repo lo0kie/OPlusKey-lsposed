@@ -14,7 +14,10 @@ import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.HostApp
+import com.lookie.opluskey.core.model.gestureOrNull
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.core.wire.LogWire
@@ -111,15 +114,20 @@ internal object KeyHooks {
                 onGestureNoted = ::noteGesture,
                 // 组合键（两颗键一起按）：判出来就**直接转给宿主执行** —— 动作在
                 //  `ComboKey` 上（短按 / 长按两格），判定侧只负责认档与转发，与单键手势同一分工。
-                onCombo = { combo, gesture, repeat ->
+                onCombo = { combo, trigger, repeat ->
                     noteGesture()
+                    //  日志里那一档动作：松手这一档是**另一个槽位**（`ComboKey.longRelease`），
+                    //  与单键 `actionOf(Release)` 同一条口径。
+                    val shown =
+                        trigger.gestureOrNull()?.let { combo.actionOf(it) }
+                            ?: if (trigger == GestureTrigger.Release) combo.longRelease else Action.None
                     //  连续触发的重复压到 d（release 裁掉）：一次按住会来几十条，W 会把日志淹掉
                     val log =
-                        "组合键：${combo.id}（${combo.keys.joinToString(" + ")}）${gesture.label}" +
+                        "组合键：${combo.id}（${combo.keys.joinToString(" + ")}）${trigger.label}" +
                             "${if (repeat) "（连续触发）" else ""}" +
-                            " → ${XLog.redactToken(combo.actionOf(gesture).token)}"
+                            " → ${XLog.redactToken(shown.token)}"
                     if (repeat) XLog.d(log) else XLog.w(log)
-                    forwarder.forwardCombo(combo.id, gesture, repeat)
+                    forwarder.forwardCombo(combo.id, trigger, repeat)
                 },
             )
         // 主开关翻到「不接管」时撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。

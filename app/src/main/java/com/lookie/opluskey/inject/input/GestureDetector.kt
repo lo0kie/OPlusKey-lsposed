@@ -515,8 +515,10 @@ internal class GestureDetector(
                             XLog.w("${id.label}：长按")
                             dispatch(id, GestureTrigger.LongPress, config, repeat = false)
                             // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
-                            //  四条不许连发的理由（长按那一族 / 多条命令 / 灵感语音 / 松手那两种时序）
-                            //  收在 `KeyConfig.longRepeats` 一处 —— 这里只问「该不该排」。
+                            //  不许连发的理由（松手才触发 / 多条命令 / 灵感语音）收在
+                            //  `KeyConfig.longRepeats` 一处 —— 这里只问「该不该排」。
+                            //  「松手执行额外动作」不在此列：它是抬手那一刻的另一件事，与按住期间
+                            //  重复多少次互不干扰。
                             if (config.longRepeats) scheduleRepeat(id, config)
                         }
                     }
@@ -703,12 +705,13 @@ internal class GestureDetector(
     }
 
     /**
-     * 抬手时收尾一次长按 —— 三种时序在这里分开（它们之间互斥，见 `KeyConfig.longFireOnRelease`）。
+     * 抬手时收尾一次长按 —— 三种时序在这里分开（互斥关系见 `KeyConfig.longFireOnRelease`）。
      *
      *  · 已经**兜底执行过**（UP 丢过）：这一下只清理 —— 不清理会让长按状态漏到下一次按压，
      *    再执行一次就是「一次按压两个动作」；
      *  · 「松手才触发」：到点只标了状态，长按动作放到这一下执行**一次**；
-     *  · 「松手再执行另一个动作」（`releaseBound`）：长按早在按下期间执行过，这一下再补一条 `release`；
+     *  · 「松手执行额外动作」（`releaseBound`）：长按早在按下期间执行过（可能还连发过几轮），
+     *    这一下再补一条 `release`；
      *  · 其余：长按也已执行过，这一下只剩清状态。
      */
     private fun finishLong(

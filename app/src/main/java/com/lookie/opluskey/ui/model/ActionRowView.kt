@@ -100,7 +100,9 @@ private fun boundAppIcon(
  * 行尾那颗箭头（只有抽屉用）：点了去**另一张页面**的给右箭头，点开还有**一层菜单**的给选择器，
  * 点一下就落成一步的不给。
  *
- *  判据用 token / `modeMenu`，不看字形 —— 字形是「画什么」，与「点了去哪」无关。
+ *  判据用 token / `popsSelector`，不看字形 —— 字形是「画什么」，与「点了去哪」无关。
+ *  **不直接问 `modeMenu`**：录屏那一格点开弹的是三行单选**弹窗**（`stateChoices`），不是菜单，
+ *  行尾画选择器等于告诉用户「下面还有一层清单」（用户口径「抽屉的录屏去掉行尾图标」）。
  */
 private fun rowTrailingIcon(spec: ActionCatalog.Spec): ImageVector? =
     when {
@@ -108,7 +110,7 @@ private fun rowTrailingIcon(spec: ActionCatalog.Spec): ImageVector? =
             PageIcons.EnterArrow
         }
 
-        ActionCatalog.modeMenu(spec.token) != null -> {
+        ActionCatalog.popsSelector(spec.token) -> {
             PageIcons.Selector
         }
 

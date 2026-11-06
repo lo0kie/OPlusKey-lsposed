@@ -1,5 +1,8 @@
 package com.lookie.opluskey.ui.screen.command
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -7,7 +10,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -17,13 +26,14 @@ import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.GestureProbe
-import com.lookie.opluskey.ui.IconAction
+import com.lookie.opluskey.ui.ICON_ACTION_SIZE
 import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.gestureProbe
+import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.stepIcon
@@ -34,8 +44,11 @@ import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.replaceStep
 import com.lookie.opluskey.ui.screen.openVarOpsForStep
 import com.lookie.opluskey.ui.state.ResumeSheet
+import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
+import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 
 /** [SerialSteps] 里「开着的是添加命令那一行」的哨兵值（步骤下标从 0 起，撞不上）。 */
@@ -237,6 +250,101 @@ internal fun SettingsPage.SerialSteps() {
 private const val STEP_EXIT_SETTLE_MS = 40L
 
 /**
+ * 排序态行尾三颗按钮之间的间距 —— 4dp。
+ *
+ *  三颗各 32dp 的圆形触达区紧挨着时，两个高亮圈会相切成一条缝，看着像一个控件的三段；
+ *  4dp 足够把三颗读成三个独立按钮，又不至于把「上移 → 下移 → 删除」拆到要跨半行去点。
+ *  行尾槽本身不给间距（库那层只把它们包进一条 `Row`），所以这一档只能由调用点给。
+ */
+private val STEP_BUTTON_GAP = 4.dp
+
+/**
+ * 三颗按钮收紧之后的下限 —— 28dp。
+ *
+ *  再小（24dp 以下）就低于手指能稳点的范围，误触会比「挤一点」更让人恼火。
+ *  真到放不下这一步时，宁可让三颗略微贴边，也不再往下缩。
+ */
+private val STEP_BUTTON_MIN_SIZE = 28.dp
+
+/**
+ * 三颗按钮这一格能用的边长 —— 按**行尾槽给的实际宽度**倒推（理由见 [StepRowButtons]）。
+ *
+ *  可用宽度不足 `3 × 32 + 2 × 间距` 时整体收紧到「三等分扣掉间距」；
+ *  下限 [STEP_BUTTON_MIN_SIZE]，再往下就不缩了（触达区太小反而点不准）。
+ */
+private fun stepButtonSize(available: Dp): Dp {
+    val roomy = ICON_ACTION_SIZE * 3 + STEP_BUTTON_GAP * 2
+    //  还没量出来（首帧，见 [StepRowButtons]）按「放不下」算：先缩一档，量到之后再放开。
+    if (available <= 0.dp) return STEP_BUTTON_MIN_SIZE
+    if (available >= roomy) return ICON_ACTION_SIZE
+    val share = (available - STEP_BUTTON_GAP * 2) / 3
+    return share.coerceIn(STEP_BUTTON_MIN_SIZE, ICON_ACTION_SIZE)
+}
+
+/**
+ * 一颗行尾图标键现在是什么档 —— 只决定**禁用与否**与**用哪一档颜色**（边长由调用方另给）。
+ *
+ *  三档互斥：一颗按钮不会同时又是禁用又是危险项（禁用的删除键不存在，删除恒可用）。
+ *  合成一个枚举而不是两个布尔参数：那个函数的参数一多就过 detekt 的 `LongParameterList`，
+ *  而 `enabled = true, error = false` 这种调用点本来也读不出「这颗是普通键」。
+ */
+private enum class StepButtonTone {
+    /** 普通可用（上移 / 下移在能点的位置上）。 */
+    NORMAL,
+
+    /** 点不动，说清为什么由外层的 [DisabledHint] 负责。 */
+    DISABLED,
+
+    /** 危险项（删除）：走 `error` 通道，与浮层菜单里 `MenuEntry.Row(danger = true)` 同一档。 */
+    DANGER,
+}
+
+/**
+ * 一颗可调边长的行尾图标键 —— 与 [IconAction] 同一套观感（圆形高亮 + 图标居中），
+ * 区别只在**触达区边长由调用方给**。
+ *
+ *  为什么不用 [IconAction]：它的边长写死在 [ICON_ACTION_SIZE]，且注释里明确不给 `modifier`
+ *  （「尺寸自己定死」）。三颗挤在行尾槽里时必须能一起缩，所以在这一处另起一支；
+ *  它只服务「一行里并排好几颗」这一种情形，别处仍是 [IconAction]。
+ *
+ *  边长用 `size()` 而不是库的 `defaultMinSize`：后者只是下限，被父级压窄时照样按内容溢出。
+ */
+@Composable
+private fun StepButton(
+    icon: ImageVector,
+    label: String,
+    size: Dp,
+    tone: StepButtonTone = StepButtonTone.NORMAL,
+    onClick: () -> Unit,
+) {
+    val scheme = COUITheme.colorScheme
+    val color by animateColorAsState(
+        targetValue =
+            when (tone) {
+                StepButtonTone.DISABLED -> scheme.disabledOnSecondaryVariant
+                StepButtonTone.DANGER -> scheme.error
+                StepButtonTone.NORMAL -> scheme.onSurfaceContainer
+            },
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "StepButton",
+    )
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(size),
+        enabled = tone != StepButtonTone.DISABLED,
+        cornerRadius = size / 2,
+    ) {
+        Icon(icon, contentDescription = label, Modifier.size(size * STEP_BUTTON_GLYPH_RATIO), tint = color)
+    }
+}
+
+/**
+ * 图标相对触达区的比例 —— 与 [IconAction] 那一对（32 / 20）同一个数，收紧之后图标跟着缩，
+ * 不会出现「格子小了、图标还是原样」把高亮圈撑满的样子。
+ */
+private const val STEP_BUTTON_GLYPH_RATIO = 0.625f
+
+/**
  * 步骤卡最下面那行「添加命令」—— 同样是通用的 [CardRow.Item]。
  *
  *  满员 / 排序态两档禁用的说法走 `disabledHint`（那一行自己的限制，与 `CardRow.Item` 的读法一致），
@@ -282,6 +390,29 @@ private fun SettingsPage.stepAddRow(
  *  只在排序态出现（见 `CommandDraftState.stepEditing`）：只读态的行尾是空的，换命令靠轻点整行。
  *  首行 / 末行那一颗按 `enabled` 置灰，被点一下时说清为什么 —— 每颗各带一句：外层
  *  「添加命令」那层说的是「最多几步」，套在这里会答错问题。
+ *
+ *  ## 为什么三颗要并成一个 `Row`、还要按可用宽度收格子
+ *
+ *  库的 `BasicComponent` 把行尾槽限在**行宽的六成**（`endHardCap`，见 `.temp/coui-repo` 里
+ *  `Component.kt` 那个 `Layout`），而且槽本身只是一条 `Row`、**不给间距**。三颗 32dp 的触达区
+ *  加起来 96dp、再加两档间距就过了那条上限 —— 被压到槽宽之后每颗的 `defaultMinSize` 都撑不开，
+ *  三颗叠在同一处，图标互相压住，只有最上面那颗点得到（真机口径「行尾图标重叠」）。
+ *
+ *  所以这一格按**实际可用宽度**倒推：先用 [ICON_ACTION_SIZE] 试，放得下就照原样；放不下就按
+ *  `(可用宽 − 两档间距) / 3` 收紧边长（下限 [STEP_BUTTON_MIN_SIZE]，再小就点不准了）。
+ *  三颗一起缩，不会出现「前两颗正常、最后一颗被压扁」。
+ *
+ *  ## 为什么这里**不能**用 `BoxWithConstraints`
+ *
+ *  库在量行尾槽之前会先问一次它的**最大固有宽度**（`Component.kt` 那个 `endMeasurable.maxIntrinsicWidth`，
+ *  用来算 `endHardCap`）。`BoxWithConstraints` 建在 `SubcomposeLayout` 上，而 `SubcomposeLayout`
+ *  被问固有尺寸时直接抛 `IllegalStateException`：「Asking for intrinsic measurements of SubcomposeLayout
+ *  layouts is not supported」。于是只要切进排序态、行尾槽里长出这一格，这一帧量下去就崩
+ *  （真机口径「多条命令的编辑态 crash」）。
+ *
+ *  换成 `Modifier.onSizeChanged` 取同一份宽度：它不参与固有尺寸计算，回调里拿到的就是库按
+ *  `endHardCap` 定下来的**实际**槽宽 —— 与 `maxWidth` 同一个数，却不会在量固有宽度那一步炸掉。
+ *  首帧还没回调时按「放不下」算（[STEP_BUTTON_MIN_SIZE]）：那一帧只有一次极短的收紧，看着不跳。
  */
 @Composable
 private fun SettingsPage.StepRowButtons(
@@ -289,47 +420,68 @@ private fun SettingsPage.StepRowButtons(
     lastIndex: Int,
     tick: () -> Unit,
 ) {
-    //  每一颗被点不动时都说**自己那一句**：外层「添加命令」那层说的是「最多几步」，
-    //  套在这里会答错问题 —— 所以各带一句，投递口在 [DisabledHint]。
-    DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_FIRST, "已经是第一步")) {
-        IconAction(
-            PageIcons.StepUp,
-            I18n.get(Strings.COMMON_MOVE_UP, "上移"),
-            enabled = index > 0,
-        ) {
-            tick()
-            moveStep(index, -1)
-        }
-    }
-    DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_LAST, "已经是最后一步")) {
-        IconAction(
-            PageIcons.StepDown,
-            I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
-            enabled = index < lastIndex,
-        ) {
-            tick()
-            moveStep(index, 1)
-        }
-    }
-    //  删除这颗是**危险项**：颜色走 `IconAction` 的 `error` 通道（与浮层菜单里
-    //  `MenuEntry.Row(danger = true)` 同一档），而不是普通图标的次级色。
-    //  它恒可用，所以不需要 [DisabledHint]（那一支存在的意义是「禁用时说一句」）。
-    IconAction(
-        PageIcons.CommandDelete,
-        I18n.get(Strings.COMMON_DELETE, "删除"),
-        error = true,
+    var slotWidth by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
+    Row(
+        modifier =
+            Modifier.onSizeChanged {
+                val width = with(density) { it.width.toDp() }
+                //  只在这一格真的换了宽度时写回去：否则每帧量下来都是一次 `setValue` ⇒ 重组。
+                if (width != slotWidth) slotWidth = width
+            },
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        tick()
-        // 从 steps 里立即移除（数据层马上正确）；展示层这一行由差分同步标成退场，shrink 完自己摘除。
-        //
-        //  `index` 是**这一次组合**算出来的下标：越界就当场忽略并说清是哪一步 ——
-        //  抛在点击回调里就是宿主页面崩掉。
-        //  动的是**多条那一份**表单（与 `SerialSteps` 同一个口径，不跟 `draft.kind` 走）
-        val steps = commandDraft.draft.serialForm.steps
-        if (index in steps.indices) {
-            steps.removeAt(index)
-        } else {
-            XLog.w("多条命令：要删的第 ${index + 1} 步已经不在（现在共 ${steps.size} 步），这次点击忽略")
+        val size = stepButtonSize(available = slotWidth)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(STEP_BUTTON_GAP),
+        ) {
+            //  每一颗被点不动时都说**自己那一句**：外层「添加命令」那层说的是「最多几步」，
+            //  套在这里会答错问题 —— 所以各带一句，投递口在 [DisabledHint]。
+            DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_FIRST, "已经是第一步")) {
+                StepButton(
+                    icon = PageIcons.StepUp,
+                    label = I18n.get(Strings.COMMON_MOVE_UP, "上移"),
+                    size = size,
+                    tone = if (index > 0) StepButtonTone.NORMAL else StepButtonTone.DISABLED,
+                ) {
+                    tick()
+                    moveStep(index, -1)
+                }
+            }
+            DisabledHint(I18n.get(Strings.TOAST_COMMAND_STEP_LAST, "已经是最后一步")) {
+                StepButton(
+                    icon = PageIcons.StepDown,
+                    label = I18n.get(Strings.COMMON_MOVE_DOWN, "下移"),
+                    size = size,
+                    tone = if (index < lastIndex) StepButtonTone.NORMAL else StepButtonTone.DISABLED,
+                ) {
+                    tick()
+                    moveStep(index, 1)
+                }
+            }
+            //  删除这颗是**危险项**：颜色走 `error` 通道（与浮层菜单里 `MenuEntry.Row(danger = true)`
+            //  同一档），而不是普通图标的次级色。
+            //  它恒可用，所以不需要 [DisabledHint]（那一支存在的意义是「禁用时说一句」）。
+            StepButton(
+                icon = PageIcons.CommandDelete,
+                label = I18n.get(Strings.COMMON_DELETE, "删除"),
+                size = size,
+                tone = StepButtonTone.DANGER,
+            ) {
+                tick()
+                // 从 steps 里立即移除（数据层马上正确）；展示层这一行由差分同步标成退场，shrink 完自己摘除。
+                //
+                //  `index` 是**这一次组合**算出来的下标：越界就当场忽略并说清是哪一步 ——
+                //  抛在点击回调里就是宿主页面崩掉。
+                //  动的是**多条那一份**表单（与 `SerialSteps` 同一个口径，不跟 `draft.kind` 走）
+                val steps = commandDraft.draft.serialForm.steps
+                if (index in steps.indices) {
+                    steps.removeAt(index)
+                } else {
+                    XLog.w("多条命令：要删的第 ${index + 1} 步已经不在（现在共 ${steps.size} 步），这次点击忽略")
+                }
+            }
         }
     }
 }

@@ -24,16 +24,16 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
  * @param repeatBlockedReason 非 null ⇒ 只有「连续触发」那一族置灰：这一档的长按动作**自己**不支持
  *   连发（多条命令 / 灵感语音）。它**不连坐**时序两行与长按延迟 —— 那三项跟连不连发无关
  * @param onInterval / @param onPressMs 返回 `false` ⇒ 这一档没落盘（滑杆拨回真实值）
- * @param fireOnRelease 「松手才触发」—— 长按动作本身等抬手才执行（与连续触发、松手再加动作互斥）
+ * @param fireOnRelease 「松手才触发」—— 长按动作本身等抬手才执行（与连续触发、松手执行额外动作互斥）
  * @param onFireOnReleaseToggle 拨「松手才触发」
  * @param releaseSupported 这一页的判定侧有没有「松手」这条通道 —— 两行都靠它（组合键那一页没有，
  *   见 `ComboLongCard` 的说明），没有就**一行都不画**：摆一个拨了没反应的开关比没有更糟
- * @param releaseOn 开关；为真时下面滑入「松手动作」那一行
+ * @param releaseOn 开关；为真时下面滑入「额外动作」那一行
  * @param releaseLabel 已配的动作名；`null` = 还没配（副标题写「未设置」）
  * @param releaseBound 松手那一档此刻**真的有事可做** —— 直接递 `KeyConfig.releaseBound`，
- *   界面不重算这条规则（三条时序的互斥只在数据层有一份，见 `KeyConfig.longOnReleaseTiming`）
+ *   界面不重算这条规则（互斥只在数据层有一份，见 `KeyConfig.releaseBound`）
  * @param onReleaseToggle 拨开关
- * @param onReleasePick 点「松手动作」那一行：打开动作清单
+ * @param onReleasePick 点「额外动作」那一行：打开动作清单
  */
 @Suppress("LongParameterList")
 internal class LongPressSpec(
@@ -43,7 +43,7 @@ internal class LongPressSpec(
     val pressMs: Int,
     val fireOnRelease: Boolean,
     val releaseSupported: Boolean,
-    /** 「松手后再执行」的开关 —— 为真时下面滑入「松手动作」那一行。 */
+    /** 「松手执行额外动作」的开关 —— 为真时下面滑入「额外动作」那一行。 */
     val releaseOn: Boolean,
     val releaseLabel: String?,
     val releaseBound: Boolean,
@@ -61,14 +61,15 @@ internal class LongPressSpec(
 )
 
 /**
- * 三档时序的**互斥结论** —— 哪一行亮、哪一行灰、灰着那一行说什么，只在这里算一次。
+ * 长按这一档的**置灰结论** —— 哪一行亮、哪一行灰、灰着那一行说什么，只在这里算一次。
  *
- * 为什么单开一个类而不是写在卡片里：三个开关互相牵制（松手才触发 ⇄ 松手后再执行 ⇄ 连续触发），
- * 只有**一条时序能占着**；写在一处才看得出这件事，卡片自己只管把它们摆成行。
+ * 为什么单开一个类而不是写在卡片里：两个时序开关互相牵制（松手才触发 ⇄ 松手执行额外动作），
+ * 写在一处才看得出这件事，卡片自己只管把它们摆成行。连续触发那一族只被「松手才触发」挡着 ——
+ * 与「松手执行额外动作」是同一按的两个阶段，可以同时开着。
  * `enabled = false` 的行不给 `disabledHint` —— 那时该说的是**整页**为什么改不了（链路 / 只读），
  * 不是这一行自己的事。
  *
- * 判据与数据侧同一口径（见 `KeyConfig.releaseBound` / `longOnReleaseTiming`）：**那条规则不在
+ * 判据与数据侧同一口径（见 `KeyConfig.releaseBound`）：**那条规则不在
  * 这里重算** —— `releaseBound` 由调用点从配置里取来递进 `LongPressSpec`，这一层只负责把它翻译成
  *  「哪一行灰 / 灰着说什么」。
  */
@@ -81,22 +82,22 @@ private class LongPressGates(
     /** 「松手才触发」能不能拨 —— 松手那一档占着时它得让位（先关掉那个）。 */
     val fireEnabled: Boolean = spec.enabled && !releaseBound
 
-    /** 「松手后再执行」能不能拨 —— 「松手才触发」开着时它没有意义。 */
+    /** 「松手执行额外动作」能不能拨 —— 「松手才触发」开着时它没有意义。 */
     val releaseEnabled: Boolean = spec.enabled && !spec.fireOnRelease
 
-    /** 连续触发那一族能不能点 —— 三种情形：整张卡被闸住 / 时序被占着 / 动作本身不支持连发。 */
+    /** 连续触发那一族能不能点 —— 三种情形：整张卡被闸住 / 「松手才触发」占着时序 / 动作本身不支持连发。 */
     val repeatEnabled: Boolean =
-        spec.enabled && !spec.fireOnRelease && !releaseBound && spec.repeatBlockedReason == null
+        spec.enabled && !spec.fireOnRelease && spec.repeatBlockedReason == null
 
     /** 「松手才触发」灰着被点一下时的说法（`null` = 用整页那句）。 */
     val fireHint: String? =
         if (spec.enabled && releaseBound) {
-            I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE, "先关掉「松手后再执行」")
+            I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE, "先关掉「松手执行额外动作」")
         } else {
             null
         }
 
-    /** 「松手后再执行」灰着被点一下时的说法。 */
+    /** 「松手执行额外动作」灰着被点一下时的说法。 */
     val releaseHint: String? =
         if (spec.enabled && spec.fireOnRelease) {
             I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE, "长按已经改成松手才触发")
@@ -105,18 +106,15 @@ private class LongPressGates(
         }
 
     /**
-     * 连续触发那一族的副标题 / 置灰原因 —— 有**四个来源**，按「越靠前越该先看到」排：整张卡的原因、
-     * 占着时序的那一位、动作本身不支持连发（[LongPressSpec.repeatBlockedReason]）。
+     * 连续触发那一族的副标题 / 置灰原因 —— 有三个来源，按「越靠前越该先看到」排：整张卡的原因、
+     * 「松手才触发」、动作本身不支持连发（[LongPressSpec.repeatBlockedReason]）。
+     * 「松手执行额外动作」**不在**其中：它与连续触发不冲突（见 [LongPressGates] 的类注释）。
      */
     val repeatBlocked: String? =
         spec.blockedReason
             ?: when {
                 spec.fireOnRelease -> {
                     I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_REPEAT, "松手才触发，连续触发不生效")
-                }
-
-                releaseBound -> {
-                    I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_REPEAT, "配了松手动作，连续触发不生效")
                 }
 
                 else -> {
@@ -126,15 +124,16 @@ private class LongPressGates(
 }
 
 /**
- * 「长按」那一档的**唯一**一张卡：松手才触发 + 松手后再执行（+ 松手动作）+ 长按连续触发
+ * 「长按」那一档的**唯一**一张卡：松手才触发 + 松手执行额外动作（+ 额外动作）+ 长按连续触发
  * （+ 连续触发时振动 + 触发间隔）+ 长按延迟。
  *
  *  行序：**「松手才触发」在最上面**（它管的是「什么时候执行」，下面两族管的是「执行几次 /
- *  松手还做不做别的」）；紧跟「松手后再执行」那一族，再是「长按连续触发」那一族；
+ *  松手还做不做别的」）；紧跟「松手执行额外动作」那一族，再是「长按连续触发」那一族；
  *  「长按延迟」落到最后一行。
  *
- *  三种时序只能占一种：开了「松手才触发」，连发与「松手后再执行」都**置灰但保留**
+ *  「松手才触发」与另外两族互斥：开着它，连发与「松手执行额外动作」都**置灰但保留**
  *  （用户口径：不要藏起来）—— 藏掉等于让人以为自己没配过它，而它只是这一刻不生效；值也原样留着。
+ *  「松手执行额外动作」与「长按连续触发」**不互斥**：按住期间照常连发，松手再补一条。
  */
 @Composable
 internal fun SettingsPage.LongPressSettingsCard(spec: LongPressSpec) {
@@ -182,7 +181,7 @@ private fun timingRows(
     }
 
 /**
- * 「松手后再执行」那一族：一个开关 + 开关为真时滑入的「松手动作」一行。
+ * 「松手执行额外动作」那一族：一个开关 + 开关为真时滑入的「额外动作」一行。
  *
  *  开关与动作分开（见 `KeyConfig.longReleaseOn`）：开着但还没挑动作是合法状态 —— 松手什么都不做。
  *  子行走 `visible`，所以它是**滑入**（连分隔线一起），不是"啪"地出现。
@@ -196,7 +195,7 @@ private fun releaseRows(
     } else {
         listOf(
             CardRow.Switch(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE, "松手后再执行"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE, "松手执行额外动作"),
                 summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_ON, "松手时再执行一个动作"),
                 summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_DESC_OFF, "松手不再执行别的"),
                 icon = PageIcons.LongRelease,
@@ -206,7 +205,7 @@ private fun releaseRows(
                 onCheckedChange = spec.onReleaseToggle,
             ),
             CardRow.Item(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_ACTION, "松手动作"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_ACTION, "额外动作"),
                 summary =
                     spec.releaseLabel
                         ?: I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_EMPTY, "未设置（松手不做事）"),

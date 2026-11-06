@@ -225,7 +225,7 @@ internal class StepSheetFilter(
      * 这一次**不列**「选择应用」「自定义变量」那两格**关卡**（`true` = 不列）。
      *
      *  那两格不是「落一步」，而是「换一页去挑」。有些来处没有那条去路 —— 例如长按卡里的
-     *  「松手后再执行」：它只写一个动作字段，不经过挑应用 / 挑变量那两页。列出来等于让人点一下
+     *  「松手执行额外动作」：它只写一个动作字段，不经过挑应用 / 挑变量那两页。列出来等于让人点一下
      *  抽屉关门、什么都不发生。
      */
     val excludeTiles: Boolean = false,
@@ -317,13 +317,15 @@ internal fun SettingsPage.StepPickerSheet(
                 if (!sheet.filter.excludeTiles) {
                     base
                 } else {
-                    //  这一趟没有「挑应用 / 挑变量」那两条去路（见 `StepSheetFilter.excludeTiles`）；
-                    //  `APP_CONTROL_TILE` 也剔 —— 抽屉里那一行现在就是它（与网格同一张表）
+                    //  这一趟没有「挑变量」那条去路（见 `StepSheetFilter.excludeTiles`）：
+                    //  变量那一格剔掉，点了只会关抽屉、什么都不发生。
+                    //  「应用控制」**留着** —— 额外动作也能挑应用 / 组件 / 快捷方式
+                    //  （写回见 `PickTarget.Release`）；它旁边那个 `APP_TILE`（「选择应用」）
+                    //  是同一件事的另一个入口，留一个就够。
                     base.map { (groupTitle, specs) ->
                         groupTitle to
                             specs.filter {
                                 it.token != ActionCatalog.APP_TILE &&
-                                    it.token != ActionCatalog.APP_CONTROL_TILE &&
                                     it.token != ActionCatalog.VARS_TILE
                             }
                     }
@@ -645,8 +647,9 @@ private fun stepSheetRow(
         title = view.title,
         // 标题下面那行小字 = **当前绑的是什么**，只在这一行正是当前那一档时才有内容
         summary = view.subtitle,
-        //  **当前这一步**那一行：行首那颗换成对勾、整行上主题色（与浮层菜单的选中态同一套）
-        icon = if (view.selected) PageIcons.MenuCheck else view.icon,
+        //  **当前这一步**那一行：行首**保留这一档自己的字形**（换成对勾的话，「当前是哪个」
+        //  与「这一行是什么」就只剩颜色能分，扫一列下来全是对勾），选中只由主题色说。
+        icon = view.icon,
         //  未选中时给 `null`，让行组件按启用态走默认那档灰
         iconTint = if (view.selected) colors.primary else null,
         titleTint = if (view.selected) colors.primary else null,

@@ -4,7 +4,7 @@ import android.os.Handler
 import android.os.SystemClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import java.util.concurrent.ConcurrentHashMap
@@ -90,7 +90,7 @@ internal class ComboDetector(
      *
      *  `repeat` 与单键那条 `onGesture` 的第三位同义：重复派发不再振动、不再报活（那是同一次按压）。
      */
-    private val onCombo: (ComboKey, Gesture, Boolean) -> Unit,
+    private val onCombo: (ComboKey, GestureTrigger, Boolean) -> Unit,
     /** 摘掉某颗键的单键计时器（组合成立时用，见类注释）。 */
     private val resetKey: (KeyId) -> Unit,
     /**
@@ -348,7 +348,18 @@ internal class ComboDetector(
             // 组合结束：没判过长按 ⇒ 这一次是「一起短按」（取消的那一档不派发）
             if (short && !c.longFired) {
                 XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 短按（先松开 ${id.label}）")
-                fire(c, Gesture.SINGLE, repeat = false)
+                fire(c, GestureTrigger.Click(1), repeat = false)
+            } else if (c.longFired) {
+                //  长按已经判出来过：这一下按那颗键自己的「松手」两档收尾（与单键同一条口径）——
+                //  · 松手才触发：到点只标了状态，动作放到这一下执行一次；
+                //  · 松手执行额外动作：按住期间已经执行过，这一下再补一条。
+                if (c.key.longFireOnRelease) {
+                    XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 长按（松手才触发）")
+                    fire(c, GestureTrigger.LongPress, repeat = false)
+                } else if (c.key.releaseBound) {
+                    XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 长按松手（${c.key.longRelease.token}）")
+                    fire(c, GestureTrigger.Release, repeat = false)
+                }
             }
             cancelLong(c)
             cancelRepeat(c)
@@ -397,12 +408,15 @@ internal class ComboDetector(
                         "组合键：${c.keys.joinToString(" + ") { it.label }} 长按" +
                             "（${SystemClock.elapsedRealtime() - startedAt}ms，阈值 ${c.key.longPressMs}ms）",
                     )
-                    fire(c, Gesture.LONG, repeat = false)
+                    //  「松手才触发」这一档到点**不动手**：动作放到抬手那一下执行（见 `onUp`）。
+                    if (!c.key.longFireOnRelease) fire(c, GestureTrigger.LongPress, repeat = false)
                     // 「长按连续触发」：两颗键一起按住不放就一直重来。
                     //  串行命令（`cmd:` 指多条命令）与灵感语音那两档不连发 —— 与单键那条同一条判据，
                     //  但组合这边**不做这两档的过滤**：组合动作里串行命令重复重放与单键一样没意义，
                     //  而判定侧读不到命令库（`longIsSerial` 只在单键广播里由发送侧现算）。
-                    if (c.key.longRepeat) scheduleRepeat(c)
+                    //  「松手才触发」时不连发：动作要等到抬手才执行，按住期间重放等于把同一件事
+                    //  排了几十遍（与单键那三条时序的互斥同一条口径）。
+                    if (c.key.longRepeat && !c.key.longFireOnRelease) scheduleRepeat(c)
                 } catch (e: Throwable) {
                     // 这一枪跑在 system_server 主线程上，抛出去就是整机崩
                     XLog.w("组合键长按判定失败（忽略）：${e.javaClass.simpleName}", e)
@@ -444,7 +458,7 @@ internal class ComboDetector(
                         c.repeatShot = null
                         return@Runnable
                     }
-                    fire(c, Gesture.LONG, repeat = true)
+                    fire(c, GestureTrigger.LongPress, repeat = true)
                     scheduleRepeat(c)
                 } catch (e: Throwable) {
                     XLog.w("组合键连续触发失败（已停止）：${e.javaClass.simpleName}", e)
@@ -461,11 +475,11 @@ internal class ComboDetector(
 
     private fun fire(
         c: Combo,
-        gesture: Gesture,
+        trigger: GestureTrigger,
         repeat: Boolean,
     ) {
         try {
-            onCombo(c.key, gesture, repeat)
+            onCombo(c.key, trigger, repeat)
         } catch (e: Throwable) {
             // 输入线程上抛异常会把 system_server 带崩
             XLog.w("组合键派发失败（已忽略）：${e.javaClass.simpleName}", e)

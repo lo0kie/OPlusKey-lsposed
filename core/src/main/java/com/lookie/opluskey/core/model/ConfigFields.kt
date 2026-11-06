@@ -54,10 +54,10 @@ object ConfigFields {
     const val REPEAT_INTERVAL_MS_EXTRA = "long_repeat_interval_ms"
 
     /**
-     * 「松手后再触发」（`KeyConfig.longRelease`）—— 判出长按的那一刻**不执行**，抬手时才执行。
+     * 「松手执行额外动作」（`KeyConfig.longRelease`）—— 长按照旧到点执行，抬手那一刻**再**执行这一档。
      *
-     *  只影响「什么时候派发」，不改长按阈值：到点那一刻它仍然把这一按标成「长按」，
-     *  只是把派发推到抬手（`GestureDetector.onKeyUp` 那一支）。
+     *  不改长按阈值、也不改长按本身的派发时机：它只是给「这一按已经判成长按」的抬手补一个动作
+     *  （`GestureDetector.finishLong` 那一支）。
      */
     const val LONG_RELEASE_EXTRA = "long_release"
 
@@ -175,7 +175,7 @@ object ConfigFields {
     val F_LONG_REPEAT = Field(LONG_REPEAT_EXTRA, Kind.Bool(false))
 
     /**
-     * 「松手后再执行」的**开关**（`KeyConfig.longReleaseOn`）—— 打开时才在下面露出「松手动作」那一行。
+     * 「松手执行额外动作」的**开关**（`KeyConfig.longReleaseOn`）—— 打开时才在下面露出「额外动作」那一行。
      *
      *  与动作分两位：开关打开、动作还没挑时是「开着但没设置」，此时松手什么都不做；若把「有没有动作」
      *  直接当开关，用户在开关上点一下就会立刻执行一个他没挑过的动作。
@@ -183,23 +183,23 @@ object ConfigFields {
     const val LONG_RELEASE_ON_EXTRA = "long_release_on"
 
     /**
-     * 「松手后再执行」（`KeyConfig.longRelease`）—— 长按**之后松手**那一刻执行的另一个动作。
+     * 「松手执行额外动作」（`KeyConfig.longRelease`）—— 长按**之后松手**那一刻执行的另一个动作。
      *
      *  默认 `none`（无操作）= 与这一位出现之前一致：判定侧不会发那一条松手广播。
-     *  与 [F_LONG_REPEAT] 互斥（配了它时连续触发不生效，界面只置灰、不改值），
-     *  判定侧的判据见 `GestureDetector`。
+     *  与 [F_LONG_REPEAT] **不冲突**（按住期间照常连续触发，松手再执行这一档）；
+     *  只与「松手才触发」互斥。判定侧的判据见 `GestureDetector`。
      */
     val F_LONG_RELEASE = Field(LONG_RELEASE_EXTRA, Kind.Text(Action.NONE))
 
-    /** 「松手后再执行」的开关（见 [LONG_RELEASE_ON_EXTRA]）。 */
+    /** 「松手执行额外动作」的开关（见 [LONG_RELEASE_ON_EXTRA]）。 */
     val F_LONG_RELEASE_ON = Field(LONG_RELEASE_ON_EXTRA, Kind.Bool(false))
 
     /**
      * 「松手才触发」（`KeyConfig.longFireOnRelease`）—— 长按动作本身**等抬手才执行**。
      *
-     *  与「长按连续触发」「松手后再执行」三者互斥：它们描述的是同一件事（长按这一档的时序），
-     *  同时开着没法定义「到底哪一下执行什么」。判定侧只读 `KeyConfig.longRepeats`（经
-     *  `longOnReleaseTiming` 把它算进去）与 `KeyConfig.releaseBound` 这两位。
+     *  与「长按连续触发」「松手执行额外动作」互斥：它描述的是长按这一档的时序本身，
+     *  同时开着没法定义「到底哪一下执行什么」。判定侧只读 `KeyConfig.longRepeats` 与
+     *  `KeyConfig.releaseBound` 这两位（都把它排除在外）。
      */
     const val LONG_FIRE_ON_RELEASE_EXTRA = "long_fire_on_release"
 

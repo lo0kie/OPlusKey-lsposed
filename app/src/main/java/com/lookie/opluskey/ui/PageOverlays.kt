@@ -23,7 +23,7 @@ import com.lookie.opluskey.core.model.Command
  *  ## 几样「问一句」的开关
  *
  *  [confirmReset] / [confirmResetModule] / [confirmRestart] / [confirmLeaveCommands] /
- *  [confirmLeaveEdit] / [pendingDraftLoad] 都是「要不要弹一张确认窗」，
+ *  [confirmLeaveEdit] / [confirmLeavePick] / [pendingDraftLoad] 都是「要不要弹一张确认窗」，
  *  但问的是不同的事，**不能合并**：
  *   · [confirmReset] —— 重置配置（由「更多选项 → 切换配置」菜单或调试通道置位）；
  *   · [confirmResetModule] —— 重置模块（由首页 `⋮` 菜单置位，范围比上面那个大：连变量表一起清）；
@@ -31,6 +31,8 @@ import com.lookie.opluskey.core.model.Command
  *   · [confirmLeaveCommands] —— 退不退页（表单改过还没保存时由 [SettingsPage.goBack] 置位）；
  *   · [confirmLeaveEdit] —— 退不退**编辑态**（「按键功能」页里由 [SettingsPage.goBack] 置位，
  *     那一退不离开页面）；
+ *   · [confirmLeavePick] —— 退不退「选择应用」页（这一趟挑中过一条却还没提交时由
+ *     [SettingsPage.goBack] 置位）；
  *   · [pendingDraftLoad] —— 换不换内容（要载入另一条命令时由 [SettingsPage.loadDraft] 置位，
  *     存的是**待载入的那一条**，不是布尔）。
  *
@@ -98,6 +100,16 @@ internal class PageOverlays {
      *  一边的话跑到另一边去。
      */
     var confirmLeaveEdit by mutableStateOf(false)
+
+    /**
+     * 「选择应用」页这一趟已经挑中、但还没提交，用户却要退页 —— 待确认。
+     * 触发点是 [SettingsPage.goBack]（`picker.draft` 非空时置位并**拦住不退**），
+     * 窗由「选择应用」页自己画（`AppPickerDialogs`）。
+     *
+     *  与 [confirmLeaveCommands] 分开：那个问的是「命令草稿会不会丢」，这个问的是
+     *  「这一趟挑中的那个应用要不要留下」—— 两件事的正文与按钮文案都不同。
+     */
+    var confirmLeavePick by mutableStateOf(false)
 
     /**
      * 「表单里有没保存的改动，但用户要换成另一条命令」—— 待确认的那一条（`null` = 没在弹）。

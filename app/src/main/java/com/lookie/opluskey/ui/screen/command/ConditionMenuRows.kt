@@ -46,9 +46,11 @@ internal fun conditionKindRows(
             disabledHint = I18n.get(Strings.COMMAND_BRANCH_DUPLICATE, "这个场景已经加过了"),
             // 这一条现在是这一档 ⇒ 画成选中（行首对勾 + 文字主题色）
             selected = kind == current,
-            // 每一行点下去都还有下一层（跳页面 / 弹二级取值）—— 行尾那格一律留出
-            submenu = true,
-            trailingIcon = if (kind == ConditionKind.APP) PageIcons.EnterArrow else PageIcons.Selector,
+            //  行尾**不画选择器**：点下去弹的是选择器弹窗（不是另一层菜单），行尾那枚
+            //  「还有一层」的字形会读成「这里会再弹一张菜单」。
+            //  「前台应用」仍是进另一页挑应用，那一枚右箭头留着。
+            submenu = kind == ConditionKind.APP,
+            trailingIcon = if (kind == ConditionKind.APP) PageIcons.EnterArrow else null,
         ) {
             // 「前台应用」先去挑是哪个应用（进另一页）、「时间区间」弹时间窗 —— 这两档都没有
             //  可列的候选；其余每一档都开二级选值。

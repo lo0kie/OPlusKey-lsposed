@@ -153,7 +153,9 @@ private data class ActivationPalette(
  *  · **只有底色与水印跟着强调色**（Monet 下字色与提示图标也是掺出来的）：非 Monet 那套是
  *    「固定中性底 + 一支预设强调色」，字再掺色就成了浅灰卡上写一行蓝字 —— 用户口径是那一档
  *    不要走 Monet 的配色，所以字色与提示图标改取主题的正文色（标题全值、说明压到
- *    [ACTIVATION_DETAIL_PLAIN_ALPHA]，详见 [paletteOf] 的返回处）。
+ *    [ACTIVATION_DETAIL_PLAIN_ALPHA]，详见 [paletteOf] 的返回处）。反过来，那一套的底色
+ *    要比 Monet 更深一些才让人一眼分得出状态 —— 字里不再有色相，色相全压在这一层（见
+ *    [MIX_PLAIN_LIGHT]）。
  *
  * ## 中性两档（已关闭 / 检查中）—— **不染色**
  *
@@ -315,17 +317,19 @@ private const val ACTIVATION_NEUTRAL_MARK_ALPHA = 0.10f
  * 卡片底色里掺多少强调色 —— **Monet 与非 Monet 两套数**，因为两套色板的「底」不是一个起点。
  *
  *  · **Monet**：`surfaceContainer` 本身就带一层壁纸的色相，掺 8% 已经看得出是「有颜色的卡」；
- *    再高整块就偏深（真机口径「底色颜色太深了」）。
- *  · **非 Monet**：底是 COUI 那套中性灰白，一点色相都没有 —— 同样 8% 掺出来是「灰里透一点蓝」，
- *    饱和度低到看不出这是强调色（真机口径「非 monet 下饱和度太低」）。这一档要 16%。
+ *    再高整块就偏深（真机口径「底色颜色太深了」）。这一档不动。
+ *  · **非 Monet**：底是 COUI 那套中性灰白，一点色相都没有 —— 掺进去的色相要先把它「染出来」，
+ *    才谈得上浓淡。这一档早先按 Monet 的 8% 试过（那是「灰里透一点蓝」），16% 也只到
+ *    「看得出是强调色的卡片」，在真机上仍是**浅灰卡**（用户口径「非 monet 下首页卡片底色太淡」）：
+ *    底色一淡，右上角那颗水印与卡里那两行字就成了这一块唯一的重量，整张卡读起来是「浮」的。
+ *    现在提到 26% —— 那是「一眼认得出这是开启 / 关闭状态的卡」的那一格；再往上（三成以上）
+ *    浅色档开始往强调色的中间调走，白底上的正文对比掉下来，所以停在这里。
  *  · 深色档各再提一档：同一个比例在深色底上明显更淡，不提那块「卡」就散了。
- *
- *  下限：Monet 8% / 非 Monet 16% 都已是「再低就与普通卡片分不出来」的那一格。
  */
 private const val MIX_MONET_LIGHT = 0.08f
 private const val MIX_MONET_DARK = 0.14f
-private const val MIX_PLAIN_LIGHT = 0.16f
-private const val MIX_PLAIN_DARK = 0.24f
+private const val MIX_PLAIN_LIGHT = 0.26f
+private const val MIX_PLAIN_DARK = 0.34f
 
 /**
  * 标题（状态大字）的字色混合比例 —— 强调色往 `onSurfaceContainer` 只拉一成半。

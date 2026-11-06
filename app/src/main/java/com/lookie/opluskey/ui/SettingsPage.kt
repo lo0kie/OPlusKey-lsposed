@@ -171,7 +171,8 @@ internal class SettingsPage(
      *   · 浮层开着 ⇒ COUI 的浮层自己不接返回，喂进去没人消费，最后仍是页面栈弹
      *     （表现为「浮层盖着、底下页面跟着手指滑」）；
      *   · 「按键功能」页的**编辑态**（见下）；
-     *   · 注意：**这一退会被 [goBack] 拦住**（「自定义命令」页草稿改过 ⇒ 先弹「放弃未保存的命令」）：
+     *   · 注意：**这一退会被 [goBack] 拦住**（「自定义命令」页草稿改过 ⇒ 先弹「放弃未保存的命令」；
+     *     「选择应用」页挑中过一条还没提交 ⇒ 先弹「放弃这次选择」）：
      *     库的提交是 `onCommit = { currentOnBack.value() }`，**弹栈交给 [goBack]** —— 接管了就等于
      *     页面先滑走、栈却没弹，页面停在滑出去的位置回不来。判据与 [goBack] 那条**同一份**，一起改。
      */
@@ -190,7 +191,8 @@ internal class SettingsPage(
         if (inCommandsEdit()) return false
         return navStack.size > 1 &&
             overlays.openCount.intValue == 0 &&
-            !hasUnsavedDraft(screen)
+            !hasUnsavedDraft(screen) &&
+            !hasUnconfirmedPick(screen)
     }
 
     /** 「按键功能」页现在是不是编辑态 —— [goBack] 与 [wouldConsumeBack] 共用这一条判据。 */
@@ -412,15 +414,48 @@ internal class SettingsPage(
         // 命令表单页（「自定义命令」/「条件执行」）：**各自那份**草稿改过还没保存 ⇒ 不退，先问一句。
         //  判据用 `draft.dirty`（与载入时的快照比），不是 `hasContent` ——
         //  后者会把「点开一条看一眼、原样返回」也算成有改动。
-        if (hasUnsavedDraft(current)) {
-            if (!overlays.confirmLeaveCommands) {
-                XLog.w("退出命令编辑页（${current.name}）：表单改过还没保存，先弹确认")
-                overlays.confirmLeaveCommands = true
-            }
-            return true
+        //  「选择应用」页那一趟已经挑过、还没按右下角那颗提交 ⇒ 同一套账：这一退会把草稿连同
+        //  这一趟挑的整个丢掉。判据见 [hasUnconfirmedPick]（进页看一眼就回来的那一趟拦不住）。
+        //  两支并成一处判：`goBack` 的 `return` 额度已经被上面那两个编辑态占去两条，再各写一支
+        //  就过 detekt 的 `ReturnCount`；而这两张窗本来就只差「哪一张」。
+        return when {
+            hasUnsavedDraft(current) -> blockForDraftConfirm(current)
+            hasUnconfirmedPick(current) -> blockForPickConfirm()
+            else -> popBackStack()
         }
-        return popBackStack()
     }
+
+    /**
+     * 「命令表单页草稿改过」那一支：把「放弃未保存的命令」支起来并**拦住这一退**。
+     *
+     *  抽成一支只为让 [goBack] 里每张窗各占一行 —— 那里每多一个 `return` 就离 detekt 的
+     *  `ReturnCount` 上限近一步，而两支的骨架本来就一模一样（判据不同而已）。
+     */
+    private fun blockForDraftConfirm(s: Screen): Boolean {
+        if (!overlays.confirmLeaveCommands) {
+            XLog.w("退出命令编辑页（${s.name}）：表单改过还没保存，先弹确认")
+            overlays.confirmLeaveCommands = true
+        }
+        return true
+    }
+
+    /** [blockForDraftConfirm] 的同款，换「选择应用」页那一张（挑中过一条但还没提交）。 */
+    private fun blockForPickConfirm(): Boolean {
+        if (!overlays.confirmLeavePick) {
+            XLog.w("退出选择应用页：挑中过一条但还没提交，先弹确认")
+            overlays.confirmLeavePick = true
+        }
+        return true
+    }
+
+    /**
+     * 「选择应用」页这一趟**挑中了却没提交**吗 —— [goBack] 与 [wouldConsumeBack] 共用这一条判据。
+     *
+     *  草稿只由二级页点确认写（见 `PageEntry.onDraftPicked`），提交在右下角那颗 FAB 上；
+     *  两者之间这一段就是「user 已经做过选择、但还没落盘」的窗口。草稿在每次进页时被
+     *  `AppPickerUiState.beginVisit` 清掉，所以看见非 null 就一定属于这一趟。
+     */
+    private fun hasUnconfirmedPick(s: Screen): Boolean = s == Screen.APP_PICKER && picker.draft != null
 
     /**
      * 「按键功能」页的编辑态里按返回：一项都没勾就直接退出，勾了就先把那一问支起来。

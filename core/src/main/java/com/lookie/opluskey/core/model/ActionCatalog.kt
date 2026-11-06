@@ -225,20 +225,21 @@ object ActionCatalog {
     const val SCREEN_RECORD_TILE = "ai:screen_record"
 
     /**
-     * 「录屏」那三档：开始 / 结束 / 切换，顺序即弹窗行序。
+     * 「录屏」那三档：**切换 / 开始 / 结束**，顺序即弹窗行序。
      *
-     *  「切换」就是原来那一档（宿主按进程内记账翻面）：单绑一档手势时它最顺手；
-     *  拆出开始 / 结束之后，想「一键只开始」「一键只停」也有地方放 —— 前者给同一个界面、
-     *  不登记停止广播，后者只发那条停止广播（见 `RomProfile.BuiltIn`）。
+     *  「切换」就是原来那一档（宿主按进程内记账翻面）：单绑一档手势时它最顺手，所以排在
+     *  最上面（用户口径「录屏三态选择器的切换移到最上面」）；拆出开始 / 结束之后，想
+     *  「一键只开始」「一键只停」也有地方放 —— 前者给同一个界面、不登记停止广播，
+     *  后者只发那条停止广播（见 `RomProfile.BuiltIn`）。
      *
      *  **不带 `glyph`**：三行只在那个单选弹窗里露面，而弹窗是纯文字行（见 `SinglePickerDialog`）——
      *  给一条用不上的字形，等于让下一个人以为菜单层还画图标。
      */
     val SCREEN_RECORD_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.COMMON_START, token = SCREEN_RECORD_START),
-            Spec(name = Strings.COMMON_STOP, token = SCREEN_RECORD_STOP),
-            Spec(name = Strings.CATALOG_MODE_TOGGLE, token = SCREEN_RECORD),
+            Spec(name = Strings.CATALOG_SCREEN_RECORD_TOGGLE, token = SCREEN_RECORD),
+            Spec(name = Strings.CATALOG_SCREEN_RECORD_START, token = SCREEN_RECORD_START),
+            Spec(name = Strings.CATALOG_SCREEN_RECORD_STOP, token = SCREEN_RECORD_STOP),
         )
 
     /** 屏幕翻译（侧边栏那一项）：起 ColorOS 翻译的前台服务，屏上出翻译胶囊。 */

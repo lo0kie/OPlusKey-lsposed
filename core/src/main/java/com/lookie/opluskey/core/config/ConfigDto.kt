@@ -164,7 +164,7 @@ internal data class KeyDto(
     /** 连续触发时是否每一次重复都振动（关 = 只在长按那一下振一次）。 */
     val longRepeatVibrate: Boolean = false,
     /**
-     * 「松手后再执行」—— 长按之后松手那一刻要执行的**另一个**动作（动作 token，与长按那档分开）。
+     * 「松手执行额外动作」—— 长按之后松手那一刻要执行的**另一个**动作（动作 token，与长按那档分开）。
      *
      *  老文件没有这一格 ⇒ `none`（无操作）⇒ 行为与这一项出现之前完全一致，不需要迁移。
      *
@@ -175,9 +175,9 @@ internal data class KeyDto(
      *  动作 token。
      */
     val longRelease: JsonElement = JsonPrimitive(Action.NONE),
-    /** 「松手后再执行」的开关 —— 与动作分开（见 `KeyConfig.longReleaseOn`）。 */
+    /** 「松手执行额外动作」的开关 —— 与动作分开（见 `KeyConfig.longReleaseOn`）。 */
     val longReleaseOn: Boolean = false,
-    /** 「松手才触发」—— 长按动作本身等抬手才执行（与连续触发、松手再执行互斥）。 */
+    /** 「松手才触发」—— 长按动作本身等抬手才执行（与连续触发、松手执行额外动作互斥）。 */
     val longFireOnRelease: Boolean = false,
     /**
      * 「单击延迟」与「忽视无操作双击手势」—— **每颗键各一份**（以前在 `global` 段里）。
@@ -378,6 +378,12 @@ internal data class ComboDto(
     val longRepeat: Boolean = false,
     val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
     val longRepeatVibrate: Boolean = false,
+    /** 「长按松手才触发」—— 与单键那一档同名同义（老文件没有 ⇒ 关着）。 */
+    val longFireOnRelease: Boolean = false,
+    /** 「松手执行额外动作」的开关（老文件没有 ⇒ 关着）。 */
+    val longReleaseOn: Boolean = false,
+    /** 松手那一档的动作 token。 */
+    val longRelease: String = Action.NONE,
     /**
      * **条件执行**（`ComboKey.rules`）—— 与单键那份同一个 [StateRuleDto]，只是挂在不同对象上。
      *
@@ -409,6 +415,10 @@ internal data class ComboDto(
             longRepeat = longRepeat,
             longRepeatIntervalMs = clamp(ConfigFields.F_REPEAT_INTERVAL_MS, longRepeatIntervalMs),
             longRepeatVibrate = longRepeatVibrate,
+            //  「松手」那两位与单键同一个口径（老文件没有这一段 ⇒ 关着 + 无操作）。
+            longFireOnRelease = longFireOnRelease,
+            longReleaseOn = longReleaseOn,
+            longRelease = Action.parse(longRelease),
             //  条件表：认不出的条目整条丢掉（与单键那条同一个 `mapNotNull` 口径）——
             //  一条读不懂的规则如果兜成「永远成立」，会把这一档的动作整个抢走。
             rules = rules.mapNotNull { it.toRule() },
@@ -427,6 +437,9 @@ internal data class ComboDto(
                 longRepeat = combo.longRepeat,
                 longRepeatIntervalMs = combo.longRepeatIntervalMs,
                 longRepeatVibrate = combo.longRepeatVibrate,
+                longFireOnRelease = combo.longFireOnRelease,
+                longReleaseOn = combo.longReleaseOn,
+                longRelease = combo.longRelease.token,
                 rules = combo.rules.map { StateRuleDto.of(it) },
             )
     }
