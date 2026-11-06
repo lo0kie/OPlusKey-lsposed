@@ -2,7 +2,7 @@ package com.lookie.opluskey.core
 
 /**
  * 按构建类型各放一份的编译期常量（release 版）。
- * `VERBOSE_LOG` = false 时 `XLog.d` / `XLog.i` 被编译期消除，降级诊断 `w` / `e` / `guard` 不受影响。
+ * `VERBOSE_LOG` = false 时 `XLog.d` 被编译期消除，降级诊断 `w` / `e` / `guard` 不受影响。
  */
 const val VERBOSE_LOG: Boolean = false
 

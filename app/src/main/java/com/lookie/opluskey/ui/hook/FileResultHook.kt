@@ -44,9 +44,13 @@ internal object FileResultHook {
         val cls = activity.javaClass
         if (hookedClass === cls) return
         var cur: Class<*>? = cls
+        //  有没有哪一层**声明了**这个方法 —— 与「声明了但挂钩失败」是两件事，收尾要分开说：
+        //  前者说明宿主没覆盖（以后也不用再试），后者说明这次没接上（下次还得重试）。
+        var anyDeclared = false
         while (cur != null && cur != Activity::class.java) {
             val declared = declaredResult(cur)
             if (declared != null) {
+                anyDeclared = true
                 //  挂钩**成功**才记账。没记上就把 `hookedClass` 提前写上、还打一句「已挂钩」，
                 //  后面每次进来都会被开头那句 `hookedClass === cls` 挡回去 —— 结果是这条路
                 //  **一次都没接上、日志还说自己接上了**（导入导出整条静默归零）。
@@ -59,8 +63,15 @@ internal object FileResultHook {
             }
             cur = cur.superclass
         }
+        if (anyDeclared) {
+            //  **这一趟不记账**：记了等于「以后不再试」，而这里失败的原因是挂钩抛了异常
+            //  （框架侧一时的问题），下一次 arm 值得再试一遍。日志也要说清是哪一种失败。
+            XLog.w("文件选择：宿主覆盖了 $METHOD，但每一层都挂钩失败（本次不记账，下次 arm 重试）")
+            return
+        }
         hookedClass = cls
-        XLog.d("文件选择：宿主没有覆盖 $METHOD，走平台那个 hook")
+        //  **判据级**：导入导出「点了没反应」时，先要看的就是走没走到平台那个 hook ⇒ `w`。
+        XLog.w("文件选择：宿主没有覆盖 $METHOD，走平台那个 hook")
     }
 
     /** 这一层有没有声明结果回调；没有就是没有（继续往父类看）。 */

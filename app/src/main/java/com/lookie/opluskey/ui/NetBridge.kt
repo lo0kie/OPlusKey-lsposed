@@ -6,6 +6,7 @@ import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
+import com.lookie.opluskey.core.wire.NetReply
 import com.lookie.opluskey.core.wire.PageWire
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull

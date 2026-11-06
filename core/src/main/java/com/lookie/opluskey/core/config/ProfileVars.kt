@@ -1,6 +1,5 @@
 package com.lookie.opluskey.core.config
 
-import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Variable
 
 /**
@@ -19,8 +18,10 @@ import com.lookie.opluskey.core.model.Variable
  *
  * ## 与命令库同一套做法
  *
- *  复制 / 对调 / 删除都只搬**磁盘原文**（外皮一起搬，见 [ProfileCommands] 的同名注释）：
- *  这几个动作与「值是什么」无关，过一遍解析只多两种失败可能。
+ *  复制 / 对调 / 删除都只搬**磁盘原文**（外皮一起搬）：这几个动作与「值是什么」无关，
+ *  过一遍解析只多两种失败可能。那套规矩（读不懂 ≠ 没有 / 第二步失败要还原 / 老配置只搬当前）
+ *  收在 [ProfileSlotFile] 一处，与命令库共用同一份实现 —— 两个文件各写一遍时判据会漂，
+ *  而漂出来的坏法只在「刚好有一份文件读不懂」时出现。
  *
  * ## 老配置没有自己的变量表怎么办
  *
@@ -31,63 +32,28 @@ import com.lookie.opluskey.core.model.Variable
  */
 object ProfileVars {
     /**
+     * 变量表这一层：槽名前缀 = 当前生效那份的槽名。
+     *
+     *  `openReadable = false` 与 [VariableStore.save] 同一个口径：只有宿主这一侧（`:ui` 与宿主
+     *  主进程，同 uid）读写变量，注入侧不碰它（它只吃配置广播）。
+     */
+    private val file = ProfileSlotFile(ConfigStore.SLOT_VARS, openReadable = false)
+
+    /**
      * 某份配置对应的变量表槽名。
      *
      *  映射就是「把 `config` 换成 `vars`」：`config` → `vars`、`config-2` → `vars-2` ——
      *  槽号因此在三层之间天然对得上，不需要另一张对照表。
      */
-    fun slotOf(configSlot: String): String = ConfigStore.SLOT_VARS + configSlot.removePrefix(ConfigStore.SLOT_CONFIG)
+    fun slotOf(configSlot: String): String = file.slotOf(configSlot)
 
     /**
      * 切换配置时的变量表对调 —— 对称于 [ConfigProfiles.switchTo] 对主配置做的那件事。
      *
-     *  顺序与那边同一个道理：先把**当前这份**存进目标槽、再把目标的变量表换进来。
-     *  中断在第一步 ⇒ 当前还是原来的变量；**中断在第二步 ⇒ 把目标槽还原**（不还原的话，
-     *  目标那份原样只留在这一次调用的内存里，切回去看到的就是上一套的计数）。
-     *
-     *  **读不懂 ≠ 没有**：任一槽读不懂就整趟不动 —— 按「老配置」处理会把那份可能还能救的文件
-     *  用另一份盖掉（见 `ModuleFiles` 类注释里那条三态纪律）。
-     *
      * @return 对调是否成功（目标配置没有自己的变量表时，「存过去」成功就算成功）
+     * @see ProfileSlotFile.swap 顺序与还原那两条规矩的唯一实现
      */
-    fun swap(configSlot: String): Boolean {
-        val target = slotOf(configSlot)
-        val live = ConfigStore.files().read(ConfigStore.SLOT_VARS)
-        val mine = ConfigStore.files().read(target)
-        if (live is ModuleFiles.Load.Unreadable || mine is ModuleFiles.Load.Unreadable) {
-            XLog.w("配置切换：变量表有槽读不懂（槽 $target）⇒ 不动，先修那份文件")
-            return false
-        }
-        val liveText = live.textOrNull()
-        val mineText = mine.textOrNull()
-        if (mineText == null) {
-            //  老配置：目标槽是空的 ⇒ 把当前这份存过去，当前配置的变量不动（理由见类注释）
-            val ok = liveText == null || writeRaw(target, liveText)
-            if (!ok) XLog.w("配置切换：变量表没跟过去（槽 $target）")
-            return ok
-        }
-        return swapBoth(target, liveText, mineText)
-    }
-
-    /** 两份都在时的对调：先存当前、再换进目标；**第二步失败要把目标槽还原**。 */
-    private fun swapBoth(
-        target: String,
-        liveText: String?,
-        mineText: String,
-    ): Boolean {
-        if (liveText != null && !writeRaw(target, liveText)) {
-            XLog.w("配置切换：变量表没跟过去（第一步写盘失败，槽 $target）")
-            return false
-        }
-        if (writeRaw(ConfigStore.SLOT_VARS, mineText)) return true
-        //  第二步失败：目标槽里此刻是当前这份，原来那份只在内存里 —— 必须还原，否则它没了
-        val restored = liveText == null || writeRaw(target, mineText)
-        XLog.w(
-            "配置切换：变量表没换进来（第二步写盘失败，槽 $target）—— " +
-                if (restored) "已还原目标槽" else "还原也失败，目标槽里现在是当前这份",
-        )
-        return false
-    }
+    fun swap(configSlot: String): Boolean = file.swap(configSlot, "变量表")
 
     /**
      * 给 [configSlot] 落一份变量表（新建的空白配置落空表用）。
@@ -101,16 +67,5 @@ object ProfileVars {
     ): Boolean = VariableStore.save(vars, slotOf(configSlot))
 
     /** 删掉某份配置的变量表（连 `.bak` / `.new` 一起，走 [ModuleFiles.delete]）。 */
-    fun delete(configSlot: String): Boolean = ConfigStore.files().delete(slotOf(configSlot))
-
-    /**
-     * 写一个槽的磁盘原文。
-     *
-     *  `openReadable = false` 与 [VariableStore.save] 同一个口径：只有宿主这一侧（`:ui` 与宿主
-     *  主进程，同 uid）读写变量，注入侧不碰它（它只吃配置广播）。
-     */
-    private fun writeRaw(
-        slot: String,
-        text: String,
-    ): Boolean = ConfigStore.files().write(slot, text, openReadable = false)
+    fun delete(configSlot: String): Boolean = file.delete(configSlot)
 }

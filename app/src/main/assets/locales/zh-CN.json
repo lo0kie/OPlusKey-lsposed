@@ -188,7 +188,7 @@
   "binding.title": "按键绑定",
   "binding.settings_section": "按键设置",
   "binding.double_click_wait": "单击后等待双击的时长",
-  "binding.instant_single_on": "双击无动作时，按两下算单击",
+  "binding.instant_single_on": "双击无动作时，两下各自立即算一次单击",
   "binding.instant_single_off": "双击无动作时，第二下不生效",
   "binding.long_press_delay_title": "长按延迟",
   "binding.long_press_delay_desc": "多久算长按，比它短算单击",
@@ -486,6 +486,7 @@
   "toast.config_cleared": "已重置配置",
   "toast.module_reset": "已重置模块",
   "toast.config_clear_failed": "配置已重置，命令库清空失败",
+  "toast.config_clear_vars_failed": "配置已重置，变量表清空失败",
   "toast.config_read_failed": "配置读取失败，未保存",
   "toast.config_save_failed": "保存失败",
   "toast.commands_read_failed": "命令库读取失败，未保存",
@@ -673,5 +674,6 @@
   "update.check_row": "检查更新",
   "update.found_row": "发现新版本",
   "update.latest": "已是最新版本",
-  "update.failed": "没查到（网络或源不可用）"
+  "update.failed": "没查到（网络或源不可用）",
+  "update.no_url": "这条更新没有下载地址，请到发布页查看"
 }

@@ -44,12 +44,22 @@ internal fun SettingsPage.Page() {
     //  载入失败不能把宿主 `:ui` 进程带走（在组合协程里抛出去就是未捕获异常）：兜住并留一行 w，
     //  页面会停在启动底色上，排查时看得到这句话。
     LaunchedEffect(Unit) {
-        try {
-            loadPageState()
-        } catch (e: Throwable) {
-            //  载入失败不能把宿主 `:ui` 进程带走（组合协程里的未捕获异常会直接崩）。
-            //  页面停在启动底色上，排查时看这一行。
-            XLog.w("载入页面状态失败（页面停在启动底色）：${e.javaClass.simpleName}", e)
+        //  **失败重试一次**：读盘 / 反混淆偶发失败（正好撞上另一个进程在写）时，一次就放弃会把
+        //  整页永久停在启动底色上 —— 用户看到的是「点进来一片空白」，只能杀进程再来。
+        //  两次都不成才留那一行错误日志（界面仍然只有底色，但没有比让它卡死更糟的选择）。
+        repeat(LOAD_ATTEMPTS) { attempt ->
+            try {
+                loadPageState()
+                return@LaunchedEffect
+            } catch (e: Throwable) {
+                //  载入失败不能把宿主 `:ui` 进程带走（组合协程里的未捕获异常会直接崩）。
+                if (attempt == LOAD_ATTEMPTS - 1) {
+                    XLog.w("载入页面状态失败（已重试，页面停在启动底色）：${e.javaClass.simpleName}", e)
+                } else {
+                    XLog.w("载入页面状态失败，重试一次：${e.javaClass.simpleName}")
+                    delay(LOAD_RETRY_MS)
+                }
+            }
         }
     }
     // 系统栏顶边在**首帧是 0**（注入进来的 ComposeView 还没收到 insets），而顶栏与内容的顶部
@@ -136,3 +146,9 @@ internal fun SettingsPage.createView(): View? {
     )
     return view
 }
+
+/** 建页读盘最多试几次（见 [Page] 里那段重试）。 */
+private const val LOAD_ATTEMPTS = 2
+
+/** 两次读盘之间等多久 —— 另一个进程正好在写盘时，让它先写完。 */
+private const val LOAD_RETRY_MS = 250L

@@ -22,10 +22,10 @@ import com.lookie.opluskey.ui.DialogButtonRow
 import com.lookie.opluskey.ui.DialogPositiveStyle
 import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.ImportOverwrite
-import com.lookie.opluskey.ui.LocalHint
 import com.lookie.opluskey.ui.PendingImport
 import com.lookie.opluskey.ui.PickerRow
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.canWriteConfig
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_DARK_ALPHA
@@ -36,6 +36,8 @@ import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 导入配置**选目标**那一窗 —— 导入文件校验通过后弹出，列出已有配置（含「默认」），
@@ -157,8 +159,14 @@ private fun rememberImportTargetState(pending: PendingImport?): ImportTargetStat
     val state = remember { ImportTargetState() }
     LaunchedEffect(pending) {
         if (pending == null) return@LaunchedEffect
-        state.profiles = ConfigProfiles.list().filterNot { it.broken }
-        state.full = ConfigProfiles.isFull()
+        //  **读盘放 IO**：`list()` 逐份读文件 + 反混淆 + 解码，`isFull()` 又列一次目录；
+        //  这个 LaunchedEffect 默认跑在主线程上，弱机上打开这个窗会整段卡住。
+        val loaded =
+            withContext(Dispatchers.IO) {
+                ConfigProfiles.list().filterNot { it.broken } to ConfigProfiles.isFull()
+            }
+        state.profiles = loaded.first
+        state.full = loaded.second
         state.selected = null
         state.nextOverwrite = null
     }
@@ -176,9 +184,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(
     selected: ImportTarget?,
     onSelect: (ImportTarget) -> Unit,
 ) {
-    //  点「新增配置」却已满时那句提示 —— 组合期读一次，点击回调里直接用（`LocalHint.current`
-    //  只能在组合期读，不能挪进 `onClick` 那个普通 lambda）
-    val fullHint = LocalHint.current
+    //  「最多三份」这句**写在行上**，不能挂在点击回调里：`PickerRow` 的可点性跟着 `enabled` 走
+    //  （见它自己的实现），置灰行根本收不到点击 —— 挂在 `onClick` 里那句永远不会执行。
     val fullText = I18n.get(Strings.PROFILE_FULL, "最多三份配置")
     Column(
         Modifier
@@ -202,16 +209,11 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(
             PopupHeavyDivider()
         }
         PickerRow(
-            label = I18n.get(Strings.PROFILE_IMPORT_NEW, "新增配置"),
+            //  已满时这一行置灰，字换成「最多三份配置」—— 这就是那句回执本身。
+            label = if (full) fullText else I18n.get(Strings.PROFILE_IMPORT_NEW, "新增配置"),
             selected = selected == ImportTarget.New,
             enabled = !full,
-            onClick = {
-                if (full) {
-                    fullHint(fullText)
-                } else {
-                    onSelect(ImportTarget.New)
-                }
-            },
+            onClick = { onSelect(ImportTarget.New) },
         )
     }
 }
@@ -260,6 +262,14 @@ private fun SettingsPage.createImportedProfile(pending: PendingImport) {
  * 还要把页面状态与命令库刷新、并广播给注入侧（与「切换配置」后同一条收尾）。
  */
 internal fun SettingsPage.overwriteProfile(overwrite: ImportOverwrite) {
+    //  **覆盖当前那份之前也要先过只读闸**：`importInto` 一进去就把文件换成导入的内容，
+    //  而后面 `write` 可能因为只读态直接拒 —— 那时磁盘是新配置、界面与注入侧还是旧的，
+    //  三方不一致。拦在动盘之前。
+    if (overwrite.slot == ConfigProfiles.CURRENT_SLOT &&
+        !canWriteConfig("导入覆盖当前配置")
+    ) {
+        return
+    }
     val ordered = ConfigProfiles.importInto(overwrite.slot, overwrite.content.config, overwrite.content.commands)
     if (ordered == null) {
         XLog.w("导入配置：覆盖 ${overwrite.slot} 没写成")

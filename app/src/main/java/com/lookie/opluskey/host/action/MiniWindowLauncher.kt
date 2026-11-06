@@ -36,7 +36,6 @@ import com.lookie.opluskey.host.action.MiniWindowFacts.START_RESTART
 import com.lookie.opluskey.host.action.MiniWindowFacts.START_SUCCESS
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_ACTIVITY_FIELD
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_CLASS_FIELD
-import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_INFOS_METHOD
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_PACKAGE_FIELD
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_TASK_ID_FIELD
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_WINDOWING_MODE_FIELD
@@ -628,25 +627,10 @@ internal class MiniWindowLauncher(
     }
 
     /** `OplusActivityManager#getAllTopAppInfos()` 的原始列表；拿不到一律返回 null（调用方据此降级）。 */
-    internal fun topAppInfos(): List<*>? {
-        val cls =
-            Reflect.findClass(javaClass.classLoader, ZOOM_MANAGER) ?: run {
-                XLog.w("没有 $ZOOM_MANAGER，topAppInfos 取不到")
-                return null
-            }
-        val manager =
-            Reflect.callStatic(cls, "getInstance") ?: run {
-                XLog.w("$ZOOM_MANAGER#getInstance 返回 null，topAppInfos 取不到")
-                return null
-            }
-        val method =
-            Reflect.methodByNameAndArity(cls, TOP_APP_INFOS_METHOD, 0) ?: run {
-                //  判据级（`d` 在 release 被编译期消除）：这一环断了 recents 那条整条降级。
-                XLog.w("$ZOOM_MANAGER 上没有 $TOP_APP_INFOS_METHOD/0")
-                return null
-            }
-        return Reflect.call(manager, method) as? List<*>
-    }
+    internal fun topAppInfos(): List<*>? =
+        //  反射链与「哪一步断了」的话术收在 [MiniWindowFacts.topAppInfos] 一处；
+        //  这一层只决定**报几次**（这一条频率低，每次一行就够）。
+        MiniWindowFacts.topAppInfos(javaClass.classLoader) { XLog.w(it) }
 
     /**
      * recents 正门：把已有任务原地收成小窗。返回 false = 这条路没走通，调用方降级。
@@ -741,8 +725,8 @@ internal class MiniWindowLauncher(
                 XLog.w("$ZOOM_MANAGER 上没有 startZoomWindow/$ZOOM_ARGS")
                 return null
             }
-        //  **不能取 `MiniWindowSupport.currentUserId()`**：那是宿主自己的用户（恒 0）。
-        //  目标带 `999@` 时小窗会开到主用户上，与 `app:` 那条路的分身语义正好相反 ——
+        //  **不要在这条路上现取「当前用户」**：那拿到的是宿主自己的用户（恒 0），而目标带
+        //  `999@` 时小窗会开到主用户上，与 `app:` 那条路的分身语义正好相反 ——
         //  userId 由调用方按 `AppTarget.userId(target)` 传进来。
         val result =
             Reflect.call(

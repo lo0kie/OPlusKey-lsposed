@@ -289,7 +289,7 @@ internal class CustomCommandRunner(
         if (step.startsWith(Command.PREFIX)) null else (Action.parse(step) as? Action.Shell)?.command
 
     /**
-     * 从 [index] 起收集**连续的** shell 步骤，返回（用 `; ` 拼好的一条, 下一个下标）。
+     * 从 [index] 起收集**连续的** shell 步骤，返回（拼成一条的合并串, 下一个下标）。
      *
      *  遇到非 shell 步骤、或 KSU 别名就断开：别名会被翻译成原生调用（不是真 shell），
      *  并进拼接串会让 `runShell` 的前缀认领把整串认成别名，后面那些步骤随整串被吞掉。

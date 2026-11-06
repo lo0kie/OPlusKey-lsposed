@@ -6,18 +6,20 @@ package com.lookie.opluskey.core.model
  * ## 为什么必须有这一处
  *
  *  「一条命令被改名 / 被删掉」时，配置里所有指向它的 `cmd:<名字>` 都得跟着挪或清。
- *  能放动作的地方有**六处**，分布在两种条目里：
+ *  能放动作的地方分布在两种条目里：
  *
- *  · 每颗键的三格手势（`single` / `double` / `long`）；
+ *  · 每颗键的四格手势（`single` / `double` / `long` / `longRelease`）；
  *  · 每颗键的额外连击（`extraClicks`，第 3 击起，见 [KeyConfig.actionOf]）；
  *  · 每颗键的条件规则（`rules[].action`）；
- *  · 每个组合键的两档（`single` / `long`，组合没有双击）；
+ *  · 每个组合键的三档（`single` / `long` / `longRelease`，组合没有双击）；
  *  · 每个组合键的条件规则（`rules[].action`）。
  *
  *  这几处**先后被漏过四次**（删命令只清三格 → 补上规则 → 组合键那两档又漏 → 额外连击与
  *  组合规则又漏），因为每个调用点都自己写一遍 `copy(single = …, double = …, long = …, rules = …)`。
  *  只要遍历散在调用点上，「下次多一处动作位」就必然再漏一次 —— 所以收成这几个函数：
  *  **加新的动作位只改这个文件**，改名的路径、删命令的路径、删变量的反查都不必再动。
+ *  「松手执行额外动作」那两格（`longRelease`）就是这样漏进来一次：加字段时这个文件没跟着改，
+ *  改名之后那两格里留着指向旧名的 `cmd:`，删变量的反查也数不到它们。
  *
  * ## 遍历的是 `keys` 全表，不是 `allKeys`
  *
@@ -36,6 +38,7 @@ fun Config.mapActions(transform: (Action) -> Action): Config =
                     single = transform(key.single),
                     double = transform(key.double),
                     long = transform(key.long),
+                    longRelease = transform(key.longRelease),
                     extraClicks = key.extraClicks.mapValues { transform(it.value) },
                     rules = key.rules.map { it.copy(action = transform(it.action)) },
                 )
@@ -45,6 +48,7 @@ fun Config.mapActions(transform: (Action) -> Action): Config =
                 combo.copy(
                     single = transform(combo.single),
                     long = transform(combo.long),
+                    longRelease = transform(combo.longRelease),
                     rules = combo.rules.map { it.copy(action = transform(it.action)) },
                 )
             },
@@ -62,12 +66,14 @@ fun Config.actionTokens(): List<String> =
             add(key.single.token)
             add(key.double.token)
             add(key.long.token)
+            add(key.longRelease.token)
             key.extraClicks.values.forEach { add(it.token) }
             key.rules.forEach { add(it.action.token) }
         }
         combos.forEach { combo ->
             add(combo.single.token)
             add(combo.long.token)
+            add(combo.longRelease.token)
             combo.rules.forEach { add(it.action.token) }
         }
     }

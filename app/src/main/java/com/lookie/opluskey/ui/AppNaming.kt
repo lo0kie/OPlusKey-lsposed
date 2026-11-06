@@ -14,6 +14,7 @@ import com.lookie.opluskey.core.model.appTargetLabel
 import com.lookie.opluskey.ui.model.cloneLabel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 一个绑定目标该显示的名字 —— **全项目唯一一条优先级**，网格小字 / 顶栏「已选择」/ 步骤名都走它。
@@ -97,16 +98,16 @@ internal fun SettingsPage.appTargetLabelOf(action: Action): String =
     )
 
 /**
- * 包名 → 应用名（取不到就退回包名本身）。
+ * 包名 → 应用名缓存（进程级，活到 `:ui` 进程结束）。
  *
- * 走宿主的 `PackageManager`：包可见性按宿主算 —— 绑过的应用本来就在[界面那份可见清单]里，
- * 正常查得到。
+ *  为什么要有：步骤行标题与网格小字每次重组都要算，名称框里每敲一个字也重组一遍。
+ *  **只缓存查成功的** —— 把失败写进去（值 = 包名）会让一次暂时的查失败永久固化成包名。
  *
- *  带一层缓存：步骤行标题与网格小字每次重组都要算，名称框里每敲一个字也重组一遍。缓存是
- *  **进程级**顶层 `val`（活到 `:ui` 进程结束），而且**只缓存查成功的** —— 把失败写进去
- *  （值 = 包名）会让一次暂时的查失败永久固化成包名。
+ *  **必须是并发安全的**：写它的两个入口不在同一个线程上 —— 组合期（主线程，[appLabelOf]）与
+ *  `Dispatchers.IO`（[boundAppName] 那一侧）。普通 `HashMap` 并发 put 在扩容时会丢条目，
+ *  极端情况下结构损坏导致死循环。
  */
-internal val appLabelCache = HashMap<String, String>()
+internal val appLabelCache: ConcurrentHashMap<String, String> = ConcurrentHashMap()
 
 /** 缓存上限 —— 只是省 binder 的一层；不设上限会跟着滚动一路长下去。 */
 private const val APP_LABEL_CACHE_MAX = 512

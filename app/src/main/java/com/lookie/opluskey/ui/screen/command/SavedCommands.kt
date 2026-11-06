@@ -171,11 +171,13 @@ internal fun SettingsPage.SavedCommandsSection(
                             modifier = Modifier.fillMaxWidth(),
                         ) { tileIndex ->
                             val cmd = row[tileIndex]
-                            // 每格按 `key(cmd.name)` 认身份（命令名是这条命令的主键）—— 与步骤行 `key(item.id)`
-                            //  同一个理由：这一片是按**位次**排出来的，卡里的 `animateColorAsState` 与卡片槽位都按
-                            //  位次记身份 ⇒ 删一条 / 改名之后后面的格子会继承前一格的位置，强调色从上一格的颜色
-                            //  动画过去（一帧闪色）。
-                            key(cmd.name) {
+                            // 每格按 `key(位次, 命令名)` 认身份 —— 与步骤行 `key(item.id)` 同一个理由：
+                            //  这一片是按**位次**排出来的，卡里的 `animateColorAsState` 与卡片槽位都按
+                            //  位次记身份 ⇒ 删一条 / 改名之后后面的格子会继承前一格的位置，强调色从上一格
+                            //  的颜色动画过去（一帧闪色）。
+                            //  **必须带上位次**：命令名不保证唯一（手改 / 导入的同名两条），只按名字给 key
+                            //  会让同一组里出现重复 key，Compose 直接抛异常崩掉宿主。
+                            key(tileIndex, cmd.name) {
                                 CommandTile(cmd, ui, tick, onOpen)
                             }
                         }

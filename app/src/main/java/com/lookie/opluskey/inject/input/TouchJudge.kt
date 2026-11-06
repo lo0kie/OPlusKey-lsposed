@@ -43,7 +43,10 @@ internal object TouchJudge {
             try {
                 swipeJudge.submit(input)
             } catch (e: Throwable) {
-                XLog.d("滑动判定抛了（已忽略）：${e.javaClass.simpleName}: ${e.message}")
+                //  **判据级**：判定器抛异常意味着这一档手势从此判不出来，而 `d` 在 release 里
+                //  被编译期消除 —— 那正是「滑动绑了没反应」唯一该看的一行。真每划都抛的话，
+                //  刷屏本身就是要修的症状，不该靠降档把它藏起来。
+                XLog.w("滑动判定抛了（已忽略）：${e.javaClass.simpleName}: ${e.message}")
                 return null
             } ?: return null
         //  判据级：一段滑动只在这一处落一行（适配器里不打日志 —— MOVE 是 60~120 条/秒）

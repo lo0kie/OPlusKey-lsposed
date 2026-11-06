@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -50,9 +51,9 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 /**
  * 内置动作网格 —— 按 [ActionCatalog.groupsFor] 分组，每组一个小标题。
  *
- *  **不能按 [ActionCatalog.GROUPS] 排**：清单按手势剔过条目（「灵感语音」只在长按），组大小
- *  却没少 ⇒ 最后一组会多吃进第一条自定义命令（真机反馈「单击 / 双击的自定义命令跑到快捷功能
- *  里了」）。分组与清单必须同源，见 `ActionCatalog.groupsFor`。
+ *  **不要自己另拼一份清单**：分组与格子必须同源（`groupsFor()` 现在不按手势分化，三档清单一致；
+ *  哪天真按手势分化了，也得让分组跟着一起变）。曾经两边各算一次，组大小没同步少 ⇒ 最后一组
+ *  多吃进第一条自定义命令（真机反馈「单击 / 双击的自定义命令跑到快捷功能里了」）。
  *
  * 焦点格索引仍与 `st.specs` 下标一一对应（见 `BindingList` 里「扁平焦点索引的账」）——
  * 分组只是展示层切分，组里的格子用的还是**全局**下标（每组的起点见 groupBases），
@@ -145,8 +146,15 @@ private fun SettingsPage.BuiltInTile(
     //  不用再补一份锚点、也不用改一张 `when` 表（判据就是「这格点了弹不弹菜单」）。
     key(spec.token) {
         val tileAnchor = rememberPreciseClickState()
-        // 登记给确认键那条路用（见 `BindingGridState.tileAnchors`）—— 写的是普通 map、不是 state。
-        st.tileAnchors[spec.token] = tileAnchor
+        //  登记给确认键那条路用（见 `BindingGridState.tileAnchors`）—— **进出各一次**，不在组合体里写：
+        //  组合期写共享 map 有两个后果（跳过重组时不登记、格子被删掉后又摘不掉），而这张表
+        //  正是确认键弹菜单的落点来源。
+        DisposableEffect(spec.token, tileAnchor) {
+            st.tileAnchors[spec.token] = tileAnchor
+            onDispose {
+                if (st.tileAnchors[spec.token] === tileAnchor) st.tileAnchors.remove(spec.token)
+            }
+        }
         val current = st.target.actionIn(configState.config.value)
         //  入口格（点了弹二级菜单的那几格）：`modes` 非空。要不要挂锚点也从这里算
         val modes = ActionCatalog.modeMenu(spec.token)
@@ -267,8 +275,9 @@ private fun SettingsPage.CustomTile(
         return
     }
     // 每格按 `key(spec.token)` 认身份 —— 与内置那组同一写法。
-    //  这一段是按**位次**排出来的（`chunked(COLUMNS)` 之后按下标取），而自定义命令会增删、
-    //  会改名重排：不按 token 认身份，格子里的状态（焦点圈、进出场）就跟着位次挪到下一条命令身上。
+    //  这一段是按**位次**排出来的（列数由 `st.columns` 现算，见 `BindingGridState`），
+    //  而自定义命令会增删、会改名重排：不按 token 认身份，格子里的状态（焦点圈、进出场）
+    //  就跟着位次挪到下一条命令身上。
     key(spec.token) {
         // 这条命令本身（`cmd:<名字>` 反查）—— 小字与「进编辑」两处都要用
         val cmd = commandsByToken[spec.token]

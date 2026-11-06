@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.state
 
+import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.SystemClock
 import android.provider.Settings
@@ -13,9 +14,7 @@ import com.lookie.opluskey.core.update.UpdateSource
 import com.lookie.opluskey.core.update.compareVersion
 import com.lookie.opluskey.core.update.isNewer
 import com.lookie.opluskey.core.update.parseLatestRelease
-import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.fetchText
-import com.lookie.opluskey.ui.moduleVersionName
+import com.lookie.opluskey.core.wire.NetReply
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -105,12 +104,26 @@ internal object UpdateState {
     /** 这一趟进程还没查过吗。 */
     fun needsCheck(): Boolean = !ranThisProcess
 
+    /**
+     * 检查更新要的那几样**页面能力** —— 由调用方递进来，状态层不认识页面。
+     *
+     *  `ui.state` 不许反向 import `ui` 根（分层是单向的：`ui.screen → ui → ui.state`，
+     *  见 `docs/decoupling.md`）。这一条以前是靠「直接收一个 `SettingsPage`」破的 ——
+     *  状态对象于是知道了整个页面，而它其实只用三样：版本号、发一条网络请求、一个 Context
+     *  （只给调试包的假 release 用）。
+     */
+    internal class Host(
+        val context: Context,
+        val versionName: () -> String?,
+        val fetch: suspend (url: String, timeoutMs: Long) -> NetReply?,
+    )
+
     /** 手动点「检查更新」那一行：**绕过**「每进程一次」的闸，每次都真去查。 */
-    suspend fun checkManually(page: SettingsPage): CheckOutcome {
+    suspend fun checkManually(host: Host): CheckOutcome {
         ranThisProcess = true
         checking = true
         try {
-            return runCheck(page, manual = true)
+            return runCheck(host, manual = true)
         } finally {
             checking = false
         }
@@ -122,12 +135,12 @@ internal object UpdateState {
      *  失败一律只记日志：这条路上任何一环坏掉都不该让页面表现异常 ——
      *  最坏的结果是「这次没提示新版本」。
      */
-    suspend fun checkUpdateOnce(page: SettingsPage) {
+    suspend fun checkUpdateOnce(host: Host) {
         if (ranThisProcess) return
         ranThisProcess = true
         checking = true
         try {
-            runCheck(page, manual = false)
+            runCheck(host, manual = false)
         } finally {
             checking = false
         }
@@ -140,21 +153,21 @@ internal object UpdateState {
      *   两者只差一件事：**「不再提示」压得住自动那一趟，压不住手动**（见 [applyRelease]）。
      */
     private suspend fun runCheck(
-        page: SettingsPage,
+        host: Host,
         manual: Boolean,
     ): CheckOutcome {
         val current =
-            page.moduleVersionName() ?: run {
+            host.versionName() ?: run {
                 XLog.w("检查更新：读不到本机版本号，跳过")
                 return CheckOutcome.FAILED
             }
         val skip = UiState.readPrefs().skipUpdateVersion
         //  调试包：`Settings.Global` 里塞了假 release 就直接当作「第一路已经取到」，
         //  后面的判新旧 / 判「不再提示」与真取到的那一路完全同一套（见 [debugMockRelease]）
-        val mocked = page.debugMockRelease()
+        val mocked = debugMockRelease(host.context)
         if (mocked != null) return applyRelease(mocked, UpdateSource.GITHUB, current, skip, manual)
         val deadline = SystemClock.elapsedRealtime() + TOTAL_TIMEOUT_MS
-        val fetched = page.fetchAllSources(deadline)
+        val fetched = fetchAllSources(host, deadline)
         if (fetched.isEmpty()) {
             XLog.w("检查更新：两路都没取到（超时 / 接口失败）")
             return CheckOutcome.FAILED
@@ -188,9 +201,11 @@ internal object UpdateState {
         manual: Boolean,
     ): CheckOutcome {
         val newer = isNewer(release.version, current)
+        //  if / else 必须自己带括号：`… + if (newer) "有新版" else "已是最新" + "）"` 的运算符
+        //  优先级会让右括号只挂到 else 那一支上，`newer` 为真时日志少半截。
         XLog.w(
             "检查更新：${from.id} 取到 ${release.version}（本机 $current，" +
-                if (newer) "有新版" else "已是最新" + "）",
+                (if (newer) "有新版" else "已是最新") + "）",
         )
         if (!newer) return CheckOutcome.LATEST
         val skipped = release.version == skip
@@ -218,7 +233,10 @@ internal object UpdateState {
      *
      *  取不到的那一路直接不进结果表（它自己已经打过 W 日志），两路都空才由调用方判失败。
      */
-    private suspend fun SettingsPage.fetchAllSources(deadline: Long): List<Pair<UpdateSource, ReleaseInfo>> =
+    private suspend fun fetchAllSources(
+        host: Host,
+        deadline: Long,
+    ): List<Pair<UpdateSource, ReleaseInfo>> =
         coroutineScope {
             UpdateSource.entries
                 .map { candidate ->
@@ -228,18 +246,19 @@ internal object UpdateState {
                             XLog.w("检查更新：${candidate.id} 还没发出就到上限了（${TOTAL_TIMEOUT_MS}ms）")
                             return@async null
                         }
-                        fetchRelease(candidate, left)?.let { candidate to it }
+                        fetchRelease(host, candidate, left)?.let { candidate to it }
                     }
                 }.awaitAll()
                 .filterNotNull()
         }
 
     /** 从一路取并解析；取不到返回 `null`（另一路照常跑，不影响）。 */
-    private suspend fun SettingsPage.fetchRelease(
+    private suspend fun fetchRelease(
+        host: Host,
         source: UpdateSource,
         timeoutMs: Long,
     ): ReleaseInfo? {
-        val reply = fetchText(source.apiUrl, timeoutMs) ?: return null
+        val reply = host.fetch(source.apiUrl, timeoutMs) ?: return null
         if (!reply.ok) {
             XLog.w("检查更新：${source.id} 没取到（status=${reply.status} ${reply.error}）")
             return null
@@ -308,7 +327,7 @@ internal object UpdateState {
  *
  *  正式包第一条就返回 `null` —— 这个键对发布版没有任何作用。
  */
-private fun SettingsPage.debugMockRelease(): ReleaseInfo? {
+private fun debugMockRelease(context: Context): ReleaseInfo? {
     //  「是不是调试包」看模块自己清单里的 `android:debuggable`。不用 `BuildConfig.DEBUG`：
     //  本工程没开 `buildConfig` 特性（AGP 8 默认关）；也不看 `versionName` 的 `-debug` 后缀 ——
     //  那是**版本**档位，改个后缀就能绕过，而 `debuggable` 由构建类型决定，正式包一定是 false。

@@ -26,13 +26,27 @@ internal object ShellRunner {
      *   只有**勾了** root 却起不了 `su` 时才报「root 要授给宿主」（[CommandFailure.SHELL_NO_ROOT]）。
      * @param onLine 每一行标准输出的回调（**后台线程**）。只在「要把输出拿回来给界面看」的
      *   调用点传（此刻是进程控制页读 `ps` 那一条）；动作执行那一族不传 —— 它们的输出只进日志。
+     *
+     * ## 为什么参数到 6 个（`@Suppress("LongParameterList")`）
+     *
+     *  这六样是**平级的执行参数**：命令本身、三种回执、是否走 root、跑完之后做什么；
+     *  而 `onLine` / `onDone` 只有个别调用点给。收成 options 对象的话，二十多个调用点都要多包
+     *  一层壳，读起来反而更绕（与 `PageSheet` 那张 6 参的同一档理由）。
      */
+    @Suppress("LongParameterList")
     fun exec(
         command: String,
         onFailure: (CommandFailure) -> Unit = {},
         onTip: (String) -> Unit = {},
         preferRoot: Boolean = true,
         onLine: ((String) -> Unit)? = null,
+        /**
+         * 这一条**跑完之后**做什么（成功失败都调，跑在池线程上）。
+         *
+         *  给「必须排在写盘之后」的收尾用：`exec` 是排队的、立刻返回，调用方紧接着做的那一步
+         *  读到的还是旧值（见 `BrightnessAction` 的刷新口令）。
+         */
+        onDone: (() -> Unit)? = null,
     ) {
         if (command.isBlank()) {
             //  空命令不该走到这里（`shell:` 那一支解析时已经掉空值）；真走到就是配置里有条空的，
@@ -49,7 +63,15 @@ internal object ShellRunner {
         //  就是几十条十几秒后才执行的命令 —— 那时用户早就忘了自己按过。满了直接拒，
         //  用户看到「上一条还没跑完」，比「按了半分钟后突然动了」诚实。
         try {
-            runnerPool.execute { execBlocking(command, onFailure, onTip, preferRoot, onLine) }
+            runnerPool.execute {
+                //  `onDone` 包在**最外层**：`execBlocking` 内部有多个出口（占不到槽、起进程失败、
+                //  正常结束），只有包在这里才一种不漏。拒绝入队那一支不算「跑完」，不调它。
+                try {
+                    execBlocking(command, onFailure, onTip, preferRoot, onLine)
+                } finally {
+                    onDone?.invoke()
+                }
+            }
         } catch (e: java.util.concurrent.RejectedExecutionException) {
             XLog.w(
                 "shell 排队已满（在跑 $SHELL_MAX_CONCURRENT 条、排队 $SHELL_QUEUE_MAX 条），拒绝：" +

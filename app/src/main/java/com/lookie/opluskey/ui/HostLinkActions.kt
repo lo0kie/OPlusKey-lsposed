@@ -33,7 +33,13 @@ internal fun SettingsPage.resyncInjectStatus() {
             HostApp.PACKAGE,
             android.content.Intent(ModuleWire.ACTION_INJECT_QUERY),
         )
-    if (sent) XLog.w("配置已变：向注入侧重问一次自检（把新指纹带回来）")
+    if (sent) {
+        XLog.w("配置已变：向注入侧重问一次自检（把新指纹带回来）")
+    } else {
+        //  **发不出去也要留一行**：这时页面手上那份 `injectStatus` 永远停在旧指纹上，
+        //  「设置生效」会一直判未同步、整页控件打灰 —— 而原来这里一条日志都没有。
+        XLog.w("配置已变：重问自检的广播没发出去（页面会一直判「未同步」）")
+    }
 }
 
 /** 把完整配置广播给注入侧（inject/ConfigChannel，跑在 system_server）。@return 广播是否真的发出去了。 */

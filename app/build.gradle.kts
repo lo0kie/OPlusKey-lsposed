@@ -155,10 +155,18 @@ android {
     // 正式签名从根目录 keystore.properties 读取（不入库）；文件不存在则跳过。
     // 必须排在 buildTypes 之前：signingConfig 是配置期求值的。
     signingConfigs {
-        val propsFile = rootProject.file("keystore.properties")
-        if (propsFile.exists()) {
-            val props = Properties()
-            propsFile.inputStream().use { props.load(it) }
+        //  **用 providers 读，不在配置期裸做 IO**：这个工程的配置缓存是开着的，裸
+        //  `file.exists()` + 读流不算被跟踪的输入 —— 改了 keystore.properties 也可能命中旧缓存，
+        //  而后果是「换过签名却没生效」。`fileContents` 是配置缓存认得的那种输入。
+        val props =
+            rootProject.providers
+                .fileContents(rootProject.layout.projectDirectory.file("keystore.properties"))
+                .asText
+                .orNull
+                ?.let { text ->
+                    Properties().apply { text.byteInputStream().use { load(it) } }
+                }
+        if (props != null) {
             create("release") {
                 storeFile = rootProject.file(props.getProperty("storeFile"))
                 storePassword = props.getProperty("storePassword")

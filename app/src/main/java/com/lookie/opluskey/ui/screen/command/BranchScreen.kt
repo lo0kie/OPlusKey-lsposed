@@ -188,7 +188,8 @@ private fun SettingsPage.reloadBranchDraft(
             return
         }
         val source = combo.rules.filter { it.gesture == gesture }
-        XLog.w("系统场景：载入组合键 ${combo.id} - ${gesture.label} 的 ${source.size} 条")
+        //  正常路径（每次进编辑页都走一次）⇒ `d`；真正的异常在上面那条「已经不在了」。
+        XLog.d("系统场景：载入组合键 ${combo.id} - ${gesture.label} 的 ${source.size} 条")
         draft.load(BranchDraft.comboOwnerOf(combo.id, gesture), source)
         return
     }

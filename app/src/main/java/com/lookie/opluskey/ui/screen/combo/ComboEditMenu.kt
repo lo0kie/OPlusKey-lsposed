@@ -133,9 +133,14 @@ private fun SettingsPage.ComboMenuDialogHost(
             dialogs.delete = false
             id?.let { target ->
                 XLog.w("组合键：从编辑页删除 $target")
-                comboWriteGuard("删除组合按键") { removeCombo(target) }
-                ComboEditState.clear()
-                goBack()
+                //  **写成了才收场**：写失败时这一档还在配置里，页面却退走、编辑目标被清空，
+                //  回来只剩一个「找不到」的空壳。
+                comboWriteGuard("删除组合按键") {
+                    if (removeCombo(target)) {
+                        ComboEditState.clear()
+                        goBack()
+                    }
+                }
             }
         },
     )

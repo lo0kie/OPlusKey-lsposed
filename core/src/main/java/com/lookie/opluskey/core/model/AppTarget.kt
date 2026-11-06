@@ -76,21 +76,30 @@ object AppTarget {
      */
     fun userId(target: String): Int {
         val plain = identity(target)
-        val at = plain.indexOf(SEPARATOR)
-        if (at <= 0) return 0
-        val head = plain.substring(0, at)
-        //  **只认 ASCII 数字**：`Char.isDigit()` 把全角 `０-９` 也算数字，而 `toIntOrNull()` 不认 ——
-        //  那样「９９９@包名」会被判成 0，却仍被 [withoutUser] 剥掉前缀，坏前缀静默变成
-        //  「主用户 + 合法目标」。
-        return if (isAsciiDigits(head)) head.toIntOrNull() ?: 0 else 0
+        val end = userPrefixEnd(plain)
+        return if (end < 0) 0 else plain.substring(0, end - 1).toInt()
     }
 
     /** 去掉用户前缀与（老配置的）显示名之后的那一段（`pkg` 或 `pkg/activity`）—— 解析组件、查包都用它。 */
     fun withoutUser(target: String): String {
         val plain = identity(target)
+        val end = userPrefixEnd(plain)
+        return if (end < 0) plain else plain.substring(end)
+    }
+
+    /**
+     * 用户前缀的结尾下标（`@` 之后那一位）；`-1` = **没有前缀**。
+     *
+     *  [userId] 与 [withoutUser] 必须走同一处判据：分开判时「前缀看起来是数字、但装不进 Int」
+     *  （`99999999999@pkg`）会被一边当成 0、另一边却照样剥掉前缀 —— 一个坏前缀静默变成
+     *  「主用户 + 合法目标」，而不是按坏绑定失败。
+     */
+    private fun userPrefixEnd(plain: String): Int {
         val at = plain.indexOf(SEPARATOR)
-        if (at <= 0) return plain
-        return if (isAsciiDigits(plain.substring(0, at))) plain.substring(at + 1) else plain
+        if (at <= 0) return -1
+        val head = plain.substring(0, at)
+        if (!isAsciiDigits(head)) return -1
+        return if (head.toIntOrNull() == null) -1 else at + 1
     }
 
     /** 只要包名（给 `getPackageInfo` / 图标 / 名字用）。 */

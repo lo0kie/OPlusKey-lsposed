@@ -137,6 +137,9 @@ internal fun SettingsPage.onAppPicked(
     //  （见 `writeBranchCondition` / `writeBranchCommand`）—— 这里不能再补一次
     //  `goBack()`，否则一次退两层、还会把「放弃未保存的命令」弹出来。
     val forBranch = picker.forBranch
+    // 「松手执行额外动作」那一趟同样自己退页（`PickTarget.Release` 分支里 `popBackStack()`），
+    //  这里再补一次 `goBack()` 会一次退两层、直接回到首页。
+    val forRelease = picker.forRelease
     // 「应用控制」→ 结束那一趟：写的是 `proc:stop:包名`（不挑界面、也没有小窗）
     val stopApp = picker.stopApp
     // 刚在「选择界面」页确认过就照那一条写（`app:包名/类名` / `appshortcut:`）；
@@ -164,7 +167,7 @@ internal fun SettingsPage.onAppPicked(
         XLog.w("选择应用：${picked.target} 没写进绑定，留在本页（不 goBack）")
         return
     }
-    if (forStep || forBranch) return
+    if (forStep || forBranch || forRelease) return
     picker.clearTarget()
     goBack()
 }

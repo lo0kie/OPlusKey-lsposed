@@ -111,9 +111,12 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
         onDismiss = { confirmDelete = false },
         onConfirm = {
             confirmDelete = false
-            removePicked()
-            //  删完退出编辑态：这一趟的活干完了，留着一排勾没有下一步
-            KeysEditState.toggleEditing()
+            //  **删成了才退出编辑态**：写盘被拒时那一排勾删的还在，退出编辑态等于把它们
+            //  当成「已经删掉」，再进编辑态得重新勾一遍。
+            if (removePicked()) {
+                //  删完退出编辑态：这一趟的活干完了，留着一排勾没有下一步
+                KeysEditState.toggleEditing()
+            }
         },
     )
 

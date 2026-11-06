@@ -87,12 +87,10 @@ private fun SettingsPage.rebuildCurrent(clearVars: Boolean) {
         XLog.w("$what：命令库没写成，只读位已还原（避免空表被后续写入固化到盘）")
     }
     //  变量表跟着配置槽走（见 `ProfileVars`）：只清**当前那一份**的，别的配置那几张照旧
-    if (clearVars) {
-        val varsCleared = ProfileVars.save(ConfigProfiles.CURRENT_SLOT, emptyList())
-        XLog.w("$what：变量表清空=$varsCleared")
-    }
+    val varsCleared = !clearVars || ProfileVars.save(ConfigProfiles.CURRENT_SLOT, emptyList())
+    if (clearVars) XLog.w("$what：变量表清空=$varsCleared")
     XLog.w("$what：主配置已重建=$rebuilt，命令库清空=$cleared")
-    reportReset(what, clearVars, rebuilt, cleared)
+    reportReset(what, clearVars, varsCleared, rebuilt, cleared)
 }
 
 /**
@@ -129,6 +127,7 @@ private fun SettingsPage.releaseCommandsReadOnly(what: String): Boolean {
 private fun SettingsPage.reportReset(
     what: String,
     clearVars: Boolean,
+    varsCleared: Boolean,
     rebuilt: CommandsSave,
     cleared: CommandsSave,
 ) {
@@ -139,6 +138,12 @@ private fun SettingsPage.reportReset(
 
         cleared == CommandsSave.Failed -> {
             hint(I18n.get(Strings.TOAST_CONFIG_CLEAR_FAILED, "配置已重置，命令库清空失败"))
+        }
+
+        //  **变量表没清成也要说**：主配置与命令库已经重置了，但上一套计数还在盘上 ——
+        //  报「已重置」的话，用户下一次执行 `+= 1` 会接着旧值往上加，还以为已经归零。
+        clearVars && !varsCleared -> {
+            hint(I18n.get(Strings.TOAST_CONFIG_CLEAR_VARS_FAILED, "配置已重置，变量表清空失败"))
         }
 
         else -> {

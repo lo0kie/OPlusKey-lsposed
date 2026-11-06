@@ -10,7 +10,11 @@ package com.lookie.opluskey.core.model
  * 下一个可用的自定义键 id —— 序号**只增不减**（删掉中间那颗再收一颗，不能撞上还活着的 id）。
  */
 fun Config.nextCustomKeyId(): String {
-    val used = customKeys.mapNotNull { it.id.removePrefix(KeyId.CUSTOM_ID_PREFIX).toIntOrNull() }
+    //  **两份数据都要扫**：`customKeys` 是「有哪些键」，`keys` 里还可能留着已从清单摘掉的条目
+    //  （见 `ConfigActions` 那段说明）。只扫前者时，新分配的 id 会撞上那条还活着的条目，
+    //  `withCustomKey` 直接把它覆盖掉 —— 那颗键的绑定当场丢失。
+    val ids = customKeys.map { it.id } + keys.keys.map { it.id }
+    val used = ids.mapNotNull { it.removePrefix(KeyId.CUSTOM_ID_PREFIX).toIntOrNull() }
     return KeyId.customId((used.maxOrNull() ?: 0) + 1)
 }
 

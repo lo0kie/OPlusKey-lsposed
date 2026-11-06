@@ -61,14 +61,22 @@ object XLog {
     /** 导出用的内存环形缓冲：只留最近 [BUFFER_MAX] 条（**本进程**的日志）。 */
     private const val BUFFER_MAX = 2000
 
-    private val buffer = java.util.concurrent.ConcurrentLinkedDeque<String>()
+    /**
+     * 缓冲本体 —— **`ArrayDeque` + 一把锁**，不用并发队列。
+     *
+     *  `ConcurrentLinkedDeque.size()` 是 O(n) 遍历，而这里每条日志都要按它裁一次上界：
+     *  满载 2000 条时，单条日志白跑两千次节点访问，而 `w` 这条路径就在按键热路径上。
+     *  锁里只做「加一条 / 裁一条」，临界区是常数级；日志本来就是各个线程都在写，
+     *  一把短锁比一条 O(n) 的遍历便宜得多（也不能用计数器近似 —— 见下面 [write] 里那段说明）。
+     */
+    private val buffer = ArrayDeque<String>(BUFFER_MAX)
 
     private val stamp =
         java.time.format.DateTimeFormatter
             .ofPattern("MM-dd HH:mm:ss.SSS")
 
     /** 导出用：把缓冲拼成文本（**本进程**）。另外两个进程那份由 `wire/LogWire` 一问一答收上来。 */
-    fun snapshot(): String = buffer.joinToString("\n")
+    fun snapshot(): String = synchronized(buffer) { buffer.joinToString("\n") }
 
     /**
      * 缓冲里的每一行（拷贝一份快照）。
@@ -77,7 +85,7 @@ object XLog {
      *  拷贝而不是直接遍历 `buffer`（并发队列）：边读边有人在后面写，会把「这次导出的行数」
      *  与「实际拼出来的行数」弄成两个值。
      */
-    fun lines(): List<String> = ArrayList(buffer)
+    fun lines(): List<String> = synchronized(buffer) { ArrayList(buffer) }
 
     /**
      * 日志的实际出口 —— 判据级日志**必须**走 [w]（或直接带 priority 走这里），`d` 在 release 里
@@ -92,11 +100,13 @@ object XLog {
         // 三处出口（缓冲 / logcat / 框架日志）都是尽力而为、失败即丢，绝不影响调用方。
         // 用 runCatching 是明确的丢弃语义，不是 AGENTS.md 五之二 2 禁的「以保护代 catch」。
         runCatching {
-            //  上界靠「先加再按数裁」，**不靠单独的计数器**：那一版用 `AtomicInteger` 记条数，
-            //  与 `ConcurrentLinkedDeque` 的增删不是同一次原子操作 —— 并发下计数会偏低 / 偏高，
-            //  环形缓冲于是少留几条、或多涨出去不受 [BUFFER_MAX] 约束（高频 `d` 路径尤其明显）。
-            buffer.addLast("${level(priority)} ${java.time.LocalDateTime.now().format(stamp)} $text")
-            while (buffer.size > BUFFER_MAX) buffer.pollFirst()
+            //  上界靠「先加再按数裁」，**不靠单独的计数器**：计数器与缓冲的增删不是同一次原子操作，
+            //  并发下会偏低 / 偏高，环形缓冲于是少留几条、或多涨出去不受 [BUFFER_MAX] 约束
+            //  （高频 `d` 路径尤其明显）。所以这里在**同一把锁**里加与裁 —— 计数与裁剪是一件事。
+            synchronized(buffer) {
+                buffer.addLast("${level(priority)} ${java.time.LocalDateTime.now().format(stamp)} $text")
+                while (buffer.size > BUFFER_MAX) buffer.removeFirst()
+            }
         }
         runCatching { Log.println(priority, TAG, text) }
         module?.let { m ->

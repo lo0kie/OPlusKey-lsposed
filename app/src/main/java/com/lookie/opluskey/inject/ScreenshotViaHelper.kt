@@ -51,7 +51,15 @@ internal object ScreenshotViaHelper {
     ): Boolean {
         //  找类 / 找构造器 / 找方法这三步各有各的失败，都只记日志并返回 null ——
         //  收进 `resolve` 是为了让这里只剩「发起 + 收尾」两件事（detekt 的 ReturnCount 也数得清）。
-        val ready = resolve(loader, contextProvider) ?: return false
+        //  **`resolve` 自己也要兜住**：它里面有 `constructors` / `newInstance`，抛的是 `Throwable`
+        //  （含 `Error`），漏出去就是 system_server 崩 —— 与下面 `invoke` 同一道防线。
+        val ready =
+            try {
+                resolve(loader, contextProvider)
+            } catch (e: Throwable) {
+                XLog.w("截图（Helper）：准备实例时抛错（${e.javaClass.simpleName}）：${e.message}")
+                null
+            } ?: return false
         return try {
             ready.method.invoke(
                 ready.helper,
@@ -128,16 +136,10 @@ internal object ScreenshotViaHelper {
         XLog.w("截图（Helper）：构造器 = ${cls.constructors.joinToString(" | ") { it.toGenericString() }}")
         val methods = cls.declaredMethods.filter { it.name == "takeScreenshot" }
         XLog.w("截图（Helper）：takeScreenshot = ${methods.joinToString(" | ") { it.toGenericString() }}")
-        //  常量也一并打出来：`SCREENSHOT_GLOBAL_ACTION` 在不同版本上是 1 还是别的值，只有日志能说清
-        XLog.w(
-            "截图（Helper）：常量 = " +
-                cls.declaredFields
-                    .filter { it.name.startsWith("SCREENSHOT_") && it.type == Int::class.javaPrimitiveType }
-                    .joinToString(" ") { f ->
-                        f.isAccessible = true
-                        "${f.name}=${runCatching { f.getInt(null) }.getOrDefault(-1)}"
-                    },
-        )
+        //  **不去读它的 `SCREENSHOT_*` 常量**：读静态成员会触发这个类的 `<clinit>`，而 system_server
+        //  里宿主类初始化失败就被标 erroneous、之后任何访问都是 `NoClassDefFoundError`（AGENTS.md
+        //  五之二、1）。本方法只做诊断，不该为此付那条代价 —— 真要核对常量，用法是先按签名调通
+        //  （那时类已经初始化过），失败日志会带上 `type` 的取值。
     }
 
     /**

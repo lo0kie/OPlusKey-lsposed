@@ -75,10 +75,14 @@ internal fun markdownToAnnotated(
     accent: Color,
     codeBackground: Color,
 ): AnnotatedString {
+    //  **先按长度截断**：这段正文来自网络（更新说明），解析与渲染都在主线程的组合期、且都是
+    //  按 AST 深度递归。一条几 MB 的正文足以把主线程占满（ANR），而说明是给人看的 ——
+    //  超出的部分截掉就够了，比让弹窗卡死好。
+    val body = if (markdown.length <= MAX_MARKDOWN_CHARS) markdown else markdown.take(MAX_MARKDOWN_CHARS)
     val root =
-        runCatching { MD_PARSER.buildMarkdownTreeFromString(markdown as CharSequence) }.getOrNull()
+        runCatching { MD_PARSER.buildMarkdownTreeFromString(body as CharSequence) }.getOrNull()
             // 解析器抛异常时**退回原文**：更新说明再花哨，也不该让弹窗画不出来
-            ?: return AnnotatedString(markdown)
+            ?: return AnnotatedString(body)
     val md =
         MdStyle(
             text = style,
@@ -87,8 +91,11 @@ internal fun markdownToAnnotated(
             //  与弹窗底同色 ⇒ 行内代码只剩下一副等宽字形，看起来像「字体坏了」而不是「这是代码」。
             code = SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground),
         )
-    return buildAnnotatedString { appendBlocks(root, markdown, md) }
+    return buildAnnotatedString { appendBlocks(root, body, md) }
 }
+
+/** 更新说明的字数上限 —— 正文来自网络，解析与渲染都在主线程。 */
+private const val MAX_MARKDOWN_CHARS = 64_000
 
 /** 顶层块：段落、标题、列表、代码块、引用。其余类型保守地按行内处理。 */
 private fun AnnotatedString.Builder.appendBlocks(

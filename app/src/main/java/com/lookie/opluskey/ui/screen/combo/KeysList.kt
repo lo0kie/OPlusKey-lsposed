@@ -12,13 +12,15 @@ import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.DrawnIcons
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.screen.keyEnabled
 import com.lookie.opluskey.ui.state.ComboEditState
+import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.KeysEditState
-import com.lookie.opluskey.ui.writeAndNotice
+import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.Checkbox
 
 // 「按键功能」页上半张卡 —— 按键列表（侧键 + 收集来的键）与末行「添加按键」。
@@ -164,8 +166,14 @@ private fun keyIcon(
     enabled: Boolean,
 ): ImageVector = if (enabled) normal else PageIcons.Cancel
 
-/** 「已启用」/「已停用」—— 两档都给一句，行高才一致。 */
-private fun stateSummary(enabled: Boolean): String =
+/**
+ * 「已启用」/「已停用」—— **按键列表与组合按键列表共用这一份**（同一对文案
+ * `binding.key_enabled_state` / `binding.key_disabled_state`：同一种状态的同一种说法，
+ * 另起一套只会各走各的措辞）。
+ *
+ *  两档都给一句，行高才一致；停用也不只靠颜色区分（灰对色弱不友好）。
+ */
+internal fun stateSummary(enabled: Boolean): String =
     if (enabled) {
         I18n.get(Strings.BINDING_KEY_ENABLED_STATE, "已启用")
     } else {
@@ -205,11 +213,11 @@ private fun SettingsPage.openKey(key: KeyId) {
  *   · **组合** —— 整组连它的动作一起没；正在编辑的是它时，把 `ComboEditState` 的编辑目标清掉
  *     （否则「组合键」编辑页还停在一个已经删掉的 id 上）。
  */
-internal fun SettingsPage.removePicked() {
+internal fun SettingsPage.removePicked(): Boolean {
     val cfg = configState.config.value
     val keyIds = KeysEditState.pickedKeys
     val pickedCombos = KeysEditState.pickedCombos
-    if (keyIds.isEmpty() && pickedCombos.isEmpty()) return
+    if (keyIds.isEmpty() && pickedCombos.isEmpty()) return false
     //  勾中的键连带带走「含有它们」的组合；已经勾上的不重复算（它们本来就在这一趟里）
     val cascaded =
         cfg.combos
@@ -218,8 +226,6 @@ internal fun SettingsPage.removePicked() {
     val comboIds = pickedCombos + cascaded
     val count = keyIds.size + comboIds.size
     val victims = cfg.customKeys.filter { it.id in keyIds }
-    victims.forEach { KeyWatchState.forget(it.id) }
-    if (ComboEditState.editingId in comboIds) ComboEditState.clear()
     XLog.w(
         "按键页：删除 $count 项" +
             "（按键 ${victims.joinToString { it.label }}；" +
@@ -232,7 +238,12 @@ internal fun SettingsPage.removePicked() {
             keys = cfg.keys.filterKeys { !it.isCustom || it.id !in keyIds },
             combos = cfg.combos.filterNot { it.id in comboIds },
         )
-    writeAndNotice(next, "keys_del=$count") {
-        I18n.format(Strings.KEYS_DELETED, count)
-    }
+    //  **先落盘、成了再收状态**。判「没成」只看 [CommandsSave.Failed]（= 什么都没写）：
+    //  [CommandsSave.BroadcastFailed] 是「盘上已经是新样子、只是没通知到注入侧」—— 那时按键
+    //  确实已经删了，界面不跟着收就会勾着一批不存在的 id。
+    if (write(next, "keys_del=$count") == CommandsSave.Failed) return false
+    hint(I18n.format(Strings.KEYS_DELETED, count), slot = "keys_del")
+    victims.forEach { KeyWatchState.forget(it.id) }
+    if (ComboEditState.editingId in comboIds) ComboEditState.clear()
+    return true
 }

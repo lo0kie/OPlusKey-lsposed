@@ -45,6 +45,26 @@ class ModuleFiles internal constructor(
     val id: String,
 ) {
     /**
+     * 「文件在但读不出来」这条 W 是否已经报过（理由见 [ConfigStore] 里同名字段：
+     * 这条判据会被每条按键打到）。
+     */
+    @Volatile
+    private var unreadableWarned = false
+
+    /** 读不出来的那一行 —— 同一件事的两个 catch 分支**用同一档日志**，别一处 `w` 一处 `d`。 */
+    private fun warnUnreadable(
+        file: File,
+        detail: String?,
+    ) {
+        if (unreadableWarned) {
+            XLog.d("读模块文件失败（文件在但读不出来）：${file.path} | $detail")
+        } else {
+            unreadableWarned = true
+            XLog.w("读模块文件失败（文件在但读不出来）：${file.path} | $detail（后续同类只记调试档）")
+        }
+    }
+
+    /**
      * 这个模块的配置文件目录 —— 与宿主自己用的是同一个（见类注释里为什么平铺）。
      *
      * 目录可能**还不存在**（宿主自己从没用过 DE 那一份），[write] 会按需建。
@@ -84,12 +104,12 @@ class ModuleFiles internal constructor(
                 //  EACCES 抛的也是 `FileNotFoundException`。后者按「没写过」处理，下一次写就会把
                 //  用户的配置整份换成默认值，所以先看文件到底在不在。
                 if (f.exists()) {
-                    XLog.d("读模块文件失败（文件在但读不出来）：${f.path} | ${e.message}")
+                    warnUnreadable(f, e.message)
                     return Load.Unreadable
                 }
                 return Load.Absent
             } catch (e: Throwable) {
-                XLog.d("读模块文件失败（文件在但读不出来）：${f.path} | ${e.message}")
+                warnUnreadable(f, e.message)
                 return Load.Unreadable
             }
         return Load.Ok(stripBom(raw))

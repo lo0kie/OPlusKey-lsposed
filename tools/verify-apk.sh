@@ -256,7 +256,28 @@ else
     if [ -n "$extra_en" ]; then printf 'en.json 里有而 Strings.kt 没有的键：\n%s\n' "$extra_en"; fi
     bad "字典与 Strings.kt 对不上（界面会直接显示键名）"
   else
-    echo "  ok  字典覆盖：Strings.kt / zh-CN.json / en.json 三边键一致（$(printf '%s\n' "$k_src" | wc -l | tr -d ' ') 条）"
+    #  **占位符也要比**：只比键集合时，英文那条漏掉一个 `%s`（或把 `%s` 写成 `%d`）照样过闸，
+    #  运行期 `String.format` 直接抛 `MissingFormatArgumentException` —— 而那句话恰好在弹窗里。
+    #  比的是「顺序 + 种类」：`%s…%d` 与 `%d…%s` 数量相同也不能互换。
+    placeholders() {
+      awk -F'"' '/"[a-z0-9_.]+":/ {
+        key = $2
+        rest = $0
+        seq = ""
+        while (match(rest, /%[sd]/)) {
+          seq = seq substr(rest, RSTART + 1, 1)
+          rest = substr(rest, RSTART + RLENGTH)
+        }
+        print key, seq
+      }' "$1" | sort
+    }
+    ph_diff=$(diff <(placeholders "$zh") <(placeholders "$en") || true)
+    if [ -n "$ph_diff" ]; then
+      printf '占位符不一致（zh-CN 与 en）：\n%s\n' "$ph_diff"
+      bad "两边的 %s / %d 数量或顺序对不上（运行期 String.format 会抛）"
+    else
+      echo "  ok  字典覆盖：Strings.kt / zh-CN.json / en.json 三边键一致（$(printf '%s\n' "$k_src" | wc -l | tr -d ' ') 条），占位符也一致"
+    fi
   fi
 fi
 

@@ -1,8 +1,6 @@
 package com.lookie.opluskey.bridge
 
 import android.os.Bundle
-import android.os.Process
-import android.os.UserHandle
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.ZoomWindowWire
@@ -62,7 +60,8 @@ internal object MiniWindowSupport {
             val manager = managerCls?.let { Reflect.callStatic(it, "getInstance") }
             val method = managerCls?.let { Reflect.methodByNameAndArity(it, METHOD, ARITY) }
             if (manager == null || method == null) {
-                XLog.d("小窗支持性：$pkg 判不出来（找不到 $MANAGER#$METHOD/$ARITY）")
+                //  **判不出来是判据级**（界面为什么不提示也不拦全靠这一行）⇒ `w`：`d` 在 release 里被消除。
+                XLog.w("小窗支持性：$pkg 判不出来（找不到 $MANAGER#$METHOD/$ARITY）")
                 null
             } else {
                 val bundled = Bundle().apply { putInt(EXTRA_WINDOW_MODE, WINDOWING_MODE_ZOOM) }
@@ -80,21 +79,7 @@ internal object MiniWindowSupport {
                 result
             }
         } catch (e: Throwable) {
-            XLog.d("小窗支持性：$pkg 判不出来（${e.javaClass.simpleName}: ${e.message}）")
+            XLog.w("小窗支持性：$pkg 判不出来（${e.javaClass.simpleName}: ${e.message}）")
             null
         }
-
-    /** `Process.myUid()` 里一个用户占的区间（`UserHandle.PER_USER_RANGE` 的等价常量）。 */
-    private const val PER_USER_RANGE = 100000
-
-    /**
-     * 当前用户 id —— `UserHandle.getUserId` 是隐藏 API，拿不到就按 [PER_USER_RANGE] 折。
-     *
-     *  **同包的唯一一份**：[AppLauncher] 解析包名（含工作资料里那份）也要它
-     *（同包只留一份）。放在本文件是因为它是 object、[AppLauncher]
-     *  是类 —— 类的成员函数跨不过来。
-     */
-    internal fun currentUserId(): Int =
-        Reflect.callStatic(UserHandle::class.java, "getUserId", Process.myUid()) as? Int
-            ?: (Process.myUid() / PER_USER_RANGE)
 }

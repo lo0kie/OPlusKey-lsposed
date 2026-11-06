@@ -113,6 +113,28 @@ object FileObfuscation {
     /** 第二层的位置偏移（按下标循环用）：同一个字符落在不同位置，换出来的替身也不同。 */
     private val ROT = intArrayOf(17, 0, 43, 8, 61, 25, 3, 54, 31, 12)
 
+    /**
+     * 两张字符 → 下标的表（`-1` = 表外字符）。
+     *
+     *  这一层跑在**每次读配置**与**每次落盘**的路径上：逐字符 `indexOf` 一遍 64 项，
+     *  解一份命令库就是几十万次比较。两张表都由上面那两份定义现算，不另写字面量。
+     */
+    private val SCRAMBLE_INDEX: IntArray =
+        IntArray(128) { -1 }.also { table ->
+            SCRAMBLE.forEachIndexed { i, c -> if (c.code < table.size) table[c.code] = i }
+        }
+
+    private val STD_INDEX: IntArray =
+        IntArray(128) { -1 }.also { table ->
+            STD_ALPHABET.forEachIndexed { i, c -> if (c.code < table.size) table[c.code] = i }
+        }
+
+    /** 在 [table] 里查 [c] 的下标；码点超出表宽（不该出现）时按「表外」算。 */
+    private fun indexIn(
+        table: IntArray,
+        c: Char,
+    ): Int = if (c.code < table.size) table[c.code] else -1
+
     /** 把明文包成 [magic] + 一行两层变换过的正文。 */
     fun wrap(
         magic: String,
@@ -192,7 +214,7 @@ object FileObfuscation {
             if (c == PAD) {
                 out.append(PAD)
             } else {
-                val idx = STD_ALPHABET.indexOf(c)
+                val idx = indexIn(STD_INDEX, c)
                 if (idx >= 0) {
                     out.append(SCRAMBLE[(idx + ROT[at % ROT.size]) and 63])
                 } else {
@@ -222,7 +244,7 @@ object FileObfuscation {
                 out.append(PAD)
                 continue
             }
-            val idx = SCRAMBLE.indexOf(c)
+            val idx = indexIn(SCRAMBLE_INDEX, c)
             if (idx < 0) return null
             // 减完再加一整圈：Kotlin 的 % 对负数给负数，直接用会拿到负下标
             out.append(STD_ALPHABET[(idx - ROT[at % ROT.size] + ALPHABET_SIZE) and 63])

@@ -391,13 +391,21 @@ object ConfigProfiles {
                 disclaimerAccepted = current?.disclaimerAccepted ?: false,
                 commandDisclaimerAccepted = current?.commandDisclaimerAccepted ?: false,
             )
-        if (!writeProfileConfig(slot, blank)) return null
         //  命令库留空（而不是复制当前那份）：空白配置里没有任何 `cmd:` 引用，把旧命令带过去
         //  会让它看着像「复制了一份」—— 与上一版的行为正好相反。
-        ProfileCommands.save(slot, emptyList())
         //  变量表**落一份空表**（不是不写）：不写的话切换时目标槽空着会被当成老配置，
-        //  新配置一上来就继承了上一套的计数（见 [ProfileVars] 的类注释）
-        ProfileVars.save(slot, emptyList())
+        //  新配置一上来就继承了上一套的计数（见 [ProfileVars] 的类注释）。
+        //  **三段任一失败就撤掉这一槽**：只写主配置不写那两份的话，新配置会带着上一套的
+        //  命令库 / 计数上线，正是上面两条要避免的事，而调用方拿到的还是一个「建成功了」。
+        val saved =
+            writeProfileConfig(slot, blank) &&
+                ProfileCommands.save(slot, emptyList()) &&
+                ProfileVars.save(slot, emptyList())
+        if (!saved) {
+            XLog.w("配置新建：$trimmed 没落成（主配置 / 命令库 / 变量表），撤掉这一槽")
+            delete(slot)
+            return null
+        }
         XLog.w("配置新建：$trimmed（槽 $slot，空白）")
         return slot
     }
@@ -502,7 +510,13 @@ object ConfigProfiles {
             )
         //  先落命令库、再落主配置，与 [importAs] 同一个顺序（命令库是「内容的一半」，先写它，
         //  主配置失败时还可以按原样还原命令库）。
-        val previousCommands = ProfileCommands.read(slot)
+        //  **必须用三态读**：`read()` 把「读不懂」与「没有」都塌成 `null`，于是「原来那份读不懂」时
+        //  覆盖失败根本还原不了 —— 新内容把旧内容永久盖掉。这一档直接拒绝覆盖。
+        val previous = ProfileCommands.load(slot)
+        if (previous is ProfileCommands.Load.Unreadable) {
+            XLog.w("配置导入覆盖：$slot 的命令库读不出来，拒绝覆盖（否则原来那份会被永久盖掉）")
+            return null
+        }
         val ok =
             ProfileCommands.save(slot, commands) &&
                 writeProfileConfig(slot, ordered) &&
@@ -512,7 +526,7 @@ object ConfigProfiles {
             //  命令库还原成原来那份；主配置还原成调用前读到的那一份（`target`）。
             //  只还原命令库的话，用户看到「导入失败」，而主配置其实已经变成导入的内容 ——
             //  那份旧配置从此没有任何副本。
-            if (previousCommands != null) ProfileCommands.save(slot, previousCommands)
+            if (previous is ProfileCommands.Load.Ok) ProfileCommands.save(slot, previous.commands)
             writeProfileConfig(slot, target)
             XLog.w("配置导入覆盖：$slot 没写成，已还原命令库与主配置")
             return null

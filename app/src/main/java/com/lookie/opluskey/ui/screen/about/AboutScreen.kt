@@ -26,6 +26,7 @@ import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.PagePalette
 import com.lookie.opluskey.ui.retireHint
 import com.lookie.opluskey.ui.state.UpdateState
+import com.lookie.opluskey.ui.updateHost
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
 /** 「正在检查更新…」那条提示的兜底时长 —— 检查最多 10 秒（见 `UpdateState`），再加 1 秒余量。 */
@@ -87,7 +88,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
                 //  「正在检查」这条用「本页杂项」那一档 holdMs 撑不住 10 秒的检查（2 秒就自己没了，
                 //  中间空一截）；给它一个长兜底，真正的收场是查完那句回执顶上来。
                 hint(I18n.get(Strings.UPDATE_CHECKING, "正在检查更新…"), holdMs = UPDATE_CHECKING_HOLD_MS)
-                val outcome = UpdateState.checkManually(this@AboutScreen)
+                val outcome = UpdateState.checkManually(this@AboutScreen.updateHost())
                 val text =
                     when (outcome) {
                         UpdateState.CheckOutcome.LATEST -> I18n.get(Strings.UPDATE_LATEST, "已是最新版本")

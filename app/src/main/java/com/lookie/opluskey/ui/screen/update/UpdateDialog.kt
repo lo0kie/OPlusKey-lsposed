@@ -26,6 +26,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.update.ReleaseInfo
 import com.lookie.opluskey.ui.DialogBody
 import com.lookie.opluskey.ui.DialogButtonRow
@@ -34,10 +35,12 @@ import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialogSideMargin
+import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.markdownToAnnotated
 import com.lookie.opluskey.ui.screen.home.openUrl
 import com.lookie.opluskey.ui.scrollBarTick
 import com.lookie.opluskey.ui.state.UpdateState
+import com.lookie.opluskey.ui.updateHost
 import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
@@ -81,7 +84,7 @@ internal fun SettingsPage.UpdateSelfCheck() {
     //  `LaunchedEffect` 的块是 `CoroutineScope.()`，里面那个 `this` 不是页面 —— 先把它抓出来
     val page = this
     LaunchedEffect(Unit) {
-        if (UpdateState.needsCheck()) UpdateState.checkUpdateOnce(page)
+        if (UpdateState.needsCheck()) UpdateState.checkUpdateOnce(page.updateHost())
     }
 }
 
@@ -103,9 +106,18 @@ internal fun SettingsPage.UpdateDialog() {
                 negative = I18n.get(Strings.UPDATE_LATER, "稍后"),
                 onNegative = { UpdateState.dismiss() },
                 onPositive = {
-                    //  先去浏览器，再收窗：`takeDownload` 会把勾选框那一笔一起记下
-                    val url = UpdateState.takeDownload()
-                    if (url != null) openUrl(url)
+                    //  `takeDownload` 无论有没有地址都会把 offer / pending 清掉 —— 地址为空时先拦住：
+                    //  否则窗口关了、浏览器没开、首页红点也一起灭掉，用户看不到任何解释。
+                    val url = UpdateState.offer?.pageUrl
+                    if (url.isNullOrBlank()) {
+                        XLog.w("更新：这条 release 没有可打开的地址（version=${UpdateState.offer?.version}）")
+                        UpdateState.dismiss()
+                        hint(I18n.get(Strings.UPDATE_NO_URL, "这条更新没有下载地址，请到发布页查看"))
+                    } else {
+                        //  先去浏览器，再收窗：`takeDownload` 会把勾选框那一笔一起记下
+                        UpdateState.takeDownload()
+                        openUrl(url)
+                    }
                 },
                 //  更新不是破坏性动作，动作项用中性色；字换成「去下载」
                 positiveStyle =

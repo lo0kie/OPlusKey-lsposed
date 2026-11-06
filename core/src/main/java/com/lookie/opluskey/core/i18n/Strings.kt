@@ -1120,6 +1120,10 @@ object Strings {
     const val TOAST_COMMAND_TRIGGERED = "toast.command_triggered"
     const val TOAST_COMMAND_TEST_FAILED = "toast.command_test_failed"
     const val TOAST_CONFIG_CLEAR_FAILED = "toast.config_clear_failed"
+
+    /** 变量表没清成（主配置与命令库已重置）—— 见 `ConfigReset.reportReset`。 */
+    const val TOAST_CONFIG_CLEAR_VARS_FAILED = "toast.config_clear_vars_failed"
+
     const val TOAST_CONFIG_CLEARED = "toast.config_cleared"
     const val TOAST_MODULE_RESET = "toast.module_reset"
     const val TOAST_CONFIG_EXPORT_FAILED = "toast.config_export_failed"
@@ -1363,4 +1367,7 @@ object Strings {
 
     /** 手动点「检查更新」、没查到（没网 / 接口失败）时的那句回执。 */
     const val UPDATE_FAILED = "update.failed"
+
+    /** 这条 release 没给下载地址（`html_url` 缺失且拼不出回退地址）时的回执。 */
+    const val UPDATE_NO_URL = "update.no_url"
 }

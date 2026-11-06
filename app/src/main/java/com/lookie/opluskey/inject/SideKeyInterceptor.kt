@@ -574,6 +574,10 @@ private fun justSwallowed(
  * **摘表与判据分开**：只要是 UP 就先把这一颗的记账摘掉。写成「先判 justSwallowed 才摘」的话，
  * 收集期里到达的那条 UP 会被 `!collecting` 短路掉、记账留着；下一条真实按压缩在窗口内时，
  * 它正常的抬手就会被上一轮那条记账吞掉 —— 判定器收到一条没有抬手的 DOWN，长按于是误触发。
+ *
+ * **每一颗键的按下都要重写这笔账**：记账只对「这一下被吞掉、它的抬手也要吞」有意义，必须属于
+ * **最近这一次按下**。收集期留下的旧账若一直挂到下一次正常按压，那次抬手就会把旧账摘走并判成
+ * `justSwallowed` —— 那条 UP 被吞掉，判定器只收到 DOWN（单击不再派发、长按一直挂着）。
  */
 private fun swallowWhileCollecting(
     swallowedDownAt: MutableMap<Int, Long>,
@@ -581,10 +585,15 @@ private fun swallowWhileCollecting(
 ): Boolean {
     KeyWatch.report(keyEvent)
     val collecting = KeyWatch.active
-    // 记下这一下「按下」：弹窗很可能**因为这一下而关掉**（收下了 / 被手动关掉），
-    // 紧跟的 UP 就不再属于「收集期」了。
-    if (collecting && keyEvent.action == KeyEvent.ACTION_DOWN) {
-        swallowedDownAt[keyEvent.keyCode] = SystemClock.uptimeMillis()
+    //  记下这一下「按下」：弹窗很可能**因为这一下而关掉**（收下了 / 被手动关掉），
+    //  紧跟的 UP 就不再属于「收集期」了。不在收集期时这一颗的账一律清掉 —— 那说明上一次的
+    //  记账已经过期（它的 UP 丢了），留着只会吞掉这一下正常的抬手。
+    if (keyEvent.action == KeyEvent.ACTION_DOWN) {
+        if (collecting) {
+            swallowedDownAt[keyEvent.keyCode] = SystemClock.uptimeMillis()
+        } else {
+            swallowedDownAt.remove(keyEvent.keyCode)
+        }
     }
     val swallowedAt =
         if (keyEvent.action == KeyEvent.ACTION_UP) {

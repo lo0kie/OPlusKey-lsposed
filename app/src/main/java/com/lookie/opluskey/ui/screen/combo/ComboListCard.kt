@@ -179,7 +179,7 @@ private fun SettingsPage.comboRow(
         //  列表才不会一行高一行矮，而且「停用」不再只靠颜色区分）。
         //  动作摘要（`短按：手电筒 · 长按：…`）仍然不写：一列下来全是小字、每行还都不
         //  一样长，扫一眼只能看见一片灰 —— 两档动作进页面看。
-        summary = comboStateSummary(combo.enabled),
+        summary = stateSummary(combo.enabled),
         //  行首用**第几组**的数字图标（1~9，与 `MAX_COMBOS` 同一档，用户口径）：一列下来能数清现在有几组，
         //  与首页「按键」卡那几颗自定义键同一套写法（`menuKeyNumber`）。
         //  停用的那一档换成禁用图标（与按键列表同一颗、同一个位置）；成员被删掉的那一档
@@ -483,16 +483,3 @@ private fun SettingsPage.addComboRow(
         },
     )
 }
-
-/**
- * 「已启用」/「已停用」—— 与首页「按键列表」**同一对文案**（`binding.key_enabled_state` /
- * `binding.key_disabled_state`）：两处是同一种状态的同一种说法，另起一套只会各走各的措辞。
- *
- *  两档都给一句，行高才一致；停用也不只靠颜色区分（灰对色弱不友好）。
- */
-private fun comboStateSummary(enabled: Boolean): String =
-    if (enabled) {
-        I18n.get(Strings.BINDING_KEY_ENABLED_STATE, "已启用")
-    } else {
-        I18n.get(Strings.BINDING_KEY_DISABLED_STATE, "已停用")
-    }

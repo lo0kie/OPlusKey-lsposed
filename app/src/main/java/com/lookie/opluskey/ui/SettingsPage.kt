@@ -306,16 +306,33 @@ internal class SettingsPage(
                 ?.let { commandDraft.draft.steps.getOrNull(it) }
                 ?.let { runCatching { Action.parse(it) }.getOrNull() }
         }
-        val g = picker.gesture ?: return null
         val cfg = configState.config.value
+        //  「松手执行额外动作」那一趟**走的不是手势槽**：`openForRelease` 会把 `gesture` /
+        //  `comboId` / `forStep` 一起清掉（那一趟写的是键上的 `longRelease`），照下面两条判都会
+        //  拿到 `null` —— 于是小窗开关恒关、当前绑定不高亮，用户重挑一次就把 `window:` 静默降级成 `app:`。
+        if (picker.forRelease) {
+            val current =
+                picker.releaseComboId
+                    ?.let { id -> cfg.combos.firstOrNull { it.id == id }?.longRelease }
+                    ?: cfg.key(KeyWatchState.editing(cfg)).longRelease
+            return current.takeIf { it !is Action.None }
+        }
+        val g = picker.gesture
+        val comboId = picker.comboId
         //  组合键那一趟**读组合那张表**：判据只有 [AppPickerState.comboId] 一处，与写回侧
         //  （`PageEntryWrite.writeToken`）同一个判据。少了这一支，从组合键页进来读到的永远是
         //  **当前那颗键**的动作 —— 那一格明明绑着应用，重进这一页却一行都不亮、确认键也不出现。
         //  不转调 `BindingTarget.Combo.actionIn`：本文件在 `ui/` 根，耦合审计不许它反向依赖
         //  `ui/screen/`；两处都只是「按 id 取那一档组合再取动作」，口径在 `ComboKey.actionOf`。
-        val comboId = picker.comboId ?: return actionOf(cfg, g)
-        //  组合被删了就不该退回「那颗键的动作」：那会点亮一个与本趟无关的绑定
-        return cfg.combos.firstOrNull { it.id == comboId }?.actionOf(g) ?: Action.None
+        return when {
+            //  两个入口都没记下来（调试通道直接跳页时是这样）⇒ 新绑
+            g == null -> null
+
+            comboId == null -> actionOf(cfg, g)
+
+            //  组合被删了就不该退回「那颗键的动作」：那会点亮一个与本趟无关的绑定
+            else -> cfg.combos.firstOrNull { it.id == comboId }?.actionOf(g) ?: Action.None
+        }
     }
 
     /**

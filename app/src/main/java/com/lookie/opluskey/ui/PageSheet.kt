@@ -140,7 +140,10 @@ internal fun SettingsPage.PageSheet(
         endAction = endAction,
         backgroundColor = sheetSurfaceColor(),
         onDismissRequest = onDismiss,
-        onDismissFinished = onDismiss,
+        //  **不再给 `onDismissFinished`**：给成 `onDismiss` 等于让调用方的关闭回调执行两次
+        //  （一次在请求时、一次在退场播完），带副作用的关闭（清草稿、翻页、落盘）会做两遍，
+        //  而且第二遍发生在状态已经被改过之后。需要「收场之后再做一件事」的调用点，
+        //  自己传 `PageConfirmDialog` 那个同名参数。
         //  **横向内边距全在这一个参数上**（它同时套在把手 / 标题 / 内容上）：收到 [PAGE_MARGIN]
         //  之后标题与行文字的左边线才落在同一条 16dp 线上。
         insideMargin = DpSize(PAGE_MARGIN, 0.dp),

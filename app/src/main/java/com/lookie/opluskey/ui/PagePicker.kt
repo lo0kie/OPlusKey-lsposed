@@ -67,8 +67,8 @@ internal class PickerOption(
  *  而两边各让出一条内缩会把选中那条带切成浮在中间的胶囊。
  *
  * @param selected 这一行是不是当前那个（多选时 = 已勾上）
- * @param enabled 这一行能不能点（`false` = 置灰）。置灰行点击仍会走到 [onClick] —— 由调用方自己
- *   判断要不要拦（「新增配置」到顶时点那一下报「最多三份」）
+ * @param enabled 这一行能不能点（`false` = 置灰，**并且收不到点击** —— 可点性挂在 `clickable` 上）。
+ *   所以「为什么点不动」这类回执不能写在 `onClick` 里，要写在行上的字里（见「新增配置」已满那一档）。
  */
 @Composable
 internal fun PickerRow(

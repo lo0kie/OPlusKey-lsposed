@@ -241,10 +241,16 @@ object ConfigFields {
     val F_LONG_SERIAL = Field(LONG_SERIAL_EXTRA, Kind.Bool(false))
 
     /**
-     * 判定要认到第几击（见 [JUDGE_CLICKS_EXTRA]）。上限 9 与「一屏步骤数」那档同宽：
+     * 判定要认到第几击（见 [JUDGE_CLICKS_EXTRA]）。上限与「一屏步骤数」那档同宽：
      * 再多击的判定链已经没有实际意义（人的连击上限就三五下），手改出来的值在这里就钳掉。
+     *
+     *  **这个上限是唯一一处**：广播解析（[F_JUDGE_CLICKS]）与本地算出来的
+     *  `Config.clicksForJudge`（它还要兜住手改过的 `extraClicks` 键）都引用它 ——
+     *  两边各写一个数时，宿主按 20 击等、注入侧只认 9，第 10 击以后永远派发不出来。
      */
-    val F_JUDGE_CLICKS = Field(JUDGE_CLICKS_EXTRA, Kind.Number(0, 0, 9))
+    const val MAX_JUDGE_CLICKS = 9
+
+    val F_JUDGE_CLICKS = Field(JUDGE_CLICKS_EXTRA, Kind.Number(0, 0, MAX_JUDGE_CLICKS))
 
     /** `KeyConfig` 的全部广播字段。 */
     val KEY_FIELDS: List<Field> =

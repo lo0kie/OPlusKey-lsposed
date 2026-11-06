@@ -129,7 +129,13 @@ internal object SettingCalls {
                 XLog.w("wifi：取不到 wifi 服务")
                 return false
             }
-        val target = on ?: return false
+        val target =
+            on ?: run {
+                //  **别静默返回**：目标值缺了时这一档什么都不做，而界面上那个开关照样播了动画 ——
+                //  日志里没有这一行就只能猜「是不是压根没执行」。
+                XLog.w("这条系统开关指令没有目标值（on=null），不执行")
+                return false
+            }
         //  两代签名都要试（五、3 的「退到下一层候选」）：新 ROM 是
         //  `setWifiEnabled(String packageName, boolean enable)`，AOSP 老版只有 `setWifiEnabled(boolean)`。
         //  只试新签名的话，老 ROM 上这一档**静默失败**（`call` 解析不到方法就返回 null）。
@@ -157,7 +163,13 @@ internal object SettingCalls {
         on: Boolean?,
     ): Boolean {
         val s = ServiceCalls.service(loader, "bluetooth_manager", "android.bluetooth.IBluetoothManager") ?: return false
-        val target = on ?: return false
+        val target =
+            on ?: run {
+                //  **别静默返回**：目标值缺了时这一档什么都不做，而界面上那个开关照样播了动画 ——
+                //  日志里没有这一行就只能猜「是不是压根没执行」。
+                XLog.w("这条系统开关指令没有目标值（on=null），不执行")
+                return false
+            }
         val source = ServiceCalls.attributionSource(loader) ?: return false
         //  `?.value == true` 而不是 `!= null`：这两个方法返回 boolean，**被系统拒绝时返回的是
         //  false** 而不是 null —— 只判 null 会把「拒了」报成「切了」，界面状态与实际相反。
@@ -174,7 +186,13 @@ internal object SettingCalls {
         on: Boolean?,
     ): Boolean {
         val s = ServiceCalls.service(loader, "connectivity", "android.net.IConnectivityManager") ?: return false
-        val target = on ?: return false
+        val target =
+            on ?: run {
+                //  **别静默返回**：目标值缺了时这一档什么都不做，而界面上那个开关照样播了动画 ——
+                //  日志里没有这一行就只能猜「是不是压根没执行」。
+                XLog.w("这条系统开关指令没有目标值（on=null），不执行")
+                return false
+            }
         return ServiceCalls.call(s, "setAirplaneMode", listOf(target)) != null
     }
 
@@ -184,7 +202,13 @@ internal object SettingCalls {
         on: Boolean?,
     ): Boolean {
         val s = ServiceCalls.service(loader, "uimode", "android.app.IUiModeManager") ?: return false
-        val target = on ?: return false
+        val target =
+            on ?: run {
+                //  **别静默返回**：目标值缺了时这一档什么都不做，而界面上那个开关照样播了动画 ——
+                //  日志里没有这一行就只能猜「是不是压根没执行」。
+                XLog.w("这条系统开关指令没有目标值（on=null），不执行")
+                return false
+            }
         return ServiceCalls.call(s, "setNightMode", listOf(if (target) 2 else 1)) != null
     }
 

@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.screen.command
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -88,10 +89,20 @@ internal fun SettingsPage.BranchConditionMenu(
     val condIndex = menus.condIndexAt.coerceIn(-1, conditions.lastIndex.coerceAtLeast(-1))
     val editing = conditions.getOrNull(condIndex)
     val avail = conditionAvailability(rules, at, conditions, condIndex)
+    //  **这一趟写哪一块、第几条，在点种类那一刻快照**：两档取值走的是「先关一级菜单、再弹取值窗」，
+    //  关菜单那一下会把 `condAt` / `condIndexAt` 清成哨兵值；等取值回来再读 `menus` 就只能读到
+    //  「关着」，于是改条件变成追加一条。快照值随 `ConditionPick` 一路带下去。
+    var pickAt by remember { mutableIntStateOf(AppPickerState.NOT_FOR_BRANCH) }
+    var pickSlot by remember { mutableIntStateOf(-1) }
     //  选中种类之后怎么落盘 —— 三个去处都在 [commitCondition] 里（挑应用页 / 时间窗 / 直接写）。
     //  顺带把二级收掉：一级点「前台应用 / 时间区间」时二级本来就还没开。
     val commit: (ConditionKind, String) -> Unit = { kind, value ->
-        commitCondition(ConditionPick(kind, value, resetSub = { subKind = null }), draft, menus, tick)
+        commitCondition(
+            ConditionPick(kind, value, pickAt, pickSlot, resetSub = { subKind = null }),
+            draft,
+            menus,
+            tick,
+        )
     }
 
     PageMenu(
@@ -119,10 +130,19 @@ internal fun SettingsPage.BranchConditionMenu(
                                     //  取值没选（刚加的空条件）就是 null，那一行不出小字。
                                     currentSummary = conditionSummaryOf(editing),
                                     disabled = avail.disabled,
-                                    onPick = commit,
-                                ) {
+                                    //  直接落盘那一档（「前台应用 / 时间区间」）：点下去时菜单还开着，
+                                    //  先把落点快照下来再交给 `commitCondition`。
+                                    onPick = { kind, value ->
+                                        pickAt = at
+                                        pickSlot = condIndex
+                                        commit(kind, value)
+                                    },
+                                ) { kind ->
                                     //  弹窗要出来了，菜单让位（用户口径「选择器出现时关掉菜单」）
-                                    subKind = it
+                                    //  —— 所以落点必须在关之前快照。
+                                    pickAt = at
+                                    pickSlot = condIndex
+                                    subKind = kind
                                     menus.closeConditionMenu()
                                 },
                         ),
@@ -254,9 +274,12 @@ private fun SettingsPage.commitCondition(
     menus: BranchMenuState,
     tick: () -> Unit,
 ) {
-    val ruleAt = menus.condAt
-    val slot = menus.condIndexAt
+    //  **落点用 `pick` 带下来的快照**，不读 `menus`：两档取值这条路在菜单关掉之后才回来，
+    //  那时 `condAt` / `condIndexAt` 已经是哨兵值（读它就变成「追加一条」）。
+    val ruleAt = pick.at
+    val slot = pick.slot
     menus.condAt = AppPickerState.NOT_FOR_BRANCH
+    menus.condIndexAt = -1
     pick.resetSub()
     when (pick.kind) {
         // 「前台应用」先去挑是哪个应用（进另一页），槽位一起带过去：挑完要写回这一条
@@ -278,13 +301,17 @@ private fun SettingsPage.commitCondition(
 }
 
 /**
- * [commitCondition] 那一件事要的三样 —— 打成一个对象只为让参数个数留在 detekt 之下
+ * [commitCondition] 那一件事要的五样 —— 打成一个对象只为让参数个数留在 detekt 之下
  * （口径与 `StepSheetCtx` 那一套相同）。
  *
+ * @param at 落在**哪一块**（`AppPickerState.NEW_BRANCH` = 新加一行）；点种类那一刻的快照
+ * @param slot 落在那一块里的**第几条条件**（`-1` = 再添一条）；同上
  * @param resetSub 收掉二级取值层（见 [commitCondition] 的说明）
  */
 private class ConditionPick(
     val kind: ConditionKind,
     val value: String,
+    val at: Int,
+    val slot: Int,
     val resetSub: () -> Unit,
 )

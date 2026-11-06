@@ -85,12 +85,19 @@ def read(path):
     return io.open(path, encoding='utf-8').read()
 
 
+#  三个扫描各扫了多少个 .kt —— 汇总在 main 里判「这条闸还在不在」。
+#  目录被改名 / 挪走时 `os.walk` 静默给空，三道判据全 0 处、照样打「通过」。
+SCANNED = 0
+
+
 def scan_blocking():
+    global SCANNED
     hits = []
     for dirpath, _, files in os.walk(UI_ROOT):
         for f in sorted(files):
             if not f.endswith('.kt'):
                 continue
+            SCANNED += 1
             p = os.path.join(dirpath, f)
             lines = read(p).split('\n')
             rel = p.replace(os.sep, '/').split('com/lookie/opluskey/')[-1]
@@ -142,11 +149,13 @@ def scan_allocations():
 
 def scan_recalc():
     """组合期重算：按 @Composable 函数统计（函数体内有重算式、且整段没有 remember）。"""
+    global SCANNED
     sites = []
     for dirpath, _, files in os.walk(UI_ROOT):
         for f in sorted(files):
             if not f.endswith('.kt'):
                 continue
+            SCANNED += 1
             p = os.path.join(dirpath, f)
             lines = read(p).split('\n')
             for i, line in enumerate(lines):
@@ -198,6 +207,14 @@ def main():
 
     if fail and not report_only:
         print('\n性能审计未通过 —— 上面的硬判据要就地改掉，别往基线里加。')
+        return 1
+    if fail:
+        #  `--report` 只该用来出趋势线，不该让硬判据看起来是绿的 —— 上面那几行是红的，
+        #  这里再说一句，免得流水线里被当成「通过」。
+        print('\n[--report 模式] 硬判据**未通过**（上面标了处数）：这一份只用于出趋势，不是绿灯。')
+        return 0
+    if SCANNED == 0:
+        print('\n一个 .kt 也没扫到 —— 目录改名了？这条闸已失效，按失败处理。')
         return 1
     print('\n性能审计通过。')
     return 0

@@ -48,11 +48,26 @@ object Reflect {
      */
     private val missAt: ConcurrentHashMap<String, Long> = ConcurrentHashMap()
 
+    /**
+     * loader → 稳定序号 —— [missKey] 用它代替 `identityHashCode`。
+     *
+     *  用 hashCode 拼键的后果不是「查错类」（类缓存本身是 `IdentityHashMap`），而是**两个 loader
+     *  撞上同一个 hash 时共用一条负命中**：一个 loader 的「没找到」会挡住另一个 loader 30 秒内的
+     *  重试，表现是 hook 静默不装。序号按 `===` 分配，没有这个问题。
+     */
+    private val loaderTokens: MutableMap<ClassLoader?, Int> =
+        java.util.Collections.synchronizedMap(IdentityHashMap())
+
+    private var nextLoaderToken = 0
+
     /** [missAt] 的键：`loader` 的身份 + 类名 —— 同名类在不同 loader 里是两回事。 */
     private fun missKey(
         loader: ClassLoader?,
         name: String,
-    ): String = "${System.identityHashCode(loader)}#$name"
+    ): String {
+        val token = synchronized(loaderTokens) { loaderTokens.getOrPut(loader) { nextLoaderToken++ } }
+        return "$token#$name"
+    }
 
     /** 负命中的重试窗口（毫秒）。 */
     private const val MISS_RETRY_MS = 30_000L

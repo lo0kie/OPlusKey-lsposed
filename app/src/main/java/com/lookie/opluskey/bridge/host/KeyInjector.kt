@@ -130,13 +130,16 @@ internal class KeyInjector(
         val argc: Int
         when {
             ctor10 != null -> {
-                XLog.d("用 10 参构造器造 KeyEvent（metaState=0，source=SOURCE_KEYBOARD）")
+                //  **判据级，用 `w`**：这一行决定 `deviceId`（`isSynthetic` 靠它认自己的重注入
+                //  事件），而 `d` 在 release 里被编译期消除 —— 落到哪一档必须留得下来。
+                //  `build` 每进程只走一次（结果缓存），不会刷屏。
+                XLog.w("用 10 参构造器造 KeyEvent（metaState=0，source=SOURCE_KEYBOARD）")
                 ctor = ctor10
                 argc = 10
             }
 
             ctor6 != null -> {
-                XLog.d("用 6 参构造器造 KeyEvent（第 6 参按 metaState 理解，给 0）")
+                XLog.w("用 6 参构造器造 KeyEvent（第 6 参按 metaState 理解，给 0）")
                 ctor = ctor6
                 argc = 6
             }

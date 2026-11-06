@@ -124,8 +124,15 @@ object ConfigStore {
                 }
 
                 ModuleFiles.Load.Unreadable -> {
-                    //  d：宿主每条按键前都要读一遍，w 会刷屏 —— 与原来那一处同一个级别
-                    XLog.d("读配置失败（文件在但读不出来）：${f.path}")
+                    //  **判据级但要防刷屏**：宿主每条按键前都读一遍配置，文件坏一次就是每秒十几行。
+                    //  所以第一次用 `w`（排查时要看得到「读不出来」），之后降到 `d`；
+                    //  具体哪条路径坏的那一行由 `ModuleFiles` 打（那里有路径与原因）。
+                    if (unreadableWarned) {
+                        XLog.d("读配置失败（文件在但读不出来）：${f.path}")
+                    } else {
+                        unreadableWarned = true
+                        XLog.w("读配置失败（文件在但读不出来）：${f.path}（后续同类只记调试档）")
+                    }
                     return Load.Unreadable
                 }
             }
@@ -162,6 +169,16 @@ object ConfigStore {
 
     @Volatile
     private var cached: Cached? = null
+
+    /**
+     * 「文件在但读不出来」那条 W 是否已经报过。
+     *
+     * 这条判据会被**每条按键**打到（宿主每次判定前都读一遍配置），文件坏一次就是一秒十几行。
+     * 但完全降成 `d` 又会在 release 里消失 —— 「设置页为什么是只读态」就没有任何线索。
+     * 折中：每进程第一条用 `w`，之后同类只记调试档。
+     */
+    @Volatile
+    private var unreadableWarned = false
 
     /**
      * 读配置；**读不到 / 读不懂都退化成 [Config.DEFAULT]**（不抛）。

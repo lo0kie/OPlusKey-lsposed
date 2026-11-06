@@ -35,11 +35,7 @@ internal fun SettingsPage.write(
     // 只读态：建页那次配置压根没读成功（见 [SettingsPage.configState]），
     //  此时 [SettingsPage.configState] 里那份是**默认值**、不是用户的真相 —— 写回等于把它固化，
     // 会把用户配的绑定 / 开关整份抹掉。一律拒，并明确告诉用户「没保存」。
-    if (configState.readOnly) {
-        XLog.w("配置处在只读态（这次没读成功），拒绝写回：$what")
-        hint(I18n.get(Strings.TOAST_CONFIG_READ_FAILED, "配置读取失败，未保存"))
-        return CommandsSave.Failed
-    }
+    if (!canWriteConfig(what)) return CommandsSave.Failed
     var saved = false
     try {
         saved = ConfigStore.write(next)
@@ -60,6 +56,22 @@ internal fun SettingsPage.write(
     //  那一档、以及「清空配置」退回默认档），不必退出页面再进来。字典本身是组合状态，页面随即重画。
     I18n.currentLanguage = AppLanguage.fromCode(next.global.language)
     return finishWrite(next, "设置页写入")
+}
+
+/**
+ * 只读态闸 —— 给「动手改盘之前还有别的副作用」的入口用。
+ *
+ *  [write] 自己会拦，但那时**已经晚了**：切换配置（`ConfigProfiles.switchTo`）、导入覆盖
+ *  这两条会先动别的文件或别的槽，等 `write` 去拒，盘上「当前配置」已经不是原来的样子 ——
+ *  用户看到「未保存」，重进页面或重启后配置却自己变了。
+ *
+ *  @return `true` = 可以动盘
+ */
+internal fun SettingsPage.canWriteConfig(what: String): Boolean {
+    if (!configState.readOnly) return true
+    XLog.w("配置处在只读态（这次没读成功），拒绝改动：$what")
+    hint(I18n.get(Strings.TOAST_CONFIG_READ_FAILED, "配置读取失败，未保存"))
+    return false
 }
 
 /**

@@ -51,6 +51,13 @@ def run():
                     elif value != fallback:
                         bad.append((p, line, name, key, fallback, value))
 
+    if total == 0:
+        #  **0 处不能算通过**：`I18n.get(…)` 的写法一变（换行、加参数、换成别的入口），
+        #  这条正则就一条也匹配不上，于是「664 处全部一致」变成「0 处全部一致」——
+        #  闸还在，判据没了。这种静默失效必须当场变成红的。
+        print('没有扫到任何「I18n.get(…, "兜底")」调用 —— 调用写法变了？这条闸已失效，按失败处理。')
+        return 1
+
     print(f'带兜底的调用点：{total} 处；兜底与字典不一致：{len(bad)} 处')
     for p, line, name, key, fallback, value in bad:
         print(f'\n{p}:{line}\n  {name} ({key})\n  兜底: {fallback}\n  字典: {value}')

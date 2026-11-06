@@ -13,6 +13,7 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.NameDialog
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.canWriteConfig
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
@@ -59,6 +60,10 @@ internal fun SettingsPage.applySwitchedConfig(
 
 /** 切到某一份：写进当前（连同广播），失败就只提示不动界面。 */
 internal fun SettingsPage.switchToProfile(item: ConfigProfiles.Item) {
+    //  **只读态必须先拦**：`ConfigProfiles.switchTo` 一进去就动盘（把旧当前写进目标槽、
+    //  再拿目标内容盖掉当前槽），等下面 `write` 去拒已经晚了 —— 用户看到「未保存」，
+    //  而盘上的「当前配置」已经换人，重进页面或重启后配置自己变。
+    if (!canWriteConfig("切换配置 → ${item.displayName}")) return
     val next =
         ConfigProfiles.switchTo(item.slot)
             ?: run {
@@ -180,6 +185,9 @@ internal fun SettingsPage.deleteCurrentProfile() {
         hint(I18n.get(Strings.PROFILE_DELETE_FAILED, "删除失败"))
         return
     }
+    //  **切换之前先记下被删那份的名字**：`switchTo` 一落盘，`currentProfileName()` 读到的
+    //  已经是退路那一份，回执会变成「已删除「默认配置」，切到「默认配置」」。
+    val deletedName = currentProfileName()
     val next =
         ConfigProfiles.switchTo(fallback.slot)
             ?: run {
@@ -196,7 +204,7 @@ internal fun SettingsPage.deleteCurrentProfile() {
         hint(I18n.get(Strings.PROFILE_DELETE_FAILED, "删除失败"))
     } else if (deleted && switched == CommandsSave.Ok) {
         //  名字可能空着（名字被抹过的那一份）—— 走同一个取名口径，别留一对空书名号
-        hint(I18n.format(Strings.PROFILE_DELETED_SWITCHED, currentProfileName(), fallback.displayName))
+        hint(I18n.format(Strings.PROFILE_DELETED_SWITCHED, deletedName, fallback.displayName))
     }
 }
 

@@ -1122,22 +1122,10 @@ object ActionCatalog {
     fun canonicalToken(token: String): String = canonicalTokens.getOrPut(token) { actionOf(token).token }
 
     /**
-     * 当前动作落在入口格的哪一档上（行里那些标题：循环 / 静音 / 上一首 …）；不在任何一组时返回 `null`。
+     * 当前动作落在入口格的哪一档（行里的标题：循环 / 静音 / 上一首 …）；不在任何一组时返回 `null`。
      *
      * 那几格格子只有一行组名，不点开菜单看不出绑的是哪一档，所以格子里补的这行小字要走它。
-     * 算法与 `ui/model/CommandText.kt` 的 `stepTitle` 同源。
-     */
-    fun modeTitle(
-        modes: List<Spec>,
-        action: Action,
-    ): String? = modes.firstOrNull { isBound(it, action) }?.label
-
-    /**
-     * 当前动作落在入口格的**哪一档**（`主屏幕` / `上一首` / `静音` …）；不在任何一组时返回 `null`。
-     *
-     * 步骤标题（`ui/model/CommandText.kt`）用它 —— 只要档位名，**不带上格子名**
-     *（除「打开应用」外一律拍平，`系统导航:主屏幕` → `主屏幕`）。
-     * 档位名与格子怎么配对由这一处决定，网格里那行小字走 [modeTitle]。
+     * 算法与 `ui/model/CommandText.kt` 的 `stepTitle` 同源：档位名与格子怎么配对只在这一处决定。
      */
     fun modeName(action: Action): String? =
         //  亮度 / 音量那两档把**数值**一起带上（「增加 15%」）：光写「增加」看不出加了多少，

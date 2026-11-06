@@ -67,6 +67,18 @@ object ComboWire {
         val longRepeat: Boolean = false,
         val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
         val longRepeatVibrate: Boolean = false,
+        /**
+         * 「长按松手才触发」—— 注入侧靠它决定到点是不是立刻派发。
+         *
+         *  **这三个字段必须一起带**：注入侧的组合键只从这条广播来（`ConfigChannel` 那一支），
+         *  它读不到盘。少带一个，那一档在判定侧就永远是默认值 —— 「松手才触发」退化成到点触发、
+         *  「松手执行额外动作」整条不派发，而界面上是能配、能落盘的（一半接线）。
+         */
+        val longFireOnRelease: Boolean = false,
+        /** 「松手执行额外动作」的开关（与单键同名那一位同义）。 */
+        val longReleaseOn: Boolean = false,
+        /** 松手那一档的动作 token。 */
+        val longRelease: String = Action.NONE,
     )
 
     /** 组合键列表 → 广播里那个字符串。空表也给空串（接收侧按「没有组合键」处理）。 */
@@ -119,6 +131,9 @@ object ComboWire {
             longRepeat = combo.longRepeat,
             longRepeatIntervalMs = combo.longRepeatIntervalMs,
             longRepeatVibrate = combo.longRepeatVibrate,
+            longFireOnRelease = combo.longFireOnRelease,
+            longReleaseOn = combo.longReleaseOn,
+            longRelease = combo.longRelease.token,
         )
 
     /**
@@ -142,6 +157,9 @@ object ComboWire {
             longRepeat = longRepeat,
             longRepeatIntervalMs = clampRepeatInterval(longRepeatIntervalMs),
             longRepeatVibrate = longRepeatVibrate,
+            longFireOnRelease = longFireOnRelease,
+            longReleaseOn = longReleaseOn,
+            longRelease = Action.parse(longRelease),
         )
     }
 

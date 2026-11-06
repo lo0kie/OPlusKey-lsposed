@@ -54,7 +54,9 @@ object LogWire {
 
     /** 按行累积到 [CHUNK_CHARS] 就切一片；单行本身就超长时硬切成多片。 */
     private fun chunk(lines: List<String>): List<String> {
-        if (lines.isEmpty()) return emptyList()
+        //  **空缓冲也要回一片空的**：一片都不发的话，收方只能按「收到几片」判，
+        //  分不出「这个进程在跑但没日志」与「这个进程根本没起来」（排查时会误判某一段缺失）。
+        if (lines.isEmpty()) return listOf("")
         val out = ArrayList<String>()
         val sb = StringBuilder()
         for (line in lines) {

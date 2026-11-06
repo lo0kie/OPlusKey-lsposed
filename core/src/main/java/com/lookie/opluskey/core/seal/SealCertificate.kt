@@ -22,16 +22,31 @@ internal object SealCertificate {
     @Volatile
     private var cached: ByteArray? = null
 
-    /** 取不到的标记 —— 与「还没取过」必须分开，否则每次判都要重问一遍 PMS。 */
+    /**
+     * 上一次取失败的时刻（`0` = 没失败过）—— 与「还没取过」必须分开，否则每次判都要重问一遍 PMS。
+     *
+     *  **但不许永久粘住**：`PackageManager` 一时拿不到（开机早期、包刚更新完）与「这台机器永远
+     *  拿不到」是两件事。永久记住前者会让签名闸一直判不出口令、注入侧整条不接管，直到进程重启。
+     *  口径与 `Reflect` 那边负命中的过期窗口一致。
+     */
     @Volatile
-    private var failed = false
+    private var failedAt = 0L
+
+    /** 失败之后多久再试一次。 */
+    private const val RETRY_MS = 30_000L
 
     /** 本包签名证书的 SHA-256 原始摘要；取不到返回 `null`。 */
     fun sha256(context: Context): ByteArray? {
         cached?.let { return it }
-        if (failed) return null
+        val now = System.currentTimeMillis()
+        if (failedAt != 0L && now - failedAt < RETRY_MS) return null
         val bytes = read(context)
-        if (bytes == null) failed = true else cached = bytes
+        if (bytes == null) {
+            failedAt = now
+        } else {
+            cached = bytes
+            failedAt = 0L
+        }
         return bytes
     }
 

@@ -113,10 +113,10 @@ internal val STEP_PICKER_MAX_HEIGHT = 320.dp
 /**
  * 焦点账本用的**基准列数** —— 取 2。
  *
- *  网格本身按宽度算列数（见 [gridColumnCount]），这个常数只剩「按行切块」那一处用它：
- *  `BindingGridState.rows` 把扁平下标切成「行」时用的仍是它。机身 363dp 宽下每格 ≈163dp
- *  （焦点圈不占宽度），14sp 放得下最长的一行；16sp（库 `title` 槽位写死那档）会被省略号截掉，
- *  所以格子（`ActionTile`）用 content 重载自己放 `Text`。
+ *  网格本身按宽度算列数（见 [gridColumnCount]），这个常数只剩「初值」这一处用它：
+ *  `BindingGridState.columns` 的初始值（测量出来之前按它排），以及列数算不出来时的下限。
+ *  机身 363dp 宽下每格 ≈163dp（焦点圈不占宽度），14sp 放得下最长的一行；16sp
+ *  （库 `title` 槽位写死那档）会被省略号截掉，所以格子（`ActionTile`）用 content 重载自己放 `Text`。
  */
 internal const val COLUMNS = 2
 

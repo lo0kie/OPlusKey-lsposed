@@ -3,6 +3,7 @@ package com.lookie.opluskey.host.action
 import com.lookie.opluskey.core.model.MiniWindowGeometry
 import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.ZoomWindowWire
+import com.lookie.opluskey.core.reflect.Reflect
 
 /**
  * 小窗拉起要用的反射面与常量 —— 从 [MiniWindowLauncher] 的 companion 拆出来。
@@ -240,4 +241,35 @@ internal object MiniWindowFacts {
 
     /** 上面那档时先回桌面，等桌面过渡铺开再起小窗（毫秒）。 */
     const val HOME_SETTLE_MS = 400L
+
+    /**
+     * 「最近任务」那张原始表（`OplusAppInfo` 列表）；取不到返回 `null`。
+     *
+     *  **两个调用点原来各写一遍同一条反射链**（前台应用判定 / 小窗那一族）：换 ROM 时一处改了
+     *  另一处没改，表现就是「小窗说读得到前台、分叉却判不出」这类漂移 —— 只在特定机器上出现。
+     *
+     *  **这一层不打日志**：告警策略两边不一样（前台判定会被每个手势打到，必须只报一次；
+     *  小窗那条频率低，每次一行就够），所以 `warn` 由调用方给，这里只负责反射与「哪一步断了」。
+     */
+    fun topAppInfos(
+        loader: ClassLoader?,
+        warn: (String) -> Unit,
+    ): List<*>? {
+        val cls =
+            Reflect.findClass(loader, ZOOM_MANAGER) ?: run {
+                warn("没有 $ZOOM_MANAGER，取不到最近任务表")
+                return null
+            }
+        val manager =
+            Reflect.callStatic(cls, "getInstance") ?: run {
+                warn("$ZOOM_MANAGER#getInstance 返回 null，取不到最近任务表")
+                return null
+            }
+        val method =
+            Reflect.methodByNameAndArity(cls, TOP_APP_INFOS_METHOD, 0) ?: run {
+                warn("$ZOOM_MANAGER 上没有 $TOP_APP_INFOS_METHOD/0")
+                return null
+            }
+        return Reflect.call(manager, method) as? List<*>
+    }
 }

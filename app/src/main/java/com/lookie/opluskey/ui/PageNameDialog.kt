@@ -72,7 +72,9 @@ internal fun SettingsPage.NameDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-    var text by remember(show, initial) { mutableStateOf(initial) }
+    //  **只按开合重置**：把 `initial` 也当键的话，弹窗开着时外面刷新一次配置（滑杆值写回、
+    //  改名同步）就会把用户正在输入的内容整段重置回初值、光标也跳走。`initial` 只在打开那一刻取值。
+    var text by remember(show) { mutableStateOf(initial) }
     // 打开即聚焦（省掉「还得再点一下输入框」那一步）
     val focus = remember { FocusRequester() }
     FocusOnShow(show, focus)

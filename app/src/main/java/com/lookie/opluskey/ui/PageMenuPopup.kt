@@ -97,6 +97,9 @@ private fun expandMenu(entries: List<MenuEntry>): List<MenuPart> =
                 }
 
                 is MenuEntry.Section -> {
+                    //  **空组整段不出**：只剩标题加一条通栏细线、下面什么都没有，读起来像「渲染坏了」。
+                    //  调用方按条件现算行表时（这一档暂时没有可选项）很容易给到空表。
+                    if (entry.rows.isEmpty()) return@forEach
                     if (isNotEmpty()) add(MenuPart.HeavyLine)
                     add(MenuPart.Title(entry.title))
                     // 小标题下**默认**一条细线：标题与第一行贴在一起时读成「这一行是标题的一部分」。
@@ -195,8 +198,14 @@ internal fun SettingsPage.PageMenu(
     state: MenuState,
     entries: () -> List<MenuEntry>,
 ) {
+    val rows = if (state.open) entries() else emptyList()
+    //  **行表空就把 `open` 一起复位**：弹层靠「行表空」判关闭，只靠它的话 `open` 会留在 true，
+    //  标题箭头显示「展开中」，再点一次写同值不触发重组 —— 这张菜单再也打不开。
+    LaunchedEffect(rows.isEmpty()) {
+        if (rows.isEmpty() && state.open) state.dismiss()
+    }
     PageMenu(
-        entries = if (state.open) entries() else emptyList(),
+        entries = rows,
         preciseClick = state.anchor,
         onDismiss = state::dismiss,
     )

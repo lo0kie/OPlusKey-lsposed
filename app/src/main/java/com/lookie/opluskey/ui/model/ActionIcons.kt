@@ -448,8 +448,12 @@ private fun systemSwitchKindIcon(id: String): ImageVector = SWITCH_KIND_ICONS[id
  *  `BindingScreen`、「添加命令」浮层在 `CommandScreen`），各自记会各建一份。
  *  命令库变了**不清缓存**：键是 [ActionCatalog.Spec]（含 token 与标题，是 `data class`），
  *  改个名字就是新键；旧键留在表里只是几个旧引用。
+ *
+ *  **必须是并发安全的**：`tileIcon` 大多在主线程的组合期调，但 `specIcon` 里要问
+ *  `PackageManager`（自定义命令取应用图标），已经有调用点从 IO 线程进来 —— 普通 `HashMap`
+ *  并发 put 在扩容时会丢条目，极端情况下结构损坏。
  */
-private val iconCache = HashMap<ActionCatalog.Spec, ImageVector>()
+private val iconCache = java.util.concurrent.ConcurrentHashMap<ActionCatalog.Spec, ImageVector>()
 
 internal fun tileIcon(spec: ActionCatalog.Spec): ImageVector = iconCache.getOrPut(spec) { specIcon(spec) }
 

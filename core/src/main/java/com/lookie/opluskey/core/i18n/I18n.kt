@@ -201,7 +201,10 @@ object I18n {
     fun get(
         key: String,
         default: String = key,
-    ): String = dict()[key] ?: default
+    ): String =
+        //  **空串也算「没有」**：字典加载时把 JSON null / 非标量值写成了空串（见 [loadJson]），
+        //  只判 null 的话回退链会取到空串而不是 default —— 界面上出现一个空格子。
+        dict()[key]?.takeIf { it.isNotEmpty() } ?: default
 
     /**
      * 带格式化参数的国际化文本获取（`%s` / `%d`）。

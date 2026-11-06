@@ -130,7 +130,4 @@ object SystemSwitches {
      * 按 `setting:<id>` 里的 `<id>` 找那一条 —— 三态写法（`setting:wifi:on`）剥掉后缀之后用这个。
      */
     fun titleOfId(id: String): String? = find(settingToken(id))?.let { I18n.get(it.labelKey, it.label) }
-
-    /** 某个 token 的显示名（当前语言）—— 步骤行 / 执行提示 / 顶栏小标题共用这一处。 */
-    fun titleOf(token: String): String? = find(token)?.let { I18n.get(it.labelKey, it.label) }
 }

@@ -27,6 +27,19 @@ if [ -n "${JAVA_HOME:-}" ]; then
     echo "::error::JAVA_HOME 指向的是 JDK $v —— 这个脚本要求 JDK 21（detekt 不认 25、lint 要 >= 21）"
     exit 1
   fi
+else
+  #  **没设 JAVA_HOME 也要查**：脚本调 `gradlew`，它用的是 PATH 上那个 java。
+  #  跳过这道检查的后果是——半小时后 detekt 在 JDK 25 上直接崩（只输出一行版本号），
+  #  或者更糟：锁出来的产物与 CI 用的 JDK 不一致，而后者的错误信息指向别处。
+  j=$(command -v java) || {
+    echo "::error::没设 JAVA_HOME，PATH 上也找不到 java —— 这个脚本要求 JDK 21"
+    exit 1
+  }
+  v=$("$j" -version 2>&1 | sed -n 's/.*version "\([0-9]*\).*/\1/p' | head -1)
+  if [ "$v" != "21" ]; then
+    echo "::error::PATH 上的 java 是 JDK $v —— 要求 JDK 21；把 JAVA_HOME 指到那份 21 上再跑"
+    exit 1
+  fi
 fi
 
 echo "== 1/2 重锁依赖"

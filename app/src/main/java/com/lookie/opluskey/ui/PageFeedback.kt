@@ -113,8 +113,10 @@ internal fun SettingsPage.hint(
     /** 前置图标（`null` = 界面画默认的 alert-circle）。见 `HintItem.icon`。 */
     icon: ImageVector? = null,
 ) {
-    // 留一行判据：提示条有没有被弹出来，从日志就能答。
-    XLog.w("提示：$text${if (slot != null) "（位：$slot）" else ""}")
+    //  **`d` 而不是 `w`**：提示条本身就是用户看得见的回执，它不在「判据级」那张清单里
+    //  （装没装上 / 这次按键是不是侧键 / 判成什么手势 / 配置到没到），而它是全页最高频的一条 ——
+    //  挂在 `w` 上会把真正的告警挤掉。调试包照样留着一行。
+    XLog.d("提示：$text${if (slot != null) "（位：$slot）" else ""}")
     hints.hint(text, slot, holdMs, icon)
 }
 

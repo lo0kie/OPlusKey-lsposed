@@ -38,23 +38,11 @@ internal object ForegroundApp {
      *  原始对象交出去，而不是只给包名。
      */
     fun infos(): List<Any> {
-        val cls =
-            Reflect.findClass(ForegroundApp::class.java.classLoader, MiniWindowFacts.ZOOM_MANAGER)
-                ?: run {
-                    warnOnce("没有 ${MiniWindowFacts.ZOOM_MANAGER}，判不出前台应用（分叉按判不出处理）")
-                    return emptyList()
-                }
-        val manager =
-            Reflect.callStatic(cls, "getInstance") ?: run {
-                warnOnce("${MiniWindowFacts.ZOOM_MANAGER}#getInstance 返回 null，判不出前台应用")
-                return emptyList()
-            }
-        val method =
-            Reflect.methodByNameAndArity(cls, MiniWindowFacts.TOP_APP_INFOS_METHOD, 0) ?: run {
-                warnOnce("${MiniWindowFacts.ZOOM_MANAGER} 上没有 ${MiniWindowFacts.TOP_APP_INFOS_METHOD}/0")
-                return emptyList()
-            }
-        return (Reflect.call(manager, method) as? List<*>).orEmpty().filterNotNull()
+        //  反射那三条（找类 / getInstance / method）与「哪一步断了」的话术只在
+        //  [MiniWindowFacts.topAppInfos] 里写一份 —— 这一层只决定**报几次**（每条手势都读，
+        //  所以要 warnOnce）。
+        val raw = MiniWindowFacts.topAppInfos(ForegroundApp::class.java.classLoader, ::warnOnce)
+        return raw.orEmpty().filterNotNull()
     }
 
     /**

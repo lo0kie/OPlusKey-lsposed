@@ -13,7 +13,6 @@ import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.keyBrackets
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.write
-import com.lookie.opluskey.ui.writeAndNotice
 
 // 「组合键」那两页共用的读写 —— 列表页（加 / 删 / 摘要）与编辑页（标题上那行成员名）都走这里。
 
@@ -114,20 +113,27 @@ internal fun SettingsPage.addCombo(keys: List<KeyId>): Boolean {
     return result == CommandsSave.Ok
 }
 
-/** 删掉一档组合（列表行的删除按钮 → 确认窗）。 */
-internal fun SettingsPage.removeCombo(id: String) {
+/**
+ * 删掉一档组合按键。
+ *
+ * @return `true` = 已经落盘（或本来就不在了）；`false` = 写盘被拒 / 失败。调用方据此决定
+ *   要不要收掉编辑目标与退页 —— 写失败时那一档还在配置里，页面不能先走。
+ */
+internal fun SettingsPage.removeCombo(id: String): Boolean {
     val cfg = configState.config.value
-    val combo = cfg.combos.firstOrNull { it.id == id } ?: return
+    val combo = cfg.combos.firstOrNull { it.id == id } ?: return true
     XLog.w("组合键：删掉 ${combo.id}（${comboLabel(cfg, combo)}）")
     //  回执与删除确认窗同一个口径：每个键名各套一对括号（见 `addCombo`）
     val label = comboLabel(cfg, combo, bracketed = true)
-    writeAndNotice(
-        cfg.copy(combos = cfg.combos.filterNot { it.id == id }),
-        "combo_del=$id",
-        slot = HINT_SLOT_COMBO,
+    //  判「没成」只看 [CommandsSave.Failed]：`BroadcastFailed` 是「盘上删了、只是没通知到注入侧」，
+    //  那时这一档确实已经不在了，调用方不能按「什么都没变」处理（`write` 的契约就是这么写的）。
+    if (write(cfg.copy(combos = cfg.combos.filterNot { it.id == id }), "combo_del=$id") !=
+        CommandsSave.Failed
     ) {
-        I18n.format(Strings.COMBO_REMOVED, label)
+        hint(I18n.format(Strings.COMBO_REMOVED, label), slot = HINT_SLOT_COMBO)
+        return true
     }
+    return false
 }
 
 /**

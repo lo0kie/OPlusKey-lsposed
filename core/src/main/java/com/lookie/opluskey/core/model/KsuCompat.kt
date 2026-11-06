@@ -71,7 +71,14 @@ object KsuCompat {
     private fun matches(
         prefix: String,
         command: String,
-    ): Boolean = !hasCommandChain(command) && command.trim().startsWith(prefix)
+    ): Boolean {
+        if (hasCommandChain(command)) return false
+        val text = command.trim()
+        if (!text.startsWith(prefix)) return false
+        //  **前缀之后必须是空格或结尾**：`service call color_screenshot_x 1` 只是长得像，
+        //  认下来会把原命令整条换成一次原生截图 —— 原命令被静默丢弃、也没有提示。
+        return text.length == prefix.length || text[prefix.length].isWhitespace()
+    }
 
     /** 这条 shell 文本里是不是串了别的命令（`;` / `&` / `|` / 换行）。 */
     private fun hasCommandChain(command: String): Boolean = command.any { it == ';' || it == '&' || it == '|' || it == '\n' || it == '\r' }

@@ -101,7 +101,11 @@ internal fun SwitchRow(
     //  那一帧，它是页面级记下的**上一个位置**，随后再切回真值 —— 库的开关因此总有一条能播的
     //  「旧 → 新」（见 [LocalSwitchPositions] 与 [SWITCH_SETTLE_MS]）。
     val positions = LocalSwitchPositions.current
-    var shown by remember { mutableStateOf(positions[title] ?: checked) }
+    //  **按 [title] 记一份**：这一格的组合槽位被别的行复用时（卡片里条件行增删），
+    //  沿用上一行的位置会让开关首帧画成别人的值再回弹。
+    //  同一页出现两行同名（多处「振动反馈」）时仍共用 [positions] 里那一格 —— 那要按行 key 记才根治，
+    //  而 `LocalSwitchPositions` 现在只认标题。
+    var shown by remember(title) { mutableStateOf(positions[title] ?: checked) }
     LaunchedEffect(checked) {
         if (shown == checked) return@LaunchedEffect
         positions[title] = shown

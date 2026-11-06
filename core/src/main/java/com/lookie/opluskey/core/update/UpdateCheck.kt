@@ -100,15 +100,23 @@ fun parseLatestRelease(
     fallbackPageUrl: (String) -> String = { "" },
 ): ReleaseInfo? {
     val obj = runCatching { JSONObject(json) }.getOrNull() ?: return null
-    val tag = obj.optString("tag_name").trim()
+    //  **必须 `isNull` 判一次**：`optString` 对 JSON `null` 的返回在各版本 org.json 上不一致
+    //  （Android 那份会给出字符串 `"null"`），照抄下来就是版本号 `"null"`、更新说明写成 `"null"`。
+    val tag = textOf(obj, "tag_name").trim()
     val version = plainVersionOf(tag)
     if (version.isEmpty()) return null
     return ReleaseInfo(
         version = version,
-        notes = obj.optString("body").trim(),
-        pageUrl = obj.optString("html_url").trim().ifEmpty { fallbackPageUrl(tag) },
+        notes = textOf(obj, "body").trim(),
+        pageUrl = textOf(obj, "html_url").trim().ifEmpty { fallbackPageUrl(tag) },
     )
 }
+
+/** 取一个文本字段 —— JSON `null` 与缺失都当空串。 */
+private fun textOf(
+    obj: JSONObject,
+    key: String,
+): String = if (obj.isNull(key)) "" else obj.optString(key)
 
 /**
  * `tag_name` → 界面要显示的那串版本号。

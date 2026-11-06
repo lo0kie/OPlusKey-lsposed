@@ -12,12 +12,14 @@
 
 set -u
 
-BUILD_ID=$(sed -n 's/.*BUILD_ID[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
-  core/src/main/java/com/lookie/opluskey/core/ModuleInfo.kt | head -1)
-VERSION_NAME=$(sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
-  app/build.gradle.kts | head -1)
-VERSION_CODE=$(sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' \
-  app/build.gradle.kts | head -1)
+BUILD_ID=$(grep -v '^[[:space:]]*//' core/src/main/java/com/lookie/opluskey/core/ModuleInfo.kt |
+  sed -n 's/.*BUILD_ID[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+#  **先剔掉注释行再取**：这两个文件里都留着「示例：versionName = "1.0.0"」那种注释，
+#  只取第一条匹配就会抓到注释里的旧值 —— 而 version_name 直接决定发版的 tag。
+VERSION_NAME=$(grep -v '^[[:space:]]*//' app/build.gradle.kts |
+  sed -n 's/.*versionName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+VERSION_CODE=$(grep -v '^[[:space:]]*//' app/build.gradle.kts |
+  sed -n 's/.*versionCode[[:space:]]*=[[:space:]]*\([0-9]\+\).*/\1/p' | head -1)
 
 missing=""
 [ -n "$BUILD_ID" ] || missing="${missing}${missing:+、}BUILD_ID（core/src/main/java/com/lookie/opluskey/core/ModuleInfo.kt）"

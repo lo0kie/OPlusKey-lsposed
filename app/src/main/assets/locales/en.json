@@ -486,6 +486,7 @@
   "toast.config_cleared": "Config reset",
   "toast.module_reset": "Module reset",
   "toast.config_clear_failed": "Config reset, but the command library could not be cleared",
+  "toast.config_clear_vars_failed": "Config reset, but the variable table could not be cleared",
   "toast.config_read_failed": "Failed to read the config, nothing saved",
   "toast.config_save_failed": "Save failed",
   "toast.commands_read_failed": "Failed to read the command library; nothing was saved",
@@ -673,5 +674,6 @@
   "update.check_row": "Check for updates",
   "update.found_row": "New version found",
   "update.latest": "You're up to date",
-  "update.failed": "Check failed (network or source unavailable)"
+  "update.failed": "Check failed (network or source unavailable)",
+  "update.no_url": "This release has no download link. Please open the release page."
 }

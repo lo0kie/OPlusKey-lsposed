@@ -112,10 +112,13 @@ internal object BackInterception {
                         null
                     }
 
-                    //  浮窗开着 ⇒ 自己消费这次返回：收掉浮窗，不退页面（同 handleDiscreteBack）
+                    //  浮窗开着 ⇒ 自己消费这次返回：**只收最上面那一层**，不退页面。
+                    //  与 OnBackInvoked 那条路同一个口径（用户定案：按一次返回退一步 ——
+                    //  对话框关掉、底下那层菜单还在）。这里原来收的是「全部浮窗」，于是 API 33
+                    //  与 34+ 上同一颗返回键表现不同。
                     HostSession.page?.hasOpenOverlays() == true -> {
-                        XLog.w("系统返回（onBackPressed）：浮窗开着 ⇒ 收掉浮窗，不退页面")
-                        HostSession.page?.closeOverlays("系统返回收浮窗")
+                        XLog.w("系统返回（onBackPressed）：浮窗开着 ⇒ 收掉最上面一层，不退页面")
+                        HostSession.page?.closeTopOverlay("系统返回收浮窗")
                         null
                     }
 
@@ -128,7 +131,7 @@ internal object BackInterception {
                         null
                     }
 
-                    // 原版界面 → 模块界面，同样消费掉
+                    // 其余情况一律**放行**（原版界面自己的返回）：只有模块页面在栈上时才消费返回键。
                     else -> {
                         chain.proceed()
                     }

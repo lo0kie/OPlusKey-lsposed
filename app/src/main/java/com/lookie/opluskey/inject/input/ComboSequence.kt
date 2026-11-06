@@ -83,12 +83,6 @@ internal object ComboSequence {
             ) ?: ComboGather.None
     }
 
-    /** 这一颗键是不是某一档的成员 —— 判定器用它决定「按下之后要不要先等一个窗口」。 */
-    fun startsCombo(
-        keyId: String,
-        plans: List<ComboPlan>,
-    ): Boolean = plans.any { keyId in it.keys && it.size >= MIN_SIZE }
-
     /**
      * 单档的判定：这一串按下对它来说是「凑齐 / 还差几颗 / 此路不通」。
      *

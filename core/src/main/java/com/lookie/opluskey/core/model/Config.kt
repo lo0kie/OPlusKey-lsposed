@@ -183,8 +183,17 @@ data class KeyConfig(
                 }
             } ?: 0
 
-    /** 判定侧实际要用的那一档：广播给了就用它，没给就按动作表算（老版本兼容）。 */
-    val clicksForJudge: Int get() = if (judgeClicks > 0) judgeClicks else boundClicks
+    /**
+     * 判定侧实际要用的那一档：广播给了就用它，没给就按动作表算（老版本兼容）。
+     *
+     *  **按广播那一列的上限钳一次**：`boundClicks` 来自 `extraClicks` 的键，手改配置可以写成 20，
+     *  而注入侧收到的 `judgeClicks` 在 [ConfigFields.F_JUDGE_CLICKS] 那里被钳到 9 ——
+     *  不钳的话宿主等 20 击、注入侧只派发到 9，第 10 击以后永远出不来。
+     */
+    val clicksForJudge: Int
+        get() =
+            (if (judgeClicks > 0) judgeClicks else boundClicks)
+                .coerceIn(0, ConfigFields.MAX_JUDGE_CLICKS)
 
     /**
      * 这次手势该执行哪个动作 —— **条件分支的唯一入口**。
@@ -693,8 +702,9 @@ data class Config(
      * **组合按键**（顺序 = 界面上的顺序，也是成员数相同时的优先级）。
      *
      *  与 `customKeys` / [appNames] 一样**只走落盘这一列**：它是一张列表，进不了
-     *  [ConfigFields] 那种扁平字段表。组合键的判定目前还没接（判定侧要的是一张「哪些键算一组」
-     *  的表，得另走一条广播），所以注入侧读到的 `Config` 里这一项恒为空。
+     *  [ConfigFields] 那种扁平字段表。判定侧的接线是**另一条广播**（`core/wire/ComboWire`）——
+     *  那边逐档带成员、动作与长按那几档参数，注入侧据此自己组 `ComboKey`；
+     *  也就是说这里的 `combos` 不进 `Config` 的扁平广播，不代表判定侧拿不到。
      */
     val combos: List<ComboKey> = emptyList(),
     /**

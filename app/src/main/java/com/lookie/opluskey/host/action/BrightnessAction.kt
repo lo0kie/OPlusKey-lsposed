@@ -81,9 +81,17 @@ internal object BrightnessAction {
             // 它顺带可能换来一次 display 事件，但那次事件不保证（38.4 的闸二）：
             // 真正保证亮度条跟着走的是下面那句 nudgeSlider。
             StatusBarBridge.sendBrightness(context, target)
-            if (auto) writeViaRoot(target, onFailure) else writeBrightness(cr, target, onFailure)
-            // 值落库之后才发「刷新口令」—— 顺序反了的话 SystemUI 读到的还是旧值
-            nudgeSlider(cr, target, current)
+            if (auto) {
+                //  root 那条是**排队**的：`ShellRunner.exec` 立刻返回，真正落库在池子里。
+                //  所以刷新口令必须挂在它的完成回调上 —— 直接写下一行的话，SystemUI 读到的
+                //  还是旧值，亮度条不动。
+                writeViaRoot(target, onFailure) { nudgeSlider(cr, target, current) }
+            } else {
+                //  手动档是同步写 `Settings`，写完立刻发口令
+                writeBrightness(cr, target, onFailure)
+                // 值落库之后才发「刷新口令」—— 顺序反了的话 SystemUI 读到的还是旧值
+                nudgeSlider(cr, target, current)
+            }
         } catch (e: Throwable) {
             XLog.w("亮度调整失败（已忽略）：${e.javaClass.simpleName}: ${e.message}")
             onFailure(CommandFailure.UNKNOWN)
@@ -139,10 +147,12 @@ internal object BrightnessAction {
     private fun writeViaRoot(
         target: Int,
         onFailure: (CommandFailure) -> Unit,
+        onDone: () -> Unit,
     ) {
         ShellRunner.exec(
             "$SETTINGS put system $KEY_ADJ $target.0; $SETTINGS put system $KEY_BRIGHTNESS $target",
             onFailure = onFailure,
+            onDone = onDone,
         )
     }
 
