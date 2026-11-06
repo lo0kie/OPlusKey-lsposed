@@ -150,6 +150,10 @@ private data class ActivationPalette(
  *  · 也不是 `primaryContainer`：Monet 下它是 tone 90 实色，铺满一屏太艳；非 Monet 下 COUI 的
  *    `primaryContainer` **就是主色本身**，拿它当底、字再取主色 ⇒ 同色叠同色，字看不见。
  *  · 深浅两档各一个比例：同一个比例在深色底上明显更淡，不提一档那块「卡」就散了。
+ *  · **只有底色与水印跟着强调色**（Monet 下字色与提示图标也是掺出来的）：非 Monet 那套是
+ *    「固定中性底 + 一支预设强调色」，字再掺色就成了浅灰卡上写一行蓝字 —— 用户口径是那一档
+ *    不要走 Monet 的配色，所以字色与提示图标改取主题的正文色（标题全值、说明压到
+ *    [ACTIVATION_DETAIL_PLAIN_ALPHA]，详见 [paletteOf] 的返回处）。
  *
  * ## 中性两档（已关闭 / 检查中）—— **不染色**
  *
@@ -187,12 +191,23 @@ private fun ActivationState.paletteOf(
             monet -> if (scheme.isDarkScheme) MIX_MONET_DARK else MIX_MONET_LIGHT
             else -> if (scheme.isDarkScheme) MIX_PLAIN_DARK else MIX_PLAIN_LIGHT
         }
+    //  字色与提示图标**只在 Monet 下掺强调色**。
+    //  非 Monet 那套是「固定中性底 + 一支预设强调色」：底色掺一点已经够把这一块与普通卡分开，
+    //  字再跟着掺色就成了「一张浅灰卡上写一行蓝字」—— 用户口径是**不要走 Monet 那套配色**。
+    //  所以非 Monet 下退回主题的正文色，色相只留在底色与水印上。
+    //
+    //  说明那一档**不用 `onSurfaceContainerVariant`**（40% 正文色）：浅色下它比原来那个掺色值
+    //  浅一大截，读起来发飘（真机口径「说明的文字太亮了」）。取主正文色压到
+    //  [ACTIVATION_DETAIL_PLAIN_ALPHA]：两个模式下都落在「比标题浅一档、比次要色深一档」
+    //  的位置，而且一点色相都不带。提示行首那颗图标与它同档 —— 它是注脚，不该与正文差太远。
+    val plainDetail = scheme.onSurfaceContainer.copy(alpha = ACTIVATION_DETAIL_PLAIN_ALPHA)
     return ActivationPalette(
         container = lerp(scheme.surfaceContainer, accent, mix),
-        title = lerp(accent, scheme.onSurfaceContainer, ACTIVATION_TITLE_MIX),
-        detail = lerp(accent, scheme.onSurfaceContainer, ACTIVATION_DETAIL_MIX),
+        title = if (monet) lerp(accent, scheme.onSurfaceContainer, ACTIVATION_TITLE_MIX) else scheme.onSurfaceContainer,
+        detail = if (monet) lerp(accent, scheme.onSurfaceContainer, ACTIVATION_DETAIL_MIX) else plainDetail,
         mark = accent.copy(alpha = WATERMARK_ALPHA),
-        icon = accent.copy(alpha = ACTIVATION_TIP_ICON_ALPHA),
+        //  提示行首那颗小图标与「说明」同档：它是注脚的一部分，颜色不该比它说明的那句话更艳
+        icon = if (monet) accent.copy(alpha = ACTIVATION_TIP_ICON_ALPHA) else plainDetail,
     )
 }
 
@@ -328,6 +343,16 @@ private const val ACTIVATION_TITLE_MIX = 0.15f
  *  比卡片行那句说明实、又没到标题那么黑。
  */
 private const val ACTIVATION_DETAIL_MIX = 0.45f
+
+/**
+ * **非 Monet** 下版本 / 说明那两行的字色 —— 主正文色压到这一档透明度（不带任何色相）。
+ *
+ *  为什么不是 `onSurfaceContainerVariant`（40% 正文色）：浅色下它比 [ACTIVATION_DETAIL_MIX]
+ *  算出来的那个掺色值浅一大截，整行读起来发飘（真机口径「说明的文字太亮了」）。
+ *  七成半落在「比标题浅一档、比次要色深一档」：浅色下约等于原来那个 `#4A5A6E` 的深度，
+ *  深色下也仍低于标题一档 —— 主次不变，只是不再带色相。
+ */
+private const val ACTIVATION_DETAIL_PLAIN_ALPHA = 0.75f
 
 /** 行尾那颗动作的点击区形状 —— 与卡片行、小标题同一档圆角（只用来收住涟漪）。 */
 private val ACTIVATION_ACTION_SHAPE = RoundedCornerShape(8.dp)
@@ -517,10 +542,10 @@ private fun SettingsPage.ActivationHead(
     val titleStyle = COUITheme.textStyles.title4
     val lineStyle = COUITheme.textStyles.body2
     //  字色一律取这一档配色里给好的那两档（见 [ActivationPalette]）：
-    //  · 有色相的两档：标题 = 强调色往内容色拉一成半（够深、但仍带色相）——
-    //    用纯 `onSurfaceContainer` 时，非 Monet（COUI 固定底 + 预设强调色）下整块只有底下那层被染过，
-    //    字还是原来那支黑（真机口径「非 monet 下标题还是 monet 的配色」）；
-    //  · 中性两档：就是主题那两档正文色 —— 没有色相可掺，再把大字稀释成半透明只会读不清。
+    //  · Monet 下有色相的两档：标题 = 强调色往内容色拉一成半（够深、但仍带色相）；
+    //  · 非 Monet 下同样两档：直接用主题那两档正文色 —— 那一套是「固定中性底 + 预设强调色」，
+    //    字再掺色就是浅灰卡上写一行蓝字（用户口径「非 monet 不要走 monet 配色」）；
+    //  · 中性两档：本来就是主题那两档正文色 —— 没有色相可掺，再把大字稀释成半透明只会读不清。
     Column(
         Modifier.padding(
             start = ACTIVATION_CONTENT_PADDING,
@@ -612,9 +637,8 @@ private fun TapToEnableHint(lineStyle: TextStyle) {
  *  字色与卡片行同一套（标题常规色 / 说明次要色），细线也回到库那一档 —— 这一块与下面的卡片
  *  是同一种东西，配色不该只有它一套。
  *
- *  行首那颗图标取**这一档配色里给的那支**（彩色底上 = 强调色压到七成，中性底上 = 主题那次要色）：
- *  原来那档中性灰在非 Monet（固定底 + 预设强调色）下完全跟不上这一块的颜色，
- *  读起来像从别的卡里抠来的（真机口径「说明的图标改个配色」）。
+ *  行首那颗图标取**这一档配色里给的那支**：Monet 的彩色底上是强调色压到七成，
+ *  非 Monet 与中性底上都是主题那次要色 —— 它是注脚，不该比它说明的那句话更艳。
  */
 @Composable
 private fun SettingsPage.ActivationTips(

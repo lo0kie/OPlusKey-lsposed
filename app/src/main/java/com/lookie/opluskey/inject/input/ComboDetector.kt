@@ -161,8 +161,11 @@ internal class ComboDetector(
      *
      *  不清的话：组合的第一颗键先松开、组合结束，第二颗键的抬手会让单键判定器当成
      *  「孤立抬手」补判一次单击。
+     *
+     *  **必须是并发集合**：写在输入线程（[onDown] / [onUp]），配置广播那条线会经
+     *  `reset()` 整体清空 —— 普通 `HashSet` 在这里是未定义行为，表现是「某颗键偶尔按了没反应」。
      */
-    private val consumed = HashSet<KeyId>()
+    private val consumed: MutableSet<KeyId> = ConcurrentHashMap.newKeySet()
 
     /** 正在进行的组合；`null` = 没有。 */
     @Volatile
@@ -268,7 +271,7 @@ internal class ComboDetector(
      */
     fun onDown(
         id: KeyId,
-        now: Long = SystemClock.uptimeMillis(),
+        now: Long = SystemClock.elapsedRealtime(),
     ): Down {
         //  **同一颗键再次按下、而它的上一次抬手没收到** ⇒ 上一次的 UP 丢了（锁屏打断、
         //  事件被系统丢掉那一类）。这是一条必须清的账：
@@ -325,19 +328,25 @@ internal class ComboDetector(
     }
 
     /**
+     * @param short `false` = 这一按被取消（`FLAG_CANCELED`，窗口失焦 / 来电打断那一类）：
+     *   只做同一笔清理，**不派发**任何动作 —— 取消的含义就是「这一下不算数」，
+     *   按普通抬手处理会让组合凭空短按一次。
      * @return true = 这一下被组合接管。
      *
      *  **没有 `now` 这个参数**：抬手这一侧只用得到「谁松了」，时长全在按下那一侧算
      *  （`onDown` 拿 `now` 排长按）。留一个收了不读的参数，签名就在撒谎。
      */
-    fun onUp(id: KeyId): Boolean {
+    fun onUp(
+        id: KeyId,
+        short: Boolean = true,
+    ): Boolean {
         down.remove(id)
         if (id !in consumed) return false
         consumed.remove(id)
         val c = combo
         if (c != null && id in c.keys) {
-            // 组合结束：没判过长按 ⇒ 这一次是「一起短按」
-            if (!c.longFired) {
+            // 组合结束：没判过长按 ⇒ 这一次是「一起短按」（取消的那一档不派发）
+            if (short && !c.longFired) {
                 XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 短按（先松开 ${id.label}）")
                 fire(c, Gesture.SINGLE, repeat = false)
             }
@@ -386,7 +395,7 @@ internal class ComboDetector(
                     c.longFired = true
                     XLog.w(
                         "组合键：${c.keys.joinToString(" + ") { it.label }} 长按" +
-                            "（${SystemClock.uptimeMillis() - startedAt}ms，阈值 ${c.key.longPressMs}ms）",
+                            "（${SystemClock.elapsedRealtime() - startedAt}ms，阈值 ${c.key.longPressMs}ms）",
                     )
                     fire(c, Gesture.LONG, repeat = false)
                     // 「长按连续触发」：两颗键一起按住不放就一直重来。
@@ -427,7 +436,7 @@ internal class ComboDetector(
                         c.repeatShot = null
                         return@Runnable
                     }
-                    if (SystemClock.uptimeMillis() - (c.pressedAt) > COMBO_REPEAT_MAX_MS) {
+                    if (SystemClock.elapsedRealtime() - (c.pressedAt) > COMBO_REPEAT_MAX_MS) {
                         XLog.w(
                             "组合键：${c.keys.joinToString(" + ") { it.label }} 连续触发超过" +
                                 " ${COMBO_REPEAT_MAX_MS}ms 未见抬手，强制停止（UP 可能已丢）",

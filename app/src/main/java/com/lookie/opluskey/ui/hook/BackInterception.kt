@@ -158,6 +158,10 @@ internal object BackInterception {
      */
     private fun registerBackCallback(activity: android.app.Activity): Boolean =
         try {
+            //  **先摘旧的**：这个函数有两条入口（进页那条直接调、`syncBackCallback` 换实例时调），
+            //  不摘的话旧 Activity 上那份回调还挂着 —— 旧页只要没销毁，它的每一退都会被
+            //  两份回调各接一次。注销本身是幂等的（没有则直接返回）。
+            unregisterBackCallback()
             val callback: android.window.OnBackInvokedCallback =
                 if (android.os.Build.VERSION.SDK_INT >= 34) {
                     PredictiveBackCallback(activity)
@@ -281,11 +285,14 @@ internal object BackInterception {
                     // 先摘掉自己（[SettingsPageHooks.clearPageRefs] 里也会摘一次，重复调用无害）：挂着回调时
                     // 系统不会再自己关页面。
                     unregisterBackCallback()
+                    //  **先关页面、再松引用**：`clearPageRefs` 会在页面还活着的时候取消提示作用域、
+                    //  `clear()` ViewModelStore、注销手电筒回调 —— 那是拆运行期状态的动作，
+                    //  必须在页面进入销毁之后做，否则退场动画期间页面拿到的是「被清空的」那一套。
+                    activity.finish()
                     // 页面关掉了 = 这一份换页用的引用用完了，一起松掉：
                     // 不松的话当前 Activity / SettingsPage / 两个 View / 容器会一直挂到**下次进页**
                     // 才被覆盖（表现为「钉住一个已销毁的 Activity」，只影响这个 :ui 进程）。
                     SettingsPageHooks.clearPageRefs(activity)
-                    activity.finish()
                 }
             }
         } catch (e: Throwable) {

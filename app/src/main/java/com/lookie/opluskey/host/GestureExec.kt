@@ -16,7 +16,6 @@ import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.gestureOrNull
-import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.ConditionProbe
 import com.lookie.opluskey.host.action.FailureNotice
@@ -118,18 +117,25 @@ internal object GestureExec {
      * @param subject 去重表里的那一列。单键传 `KeyId.id`，组合传 `combo:<id>` ——
      *   两者共用一张表，但**不能撞名**（组合同样是「一次按压只执行一次」，补发那条的
      *   `sent_at` 与立刻那条相同）。
+     * @param keepLate 这一档**免检过期**，只走去重。给「松手」用：它不是一次新的按压，
+     *   而是**一次按压的收尾** —— 积压的按下可以丢（丢的是「再来一下」），丢一条松手却是
+     *   「这一按什么都没发生」（`松手才触发` 那一档唯一的执行就在这儿），只能照执行。
+     *   重复那半照旧：转发侧对同一条会发两遍（`sent_at` 相同），第二条仍须挡掉。
      * @return `true` = 丢掉（已经打过判据日志）
      */
     private fun staleOrDuplicate(
         subject: String,
         phaseId: String?,
         sentAt: Long,
+        keepLate: Boolean = false,
     ): Boolean {
         if (sentAt <= 0L) return false
-        val age = android.os.SystemClock.elapsedRealtime() - sentAt
-        if (age > STALE_MS || age < 0L) {
-            XLog.w("$subject 的 $phaseId 已过期或时间戳异常（age=${age}ms），丢弃不执行")
-            return true
+        if (!keepLate) {
+            val age = android.os.SystemClock.elapsedRealtime() - sentAt
+            if (age > STALE_MS || age < 0L) {
+                XLog.w("$subject 的 $phaseId 已过期或时间戳异常（age=${age}ms），丢弃不执行")
+                return true
+            }
         }
         // 去重：转发侧对同一次手势会发两条（立刻 + 300ms 后补发，见 inject/input/GestureForwarder），
         // 两条 sent_at 相同 —— 按 (键, 手势) 记下最近处理过的时刻，sent_at <= 它的一律忽略。
@@ -162,24 +168,16 @@ internal object GestureExec {
     ) {
         val key = resolveKey(keyId, phaseId) ?: return
 
-        // 松手不是手势：它只给「按下开始、松手结束」的动作收尾（此刻只有灵感语音）。
-        //  放在过期 / 去重两道闸**之前**：那两道是给「冻结期间积压的手势」用的，松手即使晚到
-        //  也只会被 `ActionRunner.stopVoiceCapture` 那道 `voiceMemoryOn` 闸挡住（两处判据不重叠）。
-        if (phaseId == ModuleWire.PHASE_RELEASE) {
-            onRelease(key)
-            return
-        }
-
-        if (staleOrDuplicate(key.id, phaseId, sentAt)) return
-
         //  档位按**触发条件**解析：三档的 id 与 `Gesture.id` 逐字相同，多击是 `clickN`。
         //  认不出才丢掉 —— 手搓的广播、以及将来更新的注入侧发来的新档都会落到这里。
+        //  解析**排在两道闸之前**：过不过期这条判据要看是哪一档（松手免检，见 [staleOrDuplicate]）。
         val trigger =
-            com.lookie.opluskey.core.model.GestureTrigger
-                .ofId(phaseId) ?: run {
+            GestureTrigger.ofId(phaseId) ?: run {
                 XLog.w("不认识的手势：$phaseId")
                 return
             }
+
+        if (staleOrDuplicate(key.id, phaseId, sentAt, keepLate = trigger is GestureTrigger.Release)) return
 
         dispatch(key, trigger, repeat)
     }
@@ -402,24 +400,6 @@ internal object GestureExec {
             return
         }
         runAction(key, trigger, keyConfig, repeat, config)
-    }
-
-    /**
-     * 「松手」 —— 给「按下开始、松手结束」的动作收尾。
-     *
-     *  判据只有执行侧那一个 `voiceMemoryOn`（见 `ActionRunner.stopVoiceCapture`）：这一按到底
-     *  有没有起过采集，只有执行侧知道。**不在这里按配置再判一次** —— 静态绑定与这一刻的实际
-     *  动作可能不是一回事，两种情形都要靠执行侧兜住：
-     *  · 条件执行把长按这一档改成了别的动作：静态绑定仍是语音，但这一按根本没起采集；
-     *  · 按下之后用户关掉了模块 / 这颗键：已经开始的录音更该收掉，不能留在系统里。
-     */
-    private fun onRelease(key: KeyId) {
-        val runner = runner
-        if (runner == null) {
-            XLog.d("${key.label} 松手：执行器还没建好，没有要收尾的东西")
-            return
-        }
-        runner.stopVoiceCapture.invoke()
     }
 
     /**

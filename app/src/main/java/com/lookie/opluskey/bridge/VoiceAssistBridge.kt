@@ -47,7 +47,13 @@ internal object VoiceAssistBridge {
                 .putExtra(Framework.Calls.SPEECH_EXTRA_CALLER, Framework.Calls.SPEECH_CALLER_VALUE)
                 .putExtra(Framework.Calls.SPEECH_EXTRA_START_TYPE, Framework.Calls.SPEECH_START_TYPE_POWER)
         try {
-            asSystem { ctx.startForegroundService(intent) }
+            //  **看返回值**：组件不存在 / 未导出时 AMS 返回 `null` 而**不抛** ——
+            //  只判「没抛异常」就会把「什么也没起」记成「已下发」，用户侧一片静默。
+            val started = asSystem { ctx.startForegroundService(intent) }
+            if (started == null) {
+                XLog.w("唤醒小布：系统没接受这个组件（$pkg/${Framework.Calls.SPEECH_SERVICE}），没有起服务")
+                return
+            }
             XLog.w(
                 "已在本机 startForegroundService($pkg/${Framework.Calls.SPEECH_SERVICE}，" +
                     "start_type=${Framework.Calls.SPEECH_START_TYPE_POWER})（唤醒小布）",

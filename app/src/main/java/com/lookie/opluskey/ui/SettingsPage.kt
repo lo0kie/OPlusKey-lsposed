@@ -155,8 +155,10 @@ internal class SettingsPage(
         when (s) {
             Screen.COMMANDS -> commandDraft.draft.dirty
 
-            //  只看**当前这一档**：三档各有各的草稿，别的档改没改与这一退无关
-            Screen.BRANCHES -> branchDraft.at(branchGesture).dirty
+            //  **三档都看**：条件执行页是三页三份草稿（横滑换档），退页时
+            //  `discardPageStateOf` 会把三份一起 reset。只看当前这一档的话，
+            //  「在双击页改完、滑回单击页再返回」会把双击页的改动无提示丢掉。
+            Screen.BRANCHES -> Gesture.entries.indices.any { branchDraft.at(it).dirty }
 
             else -> false
         }
@@ -288,21 +290,31 @@ internal class SettingsPage(
 
     /**
      * 这一趟「选择应用」页在**编辑哪个动作** —— 两个入口各有来源（都在进页那一刻记下）：
-     *  · 网格入口（「按键绑定」页的「打开应用」格）→ [AppPickerState.gesture] 那个手势绑的动作；
+     *  · 网格入口（「按键绑定」页或「组合键」页的「应用控制」格）→ [AppPickerState.gesture]
+     *    那一档绑的动作，**给组合键挑时读的是组合那张表**（[AppPickerState.comboId]）；
      *  · 「自定义命令」页那条路 → 被**换掉**的那一步（[AppPickerState.replaceStep]）。
      *
      * `null` = 新绑（没在编辑任何动作）。[appPickerSelectedPkg] 与 [resetSmallWindowForPicker]
      * 都要它，两处必须同源 —— 否则会出现「行点亮了、开关却是关的」这种自相矛盾的界面。
      */
-    internal fun editingAction(): Action? =
+    internal fun editingAction(): Action? {
         if (picker.forStep) {
-            picker.replaceStep
+            return picker.replaceStep
                 .takeIf { it >= 0 }
                 ?.let { commandDraft.draft.steps.getOrNull(it) }
                 ?.let { runCatching { Action.parse(it) }.getOrNull() }
-        } else {
-            picker.gesture?.let { actionOf(configState.config.value, it) }
         }
+        val g = picker.gesture ?: return null
+        val cfg = configState.config.value
+        //  组合键那一趟**读组合那张表**：判据只有 [AppPickerState.comboId] 一处，与写回侧
+        //  （`PageEntryWrite.writeToken`）同一个判据。少了这一支，从组合键页进来读到的永远是
+        //  **当前那颗键**的动作 —— 那一格明明绑着应用，重进这一页却一行都不亮、确认键也不出现。
+        //  不转调 `BindingTarget.Combo.actionIn`：本文件在 `ui/` 根，耦合审计不许它反向依赖
+        //  `ui/screen/`；两处都只是「按 id 取那一档组合再取动作」，口径在 `ComboKey.actionOf`。
+        val comboId = picker.comboId ?: return actionOf(cfg, g)
+        //  组合被删了就不该退回「那颗键的动作」：那会点亮一个与本趟无关的绑定
+        return cfg.combos.firstOrNull { it.id == comboId }?.actionOf(g) ?: Action.None
+    }
 
     /**
      * 进「选择应用」页时把「以小窗口打开」**重算**一遍（入口两处各调一次）。

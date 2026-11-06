@@ -59,22 +59,36 @@ internal class BindingGridState(
     val builtInCount: Int = ActionCatalog.builtInCount()
 
     /**
+     * 界面当前用的**列数** —— 网格测到宽度之后写进来（见 `BindingGrids` 里那两处
+     * `LaunchedEffect(columns)`），方向键的分行表按它算。
+     *
+     *  以前这里是常量 [COLUMNS]：机身竖屏恰好两列时看不出来，横屏 / 平板 / 分屏 / 超大字号下
+     *  界面变成 1 或 3 列，而焦点仍按 2 列跳 —— 按一次下，焦点跳两格或落进邻组。
+     */
+    @Volatile
+    var columns: Int = COLUMNS
+
+    /**
      * 格子在界面上的**分行表**（每行是若干个扁平下标）—— 方向键按它挪，不按下标加减。
      *
-     *  排布是**按组分行**的：内置那一组组各自 `chunked(COLUMNS)`（末行不满就补空位），自定义命令
+     *  排布是**按组分行**的：内置那一组组各自按当前列数切（末行不满就是不满），自定义命令
      *  再从 `builtInCount` 接着排（见 `BuiltInGrid` / `CustomCommandsGrid`）。所以「下一行」不等于
-     *  `index + COLUMNS` —— 跨过组边界时那个式子会落到别的组里（真机表现：按一次下，焦点跳两行、
-     *  或者干脆跳到左边去）。这里与界面同源：同一份 `groupsFor` + 同一个 [COLUMNS]。
+     *  `index + columns` —— 跨过组边界时那个式子会落到别的组里（真机表现：按一次下，焦点跳两行、
+     *  或者干脆跳到左边去）。这里与界面同源：同一份 `groupsFor` + 同一个 [columns]。
+     *
+     *  每次按下方向键才重建一次（几十个下标），不值得缓存 —— 缓存反而要跟着列数失效。
      */
-    val rows: List<List<Int>> =
-        buildList {
-            var base = 0
-            for ((_, group) in ActionCatalog.groupsFor()) {
-                for (row in (base until base + group.size).chunked(COLUMNS)) add(row)
-                base += group.size
+    val rows: List<List<Int>>
+        get() =
+            buildList {
+                val n = columns.coerceAtLeast(1)
+                var base = 0
+                for ((_, group) in ActionCatalog.groupsFor()) {
+                    for (row in (base until base + group.size).chunked(n)) add(row)
+                    base += group.size
+                }
+                for (row in (builtInCount until specs.size).chunked(n)) add(row)
             }
-            for (row in (builtInCount until specs.size).chunked(COLUMNS)) add(row)
-        }
 
     /**
      * 每个格子一个 `FocusRequester`。

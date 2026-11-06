@@ -9,9 +9,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
@@ -23,7 +26,6 @@ import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.brightnessTitle
 import com.lookie.opluskey.core.model.volumeTitle
 import com.lookie.opluskey.ui.CardList
@@ -46,6 +48,8 @@ import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // 「按键绑定」页的两张网格 —— 内置动作一组组排下来，再加最下面「已保存的命令」那一组。
 //
@@ -98,6 +102,9 @@ internal fun SettingsPage.BuiltInGrid(
                 Modifier.padding(horizontal = PAGE_MARGIN),
             ) {
                 val columns = gridColumnCount(maxWidth)
+                //  把真实列数告诉状态：方向键的分行表按它算（见 `BindingGridState.columns`）。
+                //  写成 `LaunchedEffect` 而不是组合期直接赋值 —— 组合期只读不写是本项目的纪律。
+                LaunchedEffect(columns) { st.columns = columns }
                 val base = groupBases[groupIndex]
                 Column(
                     verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
@@ -153,7 +160,7 @@ private fun SettingsPage.BuiltInTile(
         val current = st.target.actionIn(configState.config.value)
         //  入口格（点了弹二级菜单的那几格）：`modes` 非空。这一格绑在哪一档也从这里算一次
         //  —— **小字与小字前面那枚图标共用它**，同源就不会各说各的。
-        val modes = ActionCatalog.modeMenu(spec.token, withLongOnly = st.g == Gesture.LONG)
+        val modes = ActionCatalog.modeMenu(spec.token)
         val popsMenu = modes != null
         //  这一格绑的是哪一档 —— 判据只在 `ActionCatalog` 一处（步骤抽屉那一行也用同一个），
         //  网格里再就地写一遍就会两边各长一套（真机口径「抽屉和网格的图标不一致」）。
@@ -266,6 +273,9 @@ internal fun SettingsPage.CustomCommandsGrid(
         Modifier.padding(horizontal = PAGE_MARGIN),
     ) {
         val columns = gridColumnCount(maxWidth)
+        //  与内置网格同一个值（同一页、同一段横向边距）；这里再写一次是为了「自定义命令多到
+        //  内置网格被折叠」的那种布局下也一定被设过。
+        LaunchedEffect(columns) { st.columns = columns }
         Column(
             verticalArrangement = Arrangement.spacedBy(GRID_ROW_GAP),
         ) {
@@ -401,8 +411,8 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
         // 上一次那份锚点，所以这里给个没记过触点的占位即可。
         preciseClick = st.tileMenu?.anchor ?: st.noAnchor,
         // 行与顶上那行小标题都由这一格算：不再各传一份。
-        //  「灵感语音」只在长按这一页出现（它起的是麦克风采集，短按一下开录没有语义）
-        target = st.tileMenu?.spec?.let { ModeMenuTarget(it, withLongOnly = st.g == Gesture.LONG) },
+        //  三档手势拿到的菜单完全相同（灵感语音是「开始 / 结束」两个平级动作）
+        target = st.tileMenu?.spec?.let { ModeMenuTarget(it) },
         current = current,
         //  走 `pick` 而**不是** `bindingSelect`：菜单里的取值不在 `specs` 里，
         //  `select` 那一步的 `specs.indexOf(spec)` 会取到 −1、把焦点圈甩到第一格去。
@@ -463,32 +473,43 @@ private fun appTileIcon(action: Action): ImageVector? =
  *
  *  名字查一次就缓存（PM 查询，入参是动作所以只在换动作 / 名字表变了时重查）。
  *  少认一种时那一格就没有小标题（实证：开着小窗挑完应用回来，标题下面是空的）。
+ *
+ *  **查询放 IO**：`appNameOf` 走 `PackageManager`（分身那档还要问 `UserManager`），
+ *  在组合期做就是每次进页几十次 binder。这里先给空串、查到了再填 —— 小标题晚一帧出现，
+ *  比首帧卡在 binder 上强。
  */
 @Composable
-private fun SettingsPage.rememberBoundAppLabel(current: Action): String? =
-    remember(current, configState.config.value.appNames) {
-        when (current) {
-            is Action.App, is Action.AppWindow -> {
-                current.appTarget?.let { appNameOf(it) }
-            }
+private fun SettingsPage.rememberBoundAppLabel(current: Action): String? {
+    val appNames = configState.config.value.appNames
+    var label by remember(current, appNames) { mutableStateOf<String?>(null) }
+    LaunchedEffect(current, appNames) {
+        label =
+            withContext(Dispatchers.IO) {
+                when (current) {
+                    is Action.App, is Action.AppWindow -> {
+                        current.appTarget?.let { appNameOf(it) }
+                    }
 
-            // 结束那一档只存包名（没有界面 / 分身后缀），名字按包名现查
-            is Action.Process -> {
-                appNameOf(current.pkg)
-            }
+                    // 结束那一档只存包名（没有界面 / 分身后缀），名字按包名现查
+                    is Action.Process -> {
+                        appNameOf(current.pkg)
+                    }
 
-            // 快捷方式（`appshortcut:`）也算「打开应用」那一族，小字写「应用: 快捷方式」。
-            //  快捷方式**自己的名字**只存在 `appNames`（键是身份，挑的时候与绑定同一次落盘）——
-            //  token 里没有它，现查也查不到（`appNameOf` 对快捷方式目标会退回应用名）。
-            //  拿不到名字、或拿到的就是应用名时**只写应用名**，别写成「微信: 微信」。
-            is Action.AppShortcut -> {
-                val app = appNameOf(AppTarget.format(current.pkg, current.userId))
-                val own = configState.config.value.appName(current.plainTarget)
-                if (own.isNullOrBlank() || own == app) app else "$app: $own"
-            }
+                    // 快捷方式（`appshortcut:`）也算「打开应用」那一族，小字写「应用: 快捷方式」。
+                    //  快捷方式**自己的名字**只存在 `appNames`（键是身份，挑的时候与绑定同一次落盘）——
+                    //  token 里没有它，现查也查不到（`appNameOf` 对快捷方式目标会退回应用名）。
+                    //  拿不到名字、或拿到的就是应用名时**只写应用名**，别写成「微信: 微信」。
+                    is Action.AppShortcut -> {
+                        val app = appNameOf(AppTarget.format(current.pkg, current.userId))
+                        val own = configState.config.value.appName(current.plainTarget)
+                        if (own.isNullOrBlank() || own == app) app else "$app: $own"
+                    }
 
-            else -> {
-                null
+                    else -> {
+                        null
+                    }
+                }
             }
-        }
     }
+    return label
+}

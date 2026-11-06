@@ -6,22 +6,25 @@ package com.lookie.opluskey.core.model
  * ## 为什么必须有这一处
  *
  *  「一条命令被改名 / 被删掉」时，配置里所有指向它的 `cmd:<名字>` 都得跟着挪或清。
- *  能放动作的地方有**五处**，分布在两种条目里：
+ *  能放动作的地方有**六处**，分布在两种条目里：
  *
  *  · 每颗键的三格手势（`single` / `double` / `long`）；
+ *  · 每颗键的额外连击（`extraClicks`，第 3 击起，见 [KeyConfig.actionOf]）；
  *  · 每颗键的条件规则（`rules[].action`）；
- *  · 每个组合键的两档（`single` / `long`，组合没有双击）。
+ *  · 每个组合键的两档（`single` / `long`，组合没有双击）；
+ *  · 每个组合键的条件规则（`rules[].action`）。
  *
- *  这五处**先后被漏过三次**（删命令只清三格 → 补上规则 → 组合键那两档又漏），因为
- *  每个调用点都自己写一遍 `copy(single = …, double = …, long = …, rules = …)`。
- *  只要遍历散在调用点上，「下次多一处动作位」就必然再漏一次 —— 所以收成这两个函数：
- *  **加新的动作位只改这个文件**，改名的路径与删命令的路径都不必再动。
+ *  这几处**先后被漏过四次**（删命令只清三格 → 补上规则 → 组合键那两档又漏 → 额外连击与
+ *  组合规则又漏），因为每个调用点都自己写一遍 `copy(single = …, double = …, long = …, rules = …)`。
+ *  只要遍历散在调用点上，「下次多一处动作位」就必然再漏一次 —— 所以收成这几个函数：
+ *  **加新的动作位只改这个文件**，改名的路径、删命令的路径、删变量的反查都不必再动。
  *
  * ## 遍历的是 `keys` 全表，不是 `allKeys`
  *
  *  `allKeys` = 内置键 + `customKeys` 清单；而 `keys` 里可能还留着**已从清单删掉**的自定义键
- *  条目（`customKeys` 与 `keys` 是两份数据）。那种残留条目照样会被执行侧认领（按 keyCode），
- *  所以它上面的引用也必须清 —— 只看 `allKeys` 会把它漏成一个「按下去 NOT_FOUND」的键。
+ *  条目（`customKeys` 与 `keys` 是两份数据）。残留条目本身不会被执行侧认领（`keysByCode`
+ *  只按 `allKeys` 建表），但它上面的引用照样要清 —— 重新加回这颗键时就不会带出一条悬空的
+ *  `cmd:`。只看 `allKeys` 会让这部分引用留在文件里。
  *
  * @param transform 逐个动作换一份；返回同一个实例表示这一处不动
  */
@@ -33,14 +36,41 @@ fun Config.mapActions(transform: (Action) -> Action): Config =
                     single = transform(key.single),
                     double = transform(key.double),
                     long = transform(key.long),
+                    extraClicks = key.extraClicks.mapValues { transform(it.value) },
                     rules = key.rules.map { it.copy(action = transform(it.action)) },
                 )
             },
         combos =
             combos.map { combo ->
-                combo.copy(single = transform(combo.single), long = transform(combo.long))
+                combo.copy(
+                    single = transform(combo.single),
+                    long = transform(combo.long),
+                    rules = combo.rules.map { it.copy(action = transform(it.action)) },
+                )
             },
     )
+
+/**
+ * 配置里**所有**动作的 token（顺序无关，可能有重复）—— 与 [mapActions] 同一份清单。
+ *
+ *  删除变量前的反查（`VariableRefs`）用它，免得那一边再抄一份「六处」的清单：
+ *  抄一份的下场是「删命令认得组合规则、删变量不认得」，而两边都自称是唯一的遍历点。
+ */
+fun Config.actionTokens(): List<String> =
+    buildList {
+        keys.values.forEach { key ->
+            add(key.single.token)
+            add(key.double.token)
+            add(key.long.token)
+            key.extraClicks.values.forEach { add(it.token) }
+            key.rules.forEach { add(it.action.token) }
+        }
+        combos.forEach { combo ->
+            add(combo.single.token)
+            add(combo.long.token)
+            combo.rules.forEach { add(it.action.token) }
+        }
+    }
 
 /**
  * 配置里**还有没有**任何一处绑着 [token]（`cmd:<名字>`）—— 与 [mapActions] 同一份清单。
@@ -48,10 +78,4 @@ fun Config.mapActions(transform: (Action) -> Action): Config =
  *  用途：删命令时先清引用、再删库；库没删成要把引用写回去。判「有没有清过」与「要不要回滚」
  *  都得问这一个问题，两处若各写一遍，就会各自漏掉不同的动作位。
  */
-fun Config.bindsToken(token: String): Boolean {
-    fun Action.hit() = this.token == token
-    return keys.values.any { key ->
-        key.single.hit() || key.double.hit() || key.long.hit() ||
-            key.rules.any { it.action.hit() }
-    } || combos.any { it.single.hit() || it.long.hit() }
-}
+fun Config.bindsToken(token: String): Boolean = actionTokens().any { it == token }

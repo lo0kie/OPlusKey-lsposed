@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,6 +47,8 @@ import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.VerticalDivider
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 「捐赠列表」页 —— 从首页「其他 → 捐赠打赏」那层菜单的最后一项进来（见 [Screen.DONATE_LIST]）。
@@ -65,9 +71,14 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  */
 @Composable
 internal fun SettingsPage.DonateListScreen(scrollBehavior: ScrollBehavior) {
-    // 静态数据，进页读一次就够（进程内还有一层缓存，见 `ui/model/Donor`）
+    // 静态数据，进页读一次就够（进程内还有一层缓存，见 `ui/model/Donor`）。
+    //  **读资产放 IO**：`donors()` 要打开模块自己的 APK 解封存资产 + 解析 JSON，
+    //  在组合期做就是这一页的首帧卡在磁盘上。先给空表（= 空态骨架），读到再填。
     val context = LocalContext.current
-    val rows = remember { donors(context) }
+    var rows by remember { mutableStateOf<List<Donor>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        rows = withContext(Dispatchers.IO) { donors(context) }
+    }
     PageScrollColumn(scrollBehavior = scrollBehavior) {
         // 顶栏叠在内容上，顶部要自己让出（动态值）。这一页**没有小标题**、首行就是内容本身，
         //  所以按「选择应用」那一页的账另加一档 [PAGE_TOP_PADDING]（见 `AppPicker`）。

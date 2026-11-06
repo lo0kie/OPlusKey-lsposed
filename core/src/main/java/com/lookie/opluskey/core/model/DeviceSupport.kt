@@ -37,8 +37,8 @@ object DeviceSupport {
      * @param rom ROM 版本号：**[romSeriesOf] 从 `Build.DISPLAY` 里取出来的那一串** —— [check]
      *   收到的就是它（两个调用点都传 [currentRomSeries]），所以这里必须按它写。
      *   注意：**别照抄 `ro.build.version.oplusrom`**：两者只是**碰巧**在 PLK110 上一致
-     *   （`V17.0.0` ↔ display 里的 `17.0.0`）；真机实测 OnePlus 12 / ColorOS 16 上并不一致
-     *   （`V16.1.0` ↔ display 里的 `16.0.10`）—— 照抄那一串，这一项永远命不中。
+     *   （`V17.0.0` 与 display 里的 `17.0.0`）；真机实测 OnePlus 12 / ColorOS 16 上并不一致
+     *   （`V16.1.0` 与 display 里的 `16.0.10`）—— 照抄那一串，这一项永远命不中。
      */
     private class SystemVersion(
         val android: String,

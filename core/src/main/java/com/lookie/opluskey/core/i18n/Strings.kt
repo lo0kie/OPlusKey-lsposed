@@ -101,6 +101,27 @@ object Strings {
     const val BINDING_INSTANT_SINGLE_ON = "binding.instant_single_on"
     const val BINDING_LONG_PRESS_DELAY_DESC = "binding.long_press_delay_desc"
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
+
+    /**
+     * 「松手后再执行」那一族 —— 开关（开 / 关各一句）+ 开关为真时滑入的「松手动作」那一行。
+     *
+     *  动作那一行的副标题配了之后直接写动作名（与命令页的步骤同一套念法），所以只有「空」这一句。
+     */
+    const val BINDING_LONG_PRESS_RELEASE_ACTION = "binding.long_press_release_action"
+    const val BINDING_LONG_PRESS_RELEASE_DESC_OFF = "binding.long_press_release_desc_off"
+    const val BINDING_LONG_PRESS_RELEASE_DESC_ON = "binding.long_press_release_desc_on"
+    const val BINDING_LONG_PRESS_RELEASE_EMPTY = "binding.long_press_release_empty"
+    const val BINDING_LONG_PRESS_RELEASE_TITLE = "binding.long_press_release_title"
+
+    /**
+     * 「松手才触发」那一行 —— 长按到底「到点就执行」还是「等抬手再执行」。
+     *
+     *  与上面那一族是**两种互斥的时序**：开了它，长按动作只执行一次且在抬手那一刻；关着则是
+     *  到点即执行（那一档才谈得上连续触发）。副标题同样真假各一句。
+     */
+    const val BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE = "binding.long_press_fire_on_release_title"
+    const val BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_ON = "binding.long_press_fire_on_release_desc_on"
+    const val BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_OFF = "binding.long_press_fire_on_release_desc_off"
     const val BINDING_LONG_PRESS_REPEAT_DESC_OFF = "binding.long_press_repeat_desc_off"
     const val BINDING_LONG_PRESS_REPEAT_DESC_ON = "binding.long_press_repeat_desc_on"
     const val BINDING_LONG_PRESS_REPEAT_TITLE = "binding.long_press_repeat_title"
@@ -114,6 +135,18 @@ object Strings {
     const val BINDING_REPEAT_VIBRATE_TITLE = "binding.repeat_vibrate_title"
     const val BINDING_SERIAL_UNSUPPORTED_REPEAT = "binding.serial_unsupported_repeat"
     const val BINDING_VOICE_UNSUPPORTED_REPEAT = "binding.voice_unsupported_repeat"
+
+    /** 配了松手动作时，连续触发那一行的副标题（说清为什么点不了）。 */
+    const val BINDING_RELEASE_UNSUPPORTED_REPEAT = "binding.release_unsupported_repeat"
+
+    /** 「松手才触发」开着时，连续触发那一行的副标题（同上）。 */
+    const val BINDING_FIRE_ON_RELEASE_UNSUPPORTED_REPEAT = "binding.fire_on_release_unsupported_repeat"
+
+    /** 同一时刻「松手才触发」开着 —— 「松手后再执行」那一行为什么点不了。 */
+    const val BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE = "binding.fire_on_release_unsupported_release"
+
+    /** 反过来：配了松手动作时，「松手才触发」那一行为什么点不了。 */
+    const val BINDING_RELEASE_UNSUPPORTED_FIRE = "binding.release_unsupported_fire"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
     const val BINDING_TITLE = "binding.title"
     const val CATALOG_FLASH_NOTE = "catalog.flash_note"
@@ -247,8 +280,14 @@ object Strings {
     /** 组合键：等待时间的副标题（提示调大会带来额外的等待）。 */
     const val COMBO_WINDOW_DESC = "combo.window_desc"
 
-    /** 灵感语音 —— 一键闪记的「长按录音」那一档（只在长按网格出现）。 */
+    /** 灵感语音 —— 菜单里那一行（点开再选开始 / 结束）。 */
     const val CATALOG_VOICE_MEMORY = "catalog.voice_memory"
+
+    /** 灵感语音 —— **开始**采集（AI 记忆的录音）。 */
+    const val CATALOG_VOICE_MEMORY_START = "catalog.voice_memory_start"
+
+    /** 灵感语音 —— **结束**采集（与上一档同一条服务的另一个事件）。 */
+    const val CATALOG_VOICE_MEMORY_STOP = "catalog.voice_memory_stop"
 
     /** 唤醒小布 —— 与系统「长按电源键」同一个能力（`oplus:voice_assist`）。 */
     const val CATALOG_VOICE_ASSIST = "catalog.voice_assist"

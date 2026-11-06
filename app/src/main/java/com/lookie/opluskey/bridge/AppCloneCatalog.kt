@@ -66,7 +66,7 @@ internal object AppCloneCatalog {
     /** AOSP 给「应用分身」定的用户类型 —— 比 user id 段、比显示名都稳（见类注释的实测）。 */
     private const val CLONE_USER_TYPE = "android.os.usertype.profile.CLONE"
 
-    /** uid ↔ userId 的进制：Android 的 uid = `userId * 100000 + appId`。 */
+    /** uid 与 userId 的进制：Android 的 uid = `userId * 100000 + appId`。 */
     private const val UID_PER_USER = 100_000
 
     /**

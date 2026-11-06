@@ -13,6 +13,8 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.StateRule
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * 配置文件的**线格式模型**（`@Serializable`）—— 与 `Config` 那套数据类分开。
@@ -162,6 +164,22 @@ internal data class KeyDto(
     /** 连续触发时是否每一次重复都振动（关 = 只在长按那一下振一次）。 */
     val longRepeatVibrate: Boolean = false,
     /**
+     * 「松手后再执行」—— 长按之后松手那一刻要执行的**另一个**动作（动作 token，与长按那档分开）。
+     *
+     *  老文件没有这一格 ⇒ `none`（无操作）⇒ 行为与这一项出现之前完全一致，不需要迁移。
+     *
+     *  **类型故意收成 [JsonElement] 而不是 `String`**：这一档中间有过一版把它当**布尔开关**写进过
+     *  别人的配置文件（`"longRelease": false`）。字段类型写成 `String` 时，那种文件一读就抛
+     *  「Expected quotation mark」⇒ 整份配置判「读不懂」⇒ 页面只读、注入侧不接管（真机踩到）。
+     *  收成 [JsonElement] 之后，布尔一律按「未设置」读（见 [releaseToken]），下次写盘自然变成
+     *  动作 token。
+     */
+    val longRelease: JsonElement = JsonPrimitive(Action.NONE),
+    /** 「松手后再执行」的开关 —— 与动作分开（见 `KeyConfig.longReleaseOn`）。 */
+    val longReleaseOn: Boolean = false,
+    /** 「松手才触发」—— 长按动作本身等抬手才执行（与连续触发、松手再执行互斥）。 */
+    val longFireOnRelease: Boolean = false,
+    /**
      * 「单击延迟」与「忽视无操作双击手势」—— **每颗键各一份**（以前在 `global` 段里）。
      *
      *  `null` = 这份文件里没写（老文件 / 手写）：读的时候退回 `global` 那份，见 [ConfigDto.toConfig]。
@@ -183,6 +201,14 @@ internal data class KeyDto(
      */
     @SerialName("extra_clicks") val extraClicks: Map<String, String> = emptyMap(),
 ) {
+    /**
+     * [longRelease] 那一格的**动作 token** —— 布尔（上一版把这一档当开关写过）一律当「未设置」。
+     *
+     *  只认字符串：其他类型（`false` / `null` / 数字）都退回 [Action.NONE]，与「没有这一格」同一个结果。
+     */
+    private val releaseToken: String
+        get() = (longRelease as? JsonPrimitive)?.takeIf { it.isString }?.content ?: Action.NONE
+
     /** 按 [ConfigFields] 那张表把取值钳进各自的上下限 —— 上下限只定义在表里。 */
     fun toValues(
         legacyDoubleClickMs: Int,
@@ -196,6 +222,9 @@ internal data class KeyDto(
                 ConfigFields.F_LONG to long,
                 ConfigFields.F_LONG_PRESS_MS to clamp(ConfigFields.F_LONG_PRESS_MS, longPressMs),
                 ConfigFields.F_LONG_REPEAT to longRepeat,
+                ConfigFields.F_LONG_RELEASE to releaseToken,
+                ConfigFields.F_LONG_RELEASE_ON to longReleaseOn,
+                ConfigFields.F_LONG_FIRE_ON_RELEASE to longFireOnRelease,
                 ConfigFields.F_REPEAT_INTERVAL_MS to clamp(ConfigFields.F_REPEAT_INTERVAL_MS, longRepeatIntervalMs),
                 ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
                 ConfigFields.F_DOUBLE_CLICK_MS to
@@ -233,6 +262,9 @@ internal data class KeyDto(
                 longRepeat = key.longRepeat,
                 longRepeatIntervalMs = key.longRepeatIntervalMs,
                 longRepeatVibrate = key.longRepeatVibrate,
+                longRelease = JsonPrimitive(key.longRelease.token),
+                longReleaseOn = key.longReleaseOn,
+                longFireOnRelease = key.longFireOnRelease,
                 doubleClickMs = key.doubleClickMs,
                 instantSingle = key.instantSingle,
                 rules = key.rules.map { StateRuleDto.of(it) },

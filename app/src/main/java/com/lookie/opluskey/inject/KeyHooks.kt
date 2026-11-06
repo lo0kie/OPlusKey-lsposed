@@ -86,6 +86,11 @@ internal object KeyHooks {
                 "没找到任何侧键接管点 —— 本机 ROM 可能不是 ColorOS，或侧键实现改了名。" +
                     "模块不生效，但不影响系统",
             )
+            //  **不在这里 return**：组合键那条与侧键那条并列（见 `installChordHooks` 的注释）——
+            //  换 ROM 只有侧键方法改名、输入层方法还在时，这里一 return 就连组合拦截也一起不装了，
+            //  而日志只会说「侧键没找到」，看起来像整条链路都没救。
+            XLog.guard("挂组合键接管点（侧键落空之后）") { installChordHooks(module, loader) }
+            XLog.w("侧键 Hook 0/${points.size} 个接管点 —— 侧键完全不被接管（组合键那条见上一行）")
             return
         }
 
@@ -104,9 +109,6 @@ internal object KeyHooks {
                     forwarder.forward(id, gesture, repeat)
                 },
                 onGestureNoted = ::noteGesture,
-                onRelease = { id ->
-                    forwarder.release(id)
-                },
                 // 组合键（两颗键一起按）：判出来就**直接转给宿主执行** —— 动作在
                 //  `ComboKey` 上（短按 / 长按两格），判定侧只负责认档与转发，与单键手势同一分工。
                 onCombo = { combo, gesture, repeat ->
@@ -450,13 +452,16 @@ internal object KeyHooks {
  *  Context 就把双击拆成两次单击。`getSystemService` 在注入侧是允许的（见 `SystemContext`），
  *  `ContentResolver` 那类才不行。
  */
-private fun screenInteractive(loader: ClassLoader): Boolean {
-    val pm =
-        runCatching {
-            SystemContext.get(loader)?.getSystemService(Context.POWER_SERVICE) as? PowerManager
-        }.getOrNull() ?: return true
-    return runCatching { pm.isInteractive }.getOrDefault(true)
-}
+private fun screenInteractive(loader: ClassLoader): Boolean =
+    try {
+        val pm = SystemContext.get(loader)?.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        pm?.isInteractive ?: true
+    } catch (e: Throwable) {
+        //  这里保护的是宿主服务调用，不是「日志出口 / 反射查找」那两处例外 —— 用 catch 而不是
+        //  runCatching：`isInteractive` 的失败若来自 Error 系，也要按「说不出来就当亮着」收掉。
+        XLog.w("屏幕状态读不到（按亮着处理）：${e.javaClass.simpleName}")
+        true
+    }
 
 /**
  * 屏幕黑着就让 CPU 在这段窗口里别睡 —— 熄屏判双击用（见 `GestureDetector` 类注释的「熄屏也判双击」）。

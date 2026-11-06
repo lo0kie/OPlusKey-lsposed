@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.ui.MenuEntry
@@ -19,6 +20,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT_MS
+import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.conditionChoiceIcon
 import com.lookie.opluskey.ui.model.conditionIcon
 import com.lookie.opluskey.ui.model.conditionRowTitle
@@ -127,7 +129,7 @@ internal fun ConditionTrailing(
  *  抽成一支只为让 [BranchCards] 留在 detekt 的长度上限内；判据见那边原来那段注释：
  *  收尾再核一次「要删的还是不是它」（这 260ms 里用户还能上移 / 下移 / 再删一条，下标会移位），
  *  宁可不删、不能错删；删的是最后一条时不等 —— 那一下整块要变空态，由外层
- *  （空态 ↔ 表格）那套动画接管，两段串起来就太拖了。
+ *  （空态 与 表格）那套动画接管，两段串起来就太拖了。
  */
 @Composable
 internal fun BranchDeleteEffect(
@@ -150,6 +152,43 @@ internal fun BranchDeleteEffect(
             if (now >= 0) draft.remove(now)
             menus.deletingAt = NO_EXITING_ROW
         }
+    }
+}
+
+/**
+ * 删除**一条条件**的收尾 —— 与 [BranchDeleteEffect] 同一套：先让那一行收起
+ * （`exitingCond` 驱动行上的 `visible`），播完再从草稿里摘掉。
+ *
+ *  **不能按「确认那一刻的下标」删**：这几百毫秒里菜单虽然关了，行上的「更多」仍然可点
+ *  （上移 / 下移 / 删另一条），下标会漂移 —— 按旧下标删就是删掉了另一条条件。
+ *  所以确认那一刻先把**那一条条件本身**记下来，播完之后按身份重新定位；找不到、或者那一位
+ *  已经不是它了就不删（宁可不删，不能错删）。
+ */
+@Composable
+internal fun SettingsPage.BranchConditionDeleteEffect(
+    draft: BranchDraft,
+    menus: BranchMenuState,
+) {
+    LaunchedEffect(menus.exitingCond) {
+        val target = menus.exitingCond ?: return@LaunchedEffect
+        val cond =
+            draft.rules
+                .getOrNull(target.at)
+                ?.conditions
+                ?.getOrNull(target.index) ?: run {
+                menus.exitingCond = null
+                return@LaunchedEffect
+            }
+        delay(VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS)
+        if (menus.exitingCond != target) return@LaunchedEffect
+        val now = draft.rules.getOrNull(target.at)?.conditions ?: emptyList()
+        val at = now.indexOf(cond).takeIf { it >= 0 } ?: target.index
+        if (now.getOrNull(at) != cond) {
+            XLog.w("删除条件：那一行在动画期间被改过（位置已变），这一条不删")
+        } else {
+            deleteBranchCondition(draft, target.at, at)
+        }
+        menus.exitingCond = null
     }
 }
 

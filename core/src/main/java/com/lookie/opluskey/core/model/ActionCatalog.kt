@@ -28,6 +28,9 @@ object ActionCatalog {
         /** 「系统按键」标记格。 */
         Click,
 
+        /** 「灵感语音」那一层入口行（开始 / 结束两档，格子代表不了其中任何一个）。 */
+        VoiceMemory,
+
         /** 「通知与控制中心」标记格。 */
         Panels,
 
@@ -231,10 +234,31 @@ object ActionCatalog {
         )
 
     /**
-     * 灵感语音（AI 记忆的长按录音）。**只在长按格子出现**，也不能作为多条命令的一步 ——
-     * 它起的是麦克风采集，短按一下、或排在命令链中间都没有语义（见 [forGesture] / [STEP_GROUPS]）。
+     * 灵感语音 —— **开始**采集。
+     *
+     *  与 [VOICE_MEMORY_STOP] 是平级的两个取值：ROM 那侧只有「开始 / 结束」两个事件，
+     *  没有「再按一次就停」（见 `docs/device-findings.md` 四十六）。两档都收在 [VOICE_MODES]
+     *  那一层里 —— 界面只露一行「灵感语音」，点开再选开始 / 结束，松手不替用户收尾。
      */
     private val VOICE_MEMORY = Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY
+
+    /** 灵感语音 —— **结束**采集：同一条服务，`longPressEventType=2`。 */
+    private val VOICE_MEMORY_STOP = Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY_STOP
+
+    /**
+     * 「灵感语音」那一格的标记 —— 与 [NAV_TILE] 同类：**永不写进配置**。
+     *
+     *  开始 / 结束是两档真取值，格子代表不了其中任何一个，所以它只当入口：
+     *  菜单里露一行，点开再弹一层选择器（[VOICE_MODES]）。
+     */
+    const val VOICE_TILE = "ai:voice_memory"
+
+    /** 「灵感语音」那一层：开始 / 结束两档，顺序即行序。 */
+    val VOICE_MODES: List<Spec> =
+        listOf(
+            Spec(name = Strings.CATALOG_VOICE_MEMORY_START, token = VOICE_MEMORY),
+            Spec(name = Strings.CATALOG_VOICE_MEMORY_STOP, token = VOICE_MEMORY_STOP),
+        )
 
     /**
      * 唤醒小布（语音助手）。取值与「侧键场景表」那几档同一个写法，但**落点不在宿主**：
@@ -242,7 +266,13 @@ object ActionCatalog {
      */
     private val VOICE_ASSIST = Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_ASSIST
 
-    /** 灵感语音那一档（`oplus:voice_memory`）—— 只在小布 AI 菜单的长按那一档出现。 */
+    /**
+     * 小布 AI 那一层菜单 —— 四件能力。灵感语音只占**一行**（[VOICE_TILE] 标记），
+     * 点开它再弹一层选择器选「开始 / 结束」。
+     *
+     *  为什么不摊成两行：用户口径是「菜单里只留灵感语音，点了再选」；两档都是同一个能力的
+     *  两种操作，摊开会让小布 AI 那一格变成五项并列（见 `docs/device-findings.md` 四十六）。
+     */
     private val AI_MODES: List<Spec> =
         listOf(
             // 取值照搬 KSU 模块，但模块侧不走 shell —— 见 `host/action/AppLauncher.startSidebar`
@@ -250,9 +280,12 @@ object ActionCatalog {
             // 小布助手（Breeno）：起法不在宿主，见 `RomProfile.NAME_VOICE_ASSIST` 与 `bridge/StatusBarBridge`
             Spec(name = Strings.CATALOG_VOICE_ASSIST, token = VOICE_ASSIST),
             Spec(name = Strings.CATALOG_FLASH_NOTE, token = FLASH_MEMORY),
-            // 灵感语音：**只在长按**（它起的是麦克风采集，短按一下就开录不是这个能力的语义）——
-            //  过滤在 [modeMenu] 的 `withLongOnly`，不在静态表里。
-            Spec(name = Strings.CATALOG_VOICE_MEMORY, token = VOICE_MEMORY),
+            // 入口行：**永不写进配置**，点它弹 [VOICE_MODES]（见 `ModeMenuPopups` 的 `NestedPickerPopup`）
+            Spec(
+                name = Strings.CATALOG_VOICE_MEMORY,
+                token = VOICE_TILE,
+                glyph = Glyph.VoiceMemory,
+            ),
         )
 
     /**
@@ -542,7 +575,7 @@ object ActionCatalog {
      * 「小布 AI」那一格的标记 —— 与 [NAV_TILE] / [KEY_TILE] 同类：永不写进配置。
      *
      *  四件能力（识屏 / 语音 / 闪记 / 灵感语音）各是一个真取值，格子代表不了其中任何一个，
-     *  所以是**标记格**；点它弹 [AI_MODES]。
+     *  所以是**标记格**；点它弹 [AI_MODES]。其中灵感语音那一行自己还带一层（[VOICE_MODES]）。
      */
     const val AI_TILE = "ai:"
 
@@ -636,6 +669,7 @@ object ActionCatalog {
             BRIGHT_TILE to BRIGHT_MODES,
             VOLUME_TILE to VOLUME_MODES,
             AI_TILE to AI_MODES,
+            VOICE_TILE to VOICE_MODES,
             KEYGUARD_TILE to KEYGUARD_MODES,
             APP_CONTROL_TILE to APP_CONTROL_MODES,
         )
@@ -665,8 +699,8 @@ object ActionCatalog {
      *  **第一条自定义命令**（真机反馈过「单击 / 双击的自定义命令跑到快捷功能里了」）。
      *  清单与切分必须同源：谁剔条目，就由谁给出分组。
      *
-     *  **没有手势参数**：「灵感语音」那项过滤已经挪到菜单层（[modeMenu] 的 `withLongOnly`），
-     *  分组本身对每一档都相同 —— 留一个收下却不读的参数，等于在签名里撒谎。
+     *  **没有手势参数**：清单对三档完全相同（没有任何一项再按手势剔），
+     *  留一个收下却不读的参数，等于在签名里撒谎。
      */
     fun groupsFor(): List<Pair<String, List<Spec>>> = GROUPS
 
@@ -677,7 +711,7 @@ object ActionCatalog {
      * 网格那一屏的全部条目：内置动作 + 自定义命令。
      *
      *  保留此函数而非让调用方直接读 [ALL]：清单按手势分化随时可能回来，调用点不必跟着改。
-     *  分化那件事现在归菜单层（[modeMenu]），所以这里**不收手势参数** —— 三档拿到的表相同。
+     *  现在三档**没有分化**（见 [groupsFor]），所以这里不收手势参数。
      */
     fun forGesture(commands: List<Command> = emptyList()): List<Spec> {
         val base = groupsFor().flatMap { it.second }
@@ -720,7 +754,7 @@ object ActionCatalog {
             title to
                 group
                     // 「无操作」代表吞掉按键、不是一步动作
-                    // （「灵感语音」不在顶层了 —— 它落在小布 AI 那层菜单里，由 `modeMenu(withLongOnly)` 挡）
+                    // （「灵感语音」不在顶层 —— 它落在小布 AI 那层菜单里，那里两行都是真动作）
                     .filterNot { it.token == NONE_TOKEN }
                     .map {
                         when (it.token) {
@@ -793,6 +827,16 @@ object ActionCatalog {
         spec: Spec,
         action: Action,
     ): Boolean {
+        //  「还有一层的行」（此刻只有灵感语音：开始 / 结束）—— 绑其中任意一档都算这一行绑上了。
+        //   只比整串的话，绑了「结束」时那一行不打勾、父格「小布 AI」也不亮（父格走 [isSelected]，
+        //   而它同样逐行问 [isBound]）。
+        modeMenu(spec.token)?.let { leaves ->
+            //  **排除这一行自己**：取值表里可能含与它同 token 的那一项 —— 「媒体控制」那一格与菜单
+            //  首行共用 `media:` 这串 token（见 `MEDIA_TILE_SPEC`），直接展开就是无限递归
+            //  （真机：打开设置页当场 StackOverflowError）。排除之后若一条都不剩，就走下面那套常规判据。
+            val nested = leaves.filter { it.token != spec.token }
+            if (nested.isNotEmpty()) return nested.any { isBound(it, action) }
+        }
         //  「亮度 / 音量」这两族先判：它们比的是**占位写法的符号**，不是整串（见 [percentRowBound]）。
         percentRowBound(spec.token, action)?.let { return it }
         //  「应用控制」那两行不是取值（`appctl:open` / `appctl:stop`），比的是**绑的是哪一族**：
@@ -805,19 +849,21 @@ object ActionCatalog {
         //  —— 菜单那一行（「切换」）与网格那一格都得认得出「这个开关已经绑了」。
         //   只比整串的话，绑了「打开」之后勾子、高亮、格子里那行小字全都不出现，
         //   在真机上就是「三态没有效果」。具体落在哪一档另由 `isBoundExactly` 判。
-        if (!bound.startsWith(Action.SETTING_PREFIX)) return bound == action.token
-        val mine = switchIdOf(bound)
         //  绑的这一头也认**老写法**（`oplus:no_disturb` / `flashlight`）：老配置不迁移，
         //  执行照旧，但界面不能因此认不出「这一格绑的就是那个开关」。
         //  只在这一头放宽 —— 反过来（spec 是老写法）仍按整串比，否则「快捷功能」里的手电筒格
         //  会和「系统开关」格同时亮。
-        val theirs =
-            if (action.token.startsWith(Action.SETTING_PREFIX)) {
-                switchIdOf(action.token)
-            } else {
-                SystemSwitches.idOfLegacy(action.token)
-            }
-        return mine == theirs
+        return if (!bound.startsWith(Action.SETTING_PREFIX)) {
+            bound == action.token
+        } else {
+            val theirs =
+                if (action.token.startsWith(Action.SETTING_PREFIX)) {
+                    switchIdOf(action.token)
+                } else {
+                    SystemSwitches.idOfLegacy(action.token)
+                }
+            switchIdOf(bound) == theirs
+        }
     }
 
     /**
@@ -952,18 +998,10 @@ object ActionCatalog {
     /**
      * 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。
      *
-     * @param withLongOnly 这一层菜单里**只在长按成立**的行（此刻只有「灵感语音」）要不要给。
-     *   「判定这一档选没选中」那一类调用方要它（否则绑了它却一个勾都不亮）；**摆菜单**的两处
-     *   各按自己的语境传：网格传「这一页是不是长按」，命令链那层传 `false`
-     *   （步骤链没有长按这一档，排进去没有语义）。
+     *  三档手势与命令链**拿到的是同一份**：清单里没有任何一行再按手势或按来处剔
+     *  （灵感语音拆成开始 / 结束两个平级动作之后，两行都是真取值）。
      */
-    fun modeMenu(
-        token: String,
-        withLongOnly: Boolean = true,
-    ): List<Spec>? {
-        val rows = MODE_MENUS[token] ?: return null
-        return if (withLongOnly) rows else rows.filterNot { it.token == VOICE_MEMORY }
-    }
+    fun modeMenu(token: String): List<Spec>? = MODE_MENUS[token]
 
     /**
      * 「系统开关」再下一层：某个开关的**三档动作** —— 切换 / 打开 / 关闭。
@@ -1092,8 +1130,8 @@ object ActionCatalog {
         //  `tile` 是按「token 在 MODE_MENUS 里」挑出来的，那一层菜单必然存在 —— 不写
         //  `?: action.token` 那种回退：回退出来的不是档位名（是整串 token），调用方会当名字用。
         val tile = ALL.firstOrNull { it.token in MODE_MENUS && isSelected(it, action) } ?: return null
-        val modes = modeMenu(tile.token) ?: return null
-        val mode = modes.firstOrNull { isBound(it, action) } ?: return null
+        //  「落在哪一行」只有 [boundModeOf] 一处实现（它已经会往下探一层：灵感语音 → 开始 / 结束）
+        val mode = boundModeOf(tile, action) ?: return null
         return ModeHit(tile, mode)
     }
 
@@ -1141,7 +1179,10 @@ object ActionCatalog {
         action: Action?,
     ): Spec? {
         if (action == null) return null
-        return modeMenu(spec.token)?.firstOrNull { isBound(it, action) }
+        val row = modeMenu(spec.token)?.firstOrNull { isBound(it, action) } ?: return null
+        //  这一行自己还带一层（灵感语音 → 开始 / 结束）：小字与字形都取**最里面那一档**，
+        //  否则格子里只写得出「灵感语音」，看不出这一步是开还是停。
+        return modeMenu(row.token)?.firstOrNull { isBound(it, action) } ?: row
     }
 
     /**

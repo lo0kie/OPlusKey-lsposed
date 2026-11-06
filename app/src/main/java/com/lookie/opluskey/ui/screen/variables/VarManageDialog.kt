@@ -12,6 +12,7 @@ import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.VariableStore
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.VarOp
 import com.lookie.opluskey.core.model.VarType
@@ -67,7 +68,16 @@ internal fun SettingsPage.VarManageDialog() {
     //  这一颗被多少处引用着（删除前反查，见 `refsOf`）—— 有引用就不让删
     var deleteRefs by remember { mutableIntStateOf(0) }
     LaunchedEffect(deleteFor) {
-        deleteRefs = deleteFor?.let { v -> withContext(Dispatchers.IO) { refsOf(v.name) } } ?: 0
+        val v = deleteFor
+        if (v == null) {
+            deleteRefs = 0
+            return@LaunchedEffect
+        }
+        //  **先按「有引用」挡住**：反查要读整份命令库，这一趟是异步的，而窗是立刻显示的。
+        //  不挡的话，开窗那几十毫秒里「删除」是可点的（`refs` 还是上一颗留下的值），
+        //  点下去就删掉了仍被引用的变量。
+        deleteRefs = REFS_UNREADABLE
+        deleteRefs = withContext(Dispatchers.IO) { refsOf(v.name) }
     }
     val step = VarManageState.mode == VarManageState.Mode.Step
 
@@ -287,6 +297,10 @@ private fun SettingsPage.applyNow(
  * 然后退页 —— 这一趟是从「自定义变量」页进来的，写完要回到原来那一页。
  */
 private fun SettingsPage.commitStep(set: Action.VarSet) {
+    //  **先取快照再写**：`writeToken` 内部会 `takePickTarget()`，那一步会把「为谁挑」的标记
+    //  一并清掉（一次性消费）。写完之后再问「刚才是加一步吗」，答案永远是「不是」——
+    //  于是这里多走一次 `goBack()`，把来源页也弹掉，而草稿刚被改脏，退页会弹「放弃未保存」。
+    val handedOff = picker.forStep || picker.forBranch
     VarManageState.close()
     if (!writeToken(set.token, null)) return
     //  落盘了就不再恢复抽屉：抽屉那边记着「挑完回来把抽屉支起来」，那是**还没选完**时的账
@@ -294,7 +308,7 @@ private fun SettingsPage.commitStep(set: Action.VarSet) {
     //  同一条命令再选一遍 —— 与 `onAppPicked` 同一口径。
     picker.cancelResume()
     //  加一步 / 换一步、分支那两条路自己会切页（与挑应用那条同一口径），这一页要被弹掉
-    if (picker.forStep || picker.forBranch) return
+    if (handedOff) return
     picker.clearTarget()
     goBack()
 }
@@ -310,6 +324,14 @@ private fun SettingsPage.deleteVar(
     gone: Variable,
 ) {
     scope.launch {
+        //  **落盘前再查一次**：开窗时那次反查与这一刻之间隔着用户的思考时间，期间侧键 /
+        //  另一页都可能新增一处引用。检查与落盘必须在同一段 IO 里（否则又是一次 check-then-act）。
+        val refs = withContext(Dispatchers.IO) { refsOf(gone.name) }
+        if (refs > 0) {
+            XLog.w("变量删除：${gone.name} 还有 $refs 处引用，拒绝")
+            hint(I18n.get(Strings.VAR_FAILED, "改不了"))
+            return@launch
+        }
         val ok = withContext(Dispatchers.IO) { VariableStore.remove(gone.name) }
         //  删掉了不另说一句：那一行**当场从列表里消失**，比一条提示更直接
         if (ok) {

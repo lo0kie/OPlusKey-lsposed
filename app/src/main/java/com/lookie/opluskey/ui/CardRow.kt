@@ -179,6 +179,11 @@ internal sealed interface CardRow {
         val visible: Boolean? = null,
         /** 同 [Item.vibrate]：默认振，个别关。 */
         val vibrate: Boolean = true,
+        /**
+         * 这一行灰着被点一下时的说法（`null` = 用整页那句）——
+         * 与 [Item.disabledHint] 同一个意思、同一套读法，只在 `enabled = false` 时生效。
+         */
+        val disabledHint: String? = null,
         val onCheckedChange: (Boolean) -> Unit,
     ) : CardRow
 
@@ -344,17 +349,21 @@ private fun ColumnScope.RowContent(
         }
 
         is CardRow.Switch -> {
-            SwitchRow(
-                title = row.title,
-                summaryOn = row.summaryOn,
-                summaryOff = row.summaryOff,
-                icon = row.icon,
-                checked = row.checked,
-                position = position,
-                enabled = row.enabled,
-                vibrate = row.vibrate,
-                onCheckedChange = row.onCheckedChange,
-            )
+            //  与 [CardRow.Item] 同一套：灰着被点时说的那句原因，由行自己带（`null` 用整页那条）
+            val disabledHint = if (row.enabled) null else row.disabledHint
+            DisabledHint(disabledHint) {
+                SwitchRow(
+                    title = row.title,
+                    summaryOn = row.summaryOn,
+                    summaryOff = row.summaryOff,
+                    icon = row.icon,
+                    checked = row.checked,
+                    position = position,
+                    enabled = row.enabled,
+                    vibrate = row.vibrate,
+                    onCheckedChange = row.onCheckedChange,
+                )
+            }
         }
 
         is CardRow.Custom -> {

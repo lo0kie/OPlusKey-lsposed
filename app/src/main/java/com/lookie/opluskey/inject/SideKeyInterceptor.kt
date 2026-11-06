@@ -49,8 +49,6 @@ internal class SideKeyInterceptor(
     private val forward: (KeyId, GestureTrigger, Boolean) -> Unit,
     /** 每判出一个手势记一笔（`KeyHooks.noteGesture`）—— 链路自检用，由装配方注入。 */
     private val onGestureNoted: () -> Unit,
-    /** 判过长按的这一按松手了（去处与 [forward] 同一处，见 `GestureDetector.onLongReleased`）。 */
-    private val onRelease: (KeyId) -> Unit,
     /**
      * 判出一次「两颗键一起按」：哪一档组合 + 是短按还是长按。
      *
@@ -79,7 +77,6 @@ internal class SideKeyInterceptor(
             handler,
             onGestureNoted = onGestureNoted,
             onGesture = { id, gesture, _, repeat -> forward(id, gesture, repeat) },
-            onLongReleased = onRelease,
             holdAwake = holdAwake,
         )
 
@@ -113,6 +110,17 @@ internal class SideKeyInterceptor(
             //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
             joinsCombo = { id -> ConfigChannel.joinsCombo(id) },
         )
+
+    /**
+     * 已经报过「这个码不认识」的键码 —— 每个码只报**一次** W，之后退回 `d`。
+     *
+     *  PM 兜底那条能收到所有按键：一律 W 会把日志刷满、把真正的判据行挤掉；一律 `d` 又在
+     *  release 里被编译期消除，表现成「按了键、模块一行都没有」。所以第一颗未知码必须报一次 W
+     *  （它是「ROM 换了内部码 / 换了键码」的唯一凭据），同一颗码的后续按压留在 `d`。
+     */
+    private val unclaimedLogged =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet<Int>()
 
     /**
      * 这个事件是不是**我们自己注入的**合成事件（`KeyInjector` 干的那类按键注入）。
@@ -406,10 +414,14 @@ internal class SideKeyInterceptor(
         keyEvent: KeyEvent,
         raw: Boolean,
     ) {
-        // PM 那条本来就能收到所有按键，按 `d` 记、且仍然只记按下（真机排查时才看）。
+        // PM 那条本来就能收到所有按键：**同一颗码只在前几次报 W**，之后退到 d 免得刷屏。
         if (raw) {
-            if (keyEvent.action == KeyEvent.ACTION_DOWN) {
-                XLog.d("按键（$point）：不认识的 keyCode=${keyEvent.keyCode}，放行给系统")
+            if (keyEvent.action != KeyEvent.ACTION_DOWN) return
+            val code = keyEvent.keyCode
+            if (unclaimedLogged.add(code)) {
+                XLog.w("按键（$point）：keyCode=$code 不在认领白名单，放行给系统（这颗码只报这一次）")
+            } else {
+                XLog.d("按键（$point）：不认识的 keyCode=$code，放行给系统")
             }
             return
         }
@@ -495,24 +507,25 @@ internal class SideKeyInterceptor(
                         //  松手那一刻还看不出结果 —— 立刻补的话先按的那颗单击会先跑掉，
                         //  窗口内第二颗键再来，组合也跟着响（一次按键三下动作）。
                         val waiting = held.release(id)
+                        //  取消优先于一切（`FLAG_CANCELED`）：KeyEvent 没有 ACTION_CANCEL 这个
+                        //  action，取消只是这一个位。排在组合 / 等窗之前判，是因为那两条路都会
+                        //  把它当成一次**正常松手** —— 组合那边当场派发短按，等窗那边到点补一次
+                        //  完整按压，两种都是「窗口失焦 / 来电打断后凭空触发一下」。
+                        if (keyEvent.isCanceled) {
+                            held.drop(id)
+                            combo.onUp(id, short = false)
+                            //  取消也是「这一按结束了」：长按若已判过，连发链与这一按的状态都要撤掉。
+                            XLog.w("${id.label}（$point）：这一按被取消（FLAG_CANCELED）→ 撤掉判定")
+                            detector.reset(id)
+                            return true
+                        }
                         //  组合那笔账无论走哪条路都要结：它要把「还按着」那颗的状态清掉。
                         //  顺序不能反 —— 组合在窗口内成立时会把压着的那一枪摘掉，
                         //  所以 `waiting` 与它不会同时为真。
                         if (combo.onUp(id) || waiting) return true
-                        // 抬手被取消（窗口失焦 / 按压被打断）⇒ 不判任何手势。
-                        // KeyEvent 没有 ACTION_CANCEL（那是 MotionEvent 的），取消是 FLAG_CANCELED 位，
-                        // 只能从 isCanceled 读；不认它的话已排下的长按照样触发（凭空长按）。
-                        if (keyEvent.isCanceled) {
-                            // 取消也是「这一按结束了」：长按若已判过，那一段采集还在跑 ⇒ 一样要收尾
-                            // （`finish` 里才判「有没有东西要收尾」，这里不重复判一次）。
-                            XLog.w("${id.label}（$point）：这一按被取消（FLAG_CANCELED）→ 撤掉判定")
-                            detector.finish(id)
-                            true
-                        } else {
-                            XLog.w("${id.label}（$point）：UP keyCode=${keyEvent.keyCode}")
-                            detector.onKeyUp(id, keyConfig)
-                            true
-                        }
+                        XLog.w("${id.label}（$point）：UP keyCode=${keyEvent.keyCode}")
+                        detector.onKeyUp(id, keyConfig)
+                        true
                     }
 
                     else -> {

@@ -123,6 +123,26 @@ internal class AppPickerState {
     val stopApp: Boolean get() = stopAppState.value
 
     /**
+     * 这一趟排不排**没有启动图标**的那一批（系统应用、没有图标的部分第三方与模块）。
+     *
+     *  ## 两个开关各管一维、互不借光
+     *
+     *  [includesIconless] 只看 [showSystemApps]，[includesUnopenable] 只看 [showUnopenable]。
+     *  曾经这一位写成「显示失效开着 ⇒ 无图标的也一并放开」，于是拨「显示失效应用」会把整批
+     *  没有图标的系统应用一起涌出来（用户口径：这两个开关要**联合筛选**）—— 用户想过滤掉它们，
+     *  不该因为开了另一个开关就全被放出来。
+     *
+     *  「结束应用」那一趟一律全列：停掉一个没有启动图标的应用正是它的用处。
+     *
+     *  三处读它（列表过滤 / 空态那句 / 选中项清空），各写一遍迟早分叉 —— 尤其这次改的是
+     *  「两条判据之间的关系」，漏一处就让某一条路还在按旧口径走。
+     */
+    val includesIconless: Boolean get() = stopApp || showSystemApps.value
+
+    /** 这一趟排不排**点不开**的那一批（[LaunchableApp.launchable]）—— 与 [includesIconless] 同一条口径。 */
+    val includesUnopenable: Boolean get() = stopApp || showUnopenable.value
+
+    /**
      * 进这一页时对应的**手势**（`null` = 没在挑应用，或者不是给手势挑的）。
      *
      *  用途：挑中应用时知道该写哪个手势。不能靠 pager 的当前页 —— 那一页不属于 pager。

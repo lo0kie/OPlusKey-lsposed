@@ -44,7 +44,19 @@ internal object ShellRunner {
         //  （首次 `su` 会停在等授权，可能几秒）。这两步原先在**调用线程**上同步做，而调用链是
         //  宿主主线程的广播回调（`GestureReceiver` 的 Handler 建在主 Looper）—— 一条慢命令
         //  就能把整个宿主卡住。
-        runnerPool.execute { execBlocking(command, onFailure, onTip, preferRoot, onLine) }
+        //
+        //  **队列有界**：排队中的任务既没占槽、也不会过期，连按几十下（长按连发 100ms 一条）
+        //  就是几十条十几秒后才执行的命令 —— 那时用户早就忘了自己按过。满了直接拒，
+        //  用户看到「上一条还没跑完」，比「按了半分钟后突然动了」诚实。
+        try {
+            runnerPool.execute { execBlocking(command, onFailure, onTip, preferRoot, onLine) }
+        } catch (e: java.util.concurrent.RejectedExecutionException) {
+            XLog.w(
+                "shell 排队已满（在跑 $SHELL_MAX_CONCURRENT 条、排队 $SHELL_QUEUE_MAX 条），拒绝：" +
+                    "${XLog.redactCommand(command)}（${e.javaClass.simpleName}）",
+            )
+            onFailure(CommandFailure.OVERLOADED)
+        }
     }
 
     /** [exec] 的实现体 —— 跑在 [runnerPool] 上，所以这里允许阻塞。 */
@@ -150,28 +162,16 @@ internal object ShellRunner {
                 } catch (e: Throwable) {
                     // 这条路直接 `return` 的话**不 destroy 子进程**：进程漏在后台、读线程还挂着
                     //  那对管道。与超时那条一样收掉（destroy 关管道 ⇒ 读到 EOF），并报一句给用户。
+                    //  **强杀也要走**：`destroy()` 只是 SIGTERM，不理会的子进程会把管道连带留着。
                     XLog.w("等 shell 结束失败，杀掉它：${e.message}")
-                    runCatching { proc.destroy() }
+                    killForcibly(proc, SHELL_KILL_GRACE_MS)
+                    logOutputTail(tail)
                     sinks.onFailure(CommandFailure.UNKNOWN)
                     return
                 }
             if (!done) {
                 XLog.w("shell 超过 ${SHELL_TIMEOUT_MS}ms 没结束，杀掉它：${XLog.redactCommand(command)}")
-                try {
-                    proc.destroy()
-                } catch (e: Throwable) {
-                    XLog.d("杀 shell 进程失败（忽略）：${e.message}")
-                }
-                // 子进程可能不理会 SIGTERM：宽限期内没退就强杀，保证管道被关掉、
-                // 读线程能收到 EOF 退出（否则每次超时都永久泄一个读线程）。
-                val gone =
-                    runCatching {
-                        proc.waitFor(SHELL_KILL_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    }.getOrDefault(false)
-                if (!gone) {
-                    runCatching { proc.destroyForcibly() }
-                        .onFailure { XLog.d("强杀 shell 进程失败（忽略）：${it.message}") }
-                }
+                killForcibly(proc, SHELL_KILL_GRACE_MS)
                 logOutputTail(tail)
                 sinks.onFailure(CommandFailure.SHELL_TIMEOUT)
                 return
@@ -438,11 +438,13 @@ internal object ShellRunner {
      *  线程 60 秒后自己退出 —— 早先是每条命令 `Thread {}` 硬建两条、用完即毁，连发时就是反复
      *  创建 / 销毁 Java 线程。
      *
-     * ## 为什么用无界队列而不是 `SynchronousQueue`
+     * ## 为什么队列**有界**
      *
-     *  `SynchronousQueue` 在池满时抛 `RejectedExecutionException`，而读线程被拒等于「这次命令的
-     *  输出没人读」。用 `LinkedBlockingQueue`：超出并发的那一条**排队**，执行侧本来就有
-     *  `SHELL_DRAIN_JOIN_MS` 的等待上限，不会因此永久卡住。
+     *  无界队列在并发上限之外再吸收任意多任务：连按几十下就是几十条命令排在后面，最长的要等
+     *  十几秒才执行 —— 用户早已忘了那一下，看到的却是「手机过了一会儿自己动了」。排队上限取
+     *  [SHELL_QUEUE_MAX]，超出直接拒（[CommandFailure.OVERLOADED]，与「并发已满」同一句提示）。
+     *
+     *  读线程仍用无界队列：它只在执行侧占着槽位时提交，数量天然受 [SHELL_MAX_CONCURRENT] 约束。
      */
     private val runnerPool =
         ThreadPoolExecutor(
@@ -450,7 +452,7 @@ internal object ShellRunner {
             SHELL_MAX_CONCURRENT,
             SHELL_THREAD_IDLE_SECONDS,
             TimeUnit.SECONDS,
-            LinkedBlockingQueue(),
+            LinkedBlockingQueue(SHELL_QUEUE_MAX),
         ) { r ->
             Thread(r, "opluskey-shell-run").apply { isDaemon = true }
         }.apply { allowCoreThreadTimeOut(true) }
@@ -560,3 +562,30 @@ private class ShellSinks(
     val onTip: (String) -> Unit,
     val onLine: ((String) -> Unit)?,
 )
+
+/**
+ * 收掉一个可能不讲道理的子进程：先 SIGTERM，宽限期过了再 SIGKILL。
+ *
+ *  两条「等不到结果」的路径（超时 / `waitFor` 抛异常）共用这一份 —— 只 `destroy()` 不跟进时，
+ *  不理会 SIGTERM 的子进程会连管道一起留着，读线程也就永远读不到 EOF。
+ *
+ *  放在文件级而不是 [ShellRunner] 里：那个对象贴着 detekt 的 `TooManyFunctions` 阈值。
+ */
+private fun killForcibly(
+    proc: Process,
+    graceMs: Long,
+) {
+    try {
+        proc.destroy()
+    } catch (e: Throwable) {
+        XLog.d("杀 shell 进程失败（忽略）：${e.message}")
+    }
+    val gone =
+        runCatching {
+            proc.waitFor(graceMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+        }.getOrDefault(false)
+    if (!gone) {
+        runCatching { proc.destroyForcibly() }
+            .onFailure { XLog.d("强杀 shell 进程失败（忽略）：${it.message}") }
+    }
+}

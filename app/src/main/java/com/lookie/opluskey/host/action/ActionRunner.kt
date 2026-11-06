@@ -14,6 +14,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
+import com.lookie.opluskey.core.model.RomKeyFamilies
 import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.expandedWith
 import com.lookie.opluskey.core.wire.ModuleWire
@@ -64,34 +65,25 @@ internal class ActionRunner(
      *
      *  宿主主进程里不需要（进程活多久就活多久）；`:ui` 进程里那份「测试命令」执行器在关页时调它，
      *  否则每轮「进设置 → 测试手电筒 → 关页」都会在系统里留一份不会再被用的回调。
-     *
-     *  名字必须与 [stopVoiceCapture] 区分开：两者都是「松手 / 收尾」，但一个是**进程级注册**、
-     *  一个是**这一按的采集**。同名时 Kotlin 允许并存（函数与属性不在同一命名空间），
-     *  调用点 `runner.release()` 永远只会命中函数 —— 灵感语音那条收尾因此从不执行。
      */
     fun releaseTorch() {
         flashlight.release()
     }
 
     /**
-     * 「灵感语音」上一次触发的时间（`uptimeMillis`）—— 连按不重复起采集。
+     * 「灵感语音 · 开始」上一次触发的时间（`uptimeMillis`）—— 连按不重复起采集。
      *
-     *  它起的是一个**前台麦克风采集服务**：重复拨只会把正在录的那一段打断重来，用户看到的是
-     *  「按了两下，第一段没了」。所以这里直接挡：`VOICE_MEMORY_GAP_MS` 内的第二次当没按。
+     *  ROM 对重入的「开始」本来就是 no-op（`reentrant collect.`，见
+     *  `docs/device-findings.md` 四十六）：这道窗口只省一次 `startCollect`，顺带在日志里
+     *  留一行「这一下被挡了」的依据 —— 否则连按两次时看不出是模块挡的还是 ROM 挡的。
+     *
+     *  `@Volatile`：同一次按压的重复派发可能落在不同线程（执行线程 / 连发链）。
      */
+    @Volatile
     private var lastVoiceMemoryAt = 0L
 
     /**
-     * 「灵感语音」这一段是不是**我们起的**（= 还没收尾）。
-     *
-     *  松手要不要发结束，只能按它判，不能按「长按绑的是不是灵感语音」判：
-     *  `VOICE_MEMORY_GAP_MS` 内的第二次按下**不会**起采集（见 [startOplusOrVoice]），
-     *  那一下松手若照样发结束，掐断的是**上一段**正在录的。状态只归执行侧所有。
-     */
-    private var voiceMemoryOn = false
-
-    /**
-     * 起一条 ColorOS 落点 —— 灵感语音单独有「连按窗口」，其余照旧。
+     * 起一条 ColorOS 落点 —— 灵感语音「开始」单独有「连按窗口」，其余照旧。
      *
      *  写成 lambda 字段而不是方法：这个类的函数数已经贴着 detekt 的上限。
      */
@@ -99,31 +91,10 @@ internal class ActionRunner(
         val now = android.os.SystemClock.uptimeMillis()
         val gap = now - lastVoiceMemoryAt
         if (feature == RomProfile.NAME_VOICE_MEMORY && gap in 0 until VOICE_MEMORY_GAP_MS) {
-            XLog.w("灵感语音：${gap}ms 内又按了一次，忽略（上一段还在采集）")
+            XLog.w("灵感语音：${gap}ms 内又按了一次，忽略（ROM 侧本来也当重入丢掉）")
         } else {
-            if (feature == RomProfile.NAME_VOICE_MEMORY) {
-                lastVoiceMemoryAt = now
-                voiceMemoryOn = true
-            }
+            if (feature == RomProfile.NAME_VOICE_MEMORY) lastVoiceMemoryAt = now
             launcher.startOplusFeature(feature)
-        }
-    }
-
-    /**
-     * 松手 —— 给「按下开始、松手结束」的动作收尾（此刻只有灵感语音）。
-     *
-     *  判据是 [voiceMemoryOn] 而不是配置：这一下松手有没有东西要停，只有执行侧知道
-     *  （见那个字段的说明）。绑定变了、主开关关了都由调用方先判过 —— 到这里只管停。
-     *
-     *  与 [startOplusOrVoice] 同理写成 lambda 字段：这个类的函数数贴着 detekt 的上限。
-     */
-    val stopVoiceCapture: () -> Unit = {
-        if (!voiceMemoryOn) {
-            XLog.d("松手：这一段灵感语音不是本进程起的，不收尾")
-        } else {
-            voiceMemoryOn = false
-            XLog.w("灵感语音：松手 → 结束采集")
-            launcher.stopOplusFeature(RomProfile.NAME_VOICE_MEMORY)
         }
     }
 
@@ -271,13 +242,55 @@ internal class ActionRunner(
     /** 一个 `keyevent:` 动作：大多走注入，通知中心 / 最近任务 / 静音键 / 电源键 / 音量走特殊通道。 */
     private fun runKeyEvent(keyCode: Int) {
         when (keyCode) {
-            KeyId.KEYCODE_NOTIFICATION -> sendStatusbar(StatusBarBridge.CMD_NOTIFICATIONS)
-            KeyId.KEYCODE_APP_SWITCH -> sendStatusbar(StatusBarBridge.CMD_RECENTS)
-            KeyId.KEYCODE_VOLUME_MUTE -> ringer.cycle()
-            KeyId.KEYCODE_POWER -> togglePower(context, ::notifyFailure)
-            KeyId.KEYCODE_VOLUME_UP -> adjustVolume(android.media.AudioManager.ADJUST_RAISE)
-            KeyId.KEYCODE_VOLUME_DOWN -> adjustVolume(android.media.AudioManager.ADJUST_LOWER)
-            else -> injector.inject(keyCode)
+            KeyId.KEYCODE_NOTIFICATION -> {
+                sendStatusbar(StatusBarBridge.CMD_NOTIFICATIONS)
+            }
+
+            KeyId.KEYCODE_APP_SWITCH -> {
+                sendStatusbar(StatusBarBridge.CMD_RECENTS)
+            }
+
+            KeyId.KEYCODE_VOLUME_MUTE -> {
+                ringer.cycle()
+            }
+
+            KeyId.KEYCODE_POWER -> {
+                togglePower(context, ::notifyFailure)
+            }
+
+            KeyId.KEYCODE_VOLUME_UP -> {
+                adjustVolume(android.media.AudioManager.ADJUST_RAISE)
+            }
+
+            KeyId.KEYCODE_VOLUME_DOWN -> {
+                adjustVolume(android.media.AudioManager.ADJUST_LOWER)
+            }
+
+            else -> {
+                //  **注入前先对照当前配置**：`keyevent:` 只挡住了内置键与 ROM 族码（解析侧拿不到
+                //  自定义键的码），而自定义键的码是运行时收集来的 —— 注入同一个码会被拦截路径
+                //  再认领一次，于是一次动作变成 system_server 里的自持循环。判据只能用**现读的**
+                //  配置：这条路径一次动作走一次，读盘成本可以忽略，缓存反而会漏掉刚收集的键。
+                if (claimedByModule(keyCode)) {
+                    XLog.w("keyevent:$keyCode 是模块自己认领的键码（注入会自持循环，已拒绝执行）")
+                    notifyFailure(CommandFailure.UNKNOWN)
+                } else if (!injector.inject(keyCode)) {
+                    //  以前这里只看「没抛异常」，于是「动作执行了、屏幕没反应」在用户侧完全没有回执
+                    notifyFailure(CommandFailure.UNKNOWN)
+                }
+            }
+        }
+    }
+
+    /** 这个键码现在归模块管吗（内置键的码 / 自定义键收集来的码 / ROM 族码）。 */
+    private fun claimedByModule(code: Int): Boolean {
+        if (RomKeyFamilies.isFamilyCode(code)) return true
+        if (KeyId.builtins.any { code in it.acceptedKeyCodes }) return true
+        return try {
+            ConfigStore.read().keyForCode(code) != null
+        } catch (e: Throwable) {
+            XLog.w("注入前读配置失败（按「不归模块管」继续）：${e.javaClass.simpleName}")
+            false
         }
     }
 

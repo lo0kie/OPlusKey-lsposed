@@ -52,6 +52,21 @@ internal val SettingsPage.localConfigTag: String
     }
 
 /**
+ * 在**建页那趟 IO** 里先把指纹算好 —— 组合期读 [localConfigTag] 时就只命中缓存。
+ *
+ *  `ConfigBroadcast.tag` 内部要读一次命令库（`longIsSerial`），那是磁盘 IO；
+ *  而组合期读它是硬红线。所以「知道这两份状态刚换过」的地方（建页、写盘、存命令库）
+ *  都应该在后台线程上先调这个函数 —— 读的那一侧不必知道有没有缓存。
+ */
+internal fun primeLocalTag(
+    config: Config,
+    commands: List<Command>,
+) {
+    val tag = ConfigBroadcast.tag(config) { CommandLibrary.longIsSerial(config, it) }
+    localTagCache = Triple(config, commands, tag)
+}
+
+/**
  * 「设置生效」那一段里**配置侧**那半：配置读得出来、注入侧收到过、且它手上就是**这一份**。
  *
  *  抽出来是因为它同时供两处用：「设置生效」那一行的 `ok`，以及整页总闸（[linkReady]）——

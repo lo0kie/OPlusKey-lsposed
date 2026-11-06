@@ -21,6 +21,15 @@ sealed interface GestureTrigger {
     /** 按住不放 —— 与击数是**两条轴**：长按由长按阈值判，不参与连击链。 */
     data object LongPress : GestureTrigger
 
+    /**
+     * 长按之后的**松手**那一刻（`KeyConfig.longRelease` 那一档）。
+     *
+     *  它不是一次独立手势，也不参与连击链：只有「这一按已经判成长按」才会发出来 —— 判定侧在抬手
+     *  时发一条，执行侧据此执行**另一个**动作（与长按那一档分开配置、分开执行）。
+     *  没配松手动作时这条根本不发，行为与这一位出现之前完全一致。
+     */
+    data object Release : GestureTrigger
+
     /** 配置 / 广播里用的档位 id —— 与 `Gesture.id` 同一套字面量（多击是 `clickN`）。 */
     val id: String get() = idOf(this)
 
@@ -30,6 +39,10 @@ sealed interface GestureTrigger {
             when (this) {
                 GestureTrigger.LongPress -> {
                     Gesture.LONG.label
+                }
+
+                GestureTrigger.Release -> {
+                    "长按松手"
                 }
 
                 is Click -> {
@@ -46,6 +59,13 @@ sealed interface GestureTrigger {
         const val CLICK_ID_PREFIX = "click"
 
         /**
+         * 「长按松手」那一档的 id（广播 / 配置里那一档）。
+         *
+         *  与三档手势的 id **不冲突**：`Gesture.ofId` 只认 `single` / `double` / `long`。
+         */
+        const val RELEASE_ID = "release"
+
+        /**
          * 档位 id → 触发条件。
          *
          *  `single` / `double` / `long` 走 [Gesture.ofId]（**字面量只有那一处**），另外认
@@ -56,6 +76,12 @@ sealed interface GestureTrigger {
          */
         fun ofId(id: String?): GestureTrigger? {
             Gesture.ofId(id)?.let { return it.trigger() }
+            if (id == RELEASE_ID) return GestureTrigger.Release
+            return clickOf(id)
+        }
+
+        /** `clickN`（n ≥ 3）—— 除三档与 `release` 之外唯一认的写法。 */
+        private fun clickOf(id: String?): GestureTrigger? {
             val digits = id?.takeIf { it.startsWith(CLICK_ID_PREFIX) }?.removePrefix(CLICK_ID_PREFIX) ?: return null
             val count = digits.toIntOrNull() ?: return null
             //  `click03` / `click+3` 这类不认：档位 id 是要落盘、要广播的字面量，只留一种写法
@@ -67,6 +93,10 @@ sealed interface GestureTrigger {
             when (trigger) {
                 GestureTrigger.LongPress -> {
                     Gesture.LONG.id
+                }
+
+                GestureTrigger.Release -> {
+                    RELEASE_ID
                 }
 
                 is GestureTrigger.Click -> {
@@ -90,6 +120,12 @@ fun GestureTrigger.gestureOrNull(): Gesture? =
     when (this) {
         GestureTrigger.LongPress -> {
             Gesture.LONG
+        }
+
+        //  松手这一档是**另一个槽位**（`KeyConfig.longRelease`），不是三档里任何一档：
+        //  条件分支（`StateRule`）按三档判定，把它算成「长按」会取到长按那一档的动作。
+        GestureTrigger.Release -> {
+            null
         }
 
         is GestureTrigger.Click -> {

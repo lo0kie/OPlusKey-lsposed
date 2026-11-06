@@ -221,13 +221,13 @@ internal class StepSheetFilter(
      */
     val includeNone: Boolean = false,
     /**
-     * 二级菜单里**要不要给「只在长按成立」的那几条**（此刻只有「灵感语音」）。
+     * 这一次**不列**「选择应用」「自定义变量」那两格**关卡**（`true` = 不列）。
      *
-     *  与按键绑定页同一个判据（`BindingGrids` 传 `st.g == Gesture.LONG`）：灵感语音起的是
-     *  麦克风采集，短按一下就开录不是这个能力的语义。系统场景的动作挂在**某一条规则的某一档手势**
-     *  上，所以由调用点按那条规则的 `gesture` 传 —— 长按那条规则才给。
+     *  那两格不是「落一步」，而是「换一页去挑」。有些来处没有那条去路 —— 例如长按卡里的
+     *  「松手后再执行」：它只写一个动作字段，不经过挑应用 / 挑变量那两页。列出来等于让人点一下
+     *  抽屉关门、什么都不发生。
      */
-    val withLongOnly: Boolean = false,
+    val excludeTiles: Boolean = false,
 )
 
 /**
@@ -307,7 +307,19 @@ internal fun SettingsPage.StepPickerSheet(
     var query by remember { mutableStateOf("") }
     //  这一次列哪张候选表：系统场景那一支要把「无操作」列出来，多条命令的步骤不列
     //  （见 [StepSheetFilter.includeNone]）。
-    val groups = if (sheet.filter.includeNone) ActionCatalog.BRANCH_GROUPS else ActionCatalog.STEP_GROUPS
+    val groups =
+        (if (sheet.filter.includeNone) ActionCatalog.BRANCH_GROUPS else ActionCatalog.STEP_GROUPS)
+            .let { base ->
+                if (!sheet.filter.excludeTiles) {
+                    base
+                } else {
+                    //  这一趟没有「挑应用 / 挑变量」那两条去路（见 `StepSheetFilter.excludeTiles`）
+                    base.map { (groupTitle, specs) ->
+                        groupTitle to
+                            specs.filter { it.token != ActionCatalog.APP_TILE && it.token != ActionCatalog.VARS_TILE }
+                    }
+                }
+            }
 
     //  这一行画不画成「选中」（行首对勾 + 整行主题色）：看当前动作。
     //  点一下就落盘、抽屉随即收掉（见 `land`），所以这里没有「刚点过、还没生效」那一档了。
@@ -448,7 +460,7 @@ internal fun SettingsPage.StepPickerSheet(
             )
         },
     ) {
-        //  **三种内容之间交叉淡入淡出**（列表 ↔ 搜索结果 ↔ 没找到）：高度变化交给壳里那个
+        //  **三种内容之间交叉淡入淡出**（列表 与 搜索结果 与 没找到）：高度变化交给壳里那个
         //  `animateContentSize`，这里只做淡入淡出 —— 两层各管一件事，
         //  两个都动高度会变成一段动画套一段。
         Crossfade(
@@ -491,8 +503,8 @@ internal fun SettingsPage.StepPickerSheet(
     //  **选中即确认**：点了哪一档就落哪一档，然后连抽屉一起收掉（不再等「确定」）。
     ModeMenuPopups(
         preciseClick = subAnchor ?: coldAnchor,
-        // 命令链这一层**没有长按**这一档：灵感语音不在步骤链里出现
-        target = subTile?.let { ModeMenuTarget(it, withLongOnly = sheet.filter.withLongOnly) },
+        // 命令链与网格拿到的是同一份菜单（灵感语音的开始 / 结束都是普通一步）
+        target = subTile?.let { ModeMenuTarget(it) },
         current = sheet.current,
         onPick = { spec ->
             tick()
@@ -576,7 +588,7 @@ private fun SettingsPage.StepSheetCard(
 
 /**
  * 候选卡里的一行 —— 直接产出通用的 [CardRow.Item]，选中态只换三样：
- * **行首字形**（原图标 ↔ 对勾）、**标题色**与**行尾色**（主题色）。
+ * **行首字形**（原图标 与 对勾）、**标题色**与**行尾色**（主题色）。
  *
  *  选中态不另立行组件：`CardRow.Item` 已经带 `iconTint` / `titleTint` / `trailing` 三个槽，
  *  整行上主题色这件事在那里就表达得完 —— 抽屉与各页共用同一份行实现，改一处两边一起变。

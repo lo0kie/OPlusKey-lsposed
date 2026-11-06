@@ -32,6 +32,8 @@ import com.lookie.opluskey.host.action.MiniWindowFacts.RESIZE_MODE_FIELD
 import com.lookie.opluskey.host.action.MiniWindowFacts.RESIZE_MODE_UNRESIZEABLE
 import com.lookie.opluskey.host.action.MiniWindowFacts.ROM
 import com.lookie.opluskey.host.action.MiniWindowFacts.START_DELIVERED_TO_TOP
+import com.lookie.opluskey.host.action.MiniWindowFacts.START_RESTART
+import com.lookie.opluskey.host.action.MiniWindowFacts.START_SUCCESS
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_ACTIVITY_FIELD
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_CLASS_FIELD
 import com.lookie.opluskey.host.action.MiniWindowFacts.TOP_APP_INFOS_METHOD
@@ -141,8 +143,13 @@ internal class MiniWindowLauncher(
         //  别加 `MULTIPLE_TASK` —— 那会强制新建，同一个应用被按几次就多出几份实例。
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val code = startZoomWindowCode(ctx, intent, userId)
-        if (code != null && code >= 0) {
-            if (code == START_DELIVERED_TO_TOP) retryAfterHome(ctx, intent, target)
+        //  **只有 0 / 2 算「进去了」**：1 = 退回给调用方、负数 = 服务端拒了，两者都得往下走兜底。
+        //  按 `>= 0` 判会把 1 也当成成功，于是直接 return —— 用户看到的是「按了没反应」，
+        //  而日志写着已执行（同文件 `startZoomWindow` 那条判据也是 0/2，两处口径必须一致）。
+        if (code == START_SUCCESS || code == START_RESTART) return
+        if (code == START_DELIVERED_TO_TOP) {
+            //  交给栈顶那个实例消化了，屏幕没变 —— 回桌面再起一份
+            retryAfterHome(ctx, intent, target)
             return
         }
         //  **分身不走 freeform**：那条路用的是主用户的 `ctx`，`userId != 0` 时它起的是主用户

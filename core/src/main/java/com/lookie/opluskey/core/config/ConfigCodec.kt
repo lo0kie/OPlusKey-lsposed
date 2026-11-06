@@ -56,14 +56,17 @@ object ConfigCodec {
      *  19 = （见代码历史，本次未改动）；
      *  20 = 顶层多了 `profile_id`（多配置的身份从「名字空 + 位次」换成显式 id）。
      *  21 = `KeyDto` 多了 `extra_clicks`（第 3 击起的额外档位；界面没有入口，只对手改 / 导入生效）。
+     *  22 = `KeyDto` 多了 `long_release`（长按之后松手要执行的**另一个**动作；组合那一档没有这一项）。
+     *  23 / 24 = `long_release` 收成动作 token（兼容早先写成布尔的那批），并拆出开关 `long_release_on`。
+     *  25 = `KeyDto` 多了 `long_fire_on_release`（长按「松手才触发」，与连发 / 松手再执行互斥）。
      *
-     *  ⚠️ **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
+     *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
      *  不抬版本的话，`version == VERSION` 那一支会拿新 DTO 去校旧文件，**每一份已有配置都当场
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 21
+    const val VERSION = 25
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"
@@ -132,12 +135,28 @@ object ConfigCodec {
      *
      * 顺序是**先算再写**：把不含 `md5` 的那份编码出来算 MD5，再把这一格填上重新编码 ——
      * 于是它不覆盖它自己，校验时才有得比（[digestMatches]）。
+     *
+     * **写出去的是规范化之后的形态**（见 [canonical]）：map 段落按键名排序。这样文件本身
+     * 有一个确定的书写顺序，手改时调换两行也不会改变摘要。
      */
     fun serialize(config: Config): String {
-        val body = ConfigDto.from(config, VERSION, md5 = "")
+        val body = canonical(ConfigDto.from(config, VERSION, md5 = ""))
         val digest = md5Hex(json.encodeToString(body))
         return json.encodeToString(body.copy(md5 = digest))
     }
+
+    /**
+     * 摘要用的**规范形态**：把 map 段落按键名排序，其余保持原样。
+     *
+     *  为什么要有：`keys` / `app_names` 是 `Map`，序列化顺序等于解析顺序（= 文件里的书写顺序）。
+     *  摘要却是在**解析后再编码**的字节上算的 —— 于是用户把两行换个位置（内容一字未改）就会
+     *  整份判成「读不懂」，整页变只读。排序之后，书写顺序不再是内容的一部分。
+     */
+    private fun canonical(dto: ConfigDto): ConfigDto =
+        dto.copy(
+            keys = dto.keys.toSortedMap(),
+            appNames = dto.appNames.toSortedMap(),
+        )
 
     /**
      * 「这份配置够不够格算一份配置」—— 缺键段 / 自定义键少了条目都算读不懂。
@@ -153,7 +172,12 @@ object ConfigCodec {
     /** 当前版本的完整性校验：把 `md5` 置空重新编码，与文件里那一格比。 */
     private fun digestMatches(dto: ConfigDto): Boolean {
         if (dto.md5.isEmpty()) return false
-        return md5Hex(json.encodeToString(dto.copy(md5 = ""))) == dto.md5
+        //  规范化形态（新写出去的文件）与原始顺序（本版之前写的文件）都认：
+        //  只认前者会让升级那一刻所有既有配置都判成「读不懂」；只认后者则永远修不掉
+        //  「换个行序就失效」这个毛病。
+        val body = dto.copy(md5 = "")
+        return md5Hex(json.encodeToString(canonical(body))) == dto.md5 ||
+            md5Hex(json.encodeToString(body)) == dto.md5
     }
 
     /** 小写十六进制 MD5。自己拼十六进制而不走 `String.format`：后者吃系统区域设置。 */

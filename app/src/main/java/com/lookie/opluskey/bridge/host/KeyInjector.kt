@@ -2,6 +2,7 @@ package com.lookie.opluskey.bridge.host
 
 import android.content.Context
 import com.lookie.opluskey.bridge.Framework
+import com.lookie.opluskey.bridge.ServiceCalls
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.reflect.Reflect
 
@@ -10,14 +11,17 @@ internal class KeyInjector(
     /** 借来的宿主 Context —— 注入接口从它的 ClassLoader 里解析，权限也靠它的 uid。 */
     private val context: () -> Context?,
 ) {
-    /** 注入一个按键（DOWN + UP 成对）；任何失败只记日志 —— 最坏是这一次没注入成功。 */
-    fun inject(keyCode: Int) {
+    //  注入一个按键（DOWN + UP 成对）。
+    //  @return true = 两个事件都下发成功；false = 没拿住句柄 / 构造失败 / 抛异常。
+    //    「被系统拒」由 `injectOnce` 记一行 W —— 调用方据此决定要不要给用户一句回执。
+    fun inject(keyCode: Int): Boolean =
         try {
             injectOrThrow(keyCode)
+            true
         } catch (e: Throwable) {
             XLog.w("注入按键失败：keyevent:$keyCode", e)
+            false
         }
-    }
 
     /** 真正干活的那一层 —— 失败向上抛，由公开入口兜住。 */
     private fun injectOrThrow(keyCode: Int) {
@@ -172,24 +176,20 @@ internal class KeyInjector(
      * 取 InputManager。system_server 里没有现成的 `getSystemService`，走
      * `ServiceManager.getService(Framework.Calls.SERVICE_INPUT)` → `IInputManager.asInterface`；
      * 链路每个版本都可能微调，逐级降级、每级失败都写日志。
+     *
+     *  **不在这里再写一遍「拿 binder → 判 BinderProxy → asInterface」**：那一段与
+     *  `ServiceCalls.service` 是同一件事（那边还多一条「stub 找不到就退回 binder」的降级）。
+     *  两份并存时改一处漏一处，表现是某一条链路静默失效 —— 收在一处。
      */
     private fun inputManager(loader: ClassLoader): Any? {
-        val serviceManager =
-            Reflect.findClass(loader, Framework.Calls.SERVICE_MANAGER) ?: run {
-                XLog.w("找不到 ServiceManager")
-                return null
-            }
-        val binder =
-            Reflect.callStatic(serviceManager, Framework.Calls.GET_SERVICE, Framework.Calls.SERVICE_INPUT) ?: run {
-                XLog.w("ServiceManager 里没有 input 服务")
-                return null
-            }
-        val stub =
-            Reflect.findClass(loader, Framework.Calls.I_INPUT_MANAGER_STUB) ?: run {
-                XLog.w("找不到 IInputManager\$Stub")
-                return null
-            }
-        return Reflect.callStatic(stub, Framework.Calls.AS_INTERFACE, binder)
+        val manager =
+            ServiceCalls.service(
+                loader,
+                Framework.Calls.SERVICE_INPUT,
+                Framework.Calls.INPUT_MANAGER_IFACE,
+            )
+        if (manager == null) XLog.w("InputManager 取不到，keyevent 注入这条路走不通")
+        return manager
     }
 
     /**

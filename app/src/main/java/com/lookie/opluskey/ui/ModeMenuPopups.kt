@@ -22,10 +22,10 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
  * ## 第一层是菜单，第二层是**弹窗**
  *
  *  档位是「挑一个」—— 贴着手指弹出来、点一下就收，菜单最合适。
- *  而系统开关那三档是在问「这个开关**怎么用**」（取反 / 定成开 / 定成关），是个需要看清、
- *  选完才作数的决定，不是随手划一下的清单；叠第二层菜单时它挤在手指旁边、和第一层抢地方，
- *  两层窗口互相抢焦点还要额外的守卫。所以那一层改成**模态弹窗**：标题写开关名、一行一个状态，
- *  当前绑的那一行行首换成对勾、整行走主色。
+ *  而系统开关那三档（取反 / 定成开 / 定成关）与灵感语音的开始 / 结束，问的都不是「换哪个动作」，
+ *  而是**这一档怎么用** —— 需要看清、选完才作数的决定，不是随手划一下的清单；叠第二层菜单时
+ *  它挤在手指旁边、和第一层抢地方，两层窗口互相抢焦点还要额外的守卫。所以那一层改成
+ *  **模态弹窗**：标题写这一档的名字、一行一个取值，当前绑的那一行行尾换成对勾、整行走主色。
  *
  *  点那一行时菜单**先收**，弹窗紧接着起来：菜单留着的话它压在弹窗底下、还带着自己的锚点与
  *  退场动画，两层叠在一起只会显得脏；直接换成一个居中的弹窗，视线也就跟着定下来了。
@@ -38,7 +38,7 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
  *  哪一行点下去还有后续由模型回答（[ActionCatalog.stateMenu]）—— 界面侧不认 token。
  *
  * @param preciseClick 弹层锚点：网格传那一格自己的，抽屉里传行内触点
- * @param target 哪一格开着（`null` = 没开），连同「这一层要不要给只在长按成立的行」
+ * @param target 哪一格开着（`null` = 没开）
  * @param current 当前绑的动作（`null` = 不知道，谁都不打勾）
  * @param onDismiss 这一格流程该收起时调（含「点空白处」）。弹窗自己那一层不经过它
  */
@@ -57,6 +57,8 @@ internal fun SettingsPage.ModeMenuPopups(
     var brightEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
     // 音量那一行点开的是哪一档 —— 与 `brightEntry` 完全平行的一条线
     var volumeEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
+    // 点开的是「还要挑一档」的那一行（灵感语音：开始 / 结束）—— 同一套：菜单先收、选择器再起
+    var nestedEntry by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
 
     PageMenu(
         preciseClick = preciseClick,
@@ -64,7 +66,7 @@ internal fun SettingsPage.ModeMenuPopups(
         entries =
             target
                 ?.let { t ->
-                    ActionCatalog.modeMenu(t.tile.token, t.withLongOnly)?.let { modes ->
+                    ActionCatalog.modeMenu(t.tile.token)?.let { modes ->
                         modeEntries(t.tile.label, modes, current) { picked ->
                             // 这一档还有后续：收菜单、起弹窗（顺序反了会闪一帧空菜单）。
                             // 两种后续都在这两支里：亮度的百分比（滑杆）、系统开关的三态（选择器）。
@@ -76,6 +78,10 @@ internal fun SettingsPage.ModeMenuPopups(
                                 onDismiss()
                             } else if (ActionCatalog.stateMenu(picked.token) != null) {
                                 stateEntry = picked
+                                onDismiss()
+                            } else if (ActionCatalog.modeMenu(picked.token) != null) {
+                                // 这一行自己还带一层（灵感语音 → 开始 / 结束）：收菜单、起选择器
+                                nestedEntry = picked
                                 onDismiss()
                             } else {
                                 onDismiss()
@@ -91,6 +97,7 @@ internal fun SettingsPage.ModeMenuPopups(
     SwitchStatePopup(stateEntry, current, onDismiss = { stateEntry = null }, onPick = onPick)
     BrightnessPopup(brightEntry, current, onDismiss = { brightEntry = null }, onPick = onPick)
     VolumePopup(volumeEntry, current, onDismiss = { volumeEntry = null }, onPick = onPick)
+    NestedPickerPopup(nestedEntry, current, onDismiss = { nestedEntry = null }, onPick = onPick)
 }
 
 /**
@@ -134,6 +141,42 @@ private fun SettingsPage.SwitchStatePopup(
             val state = states.getOrNull(index) ?: return@SinglePickerDialog
             onDismiss()
             onPick(state)
+        },
+    )
+}
+
+/**
+ * 点开的是「还有一档要挑」的那一行（此刻只有灵感语音：开始 / 结束）—— 一格单选弹窗。
+ *
+ *  与 [SwitchStatePopup] 同一个形状（菜单先收、弹窗再起）：它问的也是「这一行到底怎么用」，
+ *  而不是「换哪个动作」。行与标题都由 `entry` 自己那一层菜单（[ActionCatalog.modeMenu]）给 ——
+ *  界面侧不认 token，将来再多一层入口也只是加一行。
+ *
+ *  退场期间照最后画过的那一份画，理由见 [SwitchStatePopup]。
+ */
+@Composable
+private fun SettingsPage.NestedPickerPopup(
+    entry: ActionCatalog.Spec?,
+    current: Action?,
+    onDismiss: () -> Unit,
+    onPick: (ActionCatalog.Spec) -> Unit,
+) {
+    val lastPick = remember { LastPick() }
+    entry?.let { lastPick.entry = it }
+    val shown = entry ?: lastPick.entry
+    val rows = shown?.let { ActionCatalog.modeMenu(it.token) }.orEmpty()
+    //  两档之间只差一个 token，逐行精确比即可（不像系统开关那样还差一截后缀、要走 `isBoundExactly`）
+    val selectedIndex = rows.indexOfFirst { row -> current?.let { ActionCatalog.isBound(row, it) } == true }
+    SinglePickerDialog(
+        show = entry != null,
+        title = shown?.label.orEmpty(),
+        labels = rows.map { row -> row.label },
+        selectedIndex = selectedIndex,
+        onDismiss = onDismiss,
+        onPick = { index ->
+            val row = rows.getOrNull(index) ?: return@SinglePickerDialog
+            onDismiss()
+            onPick(row)
         },
     )
 }
@@ -279,8 +322,8 @@ private fun modeEntries(
                         //  必须用 [ActionCatalog.isBound]（一行一行比），不能用 `isSelected` ——
                         // 后者对整组都算选中，会让菜单同时勾上多项。
                         selected = current?.let { ActionCatalog.isBound(spec, it) } ?: false,
-                        //  行尾**默认不留指示位**：点了还有后续的那几行（系统开关）后面跟着的是弹窗，
-                        //  不是第二层菜单，行尾再挂个「下一层」记号说反了；不留这一格，行也算得宽。
+                        //  行尾**默认不留指示位**：点了还有后续的那几行（系统开关 / 灵感语音）后面跟着的是
+                        //  弹窗，不是第二层菜单，行尾再挂个「下一层」记号说反了；不留这一格，行也算得宽。
                         //  例外只有「打开应用 / 结束应用」：它们点下去是**另一张页面**（挑应用），
                         //  与网格里那些跳页的格子同一件事 —— 行尾留出那一格，字形用默认右箭头
                         //  （`PageIcons.EnterArrow`，与网格、列表同一颗）。

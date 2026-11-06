@@ -86,6 +86,9 @@ internal object SettingsPageHooks {
     /** 换页时的内容容器（露出原版页面时要重刷状态栏配色）。 */
     private var hostContainer: ViewGroup? = null
 
+    /** 模块页根 View 上的标记 —— 重进同一个容器时靠它认出「这一份是我们自己铺的」。 */
+    private const val TAG_MODULE_PAGE = "opluskey_module_page"
+
     /**
      * 宿主原版页面的底色。
      *
@@ -362,6 +365,18 @@ internal object SettingsPageHooks {
             return
         }
 
+        //  **幂等闸**：同一个容器里已经有我们自己的页面（宿主重建 Activity 复用了实例、
+        //  或换页流程被走了第二遍）时先摘掉旧的那一份。不摘就是叠两层模块页 ——
+        //  旧那份还在吃触摸、`PageTheme` 的轮询与几个接收器各跑一份，而它的组合已经没人引用了。
+        val stale = container.findViewWithTag<android.view.View>(TAG_MODULE_PAGE)
+        if (stale != null) {
+            XLog.w("换页：这个容器里已经有模块页（第二次进页）⇒ 先摘掉旧的再铺")
+            (stale.parent as? android.view.ViewGroup)?.removeView(stale)
+            HostSession.page?.hints?.dispose()
+            HostSession.page?.viewTree?.release()
+            HostSession.page = null
+            pageView = null
+        }
         //  页面是 **COUI（Compose 组件库）** 渲染的覆盖层：不反射宿主控件、不从宿主主题取色
         //  （依据见 `SettingsPage` 的类注释与 `app/build.gradle.kts` 的依赖段）。
         //  ⇒ ComposeView 需要 ViewTree owner，本文件在 `container.addView` **之后**
@@ -391,6 +406,8 @@ internal object SettingsPageHooks {
         view.isClickable = true
         view.isFocusable = true
 
+        // 打上标记：重进同一个容器时靠它认出「这一份是模块页」（见上面那道幂等闸）。
+        view.tag = TAG_MODULE_PAGE
         container.addView(
             view,
             ViewGroup.LayoutParams(

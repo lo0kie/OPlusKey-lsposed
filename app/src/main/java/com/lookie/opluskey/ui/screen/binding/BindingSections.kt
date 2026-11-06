@@ -98,10 +98,11 @@ internal fun SettingsPage.BindingGroups(
                             I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT, "多条命令不支持连续触发")
                         }
 
-                        //  判定侧对「长按绑灵感语音」也关着连续触发（`KeyConfig.longIsVoiceMemory`，
-                        //  见 `GestureDetector` 那条）—— 界面不置灰的话，用户能拨开一个永远不生效的开关。
-                        //  这里是 [Action] 的投影，与 `KeyConfig` 那个计算属性同一个口径。
-                        (current as? Action.Oplus)?.feature == RomProfile.NAME_VOICE_MEMORY -> {
+                        //  判定侧对「灵感语音那一族」（开始 / 结束）也关着连续触发
+                        //  （`KeyConfig.longIsVoiceMemory`，见 `GestureDetector` 那条）——
+                        //  界面不置灰的话，用户能拨开一个永远不生效的开关。
+                        //  判据与 `KeyConfig` 同一个口径（`RomProfile.isVoiceMemory`）。
+                        (current as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true -> {
                             I18n.get(Strings.BINDING_VOICE_UNSUPPORTED_REPEAT, "灵感语音不支持连续触发")
                         }
 

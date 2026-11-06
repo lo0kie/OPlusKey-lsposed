@@ -1,12 +1,22 @@
 package com.lookie.opluskey.ui.screen.binding
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.LongPressSettingsCard
 import com.lookie.opluskey.ui.LongPressSpec
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.appLabelOf
+import com.lookie.opluskey.ui.model.stepTitle
+import com.lookie.opluskey.ui.screen.command.StepPickerSheet
+import com.lookie.opluskey.ui.screen.command.StepSheetFilter
+import com.lookie.opluskey.ui.screen.command.StepSheetSpec
 import com.lookie.opluskey.ui.setLongRepeat
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -36,12 +46,23 @@ internal fun SettingsPage.LongRepeatCard(
     //  （卡片上的值却还是侧键的，看着像「拖了没反应」）。
     val editing = KeyWatchState.editing(cfg)
     val key = cfg.key(editing)
+    //  「松手后再执行」那一档：`Action.None` 就是没配（与「这一档出现之前」同一个状态）
+    val releaseAction = key.longRelease.takeUnless { it is Action.None }
+    var pickingRelease by remember { mutableStateOf(false) }
     LongPressSettingsCard(
         LongPressSpec(
             repeat = key.longRepeat,
             vibrate = key.longRepeatVibrate,
             intervalMs = key.longRepeatIntervalMs,
             pressMs = key.longPressMs,
+            fireOnRelease = key.longFireOnRelease,
+            releaseSupported = true,
+            releaseOn = key.longReleaseOn,
+            //  行上写的是**动作名**（与命令页那几步同一套念法）：用户挑的可能是某条命令，
+            //  只写 token 等于让他自己读 `cmd:喝水`。
+            releaseLabel = releaseAction?.let { stepTitle(it.token) { pkg -> appLabelOf(pkg) } },
+            //  三条时序的互斥只在数据层有一份：这里把配置算好的结论递进去，界面不重算
+            releaseBound = key.releaseBound,
             enabled = !blocked,
             // 「长按延迟」跟着**整张卡**走（主开关 + 置灰原因）：这个参数对多条命令其实仍然生效
             //  （判定长按的时机与绑的是什么动作无关），但同一张卡里上面那行已经置灰、它独自亮着，
@@ -52,8 +73,72 @@ internal fun SettingsPage.LongRepeatCard(
             onVibrate = { setRepeatVibrate(it) },
             onInterval = { writeRepeatInterval(it) },
             onPressMs = { writeLongPressDelay(it) },
+            onFireOnReleaseToggle = { setLongFireOnRelease(it) },
+            onReleaseToggle = { setLongReleaseOn(it) },
+            onReleasePick = { pickingRelease = true },
         ),
     )
+    //  挑松手动作：与命令页「挑一步」**同一个抽屉**（项目里挑动作只有这一个清单），
+    //  只是挑完不落成一步，而是写进这颗键的 `longRelease`。
+    StepPickerSheet(
+        show = pickingRelease,
+        sheet =
+            StepSheetSpec(
+                title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE, "松手后再执行"),
+                current = releaseAction,
+                onOpenPicker = { pickingRelease = false },
+                onPick = { token -> writeLongRelease(Action.parse(token)) },
+                onDismiss = { pickingRelease = false },
+                filter = StepSheetFilter(excludeTiles = true),
+            ),
+    )
+}
+
+/**
+ * 拨「松手才触发」—— 只写这一个时序位。
+ *
+ *  它**不清** `longReleaseOn` / `longRelease`：「松手后再执行」那一档这一刻让位（数据侧的
+ *  `releaseBound` 已经把「松手才触发」算进去了），关掉这一位之后用户之前配的松手动作原样回来 ——
+ *  切换时序不该顺手把他挑过的动作扔掉。
+ */
+private fun SettingsPage.setLongFireOnRelease(on: Boolean) {
+    val now = configState.config.value
+    val id = KeyWatchState.editing(now)
+    writeAndNotice(
+        now.copy(keys = now.keys + (id to now.key(id).copy(longFireOnRelease = on))),
+        "long_fire_on_release=${if (on) 1 else 0} key=${id.id}",
+        slot = HINT_SLOT_BINDING,
+    ) {
+        switchNotice(I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE, "松手才触发"), on)
+    }
+}
+
+/**
+ * 拨「松手后再执行」—— 只写开关位。
+ *
+ *  动作那一格单独挑（[writeLongRelease]）：开关开着、动作还没挑是合法状态（松手什么都不做）。
+ *  合成一位的话，用户在开关上点一下就会立刻执行一个他没挑过的动作。
+ */
+private fun SettingsPage.setLongReleaseOn(on: Boolean) {
+    val now = configState.config.value
+    val id = KeyWatchState.editing(now)
+    writeAndNotice(
+        now.copy(keys = now.keys + (id to now.key(id).copy(longReleaseOn = on))),
+        "long_release_on=${if (on) 1 else 0} key=${id.id}",
+        slot = HINT_SLOT_BINDING,
+    ) {
+        switchNotice(I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_TITLE, "松手后再执行"), on)
+    }
+}
+
+/** 「松手后再执行」写盘 —— 写当前在编辑那颗键的 `longRelease`。 */
+private fun SettingsPage.writeLongRelease(action: Action): Boolean {
+    val now = configState.config.value
+    val id = KeyWatchState.editing(now)
+    return write(
+        now.copy(keys = now.keys + (id to now.key(id).copy(longRelease = action))),
+        "long_release=${action.token} key=${id.id}",
+    ) != CommandsSave.Failed
 }
 
 /** 「触发间隔」写盘 —— 长按连续触发隔多久重放一次。 */

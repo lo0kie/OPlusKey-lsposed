@@ -316,15 +316,15 @@ internal object Framework {
             XLog.w("找到输入层组合键类：$name")
             val all = Reflect.methodsOf(cls).filter { !it.isSynthetic && !it.name.startsWith("access$") }
             val hit = all.filter { it.name in hooks.chordEntries }
-            if (hit.isEmpty()) {
-                val near = all.map { it.name }.filter { it.contains("KeyGesture") }.distinct()
-                XLog.w(
-                    "${cls.name} 上没有 ${hooks.chordEntries.joinToString("/")}()，组合键不拦" +
-                        "（同族方法：${near.joinToString(", ").ifEmpty { "一个都没有" }}）",
-                )
-                return emptyList()
-            }
-            return hit.map { ChordPoint(cls, it) }
+            if (hit.isNotEmpty()) return hit.map { ChordPoint(cls, it) }
+            val near = all.map { it.name }.filter { it.contains("KeyGesture") }.distinct()
+            XLog.w(
+                "${cls.name} 上没有 ${hooks.chordEntries.joinToString("/")}()，本候选跳过" +
+                    "（同族方法：${near.joinToString(", ").ifEmpty { "一个都没有" }}）",
+            )
+            //  **继续试下一个候选**：类在、方法改名了，只有另一种包名写法可能还对得上。
+            //  在这里 `return emptyList()` 会让「第二个候选才是对的」那种 ROM 永久静默失效，
+            //  与同文件 `collectLayer` 的「层内继续、全部落空才放弃」正好相反。
         }
         XLog.w(
             "没找到输入层组合键类（试过 ${hooks.chordCandidates.joinToString("/")}）" +
@@ -392,7 +392,7 @@ internal object Framework {
     }
 
     /**
-     * 把 [cls] 上名为 [entries] 里的方法收进 [out]（精确匹配，见 [STRATEGY_ENTRIES]）。
+     * 把 [cls] 上名为 [entries] 里的方法收进 [out]（精确匹配，见 [HookSet.strategyEntries]）。
      * 找不到时打 W 级日志（注入侧只能给 w：`XLog.d` 在 release 被编译期消除，而 `XLog` 没有 i 级，见 `docs/device-findings.md`
      * §十五），并列出同类命名的方法名，让「层找到但方法改名」与「类没找到」一眼可分。
      */
@@ -415,8 +415,8 @@ internal object Framework {
         // 只有 PM_EXT 这一族做「同层互斥」：它的两个候选名是「覆盖写法 + 父类实现」，
         //  `Reflect.methodsOf` 沿父类链收集方法，父子类各声明一个时会同时命中 —— 两个都装
         //  会把一次按压喂判定器两遍（双击被吃成两次单击、长按枪反复作废）。**其余 kind 一律不做**：
-        //  `AMS_BROADCAST_ENTRIES`（`broadcastIntent` 的多个重载）每个重载都必须装，漏一个就等于
-        //  收不到配置广播；`STRATEGY_ENTRIES` 只有一个名字、没有同层重复可言，也不能按名字去砍。
+        //  `HookSet.amsBroadcastEntries`（`broadcastIntent` 的多个重载）每个重载都必须装，漏一个就等于
+        //  收不到配置广播；`HookSet.strategyEntries` 只有一个名字、没有同层重复可言，也不能按名字去砍。
         if (kind == InterceptionPoint.Kind.OPLUS_PM_EXT) {
             collectPmExtExclusive(out, cls, entries, hit, kind)
             return
@@ -573,6 +573,9 @@ internal object Framework {
 
         /** `android.hardware.input.IInputManager$Stub`（`$` 是内部类分隔符）。 */
         const val I_INPUT_MANAGER_STUB = "android.hardware.input.IInputManager\$Stub"
+
+        /** `IInputManager` 的**接口全名** —— `ServiceCalls.service` 按它找 `$Stub` 做 `asInterface`。 */
+        const val INPUT_MANAGER_IFACE = "android.hardware.input.IInputManager"
 
         /** Binder stub 的 `asInterface`。 */
         const val AS_INTERFACE = "asInterface"

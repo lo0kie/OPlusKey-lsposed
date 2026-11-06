@@ -49,7 +49,6 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
-import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.actionCellIcon
 import com.lookie.opluskey.ui.model.actionCellTitle
 import com.lookie.opluskey.ui.state.BranchDraft
@@ -61,7 +60,6 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import kotlinx.coroutines.delay
 
 // 「条件执行」那一页的编辑区 —— 从 `CommandPage.kt` 拆出来：那边是「一页的骨架」，
 // 这一块是分叉特有的那张卡；四张菜单在 `CommandBranchMenus.kt`。
@@ -130,28 +128,19 @@ internal fun SettingsPage.BranchCards(
     // 加一条 = 插一条**条件和动作都空着**的行：不先填默认条件（「亮屏中」看着像用户自己选的，
     //  一成立就悄悄接管这一档），也不弹菜单再落（那会把「加一条」变成两步）。
     //
-    //  加的是**第一条**时不播行进场：那一下整块高度由外层（空态 ↔ 表格）那套动画负责，
+    //  加的是**第一条**时不播行进场：那一下整块高度由外层（空态 与 表格）那套动画负责，
     //  里层再展开一遍就是同一条动画跑两遍 —— 用户口径「这样两遍动画太拖了」。
     //  第二条起外层不再切换（`isEmpty` 一直是 false），行照常播自己的进场。
     // 删除**先播收缩、再动数据**（见 `BranchMenuState.deletingAt`）：数据晚一步，行才不会瞬间消失。
     //  收尾再核一次「要删的还是不是它」—— 收缩没播完又删了另一条时，这一条留着（宁可不删，不能错删）。
     //
-    //  **删的是最后一条时不等**：那一下整块要变成空态，而空态由外层（空态 ↔ 表格）那套动画接管；
+    //  **删的是最后一条时不等**：那一下整块要变成空态，而空态由外层（空态 与 表格）那套动画接管；
     //  要是还照「先收行 220ms + 结算 40ms、再展开空态 220ms」，就是两段串在一起。
     //  直接移除，行不单独收缩、只跟着外层一起淡出。
     BranchDeleteEffect(draft = draft, menus = menus)
 
-    //  删**一条条件**的收尾 —— 与上面删整行同一套：先让那一行收起（`exitingCond` 驱动行上的
-    //  `visible`），播完再从草稿里摘掉。确认之后菜单已经关了，这 200ms 里加不了也删不了另一条，
-    //  所以按下标去删是安全的；仍核一次「要删的还是不是它」（宁可不删，不能错删）。
-    LaunchedEffect(menus.exitingCond) {
-        val target = menus.exitingCond ?: return@LaunchedEffect
-        delay(VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS)
-        if (menus.exitingCond == target) {
-            deleteBranchCondition(draft, target.at, target.index)
-            menus.exitingCond = null
-        }
-    }
+    //  删**一条条件**的收尾 —— 与上面删整行同一套，单独成函数只为让本函数留在 `LongMethod` 内。
+    BranchConditionDeleteEffect(draft = draft, menus = menus)
     //  空态与表格**都在滚动内容里**（用户口径「空态要跟着拖动一起弹」）—— 空态做成浮层虽然
     //  省事，但拖动时它一动不动，读起来像「这一页不能拖」。
     AnimatedContent(
@@ -196,13 +185,13 @@ internal fun SettingsPage.BranchCards(
 }
 
 /**
- * 空态 ↔ 表格切换时**淡入淡出**那一段 —— 两边各淡各的（空态是页面浮层，见 `BranchEmptyOverlay`；
+ * 空态 与 表格切换时**淡入淡出**那一段 —— 两边各淡各的（空态是页面浮层，见 `BranchEmptyOverlay`；
  *  这里是行那一层），时长取同一档，两处一起交代完。
  */
 private const val BRANCH_BODY_MS = 150
 
 /**
- * 空态 ↔ 表格那一层的内容转场：**只做交叉淡入淡出**，不做尺寸插值。
+ * 空态 与 表格那一层的内容转场：**只做交叉淡入淡出**，不做尺寸插值。
  *
  *  空态那块是一屏高、表格至少也占满可见区，两边高度差不多；一旦插值，高度会「先收再涨」，
  *  看着就是一次滑。这一层是这一页**唯一**一处整块转场 —— 行自己的进出场在 `BranchRow` 里，
@@ -219,7 +208,7 @@ private val BRANCH_BODY_TRANSFORM: ContentTransform =
  * 「添加条件」那一下 —— 末尾那条**条件和命令都还空着**时不再往下加：新加的行一样是空的，
  * 堆两条空行既看不出差别、校验也过不了。说一句就停在这一条上，让人先去把它填了。
  *
- * 加的是**第一条**时返回 [NO_FRESH_ROW]：那一下整块高度由外层（空态 ↔ 表格）那套动画负责，
+ * 加的是**第一条**时返回 [NO_FRESH_ROW]：那一下整块高度由外层（空态 与 表格）那套动画负责，
  * 里层再展开一遍就是同一条动画跑两遍。
  */
 internal fun SettingsPage.addBranchRule(

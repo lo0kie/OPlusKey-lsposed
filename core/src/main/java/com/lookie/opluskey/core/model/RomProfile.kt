@@ -47,8 +47,6 @@ object RomProfile {
      * @param activity 目标是**界面**（场景表 `*_action_type=activity`）—— 用 `startActivity` 起
      * @param message Messenger 绑定型服务要发的 `Message.what`（1=单击 / 2=长按）；
      *   `null` = 走 `startService`。这类服务没有 `onStartCommand`，起服务对它们是空操作
-     * @param stopExtras 「按下开始、松手结束」那类能力**结束**时要改带的 extra
-     *   （与 [extras] 合并后发出）；空 = 这一档没有结束形态，按一下就完事
      *
      *  参数多正是「一个落点要说清的那些事」：拆成几个小类只会让「加一档」从「填一个条目」
      *  变成「改好几处」，正是本文件要消灭的东西（`LongParameterList` 因此就地抑制）。
@@ -62,7 +60,6 @@ object RomProfile {
         val foreground: Boolean = false,
         val activity: Boolean = false,
         val message: Int? = null,
-        val stopExtras: Map<String, Any> = emptyMap(),
         /**
          * 「再点一次要关」那一档的**停止广播** —— 非空时这一档是**开关**，不是一次性的动作。
          *
@@ -190,12 +187,21 @@ object RomProfile {
     const val NAME_FLASH_MEMORY = "flash_memory"
 
     /**
-     * 灵感语音（AI 记忆的「长按录音」）。
+     * 灵感语音 —— **开始**采集（AI 记忆的录音）。
      *
-     *  **只在长按档出现**：它起的是一个**前台采集服务**（麦克风），短按 / 双击拨它等于「按一下就开录」，
-     *  不是这个能力的语义。过滤在 `ActionCatalog.forGesture`，见那里的说明。
+     *  真机取证见 `docs/device-findings.md` 四十六：这条服务只有「开始 / 结束」两个事件，
+     *  **重入的开始会被它自己忽略**（`reentrant collect.`），所以「切换」只能由模块按状态拼，
+     *  这里不提供。
      */
     const val NAME_VOICE_MEMORY = "voice_memory"
+
+    /**
+     * 灵感语音 —— **结束**采集（与 [NAME_VOICE_MEMORY] 是同一条服务的另一个事件）。
+     *
+     *  两者是**平级的两个动作**：用户绑哪一档就发哪一条，松手不再替用户收尾。
+     *  取值 `longPressEventType` 的判据见 `docs/device-findings.md` 四十六。
+     */
+    const val NAME_VOICE_MEMORY_STOP = "voice_memory_stop"
 
     /** 免打扰。 */
     const val NAME_NO_DISTURB = "no_disturb"
@@ -275,7 +281,7 @@ object RomProfile {
         )
 
     /**
-     * 灵感语音（长按记忆）。
+     * 灵感语音（AI 记忆的录音）—— **开始**那一档。
      *
      * 真机实测（PLK110 / ColorOS 17）：`com.oplus.aimemory` 的
      * `voicecollect.service.DataCollectService` 读 `triggerType` 与 `longPressEventType`；
@@ -284,10 +290,6 @@ object RomProfile {
      *
      * 落点**不是**闪记那两个包：CDS 那份一进去就因「Gleaner 已安装」自停，Gleaner 那份根本不读
      * `longPressEventType`（它的 dex 里连 `VoiceCollectTask` 都没有）—— 这个能力已经搬到 AI 记忆包里。
-     *
-     * 它是唯一**「按下开始、松手结束」**的能力：`longPressEventType=2` 是同一条服务的**结束**档
-     * （真机实测：发完采集用的 FGS 类型退回去、卡片收掉），所以 [stopExtras] 只改这一位、
-     * 其余 extra 与起采集时一致。
      */
     private val VOICE_MEMORY =
         BuiltIn(
@@ -296,7 +298,22 @@ object RomProfile {
             action = "oplus.aimemory.intent.action.COLLECT_DATA",
             extras = mapOf("triggerType" to 1, "longPressEventType" to 1),
             foreground = true,
-            stopExtras = mapOf("longPressEventType" to 2),
+        )
+
+    /**
+     * 灵感语音 —— **结束**那一档：同一条服务、同一个 action，只把 `longPressEventType` 改成 2。
+     *
+     *  它是与 [VOICE_MEMORY] 平级的一个**动作**（用户能单独绑到某一档手势上），不再是
+     *  「松手时替你补发的那一条」。真机实测：发完采集用的 FGS 类型退回去、卡片收掉，
+     *  随后 AI 记忆把刚记的那条详情页拉起来（ROM 自己的收尾行为）。
+     */
+    private val VOICE_MEMORY_STOP =
+        BuiltIn(
+            owner = "com.oplus.aimemory",
+            service = "com.oplus.aimemory.voicecollect.service.DataCollectService",
+            action = "oplus.aimemory.intent.action.COLLECT_DATA",
+            extras = mapOf("triggerType" to 1, "longPressEventType" to 2),
+            foreground = true,
         )
 
     /** 切换免打扰（场景表 `no_disturb`）。KeyBaseService 族，bind 后发 what=2 —— 只有长按档碰 zen。 */
@@ -498,6 +515,7 @@ object RomProfile {
                     mapOf(
                         NAME_FLASH_MEMORY to FLASH_MEMORY,
                         NAME_VOICE_MEMORY to VOICE_MEMORY,
+                        NAME_VOICE_MEMORY_STOP to VOICE_MEMORY_STOP,
                         NAME_NO_DISTURB to NO_DISTURB,
                         NAME_RECORDING to RECORDING,
                         NAME_SCREEN_OCR to SCREEN_OCR,
@@ -617,6 +635,15 @@ object RomProfile {
      * 本机 ROM 没适配时按 [landing] 的口径 —— 照基准实现试。
      */
     fun builtIn(feature: String): BuiltIn? = landing?.builtIns?.get(feature)
+
+    /**
+     * 这个功能名是不是**灵感语音那一族**（开始 / 结束两个动作）。
+     *
+     *  两处判据必须同一个口径：判定侧「长按不排连续触发」（`KeyConfig.longIsVoiceMemory`）与
+     *  界面那句「灵感语音不支持连续触发」。连发对它俩都没有语义 —— 开始已经被 ROM 当重入忽略，
+     *  结束在没有采集时是空操作（见 `docs/device-findings.md` 四十六）。
+     */
+    fun isVoiceMemory(feature: String): Boolean = feature == NAME_VOICE_MEMORY || feature == NAME_VOICE_MEMORY_STOP
 
     /**
      * 本机档位的**一句话描述** —— 安装期判据行与「没有落点」那句日志都用它。

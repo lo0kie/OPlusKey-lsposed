@@ -110,19 +110,21 @@ internal class AppPickerUiState(
      *    （`launchable == false`）；
      *  · 结束那一趟（[AppPickerState.stopApp]）**一律全列** —— 停掉一个没有启动图标的应用
      *    正是它的用处，藏起来反而没得选。
+     *  · **两维取交集**：一行要同时过这两关才留下 —— 拨「显示失效应用」不会顺带放出没有图标的
+     *    那一批。这两个开关是「联合筛选」，不是「任一满足即放开」。
      *
      *  三个输入全是 compose 状态，**拨开关只是让这个派生值重算一次**：不查盘、不换缓存、
      *  不需要重查。上一版把这两个开关当成「取哪一档清单」的输入（`includeAll`），于是
      *  「拨了没反应」几乎必然会在某一趟之后出现（真机两次踩到，见 changelog）。
+     *
+     *  两条判据**各管一维**（见 [AppPickerState.includesIconless]）：同时满足才留下 ——
+     *  拨「显示失效应用」不会顺带放出没有图标的那一批。
      */
     val shown: List<LaunchableApp> by derivedStateOf {
         // 首尾空格要去掉：粘贴 / 输入法回车常带一个尾空格，那时整表会「什么都没搜到」
         val filter = picker.filter.value.trim()
-        //  结束那一趟一律全列；打开那一趟听菜单里那两项（「显示系统应用」管没图标的，
-        //  「显示失效应用」管点不开的）
-        val stopTrip = picker.stopApp
-        val showInvalid = stopTrip || picker.showUnopenable.value
-        val showIconless = showInvalid || picker.showSystemApps.value
+        val showIconless = picker.includesIconless
+        val showInvalid = picker.includesUnopenable
         // 拼音那一档要小写比：排序键是罗马化后的小写串（见 `LaunchableApp.sortKey`）。
         //  **必须钉 `Locale.ROOT`**：默认 locale 会把字母改成当地写法（土耳其语里 `I` → `ı`、
         //  `i` 的大写是 `İ`），而排序键是固定 ASCII 小写 —— 那台机器上按读音就搜不到东西。

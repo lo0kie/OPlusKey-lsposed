@@ -368,10 +368,9 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
  */
 @Composable
 private fun SettingsPage.SelectionPrune(ui: AppPickerUiState) {
-    //  与 `AppPickerUiState.shown` 同一口径的两条显示判据（结束那一趟一律全列）
-    val stopTrip = picker.stopApp
-    val showInvalid = stopTrip || picker.showUnopenable.value
-    val showIconless = showInvalid || picker.showSystemApps.value
+    //  与 `AppPickerUiState.shown` 同一口径的两条显示判据（各管一维，见 `AppPickerState.includesIconless`）
+    val showIconless = picker.includesIconless
+    val showInvalid = picker.includesUnopenable
     LaunchedEffect(showInvalid, showIconless, ui.apps, ui.pending) {
         val pending = ui.pending?.target ?: return@LaunchedEffect
         if (ui.loaded == null) return@LaunchedEffect

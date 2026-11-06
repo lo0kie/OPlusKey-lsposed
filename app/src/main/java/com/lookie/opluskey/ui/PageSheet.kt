@@ -85,7 +85,7 @@ internal val SHEET_TITLE_MARGIN: PaddingValues =
  *  · **面板与进出**：底色、圆角、把手、进场 / 退场动画都由 `OverlayBottomSheet` 给，
  *    这里只把 `show` 原样递进去 —— 调用点**不要**再写 `if (!show) return`：
  *    一写就整棵子树消失，退场成了硬切（变量的新建抽屉原先就是这样）。
- *  · **高度过渡**：内容高度跳变时（分组列表 ↔ 搜索结果 ↔ 一张卡）面板跟着一跳很扎眼，
+ *  · **高度过渡**：内容高度跳变时（分组列表 与 搜索结果 与 一张卡）面板跟着一跳很扎眼，
  *    这一层统一挂 [animateContentSize]，时长与缓动与全页其它「动态显隐」同一档。
  *  · **滚动**：内容一律可滚，滚到头在原地做橡皮筋回弹（`nestedScrollToParent = false`
  *    —— 余量往上传的话，滚到底再松手 = 把抽屉拽下去）。
@@ -130,7 +130,7 @@ internal fun SettingsPage.PageSheet(
     //  看上去就像抽屉被穿透了（真机反馈）。
     //  登记进页面那一份（`pageHazeState`）：菜单本来就采样它，多一个源之后
     //  「页面（含抽屉外的部分）+ 抽屉」一起糊，菜单盖到抽屉外沿时也不会缺一块。
-    //  时序上页面先登记、抽屉后登记，Haze 按登记顺序叠，抽屉在页面之上 ✓。
+    //  时序上页面先登记、抽屉后登记，Haze 按登记顺序叠，抽屉就在页面之上。
     val frostState = chrome.pageHazeState
     OverlayBottomSheet(
         show = show,

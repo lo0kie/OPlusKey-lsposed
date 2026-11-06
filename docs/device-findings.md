@@ -4816,3 +4816,70 @@ python tools/dexdump.py <dex> uses "STILL_IMAGE_CAMERA_SECURE" "oplus.intent.act
 python tools/dexdump.py <dex> method com.oplus.systemui.keyguard.data.quickaffordance.OplusCalculatorKeyguardQuickAffordanceConfig onTriggered
 aapt2 dump xmltree --file AndroidManifest.xml <目标 apk>   # showWhenLocked / intent-filter
 ```
+
+## 四十六、灵感语音（AI 记忆）的采集服务：**只有「开始 / 结束」两个事件**，重入的开始会被忽略（反编译 `com.oplus.aimemory` + 真机，2026-11-06，PLK110 / ColorOS 17.0.0）
+
+动作 `oplus:voice_memory` / `oplus:voice_memory_stop` 的落点是 `com.oplus.aimemory/.voicecollect.service.DataCollectService`
+（action `oplus.aimemory.intent.action.COLLECT_DATA`；服务类在 `base.apk` 的 `classes4.dex`）。
+`longPressEventType` **只有 1 和 2 两个取值**，没有第三种；重复发「开始」也不会被当成结束。
+
+### 46.1 `onStartCommand` 的完整分支
+
+```
+intent == null                ⇒ return START_NOT_STICKY
+handler.removeMessages(1001)                      // 上一次排的自停
+triggerType    = getIntExtra("triggerType", 0)
+type           = TriggerType.Companion.b(intent)
+longPressType  = getIntExtra("longPressEventType", 0)
+
+type == UNKNOWN               ⇒ "trigger type error" → 结束（什么都不做）
+USER_SETUP_COMPLETE == 0
+  或 !c()（AI 记忆装没装 / 总开关） ⇒ "ai memory is not installed or user setup not complete, or disabled" + stopSelf
+!type.isVoiceCollect()        ⇒ "unknow trigger type" → 结束
+
+longPressType == 1            ⇒ 新建 VoiceCollectTask 并 addTask    // 开始采集
+longPressType == 2            ⇒ 找已有的 VoiceCollectTask：
+                                  没有 ⇒ "no task to execute" / "VoiceCollectTask not exist" → stopSelf
+                                  有   ⇒ 交给它收尾
+其余（0 / 3 / …）             ⇒ E "longPressType is not valid !"    // 状态不变
+```
+
+两条判据的取值表（都在这份 dex 里，别按名字猜）：
+
+- `TriggerType`：`UNKNOWN=0` / `MAGIC_KEY=1` / `VOICE_RECORD=5` / `AI_KEY_DOUBLE_CLICK=15` /
+  `AI_KEY_LONG_PRESS=16` / `NO_KEY_VOICE_RECORD=19`。
+- `TriggerType$a.b(Intent)`：`triggerType == 1` **且** `longPressEventType > 0` ⇒ 归成 `VOICE_RECORD`；
+  否则按 `triggerType` 查表。这条就是模块发 `triggerType=1 + longPressEventType=1` 能通的原因。
+- `isVoiceCollect()`：只有 `VOICE_RECORD` 与 `AI_KEY_LONG_PRESS` 为真 —— 单发 `triggerType=1`
+   而 `longPressEventType=0` 会被归成 `MAGIC_KEY`，落到「unknow trigger type」。
+
+### 46.2 真机实测（`am start-foreground-service`，uid 0 绕开 `com.oplus.permission.safe.SECURITY`）
+
+| 发送 | 现象 |
+| --- | --- |
+| `1`（开始） | FGS 类型 `0x40000000 → 0x40000080`（`SPECIAL_USE \| MICROPHONE`）；`AiM-DataCollectManager: startCollect`；拿到 `USAGE_VOICE_COMMUNICATION` 音频焦点 |
+| 采集过程中再发 `1` | **仍在采**：类型保持 `0x40000080`，日志 `startCollect` 紧跟 `W reentrant collect.` —— 重入被忽略，**不视为结束** |
+| `2`（结束） | 类型回 `0x40000000`；`setCollectOver` / `remove collectDeadline`；随后服务 `onDestroy`，并 `startActivity(VIEW_DETAIL → MemoryDetailActivity)` 把刚记的那条打开 |
+| 没在采时发 `2` | `no task to execute` / `VoiceCollectTask not exist` / `stopSelf` / `onDestroy` —— 干净空操作，不弹任何界面 |
+| `3` | `E longPressType is not valid !`，采集状态不变 |
+| `0`（配 `triggerType=1`） | `E unknow trigger type`，服务随后被自停 |
+
+### 46.3 对模块的含义
+
+- **没有第三个事件可拆**：想给用户「切换 / 开 / 关」三档，只能拿这两个值拼 —— 切换的判据是模块自己的
+  状态，不是 ROM 的能力。所以模块把它做成 `oplus:voice_memory` / `oplus:voice_memory_stop`
+  两个平级动作（松手不再替用户收尾），「切换」不提供。
+- 重复「开始」在 ROM 侧是 no-op：`ActionRunner` 那 3 秒连按窗口只省一次 `startCollect`，
+  并不会像旧注释说的那样「把正在录的那一段掐断重来」。
+- 「结束」在**没有录制时**是干净的（不弹界面），所以误发一次不会额外制造一个界面；
+  但**真的结束一段**会拉起 `MemoryDetailActivity`，这是 ROM 自己的行为，模块没碰。
+
+### 46.4 复现用命令
+
+```
+adb pull /data/app/…/com.oplus.aimemory-…/base.apk
+python tools/dexdump.py classes4.dex method com.oplus.aimemory.voicecollect.service.DataCollectService onStartCommand
+python tools/dexdump.py classes4.dex method 'com.oplus.aimemory.voicecollect.service.TriggerType$a' b
+adb shell su -c 'am start-foreground-service -n com.oplus.aimemory/com.oplus.aimemory.voicecollect.service.DataCollectService -a oplus.aimemory.intent.action.COLLECT_DATA --ei triggerType 1 --ei longPressEventType 1'
+adb shell "dumpsys activity services com.oplus.aimemory | grep isForeground"   # 看 types 里的 0x80
+```

@@ -243,11 +243,18 @@ sealed interface Action {
     ) : Action {
         enum class Mode { FIX, ADD, SUB }
 
+        /**
+         * token 里的百分比**夹在 0..100** —— 与解析侧（`splitPercent`）同一个区间。
+         *
+         *  不夹的话：`percent < 0` 的 FIX 会写出一串 `bright:-5`，读回来被解析成「减 5」
+         *  （另一个档）；`percent > 100` 则解析失败回落成 `none`，绑定静默失效。
+         *  夹在这里而不是构造时抛：界面滑杆出界不该让整个动作列表崩掉。
+         */
         override val token: String =
             when (mode) {
-                Mode.FIX -> "$BRIGHT_PREFIX$percent"
-                Mode.ADD -> "$BRIGHT_PREFIX+$percent"
-                Mode.SUB -> "$BRIGHT_PREFIX-$percent"
+                Mode.FIX -> "$BRIGHT_PREFIX${percent.coerceIn(0, 100)}"
+                Mode.ADD -> "$BRIGHT_PREFIX+${percent.coerceIn(0, 100)}"
+                Mode.SUB -> "$BRIGHT_PREFIX-${percent.coerceIn(0, 100)}"
             }
     }
 
@@ -267,11 +274,12 @@ sealed interface Action {
     ) : Action {
         enum class Mode { FIX, ADD, SUB }
 
+        /** 与 [Brightness] 同一条：token 里的百分比夹在 0..100，越界值不会变成另一个档。 */
         override val token: String =
             when (mode) {
-                Mode.FIX -> "$VOLUME_PREFIX$percent"
-                Mode.ADD -> "$VOLUME_PREFIX+$percent"
-                Mode.SUB -> "$VOLUME_PREFIX-$percent"
+                Mode.FIX -> "$VOLUME_PREFIX${percent.coerceIn(0, 100)}"
+                Mode.ADD -> "$VOLUME_PREFIX+${percent.coerceIn(0, 100)}"
+                Mode.SUB -> "$VOLUME_PREFIX-${percent.coerceIn(0, 100)}"
             }
     }
 

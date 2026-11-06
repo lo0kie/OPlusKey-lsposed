@@ -111,10 +111,16 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.Moon
         }
 
-        // 灵感语音 —— `thinking-low`（侧脸 + 一个气泡点）：读作「在想点子」，与「录音」那颗麦克风、
+        // 灵感语音 · 开始 —— `thinking-low`（侧脸 + 一个气泡点）：读作「在想点子」，与「录音」那颗麦克风、
         //  「唤醒小布」那颗对话框都分得开。用户口径指定这一颗。
         Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY -> {
             TablerIcons.Outline.ThinkingLow
+        }
+
+        // 灵感语音 · 结束 —— `player-stop`（方块）：与「开始」那颗侧脸同一族但一眼读作「停下」，
+        //  不与「录音」的麦克风、「录屏」的摄像机撞形。
+        Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY_STOP -> {
+            TablerIcons.Outline.PlayerStop
         }
 
         // 唤醒小布（语音助手）—— `message-ai`（带 AI 角标的对话框）：与「录音」的麦克风、
@@ -535,6 +541,10 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
 
         // 「应用控制」菜单里「结束应用」那一行：`player-stop`（方块），与执行那一档同一颗。
         ActionCatalog.Glyph.StopApp -> TablerIcons.Outline.PlayerStop
+
+        // 「灵感语音」那一行（点开再选开始 / 结束）：与开始那一档同一颗侧脸，
+        //  这一行代表的是**这一族**，具体哪一档在选择器里说。
+        ActionCatalog.Glyph.VoiceMemory -> TablerIcons.Outline.ThinkingLow
     }
 
 /**

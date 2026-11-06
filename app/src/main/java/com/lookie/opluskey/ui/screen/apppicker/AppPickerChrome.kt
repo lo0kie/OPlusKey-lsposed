@@ -124,10 +124,9 @@ internal fun BoxScope.PickListFailedState(
  */
 internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
     val apps = ui.apps
-    //  结束那一趟一律全列，所以这两档只属于打开那一趟
-    val stopTrip = picker.stopApp
-    val showInvalid = stopTrip || picker.showUnopenable.value
-    val showIconless = showInvalid || picker.showSystemApps.value
+    //  两条判据各管一维、互不借光（见 `AppPickerState.includesIconless`）
+    val includesIconless = picker.includesIconless
+    val includesUnopenable = picker.includesUnopenable
     return when {
         // 真因优先：这次是**没查出来**，不是「一个都没有」（后者是有效结论）
         ui.failed && apps.isEmpty() -> {
@@ -145,11 +144,17 @@ internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
             I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, escapeEmphasis(picker.filter.value.trim()))
         }
 
-        // 打开那一趟藏着失效应用，而剩下的一条都打不开 —— 说清「开关在哪」
-        !showInvalid && apps.any { !it.launchable && (showIconless || it.byDefault) } -> {
+        // 被「显示失效应用」挡着：确实有打不开的行，而且它们本来够得着显示
+        !includesUnopenable && apps.any { !it.launchable && (includesIconless || it.byDefault) } -> {
             I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN, "可以打开的一个都没有；开「显示失效应用」能看到打不开的那些")
         }
 
+        // 剩下的空只可能是「没有启动图标」那一维挡着（另一维已放行）
+        !includesIconless -> {
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "这一档里一条都没有；开「显示系统应用」能看到没有启动图标的应用")
+        }
+
+        // 两维都放行了却一条不剩：手里那些行**既没图标又打不开**，少开哪一个都出不来
         else -> {
             I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "这一档里一条都没有；开「显示系统应用」能看到没有启动图标的应用")
         }

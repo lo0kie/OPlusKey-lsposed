@@ -91,7 +91,12 @@ class KeyModule : XposedModule() {
             }
 
             HostApp.PACKAGE -> {
-                if (sealRejected(param.classLoader)) return
+                //  签名闸要走 ActivityThread / PackageManager 两条反射：这两条任何一环抛
+                //  Throwable 都会顺着 onPackageReady 逃进宿主进程。`sealRejected` 内部只判
+                //  「是不是被改过」，读不到一律放行 —— 所以这里只需兜住异常并当成「没被改过」。
+                var rejected = false
+                XLog.guard("签名闸") { rejected = sealRejected(param.classLoader) }
+                if (rejected) return
                 // 宿主主进程：框架判好的侧键手势派发到这里，执行也放这一侧（配置同 uid 直接读得到）。
                 XLog.w("侧键宿主主进程启动，开始安装手势劫持 Hook")
                 XLog.guard("安装手势劫持 Hook") {

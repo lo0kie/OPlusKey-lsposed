@@ -31,16 +31,9 @@ object VariableRefs {
         commands: List<Command>,
     ): List<String> =
         buildList {
-            config.keys.values.forEach { key ->
-                add(key.single.token)
-                add(key.double.token)
-                add(key.long.token)
-                key.rules.forEach { add(it.action.token) }
-            }
-            config.combos.forEach { combo ->
-                add(combo.single.token)
-                add(combo.long.token)
-            }
+            //  动作位那份清单收在 `ConfigActions.actionTokens()` 一处：这里再抄一遍，
+            //  就会变成「删命令认得组合规则、删变量不认得」那种各漏一处的局面。
+            addAll(config.actionTokens())
             commands.forEach { command ->
                 add(command.single)
                 addAll(command.steps)

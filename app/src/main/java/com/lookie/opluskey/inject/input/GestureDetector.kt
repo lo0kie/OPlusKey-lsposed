@@ -27,6 +27,19 @@ private const val DIRECT_BURST_MS = 50L
 private const val REPEAT_MAX_MS = 30_000L
 
 /**
+ * 「松手才触发」的**兜底等待**（毫秒）：长按到点之后再等这么久还没见到抬手，就按「UP 已丢」处理 ——
+ * 就地执行一次，并把这一次按压封掉（见 `Pending.closedWithoutUp`）。
+ *
+ *  为什么必需：这一档把**唯一一次**执行押在抬手事件上。默认时序没有这个问题（到点已经执行过），
+ *  而这里 UP 一丢就什么都不执行，表现和「这颗键坏了」一模一样 —— 与连续触发那条同一个失败面
+ *  （那边有 `REPEAT_MAX_MS` 兜底，这边原本一条都没有）。
+ *
+ *  为什么是 15s：正常抬手在几十～几百毫秒内到；15s 之外还按着只有两种可能 —— UP 真丢了，
+ *  或者用户刻意按住超过 15s。后者提前执行一次也远好过**什么都不做**，所以宁可这样划界。
+ */
+private const val RELEASE_FALLBACK_MS = 15_000L
+
+/**
  * 唤醒锁比双击窗口多留的余量（毫秒）。
  *
  *  窗口那一枪要等 `postDelayed` 到点才会跑主 looper 上的回调，末段那几毫秒落在余量里，
@@ -85,14 +98,6 @@ internal class GestureDetector(
      * 重复那几次不能当新的一次按键（据此跳过振动反馈）。
      */
     private val onGesture: (KeyId, GestureTrigger, KeyConfig, Boolean) -> Unit,
-    /**
-     * 「这一按松手了」——只对**已判过长按**的那一次回调（`oplus:voice_memory` 靠它停下来）。
-     *
-     * 与 [onGesture] 分开：松手不是手势（`Gesture` 那三档里没有它），执行侧要的也不是
-     * 「再执行一次动作」，而是「把刚才那一段收尾」。走同一条通道、用
-     * `ModuleWire.PHASE_RELEASE` 这个独立 phase 转过去。
-     */
-    private val onLongReleased: (KeyId) -> Unit,
     /**
      * 「屏幕黑着的话，这段时间里别让 CPU 睡」—— 熄屏排双击窗口时用（见类注释「熄屏也判双击」）。
      *
@@ -163,6 +168,17 @@ internal class GestureDetector(
         /** 「长按连续触发」正在跑的重复任务（抬手 / 重置时取消）。 */
         @Volatile var repeatRunnable: Runnable? = null,
         /**
+         * 「松手才触发」的兜底那一枪（见 [RELEASE_FALLBACK_MS]），抬手 / 重置时取消。
+         */
+        @Volatile var releaseFallbackRunnable: Runnable? = null,
+        /**
+         * 这一次按压已经**替系统补过抬手**（UP 丢了，兜底执行过）。
+         *
+         *  置上之后，那个**迟到**的 UP 只做清理、不再派发 —— 否则这一按会执行两次。
+         *  它只与 `longPressFired` 一起读（都在 `synchronized(p)` 里），见 [finishLong]。
+         */
+        @Volatile var closedWithoutUp: Boolean = false,
+        /**
          * 长按那一枪本身（`postDelayed` 的那个 Runnable），抬手 / 重置时摘掉（[cancelLongPressShot]）。
          *
          * 为什么要把 Runnable 存下来：原来只在到点时读一眼 `sawFirstRelease` 决定响不响，而那次读
@@ -180,6 +196,16 @@ internal class GestureDetector(
     )
 
     private val pendingByKey = ConcurrentHashMap<KeyId, Pending>()
+
+    /**
+     * 判定器的**串行闸** —— 所有公开入口都过它。
+     *
+     *  正常按压来自输入线程，但 `HeldPresses` 的「到点补发」跑在 main looper 上：两条线程可能
+     *  同时进同一个键的 `Pending`（前一次按压还在窗口里、后一次已经按下来），`synchronized(p)`
+     *  只盖住其中两小段，中间那些读改写会交叉。表现是快速连按时「偶尔少判一次 / 多判一次」。
+     *  入口处串起来就够：内部不再阻塞（没有 IO、没有等待），不会把输入线程钉住。
+     */
+    private val lock = Any()
 
     /**
      * 取（必要时建）某个键的待定状态。
@@ -205,6 +231,12 @@ internal class GestureDetector(
         id: KeyId,
         gesture: GestureTrigger,
         config: KeyConfig,
+    ) = synchronized(lock) { onRomGestureLocked(id, gesture, config) }
+
+    private fun onRomGestureLocked(
+        id: KeyId,
+        gesture: GestureTrigger,
+        config: KeyConfig,
     ) {
         reset(id)
         // 判据级（与「双击」「长按」那几行同一档）：这条是「ROM 换了码 / 码的含义变了」时
@@ -218,6 +250,12 @@ internal class GestureDetector(
         id: KeyId,
         config: KeyConfig,
         now: Long = SystemClock.elapsedRealtime(),
+    ) = synchronized(lock) { onKeyDownLocked(id, config, now) }
+
+    private fun onKeyDownLocked(
+        id: KeyId,
+        config: KeyConfig,
+        now: Long,
     ) {
         val p = pending(id)
 
@@ -256,6 +294,9 @@ internal class GestureDetector(
         p.sawFirstRelease = false
         p.longPressFired = false
         p.doubleFired = false
+        //  这一位描述的是**某一次按压**：新的一下按下来就作废（上一按的 UP 真丢了时，
+        //  `reset` 没机会清它 —— 兜底那条路之后就没有抬手了）
+        p.closedWithoutUp = false
         p.clicks = 1
         p.longPressAt = now + config.longPressMs
         p.doubleWindowAt = 0L
@@ -270,6 +311,12 @@ internal class GestureDetector(
         id: KeyId,
         config: KeyConfig,
         now: Long = SystemClock.elapsedRealtime(),
+    ) = synchronized(lock) { onKeyUpLocked(id, config, now) }
+
+    private fun onKeyUpLocked(
+        id: KeyId,
+        config: KeyConfig,
+        now: Long,
     ) {
         val p = pending(id)
         //  **孤立抬手**（只看到 UP、没看到 DOWN）：`pressAt` 只在 `onKeyDown` 里写。
@@ -307,10 +354,10 @@ internal class GestureDetector(
             }
         cancelLongPressShot(id)
 
-        // 长按已在按下期间触发过 —— 抬手不再重复判单击
-        // （判据是 longPressFired，不是 longPressAt：后者已被长按定时器清零）
+        // 长按已在按下期间触发过 —— 抬手不再重复判单击（判据是 longPressFired，不是 longPressAt）
         if (longPressed) {
-            finish(id)
+            // 长按这一档在抬手时还要做什么（松手才触发 / 松手再执行另一个动作 / 只清状态）
+            finishLong(id, config)
             return
         }
 
@@ -379,41 +426,22 @@ internal class GestureDetector(
     }
 
     /**
-     * 这一按结束（抬手，或被 `FLAG_CANCELED` 取消）：**长按已经判过就先通知执行侧收尾**，再清状态。
-     *
-     *  为什么「松手」只能在这里报：`oplus:voice_memory` 起的是一个前台采集服务，判定侧不告诉
-     *  执行侧「手松了」，那边就一直在录 —— 卡片不会消失，麦克风一直亮着。
-     *  取消（窗口失焦 / 按压被打断）也算结束：那一段同样还在录，一样得收尾。
-     *
-     *  判据用 `longPressFired`：只有真判过长按的那一次才有东西要收尾。短按 / 双击走到这里
-     *  `longPressFired` 是假，收尾回调不响（否则每次按键都会多一条广播）。
-     */
-    fun finish(id: KeyId) {
-        if (pending(id).longPressFired) {
-            try {
-                onLongReleased(id)
-            } catch (e: Throwable) {
-                // 这一行跑在输入线程 / 配置广播线程上，抛出去就是 system_server 崩
-                XLog.w("通知「松手」失败（已忽略）：${id.label}", e)
-            }
-        }
-        reset(id)
-    }
-
-    /**
      * 清空某个键的状态与计时器（含「长按连续触发」正在跑的重复任务）。
      *
      * @param id `null` = **所有键**。配置里任意一颗键从「接管」翻成「不接管」时用
      *   （见 `SideKeyInterceptor.cancelPending`）：只清一颗的话，关掉某一颗自定义键时
      *   它按住不放的那一下会一路派发到连发上限。没有待定手势时是空操作。
      */
-    fun reset(id: KeyId?) {
+    fun reset(id: KeyId?) = synchronized(lock) { resetLocked(id) }
+
+    private fun resetLocked(id: KeyId?) {
         if (id == null) {
             for (k in pendingByKey.keys.toList()) reset(k)
             return
         }
         val p = pending(id)
         cancelLongPressShot(id)
+        cancelReleaseFallback(id)
         p.repeatRunnable?.let { handler.removeCallbacks(it) }
         p.repeatRunnable = null
         // 双击窗口那一枪也要摘：它与长按枪一样是「到点才读状态」，留着会在下一次按压期间醒来
@@ -425,6 +453,7 @@ internal class GestureDetector(
         p.sawFirstRelease = false
         p.longPressFired = false
         p.doubleFired = false
+        p.closedWithoutUp = false
         p.clicks = 0
         p.pressAt = 0L
     }
@@ -476,15 +505,19 @@ internal class GestureDetector(
                         }
                     missReason?.let { XLog.w(it) }
                     if (fire) {
-                        XLog.w("${id.label}：长按")
-                        dispatch(id, GestureTrigger.LongPress, config, repeat = false)
-                        // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
-                        // 多条命令（`cmd:<名字>` 指串行命令）反复重放没意义 —— 界面长按 tab 也按同一条判定隐藏。
-                        // `longIsSerial` 来自广播：注入侧读不到命令库文件，自己算必然恒 false。
-                        // 灵感语音同理不连发（`longIsVoiceMemory`）：它连的是麦克风，重复拨等于把
-                        //  正在录的那一段掐掉重来 —— 系统自己的侧键长按也只有「松手结束」这一种语义。
-                        if (config.longRepeat && !config.longIsSerial && !config.longIsVoiceMemory) {
-                            scheduleRepeat(id, config)
+                        // 「松手才触发」（`longFireOnRelease`）：到点只把这一按标成长按，**不派发** ——
+                        //  执行在抬手那一支（`onKeyUp`）。状态位照旧置上，否则抬手会把它当短按再补一次单击。
+                        //  同时排上兜底那一枪：抬手真丢了的时候，这一档不能什么都不做。
+                        if (config.longFireOnRelease) {
+                            XLog.w("${id.label}：长按到点（松手才触发 ⇒ 等抬手再执行）")
+                            scheduleReleaseFallback(id, config, downAt)
+                        } else {
+                            XLog.w("${id.label}：长按")
+                            dispatch(id, GestureTrigger.LongPress, config, repeat = false)
+                            // 「长按连续触发」：按住不放就一直重复（松手由 reset 停掉）。
+                            //  四条不许连发的理由（长按那一族 / 多条命令 / 灵感语音 / 松手那两种时序）
+                            //  收在 `KeyConfig.longRepeats` 一处 —— 这里只问「该不该排」。
+                            if (config.longRepeats) scheduleRepeat(id, config)
                         }
                     }
                 } catch (e: Throwable) {
@@ -531,10 +564,10 @@ internal class GestureDetector(
                     if (p.pressAt != 0L && SystemClock.elapsedRealtime() - p.pressAt > REPEAT_MAX_MS) {
                         XLog.w("${id.label}：连续触发超过 ${REPEAT_MAX_MS}ms 未见抬手，强制停止（UP 可能已丢）")
                         p.repeatRunnable = null
-                        // **finish 而不是 reset**：这一档等价于「替系统补一次抬手」，
-                        //  带「松手结束」语义的动作（灵感语音录音）要靠 onLongReleased 收尾 ——
-                        //  只 reset 的话连发停了、录音还在录。
-                        finish(id)
+                        // 等价于「替系统补一次抬手」：连发停掉、这一按的状态清干净。
+                        //  （松手不再替任何动作收尾 —— 灵感语音拆成开始 / 结束两个显式动作之后，
+                        //   抬手只影响判定侧自己的状态。）
+                        reset(id)
                         return@Runnable
                     }
                     dispatch(id, GestureTrigger.LongPress, config, repeat = true)
@@ -545,6 +578,67 @@ internal class GestureDetector(
             }
         pending(id).repeatRunnable = runnable
         handler.postDelayed(runnable, interval)
+    }
+
+    /**
+     * 「松手才触发」的**兜底那一枪** —— 到点之后再等 [RELEASE_FALLBACK_MS]，按着不放就当 UP 丢了。
+     *
+     *  到点时这一档什么都没执行（执行押在抬手），所以「UP 丢了」的代价是**整次长按零响应**，
+     *  用户看到的就是「这颗键坏了」。兜底把这个失败面补上：就地执行一次，再把这一次按压
+     *  **封掉**（`Pending.closedWithoutUp`），于是真迟到的那个 UP 走 [finishLong] 时只清状态。
+     *
+     * ## 为什么整段判据都在 `synchronized(p)` 里
+     *
+     *  它与抬手那一侧抢同一件事：「到底谁负责这一次执行」。抬手侧在 `synchronized(p)` 里置
+     *  `sawFirstRelease`，这里在同一把锁里读它并置 `closedWithoutUp` —— 先到的那个赢：
+     *  · 抬手先到 ⇒ 这里看到 `sawFirstRelease`，一声不响地作废；
+     *  · 兜底先到 ⇒ 抬手侧的 [finishLong] 看到 `closedWithoutUp`，只清理不派发。
+     *
+     *  派发留在锁外（会发广播，不该占着状态锁）。
+     *
+     * @param downAt 这一枪属于哪一次按下（与长按枪同一条身份判据）
+     */
+    private fun scheduleReleaseFallback(
+        id: KeyId,
+        config: KeyConfig,
+        downAt: Long,
+    ) {
+        cancelReleaseFallback(id)
+        val shot =
+            Runnable {
+                try {
+                    val p = pending(id)
+                    p.releaseFallbackRunnable = null
+                    val act =
+                        synchronized(p) {
+                            //  抬手已到 / 又按了一次 / 这一按已经被别的路径收尾 ⇒ 兜底不作数
+                            if (p.pressAt != downAt || p.sawFirstRelease || !p.longPressFired) {
+                                false
+                            } else {
+                                p.closedWithoutUp = true
+                                true
+                            }
+                        }
+                    if (!act) {
+                        XLog.w("${id.label}：松手兜底作废（抬手已到或这一按已收尾）")
+                        return@Runnable
+                    }
+                    XLog.w("${id.label}：长按（松手才触发，但 ${RELEASE_FALLBACK_MS}ms 未见抬手 ⇒ 兜底执行一次）")
+                    dispatch(id, GestureTrigger.LongPress, config, repeat = false)
+                } catch (e: Throwable) {
+                    // 计时器跑在 system_server 主线程上，抛出去就是整机崩
+                    XLog.w("松手兜底失败（忽略）：${id.label}", e)
+                }
+            }
+        pending(id).releaseFallbackRunnable = shot
+        handler.postDelayed(shot, RELEASE_FALLBACK_MS)
+    }
+
+    /** 摘掉还挂着的那一枪兜底（抬手 / 重置都走它）。 */
+    private fun cancelReleaseFallback(id: KeyId) {
+        val p = pending(id)
+        p.releaseFallbackRunnable?.let { handler.removeCallbacks(it) }
+        p.releaseFallbackRunnable = null
     }
 
     /** 抬手后开一个双击窗口：窗口内没有第二次按下就补一次单击。 */
@@ -606,6 +700,39 @@ internal class GestureDetector(
             }
         p0.doubleWindowRunnable = shot
         handler.postDelayed(shot, window)
+    }
+
+    /**
+     * 抬手时收尾一次长按 —— 三种时序在这里分开（它们之间互斥，见 `KeyConfig.longFireOnRelease`）。
+     *
+     *  · 已经**兜底执行过**（UP 丢过）：这一下只清理 —— 不清理会让长按状态漏到下一次按压，
+     *    再执行一次就是「一次按压两个动作」；
+     *  · 「松手才触发」：到点只标了状态，长按动作放到这一下执行**一次**；
+     *  · 「松手再执行另一个动作」（`releaseBound`）：长按早在按下期间执行过，这一下再补一条 `release`；
+     *  · 其余：长按也已执行过，这一下只剩清状态。
+     */
+    private fun finishLong(
+        id: KeyId,
+        config: KeyConfig,
+    ) {
+        val p = pending(id)
+        //  与兜底那一枪同一把锁：谁先到谁负责，另一侧看得到这个结论（见 [scheduleReleaseFallback]）
+        if (synchronized(p) { p.closedWithoutUp }) {
+            XLog.w("${id.label}：抬手迟到（这一按已由松手兜底执行过，只清状态）")
+            reset(id)
+            return
+        }
+        if (config.longFireOnRelease) {
+            XLog.w("${id.label}：长按（松手才触发）")
+            reset(id)
+            dispatch(id, GestureTrigger.LongPress, config, repeat = false)
+            return
+        }
+        if (config.releaseBound) {
+            XLog.w("${id.label}：长按松手（${config.longRelease.token}）")
+            dispatch(id, GestureTrigger.Release, config, repeat = false)
+        }
+        reset(id)
     }
 
     /**

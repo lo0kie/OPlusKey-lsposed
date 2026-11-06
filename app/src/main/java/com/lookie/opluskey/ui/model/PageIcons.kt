@@ -88,6 +88,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PlayerStop
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
+import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
@@ -714,6 +716,23 @@ internal object PageIcons {
 
     /** 「长按连续触发」行的行首 —— `infinity-2`（无限符号）：管「要不要一直来」，与管「隔多久来一次」的 [DelayRepeat] 不同字形。 */
     val LongRepeat: ImageVector get() = TablerIcons.Outline.Infinity2
+
+    /**
+     * 「松手后再执行」行的行首 —— `pointer-up`（一根手指点着、上方一支向上的箭头）。
+     *
+     *  读作「抬手那一下」：与「长按延迟」那只 [DelayHold]（`hand-grab`，一把抓住）分开 ——
+     *  那一行管「按住多久算长按」，这一行管「松手才执行」。
+     */
+    val LongRelease: ImageVector get() = TablerIcons.Outline.PointerUp
+
+    /**
+     * 「松手才触发」行的行首 —— `pointer-pause`（光标 + 暂停记号）。
+     *
+     *  这一行管的是**长按到点之后先停一下**：按到长按时长不立刻执行，等抬手那一刻才走。
+     *  「暂停」正是那个停顿（与 [LongRelease] 那颗「抬手」分工：那颗说的是**松手再执行一个**，
+     *  这颗说的是**到点先别动**）。
+     */
+    val LongFireOnRelease: ImageVector get() = TablerIcons.Outline.PointerPause
 
     /** 「命令间隔时长」—— `clock-hour-4`（指到四点的钟：等一段时间再走下一步）。 */
     val DelayStep: ImageVector get() = TablerIcons.Outline.ClockHour4

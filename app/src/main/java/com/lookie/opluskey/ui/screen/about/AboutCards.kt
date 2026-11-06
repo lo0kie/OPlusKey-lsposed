@@ -1,8 +1,11 @@
 package com.lookie.opluskey.ui.screen.about
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -36,6 +39,8 @@ import com.lookie.opluskey.ui.writeAndNotice
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // 「更多选项」页里那几张卡 —— 从 `AboutScreen.kt` 拆出来。
 //
@@ -189,12 +194,17 @@ internal fun SettingsPage.ConfigCard(
     ui: AboutUiState,
 ) {
     //  除「默认」之外已满三份 ⇒ 「导入配置」这一行也灰掉（「新建配置」在切换菜单里，同一道闸）。
-    //  只能放进 remember：判一次要列目录，不能每次重组都去碰文件系统。
-    val profilesFull = remember(configState.config.value, ui.profiles.size) { ConfigProfiles.isFull() }
-    //  副标题与那层菜单写的是**同一份**「当前是哪份、叫什么」：都从 `list()` 取（它按 id 判身份），
-    //  只在配置本身变了的时候读一次盘。以前这里自己按「名字空不空」拼，名字一丢就自称「默认配置」，
-    //  与菜单里那行「未命名」对不上。
-    val currentDisplay = remember(configState.config.value) { ConfigProfiles.list().firstOrNull { it.isCurrent }?.displayName }
+    //  **读盘放 IO、结果进 state**：`isFull()` 要列目录、`list()` 要逐份读并解码，
+    //  在组合期做就是把整页第一帧压在文件系统上（这一页还是盖在宿主 Activity 上的）。
+    var profilesFull by remember { mutableStateOf(false) }
+    //  副标题与那层菜单写的是**同一份**「当前是哪份、叫什么」：都从 `list()` 取（它按 id 判身份）。
+    var currentDisplay by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(configState.config.value, ui.profiles.size) {
+        val grabbed = withContext(Dispatchers.IO) { ConfigProfiles.isFull() }
+        val shown = withContext(Dispatchers.IO) { ConfigProfiles.list().firstOrNull { it.isCurrent }?.displayName }
+        profilesFull = grabbed
+        currentDisplay = shown
+    }
     CardList(
         rows =
             listOf(

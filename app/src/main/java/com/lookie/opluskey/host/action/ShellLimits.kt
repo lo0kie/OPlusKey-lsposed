@@ -17,6 +17,17 @@ package com.lookie.opluskey.host.action
 internal const val SHELL_MAX_CONCURRENT = 3
 
 /**
+ * 在跑的之外还能**排队**几条 —— 超出即拒（[CommandFailure.OVERLOADED]）。
+ *
+ *  取 4：一条命令最长 10 秒（`SHELL_TIMEOUT_MS`），3 条并发 + 4 条排队 ≈ 最坏 20 秒内清空，
+ *  正好是「用户还记得刚才按过」的边界。再大就变成「过了一会儿手机自己动了」。
+ *
+ *  无界队列试过：长按连发 100ms 一条时，队列净增 30 倍，动作排到几十秒后才执行，而且执行前
+ *  不再做任何过期判断 —— 那不是延迟，是错乱。
+ */
+internal const val SHELL_QUEUE_MAX = 4
+
+/**
  * 池内空闲线程多久回收（秒）。
  *
  * 按键是低频动作（连发最密 100ms 一条），池不该常驻：60 秒没有活就让它退出，

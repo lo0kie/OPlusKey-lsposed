@@ -24,11 +24,10 @@ import com.lookie.opluskey.core.model.KeyId
  *  · [Key] —— 一颗键的一档（三档手势都走它）；
  *  · [Combo] —— 一档组合键的一档（组合只有短按 / 长按，双击在 `ComboKey` 上就没有定义）。
  *
- *  `gesture` 仍然对外暴露：网格要按它决定「灵感语音那一格出不出现」
- *  （`ActionCatalog.modeMenu(token, withLongOnly = g == LONG)`）。
+ *  `gesture` 仍然对外暴露：网格按它读这一档现在绑的是什么、写哪一格（清单本身不按手势分化）。
  */
 internal sealed interface BindingTarget {
-    /** 这一档是哪一档手势 —— 网格按它过滤清单（长按页多一格「灵感语音」）。 */
+    /** 这一档是哪一档手势 —— 网格按它读写这一档的绑定。 */
     val gesture: Gesture
 
     /**

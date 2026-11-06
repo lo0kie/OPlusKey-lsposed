@@ -39,6 +39,39 @@ data class KeyConfig(
      */
     val longRepeatVibrate: Boolean = false,
     /**
+     * **「松手后再执行」** —— 长按之后松手那一刻要执行的**另一个动作**（与 [long] 分开配置）。
+     *
+     *  两个事件是分开的：到长按时长先执行 [long]（照旧），松手时再执行这一档。判定侧只在这一按
+     *  **已经判成长按**时才发那一条（`GestureTrigger.Release`），执行侧按这个字段取动作。
+     *
+     *  默认 `Action.None` = 不发那条广播、行为与这一位出现之前完全一致。
+     *
+     *  与 [longRepeat] **互斥**：连续触发是「按住不放一直重来」，再叠一个「松手那次」只会让
+     *  按住期间的动作与本档搅在一起。配了这一档时连续触发**不生效**，界面把那一行置灰但
+     *  **不隐藏**（用户口径：让人看得见自己关掉了什么），[longRepeat] 的值原样留着。
+     */
+    val longRelease: Action = Action.None,
+    /**
+     * 「松手后再执行」的**开关** —— 打开时界面才露出「松手动作」那一行。
+     *
+     *  与 [longRelease] 分成两位：开关开着、动作还没挑是合法状态（松手什么都不做）。合成一位
+     *  （「有动作 = 开」）的话，用户在开关上点一下就会立刻执行一个他没挑过的动作。
+     */
+    val longReleaseOn: Boolean = false,
+    /**
+     * **「松手才触发」** —— 长按动作本身等**抬手**那一刻才执行（默认是到点即触发）。
+     *
+     *  「什么时候执行长按这一档」只有三种答案，所以三者**互斥**（同时开着无法定义「哪一下执行什么」）：
+     *  · 到点即触发（默认，本条关闭、[longRepeat] 也关）；
+     *  · 到点即触发并[longRepeat] 连续重来；
+     *  · 到点只标记、**松手才执行**（本条）。
+     *  另外 [longRelease]（松手后再执行**另一个**动作）与这条也互斥 —— 它同样是「松手那一下」的语义。
+     *
+     *  互斥在数据层收口：`longRepeats` / `releaseBound` 都把它排掉，于是判定侧与界面只读那两位，
+     *  不必各自再判一次。
+     */
+    val longFireOnRelease: Boolean = false,
+    /**
      * 「单击延迟」—— **这颗键自己的**双击窗口（毫秒）。
      *
      *  以前它是 `GlobalConfig` 的一项（所有键共用一份），自定义键出现之后就成了
@@ -101,6 +134,11 @@ data class KeyConfig(
                 long
             }
 
+            //  「长按后松手」是**另一个槽位**（[longRelease]）：与长按那一档分开配、分开执行
+            GestureTrigger.Release -> {
+                longRelease
+            }
+
             is GestureTrigger.Click -> {
                 when (trigger.count) {
                     1 -> single
@@ -115,6 +153,10 @@ data class KeyConfig(
      *
      *  与 `KeyGesturePlan` 的取法同一个（那边按 `slots` 取），这里单独留一份是因为判定侧
      *  只看得到广播里的 [judgeClicks]，取不到动作表。
+     *
+     *  **条件分支也算绑定**：只给「双击」配了一条场景、不给 [double] 绑动作，是配置允许的常态。
+     *  漏掉它的话判定侧认为最高只有一击，`instantSingle` 一开就在第一次抬手直判单击，
+     *  那条双击场景永远等不到第二击 —— 而且日志里看不出任何异常。
      */
     val boundClicks: Int
         get() =
@@ -122,7 +164,25 @@ data class KeyConfig(
                 if (single !is Action.None) 1 else 0,
                 if (double !is Action.None) 2 else 0,
                 extraClicks.filterValues { it !is Action.None }.keys.maxOrNull() ?: 0,
+                ruleClicks,
             )
+
+    /**
+     * [rules] 里按手势算出的最高击数（1 = 只配了单击场景；2 = 配了双击场景；0 = 没有可执行的规则）。
+     *
+     *  停用的、动作是 `None` 的、以及「条件还没配完」的规则都不算 —— 它们永远不会执行，
+     *  算进来只会让判定侧白等一个窗口（宁可按「没有」处理）。
+     */
+    private val ruleClicks: Int
+        get() =
+            rules.maxOfOrNull { rule ->
+                when {
+                    !rule.enabled || rule.action is Action.None || !rule.isReady -> 0
+                    rule.gesture == Gesture.DOUBLE -> 2
+                    rule.gesture == Gesture.SINGLE -> 1
+                    else -> 0
+                }
+            } ?: 0
 
     /** 判定侧实际要用的那一档：广播给了就用它，没给就按动作表算（老版本兼容）。 */
     val clicksForJudge: Int get() = if (judgeClicks > 0) judgeClicks else boundClicks
@@ -146,19 +206,61 @@ data class KeyConfig(
     ): Action = rules.firstOrNull { it.appliesTo(gesture, matches) }?.action ?: actionOf(gesture)
 
     /**
-     * 长按绑的是不是「灵感语音」（`oplus:voice_memory`）。
+     * 长按绑的是不是**灵感语音那一族**（`oplus:voice_memory` / `oplus:voice_memory_stop`）。
      *
-     *  它是唯一**「按下开始、松手结束」**的动作，两处判据必须是同一个口径：
-     *   · 判定侧（`inject/input/GestureDetector`）：不排「长按连续触发」—— 连发等于把正在录的那段
-     *     掐断重来，系统自己的侧键长按也没有这个语义；
-     *   · 执行侧（`host/GestureReceiver`）：收到「松手」（[com.lookie.opluskey.core.wire.ModuleWire.PHASE_RELEASE]）
-     *     才去发结束。
+     *  两处判据必须是同一个口径（判定侧不排「长按连续触发」、界面写同一句原因）：
+     *  连发对这两个动作都没有语义 —— 开始会被 ROM 当重入忽略（`reentrant collect.`），
+     *  结束在没有采集时是空操作。见 `RomProfile.isVoiceMemory` 与
+     *  `docs/device-findings.md` 四十六。
      *
      *  写成计算属性、不落成字段：它是 [long] 的投影，落字段就要在 `ConfigFields` 那条链上
      *  多存一份**可以和 [long] 不一致**的真值。
      */
     val longIsVoiceMemory: Boolean
-        get() = (long as? Action.Oplus)?.feature == RomProfile.NAME_VOICE_MEMORY
+        get() = (long as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true
+
+    /**
+     * 「松手后再执行」这一刻**真的有事可做** —— 开关开着、并且已经挑了一个动作。
+     *
+     *  开关与动作是两位（见 [longReleaseOn]），只判其中一位都会错：
+     *  · 只判动作：开关关掉之后动作还留着，连发会被一直挡住、松手却什么都不执行；
+     *  · 只判开关：挑了动作才算数 —— 开着但没挑时松手本来就不做事，不该连坐连发。
+     *
+     *  第三位是[longFireOnRelease]：那条开着时长按本身已经推迟到松手，这一档再补一个
+     *  「松手动作」就成了同一刻执行两个动作 —— 它让位，但**值原样留着**（关掉那一条之后回来）。
+     *
+     *  判定侧（[longRepeats] 与 `GestureDetector` 发不发那条广播）与界面（连续触发那行置不置灰）
+     *  都只读这一位。
+     */
+    val releaseBound: Boolean
+        get() = longReleaseOn && longRelease !is Action.None && !longFireOnRelease
+
+    /**
+     * 这一档走的是「**松手那一下**」的两种时序之一 —— 松手才触发（[longFireOnRelease]），
+     * 或者松手再执行另一个动作（[releaseBound]）。
+     *
+     *  连续触发与它们互斥，判据只写在 [longRepeats] 里；中间留这一位是为了让那个 `if` 不越过
+     *  detekt 的条件复杂度上限，也让界面能一次问清「松手那两种开着没」。
+     */
+    val longOnReleaseTiming: Boolean
+        get() = longFireOnRelease || releaseBound
+
+    /**
+     * 这一档要不要排「长按连续触发」—— 判定侧的**唯一判据**。
+     *
+     *  四条理由合成一处：
+     *  · [longRepeat] 本身关着；
+     *  · 走的是「松手那一下」的两种时序之一（[longOnReleaseTiming]）：那一档要的是「按住一次 +
+     *    松手一次 / 松手才执行」，连发会把那一下淹没在一串重复里，或干脆没有「到时」这一档；
+     *  · 长按绑的是多条命令（[longIsSerial]）：反复重放整条命令链没有意义；
+     *  · 长按绑的是灵感语音那一族（[longIsVoiceMemory]）：开始 / 结束都是「按一下就完事」，
+     *    重复拨没有语义。
+     *
+     *  写成属性而不是让判定侧现拼：`GestureDetector` 里那一处 `if` 原本已经四个条件，
+     *  再加一条就顶破 detekt 的复杂度上限 —— 而这条口径本来也只该有一份。
+     */
+    val longRepeats: Boolean
+        get() = longRepeat && !longOnReleaseTiming && !longIsSerial && !longIsVoiceMemory
 
     /**
      * 本对象在每个配置字段上的取值 —— **「字段 → 属性」的映射只有这一处**。
@@ -175,6 +277,9 @@ data class KeyConfig(
                 ConfigFields.F_LONG to long.token,
                 ConfigFields.F_LONG_PRESS_MS to longPressMs,
                 ConfigFields.F_LONG_REPEAT to longRepeat,
+                ConfigFields.F_LONG_RELEASE to longRelease.token,
+                ConfigFields.F_LONG_RELEASE_ON to longReleaseOn,
+                ConfigFields.F_LONG_FIRE_ON_RELEASE to longFireOnRelease,
                 ConfigFields.F_REPEAT_INTERVAL_MS to longRepeatIntervalMs,
                 ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
                 ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
@@ -265,6 +370,9 @@ data class KeyConfig(
                 long = Action.parse(v.text(ConfigFields.F_LONG)),
                 longPressMs = v.number(ConfigFields.F_LONG_PRESS_MS),
                 longRepeat = v.bool(ConfigFields.F_LONG_REPEAT),
+                longRelease = Action.parse(v.text(ConfigFields.F_LONG_RELEASE)),
+                longReleaseOn = v.bool(ConfigFields.F_LONG_RELEASE_ON),
+                longFireOnRelease = v.bool(ConfigFields.F_LONG_FIRE_ON_RELEASE),
                 longRepeatIntervalMs = v.number(ConfigFields.F_REPEAT_INTERVAL_MS),
                 longRepeatVibrate = v.bool(ConfigFields.F_REPEAT_VIBRATE),
                 doubleClickMs = v.number(ConfigFields.F_DOUBLE_CLICK_MS),

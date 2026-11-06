@@ -106,7 +106,9 @@ internal fun SettingsPage.CollectKeyDialog(
     val collectClosing = pendingCode != null
     // 「还在等按键」= 还没听到一颗能收的键（被拒与被重复的那两条都留在这里，见下面）。
     val waiting = !collectClosing
-    val draftName = newKeyName()
+    //  **只在开窗那一刻算一次**：名字是「按键 N」，它必须在命名窗开着这段时间里稳定 ——
+    //  每帧重算的话，期间任何一次配置变化（加键 / 删键）都会把用户已经打进去的名字顶掉。
+    val draftName = remember(show) { newKeyName() }
 
     //  **倒计时**：注入侧到点自己停发键码（`ModuleWire.KEY_WATCH_WINDOW_MS`），界面必须把
     //  这段时间显示出来、并在同一刻收场 —— 否则第 60 秒弹窗还挂着、按键已经没人报，
@@ -114,7 +116,7 @@ internal fun SettingsPage.CollectKeyDialog(
     val secondsLeft = rememberWatchCountdown(show, waiting, onDismiss)
 
     // 兜底 —— 这一档只在「收场回调根本没来」时才该跑，理由见 [CollectCloseFallback]。
-    CollectCloseFallback(show = show, closing = collectClosing) { collectClosed = true }
+    CollectCloseFallback(closing = collectClosing, closed = collectClosed) { collectClosed = true }
 
     // **只在「等按键」这一小段里监听**：一听到能收的键就交给下一步，注入侧不该继续往外报。
     //  被拒（保留码 / 内置键 / 到上限）与「这颗键本来就在清单里」都不结束这一窗 ——
@@ -196,14 +198,17 @@ internal fun SettingsPage.CollectKeyDialog(
  */
 @Composable
 private fun CollectCloseFallback(
-    show: Boolean,
     closing: Boolean,
+    closed: Boolean,
     onTimedOut: () -> Unit,
 ) {
-    LaunchedEffect(show, closing) {
-        if (!closing) return@LaunchedEffect
+    LaunchedEffect(closing, closed) {
+        if (!closing || closed) return@LaunchedEffect
         delay(COLLECT_CLOSE_TIMEOUT_MS)
-        if (show) onTimedOut()
+        //  **判据是「还没收场」**（`closed`），不是「这个窗该不该显示」：
+        //  那个布尔在这一整段里恒为真，于是回调正常到达时这里照样放行一次 ——
+        //  命名窗被提前打开，与收集窗叠在一起，键盘拉起又消失。
+        if (!closed) onTimedOut()
     }
 }
 
@@ -304,6 +309,10 @@ private fun SettingsPage.addKey(
 ): Boolean {
     // `null` = 没听到键就点了确定（这一档不该出现：命名窗只在听到键之后才开）
     if (code == null) return false
+    //  **写之前用此刻的配置再核一次**：`checkKey` 是「听到键那一刻」的结论，而命名窗可能开着
+    //  好一会儿 —— 期间别处删了键、或另一处收了同一颗码，沿用旧结论就会写出保留码 / 超限 /
+    //  重码的条目。判据仍只有 `checkKey` 一处，这里只是重新问一遍。
+    if (!claimableNow(code)) return false
     val cfg = configState.config.value
     //  **这里只拿得到一个码**（收集期报回来的是「按下那一下的 keyCode」），而有的键一次按压
     //  只报其中一个码 —— 压感拍照键双击报 769、短按报 767。族内其余码由 `KeyId.custom`
@@ -319,6 +328,30 @@ private fun SettingsPage.addKey(
     )
     return true
 }
+
+/**
+ * 落盘前的复核：这颗码**此刻**还收得进来吗（保留码 / 内置键 / 超限 / 已在清单里）。
+ *
+ *  与「听到键那一刻」的 [checkKey] 同一份判据，只是重新问一次 —— 命名窗可能开着好一会儿。
+ *  被拒时顺手把理由说出去，调用方只管不写。
+ */
+private fun SettingsPage.claimableNow(code: Int): Boolean =
+    when (val again = checkKey(code)) {
+        CollectCheck.Ok -> {
+            true
+        }
+
+        is CollectCheck.Duplicate -> {
+            XLog.w("添加按键：$code 已经在清单里（${again.name}），不写")
+            false
+        }
+
+        is CollectCheck.Rejected -> {
+            XLog.w("添加按键：$code 此刻不能收（${again.message ?: "内部原因"}），不写")
+            again.message?.let { hint(it, slot = HINT_SLOT_BINDING) }
+            false
+        }
+    }
 
 /**
  * 弹窗正文：三行，居中。

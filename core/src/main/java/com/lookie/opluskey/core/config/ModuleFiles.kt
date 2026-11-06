@@ -188,6 +188,11 @@ class ModuleFiles internal constructor(
         return files
             .map { it.name }
             .filter { it.startsWith(prefix) }
+            //  **只收三种合法形态**：`<槽>.conf`、`.conf.bak`、`.conf.new`。
+            //  只按前缀过滤会把同目录里的其它东西（最典型的是 `…_vars.conf.lock` 这类锁文件）
+            //  当成一个槽 —— 于是 `deleteAll()` 去删一个不存在的 `<假槽>.conf`、报「删干净了」，
+            //  而真正的残留还在。
+            .filter { it.endsWith(SUFFIX) || it.endsWith(SUFFIX + BAK) || it.endsWith(SUFFIX + NEW) }
             .map { name ->
                 //  剥掉可能存在的 `.bak` / `.new` 尾巴，再剥掉 `.conf` —— 三种形态落到同一个槽名
                 val base = name.removeSuffix(BAK).removeSuffix(NEW).removeSuffix(SUFFIX)

@@ -108,12 +108,16 @@ private fun SettingsPage.loadActivitiesUnguarded(
             (if (shortcuts == null) "（这一节没查到）" else "") +
             "，耗时 ${SystemClock.uptimeMillis() - t0}ms",
     )
-    // **按 target 去重**：列表那边是 `items(key = { it.target })`，key 重复会让 Compose 当场抛
-    // 「Key was already used」并崩掉整个 `:ui` 进程（真机在贴吧那一页崩过一次：同一个
-    // `AuthorizeSignActivity` 在清单里出现了两条）。`getPackageInfo` 返回的 `activities`
-    // 本身可能带重复条目（同一个类被声明 / 合并成多条），这里按**我们自己的目标写法**收一次，
-    // 顺带也保证用户看不到两条一模一样的界面。
-    return (activities + shortcuts.orEmpty()).distinctBy { it.target }
+    // **两节各自去重**（不再跨节 `distinctBy { target }`）：快捷方式的 target 与界面的 target
+    //  写法相同（`包名/…`），撞上时跨节去重会**丢掉快捷方式那一行** —— 用户绑的 `appshortcut:`
+    //  随即在列表里找不到，被静默降级成 `app:`。列表本身按「节前缀 + target」取键（见
+    //  `ActivityPickerList`），两节同名不会再撞 Compose 的 key。
+    val merged = activities.distinctBy { it.target } + shortcuts.orEmpty().distinctBy { it.target }
+    val clash = merged.groupBy { it.target }.filterValues { it.size > 1 }.keys
+    if (clash.isNotEmpty()) {
+        XLog.w("界面清单：${clash.size} 个目标同时出现在快捷方式与界面两节（已都保留）：${clash.joinToString()}")
+    }
+    return merged
 }
 
 /**

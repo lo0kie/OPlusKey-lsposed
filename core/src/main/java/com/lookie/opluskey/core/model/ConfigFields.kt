@@ -53,6 +53,14 @@ object ConfigFields {
     const val LONG_REPEAT_EXTRA = "long_repeat"
     const val REPEAT_INTERVAL_MS_EXTRA = "long_repeat_interval_ms"
 
+    /**
+     * 「松手后再触发」（`KeyConfig.longRelease`）—— 判出长按的那一刻**不执行**，抬手时才执行。
+     *
+     *  只影响「什么时候派发」，不改长按阈值：到点那一刻它仍然把这一按标成「长按」，
+     *  只是把派发推到抬手（`GestureDetector.onKeyUp` 那一支）。
+     */
+    const val LONG_RELEASE_EXTRA = "long_release"
+
     /** 长按连续触发时，每一次重复都振动一次（关 = 只在长按那一下振一次）。 */
     const val REPEAT_VIBRATE_EXTRA = "long_repeat_vibrate"
 
@@ -166,6 +174,37 @@ object ConfigFields {
     /** 长按是否连续触发。 */
     val F_LONG_REPEAT = Field(LONG_REPEAT_EXTRA, Kind.Bool(false))
 
+    /**
+     * 「松手后再执行」的**开关**（`KeyConfig.longReleaseOn`）—— 打开时才在下面露出「松手动作」那一行。
+     *
+     *  与动作分两位：开关打开、动作还没挑时是「开着但没设置」，此时松手什么都不做；若把「有没有动作」
+     *  直接当开关，用户在开关上点一下就会立刻执行一个他没挑过的动作。
+     */
+    const val LONG_RELEASE_ON_EXTRA = "long_release_on"
+
+    /**
+     * 「松手后再执行」（`KeyConfig.longRelease`）—— 长按**之后松手**那一刻执行的另一个动作。
+     *
+     *  默认 `none`（无操作）= 与这一位出现之前一致：判定侧不会发那一条松手广播。
+     *  与 [F_LONG_REPEAT] 互斥（配了它时连续触发不生效，界面只置灰、不改值），
+     *  判定侧的判据见 `GestureDetector`。
+     */
+    val F_LONG_RELEASE = Field(LONG_RELEASE_EXTRA, Kind.Text(Action.NONE))
+
+    /** 「松手后再执行」的开关（见 [LONG_RELEASE_ON_EXTRA]）。 */
+    val F_LONG_RELEASE_ON = Field(LONG_RELEASE_ON_EXTRA, Kind.Bool(false))
+
+    /**
+     * 「松手才触发」（`KeyConfig.longFireOnRelease`）—— 长按动作本身**等抬手才执行**。
+     *
+     *  与「长按连续触发」「松手后再执行」三者互斥：它们描述的是同一件事（长按这一档的时序），
+     *  同时开着没法定义「到底哪一下执行什么」。判定侧只读 `KeyConfig.longRepeats`（经
+     *  `longOnReleaseTiming` 把它算进去）与 `KeyConfig.releaseBound` 这两位。
+     */
+    const val LONG_FIRE_ON_RELEASE_EXTRA = "long_fire_on_release"
+
+    val F_LONG_FIRE_ON_RELEASE = Field(LONG_FIRE_ON_RELEASE_EXTRA, Kind.Bool(false))
+
     /** 连发间隔。 */
     val F_REPEAT_INTERVAL_MS =
         Field(
@@ -216,6 +255,9 @@ object ConfigFields {
             F_LONG,
             F_LONG_PRESS_MS,
             F_LONG_REPEAT,
+            F_LONG_RELEASE,
+            F_LONG_RELEASE_ON,
+            F_LONG_FIRE_ON_RELEASE,
             F_REPEAT_INTERVAL_MS,
             F_REPEAT_VIBRATE,
             F_DOUBLE_CLICK_MS,

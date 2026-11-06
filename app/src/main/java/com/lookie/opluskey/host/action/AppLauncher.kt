@@ -292,45 +292,6 @@ internal class AppLauncher(
     }
 
     /**
-     * 结束一个「按下开始、松手结束」的 ColorOS 能力（此刻只有灵感语音，见 [RomProfile.BuiltIn.stopExtras]）。
-     *
-     *  落点表里没登记结束形态的能力直接返回 —— 这类动作按一下就完事、没有「结束」这回事，
-     *  所以这个函数的空转是**正常**的，不是配置写错。
-     *
-     *  失败**不弹提示**（与起采集相反）：收尾是尽力而为，弹一句「结束失败」只会让人以为
-     *  刚才那一段也没录上。退路也只有「换一种起法」，不走 `tryComponentFallback` —— 那一步是
-     *  为「起不来」准备的，而结束的目标此刻还在跑，显式组件反而容易命中不到它的 action 分支。
-     */
-    fun stopOplusFeature(feature: String) {
-        val target = RomProfile.builtIn(feature)?.takeIf { it.stopExtras.isNotEmpty() } ?: return
-        if (target.message != null || target.activity) {
-            // 绑定型 / 界面型没有「再发一条就是结束」的形态；表里登记错了只记一行，不去猜
-            XLog.w("oplus:$feature 有 stopExtras 但落点是绑定 / 界面型，结束这一步跳过")
-            return
-        }
-        val ctx =
-            context() ?: run {
-                XLog.w("没有 Context，结束 oplus:$feature 跳过")
-                return
-            }
-        val intent = buildFeatureIntent(target)
-        // 与起采集时同一套 extra，只把 stopExtras 盖上（灵感语音 = `longPressEventType` 改成 2）
-        intent.putExtrasOf(target.extras + target.stopExtras, feature)
-        val short = "${target.owner}/${target.service.substringAfterLast('.')}"
-        for (foreground in if (target.foreground) FOREGROUND_FIRST else SERVICE_FIRST) {
-            try {
-                if (foreground) ctx.startForegroundService(intent) else ctx.startService(intent)
-                XLog.w("结束 oplus:$feature → ${if (foreground) "startForegroundService" else "startService"}($short)")
-                return
-            } catch (e: Throwable) {
-                XLog.d("结束 oplus:$feature 的 ${if (foreground) "前台" else "普通"}起法被拒：${e.message}")
-            }
-        }
-        // 两种都被拒：这一段可能还在录 —— 值得一行 w（不弹提示，理由见上）
-        XLog.w("结束 oplus:$feature 失败：两种起法都被拒（那一段可能还在采集）")
-    }
-
-    /**
      * Messenger 绑定型服务：**bind 后发一条 `Message`**（`what=1` 单击 / `2` 长按）。
      *
      * 实现在 `bridge/host/BuiltInMessenger` —— 手电筒那条也走它，两边各写一份时先漂的

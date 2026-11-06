@@ -97,32 +97,6 @@ internal class GestureForwarder(
     }
 
     /**
-     * 转交一次「松手」（[ModuleWire.PHASE_RELEASE]）。
-     *
-     *  **只发一条、不补发**：能走到这里说明长按那条已经送到并被宿主执行过了 —— 宿主当时是活的，
-     *  这条晚到几毫秒无所谓；而漏掉它的代价只是「那一段采集多录一会儿」。
-     *
-     *  松手本身不带动作、只带「这一按结束了」，要不要收尾由宿主按配置判（见
-     *  `host/GestureReceiver.onRelease`）—— 判定侧不替它判，两边就不会各有一套「哪些动作要收尾」。
-     */
-    fun release(id: KeyId) {
-        val intent = gestureIntent(id, ModuleWire.PHASE_RELEASE, repeat = false)
-        sender.post {
-            val ctx =
-                context() ?: run {
-                    // 这里不用 w：手势那条已经报过一次「没借到 Context」，每个松手再报一遍是刷屏
-                    XLog.d("没借到 Context，无法转交 ${id.label} 的松手")
-                    return@post
-                }
-
-            // 也唤醒一次：宿主万一在这几十毫秒里被回收，startService 会把它拉起来（它一起来就注册接收器）
-            wakeHost(ctx)
-            XLog.d("转交松手：${id.label}")
-            send(ctx, intent, delayMs = 0L, retry = false)
-        }
-    }
-
-    /**
      * 转交一次**组合键**（两颗键一起按）。
      *
      *  与 [forward] 同一条发送线程、同一套「立刻 + 补发」：宿主冷进程时要靠补发那条把它抬起来。
@@ -189,7 +163,7 @@ internal class GestureForwarder(
             .putExtra(ModuleWire.EXTRA_REPEAT, repeat)
             .putExtra(ModuleWire.EXTRA_SENT_AT, SystemClock.elapsedRealtime())
 
-    /** 造一条手势广播（松手与手势共用同一套 extra，见 [ModuleWire.PHASE_RELEASE]）。 */
+    /** 造一条手势广播（载荷见 `ModuleWire` 的 `EXTRA_*`）。 */
     private fun gestureIntent(
         id: KeyId,
         phase: String,

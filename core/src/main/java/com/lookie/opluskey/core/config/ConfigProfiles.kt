@@ -312,6 +312,11 @@ object ConfigProfiles {
         return config.copy(profileId = config.profileId.ifBlank { newProfileId() }, profileName = trimmed)
     }
 
+    /** 这个槽名属于配置列表吗（当前槽，或 `config-<数字>`）—— 删除 / 覆盖入口的唯一判据。 */
+    private fun isProfileSlot(slot: String): Boolean =
+        slot == CURRENT_SLOT ||
+            (slot.startsWith(SLOT_PREFIX) && slot.removePrefix(SLOT_PREFIX).toIntOrNull() != null)
+
     /**
      * 删除 [slot] 槽里的配置。
      *
@@ -324,6 +329,12 @@ object ConfigProfiles {
      * @return 真的删掉了吗
      */
     fun delete(slot: String): Boolean {
+        if (!isProfileSlot(slot)) {
+            //  公开 API：传进来的是别的槽（`ui` / `vars` / `commands`）就会删掉界面状态或变量表，
+            //  而那几个槽由各自的 Store 管，不归配置列表删。
+            XLog.w("配置删除：$slot 不是配置槽，拒绝")
+            return false
+        }
         if (slot == CURRENT_SLOT) {
             XLog.w("配置删除：当前配置不许删")
             return false
@@ -497,9 +508,13 @@ object ConfigProfiles {
                 writeProfileConfig(slot, ordered) &&
                 ProfileVars.save(slot, emptyList())
         if (!ok) {
-            //  还原命令库（主配置失败时命令库已经被新内容盖掉了）
+            //  三段都可能已经把前面几段写成新的了，所以**两样都要还原**：
+            //  命令库还原成原来那份；主配置还原成调用前读到的那一份（`target`）。
+            //  只还原命令库的话，用户看到「导入失败」，而主配置其实已经变成导入的内容 ——
+            //  那份旧配置从此没有任何副本。
             if (previousCommands != null) ProfileCommands.save(slot, previousCommands)
-            XLog.w("配置导入覆盖：$slot 没写成，已还原命令库")
+            writeProfileConfig(slot, target)
+            XLog.w("配置导入覆盖：$slot 没写成，已还原命令库与主配置")
             return null
         }
         XLog.w("配置导入覆盖：已覆盖 ${target.profileName.ifBlank { "默认" }}（槽 $slot）")
@@ -530,7 +545,7 @@ object ConfigProfiles {
      *
      *  界面拿它做「新建 / 导入」的闸（灰掉 + 一句提示），`nextSlot` 里还有同一道判据。
      */
-    fun isFull(): Boolean = ConfigStore.files().slots().count { it == CURRENT_SLOT || it.startsWith(SLOT_PREFIX) } - 1 >= MAX_PROFILES
+    fun isFull(): Boolean = ConfigStore.files().slots().count { it != CURRENT_SLOT && it.startsWith(SLOT_PREFIX) } >= MAX_PROFILES
 
     /**
      * 下一份新配置该用的**槽名与位次**（新建与导入都要这两个，所以一起算）。

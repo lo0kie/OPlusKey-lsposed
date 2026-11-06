@@ -362,6 +362,7 @@ private fun LazyListScope.activityRows(
             if (!data.filterActive) {
                 add(
                     ActivityEntry(
+                        key = "auto",
                         title = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO, "自动"),
                         summary = I18n.get(Strings.APP_PICKER_ACTIVITY_AUTO_HINT, "直接打开应用"),
                         // 「自动」= 这个应用本身：绑定里存的是 `包名|名字`，比的是身份不是字符串
@@ -373,6 +374,9 @@ private fun LazyListScope.activityRows(
             data.interfaces.forEach { activity ->
                 add(
                     ActivityEntry(
+                        //  **按目标取键，不按下标**：搜索过滤后行身份会按位次错位，
+                        //  而且快捷方式与界面可能撞同名 —— 两节各带自己的前缀就不会撞。
+                        key = "ac:${activity.target}",
                         title = activity.label,
                         summary = activity.summary,
                         picked = current?.let { AppTarget.same(activity.target, it.target) } == true,
@@ -400,7 +404,9 @@ private fun LazyListScope.activityRows(
         item(key = "section-shortcut") {
             SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_SHORTCUTS, "快捷方式"))
         }
-        spacedItems(data.shortcuts, gap = GRID_GAP, key = { it.target }) { shortcut ->
+        //  **带节前缀取键**：快捷方式与界面可能写出同一个 target（快捷方式 id 恰好等于类名时），
+        //  两节共用 `it.target` 会让 Compose 当场抛「Key was already used」。
+        spacedItems(data.shortcuts, gap = GRID_GAP, key = { "sc:${it.target}" }) { shortcut ->
             ActivityRow(
                 title = shortcut.label,
                 summary = shortcut.summary,
@@ -424,7 +430,7 @@ private fun LazyListScope.activityRows(
     }
 
     // 这一节的第一项固定是「自动」：与绑定一个纯包名完全等价，也是用户最常选的那一项
-    spacedItems(activityEntries, gap = GRID_GAP) { entry ->
+    spacedItems(activityEntries, gap = GRID_GAP, key = { it.key }) { entry ->
         ActivityRow(
             title = entry.title,
             summary = entry.summary,
@@ -439,6 +445,8 @@ private fun LazyListScope.activityRows(
  * 这一处判断只在组件里做一次。
  */
 private class ActivityEntry(
+    /** 列表 key（带节前缀、按目标取）—— 不能用下标：搜索过滤后位次会变。 */
+    val key: String,
     val title: String,
     val summary: String,
     val picked: Boolean,

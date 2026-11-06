@@ -35,7 +35,7 @@ internal fun SettingsPage.KeysHeaderEdit() {
     val editing = KeysEditState.editing
     val canEdit = pageWritable()
     //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`），这里不再自己振
-    //  字形随编辑态换（编辑 ↔ 完成）：形状没法插值 ⇒ 交叉淡过去；图标色与它同一条曲线，
+    //  字形随编辑态换（编辑 与 完成）：形状没法插值 ⇒ 交叉淡过去；图标色与它同一条曲线，
     //  免得「色在渐变、字形啪地换掉」。
     val iconTint by animateColorAsState(
         targetValue =

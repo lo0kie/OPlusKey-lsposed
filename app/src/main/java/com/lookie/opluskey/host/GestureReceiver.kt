@@ -39,8 +39,39 @@ internal object GestureReceiver {
     /** [ModuleWire.ACTION_OPEN_SETTINGS] 那条广播的接收器（EXPORTED，见 [registerOpener]）。 */
     private var opener: BroadcastReceiver? = null
 
-    /** 主线程 Handler：动作执行在它上面串行。 */
+    /** 主线程 Handler：注册、重试、页面拉起这些「轻且要主线程」的事走它。 */
     private val handler: Handler = Handler(Looper.getMainLooper())
+
+    /**
+     * **动作执行**用的那条线程 —— 与主线程分开。
+     *
+     *  一条手势进来之后要做：读配置（`ConfigStore.read`，stat + 解混淆 + JSON）、
+     *  读变量表、`ConditionProbe` 的多次 binder、`ActionNotice` 的 PM 查询、`Settings` 读写。
+     *  这些全放在广播回调里（主线程）时，慢磁盘 / 慢 binder 就是宿主 ANR，动作还可能被系统丢掉。
+     *
+     *  **单线程、串行**：手势是有序的（DOWN/UP、连续触发），并发执行会让「同一条命令两次」
+     *  与「谁是最后一次」都失去定义。所以这里是一条线程 + 队列，不是线程池。
+     *
+     *  取 Context / 注册接收器仍留在主线程：那几件事要碰 Looper 建好的东西，
+     *  而且只在进程启动时跑一次。
+     */
+    private val worker: Handler by lazy {
+        val thread = android.os.HandlerThread("opluskey-gesture").apply { start() }
+        Handler(thread.looper)
+    }
+
+    /**
+     * 把「这一下要执行什么」丢到 [worker] 上 —— 广播回调只做取 extra 与投递。
+     *
+     *  已经在 worker 上时直接跑（`handleCombo` 里由子路径回调进来的情形），免得排到自己后面。
+     */
+    private fun runOnWorker(block: () -> Unit) {
+        if (Looper.myLooper() === worker.looper) {
+            block()
+            return
+        }
+        worker.post(block)
+    }
 
     /** 取 Application Context 的重试次数与间隔。 */
     private const val CTX_RETRY = 10
@@ -147,10 +178,20 @@ internal object GestureReceiver {
                             // 组合键走独立一条：动作在 `ComboKey` 上，没有单键的 `KeyConfig`
                             //  （见 `ModuleWire.EXTRA_COMBO`）。
                             XLog.w("收到 system_server 转来的组合键：combo=$combo phase=$phase repeat=$repeat")
-                            GestureExec.handleCombo(combo, phase, sentAt, repeat)
+                            //  **执行丢给 worker**：广播回调留在主线程只做「取 extra + 投递」，
+                            //  否则一次读盘 + 多次 binder 全压在宿主 UI 线程上（见 [worker] 的注释）。
+                            runOnWorker {
+                                XLog.guard("执行组合键动作") {
+                                    GestureExec.handleCombo(combo, phase, sentAt, repeat)
+                                }
+                            }
                         } else {
                             XLog.w("收到 system_server 转来的手势：key=$key phase=$phase repeat=$repeat")
-                            GestureExec.handle(key, phase, repeat, sentAt)
+                            runOnWorker {
+                                XLog.guard("执行侧键动作") {
+                                    GestureExec.handle(key, phase, repeat, sentAt)
+                                }
+                            }
                         }
                     }
                 }

@@ -234,6 +234,10 @@ internal object MiniWindowFacts {
     /** `START_DELIVERED_TO_TOP`：intent 被交给栈顶那个活动消化，屏幕不会有任何变化。 */
     const val START_DELIVERED_TO_TOP = 3
 
+    /** `START_SUCCESS` / `START_RESTART`：服务端真的把这一份起成（或重起成）了小窗。 */
+    const val START_SUCCESS = 0
+    const val START_RESTART = 2
+
     /** 上面那档时先回桌面，等桌面过渡铺开再起小窗（毫秒）。 */
     const val HOME_SETTLE_MS = 400L
 }

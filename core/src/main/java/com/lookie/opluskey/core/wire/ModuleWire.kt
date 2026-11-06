@@ -22,9 +22,9 @@ package com.lookie.opluskey.core.wire
  * ## 三条通道
  *
  *   1. system_server → 宿主：[ACTION_GESTURE]（判好的手势，宿主只执行）
- *   2. 宿主 ↔ 设置页：[ACTION_HOST_SERVICE_UP] / [ACTION_HOST_SERVICE_QUERY] /
+ *   2. 宿主 与 设置页：[ACTION_HOST_SERVICE_UP] / [ACTION_HOST_SERVICE_QUERY] /
  *      [ACTION_PAGE_RELAUNCH]（链路自检与把页面拉回来）
- *   3. 设置页 ↔ 注入侧：[ACTION_INJECT_QUERY] / [ACTION_INJECT_READY]（问 / 答那一对）
+ *   3. 设置页 与 注入侧：[ACTION_INJECT_QUERY] / [ACTION_INJECT_READY]（问 / 答那一对）
  *
  *  发送方都必须 `setPackage(...)` 指定包名（指定包名的广播不算隐式广播，
  *  也只有目标注册的接收器能收）—— 包名取自 `core/model/HostApp`。
@@ -54,22 +54,6 @@ object ModuleWire {
 
     /** 广播里携带的**手势**（`Gesture.id`：`single` / `double` / `long`）。 */
     const val EXTRA_PHASE = "phase"
-
-    /**
-     * [EXTRA_PHASE] 的一个特殊取值：**这一按松手了**（它不是手势，是「按压结束」）。
-     *
-     *  为什么必须单独占一格而不是复用 `long`：宿主侧的 `handle` 按 (键, phase) 去重、按 phase
-     *  映射手势，松手既不是手势、也不能和判长按那一条互相去重 —— 它是一条**独立的信号**，
-     *  而且晚于长按那条到达（长按到点先发，松手才后发）。
-     *
-     *  为什么由判定侧发、而不是让宿主自己收尾：松手发生在 `system_server` 的按键路径上
-     *  （`SideKeyInterceptor.feedDetector` 的 ACTION_UP），宿主根本看不到原始按键 ——
-     *  它只收「判好的东西」。所以「松手」也得像手势一样转过来。
-     *
-     *  只有**「按下开始、松手结束」**的动作在乎它（此刻只有 `oplus:voice_memory`）：
-     *  其余动作按一下就完事，没有结束形态，宿主收到这个 phase 直接忽略。
-     */
-    const val PHASE_RELEASE = "release"
 
     /** 广播里携带的「是否长按连续触发的重复派发」（执行侧据此决定要不要振动、要不要补发报活）。 */
     const val EXTRA_REPEAT = "repeat"
@@ -120,7 +104,7 @@ object ModuleWire {
      */
     const val ACTION_OPEN_SETTINGS = "com.lookie.opluskey.OPEN_SETTINGS"
 
-    // ── 链路自检：设置页 ↔ 注入侧（system_server） ──
+    // ── 链路自检：设置页 与 注入侧（system_server） ──
     //  这一对是**问 / 答**，只为「首页能不能说清是哪一段断了」而存在（见 `ui/LinkCheck.kt`）。
     //  注入侧不必为它额外挂 Hook：它已经挂在 AMS 的广播入口上，全系统每条广播都过那里；
     //  来源校验比的是 uid，而设置页与宿主**同 uid**（`docs/device-findings.md` 六之七）。
@@ -221,7 +205,7 @@ object ModuleWire {
     /** [ACTION_HOST_SERVICE_UP] 里带「宿主最后一次执行动作是什么时候」（同上，0 = 从未）。 */
     const val EXTRA_HOST_LAST_ACTION_AT = "host_last_action_at"
 
-    // ── 「自定义按键」页：监听按键（设置页 ↔ 注入侧） ──
+    // ── 「自定义按键」页：监听按键（设置页 与 注入侧） ──
     //
     //  一对「开 / 关」+ 一对「听见了」。设置页进页时开、出页时关；注入侧在监听期间把每一颗
     //  按下的键原样报回来（见 `inject/KeyWatch`，**只读旁路**，不改认领与放行）。

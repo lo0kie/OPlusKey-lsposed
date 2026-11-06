@@ -41,9 +41,24 @@ internal object ProcessController {
             onDone(CommandFailure.SHELL_FAILED)
             return
         }
+        if (pkg in FORBIDDEN) {
+            //  宿主自己 / 设置页进程 / system_server：停它们等于把模块自己（或整个系统）弄死，
+            //  而用户配这一条多半是手滑。日志里说清是「拒绝」而不是「失败」，免得去查 shell。
+            XLog.w("结束应用：$pkg 是本模块/系统自身，拒绝执行")
+            onDone(CommandFailure.UNKNOWN)
+            return
+        }
         XLog.w("结束应用：$pkg")
         exec(stopCommand(pkg), onDone)
     }
+
+    /** 允许执行目标之外的那几个包 —— 见 [perform] 里的说明。 */
+    private val FORBIDDEN =
+        setOf(
+            com.lookie.opluskey.core.model.HostApp.PACKAGE,
+            com.lookie.opluskey.core.model.HostApp.PAGE_PROCESS,
+            "android",
+        )
 
     /**
      * 结束一个应用的那一串命令 —— **先记下要杀哪几个 pid**，系统停 → 强杀这些 → 核实它们真没了。
@@ -67,15 +82,35 @@ internal object ProcessController {
      *  按 `ps` 第 2 列（进程名）挑就不会误伤：那是「名字等于包名」或「名字以 `包名:` 开头」，
      *  `:push` / `:service` 这些子进程一并收掉，别的应用一个不碰。
      *
-     * ## 中间那两次 `sleep`
+     * ## 中间那两次 `sleep` 与「杀之前再核一次」
      *
      *  `am force-stop` 是让 `system_server` 去杀，它是异步的；不等它落地就查，查到的是还活着的
      *  旧 pid 而白杀一遍。两次合计 0.8 秒，远在 [ShellRunner] 那 10 秒上限之内。
+     *
+     *  **这 0.8 秒里 pid 可能已经被系统回收再分配给别的进程** —— 拿着开工时那张清单直接
+     *  `kill -9` 就是 root 身份杀无关进程。所以强杀那一步逐个复核：只有「现在这一行还是
+     *  本包（或本包子进程）」才杀，认不出就不动它。
+     *
+     *  一个 pid 都没有时按**已经结束**处理（`am force-stop` 都不用发），并回一行提示 ——
+     *  与「发了命令但什么都没停」区分开。
      */
     private fun stopCommand(pkg: String): String =
-        "todo=\$(${pidsOf(pkg)}); am force-stop $pkg; sleep $STOP_SETTLE_S; " +
-            "for pid in \$todo; do kill -9 \$pid 2>/dev/null; done; sleep $STOP_VERIFY_S; " +
+        "todo=\$(${pidsOf(pkg)}); " +
+            "if [ -z \"\$todo\" ]; then echo '${ShellRunner.TIP_PREFIX} 本来就没有进程'; exit 0; fi; " +
+            "am force-stop $pkg; sleep $STOP_SETTLE_S; " +
+            "for pid in \$todo; do ${killIfStillOurs(pkg)}; done; sleep $STOP_VERIFY_S; " +
             "left=0; for pid in \$todo; do kill -0 \$pid 2>/dev/null && left=1; done; [ \$left = 0 ]"
+
+    /**
+     * 循环体：`pid` 这一行现在还是 [pkg] 的进程才 `kill -9`。
+     *
+     *  判据与 [pidsOf] 同一套（名字等于包名，或以 `包名:` 开头），只是把「取清单」换成
+     *  「核一个 pid」—— 后者慢一点无所谓，它只跑在要杀的那几个 pid 上。
+     */
+    private fun killIfStillOurs(pkg: String): String =
+        "cur=\$(ps -A -o PID,ARGS | awk -v i=\$pid '\$1==i{print \$2}'); " +
+            "case \"\$cur\" in $pkg|$pkg:*) kill -9 \$pid 2>/dev/null ;; " +
+            "*) echo \"skip \$pid (\$cur)\" ;; esac"
 
     /**
      * 「这个包现在有哪几个 pid」—— 一行一个，拿来当「要结束的清单」。

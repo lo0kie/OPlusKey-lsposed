@@ -31,6 +31,9 @@ import kotlinx.coroutines.withContext
 internal suspend fun SettingsPage.loadPageState() {
     val snapshot = withContext(Dispatchers.IO) { readPageLoadSnapshot(context) }
     applyPageLoad(snapshot)
+    // 预算一次「本地配置指纹」：组合期会读它（`configSideOk` / 「设置生效」那一行），
+    //  而它要读命令库。放在这趟 IO 里，页面组合时就是缓存命中，不碰磁盘。
+    withContext(Dispatchers.IO) { primeLocalTag(snapshot.config, snapshot.commands) }
     // 「装好后没动过任何设置」的状态下，注入侧只能等宿主进程的解锁广播 ——
     // 打开这一页就立刻同步一次，作为兜底（判定在注入侧，见 [publishConfig]）。
     val sent = withContext(Dispatchers.IO) { publishConfig(snapshot.config) }
