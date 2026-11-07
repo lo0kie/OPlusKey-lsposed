@@ -36,28 +36,28 @@ data class ComboKey(
     val single: Action = Action.None,
     /** 长按：一起按住超过 [longPressMs]。 */
     val long: Action = Action.None,
-    val longPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
+    override val longPressMs: Int = KeyConfig.DEFAULT_LONG_PRESS_MS,
     /**
      * 「长按连续触发」—— 两颗键一起按住不放时，按 [longRepeatIntervalMs] 反复执行 [long]。
      *
      *  与单键那一档同一套语义（`KeyConfig.longRepeat`）：松手就停，抬手事件丢了有上限兜底。
      *  默认关：按住不放重复执行是个响得很大的行为，不该一开始就有。
      */
-    val longRepeat: Boolean = false,
+    override val longRepeat: Boolean = false,
     /** 连续触发的间隔（毫秒）—— 只在 [longRepeat] 为真时有意义。 */
-    val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+    override val longRepeatIntervalMs: Int = KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
     /** 连续触发时每一次重复都振动（关 = 只在判出长按那一下振一次）。 */
-    val longRepeatVibrate: Boolean = false,
+    override val longRepeatVibrate: Boolean = false,
     /**
      * 「长按**松手才触发**」—— 与单键 `KeyConfig.longFireOnRelease` 同一档语义。
      *
      *  开着时长按那一下不立即执行，抬手时补发一次；与 [longRelease] 互斥（同一刻只能有一个）。
      */
-    val longFireOnRelease: Boolean = false,
+    override val longFireOnRelease: Boolean = false,
     /** 「松手执行额外动作」的开关 —— 与单键 `KeyConfig.longReleaseOn` 同一档语义。 */
-    val longReleaseOn: Boolean = false,
+    override val longReleaseOn: Boolean = false,
     /** 松手那一档执行的动作（`Action.None` = 没挑）。 */
-    val longRelease: Action = Action.None,
+    override val longRelease: Action = Action.None,
     /**
      * **条件执行**（与单键 `KeyConfig.rules` 同一套 [StateRule]、同一个判定口径）。
      *
@@ -71,7 +71,37 @@ data class ComboKey(
      *  手改配置写进来的 `double` 规则永远不会命中（[actionOf] 对双击恒 `None` 同一条道理）。
      */
     val rules: List<StateRule> = emptyList(),
-) {
+    /**
+     * 「这一档用自己那套公共项」—— 与单键 `KeyConfig.useOwnSettings` **同一个契约**
+     * （[OwnSettings]），执行侧不区分单键还是组合。
+     *
+     *  默认关 = 跟随公共设置；开着时下面两位说了算。
+     */
+    override val useOwnSettings: Boolean = false,
+    /** 这一档自己的「使用 ColorOS 接口」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val colorOsApi: Boolean = GlobalConfig.DEFAULT_COLOR_OS_API,
+    /** 这一档自己的「振动反馈」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val vibrate: Boolean = false,
+    /** 这一档自己的「振动强度」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
+    /** 这一档自己的「执行时提示」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
+    /** 这一档自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
+    override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
+    /**
+     * **这一组自己的**「无操作时执行按键命令」—— `null` = 跟随公共设置。
+     *
+     *  与 `GlobalConfig.comboPassthrough` 是同一件事，只是这一组可以另设一份：
+     *  「配了 A+B，但只给长按绑了动作」时，短按到底要不要让两颗键各干各的，
+     *  不同组往往不一样（临时组合希望透传、专用组合希望吞掉）。
+     *
+     *  **不受 `useOwnSettings` 管**：那个总开关管的是「五项公共项的覆盖」，而这一项本来就
+     *  只属于组合键 —— 它没有「要不要覆盖」这一问，只有「跟随公共还是自己定」。
+     *  取值只走 `Config.comboPassthroughFor`，执行侧不自己看全局。
+     */
+    val passthrough: Boolean? = null,
+) : OwnSettings,
+    LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
     val isUsable: Boolean
         get() = enabled && keys.size >= MIN_KEYS
@@ -89,7 +119,7 @@ data class ComboKey(
      *
      *  与单键 `KeyConfig.releaseBound` 同一份判据（那一边的解释更细）：三位缺一位都不算。
      */
-    val releaseBound: Boolean
+    override val releaseBound: Boolean
         get() = longReleaseOn && longRelease !is Action.None && !longFireOnRelease
 
     /**

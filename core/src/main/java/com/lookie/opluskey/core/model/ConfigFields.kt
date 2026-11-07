@@ -83,6 +83,22 @@ object ConfigFields {
     const val DOUBLE_CLICK_MS_EXTRA = "double_click_ms"
     const val VIBRATE_EXTRA = "vibrate"
     const val INSTANT_SINGLE_EXTRA = "instant_single"
+
+    /** 「三档同一事件」—— 三档绑同一个动作的那颗键按下即执行，不再等双击与长按（全局一份）。 */
+    const val SAME_EVENT_EXTRA = "same_event"
+
+    /**
+     * 「这颗键用自己那套公共项」的总开关（`KeyConfig.useOwnSettings`），以及它底下那两项。
+     *
+     *  三个名字都带 `key_` 前缀、与全局那两项（[COLOR_OS_API_EXTRA] / 提示那一项）**刻意分开**：
+     *  同名会让广播里逐键的 `<id>_color_os_api` 与全局那一格撞车（`ConfigBroadcast` 按 extra 名取值）。
+     */
+    const val OWN_SETTINGS_EXTRA = "use_own_settings"
+    const val KEY_COLOR_OS_API_EXTRA = "key_color_os_api"
+    const val KEY_VIBRATE_EXTRA = "key_vibrate"
+    const val KEY_VIBRATE_STRENGTH_EXTRA = "key_vibrate_strength"
+    const val KEY_TOAST_ON_RUN_EXTRA = "key_toast_on_run"
+    const val KEY_TOAST_TEMPLATE_EXTRA = "key_toast_template"
     const val LANGUAGE_EXTRA = "language"
     const val COLOR_OS_API_EXTRA = "color_os_api"
 
@@ -237,6 +253,43 @@ object ConfigFields {
     /** 「忽视无操作双击手势」—— **每颗键各一份**。 */
     val F_INSTANT_SINGLE = Field(INSTANT_SINGLE_EXTRA, Kind.Bool(KeyConfig.DEFAULT_INSTANT_SINGLE))
 
+    /**
+     * 「三档同一事件」—— **每颗键各一份**（`KeyConfig.sameEvent`）：开着时这颗键按下即执行、
+     * 不等双击窗口与长按阈值。
+     *
+     *  它必须在 [KEY_FIELDS] 里：判定在注入侧，而注入侧拿不到配置文件、只有广播
+     *  （见 `ConfigBroadcast`）。原先它被定义成全局字段却没进 [GLOBAL_FIELDS]，于是从未被写进
+     *  广播 —— 注入侧永远读到默认值，表现就是「开关打开了按下去却没有变化」。
+     */
+    val F_SAME_EVENT = Field(SAME_EVENT_EXTRA, Kind.Bool(false))
+
+    /**
+     * **这颗键要不要用自己那套公共项**（`KeyConfig.useOwnSettings`）—— 总开关，默认关。
+     *
+     *  关着：走公共设置（接口选择 / 执行时提示 …），这三行在按键设置页置灰；
+     *  开着：走这颗键自己那份（下面两个字段）。**按键级优先于公共设置**就是这一位在管事。
+     */
+    val F_OWN_SETTINGS = Field(OWN_SETTINGS_EXTRA, Kind.Bool(false))
+
+    /** 这颗键自己的「使用 ColorOS 接口」—— 只在 [F_OWN_SETTINGS] 开着时算数。 */
+    val F_KEY_COLOR_OS_API = Field(KEY_COLOR_OS_API_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COLOR_OS_API))
+
+    /** 这颗键自己的「振动反馈」—— 只在 [F_OWN_SETTINGS] 开着时算数。 */
+    val F_KEY_VIBRATE = Field(KEY_VIBRATE_EXTRA, Kind.Bool(false))
+
+    /** 这颗键自己的「振动强度」—— 只在 [F_OWN_SETTINGS] 开着时算数。 */
+    val F_KEY_VIBRATE_STRENGTH =
+        Field(
+            KEY_VIBRATE_STRENGTH_EXTRA,
+            Kind.Number(GlobalConfig.DEFAULT_VIBRATE_STRENGTH, GlobalConfig.VIBRATE_WEAK, GlobalConfig.VIBRATE_STRONG),
+        )
+
+    /** 这颗键自己的「执行时提示」—— 只在 [F_OWN_SETTINGS] 开着时算数。 */
+    val F_KEY_TOAST_ON_RUN = Field(KEY_TOAST_ON_RUN_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
+
+    /** 这颗键自己的提示文案模板 —— 只在 [F_OWN_SETTINGS] 开着时算数。 */
+    val F_KEY_TOAST_TEMPLATE = Field(KEY_TOAST_TEMPLATE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_TOAST_TEMPLATE))
+
     /** 长按绑的是不是串行命令 —— **只有广播那一列**，见 [LONG_SERIAL_EXTRA] 的说明。 */
     val F_LONG_SERIAL = Field(LONG_SERIAL_EXTRA, Kind.Bool(false))
 
@@ -268,6 +321,13 @@ object ConfigFields {
             F_REPEAT_VIBRATE,
             F_DOUBLE_CLICK_MS,
             F_INSTANT_SINGLE,
+            F_SAME_EVENT,
+            F_OWN_SETTINGS,
+            F_KEY_COLOR_OS_API,
+            F_KEY_VIBRATE,
+            F_KEY_VIBRATE_STRENGTH,
+            F_KEY_TOAST_ON_RUN,
+            F_KEY_TOAST_TEMPLATE,
             F_LONG_SERIAL,
             F_JUDGE_CLICKS,
         )

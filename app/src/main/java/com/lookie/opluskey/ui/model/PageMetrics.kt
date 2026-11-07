@@ -25,6 +25,14 @@ internal const val STEP_MS = 50
 internal val HEADER_ICON_SIZE = 40.dp
 
 /**
+ * 顶栏上**并排两颗**圆键之间的距离（只有「按键绑定」页那一处：设置键 + ⋮）。
+ *
+ *  取 8dp：库那排按钮自己不留间隙（`Arrangement.End` 一个挨一个），贴在一起时两颗圆底的
+ *  描边会连成一条线、读起来像一个控件。8dp 恰好让两圈描边分开又不把这一组推得太宽。
+ */
+internal val HEADER_ICON_GAP = 8.dp
+
+/**
  * 顶栏里**满格字形**的边长（垃圾桶 / 对勾这类画满一整格的）。
  *
  *  Tabler 那套图标的画布都是 24dp，但**墨量**差得远：「+」「⋮」「<」只占中间一小块，`trash`

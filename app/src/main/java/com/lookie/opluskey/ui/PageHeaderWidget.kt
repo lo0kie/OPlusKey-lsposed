@@ -314,6 +314,12 @@ private const val BELOW_SUBTITLE_MAX_COLUMNS = 32
 private const val HEADER_BORDER_ALPHA = 0.3f
 
 /**
+ * 顶栏两颗圆键之间的间距 —— 两个圆不贴在一起（首页那排、选择应用页那两颗、按键页编辑态那两颗
+ * 共用这一档；各页各写一个数迟早会差出来）。挂在**左边那颗**后面。
+ */
+internal val HEADER_ACTION_GAP = 8.dp
+
+/**
  * 顶栏上的一颗圆键 —— 返回 / ⋮ / 添加 / 新建 / 重置 / 设置全走这一份。
  *
  *  顶栏底下是**磨砂**（半透的页面底色 + 模糊），纯透明的圆键压在上面只剩一个字形，看不出

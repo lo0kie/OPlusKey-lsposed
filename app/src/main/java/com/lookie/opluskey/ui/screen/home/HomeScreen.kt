@@ -76,7 +76,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
         SectionTitle(I18n.get(Strings.HOME_KEY_OPS_SECTION, "按键操作"))
         HomeKeyOpsCard(pageEnabled)
 
-        // 「按键行为」那一整块搬进了「按键设置」页（入口在上一张「按键操作」卡的第二行）——
+        // 「按键行为」那一整块搬进了「公共设置」页（入口在上一张「按键操作」卡的第二行）——
         //  它是**全局**开关，与「这颗键绑了什么」无关，摆在这里会把常用的入口挤下去。
 
         // 版本 / 仓库地址那两行搬去**独立的「更多选项」页**（`AboutScreen`，从顶栏 ⋮ 菜单进）——

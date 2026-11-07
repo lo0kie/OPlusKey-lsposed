@@ -43,6 +43,7 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.actionRowView
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.selectedRowRing
 import com.lookie.opluskey.ui.sheetCardColors
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -653,7 +654,13 @@ private fun stepSheetRow(
         //  未选中时给 `null`，让行组件按启用态走默认那档灰
         iconTint = if (view.selected) colors.primary else null,
         titleTint = if (view.selected) colors.primary else null,
-        modifier = Modifier.preciseClickAnchor(anchor),
+        modifier =
+            Modifier
+                .preciseClickAnchor(anchor)
+                //  选中那一行加一圈**内边框** —— 与「选择应用 / 选择界面」两页同一份
+                //  （见 `selectedRowRing`）。抽屉里原来只有「行首 + 标题上主题色」这一档，
+                //  而这一列的每一行都带字形，扫下来很难定位当前是哪一档。
+                .selectedRowRing(view.selected),
         //  行尾那一颗**照画**，不分选中与否：它说的是「点开还有一层」，而选中之后照样点得进去换一档
         //  —— 藏起来那一行看着像死格子（用户反馈：抽屉里选中有二级菜单的项之后，行尾的选择器不见了）。
         //  颜色仍用最弱那一档：行首的对勾才表示「就是这一档」，行尾只是路标（见 `RowEndIcon`）。

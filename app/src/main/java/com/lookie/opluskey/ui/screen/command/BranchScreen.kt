@@ -117,8 +117,9 @@ internal fun SettingsPage.BranchScreen(
             PageScrollColumn(scrollBehavior = scrollBehavior, state = scrolls[page]) {
                 Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + bandBlock))
 
-                // 正文直接从手势带下面开始：那一档手势由带子写，正文再写一遍页名是重复的；
+                //  正文直接从手势带下面开始：那一档手势由带子写，正文再写一遍页名是重复的；
                 //  空态/表格本来就是这一页唯一的正文，直接顶上去反而更像一页表。
+                //  行的可点性（含「这颗键自己停用」那一道闸）由 `BranchRuleColumn` 就地判。
                 BranchCards(draft = draft, tick = tick, emptyHeight = emptyHeight)
             }
         }

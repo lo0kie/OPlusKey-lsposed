@@ -83,6 +83,10 @@ internal object KeyHooks {
 
         XLog.guard("挂广播入口") { installBroadcastHook(module, loader) }
 
+        //  顺手把宿主进程拉起来：模块的执行侧全在宿主进程里，它要等 ROM 自己去绑（开机后 ~15s），
+        //  那段时间按侧键什么都不发生。system_server 里发 startService 不受导出 / 权限限制。
+        XLog.guard("排程开机拉起宿主") { HostWarmup.schedule() }
+
         val points = Framework.findSideKeyPoints(loader)
         if (points.isEmpty()) {
             XLog.w(

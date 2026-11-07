@@ -19,6 +19,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberFabVisibleOnScroll
+import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -129,7 +130,8 @@ internal fun SettingsPage.BindingScreen(
             userScrollEnabled = enabled,
         ) { page ->
             BindingList(
-                g = gestures[page],
+                //  「这一档往哪儿写」—— 组合页调的是同一支，只是换成 `BindingTarget.Combo`
+                target = BindingTarget.Key(KeyWatchState.editing(configState.config.value), gestures[page]),
                 //  三个手势页**同时在场**（pager 会预组合相邻页）—— 只有当前那一页该抢焦点、
                 // 该收浮层、该吃方向键。不给 `active` 的话进场三页各自 requestFocus，谁最后请求到
                 // 谁说了算（真机上表现为「翻页后方向键在动上一页的圈」）。

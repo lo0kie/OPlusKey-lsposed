@@ -15,6 +15,7 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.model.gestureOrNull
 import com.lookie.opluskey.host.action.ActionRunner
@@ -221,9 +222,10 @@ internal object GestureExec {
         }
         val action = combo.resolve(gesture, ::matchesCondition)
         //  这一格是「无操作」且开关打开 ⇒ **不吞键**：两颗键各按自己这一档照常执行
-        //  （见 `GlobalConfig.comboPassthrough`）。这就是「配了组合、但只给长按绑了动作」时
-        //   短按那颗依旧能用的那条路 —— 为假时什么都不做，与这一位出现之前一致。
-        if (action is Action.None && config.global.comboPassthrough) {
+        //  （见 `Config.comboPassthroughFor`：这一组写过就用自己的，否则看公共设置）。
+        //   这就是「配了组合、但只给长按绑了动作」时短按那颗依旧能用的那条路 ——
+        //   为假时什么都不做，与这一位出现之前一致。
+        if (action is Action.None && config.comboPassthroughFor(combo)) {
             runComboMembers(combo, gesture, config)
             return
         }
@@ -326,9 +328,12 @@ internal object GestureExec {
         // 振动 / 提示 / 报活与单键那套一致：
         //  · 重复派发只在「连续触发时振动」打开时振（否则一次按住会震几十下）；
         //  · 提示与报活只报第一次 —— 那是同一次按压，不是几十次操作。
-        if (comboShouldVibrate(action, config) && (!repeat || combo.longRepeatVibrate)) haptic(config)
-        if (!repeat) noticeIfNeeded(config, action, keyLabel, gestureLabel)
-        r.run(action, subject)
+        //  两套取值都从 `Config` 那两个出口来（传 combo，传单键的 `KeyConfig` 也一样）：
+        //  **组合键在这一层没有特殊待遇**，它只是另一种「可以有自己的设置」的东西。
+        val colorOsApi = config.colorOsApiFor(combo)
+        if (comboShouldVibrate(action, colorOsApi) && (!repeat || combo.longRepeatVibrate)) haptic(config, combo)
+        if (!repeat) noticeIfNeeded(config, action, keyLabel, gestureLabel, combo)
+        r.run(action, subject, colorOsApi)
         if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
         if (!repeat) onExecutedHook?.invoke(config)
     }
@@ -372,9 +377,9 @@ internal object GestureExec {
             val gestureLabel = "${gestureName(gesture)}（组合透传）"
             val subject = "$keyLabel - $gestureLabel"
             XLog.w("$subject → ${XLog.redactToken(action.token)}（宿主进程执行）")
-            if (config.global.vibrate && action !is Action.None) haptic(config)
-            noticeIfNeeded(config, action, keyLabel, gestureLabel)
-            r.run(action, subject)
+            if (config.vibrateFor(keyConfig) && action !is Action.None) haptic(config, keyConfig)
+            noticeIfNeeded(config, action, keyLabel, gestureLabel, keyConfig)
+            r.run(action, subject, config.colorOsApiFor(keyConfig))
             if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
         }
         onExecutedHook?.invoke(config)
@@ -468,9 +473,6 @@ internal object GestureExec {
         repeat: Boolean,
         config: Config,
     ) {
-        //  三档才走条件分支（`StateRule` 只认这三档）；多击直接取它自己那一档的绑定 ——
-        //  少配一档就少一档，不拿三档的动作顶替。
-        val gesture = trigger.gestureOrNull()
         // 条件执行：先在这颗键这一档的**顺序表**里找，命中第一条就执行它；一条都不中就走
         //  [KeyConfig.actionOf] 那一档本来的绑定 —— 所以分叉不占用绑定，两件事互不影响。
         //  判据现判（按下的那一刻）：缓存会让「切到微信再按」仍按上一次的应用走。
@@ -481,22 +483,10 @@ internal object GestureExec {
 
         fun matchesCondition(condition: BranchCondition): Boolean =
             judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
-        //  「松手执行额外动作」与系统场景的先后：**场景命中 ⇒ 这一下让位**（用户口径）。
-        //  长按那一下已经按场景分过流了，松手再补一个动作等于一次按压两个结果；
-        //  场景一条都不中时松手照常执行 —— 它只做「没配场景 / 场景没命中」时的补充。
-        //  判据与长按那一档完全同一份，且共用同一次按压里的 `judged` 缓存（不多判一轮）。
-        if (trigger == GestureTrigger.Release &&
-            keyConfig.rules.any { rule -> rule.appliesTo(Gesture.LONG, ::matchesCondition) }
-        ) {
-            XLog.w("${id.label} - 松手：长按那一档命中了系统场景，这一下不执行 ${keyConfig.longRelease.token}")
-            return
-        }
-        val action =
-            if (gesture == null) {
-                keyConfig.actionOf(trigger)
-            } else {
-                keyConfig.actionFor(gesture, ::matchesCondition)
-            }
+        //  「松手执行额外动作」与系统场景的先后、以及「三档同一事件」的兜底 ——
+        //  这一整段只回答一件事：**这一次到底执行哪个动作**。抽出去与「派发」分开，
+        //  `runAction` 那条主线上就只剩顺序，不再一串嵌套判断。
+        val fired = resolveAction(id, trigger, keyConfig, config, ::matchesCondition) ?: return
         val r =
             runner ?: run {
                 XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${trigger.id}")
@@ -504,26 +494,87 @@ internal object GestureExec {
             }
         // 这条是按键的可见证据（release 里也保留），所以只在第一次执行时打 W；
         val log =
-            "${id.label} - ${trigger.label}${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(action.token)}" +
+            "${id.label} - ${trigger.label}${if (repeat) "（连续触发）" else ""} → ${XLog.redactToken(fired.token)}" +
                 "（宿主进程执行）"
         if (repeat) XLog.d(log) else XLog.w(log)
+        //  「这颗键用自己那套公共项」—— 接口与提示都从这两个出口取一次，
+        //  下面三处（振动、提示、执行）共用，别各判一遍（判据在 `Config` 那一处）
+        val colorOsApi = config.colorOsApiFor(keyConfig)
         // 链路自检那一笔必须在 `run` **之后**，且「无操作」不算执行过：
         //  `run` 内部吞掉执行异常，绑了个解析不出来的 token 也走同一条路 —— 提前置位会让
         //  「关于模块」的「使用验证」在什么都没发生时显示已生效（假绿灯）。
-        if (shouldVibrate(repeat, keyConfig, action, config)) haptic(config)
-        if (!repeat) {
-            // 语言档在拼主语**之前**对一次：`triggerParts` 里的键名 / 手势名走的都是字典。
-            syncLanguage(config)
-            val (keyLabel, gestureLabel) = triggerParts(id, trigger)
-            noticeIfNeeded(config, action, keyLabel, gestureLabel)
-        }
-        r.run(action, "${id.label} - ${trigger.label}")
-        if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
+        if (shouldVibrate(repeat, keyConfig, fired, colorOsApi)) haptic(config, keyConfig)
+        // 提示只在第一次派发时说：连续触发的重复是同一次按压（按住不放），弹几十条没有意义
+        if (!repeat) announceOnce(config, keyConfig, id, trigger, fired)
+        r.run(fired, "${id.label} - ${trigger.label}", colorOsApi)
+        if (fired !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
         //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
         //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。
         //  所以每执行一次动作补发一条（连续触发的重复不发：那是同一次按压，一条就够）。
         //  这一笔**不按动作类型过滤**：它同时是「模块活着」的凭证，绑了「无操作」也该回。
         if (!repeat) onExecutedHook?.invoke(config)
+    }
+
+    /**
+     * 这一次**执行哪个动作** —— `null` = 这一下不执行（场景让位）。
+     *
+     *  三件事按顺序：
+     *  1. **松手与系统场景的先后**：长按那一下命中场景 ⇒ 这一下让位（用户口径：一次按压一个结果）；
+     *  2. 取这一档的绑定（带条件表，第一条成立的就赢）；
+     *  3. 「三档同一事件」开着时，判定侧只派发 `Click(1)`，而用户可能只绑了长按 ——
+     *     所以这一档取**三档里第一个非空的**，否则表现成「开关开了、按下去什么都不发生」。
+     *
+     *  从 [runAction] 抽出来：那条主线只该讲派发顺序，判断留在这一处。
+     */
+    private fun resolveAction(
+        id: KeyId,
+        trigger: GestureTrigger,
+        keyConfig: KeyConfig,
+        config: Config,
+        matchesCondition: (BranchCondition) -> Boolean,
+    ): Action? {
+        //  长按已经按场景分过流了，松手再补一个动作等于一次按压两个结果；
+        //  场景一条都不中时松手照常执行 —— 它只做「没配场景 / 场景没命中」时的补充。
+        //  判据与长按那一档完全同一份，且共用同一次按压里的 `judged` 缓存（不多判一轮）。
+        if (trigger == GestureTrigger.Release &&
+            keyConfig.rules.any { rule -> rule.appliesTo(Gesture.LONG, matchesCondition) }
+        ) {
+            XLog.w("${id.label} - 松手：长按那一档命中了系统场景，这一下不执行 ${keyConfig.longRelease.token}")
+            return null
+        }
+        val gesture = trigger.gestureOrNull()
+        val action =
+            if (gesture == null) {
+                keyConfig.actionOf(trigger)
+            } else {
+                keyConfig.actionFor(gesture, matchesCondition)
+            }
+        //  判据只有一处：`KeyConfig.sameEventAction`；要不要走这条看 `Config.sameEventNow`
+        return if (trigger == GestureTrigger.Click(1) && config.sameEventNow(id)) {
+            keyConfig.sameEventAction.takeUnless { it is Action.None } ?: action
+        } else {
+            action
+        }
+    }
+
+    /**
+     * 一次按压的**「说一句」**：语言档、主语两段、执行时提示 —— 只在第一次派发时做。
+     *
+     *  连续触发的重复不弹提示：那是同一次按压（按住不放），弹几十条没有意义。
+     *  抽出来只是给 [runAction] 降压：它在按键路径上，那一段「什么时候说、说什么」
+     *  与「派发什么」本来就是两件事。
+     */
+    private fun announceOnce(
+        config: Config,
+        keyConfig: KeyConfig,
+        id: KeyId,
+        trigger: GestureTrigger,
+        fired: Action,
+    ) {
+        // 语言档在拼主语**之前**对一次：`triggerParts` 里的键名 / 手势名走的都是字典。
+        syncLanguage(config)
+        val (keyLabel, gestureLabel) = triggerParts(id, trigger)
+        noticeIfNeeded(config, fired, keyLabel, gestureLabel, keyConfig)
     }
 
     /**
@@ -540,10 +591,10 @@ internal object GestureExec {
         repeat: Boolean,
         keyConfig: KeyConfig,
         action: Action,
-        config: Config,
+        colorOsApi: Boolean,
     ): Boolean {
         if (action is Action.None) return false
-        if (!repeat || keyConfig.longRepeatVibrate) return !colorOsRinger(action, config)
+        if (!repeat || keyConfig.longRepeatVibrate) return !colorOsRinger(action, colorOsApi)
         return false
     }
 
@@ -556,8 +607,8 @@ internal object GestureExec {
      */
     private fun comboShouldVibrate(
         action: Action,
-        config: Config,
-    ): Boolean = action !is Action.None && !colorOsRinger(action, config)
+        colorOsApi: Boolean,
+    ): Boolean = action !is Action.None && !colorOsRinger(action, colorOsApi)
 
     /**
      * 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），文案由
@@ -579,12 +630,14 @@ internal object GestureExec {
         action: Action,
         keyLabel: String,
         gestureLabel: String,
+        /** 这一下是谁触发的（单键那一档 / 那一组组合）—— 提示的两项都按它取，不另传布尔。 */
+        owner: OwnSettings,
     ) {
-        if (!config.global.toastOnRun) return
+        if (!config.toastOnRunFor(owner)) return
         // 名字表随配置来（`Config.appNames`）：快捷方式那档的名字只存在那里，token 里没有
         val what = actionNoticeText(appContext, action, config.appNames)
         if (what.isEmpty()) return
-        val notice = ToastNotice.render(config.global.toastTemplate, keyLabel, gestureLabel, what)
+        val notice = ToastNotice.render(config.toastTemplateFor(owner), keyLabel, gestureLabel, what)
         XLog.w("执行时提示：$notice")
         FailureNotice.toast(appContext, notice)
     }
@@ -654,14 +707,17 @@ internal object GestureExec {
      *  进程在振。
      */
     @SuppressLint("MissingPermission")
-    private fun haptic(config: Config) {
-        if (!config.global.vibrate) return
+    private fun haptic(
+        config: Config,
+        owner: OwnSettings,
+    ) {
+        if (!config.vibrateFor(owner)) return
         try {
             val ctx = appContext ?: return
             val v = ctx.getSystemService(android.os.Vibrator::class.java) ?: return
             // 越界的强度在 `GlobalConfig.ofFields` 那一层已经钳过（手改文件也能进来），
             //  这里再兜一次：索引越界会抛 IndexOutOfBounds，而这段跑在按键路径上。
-            val amplitude = HAPTIC_AMPLITUDES[config.global.vibrateStrength.coerceIn(HAPTIC_AMPLITUDES.indices)]
+            val amplitude = HAPTIC_AMPLITUDES[config.vibrateStrengthFor(owner).coerceIn(HAPTIC_AMPLITUDES.indices)]
             v.vibrate(android.os.VibrationEffect.createOneShot(HAPTIC_MS, amplitude))
         } catch (e: Throwable) {
             XLog.w("触觉反馈失败（忽略）：${e.message}")
@@ -677,9 +733,9 @@ internal object GestureExec {
  */
 private fun colorOsRinger(
     action: Action,
-    config: Config,
+    colorOsApi: Boolean,
 ): Boolean {
-    if (!config.global.colorOsApi) return false
+    if (!colorOsApi) return false
     if (action is Action.Ringer) return true
     return action is Action.KeyEvent && action.keyCode == KeyId.KEYCODE_VOLUME_MUTE
 }

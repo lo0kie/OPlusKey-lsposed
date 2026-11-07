@@ -227,12 +227,19 @@ $action   动作名（自定义命令是命令名）
 - 动作类型 `Action.Native` / `Action.Passthrough`，以及网格里那一格（`ActionCatalog`）；
 - 判定侧的放行回调（`GestureDetector.onPassthrough` → `GestureForwarder` 的 `PHASE_PASSTHROUGH` 广播）；
 - 宿主侧的「重注入一次按键」（`KeyInjector.injectForForward`）与自持循环兜底闸（`GestureReceiver`）；
-- 宿主侧「放行时把场景派发放过去」那一整套配额 / 扣留补投机器（`SideKeyGestureHooks`）——现在那条场景派发**一律吞掉**，唯一例外是主开关关着时（模块完全让位）。
+- 宿主侧「放行时把场景派发放过去」那一整套**配额 + 扣留补投**机器（`SideKeyGestureHooks`）——
+  它服务的是「动作档判为放行」，那一档已经没了。现在那条派发按另一条更简单的判据走
+  （`host/PressTrace`：这一下**有没有被模块认领**；见本节末与 `docs/device-findings.md` 二十八之末）。
 
 **副作用（也是修好的两件事）：**
 
-- 那条 `what=1` 场景派发不再有条件放行 ⇒ 按侧键不会再莫名其妙把设置页拉起来；
+- 那条 `what=1` 场景派发不再按「动作档」有条件放行 ⇒ 模块接管的按压不会再莫名其妙把设置页拉起来；
 - 单击那档的默认值从 `native` 变成 `none`（无操作）。想「回到原生」用主开关，不要用动作档。
+
+**停用的键（`KeyConfig.enabled = false`）仍然要原生动作**：注入侧对它原样放行，ROM 那条 `what=1`
+就是它原生动作的载体，所以宿主侧不能一律吞 —— 判据是「这一下有没有被模块认领」
+（认领经广播到达，`host/PressTrace` 记时间戳；窗口内认领过就吞，否则放行）。这条与「动作档放行」
+不是一回事：前者是「这颗键不归模块」，后者要的是「同一颗键的某一次按压归系统」。
 
 ## 四、配置从哪来、怎么到注入侧
 

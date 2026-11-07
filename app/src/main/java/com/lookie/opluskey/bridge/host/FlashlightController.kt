@@ -78,9 +78,13 @@ internal class FlashlightController(
     /**
      * 明确开到 / 关到 —— 三态里「打开 / 关闭」那两档。
      *
-     *  **不走 ColorOS 那条服务**：它只有「切一下」（`what=2`），表达不了目标状态。
-     *  `CameraManager.setTorchMode(id, on)` 是系统真开关（传什么就是什么），明确档直接用它；
-     *  切不动时 `torchOn` 不跟着改 —— 状态以回调 / 读回来的为准。
+     *  **也走 ColorOS 那条服务**：它只有「切一下」（`what=2`），表达不了目标状态，所以先用
+     *  `Settings.Secure.flashlight_enabled` 读真值 —— 已经就是目标就什么都不做，不是目标才切一下。
+     *  `CameraManager.setTorchMode(id, on)` 只在两处兜底：读不到真值（不敢拿「切一下」去赌方向）、
+     *  以及 ColorOS 那条没受理 / 3 秒没连上。
+     *
+     *  为什么不能只走 CameraManager：那是公开 API，相机被占用、息屏某些状态下它点不亮，
+     *  而系统自己那颗侧键用的是 ColorOS 服务那条路 —— 用户按「打开」要的是「和系统一样能开」。
      */
     fun setEnabled(on: Boolean) {
         val ctx =
@@ -88,6 +92,35 @@ internal class FlashlightController(
                 XLog.w("没有 Context，手电筒跳过")
                 return
             }
+        if (isColorOsApi()) {
+            // 读得到真值才敢判「已是目标状态」：读不到时 `torchOn` 的初值 false 会把
+            // 「关一盏亮着的灯」判成「已经是关的」⇒ 按下去什么都不做。
+            if (syncStateFromSettings(ctx)) {
+                if (torchOn == on) {
+                    XLog.w("手电筒：已经是${if (on) "开" else "关"}，不必切换（ColorOS 接口）")
+                    return
+                }
+                val accepted =
+                    tryToggleViaColorOsService(ctx) {
+                        // 受理 ≠ 连上：3 秒没连上时请求根本没送出去，必须有人接手
+                        setViaCamera(ctx, on)
+                    }
+                if (accepted) {
+                    XLog.w("手电筒：已交 ColorOS 服务（连不上时由 onFail 退 CameraManager）")
+                    return
+                }
+            } else {
+                XLog.w("手电筒：读不到 ColorOS 真值，明确档退回 CameraManager（那条只能切一下）")
+            }
+        }
+        setViaCamera(ctx, on)
+    }
+
+    /** `CameraManager.setTorchMode` 那一条 —— 明确档的兜底，也是 AOSP 接口档的唯一实现。 */
+    private fun setViaCamera(
+        ctx: Context,
+        on: Boolean,
+    ) {
         val cm = cameraManager(ctx) ?: return
         registerTorchCallbackOnce(cm)
         val id =

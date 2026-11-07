@@ -12,6 +12,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.reflect.Reflect
+import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 
 /**
@@ -32,17 +33,42 @@ internal object SideKeyGestureHooks {
      */
     private val SCENE_DISPATCH_WHAT = Framework.HOST_SCENE_DISPATCH_WHAT
 
+    /**
+     * 「这一下是模块认领的」那个时间窗（毫秒）。
+     *
+     *  判定与这条派发**同一轮按压里到**，但先后是竞态的（宿主主线程忙时派发会早到，见
+     *  `docs/device-findings.md` 十六），所以按「刚刚有没有认领过」判，不做精确配对。
+     *  300ms：远小于人手两次按压的间隔（误吞概率低），又远大于判定与派发之间的几十毫秒。
+     */
+    private const val CLAIM_WINDOW_MS = 300L
+
+    /**
+     * 没认领时**扣住**多久再看一眼（毫秒）。
+     *
+     *  150ms：够判定那条广播追上派发（实测同机几毫秒到几十毫秒），又不至于让「停用的键」的原生
+     *  动作明显变慢 —— 那一档的代价就是这半拍。
+     */
+    private const val HOLD_MS = 150L
+
+    /**
+     * 已经补投出去、还没被自己再看到的那几条派发。
+     *
+     *  补投回来的那一条会再过一次本 Hook，没有这个计数就会「再扣一次、再补投一次」，永远转圈。
+     */
+    @Volatile
+    private var pendingReplay = 0
+
     @Volatile
     private var installed = false
 
     /** 主线程队列 —— 把诊断探测挪出安装回调用（见 [install]）。 */
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // 「放行」（`native` / `passthrough`）那一档**整条已删**，
-    //  随之删掉的还有这一整套「放行配额 + 场景派发扣留补投」的机器：
-    //  它存在的唯一理由是「放行时把原生动作那条场景消息放过去」，现在没有任何一档会放行。
-    //  ⇒ 场景派发**一律吞掉**（主开关关着时除外，那一档模块完全让位）。
-    //  取舍与依据见 `docs/implementation.md` 的「交还系统为什么不提供」。
+    // 场景派发（`what=1`）的处置：**模块认领的那一下吞掉，没认领的放行**。
+    //  「放行（`native` / `passthrough`）动作档」那一套早就删了（见 `docs/implementation.md`
+    //  第三节），这里留下的是另一件事：**停用的键**（`KeyConfig.enabled = false`）在注入侧是
+    //  原样放行的，它的原生动作就靠这条派发来跑 —— 一条都不放等于把停用的键弄失灵。
+    //  判据在 [PressTrace]：那条消息不带键的身份，只能问「刚刚有没有认领过一下」。
 
     fun install(
         module: XposedModule,
@@ -112,23 +138,9 @@ internal object SideKeyGestureHooks {
                 //  参数若在调用点先求值，release 下（`if (VERBOSE_LOG)` 把函数体消掉）也照跑一遍。
                 XLog.d { "侧键手势消息：$handlerSimple#handleMessage | ${describeMessage(msg)}" }
 
-                // 必须吞掉系统自己的场景派发：框架除走策略类拦截外，还会给宿主这个 Handler 发一条，
-                // 宿主那套（打开设置页）会照跑 —— 与框架真正的场景路由（按场景派发给场景宿主）是两回事。
-                //  注意：这里**没有任何例外** —— 「本次按键判为放行就放它过去」那条不能有，它正是「按下侧键把被替换的设置页拉起来」的来源。
-                //  唯一还放行的只有下面这一档：主开关关着时模块完全让位，行为与原生一致。
-                if (what == SCENE_DISPATCH_WHAT) {
-                    // 两级相与的判据只有一处（`Config.isLive`）：总闸 + 这一颗键。
-                    //  只看总闸的话「停用了侧键」在这里仍然吞场景派发，系统那套就再也回不来了。
-                    val cfg = ConfigStore.read()
-                    if (!cfg.isLive(KeyId.PLUS)) {
-                        // 判据级：这两条是「侧键到底走没走模块」的判据 —— 必须用 w，
-                        //  用 d 会在 release 里被编译期消除 ⇒ 线上完全无痕，只能靠猜。
-                        XLog.w("模块总闸或侧键已关，场景派发放行（原生行为）")
-                        return@hookGuarded chain.proceed()
-                    }
-                    XLog.w("场景派发已吞掉（模块接管中）—— 侧键只走模块配置的动作")
-                    return@hookGuarded null
-                }
+                //  场景派发（`what=1`）的处置单独一支：它要吞、要放、还要「先扣住再看一眼」，
+                //  全都摊在这里会把这条 lambda 撑过 detekt 的长度线。判据与理由见 [onSceneDispatch]。
+                if (what == SCENE_DISPATCH_WHAT) return@hookGuarded onSceneDispatch(chain, msg)
 
                 chain.proceed()
             } != null
@@ -137,6 +149,70 @@ internal object SideKeyGestureHooks {
         } else {
             0
         }
+    }
+
+    /**
+     * 场景派发（`what=1`）的处置 —— 吞掉 / 放行 / 扣住再看一眼。
+     *
+     *  这条消息**不带键的身份**（`data` 空、`arg1`/`arg2` 恒 0），所以判据只能是
+     *  「这一下是不是模块认领的」（[PressTrace]）。按某一颗键自己的开关判就会拿 A 键的状态去决定
+     *  B 键那次派发的去向；一律吞则会把停用的键的原生动作一起弄没。
+     *
+     *  ## 为什么还要扣一段时间
+     *
+     *  认领（注入侧判出手势后发的广播）与这条派发**同一轮按压里到**，先后是竞态的 ——
+     *  宿主主线程忙时派发会早到几十毫秒（`docs/device-findings.md` 十六实测过另一个方向）。
+     *  只按「已经到没到」判会漏：真机上表现为「偶尔还是弹一下页面」。
+     *  所以没认领时**先扣住 [HOLD_MS]**，到点再判一次：期间补到了认领就丢掉，仍没有才补投原生动作。
+     *
+     * @return `null` = 吞掉；其余 = 放行（`chain.proceed()` 的返回值）
+     */
+    private fun onSceneDispatch(
+        chain: XposedInterface.Chain,
+        msg: Message?,
+    ): Any? {
+        //  补投回来的那一条：上一次已经判过「没认领」⇒ 直接放行。
+        //  少了这个出口就会再扣一次、再补投一次，永远转圈。
+        if (pendingReplay > 0) {
+            pendingReplay--
+            XLog.w("场景派发放行（补投回放，原生行为）")
+            return chain.proceed()
+        }
+        val since = PressTrace.sinceLastClaim()
+        if (since <= CLAIM_WINDOW_MS) {
+            //  判据级：这几条是「这次派发走没走模块」的判据 —— 必须用 w，
+            //  用 d 会在 release 里被编译期消除 ⇒ 线上完全无痕，只能靠猜。
+            XLog.w("场景派发已吞掉（这一下是模块认领的，判定在 ${since}ms 前到）")
+            return null
+        }
+        val handler = chain.thisObject as? Handler
+        if (handler == null || msg == null) {
+            XLog.w("场景派发已放行（拿不到 Handler / Message，不扣留 → 原生行为）")
+            return chain.proceed()
+        }
+        //  补投必须**复制**一条：原实例在这次 `handleMessage` 返回后就被 Looper 回收进复用池了
+        val copy = Message.obtain(msg)
+        mainHandler.postDelayed(
+            {
+                val after = PressTrace.sinceLastClaim()
+                //  `after < since` ⇒ 扣留期间补到了新的认领（时间戳变新了）：这一下归模块，丢掉
+                if (after < since) {
+                    XLog.w("场景派发扣留后补到认领（${after}ms 前）→ 丢掉，这一下归模块")
+                } else {
+                    XLog.w("场景派发扣留 ${HOLD_MS}ms 仍没认领 → 补投原生动作")
+                    pendingReplay++
+                    try {
+                        handler.sendMessage(copy)
+                    } catch (e: Throwable) {
+                        //  补投失败只是这一次原生动作丢了（键看着没反应），不能让异常上主线程
+                        pendingReplay--
+                        XLog.w("补投场景派发失败（这一次原生动作丢失）：${e.javaClass.simpleName}", e)
+                    }
+                }
+            },
+            HOLD_MS,
+        )
+        return null
     }
 
     /** 把 `Message` 摊开打印：`what` / `arg1` / `arg2` / `obj` / `data` 的每一个键值。 */
@@ -223,7 +299,7 @@ internal object SideKeyGestureHooks {
             //  默认值，把正是它要自证的那件事盖掉了（排查时会把「读不懂」误读成「读到了默认配置」）。
             when (val l = ConfigStore.load()) {
                 is ConfigStore.Load.Ok -> {
-                    val key = l.config.key(com.lookie.opluskey.core.model.KeyId.PLUS)
+                    val key = l.config.key(KeyId.PLUS)
                     //  三个 token 都过 [XLog.redactToken]（`shell:` / `intent:` 的正文可能带凭据）
                     XLog.w(
                         "宿主进程读到配置：接管=${key.enabled}" +

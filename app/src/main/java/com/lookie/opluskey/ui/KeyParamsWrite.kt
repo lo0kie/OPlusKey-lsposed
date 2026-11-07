@@ -10,8 +10,8 @@ import com.lookie.opluskey.ui.state.KeyWatchState
 //
 // 长按阈值 / 触发间隔那几档是滑杆，各自在 `LongRepeatCard` 里直接调 [write]，不在这里再包一层。
 //
-// **回执的位一律 [HINT_SLOT_BINDING]**：这一族只在「按键绑定」页被调用（`InstantSingleCard` /
-//  `LongRepeatCard`），那页的所有回执共用一条消息（理由见 [HINT_SLOT_BINDING] 的注释）。
+// **回执的位一律 [HINT_SLOT_BINDING]**：这一族只在「按键设置」页被调用（那一页的三张卡），
+// 回执共用一条消息（理由见 [HINT_SLOT_BINDING] 的注释）。
 
 /**
  * 改**当前在编辑的那颗键**的一个开关：取配置 → 取键 → 应用 [transform] → 走 [writeAndNotice]。
@@ -48,6 +48,20 @@ internal fun SettingsPage.setInstantSingle(on: Boolean) =
         I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"),
         on,
     ) { it.copy(instantSingle = on) }
+
+/**
+ * 切「三档同一事件」—— 行点击与开关共用这一个入口。
+ *
+ *  写的是**当前在编辑的那颗键**（`KeyConfig.sameEvent`）：这是一个**按键级**设置，
+ *  与上面两条同一个归属。开着时这颗键按下即执行，判定侧见
+ *  `inject/input/GestureDetector.onKeyDown`。
+ */
+internal fun SettingsPage.setSameEvent(on: Boolean) =
+    toggleKeyParam(
+        "same_event=${if (on) 1 else 0}",
+        I18n.get(Strings.SETTING_SAME_EVENT, "三个内置手势同事件时立即执行"),
+        on,
+    ) { it.copy(sameEvent = on) }
 
 /**
  * 切「长按连续触发」—— 行点击与开关共用这一个入口。

@@ -46,6 +46,24 @@ internal object KeysEditState {
         pickedCombos = if (id in pickedCombos) pickedCombos - id else pickedCombos + id
     }
 
+    /**
+     * 顶栏那颗「全选」：把两张清单里能勾的**一次勾满**，已经勾满时再按一下**收回**。
+     *
+     *  判据是「现在是不是已经全勾上了」（拿两份清单现算），不是拿缓存下来的数量比 ——
+     *  清单的容量随时在变（加了一颗键 / 删了一档组合，「全选」的含义也跟着变）。
+     *
+     *  内置侧键也在 [allKeys] 里（它能勾、只是删不掉，见 `removePicked`）：全选之后按删除会
+     *  被剔除并说明，与用户自己一颗颗勾过去是同一个结果。
+     */
+    fun toggleAll(
+        allKeys: Set<String>,
+        allCombos: Set<String>,
+    ) {
+        val all = pickedKeys == allKeys && pickedCombos == allCombos
+        pickedKeys = if (all) emptySet() else allKeys
+        pickedCombos = if (all) emptySet() else allCombos
+    }
+
     /** 顶栏那颗按钮：编辑 ⇄ 完成。退出编辑时选中一起清掉。 */
     fun toggleEditing() {
         editing = !editing

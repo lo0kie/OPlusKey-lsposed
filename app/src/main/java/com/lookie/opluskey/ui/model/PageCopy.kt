@@ -26,10 +26,11 @@ internal val BRANCHES_TITLE: String
     get() = I18n.get(Strings.COMMAND_TYPE_BRANCH, "系统场景")
 
 /**
- * 「按键设置」页的标题 —— 首页「按键操作」卡第二行进来（**首页唯一入口**，
- * 「按键功能」页顶栏那颗齿轮也进同一页）。
+ * 「按键设置」页的标题 —— 首页「按键操作」卡第二行、「按键功能」页顶栏那颗齿轮进来。
  *
  *  那一行与这一页顶上的标题**共用同一个键**：进去之后看到的与点的那一行同名。
+ *  **与「独立设置」不是一个名字**（`Strings.KEY_SETTINGS_TITLE`）：那一页是这一档
+ *  自己那份覆盖，这一页是所有档共用的默认。
  */
 internal val GENERAL_TITLE: String
     get() = I18n.get(Strings.GENERAL_TITLE, "按键设置")

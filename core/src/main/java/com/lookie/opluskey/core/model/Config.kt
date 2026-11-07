@@ -28,16 +28,16 @@ data class KeyConfig(
     val single: Action,
     val double: Action,
     val long: Action,
-    val longPressMs: Int,
-    val longRepeat: Boolean,
-    val longRepeatIntervalMs: Int,
+    override val longPressMs: Int,
+    override val longRepeat: Boolean,
+    override val longRepeatIntervalMs: Int,
     /**
      * 「连续触发时振动」—— 连续触发的每一次重复都振一下。
      *
      *  只在 [longRepeat] 为真时有意义（界面那一行也只在那时出现）。默认 false = 只在长按
      *  被判出来的那一下振一次，重复不振动。
      */
-    val longRepeatVibrate: Boolean = false,
+    override val longRepeatVibrate: Boolean = false,
     /**
      * **「松手执行额外动作」** —— 长按之后松手那一刻要执行的**另一个动作**（与 [long] 分开配置）。
      *
@@ -49,14 +49,14 @@ data class KeyConfig(
      *  与 [longRepeat] **不冲突**：按住期间照常连续触发，松手那一刻再执行这一档 —— 一个管
      *  「按住时发生几次」，一个管「抬手时再做一件」，两者可以同时开着。
      */
-    val longRelease: Action = Action.None,
+    override val longRelease: Action = Action.None,
     /**
      * 「松手执行额外动作」的**开关** —— 打开时界面才露出「额外动作」那一行。
      *
      *  与 [longRelease] 分成两位：开关开着、动作还没挑是合法状态（松手什么都不做）。合成一位
      *  （「有动作 = 开」）的话，用户在开关上点一下就会立刻执行一个他没挑过的动作。
      */
-    val longReleaseOn: Boolean = false,
+    override val longReleaseOn: Boolean = false,
     /**
      * **「松手才触发」** —— 长按动作本身等**抬手**那一刻才执行（默认是到点即触发）。
      *
@@ -69,7 +69,7 @@ data class KeyConfig(
      *  互斥在数据层收口：`longRepeats` / `releaseBound` 都把它排掉，于是判定侧与界面只读那两位，
      *  不必各自再判一次。
      */
-    val longFireOnRelease: Boolean = false,
+    override val longFireOnRelease: Boolean = false,
     /**
      * 「单击延迟」—— **这颗键自己的**双击窗口（毫秒）。
      *
@@ -79,6 +79,40 @@ data class KeyConfig(
     val doubleClickMs: Int = DEFAULT_DOUBLE_CLICK_MS,
     /** 「忽视无操作双击手势」—— **这颗键自己的**判定（同上，原来在全局）。 */
     val instantSingle: Boolean = DEFAULT_INSTANT_SINGLE,
+    /**
+     * **「三个内置手势同事件时立即执行」** —— **这颗键自己的**判定。
+     *
+     *  开着时这颗键按下即执行：三档既然绑的是同一件事，「是单击还是双击还是长按」已经没有
+     *  可区分的东西，那两次等待（双击窗口、长按阈值）只是把「按键到执行」平白拖出几百毫秒。
+     *
+     *  **按键级**：每颗键自己决定要不要这个模式（「按键设置」页里那颗开关）。
+     *  它原来是全局一位，而全局那一位从没进过广播（见 `ConfigFields.F_SAME_EVENT`）——
+     *  注入侧恒读到 false，表现成「开着也不生效」。
+     *
+     *  执行什么动作：三档里第一个非空的（[sameEventAction]）。
+     */
+    val sameEvent: Boolean = false,
+    /**
+     * **这颗键要不要用自己那套公共项** —— 默认关（跟随公共设置）。
+     *
+     *  它管的就是「按键单独设置」这件事：每颗键可以自己决定走不走 ColorOS 专有接口、
+     *  执行时弹不弹提示，而不是被公共设置整页绑死。**按键级优先于公共设置**：
+     *  开着时看下面两位，关着时看 `GlobalConfig` 里那两位。
+     *
+     *  取值只有一处出口：`Config.colorOsApiFor` / `Config.toastOnRunFor` —— 执行侧不许自己拼
+     *  「开关 + 值」这个判断，拼错一处就是「这台机器上这颗键不听话」。
+     */
+    override val useOwnSettings: Boolean = false,
+    /** 这颗键自己的「使用 ColorOS 接口」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val colorOsApi: Boolean = GlobalConfig.DEFAULT_COLOR_OS_API,
+    /** 这颗键自己的「振动反馈」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val vibrate: Boolean = false,
+    /** 这颗键自己的「振动强度」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
+    /** 这颗键自己的「执行时提示」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
+    /** 这颗键自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
+    override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
     /**
      * 长按绑的是不是「多条命令」（`cmd:<名字>` 且命令库里那条是串行命令）。
      * 只由宿主算好、随配置广播带过来（`ConfigFields.LONG_SERIAL_EXTRA`），注入侧不自己算：
@@ -118,7 +152,8 @@ data class KeyConfig(
      *  的兜底，也就是「只看三档」。
      */
     val judgeClicks: Int = 0,
-) {
+) : OwnSettings,
+    LongPressParams {
     fun actionOf(gesture: Gesture): Action = actionOf(gesture.trigger())
 
     /**
@@ -242,7 +277,7 @@ data class KeyConfig(
      *
      *  判定侧（`GestureDetector` 发不发那条广播）与界面都只读这一位。
      */
-    val releaseBound: Boolean
+    override val releaseBound: Boolean
         get() = longReleaseOn && longRelease !is Action.None && !longFireOnRelease
 
     /**
@@ -260,6 +295,20 @@ data class KeyConfig(
      */
     val longRepeats: Boolean
         get() = longRepeat && !longFireOnRelease && !longIsSerial && !longIsVoiceMemory
+
+    /**
+     * 「三档同一事件」下按一下要执行的那一个动作 —— **三档里第一个非空的**。
+     *
+     *  那个模式下判定侧只派发一档（`Click(1)`，见 `GestureDetector.onKeyDown`），而用户
+     *  很可能三档里只绑了长按一档（先绑了长按，再打开这个模式省掉等待）——
+     *  直接取单击那一格会执行一个空动作，表现就是「开关开了但按下去什么都不发生」。
+     *
+     *  顺序固定为 单击 → 长按 → 双击：前两档是「按一下」这件事本身的两种时长，双击是前者
+     *  的特殊情形，所以它排最后。全部为空 ⇒ `Action.None`（这一下本来就无事可做）。
+     */
+    val sameEventAction: Action
+        get() =
+            listOf(single, long, double).firstOrNull { it !is Action.None } ?: Action.None
 
     /**
      * 本对象在每个配置字段上的取值 —— **「字段 → 属性」的映射只有这一处**。
@@ -283,6 +332,13 @@ data class KeyConfig(
                 ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
                 ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
                 ConfigFields.F_INSTANT_SINGLE to instantSingle,
+                ConfigFields.F_SAME_EVENT to sameEvent,
+                ConfigFields.F_OWN_SETTINGS to useOwnSettings,
+                ConfigFields.F_KEY_COLOR_OS_API to colorOsApi,
+                ConfigFields.F_KEY_VIBRATE to vibrate,
+                ConfigFields.F_KEY_VIBRATE_STRENGTH to vibrateStrength,
+                ConfigFields.F_KEY_TOAST_ON_RUN to toastOnRun,
+                ConfigFields.F_KEY_TOAST_TEMPLATE to toastTemplate,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
                 ConfigFields.F_JUDGE_CLICKS to clicksForJudge,
             ),
@@ -385,6 +441,16 @@ data class KeyConfig(
                 longRepeatVibrate = v.bool(ConfigFields.F_REPEAT_VIBRATE),
                 doubleClickMs = v.number(ConfigFields.F_DOUBLE_CLICK_MS),
                 instantSingle = v.bool(ConfigFields.F_INSTANT_SINGLE),
+                //  「三档同一事件」与「独立设置」那一族 —— **读的这一半必须与 `fieldValues()` 成对**：
+                //  只写进 `fieldValues()` 而不在这里读回来，表现就是「界面上改了、也落盘了，
+                //  但判定与执行那边照旧」——配置里有值、内存里是默认值，最难查的一种。
+                sameEvent = v.bool(ConfigFields.F_SAME_EVENT),
+                useOwnSettings = v.bool(ConfigFields.F_OWN_SETTINGS),
+                colorOsApi = v.bool(ConfigFields.F_KEY_COLOR_OS_API),
+                vibrate = v.bool(ConfigFields.F_KEY_VIBRATE),
+                vibrateStrength = v.number(ConfigFields.F_KEY_VIBRATE_STRENGTH),
+                toastOnRun = v.bool(ConfigFields.F_KEY_TOAST_ON_RUN),
+                toastTemplate = v.text(ConfigFields.F_KEY_TOAST_TEMPLATE),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
                 rules = rules,
                 judgeClicks = v.number(ConfigFields.F_JUDGE_CLICKS),
@@ -643,7 +709,15 @@ data class GlobalConfig(
     }
 }
 
-/** 整份配置。 */
+/**
+ * 整份配置。
+ *
+ *  函数数贴着 detekt 的 `TooManyFunctions` 阈值：多出来的那一族是**「公共项的按键级取值」**
+ *  （`colorOsApiFor` / `vibrateFor` / `toastOnRunFor` / `comboPassthroughFor` …）——
+ *  它们就该长在这一层：判据只有一句「这一档开了独立设置就看自己那份，否则看公共设置」，
+ *  拆到别处等于让每个调用方自己拼，而拼错一处的表现是「这台机器上这颗键不听话」。
+ */
+@Suppress("TooManyFunctions")
 data class Config(
     val keys: Map<KeyId, KeyConfig>,
     /**
@@ -747,15 +821,58 @@ data class Config(
      * **这颗键现在生效吗** —— 两级相与：[GlobalConfig.enabled]（模块总闸）与 [KeyConfig.enabled]
      * （这一颗键自己的开关）。
      *
-     *  这是**唯一判据**：注入侧的认领（`ConfigChannel.enabledOf`）、宿主侧的执行与松手
-     *  （`GestureReceiver`）、宿主侧的场景派发放行（`SideKeyGestureHooks`）三处都调它，
+     *  这是**唯一判据**：注入侧的认领（`ConfigChannel.enabledOf`）与宿主侧的执行 / 松手
+     *  （`GestureExec` 的那几处闸门）都调它，
      *  不许再就地写「`global.enabled && key(...).enabled`」—— 那一套曾经在四个地方各写一遍，
      *  漏改一处就是「某个路径上停用的键还在吞键」，而编译期与 CI 都看不见。
+     *
+     *  **宿主侧的「场景派发」不在其列**（`SideKeyGestureHooks`）：那条消息不带键的身份，
+     *  它要回答的是「这一下键到底归不归模块」，判据是宿主侧的 `PressTrace`（刚有没有认领过），
+     *  下到某一颗键就会拿 A 键的开关决定 B 键那次派发的去向。
      *
      *  界面侧要的往往只是**一半**：首页总开关那行看 `global.enabled`，⋮ 菜单那行看
      *  `key(id).enabled` —— 那些地方继续各取一半，别拿这个方法去替代（会让总闸锁死自己）。
      */
     fun isLive(id: KeyId): Boolean = global.enabled && key(id).enabled
+
+    /**
+     * 「三档同一事件」对这颗键**现在**生效吗 —— 就是它自己那一位（[KeyConfig.sameEvent]）。
+     *
+     *  留这一层只为一件事：判定侧、执行侧与界面置灰都走同一个名字，谁也不用记「这一位长在哪」。
+     *  它曾经还要叠一个全局开关（公共设置 + 按键级绑定的与），现在**只有按键级** ——
+     *  每颗键在「按键设置」页里自己决定（用户口径：按键级设置优先于公共设置）。
+     */
+    fun sameEventNow(id: KeyId): Boolean = key(id).sameEvent
+
+    /**
+     * 公共项的**按键级取值** —— 这一族是两个出口（下面五个方法），规则只有一条：
+     * 这一档开了「独立设置」就看自己那份，否则看公共设置。
+     *
+     *  参数是 [OwnSettings] 而不是某个具体类型：单键与组合键在这一件事上**没有区别**，
+     *  执行侧传谁进来都一样，不该有「组合那条走全局」这种分支 —— 那种分支正是把组合键
+     *  当成独立存在的来源。
+     */
+    fun colorOsApiFor(owner: OwnSettings): Boolean = if (owner.useOwnSettings) owner.colorOsApi else global.colorOsApi
+
+    /** 这一档**实际**振不振 —— 与 [colorOsApiFor] 同一条规则。 */
+    fun vibrateFor(owner: OwnSettings): Boolean = if (owner.useOwnSettings) owner.vibrate else global.vibrate
+
+    /** 这一档**实际**用哪一档振动强度 —— 与 [colorOsApiFor] 同一条规则。 */
+    fun vibrateStrengthFor(owner: OwnSettings): Int = if (owner.useOwnSettings) owner.vibrateStrength else global.vibrateStrength
+
+    /** 这一档**实际**弹不弹执行提示 —— 与 [colorOsApiFor] 同一条规则。 */
+    fun toastOnRunFor(owner: OwnSettings): Boolean = if (owner.useOwnSettings) owner.toastOnRun else global.toastOnRun
+
+    /** 这一档**实际**用哪份提示模板 —— 与 [colorOsApiFor] 同一条规则。 */
+    fun toastTemplateFor(owner: OwnSettings): String = if (owner.useOwnSettings) owner.toastTemplate else global.toastTemplate
+
+    /**
+     * 这一组组合**实际**在「无操作」时怎么办 —— 它自己写过就用自己的，否则看公共设置。
+     *
+     *  组合专属的一项（`ComboKey.passthrough`），所以不走 [OwnSettings] 那一族：
+     *  单键没有「两颗键各干各的」这回事。
+     */
+    fun comboPassthroughFor(combo: ComboKey): Boolean = combo.passthrough ?: global.comboPassthrough
 
     /** 某个目标该显示的名字（按 [AppTarget.identity] 查）；没记过返回 `null`。 */
     fun appName(target: String): String? = appNames[AppTarget.identity(target)]
@@ -854,6 +971,16 @@ data class Config(
      *  再按短按 / 长按取 [ComboKey.actionOf]。接线不在此刻。
      */
     fun comboFor(down: Set<String>): ComboKey? = combos.filter { it.isUsable && it.matches(down) }.maxByOrNull { it.keys.size }
+
+    /**
+     * 这一档组合**现在跑不起来**吗 —— 自己关着，或**成员里任一键被停用**。
+     *
+     *  判据按成员集合算，不按颗数：两颗的组合与手改配置写进来的多按键组合（判定侧认到
+     *  [ComboKey.MAX_JUDGE_KEYS]）走同一条规则 —— 少任何一颗键都凑不齐，这一档就是废的。
+     *  界面据此标「已停用」、启停切换也据此判「要不要连带」。
+     */
+    fun comboOff(combo: ComboKey): Boolean =
+        !combo.enabled || combo.keys.any { member -> keys.any { (id, key) -> id.id == member && !key.enabled } }
 
     /** 顶层那两位的取值 —— 与另两段同一套（见 `KeyConfig.fieldValues` 的说明）。 */
     fun fieldValues(): ConfigFields.Values =

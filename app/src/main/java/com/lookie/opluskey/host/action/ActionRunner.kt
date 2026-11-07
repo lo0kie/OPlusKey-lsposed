@@ -30,17 +30,22 @@ internal class ActionRunner(
     /** 借来的宿主 Context（`host/GestureReceiver` 从 `ActivityThread` 反射取）。 */
     @Volatile var context: Context?,
     handler: Handler,
-    /**
-     * 「使用 ColorOS 接口」这一档 —— **全项目只有这一处读它**，再往下（手电筒 / 响铃）都是
-     * 构造参数传进来的。
-     *
-     *  为什么收在这里：它同时被三个执行器用（手电筒、响铃、免打扰），而这三个各自都
-     *  `ConfigStore.read()` 一遍的话，「默认值」这件事就有三份副本 —— 改其中一处不知另两处。
-     *  宿主进程每次按键都重读配置是这个仓的既定口径（见 `GestureReceiver` 那段说明），
-     *  所以这一层直接读盘、不缓存。
-     */
-    private val isColorOsApi: () -> Boolean = { ConfigStore.read().global.colorOsApi },
 ) {
+    /**
+     * 这一次执行走不走 ColorOS 接口 —— [run] 每次开头写入，往下（手电筒 / 响铃）都读它。
+     *
+     *  为什么收在这里：它同时被三个执行器用（手电筒、响铃、免打扰），各自读一遍配置的话
+     *  「默认值」就有三份副本；而这一次到底走哪条，取决于**按键级**那一格
+     *  （`Config.colorOsApiFor`），只有调用方知道是哪一档 —— 所以由 `run` 传进来存这一格。
+     *
+     *  **安全的前提是串行**：执行全在 `GestureReceiver.worker` 那一条线程上排队
+     *  （见那边的说明），不会有两个动作同时覆盖这个字段。
+     */
+    @Volatile
+    private var runColorOsApi: Boolean = ConfigStore.read().global.colorOsApi
+
+    private val isColorOsApi: () -> Boolean = { runColorOsApi }
+
     private val injector = KeyInjector { context }
     private val flashlight = FlashlightController({ context }, handler, isColorOsApi)
     private val ringer =
@@ -158,7 +163,19 @@ internal class ActionRunner(
     fun run(
         action: Action,
         gestureLabel: String,
+        /**
+         * 这一档**实际**走不走 ColorOS 接口 —— 由调用方从 `Config.colorOsApiFor` 取好传进来
+         * （单键传 `KeyConfig`、组合传 `ComboKey`，**这一层不区分**，也不自己读配置）。
+         *
+         *  缺省值读公共设置：只服务「测试命令」那种没有按键上下文的调用。
+         */
+        colorOsApi: Boolean = ConfigStore.read().global.colorOsApi,
     ) {
+        //  两个执行器（手电筒 / 响铃）在构造时就绑定了 `isColorOsApi` 这条闭包，它们不知道
+        //  这一次是哪一档按键 —— 所以把值写进这一格再交给它们。**安全的前提是串行**：
+        //  执行全在 `GestureReceiver.worker` 那一条线程上排队（见那边的说明），不会有两个动作
+        //  同时覆盖这个字段。
+        runColorOsApi = colorOsApi
         XLog.w("$gestureLabel → ${XLog.redactToken(action.token)}")
         dispatch(action)
     }

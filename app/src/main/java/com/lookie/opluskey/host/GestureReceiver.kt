@@ -172,6 +172,9 @@ internal object GestureReceiver {
                         val phase = intent?.getStringExtra(ModuleWire.EXTRA_PHASE)
                         val repeat = intent?.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false) ?: false
                         val sentAt = intent?.getLongExtra(ModuleWire.EXTRA_SENT_AT, 0L) ?: 0L
+                        //  这一下是**模块认领的**（判据侧刚判出手势）：记一笔，宿主那条场景派发
+                        //  据此判「要不要吞」（见 [PressTrace]）。放在分支之前 —— 组合与单键都算。
+                        PressTrace.noteClaim()
                         // 「宿主到底收没收到这一下」是排查链路的**第一道判据**，只能写 W
                         //  （注入侧 / 宿主侧的 i、d 口径见 `XLog` 类注释与 `docs/device-findings.md` 十五）
                         if (!combo.isNullOrEmpty()) {
@@ -300,8 +303,9 @@ internal object GestureReceiver {
      *  首页据此把「模块未生效」的提示收掉、解除整页禁用。设置页与宿主同包，
      * `setPackage` 指定包名就能送到它注册的接收器（不必轮询）。
      *
-     * 顺带带上两个诊断字段，让首页能判「读到的配置是不是真值」与「这个键执行过没有」——
-     * 光说一句「我在」判不出那两种（配置没到 / 从来没按过）的真实故障，见 `ui/LinkCheck.kt`。
+     * 顺带带上三个诊断字段，让首页能判「读到的配置是不是真值」「这份文件到底读不读得懂」与
+     * 「这个键执行过没有」—— 光说一句「我在」判不出那三种（配置没到 / 读不懂 / 从来没按过）
+     * 的真实故障，见 `ui/LinkCheck.kt`。
      */
     private fun reportAlive(ctx: Context) = sendAlive(ctx, ConfigStore.read().global.enabled)
 
@@ -316,11 +320,18 @@ internal object GestureReceiver {
         ctx: Context,
         enabled: Boolean,
     ) {
+        // 「这份配置读得懂吗」—— 必须单独问一句 `load()` 的三态：`enabled` 由调用方给，
+        //  而读不懂时它给的是 `Config.DEFAULT` 的 false，与「用户关了主开关」同形（见
+        //  `EXTRA_HOST_CONFIG_READABLE` 的说明）。
+        //  代价只有一次 `stat`：`load()` 带指纹缓存，同一串调用里刚读过的内容必然命中，
+        //  不会重做剥外皮 + JSON 解析 —— 所以与上面那条「别白读一遍」的理由不冲突。
+        val readable = ConfigStore.load() !is ConfigStore.Load.Unreadable
         PageWire.send(
             ctx,
             HostApp.PACKAGE,
             Intent(ModuleWire.ACTION_HOST_SERVICE_UP)
                 .putExtra(ModuleWire.EXTRA_HOST_ENABLED, enabled)
+                .putExtra(ModuleWire.EXTRA_HOST_CONFIG_READABLE, readable)
                 .putExtra(ModuleWire.EXTRA_HOST_LAST_ACTION_AT, GestureExec.lastActionAt)
                 // 「宿主进程是什么时候起来的」—— 页面拿它与安装包更新时间比，
                 //  判「这一侧是不是还跑着旧版」；宿主是普通应用进程，重开就换新代码，不必重启手机。

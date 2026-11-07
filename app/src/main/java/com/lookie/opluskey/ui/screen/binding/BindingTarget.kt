@@ -1,9 +1,19 @@
 package com.lookie.opluskey.ui.screen.binding
 
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.LongPressEdit
+import com.lookie.opluskey.core.model.LongPressParams
+import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.withLongPress
+import com.lookie.opluskey.ui.Screen
+import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 
 /**
  * 一张动作网格**正在往哪儿写**。
@@ -47,6 +57,42 @@ internal sealed interface BindingTarget {
      */
     val what: String
 
+    /**
+     * 这一档**所属的那一份设置是谁** —— 场景入口、独立设置、停用提示都按它取。
+     *
+     *  单键回 `KeyConfig`、组合回 `ComboKey`，两者在**能共用契约的地方**（`OwnSettings`）
+     *  直接是同一份用法；页面与卡片只认这一处，不再各自 `when (是不是组合)`。
+     */
+    fun ownerIn(cfg: Config): Any?
+
+    /** 这一档的**场景表**（`StateRule`）—— 场景入口那句「有几个判断」与横幅都按它数。 */
+    fun rulesIn(cfg: Config): List<StateRule>
+
+    /** 这一档属于哪一组组合键；单键是 `null` —— 挑应用那条路只认这一个值。 */
+    val comboId: String? get() = null
+
+    /** 这一档的长按参数 —— 单键与组合都实现 `LongPressParams`，卡片只认那个接口。 */
+    fun longPress(cfg: Config): LongPressParams?
+
+    /** 这一档开了「按下即执行」吗 —— 长按那张卡与场景入口都据此置灰。 */
+    fun sameEventBlocked(cfg: Config): Boolean
+
+    /** 把一次长按改动写回这一档所在的配置。 */
+    fun withLongPress(
+        cfg: Config,
+        edit: LongPressEdit,
+    ): Config
+
+    /**
+     * 这一档现在**能不能进场景表** —— 停用的那一份、或开了「按下即执行」的键都不行。
+     *
+     *  判据放在这里而不是各页面自己拼：两个页面（单键 / 组合）读的必须是同一句，
+     *  否则「单键灰了、组合还亮着」这种事迟早出现。
+     *
+     *  @return `null` = 能进；否则是点它时该说的那句话
+     */
+    fun scenarioBlockedReason(cfg: Config): String?
+
     /** 一颗键的一档。 */
     data class Key(
         val id: KeyId,
@@ -55,6 +101,37 @@ internal sealed interface BindingTarget {
         override fun actionIn(cfg: Config): Action = cfg.key(id).actionOf(gesture)
 
         override val what: String get() = gesture.id
+
+        override fun ownerIn(cfg: Config): Any? = cfg.key(id)
+
+        override fun rulesIn(cfg: Config): List<StateRule> = cfg.key(id).rules.filter { it.gesture == gesture }
+
+        override fun longPress(cfg: Config): LongPressParams = cfg.key(id)
+
+        override fun sameEventBlocked(cfg: Config): Boolean = cfg.sameEventNow(id)
+
+        override fun withLongPress(
+            cfg: Config,
+            edit: LongPressEdit,
+        ): Config = cfg.copy(keys = cfg.keys + (id to cfg.key(id).withLongPress(edit)))
+
+        override fun scenarioBlockedReason(cfg: Config): String? {
+            val key = cfg.key(id)
+            return when {
+                !key.enabled -> {
+                    I18n.format(Strings.KEY_DISABLED_ITEM, id.label)
+                }
+
+                //  「按下即执行」时不分档，场景分流没有可判的东西（与执行侧同一处判据）
+                cfg.sameEventNow(id) -> {
+                    I18n.get(Strings.SAME_EVENT_BLOCKED, "已开启「按下即执行」，这颗键不再分档")
+                }
+
+                else -> {
+                    null
+                }
+            }
+        }
     }
 
     /** 一档组合键的一档。 */
@@ -65,5 +142,54 @@ internal sealed interface BindingTarget {
         override fun actionIn(cfg: Config): Action = cfg.combos.firstOrNull { it.id == id }?.actionOf(gesture) ?: Action.None
 
         override val what: String get() = "combo:$id:${gesture.id}"
+
+        override fun ownerIn(cfg: Config): Any? = cfg.combos.firstOrNull { it.id == id }
+
+        override fun rulesIn(cfg: Config): List<StateRule> =
+            cfg.combos
+                .firstOrNull { it.id == id }
+                ?.rules
+                ?.filter { it.gesture == gesture }
+                .orEmpty()
+
+        override val comboId: String get() = id
+
+        override fun longPress(cfg: Config): LongPressParams? = cfg.combos.firstOrNull { it.id == id }
+
+        //  组合没有「三档同一事件」：它本来就只有短按 / 长按两档，不存在「三档同事件」
+        override fun sameEventBlocked(cfg: Config): Boolean = false
+
+        override fun withLongPress(
+            cfg: Config,
+            edit: LongPressEdit,
+        ): Config =
+            cfg.copy(
+                combos =
+                    cfg.combos.map {
+                        if (it.id == id) it.withLongPress(edit) else it
+                    },
+            )
+
+        override fun scenarioBlockedReason(cfg: Config): String? {
+            val combo = cfg.combos.firstOrNull { it.id == id } ?: return null
+            return if (combo.enabled) {
+                null
+            } else {
+                I18n.format(Strings.COMBO_DISABLED_ITEM, id)
+            }
+        }
     }
+}
+
+/**
+ * 进「系统场景」编**这一档** —— 两页共用这一支。
+ *
+ *  「为谁编」与「编哪一档」都由 target 给：单键清掉组合目标、组合带上自己的 id。
+ *  之前在单键页与组合页各写了一遍，漏一处就会「进去编的是上一次那一档」。
+ */
+internal fun SettingsPage.openBranchesFor(target: BindingTarget) {
+    branchDraft.comboId = target.comboId
+    branchGesture = target.gesture.ordinal
+    XLog.w("进「$BRANCHES_TITLE」页：${target.what}")
+    navTo(Screen.BRANCHES)
 }

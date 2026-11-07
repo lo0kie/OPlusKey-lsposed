@@ -109,6 +109,16 @@ internal class LinkFacts(
     val inject: InjectStatus?,
     /** 「设置生效」的配置侧那半：读得出来、送到过、且送的就是这一份。 */
     val configSideOk: Boolean,
+    /**
+     * **执行侧**（宿主主进程）读得懂那份配置文件。
+     *
+     *  [configSideOk] 答的是「广播到没到 system_server」，这一位答的是「真执行动作的那个进程
+     *  把文件解出来了没有」—— 两件事，两条路（广播 / 文件），必须分开问。
+     *  `false` 时它读到的是 `Config.DEFAULT`，与「用户关了主开关」在 `hostEnabled` 上同形。
+     */
+    val hostConfigReadable: Boolean,
+    /** 宿主报活里带回来的「它读到的主开关」。只用来与本地这份对账（见 [hostConfigBroken] 第 2 条）。 */
+    val hostEnabled: Boolean,
     /** 注入侧那趟自检**跑完了没有** —— 没跑完时 `inject` 的 `null` 只是初值，不是结论。 */
     val injectChecked: Boolean,
     /** 盘上那份包的更新时间（0 = 读不到，这一档不判）。 */
@@ -157,6 +167,23 @@ internal class LinkFacts(
     val restartNeeded: Boolean
         get() = injectStale || (inject != null && inject.procStart == 0L && buildStale)
 
+    /**
+     * **执行侧那份配置用不了** —— 两条来路，必须合成一条判据：
+     *
+     *  1. 宿主自己报「读不懂」（[hostConfigReadable] = false，本版新增的那一位）；
+     *  2. **旧宿主不带那一位**（缺省按 true 处理，免得误报），于是改用对账反推：
+     *     它跑着旧包、报的主开关是关的，而本地这份主开关是开的、也不是用户关的
+     *     ⇒ 它读到的不是这份文件，是 `Config.DEFAULT`（旧代码按旧结构校 md5，必然失败）。
+     *
+     *  第 2 条是**本次故障的现场**：装完包没重启，宿主还在跑换包前的代码 —— 那时它连
+     *  `EXTRA_HOST_CONFIG_READABLE` 都不会发，只靠第 1 条永远判不出来，界面继续报「通过」。
+     *
+     *  不会误报的三种情形：旧宿主读得懂（报的 enabled 与本地一致）；用户自己关了主开关
+     *  （`masterOff`）；首装还没写过配置（本地就是默认的关，`masterOff` 也为真）。
+     */
+    val hostConfigBroken: Boolean
+        get() = !hostConfigReadable || (hostStale && !hostEnabled && !masterOff)
+
     /** 「没回包」到底是哪一档 —— 见 [InjectPendingKind] 的注释。 */
     val injectPending: InjectPendingKind
         get() =
@@ -191,8 +218,17 @@ internal class LinkFacts(
                 }
             }
 
-    /** **整页总闸**：「运行状态」里任何一段不 ok 就关（口径见 [SettingsPage.linkReady]）。 */
-    val ready: Boolean get() = hostUp && respondOk && configSideOk
+    /**
+     * **整页总闸**：「运行状态」里任何一段不 ok 就关（口径见 [SettingsPage.linkReady]）。
+     *
+     *  含 [hostConfigBroken]（执行侧那份配置用不了）：它一个动作都做不出来 —— 放用户去改设置
+     *  就是**假可用**（改了也到不了那只手，而页面全绿）。
+     *
+     *  它进闸的前提是「重启服务」已经不吃这个闸（见 `HomeHeaderMenu` 里那一行的 `enabled = true`）：
+     *  这一档的修法正是重启服务，闸住它就成了「提示让你重启服务、而重启服务是灰的」。
+     *  以后要往这里再加一位，先确认对应的自救入口不在闸内。
+     */
+    val ready: Boolean get() = hostUp && respondOk && configSideOk && !hostConfigBroken
 }
 
 /**
@@ -243,6 +279,8 @@ internal val SettingsPage.linkFacts: LinkFacts
             hostUp = link.hostServiceUp,
             inject = link.injectStatus,
             configSideOk = configSideOk,
+            hostConfigReadable = link.hostConfigReadable,
+            hostEnabled = link.hostEnabled,
             injectChecked = link.injectChecked,
             installedAt = link.installedAt,
             hostProcStart = link.hostProcStart,
@@ -266,6 +304,8 @@ private val ALL_BROKEN_FACTS =
         hostUp = false,
         inject = null,
         configSideOk = false,
+        hostConfigReadable = false,
+        hostEnabled = false,
         injectChecked = true,
         installedAt = 0L,
         hostProcStart = 0L,
@@ -305,8 +345,12 @@ internal val SettingsPage.linkReady: Boolean
  *    从没起来过（勾作用域 + 重启）/ 装好等重启（只重启）/ 本轮掉线（看日志）；
  *    「还没问完」不是这一档 —— 见 `LinkFacts.injectChecked`；
  * 5) 回音了但接管点 0 个 ⇒ 这一版 ROM 把私有类改了形，只能等适配；
- * 6) 设置没送到 ⇒ 重进本页会重发一遍；
- * 7) **模块总闸关着** ⇒ 用户自己拨回来。
+ * 6) 系统侧跑着旧包 ⇒ 重启手机（排在「设置没送到」前：旧包里指纹口径不同，落到下面会说「重进本页」，
+ *    而重进修不好它）；
+ * 7) **执行侧**读不懂配置 ⇒ 重启服务（跑着旧包时）/ 重进页面（文件真读不懂）——
+ *    这一档原来与「主开关关着」同形，于是被当成用户的意图放过去；
+ * 8) 设置没送到 ⇒ 重进本页会重发一遍；
+ * 9) **模块总闸关着** ⇒ 用户自己拨回来。
  *
  *  **主开关排在最后一条，不是漏了**：那一行自己吃 `linkReady`（见 `HomeCards`），链路没齐时
  *  它是**灰色、拨不动**的。把它摆在链路前面，等于让人去开一个开不了的开关 —— 真机反馈就是
@@ -373,6 +417,16 @@ internal fun SettingsPage.blockedReason(): String? {
         //  两处说法不一致时用户会照着错的那条去试。
         f.restartNeeded -> {
             SYSTEM_STALE_HINT
+        }
+
+        // **执行侧**那份配置用不了：它一个动作都做不出来，而 system_server 那半照样吞键 ——
+        //  症状就是「按了没反应」，且上面几段全是绿的。
+        //  排在「设置未同步」前面：那是「送到没送到」，这是「收到了也用不了」，后者更靠前。
+        //  跑着旧包时（换包没重启）它就是那件事的影子，对应的修法是「重启服务」，不是重启手机。
+        //  判据用 [LinkFacts.hostConfigBroken]，不用 `hostConfigReadable`：旧宿主根本不发那一位，
+        //  而**本次故障恰恰是旧宿主**（装完包没重启）—— 只认那一位就永远看不见它。
+        f.hostConfigBroken -> {
+            if (f.hostStale) HOST_STALE_HINT else CONFIG_READ_FAILED_HINT
         }
 
         !f.configSideOk -> {
@@ -620,42 +674,77 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
         LinkCheck(
             icon = PageIcons.LinkConfig,
             name = I18n.get(Strings.LINK_CHECK_CONFIG_EFFECTIVE, "设置生效"),
-            // 与总闸**同源**：配置侧那半直接用 [configSideOk]，免得两边各写一份慢慢跑偏
-            ok = configSide && link.hostEnabled,
+            // 与总闸**同源**：配置侧那半直接用 [configSideOk]，免得两边各写一份慢慢跑偏。
+            //  第三项是**执行侧**用不用得上那份配置 —— 前两项都在 system_server 那条线上，
+            //  真正执行动作的宿主主进程读不懂时它们照样全绿（真机撞过：所有按键都没反应、自检全绿）。
+            //  「用不用得上」是 [hostConfigBroken]：它同时覆盖「新宿主报读不懂」与「旧宿主不带那一位、
+            //  靠 enabled 对账反推出来」两条来路。
+            ok = configSide && !f.hostConfigBroken && link.hostEnabled,
             // 「主开关已关闭」**不算故障**（见 [configSideOk] 与 [linkReady] 的注释）：
             //  只有「配置侧没问题、单纯是用户关了主开关」这一种不 ok 时不 block。
             //  其余（配置读不懂 / 没送到注入侧 / 两边指纹对不上）都真会让设置不生效 —— 照旧 block。
             //  一律 block（`blocking` 走默认值）的话，用户主动关掉主开关，
             //  整体状态就报「设置生效异常」—— 那是用户的意图，不是故障。
-            blocking = !(configSide && !link.hostEnabled),
+            //  **读不懂必须单独排在最前**：那时 `hostEnabled` 也是 false，落到下面那条会被
+            //  判成「用户关的」，于是不 block、detail 还说「主开关已关闭」—— 把人指去拨一个
+            //  本来就开着的开关（本次故障的现场）。
+            blocking = f.hostConfigBroken || !(configSide && !link.hostEnabled),
             //  换包没重启时它必然红，而那句话就是「需要重启」—— 首页据此把它排到最后
             //  （别的故障先说，只剩这条影子时才说重启）
-            staleOnly = restartNeeded,
+            staleOnly = restartNeeded || (f.hostStale && f.hostConfigBroken),
             detail =
                 when {
                     // 真因优先：文件读不懂时宿主读到的是默认值（enabled=false），
                     // 再往下会报成「主开关已关闭」—— 那会把用户引到错的方向（他根本没关）。
                     //  与 `blockedReason` 同一档分法：跑着旧版时「配置读取失败」是误诊 ——
                     //  文件没问题，是这一侧的结构比文件旧。
-                    f.readOnly && f.hostStale -> I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
+                    f.readOnly && f.hostStale -> {
+                        I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
+                    }
 
-                    f.readOnly -> I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
+                    f.readOnly -> {
+                        I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
+                    }
 
-                    inj == null -> I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
+                    // **执行侧**那份配置用不了（设置页自己读得懂）：它与「主开关关着」在
+                    //  `hostEnabled` 上同形，所以必须排在下面那条 `!link.hostEnabled` 之前 ——
+                    //  否则这一行会说「主开关已关闭」，而用户根本没关。
+                    //  跑着旧包时它是那件事的影子（说「需要重启」，指重启服务）；否则是真读不懂。
+                    f.hostConfigBroken -> {
+                        if (f.hostStale) {
+                            I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
+                        } else {
+                            I18n.get(Strings.LINK_CHECK_CONFIG_FAILED, "配置读取失败")
+                        }
+                    }
 
-                    !inj.configOk -> I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
+                    inj == null -> {
+                        I18n.get(Strings.LINK_CHECK_WAITING_RESPONSE, "等待响应")
+                    }
 
-                    restartNeeded -> I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
+                    !inj.configOk -> {
+                        I18n.get(Strings.LINK_CHECK_NOT_EFFECTIVE, "未生效")
+                    }
+
+                    restartNeeded -> {
+                        I18n.get(Strings.LINK_CHECK_RESTART_REQUIRED, "需要重启")
+                    }
 
                     // 收到过、但指纹对不上（且不是换包没重启造成的）：改过的那一次没送到它手上
                     //  判据与上面 `ok` **同源**（[configSideOk]）—— 这里原来另算了一遍，两处条件
                     //  还差一个 `isNotEmpty()`，于是「横幅说重启、这一行说未同步」。
-                    !configSide -> I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
+                    !configSide -> {
+                        I18n.get(Strings.LINK_CHECK_NOT_SYNCED, "未同步")
+                    }
 
                     // 读到默认值只有两种来路：主开关被关了，或者开机还没解锁
-                    !link.hostEnabled -> I18n.get(Strings.LINK_CHECK_SWITCH_OFF, "主开关已关闭")
+                    !link.hostEnabled -> {
+                        I18n.get(Strings.LINK_CHECK_SWITCH_OFF, "主开关已关闭")
+                    }
 
-                    else -> I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+                    else -> {
+                        I18n.get(Strings.LINK_CHECK_NORMAL, "正常")
+                    }
                 },
         ),
         // 这一段永远不 block：还没被验证过不是故障，只是一条还没拿到的证据。

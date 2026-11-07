@@ -43,7 +43,9 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *  （见 [HomeScreen] 里那一行的注释）。
  *
  *  注意：判据是两个条件的与：`linkReady`（链路）**且** `!configReadOnly`（配置这次读成功了）。
- *  只读态下这三项也不放出来点：那时什么都写不进去，点了只会得到一句失败。
+ *  只读态下其余几项也不放出来点：那时什么都写不进去，点了只会得到一句失败。
+ *  **两条逃生口不吃这个闸**（各在自己的行上写了 `enabled = true`）：「默认界面」与「重启服务」——
+ *  前者是页面坏了时的出口，后者是「执行侧读不懂配置」那一档的修法（那一档整页都被闸住）。
  *  **「适配清单」不在判据里**（AGENTS 一、13：清单只是「验过没有」的提示，不许拿去置灰 / 禁用）——
  *  清单外的机器照样能点这三项，只注入了界面层时它们本来就会失败并报出来。
  *  这个状态的退出方式是重进页面（会重读一次）或走「默认界面」。
@@ -79,10 +81,14 @@ internal fun SettingsPage.HomeHeaderMenu() {
                     },
                     //  点了**先问一句**：这一下会杀掉本页进程再让宿主拉回来（页面闪一下重开），
                     //  正在编辑、没保存的内容跟着丢 —— 与「清空配置」同一档代价。
+                    //  **`enabled = true` 不是漏了闸**：它是「执行侧读不懂配置」那一档的**修法**
+                    //  （`LinkFacts.hostConfigReadable` 为 false 时整页被闸住、控件全灰），
+                    //  闸住它就成了「提示让你重启服务、而重启服务是灰的」，只能重启手机。
+                    //  与上面「默认界面」同档：这两条是逃生口，不吃任何闸。
                     MenuEntry.Row(
                         title = I18n.get(Strings.MENU_RESTART_SERVICE, "重启服务"),
                         icon = PageIcons.ModuleRestart,
-                        enabled = rowsEnabled,
+                        enabled = true,
                     ) {
                         open = false
                         overlays.confirmRestart = true

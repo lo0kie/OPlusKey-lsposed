@@ -1,11 +1,7 @@
 package com.lookie.opluskey.ui.screen.combo
 
 import androidx.compose.foundation.ScrollState
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
@@ -13,27 +9,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.PageScrollColumn
-import com.lookie.opluskey.ui.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.Screen
-import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.screen.binding.BindingGridFocus
+import com.lookie.opluskey.ui.screen.binding.BindingList
+import com.lookie.opluskey.ui.screen.binding.BindingPageState
+import com.lookie.opluskey.ui.screen.binding.BindingPickers
+import com.lookie.opluskey.ui.screen.binding.BindingScroll
 import com.lookie.opluskey.ui.screen.binding.BindingTarget
-import com.lookie.opluskey.ui.screen.binding.BindingTileMenu
-import com.lookie.opluskey.ui.screen.binding.BuiltInGrid
-import com.lookie.opluskey.ui.screen.binding.CustomCommandsGrid
-import com.lookie.opluskey.ui.screen.binding.SavedCommandsTitle
-import com.lookie.opluskey.ui.screen.binding.rememberBindingGridState
-import com.lookie.opluskey.ui.screen.command.comboScenarioNotice
 import com.lookie.opluskey.ui.screen.openAppPickerForControl
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -81,9 +65,8 @@ internal fun SettingsPage.ComboEditScreen(
     //  两页各一份滚动位置（`ScrollState` 内部只有一个 `scrollableState`，共用会互相打架）
     val scrolls = remember { List(2) { ScrollState(0) } }
 
-    //  两段各一份网格状态：`remember` 的 key 里带着 `target`，互不影响（焦点、入口菜单、锚点）
-    val short = rememberBindingGridState(BindingTarget.Combo(combo.id, Gesture.SINGLE)) { t, stop -> openAppPickerForControl(t, stop) }
-    val long = rememberBindingGridState(BindingTarget.Combo(combo.id, Gesture.LONG)) { t, stop -> openAppPickerForControl(t, stop) }
+    //  组合只有短按 / 长按两档（`ComboKey` 上没有双击）
+    val gestures = listOf(Gesture.SINGLE, Gesture.LONG)
     val onCreateCommand: () -> Unit = {
         //  与「按键绑定」页那颗 FAB 同一套：进命令页是**新增**那条路，草稿要先清干净
         commandDraft.draft.reset()
@@ -95,56 +78,15 @@ internal fun SettingsPage.ComboEditScreen(
     LaunchedEffect(pager.currentPage) { ComboEditState.page = pager.currentPage }
 
     HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-        val grid = if (page == 0) short else long
-        //  焦点圈跟着选中项走 —— 与「按键绑定」页**共用同一份实现**（`BindingGridFocus`）。
-        //  少了这一句就会「点了别的动作，边框还留在原来那一格，退出去重进才对」：
-        //  `focusedIndex` 只在网格状态建出来那一刻取过一次 `initialFocus`，之后没人挪它。
-        BindingGridFocus(grid, pager.currentPage == page, "组合按键")
-        PageScrollColumn(scrollBehavior = scrollBehavior, state = scrolls[page]) {
-            Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + bandBlock))
-            //  这一档（短按 / 长按）的**系统场景入口卡** —— 与「按键绑定」页同一句、同一个位置：
-            //  场景先判、命中就轮不到下面这些绑定。点它进那一档的条件表，走的还是 ⋮ 菜单那条
-            //  现成的路（`openBranchesForCombo`）。
-            //  与那一页同一个口径：**一条场景都没配时这一行也留着**（它是这一档进「系统场景」的
-            //  入口，只配过才出现的话，没配过的人找不到它）。
-            val notice =
-                comboScenarioNotice(combo.id, if (page == 0) Gesture.SINGLE else Gesture.LONG)
-                    ?: I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE, "当前手势没有添加系统场景")
-            CardList(
-                modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
-                rows =
-                    listOf(
-                        CardRow.Item(
-                            title = notice,
-                            icon = PageIcons.CommandBranch,
-                            arrow = true,
-                            onClick = { openBranchesForCombo(combo.id) },
-                        ),
-                    ),
-            )
-            //  长按那一档：设置卡在网格**上面**（与「按键绑定」页同一个顺序 ——
-            //  先「这一档怎么判」，再挑「绑什么」）。短按没有可调的东西，直接是网格。
-            //  块与块之间的间距由小标题自带；网格自己那几组由网格内部管。
-            Column {
-                if (page == 1) {
-                    //  小标题与「按键绑定」页长按那一档同一句（`binding.settings_section`）：
-                    //  两页同一张卡，标题各写一套的话切页时会觉得换了一套东西。
-                    SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
-                    ComboLongCard(combo, enabled)
-                }
-                BuiltInGrid(grid, enabled)
-                // 「自定义命令」这一段**始终在**（用户口径：与「按键绑定」页一样另起一块、同一个
-                // 小标题）—— 没有命令时网格自己换成那一行「自定义命令 →」，空着也看得见去处。
-                //  标题的可点判据与那一页**同一份**（`SavedCommandsTitle`），不再各写一遍。
-                SavedCommandsTitle()
-                CustomCommandsGrid(grid, enabled, onCreateCommand)
-            }
-        }
+        //  内容与「按键绑定」页**完全同一份**（`BindingList`）：场景入口、设置卡、网格、
+        //  命令网格、焦点圈、入口浮层都在那边。这一页只负责「换成组合这一档」——
+        //  两页各写一遍时，行序与闸门迟早对不上（用户口径：按键与组合键功能完全一样）。
+        BindingList(
+            target = BindingTarget.Combo(combo.id, gestures[page]),
+            page = BindingPageState(enabled = enabled, active = pager.currentPage == page),
+            pickers = BindingPickers { t, stop -> openAppPickerForControl(t, stop) },
+            onCreateCommand = onCreateCommand,
+            scroll = BindingScroll(scrollBehavior, scrolls[page], bandBlock),
+        )
     }
-
-    //  两张网格各自那层入口菜单（入口格点了弹二级菜单）—— 不占布局，挂在这里让它们跟着这一页
-    //  一起进 / 出组合。同一时刻只会有一层开着（点开那一格时才写自己的 `tileMenu`）。
-    BindingTileMenu(short)
-    BindingTileMenu(long)
-    //  「自定义变量」那一格的两层抽屉同上：两档各挂一份，同一时刻只会有一份开着。
 }

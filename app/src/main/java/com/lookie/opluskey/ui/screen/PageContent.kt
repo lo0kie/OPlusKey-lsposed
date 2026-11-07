@@ -358,6 +358,9 @@ private fun SettingsPage.onHostServiceUp(intent: Intent) {
     //  缺省 false：报活里没带这一位（老宿主）时不该据此声称「已启用」，
     //  宁可显示未启用 —— 那一档只是首页一条诊断行，谎报会让人以为模块开着却没生效。
     link.hostEnabled = intent.getBooleanExtra(ModuleWire.EXTRA_HOST_ENABLED, false)
+    //  缺省 **true**（与上面那一位相反）：这一位是本版新加的，老宿主的报活里没有它 ——
+    //  缺省 false 会把「老宿主」凭空报成「配置读取失败」。宁可少报一条诊断，也不谎报故障。
+    link.hostConfigReadable = intent.getBooleanExtra(ModuleWire.EXTRA_HOST_CONFIG_READABLE, true)
     link.hostLastActionAt = intent.getLongExtra(ModuleWire.EXTRA_HOST_LAST_ACTION_AT, 0L)
     link.hostProcStart = intent.getLongExtra(ModuleWire.EXTRA_HOST_PROC_START, 0L)
 }

@@ -1,8 +1,10 @@
 package com.lookie.opluskey.ui.screen.combo
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -14,7 +16,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
@@ -68,15 +73,13 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
         if (key != null && cfg.combos.none { key in it.keys }) ComboEditState.filterKey = null
     }
 
-    //  编辑态：勾中的项数 + 删除确认窗开着没有（0 项时右下角那颗「删除」不出现，见下）
+    //  编辑态：勾中的项数 + 删除确认窗开着没有（0 项时右下角那两颗不出现，见下）
     val pickedCount = KeysEditState.count
     var confirmDelete by remember { mutableStateOf(false) }
     //  勾中的键会**连带删掉**「用到它的」组合（少一颗键的组合是废配置，见 `removePicked`）：
     //  确认窗要把这个数报出来，别让人以为只少两颗键。已经勾上的组合不重复算。
     val cascadeCombos =
-        cfg.combos.count { combo ->
-            combo.id !in KeysEditState.pickedCombos && combo.keys.any { it in KeysEditState.pickedKeys }
-        }
+        cfg.combos.count { c -> c.id !in KeysEditState.pickedCombos && c.keys.any { it in KeysEditState.pickedKeys } }
     //  离开这一页时把编辑态收干净：下次进来是正常的一页，而不是顶栏写着「完成」、
     //  清单上还挂着一排勾。
     DisposableEffect(Unit) { onDispose { KeysEditState.clear() } }
@@ -98,16 +101,23 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             //  第二块：组合按键那一列（标题本身就是筛选入口，见 [ComboListSection]）
             ComboListSection(cfg, writable, atLimit)
         }
-        //  **勾了任意一项就滑进「删除」**（用户口径）：编辑态、且选中不为空才出现；
-        //  取消勾选剩下 0 项时它自己滑出去（`PageCornerFab` 管位置与滑入滑出）。
-        KeysDeleteFab(visible = KeysEditState.editing && pickedCount > 0) { confirmDelete = true }
+        //  **勾了任意一项就滑进这两颗**（用户口径）：编辑态、选中非空才出现，剩 0 项时自己滑出去。
+        KeysEditFabs(
+            visible = KeysEditState.editing && pickedCount > 0,
+            turningOn = !pickedAnyEnabled(cfg),
+            onToggle = { togglePickedEnabled() },
+            onDelete = { confirmDelete = true },
+        )
     }
 
-    //  删除是不可撤销的（那几项的绑定一起没），所以先问一句 —— 与「删除组合按键」同一档规格
+    //  删除是不可撤销的（那几项的绑定一起没），所以先问一句 —— 与「删除组合按键」同一档规格。
+    //  勾了内置侧键时要在正文里说明它会被**剔除**：它在编辑态里能勾（用户口径），但删不掉，
+    //  不提前说清，用户会以为「勾了却没删干净」。
     KeysDeleteConfirm(
         show = confirmDelete,
         count = pickedCount,
         cascadeCombos = cascadeCombos,
+        builtinPicked = KeyId.PLUS.id in KeysEditState.pickedKeys,
         onDismiss = { confirmDelete = false },
         onConfirm = {
             confirmDelete = false
@@ -123,6 +133,9 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     //  编辑态里按返回：**先问一句**再退页（判据与置位在 `SettingsPage.goBack`）——
     //  这一退会把勾选整个丢掉，而「勾了几项、本来要删什么」是刚做过的活。
     KeysLeaveEditConfirm()
+
+    //  启用 / 停用时那一问「连带的键与组合怎么办」（状态在 `KeysAsk`）
+    KeysAskDialog()
 
     CollectKeyDialog(
         show = collectPending,
@@ -145,20 +158,55 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
  *  显隐判据在调用点（编辑态 + 选中不为空）；它自己是颗实心圆，图标走 `onPrimary`。
  */
 @Composable
-private fun BoxScope.KeysDeleteFab(
+private fun BoxScope.KeysEditFabs(
     visible: Boolean,
-    onClick: () -> Unit,
+    /** 这一下是「启用」还是「停用」（见调用点的 `pickedAnyOn`）。 */
+    turningOn: Boolean,
+    onToggle: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     PageCornerFab(visible = visible) {
-        PageFabButton(onClick = onClick) {
-            Icon(
-                PageIcons.CommandDelete,
-                contentDescription = I18n.get(Strings.COMMON_DELETE, "删除"),
-                tint = COUITheme.colorScheme.onPrimary,
-            )
+        //  两颗竖着排：上面「停用 / 启用」、下面「删除」—— 删除是破坏性的，压在离手更远的那一格
+        //  （拇指扫过时先碰到的是开关）。
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(KEYS_FAB_GAP),
+        ) {
+            PageFabButton(
+                onClick = onToggle,
+                //  **必须 `compositeOver` 合一次**：COUI 暗色的层级色是半透明白（`secondaryContainer`
+                //  一带），直接交给 FAB 就是真透明 —— 底下的卡片会透上来，看着像颗幽灵按钮。
+                containerColor =
+                    COUITheme.colorScheme.secondaryContainer
+                        .compositeOver(COUITheme.colorScheme.surface),
+            ) {
+                //  **图标跟着这一下要做什么，而不是「现在是什么状态」**（之前正好接反了：
+                //  该停用时画对勾、该启用时画叉）。启用用 `ToggleRight`（开关语义），
+                //  不用对勾 —— 对勾在这一版界面里表示「已选中」，摆在「启用」上会被读成勾选。
+                Icon(
+                    if (turningOn) PageIcons.MasterSwitch else PageIcons.Cancel,
+                    contentDescription =
+                        if (turningOn) {
+                            I18n.get(Strings.KEYS_ENABLE, "启用")
+                        } else {
+                            I18n.get(Strings.KEYS_DISABLE, "停用")
+                        },
+                    tint = COUITheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            PageFabButton(onClick = onDelete) {
+                Icon(
+                    PageIcons.CommandDelete,
+                    contentDescription = I18n.get(Strings.COMMON_DELETE, "删除"),
+                    tint = COUITheme.colorScheme.onPrimary,
+                )
+            }
         }
     }
 }
+
+/** 两颗 FAB 之间那一档间距 —— 12dp（与页面里卡片之间同一档，看得清是两颗独立按钮）。 */
+private val KEYS_FAB_GAP = 12.dp
 
 /**
  * 删掉选中那几项之前的确认窗 —— 那几项的绑定一起没，删了不能撤销。
@@ -168,26 +216,30 @@ private fun BoxScope.KeysDeleteFab(
  *
  * @param count 选中几项（正文里报出来：确认窗要让人看清「这一下会删掉几条」）
  * @param cascadeCombos 顺带被删掉的组合按键数（`0` = 不写那一句）
+ * @param builtinPicked 勾里含内置侧键 —— 它删不掉，要提前说明这一项会被剔除
  */
 @Composable
 private fun SettingsPage.KeysDeleteConfirm(
     show: Boolean,
     count: Int,
     cascadeCombos: Int,
+    builtinPicked: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    val body = I18n.format(Strings.KEYS_DELETE_CONFIRM, count)
+    //  内置侧键不计进「将删除 N 项」：它删不掉，勾上它只是被剔除（下面单独一句说明）
+    val effective = if (builtinPicked) (count - 1).coerceAtLeast(0) else count
+    val body = I18n.format(Strings.KEYS_DELETE_CONFIRM, effective)
+    //  段与段用空行切开（`EmphasisText` 的分段规则）：连带影响、剔除项各自单独一段，读得清
+    val notes =
+        buildList {
+            if (cascadeCombos > 0) add(I18n.format(Strings.KEYS_DELETE_COMBOS, cascadeCombos))
+            if (builtinPicked) add(I18n.get(Strings.KEYS_DELETE_BUILTIN, "内置侧键不能删除，会从这一批里剔除"))
+        }
     ConfirmDialog(
         show = show,
         title = I18n.get(Strings.KEYS_DELETE_TITLE, "删除选中的项目"),
-        //  段与段用空行切开（`EmphasisText` 的分段规则）：第二段是连带影响，单独读得清
-        summary =
-            if (cascadeCombos > 0) {
-                body + "\n\n" + I18n.format(Strings.KEYS_DELETE_COMBOS, cascadeCombos)
-            } else {
-                body
-            },
+        summary = (listOf(body) + notes).joinToString("\n\n"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = onDismiss,
         onConfirm = onConfirm,

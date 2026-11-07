@@ -1,0 +1,16 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+index 41a4563..8032ffb 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+@@ -177,7 +177,10 @@ fun DropdownImpl(
+             .then(containerModifier),
+     ) {
+         Row(
+-            modifier = innerRowModifier,
++            // Patched: the text block takes the space left after the trailing cells instead of
++            // claiming the whole row first. Without the weight a greedy title measured with a
++            // capped popup width leaves zero width for the chevron/check, which then disappears.
++            modifier = innerRowModifier.weight(1f, fill = false),
+             verticalAlignment = Alignment.CenterVertically,
+             horizontalArrangement = Arrangement.Start,
+         ) {

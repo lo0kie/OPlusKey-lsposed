@@ -1,9 +1,12 @@
 package com.lookie.opluskey.ui.screen
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Gesture
@@ -21,6 +24,7 @@ import com.lookie.opluskey.ui.model.COMBO_TITLE
 import com.lookie.opluskey.ui.model.COMMANDS_TITLE
 import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.GENERAL_TITLE
+import com.lookie.opluskey.ui.model.HEADER_ICON_GAP
 import com.lookie.opluskey.ui.model.KEYS_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SUBTITLE_DIM_FACTOR
@@ -30,6 +34,7 @@ import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
 import com.lookie.opluskey.ui.screen.apppicker.pickerSubtitle
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
+import com.lookie.opluskey.ui.screen.binding.HeaderSettingsButton
 import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
 import com.lookie.opluskey.ui.screen.combo.KeysHeaderEdit
 import com.lookie.opluskey.ui.screen.combo.comboLabel
@@ -43,6 +48,8 @@ import com.lookie.opluskey.ui.screen.home.HomeHeaderMenu
 import com.lookie.opluskey.ui.screen.variables.VariableHeaderAdd
 import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.state.KeyWatchState
+import com.lookie.opluskey.ui.state.SettingsTarget
+import com.lookie.opluskey.ui.state.SettingsTargetState
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -64,8 +71,14 @@ internal fun SettingsPage.PageTopBar(
     //  两页共用同一枚标记、同一档压暗：用户看到的都是「这一份东西现在不接管」。
     val editingDisabled =
         when (s) {
-            Screen.BINDING -> !keyEnabled(KeyWatchState.editing(configState.config.value))
+            Screen.BINDING,
+            //  「按键设置」也看这颗键：那一页装的全是它的参数，停用时整片灰而不标一枚
+            //  禁用记号，用户只能猜是「模块关了 / 链路没通」——
+            Screen.KEY_SETTINGS,
+            -> !keyEnabled(KeyWatchState.editing(configState.config.value))
+
             Screen.COMBO_EDIT -> editingComboOff()
+
             else -> false
         }
     //  这行小标题的压暗带过渡：拔掉这一颗键 / 这一组时，页内内容整片在渐变，只有它硬切会像闪了一下。
@@ -134,7 +147,14 @@ private fun SettingsPage.editingComboOff(): Boolean {
     return cfg.combos.firstOrNull { it.id == id }?.enabled == false
 }
 
-/** 顶栏标题按页分派。 */
+/**
+ * 这一页的大标题 —— **一张纯映射表**：一页一行，没有业务分支。
+ *
+ *  `CyclomaticComplexMethod` 在这类「一个大 `when`、每个分支一句常量」的地方没有意义
+ *  （它的「复杂度」等于页数），拆成几张表反而要多维护几处；所以这里显式压掉，
+ *  **不是因为改不动**。真出现需要判断的分支时，再拆。
+ */
+@Suppress("CyclomaticComplexMethod")
 private fun SettingsPage.pageTitle(s: Screen): String =
     when (s) {
         // 首页标题平时是**宿主 Activity 自己的标题**（hook 侧读来的，见 SettingsPageHooks）；
@@ -145,6 +165,13 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         Screen.BINDING -> {
             BINDING_TITLE
+        }
+
+        // 「独立设置」= 这一档对公共项的覆盖，与公共那一页（「按键设置」）**不同名**：
+        //  两页都叫「按键设置」时，用户分不清进的是默认值还是覆盖值。副标题写「在改哪一颗」
+        //  （见 [pageSubtitle]）。
+        Screen.KEY_SETTINGS -> {
+            I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置")
         }
 
         Screen.COMMANDS -> {
@@ -210,6 +237,12 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             editingKeyName()
         }
 
+        //  「独立设置」页：写**这一趟在改谁** —— 单键是键名、组合是成员键名连起来那一串。
+        //  它由 `SettingsTargetState` 决定，与「从哪一页进来」无关（两页进的是同一页）。
+        Screen.KEY_SETTINGS -> {
+            settingsTargetLabel(SettingsTargetState.current)
+        }
+
         // 一条都没保存时不报数（「已保存0条命令」读起来像统计，也不成句）——
         // 直接说「没有保存的命令」，与页内那块空态同一句话。
         Screen.COMMANDS -> {
@@ -259,34 +292,63 @@ private fun SettingsPage.PageActions(
     pagers: PagePagers,
 ) {
     when (s) {
-        Screen.SHORTCUTS -> HomeHeaderMenu()
+        Screen.SHORTCUTS -> {
+            HomeHeaderMenu()
+        }
 
         // 「按键绑定」页的 ⋮ 只管**分组**（快捷键 / 自定义按键），不发命令 ——
         // 进「自定义命令」页的唯一入口仍是那一页右下角那颗 FAB（见 [BindingScreen]）。
-        Screen.BINDING -> BindingKeyMenu(gesture = Gesture.entries[pagers.gestures.currentPage])
+        //  它**左边**多一颗设置键：这一页是「这颗键怎么绑」，那颗进的是**公共**按键设置
+        //  （接口 / 手势判定 / 振动 / 提示 / 组合键）。摆在这里是因为用户在这一页调手感时
+        //  顺手就要改那几项 —— 原先只能退回首页绕一趟（见 [BindingHeaderSettings]）。
+        Screen.BINDING -> {
+            HeaderSettingsButton(SettingsTarget.Key(KeyWatchState.editing(configState.config.value)))
+            //  两颗圆键之间要给一条缝：库那排是 `Arrangement.End`、一个挨一个，
+            //  贴在一起时两圈描边连成一条线（见 [HEADER_ICON_GAP]）
+            Spacer(Modifier.width(HEADER_ICON_GAP))
+            BindingKeyMenu(gesture = Gesture.entries[pagers.gestures.currentPage])
+        }
 
-        Screen.APP_PICKER -> AppPickerMenu()
+        Screen.APP_PICKER -> {
+            AppPickerMenu()
+        }
 
         // 「条件执行」页那颗「添加」：这一页唯一的加法入口。右下角只留「确认」一颗 FAB，
         //  加法放在「这一页有什么」那一层的工具位置上（用户口径）。
-        Screen.BRANCHES -> BranchHeaderAdd()
+        Screen.BRANCHES -> {
+            BranchHeaderAdd()
+        }
 
         // 「自定义命令」页那颗「重置 / 取消」：底栏只剩「保存」，重置挪到这一头（用户口径）
-        Screen.COMMANDS -> CommandHeaderReset(onListPage = pagers.commands.currentPage == COMMAND_LIST_PAGE)
+        Screen.COMMANDS -> {
+            CommandHeaderReset(onListPage = pagers.commands.currentPage == COMMAND_LIST_PAGE)
+        }
 
-        // 组合键编辑页的 ⋮：只有「删除组合键」一行（见 [ComboEditMenu]）
-        Screen.COMBO_EDIT -> ComboEditMenu()
+        // 组合键编辑页的 ⋮：只有「删除组合键」一行（见 [ComboEditMenu]）。
+        //  它**左边**同样有一颗「独立设置」—— 与「按键绑定」页那颗是同一个组件、同一页目标：
+        //  组合也要能自己决定接口 / 振动 / 提示（用户口径：按键与组合键功能完全一样）。
+        Screen.COMBO_EDIT -> {
+            ComboEditState.editingId?.let { HeaderSettingsButton(SettingsTarget.Combo(it)) }
+            Spacer(Modifier.width(HEADER_ICON_GAP))
+            ComboEditMenu()
+        }
 
         // 「按键功能」页那颗「编辑 / 完成」：进 / 出这一页的编辑态（勾选 → 删除按键，
         //  见 [KeysHeaderEdit]）。编辑态里它自己换成「完成」。
-        Screen.KEYS -> KeysHeaderEdit()
+        Screen.KEYS -> {
+            KeysHeaderEdit()
+        }
 
         // 「自定义变量」页那颗「新建」：这一页唯一的加法入口（原先在右下角那颗 FAB 上）
-        Screen.VARIABLES -> VariableHeaderAdd()
+        Screen.VARIABLES -> {
+            VariableHeaderAdd()
+        }
 
         // 「变量操作」页顶栏没有动作：那一页只剩「挑一步」（挑完点页里那颗 FAB 落盘）。
         //  删掉一颗变量的入口在「自定义变量」页点一行弹的那张窗里（见 `VarManageDialog`）。
-        else -> Unit
+        else -> {
+            // 其余页顶栏没有动作
+        }
     }
 }
 
@@ -359,8 +421,9 @@ private fun SettingsPage.PageBottomBand(
 
         // 首页 / 「关于模块」/「捐赠列表」都没有固定带（后两页都是「短内容」页，见 [pageScrollBehavior]）。
         //  「自定义变量」同样没有：那一页没有分页器，也就没有带子。
+        //  「按键设置」（按键级那一页）也不摆：它是一次把四节看完的直列，没有档可切。
         Screen.SHORTCUTS, Screen.ABOUT, Screen.DONATE_LIST, Screen.GENERAL,
-        Screen.KEYS, Screen.VARIABLES,
+        Screen.KEY_SETTINGS, Screen.KEYS, Screen.VARIABLES,
         -> {
             // 这几页不摆固定带
         }
@@ -380,3 +443,29 @@ internal fun SettingsPage.editingKeyName(): String =
     KeyWatchState
         .editing(configState.config.value)
         .let { if (it.isCustom) it.label else I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键") }
+
+/**
+ * 「独立设置」页那一行副标题 —— 在改**哪一颗键 / 哪一组组合**。
+ *
+ *  组合走 `comboLabel`（成员键名连起来，`「侧键」×「电量 +」`）：它才是用户认得出的名字，
+ *  `cmb1` 只是内部 id，写出来等于什么都没说。单键走 `KeyId.label`（侧键 / 用户起的名字）。
+ *
+ *  放在这一层而不是 `SettingsTarget` 上：取名字要用 `comboLabel` 与配置里的键名表，
+ *  那是界面层的东西，`ui/state` 不该反持。
+ */
+internal fun SettingsPage.settingsTargetLabel(target: SettingsTarget): String {
+    val cfg = configState.config.value
+    return when (target) {
+        is SettingsTarget.Key -> {
+            target.id.label
+        }
+
+        is SettingsTarget.Combo -> {
+            cfg.combos
+                .firstOrNull { it.id == target.id }
+                ?.let { comboLabel(cfg, it, bracketed = true) }
+                // 那一组刚被删掉（退场那一帧）：报 id 总比空串强，页面自己会退
+                ?: target.id
+        }
+    }
+}

@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,7 +29,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
@@ -52,13 +52,14 @@ import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
 import com.lookie.opluskey.ui.model.actionCellIcon
 import com.lookie.opluskey.ui.model.stepTitleWithTarget
+import com.lookie.opluskey.ui.screen.keyEnabled
+import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.NO_FRESH_ROW
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -256,6 +257,10 @@ private fun SettingsPage.BranchRuleColumn(
 ) {
     //  哪几行是死分支（永远轮不到）—— 小标题上直接标出来，不必等点「确认」才被告知
     val dead = deadIndexesOf(rules)
+    //  这一页的行能不能点：**整页闸门 × 这颗键自己开没开**。键停用时场景命中也不会执行
+    //  （判定侧只认启用的键），再让它看起来可编辑就是骗人。判据在这里就地算 ——
+    //  它与 `BranchCards` 的入参是同一个式子，不值得为它多加一层参数。
+    val rowsEnabled = pageWritable() && keyEnabled(branchKeyNow())
     Column(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         // 只剩一条时它**不自己收缩**：那一条的消失由外层空态那一套接管（见 `BranchCards` 里
         //  那个 effect）。不然数据被移除之前先闪一帧收缩，就成了「行先缩、空态再长」两段。
@@ -270,6 +275,7 @@ private fun SettingsPage.BranchRuleColumn(
                             anchors = anchors[index],
                             fresh = ids[index] == freshId,
                             exiting = shrinkable && menus.deletingAt == index,
+                            enabled = rowsEnabled,
                             //  「停用」优先于「不会执行」：那是用户刚做过的动作，也是更直接的原因
                             state =
                                 when {
@@ -377,6 +383,8 @@ private fun SettingsPage.BranchRow(
                             menus.menuAnchor = spec.anchors.menu
                             menus.menuAt = spec.index
                         },
+                        //  这颗键自己停用 / 整页闸门关着 ⇒ 两行都置灰（菜单那颗仍可用，见 `RuleCells.enabled`）
+                        enabled = spec.enabled,
                     ),
                 menus = menus,
             )
@@ -428,7 +436,7 @@ private fun RuleTitleRow(
  *  合成一个枚举而不是两个布尔：两种状态互斥，各自一个位的话调用点要先想「两个都真时显示哪个」，
  *  而那个优先级（先说「已停用」）只该有一处口径。
  */
-private enum class RuleState {
+internal enum class RuleState {
     NORMAL,
 
     /** 顺序上轮不到（某档取值前面已经凑齐 / 被更宽的一条盖住）—— 红字「不会执行」。 */
@@ -446,6 +454,8 @@ private class RuleRowSpec(
     val exiting: Boolean,
     /** 行尾那半句话说什么（见 [RuleState]）。 */
     val state: RuleState,
+    /** 这一块两行能不能点（整页闸门 × 这颗键自己开没开，见 `RuleCells.enabled`）。 */
+    val enabled: Boolean = true,
 )
 
 /** 「没有正在退场的行」的哨兵 —— 与 `BranchMenuState.deletingAt` 的初始值同义。 */
@@ -479,22 +489,6 @@ private class RuleAnchors {
  */
 private val RULE_TITLE_HEIGHT = 32.dp
 
-/** 表尾那句注脚 —— 与「自定义命令」页那条权限提示同一个样式（不占卡片、居中、`footnote1`）。 */
-@Composable
-private fun SettingsPage.BranchDefaultTip() {
-    Text(
-        //  只留这一句，不接「：侧键 - 单击」那截详细 —— 那一档顶栏尾随小标题已经写着
-        text = I18n.get(Strings.COMMAND_BRANCH_DEFAULT, "以上都不成立时，执行按键绑定里的命令"),
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(start = 32.dp, end = 32.dp, top = 6.dp),
-        textAlign = TextAlign.Center,
-        style = COUITheme.textStyles.footnote1,
-        color = COUITheme.colorScheme.onSurfaceVariantSummary,
-    )
-}
-
 /**
  * 一行两列那四个「点哪个 / 点了做什么」 —— 合成一个对象只为把参数个数压回 detekt 的上限。
  */
@@ -504,6 +498,13 @@ private class RuleCells(
     val onCondition: (Int) -> Unit,
     val onAction: () -> Unit,
     val onMenu: () -> Unit,
+    /**
+     * 这一块的两行**能不能点** —— 整页闸门 × 这颗键自己开没开。
+     *
+     *  键停用时场景命中也不会执行（判定侧只认启用的键），所以两行都置灰；菜单那一颗仍可用，
+     *  否则连「删掉这条场景」都做不了。
+     */
+    val enabled: Boolean = true,
 )
 
 /** 一条规则那两行「写什么、配哪颗字形」—— 合成一个对象，[RuleBlock] 的参数才压得回 5 个以内。 */
@@ -575,6 +576,8 @@ private fun RuleBlock(
                                 //  「前台应用」那一行不限制行数（可能列好几个应用名），其余照旧单行
                                 titleMaxLines = if (line.multiLine) Int.MAX_VALUE else 1,
                                 icon = line.icon,
+                                //  键停用 / 只读时这一行点不动（联动见 `RuleCells.enabled`）
+                                enabled = cells.enabled,
                                 //  没配完的那一条：图标与文字**都压到禁用色**（同一档），不加别的记号 ——
                                 //  这一行本身仍可点，靠文案「未选择条件」说清缺什么就够了。
                                 iconTint = if (line.empty) disabledTint else null,
@@ -586,7 +589,9 @@ private fun RuleBlock(
                                     val last = condIndex == text.conditionLines.lastIndex
                                     ConditionTrailing(
                                         dead = state == RuleState.DEAD && last,
-                                        off = state == RuleState.OFF && last,
+                                        //  「已停用」**每一行都说**（用户口径：停用要标在列表的每一行上）：
+                                        //  一块有几条条件就几行都带，不只是最后一行。与动作那一行同一档。
+                                        off = state == RuleState.OFF,
                                     )
                                 },
                                 modifier = Modifier.preciseClickAnchor(cells.anchors.conditionAt(condIndex)),
@@ -613,25 +618,48 @@ private fun RuleBlock(
                 },
         )
         Spacer(Modifier.height(RULE_CARD_GAP))
-        CardList(
-            margin = 0.dp,
-            rows =
-                listOf(
-                    CardRow.Item(
-                        title = text.action,
-                        //  命令那一行也**不限行**：`打开应用: 微信 - LauncherUI` 这种一长串，
-                        //  单行省略会把「做什么」裁掉一半 —— 这一行正是用来核对它做什么的。
-                        titleMaxLines = Int.MAX_VALUE,
-                        icon = text.actionIcon,
-                        iconTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                        titleTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                        trailing = { RowEndIcon(PageIcons.Selector) },
-                        modifier = Modifier.preciseClickAnchor(cells.anchors.right),
-                        onClick = cells.onAction,
-                    ),
-                ),
-        )
+        RuleActionRow(text, state, cells)
     }
+}
+
+/**
+ * 动作那一行（**单独一张卡**）—— 抽出来只为让 [RuleBlock] 留在 detekt 的长度上限内。
+ *
+ *  这一块自己关着时，行尾先说一句「已停用」：条件行由 [ConditionTrailing] 说，动作这一行在这里补，
+ *  用户扫「无操作 / 打开应用…」时也能看出整块已经关掉了。小标题那一行**不说**（用户口径：
+ *  标在列表的每一行上）。
+ */
+@Composable
+private fun RuleActionRow(
+    text: RuleText,
+    state: RuleState,
+    cells: RuleCells,
+) {
+    CardList(
+        margin = 0.dp,
+        rows =
+            listOf(
+                CardRow.Item(
+                    title = text.action,
+                    //  命令那一行也**不限行**：`打开应用: 微信 - LauncherUI` 这种一长串，
+                    //  单行省略会把「做什么」裁掉一半 —— 这一行正是用来核对它做什么的。
+                    titleMaxLines = Int.MAX_VALUE,
+                    //  键停用 / 只读时点不动（与条件行同一道闸，见 `RuleCells.enabled`）
+                    enabled = cells.enabled,
+                    icon = text.actionIcon,
+                    iconTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
+                    titleTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
+                    trailing = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (state == RuleState.OFF) RuleStateHint(RuleState.OFF)
+                            RowEndIcon(PageIcons.Selector)
+                        }
+                    },
+                    modifier = Modifier.preciseClickAnchor(cells.anchors.right),
+                    onClick = cells.onAction,
+                ),
+            ),
+    )
 }
 
 /** 场景卡与动作卡之间的间距 —— 与「块与块之间」同一档（小标题自带的上间距是 16dp，这里取更紧的一档）。 */

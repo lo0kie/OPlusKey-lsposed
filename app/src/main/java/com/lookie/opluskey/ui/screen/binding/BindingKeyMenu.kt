@@ -16,6 +16,7 @@ import com.lookie.opluskey.core.model.withKeyName
 import com.lookie.opluskey.core.model.withoutKey
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
+import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.HeaderMenuButton
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.NameDialog
@@ -25,10 +26,14 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.screen.combo.KeysAskDialog
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
+import com.lookie.opluskey.ui.state.SettingsTarget
+import com.lookie.opluskey.ui.state.SettingsTargetState
 import com.lookie.opluskey.ui.write
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
 /**
@@ -98,16 +103,12 @@ internal fun SettingsPage.BindingKeyMenu(gesture: Gesture) {
                                 open = false
                                 dialog = KeyMenuDialog.RENAME
                             },
-                            //  停用要过一道确认：停用之后这颗键**不再接管**，而它旁边就是「删除」——
-                            //  两句一字之差、后果完全不同（一个是暂时不接管、一个是没了），
-                            //  先问一句才分得清。启用不必确认（那是把它开回来，没有可失去的东西）。
+                            //  启停都直接交给 `setKeyEnabledFromMenu`：连带关系（含这颗键的组合要不要
+                            //  一起停 / 一起开）由共用的 `KeysAsk` 那一问负责 —— 与按键列表那颗开关
+                            //  **完全同一套检查与提示**（用户口径），这里不再另开一道自己的确认窗。
                             onSetEnabled = { on ->
                                 open = false
-                                if (on) {
-                                    setKeyEnabledFromMenu(editing, true)
-                                } else {
-                                    dialog = KeyMenuDialog.DISABLE
-                                }
+                                setKeyEnabledFromMenu(editing, on)
                             },
                             onDelete = {
                                 open = false
@@ -122,6 +123,30 @@ internal fun SettingsPage.BindingKeyMenu(gesture: Gesture) {
     }
 
     KeyMenuDialogHost(dialog, onDismiss = { dialog = null })
+}
+
+/**
+ * 顶栏那颗「独立设置」键 —— 「按键绑定」页与「组合键编辑」页**共用**这一颗。
+ *
+ *  它只做一件事：把「这一趟改谁」写进 [SettingsTargetState] 再导航到那一页 ——
+ *  页面自己按 target 读参数与写回，所以单键与组合在那边**没有分支**。
+ *
+ *  摆在这一档页面的顶栏、⋮ **左边**：右边那颗 ⋮ 是对这一档动手（停用 / 改名 / 删除），
+ *  左边这颗改的是它对公共项的覆盖 —— 一左一右正好是「它自己」与「它怎么工作」。
+ *
+ *  **不跟这一档的启停走**：停用的键 / 组合照样能进来改（改完再启用是常见顺序）。
+ */
+@Composable
+internal fun SettingsPage.HeaderSettingsButton(target: SettingsTarget) {
+    HeaderIconButton(
+        onClick = {
+            SettingsTargetState.current = target
+            XLog.w("进「${I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置")}」页：$target")
+            navTo(Screen.KEY_SETTINGS)
+        },
+    ) {
+        Icon(PageIcons.SettingsCog, contentDescription = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"))
+    }
 }
 
 /**
@@ -306,21 +331,9 @@ private fun SettingsPage.KeyMenuDialogHost(
             onDismiss()
         },
     )
-    ConfirmDialog(
-        show = dialog == KeyMenuDialog.DISABLE,
-        title = I18n.get(Strings.BINDING_DISABLE_KEY, "停用按键"),
-        //  说清两件事：**这颗键不再接管**（按下去不会有任何动作），以及**什么都没丢**
-        //  （绑定、条件、名字都留着，随时能开回来）—— 与下面那句「删除」正好是这两种后果的分界。
-        summary = I18n.format(Strings.BINDING_DISABLE_KEY_CONFIRM, selected.label),
-        //  按钮只写动词（与「删除」那一档同一形状）：标题已经说了停用的是什么
-        action = I18n.get(Strings.COMMON_DISABLE, "停用"),
-        onDismiss = onDismiss,
-        onConfirm = {
-            onDismiss()
-            //  写的是这一颗键的 `enabled`（与模块总闸是两层）；失败时 `write` 自己会提示。
-            setKeyEnabledFromMenu(selected, false)
-        },
-    )
+    //  启停 / 连带的那一问「含它的组合要不要一起停 / 一起开」—— 与按键列表那颗开关共用
+    //  同一个待确认对象与同一个组件（用户口径：两处完全一样的检查与提示）。
+    KeysAskDialog()
     ConfirmDialog(
         show = dialog == KeyMenuDialog.DELETE,
         title = I18n.get(Strings.BINDING_DELETE_KEY, "删除按键"),

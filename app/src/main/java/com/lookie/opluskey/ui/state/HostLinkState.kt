@@ -162,6 +162,16 @@ internal object HostLinkState {
     /** 宿主报活带回来的「它读到的主开关真值」—— `false` ⇒ 它读到的是默认值（主开关关着 / 还没解锁）。 */
     var hostEnabled by mutableStateOf(false)
 
+    /**
+     * 宿主报活带回来的「那份配置文件它读得懂」—— `false` ⇒ 它读到的是 `Config.DEFAULT`。
+     *
+     *  与 [hostEnabled] **不是一件事**，别合并：读不懂时 `enabled` 也是 false，
+     *  两者在 [hostEnabled] 这一位上完全同形，而该做的事完全不同（拨开关 vs 重启服务）。
+     *
+     *  缺省 `true`：报活里没带这一位（更早的宿主）时不该凭空报「配置读取失败」。
+     */
+    var hostConfigReadable by mutableStateOf(true)
+
     /** 宿主报活带回来的「最后一次执行动作」（`elapsedRealtime()`，0 = 从未）。 */
     var hostLastActionAt by mutableLongStateOf(0L)
 
