@@ -8,6 +8,7 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.model.SystemSwitches
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
@@ -15,11 +16,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AppWindowBottom
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
-import io.github.lyxnx.compose.ui.tablericons.outline.BatteryEco
 import io.github.lyxnx.compose.ui.tablericons.outline.BellCog
 import io.github.lyxnx.compose.ui.tablericons.outline.BellOff
 import io.github.lyxnx.compose.ui.tablericons.outline.BellRinging
-import io.github.lyxnx.compose.ui.tablericons.outline.Bluetooth
 import io.github.lyxnx.compose.ui.tablericons.outline.Bolt
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple1
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple2
@@ -30,14 +29,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple6
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple7
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple8
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple9
-import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessAuto
 import io.github.lyxnx.compose.ui.tablericons.outline.Calculator
 import io.github.lyxnx.compose.ui.tablericons.outline.Camera
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
 import io.github.lyxnx.compose.ui.tablericons.outline.Category
 import io.github.lyxnx.compose.ui.tablericons.outline.CategoryMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.CategoryPlus
-import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
 import io.github.lyxnx.compose.ui.tablericons.outline.Cpu
@@ -46,40 +43,47 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
 import io.github.lyxnx.compose.ui.tablericons.outline.Language
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
-import io.github.lyxnx.compose.ui.tablericons.outline.Location
 import io.github.lyxnx.compose.ui.tablericons.outline.MessageAi
 import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
-import io.github.lyxnx.compose.ui.tablericons.outline.MoonStars
 import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
-import io.github.lyxnx.compose.ui.tablericons.outline.Nfc
 import io.github.lyxnx.compose.ui.tablericons.outline.Notification
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilAi
 import io.github.lyxnx.compose.ui.tablericons.outline.PhotoVideo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureTop
-import io.github.lyxnx.compose.ui.tablericons.outline.Plane
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerStop
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackNext
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackPrev
 import io.github.lyxnx.compose.ui.tablericons.outline.Power
 import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
-import io.github.lyxnx.compose.ui.tablericons.outline.RotateRectangle
 import io.github.lyxnx.compose.ui.tablericons.outline.Screenshot
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.SparkleHighlight
-import io.github.lyxnx.compose.ui.tablericons.outline.SunLow
 import io.github.lyxnx.compose.ui.tablericons.outline.Switch3
 import io.github.lyxnx.compose.ui.tablericons.outline.TextScanAi
 import io.github.lyxnx.compose.ui.tablericons.outline.ThinkingLow
-import io.github.lyxnx.compose.ui.tablericons.outline.ToggleLeft
-import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
 import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.lyxnx.compose.ui.tablericons.outline.Video
-import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
 import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
 
-/** 动作 → 图标的映射（列表行首那个图标）。 */
+/**
+ * **不在清单里的** token → 图标 —— 步骤行、执行提示、手写配置走这里。
+ *
+ * ## 清单条目不再走这条路
+ *
+ *  `Spec.glyph` 是必填的（`ActionCatalog.GlyphSource`），所以「这一格画什么」在清单里就定完了，
+ *  [specIcon] 直接翻译那个声明，**不问 token**。
+ *
+ *  这就消掉了原先那个「两张必须手工同步的表」：清单里 25 处 `Glyph` + 这里的 33 支 token 分支，
+ *  说的是同一件事；加一条动作漏了图标**不报错**，只是掉到 `Dots`（看着像「这条本来就没配图标」）。
+ *  现在漏了当场编译失败，这里只剩「没有 `Spec` 可言」的那一半。
+ *
+ *  下面这些精确分支（`oplus:` 各场景 / 各 `keyevent:` 码 / 响铃三档…）仍然必要：
+ *  步骤行里存的是 **token 本身**，它可能指向一个从清单里挑不到的动作（手写、导入、老配置），
+ *  那种值没有 `Spec` 可查。它们是**兜底**，不是第二份真源 —— 清单里那几档的字形由
+ *  `Spec.glyph` 声明，两边取到的是同一颗（图片缓存按 `Spec` 建，按 token 建的是另一条路）。
+ */
 internal fun actionIcon(token: String): ImageVector =
     when (token) {
         // 无操作
@@ -132,9 +136,16 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.MessageAi
         }
 
-        // 录音
-        Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING -> {
+        // 录音 —— 切换 / 只开始：同一颗麦克风（两档起的是同一条路，只有「在录时怎么办」不同）
+        Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING,
+        Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING_START,
+        -> {
             TablerIcons.Outline.Microphone
+        }
+
+        // 录音 · 只结束：停止那颗 —— 与录屏「只结束」同一个读法，菜单里并排时一眼分得出哪一行是停
+        Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING_STOP -> {
+            TablerIcons.Outline.PlayerStop
         }
 
         // 录屏 —— 与「录音」那颗麦克风分开：一个是录画面、一个是录声音，同字形会读错。
@@ -373,62 +384,15 @@ private fun volumeGlyph(token: String): ImageVector =
     }
 
 /**
- * 「系统开关」里那几条开关的字形 —— `setting:<id>[:on|:off]` 在这里翻译成图标。
+ * 「系统开关」里那几条开关的字形 —— 查 [systemSwitchKindIcon]（那张表在 `SwitchKindIcons.kt`：
+ * 它对 `SwitchKind` 枚举做 `when`，加一条开关漏配字形当场编译失败）。
  *
- *  **两种维度叠在一起**：
- *   · 开关**种类**决定基础字形（蓝牙 / WIFI / 手电筒 …）；
- *   · **状态**决定要不要换成开关键: 明确「打开」用 `toggle-right`、明确「关闭」用 `toggle-left`
- *     —— 切换那一档留开关自己的字形（它表达的是「这个开关」，不是某个状态）。
- *  这样三行（切换 / 打开 / 关闭）在菜单里字形互不相同，扫一眼就分得清。
- *
- *  **全项目唯一一处**（与 [actionIcon] 里那条前缀判断配套）：清单本身在
- *  `core/model/SystemSwitches`，那层没有 Compose，字形只能落在这里。加一条开关 = 在那个清单里
- * 加一行 + 这里加一支 —— 漏了这里会掉到 [TablerIcons.Outline.Dots]，看着像「没配图标」。
+ *  **三态共用同一颗「种类」字形**（蓝牙就是蓝牙、WIFI 就是 WIFI）：
+ *  原先「打开 / 关闭」两档分别换成 `toggle-right` / `toggle-left`，于是同一个开关的三档
+ *  长得像三个不同的东西 —— 而「系统开关」这一族本来就没有自己的字形，它们只是某条开关的
+ *  三种取值（用户口径：「它们不是没有图标吗」）。状态由行首那句「打开蓝牙 / 关闭蓝牙」说。
  */
-private fun systemSettingIcon(token: String): ImageVector {
-    //  与 `stepTitle` 同一口径：按 token 取记忆的解析结果，不在这条「每次重组都走」的路上现解析。
-    val setting = ActionCatalog.actionOf(token) as? Action.Setting
-    return when (setting?.on) {
-        true -> TablerIcons.Outline.ToggleRight
-        false -> TablerIcons.Outline.ToggleLeft
-        null -> systemSwitchKindIcon(setting?.id ?: token.removePrefix(Action.SETTING_PREFIX))
-    }
-}
-
-/**
- * 开关**种类**那一层的字形表 —— 一条开关一颗字形，表里没有的掉到 [TablerIcons.Outline.Dots]。
- *
- *  表里存的是 **lambda 而不是现成的矢量**：这些都是顶层 `val`，写成 `"bt" to TablerIcons.Outline.Bluetooth`
- *  就会在类初始化那一刻把十几颗全建出来 —— 与 [specIcon] 那条「读一颗建一颗」的取舍正好相反
- *  （整张表预建是冷启动后第一次进页掉帧的那笔账）。
- *
- *  「老配置里可能还留着 `setting:dnd`」那一支与「手电筒用网格里同一颗字形」那两条理由，
- *  原先写在各支注释里，搬到这里一并保留：
- *   · `dnd` —— 现在「免打扰」走 `oplus:` 那条（见 [actionIcon]），留着只为旧文件的图标不变成 Dots；
- *   · `flashlight` —— 与网格里那一格（`Action.FLASHLIGHT`）同一颗，同一个意思不该有两个长相；
- *   · `extradim` —— 半个太阳（「再压一档亮度」），与 `darkmode` 的月亮分开：那条改配色，这条改屏幕暗到什么程度。
- */
-private val SWITCH_KIND_ICONS: Map<String, () -> ImageVector> =
-    mapOf(
-        "bt" to { TablerIcons.Outline.Bluetooth },
-        "wifi" to { TablerIcons.Outline.Wifi },
-        "cell" to { TablerIcons.Outline.CellSignal4 },
-        "rotation" to { TablerIcons.Outline.RotateRectangle },
-        "nfc" to { TablerIcons.Outline.Nfc },
-        "airplane" to { TablerIcons.Outline.Plane },
-        // 定位服务：与系统「位置信息」那颗准星同一套读法
-        "location" to { TablerIcons.Outline.Location },
-        "dnd" to { TablerIcons.Outline.Moon },
-        "flashlight" to { DrawnIcons.Flashlight },
-        "darkmode" to { TablerIcons.Outline.MoonStars },
-        "powersave" to { TablerIcons.Outline.BatteryEco },
-        "extradim" to { TablerIcons.Outline.SunLow },
-        //  自动亮度：太阳 + 一个 A（与「跟随系统」那行同一颗），与上下两档「亮度本身」分开
-        "autobrightness" to { TablerIcons.Outline.BrightnessAuto },
-    )
-
-/** 开关**种类**那一层的字形 —— 查 [SWITCH_KIND_ICONS]。 */
-private fun systemSwitchKindIcon(id: String): ImageVector = SWITCH_KIND_ICONS[id]?.invoke() ?: TablerIcons.Outline.Dots
+private fun systemSettingIcon(token: String): ImageVector = systemSwitchKindIcon(SystemSwitches.kindOf(token))
 
 /**
  * 界面处处共用的那一颗图标 —— [specIcon] 的**按需版**，带进程内缓存。
@@ -461,27 +425,24 @@ internal fun tileIcon(spec: ActionCatalog.Spec): ImageVector = iconCache.getOrPu
  * 一条清单条目（[ActionCatalog.Spec]）的图标 —— **界面不直接调它**，一律走 [tileIcon]
  * （那里带缓存，且只在这一格真被画到时才建）。也不要直接调 [actionIcon]。
  *
- * 与 [actionIcon] 的差别有两处。其一是自定义命令：两种命令 token 都是 `cmd:<名字>`，网格格子
- * 只有名字一行，单条 / 多条只能靠图标分辨，类型由 [ActionCatalog.Spec.commandKind] 带来。
- * 其二是 token 认不出取值的条目 —— [ActionCatalog.RINGER_CYCLE]（与「响铃状态」格共用写法）
- * 和几个标记入口格（`nav:` / `key:` / `panel:` / `zoom:`）。
+ *  ## 为什么这里不按 token 猜
+ *
+ *  `Spec.glyph` 是**必填**的（`ActionCatalog.GlyphSource`），所以「这一格画什么」在清单里就
+ *  定完了，这里只做翻译。原先它是 `glyph ?: actionIcon(canonicalToken)` —— 空着就按 token
+ *  猜，而猜的那张表在 [actionIcon] 里，两张表要手工同步：加一条动作漏了图标**不报错**，
+ *  只掉到 `Dots`（看着像「这条本来就没配图标」）。
+ *
+ *  三种来源都是**声明**，不是猜：
+ *   · [ActionCatalog.Glyph]（枚举自身就是一种 `GlyphSource`）→ [glyphIcon] 翻译；
+ *   · `GlyphSource.ByCommand` → 命令自己的字形（单条 / 多条 / 几步 / 是否提权）；
+ *   · `GlyphSource.BySwitchKind` → 开关种类的字形（同一开关三档共用一颗）。
  */
-internal fun specIcon(spec: ActionCatalog.Spec): ImageVector {
-    // 先落到局部 val 再判空：`spec` 来自 `:core` 模块，而那两位是**另一个模块**里的
-    //  public 属性 —— Kotlin 不给跨模块的属性做智能转换（理论上可能被 override）。
-    val commandKind = spec.commandKind
-    val glyph = spec.glyph
-    return when {
-        //  单条命令按它自己的 root 档取字形 —— 抽屉里那一行与命令列表里那张卡必须是同一颗
-        commandKind != null -> commandIcon(commandKind, spec.commandSteps, spec.commandRoot)
-
-        // 注册时声明过字形的（入口格 / 标记格 / 一处 token 两支字形那几种），按声明给
-        glyph != null -> glyphIcon(glyph)
-
-        // 其余按 token 推 —— 与配置里那一串写法同一套（`Action.parse` 的规范化结果）
-        else -> actionIcon(ActionCatalog.canonicalToken(spec.token))
+internal fun specIcon(spec: ActionCatalog.Spec): ImageVector =
+    when (val glyph = spec.glyph) {
+        is ActionCatalog.Glyph -> glyphIcon(glyph)
+        is ActionCatalog.GlyphSource.ByCommand -> commandIcon(glyph.kind, glyph.steps, glyph.root)
+        is ActionCatalog.GlyphSource.BySwitchKind -> systemSwitchKindIcon(glyph.id)
     }
-}
 
 /**
  * 字形名 → 图标 —— **全项目唯一一处映射**（[ActionCatalog.Glyph] 是封闭枚举，加一档字形才碰它）。
@@ -569,6 +530,73 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         //  动作的三种状态，而这套角标在图里占的是右下角那块地 —— 一颗底图要同时给三角 / 方块
         //  留位，底图本身就得缩，录屏那颗摄像机瘦下去之后反而认不出是摄像机了。
         ActionCatalog.Glyph.ScreenRecord -> DrawnIcons.ScreenRecordTile
+
+        // 「录音」那一格 / 三态弹窗的标题：与录音那两档取值同一颗麦克风。
+        //  三档共一颗的理由同录屏：状态由小字 / 文案说（`录音 - 开始`），不靠字形。
+        ActionCatalog.Glyph.Record -> TablerIcons.Outline.Microphone
+
+        // ── 下面这一批是从 `actionIcon` 那张 token 表搬过来的 ──
+        //  原先它们靠 `actionIcon(token)` 猜；`Spec.glyph` 必填之后清单条目自己声明，
+        //  这里只是「名字 → 矢量」的翻译，不再是第二份判断。
+        ActionCatalog.Glyph.NoOp -> TablerIcons.Outline.Ban
+
+        ActionCatalog.Glyph.Flashlight -> DrawnIcons.Flashlight
+
+        ActionCatalog.Glyph.PowerKey -> TablerIcons.Outline.Power
+
+        ActionCatalog.Glyph.PowerMenu -> TablerIcons.Outline.AdjustmentsCog
+
+        ActionCatalog.Glyph.FlashNote -> TablerIcons.Outline.PencilAi
+
+        ActionCatalog.Glyph.VoiceAssist -> TablerIcons.Outline.MessageAi
+
+        ActionCatalog.Glyph.VoiceMemoryStop -> TablerIcons.Outline.PlayerStop
+
+        ActionCatalog.Glyph.ScreenRecognition -> TablerIcons.Outline.TextScanAi
+
+        ActionCatalog.Glyph.ScreenTranslate -> TablerIcons.Outline.Language
+
+        ActionCatalog.Glyph.Camera -> TablerIcons.Outline.Camera
+
+        ActionCatalog.Glyph.Calculator -> TablerIcons.Outline.Calculator
+
+        ActionCatalog.Glyph.Screenshot -> TablerIcons.Outline.Screenshot
+
+        ActionCatalog.Glyph.Home -> TablerIcons.Outline.Home
+
+        ActionCatalog.Glyph.Back -> TablerIcons.Outline.ArrowBackUp
+
+        ActionCatalog.Glyph.Recents -> TablerIcons.Outline.Cards
+
+        ActionCatalog.Glyph.Notification -> TablerIcons.Outline.Notification
+
+        ActionCatalog.Glyph.ControlCenter -> TablerIcons.Outline.Command
+
+        ActionCatalog.Glyph.MediaSwitch -> TablerIcons.Outline.Switch3
+
+        ActionCatalog.Glyph.MediaPlay -> TablerIcons.Outline.PlayerPlay
+
+        ActionCatalog.Glyph.MediaPause -> TablerIcons.Outline.PlayerStop
+
+        ActionCatalog.Glyph.MediaPrev -> TablerIcons.Outline.PlayerTrackPrev
+
+        ActionCatalog.Glyph.MediaNext -> TablerIcons.Outline.PlayerTrackNext
+
+        ActionCatalog.Glyph.VolumeKeyUp -> DrawnIcons.VolumeAdd
+
+        ActionCatalog.Glyph.VolumeKeyDown -> DrawnIcons.VolumeSub
+
+        ActionCatalog.Glyph.MiniExpand -> TablerIcons.Outline.AppWindowBottom
+
+        ActionCatalog.Glyph.MiniCollapse -> TablerIcons.Outline.PictureInPictureTop
+
+        ActionCatalog.Glyph.RingerNormal -> TablerIcons.Outline.BellRinging
+
+        ActionCatalog.Glyph.RingerVibrate -> TablerIcons.Outline.DeviceMobileVibration
+
+        ActionCatalog.Glyph.RingerSilent -> TablerIcons.Outline.BellOff
+
+        ActionCatalog.Glyph.Apps -> TablerIcons.Outline.Apps
     }
 
 /**

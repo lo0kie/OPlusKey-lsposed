@@ -227,7 +227,7 @@ internal fun SettingsPage.addBranchRule(
         return
     }
     val tail = rules.lastOrNull()
-    if (tail != null && tail.conditions.isEmpty() && tail.action == Action.None) {
+    if (tail != null && tail.conditions.isEmpty() && !tail.action.isBound) {
         //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
         hint(
             I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有场景没选完"),
@@ -342,12 +342,12 @@ private fun SettingsPage.BranchRow(
             //  **留空 = 「无操作」**（场景命中也不做事），它与「还没选」是同一档数据，
             //  这一格就一律写名字 —— 不再有灰着的「未选择命令」那种半成品提示。
             val actionText =
-                if (rule.action == Action.None) {
+                if (!rule.action.isBound) {
                     I18n.get(Strings.ACTION_NONE, "无操作")
                 } else {
                     //  应用那一族要带上「具体是哪一个」（`微信(小窗 扫一扫)`）：与网格小字、
                     //  点开那层菜单的子标题、「选择应用」页页头**同一句**（见 `appTargetLabelOf`）。
-                    //  整句由 `stepTitleWithTarget`（= core 的 `actionTitle`）拼 —— 与步骤行、执行提示
+                    //  整句由 `stepTitleWithTarget`（= core 的 `CommandTitle`）拼 —— 与步骤行、执行提示
                     //  同一份实现，所以这里也是「父动作名: 子动作名」（`系统开关: NFC - 切换`）。
                     //  目标**整段**交给它（`appTargetLabelOf(action)` 已含括号）—— 走 `stepTitle` 的话
                     //  名字回调那层还会再补一次「(小窗)」，真机上就是 `应用(小窗 组件)(小窗)`。

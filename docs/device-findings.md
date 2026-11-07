@@ -3211,6 +3211,57 @@ android.permission.SCHEDULE_EXACT_ALARM: granted=true
 
 全程没有一条 `Background activity launch blocked`（对照：走闹钟那条路每次都有一条）。
 
+### 17.7 录音的三态：切换在意图里、停止只有 AIDL（2026-11-08，PLK110 / ColorOS 17）
+
+`oplus:recording` 原来只是一条意图（`oplus.intent.action.START_RECORD_FROM_CUBE_BUTTON` →
+`TransparentActivity`）。要拆出「只开始 / 只结束」，先得回答「谁能让它停」。反编译
+`com.coloros.soundrecorder`（`/data/app/…/com.coloros.soundrecorder_17008008.apk`，4 个 dex）逐条核过：
+
+| 三态 | 通道 | 判据 |
+| --- | --- | --- |
+| 切换 | **同一条意图** | 它自己就是开关：`TransparentActivity.handleFromCubeOrLockScreenBefore` → `saveRecordInfo(true)`，条件 `K()`（`RecorderService != null`）+ `manager.s.c()`（状态 1/2）+ `rk.a.z()` 成立时调 `d6.l.E(vm, 6)` = `RecorderViewModel.i0(6)` → `RecorderService.q(…, true, 6)` 停录保存 |
+| 只结束 | `RecordStateService` 的 AIDL | 见下表；**必须先查状态**，没在录时发它会弹出一张录音流体云（见下面那条 ⚠️） |
+| 只开始 | **没有独立入口** | 上面那条意图在录音中会停，所以只能先查状态再决定发不发 |
+
+AIDL 通道（`ISoundRecordInterface`，事务号逐条对着 `$Stub$Proxy` 核的，不是按 `onTransact` 的块序猜的）：
+
+```
+服务   com.coloros.soundrecorder/oplus.multimedia.soundrecorder.RecordStateService
+       清单: exported=true, android:permission="oplus.permission.OPLUS_COMPONENT_SAFE"
+描述符 oplus.multimedia.soundrecorder.ISoundRecordInterface
+1 queryStatus   回包 = writeNoException + 存在位 + 4 个 int
+                (currentRecordState / otherState / errorCode / extField)
+                1 正在录、2 已暂停，其余（含 -1「还没上报过」）按空闲 —— 与 `manager.s.c()` 同口径
+2 registerCallback / 3 unRegisterCallback
+4 resumeRecord / 5 pauseRecord
+6 stopRecord    → RecorderService.t() + q("", "", TRUE, 1)
+```
+
+- 每个事务在 `SoundRecordBinder` 里都先 `enforceCallingPermission("oplus.permission.OPLUS_COMPONENT_SAFE")`；
+  宿主 `dumpsys package com.oplus.gesture` 里那条是 `granted=true`（与它能起 `TransparentActivity`
+  同一个权限），所以这条通道在宿主进程直接走得通，不用注入侧。
+- ⚠️ `stopRecord` 内部 `checkAndWaitBindRecordService()` 是 `mCondition.await()` —— **没有超时**，
+  而跨进程调用本身没有超时参数。所以调用方必须把它放到独立线程上发、自己等一个上限
+  （模块侧 `bridge/host/RecorderStateBridge`：等连接与等事务各一道 `TIMEOUT_MS`）。
+- **别拿通知那条当命令**：`RecorderService.onStartCommand` 认 `oplus.intent.action.SAVE_CHANGED_ACTION`
+  （→ `manager.n.b` → `RecorderViewModel.i0(5|10)` 停录保存），但它先要 `notification_type`
+  与当前通知类型**逐值相等**，还有防连点守卫 —— 那是它自己通知栏的按钮，不是外部入口。
+- ⚠️ **没在录的时候发 `stopRecord`，真机会当场弹出一张「录音」流体云**（2026-11-08，PLK110，模块第一版）：
+  `stopRecord` 内部先 `checkAndWaitBindRecordService()`，那一步会**把 `RecorderService` 拉起来**
+  （它的 `onCreate` 建 recorder 内核、`TimeSetUtils` 与收尾那套），于是**什么都没录也弹卡**。
+  而 `queryStatus` 只 bind `RecordStateService`（`onCreate` 只 `registerBroadCastReceiver`），是惰性的
+  —— 所以三档都得先查状态，「只结束」也不例外：没在录就什么都不做。
+- 三条死路：`RecorderStateProvider`（`content://com.multimedia.record.state.provider`，
+  `call("method_record_state")` 回 `record_state`）的 `checkPackageAuth` **只放行**
+  `com.heytap.speechassist` / `com.oplus.ai.assistant`，别的包直接 `throw RuntimeException("package name not match")`；
+  `KeyMagicMessengerService` 的 `what=1/2` 不碰录音机（17.5 已记）；全 dex 跟录音有关的 action
+  只有三条 `START_*`（`_FROM_CUBE_BUTTON` / `_FROM_AI` / `_FROM_BREENO`），**没有任何停止广播**。
+
+模块侧：`RomProfile.NAME_RECORDING` / `_START` / `_STOP` 三档 + `RomProfile.AidlControl`
+（只记描述符与事务号，**不引用目标的任何类型**），分派在 `host/action/AppLauncher` 的
+`runAidlFeature` / `aidlDecision`。
+界面照录屏那一套：`ActionCatalog.RECORD_TILE`（`ai:recording`，永不写进配置）+ `RECORDING_MODES`。
+
 ## 十八、COUI `SnackbarHost` 的裁切边界 = **item 自己的盒子**（实测，2026-10-14，PLK110）
 
 ### 18.1 现象
@@ -4887,3 +4938,138 @@ python tools/dexdump.py classes4.dex method 'com.oplus.aimemory.voicecollect.ser
 adb shell su -c 'am start-foreground-service -n com.oplus.aimemory/com.oplus.aimemory.voicecollect.service.DataCollectService -a oplus.aimemory.intent.action.COLLECT_DATA --ei triggerType 1 --ei longPressEventType 1'
 adb shell "dumpsys activity services com.oplus.aimemory | grep isForeground"   # 看 types 里的 0x80
 ```
+
+## 四十七、侧键「打开应用」的转场动画：远端窗口动画 + 自绘卡片 + COE 扫光（反编译 `reference/gesture.apk`，2026-11-08，PLK110 / ColorOS 17.0.0）
+
+> 结论先行：原版**没有**用 `overridePendingTransition` / anim 资源 / `ActivityOptions.makeCustomAnimation`。
+> `com.oplus.gesture` 把目标 Activity 的启动包进 `RemoteAnimationAdapter`（再包成 `RemoteTransition`），
+> 过渡期间自己画一层圆角卡片 overlay、逐帧写目标窗口的 SurfaceControl（leash），另外播一个 COE 系统特效
+> `assets/key_remote_sweep_anim.coz`。总时长 **883 ms**，状态栏过渡延迟 **733 ms**。
+> 注意：本版 APK 把这套动画的回调实现成了空实现，adapter 恒为 null，这条路径实际不启用 —— 见 47.7。
+
+### 47.1 调用链（类名与方法名均来自 `reference/gesture.apk`）
+
+| 环节 | 位置 |
+| ---- | ---- |
+| 侧键打开应用 | `i9.g0.q(Intent, boolean)` → `remote/transition/d.m(Context, Intent, 2, Z)` |
+| 同一个入口（供参考） | `ActionRemoteStartContentProvider.call$lambda$3$lambda$2$lambda$1`、`ActionButtonKeyService.e()`（打开侧键设置页）都调 `d.m(..., 2, false)` |
+| 选动画实现 | `d.m` → `d.k(Context, int)`；`d.n(Context, Intent, ActivityTransitionAnimator$d, ta/b, Z)` 负责组装与启动 |
+| 实际启动 | `d.o(...)`：`ActivityOptions` + `setLaunchDisplayId(0)` + `setDismissKeyguardIfInsecure()`，额外塞 `Spruce_qucik_start_app=true`，经 `com.oplus.flexiblewindow.FlexibleWindowManager.setExtraBundle` 后 `startActivityAsUser(intent, bundle, UserHandle.CURRENT)`；TAG `SpruceLauncher` |
+
+`d.k` 的类型分支：
+
+- 类型 `1` / `3` → `remote/transition/e`（名字 `anim_right`）；
+- 类型 `2`（打开应用、打开设置页）→ `lb/v.a()`（即 `i9.b.h()` 的 `getActionButtonIsRight`）为真走
+  `remote/transition/b`，否则 `remote/transition/a`。
+  - `b.a()` 再按 `p9.e.a(context)` 返回 `anim_right_inner_screen` / `anim_right_front_screen`；
+  - `a.a()` 返回 `anim_left`。
+- 真机 PLK110 的侧键在右侧，因此走 `remote/transition/b`。
+
+### 47.2 过渡参数（`ActivityTransitionAnimator.<clinit>` 实测常量）
+
+- `RemoteAnimationAdapter(runner, 883, 883 - 150 = 733)`：总时长 883 ms，状态栏过渡延迟 733 ms。
+  同时 `ActivityTransitionAnimator.t = f$f.e() - 266 = 617`（后面内容淡入的起点）。
+- 时间表 `f$f` 构造为 `(883, 0, 150, 150, 183)`，对应字段 `a=883, b=0, c=150, d=150, e=183`；
+  取值为 `e()=883`、`c()=0`、`d()=150`、`a()=150`、`b()=183`。
+  所有子阶段都由 `f$b.b(timings, progress, start, duration)` 换算：
+  `constrain((progress * 883 - start) / duration, 0, 1)`。
+- 曲线：`android.view.animation.PathInterpolator`
+  - `(0, 0, 0.2, 1)`、`(0.33, 0, 0.67, 1)`、`(0.3, 0, 0.1, 1)`、`(0, 0, 0, 1)`、`(0.2, 0, 1, 1)`、`(0, 0, 0.6, 1)`；
+  - 位置类另用 COUI 的阻尼振荡插值器 `com.coui.appcompat.animation.p`（继承 `BaseInterpolator`），
+    `f$d` 的 10 个槽位依次为：
+    - `positionInterpolator` = `p(0.6, 0)`
+    - `positionInterpolatorX` = `p(0.45, 0)`
+    - `positionBelowStartInterpolator` = `p(0.3, 0)`
+    - `positionBelowInterpolator` = `p(0.8, 0)`
+    - `positionBelowEndInterpolator` = `p(0.8, 0)`
+    - `positionXInterpolator` = `p(0.6, 0)`
+    - `blurInterpolator` = `PathInterpolator(0.33, 0, 0.67, 1)`
+    - `scaleInterpolator` = `PathInterpolator(0.3, 0, 0.1, 1)`
+    - `contentBeforeFadeOutInterpolator` = `PathInterpolator(0, 0, 0.2, 1)`
+    - `contentAfterFadeInInterpolator` = `PathInterpolator(0, 0, 0.6, 1)`
+
+### 47.3 起始矩形与 `key_position`
+
+- `lb/v.b()` 给出一对设计值 `(477f, 600f)`（设计基准高 **2376**），`lb/v.h(ctx, f) = round(f / 2376 * heightPixels)`。
+- `lb/v.c(ctx)` 返回 `int[]{x, h(477), x, h(600)}`，`x = 侧键在右侧 ? widthPixels : 0`。
+  这个数组既是 `d.n` 塞进 Intent 的 `key_position`，也是卡片动画的起始矩形。
+- 起始状态（`remote/transition/a::b` / `b::b`，竖屏 rotation 0 / 2）：
+  - 右键（`b`）：`top = h(477)`、`bottom = h(600)`、`left = right = widthPixels` —— 右边一条**零宽竖线**；
+  - 左键（`a`）：同一条线在左边（`left = right = 0`）。
+  - 横屏另有分支：rotation 1 放到上边（`top = bottom = 0`），rotation 3 放到下边（`top = bottom = heightPixels`），
+    横向范围同样由 477 / 600 缩放得到。
+- 状态里两个 `float` 都写 `48.0f`（`f$e.q/u`），在 `f::h` 里当作**圆角半径**填进 8 个 corner radii（前 4 个取 `k()`，
+  后 4 个取 `e()`，两个值同为 48）。
+
+### 47.4 自绘卡片与窗口逐帧
+
+- `f::i` 建一个 **883 ms 的线性 `ValueAnimator`**（progress 0 → 1），每帧走 `f::h`：
+  `GradientDrawable.setBounds(state.rect - overlay 的屏幕偏移)` + `setCornerRadii(...)` + `setAlpha(...)`。
+- 卡片 alpha 的两段窗口：`[c() = 0, d() = 150 ms]` 与 `[a() = 150 ms, b() = 183 ms]`；后一段是
+  `1 - interpolator.getInterpolation(t)` 的反向分支，另有一个用 `PorterDuffXfermode` 复制的
+  `GradientDrawable` 副本作遮罩。
+- 目标窗口（`RemoteAnimationTarget.getLeash()`）由 `ActivityTransitionAnimator$a` 通过
+  `SyncRtSurfaceTransactionApplier` 逐帧写 `Matrix` / `Rect` / blur：
+  - 终点取 `getScreenSpaceBounds()`，缩放比 `max(state.width / bounds.width, state.height / bounds.height)`，
+    `Matrix.setScale(...)` 后 `postTranslate` 对齐，再把状态矩形反算成窗口内 `Rect`；
+  - 内容 alpha 从 `t = 617 ms`（`e() - 266`）起、窗口长 **133 ms**，套 `(0, 0, 0, 1)`；反方向用 `(0.2, 0, 1, 1)`。
+- `ActivityTransitionAnimator$Runner` 继承 `IRemoteAnimationRunner$Stub`，`ActivityTransitionAnimator$a` 才有
+  `onAnimationStart` / `onAnimationEnd` 那套（`p(...)` / `w(...)`）。
+
+### 47.5 COE 扫光特效
+
+`d.n` 在启动前调 `d.l(context, ta/b)`：
+
+- `new com.coe.syseffect.COESysEffect(context)` → `load("key_remote_sweep_anim.coz", false, false)`
+  （`assets/key_remote_sweep_anim.coz`，43 KB，APK 里确实存在），并 `i(density)`；
+- `sys_action` 传 `[256.0f]`；
+- `_HaloStartPoint` / `_WaveStartPoint` 取 `ta/b.f()`：竖屏下是 `Pair(key_position[0], (y1 + y2) / 2)`，
+  即**按键中心落在屏幕边缘的那一点**；
+- `_HaloEndPoint` / `_WaveEndPoint` 取屏幕中心 `(widthPixels / 2, heightPixels / 2)`。
+
+即：打开应用时先有一道从按键位置扫向屏幕中心的光晕 / 波纹，再由远端窗口动画接管。
+
+### 47.6 复刻边界
+
+- 这套东西全在 `com.oplus.gesture` 进程内，依赖 `startActivityAsUser` +
+  `ActivityOptions.makeRemoteTransition(RemoteTransition(IRemoteAnimationRunner, ...))` +
+  `SyncRtSurfaceTransactionApplier`（SurfaceControl leash）。注入侧（system_server）不适合复刻，
+  要做得在宿主进程里用同一套 API。
+- 未读实的两处：`f::h` 的 `v17` / `v18` 两个布尔在「打开应用」方向上的取值（决定卡片是否在
+  150–333 ms 淡出、是否叠 Xfermode 副本），以及 `ActivityTransitionAnimator$a` 里状态插值的逐帧公式；
+  这两处只影响观感细节，不影响上面的时间表与几何。
+
+### 47.7 与目标应用无关，但本版恒不启用
+
+是否套这套动画**不按应用区分**：
+
+- `d.k` / `d.m` / `d.n` / `d.o` 与 `ActionRemoteStartContentProvider.call` 全都不读目标包名；三个 dex 里
+  也没有 whitelist / blacklist / skip_anim 一类字符串。动画是挂在「这一次 `startActivityAsUser`」上的
+  `RemoteAnimationAdapter`，目标应用不参与，也不需要它支持什么。
+- 目标侧唯一的前置条件是 `PackageManager.getLaunchIntentForPackage(pkgName)` 非空
+  （`ActionRemoteStartContentProvider.call` 的 `onRemoteStart` 分支）：拿不到就直接走 `super.call`，
+  既不启动也不放动画 —— 纯后台服务、被停用 / 隐藏的应用属于这一类。
+- 启动标志固定为 `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_RESET_TASK_IF_NEEDED`（`0x10200000`），
+  另加 `android_action_key_launch_type=true`。目标已在栈顶时是 resume、不是新起任务，系统不会套这套进场。
+- 打开侧键设置页走的是同一条路（`ActionButtonKeyService.e()` → `d.m(..., 2, false)` →
+  `ActionButtonSettingsActivity`），同样不带包名判断。
+
+但这版 APK 上 adapter 恒为 `null`：
+
+- `ActivityTransitionAnimator$b$a`（R8 后的 `ActivityTransitionAnimator$b$DefaultImpls`）里 `a()` 与
+  `b(f$g)` 都直接 `return false`，`d(runner)` 直接抛 `UnsupportedOperationException`；
+  `d$b` 是接口 `ActivityTransitionAnimator$b` 的唯一实现，四个方法全部原样委派给它。
+- `ActivityTransitionAnimator.t` 造 adapter 的条件是 `callback.a() && Z`；而 `d.n` 经
+  `ActivityTransitionAnimator.u(..., mask = 2)` 把 `Z` 取默认值 `false`（调用点也显式传 `0`）
+  ⇒ 恒走 `t` 的 `adapter = null` 分支。
+- `d.o` 拿到 null 只打一条 `Log.i("SpruceLauncher", "startActivityIntentWithAnimation fail. RemoteAnimationAdapter is null.")`
+  就 `return`，`startActivityAsUser` 根本不会执行 —— 也就是说这条路既不放那套 883 ms 卡片动画，
+  也不会把应用启动起来。
+
+因此在本机（`/system_ext/app/OplusGestureUI/OplusGestureUI.apk`，sha256
+`95b5434da60582a3ae4a53103bc19c4ddf9810420335abdd0d5ce9efe780ade3`，与 `reference/gesture.apk` 一致）上，
+上面 47.2–47.4 的卡片 / leash 动画属于**未启用的代码**；侧键打开应用时真正看得见的是 `d.l` 的 COE 扫光
+（那一步在 adapter 判定之前，不依赖 adapter）+ 系统默认的启动过渡。真机复核方式：按一次侧键后抓
+`SpruceLauncher`，应当只有 `startActivityWithRemoteAnim: threadId:` 一条，没有 adapter 相关行；
+若能看到 `...RemoteAnimationAdapter is null` 即为此结论。若真机上确实出现过从按键位置展开的圆角卡片，
+说明那条动画不在本章这条链路上（本章只覆盖 `com.oplus.gesture` 内的这套实现）。

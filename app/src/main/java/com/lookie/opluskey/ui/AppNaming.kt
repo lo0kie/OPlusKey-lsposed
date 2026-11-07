@@ -11,35 +11,38 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.appTargetLabel
+import com.lookie.opluskey.core.model.resolveAppName
+import com.lookie.opluskey.core.model.resolveTargetName
 import com.lookie.opluskey.ui.model.cloneLabel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * 一个绑定目标该显示的名字 —— **全项目唯一一条优先级**，网格小字 / 顶栏「已选择」/ 步骤名都走它。
+ * 一个绑定目标该显示的名字 —— 网格小字 / 顶栏「已选择」/ 步骤名都走它。
  *
- *  1. 配置里**单独存着**的那份（`Config.appNames`，按 `AppTarget.identity` 索引）——
- *     冷启动直接进页、清单还没查回来时，只有它有名字；
- *  2. 老配置里塞在 token 末尾的 `|名字` —— 那一批是旧写法落下的（见 `AppTarget` 的类注释），
- *     只读不写，用户重新挑一次就迁到第 1 档；
- *  3. `PackageManager` 现查：`appLabelOf` 只认包名，所以先按 [AppTarget.pkg] 剥掉用户前缀与
- *     `/组件`（以前直接 `substringBefore('/')`，分身会带着 `999@` 去查、必然查不到）；
- *  4. 包名兜底（手写配置 / 包被卸载）。
+ *  **顺序不在这里**：[resolveAppName] 是唯一声明处（现查系统 → 落盘那份 → 老 `|名字` → 包名）。
+ *  这里只回答两件事：现查怎么查（[appLabelOrNull]，带缓存）、落盘那份在哪儿（`Config.appNames`）。
  *
- *  第 3 档还要补分身槽号：主用户的微信与分身微信包名相同，只查名字两行都叫「微信」。
+ *  这一条原先自己排过一遍顺序，而且与宿主侧**相反**（配置名在 `PackageManager` 前面）——
+ *  同一个应用因此在界面上叫旧名、在提示里叫新名。两端理由各自都成立，但不可能同时成立，
+ *  所以顺序收到 core 一处，两侧只负责「这一档取到什么」。
+ *
+ *  第 1 档补分身槽号：主用户的微信与分身微信包名相同，只查名字两行都叫「微信」。
  *  槽号查不到（那一份已经删了）时挂 user id（`微信 · 998`），见 [cloneLabel]。
  *
  *  @param target 绑定的目标写法（`999@包名/类名`、`999@包名/快捷方式id` 或纯包名）
  */
 internal fun SettingsPage.appNameOf(target: String): String {
-    configState.config.value
-        .appName(target)
-        ?.let { return it }
-    AppTarget.label(target)?.let { return it }
-    val base = appLabelOf(AppTarget.pkg(target))
     val userId = AppTarget.userId(target)
-    return cloneLabel(base, AppCloneCatalog.slotOf(context, userId), userId)
+    return resolveAppName(
+        target = target,
+        fromSystem = { pkg ->
+            //  分身：主用户与分身的包名相同，只查名字两行都叫「微信」—— 补一个槽号区分
+            appLabelOrNull(pkg)?.let { cloneLabel(it, AppCloneCatalog.slotOf(context, userId), userId) }
+        },
+        fromSaved = { id -> configState.config.value.appNames[id] },
+    )
 }
 
 /**
@@ -50,14 +53,11 @@ internal fun SettingsPage.appNameOf(target: String): String {
  *  `微信: 扫一扫`（冒号）、页头靠老写法的 `|名字` —— 于是同一个绑定在三处长成三个样子，
  *  而且**重新进页时页头只剩应用名**（新配置的名字在 `Config.appNames`，不在 token 后缀里）。
  *
- * ## 「具体是哪一个」从哪儿来（顺序只有这一处）
+ * ## 「具体是哪一个」从哪儿来
  *
- *  1. [draftLabel]：这一趟刚挑中、还没落盘的那一行自己的名字（页头专用，挑完立刻要看得见）；
- *  2. `Config.appNames`：落盘时与绑定同一次写下的名字 —— 快捷方式存的是**快捷方式名**
- *     （`扫一扫`），组件存的是挑那一行时的标题；
- *  3. 老配置里塞在 token 末尾的 `|名字`（只读，见 [AppTarget] 的类注释）；
- *  4. 组件**退回类名最后一段**（`...LauncherUI` → `LauncherUI`）；快捷方式没有这一档
- *     （`包名/id` 里的 id 是给系统看的，摆到界面上没有意义）。
+ *  顺序在 [resolveTargetName]（草稿 → 落盘那份 → 老 `|名字`），这里只回答「落盘那份在哪儿」。
+ *  取不到时**组件退回类名最后一段**（`...LauncherUI` → `LauncherUI`）；快捷方式没有这一档
+ *  （`包名/id` 里的 id 是给系统看的，摆到界面上没有意义）。
  *
  *  应用名一律**只按包名**取：`包名/快捷方式id` 那个身份在 `appNames` 里存的是快捷方式名，
  *  拿它当应用名会写成「扫一扫 - 扫一扫」。
@@ -65,21 +65,20 @@ internal fun SettingsPage.appNameOf(target: String): String {
  * @param shortcut 这一趟绑的是不是快捷方式（只有它才「没有组件」这一说）
  * @param window 是不是以小窗那一档 —— 目标里标「小窗」，否则同一个应用的两条绑定分不出来
  * @param draftLabel 这一趟刚挑中的名字（没挑过给 `null`）
+ * @param stockAnim 是不是「使用原版动画」那一档（`app:a:…`）—— 与 [window] 互斥，同一个理由标出来
  */
 internal fun SettingsPage.appTargetLabelOf(
     target: String,
     shortcut: Boolean,
     window: Boolean,
     draftLabel: String?,
+    stockAnim: Boolean = false,
 ): String {
     val app = appNameOf(AppTarget.format(AppTarget.pkg(target), AppTarget.userId(target)))
-    val own =
-        draftLabel?.takeIf { it.isNotBlank() }
-            ?: configState.config.value.appName(target)
-            ?: AppTarget.label(target)
+    val own = resolveTargetName(target, draftLabel) { id -> configState.config.value.appNames[id] }
     val detail =
         own?.takeIf { it != app } ?: if (shortcut) null else AppTarget.activity(target)?.substringAfterLast('.')
-    return appTargetLabel(app, window, detail)
+    return appTargetLabel(app, window, detail, stockAnim)
 }
 
 /**
@@ -95,6 +94,7 @@ internal fun SettingsPage.appTargetLabelOf(action: Action): String =
         shortcut = action is Action.AppShortcut,
         window = action is Action.AppWindow || (action as? Action.AppShortcut)?.window == true,
         draftLabel = null,
+        stockAnim = (action as? Action.App)?.stockAnim == true,
     )
 
 /**
@@ -122,7 +122,16 @@ internal fun clearAppLabelCache() {
     appLabelCache.clear()
 }
 
-internal fun SettingsPage.appLabelOf(packageName: String): String {
+internal fun SettingsPage.appLabelOf(packageName: String): String = appLabelOrNull(packageName) ?: packageName
+
+/**
+ * 同 [appLabelOf]，但**查不到给 `null`** —— 名字优先级链需要这个区分。
+ *
+ *  「查不到」与「名字恰好就是包名」是两件事：前者该让 [resolveAppName] 继续往下走
+ *  （落盘那份 / 老后缀），后者不该。合成一个「查不到返回包名」的话，下面三档永远走不到 ——
+ *  应用卸载之后界面上就只剩包名，而配置里明明记着它从前叫什么。
+ */
+private fun SettingsPage.appLabelOrNull(packageName: String): String? {
     appLabelCache[packageName]?.let { return it }
     val label =
         try {
@@ -131,7 +140,7 @@ internal fun SettingsPage.appLabelOf(packageName: String): String {
         } catch (e: Throwable) {
             XLog.d("取应用名失败：$packageName（${e.javaClass.simpleName}）")
             // 失败不写缓存，下次再查一次
-            return packageName
+            return null
         }
     if (appLabelCache.size >= APP_LABEL_CACHE_MAX) {
         // 整表清而不是逐条淘汰：这里省的是 binder，清一次最多让下一屏重新查一遍
@@ -187,6 +196,8 @@ internal fun SettingsPage.boundAppName(
                         // 以小窗那一档标出来：`window:` 与「小窗快捷方式」两种
                         window = current is Action.AppWindow || (current is Action.AppShortcut && current.window),
                         draftLabel = null,
+                        // 原版动画那一档同理（`app:a:…`）—— 两者互斥，最多一个为真
+                        stockAnim = (current as? Action.App)?.stockAnim == true,
                     )
                 } else {
                     //  只写**应用名**：快捷方式的身份（`包名/id`）在 `appNames` 里存的是快捷方式名，

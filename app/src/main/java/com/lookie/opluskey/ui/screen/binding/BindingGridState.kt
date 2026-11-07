@@ -260,26 +260,38 @@ internal fun SettingsPage.bindingActivate(
     anchor: PreciseClickState,
     enabled: Boolean,
 ) {
-    // 「自定义变量」那一格同样是**入口**：当场挑一颗变量、再挑对它做哪一步，落成 `setvar:` 写进配置。
-    //  它不进 [ActionCatalog.modeMenu]（变量是运行时收集的，静态表里列不出来），所以单独分派。
-    if (spec.token == ActionCatalog.VARS_TILE) {
-        if (enabled) {
-            tickNow()
-            openVarOpsForTarget(st.target)
+    // 「这一格点下去干什么」只有清单一个答案（`clickKind`），这里只按它分派：
+    //  · 变量格 → 去「变量操作」页；
+    //  · 其余有下一层的（弹菜单 / 状态弹窗）→ 先开那一层，选中了才改绑；
+    //  · 直接落盘的那些格 → 当场绑上。
+    //  以前这里单独判一次 `VARS_TILE`，与清单里那份判据事实上是同一句话写了两遍。
+    when (ActionCatalog.clickKind(spec)) {
+        ActionCatalog.ClickKind.PAGE_VARS -> {
+            // 自定义变量：当场挑一颗变量、再挑对它做哪一步，落成 `setvar:` 写进配置。
+            //  它不进 [ActionCatalog.modeMenu]（变量是运行时收集的，静态表里列不出来）。
+            if (enabled) {
+                tickNow()
+                openVarOpsForTarget(st.target)
+            }
+            return
         }
-        return
-    }
-    if (ActionCatalog.isEntryTile(spec)) {
-        // 入口格（系统导航 / 系统按键 / 媒体控制 / 响铃状态 / 前台转小窗 / **应用控制**）：
-        // 只弹二级菜单供选择，不直接改绑第一项；只有在弹出的菜单里真正点了某一项才改绑。
-        //  「应用控制」那一层点完不落盘，而是进挑应用页（见 `BindingTileMenu`）。
-        if (enabled) {
-            tickNow()
-            st.tileMenu = OpenTileMenu(spec, anchor)
+
+        ActionCatalog.ClickKind.DIRECT -> {
+            bindingSelect(st, spec, enabled)
+            return
         }
-        return
+
+        else -> {
+            // 入口格（系统导航 / 系统按键 / 媒体控制 / 响铃状态 / 前台转小窗 / **应用控制**）：
+            // 只弹二级菜单供选择，不直接改绑第一项；只有在弹出的菜单里真正点了某一项才改绑。
+            //  「应用控制」那一层点完不落盘，而是进挑应用页（见 `BindingTileMenu`）。
+            if (enabled) {
+                tickNow()
+                st.tileMenu = OpenTileMenu(spec, anchor)
+            }
+            return
+        }
     }
-    bindingSelect(st, spec, enabled)
 }
 
 /**

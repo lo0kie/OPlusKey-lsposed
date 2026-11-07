@@ -39,7 +39,7 @@ private fun SettingsPage.singlePayloadBlockedReason(): String? {
     //  （[Action.isBarePrefix]），以及 `keyevent:` 空正文 / 认不出的键码 / `none`（解析成
     //  [Action.None]）——存下去都是一条注定什么都不做的命令。
     val action = Action.parse(raw)
-    return if (action.isBarePrefix || action == Action.None) {
+    return if (action.isBarePrefix || !action.isBound) {
         I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE, "命令内容还不完整")
     } else {
         // 这里**必须**能返回 `null`：它是「能不能存」的唯一判据，一直非空就等于保存按钮永远灰着。

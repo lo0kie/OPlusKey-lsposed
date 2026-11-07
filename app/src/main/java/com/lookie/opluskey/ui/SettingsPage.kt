@@ -296,7 +296,7 @@ internal class SettingsPage(
      *    那一档绑的动作，**给组合键挑时读的是组合那张表**（[AppPickerState.comboId]）；
      *  · 「自定义命令」页那条路 → 被**换掉**的那一步（[AppPickerState.replaceStep]）。
      *
-     * `null` = 新绑（没在编辑任何动作）。[appPickerSelectedPkg] 与 [resetSmallWindowForPicker]
+     * `null` = 新绑（没在编辑任何动作）。[appPickerSelectedTarget] 与 [resetSmallWindowForPicker]
      * 都要它，两处必须同源 —— 否则会出现「行点亮了、开关却是关的」这种自相矛盾的界面。
      */
     internal fun editingAction(): Action? {
@@ -315,7 +315,7 @@ internal class SettingsPage(
                 picker.releaseComboId
                     ?.let { id -> cfg.combos.firstOrNull { it.id == id }?.longRelease }
                     ?: cfg.key(KeyWatchState.editing(cfg)).longRelease
-            return current.takeIf { it !is Action.None }
+            return current.takeIf { it.isBound }
         }
         val g = picker.gesture
         val comboId = picker.comboId
@@ -336,21 +336,31 @@ internal class SettingsPage(
     }
 
     /**
-     * 进「选择应用」页时把「以小窗口打开」**重算**一遍（入口两处各调一次）。
+     * 进「选择应用」页时把「以小窗口打开」「使用原版动画」**重算**一遍（入口两处各调一次）。
      *
-     * 判据就是 [editingAction]：正在编辑的那个动作本来就是小窗那一档 ⇒ 开 ——
+     * 判据就是 [editingAction]：正在编辑的那个动作本来就是小窗那一档 ⇒ 小窗开 ——
      *  `window:<目标>` 与 `appshortcut:w:…` **两档都算**（后者是「用小窗起快捷方式」）；
      * `app:<目标>` / 不带 `w:` 的快捷方式 / 别的动作 / 新绑（`null`）⇒ 关。
+     *
+     * 「使用原版动画」同理，只看 `app:a:…`（[Action.App.stockAnim]）。两者**互斥**，
+     * 所以这里顺带保证算完之后最多只有一个为真 —— 新挑的时候由界面在拨动时互斥（见
+     * `AppPickerHeaderMenu`），而回进来重算这一档可能遇上老配置里两个标记都写着的值。
      */
     internal fun resetSmallWindowForPicker() {
-        val on =
-            when (val action = editingAction()) {
+        val action = editingAction()
+        val window =
+            when (action) {
                 is Action.AppWindow -> true
                 is Action.AppShortcut -> action.window
                 else -> false
             }
-        picker.smallWindow.value = on
-        XLog.w("选择应用：以小窗口打开按正在编辑的动作重算 = $on")
+        val stockAnim = (action as? Action.App)?.stockAnim == true
+        picker.smallWindow.value = window && !stockAnim
+        picker.stockAnim.value = stockAnim && !window
+        //  把这一刻记成基线：两个开关是**绑定的一部分**（拨完再挑应用才落盘），退出页面时
+        //  要按「挑中过一条」同一句去问（见 `hasUnconfirmedPick`）。
+        picker.markWindowTogglesBaseline()
+        XLog.w("选择应用：以小窗口打开 = ${picker.smallWindow.value}／原版动画 = ${picker.stockAnim.value}（按正在编辑的动作重算）")
     }
 
     /**
@@ -456,10 +466,10 @@ internal class SettingsPage(
         return true
     }
 
-    /** [blockForDraftConfirm] 的同款，换「选择应用」页那一张（挑中过一条但还没提交）。 */
+    /** [blockForDraftConfirm] 的同款，换「选择应用」页那一张（挑中过一条 / 拨过打开方式但还没提交）。 */
     private fun blockForPickConfirm(): Boolean {
         if (!overlays.confirmLeavePick) {
-            XLog.w("退出选择应用页：挑中过一条但还没提交，先弹确认")
+            XLog.w("退出选择应用页：挑中过一条或拨过打开方式，都还没提交，先弹确认")
             overlays.confirmLeavePick = true
         }
         return true
@@ -471,8 +481,12 @@ internal class SettingsPage(
      *  草稿只由二级页点确认写（见 `PageEntry.onDraftPicked`），提交在右下角那颗 FAB 上；
      *  两者之间这一段就是「user 已经做过选择、但还没落盘」的窗口。草稿在每次进页时被
      *  `AppPickerUiState.beginVisit` 清掉，所以看见非 null 就一定属于这一趟。
+     *
+     *  **拨过「以小窗口打开」/「使用原版动画」也算**：那两个开关是绑定的一部分（拨完再挑应用、
+     *  按确认才落盘），拨了却没挑就退出去，用户以为改过了，实际一个字节都没写。判据收在
+     *  `AppPickerState.windowTogglesChanged`（与进页那一刻的基线比）。
      */
-    private fun hasUnconfirmedPick(s: Screen): Boolean = s == Screen.APP_PICKER && picker.draft != null
+    private fun hasUnconfirmedPick(s: Screen): Boolean = s == Screen.APP_PICKER && (picker.draft != null || picker.windowTogglesChanged)
 
     /**
      * 「按键功能」页的编辑态里按返回：一项都没勾就直接退出，勾了就先把那一问支起来。
@@ -649,25 +663,25 @@ internal class SettingsPage(
     }
 
     /**
-     * 「打开应用」页哪一行是**当前绑定的那个**（`AppPickerScreen` 的 `selected`：行尾图标据此画，
-     *  同时决定进页滚到谁眼前）。
+     * 「选择应用 / 选择界面」两级页该点亮哪一行 —— **完整**目标（含 `/类名`）。
      *
-     * 两个入口各有来源，读的都是**进这一页时**记下来的东西（这一页不属于 pager，不能读当前页）：
-     *  · 网格入口（「按键绑定」页的「打开应用」格）→ [AppPickerState.gesture] 那个手势绑的
-     *    `app:` 动作的包名；
+     *  两级读同一份，只是各自比到不同的深度：应用那一级比到包名、界面那一级比到类名 ——
+     *  否则挑完某个界面再进来，那一行永远不亮，看着像没选过。
+     *
+     *  **不要再从它切出一个「只要包名」的版本**：切包名一律走 [AppTarget.pkg]（先剥分身前缀
+     *  `999@` 再切 `/`）。原先这里有一个 `appPickerSelectedPkg()` 写的是
+     *  `substringBefore('/')`，分身应用会切出 `999@包名` —— 跟行身份对不上，那一行永远不亮。
+     *  它零调用点，已删（保留一份错的实现比没有更危险）。
+     *
+     * ## 两个入口各有来源，读的都是**进这一页时**记下来的东西
+     *
+     *  这一页不属于 pager，不能读当前页：
+     *  · 网格入口（「按键绑定」页的「应用控制」格）→ [AppPickerState.gesture] 那个手势绑的动作；
      *  · 「自定义命令」页那条路 → 被**换掉**的那一步自己（[AppPickerState.replaceStep]）：
-     *    它本来就是 `app:<包名>` 时才算数；「加一步」没有目标 ⇒ null。
+     *    它本来就是 `app:<包名>` 时才算数；「加一步」没有目标 ⇒ `null`。
      *
-     * 之前第二条恒为 null，于是「换一步」进这一页时看不出当前选的是哪个应用
+     *  之前第二条恒为 `null`，于是「换一步」进这一页时看不出当前选的是哪个应用
      *（行尾那枚图标不亮、也不滚到它眼前）—— 与网格入口那套提示不是一回事。
-     */
-    internal fun appPickerSelectedPkg(): String? = appPickerSelectedTarget()?.substringBefore('/')
-
-    /**
-     * 二级页「选择界面」该点亮哪一行 —— **完整**目标（含 `/类名`），与 [appPickerSelectedPkg] 同源。
-     *
-     *  与它分开是因为两级要认的东西不一样：应用那一级只认到包名（一行一个包），
-     *  界面那一级要认到类名 —— 否则挑完某个界面再进来，那一行永远不亮，看着像没选过。
      */
     internal fun appPickerSelectedTarget(): String? {
         // 给「条件执行」挑的那一趟**先看那一支**：条件记的是包名、动作记的是 token，两者都只认到

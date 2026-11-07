@@ -61,6 +61,15 @@ object RomProfile {
         val activity: Boolean = false,
         val message: Int? = null,
         /**
+         * 这一档的**绑定式**起停通道（[AidlControl]，此刻只有录音那一族用）。
+         *
+         *  非空时执行侧先问一次真实状态再决定这一下怎么动：`TOGGLE` 在录就停、没录才继续往下走
+         *  那些起法；`START` 在录就什么都不做；`STOP` 没在录就什么都不做。为什么非要有这一层：
+         *  录音机那条意图**自己就是开关**（「只开始」直接发它等于把在录的停掉），而「没有采集的
+         *  停止」会让它把收尾流程走一遍（真机上是凭空一张录音的流体云）。
+         */
+        val aidl: AidlControl? = null,
+        /**
          * 「再点一次要关」那一档的**停止广播** —— 非空时这一档是**开关**，不是一次性的动作。
          *
          *  宿主没有 `MANAGE_MEDIA_PROJECTION`，查不到系统那边有没有投影会话，所以「现在是开还是关」
@@ -94,6 +103,52 @@ object RomProfile {
          */
         val flags: Int = 0,
     )
+
+    /**
+     * 一档能力的**绑定式起停通道**（此刻只有录音）。
+     *
+     * ## 为什么录音必须是 AIDL
+     *
+     *  录音机**没有任何「停止录音」的广播**（全 dex 跟录音有关的 action 只有三条 `START_*`）；
+     *  唯一的外部停止 / 查状态通道是导出服务 `RecordStateService` 上的
+     *  `ISoundRecordInterface`（`queryStatus` / `stopRecord` / `pauseRecord` / `resumeRecord`）。
+     *  服务本身与每个事务都要求 `oplus.permission.OPLUS_COMPONENT_SAFE`（宿主持有）。
+     *  取证与事务号见 `docs/device-findings.md` 十七之七。
+     *
+     * ## 为什么只记名字与事务号
+     *
+     *  与 [Reflection] 同一条纪律：那个 AIDL 的 Stub / Parcelable 都在录音机自己的包路径下，
+     *  直接引用就是跨包类型依赖。这里只留描述符 + 事务号，执行侧自己拼 `Parcel`
+     *  （`IBinder.transact`），不碰目标类的任何类型。
+     *
+     * @param service 导出服务的类名（与 [BuiltIn.owner] 拼成组件）
+     * @param descriptor 写进 Parcel 的接口描述符（服务端 `Parcel.enforceInterface` 用它）
+     * @param queryTransact `queryStatus` 的事务号（回包：存在位 + 4 个 int，首个是当前状态）
+     * @param stopTransact `stopRecord` 的事务号
+     * @param busyStates `queryStatus` 回包里哪几个取值算「正在录」（含暂停档）
+     * @param mode 这一档按下去该怎么动 —— 三档只在这一点上不同
+     */
+    @Suppress("LongParameterList")
+    class AidlControl(
+        val service: String,
+        val descriptor: String,
+        val queryTransact: Int,
+        val stopTransact: Int,
+        val busyStates: Set<Int>,
+        val mode: Mode,
+    ) {
+        /** 「切换 / 只开始 / 只结束」——三档共用一个通道，差别只在这一位。 */
+        enum class Mode {
+            /** 在录就停，没录就起（老配置里那条 `oplus:recording`）。 */
+            TOGGLE,
+
+            /** 只开始：在录就什么都不做。 */
+            START,
+
+            /** 只结束：在录就停；没在录什么都不做（那一下会让录音机走一遍收尾，真机上会弹出流体云）。 */
+            STOP,
+        }
+    }
 
     /**
      * 一档 ROM 的**反射面** —— 注入侧与宿主侧按名字反射时要用的那些名字。
@@ -206,8 +261,31 @@ object RomProfile {
     /** 免打扰。 */
     const val NAME_NO_DISTURB = "no_disturb"
 
-    /** 录音。 */
+    /**
+     * 录音 —— **切换**。
+     *
+     *  取值不能改：老配置里绑的就是这一串。ROM 那条意图自己也是开关
+     *  （`TransparentActivity.saveRecordInfo` → `RecorderService.q(…, true, 6)`），但它停不停还要看
+     *  「录音页在不在前台 / 是不是从通知下拉进来的」—— 所以这一档现在**先问一次真实状态**
+     *  （[AidlControl]），问到了就按状态走，问不到才退回 ROM 自己那套。
+     */
     const val NAME_RECORDING = "recording"
+
+    /**
+     * 录音 —— **只开始**。
+     *
+     *  必须挡一道：同一个意图在录音中会被 ROM 判成「再按一次」而**停录**
+     *  （见 `docs/device-findings.md` 十七之七），所以「只开始」要先查状态，在录就什么都不做。
+     */
+    const val NAME_RECORDING_START = "recording_start"
+
+    /**
+     * 录音 —— **只结束**。
+     *
+     *  没有启动落点：录音机没有任何「停止录音」的广播，唯一的外部停止通道是
+     *  `RecordStateService` 上那条 AIDL（[AidlControl]）。
+     */
+    const val NAME_RECORDING_STOP = "recording_stop"
 
     /** 小布识屏（**不在侧键场景表里**，见下面那一档的说明）。 */
     const val NAME_SCREEN_OCR = "screen_ocr"
@@ -352,9 +430,30 @@ object RomProfile {
     private const val RECORD_ACTION = "oplus.intent.action.START_RECORD_FROM_CUBE_BUTTON"
 
     /**
-     * 开始 / 结束录音（场景表 `recording`）。
+     * 录音那一族的 AIDL 通道 —— 三档共用一套名字与事务号，只换 [AidlControl.mode]。
+     *
+     *  取值来路：`ISoundRecordInterface$Stub$Proxy` 逐个核过 —— `queryStatus`=1、
+     *  `registerCallback`=2、`unRegisterCallback`=3、`resumeRecord`=4、`pauseRecord`=5、`stopRecord`=6；
+     *  `queryStatus` 回包是 `RecordStatus`（存在位 + 4 个 int，首个 `currentRecordState`：
+     *  `1` 正在录 / `2` 已暂停 / 其余按空闲算）。见 `docs/device-findings.md` 十七之七。
+     */
+    private fun recordAidl(mode: AidlControl.Mode): AidlControl =
+        AidlControl(
+            service = "oplus.multimedia.soundrecorder.RecordStateService",
+            descriptor = "oplus.multimedia.soundrecorder.ISoundRecordInterface",
+            queryTransact = 1,
+            stopTransact = 6,
+            //  录音机自己的判据 `manager.s.c()` 也是这两档算「在录」
+            busyStates = setOf(1, 2),
+            mode = mode,
+        )
+
+    /**
+     * 录音 —— **切换**（场景表 `recording`）。
      *
      * 只有长按档能录音 —— 单击档那条 `KeyMagicMessengerService` 只回一句提示文案，全程不碰录音机。
+     * 起法仍是那条透明界面（真机验过），停法则走 [AidlControl]：那条意图自己虽然是开关，
+     * 但它的判据里夹着「录音页在不在前台」，宿主这边按真实状态翻面更可预测。
      */
     private val RECORDING =
         BuiltIn(
@@ -362,6 +461,30 @@ object RomProfile {
             service = RECORD_ACTION,
             action = RECORD_ACTION,
             activity = true,
+            aidl = recordAidl(AidlControl.Mode.TOGGLE),
+        )
+
+    /** 录音 —— **只开始**：同一个界面，但已经在录就什么都不做（否则那条意图会把在录的停掉）。 */
+    private val RECORDING_START =
+        BuiltIn(
+            owner = "com.coloros.soundrecorder",
+            service = RECORD_ACTION,
+            action = RECORD_ACTION,
+            activity = true,
+            aidl = recordAidl(AidlControl.Mode.START),
+        )
+
+    /**
+     * 录音 —— **只结束**：没有启动落点，执行侧只走 AIDL 的 `stopRecord`。
+     *
+     *  `service` 空串就是这一档的标记（见 `AppLauncher.startOplusFeature` 开头那一支）——
+     *  不要给它编一个界面，那会变成「按停止反而弹录音页」。
+     */
+    private val RECORDING_STOP =
+        BuiltIn(
+            owner = "com.coloros.soundrecorder",
+            service = "",
+            aidl = recordAidl(AidlControl.Mode.STOP),
         )
 
     /**
@@ -555,6 +678,8 @@ object RomProfile {
                         NAME_VOICE_MEMORY_STOP to VOICE_MEMORY_STOP,
                         NAME_NO_DISTURB to NO_DISTURB,
                         NAME_RECORDING to RECORDING,
+                        NAME_RECORDING_START to RECORDING_START,
+                        NAME_RECORDING_STOP to RECORDING_STOP,
                         NAME_SCREEN_OCR to SCREEN_OCR,
                         NAME_KEY_FLASHLIGHT to KEY_FLASHLIGHT,
                         NAME_SCREEN_RECORD to SCREEN_RECORD,

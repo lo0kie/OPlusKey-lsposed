@@ -36,7 +36,7 @@ internal class ActionRunner(
      *
      *  为什么收在这里：它同时被三个执行器用（手电筒、响铃、免打扰），各自读一遍配置的话
      *  「默认值」就有三份副本；而这一次到底走哪条，取决于**按键级**那一格
-     *  （`Config.colorOsApiFor`），只有调用方知道是哪一档 —— 所以由 `run` 传进来存这一格。
+     *  （`Config.effectiveFor` 的 `.colorOsApi`），只有调用方知道是哪一档 —— 所以由 `run` 传进来存这一格。
      *
      *  **安全的前提是串行**：执行全在 `GestureReceiver.worker` 那一条线程上排队
      *  （见那边的说明），不会有两个动作同时覆盖这个字段。
@@ -164,7 +164,7 @@ internal class ActionRunner(
         action: Action,
         gestureLabel: String,
         /**
-         * 这一档**实际**走不走 ColorOS 接口 —— 由调用方从 `Config.colorOsApiFor` 取好传进来
+         * 这一档**实际**走不走 ColorOS 接口 —— 由调用方从 `Config.effectiveFor(...).colorOsApi` 取好传进来
          * （单键传 `KeyConfig`、组合传 `ComboKey`，**这一层不区分**，也不自己读配置）。
          *
          *  缺省值读公共设置：只服务「测试命令」那种没有按键上下文的调用。
@@ -218,7 +218,7 @@ internal class ActionRunner(
 
                 is Action.Intent -> launcher.openIntent(act.action)
 
-                is Action.App -> launcher.launchApp(act.target)
+                is Action.App -> launcher.launchApp(act)
 
                 is Action.AppWindow -> launcher.launchAppInWindow(act.target)
 
@@ -301,8 +301,8 @@ internal class ActionRunner(
 
     /** 这个键码现在归模块管吗（内置键的码 / 自定义键收集来的码 / ROM 族码）。 */
     private fun claimedByModule(code: Int): Boolean {
+        if (KeyId.claimsBuiltin(code)) return true
         if (RomKeyFamilies.isFamilyCode(code)) return true
-        if (KeyId.builtins.any { code in it.acceptedKeyCodes }) return true
         return try {
             ConfigStore.read().keyForCode(code) != null
         } catch (e: Throwable) {

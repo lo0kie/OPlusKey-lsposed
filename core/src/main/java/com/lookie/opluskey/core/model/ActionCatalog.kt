@@ -12,7 +12,7 @@ object ActionCatalog {
      *  这里只登记「用哪支字形」，`ui/model/ActionIcons.kt` 把名字翻成图标（唯一一处映射）。
      *  加一档动作时：**要新字形才动那张映射表**，复用已有字形的条目一个字都不用改。
      */
-    enum class Glyph {
+    enum class Glyph : GlyphSource {
         /** 「响铃状态」那一格。名字说的是**槽位**而不是字形 —— 字形会换（现在是 `bell-cog`）。 */
         RingerTile,
 
@@ -76,6 +76,107 @@ object ActionCatalog {
          */
         ScreenRecord,
 
+        /**
+         * 录音那一格（`ai:recording`）：麦克风底图，三档共用一颗 —— 理由与 [ScreenRecord] 同一条，
+         * 「是开始还是结束」由小字 / 文案说（`录音 - 开始`），不靠字形。
+         */
+        Record,
+
+        // ── 下面这一批原先**不在**枚举里：它们的字形由 `actionIcon(token)` 那张 33 支的表给。
+        //    `Spec.glyph` 改成必填之后，清单条目必须自己声明，于是把那张表里「固定 token → 字形」
+        //    的部分搬到这里。`actionIcon` 保留原样，只服务「不在清单里的 token」（步骤行、手写配置）。
+
+        /** 「无操作」（`none`）。 */
+        NoOp,
+
+        /** 手电筒 —— 自绘那颗斜放的手电（图标库那颗角度不对）。 */
+        Flashlight,
+
+        /** 电源键（`keyevent:26`）—— 与「电源菜单」必须不同字形。 */
+        PowerKey,
+
+        /** 电源菜单（关机 / 重启那一层）—— 滑杆 + 齿轮（「可调的那一层菜单」）。 */
+        PowerMenu,
+
+        /** 一键闪记（侧键场景表那一条）。 */
+        FlashNote,
+
+        /** 唤醒小布（语音助手）—— 带 AI 角标的对话框。 */
+        VoiceAssist,
+
+        /** 灵感语音 · 结束 —— 方块（「停下」），与开始那颗侧脸同一族。 */
+        VoiceMemoryStop,
+
+        /** 小布识屏（侧边栏识别屏幕）。 */
+        ScreenRecognition,
+
+        /** 屏幕翻译 —— `language` 就是「翻译」的通用读法。 */
+        ScreenTranslate,
+
+        /** 锁屏快捷里的相机 —— 相机自己的字形，不与应用四宫格混。 */
+        Camera,
+
+        /** 锁屏快捷里的计算器。 */
+        Calculator,
+
+        /** 截屏。 */
+        Screenshot,
+
+        /** 系统导航 · 主屏幕。 */
+        Home,
+
+        /** 系统导航 · 返回。 */
+        Back,
+
+        /** 系统按键 · 最近任务。 */
+        Recents,
+
+        /** 系统按键 · 通知中心。 */
+        Notification,
+
+        /** 系统按键 · 控制中心。 */
+        ControlCenter,
+
+        /** 媒体控制菜单的**首行** —— 与格子（[MediaTile]）共用 token，但那一格是「一类东西」、
+         *  这一行是「一个具体取值」，只能靠字形分。 */
+        MediaSwitch,
+
+        /** 媒体 · 播放。 */
+        MediaPlay,
+
+        /** 媒体 · 暂停。 */
+        MediaPause,
+
+        /** 媒体 · 上一首。 */
+        MediaPrev,
+
+        /** 媒体 · 下一首。 */
+        MediaNext,
+
+        /** 音量 + 键（注入一次音量键）—— 与「音量增加」同一颗，但语义是「按了一下键」。 */
+        VolumeKeyUp,
+
+        /** 音量 − 键。 */
+        VolumeKeyDown,
+
+        /** 前台转小窗 · 展开（窗口 + 底部块）。 */
+        MiniExpand,
+
+        /** 前台转小窗 · 收起（画面挂在顶部那条）。 */
+        MiniCollapse,
+
+        /** 响铃 · 正常。 */
+        RingerNormal,
+
+        /** 响铃 · 振动。 */
+        RingerVibrate,
+
+        /** 响铃 · 静音。 */
+        RingerSilent,
+
+        /** 「选择应用」那一行（抽屉里那一步）—— 一堆应用的读法。 */
+        Apps,
+
         /** 「自定义变量」入口格（`variable`）：点它当场挑一步变量操作，不是取值。 */
         Variables,
 
@@ -90,6 +191,42 @@ object ActionCatalog {
 
         /** 「应用控制」菜单里「结束应用」那一行 —— 与执行那一档（`proc:stop:`）同一颗字形。 */
         StopApp,
+    }
+
+    /**
+     * 一条清单条目的图标**从哪儿来** —— [Spec.glyph] 的类型。
+     *
+     *  分两种「不是常数」的来源，因为「这一格画什么」有两个决定因素本来就不在清单里：
+     *   · 自定义命令的字形由**它自己**决定（单条 / 多条 / 几步 / 是否提权）；
+     *   · 「系统开关」的字形由**开关种类**决定（蓝牙 / WIFI / NFC…），而种类是一张数据表。
+     *
+     *  把它们硬塞进 [Glyph] 会逼出 `Glyph.Command` 这种占位值 —— 占位值一出现，
+     *  「必填」就又退化成「随便填一个能编译的值」，约束白设。
+     *
+     *  **[Glyph] 本身就是这个接口的一种实现**：枚举的每个取值就是「一支固定字形」，
+     *  所以清单里那 25 处 `glyph = Glyph.X` 不用套一层包装（`Fixed(Glyph.X)` 那种写法
+     *  除了啰嗦没有别的作用）。
+     */
+    sealed interface GlyphSource {
+        /**
+         * 由命令本身决定：单条 / 多条、几步、是否以 root 执行。
+         *
+         *  三个字段照抄 [Spec] 上那三位 —— 它们本来就在 Spec 里，这里是「字形也看它们」的声明。
+         */
+        data class ByCommand(
+            val kind: CommandKind,
+            val steps: Int,
+            val root: Boolean,
+        ) : GlyphSource
+
+        /**
+         * 由开关**种类**决定（`bt` / `wifi` / `nfc`…）—— 同一个开关的三档共用同一颗种类字形。
+         *
+         *  @param id 与 `SystemSwitches.Item.id` 同一个口径
+         */
+        data class BySwitchKind(
+            val id: String,
+        ) : GlyphSource
     }
 
     /**
@@ -121,15 +258,28 @@ object ActionCatalog {
         val commandRoot: Boolean = false,
         val dividerBefore: Boolean = false,
         /**
-         * 这一格用哪支字形 —— **只写名字**，不引图标库类型（`core` 在注入侧也会被加载，一、1 那条
-         * 「注入侧不许碰界面依赖」对它是硬约束）。名字 → 图标那一步在 `ui/model/ActionIcons.kt`
-         * 里做**一次**映射（[Glyph] 是封闭枚举，加一档字形才会碰到那张表）。
+         * 这一格的图标**从哪儿来** —— 必填，没有「不声明」这一档。
          *
-         *  `null` = 不特别声明，界面按 [token] 那套照旧推（绝大多数条目都是这样）；
-         *  真正需要显式声明的只有「一个 token 对应两支字形」和「标记格」那几处 ——
-         *  它们原来是在界面层用 `spec === X` / `token == X` 认领的，那是把**注册信息**漏在了渲染层。
+         * ## 为什么改成必填
+         *
+         *  原先这里是 `Glyph? = null`，`null` 的意思是「界面按 token 自己去猜」。于是同一个问题
+         *  有两张表：清单里 25 处 [Glyph]，界面 `ui/model/ActionIcons.actionIcon` 里 33 支 token
+         *  分支。两张表必须手工同步 —— 加一条动作漏了图标**不报错**，只是掉到 `Dots`，
+         *  看着像「这条本来就没配图标」。
+         *
+         *  现在字形随条目一起**必填**：漏了当场编译失败。
+         *
+         * ## 为什么不是直接 `Glyph`
+         *
+         *  有两类条目的字形本来就由**别的字段**决定，塞进 [Glyph] 会逼出占位值：
+         *   · 自定义命令 —— 单条 / 多条、几步、是否提权（[ByCommand]）；
+         *   · 「系统开关」的每一种开关 —— 字形由种类 id 决定，而种类是数据（[BySwitchKind]）。
+         *
+         *  所以这里是「字形的来源」而不是「字形」本身。`ui/model/ActionIcons.specIcon` 对它做
+         *  `when`，三档各自取图标；`actionIcon(token)` 退回**兜底**位置 —— 它只服务
+         *  「不在清单里的 token」（步骤行、手写配置）。
          */
-        val glyph: Glyph? = null,
+        val glyph: GlyphSource,
     ) {
         /**
          * 界面上的叫法 —— [name] 过一遍字典。
@@ -232,19 +382,48 @@ object ActionCatalog {
      *  「一键只开始」「一键只停」也有地方放 —— 前者给同一个界面、不登记停止广播，
      *  后者只发那条停止广播（见 `RomProfile.BuiltIn`）。
      *
-     *  **不带 `glyph`**：三行只在那个单选弹窗里露面，而弹窗是纯文字行（见 `SinglePickerDialog`）——
-     *  给一条用不上的字形，等于让下一个人以为菜单层还画图标。
+     *  **三行共用那一颗摄像机**（[Glyph.ScreenRecord]）：三档只在那个单选弹窗里露面，而弹窗是
+     *  纯文字行（见 `SinglePickerDialog`）—— 字形用不上，但 `Spec.glyph` 是必填的。
+     *  给「那个动作自己的字形」而不是随便填一个：这几行确实是「录屏」的三档，将来弹窗要画图标
+     *  时不必再回来改这里。
      */
     val SCREEN_RECORD_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.CATALOG_SCREEN_RECORD_TOGGLE, token = SCREEN_RECORD),
-            Spec(name = Strings.CATALOG_SCREEN_RECORD_START, token = SCREEN_RECORD_START),
-            Spec(name = Strings.CATALOG_SCREEN_RECORD_STOP, token = SCREEN_RECORD_STOP),
+            Spec(name = Strings.CATALOG_SCREEN_RECORD_TOGGLE, token = SCREEN_RECORD, glyph = Glyph.ScreenRecord),
+            Spec(name = Strings.CATALOG_SCREEN_RECORD_START, token = SCREEN_RECORD_START, glyph = Glyph.ScreenRecord),
+            Spec(name = Strings.CATALOG_SCREEN_RECORD_STOP, token = SCREEN_RECORD_STOP, glyph = Glyph.ScreenRecord),
         )
 
     /** 屏幕翻译（侧边栏那一项）：起 ColorOS 翻译的前台服务，屏上出翻译胶囊。 */
     private val SCREEN_TRANSLATE = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_TRANSLATE
+
+    /** 录音 —— **切换**（老配置里绑的就是这一串，取值不能改）。 */
     private val RECORDING = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING
+
+    /** 录音 —— **只开始** / **只结束**（三态里的另外两档，见 [RECORDING_MODES]）。 */
+    private val RECORDING_START = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING_START
+    private val RECORDING_STOP = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING_STOP
+
+    /**
+     * 「录音」那一格的标记（`ai:recording`）—— 与 [SCREEN_RECORD_TILE] 同类：**永不写进配置**。
+     *
+     *  开始 / 结束 / 切换是三档真取值，格子代表不了其中任何一档，所以它只当入口：点它直接弹那个
+     *  三行单选弹窗（见 [stateChoices]），没有中间那层菜单。
+     */
+    const val RECORD_TILE = "ai:recording"
+
+    /**
+     * 「录音」那三档：**切换 / 开始 / 结束**，顺序即弹窗行序（与 [SCREEN_RECORD_MODES] 同一套）。
+     *
+     *  切换排最上面：单绑一档手势时它最顺手；「只开始」与「只结束」是给「明明在录、我不想它停」
+     *  和「只想停」这两种情形留的 —— 那条意图本身是开关，没有这两档就表达不出只有一边。
+     */
+    val RECORDING_MODES: List<Spec> =
+        listOf(
+            Spec(name = Strings.CATALOG_RECORDING_TOGGLE, token = RECORDING, glyph = Glyph.Record),
+            Spec(name = Strings.CATALOG_RECORDING_START, token = RECORDING_START, glyph = Glyph.Record),
+            Spec(name = Strings.CATALOG_RECORDING_STOP, token = RECORDING_STOP, glyph = Glyph.Record),
+        )
 
     /**
      * 相机 / 计算器 —— 走的是**锁屏快捷功能**那两条入口（左下 / 右下角那两颗）。
@@ -269,8 +448,8 @@ object ActionCatalog {
     /** 「锁屏快捷」的二级菜单：相机 / 计算器，顺序即行序。两行都是真取值。 */
     private val KEYGUARD_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.CATALOG_CAMERA, token = CAMERA),
-            Spec(name = Strings.CATALOG_CALCULATOR, token = CALCULATOR),
+            Spec(name = Strings.CATALOG_CAMERA, token = CAMERA, glyph = Glyph.Camera),
+            Spec(name = Strings.CATALOG_CALCULATOR, token = CALCULATOR, glyph = Glyph.Calculator),
         )
 
     /**
@@ -298,13 +477,13 @@ object ActionCatalog {
      *
      *  两行的名字**只写「开始」「结束」**（用户口径）：它们在「灵感语音」那一行点开的选择器
      *  里，标题已经写着「灵感语音」—— 再写成「开始灵感语音」是把同一句话说两次，
-     *  而那条选择器里两行并排，短的那版一眼就分得清。整句仍由 [actionTitle] 拼成
+     *  而那条选择器里两行并排，短的那版一眼就分得清。整句仍由 [commandTitleOf] 拼成
      *  `小布 AI: 灵感语音 - 开始`（父格 → 中间层 → 状态）。
      */
     val VOICE_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.COMMON_START, token = VOICE_MEMORY),
-            Spec(name = Strings.COMMON_STOP, token = VOICE_MEMORY_STOP),
+            Spec(name = Strings.COMMON_START, token = VOICE_MEMORY, glyph = Glyph.VoiceMemory),
+            Spec(name = Strings.COMMON_STOP, token = VOICE_MEMORY_STOP, glyph = Glyph.VoiceMemoryStop),
         )
 
     /**
@@ -323,10 +502,10 @@ object ActionCatalog {
     private val AI_MODES: List<Spec> =
         listOf(
             // 取值照搬 KSU 模块，但模块侧不走 shell —— 见 `host/action/AppLauncher.startSidebar`
-            Spec(name = Strings.TOOL_SCREEN_RECOGNITION, token = SIDEBAR),
+            Spec(name = Strings.TOOL_SCREEN_RECOGNITION, token = SIDEBAR, glyph = Glyph.ScreenRecognition),
             // 小布助手（Breeno）：起法不在宿主，见 `RomProfile.NAME_VOICE_ASSIST` 与 `bridge/StatusBarBridge`
-            Spec(name = Strings.CATALOG_VOICE_ASSIST, token = VOICE_ASSIST),
-            Spec(name = Strings.CATALOG_FLASH_NOTE, token = FLASH_MEMORY),
+            Spec(name = Strings.CATALOG_VOICE_ASSIST, token = VOICE_ASSIST, glyph = Glyph.VoiceAssist),
+            Spec(name = Strings.CATALOG_FLASH_NOTE, token = FLASH_MEMORY, glyph = Glyph.FlashNote),
             // 入口行：**永不写进配置**，点它弹 [VOICE_MODES]（见 `ModeMenuPopups` 的 `NestedPickerPopup`）
             Spec(
                 name = Strings.CATALOG_VOICE_MEMORY,
@@ -463,7 +642,7 @@ object ActionCatalog {
             // 组名不叫「系统按键」：这一组里通知与控制中心 / 媒体控制 / 响铃状态 / 电源菜单都不是「按键」。
             Strings.CATALOG_SYSTEM_ACTIONS to
                 listOf(
-                    Spec(name = Strings.ACTION_NONE, token = NONE_TOKEN),
+                    Spec(name = Strings.ACTION_NONE, token = NONE_TOKEN, glyph = Glyph.NoOp),
                     // 「主屏幕 / 返回 / 最近任务」三档收进这一格：点它弹 [NAV_MODES] 菜单。
                     // 与 [MEDIA_TILE] / [RINGER_TILE] 不同，这三档**各不相同**，格子本身代表不了任何一个取值
                     // ⇒ 与 [APP_TILE] 同类，是个**标记**：永不写进配置，也不能作为多条命令的一步。
@@ -490,13 +669,13 @@ object ActionCatalog {
                     //   每一档再问一个百分比，落盘成 `volume:+10` 这种带数值的写法。
                     Spec(name = Strings.CATALOG_VOLUME, token = VOLUME_TILE, glyph = Glyph.Volume),
                     // KSU 没有这项；执行侧在 system_server 里反射调 PWM，不走按键长按
-                    Spec(name = Strings.PANEL_POWER_MENU, token = POWER_MENU),
+                    Spec(name = Strings.PANEL_POWER_MENU, token = POWER_MENU, glyph = Glyph.PowerMenu),
                 ),
             // 后三项是系统侧键场景表里的档位：起的是各功能自己的 KeyMagic / 闪记服务
             Strings.CATALOG_QUICK_TOOLS to
                 listOfNotNull(
                     // 取值是 KSU 的 `service call`，模块侧换成注入 `KEYCODE_SYSRQ`
-                    Spec(name = Strings.CATALOG_SCREENSHOT, token = SCREENSHOT),
+                    Spec(name = Strings.CATALOG_SCREENSHOT, token = SCREENSHOT, glyph = Glyph.Screenshot),
                     // 锁屏快捷：相机 / 计算器收在这一格后面（点它弹 [KEYGUARD_MODES]）。两档各是一个
                     //  真取值，格子代表不了其中任何一个 ⇒ 与 [AI_TILE] 同类，是**标记格**，永不写进配置。
                     Spec(name = Strings.CATALOG_KEYGUARD, token = KEYGUARD_TILE, glyph = Glyph.Keyguard),
@@ -504,7 +683,9 @@ object ActionCatalog {
                     //  （点它弹 [AI_MODES]）。四件各是一个真取值，格子代表不了其中任何一个
                     //  ⇒ 与 [NAV_TILE] / [MINI_TILE] 同类，是**标记格**，永不写进配置。
                     Spec(name = Strings.TOOL_XIAOBU_AI, token = AI_TILE, glyph = Glyph.XiaobuAi),
-                    Spec(name = Strings.CATALOG_RECORDING, token = RECORDING),
+                    // 录音：起录音机自己的透明界面（落点见 RomProfile）。
+                    //  入口行：**永不写进配置**，点它弹 [RECORDING_MODES]（开始 / 结束 / 切换）
+                    Spec(name = Strings.CATALOG_RECORDING, token = RECORD_TILE, glyph = Glyph.Record),
                     // 录屏：起 ColorOS 录屏应用自己的 JumpActivity，一起就进录制（落点见 RomProfile）
                     // 入口行：**永不写进配置**，点它弹 [SCREEN_RECORD_MODES]（开始 / 结束 / 切换）
                     Spec(
@@ -513,7 +694,7 @@ object ActionCatalog {
                         glyph = Glyph.ScreenRecord,
                     ),
                     // 屏幕翻译：系统侧边栏那一项，起翻译包的前台服务（配方与判据见 RomProfile）
-                    Spec(name = Strings.CATALOG_SCREEN_TRANSLATE, token = SCREEN_TRANSLATE),
+                    Spec(name = Strings.CATALOG_SCREEN_TRANSLATE, token = SCREEN_TRANSLATE, glyph = Glyph.ScreenTranslate),
                     // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
                     // 两档尺寸（展开 / 收起）各不相同，格子代表不了其中任何一个 ⇒ 按 [MINI_TILE] 当入口格、弹菜单
                     Spec(name = Strings.TOOL_MINI_WINDOW, token = MINI_TILE, glyph = Glyph.MiniWindow),
@@ -563,9 +744,18 @@ object ActionCatalog {
                 name = Strings.CATALOG_MODE_RING,
                 token = Action.RINGER_PREFIX + Action.Ringer.NORMAL,
                 dividerBefore = true,
+                glyph = Glyph.RingerNormal,
             ),
-            Spec(name = Strings.CATALOG_MODE_VIBRATE, token = Action.RINGER_PREFIX + Action.Ringer.VIBRATE),
-            Spec(name = Strings.CATALOG_MODE_SILENT, token = Action.RINGER_PREFIX + Action.Ringer.SILENT),
+            Spec(
+                name = Strings.CATALOG_MODE_VIBRATE,
+                token = Action.RINGER_PREFIX + Action.Ringer.VIBRATE,
+                glyph = Glyph.RingerVibrate,
+            ),
+            Spec(
+                name = Strings.CATALOG_MODE_SILENT,
+                token = Action.RINGER_PREFIX + Action.Ringer.SILENT,
+                glyph = Glyph.RingerSilent,
+            ),
         )
 
     /**
@@ -585,16 +775,29 @@ object ActionCatalog {
      */
     val MEDIA_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.MEDIA_PLAY_PAUSE, token = MEDIA_TILE),
-            Spec(name = Strings.CATALOG_MODE_PLAY, token = Action.keyToken(KeyId.KEYCODE_MEDIA_PLAY)),
-            Spec(name = Strings.CATALOG_MODE_PAUSE, token = Action.keyToken(KeyId.KEYCODE_MEDIA_PAUSE)),
+            Spec(name = Strings.MEDIA_PLAY_PAUSE, token = MEDIA_TILE, glyph = Glyph.MediaSwitch),
+            Spec(
+                name = Strings.CATALOG_MODE_PLAY,
+                token = Action.keyToken(KeyId.KEYCODE_MEDIA_PLAY),
+                glyph = Glyph.MediaPlay,
+            ),
+            Spec(
+                name = Strings.CATALOG_MODE_PAUSE,
+                token = Action.keyToken(KeyId.KEYCODE_MEDIA_PAUSE),
+                glyph = Glyph.MediaPause,
+            ),
             // 加深带：上三档是「这一格自己」（按当前状态播 / 停），下两档是切歌 —— 两件事，分两段
             Spec(
                 name = Strings.MEDIA_PREV,
                 token = Action.keyToken(KeyId.KEYCODE_MEDIA_PREVIOUS),
                 dividerBefore = true,
+                glyph = Glyph.MediaPrev,
             ),
-            Spec(name = Strings.MEDIA_NEXT, token = Action.keyToken(KeyId.KEYCODE_MEDIA_NEXT)),
+            Spec(
+                name = Strings.MEDIA_NEXT,
+                token = Action.keyToken(KeyId.KEYCODE_MEDIA_NEXT),
+                glyph = Glyph.MediaNext,
+            ),
         )
 
     /**
@@ -632,10 +835,13 @@ object ActionCatalog {
     const val AI_TILE = "ai:"
 
     /**
-     * 「前台转小窗」那一格的标记 —— 与 [NAV_TILE] / [KEY_TILE] 同类。
+     * 「前台转小窗」那一格的标记 —— 与 [SCREEN_RECORD_TILE] / [RECORD_TILE] 同类（见 [STATE_ONLY_TILES]）。
      *
-     * 两档尺寸（展开的普通小窗 / 收起的最小化窗）各不相同，格子代表不了其中任何一个，
-     * 所以是**标记**（永不写进配置），菜单里那两档才是真取值。
+     *  两档（展开的普通小窗 / 收起的最小化窗）是**同一个动作的两种状态**，不是「小窗」这一类里
+     *  的两个动作 —— 所以中间不夹那张只写着「前台转小窗」的小标题 + 两行的菜单，点格子直接弹
+     *  两行单选弹窗，文案写成 `前台转小窗 - 展开`（用户口径：用两态选择器，不要父子动作）。
+     *
+     *  格子本身仍是**标记**（永不写进配置），菜单里那两档才是真取值。
      */
     const val MINI_TILE = "zoom:"
 
@@ -648,8 +854,8 @@ object ActionCatalog {
      */
     val MINI_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.CATALOG_MODE_EXPAND, token = MINI_WINDOW),
-            Spec(name = Strings.CATALOG_MODE_COLLAPSE, token = MINI_COLLAPSE),
+            Spec(name = Strings.CATALOG_MODE_EXPAND, token = MINI_WINDOW, glyph = Glyph.MiniExpand),
+            Spec(name = Strings.CATALOG_MODE_COLLAPSE, token = MINI_COLLAPSE, glyph = Glyph.MiniCollapse),
         )
 
     /**
@@ -659,16 +865,22 @@ object ActionCatalog {
      *  菜单里的行**本身就是真取值**（`setting:<id>` / `flashlight`），点中即写配置。
      */
     val SWITCH_MODES: List<Spec> =
-        SystemSwitches.ITEMS.map { Spec(name = it.labelKey, token = it.token) }
+        SystemSwitches.ITEMS.map {
+            Spec(name = it.labelKey, token = it.token, glyph = GlyphSource.BySwitchKind(SystemSwitches.kindOf(it.token)))
+        }
 
     /** 「系统导航」菜单的三行，顺序即行序。 */
     val NAV_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.CATALOG_MODE_HOME, token = Action.keyToken(KeyId.KEYCODE_HOME)),
-            Spec(name = Strings.CATALOG_MODE_BACK, token = Action.keyToken(KeyId.KEYCODE_BACK)),
+            Spec(name = Strings.CATALOG_MODE_HOME, token = Action.keyToken(KeyId.KEYCODE_HOME), glyph = Glyph.Home),
+            Spec(name = Strings.CATALOG_MODE_BACK, token = Action.keyToken(KeyId.KEYCODE_BACK), glyph = Glyph.Back),
             // 执行时不是注入按键：注入 KEYCODE_APP_SWITCH 在这台 ROM 上进不了 PM 的处理分支，
             // 执行侧换成原生调用（见 `host/action/ActionRunner.runKeyEvent`）。
-            Spec(name = Strings.NAV_RECENTS, token = Action.keyToken(KeyId.KEYCODE_APP_SWITCH)),
+            Spec(
+                name = Strings.NAV_RECENTS,
+                token = Action.keyToken(KeyId.KEYCODE_APP_SWITCH),
+                glyph = Glyph.Recents,
+            ),
         )
 
     /**
@@ -681,8 +893,16 @@ object ActionCatalog {
      */
     val PANEL_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.CATALOG_MODE_NOTIFICATIONS, token = Action.keyToken(KeyId.KEYCODE_NOTIFICATION)),
-            Spec(name = Strings.CATALOG_MODE_CONTROL_CENTER, token = PANEL_CONTROL),
+            Spec(
+                name = Strings.CATALOG_MODE_NOTIFICATIONS,
+                token = Action.keyToken(KeyId.KEYCODE_NOTIFICATION),
+                glyph = Glyph.Notification,
+            ),
+            Spec(
+                name = Strings.CATALOG_MODE_CONTROL_CENTER,
+                token = PANEL_CONTROL,
+                glyph = Glyph.ControlCenter,
+            ),
         )
 
     /**
@@ -693,9 +913,21 @@ object ActionCatalog {
      */
     val KEY_MODES: List<Spec> =
         listOf(
-            Spec(name = Strings.MEDIA_VOL_UP, token = Action.keyToken(KeyId.KEYCODE_VOLUME_UP)),
-            Spec(name = Strings.CATALOG_MODE_VOL_DOWN, token = Action.keyToken(KeyId.KEYCODE_VOLUME_DOWN)),
-            Spec(name = Strings.CATALOG_MODE_POWER, token = Action.keyToken(KeyId.KEYCODE_POWER)),
+            Spec(
+                name = Strings.MEDIA_VOL_UP,
+                token = Action.keyToken(KeyId.KEYCODE_VOLUME_UP),
+                glyph = Glyph.VolumeKeyUp,
+            ),
+            Spec(
+                name = Strings.CATALOG_MODE_VOL_DOWN,
+                token = Action.keyToken(KeyId.KEYCODE_VOLUME_DOWN),
+                glyph = Glyph.VolumeKeyDown,
+            ),
+            Spec(
+                name = Strings.CATALOG_MODE_POWER,
+                token = Action.keyToken(KeyId.KEYCODE_POWER),
+                glyph = Glyph.PowerKey,
+            ),
         )
 
     /**
@@ -723,6 +955,7 @@ object ActionCatalog {
             AI_TILE to AI_MODES,
             VOICE_TILE to VOICE_MODES,
             SCREEN_RECORD_TILE to SCREEN_RECORD_MODES,
+            RECORD_TILE to RECORDING_MODES,
             KEYGUARD_TILE to KEYGUARD_MODES,
             APP_CONTROL_TILE to APP_CONTROL_MODES,
         )
@@ -734,7 +967,7 @@ object ActionCatalog {
      * 点它要进「打开应用」页，不能交给 `addStep(spec.token)`：空 `app:` 会被当一步写进去。
      */
     val APP_STEP: Spec =
-        Spec(name = Strings.APP_PICKER_TITLE, token = APP_TILE)
+        Spec(name = Strings.APP_PICKER_TITLE, token = APP_TILE, glyph = Glyph.Apps)
 
     /**
      * 分组标题的**译文** —— 网格那张表与「添加命令」浮层共用这一处。
@@ -787,6 +1020,8 @@ object ActionCatalog {
             commandSteps = command.steps.size,
             //  单条命令的两档字形靠它分（su / 非 su），抽屉与网格摆的就是这张候选表
             commandRoot = command.root,
+            //  字形由命令自己决定：单条 / 多条、几步、是否提权 —— 三者都是 `commandIcon` 的入参
+            glyph = GlyphSource.ByCommand(command.kind, command.steps.size, command.root),
         )
 
     /**
@@ -985,14 +1220,24 @@ object ActionCatalog {
         percent: Int,
     ): Spec {
         val action = Action.Volume(mode, percent)
-        return Spec(name = volumeTitle(action), token = action.token)
+        return Spec(
+            name = actionDetail(action) ?: action.token,
+            token = action.token,
+            //  与菜单里那三行同一颗：这几条就是那三行选定数值之后的落盘形态
+            glyph =
+                when (mode) {
+                    Action.Volume.Mode.ADD -> Glyph.VolumeUp
+                    Action.Volume.Mode.SUB -> Glyph.VolumeDown
+                    Action.Volume.Mode.FIX -> Glyph.VolumeSet
+                },
+        )
     }
 
     /**
      * 亮度**选定数值之后**的那一条（`bright:+15`）—— 弹窗按完「确定」时用它交给落盘那一侧。
      *
      *  菜单里那三行是占位写法（不带数值），所以不能拿行本身的 token 落盘；这一支把
-     *  「哪一档 + 几」拼成真正的取值。名字即 [brightnessTitle]（「增加 15%」）——
+     *  「哪一档 + 状态」拼成真正的取值。名字即 [actionDetail]（「增加 - 15%」）——
      *  `label` 那一刻会再查一次字典、查不到就原样显示，正好是这句拼好的话。
      */
     fun brightnessSpecOf(
@@ -1000,7 +1245,17 @@ object ActionCatalog {
         percent: Int,
     ): Spec {
         val action = Action.Brightness(mode, percent)
-        return Spec(name = brightnessTitle(action), token = action.token)
+        return Spec(
+            name = actionDetail(action) ?: action.token,
+            token = action.token,
+            //  与菜单里那三行同一颗：这几条就是那三行选定数值之后的落盘形态
+            glyph =
+                when (mode) {
+                    Action.Brightness.Mode.ADD -> Glyph.BrightnessUp
+                    Action.Brightness.Mode.SUB -> Glyph.BrightnessDown
+                    Action.Brightness.Mode.FIX -> Glyph.BrightnessSet
+                },
+        )
     }
 
     /**
@@ -1039,6 +1294,20 @@ object ActionCatalog {
     }
 
     /**
+     * 「亮度 / 音量」这两族当前落在**哪个数值**上（`10%`）；别的动作返回 `null`。
+     *
+     *  与 [switchStateLabel] 是同一件事的两半：那两族的父格是「屏幕亮度 / 音量」、子动作是
+     *  「增加 / 减少 / 设置为」，剩下的那个数就是**状态** —— 所以它与开关的「打开 / 关闭」
+     *  占同一个位置（`音量: 增加 - 10%`），不编进子动作里。
+     */
+    fun percentStateLabel(action: Action): String? =
+        when (action) {
+            is Action.Brightness -> I18n.format(Strings.COMMON_PERCENT_FORMAT, action.percent)
+            is Action.Volume -> I18n.format(Strings.COMMON_PERCENT_FORMAT, action.percent)
+            else -> null
+        }
+
+    /**
      * 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。
      *
      *  三档手势与命令链**拿到的是同一份**：清单里没有任何一行再按手势或按来处剔
@@ -1063,13 +1332,16 @@ object ActionCatalog {
      * 「开关的 token」那么几个 —— 按 token 记一份，返回的 List 只读，调用方不要改。
      */
     private fun buildSwitchStates(token: String): List<Spec> {
-        val toggle = Spec(name = Strings.CATALOG_MODE_TOGGLE, token = token)
+        //  三档共用同一颗**种类**字形（蓝牙就是蓝牙、WIFI 就是 WIFI）：
+        //  「打开 / 关闭」不换字形，状态由行首那句「打开蓝牙 / 关闭蓝牙」说。
+        val kind = GlyphSource.BySwitchKind(SystemSwitches.kindOf(token))
+        val toggle = Spec(name = Strings.CATALOG_MODE_TOGGLE, token = token, glyph = kind)
         if (!token.startsWith(Action.SETTING_PREFIX)) return listOf(toggle)
         val id = token.removePrefix(Action.SETTING_PREFIX)
         return listOf(
             toggle,
-            Spec(name = Strings.CATALOG_MODE_TURN_ON, token = Action.Setting(id, on = true).token),
-            Spec(name = Strings.CATALOG_MODE_TURN_OFF, token = Action.Setting(id, on = false).token),
+            Spec(name = Strings.CATALOG_MODE_TURN_ON, token = Action.Setting(id, on = true).token, glyph = kind),
+            Spec(name = Strings.CATALOG_MODE_TURN_OFF, token = Action.Setting(id, on = false).token, glyph = kind),
         )
     }
 
@@ -1124,17 +1396,11 @@ object ActionCatalog {
     /**
      * 当前动作落在入口格的哪一档（行里的标题：循环 / 静音 / 上一首 …）；不在任何一组时返回 `null`。
      *
-     * 那几格格子只有一行组名，不点开菜单看不出绑的是哪一档，所以格子里补的这行小字要走它。
-     * 算法与 `ui/model/CommandText.kt` 的 `stepTitle` 同源：档位名与格子怎么配对只在这一处决定。
+     *  **只给档位名，不带状态**：要「档位 - 状态」那半句（`增加 - 10%` / `WIFI - 打开`）走
+     *  `actionDetail`，两者不是一回事。档位名与格子怎么配对只在这一处决定（与
+     *  `ui/model/CommandText.kt` 的 `stepTitle` 同源）。
      */
-    fun modeName(action: Action): String? =
-        //  亮度 / 音量那两档把**数值**一起带上（「增加 15%」）：光写「增加」看不出加了多少，
-        //  而这是步骤标题与执行提示唯一能表达数值的地方。
-        when (action) {
-            is Action.Brightness -> brightnessTitle(action)
-            is Action.Volume -> volumeTitle(action)
-            else -> modeHitOf(action)?.mode?.label
-        }
+    fun modeName(action: Action): String? = modeHitOf(action)?.mode?.label
 
     /**
      * 这个动作落在「入口格 → 档位」两层的**哪一格、哪一行** —— `null` = 它不属于任何入口格菜单。
@@ -1203,39 +1469,88 @@ object ActionCatalog {
     )
 
     /**
+     * 点这一格 / 这一行**会发生什么**。
+     *
+     *  这几档不是「显示成什么样」，是**行为**：点下去弹菜单、弹弹窗、换一页、还是当场落盘。
+     *  界面上的每一样指示（行尾箭头 / 选择器 / 勾选框、要不要先起一层菜单）都是它的**后果**，
+     *  不是并列的判据。
+     *
+     * ## 为什么要有这个枚举
+     *
+     *  原先界面各处自己判：`BindingTile` 判 [popsSelector] 画选择器、`ModeMenuPopups` 判
+     *  `token == APP_CONTROL_OPEN/STOP` 画箭头、`actionRowView` 又判一次 `popsSelector` 与
+     *  `APP_TILE`。同一格因此能长出两种指示 —— 而且真的长出来了：「应用控制」那一格在网格里
+     *  画选择器（它弹原地菜单，对的），在抽屉里画右箭头（说它跳页，错的）。
+     *  「前台转小窗」那次改动也是这个形状：菜单形态一变，行尾记号得跟着改三处。
+     *
+     *  现在界面只 `when (clickKind)`。
+     */
+    enum class ClickKind {
+        /** 点一下就是一个完整动作，当场落盘（截屏 / 手电筒 / 自定义命令 / 菜单里的「主屏幕」）。 */
+        DIRECT,
+
+        /** 原地弹一层**菜单**（系统开关 / 系统导航 / 媒体控制 / 小布 AI / 应用控制那一格）。 */
+        MENU,
+
+        /** 原地弹一行一档的**单选弹窗** —— 这一格本身就是那个动作（录屏 / 录音 / 前台转小窗）。 */
+        STATE,
+
+        /** 原地弹**百分比**弹窗（亮度 / 音量的「增加 / 减少 / 设定」那几行）。 */
+        PERCENT,
+
+        /** 原地弹**开关三态**弹窗（系统开关的「切换 / 打开 / 关闭」那几行）。 */
+        SWITCH,
+
+        /** 换**另一张页面**：挑应用（「应用控制」的两行，以及那一格自己）。 */
+        PAGE_APP,
+
+        /** 换**另一张页面**：变量操作（「自定义变量」那一格）。 */
+        PAGE_VARS,
+    }
+
+    /**
+     * 这一格 / 这一行的点击行为 —— **唯一判据**，见 [ClickKind]。
+     *
+     *  顺序即优先级，四条「更具体的先说」：
+     *   · 换页的两族最具体（`appctl:` / `vars:` 各有自己的页面，**去向还不一样** ——
+     *     合成一个 `PAGE` 的话，界面还得回去判 token 才知道跳哪一页）；
+     *   · 再是「这一格就是那个动作」的状态弹窗 —— 它**也有** [modeMenu]（三行档位），
+     *     所以要排在 [modeMenu] 之前，否则会被当成「还有一层菜单」；
+     *   · 百分比 / 开关三态都是**菜单行**的后续，判据在各自那张表上；
+     *   · 最后才是「这一格自己有菜单」。判据用 `modeMenu(spec.token) != null` —— 那正是
+     *     「这一格」的定义。**不要换成 [hasDeeperLevel]**：它是为「媒体控制 / 响铃状态的首行与
+     *     格子共用同一串 token」设的自指闸，拿它判**格子**会把这两格判成「点一下就落盘」
+     *     （真机症状：行尾没有选择器、点下去直接绑上首行那个取值）。
+     *
+     *  [stateMenu] 排在 [modeMenu] 之后是必须的：它只看前缀，连格子那串标记 token（`setting:`）
+     *  也会被它当成「某个开关的三档」，于是系统开关那一格会被判成 [ClickKind.SWITCH]。
+     */
+    fun clickKind(spec: Spec): ClickKind =
+        when {
+            spec.token == VARS_TILE -> ClickKind.PAGE_VARS
+            spec.token == APP_CONTROL_OPEN || spec.token == APP_CONTROL_STOP -> ClickKind.PAGE_APP
+            stateChoices(spec.token) != null -> ClickKind.STATE
+            brightnessModeOf(spec.token) != null || volumeModeOf(spec.token) != null -> ClickKind.PERCENT
+            modeMenu(spec.token) != null -> ClickKind.MENU
+            stateMenu(spec.token) != null -> ClickKind.SWITCH
+            else -> ClickKind.DIRECT
+        }
+
+    /**
      * 这一格点了会进下一层（跳「打开应用」页 / 跳「控制中心磁贴」页 / 弹一格菜单）。
      *
-     * 「添加命令」抽屉**不用它**：那里先把「选择应用」那一格接走，剩下的判据正好是
-     * 「这一档有没有一层菜单」，直接看 [modeMenu] 更贴切。网格的绑定路径用它。
+     *  由 [clickKind] 派生，不再是独立判据 —— 以前这里问「有没有菜单」、`popsSelector` 又问一遍
+     *  「有没有菜单且不是状态弹窗」，两句话必须同时成立，改一处漏一处就出现「行尾是箭头、
+     *  点下去弹菜单」。
      */
-    fun isEntryTile(spec: Spec): Boolean =
-        spec.token == APP_TILE ||
-            modeMenu(spec.token) != null
+    fun isEntryTile(spec: Spec): Boolean = clickKind(spec) != ClickKind.DIRECT
 
     /**
-     * 行尾那颗指示画成**选择器**（`PageIcons.Selector`：一个框 + 右下角小三角）的那几格。
-     *
-     *  判据是「点开的东西是**原地**弹出的一层」：入口格的档位菜单（系统导航 / 系统按键 / 媒体控制 /
-     *  响铃状态…）—— 都在这一页里选完，不跳页。
-     *
-     *  与 [isEntryTile] **不是一回事**：同样是入口，「打开应用」（去挑应用）与「自定义变量」是跳页 /
-     *  换一层，行尾画的是右箭头。两处判据分开写，才不会因为多加一格入口就把箭头换成选择器。
-     *
-     *  也**不认层级**：问的是「这一格点开有没有菜单」，取值格（媒体控制 / 响铃状态）正该为真。
-     *  「这一**行**点下去还有没有它自己那一问」是另一件事，见 [hasDeeperLevel]。
-     *
-     *  [stateChoices] 那几格**不算**：它们点开弹的是三行单选**弹窗**，而那颗字形读作「点了要
-     *  选点什么、后面还有一层清单」—— 让一个动作挂上「还有一层」的记号，用户第一眼就会去找那层
-     *  清单（用户口径「网格 / 菜单里视为一个动作…行尾不用 selector」）。它们照取值格画勾选框。
-     */
-    fun popsSelector(token: String): Boolean = modeMenu(token) != null && stateChoices(token) == null
-
-    /**
-     * 这几格**点开直接弹一行一档的单选弹窗**（此刻只有录屏：开始 / 结束 / 切换）。
+     * 这几格**点开直接弹一行一档的单选弹窗**（录屏 / 录音：开始 / 结束 / 切换）。
      *
      *  「一个动作的几种状态」与「一整类动作的清单」不是一回事：灵感语音那层菜单里有「灵感语音」
-     *  这个中间层，小布 AI 那一格才有东西可列；而录屏的格子名就是动作名，中间再夹一张只写着
-     *  「录屏」的小标题 + 三行的菜单，等于把同一句话说两遍 —— 所以这一档直接弹弹窗
+     *  这个中间层，小布 AI 那一格才有东西可列；而录屏 / 录音的格子名就是动作名，中间再夹一张
+     *  只写着「录屏」「录音」的小标题 + 三行的菜单，等于把同一句话说两遍 —— 所以这两档直接弹弹窗
      *  （用户口径「用 dialog 选择器，网格 / 菜单里视为一个动作，点击弹 dialog 选」）。
      *
      *  **仍然留在 [MODE_MENUS] 里**：那一张表同时喂着「这一格算不算选中」（[isSelected]）、
@@ -1246,14 +1561,14 @@ object ActionCatalog {
     fun stateChoices(token: String): List<Spec>? = MODE_MENUS[token]?.takeIf { token in STATE_ONLY_TILES }
 
     /**
-     * 这几格**本身就是那个动作**，菜单里那几行只是它的三种状态（录屏）。
+     * 这几格**本身就是那个动作**，菜单里那几行只是它的三种状态（录屏 / 录音）。
      *
      *  三件事都由它决定，所以只能有一份名单：
-     *   · 点开弹的是弹窗不是菜单（[stateChoices]）；
-     *   · 文案没有「父动作」可写 —— `录屏 - 开始`，而不是 `录屏: 开始`（`actionTitle`）；
-     *   · 格子行尾不挂选择器字形（[popsSelector]）。
+     *   · 点开弹的是弹窗不是菜单（[stateChoices]，即 [clickKind] 的 `STATE` 档）；
+     *   · 文案没有「父动作」可写 —— `录屏 - 开始`，而不是 `录屏: 开始`（`commandTitleOf`）；
+     *   · 格子行尾不挂选择器字形（`clickKind` 不是 `MENU` ⇒ 界面画勾选框）。
      */
-    private val STATE_ONLY_TILES: Set<String> = setOf(SCREEN_RECORD_TILE)
+    private val STATE_ONLY_TILES: Set<String> = setOf(SCREEN_RECORD_TILE, RECORD_TILE, MINI_TILE)
 
     /**
      * 这一行点下去**还有它自己那一层**的下一问 —— 此刻只有灵感语音（开始 / 结束）。
@@ -1265,8 +1580,8 @@ object ActionCatalog {
      *  选择器」）。响铃状态的首行（「循环」）同理。
      *
      *  判据：那张表里**没有一行与它同 token** ⇒ 它是标记行（永不写进配置），表里那几行才是它的
-     *  子档。取值格那两行的 `modeMenu` 由 [isEntryTile] / [popsSelector] 用（那里问的是「这一格
-     *  点开有没有菜单」，正该是真的）。
+     *  子档。取值格那两行的 `modeMenu` 由 [isEntryTile] 用（那里问的是「这一格点开有没有菜单」，
+     *  正该是真的）。
      */
     fun hasDeeperLevel(spec: Spec): Boolean = modeMenu(spec.token)?.let { leaves -> leaves.none { it.token == spec.token } } ?: false
 
@@ -1304,9 +1619,9 @@ object ActionCatalog {
     fun label(action: Action): String? =
         when (action) {
             //  变量操作不是清单里的条目（变量是运行时收集的，`setvar:` 又有无数种写法），
-            //  「人前叫什么」只能由动作自己按变量名与运算符拼 —— 与执行时提示同一支（`actionTitle`）。
+            //  「人前叫什么」只能由动作自己按变量名与运算符拼 —— 与执行时提示同一支（`CommandTitle`）。
             is Action.VarSet -> {
-                actionTitle(action, { "" }, action.token)
+                commandTitleOf(action).forSentence(action, { "" }, action.token)
             }
 
             else -> {

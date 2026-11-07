@@ -26,9 +26,12 @@ import com.lookie.opluskey.core.model.Config
  *  （`docs/decoupling.md` 的清零包环），所以只能拿这份数据当两边之间的接口。
  */
 internal class PageLoadSnapshot(
-    val config: Config,
-    /** 主配置读不懂（[ConfigStore.Load.Unreadable]）⇒ 页面进只读，本次不许写回。 */
-    val configReadOnly: Boolean,
+    /**
+     * 主配置读出来的三个结论（内容 / 要不要只读 / 是不是从备份恢复）—— 见 [ConfigRead]。
+     *
+     *  打成一份而不是三个形参：它们互斥且总是一起用（参数表也顶到 detekt 的上限了）。
+     */
+    val configRead: ConfigRead,
     val commands: List<Command>,
     /** 命令库读不懂 ⇒ 命令库进只读（见 [ConfigState.commandsReadOnly]）。 */
     val commandsReadOnly: Boolean,
@@ -75,15 +78,14 @@ internal class LinkBaseline(
  */
 internal fun readPageLoadSnapshot(context: Context): PageLoadSnapshot =
     try {
-        val (config, configReadOnly) = loadConfigOrReadOnly()
+        val loadedConfig = loadConfigOrReadOnly()
         val (commands, commandsReadOnly) = loadCommandsOrReadOnly()
 
         // 一次读全：逐项各读一遍会把同一个文件 open + parse 好几遍（同 [UiState.readPrefs] 的注释）。
         val prefs = UiState.readPrefs()
 
         PageLoadSnapshot(
-            config = config,
-            configReadOnly = configReadOnly,
+            configRead = loadedConfig,
             commands = commands,
             commandsReadOnly = commandsReadOnly,
             prefs = prefs,
@@ -97,8 +99,7 @@ internal fun readPageLoadSnapshot(context: Context): PageLoadSnapshot =
     } catch (e: Throwable) {
         XLog.w("建页读盘失败（两份都进只读、界面用默认值）：${e.message}", e)
         PageLoadSnapshot(
-            config = Config.DEFAULT,
-            configReadOnly = true,
+            configRead = ConfigRead(Config.DEFAULT, readOnly = true),
             commands = emptyList(),
             commandsReadOnly = true,
             prefs =
@@ -119,23 +120,39 @@ internal fun readPageLoadSnapshot(context: Context): PageLoadSnapshot =
  *  单独拆出来只为两件事：`readPageLoadSnapshot` 已经贴着 `LongMethod` 的线，
  *  以及这三态的判断（[ConfigStore.Load]）不该和「读命令库」混在同一个函数里读。
  */
-private fun loadConfigOrReadOnly(): Pair<Config, Boolean> =
+private fun loadConfigOrReadOnly(): ConfigRead =
     when (val l = ConfigStore.load()) {
         is ConfigStore.Load.Ok -> {
-            l.config to false
+            ConfigRead(l.config, readOnly = false)
         }
 
         ConfigStore.Load.Absent -> {
             XLog.w("还没有配置文件（首装 / 刚清过数据）—— 用默认值，可以写回")
-            Config.DEFAULT to false
+            ConfigRead(Config.DEFAULT, readOnly = false)
+        }
+
+        //  **从备份恢复**：主文件坏了，但上一次成功写入那份读得懂。
+        //  页面照常可写 —— 用户一改，`write` 就把这份写回去，主文件当场修好。
+        is ConfigStore.Load.Recovered -> {
+            XLog.w("配置从 .bak 恢复（比最后一次成功写入旧一个版本）—— 页面照常可写，改一次即修好主文件")
+            ConfigRead(l.config, readOnly = false, recovered = true)
         }
 
         ConfigStore.Load.Unreadable -> {
             // 这条必须是 w：它是「页面为什么变只读」的唯一判据行
             XLog.w("配置读不懂 ⇒ 页面进只读，本次不许写回（否则会把默认值当真相固化）")
-            Config.DEFAULT to true
+            ConfigRead(Config.DEFAULT, readOnly = true)
         }
     }
+
+/** 主配置读出来的三个结论 —— 用类而不是 `Triple`：三个布尔/对象并排时解构很容易看错位。 */
+internal class ConfigRead(
+    val config: Config,
+    /** 读不懂 ⇒ 页面只读、绝不写回。 */
+    val readOnly: Boolean,
+    /** 从 `.bak` 恢复的（可写，但比最新那次改动旧一版）。 */
+    val recovered: Boolean = false,
+)
 
 /** 读命令库，同上（三态与只读位）。 */
 private fun loadCommandsOrReadOnly(): Pair<List<Command>, Boolean> =

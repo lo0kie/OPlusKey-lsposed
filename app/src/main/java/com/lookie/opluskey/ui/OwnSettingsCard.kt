@@ -36,13 +36,14 @@ import com.lookie.opluskey.ui.model.PageIcons
  *
  * @param owner 这一档当前的独立设置（只读；改由 [onWrite] 交回去）
  * @param enabled 页面闸门 —— 关着时整张卡不吃点击
- * @param onWrite 改完之后的新值，调用方负责落到自己那段配置上
+ * @param onWrite 改完之后的新值 + **这次改的是哪一项**（后者决定调用方只覆盖哪一格，
+ *   见 [OwnField]），调用方负责落到自己那段配置上
  */
 @Composable
 internal fun SettingsPage.OwnSettingsCard(
     owner: OwnSettings,
     enabled: Boolean,
-    onWrite: (OwnSettingsValues) -> Unit,
+    onWrite: (OwnSettingsValues, OwnField) -> Unit,
 ) {
     var editingTemplate by remember { mutableStateOf(false) }
     CardList(
@@ -50,7 +51,7 @@ internal fun SettingsPage.OwnSettingsCard(
             ownSettingRows(
                 owner = owner,
                 enabled = enabled,
-                onEdit = { onWrite(it) },
+                onEdit = { values, field -> onWrite(values, field) },
                 onEditTemplate = { editingTemplate = true },
             ),
     )
@@ -59,7 +60,7 @@ internal fun SettingsPage.OwnSettingsCard(
         show = editingTemplate,
         onShowChange = { editingTemplate = it },
     ) { text ->
-        onWrite(owner.values().copy(toastTemplate = text))
+        onWrite(owner.values().copy(toastTemplate = text), OwnField.TEMPLATE)
     }
 }
 
@@ -72,11 +73,15 @@ internal fun SettingsPage.OwnSettingsCard(
 private fun SettingsPage.ownSettingRows(
     owner: OwnSettings,
     enabled: Boolean,
-    onEdit: (OwnSettingsValues) -> Unit,
+    onEdit: (OwnSettingsValues, OwnField) -> Unit,
     onEditTemplate: () -> Unit,
 ): List<CardRow> {
-    // 每一行都基于「当前这份值」改一位再交回去 —— 形状与 `CardRow` 的开关一致
-    fun edit(transform: (OwnSettingsValues) -> OwnSettingsValues) = onEdit(transform(owner.values()))
+    // 每一行都基于「当前这份值」改一位再交回去 —— 形状与 `CardRow` 的开关一致。
+    // **顺手写下改的是哪一项**：调用方按它只覆盖那一格（见 [OwnField]）。
+    fun edit(
+        field: OwnField,
+        transform: (OwnSettingsValues) -> OwnSettingsValues,
+    ) = onEdit(transform(owner.values()), field)
 
     val rowsEnabled = enabled && owner.useOwnSettings
     //  灰着时点一下该说的话：整页闸门关着 ⇒ `null`（用整页那句：主开关 / 链路 / 只读）；
@@ -106,7 +111,7 @@ private fun SettingsPage.commonRows(
     enabled: Boolean,
     rowsEnabled: Boolean,
     ownHint: String?,
-    edit: ((OwnSettingsValues) -> OwnSettingsValues) -> Unit,
+    edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
 ): List<CardRow> =
     listOf(
         CardRow.Switch(
@@ -118,7 +123,7 @@ private fun SettingsPage.commonRows(
             checked = owner.useOwnSettings,
             enabled = enabled,
         ) { on ->
-            edit { v -> v.copy(useOwn = on) }
+            edit(OwnField.USE_OWN) { v -> v.copy(useOwn = on) }
         },
         CardRow.Switch(
             title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
@@ -129,7 +134,7 @@ private fun SettingsPage.commonRows(
             enabled = rowsEnabled,
             disabledHint = ownHint,
         ) {
-            edit { v -> v.copy(colorOsApi = it) }
+            edit(OwnField.COLOR_OS) { v -> v.copy(colorOsApi = it) }
         },
         CardRow.Switch(
             title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
@@ -140,7 +145,7 @@ private fun SettingsPage.commonRows(
             enabled = rowsEnabled,
             disabledHint = ownHint,
         ) {
-            edit { v -> v.copy(vibrate = it) }
+            edit(OwnField.VIBRATE) { v -> v.copy(vibrate = it) }
         },
     )
 
@@ -158,7 +163,7 @@ private fun SettingsPage.strengthRow(
     owner: OwnSettings,
     rowsEnabled: Boolean,
     hint: String?,
-    edit: ((OwnSettingsValues) -> OwnSettingsValues) -> Unit,
+    edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
 ): CardRow =
     CardRow.Custom(visible = owner.vibrate) { position ->
         SliderRow(
@@ -179,7 +184,7 @@ private fun SettingsPage.strengthRow(
                     keyPoints = null,
                 ),
         ) { level ->
-            edit { v -> v.copy(vibrateStrength = level) }
+            edit(OwnField.STRENGTH) { v -> v.copy(vibrateStrength = level) }
             //  滑杆要「写盘成没成」：失败时它把滑块拨回原值。这里是同步落盘，
             //  `edit` 那条已经把结果交给 `write` 了 —— 没有失败路径可报，恒 true。
             true
@@ -192,7 +197,7 @@ private fun SettingsPage.toastRows(
     owner: OwnSettings,
     rowsEnabled: Boolean,
     ownHint: String?,
-    edit: ((OwnSettingsValues) -> OwnSettingsValues) -> Unit,
+    edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
     onEditTemplate: () -> Unit,
 ): List<CardRow> =
     listOf(
@@ -205,7 +210,7 @@ private fun SettingsPage.toastRows(
             enabled = rowsEnabled,
             disabledHint = ownHint,
         ) {
-            edit { v -> v.copy(toastOnRun = it) }
+            edit(OwnField.TOAST) { v -> v.copy(toastOnRun = it) }
         },
         CardRow.Item(
             title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
@@ -218,33 +223,6 @@ private fun SettingsPage.toastRows(
             visible = owner.toastOnRun,
             onClick = onEditTemplate,
         ),
-    )
-
-/**
- * 独立设置那份值的**可变载体** —— 界面内部改一位就用它 `copy`，改完整体交回调用方。
- *
- *  为什么不直接用 [OwnSettings]：接口没有 `copy`，逐个回调又会把「改哪个字段」摊成六个参数。
- */
-internal data class OwnSettingsValues(
-    private val useOwn: Boolean,
-    override val colorOsApi: Boolean,
-    override val vibrate: Boolean,
-    override val vibrateStrength: Int,
-    override val toastOnRun: Boolean,
-    override val toastTemplate: String,
-) : OwnSettings {
-    override val useOwnSettings: Boolean get() = useOwn
-}
-
-/** 把任一档的独立设置读成可改的那份载体。 */
-internal fun OwnSettings.values(): OwnSettingsValues =
-    OwnSettingsValues(
-        useOwn = useOwnSettings,
-        colorOsApi = colorOsApi,
-        vibrate = vibrate,
-        vibrateStrength = vibrateStrength,
-        toastOnRun = toastOnRun,
-        toastTemplate = toastTemplate,
     )
 
 /** 三档强度的说法（弱 / 中 / 强）—— 与公共页同一个映射，越界落到「中」。 */
@@ -309,6 +287,7 @@ internal fun KeyConfig.withOwn(values: OwnSettingsValues): KeyConfig =
         vibrateStrength = values.vibrateStrength,
         toastOnRun = values.toastOnRun,
         toastTemplate = values.toastTemplate,
+        ownSettingsSeeded = values.ownSettingsSeeded,
     )
 
 /** 把这份值落到一组组合键上 —— 与 [withOwn] 那份一字不差。 */
@@ -320,4 +299,5 @@ internal fun ComboKey.withOwn(values: OwnSettingsValues): ComboKey =
         vibrateStrength = values.vibrateStrength,
         toastOnRun = values.toastOnRun,
         toastTemplate = values.toastTemplate,
+        ownSettingsSeeded = values.ownSettingsSeeded,
     )

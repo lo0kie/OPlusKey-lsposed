@@ -107,4 +107,6 @@ private fun SettingsPage.targetLabel(
         //  「以小窗打开」那一趟：目标里标出来（`微信 - 小窗`）
         window = picker.smallWindow.value,
         draftLabel = picker.draft?.label,
+        //  「使用原版动画」那一趟同理（两者互斥，最多一个为真）
+        stockAnim = picker.stockAnim.value,
     )

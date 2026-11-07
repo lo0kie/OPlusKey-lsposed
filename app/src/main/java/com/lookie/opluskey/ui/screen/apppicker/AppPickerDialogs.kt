@@ -94,11 +94,13 @@ private fun SettingsPage.SmallWindowUnsupportedDialog(
 }
 
 /**
- * (3)「放弃这次选择」：这一趟已经挑中过一条（二级页点了确认）、还没按右下角那颗提交，用户按了返回。
+ * (3)「放弃这次选择」：这一趟已经挑中过一条（二级页点了确认）**或拨过打开方式**、
+ * 还没按右下角那颗提交，用户按了返回。
  *
- *  触发点在 `SettingsPage.goBack`（`picker.draft` 非空时置位并拦住不退），这里只负责画。
- *  不拦的话这一退会把草稿连同整趟挑的整个丢掉 —— 而页面离栈时 `resetSession` 连草稿一起清，
- *  用户只是「挑完想先看看别的」回来就没有了。
+ *  触发点在 `SettingsPage.goBack`（`picker.draft` 非空、或 `picker.windowTogglesChanged` 时
+ *  置位并拦住不退），这里只负责画。不拦的话这一退会把草稿连同整趟挑的整个丢掉 ——
+ *  而页面离栈时 `resetSession` 连草稿一起清，用户只是「挑完想先看看别的」回来就没有了。
+ *  拨开关那一档同理：小窗 / 原版动画是绑定的一部分，拨了没挑就退出去等于什么都没改。
  *
  *  ## 正文里念的是**格式化后**的那一句
  *
@@ -109,6 +111,9 @@ private fun SettingsPage.SmallWindowUnsupportedDialog(
  *
  *  调用点把草稿的 `shortcutId` / 「小窗口打开」那一档一起交过去：快捷方式不带 `/类名` 的后缀，
  *  勾着小窗的目标要念成「微信(小窗)」而不是光一个应用名。
+ *
+ *  **没有草稿（只拨过开关）就不带正文**：那句要嵌「哪一条」，而这时没有目标可念 ——
+ *  同一张窗、同一个标题与同一颗「放弃」就够说清这一退会丢什么；不为这一档另写一句文案。
  *
  *  确认 ⇒ 丢掉草稿并**真退**（`popBackStack` 绕开 `goBack` 的拦截，否则又弹回自己）；
  *  取消 ⇒ 关掉窗，回到这一页继续挑（草稿原样留着，那颗 FAB 仍在）。
@@ -130,6 +135,7 @@ private fun SettingsPage.DiscardPickDialog() {
                             shortcut = it.shortcutId != null,
                             window = picker.smallWindow.value,
                             draftLabel = it.label,
+                            stockAnim = picker.stockAnim.value,
                         ),
                     ),
                 )

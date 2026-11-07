@@ -3,10 +3,13 @@ package com.lookie.opluskey.host.action
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Looper
 import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.bridge.AppEntry
 import com.lookie.opluskey.bridge.host.BuiltInMessenger
+import com.lookie.opluskey.bridge.host.RecorderStateBridge
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.RomProfile
 
@@ -70,8 +73,12 @@ internal class AppLauncher(
      * 目标可以带多开前缀（`999@包名/Activity`，见 `AppTarget`）：那时**解析与启动都必须换成那个
      * 用户的视角** —— 主用户的 `PackageManager` 看不见分身里的包，直接 `ctx.startActivity`
      * 也会在主用户里找组件（表现为「解析不到界面」）。
+     *
+     * [Action.App.stockAnim] 为真时套上**原版那层启动包裹**（见 [StockLaunchWrap]）：这是**命令级**
+     * 的一档（同一条绑定自己决定），与小窗那一档互斥。
      */
-    fun launchApp(target: String) {
+    fun launchApp(action: Action.App) {
+        val target = action.target
         val ctx =
             context() ?: run {
                 XLog.w("没有 Context，app:$target 跳过")
@@ -92,6 +99,11 @@ internal class AppLauncher(
             return
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        //  **原版动画那一档：整件事交给宿主自己那条链路**（`OriginalLaunch` 的类注释里有证据：
+        //  系统里真的出现了它建的 `SpruceLauncher` RemoteTransition）。它内部会自己起界面，
+        //  所以这里交出之后必须 return —— 否则会开出两个任务。
+        //  只对主用户转交：它用 `UserHandle.CURRENT`，分身目标会被起进主用户（见那边的注释）。
+        if (action.stockAnim && userId == 0 && OriginalLaunch.launch(ctx, intent)) return
         try {
             // 主用户与分身**都走** ATMS 的 `startActivityAsUser`：只有这条路能在下发前统一给
             //  intent 挂 `OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER`。不挂的话，**装了分身的应用在主
@@ -223,6 +235,10 @@ internal class AppLauncher(
                 XLog.w("没有 Context，oplus:$feature 跳过")
                 return
             }
+        // 带 AIDL 的那几档（录音）：先问一次真实状态再决定这一下是「起」「停」还是「不动」。
+        //  必须排在下面「只停」那一支前面 —— 录音的「只结束」正是 service 为空、只有 AIDL 的落点。
+        if (target.aidl != null && runAidlFeature(ctx, feature, target, onFailure) { startOplusFeature(feature) }) return
+
         // 「只停」那一档（录屏的「结束」）：没有启动落点，只发那条停止广播。
         //  记账一起清掉 —— 之后按「切换」那一档要按「现在是关」算。
         if (target.service.isEmpty()) {
@@ -365,6 +381,108 @@ internal class AppLauncher(
 
         // 「等服务连上的上限」不在本类的 companion 里：它跟着 `BuiltInMessenger.TIMEOUT_MS` 走
         // （手电筒那条也吃同一个值），别在这儿再存一份。
+    }
+}
+
+/**
+ * 带 [RomProfile.BuiltIn.aidl] 的那几档（此刻只有录音）—— **先问一次真实状态，再决定这一下怎么动**。
+ *
+ *  为什么不能只发那条意图：录音机那条意图**自己就是开关**（在录时会被它停掉），而「只开始」恰恰
+ *  不允许这样；「只结束」更是只有 AIDL 一条路（录音机没有任何停止广播）。
+ *
+ *  写成顶层函数而不是 `AppLauncher` 的成员：那个类的函数条数贴着 detekt `TooManyFunctions`
+ *  那一档（`tryComponentFallback` 同一个理由）。
+ *
+ * @return `true` = 这一下已经处理完（停过 / 判定成空操作），调用方**别再起界面**
+ */
+private fun runAidlFeature(
+    ctx: Context,
+    feature: String,
+    target: RomProfile.BuiltIn,
+    onFailure: (CommandFailure) -> Unit,
+    /** 主线程上折返用：整条重来一遍（理由见开头那段）。 */
+    restart: () -> Unit,
+): Boolean {
+    //  问状态要 bind + 等事务（跨进程，见 `bridge/host/RecorderStateBridge`）：本函数在设置页
+    //  「测试命令」那条路上是**主线程**调用，那就整条挪到后台线程再进来，别在主线程上等
+    //  （宿主按键那条路本来就在 worker 线程上，这一步等于空操作）。
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        Thread({ restart() }, "opluskey-aidl").apply { isDaemon = true }.start()
+        return true
+    }
+    val aidl = target.aidl ?: return false
+    return aidlDecision(ctx, target, aidl, "oplus:$feature", onFailure)
+}
+
+/**
+ * 三档共用的一次判定 —— **先问一次真实状态，再决定这一下是「起」「停」还是什么都不做**。
+ *
+ *  为什么「只结束」也要先问：对录音机发一次「没有采集的停止」它照样会把收尾那一套走一遍
+ *  （`stopRecord` 内部会 bind `RecorderService`），真机上的表现是**什么都没录也弹出一张录音的
+ *  流体云**；而查状态只 bind `RecordStateService`，那个 `onCreate` 只注册广播接收器，是惰性的。
+ *
+ * @return `true` = 已经处理完（停过 / 判定成空操作），调用方别再起界面
+ */
+private fun aidlDecision(
+    ctx: Context,
+    target: RomProfile.BuiltIn,
+    aidl: RomProfile.AidlControl,
+    tag: String,
+    onFailure: (CommandFailure) -> Unit,
+): Boolean {
+    val state = RecorderStateBridge.state(ctx, target.owner, aidl, tag)
+    if (state == RecorderStateBridge.State.RECORDING) {
+        if (aidl.mode == RomProfile.AidlControl.Mode.START) {
+            //  「只开始」撞上在录：什么都不做。直接发那条意图会被录音机当成「再按一次」而停录。
+            XLog.w("$tag：已经在录，这一下什么都不做（「只开始」那一档）")
+        } else {
+            //  「切换」与「只结束」：在录就停 —— 不指望 ROM 那条意图的判据（它还要看录音页在不在前台）
+            stopByAidl(ctx, target, aidl, tag, onFailure)
+        }
+        return true
+    }
+    if (aidl.mode == RomProfile.AidlControl.Mode.STOP) {
+        //  没在录就**不发停止**：那一下会让录音机把收尾流程走一遍（真机上是凭空一张流体云）。
+        //  查不到状态时同理不发 —— 这条通道本身不可信时，停一下的代价比「没反应」更大。
+        if (state == RecorderStateBridge.State.UNKNOWN) {
+            XLog.w("$tag：查不到录音状态，这一下不发停止（发了会在没录时走一遍收尾）")
+            onFailure(CommandFailure.UNKNOWN)
+        } else {
+            XLog.w("$tag：没有在录音，这一下什么都不做（「只结束」那一档）")
+        }
+        return true
+    }
+    if (state == RecorderStateBridge.State.UNKNOWN) {
+        if (aidl.mode == RomProfile.AidlControl.Mode.START) {
+            //  查不到状态时**不发**那条意图：它在录音中会把正在录的停掉，而这一档的语义是「只开始」。
+            //  宁可报一次失败，也不替用户结束一次录音（五、4 不伪造能力）。
+            XLog.w("$tag：查不到录音状态，「只开始」这一档不发意图（发下去会把在录的停掉）")
+            onFailure(CommandFailure.UNKNOWN)
+            return true
+        }
+        //  「切换」的降级：这条意图本身就是开关，等于回到拆出「只开始 / 只结束」之前的行为
+        XLog.w("$tag：查不到录音状态，交给 ROM 自己那套开关")
+    }
+    return false
+}
+
+/**
+ * 走一次录音机的 AIDL 停录（`stopRecord`），失败就报一次「没执行成功」。
+ *
+ *  为什么失败要报：这条通道是那一档的**唯一**手段，静默失败的表现就是「按下去什么都没发生」。
+ */
+private fun stopByAidl(
+    ctx: Context,
+    target: RomProfile.BuiltIn,
+    aidl: RomProfile.AidlControl,
+    tag: String,
+    onFailure: (CommandFailure) -> Unit,
+) {
+    if (RecorderStateBridge.stop(ctx, target.owner, aidl, tag)) {
+        XLog.w("$tag → AIDL stopRecord 已发出")
+    } else {
+        XLog.w("$tag 的 AIDL stopRecord 没发出去（断在哪一环见上面那行），报一次失败")
+        onFailure(CommandFailure.UNKNOWN)
     }
 }
 

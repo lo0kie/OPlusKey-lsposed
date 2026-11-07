@@ -88,6 +88,8 @@ data class ComboKey(
     override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
     /** 这一档自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
+    /** 上面那五项被公共设置播过种没有 —— 见 [OwnSettings.ownSettingsSeeded]。 */
+    override val ownSettingsSeeded: Boolean = false,
     /**
      * **这一组自己的**「无操作时执行按键命令」—— `null` = 跟随公共设置。
      *
@@ -120,20 +122,21 @@ data class ComboKey(
      *  与单键 `KeyConfig.releaseBound` 同一份判据（那一边的解释更细）：三位缺一位都不算。
      */
     override val releaseBound: Boolean
-        get() = longReleaseOn && longRelease !is Action.None && !longFireOnRelease
+        get() = longReleaseOn && longRelease.isBound && !longFireOnRelease
 
     /**
      * **带条件表**的取动作：先看 [rules]（顺序、第一条赢），都不中才落到 [actionOf]。
      *
-     *  与单键 `KeyConfig.actionFor` 是同一份语义，两份实现只差在类上 —— 合并它俩得先让
-     *  `KeyConfig` 与 `ComboKey` 共一个父类型，而它们除了这一处之外没有共同字段。
+     *  实现在 [pickAction] 一处 —— 与单键 `KeyConfig.actionFor` 是**同一个函数**。
+     *  原先两边各写了一遍逐字相同的 `firstOrNull`，注释给的理由是「合并得先让两个类共一个
+     *  父类型」；那个理由不成立：要的只是「一张表 + 一个兜底动作」，抽成顶层函数就够。
      *
      *  `matches` 由调用方给（读系统开关的那一层，见 `ConditionProbe`）：这一层不认识系统接口。
      */
     fun resolve(
         gesture: Gesture,
         matches: (BranchCondition) -> Boolean,
-    ): Action = rules.firstOrNull { it.appliesTo(gesture, matches) }?.action ?: actionOf(gesture)
+    ): Action = pickAction(rules, gesture, actionOf(gesture), matches)
 
     /** [down] 里包含这一档的全部成员吗（不看顺序、允许同时按着别的键）。 */
     fun matches(down: Set<String>): Boolean = keys.all { it in down }

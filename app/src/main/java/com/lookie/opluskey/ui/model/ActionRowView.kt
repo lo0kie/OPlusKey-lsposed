@@ -100,17 +100,20 @@ private fun boundAppIcon(
  * 行尾那颗箭头（只有抽屉用）：点了去**另一张页面**的给右箭头，点开还有**一层菜单**的给选择器，
  * 点一下就落成一步的不给。
  *
- *  判据用 token / `popsSelector`，不看字形 —— 字形是「画什么」，与「点了去哪」无关。
- *  **不直接问 `modeMenu`**：录屏那一格点开弹的是三行单选**弹窗**（`stateChoices`），不是菜单，
- *  行尾画选择器等于告诉用户「下面还有一层清单」（用户口径「抽屉的录屏去掉行尾图标」）。
+ *  判据只有 `ActionCatalog.clickKind` —— 那是「这一行点下去会发生什么」的唯一答案。
+ *  以前这里自己判 `APP_TILE` 与 `popsSelector`，与网格 `BindingTile` 那份判出了两个结果：
+ *  「应用控制」在网格里是选择器（它弹原地菜单，对的），在抽屉里是右箭头（说它跳页，错的）。
+ *  同一个格子两种指示，用户只能猜哪个是真的。
  */
 private fun rowTrailingIcon(spec: ActionCatalog.Spec): ImageVector? =
-    when {
-        spec.token == ActionCatalog.APP_TILE || spec.token == ActionCatalog.VARS_TILE -> {
+    when (ActionCatalog.clickKind(spec)) {
+        ActionCatalog.ClickKind.PAGE_APP,
+        ActionCatalog.ClickKind.PAGE_VARS,
+        -> {
             PageIcons.EnterArrow
         }
 
-        ActionCatalog.popsSelector(spec.token) -> {
+        ActionCatalog.ClickKind.MENU -> {
             PageIcons.Selector
         }
 

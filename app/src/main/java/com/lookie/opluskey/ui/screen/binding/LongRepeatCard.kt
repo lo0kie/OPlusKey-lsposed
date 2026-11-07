@@ -17,6 +17,7 @@ import com.lookie.opluskey.ui.LongPressSettingsCard
 import com.lookie.opluskey.ui.LongPressSpec
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appLabelOf
+import com.lookie.opluskey.ui.model.actionIcon
 import com.lookie.opluskey.ui.model.releaseActionTitle
 import com.lookie.opluskey.ui.openAppPickerForRelease
 import com.lookie.opluskey.ui.screen.command.StepPickerPage
@@ -56,7 +57,10 @@ internal fun SettingsPage.LongPressCard(
             null
         }
     val blocked = blockedReason != null
-    val releaseAction = owner.longRelease.takeUnless { it is Action.None }
+    //  「额外动作」这一行的取值**不滤 `Action.None`**：无操作就是这一档的默认值，不是「还没配」。
+    //  滤掉它会让界面多出一个「未设置」状态 —— 那与「无操作」是同一个意思，却要另配文案与图标
+    //  （原先那颗还借了网格里「系统按键」的，撞了）。
+    val releaseAction = owner.longRelease
     var pickingRelease by remember { mutableStateOf(false) }
     LongPressSettingsCard(
         LongPressSpec(
@@ -69,7 +73,10 @@ internal fun SettingsPage.LongPressCard(
             releaseSupported = true,
             releaseOn = owner.longReleaseOn,
             //  行上写的是**动作名**：用户挑的可能是某条命令，只写 token 等于让他自己读 `cmd:喝水`
-            releaseLabel = releaseAction?.let { releaseActionTitle(it.token) { pkg -> appLabelOf(pkg) } },
+            releaseLabel = releaseActionTitle(releaseAction.token) { pkg -> appLabelOf(pkg) },
+            //  配了动作，行首就换成**那个动作自己的图标**（与网格里那一格同一颗，见 `actionIcon`）：
+            //  这一行答的是「松手做什么」，图标跟着答案走才读得出来
+            releaseIcon = actionIcon(releaseAction.token),
             //  时序的互斥只在数据层有一份：这里把算好的结论递进去，界面不重算
             releaseBound = owner.releaseBound,
             enabled = !blocked,

@@ -1,9 +1,9 @@
 package com.lookie.opluskey.ui
 
 import com.lookie.opluskey.core.ProcClock
-import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.i18n.applyLanguage
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.state.PageLoadSnapshot
@@ -33,10 +33,10 @@ internal suspend fun SettingsPage.loadPageState() {
     applyPageLoad(snapshot)
     // 预算一次「本地配置指纹」：组合期会读它（`configSideOk` / 「设置生效」那一行），
     //  而它要读命令库。放在这趟 IO 里，页面组合时就是缓存命中，不碰磁盘。
-    withContext(Dispatchers.IO) { primeLocalTag(snapshot.config, snapshot.commands) }
+    withContext(Dispatchers.IO) { primeLocalTag(snapshot.configRead.config, snapshot.commands) }
     // 「装好后没动过任何设置」的状态下，注入侧只能等宿主进程的解锁广播 ——
     // 打开这一页就立刻同步一次，作为兜底（判定在注入侧，见 [publishConfig]）。
-    val sent = withContext(Dispatchers.IO) { publishConfig(snapshot.config) }
+    val sent = withContext(Dispatchers.IO) { publishConfig(snapshot.configRead.config) }
     if (!sent) {
         XLog.w("建页同步配置：广播没发出去（注入侧还停在上一份）")
         //  只说一句日志的话，用户看到的是**整页灰掉**：注入侧手上还是旧配置、两边指纹对不上
@@ -53,8 +53,9 @@ internal suspend fun SettingsPage.loadPageState() {
  * 才会把整棵页面树组合出来 —— 所以这里必须**先**把每一项写完，最后再翻它。
  */
 internal fun SettingsPage.applyPageLoad(snapshot: PageLoadSnapshot) {
-    configState.config.value = snapshot.config
-    configState.readOnly = snapshot.configReadOnly
+    configState.config.value = snapshot.configRead.config
+    configState.readOnly = snapshot.configRead.readOnly
+    configState.configRecovered = snapshot.configRead.recovered
     configState.commands.value = snapshot.commands
     configState.commandsReadOnly = snapshot.commandsReadOnly
     picker.showSystemApps.value = snapshot.prefs.showSystemApps
@@ -70,7 +71,7 @@ internal fun SettingsPage.applyPageLoad(snapshot: PageLoadSnapshot) {
 
     // 语言档跟着配置走。放这里而不是 `installI18nBridge()` 那一步：那一步只装订阅、不读配置，
     //  而配置现在是异步读回来的 —— 读回来之后立刻换档，首帧文案才是用户选的那个语言。
-    I18n.currentLanguage = AppLanguage.fromCode(snapshot.config.global.language)
+    applyLanguage(snapshot.configRead.config.global.language)
 
     XLog.w(
         "界面状态：显示全部应用=${snapshot.prefs.showSystemApps}，显示失效=${snapshot.prefs.showUnopenable}",

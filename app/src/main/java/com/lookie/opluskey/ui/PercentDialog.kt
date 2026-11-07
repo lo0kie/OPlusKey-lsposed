@@ -16,8 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.brightnessTitle
-import com.lookie.opluskey.core.model.volumeTitle
+import com.lookie.opluskey.core.model.actionDetail
 import com.lookie.opluskey.ui.model.SliderTapTrack
 import io.github.suqi8.coui.kmp.basic.SliderDefaults
 import io.github.suqi8.coui.kmp.basic.Text
@@ -51,7 +50,7 @@ private val DIALOG_TAP_TRACK =
  *
  * @param title 弹窗标题（「屏幕亮度」/「音量」）
  * @param min 允许的最小百分比（「设置为」是 0，加减档是 [PERCENT_STEP]）
- * @param labelOf 把百分比拼成那一句话（`brightnessTitle` / `volumeTitle`）
+ * @param labelOf 把百分比拼成那一句话（`core/model` 的 `actionDetail`）
  */
 internal class PercentPrompt(
     val title: String,
@@ -77,7 +76,7 @@ internal class PercentPrompt(
  *
  * ## 数值跟着滑杆实时显示
  *
- *  标题那行写的是**这一档 + 当前数值**（`增加 15%`，与网格小字、步骤标题同一句）：
+ *  标题那行写的是**这一档 + 当前状态**（`增加 - 15%`，与网格小字、步骤标题同一句）：
  *  滑杆上只有一个把手、没有刻度数字，不写出来的话用户没法确认自己选的是几。
  *
  * @param show 弹窗开着没有（由调用方按「哪一行点开了」决定）
@@ -209,7 +208,7 @@ internal fun SettingsPage.BrightnessDialog(
             PercentPrompt(
                 title = I18n.get(Strings.CATALOG_BRIGHTNESS, "屏幕亮度"),
                 min = if (mode == Action.Brightness.Mode.FIX) 0 else PERCENT_STEP,
-                labelOf = { brightnessTitle(Action.Brightness(mode, it)) },
+                labelOf = { actionDetail(Action.Brightness(mode, it)).orEmpty() },
             ),
         initial = initial,
         onDismiss = onDismiss,
@@ -221,7 +220,7 @@ internal fun SettingsPage.BrightnessDialog(
  * 「音量」三档的百分比弹窗 —— 与 [SettingsPage.BrightnessDialog] 同一个形状。
  *
  *  两者的百分比都落在**各自那条量程**上（音量是 `档 / 最大档`，见 `host/action/VolumeAction`），
- *  所以同一句「增加 10%」在两边是同一件事。
+ *  所以同一句「增加 - 10%」在两边是同一件事。
  */
 @Composable
 internal fun SettingsPage.VolumeDialog(
@@ -237,7 +236,7 @@ internal fun SettingsPage.VolumeDialog(
             PercentPrompt(
                 title = I18n.get(Strings.CATALOG_VOLUME, "音量"),
                 min = if (mode == Action.Volume.Mode.FIX) 0 else PERCENT_STEP,
-                labelOf = { volumeTitle(Action.Volume(mode, it)) },
+                labelOf = { actionDetail(Action.Volume(mode, it)).orEmpty() },
             ),
         initial = initial,
         onDismiss = onDismiss,

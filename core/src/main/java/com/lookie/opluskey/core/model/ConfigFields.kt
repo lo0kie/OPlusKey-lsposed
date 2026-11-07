@@ -24,6 +24,10 @@ package com.lookie.opluskey.core.model
  * 3. `core/config/ConfigDto.kt`：线格式由 kotlinx.serialization 定义，字段名与默认值写在那边的
  *    属性与 `@SerialName` 上。
  *
+ * **例外：「只落盘、不广播」的字段**（目前只有 [F_OWN_SETTINGS_SEEDED]）——
+ * 第 1 步照旧加 `Field`，但**不加进 [KEY_FIELDS]**。那种字段只服务界面自己的状态，
+ * 注入侧不读它；进广播等于白占每次按键的 IPC 体积。
+ *
  * 于是两条通道各有自己的生成源：**广播**由本表驱动（extra + [Kind]），**落盘**由 DTO 驱动，
  * 取值区间两边都回到本表来钳。
  */
@@ -96,6 +100,17 @@ object ConfigFields {
     const val KEY_VIBRATE_STRENGTH_EXTRA = "key_vibrate_strength"
     const val KEY_TOAST_ON_RUN_EXTRA = "key_toast_on_run"
     const val KEY_TOAST_TEMPLATE_EXTRA = "key_toast_template"
+
+    /**
+     * 「独立设置那五项**已经被公共值播过种**」—— 这一档自己的状态，**只落盘、不广播**。
+     *
+     *  第一次打开「使用独立设置」时，把公共设置那五项抄成这一档的初值（否则打开开关看到的是一片
+     *  与公共不一样的旧默认值，读起来就是「开了没生效」）。抄**只做一次**：关掉再打开时，
+     *  用户之前调过的值还在 —— 那是他自己的状态，不该被公共设置再覆盖一遍。
+     *
+     *  不进 [KEY_FIELDS]：注入侧与执行侧都不读它，它只服务「这一页要不要播种」。
+     */
+    const val OWN_SETTINGS_SEEDED_EXTRA = "own_settings_seeded"
     const val LANGUAGE_EXTRA = "language"
     const val COLOR_OS_API_EXTRA = "color_os_api"
 
@@ -276,6 +291,13 @@ object ConfigFields {
 
     /** 这颗键自己的提示文案模板 —— 只在 [F_OWN_SETTINGS] 开着时算数。 */
     val F_KEY_TOAST_TEMPLATE = Field(KEY_TOAST_TEMPLATE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_TOAST_TEMPLATE))
+
+    /**
+     * 这一档的独立设置**被公共值播过种没有**（见 [OWN_SETTINGS_SEEDED_EXTRA]）。
+     *
+     *  不放进 [KEY_FIELDS]：那是**广播**字段清单，而这一位只服务界面「要不要抄一遍公共设置」。
+     */
+    val F_OWN_SETTINGS_SEEDED = Field(OWN_SETTINGS_SEEDED_EXTRA, Kind.Bool(false))
 
     /** 长按绑的是不是串行命令 —— **只有广播那一列**，见 [LONG_SERIAL_EXTRA] 的说明。 */
     val F_LONG_SERIAL = Field(LONG_SERIAL_EXTRA, Kind.Bool(false))

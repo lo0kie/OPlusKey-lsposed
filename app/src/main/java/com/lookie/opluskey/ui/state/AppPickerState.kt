@@ -105,6 +105,41 @@ internal class AppPickerState {
     val smallWindow = mutableStateOf(false)
 
     /**
+     * 「选择应用」页 ⋮ 菜单里那颗「使用原版动画」开关 —— 与 [smallWindow] **同一条性质、互相排斥**。
+     *
+     *  它也**不落盘**、不筛列表，只决定挑中的应用写成哪个动作：开着写 `app:a:<包名>`
+     *  （[Action.App.stockAnim] 那一档，执行时套原版的启动包裹），关着写 `app:<包名>`。
+     *  每次进页由 `SettingsPage.resetSmallWindowForPicker()` 按正在编辑的动作重算。
+     *
+     *  **为什么与 [smallWindow] 互斥**：小窗那一档走 ColorOS 自己的小窗配方（`MiniWindowLauncher`），
+     *  塞不进原版那套启动包裹 —— 同一格只能装得下一种起法。
+     */
+    val stockAnim = mutableStateOf(false)
+
+    /**
+     * 进页那一刻这两个开关的值 —— 退出页面时据此判「这一趟拨过没有」。
+     *
+     *  为什么拨开关也算**草稿**：`window:` / `app:a:` 是**绑定的一部分**，拨完再挑应用、按确认
+     *  才落盘；拨了却没挑就退出去，用户以为改过了，实际什么都没发生。所以退出时跟挑中那一条
+     *  享受同一句「放弃这次选择」（见 `SettingsPage.hasUnconfirmedPick`）。
+     *
+     *  基线在 [com.lookie.opluskey.ui.SettingsPage.resetSmallWindowForPicker] 里记 —— 那里正是
+     *  两个开关按「正在编辑的动作」重算的地方，进页只走那一条路。
+     */
+    private var visitSmallWindow = false
+    private var visitStockAnim = false
+
+    /** 记下这一趟的基线（进页重算完之后调，见 [visitSmallWindow]）。 */
+    fun markWindowTogglesBaseline() {
+        visitSmallWindow = smallWindow.value
+        visitStockAnim = stockAnim.value
+    }
+
+    /** 这一趟拨过「以小窗口打开」或「使用原版动画」吗 —— 退出页面要按草稿问一句。 */
+    val windowTogglesChanged: Boolean
+        get() = smallWindow.value != visitSmallWindow || stockAnim.value != visitStockAnim
+
+    /**
      * 这一趟挑的应用要写成 **`proc:stop:包名`**（「结束应用」那一格），而不是 `app:`。
      *
      *  与 [forBranch] 同一条性质：**只认应用本身** —— 点一行就是选中它（没有「里面哪个界面」），
@@ -626,8 +661,13 @@ internal data class PickedDetail(
      *
      * @param window 「以小窗口打开」那一档 —— 只对「打开界面」有意义；快捷方式没有小窗起法，
      *   传什么都不影响。
+     * @param stockAnim 「使用原版动画」那一档 —— 与 [window] **互斥**（调用点保证两者不同时为真）：
+     *   小窗走 ColorOS 自己的配方，塞不进原版那套启动包裹。只管「打开界面」，快捷方式没有这一档。
      */
-    fun token(window: Boolean): String =
+    fun token(
+        window: Boolean,
+        stockAnim: Boolean = false,
+    ): String =
         when {
             shortcutId != null -> {
                 Action
@@ -645,7 +685,7 @@ internal data class PickedDetail(
             }
 
             else -> {
-                Action.App(target).token
+                Action.App(target, stockAnim = stockAnim).token
             }
         }
 }

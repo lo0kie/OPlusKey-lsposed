@@ -193,7 +193,7 @@ internal fun SettingsPage.writeBranchCommand(
     index: Int,
 ): Boolean {
     val action = Action.parse(token)
-    if (action is Action.None) {
+    if (!action.isBound) {
         XLog.w("分叉动作：挑中的应用解析不出动作（token=${XLog.redactToken(token)}），不改这一条")
         return false
     }

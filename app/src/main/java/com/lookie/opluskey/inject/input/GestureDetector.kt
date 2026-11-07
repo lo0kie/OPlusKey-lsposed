@@ -3,7 +3,6 @@ package com.lookie.opluskey.inject.input
 import android.os.Handler
 import android.os.SystemClock
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
@@ -378,7 +377,7 @@ internal class GestureDetector(
         //  否则单击会立刻派发、后面的连击永远凑不齐。
         if (config.instantSingle &&
             config.clicksForJudge <= 1 &&
-            config.actionOf(GestureTrigger.Click(2)) is Action.None
+            !config.actionOf(GestureTrigger.Click(2)).isBound
         ) {
             // 这一下是不是已经被直判过了（同一次按压被转发两遍）：
             // 记到了按下时刻 ⇒ 判「按下那一刻前后 DIRECT_BURST_MS 之内有没有直判」，用本次按下当锚点，

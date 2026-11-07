@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
@@ -19,6 +20,8 @@ import com.lookie.opluskey.ui.screen.general.ComboWindowRow
 import com.lookie.opluskey.ui.screen.settingsTargetLabel
 import com.lookie.opluskey.ui.state.SettingsTarget
 import com.lookie.opluskey.ui.state.SettingsTargetState
+import com.lookie.opluskey.ui.values
+import com.lookie.opluskey.ui.withField
 import com.lookie.opluskey.ui.withOwn
 import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -54,26 +57,49 @@ internal fun SettingsPage.KeySettingsScreen(
         OwnSettingsCard(
             owner = owner,
             enabled = pageEnabled,
-        ) { values ->
-            //  **从关到开的那一刻，先把公共设置里的那几项抄进来**：
-            //  这一页从来没配过时，各项自己的默认值与公共那份往往不同（振动关着、强度中档、
-            //  提示关着、模板是默认那句）—— 打开开关却看到一片与公共不一样的旧默认值，
-            //  读起来就是「开了没生效」。抄一份之后，用户改哪一项、哪一项才与公共不同。
+        ) { values, field ->
+            //  **只把这一项搬过去，其余五项以配置现值为准**。
+            //
+            //  卡片交回来的是**渲染那一帧时**读到的整份值：写盘 → 重组之间只要错开一步，
+            //  那份就是上一帧的。原先整份写回，于是「打开使用独立设置」之后紧接着点
+            //  「执行时提示」，会把总开关一起写回旧值（false）—— 真机上就是「刚打开的那颗
+            //  自己又关回去了」，日志里能同时看到 `values.useOwn=false` 与 `现存.useOwn=true`。
+            //  按字段合并之后，别的项有多旧都不影响，只有手指真点到的那一格会变。
+            val cfgNow = configState.config.value
+            val ownerNow = target.ownerIn(cfgNow) ?: return@OwnSettingsCard
+            val base = ownerNow.values()
+            val patched = base.withField(field, values)
+            XLog.w(
+                "own_settings 提交：field=$field 提交值=${values.useOwnSettings} " +
+                    "现存=${base.useOwnSettings} 已播种=${ownerNow.ownSettingsSeeded} " +
+                    "写入=${patched.useOwnSettings}",
+            )
+            //  **第一次打开总开关时，用公共设置把这一档播一次种**；之后开关怎么拨都不再读公共值。
+            //
+            //  为什么要播：这一页从来没配过时，各项自己的默认值与公共那份往往不同（振动关着、
+            //  强度中档、提示关着、模板是默认那句）—— 打开开关却看到一片与公共不一样的旧默认值，
+            //  读起来就是「开了没生效」。
+            //
+            //  为什么**只播一次**（判据是 `ownSettingsSeeded`，不是「当前开关关着」）：用户把这
+            //  五项调成自己想要的样子、关掉总开关、过一阵又打开 —— 那时他要的是**上次那套**，
+            //  不是公共设置。原先每次「关→开」都重抄一遍，等于把他调过的值悄悄扔掉。
+            //  播种后置位写到盘上，所以跨进程、跨重启都只播一次。
             val next =
-                if (values.useOwnSettings && !owner.useOwnSettings) {
-                    values.copy(
-                        colorOsApi = cfg.global.colorOsApi,
-                        vibrate = cfg.global.vibrate,
-                        vibrateStrength = cfg.global.vibrateStrength,
-                        toastOnRun = cfg.global.toastOnRun,
-                        toastTemplate = cfg.global.toastTemplate,
+                if (patched.useOwnSettings && !ownerNow.ownSettingsSeeded) {
+                    patched.copy(
+                        colorOsApi = cfgNow.global.colorOsApi,
+                        vibrate = cfgNow.global.vibrate,
+                        vibrateStrength = cfgNow.global.vibrateStrength,
+                        toastOnRun = cfgNow.global.toastOnRun,
+                        toastTemplate = cfgNow.global.toastTemplate,
+                        ownSettingsSeeded = true,
                     )
                 } else {
-                    values
+                    patched
                 }
             //  「改谁」只在写回这一处落成具体表（`keys` 还是 `combos`）——
             //  卡片与页面其余部分都不知道这件事。
-            write(applyOwnSettings(cfg, target, next), "own_settings target=${settingsTargetLabel(target)}")
+            write(applyOwnSettings(cfgNow, target, next), "own_settings target=${settingsTargetLabel(target)}")
         }
 
         //  —— 组合专属的两项 ——

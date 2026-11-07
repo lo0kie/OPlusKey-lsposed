@@ -75,6 +75,27 @@ sealed interface Action {
                 is VarSet -> name.isBlank()
             }
 
+    /**
+     * 这一档**有没有绑东西** —— 全项目唯一判据。
+     *
+     *  以前这句话散在二十来处，各写成 `!is Action.None` / `== Action.None` / `is Action.None`。
+     *  单看某一行都没问题，但它们是**同一条业务规则**：一条键有没有绑定。跟着它走的行为很多
+     *  （要不要振动、要不要记「最后一次动作的时刻」、要不要进执行计划、提示弹不弹、组合键是否
+     *  透传），而它们必须同时成立 —— 一半按「绑了」处理、一半按「没绑」处理时，表现是
+     *  「振动了但没执行」这种没人看得懂的样子。
+     *
+     *  更要紧的是**以后**：一旦出现第二种「空」（占位动作、停用状态、条件不成立时也算空），
+     *  那二十来处得一起改，而漏掉几处不会有任何编译错误。收成属性之后，那种改动只在这里发生。
+     *
+     *  ## 为什么叫 isBound 而不是 isEmpty
+     *
+     *  「空」在这套取值里已经有好几个意思：`Action.isBarePrefix` 说的是**写法不完整**
+     *  （`app:` 后面没东西），与「什么都没绑」是两件事 —— 前者是坏配置，后者是正当配置。
+     *  叫 `isEmpty` 会让这两件事看起来是一家人。
+     */
+    val isBound: Boolean
+        get() = this !is None
+
     /** 拦截按键，什么都不做。 */
     data object None : Action {
         override val token: String = Action.NONE
@@ -113,11 +134,22 @@ sealed interface Action {
         override val token: String = Action.INTENT_PREFIX + action
     }
 
-    /** 拉起一个界面，[target] 形如 `包名/Activity` 或 `包名`。 */
+    /**
+     * 拉起一个界面，[target] 形如 `包名/Activity` 或 `包名`。
+     *
+     * [stockAnim] 为真时用**原版侧键那套启动包裹**起（token 里带 [STOCK_ANIM_MARK]）：
+     * 补原版的启动标志与 `key_position` / `android_action_key_launch_type`，并给
+     * `startActivityAsUser` 传一个 `ActivityOptions`，让 ROM 自己那层启动转场照常播
+     * （技术文档 `SIDE-KEY-OPEN-APP-ANIMATION.md` 第 2.4 / 5 节）。
+     *
+     *  **与小窗互斥**：[AppWindow] 走 ColorOS 的小窗配方，塞不进这套包裹 —— 同一格只能二选一。
+     */
     data class App(
         val target: String,
+        val stockAnim: Boolean = false,
     ) : Action {
-        override val token: String = Action.APP_PREFIX + target
+        override val token: String =
+            Action.APP_PREFIX + (if (stockAnim) STOCK_ANIM_MARK else "") + target
     }
 
     /** 同 [App]，但用 ColorOS 的小窗起（`window:目标`）。 */
@@ -406,6 +438,18 @@ sealed interface Action {
         const val WINDOW_MARK = "w:"
 
         /**
+         * 「打开应用」时用**原版启动包裹** —— 紧跟在 [APP_PREFIX] 之后（`app:a:目标`）。
+         *
+         *  为什么是**标记位**而不是另一个前缀（像 `window:` 那样）：这两档是同一件事（按包名/组件
+         *  拉起一个界面）的两种起法，目标是同一串 `包名[/Activity]`、解析、命名、图标全都要复用；
+         *  拆成两个前缀就得在两处各写一份「取目标」的推导。与小窗那一档的写法也一致
+         *  （[WINDOW_MARK] 就是这么放的）。
+         *
+         *  `a` 是 animation；与小窗的 `w` 一样只占一个字母，省下的宽度都留给目标。
+         */
+        const val STOCK_ANIM_MARK = "a:"
+
+        /**
          * 结束一个应用（`proc:stop:包名`）—— 见 [Action.Process]。
          *
          *  与「结束应用」那一格**不是同一个东西**：那一格是 `ActionCatalog.STOP_APP_TILE`
@@ -499,7 +543,7 @@ sealed interface Action {
 
                 text.startsWith(INTENT_PREFIX) -> Intent(text.removePrefix(INTENT_PREFIX).trim())
 
-                text.startsWith(APP_PREFIX) -> App(text.removePrefix(APP_PREFIX).trim())
+                text.startsWith(APP_PREFIX) -> parseAppToken(text)
 
                 // 必须排在兜底之前，否则 `window:` 会被当成 shell 命令执行
                 text.startsWith(WINDOW_PREFIX) -> AppWindow(text.removePrefix(WINDOW_PREFIX).trim())
@@ -693,9 +737,11 @@ sealed interface Action {
                 //  而且是**在 system_server 里**每 ~100ms 一轮的自持循环（`isSynthetic` 那道
                 //  放行判据只认 `INJECTABLE_CODES`，这几个码不在表里）。
                 //  别的码（含音量 / 电源 / 媒体）照旧放行：它们注入的那一下由 `isSynthetic` 认出来。
-                //  族码（压感拍照键那类）同样是模块认领的码，但不在 [CLAIMED_CODES] 里
-                //  （那张表只列内置键）—— 漏了这一条，写 `keyevent:767` 绑给那颗键就是自持循环。
-                code in CLAIMED_CODES || RomKeyFamilies.isFamilyCode(code) -> {
+                //  族码（压感拍照键那类）同样是模块认领的码 —— 漏了这一条，写 `keyevent:767`
+                //  绑给那颗键就是自持循环。
+                //  「认不认这个码」只有 [KeyId.claimsBuiltin] 一份答案：注入前复核
+                //  （`ActionRunner.claimedByModule`）问的是同一句，两处各摊一遍就会漂。
+                KeyId.claimsBuiltin(code) || RomKeyFamilies.isFamilyCode(code) -> {
                     XLog.w("动作 keyevent:$code 是模块自己认领的键码（会自持循环，按 none 处理）：$text")
                     None
                 }
@@ -705,16 +751,6 @@ sealed interface Action {
                 }
             }
         }
-
-        /**
-         * 模块自己**认领**的物理键码（内置键的 `acceptedKeyCodes`）—— [parseKeyEvent] 用它拦
-         * 「注入自己认领的码」。
-         *
-         *  自定义键的码不在这里：那些只存在于配置里（收集时才定），动作解析拿不到 —— 但它们是
-         *  用户自己收的物理键，注入同一个码本来就该按一次；真正的自持风险是侧键那一族。
-         */
-        private val CLAIMED_CODES: Set<Int> =
-            KeyId.builtins.flatMapTo(HashSet()) { it.acceptedKeyCodes }
 
         /**
          * `appshortcut:包名/快捷方式id` 那一支。
@@ -819,4 +855,27 @@ private fun parseVolume(text: String): Action {
         '-' -> Action.Volume(Action.Volume.Mode.SUB, percent)
         else -> Action.Volume(Action.Volume.Mode.FIX, percent)
     }
+}
+
+/**
+ * `app:目标` / `app:a:目标` 那一支 —— `Action.parse` 的一个分支。
+ *
+ *  写法与 [Action.App] 的 token 同源：[Action.STOCK_ANIM_MARK] 是夹在前缀与目标之间的标记位，
+ *  目标本体**不含**这个标记 —— `AppTarget.pkg`、命名、图标、同一性判据那一整套才不用各认一遍。
+ *
+ *  目标为空（`app:` 后面什么都没有、或只有那个标记）按「认不出」处理（[Action.None]）：
+ *  与 `parseAppShortcut` 同一条口径，不猜。
+ *
+ *  写成**顶层**函数而不是 `Companion` 的成员：那个伴生对象已经顶着 detekt 的函数数阈值
+ *  （`TooManyFunctions`），而它只吃一个字符串、不碰任何状态。
+ */
+private fun parseAppToken(text: String): Action {
+    val raw = text.removePrefix(Action.APP_PREFIX).trim()
+    val stockAnim = raw.startsWith(Action.STOCK_ANIM_MARK)
+    val body = if (stockAnim) raw.removePrefix(Action.STOCK_ANIM_MARK).trim() else raw
+    if (body.isEmpty()) {
+        if (raw.isNotEmpty()) XLog.w("动作 app: 缺目标（按 none 处理）：$text")
+        return Action.None
+    }
+    return Action.App(body, stockAnim)
 }

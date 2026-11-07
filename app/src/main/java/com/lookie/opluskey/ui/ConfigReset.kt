@@ -1,22 +1,21 @@
 package com.lookie.opluskey.ui
 
-import com.lookie.opluskey.core.config.ConfigProfiles
-import com.lookie.opluskey.core.config.ProfileVars
+import com.lookie.opluskey.core.config.ConfigStore
+import com.lookie.opluskey.core.config.withIdentityOf
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.ui.state.CommandsSave
 
-// 「重置」这一族单独一个文件：它是**两份文件一起重建**的一条路（当前那份的主配置 + 它的命令库），
-// 与 `ConfigWrite.kt` 里那些「拨一个开关」不是一类；分开也让那个文件的函数数回到阈值以内。
+// 「重置」这一族单独一个文件：它是**整份文件重建**的一条路（主配置 + 命令库），与 `ConfigWrite.kt`
+// 里那些「拨一个开关」不是一类；分开也让那个文件的函数数回到阈值以内。
 //
 // **两个入口，作用范围不同，不要合并**（用户口径：「重置模块」与「重置配置」是两个独立功能）：
 //  · [resetCurrentProfile] —— 「更多选项 → 切换配置」菜单里的「重置配置」：只重建**当前选中的
 //    那一份**（内容 + 它的命令库），名字与位次保留；
-//  · [resetModule] —— 首页 `⋮` 菜单里的「重置模块」：在它之上再清掉**变量表**，把整个模块的
-//    运行数据回出厂。
-//  两者都**只动当前那一槽**：别的配置（config-2 / 3）与它们的命令库、变量一个字节都不碰。
+//  · [resetModule] —— 首页 `⋮` 菜单里的「重置模块」：**这个模块落过的盘全回出厂** ——
+//    配置槽（含配置列表里那几份）、命令库、变量、界面状态，一个不留。
 
 /**
  * **重置当前选中的那份配置** —— 内容按 `DEFAULT` 重建、它自己的命令库清空；**名字与位次保留**。
@@ -33,41 +32,21 @@ import com.lookie.opluskey.ui.state.CommandsSave
  *  否则会留下「命令全没了、绑定还是旧的」这种半份状态，而用户看到的是「已重置」。
  *  命令库清空走 [saveCommands]（它自己会把新配置重播一遍，长按那位串行判定跟着重算）。
  */
-internal fun SettingsPage.resetCurrentProfile() = rebuildCurrent(clearVars = false)
-
-/**
- * **重置整个模块** —— 与 [resetCurrentProfile] 同一套重建，另外把**变量表**也清空。
- *
- *  差的就是变量表：配置与命令库说的是「这台机器怎么按键」，变量说的是「命令跑过几轮、攒了什么」——
- *  后者是运行数据，跟着「模块」走，不属于「这一份配置」。两个入口分开正是为了这件事：
- *  只想把这套绑定推倒重来的人，不该顺手把自己攒的计数清零。
- *
- *  **不碰其它配置**：与 [resetCurrentProfile] 同一条边界，这里也不做「删掉全部配置槽」那种事
- *  —— 那不可逆，而「重置模块」指的是当前这套运行数据。
- */
-internal fun SettingsPage.resetModule() = rebuildCurrent(clearVars = true)
-
-/**
- * 两个入口共用的一条路。
- *
- * @param clearVars 要不要连变量表一起清（见 [resetModule]）
- */
-private fun SettingsPage.rebuildCurrent(clearVars: Boolean) {
-    val what = if (clearVars) "重置模块" else "重置配置"
-    val tag = if (clearVars) "reset_module" else "reset_current"
-    XLog.w("菜单：$what（当前配置 + 命令库${if (clearVars) " + 变量" else ""}按默认重建）")
+internal fun SettingsPage.resetCurrentProfile() {
+    val what = "重置配置"
+    XLog.w("菜单：$what（当前配置 + 命令库按默认重建）")
     // 只读态下这一项是「明说要丢掉重来」的正门：那份「读不懂」的文件本来就该被覆盖。
     //  所以先清掉只读位再写（[write] 的闸是为「不许**悄悄**固化默认值」设的，这是一处有意为之的例外）。
-    //  注意：只读态下菜单里这一项现在是**灰的**（首页菜单与「切换配置」菜单同一个闸，用户定的），
-    //  所以这条放行走不到；留着是为了「读不懂」的出口**不能只有一条**（重进页面）——
-    //  将来若把这行放出来，行为仍然是对的。
     val wasConfigReadOnly = releaseConfigReadOnly(what)
     //  只搬内容、不搬身份：名字与位次属于这份配置自己（见上面 KDoc 与 `Config.profileOrder`）
+    //  **三样都要搬**（走 `withIdentityOf`，与「导入覆盖」同一处推导）：这一句原来只搬了名字与位次，
+    //  漏了 id —— 重置「默认」时它靠「名字空 + 位次 0」那条老兜底勉强还算默认，
+    //  重置普通配置则把它的 id 抹成空串（下一次写盘才由槽位补一个，中途身份是断的）。
     val current = configState.config.value
     val rebuilt =
         write(
-            Config.DEFAULT.copy(profileName = current.profileName, profileOrder = current.profileOrder),
-            tag,
+            Config.DEFAULT.withIdentityOf(current),
+            "reset_current",
         )
     if (rebuilt == CommandsSave.Failed) {
         // 没写成 ⇒ 把只读位**还原**：它是「手上这份不是用户的真相」的判据，清着不放的话，
@@ -81,16 +60,50 @@ private fun SettingsPage.rebuildCurrent(clearVars: Boolean) {
     val wasCommandsReadOnly = releaseCommandsReadOnly(what)
     // 命令库清空：空表就是重建后的状态，文件仍按同一份 JSON 格式写一份（不删文件 —— 删了
     // 下次读取走的是「文件不存在」那条分支，与写一份空表不是同一条路，排查时对不上）。
-    val cleared = saveCommands(emptyList(), tag)
+    val cleared = saveCommands(emptyList(), "reset_current")
     if (cleared == CommandsSave.Failed && wasCommandsReadOnly) {
         configState.commandsReadOnly = true
         XLog.w("$what：命令库没写成，只读位已还原（避免空表被后续写入固化到盘）")
     }
-    //  变量表跟着配置槽走（见 `ProfileVars`）：只清**当前那一份**的，别的配置那几张照旧
-    val varsCleared = !clearVars || ProfileVars.save(ConfigProfiles.CURRENT_SLOT, emptyList())
-    if (clearVars) XLog.w("$what：变量表清空=$varsCleared")
     XLog.w("$what：主配置已重建=$rebuilt，命令库清空=$cleared")
-    reportReset(what, clearVars, varsCleared, rebuilt, cleared)
+    reportReset(what, moduleReset = false, rebuilt, cleared)
+}
+
+/**
+ * **重置整个模块** —— 这个模块落过的盘**全回出厂**：配置槽（含配置列表里那几份）、命令库
+ * （含每份配置各自的）、变量表、界面状态，一个不留。
+ *
+ *  为什么是「整盘清空」而不是逐个槽推演「删这份要连带删哪几份」：那是「删配置」那条路的账，
+ *  而这里要的只是回出厂 —— 当前那份随后会重建，其余全都该消失（用户口径「重置所有的模块配置」）。
+ *  按槽逐个删反而会漏：配置列表、每份配置的命令库 / 变量、界面状态各有一套命名，漏一个就是
+ *  一份谁也认不出的孤儿文件。
+ *
+ *  **顺序**：先整盘删，再写回一份出厂配置 —— `write` 那一步同时把新配置广播给注入侧、刷新页面
+ *  状态；反过来（先写后删）会把刚写的那份一起删掉。
+ */
+internal fun SettingsPage.resetModule() {
+    val what = "重置模块"
+    XLog.w("菜单：$what（模块全部落盘数据回出厂：配置槽 / 命令库 / 变量 / 界面状态）")
+    // 只读态下这一项同样是「明说要丢掉重来」的正门（见 [resetCurrentProfile] 那段说明）
+    val wasConfigReadOnly = releaseConfigReadOnly(what)
+    val wasCommandsReadOnly = releaseCommandsReadOnly(what)
+    val wiped = ConfigStore.files().deleteAll()
+    if (!wiped) XLog.w("$what：有文件没删掉（继续写回出厂配置，删不掉的留在盘上）")
+    //  出厂配置：**连名字与位次一起回默认** —— 配置列表也要回到「只有默认这一份」
+    val rebuilt = write(Config.DEFAULT, "reset_module")
+    if (rebuilt == CommandsSave.Failed) {
+        // 与另一支同一条纪律：没写成 ⇒ 只读位还原（否则后续任何一次普通写入都会拿默认值落盘）
+        configState.readOnly = wasConfigReadOnly
+        configState.commandsReadOnly = wasCommandsReadOnly
+        return
+    }
+    //  命令表要跟着清空：文件已经没了，但**内存里那份**还在（界面与执行侧都还看得见旧命令）。
+    //  写一份空表而不是不管它 —— 与 [resetCurrentProfile] 同一条理由（写一份空表，
+    //  不让下一次读取走「文件不存在」那条分支）。
+    val cleared = saveCommands(emptyList(), "reset_module")
+    if (cleared == CommandsSave.Failed && wasCommandsReadOnly) configState.commandsReadOnly = true
+    XLog.w("$what：整盘清空=$wiped，主配置已重建=$rebuilt，命令库清空=$cleared")
+    reportReset(what, moduleReset = true, rebuilt, cleared)
 }
 
 /**
@@ -126,8 +139,7 @@ private fun SettingsPage.releaseCommandsReadOnly(what: String): Boolean {
  */
 private fun SettingsPage.reportReset(
     what: String,
-    clearVars: Boolean,
-    varsCleared: Boolean,
+    moduleReset: Boolean,
     rebuilt: CommandsSave,
     cleared: CommandsSave,
 ) {
@@ -140,15 +152,9 @@ private fun SettingsPage.reportReset(
             hint(I18n.get(Strings.TOAST_CONFIG_CLEAR_FAILED, "配置已重置，命令库清空失败"))
         }
 
-        //  **变量表没清成也要说**：主配置与命令库已经重置了，但上一套计数还在盘上 ——
-        //  报「已重置」的话，用户下一次执行 `+= 1` 会接着旧值往上加，还以为已经归零。
-        clearVars && !varsCleared -> {
-            hint(I18n.get(Strings.TOAST_CONFIG_CLEAR_VARS_FAILED, "配置已重置，变量表清空失败"))
-        }
-
         else -> {
             hint(
-                if (clearVars) {
+                if (moduleReset) {
                     I18n.get(Strings.TOAST_MODULE_RESET, "已重置模块")
                 } else {
                     I18n.get(Strings.TOAST_CONFIG_CLEARED, "已重置配置")

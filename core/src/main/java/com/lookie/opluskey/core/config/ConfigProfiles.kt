@@ -16,13 +16,54 @@ import java.util.UUID
  *  拿它一起判才不会误伤。
  *
  *  反过来也要成立：名字空的普通配置（位次 ≥ 1）**不是**默认，它该能被改名、能被删除。
+ *
+ * ## 为什么**不**把 `profile_id` 也算进来
+ *
+ *  曾经是「id 是 [ConfigProfiles.DEFAULT_PROFILE_ID]，或者（id 空 且 名字空 且 位次 0）」
+ *  —— 那次多出来的 `id 空` 一个条件，正好放跑了「导入覆盖默认配置」这个 bug 的后果：
+ *  `importInto` 给被覆盖的那份铸了个新 id，于是它 id 非空、名字空、位次 0，
+ *  两个判据都不认它是默认 ⇒ 界面上按「名字空的普通配置」显示成**「未命名」**，
+ *  而它本来该是默认（位次 0 是**只留给默认**的，普通配置从 [ConfigProfiles.nextSlot] 拿到的
+ *  位次永远 ≥ 1）。所以这里只认**形态**：名字空 + 位次 0 就是默认，
+ *  文件里那个 id 是派生值 —— 由 [assignProfileIds] 一并归回 [ConfigProfiles.DEFAULT_PROFILE_ID]。
  */
 val Config.isDefaultProfile: Boolean
-    get() =
-        profileId == ConfigProfiles.DEFAULT_PROFILE_ID ||
-            //  老文件没有 `profile_id`：退回老口径（名字空 + 位次 0），读到之后由 [ConfigProfiles.list]
-            //  分配一个稳定 id、下一次写盘就带上
-            (profileId.isBlank() && profileName.isBlank() && profileOrder == 0)
+    get() = profileName.isBlank() && profileOrder == 0
+
+/**
+ * 把 [profile] 的**身份**搬到这份内容上来 —— id / 名字 / 位次三样，一件都不换。
+ *
+ * ## 为什么覆盖与重置都必须走这里
+ *
+ *  「覆盖」与「重置」改的都是**内容**，不是「这份配置是谁」。用户选的是「把这份换成那套」，
+ *  不是「新造一份」。而身份那三位是分开存的三样东西，任何一处漏搬都会当场变成一个可见的 bug：
+ *
+ *  · 漏搬 **id** —— 最严重。`Item.isDefault` 判的是 `id == DEFAULT_PROFILE_ID`（不按名字空），
+ *    于是覆盖「默认」之后它不再是默认，而名字本来就是空串，落到 `Item.displayName` 的
+ *    `name.isBlank()` 那一档，界面上显示成**「未命名」**（真机踩过：导入覆盖默认配置，
+ *    默认那份变成「未命名」）。它同时也失去了「不许改名 / 不许删除」那两条约束。
+ *  · 漏搬 **名字** —— 用户选的是「把这份换成导入的那套」，不是「给导入的另起一个名字」。
+ *  · 漏搬 **位次** —— 列表顺序会跳（位次跟着内容走，见 `Config.profileOrder`）。
+ *
+ * ## 为什么还要把 id 归一
+ *
+ *  老文件没有 `profile_id`；新一点的也可能带着**错的** id —— 「导入覆盖默认配置」曾在
+ *  `importInto` 里给它铸过一个新 id（那个 bug 已修，见那里的注释）。所以身份不照抄文件里那个值，
+ *  而是按**形态**重算：[isDefaultProfile] 为真 ⇒ [ConfigProfiles.DEFAULT_PROFILE_ID]；
+ *  其余照搬（空串也照搬，由 [ConfigProfiles.list] 按槽位补一个、下一次写盘带上）。
+ *  文件里那个 id 是**派生值**，这里就是它唯一的推导处。
+ */
+fun Config.withIdentityOf(profile: Config): Config =
+    copy(
+        profileId =
+            if (profile.isDefaultProfile) {
+                ConfigProfiles.DEFAULT_PROFILE_ID
+            } else {
+                profile.profileId
+            },
+        profileName = profile.profileName,
+        profileOrder = profile.profileOrder,
+    )
 
 /**
  * 老数据 / id 撞车时用的槽位 id 前缀（`slot:config-2`）。
@@ -473,7 +514,8 @@ object ConfigProfiles {
      * **导入并覆盖到指定槽** —— 把外来配置盖到 [slot] 那一份上，替代「插在最末」。
      *
      *  与 [importAs] 的差别：目标是**一份已有配置**（含「默认」那一份，也可能就是当前生效的那份），
-     *  内容整个换成导入的。名字跟着内容走（[Config.profileName] 存在配置自己里头），所以：
+     *  内容整个换成导入的。**身份不跟着内容换** —— 名字、位次、id 三样都保留目标那份自己的，
+     *  由 [withIdentityOf] 一处搬（漏搬 id 的后果见那里）：
      *  · 覆盖「默认」配置时名字仍是空串、身份仍是默认（[DEFAULT_PROFILE_ID]）；
      *  · 覆盖普通配置时保留那份的名字（换内容、不换名）—— 用户选的是「把这份换成导入的那套」，
      *    不是「给导入的另起一个名字」。
@@ -500,14 +542,10 @@ object ConfigProfiles {
                 XLog.w("配置导入覆盖：$slot 读不出来，拒绝覆盖")
                 return null
             }
-        //  换新 id：导入文件里带着别人的 profile_id，照抄会撞车。名字保留目标那份自己的
-        //  （换内容不换名），默认那份名字本来就是空串、身份照旧。
-        val ordered =
-            config.copy(
-                profileId = newProfileId(),
-                profileName = target.profileName,
-                profileOrder = target.profileOrder,
-            )
+        //  **只换内容，不换身份**：id / 名字 / 位次全按目标那份原样搬（见 [withIdentityOf]）。
+        //  这里曾经写的是 `profileId = newProfileId()` —— 名字与位次搬了、身份没搬，于是
+        //  覆盖「默认」之后它不再是默认（判据是 id），而名字本是空串，列表里显示成「未命名」。
+        val ordered = config.withIdentityOf(target)
         //  先落命令库、再落主配置，与 [importAs] 同一个顺序（命令库是「内容的一半」，先写它，
         //  主配置失败时还可以按原样还原命令库）。
         //  **必须用三态读**：`read()` 把「读不懂」与「没有」都塌成 `null`，于是「原来那份读不懂」时
@@ -610,9 +648,11 @@ private fun writeProfileConfig(
  * 给每一份配置分配一个**唯一** id（[ConfigProfiles.Item.id]）。
  *
  *  三条规则，顺序不能换：
- *  1. 文件里已经有 id 的照用（id 跟着内容走，切换后仍然是同一份）；
- *  2. 老文件没有 id：满足「名字空 + 位次 0」的算默认，拿 [ConfigProfiles.DEFAULT_PROFILE_ID]；
- *     其余拿槽位 id（下一次写盘就会被补成随机 id，见 [ConfigProfiles.renamed] / `createAs`）；
+ *  1. **默认那份按形态认领**：名字空 + 位次 0（[Config.isDefaultProfile]）⇒
+ *     [ConfigProfiles.DEFAULT_PROFILE_ID]，**不管文件里写的是什么** —— 历史上「导入覆盖默认配置」
+ *     给被覆盖的那份铸过新 id，照抄那个值的话它既不是默认、又显示成「未命名」（见 [isDefaultProfile]）；
+ *  2. 其余照用文件里的 id（id 跟着内容走，切换后仍然是同一份）；老文件没有 id 的拿槽位 id
+ *     （下一次写盘就会被补成随机 id，见 [ConfigProfiles.renamed] / `createAs`）；
  *  3. **撞了就往槽位 id 退**：真机上出现过两份都满足「名字空 + 位次 0」的数据（名字被抹过两次），
  *     那时两份都想当默认 —— id 必须唯一，否则菜单里两行分不出谁是谁。
  *
@@ -623,15 +663,15 @@ private fun assignProfileIds(readable: List<Pair<String, Config>>): Map<String, 
     val taken = mutableSetOf<String>()
     val out = mutableMapOf<String, String>()
     for ((slot, config) in readable.sortedBy { if (it.first == ConfigProfiles.CURRENT_SLOT) 1 else 0 }) {
-        var id = config.profileId
-        if (id.isBlank()) {
-            id =
-                if (config.profileName.isBlank() && config.profileOrder == 0) {
-                    ConfigProfiles.DEFAULT_PROFILE_ID
-                } else {
-                    SLOT_ID_PREFIX + slot
-                }
-        }
+        var id =
+            when {
+                //  默认的身份由形态决定（规则 1），文件里那个 id 是派生值
+                config.isDefaultProfile -> ConfigProfiles.DEFAULT_PROFILE_ID
+
+                config.profileId.isBlank() -> SLOT_ID_PREFIX + slot
+
+                else -> config.profileId
+            }
         if (!taken.add(id)) {
             id = SLOT_ID_PREFIX + slot
             taken.add(id)

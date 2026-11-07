@@ -71,6 +71,17 @@ object ConfigStore {
          * 谁把它写回文件，就等于把用户配的东西整份抹成默认值。
          */
         data object Unreadable : Load
+
+        /**
+         * 主文件读不懂，但**上一次成功写入**留下的 `.bak` 读得懂 —— 用的就是备份那份。
+         *
+         *  与 [Ok] 一样**可以写回**（手上这份是用户的东西，不是默认值），只是比用户最新的那次
+         *  改动旧一个版本：坏掉那一版里的改动没了。所以页面要提一句 —— 否则用户只会发现
+         *  「我明明配过的那一项不见了」，而没有任何线索。
+         */
+        data class Recovered(
+            val config: Config,
+        ) : Load
     }
 
     /**
@@ -146,9 +157,43 @@ object ConfigStore {
         //  坏文件会被每一条按键重读一遍，`FileObfuscation` 那两行 W 也跟着刷屏（判据行会被冲掉）。
         //  与它相对的，IO 失败不缓存 —— 那是**瞬时**故障（EACCES / IO 抖动），下一按可能就好了。
         val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
-        val result = text?.let { ConfigCodec.parseOrNull(it) }?.let { Load.Ok(it) } ?: Load.Unreadable
+        val result =
+            text?.let { ConfigCodec.parseOrNull(it) }?.let { Load.Ok(it) }
+                ?: recoverFromBackup()
+                ?: Load.Unreadable
         cached = Cached(modified, length, inode, result)
         return result
+    }
+
+    /**
+     * 主文件解析失败之后**再试一次 `.prev`**（上一次成功写入前自己留的那份快照）。
+     *
+     *  为什么值得试：坏文件旁边常常躺着一份好的。不做这一步时，用户的选择只有「清空配置」
+     *  ——把绑定、开关、变量一起丢掉——而上一版就在同一个目录里。
+     *
+     *  为什么是 `.prev` 而不是 `AtomicFile` 的 `.bak`：现代 `AtomicFile.finishWrite` 写成功时
+     *  直接删掉旧 base，根本不产生 `.bak`（装到机器上 `ls` 过，一份都没有）；而且 `.bak` 这个名字
+     *  被 `openRead()` 占用着语义位 —— 它会认为「上次没写完」，删主文件把它顶上去。
+     *  快照由 [snapshotModuleFile] 在 [write] 之前自己复制，见那里的注释。
+     *
+     *  为什么不直接覆盖主文件：读的这一层**只读**（宿主按键路径每秒会进来好几次，写在这里
+     *  就是不可预期的 IO 与权限问题）。等用户下一次改配置，`write` 自然把这份写回去，
+     *  主文件那时就修好了。
+     *
+     *  `.prev` 也读不懂时返回 `null` —— 调用方照旧 [Load.Unreadable]，页面只读、绝不写默认值。
+     */
+    private fun recoverFromBackup(): Load? {
+        val raw =
+            readModuleFileBackup(files().file(SLOT_CONFIG))
+                ?: return null
+        val config =
+            FileObfuscation
+                .unwrap(FileObfuscation.MAGIC_RUNTIME, raw)
+                ?.let { ConfigCodec.parseOrNull(it) }
+                ?: return null
+        //  这条必须是 w：它解释了「为什么用户的某一项改动不见了」
+        XLog.w("读配置：主文件解析失败，已从 .prev 快照恢复（比最后一次成功写入旧一个版本）")
+        return Load.Recovered(config)
     }
 
     /**
@@ -190,6 +235,10 @@ object ConfigStore {
     fun read(): Config =
         when (val l = load()) {
             is Load.Ok -> l.config
+
+            //  从 `.bak` 恢复来的那份是用户的东西 —— 只读方照用，与 Ok 同义
+            is Load.Recovered -> l.config
+
             Load.Absent, Load.Unreadable -> Config.DEFAULT
         }
 
@@ -204,6 +253,10 @@ object ConfigStore {
      * 跨进程的写方（设置页 `:ui`）清不到这里的缓存，那种情况由指纹里的 inode 兜住（见 [Cached]）。
      */
     fun write(config: Config): Boolean {
+        //  **写之前先把现有那份留成 `.prev`**：它是「上一次成功写入」的完整一份，下一次主文件
+        //  读不懂时 [recoverFromBackup] 就靠它。不能指望 `AtomicFile` —— 它写成功时直接删旧
+        //  base，`.bak` 只在 legacy 命名下才有（真机上一次都没出现过，见 `snapshotModuleFile`）。
+        snapshotModuleFile(files().file(SLOT_CONFIG))
         val ok =
             files().write(
                 SLOT_CONFIG,

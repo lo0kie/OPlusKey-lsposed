@@ -323,7 +323,7 @@ private fun SettingsPage.applyBranchAction(
     val parsed = Action.parse(token)
     //  「无操作」在这一档是**真取值**（场景命中也不做事，用来盖住后面的兜底场景，
     //  见 `ActionCatalog.BRANCH_GROUPS`）；只有认不出的 token 才保持原样。
-    if (parsed is Action.None && token.trim() != Action.NONE) {
+    if (!parsed.isBound && token.trim() != Action.NONE) {
         //  认不出的 token（老配置 / 菜单给错了）不能静默落成「无操作」：那样保存时才报
         //  「每条条件都要选一个动作」，既指不出是哪一条、也看不出是解析失败。
         //  这里保留原来那一档不动，只留一行判据日志。

@@ -26,6 +26,17 @@ interface OwnSettings {
     /** 这一档要不要用自己那套公共项 —— 默认关 = 跟随公共设置。 */
     val useOwnSettings: Boolean
 
+    /**
+     * 这一档的独立值**被公共设置播过种没有** —— 决定「第一次打开总开关时要不要抄一份公共值」。
+     *
+     *  播过一次之后就一直是真的：关掉总开关再打开时用这一档**自己**上次那套值，
+     *  不再拿公共设置覆盖一遍（用户调过的东西不该被别人的值顶掉）。
+     *
+     *  默认实现给 `false`（= 谁也没播过，第一次打开会播）。这条默认值只对「不参与持久化的
+     *  临时实现」有意义 —— 真正落盘的两档（`KeyConfig` / `ComboKey`）各自读自己那一格。
+     */
+    val ownSettingsSeeded: Boolean get() = false
+
     /** 这一档自己的「使用 ColorOS 接口」—— 只在 [useOwnSettings] 开着时算数。 */
     val colorOsApi: Boolean
 

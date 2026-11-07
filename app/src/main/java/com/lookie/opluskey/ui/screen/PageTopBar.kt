@@ -225,7 +225,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
  * 顶栏右侧那行小标题（大标题右边的尾随标题）按页分派：
  * 「按键绑定」= **现在这一组**叫什么（「快捷键」或收集来的那颗键的名字）；
  * 「自定义命令」= 已保存的命令条数（[ConfigState.commands] 变了跟着重组）；
- * 「选择应用」= 这一趟要绑的应用名（先看本次草稿，再看 [appPickerSelectedPkg]；名字怎么取见 [appNameOf]）。
+ * 「选择应用」= 这一趟要绑的应用名（先看本次草稿，再看 [appPickerSelectedTarget]；名字怎么取见 [appNameOf]）。
  */
 private fun SettingsPage.pageSubtitle(s: Screen): String =
     when (s) {

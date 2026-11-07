@@ -86,8 +86,8 @@ data class KeyConfig(
      *  执行时弹不弹提示，而不是被公共设置整页绑死。**按键级优先于公共设置**：
      *  开着时看下面两位，关着时看 `GlobalConfig` 里那两位。
      *
-     *  取值只有一处出口：`Config.colorOsApiFor` / `Config.toastOnRunFor` —— 执行侧不许自己拼
-     *  「开关 + 值」这个判断，拼错一处就是「这台机器上这颗键不听话」。
+     *  取值只有一处出口：`Config.effectiveFor` —— 执行侧不许自己拼「开关 + 值」这个判断，
+     *  拼错一处就是「这台机器上这颗键不听话」。
      */
     override val useOwnSettings: Boolean = false,
     /** 这颗键自己的「使用 ColorOS 接口」—— 只在 [useOwnSettings] 开着时算数。 */
@@ -100,6 +100,12 @@ data class KeyConfig(
     override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
     /** 这颗键自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
+    /**
+     * 上面那五项**被公共设置播过种没有** —— 见 [OwnSettings.ownSettingsSeeded]。
+     *
+     *  只影响界面「第一次打开总开关时要不要抄一份公共值」，执行侧不读它。
+     */
+    override val ownSettingsSeeded: Boolean = false,
     /**
      * 长按绑的是不是「多条命令」（`cmd:<名字>` 且命令库里那条是串行命令）。
      * 只由宿主算好、随配置广播带过来（`ConfigFields.LONG_SERIAL_EXTRA`），注入侧不自己算：
@@ -182,9 +188,9 @@ data class KeyConfig(
     val boundClicks: Int
         get() =
             maxOf(
-                if (single !is Action.None) 1 else 0,
-                if (double !is Action.None) 2 else 0,
-                extraClicks.filterValues { it !is Action.None }.keys.maxOrNull() ?: 0,
+                if (single.isBound) 1 else 0,
+                if (double.isBound) 2 else 0,
+                extraClicks.filterValues { it.isBound }.keys.maxOrNull() ?: 0,
                 ruleClicks,
             )
 
@@ -198,7 +204,7 @@ data class KeyConfig(
         get() =
             rules.maxOfOrNull { rule ->
                 when {
-                    !rule.enabled || rule.action is Action.None || !rule.isReady -> 0
+                    !rule.enabled || !rule.action.isBound || !rule.isReady -> 0
                     rule.gesture == Gesture.DOUBLE -> 2
                     rule.gesture == Gesture.SINGLE -> 1
                     else -> 0
@@ -220,8 +226,9 @@ data class KeyConfig(
     /**
      * 这次手势该执行哪个动作 —— **条件分支的唯一入口**。
      *
-     *  先按顺序找第一条成立的分支（[StateRule.appliesTo]），一条都没有就退回 [actionOf]
-     *  那一档本来的绑定。执行侧不要自己写这套 `firstOrNull`：条件维度以后会长，判据散在
+     *  先按顺序找第一条成立的分支，一条都没有就退回 [actionOf] 那一档本来的绑定。
+     *  实现只有 [pickAction] 一处（组合键 `ComboKey.resolve` 调的是同一个函数）。
+     *  执行侧不要自己写这套 `firstOrNull`：条件维度以后会长，判据散在
      *  多处时「某个路径上条件分支不生效」这种 bug 只会在真机上被看见。
      *
      *  一个块可以带**好几条**条件，判定时逐条都要成立（且）—— 那是 [StateRule.appliesTo] 的账，
@@ -233,7 +240,7 @@ data class KeyConfig(
     fun actionFor(
         gesture: Gesture,
         matches: (BranchCondition) -> Boolean,
-    ): Action = rules.firstOrNull { it.appliesTo(gesture, matches) }?.action ?: actionOf(gesture)
+    ): Action = pickAction(rules, gesture, actionOf(gesture), matches)
 
     /**
      * 长按绑的是不是**灵感语音那一族**（`oplus:voice_memory` / `oplus:voice_memory_stop`）。
@@ -265,7 +272,7 @@ data class KeyConfig(
      *  判定侧（`GestureDetector` 发不发那条广播）与界面都只读这一位。
      */
     override val releaseBound: Boolean
-        get() = longReleaseOn && longRelease !is Action.None && !longFireOnRelease
+        get() = longReleaseOn && longRelease.isBound && !longFireOnRelease
 
     /**
      * 这一档要不要排「长按连续触发」—— 判定侧的**唯一判据**。
@@ -311,6 +318,7 @@ data class KeyConfig(
                 ConfigFields.F_KEY_VIBRATE_STRENGTH to vibrateStrength,
                 ConfigFields.F_KEY_TOAST_ON_RUN to toastOnRun,
                 ConfigFields.F_KEY_TOAST_TEMPLATE to toastTemplate,
+                ConfigFields.F_OWN_SETTINGS_SEEDED to ownSettingsSeeded,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
                 ConfigFields.F_JUDGE_CLICKS to clicksForJudge,
             ),
@@ -422,6 +430,7 @@ data class KeyConfig(
                 vibrateStrength = v.number(ConfigFields.F_KEY_VIBRATE_STRENGTH),
                 toastOnRun = v.bool(ConfigFields.F_KEY_TOAST_ON_RUN),
                 toastTemplate = v.text(ConfigFields.F_KEY_TOAST_TEMPLATE),
+                ownSettingsSeeded = v.bool(ConfigFields.F_OWN_SETTINGS_SEEDED),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
                 rules = rules,
                 judgeClicks = v.number(ConfigFields.F_JUDGE_CLICKS),
@@ -441,16 +450,16 @@ data class GlobalConfig(
      *  默认关：装上模块不改变任何行为。
      */
     val enabled: Boolean = DEFAULT_ENABLED,
-    val vibrate: Boolean,
+    override val vibrate: Boolean,
     /**
      * **振动强度** —— 三档（[VIBRATE_WEAK] / [VIBRATE_MEDIUM] / [VIBRATE_STRONG]）。
      *
      *  只在 [vibrate] 为真时有意义（那一条滑块也只在那时出现）。读它的是宿主进程里的
      *  执行器（`host/GestureExec.haptic`），所以**只走落盘那一列**、不进广播 —— 注入侧不振。
      */
-    val vibrateStrength: Int = DEFAULT_VIBRATE_STRENGTH,
+    override val vibrateStrength: Int = DEFAULT_VIBRATE_STRENGTH,
     /** 执行**任意动作**时弹一条 Toast（内容是动作名；自定义命令取命令名）。 */
-    val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
+    override val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
     /**
      * 「执行时提示」那一句的**文案模板** —— `$key` / `$gesture` / `$action` 三段可自由摆放与增删
      *  （见 `ToastNotice`）。默认就是拆分之前那句 `侧键 - 单击 → 手电筒`。
@@ -458,7 +467,7 @@ data class GlobalConfig(
      *  与 [toastOnRun] 同一档：只在 [toastOnRun] 为真时有意义，读它的是宿主执行器，
      *  所以**只走落盘那一列**、不进广播（注入侧不弹提示）。
      */
-    val toastTemplate: String = DEFAULT_TOAST_TEMPLATE,
+    override val toastTemplate: String = DEFAULT_TOAST_TEMPLATE,
     /** 界面语言（auto = 跟随系统，zh_CN = 简体中文，en = English）。 */
     val language: String = DEFAULT_LANGUAGE,
     /**
@@ -513,7 +522,7 @@ data class GlobalConfig(
      */
     val iconTintSeed: Int = DEFAULT_ICON_TINT_SEED,
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
-    val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
+    override val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
     /**
      * 「前台转小窗」要不要播**缩小动画**。
      *
@@ -542,7 +551,15 @@ data class GlobalConfig(
      *  不参与任何组合的键不受影响 —— 那条路上没有可等的东西。
      */
     val comboWindowMs: Int = DEFAULT_COMBO_WINDOW_MS,
-) {
+) : OwnSettings {
+    /**
+     * 公共那份**永远是「用自己的」**：它自己就是那个「公共设置」。
+     *
+     *  这一位让 [effectiveFor] 能把公共那份与「某一档自己的设置」当成同一种东西返回 ——
+     *  于是「独立设置开着就用自己那份」这条规则只有一处，调用点直接读字段。
+     */
+    override val useOwnSettings: Boolean get() = true
+
     /** 本对象在每个配置字段上的取值 —— 与 `KeyConfig.fieldValues` 同一套（见那边的说明）。 */
     fun fieldValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -684,9 +701,9 @@ data class GlobalConfig(
  * 整份配置。
  *
  *  函数数贴着 detekt 的 `TooManyFunctions` 阈值：多出来的那一族是**「公共项的按键级取值」**
- *  （`colorOsApiFor` / `vibrateFor` / `toastOnRunFor` / `comboPassthroughFor` …）——
- *  它们就该长在这一层：判据只有一句「这一档开了独立设置就看自己那份，否则看公共设置」，
- *  拆到别处等于让每个调用方自己拼，而拼错一处的表现是「这台机器上这颗键不听话」。
+ *  （`effectiveFor` / `comboPassthroughFor`）—— 它们就该长在这一层：判据只有一句
+ *  「这一档开了独立设置就看自己那份，否则看公共设置」，拆到别处等于让每个调用方自己拼，
+ *  而拼错一处的表现是「这台机器上这颗键不听话」。
  */
 @Suppress("TooManyFunctions")
 data class Config(
@@ -807,31 +824,23 @@ data class Config(
     fun isLive(id: KeyId): Boolean = global.enabled && key(id).enabled
 
     /**
-     * 公共项的**按键级取值** —— 这一族是两个出口（下面五个方法），规则只有一条：
-     * 这一档开了「独立设置」就看自己那份，否则看公共设置。
+     * 公共项的**按键级取值** —— 这一档开了「独立设置」就看自己那份，否则看公共设置。
+     *
+     *  返回的是**已经解析好的那一份**（`OwnSettings` 本体），调用点直接读字段：
+     *  `config.effectiveFor(keyConfig).vibrate` / `.toastOnRun` / `.toastTemplate` …
+     *  原先这里是五个 `xxxFor(owner)`，五份逐字同构的 `if (owner.useOwnSettings) owner.X else global.X`
+     *  —— 规则只有一条，却要每个调用点记住「该问哪个方法、把谁当 owner 传」，改一条得改五处。
      *
      *  参数是 [OwnSettings] 而不是某个具体类型：单键与组合键在这一件事上**没有区别**，
      *  执行侧传谁进来都一样，不该有「组合那条走全局」这种分支 —— 那种分支正是把组合键
      *  当成独立存在的来源。
      */
-    fun colorOsApiFor(owner: OwnSettings): Boolean = if (owner.useOwnSettings) owner.colorOsApi else global.colorOsApi
-
-    /** 这一档**实际**振不振 —— 与 [colorOsApiFor] 同一条规则。 */
-    fun vibrateFor(owner: OwnSettings): Boolean = if (owner.useOwnSettings) owner.vibrate else global.vibrate
-
-    /** 这一档**实际**用哪一档振动强度 —— 与 [colorOsApiFor] 同一条规则。 */
-    fun vibrateStrengthFor(owner: OwnSettings): Int = if (owner.useOwnSettings) owner.vibrateStrength else global.vibrateStrength
-
-    /** 这一档**实际**弹不弹执行提示 —— 与 [colorOsApiFor] 同一条规则。 */
-    fun toastOnRunFor(owner: OwnSettings): Boolean = if (owner.useOwnSettings) owner.toastOnRun else global.toastOnRun
-
-    /** 这一档**实际**用哪份提示模板 —— 与 [colorOsApiFor] 同一条规则。 */
-    fun toastTemplateFor(owner: OwnSettings): String = if (owner.useOwnSettings) owner.toastTemplate else global.toastTemplate
+    fun effectiveFor(owner: OwnSettings): OwnSettings = if (owner.useOwnSettings) owner else global
 
     /**
      * 这一组组合**实际**在「无操作」时怎么办。
      *
-     *  与那五个 `xxxFor` 同一条规则：**总开关关着就跟随公共设置**（哪怕这一组以前设过自己那份）——
+     *  与 [effectiveFor] 同一条规则：**总开关关着就跟随公共设置**（哪怕这一组以前设过自己那份）——
      *  否则界面灰着、执行侧却照旧用自己那份，是「关了没关掉」。
      *  开着时再看 [ComboKey.passthrough]：`null`（没设过）仍旧跟随公共。
      */

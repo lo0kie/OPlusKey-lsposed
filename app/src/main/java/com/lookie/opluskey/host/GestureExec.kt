@@ -3,9 +3,9 @@ package com.lookie.opluskey.host
 import android.annotation.SuppressLint
 import android.content.Context
 import com.lookie.opluskey.core.config.ConfigStore
-import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.i18n.applyLanguage
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
@@ -225,7 +225,7 @@ internal object GestureExec {
         //  （见 `Config.comboPassthroughFor`：这一组写过就用自己的，否则看公共设置）。
         //   这就是「配了组合、但只给长按绑了动作」时短按那颗依旧能用的那条路 ——
         //   为假时什么都不做，与这一位出现之前一致。
-        if (action is Action.None && config.comboPassthroughFor(combo)) {
+        if (!action.isBound && config.comboPassthroughFor(combo)) {
             runComboMembers(combo, gesture, config)
             return
         }
@@ -330,11 +330,11 @@ internal object GestureExec {
         //  · 提示与报活只报第一次 —— 那是同一次按压，不是几十次操作。
         //  两套取值都从 `Config` 那两个出口来（传 combo，传单键的 `KeyConfig` 也一样）：
         //  **组合键在这一层没有特殊待遇**，它只是另一种「可以有自己的设置」的东西。
-        val colorOsApi = config.colorOsApiFor(combo)
+        val colorOsApi = config.effectiveFor(combo).colorOsApi
         if (comboShouldVibrate(action, colorOsApi) && (!repeat || combo.longRepeatVibrate)) haptic(config, combo)
         if (!repeat) noticeIfNeeded(config, action, keyLabel, gestureLabel, combo)
         r.run(action, subject, colorOsApi)
-        if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
+        if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
         if (!repeat) onExecutedHook?.invoke(config)
     }
 
@@ -377,10 +377,10 @@ internal object GestureExec {
             val gestureLabel = "${gestureName(gesture)}（组合透传）"
             val subject = "$keyLabel - $gestureLabel"
             XLog.w("$subject → ${XLog.redactToken(action.token)}（宿主进程执行）")
-            if (config.vibrateFor(keyConfig) && action !is Action.None) haptic(config, keyConfig)
+            if (config.effectiveFor(keyConfig).vibrate && action.isBound) haptic(config, keyConfig)
             noticeIfNeeded(config, action, keyLabel, gestureLabel, keyConfig)
-            r.run(action, subject, config.colorOsApiFor(keyConfig))
-            if (action !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
+            r.run(action, subject, config.effectiveFor(keyConfig).colorOsApi)
+            if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
         }
         onExecutedHook?.invoke(config)
     }
@@ -499,7 +499,7 @@ internal object GestureExec {
         if (repeat) XLog.d(log) else XLog.w(log)
         //  「这颗键用自己那套公共项」—— 接口与提示都从这两个出口取一次，
         //  下面三处（振动、提示、执行）共用，别各判一遍（判据在 `Config` 那一处）
-        val colorOsApi = config.colorOsApiFor(keyConfig)
+        val colorOsApi = config.effectiveFor(keyConfig).colorOsApi
         // 链路自检那一笔必须在 `run` **之后**，且「无操作」不算执行过：
         //  `run` 内部吞掉执行异常，绑了个解析不出来的 token 也走同一条路 —— 提前置位会让
         //  「关于模块」的「使用验证」在什么都没发生时显示已生效（假绿灯）。
@@ -507,7 +507,7 @@ internal object GestureExec {
         // 提示只在第一次派发时说：连续触发的重复是同一次按压（按住不放），弹几十条没有意义
         if (!repeat) announceOnce(config, keyConfig, id, trigger, fired)
         r.run(fired, "${id.label} - ${trigger.label}", colorOsApi)
-        if (fired !is Action.None) lastActionAt = android.os.SystemClock.elapsedRealtime()
+        if (fired.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
         //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
         //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。
         //  所以每执行一次动作补发一条（连续触发的重复不发：那是同一次按压，一条就够）。
@@ -583,7 +583,7 @@ internal object GestureExec {
         action: Action,
         colorOsApi: Boolean,
     ): Boolean {
-        if (action is Action.None) return false
+        if (!action.isBound) return false
         if (!repeat || keyConfig.longRepeatVibrate) return !colorOsRinger(action, colorOsApi)
         return false
     }
@@ -598,7 +598,7 @@ internal object GestureExec {
     private fun comboShouldVibrate(
         action: Action,
         colorOsApi: Boolean,
-    ): Boolean = action !is Action.None && !colorOsRinger(action, colorOsApi)
+    ): Boolean = action.isBound && !colorOsRinger(action, colorOsApi)
 
     /**
      * 「执行时提示」：判据是全局开关（`GlobalConfig.toastOnRun`），文案由
@@ -623,11 +623,18 @@ internal object GestureExec {
         /** 这一下是谁触发的（单键那一档 / 那一组组合）—— 提示的两项都按它取，不另传布尔。 */
         owner: OwnSettings,
     ) {
-        if (!config.toastOnRunFor(owner)) return
+        //  一次解析，下面两项都读它（判据见 `Config.effectiveFor`：独立设置开着才看自己那份）
+        val own = config.effectiveFor(owner)
+        if (!own.toastOnRun) return
+        //  「无操作」不弹提示 —— 这是**提示这个位置**的规矩（那一刻没有动作发生，没什么可报），
+        //  不是「一个动作怎么念」。所以它在这一侧，不在 `CommandTitle` 里：工厂只负责把一句话
+        //  念完整。放回工厂的话，同一个动作在提示里是空串、在步骤行里是 `无操作`，而那两处
+        //  本来就该是同一句 —— 回执那边还得再拿 `ifBlank` 兜一次。
+        if (!action.isBound) return
         // 名字表随配置来（`Config.appNames`）：快捷方式那档的名字只存在那里，token 里没有
         val what = actionNoticeText(appContext, action, config.appNames)
         if (what.isEmpty()) return
-        val notice = ToastNotice.render(config.toastTemplateFor(owner), keyLabel, gestureLabel, what)
+        val notice = ToastNotice.render(own.toastTemplate, keyLabel, gestureLabel, what)
         XLog.w("执行时提示：$notice")
         FailureNotice.toast(appContext, notice)
     }
@@ -641,7 +648,7 @@ internal object GestureExec {
      *  所以这一行在按键路径上是白给的。
      */
     private fun syncLanguage(config: Config) {
-        I18n.currentLanguage = AppLanguage.fromCode(config.global.language)
+        applyLanguage(config.global.language)
     }
 
     /**
@@ -701,13 +708,15 @@ internal object GestureExec {
         config: Config,
         owner: OwnSettings,
     ) {
-        if (!config.vibrateFor(owner)) return
+        //  一次解析，振不振与振多强都读它（判据见 `Config.effectiveFor`）
+        val own = config.effectiveFor(owner)
+        if (!own.vibrate) return
         try {
             val ctx = appContext ?: return
             val v = ctx.getSystemService(android.os.Vibrator::class.java) ?: return
             // 越界的强度在 `GlobalConfig.ofFields` 那一层已经钳过（手改文件也能进来），
             //  这里再兜一次：索引越界会抛 IndexOutOfBounds，而这段跑在按键路径上。
-            val amplitude = HAPTIC_AMPLITUDES[config.vibrateStrengthFor(owner).coerceIn(HAPTIC_AMPLITUDES.indices)]
+            val amplitude = HAPTIC_AMPLITUDES[own.vibrateStrength.coerceIn(HAPTIC_AMPLITUDES.indices)]
             v.vibrate(android.os.VibrationEffect.createOneShot(HAPTIC_MS, amplitude))
         } catch (e: Throwable) {
             XLog.w("触觉反馈失败（忽略）：${e.message}")

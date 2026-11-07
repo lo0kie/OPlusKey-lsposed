@@ -5,11 +5,15 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -21,6 +25,7 @@ import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.ui.LocalAppTheme
@@ -32,7 +37,6 @@ import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
@@ -48,12 +52,26 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 
 /**
- * 行尾那颗指示器的边长 —— 与原先那颗 COUI `RadioButton` 的 `requiredSize(24.dp)` 同尺寸。
+ * 网格格子行尾那颗指示器的边长 —— 取 20dp：比行首图标（[ROW_ICON_SIZE] 22dp）再小一档。
  *
- * 三种指示器在同一位置三选一（见 [ActionTile] 的 `endActions`：两种入口字形与单选圈），
- * 尺寸不一致会让格子里的内容跟着挪。
+ *  格子只有一格宽，行尾那颗是**提示**（「点了还有一层」/「选没选」），不是内容：与行首同高时
+ *  它会和标题抢横向空间（真机反馈「格子行尾的图标偏大」）。三种指示器在同一位置三选一
+ *  （见 [ActionTile] 的 `endActions`），必须同尺寸，否则格子里的内容会跟着挪。
+ *
+ *  **不并进 [com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE]（24dp）**：那一档是行尾箭头 /
+ *  选中圈的通用尺寸（首页、选择应用、关于页都用它），而那些行的可用宽度比两列的格子宽得多 ——
+ *  这一档只属于网格。
  */
-internal val ENTRY_INDICATOR_SIZE = ROW_END_ICON_SIZE
+internal val ENTRY_INDICATOR_SIZE = 20.dp
+
+/**
+ * 格子内容里**文字到行尾那颗指示器的距离** —— 4dp。
+ *
+ *  行尾这一段必须是我们说了算：交给 `endActions` 槽位的话，间距由库内部决定（库里没写、
+ *  文档也没有），而这一格只有一格宽，改不动就永远调不紧。行首图标仍走 `startAction`，
+ *  那一段的间距与这一格原来的观感一致、不动。
+ */
+private val TRAILING_INDICATOR_GAP = 4.dp
 
 /**
  * Monet 档里「格子小字」那行强调色的透明度 —— 取 0.70。
@@ -201,6 +219,11 @@ internal fun SettingsPage.ActionTile(
                 //  **不给 `onClick`**：行内容自己那个 `clickable` 会在 Main 趟
                 // 把事件消费掉，外层 `Card` 的 `clickable` 就永远等不到 ——
                 // 轻点 / 涟漪**全部**由外层 `Card` 负责。
+                //
+                //  **行首图标仍走 `startAction`**（间距由库内部给，与这一格原来的观感一致）。
+                //  **行尾不用 `endActions`**：那一段库里没写、也不随我们改，而这一格只有一格宽，
+                //  行尾那颗离文字多远必须是我们说了算 —— 所以指示器挪进内容里，间距取
+                //  [TRAILING_INDICATOR_GAP]。
                 startAction = {
                     // 图标列只有这一枚 22dp（尺寸沿用全页的 22dp 纪律，见 ActionIcons 的注释）。
                     //  入口格的行首随档位变，见网格里 `icon = boundMode ?: spec` 那一句。
@@ -215,68 +238,6 @@ internal fun SettingsPage.ActionTile(
                         )
                     }
                 },
-                endActions = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        //  入口格不再画单选圈（那读作「这一格是一个可选项」），按**点开去哪**分两种字形：
-                        //  · 弹一层菜单（系统导航 / 系统按键 / 媒体控制 / 响铃状态）→ 选择器字形
-                        //    （[PageIcons.Selector]：一个框 + 右下角小三角，读作「点了要选点什么」）；
-                        //  · 进另一个页面（「打开应用」→ 挑应用、「自定义变量」→ 变量操作）→
-                        //    **右箭头**（与菜单、列表那几处同一颗）。
-                        //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
-                        // 换掉之后占位与观感不变。
-                        when {
-                            //  「自定义变量」是**跳页**的入口（去「变量操作」那一页）⇒ 行尾那颗是右箭头
-                            //  （与菜单、列表那几处同一颗）。
-                            //  「应用控制」不在这里：它弹的是**原地**一层菜单（打开 / 结束），
-                            //  走下面 `popsSelector` 那条、画选择器字形。
-                            spec.token == ActionCatalog.VARS_TILE -> {
-                                Icon(
-                                    PageIcons.EnterArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                    tint = entryIndicatorColor,
-                                )
-                            }
-
-                            //  其余档位那一层是**原地弹**（底部抽屉里那几行同理），不跳页 ——
-                            //  所以是选择器字形而不是箭头（判据在 `ActionCatalog.popsSelector`，
-                            //  别在这里再列一遍 token）。
-                            ActionCatalog.popsSelector(spec.token) -> {
-                                Icon(
-                                    PageIcons.Selector,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                    tint = entryIndicatorColor,
-                                )
-                            }
-
-                            //  取值格（不是入口格）的选中指示 —— 空心方框 / 带勾方框，见 [PageIcons.TileUnchecked]。
-                            //  形状与另两种字形同尺寸，不给触达区（点击交给整行）。
-                            //
-                            //  「录屏」那一格也走这里：它点开虽然弹弹窗，但**格子本身就是那个动作**
-                            //  （三档只是它的状态），挂选择器字形等于告诉用户「下面还有一层清单」——
-                            //  而那一层已经没有了（见 `ActionCatalog.popsSelector`）。
-                            //
-                            //  这一档变的是**状态**（选没选），换的是字形、插不了值 ⇒ 交叉淡过去，
-                            //  曲线与旁边那片底色同源（[COLOR_FADE_SPEC]）；两种字形同尺寸，
-                            //  交叉期间盒子宽度不变，标题不会被推一下。
-                            else -> {
-                                Crossfade(
-                                    targetState = selected,
-                                    animationSpec = COLOR_FADE_SPEC,
-                                    label = "TileChecked",
-                                ) { on ->
-                                    Icon(
-                                        if (on) PageIcons.TileChecked else PageIcons.TileUnchecked,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                        tint = entryIndicatorColor,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
                 // 默认 16dp 的内边距在两列的格子里会把标题挤没（见类注释的宽度账）
                 insideMargin = PaddingValues(horizontal = TILE_SIDE_PADDING),
                 // 格子是独立的卡片，按 COUI 的「卡片组里唯一一行」处理（上下各补 2dp）
@@ -285,56 +246,117 @@ internal fun SettingsPage.ActionTile(
                 // 能不能点由外层 `Card` 的两个回调（上面按 `enabled` 置 null）决定
                 enabled = enabled,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = spec.label,
-                        style = COUITheme.textStyles.body2,
-                        fontWeight = FontWeight.Medium,
-                        color = contentColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        //  `weight(fill = false)`：标题只占自己要的那点宽度、装不下才缩到
-                        //  省略号（标题右边不再有标记，这个权重仍按「只占自己那点」算）。
-                        modifier =
-                            Modifier
-                                .weight(1f, fill = false)
-                                .opticalCenter(COUITheme.textStyles.body2),
-                    )
-                }
-                // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
-                // 这行就是那个值。格子高 52dp、BasicComponent 最小高 48dp：两行（14sp + 12sp）装得下。
-                //  注意：这里**不能**用 [AnimatedFade]（只淡、不动高度）：那样这行字的
-                //  **布局高度是立刻占上的**，上面那行标题会**瞬间**被顶上去 ——
-                //  而要的正是「标题给这行字让位 / 复位」这个**位移本身滑出来**。
-                //  所以走 [VISIBILITY_ENTER] / [VISIBILITY_EXIT]（淡入 + 竖向展开，
-                //  与页里其他显隐同一套规格）：高度从 0 长到满，标题随之平滑上移；
-                //  收起时反向。两行（14sp + 12sp）在 52dp 的格子里装得下，不会溢出。
-                //  **起手就取当前这一档**（`!subtitle.isNullOrBlank()`），不写死 `false`：
-                //  写死的话「首帧 = 没展开」是每次**重新组合**都成立的 —— 翻 tab、从子页回来
-                //  都会把这一格新建一遍，那行小字于是每换一页就重播一次展开（高度 0 → 满，
-                //  标题跟着上下动一下）。取当前值之后，只有小字**真的出现 / 消失**时才播。
-                val subtitleShown = remember { MutableTransitionState(!subtitle.isNullOrBlank()) }
-                subtitleShown.targetState = !subtitle.isNullOrBlank()
-                //  字号 12sp：**主题里没有这一档** —— 小两档是 `footnote1` = 13sp、`footnote2` = 11sp，
-                //  中间空着。取 `footnote2` 只把字号提到 12sp（行高仍按它那档 1.143em 走，
-                //  12 × 1.143 ≈ 13.7dp）：11sp 的汉字在这个格子里偏糊，13sp 又太接近标题（14sp）。
-                //  这一行是补充值，与标题同档时两行争主次，格子一窄还先挤它。
-                val subtitleStyle = COUITheme.textStyles.footnote2.copy(fontSize = 12.sp)
-                AnimatedVisibility(
-                    visibleState = subtitleShown,
-                    enter = VISIBILITY_ENTER,
-                    exit = VISIBILITY_EXIT,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(
-                        text = subtitle.orEmpty(),
-                        style = subtitleStyle,
-                        color = tileMutedColor,
-                        modifier = Modifier.opticalCenter(subtitleStyle),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        // 与标题同一套视觉居中：按**各自字号**取同一比例（12sp 与 14sp 差不到 0.2dp，
-                        //  行距基本不变），两行一起落在格的视觉中心
-                    )
+                    //  标题与小字合成一列、占满中间那段 ⇒ 行尾那颗离文字的间距**恒为**
+                    //  [TRAILING_INDICATOR_GAP]（原先交给 `endActions` 时，那一段由库决定、改不动）。
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = spec.label,
+                            style = COUITheme.textStyles.body2,
+                            fontWeight = FontWeight.Medium,
+                            color = contentColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.opticalCenter(COUITheme.textStyles.body2),
+                        )
+                        // 只写一行标题时看不出这一格绑的是什么（应用名 / 入口格的档位 / 命令间隔时长），
+                        // 这行就是那个值。格子高 52dp、BasicComponent 最小高 48dp：两行（14sp + 12sp）装得下。
+                        //  注意：这里**不能**用 [AnimatedFade]（只淡、不动高度）：那样这行字的
+                        //  **布局高度是立刻占上的**，上面那行标题会**瞬间**被顶上去 ——
+                        //  而要的正是「标题给这行字让位 / 复位」这个**位移本身滑出来**。
+                        //  所以走 [VISIBILITY_ENTER] / [VISIBILITY_EXIT]（淡入 + 竖向展开，
+                        //  与页里其他显隐同一套规格）：高度从 0 长到满，标题随之平滑上移；
+                        //  收起时反向。两行（14sp + 12sp）在 52dp 的格子里装得下，不会溢出。
+                        //  **起手就取当前这一档**（`!subtitle.isNullOrBlank()`），不写死 `false`：
+                        //  写死的话「首帧 = 没展开」是每次**重新组合**都成立的 —— 翻 tab、从子页回来
+                        //  都会把这一格新建一遍，那行小字于是每换一页就重播一次展开（高度 0 → 满，
+                        //  标题跟着上下动一下）。取当前值之后，只有小字**真的出现 / 消失**时才播。
+                        val subtitleShown = remember { MutableTransitionState(!subtitle.isNullOrBlank()) }
+                        subtitleShown.targetState = !subtitle.isNullOrBlank()
+                        //  字号 12sp：**主题里没有这一档** —— 小两档是 `footnote1` = 13sp、`footnote2` = 11sp，
+                        //  中间空着。取 `footnote2` 只把字号提到 12sp（行高仍按它那档 1.143em 走，
+                        //  12 × 1.143 ≈ 13.7dp）：11sp 的汉字在这个格子里偏糊，13sp 又太接近标题（14sp）。
+                        //  这一行是补充值，与标题同档时两行争主次，格子一窄还先挤它。
+                        val subtitleStyle = COUITheme.textStyles.footnote2.copy(fontSize = 12.sp)
+                        AnimatedVisibility(
+                            visibleState = subtitleShown,
+                            enter = VISIBILITY_ENTER,
+                            exit = VISIBILITY_EXIT,
+                        ) {
+                            Text(
+                                text = subtitle.orEmpty(),
+                                style = subtitleStyle,
+                                color = tileMutedColor,
+                                modifier = Modifier.opticalCenter(subtitleStyle),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                // 与标题同一套视觉居中：按**各自字号**取同一比例（12sp 与 14sp 差不到 0.2dp，
+                                //  行距基本不变），两行一起落在格的视觉中心
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(TRAILING_INDICATOR_GAP))
+                    //  入口格不再画单选圈（那读作「这一格是一个可选项」），按**点开去哪**分两种字形：
+                    //  · 弹一层菜单（系统导航 / 系统按键 / 媒体控制 / 响铃状态 / 应用控制）→ 选择器字形
+                    //    （[PageIcons.Selector]：一个框 + 右下角小三角，读作「点了要选点什么」）；
+                    //  · 进另一个页面（「自定义变量」→ 变量操作）→ **右箭头**（与菜单、列表那几处同一颗）。
+                    //
+                    //  **只问 `clickKind`**：这一格点下去干什么，清单里已经答了。这里再列一遍 token
+                    //  的话，`APP_TILE`（弹原地菜单）就会被写成右箭头 —— 抽屉那边原先正是这么错的。
+                    //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
+                    // 换掉之后占位与观感不变。
+                    when (ActionCatalog.clickKind(spec)) {
+                        //  换页的入口（「自定义变量」→ 变量操作、「应用控制」→ 挑应用）⇒
+                        //  行尾那颗是右箭头（与菜单、列表那几处同一颗）。
+                        ActionCatalog.ClickKind.PAGE_APP,
+                        ActionCatalog.ClickKind.PAGE_VARS,
+                        -> {
+                            Icon(
+                                PageIcons.EnterArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                tint = entryIndicatorColor,
+                            )
+                        }
+
+                        //  其余档位那一层是**原地弹**（菜单），不跳页 —— 所以是选择器字形而不是箭头。
+                        ActionCatalog.ClickKind.MENU -> {
+                            Icon(
+                                PageIcons.Selector,
+                                contentDescription = null,
+                                modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                tint = entryIndicatorColor,
+                            )
+                        }
+
+                        //  取值格（不是入口格）的选中指示 —— 空心方框 / 带勾方框，见 [PageIcons.TileUnchecked]。
+                        //  形状与另两种字形同尺寸，不给触达区（点击交给整行）。
+                        //
+                        //  「录屏」那一格也走这里：它点开虽然弹弹窗，但**格子本身就是那个动作**
+                        //  （三档只是它的状态），挂选择器字形等于告诉用户「下面还有一层清单」——
+                        //  而那一层已经没有了（见 `ActionCatalog.clickKind` 的 `STATE` 档）。
+                        //
+                        //  这一档变的是**状态**（选没选），换的是字形、插不了值 ⇒ 交叉淡过去，
+                        //  曲线与旁边那片底色同源（[COLOR_FADE_SPEC]）；两种字形同尺寸，
+                        //  交叉期间盒子宽度不变，标题不会被推一下。
+                        else -> {
+                            Crossfade(
+                                targetState = selected,
+                                animationSpec = COLOR_FADE_SPEC,
+                                label = "TileChecked",
+                            ) { on ->
+                                Icon(
+                                    if (on) PageIcons.TileChecked else PageIcons.TileUnchecked,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    tint = entryIndicatorColor,
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

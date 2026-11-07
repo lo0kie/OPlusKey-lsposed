@@ -174,7 +174,7 @@ class ModuleFiles internal constructor(
      */
     fun delete(slot: String): Boolean {
         val f = file(slot)
-        val all = listOf(f, File(f.path + BAK), File(f.path + NEW))
+        val all = listOf(f, File(f.path + BAK), File(f.path + NEW), File(f.path + PREV_SUFFIX))
         all.forEach { runCatching { it.delete() } }
         //  **三个都要判**：只判主文件的话，`.bak` 删不掉也照样返 true —— 而 `AtomicFile.openRead()`
         //  在主文件缺失时会拿 `.bak` 还原（见 [read] 的注释），于是那份配置「删掉之后又活了」。
@@ -196,10 +196,12 @@ class ModuleFiles internal constructor(
     /**
      * 这个模块有哪些槽（扫目录得来，不用注册表）。
      *
-     *  主文件与 `.bak` / `.new` **都算这个槽还在**：只剩 `.bak`（写盘写到一半被杀）时主文件不在，
-     *  但 [read] 仍能还原出内容 —— 光按 `.conf` 结尾扫会把那份配置**从列表里抹掉**，它的槽号
-     *  随即被 [ConfigProfiles.nextSlot] 复用，用户那份配置就找不回来了。
-     *  `.new` 是写一半的临时文件，本身不含完整数据，只跟 `.bak` 一样当「槽号被占着」的标记。
+     *  主文件与 `.bak` / `.new` / `.prev` **都算这个槽还在**：只剩 `.bak`（写盘写到一半被杀）时
+     *  主文件不在，但 [read] 仍能还原出内容 —— 光按 `.conf` 结尾扫会把那份配置**从列表里抹掉**，
+     *  它的槽号随即被 [ConfigProfiles.nextSlot] 复用，用户那份配置就找不回来了。
+     *  `.new` 与 `.prev` 是写盘过程中的副产物：`.new` 本身不含完整数据，只跟 `.bak` 一样当
+     *  「槽号被占着」的标记；`.prev` 则是完整的一份（见 [snapshotModuleFile]），
+     *  它单独存在意味着「主文件那次写入没落地」，正是**最不该被复用槽号**的情形。
      *  目录不存在时返回空表。
      */
     fun slots(): List<String> {
@@ -208,14 +210,23 @@ class ModuleFiles internal constructor(
         return files
             .map { it.name }
             .filter { it.startsWith(prefix) }
-            //  **只收三种合法形态**：`<槽>.conf`、`.conf.bak`、`.conf.new`。
+            //  **只收四种合法形态**：`<槽>.conf`、`.conf.bak`、`.conf.new`、`.conf.prev`。
             //  只按前缀过滤会把同目录里的其它东西（最典型的是 `…_vars.conf.lock` 这类锁文件）
             //  当成一个槽 —— 于是 `deleteAll()` 去删一个不存在的 `<假槽>.conf`、报「删干净了」，
             //  而真正的残留还在。
-            .filter { it.endsWith(SUFFIX) || it.endsWith(SUFFIX + BAK) || it.endsWith(SUFFIX + NEW) }
-            .map { name ->
-                //  剥掉可能存在的 `.bak` / `.new` 尾巴，再剥掉 `.conf` —— 三种形态落到同一个槽名
-                val base = name.removeSuffix(BAK).removeSuffix(NEW).removeSuffix(SUFFIX)
+            .filter { name ->
+                name.endsWith(SUFFIX) ||
+                    name.endsWith(SUFFIX + BAK) ||
+                    name.endsWith(SUFFIX + NEW) ||
+                    name.endsWith(SUFFIX + PREV_SUFFIX)
+            }.map { name ->
+                //  剥掉可能存在的 `.bak` / `.new` / `.prev` 尾巴，再剥掉 `.conf` —— 种种形态落到同一个槽名
+                val base =
+                    name
+                        .removeSuffix(BAK)
+                        .removeSuffix(NEW)
+                        .removeSuffix(PREV_SUFFIX)
+                        .removeSuffix(SUFFIX)
                 name to base.removePrefix(prefix)
             }.filter { it.second.isNotEmpty() }
             .map { it.second }
@@ -324,6 +335,64 @@ fun stripBom(text: String): String = if (text.startsWith(BOM)) text.substring(1)
 
 /** UTF-8 文本流开头的 BOM（一个 `U+FEFF` 码元）。 */
 private const val BOM = '\uFEFF'
+
+/**
+ * 我们自己留的历史快照后缀。
+ *
+ * **不能复用 `.bak`**：那是 `AtomicFile` 的语义位 —— `openRead()` 见到它就认为上次写盘没写完，
+ * 会删主文件、把它顶上去。快照叫 `.prev`，`AtomicFile` 不认识。
+ */
+private const val PREV_SUFFIX = ".prev"
+
+/**
+ * 把**当前主文件**复制成一份历史快照（`.prev`）—— 写盘之前调，给「下一次读不懂」留一条退路。
+ *
+ * ## 为什么必须自己留，而不是指望 `AtomicFile`
+ *
+ *  现代 `AtomicFile`（`startWrite` → 写 `.new` → `finishWrite`）在成功那一刻直接**删掉**旧 base
+ *  再把 `.new` 改名过去，全程不产生 `.bak`。真机验证过：这个目录里写了几十次，
+ *  `*.config.conf.bak` 一次都没出现过 —— 于是「从备份恢复」那条路是空转的。
+ *
+ *  主文件坏掉时用户只剩「清空配置」（绑定、开关、变量一起丢），而**上一份好的**其实就在刚才
+ *  那个位置 —— 写之前先留一份就没有这个问题。
+ *
+ *  写成顶层函数、收 [f] 而不收 `slot`：它不读任何实例状态。放在 [ModuleFiles] 里会把这个类
+ *  顶破 detekt 的函数数上限。
+ *
+ * @return 复制成了没有（主文件不在时算成功：没什么可留的）
+ */
+internal fun snapshotModuleFile(f: java.io.File): Boolean {
+    if (!f.isFile) return true
+    val prev = java.io.File(f.path + PREV_SUFFIX)
+    return try {
+        f.copyTo(prev, overwrite = true)
+        true
+    } catch (e: Throwable) {
+        //  复制不了不阻断写盘：那只是少了退路，而写盘是用户此刻要做的事
+        XLog.w("模块文件：留历史快照失败（${prev.path}）| ${e.message}")
+        false
+    }
+}
+
+/**
+ * 读那份历史快照（[snapshotModuleFile] 留的 `.prev`），读不出给 `null`。
+ *
+ *  故意**不经 `AtomicFile`**：它的 `openRead()` 会先去动主文件（那个可能已经坏了），
+ *  而这里要的就是快照本体。
+ *
+ *  读不出来（没有快照 / 权限 / 它本身也坏）给 `null` —— 调用方该退回「不可读」，
+ *  绝不能拿默认值顶上去。
+ */
+internal fun readModuleFileBackup(f: java.io.File): String? {
+    val prev = java.io.File(f.path + PREV_SUFFIX)
+    if (!prev.isFile) return null
+    return try {
+        stripBom(prev.readText())
+    } catch (e: Throwable) {
+        XLog.w("模块文件：读历史快照失败（${prev.path}）| ${e.message}")
+        null
+    }
+}
 
 /** [ModuleFiles.write] 的进程内互斥（理由见那里）。 */
 private val writeLock = Any()

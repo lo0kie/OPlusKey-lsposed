@@ -322,6 +322,16 @@ internal object SideKeyGestureHooks {
                             " —— 侧键会按「不接管」处理，别把默认值当成用户的配置",
                     )
                 }
+
+                //  主文件坏、但 `.bak` 读得懂：跑的是**备份那份**（比最后一次成功写入旧一个版本）。
+                //  这一行要说出来 —— 它是「用户某一项改动不见了」的唯一线索。
+                is ConfigStore.Load.Recovered -> {
+                    val key = l.config.key(KeyId.PLUS)
+                    XLog.w(
+                        "宿主进程读配置：主文件读不懂，已用 .bak 恢复（接管=${key.enabled}" +
+                            " 单击=${XLog.redactToken(key.single.token)}）",
+                    )
+                }
             }
         }
     }

@@ -6,7 +6,7 @@ import com.lookie.opluskey.bridge.SettingBridge
 import com.lookie.opluskey.bridge.host.FlashlightController
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.SystemSwitches
+import com.lookie.opluskey.core.model.SwitchKind
 
 /**
  * 「系统开关」那几条开关的**宿主侧** —— 读当前状态、算出目标值，再交给 system_server 执行。
@@ -43,7 +43,7 @@ internal object SettingSwitch {
     /** 自动亮度那个键（`Settings.System`）—— 1 = 自动、0 = 手动。 */
     private const val KEY_BRIGHTNESS_MODE = "screen_brightness_mode"
 
-    /** 定位那个键（`Settings.Secure`）—— 由 `LocationManagerService` 维护，见 [SystemSwitches.ID_LOCATION]。 */
+    /** 定位那个键（`Settings.Secure`）—— 由 `LocationManagerService` 维护，见 [SwitchKind.LOCATION]。 */
     private const val KEY_LOCATION_MODE = "location_mode"
 
     /** `location_mode` 的两档：0 = 关；3 = 高精度（1 仅设备 / 2 省电也算开着）。 */
@@ -65,7 +65,7 @@ internal object SettingSwitch {
         flashlight: FlashlightController,
         onFailure: (CommandFailure) -> Unit,
     ) {
-        if (action.id == SystemSwitches.ID_FLASHLIGHT) {
+        if (action.id == SwitchKind.FLASHLIGHT.id) {
             val on = action.on
             if (on == null) flashlight.toggle() else flashlight.setEnabled(on)
             return
@@ -100,7 +100,7 @@ internal object SettingSwitch {
         // 这三条没有宿主读得到的当前状态（旋转锁不在 Settings 里、`nfc_on` 读不到、
         // 极暗的状态只有颜色显示服务自己知道），状态由 system_server 那边的服务自己报，
         // 这里只把 id 转过去。
-        if (id == "rotation" || id == "nfc" || id == SystemSwitches.ID_EXTRADIM) {
+        if (id == SwitchKind.ROTATION.id || id == SwitchKind.NFC.id || id == SwitchKind.EXTRADIM.id) {
             XLog.w("系统开关：$id 交给 system_server 自己读状态取反")
             SettingBridge.send(context, id, null)
             return
@@ -134,13 +134,13 @@ internal object SettingSwitch {
         //  极暗**没有**这一支：它要 `CONTROL_DISPLAY_COLOR_TRANSFORMS`，宿主拿不到这个权限，
         //  所以落到最后那句 `SettingBridge.send`，由 system_server 去调颜色显示服务
         //  （见 `SettingCalls.extraDim`）。
-        if (id == SystemSwitches.ID_AUTOBRIGHTNESS) {
+        if (id == SwitchKind.AUTOBRIGHTNESS.id) {
             writeInt(context, secure = false, key = KEY_BRIGHTNESS_MODE, value = if (target) 1 else 0, onFailure = onFailure)
             return
         }
         //  定位：`location_mode` 不是 0/1 —— 0 = 关，1 = 仅设备 / 2 = 省电 / 3 = 高精度都算开。
         //  打开时给 3（高精度，系统默认那一档）；关闭只需把模式压成 0。
-        if (id == SystemSwitches.ID_LOCATION) {
+        if (id == SwitchKind.LOCATION.id) {
             writeInt(
                 context,
                 secure = true,
@@ -247,18 +247,18 @@ internal object SettingSwitch {
             // 免打扰：`Settings.Global.zen_mode` 由 NotificationManagerService 自己维护
             //  （ZEN_MODE_OFF=0，其余三档都算「开着」）。
             //  写不走 Settings，得由 system_server 调 `setZenMode` —— 见 `SettingCalls.dnd`。
-            "dnd" -> {
+            SwitchKind.DND.id -> {
                 onOff(value("zen_mode"))
             }
 
             // 自动亮度：`Settings.System.screen_brightness_mode`（1 = 自动、0 = 手动）
-            SystemSwitches.ID_AUTOBRIGHTNESS -> {
+            SwitchKind.AUTOBRIGHTNESS.id -> {
                 val mode = Settings.System.getInt(cr, KEY_BRIGHTNESS_MODE, -1)
                 if (mode < 0) null else mode == 1
             }
 
             // 定位：`Settings.Secure.location_mode`（0 = 关，1 / 2 / 3 都是开着）
-            SystemSwitches.ID_LOCATION -> {
+            SwitchKind.LOCATION.id -> {
                 onOff(value(KEY_LOCATION_MODE, secure = true))
             }
 

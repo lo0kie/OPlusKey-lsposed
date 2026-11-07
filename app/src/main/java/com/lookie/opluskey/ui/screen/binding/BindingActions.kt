@@ -9,7 +9,7 @@ import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.actionTitle
+import com.lookie.opluskey.core.model.commandTitleOf
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
@@ -46,16 +46,21 @@ internal fun SettingsPage.pick(
  *
  *  哪些动作走这一支：它们在清单里没有对应的 `Spec`（取值是运行时才有的，静态表里列不出来）——
  *  · 变量那一步（`setvar:计数+=1`）；
- *  · 结束应用（`proc:stop:包名`，由「应用控制」那一格挑出来）。
+ *  · 结束应用（`proc:stop:包名`，由「应用控制」那一格挑出来）；
+ *  · 「选择应用」页 FAB 确认的那一条（`app:包名` / `appshortcut:包名/id`）—— 带包名之后
+ *    就不在清单里了，而清单里那个 `Spec` 只为回执文案存在，不值得为它造一条假的。
  *
  *  回执那句话走 [stepTitle]（「怎么念一个动作」全项目只有那一支实现），外面套
  *  [Strings.TOAST_BOUND] 那层「」—— 与 [pick] 的回执同一个形状。
+ *
+ * @param appName 与 [pick] 同一个含义：挑应用那一趟要一并记下的名字（`Config.appNames`）
  */
 internal fun SettingsPage.pickToken(
     token: String,
     target: BindingTarget,
+    appName: String? = null,
 ): Boolean =
-    writeBinding(token, target, null) { _ ->
+    writeBinding(token, target, appName) { _ ->
         //  名字走 `appLabelOf`：`proc:` 那一档的标题里要带应用名（`结束应用:微信`），
         //  回调拿到的是**目标写法**（包名），与 `stepTitle` 的口径一致
         I18n.format(Strings.TOAST_BOUND, stepTitle(token) { pkg -> appLabelOf(pkg) })
@@ -231,7 +236,7 @@ private fun SettingsPage.bindingUnchanged(
  *  打出来会是「已绑定「app:com.tencent.mm」」。
  *
  *  **打开 / 结束应用那一族要带前缀**：只写应用名（「已绑定「微信」」）看不出这一趟是「打开」
- *  还是「结束」—— 两件事读起来完全不同。所以那两档走 [actionTitle]（与步骤行、执行时提示
+ *  还是「结束」—— 两件事读起来完全不同。所以那两档走 [commandTitleOf]（与步骤行、执行时提示
  *  同一支实现），产出「已绑定「打开应用:微信」」「已绑定「结束应用:微信」」。
  *
  *  **其余动作走 [stepTitle]**：「一个动作怎么念」全项目只有那一份规则，步骤行、命令卡摘要、
@@ -253,7 +258,7 @@ private fun SettingsPage.boundNotice(
             //  都没有时 `stepTitle` 会把 token 原样吐回来（手改过的配置），那也比空串好。
             appName ?: stepTitle(action.token) { p -> appLabelOf(p) }.ifBlank { spec.label }
         } else {
-            actionTitle(action, { appName ?: appLabelOf(pkg) }, action.token)
+            commandTitleOf(action).forSentence(action, { appName ?: appLabelOf(pkg) }, action.token)
         }
     return I18n.get(Strings.TOAST_BOUND, "已绑定「%s」").format(shown)
 }
@@ -261,7 +266,7 @@ private fun SettingsPage.boundNotice(
 /**
  * 「带动作前缀」那三档各自的目标包名 —— 只有它们要前缀，其余动作没有这一层。
  *
- *  `null` = 这一档不归 [actionTitle] 管（清单名 / 挑应用带进来的名字已经够具体）。
+ *  `null` = 这一档不归 [commandTitleOf] 管（清单名 / 挑应用带进来的名字已经够具体）。
  */
 private fun appPkgOf(action: Action): String? =
     when (action) {

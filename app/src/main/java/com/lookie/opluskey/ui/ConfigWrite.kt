@@ -1,9 +1,9 @@
 package com.lookie.opluskey.ui
 
 import com.lookie.opluskey.core.config.ConfigStore
-import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.i18n.applyLanguage
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.ui.state.CommandsSave
@@ -54,7 +54,7 @@ internal fun SettingsPage.write(
     configState.config.value = next
     // 语言跟着配置走：落盘这一下就把新档位落到 [I18n] —— 切「语言」当场换（含导入配置带进来的
     //  那一档、以及「清空配置」退回默认档），不必退出页面再进来。字典本身是组合状态，页面随即重画。
-    I18n.currentLanguage = AppLanguage.fromCode(next.global.language)
+    applyLanguage(next.global.language)
     return finishWrite(next, "设置页写入")
 }
 

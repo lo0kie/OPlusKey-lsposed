@@ -31,7 +31,8 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *  **「重置配置」与「重置模块」是两个入口、两个范围**：
  *   · 「重置配置」在「更多选项 → 切换配置」菜单的管理行里（见 `AboutMenus.profileManageRows`）——
  *     只重建当前选中的那一份（内容 + 它的命令库），确认窗也在那一页；
- *   · 「重置模块」在这一层（第四行）—— 在它之上再清掉**变量表**（见 `resetModule`）。
+ *   · 「重置模块」在这一层（第四行）—— 模块落过的盘全回出厂：配置列表、命令库、变量、
+ *     界面状态（见 `resetModule`）。
  *
  *  ⋮ **本身永远可点**：「默认界面」那一项必须始终够得着
  *  —— 它是模块彻底坏掉时唯一的逃生口（回宿主原版页面）。
@@ -106,7 +107,8 @@ internal fun SettingsPage.HomeHeaderMenu() {
                     // 进「更多选项」页只留首页那一行，且那一行**不吃任何闸**（见 [HomeScreen]）——
                     // 它现在同时承担「日常入口」与「模块坏掉时看运行状态的地方」两个角色。
                     // 「重置配置」在「更多选项 → 切换配置」那层菜单里（只重建当前那一份）；
-                    // 这一行是**另一件事**：重置模块 —— 连变量表一起清（见 `resetModule`）。
+                    // 这一行是**另一件事**：重置模块 —— 模块落过的盘全回出厂
+                    //  （配置列表 / 命令库 / 变量 / 界面状态，见 `resetModule`）。
                     //  `dividerBefore`：它是破坏性动作，与上面三项不是一类 —— 上面一条加深带。
                     MenuEntry.Row(
                         title = I18n.get(Strings.MENU_RESET_MODULE, "重置模块"),
@@ -149,12 +151,12 @@ private fun SettingsPage.HomeHeaderConfirmDialogs() {
         },
     )
 
-    //  「重置模块」：与「重置配置」两个入口、两句话 —— 这一句要点名**变量**也会没
-    //  （那是它与「重置配置」唯一的差别，不写出来用户看不出两个入口为什么并存）。
+    //  「重置模块」：与「重置配置」两个入口、两句话 —— 这一句要把**范围**说全
+    //  （所有配置 / 命令与变量 / 界面状态），否则用户看不出两个入口为什么并存。
     ConfirmDialog(
         show = overlays.confirmResetModule,
         title = I18n.get(Strings.DIALOG_RESET_MODULE_TITLE, "重置模块"),
-        summary = I18n.get(Strings.DIALOG_RESET_MODULE_MESSAGE, "当前配置、已保存的命令与变量都会被清空，**不可恢复**。"),
+        summary = I18n.get(Strings.DIALOG_RESET_MODULE_MESSAGE, "所有配置（含配置列表）、命令与变量、界面状态都会回到出厂，**不可恢复**。"),
         action = I18n.get(Strings.DIALOG_RESET_MODULE_CONFIRM, "重置"),
         onDismiss = { overlays.confirmResetModule = false },
         onConfirm = {

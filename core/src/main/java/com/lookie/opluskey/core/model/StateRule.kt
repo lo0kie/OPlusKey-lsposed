@@ -167,3 +167,30 @@ data class StateRule(
         ): StateRule = StateRule(gesture, listOfNotNull(condition), action)
     }
 }
+
+/**
+ * 从一张**条件表**里挑这一档该执行的动作 —— 全项目唯一实现。
+ *
+ *  语义就一句：**按顺序匹配、第一条成立的赢**；一条都不中就落到 [fallback]（这一档直接绑的
+ *  那个动作）。表是空的 ⇒ 直接给 [fallback]，行为与没有这一档完全相同。
+ *
+ * ## 为什么两个类都要调它
+ *
+ *  单键（`KeyConfig.actionFor`）与组合键（`ComboKey.resolve`）原先各写了一遍**逐字相同**的实现，
+ *  注释给的理由是「合并它俩得先让 `KeyConfig` 与 `ComboKey` 共一个父类型」—— 那个理由不成立：
+ *  两边要的只是「一张表 + 一个兜底动作」，抽成顶层函数就够了，不必有共同的父类型
+ *  （它们除了这一处之外也确实没有共同字段）。
+ *
+ *  为什么这句必须只有一份：条件分支的错**只在真机上看得见** —— 某个系统开关打开时本该走
+ *  另一条，结果走了默认那条；而两份实现里只要有一份的判据差一点（一处先判 `enabled`、一处没判，
+ *  或者一处用 `all` 一处用 `any`），就只会在那个开关打开那天才现形，且不报任何错。
+ *
+ * @param matches 条件是否成立 —— 由调用方给（读系统开关的那一层是 `ConditionProbe`）：
+ *   这一层不认识系统接口。
+ */
+internal fun pickAction(
+    rules: List<StateRule>,
+    gesture: Gesture,
+    fallback: Action,
+    matches: (BranchCondition) -> Boolean,
+): Action = rules.firstOrNull { it.appliesTo(gesture, matches) }?.action ?: fallback

@@ -193,7 +193,7 @@ internal val SYSTEM_STALE_HINT: String
  *  （`AGENTS.md` 五之一、6）。把它混进「重启手机」那一档，等于让人为一次装包多付一次重启。
  */
 internal val HOST_STALE_HINT: String
-    get() = I18n.get(Strings.STATUS_HOST_STALE, "后台服务还是旧版：用「重启服务」即可，不用重启手机")
+    get() = I18n.get(Strings.STATUS_HOST_STALE, "服务是旧版：点「重启服务」，不用重启手机")
 
 /**
  * 「能用，只是这次没落到新代码上」那两档提醒的**身份** —— 去重比的是它，不是文案。
@@ -209,14 +209,31 @@ internal enum class LinkNotice {
 
     /** 宿主侧跑着旧包：它是普通应用进程，重开就好。 */
     HostStale,
+
+    /** 配置主文件读不懂、从 `.bak` 恢复了 —— 比最后一次成功写入旧一个版本。 */
+    ConfigRecovered,
     ;
 
     fun text(): String =
         when (this) {
             SystemStale -> SYSTEM_STALE_HINT
             HostStale -> HOST_STALE_HINT
+            ConfigRecovered -> CONFIG_RECOVERED_HINT
         }
 }
+
+/**
+ * 配置从 `.bak` 恢复时那句话。
+ *
+ *  要提这一句的理由：恢复回来的那份**比用户最后一次成功写入旧一个版本** —— 坏掉那一版里的
+ *  改动没了。不说的话，用户只会发现「我明明配过的那一项不见了」，而界面上一切正常、
+ *  也没有任何日志可看。
+ *
+ *  「改一次就好」也写进去：用户不用去找什么恢复按钮 —— 随便改一处，写盘就把这份写回主文件，
+ *  主文件当场修好，下次进页不再恢复、也不再提这句。
+ */
+internal val CONFIG_RECOVERED_HINT: String
+    get() = I18n.get(Strings.STATUS_CONFIG_RECOVERED, "配置已从备份恢复；最近的改动可能丢了，改一次即可")
 
 /**
  * 首页那条常驻提示的第九种文案：回包了、但**一个接管点都没装上** —— 这一版 ROM 把那些私有类改了形。

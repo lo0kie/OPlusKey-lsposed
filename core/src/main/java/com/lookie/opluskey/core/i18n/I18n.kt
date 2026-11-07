@@ -22,6 +22,26 @@ enum class AppLanguage(
 }
 
 /**
+ * 把配置里那一档语言落到 [I18n] —— **全项目唯一写法**。
+ *
+ * ## 为什么要有一个函数
+ *
+ *  这行赋值原先在三个地方各写一遍：设置页写盘的出口（`ui/ConfigWrite.write`）、
+ *  界面读盘之后（`ui/PageLoad`）、宿主每次执行前（`host/GestureExec.syncLanguage`）。
+ *  三处都必须有 —— 它们分属不同进程 / 不同时机，谁也代替不了谁。
+ *
+ *  但**写法**不该有三份：以后加一条写盘路径（切换配置、导入覆盖、清空配置…）时，
+ *  忘了这一行不会有任何报错。表现是「配置本身是对的，界面还是旧语言」——
+ *  用户看到的是文案不跟着切，而盘上那份明明写着 English。
+ *  收成一个函数之后，至少「该调哪一个」没有第二种可能。
+ *
+ * @param code 配置里的语言码（`Config.global.language`）；认不出按 [AppLanguage.AUTO]
+ */
+fun applyLanguage(code: String?) {
+    I18n.currentLanguage = AppLanguage.fromCode(code)
+}
+
+/**
  * 基于 JSON 字典的国际化管理器。
  *
  * 字典文件存放在 assets/locales/（如 zh-CN.json, en.json）。

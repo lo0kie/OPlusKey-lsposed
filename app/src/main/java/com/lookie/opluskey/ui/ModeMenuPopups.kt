@@ -447,12 +447,12 @@ private fun boundRowSummary(
 }
 
 /**
- * 这一行点下去是不是**另一张页面** —— 目前只有「应用控制」那一层菜单的两行
- * （打开应用 / 结束应用，选完都进同一张挑应用页，见 `ActionCatalog.APP_CONTROL_MODES`）。
+ * 这一行点下去是不是**另一张页面** —— 判据是 `ActionCatalog.clickKind`（`PAGE` 那一档），
+ * 这里不认 token。
  *
- *  与「点了弹一层」的行分开判：那些行（系统开关 / 亮度 / 音量）后面跟的是弹窗，
- *  行尾挂「下一层」记号说反了；而这两行确实要换页，行尾该有那颗右箭头。
- *  判据用 token 而不是 glyph：glyph 是「画什么」，与「点了去哪」无关。
+ *  与「点了弹一层」的行分开：那些行（系统开关 / 亮度 / 音量）后面跟的是弹窗，
+ *  行尾挂「下一层」记号说反了；而「打开应用 / 结束应用」确实要换页，行尾该有那颗右箭头。
+ *  以前这里自己列 `APP_CONTROL_OPEN` / `APP_CONTROL_STOP` 两个 token —— 那是清单的答案，
+ *  不是界面的判断，多一处就多一个漂移点。
  */
-private fun opensAppPicker(spec: ActionCatalog.Spec): Boolean =
-    spec.token == ActionCatalog.APP_CONTROL_OPEN || spec.token == ActionCatalog.APP_CONTROL_STOP
+private fun opensAppPicker(spec: ActionCatalog.Spec): Boolean = ActionCatalog.clickKind(spec) == ActionCatalog.ClickKind.PAGE_APP

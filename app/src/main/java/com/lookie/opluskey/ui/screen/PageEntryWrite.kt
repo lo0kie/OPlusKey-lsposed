@@ -2,7 +2,6 @@ package com.lookie.opluskey.ui.screen
 
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.LongPressEdit
@@ -13,7 +12,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.replaceStep
-import com.lookie.opluskey.ui.screen.binding.pick
+import com.lookie.opluskey.ui.screen.binding.pickToken
 import com.lookie.opluskey.ui.screen.command.writeBranchCommand
 import com.lookie.opluskey.ui.screen.command.writeBranchCondition
 import com.lookie.opluskey.ui.screen.variables.VarManageState
@@ -104,9 +103,8 @@ internal fun SettingsPage.writeToken(
                     XLog.w("选择应用：这一趟没有目标手势（gesture=null），确认无效 —— 请从「按键绑定」页那一格进来")
                     return false
                 }
-            pick(
-                // 只为把取值交给 `pick`（它读的是 token），name 这一位在这条路上不参与显示。
-                ActionCatalog.Spec(name = token, token = token),
+            pickToken(
+                token,
                 // 写回**进这一页时那一格**：组合键那一页（`picker.comboId` 非空）写它那一档，
                 //  否则写当前在编辑的那颗键。判据只有 `comboId` 一处 —— 不按「当前在哪一页」判：
                 //  退场动画期间栈顶可能已经变了，按页面判会把动作写到上一页那颗键上。
@@ -151,11 +149,15 @@ internal fun SettingsPage.onAppPicked(
     //  草稿里若留着上一趟的 `包名/类名`，照它写会把条件弄成「某个界面」，而条件只认包名。
     //  给**分支动作**挑的那一趟不在此列 —— 它与网格同一套（草稿 + 小窗都算数）。
     val forCondition = picker.branchTarget != AppPickerState.NOT_FOR_BRANCH
+    //  「以小窗口打开」与「使用原版动画」是同一格的两种起法（互斥）：`window` 由调用点带货
+    //  （「不支持小窗」那张窗会强制传 false，不走页面状态，所以这里读参数而不是再读一遍），
+    //  `stockAnim` 只有页面状态这一个来源。
+    val stockAnim = picker.stockAnim.value
     val token =
         when {
             stopApp -> Action.Process(AppTarget.pkg(picked.target)).token
             forCondition -> picked.token(window = false)
-            else -> picker.draft?.token(picker.smallWindow.value) ?: picked.token(window)
+            else -> picker.draft?.token(window, stockAnim) ?: picked.token(window, stockAnim)
         }
     // 名字与绑定**同一次写盘**（`Config.appNames`）—— 分两次写要多落一次盘 + 一次广播，
     //  而中间那一下读到的配置只有新绑定、没有名字，顶栏会当场闪一下包名。

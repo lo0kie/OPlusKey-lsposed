@@ -96,7 +96,14 @@ private fun SettingsPage.SmallWindowToggle() {
     HeaderIconButton(
         onClick = {
             picker.smallWindow.value = !on
-            XLog.w("选择应用：以小窗口打开 = ${picker.smallWindow.value}（顶栏开关，不落盘）")
+            //  **与小窗互斥**：「原版动画」与「小窗口」是同一格的两种起法，开一个就关掉另一个
+            //  （见 `AppPickerState.stockAnim`）。不做成「置灰按不动」：那需要在两处各维护一次
+            //  灰态，而用户真正的意图就是「切成这一档」。
+            if (picker.smallWindow.value) picker.stockAnim.value = false
+            XLog.w(
+                "选择应用：以小窗口打开 = ${picker.smallWindow.value}（顶栏开关，不落盘）" +
+                    "／原版动画 = ${picker.stockAnim.value}",
+            )
         },
     ) {
         Icon(
@@ -160,6 +167,30 @@ private fun SettingsPage.pickerMenuEntries(close: () -> Unit): List<MenuEntry> =
                         } else {
                             XLog.w("选择应用：显示失效 = ${picker.showUnopenable.value}（已落盘）")
                         }
+                    },
+                ),
+            )
+        }
+        //  「使用原版动画」与上面那两行**不是一类**（那两行管列表怎么显示，这一行管**写成哪个动作**），
+        //  所以一条加深带断开。它只在会写 `app:` 的那几趟出现 —— 与顶栏那颗小窗开关同一个闸
+        //  （`appOnly`：给条件挑 / 结束应用那两趟写的是包名与 `proc:stop:`，`app:` 没人读）。
+        if (!picker.appOnly) {
+            add(
+                MenuEntry.Row(
+                    title = I18n.get(Strings.MENU_APP_STOCK_ANIM, "使用原版动画"),
+                    icon = PageIcons.StockAnim,
+                    selected = picker.stockAnim.value,
+                    dividerBefore = true,
+                    onPick = {
+                        close()
+                        picker.stockAnim.value = !picker.stockAnim.value
+                        //  **与小窗互斥**：同一格装不下两种起法，开这一档就把「以小窗口打开」关掉
+                        //  （顶栏那一颗反向同理，见 `SmallWindowToggle`）。
+                        if (picker.stockAnim.value) picker.smallWindow.value = false
+                        XLog.w(
+                            "选择应用：使用原版动画 = ${picker.stockAnim.value}（不落盘）" +
+                                "／以小窗口打开 = ${picker.smallWindow.value}",
+                        )
                     },
                 ),
             )

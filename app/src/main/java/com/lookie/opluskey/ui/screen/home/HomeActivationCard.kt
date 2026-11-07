@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.screen.home
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -411,6 +412,12 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
     val masterOn = configState.config.value.global.enabled
     val state =
         when {
+            //  **配置读不出来时不能判「已关闭」**：那一刻 `configState.config` 是 `Config.DEFAULT`，
+            //  主开关读出来就是 `false` —— 照着判会把「文件读不懂」说成「你自己关的」，
+            //  而两颗键的颜色都不一样（`Disabled` 无色相、`Inactive` 是红），用户不会去查。
+            //  这一档的真实原因由 `blockedReason()` 说（读不懂 / 旧宿主，各自的下一步不同）。
+            facts.readOnly -> ActivationState.Inactive
+
             //  总闸关着是**确定的事实**（用户自己拨的），优先于「还没问完」
             !masterOn -> ActivationState.Disabled
 
@@ -687,34 +694,47 @@ private fun SettingsPage.ActivationTips(
     status: String?,
     palette: ActivationPalette,
 ) {
-    if (release == null && status == null) return
-    Column {
-        HorizontalDivider(Modifier.padding(horizontal = ACTIVATION_DIVIDER_INSET))
-        Column(
-            modifier =
-                Modifier.padding(
-                    start = ACTIVATION_CONTENT_PADDING,
-                    top = ACTIVATION_TIPS_TOP,
-                    end = ACTIVATION_CONTENT_PADDING,
-                    bottom = ACTIVATION_TIPS_BOTTOM,
-                ),
-        ) {
-            if (release != null) {
-                ActivationTipRow(
-                    icon = PageIcons.Download,
-                    text = I18n.format(Strings.UPDATE_TIP, release.displayVersion),
-                    palette = palette,
-                    action = I18n.get(Strings.UPDATE_VIEW, "查看"),
-                    // 与「发现新版本」那个弹窗走同一个入口（`UpdateState.reopen`）：点了不把这一行收掉，
-                    //  收不收由 `UpdateState.pending` 管（窗里点「去下载」或勾「不再提示」才清）。
-                    onAction = UpdateState::reopen,
-                )
-            }
-            if (release != null && status != null) Spacer(Modifier.height(ACTIVATION_TIP_GAP))
-            if (status != null) {
-                //  **没有动作按钮**：这一条能做的只有重启手机 / 重启服务 / 照着「运行状态」去修，
-                //  都不是点一下 UI 就能完成的事 —— 给一颗假的「查看」只会让人以为点进去就修好了。
-                ActivationTipRow(icon = PageIcons.HomeStatusAlert, text = status, palette = palette)
+    val hasTips = release != null || status != null
+    //  **起手就取当前这一档**（与网格格子那行小字同一套写法）：写死 `false` 的话，
+    //  「首帧 = 收起」每次**重新组合**都成立 —— 翻 tab、从子页回来都会把这一段从 0 高度
+    //  展开一遍，卡片高度跟着跳一下。取当前值之后，只有提示**真的出现 / 消失**时才播。
+    val shown = remember { MutableTransitionState(hasTips) }
+    shown.targetState = hasTips
+    //  出现 / 消失走**统一那一档显隐**（淡入 + 纵向展开，[VISIBILITY_ENTER] / [VISIBILITY_EXIT]）：
+    //  这一段的高度是会变的（有新版本 / 有一件事要处理，两条都来或都不来），硬切会让整张卡跳一下。
+    AnimatedVisibility(
+        visibleState = shown,
+        enter = VISIBILITY_ENTER,
+        exit = VISIBILITY_EXIT,
+    ) {
+        Column {
+            HorizontalDivider(Modifier.padding(horizontal = ACTIVATION_DIVIDER_INSET))
+            Column(
+                modifier =
+                    Modifier.padding(
+                        start = ACTIVATION_CONTENT_PADDING,
+                        top = ACTIVATION_TIPS_TOP,
+                        end = ACTIVATION_CONTENT_PADDING,
+                        bottom = ACTIVATION_TIPS_BOTTOM,
+                    ),
+            ) {
+                if (release != null) {
+                    ActivationTipRow(
+                        icon = PageIcons.Download,
+                        text = I18n.format(Strings.UPDATE_TIP, release.displayVersion),
+                        palette = palette,
+                        action = I18n.get(Strings.UPDATE_VIEW, "查看"),
+                        // 与「发现新版本」那个弹窗走同一个入口（`UpdateState.reopen`）：点了不把这一行收掉，
+                        //  收不收由 `UpdateState.pending` 管（窗里点「去下载」或勾「不再提示」才清）。
+                        onAction = UpdateState::reopen,
+                    )
+                }
+                if (release != null && status != null) Spacer(Modifier.height(ACTIVATION_TIP_GAP))
+                if (status != null) {
+                    //  **没有动作按钮**：这一条能做的只有重启手机 / 重启服务 / 照着「运行状态」去修，
+                    //  都不是点一下 UI 就能完成的事 —— 给一颗假的「查看」只会让人以为点进去就修好了。
+                    ActivationTipRow(icon = PageIcons.HomeStatusAlert, text = status, palette = palette)
+                }
             }
         }
     }

@@ -111,7 +111,6 @@ object Strings {
     const val BINDING_LONG_PRESS_RELEASE_ACTION = "binding.long_press_release_action"
     const val BINDING_LONG_PRESS_RELEASE_DESC_OFF = "binding.long_press_release_desc_off"
     const val BINDING_LONG_PRESS_RELEASE_DESC_ON = "binding.long_press_release_desc_on"
-    const val BINDING_LONG_PRESS_RELEASE_EMPTY = "binding.long_press_release_empty"
     const val BINDING_LONG_PRESS_RELEASE_TITLE = "binding.long_press_release_title"
 
     /**
@@ -340,26 +339,11 @@ object Strings {
     const val CATALOG_BRIGHTNESS_SUB = "catalog.brightness_sub"
     const val CATALOG_BRIGHTNESS_SET = "catalog.brightness_set"
 
-    /**
-     * 同上的**带数值**写法（「增加 15%」）—— 网格小字、步骤标题、执行提示读它。
-     *
-     *  模板自己带 `%d%%`：数值与符号之间的写法各语言不同（英文 `Increase by 15%`），
-     *  拼字符串拼不出这个差别。
-     */
-    const val CATALOG_BRIGHTNESS_ADD_OF = "catalog.brightness_add_of"
-    const val CATALOG_BRIGHTNESS_SUB_OF = "catalog.brightness_sub_of"
-    const val CATALOG_BRIGHTNESS_SET_OF = "catalog.brightness_set_of"
-
     /** 「音量」那一格与它菜单的三档 —— 与亮度同一套（点格子弹菜单，每一档再问一个百分比）。 */
     const val CATALOG_VOLUME = "catalog.volume"
     const val CATALOG_VOLUME_ADD = "catalog.volume_add"
     const val CATALOG_VOLUME_SUB = "catalog.volume_sub"
     const val CATALOG_VOLUME_SET = "catalog.volume_set"
-
-    /** 同上的**带数值**写法（「增加 10%」）。 */
-    const val CATALOG_VOLUME_ADD_OF = "catalog.volume_add_of"
-    const val CATALOG_VOLUME_SUB_OF = "catalog.volume_sub_of"
-    const val CATALOG_VOLUME_SET_OF = "catalog.volume_set_of"
 
     const val CATALOG_MODE_BACK = "catalog.mode_back"
     const val CATALOG_MODE_COLLAPSE = "catalog.mode_collapse"
@@ -392,6 +376,16 @@ object Strings {
     const val CATALOG_CALCULATOR = "catalog.calculator"
     const val CATALOG_QUICK_TOOLS = "catalog.quick_tools"
     const val CATALOG_RECORDING = "catalog.recording"
+
+    /**
+     * 录音那一层选择器的三档 —— 与下面录屏同一套**带后缀**写法（`开始录音` / `结束录音` / `切换录音`）。
+     *
+     *  为什么不像灵感语音那样只写「开始」「结束」：那个弹窗的标题是「录音」，三行都短到只剩一个
+     *  动词时一眼扫过去分不出是哪一件东西（与录屏同一条口径）。
+     */
+    const val CATALOG_RECORDING_START = "catalog.recording_start"
+    const val CATALOG_RECORDING_STOP = "catalog.recording_stop"
+    const val CATALOG_RECORDING_TOGGLE = "catalog.recording_toggle"
     const val CATALOG_SCREEN_RECORD = "catalog.screen_record"
 
     /**
@@ -697,8 +691,9 @@ object Strings {
     /**
      * 「**东西 - 状态**」的两段式（`手电筒 - 关闭` / `灵感语音 - 开始`）。
      *
-     *  三处用它，都是「同一句里的两段」：系统开关（`系统开关: WIFI - 打开`）、
-     *  「应用控制」那一族（`应用控制: 打开应用 - 微信`）、以及「额外动作」那一行的取值。
+     *  全项目只有 `core/model/CommandTitle` 的 `link` 读它 —— 那一处逐段折叠，把「名字」「状态」
+     *  （以及系统开关往下那一层档位名）连成一句。**不要**在别的地方再拼一次横杠：
+     *  两种语序并存时，同一个动作在界面上就会有两种念法。
      */
     const val COMMON_NAME_STATE_FORMAT = "common.name_state_format"
 
@@ -707,10 +702,24 @@ object Strings {
     const val COMMON_STOP = "common.stop"
 
     /**
+     * 一个百分比（`10%`）—— 「屏幕亮度」「音量」两族的**状态**。
+     *
+     *  这两族的父格是「屏幕亮度 / 音量」、子动作是「增加 / 减少 / 设置为」，剩下的那个数就是
+     *  状态，所以它与开关的「打开 / 关闭」同一个位置（`音量: 增加 - 10%`），不编进子动作里。
+     */
+    const val COMMON_PERCENT_FORMAT = "common.percent_format"
+
+    /**
      * 「小窗」那一档的标记 —— 「打开应用」的目标里用它标「这一条是以小窗打开」
      * （`微信(小窗 扫一扫)`）。
      */
     const val COMMON_WINDOW_TAG = "common.window_tag"
+
+    /**
+     * 「原版动画」那一档的标记 —— 与 [COMMON_WINDOW_TAG] 同一个位置（`微信(原版动画)`），
+     * 两者**互斥**（同一格装不下两种起法）。
+     */
+    const val COMMON_STOCK_ANIM_TAG = "common.stock_anim_tag"
 
     /**
      * 「打开应用」的目标外层括号：`%1$s` 应用名、`%2$s` 括号里的附加段（空格分隔）。
@@ -724,8 +733,9 @@ object Strings {
     /**
      * 「**父名: 子名**」—— 一句动作文案的骨架（`系统开关: WIFI - 打开` / `应用控制: 打开应用 - 微信`）。
      *
-     *  全项目只有 `core/model/ActionLabels` 的 `prefixName` 读它：所有「一个动作怎么念」的地方
-     *  因此逐字一致（步骤行 / 命令卡摘要 / 执行提示 / 系统场景格 / 选择应用页页头）。
+     *  全项目只有 `core/model/CommandTitle` 的 `join` 读它：所有「一个动作怎么念」的地方
+     *  因此逐字一致（步骤行 / 命令卡摘要 / 执行提示 / 系统场景格 / 长按「额外动作」那一行）。
+     *  别处出现这个键就是又一套语序（`tools/audit-arch.py` 有一条判据盯着这件事）。
      */
     const val COMMON_PREFIX_NAME_FORMAT = "common.prefix_name_format"
     const val COMMON_REPLACE = "common.replace"
@@ -1038,6 +1048,9 @@ object Strings {
     const val MENU_RESTART_SERVICE = "menu.restart_service"
     const val MENU_SHOW_INVALID_APPS = "menu.show_invalid_apps"
     const val MENU_SHOW_SYSTEM_APPS = "menu.show_system_apps"
+
+    /** 「选择应用」页 `⋮` 菜单那一项 —— 打开应用时套原版那层启动包裹（命令级，与小窗互斥）。 */
+    const val MENU_APP_STOCK_ANIM = "menu.app_stock_anim"
     const val MORE_ABOUT_AUTHOR = "more.about_author"
     const val MORE_ABOUT_FEEDBACK = "more.about_feedback"
 
@@ -1152,6 +1165,7 @@ object Strings {
     const val STATUS_CHECKING = "status.checking"
     const val STATUS_CONFIG_FAILED = "status.config_failed"
     const val STATUS_CONFIG_NOT_SYNCED = "status.config_not_synced"
+    const val STATUS_CONFIG_RECOVERED = "status.config_recovered"
     const val STATUS_DISABLED = "status.disabled"
     const val STATUS_HOST_STALE = "status.host_stale"
     const val STATUS_KEY_DISABLED = "status.key_disabled"
@@ -1186,9 +1200,6 @@ object Strings {
     const val TOAST_COMMAND_TRIGGERED = "toast.command_triggered"
     const val TOAST_COMMAND_TEST_FAILED = "toast.command_test_failed"
     const val TOAST_CONFIG_CLEAR_FAILED = "toast.config_clear_failed"
-
-    /** 变量表没清成（主配置与命令库已重置）—— 见 `ConfigReset.reportReset`。 */
-    const val TOAST_CONFIG_CLEAR_VARS_FAILED = "toast.config_clear_vars_failed"
 
     const val TOAST_CONFIG_CLEARED = "toast.config_cleared"
     const val TOAST_MODULE_RESET = "toast.module_reset"

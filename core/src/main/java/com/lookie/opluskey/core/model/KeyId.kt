@@ -64,6 +64,29 @@ class KeyId private constructor(
         /** 编译期就存在的那些键。界面要「内置 + 自定义」全列时用 `Config.allKeys`。 */
         val builtins: List<KeyId> = listOf(PLUS)
 
+        /**
+         * 这个键码是**内置键**认领的吗（含侧键那一族的 780 / 781 / 782）。
+         *
+         *  ## 为什么要有一个函数，而不是让调用点自己摊开写
+         *
+         *  这句话有两处要问，而且**问错的后果都是"又一个自持循环"或"用户自己的键失灵"**：
+         *
+         *   · 动作解析（[Action.parseKeyEvent]）：`keyevent:<码>` 若指向模块自己认领的码，
+         *     注入出去会被拦截路径再认领一次 —— 在 `system_server` 里每 ~100ms 一轮；
+         *   · 注入前复核（`ActionRunner.claimedByModule`）：同一条自持循环，只是漏在另一侧。
+         *
+         *  原先两处各把 `builtins.flatMap { acceptedKeyCodes }` 摊开写了一遍（其中一处还
+         *  摊成了个 `CLAIMED_CODES` 常量）。`builtins` 加一颗键、或者某颗键的认领集合改口径时，
+         *  漏改一处的表现是上面那两种之一，而且**都不会编译报错**。
+         *
+         *  ## 不含自定义键
+         *
+         *  那些码只存在于配置里（用户运行时收集），`core` 这一层拿不到 —— 所以「现在归不归
+         *  模块管」的完整判断还得由调用点再叠一层 `Config.keyForCode`。本函数只回答它答得了
+         *  的那一半，而且**只有这一份答案**。
+         */
+        fun claimsBuiltin(code: Int): Boolean = builtins.any { code in it.acceptedKeyCodes }
+
         /** 自定义键 id 的前缀：`ck1` / `ck2` ……（序号只增不减，与 `Config.customKeys` 的顺序无关）。 */
         const val CUSTOM_ID_PREFIX = "ck"
 

@@ -184,6 +184,27 @@ internal class LinkFacts(
     val hostConfigBroken: Boolean
         get() = !hostConfigReadable || (hostStale && !hostEnabled && !masterOff)
 
+    /**
+     * 执行侧读到的主开关是**关的**，而你这边开着 —— 「设置没生效」最直接的那一档。
+     *
+     *  与 [hostConfigBroken] 分工：[那个][hostConfigBroken] 管「宿主读不懂配置」（含旧宿主对账反推），
+     *  这一位管「它读得懂，但读到的那份里主开关是关的」。两条来路：
+     *
+     *   · **开机还没解锁**：`opluskey_config.conf` 落在 credential-encrypted 存储里，解锁前读不到文件，
+     *     宿主于是按 `Config.DEFAULT` 报上来（主开关关）。界面这半是解锁后才起来的，看到的却是
+     *     「全部正常、按键无反应」；
+     *   · 配置刚写完、宿主那次读取早于写盘 —— `configPending` 那道宽限只管**注入侧**，
+     *     宿主这半没有对应的宽限。
+     *
+     *  为什么必须单独有位：这一档下 `hostUp` / `respondOk` / `configSideOk` 可能全绿，
+     *  `hostConfigBroken` 也假（新宿主报了 `readable = true`），于是首页说「已激活」、
+     *  整页可编辑，而实际一个动作都不执行。
+     *
+     *  不会误报：`masterOff` 为真时那是用户自己关的，不算异常。
+     */
+    val hostSwitchMissing: Boolean
+        get() = !hostEnabled && !masterOff
+
     /** 「没回包」到底是哪一档 —— 见 [InjectPendingKind] 的注释。 */
     val injectPending: InjectPendingKind
         get() =
@@ -228,7 +249,7 @@ internal class LinkFacts(
      *  这一档的修法正是重启服务，闸住它就成了「提示让你重启服务、而重启服务是灰的」。
      *  以后要往这里再加一位，先确认对应的自救入口不在闸内。
      */
-    val ready: Boolean get() = hostUp && respondOk && configSideOk && !hostConfigBroken
+    val ready: Boolean get() = hostUp && respondOk && configSideOk && !hostConfigBroken && !hostSwitchMissing
 }
 
 /**
@@ -349,8 +370,10 @@ internal val SettingsPage.linkReady: Boolean
  *    而重进修不好它）；
  * 7) **执行侧**读不懂配置 ⇒ 重启服务（跑着旧包时）/ 重进页面（文件真读不懂）——
  *    这一档原来与「主开关关着」同形，于是被当成用户的意图放过去；
- * 8) 设置没送到 ⇒ 重进本页会重发一遍；
- * 9) **模块总闸关着** ⇒ 用户自己拨回来。
+ * 8) 执行侧**读得懂、但读到的那份里主开关是关的**（最常见：开机还没解锁）⇒ 等它自己重读 ——
+ *    这一档原先 `hostUp` / `respondOk` / 配置指纹全绿，卡片说「已激活」而一个动作都不执行；
+ * 9) 设置没送到 ⇒ 重进本页会重发一遍；
+ * 10) **模块总闸关着** ⇒ 用户自己拨回来。
  *
  *  **主开关排在最后一条，不是漏了**：那一行自己吃 `linkReady`（见 `HomeCards`），链路没齐时
  *  它是**灰色、拨不动**的。把它摆在链路前面，等于让人去开一个开不了的开关 —— 真机反馈就是
@@ -363,6 +386,16 @@ internal val SettingsPage.linkReady: Boolean
  *  注意：**「模块没启用」不在这张表里，也不需要判** —— 这段文字只可能在「我们的页面被画出来」
  *  时出现，而页面本身就是模块的代码（跑在宿主 `:ui` 进程里）：能画出来就意味着模块已加载、
  *  作用域至少命中宿主包。真没启用时用户看到的是宿主原版页面，这里一个字都不会出现。
+ *
+ * ## 不变式：`ready == false` ⟹ 这里一定给得出话
+ *
+ *  反过来不成立 —— 用户自己关主开关时 `ready` 可以是 true，而这里给「按键绑定已关闭」
+ *  （主开关不进总闸，否则它锁死自己，见 [configSideOk] 的注释）。
+ *
+ *  这条单向关系是**加档时的检查表**：往 [LinkFacts.ready] 里加一项，就必须在这里加一档，
+ *  否则出现「整页灰着、大卡片报异常、却说不清为什么」—— 用户只看到一句
+ *  `MODULE_UNAVAILABLE_HINT`（「页面还没就绪，重进本页试试」），而重进根本不好使。
+ *  `hostSwitchMissing` 那一档就是这么漏的。
  *
  * @return `null` = 可以用
  */
@@ -429,6 +462,14 @@ internal fun SettingsPage.blockedReason(): String? {
             if (f.hostStale) HOST_STALE_HINT else CONFIG_READ_FAILED_HINT
         }
 
+        //  宿主读得懂配置，但读到的那份里主开关是关的，而你这边开着（见 [LinkFacts.hostSwitchMissing]）：
+        //  开机还没解锁是最常见的一条。这句话与「设置未同步」同一句 —— 对用户来说都是
+        //  「另一侧手上不是这一份」，能做的也都是「等它同步 / 重进本页」。
+        //  少了这一档：卡片说「已激活」、整页可编辑，而一个动作都不执行（真机现场）。
+        f.hostSwitchMissing -> {
+            CONFIG_NOT_SYNCED_HINT
+        }
+
         !f.configSideOk -> {
             CONFIG_NOT_SYNCED_HINT
         }
@@ -456,6 +497,9 @@ internal fun SettingsPage.blockedReason(): String? {
  *  两档都能照常改设置，所以**不能**进 [linkReady] / 整页闸 —— 那是另一次判断（见那里）。
  */
 internal fun SettingsPage.noticeReason(): LinkNotice? {
+    //  **配置是从备份恢复来的**：这一条与链路自检无关（`injectChecked` 还没跑完也照样成立），
+    //  而且它解释的是「我配的那一项为什么不见了」—— 比「跑着旧包」更该先说。
+    if (configState.configRecovered) return LinkNotice.ConfigRecovered
     val f = linkFacts
     // **自检没跑完就不下结论**：这一趟的数据还没齐（注入侧的回包可能刚到、也可能还没到），
     //  此时弹「系统侧还是旧版」会跟紧跟着的「正在检查模块…」互相打架 ——

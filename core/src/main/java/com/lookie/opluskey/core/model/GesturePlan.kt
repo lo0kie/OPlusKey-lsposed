@@ -206,11 +206,11 @@ data class KeyGesturePlan(
 fun KeyConfig.gesturePlan(): KeyGesturePlan {
     val slots =
         buildSet {
-            if (single !is Action.None) add(GestureTrigger.Click(1))
-            if (double !is Action.None) add(GestureTrigger.Click(2))
-            if (long !is Action.None) add(GestureTrigger.LongPress)
+            if (single.isBound) add(GestureTrigger.Click(1))
+            if (double.isBound) add(GestureTrigger.Click(2))
+            if (long.isBound) add(GestureTrigger.LongPress)
             //  第 3 击起的额外档位（手改 / 导入配置才可能有，界面没有入口）
-            extraClicks.filterValues { it !is Action.None }.keys.forEach { add(GestureTrigger.Click(it)) }
+            extraClicks.filterValues { it.isBound }.keys.forEach { add(GestureTrigger.Click(it)) }
         }
     //  判定要等几个窗以 [clicksForJudge] 为准：它可能高于「绑了动作的最高击数」
     //  （手改配置只写 click3、没写单击时，判定仍要按 3 击的链走）。

@@ -6,9 +6,8 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.SystemSwitches
-import com.lookie.opluskey.core.model.actionTitle
 import com.lookie.opluskey.core.model.appTargetLabel
+import com.lookie.opluskey.core.model.commandTitleOf
 
 // 命令文本的显示层：把一条命令 / 一个步骤压成界面上要显示的那几行字。
 // 与 Compose、与页面状态无关 —— 输入是 `Command` / 字符串，输出是字符串 / 图标。
@@ -52,7 +51,7 @@ internal fun isCommandRef(token: String): Boolean = token.startsWith(Command.PRE
  *  唯一的例外是「打开应用」那两档（`app:` 与 `window:`），它们显示成「打开应用:应用名」/
  *  「以小窗口打开:应用名」—— 那一段不是分类，是动作本身：少了它就只剩一个应用名，
  *  看不出这一步是「打开某个应用」，也看不出是小窗那一档。口径与执行时提示
- *  （`host/action/ActionNotice`）**同一份实现**（`core/model/actionTitle`），不再各写一遍。
+ *  （`host/action/ActionNotice`）**同一份实现**（`core/model/CommandTitle`），不再各写一遍。
  *  - 内置动作取清单里的名字（[ActionCatalog.specOf]）；
  *  - 入口格取那一档的档位名（[ActionCatalog.modeName]）；
  *  - `cmd:` 只显示命令名；
@@ -66,7 +65,7 @@ internal fun stepTitle(
     //  走 `ActionCatalog` 那份按 token 记忆的解析结果，不在这里现 `Action.parse` ——
     //  步骤行的每一次重组、每一条已保存命令卡都会走到这一句（见 `ActionCatalog.actionOf`）。
     val action = ActionCatalog.actionOf(token)
-    return actionTitle(
+    return commandTitleOf(action).forSentence(
         action = action,
         appName = appTargetName(appName),
         // 认不出来时用**配置里那串原始写法**（宿主那边用规范化后的 token）
@@ -89,15 +88,16 @@ internal fun stepTitleWithTarget(
     target: (Action) -> String,
 ): String {
     if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
-    return actionTitle(
-        action = ActionCatalog.actionOf(token),
+    val action = ActionCatalog.actionOf(token)
+    return commandTitleOf(action).forSentence(
+        action = action,
         appName = target,
         fallback = token,
     )
 }
 
 /**
- * 界面侧那份「目标 → 名字」的回调，包成 [actionTitle] 要的形状。
+ * 界面侧那份「目标 → 名字」的回调，包成 [commandTitleOf] 要的形状。
  *
  *  名字从哪儿来是**界面侧**的事（宿主那边现查 PM）：这里先查这次清单、再查配置里记的名字。
  *  只有这一份 —— 各写一遍时，「哪几种动作要名字」这种判据就会各长一套（漏一档的表现是
@@ -109,7 +109,7 @@ internal fun stepTitleWithTarget(
 private fun appTargetName(appName: (String) -> String): (Action) -> String =
     { a ->
         when (a) {
-            is Action.App -> appTargetLabel(appName(a.target), window = false, detail = null)
+            is Action.App -> appTargetLabel(appName(a.target), window = false, detail = null, stockAnim = a.stockAnim)
             is Action.AppWindow -> appTargetLabel(appName(a.target), window = true, detail = null)
             is Action.AppShortcut -> appTargetLabel(appName(a.appTarget.orEmpty()), window = a.window, detail = null)
             is Action.Process -> appName(a.pkg)
@@ -118,60 +118,26 @@ private fun appTargetName(appName: (String) -> String): (Action) -> String =
     }
 
 /**
- * 「额外动作」那一行的值怎么写 —— 三族各换一种「取值」的写法，其余照 [stepTitle]：
+ * 「额外动作」那一行的值怎么写 —— **完整文案**，与步骤行、执行提示逐字相同：
  *
- *  · 系统开关 / 灵感语音 → **东西 - 状态**（`手电筒 - 关闭` / `灵感语音 - 开始`）；
- *  · 锁屏快捷 → **大类: 具体**（`锁屏快捷: 相机`）。
+ *  · 有父动作：`父动作: 子动作 - 状态`（`系统开关: WIFI - 打开`、`快捷功能: 手电筒 - 关闭`）；
+ *  · 没有父动作：`动作 - 状态`（`录屏 - 开始`）；
+ *  · 顶层格只有名字：`截屏`；
+ *  · 没配动作：`无操作` —— 这一行要有值，不然看不出「确实没配」。
  *
- *  为什么这两族要换语序：它们都是「一个东西 + 一个状态」的两段式（东西不改、改的是状态），
- *  而 `关闭:手电筒` 那种写法是**一条命令**的名字 —— 那一行上面就是「额外动作」四个字，
- *  下面再写成动词开头的一条命令，等于把「做什么」说了两遍；写在标题下面的是**取值**，
- *  先给「是哪个东西」才扫得下去。
+ *  这一行**不省父动作**（用户口径「额外动作的子标题要取完整文案」）：上面那行标题是
+ *  「额外动作」四个字，不是某个格子的名字 —— 省掉父名之后 `WIFI - 打开` 读不出是哪一格的东西。
+ *  与网格小字（`forTile`，那里格子名就在格子上、省得掉）正好相反。
  *
- *  锁屏快捷为什么用冒号而不是横杠：它后半截是**名字**（相机 / 计算器），不是状态 ——
- *  读法与 `打开应用:微信` 那一族一致；而且不带前缀时只写「相机」，会被读成「打开相机」，
- *  它其实只在**锁屏**上出现。
- *
- *  只用于这一处：步骤行、执行提示里仍是 [stepTitle]（那些地方读的是「执行了什么事」）。
+ *  这里**不再特判「无操作」**：`forSentence` 现在对任何动作都给完整一句（它不判「该不该显示」），
+ *  所以这一行直接拿结果就行。以前那两行特判 + `ActionCatalog.label` 是工厂里那个空串逼出来的。
  */
 internal fun releaseActionTitle(
     token: String,
     appName: (String) -> String,
 ): String {
     val action = ActionCatalog.actionOf(token)
-    if (action is Action.Setting) {
-        //  开关名取清单里那一份（认不出就退回 id），状态词与网格小字同一处（`switchStateLabel`）
-        val state = ActionCatalog.switchStateLabel(action)
-        val name = SystemSwitches.titleOfId(action.id) ?: action.id
-        if (state != null) return I18n.format(Strings.COMMON_NAME_STATE_FORMAT, name, state)
-    }
-    //  灵感语音那两档（开始 / 结束）：配方里两个 token 只差结尾，形状上与「开关」同构
-    val voice = ActionCatalog.modeMenu(ActionCatalog.VOICE_TILE).orEmpty()
-    val index = voice.indexOfFirst { it.token == action.token }
-    if (index >= 0) {
-        val name = I18n.get(Strings.CATALOG_VOICE_MEMORY, "灵感语音")
-        val state =
-            if (index == 0) {
-                I18n.get(Strings.COMMON_START, "开始")
-            } else {
-                I18n.get(Strings.COMMON_STOP, "结束")
-            }
-        return I18n.format(Strings.COMMON_NAME_STATE_FORMAT, name, state)
-    }
-    //  锁屏快捷（相机 / 计算器）：前缀必须写出来，见上面那段说明
-    val shortcut =
-        ActionCatalog
-            .modeMenu(ActionCatalog.KEYGUARD_TILE)
-            .orEmpty()
-            .firstOrNull { it.token == action.token }
-    if (shortcut != null) {
-        return I18n.format(
-            Strings.COMMON_PREFIX_NAME_FORMAT,
-            I18n.get(Strings.CATALOG_KEYGUARD, "锁屏快捷"),
-            shortcut.label,
-        )
-    }
-    return stepTitle(token, appName)
+    return commandTitleOf(action).forSentence(action, appTargetName(appName), token)
 }
 
 /**

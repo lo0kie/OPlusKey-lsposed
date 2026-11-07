@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.KeyConfig
@@ -29,7 +30,8 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
  * @param releaseSupported 这一页的判定侧有没有「松手」这条通道 —— 两行都靠它（组合键那一页没有，
  *   见 `ComboLongCard` 的说明），没有就**一行都不画**：摆一个拨了没反应的开关比没有更糟
  * @param releaseOn 开关；为真时下面滑入「额外动作」那一行
- * @param releaseLabel 已配的动作名；`null` = 还没配（副标题写「未设置」）
+ * @param releaseLabel 这一档现在的动作名（**永远有值**：「无操作」也是名字，见下）
+ * @param releaseIcon 那个动作自己的图标（**永远有值**，`actionIcon(token)` 给的）
  * @param releaseBound 松手那一档此刻**真的有事可做** —— 直接递 `KeyConfig.releaseBound`，
  *   界面不重算这条规则（互斥只在数据层有一份，见 `KeyConfig.releaseBound`）
  * @param onReleaseToggle 拨开关
@@ -45,7 +47,8 @@ internal class LongPressSpec(
     val releaseSupported: Boolean,
     /** 「松手执行额外动作」的开关 —— 为真时下面滑入「额外动作」那一行。 */
     val releaseOn: Boolean,
-    val releaseLabel: String?,
+    val releaseLabel: String,
+    val releaseIcon: ImageVector,
     val releaseBound: Boolean,
     val enabled: Boolean,
     val delayEnabled: Boolean,
@@ -214,10 +217,13 @@ private fun releaseRows(
             ),
             CardRow.Item(
                 title = I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_ACTION, "额外动作"),
-                summary =
-                    spec.releaseLabel
-                        ?: I18n.get(Strings.BINDING_LONG_PRESS_RELEASE_EMPTY, "未设置（松手不做事）"),
-                icon = PageIcons.Click,
+                //  这一行**永远写动作名**，包括「无操作」—— 后者是这一档的默认值，不是「还没配」。
+                //  原来未配时写「未设置（松手不做事）」，与「无操作」是同一个意思却两种说法，
+                //  还得为「未设置」单独准备一颗图标（那颗原先借了网格里「系统按键」的，撞了）。
+                summary = spec.releaseLabel,
+                //  图标**跟着动作走**，所有状态都有：无操作是 `ban`、应用是应用类、自定义命令是终端。
+                //  与网格里对应那一格同源（`actionIcon`）—— 同一件事在两处不该长两张脸。
+                icon = spec.releaseIcon,
                 arrow = true,
                 enabled = gates.releaseEnabled,
                 disabledHint = gates.releaseHint,

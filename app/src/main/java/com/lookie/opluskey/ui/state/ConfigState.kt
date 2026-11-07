@@ -66,6 +66,17 @@ internal class ConfigState {
     var readOnly by mutableStateOf(false)
 
     /**
+     * 这次建页的配置是**从 `.bak` 恢复**来的（主文件读不懂，上一次成功写入那份读得懂）。
+     *
+     *  与 [readOnly] 互斥：[readOnly] 是「一个字都写不回去」，这一位是「写回去正好能把主文件修好」。
+     *  它只用来**提示**（那句「最近的改动可能丢了」），不拦任何操作 —— 用户改一次，
+     *  恢复出来的这份就落盘了，主文件当场修好。
+     *
+     *  只在建页时置一次，此后一直为真：这一进程里的配置确实来自备份。
+     */
+    var configRecovered by mutableStateOf(false)
+
+    /**
      * 命令库的只读位 —— 与 [readOnly] 同一条纪律，管的是**另一份文件**（`CommandLibrary`）。
      *
      *  建页那次读命令库读不懂（外皮解不开 / 被截断 / 正文不是合法 JSON）时置 true：手上那份空表

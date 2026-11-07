@@ -410,6 +410,11 @@ internal fun SettingsPage.openAppPickerForStopApp(target: BindingTarget) {
     picker.openForStopApp(target.gesture, (target as? BindingTarget.Combo)?.id)
     picker.filter.value = ""
     picker.smallWindow.value = false
+    //  原版动画那一档同样恒关（`proc:stop:` 没有「怎么起」这回事），与上一行同一个理由
+    picker.stockAnim.value = false
+    //  这一趟不重算（两条恒关），所以基线也得在这儿记 —— 否则退出页面时会拿上一趟的基线比，
+    //  把「什么都没拨」判成「拨过」（见 `AppPickerState.windowTogglesChanged`）
+    picker.markWindowTogglesBaseline()
     appPickerUi.beginVisit(appPickerSelectedTarget(), shortcutId = null)
     navTo(Screen.APP_PICKER)
 }

@@ -78,6 +78,10 @@ object ConfigCodec {
      *  33 = **删掉**「三档同一事件」（`KeyDto.same_event` 与 `GlobalDto.same_event`）——
      *       功能整个移除，两个字段一并消失。老文件里残留的那两个键按未知键忽略
      *       （`version < VERSION` 走「不校验 md5」那一支，`ignoreUnknownKeys` 把它们丢掉）。
+     *  34 = `KeyDto` / `ComboDto` 各多了 `own_settings_seeded`（独立设置那五项被公共值播过种没有）。
+     *       又一个「加字段忘了抬号」的现场：加完没抬 33 → 那份 11824 字节的 v33 配置当场被判读不懂，
+     *       页面顶着「配置读取失败」、卡片报异常 —— 而文件本身好端端的（魔数对、正文完好）。
+     *       症状与 v3、`extra_clicks` 那两次**一模一样**，这次记在这里当第三次例子。
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -85,7 +89,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 33
+    const val VERSION = 34
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"
@@ -128,10 +132,18 @@ object ConfigCodec {
                 }
 
                 !digestMatches(dto) -> {
-                    // 把版本一起报出来：md5 对不上最典型的原因就是「文件是更老那一版 DTO 写的」，
-                    //  而那一版本该被上面那条 `version < VERSION` 拦住 —— 报出版本才能立刻分辨
-                    //  「版本号没抬」和「正文真被改过」。
-                    XLog.w("配置正文与 md5 对不上（version=${dto.version} / 本版 $VERSION）—— 判为读不懂")
+                    // 把版本一起报出来：md5 对不上有两种来路，报出版本才能立刻分辨 ——
+                    //  · `dto.version < VERSION`：压根进不来这里（上面那条拦住了），所以只要走到这一支，
+                    //    版本就一定是**相等**的。相等还对不上，只可能是这两件之一：
+                    //      ① 正文真被改过（手改 / 写到一半被杀 / 编码变了）；
+                    //      ② **加了 DTO 字段却没抬 VERSION** —— 校验口径是「拿当前 DTO 重新编码再算 md5」，
+                    //         多一个键，重编码的字节就与旧文件不同，于是存量配置整批判死。
+                    //    ② 的现场看起来像「文件坏了」，排查方向会被带到文件系统 / 权限 / 编码上去
+                    //    （真机上就这么绕过一次），所以日志直接把两个假设都摆出来。
+                    XLog.w(
+                        "配置正文与 md5 对不上（version=${dto.version} / 本版 $VERSION）—— 判为读不懂。" +
+                            "两者相等 ⇒ 要么正文被改过，要么给 DTO 加了字段却忘了抬 VERSION（见 ConfigDto 注释）",
+                    )
                     null
                 }
 

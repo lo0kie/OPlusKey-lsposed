@@ -203,6 +203,12 @@ internal data class KeyDto(
     val toastOnRun: Boolean? = null,
     val toastTemplate: String? = null,
     /**
+     * 上面那五项**被公共设置播过种没有**（见 `OwnSettings.ownSettingsSeeded`）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ 没播过，第一次打开总开关时会播一次（与新装一致）。
+     */
+    val ownSettingsSeeded: Boolean? = null,
+    /**
      * **状态分支**（`KeyConfig.rules`）—— 只走落盘：它是列表，进不了 `ConfigFields` 的字段表。
      *
      *  老文件没有这一段 ⇒ 空表 ⇒ 行为与这一档出现之前完全一致。
@@ -252,6 +258,7 @@ internal data class KeyDto(
                     clamp(ConfigFields.F_KEY_VIBRATE_STRENGTH, vibrateStrength ?: GlobalConfig.DEFAULT_VIBRATE_STRENGTH),
                 ConfigFields.F_KEY_TOAST_ON_RUN to (toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN),
                 ConfigFields.F_KEY_TOAST_TEMPLATE to (toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE),
+                ConfigFields.F_OWN_SETTINGS_SEEDED to (ownSettingsSeeded ?: false),
             ),
         )
 
@@ -295,6 +302,7 @@ internal data class KeyDto(
                 vibrateStrength = key.vibrateStrength,
                 toastOnRun = key.toastOnRun,
                 toastTemplate = key.toastTemplate,
+                ownSettingsSeeded = key.ownSettingsSeeded,
                 rules = key.rules.map { StateRuleDto.of(it) },
                 extraClicks = key.extraClicks.mapKeys { it.key.toString() }.mapValues { it.value.token },
             )
@@ -428,6 +436,8 @@ internal data class ComboDto(
     val vibrateStrength: Int? = null,
     val toastOnRun: Boolean? = null,
     val toastTemplate: String? = null,
+    /** 上面那五项被公共设置播过种没有 —— 与单键那条同义（`OwnSettings.ownSettingsSeeded`）。 */
+    val ownSettingsSeeded: Boolean? = null,
     /**
      * 这一组自己的「无操作时执行按键命令」（`ComboKey.passthrough`）—— `null` = 跟随公共设置。
      *
@@ -474,6 +484,7 @@ internal data class ComboDto(
             vibrateStrength = clamp(ConfigFields.F_KEY_VIBRATE_STRENGTH, vibrateStrength ?: GlobalConfig.DEFAULT_VIBRATE_STRENGTH),
             toastOnRun = toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN,
             toastTemplate = toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE,
+            ownSettingsSeeded = ownSettingsSeeded ?: false,
             //  「无操作时执行按键命令」：没写过就跟随公共设置（`null`），不在这里落默认值
             passthrough = passthrough,
         )
@@ -501,6 +512,7 @@ internal data class ComboDto(
                 vibrateStrength = combo.vibrateStrength,
                 toastOnRun = combo.toastOnRun,
                 toastTemplate = combo.toastTemplate,
+                ownSettingsSeeded = combo.ownSettingsSeeded,
                 passthrough = combo.passthrough,
             )
     }
