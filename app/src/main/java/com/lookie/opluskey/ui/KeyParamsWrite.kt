@@ -50,20 +50,6 @@ internal fun SettingsPage.setInstantSingle(on: Boolean) =
     ) { it.copy(instantSingle = on) }
 
 /**
- * 切「三档同一事件」—— 行点击与开关共用这一个入口。
- *
- *  写的是**当前在编辑的那颗键**（`KeyConfig.sameEvent`）：这是一个**按键级**设置，
- *  与上面两条同一个归属。开着时这颗键按下即执行，判定侧见
- *  `inject/input/GestureDetector.onKeyDown`。
- */
-internal fun SettingsPage.setSameEvent(on: Boolean) =
-    toggleKeyParam(
-        "same_event=${if (on) 1 else 0}",
-        I18n.get(Strings.SETTING_SAME_EVENT, "三个内置手势同事件时立即执行"),
-        on,
-    ) { it.copy(sameEvent = on) }
-
-/**
  * 切「长按连续触发」—— 行点击与开关共用这一个入口。
  *
  *  写的是**当前在编辑的那颗键**：这一行属于「按键设置」卡，卡里三档（长按阈值 / 连续触发 /

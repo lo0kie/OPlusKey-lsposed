@@ -25,12 +25,6 @@ import com.lookie.opluskey.ui.state.KeyWatchState
  *  但那是**运行期的组合**，界面**不**替用户把「单击延迟」那一行锁死：两个开关状态独立，
  *  用户随时可能把双击再绑回某个动作，那时延迟立刻又生效。
  *
- * ## 「三档同一事件」对这颗键生效时这一行置灰
- *
- *  那时一次按压不分档（按下即执行），「第二下怎么算」在判定侧根本不会被问到 ——
- *  这一位留着只是参数，亮着就是在骗人可以调。判据 `Config.sameEventNow`（就是这颗键
- *  自己的那一位开关，它在同一页的「手势判定」那一节里）。
- *
  * ## 写路径
  *
  *  与单击那张卡同一条纪律：**不判 `linkReady`**（写的是参数不是动作，落盘就生效，
@@ -43,9 +37,6 @@ internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
     // 与「单击延迟」同一条：这一位也是**每颗键自己的**（`KeyConfig.instantSingle`）
     val id = KeyWatchState.editing(cfg)
     val checked = cfg.key(id).instantSingle
-    //  这一颗键此刻走的就是「按下即执行」⇒ 双击不分档，这一位在判定侧读不到 ⇒ 置灰并说明原因。
-    val sameEventOn = cfg.sameEventNow(id)
-    val rowsEnabled = enabled && !sameEventOn
     CardList(
         rows =
             listOf(
@@ -57,13 +48,7 @@ internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
                     summaryOff = I18n.get(Strings.BINDING_INSTANT_SINGLE_OFF, "双击无动作时，第二下不生效"),
                     icon = PageIcons.IgnoreDouble,
                     checked = checked,
-                    enabled = rowsEnabled,
-                    disabledHint =
-                        if (sameEventOn) {
-                            I18n.get(Strings.SAME_EVENT_BLOCKED, "已开启「按下即执行」，这颗键不再分档")
-                        } else {
-                            null
-                        },
+                    enabled = enabled,
                 ) {
                     setInstantSingle(it)
                 },

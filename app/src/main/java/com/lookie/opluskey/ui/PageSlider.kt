@@ -55,8 +55,35 @@ private fun sliderCommit(
         }
     }
 
+/**
+ * 一根滑杆行 —— **灰着被点一下要说的话也在这里接**（见下面那层 `DisabledHint`）。
+ *
+ *  为什么这条通道开在 `SliderSpec` 上、由这一支统一投递：滑杆行几乎全是 `CardRow.Custom`
+ *  （灰不灰由 `spec.enabled` 定，行本身没有 `enabled` / `disabledHint` 这两位），
+ *  于是 `CardList` 那条「行自己带一句原因」的链根本走不到它们 —— 每一处都得自己包一层，
+ *  漏一处就落到整页那句（用户口径「独立设置里点滑杆回落到默认提示」）。
+ *  收在这里之后，调用点只答「这一行为什么灰」，投递永远只有这一份实现。
+ */
 @Composable
 internal fun SettingsPage.SliderRow(
+    position: CardListPosition,
+    spec: SliderSpec,
+    onCommit: (Int) -> Boolean,
+) {
+    //  与 `CardRow.Item` / `Switch` 同一条判据：**只有灰着**才换，能点的行不会被问「为什么点不了」。
+    //  给 `null` 时不覆盖 —— 照旧交给页面那条「这一页为什么改不了」。
+    DisabledHint(if (spec.enabled) null else spec.disabledHint) {
+        SliderRowBody(position, spec, onCommit)
+    }
+}
+
+/**
+ * 滑杆行的本体 —— 从 [SliderRow] 分出来，只让那一支留「接线 + 那句原因」。
+ *
+ *  分出来的另一个好处：这一支的入参只有三样，长度线以内看着也不挤。
+ */
+@Composable
+private fun SettingsPage.SliderRowBody(
     position: CardListPosition,
     spec: SliderSpec,
     onCommit: (Int) -> Boolean,

@@ -1,0 +1,5 @@
+# Maven 本地仓库里的校验文件是逐字节比对的：Gradle 会拿 .sha256 的值与读到的字节算 sha256，
+# 而 core.autocrlf=true 会把文本行尾改成 CRLF ⇒ .module / .pom 的哈希当场变掉，
+# 依赖校验（verification-metadata.xml）随即报「One artifact failed verification」。
+# 这些文件一律按二进制对待，不做行尾转换，也不做 diff。
+patches/repo/** -text -diff

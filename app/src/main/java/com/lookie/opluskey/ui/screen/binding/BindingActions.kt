@@ -11,6 +11,7 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.actionTitle
 import com.lookie.opluskey.core.model.isSerialCommand
+import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appLabelOf

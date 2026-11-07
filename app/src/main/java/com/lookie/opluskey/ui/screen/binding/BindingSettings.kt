@@ -10,7 +10,6 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.setSameEvent
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
@@ -43,21 +42,6 @@ internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
     CardList(
         rows =
             buildList {
-                //  「三档同一事件」—— 这一颗键**整体**还要不要分档。它排在单击延迟上面：
-                //  开着时那个等待根本不会发生（判定侧按下即执行），先看到它、再看到灰着的滑杆，
-                //  读起来才是「为什么这根调不动」。
-                add(
-                    CardRow.Switch(
-                        title = I18n.get(Strings.SETTING_SAME_EVENT, "三个内置手势同事件时立即执行"),
-                        summaryOn = I18n.get(Strings.BINDING_SAME_EVENT_ON, "按下立刻执行，不再等双击窗口与长按"),
-                        summaryOff = I18n.get(Strings.BINDING_SAME_EVENT_OFF, "三档各自按自己的时序判定"),
-                        icon = PageIcons.Immediate,
-                        checked = key.sameEvent,
-                        enabled = rowsEnabled,
-                    ) {
-                        setSameEvent(it)
-                    },
-                )
                 add(
                     CardRow.Custom { position ->
                         SliderRow(
@@ -71,9 +55,7 @@ internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
                                     max = KeyConfig.MAX_DOUBLE_CLICK_MS,
                                     value = key.doubleClickMs,
                                     default = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
-                                    //  这颗键开了「按下即执行」时那次等待不会发生（判定侧直接派发）——
-                                    //  滑杆置灰。判据 `Config.sameEventNow`，与判定侧同一处。
-                                    enabled = rowsEnabled && !cfg.sameEventNow(id),
+                                    enabled = rowsEnabled,
                                 ),
                         ) { v ->
                             val now = configState.config.value

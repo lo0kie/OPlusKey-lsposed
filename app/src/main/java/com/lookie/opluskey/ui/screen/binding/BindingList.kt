@@ -10,11 +10,13 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.Dp
+import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
+import com.lookie.opluskey.ui.openBranchesFor
 import com.lookie.opluskey.ui.scenarioEntry
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 

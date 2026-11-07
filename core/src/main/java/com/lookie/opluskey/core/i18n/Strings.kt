@@ -100,24 +100,6 @@ object Strings {
     const val BINDING_INSTANT_SINGLE_OFF = "binding.instant_single_off"
     const val BINDING_INSTANT_SINGLE_ON = "binding.instant_single_on"
 
-    /**
-     * 「三档同一事件」的开关与两态说明 —— 「按键设置」页「手势判定」那一节里的一行。
-     *
-     *  说明写**结果**：开着 = 按下即执行（不等双击窗口与长按阈值）；关着 = 三档各自按自己的时序判。
-     *  这是一项**公共**设置：只对三档绑同一件事的键生效，绑了不同动作的键按键级优先、照常分档
-     *  （判据 `Config.sameEventNow`）。
-     */
-    const val SETTING_SAME_EVENT = "setting.same_event"
-    const val BINDING_SAME_EVENT_ON = "binding.same_event_on"
-    const val BINDING_SAME_EVENT_OFF = "binding.same_event_off"
-
-    /**
-     * 「三档同一事件」对这颗键生效时，那几张设置卡为什么全灰 —— 置灰行被点一下时说的那一句。
-     *
-     *  与 [BINDING_SAME_EVENT_ON] 分开：那一句说的是**这个模式做什么**，这一句说的是
-     *  **这一档为什么改不了**，两处都要，不能拿一句顶两处。
-     */
-    const val SAME_EVENT_BLOCKED = "binding.same_event_blocked"
     const val BINDING_LONG_PRESS_DELAY_DESC = "binding.long_press_delay_desc"
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
 
@@ -1072,6 +1054,9 @@ object Strings {
 
     /** 那一页里的小标题与「使用独立设置」那颗总开关。 */
     const val KEY_SETTINGS_SECTION = "key_settings.section"
+
+    /** 下面那几行灰着被点一下时说的话 —— 「先打开上面那颗总开关」。 */
+    const val KEY_SETTINGS_NEED_OWN = "key_settings.need_own"
     const val SETTING_USE_OWN = "key_settings.use_own"
     const val SETTING_USE_OWN_ON = "key_settings.use_own_on"
     const val SETTING_USE_OWN_OFF = "key_settings.use_own_off"

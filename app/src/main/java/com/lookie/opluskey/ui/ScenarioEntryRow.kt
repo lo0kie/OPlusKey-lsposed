@@ -4,7 +4,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.screen.binding.BindingTarget
 
 /**
  * 「这一档的系统场景入口」那一行 —— 「按键绑定」页与「组合键编辑」页共用这一份。

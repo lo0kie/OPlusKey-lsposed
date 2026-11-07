@@ -80,19 +80,6 @@ data class KeyConfig(
     /** 「忽视无操作双击手势」—— **这颗键自己的**判定（同上，原来在全局）。 */
     val instantSingle: Boolean = DEFAULT_INSTANT_SINGLE,
     /**
-     * **「三个内置手势同事件时立即执行」** —— **这颗键自己的**判定。
-     *
-     *  开着时这颗键按下即执行：三档既然绑的是同一件事，「是单击还是双击还是长按」已经没有
-     *  可区分的东西，那两次等待（双击窗口、长按阈值）只是把「按键到执行」平白拖出几百毫秒。
-     *
-     *  **按键级**：每颗键自己决定要不要这个模式（「按键设置」页里那颗开关）。
-     *  它原来是全局一位，而全局那一位从没进过广播（见 `ConfigFields.F_SAME_EVENT`）——
-     *  注入侧恒读到 false，表现成「开着也不生效」。
-     *
-     *  执行什么动作：三档里第一个非空的（[sameEventAction]）。
-     */
-    val sameEvent: Boolean = false,
-    /**
      * **这颗键要不要用自己那套公共项** —— 默认关（跟随公共设置）。
      *
      *  它管的就是「按键单独设置」这件事：每颗键可以自己决定走不走 ColorOS 专有接口、
@@ -297,20 +284,6 @@ data class KeyConfig(
         get() = longRepeat && !longFireOnRelease && !longIsSerial && !longIsVoiceMemory
 
     /**
-     * 「三档同一事件」下按一下要执行的那一个动作 —— **三档里第一个非空的**。
-     *
-     *  那个模式下判定侧只派发一档（`Click(1)`，见 `GestureDetector.onKeyDown`），而用户
-     *  很可能三档里只绑了长按一档（先绑了长按，再打开这个模式省掉等待）——
-     *  直接取单击那一格会执行一个空动作，表现就是「开关开了但按下去什么都不发生」。
-     *
-     *  顺序固定为 单击 → 长按 → 双击：前两档是「按一下」这件事本身的两种时长，双击是前者
-     *  的特殊情形，所以它排最后。全部为空 ⇒ `Action.None`（这一下本来就无事可做）。
-     */
-    val sameEventAction: Action
-        get() =
-            listOf(single, long, double).firstOrNull { it !is Action.None } ?: Action.None
-
-    /**
      * 本对象在每个配置字段上的取值 —— **「字段 → 属性」的映射只有这一处**。
      *
      *  落盘（`ConfigCodec`）与广播（`ConfigBroadcast`）两条通道都按它取值，配合 `ConfigFields`
@@ -332,7 +305,6 @@ data class KeyConfig(
                 ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
                 ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
                 ConfigFields.F_INSTANT_SINGLE to instantSingle,
-                ConfigFields.F_SAME_EVENT to sameEvent,
                 ConfigFields.F_OWN_SETTINGS to useOwnSettings,
                 ConfigFields.F_KEY_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_KEY_VIBRATE to vibrate,
@@ -444,7 +416,6 @@ data class KeyConfig(
                 //  「三档同一事件」与「独立设置」那一族 —— **读的这一半必须与 `fieldValues()` 成对**：
                 //  只写进 `fieldValues()` 而不在这里读回来，表现就是「界面上改了、也落盘了，
                 //  但判定与执行那边照旧」——配置里有值、内存里是默认值，最难查的一种。
-                sameEvent = v.bool(ConfigFields.F_SAME_EVENT),
                 useOwnSettings = v.bool(ConfigFields.F_OWN_SETTINGS),
                 colorOsApi = v.bool(ConfigFields.F_KEY_COLOR_OS_API),
                 vibrate = v.bool(ConfigFields.F_KEY_VIBRATE),
@@ -836,15 +807,6 @@ data class Config(
     fun isLive(id: KeyId): Boolean = global.enabled && key(id).enabled
 
     /**
-     * 「三档同一事件」对这颗键**现在**生效吗 —— 就是它自己那一位（[KeyConfig.sameEvent]）。
-     *
-     *  留这一层只为一件事：判定侧、执行侧与界面置灰都走同一个名字，谁也不用记「这一位长在哪」。
-     *  它曾经还要叠一个全局开关（公共设置 + 按键级绑定的与），现在**只有按键级** ——
-     *  每颗键在「按键设置」页里自己决定（用户口径：按键级设置优先于公共设置）。
-     */
-    fun sameEventNow(id: KeyId): Boolean = key(id).sameEvent
-
-    /**
      * 公共项的**按键级取值** —— 这一族是两个出口（下面五个方法），规则只有一条：
      * 这一档开了「独立设置」就看自己那份，否则看公共设置。
      *
@@ -867,12 +829,18 @@ data class Config(
     fun toastTemplateFor(owner: OwnSettings): String = if (owner.useOwnSettings) owner.toastTemplate else global.toastTemplate
 
     /**
-     * 这一组组合**实际**在「无操作」时怎么办 —— 它自己写过就用自己的，否则看公共设置。
+     * 这一组组合**实际**在「无操作」时怎么办。
      *
-     *  组合专属的一项（`ComboKey.passthrough`），所以不走 [OwnSettings] 那一族：
-     *  单键没有「两颗键各干各的」这回事。
+     *  与那五个 `xxxFor` 同一条规则：**总开关关着就跟随公共设置**（哪怕这一组以前设过自己那份）——
+     *  否则界面灰着、执行侧却照旧用自己那份，是「关了没关掉」。
+     *  开着时再看 [ComboKey.passthrough]：`null`（没设过）仍旧跟随公共。
      */
-    fun comboPassthroughFor(combo: ComboKey): Boolean = combo.passthrough ?: global.comboPassthrough
+    fun comboPassthroughFor(combo: ComboKey): Boolean =
+        if (!combo.useOwnSettings) {
+            global.comboPassthrough
+        } else {
+            combo.passthrough ?: global.comboPassthrough
+        }
 
     /** 某个目标该显示的名字（按 [AppTarget.identity] 查）；没记过返回 `null`。 */
     fun appName(target: String): String? = appNames[AppTarget.identity(target)]

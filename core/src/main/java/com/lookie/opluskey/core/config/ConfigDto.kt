@@ -88,9 +88,6 @@ internal data class ConfigDto(
         // 老文件把「单击延迟 / 忽视双击」放在 `global` 里：逐键字段缺失时拿它兜底（迁移用）
         val legacyDouble = global.doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS
         val legacyInstant = global.instantSingle ?: KeyConfig.DEFAULT_INSTANT_SINGLE
-        //  「三档同一事件」也走过同一趟：它先是一颗全局开关，后来改成每颗键一位。老文件里那一位
-        //  的意图是「对所有键都开」，所以逐键缺失时照它灌 —— 直接丢掉等于用户升级后功能静默消失。
-        val legacySameEvent = global.sameEvent
         //  —— 总闸的迁移 ——
         //  拆开之前没有 `global.enabled`：那时「主开关」就是 `keys.plus.enabled`，侧键那一份
         //  同时当「总闸」与「这一颗键」两个用。老文件里那一位要读成**总闸**（用户当时的意图），
@@ -101,7 +98,7 @@ internal data class ConfigDto(
         val master = masterFromFile ?: keys[KeyId.PLUS.id]?.enabled ?: false
         val keyConfigs =
             allKeys.associateWith { id ->
-                val key = (keys[id.id] ?: KeyDto()).toKeyConfig(id, legacyDouble, legacyInstant, legacySameEvent)
+                val key = (keys[id.id] ?: KeyDto()).toKeyConfig(id, legacyDouble, legacyInstant)
                 if (legacyMaster && id.id == KeyId.PLUS.id) key.copy(enabled = true) else key
             }
         val globalConfig = GlobalConfig.ofFields(global.toValues())
@@ -206,14 +203,6 @@ internal data class KeyDto(
     val toastOnRun: Boolean? = null,
     val toastTemplate: String? = null,
     /**
-     * 「三档同一事件」—— **每颗键各一份**（以前是 `global` 段里的一位）。
-     *
-     *  `null` = 这份文件里没写：读的时候退回 `global` 那一位，见 [ConfigDto.toConfig]
-     *  （那一版只有全局一份，用户当时的意图是「对所有键都开」，迁移时照此灌给每一颗）。
-     *  新写出来的文件一定是具体值。
-     */
-    val sameEvent: Boolean? = null,
-    /**
      * **状态分支**（`KeyConfig.rules`）—— 只走落盘：它是列表，进不了 `ConfigFields` 的字段表。
      *
      *  老文件没有这一段 ⇒ 空表 ⇒ 行为与这一档出现之前完全一致。
@@ -239,7 +228,6 @@ internal data class KeyDto(
     fun toValues(
         legacyDoubleClickMs: Int,
         legacyInstantSingle: Boolean,
-        legacySameEvent: Boolean,
     ): ConfigFields.Values =
         ConfigFields.Values(
             mapOf(
@@ -257,7 +245,6 @@ internal data class KeyDto(
                 ConfigFields.F_DOUBLE_CLICK_MS to
                     clamp(ConfigFields.F_DOUBLE_CLICK_MS, doubleClickMs ?: legacyDoubleClickMs),
                 ConfigFields.F_INSTANT_SINGLE to (instantSingle ?: legacyInstantSingle),
-                ConfigFields.F_SAME_EVENT to (sameEvent ?: legacySameEvent),
                 ConfigFields.F_OWN_SETTINGS to (useOwnSettings ?: false),
                 ConfigFields.F_KEY_COLOR_OS_API to (colorOsApi ?: GlobalConfig.DEFAULT_COLOR_OS_API),
                 ConfigFields.F_KEY_VIBRATE to (vibrate ?: false),
@@ -273,10 +260,9 @@ internal data class KeyDto(
         id: KeyId,
         legacyDoubleClickMs: Int,
         legacyInstantSingle: Boolean,
-        legacySameEvent: Boolean,
     ): KeyConfig =
         KeyConfig
-            .ofFields(id, toValues(legacyDoubleClickMs, legacyInstantSingle, legacySameEvent), rules.mapNotNull { it.toRule() })
+            .ofFields(id, toValues(legacyDoubleClickMs, legacyInstantSingle), rules.mapNotNull { it.toRule() })
             .copy(
                 //  认不出的次数 / 动作整条丢掉（与 `rules`、`custom_keys` 同一条纪律：丢东西要留账，
                 //  账在 `ConfigDto.toConfig` 那一层打）
@@ -303,7 +289,6 @@ internal data class KeyDto(
                 longFireOnRelease = key.longFireOnRelease,
                 doubleClickMs = key.doubleClickMs,
                 instantSingle = key.instantSingle,
-                sameEvent = key.sameEvent,
                 useOwnSettings = key.useOwnSettings,
                 colorOsApi = key.colorOsApi,
                 vibrate = key.vibrate,
@@ -565,15 +550,6 @@ internal data class GlobalDto(
     /** 随机图标配色的种子（`0` = 关）—— 老文件没有这一项，退回默认（关）。 */
     @SerialName("icon_tint_seed")
     val iconTintSeed: Int = GlobalConfig.DEFAULT_ICON_TINT_SEED,
-    /**
-     * 「三档同一事件」的**旧位置** —— 它现在是每颗键自己的一位（`KeyDto.sameEvent`）。
-     *
-     *  这一格只为**读旧文件**保留：老配置里那个 `true` 要灌给每一颗键（用户当时的意图是
-     *  「对所有键都开」），见 `ConfigDto.toConfig`。写出来的新文件恒为 `false` ——
-     *  它不是活配置，别拿它当「公共默认值」往回接。
-     */
-    @SerialName("same_event")
-    val sameEvent: Boolean = false,
 ) {
     fun toValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -616,7 +592,6 @@ internal data class GlobalDto(
                 comboPassthrough = g.comboPassthrough,
                 comboWindowMs = g.comboWindowMs,
                 iconTintSeed = g.iconTintSeed,
-                //  old 位置那一格**不写**：它已经搬到每颗键里（见 `sameEvent` 的说明）
             )
     }
 }

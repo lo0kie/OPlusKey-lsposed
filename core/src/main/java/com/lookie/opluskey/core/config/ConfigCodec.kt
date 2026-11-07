@@ -75,6 +75,9 @@ object ConfigCodec {
      *       又一个新字段批次 ⇒ 同一条规矩：不抬号，每一份已有配置都会被判成读不懂。
      *  32 = `ComboDto` 多了 `passthrough`（这一组自己的「无操作时执行按键命令」，可空 =
      *       跟随公共设置）。组合专属的一项，不进 `use_own_settings` 那一族。
+     *  33 = **删掉**「三档同一事件」（`KeyDto.same_event` 与 `GlobalDto.same_event`）——
+     *       功能整个移除，两个字段一并消失。老文件里残留的那两个键按未知键忽略
+     *       （`version < VERSION` 走「不校验 md5」那一支，`ignoreUnknownKeys` 把它们丢掉）。
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -82,7 +85,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 32
+    const val VERSION = 33
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

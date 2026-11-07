@@ -82,7 +82,7 @@ internal fun SettingsPage.KeySettingsScreen(
         //  条件只有一个：这一趟改的是一组组合 —— 这是数据差异，不是流程分叉。
         if (target is SettingsTarget.Combo) {
             SectionTitle(I18n.get(Strings.COMBO_SETTINGS_SECTION, "组合按键设置"))
-            ComboOwnCard(target = target, cfg = cfg, enabled = pageEnabled)
+            ComboOwnCard(target = target, cfg = cfg, enabled = pageEnabled, ownOn = owner.useOwnSettings)
         }
     }
 }
@@ -100,8 +100,20 @@ private fun SettingsPage.ComboOwnCard(
     target: SettingsTarget.Combo,
     cfg: Config,
     enabled: Boolean,
+    ownOn: Boolean,
 ) {
     val combo = cfg.combos.firstOrNull { it.id == target.id } ?: return
+    //  这两项也吃上面那颗总开关：关着时它们是**公共设置**那一份，改也改不动 ——
+    //  亮着却改不改都没差别，读起来就是「这一页坏了」。
+    val rowsEnabled = enabled && ownOn
+    //  灰着时说明是哪一道闸：总开关关着时说「先打开」，页面闸门关着时留空（用整页那句）。
+    //  两行共用这一句 —— 同一个原因不该在两个地方各算一遍。
+    val needOwnHint =
+        if (enabled && !ownOn) {
+            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开「使用独立设置」")
+        } else {
+            null
+        }
     CardList(
         rows =
             buildList {
@@ -112,7 +124,9 @@ private fun SettingsPage.ComboOwnCard(
                         summaryOff = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_OFF, "什么都不做"),
                         icon = PageIcons.NoMatch,
                         checked = cfg.comboPassthroughFor(combo),
-                        enabled = enabled,
+                        enabled = rowsEnabled,
+                        //  灰着时说明是哪一道闸（与下一行同一句，见 `needOwnHint`）
+                        disabledHint = needOwnHint,
                     ) { on ->
                         //  写下去就是「这一组自己的决定」，不再跟随公共设置
                         write(
@@ -121,7 +135,7 @@ private fun SettingsPage.ComboOwnCard(
                         )
                     },
                 )
-                add(CardRow.Custom { position -> ComboWindowRow(position, enabled) })
+                add(CardRow.Custom { position -> ComboWindowRow(position, rowsEnabled, needOwnHint) })
             },
     )
 }

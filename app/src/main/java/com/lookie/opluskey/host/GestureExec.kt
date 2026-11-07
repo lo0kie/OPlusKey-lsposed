@@ -483,10 +483,10 @@ internal object GestureExec {
 
         fun matchesCondition(condition: BranchCondition): Boolean =
             judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
-        //  「松手执行额外动作」与系统场景的先后、以及「三档同一事件」的兜底 ——
+        //  「松手执行额外动作」与系统场景的先后、以及「这一档到底绑了什么」——
         //  这一整段只回答一件事：**这一次到底执行哪个动作**。抽出去与「派发」分开，
         //  `runAction` 那条主线上就只剩顺序，不再一串嵌套判断。
-        val fired = resolveAction(id, trigger, keyConfig, config, ::matchesCondition) ?: return
+        val fired = resolveAction(id, trigger, keyConfig, ::matchesCondition) ?: return
         val r =
             runner ?: run {
                 XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${trigger.id}")
@@ -518,11 +518,9 @@ internal object GestureExec {
     /**
      * 这一次**执行哪个动作** —— `null` = 这一下不执行（场景让位）。
      *
-     *  三件事按顺序：
+     *  两件事按顺序：
      *  1. **松手与系统场景的先后**：长按那一下命中场景 ⇒ 这一下让位（用户口径：一次按压一个结果）；
-     *  2. 取这一档的绑定（带条件表，第一条成立的就赢）；
-     *  3. 「三档同一事件」开着时，判定侧只派发 `Click(1)`，而用户可能只绑了长按 ——
-     *     所以这一档取**三档里第一个非空的**，否则表现成「开关开了、按下去什么都不发生」。
+     *  2. 取这一档的绑定（带条件表，第一条成立的就赢）。
      *
      *  从 [runAction] 抽出来：那条主线只该讲派发顺序，判断留在这一处。
      */
@@ -530,7 +528,6 @@ internal object GestureExec {
         id: KeyId,
         trigger: GestureTrigger,
         keyConfig: KeyConfig,
-        config: Config,
         matchesCondition: (BranchCondition) -> Boolean,
     ): Action? {
         //  长按已经按场景分过流了，松手再补一个动作等于一次按压两个结果；
@@ -543,17 +540,10 @@ internal object GestureExec {
             return null
         }
         val gesture = trigger.gestureOrNull()
-        val action =
-            if (gesture == null) {
-                keyConfig.actionOf(trigger)
-            } else {
-                keyConfig.actionFor(gesture, matchesCondition)
-            }
-        //  判据只有一处：`KeyConfig.sameEventAction`；要不要走这条看 `Config.sameEventNow`
-        return if (trigger == GestureTrigger.Click(1) && config.sameEventNow(id)) {
-            keyConfig.sameEventAction.takeUnless { it is Action.None } ?: action
+        return if (gesture == null) {
+            keyConfig.actionOf(trigger)
         } else {
-            action
+            keyConfig.actionFor(gesture, matchesCondition)
         }
     }
 

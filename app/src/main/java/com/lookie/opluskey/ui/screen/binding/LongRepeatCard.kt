@@ -12,6 +12,7 @@ import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.core.model.withLongPress
+import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.LongPressSettingsCard
 import com.lookie.opluskey.ui.LongPressSpec
 import com.lookie.opluskey.ui.SettingsPage
@@ -75,7 +76,6 @@ internal fun SettingsPage.LongPressCard(
             delayEnabled = !blocked,
             blockedReason = blockedReason,
             repeatBlockedReason = repeatBlockedReason(target.actionIn(cfg)),
-            sameEventBlocked = target.sameEventBlocked(cfg),
             onRepeat = { on -> edit(target, LongPressEdit(repeat = on)) { "long_repeat=${if (on) 1 else 0}" } },
             onVibrate = { on ->
                 edit(target, LongPressEdit(repeatVibrate = on)) { "long_repeat_vibrate=${if (on) 1 else 0}" }

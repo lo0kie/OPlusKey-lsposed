@@ -12,6 +12,12 @@ import kotlin.math.roundToInt
  *  这些本来就是一件事（「这一行是一根什么样的滑杆」），一起给比散在五个形参里更好读。
  *
  * @param step 相邻两档的步长 —— 轨道上有几档由它算（默认是毫秒那几档的步长）
+ * @param enabled 这一根滑杆能不能动
+ * @param disabledHint 灰着被点一下时**这一行自己的说法**（`null` = 用整页那句，见 [DisabledHint]）。
+ *   与 `CardRow.Item.disabledHint` / `CardRow.Switch.disabledHint` 同一个意思、同一套判据：
+ *   整页那条答的是「这一页为什么改不了」（主开关 / 链路 / 只读），有些滑杆是**因为它自己
+ *   这一行的条件不够**才灰的（「使用独立设置」没开、长按动作不支持连发、排序中整页锁住），
+ *   拿整页那句回答它，等于答了另一个问题。只在 `enabled = false` 时生效。
  * @param valueText 行尾那个「当前值」怎么写（毫秒那几档默认走 [durationText]）；
  *   `null` = **不画行尾**（档位那种一眼看得出当前值的滑杆，再写一遍是重复）
  * @param keyPoints 要在轨道上**画出来的**刻度点；`null` = 只画出厂默认值那一个圆点。
@@ -28,6 +34,7 @@ internal data class SliderSpec(
     val default: Int,
     val step: Int = STEP_MS,
     val enabled: Boolean = true,
+    val disabledHint: String? = null,
     val valueText: ((Int) -> String)? = { durationText(it) },
     val keyPoints: List<Float>? = null,
 ) {

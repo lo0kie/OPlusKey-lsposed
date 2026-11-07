@@ -35,6 +35,7 @@ import com.lookie.opluskey.ui.LocalAppTheme
 import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appVersionLabel
+import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.linkFacts
 import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.AppTheme
@@ -97,21 +98,26 @@ private fun ActivationState.label(): String =
 /**
  * 大字下面那一句 —— 说的是**这个状态意味着什么**，不是「该去哪修」。
  *
- *  「为什么不能用 / 该做什么」那套话在这一块的下半段（[ActivationTips]），不在这句里：
- *  同一句「系统侧还是旧版，重启手机后生效」在一屏里出现两次，读起来像两个不同的问题。
+ *  「为什么不能用 / 该做什么」在 [ActivationState.Inactive] 那一档由 [reason] 说
+ *  （与整页总闸同源，见 [SettingsPage.HomeActivationCard]），其余三档没有故障可讲。
  *
  *  开 / 关两句直接用主开关原来那两句副标题（`HOME_SWITCH_DESC_*`）—— 这一块现在就是那个开关，
  *  文案不该跟着 UI 换个地方就换一种说法。
+ *
+ * @param reason 未激活的**具体原因**（`blockedReason()` 给的、已经能直接照做的那句）。
+ *   `null` 时退回那句旧的概括 —— 理论上 [SettingsPage.linkReady] 为假就一定有原因，
+ *   这一支只是不让文案在边界上变成空串。
  */
-private fun ActivationState.detail(): String =
+private fun ActivationState.detail(reason: String?): String =
     when (this) {
         ActivationState.Active -> I18n.get(Strings.HOME_SWITCH_DESC_ON, "按键由模块接管，执行绑定动作")
 
         ActivationState.Disabled -> I18n.get(Strings.HOME_SWITCH_DESC_OFF, "按键交还系统，不执行任何绑定")
 
-        // 没挂上接管点 ⇒ 按键根本到不了模块手里。这一句在「没回包」与「回包但接管点 0 个」
-        //  两档都成立，所以不必再按原因分一次（原因与要做的事归下半段那几行）
-        ActivationState.Inactive -> I18n.get(Strings.HOME_ACTIVATION_INACTIVE_DESC, "系统侧未接管按键")
+        // 未激活 = 整页总闸（`linkReady`）里的某一段不 ok，**不再只说「系统侧未接管」**：
+        //  那是其中一种，而「设置没送到 / 执行侧读不懂配置 / 系统侧跑着旧包」都让它为假，
+        //  拿那一句去答，用户会照着去勾作用域 —— 白翻一遍。
+        ActivationState.Inactive -> reason ?: I18n.get(Strings.HOME_ACTIVATION_INACTIVE_DESC, "系统侧未接管按键")
 
         ActivationState.Checking -> CHECKING_HINT
     }
@@ -382,7 +388,13 @@ private val ACTIVATION_ACTION_TAP = 6.dp
  *
  *  ## 判据
  *
- *  「已激活」= 总闸开着 + 注入侧回了包 + 接管点挂上了（`LinkFacts.respondOk`）。
+ *  「已激活」= **整页总闸为真**（`LinkFacts.ready`：宿主报活 + 注入侧回了包且接管点挂上 +
+ *  设置送到且指纹对得上 + 执行侧那份配置读得懂）。
+ *
+ *  早先这里判的是 `respondOk`（只看「注入侧回了包、接管点挂上了」），于是中间任一段断了
+ *  —— 设置没送到、执行侧读不懂配置、跑着旧包 —— 页面整片灰、这一块却说「已激活」，
+ *  用户看到的就是「状态异常，可大卡片一切正常」。判据与整页总闸**必须同源**，这一块才配叫状态卡。
+ *
  *  关着时**不报红**：那是用户的意图（与「运行状态」里「主开关已关闭」不算故障同一条口径）。
  *
  *  自检没跑完（`injectChecked = false`）时是中性的「检查中」：那几秒里 `inject == null` 只是初值、
@@ -404,16 +416,22 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
 
             !facts.injectChecked -> ActivationState.Checking
 
-            facts.respondOk -> ActivationState.Active
+            facts.ready -> ActivationState.Active
 
             else -> ActivationState.Inactive
         }
+    //  **未激活时那一句具体原因**：与整页总闸同源（`blockedReason` 的每一档都写着下一步做什么）。
+    //  它替掉了原先固定那句「系统侧未接管按键」—— 那句只在「注入侧没回包」时成立，
+    //  而剩下的档（设置没送到 / 执行侧读不懂 / 跑着旧包）都被它答成同一句，把人指去勾作用域。
+    val reason = if (state == ActivationState.Inactive) blockedReason() else null
     //  版本只读一次：这串要读包信息，每帧重读没有意义（与它原先在顶栏里那份同一个口径）
     val version = remember { appVersionLabel() }
     //  下半段那两条提示（有新版本 / 有一件事要处理）—— 一次读全：既回答「有没有下半段」
     //  （上面那一块的内边距要看它），也直接递给 [ActivationTips]，不必让它再读一遍同一组状态。
     val release = UpdateState.pending
-    val status = statusTipText()
+    //  上面那句已经说过的**不在下面重说**：未激活时 detail 就是原因，同一条原因在同一块卡里
+    //  出现两次，读起来像两个不同的问题。
+    val status = statusTipText()?.takeIf { it != reason }
     // 配色按「档」算一次，再让几个角色各自过渡：状态换档那一刻不该硬切。
     //  底色 / 标题 / 说明 / 水印都带过渡 —— 水印是一颗 112dp 的大字形，硬换色比字还显眼；
     //  提示行首那颗 18dp 的小图标不带（它只在有提示时才出现，本来就没有「上一档」可比）。
@@ -453,7 +471,7 @@ internal fun SettingsPage.HomeActivationCard(ui: HomeUiState) {
                 null
             },
     ) {
-        ActivationBody(state, version, shown, release, status)
+        ActivationBody(state, version, shown, ActivationExtras(reason, release, status))
     }
 }
 
@@ -471,6 +489,25 @@ private val SettingsPage.activationToggleable: Boolean
     get() = linkReady && !configState.readOnly
 
 /**
+ * 这一块除了「状态大字 + 版本」还要说的三件事 —— 合成一个类型是为了让
+ * [ActivationBody] / [ActivationHead] 的参数表停在一只手数得过来。
+ *
+ *  这三项本来就是同一件事（「除了状态，这块还有话要说吗」），一起给比散成三个形参更好读。
+ *
+ *  @param reason 未激活时的**具体原因**（见 [ActivationState.detail]）
+ *  @param release 有新版本时那条（`null` = 没有）
+ *  @param status 下半段那句「能用但没落到新代码上」（`null` = 没有）
+ */
+private class ActivationExtras(
+    val reason: String?,
+    val release: ReleaseInfo?,
+    val status: String?,
+) {
+    /** 这一块下面还有没有提示段（决定上半段的下内边距，见 [ACTIVATION_HEAD_BOTTOM]）。 */
+    val hasTips: Boolean get() = release != null || status != null
+}
+
+/**
  * 卡的里子：水印 + 上半段 + 下半段。
  *
  *  抽出来只为让 [SettingsPage.HomeActivationCard] 留在 detekt 的 `LongMethod` 长度线内
@@ -481,8 +518,7 @@ private fun SettingsPage.ActivationBody(
     state: ActivationState,
     version: String,
     palette: ActivationPalette,
-    release: ReleaseInfo?,
-    status: String?,
+    extras: ActivationExtras,
 ) {
     Box(
         // 水印要能被卡片圆角裁掉一角 —— 库的卡不裁子级，这里自己收一次边
@@ -506,8 +542,8 @@ private fun SettingsPage.ActivationBody(
             )
         }
         Column {
-            ActivationHead(state, version, palette, hasTips = release != null || status != null)
-            ActivationTips(release, status, palette)
+            ActivationHead(state, version, palette, extras)
+            ActivationTips(extras.release, extras.status, palette)
         }
     }
 }
@@ -531,8 +567,9 @@ private fun SettingsPage.toggleMaster(ui: HomeUiState) {
 /**
  * 卡的上半段：大字状态 / 版本 / 一句说明。
  *
- * @param hasTips 这一块下面还有没有提示段 —— 有的话它就是「分隔线上面那一段」，
- *   下内边距要收到 [ACTIVATION_HEAD_BOTTOM]；没有的话它就是整张卡的底，上下对称。
+ * @param extras 未激活时的具体原因，以及「下面还有没有提示段」（决定下内边距：
+ *   有提示段时它是「分隔线上面那一段」，收到 [ACTIVATION_HEAD_BOTTOM]；
+ *   没有的话它就是整张卡的底，上下对称）。
  *
  *  抽出来只为让 [SettingsPage.HomeActivationCard] 留在 detekt 的 `LongMethod` 长度线内。
  */
@@ -541,7 +578,7 @@ private fun SettingsPage.ActivationHead(
     state: ActivationState,
     version: String,
     palette: ActivationPalette,
-    hasTips: Boolean,
+    extras: ActivationExtras,
 ) {
     val titleStyle = COUITheme.textStyles.title4
     val lineStyle = COUITheme.textStyles.body2
@@ -555,7 +592,7 @@ private fun SettingsPage.ActivationHead(
             start = ACTIVATION_CONTENT_PADDING,
             top = ACTIVATION_CONTENT_VERTICAL,
             end = ACTIVATION_CONTENT_PADDING,
-            bottom = if (hasTips) ACTIVATION_HEAD_BOTTOM else ACTIVATION_CONTENT_VERTICAL,
+            bottom = if (extras.hasTips) ACTIVATION_HEAD_BOTTOM else ACTIVATION_CONTENT_VERTICAL,
         ),
     ) {
         Text(
@@ -586,7 +623,7 @@ private fun SettingsPage.ActivationHead(
                     .opticalCenter(lineStyle),
         )
         Text(
-            text = state.detail(),
+            text = state.detail(extras.reason),
             style = lineStyle,
             color = palette.detail,
             modifier =

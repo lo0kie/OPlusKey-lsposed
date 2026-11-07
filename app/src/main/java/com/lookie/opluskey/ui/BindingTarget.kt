@@ -1,4 +1,4 @@
-package com.lookie.opluskey.ui.screen.binding
+package com.lookie.opluskey.ui
 
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -11,8 +11,6 @@ import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.LongPressParams
 import com.lookie.opluskey.core.model.StateRule
 import com.lookie.opluskey.core.model.withLongPress
-import com.lookie.opluskey.ui.Screen
-import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 
 /**
@@ -74,9 +72,6 @@ internal sealed interface BindingTarget {
     /** 这一档的长按参数 —— 单键与组合都实现 `LongPressParams`，卡片只认那个接口。 */
     fun longPress(cfg: Config): LongPressParams?
 
-    /** 这一档开了「按下即执行」吗 —— 长按那张卡与场景入口都据此置灰。 */
-    fun sameEventBlocked(cfg: Config): Boolean
-
     /** 把一次长按改动写回这一档所在的配置。 */
     fun withLongPress(
         cfg: Config,
@@ -84,7 +79,7 @@ internal sealed interface BindingTarget {
     ): Config
 
     /**
-     * 这一档现在**能不能进场景表** —— 停用的那一份、或开了「按下即执行」的键都不行。
+     * 这一档现在**能不能进场景表** —— 停用的那一份不行。
      *
      *  判据放在这里而不是各页面自己拼：两个页面（单键 / 组合）读的必须是同一句，
      *  否则「单键灰了、组合还亮着」这种事迟早出现。
@@ -108,8 +103,6 @@ internal sealed interface BindingTarget {
 
         override fun longPress(cfg: Config): LongPressParams = cfg.key(id)
 
-        override fun sameEventBlocked(cfg: Config): Boolean = cfg.sameEventNow(id)
-
         override fun withLongPress(
             cfg: Config,
             edit: LongPressEdit,
@@ -117,19 +110,10 @@ internal sealed interface BindingTarget {
 
         override fun scenarioBlockedReason(cfg: Config): String? {
             val key = cfg.key(id)
-            return when {
-                !key.enabled -> {
-                    I18n.format(Strings.KEY_DISABLED_ITEM, id.label)
-                }
-
-                //  「按下即执行」时不分档，场景分流没有可判的东西（与执行侧同一处判据）
-                cfg.sameEventNow(id) -> {
-                    I18n.get(Strings.SAME_EVENT_BLOCKED, "已开启「按下即执行」，这颗键不再分档")
-                }
-
-                else -> {
-                    null
-                }
+            return if (key.enabled) {
+                null
+            } else {
+                I18n.format(Strings.KEY_DISABLED_ITEM, id.label)
             }
         }
     }
@@ -155,9 +139,6 @@ internal sealed interface BindingTarget {
         override val comboId: String get() = id
 
         override fun longPress(cfg: Config): LongPressParams? = cfg.combos.firstOrNull { it.id == id }
-
-        //  组合没有「三档同一事件」：它本来就只有短按 / 长按两档，不存在「三档同事件」
-        override fun sameEventBlocked(cfg: Config): Boolean = false
 
         override fun withLongPress(
             cfg: Config,

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SectionTitleClick

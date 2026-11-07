@@ -18,6 +18,7 @@
     <ID>CyclomaticComplexMethod:GestureReceiver.kt$GestureReceiver$private fun handle( keyId: String?, phaseId: String?, repeat: Boolean, sentAt: Long, )</ID>
     <ID>CyclomaticComplexMethod:KeyHooks.kt$KeyHooks$private fun readBroadcast(args: List&lt;Any?&gt;)</ID>
     <ID>CyclomaticComplexMethod:LinkCheck.kt$@Composable internal fun SettingsPage.linkChecks(): List&lt;LinkCheck&gt;</ID>
+    <ID>CyclomaticComplexMethod:LinkCheck.kt$internal fun SettingsPage.blockedReason(): String?</ID>
     <ID>CyclomaticComplexMethod:MiniWindowLauncher.kt$MiniWindowLauncher$fun launchAppInWindow(target: String)</ID>
     <ID>CyclomaticComplexMethod:PageMenuPopup.kt$@Composable private fun SettingsPage.MenuRow( row: MenuEntry.Row, index: Int, optionSize: Int, isFirst: Boolean, isLast: Boolean, /** 浮层是不是真开着（见上面的 `@param`）。 */ interactive: Boolean, /** 整列的手势账本（见 [GestureProbe]）：点击日志要带上「这一段滑了多远」。 */ probe: GestureProbe?, )</ID>
     <ID>CyclomaticComplexMethod:PageText.kt$internal fun SettingsPage.addCommand()</ID>
@@ -31,6 +32,7 @@
     <ID>LongMethod:AppList.kt$internal fun SettingsPage.loadLaunchableApps(includeSystem: Boolean = false): List&lt;LaunchableApp&gt;?</ID>
     <ID>LongMethod:BindingScreen.kt$@Composable internal fun SettingsPage.BindingScreen( pagerState: androidx.compose.foundation.pager.PagerState, enabled: Boolean, /** 点「打开应用」那一格时跳「打开应用」页（新增，见 [Screen.APP_PICKER]）； * 带上是**哪个手势**点的 —— 挑中写哪个手势、没挑就返回回退哪个手势都靠它。 */ onOpenAppPicker: (Gesture) -&gt; Unit, scrollBehavior: ScrollBehavior, )</ID>
     <ID>LongMethod:BindingTile.kt$@Composable internal fun SettingsPage.ActionTile( spec: ActionCatalog.Spec, icon: ImageVector?, selected: Boolean, focused: Boolean, focusRequester: FocusRequester, modifier: Modifier = Modifier, enabled: Boolean = true, /** * 标题下面那行**小字**（空则不画）：内置的「打开应用」格放绑定的应用名、 * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。 */ subtitle: String? = null, onClick: () -&gt; Unit, )</ID>
+    <ID>LongMethod:CommandConditionMenus.kt$@Composable internal fun SettingsPage.BranchConditionMenu( draft: BranchDraft, rules: List&lt;StateRule&gt;, menus: BranchMenuState, tick: () -&gt; Unit, )</ID>
     <ID>LongMethod:CommandMenus.kt$@Composable internal fun SettingsPage.StepPickerPopup( show: Boolean, preciseClick: PreciseClickState, /** `-1` = 挑中的追加为一步；`&gt;= 0` = 挑中的替换这一行（点已添加的步骤时传行号）。 */ replaceIndex: Int = -1, onDismiss: () -&gt; Unit, )</ID>
     <ID>LongMethod:CommandSteps.kt$@Composable internal fun SettingsPage.SerialSteps()</ID>
     <ID>LongMethod:FlexibleAnim.kt$internal fun FlexibleWindowBridge.miniAnimLocal( loader: ClassLoader?, taskId: Int, intent: Intent, )</ID>
@@ -38,8 +40,11 @@
     <ID>LongMethod:HomeHeaderMenu.kt$@Composable internal fun SettingsPage.ResetMenu()</ID>
     <ID>LongMethod:HostChrome.kt$HostChrome$internal fun coverStatusBar( activity: android.app.Activity, color: Int, )</ID>
     <ID>LongMethod:IconInput.kt$@Composable internal fun SettingsPage.IconInputView( icon: ImageVector, value: String, onValueChange: (String) -&gt; Unit, title: String, label: String, modifier: Modifier = Modifier, errorMessage: String = "", enabled: Boolean = true, /** * 多行（textarea）—— 命令正文那一栏用它：一条命令可能很长，多行粘贴也不该被揉成一行。 * * 单行档（命令名）保持原样；两档的排版、图标、清除键、错误行都是同一套，只差行数与换行。 */ multiline: Boolean = false, )</ID>
+    <ID>LongMethod:KeysScreen.kt$@Composable internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior)</ID>
+    <ID>LongMethod:LinkCheck.kt$@Composable internal fun SettingsPage.linkChecks(): List&lt;LinkCheck&gt;</ID>
     <ID>LongMethod:PageMenuPopup.kt$@Composable internal fun SettingsPage.MenuPopup( show: Boolean, preciseClick: PreciseClickState, entries: List&lt;MenuEntry&gt;, onDismiss: () -&gt; Unit, maxHeight: Dp? = null, enableWindowDim: Boolean = false, columnAnchor: PreciseClickState? = null, onLeave: (() -&gt; Unit)? = null, )</ID>
     <ID>LongMethod:PageMenuPopup.kt$@Composable private fun SettingsPage.MenuRow( row: MenuEntry.Row, index: Int, optionSize: Int, isFirst: Boolean, isLast: Boolean, /** 浮层是不是真开着（见上面的 `@param`）。 */ interactive: Boolean, /** 整列的手势账本（见 [GestureProbe]）：点击日志要带上「这一段滑了多远」。 */ probe: GestureProbe?, )</ID>
+    <ID>LongMethod:PagePicker.kt$@Composable internal fun PickerRow( label: String, selected: Boolean, onClick: () -&gt; Unit, enabled: Boolean = true, icon: ImageVector? = null, )</ID>
     <ID>LongMethod:ProbeOps.kt$internal fun ProbeChannel.dress( loader: ClassLoader, intent: Intent, )</ID>
     <ID>LongMethod:SettingsPageDebug.kt$internal fun SettingsPage.onDebugCommand(intent: android.content.Intent)</ID>
     <ID>LongMethod:SettingsPageHooks.kt$SettingsPageHooks$fun install( module: XposedModule, loader: ClassLoader, )</ID>
@@ -48,9 +53,13 @@
     <ID>LongParameterList:BindingTile.kt$( spec: ActionCatalog.Spec, icon: ImageVector?, selected: Boolean, focused: Boolean, focusRequester: FocusRequester, modifier: Modifier = Modifier, enabled: Boolean = true, /** * 标题下面那行**小字**（空则不画）：内置的「打开应用」格放绑定的应用名、 * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。 */ subtitle: String? = null, onClick: () -&gt; Unit, )</ID>
     <ID>LongParameterList:FlexibleWindowBridge.kt$FlexibleWindowBridge.MiniAnimParams$( val startRect: android.graphics.Rect, val finishRect: android.graphics.Rect, val startScale: Float, val finishScale: Float, val startAlpha: Float, val finishAlpha: Float, val durationMs: Long, )</ID>
     <ID>LongParameterList:IconInput.kt$( icon: ImageVector, value: String, onValueChange: (String) -&gt; Unit, title: String, label: String, modifier: Modifier = Modifier, errorMessage: String = "", enabled: Boolean = true, /** * 多行（textarea）—— 命令正文那一栏用它：一条命令可能很长，多行粘贴也不该被揉成一行。 * * 单行档（命令名）保持原样；两档的排版、图标、清除键、错误行都是同一套，只差行数与换行。 */ multiline: Boolean = false, )</ID>
+    <ID>LongParameterList:KeysAsk.kt$KeysAsk$( kind: Kind, keys: Set&lt;String&gt;, combos: Set&lt;String&gt; = emptySet(), extraKeys: Set&lt;String&gt; = emptySet(), extraCombos: Set&lt;String&gt; = emptySet(), slot: String = "keys_toggle", )</ID>
+    <ID>LongParameterList:KeysList.kt$( cfg: Config, pickedKeys: Set&lt;String&gt;, pickedCombos: Set&lt;String&gt;, extraKeys: Set&lt;String&gt;, extraCombos: Set&lt;String&gt;, enable: Boolean, slot: String, )</ID>
+    <ID>LongParameterList:KeysScreen.kt$( show: Boolean, count: Int, cascadeCombos: Int, builtinPicked: Boolean = false, onDismiss: () -&gt; Unit, onConfirm: () -&gt; Unit, )</ID>
     <ID>LongParameterList:PageConfirmDialog.kt$( show: Boolean, title: String, summary: String? = null, /** 动作项文案（「重置」/「删除」…）。 */ action: String, positiveDanger: Boolean = true, onDismiss: () -&gt; Unit, onConfirm: () -&gt; Unit, )</ID>
     <ID>LongParameterList:PageMenuPopup.kt$( row: MenuEntry.Row, index: Int, optionSize: Int, isFirst: Boolean, isLast: Boolean, /** 浮层是不是真开着（见上面的 `@param`）。 */ interactive: Boolean, /** 整列的手势账本（见 [GestureProbe]）：点击日志要带上「这一段滑了多远」。 */ probe: GestureProbe?, )</ID>
     <ID>LongParameterList:PageMenuPopup.kt$( show: Boolean, preciseClick: PreciseClickState, entries: List&lt;MenuEntry&gt;, onDismiss: () -&gt; Unit, maxHeight: Dp? = null, enableWindowDim: Boolean = false, columnAnchor: PreciseClickState? = null, onLeave: (() -&gt; Unit)? = null, )</ID>
+    <ID>LongParameterList:PagePicker.kt$@Suppress("LongParameterList") @JvmName("SinglePickerDialogWithOptions") @Composable internal fun SettingsPage.SinglePickerDialog( show: Boolean, title: String, options: List&lt;PickerOption&gt;, selectedIndex: Int, onDismiss: () -&gt; Unit, onPick: (Int) -&gt; Unit, )</ID>
     <ID>LongParameterList:TileWidgets.kt$( icon: ImageVector, description: String, enabled: Boolean = true, error: Boolean = false, tint: Color? = null, onClick: () -&gt; Unit, )</ID>
     <ID>LoopWithTooManyJumpStatements:CustomCommandRunner.kt$CustomCommandRunner$while</ID>
     <ID>LoopWithTooManyJumpStatements:FileObfuscation.kt$FileObfuscation$for</ID>
@@ -61,6 +70,7 @@
     <ID>LoopWithTooManyJumpStatements:SliderRow.kt$while</ID>
     <ID>LoopWithTooManyJumpStatements:SystemContext.kt$SystemContext$for</ID>
     <ID>MatchingDeclarationName:CommandText.kt$StepLine</ID>
+    <ID>MatchingDeclarationName:PagePicker.kt$PickerOption</ID>
     <ID>NestedBlockDepth:KeyHooks.kt$KeyHooks$private fun readBroadcast(args: List&lt;Any?&gt;)</ID>
     <ID>NestedBlockDepth:SideKeyInterceptor.kt$SideKeyInterceptor$private fun feedDetector( id: KeyId, point: Framework.InterceptionPoint, keyEvent: KeyEvent, keyConfig: KeyConfig, ): Boolean</ID>
     <ID>NestedBlockDepth:SystemActionButtonConfig.kt$SystemActionButtonConfig$fun readAll(context: Context): List&lt;Row&gt;?</ID>
@@ -75,6 +85,7 @@
     <ID>ReturnCount:FlexibleSwitchToMini.kt$internal fun FlexibleWindowBridge.switchToMiniLocal( loader: ClassLoader?, taskId: Int, requestedBounds: android.graphics.Rect?, requestedScale: Float?, )</ID>
     <ID>ReturnCount:GestureReceiver.kt$GestureReceiver$private fun handle( keyId: String?, phaseId: String?, repeat: Boolean, sentAt: Long, )</ID>
     <ID>ReturnCount:KeyInjector.kt$KeyInjector$private fun build(loader: ClassLoader): Handle?</ID>
+    <ID>ReturnCount:KeysList.kt$internal fun SettingsPage.togglePickedEnabled(): Boolean</ID>
     <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$fun launchAppInWindow(target: String)</ID>
     <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$fun putForegroundInMiniWindow(collapsed: Boolean = false)</ID>
     <ID>ReturnCount:MiniWindowLauncher.kt$MiniWindowLauncher$internal fun canEnterMiniWindow(taskId: Int): Boolean</ID>
@@ -85,6 +96,7 @@
     <ID>ReturnCount:ProbeCall.kt$internal fun ProbeChannel.coerce( args: List&lt;String&gt;, types: Array&lt;Class&lt;*&gt;&gt;, ): Array&lt;Any?&gt;?</ID>
     <ID>ReturnCount:StatusBarBridge.kt$StatusBarBridge$private fun toggleRecentsLocal(loader: ClassLoader?)</ID>
     <ID>ReturnCount:SystemActionButtonConfig.kt$SystemActionButtonConfig$fun readAll(context: Context): List&lt;Row&gt;?</ID>
+    <ID>SpreadOperator:HostWarmup.kt$HostWarmup$(am, *args)</ID>
     <ID>SpreadOperator:KeyInjector.kt$KeyInjector$( h.ctor, *when (h.argc) { 10 -&gt; arrayOf&lt;Any?&gt;(now, now, action, keyCode, 0, 0, VIRTUAL_KEYBOARD, 0, 0, SOURCE_KEYBOARD) 6 -&gt; arrayOf&lt;Any?&gt;(now, now, action, keyCode, 0, 0) else -&gt; arrayOf&lt;Any?&gt;(now, now, action, keyCode, 0) }, )</ID>
     <ID>SpreadOperator:ProbeCall.kt$(null, *args)</ID>
     <ID>SpreadOperator:ProbeCall.kt$(null, *converted)</ID>
@@ -108,18 +120,17 @@
     <ID>SwallowedException:SideKeyGestureHooks.kt$SideKeyGestureHooks$e: Throwable</ID>
     <ID>SwallowedException:SystemActionButtonConfig.kt$SystemActionButtonConfig$e: Throwable</ID>
     <ID>TooManyFunctions:ActionCatalog.kt$ActionCatalog</ID>
+    <ID>TooManyFunctions:AppPickerState.kt$AppPickerState</ID>
+    <ID>TooManyFunctions:ComboActions.kt$com.lookie.opluskey.ui.screen.combo.ComboActions.kt</ID>
     <ID>TooManyFunctions:CommandLibrary.kt$CommandLibrary</ID>
+    <ID>TooManyFunctions:FlashlightController.kt$FlashlightController</ID>
     <ID>TooManyFunctions:GestureReceiver.kt$GestureReceiver</ID>
     <ID>TooManyFunctions:HostChrome.kt$HostChrome</ID>
+    <ID>TooManyFunctions:KeysList.kt$com.lookie.opluskey.ui.screen.combo.KeysList.kt</ID>
     <ID>TooManyFunctions:MiniWindowLauncher.kt$MiniWindowLauncher</ID>
     <ID>TooManyFunctions:ProbeCall.kt$com.lookie.opluskey.inject.ProbeCall.kt</ID>
     <ID>TooManyFunctions:Reflect.kt$Reflect</ID>
     <ID>TooManyFunctions:SettingsPage.kt$SettingsPage</ID>
     <ID>TooManyFunctions:XLog.kt$XLog</ID>
-    <ID>LongMethod:PagePicker.kt$@Composable internal fun PickerRow( label: String, selected: Boolean, onClick: () -&gt; Unit, enabled: Boolean = true, icon: ImageVector? = null, )</ID>
-    <ID>LongMethod:CommandConditionMenus.kt$@Composable internal fun SettingsPage.BranchConditionMenu( draft: BranchDraft, rules: List&lt;StateRule&gt;, menus: BranchMenuState, tick: () -&gt; Unit, )</ID>
-    <ID>MatchingDeclarationName:PagePicker.kt$PickerOption</ID>
-    <ID>TooManyFunctions:AppPickerState.kt$AppPickerState</ID>
-    <ID>LongParameterList:PagePicker.kt$@Suppress("LongParameterList") @JvmName("SinglePickerDialogWithOptions") @Composable internal fun SettingsPage.SinglePickerDialog( show: Boolean, title: String, options: List&lt;PickerOption&gt;, selectedIndex: Int, onDismiss: () -&gt; Unit, onPick: (Int) -&gt; Unit, )</ID>
   </CurrentIssues>
 </SmellBaseline>

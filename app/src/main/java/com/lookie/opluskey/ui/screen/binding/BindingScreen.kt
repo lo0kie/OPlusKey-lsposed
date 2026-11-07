@@ -13,6 +13,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.Screen
@@ -157,14 +158,15 @@ internal fun SettingsPage.BindingScreen(
     }
 }
 
-/** 进「自定义命令」页的浮动操作按钮。
+/**
+ * 进「自定义命令」页的浮动操作按钮 —— 「按键绑定」页与「组合键编辑」页**共用这一颗**。
  *
  *  **不跟整页的禁用态一起灰掉**（用户口径）：这一颗进的是「自定义命令」页 —— 那一页管的是
  *  命令库，不挂在某颗键的绑定上，主开关关着、或停在收集来的键上时它照样有意义。
  *  灰着却还留着（或灰着又拦点击）比直接放着更难解释。
  */
 @Composable
-private fun BoxScope.BindingFab(
+internal fun BoxScope.BindingFab(
     visible: Boolean,
     onClick: () -> Unit,
 ) {

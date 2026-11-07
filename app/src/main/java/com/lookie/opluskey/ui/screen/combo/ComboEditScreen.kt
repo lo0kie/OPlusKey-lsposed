@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.screen.combo
 
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
@@ -11,16 +12,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.rememberFabVisibleOnScroll
+import com.lookie.opluskey.ui.screen.binding.BindingFab
 import com.lookie.opluskey.ui.screen.binding.BindingList
 import com.lookie.opluskey.ui.screen.binding.BindingPageState
 import com.lookie.opluskey.ui.screen.binding.BindingPickers
 import com.lookie.opluskey.ui.screen.binding.BindingScroll
-import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.openAppPickerForControl
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
+import com.lookie.opluskey.ui.tickNow
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
 // 「组合键」编辑页 —— 从列表点某一行进来。
@@ -77,16 +81,28 @@ internal fun SettingsPage.ComboEditScreen(
     //  （那一页的档位是 `branchGesture`，由「按键绑定」页的 pager 写，这里得自己喂一次）。
     LaunchedEffect(pager.currentPage) { ComboEditState.page = pager.currentPage }
 
-    HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
-        //  内容与「按键绑定」页**完全同一份**（`BindingList`）：场景入口、设置卡、网格、
-        //  命令网格、焦点圈、入口浮层都在那边。这一页只负责「换成组合这一档」——
-        //  两页各写一遍时，行序与闸门迟早对不上（用户口径：按键与组合键功能完全一样）。
-        BindingList(
-            target = BindingTarget.Combo(combo.id, gestures[page]),
-            page = BindingPageState(enabled = enabled, active = pager.currentPage == page),
-            pickers = BindingPickers { t, stop -> openAppPickerForControl(t, stop) },
-            onCreateCommand = onCreateCommand,
-            scroll = BindingScroll(scrollBehavior, scrolls[page], bandBlock),
+    Box(Modifier.fillMaxSize()) {
+        HorizontalPager(state = pager, modifier = Modifier.fillMaxSize()) { page ->
+            //  内容与「按键绑定」页**完全同一份**（`BindingList`）：场景入口、设置卡、网格、
+            //  命令网格、焦点圈、入口浮层都在那边。这一页只负责「换成组合这一档」——
+            //  两页各写一遍时，行序与闸门迟早对不上（用户口径：按键与组合键功能完全一样）。
+            BindingList(
+                target = BindingTarget.Combo(combo.id, gestures[page]),
+                page = BindingPageState(enabled = enabled, active = pager.currentPage == page),
+                pickers = BindingPickers { t, stop -> openAppPickerForControl(t, stop) },
+                onCreateCommand = onCreateCommand,
+                scroll = BindingScroll(scrollBehavior, scrolls[page], bandBlock),
+            )
+        }
+
+        //  与「按键绑定」页同一颗 FAB、同一个落点：组合一样能把自己存下的命令绑上去 ——
+        //  那一页有、这一页没有时，「功能完全一样」这句话在界面上是假的。
+        BindingFab(
+            visible = rememberFabVisibleOnScroll(scrolls[pager.currentPage]),
+            onClick = {
+                tickNow()
+                onCreateCommand()
+            },
         )
     }
 }

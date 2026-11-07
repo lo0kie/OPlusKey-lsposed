@@ -65,11 +65,15 @@ internal fun SettingsPage.ComboSettingsCard(enabled: Boolean) {
  *  **写的是公共那一份**：判定在「还不知道会组成哪一组」的时候就发生了（按下第一颗键那一刻），
  *  所以它只能是一份全局值。公共页与组合的「独立设置」页**共用这一支**——
  *  两个入口、同一行、同一个落点（用户在那两处找到的是同一件事）。
+ *
+ *  @param disabledHint 灰着被点一下时的说法。公共页那一头 `enabled` 就是整页闸门 ⇒ 给 `null`
+ *    （用页面那句）；独立设置页那一头还会被「使用独立设置」挡住 ⇒ 要说清该先打开哪一项。
  */
 @Composable
 internal fun SettingsPage.ComboWindowRow(
     position: CardListPosition,
     enabled: Boolean,
+    disabledHint: String? = null,
 ) {
     SliderRow(
         position = position,
@@ -87,6 +91,7 @@ internal fun SettingsPage.ComboWindowRow(
                 //  10ms 一档：20~300 之间 29 档，够细也不至于挪一格要半天
                 step = 10,
                 enabled = enabled,
+                disabledHint = disabledHint,
                 //  行尾写「80 ms」—— 这一行问的就是「等多久」，不写数看不出来
                 valueText = { "$it ms" },
             ),

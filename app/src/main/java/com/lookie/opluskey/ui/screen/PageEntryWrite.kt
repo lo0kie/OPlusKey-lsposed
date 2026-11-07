@@ -7,12 +7,12 @@ import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.withLongPress
+import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.replaceStep
-import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.binding.pick
 import com.lookie.opluskey.ui.screen.command.writeBranchCommand
 import com.lookie.opluskey.ui.screen.command.writeBranchCondition

@@ -14,7 +14,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsSplit
-import io.github.lyxnx.compose.ui.tablericons.outline.Bolt
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandAlipay
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
@@ -752,12 +751,6 @@ internal object PageIcons {
      *  语义正好反了。
      */
     val IgnoreDouble: ImageVector get() = TablerIcons.Outline.EyeCancel
-
-    /**
-     * 「三档同一事件」行的行首 —— `Bolt`（闪电）：按下立即执行、不等双击窗口与长按阈值。
-     *  在这一行上「立刻」正是它的语义（与 [IgnoreDouble] 那条注释是同一个字形的两个方向）。
-     */
-    val Immediate: ImageVector get() = TablerIcons.Outline.Bolt
 
     /** 模块重启 —— `Reload`（回转箭头 + 竖线），读作「重新来一遍」。 */
     val ModuleRestart: ImageVector get() = TablerIcons.Outline.Reload

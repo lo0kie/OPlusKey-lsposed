@@ -84,9 +84,6 @@ object ConfigFields {
     const val VIBRATE_EXTRA = "vibrate"
     const val INSTANT_SINGLE_EXTRA = "instant_single"
 
-    /** 「三档同一事件」—— 三档绑同一个动作的那颗键按下即执行，不再等双击与长按（全局一份）。 */
-    const val SAME_EVENT_EXTRA = "same_event"
-
     /**
      * 「这颗键用自己那套公共项」的总开关（`KeyConfig.useOwnSettings`），以及它底下那两项。
      *
@@ -254,16 +251,6 @@ object ConfigFields {
     val F_INSTANT_SINGLE = Field(INSTANT_SINGLE_EXTRA, Kind.Bool(KeyConfig.DEFAULT_INSTANT_SINGLE))
 
     /**
-     * 「三档同一事件」—— **每颗键各一份**（`KeyConfig.sameEvent`）：开着时这颗键按下即执行、
-     * 不等双击窗口与长按阈值。
-     *
-     *  它必须在 [KEY_FIELDS] 里：判定在注入侧，而注入侧拿不到配置文件、只有广播
-     *  （见 `ConfigBroadcast`）。原先它被定义成全局字段却没进 [GLOBAL_FIELDS]，于是从未被写进
-     *  广播 —— 注入侧永远读到默认值，表现就是「开关打开了按下去却没有变化」。
-     */
-    val F_SAME_EVENT = Field(SAME_EVENT_EXTRA, Kind.Bool(false))
-
-    /**
      * **这颗键要不要用自己那套公共项**（`KeyConfig.useOwnSettings`）—— 总开关，默认关。
      *
      *  关着：走公共设置（接口选择 / 执行时提示 …），这三行在按键设置页置灰；
@@ -321,7 +308,6 @@ object ConfigFields {
             F_REPEAT_VIBRATE,
             F_DOUBLE_CLICK_MS,
             F_INSTANT_SINGLE,
-            F_SAME_EVENT,
             F_OWN_SETTINGS,
             F_KEY_COLOR_OS_API,
             F_KEY_VIBRATE,

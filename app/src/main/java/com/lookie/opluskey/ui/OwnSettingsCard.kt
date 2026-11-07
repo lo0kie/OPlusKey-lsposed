@@ -13,7 +13,6 @@ import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.ui.model.PageIcons
-import io.github.suqi8.coui.kmp.basic.CardListPosition
 
 /**
  * 「按键单独设置」那张卡 —— **单键与组合键共用这一张**。
@@ -80,65 +79,119 @@ private fun SettingsPage.ownSettingRows(
     fun edit(transform: (OwnSettingsValues) -> OwnSettingsValues) = onEdit(transform(owner.values()))
 
     val rowsEnabled = enabled && owner.useOwnSettings
+    //  灰着时点一下该说的话：整页闸门关着 ⇒ `null`（用整页那句：主开关 / 链路 / 只读）；
+    //  整页没事、只是这颗总开关没开 ⇒ 说清该先打开哪一项。
+    val ownHint =
+        if (enabled && !owner.useOwnSettings) {
+            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开「使用独立设置」")
+        } else {
+            null
+        }
     return buildList {
-        add(
-            CardRow.Switch(
-                title = I18n.get(Strings.SETTING_USE_OWN, "使用独立设置"),
-                summaryOn = I18n.get(Strings.SETTING_USE_OWN_ON, "接口、振动、提示分别设置"),
-                summaryOff = I18n.get(Strings.SETTING_USE_OWN_OFF, "接口、振动、提示跟随公共设置"),
-                icon = PageIcons.SettingsCog,
-                checked = owner.useOwnSettings,
-                enabled = enabled,
-            ) { on ->
-                edit { v -> v.copy(useOwn = on) }
-            },
-        )
-        add(
-            CardRow.Switch(
-                title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
-                summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
-                summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
-                icon = PageIcons.ColorOsLink,
-                checked = owner.colorOsApi,
-                enabled = rowsEnabled,
-            ) {
-                edit { v -> v.copy(colorOsApi = it) }
-            },
-        )
-        add(
-            CardRow.Switch(
-                title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
-                summaryOn = I18n.get(Strings.HOME_VIBRATE_DESC_ON, "每次执行动作振动一次"),
-                summaryOff = I18n.get(Strings.HOME_VIBRATE_DESC_OFF, "执行动作时不振动"),
-                icon = PageIcons.Vibrate,
-                checked = owner.vibrate,
-                enabled = rowsEnabled,
-            ) {
-                edit { v -> v.copy(vibrate = it) }
-            },
-        )
-        // 振动强度只在振动开着时出现 —— 关掉振动还摆一根强度滑杆，
-        //  等于让人去调一个当前不起作用的东西（与公共页那一行同一条口径）。
-        add(
-            CardRow.Custom(visible = owner.vibrate) { position ->
-                OwnStrengthRow(
-                    position = position,
-                    level = owner.vibrateStrength,
-                    enabled = rowsEnabled,
-                ) { level ->
-                    edit { v -> v.copy(vibrateStrength = level) }
-                }
-            },
-        )
-        addAll(toastRows(owner, rowsEnabled, ::edit, onEditTemplate))
+        addAll(commonRows(owner, enabled, rowsEnabled, ownHint, ::edit))
+        add(strengthRow(owner, rowsEnabled, ownHint, ::edit))
+        addAll(toastRows(owner, rowsEnabled, ownHint, ::edit, onEditTemplate))
     }
 }
+
+/**
+ * 前三个开关：**总开关自己** + 接口 + 振动。
+ *
+ *  总开关吃 [enabled]（页面闸门），另两个吃 [rowsEnabled]（闸门 **且** 总开关开着）——
+ *  这三个摆在一起才看得出「谁管谁」。
+ */
+@Composable
+private fun SettingsPage.commonRows(
+    owner: OwnSettings,
+    enabled: Boolean,
+    rowsEnabled: Boolean,
+    ownHint: String?,
+    edit: ((OwnSettingsValues) -> OwnSettingsValues) -> Unit,
+): List<CardRow> =
+    listOf(
+        CardRow.Switch(
+            title = I18n.get(Strings.SETTING_USE_OWN, "使用独立设置"),
+            summaryOn = I18n.get(Strings.SETTING_USE_OWN_ON, "接口、振动、提示分别设置"),
+            summaryOff = I18n.get(Strings.SETTING_USE_OWN_OFF, "接口、振动、提示跟随公共设置"),
+            //  与「启用按键绑定」那一行同一颗图标：两者都是「这一个开关决定下面那一组算不算数」
+            icon = PageIcons.MasterSwitch,
+            checked = owner.useOwnSettings,
+            enabled = enabled,
+        ) { on ->
+            edit { v -> v.copy(useOwn = on) }
+        },
+        CardRow.Switch(
+            title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
+            summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
+            summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
+            icon = PageIcons.ColorOsLink,
+            checked = owner.colorOsApi,
+            enabled = rowsEnabled,
+            disabledHint = ownHint,
+        ) {
+            edit { v -> v.copy(colorOsApi = it) }
+        },
+        CardRow.Switch(
+            title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
+            summaryOn = I18n.get(Strings.HOME_VIBRATE_DESC_ON, "每次执行动作振动一次"),
+            summaryOff = I18n.get(Strings.HOME_VIBRATE_DESC_OFF, "执行动作时不振动"),
+            icon = PageIcons.Vibrate,
+            checked = owner.vibrate,
+            enabled = rowsEnabled,
+            disabledHint = ownHint,
+        ) {
+            edit { v -> v.copy(vibrate = it) }
+        },
+    )
+
+/**
+ * 振动强度那一行 —— 只在振动开着时出现（关掉振动还摆一根强度滑杆，
+ * 等于让人去调一个当前不起作用的东西；与公共页那一行同一条口径）。
+ *
+ * 规格与公共页那一行同一套（三档、行首随档换字形、行尾写「弱 / 中 / 强」）。
+ *
+ *  @param hint 灰着被点一下时的说法 —— 交给 `SliderSpec.disabledHint`（投递在 [SliderRow]
+ *   那一层，所有滑杆共用一条通道）；`null` = 整页闸门关着，用页面那句。
+ */
+@Composable
+private fun SettingsPage.strengthRow(
+    owner: OwnSettings,
+    rowsEnabled: Boolean,
+    hint: String?,
+    edit: ((OwnSettingsValues) -> OwnSettingsValues) -> Unit,
+): CardRow =
+    CardRow.Custom(visible = owner.vibrate) { position ->
+        SliderRow(
+            position = position,
+            spec =
+                SliderSpec(
+                    title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
+                    summary = I18n.get(Strings.HOME_VIBRATE_STRENGTH_DESC, "命令触发时振动的力度"),
+                    icon = PageIcons.vibrateLevel(owner.vibrateStrength),
+                    min = GlobalConfig.VIBRATE_WEAK,
+                    max = GlobalConfig.VIBRATE_STRONG,
+                    value = owner.vibrateStrength,
+                    default = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
+                    step = 1,
+                    enabled = rowsEnabled,
+                    disabledHint = hint,
+                    valueText = { strengthLabel(it) },
+                    keyPoints = null,
+                ),
+        ) { level ->
+            edit { v -> v.copy(vibrateStrength = level) }
+            //  滑杆要「写盘成没成」：失败时它把滑块拨回原值。这里是同步落盘，
+            //  `edit` 那条已经把结果交给 `write` 了 —— 没有失败路径可报，恒 true。
+            true
+        }
+    }
 
 /** 「执行时提示 + 文案」那两行 —— 文案只在提示开着时出现。 */
 @Composable
 private fun SettingsPage.toastRows(
     owner: OwnSettings,
     rowsEnabled: Boolean,
+    ownHint: String?,
     edit: ((OwnSettingsValues) -> OwnSettingsValues) -> Unit,
     onEditTemplate: () -> Unit,
 ): List<CardRow> =
@@ -150,6 +203,7 @@ private fun SettingsPage.toastRows(
             icon = PageIcons.CommandToast,
             checked = owner.toastOnRun,
             enabled = rowsEnabled,
+            disabledHint = ownHint,
         ) {
             edit { v -> v.copy(toastOnRun = it) }
         },
@@ -160,6 +214,7 @@ private fun SettingsPage.toastRows(
             icon = PageIcons.ToastTemplate,
             arrow = true,
             enabled = rowsEnabled,
+            disabledHint = ownHint,
             visible = owner.toastOnRun,
             onClick = onEditTemplate,
         ),
@@ -191,38 +246,6 @@ internal fun OwnSettings.values(): OwnSettingsValues =
         toastOnRun = toastOnRun,
         toastTemplate = toastTemplate,
     )
-
-/** 振动强度那根滑杆 —— 与公共页那一行同一套规格（三档、行首数字、行尾说法）。 */
-@Composable
-private fun SettingsPage.OwnStrengthRow(
-    position: CardListPosition,
-    level: Int,
-    enabled: Boolean,
-    onCommit: (Int) -> Unit,
-) {
-    SliderRow(
-        position = position,
-        spec =
-            SliderSpec(
-                title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
-                summary = I18n.get(Strings.HOME_VIBRATE_STRENGTH_DESC, "命令触发时振动的力度"),
-                icon = PageIcons.vibrateLevel(level),
-                min = GlobalConfig.VIBRATE_WEAK,
-                max = GlobalConfig.VIBRATE_STRONG,
-                value = level,
-                default = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
-                step = 1,
-                enabled = enabled,
-                valueText = { strengthLabel(it) },
-                keyPoints = null,
-            ),
-    ) { level ->
-        onCommit(level)
-        //  滑杆要「写盘成没成」：失败时它把滑块拨回原值。这里是同步落盘，
-        //  `edit` 那条已经把结果交给 `write` 了 —— 没有失败路径可报，恒 true。
-        true
-    }
-}
 
 /** 三档强度的说法（弱 / 中 / 强）—— 与公共页同一个映射，越界落到「中」。 */
 private fun strengthLabel(level: Int): String =

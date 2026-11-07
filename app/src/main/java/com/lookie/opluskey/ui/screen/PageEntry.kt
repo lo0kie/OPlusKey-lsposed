@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalDensity
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.LocalHeaderBoxHeight
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -25,7 +26,6 @@ import com.lookie.opluskey.ui.screen.about.AboutScreen
 import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingScreen
-import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.binding.KeySettingsScreen
 import com.lookie.opluskey.ui.screen.combo.ComboEditScreen
 import com.lookie.opluskey.ui.screen.combo.KeysScreen
@@ -212,7 +212,7 @@ private fun SettingsPage.PageBody(
             CommandScreen(scrollBehavior, pagers.commands)
         }
 
-        // 「按键设置」：**这一颗键**的全部设置（三档同一事件 + 三档各自参数）。
+        // 「按键设置」：**这一档**对公共项的覆盖（接口 / 振动 / 提示，组合另有无操作与等待）。
         //  闸门与「按键绑定」页同一套：主开关 + 链路 + 只读，另加这颗键自己的 `enabled`
         //  —— 停用的键也能进来改参数（改完再启用是常见顺序），但页面会整片灰。
         Screen.KEY_SETTINGS -> {
