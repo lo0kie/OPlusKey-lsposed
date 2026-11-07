@@ -1,11 +1,20 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「提示怎么弹」与「点不动时说哪句」—— 控件层拿不到页面实例，这两条通道都从上面传。
 
@@ -77,5 +86,38 @@ internal fun DisabledHint(
         val latest = rememberUpdatedState(text)
         val onClick: () -> Unit = remember(say) { { say(latest.value) } }
         CompositionLocalProvider(LocalDisabledClick provides onClick, content = content)
+    }
+}
+
+/**
+ * 行尾那半句「已停用」——**场景列表与按键列表共用这一份**。
+ *
+ *  「这一项现在不生效」在两处是同一件事，字号 / 颜色 / 与右侧那颗图标的间距必须一样；
+ *  各写一遍的结果是两页的同一句话看起来不是一回事。`RuleStateHint` 里 OFF 那一档也走它。
+ */
+@Composable
+internal fun DisabledStateText() {
+    Text(
+        I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用"),
+        style = COUITheme.textStyles.footnote1,
+        color = COUITheme.colorScheme.onSurfaceVariantActions,
+        modifier = Modifier.padding(end = 6.dp),
+    )
+}
+
+/**
+ * 行尾那一格：**「已停用」+ 箭头** —— 场景卡、按键列表、组合按键列表三处共用。
+ *
+ *  为什么要收成一份：`CardRow.Item` 的行尾**只有一格**（`trailing` 非空时 `arrow` 就不画），
+ *  所以「状态 + 箭头」必须自己拼一个 `Row` 塞进 `trailing`。这条规矩三处各写一遍的话，
+ *  迟早有一处忘了画箭头（真机上就是这样：填了 `trailing`，箭头整列消失）。
+ *
+ *  @see DisabledStateText 只画那半句话（编辑态里它旁边跟的是勾选框，不是箭头）
+ */
+@Composable
+internal fun DisabledStateWithArrow() {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        DisabledStateText()
+        RowEndIcon()
     }
 }

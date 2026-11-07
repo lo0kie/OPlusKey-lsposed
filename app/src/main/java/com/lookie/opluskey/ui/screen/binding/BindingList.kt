@@ -10,30 +10,25 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.Dp
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SECTION_TITLE_PAD_TOP
-import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.screen.command.branchScenarioNotice
-import com.lookie.opluskey.ui.state.KeyWatchState
+import com.lookie.opluskey.ui.scenarioEntry
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
 // 「按键绑定」页 —— 一页 = 一个手势档。
 //
 // 这一页原来是一个 666 行的函数（派生值、焦点账本、方向键派发、两张网格、设置卡、入口菜单全在里面）。
-// 现在按「状态 / 格子 / 设置卡 / 纵向顺序」分到五个文件：
+// 现在按「状态 / 格子 / 纵向顺序」分开：
 //   · 本文件               —— 参数、三条 effect、滚动骨架；
 //   · `BindingGridState.kt` —— 焦点账本 + 点击 / 确认键的派发入口 + 方向键处理器；
 //   · `BindingGrids.kt`     —— 内置网格 / 自定义命令网格 / 入口菜单；
-//   · `BindingSettings.kt` / `InstantSingleCard.kt` / `LongRepeatCard.kt` —— 三档各一张设置卡；
-//   · `BindingSections.kt`  —— 纵向顺序（哪一段之间该给间距）。
+//   · `BindingSections.kt`  —— 纵向顺序（哪一段之间该给间距）；
+//   · `KeySettingsScreen.kt` —— **按键级**设置那一页（那颗键的全部参数），从顶栏设置键进。
+//  三张设置卡（`BindingSettings.kt` / `InstantSingleCard.kt` / `LongRepeatCard.kt`）现在由
+//  那一页调用 —— 它们不再挂在本页三个手势 tab 里（调一颗键的手感不该翻三个 tab）。
 
 /** 选择器入口回调（应用控制 / 磁贴）—— 带上「哪一格」与「打开还是结束」，组合键那一页也用这一份。 */
 internal data class BindingPickers(
@@ -60,17 +55,13 @@ internal data class BindingPickers(
  */
 @Composable
 internal fun SettingsPage.BindingList(
-    g: Gesture,
+    target: BindingTarget,
     page: BindingPageState,
     pickers: BindingPickers,
     onCreateCommand: () -> Unit,
     scroll: BindingScroll,
 ) {
-    val st =
-        rememberBindingGridState(
-            BindingTarget.Key(KeyWatchState.editing(configState.config.value), g),
-            pickers.onAppControl,
-        )
+    val st = rememberBindingGridState(target, pickers.onAppControl)
     //  焦点圈跟着选中项走（进场 / 改了绑定都收回来）——
     //  与「组合按键」编辑页共用同一份实现，两页的圈只能有一套行为（见 [BindingGridFocus]）。
     BindingGridFocus(st, page.active, "按键绑定")
@@ -95,10 +86,7 @@ internal fun SettingsPage.BindingList(
     //  这一档的**系统场景入口卡** —— 场景先判、命中就轮不到下面这些绑定，所以这一页要摆一句；
     //  而它同时是这一页进「系统场景」的入口，于是**一条都没配时也留着这一行**
     //  （用户口径「不管有没有都显示」）：只配过才出现的话，没配过的人找不到这个功能。
-    //  有 N 条时说 N 条（只数启用中的），一条都没有时说「没有」—— 两档都是同一句话的位置。
-    val notice =
-        branchScenarioNotice(KeyWatchState.editing(configState.config.value), g)
-            ?: I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE, "当前手势没有添加系统场景")
+    //  说明 / 闸门 / 灰着那句话全在 [scenarioEntry] 里算 —— 组合页调的是同一支。
 
     //  滚动状态用**外面递进来的**那份（三个手势页共用一份）—— 分段控件在 pager 之外，
     //  要靠它算自己该滑到哪儿；预览阶段的方向键接管挂在链尾（见 `rememberBindingKeyHandler`）。
@@ -119,20 +107,14 @@ internal fun SettingsPage.BindingList(
             modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
             rows =
                 listOf(
-                    CardRow.Item(
-                        title = notice,
-                        icon = PageIcons.CommandBranch,
-                        arrow = true,
-                        //  点这一行进「系统场景」的**这一档**（档位先写成眼前这一页，
-                        //  否则那边编的是 pager 停的那一档）。
-                        onClick = {
-                            branchGesture = g.ordinal
-                            navTo(Screen.BRANCHES)
-                        },
-                    ),
+                    //  点这一行进「系统场景」的**这一档**（档位与「为谁编」都由 target 给 ——
+                    //  单键清掉组合目标、组合带上它自己的 id，写成一处就不必两页各记一遍）。
+                    scenarioEntry(target) {
+                        openBranchesFor(target)
+                    },
                 ),
         )
-        BindingGroups(g, page.enabled, st, onCreateCommand)
+        BindingGroups(target, page.enabled, st, onCreateCommand)
     }
 }
 

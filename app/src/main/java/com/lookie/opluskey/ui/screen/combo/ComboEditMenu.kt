@@ -116,6 +116,9 @@ private fun SettingsPage.ComboMenuDialogHost(
     label: String,
     dialogs: ComboMenuDialogs,
 ) {
+    //  启用这一档时若成员键还有停用的，`setComboEnabled` 会先问一句 —— 窗挂在这里
+    //  （与菜单、两个确认窗同一处），三个弹窗共用一份 `KeysAsk` 状态。
+    KeysAskDialog()
     ComboDisableDialog(
         show = dialogs.toggle,
         label = label,

@@ -61,7 +61,20 @@ object ConfigCodec {
      *  25 = `KeyDto` 多了 `long_fire_on_release`（长按「松手才触发」，与连发 / 松手再执行互斥）。
      *  26 = `GlobalDto` 多了 `toast_template`（执行时提示的文案模板，`$key` / `$gesture` / `$action`）。
      *  27 = `ComboDto` 多了 `long_fire_on_release` / `long_release_on` / `long_release`
-     *       （组合键的松手两档：长按松手才触发、松手执行额外动作）。
+     *       （组合键的松手两档：长按松手才触发、松手执行额外动作）；
+     *  28 = `GlobalDto` 多了 `same_event`（三档同一事件：三档绑同一个动作的键按下即执行）。
+     *       28 这个号在真机上已经以**另一种形状**写过盘（`same_event` 当时还在 `KeyDto` / 键段里），
+     *       两种 v28 互不兼容 ⇒ 挪段必须再抬一号，让旧形状走「老文件不校验 md5」那一支；
+     *  29 = `same_event` 从 `KeyDto`（键段）挪到 `GlobalDto`（全局段，`same_event` 不再逐键）。
+     *  30 = `same_event` 从 `GlobalDto` **挪回** `KeyDto`（每颗键自己一份，按键级优先于公共设置）。
+     *       29 那版 `GlobalDto.same_event` 仍留在 DTO 里**只当迁移源**读（`ConfigDto.toConfig` 拿它
+     *       灌给每一颗键），但不再写出 —— 所以两种形状的正文必然不同，必须抬号让 29 的文件走
+     *       「老文件不校验 md5」那一支。
+     *  31 = `KeyDto` / `ComboDto` 各多了 **「按键单独设置」那五项**（`use_own_settings` 与
+     *       接口 / 振动 / 振动强度 / 提示 / 提示文案）—— 单键与组合共用 `OwnSettings` 契约。
+     *       又一个新字段批次 ⇒ 同一条规矩：不抬号，每一份已有配置都会被判成读不懂。
+     *  32 = `ComboDto` 多了 `passthrough`（这一组自己的「无操作时执行按键命令」，可空 =
+     *       跟随公共设置）。组合专属的一项，不进 `use_own_settings` 那一族。
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -69,7 +82,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 27
+    const val VERSION = 32
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

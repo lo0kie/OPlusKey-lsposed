@@ -387,9 +387,14 @@ internal class SideKeyInterceptor(
                 else -> Decision.Claimed(keyConfig)
             }
         }
+        //  **停用的键一律放行**，内置侧键也不例外：`KeyConfig.enabled = false` 的语义是
+        //  「这颗键不归模块管，行为与原生完全一致」—— 吞掉它等于把键弄失灵。
+        //  侧键放行之后 ROM 会照自己的动作走（本机是打开侧键设置页，那一页被模块替换过）——
+        //  这是原生行为，不是模块弹的。真正要挡的是**别的键**（模块认领的那些）带出来的场景派发，
+        //  那一条判在宿主侧（`SideKeyGestureHooks`：按「这一下是不是模块认领的」判）。
         // 只在按下那一下打：闸门关着时每一按都会走到这里
         if (keyEvent.action == KeyEvent.ACTION_DOWN) {
-            XLog.w("${keyConfig.id.label}（$point）：这颗键没开接管，放行给系统")
+            XLog.w("${keyConfig.id.label}（$point）：这颗键没开接管，放行给系统（走原生行为）")
         }
         return Decision.Pass
     }

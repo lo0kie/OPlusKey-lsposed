@@ -51,6 +51,15 @@ internal class LongPressSpec(
     val delayEnabled: Boolean,
     val blockedReason: String? = null,
     val repeatBlockedReason: String? = null,
+    /**
+     * 「三档同一事件」对**这颗键**生效 —— 此时长按这一档不分档、按下即执行，
+     * 整张卡（时序两行 / 连续触发那一族 / 长按延迟）全部置灰。
+     *
+     *  调用点递的是 `Config.sameEventNow`（公共开关 **且** 这颗键自己的绑定是一件事）——
+     *  **按键级优先**：这颗键绑了不同动作就是明说「我要分档」，公共那一档让位，
+     *  这张卡上的每一项都还生效，不该置灰。
+     */
+    val sameEventBlocked: Boolean = false,
     val onRepeat: (Boolean) -> Unit,
     val onVibrate: (Boolean) -> Unit,
     val onInterval: (Int) -> Boolean,
@@ -79,39 +88,60 @@ private class LongPressGates(
     /** 松手那一档**真的有事可做**（`KeyConfig.releaseBound` 原样递进来）。 */
     val releaseBound: Boolean = spec.releaseBound
 
+    /**
+     * 整张卡此刻能不能点 —— 页面闸门（主开关 / 链路 / 只读）之外**再加一道**
+     *  「三档同一事件」开着（[LongPressSpec.sameEventBlocked]）：那个模式下长按不分档、按下即执行，
+     * 这张卡上的每一项都不再被判定侧读到。
+     */
+    private val live: Boolean = spec.enabled && !spec.sameEventBlocked
+
     /** 「松手才触发」能不能拨 —— 松手那一档占着时它得让位（先关掉那个）。 */
-    val fireEnabled: Boolean = spec.enabled && !releaseBound
+    val fireEnabled: Boolean = live && !releaseBound
 
     /** 「松手执行额外动作」能不能拨 —— 「松手才触发」开着时它没有意义。 */
-    val releaseEnabled: Boolean = spec.enabled && !spec.fireOnRelease
+    val releaseEnabled: Boolean = live && !spec.fireOnRelease
 
-    /** 连续触发那一族能不能点 —— 三种情形：整张卡被闸住 / 「松手才触发」占着时序 / 动作本身不支持连发。 */
+    /** 连续触发那一族能不能点 —— 四种情形：整张卡被闸住 / 同一事件模式 / 「松手才触发」占着时序 / 动作本身不支持连发。 */
     val repeatEnabled: Boolean =
-        spec.enabled && !spec.fireOnRelease && spec.repeatBlockedReason == null
+        live && !spec.fireOnRelease && spec.repeatBlockedReason == null
+
+    /** 「长按延迟」那一行 —— 与 [live] 同一道闸（那一行原先只看 `delayEnabled`）。 */
+    val delayLive: Boolean = spec.delayEnabled && !spec.sameEventBlocked
+
+    /** 「三档同一事件」把这张卡挡住时的说法 —— 三处置灰共用这一句（判据只有这一处）。 */
+    val sameEventHint: String? =
+        if (spec.sameEventBlocked) {
+            I18n.get(Strings.SAME_EVENT_BLOCKED, "已开启「按下即执行」，这颗键不再分档")
+        } else {
+            null
+        }
 
     /** 「松手才触发」灰着被点一下时的说法（`null` = 用整页那句）。 */
     val fireHint: String? =
-        if (spec.enabled && releaseBound) {
-            I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE, "先关掉「松手执行额外动作」")
-        } else {
-            null
-        }
+        sameEventHint
+            ?: if (spec.enabled && releaseBound) {
+                I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE, "先关掉「松手执行额外动作」")
+            } else {
+                null
+            }
 
     /** 「松手执行额外动作」灰着被点一下时的说法。 */
     val releaseHint: String? =
-        if (spec.enabled && spec.fireOnRelease) {
-            I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE, "长按已经改成松手才触发")
-        } else {
-            null
-        }
+        sameEventHint
+            ?: if (spec.enabled && spec.fireOnRelease) {
+                I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE, "长按已经改成松手才触发")
+            } else {
+                null
+            }
 
     /**
-     * 连续触发那一族的副标题 / 置灰原因 —— 有三个来源，按「越靠前越该先看到」排：整张卡的原因、
-     * 「松手才触发」、动作本身不支持连发（[LongPressSpec.repeatBlockedReason]）。
+     * 连续触发那一族的副标题 / 置灰原因 —— 四个来源，按「越靠前越该先看到」排：同一事件模式、
+     * 整张卡的原因、「松手才触发」、动作本身不支持连发（[LongPressSpec.repeatBlockedReason]）。
      * 「松手执行额外动作」**不在**其中：它与连续触发不冲突（见 [LongPressGates] 的类注释）。
      */
     val repeatBlocked: String? =
-        spec.blockedReason
+        sameEventHint
+            ?: spec.blockedReason
             ?: when {
                 spec.fireOnRelease -> {
                     I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_REPEAT, "松手才触发，连续触发不生效")
@@ -146,7 +176,7 @@ internal fun SettingsPage.LongPressSettingsCard(spec: LongPressSpec) {
                 addAll(repeatRows(spec, gates))
                 add(
                     CardRow.Custom { position ->
-                        LongPressDelayRow(position, spec.pressMs, spec.delayEnabled, spec.onPressMs)
+                        LongPressDelayRow(position, spec.pressMs, gates.delayLive, gates.sameEventHint, spec.onPressMs)
                     },
                 )
             },
@@ -302,6 +332,7 @@ private fun SettingsPage.LongPressDelayRow(
     position: CardListPosition,
     value: Int,
     enabled: Boolean,
+    disabledReason: String?,
     onCommit: (Int) -> Boolean,
 ) {
     SliderRow(
@@ -309,7 +340,11 @@ private fun SettingsPage.LongPressDelayRow(
         spec =
             SliderSpec(
                 title = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_TITLE, "长按延迟"),
-                summary = I18n.get(Strings.BINDING_LONG_PRESS_DELAY_DESC, "多久算长按，比它短算单击"),
+                //  置灰时摘要换成**为什么灰**（`SliderSpec` 没有 `disabledHint` 这条通道，
+                //  而那一声明是别的页共用的公共件）：读不到原因的行，等于一个拨不动的滑杆。
+                summary =
+                    disabledReason
+                        ?: I18n.get(Strings.BINDING_LONG_PRESS_DELAY_DESC, "多久算长按，比它短算单击"),
                 icon = PageIcons.DelayHold,
                 min = KeyConfig.MIN_LONG_PRESS_MS,
                 max = KeyConfig.MAX_LONG_PRESS_MS,

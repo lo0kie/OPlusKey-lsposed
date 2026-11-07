@@ -99,6 +99,25 @@ object Strings {
      */
     const val BINDING_INSTANT_SINGLE_OFF = "binding.instant_single_off"
     const val BINDING_INSTANT_SINGLE_ON = "binding.instant_single_on"
+
+    /**
+     * 「三档同一事件」的开关与两态说明 —— 「按键设置」页「手势判定」那一节里的一行。
+     *
+     *  说明写**结果**：开着 = 按下即执行（不等双击窗口与长按阈值）；关着 = 三档各自按自己的时序判。
+     *  这是一项**公共**设置：只对三档绑同一件事的键生效，绑了不同动作的键按键级优先、照常分档
+     *  （判据 `Config.sameEventNow`）。
+     */
+    const val SETTING_SAME_EVENT = "setting.same_event"
+    const val BINDING_SAME_EVENT_ON = "binding.same_event_on"
+    const val BINDING_SAME_EVENT_OFF = "binding.same_event_off"
+
+    /**
+     * 「三档同一事件」对这颗键生效时，那几张设置卡为什么全灰 —— 置灰行被点一下时说的那一句。
+     *
+     *  与 [BINDING_SAME_EVENT_ON] 分开：那一句说的是**这个模式做什么**，这一句说的是
+     *  **这一档为什么改不了**，两处都要，不能拿一句顶两处。
+     */
+    const val SAME_EVENT_BLOCKED = "binding.same_event_blocked"
     const val BINDING_LONG_PRESS_DELAY_DESC = "binding.long_press_delay_desc"
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
 
@@ -174,14 +193,63 @@ object Strings {
     /** 删完的回执 —— 「已删除 2 颗按键」。 */
     const val KEYS_DELETED = "keys.deleted"
 
+    /** 编辑态那颗开关按钮：这一下把勾中的项**统一启用**（`%d` = 项数）。 */
+    const val KEYS_TOGGLE_ON = "keys.toggle_on"
+
+    /** 同上，这一下是**统一停用**。 */
+    const val KEYS_TOGGLE_OFF = "keys.toggle_off"
+
+    /** 启用一颗键时那一问的标题：「同时启用组合按键？」。 */
+    const val KEYS_ENABLE_COMBOS_TITLE = "keys.enable_combos_title"
+
+    /** 同一问的正文：`%d` = 含这颗键、现在关着的组合数。 */
+    const val KEYS_ENABLE_COMBOS_BODY = "keys.enable_combos_body"
+
+    /** 「不启用」—— 那一问的否定项（不用「取消」：两种回答都是在说接着做什么）。 */
+    const val KEYS_NOT_ENABLE = "keys.not_enable"
+
+    /** 停用键时的连带回执：`%1$d` = 停用项数，`%2$d` = 一并停用的组合数。 */
+    const val KEYS_TOGGLE_OFF_CASCADE = "keys.toggle_off_cascade"
+
+    /** 停用键时那一问的标题：「同时停用组合按键？」。 */
+    const val KEYS_DISABLE_CASCADE_TITLE = "keys.disable_cascade_title"
+
+    /** 同一问的正文：`%d` = 会被连带停用的组合数。 */
+    const val KEYS_DISABLE_CASCADE_BODY = "keys.disable_cascade_body"
+
+    /** 启用组合时那一问的标题：它成员的键还关着。 */
+    const val KEYS_ENABLE_KEYS_TITLE = "keys.enable_keys_title"
+
+    /** 同一问的正文：`%d` = 需要一起启用的键数。 */
+    const val KEYS_ENABLE_KEYS_BODY = "keys.enable_keys_body"
+
+    /** 那一问答「不启用」之后的回执：这组组合保持停用（成员的键没开，开了也跑不起来）。 */
+    const val KEYS_COMBO_NEEDS_KEYS = "keys.combo_needs_keys"
+
+    /** 开关按钮的无障碍文案：这一下是**启用**。 */
+    const val KEYS_ENABLE = "keys.enable"
+
+    /** 开关按钮的无障碍文案：这一下是**停用**。 */
+    const val KEYS_DISABLE = "keys.disable"
+
     /** 确认窗正文里「连带删掉几个组合键」那一句（带个数）—— 只在真有组合被带走时才出现。 */
     const val KEYS_DELETE_COMBOS = "keys.delete_combos"
+
+    /** 勾里含内置侧键时那句「它会从这一批里剔除」（它删不掉，见 `KeysScreen` 的确认窗）。 */
+    const val KEYS_DELETE_BUILTIN = "keys.delete_builtin"
 
     /** 内置侧键在编辑态下的说明 —— 它删不掉。 */
     const val KEYS_BUILTIN_KEEP = "keys.builtin_keep"
 
     /** 编辑态里「添加按键 / 添加组合按键」两行被禁用时的说明 —— 编辑态在删、不在加。 */
     const val KEYS_EDIT_NO_ADD = "keys.edit_no_add"
+
+    /**
+     * 编辑态顶栏那颗「全选」的无障碍文案 —— 两档：还没全选时是 [KEYS_SELECT_ALL]，
+     * 已经全选时是 [KEYS_DESELECT_ALL]（同一颗按钮，按一下反过来）。
+     */
+    const val KEYS_SELECT_ALL = "keys.select_all"
+    const val KEYS_DESELECT_ALL = "keys.deselect_all"
 
     /**
      * 编辑态里按返回：确认窗的标题 / 正文 / 动作。
@@ -991,9 +1059,22 @@ object Strings {
     const val MORE_ABOUT_AUTHOR = "more.about_author"
     const val MORE_ABOUT_FEEDBACK = "more.about_feedback"
 
-    /** 「按键设置」页（标题与首页「按键操作」卡那一行共用）与它里面那节「接口选择」。 */
+    /** 「公共设置」页（标题与首页「按键操作」卡那一行共用）与它里面那节「接口选择」。 */
     const val GENERAL_TITLE = "general.title"
     const val GENERAL_SECTION_INTERFACE = "general.section_interface"
+
+    /**
+     * 「按键设置」页 —— **这一档**（一颗键 / 一组组合）对公共项的覆盖。
+     *
+     *  与 [GENERAL_TITLE] 分开：那一页是**公共**那份（所有档共用的默认），这一页是覆盖。
+     */
+    const val KEY_SETTINGS_TITLE = "key_settings.title"
+
+    /** 那一页里的小标题与「使用独立设置」那颗总开关。 */
+    const val KEY_SETTINGS_SECTION = "key_settings.section"
+    const val SETTING_USE_OWN = "key_settings.use_own"
+    const val SETTING_USE_OWN_ON = "key_settings.use_own_on"
+    const val SETTING_USE_OWN_OFF = "key_settings.use_own_off"
 
     /** 首页「按键设置」那一行的摘要。 */
     const val HOME_GENERAL_DESC = "home.general_desc"

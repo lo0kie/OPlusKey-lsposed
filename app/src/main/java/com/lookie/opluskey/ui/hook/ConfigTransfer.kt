@@ -378,6 +378,16 @@ internal object ConfigTransfer {
                         disclaimerAccepted = previousConfig.disclaimerAccepted,
                         commandDisclaimerAccepted = previousConfig.commandDisclaimerAccepted,
                     )
+                //  **组合的「启用」还得与成员键的实际状态对齐**：上面那段只合并了键的开关，
+                //  文件里带着的「这一组启用、成员键在本机是关的」于是原样进来了。不归一的话
+                //  这一组会显示成停用，却在别的键被开回来时自己活过来（判定侧 `comboOff` 要求两者同时成立）。
+                val normalized =
+                    merged.copy(
+                        combos =
+                            merged.combos.map { combo ->
+                                if (combo.enabled && merged.comboOff(combo)) combo.copy(enabled = false) else combo
+                            },
+                    )
                 //  **导入分两段**：读进来的内容先按本机状态合并好，暂存到页面级状态，弹出选择器
                 //  让用户挑「盖到哪一份 / 新建一份」—— 不再像以前那样直接「插在最末」。
                 //  真正写盘在用户点了选择器里的目标之后（见 `ImportTargetDialog.confirmImportTarget`）。
@@ -388,7 +398,7 @@ internal object ConfigTransfer {
                 //  命令名去重这条闸原本在 `saveCommands` 里，导入不经过它，所以自己过一遍
                 //  （同理：`cmd:<名字>` 只命中第一条）
                 val commands = dedupeByName(parsed.commands)
-                page.pendingImport = PendingImport(merged, commands, name)
+                page.pendingImport = PendingImport(normalized, commands, name)
                 XLog.w("导入配置：校验通过，等用户挑目标（${commands.size} 条命令）")
             }
         }

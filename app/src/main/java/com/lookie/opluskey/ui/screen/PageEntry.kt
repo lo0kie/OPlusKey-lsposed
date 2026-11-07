@@ -26,6 +26,7 @@ import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
 import com.lookie.opluskey.ui.screen.binding.BindingScreen
 import com.lookie.opluskey.ui.screen.binding.BindingTarget
+import com.lookie.opluskey.ui.screen.binding.KeySettingsScreen
 import com.lookie.opluskey.ui.screen.combo.ComboEditScreen
 import com.lookie.opluskey.ui.screen.combo.KeysScreen
 import com.lookie.opluskey.ui.screen.command.BranchScreen
@@ -209,6 +210,16 @@ private fun SettingsPage.PageBody(
 
         Screen.COMMANDS -> {
             CommandScreen(scrollBehavior, pagers.commands)
+        }
+
+        // 「按键设置」：**这一颗键**的全部设置（三档同一事件 + 三档各自参数）。
+        //  闸门与「按键绑定」页同一套：主开关 + 链路 + 只读，另加这颗键自己的 `enabled`
+        //  —— 停用的键也能进来改参数（改完再启用是常见顺序），但页面会整片灰。
+        Screen.KEY_SETTINGS -> {
+            KeySettingsScreen(
+                scrollBehavior = scrollBehavior,
+                pageEnabled = pageWritable(),
+            )
         }
 
         // 「条件执行」：与「自定义命令」页同一套表单骨架，只是固定成 BRANCH 那一档，

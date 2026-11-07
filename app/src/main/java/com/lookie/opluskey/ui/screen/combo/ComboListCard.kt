@@ -34,6 +34,8 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.DisabledStateText
+import com.lookie.opluskey.ui.DisabledStateWithArrow
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
@@ -170,39 +172,52 @@ private fun SettingsPage.comboRow(
     val editing = KeysEditState.editing
     val picked = KeysEditState.pickedCombos
     val dead = comboHasMissingKey(cfg, combo)
+    //  **跑不起来**：自己关着，或成员里任一键被停用（判据在 `Config.comboOff`，按成员集合算，
+    //  多按键组合同一条规则）。行尾那半句与行首那颗禁用图标都读它。
+    val off = cfg.comboOff(combo)
     return CardRow.Item(
         title = comboLabel(cfg, combo, bracketed = true),
         //  标题按**两列**画（见 [ComboPairTitle]）：拼成一整串时，分隔符落在哪由前一个名字的
         //  长短决定，一列下来每行都错开（真机反馈「单独某个名字过长时全部都没对齐」）。
         titleContent = { ComboPairTitle(cfg, combo, writable, widths) },
-        //  副标题说**这一档开没开**（用户口径：与首页「按键列表」一致，两档都写一句，
-        //  列表才不会一行高一行矮，而且「停用」不再只靠颜色区分）。
-        //  动作摘要（`短按：手电筒 · 长按：…`）仍然不写：一列下来全是小字、每行还都不
-        //  一样长，扫一眼只能看见一片灰 —— 两档动作进页面看。
-        summary = stateSummary(combo.enabled),
+        //  副标题**不写**（用户口径：启停状态挪到行尾、与按键列表同一套）。动作摘要也不写：
+        //  一列下来全是小字、每行还都不一样长，扫一眼只能看见一片灰 —— 两档动作进页面看。
         //  行首用**第几组**的数字图标（1~9，与 `MAX_COMBOS` 同一档，用户口径）：一列下来能数清现在有几组，
         //  与首页「按键」卡那几颗自定义键同一套写法（`menuKeyNumber`）。
         //  停用的那一档换成禁用图标（与按键列表同一颗、同一个位置）；成员被删掉的那一档
         //  同样是禁用图标（判定那边凑不齐），数字就看不到了 —— 那一组本来就废了。
         icon =
-            if (dead || !combo.enabled) {
+            if (dead || off) {
                 PageIcons.Cancel
             } else {
                 PageIcons.menuKeyNumber(index)
             },
         enabled = writable,
-        //  编辑态：行尾换多选框（勾选框自己不挂点击 —— 整行都是它的点击区）
+        //  行尾**只有一格**（`CardRow` 里 `trailing` 优先于 `arrow`）：编辑态是勾选框，平时停用
+        //  那一档用与场景卡共用的「已停用 + 箭头」（`DisabledStateWithArrow`），全启用给 `null`
+        //  让 `arrow` 那条默认路径画（用户口径「启停态和箭头共存」）。
         trailing =
-            if (editing) {
-                {
-                    Checkbox(
-                        state = if (combo.id in picked) ToggleableState.On else ToggleableState.Off,
-                        onClick = null,
-                        enabled = writable,
-                    )
+            when {
+                editing -> {
+                    {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (off) DisabledStateText()
+                            Checkbox(
+                                state = if (combo.id in picked) ToggleableState.On else ToggleableState.Off,
+                                onClick = null,
+                                enabled = writable,
+                            )
+                        }
+                    }
                 }
-            } else {
-                null
+
+                off -> {
+                    { DisabledStateWithArrow() }
+                }
+
+                else -> {
+                    null
+                }
             },
         arrow = !editing,
         onClick = {

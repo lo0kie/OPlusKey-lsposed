@@ -12,6 +12,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.keyBrackets
 import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.state.KeysAsk
 import com.lookie.opluskey.ui.write
 
 // 「组合键」那两页共用的读写 —— 列表页（加 / 删 / 摘要）与编辑页（标题上那行成员名）都走这里。
@@ -100,7 +101,7 @@ internal fun SettingsPage.addCombo(keys: List<KeyId>): Boolean {
     //  序号只增不减：删掉中间一档之后再加，不会复用那个 id（复用会让「在编哪一档」指到别人身上）
     val seq =
         (cfg.combos.mapNotNull { it.id.removePrefix(ComboKey.ID_PREFIX).toIntOrNull() }.maxOrNull() ?: 0) + 1
-    val combo = ComboKey(id = ComboKey.idOf(seq), keys = ids)
+    val combo = ComboKey(id = ComboKey.idOf(seq), keys = ids, enabled = comboEnableByDefault(cfg, ids))
     val label = comboLabel(cfg, combo)
     val result = write(cfg.copy(combos = cfg.combos + combo), "combo_add=${combo.id}")
     // 与 [writeAndNotice] 同一套口径：只在真的落盘并广播出去时报一句；失败时 [write] 自己已经报过。
@@ -137,6 +138,18 @@ internal fun SettingsPage.removeCombo(id: String): Boolean {
 }
 
 /**
+ * 新加的这一档**默认跟成员键的实际状态**：成员里还有停用的键，它从一开始就是停用。
+ *
+ *  否则会造出「配置说启用、列表说停用」的一档 —— 等那颗键被开回来时这一组还会自己活过来。
+ *  选键弹窗里那颗键的启停态不明显（它只列名字），所以这里不弹窗问，直接按事实落位：
+ *  想开这一组，用户会去那颗键上开，或者在这一组的 ⋮ 菜单里点启用（那时才问「要不要把键也开」）。
+ */
+private fun comboEnableByDefault(
+    cfg: Config,
+    ids: List<String>,
+): Boolean = ids.all { cfg.keyIdOf(it)?.let { kid -> cfg.key(kid).enabled } == true }
+
+/**
  * 停用 / 启用一档组合 —— 与单键那一支（`setKeyEnabledFromMenu`）同一套行为。
  *
  *  写的是这一档自己的 [ComboKey.enabled]，与模块总闸（`GlobalConfig.enabled`）是两层：
@@ -153,15 +166,58 @@ internal fun SettingsPage.setComboEnabled(
     val cfg = configState.config.value
     val combo = cfg.combos.firstOrNull { it.id == id } ?: return
     if (combo.enabled == on) return
-    XLog.w("组合键：${if (on) "启用" else "停用"} $id（${comboLabel(cfg, combo)}）")
-    //  回执与「已添加 / 已删除」同一个口径：成员名各带自己的括号，整串不再套引号
+    //  **回执与「已添加 / 已删除」同一个口径**：成员名各带自己的括号，整串不再套引号
     val label = comboLabel(cfg, combo, bracketed = true)
+    //  **启用之前先看成员键**（与按键列表那颗开关、绑定页 ⋯ 菜单同一套口径）：
+    //  直接写 `enabled=true` 会留下一份「配置说启用、列表说停用」的状态 ——
+    //  等那颗键被开回来时这一组还会自己活过来，用户看到的是「我没动它，它自己开了」。
+    if (on && !comboEnableAllowed(cfg, combo, label)) return
+    XLog.w("组合键：${if (on) "启用" else "停用"} $id（$label）")
     if (updateCombo(id, "enabled=${if (on) 1 else 0}") { it.copy(enabled = on) }) {
         hint(
             I18n.format(if (on) Strings.COMBO_ENABLED else Strings.COMBO_DISABLED, label),
             slot = HINT_SLOT_COMBO,
         )
     }
+}
+
+/**
+ * 启用一档组合之前的闸 —— `true` = 放行。
+ *
+ *  两档拦法：
+ *  1) **成员键已经不在配置里**（手改 / 导入带来的）：这一组本来就废了，直接拒；
+ *     这里**不能**走「一起启用」那一问 —— 那颗键根本不存在，答应了也只会留下一个更假的状态。
+ *  2) **成员键里有停用的**：问一句「要不要把键也开」（`KeysAsk`，与按键列表那颗 FAB 共用一个窗）。
+ *     答「否」时这一组保持停用（判定侧 `Config.comboOff` 本来也要求成员全开）。
+ */
+private fun SettingsPage.comboEnableAllowed(
+    cfg: Config,
+    combo: ComboKey,
+    label: String,
+): Boolean {
+    if (combo.keys.any { cfg.keyIdOf(it) == null }) {
+        XLog.w("组合键：${combo.id} 的成员键已不在配置里，不启用（$label）")
+        hint(
+            I18n.get(Strings.KEYS_COMBO_NEEDS_KEYS, "组合里的按键没启用，这组保持停用"),
+            slot = HINT_SLOT_COMBO,
+        )
+        return false
+    }
+    val dead =
+        combo.keys
+            .mapNotNull { cfg.keyIdOf(it) }
+            .filterNot { cfg.key(it).enabled }
+            .map { it.id }
+            .toSet()
+    if (dead.isEmpty()) return true
+    KeysAsk.ask(
+        KeysAsk.Kind.ENABLE,
+        keys = emptySet(),
+        combos = setOf(combo.id),
+        extraKeys = dead,
+        slot = HINT_SLOT_COMBO,
+    )
+    return false
 }
 
 /** 组合里有没有已经删掉的键（列表那一行据此标一句）。 */

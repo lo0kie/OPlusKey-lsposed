@@ -14,6 +14,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsSplit
+import io.github.lyxnx.compose.ui.tablericons.outline.Bolt
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandAlipay
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
@@ -92,6 +93,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
+import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Server
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings
@@ -690,6 +692,14 @@ internal object PageIcons {
     val Confirm: ImageVector get() = TablerIcons.Outline.Check
 
     /**
+     * 「按键功能」页编辑态顶栏那颗「全选」—— `select-all`（四角括号 + 一条斜线）。
+     *
+     *  与 [Confirm] 分开：全选是「一次勾满一列」，不是「这一趟确认完了」——
+     *  用同一颗对勾会把两种意思混成一个。
+     */
+    val SelectAll: ImageVector get() = TablerIcons.Outline.SelectAll
+
+    /**
      * 浮层菜单里「这一档就是当前值」的对勾 —— 画在**行首**（选中那一行的图标位换成它）。
      *
      *  以前它在**行尾**（补丁 `0003` 给 `DropdownItem` 开的 `checkIcon` 覆盖口）：那一格是恒画的
@@ -742,6 +752,12 @@ internal object PageIcons {
      *  语义正好反了。
      */
     val IgnoreDouble: ImageVector get() = TablerIcons.Outline.EyeCancel
+
+    /**
+     * 「三档同一事件」行的行首 —— `Bolt`（闪电）：按下立即执行、不等双击窗口与长按阈值。
+     *  在这一行上「立刻」正是它的语义（与 [IgnoreDouble] 那条注释是同一个字形的两个方向）。
+     */
+    val Immediate: ImageVector get() = TablerIcons.Outline.Bolt
 
     /** 模块重启 —— `Reload`（回转箭头 + 竖线），读作「重新来一遍」。 */
     val ModuleRestart: ImageVector get() = TablerIcons.Outline.Reload

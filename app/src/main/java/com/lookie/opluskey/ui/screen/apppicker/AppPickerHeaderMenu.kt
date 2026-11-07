@@ -10,10 +10,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.HEADER_ACTION_GAP
 import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.HeaderMenuButton
 import com.lookie.opluskey.ui.MenuEntry
@@ -70,9 +70,6 @@ internal fun SettingsPage.AppPickerMenu() {
         )
     }
 }
-
-/** 顶栏两颗圆键之间的间距 —— 与首页那排「圆键 + 圆键」同一档，两个圆不贴在一起。 */
-private val HEADER_ACTION_GAP = 8.dp
 
 /**
  * 「以小窗口打开」那颗顶栏开关 —— 点一下拨一档，**当下就决定挑中的应用写成哪个动作**。

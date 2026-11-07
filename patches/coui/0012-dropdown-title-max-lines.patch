@@ -1,0 +1,20 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+index e9bbd80..7810d76 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/Dropdown.kt
+@@ -594,8 +594,13 @@ object DropdownDefaults {
+      */
+     val HintEndPadding: Dp = 4.dp
+ 
+-    /** Title line limit on a row without a summary (COUI DefaultAdapter.setTitle). */
+-    val TitleMaxLines: Int = 3
++    /**
++     * Title line limit on a row without a summary (COUI DefaultAdapter.setTitle).
++     *
++     * Patched: popup rows cap their title at two lines even when no summary is present, so a
++     * long host-supplied label cannot grow the row to three lines.
++     */
++    val TitleMaxLines: Int = 2
+ 
+     /** Title line limit on a row that also shows a summary (COUI DefaultAdapter.setTitle). */
+     val TitleWithSummaryMaxLines: Int = 2

@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -8,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -15,6 +17,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.ui.DisabledStateText
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SettingsPage
@@ -131,14 +134,35 @@ internal fun ConditionTrailing(
     off: Boolean = false,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
+        //  「已停用」优先于「不会执行」：停用的那条不参与顺序扫描，说「不会执行」会指错原因
         if (off) {
-            Text(
-                I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用"),
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceVariantActions,
-                modifier = Modifier.padding(end = 6.dp),
-            )
+            RuleStateHint(RuleState.OFF)
         } else if (dead) {
+            RuleStateHint(RuleState.DEAD)
+        }
+        RowEndIcon(PageIcons.Selector)
+    }
+}
+
+/**
+ * 行尾那半句话 —— 「已停用」（弱色）/「不会执行」（红字）/ 什么都不画。
+ *
+ *  **只有这一份**：条件行与场景小标题行都显示同一种状态（用户口径「场景停用时行尾也要说」），
+ *  两处各写一遍的话，字号 / 颜色 / 与右侧图标的间距迟早会各走各的。
+ */
+@Composable
+internal fun RuleStateHint(state: RuleState) {
+    when (state) {
+        RuleState.NORMAL -> {
+            //  正常那一档什么都不画
+        }
+
+        RuleState.OFF -> {
+            //  与按键列表行尾那半句同一份（见 `DisabledStateText`）
+            DisabledStateText()
+        }
+
+        RuleState.DEAD -> {
             Text(
                 I18n.get(Strings.COMMAND_BRANCH_DEAD, "不会执行"),
                 style = COUITheme.textStyles.footnote1,
@@ -146,7 +170,6 @@ internal fun ConditionTrailing(
                 modifier = Modifier.padding(end = 6.dp),
             )
         }
-        RowEndIcon(PageIcons.Selector)
     }
 }
 
@@ -252,4 +275,20 @@ internal fun SettingsPage.branchToggleRow(
             menus.toggleAt = at
         }
     }
+}
+
+/** 表尾那句注脚 —— 与「自定义命令」页那条权限提示同一个样式（不占卡片、居中、`footnote1`）。 */
+@Composable
+internal fun SettingsPage.BranchDefaultTip() {
+    Text(
+        //  只留这一句，不接「：侧键 - 单击」那截详细 —— 那一档顶栏尾随小标题已经写着
+        text = I18n.get(Strings.COMMAND_BRANCH_DEFAULT, "以上都不成立时，执行按键绑定里的命令"),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 32.dp, end = 32.dp, top = 6.dp),
+        textAlign = TextAlign.Center,
+        style = COUITheme.textStyles.footnote1,
+        color = COUITheme.colorScheme.onSurfaceVariantSummary,
+    )
 }

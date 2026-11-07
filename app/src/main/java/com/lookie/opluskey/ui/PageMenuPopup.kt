@@ -531,8 +531,9 @@ private fun SettingsPage.MenuRow(
             row.disabledHint,
         ) {
             DropdownItem(
-                // 显示文本过一道截断（[ellipsizeMenuTitle]）：库里标题最多三行，长名字会撑宽整张菜单
-                text = ellipsizeMenuTitle(row.title),
+                // 标题交给库折行：无小字 / 带小字都最多两行（`DropdownDefaults.TitleMaxLines`）。
+                //  文字块只占行尾单元格之外的那一段（补丁 0013），折行再长也不会挤掉行尾图标。
+                text = row.title,
                 // 标题下面那行小字（现状说明）；`null` = 单行。库自己管行数（标题 2 行、小字 2 行）
                 summary = row.summary,
                 summaryStyle = summaryStyle,

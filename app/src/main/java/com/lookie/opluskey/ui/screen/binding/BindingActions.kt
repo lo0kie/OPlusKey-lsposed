@@ -20,6 +20,7 @@ import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.model.MODULE_UNAVAILABLE_HINT
 import com.lookie.opluskey.ui.model.stepTitle
 import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.state.KeysAsk
 import com.lookie.opluskey.ui.write
 import com.lookie.opluskey.ui.writeAndNotice
 
@@ -291,8 +292,40 @@ internal fun SettingsPage.setKeyEnabledFromMenu(
     val key = cfg.key(id)
     // 没变就不写：菜单里点一下本来就打着勾的那一档，不该落一次盘、更不该报「已停用」
     if (key.enabled == on) return
+    //  含这颗键的组合（用户口径：与按键列表那颗开关**完全一样**的检查与提示）：
+    //   · 停用 ⇒ 含它的组合一起停，但先弹窗说清有几组；
+    //   · 启用 ⇒ 含它、现在关着的组合不自动开，问一句。
+    val using = cfg.combos.filter { id.id in it.keys }
+    if (on) {
+        val offIds = using.filterNot { it.enabled }.map { it.id }.toSet()
+        if (offIds.isNotEmpty()) {
+            KeysAsk.ask(
+                KeysAsk.Kind.ENABLE,
+                keys = setOf(id.id),
+                extraCombos = offIds,
+                slot = HINT_SLOT_BINDING,
+            )
+            return
+        }
+    } else {
+        val onIds = using.filter { it.enabled }.map { it.id }.toSet()
+        if (onIds.isNotEmpty()) {
+            KeysAsk.ask(
+                KeysAsk.Kind.DISABLE,
+                keys = setOf(id.id),
+                extraCombos = onIds,
+                slot = HINT_SLOT_BINDING,
+            )
+            return
+        }
+    }
+    val cascadeOff = if (on) emptySet() else using.map { it.id }.toSet()
     writeAndNotice(
-        cfg.copy(keys = cfg.keys + (id to key.copy(enabled = on))),
+        cfg.copy(
+            keys = cfg.keys + (id to key.copy(enabled = on)),
+            //  停用这一档：含它的组合一起停（启用那一支在上面问过了，走到这里说明没有要问的）
+            combos = cfg.combos.map { if (it.id in cascadeOff) it.copy(enabled = false) else it },
+        ),
         "key_enabled=${if (on) 1 else 0} key=${id.id}",
         //  整页一个位（[HINT_SLOT_BINDING]）：不按 `what` 的前缀分（那会得到 `key_enabled`，
         //  与这一页别的回执各占一格、又叠起来）。

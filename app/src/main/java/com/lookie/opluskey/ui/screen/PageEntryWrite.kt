@@ -4,6 +4,9 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.LongPressEdit
+import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
@@ -11,16 +14,16 @@ import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.replaceStep
 import com.lookie.opluskey.ui.screen.binding.BindingTarget
 import com.lookie.opluskey.ui.screen.binding.pick
-import com.lookie.opluskey.ui.screen.binding.writeLongRelease
-import com.lookie.opluskey.ui.screen.combo.writeComboLongRelease
 import com.lookie.opluskey.ui.screen.command.writeBranchCommand
 import com.lookie.opluskey.ui.screen.command.writeBranchCondition
 import com.lookie.opluskey.ui.screen.variables.VarManageState
 import com.lookie.opluskey.ui.state.AppPickerState
+import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.PickTarget
 import com.lookie.opluskey.ui.state.PickedDetail
 import com.lookie.opluskey.ui.tickNow
+import com.lookie.opluskey.ui.write
 
 // 「挑中的东西怎么落到配置里」—— 与 `PageEntry.kt` 分开：那边是**铺页面**（每页一份滚动行为、
 // 顶栏与浮层），这里是「写回」三颗（拼好的 token 写哪儿去 / 应用页那颗 FAB / 界面页确认）。
@@ -173,18 +176,28 @@ internal fun SettingsPage.onAppPicked(
 }
 
 /**
- * 「松手执行额外动作」写到哪一位 —— 组合键写 `combo.longRelease`，单键写 `key.longRelease`。
+ * 「松手执行额外动作」写到这一档 —— 单键与组合**只差写到哪张表**，判据在 `BindingTarget` 里。
  *
- *  两个槽位是**两种键**上的字段（组合键有它自己那一份），调用方不该自己判那一下；
- *  抽出来也顺手把 [writeToken] 那一支的圈复杂度压回阈值内。
+ *  之前这里是 `if (comboId != null) writeComboLongRelease(…) else writeLongRelease(…)`：
+ *  两个函数、两张表各写一遍同一件事。现在两条路合成一条，都走 `withLongPress`。
  *
- * @param comboId 这一趟绑的是哪一档组合键（`null` = 单键那一档）
- * @return 写下去没有（`false` = 链路未就绪 / 写盘失败）
+ *  @param comboId 这一趟绑的是哪一档组合键（`null` = 当前在编辑的那颗键）
+ *  @return 写下去没有（`false` = 链路未就绪 / 写盘失败）
  */
 private fun SettingsPage.writeLongReleaseTo(
     comboId: String?,
     action: Action,
-): Boolean = if (comboId != null) writeComboLongRelease(comboId, action) else writeLongRelease(action)
+): Boolean {
+    val cfg = configState.config.value
+    val target =
+        if (comboId != null) {
+            BindingTarget.Combo(comboId, Gesture.LONG)
+        } else {
+            BindingTarget.Key(KeyWatchState.editing(cfg), Gesture.LONG)
+        }
+    return write(target.withLongPress(cfg, LongPressEdit(release = action)), "${target.what}:long_release") !=
+        CommandsSave.Failed
+}
 
 /**
  * 「选择界面」页点确认 —— **只记草稿，不写配置**。

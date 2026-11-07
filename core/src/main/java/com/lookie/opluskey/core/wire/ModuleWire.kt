@@ -202,6 +202,20 @@ object ModuleWire {
     /** [ACTION_HOST_SERVICE_UP] 里带「宿主读到的主开关真值」——页面据此判它是不是读到了真配置。 */
     const val EXTRA_HOST_ENABLED = "host_enabled"
 
+    /**
+     * [ACTION_HOST_SERVICE_UP] 里带「宿主**读得懂**那份配置文件」。
+     *
+     *  这一位与 [EXTRA_HOST_ENABLED] **必须分开**：读不懂时 `read()` 退化成
+     *  `Config.DEFAULT`，它的 `enabled` 也是 false —— 与「用户自己关了主开关」在
+     *  [EXTRA_HOST_ENABLED] 这一位上**完全同形**。只看后者的话，执行侧一个动作都做不出来
+     *  而页面报「主开关已关闭」，把人指去拨一个本来就开着的开关（真机撞过：
+     *  `配置正文与 md5 对不上` → 退回默认 → 所有按键都没反应，自检却全绿）。
+     *
+     *  **缺省按 true 处理**：这一位是本版新加的，对面若是更早的宿主则不带它 —— 那时不该
+     *  凭空报一条「配置读取失败」。
+     */
+    const val EXTRA_HOST_CONFIG_READABLE = "host_config_readable"
+
     /** [ACTION_HOST_SERVICE_UP] 里带「宿主最后一次执行动作是什么时候」（同上，0 = 从未）。 */
     const val EXTRA_HOST_LAST_ACTION_AT = "host_last_action_at"
 

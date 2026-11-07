@@ -158,6 +158,13 @@ internal class GestureDetector(
          */
         @Volatile var pressAt: Long = 0L,
         /**
+         * 「三档同一事件」这一下已经在**按下那一刻**派发过（DOWN 里直接执行）。
+         *
+         *  抬手必须据此提前收尾 —— 否则 `pressAt == 0`（`reset` 清过）会走「孤立抬手」那支
+         *  补判一次单击，一次按压就执行了两个动作。
+         */
+        @Volatile var sameEventFired: Boolean = false,
+        /**
          * 这颗键最近一次「当场判单击」（双击为无操作那条路）的时刻，
          * 用来压掉同一次物理按压被转发两遍造成的重复派发。
          *
@@ -259,6 +266,15 @@ internal class GestureDetector(
     ) {
         val p = pending(id)
 
+        //  「三档同一事件」是**每颗键自己的一位**（`KeyConfig.sameEvent`，随逐键字段广播过来）：
+        //  开着这颗键就按下即执行，不再排长按枪、不再开双击窗。
+        if (config.sameEvent) {
+            p.sameEventFired = true
+            XLog.w("${id.label}：三档同一事件（按下即执行）")
+            dispatch(id, GestureTrigger.Click(1), config, repeat = false)
+            return
+        }
+
         // 窗口内又来一次按下 → 连击链 +1；数到这颗键配的最高档就地派发（双击就是这一档的 n=2）
         if (p.sawFirstRelease && now <= p.doubleWindowAt) {
             val maxClicks = maxOf(2, config.clicksForJudge)
@@ -319,6 +335,13 @@ internal class GestureDetector(
         now: Long,
     ) {
         val p = pending(id)
+        //  「三档同一事件」的那一下已经在按下那一刻执行过：这里只清状态，不再补判 ——
+        //  补判的话一次按压就执行两个动作。
+        if (p.sameEventFired) {
+            p.sameEventFired = false
+            reset(id)
+            return
+        }
         //  **孤立抬手**（只看到 UP、没看到 DOWN）：`pressAt` 只在 `onKeyDown` 里写。
         //  常见来路是「模块在按下之后才装好」或者上一次按压的 DOWN 被别的接管点吞了。
         //  照旧判：用户确实按了这一下，宁可补一次单击，也别让他觉得「按了没反应」；
@@ -456,6 +479,7 @@ internal class GestureDetector(
         p.closedWithoutUp = false
         p.clicks = 0
         p.pressAt = 0L
+        p.sameEventFired = false
     }
 
     private fun scheduleLongPress(

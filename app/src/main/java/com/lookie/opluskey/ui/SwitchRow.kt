@@ -1,5 +1,9 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -13,6 +17,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.preference.SwitchPreference
 import kotlinx.coroutines.delay
 
@@ -114,28 +119,46 @@ internal fun SwitchRow(
         positions[title] = checked
     }
 
-    NoSwitchHaptic {
-        SwitchPreference(
-            title = title,
-            summary = if (checked) summaryOn else summaryOff,
-            checked = shown,
-            onCheckedChange = { on ->
-                if (vibrate) tick()
-                onCheckedChange(on)
-            },
-            cardListPosition = position,
-            startAction = {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = iconColor,
-                    //  与 `CardRow` 那颗行首图标同一档：补上库少给的那 8dp（见 [ROW_START_ICON_GAP]）
-                    modifier = Modifier.padding(end = ROW_START_ICON_GAP),
-                )
-            },
-            // `enabled = false` 由 COUI 负责：标题与副标题走 `disabledColor`、
-            // 行尾开关跟着灰、点击不吃（`Component.kt` 的 `clickableModifier` 只在 enabled 时才挂）。
-            enabled = enabled,
-        )
+    //  置灰那一档**点一下要说话**：COUI 在 `enabled = false` 时把行自己的点击摘了，但**行尾那颗
+    //  开关仍然会吃掉触摸**（它自己带手势），所以挂在父层的 `clickable` 拿不到事件 ——
+    //  实测「点开关没反应、点空白处才有提示」。正确做法是**盖一层**：置灰时在整行之上铺一块
+    //  只吃点击的透明层，命中最上层，这一下就稳定落到提示上。
+    //  `indication = null`：置灰行不该再冒涟漪（它会看着像「其实能点」）。
+    val disabledClick = LocalDisabledClick.current
+    Box(Modifier.fillMaxWidth()) {
+        NoSwitchHaptic {
+            SwitchPreference(
+                title = title,
+                summary = if (checked) summaryOn else summaryOff,
+                checked = shown,
+                onCheckedChange = { on ->
+                    if (vibrate) tick()
+                    onCheckedChange(on)
+                },
+                cardListPosition = position,
+                startAction = {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = iconColor,
+                        //  与 `CardRow` 那颗行首图标同一档：补上库少给的那 8dp（见 [ROW_START_ICON_GAP]）
+                        modifier = Modifier.padding(end = ROW_START_ICON_GAP),
+                    )
+                },
+                // `enabled = false` 由 COUI 负责：标题与副标题走 `disabledColor`、行尾开关跟着灰
+                enabled = enabled,
+            )
+        }
+        if (!enabled && disabledClick != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = disabledClick,
+                    ),
+            )
+        }
     }
 }

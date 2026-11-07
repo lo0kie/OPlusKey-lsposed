@@ -34,21 +34,20 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
 /**
- * 「按键设置」页 —— 从首页「按键操作」卡第二行进来（**首页唯一入口**，见 `HomeKeyOpsCard`）；
- * 「按键功能」页顶栏那颗齿轮也进这一页。
- *
- *  单独成页的原因：那几项（接口选择、振动、执行提示、组合键）是**全局**开关，与「这颗键绑了什么」无关；
- *  摆在首页会把常用的「启用 / 按键操作」两行挤在中间，也不好在同一张卡里解释它们各自管什么。
+ * 「按键设置」页 —— 公共那份，从首页「按键操作」卡第二行与「按键功能」页顶栏那颗齿轮进来；
+ * 「按键绑定」页顶栏那颗设置键进的是**这一档**的「独立设置」（`KEY_SETTINGS`），不是这里。
  *
  *  三节：**接口选择**（走 ColorOS 专属接口还是 AOSP 标准接口）、**按键行为**（振动 / 执行提示）
  *  与**组合按键设置**（无操作时怎么走 / 两颗键之间等多久）。三节吃同一道闸 ——
  *  与首页那几行完全一致（模块总闸 + 链路齐 + 配置可写）。
+ *
+ * ## 与「独立设置」的关系
+ *
+ *  这一页上的都是**默认值**；每颗键（以及每一组组合键）可以在自己的「独立设置」页里
+ *  另设一份，那几项**优先于**这里的 —— 判据只有一处：`Config` 上那五个 `xxxFor(owner)`。
  */
 @Composable
 internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
-    val cfg = configState.config.value
-    // 与首页 `pageEnabled` 同一条判据（含主开关自己）：这几项改的是「执行时怎么动」，
-    //  模块没启用时改了也不会生效，放用户去改只会误导。
     val pageEnabled = pageWritable()
     PageScrollColumn(scrollBehavior = scrollBehavior) {
         // 顶栏叠在内容上，顶部要自己让出（动态值）。

@@ -203,7 +203,7 @@ internal sealed interface MenuEntry {
          *
          *  只写**这一行代表的那件事的现状**（「应用控制 → 打开应用」绑的是哪个应用），
          *  不写「为什么点不动」—— 那是 [disabledHint]，两者别混用：一条是常驻说明，一条是点了才说的话。
-         *  带子标题的行会比单行高，库那边是 `heightIn(min = …)`，字不会被裁。
+         *  带子标题的行会比单行高，库那边是 `heightIn(min = …)`，字不会被裁；标题与小字各最多两行。
          */
         val summary: String? = null,
         /**
@@ -252,24 +252,11 @@ internal sealed interface MenuEntry {
     ) : MenuEntry
 }
 
-/**
- * 菜单行标题的**格数上限** —— 七个汉字（[displayWidth] 折算的 14 格）。
- *
- *  浮层的宽度由最长那一行决定，而库里给标题的行数上限是 `DropdownDefaults.TitleMaxLines`（3 行）：
- *  不截的话，一条长命令名会先把那一行撑成两三行、再把整张菜单拉宽，同一份菜单在不同命令下宽度还不一样。
- *
- *  按**格**算而不是按 `length` 算：`English`（7 字符 / 7 格）本来就放得下，按字符数判会把它砍成
- *  `Engli…`；汉字两格，所以这一档对中文就是「七个字」。
- */
-private const val MENU_TITLE_MAX_WIDTH = 14
-
-/**
- * 菜单行标题的**显示文本**：超过 [MENU_TITLE_MAX_WIDTH] 就从尾部砍掉、补一个省略号。
- *
- * 只改**画出来的那一份** —— 功能不受影响，日志（[MenuRow] 里的点选那一行）仍写全名，
- * 否则截断后的名字在日志里认不出是哪一条命令。
- */
-internal fun ellipsizeMenuTitle(title: String): String = ellipsizeToColumns(title, MENU_TITLE_MAX_WIDTH)
+// 菜单行标题不再按格数预截断 —— 交给库按**两行**折行（`DropdownDefaults.TitleMaxLines`）。
+//
+//  预截断（原来 14 格）会在真正折行前先把长名字切成一行，第二行永远用不上；库的
+//  `ListPopupColumn` 已把面板宽度夹在 `ListPopupDefaults.MaxWidth`（232dp）内，放开后只是让
+//  过长的标题折到第二行、再出省略号，不会把整张菜单拉宽。
 
 /**
  * 浮层行**内容区**的高度 —— 库的行高 `DropdownDefaults.PopupItemMinHeight`（48dp）
