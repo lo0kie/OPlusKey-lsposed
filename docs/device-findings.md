@@ -1880,7 +1880,7 @@ InputReader/InputDispatcher
 2. **`KeyId.acceptedKeyCodes` 补齐 781**：dexdump 证明 780/781/**782** 三个码都进这条方法（781 走
    `pokeUserActivity` + 单击统计）。旧集 `{735, 780, 782}`
    **漏了 781**，若某场景它作为原始码出现会被误判「不是侧键」而放行。
-3. **接管点去重**：`findSideKeyPoints` 用 `LinkedHashSet` 按 `owner` + `Method` 对象 + `kind`
+3. **接管点去重**：`findSideKeyLayers` 用 `LinkedHashSet` 按 `owner` + `Method` 对象 + `kind`
    去重（`InterceptionPoint` 是 data class，相等即这三项相同），防止候选类名重复 / 同方法多入口
    导致的重复安装。同名的**不同** `Method`（重载，或父子类各声明一个）不在这条去重里：
    策略族只有一个名字、没有这个问题；`PM_EXT_ENTRIES` 那一族是「覆盖写法 + 父类实现」两个名字，

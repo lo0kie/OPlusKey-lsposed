@@ -556,6 +556,9 @@ internal class SettingsPage(
                 commandDraft.discard()
                 //  「挑完应用回来要把抽屉支起来」是这一趟的账，命令页走了就该作废
                 picker.cancelResume()
+                //  **列表编辑态也是这一趟的账**：勾着几条命令退出去，回来还留着旧勾选 ——
+                //  下一次进编辑态再点「删除」就把上次勾的那些一起删了（跨次误删）。
+                CommandListEditState.resetForLeave()
             }
 
             Screen.BRANCHES -> {

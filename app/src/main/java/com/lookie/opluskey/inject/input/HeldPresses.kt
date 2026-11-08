@@ -66,9 +66,15 @@ internal class HeldPresses(
             Press(
                 keyConfig,
                 Runnable {
-                    //  被后一次按压顶掉 / 已被组合收走 ⇒ 这一枪作废
-                    if (!held.remove(id, press)) return@Runnable
-                    deliver(id, press)
+                    //  与 [release] 抢同一把锁：摘 `held` 与「读 released」必须是一段临界区。
+                    //  否则松手恰好落在两者中间时，调用方吞掉了那条 UP，而这里已经读过
+                    //  `released = false` 不补 UP —— 单键判定器认为键一直按着，一次单击被判成长按。
+                    synchronized(press) {
+                        //  被后一次按压顶掉 / 已被组合收走 ⇒ 这一枪作废
+                        if (!held.remove(id, press)) return@synchronized
+                        press.dispatching = true
+                        deliver(id, press)
+                    }
                 },
             )
         held[id] = press
@@ -86,8 +92,13 @@ internal class HeldPresses(
      */
     fun release(id: KeyId): Boolean {
         val press = held[id] ?: return false
-        press.released = true
-        return true
+        synchronized(press) {
+            //  补发已经开始了（它读到的是 `released = false`）：这一下交回给调用方按普通 UP 处理。
+            //  这里若返回 true，那条 UP 就被吞掉，而补发那一侧不会替它补 —— 见那个 Runnable 的注释。
+            if (press.dispatching) return false
+            press.released = true
+            return true
+        }
     }
 
     /** 丢掉压着的那一颗（`null` = 全部丢掉）—— 组合接管了它，或配置变了不该再补旧的那一下。 */
@@ -121,5 +132,8 @@ internal class HeldPresses(
         /** 手指已经松了（抬手早于窗口）—— 到点补发时要连着 UP 一起补。 */
         @Volatile
         var released: Boolean = false
+
+        /** 补发已经开始（锁内读写，见 [hold] 那一枪与 [release]）。 */
+        var dispatching: Boolean = false
     }
 }

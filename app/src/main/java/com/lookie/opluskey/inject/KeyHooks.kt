@@ -3,6 +3,7 @@ package com.lookie.opluskey.inject
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.os.PowerManager
 import com.lookie.opluskey.bridge.FlexibleWindowBridge
@@ -59,6 +60,22 @@ internal object KeyHooks {
     private val handler: Handler = Handler(Looper.getMainLooper())
 
     /**
+     * 注入侧自己的**单线程**执行器 —— 「替宿主干活」那一类动作（状态栏 / 小窗 / 按键注入 /
+     * 导出日志 / 弹提示）都在这儿跑，**不占 `system_server` 主线程**。
+     *
+     *  为什么必须离开主线程：这几条里全是 binder 往返（`StatusBarBridge` / `FlexibleWindowBridge` /
+     *  按键注入），对端卡住时调用线程会一直挂着 —— 而 `system_server` 主线程被挂住就是 watchdog
+     *  直接杀进程（整机重启）。判定定时器仍然留在主 looper（[handler]）：那是「按毫秒卡时间」的
+     *  东西，换线程等于换一套时序。
+     *
+     *  为什么是**一条**线程而不是每次开一条：长按连发会把这几条指令连着打进来，单线程排队既保序
+     *  又不会堆线程。它同样满足「不许在 AMS 的广播入口里做这些事」—— 换一条线程就够了。
+     */
+    private val worker: Handler by lazy {
+        Handler(HandlerThread("opluskey-inject").apply { start() }.looper)
+    }
+
+    /**
      * 安装侧键 Hook。
      *
      * 每个接管点独立安装 —— 一个装不上不影响其他。
@@ -87,8 +104,9 @@ internal object KeyHooks {
         //  那段时间按侧键什么都不发生。system_server 里发 startService 不受导出 / 权限限制。
         XLog.guard("排程开机拉起宿主") { HostWarmup.schedule() }
 
-        val points = Framework.findSideKeyPoints(loader)
-        if (points.isEmpty()) {
+        val layers = Framework.findSideKeyLayers(loader)
+        val total = layers.sumOf { it.points.size }
+        if (layers.isEmpty()) {
             XLog.w(
                 "没找到任何侧键接管点 —— 本机 ROM 可能不是 ColorOS，或侧键实现改了名。" +
                     "模块不生效，但不影响系统",
@@ -97,7 +115,7 @@ internal object KeyHooks {
             //  换 ROM 只有侧键方法改名、输入层方法还在时，这里一 return 就连组合拦截也一起不装了，
             //  而日志只会说「侧键没找到」，看起来像整条链路都没救。
             XLog.guard("挂组合键接管点（侧键落空之后）") { installChordHooks(module, loader) }
-            XLog.w("侧键 Hook 0/${points.size} 个接管点 —— 侧键完全不被接管（组合键那条见上一行）")
+            XLog.w("侧键 Hook 0/0 个接管点 —— 侧键完全不被接管（组合键那条见上一行）")
             return
         }
 
@@ -139,7 +157,7 @@ internal object KeyHooks {
         //  没有新事件进来）—— 回调在 AMS 广播 hook 内跑，其内部已包 catch（见 ConfigChannel.read）。
         ConfigChannel.onTakeOverOff = { interceptor.cancelPending() }
 
-        val ok = installPoints(module, points, interceptor)
+        val ok = installLayers(module, layers, interceptor)
         hookCount = ok
         // 输入层的组合键（电源 + 音量）：与侧键那条**分开装** —— 它不参与手势判定，只把 ROM 已经
         //  判好的组合吞掉。装不上时侧键照常工作，各记一行 w。
@@ -148,9 +166,9 @@ internal object KeyHooks {
         // 必须 W 而非 i：注入侧 i 会被 LSPosed 进程级日志级别整档丢掉、release 里更被编译期消除
         // —— 这一行是「装没装上」的唯一分水岭，用 i 打就等于彻底静默。
         if (ok == 0) {
-            XLog.w("侧键 Hook 一个都没装上：0/${points.size} 个接管点 —— 侧键完全不被接管")
+            XLog.w("侧键 Hook 一个都没装上：0/$total 个接管点 —— 侧键完全不被接管")
         } else {
-            XLog.w("侧键 Hook 安装完成：$ok/${points.size} 个接管点")
+            XLog.w("侧键 Hook 安装完成：$ok/$total 个接管点")
         }
     }
 
@@ -260,29 +278,59 @@ internal object KeyHooks {
     }
 
     /**
-     * 逐个挂上接管点，返回**真装上的个数** —— 从 [install] 分出来一支，只为让那一支留在
-     * detekt 的 `LongMethod` 之内（它已经贴着上限）。
+     * 按层安装侧键接管点 —— **某一层装上了就停**。
+     *
+     *  从 [install] 分出来一支，只为让那一支留在 detekt 的 `LongMethod` 之内（它已经贴着上限）；
+     *  返回值是**真装上的个数**。
+     *
+     *  为什么按层：层间是逐层降级，而「装不装得上」要到这一刻才知道（候选类在、方法名对得上，
+     *  但方法 final / 框架拒 hook 都会让 [hookGuarded] 返回 null）。只按查找结果选一档的话，
+     *  第一档全军覆没就无处可退 —— 真机表现是「日志写着找到了接管点，侧键完全不接管」。
+     *
+     *  为什么「装上 1 个」也算成功、不再往下试：两层各装一部分会让同一次按压被喂判定器两遍
+     *  （双击被吃成两次单击、长按枪反复作废）。只有整层 0 个才代表这一档在这台机器上根本不成立。
+     *
+     * @return 装上的接管点个数（0 = 每一层都没装上）
      */
-    private fun installPoints(
+    private fun installLayers(
         module: XposedModule,
-        points: List<Framework.InterceptionPoint>,
+        layers: List<Framework.SideKeyLayer>,
         interceptor: SideKeyInterceptor,
     ): Int {
-        var ok = 0
-        for (point in points) {
-            val handle =
-                module.hookGuarded(point.method) { chain ->
-                    onIntercept(interceptor, point, chain)
+        //  「在这一层里逐个装」写成本地函数：它只被这里用一次，而 `KeyHooks` 的成员函数个数
+        //  已经贴着 detekt 的 `TooManyFunctions` 上限 —— 拆成成员只会让那一格先红。
+        fun installPoints(points: List<Framework.InterceptionPoint>): Int {
+            var ok = 0
+            for (point in points) {
+                val handle =
+                    module.hookGuarded(point.method) { chain ->
+                        onIntercept(interceptor, point, chain)
+                    }
+                if (handle != null) {
+                    ok++
+                    XLog.w(
+                        "已 Hook 侧键接管点：$point" +
+                            "（kind=${point.kind}，参数 ${point.method.parameterTypes.size} 个，" +
+                            //  返回类型一并记：接管分支返回的是 `null`（见 [onIntercept]），
+                            //  它与「按声明类型回填零值」那一条口径不同 —— 真机要看得出这个方法的
+                            //  声明类型是 `int` 还是 `boolean`，才能判那一处要不要改。
+                            "返回 ${point.method.returnType.name}）",
+                    )
                 }
-            if (handle != null) {
-                ok++
-                XLog.w(
-                    "已 Hook 侧键接管点：$point" +
-                        "（kind=${point.kind}，参数 ${point.method.parameterTypes.size} 个）",
-                )
             }
+            return ok
         }
-        return ok
+        for ((index, layer) in layers.withIndex()) {
+            val ok = installPoints(layer.points)
+            if (ok > 0) {
+                if (index > 0) {
+                    XLog.w("侧键接管点退到第 ${index + 1} 档（${layer.label}）：装上 $ok 个")
+                }
+                return ok
+            }
+            XLog.w("${layer.label} 的 ${layer.points.size} 个接管点一个都没装上 ⇒ 试下一档")
+        }
+        return 0
     }
 
     /**
@@ -325,11 +373,13 @@ internal object KeyHooks {
     }
 
     /**
-     * 把一段「只有注入侧才能做」的处理 post 到主线程，并整段兜 catch。
+     * 把一段「只有注入侧才能做」的处理 post 到 [worker]，并整段兜 catch。
      *
      *  **必须 post**：这条回调跑在 AMS 的广播入口里，在里面再做注入 / `sendBroadcast`
      *  等于在广播路径里重入一次（见 [reportStatus] 那条注释）。
-     *  **必须兜 catch**：这一段跑在 `system_server` 主线程上，漏一个异常出去就是整机重启。
+     *  **必须不在主线程**：这些处理是 binder 往返，挂在 `system_server` 主线程上会被 watchdog
+     *  算进卡死（见 [worker] 的注释）。
+     *  **必须兜 catch**：漏一个异常出去就是整机重启。
      *
      * @param subject 日志主语（出事时能看出是哪一件失败了）
      */
@@ -337,7 +387,7 @@ internal object KeyHooks {
         subject: String,
         block: () -> Unit,
     ) {
-        handler.post {
+        worker.post {
             try {
                 block()
             } catch (e: Throwable) {

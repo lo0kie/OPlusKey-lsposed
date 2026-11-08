@@ -48,6 +48,33 @@ internal object NetChannel {
     /** 回包在主线程发 —— 与其它注入侧广播同一条纪律（不在 hooker 体内直接 sendBroadcast）。 */
     private val main = Handler(Looper.getMainLooper())
 
+    /** 排队上限 —— 见 [worker]。 */
+    private const val MAX_PENDING = 4
+
+    /**
+     * 代取请求的执行器 —— **一条线程 + 有界队列**。
+     *
+     *  原先每条请求起一条裸 `Thread`：注入侧没有「进程退出」这一步，宿主连点几次「检查更新」
+     *  就在 `system_server` 里堆下十几条各自占着 socket 与栈的线程，堆着就是堆着。
+     *  单线程也顺带把「同一刻只有一条代取在跑」变成确定行为。
+     *
+     *  队列满了丢最旧的一条：那一条的回包不会来，调用方按超时收场（页面那边本来就有超时与
+     *  重试按钮）—— 比在 AMS 的线程上同步跑（`CallerRuns`）或无限堆（无界队列）都安全。
+     */
+    private val worker: java.util.concurrent.ExecutorService =
+        java.util.concurrent.ThreadPoolExecutor(
+            1,
+            1,
+            0L,
+            java.util.concurrent.TimeUnit.MILLISECONDS,
+            java.util.concurrent.ArrayBlockingQueue<Runnable>(MAX_PENDING),
+            java.util.concurrent.ThreadFactory { r ->
+                Thread(r, "opluskey-net").apply { isDaemon = true }
+            },
+            java.util.concurrent.ThreadPoolExecutor
+                .DiscardOldestPolicy(),
+        )
+
     /**
      * 有没有网络可用 —— 没有就直接回一条「没网」，不去等超时。
      *
@@ -110,37 +137,34 @@ internal object NetChannel {
             reply(loader, id, 0, "", "当前没有网络")
             return
         }
-        Thread(
-            {
-                var status = 0
-                var body = ""
-                var error = ""
-                try {
-                    val found = follow(network, url)
-                    if (found == null) {
-                        error = "重定向无法继续"
-                    } else {
-                        val (conn, code) = found
-                        status = code
-                        try {
-                            val (text, truncated) = readBounded(conn)
-                            body = text
-                            if (truncated) error = "正文超长已截断"
-                        } finally {
-                            conn.disconnect()
-                        }
+        worker.execute {
+            var status = 0
+            var body = ""
+            var error = ""
+            try {
+                val found = follow(network, url)
+                if (found == null) {
+                    error = "重定向无法继续"
+                } else {
+                    val (conn, code) = found
+                    status = code
+                    try {
+                        val (text, truncated) = readBounded(conn)
+                        body = text
+                        if (truncated) error = "正文超长已截断"
+                    } finally {
+                        conn.disconnect()
                     }
-                } catch (e: Throwable) {
-                    error = "${e.javaClass.simpleName}: ${e.message}"
                 }
-                XLog.w(
-                    "网络代取：id=$id status=$status 长度=${body.length}" +
-                        if (error.isEmpty()) "" else " 错误=$error",
-                )
-                reply(loader, id, status, body, error)
-            },
-            "opluskey-net",
-        ).start()
+            } catch (e: Throwable) {
+                error = "${e.javaClass.simpleName}: ${e.message}"
+            }
+            XLog.w(
+                "网络代取：id=$id status=$status 长度=${body.length}" +
+                    if (error.isEmpty()) "" else " 错误=$error",
+            )
+            reply(loader, id, status, body, error)
+        }
     }
 
     /**

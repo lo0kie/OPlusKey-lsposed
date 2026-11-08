@@ -22,7 +22,7 @@ import com.lookie.opluskey.ui.appTargetLabelOf
 internal fun SettingsPage.appPickerChosenTarget(): String? = picker.draft?.target ?: appPickerSelectedTarget()
 
 /**
- * 「选择应用」页大标题下面那一行 —— **这一趟要做什么: 做给谁**（见 `PageHeader.subtitleBelow`）。
+ * 「选择应用」页大标题下面那一行 —— **这一趟要做什么: 做给谁**（见 `PageHeader` 的 `subtitle`）。
  *
  *  ## 前半句
  *

@@ -58,8 +58,8 @@ class KeyId private constructor(
     // 配置里的键名由 ConfigCodec 独占，本类只负责「一颗键有哪些属性」。
 
     companion object {
-        /** 侧键 —— **唯一**的内置键。 */
-        val PLUS = KeyId("plus", "侧键", 735, setOf(735, 780, 781, 782), isCustom = false)
+        /** 侧键 —— **唯一**的内置键；界面上它叫「快捷键」（与页面标题同一个词，见 `key.side`）。 */
+        val PLUS = KeyId("plus", "快捷键", 735, setOf(735, 780, 781, 782), isCustom = false)
 
         /** 编译期就存在的那些键。界面要「内置 + 自定义」全列时用 `Config.allKeys`。 */
         val builtins: List<KeyId> = listOf(PLUS)

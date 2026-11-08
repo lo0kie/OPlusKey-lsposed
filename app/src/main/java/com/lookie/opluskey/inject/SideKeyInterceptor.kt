@@ -14,6 +14,7 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.RomKeyFamilies
 import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.inject.input.ComboDetector
+import com.lookie.opluskey.inject.input.ComboWindows
 import com.lookie.opluskey.inject.input.GestureDetector
 import com.lookie.opluskey.inject.input.HeldPresses
 import io.github.libxposed.api.XposedInterface
@@ -106,9 +107,14 @@ internal class SideKeyInterceptor(
             // 这一组有没有绑定 —— 注入侧手上只有广播来的那份配置（配置文件它读不到），
             //  所以判据收在 `ConfigChannel.comboFor` 一处：没有这一档就交回单键判定器。
             bindingFor = { keys -> ConfigChannel.comboFor(keys) },
-            windowMs = { ConfigChannel.comboWindowMs() },
-            //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
-            joinsCombo = { id -> ConfigChannel.joinsCombo(id) },
+            //  扫的时候按最宽的那一档扫，命中后由「那一组自己的窗口」复核（见 `ComboDetector`）
+            windows =
+                ComboWindows(
+                    scanMs = { ConfigChannel.scanWindowMs() },
+                    forCombo = { combo -> ConfigChannel.windowFor(combo) },
+                    //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
+                    joins = { id -> ConfigChannel.joinsCombo(id) },
+                ),
         )
 
     /**
@@ -493,9 +499,10 @@ internal class SideKeyInterceptor(
                                 return true
                             }
 
-                            //  参与组合但还没凑成：先压一个窗口，看第二颗键来不来
+                            //  参与组合但还没凑成：先压一个窗口，看第二颗键来不来。
+                            //  等多久按**这一颗键**参与的几组里最长的那一档（各组窗口可能不同）
                             ComboDetector.Down.HOLD -> {
-                                held.hold(id, keyConfig, ConfigChannel.comboWindowMs())
+                                held.hold(id, keyConfig, ConfigChannel.holdWindowMsFor(id))
                                 return true
                             }
 

@@ -180,7 +180,7 @@ private fun timingRows(
         listOf(
             CardRow.Switch(
                 title = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE, "松手才触发"),
-                summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_ON, "按到长按时长先不执行，抬手那一刻执行"),
+                summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_ON, "按满时长先不执行，抬手时执行"),
                 summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_OFF, "按到长按时长就立刻执行"),
                 icon = PageIcons.LongFireOnRelease,
                 checked = spec.fireOnRelease,

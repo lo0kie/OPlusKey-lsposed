@@ -216,7 +216,7 @@ internal fun SettingsPage.BranchDeleteDialog(menus: BranchMenuState) {
     ConfirmDialog(
         show = at >= 0,
         title = I18n.get(Strings.DIALOG_DELETE_CONDITION_TITLE, "删除场景"),
-        summary = I18n.get(Strings.DIALOG_DELETE_CONDITION_MESSAGE, "这条场景和它的动作会一起删掉，下面的场景会往上顶一条。"),
+        summary = I18n.get(Strings.DIALOG_DELETE_CONDITION_MESSAGE, "这条场景和它的动作一起删掉。"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { menus.deleteAt = -1 },
         onConfirm = {
@@ -277,7 +277,7 @@ internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
     ConfirmDialog(
         show = target != null,
         title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条场景"),
-        summary = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_MESSAGE, "只删这一条场景，同一行里的其余场景不受影响。"),
+        summary = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_MESSAGE, "只删这一条。"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { menus.deletingCond = null },
         onConfirm = {

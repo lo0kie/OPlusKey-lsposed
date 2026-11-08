@@ -134,7 +134,7 @@ internal fun emptyText(
     term: String,
 ): String =
     when {
-        failed -> I18n.get(Strings.APP_PICKER_ACTIVITY_LOAD_FAILED, "界面列表没读出来，退回上一页再进来试一次")
+        failed -> I18n.get(Strings.APP_PICKER_ACTIVITY_LOAD_FAILED, "列表没读出来，退回再进一次")
 
         all.isNullOrEmpty() -> I18n.get(Strings.APP_PICKER_ACTIVITY_EMPTY, "这个应用没有可从外部打开的界面")
 

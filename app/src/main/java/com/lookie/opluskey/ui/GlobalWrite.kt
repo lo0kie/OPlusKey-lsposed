@@ -84,6 +84,24 @@ internal fun SettingsPage.setLanguage(code: String) {
 }
 
 /**
+ * 切「无操作时执行按键命令」**公共那一档** —— 同一参数还有每组的落点（`ComboKey.passthrough`，
+ * 见 `Config.comboPassthroughFor`：独立设置开着时那一组自己说了算）。
+ *
+ *  回执位与其它组合项一致（`HINT_SLOT_COMBO`）：同一个开关在这两处各拨一下，屏幕上始终是
+ *  那一条在改字，而不是两条叠着。
+ */
+internal fun SettingsPage.setComboPassthrough(on: Boolean) {
+    val cfg = configState.config.value
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(comboPassthrough = on)),
+        "combo_passthrough=${if (on) 1 else 0}",
+        slot = HINT_SLOT_COMBO,
+    ) {
+        switchNotice(I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"), on)
+    }
+}
+
+/**
  * 切「前台转小窗时使用动画」—— 行点击与开关共用这一个入口。
  *
  *  判定侧在 `host/action/MiniWindowLauncher`（宿主进程里执行时现读配置，拨完立刻生效）。

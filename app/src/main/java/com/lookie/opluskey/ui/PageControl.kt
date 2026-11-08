@@ -34,16 +34,32 @@ internal fun SettingsPage.openStockPage() {
 internal fun SettingsPage.restartModule() {
     XLog.w("菜单：重启服务 —— 页面进程与宿主主进程各重来一遍")
     tickNow()
-    val main = hostMainPids()
+    //  **这一趟不能在主线程上做**：`runningAppProcesses` 是一次 binder（整机几百条记录），
+    //  再叠上 `/proc/<pid>/cmdline` **逐个读文件**（这台机器上三百多个进程目录）——
+    //  主线程做完这一圈，用户看到的是「菜单点下去、界面僵住半秒才动」。
+    //  查进程在后台，收尾（提示 / 发请求 / 杀自己）回主线程。
+    Thread(
+        {
+            val main = hostMainPids()
+            val mine = mineProcesses()
+            android.os.Handler(android.os.Looper.getMainLooper()).post { finishRestart(main, mine) }
+        },
+        "opluskey-restart",
+    ).apply { isDaemon = true }.start()
+}
+
+/**
+ * [restartModule] 的收尾 —— 回主线程之后的那一半（提示与状态都要在主线程碰）。
+ *
+ * @param main 宿主主进程的 pid 列表（空 = 两条路都没摸着）
+ * @param mine 本包此刻的进程表，**只给日志用**（「重启没反应」时的判据）
+ */
+private fun SettingsPage.finishRestart(
+    main: List<Int>,
+    mine: String,
+) {
     // 只打本包相关的进程（整机那张表一行几 KB，没必要）。真机上报「点了没反应」时，
     // 这三行就是判据：`main` 为空 ⇒ [hostMainPids] 两条路都没摸着。
-    val mine =
-        context
-            .getSystemService(android.app.ActivityManager::class.java)
-            ?.runningAppProcesses
-            ?.filter { it.processName == HostApp.PACKAGE }
-            ?.joinToString(prefix = "[", postfix = "]") { "${it.processName}:${it.pid}" }
-            ?: "null"
     XLog.w("重启：宿主主进程 pid=$main（本进程 ${android.os.Process.myPid()}） 本包进程=$mine")
     if (main.isEmpty()) {
         XLog.w("重启：宿主主进程不在，没人能把页面拉回来，放弃")
@@ -69,6 +85,15 @@ internal fun SettingsPage.restartModule() {
     hint(I18n.get(Strings.TOAST_SERVICE_RESTARTED, "已重启服务"))
     killPageProcess()
 }
+
+/** 本包此刻的进程表（`包名:pid` 拼成一行）—— 只进日志。 */
+private fun SettingsPage.mineProcesses(): String =
+    context
+        .getSystemService(android.app.ActivityManager::class.java)
+        ?.runningAppProcesses
+        ?.filter { it.processName == HostApp.PACKAGE }
+        ?.joinToString(prefix = "[", postfix = "]") { "${it.processName}:${it.pid}" }
+        ?: "null"
 
 /**
  * 延迟一点杀掉本页所在的 `:ui` 进程 —— 界面层换了新包之后，只有整个进程重来才会加载新代码。

@@ -15,6 +15,7 @@ import com.lookie.opluskey.core.update.compareVersion
 import com.lookie.opluskey.core.update.isNewer
 import com.lookie.opluskey.core.update.parseLatestRelease
 import com.lookie.opluskey.core.wire.NetReply
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -124,6 +125,14 @@ internal object UpdateState {
         checking = true
         try {
             return runCheck(host, manual = true)
+        } catch (e: CancellationException) {
+            //  取消是结构化并发的一部分，原样抛（吞掉会让调用方的 join 永远等不到）
+            throw e
+        } catch (e: Throwable) {
+            //  这一条跑在页面级 `LaunchedEffect` 里：异常漏出去会穿进 Recomposer，把整个 `:ui`
+            //  进程的界面拖垮（一次网络/解析的意外不该有这种后果）。
+            XLog.w("手动检查更新失败（已忽略）：${e.javaClass.simpleName}", e)
+            return CheckOutcome.FAILED
         } finally {
             checking = false
         }
@@ -141,6 +150,10 @@ internal object UpdateState {
         checking = true
         try {
             runCheck(host, manual = false)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            XLog.w("检查更新失败（已忽略）：${e.javaClass.simpleName}", e)
         } finally {
             checking = false
         }

@@ -35,6 +35,8 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 // 「捐赠打赏」：菜单里的三个去处 + 点开之后那个居中的收款码窗口。
 
@@ -118,7 +120,7 @@ private fun DonateBody(target: DonateTarget?) {
         DonateNote(
             I18n.get(
                 Strings.DONATE_NAME_NOTE,
-                "请备注您的昵称，我们会在后续更新中将您添加到捐赠列表中；未备注将按「匿名」收录",
+                "备注昵称即可加入捐赠列表，不备注按「匿名」",
             ),
         )
     }
@@ -133,10 +135,12 @@ private fun DonateBody(target: DonateTarget?) {
 @Composable
 private fun DonateCode(target: DonateTarget) {
     val context = LocalContext.current
-    // 一次用户动作触发一次的读图（不是列表里逐行渲染），所以同步读、不另起协程；
+    // 一次用户动作触发一次的读图（不是列表里逐行渲染）。
+    //  **但必须放 IO**：`LaunchedEffect` 的默认调度器是主线程，而这里要做的是「读 assets +
+    //  解一张 900×900 的 WebP」—— 同步读会把开窗那一帧整个压住（首帧是一块空白面板）。
     //  键带 target：换一个去处就重新取那一张。
     var bitmap by remember(target) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(target) { bitmap = loadDonateCode(context, target) }
+    LaunchedEffect(target) { bitmap = withContext(Dispatchers.IO) { loadDonateCode(context, target) } }
     val code = bitmap
     //  水平居中必须自己做：`OverlayDialog` 的 content 槽是库自己那个 `Column`（默认
     //  `horizontalAlignment = Start`，文档也写明「content 插槽不加内边距」），比面板窄的图会**贴左**。

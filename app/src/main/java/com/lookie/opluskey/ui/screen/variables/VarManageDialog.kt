@@ -174,6 +174,9 @@ private fun SettingsPage.VarValueLayer(
             onDismiss = onDismiss,
             onConfirm = { raw ->
                 editing?.let { variable -> onLand(Action.VarSet(variable.name, VarOp.SET, raw)) }
+                //  输入窗自己不收（`show` 由 `editing != null` 决定，只有 `onDismiss` 会清它）：
+                //  不在这里关，值已经落盘而窗一直挡着，连落盘的回执都被盖在它身后。
+                onDismiss()
             },
         )
     }
@@ -225,7 +228,7 @@ private fun SettingsPage.VarDeleteDialog(
         if (blocked) {
             I18n.format(Strings.VAR_DELETE_BLOCKED, refs)
         } else {
-            I18n.get(Strings.VAR_DELETE_SUMMARY, "删掉之后引用它的命令会当它不存在")
+            I18n.get(Strings.VAR_DELETE_SUMMARY, "引用它的命令会失效")
         }
     ConfirmDialog(
         show = deleting != null,

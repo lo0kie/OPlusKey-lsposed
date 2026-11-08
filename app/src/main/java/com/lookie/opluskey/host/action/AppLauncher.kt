@@ -110,18 +110,19 @@ internal class AppLauncher(
             //  用户下启动照样会被 ColorOS 问「用哪一份」**（同名包在 0 与 998/999 里各有一份）。
             //  `createContextAsUser` 那条为什么不行见 `AppCloneCatalog`。
             if (!AppLaunchAsUser.start(ctx, intent, userId)) {
-                XLog.w("启动被拒：$target（user=$userId）")
-                onFailure(CommandFailure.UNKNOWN)
+                //  **原先这里还挂着一条 `catch (ActivityNotFoundException)`，那条分支是死的**：
+                //  `AppLaunchAsUser.start` 全程 `runCatching`，ANFE 在被它自己吞成 `false` 了，
+                //  永远不会抛到这里 —— 于是「包还在、但那个组件被停用」那一档提示从来没出现过，
+                //  用户看到的永远是泛泛的「这次没执行成功」。
+                //  现在改成在**失败分支**里按同一句判据分档：显式点名了组件、而包还在
+                //  ⇒ 就是这个组件用不了（[CommandFailure.APP_NO_ENTRY]）；其余（后台启动被拦、
+                //  ATMS 两个签名都不通）⇒ 泛泛的 [CommandFailure.UNKNOWN]，别把系统拒绝说成应用的问题。
+                val explicit = intent.component != null
+                val installed = appInstalled(pm, pkg, userId)
+                XLog.w("启动被拒：$target（user=$userId，显式组件=$explicit，这个包还在=$installed）")
+                onFailure(if (explicit && installed) entryFailure(true) else CommandFailure.UNKNOWN)
                 return
             }
-        } catch (e: android.content.ActivityNotFoundException) {
-            //  注意：报「已卸载」之前先看一眼包还在不在：显式组件
-            //  （`app:包名/Activity`）**被停用 / 组件不存在**时抛的也是 ANFE，
-            //  一律报 APP_MISSING（「可能已经卸载了」）会把用户带偏 —— 包明明还在。
-            //  判据与上面 `intent == null` 那一支同源（`getApplicationInfo` 查得到就是还在）。
-            val installed = appInstalled(pm, pkg, userId)
-            XLog.w("拉起界面失败：$target（这个包还在=$installed，user=$userId）", e)
-            onFailure(entryFailure(installed))
         } catch (e: Throwable) {
             // 最常见的是后台启动限制 / 安全异常，不是「已卸载」—— 报「没执行成功」别误导
             XLog.w("拉起界面失败：$target（user=$userId）", e)
@@ -267,11 +268,15 @@ internal class AppLauncher(
 
         // Messenger 绑定型（场景表 type=service 的大部分）必须 bind 后发 Message
         if (target.message != null) {
-            if (!sendMessengerMessage(ctx, feature, target) && target.stopAction != null) {
-                //  绑定没成立 = 这一次没起来 ⇒ 撤掉「现在是开」那笔账，
-                //  否则下一次按会被当成「关」，发一条没人接的停止广播（按一下等于没反应）。
-                toggledOn.remove(feature)
-            }
+            if (sendMessengerMessage(ctx, feature, target)) return
+            //  绑定没成立 = 这一次没起来 ⇒ 撤掉「现在是开」那笔账（否则下一次按会被当成「关」，
+            //  发一条没人接的停止广播，按一下等于没反应）。
+            if (target.stopAction != null) toggledOn.remove(feature)
+            //  **而且要有回执**：原先这条分支什么都不报 —— 手电筒 / 勿扰那几档绑定失败时，
+            //  用户看到的就是「按了、屏幕没动、也没有提示」（`BuiltInMessenger` 那边已经把
+            //  「断在哪一环」写进日志了，但日志不是回执）。
+            XLog.w("oplus:$feature 的 Messenger 绑定/发送没成，报一次失败")
+            onFailure(CommandFailure.UNKNOWN)
             return
         }
         val intent = buildFeatureIntent(target)

@@ -174,7 +174,14 @@ class ModuleFiles internal constructor(
      */
     fun delete(slot: String): Boolean {
         val f = file(slot)
-        val all = listOf(f, File(f.path + BAK), File(f.path + NEW), File(f.path + PREV_SUFFIX))
+        val all =
+            listOf(
+                f,
+                File(f.path + BAK),
+                File(f.path + NEW),
+                File(f.path + PREV_SUFFIX),
+                File(f.path + PREV_SUFFIX + TEMP_SUFFIX),
+            )
         all.forEach { runCatching { it.delete() } }
         //  **三个都要判**：只判主文件的话，`.bak` 删不掉也照样返 true —— 而 `AtomicFile.openRead()`
         //  在主文件缺失时会拿 `.bak` 还原（见 [read] 的注释），于是那份配置「删掉之后又活了」。
@@ -344,6 +351,9 @@ private const val BOM = '\uFEFF'
  */
 private const val PREV_SUFFIX = ".prev"
 
+/** 快照落地的临时名（写完 rename 成 [PREV_SUFFIX]）；中途掉电留下的残片，`slots()` 不会认成槽。 */
+private const val TEMP_SUFFIX = ".tmp"
+
 /**
  * 把**当前主文件**复制成一份历史快照（`.prev`）—— 写盘之前调，给「下一次读不懂」留一条退路。
  *
@@ -364,12 +374,30 @@ private const val PREV_SUFFIX = ".prev"
 internal fun snapshotModuleFile(f: java.io.File): Boolean {
     if (!f.isFile) return true
     val prev = java.io.File(f.path + PREV_SUFFIX)
+    //  **先写 `.prev.tmp` 再 rename**，不直接 `copyTo(prev, overwrite = true)`：那是原地截断重写，
+    //  复制到一半掉电时旧的退路也没了 —— 而这份快照正是「主文件读不懂」时唯一能救回来的东西。
+    //  同目录 rename 是原子的：要么还是旧快照，要么已经是完整的新快照，中间态不存在。
+    //  写完 `fd.sync()` 再 rename：ext4 的延迟分配下，close 之后 rename 成功也可能落成空文件。
+    val tmp = java.io.File(f.path + PREV_SUFFIX + TEMP_SUFFIX)
     return try {
-        f.copyTo(prev, overwrite = true)
-        true
+        java.io.FileOutputStream(tmp).use { out ->
+            f.inputStream().use { input ->
+                input.copyTo(out)
+            }
+            out.flush()
+            out.fd.sync()
+        }
+        if (tmp.renameTo(prev)) {
+            true
+        } else {
+            XLog.w("模块文件：历史快照改名失败（${prev.path}）")
+            tmp.delete()
+            false
+        }
     } catch (e: Throwable) {
         //  复制不了不阻断写盘：那只是少了退路，而写盘是用户此刻要做的事
         XLog.w("模块文件：留历史快照失败（${prev.path}）| ${e.message}")
+        tmp.delete()
         false
     }
 }

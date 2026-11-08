@@ -35,8 +35,8 @@ import com.lookie.opluskey.core.model.Command
  *  [ProfileSlotFile] 一处 —— 与变量表共用同一份实现，别在这里再写一遍。
  */
 object ProfileCommands {
-    /** 命令库这一层：槽名前缀 = 当前生效那份的槽名；宿主主进程也要读，所以 `openReadable = true`。 */
-    private val file = ProfileSlotFile(ConfigStore.SLOT_COMMANDS, openReadable = true)
+    /** 命令库这一层：槽名前缀 = 当前生效那份的槽名；口径与 [CommandLibrary.save] 同一份常量。 */
+    private val file = ProfileSlotFile(ConfigStore.SLOT_COMMANDS, openReadable = ConfigStore.OPEN_READABLE_COMMANDS)
 
     /**
      * 某份配置对应的命令库槽名。

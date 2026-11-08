@@ -279,15 +279,21 @@ internal class FlashlightController(
      */
     fun release() {
         val callback = torchCallback ?: return
-        torchCallback = null
-        torchCallbackRegistered = false
+        //  **先取服务、摘成功了再清引用**：原先先清字段后取 `CameraManager`，取不到就 return ——
+        //  那个回调既摘不掉、也没人再持有它，注册还挂在系统里，下一次 toggle 会再注册一个。
         val cm =
             runCatching { context()?.getSystemService(Context.CAMERA_SERVICE) as? CameraManager }
                 .getOrNull()
-        if (cm == null) return
+        if (cm == null) {
+            XLog.w("手电筒：取不到 CameraManager，torch 回调这次没注销（登记保持，下次 release 再试）")
+            return
+        }
         runCatching { cm.unregisterTorchCallback(callback) }
-            .onSuccess { XLog.w("手电筒：已注销 torch 回调") }
-            .onFailure { XLog.w("手电筒：注销 torch 回调失败（进程结束时一并消失）", it) }
+            .onSuccess {
+                torchCallback = null
+                torchCallbackRegistered = false
+                XLog.w("手电筒：已注销 torch 回调")
+            }.onFailure { XLog.w("手电筒：注销 torch 回调失败（登记保持，进程结束时一并消失）", it) }
     }
 
     /** 兜底：自己找一颗带闪光灯的摄像头。 */

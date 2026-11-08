@@ -36,6 +36,13 @@ internal fun injectKeyFromSystem(
         XLog.w("注入侧注入：键码不合法（$keyCode），跳过")
         return
     }
+    //  **只注入自己认的那一批码**（`KeyId.INJECTABLE_CODES`）：入口收的是一条广播里的整数，
+    //  不设闸就等于「谁能发这条广播，谁就能让 system_server 替他按任意键」。
+    //  这张表同时是 `isSynthetic` 的判据（注入的键会再走一遍按键路径），两处口径必须同一份。
+    if (keyCode !in KeyId.INJECTABLE_CODES) {
+        XLog.w("注入侧注入：键码 $keyCode 不在可注入清单里，拒绝（见 KeyId.INJECTABLE_CODES）")
+        return
+    }
     //  **必须在别的线程上跑**：下面用的是 `WAIT_FOR_FINISH`（会等事件被系统处理完），
     //  而调用点是 `system_server` 的主线程 —— 在主线程上等一次截图链路，等于把整机挂住一下。
     //  每次注入起一个线程：这是「按一下键」级别的低频动作，不值得为它维护一个常驻线程。

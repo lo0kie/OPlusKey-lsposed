@@ -386,6 +386,11 @@ object ActionCatalog {
      *  纯文字行（见 `SinglePickerDialog`）—— 字形用不上，但 `Spec.glyph` 是必填的。
      *  给「那个动作自己的字形」而不是随便填一个：这几行确实是「录屏」的三档，将来弹窗要画图标
      *  时不必再回来改这里。
+     *
+     *  **名字只是动词**（`切换` / `开始` / `结束`），宾语（`录屏`）不在字典里：选择器那一层
+     *  用 `common.verb_name_format` 拼成「切换录屏」，句子那一侧由 `CommandTitle` 拼成
+     *  「录屏 - 切换」。同一个动作两处各写一份，改字典时必然只改到一处 —— 那正是原先
+     *  「切换录屏 / 录屏 - 切换」两套说法的来源。
      */
     val SCREEN_RECORD_MODES: List<Spec> =
         listOf(
@@ -656,7 +661,7 @@ object ActionCatalog {
                     // 「播放 / 暂停」收进这里 —— 同一个取值不给两个入口。
                     MEDIA_TILE_SPEC,
                     Spec(name = Strings.CATEGORY_RINGER, token = RINGER_TILE, glyph = Glyph.RingerTile),
-                    // 「音量 + / 音量 − / 电源键」三档收进这一格（点它弹 [KEY_MODES] 菜单），同样是标记。
+                    // 「音量加 / 音量减 / 电源键」三档收进这一格（点它弹 [KEY_MODES] 菜单），同样是标记。
                     Spec(name = Strings.CATALOG_SYSTEM_KEYS, token = KEY_TILE, glyph = Glyph.Click),
                     // 系统开关入口：点它弹 [SWITCH_MODES] 菜单（WIFI / 蓝牙 / 手电筒 …），
                     // 选完绑成 `setting:<id>` 或那条动作本身的 token（见 [SystemSwitches]）。
@@ -835,11 +840,13 @@ object ActionCatalog {
     const val AI_TILE = "ai:"
 
     /**
-     * 「前台转小窗」那一格的标记 —— 与 [SCREEN_RECORD_TILE] / [RECORD_TILE] 同类（见 [STATE_ONLY_TILES]）。
+     * 「前台转小窗」那一格的标记 —— 一个**普通入口格**（与系统开关 / 系统导航同一档）。
      *
-     *  两档（展开的普通小窗 / 收起的最小化窗）是**同一个动作的两种状态**，不是「小窗」这一类里
-     *  的两个动作 —— 所以中间不夹那张只写着「前台转小窗」的小标题 + 两行的菜单，点格子直接弹
-     *  两行单选弹窗，文案写成 `前台转小窗 - 展开`（用户口径：用两态选择器，不要父子动作）。
+     *  两档（展开的普通小窗 / 收起的最小化窗）是同一个动作的两种取值，但**文案按父子动作念**
+     *  （`前台转小窗: 展开`）：这两档各自单念就说得清，不需要再补一个「格子名 - 状态」的形状
+     *  —— 那是录屏 / 录音那种「档位名是动词」的格子才需要的（见 [STATE_ONLY_TILES]）。
+     *  用户口径 2026-11-08：「把前台应用转小窗改成父子动作」，即点它弹 [MINI_MODES] 菜单
+     *  （一格两行、行尾挂选择器），不再走那个两行单选弹窗。
      *
      *  格子本身仍是**标记**（永不写进配置），菜单里那两档才是真取值。
      */
@@ -1294,16 +1301,18 @@ object ActionCatalog {
     }
 
     /**
-     * 「亮度 / 音量」这两族当前落在**哪个数值**上（`10%`）；别的动作返回 `null`。
+     * 「亮度 / 音量」这两族当前落在**哪个数值**上（`(10%)`）；别的动作返回 `null`。
      *
      *  与 [switchStateLabel] 是同一件事的两半：那两族的父格是「屏幕亮度 / 音量」、子动作是
      *  「增加 / 减少 / 设置为」，剩下的那个数就是**状态** —— 所以它与开关的「打开 / 关闭」
-     *  占同一个位置（`音量: 增加 - 10%`），不编进子动作里。
+     *  占同一个位置（`音量: 增加 - (10%)`），不编进子动作里。
+     *
+     *  **那个数带半角括号**：横杠后面直接跟数字会被读成负号（`设置为 - 90%`）。
      */
     fun percentStateLabel(action: Action): String? =
         when (action) {
-            is Action.Brightness -> I18n.format(Strings.COMMON_PERCENT_FORMAT, action.percent)
-            is Action.Volume -> I18n.format(Strings.COMMON_PERCENT_FORMAT, action.percent)
+            is Action.Brightness -> I18n.format(Strings.COMMON_PERCENT_PAREN_FORMAT, action.percent)
+            is Action.Volume -> I18n.format(Strings.COMMON_PERCENT_PAREN_FORMAT, action.percent)
             else -> null
         }
 
@@ -1492,7 +1501,7 @@ object ActionCatalog {
         /** 原地弹一层**菜单**（系统开关 / 系统导航 / 媒体控制 / 小布 AI / 应用控制那一格）。 */
         MENU,
 
-        /** 原地弹一行一档的**单选弹窗** —— 这一格本身就是那个动作（录屏 / 录音 / 前台转小窗）。 */
+        /** 原地弹一行一档的**单选弹窗** —— 这一格本身就是那个动作（录屏 / 录音）。 */
         STATE,
 
         /** 原地弹**百分比**弹窗（亮度 / 音量的「增加 / 减少 / 设定」那几行）。 */
@@ -1565,10 +1574,16 @@ object ActionCatalog {
      *
      *  三件事都由它决定，所以只能有一份名单：
      *   · 点开弹的是弹窗不是菜单（[stateChoices]，即 [clickKind] 的 `STATE` 档）；
-     *   · 文案没有「父动作」可写 —— `录屏 - 开始`，而不是 `录屏: 开始`（`commandTitleOf`）；
+     *   · 文案没有「父动作」可写 —— `录屏 - 切换`，而不是 `录屏: 切换`（`commandTitleOf`）；
      *   · 格子行尾不挂选择器字形（`clickKind` 不是 `MENU` ⇒ 界面画勾选框）。
+     *
+     *  **前台转小窗不在这份名单里**（它曾经在）：那两档（展开 / 收起）单念就说得清，不需要
+     *  再补一个格子名，于是它按普通入口格走 —— 点它弹 [MINI_MODES] 菜单、文案是父子动作
+     *  `前台转小窗: 展开`（用户口径 2026-11-08「把前台应用转小窗改成父子动作」）。
+     *  换句话说：要不要「格子即动作」这一形态，判据是**文案需不需要补格子名**，
+     *  不是「这一格有没有好几档」。
      */
-    private val STATE_ONLY_TILES: Set<String> = setOf(SCREEN_RECORD_TILE, RECORD_TILE, MINI_TILE)
+    private val STATE_ONLY_TILES: Set<String> = setOf(SCREEN_RECORD_TILE, RECORD_TILE)
 
     /**
      * 这一行点下去**还有它自己那一层**的下一问 —— 此刻只有灵感语音（开始 / 结束）。

@@ -121,7 +121,7 @@ internal val CONFIG_READ_FAILED_HINT: String
  *  点一下说「可在 ⋮ 菜单里启用」（见 `disabledClickReason`）。
  */
 internal val KEY_DISABLED_HINT: String
-    get() = I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，侧键交还系统")
+    get() = I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，按系统原生行为")
 
 /**
  * 首页那条常驻提示的第六种文案：**宿主那一路服务没起来**（`link.hostServiceUp = false`）。
@@ -143,7 +143,7 @@ internal val INJECT_NOT_LOADED_HINT: String
     get() =
         I18n.get(
             Strings.STATUS_DISABLED,
-            "模块没生效：在 LSPosed 里给模块勾上「系统框架」和「手势体感」，改完重启手机",
+            "没生效：在 LSPosed 里勾上「系统框架」和「手势体感」，重启手机",
         )
 
 /**
@@ -169,7 +169,7 @@ internal val PENDING_OR_SCOPE_HINT: String
     get() =
         I18n.get(
             Strings.STATUS_PENDING_OR_SCOPE,
-            "模块已更新：重启手机后生效；若重启后仍见本行，请到 LSPosed 里确认「系统框架」已勾选",
+            "已更新：重启手机生效；仍见本行就去 LSPosed 确认「系统框架」已勾选",
         )
 
 /**
@@ -193,7 +193,7 @@ internal val SYSTEM_STALE_HINT: String
  *  （`AGENTS.md` 五之一、6）。把它混进「重启手机」那一档，等于让人为一次装包多付一次重启。
  */
 internal val HOST_STALE_HINT: String
-    get() = I18n.get(Strings.STATUS_HOST_STALE, "服务是旧版：点「重启服务」，不用重启手机")
+    get() = I18n.get(Strings.STATUS_HOST_STALE, "服务是旧版，点「重启服务」")
 
 /**
  * 「能用，只是这次没落到新代码上」那两档提醒的**身份** —— 去重比的是它，不是文案。
@@ -233,7 +233,7 @@ internal enum class LinkNotice {
  *  主文件当场修好，下次进页不再恢复、也不再提这句。
  */
 internal val CONFIG_RECOVERED_HINT: String
-    get() = I18n.get(Strings.STATUS_CONFIG_RECOVERED, "配置已从备份恢复；最近的改动可能丢了，改一次即可")
+    get() = I18n.get(Strings.STATUS_CONFIG_RECOVERED, "配置已从备份恢复，最近的改动可能丢了")
 
 /**
  * 首页那条常驻提示的第九种文案：回包了、但**一个接管点都没装上** —— 这一版 ROM 把那些私有类改了形。
@@ -295,7 +295,7 @@ internal val FREE_NOTICE_TEXT: String
     get() =
         I18n.get(
             Strings.DIALOG_FREE_NOTICE_CONTENT,
-            "此模块**完全免费**，所有功能都不需要收费，请确认你使用的是**官方正版**。",
+            "本模块**完全免费**，请确认使用的是**官方正版**。",
         )
 
 /** 「自定义命令」那一页的风险提示标题（首次进那一页弹；不确认就退出那一页）。 */

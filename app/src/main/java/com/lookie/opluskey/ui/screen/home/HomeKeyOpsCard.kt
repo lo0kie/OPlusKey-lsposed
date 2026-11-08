@@ -61,8 +61,9 @@ private fun SettingsPage.keysEntryRow(pageEnabled: Boolean): CardRow.Item =
  *  标题与那一页顶栏**同名**（共用 `Strings.GENERAL_TITLE`）：点的那一行与进去之后看到的标题
  *  是同一句话。这一行会改配置，所以与「按键功能」同一档闸（[pageEnabled]，含主开关自己）。
  *
- *  **不是主入口**：「按键绑定」页顶栏那颗设置键才是（就近，见 `BindingHeaderSettings`）——
- *  这一行留着是因为首页是「这个模块能干什么」的总览。两处进的是同一页。
+ *  **这一行是公共设置的唯一入口**（「按键功能」页顶栏原先进这里的那颗齿轮已经拿掉了）。
+ *  「按键绑定」/「组合键编辑」两页顶栏那颗设置键通向的是**另一页**（`Screen.KEY_SETTINGS`，
+ *  这一颗键 / 这一组组合自己的覆盖），不是这里。
  */
 private fun SettingsPage.settingsEntryRow(pageEnabled: Boolean): CardRow.Item =
     CardRow.Item(

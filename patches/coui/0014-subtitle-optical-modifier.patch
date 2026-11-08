@@ -1,0 +1,57 @@
+diff --git a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
+index b06cedc..8f0df26 100644
+--- a/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
++++ b/coui-ui/src/commonMain/kotlin/io/github/suqi8/coui/kmp/basic/TopAppBar.kt
+@@ -118,6 +118,9 @@ enum class TopAppBarTrailingSubtitleAlignment {
+  * @param titlePadding The horizontal padding of the [TopAppBar]'s title & large title.
+  * @param navigationIconPadding The start padding of the navigation icon.
+  * @param actionIconPadding The end padding of the action icons.
++ * @param subtitleModifier A [Modifier] applied to the subtitle's box, on top of its `layoutId`.
++ *   The box is measured before it runs, so an `offset` here moves the ink only — the bar
++ *   height, the expanded/collapsed slots and the width ledger all stay as measured.
+  * @param bottomContent The [Composable] content displayed below the title bar area.
+  */
+ @Composable
+@@ -130,6 +133,7 @@ fun TopAppBar(
+     largeTitleColor: Color = COUITheme.colorScheme.onSurface,
+     subtitle: String = "",
+     subtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
++    subtitleModifier: Modifier = Modifier,
+     trailingSubtitle: String = "",
+     trailingSubtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
+     trailingSubtitleAlignment: TopAppBarTrailingSubtitleAlignment =
+@@ -175,6 +179,7 @@ fun TopAppBar(
+         largeTitleColor = largeTitleColor,
+         subtitle = subtitle,
+         subtitleColor = subtitleColor,
++        subtitleModifier = subtitleModifier,
+         trailingSubtitle = trailingSubtitle,
+         trailingSubtitleColor = trailingSubtitleColor,
+         trailingSubtitleAlignment = trailingSubtitleAlignment,
+@@ -688,6 +693,9 @@ private suspend fun settleAppBar(
+  * @param largeTitleColor the color of the expanded large title text.
+  * @param subtitle the subtitle text displayed below the title bar area.
+  * @param subtitleColor the color of the subtitle text.
++ * @param subtitleModifier a [Modifier] applied to the subtitle's box, on top of its `layoutId`.
++ *   The box is measured before it runs, so an `offset` moves the ink without touching the
++ *   bar height, the expanded/collapsed slots or the width ledger.
+  * @param trailingSubtitle the small title trailing the large title on the same line.
+  * @param trailingSubtitleColor the color of the trailing subtitle text.
+  * @param trailingSubtitleAlignment where the trailing subtitle sits vertically against the large title.
+@@ -716,6 +724,7 @@ private fun TopAppBarLayout(
+     largeTitleColor: Color,
+     subtitle: String,
+     subtitleColor: Color,
++    subtitleModifier: Modifier = Modifier,
+     trailingSubtitle: String,
+     trailingSubtitleColor: Color,
+     trailingSubtitleAlignment: TopAppBarTrailingSubtitleAlignment =
+@@ -827,7 +836,7 @@ private fun TopAppBarLayout(
+             if (subtitle.isNotEmpty()) {
+                 // Subtitle: alpha and collapsed position are driven in the placement pass
+                 // (COUICollapsableAppBarLayout.adjustSubtitleIfNeed).
+-                Box(Modifier.layoutId("subtitle")) {
++                Box(Modifier.layoutId("subtitle").then(subtitleModifier)) {
+                     Text(
+                         text = subtitle,
+                         color = animatedSubtitleColor,

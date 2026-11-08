@@ -80,6 +80,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.MoodHeart
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
 import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Notes
+import io.github.lyxnx.compose.ui.tablericons.outline.Opacity
 import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
@@ -99,7 +100,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Settings
 import io.github.lyxnx.compose.ui.tablericons.outline.Settings2
 import io.github.lyxnx.compose.ui.tablericons.outline.SettingsCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.SpacingHorizontal
-import io.github.lyxnx.compose.ui.tablericons.outline.Sparkles
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber1
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber2
 import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber3
@@ -436,12 +436,16 @@ internal object PageIcons {
     val SmallWindow: ImageVector get() = TablerIcons.Outline.PictureInPictureOn
 
     /**
-     * 「选择应用」页 ⋮ 菜单里**「使用原版动画」**那一行的行首 —— 星光（`sparkles`）。
+     * 「选择应用」页 ⋮ 菜单里**「使用原版动画」**那一行的行首 —— `opacity`（半透明的圆，用户口径）。
      *
      *  与 [SmallWindow] 各留一份名字：两档互斥、语义各是一回事（一个是「窗口怎么来」，
      *  一个是「这一次启动套不套原版那层转场」），以后要分开改不用先拆共用。
+     *
+     *  **这颗字形到 tabler 3.50 才进**（3.49 里没有，版本下限见 `app/build.gradle.kts` 那一档）；
+     *  它画的是「呈现 / 透明度」那一层，比转场箭头更贴这一档的意思：它不是另一种打开方式，
+     *  只决定这次启动外面套不套那层动画。
      */
-    val StockAnim: ImageVector get() = TablerIcons.Outline.Sparkles
+    val StockAnim: ImageVector get() = TablerIcons.Outline.Opacity
 
     /** 「选择应用」空状态（清单本身为空：系统限制了可见列表）—— `Packages`（一摞盒子）。 */
     val EmptyApps: ImageVector get() = TablerIcons.Outline.Packages

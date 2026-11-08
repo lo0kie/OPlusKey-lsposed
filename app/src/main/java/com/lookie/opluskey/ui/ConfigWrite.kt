@@ -111,7 +111,7 @@ internal fun SettingsPage.finishWrite(
         //  本地指纹跟着变，而注入侧那份还是旧的 ⇒ `configSideOk=false` ⇒ `linkReady=false`
         //  ⇒ ⋮ 菜单里的「重启服务」**正好被灰掉**，指过去等于让用户点一个点不动的入口。
         //  真正能自愈的是「退出重进」（重进会重发配置并重问自检），所以说这个。
-        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_BROADCAST_FAILED, "已保存，但通知注入侧失败，退出重进本页即可"))
+        hint(I18n.get(Strings.TOAST_CONFIG_SAVE_BROADCAST_FAILED, "已保存，但注入侧没收到；重进本页"))
         return CommandsSave.BroadcastFailed
     }
     resyncInjectStatus()

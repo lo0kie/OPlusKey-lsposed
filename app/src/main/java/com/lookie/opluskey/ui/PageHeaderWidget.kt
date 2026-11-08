@@ -1,19 +1,12 @@
 package com.lookie.opluskey.ui
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,36 +16,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.FROSTED_SURFACE_ALPHA
-import com.lookie.opluskey.ui.model.HEADER_ICON_SIZE
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.opticalTightTop
 import com.lookie.opluskey.ui.state.BandHeight
 import dev.chrisbanes.haze.HazeState
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.IconButton
-import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.TopAppBar
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
-import io.github.suqi8.coui.kmp.basic.TopAppBarTrailingSubtitleAlignment
-import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
-import io.github.suqi8.coui.kmp.utils.TiltFeedback
-import io.github.suqi8.coui.kmp.utils.pressable
+
+// 顶栏的**骨架**：高度通道、折叠几何、以及那条 `TopAppBar` 本身。
+//
+//  另两半各自成文件（都是「同一件事的另一半」，不按字母切）：
+//  · `PageHeaderButtons.kt` —— 顶栏上那几颗圆键与「按一下振一下」；
+//  · `PageHeaderSubtitle.kt` —— 副标题按可用宽度截断的两档账本。
+//  这么切有一半是 detekt 的 `TooManyFunctions` 逼的（单文件上限 11 个函数），但切完确实
+//  三块各管一件事：这一份只管「栏怎么摆、多高、怎么折」。
 
 /**
  * 「本页顶栏实测高度」的通道 —— **每页一份**，由 `PageEntry` 提供。
@@ -147,11 +134,12 @@ internal fun SettingsPage.collapsedHeaderHeight(scrollBehavior: ScrollBehavior):
 /**
  * 本页顶栏 —— 标题 / 副标题 / 右上角动作 / 底下那条固定带（内容按页在 `PageTopBar` 里分派）。
  *
- *  **两种子标题都在这里夹最大宽度**（同一行那档 / 标题下面那档，见
- *  [TRAILING_SUBTITLE_MAX_COLUMNS] 与 [BELOW_SUBTITLE_MAX_COLUMNS]）：它们装的是键名 / 应用名 /
- *  命令名，长度不受控，调用点不该各自截一遍。
+ *  **副标题一律排在标题下面、自己占一行**（库的 `subtitle` 槽位）：它装的是键名 / 应用名 /
+ *  命令名，长度不受控，挤在大标题同一行只会把大标题压成省略号。宽度在这一层夹，调用点不该
+ *  各自截一遍 —— 夹多少**按这一页当刻的可用宽度算**，展开 / 折叠两档分开判，账本在
+ *  `HeaderSubtitleBar`。
  *
- *  `subtitleColor` 是尾随标题（大标题右边那行）的颜色，默认就是库那一档次要色。留成参数是为了
+ *  `subtitleColor` 是标题下面那行的颜色，默认就是库那一档次要色。留成参数是为了
  *  「这一页整体按不动」时把它也压暗一档：内容区整片变灰了，这一行还按满亮度亮着，读起来像
  *  那一区仍然是活的（见 `PageTopBar` 里停用那支）。
  *
@@ -159,7 +147,7 @@ internal fun SettingsPage.collapsedHeaderHeight(scrollBehavior: ScrollBehavior):
  *  那段文字一改基线就得跟着改。要解释的写在这里。
  *
  *  `@Suppress("LongParameterList")`：这些参数就是**顶栏那几个槽位本身**（标题 / 副标题 /
- *  行尾图标 / 动作 / 固定带），拆成一个 spec 对象只是把它们挪个地方、再让调用点多套一层壳。
+ *  动作 / 固定带），拆成一个 spec 对象只是把它们挪个地方、再让调用点多套一层壳。
  *  这一条原先压在 detekt 基线里（按签名记的条目），动一个参数就得同步改基线 —— 就地改成注解
  *  之后那一条基线随之删掉（条目数只减不增）。
  */
@@ -169,8 +157,6 @@ internal fun SettingsPage.PageHeader(
     title: String,
     subtitle: String = "",
     subtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
-    subtitleBelow: Boolean = false,
-    trailingSubtitleIcon: ImageVector? = null,
     scrollBehavior: ScrollBehavior,
     state: HazeState,
     actions: @Composable RowScope.() -> Unit = {},
@@ -182,36 +168,32 @@ internal fun SettingsPage.PageHeader(
     // 顶栏里那条固定带的高度（没有带子时为 0）：上报顶栏高度时扣掉它。
     val bandHeightPx = remember { mutableIntStateOf(0) }
     val headerBand = currentHeaderBand()
-    //  两种子标题的**最大宽度**都在这一层夹，调用点只管传全文（键名 / 应用名 / 命令名都会很长）：
-    //  不夹的话，同一行那档会把大标题挤成省略号，标题下面那档会铺满整行、读起来像正文。
-    //  只改**画出来的那一份** —— 日志与配置仍是原文。
-    val shownSubtitle =
-        ellipsizeToColumns(
-            subtitle,
-            if (subtitleBelow) BELOW_SUBTITLE_MAX_COLUMNS else TRAILING_SUBTITLE_MAX_COLUMNS,
-        )
+    //  副标题的**最大宽度**在这一层夹，调用点只管传全文（键名 / 应用名 / 命令名都会很长）：
+    //  不夹的话会铺满整行、读起来像正文。只改**画出来的那一份** —— 日志与配置仍是原文。
+    //  宽度**不是**一个常数：展开态与折叠态各算一档，右侧按钮几颗也进账（口径见
+    //  `HeaderSubtitleBar`）。这里只负责把三个宽度量出来写进账本。
+    val subtitleBar = rememberHeaderSubtitleBar(scrollBehavior)
     // 磨砂规格（含模糊半径）统一由 [frosted] 挂，见 [HAZE_FROSTED_STYLE]。
     TopAppBar(
         title = title,
-        //  库有两个副标题槽位，位置不同、不能互换（见补丁 `0001`）：
-        //   · `subtitle` 在标题**下面**、自己占一行（[subtitleBelow] = true 走这一档）；
-        //   · `trailingSubtitle` 跟大标题**同一行**、贴在大标题右边，随折叠一起缩（其余各页）。
-        //  同一页只用一个：两个都传的话会同时出现，读起来像写了两遍同一句话。
-        subtitle = if (subtitleBelow) shownSubtitle else "",
+        //  只走库的 `subtitle` 槽位（标题**下面**、自己占一行，见补丁 `0001`）——
+        //  同一行那个 `trailingSubtitle` 槽位不再用：它贴在大标题右边，长一点的键名 / 命令
+        //  就把大标题压成省略号，而这一行装的全是不受控的名字（口径见本函数的 KDoc）。
+        subtitle = subtitleBar.shown(subtitle),
+        //  副标题这一行紧挨着主标题，可两个行盒各有一截汉字不占的留白（上面那行的 descent、
+        //  这一行的 ascent），3.5dp 的设计间隙看着像 11.7dp —— 副标题像被推远了一截。
+        //  上提「行盒顶 → 墨迹顶」那一档（量出来的，见 `opticalTightTop`）：真机上量到 5px
+        //  @560dpi ≈ 1.4dp，就是这一档 —— 再往上补 3dp 会贴得太紧（试过，被否掉）。
+        //  `offset` 只挪墨迹、不动测量，所以栏高、折叠几何、上面那本宽度账本都不受影响。
+        subtitleModifier = Modifier.opticalTightTop(COUITheme.textStyles.body2),
         subtitleColor = subtitleColor,
-        trailingSubtitle = if (subtitleBelow) "" else shownSubtitle,
-        trailingSubtitleColor = subtitleColor,
-        //  行尾那枚小图标只跟在**同一行**的那个槽位上 —— 挪到下面那一行时它无处可挂，
-        //  也不该挂：需要说明的那件事（小窗起 / 停用）已经在正文里说了（调用点保证）。
-        trailingSubtitleIcon = if (subtitleBelow) null else trailingSubtitleIcon,
-        trailingSubtitleAlignment = TopAppBarTrailingSubtitleAlignment.Bottom,
         hideSubtitleOnCollapse = false,
         //  三个水平边距统一到**卡片那一档**（[PAGE_MARGIN]）：整页所有卡片的外边距、固定带里
         //  的分段控件、选择应用页的搜索框都是这一档，顶栏两侧的圆键与大标题跟着走同一条竖线
         //  （原来用库默认的 `TitlePadding` / `NavigationIconPadding` / `ActionIconPadding`
         //  三处 16dp，比卡片多 4dp，左边一片看着「差一点点」）。
-        //  `navigationIcon` 那一格内部还额外垫了 8dp（见下面的注释）—— 那是给折叠标题让位，
-        //  不算外边距，别把它折算进这一档。
+        //  `navigationIcon` 那一格内部还额外垫了 8dp（见 `HeaderBackIcon`）—— 那是给折叠标题
+        //  让位，不算外边距，别把它折算进这一档。
         titlePadding = PAGE_MARGIN,
         navigationIconPadding = PAGE_MARGIN,
         actionIconPadding = PAGE_MARGIN,
@@ -227,31 +209,21 @@ internal fun SettingsPage.PageHeader(
                 // 顶栏自己报高度（含系统栏顶边、**不含下面那条固定带**）——
                 //  页内容顶上那个占位 Spacer 读它，见 `currentHeaderHeight`。
                 //  带子高度各页已各自读过一遍，这里必须扣掉，否则有带子的页面让两次。
-                .onSizeChanged { headerBand.report(it.height - bandHeightPx.value) },
-        navigationIcon = {
-            //  盒子只负责挂振动：单子节点，排版与不加这一层完全一样。
-            //  **末端那 8dp 是给折叠后的标题让位**：库把折叠标题放在「导航图标宽 + 4dp」处
-            //  （`TopAppBarDefaults.NavigationIconGap`），那颗圆键收进栏里之后离标题只有 4dp，
-            //  挤成一团；把这 8dp 加在**图标槽内部**，圆键本身距屏幕边缘仍是 [PAGE_MARGIN]
-            //  （与展开的大标题、与卡片同一条线），只有折叠标题的起点右移。
-            Box(Modifier.headerPressTick(tick).padding(end = 8.dp)) {
-                HeaderIconButton(
-                    onClick = {
-                        if (!goBack()) {
-                            XLog.w("顶栏返回：已在首页，关页面")
-                            closeOverlays("顶栏返回关页面")
-                            activity?.finish()
-                        }
-                    },
-                ) {
-                    Icon(PageIcons.Back, contentDescription = I18n.get(Strings.COMMON_BACK, "返回"))
-                }
-            }
-        },
+                .onSizeChanged {
+                    headerBand.report(it.height - bandHeightPx.value)
+                    //  副标题两档上限都按这条栏的宽度算（见 `HeaderSubtitleBar`）
+                    subtitleBar.barWidthPx.value = it.width
+                },
+        navigationIcon = { HeaderBackIcon(tick) { subtitleBar.navigationWidthPx.value = it } },
         actions = {
-            //  右侧那一组同样只挂振动：`Row` 保持「一个挨一个靠右」，与库那排的排法一致
+            //  右侧那一组同样只挂振动：`Row` 保持「一个挨一个靠右」，与库那排的排法一致。
+            //  顺带量宽度：**多一颗按钮就少一格字**，折叠态的副标题得让开它（见
+            //  `collapsedSubtitleColumns`）。
             Row(
-                modifier = Modifier.headerPressTick(tick),
+                modifier =
+                    Modifier
+                        .headerPressTick(tick)
+                        .onSizeChanged { subtitleBar.actionsWidthPx.value = it.width },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.End,
                 content = actions,
@@ -261,158 +233,6 @@ internal fun SettingsPage.PageHeader(
             Box(Modifier.onSizeChanged { bandHeightPx.value = it.height }) { bottomContent() }
         },
     )
-}
-
-/**
- * 顶栏两侧按钮共用的「按一下振一下」—— 挂在两个槽位的**容器**上，一次管住这一页所有顶栏按钮。
- *
- *  为什么不是逐个按钮加：顶栏按钮有六七处（返回 / ⋮ / 添加 / 新建 / 重置 / 设置），
- *  漏一处就是「这一颗按下去没手感」，而它们长得一模一样，用户分不出哪颗有哪颗没有；
- *  挂在容器上之后，**新加一颗顶栏按钮自动带振动**，调用点只写自己的 onClick。
- *
- *  不消费事件、不改排版：只在按下那一刻振一下，点击照旧由里面的按钮自己处理
- *  （`Main` 那一趟里子节点先拿到事件，这里既不会抢走点击、也不会重复触发）。
- *  代价是**置灰的按钮也会振一下** —— 那颗按钮此刻确实被按到了，只是不做任何事。
- */
-private fun Modifier.headerPressTick(tick: () -> Unit): Modifier =
-    pointerInput(tick) {
-        awaitPointerEventScope {
-            while (true) {
-                awaitFirstDown(requireUnconsumed = false)
-                tick()
-                // 等这一下收场再收下一按下：拖动 / 取消都不额外振
-                do {
-                    val event = awaitPointerEvent()
-                } while (event.changes.any { it.pressed })
-            }
-        }
-    }
-
-/**
- * 同一行那档子标题（`trailingSubtitle`）的**格数上限** —— 24 格 = 12 个汉字。
- *
- *  它与大标题分同一行：再长就只能把标题压成省略号。24 格放得下现用的那几行
- *  （最长的一条是「「快捷键」+「电量 +」」，21 格），同时给标题留下大半行。
- *  口径按**格**算（见 `displayWidth`），所以英文 / 数字不会被误砍。
- */
-private const val TRAILING_SUBTITLE_MAX_COLUMNS = 24
-
-/**
- * 标题下面那档子标题（`subtitleBelow`）的**格数上限** —— 32 格 = 16 个汉字。
- *
- *  它独占一行、本来就够宽，但铺满整屏时读起来像正文；留出两端空白，一眼还是「这一页的一句说明」。
- */
-private const val BELOW_SUBTITLE_MAX_COLUMNS = 32
-
-/**
- * 顶栏圆键**描边**的不透明度系数 —— 乘在 `dividerLine` 自己那一档 alpha 上。
- *
- *  0.3：压在磨砂顶栏上只勾出「这儿有个圆」，不至于读成一枚端着的按钮（用户口径「边框再降
- *  亮度」）。要再淡 / 再亮都只动这一个数，别去换颜色角色 —— 换角色会把 Monet 那一档的
- *  `outlineVariant` 也一起换掉。
- */
-private const val HEADER_BORDER_ALPHA = 0.3f
-
-/**
- * 顶栏两颗圆键之间的间距 —— 两个圆不贴在一起（首页那排、选择应用页那两颗、按键页编辑态那两颗
- * 共用这一档；各页各写一个数迟早会差出来）。挂在**左边那颗**后面。
- */
-internal val HEADER_ACTION_GAP = 8.dp
-
-/**
- * 顶栏上的一颗圆键 —— 返回 / ⋮ / 添加 / 新建 / 重置 / 设置全走这一份。
- *
- *  顶栏底下是**磨砂**（半透的页面底色 + 模糊），纯透明的圆键压在上面只剩一个字形，看不出
- *  「这里按得动」；所以垫一层**纯色圆底 + 一圈细描边**。
- *
- *  ## 配色只认角色，不判主题
- *
- *  底色 `surfaceContainer`（不是 `surfaceContainerHigh`：高一档压在磨砂顶栏上偏亮，深色下尤其
- *  刺眼），描边 `dividerLine`（分隔线那一档，比 `outline` 弱一级 —— 顶栏上要的只是「这里有一块
- *  可按的地方」，不是一枚端着的按钮）。这两个角色在 Monet 那一档就是 MD3 的
- *  `surfaceContainer` / `outlineVariant`（跟着壁纸走），其余主题档是 COUI 标定过的那两档 ——
- *  所以这里**不需要**按 `LocalAppTheme` 分支，换主题时颜色自己跟着换。
- *
- *  禁用时退到 `disabledSecondaryVariant`（被冲淡的那一档容器色）：灰着的键不该还亮着
- *  （顶栏的「重置」有这一档，见 `CommandHeaderReset`）。
- *
- * @param enabled 与按钮自己的可用性同一判据 —— 只影响这两层配色，点不点得动由 `onClick` 那边定
- * @param content 图标本体（`Icon` 自带 `contentDescription`，不在这一层传）
- */
-@Composable
-internal fun HeaderIconButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    content: @Composable () -> Unit,
-) {
-    val scheme = COUITheme.colorScheme
-    //  圆底与描边随 `enabled` 两档（顶栏的「重置」那颗会在编辑途中变灰 / 变亮），带过渡 ——
-    //  页里其它禁用来回都走同一条曲线（[COLOR_TRANSITION_SPEC]），顶栏这一颗不能「啪」一下。
-    val fill by animateColorAsState(
-        targetValue = if (enabled) scheme.surfaceContainer else scheme.disabledSecondaryVariant,
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "HeaderButtonFill",
-    )
-    //  描边：整档 `dividerLine` 压在磨砂顶栏上仍会勾出一圈清楚的轮廓，再压到三成一档就只剩
-    //  「圆有个边界」（用户口径「边框再淡」）。按当前档的 alpha 折算，Monet 与 COUI 那两套
-    //  都跟着淡下去；嫌淡 / 嫌亮都只改 [HEADER_BORDER_ALPHA] 这一个数。
-    val border by animateColorAsState(
-        targetValue =
-            if (enabled) {
-                scheme.dividerLine.copy(alpha = scheme.dividerLine.alpha * HEADER_BORDER_ALPHA)
-            } else {
-                scheme.disabledSecondaryVariant
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "HeaderButtonBorder",
-    )
-    //  按下去跟着触点轻微倾斜 —— 与首页那张「模块状态」卡同一档手感（库的 `TiltFeedback`）：
-    //  卡片那边是 `pressFeedbackType = Tilt` 挂的，圆键这颗库没给这个参数，所以自己挂一层。
-    //  `pressable` 只做「按下 / 抬起」与那层指示，**不带 onClick、也不消费事件** ——
-    //  点击仍旧交给里面那颗库按钮（含它那条「禁用时给提示」的路）。
-    //  `delay = null` 与卡片一致：按下即倾，不等那一档长按判定。
-    val tiltSource = remember { MutableInteractionSource() }
-    //  **圆底与描边必须用 `CircleShape` 自己画**：库的 `IconButton` 走的是 squircle（超椭圆），
-    //  圆角取边长一半时也只是「很圆的方」，四角仍比正圆鼓一点（用户口径「感觉这个按钮不是圆的」）。
-    //  所以库那层底色置透明，圆底 / 描边 / 裁剪全在这里做。
-    Box(
-        modifier
-            //  挂在底色**外面**：倾斜的是整颗圆（圆底 + 描边 + 字形），不是只有里面那支字
-            .pressable(interactionSource = tiltSource, indication = TiltFeedback(), delay = null)
-            .background(color = fill, shape = CircleShape)
-            .border(width = 1.dp, color = border, shape = CircleShape)
-            //  最后这一档裁子级：按压涟漪是画在按钮节点上的，不裁就会从圆的四角溢出去
-            .clip(CircleShape),
-    ) {
-        IconButton(
-            onClick = onClick,
-            enabled = enabled,
-            backgroundColor = Color.Transparent,
-            minWidth = HEADER_ICON_SIZE,
-            minHeight = HEADER_ICON_SIZE,
-            cornerRadius = HEADER_ICON_SIZE / 2,
-        ) {
-            content()
-        }
-    }
-}
-
-/**
- * 顶栏右侧那颗 ⋮ ——「选择应用」与「重置」两处菜单的触发键**逐字相同**（同一颗图标、同一个
- * 按压槽位、浮层都锚在按下的那一点），收在这里一处。
- */
-@Composable
-internal fun SettingsPage.HeaderMenuButton(
-    preciseClick: PreciseClickState,
-    onOpen: () -> Unit,
-) {
-    HeaderIconButton(
-        onClick = onOpen,
-        modifier = Modifier.preciseClickAnchor(preciseClick),
-    ) {
-        Icon(PageIcons.Menu, contentDescription = I18n.get(Strings.COMMON_MENU, "菜单"))
-    }
 }
 
 /**

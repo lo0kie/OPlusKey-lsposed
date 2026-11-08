@@ -51,12 +51,14 @@ internal object SideKeyGestureHooks {
     private const val HOLD_MS = 150L
 
     /**
-     * 已经补投出去、还没被自己再看到的那几条派发。
+     * 已经补投出去、还没被自己再看到的那几条派发（按**实例身份**记）。
      *
-     *  补投回来的那一条会再过一次本 Hook，没有这个计数就会「再扣一次、再补投一次」，永远转圈。
+     *  补投回来的那一条会再过一次本 Hook，不认出来就会「再扣一次、再补投一次」，永远转圈。
+     *  原先记的是一个**全局计数**：补投还没回来时，任何一条别的派发都会把这个计数吃掉、
+     *  被当成回放直接放行 —— 那一下本该被吞的原生动作就跟着弹了出来。按实例认不会串。
      */
-    @Volatile
-    private var pendingReplay = 0
+    private val replays: MutableSet<Message> =
+        java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap())
 
     @Volatile
     private var installed = false
@@ -172,9 +174,8 @@ internal object SideKeyGestureHooks {
         msg: Message?,
     ): Any? {
         //  补投回来的那一条：上一次已经判过「没认领」⇒ 直接放行。
-        //  少了这个出口就会再扣一次、再补投一次，永远转圈。
-        if (pendingReplay > 0) {
-            pendingReplay--
+        //  少了这个出口就会再扣一次、再补投一次，永远转圈；按实例认，别的派发不会误吃。
+        if (msg != null && replays.remove(msg)) {
             XLog.w("场景派发放行（补投回放，原生行为）")
             return chain.proceed()
         }
@@ -200,12 +201,12 @@ internal object SideKeyGestureHooks {
                     XLog.w("场景派发扣留后补到认领（${after}ms 前）→ 丢掉，这一下归模块")
                 } else {
                     XLog.w("场景派发扣留 ${HOLD_MS}ms 仍没认领 → 补投原生动作")
-                    pendingReplay++
+                    replays.add(copy)
                     try {
                         handler.sendMessage(copy)
                     } catch (e: Throwable) {
                         //  补投失败只是这一次原生动作丢了（键看着没反应），不能让异常上主线程
-                        pendingReplay--
+                        replays.remove(copy)
                         XLog.w("补投场景派发失败（这一次原生动作丢失）：${e.javaClass.simpleName}", e)
                     }
                 }

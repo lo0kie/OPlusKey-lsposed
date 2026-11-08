@@ -162,11 +162,24 @@ internal object SeedlingClient {
                         //  `isConnecting` 就一直是 true ⇒ 之后所有消息只往队列里堆、再也不发起重绑。
                         handler.postDelayed(
                             {
-                                synchronized(lock) {
-                                    if (isConnecting && serverMessenger == null) {
-                                        isConnecting = false
-                                        XLog.w("流体云服务 ${CONNECT_TIMEOUT_MS}ms 未连上 ⇒ 复位，下一条消息重新绑定")
+                                val stale =
+                                    synchronized(lock) {
+                                        if (isConnecting && serverMessenger == null) {
+                                            isConnecting = false
+                                            true
+                                        } else {
+                                            false
+                                        }
                                     }
+                                if (stale) {
+                                    XLog.w(
+                                        "流体云服务 ${CONNECT_TIMEOUT_MS}ms 未连上 ⇒ 解掉这条死绑定，" +
+                                            "下一条消息重新绑",
+                                    )
+                                    //  **必须解绑**（与 `onBindingDied` 同一条理由）：连接还挂着时再
+                                    //  `bindService` 会直接复用那条死连接、`onServiceConnected` 不再来
+                                    //  —— 表现就是流体云从此一条都收不到。
+                                    unbindQuietly()
                                 }
                             },
                             CONNECT_TIMEOUT_MS,

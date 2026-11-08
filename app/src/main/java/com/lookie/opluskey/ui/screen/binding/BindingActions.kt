@@ -15,6 +15,7 @@ import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appLabelOf
+import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.blockedReason
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.linkReady
@@ -61,9 +62,10 @@ internal fun SettingsPage.pickToken(
     appName: String? = null,
 ): Boolean =
     writeBinding(token, target, appName) { _ ->
-        //  名字走 `appLabelOf`：`proc:` 那一档的标题里要带应用名（`结束应用:微信`），
-        //  回调拿到的是**目标写法**（包名），与 `stepTitle` 的口径一致
-        I18n.format(Strings.TOAST_BOUND, stepTitle(token) { pkg -> appLabelOf(pkg) })
+        //  名字走 `appNameOf`：`proc:` / `app:` 那几档的标题里要带应用名（`结束应用:微信`），
+        //  而 `stepTitle` 的回调拿到的是**目标写法**（`999@包名/类名`）而不是包名 ——
+        //  `appLabelOf` 只认包名，查不到时把整串原样吐回来（回执就成了「已绑定「999@com.foo/.Bar」」）。
+        I18n.format(Strings.TOAST_BOUND, stepTitle(token) { target -> appNameOf(target) })
     }
 
 /**
@@ -256,7 +258,7 @@ private fun SettingsPage.boundNotice(
         if (pkg == null) {
             //  挑应用那条路带进来的名字优先（它是口令表里的写法，`stepTitle` 认不出来）；
             //  都没有时 `stepTitle` 会把 token 原样吐回来（手改过的配置），那也比空串好。
-            appName ?: stepTitle(action.token) { p -> appLabelOf(p) }.ifBlank { spec.label }
+            appName ?: stepTitle(action.token) { target -> appNameOf(target) }.ifBlank { spec.label }
         } else {
             commandTitleOf(action).forSentence(action, { appName ?: appLabelOf(pkg) }, action.token)
         }

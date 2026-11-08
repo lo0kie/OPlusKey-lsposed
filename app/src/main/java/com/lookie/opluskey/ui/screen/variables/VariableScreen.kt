@@ -155,9 +155,9 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
                         },
                         text =
                             if (unreadable) {
-                                I18n.get(Strings.VARIABLES_UNREADABLE, "变量表读不出来，先别在这里新建（那会盖掉盘上那份）")
+                                I18n.get(Strings.VARIABLES_UNREADABLE, "变量表读不出来，先别新建（会盖掉盘上那份）")
                             } else {
-                                I18n.get(Strings.VARIABLES_EMPTY, "还没有变量，点右上角那颗 + 新建一颗")
+                                I18n.get(Strings.VARIABLES_EMPTY, "还没有变量，点右上角 + 新建")
                             },
                     )
                 }

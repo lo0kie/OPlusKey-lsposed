@@ -112,15 +112,20 @@ internal object ServiceCalls {
         val sets = if (argSets.isEmpty()) arrayOf(emptyList<Any?>()) else argSets
         for (args in sets) {
             val m = Reflect.methodByNameAndArity(target.javaClass, name, args.size) ?: continue
-            return try {
-                m.isAccessible = true
-                Called(m.invoke(target, *args.toTypedArray()))
-            } catch (e: Throwable) {
-                // 真正的拒绝原因在 cause 里（`InvocationTargetException` 自己的 message 恒为 null）
-                val cause = Reflect.deepestCause(e)
-                XLog.w("调 $name/${args.size} 被拒：${cause.javaClass.simpleName}: ${cause.message}")
-                null
-            }
+            val failure =
+                try {
+                    m.isAccessible = true
+                    return Called(m.invoke(target, *args.toTypedArray()))
+                } catch (e: Throwable) {
+                    e
+                }
+            // 真正的拒绝原因在 cause 里（`InvocationTargetException` 自己的 message 恒为 null）
+            val cause = Reflect.deepestCause(failure)
+            XLog.w("调 $name/${args.size} 被拒：${cause.javaClass.simpleName}: ${cause.message}")
+            //  **目标方法自己抛的**（`InvocationTargetException`）= 真被拒（权限 / 状态不对），
+            //  换一组实参也一样，直接收工。其余失败是「这组实参对不上这个方法」——
+            //  继续试下一组：候选表存在的意义就是同一个方法在别的 ROM 上签名不同。
+            if (failure is java.lang.reflect.InvocationTargetException) return null
         }
         // 一个候选都没命中：把接收者是谁打出来 —— 是「服务对象不对」还是「签名不对」一眼能分
         XLog.w("$name/${sets.firstOrNull()?.size ?: 0}：${target.javaClass.simpleName} 上没有这个方法")

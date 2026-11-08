@@ -47,15 +47,18 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 // 「按键功能」页 —— **按键列表 + 组合按键列表**收在同一页，从首页「按键操作」卡里那一行进来。
 //
 // 上面是「这台机器上有哪几颗键」（点一颗进它的绑定页），下面是组合按键那一列
-// （一档一行，点一行进编辑页 `Screen.COMBO_EDIT`；末行「添加组合按键」弹选键窗）。
+// （一档一行，点一行进编辑页 `Screen.COMBO_EDIT`；两张清单各自下面单起一张「添加…」卡）。
 // 两个清单本来就是同一个问题（有哪些「按键」可配），拆两处要在首页摆一列清单占掉半屏。
 
 /**
  * 「按键功能」页 —— 两张清单上下排：先按键、后组合按键。
  *
- *  **组合那一列一行都没有时什么都不摆**（用户口径：那句「还没有组合按键」去掉）——只剩末行
- * 「添加组合按键」。这一页本来就只有两件事（这一列有哪几组 / 再加一组），
- * 空的时候「加一组」这一行自己就把话说完了，再补一句说明只是多一句废话。
+ *  每张清单与它那张「添加…」卡是**两张卡**（用户口径「所有的添加行都另起一个卡片」）：
+ *  清单回答「现在有哪几个」，添加那张回答「怎么再加一个」。
+ *
+ *  **组合那一列一行都没有时什么都不摆**（用户口径：那句「还没有组合按键」去掉）——只剩那张
+ * 「添加组合按键」卡。这一页本来就只有两件事（这一列有哪几组 / 再加一组），
+ *  空的时候「加一组」这一行自己就把话说完了，再补一句说明只是多一句废话。
  */
 @Composable
 internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
@@ -234,7 +237,7 @@ private fun SettingsPage.KeysDeleteConfirm(
     val notes =
         buildList {
             if (cascadeCombos > 0) add(I18n.format(Strings.KEYS_DELETE_COMBOS, cascadeCombos))
-            if (builtinPicked) add(I18n.get(Strings.KEYS_DELETE_BUILTIN, "内置侧键不能删除，会从这一批里剔除"))
+            if (builtinPicked) add(I18n.get(Strings.KEYS_DELETE_BUILTIN, "内置快捷键不能删，已从这一批剔除"))
         }
     ConfirmDialog(
         show = show,

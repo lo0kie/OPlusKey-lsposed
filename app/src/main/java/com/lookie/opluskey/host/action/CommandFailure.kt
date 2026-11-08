@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
 
 /**
@@ -17,13 +18,13 @@ internal enum class CommandFailure(
     val fallback: String,
 ) {
     /** `cmd:<名字>` 在命令库里找不到（被删了 / 改名了 / 文件被手改坏）。 */
-    NOT_FOUND(Strings.COMMAND_FAILURE_NOT_FOUND, "这条命令已经不在了，去「自定义命令」里看看"),
+    NOT_FOUND(Strings.COMMAND_FAILURE_NOT_FOUND, "命令已不存在"),
 
     /** 命令是空的（单条没填内容，或多条一步都没有）。 */
     EMPTY(Strings.COMMAND_FAILURE_EMPTY, "这条命令是空的，补上内容再试"),
 
     /** `cmd:` 嵌套超过 [CustomCommandRunner] 的上限（手改出来的环）。 */
-    TOO_DEEP(Strings.COMMAND_FAILURE_TOO_DEEP, "命令之间引用得太绕了，检查一下"),
+    TOO_DEEP(Strings.COMMAND_FAILURE_TOO_DEEP, "命令互相引用太深"),
 
     /** `ProcessBuilder` 直接起不来（SELinux / 进程数上限 …）。 */
     SHELL_REJECTED(Strings.COMMAND_FAILURE_SHELL_REJECTED, "系统不让执行这条命令"),
@@ -58,7 +59,7 @@ internal enum class CommandFailure(
     SHELL_ROOT_OFF(Strings.COMMAND_FAILURE_SHELL_ROOT_OFF, "此命令需要 root 权限"),
 
     /** 其它非 0 退出码 —— 命令跑起来了但自己报错。 */
-    SHELL_FAILED(Strings.COMMAND_FAILURE_SHELL_FAILED, "命令没跑成功，检查一下内容"),
+    SHELL_FAILED(Strings.COMMAND_FAILURE_SHELL_FAILED, "命令没跑成功"),
 
     /** `app:` 解析不到界面（包名错 / 应用已卸载）。 */
     APP_MISSING(Strings.COMMAND_FAILURE_APP_MISSING, "找不到这个应用，可能已经卸载了"),
@@ -178,7 +179,10 @@ internal object FailureNotice {
  *
  *  收方是注入侧挂在 AMS 广播入口上的 hook（`inject/KeyHooks.readBroadcast` → `inject/SystemToast`），
  *  它用系统 Context（包名 `android`，免限流）弹；它自己还带一层 1 秒去重（长按连发时同一句
- *  不刷屏）。两边都看得见整条链，所以这里**不必 `setPackage`**。
+ *  不刷屏）。hook 挂在 AMS 入口上、在那之前就看见整条 intent，所以 `setPackage` **不影响**它收。
+ *
+ *  **必须 `setPackage`**：这句话里有用户的应用名 / 命令名，裸着发就是一条谁都能注册接收的隐式广播
+ *  （任意应用写个同名 action 的 receiver 就能读到）。
  *
  *  发不出去（没有 Context / 广播被拒）只记一行：提示丢了不报错 —— 它本来就是「顺带说一句」，
  *  不该因为它把执行路径的意思反过来说成失败。
@@ -190,7 +194,9 @@ internal fun requestSystemToast(
     if (context == null || text.isEmpty()) return
     runCatching {
         context.sendBroadcast(
-            Intent(ModuleWire.ACTION_TOAST).putExtra(ModuleWire.EXTRA_TOAST_TEXT, text),
+            Intent(ModuleWire.ACTION_TOAST)
+                .setPackage(HostApp.PACKAGE)
+                .putExtra(ModuleWire.EXTRA_TOAST_TEXT, text),
         )
     }.onFailure { XLog.w("提示没发出去（注入侧弹不了）：${it.javaClass.simpleName}", it) }
 }

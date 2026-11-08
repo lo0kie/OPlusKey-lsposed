@@ -19,19 +19,23 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.screen.binding.openKeySettings
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
 import com.lookie.opluskey.ui.state.ComboEditState
+import com.lookie.opluskey.ui.state.SettingsTarget
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
 /**
- * 「组合按键编辑」页顶栏那颗 ⋮ —— 现在三行：条件执行 / 停用启用 / 删除。
+ * 「组合按键编辑」页顶栏那颗 ⋮ —— 现在四行：系统场景 / 独立设置 / 停用启用 / 删除。
  *
  *  为什么删在这个页而不在列表那一行：列表一行只有「进这一页」一件事，行尾再挂一颗删除图标
  *  会挤掉「进下一页」那枚箭头（`CardRow.Item` 的 `trailing` 与 `arrow` 互斥）——
  *  而删除本来就不是高频动作，放菜单里、再加一道确认，误触代价最小。
  *
- *  「停用 / 启用」与「按键绑定」页那三行**同一套**（见 `BindingKeyMenu` 的 `keyActionEntries`）：
+ *  「系统场景」与「独立设置」都是**进下一页**（同一组，压在上面；场景在前、独立设置在后，
+ *  与「按键绑定」页那份菜单同一口径）；「停用 / 启用」与
+ *  「按键绑定」页那三行**同一套**（见 `BindingKeyMenu` 的 `keyActionEntries`）：
  *  停用在前、删除压最下面；它写的是这一档自己的 `ComboKey.enabled`，与模块总闸是两层。
  *
  *  删完**退回列表**：这一页的内容已经不存在了，留在原地只剩一个空壳。
@@ -64,6 +68,11 @@ internal fun SettingsPage.ComboEditMenu() {
                     open = open,
                     actions =
                         ComboMenuActions(
+                            //  与顶栏那颗设置键同一个落点（同一条 `openKeySettings`）
+                            onOpenSettings = {
+                                open = false
+                                id?.let { openKeySettings(SettingsTarget.Combo(it)) }
+                            },
                             onOpenBranches = {
                                 open = false
                                 id?.let(::openBranchesForCombo)
@@ -194,14 +203,16 @@ private fun SettingsPage.ComboDisableDialog(
 }
 
 /**
- * 这一页 ⋮ 上那三行要干的事 —— 合成一个对象，条目那支才留在 detekt 的参数上限内
+ * 这一页 ⋮ 上那四行要干的事 —— 合成一个对象，条目那支才留在 detekt 的参数上限内
  * （与 `BindingKeyMenu` 的 `KeyMenuActions` 同一个写法）。
  *
+ * @param onOpenSettings 「独立设置」那一行（进另一页；与顶栏那颗设置键同一个落点）
  * @param onOpenBranches 「条件执行」那一行（进另一页）
  * @param onToggleEnabled 「停用 / 启用」那一行（文案与图标跟着当前状态换）
  * @param onAskDelete 「删除组合按键」那一行
  */
 private class ComboMenuActions(
+    val onOpenSettings: () -> Unit,
     val onOpenBranches: () -> Unit,
     val onToggleEnabled: () -> Unit,
     val onAskDelete: () -> Unit,
@@ -210,8 +221,10 @@ private class ComboMenuActions(
 /**
  * 这一页 ⋮ 的条目 —— 全抽出来只为让 [ComboEditMenu] 留在 detekt 的长度上限内。
  *
- *  三行的分工与「按键绑定」页那份菜单一致：最上面是**进下一页**（条件执行），一条加深带隔开，
- *  下面两行才是对这一档动手（停用 / 启用、删除），删除压最下面。
+ *  四行的分工与「按键绑定」页那份菜单一致：最上面两行是**进下一页**（独立设置 / 条件执行），
+ *  一条加深带隔开，下面两行才是对这一档动手（停用 / 启用、删除），删除压最下面。
+ *
+ *  「独立设置」**不看这一档的启停**：停用的组合照样能进来改（与顶栏那颗设置键同一口径）。
  *
  * @param id 正在编辑的那一档（`null` = 刚删完、退场那一帧）
  */
@@ -231,7 +244,9 @@ private fun SettingsPage.comboMenuEntries(
         val enabled = combo?.enabled ?: true
         val label = combo?.let { comboLabel(cfg, it, bracketed = true) }.orEmpty()
         listOf(
-            //  「条件执行」放第一行：它是**进另一页**，与下面那两行不是一类事，用加深带隔开。
+            //  「系统场景」与下一行同属「进下一页」，与下面那两行不是一类事，用加深带隔开。
+            //  顺序（用户口径）：**场景在前、独立设置其次** —— 场景说的是这一档「怎么分流」，
+            //  优先级高于「这一档的显示 / 触发怎么调」。
             //  这一档停用了 ⇒ 也按不动：条件表说的是「这一档怎么分流」，这一档都不成立了，
             //  进去改那份表没有任何去处（与按键那边同一条口径，提示语同一句形状）。
             MenuEntry.Row(
@@ -244,6 +259,13 @@ private fun SettingsPage.comboMenuEntries(
                 enabled = enabled,
                 disabledHint = if (enabled) null else I18n.format(Strings.COMBO_DISABLED_ITEM, label),
                 onPick = actions.onOpenBranches,
+            ),
+            MenuEntry.Row(
+                title = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"),
+                icon = PageIcons.SettingsCog,
+                submenu = true,
+                trailingIcon = PageIcons.EnterArrow,
+                onPick = actions.onOpenSettings,
             ),
             MenuEntry.Row(
                 title =

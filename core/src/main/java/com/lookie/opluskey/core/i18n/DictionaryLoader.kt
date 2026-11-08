@@ -53,14 +53,19 @@ object DictionaryLoader {
         }
 
     /** 通过 ClassLoader 取资源输入流（四种取法：本类的、线程上下文的、按绝对路径的两种）。 */
-    private fun openResourceStream(path: String): InputStream? {
-        val cleanPath = path.removePrefix("/")
-        val cl = DictionaryLoader::class.java.classLoader
-        return cl?.getResourceAsStream(cleanPath)
-            ?: Thread.currentThread().contextClassLoader?.getResourceAsStream(cleanPath)
-            ?: DictionaryLoader::class.java.getResourceAsStream("/$cleanPath")
-            ?: DictionaryLoader::class.java.getResourceAsStream(cleanPath)
-    }
+    private fun openResourceStream(path: String): InputStream? =
+        //  **整段包住**：这一句在调用方的 `try` **之外**（`firstNotNullOfOrNull` 的 lambda 里
+        //  先取流、再进 try 读内容），loader 若是自定义实现、`getResourceAsStream` 抛了，
+        //  异常会一路穿出 `fromClassLoader` —— 于是下面「从 APK 里读」那条兜底根本不会执行。
+        runCatching {
+            val cleanPath = path.removePrefix("/")
+            val cl = DictionaryLoader::class.java.classLoader
+            cl?.getResourceAsStream(cleanPath)
+                ?: Thread.currentThread().contextClassLoader?.getResourceAsStream(cleanPath)
+                ?: DictionaryLoader::class.java.getResourceAsStream("/$cleanPath")
+                ?: DictionaryLoader::class.java.getResourceAsStream(cleanPath)
+        }.onFailure { XLog.d("取字典资源失败（$path）：${it.javaClass.simpleName}") }
+            .getOrNull()
 
     /**
      * 第 2 条路：按包名问 `PackageManager` 要自己的 APK，当 zip 读 `assets/locales/<file>`。

@@ -139,9 +139,11 @@ internal fun SettingsPage.commandReferenceCycle(): List<String>? {
  * @param minHeightRatio 行高下限 = 卡宽 × 本值（单条给 [SINGLE_CARD_MIN_HEIGHT_RATIO]，多条给 `1f`）。
  * @param maxHeightRatio 行高上限 = 卡宽 × 本值；`0f` 表示不封顶。
  *
- *   单条命令那一行封在 `1f`（正方形）：一条命令的摘要长短差得很远，长的那几条能把卡片撑到
- *   两三个正方形高，一列里只剩它一张，网格看着像断了。多条命令不封顶 —— 它的步骤是逐条列的，
- *   截掉就等于把「有几步」这件事藏了。
+ *   现在两条都封在 `1f`（正方形）：一条命令的摘要 / 步骤长短差得很远，长的那几条能把卡片撑到
+ *   两三个正方形高，一列里只剩它一张，网格看着像断了。放不下的内容由**卡片自己**收
+ *   （单条摘要在 `maxLines` 上封顶、多条把装不下的步骤换成一行「…」，见 `SavedCommands`）——
+ *   不靠这一层硬裁：硬裁是从某一行中间断开的，连省略号都没有。
+ *   `0f` 这一档仍然留着：封顶是调用点的口径，不是这个布局的能力。
  */
 internal class TileRowSpec(
     val tileCount: Int,

@@ -56,14 +56,17 @@ internal object SystemActionButtonConfig {
                 XLog.w("读系统侧键配置：Cursor 没有列 —— 表结构与预期不符")
                 return null
             }
-            XLog.d("系统侧键配置的列：${names.joinToString(", ")}")
+            //  **判据级，用 W**：这一行是「列名随 ROM 版本变」的唯一凭据（红线 8 要求列名不许
+            //  硬编码，一切靠这里读到的名字），而 `d` 在 release 里被编译期消除 —— 用 d 等于
+            //  「换 ROM 后这一项读错，线上完全无痕」。它每次开机只来一条，不刷屏。
+            XLog.w("系统侧键配置的列：${names.joinToString(", ")}")
 
             val sceneIdx = sceneColumnIndex(names)
             if (sceneIdx < 0) {
                 XLog.w("读系统侧键配置：找不到「场景名」列（列=${names.joinToString(",")}）")
                 return null
             }
-            XLog.d("系统侧键配置的场景列：${names[sceneIdx]}")
+            XLog.w("系统侧键配置的场景列：${names[sceneIdx]}")
 
             val out = ArrayList<Row>()
             while (cursor.moveToNext()) {

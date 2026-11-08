@@ -283,8 +283,26 @@ object ConfigProfiles {
         //  内容盖掉当前槽 —— 而那份坏文件往往只是外皮 / 截断坏了，原样留着还能救回来。
         //  它走的是**同一个失败出口**（不另起一个 return），所以「什么都没写」这一点由下面那个
         //  `currentUnreadable ||` 短路保证：条件第一项就命中，后面的写盘一个都不会执行。
-        val currentUnreadable = ConfigStore.files().read(CURRENT_SLOT) is ModuleFiles.Load.Unreadable
-        val current = if (currentUnreadable) null else readOf(CURRENT_SLOT)
+        //  **按 [ConfigStore.load] 的三态判**（不是文件层的 `ModuleFiles.read`）：外皮坏了、或正文
+        //  md5 对不上时，文件层照样给 `Ok`，只有走完整解码链才判得出「读不懂」。用文件层的判据会
+        //  把这种文件当成「没有当前配置」，`staged` 一 false 就短路掉备份，直接用目标内容盖过去 ——
+        //  而它往往只是外皮 / 截断坏了，原样留着还能救。
+        val currentLoad = ConfigStore.load()
+        val currentUnreadable = currentLoad is ConfigStore.Load.Unreadable
+        val current =
+            when (currentLoad) {
+                is ConfigStore.Load.Ok -> {
+                    currentLoad.config
+                }
+
+                is ConfigStore.Load.Recovered -> {
+                    currentLoad.config
+                }
+
+                ConfigStore.Load.Absent, ConfigStore.Load.Unreadable -> {
+                    null
+                }
+            }
         //  **两步都要成，第一步成了第二步失败要把第一步退回去**：
         //  第一步已经把旧当前写进了目标槽 —— 此时若不还原，那份目标配置就**永久没了**
         //  （目标内容已经被旧当前盖掉，内存里还留着的那个 `target` 只在这一次调用里有效）。

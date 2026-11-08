@@ -97,11 +97,26 @@ data class ComboKey(
      *  「配了 A+B，但只给长按绑了动作」时，短按到底要不要让两颗键各干各的，
      *  不同组往往不一样（临时组合希望透传、专用组合希望吞掉）。
      *
-     *  **不受 `useOwnSettings` 管**：那个总开关管的是「五项公共项的覆盖」，而这一项本来就
-     *  只属于组合键 —— 它没有「要不要覆盖」这一问，只有「跟随公共还是自己定」。
+     *  **受 `useOwnSettings` 管**，与那五项同一条规则：关着就整份跟公共，开着才用这一位。
+     *  打开独立设置那一刻这一位会被**播成当时的公共值**（`KeySettingsScreen.withSeededComboFields`），
+     *  所以「开着独立设置却还在跟随公共」只会出现在还没被拨过的老配置上（`null` 就是那一档）。
      *  取值只走 `Config.comboPassthroughFor`，执行侧不自己看全局。
      */
     val passthrough: Boolean? = null,
+    /**
+     * 这一组自己的「两颗键按下之间最多隔多久」（毫秒）。
+     *
+     *  这个数同时管两件事：**算不算同时按下**，以及**第一颗键要等多久才回落单击**。
+     *  一个数管两件事就必然会打架 —— 三颗的组合需要宽一点，而两颗的调宽了会让那颗键
+     *  整套单击都变钝。所以允许每组各设一份。
+     *
+     *  **同样受 `useOwnSettings` 管**：关着整份看公共；打开那一刻被播成当时的公共值。
+     *  [WINDOW_FOLLOW_GLOBAL]（0）只剩老配置会读到，界面上也没有「拖回跟随」那一档 ——
+     *  要回公共就关掉这一组的总开关（`Config.comboWindowFor` 的第一支）。
+     *
+     *  取值一律走 `Config.comboWindowFor`（判定侧与界面都只走这一处，谁也不自己看全局）。
+     */
+    val windowMs: Int = WINDOW_FOLLOW_GLOBAL,
 ) : OwnSettings,
     LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
@@ -147,6 +162,9 @@ data class ComboKey(
 
         /** 至少两颗 —— 一颗不叫组合。 */
         const val MIN_KEYS = 2
+
+        /** [windowMs] 取这个值表示「跟随公共设置」—— 它不是「等 0 毫秒」。 */
+        const val WINDOW_FOLLOW_GLOBAL = 0
 
         /**
          * 成员上限：两颗（用户口径 —— 一个组合就是**两颗键一起按**，不多不少）。

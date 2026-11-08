@@ -25,20 +25,27 @@ internal fun MiniWindowLauncher.verifyMiniOrFallback(taskId: Int) {
     //  注意：「读不到任务信息」**不是**「没变成小窗」—— 折成后者就等于把「不知道」说成
     //  「服务端受理了但没收起来」，弹一句「这个应用不支持小窗」，把一个读不到的事实说成应用的锅。
     //  三态见 [zoomStateOf]。
-    if (zoomStateOf(taskId) == null) {
-        XLog.w("zoom:mini → 读不到任务 #$taskId 的信息，无法验收（不报「不支持小窗」）")
-        return
+    //  三态见 [zoomStateOf]：`null`（读不到）与 `false`（真不是小窗）必须分开处理。
+    when (zoomStateOf(taskId)) {
+        null -> {
+            XLog.w("zoom:mini → 读不到任务 #$taskId 的信息，无法验收（不报「不支持小窗」）")
+            return
+        }
+
+        false -> {
+            // **什么都不做**：服务端受理了（返回 `2`）却没收出窗口，
+            // 就是「这个应用不支持小窗」（真机：`com.heytap.market`）。以前这里退
+            // 「按包名另起一份实例」⇒ 回桌面 + 重新起一份，用户看到「一按侧键就回桌面重开」，
+            // 比没反应更糟。而且那条还会**重复调一次** `startFlexibleFromRecents`。
+            XLog.w("zoom:mini → 任务 #$taskId 没变成小窗（服务端受理了但没收起来），什么都不做")
+            onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+            return
+        }
+
+        true -> {
+            logZoomGeometry(taskId)
+        }
     }
-    if (!isTaskInZoomWindow(taskId)) {
-        // **什么都不做**：服务端受理了（返回 `2`）却没收出窗口，
-        // 就是「这个应用不支持小窗」（真机：`com.heytap.market`）。以前这里退
-        // 「按包名另起一份实例」⇒ 回桌面 + 重新起一份，用户看到「一按侧键就回桌面重开」，
-        // 比没反应更糟。而且那条还会**重复调一次** `startFlexibleFromRecents`。
-        XLog.w("zoom:mini → 任务 #$taskId 没变成小窗（服务端受理了但没收起来），什么都不做")
-        onFailure(CommandFailure.APP_NO_MINI_WINDOW)
-        return
-    }
-    logZoomGeometry(taskId)
 }
 
 /**
@@ -48,31 +55,91 @@ internal fun MiniWindowLauncher.verifyMiniOrFallback(taskId: Int) {
  * 比例是对的、几何偏大；换路（launch 配方）会变成竖屏比例但进屏 —— 两者取舍还没收敛，
  * 自动换路会让屏幕上变成「横屏比例一闪 → 竖屏比例」，反而看不出比例对不对。
  * 要顺着这条路继续调时，把这里的 `false` 分支接到降级上即可。
+ *
+ * **几何的归属要说清**：`getCurrentZoomWindowState()` 给的是「**此刻屏幕上那个小窗**」，
+ * 不是「taskId 那一份」（那是个全局单例状态）。所以下面先读状态自带的 taskId：
+ *  · 读得到且等于 [taskId] ⇒ 这一行确实是它在说；
+ *  · 读得到但不等于 ⇒ 屏幕上那个小窗是**别人**，这一行不作数（会明说）；
+ *  · 读不到 ⇒ 只能说「屏幕上那个小窗」，不能替 [taskId] 认领（原先就是直接按 taskId 报的，
+ *    同时开两个小窗时会给出「#A 超出屏幕」而屏幕上是 B）。
  */
 internal fun MiniWindowLauncher.logZoomGeometry(taskId: Int) {
-    val rect = zoomScreenRect()
+    val state = zoomState()
+    val rect = zoomRectOf(state)
     val display = displaySize()
+    val who = geometryOwner(state, taskId)
     when (zoomFitsOnScreen(rect, display)) {
         false -> {
             XLog.w(
-                "zoom:mini → 任务 #$taskId 已是小窗，但**窗口超出屏幕**：屏幕矩形 $rect > 显示 $display" +
+                "zoom:mini → $who 的窗口**超出屏幕**：屏幕矩形 $rect > 显示 $display" +
                     "（横屏应用走 recents 正门时会这样，见 docs/device-findings.md 附十三）",
             )
         }
 
         true -> {
-            XLog.w("zoom:mini → 任务 #$taskId 已是小窗、窗口落在屏幕内（屏幕矩形 $rect）")
+            XLog.w("zoom:mini → $who 的窗口落在屏幕内（屏幕矩形 $rect）")
         }
 
         null -> {
-            XLog.w("zoom:mini → 任务 #$taskId 已是小窗，但读不到屏幕矩形 / 显示尺寸，跳过几何验收")
+            XLog.w("zoom:mini → $who 已是小窗，但读不到屏幕矩形 / 显示尺寸，跳过几何验收")
         }
     }
 }
 
 /**
- * 小窗**在屏幕上的**矩形 —— 取自框架
- * `com.oplus.zoomwindow.OplusZoomWindowManager#getCurrentZoomWindowState()` 的 `zoomRect`。
+ * 这块几何到底属于哪一份任务 —— 日志里那句话的主语。
+ *
+ *  `getCurrentZoomWindowState()` 那个状态**不一定带 taskId 字段**（没在真机上验过，按名字读，
+ *  读不到就是 -1）。读不到时**不替调用方认领**：只写「屏幕上那个小窗」，并说明读不到 id。
+ *  不猜的理由与全仓那条一致 —— 把「不知道」说成「#A 超出屏幕」，排查时会被带到别的任务上。
+ */
+internal fun MiniWindowLauncher.geometryOwner(
+    state: Any?,
+    taskId: Int,
+): String {
+    val owner =
+        try {
+            (state?.let { Reflect.fieldValue(it, it.javaClass, ZOOM_STATE_TASK_ID_FIELD) } as? Int) ?: -1
+        } catch (e: Throwable) {
+            XLog.d("读小窗状态的 taskId 失败（按读不到处理）：${e.message}")
+            -1
+        }
+    return when {
+        owner <= 0 -> "屏幕上当前那个小窗（这块状态里读不到 taskId，无法确认是不是 #$taskId）"
+        owner == taskId -> "任务 #$taskId"
+        else -> "任务 #$owner（**不是**这次验收的 #$taskId，这一行不作数）"
+    }
+}
+
+/**
+ * `OplusZoomWindowInfo` 上那个 taskId 字段名 —— 按惯例是 `taskId`。
+ *
+ *  与 `MiniWindowFacts` 里那几个**验证过**的字段名不同：这一个**没在真机上验过**
+ *  （读不到就是读不到，不影响任何判定，只影响日志能不能点名），所以留在本文件而不进事实表。
+ */
+private const val ZOOM_STATE_TASK_ID_FIELD = "taskId"
+
+/**
+ * 「此刻屏幕上那个小窗」的原始状态对象 —— 框架
+ * `com.oplus.zoomwindow.OplusZoomWindowManager#getCurrentZoomWindowState()` 的返回。
+ *
+ *  **它是全局单例状态，不带「我要哪一份」的入参**：读到的永远是**当前显示着的那个**小窗。
+ *  要把它和某个 taskId 对上，只能看状态自己有没有 taskId 字段（见 [geometryOwner]）。
+ *  读不到 / 抛异常都返回 `null`（调用方据此跳过验收，不猜）。
+ */
+internal fun MiniWindowLauncher.zoomState(): Any? =
+    try {
+        val cls = Reflect.findClass(javaClass.classLoader, MiniWindowSupport.MANAGER)
+        val manager = cls?.let { Reflect.callStatic(it, "getInstance") }
+        val method = cls?.let { Reflect.methodByNameAndArity(it, MiniWindowFacts.CURRENT_ZOOM_STATE_METHOD, 0) }
+        if (manager != null && method != null) Reflect.call(manager, method) else null
+    } catch (e: Throwable) {
+        XLog.d("读小窗状态失败：${e.message}")
+        null
+    }
+
+/**
+ * 小窗**在屏幕上的**矩形 —— 取自上面那个状态的 `zoomRect`。
  *
  * 注意：它和 [taskZoomConfigRatio] 读的 `OplusAppInfo.appBounds` **不是一回事**：
  * `appBounds` 是**配置矩形**（不含显示缩放），这个才是**乘过 scale 的屏幕矩形** ——
@@ -81,12 +148,8 @@ internal fun MiniWindowLauncher.logZoomGeometry(taskId: Int) {
  * 用**截图像素级边缘检测**核对过它就是屏幕上那块矩形：真机左边界 `x=141`、
  * 下边界 `y=1006`，与日志里的 `zoomRect = Rect(141, 266 - 1457, 1007)` 对得上。
  */
-internal fun MiniWindowLauncher.zoomScreenRect(): android.graphics.Rect? =
+internal fun MiniWindowLauncher.zoomRectOf(state: Any?): android.graphics.Rect? =
     try {
-        val cls = Reflect.findClass(javaClass.classLoader, MiniWindowSupport.MANAGER)
-        val manager = cls?.let { Reflect.callStatic(it, "getInstance") }
-        val method = cls?.let { Reflect.methodByNameAndArity(it, MiniWindowFacts.CURRENT_ZOOM_STATE_METHOD, 0) }
-        val state = if (manager != null && method != null) Reflect.call(manager, method) else null
         state?.let { Reflect.fieldValue(it, it.javaClass, MiniWindowFacts.ZOOM_STATE_RECT_FIELD) as? android.graphics.Rect }
     } catch (e: Throwable) {
         XLog.d("读小窗屏幕矩形失败：${e.message}")
@@ -144,9 +207,6 @@ internal fun MiniWindowLauncher.zoomStateOf(taskId: Int): Boolean? {
             ?: return null
     return mode == MiniWindowFacts.WINDOWING_MODE_ZOOM
 }
-
-/** 同上，但把「读不到」折成 `false` —— **只给「读不到也不影响判断」的写日志用**。 */
-internal fun MiniWindowLauncher.isTaskInZoomWindow(taskId: Int): Boolean = zoomStateOf(taskId) == true
 
 /**
  * 那个任务小窗的**应用配置矩形宽 / 屏宽**（`null` = 它不是小窗 / 读不到）。

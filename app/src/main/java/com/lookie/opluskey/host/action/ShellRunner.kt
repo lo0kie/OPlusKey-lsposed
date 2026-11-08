@@ -78,6 +78,10 @@ internal object ShellRunner {
                     "${XLog.redactCommand(command)}（${e.javaClass.simpleName}）",
             )
             onFailure(CommandFailure.OVERLOADED)
+            //  **被拒也是「这一条结束了」**：`onDone` 的约定是「跑完之后」（成功失败都算），而
+            //  「等回执再排下一步」那一档（多条命令的步骤间隔）拿不到回执就永远不往下走。
+            //  精确的边界只有「压根没入队」这一种，它也必须回执 —— 否则链停在半路。
+            onDone?.invoke()
         }
     }
 

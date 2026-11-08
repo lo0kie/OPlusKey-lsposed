@@ -2,7 +2,11 @@ package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +37,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.gestureProbe
+import com.lookie.opluskey.ui.model.CARD_GAP
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
@@ -114,11 +119,8 @@ internal fun SettingsPage.SerialSteps() {
 
     //  **整张卡交给 [CardList]**（与页面上其它卡同一套：分隔线、首尾圆角、每行位置都由它算）。
     //
-    //  行的进出场仍用这一页自己的状态（`item.state`，规格见 `STEP_ROW_ENTER` / `STEP_ROW_EXIT`）——
-    //  以 `visibleState` 传进去，`CardList` 就按它播，不会再用布尔重播一遍。
-    //  `visible` 那一位只用来算行位置：退场行（`targetState` 已 false）立刻从「行数」里退出去，
-    //  下面那行「添加命令」于是**在过渡开始那一帧**就翻成 `Tail`（原先按展示层行数算，
-    //  要等退场播完才翻，卡片高度会在动画结束那一刻再跳 4dp）。
+    //  `visible` 那一位只用来算行位置：退场行（`targetState` 已 false）立刻从「这一张卡的行数」里
+    //  退出去 —— 否则它退场期间末行仍是 `Middle`，卡片末尾那两个圆角要等退场播完才回来。
     //  退场播完的行从展示层摘除（`currentState` 收到 false 之后再等一档退场时长）。
     //  按「正在退场的 id 集合」做 key：只在有新行开始退场时才重启这个 effect，
     //  比每行各挂一个 `LaunchedEffect` 少一层组合（行现在是通用的 `CardRow.Item`，
@@ -130,12 +132,16 @@ internal fun SettingsPage.SerialSteps() {
         display.removeAll { it.exiting && it.id in exitingIds && !it.state.currentState }
     }
 
-    //  **整张卡交给 [CardList]**，每一行就是通用的 [CardRow.Item] —— 与页面上其它卡同一套：
-    //  卡片、分隔线、行位置、图标与文字的间距都由它给，这里只填「这一行是什么」。
+    //  **步骤行交给 [CardList]**，每一行就是通用的 [CardRow.Item] —— 卡片、分隔线、行位置、
+    //  图标与文字的间距都由它给，这里只填「这一行是什么」。
     //  行的进出场仍用这一页自己的状态（`item.state`，规格见 `STEP_ROW_ENTER` / `STEP_ROW_EXIT`）：
     //  以 `visibleState` 传进去，`CardList` 就按它播，不会再用布尔重播一遍。
-    CardList(
-        rows =
+    //
+    //  「添加命令」**不在这一张卡里**（用户口径「所有的添加行都另起一个卡片」）：
+    //  上面那张是「这一步一步做什么」，那一行是往末尾**添**一步 —— 同卡时读起来像
+    //  「最后一步叫添加命令」，而它跟哪一步都不并列。
+    Column(Modifier.fillMaxWidth()) {
+        val stepRows =
             display.map { item ->
                 // 这一行在 steps 里的下标：展示层里排在它前面的未退场行数 ——
                 // 退场行还在展示层里占位（收缩中），但已经不在 steps 里了。
@@ -146,6 +152,10 @@ internal fun SettingsPage.SerialSteps() {
                 val rowPreciseClick = remember(item.id) { PreciseClickState() }
                 CardRow.Item(
                     title = stepTitle(item.token, ::appNameOf),
+                    //  **不限行**（用户口径「命令列表的命令列主标题多行显示」）：这一行写的是
+                    //  `打开应用: 微信 - LauncherUI` 这种整句，单行会把「做什么」裁掉一半 ——
+                    //  而这一步做的正是核对它做什么。行高由内容撑开，与条件 / 动作那两行同一口径。
+                    titleMaxLines = Int.MAX_VALUE,
                     summary = I18n.format(Strings.COMMON_STEP_INDEX, stepsIndex + 1),
                     icon = stepIcon(item.token, configState.commands.value),
                     // 排序态与退场中的行**不吃点击**（`onClick = null` = 纯展示行，也不挂按压反馈）：
@@ -176,8 +186,16 @@ internal fun SettingsPage.SerialSteps() {
                     visible = item.state.targetState,
                     visibleState = item.state,
                 )
-            } + stepAddRow(steps = steps, sorting = sorting, probe = probe) { stepSheet = STEP_PICK_APPEND },
-    )
+            }
+        //  一步都没有时**不摆空卡**：`CardList` 收到空表仍会画一条带内边距的窄条。
+        if (stepRows.isNotEmpty()) {
+            CardList(rows = stepRows)
+            Spacer(Modifier.height(CARD_GAP))
+        }
+        CardList(
+            rows = listOf(stepAddRow(steps = steps, sorting = sorting, probe = probe) { stepSheet = STEP_PICK_APPEND }),
+        )
+    }
 
     // 这一页的「挑一步」只有这一支抽屉 —— 两条入口共用（追加 / 换一步），由 [stepSheet] 说清是哪一种。
     //  挂在这里而不是某一行里：它是浮层，与宿主位置无关，而按行挂会在行退场时连抽屉一起被带走。
@@ -345,7 +363,7 @@ private fun StepButton(
 private const val STEP_BUTTON_GLYPH_RATIO = 0.625f
 
 /**
- * 步骤卡最下面那行「添加命令」—— 同样是通用的 [CardRow.Item]。
+ * 「添加命令」—— 步骤卡下面那张**独立卡**里唯一的一行，同样是通用的 [CardRow.Item]。
  *
  *  满员 / 排序态两档禁用的说法走 `disabledHint`（那一行自己的限制，与 `CardRow.Item` 的读法一致），
  *  点开的动作交给调用点。
@@ -370,7 +388,6 @@ private fun SettingsPage.stepAddRow(
         }
     return CardRow.Item(
         title = I18n.get(Strings.COMMAND_ADD, "添加命令"),
-        summary = I18n.get(Strings.COMMAND_STEP_SELECT_TITLE, "从内置命令与自定义命令里选择"),
         icon = PageIcons.StepAdd,
         trailing = { RowEndIcon(PageIcons.Selector) },
         enabled = !stepsFull && !sorting,

@@ -41,10 +41,16 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *
  * ## 菜单里有什么
  *
- *  1. 「条件执行」—— 进那一页（`Screen.BRANCHES`）。它不是对这颗键的操作，所以压在上面、
- *     并用一条**加深分隔**（下面第一行的 `dividerBefore`）与那三行分开；
+ *  0. 「系统场景」—— 进那一页（`Screen.BRANCHES`）。它不是对这颗键的操作，所以与下一行
+ *     同属「进下一页」那一组，下面用一条**加深分隔**（三行里第一行的 `dividerBefore`）分开；
+ *  1. 「独立设置」—— 进那一页（`Screen.KEY_SETTINGS`）。与顶栏那颗设置键
+ *     （[HeaderSettingsButton]）是**同一个入口的两种摆法**，都走 [openKeySettings]；
+ *     与上一行同一组（都是进下一页）；
  *  2. 「停用 / 启用这颗键」「重命名」「删除按键」—— 都是对**当前选中的那一颗**动手，
  *     删除最狠、压在最下面（越靠下越不容易误点），停用与改名在它上面。
+ *
+ *  上面那两行**场景在前、独立设置在后**（用户口径）：场景说的是这一档「怎么分流」，
+ *  优先级高于「这一档的显示 / 触发怎么调」。
  *
  * ## 按键清单**不在这里**
  *
@@ -62,10 +68,11 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *    **这一颗键**的 `enabled`，与首页那个模块总闸是两件事：停用侧键只停这颗键，
  *    模块与其它键照常（总闸那一档才要过免责声明，也只在首页）。
  *
- * ## 键名后面那枚禁用标记
+ * ## 停用状态不在这张菜单里复述
  *
- *  这一页的顶栏标题已经挂了一枚（见 `PageTopBar` 的 `trailingSubtitleIcon`），菜单里不再重复：
- *  菜单只剩四行，「这一颗键停用了」从页面整片变灰与标题旁那枚记号都看得出来。
+ *  顶栏副标题挪到**大标题下面**之后只剩一行字（库那个槽位不收图标，见 `PageHeader`），
+ *  这一页不再挂那枚禁用记号：「这一颗键停用了」由整页控件变灰、副标题压暗，以及下面
+ *  「启用这颗键」那一行的动词共同表达。菜单里不再补一行只做说明的灰行。
  *
  * @param gesture 这一页**当前停在哪个手势** —— 「系统场景」那一行的子标题按它数条数
  *   （与页面里那条横幅同一条判据：只看这一档手势的规则）。
@@ -95,6 +102,11 @@ internal fun SettingsPage.BindingKeyMenu(gesture: Gesture) {
                     gesture = gesture,
                     actions =
                         KeyMenuActions(
+                            //  与顶栏那颗设置键同一个落点（同一条 `openKeySettings`）
+                            onOpenSettings = {
+                                open = false
+                                openKeySettings(SettingsTarget.Key(editing))
+                            },
                             onOpenBranches = {
                                 open = false
                                 openBranchesPage()
@@ -128,25 +140,33 @@ internal fun SettingsPage.BindingKeyMenu(gesture: Gesture) {
 /**
  * 顶栏那颗「独立设置」键 —— 「按键绑定」页与「组合键编辑」页**共用**这一颗。
  *
- *  它只做一件事：把「这一趟改谁」写进 [SettingsTargetState] 再导航到那一页 ——
- *  页面自己按 target 读参数与写回，所以单键与组合在那边**没有分支**。
+ *  它只做一件事：[openKeySettings] —— 把「这一趟改谁」写进 [SettingsTargetState] 再导航到
+ *  那一页。页面自己按 target 读参数与写回，所以单键与组合在那边**没有分支**。
  *
  *  摆在这一档页面的顶栏、⋮ **左边**：右边那颗 ⋮ 是对这一档动手（停用 / 改名 / 删除），
  *  左边这颗改的是它对公共项的覆盖 —— 一左一右正好是「它自己」与「它怎么工作」。
+ *  ⋮ 菜单里**另留了一份同样的入口**（用户口径：菜单里也要能进），两处走同一条。
  *
  *  **不跟这一档的启停走**：停用的键 / 组合照样能进来改（改完再启用是常见顺序）。
  */
 @Composable
 internal fun SettingsPage.HeaderSettingsButton(target: SettingsTarget) {
-    HeaderIconButton(
-        onClick = {
-            SettingsTargetState.current = target
-            XLog.w("进「${I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置")}」页：$target")
-            navTo(Screen.KEY_SETTINGS)
-        },
-    ) {
+    HeaderIconButton(onClick = { openKeySettings(target) }) {
         Icon(PageIcons.SettingsCog, contentDescription = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"))
     }
+}
+
+/**
+ * 进「独立设置」页 —— 顶栏那颗设置键与两页 ⋮ 里那一行**共用这一处**。
+ *
+ *  只做一件事：把「这一趟改谁」写进 [SettingsTargetState] 再切页。
+ *
+ * @param target 这一趟改的是哪一颗键 / 哪一组组合（见 [SettingsTarget]）
+ */
+internal fun SettingsPage.openKeySettings(target: SettingsTarget) {
+    SettingsTargetState.current = target
+    XLog.w("进「${I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置")}」页：$target")
+    navTo(Screen.KEY_SETTINGS)
 }
 
 /**
@@ -176,9 +196,11 @@ private enum class KeyMenuDialog {
 
 /**
  * 菜单各项的回调 —— 打成一个包只为让 `keyMenuEntries` 的参数个数留在 detekt 的
- * `LongParameterList` 之下（那四条本来就同属「菜单点了什么」）。
+ * `LongParameterList` 之下（那几条本来就同属「菜单点了什么」）。
  */
 private class KeyMenuActions(
+    /** 「独立设置」那一行（进另一页；与顶栏那颗设置键同一个落点）。 */
+    val onOpenSettings: () -> Unit,
     val onOpenBranches: () -> Unit,
     val onRename: () -> Unit,
     /** 停用 / 启用当前这一颗键（`true` = 启用）。 */
@@ -210,8 +232,10 @@ private fun keyMenuEntries(
     actions: KeyMenuActions,
 ): List<MenuEntry> =
     buildList {
-        // 「条件执行」是**进下一页**，不是对这颗键动手 —— 压在顶上，下面用加深分隔隔开。
-        //  行尾给箭头（库的 `submenu` 一给就会画那一格），它与下面三行「一行操作」不是一回事。
+        // 「系统场景」与「独立设置」都是**进下一页**，所以同在一组、都压在顶上；
+        //  下面那三行才是「对这颗键动手」，由它们第一行那条加深带隔开。
+        //  顺序（用户口径）：**系统场景在前、独立设置其次** —— 场景是这一档「怎么分流」，
+        //  优先级高于「这一档的显示 / 触发怎么调」。
         //  这一行受 [SHOW_BRANCHES_ENTRY] 控制（收起来时不删这一支，随时能开回来）。
         if (SHOW_BRANCHES_ENTRY) {
             //  这一颗键停用了 ⇒ 这一行也按不动：条件表说的是「这颗键这一档怎么分流」，
@@ -238,6 +262,15 @@ private fun keyMenuEntries(
                 ),
             )
         }
+        //  这一行**不看这颗键的启停**：停用的键照样能进来改（与顶栏那颗设置键同一口径）。
+        add(
+            MenuEntry.Row(
+                title = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"),
+                icon = PageIcons.SettingsCog,
+                submenu = true,
+                onPick = actions.onOpenSettings,
+            ),
+        )
         addAll(keyActionEntries(selected, cfg, actions))
     }
 
@@ -282,7 +315,7 @@ private fun keyActionEntries(
                 icon = PageIcons.MenuRename,
                 // 侧键的名字不归用户改
                 enabled = selected.isCustom,
-                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_RENAME, "侧键不能改名"),
+                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_RENAME, "快捷键不能改名"),
                 onPick = actions.onRename,
             ),
         )
@@ -292,7 +325,7 @@ private fun keyActionEntries(
                 icon = PageIcons.CommandDelete,
                 // 侧键不给删（它不是用户收集来的东西）
                 enabled = selected.isCustom,
-                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_DELETE, "侧键不能删除"),
+                disabledHint = I18n.get(Strings.BINDING_SIDE_KEY_NO_DELETE, "快捷键不能删除"),
                 danger = true,
                 onPick = actions.onDelete,
             ),
@@ -341,7 +374,7 @@ private fun SettingsPage.KeyMenuDialogHost(
             I18n
                 .get(
                     Strings.BINDING_DELETE_KEY_CONFIRM,
-                    "[%s] 会从按键清单里删掉。",
+                    "[%s] 会从清单里删掉。",
                 ).format(selected.label),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = onDismiss,

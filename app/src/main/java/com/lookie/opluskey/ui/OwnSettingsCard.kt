@@ -1,10 +1,13 @@
 package com.lookie.opluskey.ui
 
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
@@ -12,10 +15,11 @@ import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.core.model.ToastNotice
+import com.lookie.opluskey.ui.model.CARD_GAP
 import com.lookie.opluskey.ui.model.PageIcons
 
 /**
- * 「按键单独设置」那张卡 —— **单键与组合键共用这一张**。
+ * 「按键单独设置」那张卡 —— **单键与组合键共用这一套**。
  *
  * ## 它是什么
  *
@@ -23,9 +27,26 @@ import com.lookie.opluskey.ui.model.PageIcons
  *  走不走 ColorOS 专有接口、振不振、振多重、弹不弹提示、提示写什么。
  *  顶上那颗总开关（[OwnSettings.useOwnSettings]，默认关）决定用哪份 —— 关着就是跟随公共设置。
  *
+ * ## 关着时显示**生效值**，不是这一档自己存的那份
+ *
+ *  这一点原先写错过：卡片直接读 `owner` 上的五位，而总开关关着时那五位**不参与取值**。
+ *  于是「公共开了振动、这颗键自己那份还是默认的关」时，这一页显示「振动反馈：关（灰）」——
+ *  而按下去明明会振。同一页下半的「组合按键设置」两行一直读的是生效值
+ *  （`comboPassthroughFor` / `comboWindowFor`），只有上面这张卡不一样。
+ *
+ *  所以显示统一走 [effective]（`Config.effectiveFor(owner)`），**写入仍落到** [owner]：
+ *  关着时看到的就是「现在实际在用的那份」，打开总开关后同一处立刻变成这一档自己的值。
+ *  总开关本身与「哪几行能不能点」仍按 [owner] 判 —— 那是「算不算数」，不是「是什么样」。
+ *
+ * ## 为什么是**两张**卡
+ *
+ *  总开关单独一张（[useOwnRow]），其余各项一张（[ownSettingRows]）：前者回答「这一档算不算数」，
+ *  后者回答「算数时是什么样」—— 混在同一张卡里，那颗总开关读起来像下面几行的第一行。
+ *  两张之间隔 [CARD_GAP]（与「清单 + 末尾那一行『添加』」同一档：同一件事的两半）。
+ *
  * ## 为什么不认识 `KeyConfig` / `ComboKey`
  *
- *  这张卡只认 [OwnSettings]（两者共用的契约）与 [OwnSettingsValues]（改完之后交回去的那份值）。
+ *  这套卡只认 [OwnSettings]（两者共用的契约）与 [OwnSettingsValues]（改完之后交回去的那份值）。
  *  谁调用谁负责把值写回自己那一段配置 —— 卡里**没有**「这是单键还是组合」的分支，
  *  这正是「组合键不特殊对待」在界面这一层的落法。
  *
@@ -35,28 +56,36 @@ import com.lookie.opluskey.ui.model.PageIcons
  *  [enabled] 是页面闸门（模块关 / 链路未通 / 只读），它一并管住总开关自己。
  *
  * @param owner 这一档当前的独立设置（只读；改由 [onWrite] 交回去）
- * @param enabled 页面闸门 —— 关着时整张卡不吃点击
+ * @param enabled 页面闸门 —— 关着时两张卡都不吃点击
  * @param onWrite 改完之后的新值 + **这次改的是哪一项**（后者决定调用方只覆盖哪一格，
  *   见 [OwnField]），调用方负责落到自己那段配置上
  */
 @Composable
 internal fun SettingsPage.OwnSettingsCard(
     owner: OwnSettings,
+    /** **生效**那一份（`Config.effectiveFor(owner)`）—— 只用于显示，写入仍落到 [owner]。 */
+    effective: OwnSettings,
     enabled: Boolean,
     onWrite: (OwnSettingsValues, OwnField) -> Unit,
 ) {
     var editingTemplate by remember { mutableStateOf(false) }
+    //  总开关**另起一张卡**：它管的是「下面那一组算不算数」，不是「调成什么样」。
+    CardList(rows = listOf(useOwnRow(owner, enabled, onWrite)))
+    Spacer(Modifier.height(CARD_GAP))
     CardList(
         rows =
             ownSettingRows(
                 owner = owner,
+                show = effective,
                 enabled = enabled,
-                onEdit = { values, field -> onWrite(values, field) },
+                onEdit = onWrite,
                 onEditTemplate = { editingTemplate = true },
             ),
     )
     OwnTemplateDialog(
-        initial = owner.toastTemplate,
+        //  窗里编辑的是**当前生效**那句：总开关关着时改的虽是这一档自己那份，
+        //  但看到的应当与行尾副标题同一个值（否则打开窗先看到一句屏幕上没出现过的文本）。
+        initial = effective.toastTemplate,
         show = editingTemplate,
         onShowChange = { editingTemplate = it },
     ) { text ->
@@ -65,19 +94,51 @@ internal fun SettingsPage.OwnSettingsCard(
 }
 
 /**
- * 这张卡的**行表** —— 与 [OwnSettingsCard] 分开只为长度（一行一个开关，摊在主函数里 80 多行）。
+ * 「使用独立设置」那颗总开关 —— 单独一张卡里唯一的一行。
  *
- *  形状与公共页那两张卡一致：**总开关在最前**，其余每行都吃「总开关 + 页面闸门」。
+ *  它只吃页面闸门 [enabled]：下面那些行还要再吃它自己（关着就是跟随公共设置）。
+ */
+@Composable
+private fun SettingsPage.useOwnRow(
+    owner: OwnSettings,
+    enabled: Boolean,
+    onEdit: (OwnSettingsValues, OwnField) -> Unit,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.SETTING_USE_OWN, "使用独立设置"),
+        //  「等」字是刻意的：组合在这一档上还多两项（无操作时执行按键命令 / 按键之间的等待），
+        //  一句只列三项会让「想单独调这一组的窗口」的人以为跟这颗开关无关。
+        summaryOn = I18n.get(Strings.SETTING_USE_OWN_ON, "接口、振动、提示等分别设置"),
+        summaryOff = I18n.get(Strings.SETTING_USE_OWN_OFF, "接口、振动、提示等跟随公共设置"),
+        //  与「启用按键绑定」那一行同一颗图标：两者都是「这一个开关决定下面那一组算不算数」
+        icon = PageIcons.MasterSwitch,
+        checked = owner.useOwnSettings,
+        enabled = enabled,
+    ) { on ->
+        onEdit(owner.values().copy(useOwn = on), OwnField.USE_OWN)
+    }
+
+/**
+ * 设置条目那张卡的**行表**（不含总开关 —— 那一颗在它自己那张卡里，见 [useOwnRow]）。
+ *
+ *  与 [OwnSettingsCard] 分开只为长度（一行一个开关，摊在主函数里 80 多行）；
+ *  每一行都吃「总开关 + 页面闸门」。
+ *
+ * @param owner 写入的落点、以及「算不算数」的判据（总开关、置灰）
+ * @param show **生效**那一份 —— 每一行显示的值都从它取（见 [OwnSettingsCard] 那段说明）
  */
 @Composable
 private fun SettingsPage.ownSettingRows(
     owner: OwnSettings,
+    show: OwnSettings,
     enabled: Boolean,
     onEdit: (OwnSettingsValues, OwnField) -> Unit,
     onEditTemplate: () -> Unit,
 ): List<CardRow> {
     // 每一行都基于「当前这份值」改一位再交回去 —— 形状与 `CardRow` 的开关一致。
     // **顺手写下改的是哪一项**：调用方按它只覆盖那一格（见 [OwnField]）。
+    //  基值取 [owner]（写入的落点）：`withField` 只取被改的那一格，但 `ownSettingsSeeded`
+    //  这类「没被点名」的位要跟着这一档自己的值走，不能跟着公共那份。
     fun edit(
         field: OwnField,
         transform: (OwnSettingsValues) -> OwnSettingsValues,
@@ -93,44 +154,33 @@ private fun SettingsPage.ownSettingRows(
             null
         }
     return buildList {
-        addAll(commonRows(owner, enabled, rowsEnabled, ownHint, ::edit))
-        add(strengthRow(owner, rowsEnabled, ownHint, ::edit))
-        addAll(toastRows(owner, rowsEnabled, ownHint, ::edit, onEditTemplate))
+        addAll(commonRows(show, rowsEnabled, ownHint, ::edit))
+        add(strengthRow(show, rowsEnabled, ownHint, ::edit))
+        addAll(toastRows(show, rowsEnabled, ownHint, ::edit, onEditTemplate))
     }
 }
 
 /**
- * 前三个开关：**总开关自己** + 接口 + 振动。
+ * 接口 / 振动这两个开关 —— 都吃 [rowsEnabled]（闸门 **且** 总开关开着）。
  *
- *  总开关吃 [enabled]（页面闸门），另两个吃 [rowsEnabled]（闸门 **且** 总开关开着）——
- *  这三个摆在一起才看得出「谁管谁」。
+ *  总开关自己**不在**这里：它单独一张卡（见 [useOwnRow]）。
+ *
+ * @param show 显示用的那一份（生效值，见 [ownSettingRows]）
  */
 @Composable
 private fun SettingsPage.commonRows(
-    owner: OwnSettings,
-    enabled: Boolean,
+    show: OwnSettings,
     rowsEnabled: Boolean,
     ownHint: String?,
     edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
 ): List<CardRow> =
     listOf(
         CardRow.Switch(
-            title = I18n.get(Strings.SETTING_USE_OWN, "使用独立设置"),
-            summaryOn = I18n.get(Strings.SETTING_USE_OWN_ON, "接口、振动、提示分别设置"),
-            summaryOff = I18n.get(Strings.SETTING_USE_OWN_OFF, "接口、振动、提示跟随公共设置"),
-            //  与「启用按键绑定」那一行同一颗图标：两者都是「这一个开关决定下面那一组算不算数」
-            icon = PageIcons.MasterSwitch,
-            checked = owner.useOwnSettings,
-            enabled = enabled,
-        ) { on ->
-            edit(OwnField.USE_OWN) { v -> v.copy(useOwn = on) }
-        },
-        CardRow.Switch(
             title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
             summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
             summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
             icon = PageIcons.ColorOsLink,
-            checked = owner.colorOsApi,
+            checked = show.colorOsApi,
             enabled = rowsEnabled,
             disabledHint = ownHint,
         ) {
@@ -141,7 +191,7 @@ private fun SettingsPage.commonRows(
             summaryOn = I18n.get(Strings.HOME_VIBRATE_DESC_ON, "每次执行动作振动一次"),
             summaryOff = I18n.get(Strings.HOME_VIBRATE_DESC_OFF, "执行动作时不振动"),
             icon = PageIcons.Vibrate,
-            checked = owner.vibrate,
+            checked = show.vibrate,
             enabled = rowsEnabled,
             disabledHint = ownHint,
         ) {
@@ -155,27 +205,29 @@ private fun SettingsPage.commonRows(
  *
  * 规格与公共页那一行同一套（三档、行首随档换字形、行尾写「弱 / 中 / 强」）。
  *
- *  @param hint 灰着被点一下时的说法 —— 交给 `SliderSpec.disabledHint`（投递在 [SliderRow]
+ * @param show 显示用的那一份（生效值）—— 连「这一行出不出现」也按它判：
+ *   按这一档自己那份判的话，公共开着振动、这一档没设过时这一行会凭空消失。
+ * @param hint 灰着被点一下时的说法 —— 交给 `SliderSpec.disabledHint`（投递在 [SliderRow]
  *   那一层，所有滑杆共用一条通道）；`null` = 整页闸门关着，用页面那句。
  */
 @Composable
 private fun SettingsPage.strengthRow(
-    owner: OwnSettings,
+    show: OwnSettings,
     rowsEnabled: Boolean,
     hint: String?,
     edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
 ): CardRow =
-    CardRow.Custom(visible = owner.vibrate) { position ->
+    CardRow.Custom(visible = show.vibrate) { position ->
         SliderRow(
             position = position,
             spec =
                 SliderSpec(
                     title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
                     summary = I18n.get(Strings.HOME_VIBRATE_STRENGTH_DESC, "命令触发时振动的力度"),
-                    icon = PageIcons.vibrateLevel(owner.vibrateStrength),
+                    icon = PageIcons.vibrateLevel(show.vibrateStrength),
                     min = GlobalConfig.VIBRATE_WEAK,
                     max = GlobalConfig.VIBRATE_STRONG,
-                    value = owner.vibrateStrength,
+                    value = show.vibrateStrength,
                     default = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
                     step = 1,
                     enabled = rowsEnabled,
@@ -191,10 +243,14 @@ private fun SettingsPage.strengthRow(
         }
     }
 
-/** 「执行时提示 + 文案」那两行 —— 文案只在提示开着时出现。 */
+/**
+ * 「执行时提示 + 文案」那两行 —— 文案只在提示开着时出现。
+ *
+ * @param show 显示用的那一份（生效值）—— 同 [strengthRow]：可见性也按它判。
+ */
 @Composable
 private fun SettingsPage.toastRows(
-    owner: OwnSettings,
+    show: OwnSettings,
     rowsEnabled: Boolean,
     ownHint: String?,
     edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
@@ -206,7 +262,7 @@ private fun SettingsPage.toastRows(
             summaryOn = I18n.get(Strings.HOME_TOAST_DESC_ON, "每次执行动作弹一条提示"),
             summaryOff = I18n.get(Strings.HOME_TOAST_DESC_OFF, "执行动作时不弹提示"),
             icon = PageIcons.CommandToast,
-            checked = owner.toastOnRun,
+            checked = show.toastOnRun,
             enabled = rowsEnabled,
             disabledHint = ownHint,
         ) {
@@ -215,12 +271,12 @@ private fun SettingsPage.toastRows(
         CardRow.Item(
             title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
             //  这一句**不给兜底**：里面带 `$`，兜底审计是按源码字面量逐字比的。
-            summary = owner.toastTemplate.ifBlank { I18n.get(Strings.HOME_TOAST_TEMPLATE_DEFAULT) },
+            summary = show.toastTemplate.ifBlank { I18n.get(Strings.HOME_TOAST_TEMPLATE_DEFAULT) },
             icon = PageIcons.ToastTemplate,
             arrow = true,
             enabled = rowsEnabled,
             disabledHint = ownHint,
-            visible = owner.toastOnRun,
+            visible = show.toastOnRun,
             onClick = onEditTemplate,
         ),
     )

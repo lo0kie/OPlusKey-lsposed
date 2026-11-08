@@ -51,9 +51,11 @@ internal class ShortcutThenMinimize(
         userId: Int,
         round: Int,
     ) {
-        //  分身：先记下「发之前表里已有哪几份任务」，之后只认新出现的那一份 ——
-        //  表里没有 userId，按包名收会把主用户那份收成小窗（同包名）。
-        val before = if (userId != 0) mini.tasksOfPackage(pkg) else emptySet()
+        //  **先记下「发之前表里已有哪几份任务」**，之后只认新出现的那一份 —— 主用户与分身都要记：
+        //  同一个包可能本来就有一个后台任务在表里，不差集就会把它收成小窗（收错任务，用户看到的
+        //  是自己正在用的那份突然变小窗）。表里没有 userId，所以差集按**包名 + 发送前快照**做，
+        //  与哪一份属于哪个用户无关。
+        val before = mini.tasksOfPackage(pkg)
         if (round == 0 && !launch(ctx, pkg, shortcutId, userId)) return
         await(pkg, shortcutId, userId, round, before)
     }

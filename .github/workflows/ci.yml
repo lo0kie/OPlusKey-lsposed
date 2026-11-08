@@ -55,6 +55,10 @@ jobs:
       # 与其让构建去撞墙，不如这里就说清「这一轮不出 release」。
       - name: 写入正式签名
         id: sign
+        #  **PR 里绝不落签名文件**：`pull_request` 跑的是别人提交的代码，而工作区里放着一份
+        #  明文 keystore + 口令时，PR 改一行 `build.gradle.kts` 就能把它读走。PR 只构建 debug，
+        #  要正式签名的是推 master / 打 tag 那两条（发版在 `release.yml`）。
+        if: github.event_name != 'pull_request'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -252,3 +256,11 @@ jobs:
           path: app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: warn
           retention-days: 90
+
+      # 收尾：把签名材料从工作区里抹掉。上面的步骤一旦失败，job 会在这里之前中断 ——
+      # 所以 `always()`：那正是最需要清掉的时候（失败时工作区还在 runner 上，日志与缓存都可能被带走）。
+      - name: 清理签名材料
+        if: always()
+        run: |
+          rm -f release.jks keystore.properties
+          echo "已删除工作区里的 release.jks / keystore.properties"

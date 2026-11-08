@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -40,6 +41,7 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // 「更多选项」页里那几张卡 —— 从 `AboutScreen.kt` 拆出来。
@@ -150,11 +152,11 @@ private fun adaptVerdict(support: DeviceSupport.Support): String =
         }
 
         DeviceSupport.Support.PENDING -> {
-            I18n.get(Strings.ADAPTATION_PENDING, "此版本没有实测过，请自行尝试是否可用")
+            I18n.get(Strings.ADAPTATION_PENDING, "此版本未实测，可自行尝试")
         }
 
         DeviceSupport.Support.UNSUPPORTED -> {
-            I18n.get(Strings.ADAPTATION_UNSUPPORTED, "此型号没有实测过，请自行尝试是否可用")
+            I18n.get(Strings.ADAPTATION_UNSUPPORTED, "此型号未实测，可自行尝试")
         }
     }
 
@@ -193,17 +195,27 @@ internal fun SettingsPage.ConfigCard(
     currentLang: AppLanguage,
     ui: AboutUiState,
 ) {
-    //  除「默认」之外已满三份 ⇒ 「导入配置」这一行也灰掉（「新建配置」在切换菜单里，同一道闸）。
-    //  **读盘放 IO、结果进 state**：`isFull()` 要列目录、`list()` 要逐份读并解码，
-    //  在组合期做就是把整页第一帧压在文件系统上（这一页还是盖在宿主 Activity 上的）。
-    var profilesFull by remember { mutableStateOf(false) }
     //  副标题与那层菜单写的是**同一份**「当前是哪份、叫什么」：都从 `list()` 取（它按 id 判身份）。
+    //  **读盘放 IO、结果进 state**：`list()` 要逐份读并解码，在组合期做就是把整页第一帧压在
+    //  文件系统上（这一页还是盖在宿主 Activity 上的）。
+    //  「已满三份」不由这一页判：导入本来支持**覆盖**已有那份（见 `ImportTargetDialog` 的
+    //  `ImportTarget.Into`），拿满额把整行灰掉会把这条合法路径一并挡死。满额只挡「新建」，
+    //  那道闸在切换菜单里（`AboutMenus`），导入窗自己也会按 `full` 灰掉「新建」那一行。
     var currentDisplay by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(configState.config.value, ui.profiles.size) {
-        val grabbed = withContext(Dispatchers.IO) { ConfigProfiles.isFull() }
-        val shown = withContext(Dispatchers.IO) { ConfigProfiles.list().firstOrNull { it.isCurrent }?.displayName }
-        profilesFull = grabbed
-        currentDisplay = shown
+        currentDisplay = withContext(Dispatchers.IO) { ConfigProfiles.list().firstOrNull { it.isCurrent }?.displayName }
+    }
+    //  「切换配置」/「导出配置」两行点开的都是「盘上有哪几份」——`ConfigProfiles.list()` 要
+    //  **逐份读文件再解码**。原先是在点击回调里同步调，点一下就在主线程上做（这一页还盖在
+    //  宿主 Activity 上），用户看到的是「点了没反应、过一会儿菜单才弹」。
+    //  读盘放 IO，拿到之后回主线程填状态再弹菜单 —— 与上面那条副标题同一口径。
+    val scope = rememberCoroutineScope()
+    val loadProfilesThen: ((Boolean) -> Unit) -> Unit = { open ->
+        scope.launch {
+            val loaded = withContext(Dispatchers.IO) { ConfigProfiles.list() }
+            ui.profiles = loaded
+            open(true)
+        }
     }
     CardList(
         rows =
@@ -227,9 +239,8 @@ internal fun SettingsPage.ConfigCard(
                     trailing = { RowEndIcon(PageIcons.Selector) },
                     modifier = Modifier.preciseClickAnchor(ui.profileClick),
                     onClick = {
-                        //  列表是盘上扫出来的（每份要读文件取名字），点这一行时读一次即可
-                        ui.profiles = ConfigProfiles.list()
-                        ui.showProfileMenu = true
+                        //  列表是盘上扫出来的（每份要读文件取名字）⇒ 在 IO 上读，读到再弹菜单
+                        loadProfilesThen { open -> ui.showProfileMenu = open }
                     },
                 ),
                 CardRow.Item(
@@ -242,8 +253,8 @@ internal fun SettingsPage.ConfigCard(
                     trailing = { RowEndIcon(PageIcons.Selector) },
                     modifier = Modifier.preciseClickAnchor(ui.exportClick),
                     onClick = {
-                        ui.profiles = ConfigProfiles.list()
-                        ui.showExportMenu = true
+                        //  同「切换配置」：盘上扫出来的列表，读盘放 IO
+                        loadProfilesThen { open -> ui.showExportMenu = open }
                     },
                 ),
                 CardRow.Item(
@@ -251,9 +262,6 @@ internal fun SettingsPage.ConfigCard(
                     summary = I18n.get(Strings.MORE_IMPORT_CONFIG_SUMMARY, "从本地文件读取"),
                     icon = PageIcons.ConfigImport,
                     arrow = true,
-                    //  到上限时灰掉：选完文件再报「最多三份」等于白让人挑一遍
-                    enabled = !profilesFull,
-                    disabledHint = if (profilesFull) I18n.get(Strings.PROFILE_FULL, "最多三份配置") else null,
                     onClick = {
                         hooks.onImportConfig?.invoke()
                     },
@@ -333,7 +341,7 @@ internal fun SettingsPage.AppearanceCard(
                     summaryOn =
                         I18n.get(
                             Strings.MORE_RANDOM_ICON_TINT_ON,
-                            "随机生成图标颜色，重新打开会生成新配色",
+                            "每次打开重新生成配色",
                         ),
                     summaryOff = I18n.get(Strings.MORE_RANDOM_ICON_TINT_OFF, "图标跟随主题色"),
                     icon = PageIcons.RandomIconTint,

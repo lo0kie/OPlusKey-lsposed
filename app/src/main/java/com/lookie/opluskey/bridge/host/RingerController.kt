@@ -21,7 +21,13 @@ internal class RingerController(
     private val context: () -> Context?,
     /** 「使用 ColorOS 接口」这一档由装配处传入（见 `ActionRunner`）—— 本类不自己去读配置。 */
     private val isColorOsApi: () -> Boolean,
-    /** 「振动反馈」总开关，同样由装配处传入 —— 只决定切完档要不要振那一下。 */
+    /**
+     * 「振动反馈」**这一档生效值** —— 同样由装配处传入，只决定切完档要不要振那一下。
+     *
+     *  注意「这一档」：那个开关在「独立设置」里可以每颗键 / 每组组合各设一份
+     *  （`Config.effectiveFor(owner).vibrate`），所以装配处每次执行前写一格、这里读那一格
+     *  （`ActionRunner.runVibrate`）—— 直接读 `global.vibrate` 会让独立设置对它失效。
+     */
     private val vibrate: () -> Boolean = { true },
 ) {
     /** 免打扰期间内部档位读不到时的兜底：自己记的上一档（只在写入成功时按**实际落到的档位**更新）。 */

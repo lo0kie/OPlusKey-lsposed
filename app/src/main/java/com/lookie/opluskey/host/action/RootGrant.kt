@@ -33,8 +33,13 @@ internal object RootGrant {
     }
 
     /**
-     * 探测命令：`id -u` 证明「`su` 起得来」且「拿到的真是 uid 0」（输出 `0`），
-     * 后面那行 `echo` 是成功回执（见类注释）。
+     * 探测命令：`id -u` 的输出**必须正好是 `0`** 才算拿到 root，后面那行 `echo` 是成功回执
+     * （见类注释）。
+     *
+     *  **不能只写 `id -u && echo …`**：`id -u` 对任何身份都成功（普通应用打自己的 uid、shell 打
+     * 2000 也一样返回 0 退出），`&&` 只判退出码 —— 于是「su 没给 root、只是起了个普通 shell」
+     *  这一档也会报「已拿到 root」，而真按下去时命令照样没有 root。
+     *  用 `grep -qx 0` 判输出本身，既不看退出码也不依赖引号嵌套。
      */
-    private val PROBE = "id -u && echo '${ShellRunner.TIP_PREFIX} root-granted'"
+    private val PROBE = "id -u | grep -qx 0 && echo '${ShellRunner.TIP_PREFIX} root-granted'"
 }

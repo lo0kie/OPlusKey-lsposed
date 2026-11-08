@@ -85,12 +85,20 @@ internal object BrightnessAction {
                 //  root 那条是**排队**的：`ShellRunner.exec` 立刻返回，真正落库在池子里。
                 //  所以刷新口令必须挂在它的完成回调上 —— 直接写下一行的话，SystemUI 读到的
                 //  还是旧值，亮度条不动。
-                writeViaRoot(target, onFailure) { nudgeSlider(cr, target, current) }
+                //  **失败时不再发口令**：`onDone` 是「跑完就调、成功失败都算」（见 `ShellRunner.exec`），
+                //  写盘被拒还去写 `screen_brightness_duration`，等于告诉 SystemUI「亮度变了」——
+                //  控制中心那根条会跳到一个根本没生效的值上。
+                var failed = false
+                writeViaRoot(
+                    target,
+                    onFailure = { f ->
+                        failed = true
+                        onFailure(f)
+                    },
+                ) { if (!failed) nudgeSlider(cr, target, current) }
             } else {
-                //  手动档是同步写 `Settings`，写完立刻发口令
-                writeBrightness(cr, target, onFailure)
-                // 值落库之后才发「刷新口令」—— 顺序反了的话 SystemUI 读到的还是旧值
-                nudgeSlider(cr, target, current)
+                //  手动档是同步写 `Settings`，**写成功**才发口令（顺序反了的话 SystemUI 读到的还是旧值）
+                if (writeBrightness(cr, target, onFailure)) nudgeSlider(cr, target, current)
             }
         } catch (e: Throwable) {
             XLog.w("亮度调整失败（已忽略）：${e.javaClass.simpleName}: ${e.message}")
@@ -161,7 +169,7 @@ internal object BrightnessAction {
         cr: ContentResolver,
         target: Int,
         onFailure: (CommandFailure) -> Unit,
-    ) {
+    ): Boolean {
         val wrote =
             runCatching { Settings.System.putString(cr, KEY_BRIGHTNESS, target.toString()) }
                 .getOrElse {
@@ -172,6 +180,7 @@ internal object BrightnessAction {
             XLog.w("亮度：screen_brightness 被拒")
             onFailure(CommandFailure.UNKNOWN)
         }
+        return wrote
     }
 
     /**

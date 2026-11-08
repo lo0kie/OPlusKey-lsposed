@@ -173,10 +173,10 @@ internal object GestureReceiver {
                         val repeat = intent?.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false) ?: false
                         val sentAt = intent?.getLongExtra(ModuleWire.EXTRA_SENT_AT, 0L) ?: 0L
                         //  这一下是**模块认领的**（判据侧刚判出手势）：记一笔，宿主那条场景派发
-                        //  据此判「要不要吞」（见 [PressTrace]）。放在分支之前 —— 组合与单键都算。
-                        PressTrace.noteClaim()
-                        // 「宿主到底收没收到这一下」是排查链路的**第一道判据**，只能写 W
-                        //  （注入侧 / 宿主侧的 i、d 口径见 `XLog` 类注释与 `docs/device-findings.md` 十五）
+                        //  据此判「要不要吞」（见 [PressTrace]）。
+                        //  **记在 `GestureExec` 过完「过期 / 重复」那道闸之后**：转发侧对同一次手势
+                        //  会发两条（立刻 + 300ms 补发），在这里无条件记等于把吞键窗口一路推到
+                        //  600ms —— 那段时间里别的键的原生派发会被当成「模块认领的」一起吞掉。
                         if (!combo.isNullOrEmpty()) {
                             // 组合键走独立一条：动作在 `ComboKey` 上，没有单键的 `KeyConfig`
                             //  （见 `ModuleWire.EXTRA_COMBO`）。

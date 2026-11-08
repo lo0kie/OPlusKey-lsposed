@@ -71,7 +71,13 @@ internal fun SettingsPage.PageEntry(
     //  把本条摘掉，旧实例（源节点已 detach）不会一直留在表里。
     DisposableEffect(s) {
         chrome.hazeStatesByPage[s] = hazeState
-        onDispose { chrome.hazeStatesByPage.remove(s) }
+        onDispose {
+            //  **只在「表里还是我这一份」时才摘**：退场动画期间同一个 `Screen` 可能已经被新实例
+            //  重新登记（手快时「返回上一页 → 立刻再点进同一页」必现）—— 无条件 `remove(s)`
+            //  抹掉的是**新那一份**，之后顶栏取样到一个 attach 不上的节点：磨砂不跟着内容走、
+            //  或者整条带子发黑。判等用引用比（`===`）：新实例的 `hazeState` 一定是另一个对象。
+            if (chrome.hazeStatesByPage[s] === hazeState) chrome.hazeStatesByPage.remove(s)
+        }
     }
     //  这一页组合完成时若它正是栈顶，就把取样源摆过来 —— 与 [PageEffects] 里那个
     //  `LaunchedEffect(navStack.lastOrNull())` 互为兜底（那边可能早一帧，见它自己的注释）。
@@ -213,8 +219,9 @@ private fun SettingsPage.PageBody(
         }
 
         // 「按键设置」：**这一档**对公共项的覆盖（接口 / 振动 / 提示，组合另有无操作与等待）。
-        //  闸门与「按键绑定」页同一套：主开关 + 链路 + 只读，另加这颗键自己的 `enabled`
-        //  —— 停用的键也能进来改参数（改完再启用是常见顺序），但页面会整片灰。
+        //  闸门是 `pageWritable()`（主开关 + 链路 + 只读），**不叠加这一颗键自己的 `enabled`**：
+        //  停用的键也要能进来把参数改好、再回去启用（这是常见顺序），整页灰掉等于先把顺序堵死。
+        //  （上一版注释写着「另加这颗键自己的 enabled……但页面会整片灰」，代码从来没这么做过。）
         Screen.KEY_SETTINGS -> {
             KeySettingsScreen(
                 scrollBehavior = scrollBehavior,

@@ -19,6 +19,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.couiInputColors
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
@@ -165,6 +166,8 @@ internal fun SettingsPage.PickerSearchBand(
                         bottom = PAGE_TOP_PADDING,
                     ),
             label = labeledCount(label, count, query),
+            //  Monet 下把底色调淡（三处 `InputField` 共用那一份，见 `couiInputColors`）
+            colors = couiInputColors(),
         )
     }
 }

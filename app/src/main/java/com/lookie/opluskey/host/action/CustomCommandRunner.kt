@@ -1,6 +1,7 @@
 package com.lookie.opluskey.host.action
 
 import android.os.Handler
+import android.os.Looper
 import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
@@ -9,20 +10,37 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.KsuCompat
 
 internal class CustomCommandRunner(
-    /** 主线程 Handler，步骤间等待走它（不能用 `Thread.sleep`）。 */
-    private val handler: Handler,
     /**
      * 跑一条 shell 命令（含 KSU 别名翻译）。
      *
      *  第二参 = **是否以 root 执行**（`true` 只走 `su`、`false` 只走 `sh`，互不兜底）：单条命令按
      *  它自己那个开关给（`Command.root`），多条命令的步骤没有各自的开关、一律 `true`。
+     *
+     *  第三参 = **跑完之后**回调一次（不论成败、也不论「根本没跑」）—— 只在有步骤间隔的多条命令里
+     *  给：那时下一步要**等这一步真的结束**才排（见 [runSteps]）。`null` = 不用回执。
      */
-    private val execShell: (String, Boolean) -> Unit,
+    private val execShell: (String, Boolean, (() -> Unit)?) -> Unit,
     /** 派发一个非 shell 的内置动作（第二参是当前自定义命令的嵌套深度，`cmd:` 引用时继续加深）。 */
     private val dispatch: (Action, Int) -> Unit,
     /** 展开失败时的通知出口。 */
     private val onFailure: (CommandFailure) -> Unit,
 ) {
+    /**
+     * 整条命令链跑在哪条线程上 —— **自己一条，不借调用方的**。
+     *
+     *  原先续步用的是 `ActionRunner` 传进来的那个 Handler，而它是**主线程 Looper**：
+     *  第一步在调用方线程上跑、后面的每一步却被 `postDelayed` 扔回宿主 UI 线程 ——
+     *  一条五步、间隔 1s 的命令会把其中四步的起进程与 binder 全压在主线程上；设置页
+     *  「测试命令」更糟，整条链从第一步起就在主线程（Compose 点击回调里直接进来的）。
+     *
+     *  单线程而不是线程池：「同时只跑一条链」那道闸（[runningSerial]）与「步骤严格按顺序」
+     *  都要求串行，多线程只会让闸变成摆设。
+     */
+    private val worker: Handler by lazy {
+        val thread = android.os.HandlerThread("opluskey-cmd").apply { start() }
+        Handler(thread.looper)
+    }
+
     /**
      * 正在跑的多条命令（按命令名）—— 顶上两道闸都看它（见 [run]）：
      *  · 顶层（`depth == 0`）**非空即挡**：一次只跑一条命令链；
@@ -79,6 +97,25 @@ internal class CustomCommandRunner(
         cmd: Command,
         depth: Int,
     ) {
+        //  **先挪到自己的线程**（理由见 [worker]）：设置页「测试命令」是从 Compose 的点击回调里
+        //  直接进来的 —— 那一次调用在主线程上，而它接下来要读命令库之外还要起进程、发 binder。
+        //  已经在执行线程上（`cmd:` 嵌套、续步）就地跑，避免把自己排到自己后面。
+        if (Looper.myLooper() != worker.looper) {
+            val posted =
+                worker.post {
+                    try {
+                        run(cmd, depth)
+                    } catch (e: Throwable) {
+                        XLog.w("自定义命令排到执行线程后失败：${cmd.name.ifBlank { UNNAMED }}", e)
+                    }
+                }
+            if (!posted) {
+                // 线程要退了（进程在收尾）：这一下确实什么都没发生，报一句而不是静默
+                XLog.w("执行线程已退，自定义命令「${cmd.name.ifBlank { UNNAMED }}」这一下没跑")
+                onFailure(CommandFailure.UNKNOWN)
+            }
+            return
+        }
         // 草稿可以还没名字（新命令写到一半就要试）—— 名字只进日志与「正在跑」那张表
         val name = cmd.name.ifBlank { UNNAMED }
 
@@ -132,7 +169,7 @@ internal class CustomCommandRunner(
         if (parsed is Action.Shell) {
             //  单条自己的「以 root 执行」只在这一支生效：它是**整条命令**的开关，不跟着正文的
             //  `shell:` 前缀走（前缀只是格式，同一个前缀在「多条」的步骤里也一样用）。
-            execShell(parsed.command, cmd.root)
+            execShell(parsed.command, cmd.root, null)
             return
         }
         if (parsed is Action.Custom) {
@@ -160,6 +197,12 @@ internal class CustomCommandRunner(
     /**
      * 逐步执行多条命令：每步派发完等 [gapMs] 毫秒再走下一步。
      *
+     * **有步骤间隔的 shell 步骤要等它真的结束**（[execShell] 的第三参）：`execShell` 是「起进程
+     * 就返回」的，原先这里只按「起完 → 等 gapMs → 起下一条」排，两条其实并发跑 ——
+     * 「先建目录、再往里面写文件」这种命令把间隔设多大都可能抢在前面。现在改成等回执再排。
+     *
+     * 续步一律经 [scheduleNext] 回到 [worker] 上排队，所以整条链始终在同一条线程、同一顺序上。
+     *
      * @param index 下一个要派发的步骤下标
      * @param depth 递归深度（`cmd:` 步骤引用另一条命令时加深）
      * @param gapMs 步骤间等待时长（毫秒，0 = 不等待）
@@ -178,70 +221,104 @@ internal class CustomCommandRunner(
         }
 
         val shell = shellStepText(steps[index])
-        val next: Int
+        // 注意：小布识屏那条别名会被翻译成**原生调用**、不是真的 shell，必须**单独派发**。
+        //  并进 `;` 拼接串的话，`runShell` 的前缀认领会把**整串**认成别名，
+        //  后面那些真正要跑的 shell 步骤随整串一起被吞掉。
+        //  （截图那条别名不在此列：它现在就是一条普通的 `service call`，走 shell 合并没问题。）
+        //  它是一条同步的原生调用，所以**不走**下面那个「等回执」的分支。
         if (shell != null && KsuCompat.isSidebarAlias(shell)) {
-            // 注意：小布识屏那条别名会被翻译成**原生调用**、不是真的 shell，必须**单独派发**。
-            //  并进 `;` 拼接串的话，`runShell` 的前缀认领会把**整串**认成别名，
-            //  后面那些真正要跑的 shell 步骤随整串一起被吞掉。
-            //  （截图那条别名不在此列：它现在就是一条普通的 `service call`，走 shell 合并没问题。）
             XLog.w("  第 ${index + 1} 步（KSU 别名）→ $shell")
             //  多条命令的步骤没有各自的开关 ⇒ 一律按默认（`su`，起不来不退回 `sh`）
-            execShell(shell, true)
-            next = index + 1
-        } else if (shell != null && gapMs <= 0) {
-            // 只有「没有步骤间隔」时才合并：`a; b` 是零延迟，合并等于把用户配的 stepDelayMs 抹掉。
-            val (joined, nextIndex) = collectShellRun(steps, index)
-            XLog.w("  第 ${index + 1}~$nextIndex 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
-            execShell(joined, true)
-            next = nextIndex
-        } else if (shell != null) {
-            // 有步骤间隔（gapMs > 0）：这一步单独派发，间隔由末尾那次 postDelayed 撑住。
-            // 与别名那条同理 —— 间隔是配置的一部分，不能靠 `;` 的零延迟糊过去。
-            XLog.w("  第 ${index + 1} 步（shell，按间隔单独派发）→ ${XLog.redactCommand(shell)}")
-            execShell(shell, true)
-            next = index + 1
-        } else {
-            val action = Action.parse(steps[index])
-            XLog.w("  第 ${index + 1} 步 → ${XLog.redactToken(action.token)}")
-            if (action is Action.Custom) {
-                // 引用的若是**多条命令**，它那条链靠自己 `postDelayed` 续步 ⇒ 这一步不等它跑完
-                //  就往下走（已知行为，不是漏写 await）。步骤菜单只给内置动作、写不出这种一步，
-                //  只有手改命令库才会出现。
-                run(action.name, depth + 1)
-            } else {
-                dispatch(action, depth)
-            }
-            next = index + 1
-        }
-
-        if (next >= steps.size || gapMs <= 0) {
-            if (next < steps.size) {
-                runSteps(steps, next, depth, gapMs, name)
-            } else {
-                finishSerial(name)
-            }
+            execShell(shell, true, null)
+            scheduleNext(steps, index + 1, depth, gapMs, name)
             return
         }
-        // 注意：这个回调体是**直接挂在宿主主线程 Looper 上**的，必须自己兜异常（与
-        // `AppLauncher` 那两处 postDelayed 同一条纪律）：抛出去就是主线程未捕获异常，
-        // 整页 / 整个宿主进程跟着倒。走 postDelayed 的那一步没有外层 dispatch 的
-        // try/catch 兜着（`execShell` 也不是自身带壳的路径）。
-        val posted =
-            handler.postDelayed({
-                try {
-                    runSteps(steps, next, depth, gapMs, name)
-                } catch (e: Throwable) {
-                    // 这一条链到这里断了：把占位还回去（否则这条命令从此永久被自己挡住）
-                    XLog.w("自定义命令续步失败（已中止这条链）：$name", e)
-                    finishSerial(name)
+
+        if (shell != null && gapMs > 0) {
+            XLog.w("  第 ${index + 1} 步（shell，等它跑完再等 ${gapMs}ms）→ ${XLog.redactCommand(shell)}")
+            execShell(shell, true) { scheduleNext(steps, index + 1, depth, gapMs, name) }
+            return
+        }
+
+        val next =
+            if (shell != null) {
+                // 只有「没有步骤间隔」时才合并：`a; b` 是零延迟，合并等于把用户配的 stepDelayMs 抹掉。
+                val (joined, nextIndex) = collectShellRun(steps, index)
+                XLog.w("  第 ${index + 1}~$nextIndex 步（shell，合并成一条）→ ${XLog.redactCommand(joined)}")
+                execShell(joined, true, null)
+                nextIndex
+            } else {
+                val action = Action.parse(steps[index])
+                XLog.w("  第 ${index + 1} 步 → ${XLog.redactToken(action.token)}")
+                if (action is Action.Custom) {
+                    // 引用的若是**多条命令**，它那条链靠自己续步 ⇒ 这一步不等它跑完
+                    //  就往下走（已知行为，不是漏写 await）。步骤菜单只给内置动作、写不出这种一步，
+                    //  只有手改命令库才会出现。
+                    run(action.name, depth + 1)
+                } else {
+                    dispatch(action, depth)
                 }
-            }, gapMs.toLong())
-        // 排不上（主线程 Looper 正在退）⇒ 这一枪永远不会响，占位就留在 `runningSerial` 里。
-        //  必须在这儿归还：闸的第一道是「非空即挡」，漏掉一个占位会锁死**所有**多条命令
-        //  （只按名字挡那会儿，漏一个只死它自己）。
+                index + 1
+            }
+        scheduleNext(steps, next, depth, gapMs, name)
+    }
+
+    /**
+     * 排下一步 —— **唯一的续步入口**。
+     *
+     *  · 没有间隔（或已经是最后一步）时就地跑（已经在 [worker] 上）或投给它；
+     *  · 有间隔时 `postDelayed` 到 [worker]，**不**用主线程 Handler（理由见 [worker]）。
+     *
+     * 排不上（线程要退了）⇒ 这一枪永远不会响，占位就留在 [runningSerial] 里。必须在这儿归还：
+     * 闸的第一道是「非空即挡」，漏掉一个占位会锁死**所有**多条命令。
+     */
+    private fun scheduleNext(
+        steps: List<String>,
+        next: Int,
+        depth: Int,
+        gapMs: Int,
+        name: String,
+    ) {
+        val delayed = gapMs > 0 && next < steps.size
+        val posted =
+            when {
+                !delayed && Looper.myLooper() == worker.looper -> {
+                    runStepsGuarded(steps, next, depth, gapMs, name)
+                    true
+                }
+
+                !delayed -> {
+                    worker.post { runStepsGuarded(steps, next, depth, gapMs, name) }
+                }
+
+                else -> {
+                    worker.postDelayed({ runStepsGuarded(steps, next, depth, gapMs, name) }, gapMs.toLong())
+                }
+            }
         if (!posted) {
-            XLog.w("续步排不上（主线程 Looper 要退了），中止这条链：$name")
+            XLog.w("续步排不上（执行线程要退了），中止这条链：$name")
             finishSerial(name)
+        }
+    }
+
+    /**
+     * [runSteps] 的异常壳 —— 续步跑在 [worker] 的 Looper 上，异常抛出去就是那条线程死掉
+     * （之后**所有**自定义命令都不再执行）。
+     */
+    private fun runStepsGuarded(
+        steps: List<String>,
+        index: Int,
+        depth: Int,
+        gapMs: Int,
+        name: String,
+    ) {
+        try {
+            runSteps(steps, index, depth, gapMs, name)
+        } catch (e: Throwable) {
+            // 这一条链到这里断了：把占位还回去（否则这条命令从此永久被自己挡住）
+            XLog.w("自定义命令续步失败（已中止这条链）：$name", e)
+            finishSerial(name)
+            onFailure(CommandFailure.UNKNOWN)
         }
     }
 

@@ -70,6 +70,59 @@ internal class MiniWindowLauncher(
     private val isMiniAnim: () -> Boolean = { ConfigStore.read().global.miniWindowAnim },
 ) {
     /**
+     * 小窗这一族的执行线程 —— **反射 + binder 不占主线程**。
+     *
+     *  这一族每一步都是跨进程：`getAllTopAppInfos()` / `startZoomWindow` / `startActivityFromRecents-
+     *  ForFlexible` 全要过 binder，`Reflect.*` 还要现查方法与字段。侧键那条路本来就在宿主
+     *  `opluskey-gesture` 线程上（见 `GestureReceiver.worker`），所以以前没暴露；但**设置页
+     *  「测试命令」是在主线程上调进来的**，那条路会把一串 binder 直接压在宿主的 UI 线程上。
+     *
+     *  单线程：小窗这一族本来就有「先起、再等 700ms 验收、必要时重起」的时序，
+     *  多线程会让两次按键的收尾互相踩。
+     */
+    private val worker: Handler by lazy {
+        val thread = android.os.HandlerThread("opluskey-mini").apply { start() }
+        Handler(thread.looper)
+    }
+
+    /**
+     * 「第几次按下」的编号 —— [postDelayedGuarded] 的 `fresh` 那一档靠它认「这一枪还新不新」。
+     *
+     *  真机症状：连按两下 `window:A`、`window:B`，A 那次排的验收回调还在路上；它读到 A 没成小窗
+     *  就去**回桌面重起 A** —— 屏幕上用户刚打开的 B 被顶掉，看起来像「按 B 反而打开了 A」。
+     */
+    private val requestGen =
+        java.util.concurrent.atomic
+            .AtomicInteger(0)
+
+    /**
+     * 主线程调用时整段挪到 [worker]；已经在后台线程上就地执行（侧键那条路的常态）。
+     *
+     *  就地执行而不是一律投递：调用方（`GestureReceiver` / `ActionRunner`）本来就串行，
+     *  再排一次队只会让「按下 → 起小窗」多绕一圈，还把失败提示推迟到下一次按键之后。
+     */
+    internal fun offMain(block: () -> Unit) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            block()
+            return
+        }
+        val posted =
+            worker.post {
+                try {
+                    block()
+                } catch (e: Throwable) {
+                    // 这一下确实什么都没发生（与同步路径同一个出口）
+                    XLog.w("小窗动作在后台线程上失败：${e.javaClass.simpleName}: ${e.message}", e)
+                    onFailure(CommandFailure.UNKNOWN)
+                }
+            }
+        if (!posted) {
+            XLog.w("小窗执行线程已退，这一下没跑")
+            onFailure(CommandFailure.UNKNOWN)
+        }
+    }
+
+    /**
      * `window:包名` —— 用小窗打开，**有现成任务就复用**（原地转小窗），没有才新建一份。
      *
      * 先走 ColorOS 自己的小窗接口 `android.app.OplusActivityManager#startZoomWindow`（在
@@ -78,6 +131,13 @@ internal class MiniWindowLauncher(
      * 宿主持有 `MANAGE_ACTIVITY_TASKS` 与 `oplus.permission.OPLUS_COMPONENT_SAFE`，服务端两道闸门都过得去。
      */
     fun launchAppInWindow(target: String) {
+        //  换一个编号（上一次的验收回调就此作废，见 [requestGen]）；主线程调进来的整段挪到
+        //  [worker]，侧键那条路本来就在后台线程、就地往下跑（见 [offMain]）。
+        requestGen.incrementAndGet()
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            offMain { launchAppInWindow(target) }
+            return
+        }
         val ctx =
             context() ?: run {
                 XLog.w("没有 Context，window:$target 跳过")
@@ -126,7 +186,7 @@ internal class MiniWindowLauncher(
         }
         if (foregroundTask > 0 && startFlexibleFromRecents(foregroundTask, ZOOM_LAUNCH_FLAG_USER_POSITION)) {
             XLog.w("window:$target 已在前台，原地收成小窗（不新起实例）")
-            postDelayedGuarded("window:$target 的小窗验收", MINI_VERIFY_MS) {
+            postDelayedGuarded("window:$target 的小窗验收", MINI_VERIFY_MS, fresh = true) {
                 // 只有**确认没成小窗**才回桌面重起。读不到窗口信息时重起，会把刚刚收好的
                 //  小窗顶掉（还多跑一趟「回桌面」，屏幕上就是「闪一下换了一份」）。
                 when (zoomStateOf(foregroundTask)) {
@@ -155,6 +215,21 @@ internal class MiniWindowLauncher(
         //  那一份实例 —— 屏幕上看着「打开了」，其实开的是另一个人，用户在那份里点的东西全不对。
         //  分身一律落到下面 ATMS 那条能带 `userId` 的路。
         if (userId == 0 && startFreeform(ctx, intent)) return
+        fallbackToPlainOpen(ctx, intent, target, userId)
+    }
+
+    /**
+     * 两条小窗路都没走通时的降级：按**普通界面**打开，再不行才报失败。
+     *
+     *  抽出来只为让 [launchAppInWindow] 的长度留在 detekt 那一档内；它与上面那条主路互不依赖 ——
+     *  「小窗起不来也不能让侧键按下去没反应」是单独一条纪律。
+     */
+    private fun fallbackToPlainOpen(
+        ctx: Context,
+        intent: Intent,
+        target: String,
+        userId: Int,
+    ) {
         XLog.w("window:$target 的小窗两条路都没走通，退成普通打开")
         try {
             // 主用户与分身都走 ATMS（理由同 `AppLauncher.launchApp`：装了分身的应用在主用户下
@@ -180,7 +255,7 @@ internal class MiniWindowLauncher(
             // 这条路径同步跑在 `launchAppInWindow` 里，漏出去就是崩宿主
             XLog.w("window:$target 回桌面失败：${e.javaClass.simpleName}: ${e.message}")
         }
-        postDelayedGuarded("window:$target 的回桌面后重起", HOME_SETTLE_MS) {
+        postDelayedGuarded("window:$target 的回桌面后重起", HOME_SETTLE_MS, fresh = true) {
             // 注意：这一步的成败**必须看**：回桌面重起没成功时用户看到的是
             //  「按下去先回了桌面、然后什么都没发生」，而日志里一句都没有 —— 只能靠猜。
             if (!startZoomWindow(ctx, intent, AppTarget.userId(target))) {
@@ -191,28 +266,40 @@ internal class MiniWindowLauncher(
     }
 
     /**
-     * 主线程 `postDelayed` 的**保护壳**。
+     * 延迟回调的**保护壳** —— 跑在 [worker] 上（不占主线程：下面那几处验收都要过 binder）。
      *
-     * 回调体跑在宿主 `:ui` 主线程的 Looper 上，一旦抛出（`startActivity` 的 `SecurityException` /
-     * `ActivityNotFoundException` 是最常见的两种），异常直达 Looper ⇒ **宿主进程崩**。同步路径
-     * 都有 `try/catch` 兜底，异步路径同样必须有 —— 这不是「保护宿主系统进程」那种 guard，
-     * 丢的只是这一下没做成的收尾动作（[what] 会写清是哪一环）。
+     *  回调体一旦抛出（`startActivity` 的 `SecurityException` / `ActivityNotFoundException` 是最常见
+     *  的两种），异常会顺着 Looper 抛出去 ⇒ **那条线程死掉**。同步路径都有 `try/catch` 兜底，
+     *  异步路径同样必须有 —— 丢的只是这一下没做成的收尾动作（[what] 会写清是哪一环）。
+     *
+     * @param fresh true = 这一枪**只在「还是同一次按键」时响**：期间又按了一下
+     *   （[requestGen] 变了）就作废。给「会改屏幕」的那几处用 —— 见 [requestGen] 里那个真机症状。
+     *   纯粹的读数验收不必带它（过期的日志没有害处，反倒能看清时序）。
      */
     internal fun postDelayedGuarded(
         what: String,
         delayMs: Long,
+        fresh: Boolean = false,
         block: () -> Unit,
     ) {
-        Handler(Looper.getMainLooper()).postDelayed(
-            {
-                try {
-                    block()
-                } catch (e: Throwable) {
-                    XLog.w("$what 失败（延迟回调已忽略）：${e.javaClass.simpleName}: ${e.message}")
-                }
-            },
-            delayMs,
-        )
+        val gen = requestGen.get()
+        val posted =
+            worker.postDelayed(
+                {
+                    try {
+                        if (fresh && gen != requestGen.get()) {
+                            XLog.w("$what 已过期（期间又按了一下），不做")
+                            return@postDelayed
+                        }
+                        block()
+                    } catch (e: Throwable) {
+                        XLog.w("$what 失败（延迟回调已忽略）：${e.javaClass.simpleName}: ${e.message}")
+                    }
+                },
+                delayMs,
+            )
+        //  排不上（线程要退了）：这一下永远不会发生 —— 与「跑失败」同一档，得留一行
+        if (!posted) XLog.w("$what 排不上（小窗执行线程已退），跳过")
     }
 
     /**
@@ -236,6 +323,12 @@ internal class MiniWindowLauncher(
      * `startFlexibleFromRecents`（真机日志里能看到连续两条 `从 recents … 原地收成小窗`）。
      */
     fun putForegroundInMiniWindow(collapsed: Boolean = false) {
+        requestGen.incrementAndGet()
+        //  同 [launchAppInWindow]：主线程进来的整段挪到 [worker]，后台线程就地跑
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            offMain { putForegroundInMiniWindow(collapsed) }
+            return
+        }
         val ctx =
             context() ?: run {
                 XLog.w("没有 Context，zoom:mini 跳过")
@@ -251,6 +344,9 @@ internal class MiniWindowLauncher(
         // 不可调尺寸的应用要不要直接不试 —— 见 [MINI_SKIP_UNRESIZEABLE]。
         if (MINI_SKIP_UNRESIZEABLE && !canEnterMiniWindow(taskId)) {
             XLog.w("zoom:mini → 前台任务 #$taskId 不可调尺寸，按 $MINI_SKIP_UNRESIZEABLE 开关不试")
+            //  **跳过也是一种「按下去什么都没发生」**：这一档默认关着，打开它的用户更该知道
+            //  这一下是被开关挡掉的（与「服务端拒了」同一个提示，屏幕上都是没出小窗）。
+            onFailure(CommandFailure.APP_NO_MINI_WINDOW)
             return
         }
         if (collapsed) {
@@ -323,7 +419,7 @@ internal class MiniWindowLauncher(
         if (delay <= 0L) {
             FlexibleWindowBridge.sendMiniAnim(ctx, taskId, params)
         } else {
-            postDelayedGuarded("动画档：转换后的动画", delay) {
+            postDelayedGuarded("动画档：转换后的动画", delay, fresh = true) {
                 FlexibleWindowBridge.sendMiniAnim(ctx, taskId, params)
             }
         }
@@ -393,7 +489,7 @@ internal class MiniWindowLauncher(
         //    但「展开 / 收起」是**分不出来的**：两档的配置矩形同为 `1272×2261`，屏幕大小只差在
         //    scale 上（见 [taskZoomConfigRatio]）。所以这里只报事实，档位一律以截图为准 ——
         // 那版在这里宣称了「已是展开档」，实际屏幕上只有 817 宽，白放过一个 bug。
-        postDelayedGuarded("zoom:mini 的验收", MINI_VERIFY_MS) {
+        postDelayedGuarded("zoom:mini 的验收", MINI_VERIFY_MS, fresh = true) {
             when (val ratio = taskZoomConfigRatio(taskId)) {
                 null -> {
                     XLog.w("zoom:mini → system_server 那条没走通，退回应用侧 recents 正门")
@@ -431,7 +527,7 @@ internal class MiniWindowLauncher(
      */
     internal fun retryViaRecents(taskId: Int): Boolean {
         if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_USER_POSITION)) {
-            postDelayedGuarded("recents 正门收小窗的验收", MINI_VERIFY_MS) { verifyMiniOrFallback(taskId) }
+            postDelayedGuarded("recents 正门收小窗的验收", MINI_VERIFY_MS, fresh = true) { verifyMiniOrFallback(taskId) }
             return true
         }
         XLog.w("zoom:mini → recents 正门没受理（服务端拒了），什么都不做")
@@ -448,7 +544,7 @@ internal class MiniWindowLauncher(
      */
     internal fun putInCollapsedMini(taskId: Int) {
         if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_FULL_TO_MINI)) {
-            postDelayedGuarded("zoom:mini:collapse 的验收", MINI_VERIFY_MS) {
+            postDelayedGuarded("zoom:mini:collapse 的验收", MINI_VERIFY_MS, fresh = true) {
                 when (zoomStateOf(taskId)) {
                     true -> {
                         XLog.w("zoom:mini:collapse → 任务 #$taskId 已进入小窗态（收起/展开以截图为准）")

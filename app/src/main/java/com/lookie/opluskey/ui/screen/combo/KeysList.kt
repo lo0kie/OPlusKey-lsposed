@@ -36,7 +36,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.layout.DialogDefaults
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-// 「按键功能」页上半张卡 —— 按键列表（侧键 + 收集来的键）与末行「添加按键」。
+// 「按键功能」页上半块 —— 按键列表（侧键 + 收集来的键）那张卡，与它下面单起一张的「添加按键」。
 //
 //  从 `KeysScreen.kt` 拆出来：那边是这一页的骨架（两张清单 + 筛选 + 两个弹窗），
 //  这一块只回答「有哪几颗键、怎么再加一颗」。
@@ -57,17 +57,17 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  * ## 编辑态（见 [KeysEditState]）
  *
  *  顶栏那颗「编辑」按下去之后，**收集来的键**每行末尾换成多选框、点一行是勾选而不是进页；
- *  侧键那行置灰并说明它删不掉（内置键没有删除这回事），「添加按键」那一行禁用（不是退场）——
+ *  侧键那行置灰并说明它删不掉（内置键没有删除这回事），「添加按键」那张卡里的一行禁用（不是退场）——
  *  编辑态在改「已有哪几颗」，不是加一颗。勾了任意一颗，页面那一层就从右下角滑进「删除」。
  *
- * ## 末行「添加按键」
+ * ## 「添加按键」与清单同卡
  *
- *  收集一颗新键的入口在这里（用户口径：从首页那张「按键操作」卡搬进来）——
- *  它做的就是「往这张清单里加一行」，与清单同一张卡才读得通；摆在首页那张卡上时，
- *  它与上面那行「按键功能」是两件不相干的事。
+ *  收集一颗新键的入口在这里（用户口径：从首页那张「按键操作」卡搬进来）。
+ *  它是清单的**最后一行**（用户口径「添加行和列表拼在一起」）：上面回答「这一列现在有哪几颗」，
+ *  这一行是往清单里添一颗，同属「这一列」这件事。
  *
  * @param pageEnabled 整页总闸（模块开着 + 链路齐了 + 配置可写）
- * @param onAddKey 点末行「添加按键」—— 收集窗挂在页面那一层（[KeysScreen]）
+ * @param onAddKey 点「添加按键」—— 收集窗挂在页面那一层（[KeysScreen]）
  */
 @Composable
 internal fun SettingsPage.KeysListCard(
@@ -134,6 +134,7 @@ internal fun SettingsPage.KeysListCard(
                     val on = cfg.key(key).enabled
                     add(customKeyRow(key, on, keyIcon(PageIcons.menuKeyNumber(i), on), pageEnabled))
                 }
+                //  「添加按键」是清单的**最后一行**（用户口径：与列表拼在一起，不另起卡）。
                 add(addKeyRow(cfg, pageEnabled, onAddKey, editing = editing))
             },
     )
@@ -192,10 +193,10 @@ private fun SettingsPage.customKeyRow(
 }
 
 /**
- * 「添加按键」那一行 —— 按键列表的末行。
+ * 「添加按键」那一行 —— 清单的**最后一行**（与清单同卡，用户口径）。
  *
- *  副标题两档说的都是「这一行现在是什么状态」：满员 ⇒ 为什么加不了；
- *  没满 ⇒ 点下去是开一次**按键收集**（标题四个字看不出这一步在模块外面）。
+ *  不带副标题：这一行说的是「往清单里添一颗」，点下去做什么由标题自己说清。
+ *  加不了的时候（满员 / 编辑态）原因走 `disabledHint`，点一下才说。
  *
  * @param editing 编辑态下**禁用**而不是退场（用户口径）：编辑态在删、不在加，但这一行要一直
  *   在，用户才知道「这一列还能再添东西」。
@@ -210,12 +211,6 @@ private fun SettingsPage.addKeyRow(
     return CardRow.Item(
         title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
         icon = PageIcons.MenuKeyAdd,
-        summary =
-            if (atLimit) {
-                I18n.format(Strings.KEY_WATCH_LIMIT, KeyId.MAX_CUSTOM_KEYS)
-            } else {
-                I18n.get(Strings.BINDING_ADD_KEY_DESC, "收集自定义按键")
-            },
         enabled = pageEnabled && !atLimit && !editing,
         //  这一行自己的原因：满员 > 编辑态（编辑态里满员也是先报满员，更贴近眼前的事实）
         disabledHint =
@@ -277,7 +272,7 @@ internal fun SettingsPage.removePicked(): Boolean {
     if (keyIds.isEmpty() && pickedCombos.isEmpty()) {
         //  勾的只有内置侧键（或者什么都没勾）：说清为什么删不掉，别让「点了没反应」看起来像坏了
         if (KeysEditState.pickedKeys == setOf(KeyId.PLUS.id) && pickedCombos.isEmpty()) {
-            hint(I18n.get(Strings.KEYS_BUILTIN_KEEP, "内置侧键不能删除"), slot = "keys_del")
+            hint(I18n.get(Strings.KEYS_BUILTIN_KEEP, "内置快捷键不能删除"), slot = "keys_del")
         }
         return false
     }
@@ -448,7 +443,7 @@ internal fun SettingsPage.resolveAsk(accept: Boolean): Boolean {
         return false
     }
     if (memberKeysAsk && !accept) {
-        hint(I18n.get(Strings.KEYS_COMBO_NEEDS_KEYS, "组合里的按键没启用，这组保持停用"), slot = slot)
+        hint(I18n.get(Strings.KEYS_COMBO_NEEDS_KEYS, "成员键没启用，这组也停用"), slot = slot)
         return false
     }
     return applyToggle(

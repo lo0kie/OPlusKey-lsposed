@@ -415,11 +415,15 @@ internal class GestureDetector(
         //  熄屏时窗口这一枪要在 uptime 上真走到点 —— 深睡里 `postDelayed` 不走，干等就是
         //  「按了没反应」。整段窗口期让 CPU 醒着：熄屏也能判双击，代价是熄屏单击要晚一个
         //  窗口才执行（用户定的取舍：双击不能没有）。亮着时这一下什么都不做。
-        //  这一下在输入线程上跑：顶不住最多是「熄屏判不出双击」，绝不能把异常抛回去
-        try {
-            holdAwake(window + AWAKE_MARGIN_MS)
-        } catch (e: Throwable) {
-            XLog.w("${id.label}：没顶住 CPU，熄屏这一按可能判不出双击：${e.javaClass.simpleName}", e)
+        //  **排到主线程去执行，不在锁内做**：整个 `onKeyUp` 握着 `lock`，而顶 CPU 要借 Context、
+        //  要拿 PowerManager，都是系统调用 —— 同一刻按下的另一颗键会排在 `lock` 上等它们。
+        //  post 出去的那一段在锁释放之后才跑，顺序上仍是「先排窗、再顶 CPU」。
+        handler.post {
+            try {
+                holdAwake(window + AWAKE_MARGIN_MS)
+            } catch (e: Throwable) {
+                XLog.w("${id.label}：没顶住 CPU，熄屏这一按可能判不出双击：${e.javaClass.simpleName}", e)
+            }
         }
         scheduleDoubleWindow(id, config)
     }

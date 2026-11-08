@@ -32,15 +32,19 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.DISABLED_ALPHA
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
+import com.lookie.opluskey.ui.model.isDarkScheme
 import io.github.suqi8.coui.kmp.anim.SinOutEasing
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.InputViewDefaults
+import io.github.suqi8.coui.kmp.basic.SearchBarColors
 import io.github.suqi8.coui.kmp.basic.SearchBarDefaults
 import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 卡片里那种「行首图标 + 输入」的行 —— 底子是库的搜索输入框（`InputField`）。
 
@@ -62,6 +66,32 @@ private const val IME_GUARD_WINDOW_MS = 800L
 
 /** [ImeGuard] 隔几帧看一眼 —— 6 帧 ≈ 100ms，比 IME 收放动画的一帧一步粗，够用且不烧 CPU。 */
 private const val IME_GUARD_TICK_FRAMES = 6
+
+/**
+ * 输入框那一套配色 —— **Monet 下把底色调淡**，其余主题档沿用库的原色。
+ *
+ *  库的 `searchBarColors()` 把容器色取成 `secondaryContainer`。静态色板下那一档是 COUI 调好的
+ *  浅色块，没问题；但 Monet 那套是**从壁纸现推**的：浅色落在 tone 90、深色落在 tone 30，
+ *  某些种子下与页面 `surface` 的对比明显偏重 —— 一屏里最扎眼的一块就是输入框
+ *  （用户口径「monet 下 input 的颜色太深」）。
+ *
+ *  所以只在 Monet 那一档换成**中性容器色**，取法与「分段控件」那条带子同源
+ *  （`PageTabBand.tabBandColors`：同一页里同类元素用同一档，别两处各挑一个）：
+ *  · 浅色取 `surfaceContainerHighest`：比页面底色低一档，看得出是一块输入区；
+ *  · 深色取 `surfaceContainer`：深色下明暗差是唯一的分层线索，必须比 `surface` 亮一档 ——
+ *    平着选会让输入框与页面糊成一片（「框没了」比「太深」更糟）。
+ *
+ *  文字 / 图标 / 清除键三档**不动**：它们的对比度是相对容器算的，容器变淡只会更清楚。
+ *  三处 `InputField`（输入行、应用搜索带、命令搜索框）共用这一份，免得各自漂移。
+ */
+@Composable
+internal fun couiInputColors(): SearchBarColors {
+    val base = SearchBarDefaults.searchBarColors()
+    if (LocalAppTheme.current != AppTheme.MONET) return base
+    val scheme = COUITheme.colorScheme
+    val background = if (scheme.isDarkScheme) scheme.surfaceContainer else scheme.surfaceContainerHighest
+    return base.copy(backgroundColor = background)
+}
 
 /**
  * 错误提示淡入 / 淡出用的缓动 —— 取 COUI 的 [SinOutEasing]（`sin(t·π/2)`）。
@@ -187,6 +217,8 @@ internal fun SettingsPage.IconInputView(
                     .inputFocusBehavior(focusRequester, caretToEndOnFirstFocus) { focused = it },
             label = spec.label,
             leadingIcon = { InputLeadingIcon(spec.icon) },
+            //  Monet 下把底色调淡（见 [couiInputColors]）；其它主题档就是库的原色
+            colors = couiInputColors(),
         )
         AnimatedVisibility(
             visible = isError,

@@ -2,6 +2,8 @@ package com.lookie.opluskey.inject
 
 import android.view.KeyEvent
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
+import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.reflect.Reflect
 import io.github.libxposed.api.XposedInterface
@@ -70,7 +72,32 @@ internal object ChordGuard {
             found += key
         }
         val ids = found.mapTo(HashSet(found.size * 2)) { it.id.id }
-        return if (config.combos.any { it.isUsable && it.keys.toSet() == ids }) found else null
+        val combo = config.combos.firstOrNull { it.isUsable && it.keys.toSet() == ids } ?: return null
+        //  **配了组合 ≠ 该吞**：这一档一个动作都没绑、而且「无操作时执行按键命令」开着时，吞下去
+        //  的结果就是「系统那一下没了、模块也什么都不做」（电源 + 音量 = 系统截图，被吃掉的
+        //  表现是「截图键突然不灵了」）。这种情形按「不归我们管」放行，让 ROM 自己那一下照常发生。
+        return if (actsOrBlocks(config, combo)) {
+            found
+        } else {
+            XLog.w("组合键（${ids.joinToString("+")}）：这一档没绑动作且透传开着 ⇒ 不吞，交回 ROM")
+            null
+        }
+    }
+
+    /**
+     * 这一档凑成了到底要不要**吞掉 ROM 的判定**。
+     *
+     *  · 有动作可做（短按 / 长按 / 松手 / 条件分支任一）⇒ 吞，否则会和系统动作撞车；
+     *  · 一个都没绑、「无操作时执行按键命令」开着 ⇒ **不吞**（让 ROM 那一下照常发生，
+     *    这正是那一项对单键的语义，组合也该一致）；
+     *  · 一个都没绑、那一项关着 ⇒ 吞（用户明确要这两颗键什么都不做）。
+     */
+    private fun actsOrBlocks(
+        config: Config,
+        combo: ComboKey,
+    ): Boolean {
+        val hasAction = combo.single.isBound || combo.long.isBound || combo.releaseBound || combo.rules.isNotEmpty()
+        return hasAction || !config.comboPassthroughFor(combo)
     }
 
     /**

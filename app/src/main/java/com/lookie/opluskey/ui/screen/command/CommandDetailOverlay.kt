@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.screen.command
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,7 +50,13 @@ private val DETAIL_HEAD_GAP = 10.dp
 /** 多条命令里，步骤行行首那枚图标的边长 —— 跟 `body2` 的字配（卡上那份摘要用 14dp 是跟着 `footnote1`）。 */
 private val DETAIL_STEP_ICON = 18.dp
 
-/** 多条命令里，步骤行之间的距离。 */
+/**
+ * 多条命令里，步骤行之间的距离 —— 「间隔」那一行到步骤列表之间也是这一档。
+ *
+ *  同一个量只写一次：这两处都是「两条并列的小字之间空多少」，分开定义迟早一处改了一处没改。
+ *  单独给行距开过一档 10dp，行与行之间空得太开、一屏能看的步骤少了一截（用户口径「行高太多了
+ *  收一点」），收回这一档 —— 行内是图与字的 4dp，行间 6dp，仍是「行距 > 行内间距」。
+ */
 private val DETAIL_STEP_GAP = 6.dp
 
 /**
@@ -138,25 +145,30 @@ private fun SettingsPage.CommandDetailBody(cmd: Command) {
                     )
                     Spacer(Modifier.height(DETAIL_STEP_GAP))
                 }
-                //  步骤行与正文同一档字号（`body2`）：这一窗就是「看全文」的地方，卡上那份摘要
-                //  用 `footnote1` 是格子挤，这里不必跟着挤（真机口径「多条命令步骤太小了」）。
-                serialSummarySteps(cmd.steps, ::appNameOf).forEach { line ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            stepIcon(line.token, configState.commands.value),
-                            contentDescription = null,
-                            modifier = Modifier.size(DETAIL_STEP_ICON),
-                            tint = COUITheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                        Spacer(Modifier.width(SUMMARY_REF_GAP))
-                        Text(
-                            text = line.title,
-                            style = COUITheme.textStyles.body2,
-                            color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.opticalCenter(COUITheme.textStyles.body2),
-                        )
+                //  步骤行与行之间留一档：原来几行贴着排，一长串步骤读起来像一段文字（真机口径
+                //  「步骤列表的行高增加」）。间距给在**行与行之间**，最后一行下面不留 —— 窗底那截
+                //  白由面板自己的内边距给，两处都留会多出一档。
+                Column(verticalArrangement = Arrangement.spacedBy(DETAIL_STEP_GAP)) {
+                    //  步骤行与正文同一档字号（`body2`）：这一窗就是「看全文」的地方，卡上那份摘要
+                    //  用 `footnote1` 是格子挤，这里不必跟着挤（真机口径「多条命令步骤太小了」）。
+                    serialSummarySteps(cmd.steps, ::appNameOf).forEach { line ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                stepIcon(line.token, configState.commands.value),
+                                contentDescription = null,
+                                modifier = Modifier.size(DETAIL_STEP_ICON),
+                                tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                            Spacer(Modifier.width(SUMMARY_REF_GAP))
+                            Text(
+                                text = line.title,
+                                style = COUITheme.textStyles.body2,
+                                color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.opticalCenter(COUITheme.textStyles.body2),
+                            )
+                        }
                     }
                 }
             }

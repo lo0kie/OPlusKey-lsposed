@@ -74,6 +74,15 @@ internal const val HINT_SLOT_DISABLED = "disabled"
 internal const val HINT_SLOT_COMBO = "combo"
 
 /**
+ * 「独立设置」页那几颗开关共用的语义位 —— 与公共页每一颗开关各占一个位的口径不同，这里收成一位。
+ *
+ *  这一页整屏改的是**同一份**独立设置（接口 / 振动 / 强度 / 提示 / 文案，组合再多两项），
+ *  连着拨两颗时应当是那一条在改字（「已开启「振动反馈」」→「已开启「执行时提示」」），
+ *  而不是两条叠着往下推。滑杆与文案窗不占这个位（它们不弹拨动回执）。
+ */
+internal const val HINT_SLOT_OWN_SETTINGS = "own_settings"
+
+/**
  * 「正在检查模块…」那一条的语义位 —— 它跟别的回执不一样：**挂在自检结束上**，不按秒数走。
  * 自检一跑完（`LinkFacts.injectChecked`）就由 `PageCheckingHint` 把它收掉，结论接着顶上来。
  */

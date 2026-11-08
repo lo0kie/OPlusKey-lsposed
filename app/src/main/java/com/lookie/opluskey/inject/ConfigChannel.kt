@@ -7,8 +7,6 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.comboPlans
-import com.lookie.opluskey.core.model.gesturePlan
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 
 /** 注入侧持有的配置：从宿主广播过来，供按键判定使用。 */
@@ -23,25 +21,31 @@ internal object ConfigChannel {
     @Volatile
     private var switchFromBroadcast: Boolean? = null
 
-    /** 完整侧键配置；还没收到过就是 null。只信广播 —— 注入侧读宿主私有目录必 `EACCES`。 */
-    @Volatile
-    private var received: Config? = null
-
     /**
-     * 最后一次收到的那条配置广播的**内容指纹**（见 `ConfigBroadcast.tag`）。
+     * 上一次收到的配置 —— 内容 / 指纹 / 组合成员表**一起换**（见 [Arrived]）；还没收到过就是 null。
      *
-     *  链路自检回包时原样带回，设置页拿它与自己手上那份比 —— 光回一个「收到过」答不了
-     *  「后来改的那一次到了没有」：开机收到一条后哪条丢了，这边还是旧配置，界面照样报「正常」。
+     *  只信广播 —— 注入侧读宿主私有目录必 `EACCES`。
      */
     @Volatile
-    private var receivedTag: String? = null
+    private var arrived: Arrived? = null
 
     /**
-     * 「参与某一组**可用**组合」的键 id 集合 —— 收到配置时算一次（[rebuildComboIndex]），
-     * 供 [joinsCombo] 每次 DOWN 直接查。
+     * 一条配置广播解出来的三样东西，打成一个包一起生效。
+     *
+     *  为什么不能分成三个字段逐个赋值：中间那几个纳秒里读者会看到「新配置 + 旧指纹」（链路自检
+     *  据此回「已生效」，而设置页比完指纹就以为这一版到了）、或者「新配置 + 旧组合成员表」
+     *  （参与组合的那颗键这一下不等窗口，组合按不出来）。一个引用一次替换，三样就是一个整体。
+     *
+     *  @param tag 这条广播自己的内容指纹（见 `ConfigBroadcast.tag`），不是按解析后的对象算
+     *  @param comboMembers 「参与某一组**可用**组合」的键 id（见 [rebuildComboIndex]）
      */
-    @Volatile
-    private var comboMembers: Set<String> = emptySet()
+    private class Arrived(
+        val config: Config,
+        val tag: String?,
+        val comboMembers: Set<String>,
+        /** 每颗键按下之后要等的时长（它参与的几组里最长的那个窗口），见 [holdWindows]。 */
+        val holdWindow: Map<String, Long>,
+    )
 
     /** 主开关当前值；没收到过广播时按 `true`（接管）处理。 */
     val takeOver: Boolean
@@ -66,7 +70,7 @@ internal object ConfigChannel {
      *  兜底成 `false`，用 [Config.isLive] 会让整个模块被一条残缺广播静默关掉。
      *  [takeOver] 的取值已经把这两条都吃在里面了。
      */
-    fun enabledOf(id: KeyId): Boolean = takeOver && (received?.key(id)?.enabled ?: true)
+    fun enabledOf(id: KeyId): Boolean = takeOver && (arrived?.config?.key(id)?.enabled ?: true)
 
     /**
      * [keys] 这几颗键一起按下时，该由哪一档组合键接管 —— 没有就是 `null`。
@@ -88,7 +92,7 @@ internal object ConfigChannel {
      *  「同数按配置顺序」也在 [Config.comboFor] 里，这一层不重复判。
      */
     fun comboFor(keys: Collection<KeyId>): ComboKey? {
-        val cfg = received ?: return null
+        val cfg = arrived?.config ?: return null
         // 一个组合都没配时直接收工：`Config.comboFor` 里那句 `filter {}` 会在**每次按键**上
         //  分配一个空列表 —— 绝大多数用户压根没配组合键。
         if (cfg.combos.isEmpty()) return null
@@ -113,16 +117,35 @@ internal object ConfigChannel {
     }
 
     /**
-     * 组合键的**等待窗口**（毫秒）—— 两颗键按下之间最多隔多久，`ComboDetector` 的判据。
+     * 组合键的**扫描窗口**（毫秒）—— 找同伴键时按这个宽度扫候选。
+     *
+     *  它是这份配置里**最宽**的那一档（见 `Config.comboScanWindowMs`）：按下当前这一颗键时
+     *  还不知道会凑成哪一组，扫窄了就把宽窗口那一档直接漏掉。命中之后由 [windowFor] 复核。
      *
      *  还没收到过广播时给出厂值（80，与这一位出现之前写死的那个数一致）。
      */
-    fun comboWindowMs(): Long =
-        received
-            ?.global
-            ?.comboWindowMs
+    fun scanWindowMs(): Long =
+        arrived
+            ?.config
+            ?.comboScanWindowMs
             ?.takeIf { it > 0 }
             ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong()
+
+    /** [combo] **自己**那一档按键间隔（没设过就跟随公共）—— 配对命中之后用它复核间隔。 */
+    fun windowFor(combo: ComboKey): Long =
+        arrived
+            ?.config
+            ?.comboWindowFor(combo)
+            ?.takeIf { it > 0 }
+            ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong()
+
+    /**
+     * 这一颗键按下之后要**先等多久**（毫秒）：它参与的几组里最长的那个窗口。
+     *
+     *  按最长的而不是按某一组：等短了，宽窗口那一组永远凑不齐（第二颗键到时这颗已经回落单击）；
+     *  等多了只是这根手指慢半拍，而它参与的组合本来就要求等这么久。
+     */
+    fun holdWindowMsFor(id: KeyId): Long = arrived?.holdWindow?.get(id.id) ?: scanWindowMs()
 
     /**
      * 这一颗键**参与某一组已启用的组合**吗 —— 只有这种键才值得为组合先等一个窗口。
@@ -132,7 +155,10 @@ internal object ConfigChannel {
      *  集合在收到配置时算好（[rebuildComboIndex]）：这条判据每次 DOWN 都要问一遍，
      *  原先的写法是**扫一遍 `combos`、每档再做一次 `in`**。
      */
-    fun joinsCombo(id: KeyId): Boolean = received != null && id.id in comboMembers
+    fun joinsCombo(id: KeyId): Boolean {
+        val members = arrived?.comboMembers ?: return false
+        return id.id in members
+    }
 
     /**
      * 「某一颗键从接管翻成不接管」那一刻要执行的撤销动作，由 `KeyHooks.install` 装配上
@@ -147,7 +173,7 @@ internal object ConfigChannel {
 
     /** 当前配置；还没收到过广播时用 [Config.DEFAULT] 顶着。 */
     val config: Config
-        get() = received ?: Config.DEFAULT
+        get() = arrived?.config ?: Config.DEFAULT
 
     /**
      * 收到过配置没有 —— 链路自检用。
@@ -157,7 +183,7 @@ internal object ConfigChannel {
      * 而日志里看不出缺了哪一段。
      */
     val receivedConfig: Boolean
-        get() = received != null
+        get() = arrived != null
 
     /**
      * 最后一次收到的那条配置广播的指纹；还没收到过就是 null。
@@ -165,12 +191,12 @@ internal object ConfigChannel {
      *  设置页拿它与自己手上那份的指纹比：**相等才叫「设置生效」**。「收到过」不等于「就是这份」。
      */
     val configTag: String?
-        get() = receivedTag
+        get() = arrived?.tag
 
     /** 收下一条配置广播。调用点在 AMS 广播入口（热路径），只做解析 / 赋值 / 记日志。 */
     fun read(intent: Intent) {
         val fresh = ConfigBroadcast.parse(intent)
-        val before = received
+        val before = arrived?.config
         val key = fresh.key(KeyId.PLUS)
 
         // **任一键**（含侧键）从「接管」翻成「不接管」也要撤掉已排下的手势：那一颗被关掉时，
@@ -213,12 +239,10 @@ internal object ConfigChannel {
             }
         }
 
-        // 先算索引再换 `received`：`joinsCombo` 那句 `received != null &&` 挡的是「配置还没来过」，
-        //  两者之间那几纳秒里它看到的是旧集合，与旧配置正好对得上。
-        comboMembers = rebuildComboIndex(fresh)
-        received = fresh
-        // 指纹按广播本身算（与设置页那边同一份 intent 口径），不是按解析后的对象算
-        receivedTag = ConfigBroadcast.tag(intent)
+        //  三样一起换（见 [Arrived]）：内容、指纹、组合成员表若逐个赋值，中间态会被上面的
+        //  读者看到 —— 「新配置 + 旧指纹」让链路自检误报已生效，「新配置 + 旧成员表」让
+        //  组合那一颗键这一下不等窗口。一次引用替换，没有中间态。
+        arrived = Arrived(fresh, ConfigBroadcast.tag(intent), rebuildComboIndex(fresh), holdWindows(fresh))
         // 这一行（及上面主开关）必须是 W：注入侧 i/d 在 LSPosed 日志页整档看不到（docs/device-findings.md 十五），
         // 它们是「配置到没到注入侧」的唯一判据；只在启动 / 解锁 / 写盘时机各来一条，不刷屏。
         //  token 要过 [XLog.redactToken]：`shell:` / `intent:` 后面是整条正文（可能带 token、密码），
@@ -226,38 +250,22 @@ internal object ConfigChannel {
         XLog.w(
             "配置已更新：长按=${key.longPressMs}ms" +
                 " 双击窗口=${fresh.key(KeyId.PLUS).doubleClickMs}ms（侧键那份）" +
+                //  组合那一档的窗口 —— 「每组的独立等待没作用」时先看这一行：
+                //  它是最宽的扫描窗口（各组里最长的那个），各组自己的值在 `ComboDetector` 复核时用
+                " 组合窗口=${fresh.comboScanWindowMs}ms（${fresh.combos.size}组）" +
                 " 立即单击=${fresh.key(KeyId.PLUS).instantSingle}" +
                 " 单击=${XLog.redactToken(key.single.token)}",
         )
-        // 上面那行只打**侧键那份**参数；自定义键各有一份自己的键码与长按阈值（见 [logCustomKeys]）。
-        logCustomKeys(fresh)
-        logCombos(fresh)
-        logPlans(fresh)
+        // 上面那行只打**侧键那份**参数；自定义键各有一份自己的键码与长按阈值（见 `ConfigArrivalLog`）。
+        ConfigArrivalLog.customKeys(fresh)
+        ConfigArrivalLog.combos(fresh)
+        ConfigArrivalLog.plans(fresh)
     }
 
     /**
-     * 把每颗键的**判定计划**各打一行 `d`（`KeyGesturePlan` 的定义在 core）。
+     * 「参与某一组**可用**组合」的键 id 集合 —— 收到配置时算一次，供 [joinsCombo] 每次 DOWN 直接查。
      *
-     *  为什么要有：计划回答的是「这颗键最多等多久才敢派发、认哪几档」，它完全由配置推出来 ——
-     *  将来接自定义手势（多击）时，误判几乎都出在「等了几个窗 / 哪一档算绑了」这两件事上。
-     *  配置到达时记一笔，就能拿它跟真机上的手感对上。
-     *
-     *  用 `d` 不用 `w`：它**不是**判据（判定器现在还没读这份计划），只是给排查用的投影；
-     *  注入侧的 `d` 在 LSPosed 日志页看不到，要用 logcat 看（`docs/device-findings.md` 十五）。
-     */
-    private fun logPlans(fresh: Config) {
-        XLog.guard("判定计划") {
-            fresh.allKeys.forEach { id -> XLog.d("判定计划：${id.id} → ${fresh.key(id).gesturePlan()}") }
-        }
-    }
-
-    /**
-     * 重算 [comboMembers] —— 配置到达时算一次（[read]）。
-     *
-     *  口径与 `Config.comboFor` 一致：[ComboKey.isUsable] 不成立的那几档永远不会被它判出来
-     *  （停用 / 成员不够数），让参与它们的键去等一个窗口只是白慢，所以不进这张表。
-     *
-     *  单独成函数只为让 [read] 留在 `LongMethod` 阈值内（它已经攒了主开关 / 撤销 / 指纹 / 三行日志）。
+     *  只算 `isUsable` 的组：停用 / 成员不够数的组判不出来，让参与它们的键白等一个窗口。
      */
     private fun rebuildComboIndex(fresh: Config): Set<String> {
         val members = HashSet<String>(fresh.combos.size * 4)
@@ -268,48 +276,21 @@ internal object ConfigChannel {
     }
 
     /**
-     * 把组合键打一行 W。
+     * 每颗键「按下之后要等多久」—— 它参与的几组里**最长**的那一个窗口。
      *
-     *  「两颗键一起按没反应」有两个完全不同的原因：注入侧**没收到**这一份配置（`combos` 为空 ⇒
-     *  组合不成立、两颗键各走各的），或者收到了但**没配上**这一组。这一行是分辨它们的地方 ——
-     *  没有它，日志里只有「DOWN / UP」，看不出注入侧手上到底有几档组合键。
+     *  与 [rebuildComboIndex] 同一趟口径（只看 `isUsable` 的组），配置到达时算一次、每次 DOWN 查表。
+     *  窗口按组各设之后这个数没法再用「全局那一个」顶替 —— 同一颗键可能既参与 40ms 的两颗组、
+     *  又参与 120ms 的三颗组；按短的那个等，宽窗口那组永远凑不齐。
      */
-    private fun logCombos(fresh: Config) {
-        if (fresh.combos.isEmpty()) return
-        XLog.w(
-            "组合键：" +
-                fresh.combos.joinToString("、") { c ->
-                    "${c.id}=${c.keys.joinToString("+")}" +
-                        " 短按=${XLog.redactToken(c.single.token)}" +
-                        " 长按=${XLog.redactToken(c.long.token)}" +
-                        " 阈值=${c.longPressMs}ms${if (c.enabled) "" else "（已停用）"}"
-                },
-        )
-        //  每档组合的**判定计划**（`ComboPlan`）：要几颗、等多久、判定器认不认。
-        //  成员数已经不影响能不能判（两颗走配对、3 颗起走凑齐），所以这一行现在读的是
-        //  「这一档要几颗、窗口多大、长按阈值多少」——「按了没反应」时对得上按法就是配置问题，
-        //  对不上才是判定问题，两者靠它分开。
-        XLog.guard("组合判定计划") {
-            fresh.comboPlans().forEach { XLog.d("组合计划：$it") }
+    private fun holdWindows(fresh: Config): Map<String, Long> {
+        val out = HashMap<String, Long>(fresh.combos.size * 4)
+        for (c in fresh.combos) {
+            if (!c.isUsable) continue
+            val window = fresh.comboWindowFor(c).toLong()
+            for (k in c.keys) {
+                if (window > (out[k] ?: 0L)) out[k] = window
+            }
         }
-    }
-
-    /**
-     * 把每颗自定义键的「键码 + 长按阈值」打一行 W。
-     *
-     *  上一行（`配置已更新`）只写侧键那份参数：自定义键的码是运行时收集来的、阈值也是每颗各一份，
-     *  两者任一不对那颗键的长按就永远不响，而日志里除了 `DOWN` 看不到任何线索 —— 这一行是
-     *  「自定义键长按没反应」时唯一能自证的配置快照。
-     *
-     *  单独成函数只为让 [read] 留在 `LongMethod` 阈值内（它已经攒了主开关 / 撤销 / 指纹三段）。
-     */
-    private fun logCustomKeys(fresh: Config) {
-        if (fresh.customKeys.isEmpty()) return
-        XLog.w(
-            "自定义键：" +
-                fresh.customKeys.joinToString("、") { k ->
-                    "${k.label}=${k.keyCode} 长按${fresh.key(k).longPressMs}ms"
-                },
-        )
+        return out
     }
 }

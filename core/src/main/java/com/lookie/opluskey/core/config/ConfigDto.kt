@@ -445,6 +445,12 @@ internal data class ComboDto(
      *  所以不受 `useOwnSettings` 管，只有「写过没有」这一个区别。
      */
     val passthrough: Boolean? = null,
+    /**
+     * 这一组自己的「按键之间的等待」（毫秒）；`0` = 跟随公共设置。
+     *
+     *  老文件没有这一项 ⇒ 0 ⇒ 行为与这一位出现之前完全一致，不需要迁移。
+     */
+    val windowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
 ) {
     /**
      * 线格式 → 一档组合键；id 空、或成员不足两颗的读不懂（返回 `null`）。
@@ -487,6 +493,9 @@ internal data class ComboDto(
             ownSettingsSeeded = ownSettingsSeeded ?: false,
             //  「无操作时执行按键命令」：没写过就跟随公共设置（`null`），不在这里落默认值
             passthrough = passthrough,
+            //  「按键之间的等待」：0 表示跟随公共设置，必须原样留着 —— `clamp` 会把它抬到下限 20，
+            //  那就成了「这一组显式设了 20ms」，界面上再也回不到跟随。
+            windowMs = if (windowMs <= 0) ComboKey.WINDOW_FOLLOW_GLOBAL else clamp(ConfigFields.F_COMBO_WINDOW_MS, windowMs),
         )
     }
 
@@ -514,6 +523,7 @@ internal data class ComboDto(
                 toastTemplate = combo.toastTemplate,
                 ownSettingsSeeded = combo.ownSettingsSeeded,
                 passthrough = combo.passthrough,
+                windowMs = combo.windowMs,
             )
     }
 }

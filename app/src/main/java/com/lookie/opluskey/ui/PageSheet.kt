@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,16 +11,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.HEADER_ICON_SIZE
@@ -36,6 +42,7 @@ import io.github.suqi8.coui.kmp.basic.SmallTitleDefaults
 import io.github.suqi8.coui.kmp.overlay.OverlayBottomSheet
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
+import kotlinx.coroutines.delay
 
 // 底部抽屉的通用壳 —— 全项目**只有这一份**抽屉骨架。
 //
@@ -54,6 +61,20 @@ import io.github.suqi8.coui.kmp.utils.overScrollVertical
  *  —— 高出那一档全给内容，矮屏上也不会把整页盖死（面板仍按内容长，长了才停在这一档）。
  */
 private val SHEET_MAX_HEIGHT = 480.dp
+
+/**
+ * 进场定位最多试几次 —— 见 [PageSheet] 的「进场定位」那段。
+ *
+ *  每次之间隔 [SHEET_POSITION_STEP_MS]，所以这两个数一起是一个**时间上限**（8 × 40 ≈ 320ms）：
+ *  要盖住面板滑入 + 内容高度过渡那一整段（[VISIBILITY_ENTER_MS] = 260ms）。
+ *  **按帧数算不够**：一帧只有 16ms，5 帧 80ms 就收工，那时面板才滑到一半、视口还在长，
+ *  请求被那一刻的小视口夹住 —— 看起来就是「滚了一点又回去了」。
+ *  次数封顶是为了窗口一过就彻底不碰，不跟用户自己滚打架。
+ */
+private const val SHEET_POSITION_ATTEMPTS = 8
+
+/** 两次定位之间隔多久 —— 见 [SHEET_POSITION_ATTEMPTS]。 */
+private const val SHEET_POSITION_STEP_MS = 40L
 
 /**
  * 抽屉里小标题（`SectionTitle`）的左右缩进 —— **比页面里收一档**（页面里吃库默认那 32dp）。
@@ -78,6 +99,14 @@ internal val SHEET_TITLE_MARGIN: PaddingValues =
     }
 
 /**
+ * 抽屉内容的「把**已选那一行**滚进视窗」—— 见 [PageSheet] 的「进场定位」那段。
+ *
+ *  内容里给那一行挂 `Modifier.bringIntoViewRequester(LocalSheetBringIntoView.current)`
+ *  即可，打开抽屉时壳会把它滚进视窗；没挂的抽屉什么都不会发生（`null`）。
+ */
+internal val LocalSheetBringIntoView = compositionLocalOf<BringIntoViewRequester?> { null }
+
+/**
  * 一个底部抽屉。
  *
  * ## 它替你做了哪几件事
@@ -85,6 +114,8 @@ internal val SHEET_TITLE_MARGIN: PaddingValues =
  *  · **面板与进出**：底色、圆角、把手、进场 / 退场动画都由 `OverlayBottomSheet` 给，
  *    这里只把 `show` 原样递进去 —— 调用点**不要**再写 `if (!show) return`：
  *    一写就整棵子树消失，退场成了硬切（变量的新建抽屉原先就是这样）。
+ *  · **进场定位到已选那一行**：打开的那一下把 [LocalSheetBringIntoView] 那个节点滚进视窗
+ *    （见下）。
  *  · **高度过渡**：内容高度跳变时（分组列表 与 搜索结果 与 一张卡）面板跟着一跳很扎眼，
  *    这一层统一挂 [animateContentSize]，时长与缓动与全页其它「动态显隐」同一档。
  *  · **滚动**：内容一律可滚，滚到头在原地做橡皮筋回弹（`nestedScrollToParent = false`
@@ -94,6 +125,22 @@ internal val SHEET_TITLE_MARGIN: PaddingValues =
  *  · **返回**：登记进页面级浮窗表（系统返回先收抽屉、再退页；换页时一起收掉），
  *    并登记「这一退归我、而且要跟手」——后一条少了，返回就只剩一次性收起，
  *    下拉跟手那套预测返回效果会没掉。
+ *
+ * ## 进场定位为什么要「反复试几次」
+ *
+ *  抽屉是从屏幕底下滑上来的：打开那一帧面板还在视窗外、滚动视口的高度也还是上一趟的值
+ *  （甚至 0）。这时候请求「滚到那一行」，滚动范围算出来是 0，等于没滚。
+ *  原先的做法是「等两帧、请求一次」—— 真机上一次都没动过：两帧之后视口/范围仍未定型，
+ *  请求被那一刻的范围夹住；而且**只试一次**，夹住就再也没有第二次机会。
+ *
+ *  所以改成**有界重试**（[SHEET_POSITION_ATTEMPTS] 次，每次隔 [SHEET_POSITION_STEP_MS]）：
+ *  「视口已经量到、请求成功、滚动位一动没动」才说明这一行已经可见（或已经滚到头），提前收工；
+ *  还在长就再试一次。典型情况是「第一次滚过去、第二次发现已可见」两步就停。
+ *  窗口封顶（≈320ms）是为了不让它跟用户自己滚打架 —— 窗口一过就彻底不碰。
+ *
+ *  只滚**一次**的语义没变：之后用户自己滚，抽屉关掉再开才重新定位。
+ *  滚的是「让它可见」而不是「顶到最上面」—— 已选那一行通常就在附近，顶到最上面会把上面
+ *  那组小标题也顶出去，反而看不出自己在哪。
  *
  * ## 不滚的顶部那一块
  *
@@ -125,6 +172,34 @@ internal fun SettingsPage.PageSheet(
 ) {
     overlays.Closer(show = show, onDismiss = onDismiss)
     overlays.BackCapturing(show = show)
+    //  进场定位用的那一份 —— 内容里谁挂谁滚（见 [LocalSheetBringIntoView]）。没挂的抽屉
+    //  调用 `bringIntoView()` 是空操作（`runCatching` 兜住「requester 没找到父节点」那一下）。
+    val bringIntoView = remember { BringIntoViewRequester() }
+    //  抽屉自己的滚动位 —— 定位要读它判断「这一下到底滚动了没有」（见下面那段）。
+    //  **不按 `show` 重建**：重建的话关闭那一刻内容还在播退场动画，滚动位一归零列表就在
+    //  滑下去的半路跳回顶部。归零改成「打开时滚一下」（见下）。
+    val scrollState = remember { ScrollState(0) }
+    LaunchedEffect(show, scrollState) {
+        if (!show) return@LaunchedEffect
+        //  每次打开都从顶上开始，再往下定位到已选那一行（不复用上一次的滚动位）
+        scrollState.scrollTo(0)
+        repeat(SHEET_POSITION_ATTEMPTS) { attempt ->
+            //  一段等待：面板还在滑上来、视口高度也还是旧值（见上面那段）
+            delay(SHEET_POSITION_STEP_MS)
+            val before = scrollState.value
+            val error = runCatching { bringIntoView.bringIntoView() }.exceptionOrNull()
+            XLog.w(
+                "抽屉定位：第 ${attempt + 1} 次 视口=${scrollState.viewportSize} " +
+                    "范围=${scrollState.maxValue} 位移=$before→${scrollState.value} " +
+                    (error?.let { "抛 $it" } ?: "ok"),
+            )
+            //  **视口还没量到就必须再试**：那一刻范围一定是 0，请求会被夹成「原地不动」——
+            //  这既不是「已可见」也不是「没得滚」，正是原先「一次都没动过」的根因。
+            if (scrollState.viewportSize <= 0) return@repeat
+            //  视口有了、请求成功、滚动位一动没动 ⇒ 这一行已经可见（或内容根本不用滚）
+            if (error == null && scrollState.value == before) return@LaunchedEffect
+        }
+    }
     //  **抽屉自己也要进磨砂取样层**：它画在 `COUIPopupHost` 里（页面那层之外），不登记的话，
     //  抽屉里弹出来的菜单采到的还是**抽屉底下那一页** —— 菜单上看到的是页面内容，
     //  看上去就像抽屉被穿透了（真机反馈）。
@@ -151,25 +226,28 @@ internal fun SettingsPage.PageSheet(
         //  滚到底一松手抽屉就没了。硬性 false，不接受调用点覆盖。
         enableNestedScroll = false,
     ) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(max = SHEET_MAX_HEIGHT)
-                .animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)),
-        ) {
-            header?.invoke()
+        //  把进场定位那一份递给内容（只有内容里的行知道「哪一行是已选的」）
+        CompositionLocalProvider(LocalSheetBringIntoView provides bringIntoView) {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    //  `fill = false`：内容短时抽屉跟着内容长（不撑到上限），长了才吃满剩余空间。
-                    //  这里必须给 weight 而不是再套一层 `heightIn`：顶部那一块的高度是它自己算的
-                    //  （会随字号 / 语言变），写死一个数去减，换语言就溢出。
-                    .weight(1f, fill = false)
-                    .overScrollVertical(nestedScrollToParent = false)
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = PAGE_BOTTOM_PADDING),
-                content = content,
-            )
+                    .heightIn(max = SHEET_MAX_HEIGHT)
+                    .animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)),
+            ) {
+                header?.invoke()
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        //  `fill = false`：内容短时抽屉跟着内容长（不撑到上限），长了才吃满剩余空间。
+                        //  这里必须给 weight 而不是再套一层 `heightIn`：顶部那一块的高度是它自己算的
+                        //  （会随字号 / 语言变），写死一个数去减，换语言就溢出。
+                        .weight(1f, fill = false)
+                        .overScrollVertical(nestedScrollToParent = false)
+                        .verticalScroll(scrollState)
+                        .padding(bottom = PAGE_BOTTOM_PADDING),
+                    content = content,
+                )
+            }
         }
     }
 }

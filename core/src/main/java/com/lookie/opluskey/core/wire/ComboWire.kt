@@ -79,6 +79,24 @@ object ComboWire {
         val longReleaseOn: Boolean = false,
         /** 松手那一档的动作 token。 */
         val longRelease: String = Action.NONE,
+        /**
+         * 这一组自己的「按键之间的等待」（毫秒）；`0` = 跟随公共设置。
+         *
+         *  注入侧判定组合时读的就是它 —— 不带的话每组只能等公共那一档，
+         *  而界面上又能给每组各设一份（一半接线）。
+         */
+        val windowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
+        /**
+         * **这一组开没开「使用独立设置」** —— 少了它，上面那个 `windowMs` 等于白带。
+         *
+         *  `Config.comboWindowFor` / `comboPassthroughFor` 的第一句都是「独立设置关着就整份看公共」，
+         *  而这两个函数**跑在注入侧**（`ConfigChannel.windowFor` / `ChordGuard`）。它解出来的
+         *  [ComboKey] 一旦缺这一位就走默认 `false` ⇒ 每组自己的窗口与透传全被忽略
+         *  （真机症状：「独立的组合等待怎么调都没作用」）。
+         */
+        val useOwnSettings: Boolean = false,
+        /** 这一组自己的「无操作时执行按键命令」；`null` = 没写过（跟随公共）。 */
+        val passthrough: Boolean? = null,
     )
 
     /** 组合键列表 → 广播里那个字符串。空表也给空串（接收侧按「没有组合键」处理）。 */
@@ -134,6 +152,9 @@ object ComboWire {
             longFireOnRelease = combo.longFireOnRelease,
             longReleaseOn = combo.longReleaseOn,
             longRelease = combo.longRelease.token,
+            windowMs = combo.windowMs,
+            useOwnSettings = combo.useOwnSettings,
+            passthrough = combo.passthrough,
         )
 
     /**
@@ -160,7 +181,19 @@ object ComboWire {
             longFireOnRelease = longFireOnRelease,
             longReleaseOn = longReleaseOn,
             longRelease = Action.parse(longRelease),
+            //  0 = 跟随公共设置，原样留着；设过的钳进那一档区间（老版本 / 手改的越界值在这里收口）
+            windowMs = if (windowMs <= 0) ComboKey.WINDOW_FOLLOW_GLOBAL else clampWindow(windowMs),
+            //  「这一组开了独立设置、以及它自己的透传」—— 与 `windowMs` 是一组：
+            //  少了这两位，上面那个窗口在判定侧永远算不出来（见 `WireCombo` 里那段说明）
+            useOwnSettings = useOwnSettings,
+            passthrough = passthrough,
         )
+    }
+
+    /** 按键间隔钳进字段表那一档（与公共那份同一个区间，上下限只写一次）。 */
+    private fun clampWindow(value: Int): Int {
+        val kind = ConfigFields.F_COMBO_WINDOW_MS.kind as? ConfigFields.Kind.Number ?: return value
+        return value.coerceIn(kind.min, kind.max)
     }
 
     /**

@@ -181,6 +181,10 @@ internal object GestureExec {
 
         if (staleOrDuplicate(key.id, phaseId, sentAt, keepLate = trigger is GestureTrigger.Release)) return
 
+        //  过完「过期 / 重复」那道闸才算**这一下归模块**（`PressTrace`）：转发侧对同一次手势会发
+        //  两条（立刻 + 300ms 补发），补发那条若也记一笔，宿主的吞键窗口就被推迟到约 600ms，
+        //  期间别的键的原生派发会被一起吞掉。
+        PressTrace.noteClaim()
         dispatch(key, trigger, repeat)
     }
 
@@ -202,11 +206,19 @@ internal object GestureExec {
         repeat: Boolean,
     ) {
         val config = ConfigStore.read()
-        //  两道上游守卫并成一处判：认不出 / 已停用 / 闸门不过，或这一下是过期或重复的广播。
-        val combo = liveCombo(config, comboId)?.takeIf { !staleOrDuplicate("combo:${it.id}", phaseId, sentAt) } ?: return
         // 双击在组合上没有定义（`ComboKey.actionOf` 恒返回「无操作」）；认不出的 phase
         //  只可能来自手搓的广播。松手那一档（`release`）与单键同一条口径：它是**另一个槽位**。
         val trigger = comboTrigger(phaseId) ?: return
+        //  两道上游守卫：认不出 / 已停用 / 闸门不过，或这一下是过期或重复的广播。
+        //  `keepLate` 与单键那条一样按**触发档**给 —— 松手是一次按压的收尾，积压时不能当过期丢掉
+        //  （漏了它，组合的「松手才触发 / 松手额外动作」在积压时会静默不执行）。
+        val combo =
+            liveCombo(config, comboId)
+                ?.takeIf {
+                    !staleOrDuplicate("combo:${it.id}", phaseId, sentAt, keepLate = trigger is GestureTrigger.Release)
+                } ?: return
+        //  与单键那条同一笔账：过完闸才记「这一下归模块」（理由见 [handle] 里那段）
+        PressTrace.noteClaim()
         val gesture = trigger.gestureOrNull()
         //  条件执行：与单键那一支同一套 —— 先在这档的顺序表里找，第一条成立的就执行它，
         //  一条都不中才落到 `actionOf` 那一档绑定。判据现判（按下的那一刻），且**一次按下的
@@ -330,10 +342,13 @@ internal object GestureExec {
         //  · 提示与报活只报第一次 —— 那是同一次按压，不是几十次操作。
         //  两套取值都从 `Config` 那两个出口来（传 combo，传单键的 `KeyConfig` 也一样）：
         //  **组合键在这一层没有特殊待遇**，它只是另一种「可以有自己的设置」的东西。
-        val colorOsApi = config.effectiveFor(combo).colorOsApi
+        //  一次解析：接口 / 振动 / 提示三项都读它（判据见 `Config.effectiveFor`，
+        //  「独立设置」开着才看这一组自己那份）；传给 `run` 的第二位也是同一份结论。
+        val own = config.effectiveFor(combo)
+        val colorOsApi = own.colorOsApi
         if (comboShouldVibrate(action, colorOsApi) && (!repeat || combo.longRepeatVibrate)) haptic(config, combo)
         if (!repeat) noticeIfNeeded(config, action, keyLabel, gestureLabel, combo)
-        r.run(action, subject, colorOsApi)
+        r.run(action, subject, colorOsApi, own.vibrate)
         if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
         if (!repeat) onExecutedHook?.invoke(config)
     }
@@ -377,9 +392,12 @@ internal object GestureExec {
             val gestureLabel = "${gestureName(gesture)}（组合透传）"
             val subject = "$keyLabel - $gestureLabel"
             XLog.w("$subject → ${XLog.redactToken(action.token)}（宿主进程执行）")
-            if (config.effectiveFor(keyConfig).vibrate && action.isBound) haptic(config, keyConfig)
+            //  「振动反馈」同样按**这一颗键**的生效值给（不是公共那一档）：
+            //  动作前那一下在这里判，切响铃那一下要交给 `run` 传下去，两处不能各读一份。
+            val own = config.effectiveFor(keyConfig)
+            if (own.vibrate && action.isBound) haptic(config, keyConfig)
             noticeIfNeeded(config, action, keyLabel, gestureLabel, keyConfig)
-            r.run(action, subject, config.effectiveFor(keyConfig).colorOsApi)
+            r.run(action, subject, own.colorOsApi, own.vibrate)
             if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
         }
         onExecutedHook?.invoke(config)
@@ -499,14 +517,15 @@ internal object GestureExec {
         if (repeat) XLog.d(log) else XLog.w(log)
         //  「这颗键用自己那套公共项」—— 接口与提示都从这两个出口取一次，
         //  下面三处（振动、提示、执行）共用，别各判一遍（判据在 `Config` 那一处）
-        val colorOsApi = config.effectiveFor(keyConfig).colorOsApi
+        val own = config.effectiveFor(keyConfig)
+        val colorOsApi = own.colorOsApi
         // 链路自检那一笔必须在 `run` **之后**，且「无操作」不算执行过：
         //  `run` 内部吞掉执行异常，绑了个解析不出来的 token 也走同一条路 —— 提前置位会让
         //  「关于模块」的「使用验证」在什么都没发生时显示已生效（假绿灯）。
         if (shouldVibrate(repeat, keyConfig, fired, colorOsApi)) haptic(config, keyConfig)
         // 提示只在第一次派发时说：连续触发的重复是同一次按压（按住不放），弹几十条没有意义
         if (!repeat) announceOnce(config, keyConfig, id, trigger, fired)
-        r.run(fired, "${id.label} - ${trigger.label}", colorOsApi)
+        r.run(fired, "${id.label} - ${trigger.label}", colorOsApi, own.vibrate)
         if (fired.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
         //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
         //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。

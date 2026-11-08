@@ -26,7 +26,6 @@ import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
 import com.lookie.opluskey.ui.model.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.HEADER_ICON_GAP
 import com.lookie.opluskey.ui.model.KEYS_TITLE
-import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SUBTITLE_DIM_FACTOR
 import com.lookie.opluskey.ui.model.gestureLabel
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
@@ -68,12 +67,11 @@ internal fun SettingsPage.PageTopBar(
 ) {
     // 这一页正在编辑的那一档**被停用**了吗 —— 「按键绑定」看那颗键，「组合键编辑」看那一组。
     //  判据直接借页内那一支（[keyEnabled] / 组合那一份配置）—— 同一句「开没开」不该有两份写法。
-    //  两页共用同一枚标记、同一档压暗：用户看到的都是「这一份东西现在不接管」。
+    //  它只剩一个用处：把标题下面那行副标题压暗一档（判据与页内控件同一句）。
     val editingDisabled =
         when (s) {
             Screen.BINDING,
-            //  「按键设置」也看这颗键：那一页装的全是它的参数，停用时整片灰而不标一枚
-            //  禁用记号，用户只能猜是「模块关了 / 链路没通」——
+            //  「按键设置」也看这颗键：那一页装的全是它的参数，停用时整片灰
             Screen.KEY_SETTINGS,
             -> !keyEnabled(KeyWatchState.editing(configState.config.value))
 
@@ -94,7 +92,7 @@ internal fun SettingsPage.PageTopBar(
     )
     PageHeader(
         title = pageTitle(s),
-        // 大标题**右边**那行小标题（补丁新增的槽位，折叠后保留），内容见 [pageSubtitle]。
+        // 大标题**下面**那行小标题（库的 `subtitle` 槽位，折叠后保留），内容见 [pageSubtitle]。
         subtitle = pageSubtitle(s),
         //  这一颗键 / 这一档组合停用 ⇒ 内容区整片压暗了，这行小标题也跟着**压低一档**：它是这一页上唯一还亮着的字，
         //  满亮度留着会读成「这一区还是活的」。
@@ -103,22 +101,6 @@ internal fun SettingsPage.PageTopBar(
         //  见 coui 的 `Colors.kt`）。第一版写成 `copy(alpha = 0.5f)` —— 那是把它从 0.4 **抬**到 0.5，
         //  比原来还清楚，看起来当然「没生效」。所以按现有 alpha 乘一个系数（目标值在 [subtitleTint] 里算）。
         subtitleColor = subtitleTint,
-        //  「选择应用」页那一行挪到**大标题下面**（用户口径）：它写的是「这一趟要做什么: 做给谁」，
-        //  比其余各页那行「我在哪一组」长得多，挤在大标题右边会把大标题压扁。
-        subtitleBelow = s == Screen.APP_PICKER,
-        // 尾随标题后面那枚小图标 —— 只剩一处：
-        //  「按键绑定」页 /「组合键编辑」页**当前那一份被停用**时补一枚禁用标记：名字旁边不标的话，这一页
-        //    整片灰只能从「可能是模块关了 / 链路没通」里猜，而实际只是这一颗键 / 这一档组合不接管
-        //    （与 ⋮ 菜单里那一行同一个字形）。
-        //  「选择应用」页那枚「小窗起」**撤掉了**：那一行已经挪到标题下面、文案本身写清
-        //  「以小窗打开应用: 微信」（见 `ui/screen/apppicker/PickerHeaderText.kt`），
-        //  再挂一枚图标就是同一件事说两遍。
-        trailingSubtitleIcon =
-            if (editingDisabled) {
-                PageIcons.Cancel
-            } else {
-                null
-            },
         // 右上角那几颗动作键按页分派：**首页 / 「按键绑定」/「选择应用」三页有**
         // （首页是打开默认界面 / 重启服务 / 导出日志，「按键绑定」是「快捷键」「自定义按键」两组，
         // 「选择应用」是「以小窗口打开」那颗开关 + ⋮「显示系统应用 / 显示失效应用」）。
@@ -184,8 +166,8 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         Screen.APP_PICKER -> {
             //  这一页两个状态共用，主标题直接说这一趟做什么（「打开应用」/「结束应用」），
-            //  挑的是谁交给行尾小标题（「已选择: 微信」）—— 原来两件事挤在标题一个「选择应用」里，
-            //  行尾再拼一遍「打开应用 · 微信」，重复。
+            //  挑的是谁交给标题下面那行小标题（「已选择: 微信」）—— 原来两件事挤在标题一个「选择应用」里，
+            //  下面那行再拼一遍「打开应用 · 微信」，重复。
             if (picker.stopApp) I18n.get(Strings.TOOL_STOP_APP, "结束应用") else I18n.get(Strings.TOOL_OPEN_APP, "打开应用")
         }
 
@@ -206,7 +188,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
         }
 
         // 两页不同名：列表页写「组合键列表」，编辑页写「组合键」——
-        //  顶栏一眼能看出自己在哪一层（在编哪一组由尾随小标题说，见 [pageSubtitle]）。
+        //  顶栏一眼能看出自己在哪一层（在编哪一组由标题下面那行小标题说，见 [pageSubtitle]）。
         Screen.KEYS -> {
             KEYS_TITLE
         }
@@ -222,7 +204,7 @@ private fun SettingsPage.pageTitle(s: Screen): String =
     }
 
 /**
- * 顶栏右侧那行小标题（大标题右边的尾随标题）按页分派：
+ * 顶栏大标题下面那行小标题按页分派：
  * 「按键绑定」= **现在这一组**叫什么（「快捷键」或收集来的那颗键的名字）；
  * 「自定义命令」= 已保存的命令条数（[ConfigState.commands] 变了跟着重组）；
  * 「选择应用」= 这一趟要绑的应用名（先看本次草稿，再看 [appPickerSelectedTarget]；名字怎么取见 [appNameOf]）。
@@ -231,8 +213,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
     when (s) {
         // 停在哪一颗就写哪一颗：侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。
         //  与顶栏 ⋮ 那份菜单（[BindingKeyMenu]）同一个口径：菜单第一项就是这句话 ——
-        //  这一行是菜单里那个「当前值」在大标题右边的复述，不进菜单也知道自己在哪一组。
-        //  以前它挂在大标题**下面**（`largeTitleSubtitle`），会平白多占一行高度。
+        //  这一行是菜单里那个「当前值」在大标题下面的复述，不进菜单也知道自己在哪一组。
         Screen.BINDING -> {
             editingKeyName()
         }
@@ -260,7 +241,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         // 「条件执行」页这一行写**在编哪一颗键**（`「快捷键」` / `「侧键」+「电量 +」`）：
         //  这一页是从「按键绑定」的某颗键上进来的，进来之后整页再没有别处提过它是哪一颗 ——
         //  而「改的是哪一颗键」正是这一页最容易搞错的东西。哪一档手势不写在这里：它由顶栏下
-        //  那条手势带说，两边各说一半，也就不会跟大标题抢宽度（见 [branchOwnerLabel]）。
+        //  那条手势带说，两边各说一半（见 [branchOwnerLabel]）。
         Screen.BRANCHES -> {
             branchOwnerLabel()
         }
@@ -298,9 +279,9 @@ private fun SettingsPage.PageActions(
 
         // 「按键绑定」页的 ⋮ 只管**分组**（快捷键 / 自定义按键），不发命令 ——
         // 进「自定义命令」页的唯一入口仍是那一页右下角那颗 FAB（见 [BindingScreen]）。
-        //  它**左边**多一颗设置键：这一页是「这颗键怎么绑」，那颗进的是**公共**按键设置
-        //  （接口 / 手势判定 / 振动 / 提示 / 组合键）。摆在这里是因为用户在这一页调手感时
-        //  顺手就要改那几项 —— 原先只能退回首页绕一趟（见 [BindingHeaderSettings]）。
+        //  它**左边**多一颗设置键：进的是**这一档的「独立设置」**（`Screen.KEY_SETTINGS`，
+        //  接口 / 振动 / 提示这几项对这一颗键的覆盖）。公共那一份在首页「按键操作」卡第二行
+        //  （`Screen.GENERAL`，见 `GeneralScreen`）—— 两页名字只差一个字，别混。
         Screen.BINDING -> {
             HeaderSettingsButton(SettingsTarget.Key(KeyWatchState.editing(configState.config.value)))
             //  两颗圆键之间要给一条缝：库那排是 `Arrangement.End`、一个挨一个，
@@ -433,7 +414,7 @@ private fun SettingsPage.PageBottomBand(
 /**
  * 当前这颗键在界面上叫什么 —— 侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。
  *
- *  与「按键绑定」页那组名同一个口径（顶栏 ⋮ 菜单第一项就是这句话）：那一页的尾随小标题、
+ *  与「按键绑定」页那组名同一个口径（顶栏 ⋮ 菜单第一项就是这句话）：那一页的顶栏副标题、
  *  分叉页的「在编哪一档」都用它，免得同一个东西两处两个叫法。
  *
  *  住在这一层而不是 `ui/model/PageCopy`：它读的是页面状态（在编辑哪颗键），

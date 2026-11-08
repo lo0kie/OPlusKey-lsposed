@@ -656,12 +656,15 @@ data class GlobalConfig(
          * [GlobalConfig.comboWindowMs] 的三档 —— 下限 / 出厂值 / 上限（毫秒）。
          *
          *  出厂 80 就是这一位出现之前写死的那个窗口：老配置读回来行为完全不变。
-         *  下限 20：再短就几乎是「必须精确同时按」，组合键会挑手。上限 300：再长，参与组合的键
-         *  按下去要等三分之一秒才有反应，那已经不是能用的手感了。
+         *  下限 20：再短就几乎是「必须精确同时按」，组合键会挑手。
+         *
+         *  上限放到 1000（原 300）：这个数同时管「算不算同时按下」与「第一颗键等多久才回落单击」，
+         *  手慢的人 / 三颗的组合 / 需要先按住再补另一颗的场景，300ms 明显不够。放宽的代价是
+         *  滑杆右端更钝 —— 副标题那句「调大会让参与组合的按键多等这么久」就是给它的说明。
          */
         const val COMBO_WINDOW_MIN_MS = 20
         const val DEFAULT_COMBO_WINDOW_MS = 80
-        const val COMBO_WINDOW_MAX_MS = 300
+        const val COMBO_WINDOW_MAX_MS = 1000
 
         val DEFAULT =
             GlobalConfig(
@@ -842,7 +845,10 @@ data class Config(
      *
      *  与 [effectiveFor] 同一条规则：**总开关关着就跟随公共设置**（哪怕这一组以前设过自己那份）——
      *  否则界面灰着、执行侧却照旧用自己那份，是「关了没关掉」。
-     *  开着时再看 [ComboKey.passthrough]：`null`（没设过）仍旧跟随公共。
+     *
+     *  开着时看 [ComboKey.passthrough] —— 注意 `null` 现在**只有老配置会读到**：打开独立设置的
+     *  那一刻会把公共值一并播进这一位（`KeySettingsScreen.withSeededComboFields`），
+     *  所以「开着独立设置、这一项却还在跟随公共」只出现在还没被拨过的旧配置上（拨一下任何一项就补上）。
      */
     fun comboPassthroughFor(combo: ComboKey): Boolean =
         if (!combo.useOwnSettings) {
@@ -850,6 +856,37 @@ data class Config(
         } else {
             combo.passthrough ?: global.comboPassthrough
         }
+
+    /**
+     * 这一组**实际生效**的按键间隔（毫秒）—— 规则与 [comboPassthroughFor] 同一条：
+     * 独立设置关着就跟随公共，开着就是这一组自己那份。
+     *
+     *  `WINDOW_FOLLOW_GLOBAL`（0）同样只剩**老配置**会读到：打开独立设置时这一位会被播成当时的
+     *  公共值；界面上也没有「拖回跟随」这一档 —— 要回公共就关掉那一组的总开关。
+     *
+     *  为什么这条规则长在 [Config] 而不是判定侧：判定侧（`inject/`）手上只有这份 Config，
+     *  界面手上也只有它 —— 两处各拼一次，「关了独立设置却不生效」这种错只会出现在其中一边。
+     */
+    fun comboWindowFor(combo: ComboKey): Int =
+        if (!combo.useOwnSettings) {
+            global.comboWindowMs
+        } else {
+            combo.windowMs.takeIf { it > 0 } ?: global.comboWindowMs
+        }
+
+    /**
+     * 判定侧**扫描**用的窗口：这份配置里最长的那个按键间隔（至少是公共那一档）。
+     *
+     *  按下当前这一颗键时还不知道会凑成哪一组，所以扫候选必须按**最宽**的那一档来扫，
+     *  命中之后再拿那一组自己的窗口复核（见 `ComboDetector`）—— 否则设了短窗口的组会被
+     *  设了长窗口的组抢走配对，或者反过来永远配不上。
+     */
+    val comboScanWindowMs: Int
+        get() =
+            maxOf(
+                global.comboWindowMs,
+                combos.filter { it.isUsable }.maxOfOrNull { comboWindowFor(it) } ?: 0,
+            )
 
     /** 某个目标该显示的名字（按 [AppTarget.identity] 查）；没记过返回 `null`。 */
     fun appName(target: String): String? = appNames[AppTarget.identity(target)]
@@ -957,7 +994,14 @@ data class Config(
      *  界面据此标「已停用」、启停切换也据此判「要不要连带」。
      */
     fun comboOff(combo: ComboKey): Boolean =
-        !combo.enabled || combo.keys.any { member -> keys.any { (id, key) -> id.id == member && !key.enabled } }
+        !combo.enabled ||
+            combo.keys.any { member ->
+                //  **成员键已经不在这张表里**（被删掉）与「被停用」同一档：这一档同样永远凑不齐。
+                //  原先只查 `enabled`，这种组合会被界面显示成「还在用」，而判定侧再也不会有它 ——
+                //  与 [comboFor] 的判据、以及「少任何一颗键这一档就是废的」那条注释都相反。
+                val key = keys.entries.firstOrNull { it.key.id == member }?.value ?: return@any true
+                !key.enabled
+            }
 
     /** 顶层那两位的取值 —— 与另两段同一套（见 `KeyConfig.fieldValues` 的说明）。 */
     fun fieldValues(): ConfigFields.Values =

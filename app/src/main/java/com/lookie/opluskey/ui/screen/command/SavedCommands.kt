@@ -43,7 +43,6 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
@@ -51,15 +50,12 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.SUMMARY_REF_GAP
 import com.lookie.opluskey.ui.model.SUMMARY_REF_ICON
-import com.lookie.opluskey.ui.model.StepLine
 import com.lookie.opluskey.ui.model.TAB_PAGE_SWITCH_MS
 import com.lookie.opluskey.ui.model.TILE_TITLE_GAP
 import com.lookie.opluskey.ui.model.commandIcon
 import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.model.gridColumnCount
 import com.lookie.opluskey.ui.model.opticalCenter
-import com.lookie.opluskey.ui.model.serialSummarySteps
-import com.lookie.opluskey.ui.model.stepIcon
 import com.lookie.opluskey.ui.state.CommandListEditState
 import com.lookie.opluskey.ui.state.CommandUiState
 import com.lookie.opluskey.ui.state.TileMenu
@@ -135,7 +131,7 @@ internal fun SettingsPage.SavedCommandsSection(
             //  在左上角），直接往里发多行网格会让第 2 行起与第 1 行叠在一起 —— 两条命令（一行）时
             //  看不出来，三条起就糊成一坨（真机反馈「命令列表里超过两条时卡片会叠在一起」）。
             //  卡片网格：每条命令一张卡，宽度平分、高度下限按类型给（单条 = 半个正方形，
-            // 多条 = 正方形），内容更高时以内容为准；行 / 列间距用 `GRID_GAP` / [GRID_ROW_GAP]。
+            //  多条 = 正方形），上限一律是正方形（卡宽）；行 / 列间距用 `GRID_GAP` / [GRID_ROW_GAP]。
             //  注意：画的是 [list]（目标态那份），不是外层的 `saved` —— 过渡期间退场那一侧
             //  拿到的正是旧列表，用 `saved` 会让它渲染成空网格。
             //  **列数按可用宽度算**（与动作网格同一个 `gridColumnCount`）：窄了落回一列、宽了
@@ -159,14 +155,12 @@ internal fun SettingsPage.SavedCommandsSection(
                                     } else {
                                         SINGLE_CARD_MIN_HEIGHT_RATIO
                                     },
-                                // 上限只压单条那一档（= 卡宽，正方形）；混排与多条都不封顶 —— 多条卡的步骤是
-                                //  逐条列出来的，截掉就把「有几步」藏了。
-                                maxHeightRatio =
-                                    if (row.any { it.kind != CommandKind.SINGLE }) {
-                                        0f
-                                    } else {
-                                        1f
-                                    },
+                                // 上限**一律**是卡宽（正方形），单条与多条同一档（用户口径）：一列里长短
+                                //  不一时，高的那几张会把同一行撑到两个正方形，网格看着像断了。
+                                //  放不下的内容由卡片自己收 —— 单条摘要在 `maxLines` 上封顶、多条把装不下的
+                                //  步骤换成一行「…」（见 `CommandTileSummary` / `summaryLineRows`），
+                                //  不交给父级硬裁。
+                                maxHeightRatio = 1f,
                             ),
                             modifier = Modifier.fillMaxWidth(),
                         ) { tileIndex ->
@@ -292,7 +286,7 @@ private fun SettingsPage.CommandTileBody(
 ) {
     // 顶部对齐：顶行定高，同一行的标题永远是一条线；高度包住内容，下限由布局给。
     Column(Modifier.fillMaxWidth().padding(16.dp)) {
-        // 顶行：左边类型图标，右边那颗「更多」—— **名字不在这行**（见下）。
+        // 顶行：左边类型图标，右边那两颗动作键 —— **名字不在这行**（见下）。
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -335,39 +329,21 @@ private fun SettingsPage.CommandTileBody(
         }
         //  名字**另起一行**、独占整张卡的宽度：原先挤在图标那一行，格子一窄就只剩前几个字
         //  （真机口径「命令名另起一行」）。它是这张卡的主键，值得自己一行。
+        //  名字上下各留一档白就够（见 [TILE_TITLE_GAP]）：它下面紧跟的那一行（多条是间隔时长、
+        //  单条是摘要）与它是一段，中间不再垫间距 —— 那一行自己行盒上沿那点白已经分开了。
         Spacer(Modifier.height(TILE_TITLE_GAP))
         CommandTileName(cmd)
-        // 多条命令：步骤间隔是执行参数，放在名字下面当小字
-        //  （用户口径「名称和 delay 换个位置」）。
+        //  多条命令：步骤间隔是执行参数，放在名字下面当小字（用户口径「名称和 delay 换个位置」）。
         if (cmd.kind == CommandKind.SERIAL) {
             Spacer(Modifier.height(TILE_TITLE_GAP))
-            //  行首那枚小图标与下面摘要行同一支笔、同一档尺寸（[SUMMARY_REF_ICON] / [SUMMARY_REF_GAP]）——
-            //  图标就是「命令间隔时长」那一行用的那枚（[PageIcons.DelayStep]）：同一个参数，同一颗图标。
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    PageIcons.DelayStep,
-                    contentDescription = null,
-                    modifier = Modifier.size(SUMMARY_REF_ICON),
-                    tint = COUITheme.colorScheme.onSurfaceVariantSummary,
-                )
-                Spacer(Modifier.width(SUMMARY_REF_GAP))
-                Text(
-                    // 文案走 [durationText]（全局唯一一处）：
-                    // 1000ms 以上写成秒（`3 秒`），一秒以内是毫秒（`400 毫秒`）
-                    text = durationText(cmd.stepDelayMs),
-                    style = COUITheme.textStyles.footnote1,
-                    color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    //  与行首那枚小图标同一行、竖居中：行盒居中不等于墨迹居中，补一档光学修正
-                    //  （与下面摘要行、单条摘要、卡片标题同一支笔 —— 见 `opticalCenter`）
-                    modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
-                )
-            }
+            CommandTileDelay(cmd)
         }
-        // 标题与摘要之间那 2dp = 库私有常量 `MarginBetweenLine` 的取值。
-        Spacer(Modifier.height(2.dp))
-        CommandTileSummary(cmd)
+        //  摘要吃掉**剩下那一截**高度：卡高封在正方形（见布局里的 `maxHeightRatio`），摘要与名字、
+        //  delay 抢的是同一块地方 —— 交给 `weight` 分，卡片自己不必猜「还剩几行」。
+        //  多条那一档在里面再按行裁（见 [summaryLineRows]），单条靠 `maxLines`。
+        Box(Modifier.weight(1f)) {
+            CommandTileSummary(cmd)
+        }
     }
 }
 
@@ -426,7 +402,7 @@ private val TILE_ACTION_GLYPH = 20.dp
  * 两颗动作键之间的间距 —— 加上格子各 2dp 的内边距，两颗字之间是 12dp。
  *
  *  2dp（字之间 6dp）时两颗字挤在一起，读起来像一个控件的两个部分（真机口径「两个按钮太近了」）；
- *  12dp 与卡片行里「图标 → 标题」那一档（[TILE_TITLE_GAP] 8dp）同一个量级，仍是两颗独立的键。
+ *  12dp 让两颗字之间空出一档白，仍是两颗独立的键。
  */
 private val TILE_ACTION_GAP = 8.dp
 
@@ -434,7 +410,7 @@ private val TILE_ACTION_GAP = 8.dp
 private val TILE_ACTION_CORNER = 8.dp
 
 /**
- * 卡片顶行左段：只有**类型图标**（名字在下一行，见 [CommandTileName]）。
+ * 卡片顶行左段那颗**类型图标**（名字在下一行，见 [CommandTileName]）。
  *
  *  「随机图标配色」开着时，类型图标用**它自己那一色**；关着时退回卡片的内容色
  *  （`commandTileColors()` 里的 `onSurfaceContainer`，与摘要那一档同源）。
@@ -455,6 +431,38 @@ private fun CommandTileIcon(cmd: Command) {
 }
 
 /**
+ * 多条命令**步骤间隔时长** —— 名字下面那一行小字。
+ *
+ *  行首那枚小图标与下面摘要行同一支笔、同一档尺寸（[SUMMARY_REF_ICON] / [SUMMARY_REF_GAP]）：
+ *  它就是「步骤间隔」这个参数自己的字形（[PageIcons.DelayStep]，一枚小时钟）—— 与摘要行里
+ *  「间隔」那一步是同一颗图标，读起来是同一件事。
+ *  文案走 [durationText]（全局唯一一处）。
+ */
+@Composable
+private fun CommandTileDelay(cmd: Command) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            PageIcons.DelayStep,
+            contentDescription = null,
+            modifier = Modifier.size(SUMMARY_REF_ICON),
+            tint = COUITheme.colorScheme.onSurfaceVariantSummary,
+        )
+        Spacer(Modifier.width(SUMMARY_REF_GAP))
+        Text(
+            // 1000ms 以上写成秒（`3 秒`），一秒以内是毫秒（`400 毫秒`）
+            text = durationText(cmd.stepDelayMs),
+            style = COUITheme.textStyles.footnote1,
+            color = COUITheme.colorScheme.onSurfaceVariantSummary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            //  与行首那枚小图标竖着对中：行盒居中不等于墨迹居中，补一档光学修正
+            //  （与摘要行、卡片标题同一支笔 —— 见 `opticalCenter`）
+            modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
+        )
+    }
+}
+
+/**
  * 卡片上的**命令名** —— 独占一行，宽度吃满整张卡。
  *
  *  名字比页面里的行标题小一档（`headline1` 16sp → `body2` 14sp）：卡片本身窄，名字再和
@@ -467,66 +475,12 @@ private fun CommandTileName(cmd: Command) {
         text = cmd.name,
         style = titleStyle,
         fontWeight = FontWeight.Medium,
-        //  单条那一档的格子是正方形（见布局里的 `maxHeightRatio`），名字再折一行会顶到摘要上；
-        //  多条卡本来就按内容长高，给两行。
+        //  行数按类型分：单条那一档的摘要就是整段正文（要塞下三行），名字再折一行会把它挤掉；
+        //  多条卡一行一步、步骤本身还能再裁（见 [summaryLineRows]），名字给两行不会把摘要挤没。
         maxLines = if (cmd.kind == CommandKind.SINGLE) 1 else 2,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.opticalCenter(titleStyle),
     )
-}
-
-/** 摘要：一行一条全部列出（卡会跟着长高）；每行截断交给 `Text`，这层不估宽度。 */
-@Composable
-private fun SettingsPage.CommandTileSummary(cmd: Command) {
-    when (cmd.kind) {
-        CommandKind.SINGLE -> {
-            Text(
-                text = cmd.single,
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                // 与行首图标对齐（行盒居中不等于墨迹居中，见 `opticalCenter`）
-                modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
-                // 卡片高度封顶在正方形（见 `CommandTileRow` 的 `maxHeightRatio`），摘要再长也画不下：
-                //  三行封顶 + 省略号，好过被父级的高度约束**从中间裁断**（那连省略号都没有）。
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-
-        CommandKind.SERIAL -> {
-            summaryLineRows(serialSummarySteps(cmd.steps, ::appNameOf))
-        }
-    }
-}
-
-/**
- * 摘要里的那几行 —— 「多条命令」与「条件执行」同一套画法：一行一条，行首一枚小图标。
- *
- *  行头那枚图标走 [stepIcon]：引用另一条命令（`cmd:<名字>`）的行用**被引用那条的真实类型图标**
- *  （单条 / 按步数的多条 / 分叉），其余用动作图标 —— 光看文字分不出几类内容。
- */
-@Composable
-private fun SettingsPage.summaryLineRows(lines: List<StepLine>) {
-    lines.forEach { line ->
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                stepIcon(line.token, configState.commands.value),
-                contentDescription = null,
-                modifier = Modifier.size(SUMMARY_REF_ICON),
-                tint = COUITheme.colorScheme.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.width(SUMMARY_REF_GAP))
-            Text(
-                text = line.title,
-                style = COUITheme.textStyles.footnote1,
-                color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                //  同上：与行首那枚步骤图标竖着对中（行盒 ≠ 墨迹，见 `opticalCenter`）
-                modifier = Modifier.opticalCenter(COUITheme.textStyles.footnote1),
-            )
-        }
-    }
 }
 
 /**

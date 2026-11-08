@@ -32,11 +32,13 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  · 左边那颗是「以小窗口打开」的开关（[SmallWindowToggle]）—— **从 ⋮ 菜单里摘出来的**
  *    （用户口径：做成 header 右侧的第二颗）。它描述「这一趟往哪个动作上写」（`window:` 还是
  *    `app:`），挑应用之前就得定下来，藏在菜单里等于每次多按一下；
- *  · 右边那颗 ⋮ 里只剩「显示系统应用」「显示失效应用」—— 那两项是**列表怎么显示**，
- *    与「写成哪个动作」不是一件事，不该挤在同一张菜单里。
+ *    ⋮ 里**另留了一份同样的入口**（用户口径：菜单里也要能拨），两处读同一个状态、走同一条
+ *    [setSmallWindow]。
+ *  · 右边那颗 ⋮ 里是「显示系统应用」「显示失效应用」（**列表怎么显示**）与「以小窗口打开」
+ *    「使用原版动画」（**写成哪个动作**）两档，中间一条加深带断开。
  *
  *  两颗各出现各的：只认应用本身的那几趟（[AppPickerState.appOnly] —— 给条件挑、结束应用）
- *  不写 `window:`，「以小窗口打开」不出现；⋮ 那两行只在「打开」那一趟出现，两行都不剩时
+ *  不写 `window:`，「以小窗口打开」不出现；⋮ 那几行只在「打开」那一趟出现，一行都不剩时
  *  **连按钮一起摘掉**（留一颗点开是空面板的按钮只会让人以为界面坏了）。于是结束那一趟顶栏
  *  右侧一颗都没有。
  *
@@ -93,19 +95,7 @@ private fun SettingsPage.SmallWindowToggle() {
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "PickerMiniWindowTint",
     )
-    HeaderIconButton(
-        onClick = {
-            picker.smallWindow.value = !on
-            //  **与小窗互斥**：「原版动画」与「小窗口」是同一格的两种起法，开一个就关掉另一个
-            //  （见 `AppPickerState.stockAnim`）。不做成「置灰按不动」：那需要在两处各维护一次
-            //  灰态，而用户真正的意图就是「切成这一档」。
-            if (picker.smallWindow.value) picker.stockAnim.value = false
-            XLog.w(
-                "选择应用：以小窗口打开 = ${picker.smallWindow.value}（顶栏开关，不落盘）" +
-                    "／原版动画 = ${picker.stockAnim.value}",
-            )
-        },
-    ) {
+    HeaderIconButton(onClick = { setSmallWindow(!on) }) {
         Icon(
             PageIcons.SmallWindow,
             contentDescription = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW, "以小窗口打开"),
@@ -116,6 +106,26 @@ private fun SettingsPage.SmallWindowToggle() {
 }
 
 /**
+ * 拨「以小窗口打开」—— 顶栏那颗开关与 ⋮ 里那一行**共用这一处**。
+ *
+ *  **与小窗互斥**：「原版动画」与「小窗口」是同一格的两种起法，开一个就关掉另一个
+ *  （见 `AppPickerState.stockAnim`）。不做成「置灰按不动」：那需要在两处各维护一次灰态，
+ *  而用户真正的意图就是「切成这一档」。
+ *
+ *  不落盘：它描述的是「这一趟往哪个动作上写」，每次进页按正在编辑的动作重算
+ *  （见 `resetSmallWindowForPicker`）。
+ *
+ * @param on 拨到哪一档（两处都传「当前值取反」）
+ */
+private fun SettingsPage.setSmallWindow(on: Boolean) {
+    picker.smallWindow.value = on
+    if (on) picker.stockAnim.value = false
+    XLog.w(
+        "选择应用：以小窗口打开 = $on（不落盘）／原版动画 = ${picker.stockAnim.value}",
+    )
+}
+
+/**
  * ⋮ 菜单里那两行 —— 都是「列表怎么显示」。
  *
  *  · 「显示系统应用」/「显示失效应用」都**落盘**（本地持久，不进用户配置，见 [UiState]）：
@@ -123,7 +133,8 @@ private fun SettingsPage.SmallWindowToggle() {
  *  · 两项又都**只在「打开」那一趟出现**：结束那一趟一律全列，它们在那边没有可改的东西。
  *  · 可能**一行都不剩**（结束那一趟）—— 调用点据此连按钮一起摘掉。
  *
- *  「以小窗口打开」**不在这张表里**：它已经挪到顶栏，成了那一颗开关（见 [SmallWindowToggle]）。
+ *  「以小窗口打开」**两处都有**：顶栏那颗开关（[SmallWindowToggle]）与这张表里的一行 ——
+ *  同一个状态、同一条 [setSmallWindow]，不是两份实现。
  *
  * @param close 收掉菜单（调用点给的是 `open = false`）
  */
@@ -132,55 +143,31 @@ private fun SettingsPage.pickerMenuEntries(close: () -> Unit): List<MenuEntry> =
     buildList {
         //  「列表怎么显示」那两项**只服务「打开」那一趟**：结束那一趟一律全列，两个开关在那边
         //  都拨不出任何变化（判据是 `stopApp || …`，恒为真）—— 摆出来就是「按了没反应」。
-        if (!picker.stopApp) {
-            add(
-                MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_SHOW_SYSTEM_APPS, "显示系统应用"),
-                    // 行首图标恒为「系统应用」网格，选中态由 `selected` 负责（行尾对勾 + 文字主题色）
-                    icon = PageIcons.SystemApps,
-                    selected = picker.showSystemApps.value,
-                    onPick = {
-                        close()
-                        picker.showSystemApps.value = !picker.showSystemApps.value
-                        if (!UiState.writeShowSystemApps(picker.showSystemApps.value)) {
-                            picker.showSystemApps.value = !picker.showSystemApps.value
-                            XLog.w("选择应用：显示系统应用改不动（界面状态写盘失败），已拨回 ${picker.showSystemApps.value}")
-                        } else {
-                            // 判据级（i 在 release 被编译期消除，见 XLog 注释）
-                            XLog.w("选择应用：显示系统应用 = ${picker.showSystemApps.value}（已落盘，重查列表）")
-                        }
-                    },
-                ),
-            )
-            //  默认关；落盘（本地持久），写失败就拨回去。
-            add(
-                MenuEntry.Row(
-                    title = I18n.get(Strings.MENU_SHOW_INVALID_APPS, "显示失效应用"),
-                    icon = PageIcons.ShowUnopenable,
-                    selected = picker.showUnopenable.value,
-                    onPick = {
-                        close()
-                        picker.showUnopenable.value = !picker.showUnopenable.value
-                        if (!UiState.writeShowUnopenable(picker.showUnopenable.value)) {
-                            picker.showUnopenable.value = !picker.showUnopenable.value
-                            XLog.w("选择应用：显示失效改不动（界面状态写盘失败），已拨回 ${picker.showUnopenable.value}")
-                        } else {
-                            XLog.w("选择应用：显示失效 = ${picker.showUnopenable.value}（已落盘）")
-                        }
-                    },
-                ),
-            )
-        }
-        //  「使用原版动画」与上面那两行**不是一类**（那两行管列表怎么显示，这一行管**写成哪个动作**），
-        //  所以一条加深带断开。它只在会写 `app:` 的那几趟出现 —— 与顶栏那颗小窗开关同一个闸
-        //  （`appOnly`：给条件挑 / 结束应用那两趟写的是包名与 `proc:stop:`，`app:` 没人读）。
+        if (!picker.stopApp) addAll(pickerDisplayEntries(close))
+        //  下面两行与上面那两行**不是一类**（那两行管列表怎么显示，这两行管**写成哪个动作**），
+        //  所以在第一条前面加一条加深带断开。两行都只在会写 `app:` 的那几趟出现 —— 与顶栏那颗
+        //  小窗开关同一个闸（`appOnly`：给条件挑 / 结束应用那两趟写的是包名与 `proc:stop:`，
+        //  `app:` 没人读）。
         if (!picker.appOnly) {
+            //  与顶栏那颗开关**同一个入口的第二种摆法**（用户口径：菜单里也要能拨）：
+            //  互斥、日志、不落盘都在 [setSmallWindow] 里，两处不各写一遍。
+            add(
+                MenuEntry.Row(
+                    title = I18n.get(Strings.MENU_OPEN_IN_MINI_WINDOW, "以小窗口打开"),
+                    icon = PageIcons.SmallWindow,
+                    selected = picker.smallWindow.value,
+                    dividerBefore = true,
+                    onPick = {
+                        close()
+                        setSmallWindow(!picker.smallWindow.value)
+                    },
+                ),
+            )
             add(
                 MenuEntry.Row(
                     title = I18n.get(Strings.MENU_APP_STOCK_ANIM, "使用原版动画"),
                     icon = PageIcons.StockAnim,
                     selected = picker.stockAnim.value,
-                    dividerBefore = true,
                     onPick = {
                         close()
                         picker.stockAnim.value = !picker.stockAnim.value
@@ -196,3 +183,49 @@ private fun SettingsPage.pickerMenuEntries(close: () -> Unit): List<MenuEntry> =
             )
         }
     }
+
+/**
+ * 菜单里「列表怎么显示」那两项 —— 系统应用 / 失效应用。
+ *
+ *  单独一支只为让 [pickerMenuEntries] 留在 detekt 的 `LongMethod` 之内；两项成对出现、
+ *  同一套「写盘失败就拨回去」的处理，本来就是一件事。
+ *
+ * @param close 收掉菜单（调用项给的是 `open = false`）
+ */
+@Composable
+private fun SettingsPage.pickerDisplayEntries(close: () -> Unit): List<MenuEntry> =
+    listOf(
+        MenuEntry.Row(
+            title = I18n.get(Strings.MENU_SHOW_SYSTEM_APPS, "显示系统应用"),
+            // 行首图标恒为「系统应用」网格，选中态由 `selected` 负责（行尾对勾 + 文字主题色）
+            icon = PageIcons.SystemApps,
+            selected = picker.showSystemApps.value,
+            onPick = {
+                close()
+                picker.showSystemApps.value = !picker.showSystemApps.value
+                if (!UiState.writeShowSystemApps(picker.showSystemApps.value)) {
+                    picker.showSystemApps.value = !picker.showSystemApps.value
+                    XLog.w("选择应用：显示系统应用改不动（界面状态写盘失败），已拨回 ${picker.showSystemApps.value}")
+                } else {
+                    // 判据级（i 在 release 被编译期消除，见 XLog 注释）
+                    XLog.w("选择应用：显示系统应用 = ${picker.showSystemApps.value}（已落盘，重查列表）")
+                }
+            },
+        ),
+        //  默认关；落盘（本地持久），写失败就拨回去。
+        MenuEntry.Row(
+            title = I18n.get(Strings.MENU_SHOW_INVALID_APPS, "显示失效应用"),
+            icon = PageIcons.ShowUnopenable,
+            selected = picker.showUnopenable.value,
+            onPick = {
+                close()
+                picker.showUnopenable.value = !picker.showUnopenable.value
+                if (!UiState.writeShowUnopenable(picker.showUnopenable.value)) {
+                    picker.showUnopenable.value = !picker.showUnopenable.value
+                    XLog.w("选择应用：显示失效改不动（界面状态写盘失败），已拨回 ${picker.showUnopenable.value}")
+                } else {
+                    XLog.w("选择应用：显示失效 = ${picker.showUnopenable.value}（已落盘）")
+                }
+            },
+        ),
+    )

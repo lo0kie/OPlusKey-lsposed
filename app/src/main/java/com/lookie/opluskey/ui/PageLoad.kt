@@ -42,7 +42,7 @@ internal suspend fun SettingsPage.loadPageState() {
         //  只说一句日志的话，用户看到的是**整页灰掉**：注入侧手上还是旧配置、两边指纹对不上
         //  ⇒ `configSideOk=false` ⇒ `pageWritable()` false，而页面上没有任何话解释这件事。
         //  与 `finishWrite` 那条广播失败同一个口径：给一句能自救的话。
-        hint(I18n.get(Strings.TOAST_CONFIG_SYNC_FAILED, "配置没能同步给注入侧，退出重进本页即可"))
+        hint(I18n.get(Strings.TOAST_CONFIG_SYNC_FAILED, "注入侧没收到配置，重进本页即可"))
     }
 }
 

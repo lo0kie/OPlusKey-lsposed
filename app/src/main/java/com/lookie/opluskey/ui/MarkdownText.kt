@@ -97,6 +97,19 @@ internal fun markdownToAnnotated(
 /** 更新说明的字数上限 —— 正文来自网络，解析与渲染都在主线程。 */
 private const val MAX_MARKDOWN_CHARS = 64_000
 
+/**
+ * 行内递归的深度上限 —— **这一段是防崩，不是排版**。
+ *
+ *  [appendInline] 对认不出的节点是「原样钻进去画」（`else -> appendInline(child, …)`），而 AST
+ *  的深度由**正文自己**决定：一段 `**`×5000 就是 2500 层嵌套 STRONG，最长 64k 字的正文足够
+ *  叠出上万层 —— 递归到主线程栈上就是 `StackOverflowError`（`Error` 系，`catch (Throwable)`
+ *  那几处也救不回来，因为它们不在这一层的调用链上）。
+ *
+ *  超过上限的那一层**把原文画出来**（记号会露在屏幕上，但弹窗还在、正文还在）：更新说明来自
+ *  网络，宁可显示得难看一点，也不能让设置页崩在渲染上。正常说明的嵌套不超过三层。
+ */
+private const val MAX_MARKDOWN_DEPTH = 48
+
 /** 顶层块：段落、标题、列表、代码块、引用。其余类型保守地按行内处理。 */
 private fun AnnotatedString.Builder.appendBlocks(
     node: ASTNode,
@@ -272,13 +285,22 @@ private class MarkerSkipper(
  *
  *  [skipMarkers] 为真时**跳过记号本身**（`**`、`` ` ``、`-` 这些）—— 只在「已经知道这一层
  *  的记号是什么」的场合传（标题 / 列表项 / 加粗体内部），否则会把星号原样画出来。
+ *
+ *  [depth] 只用来**防栈溢出**（见 [MAX_MARKDOWN_DEPTH]）：深度由正文自己决定，正常说明不超过
+ *  三层；超限的那一层改为直接画原文。
  */
 private fun AnnotatedString.Builder.appendInline(
     node: ASTNode,
     src: String,
     md: MdStyle,
     skipMarkers: Boolean = false,
+    depth: Int = 0,
 ) {
+    if (depth > MAX_MARKDOWN_DEPTH) {
+        //  画原文（连记号一起）：样式没了但字还在，也不会把主线程递归到栈溢出
+        append(src.substring(node.startOffset, node.endOffset))
+        return
+    }
     if (node.children.isEmpty()) {
         append(src.substring(node.startOffset, node.endOffset))
         return
@@ -293,13 +315,13 @@ private fun AnnotatedString.Builder.appendInline(
         when (child.type) {
             MarkdownElementTypes.STRONG -> {
                 withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                    appendInline(child, src, md, skipMarkers = true)
+                    appendInline(child, src, md, skipMarkers = true, depth = depth + 1)
                 }
             }
 
             MarkdownElementTypes.EMPH -> {
                 withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
-                    appendInline(child, src, md, skipMarkers = true)
+                    appendInline(child, src, md, skipMarkers = true, depth = depth + 1)
                 }
             }
 
@@ -309,14 +331,14 @@ private fun AnnotatedString.Builder.appendInline(
                     //  的限制，不像 CSS 能写 padding）—— 底色块会紧紧咬住字形，看起来像被
                     //  荧光笔刷了一道。两侧各垫一个薄空格，当作最小可用的内边距。
                     append(CODE_PADDING)
-                    appendInline(child, src, md, skipMarkers = true)
+                    appendInline(child, src, md, skipMarkers = true, depth = depth + 1)
                     append(CODE_PADDING)
                 }
             }
 
             GFMElementTypes.STRIKETHROUGH -> {
                 withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
-                    appendInline(child, src, md, skipMarkers = true)
+                    appendInline(child, src, md, skipMarkers = true, depth = depth + 1)
                 }
             }
 
@@ -334,7 +356,7 @@ private fun AnnotatedString.Builder.appendInline(
             }
 
             else -> {
-                appendInline(child, src, md, skipMarkers)
+                appendInline(child, src, md, skipMarkers, depth + 1)
             }
         }
     }

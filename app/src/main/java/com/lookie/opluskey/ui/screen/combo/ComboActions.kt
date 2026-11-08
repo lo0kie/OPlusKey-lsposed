@@ -198,7 +198,7 @@ private fun SettingsPage.comboEnableAllowed(
     if (combo.keys.any { cfg.keyIdOf(it) == null }) {
         XLog.w("组合键：${combo.id} 的成员键已不在配置里，不启用（$label）")
         hint(
-            I18n.get(Strings.KEYS_COMBO_NEEDS_KEYS, "组合里的按键没启用，这组保持停用"),
+            I18n.get(Strings.KEYS_COMBO_NEEDS_KEYS, "成员键没启用，这组也停用"),
             slot = HINT_SLOT_COMBO,
         )
         return false
@@ -276,3 +276,35 @@ internal fun SettingsPage.setComboWindow(ms: Int): Boolean {
     if (cfg.global.comboWindowMs == value) return true
     return write(cfg.copy(global = cfg.global.copy(comboWindowMs = value)), "combo_window_ms=$value") != CommandsSave.Failed
 }
+
+/**
+ * 写**这一组自己**的按键间隔（毫秒）。
+ *
+ *  与 [setComboWindow] 不是同一个落点：那个写公共那一档（没单独设过的组都用它），
+ *  这个写这一组自己的值 —— 判定侧两处都读（`Config.comboWindowFor`）。
+ *
+ * ## 「回到跟随公共」不是这一条路
+ *
+ *  那个状态的入口只有一个：**关掉这一组的「使用独立设置」**
+ *  （`Config.comboWindowFor` 的第一支：关着就整份看公共）。开着独立设置时不存在「跟随」——
+ *  打开那一刻已经把公共值播进这一组了（见 `KeySettingsScreen.withSeededComboFields`），
+ *  之后改公共它一项都不动；关掉再打开用的还是这一组上次那套。
+ *
+ *  所以下面 `ms <= 0` 那一支**界面上到不了**：滑杆的下限是
+ *  [GlobalConfig.COMBO_WINDOW_MIN_MS]（20ms）。它留着是因为**老配置**里可能已经是
+ *  [ComboKey.WINDOW_FOLLOW_GLOBAL]（这一位出现之前写下的 0），读取侧的 `?: global` 靠它兜底；
+ *  手改配置文件写 0 也照样表达「跟随」。
+ */
+internal fun SettingsPage.setComboOwnWindow(
+    id: String,
+    ms: Int,
+): Boolean =
+    updateCombo(id, "window_ms=$ms") { combo ->
+        val value =
+            if (ms <= 0) {
+                ComboKey.WINDOW_FOLLOW_GLOBAL
+            } else {
+                ms.coerceIn(GlobalConfig.COMBO_WINDOW_MIN_MS, GlobalConfig.COMBO_WINDOW_MAX_MS)
+            }
+        combo.copy(windowMs = value)
+    }

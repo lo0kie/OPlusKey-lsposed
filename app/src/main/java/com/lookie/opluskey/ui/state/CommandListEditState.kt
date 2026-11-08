@@ -48,4 +48,18 @@ internal object CommandListEditState {
     fun clearPicked() {
         picked = emptySet()
     }
+
+    /**
+     * 离页时整份归位（`SettingsPage.discardPageStateOf(COMMANDS)` 调）。
+     *
+     *  与 [toggleEditing] 分开：那个是用户点顶栏按钮的语义（编辑 ⇄ 完成），这个是「这一页走了」——
+     *  编辑态、勾选、两个确认窗的开关一起收。留着它们的后果是**跨次误删**：上次勾着三条退出，
+     *  下次进来点「删除」会把那三条一起删掉，而用户早忘了。
+     */
+    fun resetForLeave() {
+        editing = false
+        picked = emptySet()
+        confirmDeletePicked = false
+        confirmLeaveEdit = false
+    }
 }

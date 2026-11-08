@@ -41,6 +41,9 @@ internal object ScreenshotViaHelper {
 
     private const val CLASS_NAME = "com.android.internal.util.ScreenshotHelper"
 
+    /** 见 [completionConsumer]：常量哈希对「只等于自己」的代理是合法值。 */
+    private const val CONSUMER_HASH = 0x0f1e2d3
+
     /** 签名只在第一次调用时打一遍（这条会被每一次截图打到，刷屏没意义）。 */
     @Volatile
     private var signaturesLogged = false
@@ -149,14 +152,42 @@ internal object ScreenshotViaHelper {
      * import 它没问题，但代理不必关心泛型擦除后的签名差异，也不会多一个类。
      * 回调这一行是**这条路过没过的最终判据**：发起成功但没回调 = 系统那边没截。
      */
-    private fun completionConsumer(): Any =
-        Proxy.newProxyInstance(
-            Consumer::class.java.classLoader,
-            arrayOf(Consumer::class.java),
-        ) { _, method, args ->
-            if (method.name == "accept") {
-                XLog.w("截图（Helper）：回调拿到结果 ${args?.firstOrNull()}")
+    private fun completionConsumer(): Any {
+        //  `equals` 要按**自己这个代理**比，而 lambda 里拿不到「刚建出来的那个」—— 用一个
+        //  一次性持有者把它接出来（回调是异步的，建完之后才会被系统调到）。
+        val self = arrayOfNulls<Any>(1)
+        val proxy =
+            Proxy.newProxyInstance(
+                Consumer::class.java.classLoader,
+                arrayOf(Consumer::class.java),
+            ) { _, method, args ->
+                when (method.name) {
+                    "accept" -> {
+                        XLog.w("截图（Helper）：回调拿到结果 ${args?.firstOrNull()}")
+                        null
+                    }
+
+                    //  `hashCode` / `equals` / `toString` 也会走到这个 handler 上。一律返回 `null`
+                    //  的话，系统侧（这一步跑在 system_server）拿 `int` / `String` 一拆箱就是 NPE ——
+                    //  而它跟这次截图成不成没关系。哈希给个常量是合法的：这个代理只等于它自己。
+                    "hashCode" -> {
+                        CONSUMER_HASH
+                    }
+
+                    "equals" -> {
+                        args?.firstOrNull() === self[0]
+                    }
+
+                    "toString" -> {
+                        "OPlusKeyScreenshotConsumer"
+                    }
+
+                    else -> {
+                        null
+                    }
+                }
             }
-            null
-        }
+        self[0] = proxy
+        return proxy
+    }
 }

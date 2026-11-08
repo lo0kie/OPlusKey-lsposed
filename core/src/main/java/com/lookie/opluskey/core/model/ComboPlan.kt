@@ -9,8 +9,9 @@ package com.lookie.opluskey.core.model
  *  （`ComboDetector.pairFor`），3 颗起走多成员凑齐（`multiFor`），两条路都读这份计划。
  *
  *  @param keys 成员（**集合语义**：顺序不是身份，见 `ComboKey` 的类注释）
- *  @param collectMs 相邻两颗成员的按下时刻最多相差多久 —— 就是「组合按键设置」里那一档窗口
- *    （`GlobalConfig.comboWindowMs`），两颗与多成员用的是同一个数
+ *  @param collectMs 相邻两颗成员的按下时刻最多相差多久 —— 这一档自己的那一个
+ *    （`Config.comboWindowFor`：设过就用它，没设就是公共那份 `GlobalConfig.comboWindowMs`），
+ *    两颗与多成员走同一个数
  *  @param longPressMs 凑齐之后一起按住多久算长按（这一档自己的值，不取某个成员键的）
  *  @param judgeable 判定器认不认这个形态。现在是「够两颗就认」（多成员这一轮已接线），
  *    这一位留着是为了**下次放开上限时**还能在日志里说清「配了、但判定器不认」，
@@ -35,7 +36,7 @@ data class ComboPlan(
 /**
  * 一档组合 → 判定计划（**只读投影**，不改配置、不影响当前判定）。
  *
- *  @param collectMs 由调用方给：注入侧手上那份配置的 `global.comboWindowMs`。
+ *  @param collectMs 由调用方给：`Config.comboWindowFor`（这一组自己的，没设就是公共那一档）。
  */
 fun ComboKey.plan(collectMs: Int): ComboPlan =
     ComboPlan(
@@ -58,4 +59,4 @@ fun ComboKey.plan(collectMs: Int): ComboPlan =
 fun Config.comboPlans(): List<ComboPlan> =
     combos
         .filter { it.isUsable }
-        .map { it.plan(global.comboWindowMs) }
+        .map { it.plan(comboWindowFor(it)) }

@@ -157,10 +157,15 @@ private fun SettingsPage.StateChoicesPopup(
     val rows = shown?.let { ActionCatalog.stateChoices(it.token) }.orEmpty()
     //  三档之间只差一个 token，逐行精确比即可
     val selectedIndex = rows.indexOfFirst { row -> current?.let { ActionCatalog.isBound(row, it) } == true }
+    //  行标题带上这一格的名字（「切换录屏」）：这三行**只在**这里露面，弹窗标题虽然写着「录屏」，
+    //  一列动词单看还是不知道说的是哪件事。名字从字典里拿出来拼，不是写死在每档的条目里
+    //  （见 `stateRowLabel`）—— 句子那一侧由 `CommandTitle` 拼成「录屏 - 切换」，两处共用
+    //  同一份动词。
+    val owner = shown?.label.orEmpty()
     SinglePickerDialog(
         show = tile != null,
-        title = shown?.label.orEmpty(),
-        labels = rows.map { row -> row.label },
+        title = owner,
+        labels = rows.map { row -> stateRowLabel(row, owner) },
         selectedIndex = selectedIndex,
         onDismiss = onDismiss,
         onPick = { index ->
@@ -339,21 +344,22 @@ private class LastPick {
 }
 
 /**
- * 选择器里那一行的文案 —— **动作 + 开关名**（「切换免打扰」）。
+ * 选择器里那一行的文案 —— **动作 + 宾语**（「切换免打扰」「开始录屏」）。
  *
- *  只写「切换」时单看一行不知道切的是谁；三行挨在一起读的时候，名字跟手一点省一次回看标题。
- *  三种写法各给一条**带 `%s` 的字典条目**，不做字符串拼接：英文那边词与名之间要空格，
- *  中文不要，这个差别只能由译文自己带。
+ *  只写「切换」时单看一行不知道切的是谁；几行挨在一起读的时候，名字跟手一点省一次回看标题。
+ *  两段都从字典来：动词是那一档自己的名字（`catalog.mode_toggle` = 「切换」、
+ *  `catalog.screen_record_start` = 「开始」），宾语是它所属那一格 / 那个开关的名字。
+ *
+ *  **不再按 token 后缀挑格式串**（原先 `*_on` 走「打开%s」、`*_off` 走「关闭%s」、其余走
+ *  「切换%s」）：录屏 / 录音那三档的后缀是 `_start` / `_stop`，落进「其余」那支就变成
+ *  「切换录屏」—— 而字典里那条本来就叫「开始录屏」，等于同一个动作在字典与拼装里各写一遍。
+ *  现在只认「动词 + 名字」一种形状，词与名之间要不要空格交给译文
+ *  （[Strings.COMMON_VERB_NAME_FORMAT]）。
  */
 private fun stateRowLabel(
     state: ActionCatalog.Spec,
-    switchName: String,
-): String =
-    when {
-        state.token.endsWith(Action.ON_SUFFIX) -> I18n.get(Strings.CATALOG_MODE_TURN_ON_OF, "打开%s")
-        state.token.endsWith(Action.OFF_SUFFIX) -> I18n.get(Strings.CATALOG_MODE_TURN_OFF_OF, "关闭%s")
-        else -> I18n.get(Strings.CATALOG_MODE_TOGGLE_OF, "切换%s")
-    }.format(switchName)
+    ownerName: String,
+): String = I18n.format(Strings.COMMON_VERB_NAME_FORMAT, state.label, ownerName)
 
 /**
  * 入口格那一层菜单的行（响铃四档 / 媒体五档 / 系统开关那串）。

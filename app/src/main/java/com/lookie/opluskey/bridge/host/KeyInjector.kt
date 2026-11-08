@@ -17,24 +17,30 @@ internal class KeyInjector(
     fun inject(keyCode: Int): Boolean =
         try {
             injectOrThrow(keyCode)
-            true
         } catch (e: Throwable) {
             XLog.w("注入按键失败：keyevent:$keyCode", e)
             false
         }
 
-    /** 真正干活的那一层 —— 失败向上抛，由公开入口兜住。 */
-    private fun injectOrThrow(keyCode: Int) {
-        val h = handle() ?: return
+    /**
+     * 真正干活的那一层 —— 失败向上抛，由公开入口兜住。
+     *
+     * @return 「两个事件都真下发了没有」。**句柄 / 构造器拿不到时返回 false** —— 早先这几支
+     *   是静默 `return`，外层照样报成功：表现是「按了没反应、也没有任何回执」，而日志里只有
+     *   `build` 那几行（用户分不清是没注入还是注入了被吞）。
+     */
+    private fun injectOrThrow(keyCode: Int): Boolean {
+        val h = handle() ?: return false
         val now = android.os.SystemClock.uptimeMillis()
-        val down = construct(h, ACTION_DOWN, keyCode, now) ?: return
-        val up = construct(h, ACTION_UP, keyCode, now) ?: return
+        val down = construct(h, ACTION_DOWN, keyCode, now) ?: return false
+        val up = construct(h, ACTION_UP, keyCode, now) ?: return false
         // 0 = INJECT_INPUT_EVENT_MODE_ASYNC
         //  **看返回值**：新版 `injectInputEvent` 返回 `InputEventInjectionResult`（0 = 成功），
         //  被拒时**不抛异常** —— 只判「没抛」会把拒绝当成注入成功，表现为
         //  「动作执行了、屏幕没反应」且日志无痕。
         injectOnce(h, down, keyCode)
         injectOnce(h, up, keyCode)
+        return true
     }
 
     /** 下发一次事件，并对「被拒」留一行判据（返回值的语义见 [injectOrThrow] 里那条注释）。 */

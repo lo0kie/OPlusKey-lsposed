@@ -12,6 +12,7 @@ import com.lookie.opluskey.core.config.VariableStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
 import com.lookie.opluskey.core.model.RomKeyFamilies
@@ -46,20 +47,32 @@ internal class ActionRunner(
 
     private val isColorOsApi: () -> Boolean = { runColorOsApi }
 
+    /**
+     * 这一次执行的「振动反馈」—— 同样由 [run] 每次开头写入，与 [runColorOsApi] 一条规矩。
+     *
+     *  它只给「切响铃那一下的触觉」用（`RingerHaptics`，见 [RingerController]）；动作前那一下
+     *  通用振动在 `GestureExec.haptic`，那边自己按生效值判。
+     *
+     *  为什么必须跟着按键走：这个开关在「独立设置」里可以每颗键 / 每组组合各设一份
+     *  （`Config.effectiveFor(owner).vibrate`）。原先这里直接读 `global.vibrate` ——
+     *  于是「公共关、这颗键开」时切响铃不响（该响），「公共开、这颗键关」时反而响（该静）。
+     */
+    @Volatile
+    private var runVibrate: Boolean = ConfigStore.read().global.vibrate
+
     private val injector = KeyInjector { context }
     private val flashlight = FlashlightController({ context }, handler, isColorOsApi)
     private val ringer =
         RingerController(
             { context },
             isColorOsApi,
-            // 「振动反馈」与 `isColorOsApi` 同源：都从这一层的读盘口径来，执行器自己不读配置
-            { ConfigStore.read().global.vibrate },
+            // 「振动反馈」与 `isColorOsApi` 同源：都从这一层的这一格来，执行器自己不读配置
+            { runVibrate },
         )
     private val launcher = AppLauncher({ context }, ::notifyFailure)
     private val shortcut = AppShortcutLaunch({ context }, launcher.mini, ::notifyFailure)
     private val custom =
         CustomCommandRunner(
-            handler,
             ::runShell,
             ::dispatch,
             ::notifyFailure,
@@ -170,12 +183,20 @@ internal class ActionRunner(
          *  缺省值读公共设置：只服务「测试命令」那种没有按键上下文的调用。
          */
         colorOsApi: Boolean = ConfigStore.read().global.colorOsApi,
+        /**
+         * 这一档**实际**的「振动反馈」（`Config.effectiveFor(...).vibrate`）—— 与 [colorOsApi]
+         * 同一档来源。只给「切响铃那一下的触觉」用（见 [runVibrate]）。
+         *
+         *  缺省值读公共设置：只服务「测试命令」那种没有按键上下文的调用。
+         */
+        vibrate: Boolean = ConfigStore.read().global.vibrate,
     ) {
         //  两个执行器（手电筒 / 响铃）在构造时就绑定了 `isColorOsApi` 这条闭包，它们不知道
         //  这一次是哪一档按键 —— 所以把值写进这一格再交给它们。**安全的前提是串行**：
         //  执行全在 `GestureReceiver.worker` 那一条线程上排队（见那边的说明），不会有两个动作
         //  同时覆盖这个字段。
         runColorOsApi = colorOsApi
+        runVibrate = vibrate
         XLog.w("$gestureLabel → ${XLog.redactToken(action.token)}")
         dispatch(action)
     }
@@ -370,10 +391,26 @@ internal class ActionRunner(
     private fun runShell(
         command: String,
         preferRoot: Boolean = true,
+        /**
+         * 「这一条跑完了」的回执 —— **只给多条命令的步骤间隔用**（`CustomCommandRunner` 要等这一步
+         * 真的结束才排下一步，见 `CustomCommandRunner.runSteps`）。
+         *
+         *  **每一条出口都要调**：漏一个，那条链就永远停在半路、`runningSerial` 的占位不还，
+         *  之后所有多条命令都会被「已有命令链在跑」挡掉。所以下面每一处 `return` 之前都先 settle。
+         *  `null` = 不用回执（单条命令、内置 `shell:` 动作都传 null）。
+         */
+        onSettled: (() -> Unit)? = null,
     ) {
+        //  一次性：`ShellRunner.exec` 的 onDone 与下面那几处提前 return 只会走到其中一条，
+        //  但这层保护便宜 —— 重复回执会让「等回执」那一档把同一步跑两遍。
+        val once =
+            java.util.concurrent.atomic
+                .AtomicBoolean(onSettled == null)
+        val settle: () -> Unit = { if (once.compareAndSet(false, true)) onSettled?.invoke() }
         if (command.isBlank()) {
             // 空命令按下去什么都没发生，要提示一下
             notifyFailure(CommandFailure.EMPTY)
+            settle()
             return
         }
         val cmd = command.trim()
@@ -381,6 +418,8 @@ internal class ActionRunner(
         //  又不会把「用户命令正文里正好出现这个串」当成 KSU 那条劫持掉。
         if (KsuCompat.isSidebarAlias(cmd)) {
             launcher.startSidebar()
+            // 这一支是同步的原生调用 ⇒ 回来就算跑完
+            settle()
             return
         }
         //  截图**不**在这里认领，也**不走 shell**：
@@ -393,6 +432,7 @@ internal class ActionRunner(
         if (KsuCompat.isScreenshotAlias(cmd)) {
             XLog.w("截图：请注入侧代截（优先 system_server 内部截图，没成再注入 SYSRQ；都不走 shell、不需要 root）")
             requestSystemInject(KeyId.KEYCODE_SYSRQ)
+            settle()
             return
         }
         //  原样交给 shell（不传 trim 过的）：用户写的空白 / 引号是命令的一部分
@@ -406,6 +446,8 @@ internal class ActionRunner(
             //  「以 root 执行」是**每条命令自己的**开关（见 `Command.root`）；内置的 `shell:` 动作没有
             //  这个开关，一直按默认走（`su`）。`su` 起不来就报失败，不退回 `sh`（见 `ShellRunner.startProcess`）。
             preferRoot = preferRoot,
+            //  跑完（含起进程失败 / 被拒 / 超时）回执一次 —— 有间隔的多条命令靠它推进下一步
+            onDone = settle,
         )
     }
 
@@ -413,7 +455,8 @@ internal class ActionRunner(
      * 请注入侧（`system_server`）代注入一颗键 —— 内置「截图」用，宿主自己注入的那一下 ColorOS 不认。
      *
      *  收方是注入侧挂在 AMS 广播入口上的那个 hook（`inject/KeyHooks.readBroadcast`），
-     *  它看得见全系统每一条广播，所以这里**不必 `setPackage`**。
+     *  它看得见全系统每一条广播，所以 `setPackage` **不影响它收**；
+     *  但裸发就是一条谁都能注册接收的隐式广播 —— 定向到本包，别的应用收不到。
      *  发不出去只记一行：这条路没有「命令失败」可报（不在 shell 里），用户感知就是按了没截图。
      */
     private fun requestSystemInject(keyCode: Int) {
@@ -427,6 +470,7 @@ internal class ActionRunner(
                 ctx.sendBroadcast(
                     android.content
                         .Intent(ModuleWire.ACTION_INJECT_KEY)
+                        .setPackage(HostApp.PACKAGE)
                         .putExtra(ModuleWire.EXTRA_INJECT_CODE, keyCode),
                 )
             }.onFailure { XLog.w("注入请求没发出去：keyevent:$keyCode | ${it.javaClass.simpleName}", it) }

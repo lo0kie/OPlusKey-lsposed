@@ -122,20 +122,21 @@ internal fun SettingsPage.ActionTile(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "TileContent",
     )
-    // 标题下面那行**小字**的配色（应用名 / 入口格档位 / 命令间隔），可用/禁用切换带过渡。
+    //  标题下面那行**小字**的配色（应用名 / 入口格档位 / 命令间隔），可用/禁用切换带过渡。
     //
-    //  **Monet 那一档换用强调色**：主题选 Monet 时 COUI 把 `onSurfaceVariantSummary` 映射到
-    //  MD3 的 `onSurfaceVariant`（见库里 `MonetMapping.kt`）—— 那是一档「近乎无彩」的灰。
-    //  整页底色、卡片、边线都被壁纸染过了，只有这行字还是灰的，读起来像没跟上配色
-    //  （真机反馈「格子的小标题没有 monet 配色」）。换成强调色：它才是这一套里**有色**的那一档，
-    //  与选中格的行尾指示、菜单里的选中行同源。
-    //  **但要比标题弱一档**：选中格的标题本身就是 `primary`，小字若也取实色，两行会一模一样
-    //  （真机反馈「小标题和主标题在 monet 下一样了」）—— 所以这里取 70% 的强调色，
-    //  同一色族、淡一级，主次仍在。
-    //  其余主题档保持 COUI 的 `onSurfaceVariantSummary`（`0x66000000` / `0x66FFFFFF`）：
-    //  那一档是压在中性底子上标定出来的弱化色，换成强调色会在浅色底上糊成一片蓝。
+    //  **Monet 那一档、且这一格是选中的，才换用强调色**：主题选 Monet 时 COUI 把
+    //  `onSurfaceVariantSummary` 映射到 MD3 的 `onSurfaceVariant`（见库里 `MonetMapping.kt`）——
+    //  那是一档「近乎无彩」的灰，整页底色、卡片、边线都被壁纸染过了，只有这行字还是灰的
+    //  （真机反馈「格子的小标题没有 monet 配色」）。
+    //  **但未选中的格子不能用它**：整片网格里每格的小字都亮着强调色，「强调色」就不再表示
+    //  「这一格绑着当前手势」—— 一屏十几格全在喊，选中那格反而看不出来。所以只有选中格取
+    //  70% 的强调色，其余仍是 COUI 的 `onSurfaceVariantSummary`。
+    //  **选中格还要比标题弱一档**：标题本身已经是 `primary`，小字若也取实色，两行会一模一样
+    //  （真机反馈「小标题和主标题在 monet 下一样了」）—— 同一色族、淡一级，主次仍在。
+    //  非 Monet 那几档一律 `onSurfaceVariantSummary`（`0x66000000` / `0x66FFFFFF`）：那一档是压在
+    //  中性底子上标定出来的弱化色，换成强调色会在浅色底上糊成一片蓝。
     val mutedBase =
-        if (LocalAppTheme.current == AppTheme.MONET) {
+        if (LocalAppTheme.current == AppTheme.MONET && selected) {
             scheme.primary.copy(alpha = MONET_MUTED_ALPHA)
         } else {
             scheme.onSurfaceVariantSummary

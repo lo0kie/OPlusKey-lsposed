@@ -139,7 +139,12 @@ internal const val COLUMNS = 2
 internal val GRID_MIN_TILE_WIDTH = 150.dp
 
 /**
- * 一行放几格 —— 可用宽度除以 [GRID_MIN_TILE_WIDTH] 向下取整，**最少一列**。
+ * 一行放几格 —— **按「格 + 间距」算**，不是只拿格宽去除；向下取整，**最少一列**。
+ *
+ *  n 格之间要空掉 n-1 条 [gap]，只除格宽会多算出一列：装出来的格子实际比
+ *  [GRID_MIN_TILE_WIDTH] 窄一截（差的那一点正是被间距吃掉的那条），窄屏上尤其明显 ——
+ *  文字被挤成两行、图标挤到边上。口径：`(宽 + 间距) / (格 + 间距)`，
+ *  等价于「最后一格后面没有间距」。
  *
  *  不拿 [COLUMNS]（2）当下限：窗口窄到一格都塞不下两列时（分屏 / 超大字号）硬排两列，
  *  每格只剩百来 dp，标题全被省略号截掉 —— 那种宽度下排成一列反而读得全。
@@ -149,7 +154,14 @@ internal val GRID_MIN_TILE_WIDTH = 150.dp
  *
  * @param availableWidth 已经扣掉页面左右边距之后的可用宽度
  */
-internal fun gridColumnCount(availableWidth: Dp): Int = (availableWidth.value / GRID_MIN_TILE_WIDTH.value).toInt().coerceAtLeast(1)
+internal fun gridColumnCount(
+    availableWidth: Dp,
+    gap: Dp = GRID_GAP,
+): Int {
+    val step = (GRID_MIN_TILE_WIDTH + gap).value
+    if (step <= 0f) return 1
+    return ((availableWidth.value + gap.value) / step).toInt().coerceAtLeast(1)
+}
 
 /**
  * 首页「按键行为」卡里「前台转小窗时使用动画」那一行**是否露出来** —— 现行 `false`（先隐藏）。
@@ -165,10 +177,13 @@ internal const val SHOW_HOME_MINI_ANIM = false
 // 数错了会让卡片首尾圆角错位的那一类账，整类消失了。
 
 /**
- * 「已保存的命令」卡片里图标到标题的间距 —— 卡片高度至少等于宽度、步骤多时会跟着长高，
+ * 「已保存的命令」卡片里图标行到名字的间距 —— 卡片高度至少等于宽度、步骤多时会跟着长高，
  * 所以这里只是排版间距，不承担纵向预算。
+ *
+ *  取 4dp（比行标题那一档紧）：名字是这张卡的主键，上面那截白一大，整张卡看着就空。
+ *  名字下面不再垫间距，摘要紧跟着它（见 `CommandTileBody`）。
  */
-internal val TILE_TITLE_GAP = 8.dp
+internal val TILE_TITLE_GAP = 4.dp
 
 /**
  * 「已保存的命令」卡片里，摘要行**每一步**行首小图标的边长 —— 比步骤行的
@@ -259,6 +274,16 @@ internal val GRID_GAP = PAGE_MARGIN
 
 /** 网格的行距 —— 与横向间距 [GRID_GAP] 同值（改了一边另一边跟着变）。 */
 internal val GRID_ROW_GAP = GRID_GAP
+
+/**
+ * 两张**相邻卡片**之间的间距 —— 取 8dp。
+ *
+ *  用在「清单 + 末尾那一行『添加』」拆成两张卡的地方（按键列表 / 组合按键 / 命令步骤），
+ *  以及「独立设置」页那颗总开关与它下面那组设置条目之间：它们说的是同一件事的两半
+ *  （这一列现在有什么、再怎么加一个；这一档算不算数、算数时是什么样），所以比网格行距
+ *  （[GRID_ROW_GAP] 12dp）紧一档 —— 12dp 会把这两张读成互不相干的两块。
+ */
+internal val CARD_GAP = 8.dp
 
 /**
  * 浮层菜单每项图标的尺寸 —— 取 22dp，与全页行首图标 [ROW_ICON_SIZE] 同一档。

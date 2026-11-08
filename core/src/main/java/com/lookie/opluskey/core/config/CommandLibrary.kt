@@ -285,7 +285,7 @@ object CommandLibrary {
                 ConfigStore.SLOT_COMMANDS,
                 // 与主配置同一层外皮（[FileObfuscation]）
                 FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, serialize(commands)),
-                openReadable = false,
+                openReadable = ConfigStore.OPEN_READABLE_COMMANDS,
             )
         cache = null
         return ok

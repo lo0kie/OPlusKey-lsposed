@@ -33,7 +33,7 @@ private fun SettingsPage.singlePayloadBlockedReason(): String? {
     val raw = commandDraft.draft.single
     if (raw.isBlank()) return I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令")
     if (!Action.hasSupportedFormat(raw)) {
-        return I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "开头要写 shell: / cmd: 这类前缀")
+        return I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "开头要写 shell: / cmd: 前缀")
     }
     // 写法合法之后，再看这段字**解析出来到底做不做事**：`shell:` / `cmd:` 这种只有前缀的
     //  （[Action.isBarePrefix]），以及 `keyevent:` 空正文 / 认不出的键码 / `none`（解析成

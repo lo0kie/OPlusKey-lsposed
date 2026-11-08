@@ -181,24 +181,33 @@ private fun EmphasisLine(
 /**
  * 把一段正文里的 `**加粗**` 翻成 [AnnotatedString]。
  *
- *  逐字符扫一遍：遇到成对的 `**` 就在这儿切一段 —— `**` 本身不显示，只翻转
+ *  逐字符扫一遍：遇到**成对**的 `**` 就在这儿切一段 —— `**` 本身不显示，只翻转
  *  「后面这段要不要加粗」；遇到 `\` 就把它后头那一个字符照字面摆（转义）。其余字符原样。
+ *
+ *  **落单的 `**` 按字面显示**（注释里那句约定原来只有文字、没有实现）：改成「成对」判之后，
+ *  先扫一遍取出所有**未被转义**的 `**` 起始下标，两两配对（1↔2、3↔4…），最后落单的那一个
+ *  **不入表** ⇒ 它就按字面跟在正文里。原先的实现是无条件翻转，一个落单的 `**` 会让**后半句
+ *  整段变粗**、星号还消失 —— 用户写的命令名里出现两个星号就会撞上。
  *
  *  为什么**不**用正则：正文里可能出现真的以 `-` / `*` 开头的名字，正则替换容易把
  *  「转义过的记号」和「真记号」一起改掉；一次线性扫描里判这两件事，它们不会互相打架。
  */
-private fun emphasis(text: String): AnnotatedString =
-    buildAnnotatedString {
+private fun emphasis(text: String): AnnotatedString {
+    //  成对判据先算一遍（O(n)）：正文都是弹窗里那几句，长度有界
+    val marks = pairedMarks(text)
+    return buildAnnotatedString {
         var bold = false
         var i = 0
+        var next = 0
         while (i < text.length) {
             val c = text[i]
             if (c == BACKSLASH && i + 1 < text.length) {
                 append(text[i + 1])
                 i += 2
-            } else if (c == ASTERISK && i + 1 < text.length && text[i + 1] == ASTERISK) {
+            } else if (next < marks.size && i == marks[next]) {
                 if (bold) pop() else pushStyle(BOLD)
                 bold = !bold
+                next++
                 i += 2
             } else {
                 append(c)
@@ -206,3 +215,34 @@ private fun emphasis(text: String): AnnotatedString =
             }
         }
     }
+}
+
+/**
+ * 一段正文里**成对**的 `**` 起始下标（升序）；落单的那一个不在表里。
+ *
+ *  转义跳过：`\*` 后面那个字符照字面摆，所以它不可能是记号的一半（与 [emphasis] 同一口径）。
+ */
+private fun pairedMarks(text: String): IntArray {
+    val found = ArrayList<Int>()
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        when {
+            c == BACKSLASH && i + 1 < text.length -> {
+                i += 2
+            }
+
+            c == ASTERISK && i + 1 < text.length && text[i + 1] == ASTERISK -> {
+                found.add(i)
+                i += 2
+            }
+
+            else -> {
+                i += 1
+            }
+        }
+    }
+    //  两两成对：`1↔2`、`3↔4`…，末尾落单的那个丢掉（它按字面显示）
+    val paired = found.size - found.size % 2
+    return IntArray(paired) { found[it] }
+}

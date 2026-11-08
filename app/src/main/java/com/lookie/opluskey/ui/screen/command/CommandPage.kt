@@ -216,8 +216,8 @@ private fun SettingsPage.CommandStepListSection(
             )
         },
     )
-    //  **不要再套一层 `Card`**：`SerialSteps` 现在自己就是一张 `CardList`（它自带卡片、
-    //  分隔线与左右 `PAGE_MARGIN`）。外面再包一层就成了「卡里还有一张卡」——
+    //  **不要再套一层 `Card`**：`SerialSteps` 自己就是两张 `CardList`（步骤卡 + 「添加命令」那张，
+    //  各自自带卡片、分隔线与左右 `PAGE_MARGIN`）。外面再包一层就成了「卡里还有一张卡」——
     //  观感是两层卡片、行看着一颗颗独立（真机反馈「看起来有两层 cardlist」）。
     //  加 / 删步骤的过渡仍由 `SerialSteps` 每行的 expand / shrink 驱动，不在这里。
     SerialSteps()
@@ -545,7 +545,7 @@ private fun SettingsPage.SingleCommandField(
     //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。
     val formatError =
         if (raw.isNotBlank() && !Action.hasSupportedFormat(raw)) {
-            I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "开头要写 shell: / cmd: 这类前缀")
+            I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "开头要写 shell: / cmd: 前缀")
         } else {
             ""
         }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,6 +29,7 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.Feedback
+import com.lookie.opluskey.ui.LocalSheetBringIntoView
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.ModeMenuPopups
 import com.lookie.opluskey.ui.ModeMenuTarget
@@ -38,6 +40,7 @@ import com.lookie.opluskey.ui.SHEET_TITLE_MARGIN
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.boundAppName
+import com.lookie.opluskey.ui.couiInputColors
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
@@ -475,6 +478,8 @@ internal fun SettingsPage.StepPickerSheet(
                 onExpandedChange = { },
                 modifier = Modifier.fillMaxWidth().padding(bottom = STEP_SHEET_SEARCH_GAP),
                 label = I18n.get(Strings.COMMAND_SEARCH, "搜索命令"),
+                //  Monet 下把底色调淡（三处 `InputField` 共用那一份，见 `couiInputColors`）
+                colors = couiInputColors(),
             )
         },
     ) {
@@ -644,6 +649,8 @@ private fun stepSheetRow(
     val anchor = ctx.anchorOf(spec)
     val view = actionRowView(spec, ctx.current, ctx.boundApp)
     val colors = COUITheme.colorScheme
+    //  抽屉递下来的那一份（见 `PageSheet` 的进场定位）。**已选那一行**才挂它。
+    val sheetBringIntoView = LocalSheetBringIntoView.current
     return CardRow.Item(
         title = view.title,
         // 标题下面那行小字 = **当前绑的是什么**，只在这一行正是当前那一档时才有内容
@@ -660,7 +667,17 @@ private fun stepSheetRow(
                 //  选中那一行加一圈**内边框** —— 与「选择应用 / 选择界面」两页同一份
                 //  （见 `selectedRowRing`）。抽屉里原来只有「行首 + 标题上主题色」这一档，
                 //  而这一列的每一行都带字形，扫下来很难定位当前是哪一档。
-                .selectedRowRing(view.selected),
+                .selectedRowRing(view.selected)
+                //  抽屉打开时**自动滚到这一行**（用户口径「抽屉自动定位到已选」）：requester
+                //  由 `PageSheet` 递下来，只有「当前这一档」那一行挂它 —— 挂两处的话壳不知道
+                //  该滚哪个。没挂上的抽屉什么都不发生（`LocalSheetBringIntoView` 为 null）。
+                .then(
+                    if (view.selected) {
+                        sheetBringIntoView?.let { Modifier.bringIntoViewRequester(it) } ?: Modifier
+                    } else {
+                        Modifier
+                    },
+                ),
         //  行尾那一颗**照画**，不分选中与否：它说的是「点开还有一层」，而选中之后照样点得进去换一档
         //  —— 藏起来那一行看着像死格子（用户反馈：抽屉里选中有二级菜单的项之后，行尾的选择器不见了）。
         //  颜色仍用最弱那一档：行首的对勾才表示「就是这一档」，行尾只是路标（见 `RowEndIcon`）。

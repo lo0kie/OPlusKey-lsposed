@@ -281,8 +281,8 @@ internal fun SettingsPage.branchToggleRow(
 @Composable
 internal fun SettingsPage.BranchDefaultTip() {
     Text(
-        //  只留这一句，不接「：侧键 - 单击」那截详细 —— 那一档顶栏尾随小标题已经写着
-        text = I18n.get(Strings.COMMAND_BRANCH_DEFAULT, "以上都不成立时，执行按键绑定里的命令"),
+        //  只留这一句，不接「：侧键 - 单击」那截详细 —— 那一档顶栏副标题已经写着
+        text = I18n.get(Strings.COMMAND_BRANCH_DEFAULT, "以上都不成立时用按键绑定"),
         modifier =
             Modifier
                 .fillMaxWidth()

@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.model
 
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
@@ -13,6 +14,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
+import com.lookie.opluskey.core.log.XLog
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 
@@ -58,6 +60,81 @@ internal fun Modifier.opticalCenter(style: TextStyle): Modifier {
     val dy = remember(style, density) { opticalDy(style, density, measurer) }
     return offset { IntOffset(x = 0, y = dy) }
 }
+
+/**
+ * 单行文字**上提、贴齐行盒顶**的修正 —— 上移「行盒顶 → 墨迹顶」那一档。
+ *
+ * 与 [opticalCenter] 是同一把尺子的两个方向：那一支把墨迹挪到行盒正中（竖居中容器用），
+ * 这一支把墨迹顶对齐行盒顶（**上面紧挨着另一行字**时用）。
+ *
+ * ## 用在哪儿
+ *
+ *  顶栏副标题：它排在主标题下面一行，行盒之间只有 3.5dp（库的 `SubtitleMarginTop`），
+ *  可两个行盒各有一截汉字不占的留白 —— 上面那行的 descent、这一行的 ascent —— 于是
+ *  3.5dp 的间隙看着像 11.7dp（真机像素量的：41px @560dpi），副标题像是被推远了一截。
+ *  上提这一侧，让墨迹从设计位置（行盒顶 + 3.5dp）开始，两行读起来才是一个整体。
+ *
+ * ## 这一档就这么多，别再补
+ *
+ *  量出来只有 1.4dp（14sp 的汉字，行盒留白本就不多）—— **就是要这么多**：真机上再补一档
+ *  3dp 就贴得太紧了（试过，被否掉）。真正把两行拉开的是**主标题**行盒底下那截降部留白
+ *  （32sp 的字，约 6.9dp），那一侧不归副标题管 —— 动它等于把整块标题往上推，还会连带顶栏高度。
+ *
+ * 同样用 `offset {}`：只改绘制、不改测量 —— 顶栏高度与折叠几何都不受影响。
+ */
+@Composable
+internal fun Modifier.opticalTightTop(style: TextStyle): Modifier {
+    val density = LocalDensity.current
+    // 理由同 [opticalCenter]：实例每个调用点一份，真正的排版只在缓存缺失时发生。
+    val measurer = rememberTextMeasurer(cacheSize = 1)
+    val dy = remember(style, density) { inkTop(style, density, measurer) }
+    return offset { IntOffset(x = 0, y = -dy) }
+}
+
+/** 上提量缓存 —— 与 [opticalDyCache] 同一套理由；分开一张表，两个方向的量互不覆盖。 */
+private val inkTopCache = ConcurrentHashMap<Pair<TextStyle, Density>, Int>()
+
+private fun inkTop(
+    style: TextStyle,
+    density: Density,
+    measurer: TextMeasurer,
+): Int =
+    inkTopCache.getOrPut(style to density) {
+        val probe = measurer.measure("国", style)
+        //  这里**不能用** `fontMetrics`（见 [inkRect]）：它的 `top` 是全字体的最大极值
+        //  （含拉丁字母的重音空间，约 -1.15em），比汉字自己的墨迹顶（约 -0.88em）还高；
+        //  拿它减基线，得到的常是个零或负数 —— 上提量变 0，甚至反过来把字推下去。
+        val ink = inkRect(style, with(density) { style.fontSize.toPx() })
+        val px = if (ink == null) 0 else (probe.firstBaseline + ink.top).roundToInt()
+        XLog.w(
+            "副标题光学修正：行盒高=${probe.size.height} 基线=${probe.firstBaseline} " +
+                "墨迹=${ink?.top}..${ink?.bottom} ⇒ 上提 ${px}px",
+        )
+        px
+    }
+
+/**
+ * 这个汉字**自己的墨迹框**（`getTextBounds`，相对基线，top 为负）。
+ *
+ *  与 [glyphBounds] 的区别就是整件事的关键：`Paint.fontMetrics` 给的是**字体**的极值
+ *  （`top` / `bottom` 涵盖所有字形，包括拉丁字母的重音与降部），而 `getTextBounds("国")`
+ *  给的是**这一颗汉字**实际画出来的范围。两者在 `top` 上能差 0.27em —— 14sp 就是 3.8dp，
+ *  正好是「上提多少」这一档的全部量。
+ *
+ * @return `null` = 取不到（字体服务异常）；调用方退回不修正
+ */
+private fun inkRect(
+    style: TextStyle,
+    em: Float,
+): Rect? =
+    runCatching {
+        val paint =
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                typeface = Typeface.create(Typeface.DEFAULT, style.fontWeight?.weight ?: 400, style.fontStyle == FontStyle.Italic)
+                textSize = em
+            }
+        Rect().also { paint.getTextBounds("国", 0, 1, it) }
+    }.getOrNull()
 
 /**
  * 下沉量缓存 —— **进程级**，键是（样式, 密度）。

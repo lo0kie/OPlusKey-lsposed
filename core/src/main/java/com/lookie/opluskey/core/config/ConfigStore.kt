@@ -28,6 +28,13 @@ object ConfigStore {
      */
     const val SLOT_COMMANDS: String = "commands"
 
+    /**
+     * `commands` 槽的跨 uid 可读口径 —— [CommandLibrary.save] 与 [ProfileCommands] 写的是**同一份
+     * 文件**，两处各写一个字面量的话，debug 包里谁最后写就决定它可不可读（权限来回翻）。
+     * 与主配置（[write] 里的 `openReadable = true`）保持一致。
+     */
+    const val OPEN_READABLE_COMMANDS: Boolean = true
+
     /** 界面状态（`ui/state/UiState`）的槽名，**不是用户配置**（只有「显示系统应用」这类界面偏好）。 */
     const val SLOT_UI: String = "ui"
 
@@ -256,7 +263,10 @@ object ConfigStore {
         //  **写之前先把现有那份留成 `.prev`**：它是「上一次成功写入」的完整一份，下一次主文件
         //  读不懂时 [recoverFromBackup] 就靠它。不能指望 `AtomicFile` —— 它写成功时直接删旧
         //  base，`.bak` 只在 legacy 命名下才有（真机上一次都没出现过，见 `snapshotModuleFile`）。
-        snapshotModuleFile(files().file(SLOT_CONFIG))
+        //
+        //  **主文件读不懂时不复制**：那时的 `.prev` 往往正是唯一还能救的副本，把它换成一份坏
+        //  内容等于当场把退路毁掉 —— 而这一次写盘之后，用户就再也回不去了。
+        if (load() !is Load.Unreadable) snapshotModuleFile(files().file(SLOT_CONFIG))
         val ok =
             files().write(
                 SLOT_CONFIG,

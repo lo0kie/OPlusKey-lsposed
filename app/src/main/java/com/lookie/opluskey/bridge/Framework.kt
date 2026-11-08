@@ -281,25 +281,47 @@ internal object Framework {
     }
 
     /**
-     * 找侧键的接管点。去重口径是 **owner 类 + Method 对象 + kind**（[InterceptionPoint] 是 data
-     * class，相等即这三项都相同），所以同一个类上同一个 Method 不会装两次；但同名的**不同**
-     * Method（重载，或父子类各声明一个）仍会各装一次 —— 后者由 [collect] 里的 PM_EXT 同层互斥兜住。
+     * 找侧键的接管点 —— **按层分开返回**（层内已去重，层间有优先级）。
      *
-     * @return 去重后的接管点；调用方逐个尝试安装，装到哪个算哪个
+     *    去重口径是 owner 类 + Method 对象 + kind（[InterceptionPoint] 是 data class，相等即这三项
+     *    都相同），所以同一个类上同一个 Method 不会装两次；同名的**不同** Method（重载，或父子类
+     *    各声明一个）仍会各算一个 —— 后者由 [collect] 里的 PM_EXT 同层互斥兜住。
+     *
+     * ## 为什么不是一个平表
+     *
+     *  层与层之间是「逐层降级」，而**一层到底装不装得上，要到装的时候才知道**：类在、方法名
+     *  对得上，但方法 final / 框架拒 hook，`hookGuarded` 都会返回 null。只交一张平表时，调用方
+     *  把第一层全装失败就没有退路 —— 真机的表现是「日志写着找到了接管点，侧键完全不接管」，
+     *  正是最难查的那一档（一、12：看着都对，就是没反应）。
+     *
+     *  调用方的规矩还是那条：**从前往后试，某一层装上了就停**。两层各装一部分会让同一次按压
+     *  被喂判定器两遍（双击被吃成两次单击、长按枪反复作废），所以只有「整层一个都没装上」
+     *  才往下一层走 —— 这条判据在 `KeyHooks.installLayers` 里。
+     *
+     * @return 只含非空的那几层，顺序 = 优先级（越前越优先）
      */
-    fun findSideKeyPoints(loader: ClassLoader): List<InterceptionPoint> {
-        val out = LinkedHashSet<InterceptionPoint>()
-
-        // 逐层降级而非全装：同一次按压若被多层各喂一次判定器，去重窗只盖得住 instantSingle
-        // 那一支，双击会变成「双击 + 单击」。**前一层收到了就不再往下走**。
-        if (collectLayer(out, loader, Layer.STRATEGY)) return out.toList()
-        if (collectLayer(out, loader, Layer.PM_EXT)) return out.toList()
-        collectLayer(out, loader, Layer.AOSP_PM)
-        return out.toList()
+    fun findSideKeyLayers(loader: ClassLoader): List<SideKeyLayer> {
+        val out = ArrayList<SideKeyLayer>(Layer.entries.size)
+        for (layer in Layer.entries) {
+            val points = LinkedHashSet<InterceptionPoint>()
+            if (collectLayer(points, loader, layer)) out += SideKeyLayer(layer.label, points.toList())
+        }
+        return out
     }
 
     /**
-     * 输入层那条组合键判定的接管点 —— 与 [findSideKeyPoints] **并列、互不影响**。
+     * [findSideKeyLayers] 的一层。
+     *
+     * @param label 只给日志认人（哪一档在起作用 / 哪一档没装上）
+     * @param points 这一层要挂的那些方法
+     */
+    internal class SideKeyLayer(
+        val label: String,
+        val points: List<InterceptionPoint>,
+    )
+
+    /**
+     * 输入层那条组合键判定的接管点 —— 与 [findSideKeyLayers] **并列、互不影响**。
      *
      *  为什么侧键那条不够：侧键接管点落在 policy 的策略类上，而「电源 + 音量」的组合键在**输入层**
      *  就已经判完并派发下去了（`com.android.server.input` 那一层比 policy 早）。policy 上吞掉的
@@ -359,7 +381,7 @@ internal object Framework {
     /**
      * 接管点的一层 —— 候选类名 / 入口方法名 / 判定 kind 都从本机那一档（[hooks]）里取。
      *
-     *  抽成枚举是为了让 [findSideKeyPoints] 那三行读起来就是「逐层降级」本身；每层取哪几个字段
+     *  抽成枚举是为了让 [findSideKeyLayers] 那个循环读起来就是「逐层降级」本身；每层取哪几个字段
      *  写死在下面两个 `when` 里，加一层要动的是这里（而不是再复制一段循环）。
      */
     private enum class Layer(

@@ -44,7 +44,7 @@ internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
                     title = I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"),
                     // 说明写**结果**而不是机制：用户要判断的是「开 / 关之后双击会变成什么样」，
                     //  所以两句各说一边的结果 —— 「按两下算单击」与「第二下不生效」。
-                    summaryOn = I18n.get(Strings.BINDING_INSTANT_SINGLE_ON, "双击无动作时，两下各自立即算一次单击"),
+                    summaryOn = I18n.get(Strings.BINDING_INSTANT_SINGLE_ON, "双击无动作时，两下各立即算单击"),
                     summaryOff = I18n.get(Strings.BINDING_INSTANT_SINGLE_OFF, "双击无动作时，第二下不生效"),
                     icon = PageIcons.IgnoreDouble,
                     checked = checked,

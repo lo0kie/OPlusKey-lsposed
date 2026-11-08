@@ -71,14 +71,6 @@ object Strings {
     const val BINDING_DELETE_KEY_CONFIRM = "binding.delete_key_confirm"
     const val BINDING_ADD_KEY = "binding.add_key"
 
-    /**
-     * 「添加按键」那一行的副标题 —— **还没到上限**时说的那句；到上限时这一格换成原因（`key_watch.limit`）。
-     *
-     *  这一行点下去是开一次**按键收集**（弹窗里按下要加的那颗键），光看「添加按键」四个字看不出
-     *  这一步发生在模块外面。满员那一格被原因占着，所以这句只在未满时出现。
-     */
-    const val BINDING_ADD_KEY_DESC = "binding.add_key_desc"
-
     /** 首页按键清单里，一颗**停用的**键后面那句状态（不是动作，别与 `binding.disable_key` 混）。 */
     const val BINDING_KEY_DISABLED_STATE = "binding.key_disabled_state"
 
@@ -259,14 +251,11 @@ object Strings {
     /** 列表末行「添加组合按键」。 */
     const val COMBO_ADD = "combo.add"
 
-    /** 组合要两颗键时的那句：只有内置侧键、配不出组合（「添加组合按键」那一行的副标题与禁用原因）。 */
+    /** 组合要两颗键时的那句：只有内置侧键、配不出组合（「添加组合按键」那一行的禁用原因）。 */
     const val COMBO_NEED_KEY = "combo.need_key"
 
     /** 选键弹窗那颗确认按钮 —— 只写「添加」（窗里已经说了选的是按键，再补三个字太挤）。 */
     const val COMBO_ADD_CONFIRM = "combo.add_confirm"
-
-    /** 「添加组合键」那一行的副标题（没满员时）。 */
-    const val COMBO_ADD_DESC = "combo.add_desc"
 
     /** 组合键的两档：列表副标题与编辑页小标题共用。 */
     const val COMBO_SHORT = "combo.short"
@@ -350,15 +339,17 @@ object Strings {
     const val CATALOG_MODE_CONTROL_CENTER = "catalog.mode_control_center"
     const val CATALOG_MODE_CYCLE = "catalog.mode_cycle"
 
-    /** 系统开关再下一层的三档：切换 / 打开 / 关闭。 */
+    /**
+     * 系统开关再下一层的三档：切换 / 打开 / 关闭。
+     *
+     *  这三条**只是动词**，宾语（开关名 / 录屏 / 录音）由选择器那一层拼 —— 见
+     *  [COMMON_VERB_NAME_FORMAT]。字典里不写「切换 Wi-Fi」这种整句：同一个动作在注册那边
+     *  只念动词（`切换`），两处各写一份就是「下层分叉」。
+     */
     const val CATALOG_MODE_TOGGLE = "catalog.mode_toggle"
     const val CATALOG_MODE_TURN_ON = "catalog.mode_turn_on"
     const val CATALOG_MODE_TURN_OFF = "catalog.mode_turn_off"
 
-    /** 同上的**带开关名**写法（「切换免打扰」）—— 选择器里逐行读的地方用。 */
-    const val CATALOG_MODE_TOGGLE_OF = "catalog.mode_toggle_of"
-    const val CATALOG_MODE_TURN_ON_OF = "catalog.mode_turn_on_of"
-    const val CATALOG_MODE_TURN_OFF_OF = "catalog.mode_turn_off_of"
     const val CATALOG_MODE_EXPAND = "catalog.mode_expand"
     const val CATALOG_MODE_HOME = "catalog.mode_home"
     const val CATALOG_MODE_NOTIFICATIONS = "catalog.mode_notifications"
@@ -378,10 +369,12 @@ object Strings {
     const val CATALOG_RECORDING = "catalog.recording"
 
     /**
-     * 录音那一层选择器的三档 —— 与下面录屏同一套**带后缀**写法（`开始录音` / `结束录音` / `切换录音`）。
+     * 录音那一层选择器的三档 —— **只有动词**（`开始` / `结束` / `切换`），与录屏同一套。
      *
-     *  为什么不像灵感语音那样只写「开始」「结束」：那个弹窗的标题是「录音」，三行都短到只剩一个
-     *  动词时一眼扫过去分不出是哪一件东西（与录屏同一条口径）。
+     *  宾语（「录音」）不写在这里：选择器那一行由 `common.verb_name_format` 拼成「开始录音」，
+     *  句子那一侧由 `CommandTitle` 拼成「录音 - 开始」。原先字典里存的是整句「开始录音」，
+     *  而句子那边又要拼一次「录音 - 开始」—— 同一个动作在字典里被写了两遍（用户口径
+     *  2026-11-08：动词只存一份，宾语由各处按自己的语序拼）。
      */
     const val CATALOG_RECORDING_START = "catalog.recording_start"
     const val CATALOG_RECORDING_STOP = "catalog.recording_stop"
@@ -389,11 +382,11 @@ object Strings {
     const val CATALOG_SCREEN_RECORD = "catalog.screen_record"
 
     /**
-     * 录屏那一层选择器的三档 —— **带后缀**（`开始录屏` / `结束录屏` / `切换录屏`）。
+     * 录屏那一层选择器的三档 —— **只有动词**（`开始` / `结束` / `切换`）。
      *
-     *  与「灵感语音」那两档（只写「开始」「结束」）不同：那一层的小标题已经写着「灵感语音」，
-     *  而录屏这一层是从「小布 AI」菜单里点开的，那一行只写「录屏」—— 三行都短到只剩一个动词时，
-     *  一眼扫过去分不出说的是录屏还是别的（用户口径）。
+     *  与 [CATALOG_RECORDING_START] 同一套，理由也同一条：`录屏` 二字由拼装那一层加上去
+     *  （选择器里是「切换录屏」、句子里是「录屏 - 切换」），不进字典。三行在选择器里仍然读得清
+     *  是录屏 —— 弹窗标题写着「录屏」，每行也带着它。
      */
     const val CATALOG_SCREEN_RECORD_START = "catalog.screen_record_start"
     const val CATALOG_SCREEN_RECORD_STOP = "catalog.screen_record_stop"
@@ -462,9 +455,8 @@ object Strings {
     const val COMMAND_PREFIX_FILL = "command.prefix_fill"
     const val COMMAND_SAVED_COMMANDS = "command.saved_commands"
     const val COMMAND_SAVED_COUNT = "command.saved_count"
-    const val COMMAND_STEP_SELECT_TITLE = "command.step_select_title"
 
-    /** 「换掉这一步 / 换掉这一条动作」那张抽屉的标题 —— 与 [COMMAND_STEP_SELECT_TITLE] 同一处、两种来处。 */
+    /** 「换掉这一步 / 换掉这一条动作」那张抽屉的标题 —— 换掉哪一步、挑哪一条动作，两种来处共用。 */
     const val COMMAND_STEP_REPLACE_TITLE = "command.step_replace_title"
 
     /** 步骤卡右下角那颗 FAB 的两档说明：进排序态 / 退出排序态。 */
@@ -702,12 +694,15 @@ object Strings {
     const val COMMON_STOP = "common.stop"
 
     /**
-     * 一个百分比（`10%`）—— 「屏幕亮度」「音量」两族的**状态**。
+     * 一个百分比（`(10%)`）—— 「屏幕亮度」「音量」两族的**状态**。
      *
      *  这两族的父格是「屏幕亮度 / 音量」、子动作是「增加 / 减少 / 设置为」，剩下的那个数就是
-     *  状态，所以它与开关的「打开 / 关闭」同一个位置（`音量: 增加 - 10%`），不编进子动作里。
+     *  状态，所以它与开关的「打开 / 关闭」同一个位置（`音量: 增加 - (10%)`），不编进子动作里。
+     *
+     *  **带括号、且用半角**：横杠后面直接跟数字会被读成负号（`设置为 - 90%` 看着像「负 90%」），
+     *  括号一括就只剩「这个数」一种读法；半角与项目里其余括号注记（`微信(小窗)`）同一套写法。
      */
-    const val COMMON_PERCENT_FORMAT = "common.percent_format"
+    const val COMMON_PERCENT_PAREN_FORMAT = "common.percent_paren_format"
 
     /**
      * 「小窗」那一档的标记 —— 「打开应用」的目标里用它标「这一条是以小窗打开」
@@ -738,6 +733,19 @@ object Strings {
      *  别处出现这个键就是又一套语序（`tools/audit-arch.py` 有一条判据盯着这件事）。
      */
     const val COMMON_PREFIX_NAME_FORMAT = "common.prefix_name_format"
+
+    /**
+     * 「**动词 + 宾语**」—— 选择器里逐行读的那句（`切换 Wi-Fi` / `开始录屏`）。
+     *
+     *  两段都由调用方给：动词是那一档自己的字典值（`catalog.mode_toggle` = 「切换」、
+     *  `catalog.screen_record_start` = 「开始」），宾语是它所属那一格 / 那个开关的名字。
+     *  **字典里不写整句**（别再有「切换录屏」这种把宾语焊死进名字的条目）：注册那边同一个
+     *  动作只念动词（`切换`），两处各写一份就是同一件事的两种说法。
+     *
+     *  词与名之间要不要空格由译文自己带（中文没有、英文有），所以拼的是格式串而不是字符串相加。
+     *  全项目只有 `ui/ModeMenuPopups` 的 `stateRowLabel` 读它。
+     */
+    const val COMMON_VERB_NAME_FORMAT = "common.verb_name_format"
     const val COMMON_REPLACE = "common.replace"
     const val COMMON_RESET = "common.reset"
     const val COMMON_STEP_INDEX = "common.step_index"
@@ -931,7 +939,7 @@ object Strings {
     const val DIALOG_FREE_NOTICE_TITLE = "dialog.free_notice_title"
     const val DIALOG_FREE_NOTICE_CONTENT = "dialog.free_notice_content"
 
-    /** 内置键「侧键」的名字 —— 提示里的主语用它，自定义键名是用户起的、不译。 */
+    /** 内置键的名字（「快捷键」，与页面标题同一个词）—— 提示里的主语用它，自定义键名是用户起的、不译。 */
     const val KEY_SIDE = "key.side"
 
     const val GESTURE_DOUBLE = "gesture.double"

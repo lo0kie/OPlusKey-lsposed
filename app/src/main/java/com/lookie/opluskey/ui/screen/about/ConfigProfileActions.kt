@@ -276,7 +276,7 @@ internal fun SettingsPage.ProfileBrokenDeleteDialog(ui: AboutUiState) {
     ConfirmDialog(
         show = item != null,
         title = I18n.get(Strings.DIALOG_DELETE_PROFILE_TITLE, "删除配置"),
-        summary = I18n.get(Strings.PROFILE_BROKEN_DELETE, "这一份已经读不出来了，删掉它才能腾出位置新建配置"),
+        summary = I18n.get(Strings.PROFILE_BROKEN_DELETE, "这一份读不出来，删掉才能腾出位置"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { ui.brokenToDelete = null },
         onConfirm = {

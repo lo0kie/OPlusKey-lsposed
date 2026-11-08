@@ -95,7 +95,7 @@ private val COMBO_CHIP_RADIUS = 6.dp
 // 这一块只回答「有哪几组、按哪颗键筛、每一行写什么」。
 
 /**
- * 「组合按键列表」那一块 —— 小标题 + 那张卡 + 它那个**筛选菜单**。
+ * 「组合按键列表」那一块 —— 小标题 + 那张卡（末行是「添加组合按键」）+ 它那个**筛选菜单**。
  *
  *  小标题在这张卡上方（用户口径）：一列「有哪几档」需要一个名字，滚起来之后顶栏折成一条，
  *  只看行名认不出这一列是什么。
@@ -125,7 +125,11 @@ internal fun SettingsPage.ComboListSection(
             trailing = { TitleCounter(cfg.combos.size, MAX_COMBOS) },
         )
         //  两列的宽度**整列量一次**（见 [comboPairWidths]）：每行各量各的就会一行一个宽度。
-        CardList(rows = comboRows(cfg, writable, atLimit, filterKey, comboPairWidths(cfg)))
+        val rows = comboRows(cfg, writable, filterKey, comboPairWidths(cfg))
+        //  「添加组合按键」是这一列的**最后一行**（用户口径：与列表拼在一起，不另起卡）。
+        //  一档都没配 / 全被筛掉时这张卡就只剩它一行 —— 仍然只画**一张**卡：
+        //  `CardList` 收到空表仍会画一张零行卡片，边框与圆角还在，看着像坏了一块。
+        CardList(rows = rows + addComboRow(cfg, writable, atLimit))
     }
     //  行表空着就是「不显示」（与别处 `PageMenu` 的用法一致）
     PageMenu(menu) {
@@ -137,17 +141,16 @@ internal fun SettingsPage.ComboListSection(
 }
 
 /**
- * 这张卡的每一行 —— 一档组合一行，末行「添加组合键」。
+ * 这张卡的每一行 —— 一档组合一行（**不含**「添加组合按键」，那一行由调用点接在末尾）。
  *
- *  每行的内容在 [comboRow] / [addComboRow] 里：这一层只负责「筛掉不合的、按顺序摆」。
+ *  每行的内容在 [comboRow] 里：这一层只负责「筛掉不合的、按顺序摆」。可能一行都不剩。
  *
  *  编辑态（见 [KeysEditState]）里与按键列表同一套：行尾换成多选框、点一行是勾选而不是进编辑页；
- *  末行「添加组合按键」禁用（编辑态在改「已有哪几组」，不是加一组）。
+ *  「添加组合按键」那一行禁用（编辑态在改「已有哪几组」，不是加一组）。
  */
 private fun SettingsPage.comboRows(
     cfg: Config,
     writable: Boolean,
-    atLimit: Boolean,
     /** 只看含这颗键的组合（`null` = 全部）—— 行首的「第几组」仍按**全部**里的位置算。 */
     filter: String?,
     /** 两列标题与分隔符的宽度 —— 整列同一个数，见 [comboPairWidths]。 */
@@ -158,7 +161,6 @@ private fun SettingsPage.comboRows(
             if (filter != null && filter !in combo.keys) return@forEachIndexed
             add(comboRow(cfg, combo, index, writable, widths))
         }
-        add(addComboRow(cfg, writable, atLimit))
     }
 
 /** 一档组合那一行 —— 点它是进编辑页（编辑态里是勾选）。 */
@@ -460,7 +462,7 @@ private fun ComboKeyChip(
     }
 }
 
-/** 末行「添加组合按键」——编辑态里**禁用**而不是退场（与「添加按键」同一口径）。 */
+/** 「添加组合按键」—— 清单的**最后一行**（与清单同卡）；编辑态里**禁用**而不是退场（与「添加按键」同一口径）。 */
 private fun SettingsPage.addComboRow(
     cfg: Config,
     writable: Boolean,
@@ -475,13 +477,6 @@ private fun SettingsPage.addComboRow(
     val needKey = I18n.get(Strings.COMBO_NEED_KEY, "先添加一颗按键")
     return CardRow.Item(
         title = I18n.get(Strings.COMBO_ADD, "添加组合按键"),
-        //  副标题两档都有：配不出来 / 满员各说清为什么加不了，能加就说这一步做什么
-        summary =
-            when {
-                !canCombo -> needKey
-                atLimit -> I18n.format(Strings.COMBO_LIMIT, MAX_COMBOS)
-                else -> I18n.get(Strings.COMBO_ADD_DESC, "选两颗键一起按")
-            },
         icon = PageIcons.MenuKeyAdd,
         enabled = writable && !atLimit && canCombo && !editing,
         //  这一行自己的原因：「只有一颗键」>「满员」>「编辑态」（编辑态在删、不在加，

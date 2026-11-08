@@ -112,7 +112,7 @@ internal fun SettingsPage.UpdateDialog() {
                     if (url.isNullOrBlank()) {
                         XLog.w("更新：这条 release 没有可打开的地址（version=${UpdateState.offer?.version}）")
                         UpdateState.dismiss()
-                        hint(I18n.get(Strings.UPDATE_NO_URL, "这条更新没有下载地址，请到发布页查看"))
+                        hint(I18n.get(Strings.UPDATE_NO_URL, "这条更新没有下载地址，去发布页看"))
                     } else {
                         //  先去浏览器，再收窗：`takeDownload` 会把勾选框那一笔一起记下
                         UpdateState.takeDownload()

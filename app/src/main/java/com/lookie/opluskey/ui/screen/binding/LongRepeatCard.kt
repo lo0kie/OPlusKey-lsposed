@@ -16,7 +16,7 @@ import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.LongPressSettingsCard
 import com.lookie.opluskey.ui.LongPressSpec
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appLabelOf
+import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.model.actionIcon
 import com.lookie.opluskey.ui.model.releaseActionTitle
 import com.lookie.opluskey.ui.openAppPickerForRelease
@@ -52,7 +52,7 @@ internal fun SettingsPage.LongPressCard(
         if (!pageEnabled) {
             // 主开关自己关着，不是「模块没生效」：`STATUS_DISABLED` 的正文是「确认作用域含 system，
             //  换包后需重启」—— 拿它来报这一档，等于把用户赶去 LSPosed 里翻一圈。
-            I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，侧键交还系统")
+            I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，按系统原生行为")
         } else {
             null
         }
@@ -73,7 +73,10 @@ internal fun SettingsPage.LongPressCard(
             releaseSupported = true,
             releaseOn = owner.longReleaseOn,
             //  行上写的是**动作名**：用户挑的可能是某条命令，只写 token 等于让他自己读 `cmd:喝水`
-            releaseLabel = releaseActionTitle(releaseAction.token) { pkg -> appLabelOf(pkg) },
+            //  回调拿到的是**目标写法**（`999@包名/类名`），不是包名 ⇒ 必须走 `appNameOf`
+            //  （`appLabelOf` 只认包名，查不到时**把传进去的整串原样吐回来**，那一行就成了
+            //  「松手: 999@com.foo/.Bar」）
+            releaseLabel = releaseActionTitle(releaseAction.token) { target -> appNameOf(target) },
             //  配了动作，行首就换成**那个动作自己的图标**（与网格里那一格同一颗，见 `actionIcon`）：
             //  这一行答的是「松手做什么」，图标跟着答案走才读得出来
             releaseIcon = actionIcon(releaseAction.token),

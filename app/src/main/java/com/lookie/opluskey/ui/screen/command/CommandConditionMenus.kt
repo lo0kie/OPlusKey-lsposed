@@ -94,6 +94,12 @@ internal fun SettingsPage.BranchConditionMenu(
     //  「关着」，于是改条件变成追加一条。快照值随 `ConditionPick` 一路带下去。
     var pickAt by remember { mutableIntStateOf(AppPickerState.NOT_FOR_BRANCH) }
     var pickSlot by remember { mutableIntStateOf(-1) }
+    //  二级弹窗要的「当前取值」与「已被别的条件占掉的档」也在这里**一起快照**：
+    //  紧接着 `closeConditionMenu()` 会把 `condAt` 清成哨兵值，上面那三个派生值
+    //  （`conditions` / `editing` / `avail`）就全部按「关着」重算了 —— 弹窗里「当前取值」
+    //  不再打勾，而且它自己被算进 `used` 而置灰：改回原值改不回去，别的档占满时整列全灰。
+    var pickedCurrent by remember { mutableStateOf("") }
+    var pickedUsed by remember { mutableStateOf<Set<UsedCondition>>(emptySet()) }
     //  选中种类之后怎么落盘 —— 三个去处都在 [commitCondition] 里（挑应用页 / 时间窗 / 直接写）。
     //  顺带把二级收掉：一级点「前台应用 / 时间区间」时二级本来就还没开。
     val commit: (ConditionKind, String) -> Unit = { kind, value ->
@@ -142,6 +148,8 @@ internal fun SettingsPage.BranchConditionMenu(
                                     //  —— 所以落点必须在关之前快照。
                                     pickAt = at
                                     pickSlot = condIndex
+                                    pickedCurrent = editing?.takeIf { it.kind == kind }?.effectiveValue.orEmpty()
+                                    pickedUsed = avail.used
                                     subKind = kind
                                     menus.closeConditionMenu()
                                 },
@@ -163,10 +171,10 @@ internal fun SettingsPage.BranchConditionMenu(
     subKind?.let { lastKind = it }
     val shownKind = subKind ?: lastKind
     shownKind?.let { kind ->
-        val current = editing?.takeIf { it.kind == kind }?.effectiveValue.orEmpty()
+        //  取值与「已占用」用点种类那一刻的快照，不用此刻重算的 `editing` / `avail`（见 [pickedCurrent]）
         BranchValuePicker(
             show = subKind != null,
-            ctx = BranchValueCtx(kind, current, avail.used, { v -> commit(kind, v) }, { subKind = null }),
+            ctx = BranchValueCtx(kind, pickedCurrent, pickedUsed, { v -> commit(kind, v) }, { subKind = null }),
         )
     }
 }

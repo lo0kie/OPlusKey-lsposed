@@ -273,7 +273,7 @@ private fun SettingsPage.checkKey(code: Int): CollectCheck {
 
         notCollectable -> {
             XLog.w("收集按键：keyCode=$code 不是可自定义的键（保留码 / 内置键），拒绝")
-            CollectCheck.Rejected(I18n.get(Strings.KEY_WATCH_RESERVED, "这颗键不能添加：模块自己会用到它"))
+            CollectCheck.Rejected(I18n.get(Strings.KEY_WATCH_RESERVED, "这颗键模块自己在用，不能添加"))
         }
 
         existing != null -> {
@@ -318,7 +318,9 @@ private fun SettingsPage.addKey(
     //  只报其中一个码 —— 压感拍照键双击报 769、短按报 767。族内其余码由 `KeyId.custom`
     //  按主码**整族认下**（见 `KeyId.familyOf`），所以这里不必（也拿不到）逐个收集。
     val key = KeyId.custom(cfg.nextCustomKeyId(), name, code)
-    if (write(cfg.withCustomKey(key), "custom_key_add=${key.id}") == CommandsSave.Failed) return false
+    //  **只认 Ok**：原先只挡 `Failed`，`BroadcastFailed`（落盘成了、通知注入侧没成）会一路报
+    //  「已添加」，把 `write` 刚弹的那句「通知注入侧失败」顶掉 —— 用户以为注入侧已经收下了。
+    if (write(cfg.withCustomKey(key), "custom_key_add=${key.id}") != CommandsSave.Ok) return false
     KeyWatchState.select(key.id)
     // 回执照发即可：提示条现在挂在**浮层槽、弹窗宿主之后**（见 `PageContent`），
     //  自己就压在弹窗之上；`onDismiss()` 紧跟其后把弹窗收走，两句谁先谁后都看得见

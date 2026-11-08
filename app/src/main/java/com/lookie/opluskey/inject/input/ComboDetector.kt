@@ -33,6 +33,30 @@ private const val COMBO_REPEAT_MAX_MS = 30_000L
 private const val MULTI_MIN_KEYS = ComboKey.MIN_KEYS + 1
 
 /**
+ * 判定「这一下算不算组合」要问配置的三件事 —— 三个读数打成一包。
+ *
+ *  为什么打包：这三支都只读注入侧手上那份配置、都由装配方接 `ConfigChannel` 的同三支，
+ *  而 [ComboDetector] 的构造参数个数已经贴着 detekt 的 `LongParameterList` 上限 ——
+ *  单独拆一个类比再往构造函数上挂一个 lambda 强，调用点也只多一层壳。
+ *
+ * @param scanMs 当前的**扫描**窗口（毫秒）—— 找同伴时按这个宽度扫候选，取的是这份配置里最宽
+ *   的那一档（`Config.comboScanWindowMs`）。它只管「扫多宽」，**算不算数**由 [forCombo] 判。
+ * @param forCombo 某一档组合**自己**的窗口（毫秒）—— 配对命中之后用它复核间隔，没设过的那些
+ *   跟随公共值（`Config.comboWindowFor`）。为什么扫与判要分成两个数：按下当前这一颗键时还
+ *   不知道会凑成哪一组，扫窄了会漏掉宽窗口那一档；而不复核的话，宽窗口那一档会把本该属于
+ *   短窗口那一组的配对抢走（谁先遇上算谁）。
+ * @param joins 这一颗键参与某一组已启用的组合吗 —— 决定它按下之后要不要**先等一个窗口**。
+ *   参与的键等着看「同伴键会不会来」（这期间不喂单键判定器，用户能感觉到的就是「参与组合的键
+ *   按下去晚一点才有反应」）；不参与的键立刻交回单键，一点不受影响。`multiFor` 也拿它当第一道
+ *   闸：不参与任何组合的键，不可能是多成员那一档的成员。
+ */
+internal class ComboWindows(
+    val scanMs: () -> Long,
+    val forCombo: (ComboKey) -> Long,
+    val joins: (KeyId) -> Boolean,
+)
+
+/**
  * 组合键的判定 —— **几颗已接管的键**在窗口内先后按下，就当作一次组合，不再各自判单击 / 长按。
  *
  *  判出组合之后执行什么，由装配方决定（`onCombo`）：这里只回答「哪一档 + 短按还是长按」。
@@ -101,22 +125,15 @@ internal class ComboDetector(
      *  「成员多的赢」由 `Config.comboFor` 判。
      */
     private val bindingFor: (List<KeyId>) -> ComboKey?,
-    /**
-     * 当前的等待窗口（毫秒）—— 几颗键的 DOWN 相差不超过它才算同时按下。
-     *
-     *  由装配方接 `ConfigChannel.comboWindowMs`（用户在「组合按键设置」里可调）。
-     */
-    private val windowMs: () -> Long,
-    /**
-     * 这一颗键参与某一组已启用的组合吗 —— 决定它按下之后要不要**先等一个窗口**。
-     *
-     *  参与的键等着看「同伴键会不会来」（这期间不喂单键判定器，用户能感觉到的就是
-     *  「参与组合的键按下去晚一点才有反应」）；不参与的键立刻交回单键，一点不受影响。
-     *
-     *  `multiFor` 也拿它当第一道闸：不参与任何组合的键，不可能是多成员那一档的成员。
-     */
-    private val joinsCombo: (KeyId) -> Boolean,
+    /** 三个「窗口 / 参与」读数 —— 由装配方接 `ConfigChannel` 那三支，见 [ComboWindows]。 */
+    windows: ComboWindows,
 ) {
+    //  摊成三个私有字段，而不是判定路径里到处写 `windows.xxx`：调用点（`windowMs()` /
+    //  `windowFor(..)` / `joinsCombo(..)`）一行都不用改，且都是判定热路径。
+    private val windowMs = windows.scanMs
+    private val windowFor = windows.forCombo
+    private val joinsCombo = windows.joins
+
     /**
      * 一次 DOWN 的处理结果 —— 调用方据此决定「吞掉 / 延迟喂 / 立刻喂」。
      */
@@ -216,10 +233,17 @@ internal class ComboDetector(
         var best: Hit? = null
         var bestAt = 0L
         for ((key, at) in recent.entries) {
-            val candidate = if (key != id && now - at <= window) bindingFor(listOf(key, id)) else null
+            val span = now - at
+            //  扫的时候按最宽的那一档，命中后按**这一组自己**的窗口复核（见 [windowFor]）
+            val candidate =
+                if (key != id && span <= window) {
+                    bindingFor(listOf(key, id))?.takeIf { span <= windowFor(it) }
+                } else {
+                    null
+                }
             val current = best
             if (candidate != null && (current == null || at > bestAt)) {
-                best = Hit(candidate, listOf(key, id), now - at)
+                best = Hit(candidate, listOf(key, id), span)
                 bestAt = at
             }
         }
@@ -262,7 +286,10 @@ internal class ComboDetector(
         //  成员按**命中那一档自己的清单**取：候选里夹的别的键不算成员（它们还得自己走单键判定）
         val members = List(hit.keys.size) { i -> pool.first { it.id == hit.keys[i] } }
         //  间隔按**成员**里最早那一颗算（候选里可能夹着不相干的键，那是别人的按下时刻）
-        return Hit(hit, members, now - members.minOf { recent[it] ?: now })
+        val span = now - members.minOf { recent[it] ?: now }
+        //  这一档自己的窗口复核：扫的时候按最宽的那一档扫，算不算数由它自己说了算
+        //  （不成立就整条作废，所以是 `takeIf` 而不是再补一个 `return null`）
+        return Hit(hit, members, span).takeIf { span <= windowFor(hit) }
     }
 
     /**
@@ -362,7 +389,7 @@ internal class ComboDetector(
             if (short && !c.longFired) {
                 XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 短按（先松开 ${id.label}）")
                 fire(c, GestureTrigger.Click(1), repeat = false)
-            } else if (c.longFired) {
+            } else if (short && c.longFired) {
                 //  长按已经判出来过：这一下按那颗键自己的「松手」两档收尾（与单键同一条口径）——
                 //  · 松手才触发：到点只标了状态，动作放到这一下执行一次；
                 //  · 松手执行额外动作：按住期间已经执行过，这一下再补一条。

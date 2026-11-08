@@ -78,6 +78,20 @@ internal object AppCloneCatalog {
     @Volatile
     private var cachedUsers: List<Int>? = null
 
+    /** [cachedUsers] 是什么时候列的 —— 缓存**会过期**，理由见 [CACHE_TTL_MS]。 */
+    @Volatile
+    private var cachedAt: Long = 0L
+
+    /**
+     * 用户表缓存的存活时长。
+     *
+     *  **必须有 TTL**：这份表在「装了一个新分身 / 删了一个分身」时是会变的，而进程可能活很久
+     *  （宿主进程一直开着）。缓存永不过期时，删掉的那个分身会一直占着槽号 —— 剩下的分身显示的
+     *  「微信 2」与真机多开页里的编号对不上，新建的那个则永远查不到（`slotOf` 每次都要重列）。
+     *  30 秒：这条路径只在拼名字 / 打开应用时问一次，过期多跑一次 `getUsers` 也不贵。
+     */
+    private const val CACHE_TTL_MS = 30_000L
+
     /**
      * [slotOf] 已经**确认**不在用户表里的那些 user id。
      *
@@ -131,13 +145,17 @@ internal object AppCloneCatalog {
      */
     fun cloneUsersInDisplayOrder(context: Context): List<Int> {
         //  拼名字那条路（`ui.appNameOf` → [slotOf]）是逐行调的，而 [users] 每次都要走
-        //  `UserManager#getUsers` 的反射 + binder。分身的用户表在一个进程生命周期里不会变，
-        //  所以拿到非空结果就记住这一次。
+        //  `UserManager#getUsers` 的反射 + binder。所以拿到非空结果就记住一次 —— 但**会过期**
+        //  （见 [CACHE_TTL_MS]：装 / 删分身都会让这张表变）。
         //  空表**不**缓存：那多半是这台机器没有分身 / 权限没给到（[users] 的合法结论），
         //  缓存住会让「后来才装的分身」永远看不到。
-        cachedUsers?.let { return it }
+        val cached = cachedUsers
+        if (cached != null && android.os.SystemClock.elapsedRealtime() - cachedAt < CACHE_TTL_MS) return cached
         val sorted = users(context).sortedDescending()
-        if (sorted.isNotEmpty()) cachedUsers = sorted
+        if (sorted.isNotEmpty()) {
+            cachedUsers = sorted
+            cachedAt = android.os.SystemClock.elapsedRealtime()
+        }
         return sorted
     }
 
@@ -163,7 +181,10 @@ internal object AppCloneCatalog {
         //  重列一次；已经记过「查无此人」的就不再重列（拼名字那条路是逐行调的）。
         val already = userId in unresolvedUsers
         val fresh = if (already) known else users(context).sortedDescending().ifEmpty { known }
-        if (fresh !== known) cachedUsers = fresh
+        if (fresh !== known) {
+            cachedUsers = fresh
+            cachedAt = android.os.SystemClock.elapsedRealtime()
+        }
         val idx = fresh.indexOf(userId)
         if (idx >= 0) {
             unresolvedUsers -= userId

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -92,10 +93,15 @@ internal fun SettingsPage.PercentDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
-    // 每次打开都以调用方给的初值为起点（键是 `show`）：上一次拖到一半关掉，再打开不该还挂着
-    // 那个没提交的数。**键里不放 `initial`** —— 打开期间它随着配置加载 / 绑定的值变化而变的话，
-    // 会把用户正拖到一半的位置重置回初值。
-    var percent by remember(show) { mutableIntStateOf(initial) }
+    // 每次打开都以调用方给的初值为起点：上一次拖到一半关掉，再打开不该还挂着那个没提交的数。
+    //  **但关闭动画期间不能重置** —— 键写成 `remember(show)` 时，`show` 一翻 false 就重算成
+    //  初值，滑杆在退场那一段会「跳回去再消失」（真机看得出来）。所以值只**打开时**取一次初值。
+    //  初值也要先夹进这一档的区间：调用方传进来的是配置里的原值，越界时把手在范围内、回传的
+    //  却是越界数（`onConfirm(percent)`）。
+    var percent by remember { mutableIntStateOf(initial.coerceIn(prompt.min, MAX_PERCENT)) }
+    LaunchedEffect(show) {
+        if (show) percent = initial.coerceIn(prompt.min, MAX_PERCENT)
+    }
 
     FrostedDialog(
         show = show,
