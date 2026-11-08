@@ -20,7 +20,7 @@ import java.net.URL
  *
  *  宿主的清单里没有 `INTERNET`（`reference/gesture.apk` 的 49 条权限里只有
  *  `ACCESS_NETWORK_STATE`），而界面代码跑在**宿主进程** —— 页面自己发请求必然
- *  `SecurityException`（真机实证）。system_server 这一侧实测能连（`device-findings.md` 四十一）：
+ *  `SecurityException`（真机实证）。system_server 这一侧实测能连（`docs/device/lsposed.md` 四十一）：
  *  uid 1000 持有 `INTERNET`、域允许 inet socket。
  *
  * ## 只做「取一段文本」
@@ -79,7 +79,7 @@ internal object NetChannel {
      * 有没有网络可用 —— 没有就直接回一条「没网」，不去等超时。
      *
      *  `MissingPermission` 这一条按「谁在执行」判：这段跑在 **system_server**（uid 1000），
-     *  `ACCESS_NETWORK_STATE` 它本来就有（`device-findings.md` 四十一核过）；模块清单里
+     *  `ACCESS_NETWORK_STATE` 它本来就有（`docs/device/lsposed.md` 四十一核过）；模块清单里
      *  **不**声明任何权限 —— 写上它也管不到注入进去的那个身份，只会让人以为模块自己有进程。
      */
     @SuppressLint("MissingPermission")

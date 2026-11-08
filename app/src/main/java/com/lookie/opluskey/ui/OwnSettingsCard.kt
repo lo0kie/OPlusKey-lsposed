@@ -1,13 +1,10 @@
 package com.lookie.opluskey.ui
 
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
@@ -15,7 +12,6 @@ import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.core.model.ToastNotice
-import com.lookie.opluskey.ui.model.CARD_GAP
 import com.lookie.opluskey.ui.model.PageIcons
 
 /**
@@ -38,11 +34,12 @@ import com.lookie.opluskey.ui.model.PageIcons
  *  关着时看到的就是「现在实际在用的那份」，打开总开关后同一处立刻变成这一档自己的值。
  *  总开关本身与「哪几行能不能点」仍按 [owner] 判 —— 那是「算不算数」，不是「是什么样」。
  *
- * ## 为什么是**两张**卡
+ * ## 为什么是**两张**卡，且各带一个小标题
  *
  *  总开关单独一张（[useOwnRow]），其余各项一张（[ownSettingRows]）：前者回答「这一档算不算数」，
  *  后者回答「算数时是什么样」—— 混在同一张卡里，那颗总开关读起来像下面几行的第一行。
- *  两张之间隔 [CARD_GAP]（与「清单 + 末尾那一行『添加』」同一档：同一件事的两半）。
+ *  于是两张卡各配一个小标题（[switchTitle] / [itemsTitle]，由页面给），
+ *  与「按键设置」页同构：**一个小标题带一张卡**。页面顶部不再另放一个与顶栏同名的标题。
  *
  * ## 为什么不认识 `KeyConfig` / `ComboKey`
  *
@@ -56,7 +53,8 @@ import com.lookie.opluskey.ui.model.PageIcons
  *  [enabled] 是页面闸门（模块关 / 链路未通 / 只读），它一并管住总开关自己。
  *
  * @param owner 这一档当前的独立设置（只读；改由 [onWrite] 交回去）
- * @param enabled 页面闸门 —— 关着时两张卡都不吃点击
+ * @param enabled 页面闸门 —— 关着时三张卡都不吃点击
+ * @param titles 三张卡各自的小标题（见 [OwnCardTitles]）
  * @param onWrite 改完之后的新值 + **这次改的是哪一项**（后者决定调用方只覆盖哪一格，
  *   见 [OwnField]），调用方负责落到自己那段配置上
  */
@@ -66,21 +64,45 @@ internal fun SettingsPage.OwnSettingsCard(
     /** **生效**那一份（`Config.effectiveFor(owner)`）—— 只用于显示，写入仍落到 [owner]。 */
     effective: OwnSettings,
     enabled: Boolean,
+    titles: OwnCardTitles,
     onWrite: (OwnSettingsValues, OwnField) -> Unit,
 ) {
     var editingTemplate by remember { mutableStateOf(false) }
-    //  总开关**另起一张卡**：它管的是「下面那一组算不算数」，不是「调成什么样」。
+    //  一个小标题带一张卡（与「按键设置」页同构）。间距由 `SectionTitle` 自带，不再自己补间距。
+    //  三张卡的标题与「按键设置」页**逐字相同**（同一个字典键）：两页读到的是一套分类，
+    //  只是这一页改的是「这一档自己那份」。总开关那张是这一页独有的，所以单独给了个标题。
+    val rowsEnabled = enabled && owner.useOwnSettings
+    //  灰着时点一下该说的话：整页闸门关着 ⇒ `null`（用整页那句：主开关 / 链路 / 只读）；
+    //  整页没事、只是这颗总开关没开 ⇒ 说清该先打开哪一项。两张卡共用这一句。
+    val ownHint =
+        if (enabled && !owner.useOwnSettings) {
+            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开「使用独立设置」")
+        } else {
+            null
+        }
+
+    // 每一行都基于「当前这份值」改一位再交回去 —— 形状与 `CardRow` 的开关一致。
+    // **顺手写下改的是哪一项**：调用方按它只覆盖那一格（见 [OwnField]）。
+    //  基值取 [owner]（写入的落点）：`withField` 只取被改的那一格，但 `ownSettingsSeeded`
+    //  这类「没被点名」的位要跟着这一档自己的值走，不能跟着公共那份。
+    fun edit(
+        field: OwnField,
+        transform: (OwnSettingsValues) -> OwnSettingsValues,
+    ) = onWrite(transform(owner.values()), field)
+
+    SectionTitle(titles.master)
+    //  总开关**另起一张卡**：它管的是「下面那几张卡算不算数」，不是「调成什么样」。
     CardList(rows = listOf(useOwnRow(owner, enabled, onWrite)))
-    Spacer(Modifier.height(CARD_GAP))
+    SectionTitle(titles.interfaceTitle)
+    CardList(rows = listOf(interfaceRow(effective, rowsEnabled, ownHint, ::edit)))
+    SectionTitle(titles.behavior)
     CardList(
         rows =
-            ownSettingRows(
-                owner = owner,
-                show = effective,
-                enabled = enabled,
-                onEdit = onWrite,
-                onEditTemplate = { editingTemplate = true },
-            ),
+            buildList {
+                add(vibrateRow(effective, rowsEnabled, ownHint, ::edit))
+                add(strengthRow(effective, rowsEnabled, ownHint, ::edit))
+                addAll(toastRows(effective, rowsEnabled, ownHint, ::edit) { editingTemplate = true })
+            },
     )
     OwnTemplateDialog(
         //  窗里编辑的是**当前生效**那句：总开关关着时改的虽是这一档自己那份，
@@ -92,6 +114,25 @@ internal fun SettingsPage.OwnSettingsCard(
         onWrite(owner.values().copy(toastTemplate = text), OwnField.TEMPLATE)
     }
 }
+
+/**
+ * 「独立设置」页三张卡的小标题。
+ *
+ *  **后两个由页面按公共那一页的同一个字典键给**（`GENERAL_SECTION_INTERFACE` /
+ *  `HOME_BINDING_CARD_TITLE`）：两页读到的分类名逐字相同，用户不会觉得「同一件事换了个说法」。
+ *  [master] 是这一页独有的 —— 公共页没有「这一档算不算数」这件事。
+ *
+ *  为什么不直接摊成三个 `String` 参数：`LongParameterList` 在 6 个参数上就报，而这三个天生是一组
+ *  （回答同一件事：这一页有哪几张卡）。
+ */
+internal class OwnCardTitles(
+    /** 总开关那张卡（这一页独有）。 */
+    val master: String,
+    /** 「接口选择」那张卡 —— 与按键设置页同一个字典键。 */
+    val interfaceTitle: String,
+    /** 「按键行为」那张卡 —— 与按键设置页同一个字典键。 */
+    val behavior: String,
+)
 
 /**
  * 「使用独立设置」那颗总开关 —— 单独一张卡里唯一的一行。
@@ -119,85 +160,48 @@ private fun SettingsPage.useOwnRow(
     }
 
 /**
- * 设置条目那张卡的**行表**（不含总开关 —— 那一颗在它自己那张卡里，见 [useOwnRow]）。
+ * 「接口选择」那张卡的行表 —— 与公共页同一张卡同一个标题，这里只有「使用 ColorOS 接口」一行。
  *
- *  与 [OwnSettingsCard] 分开只为长度（一行一个开关，摊在主函数里 80 多行）；
- *  每一行都吃「总开关 + 页面闸门」。
- *
- * @param owner 写入的落点、以及「算不算数」的判据（总开关、置灰）
  * @param show **生效**那一份 —— 每一行显示的值都从它取（见 [OwnSettingsCard] 那段说明）
  */
 @Composable
-private fun SettingsPage.ownSettingRows(
-    owner: OwnSettings,
-    show: OwnSettings,
-    enabled: Boolean,
-    onEdit: (OwnSettingsValues, OwnField) -> Unit,
-    onEditTemplate: () -> Unit,
-): List<CardRow> {
-    // 每一行都基于「当前这份值」改一位再交回去 —— 形状与 `CardRow` 的开关一致。
-    // **顺手写下改的是哪一项**：调用方按它只覆盖那一格（见 [OwnField]）。
-    //  基值取 [owner]（写入的落点）：`withField` 只取被改的那一格，但 `ownSettingsSeeded`
-    //  这类「没被点名」的位要跟着这一档自己的值走，不能跟着公共那份。
-    fun edit(
-        field: OwnField,
-        transform: (OwnSettingsValues) -> OwnSettingsValues,
-    ) = onEdit(transform(owner.values()), field)
-
-    val rowsEnabled = enabled && owner.useOwnSettings
-    //  灰着时点一下该说的话：整页闸门关着 ⇒ `null`（用整页那句：主开关 / 链路 / 只读）；
-    //  整页没事、只是这颗总开关没开 ⇒ 说清该先打开哪一项。
-    val ownHint =
-        if (enabled && !owner.useOwnSettings) {
-            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开「使用独立设置」")
-        } else {
-            null
-        }
-    return buildList {
-        addAll(commonRows(show, rowsEnabled, ownHint, ::edit))
-        add(strengthRow(show, rowsEnabled, ownHint, ::edit))
-        addAll(toastRows(show, rowsEnabled, ownHint, ::edit, onEditTemplate))
-    }
-}
-
-/**
- * 接口 / 振动这两个开关 —— 都吃 [rowsEnabled]（闸门 **且** 总开关开着）。
- *
- *  总开关自己**不在**这里：它单独一张卡（见 [useOwnRow]）。
- *
- * @param show 显示用的那一份（生效值，见 [ownSettingRows]）
- */
-@Composable
-private fun SettingsPage.commonRows(
+private fun SettingsPage.interfaceRow(
     show: OwnSettings,
     rowsEnabled: Boolean,
     ownHint: String?,
     edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
-): List<CardRow> =
-    listOf(
-        CardRow.Switch(
-            title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
-            summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
-            summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
-            icon = PageIcons.ColorOsLink,
-            checked = show.colorOsApi,
-            enabled = rowsEnabled,
-            disabledHint = ownHint,
-        ) {
-            edit(OwnField.COLOR_OS) { v -> v.copy(colorOsApi = it) }
-        },
-        CardRow.Switch(
-            title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
-            summaryOn = I18n.get(Strings.HOME_VIBRATE_DESC_ON, "每次执行动作振动一次"),
-            summaryOff = I18n.get(Strings.HOME_VIBRATE_DESC_OFF, "执行动作时不振动"),
-            icon = PageIcons.Vibrate,
-            checked = show.vibrate,
-            enabled = rowsEnabled,
-            disabledHint = ownHint,
-        ) {
-            edit(OwnField.VIBRATE) { v -> v.copy(vibrate = it) }
-        },
-    )
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
+        summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
+        summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
+        icon = PageIcons.ColorOsLink,
+        checked = show.colorOsApi,
+        enabled = rowsEnabled,
+        disabledHint = ownHint,
+    ) {
+        edit(OwnField.COLOR_OS) { v -> v.copy(colorOsApi = it) }
+    }
+
+/** 「按键行为」那张卡的第一行 —— 振动反馈（强度那一行只在它开着时出现，见 [strengthRow]）。 */
+@Composable
+private fun SettingsPage.vibrateRow(
+    show: OwnSettings,
+    rowsEnabled: Boolean,
+    ownHint: String?,
+    edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"),
+        summaryOn = I18n.get(Strings.HOME_VIBRATE_DESC_ON, "每次执行动作振动一次"),
+        summaryOff = I18n.get(Strings.HOME_VIBRATE_DESC_OFF, "执行动作时不振动"),
+        icon = PageIcons.Vibrate,
+        checked = show.vibrate,
+        enabled = rowsEnabled,
+        disabledHint = ownHint,
+    ) {
+        edit(OwnField.VIBRATE) { v -> v.copy(vibrate = it) }
+    }
 
 /**
  * 振动强度那一行 —— 只在振动开着时出现（关掉振动还摆一根强度滑杆，

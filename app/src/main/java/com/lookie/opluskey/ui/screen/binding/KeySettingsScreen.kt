@@ -15,6 +15,7 @@ import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.HINT_SLOT_OWN_SETTINGS
+import com.lookie.opluskey.ui.OwnCardTitles
 import com.lookie.opluskey.ui.OwnField
 import com.lookie.opluskey.ui.OwnSettingsCard
 import com.lookie.opluskey.ui.OwnSettingsValues
@@ -76,13 +77,15 @@ internal fun SettingsPage.KeySettingsScreen(
         // 顶栏叠在内容上，顶部要自己让出（动态值）
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
-        SectionTitle(I18n.get(Strings.KEY_SETTINGS_SECTION, "独立设置"))
+        //  一个小标题带一张卡（与「按键设置」页同构）—— 页面顶部不再另放一个与顶栏同名的
+        //  「独立设置」，那三个小标题由卡片自己画（见 `OwnSettingsCard`）。
         OwnSettingsCard(
             owner = owner,
             //  **显示用生效值、写入仍落到这一档**：总开关关着时那五项不参与取值，直接读
             //  `owner` 会让这一页显示「振动反馈：关」而按下去明明会振（口径见 `OwnSettingsCard`）。
             effective = cfg.effectiveFor(owner),
             enabled = pageEnabled,
+            titles = ownCardTitles(),
         ) { values, field ->
             //  **只把这一项搬过去，其余五项以配置现值为准**。
             //
@@ -315,3 +318,18 @@ private fun ownSwitchNotice(
         OwnField.TOAST -> switchNotice(I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), values.toastOnRun)
         OwnField.STRENGTH, OwnField.TEMPLATE -> null
     }
+
+/**
+ * 三张小标题 —— **后两个与「按键设置」页用同一个字典键**（`GENERAL_SECTION_INTERFACE` /
+ * `HOME_BINDING_CARD_TITLE`）：两页读到的是同一套分类名，用户不会觉得「同一件事换了个说法」。
+ * 「总开关」是这一页独有的（公共页没有「这一档算不算数」这件事）。
+ *
+ *  收成一支只为让 [KeySettingsScreen] 留在 detekt 的 `LongMethod` 线内 —— 那一支每加一行
+ *  都要从别处挪一行出来，把「这一页有哪几张卡」摊在主线上不值当。
+ */
+private fun ownCardTitles(): OwnCardTitles =
+    OwnCardTitles(
+        master = I18n.get(Strings.KEY_SETTINGS_SECTION, "总开关"),
+        interfaceTitle = I18n.get(Strings.GENERAL_SECTION_INTERFACE, "接口选择"),
+        behavior = I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"),
+    )

@@ -119,7 +119,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.X
 import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
 
 // 页面自己的小图标 —— 从 `ActionIcons.kt` 分出来一支：那个文件已经贴着「单文件 ≤ 1000 行」
-// 的判据（`docs/decoupling.md` 判据 4），再加一颗字形就会越线。
+// 的判据（`docs/architecture/decoupling.md` 判据 4），再加一颗字形就会越线。
 // 这里只放**页面骨架**用的图标（顶栏、行尾、行首、浮层菜单、状态标记），
 // **动作 → 图标**那张映射表留在 `ActionIcons.kt`。
 

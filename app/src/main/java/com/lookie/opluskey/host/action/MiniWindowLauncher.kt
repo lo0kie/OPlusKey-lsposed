@@ -362,10 +362,10 @@ internal class MiniWindowLauncher(
             // 这是「进得去小窗」的那条 —— 它不改显示方向，窗口完整，代价只是没有动画。
             // 注意：它有一个已知的几何缺陷：目标本身是全屏任务时，服务端会走
             // `calcDefaultLaunchBounds` 里那条「current is fullscreen task」分支，把全屏那套尺寸
-            // 当成小窗配置矩形，横屏应用会因此**撑出屏幕**（`device-findings.md` 附十三）。
+            // 当成小窗配置矩形，横屏应用会因此**撑出屏幕**（`docs/features/zoom-window/api.md` 附十三）。
             // 试过换成「launch 配方」主路来修它：能进、几何也在屏内，但那条要
             // **先回桌面**，而桌面是竖屏 ⇒ 设备被拽回竖屏、横屏应用拿到**竖屏比例**。
-            // 两条路的取舍未收敛，见 `docs/zoom-window.md` §13.1；**现在按「进得去」优先**。
+            // 两条路的取舍未收敛，见 `docs/features/zoom-window/notes.md` §13.1；**现在按「进得去」优先**。
             XLog.w("zoom:mini → 走 recents 正门（原地收、无动画）")
             retryViaRecents(taskId)
             return
@@ -378,7 +378,7 @@ internal class MiniWindowLauncher(
      *
      * 这里**不是「自己画动画」** —— 插值、矩阵、`apply()`、以及那条 spring 全是框架的
      * `FlexibleWindowAnimator` 在跑，我们只交起止参数（`FlexibleWindowBridge.CMD_MINI_ANIM`，
-     * 配方与三道坑见 `docs/zoom-window.md` §十二）。
+     * 配方与三道坑见 `docs/features/zoom-window/notes.md` §十二）。
      *
      * 为什么顺序只能是「先转换、后动画」：动画器每帧第一句是
      * `isFlexibleTaskAndHasCaption(task)`，普通全屏任务**每帧都被挡回去** ——
@@ -439,7 +439,7 @@ internal class MiniWindowLauncher(
      *
      * 想彻底修（横屏也能播对）：终点别用我们的常量，改成取框架自己的
      * `FlexibleTaskController#getAnimationInfo(task, 1)` —— 那是按当前方向算好的。
-     * 代价是改注入侧、要重启。记在 `docs/zoom-window.md` §12.4。
+     * 代价是改注入侧、要重启。记在 `docs/features/zoom-window/notes.md` §12.4。
      */
     internal fun animGeometryMatchesOrientation(ctx: Context): Boolean {
         val cfg = ctx.resources.configuration
@@ -518,7 +518,7 @@ internal class MiniWindowLauncher(
      * 应用侧 recents 正门收一次（原地收、无动画、**不改显示方向**）。
      *
      * 之所以让它当唯一主路：它不动方向，所以横屏应用拿到的是**横屏帧**的几何 —— 比例是对的。
-     * 代价是目标本身是全屏任务时几何可能撑出屏幕（`device-findings.md` 附十三，用户判定可接受）。
+     * 代价是目标本身是全屏任务时几何可能撑出屏幕（`docs/features/zoom-window/api.md` 附十三，用户判定可接受）。
      *
      * **服务端没受理就往回收手**（返回负数）—— 只提示、什么都不做。
      * 以前这里退「按包名另起一份实例」，用户看到的是「一按侧键就回桌面重开」（见 [putForegroundInMiniWindow]）。
@@ -651,7 +651,7 @@ internal class MiniWindowLauncher(
      *  · 本函数问「它跑起来没有、在哪一份里」—— 快捷方式的小窗验收要的是后者。
      *
      * **必须扫整张表**：`getAllTopAppInfos()` 在小窗在场时**同时**有小窗那份（`windowingMode=100`）
-     * 与全屏那份（`=1`）两条（`docs/device-findings.md` §17.6.1），第 0 项是不是目标包取决于此刻
+     * 与全屏那份（`=1`）两条（`docs/features/zoom-window/api.md` §17.6.1），第 0 项是不是目标包取决于此刻
      * 谁在最前面。只认第 0 项时目标落在第二条就会被读成「还没有任务」。
      */
     internal fun taskOfPackage(
@@ -731,7 +731,7 @@ internal class MiniWindowLauncher(
     /**
      * recents 正门：把已有任务原地收成小窗。返回 false = 这条路没走通，调用方降级。
      *
-     * [zoomLaunchFlags] 是尺寸档（见 `docs/device-findings.md` §17.6.3 的对照表）——
+     * [zoomLaunchFlags] 是尺寸档（见 `docs/features/zoom-window/api.md` §17.6.3 的对照表）——
      * `2` = 展开的普通小窗（`setUserPositionInfo`）、`32` = 收起的最小化窗（`fullToMini`）。
      * 窗口模式那个 key 必须给：服务端的判据是 `getLaunchWindowingMode(options) == 100`，不是 flags。
      */
@@ -796,7 +796,7 @@ internal class MiniWindowLauncher(
     /**
      * 上面那支的原始返回码 —— 是 `ActivityStarter` 的 `START_*`，不是自定义的成功标志：
      * `0` 成功 / `2` 已有任务提到前台 / `3` 交给栈顶那个实例消化（屏幕不变）/ 负数是错误码；
-     * `null` = 反射这条路没走通。返回码判不了「有没有真起成小窗」，详见 `docs/device-findings.md` §17.6.1。
+     * `null` = 反射这条路没走通。返回码判不了「有没有真起成小窗」，详见 `docs/features/zoom-window/api.md` §17.6.1。
      */
     internal fun startZoomWindowCode(
         ctx: Context,

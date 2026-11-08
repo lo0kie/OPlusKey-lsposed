@@ -1,3 +1,3 @@
 # 更新日志
 
-见 [`changelog/`](../changelog/)。
+见 [`docs/changelog/`](../docs/changelog/)。

@@ -149,7 +149,7 @@ jobs:
       - name: 校验验收底线（AGENTS.md 二、1.2）
         run: bash tools/verify-apk.sh dist
 
-      # 这一版的更新说明 —— **手写维护的那一份**：`release-notes/<versionName>.md`。
+      # 这一版的更新说明 —— **手写维护的那一份**：`docs/release-notes/<versionName>.md`。
       #   管理器弹「有新版本」时显示的正文就是它（模块仓库那条 release 的 body，由 `publish.yml` 发），
       #   本仓库这条存档用同一份，两处不会出现两种说法。
       #
@@ -159,7 +159,7 @@ jobs:
       #   缺文件就歇：公告是发版物的一部分，缺了弹窗里就是一片空白 —— 宁可不发。
       - name: 取本版更新公告
         run: |
-          note="release-notes/${{ steps.dist.outputs.version_name }}.md"
+          note="docs/release-notes/${{ steps.dist.outputs.version_name }}.md"
           if [ ! -f "$note" ]; then
             echo "::error::没有这一版的公告 ${note} —— 先按 ${GITHUB_REF_NAME} 写一份（格式见已有那几份），再打 tag"
             exit 1

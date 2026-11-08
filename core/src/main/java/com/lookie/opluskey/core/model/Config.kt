@@ -110,7 +110,7 @@ data class KeyConfig(
      * 长按绑的是不是「多条命令」（`cmd:<名字>` 且命令库里那条是串行命令）。
      * 只由宿主算好、随配置广播带过来（`ConfigFields.LONG_SERIAL_EXTRA`），注入侧不自己算：
      * 算它要读宿主私有目录的命令库，system_server 进不去带 MCS 分类的目录
-     * （`docs/device-findings.md` 六之五 / 九之一），读不到就恒 false，闸门失效。
+     * （`docs/device/lsposed.md` 六之五 / 九之一），读不到就恒 false，闸门失效。
      * 默认 false = 与早先行为一致（配置文件里没有这一位，不回写）。
      */
     val longIsSerial: Boolean = false,
@@ -248,7 +248,7 @@ data class KeyConfig(
      *  两处判据必须是同一个口径（判定侧不排「长按连续触发」、界面写同一句原因）：
      *  连发对这两个动作都没有语义 —— 开始会被 ROM 当重入忽略（`reentrant collect.`），
      *  结束在没有采集时是空操作。见 `RomProfile.isVoiceMemory` 与
-     *  `docs/device-findings.md` 四十六。
+     *  `docs/device/actions/voice.md` 四十六。
      *
      *  写成计算属性、不落成字段：它是 [long] 的投影，落字段就要在 `ConfigFields` 那条链上
      *  多存一份**可以和 [long] 不一致**的真值。
@@ -294,7 +294,7 @@ data class KeyConfig(
      * 本对象在每个配置字段上的取值 —— **「字段 → 属性」的映射只有这一处**。
      *
      *  落盘（`ConfigCodec`）与广播（`ConfigBroadcast`）两条通道都按它取值，配合 `ConfigFields`
-     *  那张字段表生成读写 —— 于是加一个字段不必再去那两条通道里各写一遍（判据见 `docs/decoupling.md`）。
+     *  那张字段表生成读写 —— 于是加一个字段不必再去那两条通道里各写一遍（判据见 `docs/architecture/decoupling.md`）。
      */
     fun fieldValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -529,7 +529,7 @@ data class GlobalConfig(
      *  关（默认）：原地收（recents 正门），一步到位、没有窗口动画。
      *  开：同样原地收成小窗，紧接着让框架自己的动画器播那一段（`alpha 1→1`、`scale 1→0.8017`）——
      *  插值 / 矩阵 / spring 全是框架在跑，模块只交起止参数。**只对竖屏生效**：动画终点用的是
-     *  竖屏标定的那组落点，横屏时不播、照旧原地收。配方与坑见 `docs/zoom-window.md` §十二。
+     *  竖屏标定的那组落点，横屏时不播、照旧原地收。配方与坑见 `docs/features/zoom-window/notes.md` §十二。
      */
     val miniWindowAnim: Boolean = DEFAULT_MINI_WINDOW_ANIM,
     /**

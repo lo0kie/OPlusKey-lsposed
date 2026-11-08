@@ -17,7 +17,7 @@ import com.lookie.opluskey.core.wire.ModuleWire
  *  为什么必须由这里来做：杀了自己的进程没法再把自己叫回来，而「从进程外叫」那条路在真机上走不通
  * —— 闹钟挂 `PendingIntent` 拉起 Activity 会被后台启动策略拦掉，判据是
  * `ActivityTaskManager: Background activity launch blocked!`。宿主主进程自己 `startActivity` 则放行
- *（本包拿着 `START_ACTIVITIES_FROM_BACKGROUND`，见 `docs/device-findings.md` 附十三之五）。
+ *（本包拿着 `START_ACTIVITIES_FROM_BACKGROUND`，见 `docs/features/zoom-window/api-extra.md` 附十三之五）。
  *  它本来就活着：[GestureReceiver] 收手势的接收器与设置页那句「在不在」都在它身上，
  * 而「重启服务」的前置条件正是「宿主主进程在跑」（不在时页面直接报失败，不杀自己）。
  *

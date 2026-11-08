@@ -67,7 +67,7 @@ internal fun FlexibleWindowBridge.switchToMiniLocal(
 
     // 让普通全屏任务「冒充」柔性全屏态：`switchState` 的前置只看 TaskExt 上这三个字段。
     // 改完它就会走框架自己的 full→mini 状态迁移（含原生动画），不需要我们先做一次应用侧转换。
-    // 见 docs/device-findings.md §17.6.4 附六。
+    // 见 docs/features/zoom-window/api.md §17.6.4 附六。
     val ext = extOf(task)
     val record = if (ext != null) Reflect.call(task, "getTopNonFinishingActivity") else null
 
@@ -124,7 +124,7 @@ internal fun FlexibleWindowBridge.switchToMiniLocal(
 
     // 喂给 `TaskExtImpl#updateFlexibleTaskParams` 的能力配置 —— **操作条（caption）就是它开的**
     // （`androidx.activity.HasCaption`），缩放范围 / 圆角 / 忽略系统栏也在这里。键值抄自真机
-    // 上一次真实小窗启动的 `mOplusExtraBundle`（见 docs/device-findings.md §17.6.4 附六）。
+    // 上一次真实小窗启动的 `mOplusExtraBundle`（见 docs/features/zoom-window/api.md §17.6.4 附六）。
     // (2) 操作条的实现类名来自策略配置（`getCaptionName(scenario)`），不喂的话
     //    `mCaptionName = null` → `Class.forName(null)` 失败 → 视图建不出来。
     val getCaption = Reflect.method(serviceCls, "getCaptionName", java.lang.Integer.TYPE)

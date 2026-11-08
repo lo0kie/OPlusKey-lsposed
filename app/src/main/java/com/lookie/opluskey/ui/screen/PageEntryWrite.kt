@@ -174,6 +174,11 @@ internal fun SettingsPage.onAppPicked(
     }
     if (forStep || forBranch || forRelease) return
     picker.clearTarget()
+    //  「以小窗口打开」/「使用原版动画」也**已经随这一条写下去了**，所以把进页那一刻的基线挪到当下：
+    //  不挪的话，`goBack()` 的 `hasUnconfirmedPick` 仍在拿这两个开关与进页基线比（草稿刚被
+    //  `clearTarget` 清掉，只剩这一条还能为真）—— 用户拨过开关、再点确认，写盘成功了却当场
+    //  弹一张「放弃这次选择」。
+    picker.markWindowTogglesBaseline()
     goBack()
 }
 

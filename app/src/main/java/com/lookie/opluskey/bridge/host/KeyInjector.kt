@@ -128,7 +128,7 @@ internal class KeyInjector(
         // 按**参数类型**挑，不能只数个数：同一个类里有第二个 10 参构造器时，
         // 按个数挑到的可能是另一个（参数序完全不同），deviceId 会静默变成 0 ——
         // 而 SideKeyInterceptor.isSynthetic 正是靠 deviceId 认自己的重注入事件，
-        // 认不出来就是自持循环（见 docs/device-findings.md 十一）。
+        // 认不出来就是自持循环（见 docs/device/side-key.md 十一）。
         val ctor10 = ctors.firstOrNull { it.matchesSignature(LONG, LONG, INT, INT, INT, INT, INT, INT, INT, INT) }
         val ctor6 = ctors.firstOrNull { it.matchesSignature(LONG, LONG, INT, INT, INT, INT) }
         val ctor5 = ctors.firstOrNull { it.matchesSignature(LONG, LONG, INT, INT, INT) }

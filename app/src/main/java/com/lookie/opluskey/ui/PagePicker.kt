@@ -171,6 +171,12 @@ private val PICKER_ROW_ICON_GAP = 12.dp
  *
  *  行数少时 `weight(fill = false)` 让它维持原高度；超出可见高度才滚。
  *
+ *  ## 再加一条自己的上限（[PICKER_ROWS_MAX_HEIGHT]）
+ *
+ *  只靠上面那两条时，这张窗的高度上限是「整块可视区」：选项一多，弹窗就长成一整屏，
+ *  读起来不像弹窗、底下那页也被糊得只剩一条边。所以这一列自己封一档高 —— 到顶就滚，
+ *  面板高度只随「标题 + 这一列 + 按钮栏」走，不随屏幕走。
+ *
  *  @param labels 每一行的文案（顺序就是显示顺序）
  *  @param isSelected 第几行是不是选中的那个（多选时 = 已勾上）
  *  @param onClick 点了第几行 —— 单选那边由调用方关窗，多选那边是切换
@@ -196,6 +202,8 @@ internal fun ColumnScope.PickerRows(
         Modifier
             .weight(1f, fill = false)
             .fillMaxWidth()
+            //  封一档高（理由见上面那段）：到顶之后由这一列自己滚，不再把整张窗撑到屏幕高
+            .heightIn(max = PICKER_ROWS_MAX_HEIGHT)
             //  这里**不再自己补底部留白**：上下外沿那一档由 `FrostedDialog` 的三区统一给
             //  （自己再补一份，上下就一边多一边少）。
             .verticalScroll(rememberScrollState()),
@@ -416,6 +424,16 @@ private fun pickerRowLabelColor(
 
 /** 行内上下留白 —— 高度不够时靠 [PICKER_ROW_MIN_HEIGHT] 撑，两行字时也不至于贴住。 */
 private val PICKER_ROW_VERTICAL_PADDING = 8.dp
+
+/**
+ * 选择器那一列**自己**的高度上限 —— 取 320dp（[PICKER_ROW_MIN_HEIGHT] 下约 5~6 行）。
+ *
+ *  判据是「这一窗还得读得出是弹窗」：只交给 `DialogPanel` 压的话，上限就是整块可视区，
+ *  选项一多（组合键「由哪几颗键组成」能列到几十颗）弹窗直接长成一整屏。320dp 与「添加命令」
+ *  浮层同一档（`STEP_PICKER_MAX_HEIGHT`），超出部分由这一列自己滚 ——
+ *  面板总高 ≈ 这一档 + 标题 + 按钮栏，手机上仍在屏幕中段。
+ */
+private val PICKER_ROWS_MAX_HEIGHT = 320.dp
 
 /** 选择器里一行的高度下限 —— 与卡片行同一档（56dp），点起来手指不局促。 */
 private val PICKER_ROW_MIN_HEIGHT = 56.dp

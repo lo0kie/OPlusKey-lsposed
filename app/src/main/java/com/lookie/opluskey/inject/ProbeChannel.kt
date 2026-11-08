@@ -22,7 +22,7 @@ import com.lookie.opluskey.core.reflect.Reflect
  * 有了这条通道，「拿真实签名 / 试调用 / 在别的进程里发起」都变成**发一条广播**：
  * 不重新编译、不重启。凡是注入侧的实验，先想这条通道，别再靠改代码 + 重启去试。
  *
- * 六个 op（靠 `op` extra 选；完整用法与实例见 `docs/debug-channel.md`）：
+ * 六个 op（靠 `op` extra 选；完整用法与实例见 `docs/runtime/debug-channel.md`）：
  *
  * | op | 作用 | 关键 extra |
  * |---|---|---|
@@ -49,7 +49,7 @@ import com.lookie.opluskey.core.reflect.Reflect
  *    广播带了 [EXTRA_UNSAFE]=true 才放行，否则打 W 判据行拒绝（见 [allowUnsafe]）。
  */
 internal object ProbeChannel {
-    /** 调试指令的 action —— 从 adb 用 **root** 发（shell 身份过不了 NOT_EXPORTED 接收器；用法见 `docs/debug-channel.md`）。 */
+    /** 调试指令的 action —— 从 adb 用 **root** 发（shell 身份过不了 NOT_EXPORTED 接收器；用法见 `docs/runtime/debug-channel.md`）。 */
     const val ACTION = "com.lookie.opluskey.PROBE"
 
     internal const val OP_DUMP = "dump"

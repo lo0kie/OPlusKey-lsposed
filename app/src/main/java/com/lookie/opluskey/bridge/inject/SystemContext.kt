@@ -12,7 +12,7 @@ internal object SystemContext {
      * `sendBroadcast` / `startService` / `getSystemService` / `packageManager` 可用；`ContentResolver`
      * （query / insert / update / delete）在 `system_server` 里**必 NPE，与拿的是哪一份 Context 无关**
      * —— 借来的 Context 其 `mMainThread` 仍指向 `system_server` 自己的 `ActivityThread`，那个的
-     * `mAppThread` 恒 null（见 `docs/device-findings.md` 六之五）。`getSystemContext()` 那份连
+     * `mAppThread` 恒 null（见 `docs/device/lsposed.md` 六之五）。`getSystemContext()` 那份连
      * `mAppThread` 都没有，只够 `getSystemService`；每次现取、不缓存。
      *
      * 注意：**缓存的那份是别的 App 进程的 Application Context**：那个进程一死，这份 Context 里的
@@ -64,7 +64,7 @@ internal object SystemContext {
         // 这一份只对 sendBroadcast / startService / getSystemService / packageManager 负责；
         // ContentResolver 在 system_server 里必 NPE，与拿的是哪一份 Context 无关（借来的 Context
         // 其 mMainThread 仍指向 system_server 自己的 ActivityThread，那个的 mAppThread 恒 null，
-        // 见 docs/device-findings.md 六之五）。
+        // 见 docs/device/lsposed.md 六之五）。
         val direct =
             try {
                 fromApplicationThreads(loader)

@@ -345,7 +345,7 @@ object CommandLibrary {
      *
      *  合在这里是为了**把读盘这一步留在 `core/config`** —— [isSerialCommand] 那条规则本身是纯的
      *  （在 `core/model`），而「读命令库」只有落盘包会做；广播构造器因此不必认识本包，
-     *  注入侧那条「不许碰 `core/config`」的编译期保证才成立（见 `docs/decoupling.md` 动作 3）。
+     *  注入侧那条「不许碰 `core/config`」的编译期保证才成立（见 `docs/architecture/decoupling.md` 动作 3）。
      */
     fun longIsSerial(
         config: Config,

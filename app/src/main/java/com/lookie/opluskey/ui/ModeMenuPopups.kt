@@ -224,8 +224,10 @@ private fun SettingsPage.SwitchStatePopup(
  * 点开的是「还有一档要挑」的那一行（此刻只有灵感语音：开始 / 结束）—— 一格单选弹窗。
  *
  *  与 [SwitchStatePopup] 同一个形状（菜单先收、弹窗再起）：它问的也是「这一行到底怎么用」，
- *  而不是「换哪个动作」。行与标题都由 `entry` 自己那一层菜单（[ActionCatalog.modeMenu]）给 ——
- *  界面侧不认 token，将来再多一层入口也只是加一行。
+ *  而不是「换哪个动作」。标题与那几档都由 `entry` 自己那一层菜单（[ActionCatalog.modeMenu]）给，
+ *  行名再按 [stateRowLabel] 把父名拼上去（`开始灵感语音`）—— 菜单里那一档的名字只是三段式里的
+ *  「状态」那一截（`灵感语音 - 开始`），单独摆在弹窗里认不出开的是什么。界面侧不认 token，
+ *  将来再多一层入口也只是加一行。
  *
  *  退场期间照最后画过的那一份画，理由见 [SwitchStatePopup]。
  */
@@ -242,10 +244,14 @@ private fun SettingsPage.NestedPickerPopup(
     val rows = shown?.let { ActionCatalog.modeMenu(it.token) }.orEmpty()
     //  两档之间只差一个 token，逐行精确比即可（不像系统开关那样还差一截后缀、要走 `isBoundExactly`）
     val selectedIndex = rows.indexOfFirst { row -> current?.let { ActionCatalog.isBound(row, it) } == true }
+    //  行名与系统开关、录屏三态同一条规矩：**动词 + 宾语**（`开始灵感语音`）。
+    //  菜单给的那一档名字只是三段式里的「状态」那一截（`灵感语音 - 开始`），
+    //  光看弹窗里两行「开始 / 结束」认不出开的是什么 —— 拼完整短语是这一层的事。
+    val owner = shown?.label.orEmpty()
     SinglePickerDialog(
         show = entry != null,
-        title = shown?.label.orEmpty(),
-        labels = rows.map { row -> row.label },
+        title = owner,
+        labels = rows.map { row -> stateRowLabel(row, owner) },
         selectedIndex = selectedIndex,
         onDismiss = onDismiss,
         onPick = { index ->
@@ -424,8 +430,10 @@ private fun modeEntries(
  *  · 「应用控制」那两行（打开应用 / 结束应用）不是取值，绑的是哪个应用由调用方算好递进来
  *    （[boundApp] 要走 `PackageManager`，只有那一层菜单才查）；
  *  · 「系统开关」那一行（Wi‑Fi / 蓝牙…）→ 绑的那一档：`切换` / `打开` / `关闭`；
- *  · 「灵感语音」那一行 → 绑的是 `开始灵感语音` 还是 `结束灵感语音`（那一行自己还带一层，
+ *  · 「灵感语音」那一行 → 绑的是 `开始` 还是 `结束`（那一行自己还带一层，
  *    `boundModeOf` 会取到最里面那一档 —— 只写「灵感语音」看不出是开还是停）。
+ *    这里给的是三段式里的**状态**那一截，紧挨着行标题「灵感语音」读；整句
+ *    `灵感语音 - 开始` 由 `CommandTitle` 拼，弹窗里那两行才是完整短语（见 `NestedPickerPopup`）。
  *
  *  其余档位（响铃四档 / 媒体五档那些叶子）返回 `null`：行标题本身已经说完了。
  *

@@ -189,7 +189,9 @@ internal fun SettingsPage.CommandScreen(
             }
         }
 
-        CommandDialogs(ui)
+        //  `onLoaded` 与卡片那条 `openSaved` 是**同一支**：确认换命令之后，切页那一半也走这条路
+        //  （滚回顶部再滑进去）。给在这里而不是让窗自己拼 —— 窗拿不到 `pagerState` / `scope`。
+        CommandDialogs(ui, onLoaded = openSaved)
 
         CommandFloatingButton(scope = this, tick = tick, onListPage = pagerState.currentPage == COMMAND_LIST_PAGE)
 

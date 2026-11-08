@@ -16,7 +16,7 @@ package com.lookie.opluskey.core.model
  * 名字对不上时连断在哪一环都说不出来）。取值本来就在 `core/model` 里放得下，没必要各写一份。
  *
  * 每个取值都是**平台事实**（`OplusZoomWindowManager` 与 `ActivityOptions` 的接口），不是本模块的
- * 选择：改它们等于改对接对象，必须回到 `docs/device-findings.md` 的尺寸档对照表重新核一遍。
+ * 选择：改它们等于改对接对象，必须回到 `docs/features/zoom-window/api.md` 的尺寸档对照表重新核一遍。
  */
 object ZoomWindowWire {
     /**

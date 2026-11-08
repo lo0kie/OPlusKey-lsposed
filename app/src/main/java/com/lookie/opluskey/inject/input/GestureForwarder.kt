@@ -33,7 +33,7 @@ internal class GestureForwarder(
      *  过期，宿主按 `age > 2000ms` 直接丢弃，表现就是「按了没反应」。
      *
      *  单线程顺序执行还有一笔附带收益：手势与松手落进同一个队列，**先后不会乱**。
-     *  （`docs/device-findings.md` 里记的那条待办就是这件事。）
+     *  （`docs/device/` 里记的那条待办就是这件事。）
      */
     private val senderThread = HandlerThread("opluskey-gesture-forward").apply { start() }
     private val sender = Handler(senderThread.looper)

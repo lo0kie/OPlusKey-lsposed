@@ -15,7 +15,7 @@ import com.lookie.opluskey.core.reflect.Reflect
  *
  * **为什么这不算「自己画动画」**：插值、矩阵、`apply()`、以及那条 spring
  * （`dampingRatio=0.86 / stiffness=250`）**全是框架跑的**；我们只交起止参数。
- * 每帧到底做什么见 `docs/zoom-window.md` §十二（`updateAnimationLayer` 的 smali）。
+ * 每帧到底做什么见 `docs/features/zoom-window/notes.md` §十二（`updateAnimationLayer` 的 smali）。
  *
  * 三个从 smali 里读出来、不读就会白踩一轮重启的细节：
  *

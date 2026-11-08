@@ -38,7 +38,7 @@ internal data class InjectStatus(
  *  两者都在界面状态文件里（见 [UiState.injectEverAlive]）。
  *
  *  唯一分不开的是 [FIRST] 里那两种可能（作用域没勾 / 勾了但没重启过）—— 作用域只有框架自己知道，
- *  模块没有权限读（`/data/adb` 对宿主进程与 system_server 都不可读，见 `docs/device-findings.md` 六之六）。
+ *  模块没有权限读（`/data/adb` 对宿主进程与 system_server 都不可读，见 `docs/device/lsposed.md` 六之六）。
  *  所以那一档的文案必须**同时**说清两件事：先去勾，再重启。
  */
 internal enum class InjectPendingKind {

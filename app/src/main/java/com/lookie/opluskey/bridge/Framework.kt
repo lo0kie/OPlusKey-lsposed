@@ -24,8 +24,8 @@ internal object Framework {
      * @param romSeries 适用的 ROM 系列（`DeviceSupport.romSeriesOf` 的口径）
      * @param strategyCandidates ColorOS 侧键专用策略类（外层 `actionInterceptKeyBeforeQueueing`）。
      *   不挂 `...$2`：它是外层方法的纯转发（12 条指令，恒 `preCondition` 为 true），挂它 0 收益，
-     *   只会让同一次按键被回调两次（见 `docs/device-findings.md` §14.2）
-     * @param strategyEntries 策略类上要挂的入口方法名（精确匹配，见 `docs/device-findings.md` §2 / §14）。
+     *   只会让同一次按键被回调两次（见 `docs/device/side-key.md` §14.2）
+     * @param strategyEntries 策略类上要挂的入口方法名（精确匹配，见 `docs/device/side-key.md` §2 / §14）。
      *   不能退化成 `contains("interceptKeyBefore")`：`actionIntercept…` 里的 `Intercept` 是大写 I，
      *   小写 token 一个都匹配不上（策略类层静默归零）；反而会命中 AOSP 的
      *   `interceptKeyBeforeDispatching`（派发层），重注入的侧键会被再认领一次（幽灵长按）
@@ -95,7 +95,7 @@ internal object Framework {
     /**
      * **各版本的接管点候选 —— 加一档就在这里加一个 [HookSet]**。
      *
-     * 候选类的来路见 `docs/device-findings.md`（§2 / §14 的接管点、§六 的宿主侧落点）。
+     * 候选类的来路见 `docs/device/side-key.md`（§2 / §14 的接管点、§六 的宿主侧落点）。
      * 加档之后要在真机上把每一层重新验一遍 —— 这些类与方法都是 ROM 私有的，换版本会整体换名换形。
      */
     private val HOOK_SETS: List<HookSet> =
@@ -415,7 +415,7 @@ internal object Framework {
 
     /**
      * 把 [cls] 上名为 [entries] 里的方法收进 [out]（精确匹配，见 [HookSet.strategyEntries]）。
-     * 找不到时打 W 级日志（注入侧只能给 w：`XLog.d` 在 release 被编译期消除，而 `XLog` 没有 i 级，见 `docs/device-findings.md`
+     * 找不到时打 W 级日志（注入侧只能给 w：`XLog.d` 在 release 被编译期消除，而 `XLog` 没有 i 级，见 `docs/device/lsposed.md`
      * §十五），并列出同类命名的方法名，让「层找到但方法改名」与「类没找到」一眼可分。
      */
     private fun collect(
@@ -482,7 +482,7 @@ internal object Framework {
      *  为什么不散在实现里：这些名字分布在 `StatusBarBridge` / `KeyInjector` 两处实现里，
      *  同一串 `android.os.ServiceManager` 各写了三遍。换一版 ROM 时没人能一眼看全「我们要碰的
      *  框架名字有哪些」；而漏改一处的表现是那条链路**静默失效**（反射查不到就记日志返回，
-     *  不是崩溃）—— 正是 `docs/device-findings.md` 十九 那种最难查的形态。
+     *  不是崩溃）—— 正是 `docs/device/actions/feedback.md` 十九 那种最难查的形态。
      */
     internal object Calls {
         // ── ServiceManager：按服务名换 binder 的通用入口（AOSP 公开，一直没改过名） ──
@@ -549,7 +549,7 @@ internal object Framework {
         const val SHOW_GLOBAL_ACTIONS = "showGlobalActions"
 
         // ── 小布助手（Breeno，`oplus:voice_assist`，配方照 `PhoneWindowManagerExtImpl.startSpeech`） ──
-        //  全是 ROM 私有字符串，取值与取证见 `docs/device-findings.md` 第三十节。
+        //  全是 ROM 私有字符串，取值与取证见 `docs/device/actions/voice.md` 第三十节。
         //  这一族**不注入任何东西**，只是「按名字把人叫起来」，所以放在候选表里而不是 HookSet。
 
         /** 语音助手的包名候选：新机型是 `heytap`，老版本是 `oppo` —— 先试装着的那个。 */
@@ -578,7 +578,7 @@ internal object Framework {
          *  128 title_service / 144 set_entetr / 512 power_key / 1024 headset / 2048 mini_note …`），
          *  并在真机上逐个值验过：1024 下去只有服务起来、界面不出来；512 下去小布界面直接到前台。
          *  为什么不是 1024：那是框架侧 `MSG_POWER_LONG_PRESS_FOR_SPEECH` 那条**消息号**，
-         *  早先按指令顺序误读成了来源值 —— 见 `docs/device-findings.md` 第三十节。
+         *  早先按指令顺序误读成了来源值 —— 见 `docs/device/actions/voice.md` 第三十节。
          */
         const val SPEECH_START_TYPE_POWER = 512
 

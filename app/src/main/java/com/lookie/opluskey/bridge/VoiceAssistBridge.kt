@@ -19,7 +19,7 @@ import com.lookie.opluskey.core.log.XLog
  *  `startForegroundServiceAsUser`，而 `checkComponentPermission` 对 `SYSTEM_UID` 直接放行 ——
  *  也就是说「起得来」靠的是调用方是谁，不是目标服务对第三方开放。宿主 `com.oplus.gesture`
  *  没有这份旁路，所以这一档不放给宿主（与通知中心 / 电源菜单同一条纪律）。
- *  配方与取证见 `docs/device-findings.md` 第三十节。
+ *  配方与取证见 `docs/device/actions/voice.md` 第三十节。
  */
 internal object VoiceAssistBridge {
     /**

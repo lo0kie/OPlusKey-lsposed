@@ -24,7 +24,7 @@ internal fun SettingsPage.openStockPage() {
  *
  *  真正动手的是**宿主主进程**（`host/PageRelaunch`）：本页杀了自己就没人能把页面叫回来，
  *  而「从进程外叫」那条路走不通 —— 真机实测闹钟挂 `PendingIntent` 拉起 Activity 会被后台启动策略
- *  拦掉（`ActivityTaskManager: Background activity launch blocked!`，判据见 `docs/device-findings.md`
+ *  拦掉（`ActivityTaskManager: Background activity launch blocked!`，判据见 `docs/features/zoom-window/api-extra.md`
  *  附十三之五）；宿主的进程自己 `startActivity` 才放行。
  *  所以本页只做三件事：确认宿主主进程在、把那一声请求发出去、然后杀掉自己。
  *

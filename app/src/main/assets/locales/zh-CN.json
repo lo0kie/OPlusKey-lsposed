@@ -357,7 +357,7 @@
   "more.about_version": "版本",
   "general.title": "按键设置",
   "key_settings.title": "独立设置",
-  "key_settings.section": "独立设置",
+  "key_settings.section": "总开关",
   "key_settings.need_own": "先打开「使用独立设置」",
   "key_settings.use_own": "使用独立设置",
   "key_settings.use_own_on": "接口、振动、提示等分别设置",

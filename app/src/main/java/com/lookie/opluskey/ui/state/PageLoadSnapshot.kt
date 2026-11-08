@@ -23,7 +23,7 @@ import com.lookie.opluskey.core.model.Config
  *  回到主线程只做「把这份结果写进状态」（见 `ui/PageLoad.kt`）。
  *
  *  分开还有第二个理由：读的那一半**不能引用 `SettingsPage`** —— `ui.state` 不依赖 `ui`
- *  （`docs/decoupling.md` 的清零包环），所以只能拿这份数据当两边之间的接口。
+ *  （`docs/architecture/decoupling.md` 的清零包环），所以只能拿这份数据当两边之间的接口。
  */
 internal class PageLoadSnapshot(
     /**

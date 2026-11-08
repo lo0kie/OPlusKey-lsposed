@@ -109,7 +109,7 @@ internal object UpdateState {
      * 检查更新要的那几样**页面能力** —— 由调用方递进来，状态层不认识页面。
      *
      *  `ui.state` 不许反向 import `ui` 根（分层是单向的：`ui.screen → ui → ui.state`，
-     *  见 `docs/decoupling.md`）。这一条以前是靠「直接收一个 `SettingsPage`」破的 ——
+     *  见 `docs/architecture/decoupling.md`）。这一条以前是靠「直接收一个 `SettingsPage`」破的 ——
      *  状态对象于是知道了整个页面，而它其实只用三样：版本号、发一条网络请求、一个 Context
      *  （只给调试包的假 release 用）。
      */

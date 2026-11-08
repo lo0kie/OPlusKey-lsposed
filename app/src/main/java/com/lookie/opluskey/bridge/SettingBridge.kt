@@ -29,7 +29,7 @@ import com.lookie.opluskey.core.log.XLog
  *
  *  除了自动旋转（它的「锁没锁」只有 `window` 自己知道），其余状态都由**宿主机**从 `Settings`
  *  读出「现在开着没有」，再把**目标值**带过来 —— 注入侧读不到 Settings（`system_server` 里
- *  借来的 Context 用 ContentResolver 必 NPE，见 `docs/device-findings.md` 六之五），
+ *  借来的 Context 用 ContentResolver 必 NPE，见 `docs/device/lsposed.md` 六之五），
  *  会话两半各做一件自己做得来的事。
  *
  * ## 签名按名字 + 参数个数试

@@ -95,7 +95,7 @@ internal fun NoSwitchHaptic(content: @Composable () -> Unit) {
  *     抛 `IllegalStateException`，**宿主进程直接崩**；
  *   - 输入框那一侧的「把光标挪到末尾」是往 `LocalView` 派发按键事件，发给假 View 等于没发。
  *
- *  这两条都是真机踩出来的（见 `docs/device-findings.md` 四十三）。库会振的字面量控件各自收口：
+ *  这两条都是真机踩出来的（见 `docs/device/coui.md` 四十三）。库会振的字面量控件各自收口：
  *  开关在 `SwitchRow` 里、滑杆在 `TrackSlider` 里（关成 `None`），不必靠这一层兜整棵子树。
  *
  * @param onHaptic 转投的去处 —— 调用点给 `LocalTick` 那一条（见 [TickHapticScope]）

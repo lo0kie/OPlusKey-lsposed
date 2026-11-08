@@ -151,16 +151,39 @@ internal class SettingsPage(
 
     // 这一页有没有「改过还没保存」的东西 —— 退出要不要问那一句的唯一判据。
     //  两处都要看：命令页看命令草稿，分叉页看条件表草稿（它不是命令，草稿也不共用）。
+
+    /**
+     * 这一页「还处在编辑里」吗 —— [goBack] 与 [wouldConsumeBack] 共用这一条判据。
+     *
+     * ## 判据是「在编辑」，不是「改动过」
+     *
+     *  用户口径：**所有页面，只要有编辑就拦**。原先这里比的是 `draft.dirty`（与载入时的快照比）：
+     *  「点开一条命令看一眼、原样返回」不弹窗、直接退 —— 那一次编辑会话就这么没了，
+     *  用户分不清「我改的没生效」还是「我根本没改」。所以改成看**表单里有没有东西**。
+     *
+     * ## 两页表单都要看
+     *
+     *  `form` 只是「当前 pager 停在哪一页」的快捷方式；停在「命令列表」页时它指的还是上次那一页。
+     *  只看它，就会漏掉另一页里正编着的那条 —— 那正是「不在 tab 下就不拦」的来源。
+     */
     private fun hasUnsavedDraft(s: Screen): Boolean =
         when (s) {
-            Screen.COMMANDS -> commandDraft.draft.dirty
+            Screen.COMMANDS -> {
+                commandDraft.draft.singleForm.hasContent || commandDraft.draft.serialForm.hasContent
+            }
 
-            //  **三档都看**：条件执行页是三页三份草稿（横滑换档），退页时
-            //  `discardPageStateOf` 会把三份一起 reset。只看当前这一档的话，
-            //  「在双击页改完、滑回单击页再返回」会把双击页的改动无提示丢掉。
-            Screen.BRANCHES -> Gesture.entries.indices.any { branchDraft.at(it).dirty }
+            //  条件页没有「编辑态」这一说（进来就是编这张表），所以判「有没有条目」：
+            //  三档任一非空就要问一句。`dirty` 留着兜「清空过但还没保存」那种（空表也可能是改动）。
+            Screen.BRANCHES -> {
+                Gesture.entries.indices.any { i ->
+                    val draft = branchDraft.at(i)
+                    draft.rules.isNotEmpty() || draft.dirty
+                }
+            }
 
-            else -> false
+            else -> {
+                false
+            }
         }
 
     /**
@@ -244,7 +267,7 @@ internal class SettingsPage(
      * 配置与命令库（主配置 / 命令库 / 两个只读位）—— 见 [ConfigState]。
      *
      *  一域一个对象：这一域的读写原来摊在本类上，分布在好几个文件里；收进来之后
-     *  「谁改过这一项」一眼可列（见 `docs/decoupling.md` 动作 5 的写入者清单）。
+     *  「谁改过这一项」一眼可列（见 `docs/architecture/decoupling.md` 动作 5 的写入者清单）。
      */
     internal val configState = ConfigState()
 
@@ -438,9 +461,8 @@ internal class SettingsPage(
         // 会在**退场动画**期间重组成「状态丢了」的分支，那一支自己还会再退一页（一次返回退两层）。
         // 它由 `ActivityPickerPage` 的 `onDispose` 负责（离开组合时清，退场动画照常画完），
         // 整趟结束时再由 [discardPageStateOf] 的 `APP_PICKER` 分支收一次。
-        // 命令表单页（「自定义命令」/「条件执行」）：**各自那份**草稿改过还没保存 ⇒ 不退，先问一句。
-        //  判据用 `draft.dirty`（与载入时的快照比），不是 `hasContent` ——
-        //  后者会把「点开一条看一眼、原样返回」也算成有改动。
+        // 命令表单页（「自定义命令」/「条件执行」）：**只要还在编辑里**就不退，先问一句。
+        //  判据见 [hasUnsavedDraft] —— 「在编辑」而不是「改过」（用户口径：有编辑就拦）。
         //  「选择应用」页那一趟已经挑过、还没按右下角那颗提交 ⇒ 同一套账：这一退会把草稿连同
         //  这一趟挑的整个丢掉。判据见 [hasUnconfirmedPick]（进页看一眼就回来的那一趟拦不住）。
         //  两支并成一处判：`goBack` 的 `return` 额度已经被上面那两个编辑态占去两条，再各写一支
@@ -655,14 +677,20 @@ internal class SettingsPage(
      *
      *  注意：只在「自定义命令」页上调用：草稿脏了必然还在这一页 —— 退出时 [goBack] 已经问过并
      *  `draft.reset()`，所以窗画在那一页就够。
+     *
+     *  @return `true` = 已经灌进表单；`false` = 脏着，只挂起了那张确认窗 ——
+     *   **调用方要等确认之后再切页**（切页那一下现在由窗自己发起，见 `CommandDialogs`）。
+     *   原先这里没有返回值、调用点又无条件切页 ⇒ 窗还摆在屏幕上，页面已经跳到表单页、
+     *   而表单里还是旧内容（用户看到的是「确认框背后已经换了页」）。
      */
-    internal fun loadDraft(cmd: Command) {
+    internal fun loadDraft(cmd: Command): Boolean {
         if (commandDraft.draft.dirty) {
             XLog.w("载入命令前先问：表单里有未保存的改动（要换成「${cmd.name}」）")
             overlays.pendingDraftLoad = cmd
-            return
+            return false
         }
         commandDraft.draft.load(cmd)
+        return true
     }
 
     /**

@@ -243,7 +243,7 @@ internal object ConfigChannel {
         //  读者看到 —— 「新配置 + 旧指纹」让链路自检误报已生效，「新配置 + 旧成员表」让
         //  组合那一颗键这一下不等窗口。一次引用替换，没有中间态。
         arrived = Arrived(fresh, ConfigBroadcast.tag(intent), rebuildComboIndex(fresh), holdWindows(fresh))
-        // 这一行（及上面主开关）必须是 W：注入侧 i/d 在 LSPosed 日志页整档看不到（docs/device-findings.md 十五），
+        // 这一行（及上面主开关）必须是 W：注入侧 i/d 在 LSPosed 日志页整档看不到（docs/device/lsposed.md 十五），
         // 它们是「配置到没到注入侧」的唯一判据；只在启动 / 解锁 / 写盘时机各来一条，不刷屏。
         //  token 要过 [XLog.redactToken]：`shell:` / `intent:` 后面是整条正文（可能带 token、密码），
         //  而这一行是 W —— 既进 logcat 也进「导出日志」那份文件。

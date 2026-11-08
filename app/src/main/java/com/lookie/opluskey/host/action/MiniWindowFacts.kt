@@ -114,7 +114,7 @@ internal object MiniWindowFacts {
      * 都从它取）—— 宿主侧改完 `kill` 掉 `com.oplus.gesture` 就生效、**不需要整机重启**，
      * 这正是把它们从注入侧搬出来的原因（见 `FlexibleWindowBridge.EXTRA_LEFT` 一段的说明）。
      *
-     * 语义（真机实测，`docs/device-findings.md` 附七）：
+     * 语义（真机实测，`docs/features/zoom-window/api.md` 附七）：
      * 这是**配置矩形**不是屏幕矩形，`屏幕尺寸 = Rect.size × scale`：
      * `1272 × 2261 × 0.8017 = 1020 × 1812`；`left/top` 不参与缩放、直接照搬屏幕坐标。
      * 值随机型走（表里一台机器一个 `Slot`），加机型要在真机上重新量。
@@ -168,7 +168,7 @@ internal object MiniWindowFacts {
      * 留着它是因为它是目前唯一能「看起来」拿到**原生动画**的路 —— 但复测把它也判死了，
      * 见下面那段。**不要**在没有新证据前打开它。
      *
-     * 注意：复测结论（`device-findings.md` 附十一 / 附十二）：**这条也走不通，而且不是
+     * 注意：复测结论（`docs/features/zoom-window/api.md` 附十一 / 附十二）：**这条也走不通，而且不是
      * 「缺几个调用」——它压根没真转换任务**。真机日志：`switchState` 之后
      * `onTaskInfoChanged taskid 125 … mWindowingMode=fullscreen` **自始至终是全屏**，
      * 只是把 surface 缩到 `scale=0.8014` 又画了一条操作条 —— 一个「穿着小窗外衣的全屏任务」。
@@ -200,7 +200,7 @@ internal object MiniWindowFacts {
 
     /**
      * `mZoomLaunchFlags = 32`（服务端 `fullToMini` → `getMiniFlexibleTaskInfo`）：
-     * 收起的最小化窗（右上角一条）。取值见 `docs/device-findings.md` §17.6.3 的尺寸档对照表。
+     * 收起的最小化窗（右上角一条）。取值见 `docs/features/zoom-window/api.md` §17.6.3 的尺寸档对照表。
      */
     const val ZOOM_LAUNCH_FLAG_FULL_TO_MINI = ZoomWindowWire.LAUNCH_FLAG_COLLAPSED
 
@@ -228,7 +228,7 @@ internal object MiniWindowFacts {
      *
      *  **判据必须扫整张表**：`getAllTopAppInfos()` 在小窗在场时同时有「小窗那份」与「全屏那份」两条，
      *  而按下那一刻最前面的往往是别的应用（比如模块自己的设置页）。只认第 0 项就会把「有任务、
-     *  但不在最前面」误读成「还没有任务」（见 `docs/zoom-window.md` 的「快捷方式以小窗打开」一节）。
+     *  但不在最前面」误读成「还没有任务」（见 `docs/features/zoom-window/notes.md` 的「快捷方式以小窗打开」一节）。
      */
     const val SHORTCUT_VERIFY_RETRIES = 2
 

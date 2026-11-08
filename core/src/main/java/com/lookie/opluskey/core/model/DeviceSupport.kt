@@ -8,7 +8,7 @@ import java.util.Locale
  * 为什么要这张表：本模块靠**反射**挂进 ColorOS 的侧键实现（`StrategyActionButtonKeyLaunchApp`
  * 那几个接管点、`SystemActionButtonConfig` 的场景表、`FlexibleTaskController` 的小窗入口都是
  * ROM 私有的）。换一个机型、换一版 ROM，这些类与方法可能整体换名换形 —— 那时模块会「拦下来但
- * 什么都不做」，用户读到的是「按了没反应，可它还振了一下」（见 `docs/device-findings.md` 十九）。
+ * 什么都不做」，用户读到的是「按了没反应，可它还振了一下」（见 `docs/device/actions/feedback.md` 十九）。
  * 所以这张表是**给排查用的先验**：不在表里的机器照样注入、照样能用，只是不保证 ——
  * 出问题时先看「更多选项 → 适配清单」里那一行。
  *

@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
  *
  * 现在只有录音用它：录音机没有「停止录音」的广播（全 dex 跟录音有关的 action 只有三条
  * `START_*`），唯一的外部通道是 `RecordStateService` 上的 `ISoundRecordInterface`
- * （查状态 / 停 / 暂停 / 继续）。取证与事务号见 `docs/device-findings.md` 十七之七。
+ * （查状态 / 停 / 暂停 / 继续）。取证与事务号见 `docs/device/actions/capture.md` 十七之七。
  *
  * ## 为什么不引用目标的 AIDL 类型
  *

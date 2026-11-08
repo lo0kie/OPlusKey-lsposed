@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
@@ -59,6 +60,90 @@ internal fun Modifier.opticalCenter(style: TextStyle): Modifier {
     val measurer = rememberTextMeasurer(cacheSize = 1)
     val dy = remember(style, density) { opticalDy(style, density, measurer) }
     return offset { IntOffset(x = 0, y = dy) }
+}
+
+/**
+ * 一**块**文字（标题 + 可选副标题）在行盒里的**光学居中**修正。
+ *
+ *  与 [opticalCenter] 同一把尺子，只是从「一行」扩到「一块」：[opticalCenter] 把单行墨迹挪到
+ *  那一行自己的行盒中心；这里算的是**整块** —— 上边量第一行的「行盒顶 → 墨迹顶」，
+ *  下边量最后一行的「墨迹底 → 行盒底」，两边取差的一半往下挪。
+ *
+ * ## 为什么必须有这一档
+ *
+ *  卡片行的上下内边距本来是**对称的**（库给 12dp / 12dp，真机像素量过 42 / 42），
+ *  但最后一行是副标题（14sp）时，它的行盒底部留着 `descent` 那一段汉字不占的空白 ——
+ *  肉眼看到的下留白比上留白多 9~10px（2.6~2.9dp）。于是同一张卡里
+ *  「只有标题」的行（做过 [opticalCenter]）看着居中、「标题 + 副标题」的行看着偏上，
+ *  两种形态并排读起来就是「上下留白不一致」。
+ *
+ *  这一档把两种形态拉到同一个口径：上下都等于「内边距 + 第一行的行盒顶空白」，
+ *  与行高无关、与有没有副标题无关（真机量出来的数见 changelog 那一节）。
+ *
+ * ## 为什么是 `offset` 而不是改高度
+ *
+ *  改高度会让相邻行的点击区重叠（Compose 的 hit test 认布局尺寸），而这里只需要挪绘制；
+ *  挪动量 ≤ 3dp，远小于行内边距，画不出卡片外。溢出的那几像素是空白，且下一行后画、会盖住它。
+ *
+ * @param first 这一块**第一行**的样式（标题）
+ * @param last 这一块**最后一行**的样式（有副标题就传副标题那档，否则同 [first]）
+ */
+@Composable
+internal fun Modifier.opticalBlockCenter(
+    first: TextStyle,
+    last: TextStyle = first,
+): Modifier {
+    val density = LocalDensity.current
+    // 理由同 [opticalCenter]：实例每个调用点一份，真正的排版只在缓存缺失时发生。
+    val measurer = rememberTextMeasurer(cacheSize = 1)
+    val dy = remember(first, last, density) { blockDy(first, last, density, measurer) }
+    //  只有「多行」才补这一档：单行的行内容被库垂直居中，不吃这条公式（见 [ItemText] 的分流）。
+    val bias = remember(first, last, density) { if (first == last) 0 else with(density) { BLOCK_CENTER_BIAS.roundToPx() } }
+    return offset { IntOffset(x = 0, y = dy + bias) }
+}
+
+/**
+ * 双行整块修正的**实测偏差** —— 0.6dp（2px @560dpi）。
+ *
+ *  [blockDy] 是按 `TextMeasurer` 量出来的行盒算的，而实际渲染的 `Text` 行盒比它高一档
+ *  （font padding 的取整），于是「该挪多少」总差 2px：改前真机量到 45 / 55，公式给 +3px ⇒
+ * 48 / 52，补上这 2px 才是 50 / 50。
+ *
+ *  为什么敢写成常量：这一档和 [opticalTightTop] 里那个「41px @560dpi」是同一种东西 ——
+ *  **一次标定、按密度换算**。它不随字号变（两端都是同一种字体的取整误差），
+ *  换字体族时才需要重标（那时 [glyphBounds] 也要跟着改）。
+ */
+private val BLOCK_CENTER_BIAS = 0.6.dp
+
+/** 整块修正量的缓存 —— 与 [opticalDyCache] 同一套理由；键多带一个「最后一行」的样式。 */
+private val blockDyCache = ConcurrentHashMap<Triple<TextStyle, TextStyle, Density>, Int>()
+
+private fun blockDy(
+    first: TextStyle,
+    last: TextStyle,
+    density: Density,
+    measurer: TextMeasurer,
+): Int =
+    blockDyCache.getOrPut(Triple(first, last, density)) {
+        //  两侧各量一次：上面那截是汉字不占的 ascent 空白，下面那截是 descent 空白，
+        //  两边之差的一半就是「墨迹偏离行盒中心」的量。
+        ((inkBottom(last, density, measurer) - inkTop(first, density, measurer)) / 2f).roundToInt()
+    }
+
+/**
+ * 行盒底 → 墨迹底 的距离 —— [inkTop] 的另一侧，同一把尺子（`getTextBounds("国")`）。
+ *
+ * 用 `getTextBounds` 而不是 `Paint.fontMetrics` 的理由与 [inkRect] 一致：后者量的是**整个字体**
+ * 的极值（含拉丁降部），拿它算出来的是「行盒底 → 字体降部」而不是「行盒底 → 汉字墨迹底」。
+ */
+private fun inkBottom(
+    style: TextStyle,
+    density: Density,
+    measurer: TextMeasurer,
+): Int {
+    val probe = measurer.measure("国", style)
+    val ink = inkRect(style, with(density) { style.fontSize.toPx() }) ?: return 0
+    return (probe.size.height - (probe.firstBaseline + ink.bottom)).roundToInt()
 }
 
 /**

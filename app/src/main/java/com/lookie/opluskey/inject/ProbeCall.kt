@@ -318,7 +318,7 @@ internal fun ProbeChannel.resolveReceiver(
  * `zoom` —— 从**当前进程**发起「把某个任务收成小窗」的正门调用。
  *
  * 为什么要单独一个 op：桌面「浮窗」那条路的关键是 options 里的 `mZoomLaunchFlags=2`
- * （见 `device-findings.md` 附九），而 `call` 造不出 options 对象。
+ * （见 `docs/features/zoom-window/api.md` 附九），而 `call` 造不出 options 对象。
  *
  * 为什么必须能发到**桌面进程**（`-p com.android.launcher`）—— 这才是 A 方案的全部意义：
  * 服务端要 `realCallingPid == 桌面进程 pid`；同一个调用从别处发会被 `No transition roots` abort。

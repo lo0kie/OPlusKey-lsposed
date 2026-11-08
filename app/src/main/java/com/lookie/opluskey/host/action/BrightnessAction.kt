@@ -15,7 +15,7 @@ import com.lookie.opluskey.core.model.Action
  *
  *  用户眼里的百分比是 `(raw − min) / (max − min)`，量程从 `screen_brightness_range` 读
  *  （本机 `2,4095`），读不到才退回 1..255。框架那个 `get-brightness --unit percentage` 报的是
- *  另一套 HLG 感知值：按它换算，`+10%` 在条上会走三十多格（见 `docs/device-findings.md` 三十八）。
+ *  另一套 HLG 感知值：按它换算，`+10%` 在条上会走三十多格（见 `docs/device/actions/brightness.md` 三十八）。
  *
  * ## 自动亮度开着时那条路只能走 root
  *

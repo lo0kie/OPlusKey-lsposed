@@ -16,7 +16,7 @@ import android.os.SystemClock
  *  用 [Process.getStartElapsedRealtime] 与 [SystemClock.elapsedRealtime] 才是同一基准。
  *
  *  这两个方法都只读本进程的状态，不需要 Context、不需要权限，在 system_server 里也安全
- *  （见 `docs/device-findings.md` 六之五 那条「系统进程里能安全用哪些东西」）。
+ *  （见 `docs/device/lsposed.md` 六之五 那条「系统进程里能安全用哪些东西」）。
  */
 object ProcClock {
     /**

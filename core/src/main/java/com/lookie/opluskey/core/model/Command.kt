@@ -439,7 +439,7 @@ data class Command(
  *
  *  这是一条**纯规则**（只吃 [Command] 列表、不碰磁盘），所以放在领域层：界面、广播发送侧、
  *  执行侧共用同一份口径。读盘那一步归 `core/config` 的 `CommandLibrary` ——
- *  分开之后 `core/wire` 与注入侧都不必再认识落盘那包（见 `docs/decoupling.md` 动作 3）。
+ *  分开之后 `core/wire` 与注入侧都不必再认识落盘那包（见 `docs/architecture/decoupling.md` 动作 3）。
  */
 fun isSerialCommand(
     commands: List<Command>,

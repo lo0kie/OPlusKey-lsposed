@@ -1,6 +1,6 @@
 # 降耦合 / 高内聚审计与收敛方案
 
-> 本文是 `docs/architecture-refactor.md` 的**续篇**，不是替代。
+> 本文是 `structure.md` 的**续篇**，不是替代。
 >
 > - 那份写的是**已经落地的包契约**：按进程切包 → 每包单一职责 → 用依赖方向把「谁能用谁」钉死，并给了重建前的逐文件映射表。
 > - 这份写**它落地之后还剩什么耦合**：先立可检验的判据，再用实测数据审计整个项目（含界面层内部），最后给出逐条收敛动作、阶段划分与防回归手段。
@@ -125,7 +125,7 @@ host/SideKeyGestureHooks.kt:13-15   → inject.Framework / inject.hookGuarded / 
 
 **问题不是「依赖了不该依赖的类」，而是这批类**根本不在注入侧执行**：手电筒、铃声、状态栏、小窗桥、按键注入 —— 它们的调用点全在**宿主进程\*_（`host/action/_`）。包名说「注入侧」，实际是「宿主进程也会跑的系统桥」。
 
-这正是 `architecture-refactor.md` 一、1 记录过的老毛病（当年 `hook/` 名下混着宿主执行器）**在新结构里换了个地方复发**；那份文档四、5 甚至预先点过一句：「`SystemActionButtonConfig` 放在 `inject/` 里是因为它由注入侧代码定义，但调用点必须在宿主侧 —— 若发现调用点跑到 `inject/` 内部，说明原结构本来就错了」。
+这正是 `structure.md` 一、1 记录过的老毛病（当年 `hook/` 名下混着宿主执行器）**在新结构里换了个地方复发**；那份文档四、5 甚至预先点过一句：「`SystemActionButtonConfig` 放在 `inject/` 里是因为它由注入侧代码定义，但调用点必须在宿主侧 —— 若发现调用点跑到 `inject/` 内部，说明原结构本来就错了」。
 
 **代价**：新人（和未来的我）看包名判断进程归属，会得出**相反**的结论；而进程归属错了 = 一次 `NoClassDefFoundError` = 系统进程崩（`AGENTS.md` 五之二 全部条款都在讲这件事）。判据越依赖命名，这种命名失真就越贵。
 
@@ -136,7 +136,7 @@ host/action/ActionNotice.kt:8 → ui.model.ActionCatalog     （执行时的 Toa
 host/PageRelaunch.kt:10       → ui.SettingsPageHooks       （宿主主进程去拉设置页 Activity）
 ```
 
-契约上 `ui/` 与 `host/` 互相引用**是允许的**（同 APK 两个进程，见 `architecture-refactor.md` 二），但这两条方向反了：
+契约上 `ui/` 与 `host/` 互相引用**是允许的**（同 APK 两个进程，见 `structure.md` 二），但这两条方向反了：
 
 - `ActionNotice` 依赖 `ui/model/ActionCatalog`（30KB 的**展示层**目录）只是为了取一句标题 —— **执行**要不要弹提示，是宿主业务；「这档动作叫什么」是展示层的知识。结果 `host/action` 现在离不开 `ui/model`。
 - `PageRelaunch` 拿 `SettingsPageHooks.SETTINGS_ACTIVITY` 去 `startActivity`，方向是「宿主主进程 → 界面层常量」。
@@ -147,7 +147,7 @@ host/PageRelaunch.kt:10       → ui.SettingsPageHooks       （宿主主进程�
 core/wire/ConfigBroadcast.kt:5 → core.config.CommandLibrary
 ```
 
-`architecture-refactor.md` 二 的硬规矩是「**`inject/` 不准碰 `core/config`**（落盘那包）—— 这样『注入侧读不到配置文件』在**编译期**就成立」。现在 `ConfigChannel`（注入侧）导入 `core/wire`，而 `core/wire` 又导入 `core/config` —— **这条编译期保证被传递依赖绕开了**：注入侧代码只要顺手写一句 `CommandLibrary.xxx`，编得过。
+`structure.md` 二 的硬规矩是「**`inject/` 不准碰 `core/config`**（落盘那包）—— 这样『注入侧读不到配置文件』在**编译期**就成立」。现在 `ConfigChannel`（注入侧）导入 `core/wire`，而 `core/wire` 又导入 `core/config` —— **这条编译期保证被传递依赖绕开了**：注入侧代码只要顺手写一句 `CommandLibrary.xxx`，编得过。
 
 注意这条**当前没有实际 bug**（注入侧没直接调 `core/config`，CI 的黑名单也只查界面类），但它让「编译期契约」退化成「口头约定」。
 
@@ -215,7 +215,7 @@ core/wire/ConfigBroadcast.kt:5 → core.config.CommandLibrary
 
 ## 四、收敛方案（逐条：改什么 / 为什么 / 风险 / 判据）
 
-> 原则（`AGENTS.md` 一、2 与 `architecture-refactor.md` 五）：只做「让依赖方向成立」的动作，不做审美重构；不拆 Gradle 模块、不引 DI、不引 ViewModel。
+> 原则（`AGENTS.md` 一、2 与 `structure.md` 五）：只做「让依赖方向成立」的动作，不做审美重构；不拆 Gradle 模块、不引 DI、不引 ViewModel。
 
 ### 动作 1：把「宿主进程也会跑的系统桥」迁出 `inject/` → 新包 `bridge/`
 
@@ -228,7 +228,7 @@ core/wire/ConfigBroadcast.kt:5 → core.config.CommandLibrary
   CI 的注入侧扫描范围也跟着失准；现在那条扫描要 `--exclude-dir=host`。）
 - **怎么判定谁该走**：一句话判据 —— **调用点在宿主侧（`host/`、`ui/`）的，一律不是注入侧**。（`Framework` 的候选表要留在 `inject/`，它是注入侧的降级表；但 `host` 读它做手势劫持这件事本身要重新审视：`SideKeyGestureHooks` 在宿主里用的是同一张候选表 ⇒ 更干净的做法是把「宿主与注入共用的候选常量」下沉 `core/model`，让两边各自读表。）
 - **收益**：包名重新等于进程归属；`host → inject` 6 条边清零；`SystemActionButtonConfig` 的「只能在宿主进程调」变成结构上显然。
-- **风险**：`host` 与 `inject` 之间的历史注释很多，迁移时**只改 `package`/`import`**，注释原样带走（沿用 `architecture-refactor.md` 六 的纪律）。系统侧代码换包不影响 CI 的 `(5)` 那条黑名单（它按 `inject/` 路径扫），但**要同步更新 CI 的 `injection_dirs` 与新增 `bridge/` 的允许依赖**。
+- **风险**：`host` 与 `inject` 之间的历史注释很多，迁移时**只改 `package`/`import`**，注释原样带走（沿用 `structure.md` 六 的纪律）。系统侧代码换包不影响 CI 的 `(5)` 那条黑名单（它按 `inject/` 路径扫），但**要同步更新 CI 的 `injection_dirs` 与新增 `bridge/` 的允许依赖**。
 - **判据**：`grep -rn '^import com.lookie.opluskey.inject' app/src/main/java/com/lookie/opluskey/host/` 为空；`grep -rn '^import com.lookie.opluskey.bridge' inject/` 只允许出现「注入侧确实也调」的那几条（应为空或白名单化）。
 
 ### 动作 2：切断 `host → ui` 两条边
@@ -489,7 +489,7 @@ com.lookie.opluskey
 所以判据 5 的「2 处」仍差 3 处 `when` 分派，**不是只有上面说的「图标」一项**；
 估下一档动作的改动面时按这 6 处算，别按「定义 + 注册」算。
 
-每个阶段=一次提交=一个 `changelog/` 片段（`AGENTS.md` 一、三）；每阶段结束都跑：
+每个阶段=一次提交=一个 `docs/changelog/` 片段（`AGENTS.md` 一、三）；每阶段结束都跑：
 
 ```bash
 ./gradlew spotlessCheck detekt lintDebug      # 格式 / 静态检查 / Lint
@@ -537,11 +537,11 @@ grep -rn '^import com.lookie.opluskey.ui.screen' app/src/main/java/com/lookie/op
 配套两条**软**约束（不阻断，进 review 清单）：
 
 - `AGENTS.md` 已有「新代码不许再往 detekt 基线里加条目」——**同理**：新增文件不许把「越界边」当既成事实抄进白名单，白名单只允许缩短。
-- 每次拆完一个域/一个文件，`changelog/` 片段里那条要点要写清「判据的数字从 X 变成 Y」（例如「`SettingsPage` 字段 43 → 21」），让收敛可度量。
+- 每次拆完一个域/一个文件，`docs/changelog/` 片段里那条要点要写清「判据的数字从 X 变成 Y」（例如「`SettingsPage` 字段 43 → 21」），让收敛可度量。
 
 ---
 
-## 八、明确不做（与 `architecture-refactor.md` 五 保持一致）
+## 八、明确不做（与 `structure.md` 五 保持一致）
 
 | 做法                         | 为什么不做                                                                                                                            |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |

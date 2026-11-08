@@ -1073,7 +1073,12 @@ object Strings {
      */
     const val KEY_SETTINGS_TITLE = "key_settings.title"
 
-    /** 那一页里的小标题与「使用独立设置」那颗总开关。 */
+    /**
+     * 「独立设置」页两张卡的小标题 —— 上面那张只有一颗总开关，下面那张是这一档自己的那几项。
+     *
+     *  原先只有一条（页面顶部一个「独立设置」），与顶栏标题同名、也说不清下面两张卡各是什么；
+     *  现在与「按键设置」页同构：一个小标题带一张卡。
+     */
     const val KEY_SETTINGS_SECTION = "key_settings.section"
 
     /** 下面那几行灰着被点一下时说的话 —— 「先打开上面那颗总开关」。 */

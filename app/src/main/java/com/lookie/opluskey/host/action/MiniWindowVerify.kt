@@ -19,7 +19,7 @@ import com.lookie.opluskey.core.reflect.Reflect
  * 比值读到 `1.76`，落在「≥0.95 就算好」那一边。
  *
  * 真机症状（用户报「横屏小窗尺寸大」）：屏幕矩形 `1316 × 741`，
- * **宽 1316 > 屏宽 1272、右侧溢出 185px**。取证与根因见 `docs/device-findings.md` 附十三。
+ * **宽 1316 > 屏宽 1272、右侧溢出 185px**。取证与根因见 `docs/features/zoom-window/api.md` 附十三。
  */
 internal fun MiniWindowLauncher.verifyMiniOrFallback(taskId: Int) {
     //  注意：「读不到任务信息」**不是**「没变成小窗」—— 折成后者就等于把「不知道」说成
@@ -72,7 +72,7 @@ internal fun MiniWindowLauncher.logZoomGeometry(taskId: Int) {
         false -> {
             XLog.w(
                 "zoom:mini → $who 的窗口**超出屏幕**：屏幕矩形 $rect > 显示 $display" +
-                    "（横屏应用走 recents 正门时会这样，见 docs/device-findings.md 附十三）",
+                    "（横屏应用走 recents 正门时会这样，见 docs/features/zoom-window/api.md 附十三）",
             )
         }
 

@@ -264,7 +264,7 @@ internal fun ProbeChannel.dress(
  *  3. **HTTP**（拿第 2 步的地址走 `HttpURLConnection`）—— 真正要用的那一步。
  *
  *  `MissingPermission`（下面那颗抑制）：这段跑在 **system_server**（uid 1000），
- *  `ACCESS_NETWORK_STATE` 它本来就有（`device-findings.md` 四十一）；模块清单里不声明任何权限，
+ *  `ACCESS_NETWORK_STATE` 它本来就有（`docs/device/lsposed.md` 四十一）；模块清单里不声明任何权限，
  *  同 `NetChannel.activeNetwork`。
  */
 @android.annotation.SuppressLint("MissingPermission")

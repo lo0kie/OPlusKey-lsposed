@@ -63,7 +63,7 @@ internal object ConfigArrivalLog {
      * 每颗键「这一档手势会判成什么」的投影。
      *
      *  用 `d` 不用 `w`：它**不是**判据（判定器现在还没读这份计划），只是给排查用的投影；
-     *  注入侧的 `d` 在 LSPosed 日志页看不到，要用 logcat 看（`docs/device-findings.md` 十五）。
+     *  注入侧的 `d` 在 LSPosed 日志页看不到，要用 logcat 看（`docs/device/lsposed.md` 十五）。
      */
     fun plans(fresh: Config) {
         XLog.guard("判定计划") {

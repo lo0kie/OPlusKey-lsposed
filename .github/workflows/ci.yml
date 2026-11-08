@@ -129,7 +129,7 @@ jobs:
           fi
           echo "锁文件与声明的依赖一致（app $(grep -c '=' app/gradle.lockfile) 条 / core $(grep -c '=' core/gradle.lockfile) 条）"
 
-      # 耦合审计（docs/decoupling.md 七）：包级导入图 + 禁止边 + 环检测。
+      # 耦合审计（docs/architecture/decoupling.md 七）：包级导入图 + 禁止边 + 环检测。
       # 这道闸补的是上面那三步看不见的东西 —— detekt / lint 管单文件，管不了
       # 「注入侧 import 了界面层」「core 反过来引 ui」这类**跨包越界**。
       # 脚本是纯标准库的，ubuntu 上装好的 python3 直接能跑。

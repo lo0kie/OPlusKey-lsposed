@@ -109,7 +109,7 @@ object ConfigBroadcast {
      *  [longSerialOf] 由**调用方**算好传进来（**逐键**问）：那一位要读宿主私有目录里的命令库
      *  （`CommandLibrary.longIsSerial`，两个调用方都与宿主同 uid、读得到，且此路径不在按键热路径上）。
      *  本包因此**不认识落盘那包** —— 注入侧要 import 它，这条编译期保证不能靠传递依赖绕开
-     *  （见 `docs/decoupling.md` 动作 3）。
+     *  （见 `docs/architecture/decoupling.md` 动作 3）。
      *
      *  注意 **这个 Intent 没有 `setPackage`，不要直接 `sendBroadcast`**：那样它就是一条**隐式广播**，
      *  任何 App 都收得到 —— 而 payload 里有整份配置（自定义键名、绑定动作、命令引用）。

@@ -460,7 +460,7 @@ internal object KeyHooks {
                 NetChannel.dispatch(intent, systemLoader)
             }
 
-            // debug 通道：反射 / 探针，见 docs/debug-channel.md
+            // debug 通道：反射 / 探针，见 docs/runtime/debug-channel.md
             //  `post` 与兜底都在 [ProbeChannel.dispatch] 里（这一层只留一行分派）
             ProbeChannel.ACTION -> {
                 ProbeChannel.dispatch(intent, systemLoader)

@@ -20,7 +20,7 @@ import com.lookie.opluskey.core.model.ZoomWindowWire
  *  2) **系统代发**（`LauncherApps.startShortcut`）—— 被 `BAL_BLOCK` 拦时**调用侧完全看不出来**
  *     （返回 `void`、`result code=102`）。只当 1) 拿不到 PI 时的兜底，**不能当主路**：
  *     真机上它常常整发不落地（表里连任务都不会出现），而 PI 那一发 0.7 秒就进表。
- *     取证见 `docs/zoom-window.md` 的「快捷方式以小窗打开」一节。
+ *     取证见 `docs/features/zoom-window/notes.md` 的「快捷方式以小窗打开」一节。
  *
  * ## 窗口模式由这里带上
  *

@@ -49,7 +49,7 @@ internal data class Swipe(
  *  判定必须在区间结束时同步出结果）。
  *
  * @param slopPx 判定「划了」的最小位移。默认 28px：与界面层那条滑动探针同一个阈值
- *   （`docs/device-findings.md` 二十），点按的位移是 0~几 px，不会误判。
+ *   （`docs/device/coui.md` 二十），点按的位移是 0~几 px，不会误判。
  * @param maxDurationMs 一段最长多久还算是滑动；超过就当用户在长按/拖别的。
  */
 internal class SwipeJudge(
@@ -195,7 +195,7 @@ internal class SwipeJudge(
     }
 
     companion object {
-        /** 与界面层滑动探针同一条阈值（`docs/device-findings.md` 二十）。 */
+        /** 与界面层滑动探针同一条阈值（`docs/device/coui.md` 二十）。 */
         private const val DEFAULT_SLOP_PX = 28f
 
         /** 一段超过这个时长就当用户在长按 / 拖别的东西，抬手不算滑动。 */

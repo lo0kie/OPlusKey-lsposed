@@ -22,7 +22,7 @@ import com.lookie.opluskey.core.log.XLog
  * 1. 这里加一个 [Slot]（`model` 与 [DeviceSupport] 同口径：`Build.MODEL`）；
  * 2. 在 [DeviceSupport.ADAPTED] 里加那一行（那道闸管「能不能注入」，与本表各管一件事）；
  * 3. 真机上量一遍：拿**原生小窗**的 `Task.mBounds` 反查配置矩形，取法与两个坑见
- *    `docs/zoom-window.md` 与 `docs/device-findings.md` 附七。
+ *    `docs/features/zoom-window/notes.md` 与 `docs/features/zoom-window/api.md` 附七。
  *
  * ## 本机没适配时「照最后一档试」
  *
@@ -59,7 +59,7 @@ object MiniWindowGeometry {
          * 踩过的坑：曾经直接填**屏幕矩形**（1020×1812），结果被系统又缩了一次
          * （`1020 × 0.8017 = 817`），窗口整整齐齐小了 0.8017 倍，表现为「小窗是对的，
          * 但比 ColorOS 原生的小一圈」。正确值是拿真机「原生小窗」的 `dumpsys activity activities`
-         * → `Task.mBounds` 反查出来的（见 `docs/device-findings.md` 附七）。
+         * → `Task.mBounds` 反查出来的（见 `docs/features/zoom-window/api.md` 附七）。
          *
          * 落点（left / top）是**直接照搬到屏幕坐标**的、不含缩放，所以两头是同一个数。
          *

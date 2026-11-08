@@ -144,7 +144,7 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                 add(toastTemplateRow(cfg.global, pageEnabled) { editingToastTemplate = true })
                 // 「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。
                 //  关（默认）= 原地收、无动画；开 = 原地收成小窗后紧接着让框架自己的动画器播那一段
-                //  （插值 / 矩阵 / spring 全是框架在跑，模块只交起止参数，配方见 `docs/zoom-window.md` §十二）。
+                //  （插值 / 矩阵 / spring 全是框架在跑，模块只交起止参数，配方见 `docs/features/zoom-window/notes.md` §十二）。
                 //  **现行隐藏**（[SHOW_HOME_MINI_ANIM] = false）：这一档还没收敛（终点几何是竖屏标定值、
                 //  横屏播不了），先把入口收起来 —— 配置字段与执行侧都留着，改回 true 即恢复。
                 if (SHOW_HOME_MINI_ANIM) {

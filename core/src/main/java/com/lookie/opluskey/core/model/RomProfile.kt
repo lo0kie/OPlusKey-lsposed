@@ -113,7 +113,7 @@ object RomProfile {
      *  唯一的外部停止 / 查状态通道是导出服务 `RecordStateService` 上的
      *  `ISoundRecordInterface`（`queryStatus` / `stopRecord` / `pauseRecord` / `resumeRecord`）。
      *  服务本身与每个事务都要求 `oplus.permission.OPLUS_COMPONENT_SAFE`（宿主持有）。
-     *  取证与事务号见 `docs/device-findings.md` 十七之七。
+     *  取证与事务号见 `docs/device/actions/capture.md` 十七之七。
      *
      * ## 为什么只记名字与事务号
      *
@@ -244,7 +244,7 @@ object RomProfile {
     /**
      * 灵感语音 —— **开始**采集（AI 记忆的录音）。
      *
-     *  真机取证见 `docs/device-findings.md` 四十六：这条服务只有「开始 / 结束」两个事件，
+     *  真机取证见 `docs/device/actions/voice.md` 四十六：这条服务只有「开始 / 结束」两个事件，
      *  **重入的开始会被它自己忽略**（`reentrant collect.`），所以「切换」只能由模块按状态拼，
      *  这里不提供。
      */
@@ -254,7 +254,7 @@ object RomProfile {
      * 灵感语音 —— **结束**采集（与 [NAME_VOICE_MEMORY] 是同一条服务的另一个事件）。
      *
      *  两者是**平级的两个动作**：用户绑哪一档就发哪一条，松手不再替用户收尾。
-     *  取值 `longPressEventType` 的判据见 `docs/device-findings.md` 四十六。
+     *  取值 `longPressEventType` 的判据见 `docs/device/actions/voice.md` 四十六。
      */
     const val NAME_VOICE_MEMORY_STOP = "voice_memory_stop"
 
@@ -275,7 +275,7 @@ object RomProfile {
      * 录音 —— **只开始**。
      *
      *  必须挡一道：同一个意图在录音中会被 ROM 判成「再按一次」而**停录**
-     *  （见 `docs/device-findings.md` 十七之七），所以「只开始」要先查状态，在录就什么都不做。
+     *  （见 `docs/device/actions/capture.md` 十七之七），所以「只开始」要先查状态，在录就什么都不做。
      */
     const val NAME_RECORDING_START = "recording_start"
 
@@ -297,7 +297,7 @@ object RomProfile {
      *  用**自己 system_server 的身份**去 `startForegroundServiceAsUser`（外加 `caller_package=android`、
      *  `start_type` 两个 extra）。宿主 `com.oplus.gesture` 未必有那个签名级权限，所以这一档不放给宿主起，
      *  由注入侧在 system_server 里照同一条配方起 —— 见 `bridge/StatusBarBridge` 的 `voice_assist` 指令。
-     *  取证与配方原文见 `docs/device-findings.md` 第三十节。
+     *  取证与配方原文见 `docs/device/actions/voice.md` 第三十节。
      */
     const val NAME_VOICE_ASSIST = "voice_assist"
 
@@ -435,7 +435,7 @@ object RomProfile {
      *  取值来路：`ISoundRecordInterface$Stub$Proxy` 逐个核过 —— `queryStatus`=1、
      *  `registerCallback`=2、`unRegisterCallback`=3、`resumeRecord`=4、`pauseRecord`=5、`stopRecord`=6；
      *  `queryStatus` 回包是 `RecordStatus`（存在位 + 4 个 int，首个 `currentRecordState`：
-     *  `1` 正在录 / `2` 已暂停 / 其余按空闲算）。见 `docs/device-findings.md` 十七之七。
+     *  `1` 正在录 / `2` 已暂停 / 其余按空闲算）。见 `docs/device/actions/capture.md` 十七之七。
      */
     private fun recordAidl(mode: AidlControl.Mode): AidlControl =
         AidlControl(
@@ -599,7 +599,7 @@ object RomProfile {
      *  但系统那颗快捷功能发的**不是普通启动**：action 是 `STILL_IMAGE_CAMERA_SECURE`，另外带两个
      *  来源标记，相机按它们判断「这一屏是从锁屏进来的」并据此收起解锁后才该出现的界面。
      *  这里逐字对齐 SystemUI 的 `CameraGestureHelper.launchCamera(3)` +
-     *  `CameraIntents.getSecureCameraIntent()`（取证见 `docs/device-findings.md` 四十五）。
+     *  `CameraIntents.getSecureCameraIntent()`（取证见 `docs/device/lsposed.md` 四十五）。
      *
      *  `activity` 一档不需要 `service` 参与定位（action + 包名由清单解析），但落点表里这一格
      *  同时被日志与失败提示用来指认「试的是哪个组件」，所以填上它真正会起来的那个类。
@@ -631,7 +631,7 @@ object RomProfile {
      *  action 是 `oplus.intent.action.CALCULATOR`（或 `coloros.intent.action.CALCULATOR`）才
      *  `setShowWhenLocked(true)`。所以普通 `app:com.coloros.calculator` 在锁屏下会被键盘锁盖住，
      *  而这一条能直接显示。两个 extra 也是系统自己带的（`BaseActivity` 会读 `comeFrom`），
-     *  取证见 `docs/device-findings.md` 四十五。
+     *  取证见 `docs/device/lsposed.md` 四十五。
      *
      *  ## 少抄了一位 flag：`FLAG_ACTIVITY_CLEAR_TASK`
      *
@@ -659,7 +659,7 @@ object RomProfile {
      * 落点的来路：系统自己的侧键场景表（真机 `content://uri.gesturemanagerprovider/action_button`
      * 的 `scene_name` / `scene_owner` / `click_action_info` / `long_press_action_info` 等列），
      * 但那张表**不带 extras，也区分不出「起普通服务」和「bind 后发 Message」**，`scene_owner` 还会过期 ——
-     * 这几样都是对着目标 APK 反编译核的，见 `docs/device-findings.md` 十七。
+     * 这几样都是对着目标 APK 反编译核的，见 `docs/device/actions/system.md` 十七。
      *
      * 注意：这一族**多数是「单击档只回一句提示、长按档才真正干活」**，所以下面几行的取值不都对着 `click_*`。
      * 这些服务 / 界面都带签名级权限（`oppo.permission.OPPO_COMPONENT_SAFE` 等），宿主恰好持有，
@@ -805,7 +805,7 @@ object RomProfile {
      *
      *  两处判据必须同一个口径：判定侧「长按不排连续触发」（`KeyConfig.longIsVoiceMemory`）与
      *  界面那句「灵感语音不支持连续触发」。连发对它俩都没有语义 —— 开始已经被 ROM 当重入忽略，
-     *  结束在没有采集时是空操作（见 `docs/device-findings.md` 四十六）。
+     *  结束在没有采集时是空操作（见 `docs/device/actions/voice.md` 四十六）。
      */
     fun isVoiceMemory(feature: String): Boolean = feature == NAME_VOICE_MEMORY || feature == NAME_VOICE_MEMORY_STOP
 

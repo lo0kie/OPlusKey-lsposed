@@ -37,7 +37,7 @@ internal object SideKeyGestureHooks {
      * 「这一下是模块认领的」那个时间窗（毫秒）。
      *
      *  判定与这条派发**同一轮按压里到**，但先后是竞态的（宿主主线程忙时派发会早到，见
-     *  `docs/device-findings.md` 十六），所以按「刚刚有没有认领过」判，不做精确配对。
+     *  `docs/device/side-key.md` 十六），所以按「刚刚有没有认领过」判，不做精确配对。
      *  300ms：远小于人手两次按压的间隔（误吞概率低），又远大于判定与派发之间的几十毫秒。
      */
     private const val CLAIM_WINDOW_MS = 300L
@@ -67,7 +67,7 @@ internal object SideKeyGestureHooks {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // 场景派发（`what=1`）的处置：**模块认领的那一下吞掉，没认领的放行**。
-    //  「放行（`native` / `passthrough`）动作档」那一套早就删了（见 `docs/implementation.md`
+    //  「放行（`native` / `passthrough`）动作档」那一套早就删了（见 `docs/runtime/key-to-gesture.md`
     //  第三节），这里留下的是另一件事：**停用的键**（`KeyConfig.enabled = false`）在注入侧是
     //  原样放行的，它的原生动作就靠这条派发来跑 —— 一条都不放等于把停用的键弄失灵。
     //  判据在 [PressTrace]：那条消息不带键的身份，只能问「刚刚有没有认领过一下」。
@@ -163,7 +163,7 @@ internal object SideKeyGestureHooks {
      *  ## 为什么还要扣一段时间
      *
      *  认领（注入侧判出手势后发的广播）与这条派发**同一轮按压里到**，先后是竞态的 ——
-     *  宿主主线程忙时派发会早到几十毫秒（`docs/device-findings.md` 十六实测过另一个方向）。
+     *  宿主主线程忙时派发会早到几十毫秒（`docs/device/side-key.md` 十六实测过另一个方向）。
      *  只按「已经到没到」判会漏：真机上表现为「偶尔还是弹一下页面」。
      *  所以没认领时**先扣住 [HOLD_MS]**，到点再判一次：期间补到了认领就丢掉，仍没有才补投原生动作。
      *

@@ -104,7 +104,7 @@ sealed interface Action {
     // 「交还系统」（`native` / `passthrough`）**整条已删**：
     //  判定手势必须先吞掉 DOWN，所以「只放行某一个手势」在原理上做不到 —— 一交还就是整键，
     //  同一把键上双击 / 长按的命令也跟着被系统吞掉。
-    //  依据写在 `docs/implementation.md` 的「交还系统为什么不提供」。
+    //  依据写在 `docs/runtime/key-to-gesture.md` 的「交还系统为什么不提供」。
 
     /** 注入一个按键事件，[keyCode] 是 `KeyEvent.KEYCODE_*` 的数值。 */
     data class KeyEvent(
@@ -140,7 +140,7 @@ sealed interface Action {
      * [stockAnim] 为真时用**原版侧键那套启动包裹**起（token 里带 [STOCK_ANIM_MARK]）：
      * 补原版的启动标志与 `key_position` / `android_action_key_launch_type`，并给
      * `startActivityAsUser` 传一个 `ActivityOptions`，让 ROM 自己那层启动转场照常播
-     * （技术文档 `SIDE-KEY-OPEN-APP-ANIMATION.md` 第 2.4 / 5 节）。
+     * （技术文档 `docs/features/launch-animation.md` 第 2.4 / 5 节）。
      *
      *  **与小窗互斥**：[AppWindow] 走 ColorOS 的小窗配方，塞不进这套包裹 —— 同一格只能二选一。
      */
@@ -205,7 +205,7 @@ sealed interface Action {
      *
      * 收起档的几何由服务端自己算；展开档走 system_server 那条时要**由我们预置**展开档几何
      * （`bridge/FlexibleWindowBridge` 的 `EXPANDED_BOUNDS`），拿收起档的值喂进去会把窗口
-     * 缩成右上角一条。取值与判据见 `docs/device-findings.md` §17.6.3 的尺寸档对照表。
+     * 缩成右上角一条。取值与判据见 `docs/features/zoom-window/api.md` §17.6.3 的尺寸档对照表。
      */
     data class MiniWindow(
         val collapsed: Boolean = false,
@@ -264,7 +264,7 @@ sealed interface Action {
      *
      *  百分比说的是**亮度条上的位置**（`(raw − min) / (max − min)`），不是框架那个 HLG 感知
      *  百分比；量程、换算与写入见 `host/action/BrightnessAction` 与
-     *  `docs/device-findings.md` 三十八、38.2。
+     *  `docs/device/actions/brightness.md` 三十八、38.2。
      *
      *  [Mode.FIX] 是绝对值，[Mode.ADD] / [Mode.SUB] 在当前值上加减。三个档的百分比都按**量程**
      *  算（`span * percent / 100`），不是按当前值的比例；越界夹到量程两端，不报错。
@@ -349,7 +349,7 @@ sealed interface Action {
             /**
              * 控制中心（拉下快捷设置那一块）—— 目前唯一一档。
              *
-             * 名字照搬系统自己侧键动作表里的 `control_center`（`docs/device-findings.md` §五），
+             * 名字照搬系统自己侧键动作表里的 `control_center`（`docs/device/side-key.md` §五），
              * 但**调用目标不是场景表那份**：那张表里没有这一行，落点是我们自己在 system_server 里试的
              * （候选与判据见 [com.lookie.opluskey.bridge.StatusBarBridge]）。
              */

@@ -22,7 +22,7 @@ package com.lookie.opluskey.core.model
  *
  *  只收**有依据**的族：`oplus-framework.jar` 里 `android.view.OplusKeyEvent` 的常量名 + 值，
  *  最好再加一条真机日志。**不许凭码值相邻猜**（相邻不代表同族，灵犀触控 670~694 就是
- *  一堆互不相干的分区码）。全部实测结论见 `docs/device-findings.md` 二十九。
+ *  一堆互不相干的分区码）。全部实测结论见 `docs/device/key-codes.md` 二十九。
  */
 object RomKeyFamilies {
     /**
@@ -33,7 +33,7 @@ object RomKeyFamilies {
      *  772 真实手指动作 / 773 启动相机。
      *
      *  `134`（`KEYCODE_F4`）是这颗键在**按键布局表**里的原始码（按住时上报，见
-     *  `docs/device-findings.md` 二十八），也放进族里：不认它的话按住那一下照样漏给系统。
+     *  `docs/device/key-codes.md` 二十八），也放进族里：不认它的话按住那一下照样漏给系统。
      */
     private val SPRUCE_CODES: Set<Int> = setOf(134, 765, 766, 767, 768, 769, 770, 771, 772, 773)
 
@@ -45,7 +45,7 @@ object RomKeyFamilies {
      *
      *  `768` 这一条是**防御性**的：框架里有 `SPRUCE_PRESS_LONG_KEYCODE` 这个常量，但这颗键
      *  实测**不产生「按住」那一段**（按住 3 秒也只有一对间隔 1~7ms 的 DOWN/UP，没有 repeat，
-     *  见 `docs/device-findings.md` 二十八），用户机日志里也从没出现过 768。
+     *  见 `docs/device/key-codes.md` 二十八），用户机日志里也从没出现过 768。
      *  留着它只是因为「常量存在、万一某个 ROM 版本真发」；**不代表长按在这颗键上可用**。
      */
     private val SPRUCE_GESTURES: Map<Int, Gesture> =

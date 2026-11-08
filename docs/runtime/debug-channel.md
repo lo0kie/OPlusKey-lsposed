@@ -27,7 +27,7 @@
 3. **每个 op 整体包 catch** —— 调用点在 AMS 广播入口，漏一个异常出去就是系统崩 / 开机循环。
 
 ⚠️ 另外：**shell 身份（uid 2000）过不了 `RECEIVER_NOT_EXPORTED` 那类接收器**，所以发广播一律用
-`su -c`。这条是实测出来的（见 `zoom-window.md` §11.1）。
+`su -c`。这条是实测出来的（见 `../features/zoom-window/notes.md` §11.1）。
 
 ## 三、落点
 
@@ -44,7 +44,7 @@
 **「桌面落点」已撤掉**（2026-10-14 用户口径「桌面作用域可以去掉了」）：模块的静态作用域（`app/src/main/resources/META-INF/xposed/scope.list`）只声明
 `system` + `com.oplus.gesture`， **不含 `com.android.launcher`** ——
 debug 源集里那份为它加行的覆盖文件也删了。桌面进程里不再有模块代码，所以 `-p com.android.launcher`
-发出去没人接（那条路原本是给「调用方 pid == 桌面进程 pid」的 A 方案实验用的，见 `device-findings.md` 附九）。
+发出去没人接（那条路原本是给「调用方 pid == 桌面进程 pid」的 A 方案实验用的，见 `../features/zoom-window/api.md` 附九）。
 
 要再捡回来：debug 源集加一份 `scope.list`（`system` + `com.oplus.gesture` +
 `com.android.launcher`）→ 在 LSPosed 管理器里给本模块勾上「桌面」→ 整机重启。三步缺一不可（静态声明只是**允许**，实际注入看作用域记录）。
@@ -149,7 +149,7 @@ adb shell "su -c 'grep -a probe/net /data/adb/lspd/log/modules_*.log | tail -3'"
 - **2026-11-02 实测（PLK110 / ColorOS 17）：能连**。`uid=1000`、`activeNetwork=103`、
   裸 TCP 通、`Network#getAllByName` 拿到地址、`HTTP 200`。⚠️ 直接 `HttpURLConnection` 打开 URL
   会 `UnknownHostException` —— system_server 的 socket 没有进程默认网络，必须先用
-  `ConnectivityManager.activeNetwork` 取网络再解析。完整结论见 `device-findings.md` 四十一。
+  `ConnectivityManager.activeNetwork` 取网络再解析。完整结论见 `../device/lsposed.md` 四十一。
 
 ### `zoom` —— 从**当前进程**发起「把某任务收成小窗」
 
@@ -165,7 +165,7 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.PROBE \
 
 返回值语义：**`2` = `START_TASK_TO_FRONT`，服务端已受理并 toggle**；`0` / 负数 = 没做任何事。
 
-> ⚠️ **两个必须记住的坑**（都真机踩过，详见 `device-findings.md` 附十一）：
+> ⚠️ **两个必须记住的坑**（都真机踩过，详见 `../features/zoom-window/api.md` 附十一）：
 >
 > 1. 这个方法的第二个形参是 **`Bundle`**，不是 `ActivityOptions`。传 `ActivityOptions` 会 `argument type mismatch`，而
 >    `Reflect.call` 会把它吞掉 —— 日志上只剩一句干净的 `→ null`。所以本 op 用 `getDeclaredMethod`

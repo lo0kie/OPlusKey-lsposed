@@ -107,7 +107,7 @@ object ModuleWire {
     // ── 链路自检：设置页 与 注入侧（system_server） ──
     //  这一对是**问 / 答**，只为「首页能不能说清是哪一段断了」而存在（见 `ui/LinkCheck.kt`）。
     //  注入侧不必为它额外挂 Hook：它已经挂在 AMS 的广播入口上，全系统每条广播都过那里；
-    //  来源校验比的是 uid，而设置页与宿主**同 uid**（`docs/device-findings.md` 六之七）。
+    //  来源校验比的是 uid，而设置页与宿主**同 uid**（`docs/device/lsposed.md` 六之七）。
 
     /** 设置页 → 注入侧：**问一声注入侧那套装好没有**。 */
     const val ACTION_INJECT_QUERY = "com.lookie.opluskey.INJECT_QUERY"
@@ -185,7 +185,7 @@ object ModuleWire {
      * 宿主 → 注入侧：**替它弹一条提示**（[EXTRA_TOAST_TEXT]）。
      *
      *  为什么挪到注入侧弹：系统 toast 按**包**限流（3 条 / 20 秒、5 条 / 42 秒、6 条 / 68 秒，
-     *  见 `docs/device-findings.md` 四十），宿主的包连按几下之后后面那些直接被丢。注入侧跑在
+     *  见 `docs/device/actions/feedback.md` 四十），宿主的包连按几下之后后面那些直接被丢。注入侧跑在
      *  `system_server`，用 `ActivityThread.getSystemContext()`（包名 `android`）弹，那个包持有
      *  `UNLIMITED_TOASTS` ⇒ 免限流。同一句话、同一个模块，只是换了发话人。
      *
@@ -226,7 +226,7 @@ object ModuleWire {
     //
     //  注意：[ACTION_KEY_SEEN] 的接收方是**设置页自己**注册的接收器（与设置页同进程），
     //  不经 `GestureReceiver` —— 那边属 `host/`，而 host/ 不许认识界面层
-    //  （`docs/decoupling.md` 动作 1、2 与 `tools/audit-coupling.py`）。
+    //  （`docs/architecture/decoupling.md` 动作 1、2 与 `tools/audit-coupling.py`）。
 
     /** 设置页 → 注入侧：开 / 关那条旁路监听（开关在 [EXTRA_WATCH_ON]）。 */
     const val ACTION_KEY_WATCH = "com.lookie.opluskey.KEY_WATCH"
@@ -279,7 +279,7 @@ object ModuleWire {
     //
     //  宿主的清单里**没有** `INTERNET`（`reference/gesture.apk` 的 49 条权限里只有
     //  `ACCESS_NETWORK_STATE`），而界面代码跑在宿主进程 —— 所以「检查更新」这类要出网的事，
-    //  只能请注入侧代取。能力本身在 `inject/NetChannel`，实测结论见 `device-findings.md` 四十一
+    //  只能请注入侧代取。能力本身在 `inject/NetChannel`，实测结论见 `docs/device/lsposed.md` 四十一
     //  （能连，但必须先绑默认网络再解析 DNS）。
     //
     //  一问一答：[ACTION_NET_REQUEST] 由宿主发（同 uid 的设置页也行），注入侧取回正文后

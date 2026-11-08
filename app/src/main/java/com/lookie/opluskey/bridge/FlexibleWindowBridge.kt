@@ -27,7 +27,7 @@ internal object FlexibleWindowBridge {
      * 本指令只动**画面**（对 surface 做 `setPosition/setMatrix/setAlpha`），不动窗口模式。
      * 所以两个要配合用，顺序由宿主侧排，且**只能是「先转换、后动画」**：
      * 动画器每帧的守卫要求任务已经是「带标题栏的柔性任务」，普通全屏任务**每帧都被挡回去**
-     * （先动画后转换那条已证伪，见 `docs/zoom-window.md` §12.3）。
+     * （先动画后转换那条已证伪，见 `docs/features/zoom-window/notes.md` §12.3）。
      */
     const val CMD_MINI_ANIM = "mini_anim"
 
@@ -340,13 +340,13 @@ internal object FlexibleWindowBridge {
      * 结果被系统又缩了一次 —— `1020 × 0.8017 = 817`，窗口整整齐齐小了 0.8017 倍（真机实测
      * 817×1452，宽占比 0.6423 而不是 0.8019），表现为「小窗是对的，但比 ColorOS 原生的小一圈」。
      * 正确值是拿真机「原生小窗」的 `dumpsys activity activities` → `Task.mBounds` 反查出来的
-     * （= `Rect(126,319 - 1398,2580)`），见 `docs/device-findings.md` 附七。
+     * （= `Rect(126,319 - 1398,2580)`），见 `docs/features/zoom-window/api.md` 附七。
      *
      * 落点（left/top）则是**直接照搬到屏幕坐标**的，不含缩放 —— 所以 (126,319) 两头都是这个数。
      *
      * **不要**拿 `getMiniFlexibleTaskInfo` 的值代替 —— 那是收起档的几何
      * （约 `Rect(898,168-1203,710)` / `0.2397`），会把窗口缩成右上角一条。
-     * 这几个数与适配清单绑定：加机型要连同它们重测（见 `docs/zoom-window.md` §五）。
+     * 这几个数与适配清单绑定：加机型要连同它们重测（见 `docs/features/zoom-window/notes.md` §五）。
      */
     internal val EXPANDED_BOUNDS: android.graphics.Rect get() = MiniWindowGeometry.effective.bounds
     internal val EXPANDED_SCALE: Float get() = MiniWindowGeometry.effective.scale

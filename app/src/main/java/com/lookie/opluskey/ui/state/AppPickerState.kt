@@ -13,7 +13,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.model.LaunchableApp
 
 /**
- * 「选择应用」页那一域的状态 —— **一域一个对象**，写入者收窄到少数几处（`docs/decoupling.md` 动作 5）。
+ * 「选择应用」页那一域的状态 —— **一域一个对象**，写入者收窄到少数几处（`docs/architecture/decoupling.md` 动作 5）。
  *
  * 为什么这一域要单独拎出来：这一页的状态原来直接摊在 `SettingsPage` 上（7 个字段），而**读写它的人
  * 分布在四处** —— 顶栏那棵树（`ui/screen/apppicker/AppPickerHeaderMenu.kt` 里那三项菜单）、页内容那棵树
@@ -84,7 +84,7 @@ internal class AppPickerState {
      *
      *  它只是**过滤**：清单一次就取全（见 `loadLaunchableApps`），拨它不触发查询、
      *  也不换缓存 —— 曾经它和 [showSystemApps] 一起决定「查哪一档清单」，那套在真机上
-     *  表现为「开关按了没反应」，见 `changelog/2026-11-05-应用控制.md`。
+     *  表现为「开关按了没反应」，见 `docs/changelog/2026-11-05-应用控制.md`。
      *
      *  「结束应用」那一趟**没有这一项、也不吃它**：停掉一个没有启动图标的应用正是它的用处，
      *  所以那一趟一律全列（见 `AppPickerUiState.shown`）。
@@ -285,7 +285,7 @@ internal class AppPickerState {
     //  三个字段同生共死（`forStep` 一起写着 `replaceStep` 才有意义，`gesture` 只归网格那条入口），
     //  所以入口也只留这三个：原来「进页那个手势」「加一步 / 换一步」「挑完 / 没挑就退」这四种场合
     //  各自就地赋三个字段，散在**六个地方** —— 少清一个就留下半个状态（`forStep=false` 却带着
-    //  上一次的 `gesture`），而从代码上看不出来（见 `docs/decoupling.md` 判据 3）。
+    //  上一次的 `gesture`），而从代码上看不出来（见 `docs/architecture/decoupling.md` 判据 3）。
 
     /**
      * 网格那条入口：给 [g] 这一档挑应用（挑中的写成 `app:` / `window:` 绑给这个手势）。

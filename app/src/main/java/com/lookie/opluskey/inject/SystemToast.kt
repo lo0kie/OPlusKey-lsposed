@@ -12,7 +12,7 @@ import com.lookie.opluskey.core.reflect.Reflect
  * 由 `system_server` 替宿主弹一条提示（命令里 `echo 'tip: …'` 那行）。
  *
  *  **为什么不在宿主那边弹**：系统的 toast 是**按包限流**的（3 条 / 20 秒、5 条 / 42 秒、
- *  6 条 / 68 秒，反编译与真机日志见 `docs/device-findings.md` 四十），宿主的包一旦连按超过
+ *  6 条 / 68 秒，反编译与真机日志见 `docs/device/actions/feedback.md` 四十），宿主的包一旦连按超过
  *  这个密度，后面那些直接被 `NotificationService` 丢弃。而**系统自己**（包名 `android`）
  *  持有 `android.permission.UNLIMITED_TOASTS`，`isExemptFromRateLimiting` 判它免限流 ——
  *  所以这条提示改由注入侧用系统 Context 弹：同一个模块、同一句话，只是换了发话人。

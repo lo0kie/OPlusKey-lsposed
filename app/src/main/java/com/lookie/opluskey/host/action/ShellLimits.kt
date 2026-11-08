@@ -2,7 +2,7 @@ package com.lookie.opluskey.host.action
 
 // shell 执行的**并发与线程寿命**参数 —— 与 `ui/model/PageMetrics` 同一类东西
 //  （性能参数集中处），但**不能放在那边**：`PageMetrics` 在 `ui/`，而 `host/` 不许依赖 `ui/`
-//  （`docs/decoupling.md` 动作 1、2，`tools/audit-coupling.py` 会当场报错）。
+//  （`docs/architecture/decoupling.md` 动作 1、2，`tools/audit-coupling.py` 会当场报错）。
 //  同包里已有先例：`MiniWindowFacts.kt` 也是把一族的常量从执行类里拎出来单独放。
 
 /**

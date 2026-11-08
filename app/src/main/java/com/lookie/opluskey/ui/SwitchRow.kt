@@ -93,6 +93,15 @@ internal fun SwitchRow(
     enabled: Boolean = true,
     /** 拨这一下振不振 —— 默认振（与 `CardRow.Item.vibrate` 同一条口径）。 */
     vibrate: Boolean = true,
+    /**
+     * 挂在这一行**根**上的修饰符 —— 现在只有一处用途：整块文字的**光学居中**
+     * （`Modifier.opticalBlockCenter`，见 `CardRow.RowContent`）。
+     *
+     *  为什么必须由外面给：`SwitchPreference` 的标题 / 副标题是库内部画的，插不进修饰符；
+     *  而「双行看着比单行偏上」这件事（副标题行盒底那截 descent 空白）对所有形态都一样，
+     *  只能整行挪。
+     */
+    modifier: Modifier = Modifier,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     //  振动走页面那条通道（`LocalTick`）：这一层不带 `SettingsPage` 接收者。
@@ -125,7 +134,7 @@ internal fun SwitchRow(
     //  只吃点击的透明层，命中最上层，这一下就稳定落到提示上。
     //  `indication = null`：置灰行不该再冒涟漪（它会看着像「其实能点」）。
     val disabledClick = LocalDisabledClick.current
-    Box(Modifier.fillMaxWidth()) {
+    Box(modifier.fillMaxWidth()) {
         NoSwitchHaptic {
             SwitchPreference(
                 title = title,

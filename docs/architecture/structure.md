@@ -112,7 +112,7 @@ com.lookie.opluskey
 ## 三、逐文件迁移映射
 
 > 下表是这次重建**当时**的落点。之后屏目录按功能细分、共用件并入 `ui/` 根、`ui/hook` 单独成档，
-> 所以「迁移后」那一列只能当**历史记录**读；要点名一个文件现在在哪，以 `docs/decoupling.md` 零节与
+> 所以「迁移后」那一列只能当**历史记录**读；要点名一个文件现在在哪，以 `decoupling.md` 零节与
 > `tools/audit-coupling.py` 打印的档位为准。左列那几个旧包名（`page/` `hook/` `gesture/`）早已不存在。
 
 ### 根包与 core
@@ -256,10 +256,10 @@ grep -rn "coui\|androidx.compose" app/src/main/java/com/lookie/opluskey/inject/ 
 
 1. **`META-INF/xposed/java_init.list` 写死了 `com.lookie.opluskey.KeyModule`** ——所以 `KeyModule.kt`
    **必须留在根包**。挪它就要同步改这个文件，改错的表现是模块完全不加载（日志里一行都没有）。
-2. **`AndroidManifest.xml` 与 `scope.list` 不涉及包名**，无需改动；但改动后仍要按 `docs/device-findings.md`
+2. **`AndroidManifest.xml` 与 `scope.list` 不涉及包名**，无需改动；但改动后仍要按 `docs/device/lsposed.md`
    六之一~六之三 复核作用域与安装路径。
 3. **换包必须整机重启**才能验证（`AGENTS.md`
    一、11 与 二、1.2）：模块代码是 LSPosed 注入的，不重启一直跑旧代码 —— 这一点本轮已经踩过一次。
 4. **迁移时只改 `package` 与 `import`**。注释、常量、方法名一律原样带走；任何「顺手整理」都会让这次 diff 失去可审查性。
 5. **`git mv` 而不是删+建**，保留文件历史；一次提交只做一步（对应「六」的四步）。
-6. 提交前 `git status` 里不应出现 `.temp/`；`changelog/` 的当前工作区片段要补一条。
+6. 提交前 `git status` 里不应出现 `.temp/`；`docs/changelog/` 的当前工作区片段要补一条。

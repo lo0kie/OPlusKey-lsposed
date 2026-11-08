@@ -92,7 +92,7 @@ internal class ActionRunner(
      * 「灵感语音 · 开始」上一次触发的时间（`uptimeMillis`）—— 连按不重复起采集。
      *
      *  ROM 对重入的「开始」本来就是 no-op（`reentrant collect.`，见
-     *  `docs/device-findings.md` 四十六）：这道窗口只省一次 `startCollect`，顺带在日志里
+     *  `docs/device/actions/voice.md` 四十六）：这道窗口只省一次 `startCollect`，顺带在日志里
      *  留一行「这一下被挡了」的依据 —— 否则连按两次时看不出是模块挡的还是 ROM 挡的。
      *
      *  `@Volatile`：同一次按压的重复派发可能落在不同线程（执行线程 / 连发链）。

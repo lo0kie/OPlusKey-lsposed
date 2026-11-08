@@ -12,7 +12,7 @@ import com.lookie.opluskey.core.log.XLog
  *
  *  ## 现在没有采集点
  *
- *  系统进程里能拿到触摸事件的那个入口还没在真机上确认（`docs/device-findings.md` 里没有这一项），
+ *  系统进程里能拿到触摸事件的那个入口还没在真机上确认（`docs/device/` 里没有这一项），
  *  所以本阶段**只铺路、不装 Hook、不派发动作**：判出来一段滑动只落一行 `w` 日志。
  *  自检入口是诊断广播的 `touch` op（见 `ProbeOps`），它在进程内造几条合成轨迹跑通这整条链。
  *

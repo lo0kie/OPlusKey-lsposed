@@ -381,7 +381,7 @@ private fun Modifier.inputFocusBehavior(
  *  浮层里是浮层自己那一份；只要它是**在窗口里**的那个，事件就能沿焦点走到正在编辑的输入框。
  *  反过来，浮层里有几处把 `LocalView` 顶替成脱离窗口的 `View`（`Haptics.kt` 的触觉作用域），
  *  那里发按键就是空发 —— 判据与踩过的坑见 [moveCaretToEnd] 正文与
- *  `docs/device-findings.md` 四十三。
+ *  `docs/device/coui.md` 四十三。
  *
  *  排一帧再发：焦点刚到时 `CoreTextField` 内部那份状态还没跟上，这一下会被丢掉。
  *

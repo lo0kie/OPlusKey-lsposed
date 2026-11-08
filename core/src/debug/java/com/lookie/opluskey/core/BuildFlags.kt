@@ -15,7 +15,7 @@ const val BUILD_KIND: String = "debug"
  *
  * 打开后，一条 root 广播就能让注入侧在 `system_server` / 桌面进程里跑任意反射
  * （列方法签名、试调用、设圆角）—— 用来绕开「注入侧改一行就要整机重启，一轮试错几分钟」。
- * 用法见 `docs/debug-channel.md`。
+ * 用法见 `docs/runtime/debug-channel.md`。
  *
  * 注意：release 必须为 false：这条通道等于把「任意反射执行」开在系统进程里。
  */

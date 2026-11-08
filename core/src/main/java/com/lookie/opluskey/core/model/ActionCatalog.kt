@@ -300,7 +300,7 @@ object ActionCatalog {
 
     // 「交还系统」那一格（`native` / `passthrough`）**已删**：
     //  做不到单个手势级的交还 —— 一交还就是整键，同一把键上双击 / 长按的命令也跟着被系统吞掉。
-    //  取舍与依据写在 `docs/implementation.md` 的「交还系统为什么不提供」。
+    //  取舍与依据写在 `docs/runtime/key-to-gesture.md` 的「交还系统为什么不提供」。
 
     /**
      * 「打开应用」这一步的取值 —— 永不写进配置，只是「点它去挑应用」的关卡标记。
@@ -436,7 +436,7 @@ object ActionCatalog {
      *  与别的 `oplus:` 档不同，这两条不是侧键场景表里的能力，而是照抄 SystemUI 那两颗快捷功能的
      *  启动配方（动作 + extra + flag），于是锁屏下按侧键也能直接显示出来 —— 普通「打开应用」
      *  在锁屏上会被键盘锁盖住（计算器），或者丢掉「从锁屏进来」的那一支界面（相机）。
-     *  取证与配方见 `docs/device-findings.md` 四十五。
+     *  取证与配方见 `docs/device/lsposed.md` 四十五。
      *
      *  界面里这两档收在 [KEYGUARD_TILE] 后面（点格子弹菜单）：它们都是「锁屏上直接打开某样东西」，
      *  单独摆两格只会把「快捷功能」这一段撑成几条同类项。
@@ -461,7 +461,7 @@ object ActionCatalog {
      * 灵感语音 —— **开始**采集。
      *
      *  与 [VOICE_MEMORY_STOP] 是平级的两个取值：ROM 那侧只有「开始 / 结束」两个事件，
-     *  没有「再按一次就停」（见 `docs/device-findings.md` 四十六）。两档都收在 [VOICE_MODES]
+     *  没有「再按一次就停」（见 `docs/device/actions/voice.md` 四十六）。两档都收在 [VOICE_MODES]
      *  那一层里 —— 界面只露一行「灵感语音」，点开再选开始 / 结束，松手不替用户收尾。
      */
     private val VOICE_MEMORY = Action.OPLUS_PREFIX + RomProfile.NAME_VOICE_MEMORY
@@ -480,10 +480,13 @@ object ActionCatalog {
     /**
      * 「灵感语音」那一层：开始 / 结束两档，顺序即行序。
      *
-     *  两行的名字**只写「开始」「结束」**（用户口径）：它们在「灵感语音」那一行点开的选择器
-     *  里，标题已经写着「灵感语音」—— 再写成「开始灵感语音」是把同一句话说两次，
-     *  而那条选择器里两行并排，短的那版一眼就分得清。整句仍由 [commandTitleOf] 拼成
-     *  `小布 AI: 灵感语音 - 开始`（父格 → 中间层 → 状态）。
+     *  两行的名字**只写「开始」「结束」**：这里存的是三段式里的**状态**那一截，整句由
+     *  [commandTitleOf] 拼成 `小布 AI: 灵感语音 - 开始`（父格 → 中间层 → 状态）。
+     *
+     *  **不要为了弹窗好看把这两条改成「开始灵感语音」** —— 同一个 `name` 也喂给
+     *  [commandTitleOf]，那样整句会变成「灵感语音 - 开始灵感语音」。弹窗里那两行的完整短语
+     *  由界面侧拼（`ModeMenuPopups` 的 `stateRowLabel`，与系统开关、录屏三态同一条规矩：
+     *  菜单给动词，父名由那一层补）。
      */
     val VOICE_MODES: List<Spec> =
         listOf(
@@ -502,7 +505,7 @@ object ActionCatalog {
      * 点开它再弹一层选择器选「开始 / 结束」。
      *
      *  为什么不摊成两行：用户口径是「菜单里只留灵感语音，点了再选」；两档都是同一个能力的
-     *  两种操作，摊开会让小布 AI 那一格变成五项并列（见 `docs/device-findings.md` 四十六）。
+     *  两种操作，摊开会让小布 AI 那一格变成五项并列（见 `docs/device/actions/voice.md` 四十六）。
      */
     private val AI_MODES: List<Spec> =
         listOf(

@@ -11,7 +11,7 @@ import java.lang.reflect.Modifier
  *
  * ## 为什么是「转交」而不是「复刻」
  *
- *  技术文档 `SIDE-KEY-OPEN-APP-ANIMATION.md` §9 的结论是那条链路恒不生效（`callback.a()` 与 `z`
+ *  技术文档 `docs/features/launch-animation.md` §9 的结论是那条链路恒不生效（`callback.a()` 与 `z`
  *  都是常量、adapter 恒 `null`、`d.o` 只打一条失败日志就返回）。**真机上不是这样** ——
  *  把模块总闸关掉、让侧键走原生行为，系统日志里会出现：
  *

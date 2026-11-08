@@ -92,7 +92,7 @@ internal class AppShortcutLaunch(
      *  `startShortcut` 带窗口模式 options 在真机上经常**整发不落地**（表里连任务都不会出现），
      *  而自发 PI 通常 0.7 秒就进表；它是唯一能过 BAL 的那条。所以只发一次、
      *  由 [ShortcutStarter.send] 保证先走 PI 且带上窗口模式 ⇒ 要么直接起成小窗，
-     *  要么 1.4 秒内收一下。取证见 `docs/zoom-window.md` 的「快捷方式以小窗打开」一节。
+     *  要么 1.4 秒内收一下。取证见 `docs/features/zoom-window/notes.md` 的「快捷方式以小窗打开」一节。
      *
      *  单拆一个函数是为了让 [launch] 的出口数量留在 detekt 的 `ReturnCount` 之内。
      */

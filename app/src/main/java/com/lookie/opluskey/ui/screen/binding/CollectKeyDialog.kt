@@ -80,7 +80,7 @@ private const val COLLECT_CLOSE_TIMEOUT_MS = 600L
  *
  *  上报（`ACTION_KEY_SEEN`）由**本弹窗自己注册的接收器**收 —— 不借宿主那条
  *  （`host/GestureReceiver`）：那边属 `host/`，而 host/ 不许认识界面层
- *  （`docs/decoupling.md` 动作 1、2，`tools/audit-coupling.py` 会当场报错）。
+ *  （`docs/architecture/decoupling.md` 动作 1、2，`tools/audit-coupling.py` 会当场报错）。
  *
  *  那条旁路**只读**：它不改认领与放行，监听期间按键该干嘛还干嘛。
  */

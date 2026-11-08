@@ -124,12 +124,13 @@ internal fun SettingsPage.CommandMenuPopup(
                         //  在「命令列表」页点时，分页器停在列表那格，`form` 指向的是上次离开时那一页，
                         //  按 `cmd.kind` 取才不会清错（`formOf` 见 `CommandDraft`）。
                         commandDraft.draft.formOf(cmd.kind).reset()
-                    } else {
+                        actions.onEdit()
+                    } else if (loadDraft(cmd)) {
                         // 走 [SettingsPage.loadDraft] 而**不是** `draft.load`：表单里可能还有没保存的改动，
-                        //  直接灌进去会把它整份覆盖掉。
-                        loadDraft(cmd)
+                        //  直接灌进去会把它整份覆盖掉。它返回 false 表示只挂起了确认窗 —— 那样
+                        //  这一下就**不切页**，等窗确认之后由窗自己发起（见 `CommandDialogs`）。
+                        actions.onEdit()
                     }
-                    actions.onEdit()
                 },
                 // 两项之间那条细线由菜单自己加
                 MenuEntry.Row(

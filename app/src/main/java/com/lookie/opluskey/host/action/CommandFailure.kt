@@ -45,7 +45,7 @@ internal enum class CommandFailure(
      *  而宿主所在的 `platform_app` 域又没有 `/system/bin/sh` 的执行权 ⇒ 两条路各自都断，
      *  所以这里没有「换另一个解释器再试一次」这种退路（见 `ShellRunner.startProcess`）。
      *  提示里只说**宿主**「手势体感」：命令跑在宿主进程里，授权要授给那个包，不是模块自己的包
-     *  （真机实测两条授权互不影响，见 `docs/implementation.md`）。
+     *  （真机实测两条授权互不影响，见 `docs/runtime/key-to-gesture.md`）。
      */
     SHELL_NO_ROOT(Strings.COMMAND_FAILURE_SHELL_NO_ROOT, "「手势体感」没有 root 权限"),
 
@@ -78,7 +78,7 @@ internal enum class CommandFailure(
      *
      * 只提示、**什么都不做** —— 不再退「按包名另起一份实例」( 用户口径)：
      * 那条会先回桌面再起，用户看到的是「一按侧键就回桌面重开」，比没反应更糟
-     * （见 `docs/zoom-window.md` §2.2）。
+     * （见 `docs/features/zoom-window/notes.md` §2.2）。
      */
     APP_NO_MINI_WINDOW(Strings.COMMAND_FAILURE_APP_NO_MINI_WINDOW, "前台应用不支持小窗"),
 
@@ -158,7 +158,7 @@ internal object FailureNotice {
      * 以及各类失败原因，全都从这里出去。
      *
      *  **不再本地 `Toast`：一律请注入侧替我们弹**（[requestSystemToast]）。宿主自己的包受系统
-     *  的按包限流（3 条 / 20 秒、5 条 / 42 秒、6 条 / 68 秒，见 `docs/device-findings.md` 四十），
+     *  的按包限流（3 条 / 20 秒、5 条 / 42 秒、6 条 / 68 秒，见 `docs/device/actions/feedback.md` 四十），
      *  连按几下之后后面那些被 `NotificationService` 直接丢掉 —— 真机表现就是「执行了但没有提示」。
      *  系统自己（包名 `android`）持有 `UNLIMITED_TOASTS`，改由它发话这条路已经现成
      *  （`inject/SystemToast`，命令里 `tip:` 一直走的就是它）。

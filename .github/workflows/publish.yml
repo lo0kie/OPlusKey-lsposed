@@ -151,12 +151,12 @@ jobs:
 
       # 这一版的更新说明 —— **管理器弹「有新版本」时显示的就是它**（模块仓库那条 release 的正文）。
       #
-      #   来源是**手写维护**的 `release-notes/<versionName>.md`，与钉版那条（`release.yml`）同一个文件：
+      #   来源是**手写维护**的 `docs/release-notes/<versionName>.md`，与钉版那条（`release.yml`）同一个文件：
       #   两处显示的永远是一样的字。为什么不从提交里拼 —— 提交信息是写给维护者的，
       #   弹窗里要的是写给用户的一段话。缺文件就歇：公告是发版物的一部分。
       - name: 取本版更新公告
         run: |
-          note="release-notes/${{ steps.dist.outputs.version_name }}.md"
+          note="docs/release-notes/${{ steps.dist.outputs.version_name }}.md"
           if [ ! -f "$note" ]; then
             echo "::error::没有这一版的公告 ${note} —— 先写一份再上架"
             exit 1

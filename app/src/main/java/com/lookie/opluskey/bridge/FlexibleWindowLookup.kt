@@ -8,7 +8,7 @@ import com.lookie.opluskey.core.reflect.Reflect
 //  为什么单列这一个文件：探针存在的意义就是「在真机上问出生产路径会看到什么」。两边各写一份时
 //  先漂的一定是探针（它取任务时只试 `matchMode=0`，而生产路径逐档试 0/1）—— 于是同一台机器上
 //  探针报「任务找不到」、生产却能照常干，日志给出一条**与事实相反**的结论，比没有探针更坏。
-//  所以这一族只此一份：改任一档的行为，探针跟着一起变（见 `docs/decoupling.md`）。
+//  所以这一族只此一份：改任一档的行为，探针跟着一起变（见 `docs/architecture/decoupling.md`）。
 
 /**
  * `task.getWrapper().getExtImpl()` —— 任务的 `TaskExt`（柔性态那几个字段都挂在它上面）。

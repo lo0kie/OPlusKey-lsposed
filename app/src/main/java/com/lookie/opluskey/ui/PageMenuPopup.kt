@@ -613,7 +613,7 @@ private fun SettingsPage.MenuRow(
             // 「滑动不许选中」：库在**抬指那一刻**派发这一行，而它判「滚动还是选行」只看内部
             //  `isDynamicSelection`（= 量不出滚动范围才允许拖拽选行）——长列表上会偶发判错，
             //  真机两笔：位移 261px / 273px、列表跟着滚了 261px / 273px，
-            //  抬指却选中了手指下那一行（见 `docs/device-findings.md` 二十）。
+            //  抬指却选中了手指下那一行（见 `docs/device/coui.md` 二十）。
             //  这里按**这一段手势自己的位移**兜一道：越过阈值就是滑动，吞掉这次选中。
             //  真点击是 0~几 px（同批日志），不会误吞。
             val dragged = probe?.isDrag() == true

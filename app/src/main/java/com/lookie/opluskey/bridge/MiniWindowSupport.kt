@@ -14,13 +14,13 @@ import com.lookie.opluskey.core.reflect.Reflect
  * 注意：**它不是纯查询：判「不支持」时框架会顺手弹一条系统 toast「此应用尚未支持浮窗」**
  * （传空 bundle 也一样，与 `extra_window_mode` 无关）。所以**只能一问一答地用在用户刚做了某个
  * 动作的时刻，绝不能拿它整表轮询**（那会排出一串 toast）；框架里也没有可替代的静默判据。
- * 证据见 `docs/device-findings.md` 附十三之四。
+ * 证据见 `docs/features/zoom-window/api-extra.md` 附十三之四。
  *
  * **三态的理由**：读不到 / 调不通时返回 `null` 说「不知道」，界面据此**不提示也不拦** ——
  * 绝不能默认成 `true` 或 `false`（那是拿假判据误导用户）。
  *
  * 注意：**别拿 `ActivityInfo.resizeMode` 当判据**：真机上游戏也是 `0` 却能起成小窗
- * （见 `docs/device-findings.md` 附十三之三）。
+ * （见 `docs/features/zoom-window/api-extra.md` 附十三之三）。
  */
 internal object MiniWindowSupport {
     /** 本机这一档 ROM 的反射面 —— 未适配的 ROM 照最后一档试（见 [RomProfile]）。 */

@@ -132,7 +132,7 @@ internal class SideKeyInterceptor(
      * 这个事件是不是**我们自己注入的**合成事件（`KeyInjector` 干的那类按键注入）。
      *
      * 注入的键会**再走一遍**这条按键路径 ⇒ 再被认领、再判一次手势 ⇒ 每 ~100ms 一轮的自持循环
-     *（真机实测，见 `docs/device-findings.md`）。合成事件带的是虚拟键盘的 `deviceId`
+     *（真机实测，见 `docs/device/`）。合成事件带的是虚拟键盘的 `deviceId`
      *（`KeyInjector` 显式传 -1），认它的号即可放行。
      *
      * ## 判据必须**只作用在我们可能注入的键**上

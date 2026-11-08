@@ -34,7 +34,7 @@ class KeyId private constructor(
      *
      *  自定义键认**整族**：压感拍照键这类多码键（[RomKeyFamilies]），收集到族里任何一个码，
      *  整族都要认 —— 只认一个码的话其余手势的码会漏给系统。内部码 780 / 781 / 782 是策略类
-     *  给**侧键**专用的，别的键不走那条路（见 `docs/device-findings.md`）。
+     *  给**侧键**专用的，别的键不走那条路（见 `docs/device/`）。
      */
     val acceptedKeyCodes: Set<Int>,
     /** 是不是用户收集来的。收集来的可改名 / 可删，内置的不可 —— 判定只在这一处。 */

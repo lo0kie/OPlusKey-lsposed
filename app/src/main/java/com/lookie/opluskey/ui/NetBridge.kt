@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong
 //
 // 为什么不能自己发：宿主的清单里没有 `INTERNET`，而界面代码跑在**宿主进程**（真机实证
 // `SecurityException`）。能出网的是 system_server 那一侧（`inject/NetChannel`，见
-// `docs/device-findings.md` 四十一）。协议那一头在 `ModuleWire.ACTION_NET_REQUEST`。
+// `docs/device/lsposed.md` 四十一）。协议那一头在 `ModuleWire.ACTION_NET_REQUEST`。
 
 /**
  * 请注入侧取一次 [url] 的正文，最多等 [timeoutMs]。

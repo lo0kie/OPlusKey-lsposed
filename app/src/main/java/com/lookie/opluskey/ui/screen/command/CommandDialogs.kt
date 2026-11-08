@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.SettingsPage
@@ -29,12 +30,19 @@ import kotlinx.coroutines.delay
 
 /**
  * 这一页所有确认窗的挂载点 —— 一次画五个，各自看自己那一位。
+ *
+ * @param onLoaded 换命令的确认窗点「放弃」之后要**切到那一条所属的页**（由调用点给：
+ *   它就是「点列表里一张卡」那条路用的同一支 —— 滚回顶部再滑进去）。放在这里而不是
+ *   调用点里，是因为切页必须等确认：先切再问的话，窗背后已经是另一页了。
  */
 @Composable
-internal fun SettingsPage.CommandDialogs(ui: CommandUiState) {
+internal fun SettingsPage.CommandDialogs(
+    ui: CommandUiState,
+    onLoaded: (Command) -> Unit,
+) {
     DisclaimerDialog(ui)
     LeaveDiscardDialog()
-    SwitchDraftDiscardDialog()
+    SwitchDraftDiscardDialog(onLoaded)
     DeleteCommandDialog(ui)
     //  这两支的状态在 `CommandListEditState` 里（页面级的编辑态），不读 `ui`
     DeletePickedDialog()
@@ -152,11 +160,13 @@ internal fun SettingsPage.LeaveDiscardDialog(
 
 /**
  * 「换成另一条命令」撞上未保存的改动（触发点在 `SettingsPage.loadDraft`，这里只负责画）。
- *  确认 ⇒ 丢掉当前草稿、载入那一条（这里直接 `draft.load`：刚确认过，再走 `loadDraft`
- *  会因为它此刻仍是脏的而**再问一遍**）；取消 ⇒ 关掉窗，表单原样留着继续编。
+ *  确认 ⇒ 丢掉当前草稿、载入那一条、**再切到它所属那一页**（顺序不能反：先切后问的话，
+ *  窗背后已经换了页）；取消 ⇒ 关掉窗，表单原样留着继续编、页面也不动。
+ *
+ *  这里直接 `draft.load`（刚确认过，再走 `loadDraft` 会因为它此刻仍是脏的而**再问一遍**）。
  */
 @Composable
-private fun SettingsPage.SwitchDraftDiscardDialog() {
+private fun SettingsPage.SwitchDraftDiscardDialog(onLoaded: (Command) -> Unit) {
     ConfirmDialog(
         show = overlays.pendingDraftLoad != null,
         title = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
@@ -170,7 +180,10 @@ private fun SettingsPage.SwitchDraftDiscardDialog() {
         onConfirm = {
             val next = overlays.pendingDraftLoad
             overlays.pendingDraftLoad = null
-            next?.let { commandDraft.draft.load(it) }
+            next?.let {
+                commandDraft.draft.load(it)
+                onLoaded(it)
+            }
         },
     )
 }

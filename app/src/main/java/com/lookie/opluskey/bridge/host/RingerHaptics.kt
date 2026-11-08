@@ -9,7 +9,7 @@ import com.lookie.opluskey.core.log.XLog
 /**
  * 「切换响铃状态」那一下触觉 —— 与**系统侧键切档时同一份效果**。
  *
- * ## 档位 → 效果号（见 `docs/device-findings.md` 二十七）
+ * ## 档位 → 效果号（见 `docs/device/actions/audio.md` 二十七）
  *
  *  · 切到**振动** → `430`（两下）
  *  · 切到**响铃** → `308`（低沉那一下）

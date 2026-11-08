@@ -7,7 +7,7 @@ import com.lookie.opluskey.core.log.XLog
  *
  * ## 签名都是 dump 出来的，不是猜的
  *
- *  用 `PROBE --es op dump`（`docs/debug-channel.md`）把对应接口的方法连参数类型打出来之后照抄：
+ *  用 `PROBE --es op dump`（`docs/runtime/debug-channel.md`）把对应接口的方法连参数类型打出来之后照抄：
  *  ‹wifi› `setWifiEnabled(String, boolean)`、‹bt› `enable(AttributionSource)` /
  *  `disable(AttributionSource, boolean)`、‹airplane› `setAirplaneMode(boolean)`、
  *  ‹nfc› `enable(String)` / `disable(boolean, String)`、

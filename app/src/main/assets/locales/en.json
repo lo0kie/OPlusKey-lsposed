@@ -357,7 +357,7 @@
   "more.about_version": "Version",
   "general.title": "Key settings",
   "key_settings.title": "Custom settings",
-  "key_settings.section": "Custom settings",
+  "key_settings.section": "Master switch",
   "key_settings.need_own": "Turn on “Use custom settings” first",
   "key_settings.use_own": "Use custom settings",
   "key_settings.use_own_on": "Interface, vibration, notices, etc. set separately",

@@ -16,7 +16,7 @@ import com.lookie.opluskey.core.model.SwitchKind
  *  · **写**要权限：`setWifiEnabled` / `setAirplaneMode` 这些要 `NETWORK_SETTINGS`、`MODIFY_PHONE_STATE`
  *    之类的特权，宿主（`platform_app`）拿不到；模块本来就注入在 system_server（uid 1000），那边过得了。
  *  · **读**要 `ContentResolver`：`Settings` 在宿主里随便读（这些键都是公开可读的），而 system_server
- *    里借来的 Context 用 ContentResolver **必 NPE**（见 `docs/device-findings.md` 六之五）。
+ *    里借来的 Context 用 ContentResolver **必 NPE**（见 `docs/device/lsposed.md` 六之五）。
  *
  *  所以两边各做一件自己做得来的事：宿主说「它现在是开着的，切成关」，system_server 只负责切。
  *  这也顺带解决了「读不到状态就不能取反」—— 读不到就**不做**，绝不盲调（盲调会把开着的关掉）。

@@ -41,7 +41,7 @@ internal object StatusBarBridge {
      *  **只推不写库** —— 写库仍归宿主（自动亮度下要写的 `screen_auto_brightness_adj` 是
      *  PRIVATE_SETTINGS，注入侧也没有 `ContentResolver`）。这条指令的唯一职责是让
      *  `DisplayPowerController` 走一次**真实亮度变化**：控制中心的亮度条只在那一刻刷新
-     *  （见 `docs/device-findings.md` 38.3）。
+     *  （见 `docs/device/actions/brightness.md` 38.3）。
      */
     const val CMD_BRIGHTNESS = "brightness"
 

@@ -13,7 +13,7 @@ const val BUILD_KIND: String = "release"
  * 模块 **debug 通道**的总闸 —— release **必须** false。
  *
  * 打开它等于把「任意反射调用」开在 system_server / 桌面进程里，只能是 debug 包的能力；
- * 通道本身与用法见 `docs/debug-channel.md`，开关的理由见 debug 源集那份注释。
+ * 通道本身与用法见 `docs/runtime/debug-channel.md`，开关的理由见 debug 源集那份注释。
  */
 const val DEBUG_PROBE: Boolean = false
 

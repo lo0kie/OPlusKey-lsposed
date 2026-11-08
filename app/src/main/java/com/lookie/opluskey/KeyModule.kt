@@ -61,7 +61,7 @@ class KeyModule : XposedModule() {
     /**
      * system_server 启动完成 —— 注入 system_server 的正确入口。
      * system_server 有专属回调，不需要（也没法）自己做进程判断；能力差异见
-     * `docs/device-findings.md` 的「回调能力表」。
+     * `docs/device/` 的「回调能力表」。
      */
     override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
         XLog.w("system_server 启动，开始安装按键 Hook")
@@ -110,7 +110,7 @@ class KeyModule : XposedModule() {
             LAUNCHER_PACKAGE -> {
                 // 桌面进程：**只为 debug 通道**而接的第二个落点（不参与任何产品功能）。
                 // 「前台 → 小窗」那条要拿到带 root 的窗口过渡，服务端的条件是「调用方 pid == 桌面进程 pid」，
-                // 所以必须能在桌面进程里执行代码 —— 见 docs/debug-channel.md 与 device-findings 附九。
+                // 所以必须能在桌面进程里执行代码 —— 见 docs/runtime/debug-channel.md 与 device-findings 附九。
                 // release（`DEBUG_PROBE=false`）里这条通道整个不存在：连日志都不打 ——
                 // 否则 release 的日志页会出现「桌面进程启动，装 debug 通道落点」，
                 // 而实际上一个落点都没装，排查时会被这句话带偏。
@@ -154,9 +154,9 @@ class KeyModule : XposedModule() {
          * 桌面（`com.android.launcher`）—— **只为 debug 通道**而接的第二个落点。
          *
          * 理由：「前台 → 小窗」要拿到带 root 的窗口过渡，服务端的条件是「调用方 pid == 桌面进程 pid」
-         * （`isStartFromLauncher()`，见 `docs/device-findings.md` 附九），所以必须能在**桌面进程里**
+         * （`isStartFromLauncher()`，见 `docs/features/zoom-window/api.md` 附九），所以必须能在**桌面进程里**
          * 执行代码。注意：它不参与任何产品功能；要不要写进 `scope.list` 由调试需要决定
-         * （见 `docs/debug-channel.md`）。
+         * （见 `docs/runtime/debug-channel.md`）。
          */
         const val LAUNCHER_PACKAGE = "com.android.launcher"
 

@@ -12,7 +12,7 @@ import java.lang.reflect.InvocationTargetException
  *  `IDisplayManager.setTemporaryBrightness` 在服务那层要
  *  `android.permission.CONTROL_DISPLAY_BRIGHTNESS`（signature|privileged）。宿主
  *  `com.oplus.gesture` 只有 `WRITE_SETTINGS` + `DEVICE_POWER`，调不动；system_server 是 uid 1000，
- *  天然放行（依据见 `docs/device-findings.md` 38.3）。
+ *  天然放行（依据见 `docs/device/actions/brightness.md` 38.3）。
  *
  * ## 为什么要调它
  *

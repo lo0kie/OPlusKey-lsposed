@@ -5,6 +5,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,6 +41,7 @@ import com.lookie.opluskey.ui.model.ROW_TITLE_INSET
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.model.isDarkScheme
+import com.lookie.opluskey.ui.model.opticalBlockCenter
 import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.BasicComponentColors
@@ -447,6 +449,13 @@ private fun ColumnScope.RowContent(
                     position = position,
                     enabled = row.enabled,
                     vibrate = row.vibrate,
+                    //  与 [CardRow.Item] 同一条尺子（见 [ItemText] 里那段）：开关行的标题 / 副标题
+                    //  是库内部画的、插不进修饰符，所以整行挪。副标题必有，末行固定是 `body2`。
+                    modifier =
+                        Modifier.opticalBlockCenter(
+                            COUITheme.textStyles.headline1,
+                            COUITheme.textStyles.body2,
+                        ),
                     onCheckedChange = row.onCheckedChange,
                 )
             }
@@ -565,14 +574,19 @@ private fun ItemRow(
  *
  * ## 为什么这一块要项目自己画
  *
- *  为了那一句**光学修正**：行里只有标题时（没有副标题），行高由这一行字自己撑起来，
- *  而字在行盒里是**按行盒居中**的 —— 汉字墨迹的重心比行盒中心偏高一点，整行看着像被顶上去了。
- *  [opticalCenter] 按字形边界把它压回来。库那版 `BasicComponent` 的 `Text` 写在内部，
- *  修饰符插不进去，所以这一块自己拼。
+ *  为了那一句**光学修正**：库那版 `BasicComponent` 的 `Text` 写在内部，修饰符插不进去。
  *
- *  只有「标题 + 副标题」那种**不做**修正：那时行高由两行字一起撑，标题与副标题互相平衡，
- *  单独把标题压下来反而让两行的间距看着不匀。但标题右边挂了标签（`titleExtra`）时必须压 ——
- *  标签自己那颗字已经按字形边界压过了，标题不压就与它差半档。
+ * ## 修正的是**整块**，不是单独一行
+ *
+ *  行盒（`ascent + descent`）与汉字墨迹不是一回事：卡片行的上下内边距本来就对称（12dp / 12dp），
+ *  但最后一行是副标题（14sp）时它行盒底留着 `descent` 那截汉字不占的空白，肉眼看到的下留白
+ *  就比上留白多 9~10px。只有标题的行没有副标题那截，看着反而居中 —— 同一张卡里两种形态
+ *  并排就是「上下留白不一致」。
+ *
+ *  [opticalBlockCenter] 按整块的首行 / 末行量同一把尺子，两种形态于是落到同一个口径上
+ *  （上下都等于「内边距 + 首行的行盒顶空白」）。开关行走同一条（见 [RowContent]）。
+ *
+ *  [CardRow.Item.titleContent] 那种「一行里摆几列」的不参与：里面不是一行字，没有墨迹边界可量。
  */
 @Composable
 private fun ItemText(
@@ -581,16 +595,19 @@ private fun ItemText(
     summaryColors: BasicComponentColors,
 ) {
     val titleStyle = COUITheme.textStyles.headline1
-    //  标题 + 紧跟其后的那一块（小标签）：整块放进一个 `Row`，标题带 `weight(fill = false)`
-    //  —— 名字长了先缩标题，标签始终留在行内（与原来那一行自己排的规矩一致）。
-    //
-    //  这一行里**必须做光学修正**（与「只有标题」那一档同一个理由，见函数 KDoc）：
-    //  标签自己那颗字是按字形边界压过的（`AppKindTag`），标题不压就与它差半档 ——
-    //  摆在一起读作「标签没有中线对齐标题」。有副标题时也照压：修正只挪这一行字的墨迹，
-    //  副标题是另一段、不受影响。
-    //  多行标题不做光学修正：那一手是按**一行墨迹**的中线挪的，几行摞起来挪只会整体偏上。
-    val titleNeedsOpticalCenter =
-        (row.summary == null || row.titleExtra != null) && row.titleMaxLines == 1
+    val summaryStyle = COUITheme.textStyles.body2
+    //  按**形态**分流，两条口径不同（真机逐行量过，数值见 changelog 那一节）：
+    //   · 单行：行内容比库的最小行高矮 ⇒ 库已经把它**垂直居中**了，只差「墨迹偏离行盒中心」
+    //     这一档 —— 用 [opticalCenter]（实测 65/64）；
+    //   · 双行：内容比最小行高高 ⇒ 库按**贴顶**摆，整块的墨迹偏上（下留白多 10px）——
+    //     用 [opticalBlockCenter] 按首行 / 末行的墨迹边界把整块挪到视觉居中；
+    //   · `titleContent`（一行里摆几列）不适用：里面不是一行字，没有墨迹边界可量。
+    val blockModifier =
+        when {
+            row.titleContent != null -> Modifier
+            row.summary == null -> Modifier.opticalCenter(titleStyle)
+            else -> Modifier.opticalBlockCenter(titleStyle, summaryStyle)
+        }
     //  标题 / 副标题两档色同样带过渡：整页闸门一拨、或这一行自己从「待补条件」变成「填好了」时，
     //  行首图标与行尾箭头本来就在渐变（见 [rememberCardRowIconColor] 与 `arrowTint`）——
     //  文字硬切就成了「图标在淡、字在跳」。
@@ -604,40 +621,41 @@ private fun ItemText(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "CardRowSummary",
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (row.titleContent != null) {
-            //  **整列占满**：自己画的那一块要能按列分宽度（见 [CardRow.Item.titleContent]），
-            //  这里就不能按内容宽度收缩。光学修正也不做 —— 里面是几列并排，不是一行字。
-            Box(Modifier.weight(1f)) { row.titleContent.invoke() }
-        } else {
-            //  **标题换了就淡过去**，不硬切：同一行原地换内容的场合不少（条件行从「未选择场景」
-            //  换成真的那一档、动作格从「无操作」换成具体命令），硬切读起来像「这一行被删掉、
-            //  又插了一行新的」。行首那颗字形本来就在交叉淡（见 `cardRowStartAction`）——
-            //  文字不淡就成了「图标在淡、字在跳」。曲线与那一处同源（[COLOR_FADE_SPEC]）。
-            //  两种内容同字号、同边距 ⇒ 交叉期间盒宽取较大者，行高不变。
-            Crossfade(
-                targetState = row.title,
-                modifier = Modifier.weight(1f, fill = false),
-                animationSpec = COLOR_FADE_SPEC,
-                label = "CardRowTitleText",
-            ) { shown ->
-                Text(
-                    text = shown,
-                    style = titleStyle,
-                    fontWeight = FontWeight.Medium,
-                    color = titleColor,
-                    maxLines = row.titleMaxLines,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = if (titleNeedsOpticalCenter) Modifier.opticalCenter(titleStyle) else Modifier,
-                )
+    Column(modifier = blockModifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (row.titleContent != null) {
+                //  **整列占满**：自己画的那一块要能按列分宽度（见 [CardRow.Item.titleContent]），
+                //  这里就不能按内容宽度收缩。整块修正也不做 —— 里面是几列并排，不是一行字。
+                Box(Modifier.weight(1f)) { row.titleContent.invoke() }
+            } else {
+                //  **标题换了就淡过去**，不硬切：同一行原地换内容的场合不少（条件行从「未选择场景」
+                //  换成真的那一档、动作格从「无操作」换成具体命令），硬切读起来像「这一行被删掉、
+                //  又插了一行新的」。行首那颗字形本来就在交叉淡（见 `cardRowStartAction`）——
+                //  文字不淡就成了「图标在淡、字在跳」。曲线与那一处同源（[COLOR_FADE_SPEC]）。
+                //  两种内容同字号、同边距 ⇒ 交叉期间盒宽取较大者，行高不变。
+                Crossfade(
+                    targetState = row.title,
+                    modifier = Modifier.weight(1f, fill = false),
+                    animationSpec = COLOR_FADE_SPEC,
+                    label = "CardRowTitleText",
+                ) { shown ->
+                    Text(
+                        text = shown,
+                        style = titleStyle,
+                        fontWeight = FontWeight.Medium,
+                        color = titleColor,
+                        maxLines = row.titleMaxLines,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            row.titleExtra?.let {
+                Spacer(Modifier.width(ROW_TITLE_EXTRA_GAP))
+                it()
             }
         }
-        row.titleExtra?.let {
-            Spacer(Modifier.width(ROW_TITLE_EXTRA_GAP))
-            it()
-        }
+        ItemSummary(row, summaryColor)
     }
-    ItemSummary(row, summaryColor)
 }
 
 /** 标题与副标题之间那一档 —— 与库的 `MarginBetweenLine` 同一值（2dp）。 */

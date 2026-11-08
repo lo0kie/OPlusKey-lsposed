@@ -2,7 +2,7 @@
 
 > 2026-10-14 ~ 10-15，PLK110 / 1272×2772 / 560dpi /
 > ColorOS。本文是模块里「小窗」这一块的**总文档**：两条命令的现行实现、所有入口的配方与判据、动画方案的完整推导、反射坑清单、代码位置。过程性取证（逐条 dex 反汇编、日志原文）在
-> `device-findings.md` §17.6.1~17.6.5 与附二~附六，本文只留结论与可直接照抄的配方。
+> `api.md` §17.6.1~17.6.5 与附二~附六，本文只留结论与可直接照抄的配方。
 
 ---
 
@@ -75,12 +75,12 @@
 （`CommandFailure.APP_NO_MINI_WINDOW`），只提示、不动屏幕。
 
 ⚠️ **历史顺序（别照着回退）**：2026-10-14 反复调过 —— 曾经让 `launch 配方`
-当主路去修「比屏幕宽」，结果横屏**进不去小窗**。判据定成**「进得去」优先于「尺寸对」与「有动画」**，见 §13.1。
+当主路去修「比屏幕宽」，结果横屏**进不去小窗**。判据定成**「进得去」优先于「尺寸对」与「有动画」**，见 `../device/actions/launch.md` §13.1。
 
 ⚠️ **曾经把 ① 写成 system_server 的「伪造态 +
 switchState」**（为了拿原生动画，§七）。2026-10-14 真机验完否掉了当主路：那条开出来的窗口是**半成品**
 ——几何与档位都对，但**没圆角、没操作条 /
-⋮ 菜单、点一下会被当成拖动**，内容还叠两份（根因是框架的「柔性任务注册」那步没做，见 `device-findings.md`
+⋮ 菜单、点一下会被当成拖动**，内容还叠两份（根因是框架的「柔性任务注册」那步没做，见 `api.md`
 附八）。现由宿主侧开关 `MiniWindowLauncher.USE_FORGED_ANIMATION_ROUTE`
 控制、默认**关**：想要动画、或哪天把注册那步补上，再打开试。
 
@@ -245,14 +245,14 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
 > ⚠️ **表里是「屏幕落点」，不是可以直接喂 API 的参数。** 两个小窗 API 的 `Rect` 语义是**反的**：
 > `getMiniFlexibleTaskInfo` 给屏幕矩形，而 `setRememberPosInfo`
 > 要的是**应用配置矩形**，差值正好一个 scale。照抄这张表去调 `setRememberPosInfo`
-> 会「小一圈」（2026-10-14 真机踩过，详见 §7.4 与 `docs/device-findings.md` **附七**）。
+> 会「小一圈」（2026-10-14 真机踩过，详见 §7.4 与 `api.md` **附七**）。
 >
 > 另一条同源的结论：**小窗的逻辑尺寸恒为 `1272 × 2261`，两档共用**，屏幕上多大只由 scale 决定（展开 `1020 × 1812`、收起
 > `305 × 542`）。所以 `OplusAppInfo.appBounds` 两档读出来一样， **不能用它分档位**。
 >
 > ⚠️ 还有一处**同名字段**要当心：上表这个 `windowType` 是 `OplusZoomWindowInfo` 上的；而 `dumpsys activity activities`
 > 里 ActivityRecord 也有个 `windowType`，**展开档 / 收起档 / 连桌面都是
-> `2`**，两者只是名字撞车。别拿 dumpsys 里那个判档位（2026-10-14 实测，见 `device-findings.md` 附八）。
+> `2`**，两者只是名字撞车。别拿 dumpsys 里那个判档位（2026-10-14 实测，见 `api.md` 附八）。
 
 **这条的致命缺陷**：**没有窗口动画**（§六），所以它现在是 `zoom:mini` 的**降级路**（②），不是主路。
 
@@ -275,14 +275,14 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
 `No transition roots in (#127) … so abort`。实测前台跑 `leash=0`， **把任务放后台再跑也是
 `leash=0`**。有动画的走法必须让任务先离开栈顶（多回桌面一步，用户否掉）。
 
-> 📌 2026-10-14 补测（`device-findings.md` **附九**）：清干净状态后复测，**前台全屏任务走 recents 正门仍然
+> 📌 2026-10-14 补测（`api.md` **附九**）：清干净状态后复测，**前台全屏任务走 recents 正门仍然
 > `No transition roots → abort`**，与本节一致。而**桌面**那条「近期任务浮窗」（非前台任务）却建出了真过渡并跑了
 > `MultiSpringAnimation` ——两者 `zoomLaunchFlags` 相同（都是 `2`），差别是桌面那次日志里多一条
 > `skipCurrentOrAdjustChange … launchFrom=2`（调用方身份）。
 > **顺带纠正一处归属**：圆角与操作条是**那条过渡**装的（`adjustSurfaceForTransitionIfNeed(cornerRadius=91)` /
 > `finishTransition will update task's caption visible`），不是「柔性任务注册」装的 ——所以伪造态缺壳子更可能只是过渡 abort 的后果。
 >
-> 📌 **2026-10-14 再补测（`device-findings.md`
+> 📌 **2026-10-14 再补测（`api.md`
 > 附十一，A 方案已证伪）**：把「调用方身份」这个猜想直接试了 —— 用 debug 通道的 `zoom` op
 > **从桌面进程**发起、target 是**前台**任务，结果仍然 `No transition roots → abort`。**所以 `launchFrom=2`
 > 不是由调用方身份决定的。**
@@ -320,11 +320,11 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
 ## 七、system_server 伪造态 + `switchState`（原生动画）—— ⚠️ **当前已停用**
 
 > **本章描述的路当前不是主路**（主路见 §2.2：应用侧 recents 正门）。2026-10-14 真机验完把它从主路撤下来了：它确实能拿到原生动画，但开出来的窗口是**半成品**
-> ——没圆角、没操作条 / ⋮ 菜单、点一下会被当成拖动、内容叠两份（`device-findings.md`
+> ——没圆角、没操作条 / ⋮ 菜单、点一下会被当成拖动、内容叠两份（`api.md`
 > 附八）。代码与开关都还在（`MiniWindowLauncher.USE_FORGED_ANIMATION_ROUTE`，默认
 > `false`），下面记的机制与坑全部有效，是「将来要拿回动画」的起点。
 >
-> ⛔ **2026-10-14 复测：本章这条路已被判死，不要再打开那个开关**（`device-findings.md`
+> ⛔ **2026-10-14 复测：本章这条路已被判死，不要再打开那个开关**（`api.md`
 > 附十二）。根因不是「少补几个调用」，而是 **`switchState` 根本没转换任务** —— 真机日志里
 > `onTaskInfoChanged … mWindowingMode=fullscreen` 自始至终是全屏，只是把 surface 缩到 `scale=0.8014`
 > 又画了条操作条：**一个穿着小窗外衣的全屏任务**。于是 `handleButtonRegion` 恒为
@@ -333,7 +333,7 @@ android.app.OplusActivityTaskManager#startActivityFromRecentsForFlexible(int tas
 > `updateCaptionViewMode`），**但补不了"它不是真小窗"**。
 >
 > **⇒ 与 §6.1 的 recents 正门合起来看：「前台应用 → 小窗 + 框架原生动画」在这个 ROM 上拿不到。**
-> 唯一剩下的路是**自己放动画**（`device-findings.md` 附十一 D1）：稳定地走 recents 正门拿真小窗，再在它的
+> 唯一剩下的路是**自己放动画**（`api.md` 附十一 D1）：稳定地走 recents 正门拿真小窗，再在它的
 > `SurfaceControl` 上复刻原生同形的弹入（`alpha 0→1`、`scale 0→0.8016529`）。
 >
 > ⏭ **但"自己画动画"已经被用户否掉（太脆弱）。而原生的那个动画器其实可以直接调** ——框架自己算插值 / 矩阵 / apply /
@@ -395,7 +395,7 @@ ext.updateFlexibleTaskParams(bundle, ActivityOptions.makeBasic(), record)
 `0.2397`），喂进去等于把「展开」的动画落到了收起的位置，真机表现就是**「按一下直接变成右上角那条最小化窗」**。展开档要用
 `setUserPositionInfo` 那条路的标准值（同 §五 尺寸档表里 `flags=2` 那一行）。
 
-**⚠️ 第二个坑（2026-10-14 真机确认，`docs/device-findings.md` 附七）**：**别照抄上表那个屏幕矩形**。
+**⚠️ 第二个坑（2026-10-14 真机确认，`api.md` 附七）**：**别照抄上表那个屏幕矩形**。
 `setRememberPosInfo` 的 `Rect` 是**应用配置矩形**，系统把它的尺寸**再乘一次 `scale`** 才是屏幕大小：
 
 ```
@@ -463,7 +463,7 @@ mHasCaption 分支
    `getMiniFlexibleTaskInfo`（private）可用。
 4. **模块日志在 LSPosed 文件里**：system*server / 宿主侧 `XLog`
    输出在 `/data/adb/lspd/log/modules*\*.log`，**不在 logcat**。注入侧 i/d 级在日志页整档看不到，判据行必须 W 级。
-5. **换包后路径变化**：重装后安装路径变了 → 本次开机模块整体不加载（`device-findings.md` 六之三）。
+5. **换包后路径变化**：重装后安装路径变了 → 本次开机模块整体不加载（`../device/lsposed.md` 六之三）。
 
 ---
 
@@ -498,7 +498,7 @@ mHasCaption 分支
 3. **点 ✓ 的另一道**：挑中的是**拉不起来**的应用（`LaunchableApp.launchable == false`）⇒ 弹「此应用无法打开」，**没有正文**，确定与取消都只是关掉这句、回本页，什么都不写。
 4. ⚠️ **绝不能整表预判**：那个问法自带系统提示 —— 曾经在 `entry()`
    里对 598 个应用各问一次，结果每进一次页面就排出一串系统 toast「此应用尚未支持浮窗」（用户报的「一直弹」就是它）。定因、对照实验与「框架侧没有静的替代判据」的取证见
-   `docs/device-findings.md` 附十三之四。行尾那枚「不支持小窗」标签因此**已撤掉**（它只能是整表预判的产物）。
+   `api-extra.md` 附十三之四。行尾那枚「不支持小窗」标签因此**已撤掉**（它只能是整表预判的产物）。
 5. ⚠️ 每次询问都可能顺带弹一条系统 toast（判 `false`
    时）—— 那是框架的行为，不去压它。所以同一档（同一个包、同一个勾选态）只问一次；真正提交那一下再问一次，多出来的那条 toast 是「用户正按下 ✓」时该说的话。
 
@@ -527,7 +527,7 @@ zoom:mini → 走 recents 正门（原地收、无动画）
 
 **没有** `侧键·单击 → zoom:mini` 就说明这一下压根没派到小窗动作上 —— 先去设置页把 **侧键 → 单击 → 前台转小窗**
 确认一遍（另一档常见原因是主开关关着，那一档模块整条让位、行为与原生一致）。**别按「小窗坏了」的方向查**。判据行见
-`device-findings.md` §十五。
+`../device/lsposed.md` §十五。
 
 > ⚠️ 本节原来教人去找 `passthrough` / 「放行一次」那两行 —— 那是**已删掉的**「交还系统」（`native` /
 > `passthrough`）动作的日志，现在模块里**根本产生不出这两行**
@@ -537,7 +537,7 @@ zoom:mini → 走 recents 正门（原地收、无动画）
 真机确认）、多实例修复工作正常、「太长」「没有操作条」两根因已修（`built = installed = 95928330`）；**收起档（`zoom:mini:collapse`）已接进动作契约与执行侧**（`Action.MiniWindow(collapsed)`，配方见 §2.2 与 §五的尺寸档表）。
 
 **待办**：§7.4 的两个坑都已修 ——（a）不能取 `getMiniFlexibleTaskInfo` 的收起几何；（b）不能把**屏幕矩形**当参数喂
-`setRememberPosInfo`，要喂**配置矩形** `Rect(126,319-1398,2580)`。完整取证与推算见 `docs/device-findings.md`
+`setRememberPosInfo`，要喂**配置矩形** `Rect(126,319-1398,2580)`。完整取证与推算见 `api.md`
 附七。两处都在注入侧 ⇒ ⏭️ **待整机重启验证**。
 
 验收判据（坐标已定死，可照抄，不用目测）：
@@ -610,7 +610,7 @@ adb shell "su -c 'am broadcast -a com.lookie.opluskey.GESTURE -p com.oplus.gestu
 配合「宿主侧改动 `kill` 进程即生效」，调试一轮的闭环变成： **改宿主代码 → 装机 →
 kill 宿主进程 → 发假手势 → 截图 / 看日志** —— 全程不用重启。
 
-> 📌 更强的同类工具是 **debug 通道**（`docs/debug-channel.md`，`DEBUG_PROBE` 闸门）：它能在 `system_server`
+> 📌 更强的同类工具是 **debug 通道**（`../runtime/debug-channel.md`，`DEBUG_PROBE` 闸门）：它能在 `system_server`
 > / 桌面进程里跑任意反射（`dump` 拿真实签名、`call` 试调用、 `corner`
 > 设圆角）——**注入侧的实验连编译都不用**。上面这个假手势钩子解决「触发」，它解决「执行」；两者配合，注入侧一轮试错从几分钟降到几秒。
 
@@ -810,7 +810,7 @@ scale    = 0.5875             ← 为竖屏那套配置矩形标定的缩放（1
 
 `zoomRect = Rect(141, 266 - 1457, 1007)` 经**截图像素级边缘检测**核实（左 `x=141`、下 `y=1006`
 双边吻合）就是**屏幕矩形** —— 判「窗口多大 / 装不装得下」只能用它，不能用
-`OplusAppInfo.appBounds`（那是配置矩形，不含缩放）。完整取证见 `docs/device-findings.md` **附十三**。
+`OplusAppInfo.appBounds`（那是配置矩形，不含缩放）。完整取证见 `api.md` **附十三**。
 
 **根因**：**只出在 recents 正门那条路，且只在目标本身是「横屏全屏任务」时。** 展开档（`flags = 2`）在服务端走
 `startFreeFormFromRecent` → `collectFlexibleTaskInfo(intent, …)` →

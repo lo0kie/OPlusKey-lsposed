@@ -40,7 +40,7 @@ internal object AppLaunchAsUser {
      * ## 值是怎么来的
      *
      *  从 `oplus-services.jar` 里 `OplusMultiAppManagerService#shouldShowResolverActivity`
-     *  的字节码读出来的 —— 两处 `const/16` 紧跟着 `hasOplusFlag`（详见 `docs/device-findings.md`
+     *  的字节码读出来的 —— 两处 `const/16` 紧跟着 `hasOplusFlag`（详见 `docs/device/actions/launch.md`
      *  二十二）。`hasOplusFlag` 读的是 `Intent.getIntentExt().getOplusFlags()`，**只看调用方
      *  自己挂在 intent 上的 oplus flags**，与「谁调用的」无关 —— 所以不必伪装 callingPackage。
      */

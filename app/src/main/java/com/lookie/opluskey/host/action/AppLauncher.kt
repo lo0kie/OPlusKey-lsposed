@@ -595,7 +595,7 @@ private fun buildFeatureIntent(target: RomProfile.BuiltIn): Intent =
 /**
  * 起界面之前先把屏幕点亮（[RomProfile.BuiltIn.wakeScreen] 那一档）。
  *
- *  侧键在**熄屏**时也照常被拦住（见 `docs/device-findings.md` 三十九），而 `startActivity`
+ *  侧键在**熄屏**时也照常被拦住（见 `docs/device/side-key.md` 三十九），而 `startActivity`
  *  本身不会点亮屏幕 —— 不补这一下，相机 / 计算器在幕后起来了，用户看到的仍是黑屏。
  *  已经亮着就什么都不做（不亮屏比亮屏更不该发生的是「多改了一次屏幕状态」）。
  *
