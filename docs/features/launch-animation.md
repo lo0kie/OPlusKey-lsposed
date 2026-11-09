@@ -374,6 +374,25 @@ WindowManagerShell: Delegate animation for (#47) to RemoteTransition { … debug
   （模块自己的 dex 路径里没有宿主的类）；`d#m` 用 `UserHandle.CURRENT`，分身上下文不支持。
 - 只有在「拿不到宿主类 / 那个方法被改名」时才需要退回自己造 `RemoteAnimationAdapter`，
   把那套 API 与第 3–6 节的常量几何照搬 —— 那是下策（隐藏 AIDL 在没有框架 stub 时编不过）。
+
+#### 10.1 分身目标（`999@包名`）**没有**原版动画，这是限制不是缺陷
+
+  三条路都堵死，别再花时间试：
+
+  1. **`createContextAsUser` 造不出分身上下文**：它要求调用方自己的包在目标用户里也装着，
+     真机上是 `Own package not found for user 998: package=com.oplus.gesture`（见 `AppCloneCatalog`）。
+  2. **`d#m` 里没有 userId 入口**：它内部写死 `context.startActivityAsUser(…, UserHandle.CURRENT)`，
+     只能落到「这个 Context 自己的用户」上。而唯一能拿到的 Context 是主用户的。
+  3. **不能覆写那一步**：`ContextWrapper.startActivityAsUser` 是隐藏方法，Kotlin 侧看不到签名、
+     无法 override；反射改 `ContextImpl.mUser` 虽然能让 `CURRENT` 解析成分身，但 `d#m` 同一条路上
+     还要用 `context.getPackageManager()` / `getResources()`，那两个在分身用户里同样起不来
+     （就是第 1 条那个失败），于是还没走到 `startActivityAsUser` 就先崩了。
+
+  现状：分身目标走 `AppLaunchAsUser` 的 ATMS 普通起法（明确 `userId`），**没有原版转场**。
+  主用户下启动「装了分身的应用」则**有**原版动画 —— 那条路只要在转交之前挂上
+  `OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER`（见 `docs/device/actions/launch.md` 二十二），
+  ColorOS 就不会插一次「用哪一份」的选择器。
+
 - 不确定项（只影响观感细节，不影响时间表与几何）：
   - `f::h` 的两个布尔在「打开应用」方向上的取值；
   - `ActivityTransitionAnimator$a` 里状态插值的逐帧公式细节；

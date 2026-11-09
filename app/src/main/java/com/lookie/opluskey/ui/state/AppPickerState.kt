@@ -120,6 +120,22 @@ internal class AppPickerState {
     val stockAnim = mutableStateOf(false)
 
     /**
+     * 这一条目标**吃不到原版动画**吗 —— 点 FAB 那一刻据此把 [stockAnim] 拨回关（并说一句）。
+     *
+     *  三种：**分身**（原版那条链路写死 `UserHandle.CURRENT`，见 `OriginalLaunch`）、
+     *  **快捷方式**（走系统封好的 PendingIntent，拿不到内部 intent 交不出去）、
+     *  **具体界面**（`包名/类名` 现拼的 intent 没有 `ACTION_MAIN` + `CATEGORY_LAUNCHER`，
+     *  ROM 认不出「桌面启动」，只给系统默认动画 —— 执行侧补那对标记也只是尽力而为）。
+     *
+     *  改这里之前先看 `docs/features/launch-animation.md` 的 10.1：前两条是**做不到**，
+     *  不是「还没做」。
+     */
+    fun stockAnimUnsupported(
+        target: String,
+        shortcutId: String?,
+    ): Boolean = shortcutId != null || AppTarget.userId(target) != 0 || AppTarget.activity(target) != null
+
+    /**
      * 进页那一刻这两个开关的值 —— 退出页面时据此判「这一趟拨过没有」。
      *
      *  为什么拨开关也算**草稿**：`window:` / `app:a:` 是**绑定的一部分**，拨完再挑应用、按确认

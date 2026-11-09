@@ -218,6 +218,8 @@ internal fun SettingsPage.onDraftPicked(
 ) {
     tickNow()
     val detail = PickedDetail(target, shortcutId, label)
+    // 「这一条吃不到原版动画」不在这里判：开关该不该拨回关要到**上一级那颗 FAB** 才说得准
+    //  （那一处与小窗共用一份判据，见 `AppConfirmFab.blockedToggleOf`）。
     // 草稿与「选中位」装同一份：行尾靠它的 shortcutId 画 table-shortcut，FAB 靠它取目标
     picker.draft = detail
     appPickerUi.pending = detail

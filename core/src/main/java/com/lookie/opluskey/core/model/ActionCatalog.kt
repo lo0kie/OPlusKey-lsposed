@@ -638,7 +638,7 @@ object ActionCatalog {
      */
     const val APP_CONTROL_TILE = "appctl:"
 
-    /** [APP_CONTROL_TILE] 那一层菜单的两行 —— **都不是取值**，只是「这一趟去挑什么」。 */
+    /** 「应用控制」那一层菜单的两行 —— **都不是取值**，只是「这一趟去挑什么」。 */
     const val APP_CONTROL_OPEN = "appctl:open"
     const val APP_CONTROL_STOP = "appctl:stop"
 
@@ -1115,8 +1115,8 @@ object ActionCatalog {
             //  绑了任意一步变量操作就算这一格选中 —— 与入口格同一套判据，只是那一族由运行时收集。
             action is Action.VarSet
         } else if (spec.token == APP_CONTROL_TILE) {
-            // 「应用控制」代表**两族**：打开（`app:` / `window:` / 快捷方式）与结束（`proc:stop:`）。
-            //  两款任意一条都算这一格选中 —— 点开之后那一层菜单里再各自精确打勾。
+            // 「应用控制」代表**两族**：打开（`app:` / `window:`）与结束（`proc:stop:`）。
+            //  任意一条都算这一格选中 —— 点开之后那一层菜单里再各自精确打勾。
             action.isAppOpen || action is Action.Process
         } else {
             // 入口格代表**一整组取值**：绑其中任意一档就算选中，否则格里一个亮的都没有
@@ -1151,9 +1151,18 @@ object ActionCatalog {
         //  「亮度 / 音量」这两族先判：它们比的是**占位写法的符号**，不是整串（见 [percentRowBound]）。
         percentRowBound(spec.token, action)?.let { return it }
         //  「应用控制」那两行不是取值（`appctl:open` / `appctl:stop`），比的是**绑的是哪一族**：
-        //  打开那行认 `app:` / `window:` / 快捷方式，结束那行认 `proc:stop:`。菜单里的勾靠它。
+        //  打开那行认 `app:` / `window:` / `appshortcut:`，结束那行认 `proc:stop:`。菜单里的勾靠它。
+        //
+        //  快捷方式**也算「打开应用」**（[isAppOpen] 按「取得到应用目标」算，`appshortcut:` 有目标）：
+        //  它确实是把那个应用叫起来，只是起的是它注册的那一条（扫一扫 / 收付款）。
+        //  曾经为了让独立的那一页菜单行打勾，这里把 `Action.AppShortcut` 从打开那一行剔出去过 ——
+        //  那一页撤掉之后，剔了就是「绑了快捷方式，菜单里一行都不亮」（真机反馈）。
         if (spec.token == APP_CONTROL_OPEN || spec.token == APP_CONTROL_STOP) {
-            return if (spec.token == APP_CONTROL_OPEN) action.isAppOpen else action is Action.Process
+            return if (spec.token == APP_CONTROL_OPEN) {
+                action.isAppOpen
+            } else {
+                action is Action.Process
+            }
         }
         val bound = canonicalToken(spec.token)
         //  「系统开关」那一族：`setting:wifi` 与 `setting:wifi:on` / `:off` 是**同一个开关**的三个状态
@@ -1536,7 +1545,7 @@ object ActionCatalog {
         /** 原地弹**开关三态**弹窗（系统开关的「切换 / 打开 / 关闭」那几行）。 */
         SWITCH,
 
-        /** 换**另一张页面**：挑应用（「应用控制」的两行，以及那一格自己）。 */
+        /** 换**另一张页面**：挑应用（「应用控制」的打开 / 结束两行，以及那一格自己）。 */
         PAGE_APP,
 
         /** 换**另一张页面**：变量操作（「自定义变量」那一格）。 */

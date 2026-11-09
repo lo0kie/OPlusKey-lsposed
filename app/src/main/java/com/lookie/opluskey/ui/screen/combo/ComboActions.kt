@@ -7,10 +7,10 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.comboLabel
 import com.lookie.opluskey.ui.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.comboLabel
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeysAsk
 import com.lookie.opluskey.ui.write
@@ -28,9 +28,10 @@ import com.lookie.opluskey.ui.write
  */
 internal const val MAX_COMBOS = 9
 
-//  `COMBO_PAIR_SEPARATOR` / `comboLabel` / `keyName` 已挪到 `ui/model/ComboNames.kt`：
-//  `ui/BindingTarget.kt` 也要用（组合被停用时那句提示里的名字），而 `ui/` 不许反过来认识
-//  `ui/screen/*`（那条边由 `tools/audit-coupling.py` 核）。这两个函数本来就不读任何界面状态。
+//  `COMBO_PAIR_SEPARATOR` / `comboLabel` / `keyName` 已挪到 `core/model/KeyNames.kt`：
+//  除了 UI（`ui/BindingTarget.kt` 的停用提示、顶栏副标题、列表行），**执行时提示**
+//  （`host/GestureExec.kt`）也要念键名，而 `host` 不许认识 `ui`（那条边由
+//  `tools/audit-coupling.py` 核）—— 一份实现要给两侧共用，只能落在两边都许引的 `core`。
 
 /**
  * 加一档组合（选键弹窗点了「添加」）。
@@ -71,7 +72,7 @@ internal fun SettingsPage.addCombo(keys: List<KeyId>): Boolean {
     //  回执里每个键名各套一对括号（`已添加「侧键」+「电量 +」`）—— 整串再包一层会把两颗键
     //  读成一个名字。
     if (result == CommandsSave.Ok) {
-        hint(I18n.format(Strings.COMBO_ADDED, comboLabel(cfg, combo, bracketed = true)), slot = HINT_SLOT_COMBO)
+        hint(I18n.format(Strings.COMBO_ADDED, comboLabel(cfg, combo)), slot = HINT_SLOT_COMBO)
     }
     XLog.w("组合键：加了一档 ${combo.id}=${combo.keys.joinToString("+")}（$label）")
     return result == CommandsSave.Ok
@@ -88,7 +89,7 @@ internal fun SettingsPage.removeCombo(id: String): Boolean {
     val combo = cfg.combos.firstOrNull { it.id == id } ?: return true
     XLog.w("组合键：删掉 ${combo.id}（${comboLabel(cfg, combo)}）")
     //  回执与删除确认窗同一个口径：每个键名各套一对括号（见 `addCombo`）
-    val label = comboLabel(cfg, combo, bracketed = true)
+    val label = comboLabel(cfg, combo)
     //  判「没成」只看 [CommandsSave.Failed]：`BroadcastFailed` 是「盘上删了、只是没通知到注入侧」，
     //  那时这一档确实已经不在了，调用方不能按「什么都没变」处理（`write` 的契约就是这么写的）。
     if (write(cfg.copy(combos = cfg.combos.filterNot { it.id == id }), "combo_del=$id") !=
@@ -130,7 +131,7 @@ internal fun SettingsPage.setComboEnabled(
     val combo = cfg.combos.firstOrNull { it.id == id } ?: return
     if (combo.enabled == on) return
     //  **回执与「已添加 / 已删除」同一个口径**：成员名各带自己的括号，整串不再套引号
-    val label = comboLabel(cfg, combo, bracketed = true)
+    val label = comboLabel(cfg, combo)
     //  **启用之前先看成员键**（与按键列表那颗开关、绑定页 ⋯ 菜单同一套口径）：
     //  直接写 `enabled=true` 会留下一份「配置说启用、列表说停用」的状态 ——
     //  等那颗键被开回来时这一组还会自己活过来，用户看到的是「我没动它，它自己开了」。

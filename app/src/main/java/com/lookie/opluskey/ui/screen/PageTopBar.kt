@@ -9,10 +9,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.comboLabel
+import com.lookie.opluskey.core.model.keyName
 import com.lookie.opluskey.ui.PageHeader
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
+import com.lookie.opluskey.ui.appVersionLabel
 import com.lookie.opluskey.ui.model.ABOUT_TITLE
 import com.lookie.opluskey.ui.model.ACTIVITY_PICKER_TITLE
 import com.lookie.opluskey.ui.model.BINDING_TITLE
@@ -25,7 +28,6 @@ import com.lookie.opluskey.ui.model.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.HEADER_ICON_GAP
 import com.lookie.opluskey.ui.model.KEYS_TITLE
 import com.lookie.opluskey.ui.model.SUBTITLE_DIM_FACTOR
-import com.lookie.opluskey.ui.model.comboLabel
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
@@ -194,13 +196,27 @@ private fun SettingsPage.pageTitle(s: Screen): String =
     }
 
 /**
- * 顶栏大标题下面那行小标题按页分派：
+ * 顶栏大标题下面那行小标题按页分派 —— **每一页都有，一句空都没有**（用户口径：
+ * 副标题缺一页时顶栏矮一截，翻页 / 返回时整页跟着跳）。
+ *
  * 「按键绑定」= **现在这一组**叫什么（「快捷键」或收集来的那颗键的名字）；
  * 「自定义命令」= 已保存的命令条数（[ConfigState.commands] 变了跟着重组）；
- * 「选择应用」= 这一趟要绑的应用名（先看本次草稿，再看 [appPickerSelectedTarget]；名字怎么取见 [appNameOf]）。
+ * 「选择应用」= 这一趟要绑的应用名（见 `pickerSubtitle`）；
+ * 其余各页要么是「在编谁」（[editingKeyName] / [branchOwnerLabel] / 组合名），
+ * 要么一句静态的「这一页是什么」。
+ *
+ * `CyclomaticComplexMethod` 与 [pageTitle] 同一个口径显式压掉：这是一个「一页一行」的映射表，
+ * 复杂度等于页数，没有可拆的分支。
  */
+@Suppress("CyclomaticComplexMethod")
 private fun SettingsPage.pageSubtitle(s: Screen): String =
     when (s) {
+        // 首页：大标题是宿主自己那句「快捷键」，这一行报模块版本
+        //  （`version-1.4.0-debug-2611091611`；release 不带时刻，见 [appVersionLabel]）。
+        Screen.SHORTCUTS -> {
+            appVersionLabel()
+        }
+
         // 停在哪一颗就写哪一颗：侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。
         //  与顶栏 ⋮ 那份菜单（[BindingKeyMenu]）同一个口径：菜单第一项就是这句话 ——
         //  这一行是菜单里那个「当前值」在大标题下面的复述，不进菜单也知道自己在哪一组。
@@ -247,21 +263,44 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
 
         // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
         Screen.ACTIVITY_PICKER -> {
-            picker.activityTarget?.let { appNameOf(it) }.orEmpty()
+            picker.activityTarget?.let { appNameOf(it) }
+                ?: I18n.get(Strings.APP_PICKER_NONE_SELECTED, "没有选择应用")
         }
 
-        // 组合键编辑页：这一行写**在编哪一组**（`侧键 + 电量 +`）—— 标题只写「组合键」，
+        // 组合键编辑页：这一行写**在编哪一组**（`侧键 × 电量 +`）—— 标题只写「组合键」，
         //  而这一页改的是其中一档，不写就分不出在看哪一组。
+        //  那一组刚被删掉（退场那一帧）时没有名字可写，交给下面那句兜底。
         Screen.COMBO_EDIT -> {
             val cfg = configState.config.value
             ComboEditState.editingId
                 ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
-                ?.let { comboLabel(cfg, it, bracketed = true) }
-                .orEmpty()
+                ?.let { comboLabel(cfg, it) }
+                ?: I18n.get(Strings.COMBO_PICK_KEYS, "选择按键")
         }
 
-        else -> {
-            ""
+        // 「按键功能」：这一页就是两张清单，标题已经说了叫什么，这一行说清单里是什么。
+        Screen.KEYS -> {
+            I18n.get(Strings.KEYS_ENTRY_DESC, "按键列表与组合按键")
+        }
+
+        // 「更多选项」：这一页是三节 + 一节关于，一句「装了什么」比重复版本号有用。
+        Screen.ABOUT -> {
+            I18n.get(Strings.MORE_SUBTITLE, "运行状态、外观与配置")
+        }
+
+        // 「捐赠列表」：一句谢谢（与页内空态同一句，不改口径）。
+        Screen.DONATE_LIST -> {
+            I18n.get(Strings.DONATE_LIST_EMPTY_SUMMARY, "收到的每一份支持都会记在这里")
+        }
+
+        // 「按键设置」（公共那份）：与每颗键自己那份「独立设置」相对 —— 这里改的是默认值。
+        Screen.GENERAL -> {
+            I18n.get(Strings.GENERAL_SUBTITLE, "所有按键共用")
+        }
+
+        // 变量：一句「它是干什么用的」—— 这一页没有「在编谁」可言（清单是整份）。
+        Screen.VARIABLES -> {
+            I18n.get(Strings.VARIABLES_SUBTITLE, "命令与条件里可以引用")
         }
     }
 
@@ -410,13 +449,15 @@ internal fun SettingsPage.settingsTargetLabel(target: SettingsTarget): String {
     val cfg = configState.config.value
     return when (target) {
         is SettingsTarget.Key -> {
-            target.id.label
+            //  单键直接写名字（`keyName`）：内置键的 `label` 只是配置里那一份，字典换成英文时
+            //  它不会跟着变 —— 走同一个出口才与「按键功能」页清单、执行提示同一个叫法。
+            keyName(target.id)
         }
 
         is SettingsTarget.Combo -> {
             cfg.combos
                 .firstOrNull { it.id == target.id }
-                ?.let { comboLabel(cfg, it, bracketed = true) }
+                ?.let { comboLabel(cfg, it) }
                 // 那一组刚被删掉（退场那一帧）：报 id 总比空串强，页面自己会退
                 ?: target.id
         }

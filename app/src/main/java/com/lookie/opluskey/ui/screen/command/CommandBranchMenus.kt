@@ -191,26 +191,43 @@ private fun SettingsPage.addConditionRow(
     MenuEntry.Row(
         title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
         icon = TablerIcons.Outline.Plus,
-        onPick = {
-            menus.menuAt = -1
-            val old = draft.scenes.getOrNull(at) ?: return@Row
-            //  判据是「**还没有可用的条件**」，不是「最后一条是空的」：条件列表为空时页面
-            //  同样已经摆了一行「未选择条件」占位，那也是「有待配的一行」。
-            val pending = old.conditions.isEmpty() || old.conditions.lastOrNull()?.isUsable == false
-            if (pending) {
-                //  与其它「为什么这一步做不了」共用同一个位
-                hint(
-                    I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING, "有场景还没选"),
-                    slot = HINT_SLOT_DISABLED,
-                )
-                return@Row
-            }
-            val next = old.addingCondition(BranchCondition(""))
-            draft.update(at, next)
-            //  刚插的那一条先收起再展开（见 `BranchMenuState.freshCond`）
-            menus.freshCond = CondRef(at, next.conditions.lastIndex)
-        },
+        onPick = { appendCondition(draft, at, menus) },
     )
+
+/**
+ * 「这一块再加一条条件」—— 菜单里那一行与**卡片末尾那一行**共用这一支（权威实现只有这份）。
+ *
+ *  两张入口说的是同一件事：「这一块的场景再多一条」。放在卡片末尾是用户口径
+ *  （不必点「更多」再找，列表滚到哪儿就能就地加）。
+ *
+ *  判据是「**还没有可用的条件**」，不是「最后一条是空的」：条件列表为空时页面同样已经摆了
+ *  一行「未选择条件」占位，那也是「有待配的一行」—— 再插一条就变成两行都空，用户还得分清
+ *  哪行是刚加的。
+ *
+ *  空条件在执行侧永不成立（`BranchCondition.isUsable` 假），`isReady` 为假会拦住保存 ——
+ *  正好是「还没配完」该有的样子；页面上那一行显示「未选择条件」，点它才开菜单。
+ */
+internal fun SettingsPage.appendCondition(
+    draft: BranchDraft,
+    at: Int,
+    menus: BranchMenuState,
+) {
+    menus.menuAt = -1
+    val old = draft.scenes.getOrNull(at) ?: return
+    val pending = old.conditions.isEmpty() || old.conditions.lastOrNull()?.isUsable == false
+    if (pending) {
+        //  与其它「为什么这一步做不了」共用同一个位
+        hint(
+            I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING, "有场景还没选"),
+            slot = HINT_SLOT_DISABLED,
+        )
+        return
+    }
+    val next = old.addingCondition(BranchCondition(""))
+    draft.update(at, next)
+    //  刚插的那一条先收起再展开（见 `BranchMenuState.freshCond`）
+    menus.freshCond = CondRef(at, next.conditions.lastIndex)
+}
 
 /**
  * 「删除这一条条件」那一行（**最后一条不给删**：删到 0 条等于「这条规则还没配完」，

@@ -85,6 +85,9 @@ internal fun SettingsPage.AppPickerMenu() {
  *
  *  只认应用本身的那几趟（[AppPickerState.appOnly]）整颗不出现：那几趟写的是
  *  `app:包名` / `proc:stop:包名`，`window:` 没人读，摆在那里只会让人以为能开小窗。
+ *
+ *  末尾自带一档 [HEADER_ACTION_GAP]：后面紧跟 ⋮，那颗间距由这里统一给，
+ *  调用点不必再写一遍。
  */
 @Composable
 private fun SettingsPage.SmallWindowToggle() {
@@ -114,6 +117,8 @@ private fun SettingsPage.SmallWindowToggle() {
  *
  *  不落盘：它描述的是「这一趟往哪个动作上写」，每次进页按正在编辑的动作重算
  *  （见 `resetSmallWindowForPicker`）。
+ *
+ *  只在这一页里用（顶栏那颗开关与 ⋮ 里那一行），所以是 `private`。
  *
  * @param on 拨到哪一档（两处都传「当前值取反」）
  */

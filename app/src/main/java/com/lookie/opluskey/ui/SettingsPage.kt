@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -463,6 +464,26 @@ internal class SettingsPage(
     internal var branchGesture by mutableIntStateOf(0)
 
     /**
+     * 「一档手势一屏动作」那三页各自的**滚动位置**（每个 `Screen` 一组，每档一份）。
+     *
+     * ## 为什么不能留在页内 `remember`
+     *
+     *  那三页的 `ScrollState` 原本建在 `BindingPagerScreen` 里，而**页面被另一页盖住时整棵组合
+     *  会被销毁**（`NavDisplay` 只保留栈顶那一页）—— 从「按键绑定」进「选择应用」挑一条、按
+     *  FAB 退回来，页内 `remember` 全没了，列表当场回到顶部（用户反馈「点 FAB 返回绑定页后
+     *  滚动距离归零」）。页内 `rememberSaveable` 也救不了：它不是配置变更，不会走 save/restore。
+     *
+     *  所以提到页面级 —— 与 [branchGesture] 同一个理由（跨页要活下来的状态只能挂在这里）。
+     *  离开绑定页时由 `discardPageStateOf` 清掉，下次进来是新的位置。
+     *
+     * ## 为什么按 `Screen` 分三份
+     *
+     *  三页的档数不同（键三档 / 组合两档 / 场景块两三档），共用一组 `ScrollState` 会互相顶掉；
+     *  而 `ScrollState` 内部只有一个 `scrollableState`，两页同时在场时也会打架。
+     */
+    internal val bindingScrolls = mutableMapOf<Screen, List<ScrollState>>()
+
+    /**
      * 「场景动作」页在编**第几块**场景（`-1` = 不在编任何一块）。
      *
      *  与 [ComboEditState.editingId] 同一档性质：栈里这一页只有一个位置，参数走 `Screen` 枚举
@@ -660,6 +681,8 @@ internal class SettingsPage(
                 //  「从哪一档手势进的分叉」只在这一次停留里有效：退回首页再进来，
                 //  该重新按手势 tab 当前那一档算（否则顶栏小标题会写着上一次那一档）。
                 branchGesture = 0
+                //  滚动位置同理：离开绑定页就不再是「这一次停留」的了
+                bindingScrolls.remove(Screen.BINDING)
             }
 
             Screen.COMMANDS -> {
@@ -690,6 +713,13 @@ internal class SettingsPage(
                 sceneBindingAt = -1
                 sceneBindingGesture = Gesture.SINGLE
                 sceneBindingBaseline = null
+                bindingScrolls.remove(Screen.SCENE_BINDING)
+                picker.cancelResume()
+            }
+
+            Screen.COMBO_EDIT -> {
+                //  滚动位置属于「这一次停留」：换一组组合再进来该从头看，不能接着上一组的偏移
+                bindingScrolls.remove(Screen.COMBO_EDIT)
                 picker.cancelResume()
             }
 
@@ -812,6 +842,10 @@ internal class SettingsPage(
      *
      *  之前第二条恒为 `null`，于是「换一步」进这一页时看不出当前选的是哪个应用
      *（行尾那枚图标不亮、也不滚到它眼前）—— 与网格入口那套提示不是一回事。
+     *
+     *  绑的是**快捷方式**时也照给（`包名/id`）：它属于「打开应用」那一族 —— 菜单里那一行正是
+     *  靠同一族判据打勾的，进这一页却不点亮那个应用，就成了「菜单说绑着、页面说没绑」。
+     *  二级页（「选择界面」）同样靠这一位把当前那一条滚到眼前。
      */
     internal fun appPickerSelectedTarget(): String? {
         // 给「条件执行」挑**条件**的那一趟先看那一块：条件记的是包名。走 [editingAction] 认不出来
@@ -841,8 +875,9 @@ internal class SettingsPage(
                 action.appTarget.takeUnless { stopMode }
             }
 
-            // 绑的是快捷方式时给出完整写法（`包名/id|名字`）—— 二级页靠它把那一行滚到眼前；
-            //  应用那一级取 `substringBefore('/')`，仍然是包名
+            // 绑的是快捷方式时给出完整写法（`包名/id|名字`）：一级页据此点亮那个应用、
+            //  二级页据此把那一行滚到眼前。快捷方式是「打开应用」那一族的一条来源，
+            //  不是另一个动作 —— 两边判据必须一致（见函数头）。
             is Action.AppShortcut -> {
                 action.plainTarget.takeUnless { stopMode }
             }

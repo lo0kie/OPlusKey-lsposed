@@ -451,7 +451,10 @@ private fun boundRowSummary(
     boundApp: String?,
 ): String? {
     if (current == null) return null
-    if (spec.token == ActionCatalog.APP_CONTROL_OPEN || spec.token == ActionCatalog.APP_CONTROL_STOP) {
+    if (
+        spec.token == ActionCatalog.APP_CONTROL_OPEN ||
+        spec.token == ActionCatalog.APP_CONTROL_STOP
+    ) {
         return boundApp
     }
     //  系统开关那一行：`切换` / `打开` / `关闭`（单档开关没有这一层，`stateMenu` 为 null）
@@ -461,7 +464,7 @@ private fun boundRowSummary(
 }
 
 /**
- * 这一行点下去是不是**另一张页面** —— 判据是 `ActionCatalog.clickKind`（`PAGE` 那一档），
+ * 这一行点下去是不是**另一张页面** —— 判据是 `ActionCatalog.clickKind`（换页那一档），
  * 这里不认 token。
  *
  *  与「点了弹一层」的行分开：那些行（系统开关 / 亮度 / 音量）后面跟的是弹窗，
@@ -469,4 +472,8 @@ private fun boundRowSummary(
  *  以前这里自己列 `APP_CONTROL_OPEN` / `APP_CONTROL_STOP` 两个 token —— 那是清单的答案，
  *  不是界面的判断，多一处就多一个漂移点。
  */
-private fun opensAppPicker(spec: ActionCatalog.Spec): Boolean = ActionCatalog.clickKind(spec) == ActionCatalog.ClickKind.PAGE_APP
+private fun opensAppPicker(spec: ActionCatalog.Spec): Boolean =
+    when (ActionCatalog.clickKind(spec)) {
+        ActionCatalog.ClickKind.PAGE_APP -> true
+        else -> false
+    }

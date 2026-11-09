@@ -103,7 +103,14 @@ internal class AppLauncher(
         //  系统里真的出现了它建的 `SpruceLauncher` RemoteTransition）。它内部会自己起界面，
         //  所以这里交出之后必须 return —— 否则会开出两个任务。
         //  只对主用户转交：它用 `UserHandle.CURRENT`，分身目标会被起进主用户（见那边的注释）。
-        if (action.stockAnim && userId == 0 && OriginalLaunch.launch(ctx, intent)) return
+        //
+        //  **转交之前也得挂 SKIP_CHOOSER**：这条路不经过 [AppLaunchAsUser.start]，而
+        //  「装了分身的应用在主用户下启动」同样会被 ColorOS 问「用哪一份」—— 选择器一盖上，
+        //  原版那套转场直接被截断（用户口径「会弹分身选择器」）。
+        if (action.stockAnim && userId == 0) {
+            AppLaunchAsUser.markSkipChooser(intent)
+            if (OriginalLaunch.launch(ctx, stockLaunchIntent(intent))) return
+        }
         try {
             // 主用户与分身**都走** ATMS 的 `startActivityAsUser`：只有这条路能在下发前统一给
             //  intent 挂 `OPLUS_FLAG_MULTI_APP_SKIP_CHOOSER`。不挂的话，**装了分身的应用在主

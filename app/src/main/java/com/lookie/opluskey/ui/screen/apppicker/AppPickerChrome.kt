@@ -2,7 +2,6 @@ package com.lookie.opluskey.ui.screen.apppicker
 
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -14,15 +13,14 @@ import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
+import com.lookie.opluskey.ui.model.LaunchableApp
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.PickedDetail
-import com.lookie.opluskey.ui.state.SmallWindowBlock
+import com.lookie.opluskey.ui.state.PickerToggle
+import com.lookie.opluskey.ui.state.ToggleBlock
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
-import io.github.suqi8.coui.kmp.basic.RotatingProgressIndicator
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「选择应用」页那三块**浮在列表上**的东西：两句空态 / 转圈、那句话「为什么一条都没有」，
@@ -69,19 +67,9 @@ internal fun BoxScope.PickListLoadingState(
         visible = visible,
         topInset = topInset,
         text = I18n.get(Strings.APP_PICKER_LOADING_APPS, "正在加载应用…"),
-        glyph = { tint ->
-            // 库那套三个数是按 26dp 画布算出来的，只把 `size` 换成 32dp 等于只多留白、
-            // 圈没变大 —— 三个数要按同一比例一起放大（比例由 `APP_STATE_ICON_SIZE` 现算）。
-            val spinnerScale =
-                APP_STATE_ICON_SIZE.value /
-                    ProgressIndicatorDefaults.DefaultRotatingProgressIndicatorSize.value
-            RotatingProgressIndicator(
-                color = tint,
-                size = APP_STATE_ICON_SIZE,
-                ringDiameter = ProgressIndicatorDefaults.DefaultRotatingProgressIndicatorRingDiameter * spinnerScale,
-                strokeWidth = ProgressIndicatorDefaults.DefaultRotatingProgressIndicatorStrokeWidth * spinnerScale,
-            )
-        },
+        //  转圈本身收在 [PageStateSpinner]（「选择界面」页也用同一颗 —— 两处各写一遍时
+        //  那三个数的缩放迟早有一处只换了 `size`，见那边的注释）。
+        glyph = { tint -> PageStateSpinner(tint) },
     )
 }
 
@@ -168,8 +156,9 @@ internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
  *  二级页那颗 FAB 是另一个入口（挑到具体界面 / 快捷方式）。**点 FAB 才走确认流程**：
  *
  *  1. 拉不起来的应用（被停用 / 非导出入口 / 装了一半）先拦一句，**什么都不写**；
- *  2. 开着「以小窗口打开」⇒ 点这一下问一次框架（全流程只问这一次）：不支持就拦下，
- *     免得写一个执行时必弹 toast 的 `window:`；
+ *  2. 开着的那个开关**这一次用不了** ⇒ 拦一句（[blockedToggleOf]）：小窗是点这一下问一次框架
+ *     （全流程只问这一次），原版动画按目标形态直接判。免得写一个执行时必弹 toast 的 `window:`，
+ *     或者写一个根本吃不到那个动画的 `app:a:`；
  *  3. 都过了才 `onPick(pkg, 小窗开关)`。
  *
  *  样式（尺寸 / 形状 / 阴影 / 容器色）全走 [PageFabButton] 那一份 —— 与「按键绑定」页那颗共用。
@@ -216,14 +205,12 @@ internal fun SettingsPage.AppConfirmFab(
                 ui.blockedUnopenable = app
                 return@PageFabButton
             }
-            if (picker.smallWindow.value && app != null) {
-                // 主线程问一次：这里要按结果当场决定「写还是拦」，异步化会造出
-                // 「连点两下写两次」的新洞，而这是一次性用户动作、代价有界。
-                if (querySmallWindowSupport(pkg, AppTarget.userId(target)) == false) {
-                    XLog.w("选择应用：$pkg 不支持小窗，点确认时拦下（不写 window:）")
-                    ui.blockedSmallWindow = SmallWindowBlock(app, fromPick = true)
-                    return@PageFabButton
-                }
+            //  再一关：开着的那个开关**这一次用不了**（判据见 `blockedToggleOf`）。拦下来说一句、
+            //  什么都不写 —— 写下去要么执行时弹 toast，要么根本吃不到那个动画。
+            val blocked = blockedToggleOf(picked, app)
+            if (blocked != null) {
+                ui.blockedToggle = blocked
+                return@PageFabButton
             }
             onPick(picked, picker.smallWindow.value)
         },
@@ -234,4 +221,36 @@ internal fun SettingsPage.AppConfirmFab(
             tint = COUITheme.colorScheme.onPrimary,
         )
     }
+}
+
+/**
+ * 点 FAB 那一刻判「开着的那个开关这一次用不了」—— 两档共用这一份，`null` = 都能用。
+ *
+ *  两档判据的形状不同，但**结论与收尾完全一样**（说一句、拨回关、按普通方式写），所以只留一个
+ *  出口；各写一份的话，「确定之后怎么收尾」那一段就要抄两遍（见 `ToggleBlock`）。
+ *
+ *  · **小窗**要当场问一次框架：这里要按结果决定「写还是拦」，异步化会造出「连点两下写两次」
+ *    的新洞，而这是一次性用户动作、代价有界。
+ *  · **原版动画**按目标形态直接判（分身 / 快捷方式 / 具体界面），不必问谁 ——
+ *    为什么那三类吃不到见 `AppPickerState.stockAnimUnsupported`。
+ *
+ *  @param app 列表里那一个应用行；`null` = `pending` 是一个列表里没有的目标（小窗那一档跳过他）
+ */
+private fun SettingsPage.blockedToggleOf(
+    picked: PickedDetail,
+    app: LaunchableApp?,
+): ToggleBlock? {
+    val target = picked.target
+    if (picker.smallWindow.value &&
+        app != null &&
+        querySmallWindowSupport(AppTarget.pkg(target), AppTarget.userId(target)) == false
+    ) {
+        XLog.w("选择应用：$target 不支持小窗，点确认时拦下（不写 window:）")
+        return ToggleBlock(app.label, PickerToggle.MiniWindow)
+    }
+    if (picker.stockAnim.value && picker.stockAnimUnsupported(target, picked.shortcutId)) {
+        XLog.w("选择应用：$target 吃不到原版动画，点确认时拦下（不写 app:a:）")
+        return ToggleBlock(app?.label ?: AppTarget.pkg(target), PickerToggle.StockAnim)
+    }
+    return null
 }

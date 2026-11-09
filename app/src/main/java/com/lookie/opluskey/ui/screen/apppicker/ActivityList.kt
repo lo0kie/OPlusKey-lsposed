@@ -280,8 +280,13 @@ private fun SettingsPage.entryOf(
     )
 }
 
-/** 汉字 → 拼音的转写器；取不到返回 null（排序退回原名），不影响清单本身。 */
-private fun romanizerOrNull(): Transliterator? =
+/**
+ * 汉字 → 拼音的转写器；取不到返回 null（排序退回原名），不影响清单本身。
+ *
+ *  **不私有**：「选择应用」与「选择界面」两页的清单用的是同一把尺子 ——
+ *  两页各取一次 `Transliterator.getInstance` 也能跑，但「取不到怎么办」那一句就会写两遍。
+ */
+internal fun romanizerOrNull(): Transliterator? =
     try {
         Transliterator.getInstance("Han-Latin")
     } catch (e: Throwable) {

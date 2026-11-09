@@ -143,7 +143,7 @@ internal fun SettingsPage.PageEntry(
  *  顶栏与滚动容器**必须吃同一个实例**：顶栏读它的 `state` 画折叠进度，滚动容器把
  *  `nestedScrollConnection` 挂在链上把余量喂进来。只给一头等于没接（顶栏恒停在展开态）。
  *
- *  「首页」「关于模块」「捐赠列表」的标题**不折叠**（定案）：库的开关是 `canScroll` ——
+ *  **只有首页**的标题不折叠（定案），其余每一页都折：库的开关是 `canScroll` ——
  *  false 时顶栏不再消费滚动事件（`ExitUntilCollapsedScrollBehavior` 里
  *  `if (!canScroll()) return Zero`），大标题钉在原位、内容照常从它底下滚过。
  *
@@ -169,17 +169,15 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
                         ).roundToPx().toFloat()
                     },
             ),
-        // 「首页」「关于模块」「捐赠列表」三页钉住标题（不折叠），其余照常折叠。
-        //  那几页本来就是「短内容」页，没什么可折的。
-        //  （名单长起来之后要放开折叠，改的就是这一行。）
+        // **只有首页**钉住标题（不折叠），其余全部照常折叠（用户口径：除首页外都允许折叠）。
+        //  首页是这一趟的起点、内容又短，顶栏折起来只剩一条细线，退回到这里时看着像没加载完。
+        //  原先「关于模块」「捐赠列表」也在不折叠名单里（理由是「短内容页没什么可折」）——
+        //  用户口径改为一律可折：这两页在字体放大 / 小屏上照样会超一屏。
         //
         //  **「组合键列表」与「按键设置」原先也在这份名单里**，用户口径两页都改成允许折叠：
         //  前者五档加设置块也过一屏；后者本来就一屏多一点，折起来能多露几行。
-        //  编辑页一类的长内容页一直照常折叠。
         canScroll = {
-            s != Screen.SHORTCUTS &&
-                s != Screen.ABOUT &&
-                s != Screen.DONATE_LIST
+            s != Screen.SHORTCUTS
         },
     )
 
@@ -381,7 +379,9 @@ internal fun SettingsPage.openAppPickerForTarget(target: BindingTarget) {
     picker.filter.value = ""
     // 「以小窗口打开」按**这次要编辑的动作**重算（不落盘、不跨次记忆，必须在两个入口都调）
     resetSmallWindowForPicker()
-    // 进页唯一复位点：点过的行回到当前绑定，定位 / 拦人窗 / 刷新指示器归零（清单不清）
+    // 进页唯一复位点：点过的行回到当前绑定，定位 / 拦人窗 / 刷新指示器归零（清单不清）。
+    //  绑的是快捷方式时同样按它的包名定位 —— 快捷方式属于「打开应用」那一族
+    //  （菜单里那一行的勾是同一族判据，见 `ActionCatalog.isBound`）。
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())
     navTo(Screen.APP_PICKER)
 }

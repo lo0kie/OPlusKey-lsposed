@@ -15,6 +15,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.SceneRule
+import com.lookie.opluskey.core.model.comboLabel
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
@@ -28,7 +29,6 @@ import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.comboLabel
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.CommandsSave
@@ -279,7 +279,7 @@ internal fun SettingsPage.saveScenes(): Boolean {
             return false
         }
         val next = cfg.copy(combos = cfg.combos.map { if (it.id != comboId) it else it.copy(scenes = scenes) })
-        val label = comboLabel(cfg, combo, bracketed = true)
+        val label = comboLabel(cfg, combo)
         return when (write(next, "系统场景：$label（${scenes.size} 块）")) {
             CommandsSave.Failed -> {
                 false

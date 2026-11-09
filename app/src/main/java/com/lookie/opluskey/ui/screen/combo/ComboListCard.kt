@@ -31,8 +31,11 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.comboLabel
+import com.lookie.opluskey.core.model.keyName
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.DisabledStateText
@@ -44,10 +47,7 @@ import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.comboLabel
-import com.lookie.opluskey.ui.model.keyName
 import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.rememberMenuState
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -188,7 +188,7 @@ private fun SettingsPage.comboRow(
     //  多按键组合同一条规则）。行尾那半句与行首那颗禁用图标都读它。
     val off = cfg.comboOff(combo)
     return CardRow.Item(
-        title = comboLabel(cfg, combo, bracketed = true),
+        title = comboLabel(cfg, combo),
         //  标题按**每颗键一枚框**画（见 [ComboTitle]）：拼成一整串时，分隔符落在哪由前一个名字的
         //  长短决定，一列下来每行都错开（真机反馈「单独某个名字过长时全部都没对齐」）。
         titleContent = { ComboTitle(cfg, combo, writable, widths) },
@@ -264,7 +264,8 @@ private fun logPairOnce(line: String) {
  *
  *  键名各装进一个圆角矩形（底色是文字色的低透明度，6dp 圆角）：**框本身就是「这是一个键名」
  *  的记号**，所以框里不再套方括号 —— 两道框叠在一行字上读起来是重复的装饰。
- *  只有这一列之外的场合（顶栏副标题、删除确认、回执那些「一句话」）才带括号，见 `keyBrackets()`。
+ *  只有这一列之外的场合（顶栏副标题、删除确认、回执那些「一句话」）才带方括号，
+ *  那是 `core/model/KeyNames.kt` 里 `comboLabel` 的事。
  *
  *  ## 为什么不再「两颗才排框、三颗退回一整串」
  *
@@ -315,7 +316,7 @@ private fun SettingsPage.ComboTitle(
     //  不足两颗（成员被删 / 手改的配置）退回一整串 —— 那时「几枚框对齐」不成立
     if (names.size < ComboKey.MIN_KEYS) {
         Text(
-            text = comboLabel(cfg, combo, bracketed = true),
+            text = comboLabel(cfg, combo),
             style = style,
             fontWeight = FontWeight.Medium,
             color = color,

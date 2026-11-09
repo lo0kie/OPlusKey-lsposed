@@ -65,7 +65,7 @@ internal enum class CommandFailure(
     APP_MISSING(Strings.COMMAND_FAILURE_APP_MISSING, "找不到这个应用，可能已经卸载了"),
 
     /** `app:` 应用装着但没有可启动界面（与 [APP_MISSING] 分开，报「已卸载」会误导）。 */
-    APP_NO_ENTRY(Strings.COMMAND_FAILURE_APP_NO_ENTRY, "这个应用没有可启动的界面"),
+    APP_NO_ENTRY(Strings.COMMAND_FAILURE_APP_NO_ENTRY, "这个应用没有可启动的 Activity"),
 
     /** 小布快捷指令那几个 action 都没被系统接受。 */
     SHORTCUT_FAILED(Strings.COMMAND_FAILURE_SHORTCUT_FAILED, "小布快捷指令没能触发"),

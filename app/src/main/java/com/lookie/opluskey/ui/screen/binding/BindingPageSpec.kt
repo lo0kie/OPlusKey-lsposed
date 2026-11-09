@@ -1,5 +1,8 @@
 package com.lookie.opluskey.ui.screen.binding
 
+import androidx.compose.foundation.ScrollState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Gesture
@@ -23,6 +26,30 @@ import com.lookie.opluskey.ui.state.KeyWatchState
 //
 //  拆出来的直接原因很实际：三页合一之后 `BindingPagerScreen.kt` 里的函数数顶到了 detekt 的
 //  上限（一个文件 11 个）。按「判据 / 布局」切开之后，两边各自都还有余量。
+
+/**
+ * 这一页**每档一份**的滚动位置。
+ *
+ *  `ScrollState` 内部只有一个 `scrollableState`，几档共用一个会互相打架（滑一档另一档跟着动），
+ *  所以按档数一档一份。
+ *
+ *  **寄在页面级**（[SettingsPage.bindingScrolls]）而不是就地 `remember`：被「选择应用」盖住时
+ *  这一页的整棵组合会被销毁，就地 remember 的那份跟着没 —— 退回来列表直接回顶部
+ *  （用户口径「点 FAB 返回绑定页后滚动距离会归零」）。
+ *
+ *  档数会变（组合键三档 / 场景两档 / 按键三档），上一次那一份尺寸对不上就重开一份 ——
+ *  把旧的那份按新档数续用会张冠李戴（第 2 档用上第 3 档的偏移）。
+ */
+@Composable
+internal fun SettingsPage.bindingScrollsFor(
+    s: Screen,
+    pages: Int,
+): List<ScrollState> =
+    remember(pages) {
+        bindingScrolls[s]
+            ?.takeIf { it.size == pages }
+            ?: List(pages) { ScrollState(0) }.also { bindingScrolls[s] = it }
+    }
 
 /**
  * 这一页在编的**几档**，顺序即分页器页序；`null` = 在编的那一份已经不在了（该退页）。

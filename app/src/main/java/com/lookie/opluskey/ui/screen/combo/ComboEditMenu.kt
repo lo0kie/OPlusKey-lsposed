@@ -11,6 +11,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.comboLabel
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.HeaderMenuButton
 import com.lookie.opluskey.ui.MenuEntry
@@ -19,7 +20,6 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.comboLabel
 import com.lookie.opluskey.ui.screen.binding.openKeySettings
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -48,7 +48,7 @@ internal fun SettingsPage.ComboEditMenu() {
     val combo = id?.let { cid -> cfg.combos.firstOrNull { it.id == cid } }
     //  确认窗里每个键名各套一对括号（`「侧键」+「电量 +」`）：整串再包一层会读成
     //  「删除『侧键 + 电量 +』」—— 那是把两件东西写成了一个名字。
-    val label = combo?.let { comboLabel(cfg, it, bracketed = true) }.orEmpty()
+    val label = combo?.let { comboLabel(cfg, it) }.orEmpty()
 
     //  两个确认窗的开合位（删除 / 停用）—— 同一时刻至多一个，见 [ComboMenuDialogs]
     val dialogs = remember { ComboMenuDialogs() }
@@ -239,7 +239,7 @@ private fun SettingsPage.comboMenuEntries(
     } else {
         val combo = cfg.combos.firstOrNull { it.id == id }
         val enabled = combo?.enabled ?: true
-        val label = combo?.let { comboLabel(cfg, it, bracketed = true) }.orEmpty()
+        val label = combo?.let { comboLabel(cfg, it) }.orEmpty()
         listOf(
             //  「系统场景」与下一行同属「进下一页」，与下面那两行不是一类事，用加深带隔开。
             //  顺序（用户口径）：**场景在前、独立设置其次** —— 场景说的是这一档「怎么分流」，

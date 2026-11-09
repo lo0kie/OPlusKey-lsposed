@@ -10,9 +10,9 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.LongPressParams
 import com.lookie.opluskey.core.model.SceneRule
+import com.lookie.opluskey.core.model.comboLabel
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
-import com.lookie.opluskey.ui.model.comboLabel
 import com.lookie.opluskey.ui.state.BranchDraft
 
 /**
@@ -176,7 +176,7 @@ internal sealed interface BindingTarget {
             } else {
                 //  这里要的是**用户认得出的名字**（`「侧键」×「电量 +」`），不是 `id` ——
                 //  后者是 `com1` 那种内部标识，画到提示条上等于什么都没说。
-                I18n.format(Strings.COMBO_DISABLED_ITEM, comboLabel(cfg, combo, bracketed = true))
+                I18n.format(Strings.COMBO_DISABLED_ITEM, comboLabel(cfg, combo))
             }
         }
     }

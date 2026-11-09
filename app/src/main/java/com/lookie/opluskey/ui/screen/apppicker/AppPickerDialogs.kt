@@ -10,6 +10,7 @@ import com.lookie.opluskey.ui.appTargetLabelOf
 import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.PickedDetail
+import com.lookie.opluskey.ui.state.PickerToggle
 
 // 「选择应用」页那三张**拦人的脸** —— 都是「留在这一页」，什么都不写。
 //
@@ -19,7 +20,7 @@ import com.lookie.opluskey.ui.state.PickedDetail
 /**
  * 三张确认窗的挂载点。
  *
- * @param onPick 「不支持小窗」那一路的兜底：用户点了确定 ⇒ 按普通打开写下去（`window = false`）。
+ * @param onPick 「这一档开关用不了」那一路的兜底：用户点了确定 ⇒ 按普通方式写下去。
  */
 @Composable
 internal fun SettingsPage.AppPickerDialogs(
@@ -27,8 +28,21 @@ internal fun SettingsPage.AppPickerDialogs(
     onPick: (PickedDetail, Boolean) -> Unit,
 ) {
     UnopenableDialog(ui)
-    SmallWindowUnsupportedDialog(ui, onPick)
+    BlockedToggleDialog(ui, onPick)
     DiscardPickDialog()
+}
+
+/**
+ * 把 [toggle] 那一档开关拨回关 —— 「这一档用不了」那张窗点确定时调。
+ *
+ *  两档各一个字段、判据只有「哪一档」，所以收在这一处；窗那边不必认识具体字段
+ *  （与「两档共用一张窗」同一个理由，见 [ToggleBlock]）。
+ */
+private fun SettingsPage.turnOff(toggle: PickerToggle) {
+    when (toggle) {
+        PickerToggle.MiniWindow -> picker.smallWindow.value = false
+        PickerToggle.StockAnim -> picker.stockAnim.value = false
+    }
 }
 
 /**
@@ -51,43 +65,57 @@ private fun SettingsPage.UnopenableDialog(ui: AppPickerUiState) {
 }
 
 /**
- * (2)「不支持以小窗口打开」：**只有点 FAB 这一个触发点**（`AppConfirmFab` 里，`fromPick = true`）。
+ * (2)「这一档开关这一次用不了」：**只有点 FAB 这一个触发点**（`AppConfirmFab` 里，
+ * 判据见 `blockedToggleOf`）。两档共用这一张，只有文案与「拨哪一个开关」不同：
+ *  · 小窗 —— 框架不支持这个应用开小窗；
+ *  · 原版动画 —— 分身 / 快捷方式 / 具体界面吃不到（见 `AppPickerState.stockAnimUnsupported`）。
  *
- *  确认 ⇒ 菜单里那一项拨回关，并按**原来那个完整目标**普通打开写下去（用户要的就是「取消勾选、
- *  照常存」）；取消 ⇒ 什么都不做。正文里的应用名用 `「」` 夹住；动作项不上红（不丢用户的东西）。
+ *  确认 ⇒ 菜单里那一项拨回关，并按**原来那个完整目标**照常写下去（用户要的就是「取消勾选、
+ *  照常存」）；取消 ⇒ 什么都不做。正文里的名字用 `「」` 夹住；动作项不上红（不丢用户的东西）。
  *
  *  「完整」这三个字是重点：`999@包名/类名` 里的用户前缀是分身的身份，`/类名` 是用户在二级页
  *  刚挑好的具体界面 —— 早先这里交的是 `app.packageName`，写回去就成了「主用户、自动入口」，
- *  用户看到的是「我就关了个小窗开关，绑的东西怎么变了」。
+ *  用户看到的是「我就关了个开关，绑的东西怎么变了」。
  */
 @Composable
-private fun SettingsPage.SmallWindowUnsupportedDialog(
+private fun SettingsPage.BlockedToggleDialog(
     ui: AppPickerUiState,
     onPick: (PickedDetail, Boolean) -> Unit,
 ) {
+    val blocked = ui.blockedToggle
+    val kind = blocked?.toggle
     ConfirmDialog(
-        show = ui.blockedSmallWindow != null,
-        title = I18n.get(Strings.DIALOG_APP_UNSUPPORTED_MINI_WINDOW_TITLE, "不支持以小窗口打开"),
+        show = blocked != null,
+        title =
+            when (kind) {
+                PickerToggle.StockAnim -> I18n.get(Strings.DIALOG_STOCK_ANIM_DROPPED_TITLE, "无法使用原版动画")
+                else -> I18n.get(Strings.DIALOG_APP_UNSUPPORTED_MINI_WINDOW_TITLE, "不支持以小窗口打开")
+            },
         summary =
-            I18n.format(
-                Strings.DIALOG_APP_UNSUPPORTED_MINI_WINDOW_MESSAGE,
-                escapeEmphasis(ui.blockedSmallWindow?.app?.label ?: ""),
-            ),
+            blocked?.let {
+                I18n.format(
+                    when (it.toggle) {
+                        PickerToggle.StockAnim -> Strings.DIALOG_STOCK_ANIM_DROPPED_MESSAGE
+                        PickerToggle.MiniWindow -> Strings.DIALOG_APP_UNSUPPORTED_MINI_WINDOW_MESSAGE
+                    },
+                    escapeEmphasis(it.label),
+                )
+            },
         action = I18n.get(Strings.COMMON_CONFIRM, "确定"),
         positiveDanger = false,
-        onDismiss = { ui.blockedSmallWindow = null },
+        onDismiss = { ui.blockedToggle = null },
         onConfirm = {
-            val blocked = ui.blockedSmallWindow
-            ui.blockedSmallWindow = null
+            ui.blockedToggle = null
             // 拨回关：菜单里那一项跟着回去，用户看得见这次选择了什么
-            picker.smallWindow.value = false
-            XLog.w("选择应用：该应用不支持小窗，已把「以小窗口打开」拨回关")
-            if (blocked?.fromPick == true) {
-                //  优先用 `pending`（可能带 `/类名`、快捷方式的 id，也可能带 `999@`）——
-                //  这一页的 FAB 就是按它弹的这张窗；`app.target` 只是「这个应用」那一档。
-                val picked = ui.pending ?: PickedDetail(blocked.app.target, shortcutId = null)
-                XLog.w("选择应用：${picked.target} 改为普通打开并写入")
-                onPick(picked, false)
+            blocked?.let {
+                turnOff(it.toggle)
+                XLog.w("选择应用：这一档用不了，已把「${it.toggle}」拨回关")
+            }
+            //  写下去的仍是 `pending`（可能带 `/类名`、快捷方式的 id，也可能带 `999@`）——
+            //  这一页的 FAB 就是按它弹的这张窗。
+            ui.pending?.let { picked ->
+                XLog.w("选择应用：${picked.target} 改为普通方式写入")
+                onPick(picked, picker.smallWindow.value)
             }
         },
     )

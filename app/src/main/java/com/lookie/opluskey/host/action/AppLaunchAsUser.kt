@@ -51,8 +51,12 @@ internal object AppLaunchAsUser {
      *
      *  `Intent#addOplusFlags(int)` 是 OPPO 往 AOSP 的 `Intent` 上加的方法，编译期不存在，
      *  只能反射。加不上**不阻断启动**（顶多是选择器照弹），所以返回布尔给调用方记日志。
+     *
+     *  **不只在 [start] 里挂**：原版动画那条路（`OriginalLaunch`）把 intent 直接交给宿主，
+     *  不经过这里 —— 而它同样会撞上「装了分身的应用」（主用户下启动照样弹选择器，
+     *  那一趟原版动画就被截断了）。所以调用方在转交之前也要挂一次。
      */
-    private fun markSkipChooser(intent: Intent): Boolean {
+    internal fun markSkipChooser(intent: Intent): Boolean {
         val method =
             runCatching {
                 Intent::class.java.getMethod("addOplusFlags", Int::class.javaPrimitiveType)

@@ -222,9 +222,10 @@ internal fun SettingsPage.addScene() {
         )
         return
     }
-    val tail = rules.lastOrNull()
-    if (tail != null && tail.conditions.isEmpty()) {
-        //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
+    //  **已经有一块空着就不再加**（用户口径「已有空时不添加」）：任何一块还没选条件都算，
+    //  不只看表尾 —— 从别处导入来的表里，空块可能夹在中间，那种表再加一块就变成两个空的。
+    //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
+    if (rules.any { it.conditions.isEmpty() }) {
         hint(
             I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有场景没选完"),
             slot = HINT_SLOT_DISABLED,
@@ -377,6 +378,14 @@ private fun SettingsPage.BranchRow(
                         },
                         //  这颗键自己停用 / 整页闸门关着 ⇒ 几行都置灰（菜单那颗仍可用，见 `RuleCells.enabled`）
                         enabled = spec.enabled,
+                        //  **每一块**的场景卡末尾都跟一行「添加场景」—— 它加的是**这一块的一条条件**
+                        //  （不是一整块场景，整块那个入口在顶栏），所以每块各有一份才对。
+                        addRow =
+                            CardRow.Item(
+                                title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
+                                icon = PageIcons.StepAdd,
+                                onClick = { appendCondition(branchDraftNow(), spec.index, menus) },
+                            ),
                     ),
                 menus = menus,
             )
@@ -497,6 +506,16 @@ private class RuleCells(
      *  否则连「删掉这条场景」都做不了。
      */
     val enabled: Boolean = true,
+    /**
+     * 并进「场景」那张卡末尾的一行 —— 表尾那个「添加场景」（`appendCondition`）。
+     *
+     *  给的是**一行 `CardRow`**、不是一张新卡：它与上面那几条条件同属「场景列表」，
+     *  分成两张卡会读成「又多了一块场景」。
+     *
+     *  寄在这里而不是 [RuleBlock] 的参数：那个函数的行参已经顶到 detekt 的 `LongParameterList`
+     *  上限（5），再加一个就得压别的；而这一格本来也是「这一块里可点的一处」，与上面那几颗同类。
+     */
+    val addRow: CardRow? = null,
 )
 
 /** 一条规则那两行「写什么、配哪颗字形」—— 合成一个对象，[RuleBlock] 的参数才压得回 5 个以内。 */
@@ -542,7 +561,8 @@ internal class ActionLine(
  *  中间没有位置再放那颗三点了；挂在标题行也不会和两格的点击区抢。
  *
  *  @param text 两张卡写什么、各配哪颗字形（见 [RuleText]）
- *  @param cells 两格与那颗「更多」的触点（见 [RuleCells]）
+ *  @param cells 这一块里可点的几处：两格、那颗「更多」，以及并进场景卡末尾的那行「添加场景」
+ *    （见 [RuleCells]）
  */
 @Composable
 private fun RuleBlock(
@@ -618,8 +638,12 @@ private fun RuleBlock(
                             ),
                         )
                     }
+                    //  表尾那行「添加场景」**并进同一张卡**（用户口径：不要单独按钮、就用 `CardRow`）——
+                    //  它与上面几条条件同属「场景列表」，另起一张卡会读成「又多了一块场景」。
+                    cells.addRow?.let { add(it) }
                 },
         )
+
         Spacer(Modifier.height(RULE_CARD_GAP))
         RuleActionRows(text, state, cells)
     }

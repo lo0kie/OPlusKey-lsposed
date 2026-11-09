@@ -230,8 +230,11 @@ internal class StepSheetFilter(
      * 这一次**不列**「选择应用」「自定义变量」那两格**关卡**（`true` = 不列）。
      *
      *  那两格不是「落一步」，而是「换一页去挑」。有些来处没有那条去路 —— 例如长按卡里的
-     *  「松手执行额外动作」：它只写一个动作字段，不经过挑应用 / 挑变量那两页。列出来等于让人点一下
-     *  抽屉关门、什么都不发生。
+     *  「松手执行额外动作」：它只写一个动作字段，不经过挑应用 / 挑变量那几页。
+     *  列出来等于让人点一下抽屉关门、什么都不发生。
+     *
+     *  「应用控制」不在此列：它那一层菜单里的打开 / 结束两档，额外动作**也有**去路
+     *  （写进 `longRelease`，见 `openAppPickerForRelease`）。
      */
     val excludeTiles: Boolean = false,
 )
@@ -258,10 +261,10 @@ internal class StepSheetSpec(
 )
 
 /**
- * 抽屉里那两行**关卡** —— 点它们不是「落一步」，而是「换一页去挑」。
+ * 抽屉里那几行**关卡** —— 点它们不是「落一步」，而是「换一页去挑」。
  *
- *  两行的行为形态完全一样（收抽屉 → 压一页），只是目的地不同；合成一个枚举是因为
- *  [StepSheetSpec.onOpenPicker] 只收一个回调 —— 两个参数会让那个类多一格，
+ *  这几行的行为形态完全一样（收抽屉 → 压一页），只是目的地不同；合成一个枚举是因为
+ *  [StepSheetSpec.onOpenPicker] 只收一个回调 —— 多几个参数会让那个类多好几格，
  *  而「去哪一页」本来就是调用点一个 `when` 里的事。
  */
 internal enum class StepPickerPage {
@@ -324,14 +327,13 @@ internal fun SettingsPage.StepPickerSheet(
                 } else {
                     //  这一趟没有「挑变量」那条去路（见 `StepSheetFilter.excludeTiles`）：
                     //  变量那一格剔掉，点了只会关抽屉、什么都不发生。
-                    //  「应用控制」**留着** —— 额外动作也能挑应用 / 组件 / 快捷方式
-                    //  （写回见 `PickTarget.Release`）；它旁边那个 `APP_TILE`（「选择应用」）
-                    //  是同一件事的另一个入口，留一个就够。
+                    //  「应用控制」**留着** —— 额外动作也能挑应用 / 组件
+                    //  （写回见 `PickTarget.Release`，两档都走 `openAppPickerForRelease`）；
+                    //  它旁边那个 `APP_TILE`（「选择应用」）是同一件事的另一个入口，留一个就够。
                     base.map { (groupTitle, specs) ->
                         groupTitle to
                             specs.filter {
-                                it.token != ActionCatalog.APP_TILE &&
-                                    it.token != ActionCatalog.VARS_TILE
+                                it.token != ActionCatalog.APP_TILE && it.token != ActionCatalog.VARS_TILE
                             }
                     }
                 }
@@ -402,6 +404,7 @@ internal fun SettingsPage.StepPickerSheet(
             // 入口格 → 弹它那一层菜单（抽屉原地留着，与锚点浮层那套一致）
             //  判据是「这一档有没有一层菜单」而不是「是不是入口格」：入口格里「选择应用」那一格
             //  早在上一支就被接走了，剩下的正好是「点开还有一层」的那些。
+            //  「应用控制」也落在这一支 —— 它的打开 / 结束两档就在那层菜单里（见下面 `onPick`）。
             ActionCatalog.modeMenu(spec.token) != null -> {
                 XLog.w("抽屉：点 ${spec.label} → 开二级菜单")
                 subAnchor = anchor
@@ -535,8 +538,8 @@ internal fun SettingsPage.StepPickerSheet(
             XLog.w("抽屉二级菜单：选中 ${spec.label} → 应用 ${spec.token}")
             subTile = null
             subAnchor = null
-            //  「应用控制」那一层菜单的两行**不是取值**：打开 / 结束都还要再挑一个应用，
-            //  与网格那一格走同一支（收抽屉 → 压一页 → 挑完落一步）。
+            //  「应用控制」那一层菜单的两行**都不是取值**：打开 / 结束都还要再挑一个
+            //  东西，与网格那一格走同一支（收抽屉 → 压一页 → 挑完落一步）。
             when (spec.token) {
                 ActionCatalog.APP_CONTROL_OPEN -> {
                     sheet.onDismiss()

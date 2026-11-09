@@ -33,6 +33,18 @@ object Strings {
     const val APP_PICKER_LOADING_APPS = "app_picker.loading_apps"
     const val APP_PICKER_NO_SEARCH_RESULT = "app_picker.no_search_result"
     const val APP_PICKER_NO_SEARCH_RESULT_ACTIVITY = "app_picker.no_search_result_activity"
+
+    /** 顶栏那一行小字在「这一趟还没选中任何应用」时写的那一句。 */
+    const val APP_PICKER_NONE_SELECTED = "app_picker.none_selected"
+
+    /** 「更多选项」页顶栏那一行小字（这一页装了什么）。 */
+    const val MORE_SUBTITLE = "more.subtitle"
+
+    /** 「按键设置」（公共那份）顶栏那一行小字。 */
+    const val GENERAL_SUBTITLE = "general.subtitle"
+
+    /** 「自定义变量」页顶栏那一行小字。 */
+    const val VARIABLES_SUBTITLE = "variables.subtitle"
     const val APP_PICKER_PULL_REFRESH = "app_picker.pull_refresh"
     const val APP_PICKER_REFRESH_DONE = "app_picker.refresh_done"
     const val APP_PICKER_REFRESHING = "app_picker.refreshing"
@@ -770,7 +782,6 @@ object Strings {
     const val COMMON_VERB_NAME_FORMAT = "common.verb_name_format"
     const val COMMON_REPLACE = "common.replace"
     const val COMMON_RESET = "common.reset"
-    const val COMMON_STEP_INDEX = "common.step_index"
     const val COMMON_TIME_MS = "common.time_ms"
     const val COMMON_TIME_SEC = "common.time_sec"
 
@@ -939,6 +950,15 @@ object Strings {
      */
     const val DIALOG_DISCARD_PICK_TITLE = "dialog.discard_pick_title"
     const val DIALOG_DISCARD_PICK_MESSAGE = "dialog.discard_pick_message"
+
+    /**
+     * 「使用原版动画」开着，却挑了一条**吃不到**它的目标（分身 / 快捷方式 / 具体界面）。
+     *
+     *  告知而不是询问：那三类必定用不上，开关留着只会让人以为它生效了 —— 当场关掉、说一句
+     *  「已取消」，选中本身照常继续。为什么必定用不上见 `docs/features/launch-animation.md` 10.1。
+     */
+    const val DIALOG_STOCK_ANIM_DROPPED_TITLE = "dialog.stock_anim_dropped_title"
+    const val DIALOG_STOCK_ANIM_DROPPED_MESSAGE = "dialog.stock_anim_dropped_message"
 
     /** 「支持的命令格式」点前缀时输入框里已有内容 —— 覆盖前问一句（那里是整段替换，不是插入）。 */
     const val DIALOG_FILL_PREFIX_TITLE = "dialog.fill_prefix_title"

@@ -355,8 +355,8 @@ internal fun SettingsPage.BindingTileMenu(st: BindingGridState) {
         //  不靠「选中项变了再由 effect 收回来」（那条路真机上没跑起来，见 `bindingSelect`）。
         onPick = { spec ->
             st.tileMenu?.spec?.let { st.focusOn(it.token) }
-            // 「应用控制」那一层：两行都**不是取值**，选完进挑应用页（打开 / 结束各一趟），
-            //  真正的落盘在那张页面的确认键上（`app:` / `proc:stop:`）。
+            // 「应用控制」那一层：两行都**不是取值**，选完进下一页（打开 / 结束都进挑应用页），
+            //  真正的落盘在那一页上（`app:` / `proc:stop:`）。
             when (spec.token) {
                 ActionCatalog.APP_CONTROL_OPEN -> st.onAppControl(st.target, false)
                 ActionCatalog.APP_CONTROL_STOP -> st.onAppControl(st.target, true)

@@ -24,6 +24,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.keyName
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.MultiPickerDialog
@@ -36,7 +37,6 @@ import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.keyName
 import com.lookie.opluskey.ui.screen.binding.CollectKeyDialog
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState

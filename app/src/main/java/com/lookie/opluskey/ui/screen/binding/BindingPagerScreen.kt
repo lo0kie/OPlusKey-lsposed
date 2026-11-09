@@ -1,6 +1,5 @@
 package com.lookie.opluskey.ui.screen.binding
 
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,7 +7,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
@@ -121,8 +119,8 @@ internal fun SettingsPage.BindingPagerScreen(
     val enabled = bindingTargetEnabled(s)
     //  带子高度由顶栏那条手势带量出来，内容顶上照它让位
     val bandBlock = bindingBandOf(s).dp()
-    //  每档一份滚动位置（`ScrollState` 内部只有一个 `scrollableState`，共用会互相打架）
-    val scrolls = remember(targets.size) { List(targets.size) { ScrollState(0) } }
+    //  每档一份滚动位置 —— 寄在页面级而不是就地 `remember`，理由见 `bindingScrollsFor`
+    val scrolls = bindingScrollsFor(s, targets.size)
     //  页数会变（三档 / 两档），而分页器是页面级的、上一次可能停在第三页 —— 夹一道再取
     val page = pager.currentPage.coerceIn(0, targets.lastIndex)
 

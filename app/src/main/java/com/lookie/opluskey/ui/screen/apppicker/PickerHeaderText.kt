@@ -1,5 +1,7 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.SettingsPage
@@ -9,17 +11,20 @@ import com.lookie.opluskey.ui.appTargetLabelOf
 //  那一支已经贴着 `TooManyFunctions` 的上限，而这一行本来就只属于这一页。
 
 /**
- * 「选择应用」页这一趟**已经选中**的目标（草稿优先）；`null` = 还没选。
+ * 「选择应用」页这一趟**选中的**目标；`null` = 还没选。
  *
- *  **先看本次草稿**（二级页刚挑完、还没提交的那一条），没有才退回「当前绑定」：
- *  这一行说的是「这一趟将要绑成什么」，草稿才是那个答案。只看当前绑定的话，
- *  挑完某个具体界面 / 快捷方式退回来，顶栏仍写着上一个应用的名字（而页里已经亮了新的）。
- *  草稿在每次进页时由 `AppPickerUiState.beginVisit` 清掉，不会跨趟残留在这一行上。
+ *  首读取的是**选中位**（`AppPickerUiState.pending`）：进页那一刻它由当前绑定填（`beginVisit`），
+ *  之后被两处改 —— 二级页点确认，以及**列表里直接点一行**（结束应用 / 条件执行那一趟：
+ *  点一行就是选中它，没有二级页、也就没有草稿）。只看草稿的话，结束应用点了一行之后顶栏
+ *  还写着上一个应用名，而页里那一行已经亮了、FAB 也能按。
  *
- *  取的是**完整**目标（含 `/类名`，[SettingsPage.appPickerSelectedTarget]）——
- *  包名那一位会把 `/类名` 剥掉，这一行就拿不出「具体是哪一个界面」了。
+ *  取的是**完整**目标（含 `/类名`）—— 包名那一位会把 `/类名` 剥掉，
+ *  这一行就拿不出「具体是哪一个界面」了。
+ *
+ *  绑的是**快捷方式**时也照写（「已选择: 微信」）：它属于「打开应用」那一族，
+ *  与菜单里那一行的勾同一个判据 —— 菜单说绑着、这一行说没绑，才是最让人困惑的。
  */
-internal fun SettingsPage.appPickerChosenTarget(): String? = picker.draft?.target ?: appPickerSelectedTarget()
+internal fun SettingsPage.appPickerChosenTarget(): String? = appPickerUi.pending?.target ?: appPickerSelectedTarget()
 
 /**
  * 「选择应用」页大标题下面那一行 —— **这一趟要做什么: 做给谁**（见 `PageHeader` 的 `subtitle`）。
@@ -37,12 +42,16 @@ internal fun SettingsPage.appPickerChosenTarget(): String? = picker.draft?.targe
  *
  *  应用名；组件与快捷方式再跟一句「具体是哪一个」，用 ` - ` 接（用户口径）。
  *
- *  判据分两层：草稿（刚挑完、还没提交的那一条）优先 —— 这一行说的是「这一趟将要绑成什么」；
- *  没有草稿才读当前绑定（`SettingsPage.editingAction`）。没挑过时**空着**：
- *  写「已选择: 无」会被读成有个叫「无」的应用。
+ *  判据只有一份：**选中位**（`AppPickerUiState.pending`，判据见 [appPickerChosenTarget]）——
+ *  它既装了进页时的当前绑定，也装了这一趟在二级页 / 列表里点中的那一条，
+ *  「打开应用」与「结束应用」两趟读的都是它。没选中就说没有
+ *  （`app_picker.none_selected`）：这一行要**始终在**（用户口径：没有副标题时顶栏会矮一截，
+ *  翻页 / 返回时整页跟着跳），而写「已选择: 无」会被读成有个叫「无」的应用。
  */
 internal fun SettingsPage.pickerSubtitle(): String {
-    val target = appPickerChosenTarget() ?: return ""
+    val target =
+        appPickerChosenTarget()
+            ?: return I18n.get(Strings.APP_PICKER_NONE_SELECTED, "没有选择应用")
     //  **只写目标**（`微信 - 小窗 - 扫一扫`）：大标题已经是「打开应用 / 结束应用」，
     //  动词在这里再说一遍就是重复；「小窗」要标 —— 那一档与普通打开在列表里长得一样。
     return targetLabel(target, pickerKind())
@@ -54,16 +63,18 @@ private enum class PickerKind { APP, COMPONENT, SHORTCUT }
 /**
  * 这一趟绑的是整个应用 / 某个界面 / 某个快捷方式。
  *
- *  草稿与当前绑定**互斥地**算：草稿在时不去读当前绑定 —— 否则「当前绑的是快捷方式、
- *  这一趟刚挑了个普通应用」会给那个应用接上「 - 某个快捷方式名」的后缀。
+ *  **选中位与当前绑定互斥地算**：选中位非空时不去读当前绑定 —— 否则「当前绑的是快捷方式、
+ *  这一趟刚点了个普通应用」会给那个应用接上「 - 某个快捷方式名」的后缀。
+ *  选中位比草稿宽一档：结束应用那一趟点一行就是选中它（没有二级页，也就没有草稿），
+ *  而顶栏那一行的判据与它同源，两边必须读到同一份（否则「名字是新的、后缀是旧的」）。
  */
 private fun SettingsPage.pickerKind(): PickerKind {
-    val draft = picker.draft
-    if (draft != null) {
-        //  `shortcutId` 只有草稿有；`包名/类名` 那一档绑的是应用里某个具体界面
+    val pending = appPickerUi.pending
+    if (pending != null) {
+        //  `shortcutId` 只有「挑中的那一条」才有；`包名/类名` 那一档是应用里某个具体界面
         return when {
-            draft.shortcutId != null -> PickerKind.SHORTCUT
-            AppTarget.activity(draft.target) != null -> PickerKind.COMPONENT
+            pending.shortcutId != null -> PickerKind.SHORTCUT
+            AppTarget.activity(pending.target) != null -> PickerKind.COMPONENT
             else -> PickerKind.APP
         }
     }
@@ -95,7 +106,8 @@ private fun SettingsPage.pickerKind(): PickerKind {
  *  （以前这一处只认老写法的 `|名字`，重新进页时名字在 `Config.appNames` 里读不到，
  *  于是页头只剩应用名）。
  *
- *  「这一趟刚挑的那一行」的名字优先（`picker.draft?.label`）：挑完要立刻看见，而这时它还没落盘。
+ *  「这一趟刚挑的那一行」的名字优先（`AppPickerUiState.pending.label`）：挑完要立刻看见，
+ *  而这时它还没落盘。选中位而不是草稿 —— 结束应用那一趟点一行就是选中，没有草稿。
  */
 private fun SettingsPage.targetLabel(
     target: String,
@@ -106,7 +118,7 @@ private fun SettingsPage.targetLabel(
         shortcut = kind == PickerKind.SHORTCUT,
         //  「以小窗打开」那一趟：目标里标出来（`微信 - 小窗`）
         window = picker.smallWindow.value,
-        draftLabel = picker.draft?.label,
+        draftLabel = appPickerUi.pending?.label,
         //  「使用原版动画」那一趟同理（两者互斥，最多一个为真）
         stockAnim = picker.stockAnim.value,
     )

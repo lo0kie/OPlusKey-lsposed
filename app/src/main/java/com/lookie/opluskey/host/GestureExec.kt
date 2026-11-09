@@ -17,7 +17,9 @@ import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.core.model.ToastNotice
+import com.lookie.opluskey.core.model.comboLabel
 import com.lookie.opluskey.core.model.gestureOrNull
+import com.lookie.opluskey.core.model.keyName
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.ConditionProbe
 import com.lookie.opluskey.host.action.FailureNotice
@@ -693,16 +695,10 @@ internal object GestureExec {
         combo: ComboKey,
         trigger: GestureTrigger,
         config: Config,
-    ): Pair<String, String> {
-        val keys = combo.keys.mapNotNull { id -> config.keyIdOf(id)?.let(::keyName) }
-        return keys.joinToString(" + ") to gestureLabel(trigger)
-    }
+    ): Pair<String, String> = comboLabel(config, combo) to gestureLabel(trigger)
 
     /** 一档手势在提示里的名字 —— 第 3 击起的档位没有 `Gesture`，用它自己的标签。 */
     private fun gestureLabel(trigger: GestureTrigger): String = trigger.gestureOrNull()?.let(::gestureName) ?: trigger.label
-
-    /** 一颗键在提示里的名字（内置键走字典，自定义键用用户起的名字）。 */
-    private fun keyName(id: KeyId): String = if (id.isCustom) id.label else I18n.get(Strings.KEY_SIDE, id.label)
 
     /** 一档手势在提示里的名字（字典优先，缺了就退回模型上那个中文常量）。 */
     private fun gestureName(gesture: Gesture): String =

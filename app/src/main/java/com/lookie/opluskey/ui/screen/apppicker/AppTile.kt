@@ -30,6 +30,7 @@ import com.lookie.opluskey.ui.model.APP_KIND_MODULE_LIGHT
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_BG_ALPHA
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_INSIDE
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_RADIUS
+import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
 import com.lookie.opluskey.ui.model.CLONE_TAG_DARK
 import com.lookie.opluskey.ui.model.CLONE_TAG_LIGHT
 import com.lookie.opluskey.ui.model.LaunchableApp
@@ -37,6 +38,8 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.isDarkScheme
 import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.Icon
+import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
+import io.github.suqi8.coui.kmp.basic.RotatingProgressIndicator
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.Dispatchers
@@ -181,6 +184,30 @@ internal fun BoxScope.PageStatePlaceholder(
             Feedback(glyph = glyph, text = text)
         }
     }
+}
+
+/**
+ * 「正在读」那一颗转圈 —— [PageStatePlaceholder] 的字形之一（与「一条都没有」那张脸并列）。
+ *
+ *  单独一支是因为**同一颗圈要在两页长得一样**：「选择应用」页与「选择界面」页的加载态。
+ *  两处各写一遍时，库那套三个数（size / ringDiameter / strokeWidth）得各算一次缩放，
+ *  迟早有一处只换了 `size` ——那等于只多留白、圈没变大（这一处原先正是这么错的，见下面那段注释）。
+ *
+ * @param tint 圈的取色 —— 由调用点给（两处都是次要文字色，但那一条判据属于空态那一层）
+ */
+@Composable
+internal fun PageStateSpinner(tint: Color) {
+    // 库那套三个数是按 26dp 画布算出来的，只把 `size` 换成 32dp 等于只多留白、
+    // 圈没变大 —— 三个数要按同一比例一起放大（比例由 `APP_STATE_ICON_SIZE` 现算）。
+    val spinnerScale =
+        APP_STATE_ICON_SIZE.value /
+            ProgressIndicatorDefaults.DefaultRotatingProgressIndicatorSize.value
+    RotatingProgressIndicator(
+        color = tint,
+        size = APP_STATE_ICON_SIZE,
+        ringDiameter = ProgressIndicatorDefaults.DefaultRotatingProgressIndicatorRingDiameter * spinnerScale,
+        strokeWidth = ProgressIndicatorDefaults.DefaultRotatingProgressIndicatorStrokeWidth * spinnerScale,
+    )
 }
 
 /**

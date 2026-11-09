@@ -156,7 +156,8 @@ internal fun SettingsPage.SerialSteps() {
                     //  `打开应用: 微信 - LauncherUI` 这种整句，单行会把「做什么」裁掉一半 ——
                     //  而这一步做的正是核对它做什么。行高由内容撑开，与条件 / 动作那两行同一口径。
                     titleMaxLines = Int.MAX_VALUE,
-                    summary = I18n.format(Strings.COMMON_STEP_INDEX, stepsIndex + 1),
+                    //  **没有副标题**（用户口径：去掉那个「第 N 步」）：这一步做什么已经在标题里了，
+                    //  行次由行的位置自己说；排序态下真正要看的行尾那三颗（上移 / 下移 / 删除）。
                     icon = stepIcon(item.token, configState.commands.value),
                     // 排序态与退场中的行**不吃点击**（`onClick = null` = 纯展示行，也不挂按压反馈）：
                     // 排序态下这一行只让位给行尾那三颗按钮，否则「改顺序」与「换这一步」会撞在同一只手上。

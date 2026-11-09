@@ -136,7 +136,7 @@ internal fun emptyText(
     when {
         failed -> I18n.get(Strings.APP_PICKER_ACTIVITY_LOAD_FAILED, "列表没读出来，退回再进一次")
 
-        all.isNullOrEmpty() -> I18n.get(Strings.APP_PICKER_ACTIVITY_EMPTY, "这个应用没有可从外部打开的界面")
+        all.isNullOrEmpty() -> I18n.get(Strings.APP_PICKER_ACTIVITY_EMPTY, "这个应用没有可从外部打开的 Activity")
 
         // 用户输入会整体过一遍正文记号：先转义
         else -> I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT_ACTIVITY, escapeEmphasis(term))

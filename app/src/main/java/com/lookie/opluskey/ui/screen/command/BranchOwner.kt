@@ -2,10 +2,9 @@ package com.lookie.opluskey.ui.screen.command
 
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.comboLabel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.comboLabel
-import com.lookie.opluskey.ui.model.keyBrackets
 import com.lookie.opluskey.ui.screen.editingKeyName
 import com.lookie.opluskey.ui.state.BranchDraft
 
@@ -35,18 +34,19 @@ internal fun SettingsPage.branchDraftNow(): BranchDraft = branchDraft.now()
 /**
  * 「这一趟在编哪一颗键 / 哪一组组合键」—— 顶栏那行小标题与表尾注脚共用这一句。
  *
- *  单键写 `「快捷键」`（[keyBrackets]，与组合键编辑页的 `「侧键」+「电量 +」` 同一个长相：
- *  `快捷键` 单看像一句话，套上括号才看得出那是键名）；组合键那一档由 `comboLabel` 给，
- *  它自己带括号，外层不要再套。
+ *  组合键那一档由 `comboLabel` 给：两颗以上每颗各套一对 `[ ]`（`[ 侧键 ]×[ 电量 + ]`），
+ *  那是为了把「两个名字」和「一句话」分开。
+ *
+ *  **单键不套**（用户口径：只有一个键名时不要方框）：这一行本来就只装一个名字，
+ *  套上 `[ ]` 只是多一层噪声 —— 而 `快捷键` 三个字旁边还有副标题的位置说明它是什么。
  */
 internal fun SettingsPage.branchOwnerLabel(): String {
     val comboId = branchDraft.comboId
     if (comboId != null) {
         val cfg = configState.config.value
-        return cfg.combos.firstOrNull { it.id == comboId }?.let { comboLabel(cfg, it, bracketed = true) } ?: comboId
+        return cfg.combos.firstOrNull { it.id == comboId }?.let { comboLabel(cfg, it) } ?: comboId
     }
-    val (open, close) = keyBrackets()
-    return "$open${editingKeyName()}$close"
+    return editingKeyName()
 }
 
 /**

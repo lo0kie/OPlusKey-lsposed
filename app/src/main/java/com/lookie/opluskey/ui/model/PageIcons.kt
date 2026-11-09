@@ -53,10 +53,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Download
 import io.github.lyxnx.compose.ui.tablericons.outline.Edit
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
-import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowLeft
-import io.github.lyxnx.compose.ui.tablericons.outline.FileArrowRight
+import io.github.lyxnx.compose.ui.tablericons.outline.FileDownload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePlus
+import io.github.lyxnx.compose.ui.tablericons.outline.FileUpload
 import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flag
 import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
@@ -94,6 +94,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
+import io.github.lyxnx.compose.ui.tablericons.outline.Refresh
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
 import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
 import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
@@ -423,11 +424,11 @@ internal object PageIcons {
     /** 「English」—— `abc`（拉丁字母）。 */
     val LanguageEnglish: ImageVector get() = TablerIcons.Outline.Abc
 
-    /** 「更多选项」页「导出配置」—— `file-arrow-right`（文件 + 向外去的箭头）。 */
-    val ConfigExport: ImageVector get() = TablerIcons.Outline.FileArrowRight
+    /** 「更多选项」页「导出配置」—— `file-upload`（文件 + 向上的箭头）：把这份配置交出去。 */
+    val ConfigExport: ImageVector get() = TablerIcons.Outline.FileUpload
 
-    /** 「更多选项」页「导入配置」—— `file-arrow-left`（文件 + 向内进的箭头），与 [ConfigExport] 成一出一进。 */
-    val ConfigImport: ImageVector get() = TablerIcons.Outline.FileArrowLeft
+    /** 「更多选项」页「导入配置」—— `file-download`（文件 + 向下的箭头）：把一份文件收进来。 */
+    val ConfigImport: ImageVector get() = TablerIcons.Outline.FileDownload
 
     /** 「选择应用」页顶栏菜单的「显示系统应用」—— `GridDots`（点阵格）。 */
     val SystemApps: ImageVector get() = TablerIcons.Outline.GridDots
@@ -788,6 +789,14 @@ internal object PageIcons {
 
     /** 模块重启 —— `Reload`（回转箭头 + 竖线），读作「重新来一遍」。 */
     val ModuleRestart: ImageVector get() = TablerIcons.Outline.Reload
+
+    /**
+     * 「重新读一遍」—— `Refresh`（两段回转箭头），顶栏那颗刷新键用。
+     *
+     *  **与 [ModuleRestart] 分得开**：那一颗带竖线，是「把模块整个重启」；这一颗只是
+     *  「再查一次数据」，没有重启的意思（两件事混用会让用户以为按一下会断链路）。
+     */
+    val Refresh: ImageVector get() = TablerIcons.Outline.Refresh
 
     /**
      * 「运行状态」里**整体状态**那一行 —— 好不好看两颗字形：`home-check` / `home-cancel`。

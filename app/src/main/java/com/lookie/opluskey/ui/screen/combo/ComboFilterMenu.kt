@@ -5,12 +5,11 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.keyName
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.DrawnIcons
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.keyBrackets
-import com.lookie.opluskey.ui.model.keyName
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 
@@ -21,12 +20,14 @@ import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 // （detekt 的 `TooManyFunctions` 数的就是这一坨）。
 
 /**
- * 列表标题 —— 筛着的时候把「在看哪颗键」接在后面（`组合按键列表 - 「侧键」`）。
+ * 列表标题 —— 筛着的时候把「在看哪颗键」接在后面（`组合按键列表 - 侧键`）。
  *
  *  不写的话，从别处回到这一页只会看到一张短了的表：不知道那是筛出来的，第一反应是「组合丢了」。
- *  连接符用半角连字符（用户口径），与页内别处的「键 - 手势」同一套写法；
- *  **键名照例带括号**（[keyBrackets]，与列表行、删除确认窗同一个口径）—— 不带的话
- *  「组合按键列表 - 侧键」读起来像一句话，看不出后面那一段是**一颗键的名字**。
+ *  连接符用半角连字符（用户口径），与页内别处的「键 - 手势」同一套写法。
+ *
+ *  **键名不套方框**（用户口径：只有一个键名时不要框起来）：这一行后面只跟一个名字，
+ *  前面那个 ` - ` 已经把它与标题分开了，再套一对 `[ ]` 只是多一层噪声。
+ *  两颗以上连起来那一档（`[ 侧键 ]×[ 电量 + ]`）仍然要框 —— 那里框是为了把两个名字分开。
  */
 internal fun SettingsPage.comboListTitle(
     cfg: Config,
@@ -34,8 +35,7 @@ internal fun SettingsPage.comboListTitle(
 ): String {
     val base = I18n.get(Strings.COMBO_LIST_TITLE, "组合按键列表")
     val key = filter?.let { cfg.keyIdOf(it) } ?: return base
-    val (open, close) = keyBrackets()
-    return "$base - $open${keyName(key)}$close"
+    return "$base - ${keyName(key)}"
 }
 
 /**

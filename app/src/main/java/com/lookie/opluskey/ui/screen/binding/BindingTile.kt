@@ -310,8 +310,8 @@ internal fun SettingsPage.ActionTile(
                     //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
                     // 换掉之后占位与观感不变。
                     when (ActionCatalog.clickKind(spec)) {
-                        //  换页的入口（「自定义变量」→ 变量操作、「应用控制」→ 挑应用）⇒
-                        //  行尾那颗是右箭头（与菜单、列表那几处同一颗）。
+                        //  换页的入口（「自定义变量」→ 变量操作、「应用控制」→ 挑应用）
+                        //  ⇒ 行尾那颗是右箭头（与菜单、列表那几处同一颗）。
                         ActionCatalog.ClickKind.PAGE_APP,
                         ActionCatalog.ClickKind.PAGE_VARS,
                         -> {
