@@ -131,6 +131,18 @@ enum class ConditionKind(
 
     /** 飞行模式**开关状态**：`on` / `off`。读 `Settings.Global.airplane_mode_on`。 */
     AIRPLANE("airplane", choices = listOf("on", "off"), exhaustive = true),
+
+    /**
+     * **手电筒状态**：`on`（开着）/ `off`（关着）。
+     *
+     *  读 `Settings.Secure.flashlight_enabled` —— SystemUI 在 torch 回调里同步的那一位
+     *  （`1` 开 / `0` 关，实测见 `docs/device/actions/toggles.md` 23.1）。宿主直接读得到，
+     *  不用开相机、也不用 root。
+     *
+     *  **不标 `exhaustive`**：这个键在第一次开灯之前可能根本不存在，那时读不到 ⇒ 按「判不出」
+     *  处理，两档都不成立（见 `ConditionProbe` 头部那条契约）。
+     */
+    FLASHLIGHT("flashlight", choices = listOf("on", "off")),
     ;
 
     companion object {

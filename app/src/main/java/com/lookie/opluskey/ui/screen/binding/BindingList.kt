@@ -104,18 +104,22 @@ internal fun SettingsPage.BindingList(
         //  那是**分段控件那条固定带**的高度，它**含自己那 8dp 下内边距**，
         //  所以「带子与内容之间」那一档已经在里面了，这里不再另加 `PAGE_TOP_PADDING`。
         Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlock))
-        CardList(
-            //  上边距取小标题那一档（这一张上面没有小标题，不让位就会贴着分段带）
-            modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
-            rows =
-                listOf(
-                    //  点这一行进「系统场景」的**这一档**（档位与「为谁编」都由 target 给 ——
-                    //  单键清掉组合目标、组合带上它自己的 id，写成一处就不必两页各记一遍）。
-                    scenarioEntry(target) {
-                        openBranchesFor(target)
-                    },
-                ),
-        )
+        //  **场景那一页没有这一行**：它本身就是「系统场景」里的一行进来编的，
+        //  再摆一个「进系统场景」的入口就成了自己指向自己（用户口径「没有额外设置」）。
+        if (target !is BindingTarget.Scene) {
+            CardList(
+                //  上边距取小标题那一档（这一张上面没有小标题，不让位就会贴着分段带）
+                modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
+                rows =
+                    listOf(
+                        //  点这一行进「系统场景」的**这一档**（档位与「为谁编」都由 target 给 ——
+                        //  单键清掉组合目标、组合带上它自己的 id，写成一处就不必两页各记一遍）。
+                        scenarioEntry(target) {
+                            openBranchesFor(target)
+                        },
+                    ),
+            )
+        }
         BindingGroups(target, page.enabled, st, onCreateCommand)
     }
 }
@@ -123,7 +127,7 @@ internal fun SettingsPage.BindingList(
 /**
  * 一页手势绑定的滚动骨架 —— 三样东西在整条链路上是**一起动**的，收成一个参数免得每次往下传三份。
  *
- *  @param state 本页的滚动状态 —— **每个手势页各持一份**（由 `BindingScreen` 建）。
+ *  @param state 本页的滚动状态 —— **每个手势页各持一份**（由 `BindingPagerScreen` 建）。
  *    注意：不能写「三个手势页共用同一个实例」：`ScrollState` 内部只有一个 `scrollableState`，
  *    而 pager 滑动时相邻两页同时在场、互相打架 ⇒「切回来就滚不动」。
  *  @param tabBlock 内容顶上要给分段控件留出的那一块（= 分段控件自己的高度，含它的上下内边距）。

@@ -115,11 +115,13 @@ data class KeyConfig(
      */
     val longIsSerial: Boolean = false,
     /**
-     * **条件执行** —— 这颗键在某种情况下改执行别的动作（[StateRule]），按顺序匹配、
-     * 第一条成立的赢（[actionFor]）；一条都不中就走 [actionOf] 那一档本来的绑定。
+     * **系统场景** —— 一张顺序表，一块 = 一组条件 + 完整的三档手势（[SceneRule]）。
      *
-     *  分叉**不占用绑定**：它只是叠在绑定之上的一张顺序表，所以「加一条条件」与
-     *  「这一档绑什么」是两件事，互不影响。
+     *  按顺序找「条件成立、且这一档有值」的第一块，用它那一档的动作（[actionFor]）；
+     *  一块都不中就走 [actionOf] 那一档本来的绑定。
+     *
+     *  **不占用绑定**：它是叠在绑定之上的一张顺序表，所以「加一个场景」与「这一档绑什么」
+     *  是两件事，互不影响。
      *
      *  **只走落盘这一列**（与 [Config.appNames] 同一套做法）：它是一张**列表**，塞不进
      *  [ConfigFields] 那种扁平字段表（一格一个值），也不该在每次按键时把整张表广播给
@@ -127,11 +129,11 @@ data class KeyConfig(
      *
      *  空表（默认）= 与没有这一档完全相同。
      */
-    val rules: List<StateRule> = emptyList(),
+    val scenes: List<SceneRule> = emptyList(),
     /**
      * 第 3 击起的**额外档位**：连击次数 → 动作（`click3` / `click4` …）。
      *
-     *  与 [rules] 同一套：它是张表，进不了 `ConfigFields` 那种「一格一个值」的字段表，于是只走落盘。
+     *  与 [scenes] 同一套：它是张表，进不了 `ConfigFields` 那种「一格一个值」的字段表，于是只走落盘。
      *  界面上**没有入口**（三格仍只编辑单击 / 双击 / 长按）—— 它服务的是「手改 / 导入配置」，
      *  以及将来界面放开之后的判定与执行那一段。空表（默认）⇒ 行为与没有这一项完全相同。
      *
@@ -191,22 +193,23 @@ data class KeyConfig(
                 if (single.isBound) 1 else 0,
                 if (double.isBound) 2 else 0,
                 extraClicks.filterValues { it.isBound }.keys.maxOrNull() ?: 0,
-                ruleClicks,
+                sceneClicks,
             )
 
     /**
-     * [rules] 里按手势算出的最高击数（1 = 只配了单击场景；2 = 配了双击场景；0 = 没有可执行的规则）。
+     * [scenes] 里按切出来的最高击数（1 = 只有单击那一档有动作；2 = 双击那一档有动作；0 = 没有可执行的）。
      *
-     *  停用的、动作是 `None` 的、以及「条件还没配完」的规则都不算 —— 它们永远不会执行，
-     *  算进来只会让判定侧白等一个窗口（宁可按「没有」处理）。
+     *  停用的、以及「条件还没配完」的块都不算 —— 它们永远不会执行，算进来只会让判定侧白等一个
+     *  窗口（宁可按「没有」处理）。**只算真的绑了动作的档**（`isBound`）：某一块写着「双击 = 无操作」
+     *  时不需要为它多等一次抬手 —— 那一档本来就什么都不做。
      */
-    private val ruleClicks: Int
+    private val sceneClicks: Int
         get() =
-            rules.maxOfOrNull { rule ->
+            scenes.maxOfOrNull { scene ->
                 when {
-                    !rule.enabled || !rule.action.isBound || !rule.isReady -> 0
-                    rule.gesture == Gesture.DOUBLE -> 2
-                    rule.gesture == Gesture.SINGLE -> 1
+                    !scene.enabled || !scene.isReady -> 0
+                    scene.double.isBound -> 2
+                    scene.single.isBound -> 1
                     else -> 0
                 }
             } ?: 0
@@ -240,7 +243,18 @@ data class KeyConfig(
     fun actionFor(
         gesture: Gesture,
         matches: (BranchCondition) -> Boolean,
-    ): Action = pickAction(rules, gesture, actionOf(gesture), matches)
+    ): Action = pickAction(scenes, gesture, actionOf(gesture), matches)
+
+    /**
+     * 这一档**有没有被某个场景块接管** —— 「松手执行额外动作」要靠它让位。
+     *
+     *  与 [actionFor] 同一条判据（条件成立 + 这一档有值），只是不要动作、只要一个是非：
+     *  长按那一档被场景接管了，松手那一刻就不该再补一刀。
+     */
+    fun sceneTakes(
+        gesture: Gesture,
+        matches: (BranchCondition) -> Boolean,
+    ): Boolean = sceneTakes(scenes, gesture, matches)
 
     /**
      * 长按绑的是不是**灵感语音那一族**（`oplus:voice_memory` / `oplus:voice_memory_stop`）。
@@ -398,13 +412,13 @@ data class KeyConfig(
          *  这里**不再钳制区间**：钳制是读取方对「外来文本」做的事（上下限就在
          *  `ConfigFields` 的字段表里），走到这里时值已经收口过。
          *
-         *  [rules] 不在取值表里（那是列表，不是扁平的一格，见 [KeyConfig.rules]）——
+         *  [scenes] 不在取值表里（那是列表，不是扁平的一格，见 [KeyConfig.scenes]）——
          *  由落盘那一侧单独读出来传进来；广播那条路不传，注入侧拿到的就是空表。
          */
         fun ofFields(
             id: KeyId,
             v: ConfigFields.Values,
-            rules: List<StateRule> = emptyList(),
+            scenes: List<SceneRule> = emptyList(),
         ): KeyConfig =
             KeyConfig(
                 id = id,
@@ -432,7 +446,7 @@ data class KeyConfig(
                 toastTemplate = v.text(ConfigFields.F_KEY_TOAST_TEMPLATE),
                 ownSettingsSeeded = v.bool(ConfigFields.F_OWN_SETTINGS_SEEDED),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
-                rules = rules,
+                scenes = scenes,
                 judgeClicks = v.number(ConfigFields.F_JUDGE_CLICKS),
             )
     }
@@ -858,6 +872,17 @@ data class Config(
         }
 
     /**
+     * 这一组**自己存着**的按键间隔（毫秒）—— 没写过（`WINDOW_FOLLOW_GLOBAL` / 老配置）就退回公共那份。
+     *
+     *  与 [comboWindowFor] 的差别只有一处：**不看总开关**。界面上那根滑杆要的正是这一份 ——
+     *  它显示的得是「这一组自己的数」，否则拨一下总开关它就跟着换一份，看着像刚调好的值被改了
+     *  （与单键那张卡里振动强度那一行同一条口径）。
+     *
+     *  判据只写在这里：`comboWindowFor` 也复用它，「没写过就退回公共」不会在两处各算一遍。
+     */
+    fun comboStoredWindowFor(combo: ComboKey): Int = combo.windowMs.takeIf { it > 0 } ?: global.comboWindowMs
+
+    /**
      * 这一组**实际生效**的按键间隔（毫秒）—— 规则与 [comboPassthroughFor] 同一条：
      * 独立设置关着就跟随公共，开着就是这一组自己那份。
      *
@@ -871,8 +896,31 @@ data class Config(
         if (!combo.useOwnSettings) {
             global.comboWindowMs
         } else {
-            combo.windowMs.takeIf { it > 0 } ?: global.comboWindowMs
+            comboStoredWindowFor(combo)
         }
+
+    /**
+     * 这一档**整串**的容忍跨度（毫秒）—— 相邻两颗最多隔 [comboWindowFor]，n 颗就要 (n-1) 个窗口。
+     *
+     *  ## 为什么判定不能也按「一个窗口」算
+     *
+     *  窗口的语义一直是「**相邻两颗**之间最多隔多久」（[ComboPlan.collectMs] 从写下来那天起就是
+     *  这句），两颗那一档里它也确实是这个意思。但三颗要是照样拿「第一颗到最后那颗只隔一个窗口」
+     *  判，80ms 的两颗手感换成三颗就成了「三根手指必须几乎同时落」—— 真机表现是
+     *  「三颗的组合怎么按都没反应，两颗的照常」，而日志里连一行都留不下。
+     *
+     *  所以整串的跨度按成员数放大：三颗 = 2 个窗口（默认 160ms）。判定（`ComboDetector.multiFor`
+     *  与它的镜像 `ComboSequence`）、扫候选（[comboScanWindowMs]）、「按下先等多久」（
+     *  `ConfigChannel.holdWindows`）三处都读这一支 —— 少改一处就是「扫得到、等不到」或反过来。
+     *
+     *  放大倍数封顶在 [ComboKey.MAX_KEYS] - 1（两个窗口）：界面只造得出三颗，手改配置写进来的
+     *  四颗以上本来就没被验过，而这一位同时决定「参与组合的键按下后先等多久才回落单键」，
+     *  再放大只会让那几颗键白等好几秒。
+     */
+    fun comboSpanFor(combo: ComboKey): Int {
+        val gaps = (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_KEYS - 1)
+        return comboWindowFor(combo) * gaps
+    }
 
     /**
      * 判定侧**扫描**用的窗口：这份配置里最长的那个按键间隔（至少是公共那一档）。
@@ -880,12 +928,18 @@ data class Config(
      *  按下当前这一颗键时还不知道会凑成哪一组，所以扫候选必须按**最宽**的那一档来扫，
      *  命中之后再拿那一组自己的窗口复核（见 `ComboDetector`）—— 否则设了短窗口的组会被
      *  设了长窗口的组抢走配对，或者反过来永远配不上。
+     *
+     *  取的是每档的**整串跨度**（[comboSpanFor]）而不是单个窗口：三颗那一档的第三颗按下时，
+     *  第一颗已经隔了两个窗口 —— 按一个窗口扫就永远看不到它，三颗的组合于是永远凑不齐。
+     *
+     *  只算 [liveCombos]：凑不齐的那一档按再宽的窗口扫也永远命中不了，让它参与取最大值
+     *  只会把这一段扫描时长白撑出去。
      */
     val comboScanWindowMs: Int
         get() =
             maxOf(
                 global.comboWindowMs,
-                combos.filter { it.isUsable }.maxOfOrNull { comboWindowFor(it) } ?: 0,
+                liveCombos().maxOfOrNull { comboSpanFor(it) } ?: 0,
             )
 
     /** 某个目标该显示的名字（按 [AppTarget.identity] 查）；没记过返回 `null`。 */
@@ -1002,6 +1056,19 @@ data class Config(
                 val key = keys.entries.firstOrNull { it.key.id == member }?.value ?: return@any true
                 !key.enabled
             }
+
+    /**
+     * 判定侧**真正要算**的那几档组合 —— [comboOff] 为假的那些。
+     *
+     *  与 [comboFor] 同一条口径（那颗键还接管着，才谈得上「凑得齐」），比 `ComboKey.isUsable`
+     *  严一位：`isUsable` 只看这一档自己关没关、成员够不够数，**不看成员键是否被停用**。
+     *
+     *  三处读者都从这里取：注入侧每颗键「等多久」的账（`ConfigChannel.holdWindows`）、
+     *  「参不参与组合」的成员表（`rebuildComboIndex`）、以及判定计划（`comboPlans`）。
+     *  各自按 `isUsable` 筛的后果是「这一档永远凑不齐，参与它的键却照样等满一个窗口」——
+     *  最长 1000ms 的白等，且列表上已经显示「已停用」。
+     */
+    fun liveCombos(): List<ComboKey> = combos.filterNot(::comboOff)
 
     /** 顶层那两位的取值 —— 与另两段同一套（见 `KeyConfig.fieldValues` 的说明）。 */
     fun fieldValues(): ConfigFields.Values =

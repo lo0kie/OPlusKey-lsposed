@@ -17,14 +17,8 @@ internal class BranchMenuState {
     /** 左列（条件）的锚点 —— 换成「点的是哪一格」那一份。 */
     var condAnchor by mutableStateOf(PreciseClickState())
 
-    /** 右列（动作）的锚点 —— 同上。 */
-    var commandAnchor by mutableStateOf(PreciseClickState())
-
     /** 行尾那颗「更多」菜单的锚点。 */
     var menuAnchor by mutableStateOf(PreciseClickState())
-
-    /** 选动作菜单在说第几条；`-1` = 没开。 */
-    var commandAt by mutableIntStateOf(-1)
 
     /** 行尾「更多」菜单在说第几条；`-1` = 没开。 */
     var menuAt by mutableIntStateOf(-1)

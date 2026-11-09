@@ -89,6 +89,15 @@ object ActionCatalog {
         /** 「无操作」（`none`）。 */
         NoOp,
 
+        /**
+         * 「跟随默认」（`follow`）—— 只给场景块那三个槽位用。
+         *
+         *  **不与 [NoOp] 共用一颗**：那一颗是禁止符号（「命中后什么都不做」），而这一档说的是
+         *  「这一档不归这一块管，走按键绑定里那一档」—— 两件事在同一张网格里挨着摆，
+         *  同形会串味。
+         */
+        Follow,
+
         /** 手电筒 —— 自绘那颗斜放的手电（图标库那颗角度不对）。 */
         Flashlight,
 
@@ -351,6 +360,9 @@ object ActionCatalog {
 
     /** 「无操作」的取值（[STEP_GROUPS] 要把它剔掉，所以单独给个常量）。 */
     private val NONE_TOKEN = Action.NONE
+
+    /** 「跟随默认」的取值 —— 只出现在 [BRANCH_GROUPS] 里（见那张表的注释）。 */
+    private val FOLLOW_TOKEN = Action.FOLLOW
 
     /**
      * 系统侧键场景表里的三档（落点见 `core/model/RomProfile`）：一键闪记 / 免打扰 / 录音。
@@ -1000,19 +1012,10 @@ object ActionCatalog {
      */
     fun groupsFor(): List<Pair<String, List<Spec>>> = GROUPS
 
-    /** 内置动作的**条数** —— 「自定义命令」那一段从它开始（见 `BindingGridState.builtInCount`）。 */
-    fun builtInCount(): Int = groupsFor().sumOf { it.second.size }
-
-    /**
-     * 网格那一屏的全部条目：内置动作 + 自定义命令。
-     *
-     *  保留此函数而非让调用方直接读 [ALL]：清单按手势分化随时可能回来，调用点不必跟着改。
-     *  现在三档**没有分化**（见 [groupsFor]），所以这里不收手势参数。
-     */
-    fun forGesture(commands: List<Command> = emptyList()): List<Spec> {
-        val base = groupsFor().flatMap { it.second }
-        return base + commands.map { commandSpec(it) }
-    }
+    //  「拍平成一屏」那两支（`builtInCount` / `forGesture`）**已删**：网格改成
+    //  「分组表 + 自定义命令」两段拼（见 `BindingGridState` 的 `groups` / `specs`），
+    //  场景那一页还要换另一张分组表 —— 一份现成的「拍平结果」已经没人读得对。
+    //  切点由 `groups.sumOf { it.second.size }` 给，与分组同源。
 
     /**
      * 一条自定义命令的展示条目。
@@ -1067,10 +1070,30 @@ object ActionCatalog {
      *
      *  **只在场景里加**：多条命令的步骤仍走 [STEP_GROUPS]（剔掉它）—— 步骤不是按键，
      *  「无操作」那一步等于白占一格，还让「有几步」这件事数不准。
+     *
+     *  第一组最前面还有**「跟随默认」**（[Action.Follow]）：它只属于场景块的那三个槽位，
+     *  说的是「这一档不由这一块接管」，是所有新块的默认值。放进 [GROUPS] 的话，按键绑定、
+     *  组合键、多条命令的步骤都会多出一档语义上不成立的取值 —— 所以只在这一张表里加。
      */
     val BRANCH_GROUPS: List<Pair<String, List<Spec>>> =
         //  与 [STEP_GROUPS] 同一张表：场景要落成的也是一条**动作**，所以「应用控制」照样留在表里
-        GROUPS.map { (title, group) -> title to group }
+        GROUPS.mapIndexed { index, (title, group) ->
+            if (index == 0) {
+                //  排在「无操作」**前面**：它是三档的默认值，比「无操作」更常被找
+                title to
+                    (
+                        listOf(
+                            Spec(
+                                name = Strings.COMMAND_BRANCH_ACTION_FOLLOW,
+                                token = FOLLOW_TOKEN,
+                                glyph = Glyph.Follow,
+                            ),
+                        ) + group
+                    )
+            } else {
+                title to group
+            }
+        }
 
     /**
      * 某一项是不是当前选中的动作。

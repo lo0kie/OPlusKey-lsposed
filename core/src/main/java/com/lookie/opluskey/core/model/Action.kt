@@ -41,7 +41,7 @@ sealed interface Action {
     val isBarePrefix: Boolean
         get() =
             when (this) {
-                None, is KeyEvent, is MiniWindow, Flashlight, PowerMenu -> false
+                None, Follow, is KeyEvent, is MiniWindow, Flashlight, PowerMenu -> false
 
                 is Shell -> command.isBlank()
 
@@ -94,11 +94,25 @@ sealed interface Action {
      *  叫 `isEmpty` 会让这两件事看起来是一家人。
      */
     val isBound: Boolean
-        get() = this !is None
+        get() = this !is None && this !is Follow
 
     /** 拦截按键，什么都不做。 */
     data object None : Action {
         override val token: String = Action.NONE
+    }
+
+    /**
+     * **跟随默认** —— 「这一档不由这一块场景接管，还是走按键绑定里那一档绑的东西」。
+     *
+     *  只给**系统场景块**的三个槽位用（[com.lookie.opluskey.core.model.SceneRule]），
+     *  也是那里每一档的**默认值**：加一块新场景时三档都是它，于是「没动过的档」保持原样，
+     *  用户只需要给自己关心的那一档挑动作。
+     *
+     *  与 [None] 不是一回事：那个是「命中后这一档什么都不做」（明确的吞掉）。
+     *  两者在判定侧的分叉只有一处（`pickAction`：见到 Follow 就继续往下找，最后落到默认绑定）。
+     */
+    data object Follow : Action {
+        override val token: String = Action.FOLLOW
     }
 
     // 「交还系统」（`native` / `passthrough`）**整条已删**：
@@ -408,6 +422,9 @@ sealed interface Action {
         /** 「无操作」。 */
         const val NONE = "none"
 
+        /** 「跟随默认」的写法 —— 只出现在系统场景块的三个槽位里（见 [Follow]）。 */
+        const val FOLLOW = "follow"
+
         /** 注入一次按键，后接 `KeyEvent.KEYCODE_*` 的数值。 */
         const val KEYEVENT_PREFIX = "keyevent:"
 
@@ -533,6 +550,8 @@ sealed interface Action {
             val text = raw?.trim().orEmpty()
             return when {
                 text.isEmpty() || text == NONE -> None
+
+                text == FOLLOW -> Follow
 
                 text.startsWith(KEYEVENT_PREFIX) -> parseKeyEvent(text)
 

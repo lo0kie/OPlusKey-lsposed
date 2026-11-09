@@ -134,14 +134,21 @@ private fun SettingsPage.acceptCommandDisclaimer() {
 }
 
 /**
- * 退出这一页时的「放弃未保存的命令」（触发点在 `SettingsPage.goBack`，这里只负责画）。
+ * 退出这一页时的「放弃未保存的命令 / 场景」（触发点在 `SettingsPage.goBack`，这里只负责画）。
  *  确认 ⇒ 丢掉草稿并**真退**（`popBackStack` 绕开 goBack 的拦截，否则又弹回自己）；
  *  取消 ⇒ 关掉窗，留在页里继续编。
+ *
+ * @param onDiscard 点「放弃」之后、弹栈之前要做的收尾 —— `null` = 什么都不用做，直接弹栈。
+ *
+ *   「场景动作」页要传一支：那一页改的是**共享草稿的其中一块**，草稿不在离栈时整份清
+ *   （它属于还留在栈里的「系统场景」页）。只弹栈的话，改动仍躺在草稿里，退回上一页后
+ *   那颗「确认」照样能把它写下去 —— 真机上就是「点了放弃、选的命令还是生效了」。
  */
 @Composable
 internal fun SettingsPage.LeaveDiscardDialog(
     /** 标题由调用页给：这一页的草稿里是命令还是条件，只有调用点知道。 */
     title: String = I18n.get(Strings.DIALOG_DISCARD_COMMAND_TITLE, "放弃未保存的命令"),
+    onDiscard: (() -> Unit)? = null,
 ) {
     ConfirmDialog(
         show = overlays.confirmLeaveCommands,
@@ -153,6 +160,8 @@ internal fun SettingsPage.LeaveDiscardDialog(
             //  只弹栈：**当前页**那一份草稿由离栈收尾（`discardPageStateOf`）按 leaving 页清。
             //  两页的草稿是两份，这个窗说的「放弃未保存的命令」只指当前页那份 ——
             //  在这里把另一份也 reset 会无提示吞掉另一页的输入。
+            //  要「只丢这一趟」的页由 `onDiscard` 自己回滚那一小块（见参数说明）。
+            onDiscard?.invoke()
             popBackStack()
         },
     )

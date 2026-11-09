@@ -18,11 +18,11 @@
     "properties": {
       "name": {
         "title": "称谓（昵称）",
-        "description": "表格左格。两端的空白会被去掉；去掉之后为空的行会被丢掉（不报错、也不显示）。\n写昵称，不要写真实姓名或手机号 —— 这份名单跟着包走，封存只算混淆（密钥由公开的签名证书派生，拿得到证书就解得开）。",
-        "type": "string",
+        "description": "表格左格。写昵称；**匿名就写 null**（省略这一项也一样），表格里显示成 ***。\n两端的空白会被去掉，去掉之后为空同样按匿名处理。\n不要写真实姓名或手机号 —— 这份名单跟着包走，封存只算混淆（密钥由公开的签名证书派生，拿得到证书就解得开）。",
+        "type": ["string", "null"],
         "minLength": 1,
         "pattern": "\\S",
-        "examples": ["张老板", "Lookie"]
+        "examples": ["张老板", "Lookie", null]
       },
       "amount": {
         "title": "金额（元，可到分）",
@@ -40,8 +40,8 @@
         "examples": ["2026-10-17 19:36"]
       }
     },
-    "required": ["name"],
+    "required": [],
     "additionalProperties": true,
-    "examples": [{ "name": "张老板", "amount": 30 }]
+    "examples": [{ "name": "张老板", "amount": 30 }, { "name": null, "amount": 5.2, "at": "2026-11-03 12:35" }]
   }
 }

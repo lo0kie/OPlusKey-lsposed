@@ -96,7 +96,7 @@ internal object ChordGuard {
         config: Config,
         combo: ComboKey,
     ): Boolean {
-        val hasAction = combo.single.isBound || combo.long.isBound || combo.releaseBound || combo.rules.isNotEmpty()
+        val hasAction = combo.single.isBound || combo.long.isBound || combo.releaseBound || combo.scenes.isNotEmpty()
         return hasAction || !config.comboPassthroughFor(combo)
     }
 

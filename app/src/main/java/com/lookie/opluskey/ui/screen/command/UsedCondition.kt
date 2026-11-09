@@ -2,7 +2,7 @@ package com.lookie.opluskey.ui.screen.command
 
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 
 // 「这一档 / 这个取值是不是已经加过了」的判据 —— 从 `CommandBranchMenus.kt` 分出来，一是让那边
 // 的文件级函数数量留在 detekt 的 `TooManyFunctions` 之下，二是「重复」这件事本来就只有一个判据：
@@ -31,7 +31,7 @@ internal data class UsedCondition(
  *   以前这里跳过**整块**，于是同一个取值能被加两遍（真机反馈）。
  */
 internal fun usedConditionsOf(
-    rules: List<StateRule>,
+    rules: List<SceneRule>,
     skipAt: Int,
     skipCondition: Int = -1,
 ): Set<UsedCondition> =

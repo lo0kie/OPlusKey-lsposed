@@ -231,6 +231,10 @@ internal class ActionRunner(
                 //  「无操作」：什么都不做（保留这一支只为让 `when` 覆盖全部子类）
                 is Action.None -> Unit
 
+                //  「跟随默认」只该出现在场景块里，判定侧见到它就跳过那一档 —— 真跑到执行侧
+                //  说明有人把它当成了普通动作绑在别处：什么都不做，与小节标题那句「无操作」同一档
+                is Action.Follow -> Unit
+
                 is Action.KeyEvent -> runKeyEvent(act.keyCode)
 
                 is Action.Shell -> runShell(act.command)

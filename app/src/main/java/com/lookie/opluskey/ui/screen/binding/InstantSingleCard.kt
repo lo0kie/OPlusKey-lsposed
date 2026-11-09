@@ -32,7 +32,10 @@ import com.lookie.opluskey.ui.state.KeyWatchState
  *  「适配清单」不参与任何闸，这里当然也不判它（AGENTS 一、13）。
  */
 @Composable
-internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
+internal fun SettingsPage.InstantSingleCard(
+    enabled: Boolean,
+    disabledHint: String? = null,
+) {
     val cfg = configState.config.value
     // 与「单击延迟」同一条：这一位也是**每颗键自己的**（`KeyConfig.instantSingle`）
     val id = KeyWatchState.editing(cfg)
@@ -49,6 +52,7 @@ internal fun SettingsPage.InstantSingleCard(enabled: Boolean) {
                     icon = PageIcons.IgnoreDouble,
                     checked = checked,
                     enabled = enabled,
+                    disabledHint = disabledHint,
                 ) {
                     setInstantSingle(it)
                 },

@@ -285,6 +285,7 @@ fun commandTitleOf(action: Action): CommandTitle =
         is Action.VarSet -> variableTitle
 
         is Action.None,
+        is Action.Follow,
         is Action.KeyEvent,
         is Action.Shell,
         is Action.Custom,

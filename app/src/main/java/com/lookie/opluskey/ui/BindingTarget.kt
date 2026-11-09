@@ -9,9 +9,11 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.LongPressParams
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
+import com.lookie.opluskey.ui.model.comboLabel
+import com.lookie.opluskey.ui.state.BranchDraft
 
 /**
  * 一张动作网格**正在往哪儿写**。
@@ -27,10 +29,15 @@ import com.lookie.opluskey.ui.model.BRANCHES_TITLE
  *  所以把「写哪儿」抽成一个值，网格只认它：读当前绑定走 [actionIn]，写走
  *  `pick(spec, target)`，写盘说明由 [what] 给。
  *
- * ## 只有两处实现
+ * ## 三处实现，两种落点
  *
  *  · [Key] —— 一颗键的一档（三档手势都走它）；
- *  · [Combo] —— 一档组合键的一档（组合只有短按 / 长按，双击在 `ComboKey` 上就没有定义）。
+ *  · [Combo] —— 一档组合键的一档（组合只有短按 / 长按，双击在 `ComboKey` 上就没有定义）；
+ *  · [Scene] —— 某个**场景块**的一档。
+ *
+ *  前两个**落盘**（写进配置、当场广播出去），[Scene] 只**改草稿** ——
+ *  场景表是「改完再点确认」的那一套（见 `BranchDraft`），提前落盘等于把用户还没确认的改动
+ *  写死在配置里。三种目标的读写都从这一层走，网格与各页面因此不必知道「这次是不是在写草稿」。
  *
  *  `gesture` 仍然对外暴露：网格按它读这一档现在绑的是什么、写哪一格（清单本身不按手势分化）。
  */
@@ -60,14 +67,25 @@ internal sealed interface BindingTarget {
      *
      *  单键回 `KeyConfig`、组合回 `ComboKey`，两者在**能共用契约的地方**（`OwnSettings`）
      *  直接是同一份用法；页面与卡片只认这一处，不再各自 `when (是不是组合)`。
+     *
+     *  场景那一档回 `null`：它不是「一份设置」，而是别人的一张表里的一行（那一页也不摆
+     *  场景入口与独立设置，见 `BindingGroups`）。
      */
     fun ownerIn(cfg: Config): Any?
 
-    /** 这一档的**场景表**（`StateRule`）—— 场景入口那句「有几个判断」与横幅都按它数。 */
-    fun rulesIn(cfg: Config): List<StateRule>
+    /** 这一档的**场景表**（`SceneRule`）—— 场景入口那句「有几个判断」与横幅都按它数。 */
+    fun rulesIn(cfg: Config): List<SceneRule>
 
-    /** 这一档属于哪一组组合键；单键是 `null` —— 挑应用那条路只认这一个值。 */
+    /** 这一档属于哪一组组合键；单键与场景是 `null` —— 挑应用那条路只认这一个值。 */
     val comboId: String? get() = null
+
+    /**
+     * 这一档在**场景表里的第几块**（`-1` = 不是场景目标）。
+     *
+     *  与 [comboId] 同一条用途：给这一档挑应用 / 挑变量时要把「写回哪儿」记进页面级状态
+     *  （那一趟要压一层「选择应用」页，见 `AppPickerState.sceneAt`），而那一层只认识原始值。
+     */
+    val sceneAt: Int get() = -1
 
     /** 这一档的长按参数 —— 单键与组合都实现 `LongPressParams`，卡片只认那个接口。 */
     fun longPress(cfg: Config): LongPressParams?
@@ -99,7 +117,8 @@ internal sealed interface BindingTarget {
 
         override fun ownerIn(cfg: Config): Any? = cfg.key(id)
 
-        override fun rulesIn(cfg: Config): List<StateRule> = cfg.key(id).rules.filter { it.gesture == gesture }
+        //  翻转之后「这一档的场景」不再靠筛选：一块自带三档，所以整张表都与这一档有关
+        override fun rulesIn(cfg: Config): List<SceneRule> = cfg.key(id).scenes
 
         override fun longPress(cfg: Config): LongPressParams = cfg.key(id)
 
@@ -129,11 +148,10 @@ internal sealed interface BindingTarget {
 
         override fun ownerIn(cfg: Config): Any? = cfg.combos.firstOrNull { it.id == id }
 
-        override fun rulesIn(cfg: Config): List<StateRule> =
+        override fun rulesIn(cfg: Config): List<SceneRule> =
             cfg.combos
                 .firstOrNull { it.id == id }
-                ?.rules
-                ?.filter { it.gesture == gesture }
+                ?.scenes
                 .orEmpty()
 
         override val comboId: String get() = id
@@ -156,8 +174,95 @@ internal sealed interface BindingTarget {
             return if (combo.enabled) {
                 null
             } else {
-                I18n.format(Strings.COMBO_DISABLED_ITEM, id)
+                //  这里要的是**用户认得出的名字**（`「侧键」×「电量 +」`），不是 `id` ——
+                //  后者是 `com1` 那种内部标识，画到提示条上等于什么都没说。
+                I18n.format(Strings.COMBO_DISABLED_ITEM, comboLabel(cfg, combo, bracketed = true))
             }
+        }
+    }
+
+    /**
+     * 某个**场景块**的一档 —— 点「系统场景」页里那一行动作进来的那一页在改它。
+     *
+     * ## 为什么它带着草稿
+     *
+     *  另外两处写的是配置（`Config`），而场景块写的是**草稿**（`BranchDraft`）——
+     *  那张表改完还要点右下角的「确认」才落盘（见 `BranchScreen`）。草稿属于某一页
+     *  （页面级对象），不在 `Config` 里，所以「写哪儿」必须随目标一起带过来 ——
+     *  否则这一层还得多一个「现在是不是在编场景」的旁路状态，两处判据迟早对不上。
+     *
+     * ## 「按键设置」那几张卡落在**谁**身上
+     *
+     *  场景块只是别人的某一档在某种条件下的取值，它没有自己的判据可调。参数归**那一位**：
+     *  · 单键的场景表（[comboId] 为 `null`）⇒ 落到这颗键的 `KeyConfig`（与「按键绑定」页同一支）；
+     *  · 组合键的场景表（[comboId] 非空）⇒ 落到那一组组合的 `ComboKey` —— 组合的短按 / 长按
+     *    时序本来就是整组一套，与成员键各自那一份无关。
+     *
+     *  [ownerIn] 恒 `null`、[rulesIn] 恒空：这一页不摆「进系统场景」那一行（它就是从那里进来的）、
+     *  也不摆独立设置（用户口径「没有额外设置」）。
+     */
+    data class Scene(
+        /** 这一档写进哪份草稿 —— 页面级那一份（`SettingsPage.branchDraft.now()`）。 */
+        val draft: BranchDraft,
+        /** 第几块（`0` 起）。 */
+        val at: Int,
+        override val gesture: Gesture,
+        /**
+         * 这一档所属的**组合键 id**（`null` = 这一趟在编的是单键的场景表）。
+         *
+         *  与 [Combo.comboId] 同一个含义、同一条用途：那几张「按键设置」卡要把改动写回
+         *  「这一位长按怎么判」时，得知道是哪一组组合 —— 场景表自己不带这个字段，
+         *  它挂在页面级的 `BranchDraftState.comboId` 上，由构造点递进来。
+         */
+        override val comboId: String? = null,
+    ) : BindingTarget {
+        /** 这一块现在长什么样（`null` = 已经被删掉了）。 */
+        private val block: SceneRule? get() = draft.scenes.getOrNull(at)
+
+        override fun actionIn(cfg: Config): Action = block?.actionOf(gesture) ?: Action.None
+
+        //  日志里要能一眼分出「这一档是场景里的第几块」，与单键 / 组合那两串不撞
+        override val what: String get() = "scene:$at:${gesture.id}"
+
+        override fun ownerIn(cfg: Config): Any? = null
+
+        override fun rulesIn(cfg: Config): List<SceneRule> = emptyList()
+
+        override val sceneAt: Int get() = at
+
+        //  与 [Combo.longPress] 同一支：组合场景读**那一组**的参数，单键场景读这颗键的
+        override fun longPress(cfg: Config): LongPressParams? {
+            val id = comboId
+            if (id != null) return cfg.combos.firstOrNull { it.id == id }
+            return draft.owner?.let { cfg.keyForId(it) }
+        }
+
+        //  长按参数写回**那一位**（不是草稿）：那几张卡改的是「这一档怎么判」，与场景表无关
+        override fun withLongPress(
+            cfg: Config,
+            edit: LongPressEdit,
+        ): Config {
+            val id = comboId
+            if (id != null) {
+                return cfg.copy(
+                    combos = cfg.combos.map { if (it.id == id) it.withLongPress(edit) else it },
+                )
+            }
+            val keyId = draft.owner?.let { cfg.keyIdOf(it) } ?: return cfg
+            return cfg.copy(keys = cfg.keys + (keyId to cfg.key(keyId).withLongPress(edit)))
+        }
+
+        override fun scenarioBlockedReason(cfg: Config): String? = null
+
+        /**
+         * 把 [action] 写进这一块的这一档 —— **只改草稿**，一个字节都不落盘。
+         *
+         *  @return `false` = 那一块已经不在了（草稿在别处被重置过）
+         */
+        fun bind(action: Action): Boolean {
+            val old = block ?: return false
+            draft.update(at, old.withAction(gesture, action))
+            return true
         }
     }
 }

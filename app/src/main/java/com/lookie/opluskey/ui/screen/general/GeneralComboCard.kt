@@ -33,7 +33,7 @@ internal fun SettingsPage.ComboSettingsCard(enabled: Boolean) {
             listOf(
                 CardRow.Switch(
                     title = I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"),
-                    summaryOn = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_ON, "两颗键各执行自己的绑定"),
+                    summaryOn = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_ON, "每颗键各执行自己的绑定"),
                     summaryOff = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_OFF, "什么都不做"),
                     icon = PageIcons.NoMatch,
                     checked = cfg.global.comboPassthrough,

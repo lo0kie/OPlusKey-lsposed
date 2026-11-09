@@ -33,7 +33,10 @@ import com.lookie.opluskey.ui.write
  *  （AGENTS 一、13）—— 别照着旧注释把它加回来，那会让清单外的机器整页变灰。
  */
 @Composable
-internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
+internal fun SettingsPage.BindingSettingsCard(
+    enabled: Boolean,
+    disabledHint: String? = null,
+) {
     val cfg = configState.config.value
     // 这一份参数是**每颗键自己的**（`KeyConfig.doubleClickMs`），不再与其他键共用
     val id = KeyWatchState.editing(cfg)
@@ -56,6 +59,7 @@ internal fun SettingsPage.BindingSettingsCard(enabled: Boolean) {
                                     value = key.doubleClickMs,
                                     default = KeyConfig.DEFAULT_DOUBLE_CLICK_MS,
                                     enabled = rowsEnabled,
+                                    disabledHint = disabledHint,
                                 ),
                         ) { v ->
                             val now = configState.config.value

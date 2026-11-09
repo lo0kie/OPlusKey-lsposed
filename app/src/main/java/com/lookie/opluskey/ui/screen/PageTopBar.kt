@@ -9,9 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.PageHeader
-import com.lookie.opluskey.ui.PageTabBand
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
@@ -27,21 +25,21 @@ import com.lookie.opluskey.ui.model.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.HEADER_ICON_GAP
 import com.lookie.opluskey.ui.model.KEYS_TITLE
 import com.lookie.opluskey.ui.model.SUBTITLE_DIM_FACTOR
-import com.lookie.opluskey.ui.model.gestureLabel
+import com.lookie.opluskey.ui.model.comboLabel
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
 import com.lookie.opluskey.ui.screen.apppicker.pickerSubtitle
 import com.lookie.opluskey.ui.screen.binding.BindingKeyMenu
 import com.lookie.opluskey.ui.screen.binding.HeaderSettingsButton
+import com.lookie.opluskey.ui.screen.binding.bindingTabBand
+import com.lookie.opluskey.ui.screen.binding.bindingTargetOff
 import com.lookie.opluskey.ui.screen.combo.ComboEditMenu
 import com.lookie.opluskey.ui.screen.combo.KeysHeaderEdit
-import com.lookie.opluskey.ui.screen.combo.comboLabel
 import com.lookie.opluskey.ui.screen.command.BranchHeaderAdd
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
 import com.lookie.opluskey.ui.screen.command.CommandHeaderReset
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
-import com.lookie.opluskey.ui.screen.command.branchGestures
 import com.lookie.opluskey.ui.screen.command.branchOwnerLabel
 import com.lookie.opluskey.ui.screen.home.HomeHeaderMenu
 import com.lookie.opluskey.ui.screen.variables.VariableHeaderAdd
@@ -65,17 +63,15 @@ internal fun SettingsPage.PageTopBar(
     hazeState: HazeState,
     pagers: PagePagers,
 ) {
-    // 这一页正在编辑的那一档**被停用**了吗 —— 「按键绑定」看那颗键，「组合键编辑」看那一组。
-    //  判据直接借页内那一支（[keyEnabled] / 组合那一份配置）—— 同一句「开没开」不该有两份写法。
+    // 这一页正在编辑的那一份**被停用**了吗 —— 按键绑定 / 组合键 / 场景动作三页看完的是一句
+    //  `bindingTargetOff`，「按键设置」另看这颗键（那一页装的全是它的参数）。
     //  它只剩一个用处：把标题下面那行副标题压暗一档（判据与页内控件同一句）。
     val editingDisabled =
         when (s) {
-            Screen.BINDING,
-            //  「按键设置」也看这颗键：那一页装的全是它的参数，停用时整片灰
-            Screen.KEY_SETTINGS,
-            -> !keyEnabled(KeyWatchState.editing(configState.config.value))
+            Screen.BINDING, Screen.COMBO_EDIT, Screen.SCENE_BINDING -> bindingTargetOff(s)
 
-            Screen.COMBO_EDIT -> editingComboOff()
+            //  「按键设置」也看这颗键：停用时整片灰
+            Screen.KEY_SETTINGS -> !keyEnabled(KeyWatchState.editing(configState.config.value))
 
             else -> false
         }
@@ -108,25 +104,13 @@ internal fun SettingsPage.PageTopBar(
         // 两份菜单各自跟着自己那一屏走（[HomeHeaderMenu] / [AppPickerMenu]）。
         //
         //  「按键绑定」页那一套「新增命令」菜单晚些时候**撤掉了**，不再有 ⋮。
-        // 进「自定义命令」页的唯一入口现在是那一页右下角的那颗 FAB（见 [BindingScreen]）。
+        // 进「自定义命令」页的唯一入口现在是那一页右下角的那颗 FAB（见 `BindingPagerScreen`）。
         actions = { PageActions(s, pagers) },
         scrollBehavior = scrollBehavior,
         state = hazeState,
         // 顶栏底下那条**固定带**（三条带子各归各的页），见 [PageBottomBand]。
         bottomContent = { PageBottomBand(s, pagers) },
     )
-}
-
-/**
- * 正在编辑的那一档组合被停用了吗 —— 顶栏那枚标记、那行小字的压暗、分段控件的闸门都要它。
- *
- *  找不到那一档（刚删完、退场那一帧）按**没停用**处理：那一帧这一页正在往下退，
- *  再压暗一次只会看到闪一下。
- */
-private fun SettingsPage.editingComboOff(): Boolean {
-    val cfg = configState.config.value
-    val id = ComboEditState.editingId ?: return false
-    return cfg.combos.firstOrNull { it.id == id }?.enabled == false
 }
 
 /**
@@ -162,6 +146,12 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         Screen.BRANCHES -> {
             BRANCHES_TITLE
+        }
+
+        //  **不与「系统场景」同名**：那一页是这张表，这一页是表里某一块的某一档 ——
+        //  两页都写「系统场景」时分不清退一层会回到哪里。
+        Screen.SCENE_BINDING -> {
+            I18n.get(Strings.COMMAND_BRANCH_BINDING_TITLE, "场景动作")
         }
 
         Screen.APP_PICKER -> {
@@ -246,6 +236,15 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             branchOwnerLabel()
         }
 
+        // 场景动作页：这一行写**在编第几块**（「场景 3」）—— 标题只写「场景动作」，
+        //  而这一页改的是表里某一格，不写就分不出改的是哪一块。哪一档手势不写在这里：
+        //  它由顶栏下那条手势带说，两边各说一半（与场景页那套同一个分工）。
+        Screen.SCENE_BINDING -> {
+            //  `+1` 之后再夹一道：这一位在**出栈清回 -1 之后**还会被画上几百毫秒（退场动画），
+            //  不夹就会在那一段写着「场景 0」。
+            I18n.format(Strings.COMMAND_BRANCH_ITEM, (sceneBindingAt + 1).coerceAtLeast(1))
+        }
+
         // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
         Screen.ACTIVITY_PICKER -> {
             picker.activityTarget?.let { appNameOf(it) }.orEmpty()
@@ -278,7 +277,7 @@ private fun SettingsPage.PageActions(
         }
 
         // 「按键绑定」页的 ⋮ 只管**分组**（快捷键 / 自定义按键），不发命令 ——
-        // 进「自定义命令」页的唯一入口仍是那一页右下角那颗 FAB（见 [BindingScreen]）。
+        // 进「自定义命令」页的唯一入口仍是那一页右下角那颗 FAB（见 `BindingPagerScreen`）。
         //  它**左边**多一颗设置键：进的是**这一档的「独立设置」**（`Screen.KEY_SETTINGS`，
         //  接口 / 振动 / 提示这几项对这一颗键的覆盖）。公共那一份在首页「按键操作」卡第二行
         //  （`Screen.GENERAL`，见 `GeneralScreen`）—— 两页名字只差一个字，别混。
@@ -287,7 +286,7 @@ private fun SettingsPage.PageActions(
             //  两颗圆键之间要给一条缝：库那排是 `Arrangement.End`、一个挨一个，
             //  贴在一起时两圈描边连成一条线（见 [HEADER_ICON_GAP]）
             Spacer(Modifier.width(HEADER_ICON_GAP))
-            BindingKeyMenu(gesture = Gesture.entries[pagers.gestures.currentPage])
+            BindingKeyMenu()
         }
 
         Screen.APP_PICKER -> {
@@ -348,47 +347,20 @@ private fun SettingsPage.PageBottomBand(
     pagers: PagePagers,
 ) {
     when (s) {
-        Screen.BINDING -> {
-            PageTabBand(
-                pagers.gestures,
-                labels = Gesture.entries.map { gestureLabel(it) },
-                // 与整页同一个闸门：**当前在编辑的那颗键**自己的 `enabled`（关掉时带子灰掉
-                //  且吃掉输入，与那颗 FAB 同款）
-                enabled = keyEnabled(KeyWatchState.editing(configState.config.value)),
-                band = bindingBandHeight,
-            )
+        //  带子底下那三页**共用一份实现**，带子也只有一条（`bindingTabBand`）——
+        //  原来是三处分段控件各写一遍，加一页就得记着补一处。
+        Screen.BINDING, Screen.COMBO_EDIT, Screen.SCENE_BINDING -> {
+            bindingTabBand(s, pagers)
         }
 
         Screen.COMMANDS -> {
             CommandKindBand(pagers.commands)
         }
 
-        // 「条件执行」页：手势那几页 —— 与「按键绑定」同一套（横滑换档、滑块跟手）。
-        //  单键三档、组合键只有短按 / 长按（见 `branchGestures`），页数由分页器那边定，
-        //  这里的标签跟着它走，两边不会对不上。
+        // 「系统场景」页**没有带子**：翻转之后一张表里每块自带三档，页面不再按手势分页，
+        //  所以这一页既没有分段控件、也不占带子那一段高度（见 `BranchScreen` 的布局）。
         Screen.BRANCHES -> {
-            PageTabBand(
-                pagerState = pagers.branches,
-                labels = branchGestures().map { gestureLabel(it) },
-                enabled = pageWritable(),
-                band = branchesBandHeight,
-            )
-        }
-
-        // 「组合键」编辑页：短按 / 长按两档，与「按键绑定」那条带子同一个组件、同一个落点
-        Screen.COMBO_EDIT -> {
-            PageTabBand(
-                pagers.combos,
-                labels =
-                    listOf(
-                        I18n.get(Strings.COMBO_SHORT, "短按"),
-                        I18n.get(Strings.COMBO_LONG, "长按"),
-                    ),
-                // 闸门是**整页那道 + 这一档自己的开关**（与上面「按键绑定」那条同构：那一页吃的是
-                //  那颗键的 `enabled`）。停用之后分段控件灰掉，两档都翻不动 —— 与网格同一层判断。
-                enabled = pageWritable() && !editingComboOff(),
-                band = comboBandHeight,
-            )
+            //  这一页没有带子（见上一行）
         }
 
         Screen.APP_PICKER -> {

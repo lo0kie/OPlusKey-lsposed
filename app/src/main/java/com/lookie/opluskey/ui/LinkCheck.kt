@@ -32,7 +32,7 @@ import com.lookie.opluskey.ui.state.LinkCheck
  *  缓存 key 是**配置对象本身**（`Config` 是 data class，每次写盘都换新实例）⇒ 配置一变就重算。
  *  需要缓存是因为 `ConfigBroadcast.tag` 内部要读一次命令库（算「长按绑的是不是串行命令」），
  *  而总闸在**组合期与点按回调里都会被读到** —— 不能每次都去读盘。
- *  也因此这里是普通 `val`，不是 `@Composable`（`BindingScreen.pick()` 那种事件回调里也要读）。
+ *  也因此这里是普通 `val`，不是 `@Composable`（`pick()` 那种事件回调里也要读）。
  */
 private var localTagCache: Triple<Config, List<Command>, String>? = null
 

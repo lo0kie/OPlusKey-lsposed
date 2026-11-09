@@ -3,12 +3,12 @@ package com.lookie.opluskey.core.model
 /**
  * 组合按键：**几颗键一起按下**（或在一个窗口内先后按下）时执行的动作。
  *
- * ## 成员数：界面两颗，判定侧可以更多
+ * ## 成员数：界面最多三颗
  *
- *  [MIN_KEYS] = 2 是下限（一颗不叫组合），[MAX_KEYS] = 2 是**界面/收集**的上限（用户口径：
- *  一个组合就是两颗键一起按），[MAX_JUDGE_KEYS] 才是判定、落盘、广播三处认的上限。
- *  两个上限分开是这一轮接线的结果：三颗以上的组合在判定与执行里跑得通，但界面上造不出来
- *  （勾到第二颗就停）—— 手改配置文件写进来的三颗组合照常生效。
+ *  [MIN_KEYS] = 2 是下限（一颗不叫组合），[MAX_KEYS] = 3 是**界面 / 收集**那一侧的上限，
+ *  [MAX_JUDGE_KEYS] 才是判定、落盘、广播三处认的上限（宽松挡垃圾用）。
+ *  两个上限分开：界面只造得出三颗，而判定侧从三颗起就走「多成员凑齐」那条路
+ *  （`ComboDetector.multiFor`），再多也跑得通 —— 手改配置文件写进来的四颗以上照常生效。
  *
  * ## 只支持短按与长按
  *
@@ -59,18 +59,18 @@ data class ComboKey(
     /** 松手那一档执行的动作（`Action.None` = 没挑）。 */
     override val longRelease: Action = Action.None,
     /**
-     * **条件执行**（与单键 `KeyConfig.rules` 同一套 [StateRule]、同一个判定口径）。
+     * **系统场景** —— 与单键 `KeyConfig.scenes` 同一套 [SceneRule]、同一个判定口径。
      *
-     *  按顺序匹配、第一条成立的赢；一条都不中才走 [actionOf] 那一档绑定。
+     *  按顺序找「条件成立、且这一档有值」的第一块；一块都不中才走 [actionOf] 那一档绑定。
      *  空表（默认）⇒ 行为与没有这一项完全相同 —— 老配置读回来就是这个状态。
      *
      *  为什么组合键也值得有：组合键本身就是「我特意按了两颗键」，它比单键更常需要
      *  「在什么情况下才做」的区分（比如「在公司电脑上才切窗口」）。
      *
-     *  手势只有 [Gesture.SINGLE] / [Gesture.LONG] 两档（见类注释），所以这里的规则也只认这两档；
-     *  手改配置写进来的 `double` 规则永远不会命中（[actionOf] 对双击恒 `None` 同一条道理）。
+     *  手势只有 [Gesture.SINGLE] / [Gesture.LONG] 两档（见类注释），所以块里的 [SceneRule.double]
+     *  在这条路上永远不会被读到；手改配置写进去也只是存着。
      */
-    val rules: List<StateRule> = emptyList(),
+    val scenes: List<SceneRule> = emptyList(),
     /**
      * 「这一档用自己那套公共项」—— 与单键 `KeyConfig.useOwnSettings` **同一个契约**
      * （[OwnSettings]），执行侧不区分单键还是组合。
@@ -110,6 +110,9 @@ data class ComboKey(
      *  一个数管两件事就必然会打架 —— 三颗的组合需要宽一点，而两颗的调宽了会让那颗键
      *  整套单击都变钝。所以允许每组各设一份。
      *
+     *  它量的是**相邻两颗**之间：三颗那一档整串的容忍跨度是它 × (成员数-1)（`Config.comboSpanFor`），
+     *  所以三颗也不必把它调到「两颗手感」的两倍以上。
+     *
      *  **同样受 `useOwnSettings` 管**：关着整份看公共；打开那一刻被播成当时的公共值。
      *  [WINDOW_FOLLOW_GLOBAL]（0）只剩老配置会读到，界面上也没有「拖回跟随」那一档 ——
      *  要回公共就关掉这一组的总开关（`Config.comboWindowFor` 的第一支）。
@@ -140,18 +143,28 @@ data class ComboKey(
         get() = longReleaseOn && longRelease.isBound && !longFireOnRelease
 
     /**
-     * **带条件表**的取动作：先看 [rules]（顺序、第一条赢），都不中才落到 [actionOf]。
+     * **带场景表**的取动作：先看 [scenes]（顺序、「条件成立且这一档有值」的第一块赢），
+     * 都不中才落到 [actionOf]。
      *
      *  实现在 [pickAction] 一处 —— 与单键 `KeyConfig.actionFor` 是**同一个函数**。
-     *  原先两边各写了一遍逐字相同的 `firstOrNull`，注释给的理由是「合并得先让两个类共一个
-     *  父类型」；那个理由不成立：要的只是「一张表 + 一个兜底动作」，抽成顶层函数就够。
      *
      *  `matches` 由调用方给（读系统开关的那一层，见 `ConditionProbe`）：这一层不认识系统接口。
      */
     fun resolve(
         gesture: Gesture,
         matches: (BranchCondition) -> Boolean,
-    ): Action = pickAction(rules, gesture, actionOf(gesture), matches)
+    ): Action = pickAction(scenes, gesture, actionOf(gesture), matches)
+
+    /**
+     * 这一档**有没有被某个场景块接管** —— 「松手执行额外动作」要靠它让位。
+     *
+     *  与 [resolve] 同一条判据（条件成立 + 这一档有值），只是不要动作、只要一个是非：
+     *  长按那一档被场景接管了，松手那一刻就不该再补一刀。
+     */
+    fun sceneTakes(
+        gesture: Gesture,
+        matches: (BranchCondition) -> Boolean,
+    ): Boolean = sceneTakes(scenes, gesture, matches)
 
     /** [down] 里包含这一档的全部成员吗（不看顺序、允许同时按着别的键）。 */
     fun matches(down: Set<String>): Boolean = keys.all { it in down }
@@ -167,16 +180,16 @@ data class ComboKey(
         const val WINDOW_FOLLOW_GLOBAL = 0
 
         /**
-         * 成员上限：两颗（用户口径 —— 一个组合就是**两颗键一起按**，不多不少）。
+         * 成员上限：**三颗**（用户口径）。两颗仍是最常见的那一档，三颗是给「三键齐按」留的口子。
          *
          *  这是**界面与收集**那一侧的上限：收集入口（`ComboActions` / `KeysScreen`）按它拦，
          *  「最多 %d 颗」那条提示也用它。判定侧不吃这个数 —— 那边认到 [MAX_JUDGE_KEYS]。
          *
-         *  两个上限之所以要分开：三颗以上的组合在判定、执行、日志里都已经跑得通，
-         *  但**界面上暂时不加入口**（用户口径未定）。数据层跟着界面一起卡死在两颗的话，
-         *  接线就等于白接 —— 解析时就被截成两颗，判定侧永远见不到多成员形态。
+         *  两个上限为什么分开：判定侧从三颗起就走「多成员凑齐」那条路（`ComboDetector.multiFor`），
+         *  界面放开到三颗之后那条路才真的有人走。数据层要是跟着界面卡在一个小数字上，
+         *  解析时就被截断，判定侧永远见不到多成员形态。
          */
-        const val MAX_KEYS = 2
+        const val MAX_KEYS = 3
 
         /**
          * **判定侧**认的成员上限：九颗 —— 解析（`ConfigDto` / `ComboWire`）、判定

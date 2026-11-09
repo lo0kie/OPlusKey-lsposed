@@ -38,24 +38,19 @@ import com.lookie.opluskey.ui.write
  *
  * @param target 这一档往哪儿写（单键的一档 / 组合键的一档）—— 读参数、写改动都按它来
  * @param pageEnabled 整页闸门（总闸 + 链路就绪 + 配置可写）
+ * @param disabledReason 非 null ⇒ **整张卡**再压一道灰（`pageEnabled` 之外的原因，如「跟随默认」）——
+ *   点灰行时说的就是这一句
  */
 @Composable
 internal fun SettingsPage.LongPressCard(
     target: BindingTarget,
     pageEnabled: Boolean,
+    disabledReason: String? = null,
 ) {
     val cfg = configState.config.value
     val owner = target.longPress(cfg) ?: return
-    //  整张卡的置灰只有两个来源：整页闸门、这一档自己停用（`scenarioBlockedReason` 那套判据
-    //  是给场景入口用的，这里只要「这份东西还算不算数」）。
-    val blockedReason =
-        if (!pageEnabled) {
-            // 主开关自己关着，不是「模块没生效」：`STATUS_DISABLED` 的正文是「确认作用域含 system，
-            //  换包后需重启」—— 拿它来报这一档，等于把用户赶去 LSPosed 里翻一圈。
-            I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，按系统原生行为")
-        } else {
-            null
-        }
+    //  整张卡的置灰只有两个来源：整页闸门、调用点给的额外原因（这一档根本不归这一页管）。
+    val blockedReason = longPressBlockedReason(pageEnabled, disabledReason)
     val blocked = blockedReason != null
     //  「额外动作」这一行的取值**不滤 `Action.None`**：无操作就是这一档的默认值，不是「还没配」。
     //  滤掉它会让界面多出一个「未设置」状态 —— 那与「无操作」是同一个意思，却要另配文案与图标
@@ -147,3 +142,30 @@ private fun SettingsPage.repeatBlockedReason(current: Action): String? {
     val voice = (current as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true
     return if (voice) I18n.get(Strings.BINDING_VOICE_UNSUPPORTED_REPEAT, "灵感语音不支持连续触发") else null
 }
+
+/**
+ * 长按那张卡**整卡置灰**的那一句（`null` = 能点）。
+ *
+ *  两个来源，前者优先：调用点给的原因（这一档根本不归这一页管，如「跟随默认」）、
+ *  整页闸门（主开关 / 链路 / 只读）。
+ *
+ *  主开关自己关着不是「模块没生效」：`STATUS_DISABLED` 的正文是「确认作用域含 system，
+ *  换包后需重启」—— 拿它来报这一档，等于把用户赶去 LSPosed 里翻一圈。
+ */
+private fun longPressBlockedReason(
+    pageEnabled: Boolean,
+    disabledReason: String?,
+): String? =
+    when {
+        disabledReason != null -> {
+            disabledReason
+        }
+
+        !pageEnabled -> {
+            I18n.get(Strings.STATUS_KEY_DISABLED, "按键绑定已关闭，按系统原生行为")
+        }
+
+        else -> {
+            null
+        }
+    }

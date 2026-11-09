@@ -25,9 +25,8 @@ import com.lookie.opluskey.ui.linkReady
 import com.lookie.opluskey.ui.screen.about.AboutScreen
 import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
-import com.lookie.opluskey.ui.screen.binding.BindingScreen
+import com.lookie.opluskey.ui.screen.binding.BindingPagerScreen
 import com.lookie.opluskey.ui.screen.binding.KeySettingsScreen
-import com.lookie.opluskey.ui.screen.combo.ComboEditScreen
 import com.lookie.opluskey.ui.screen.combo.KeysScreen
 import com.lookie.opluskey.ui.screen.command.BranchScreen
 import com.lookie.opluskey.ui.screen.command.CommandScreen
@@ -36,7 +35,6 @@ import com.lookie.opluskey.ui.screen.general.GeneralScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
 import com.lookie.opluskey.ui.screen.variables.VariableScreen
 import com.lookie.opluskey.ui.state.BandHeight
-import com.lookie.opluskey.ui.state.KeyWatchState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
@@ -188,9 +186,14 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
 /**
  * 内容区 —— 「当前屏是哪一页」那一棵 `when`，每支只做一件事：把参数喂给那一页。
  *
- *  六页里只有「按键绑定」与「选择应用」两支带接线（各自的回调写在
- *  [openAppPickerForGesture] / [onDraftPicked] 里），其余四支是一行。
+ *  带接线的只有「按键绑定」「场景动作」「选择应用」几支（各自的回调写在
+ *  [openAppPickerForGesture] / [onDraftPicked] 里），其余是一行。
+ *
+ *  `CyclomaticComplexMethod` 在这类「一个大 `when`、每个分支一句常量」的地方没有意义
+ *  （它的「复杂度」等于页数，加一页就报一次）—— 与 `PageTopBar.pageTitle` 同一个口径显式压掉，
+ *  **不是因为改不动**。真出现需要判断的分支时，再拆。
  */
+@Suppress("CyclomaticComplexMethod")
 @Composable
 private fun SettingsPage.PageBody(
     s: Screen,
@@ -202,16 +205,14 @@ private fun SettingsPage.PageBody(
             HomeScreen(scrollBehavior)
         }
 
-        Screen.BINDING -> {
-            BindingScreen(
-                pagers.gestures,
-                // 闸门是**当前在编辑的那颗键自己的** `enabled`（侧键也有一份，⋮ 菜单里能停用）：
-                //  模块总闸另有一层（关着时整页走 `blockedReason`），这里只管这一颗键。
-                //  自定义键收集时默认不开，第一次绑动作时自动打开（见 `pick`）。
-                enabled = keyEnabled(KeyWatchState.editing(configState.config.value)),
-                onAppControl = { target, stop -> openAppPickerForControl(target, stop) },
-                scrollBehavior = scrollBehavior,
-            )
+        //  「一档手势一屏动作」的那一页 —— **三个入口共用同一份实现**（`BindingPagerScreen`）：
+        //  这一趟在编谁、几档、开不开、写到哪儿，全由 `s` 从页面级状态里取。
+        //  · BINDING      → 当前这颗键的三档（写配置）
+        //  · COMBO_EDIT   → 那一档组合的短按 / 长按（写配置）
+        //  · SCENE_BINDING→ 那一块场景的那几档（写草稿）
+        //  Screen 值仍然分开：栈里这三个位置可能同时存在，而取样源 / 顶栏高度 / 分页器都按 Screen 索引。
+        Screen.BINDING, Screen.COMBO_EDIT, Screen.SCENE_BINDING -> {
+            BindingPagerScreen(s, scrollBehavior, pagers.gesturesOf(s))
         }
 
         Screen.COMMANDS -> {
@@ -229,10 +230,9 @@ private fun SettingsPage.PageBody(
             )
         }
 
-        // 「条件执行」：与「自定义命令」页同一套表单骨架，只是固定成 BRANCH 那一档，
-        //  没有类型选择器带子（见 [BranchScreen]）。
+        // 「系统场景」：一张场景表，每块自带三档（不按手势分页，见 [BranchScreen]）。
         Screen.BRANCHES -> {
-            BranchScreen(scrollBehavior, pagers.branches)
+            BranchScreen(scrollBehavior)
         }
 
         // 挑应用。**两个入口共用这一页**（挑中的东西不一样）；点一行进下一级，
@@ -267,11 +267,6 @@ private fun SettingsPage.PageBody(
         // 「按键功能」页：按键列表 + 组合按键列表（两个清单收在一页）
         Screen.KEYS -> {
             KeysScreen(scrollBehavior)
-        }
-
-        // 「组合键」编辑：上面一行成员（只读），下面短按 / 长按两张网格
-        Screen.COMBO_EDIT -> {
-            ComboEditScreen(scrollBehavior, pagers.combos)
         }
 
         // 「自定义变量」：一列变量 + 顶栏那颗新建；点一行弹编辑 / 删除那张窗
@@ -380,7 +375,7 @@ private fun SettingsPage.ActivityPickerPage(scrollBehavior: ScrollBehavior) {
  *  「这一档组合的短按 / 长按」—— 挑完回来写哪儿由它决定（见 `PageEntryWrite.onAppPicked`）。
  */
 internal fun SettingsPage.openAppPickerForTarget(target: BindingTarget) {
-    picker.openForGesture(target.gesture, (target as? BindingTarget.Combo)?.id)
+    picker.openForGesture(target.gesture, (target as? BindingTarget.Combo)?.id, sceneAt = target.sceneAt)
     // 搜索词清空（页面级状态，不再随页面出栈注销，见 [AppPickerState.filter]；
     // 另一条入口在 [openAppPickerForStep]）
     picker.filter.value = ""
@@ -414,7 +409,7 @@ internal fun SettingsPage.openAppPickerForControl(
  *  菜单里那一行也不会出现（见 `AppPickerState.appOnly`）。
  */
 internal fun SettingsPage.openAppPickerForStopApp(target: BindingTarget) {
-    picker.openForStopApp(target.gesture, (target as? BindingTarget.Combo)?.id)
+    picker.openForStopApp(target.gesture, (target as? BindingTarget.Combo)?.id, sceneAt = target.sceneAt)
     picker.filter.value = ""
     picker.smallWindow.value = false
     //  原版动画那一档同样恒关（`proc:stop:` 没有「怎么起」这回事），与上一行同一个理由

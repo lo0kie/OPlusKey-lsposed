@@ -10,7 +10,7 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -209,11 +209,18 @@ internal data class KeyDto(
      */
     val ownSettingsSeeded: Boolean? = null,
     /**
-     * **状态分支**（`KeyConfig.rules`）—— 只走落盘：它是列表，进不了 `ConfigFields` 的字段表。
+     * **老的「一条规则一个手势」那一列** —— 只读：新写的文件不再写它，读到就迁移（见 [mergeScenes]）。
      *
-     *  老文件没有这一段 ⇒ 空表 ⇒ 行为与这一档出现之前完全一致。
+     *  留着它只为把已经存在的配置读上来：删掉这一格的话，老文件里那一整批条件分支会在升级
+     *  那一刻凭空消失。
      */
     val rules: List<StateRuleDto> = emptyList(),
+    /**
+     * **系统场景**（`KeyConfig.scenes`）—— 只走落盘：它是列表，进不了 `ConfigFields` 的字段表。
+     *
+     *  一块 = 一组条件 + 三档动作（见 `SceneRule`）。老文件没有这一段 ⇒ 空 ⇒ 由 [rules] 迁移出来。
+     */
+    val scenes: List<SceneRuleDto> = emptyList(),
     /**
      * 第 3 击起的额外档位（`KeyConfig.extraClicks`）—— 键是连击次数、值是动作 token。
      *
@@ -269,7 +276,7 @@ internal data class KeyDto(
         legacyInstantSingle: Boolean,
     ): KeyConfig =
         KeyConfig
-            .ofFields(id, toValues(legacyDoubleClickMs, legacyInstantSingle), rules.mapNotNull { it.toRule() })
+            .ofFields(id, toValues(legacyDoubleClickMs, legacyInstantSingle), mergeScenes(scenes, rules))
             .copy(
                 //  认不出的次数 / 动作整条丢掉（与 `rules`、`custom_keys` 同一条纪律：丢东西要留账，
                 //  账在 `ConfigDto.toConfig` 那一层打）
@@ -303,23 +310,20 @@ internal data class KeyDto(
                 toastOnRun = key.toastOnRun,
                 toastTemplate = key.toastTemplate,
                 ownSettingsSeeded = key.ownSettingsSeeded,
-                rules = key.rules.map { StateRuleDto.of(it) },
+                scenes = key.scenes.map { SceneRuleDto.of(it) },
                 extraClicks = key.extraClicks.mapKeys { it.key.toString() }.mapValues { it.value.token },
             )
     }
 }
 
 /**
- * `rules` 的一项 —— 一条状态分支（一个块，可带**多条**条件）。
+ * **老的**「一条规则一个手势」那一项 —— **只读**：新写的文件不再写这一列（见 [KeyDto.scenes]）。
  *
- * ## 两格条件字段
+ *  留着它只为把已经存在的配置读上来：[mergeLegacy] 会把「条件完全相同的那几条」并成一块。
+ *  删掉这一格的话，老文件里那一整批条件分支会在升级那一刻凭空消失。
  *
- *  · [condition]：**老那一格**，只能装一条。这一版仍然写它 —— 但只在「这块正好一条条件」时写，
- *    这样版本 11 之前的读方（认不出 [conditions]）读到的还是原来那条，不会把用户的一堆规则读丢；
- *  · [conditions]：全量，写**每一条**。读的时候优先看它，空了才回落到 [condition]。
- *
- *  多条时 [condition] 留空 —— 老读方读回来是「条件认不出 ⇒ 丢掉这一条」，这是它能给出的最好结果
- *  （它没有「且」这个概念，硬塞给它第一条会变成「命中一条就执行」，比丢掉更糟）。
+ *  两格条件字段：老文件只有 [condition]（单条），后一版的文件还写了 [conditions]（全量）。
+ *  读的时候优先看 [conditions]，它空着才回落到 [condition]。
  */
 @Serializable
 internal data class StateRuleDto(
@@ -327,77 +331,125 @@ internal data class StateRuleDto(
     val gesture: String = "",
     /** 老写法：单条条件（`app:包名` / `ringer:vibrate` / `screen_on`），见 `BranchCondition.token`。 */
     val condition: String = "",
-    /** 这一块的**全部**条件，按书写顺序（判定时逐条都要成立）。 */
+    /** 这一条的**全部**条件，按书写顺序（判定时逐条都要成立）。 */
     val conditions: List<String> = emptyList(),
     val action: String = Action.NONE,
-    /**
-     * 这一条参不参与判定（界面上的「停用场景」）。
-     *
-     *  **默认 `true`**：老文件没有这一格，读回来就是「启用」—— 与升级前的行为一致。
-     *  写成 `false` 才会被别的版本看到；认不出这一格的老读方会按 `true` 处理（等于这一条照旧生效），
-     *  所以读侧**不需要**任何迁移。
-     */
+    /** 这一条参不参与判定（老文件没有这一格 ⇒ 启用）。 */
     val enabled: Boolean = true,
 ) {
     /**
-     * 线格式 → 一条分支；**认不出就整条丢掉**（返回 `null`）。
+     * 这一条的条件（解析后）；`null` = 认不出 —— **整条丢掉**。
      *
-     *  为什么不兜成「永远成立」：那样一条写错的分支会静默接管这颗键的所有手势
-     *  （见 `BranchCondition.parse`）。丢一条规则只是「这一条不生效」，用户能看得出来。
-     *  同理，一块里**只要有一条**条件认不出，整块丢掉 —— 留着其余几条会把「且」悄悄放宽。
+     *  为什么不兜成「永远成立」：那样一条写错的条件会静默接管这颗键的所有手势。
+     *  同理，一条里**只要有一条**条件认不出，整条丢掉 —— 留着其余几条会把「且」悄悄放宽。
      */
-    fun toRule(): StateRule? {
-        val parsedGesture = Gesture.ofId(gesture)
-        if (parsedGesture == null) {
-            XLog.w("配置：状态分支的手势认不出（丢掉这一条）：$gesture")
-            return null
-        }
-        val parsed = parsedConditions() ?: return null
-        return StateRule(parsedGesture, parsed, Action.parse(action), enabled)
-    }
-
-    /**
-     * 这一块的条件 —— 优先 [conditions]（全量），它空着才看老的 [condition]。
-     *
-     *  `null` = 认不出（调用方整条丢掉）。
-     */
-    private fun parsedConditions(): List<BranchCondition>? {
-        //  老文件 / 单条件：只有 `condition` 那一格
+    fun conditionsOrNull(): List<BranchCondition>? {
         if (conditions.isEmpty()) {
             val single = BranchCondition.parse(condition)
-            if (single == null) XLog.w("配置：状态分支的场景认不出（丢掉这一条）：$condition")
+            if (single == null) XLog.w("配置：老的场景规则里那条条件认不出（丢掉这一条）：$condition")
             return single?.let(::listOf)
         }
         val parsed = conditions.map { BranchCondition.parse(it) }
         val bad = parsed.indexOfFirst { it == null }
         if (bad >= 0) {
-            XLog.w("配置：状态分支的第 ${bad + 1} 条场景认不出（整条丢掉）：${conditions.getOrNull(bad)}")
+            XLog.w("配置：老的场景规则里第 ${bad + 1} 条条件认不出（整条丢掉）：${conditions.getOrNull(bad)}")
             return null
         }
         return parsed.filterNotNull()
     }
+}
+
+/**
+ * `scenes` 的一项 —— **一个场景块**：一组条件 + 完整的三档动作（见 `SceneRule`）。
+ *
+ *  三格动作**缺省 null**（= 这一档不参与），与 `"none"`（显式「无操作」）不是同一件事：
+ *  前者让这一档继续往下找 / 回落默认绑定，后者是「命中后这一档什么都不做」。
+ */
+@Serializable
+internal data class SceneRuleDto(
+    /** 这一块的全部条件（`BranchCondition.token`），逐条都要成立。空 = 还没配完。 */
+    val conditions: List<String> = emptyList(),
+    /** 单击那一档；`follow` = 跟随默认（不参与），也是默认值。 */
+    val single: String = Action.FOLLOW,
+    /** 双击那一档；默认跟随。组合键不看这一档。 */
+    val double: String = Action.FOLLOW,
+    /** 长按那一档；默认跟随。 */
+    val long: String = Action.FOLLOW,
+    val enabled: Boolean = true,
+) {
+    /**
+     * 线格式 → 一块场景；**认不出就整块丢掉**（返回 `null`）。
+     *
+     *  条件空着的块也算认不出：它在判定侧永不成立，留着只会让「这张表里有什么」对不上。
+     */
+    fun toScene(): SceneRule? {
+        val parsed = conditions.map { BranchCondition.parse(it) }
+        val bad = parsed.indexOfFirst { it == null }
+        if (parsed.isEmpty() || bad >= 0) {
+            XLog.w("配置：场景块的条件认不出（整块丢掉）：${conditions.getOrNull(bad) ?: "空"}")
+            return null
+        }
+        return SceneRule(
+            conditions = parsed.filterNotNull(),
+            single = Action.parse(single),
+            double = Action.parse(double),
+            long = Action.parse(long),
+            enabled = enabled,
+        )
+    }
 
     companion object {
         /**
-         * 一条规则 → 线格式。
+         * 一块场景 → 线格式。
          *
-         *  条件空着（界面上那一行还没选条件）就写成空串 —— 这种行保存前就被拦了，正常到不了
-         *  这里；万一到了，读回来时按「条件认不出」整条丢掉，而不是当成「永远成立」。
+         *  条件空着的块**不写**（调用方已经滤过）；这里再兜一次是防手滑 ——
+         *  写下去读回来会被 [toScene] 整块丢掉，等于白写。
          */
-        fun of(rule: StateRule): StateRuleDto =
-            StateRuleDto(
-                gesture = rule.gesture.id,
-                // 只有一条时仍填老那一格：老读方读到的还是原来那条
-                condition =
-                    rule.conditions
-                        .singleOrNull()
-                        ?.token
-                        .orEmpty(),
-                conditions = rule.conditions.map { it.token },
-                action = rule.action.token,
-                enabled = rule.enabled,
+        fun of(scene: SceneRule): SceneRuleDto =
+            SceneRuleDto(
+                conditions = scene.conditions.map { it.token },
+                single = scene.single.token,
+                double = scene.double.token,
+                long = scene.long.token,
+                enabled = scene.enabled,
             )
     }
+}
+
+/**
+ * 新旧两列合成一张场景表 —— **新列写了就用它**，它空着才按老列迁移。
+ *
+ *  两条同时存在只可能是「新版写过一次、但某个旧版又存过一次」那种混杂文件：
+ *  那时新列是上一次的完整结果，比老列（可能只覆盖部分手势）更可信。
+ */
+private fun mergeScenes(
+    scenes: List<SceneRuleDto>,
+    rules: List<StateRuleDto>,
+): List<SceneRule> = if (scenes.isNotEmpty()) scenes.mapNotNull { it.toScene() } else mergeLegacy(rules)
+
+/**
+ * 老列 → 场景表：**条件完全相同的那几条并成一块**，各填自己那一档。
+ *
+ *  这就是这次翻转的迁移口径 —— 老配置的每一条规则本来只认一个手势，并起来正好是一块三档：
+ *  · 顺序按**第一次出现**的那一块，与老的「从上往下找」一致；
+ *  · 同一块同一档出现多次时**取最靠前的那条**（老判定就是「第一条赢」）；
+ *  · **停用的老规则直接跳过**：它的那一档留「跟随默认」⇒ 回落默认绑定，与停用前的行为逐字一致。
+ */
+private fun mergeLegacy(rules: List<StateRuleDto>): List<SceneRule> {
+    val merged = LinkedHashMap<List<String>, SceneRule>()
+    for (rule in rules) {
+        //  三样都可能让这一条进不了表：停用、手势认不出、条件认不出。合成一条判据，
+        //  一处 `continue` —— 分开写会顶到 detekt 的「循环里跳转太多」。
+        val gesture = Gesture.ofId(rule.gesture)
+        val conditions = rule.conditionsOrNull()
+        if (!rule.enabled || gesture == null || conditions == null) continue
+        val key = conditions.map { it.token }
+        val block = merged[key] ?: SceneRule(conditions = conditions)
+        if (block.actionOf(gesture) is Action.Follow) {
+            merged[key] = block.withAction(gesture, Action.parse(rule.action))
+        }
+    }
+    return merged.values.toList()
 }
 
 /** `combos` 的一项 —— 一档组合键。 */
@@ -421,11 +473,15 @@ internal data class ComboDto(
     /** 松手那一档的动作 token。 */
     val longRelease: String = Action.NONE,
     /**
-     * **条件执行**（`ComboKey.rules`）—— 与单键那份同一个 [StateRuleDto]，只是挂在不同对象上。
-     *
-     *  老文件没有这一段 ⇒ 空表 ⇒ 行为与没有这项功能完全一致，不需要迁移。
+     * **老的「一条规则一个手势」那一列** —— 只读，读到就迁移（见 [mergeScenes]）；与单键那份同型。
      */
     val rules: List<StateRuleDto> = emptyList(),
+    /**
+     * **系统场景**（`ComboKey.scenes`）—— 与单键那份同一个 [SceneRuleDto]，只是挂在不同对象上。
+     *
+     *  组合键只用得到单击 / 长按两档，块里的 `double` 在这条路上不会被读到。
+     */
+    val scenes: List<SceneRuleDto> = emptyList(),
     /**
      * 「按键单独设置」—— 与单键 `KeyDto` 那五项**同一套**（`OwnSettings` 契约）：
      * 这一组组合要不要自己决定接口 / 振动 / 提示。老文件缺它们 ⇒ 跟随公共设置。
@@ -458,7 +514,7 @@ internal data class ComboDto(
      *  前者当不了身份（界面上选中哪一行、删哪一行都靠它），后者判不出来（一颗不叫组合）。
      *  成员去重之后按 [ComboKey.MAX_JUDGE_KEYS] 截断 —— 手改文件写进几十颗也不该让它进来。
      *
-     *  截断用**判定侧**那个上限而不是界面的 `MAX_KEYS`：界面造不出三颗以上的组合，
+     *  截断用**判定侧**那个上限而不是界面的 `MAX_KEYS`：界面最多造三颗，
      *  但手改文件写进来的三颗组合判定侧认（判定 / 执行 / 日志都跑得通），读配置时截成两颗
      *  等于让那条链路永远收不到多成员形态。
      */
@@ -482,7 +538,7 @@ internal data class ComboDto(
             longRelease = Action.parse(longRelease),
             //  条件表：认不出的条目整条丢掉（与单键那条同一个 `mapNotNull` 口径）——
             //  一条读不懂的规则如果兜成「永远成立」，会把这一档的动作整个抢走。
-            rules = rules.mapNotNull { it.toRule() },
+            scenes = mergeScenes(scenes, rules),
             //  「按键单独设置」：缺项一律按「跟随公共设置」，与新装的默认一致
             useOwnSettings = useOwnSettings ?: false,
             colorOsApi = colorOsApi ?: GlobalConfig.DEFAULT_COLOR_OS_API,
@@ -514,7 +570,7 @@ internal data class ComboDto(
                 longFireOnRelease = combo.longFireOnRelease,
                 longReleaseOn = combo.longReleaseOn,
                 longRelease = combo.longRelease.token,
-                rules = combo.rules.map { StateRuleDto.of(it) },
+                scenes = combo.scenes.map { SceneRuleDto.of(it) },
                 useOwnSettings = combo.useOwnSettings,
                 colorOsApi = combo.colorOsApi,
                 vibrate = combo.vibrate,

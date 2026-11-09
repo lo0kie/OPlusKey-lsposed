@@ -112,6 +112,9 @@ internal class SideKeyInterceptor(
                 ComboWindows(
                     scanMs = { ConfigChannel.scanWindowMs() },
                     forCombo = { combo -> ConfigChannel.windowFor(combo) },
+                    //  多成员那一档的**整串跨度**（相邻两颗的窗口 × (成员数-1)）—— 三颗按一个
+                    //  窗口复核等于要求三根手指同时落，真机上永远凑不齐
+                    spanFor = { combo -> ConfigChannel.spanFor(combo) },
                     //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
                     joins = { id -> ConfigChannel.joinsCombo(id) },
                 ),

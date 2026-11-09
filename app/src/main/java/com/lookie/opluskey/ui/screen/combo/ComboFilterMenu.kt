@@ -10,6 +10,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.DrawnIcons
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.keyBrackets
+import com.lookie.opluskey.ui.model.keyName
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 

@@ -37,6 +37,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.CategoryMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.CategoryPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
+import io.github.lyxnx.compose.ui.tablericons.outline.CornerDownLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.Cpu
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
@@ -409,7 +410,7 @@ private fun systemSettingIcon(token: String): ImageVector = systemSwitchKindIcon
  *  其余等它被画到时再建；取值完全一样，先建后建不影响结果。
  *
  *  缓存放在**文件级**而不是某个页面对象里：读它的那几处在**不同的树**里（网格在
- *  `BindingScreen`、「添加命令」浮层在 `CommandScreen`），各自记会各建一份。
+ *  `BindingPagerScreen`、「添加命令」浮层在 `CommandScreen`），各自记会各建一份。
  *  命令库变了**不清缓存**：键是 [ActionCatalog.Spec]（含 token 与标题，是 `data class`），
  *  改个名字就是新键；旧键留在表里只是几个旧引用。
  *
@@ -539,6 +540,10 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         //  原先它们靠 `actionIcon(token)` 猜；`Spec.glyph` 必填之后清单条目自己声明，
         //  这里只是「名字 → 矢量」的翻译，不再是第二份判断。
         ActionCatalog.Glyph.NoOp -> TablerIcons.Outline.Ban
+
+        // 「跟随默认」那一格：一支折回左下的箭头（`corner-down-left`），读作「这一档回到上一条路」。
+        //  与「无操作」那颗禁止符号分开摆 —— 那一颗说「什么都不做」，这一颗说「交给按键绑定」。
+        ActionCatalog.Glyph.Follow -> TablerIcons.Outline.CornerDownLeft
 
         ActionCatalog.Glyph.Flashlight -> DrawnIcons.Flashlight
 

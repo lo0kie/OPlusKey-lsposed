@@ -11,6 +11,16 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 
 /**
+ * 匿名那一档在表格里显示成什么 —— 数据里**不写这个串**（`name` 写 `null` 或省略），
+ * 显示时才替换成它。
+ *
+ *  为什么不把「匿名」两个字写进数据：那是**呈现**，跟着界面语言该不该变是另一回事，
+ *  而写进 JSON 就等于把它固化成了一个人的名字 —— 与 `amount` 存**分**同一条理由
+ *  （数据只描述事实，怎么画由界面定）。三个星号也不含任何语言信息。
+ */
+internal const val DONOR_ANONYMOUS = "***"
+
+/**
  * 「捐赠列表」的那个**人**：一个名字 + 一笔金额（+ 一笔到账时间）。
  *
  *  [amountCents] 收的是**分**：金额是数才排得了序、加得了总，写成「¥30」那种显示串就等于把一次
@@ -21,6 +31,7 @@ import kotlinx.serialization.json.jsonArray
  *  也**不**拿它排序 —— 顺序仍以文件里数组的先后为准。
  */
 internal data class Donor(
+    /** 上屏用的名字 —— **一定非空**：匿名在 [readDonors] 那一层就已经换成了 [DONOR_ANONYMOUS]。 */
     val name: String,
     /** 金额，单位**分**（`520` = ¥5.20）。 */
     val amountCents: Int,
@@ -45,7 +56,8 @@ internal data class Donor(
  *  表头那些）在页面里，见 `ui/screen/DonateListScreen`。
  *
  *  要加人就往那份文件里加行 —— 一行一个 `{ "name": …, "amount": …, "at": … }`，顺序即显示顺序。
- *  `amount` 写**元**（可带两位小数，如 `5.20`），`at` 只作记录、不上屏。
+ *  `amount` 写**元**（可带两位小数，如 `5.20`），`at` 只作记录、不上屏；
+ *  匿名的行 `name` 写 `null`（省略也行），表格里显示成 [DONOR_ANONYMOUS]。
  *  写成什么样由旁边那份 `donors.schema.json` 定（编辑器照它给提示与报错），加行前先看它。
  *  空数组 `[]` 是合法状态 —— 页面走「还没有捐赠记录」那一档。
  *
@@ -83,36 +95,38 @@ internal fun donors(context: Context): List<Donor> = cache ?: (readDonors(contex
  * 取出一个字段的文本；缺项 / 不是标量 / 是 JSON `null` 都算空串。
  *
  *  `JsonNull` 也是 `JsonPrimitive`，它的 `content` 是字符串 `"null"` —— 不排掉它，
- *  一条手写成 `{"name": null}` 的记录会变成一颗叫「null」的捐赠者。
+ *  一条 `{"name": null}` 的记录会变成一颗叫「null」的捐赠者。
  */
 private fun JsonElement?.text(): String = (this as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty()
 
-/** 真读一次：`assets/donors.json` → 对象数组 → 名字非空的行；`null` = 读不到（不缓存）。 */
+/**
+ * 真读一次：`assets/donors.json` → 对象数组 → 每个人的名字与金额。
+ *
+ *  `name` 写成 `null` / 空串 / 干脆不写 = **匿名**，上屏统一是 [DONOR_ANONYMOUS]
+ *  （见那个常量的注释：`***` 不写进数据）。所以这里**不再丢行** —— 早先「没名字就丢掉」
+ *  是为了不让表格第一格空着，现在匿名有明确的显示值，那一格不会空。
+ */
 private fun readDonors(context: Context): List<Donor>? {
     val bytes = Seal.open(context, DONORS_ASSET) ?: return null
     return try {
         val rows = Json.parseToJsonElement(String(bytes, Charsets.UTF_8)).jsonArray
         rows.mapNotNull { row ->
             val o = row as? JsonObject ?: return@mapNotNull null
-            val name = o["name"].text().trim()
-            // 没有名字的行画不出来（表格的第一个格子会空在那里），直接丢
-            if (name.isEmpty()) {
-                null
-            } else {
-                Donor(
-                    name = name,
-                    // 文件里写的是**元**（可以带两位小数），这里换算成**分**存。
-                    //  `round` 是为了吃掉二进制浮点那点误差：`5.20 * 100 = 519.9999…`。
-                    //  负数在这里就夹掉：文件里写错一个负号，界面上会画成「¥-5.-20」
-                    amountCents =
-                        Math
-                            .round((o["amount"].text().toDoubleOrNull() ?: 0.0) * 100)
-                            .toInt()
-                            .coerceAtLeast(0),
-                    // 只记录、不上屏（见 [Donor.at]）；缺了就是空串，不报错
-                    at = o["at"].text().trim(),
-                )
-            }
+            //  名字去两端空白；空 ⇒ 匿名。**不丢行**：一笔到账总是要记的，匿不匿名是两说
+            val name = o["name"].text().trim().ifEmpty { DONOR_ANONYMOUS }
+            Donor(
+                name = name,
+                // 文件里写的是**元**（可以带两位小数），这里换算成**分**存。
+                //  `round` 是为了吃掉二进制浮点那点误差：`5.20 * 100 = 519.9999…`。
+                //  负数在这里就夹掉：文件里写错一个负号，界面上会画成「¥-5.-20」
+                amountCents =
+                    Math
+                        .round((o["amount"].text().toDoubleOrNull() ?: 0.0) * 100)
+                        .toInt()
+                        .coerceAtLeast(0),
+                // 只记录、不上屏（见 [Donor.at]）；缺了就是空串，不报错
+                at = o["at"].text().trim(),
+            )
         }
     } catch (e: Throwable) {
         XLog.w("捐赠列表：$DONORS_ASSET 解不成名单（退成空态，下次进页重试）：${e.javaClass.simpleName}: ${e.message}")

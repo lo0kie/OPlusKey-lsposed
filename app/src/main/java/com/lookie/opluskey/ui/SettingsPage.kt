@@ -16,6 +16,7 @@ import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION_MS
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.AppPickerUiState
@@ -172,19 +173,41 @@ internal class SettingsPage(
                 commandDraft.draft.singleForm.hasContent || commandDraft.draft.serialForm.hasContent
             }
 
-            //  条件页没有「编辑态」这一说（进来就是编这张表），所以判「有没有条目」：
-            //  三档任一非空就要问一句。`dirty` 留着兜「清空过但还没保存」那种（空表也可能是改动）。
+            //  场景页判**改过没**，不判「表里有没有东西」：这一页有那颗「确认」，存完就该能直接退。
+            //  原先还看 `scenes.isNotEmpty()`，于是「存好了再按返回」照样弹「放弃未保存的场景」
+            //  ——那张窗在说什么都没丢（真机反馈）。
+            //  清空整张表也是一种改动（`dirty` 覆盖这一档），所以删光之后仍会被拦。
             Screen.BRANCHES -> {
-                Gesture.entries.indices.any { i ->
-                    val draft = branchDraft.at(i)
-                    draft.rules.isNotEmpty() || draft.dirty
-                }
+                branchDraft.now().dirty
+            }
+
+            //  「场景动作」页改的是同一份草稿的其中一块 —— 那一退只是回上一条路，**不丢东西**
+            //  （草稿是页面级的，「系统场景」页那颗「确认」还等着写它）。所以这里既不看整份草稿的
+            //  `dirty`（上一页的改动会算到这一页头上、误弹），也不看表非空，**只看这一块**
+            //  （判据见 [sceneBindingDirty]）。
+            Screen.SCENE_BINDING -> {
+                sceneBindingDirty()
             }
 
             else -> {
                 false
             }
         }
+
+    /**
+     * 「场景动作」页**这一块**改过没 —— 返回拦截与那颗「确认」的显隐共用这一条判据。
+     *
+     *  比的不是整份草稿的 `dirty`：同一份草稿在「系统场景」页上可能已经改过别的块，那不算
+     *  这一页的改动（拿它判会让这一页一进来就「像改过」）。判据是与进来时那份
+     *  [sceneBindingBaseline] 逐块比。
+     *
+     *  baseline 为空（调试通道直接跳页）时退回整份 `dirty` —— 总比「永远判没改」好：
+     *  那种入口下至少还拦得住真改动。
+     */
+    internal fun sceneBindingDirty(): Boolean =
+        sceneBindingBaseline?.let { base ->
+            branchDraft.now().scenes.getOrNull(sceneBindingAt) != base
+        } ?: branchDraft.now().dirty
 
     /**
      * 系统返回要交给**页面栈**处理吗 —— **只判断，不动手**（`onBackStarted` 那一刻不能有副作用，
@@ -287,6 +310,12 @@ internal class SettingsPage(
     internal val commandBandHeight = BandHeight()
     internal val appSearchBandHeight = BandHeight()
 
+    /**
+     * 「场景动作」页那条手势带 —— 同上、各页一份：它可能与「按键绑定」页的带子同时在组合里
+     * （转场），共用一个值只会互相改对方的占位。
+     */
+    internal val sceneBandHeight = BandHeight()
+
     /** 「条件执行」页那条手势带 —— 同上，各页一份。 */
     internal val branchesBandHeight = BandHeight()
 
@@ -342,6 +371,10 @@ internal class SettingsPage(
         }
         val g = picker.gesture
         val comboId = picker.comboId
+        //  场景动作页那一趟**读草稿里那一块**（`sceneAt` 非负）—— 它既不在 `keys` 也不在
+        //  `combos` 里，少一条判据就会读到「这颗键」的动作：那一格明明绑着应用，
+        //  重进这一页却一行都不亮。本文件在 `ui/` 根，读 `branchDraft` 是页面级状态，不算反向依赖。
+        val sceneAt = picker.sceneAt
         //  组合键那一趟**读组合那张表**：判据只有 [AppPickerState.comboId] 一处，与写回侧
         //  （`PageEntryWrite.writeToken`）同一个判据。少了这一支，从组合键页进来读到的永远是
         //  **当前那颗键**的动作 —— 那一格明明绑着应用，重进这一页却一行都不亮、确认键也不出现。
@@ -349,12 +382,26 @@ internal class SettingsPage(
         //  `ui/screen/`；两处都只是「按 id 取那一档组合再取动作」，口径在 `ComboKey.actionOf`。
         return when {
             //  两个入口都没记下来（调试通道直接跳页时是这样）⇒ 新绑
-            g == null -> null
+            g == null -> {
+                null
+            }
 
-            comboId == null -> actionOf(cfg, g)
+            sceneAt >= 0 -> {
+                branchDraft
+                    .now()
+                    .scenes
+                    .getOrNull(sceneAt)
+                    ?.actionOf(g)
+            }
+
+            comboId == null -> {
+                actionOf(cfg, g)
+            }
 
             //  组合被删了就不该退回「那颗键的动作」：那会点亮一个与本趟无关的绑定
-            else -> cfg.combos.firstOrNull { it.id == comboId }?.actionOf(g) ?: Action.None
+            else -> {
+                cfg.combos.firstOrNull { it.id == comboId }?.actionOf(g) ?: Action.None
+            }
         }
     }
 
@@ -414,6 +461,48 @@ internal class SettingsPage(
      *  pager 状态在 `PageContent` 里 remember、跨页拿不到，所以在这一层记一份。
      */
     internal var branchGesture by mutableIntStateOf(0)
+
+    /**
+     * 「场景动作」页在编**第几块**场景（`-1` = 不在编任何一块）。
+     *
+     *  与 [ComboEditState.editingId] 同一档性质：栈里这一页只有一个位置，参数走 `Screen` 枚举
+     *  带不进去，只能记在页面级。写入方只有 `openSceneBinding`（点场景块里那一行动作行），
+     *  出栈时由 [discardPageStateOf] 清回 `-1`。
+     *
+     *  **与 [branchDraft] 配对使用**：`branchDraft` 说「在编谁的那张表」，这一位说「表里第几块」。
+     *  两个都要，因为这一页是**从那张表里点进来的**，而草稿本身要跨「挑应用」往返存活。
+     */
+    internal var sceneBindingAt by mutableIntStateOf(-1)
+
+    /**
+     * 「场景动作」页进来时停在哪一档手势 —— 点单击那一行进来就停单击。
+     *
+     *  顶栏那条分段控件的分页器（`PagePagers.scenes`）在 push 那一刻按它归位
+     *  （见 `PushResetsPagers`）。组合键的场景块只有短按 / 长按两档，所以这里存的是**手势本身**
+     *  而不是页号 —— 页号由 `sceneGesturePage()` 按当前那张表换算。
+     */
+    internal var sceneBindingGesture by mutableStateOf(Gesture.SINGLE)
+
+    /**
+     * 「场景动作」页**进来时那一块长什么样** —— 这一页的「改动」与「放弃」都按它判。
+     *
+     * ## 为什么不能只看整份草稿的 `dirty`
+     *
+     *  这一页改的是**共享草稿的其中一块**（`BindingTarget.Scene`），而同一份草稿还有别的块
+     *  在「系统场景」页上可能已经改过。拿 `BranchDraft.dirty` 当这一页的改动判据，会得到：
+     *  在上一页改了点东西（还没确认）→ 进这一页看一眼、「什么都没动」→ 按返回却弹
+     *  「放弃未保存的场景」。用户丢的不是这一页的东西。
+     *
+     * ## 它也是「放弃」要回滚到的值
+     *
+     *  这一页的「放弃」语义是「这一趟改的不要了」—— 但草稿是页面级的，直接 `popBackStack`
+     *  只把人带回去，改动仍躺在草稿里，退回上一页后那颗「确认」照样能把它写下去（真机反馈：
+     *  「点了放弃、命令还是生效了」）。所以放弃时必须把这一块还原成进来时那一份。
+     *
+     *  写入方只有 [com.lookie.opluskey.ui.openSceneBinding]（点场景块里那一行动作行），
+     *  出栈时由 [discardPageStateOf] 清回 `null`。
+     */
+    internal var sceneBindingBaseline by mutableStateOf<SceneRule?>(null)
 
     // 「清空配置」确认弹窗的置位在 [overlays] 那一域（[PageOverlays.confirmReset]）。
 
@@ -588,9 +677,19 @@ internal class SettingsPage(
                 branchDraft.discard()
                 //  **不碰 [branchGesture]**：它是「按键绑定页当前停在哪一档」，不是这一页的状态。
                 //  在这里清成 0 的话，退出去再进来读到的是单击 —— 而那个值的唯一写入方
-                //  （`BindingScreen` 里 `LaunchedEffect(pagerState.currentPage)`）**不会重跑**
+                //  （`BindingPagerScreen` 里那条 `LaunchedEffect(s, page)`）**不会重跑**
                 //  （tab 没变，key 没变），于是一整趟都停在错的档上。
                 //  离开按键绑定页时那一条照样清（见上一个分支），那一档才有意义。
+                picker.cancelResume()
+            }
+
+            Screen.SCENE_BINDING -> {
+                //  「在编第几块」只在这一次停留里有效：下一次进来由点的那一行重新给。
+                //  **草稿不动**（它属于「系统场景」那一页，那一页还在栈里）—— 放弃那一趟的
+                //  改动由窗自己按 `sceneBindingBaseline` 还原（见 `BindingPagerScreen`）。
+                sceneBindingAt = -1
+                sceneBindingGesture = Gesture.SINGLE
+                sceneBindingBaseline = null
                 picker.cancelResume()
             }
 
@@ -715,32 +814,18 @@ internal class SettingsPage(
      *（行尾那枚图标不亮、也不滚到它眼前）—— 与网格入口那套提示不是一回事。
      */
     internal fun appPickerSelectedTarget(): String? {
-        // 给「条件执行」挑的那一趟**先看那一支**：条件记的是包名、动作记的是 token，两者都只认到
-        //  应用（那一页不挑界面，点一行就是选中）。走 [editingAction] 认不出来 —— 那两个入口
-        //  既没有手势也不在多条命令里，`editingAction` 对它们恒为 `null`。
-        val forCommand = picker.branchCommandTarget != AppPickerState.NOT_FOR_BRANCH
-        val branchAt = if (forCommand) picker.branchCommandTarget else picker.branchTarget
+        // 给「条件执行」挑**条件**的那一趟先看那一块：条件记的是包名。走 [editingAction] 认不出来
+        //  —— 那个入口既没有手势也不在多条命令里，`editingAction` 对它恒为 `null`。
+        //  （场景某一档的动作那一趟不走这里：它有手势，走 [editingAction] 那条路。）
+        val branchAt = picker.branchTarget
         if (branchAt != AppPickerState.NOT_FOR_BRANCH) {
-            val rule = branchDraft.at(branchGesture).rules.getOrNull(branchAt)
-            return when {
-                rule == null -> {
-                    null
-                }
-
-                // 动作那一头取 token 里的目标（`app:包名` / `appshortcut:w:包名|名字` 都认）
-                forCommand -> {
-                    rule.action.appTarget?.let(AppTarget::pkg)
-                }
-
-                // 条件那一头直接就是包名 —— 一块可能带好几条条件，要取的是**「前台应用」那一条**
-                //  （只取第一条的话，手改的配置里应用条件排在第二位时这一页一行都不亮）。
-                //  槽位口径只有一处（`StateRule.appCondition`）。
-                // 条件可以**多选**（`包1||包2`，任一在前台即通过）：这一位只回答
-                //  「滚到哪一行、行尾亮哪个」，所以取第一个；完整集合在 `picker.pickedApps`。
-                else -> {
-                    rule.appCondition?.appPackages?.firstOrNull()
-                }
-            }
+            val scene = branchDraft.now().scenes.getOrNull(branchAt) ?: return null
+            // 条件那一头直接就是包名 —— 一块可能带好几条条件，要取的是**「前台应用」那一条**
+            //  （只取第一条的话，手改的配置里应用条件排在第二位时这一页一行都不亮）。
+            //  槽位口径只有一处（`SceneRule.appCondition`）。
+            // 条件可以**多选**（`包1||包2`，任一在前台即通过）：这一位只回答
+            //  「滚到哪一行、行尾亮哪个」，所以取第一个；完整集合在 `picker.pickedApps`。
+            return scene.appCondition?.appPackages?.firstOrNull()
         }
         // 两种动作都要认：`app:`（普通打开）与 `window:`（小窗，[Action.AppWindow]）——
         // 与「按键绑定」页那一格取应用名同口径。少认一种时，开着「以小窗口打开」挑完应用回来

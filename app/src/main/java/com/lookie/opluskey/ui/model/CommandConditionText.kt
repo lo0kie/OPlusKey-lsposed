@@ -90,15 +90,11 @@ internal fun conditionValueText(
             condition.value
         }
 
-        ConditionKind.BLUETOOTH -> {
-            switchLabel(condition.effectiveValue)
-        }
-
-        ConditionKind.CELLULAR -> {
-            switchLabel(condition.effectiveValue)
-        }
-
-        ConditionKind.AIRPLANE -> {
+        //  这四个都是「开 / 关」型的系统开关，取值文案共用同一对（「开」/「关」）——
+        //  分四支写只是把同一句话抄了四遍，连带把这一处 `when` 的复杂度顶到上限。
+        ConditionKind.BLUETOOTH, ConditionKind.CELLULAR,
+        ConditionKind.AIRPLANE, ConditionKind.FLASHLIGHT,
+        -> {
             switchLabel(condition.effectiveValue)
         }
     }
@@ -157,6 +153,8 @@ internal fun conditionKindLabel(kind: ConditionKind): String =
         ConditionKind.CELLULAR -> I18n.get(Strings.COMMAND_COND_CELLULAR_NAME, "移动数据")
 
         ConditionKind.AIRPLANE -> I18n.get(Strings.COMMAND_COND_AIRPLANE_NAME, "飞行模式")
+
+        ConditionKind.FLASHLIGHT -> I18n.get(Strings.COMMAND_COND_FLASHLIGHT_NAME, "手电筒")
     }
 
 /** 有取值的条件，那一档取值在菜单里叫什么。 */
@@ -185,6 +183,8 @@ internal fun conditionChoiceLabel(
         ConditionKind.CELLULAR -> switchLabel(value)
 
         ConditionKind.AIRPLANE -> switchLabel(value)
+
+        ConditionKind.FLASHLIGHT -> switchLabel(value)
 
         // 时间区间没有二级菜单（点它直接弹时间选择器），走不到这里
         ConditionKind.TIME -> value

@@ -36,7 +36,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
@@ -44,14 +44,11 @@ import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appTargetLabelOf
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
-import com.lookie.opluskey.ui.model.actionCellIcon
-import com.lookie.opluskey.ui.model.stepTitleWithTarget
 import com.lookie.opluskey.ui.screen.keyEnabled
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.BranchDraft
@@ -106,14 +103,14 @@ internal fun SettingsPage.BranchCards(
     //  表现就是「刚进页，内容从顶部滑下来」。载入完成后再画，第一帧就是最终形态，
     //  整块没有任何转场。这一档只持续一帧（`load` 在同一次组合的第一帧内跑完）。
     if (draft.owner == null) return
-    val rules = draft.rules
+    val rules = draft.scenes
     //  退出中的那一支还要画行与注脚，而这时 `rules` 已经空了（删最后一条是立即移除）——
     //  直接读它会让行瞬间消失、注脚弹回顶部。所以留一份「最后一次非空」的快照，退出那一支用它画。
     //  比较用结构相等：内容没变就不写，不会自己触发重组。
     //
     //  **必须在 `anchors` 之前**：锚点表要按快照的条数建，否则退出那一支会拿到一张空表、
     //  按行下标去取就是 `IndexOutOfBoundsException`（真机崩过一次）。
-    val shownRules = remember { mutableStateListOf<StateRule>() }
+    val shownRules = remember { mutableStateListOf<SceneRule>() }
     val shownIds = remember { mutableStateListOf<Int>() }
     if (rules.isNotEmpty() && shownRules != rules) {
         shownRules.clear()
@@ -207,27 +204,26 @@ private val BRANCH_BODY_TRANSFORM: ContentTransform =
     )
 
 /**
- * 「添加条件」那一下 —— 末尾那条**条件和命令都还空着**时不再往下加：新加的行一样是空的，
- * 堆两条空行既看不出差别、校验也过不了。说一句就停在这一条上，让人先去把它填了。
+ * 「添加场景」那一下 —— 末尾那一块**条件还空着**时不再往下加：新加的一样是空的，
+ * 堆两块空场景既看不出差别、校验也过不了。说一句就停在这一块上，让人先去把它填了。
  *
- * 加的是**第一条**时返回 [NO_FRESH_ROW]：那一下整块高度由外层（空态 与 表格）那套动画负责，
- * 里层再展开一遍就是同一条动画跑两遍。
+ * 加的是**第一块**时不播行进场：那一下整块高度由外层（空态 与 表格）那套动画负责，
+ * 里层再展开一遍就是同一条动画跑两遍（见 [NO_FRESH_ROW]）。
  */
-internal fun SettingsPage.addBranchRule(
-    rules: List<StateRule>,
-    onAdded: (Int) -> Unit,
-) {
-    //  **上限先判**：表满了就不该再听「还有场景没选完」那句 —— 那一句是「你可以再加，但先把这条填了」，
+internal fun SettingsPage.addScene() {
+    val rules = branchDraftNow().scenes
+    val onAdded: (Int) -> Unit = { branchDraftNow().freshId = it }
+    //  **上限先判**：表满了就不该再听「还有场景没选完」那句 —— 那一句是「你可以再加，但先把这块填了」，
     //  而满了的时候压根加不了，两件事说反了会让人以为填完还能加。
-    if (rules.size >= StateRule.MAX_PER_GESTURE) {
+    if (rules.size >= SceneRule.MAX_SCENES) {
         hint(
-            I18n.format(Strings.COMMAND_BRANCH_LIMIT, StateRule.MAX_PER_GESTURE),
+            I18n.format(Strings.COMMAND_BRANCH_LIMIT, SceneRule.MAX_SCENES),
             slot = HINT_SLOT_DISABLED,
         )
         return
     }
     val tail = rules.lastOrNull()
-    if (tail != null && tail.conditions.isEmpty() && !tail.action.isBound) {
+    if (tail != null && tail.conditions.isEmpty()) {
         //  **同一个语义位**：连点几下是这一句在改字，不是叠出一串
         hint(
             I18n.get(Strings.COMMAND_BRANCH_NEED_CONDITION, "还有场景没选完"),
@@ -236,7 +232,7 @@ internal fun SettingsPage.addBranchRule(
         return
     }
     val first = rules.isEmpty()
-    val id = branchDraftNow().add(StateRule.single(branchGestureNow(), null, Action.None))
+    val id = branchDraftNow().add(SceneRule.EMPTY)
     onAdded(if (first) NO_FRESH_ROW else id)
 }
 
@@ -249,7 +245,7 @@ internal fun SettingsPage.addBranchRule(
  */
 @Composable
 private fun SettingsPage.BranchRuleColumn(
-    rules: List<StateRule>,
+    rules: List<SceneRule>,
     ids: List<Int>,
     freshId: Int,
     menus: BranchMenuState,
@@ -311,7 +307,7 @@ private fun SettingsPage.BranchRuleColumn(
  */
 @Composable
 private fun SettingsPage.BranchRow(
-    rule: StateRule,
+    rule: SceneRule,
     spec: RuleRowSpec,
     menus: BranchMenuState,
 ) {
@@ -337,35 +333,29 @@ private fun SettingsPage.BranchRow(
             //  一条都没配时也给一行「未选择条件」（`empty = true`），让用户知道这一格要配什么。
             //  以前是用 ` + ` 拼在同一行里 —— 两条以上时读起来像一句话，看不出是「且」的关系。
             val conditionLines = ruleConditionLines(rule)
-            //  命令那格写成「父级 - 子级」（响铃状态 - 循环）：与条件那格同一套写法，
-            //  光写「循环」看不出是谁在循环（见 `actionCellTitle`）。
-            //  **留空 = 「无操作」**（场景命中也不做事），它与「还没选」是同一档数据，
-            //  这一格就一律写名字 —— 不再有灰着的「未选择命令」那种半成品提示。
-            val actionText =
-                if (!rule.action.isBound) {
-                    I18n.get(Strings.ACTION_NONE, "无操作")
-                } else {
-                    //  应用那一族要带上「具体是哪一个」（`微信(小窗 扫一扫)`）：与网格小字、
-                    //  点开那层菜单的子标题、「选择应用」页页头**同一句**（见 `appTargetLabelOf`）。
-                    //  整句由 `stepTitleWithTarget`（= core 的 `CommandTitle`）拼 —— 与步骤行、执行提示
-                    //  同一份实现，所以这里也是「父动作名: 子动作名」（`系统开关: NFC - 切换`）。
-                    //  目标**整段**交给它（`appTargetLabelOf(action)` 已含括号）—— 走 `stepTitle` 的话
-                    //  名字回调那层还会再补一次「(小窗)」，真机上就是 `应用(小窗 组件)(小窗)`。
-                    stepTitleWithTarget(rule.action.token) { action -> appTargetLabelOf(action) }
+            //  三档动作各占一行：**这一块完整地管三档**（翻转的核心）。没配的那一档写「跟随默认」
+            //  并压禁用色 —— 它与「无操作」是两件事：前者这一档不被这块接管（继续往下找 / 回落
+            //  按键绑定），后者是命中后这一档什么都不做、属于配好了的一档（见 `SceneRule` 的类注释）。
+            val actionLines =
+                blockGestures().map { gesture ->
+                    val action = rule.actionOf(gesture)
+                    ActionLine(
+                        gesture = gesture,
+                        text = actionTextOf(action),
+                        //  **只有「跟随默认」压一档色**：那一档是「这一块不接管」，等于没配。
+                        //  「无操作」是用户明确挑的一档（命中后什么都不做），它与真的绑了动作的行
+                        //  同级显示 —— 压灰会被读成「这一档还没设」。
+                        empty = action is Action.Follow,
+                        //  行首一律是**这一档的手势字形**（不是动作自己的字形）：三行并排时
+                        //  「哪一行是哪一档」得先看得出来，之后才是它右边写的那个动作（见 `gestureIcon`）。
+                        icon = PageIcons.gestureIcon(gesture),
+                    )
                 }
             RuleBlock(
-                // 「条件 1」「条件 2」—— 一份表里第几条，标题上直接写出来
+                // 「场景 1」「场景 2」—— 一份表里第几块，标题上直接写出来
                 index = spec.index,
                 state = spec.state,
-                text =
-                    RuleText(
-                        conditionLines = conditionLines,
-                        action = actionText,
-                        actionEmpty = false,
-                        //  图标跟着**动作**走（「无操作」是 `ban`，循环是重复箭头，不是响铃那格那颗）——
-                        //  一律走同一支，别在这一层为某一档开特例
-                        actionIcon = actionCellIcon(rule.action, configState.commands.value),
-                    ),
+                text = RuleText(conditionLines = conditionLines, actions = actionLines),
                 cells =
                     RuleCells(
                         anchors = spec.anchors,
@@ -375,15 +365,17 @@ private fun SettingsPage.BranchRow(
                             menus.condAnchor = spec.anchors.conditionAt(condIndex)
                             menus.condAt = spec.index
                         },
-                        onAction = {
-                            menus.commandAnchor = spec.anchors.right
-                            menus.commandAt = spec.index
+                        //  点的是**哪一档**动作那一行 → 进「场景动作」页编那一档（不再弹抽屉：
+                        //  那一页与「按键绑定」页同一张网格 + 同一条三档手势带，
+                        //  场景块的一档本来就该像一颗键的一档那样挑动作）。
+                        onAction = { gesture ->
+                            openSceneBinding(spec.index, gesture)
                         },
                         onMenu = {
                             menus.menuAnchor = spec.anchors.menu
                             menus.menuAt = spec.index
                         },
-                        //  这颗键自己停用 / 整页闸门关着 ⇒ 两行都置灰（菜单那颗仍可用，见 `RuleCells.enabled`）
+                        //  这颗键自己停用 / 整页闸门关着 ⇒ 几行都置灰（菜单那颗仍可用，见 `RuleCells.enabled`）
                         enabled = spec.enabled,
                     ),
                 menus = menus,
@@ -473,7 +465,6 @@ private class RuleAnchors {
      *  按需增长（条件条数会变）：[conditionAt] 幂等，组合期多调几次也不会多长。
      */
     private val conditions = mutableListOf<PreciseClickState>()
-    val right = PreciseClickState()
     val menu = PreciseClickState()
 
     fun conditionAt(index: Int): PreciseClickState {
@@ -496,7 +487,8 @@ private class RuleCells(
     val anchors: RuleAnchors,
     /** 点了**第几条**条件那一行（一块可以带好几条，各占一行）。 */
     val onCondition: (Int) -> Unit,
-    val onAction: () -> Unit,
+    /** 点了**哪一档**动作那一行（三档各占一行）。 */
+    val onAction: (Gesture) -> Unit,
     val onMenu: () -> Unit,
     /**
      * 这一块的两行**能不能点** —— 整页闸门 × 这颗键自己开没开。
@@ -512,13 +504,24 @@ private class RuleText(
     /**
      * 条件那几行 —— **一条条件一个**，`CardList` 里一条一个 `CardRow.Item`。
      *
-     *  空表（新加的那一行还没条件）时给一条「未选择条件」，让用户知道这一格要配什么。
+     *  空表（新加的那一块还没条件）时给一条「未选择条件」，让用户知道这一格要配什么。
      */
     val conditionLines: List<ConditionLine>,
-    val action: String,
-    /** 命令那一格还没选 —— 文字与图标压禁用色。 */
-    val actionEmpty: Boolean,
-    val actionIcon: ImageVector,
+    /** 动作那几行 —— **一档一个**（单击 / 双击 / 长按，组合键只有两档）。 */
+    val actions: List<ActionLine>,
+)
+
+/**
+ * 一档动作那一行 —— 哪一档、写什么、配哪颗字形、是不是还没配。
+ *
+ *  没配（[empty]）与「无操作」是两件事：前者这一档不被这一块接管，后者是命中后什么都不做
+ *  （见 `SceneRule` 的类注释）。两档的文字与配色因此也不同（[empty] 压禁用色）。
+ */
+internal class ActionLine(
+    val gesture: Gesture,
+    val text: String,
+    val empty: Boolean,
+    val icon: ImageVector,
 )
 
 /**
@@ -618,47 +621,55 @@ private fun RuleBlock(
                 },
         )
         Spacer(Modifier.height(RULE_CARD_GAP))
-        RuleActionRow(text, state, cells)
+        RuleActionRows(text, state, cells)
     }
 }
 
 /**
- * 动作那一行（**单独一张卡**）—— 抽出来只为让 [RuleBlock] 留在 detekt 的长度上限内。
+ * 动作那几行（**单独一张卡**）—— 一档一行：单击 / 双击 / 长按，组合键只有两档。
  *
- *  这一块自己关着时，行尾先说一句「已停用」：条件行由 [ConditionTrailing] 说，动作这一行在这里补，
- *  用户扫「无操作 / 打开应用…」时也能看出整块已经关掉了。小标题那一行**不说**（用户口径：
- *  标在列表的每一行上）。
+ *  翻转之后「一块 = 完整的三档手势」就落在这里：一块场景命中时，这三行各自决定那一档做什么。
+ *  没配的那一档写「跟随默认」并压禁用色 —— 它与「无操作」是两件事（见 [ActionLine]）。
+ *
+ *  这一块自己关着时，行尾先说一句「已停用」：条件行由 [ConditionTrailing] 说，动作这几行在这里补，
+ *  用户扫「未设置 / 无操作 / 打开应用…」时也能看出整块已经关掉了。小标题那一行**不说**
+ *  （用户口径：标在列表的每一行上）。
  */
 @Composable
-private fun RuleActionRow(
+private fun RuleActionRows(
     text: RuleText,
     state: RuleState,
     cells: RuleCells,
 ) {
+    val disabled = COUITheme.colorScheme.disabledOnSecondaryVariant
     CardList(
         margin = 0.dp,
         rows =
-            listOf(
+            text.actions.map { line ->
                 CardRow.Item(
-                    title = text.action,
-                    //  命令那一行也**不限行**：`打开应用: 微信 - LauncherUI` 这种一长串，
+                    //  标题前面写档位：「单击 | 手电筒」。三行并排时，光有动作名看不出哪一行是哪一档。
+                    title = "${line.gesture.label} | ${line.text}",
+                    //  动作那一行**不限行**：`打开应用: 微信 - LauncherUI` 这种一长串，
                     //  单行省略会把「做什么」裁掉一半 —— 这一行正是用来核对它做什么的。
                     titleMaxLines = Int.MAX_VALUE,
                     //  键停用 / 只读时点不动（与条件行同一道闸，见 `RuleCells.enabled`）
                     enabled = cells.enabled,
-                    icon = text.actionIcon,
-                    iconTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
-                    titleTint = if (text.actionEmpty) COUITheme.colorScheme.disabledOnSecondaryVariant else null,
+                    icon = line.icon,
+                    iconTint = if (line.empty) disabled else null,
+                    titleTint = if (line.empty) disabled else null,
                     trailing = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (state == RuleState.OFF) RuleStateHint(RuleState.OFF)
-                            RowEndIcon(PageIcons.Selector)
+                            //  这一行是**换页**（进「场景动作」编那一档），行尾给「进下一层」那枚右箭头；
+                            //  选择器那枚说的是「点了要选点什么」，与这里的去处对不上。
+                            RowEndIcon()
                         }
                     },
-                    modifier = Modifier.preciseClickAnchor(cells.anchors.right),
-                    onClick = cells.onAction,
-                ),
-            ),
+                    //  这一行是**换页**（进「场景动作」编那一档），不是弹浮层 ——
+                    //  所以不挂触点锚点：锚点只服务「菜单弹在被点的那一格旁边」。
+                    onClick = { cells.onAction(line.gesture) },
+                )
+            },
     )
 }
 

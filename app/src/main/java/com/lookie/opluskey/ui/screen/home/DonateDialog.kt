@@ -120,7 +120,7 @@ private fun DonateBody(target: DonateTarget?) {
         DonateNote(
             I18n.get(
                 Strings.DONATE_NAME_NOTE,
-                "备注昵称即可加入捐赠列表，不备注按「匿名」",
+                "备注昵称即可加入捐赠列表，不备注按「***」",
             ),
         )
     }

@@ -10,7 +10,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.withKeyName
 import com.lookie.opluskey.core.model.withoutKey
@@ -74,11 +73,11 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *  这一页不再挂那枚禁用记号：「这一颗键停用了」由整页控件变灰、副标题压暗，以及下面
  *  「启用这颗键」那一行的动词共同表达。菜单里不再补一行只做说明的灰行。
  *
- * @param gesture 这一页**当前停在哪个手势** —— 「系统场景」那一行的子标题按它数条数
- *   （与页面里那条横幅同一条判据：只看这一档手势的规则）。
+ *  「系统场景」那一行**不再按手势筛条数**：翻转之后一张表里每块自带三档，
+ *  这一行的子标题报的是这颗键全部场景的条数（见 `scenarioMenuSummary`）。
  */
 @Composable
-internal fun SettingsPage.BindingKeyMenu(gesture: Gesture) {
+internal fun SettingsPage.BindingKeyMenu() {
     var open by remember { mutableStateOf(false) }
     // 菜单只负责「点了哪一项」，具体哪一个弹窗开着由这一位记 —— 一个变量就够：
     //  同一时刻只可能有一个弹窗，而且点任何一项都会先把菜单收掉。
@@ -99,7 +98,6 @@ internal fun SettingsPage.BindingKeyMenu(gesture: Gesture) {
                 keyMenuEntries(
                     selected = editing,
                     cfg = configState.config.value,
-                    gesture = gesture,
                     actions =
                         KeyMenuActions(
                             //  与顶栏那颗设置键同一个落点（同一条 `openKeySettings`）
@@ -228,7 +226,6 @@ private const val SHOW_BRANCHES_ENTRY = true
 private fun keyMenuEntries(
     selected: KeyId,
     cfg: Config,
-    gesture: Gesture,
     actions: KeyMenuActions,
 ): List<MenuEntry> =
     buildList {
@@ -248,7 +245,7 @@ private fun keyMenuEntries(
                     title = BRANCHES_TITLE,
                     //  子标题报这一档手势的条数（只数启用中的）—— 与页面里那条横幅同一份判据。
                     //  这一行是**进下一页**，所以行尾给箭头；子标题只在菜单里出现（横幅那句在页面上）。
-                    summary = scenarioMenuSummary(cfg.key(selected).rules.filter { it.gesture == gesture }),
+                    summary = scenarioMenuSummary(cfg.key(selected).scenes),
                     icon = PageIcons.Scene,
                     submenu = true,
                     enabled = keyEnabled,

@@ -49,11 +49,12 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 // 现在一格一个函数（[BuiltInTile] / [CustomTile]），排布的那三层只负责**计数与让位**。
 
 /**
- * 内置动作网格 —— 按 [ActionCatalog.groupsFor] 分组，每组一个小标题。
+ * 内置动作网格 —— 按 [BindingGridState.groups] 分组，每组一个小标题。
  *
- *  **不要自己另拼一份清单**：分组与格子必须同源（`groupsFor()` 现在不按手势分化，三档清单一致；
- *  哪天真按手势分化了，也得让分组跟着一起变）。曾经两边各算一次，组大小没同步少 ⇒ 最后一组
+ *  **不要自己另拼一份清单**：分组与格子必须同源（`st.groups` 与 `st.specs` 出自同一次
+ *  `rememberBindingGridState`）。曾经两边各算一次，组大小没同步少 ⇒ 最后一组
  *  多吃进第一条自定义命令（真机反馈「单击 / 双击的自定义命令跑到快捷功能里了」）。
+ *  场景那一页比这里多一行「跟随默认命令」—— 那张表由状态给，这里不认页面。
  *
  * 焦点格索引仍与 `st.specs` 下标一一对应（见 `BindingList` 里「扁平焦点索引的账」）——
  * 分组只是展示层切分，组里的格子用的还是**全局**下标（每组的起点见 groupBases），
@@ -64,7 +65,7 @@ internal fun SettingsPage.BuiltInGrid(
     st: BindingGridState,
     enabled: Boolean,
 ) {
-    val groups = remember { ActionCatalog.groupsFor() }
+    val groups = st.groups
     //  **每一组的起始下标预先算好**，不用跨组累加的可变变量。
     //  BoxWithConstraints 的 content 是另起的子组合：在那里读外层那个累加变量，拿到的是
     //  **首次组合那一刻的值**，而父作用域每帧又把它重新初始化成 0 —— 结果两组都从同一个起点取格子

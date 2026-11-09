@@ -9,9 +9,11 @@ package com.lookie.opluskey.core.model
  *  （`ComboDetector.pairFor`），3 颗起走多成员凑齐（`multiFor`），两条路都读这份计划。
  *
  *  @param keys 成员（**集合语义**：顺序不是身份，见 `ComboKey` 的类注释）
- *  @param collectMs 相邻两颗成员的按下时刻最多相差多久 —— 这一档自己的那一个
+ *  @param collectMs **相邻**两颗成员的按下时刻最多相差多久 —— 这一档自己的那一个
  *    （`Config.comboWindowFor`：设过就用它，没设就是公共那份 `GlobalConfig.comboWindowMs`），
- *    两颗与多成员走同一个数
+ *    两颗与多成员走同一个数。判「凑没凑齐」时按成员数放大成整串的跨度：
+ *    n 颗 ⇒ `collectMs × (n-1)`（`Config.comboSpanFor`，判定器与镜像同一口径）——
+ *    三颗也按「第一颗到第三颗只隔一个窗口」判的话，手指根本按不出来。
  *  @param longPressMs 凑齐之后一起按住多久算长按（这一档自己的值，不取某个成员键的）
  *  @param judgeable 判定器认不认这个形态。现在是「够两颗就认」（多成员这一轮已接线），
  *    这一位留着是为了**下次放开上限时**还能在日志里说清「配了、但判定器不认」，
@@ -50,13 +52,12 @@ fun ComboKey.plan(collectMs: Int): ComboPlan =
     )
 
 /**
- * 这份配置里**用得上**的组合各自的判定计划 —— 关掉的、成员不足的都不进来
- * （判据与 `Config.comboFor` 一致：`isUsable`）。
+ * 这份配置里**用得上**的组合各自的判定计划 —— 凑不齐的都不进来。
  *
- *  成员数已经不再影响能不能判：手改文件写进来的三颗组合也在表里、也是 `judgeable`，
+ *  口径与判定侧同一条（[Config.liveCombos]：自己关着、成员不足数、或任一成员键被停用），
+ *  于是「日志里这一档在表里」与「按键时真的会为它等窗口」永远说的是同一件事。
+ *
+ *  成员数不影响能不能判：手改文件写进来的三颗组合也在表里、也是 `judgeable`，
  *  判定侧（`ComboDetector` 的多成员路径）直接照它凑。
  */
-fun Config.comboPlans(): List<ComboPlan> =
-    combos
-        .filter { it.isUsable }
-        .map { it.plan(comboWindowFor(it)) }
+fun Config.comboPlans(): List<ComboPlan> = liveCombos().map { it.plan(comboWindowFor(it)) }

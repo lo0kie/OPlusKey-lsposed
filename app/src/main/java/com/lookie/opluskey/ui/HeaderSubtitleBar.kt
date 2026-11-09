@@ -71,7 +71,9 @@ internal class HeaderSubtitleBar(
     /**
      * 这一页此刻**该画出去**的那一行副标题（只改画出来的那一份，日志与配置仍是全文）。
      *
-     *  量不到宽度时（首帧、或整页宽度为 0）退回天花板 [BELOW_SUBTITLE_MAX_COLUMNS] ——
+     *  **能放多少就画多少**：上限就是那一档实测出来的可用宽度，不再另压一道格数天花板
+     *  （两端留白由 [PAGE_MARGIN] 与折叠态那套让位算法给）。
+     *  只有量不到宽度时（主题字号为 0 / 栏宽为 0）才退回 [FALLBACK_SUBTITLE_COLUMNS] ——
      *  宁可长一点，也别画成只剩一个省略号。
      */
     fun shown(subtitle: String): String {
@@ -88,7 +90,7 @@ internal class HeaderSubtitleBar(
             } else {
                 expandedSubtitleColumns(barWidthPx.value, columnWidthPx, density)
             }
-        val columns = if (measured > 0) minOf(measured, BELOW_SUBTITLE_MAX_COLUMNS) else BELOW_SUBTITLE_MAX_COLUMNS
+        val columns = if (measured > 0) measured else FALLBACK_SUBTITLE_COLUMNS
         return ellipsizeToColumns(subtitle, columns)
     }
 }
@@ -115,14 +117,17 @@ internal fun rememberHeaderSubtitleBar(scrollBehavior: ScrollBehavior): HeaderSu
 }
 
 /**
- * 副标题的**格数天花板** —— 32 格 = 16 个汉字。
+ * 量不到宽度时的**兜底格数** —— 32 格 = 16 个汉字。
  *
- *  真正的上限是「这一档能放多少」（[expandedSubtitleColumns] / [collapsedSubtitleColumns]），
- *  这一档只是**封顶**：它独占标题下面那一行，本来就够宽，但铺满整屏时读起来像正文；
- *  留出两端空白，一眼还是「这一页的一句说明」。口径按**格**算（见 `displayWidth`），
- *  所以英文 / 数字不会被误砍。
+ *  正常路径走不到它：整条栏的宽度首帧就有（[HeaderSubtitleBar.barWidthPx] 的初值就是窗口宽），
+ *  展开态第一帧就能算出真实格数。只有主题字号为 0 / 栏宽为 0 那种病态情形才退回这里 ——
+ *  宁可长一点，也别画成只剩一个省略号。
+ *
+ *  早先这一档还是**天花板**（`minOf(measured, 32)`）：在 1272px / 560dpi 上实测只用到可用宽度的
+ *  七成（46 格可用、画 32 格），长包名 / 长命令名右边明明还有空却被截了。两端留白本来就由
+ *  [PAGE_MARGIN] 给，不需要再压一道。
  */
-private const val BELOW_SUBTITLE_MAX_COLUMNS = 32
+private const val FALLBACK_SUBTITLE_COLUMNS = 32
 
 /**
  * 省略号自己占的格数 —— 从预算里先扣掉。
@@ -147,7 +152,7 @@ private const val SUBTITLE_SWAP_AT_COLLAPSED = 0.9999f
  *
  *  [columnWidthPx] 是「一格多宽」，由调用点按主题字号算好传进来（这里不读主题：
  *  `COUITheme.textStyles` 是 @Composable 的，读在这儿会让下面几个纯函数跟着变 @Composable）。
- *  算不出来（还没量到宽度）时给 0，由调用点退回天花板。
+ *  算不出来（还没量到宽度）时给 0，由调用点退回 [FALLBACK_SUBTITLE_COLUMNS]。
  */
 private fun columnsForWidth(
     widthPx: Int,

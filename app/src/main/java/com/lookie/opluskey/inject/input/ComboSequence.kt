@@ -1,5 +1,6 @@
 package com.lookie.opluskey.inject.input
 
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.ComboPlan
 
 /**
@@ -47,8 +48,10 @@ internal sealed interface ComboGather {
  * ## 判据（与判定器逐条对齐）
  *
  *  1. **顺序按下也算凑齐**（现有语义：几颗的 DOWN 相差不超过窗口，不要求同时按着）；
- *  2. 窗口按**最后一下**算：每一颗与最后那一颗相差不超过这一档的 `collectMs`
- *     —— 判定器用的就是这一个比较（`now - at <= window`），不是「相邻两颗之间」；
+ *  2. 窗口按**最后一下**算：每一颗与最后那一颗相差不超过这一档的量 —— 而这个量是**按成员数
+ *     放大的**：`collectMs` 说的是「相邻两颗最多隔多久」，n 颗就允许 (n-1) 个窗口
+ *     （判定器那边同一个数，见 `ComboWindows.spanFor` / `Config.comboSpanFor`）。
+ *     两颗时它就是单个窗口；三颗按一个窗口判的话，三根手指必须几乎同时落下，真机等于凑不齐；
  *  3. 这一串里每颗都必须是该档成员，**夹在中间的非成员键不影响结果**（对应判定器里
  *     「配不上的候选不占位」；早先写成「作废」是错的：那会让「A → 蹭到 C → B」这种
  *     真实按法整个落回单击）；**同一颗按了两次**按最后那一次算（判定器的 `recent` 只留
@@ -99,8 +102,10 @@ internal object ComboSequence {
         val hits = downs.filter { it.keyId in plan.keys }.associateBy { it.keyId }.values
         val first = hits.minOfOrNull { it.atMs } ?: return null
         val last = hits.maxOf { it.atMs }
-        //  窗口按最后一下算：每一颗与最后那一颗相差不超过这一档的 `collectMs`（判据 2）
-        if (last - first > plan.collectMs) return null
+        //  窗口按最后一下算：每一颗与最后那一颗相差不超过这一档的**整串跨度**（判据 2）——
+        //  `collectMs` 是相邻两颗的量，n 颗要 (n-1) 个窗口。封顶与 `Config.comboSpanFor` 同一条。
+        val gaps = (plan.size - 1).coerceIn(1, ComboKey.MAX_KEYS - 1)
+        if (last - first > plan.collectMs * gaps) return null
         return if (hits.size >= plan.size) {
             ComboGather.Gathered(plan, last)
         } else {

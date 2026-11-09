@@ -105,13 +105,10 @@ private fun SettingsPage.writeBinding(
         //  而名字表的键是「身份」（`AppTarget.identity` 或磁贴组件名）—— 与界面查名字用的那一把完全一致。
         //  名字为空时**不动表**：`withAppName(…, null)` 是「删这一条」，那是「重新挑失败」的语义，
         //  不该被一次普通的重新绑定（绑内置动作、绑别的应用）顺手触发。
-        val next =
-            withTargetBound(cfg, target, action)
-                .let { c ->
-                    val t = action.appTarget
-                    if (appName != null && t != null) c.withAppName(t, appName) else c
-                }
-        val result = write(next, "${target.what} → $token")
+        //
+        //  **场景目标不走这条路**（见 [commitBinding]）：它写的是草稿，没有「名字表」可落 ——
+        //  那一页的显示名由 `appNameOf` 按包名现取，与网格里那行小字同一把尺子。
+        val result = commitBinding(cfg, target, action, appName)
         // 绑成了才报：被拦 / 写盘失败时 [write] 自己已经报过原因；广播没发出去时它报的那条
         //  「已保存，但通知注入侧失败」更不能被一句「已绑定…」顶掉（底部只有一行回执）。
         //  归到**整页那一个位**（[HINT_SLOT_BINDING]）：这一页连改几格时屏幕上改字，
@@ -130,10 +127,50 @@ private fun SettingsPage.writeBinding(
 }
 
 /**
+ * 把这一档选中的 [action] **落到它该去的地方** —— 单键 / 组合写盘，场景写草稿。
+ *
+ *  分派只有这一处：`BindingTarget` 回答「写哪儿」，这里回答「怎么落地」。写成两支而不是让
+ *  每个目标自己实现一个 `commit`，是为了把「落盘 + 广播 + 名字表」那套留在同一个地方 ——
+ *  三条路各写一遍时，加一个目标就要把这一整套复制一份。
+ */
+private fun SettingsPage.commitBinding(
+    cfg: Config,
+    target: BindingTarget,
+    action: Action,
+    appName: String?,
+): CommandsSave {
+    if (target is BindingTarget.Scene) {
+        //  场景块属于**草稿**：这一下只改内存里的那张表，等「系统场景」页那颗确认才写配置
+        //  （见 `BranchScreen.saveScenes`）。落在这里的改动退回上一页时也还在（草稿是页面级的）。
+        val ok = target.bind(action)
+        XLog.w("场景动作：第 ${target.at + 1} 块 ${target.gesture.id} → ${action.token}（草稿，未落盘）")
+        return if (ok) CommandsSave.Ok else CommandsSave.Failed
+    }
+    return write(
+        withTargetBound(cfg, target, action).withAppNameOf(action, appName),
+        "${target.what} → ${action.token}",
+    )
+}
+
+/**
+ * 名字跟着绑定一起写进 [Config.appNames]（判据见 [pick] 的 `appName`）—— 只对带目标的那几族成立。
+ */
+private fun Config.withAppNameOf(
+    action: Action,
+    appName: String?,
+): Config {
+    val t = action.appTarget ?: return this
+    return if (appName != null) withAppName(t, appName) else this
+}
+
+/**
  * 把 [action] 绑到 [target] 那一格上 —— **两种目标各写各的表**，其余一律不动。
  *
  *  单键那两支带着两条老规矩（选动作 == 启用、长按换成多条命令时关掉连续触发），
  *  组合键没有这些位：它没有「这一颗键启用不启用」，也没有「连续触发」。
+ *
+ *  **场景那一支走不到这里**：它写的是草稿，在 [commitBinding] 里就分走了。留这一支只为
+ *  `when` 穷尽 —— 返回原样，不会把「草稿」这件事悄悄落成一次配置写入。
  */
 private fun SettingsPage.withTargetBound(
     cfg: Config,
@@ -141,6 +178,10 @@ private fun SettingsPage.withTargetBound(
     action: Action,
 ): Config =
     when (target) {
+        is BindingTarget.Scene -> {
+            cfg
+        }
+
         is BindingTarget.Key -> {
             val key = cfg.key(target.id)
             val updated =

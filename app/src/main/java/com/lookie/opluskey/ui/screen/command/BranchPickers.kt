@@ -3,10 +3,9 @@ package com.lookie.opluskey.ui.screen.command
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.TimeRange
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -20,44 +19,35 @@ import com.lookie.opluskey.ui.state.AppPickerState
 // 稳定的改动理由，而且搬走之后两边都离 detekt 的函数 / 长度上限更远。
 
 /**
- * 进「选择应用」页给第 [index] 条规则挑应用（[AppPickerState.NEW_BRANCH] = 新加一条）。
+ * 进「选择应用」页给第 [index] 块挑**条件应用**（[AppPickerState.NEW_BRANCH] = 新加一块）。
  *
  *  与 `openAppPickerForStep` 同一条路：进页前把搜索词清掉、「以小窗口打开」复位 ——
  *  这一页的状态提到页面级、不随出栈注销，不手动清的话下次进来就是一份被过滤过的列表。
  *
- *  给**条件**挑的那一趟**不挑界面、也不挑小窗**（判据是 `AppPickerState.appOnly`）：条件只认包名。
- *  给**那一支要执行的动作**挑（`forCommand = true`）不在此列 —— 它与网格同一套，可以挑组件 /
- *  快捷方式、也可以用小窗起。
+ *  **只挑条件**：条件只认包名（`AppPickerState.appOnly`），不挑界面、也不挑小窗。
+ *  场景里「某一档要执行什么应用」不走这条路 —— 那一档在「场景动作」页的网格里挑
+ *  （`BindingTarget.Scene`），与网格同一套。
  */
 internal fun SettingsPage.openAppPickerForBranch(
     index: Int,
-    forCommand: Boolean = false,
     conditionIndex: Int = -1,
-    stop: Boolean = false,
 ) {
-    picker.openForBranch(index, forCommand = forCommand, conditionIndex = conditionIndex, stop = stop)
+    picker.openForBranch(index, conditionIndex = conditionIndex)
     // 搜索词清空（页面级状态，不再随页面出栈注销）
     picker.filter.value = ""
     resetSmallWindowForPicker()
-    //  给**条件**挑的那一趟支持多选：把这条规则里已有的包名预填进去（编辑时那几个勾要亮着）。
-    //  给**动作**挑的那一趟只有单个目标，预填空集 —— 那一趟的选中走 `pending`。
+    //  给**条件**挑的那一趟支持多选：把这块里已有的包名预填进去（编辑时那几个勾要亮着）。
     val picked =
-        if (forCommand) {
-            emptySet()
-        } else {
-            branchDraftNow()
-                .rules
-                .getOrNull(index)
-                ?.appCondition
-                ?.appPackages
-                ?.toSet()
-                .orEmpty()
-        }
+        branchDraftNow()
+            .scenes
+            .getOrNull(index)
+            ?.appCondition
+            ?.appPackages
+            ?.toSet()
+            .orEmpty()
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId(), picked = picked)
     //  说一句「可以多选」：这一页以前是单选（点一行只亮一行），不提示的话没人会去点第二下。
-    if (!forCommand) {
-        hint(I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT, "可以多选：任一应用在前台即通过"))
-    }
+    hint(I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT, "可以多选：任一应用在前台即通过"))
     navTo(Screen.APP_PICKER)
 }
 
@@ -74,7 +64,7 @@ internal fun SettingsPage.branchConditionUsed(
     exceptIndex: Int,
 ): Boolean =
     branchDraftNow()
-        .rules
+        .scenes
         .filterIndexed { at, _ -> at != exceptIndex }
         // 一条条件可以带好几个包名（多选，`包1||包2`）：判「用过了没有」要看**整组**，
         //  只比 `value == pkg` 在多选之后永远不成立。
@@ -100,7 +90,7 @@ internal fun SettingsPage.branchTimeOverlaps(
     //  改成「先滤出别的那些时间区间、再看有没有重叠」：循环里两个 `continue` + 一个
     //  `return` 会顶到 detekt 的 `LoopWithTooManyJumpStatements`
     val others =
-        branchDraftNow().rules.withIndex().flatMap { (at, rule) ->
+        branchDraftNow().scenes.withIndex().flatMap { (at, rule) ->
             rule.conditions.withIndex().mapNotNull { (condAt, cond) ->
                 //  跳过正在改的那一条，只留时间区间
                 val skip = at == exceptAt && condAt == exceptCond
@@ -115,7 +105,7 @@ internal fun SettingsPage.branchTimeOverlaps(
  * 但配置可以是手改 / 导入来的，那一步不经过界面）。
  */
 internal fun SettingsPage.branchTimesOverlap(): Boolean =
-    branchDraftNow().rules.withIndex().any { (at, rule) ->
+    branchDraftNow().scenes.withIndex().any { (at, rule) ->
         rule.conditions.withIndex().any { (condAt, cond) ->
             cond.kind == ConditionKind.TIME && branchTimeOverlaps(cond.effectiveValue, at, condAt)
         }
@@ -155,9 +145,9 @@ internal fun SettingsPage.writeBranchCondition(
         return false
     }
     val condition = BranchCondition.apps(pkgs)
-    val old = branchDraftNow().rules.getOrNull(index)
+    val old = branchDraftNow().scenes.getOrNull(index)
     if (old == null) {
-        branchDraftNow().add(StateRule.single(branchGestureNow(), condition, Action.None))
+        branchDraftNow().add(SceneRule(conditions = listOf(condition)))
     } else {
         //  **写进哪一条**（一块可以带好几条条件，逐条都要成立）：
         //   · 这一趟明确指了槽位（从「条件 2」那一行进来的）⇒ 换那一条；
@@ -178,31 +168,6 @@ internal fun SettingsPage.writeBranchCondition(
             if (slot >= 0) old.replacingCondition(slot, condition) else old.addingCondition(condition),
         )
     }
-    picker.clearTarget()
-    popBackStack()
-    return true
-}
-
-/**
- * 把挑中的应用写成第 [index] 条规则的**动作**（`app:` / `window:`）。
- *
- *  与 [writeBranchCondition] 一样**自己退页**，调用方不要再退一次。
- */
-internal fun SettingsPage.writeBranchCommand(
-    token: String,
-    index: Int,
-): Boolean {
-    val action = Action.parse(token)
-    if (!action.isBound) {
-        XLog.w("分叉动作：挑中的应用解析不出动作（token=${XLog.redactToken(token)}），不改这一条")
-        return false
-    }
-    val old = branchDraftNow().rules.getOrNull(index)
-    if (old == null) {
-        XLog.w("分叉动作：要改的第 $index 条已经不在了（草稿被重置过），不改")
-        return false
-    }
-    branchDraftNow().update(index, old.copy(action = action))
     picker.clearTarget()
     popBackStack()
     return true

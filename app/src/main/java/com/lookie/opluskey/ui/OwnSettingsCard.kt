@@ -34,6 +34,16 @@ import com.lookie.opluskey.ui.model.PageIcons
  *  关着时看到的就是「现在实际在用的那份」，打开总开关后同一处立刻变成这一档自己的值。
  *  总开关本身与「哪几行能不能点」仍按 [owner] 判 —— 那是「算不算数」，不是「是什么样」。
  *
+ * ## 例外：**滑杆显示的是这一档自己的值**，不跟总开关跳
+ *
+ *  开关那一档必须走生效值（「关着但实际会振」就是骗人），滑杆不行 —— 拨一下总开关，
+ *  滑杆会从公共值跳到这一档自己的值，读起来像「我的强度被改了」（用户口径「切换开关
+ *  slider 的值会变」）。而滑杆在总开关关着时本来就是灰的、拖不动，显示生效值没有行动价值；
+ *  它的写入落点也正是 [owner]，**显示与落点同源**才不会有这一跳。
+ *
+ *  于是 [strengthRow] 的滑杆值取 [owner]，只有「这一行出不出现」仍按生效值判
+ *  （否则公共开着振动、这一档没设过时这一行会凭空消失）。
+ *
  * ## 为什么是**两张**卡，且各带一个小标题
  *
  *  总开关单独一张（[useOwnRow]），其余各项一张（[ownSettingRows]）：前者回答「这一档算不算数」，
@@ -100,7 +110,10 @@ internal fun SettingsPage.OwnSettingsCard(
         rows =
             buildList {
                 add(vibrateRow(effective, rowsEnabled, ownHint, ::edit))
-                add(strengthRow(effective, rowsEnabled, ownHint, ::edit))
+                //  滑杆值取 `owner`（这一档自己的），**不取** `effective` —— 见类注释那段
+                //  「滑杆显示的是这一档自己的值」。取生效值的话，拨一下总开关它就从公共值
+                //  跳到这一档自己的值，看着像刚调好的强度被改了。
+                add(strengthRow(effective, owner.vibrateStrength, rowsEnabled, ownHint, ::edit))
                 addAll(toastRows(effective, rowsEnabled, ownHint, ::edit) { editingTemplate = true })
             },
     )
@@ -209,14 +222,17 @@ private fun SettingsPage.vibrateRow(
  *
  * 规格与公共页那一行同一套（三档、行首随档换字形、行尾写「弱 / 中 / 强」）。
  *
- * @param show 显示用的那一份（生效值）—— 连「这一行出不出现」也按它判：
+ * @param show 显示用的那一份（生效值）—— 只用来判「这一行出不出现」：
  *   按这一档自己那份判的话，公共开着振动、这一档没设过时这一行会凭空消失。
+ * @param value 滑杆上那个值 —— **这一档自己的**（`owner.vibrateStrength`），不是 [show] 里的。
+ *   取生效值会让它跟着总开关跳（见 [OwnSettingsCard] 的「滑杆显示的是这一档自己的值」）。
  * @param hint 灰着被点一下时的说法 —— 交给 `SliderSpec.disabledHint`（投递在 [SliderRow]
  *   那一层，所有滑杆共用一条通道）；`null` = 整页闸门关着，用页面那句。
  */
 @Composable
 private fun SettingsPage.strengthRow(
     show: OwnSettings,
+    value: Int,
     rowsEnabled: Boolean,
     hint: String?,
     edit: (OwnField, (OwnSettingsValues) -> OwnSettingsValues) -> Unit,
@@ -228,10 +244,10 @@ private fun SettingsPage.strengthRow(
                 SliderSpec(
                     title = I18n.get(Strings.HOME_VIBRATE_STRENGTH_TITLE, "振动强度"),
                     summary = I18n.get(Strings.HOME_VIBRATE_STRENGTH_DESC, "命令触发时振动的力度"),
-                    icon = PageIcons.vibrateLevel(show.vibrateStrength),
+                    icon = PageIcons.vibrateLevel(value),
                     min = GlobalConfig.VIBRATE_WEAK,
                     max = GlobalConfig.VIBRATE_STRONG,
-                    value = show.vibrateStrength,
+                    value = value,
                     default = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
                     step = 1,
                     enabled = rowsEnabled,

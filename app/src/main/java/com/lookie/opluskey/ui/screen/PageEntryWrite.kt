@@ -13,7 +13,7 @@ import com.lookie.opluskey.ui.addStep
 import com.lookie.opluskey.ui.appNameOf
 import com.lookie.opluskey.ui.replaceStep
 import com.lookie.opluskey.ui.screen.binding.pickToken
-import com.lookie.opluskey.ui.screen.command.writeBranchCommand
+import com.lookie.opluskey.ui.screen.command.branchDraftNow
 import com.lookie.opluskey.ui.screen.command.writeBranchCondition
 import com.lookie.opluskey.ui.screen.variables.VarManageState
 import com.lookie.opluskey.ui.state.AppPickerState
@@ -75,15 +75,6 @@ internal fun SettingsPage.writeToken(
             }
         }
 
-        is PickTarget.BranchCommand -> {
-            if (!writeBranchCommand(token, target.index)) {
-                picker.openForBranch(target.index, forCommand = true)
-                false
-            } else {
-                true
-            }
-        }
-
         // 「加一步 / 换一步」：`addStep()` / `replaceStep()` 自己会把页面切回「自定义命令」
         // （那才是这次挑应用的来处），所以这条路上调用方**不再退页**。
         //  真加进去了才算写成功：满员时 `addStep` 只 toast、不发车，这里若照样返回 true，
@@ -106,10 +97,14 @@ internal fun SettingsPage.writeToken(
             pickToken(
                 token,
                 // 写回**进这一页时那一格**：组合键那一页（`picker.comboId` 非空）写它那一档，
-                //  否则写当前在编辑的那颗键。判据只有 `comboId` 一处 —— 不按「当前在哪一页」判：
+                //  场景动作页（`picker.sceneAt` 非负）写那一块的这一档，
+                //  否则写当前在编辑的那颗键。判据只有这两处 —— 不按「当前在哪一页」判：
                 //  退场动画期间栈顶可能已经变了，按页面判会把动作写到上一页那颗键上。
-                picker.comboId
-                    ?.let { BindingTarget.Combo(it, g) }
+                picker.sceneAt
+                    .takeIf { it >= 0 }
+                    ?.let { BindingTarget.Scene(branchDraftNow(), it, g, branchDraft.comboId) }
+                    ?: picker.comboId
+                        ?.let { BindingTarget.Combo(it, g) }
                     ?: BindingTarget.Key(KeyWatchState.editing(configState.config.value), g),
                 appName,
             )
@@ -135,7 +130,7 @@ internal fun SettingsPage.onAppPicked(
     // `forStep` 必须在写之前读：`writeToken` 里那个 `takePickTarget()` 会把它清掉
     val forStep = picker.forStep
     // 分叉那两条路同理（条件 / 那一支要执行的应用），而且它们**自己会退页**
-    //  （见 `writeBranchCondition` / `writeBranchCommand`）—— 这里不能再补一次
+    //  （见 `writeBranchCondition`）—— 这里不能再补一次
     //  `goBack()`，否则一次退两层、还会把「放弃未保存的命令」弹出来。
     val forBranch = picker.forBranch
     // 「松手执行额外动作」那一趟同样自己退页（`PickTarget.Release` 分支里 `popBackStack()`），
@@ -239,7 +234,7 @@ internal fun SettingsPage.onDraftPicked(
  *  点列表里的一颗才会弹那张操作窗，挑完落成一步。
  */
 internal fun SettingsPage.openVarOpsForTarget(target: BindingTarget) {
-    picker.openForGesture(target.gesture, (target as? BindingTarget.Combo)?.id)
+    picker.openForGesture(target.gesture, (target as? BindingTarget.Combo)?.id, sceneAt = target.sceneAt)
     VarManageState.enter(VarManageState.Mode.Step)
     navTo(Screen.VARIABLES)
 }
@@ -250,13 +245,6 @@ internal fun SettingsPage.openVarOpsForTarget(target: BindingTarget) {
  */
 internal fun SettingsPage.openVarOpsForStep(replaceIndex: Int) {
     picker.openForStep(replaceIndex)
-    VarManageState.enter(VarManageState.Mode.Step)
-    navTo(Screen.VARIABLES)
-}
-
-/** 「条件执行」页那条动作 → 进同一页，挑完写成第 [index] 条规则的**动作**。 */
-internal fun SettingsPage.openVarOpsForBranch(index: Int) {
-    picker.openForBranch(index, forCommand = true)
     VarManageState.enter(VarManageState.Mode.Step)
     navTo(Screen.VARIABLES)
 }

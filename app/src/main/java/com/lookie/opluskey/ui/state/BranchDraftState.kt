@@ -4,29 +4,34 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 
 /**
- * 「条件执行」页的草稿 —— 当前这颗键、这一档手势的条件表。
+ * 「系统场景」页的草稿 —— 当前这颗键（或这一档组合键）的**整张场景表**。
  *
- * ## 为什么不再是「一条命令」
+ * ## 一块是什么
  *
- * 分叉不占用绑定：它是叠在按键绑定之上的一张**顺序表**，命中第一条就执行它的动作，
- * 一条都不中就走按键绑定里那一档的命令（见 `KeyConfig.actionFor`）。所以这一页编的是
- * `KeyConfig.rules`，不是命令库里的一条记录 —— 没有名字、不进「已保存的命令」。
+ *  一块 = 一组条件 + **完整的三档手势**（见 `SceneRule`）。翻转之前这里是「一条规则一个手势」，
+ *  页面上还按手势分成三页；现在一页就是这张表，三档在每一块里各占一行。
+ *
+ *  ## 为什么不再是「一条命令」
+ *
+ *  场景不占用绑定：它是叠在按键绑定之上的一张**顺序表**，命中「条件成立且这一档有值」的第一块
+ *  就执行它那一档的动作，一块都不中就走按键绑定里那一档的命令（见 `KeyConfig.actionFor`）。
+ *  所以这一页编的是 `KeyConfig.scenes`，不是命令库里的一条记录 —— 没有名字、不进「已保存的命令」。
  *
  * ## 与 [CommandDraft] 同一条规矩
  *
- * 草稿提到页面级：从这一页 push 到「选择应用」挑完再退回来，已经加好的条件还在。
- * [dirty] 与载入时那份快照比，退出时才问「放弃未保存的」。
+ *  草稿提到页面级：从这一页 push 到「选择应用」挑完再退回来，已经加好的场景还在。
+ *  [dirty] 与载入时那份快照比，退出时才问「放弃未保存的」。
  */
 internal class BranchDraft {
-    val rules = mutableStateListOf<StateRule>()
+    /** 整张场景表（顺序即判定顺序）。 */
+    val scenes = mutableStateListOf<SceneRule>()
 
     /**
-     * 与 [rules] 一一对应的**行身份** —— 只服务界面上的进出场动画，不落盘、不参与保存。
+     * 与 [scenes] 一一对应的**行身份** —— 只服务界面上的进出场动画，不落盘、不参与保存。
      *
      *  为什么草稿要记这个：`AnimatedVisibility` 的状态是按**组合位置**记身份的，而删掉中间一行会让
      *  后面的行整体前移 —— 前移的那一行会继承被删那一行的「已退场」状态，当场再播一遍入场、下方
@@ -40,13 +45,13 @@ internal class BranchDraft {
     /**
      * 刚加的那一行的身份（[ids] 里的值；[NO_FRESH_ROW] = 没有）—— 只有它播入场。
      *
-     *  住在页面级、不住 `BranchCards` 的 `remember`：加一条的入口已经挪到**页外**那颗 FAB 上
-     *  （右下角「添加」），它写不到页内的局部状态。
+     *  住在页面级、不住 `BranchCards` 的 `remember`：加一条的入口在**页外**（顶栏右上角那颗），
+     *  它写不到页内的局部状态。
      */
     var freshId by mutableStateOf(NO_FRESH_ROW)
 
     /**
-     * 草稿属于哪颗键、哪一档 —— 换了就重新载入（见 [load]）。
+     * 草稿属于哪颗键 / 哪一档组合键 —— 换了就重新载入（见 [load]）。
      *
      *  **必须是组合状态**：`BranchCards` 拿它当「草稿载入没有」的闸门（载入前整块不画，
      *  免得空态 → 表格那一下播成进场动画）。普通 `var` 改了不触发重组，那一块会一直不画。
@@ -54,38 +59,36 @@ internal class BranchDraft {
     var owner: String? by mutableStateOf(null)
 
     /** [load] 进来的那份快照 —— 只服务 [dirty]。 */
-    private var loaded: List<StateRule> = emptyList()
+    private var loaded: List<SceneRule> = emptyList()
 
-    val hasContent: Boolean get() = rules.isNotEmpty()
+    val hasContent: Boolean get() = scenes.isNotEmpty()
 
     /** 有没有改过还没保存的东西。 */
-    val dirty: Boolean get() = rules.toList() != loaded
+    val dirty: Boolean get() = scenes.toList() != loaded
 
     /**
-     * 载入某颗键某一档的条件表。
+     * 载入某颗键（或某一档组合键）的整张场景表。
      *
-     * [owner] 是「键 + 手势」的标识：换键 / 换手势时靠它判「要不要重灌」—— 否则会看到
-     * 上一档的规则。
-     *
-     * 行身份一起重发：换了一档就是新的一批行，动画没必要接着上一档的账算。
+     *  [owner] 是「在编谁」的标识：换键时靠它判「要不要重灌」—— 否则会看到上一颗键的场景。
+     *  行身份一起重发：换了一颗键就是新的一批行，动画没必要接着上一颗的账算。
      */
     fun load(
         owner: String,
-        source: List<StateRule>,
+        source: List<SceneRule>,
     ) {
         this.owner = owner
-        rules.clear()
+        scenes.clear()
         ids.clear()
         nextId = 0
         source.forEach {
-            rules.add(it)
+            scenes.add(it)
             ids.add(nextId++)
         }
         loaded = source
     }
 
     fun reset() {
-        rules.clear()
+        scenes.clear()
         ids.clear()
         nextId = 0
         loaded = emptyList()
@@ -93,37 +96,52 @@ internal class BranchDraft {
     }
 
     /**
-     * 追加一条，返回它的行身份。
+     * **某一块单独落盘之后**的收尾：只换「已保存的那份快照」，[scenes] 原样不动。
+     *
+     *  与 [load] 的差别就是这一条：`load` 会连草稿一起冲掉、同时候把快照换成新的 ——
+     *  那是「整张表都写下去了」的收尾。而「场景动作」页只写**一块**，别的块在上一页上的改动
+     *  一个字节都没落盘：整份 `load` 会把它们一起算成「已保存」（[dirty] 归零），
+     *  退回上一页时那颗「确认」不再出现 —— 两件事被绑成了一次确认（用户口径：要分开）。
+     *
+     *  这里只把快照挪到刚写下去的那一份，于是 [dirty] 仍然**只反映别的块**还有没有改动：
+     *  还有 ⇒ 上一页的「确认」照常亮着；没有 ⇒ 它自己滑出去。
+     */
+    fun noteSaved(snapshot: List<SceneRule>) {
+        loaded = snapshot.toList()
+    }
+
+    /**
+     * 追加一块，返回它的行身份。
      *
      *  界面拿这个 id 认出「刚加的是哪一行」，只给它播入场 —— 其余行是载入时就有的，不该再展开一次。
      */
-    fun add(rule: StateRule): Int {
-        rules.add(rule)
+    fun add(scene: SceneRule): Int {
+        scenes.add(scene)
         ids.add(nextId)
         return nextId++
     }
 
     fun update(
         index: Int,
-        rule: StateRule,
+        scene: SceneRule,
     ) {
-        // 行身份不动：换条件 / 换动作是同一条规则改内容，不是一行换成了另一行（否则每选一次都会闪）
-        if (index in rules.indices) rules[index] = rule
+        // 行身份不动：换条件 / 换动作是同一块改内容，不是一行换成了另一行（否则每选一次都会闪）
+        if (index in scenes.indices) scenes[index] = scene
     }
 
     fun remove(index: Int) {
-        if (index !in rules.indices) return
-        rules.removeAt(index)
+        if (index !in scenes.indices) return
+        scenes.removeAt(index)
         if (index in ids.indices) ids.removeAt(index)
     }
 
-    /** 把第 [from] 条挪到 [to] —— 顺序就是判定顺序，所以这就是「上移 / 下移」。 */
+    /** 把第 [from] 块挪到 [to] —— 顺序就是判定顺序，所以这就是「上移 / 下移」。 */
     fun move(
         from: Int,
         to: Int,
     ) {
-        if (from !in rules.indices || to !in rules.indices || from == to) return
-        rules.add(to, rules.removeAt(from))
+        if (from !in scenes.indices || to !in scenes.indices || from == to) return
+        scenes.add(to, scenes.removeAt(from))
         if (from in ids.indices) {
             val id = ids.removeAt(from)
             if (to <= ids.size) ids.add(to, id)
@@ -131,57 +149,42 @@ internal class BranchDraft {
     }
 
     companion object {
-        /** 键 + 手势的标识 —— 只用来判「草稿还是不是这一档的」。 */
-        fun ownerOf(
-            key: KeyId,
-            gesture: Gesture,
-        ): String = "${key.id}/${gesture.id}"
+        /** 键的标识 —— 只用来判「草稿还是不是这一颗的」。 */
+        fun ownerOf(key: KeyId): String = key.id
 
         /**
-         * 一档组合键 + 手势的标识 —— 与 [ownerOf] 同一用途、同一个字符串位置。
+         * 一档组合键的标识 —— 与 [ownerOf] 同一用途、同一个字符串位置。
          *
          *  加 `combo:` 前缀是必须的：组合键 id 是 `cmb1`、单键 id 是 `pro` / `ck1` 那些，
          *  撞不上，但两种「在编谁」混在同一个字段里，光看一个 id 分不出该去 `combos` 还是
          *  `keys` 找 —— 判据要能从标识本身读出来。
          */
-        fun comboOwnerOf(
-            comboId: String,
-            gesture: Gesture,
-        ): String = "combo:$comboId/${gesture.id}"
+        fun comboOwnerOf(comboId: String): String = "combo:$comboId"
     }
 }
 
 /** 页面级那一份（见 `SettingsPage.branchDraft`）。 */
 internal class BranchDraftState {
     /**
-     * **一档手势一份草稿** —— 这一页是三页横滑（单击 / 双击 / 长按），三页同时在场，
-     *  各编各的表：共用一个对象的话，滑到哪一页就会把上一页没保存的东西冲掉。
+     * **只有一份草稿** —— 翻转之后这一页不再按手势分页：一张表里每块自带三档，
+     *  所以「三页各一份草稿」那套跟着手势维度一起没了。
      */
-    private val drafts = Gesture.entries.associateWith { BranchDraft() }
+    private val draft = BranchDraft()
 
     /**
      * 这一趟在编的是**哪一档组合键**（`ComboKey.id`）；`null` = 在编某颗单键。
      *
-     *  两个来源（`Config.keys` / `Config.combos`）的规则表形状完全一样，只有「从哪张表读、
-     *  写回哪张表」不同 —— 这一位就是那个判据。**住在这一层而不是草稿里**：三档共用同一个
-     *  来源（同一趟不可能一半编单键、一半编组合键），分三份只会让「哪份才算数」变成一个问题。
+     *  两个来源（`Config.keys` / `Config.combos`）的场景表形状完全一样，只有「从哪张表读、
+     *  写回哪张表」不同 —— 这一位就是那个判据。
      */
     var comboId: String? by mutableStateOf(null)
 
-    /** 这一档手势那份草稿。 */
-    fun of(gesture: Gesture): BranchDraft = drafts.getValue(gesture)
+    /** 那一份草稿。 */
+    fun now(): BranchDraft = draft
 
-    /**
-     * 按**档位序号**取那一份（页面级那个 `branchGesture` 存的就是序号）—— 认不出的序号落回单击。
-     *
-     *  页外那几个判据（退出要不要问、挑应用回来点亮哪一行）走这一处：它们手里只有序号，
-     *  不该为了拿一份草稿去认识「这一页在编谁」。
-     */
-    fun at(gestureIndex: Int): BranchDraft = of(Gesture.entries.getOrElse(gestureIndex) { Gesture.SINGLE })
-
-    /** 出栈时把三份与组合键来源一起清掉（下次进来是重新载入的三份）。 */
+    /** 出栈时把草稿与组合键来源一起清掉（下次进来是重新载入的那一份）。 */
     fun discard() {
-        drafts.values.forEach { it.reset() }
+        draft.reset()
         comboId = null
     }
 }

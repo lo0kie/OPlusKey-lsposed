@@ -160,9 +160,9 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
  *  @param raw `plus+ck1` 这种（`+` 连接的键 id）；颗数不在 `ComboKey.MIN_KEYS..MAX_JUDGE_KEYS`
  *  之内就清空所有组合键（一颗不叫组合、太多颗吃掉整块键盘）。
  *
- *  **这里放行到判定侧的上限（[ComboKey.MAX_JUDGE_KEYS]），不是界面的 `MAX_KEYS`**：三颗以上的
- *  组合判定、执行、日志都已经跑得通，但界面上没有造它的入口（用户口径未定）—— 想在哪台机器上
- *  验多成员，只能从这条调试通道造。它不是界面入口（要 adb 发广播），不会让普通用户撞见。
+ *  **这里放行到判定侧的上限（[ComboKey.MAX_JUDGE_KEYS]），不是界面的 `MAX_KEYS`**：界面只造到
+ *  三颗（`MAX_KEYS`），四颗以上判定、执行、日志同样跑得通 —— 想验更多成员，只能从这条调试通道造。
+ *  它不是界面入口（要 adb 发广播），不会让普通用户撞见。
  */
 private fun SettingsPage.applyDebugCombo(
     raw: String,

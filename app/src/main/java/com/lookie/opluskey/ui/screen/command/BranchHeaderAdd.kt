@@ -3,7 +3,7 @@ package com.lookie.opluskey.ui.screen.command
 import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.SettingsPage
@@ -20,7 +20,7 @@ import io.github.suqi8.coui.kmp.basic.Icon
  *
  * ## 加到上限之后
  *
- *  一个手势最多 [StateRule.MAX_PER_GESTURE] 条系统场景（上限是**当前这一档手势**的，不是全页
+ *  一个手势最多 [SceneRule.MAX_SCENES] 条系统场景（上限是**当前这一档手势**的，不是全页
  *  的：切到另一个 tab 又是另一份表）。到顶时这颗按钮**置灰**，点一下由 [DisabledHint] 那条
  *  通道说明原因 —— 只灰不解释的话，「点不动」和「坏了」分不开，而用户多半还想再挤一条进来。
  *
@@ -36,17 +36,17 @@ import io.github.suqi8.coui.kmp.basic.Icon
  */
 @Composable
 internal fun SettingsPage.BranchHeaderAdd() {
-    val rules = branchDraftNow().rules
-    val atLimit = rules.size >= StateRule.MAX_PER_GESTURE
+    val scenes = branchDraftNow().scenes
+    val atLimit = scenes.size >= SceneRule.MAX_SCENES
     DisabledHint(
         //  只在到顶时给这一句：没到顶时这颗按钮能点，`null` 就是「这一块没有自己的说法」——
         //  不许拿页面那句「整页为什么改不了」来顶替（那一句说的是另一件事）。
-        text = if (atLimit) I18n.format(Strings.COMMAND_BRANCH_LIMIT, StateRule.MAX_PER_GESTURE) else null,
+        text = if (atLimit) I18n.format(Strings.COMMAND_BRANCH_LIMIT, SceneRule.MAX_SCENES) else null,
     ) {
         //  「按一下振一下」由顶栏那一层统一挂（见 `PageHeader` 的 `headerPressTick`），这里不再自己振
         HeaderIconButton(
             enabled = !atLimit,
-            onClick = { addBranchRule(rules) { branchDraftNow().freshId = it } },
+            onClick = { addScene() },
         ) {
             Icon(
                 PageIcons.StepAdd,

@@ -25,6 +25,8 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Headphones
 import io.github.lyxnx.compose.ui.tablericons.outline.HeadphonesOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Headset
+import io.github.lyxnx.compose.ui.tablericons.outline.Lamp
+import io.github.lyxnx.compose.ui.tablericons.outline.LampOff
 import io.github.lyxnx.compose.ui.tablericons.outline.LockSquare
 import io.github.lyxnx.compose.ui.tablericons.outline.Music
 import io.github.lyxnx.compose.ui.tablericons.outline.Plane
@@ -95,6 +97,10 @@ internal fun conditionIcon(kind: ConditionKind): ImageVector =
 
         // 飞行模式：带航线的飞机当类别（`plane` / `plane-off` 是那两档取值）
         ConditionKind.AIRPLANE -> TablerIcons.Outline.PlaneInflight
+
+        //  手电筒：与「系统开关」里那一格同一颗自绘灯（同一个意思不该有两个长相）；
+        //  开 / 关那一对用台灯（`lamp` / `lamp-off`），与类别那颗不撞
+        ConditionKind.FLASHLIGHT -> DrawnIcons.Flashlight
     }
 
 /**
@@ -175,6 +181,7 @@ private val CHOICE_ICONS: Map<ConditionKind, ChoiceIcons> =
         ConditionKind.CELLULAR to
             ChoiceIcons("off", TablerIcons.Outline.CellSignalOff, TablerIcons.Outline.CellSignal5),
         ConditionKind.AIRPLANE to ChoiceIcons("off", TablerIcons.Outline.PlaneOff, TablerIcons.Outline.Plane),
+        ConditionKind.FLASHLIGHT to ChoiceIcons("off", TablerIcons.Outline.LampOff, TablerIcons.Outline.Lamp),
     )
 
 /** 表里那一对字形；这个条件不是两档型（没有取值可挑）⇒ `null`。 */

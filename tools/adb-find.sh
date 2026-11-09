@@ -6,7 +6,8 @@
 #   bash tools/adb-find.sh 5555 30000 # 只找这两个端口
 #   eval "$(bash tools/adb-find.sh --export)"   # 顺手设好 ANDROID_SERIAL
 #
-# 三条路，从便宜到贵：
+# 四条路，从便宜到贵：
+#   0. **已经连着**：`adb devices` 里已有状态为 device 的，直接用，一次网络请求都不发；
 #   1. **缓存**：上一次连成的 `host:port` 在 `build/.adb-last`，先试它（同一台机器换 IP 时必然落空，
 #      但最常见的情况是「IP 没变」，这一条一击即中）；
 #   2. **mDNS**：`adb mdns services` 里 `_adb-tls-connect._tcp` 那几条 —— 手机的「无线调试」
@@ -111,6 +112,27 @@ EXPORT=$export_mode
 
 ports="${*:-}"
 if [ -z "$ports" ]; then ports="$PORT_DEFAULT"; fi
+
+# ── 0. 已经连着就直接用 ────────────────────────────────────────────────────
+#  装机 / 拉日志这类调用往往是连着来的，设备还挂在 `adb devices` 里 —— 再跑一遍缓存、mDNS
+#  与 /24 扫描纯属浪费（最坏三分钟）。这一支放在**参数解析之后**：`succeed` 要读 `EXPORT`，
+#  而它是在上面刚赋值的（`set -u` 下提前读会直接报未定义）。
+#
+#  多条连接时取第一条 —— 与 `adb` 自己的默认选法一致；但要把「还有别的」说出来，
+#  否则「明明插着另一台，却装到了这一台」很难查。
+live=$(live_targets | tr -d '\r')
+if [ -n "$live" ]; then
+  count=$(printf '%s\n' "$live" | grep -c .)
+  first=$(printf '%s\n' "$live" | head -1)
+  if [ "$count" -gt 1 ]; then
+    #  说「条连接」不说「台设备」：同一台手机的无线调试端口与 `tcpip 5555` 会同时挂在
+    #  `adb devices` 里，两条都算 device，说成两台会让人以为插了两台机器。
+    say "已有 $count 条连接，用第一条：$first（其余：$(printf '%s\n' "$live" | tail -n +2 | tr '\n' ' ')）"
+  else
+    say "已有设备连着，直接用它：$first"
+  fi
+  succeed "$first"
+fi
 
 # ── 1. 缓存 ────────────────────────────────────────────────────────────────
 if [ -s "$CACHE_FILE" ]; then

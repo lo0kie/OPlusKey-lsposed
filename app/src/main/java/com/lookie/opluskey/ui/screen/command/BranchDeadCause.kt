@@ -3,7 +3,7 @@ package com.lookie.opluskey.ui.screen.command
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ConditionKind
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.SettingsPage
 
 // 「哪几行永远轮不到」的**唯一一处扫描** —— 与 `CommandBranches.kt` 分开一支，一是让那个文件级
@@ -31,7 +31,7 @@ internal enum class BranchDeadCause {
  *  永远是同一批行：一处改了另一处不会各说各的。
  */
 internal fun SettingsPage.branchDeadReason(): String? =
-    when (deadEndOf(branchDraftNow().rules)?.second) {
+    when (deadEndOf(branchDraftNow().scenes)?.second) {
         null -> {
             null
         }
@@ -47,7 +47,7 @@ internal fun SettingsPage.branchDeadReason(): String? =
     }
 
 /** 哪几条是**死分支** —— 从第一条「已经轮不到」的行起，一直到表尾。 */
-internal fun deadIndexesOf(rules: List<StateRule>): Set<Int> {
+internal fun deadIndexesOf(rules: List<SceneRule>): Set<Int> {
     val from = deadEndOf(rules)?.first ?: return emptySet()
     return (from..rules.lastIndex).toSet()
 }
@@ -86,7 +86,7 @@ internal fun deadIndexesOf(rules: List<StateRule>): Set<Int> {
  *
  *  空条件 / 取值没配完的行、没有候选的档（前台应用）不进账：它们本来就不参与「恒成立」。
  */
-private fun deadEndOf(rules: List<StateRule>): Pair<Int, BranchDeadCause>? {
+private fun deadEndOf(rules: List<SceneRule>): Pair<Int, BranchDeadCause>? {
     //  每一档**已经出现过**的取值 + **已经凑齐**的档（都只看当前位置**之前**）
     val seen = mutableMapOf<ConditionKind, MutableSet<String>>()
     val saturated = mutableSetOf<ConditionKind>()
@@ -122,7 +122,7 @@ private fun deadEndOf(rules: List<StateRule>): Pair<Int, BranchDeadCause>? {
  *  `null` = 这一行不参与：没有条件，或者有认不出 / 取值没配完的那一条（那样的行本来就不该成立，
  *  拿它去比包含关系只会得出假结论）。
  */
-private fun signatureOf(rule: StateRule): Set<Pair<String, String>>? {
+private fun signatureOf(rule: SceneRule): Set<Pair<String, String>>? {
     if (rule.conditions.isEmpty()) return null
     val keys =
         rule.conditions.map { condition ->

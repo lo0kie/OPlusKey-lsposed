@@ -10,7 +10,7 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.keyBrackets
+import com.lookie.opluskey.ui.model.comboLabel
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeysAsk
 import com.lookie.opluskey.ui.write
@@ -28,46 +28,9 @@ import com.lookie.opluskey.ui.write
  */
 internal const val MAX_COMBOS = 9
 
-/**
- * 一档组合里两颗键之间的分隔符 —— 用「×」不用「+」。
- *
- *  键名本身就可能带加号（用户把一颗键叫「电量 +」），用「+」拼出来
- *  `「侧键」+「电量 +」` 分不清哪个加号是分隔符（用户口径「中间的 + 改成 x」）。
- */
-internal const val COMBO_PAIR_SEPARATOR = "×"
-
-/**
- * 一档组合的显示名 —— 成员键名连起来（`侧键 × 电量 +`）。
- *
- *  内置键的名字走字典（`侧键` 在英文界面下是 `Side key`），自定义键用用户起的名字：
- *  与 `GestureExec.comboTriggerLabel`（执行时提示的主语）同一套口径。
- *
- *  **列表行不用这一份**：那一列要两列对齐（见 `ComboPairTitle`），拼成一整串做不到。
- *  这里是给弹窗 / 回执 / 顶栏副标题那些「只有一句话」的地方用的。
- */
-internal fun SettingsPage.comboLabel(
-    cfg: Config,
-    combo: ComboKey,
-    /**
-     * 每个键名外面套一对括号（中文 `「」`、英文 `｢｣`，见 [keyBrackets]）。
-     *
-     *  **除了纯日志之外一律要它**（用户口径）：列表行、顶栏副标题、删除确认窗、
-     *  「已添加 / 已删除」的回执 —— `侧键 × 电量 +` 读起来像一句话，
-     *  `「侧键」×「电量 +」` 才看得出这是两颗键的名字。
-     *  模板里**不要再套一层引号**（`删除 %s？`，不是 `删除「%s」？`）：套两层会把两颗键读成一个名字。
-     */
-    bracketed: Boolean = false,
-): String {
-    val names = combo.keys.mapNotNull { id -> cfg.keyIdOf(id)?.let(::keyName) }
-    val (open, close) = if (bracketed) keyBrackets() else "" to ""
-    // 成员全被删掉时（手改的配置）至少给一句能认出来的话，不能是空串
-    return names
-        .ifEmpty { listOf(combo.id) }
-        .joinToString(" $COMBO_PAIR_SEPARATOR ") { "$open$it$close" }
-}
-
-/** 一颗键在界面上的名字（内置键走字典，自定义键用用户起的名字）。 */
-internal fun SettingsPage.keyName(id: KeyId): String = if (id.isCustom) id.label else I18n.get(Strings.KEY_SIDE, id.label)
+//  `COMBO_PAIR_SEPARATOR` / `comboLabel` / `keyName` 已挪到 `ui/model/ComboNames.kt`：
+//  `ui/BindingTarget.kt` 也要用（组合被停用时那句提示里的名字），而 `ui/` 不许反过来认识
+//  `ui/screen/*`（那条边由 `tools/audit-coupling.py` 核）。这两个函数本来就不读任何界面状态。
 
 /**
  * 加一档组合（选键弹窗点了「添加」）。
@@ -82,8 +45,8 @@ internal fun SettingsPage.addCombo(keys: List<KeyId>): Boolean {
     val ids = keys.map { it.id }.distinct()
     if (ids.size !in ComboKey.MIN_KEYS..ComboKey.MAX_KEYS) {
         //  界面那边颗数不对时「添加」是灰的（点一下会说原因），走不到这里；
-        //  这一句是给**新增入口**兜底：判定侧认得更多成员，界面这一侧仍然只造两颗
-        //  （用户口径未定，见 `ComboKey.MAX_KEYS` 的注释）—— 别让某个新入口绕过这条线。
+        //  这一句是给**新增入口**兜底：判定侧认得更多成员，界面这一侧仍然只造到
+        //  `MAX_KEYS`（三颗）—— 别让某个新入口绕过这条线。
         XLog.w("组合键：成员 ${ids.size} 颗不在 ${ComboKey.MIN_KEYS}..${ComboKey.MAX_KEYS} 之内，不添加（${ids.joinToString("+")}）")
         hint(I18n.format(Strings.COMBO_MAX_KEYS, ComboKey.MAX_KEYS), slot = HINT_SLOT_COMBO)
         return false
@@ -188,7 +151,7 @@ internal fun SettingsPage.setComboEnabled(
  *  1) **成员键已经不在配置里**（手改 / 导入带来的）：这一组本来就废了，直接拒；
  *     这里**不能**走「一起启用」那一问 —— 那颗键根本不存在，答应了也只会留下一个更假的状态。
  *  2) **成员键里有停用的**：问一句「要不要把键也开」（`KeysAsk`，与按键列表那颗 FAB 共用一个窗）。
- *     答「否」时这一组保持停用（判定侧 `Config.comboOff` 本来也要求成员全开）。
+ *     答「否」时这一组保持停用（这一档凑不齐，`Config.liveCombos` 也会把它排除在判定与等待之外）。
  */
 private fun SettingsPage.comboEnableAllowed(
     cfg: Config,

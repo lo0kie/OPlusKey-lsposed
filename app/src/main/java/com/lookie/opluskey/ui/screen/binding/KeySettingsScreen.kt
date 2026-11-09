@@ -195,7 +195,7 @@ private fun SettingsPage.ComboOwnCard(
                 add(
                     CardRow.Switch(
                         title = I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"),
-                        summaryOn = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_ON, "两颗键各执行自己的绑定"),
+                        summaryOn = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_ON, "每颗键各执行自己的绑定"),
                         summaryOff = I18n.get(Strings.COMBO_PASSTHROUGH_DESC_OFF, "什么都不做"),
                         icon = PageIcons.NoMatch,
                         checked = cfg.comboPassthroughFor(combo),
@@ -230,10 +230,11 @@ private fun SettingsPage.ComboOwnCard(
                                     icon = PageIcons.DelayStep,
                                     min = GlobalConfig.COMBO_WINDOW_MIN_MS,
                                     max = GlobalConfig.COMBO_WINDOW_MAX_MS,
-                                    //  这一组还没写过时显示的是**实际生效**那个数：老配置里
-                                    //  `windowMs` 可能是 0（这一位出现之前），读作「跟随公共」；
-                                    //  打开过独立设置之后它已经有自己那份了
-                                    value = cfg.comboWindowFor(combo),
+                                    //  这一根滑杆显示的是**这一组自己存着**的那个数（没写过才退回公共）——
+                                    //  不是 `comboWindowFor` 那个「实际生效」值：取生效值的话，
+                                    //  拨一下上面那颗总开关它就从公共值跳到这一组自己的值，
+                                    //  看着像刚拖好的窗口被改了（与振动强度那一行同一条口径）。
+                                    value = cfg.comboStoredWindowFor(combo),
                                     default = cfg.global.comboWindowMs,
                                     step = 10,
                                     enabled = rowsEnabled,

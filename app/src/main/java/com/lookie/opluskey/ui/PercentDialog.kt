@@ -24,8 +24,8 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlin.math.roundToInt
 
-/** 百分比每次挪多少 —— 用户口径「slider，step 为 5%」；亮度与音量共用。 */
-internal const val PERCENT_STEP = 5
+/** 百分比每次挪多少 —— 用户口径「slider，step 为 1%」；亮度与音量共用。 */
+internal const val PERCENT_STEP = 1
 
 /** 滑杆的最大值（百分比）。 */
 private const val MAX_PERCENT = 100
@@ -179,10 +179,10 @@ private fun SettingsPage.PercentSliderBody(
                 step = PERCENT_STEP,
                 enabled = true,
                 modifier = Modifier.fillMaxWidth(),
-                //  弹窗里不画刻度点：5% 一格是二十个点，密到看不出哪个是哪个
+                //  弹窗里不画刻度点：1% 一格是一百个点，密到看不出哪个是哪个
                 keyPoints = null,
                 onValueChange = { raw ->
-                    //  吸附到 5% 的整数倍：库的 `steps` 只画刻度点、不保证传回来的值一定落在刻度上
+                    //  吸附到 1% 的整数倍：库的 `steps` 只画刻度点、不保证传回来的值一定落在刻度上
                     //  （拖动中的插值会给出带小数的位置）。跨档才振，与滑杆行同一判据。
                     val next = (raw / PERCENT_STEP).roundToInt() * PERCENT_STEP
                     if (next != percent) tick()

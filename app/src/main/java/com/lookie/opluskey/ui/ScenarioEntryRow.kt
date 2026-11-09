@@ -2,7 +2,7 @@ package com.lookie.opluskey.ui
 
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.model.PageIcons
 
 /**
@@ -51,7 +51,7 @@ internal fun SettingsPage.scenarioEntry(
     return scenarioEntryRow(
         notice =
             scenarioCountNotice(target.rulesIn(cfg))
-                ?: I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE, "当前手势没有添加系统场景"),
+                ?: I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE, "没有添加系统场景"),
         enabled = blocked == null,
         disabledHint = blocked,
         onClick = onOpen,
@@ -59,7 +59,7 @@ internal fun SettingsPage.scenarioEntry(
 }
 
 /** 规则表里有启用中的那几条，就报出条数；一条都没有 / 全停用 → `null`（整段不画）。 */
-internal fun scenarioCountNotice(rules: List<StateRule>): String? {
+internal fun scenarioCountNotice(rules: List<SceneRule>): String? {
     val count = rules.count { it.enabled }
     if (count == 0) return null
     return I18n.format(Strings.COMMAND_BRANCH_SCENARIO_COUNT, count)

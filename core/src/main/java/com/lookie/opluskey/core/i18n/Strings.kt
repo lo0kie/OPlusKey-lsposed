@@ -138,6 +138,13 @@ object Strings {
     /** 反过来：配了松手额外动作时，「松手才触发」那一行为什么点不了。 */
     const val BINDING_RELEASE_UNSUPPORTED_FIRE = "binding.release_unsupported_fire"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
+
+    /**
+     * 「场景动作」页里，某一档选的是「跟随默认」时那几张设置卡为什么点不了。
+     *
+     *  文案要说**下一步该做什么**（先换成一个动作）：那一档不归这一块管，没有可调的项。
+     */
+    const val BINDING_FOLLOW_NO_SETTINGS = "binding.follow_no_settings"
     const val BINDING_TITLE = "binding.title"
     const val CATALOG_FLASH_NOTE = "catalog.flash_note"
 
@@ -581,6 +588,20 @@ object Strings {
     const val COMMAND_BRANCH_NEED_COMMAND = "command.branch_need_command"
     const val COMMAND_BRANCH_NEED_CONDITION = "command.branch_need_condition"
 
+    /**
+     * 场景块里某一档的**默认取值**：跟随默认（这一档不被这一块接管，继续往下找 /
+     * 回落按键绑定）。它不是「未设置」—— 它是用户明确挑得到的一档，也是新块的默认值。
+     */
+    const val COMMAND_BRANCH_ACTION_FOLLOW = "command.branch_action_follow"
+
+    /**
+     * 「场景动作」页的大标题 —— 点场景块里某一档动作行进来的那一页（三档手势各一屏网格）。
+     *
+     *  **不与「系统场景」同名**：那一页是这张表，这一页是表里某一块的某一档，
+     *  两页都写「系统场景」时分不清自己退一层会回到哪里。
+     */
+    const val COMMAND_BRANCH_BINDING_TITLE = "command.branch_binding_title"
+
     /** 点「确认」把这档条件表写回去之后的那句回执（写完留在这一页）。 */
     const val COMMAND_BRANCH_SAVED = "command.branch_saved"
     const val COMMAND_BRANCH_DEFAULT = "command.branch_default"
@@ -619,6 +640,7 @@ object Strings {
     const val COMMAND_COND_BLUETOOTH_NAME = "command.cond_bluetooth_name"
     const val COMMAND_COND_CELLULAR_NAME = "command.cond_cellular_name"
     const val COMMAND_COND_AIRPLANE_NAME = "command.cond_airplane_name"
+    const val COMMAND_COND_FLASHLIGHT_NAME = "command.cond_flashlight_name"
 
     /** 一块条件里再分几条时的那几句（第几条 / 添加条件）。 */
     const val COMMAND_BRANCH_CONDITION_INDEX = "command.branch_condition_index"

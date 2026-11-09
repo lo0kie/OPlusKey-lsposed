@@ -1,32 +1,30 @@
 package com.lookie.opluskey.ui.screen.command
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.PageMenu
-import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.screen.openVarOpsForBranch
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.BranchDraft
-import com.lookie.opluskey.ui.state.ResumeSheet
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 
-// 分叉那几张菜单 —— 第一层（换条件 / 换命令 / 删除）、条件种类菜单（每种一行）、
-// 取值二级、命令菜单（内置动作 + 已保存命令）。
+// 分叉那几张菜单 —— 第一层（行本身：加条件 / 停用 / 上移 / 下移 / 删除）、条件种类菜单（每种一行）、
+// 取值二级。
+//
+//  **动作那一档不再有菜单**：点动作行进「场景动作」页编那一档（与「按键绑定」页同一张网格、
+//  同一条三档手势带），所以这里没有「选命令」那一张了。
 
 /**
  * 两张菜单的装配 —— 一行分两列，各点各的：
@@ -35,19 +33,18 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Plus
  * 左列（条件）→ 条件种类菜单 ─┬─ 前台应用 → 进「选择应用」页
  *                             ├─ 其余每一档 → 取值（二级）
  *                             └─ 上移 / 下移 / 删除
- * 右列（动作）→ 动作菜单（内置动作 / 已保存的命令）
+ * 右列（动作）→ **换页**（`Screen.SCENE_BINDING`），不弹菜单
  * ```
  */
 @Composable
 internal fun SettingsPage.BranchMenus(
-    /** **这一页**那一份草稿 —— 三页同时在场，各改各的表（见 `BranchScreen`）。 */
+    /** **这一页**那一份草稿 —— 这一页只有一页，改的就是它的表（见 `BranchScreen`）。 */
     draft: BranchDraft,
-    rules: List<StateRule>,
+    rules: List<SceneRule>,
     menus: BranchMenuState,
     tick: () -> Unit,
 ) {
     BranchConditionFlow(draft = draft, rules = rules, menus = menus, tick = tick)
-    BranchCommandMenu(draft = draft, rules = rules, menus = menus, tick = tick)
     BranchRowMenu(draft = draft, rules = rules, menus = menus)
 }
 
@@ -63,7 +60,7 @@ internal fun SettingsPage.BranchMenus(
 @Composable
 private fun SettingsPage.BranchRowMenu(
     draft: BranchDraft,
-    rules: List<StateRule>,
+    rules: List<SceneRule>,
     menus: BranchMenuState,
 ) {
     val at = menus.menuAt
@@ -143,7 +140,7 @@ private fun SettingsPage.BranchRowMenu(
 @Composable
 private fun SettingsPage.BranchConditionFlow(
     draft: BranchDraft,
-    rules: List<StateRule>,
+    rules: List<SceneRule>,
     menus: BranchMenuState,
     tick: () -> Unit,
 ) {
@@ -196,7 +193,7 @@ private fun SettingsPage.addConditionRow(
         icon = TablerIcons.Outline.Plus,
         onPick = {
             menus.menuAt = -1
-            val old = draft.rules.getOrNull(at) ?: return@Row
+            val old = draft.scenes.getOrNull(at) ?: return@Row
             //  判据是「**还没有可用的条件**」，不是「最后一条是空的」：条件列表为空时页面
             //  同样已经摆了一行「未选择条件」占位，那也是「有待配的一行」。
             val pending = old.conditions.isEmpty() || old.conditions.lastOrNull()?.isUsable == false
@@ -248,100 +245,14 @@ internal fun SettingsPage.conditionDeleteRow(
 }
 
 /**
- * 动作菜单：这一条命中后执行什么。
- *
- *  **与「添加命令」同一支底部抽屉**：同一张候选表、
- *  同一套「入口格进二级」「选择应用进挑应用页」的判据，只把「写回哪儿」交给这里
- *  （`applyBranchAction` 写第几条规则）。当前那一条动作用行首对勾 + 主题色标出来。
- */
-@Composable
-private fun SettingsPage.BranchCommandMenu(
-    draft: BranchDraft,
-    rules: List<StateRule>,
-    menus: BranchMenuState,
-    tick: () -> Unit,
-) {
-    //  从「选择应用」页挑完回来时，这一页的组合是**新的一份** —— `menus.commandAt` 已经回到
-    //  `-1`，靠页面级那一位把抽屉原样支起来，用户不用再点一次。
-    //  key 是 `screen`（与 `CommandSteps` 同一套）：这一页的组合**可能被重建、也可能不重建** ——
-    //  只认「当前页变回条件页」这一件事，两种情况都能兑现。
-    //  抽屉在压页前已经收起（见下面 `onOpenPicker`），所以「回来还开着」不是靠它没关，而是靠这一笔账。
-    LaunchedEffect(screen) {
-        val back = picker.resumeSheetAt.value?.takeIf { it.page == Screen.BRANCHES }
-        if (screen == Screen.BRANCHES && back != null) {
-            picker.resumeSheetAt.value = null
-            if (back.index in rules.indices) menus.commandAt = back.index
-        }
-    }
-    val at = menus.commandAt // 这一趟改的是第几条（抽屉一关就归 -1，先取出来）
-    val show = at in rules.indices
-    StepPickerSheet(
-        show = show,
-        sheet =
-            StepSheetSpec(
-                title = I18n.get(Strings.COMMAND_STEP_REPLACE_TITLE, "选择命令"),
-                current = rules.getOrNull(at)?.action,
-                //  两行关卡同上（见 `CommandSteps`）：压页之前记下「回来要开哪一条」，抽屉本身**不关**。
-                //  挑成了由 `commitVarOp` / `onAppPicked` 清掉这笔账，直接返回时它才会兑现。
-                onOpenPicker = { page ->
-                    //  压页之前记下「回来要开哪一条」，抽屉本身**不关**：挑成了由
-                    //  `commitStep` / `onAppPicked` 清掉这笔账，直接返回时它才会兑现。
-                    picker.resumeSheetAt.value = ResumeSheet(Screen.BRANCHES, at)
-                    //  抽屉**先收掉**：留着的话它一直挂在下面，挑成了回来也照样弹出来。
-                    //  回来要不要重开由上面那条 `LaunchedEffect(screen)` 按这笔账决定。
-                    menus.commandAt = -1
-                    when (page) {
-                        StepPickerPage.App -> openAppPickerForBranch(at, forCommand = true)
-                        StepPickerPage.AppStop -> openAppPickerForBranch(at, forCommand = true, stop = true)
-                        StepPickerPage.Vars -> openVarOpsForBranch(at)
-                    }
-                },
-                //  这一支**只由「确定」调**（点行只换高亮）：确定那一刻才把动作写到这一条规则上
-                onPick = { token ->
-                    tick()
-                    //  `at` 是打开抽屉那一刻的下标：越界就什么都不写（规则表在此期间变过的话，
-                    //  那个下标已经不是原来那一条了 —— 宁可不落，也别改到别人的行上）
-                    if (at in rules.indices) applyBranchAction(draft, at, token)
-                },
-                onDismiss = { menus.commandAt = -1 },
-                //  场景这一支要列出「无操作」：它是「命中也不做事」这一档（多条命令的步骤不列）。
-                //  灵感语音那两档（开始 / 结束）就是普通一步，和挂在哪一档手势上无关。
-                filter = StepSheetFilter(includeNone = true),
-            ),
-    )
-}
-
-/**
- * 把某一档动作写到第 [index] 条规则上 —— 关菜单之前调用（关掉之后下标就取不到了）。
- */
-private fun SettingsPage.applyBranchAction(
-    draft: BranchDraft,
-    index: Int,
-    token: String,
-) {
-    val old = draft.rules.getOrNull(index) ?: return
-    val parsed = Action.parse(token)
-    //  「无操作」在这一档是**真取值**（场景命中也不做事，用来盖住后面的兜底场景，
-    //  见 `ActionCatalog.BRANCH_GROUPS`）；只有认不出的 token 才保持原样。
-    if (!parsed.isBound && token.trim() != Action.NONE) {
-        //  认不出的 token（老配置 / 菜单给错了）不能静默落成「无操作」：那样保存时才报
-        //  「每条条件都要选一个动作」，既指不出是哪一条、也看不出是解析失败。
-        //  这里保留原来那一档不动，只留一行判据日志。
-        XLog.w("系统场景：认不出的动作 token（第 ${index + 1} 条保持原样）：$token")
-        return
-    }
-    draft.update(index, old.copy(action = parsed))
-}
-
-/**
  * 把一条条件写到第 [index] 条规则上（[AppPickerState.NEW_BRANCH] = 新加一条）。
  *
  *  @param condIndex 写进**这块里的第几条条件**：`>= 0` = 换那一条，越界 / `-1` = 追加一条。
  *    一块可以带好几条条件（逐条都要成立），所以「写到哪一条」必须由调用方明确指出来 ——
  *    这里不替它猜（`replacingCondition` 对越界会退回改第 0 条，那会把用户已有的第一条换掉）。
  *
- *  新加的那一条动作留空（[Action.None]）：条件与动作是同一行的两半，选完条件再去选动作
- *  比「先逼用户挑一条命令」顺。
+ *  新加的那一条三档动作都是「跟随默认命令」（`SceneRule` 的默认值）：条件与动作是同一个场景的
+ *  两半，**先配条件**、动作进「场景动作」页慢慢挑 —— 这一页不该逼用户先挑一条命令。
  */
 internal fun SettingsPage.applyBranchCondition(
     draft: BranchDraft,
@@ -351,12 +262,11 @@ internal fun SettingsPage.applyBranchCondition(
     /** 追加时要把「刚插的是第几条」告诉界面（它要先收起再展开，见 `BranchMenuState.freshCond`）。 */
     menus: BranchMenuState,
 ) {
-    val gesture = branchGestureNow()
     //  这张表就是这一页那一份草稿的表（调用点传进来的 `rules` 与它同一个对象）
-    val old = draft.rules.getOrNull(index)
+    val old = draft.scenes.getOrNull(index)
     //  `NEW_BRANCH` 是 -1，`getOrNull` 对它本来就给 null —— 不必再单判一次
     if (old == null) {
-        draft.add(StateRule.single(gesture, condition, Action.None))
+        draft.add(SceneRule(conditions = listOf(condition)))
     } else if (condIndex in old.conditions.indices) {
         //  改第 condIndex 条：只换那一个槽位，其余几条原样留着
         draft.update(index, old.replacingCondition(condIndex, condition))
@@ -386,7 +296,7 @@ internal fun SettingsPage.deleteBranchCondition(
     index: Int,
     condIndex: Int,
 ) {
-    val old = draft.rules.getOrNull(index) ?: return
+    val old = draft.scenes.getOrNull(index) ?: return
     if (old.conditions.size <= 1) return
     if (condIndex !in old.conditions.indices) return
     draft.update(index, old.withoutCondition(condIndex))

@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -43,7 +44,10 @@ import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.COMBO_PAIR_SEPARATOR
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.comboLabel
+import com.lookie.opluskey.ui.model.keyName
 import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.rememberMenuState
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -53,24 +57,21 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-/** 组合标题里分隔符两侧的间距 —— 比「贴在一起」松一档，`×` 才不像粘在两枚圆角框上。 */
+/** 组合标题里分隔符两侧的间距 —— 比「贴在一起」松一档，`×` 才不像粘在圆角框上。 */
 private val COMBO_PAIR_GAP = 6.dp
 
-/** 装不下时第一列**最少**占整行的多少 —— 再长的名字也不会把第二列挤到看不见。 */
-private const val COMBO_FIRST_COLUMN_MIN_RATIO = 0.45f
-
-/** 键名框左右的内边距 —— 量列宽时要一起算进去（见 [comboPairWidths]）。 */
+/** 键名框左右的内边距 —— 量列宽时要一起算进去（见 [comboTitleWidths]）。 */
 private val COMBO_CHIP_H_PAD = 6.dp
 
 /**
- * 键名框里的字号相对行标题的缩放 —— 0.9 倍。
+ * 键名框里的字号相对行标题的缩放 —— 0.85 倍。
  *
- *  为什么不能直接用行标题那一档：一行标题里要塞**两枚框 + 一个 `×`**，按 `headline1` 原样量，
+ *  为什么不能直接用行标题那一档：一行标题里要塞**几枚框 + 几个 `×`**，按 `headline1` 原样量，
  *  4 个字的键名（「音量 +」）在 360dp 屏上就差约 18dp 装不下 —— 于是尾字变省略号
- *  （真机口径「较长的键名显示不全」）。缩到九成之后两列 + 分隔符正好落在标题槽内，
- *  而九成字号与正文仍是同一档观感，看不出「这一行字小了」。
+ *  （真机口径「较长的键名显示不全」）。缩到 0.85 之后两列 + 分隔符正好落在标题槽内，
+ *  而小一号的字与正文仍是同一档观感，看不出「这一行字小了」。
  *
- *  **量宽度与画字必须用同一个比例**（见 [comboChipStyle]）：两边不一致时，fits 会判错。
+ *  **量宽度与画字必须用同一个比例**（见 [comboChipStyle]）：两边不一致时，装不装得下会判错。
  */
 private const val COMBO_CHIP_FONT_SCALE = 0.85f
 
@@ -85,6 +86,15 @@ private val COMBO_CHIP_SLACK = 2.dp
 
 /** 键名框上下的内边距 —— 比左右小得多：框高跟着字高走，别把行撑高。 */
 private val COMBO_CHIP_V_PAD = 2.dp
+
+/**
+ * 一排框装不下时，**每一枚**最少留这么宽（左右内边距 + 一个字宽的那档）。
+ *
+ *  为什么要有个下限：宽度从右往左让位（见 [ComboTitle]），左边照给之后右边只剩零头时，
+ *  不留这一档那一枚会连框带 `×` 一起消失 —— 三颗的组合看起来像只配了两颗。
+ *  留一个字的宽度，至少还看得见「这一枚在那儿，只是被裁了」。
+ */
+private val COMBO_CHIP_MIN_W = COMBO_CHIP_H_PAD * 2 + 16.dp
 
 /** 键名框的圆角 —— 圆角矩形：比小标签那档（4dp）大一点点，与这一行的大字号相称，又不像胶囊。 */
 private val COMBO_CHIP_RADIUS = 6.dp
@@ -124,8 +134,8 @@ internal fun SettingsPage.ComboListSection(
             //  与筛选无关 —— 否则筛一下就变成「已用 2 / 上限 9」，读起来像丢了几组。
             trailing = { TitleCounter(cfg.combos.size, MAX_COMBOS) },
         )
-        //  两列的宽度**整列量一次**（见 [comboPairWidths]）：每行各量各的就会一行一个宽度。
-        val rows = comboRows(cfg, writable, filterKey, comboPairWidths(cfg))
+        //  每一列的宽度**整列量一次**（见 [comboTitleWidths]）：每行各量各的就会一行一个宽度。
+        val rows = comboRows(cfg, writable, filterKey, comboTitleWidths(cfg))
         //  「添加组合按键」是这一列的**最后一行**（用户口径：与列表拼在一起，不另起卡）。
         //  一档都没配 / 全被筛掉时这张卡就只剩它一行 —— 仍然只画**一张**卡：
         //  `CardList` 收到空表仍会画一张零行卡片，边框与圆角还在，看着像坏了一块。
@@ -153,8 +163,8 @@ private fun SettingsPage.comboRows(
     writable: Boolean,
     /** 只看含这颗键的组合（`null` = 全部）—— 行首的「第几组」仍按**全部**里的位置算。 */
     filter: String?,
-    /** 两列标题与分隔符的宽度 —— 整列同一个数，见 [comboPairWidths]。 */
-    widths: ComboPairWidths,
+    /** 每列标题与分隔符的宽度 —— 整列同一个数，见 [comboTitleWidths]。 */
+    widths: ComboTitleWidths,
 ): List<CardRow> =
     buildList {
         cfg.combos.forEachIndexed { index, combo ->
@@ -169,7 +179,7 @@ private fun SettingsPage.comboRow(
     combo: ComboKey,
     index: Int,
     writable: Boolean,
-    widths: ComboPairWidths,
+    widths: ComboTitleWidths,
 ): CardRow.Item {
     val editing = KeysEditState.editing
     val picked = KeysEditState.pickedCombos
@@ -179,9 +189,9 @@ private fun SettingsPage.comboRow(
     val off = cfg.comboOff(combo)
     return CardRow.Item(
         title = comboLabel(cfg, combo, bracketed = true),
-        //  标题按**两列**画（见 [ComboPairTitle]）：拼成一整串时，分隔符落在哪由前一个名字的
+        //  标题按**每颗键一枚框**画（见 [ComboTitle]）：拼成一整串时，分隔符落在哪由前一个名字的
         //  长短决定，一列下来每行都错开（真机反馈「单独某个名字过长时全部都没对齐」）。
-        titleContent = { ComboPairTitle(cfg, combo, writable, widths) },
+        titleContent = { ComboTitle(cfg, combo, writable, widths) },
         //  副标题**不写**（用户口径：启停状态挪到行尾、与按键列表同一套）。动作摘要也不写：
         //  一列下来全是小字、每行还都不一样长，扫一眼只能看见一片灰 —— 两档动作进页面看。
         //  行首用**第几组**的数字图标（1~9，与 `MAX_COMBOS` 同一档，用户口径）：一列下来能数清现在有几组，
@@ -240,7 +250,7 @@ private var lastPairLog: String? = null
 /**
  * 判据行的**去重出口**：同一行只打一次 W。
  *
- *  内容由调用点自己拼（[pairLogLine]）：这里只管「变没变」，不再逐个接那六个量 ——
+ *  内容由调用点自己拼：这里只管「变没变」，不再逐个接那几组宽度 ——
  *  那几个数在调用点上本来就是现成的，摆成参数表只是把一行日志撑成六个位置参数。
  */
 private fun logPairOnce(line: String) {
@@ -250,34 +260,44 @@ private fun logPairOnce(line: String) {
 }
 
 /**
- * 组合行标题 —— **两列圆角框**：`侧键` ｜ `×` ｜ `电量 +`。
+ * 组合行标题 —— **每颗键一枚圆角框**：`侧键` ｜ `×` ｜ `电量 +`（三颗就再来一段）。
  *
- *  两颗键名各装进一个圆角矩形（底色是文字色的低透明度，6dp 圆角）：**框本身就是「这是一个键名」
+ *  键名各装进一个圆角矩形（底色是文字色的低透明度，6dp 圆角）：**框本身就是「这是一个键名」
  *  的记号**，所以框里不再套方括号 —— 两道框叠在一行字上读起来是重复的装饰。
  *  只有这一列之外的场合（顶栏副标题、删除确认、回执那些「一句话」）才带括号，见 `keyBrackets()`。
  *
+ *  ## 为什么不再「两颗才排框、三颗退回一整串」
+ *
+ *  一列里同一件事有两种长相（有的行是框、有的行是一行字），扫下来像两种不同类型的条目；
+ *  而框本来就该按颗数长，不是按「两颗」这个数字。三颗那档如今真的造得出来了
+ *  （`ComboKey.MAX_KEYS`），所以这一支按 `names.size` 摊开画。
+ *
  *  ## 宽度怎么定
  *
- *  每一列取**整列里最长那个名字**的宽度（[comboPairWidths]，全列表同一份），于是每行的框左右边缘
- *  都竖着对齐：两个名字一长一短时，短的那个**在自己框里左右补白**、字居中，两个框一样宽。
+ *  每一列取**整列里最长那个名字**的宽度（[comboTitleWidths]，全列表同一份），于是每行的框左右边缘
+ *  都竖着对齐：两个名字一长一短时，短的那个**在自己框里左右补白**、字居中，同一列的框一样宽。
  *  （逐行按自己的名字收紧，一列下来就是一排参差不齐的框 —— 那正是这个列表最早就有的毛病。）
- *  名字再长也只在自己那个框里省略号，不会把另一个挤走。
+ *  名字再长也只在自己那个框里省略号，不会把旁边的挤走。
  *
- *  `×` 摆在两个框之间，左右各一档 [COMBO_PAIR_GAP]：框边缘对齐了，这个间距自然就是对称的。
+ *  装不下时（三颗那一档在窄屏上很常见）**从右边开始裁**：左边的框按自己需要的宽度照给，
+ *  右边那几枚分剩下的零头、由框里的省略号收尾 —— 用户要的是「一眼认出前面几颗」，
+ *  而不是三枚一起变成三个「…」。
  *
- *  成员被删到不足两颗（手改的配置）时退回一整串：那时没有「两列」可言，写得出来比对齐重要。
+ *  `×` 摆在两枚框之间，左右各一档 [COMBO_PAIR_GAP]：框边缘对齐了，这个间距自然就是对称的。
  *
- * @param widths 两列与分隔符的宽度（调用点整列量一次，见 [comboPairWidths]）
+ *  成员被删到不足两颗（手改的配置）时退回一整串：那时没有「对齐」可言，写得出来比对齐重要。
+ *
+ * @param widths 每列与分隔符的宽度（调用点整列量一次，见 [comboTitleWidths]）
  */
 @Composable
-private fun SettingsPage.ComboPairTitle(
+private fun SettingsPage.ComboTitle(
     cfg: Config,
     combo: ComboKey,
     writable: Boolean,
-    widths: ComboPairWidths,
+    widths: ComboTitleWidths,
 ) {
     //  框里的字用 [comboChipStyle]（比行标题小一档、字重 Medium），`×` 仍用行标题那一档 ——
-    //  两枚框是「键名标签」，比正文小一点本来就对；量宽度用的也是这一份（见 `comboPairWidths`）。
+    //  框是「键名标签」，比正文小一点本来就对；量宽度用的也是这一份（见 `comboTitleWidths`）。
     val chipStyle = comboChipStyle()
     val style = COUITheme.textStyles.headline1
     //  两档标题色带过渡：整页闸门一拨，这一列与同一页其它行一起变灰 / 恢复，别只有这里硬切。
@@ -289,10 +309,11 @@ private fun SettingsPage.ComboPairTitle(
                 COUITheme.colorScheme.disabledOnSecondaryVariant
             },
         animationSpec = COLOR_TRANSITION_SPEC,
-        label = "ComboPairTitle",
+        label = "ComboTitle",
     )
     val names = combo.keys.mapNotNull { id -> cfg.keyIdOf(id)?.let(::keyName) }
-    if (names.size < 2) {
+    //  不足两颗（成员被删 / 手改的配置）退回一整串 —— 那时「几枚框对齐」不成立
+    if (names.size < ComboKey.MIN_KEYS) {
         Text(
             text = comboLabel(cfg, combo, bracketed = true),
             style = style,
@@ -306,59 +327,73 @@ private fun SettingsPage.ComboPairTitle(
     //  可用宽是**这一格实际拿到的**宽（行里扣掉行首图标与行尾箭头之后那一段）——
     //  拿卡片宽算会让长名字撑出格去；各行的可用宽相同，逐行算不会破坏对齐。
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val room = (maxWidth - widths.separator).coerceAtLeast(0.dp)
+        //  分隔符先扣掉：`n` 枚框之间有 `n - 1` 个，每格含 `×` 自己与两侧间距
+        val budget = (maxWidth - widths.separator * (names.size - 1)).coerceAtLeast(0.dp)
         //  **+ [COMBO_CHIP_SLACK]**：框宽必须比文字宽多出一点，否则刚好卡在边界上照样省略
-        val needFirst = widths.first + COMBO_CHIP_H_PAD * 2 + COMBO_CHIP_SLACK
-        val needSecond = widths.second + COMBO_CHIP_H_PAD * 2 + COMBO_CHIP_SLACK
-        //  **装得下就各按自己那一列的量给**（两枚框一样宽、边缘竖着对齐，谁也不省略）。
-        //  以前这里无条件按 [COMBO_FIRST_COLUMN_MIN_RATIO] 封顶，于是「名字其实不长、整行也装得下」
-        //  的时候第一枚仍被压窄一点点 ⇒ 字尾变成省略号（真机口径「键名显示不全」）。
-        //  装不下时才按 45% / 剩下的分，让长的那一枚自己省略 —— 那时总得截一个，截第一列
-        //  比把第二列挤到看不见好。
-        val fits = needFirst + needSecond <= room
-        //  装不下时**按两列各自的需要等比缩**，而不是固定把第一列压到 45%：后者会让第一列
-        //  截掉两个字、第二列却整整齐齐，看着像「第一列的名字有问题」。等比缩是两边各差一点，
-        //  读起来一致（`COMBO_FIRST_COLUMN_MIN_RATIO` 只在需要时才用作下限保护）。
-        val total = (needFirst + needSecond).value
-        val head =
-            if (fits || total <= 0f) {
-                needFirst
-            } else {
-                (room.value * needFirst.value / total).dp.coerceAtLeast(room * COMBO_FIRST_COLUMN_MIN_RATIO)
+        val needs =
+            names.indices.map { at ->
+                (widths.columns.getOrNull(at) ?: 0.dp) + COMBO_CHIP_H_PAD * 2 + COMBO_CHIP_SLACK
             }
-        val tail =
-            if (fits) {
-                needSecond
-            } else {
-                (room - head).coerceAtLeast(0.dp).coerceAtMost(needSecond)
-            }
-        //  判据行：这一行拿到多宽、两列各要多少、实给多少 —— 排查「键名被省略」时先看它（同值只打一次）。
-        //  `fits=false` 说明整行真的装不下（名字太长 / 标题槽太窄）；`fits=true` 却仍被截，
-        //  说明框宽算对了、问题在别处。没有这一行只能靠猜。
-        logPairOnce("组合键标题：room=$room 需要=($needFirst, $needSecond) fits=$fits 实给=($head, $tail)")
+        val totalNeed = needs.fold(0.dp) { acc, need -> acc + need }
+        val given = distributeChipWidths(needs, budget)
+        //  判据行：这一行拿到多宽、每列各要多少、实给多少 —— 排查「键名被省略」时先看它（同值只打一次）。
+        //  `fits=false` 说明整行真的装不下（名字太长 / 标题槽太窄 / 颗数多），被裁的是右边那几枚；
+        //  `fits=true` 却仍被截，说明框宽算对了、问题在别处。没有这一行只能靠猜。
+        logPairOnce("组合键标题：room=$budget 需要=$needs fits=${totalNeed <= budget} 实给=$given")
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ComboKeyChip(names[0], chipStyle, color, writable, Modifier.width(head))
-            Text(
-                text = COMBO_PAIR_SEPARATOR,
-                style = style,
-                color = color,
-                modifier = Modifier.padding(horizontal = COMBO_PAIR_GAP),
-            )
-            ComboKeyChip(names[1], chipStyle, color, writable, Modifier.width(tail))
+            names.forEachIndexed { at, name ->
+                //  分隔符画在前面（第一枚之前没有），与框同序 —— 这样 `names` 与 `given` 一一对应
+                if (at > 0) {
+                    Text(
+                        text = COMBO_PAIR_SEPARATOR,
+                        style = style,
+                        color = color,
+                        modifier = Modifier.padding(horizontal = COMBO_PAIR_GAP),
+                    )
+                }
+                ComboKeyChip(name, chipStyle, color, writable, Modifier.width(given[at]))
+            }
         }
     }
 }
 
 /**
- * 两列与分隔符各该多宽 —— 每一列取**整列里最长的那个键名**，量一次给整列用。
+ * 一排框各分多宽 —— 见 [ComboTitle] 的「装不下时从右边开始裁」。
+ *
+ *  装得下时逐枚按 [needs] 照给（同一列的框一样宽、边缘竖着对齐，谁也不省略）。
+ *  装不下时**从右往左让位**：左边的框按自己需要的宽度照给，只把「剩下的那点」留给右边的框
+ *  —— 被裁的于是永远是右边那一枚。早先按各列需要的同一比例缩，三颗那一档在窄屏上会三枚
+ *  一起变省略号：三个名字都读不全，而用户其实只需要认得出前两颗。
+ *
+ *  给后面每一枚预留 [COMBO_CHIP_MIN_W]：不留的话「左边照给」会把右边挤成 0 宽 ——
+ *  那一枚连同它的 `×` 一起消失，读起来像「这一档只配了两颗」。
+ */
+private fun distributeChipWidths(
+    needs: List<Dp>,
+    budget: Dp,
+): List<Dp> {
+    val given = ArrayList<Dp>(needs.size)
+    var remaining = budget
+    needs.indices.forEach { at ->
+        val reserved = COMBO_CHIP_MIN_W * (needs.size - at - 1)
+        val cap = (remaining - reserved).coerceAtLeast(COMBO_CHIP_MIN_W)
+        val give = if (needs[at] <= cap) needs[at] else cap
+        given += give
+        remaining -= give
+    }
+    return given
+}
+
+/**
+ * 每列与分隔符各该多宽 —— 每一列取**整列里最长的那个键名**，量一次给整列用。
  *
  *  写死一个 dp 不行：系统字号调大、切英文界面（`Side key`）之后名字会变长，写死只会一起省略。
  *  量的时候用与格子同一份字重（标题是 Medium）—— 只带样式不带字重会量窄一格。
  *
- *  封顶与居中都在画的那一头做（见 [ComboPairTitle]）：这里给的是**文字本身的宽度**，
+ *  封顶与等比缩都在画的那一头做（见 [ComboTitle]）：这里给的是**文字本身的宽度**，
  *  与实际可用宽无关，所以行与行之间算出来的永远是同一份。
  */
 @Composable
@@ -369,15 +404,18 @@ private fun comboChipStyle(): TextStyle {
 }
 
 @Composable
-private fun SettingsPage.comboPairWidths(cfg: Config): ComboPairWidths {
+private fun SettingsPage.comboTitleWidths(cfg: Config): ComboTitleWidths {
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    //  **与画字同一份样式**（含那 0.9 的字号）：量大了会误判「装不下」，量小了框不够宽
+    //  **与画字同一份样式**（含那 0.85 的字号）：量大了会误判「装不下」，量小了框不够宽
     val cellStyle = comboChipStyle()
+    //  分隔符按**画它的那一档**量（`×` 用行标题字号，见 [ComboTitle]），不是框里那份小字号：
+    //  一行三颗就有两个分隔符，差出来的那点会一起挤到最后一枚框上。
+    val separatorStyle = COUITheme.textStyles.headline1
     //  **`density` 必须进 key**：页面缩放（「页面缩放」/「跟随系统显示大小」）换的就是
     //  `LocalDensity` —— 不进 key 的话量出来的是上一档密度下的像素，换算成 dp 就偏了，
     //  缩小时正好偏窄 ⇒ 键名被截成「侧…」（真机口径「缩小界面后键名显示不全」）。
-    return remember(cfg.combos, cellStyle, measurer, density) {
+    return remember(cfg.combos, cellStyle, separatorStyle, measurer, density) {
         //  一格键名的宽度（框里只写名字，**不套方括号** —— 框本身已经说明这是键名）；
         //  这一颗键已经不在配置里时按 0 算
         fun cellWidth(
@@ -387,13 +425,14 @@ private fun SettingsPage.comboPairWidths(cfg: Config): ComboPairWidths {
             val name = combo.keys.getOrNull(at)?.let { cfg.keyIdOf(it)?.let(::keyName) } ?: return 0
             return measurer.measure(AnnotatedString(name), style = cellStyle, maxLines = 1).size.width
         }
-        val first = cfg.combos.maxOfOrNull { cellWidth(it, 0) } ?: 0
-        val second = cfg.combos.maxOfOrNull { cellWidth(it, 1) } ?: 0
-        val separator = measurer.measure(AnnotatedString(COMBO_PAIR_SEPARATOR), style = cellStyle, maxLines = 1).size.width
+        //  **按位置取整列最大值**：第 0 列是所有组的第一个键名，第 1 列是第二个……
+        //  三颗那一档于是有自己那第三列，前两列仍与两列的行竖着对齐。
+        val count = cfg.combos.maxOfOrNull { it.keys.size } ?: 0
+        val columns = List(count) { at -> cfg.combos.maxOfOrNull { cellWidth(it, at) } ?: 0 }
+        val separator = measurer.measure(AnnotatedString(COMBO_PAIR_SEPARATOR), style = separatorStyle, maxLines = 1).size.width
         with(density) {
-            ComboPairWidths(
-                first = first.toDp(),
-                second = second.toDp(),
+            ComboTitleWidths(
+                columns = columns.map { it.toDp() },
                 separator = separator.toDp() + COMBO_PAIR_GAP * 2,
             )
         }

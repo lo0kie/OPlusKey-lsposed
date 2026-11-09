@@ -10,12 +10,12 @@ package com.lookie.opluskey.core.model
  *
  *  · 每颗键的四格手势（`single` / `double` / `long` / `longRelease`）；
  *  · 每颗键的额外连击（`extraClicks`，第 3 击起，见 [KeyConfig.actionOf]）；
- *  · 每颗键的条件规则（`rules[].action`）；
+ *  · 每颗键的系统场景（`scenes[]` 的三档动作）；
  *  · 每个组合键的三档（`single` / `long` / `longRelease`，组合没有双击）；
- *  · 每个组合键的条件规则（`rules[].action`）。
+ *  · 每个组合键的系统场景（`scenes[]` 的两档动作）。
  *
- *  这几处**先后被漏过四次**（删命令只清三格 → 补上规则 → 组合键那两档又漏 → 额外连击与
- *  组合规则又漏），因为每个调用点都自己写一遍 `copy(single = …, double = …, long = …, rules = …)`。
+ *  这几处**先后被漏过四次**（删命令只清三格 → 补上场景 → 组合键那两档又漏 → 额外连击与
+ *  组合场景又漏），因为每个调用点都自己写一遍 `copy(single = …, double = …, long = …, scenes = …)`。
  *  只要遍历散在调用点上，「下次多一处动作位」就必然再漏一次 —— 所以收成这几个函数：
  *  **加新的动作位只改这个文件**，改名的路径、删命令的路径、删变量的反查都不必再动。
  *  「松手执行额外动作」那两格（`longRelease`）就是这样漏进来一次：加字段时这个文件没跟着改，
@@ -40,7 +40,7 @@ fun Config.mapActions(transform: (Action) -> Action): Config =
                     long = transform(key.long),
                     longRelease = transform(key.longRelease),
                     extraClicks = key.extraClicks.mapValues { transform(it.value) },
-                    rules = key.rules.map { it.copy(action = transform(it.action)) },
+                    scenes = key.scenes.map { it.mapActions(transform) },
                 )
             },
         combos =
@@ -49,7 +49,7 @@ fun Config.mapActions(transform: (Action) -> Action): Config =
                     single = transform(combo.single),
                     long = transform(combo.long),
                     longRelease = transform(combo.longRelease),
-                    rules = combo.rules.map { it.copy(action = transform(it.action)) },
+                    scenes = combo.scenes.map { it.mapActions(transform) },
                 )
             },
     )
@@ -68,13 +68,13 @@ fun Config.actionTokens(): List<String> =
             add(key.long.token)
             add(key.longRelease.token)
             key.extraClicks.values.forEach { add(it.token) }
-            key.rules.forEach { add(it.action.token) }
+            key.scenes.forEach { it.actionTokens().forEach(::add) }
         }
         combos.forEach { combo ->
             add(combo.single.token)
             add(combo.long.token)
             add(combo.longRelease.token)
-            combo.rules.forEach { add(it.action.token) }
+            combo.scenes.forEach { it.actionTokens().forEach(::add) }
         }
     }
 
@@ -85,3 +85,16 @@ fun Config.actionTokens(): List<String> =
  *  都得问这一个问题，两处若各写一遍，就会各自漏掉不同的动作位。
  */
 fun Config.bindsToken(token: String): Boolean = actionTokens().any { it == token }
+
+/**
+ * 一块场景里的三档动作 —— 「换动作」与「列出动作」两条路共用，免得一处改了三档、另一处只改了一档。
+ */
+private fun SceneRule.mapActions(transform: (Action) -> Action): SceneRule =
+    copy(
+        single = transform(single),
+        double = transform(double),
+        long = transform(long),
+    )
+
+/** 一块场景里**写过**的那几档动作的 token（没配的档不算）。 */
+private fun SceneRule.actionTokens(): List<String> = listOf(single, double, long).filter { it.isBound }.map { it.token }

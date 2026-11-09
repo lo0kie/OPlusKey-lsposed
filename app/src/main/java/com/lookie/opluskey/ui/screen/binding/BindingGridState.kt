@@ -35,8 +35,16 @@ import io.github.suqi8.coui.kmp.basic.PreciseClickState
  *  它们每次重组都可能变，存进来就会过期；各段自己在组合期从页面状态里取。
  */
 internal class BindingGridState(
-    /** 这张网格往哪儿写（一颗键的一档 / 一档组合键的一档）—— `pick` 要它。 */
+    /** 这张网格往哪儿写（一颗键的一档 / 一档组合键的一档 / 一个场景块的一档）—— `pick` 要它。 */
     val target: BindingTarget,
+    /**
+     * 内置动作的**分组**（组名 + 组内条目）—— 网格按它排、焦点按它分行。
+     *
+     *  三档自由绑定与场景那一页拿的**不是同一张表**：场景的三档可以填「跟随默认命令」
+     *  （`ActionCatalog.BRANCH_GROUPS`），其余三处不行（那一档在按键 / 组合 / 命令步骤里
+     *  语义上不成立）。表格与 [specs] 必须同源，否则切点后移、分组的格子会串组。
+     */
+    val groups: List<Pair<String, List<ActionCatalog.Spec>>>,
     /** 这一页的动作清单（内置 + 自定义，见 `ActionCatalog.forGesture`）。 */
     val specs: List<ActionCatalog.Spec>,
     /** 「应用控制」格那一层菜单选完之后进「选择应用」页（为**这一档**挑，写回也落在 [target] 上）。 */
@@ -53,11 +61,11 @@ internal class BindingGridState(
     /**
      * 内置格子的个数 —— 下标 `[0, builtInCount)` 是内置那一组，之后是自定义命令。
      *
-     *  按**这一档手势**算（`ActionCatalog.builtInCount`），不是按 `ALL.size`：清单按手势剔过条目
-     *  （「灵感语音」只在长按），用 `ALL.size` 会让切点后移一位 —— 第一条自定义命令就跑到
+     *  按**这一页那一张分组表**算（见 [groups]），不是按 `ALL.size`：场景那一页的表比它多一行
+     *  「跟随默认命令」，用 `ALL.size` 会让切点后移一位 —— 第一条自定义命令就跑到
      *  「快捷功能」那一组里去了。切分与清单必须同源。
      */
-    val builtInCount: Int = ActionCatalog.builtInCount()
+    val builtInCount: Int = groups.sumOf { it.second.size }
 
     /**
      * 界面当前用的**列数** —— 网格测到宽度之后写进来（见 `BindingGrids` 里那两处
@@ -84,7 +92,7 @@ internal class BindingGridState(
             buildList {
                 val n = columns.coerceAtLeast(1)
                 var base = 0
-                for ((_, group) in ActionCatalog.groupsFor()) {
+                for ((_, group) in groups) {
                     for (row in (base until base + group.size).chunked(n)) add(row)
                     base += group.size
                 }
@@ -150,9 +158,15 @@ internal fun SettingsPage.rememberBindingGridState(
     target: BindingTarget,
     onAppControl: (BindingTarget, Boolean) -> Unit,
 ): BindingGridState {
+    //  **分组表跟着「这一页能不能填跟随」走**：场景块的三档默认值就是「跟随默认命令」，
+    //  另外三处（按键 / 组合 / 命令步骤）填它语义上不成立 —— 所以清单差一行，分组也得跟着差。
+    val groups =
+        remember(target is BindingTarget.Scene) {
+            if (target is BindingTarget.Scene) ActionCatalog.BRANCH_GROUPS else ActionCatalog.groupsFor()
+        }
     val specs =
-        remember(target.gesture, configState.commands.value) {
-            ActionCatalog.forGesture(configState.commands.value)
+        remember(groups, configState.commands.value) {
+            groups.flatMap { it.second } + configState.commands.value.map { ActionCatalog.commandSpec(it) }
         }
     val current = target.actionIn(configState.config.value)
     val selectedIndex = specs.indexOfFirst { ActionCatalog.isSelected(it, current) }
@@ -161,6 +175,7 @@ internal fun SettingsPage.rememberBindingGridState(
     return remember(specs, target) {
         BindingGridState(
             target = target,
+            groups = groups,
             specs = specs,
             onAppControl = onAppControl,
             initialFocus = if (selectedIndex in specs.indices) selectedIndex else 0,

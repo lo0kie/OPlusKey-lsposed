@@ -36,6 +36,7 @@ import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.keyName
 import com.lookie.opluskey.ui.screen.binding.CollectKeyDialog
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -278,10 +279,10 @@ private fun SettingsPage.KeysLeaveEditConfirm() {
 /**
  * 「选择按键」弹窗 —— 这一档组合由哪几颗键组成。
  *
- *  成员数恒为 [ComboKey.MAX_KEYS]（两颗，用户口径）。判定侧其实认得更多成员（3 颗起的组合
- *  判定、执行、日志都已接线），但**界面上没有造它的入口**（用户口径未定）—— 所以勾满两颗
- *  之后第三颗勾不上，顺手弹条说「一个组合最多 2 颗按键」。
- *  （让用户勾出个三颗的组合、再在「添加」那颗灰按钮上告诉他不行，等于把同一个规矩说两遍。）
+ *  成员数在 [ComboKey.MIN_KEYS]..[ComboKey.MAX_KEYS]（两颗到三颗）之间。两颗是最常见的那一档，
+ *  三颗是「三键齐按」—— 判定侧那条多成员路径（`ComboDetector.multiFor`）就是为它接的。
+ *  所以勾满三颗之后第四颗勾不上，顺手弹条说「一个组合最多 3 颗按键」。
+ *  （让用户勾出个四颗的组合、再在「添加」那颗灰按钮上告诉他不行，等于把同一个规矩说两遍。）
  *
  *  「为什么还不能添加」只有 [blockedReason] 一处判据：已存在 / 还没选够。
  *  不能确定时按钮是灰的，点一下弹**通用消息条**（不在弹窗里另画一行）。
@@ -314,15 +315,15 @@ private fun SettingsPage.ComboKeysDialog(
     MultiPickerDialog(
         show = show,
         title = I18n.get(Strings.COMBO_PICK_KEYS, "选择按键"),
-        //  标题下面那句「选 2 颗」去掉（用户口径）：一个组合就是两颗，标题「选择按键」已经够；
-        //  真要选错颗数，勾满两颗之后第三颗勾不上时会有话说（见 `onToggle`）。
+        //  标题下面那句「选 2 颗」去掉（用户口径）：标题「选择按键」已经够，颗数靠勾选时的提示说；
+        //  真要选错颗数，勾满上限之后下一颗勾不上时会有话说（见 `onToggle`）。
         hint = null,
         labels = keys.map { keyName(it) },
         selected = keys.indices.filter { keys[it].id in picked }.toSet(),
         onToggle = { index ->
             val key = keys.getOrNull(index) ?: return@MultiPickerDialog
             val on = key.id in picked
-            //  勾满上限之后再点第三颗：**勾不上**，顺手弹条说为什么 —— 只允许两颗这件事
+            //  勾满上限之后再点下一颗：**勾不上**，顺手弹条说为什么 —— 上限这件事
             //  在勾选那一步就说清，别让用户先勾出一个不成立的组合、再去猜「添加」为什么是灰的。
             //  取消勾选永远放行（那是往回收，不受上限管）。
             if (!on && picked.size >= ComboKey.MAX_KEYS) {

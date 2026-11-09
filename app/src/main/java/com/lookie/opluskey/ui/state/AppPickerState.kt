@@ -34,6 +34,9 @@ internal class AppPickerState {
 
         /** [branchTarget] 的「给分叉新加一支」。 */
         const val NEW_BRANCH = -1
+
+        /** [sceneAt] 的「不是在给场景块挑」—— `-1` 与「第 0 块」撞不上，`0` 是合法下标。 */
+        const val NOT_FOR_SCENE = -1
     }
 
     /**
@@ -217,6 +220,9 @@ internal class AppPickerState {
     /**
      * 这次是给「条件执行」的某一支挑**条件应用**：`>= 0` = 改第几支，[NEW_BRANCH] = 新加一支。
      * [NOT_FOR_BRANCH] = 不是在给分叉挑。与 [forStep] 一样同生共死。
+     *
+     *  只服务**条件**（挑包名）。场景的某一档要执行什么应用不走这条路 ——
+     *  那一档在「场景动作」页的网格里挑（`BindingTarget.Scene`，与网格同一套）。
      */
     var branchTarget: Int = NOT_FOR_BRANCH
 
@@ -231,14 +237,16 @@ internal class AppPickerState {
         private set
 
     /**
-     * 这次是给「条件执行」的某一支挑**要执行的应用**（`app:` / `window:` 那一步）：
-     * `>= 0` = 改第几支。`-1` = 不是在给分支命令挑。
+     * 这一趟挑的应用要写进**场景表里第几块**的那一档（`-1` = 不是给场景挑）。
      *
-     *  与 [branchTarget] 是**两件事**，虽然落点都是「某一支」：那一支有两个位置能放应用 ——
-     *  判别用的条件（包名）与执行用的命令（token）。合成一个字段时界面上分不出这次挑完该往
-     *  哪一处写，而两者的写法（包名 vs `app:` token）也不一样。
+     *  与 [comboId] 同一条性质：这是从**场景动作**页的网格进来的那一趟（那几格里有
+     *  「应用控制」），挑完要落回那一块的那一档 —— 而那一趟会压一层「选择应用」页，
+     *  网格自己那棵组合在退场时就没了。写哪一档由 [gesture] 给（那一趟也记着它）。
+     *
+     *  **不并进 [branchTarget]**：那一位是「条件执行页里第几**条规则**」，写的是**条件包名**；
+     *  这一位写的是**某一档的动作**，落点与写法都不同，合成一个就得再记「现在写哪半个」。
      */
-    var branchCommandTarget: Int = NOT_FOR_BRANCH
+    var sceneAt: Int = NOT_FOR_SCENE
         private set
 
     /**
@@ -259,14 +267,11 @@ internal class AppPickerState {
     val resumeSheetAt = mutableStateOf<ResumeSheet?>(null)
 
     /**
-     * 这一趟是在给「条件执行」挑 —— [branchTarget] 或 [branchCommandTarget] 有一头有效。
+     * 这一趟是在给「条件执行」挑**条件** —— [branchTarget] 有效。
      *
-     *  只回答「写回走哪条路」（两个写回函数各管一头），**不代表「只认应用本身」**：
-     *  给**条件**挑只认包名，而给**那一支要执行的动作**挑与网格同一套（可以选组件 / 快捷方式、
-     *  也可以用小窗起）。
+     *  只回答「写回走哪条路」。条件那一支只认包名（见 [appOnly]）：动作那一侧不经过这张页面。
      */
-    val forBranch: Boolean
-        get() = branchTarget != NOT_FOR_BRANCH || branchCommandTarget != NOT_FOR_BRANCH
+    val forBranch: Boolean get() = branchTarget != NOT_FOR_BRANCH
 
     /**
      * 这一趟**只认应用本身**（给条件挑 / 「结束应用」两档）：点行即选中、没有二级页、也没有小窗。
@@ -274,11 +279,10 @@ internal class AppPickerState {
      *  三处读它（点行 / 行尾图标 / 菜单里那一项），判据只此一份 —— 两档共用一个位是因为它们
      *  对「这一页怎么用」的要求一模一样，差别只在写出去的那个 token。
      *
-     *  **给分支动作挑的那一趟不在这里**（`branchCommandTarget`）：那一支执行的就是一个普通动作，
-     *  与网格里绑的那一份没有区别，所以它照常能进二级页挑组件 / 快捷方式、也能开小窗。
+     *  **给场景某一档挑的那一趟不在这里**：那一支执行的就是一个普通动作，与网格里绑的那一份
+     *  没有区别，所以它照常能进二级页挑组件 / 快捷方式、也能开小窗。
      */
-    val appOnly: Boolean
-        get() = branchTarget != NOT_FOR_BRANCH || stopApp
+    val appOnly: Boolean get() = branchTarget != NOT_FOR_BRANCH || stopApp
 
     // —— 「这趟为谁挑」那一组标记的三个改法 ——
     //
@@ -291,17 +295,21 @@ internal class AppPickerState {
      * 网格那条入口：给 [g] 这一档挑应用（挑中的写成 `app:` / `window:` 绑给这个手势）。
      *
      * @param comboId 非空 = 这一趟是给**那一档组合键**挑（[g] 是它的短按 / 长按）。
+     * @param sceneAt 非负 = 这一趟是给**场景表里第几块**挑（[g] 是那一块里的哪一档）——
+     *   与 [comboId] 互斥：一块要么属于某颗键、要么属于某档组合键，由草稿自己记着。
      */
     fun openForGesture(
         g: Gesture,
         comboId: String? = null,
+        sceneAt: Int = NOT_FOR_SCENE,
     ) {
         gesture = g
         this.comboId = comboId
+        this.sceneAt = sceneAt
         forStep = false
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
-        branchCommandTarget = NOT_FOR_BRANCH
+        branchConditionIndex = -1
         stopAppState.value = false
     }
 
@@ -315,8 +323,9 @@ internal class AppPickerState {
     fun openForStopApp(
         g: Gesture,
         comboId: String? = null,
+        sceneAt: Int = NOT_FOR_SCENE,
     ) {
-        openForGesture(g, comboId)
+        openForGesture(g, comboId, sceneAt)
         stopAppState.value = true
     }
 
@@ -331,11 +340,12 @@ internal class AppPickerState {
     ) {
         gesture = null
         comboId = null
+        sceneAt = NOT_FOR_SCENE
         releaseComboId = combo
         forStep = false
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
-        branchCommandTarget = NOT_FOR_BRANCH
+        branchConditionIndex = -1
         stopAppState.value = stop
         forRelease = true
     }
@@ -351,39 +361,35 @@ internal class AppPickerState {
     ) {
         gesture = null
         comboId = null
+        sceneAt = NOT_FOR_SCENE
         forStep = true
         replaceStep = replaceIndex
         branchTarget = NOT_FOR_BRANCH
-        branchCommandTarget = NOT_FOR_BRANCH
+        branchConditionIndex = -1
         stopAppState.value = stop
         forRelease = false
     }
 
     /**
-     * 分叉那条入口的两档：给第 [index] 支挑**条件应用**（[forCommand] = false）
-     * 或**要执行的应用**（[forCommand] = true）。
+     * 「条件执行」那条入口：给第 [index] 块挑**条件应用**。
      *
-     *  两档写的是同一支的两个不同位置 —— 条件（包名）与命令（`app:` token），落点不同、
-     *  语义也不同，但「为谁挑」那一组的清场纪律完全一样，所以只留一个入口：
-     *  分成两个函数时，那一串「把另外几位清掉」要写两遍，加一档就得改两处（`TooManyFunctions`
-     *  也是这么来的）。
+     *  条件与动作的落点不同（条件存包名、动作存 token），所以**不需要**再记「这一趟写哪半个」：
+     *  动作那一侧走「场景动作」页的网格（`BindingTarget.Scene`），与这张页面无关。
      */
     fun openForBranch(
         index: Int,
-        forCommand: Boolean = false,
         conditionIndex: Int = -1,
-        stop: Boolean = false,
     ) {
         gesture = null
         comboId = null
+        sceneAt = NOT_FOR_SCENE
         forStep = false
         replaceStep = -1
-        branchTarget = if (forCommand) NOT_FOR_BRANCH else index
-        branchCommandTarget = if (forCommand) index else NOT_FOR_BRANCH
-        //  挑动作那一趟不写条件槽位（两个落点互斥），留着上一趟的值只会在下一次条件挑选时误导
-        branchConditionIndex = if (forCommand) -1 else conditionIndex
-        //  只有「这一支要执行的应用」才有结束那一档（条件存的是包名，与 stop 无关）
-        stopAppState.value = stop
+        branchTarget = index
+        //  挑条件那一趟不写条件槽位以外的标记，留着上一趟的值只会在下一次挑选时误导
+        branchConditionIndex = conditionIndex
+        //  条件只认包名：既没有「结束应用」那一档，也没有「松手额外动作」
+        stopAppState.value = false
         forRelease = false
     }
 
@@ -391,10 +397,10 @@ internal class AppPickerState {
     fun clearTarget() {
         gesture = null
         comboId = null
+        sceneAt = NOT_FOR_SCENE
         forStep = false
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
-        branchCommandTarget = NOT_FOR_BRANCH
         branchConditionIndex = -1
         stopAppState.value = false
         forRelease = false
@@ -441,12 +447,6 @@ internal class AppPickerState {
      */
     fun takePickTarget(): PickTarget? =
         when {
-            branchCommandTarget != NOT_FOR_BRANCH -> {
-                val index = branchCommandTarget
-                branchCommandTarget = NOT_FOR_BRANCH
-                PickTarget.BranchCommand(index)
-            }
-
             branchTarget != NOT_FOR_BRANCH -> {
                 val index = branchTarget
                 branchTarget = NOT_FOR_BRANCH
@@ -699,11 +699,6 @@ internal sealed interface PickTarget {
 
     /** 条件执行的某一支：[AppPickerState.NEW_BRANCH] = 新加一支。写的是那一支的**条件**（包名）。 */
     data class Branch(
-        val index: Int,
-    ) : PickTarget
-
-    /** 条件执行的某一支要**执行的应用**：写的是那一支的**命令**（`app:` / `window:` token）。 */
-    data class BranchCommand(
         val index: Int,
     ) : PickTarget
 

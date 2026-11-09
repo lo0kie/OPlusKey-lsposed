@@ -14,20 +14,24 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.DisabledStateText
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
+import com.lookie.opluskey.ui.appTargetLabelOf
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT_MS
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.model.conditionChoiceIcon
 import com.lookie.opluskey.ui.model.conditionIcon
 import com.lookie.opluskey.ui.model.conditionRowTitle
+import com.lookie.opluskey.ui.model.stepTitleWithTarget
 import com.lookie.opluskey.ui.state.BranchDraft
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -42,7 +46,7 @@ import kotlinx.coroutines.delay
  *
  *  抽成一支只为让 [BranchRow] 留在 detekt 的长度上限内；判据见那边的注释。
  */
-internal fun SettingsPage.ruleConditionLines(rule: StateRule): List<ConditionLine> =
+internal fun SettingsPage.ruleConditionLines(rule: SceneRule): List<ConditionLine> =
     if (rule.conditions.isEmpty()) {
         //  一条都没配时也给一行「未选择条件」，让用户知道这一格要配什么
         listOf(
@@ -122,7 +126,7 @@ internal class ConditionLine(
  *
  *  两句各说一件事，同一时刻只会有一句：
  *   · [dead]「不会执行」（红）—— 顺序上轮不到它（某档取值前面已经凑齐 / 被更宽的一条盖住）；
- *   · [off]「已停用」（弱色）—— 它自己关着（行尾「更多」菜单里的停用，`StateRule.enabled`）。
+ *   · [off]「已停用」（弱色）—— 它自己关着（行尾「更多」菜单里的停用，`SceneRule.enabled`）。
  *  两条同时成立时按「已停用」说：那是用户刚做过的动作，也是更直接的原因。
  *
  *  为什么标在**这一行**而不是小标题：小标题是库组件 `SmallTitle`，只能给一整串字，染不了一半；
@@ -192,13 +196,13 @@ internal fun BranchDeleteEffect(
         //  记下「要删的是哪一条」而不是只记下标：这 260ms 里下标会移位，按 at 去删就会删错行。
         //  按**规则本身**找回来，挪过也能删对；找不到（已经被改掉了）就什么都不删。
         val target =
-            draft.rules.getOrNull(at) ?: run {
+            draft.scenes.getOrNull(at) ?: run {
                 menus.deletingAt = NO_EXITING_ROW
                 return@LaunchedEffect
             }
-        if (draft.rules.size > 1) delay(STEP_ROW_EXIT_MS + ROW_EXIT_SETTLE_MS)
+        if (draft.scenes.size > 1) delay(STEP_ROW_EXIT_MS + ROW_EXIT_SETTLE_MS)
         if (menus.deletingAt == at) {
-            val now = draft.rules.indexOf(target)
+            val now = draft.scenes.indexOf(target)
             if (now >= 0) draft.remove(now)
             menus.deletingAt = NO_EXITING_ROW
         }
@@ -222,7 +226,7 @@ internal fun SettingsPage.BranchConditionDeleteEffect(
     LaunchedEffect(menus.exitingCond) {
         val target = menus.exitingCond ?: return@LaunchedEffect
         val cond =
-            draft.rules
+            draft.scenes
                 .getOrNull(target.at)
                 ?.conditions
                 ?.getOrNull(target.index) ?: run {
@@ -231,7 +235,7 @@ internal fun SettingsPage.BranchConditionDeleteEffect(
             }
         delay(VISIBILITY_EXIT_MS + ROW_EXIT_SETTLE_MS)
         if (menus.exitingCond != target) return@LaunchedEffect
-        val now = draft.rules.getOrNull(target.at)?.conditions ?: emptyList()
+        val now = draft.scenes.getOrNull(target.at)?.conditions ?: emptyList()
         val at = now.indexOf(cond).takeIf { it >= 0 } ?: target.index
         if (now.getOrNull(at) != cond) {
             XLog.w("删除条件：那一行在动画期间被改过（位置已变），这一条不删")
@@ -244,7 +248,7 @@ internal fun SettingsPage.BranchConditionDeleteEffect(
 
 /**
  * 行尾「更多」菜单里「停用 / 启用这一条」那一行 —— 与「按键绑定」页那一行同一个语义：
- * 写的是这一条自己的 `StateRule.enabled`。
+ * 写的是这一条自己的 `SceneRule.enabled`。
  *
  *  放在这个文件而不是菜单那边：菜单那一支的行数已经贴着 detekt 的 `LongMethod` 上限。
  *
@@ -253,7 +257,7 @@ internal fun SettingsPage.BranchConditionDeleteEffect(
  *  等右下角那颗「确认」才落盘。
  */
 internal fun SettingsPage.branchToggleRow(
-    rules: List<StateRule>,
+    rules: List<SceneRule>,
     at: Int,
     menus: BranchMenuState,
 ): MenuEntry.Row {
@@ -292,3 +296,26 @@ internal fun SettingsPage.BranchDefaultTip() {
         color = COUITheme.colorScheme.onSurfaceVariantSummary,
     )
 }
+
+/**
+ * 这一块里要画哪几档动作 —— 组合键只有单击 / 长按（双击在组合上没有定义，见 `ComboKey`）。
+ *
+ *  判据与判定侧同一条：摆一行写进去也永远不会命中的动作，比少一行更糟。
+ */
+internal fun SettingsPage.blockGestures(): List<Gesture> =
+    if (branchDraft.comboId != null) listOf(Gesture.SINGLE, Gesture.LONG) else Gesture.entries
+
+/**
+ * 一档动作那一行写什么 —— 应用那一族要带上「具体是哪一个」（`微信(小窗 扫一扫)`）。
+ *
+ *  整句由 `stepTitleWithTarget`（= core 的 `CommandTitle`）拼，与步骤行、执行提示同一份实现，
+ *  所以这里也是「父动作名: 子动作名」（`系统开关: NFC - 切换`）。
+ *  目标**整段**交给它（`appTargetLabelOf(action)` 已含括号）—— 走 `stepTitle` 的话
+ *  名字回调那层还会再补一次「(小窗)」，真机上就是 `应用(小窗 组件)(小窗)`。
+ */
+internal fun SettingsPage.actionTextOf(action: Action): String =
+    when {
+        action is Action.Follow -> I18n.get(Strings.COMMAND_BRANCH_ACTION_FOLLOW, "跟随默认")
+        !action.isBound -> I18n.get(Strings.ACTION_NONE, "无操作")
+        else -> stepTitleWithTarget(action.token) { target -> appTargetLabelOf(target) }
+    }

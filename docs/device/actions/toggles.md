@@ -82,6 +82,9 @@ android.flash.torchStrengthDefaultLevel (4000a)   → 5
       由 `KeyFlashlightController` 调用 `FlashlightControllerImpl` 切换状态。
 3. **遗留空桩**：
    `android.os.OplusFlashLightManager`（调用 Binder `additionald`）在 ColorOS 17 上方法体已返回固定假值/空值，已废弃。
+4. **读状态的唯一途径**：「系统场景」里那条「手电筒」条件（`ConditionKind.FLASHLIGHT`）读的就是第 1 条那个键
+   （`host/action/ConditionChecks` 的 `flashlightMatches`）—— 不注册 `TorchCallback`，也不读
+   `flashlight_available`；键不存在时按键判不出处理（两档都不成立）。
 
 ### 23.2 免打扰状态与专属通道
 

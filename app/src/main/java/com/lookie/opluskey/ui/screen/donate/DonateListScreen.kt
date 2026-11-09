@@ -166,7 +166,7 @@ private fun DonorTable(rows: List<Donor>) {
                 .border(TABLE_LINE, DividerDefaults.DividerColor, shape),
     ) {
         DonorRow(
-            name = I18n.get(Strings.DONATE_LIST_COL_NAME, "捐赠人"),
+            name = I18n.get(Strings.DONATE_LIST_COL_NAME, "昵称"),
             amount = I18n.get(Strings.DONATE_LIST_COL_AMOUNT, "金额"),
             header = true,
         )

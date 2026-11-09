@@ -84,6 +84,9 @@ object ConfigCodec {
      *       症状与 v3、`extra_clicks` 那两次**一模一样**，这次记在这里当第三次例子。
      *  35 = `ComboDto` 多了 `window_ms`（这一组自己的「按键之间的等待」，0 = 跟随公共）——
      *       第四次现场：加完字段忘了抬号，存量 v34 配置当场被判读不懂、页面顶着「配置读取失败」。
+     *  36 = **系统场景翻转**：`KeyDto` / `ComboDto` 各多了 `scenes`（一块 = 一组条件 + 三档动作），
+     *       老的 `rules` 降级为**只读迁移列**（新写的文件不再写它）。读到老文件时
+     *       `ConfigDto.mergeLegacy` 把「条件完全相同的那几条」并成一块，行为逐字不变。
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -91,7 +94,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 35
+    const val VERSION = 36
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

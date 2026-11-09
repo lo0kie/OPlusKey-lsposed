@@ -95,17 +95,30 @@ internal object ConditionProbe {
                 timeMatches(value)
             }
 
-            ConditionKind.BLUETOOTH -> {
-                bluetoothMatches(ctx, value)
+            //  这四个是「开 / 关」型系统开关：判据同一条（`switchMatches`），只有读哪个键不同。
+            //  原先一格一分支，四行一模一样的话把这一处 `when` 的复杂度顶到上限。
+            ConditionKind.BLUETOOTH, ConditionKind.CELLULAR,
+            ConditionKind.AIRPLANE, ConditionKind.FLASHLIGHT,
+            -> {
+                switchByKind(kind, ctx, value)
             }
+        }
 
-            ConditionKind.CELLULAR -> {
-                cellularMatches(ctx, value)
-            }
-
-            ConditionKind.AIRPLANE -> {
-                airplaneMatches(ctx, value)
-            }
+    /**
+     * 四个「开 / 关」型系统开关各读哪个键 —— **键名只在 `ConditionSwitchChecks` 里写一次**，
+     * 这里只负责按种类分派（不复述字符串）。
+     */
+    private fun switchByKind(
+        kind: ConditionKind,
+        ctx: Context,
+        value: String,
+    ): Boolean =
+        when (kind) {
+            ConditionKind.BLUETOOTH -> bluetoothMatches(ctx, value)
+            ConditionKind.CELLULAR -> cellularMatches(ctx, value)
+            ConditionKind.AIRPLANE -> airplaneMatches(ctx, value)
+            ConditionKind.FLASHLIGHT -> flashlightMatches(ctx, value)
+            else -> false
         }
 
     /**

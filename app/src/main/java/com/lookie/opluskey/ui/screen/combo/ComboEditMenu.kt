@@ -19,6 +19,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.comboLabel
 import com.lookie.opluskey.ui.screen.binding.openKeySettings
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
 import com.lookie.opluskey.ui.state.ComboEditState
@@ -62,9 +63,6 @@ internal fun SettingsPage.ComboEditMenu() {
                 comboMenuEntries(
                     id = id,
                     cfg = cfg,
-                    //  这一档的规则跟着**当前停在的那一页**走（0 = 短按、1 = 长按），
-                    //  与进「条件执行」时用的是同一个口径（见 `ComboEditState.page`）。
-                    gesture = if (ComboEditState.page == 0) Gesture.SINGLE else Gesture.LONG,
                     open = open,
                     actions =
                         ComboMenuActions(
@@ -231,7 +229,6 @@ private class ComboMenuActions(
 private fun SettingsPage.comboMenuEntries(
     id: String?,
     cfg: Config,
-    gesture: Gesture,
     open: Boolean,
     actions: ComboMenuActions,
 ): List<MenuEntry> =
@@ -252,7 +249,7 @@ private fun SettingsPage.comboMenuEntries(
             MenuEntry.Row(
                 title = BRANCHES_TITLE,
                 //  子标题报这一档手势的条数（只数启用中的），与编辑页里那条横幅同一份判据
-                summary = scenarioMenuSummary(combo?.rules.orEmpty().filter { it.gesture == gesture }),
+                summary = scenarioMenuSummary(combo?.scenes.orEmpty()),
                 icon = PageIcons.Scene,
                 submenu = true,
                 trailingIcon = PageIcons.EnterArrow,

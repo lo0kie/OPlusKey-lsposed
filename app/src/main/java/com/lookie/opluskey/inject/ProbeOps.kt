@@ -459,4 +459,9 @@ internal fun ProbeChannel.combo() {
 
     // 6) 同一颗按了两次 ⇒ 按最后那一次算（判定器的 `recent` 只留最后一条）
     report("同一颗按两次", "凑齐 cmb1", listOf(plus to 0L, plus to 40L, ck1 to 80L))
+
+    // 7) 三颗、**每颗之间**刚好隔一个窗口 ⇒ 仍凑齐成员多的那一档
+    //    （整串跨度 = 2 个窗口。三颗只给一个窗口时这一串会被判成不成立 —— 那正是真机上
+    //    「三颗的组合怎么按都没反应」的那条，所以这一条必须一直是「凑齐 cmb2」）
+    report("三颗 / 每颗间隔 300ms", "凑齐 cmb2", listOf(plus to 0L, ck1 to 300L, ck2 to 600L))
 }

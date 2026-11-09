@@ -55,8 +55,7 @@ import com.lookie.opluskey.ui.model.colorsOf
 import com.lookie.opluskey.ui.onDebugCommand
 import com.lookie.opluskey.ui.registerLocalReceiver
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
-import com.lookie.opluskey.ui.screen.command.branchGestureNow
-import com.lookie.opluskey.ui.screen.command.branchGestures
+import com.lookie.opluskey.ui.screen.command.sceneGesturePage
 import com.lookie.opluskey.ui.screen.home.HomeLinkSelfCheck
 import com.lookie.opluskey.ui.screen.update.UpdateDialog
 import com.lookie.opluskey.ui.screen.update.UpdateSelfCheck
@@ -463,22 +462,10 @@ private fun SettingsPage.PushResetsPagers(pagers: PagePagers) {
                 pagers.combos.scrollToPage(0)
             }
 
-            //  从手势页那条「已保存的命令」标题进来时停在**命令列表**那一格（一次性意图，
-            //  读过就清）；其余入口按草稿类型定位，不是一律回第一页：
-            // 从「按键绑定」网格长按 / 已选中再点一下某条命令进来时，
-            // `draft.load(cmd)` 已经把 `kind` 设成那条命令的类型 —— 一律回 0
-            // 的话单条 / 多条那条 tab 会停在错的档上，紧接着 `draft.kind`
-            // 还会被分页器反着覆盖回「单条」（真机反馈「长按自定义命令跳转后，
-            // 多条命令的 tab 没有对应切换」）。
-            //  从 FAB 进来时草稿刚 `reset()`（kind = SINGLE），等价于回第一页。
-            //  分叉那一档不在这个分页器里（它是独立页）：`indexOf` 给出 -1 ⇒ 落到第一页，
-            //  紧接着 `CommandTabSync` 会把 `draft.kind` 拨回单条 —— 这一页本来也只认这两档。
-            //  从「按键绑定」某一档 / 某组组合键进来时，停在**那一档**：`branchGesture` 是进页前
-            //  由那一页同步过来的（见 `BindingScreen` 与 `ComboEditMenu`）。组合键只有两页，
-            //  按档位取下标，取不到就回第一页。
-            Screen.BRANCHES -> {
-                val page = branchGestures().indexOf(branchGestureNow()).coerceAtLeast(0)
-                pagers.branches.scrollToPage(page)
+            //  场景动作页每次按**点进来的那一档**落页（点「长按」那一行进来就停在长按）——
+            //  页号由手势换算（组合键的场景块只有两档，见 `sceneGesturePage`）。
+            Screen.SCENE_BINDING -> {
+                pagers.scenes.scrollToPage(sceneGesturePage())
             }
 
             Screen.COMMANDS -> {

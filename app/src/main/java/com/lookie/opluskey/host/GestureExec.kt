@@ -261,7 +261,7 @@ internal object GestureExec {
         repeat: Boolean,
         matches: (BranchCondition) -> Boolean,
     ) {
-        if (combo.rules.any { rule -> rule.appliesTo(Gesture.LONG, matches) }) {
+        if (combo.sceneTakes(Gesture.LONG, matches)) {
             XLog.w("组合键 ${combo.id} - 松手：长按那一档命中了系统场景，这一下不执行")
             return
         }
@@ -553,7 +553,7 @@ internal object GestureExec {
         //  场景一条都不中时松手照常执行 —— 它只做「没配场景 / 场景没命中」时的补充。
         //  判据与长按那一档完全同一份，且共用同一次按压里的 `judged` 缓存（不多判一轮）。
         if (trigger == GestureTrigger.Release &&
-            keyConfig.rules.any { rule -> rule.appliesTo(Gesture.LONG, matchesCondition) }
+            keyConfig.sceneTakes(Gesture.LONG, matchesCondition)
         ) {
             XLog.w("${id.label} - 松手：长按那一档命中了系统场景，这一下不执行 ${keyConfig.longRelease.token}")
             return null

@@ -11,7 +11,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
-import com.lookie.opluskey.core.model.StateRule
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.PickerOption
@@ -34,7 +34,7 @@ import com.lookie.opluskey.ui.state.BranchDraft
  *
  * ## 一块可以有**好几条**条件（逐条都要成立）
  *
- *  数据层与判定层一直是支持的（`StateRule.conditions` 是列表、`appliesTo` 是 `all`），
+ *  数据层与判定层一直是支持的（`SceneRule.conditions` 是列表、`appliesTo` 是 `all`），
  *  缺的只是界面能指到「第几条」。所以菜单最上面多了那一组：每条一行，点哪条就在下面改哪条
  *  （`menus.condIndexAt`）。之前这里写死「一次只编辑第一条」，第二条往后既改不了也删不掉，
  *  配错了只能删整行重来。
@@ -62,7 +62,7 @@ import com.lookie.opluskey.ui.state.BranchDraft
 @Composable
 internal fun SettingsPage.BranchConditionMenu(
     draft: BranchDraft,
-    rules: List<StateRule>,
+    rules: List<SceneRule>,
     menus: BranchMenuState,
     tick: () -> Unit,
 ) {
@@ -247,7 +247,7 @@ private class BranchValueCtx(
  *    （只跳过正在改的这一条）。
  */
 private fun conditionAvailability(
-    rules: List<StateRule>,
+    rules: List<SceneRule>,
     at: Int,
     conditions: List<BranchCondition>,
     condIndex: Int,

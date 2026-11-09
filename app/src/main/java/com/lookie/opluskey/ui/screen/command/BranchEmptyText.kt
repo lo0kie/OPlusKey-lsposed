@@ -16,9 +16,6 @@ import com.lookie.opluskey.ui.SettingsPage
  */
 internal fun SettingsPage.branchEmptyText(): String {
     val template = I18n.get(Strings.COMMAND_BRANCH_EMPTY, "将执行按键绑定里的 %s")
-    //  键名那截与顶栏子标题**同一份**（[branchDefaultLabel]）：
-    //  在编组合键时它是「「侧键」+「电量 +」- 单击」，单键时是「「快捷键」- 单击」——
-    //  这里再拼一次 `editingKeyName()` 的话，组合键那一趟会写成「按键绑定里的「快捷键」」，
-    //  而那颗键根本不在这次编辑里。
-    return template.substringBefore("%s") + branchDefaultLabel() + template.substringAfter("%s", "")
+    //  翻转之后这句不再拼「键名 - 手势」：三档都在同一页里，一句话点名其中一档反而误导。
+    return template.replace("%s", "")
 }

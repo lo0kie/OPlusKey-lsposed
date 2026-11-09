@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.Screen
@@ -54,24 +55,63 @@ internal fun SettingsPage.BindingGroups(
     onCreateCommand: () -> Unit,
 ) {
     val g = target.gesture
+    //  「按键设置」那一段 —— **「场景动作」页也摆**（用户口径）：那几张卡调的是「这一档怎么判」
+    //  （单击延迟 / 忽视双击 / 长按那几项），参数是**每颗键自己的**（`KeyConfig`），
+    //  场景块只是这颗键某一档在某种条件下的取值 —— 换一个条件进去编，手感不该跟着变，
+    //  也不该换个地方才找得到。
+    //
+    //  **组合键那一页不摆前两张**：组合没有单击 / 双击那两档（`ComboKey` 上就没有这两个位），
+    //  摆出来是两张改不动的卡。长按那一档两边都有，走同一张卡（`LongPressCard`）。
+    //  组合那一页的目标不是「一颗键」，那两张卡读的是 `KeyWatchState.editing` ——
+    //  摆出来改的会是**另一颗键**的参数，比不摆更糟。
 
     // —— 按键设置：**在网格上面** ——
-    //  先说「这一档怎么判」，再挑「绑什么」。**长按那一档单键与组合共用同一张卡**
+    //  先说「这一档怎么判」，再挑「绑什么」。**长按那一档三种目标共用同一张卡**
     //  （`LongPressCard`，参数走 `LongPressParams`）；单击 / 双击只有单键有（组合没有这两档）。
     Column {
-        if (g == Gesture.SINGLE && target is BindingTarget.Key) {
+        //  单击 / 双击那两张卡读的是 **`KeyWatchState.editing`**（`KeyConfig` 自己那几个位），
+        //  所以只有「这一档确实对着某颗键」时才摆：
+        //   · 单键那一页（就是它自己）；
+        //   · 单键的场景块（那颗键）。
+        //  **组合键那条路一张都不摆** —— 组合页摆出来改的是**另一颗键**的参数；组合的场景块
+        //  同理（那一档属于一组组合，参数该在那一组的独立设置里）。长按那张卡不在这条判据里：
+        //  它按 `target.longPress` 自己取（组合读 `ComboKey`），三种目标都成立。
+        val keyScoped = target is BindingTarget.Key || (target is BindingTarget.Scene && target.comboId == null)
+
+        //  **选了「跟随默认」就把这三张卡一起压灰**（用户口径）：那一档不归这一块管
+        //  （继续往下找、最后回落到「按键绑定」里这一档），没有可调的项 ——
+        //  在最上面那些卡里拧旋钮，读起来就是「调了没用」。
+        //
+        //  灰着点一下要给出**下一步该做什么**（「先换成一个动作」），而不是解释这套判定流程 ——
+        //  用户此刻要的是「怎么让它亮起来」。
+        //
+        //  判据只对场景块成立：`Action.Follow` 只在场景那张网格里（`BRANCH_GROUPS`）可选，
+        //  单键 / 组合的绑定里从来没有这一档，`actionIn` 也就返不回它。
+        val followsDefault =
+            target is BindingTarget.Scene && target.actionIn(configState.config.value) is Action.Follow
+        val settingsEnabled = enabled && !followsDefault
+        val followHint =
+            if (followsDefault) {
+                I18n.get(Strings.BINDING_FOLLOW_NO_SETTINGS, "「跟随默认」没有可设的项，先换成一个动作")
+            } else {
+                null
+            }
+
+        if (keyScoped && g == Gesture.SINGLE) {
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
-            BindingSettingsCard(enabled)
+            BindingSettingsCard(settingsEnabled, followHint)
         }
 
-        if (g == Gesture.DOUBLE && target is BindingTarget.Key) {
+        if (keyScoped && g == Gesture.DOUBLE) {
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
-            InstantSingleCard(enabled)
+            InstantSingleCard(settingsEnabled, followHint)
         }
 
-        if (g == Gesture.LONG) {
+        //  长按那张卡对**三种目标**都成立：单键与组合各读自己那几项（`LongPressParams`），
+        //  场景块读的是这颗键的（见 `BindingTarget.Scene.longPress`，组合的场景表回 `null`）。
+        if (g == Gesture.LONG && target.longPress(configState.config.value) != null) {
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
-            LongPressCard(target, enabled)
+            LongPressCard(target, enabled, followHint)
         }
 
         BuiltInGrid(st, enabled)

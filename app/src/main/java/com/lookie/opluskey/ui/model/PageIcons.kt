@@ -1,6 +1,7 @@
 package com.lookie.opluskey.ui.model
 
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.lookie.opluskey.core.model.Gesture
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
@@ -60,8 +61,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flag
 import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
 import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
+import io.github.lyxnx.compose.ui.tablericons.outline.HandClick
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
+import io.github.lyxnx.compose.ui.tablericons.outline.HandTwoFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.Hash
 import io.github.lyxnx.compose.ui.tablericons.outline.History
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
@@ -296,6 +299,24 @@ internal object PageIcons {
      *  （[NoMatch]，`mood-empty`）—— 那里说的是「这一类东西 / 还没配」，不是「按键」。
      */
     val MenuKeyFinger: ImageVector get() = TablerIcons.Outline.HandFinger
+
+    /**
+     * 场景块里那三档动作行的行首 —— **一档一颗手势字形**（用户指定）：
+     * 单击 `hand-finger`（一根手指指点）、双击 `hand-two-fingers`（两根手指）、
+     * 长按 `hand-click`（按下那一下）。
+     *
+     *  这一列原先画的是**动作自己的字形**：三行扫下来分不出哪一行是哪一档，只剩标题里
+     *  那两个字能区分。手势是这一行的骨架 —— 换成手势字形之后，一列看下去先认出
+     *  「这一行是哪一档」，再看它右边写的是什么。
+     *
+     *  与 [MenuKeyFinger] 同形但各留一份名字：那一颗说的是「按键功能」这个去处。
+     */
+    fun gestureIcon(gesture: Gesture): ImageVector =
+        when (gesture) {
+            Gesture.SINGLE -> TablerIcons.Outline.HandFinger
+            Gesture.DOUBLE -> TablerIcons.Outline.HandTwoFingers
+            Gesture.LONG -> TablerIcons.Outline.HandClick
+        }
 
     /**
      * 首页「其他 → 更多选项」那一行的行首 —— 圈里三点（`dots-circle-horizontal`，
@@ -676,7 +697,7 @@ internal object PageIcons {
      * 网格里**非入口格**行尾那颗选中指示：没选中 —— `circle`（空心圆）。
      *
      *  这一格原先画的是 COUI 的 `RadioButton`（一个圆点），与全页那套 Tabler 线性图标不是一支笔、
-     *  摆在同行里明显两种风格。选中态见 [TileChecked]；两态之间的颜色走 `BindingScreen` 的
+     *  摆在同行里明显两种风格。选中态见 [TileChecked]；两态之间的颜色走 `BindingPagerScreen` 的
      *  `entryIndicatorColor`（本来就是 `animateColorAsState`，是渐变过去的）。
      */
     val TileUnchecked: ImageVector get() = TablerIcons.Outline.Circle
