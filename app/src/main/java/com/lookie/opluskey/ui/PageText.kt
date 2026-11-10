@@ -15,6 +15,7 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.mapActions
+import com.lookie.opluskey.ui.state.CommandForm
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
 import java.text.SimpleDateFormat
@@ -28,9 +29,13 @@ import java.util.Locale
  * （步骤里存 `cmd:<名字>`），所以改名 / 删命令只能走编辑页，别在库层面直接动名字。
  */
 internal fun SettingsPage.addCommand() {
-    val (cmd, next) = draftToLibrary() ?: return
+    //  这一下只跟**当前这一页**的表单打交道：读值、判「在编哪条」、存完清空，全都用这一个引用。
+    //  走 `draft.*` 那些捷径的话，它们在每次读写时按 `draft.kind` 重新解析 —— 分页器正在归位的
+    //  那一小段里，读出来的可能已经不是同一页了（两页是两个独立会话，见 `CommandForm`）。
+    val form = commandDraft.draft.form
+    val (cmd, next) = draftToLibrary(form) ?: return
     val name = cmd.name
-    val editingFrom = commandDraft.draft.editingName
+    val editingFrom = form.editingName
     val replaced = configState.commands.value.any { it.name == name }
     // 结果一句话（改 / 覆盖 / 新增各一条；失败由 [saveCommands] 自己报）
     val tip =
@@ -101,7 +106,10 @@ internal fun SettingsPage.addCommand() {
     // 存完**留在本页**（以前新增那条会退回「按键绑定」）：接着编下一条是常事，
     //  每存一条就被弹回去一次纯属添乱；这条命令已经在那张「自定义命令」列表里了，
     //  想看结果当场就能看到。
-    commandDraft.draft.reset()
+    //
+    //  只清**这一条所属那一页**：两页是两个独立会话，另一页里可能正编着东西
+    //  （`CommandDraft.reset` 只清当前这一页，整页归零走 `resetAll`）。
+    form.reset()
 }
 
 /**
@@ -194,19 +202,23 @@ internal fun SettingsPage.appVersionLabel(): String {
  * **单一来源**：[addCommand] 存的就是它、[commandReferenceCycle] 判的也是它 —— 两处各写一遍的话，
  * 判的与存的就不是同一件事（改了名字、挪了引用之后，环也可能跟着变）。
  *
+ * @param form 要存的**那一页**表单（默认取当前这一页）。[addCommand] 把开头取定的那一份显式递进来：
+ *   一次保存里所有读写必须落在同一页上（两页是两个独立会话，各解析一次就可能拼出跨页的命令）。
  * @return 名字为空（草稿还没填名字）时返回 `null`
  */
-internal fun SettingsPage.draftToLibrary(): Pair<Command, List<Command>>? {
-    val name = CommandLibrary.sanitizeName(commandDraft.draft.name)
+internal fun SettingsPage.draftToLibrary(form: CommandForm = commandDraft.draft.form): Pair<Command, List<Command>>? {
+    //  下面每一处读的都是 [form]（别在每处再按 `draft.kind` 解析一次 —— 两页是两个独立会话，
+    //  解析两次就可能读到两页的东西，拼出一条「单条的正文 + 多条的步骤」那种命令）
+    val name = CommandLibrary.sanitizeName(form.name)
     if (name.isEmpty()) return null
     val cmd =
-        when (commandDraft.draft.kind) {
+        when (form.kind) {
             CommandKind.SINGLE -> {
                 Command(
                     name,
                     CommandKind.SINGLE,
-                    single = commandDraft.draft.single.trim(),
-                    root = commandDraft.draft.root,
+                    single = form.single.trim(),
+                    root = form.root,
                 )
             }
 
@@ -214,8 +226,8 @@ internal fun SettingsPage.draftToLibrary(): Pair<Command, List<Command>>? {
                 Command(
                     name = name,
                     kind = CommandKind.SERIAL,
-                    steps = commandDraft.draft.steps.toList(),
-                    stepDelayMs = commandDraft.draft.stepDelayMs,
+                    steps = form.steps.toList(),
+                    stepDelayMs = form.stepDelayMs,
                 )
             }
         }
@@ -224,7 +236,7 @@ internal fun SettingsPage.draftToLibrary(): Pair<Command, List<Command>>? {
     //   侧键行为一点没变。编辑态下 `editingFrom == name` 时两个条件指同一条，去重天然成立。
     // (2) 其余命令里对旧名字的引用（多条命令的步骤 / 单条正文里的 `cmd:旧名`）也要跟着挪，
     //   否则它们指向一条已经不在库里的命令，按下去永远 NOT_FOUND。
-    val editingFrom = commandDraft.draft.editingName
+    val editingFrom = form.editingName
     val next =
         configState.commands.value
             .filterNot { it.name == name || it.name == editingFrom }

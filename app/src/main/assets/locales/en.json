@@ -288,6 +288,7 @@
   "app_picker.tag_unopenable": "Cannot open",
   "app_picker.clone_tag": "Clone",
   "app_picker.loading_apps": "Loading apps…",
+  "app_picker.loading_activities": "Loading app components…",
   "app_picker.pull_refresh": "Pull to refresh",
   "app_picker.release_refresh": "Release to refresh",
   "app_picker.refreshing": "Refreshing",

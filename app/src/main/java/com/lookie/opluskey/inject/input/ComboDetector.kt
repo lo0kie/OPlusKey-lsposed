@@ -52,12 +52,16 @@ private const val MULTI_MIN_KEYS = ComboKey.MIN_KEYS + 1
  * @param spanFor 某一档组合**整串**的容忍跨度（毫秒，= 相邻两颗的窗口 × (成员数-1)，见
  *   `Config.comboSpanFor`）—— 多成员那条路按它判「凑没凑齐」：三颗按一个窗口算的话，
  *   三根手指得几乎同时落下，真机上等于永远凑不齐。
+ * @param wider 含有这几颗键、且**成员更多**的那一档（`null` = 没有更宽的一档）—— 「两颗那一档
+ *   要不要先等三颗那一档」的判据，见 `ComboDetector.awaitWider`。与 [forCombo] 分开是因为两者
+ *   回答的是不同问题：那个答「这几颗键凑成了哪一档」，这个答「还没凑齐的更宽那一档是什么」。
  */
 internal class ComboWindows(
     val scanMs: () -> Long,
     val forCombo: (ComboKey) -> Long,
     val joins: (KeyId) -> Boolean,
     val spanFor: (ComboKey) -> Long,
+    val wider: (List<KeyId>) -> ComboKey?,
 )
 
 /**
@@ -99,14 +103,38 @@ internal class ComboWindows(
  *  不算成员（它们还得自己走单键判定）。
  *
  *  界面现在能造三颗（`ComboKey.MAX_KEYS`），四颗以上仍只对手改配置生效 —— 判定、执行、
- *  日志三处都是同一条真链路，不是旁路。
+ *  日志三处都是同一条真链路，不是旁路。判定侧这一层的判据全部**按成员集算**、不认「两颗 / 三颗」
+ *  这种数字：多成员那条从 3 颗起（[MULTI_MIN_KEYS]），「等更宽的一档」按**真子集**判，
+ *  整串跨度按成员的颗数放大 —— 四颗、五颗走的是同一条路。
  *
  * ## 组合进行中再来的按键只出一组
  *
  *  组合进行中再来的按键整条吞掉（按下 + 抬手），所以「几颗里有两组组合」也只出**先凑成的那一组**。
  *
- *  **唯一的例外是「更大的一档被这一下凑齐了」**（[upgradeTo]）：两颗的子集组合总是先成立，
- *  不让位的话三颗那一档永远轮不到 —— 那一档换成更大的、抬手时派发的是它，仍然只出一组。
+ *  **唯一的例外是「更大的一档被这一下凑齐了」**（[absorb]）：子集那一档总是先成立，
+ *  不让位的话更大的一档永远轮不到 —— 那一档换成更大的、抬手时派发的是它，仍然只出一组。
+ *  **另一条例外**是「这一组只在等更宽的一档、而成员已经松过手」（[absorb]）：那一组先收尾派发，
+ *  这一颗走正常判定 —— 否则「刚按完 A + B，紧接着单独按 A」会整颗失灵到窗口结束。
+ *
+ * ## 更宽的一档还来得及 ⇒ 先不派发
+ *
+ *  【{A,B} 与 {A,B,C} 同时配着，且 {A,B,C} 的窗口被调宽】小的一凑齐就派发，等于大那一档永远
+ *  只剩「所有手指同时落」才成立 —— 用户把大那一档的等待时间拉长，手感上却一点没变（先松手的
+ *  那颗已经把小的那一档的动作用掉了）。所以凑成之后先问一句「还有更宽的一档吗」：
+ *
+ *  · 有，且**它整串的跨度还没用完**（从最早那一颗算，[ComboWindows.spanFor]）⇒ [awaitWider]
+ *    记下这一档、把派发压到那个时刻；
+ *  · 期间来了它缺的那颗 ⇒ [absorb] 换成更大的一档（换过去之后接着等更宽的那一档，
+ *    于是 `{A,B}` ⊂ `{A,B,C}` ⊂ `{A,B,C,D}` 能一级一级往上走）；
+ *  · 到点还没凑成 ⇒ 才派发小那一档（[awaitWider] 里那一枪）；
+ *  · 期间成员还都按着 ⇒ 来的按键照老规矩吞掉；**已经松过手** ⇒ 这一组是「待派发」状态，
+ *    先派发它、再让新按下的那颗走正常判定（[absorb]）。
+ *
+ *  等多久只按更宽那一档算，**与这一档自己的窗口无关**：等的是「下一颗还来不来得及」，
+ *  而不是「这几颗算不算同时按」。
+ *
+ *  有一条**不**跟着等：长按。这一档按住超过自己的阈值就照旧派发（[scheduleLong]），
+ *  之后也不再升级 —— 长按本身就是「按住不放」的明确表态，到那一刻就不该再等下一颗。
  *
  * ## 长按阈值取组合自己的
  *
@@ -134,7 +162,7 @@ internal class ComboDetector(
      *  「成员多的赢」由 `Config.comboFor` 判。
      */
     private val bindingFor: (List<KeyId>) -> ComboKey?,
-    /** 三个「窗口 / 参与」读数 —— 由装配方接 `ConfigChannel` 那三支，见 [ComboWindows]。 */
+    /** 几支「窗口 / 参与 / 更宽那一档」的读数 —— 由装配方接 `ConfigChannel`，见 [ComboWindows]。 */
     windows: ComboWindows,
 ) {
     //  摊成几个私有字段，而不是判定路径里到处写 `windows.xxx`：调用点（`windowMs()` /
@@ -143,6 +171,7 @@ internal class ComboDetector(
     private val windowFor = windows.forCombo
     private val joinsCombo = windows.joins
     private val spanFor = windows.spanFor
+    private val widerFor = windows.wider
 
     /**
      * 一次 DOWN 的处理结果 —— 调用方据此决定「吞掉 / 延迟喂 / 立刻喂」。
@@ -202,108 +231,191 @@ internal class ComboDetector(
         /** 这一档是谁 —— 执行什么由它决定（`single` / `long` 两格）。 */
         val key: ComboKey,
         val keys: List<KeyId>,
-        /** 组合成立那一刻（连发上限从它开始量）。 */
-        val pressedAt: Long,
+        /** 这一组的两个时刻，见 [Times]。 */
+        val times: Times,
         /** 长按那一枪，抬手 / 重置时摘掉。 */
         @Volatile var shot: Runnable? = null,
         /** 已经判过「一起按住不放」。 */
         @Volatile var longFired: Boolean = false,
         /** 连发那一枪（`longRepeat` 打开时才有），抬手 / 重置时摘掉。 */
         @Volatile var repeatShot: Runnable? = null,
-    )
-
-    /**
-     * 3 颗以上的组合：窗口内按下的这一组里，是不是正好凑齐了某一档（[MULTI_MIN_KEYS] 起）。
-     *
-     *  与 [pairFor] 的分工见类注释。**跨度按成员数放大**：两颗那条判的正是「这两颗相差不超过
-     *  一个窗口」，n 颗要用同一条判据就得让整串（最早那一颗到当前这一下）不超过 (n-1) 个窗口
-     *  —— [ComboWindows.spanFor]。三颗也按一个窗口判的话，三根手指必须几乎同时落下，
-     *  真机上就是「三颗的组合怎么按都没反应」，而日志里一行都不留。
-     *  夹在中间的不相干的键不作废这一档，但它也不算成员。
-     *
-     * ## 先数、后建表
-     *
-     *  第一趟只数不建表：窗口内凑不够 3 颗就直接收工。参与**两颗**组合的键每次按下都会走到
-     *  这里（[pairFor] 没配上就是这一条），那才是常态 —— 让它每次按压分配一个列表说不过去。
-     *  最外层还有一道 `joinsCombo`：不参与任何组合的键连数都不数。
-     */
-    private fun multiFor(
-        id: KeyId,
-        now: Long,
-        window: Long,
-    ): Hit? {
-        //  不参与任何组合的键不可能是多成员组合的成员 —— 这一位比扫一遍候选便宜得多
-        if (!joinsCombo(id)) return null
-        var count = 1
-        for ((key, at) in recent.entries) {
-            if (key != id && now - at <= window) count++
-        }
-        if (count < MULTI_MIN_KEYS) return null
-        //  候选 = 这一下 + 窗口内按下过的那些（含刚松手的：顺序按下也算凑齐，见 [recent] 的注释）
-        val pool = arrayListOf(id)
-        for ((key, at) in recent.entries) {
-            if (key != id && now - at <= window) pool.add(key)
-        }
-        //  「成员多的赢」「同数按配置顺序」都在 `Config.comboFor` 里，这一层不重复判。
-        //  比 [MULTI_MIN_KEYS] 小的结果不接：那说明这是一档**两颗**的组合，本该由 [pairFor]
-        //  认出来（它带着「按下时刻最近」的挑法），走到这里还认成两颗只会挑错成员。
-        val hit = bindingFor(pool)?.takeIf { it.keys.size >= MULTI_MIN_KEYS } ?: return null
-        //  成员按**命中那一档自己的清单**取：候选里夹的别的键不算成员（它们还得自己走单键判定）
-        val members = List(hit.keys.size) { i -> pool.first { it.id == hit.keys[i] } }
-        //  间隔按**成员**里最早那一颗算（候选里可能夹着不相干的键，那是别人的按下时刻）
-        val span = now - members.minOf { recent[it] ?: now }
-        //  这一档自己的**整串跨度**复核：扫的时候按最宽的那一档扫，算不算数由它自己说了算
-        //  （不成立就整条作废，所以是 `takeIf` 而不是再补一个 `return null`）。
-        //  用 `spanFor` 而不是 `windowFor`：n 颗的容忍跨度是 (n-1) 个窗口（见函数注释）。
-        return Hit(hit, members, span).takeIf { span <= spanFor(hit) }
+    ) {
+        /**
+         * 正在等的**更宽那一档**（`null` = 没在等）—— 见 [awaitWider]。
+         *
+         *  与 `shot` / `repeatShot` 同一档：都是这一组的定时链，`cancelShots` 一起撤。
+         *  **写在类体里而不是构造参数**：它只在等的期间有意义，没有构造时赋值的需要；
+         *  而构造参数到七个会顶到 detekt 的 `LongParameterList`。
+         */
+        @Volatile
+        var waiting: Waiting? = null
     }
 
     /**
-     * 组合进行中又按下 [id] —— 这一下把**更大的一档**凑齐了就换过去，返回 `true`。
+     * 这一组的两个时刻（都取自 `elapsedRealtime`）—— 两件事的量法从一开始就不是一回事，
+     * 混用一个数会在**升级**时立刻出错（[absorb] 换的是更大的一档，而它整串的跨度
+     * 从最早那一颗算起、与「这一组什么时候成立」无关）。
      *
-     * ## 为什么必须让位
+     *  @param formed 组合成立那一刻（长按阈值的起点由 [scheduleLong] 的 `startedAt` 单独给，
+     *    连发上限与「挂住多久算异常」从这里量）
+     *  @param firstDown **最早**那一颗按下的时刻 —— 所有「整串跨度」的判断都从它算：
+     *    「更宽的那一档还来不来得及」([awaitWider])、「这一颗还能不能升上去」([absorb])。
+     *    升级时原样带过去，于是 `{A,B}` → `{A,B,C}` → `{A,B,C,D}` 这条链上等的是同一个起点。
+     */
+    private class Times(
+        val formed: Long,
+        val firstDown: Long,
+    )
+
+    /**
+     * 在等的更宽的那一档 —— 等谁、等到什么时候、那一枪。
+     *
+     *  为什么把「等到什么时候」存在这里而不是 [Combo] 上：它只在等的期间有意义，跟着 `waiting`
+     *  一起清掉最省事（清 `waiting` 就是「不再等」这一个语义）；而 `until` 只是 `ComboDetector`
+     *  的类构造参数再涨一位的话会顶到 detekt 的 `LongParameterList`。
+     */
+    private class Waiting(
+        val key: ComboKey,
+        /** 这一枪的时刻（`elapsedRealtime`）—— 更宽那一档从最早那一颗算起的整串跨度。 */
+        val until: Long,
+        val shot: Runnable,
+    )
+
+    /**
+     * 组合进行中又按下 [id] —— `true` = 这一颗归组合（调用方吞掉），`false` = 这一组已经收尾并清掉，
+     * 这一颗继续走正常判定。
+     *
+     *  三种结局：
+     *  1) **升成更大的一档**：这一颗正是更宽那一档缺的那颗 —— 换过去，抬手时派发大的那个；
+     *  2) **吞掉**：成员还都按着（用户就是在按住这一组），或者这一组没在等更宽的一档 ——
+     *     老语义「组合进行中再来的按键只出一组」；
+     *  3) **先收尾、再放行**：这一组只在[等更宽的一档][awaitWider]、而成员已经松过手 ⇒
+     *     这一组处在「待派发」状态。把它按「一起短按」派发掉，让这一颗走正常路径。
+     *     不这么办的话，`{A,B}` 凑成之后紧接着单独按 A、或者按一颗跟它无关的键，都会整颗
+     *     失灵到窗口结束 —— 而那几个键在手感上就是「刚按完组合，键坏了」。
+     *
+     *  ## 升级为什么必须让位、又为什么这样判
      *
      *  「成员多的赢」是配置侧的取法（`Config.comboFor` 的 `maxByOrNull { keys.size }`），但判定侧
-     *  按**时间**走：两颗的子集组合在第二颗按下那一刻就成立了，而三颗那一档要等第三颗。
-     *  于是 `combo != null` 那一支会把第三颗整条吞掉 —— `{A,B,C}` 这档在有 `{A,B}` 的条件下
-     *  永远轮不到。真机日志就是这么写的：`{A,B}` 同时按下 → 第三颗被吞 → 只有子集那一档响。
-     *
-     *  ## 判据与两条老规矩一致
+     *  按**时间**走：子集那一档在最后一颗按下那一刻就成立了，而更大的一档要等下一颗。不让位的话
+     *  `combo != null` 那一支会把它整条吞掉 —— 真机日志就是这么写的：`{A,B}` 同时按下 →
+     *  第三颗被吞 → 只有子集那一档响。
      *
      *  · 只在组合**还没松手**（`combo != null`）时升级：抬手之后那一档已经派发过，换不回来了；
-     *  · 跨度仍按这一档自己的整串跨度（[ComboWindows.spanFor]）：三颗不是「按着不放多久都能补」，
-     *    超出窗口的那一颗照旧只吞不认（与「顺序按下也算凑齐」同一条窗口语义）。
-     *
-     *  升级只换 `combo` 这一份状态：长按那一枪按**新的**档重排（旧的那一枪摘掉），
-     *  `consumed` 补上新成员，成员的单键状态机一并摘掉 —— 抬手时派发的就是更大那一档，
-     *  子集那一档一次都不会响。
+     *  · 跨度按这一档**从最早那一颗算起**（[Times.firstDown]，升级时原样带过去）：三颗不是
+     *    「按着不放多久都能补」，超出窗口的那一颗照旧只吞不认；
+     *  · **长按派发过就不再升**：再升会把「这一档的长按动作」与「更大那一档的动作」各执行一次 ——
+     *    一次按压两个动作。长按本身就是「按住不放」的明确表态，到那一刻就不再等下一颗了。
      */
-    private fun upgradeTo(
+    private fun absorb(
         c: Combo,
         id: KeyId,
         now: Long,
     ): Boolean {
-        val pool = c.keys + id
-        //  `bindingFor` 已经含「成员多的赢」：它返回的是这几颗键能凑成的**最大**那一档
-        val bigger =
-            bindingFor(pool)?.takeIf {
-                it.keys.size > c.keys.size && now - c.pressedAt <= spanFor(it)
-            } ?: return false
-        //  成员按 id 认回 `KeyId` 对象（`matches` 保证了它们都在 pool 里）
-        val members = bigger.keys.mapNotNull { kid -> pool.firstOrNull { it.id == kid } }
-        //  认不出的成员只可能是配置在两次按下之间换了 —— 那就别升，保持原来那一档
-        if (members.size != bigger.keys.size) return false
+        if (!c.longFired) {
+            val pool = c.keys + id
+            //  `bindingFor` 已经含「成员多的赢」：它返回的是这几颗键能凑成的**最大**那一档
+            val bigger =
+                bindingFor(pool)?.takeIf {
+                    it.keys.size > c.keys.size && now - c.times.firstDown <= spanFor(it)
+                }
+            //  成员按 id 认回 `KeyId` 对象（`matches` 保证了它们都在 pool 里）；
+            //  认不出的只可能是配置在两次按下之间换了 —— 那就别升，保持原来那一档
+            val members = bigger?.keys?.mapNotNull { kid -> pool.firstOrNull { it.id == kid } }.orEmpty()
+            if (bigger != null && members.size == bigger.keys.size) {
+                cancelShots(c)
+                val next = Combo(bigger, members, Times(formed = now, firstDown = c.times.firstDown))
+                combo = next
+                members.filterTo(consumed) { down.containsKey(it) }
+                for (k in members) resetKey(k)
+                XLog.w(
+                    "组合键：${c.keys.joinToString(" + ") { it.label }} 升级为 " +
+                        "${members.joinToString(" + ") { it.label }}（${bigger.id}，成员多的赢）",
+                )
+                scheduleLong(next, startedAt = now)
+                //  更大的那一档自己也可能还差几颗（`{A,B}` ⊂ `{A,B,C}` ⊂ `{A,B,C,D}` 这种链）—— 接着等
+                awaitWider(next, now)
+                return true
+            }
+        }
+        val waiting = c.waiting
+        //  成员还都按着 ⇒ 这一下还在这一组里，新按下的那颗不掺和；没在等更宽的一档也照老规矩吞掉
+        if (waiting == null || c.keys.all { down.containsKey(it) }) {
+            consumed += id
+            return true
+        }
+        //  这一组等不到更宽的那一档了：先派发（成员已经松过手，动作只能现在补），再放行这一颗
         cancelShots(c)
-        val next = Combo(bigger, members, pressedAt = now)
-        combo = next
-        members.filterTo(consumed) { down.containsKey(it) }
-        for (k in members) resetKey(k)
+        if (!c.longFired) {
+            XLog.w(
+                "组合键：${c.keys.joinToString(" + ") { it.label }} 短按" +
+                    "（${id.label} 按下，不再等 ${waiting.key.id}）",
+            )
+            fire(c, GestureTrigger.Click(1), repeat = false)
+        }
+        combo = null
+        return false
+    }
+
+    /**
+     * 更宽的一档还来得及凑齐吗 —— 是则**先不派发这一档**，把收尾压到它窗口结束那一刻。
+     *
+     *  判据只有一条：含有这几颗键的更大那一档（[ComboWindows.wider]），**从最早那一颗算起**
+     *  的整串跨度还没用完（[ComboWindows.spanFor]）—— 那意味着再按一颗还赶得上。用完就照旧
+     *  立刻派发（下一颗再来也来不及了，等它只是白慢）。
+     *
+     *  **成员数不设限**：判的是「这一档的成员集是不是另一档的真子集」，所以 `{A,B}` 等 `{A,B,C}`、
+     *  `{A,B,C}` 再等 `{A,B,C,D}` 走的是同一条路（升级之后 [absorb] 会再调一次本函数）。
+     *
+     *  到点那一枪的四种结局：
+     *  · 这一组已经被换掉 / 已经被收掉 ⇒ 作废；
+     *  · 长按已经派发过 ⇒ 什么都不做（收尾归抬手那条老路）；
+     *  · 成员还都按着 ⇒ 用户在按住这一组，收尾同样交回长按 / 抬手；
+     *  · 已经松过手、又没等到更宽的那一档 ⇒ 派发这一档的短按。
+     *
+     *  @param now 这一组成立的那一刻（等多久从 [Times.firstDown] 算，不是从它算）
+     */
+    private fun awaitWider(
+        c: Combo,
+        now: Long,
+    ) {
+        //  只等「真的更宽」的那一档：成员集合相同的那一档不是「还差几颗」
+        val wider = widerFor(c.keys)?.takeIf { it.keys.size > c.keys.size } ?: return
+        val until = c.times.firstDown + spanFor(wider)
+        if (until <= now) return
+        lateinit var waiting: Waiting
+        waiting =
+            Waiting(
+                wider,
+                until,
+                Runnable {
+                    try {
+                        val self = waiting
+                        //  已经被换掉 / 已经被别处收掉（抬手、重置、另一个组合）⇒ 这一枪作废
+                        if (combo !== c || c.waiting !== self) return@Runnable
+                        c.waiting = null
+                        if (c.longFired || c.keys.all { down.containsKey(it) }) return@Runnable
+                        XLog.w(
+                            "组合键：${c.keys.joinToString(" + ") { it.label }} 短按" +
+                                "（等到点也没凑成 ${self.key.id}）",
+                        )
+                        fire(c, GestureTrigger.Click(1), repeat = false)
+                        cancelShots(c)
+                        combo = null
+                    } catch (e: Throwable) {
+                        // 这一枪跑在 system_server 主线程上，抛出去就是整机崩
+                        XLog.w("组合键等宽判定失败（忽略）：${e.javaClass.simpleName}", e)
+                    }
+                },
+            )
+        c.waiting = waiting
+        handler.postDelayed(waiting.shot, (until - now).coerceAtLeast(1L))
+        // 判据级：这一行是「按了为什么还没反应」的唯一凭据（只在配了子集关系时才会出现）。
         XLog.w(
-            "组合键：${c.keys.joinToString(" + ") { it.label }} 升级为 " +
-                "${members.joinToString(" + ") { it.label }}（${bigger.id}，成员多的赢）",
+            "组合键：${c.keys.joinToString(" + ") { it.label }} 先不派发 —— " +
+                "${wider.id} 还差 ${wider.keys.size - c.keys.size} 颗，" +
+                "窗口还剩 ${until - now}ms",
         )
-        scheduleLong(next, startedAt = now)
-        return true
     }
 
     /**
@@ -326,9 +438,12 @@ internal class ComboDetector(
             val stuck =
                 stuckComboLog(
                     keys = c.keys,
-                    pressedAt = c.pressedAt,
+                    formedAt = c.times.formed,
                     now = now,
                     anyDown = c.keys.any { down.containsKey(it) },
+                    //  在等更宽的一档时成员**可以**全部松手（顺序按下也算组合，见 [awaitWider]）——
+                    //  那不是「抬手全丢」。判据合成放在被调方，这一层不添分叉。
+                    waiting = c.waiting != null,
                 )
             if (stuck != null) {
                 XLog.w(stuck)
@@ -366,13 +481,14 @@ internal class ComboDetector(
         //  **记进 [consumed]**：不记的话它没有「按下」，抬手那条 UP 会被单键判定器当成
         //  「孤立抬手」补判一次单击 —— 组合进行中又冒出第三颗键的动作。
         //
-        //  **例外是「这一下把更大的一档凑齐了」**（见 [upgradeTo]）：两颗的子集组合总是先凑齐
+        //  **例外是「这一下把更大的一档凑齐了」**（见 [absorb]）：两颗的子集组合总是先凑齐
         //  （第二颗按下那一刻就成立），不让位的话三颗那一档永远轮不到 —— 真机表现就是
         //  「三颗的组合怎么按都没反应」，而日志里只有子集那一档的行。
-        val active = combo
-        if (active != null) {
-            if (!upgradeTo(active, id, now)) consumed += id
-            return Down.TAKEN
+        //  另一条例外是「这一组只在等更宽的一档、而这一颗不属于它」（见 [absorb]）：那一组先收尾，
+        //  这一颗继续走下面的正常判定。
+        combo?.let { active ->
+            //  `absorb` 答「这一颗归组合吗」：归就吞掉；不归说明那一组刚被它收尾并清了，接着判这一颗
+            if (absorb(active, id, now)) return Down.TAKEN
         }
         val window = windowMs().takeIf { it > 0 } ?: FALLBACK_WINDOW_MS
         //  配对看 [recent]（含**刚松手**的那一颗）：顺序按下也算组合，见那张表的注释。
@@ -384,10 +500,14 @@ internal class ComboDetector(
         //
         //  先按**两颗**配（老路径）：认出来就用它，结论与顺序按下那条语义完全不变。
         //  认不出再问**多成员**：窗口内这几颗 + 当前这一下正好凑齐某一档（3 颗起）。
-        val hit = pairFor(id, PairScan(now, window, recent), bindingFor, windowFor) ?: multiFor(id, now, window)
+        val scan = PairScan(now, window, recent)
+        val hit =
+            pairFor(id, scan, bindingFor, windowFor)
+                ?: multiFor(id, scan, joinsCombo, bindingFor, spanFor)
         // 没凑成：只有「参与组合的键」才值得先等一个窗口，其余立刻交回单键
         if (hit == null) return if (joinsCombo(id)) Down.HOLD else Down.PASS
-        val c = Combo(hit.key, hit.keys, pressedAt = now)
+        //  最早那一颗的按下时刻 = 成立这一刻 - 这一组的整串间隔（`Hit.spanMs` 就是它）
+        val c = Combo(hit.key, hit.keys, Times(formed = now, firstDown = now - hit.spanMs))
         combo = c
         //  只有**还按着**的那几颗需要吞抬手：早松开的那颗不会再有 UP 到来，记进 [consumed]
         //  会一直留着 —— 下一次按它时那条正常抬手就被吞了（表现是「这颗键偶尔按了没反应」）
@@ -406,6 +526,8 @@ internal class ComboDetector(
                 "（间隔 ${hit.spanMs}ms，窗口 ${spanFor(hit.key)}ms）",
         )
         scheduleLong(c, startedAt = now)
+        //  还有更宽的一档来得及时（配了 {A,B} 又配了 {A,B,C}）⇒ 这一次先不派发，等它窗口结束
+        awaitWider(c, now)
         return Down.TAKEN
     }
 
@@ -427,6 +549,25 @@ internal class ComboDetector(
         consumed.remove(id)
         val c = combo
         if (c != null && id in c.keys) {
+            //  还在等更宽的一档、这一组本身又什么都没派发过 ⇒ 抬手也先压着，收尾交给那一枪
+            //  （见 [awaitWider]）。**长按已经派发过的不在此列**：那时等的意义已经没有了，
+            //  「松手才触发 / 松手额外动作」得照老规矩立刻办。
+            val waiting = c.waiting
+            if (waiting != null && !c.longFired) {
+                //  **取消**也不在此列：取消的含义是「这一下不算数」（窗口失焦 / 来电打断），
+                //  留着那一枪会让它到点凭空短按一次。
+                if (!short) {
+                    XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 这一按被取消 ⇒ 不再等 ${waiting.key.id}")
+                    cancelShots(c)
+                    combo = null
+                    return true
+                }
+                XLog.w(
+                    "组合键：${c.keys.joinToString(" + ") { it.label }} 先松开 ${id.label}，" +
+                        "继续等 ${waiting.key.id}",
+                )
+                return true
+            }
             // 组合结束：没判过长按 ⇒ 这一次是「一起短按」（取消的那一档不派发）
             if (short && !c.longFired) {
                 XLog.w("组合键：${c.keys.joinToString(" + ") { it.label }} 短按（先松开 ${id.label}）")
@@ -523,16 +664,21 @@ internal class ComboDetector(
     }
 
     /**
-     * 把这一组**两条定时链**都撤掉：长按那一枪、连续触发那一串。
+     * 把这一组**全部**定时链都撤掉：长按那一枪、连续触发那一串、等更宽那一档的那一枪。
      *
-     *  三处调用点（被另一组顶掉 / 抬手 / 重置）一直是成对调用这两条 —— 合成一支，
-     *  就不会出现「只撤了一条、另一条还在跑」那种只在一台机器上偶尔复现的怪现象。
+     *  三处调用点（被另一组顶掉 / 抬手 / 重置）一直是成对调用这几条 —— 合成一支，
+     *  就不会出现「只撤了一条、另一条还在跑」那种只在一台机器上偶尔复现的怪现象：
+     *  那一枪到点会按「这一组还没派发过」把动作补出来，于是同一按执行两次。
      */
     private fun cancelShots(c: Combo) {
         c.shot?.let { handler.removeCallbacks(it) }
         c.shot = null
         c.repeatShot?.let { handler.removeCallbacks(it) }
         c.repeatShot = null
+        c.waiting?.let { waiting ->
+            handler.removeCallbacks(waiting.shot)
+            c.waiting = null
+        }
     }
 
     /**
@@ -554,7 +700,7 @@ internal class ComboDetector(
                         c.repeatShot = null
                         return@Runnable
                     }
-                    if (SystemClock.elapsedRealtime() - (c.pressedAt) > COMBO_REPEAT_MAX_MS) {
+                    if (SystemClock.elapsedRealtime() - c.times.formed > COMBO_REPEAT_MAX_MS) {
                         XLog.w(
                             "组合键：${c.keys.joinToString(" + ") { it.label }} 连续触发超过" +
                                 " ${COMBO_REPEAT_MAX_MS}ms 未见抬手，强制停止（UP 可能已丢）",
@@ -598,6 +744,57 @@ private class Hit(
     val keys: List<KeyId>,
     val spanMs: Long,
 )
+
+/**
+ * 3 颗以上的组合：窗口内按下的这一组里，是不是正好凑齐了某一档（[MULTI_MIN_KEYS] 起）。
+ *
+ *  与 [pairFor] 的分工见类注释。**跨度按成员数放大**：两颗那条判的正是「这两颗相差不超过
+ *  一个窗口」，n 颗要用同一条判据就得让整串（最早那一颗到当前这一下）不超过 (n-1) 个窗口
+ *  —— [ComboWindows.spanFor]。三颗也按一个窗口判的话，三根手指必须几乎同时落下，
+ *  真机上就是「三颗的组合怎么按都没反应」，而日志里一行都不留。
+ *  夹在中间的不相干的键不作废这一档，但它也不算成员。
+ *
+ * ## 先数、后建表
+ *
+ *  第一趟只数不建表：窗口内凑不够 3 颗就直接收工。参与**两颗**组合的键每次按下都会走到
+ *  这里（[pairFor] 没配上就是这一条），那才是常态 —— 让它每次按压分配一个列表说不过去。
+ *  最外层还有一道 `joinsCombo`：不参与任何组合的键连数都不数。
+ */
+private fun multiFor(
+    id: KeyId,
+    scan: PairScan,
+    joins: (KeyId) -> Boolean,
+    bindingFor: (List<KeyId>) -> ComboKey?,
+    spanFor: (ComboKey) -> Long,
+): Hit? {
+    val now = scan.now
+    val window = scan.window
+    val recent = scan.recent
+    //  不参与任何组合的键不可能是多成员组合的成员 —— 这一位比扫一遍候选便宜得多
+    if (!joins(id)) return null
+    var count = 1
+    for ((key, at) in recent.entries) {
+        if (key != id && now - at <= window) count++
+    }
+    if (count < MULTI_MIN_KEYS) return null
+    //  候选 = 这一下 + 窗口内按下过的那些（含刚松手的：顺序按下也算凑齐，见 [recent] 的注释）
+    val pool = arrayListOf(id)
+    for ((key, at) in recent.entries) {
+        if (key != id && now - at <= window) pool.add(key)
+    }
+    //  「成员多的赢」「同数按配置顺序」都在 `Config.comboFor` 里，这一层不重复判。
+    //  比 [MULTI_MIN_KEYS] 小的结果不接：那说明这是一档**两颗**的组合，本该由 [pairFor]
+    //  认出来（它带着「按下时刻最近」的挑法），走到这里还认成两颗只会挑错成员。
+    val hit = bindingFor(pool)?.takeIf { it.keys.size >= MULTI_MIN_KEYS } ?: return null
+    //  成员按**命中那一档自己的清单**取：候选里夹的别的键不算成员（它们还得自己走单键判定）
+    val members = List(hit.keys.size) { i -> pool.first { it.id == hit.keys[i] } }
+    //  间隔按**成员**里最早那一颗算（候选里可能夹着不相干的键，那是别人的按下时刻）
+    val span = now - members.minOf { recent[it] ?: now }
+    //  这一档自己的**整串跨度**复核：扫的时候按最宽的那一档扫，算不算数由它自己说了算
+    //  （不成立就整条作废，所以是 `takeIf` 而不是再补一个 `return null`）。
+    //  用 `spanFor` 而不是 `windowFor`：n 颗的容忍跨度是 (n-1) 个窗口（见函数注释）。
+    return Hit(hit, members, span).takeIf { span <= spanFor(hit) }
+}
 
 /**
  * 在窗口内挑一颗「配得上、且按下时刻最新」的同伴 —— 配上了就是这一档组合。
@@ -662,15 +859,20 @@ private fun pairFor(
  *  而这一支只读三个数，不碰任何状态。
  *
  * @param anyDown 这几颗成员里还有按着的吗
+ * @param waiting 这一组正在等更宽的那一档 —— 那种状态下成员本来就可以全部松手（顺序按下也算组合），
+ *   只有超时那一条还有意义
+ * @param formedAt 这一组成立的时刻（超时从它量）
  */
 private fun stuckComboLog(
     keys: List<KeyId>,
-    pressedAt: Long,
+    formedAt: Long,
     now: Long,
     anyDown: Boolean,
+    waiting: Boolean,
 ): String? {
-    val tooLong = now - pressedAt > COMBO_REPEAT_MAX_MS
-    if (!tooLong && anyDown) return null
+    val tooLong = now - formedAt > COMBO_REPEAT_MAX_MS
+    //  「还按着」与「在等更宽的一档」都算正常状态 —— 两者都不成立才是抬手丢了。
+    if (!tooLong && (anyDown || waiting)) return null
     return if (tooLong) {
         "组合键：${keys.joinToString(" + ") { it.label }} 挂住超过 ${COMBO_REPEAT_MAX_MS}ms" +
             "（抬手可能已丢）⇒ 清空组合状态"

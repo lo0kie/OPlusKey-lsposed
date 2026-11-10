@@ -82,6 +82,21 @@ internal object ProbeChannel {
      */
     internal const val OP_COMBO = "combo"
 
+    /**
+     * `shortcuts` —— 按**系统身份**读某个包的快捷方式（`pkg` / `user` 两个 extra）。
+     *
+     *  存在的理由：`选择界面` 里那份清单在宿主进程读，而宿主不是桌面宿主，**钉住的那一档**拿不到
+     *  （真机实测微信 `动态 3 / 钉住 0`）。注入侧这一份跑在 `system_server`，换个身份再读一次 ——
+     *  先在**不动界面**的情况下验这一趟值不值得接进正式通道（`ShortcutRead` 是共用的那一份实现）。
+     */
+    internal const val OP_SHORTCUTS = "shortcuts"
+
+    /** `shortcuts` 的目标包名。 */
+    internal const val EXTRA_PKG = "pkg"
+
+    /** `shortcuts` 的用户（0 = 主用户，999 = 分身）。 */
+    internal const val EXTRA_USER = "user"
+
     /** `net` 的目标地址（不填就用模块仓库的 releases 接口 —— 检查更新真正要打的那个）。 */
     internal const val EXTRA_URL = "url"
 
@@ -283,6 +298,7 @@ internal object ProbeChannel {
             OP_NET -> net(intent, loader)
             OP_TOUCH -> touch()
             OP_COMBO -> combo()
+            OP_SHORTCUTS -> shortcuts(intent, loader)
             else -> XLog.w("${describe(op)}：不认识的 op")
         }
     }

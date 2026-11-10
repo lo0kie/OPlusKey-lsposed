@@ -98,7 +98,7 @@ internal fun SettingsPage.ActivityPickerScreen(
     scrollBehavior: ScrollBehavior,
 ) {
     val filter = picker.activityFilter.value
-    // null = 还在查；空清单 = 查完了、这个应用一个能外部打开的界面都没有
+    // null = 还在查（含等注入侧那趟快捷方式回包）；空清单 = 查完了、这个应用一个界面都没有
     var loaded by remember(target) { mutableStateOf<List<LaunchableActivity>?>(null) }
     var failed by remember(target) { mutableStateOf(false) }
     //  快捷方式那一节这次没查出来（见 `LoadNotes`）：`resolveSelection` 据此不把
@@ -117,13 +117,12 @@ internal fun SettingsPage.ActivityPickerScreen(
 
     val term = filter.trim()
     // 过滤与分节只在「清单 / 搜索词 / 选中项」变时算一次，**不能**留在这段组合体里直接算：
-    //  下面那个空态要读「当前顶栏高度」，而那条读会让本函数每帧都重组一遍（见 [ActivityEmptyState]
+    //  下面那个空态要读「当前顶栏高度」，而那条读会让本函数每帧都重组一遍（见 [ActivityPlaceholders]
     //  的注释）；跟着一起算就等于上下滑动时每帧跑两遍全量 filter，还会让 [PickerListData] 每帧换新
     //  实例 ⇒ [ActivityRows] 那一整棵（含列表 content lambda 与每一行的 `animateItem`）全都跳不过重组。
     val data =
         remember(loaded, term, target, selected, selectedShortcutId, shortcutsFailed) {
             val all = loaded.orEmpty()
-            val shown = shownActivities(loaded, term)
             // 「当前绑的是哪一行」一律按**完整清单**判（`all`），不按过滤后的 `shown`：
             //  搜索词只决定显示什么，不决定绑的是什么。
             val normalized = resolveSelection(selected, target, all, shortcutsFailed = shortcutsFailed)
@@ -133,7 +132,7 @@ internal fun SettingsPage.ActivityPickerScreen(
                 bound = selected != null,
                 filterActive = term.isNotEmpty(),
                 // 两节（快捷方式 / 界面）由它自己切，顺序固定「界面在前」
-                shown = shown,
+                shown = shownActivities(loaded, term),
                 // 身份兜底只在「绑定没被 [resolveSelection] 改写」时给：清单已经查出这一项真不在了
                 //  （normalized 退回「自动」）还按快捷方式写，等于给一个不存在的 id 拼 token。
                 defaultPick =
@@ -154,18 +153,25 @@ internal fun SettingsPage.ActivityPickerScreen(
     val current = picked ?: data.defaultPick
 
     Box(Modifier.fillMaxSize()) {
-        ActivityRows(
-            data = data,
-            current = current,
-            scrollBehavior = scrollBehavior,
-            searchBandDp = searchBandDp,
-            onSelect = { picked = it },
-        )
-        ActivityEmptyState(
-            visible = loaded != null && data.isEmpty,
-            // 「一条都没有」与「被搜索词筛没了」用不同的字形
-            appsEmpty = loaded.isNullOrEmpty(),
-            text = emptyText(failed, loaded, term),
+        // **拿全才铺列表**：`loaded == null` 这期间 `data` 是空清单，但 `showsAuto` 恒真 ——
+        //  铺出去就是「Activity」小节标题 + 一行「自动」，它会从整页转圈底下透出来
+        //  （`PageStatePlaceholder` 只做淡入淡出，不是不透明遮罩）。
+        //  一级页也是这么做的：`AppPickerList` 只在 `loaded != null` 时铺。
+        if (loaded != null) {
+            ActivityRows(
+                data = data,
+                current = current,
+                scrollBehavior = scrollBehavior,
+                searchBandDp = searchBandDp,
+                onSelect = { picked = it },
+            )
+        }
+        ActivityPlaceholders(
+            // **拿全才显示**（与「选择应用」页同一口径）：整趟查完 —— 含等注入侧那趟钉住的
+            //  快捷方式回包 —— 之前一律整页转圈；`loaded` 为 null 时清单是空的，铺出去只会先列一半。
+            loading = loaded == null && !failed,
+            // 空态那三样依次是：查完了吗且一条都列不出来 / 是不是「清单本身就空」（选字形）/ 那句话
+            empty = EmptySpec(loaded != null && data.isEmpty, loaded.isNullOrEmpty(), emptyText(failed, loaded, term)),
             scrollBehavior = scrollBehavior,
             searchBandDp = searchBandDp,
         )
@@ -182,7 +188,8 @@ internal fun SettingsPage.ActivityPickerScreen(
 }
 
 /**
- * 空态那一层 —— 单独一支只为一件事：把「当前顶栏高度」那条订阅**关进这一层**。
+ * 列表之外那两态（**整页转圈 / 空态**）—— 单独一支只为一件事：把「当前顶栏高度」那条订阅
+ * **关进这一层**。
  *
  *  [currentHeaderHeight] 读的是 `scrollBehavior.state.heightOffset`，而它逐帧都在变 ——
  *  在谁的作用域里读，谁就每帧重组一次。原先这句直接写在 [ActivityPickerScreen] 的组合体里，
@@ -190,34 +197,61 @@ internal fun SettingsPage.ActivityPickerScreen(
  *  重建、可见行的 `Card` + `BasicComponent` + 两个带省略号的 `Text` 重新测量。真机上表现就是
  *  「上下滑动时快捷方式与「自动」那几行明显掉帧」。
  *
- *  挪进这里之后，滚动每帧只重组这一层（空态 / 一句加载文案），列表那棵树原地不动。
+ *  挪进这里之后，滚动每帧只重组这一层（转圈 / 空态），列表那棵树原地不动。
  *
  *  判据（显不显示 / 用哪颗字形 / 那句话）全由调用点算好传进来：它们都不读滚动态，
- *  在页面体算不会跟着滚动每帧跑一遍，也不必为了省参数把它们塞成一个只有三个字段的壳。
+ *  在页面体算不会跟着滚动每帧跑一遍，也不必为了省参数把它们塞成一个只有几个字段的壳。
  *  包 `Box` 是因为 [PickListEmptyState] 要吃 `BoxScope`（它靠 `align` 定位），而本函数是
  *  `SettingsPage` 的扩展 —— 一个函数只能有一个显式接收者。
  *
- * @param visible 显不显示（`null` = 还在查时一律不铺：这一趟只有一次 binder，
- *   闪一下转圈比不铺更难受）
+ * ## 两态与「选择应用」页共用同一套组件
+ *
+ *  转圈那颗、摆位、让开顶栏那一档全走 [PickListLoadingState] / [PickListEmptyState] ——
+ *  两级页面的「正在读」长得一样是**有意**的：用户在两级之间来回跳，同一个加载态换一张脸
+ *  只会让人以为这一页卡住了。这里只换文案（[Strings.APP_PICKER_LOADING_ACTIVITIES]）。
+ *
+ * @param loading 整页转圈（**拿全才显示**：一趟查询里既有界面那一节、又有等注入侧回包的快捷方式，
+ *   整趟跑完之前不铺列表 —— 先铺出去只会先列一半、再自己多几行）
+ * @param empty 空态那三样（显不显示 / 是不是「一条都没有」/ 那句话）；`null` = 不铺
  */
 @Composable
-private fun SettingsPage.ActivityEmptyState(
-    visible: Boolean,
-    appsEmpty: Boolean,
-    text: String,
+private fun SettingsPage.ActivityPlaceholders(
+    loading: Boolean,
+    empty: EmptySpec?,
     scrollBehavior: ScrollBehavior,
     searchBandDp: Dp,
 ) {
     Box(Modifier.fillMaxSize()) {
-        PickListEmptyState(
-            visible = visible,
-            // 与「选择应用」页同一笔：空态别顶到带子底下
-            topInset = currentHeaderHeight(scrollBehavior) + searchBandDp,
-            appsEmpty = appsEmpty,
-            text = text,
+        // 与「选择应用」页同一笔：别顶到带子底下
+        val topInset = currentHeaderHeight(scrollBehavior) + searchBandDp
+        PickListLoadingState(
+            visible = loading,
+            topInset = topInset,
+            text = I18n.get(Strings.APP_PICKER_LOADING_ACTIVITIES, "正在加载应用组件…"),
         )
+        if (empty != null) {
+            PickListEmptyState(
+                visible = empty.visible,
+                topInset = topInset,
+                appsEmpty = empty.appsEmpty,
+                text = empty.text,
+            )
+        }
     }
 }
+
+/**
+ * 空态那三样 —— 单拎一支只为把 [ActivityPlaceholders] 的参数数收在 detekt 的上限内
+ * （它是 `SettingsPage` 扩展，接收者也算一格）。
+ *
+ *  三样都是「怎么说这一页」，与「怎么摆」无关；摆法全在 [ActivityPlaceholders] 里。
+ */
+private class EmptySpec(
+    val visible: Boolean,
+    /** 清单本身是空的（而不是被搜索词筛没了）—— 决定用哪颗字形。 */
+    val appsEmpty: Boolean,
+    val text: String,
+)
 
 /**
  * 右下角那颗「确定选择」—— 本页**唯一的写入入口**。

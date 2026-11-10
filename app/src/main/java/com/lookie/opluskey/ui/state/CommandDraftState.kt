@@ -57,12 +57,12 @@ internal class CommandDraftState {
     /**
      * 页面**离开栈**：草稿与 tab 镜像一起归位。
      *
-     *  与 [CommandDraft.reset] 的差别只有一处：这里连 `kind` 也清回单条。平时 `kind` 由分页器
-     *  单向同步（见那边的注释），但页面出栈之后没人再替它归位，而下次进页时
-     *  `PushResetsPagers` 要按它定位 tab —— 不清就会停在上次那一档。
+     *  与 [CommandDraft.reset] 的差别有两处：这里**两页都清**（页面没了，两份表单都是它留下的），
+     *  而且连 `kind` 也清回单条。平时 `kind` 由分页器单向同步（见那边的注释），但页面出栈之后
+     *  没人再替它归位，而下次进页时 `PushResetsPagers` 要按它定位 tab —— 不清就会停在上次那一档。
      */
     fun discard() {
-        draft.reset()
+        draft.resetAll()
         draft.kind = CommandKind.SINGLE
         stepEditing = false
         stepRows.clear()

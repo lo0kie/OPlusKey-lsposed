@@ -31,6 +31,9 @@ object Strings {
     const val APP_PICKER_EMPTY_OPENABLE = "app_picker.empty_openable"
     const val APP_PICKER_LOAD_FAILED = "app_picker.load_failed"
     const val APP_PICKER_LOADING_APPS = "app_picker.loading_apps"
+
+    /** 「选择界面」二级页那趟加载 —— 与一级页同一个加载态，只换主语（「应用组件」）。 */
+    const val APP_PICKER_LOADING_ACTIVITIES = "app_picker.loading_activities"
     const val APP_PICKER_NO_SEARCH_RESULT = "app_picker.no_search_result"
     const val APP_PICKER_NO_SEARCH_RESULT_ACTIVITY = "app_picker.no_search_result_activity"
 

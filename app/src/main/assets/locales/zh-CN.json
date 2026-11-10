@@ -288,6 +288,7 @@
   "app_picker.tag_unopenable": "不可打开",
   "app_picker.clone_tag": "分身",
   "app_picker.loading_apps": "正在加载应用…",
+  "app_picker.loading_activities": "正在加载应用组件…",
   "app_picker.pull_refresh": "下拉刷新",
   "app_picker.release_refresh": "松开刷新",
   "app_picker.refreshing": "正在刷新",

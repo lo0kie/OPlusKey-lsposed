@@ -1,7 +1,7 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
 /**
- * 一次查询的**附注** —— 目前只有一件：快捷方式那一节是不是没查出来。
+ * 一次查询的**附注** —— 目前只有两件：快捷方式那一节是不是没查出来、以及它是不是还在等回包。
  *
  *  为什么不并进返回值：清单本身是 `List<LaunchableActivity>?`（null = 整次失败），
  *  而「界面查到了、快捷方式没查到」是第三种状态。编码成哨兵行或改返回类型，会让每个
@@ -13,5 +13,6 @@ package com.lookie.opluskey.ui.screen.apppicker
  *  `MatchingDeclarationName` 只认「一个文件一个声明」那一档）。
  */
 internal class LoadNotes {
+    /** 快捷方式那一节这次**没查出来**（读不到）—— 判据同旧版，见 [resolveSelection]。 */
     var shortcutsFailed = false
 }

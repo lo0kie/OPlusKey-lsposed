@@ -496,7 +496,9 @@ private fun SettingsPage.RootSwitchCard(
  *  输入框本体是库的搜索框样式（见 `IconInputView`），一行就够：命令本身不该带换行 ——
  *  带换行的那串以前还得靠 `sh -c` 按行依次执行，语义反而更难说清；要串两步请用「多条命令」。
  *
- *  仍然只归一换行符：粘贴来的多半是 CRLF，混着两种会让存下去的值里夹进不可见的 `\r`。
+ *  **换行在写进草稿那一刻就折掉**（`CommandForm.single` → `singleLine`）：粘贴一段多行脚本时，
+ *  单行输入框拿到带换行的值会一个字都看不见（值还在）。折成 `; ` 串联既保住了「依次执行」，
+ *  也保住这一栏能看见。
  *
  * ## 被「支持的命令格式」点了一下之后
  *
@@ -568,8 +570,9 @@ private fun SettingsPage.SingleCommandField(
                 ),
             value = raw,
             onValueChange = { value ->
-                // 粘贴来的多半是 CRLF：只归一，不动内容
-                form.single = value.replace("\r\n", "\n").replace('\r', '\n')
+                //  换行/CRLF 由 `CommandForm.single` 的写入口折成一行（`singleLine`）—— 这一层
+                //  只管把值交上去：多一道处理就有了第二份判据，两边迟早走样。
+                form.single = value
             },
             errorMessage = formatError,
             // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）

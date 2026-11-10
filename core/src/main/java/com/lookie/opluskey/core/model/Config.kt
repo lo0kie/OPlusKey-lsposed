@@ -914,12 +914,15 @@ data class Config(
      *  与它的镜像 `ComboSequence`）、扫候选（[comboScanWindowMs]）、「按下先等多久」（
      *  `ConfigChannel.holdWindows`）三处都读这一支 —— 少改一处就是「扫得到、等不到」或反过来。
      *
-     *  放大倍数封顶在 [ComboKey.MAX_KEYS] - 1（两个窗口）：界面只造得出三颗，手改配置写进来的
-     *  四颗以上本来就没被验过，而这一位同时决定「参与组合的键按下后先等多久才回落单键」，
-     *  再放大只会让那几颗键白等好几秒。
+     *  放大倍数封顶在 [ComboKey.MAX_JUDGE_KEYS] - 1 —— 那正是判定侧认的成员上限，多出来的倍数
+     *  没有意义（成员数本身就到不了）。**别再按 [ComboKey.MAX_KEYS] 封**：那个是界面与收集那一侧
+     *  的上限（三颗），拿它封会把四颗以上的整串跨度压成两个窗口，那几档于是在多成员那条路上
+     *  永远凑不齐 —— 而表现与「这一档没配」完全一样，日志里只有「间隔超出窗口」那一行。
+     *  这一位同时决定「参与组合的键按下后先等多久才回落单键」，所以极端的手改配置（九颗 + 1s 窗口）
+     *  确实会让那几颗键等上几秒 —— 那是配置写出来的，不是判定算错的。
      */
     fun comboSpanFor(combo: ComboKey): Int {
-        val gaps = (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_KEYS - 1)
+        val gaps = (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_JUDGE_KEYS - 1)
         return comboWindowFor(combo) * gaps
     }
 
@@ -1040,6 +1043,25 @@ data class Config(
      *  再按短按 / 长按取 [ComboKey.actionOf]。接线不在此刻。
      */
     fun comboFor(down: Set<String>): ComboKey? = combos.filter { it.isUsable && it.matches(down) }.maxByOrNull { it.keys.size }
+
+    /**
+     * 含有 [base] 这几颗键、且**成员更多**的那一档（`null` = 没有更宽的一档）。
+     *
+     *  这是「更宽的那一档还来不来得及」那道等待的判据（`ComboDetector.awaitWider`）：小的一档凑成
+     *  之后要先问一句「还有更大的吗」，否则后者永远只剩「所有手指同时落」才成立 —— 小的一档在
+     *  松手那一刻就派发了。四颗以上的链同理（换过去之后再问一次），判据里没有「两颗 / 三颗」
+     *  这种数字，全按**真子集**算。
+     *
+     *  只看 [liveCombos]（成员键都还接管着的那些）：成员里有一颗被停用的一档永远凑不齐，
+     *  为它等一个窗口只是让更小那一档白慢一拍。成员数不多于 [base] 的不算「更宽」。
+     *
+     *  参数收**键本身**而不是 id 集合：调用点在按键判定链上（`inject/input`），每按压一次都要过，
+     *  在那里把 id 收进一个 `HashSet` 等于每次按压多一次分配（`tools/audit-perf.py` 的硬判据）。
+     */
+    fun widerComboOf(base: List<KeyId>): ComboKey? =
+        liveCombos()
+            .filter { c -> c.keys.size > base.size && base.all { k -> k.id in c.keys } }
+            .maxByOrNull { it.keys.size }
 
     /**
      * 这一档组合**现在跑不起来**吗 —— 自己关着，或**成员里任一键被停用**。

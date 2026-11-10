@@ -220,6 +220,13 @@ internal fun SettingsPage.AppPickerScreen(
     scrollBehavior: ScrollBehavior,
 ) {
     val ui = rememberAppPickerUiState()
+    //  **进页先回加载态**（用户口径：拿全才显示）：`ui` 是页面级的（`appPickerUi` 跨进页保留），
+    //  `loaded` 里还留着上一次那份清单 —— 不清的话再进来会先看到旧列表，既不新、也不是「等回来才显示」。
+    //  下拉刷新不经过这里（它只 `refreshTick++`），所以刷新时列表不会被抹掉。
+    LaunchedEffect(Unit) {
+        ui.loaded = null
+        ui.failed = false
+    }
     AppListLoader(ui)
     SelectionPrune(ui)
 
@@ -284,6 +291,7 @@ private fun SettingsPage.AppPickerPlaceholders(
         PickListLoadingState(
             visible = ui.loaded == null && !ui.failed,
             topInset = topInset,
+            text = I18n.get(Strings.APP_PICKER_LOADING_APPS, "正在加载应用…"),
         )
         PickListFailedState(
             visible = ui.loaded == null && ui.failed,
@@ -304,8 +312,9 @@ private fun SettingsPage.AppPickerPlaceholders(
  *  `stopApp` 没进取法，它拿到的仍是「只有启动图标的那批」，于是要停那些没有图标的应用时
  *  清单里压根没有它们。
  *
- *  现在清单**一次取全**，两个开关纯过滤（见 [AppPickerUiState.shown]）。这一段只剩三件事：
- *  铺缓存 → 查一遍 → 覆盖。
+ *  现在清单**一次取全**，两个开关纯过滤（见 [AppPickerUiState.shown]）。这一段只剩两件事：
+ *  查一遍 → 覆盖（**不再先铺缓存**：拿全才显示，之前一律加载态 —— 见下面的注释）。
+ *  查的那一遍分两档交回来：默认档（有启动图标的 + 模块 + 分身）先上屏，其余在后台接着算。
  *
  *  代价原本在「全量取法要几百个 label + 逐包问入口」，现在入口那半已经换成一次问全机
  *  （见 `AppEntry.launchablePackages`），整段仍在 IO 上跑，主线程一行都没有。
@@ -316,19 +325,26 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
         //  重查之前先把上一次的失败摘掉：加载态的判据要求 `!failed`（见 `AppPickerChrome`），
         //  不清的话重试时界面还挂着「查询失败」，连转圈都不出现 —— 看起来像按了没反应。
         ui.failed = false
-        // 首帧先铺上一份缓存：退出再进时立刻有内容可画。下面照样重查并覆盖它，
-        //  新装 / 卸载的应用不会因为这份缓存而看不见。
+        //  **拿全才显示，之前一律加载态**（用户口径）：这里不再先把缓存铺上去。
+        //  先铺旧清单再换新的，会先闪一下上一次的内容，而那时的行与这一趟的过滤还可能对不上；
+        //  缓存现在只当「这一趟查失败」时的兜底（见下面 `fresh == null` 那一支）。
         val cached = picker.cachedApps.value
-        if (ui.loaded == null && cached != null) {
-            ui.loaded = cached
-        }
         // 整段查询都在后台调度器上，一行都不许落在主线程：里面有 `getInstalledApplications`、
         // 三次 bulk 意图查询与每个包的 label 加载，全是阻塞式的。用 `IO` 而非 `Default`：这些活
         // 是 IO 型，而 `Default` 是按 CPU 核数限流的共享池，压满它会拖住别的 Default 任务
         // （转场、各页动画）。
         //  图标不在这一轮：它是按行按需取的（见 [AppIcon]）。
-        XLog.w("选择应用页：取列表（先用缓存 ${cached?.size ?: 0} 条）")
-        val fresh = withContext(Dispatchers.IO) { loadLaunchableApps(context) }
+        XLog.w("选择应用页：取列表（缓存 ${cached?.size ?: 0} 条，只作失败兜底）")
+        // **默认档先到就先上屏**：关着「显示系统应用」时，有启动图标的那批 + 模块 + 分身
+        // 就是页面上要显示的全部，剩下几百个没有图标的应用（各自要 `loadLabel` + 罗马化）
+        // 在后台接着算。回调里切回主线程再写状态，**顺序确定**：先上屏、再算其余，
+        // 不会被后到的全量盖回加载态。
+        val fresh =
+            withContext(Dispatchers.IO) {
+                loadLaunchableApps(context) { tier ->
+                    withContext(Dispatchers.Main) { ui.loaded = tier }
+                }
+            }
         // 查失败（null）不覆盖缓存，也不把当前列表打回空态：那是「这次没查到」，
         //  不是「没有应用可挑」。缓存里那份仍然可用，留着比清空强；
         //  真要一份空清单，[loadLaunchableApps] 会正常返回 emptyList()。

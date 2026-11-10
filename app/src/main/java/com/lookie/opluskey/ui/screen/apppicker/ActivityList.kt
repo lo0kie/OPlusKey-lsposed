@@ -33,7 +33,7 @@ import com.lookie.opluskey.ui.model.LaunchableActivity
  * @return 查到的清单；**查失败返回 null**（不是空清单）。空清单是一份有效结论
  *   （「这个应用确实没有能外部打开的界面」），拿它去覆盖缓存会把上一次的好清单抹掉。
  */
-internal fun SettingsPage.loadActivities(
+internal suspend fun SettingsPage.loadActivities(
     target: String,
     notes: LoadNotes? = null,
 ): List<LaunchableActivity>? =
@@ -48,7 +48,7 @@ internal fun SettingsPage.loadActivities(
     }
 
 /** [loadActivities] 的本体 —— 不包异常，`null` / 空清单的语义见那边。 */
-private fun SettingsPage.loadActivitiesUnguarded(
+private suspend fun SettingsPage.loadActivitiesUnguarded(
     target: String,
     notes: LoadNotes?,
 ): List<LaunchableActivity>? {
@@ -100,6 +100,9 @@ private fun SettingsPage.loadActivitiesUnguarded(
     // 快捷方式（长按桌面图标那几个）另起一节 —— 它们不是界面，名字也由应用自己给（多半是中文）。
     //  `null` = 这一节没查到（第三种状态，见 [LoadNotes]）：页面据此**不把**已绑的
     //  `appshortcut:` 降级成 `app:`（见 `resolveSelection`）。
+    //
+    //  这一趟里还夹着一次跨进程往返（桌面钉住的那几条只有注入侧读得到，见 `ShortcutPull`），
+    //  所以整段比「只查界面」慢几十到几百毫秒 —— 页面那边在 `loaded == null` 期间铺整页转圈。
     val shortcuts = shortcutsOf(pkg, userId, query.romanizer)
     if (shortcuts == null) notes?.shortcutsFailed = true
     XLog.w(
@@ -118,68 +121,6 @@ private fun SettingsPage.loadActivitiesUnguarded(
         XLog.w("界面清单：${clash.size} 个目标同时出现在快捷方式与界面两节（已都保留）：${clash.joinToString()}")
     }
     return merged
-}
-
-/**
- * 这个应用的**快捷方式** —— 走 `LauncherApps.getShortcuts`（不是 `ShortcutManager`：那个只看得见
- * **自己这个包**的快捷方式）。
- *
- *  权限：系统侧那道闸是 `hasShortcutHostPermission`，非桌面应用要靠 `ACCESS_SHORTCUTS`
- *  （宿主声明并已 grant，真机实测过）。拿不到就**这一节一条不列**并记一行 `w` —— 不是「这个应用没有」，
- *  是「我们读不到」，两件事别混。
- *
- *  @return 查不到（应用一个都没注册）返回**空清单**（有效结论）；读不到返回 **`null`**
- *    —— 后者要能区分出来，否则页面会把「这次没查到」当成「那一项已经没了」，
- *    把用户绑的 `appshortcut:` 静默降级成 `app:`。
- */
-private fun SettingsPage.shortcutsOf(
-    pkg: String,
-    userId: Int,
-    romanizer: Transliterator?,
-): List<LaunchableActivity>? {
-    val launcherApps =
-        try {
-            context.getSystemService(android.content.pm.LauncherApps::class.java)
-        } catch (e: Throwable) {
-            XLog.w("取 LauncherApps 失败", e)
-            null
-        } ?: return null
-    val query =
-        android.content.pm.LauncherApps
-            .ShortcutQuery()
-            .setPackage(pkg)
-            .setQueryFlags(
-                android.content.pm.LauncherApps.ShortcutQuery.FLAG_MATCH_DYNAMIC or
-                    android.content.pm.LauncherApps.ShortcutQuery.FLAG_MATCH_MANIFEST or
-                    android.content.pm.LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED,
-            )
-    val shortcuts =
-        try {
-            launcherApps.getShortcuts(query, AppCloneCatalog.handleOf(userId)).orEmpty()
-        } catch (e: Throwable) {
-            XLog.w("查快捷方式失败：$pkg（user=$userId，宿主要持有 ACCESS_SHORTCUTS）", e)
-            return null
-        }
-    return shortcuts
-        .map { info ->
-            // 本 SDK 里 `getId()` 非空，直接取（旧版本标的是可空，真为空的快捷方式本来也起不来）
-            val id = info.id
-            val label =
-                info.shortLabel.toString().takeIf { it.isNotBlank() }
-                    ?: info.longLabel.toString().takeIf { it.isNotBlank() }
-                    ?: id
-            LaunchableActivity(
-                // 与界面那几行同一套目标写法：`包名/id|名字`。`/` 后面是 id 不是类名，
-                // 靠 `shortcutId` 区分，写回时走 `appshortcut:` 那一档。
-                target = AppTarget.format("$pkg/$id", userId),
-                name = "$pkg/$id",
-                label = label,
-                // 小字放 id：快捷方式之间就靠它区分（名字可能重）
-                summary = id,
-                sortKey = sortKeyOf(label, romanizer),
-                shortcutId = id,
-            )
-        }.sortedBy { it.sortKey }
 }
 
 /**

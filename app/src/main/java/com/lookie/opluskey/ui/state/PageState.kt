@@ -23,7 +23,22 @@ internal class CommandForm(
     val kind: CommandKind,
 ) {
     var name by mutableStateOf("")
-    var single by mutableStateOf("")
+    private var singleText by mutableStateOf("")
+
+    /**
+     * 单条命令的正文 —— **写进来的一律折成一行**（[singleLine]）。
+     *
+     *  这一道闸是这一栏「看不见文字」的根治点：页面那栏是**单行**输入框，带换行的值进去之后
+     *  单行文本节点会把可见区滚到光标所在的那一屏之后（光标落在被裁掉的那几行上）—— 框里
+     *  一个字都看不见，而值确实还在。折在**写入口**而不是各个调用点：粘贴、全屏编辑写回、
+     *  载入老配置三条路都从这里过，谁都不用记得折一次。
+     */
+    var single: String
+        get() = singleText
+        set(value) {
+            singleText = singleLine(value)
+        }
+
     val steps = mutableStateListOf<String>()
 
     /**
@@ -77,19 +92,115 @@ internal class CommandForm(
         loaded = null
     }
 
+    /**
+     * 这一页有没有**改过、还没保存**的东西 —— 与它自己那份 [loaded] 快照逐项比。
+     *
+     *  两页各问各的：问「要不要放弃未保存的改动」时，判的必须是**将被覆盖的那一页**
+     *  （载入一条命令只覆盖它自己那一页，见 `SettingsPage.loadDraft`）—— 拿当前停着的那一页判，
+     *  就会出现「问了、确认了，却一点没丢」（那是另一页的内容）或者反过来把这一页的输入无提示吞掉。
+     *
+     *  新写一条（没有 [loaded] 快照）看 [hasContent]：只用这个当判据时，「点开一条已保存的命令
+     *  看一眼、原样返回」也会挨一句「放弃未保存的命令」—— 那句话是假的。
+     */
+    val dirty: Boolean
+        get() {
+            val base = loaded ?: return hasContent
+            return when (kind) {
+                CommandKind.SINGLE -> name != base.name || single != base.single || root != base.root
+                CommandKind.SERIAL -> name != base.name || stepDelayMs != base.stepDelayMs || steps.toList() != base.steps
+            }
+        }
+
     /** 把已保存的 [cmd] 灌进这一页，进入编辑态。 */
     fun load(cmd: Command) {
         name = cmd.name
+        //  走 setter：带换行的老配置在这里折成一行（否则这一栏一打开就是空的）
         single = cmd.single
         steps.clear()
         steps.addAll(cmd.steps)
         stepDelayMs = cmd.stepDelayMs
         root = cmd.root
         editingName = cmd.name
-        // 快照按**载入进来那一份**记：之后只改表单不动它，[CommandDraft.dirty] 就是「与它比有没有变」
-        loaded = cmd
+        // 快照按**折过之后**那份记：只改表单不动它，[CommandDraft.dirty] 就是「与它比有没有变」——
+        //  记原文的话，打开一条带换行的老命令会立刻被判成「改过」，退出时白问一句。
+        loaded = cmd.copy(single = single)
     }
 }
+
+/**
+ * 命令正文的**单行形态** —— 带换行的折成一行，没换行的原样返回。
+ *
+ * ## 为什么要折
+ *
+ *  页面那一栏是单行输入框（库的 `InputField`），带换行的值在里面**一个字都看不见**：
+ *  单行文本节点把 `\n` 当硬换行、`maxLines = 1` 又把后几行裁掉，而可见区是跟着光标走的
+ *  —— 光标在末尾（被裁掉的那一行），整块可见区就滚到了正文之后。用户看到的是「框是空的」，
+ *  存下去的值却完好。
+ *
+ *  而「命令正文是单行」本来就是这一页的口径（要串几步请用「多条命令」），所以换行在写进草稿
+ *  那一刻就折掉：粘贴一段脚本、或者在带换行的老配置上改一个字，都不会再出现那个空格子。
+ *
+ * ## 怎么折
+ *
+ *  · 先归一 CRLF / CR；逐行去首尾空白、**丢掉空行**（`a` `空行` `b` 折出来不能是 `a; ; b`
+ *    —— 那是语法错误）；
+ *  · **整行的注释丢掉**（去空白后以 `#` 开头，含 `#!` 那行）：折成一行之后 `#` 会把**后面所有行**
+ *    都变成注释 —— 一行注释就能让半条命令静默失效，那是比看不见字更糟的一种「看起来正常」；
+ *    行内注释（`echo a # b`）没有处理：要分清它，得先做一遍引号解析，那是另一个体量的东西；
+ *  · 两行之间补 `; `：换行的语义就是「依次执行」，`;` 是它最短的对应物；
+ *  · 上一行末尾已经是 `&&` / `||` / `|` / `;` / `:` / `=` / `(` 时只补一个空格 ——
+ *    这些记号**等着右边的操作数**，再插一个 `;` 就是 `a &&; b` 那种语法错误。
+ *    `shell:` 单独占一行（从聊天里连前缀一起粘过来就是这种形状）也靠这一条接上；
+ *  · 行尾的反斜杠是「连行」，把反斜杠去掉、直接补一个空格（它本来就把两行连成一条命令）。
+ *
+ * ## 为什么没换行要原样返回
+ *
+ *  逐行 trim 会把**正在输入的空格**吃掉（`echo ` 的尾空格），那等于让这一栏敲不出参数间隔。
+ *  只在真的有换行时才动它，正常打字一个字符都不碰。
+ */
+internal fun singleLine(raw: String): String {
+    if (!raw.contains('\n') && !raw.contains('\r')) return raw
+    val lines =
+        raw
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .toList()
+    val out = StringBuilder(raw.length)
+    lines.forEachIndexed { i, line ->
+        if (i > 0) {
+            val prev = lines[i - 1]
+            when {
+                prev.endsWith("\\") -> {
+                    //  连行：把上一行末尾那个反斜杠（连同它前面的空白）摘掉，两段直接接上 ——
+                    //  反斜杠后面紧跟一个空格，字符串里就会多出一个空格
+                    out.setLength(out.length - 1)
+                    while (out.isNotEmpty() && out[out.length - 1] == ' ') out.setLength(out.length - 1)
+                    out.append(' ')
+                }
+
+                JOIN_WITH_SPACE.any { prev.endsWith(it) } -> {
+                    out.append(' ')
+                }
+
+                else -> {
+                    out.append("; ")
+                }
+            }
+        }
+        out.append(line)
+    }
+    return out.toString()
+}
+
+/**
+ * 行尾是这几个记号时，折行只补空格、不补 `;` —— 它们都等着右边的操作数。
+ *
+ *  `:` 收的是 `shell:` / `cmd:` / `keyevent:` 这些前缀（从聊天里粘脚本时前缀常常单独一行）。
+ */
+private val JOIN_WITH_SPACE = listOf("&&", "||", "|", ";", ":", "=", "(")
 
 /**
  * 「自定义命令」页正在编辑的那条命令（草稿）—— **两页各一份表单**（[singleForm] / [serialForm]）。
@@ -158,40 +269,39 @@ internal class CommandDraft {
         get() = form.hasContent
 
     /**
-     * 有没有**改过、还没保存**的东西 —— 退出「自定义命令」页要不要问那一句，判据就是它。
+     * 当前这一页有没有改过还没保存的东西 —— [CommandForm.dirty] 的快捷方式。
      *
-     *  编辑一条已保存的命令时与**载入时那份快照**逐项比（一字未改不算），新写一条则看 [hasContent]。
-     *  不用 [hasContent] 当这个判据：退出时每次返回都过一遍，「点开一条已保存的命令看一眼、
-     *  原样返回」也会挨一句「放弃未保存的命令」——那句话是假的。
-     *
-     *  **只看当前这一页**：另一页写过什么、载入过什么，都不该在这一页退出时挨一句警告 ——
-     *  那是它的东西（见 [CommandForm]）。
+     *  只看当前这一页：另一页写过什么、载入过什么，都不该在这一页退出时挨一句警告。
+     *  要问**某一类**那一页（载入一条命令之前），用 `formOf(kind).dirty`。
      */
     val dirty: Boolean
-        get() {
-            val form = form
-            val base = form.loaded ?: return form.hasContent
-            return when (form.kind) {
-                CommandKind.SINGLE -> {
-                    form.name != base.name || form.single != base.single || form.root != base.root
-                }
-
-                CommandKind.SERIAL -> {
-                    form.name != base.name || form.stepDelayMs != base.stepDelayMs || form.steps.toList() != base.steps
-                }
-            }
-        }
+        get() = form.dirty
 
     /**
-     * 保存成功、或从菜单重新进来时清空**两页**。
+     * 清空**当前这一页**的表单 —— 另一页原样不动。
      *
-     *  注意：**不碰 [kind]**：`kind` 是「pager 停在哪一页」的镜像，由
-     *  `CommandScreen` 里那条 `snapshotFlow { currentPage }` **单向**同步 —— 在这里强设成
-     *  `SINGLE` 会与 pager 打架：停在「多条」页保存完一条，`kind` 已经变成单条而 pager 还在
-     *  多条 ⇒ 这一页接下来新增的步骤会按**单条**分支保存（步骤静默丢掉），直到用户手动切一次
-     *  tab 才自愈。归位交给 pager：它是这一份状态的唯一来源。
+     *  两页是两个**互不相干**的编辑会话：存完一条、清空一栏、从别处新开一条，动的都只是它自己
+     *  那一页。两页一起清会无提示吞掉另一页正在写的内容（「在多条页编了一半，切到单条页存一条，
+     *  回来发现多条页空了」就是这么来的）。
+     *
+     *  整页归零那一档（页面出栈）走 [resetAll]。
+     *
+     *  **不碰 [kind]**：`kind` 是「pager 停在哪一页」的镜像，由 `CommandScreen` 里那条
+     *  `snapshotFlow { currentPage }` **单向**同步 —— 在这里强设成 `SINGLE` 会与 pager 打架：
+     *  停在「多条」页保存完一条，`kind` 已经变成单条而 pager 还在多条 ⇒ 这一页接下来新增的步骤
+     *  会按**单条**分支保存（步骤静默丢掉），直到用户手动切一次 tab 才自愈。归位交给 pager。
      */
     fun reset() {
+        form.reset()
+    }
+
+    /**
+     * **两页一起清** —— 只有「这一页整个出栈」用（`CommandDraftState.discard`）。
+     *
+     *  与 [reset] 分开而不是留一个 `both: Boolean` 参数：两处的意图相反，参数化之后每个调用点
+     *  都要读一遍实参才知道它清了几页 —— 而这一处踩过的正是「存完一条，顺手把另一页也清了」。
+     */
+    fun resetAll() {
         singleForm.reset()
         serialForm.reset()
     }

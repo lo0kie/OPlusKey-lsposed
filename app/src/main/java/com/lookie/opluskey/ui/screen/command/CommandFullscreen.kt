@@ -66,12 +66,15 @@ private val EDITOR_INSIDE = DpSize(12.dp, 8.dp)
  *  与页面那个输入框共用同一份草稿，所以写回之后页面那边立刻跟着变。
  *  `remember(show)` 保证每次打开都从草稿现取：上一次改到一半关掉，再打开不该还挂着那半截。
  *
- * ## 多行与上限
+ * ## 多行显示、单行落盘
  *
- *  命令正文本来就允许多行（`shell:` 那段可以带换行），所以 `singleLine = false`。
+ *  这一块**能显示多行**（`singleLine = false`），因为它要装下一条很长的命令 —— 页面那一栏只有
+ *  一行，长命令在那里只能左右蹭着看。但**落盘的值是单行**：确定时经 `CommandForm.single` 的写入口
+ *  折成一行（`singleLine`），换行折成 `; ` 串联。页面那栏是单行输入框，收到带换行的值会**一个字
+ *  都看不见**（值还在）—— 折在这一处，两边看到的就是同一个东西。
+ *
  *  长度上限仍走 [MAX_SINGLE_LENGTH]：库的 `maxCount` 撤了（计数器挪去标题行），
  *  截断改在 `onValueChange` 里做，计数器与真正写回的值才不会对不上。
- *  粘贴来的 CRLF 在**写回那一刻**归一成 LF —— 与页面输入框的归一规则同一条。
  *
  * ## 输入框就交给库
  *
@@ -113,7 +116,9 @@ internal fun SettingsPage.CommandFullscreenDialog(
             DialogButtonRow(
                 onNegative = onDismiss,
                 onPositive = {
-                    commandDraft.draft.single = text.text.replace("\r\n", "\n")
+                    //  折行 / CRLF 归一都归 `CommandForm.single` 的写入口（见类注释）——
+                    //  这里交原文即可
+                    commandDraft.draft.single = text.text
                     onDismiss()
                 },
             )

@@ -58,6 +58,9 @@ internal sealed interface ComboGather {
  *     最后一条，它的 `down` 认出「上一次的 UP 丢了」时还会整块重置重算）；
  *  4. 几档同时可能时，**成员多的赢**（与 `Config.comboFor` 的 `maxByOrNull { keys.size }` 一致）；
  *     成员数相同取先凑齐的那一档，再相同按 id 定序 —— 不靠列表顺序，配置重排不该改结果。
+ *  5. 这一层答的是「最终凑成哪一档」，**不含时序**：判定器那边「已经凑成小的一档、但更宽的一档
+ *     还来不及时先不派发」（见 `ComboDetector.awaitWider`）是何时**派发**的规则 —— 更宽那一档
+ *     到最后也没凑齐时，结果仍是这里答的那一档。
  */
 internal object ComboSequence {
     /**
@@ -103,8 +106,9 @@ internal object ComboSequence {
         val first = hits.minOfOrNull { it.atMs } ?: return null
         val last = hits.maxOf { it.atMs }
         //  窗口按最后一下算：每一颗与最后那一颗相差不超过这一档的**整串跨度**（判据 2）——
-        //  `collectMs` 是相邻两颗的量，n 颗要 (n-1) 个窗口。封顶与 `Config.comboSpanFor` 同一条。
-        val gaps = (plan.size - 1).coerceIn(1, ComboKey.MAX_KEYS - 1)
+        //  `collectMs` 是相邻两颗的量，n 颗要 (n-1) 个窗口。封顶与 `Config.comboSpanFor` 同一条
+        //  （= 判定侧认的成员上限，不是界面造得出的三颗）。
+        val gaps = (plan.size - 1).coerceIn(1, ComboKey.MAX_JUDGE_KEYS - 1)
         if (last - first > plan.collectMs * gaps) return null
         return if (hits.size >= plan.size) {
             ComboGather.Gathered(plan, last)

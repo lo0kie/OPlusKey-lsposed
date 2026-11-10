@@ -132,6 +132,9 @@ internal fun SettingsPage.BindingPagerScreen(
      * 这里必须 reset：`goBack` 只在草稿脏时才 reset，「点开一条已保存的命令看一眼、原样返回」
      * 那种不脏的退页不会清 `editingName`，于是下次点这颗 FAB 进来表单还挂着「修改命令」。
      * 「进编辑」那条路（网格里已选中的那一格再点一次）走的是 `draft.load`，不经过这里。
+     *
+     *  清的是**落下那一页**（`draft.kind`，分页器按它定位 tab），另一页不动 —— 两页是两个独立
+     *  会话，把另一页也清等于无提示吞掉那边正编着的东西（整页归零只在出栈时发生）。
      */
     val navigateToCommands: () -> Unit = {
         commandDraft.draft.reset()

@@ -115,6 +115,10 @@ internal class SideKeyInterceptor(
                     //  多成员那一档的**整串跨度**（相邻两颗的窗口 × (成员数-1)）—— 三颗按一个
                     //  窗口复核等于要求三根手指同时落，真机上永远凑不齐
                     spanFor = { combo -> ConfigChannel.spanFor(combo) },
+                    //  凑成之后还有更宽的一档来得及时（配了 {A,B} 又配了 {A,B,C}）⇒ 先不派发，
+                    //  等它窗口结束（见 `ComboDetector.awaitWider`）。判据在 `Config.widerComboOf`
+                    //  一处（与 `comboFor` 同一个家），这一层只把键 id 递进去。
+                    wider = { keys -> ConfigChannel.config.widerComboOf(keys) },
                     //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
                     joins = { id -> ConfigChannel.joinsCombo(id) },
                 ),

@@ -57,16 +57,25 @@ internal fun BoxScope.PickListEmptyState(
     )
 }
 
-/** 列表还在查 —— ColorOS 默认那颗转圈 + 一句话。 */
+/**
+ * 列表还在查 —— ColorOS 默认那颗转圈 + 一句话。
+ *
+ *  两级页面（「选择应用」/「选择界面」）共用这一支：转圈那颗、摆位、让开顶栏那一档全在这里，
+ *  只有那句话各说各的（一级说「应用」、二级说「应用组件」）—— 用户在两级之间来回跳，
+ *  同一个加载态换一张脸只会让人以为这一页卡住了。
+ *
+ *  所以 [text] 不给默认值：默认值会让新调用点悄悄拿到另一个页面的文案。
+ */
 @Composable
 internal fun BoxScope.PickListLoadingState(
     visible: Boolean,
     topInset: Dp,
+    text: String,
 ) {
     PageStatePlaceholder(
         visible = visible,
         topInset = topInset,
-        text = I18n.get(Strings.APP_PICKER_LOADING_APPS, "正在加载应用…"),
+        text = text,
         //  转圈本身收在 [PageStateSpinner]（「选择界面」页也用同一颗 —— 两处各写一遍时
         //  那三个数的缩放迟早有一处只换了 `size`，见那边的注释）。
         glyph = { tint -> PageStateSpinner(tint) },

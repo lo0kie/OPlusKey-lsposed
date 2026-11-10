@@ -108,12 +108,14 @@ internal fun SettingsPage.CommandMenuPopup(
                     //  已经在编这一条、而草稿又**没动过** ⇒ 这一下是「重置」：清掉表单、退出编辑态。
                     //  草稿有改动时不在这里重置 —— 交给 [SettingsPage.loadDraft] 先问一句「放弃未保存的
                     //  命令」（窗见 `CommandDialogs.SwitchDraftDiscardDialog`），确认后才动草稿。
-                    if (commandDraft.draft.editingName == cmd.name && !commandDraft.draft.dirty) {
+                    //
+                    //  三个判据都按**这条命令所属那一类**的表单取（`formOf`）：在「命令列表」页点时，
+                    //  分页器停在列表那格，`draft.*` 指的是上次离开时那一页 —— 两页是两个独立会话，
+                    //  拿另一页的编辑态 / 改动去判这一条，会清错页、或者白问一句。
+                    val target = commandDraft.draft.formOf(cmd.kind)
+                    if (target.editingName == cmd.name && !target.dirty) {
                         XLog.w("已保存命令菜单：再次点「编辑」且草稿无改动 ⇒ 重置表单（${cmd.name}）")
-                        //  清的是**这条命令所属那一类**的表单，不是「当前停着的那一页」：
-                        //  在「命令列表」页点时，分页器停在列表那格，`form` 指向的是上次离开时那一页，
-                        //  按 `cmd.kind` 取才不会清错（`formOf` 见 `CommandDraft`）。
-                        commandDraft.draft.formOf(cmd.kind).reset()
+                        target.reset()
                         actions.onEdit()
                     } else if (loadDraft(cmd)) {
                         // 走 [SettingsPage.loadDraft] 而**不是** `draft.load`：表单里可能还有没保存的改动，

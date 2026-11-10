@@ -461,3 +461,36 @@ internal fun ProbeChannel.combo() {
     //    「三颗的组合怎么按都没反应」的那条，所以这一条必须一直是「凑齐 cmb2」）
     report("三颗 / 每颗间隔 300ms", "凑齐 cmb2", listOf(plus to 0L, ck1 to 300L, ck2 to 600L))
 }
+
+// ── op: shortcuts ────────────────────────────────────────────────────────
+
+/**
+ * `shortcuts` —— 按**系统身份**读某个包的快捷方式（`pkg` / `user` 两个 extra）。
+ *
+ *  它回答的是「换个身份读不读得到钉住那一档」：宿主进程读出来的是 `动态 3 / 钉住 0`（真机实测微信），
+ *  注入侧这一份跑在 `system_server`，与正式通道（`ModuleWire.ACTION_SHORTCUT_QUERY`）共用
+ *  [ShortcutRead.read] —— 探针要验的正是真实那条路，不能自己另写一份读法。
+ *
+ *  用法见 `docs/runtime/debug-channel.md`：
+ *  `am broadcast -a com.lookie.opluskey.PROBE --es op shortcuts --es pkg com.tencent.mm --ei user 0 -p <宿主包名>`
+ */
+internal fun ProbeChannel.shortcuts(
+    intent: Intent,
+    loader: ClassLoader,
+) {
+    val pkg = intent.getStringExtra(EXTRA_PKG).orEmpty()
+    if (pkg.isBlank()) {
+        XLog.w("probe/shortcuts：没给 pkg（--es pkg <包名>）")
+        return
+    }
+    val userId = intent.getIntExtra(EXTRA_USER, 0)
+    //  与正式通道（`ShortcutRead.reply`）同一份实现：探针要验的正是真实那条路。
+    val rows = ShortcutRead.pinned(loader, pkg, userId)
+    XLog.w(
+        "probe/shortcuts：$pkg（user=$userId）→ " +
+            (
+                rows?.let { r -> "${r.size} 条" + (if (r.isEmpty()) "" else "：" + r.joinToString("、") { (id, label) -> "$id=$label" }) }
+                    ?: "读不到（见上面那行）"
+            ),
+    )
+}

@@ -101,10 +101,6 @@ internal object KeyHooks {
 
         XLog.guard("挂广播入口") { installBroadcastHook(module, loader) }
 
-        //  顺手把宿主进程拉起来：模块的执行侧全在宿主进程里，它要等 ROM 自己去绑（开机后 ~15s），
-        //  那段时间按侧键什么都不发生。system_server 里发 startService 不受导出 / 权限限制。
-        XLog.guard("排程开机拉起宿主") { HostWarmup.schedule() }
-
         //  这一段是安装路径上唯一可能抛的一步（其余各步都包了 guard）：它一旦抛出去，
         //  后面的组合键 Hook、hookCount、安装判据日志会全部跳过。按「本机不支持」降级。
         val layers =
@@ -353,6 +349,7 @@ internal object KeyHooks {
                         action == ModuleWire.ACTION_INJECT_QUERY ||
                         action == ModuleWire.ACTION_KEY_WATCH ||
                         action == ModuleWire.ACTION_LOG_PULL ||
+                        action == ModuleWire.ACTION_SHORTCUT_QUERY ||
                         action == ModuleWire.ACTION_INJECT_KEY ||
                         action == ModuleWire.ACTION_NET_REQUEST ||
                         action == ModuleWire.ACTION_TOAST
@@ -424,16 +421,11 @@ internal object KeyHooks {
                 KeyWatch.set(intent.getBooleanExtra(ModuleWire.EXTRA_WATCH_ON, false))
             }
 
-            // 导出日志：把注入侧（system_server）那份缓冲切片发回设置页。
-            //  判据与纪律都在 [pullLogs] 里。
-            //  **写成 `?.let` 而不是两个 `?: return@`**：这一层（`dispatchAction`）的圈复杂度贴着
-            //  detekt 的上限，少一个分叉就少一格（多出来的分叉连 `when` 自己都算）。
-            ModuleWire.ACTION_LOG_PULL -> {
-                postGuarded("导出日志（注入侧）") {
-                    SystemContext.get(systemLoader ?: return@postGuarded)?.let { ctx ->
-                        LogWire.reply(ctx, HostApp.PACKAGE, "system")
-                    }
-                }
+            // 导出日志（把本进程缓冲回给设置页）与「读桌面上钉住的快捷方式」：两条都是「只有注入侧
+            // 才能替宿主做的一件事」，合成一支只为把这张表的分叉留在 detekt 的复杂度口径内 ——
+            // 各自的处理体在 [onContextQuery] 里。
+            ModuleWire.ACTION_LOG_PULL, ModuleWire.ACTION_SHORTCUT_QUERY -> {
+                onContextQuery(action, intent, worker, systemLoader)
             }
 
             // 宿主请我们替它弹一条提示（toast 按包限流，注入侧用系统身份弹才免限流，见 ModuleWire）
@@ -601,5 +593,54 @@ private fun holdAwake(
         XLog.w("熄屏，排窗期间顶住 CPU ${ms}ms（判双击用）")
     } catch (e: Throwable) {
         XLog.w("熄屏双击的唤醒锁没拿到（这一按可能判不出双击，按键本身不受影响）：${e.javaClass.simpleName}", e)
+    }
+}
+
+/**
+ * 「借一份系统 Context 干一件事」那两条（导出日志 / 读快捷方式）合成一支。
+ *
+ *  为什么要有它：`KeyHooks.dispatchAction` 那张 `when` 已经贴着 detekt 的圈复杂度上限，而这两条
+ *  各自还要写「有没有 Context」那一层 —— 合起来放这里，那张表里每条就只剩一次调用。
+ *  与 `postGuarded` 同一条纪律（post 到 worker、整段兜 catch、失败只记一行）：它挪到对象外之后
+ *  拿不到那个私有的 `worker` 与 `postGuarded`，所以由调用点把两样递进来。
+ */
+private fun withSystemContext(
+    worker: android.os.Handler,
+    loader: ClassLoader?,
+    subject: String,
+    block: (android.content.Context) -> Unit,
+) {
+    worker.post {
+        try {
+            val ctx = SystemContext.get(loader ?: return@post) ?: return@post
+            block(ctx)
+        } catch (e: Throwable) {
+            XLog.w("$subject 失败（已忽略）：${e.javaClass.simpleName}", e)
+        }
+    }
+}
+
+/**
+ * 「借系统身份干一件事」那两条的分发表 —— 导出日志 / 读桌面上钉住的快捷方式。
+ *
+ *  两条的处理体都靠各自的类（`LogWire` / `ShortcutRead`），这里只回答「哪一条走哪个」。
+ *  放在对象外是因为 `KeyHooks.dispatchAction` 那张 `when` 与对象本身的函数数都贴着 detekt 的口径。
+ */
+private fun onContextQuery(
+    action: String,
+    intent: Intent,
+    worker: android.os.Handler,
+    loader: ClassLoader?,
+) {
+    if (action == ModuleWire.ACTION_LOG_PULL) {
+        withSystemContext(worker, loader, "导出日志（注入侧）") { ctx -> LogWire.reply(ctx, HostApp.PACKAGE, "system") }
+    } else {
+        worker.post {
+            try {
+                ShortcutRead.reply(loader, intent)
+            } catch (e: Throwable) {
+                XLog.w("读快捷方式（系统侧）失败（已忽略）：${e.javaClass.simpleName}", e)
+            }
+        }
     }
 }

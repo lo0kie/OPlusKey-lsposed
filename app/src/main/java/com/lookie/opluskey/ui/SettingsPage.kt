@@ -804,8 +804,8 @@ internal class SettingsPage(
      *  反而变 false，退出时那句「放弃未保存」也不会问（静默丢输入、无提示无撤销）。
      *  脏的时候改成**先弹一句确认**，确认了才 `load`（窗见 `CommandScreen` 里那个同名弹窗）。
      *
-     *  注意：只在「自定义命令」页上调用：草稿脏了必然还在这一页 —— 退出时 [goBack] 已经问过并
-     *  `draft.reset()`，所以窗画在那一页就够。
+     *  注意：只在「自定义命令」页上调用：草稿脏了必然还在这一页 —— 退出时 [goBack] 已经问过，
+     *  整页出栈时两页草稿也一起清了（`CommandDraftState.discard`），所以窗画在那一页就够。
      *
      *  @return `true` = 已经灌进表单；`false` = 脏着，只挂起了那张确认窗 ——
      *   **调用方要等确认之后再切页**（切页那一下现在由窗自己发起，见 `CommandDialogs`）。
@@ -813,8 +813,11 @@ internal class SettingsPage(
      *   而表单里还是旧内容（用户看到的是「确认框背后已经换了页」）。
      */
     internal fun loadDraft(cmd: Command): Boolean {
-        if (commandDraft.draft.dirty) {
-            XLog.w("载入命令前先问：表单里有未保存的改动（要换成「${cmd.name}」）")
+        //  问不问，判的是**这条命令所属那一页**有没有未保存的改动 —— 载入只会覆盖那一页
+        //  （两页是两个互不相干的编辑会话）。拿当前停着的那一页判会问错人：问完「放弃未保存」
+        //  却一点没丢（那是另一页的东西），反过来这边真编着的内容会无提示被覆盖。
+        if (commandDraft.draft.formOf(cmd.kind).dirty) {
+            XLog.w("载入命令前先问：那一页有未保存的改动（要换成「${cmd.name}」）")
             overlays.pendingDraftLoad = cmd
             return false
         }

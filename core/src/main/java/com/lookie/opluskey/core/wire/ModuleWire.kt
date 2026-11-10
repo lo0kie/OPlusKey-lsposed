@@ -277,6 +277,42 @@ object ModuleWire {
     /** [ACTION_LOG_CHUNK] 里带「这一段的正文」。 */
     const val EXTRA_LOG_TEXT = "log_text"
 
+    // ── 快捷方式：请注入侧（system_server）读**快捷方式服务的活数据** ──
+    //
+    //  「选择界面」里那份清单在宿主进程读，而 `LauncherApps` 对「钉住」这一档按**调用方**过滤：
+    //  宿主不是桌面宿主读不到，换成系统身份（uid 1000）走同一个 API 也是同一结果（真机实测
+    //  `动态 3 / 清单 0 / 钉住 0`）。注入侧就住在 `system_server` 里，能直接读那个服务手上的活数据
+    //  （`ShortcutUser` 里的 `ShortcutInfo`，含 `isPinned`）—— 见 `ShortcutRead`。
+    //
+    //  一问一答：[ACTION_SHORTCUT_QUERY] 由宿主发，注入侧回 [ACTION_SHORTCUT_RESULT]，
+    //  带 [EXTRA_SHORTCUT_REQ] 配对（一次可能并发几条）。
+
+    /** 宿主 → 注入侧：**这个包在桌面上钉了哪几条**（按系统身份读）。 */
+    const val ACTION_SHORTCUT_QUERY = "com.lookie.opluskey.SHORTCUT_QUERY"
+
+    /** 注入侧 → 宿主：上面那条的结果（`id` 与名字各一份列表，等长）。 */
+    const val ACTION_SHORTCUT_RESULT = "com.lookie.opluskey.SHORTCUT_RESULT"
+
+    /** 两条都带：**这一趟的编号**（谁发谁收靠它配对）。 */
+    const val EXTRA_SHORTCUT_REQ = "shortcut_req"
+
+    /** [ACTION_SHORTCUT_QUERY] 里带「读哪个包」。 */
+    const val EXTRA_SHORTCUT_PKG = "shortcut_pkg"
+
+    /** [ACTION_SHORTCUT_QUERY] 里带「哪个用户」（0 = 主用户，999 = 分身）。 */
+    const val EXTRA_SHORTCUT_USER = "shortcut_user"
+
+    /**
+     * [ACTION_SHORTCUT_RESULT] 里带「快捷方式的 id」与「名字」两份列表。
+     *
+     *  两份分开传而不是拼一个字符串：名字里什么字符都可能有（中文、冒号、逗号、换行），
+     *  拼了就得自己定一套转义 —— 而这条通道只用一次，不值当。
+     */
+    const val EXTRA_SHORTCUT_IDS = "shortcut_ids"
+
+    /** 见 [EXTRA_SHORTCUT_IDS]。 */
+    const val EXTRA_SHORTCUT_LABELS = "shortcut_labels"
+
     // ── 注入侧代发网络请求：宿主没 INTERNET，只有 system_server 有 ──
     //
     //  宿主的清单里**没有** `INTERNET`（`reference/gesture.apk` 的 49 条权限里只有

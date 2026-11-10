@@ -176,7 +176,7 @@ internal object ConfigChannel {
             ?.comboSpanFor(combo)
             ?.takeIf { it > 0 }
             ?.toLong()
-            ?: (GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong() * (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_KEYS - 1))
+            ?: (GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong() * (combo.keys.size - 1).coerceIn(1, ComboKey.MAX_JUDGE_KEYS - 1))
 
     /**
      * 这一颗键按下之后要**先等多久**（毫秒）：它参与的几组里最长的那个**整串跨度**。

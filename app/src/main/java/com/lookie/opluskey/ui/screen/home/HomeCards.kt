@@ -106,6 +106,9 @@ internal fun SettingsPage.HomeOtherCard(
  * 先把草稿清干净再进（`goBack` 只在草稿脏时才 reset，「点开一条看一眼、原样返回」那种
  * 不脏的退页不会清 `editingName`，留着的话下次进来表单还挂着「修改」）。编辑已有命令那条路
  * 走的是「已保存的命令」卡片，不经过这里。
+ *
+ *  清的是**当前这一页**（`draft.kind`）：两页是两个独立会话，另一页的草稿不动 ——
+ *  整页归零只在出栈时发生（`CommandDraftState.discard`）。
  */
 private fun SettingsPage.openCommandsPage() {
     commandDraft.draft.reset()

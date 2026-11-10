@@ -32,11 +32,18 @@ import com.lookie.opluskey.ui.model.cloneLabel
  *  **不逐包问** [AppEntry.resolve]，改由 [AppEntry.launchablePackages] 一次问全机
  *  —— 逐包问是几百次 binder 调用，一次问是三次查询。
  *
- * @return 查到的清单；**查失败返回 null**（不是空清单）—— 空清单是一份有效结论
+ * @param onDefaultTier **默认档**（有启动图标的 + Xposed 模块 + 分身）算好就先交出去一次 ——
+ *   页面关着「显示系统应用」时，这一批**就是**它能显示的全部；剩下那几百个没有图标的应用
+ *   （要各自 `loadLabel` + 罗马化）等它之后才算。这一档就是「当前过滤判据下的那批」：
+ *   先把它交出去，用户等的时间从「全量」缩到「一档」。
+ * @return 全量清单；**查失败返回 null**（不是空清单）—— 空清单是一份有效结论
  *   （「这台机器上确实一个可启动的应用都没有」），拿它去覆盖缓存会把上一次的好清单抹掉，
  *   界面显示成「没有找到可以打开的应用」（见 [AppPickerScreen] 的调用点）。
  */
-internal fun loadLaunchableApps(context: android.content.Context): List<LaunchableApp>? {
+internal suspend fun loadLaunchableApps(
+    context: android.content.Context,
+    onDefaultTier: (suspend (List<LaunchableApp>) -> Unit)? = null,
+): List<LaunchableApp>? {
     val t0 = android.os.SystemClock.uptimeMillis()
     val pm = context.packageManager
     val intent =
@@ -60,7 +67,22 @@ internal fun loadLaunchableApps(context: android.content.Context): List<Launchab
         //  它同时是「其余应用」要排除的那一份。
         val known =
             (launched + xposedList).mapTo(HashSet()) { it.packageName }
-        // 其余装着的应用 —— 既不在上一批、也不是模块的那一批（主体是没有启动图标的系统应用）。
+        // 「点得开吗」一次问全机 —— 见 [AppEntry.launchablePackages]（逐包 `resolve` 太贵）。
+        //  它留在默认档这一侧：那一批的「显示失效应用」也要判，而它只有三次查询。
+        val launchable = AppEntry.launchablePackages(pm)
+        //  其余装着的应用（`getInstalledApplications` 那几百个 + 逐个 label）**挪到默认档交出去之后**：
+        //  它要几百个 `ApplicationInfo` 再各自 `loadLabel` + 罗马化，而默认档那批根本用不到它 ——
+        //  关着「显示系统应用」时那些行一行都不显示。
+        val sources = TierSources(launched, xposedList, xposedPkgs, known, launchable)
+        val defaultRows = defaultTier(context, pm, sources, romanizer, collator)
+        // **默认档先交出去**：关着「显示系统应用」时，这一批就是页面上要显示的全部。
+        //  调用方据此立刻结束加载态，剩下那几百个没有图标的应用在后台接着算（见函数注释）。
+        XLog.w(
+            "可启动应用：默认档 ${defaultRows.size} 个先上屏，耗时 " +
+                "${android.os.SystemClock.uptimeMillis() - t0}ms（其余在后台接着算）",
+        )
+        onDefaultTier?.invoke(defaultRows)
+        // 其余装着的应用 —— 只有打开「显示系统应用」时才用得上。
         //  不在这里筛「拉不拉得起来」：能不能打开是列表那一层的事（`LaunchableApp.launchable`），
         //  取清单这一层只负责把东西**取全**。能拿到全量包列表靠宿主自己声明了 `QUERY_ALL_PACKAGES`
         //  —— 界面代码跑在宿主进程，包可见性按宿主算。
@@ -71,35 +93,16 @@ internal fun loadLaunchableApps(context: android.content.Context): List<Launchab
                 .filter { it.packageName !in known }
                 .filter { it.packageName != ModuleInfo.PACKAGE }
                 .toList()
-        // 「点得开吗」一次问全机 —— 见 [AppEntry.launchablePackages]（逐包 `resolve` 太贵）
-        val launchable = AppEntry.launchablePackages(pm)
+        val otherRows =
+            others.map { app ->
+                val pkg = app.packageName
+                appRow(pm, app, RowFacts(pkg in xposedPkgs, false, pkg in launchable), romanizer)
+            }
         // 三条来源必须跨来源去重：Xposed 模块的规范写法是「一个 launcher activity + 一个挂
         // MODULE_SETTINGS 的 activity-alias」，同一个包在 launcher 与模块两批里各出现一次。
         // 不去重 ⇒ 列表两行同包名 ⇒ `items(key = ...)` 抛「Key ... was already used」，异常落在
         // 宿主 Activity 的组合里 ⇒ 打开「选择应用」页即崩宿主页面。
-        // 排序键在 `appRow` 里就算好了（罗马化不便宜）：这里只比，不重算。
-        // `byDefault` 按包名现判、与这份拼接顺序无关，所以 `distinctBy` 留下哪一份都不影响它。
-        val apps =
-            (launched + xposedList + others)
-                .distinctBy { it.packageName }
-                .map { app ->
-                    val pkg = app.packageName
-                    appRow(pm, app, RowFacts(pkg in xposedPkgs, pkg in known, pkg in launchable), romanizer)
-                }
-        // —— 分身：同一个应用在**别的用户**里的那一份 ——
-        //
-        //  分身是另一个 Android 用户，所以在主用户的清单里**根本看不到**：换用户查包、槽号、
-        //  名字都由 `AppCloneCatalog` 那边给（它认识 `UserManager` / `IPackageManager` 那些
-        //  私有面，见那个类的注释）。这一层只拿到「包名 + 名字 + 槽号」，剩下的与普通应用一样。
-        val clones = cloneRows(context, romanizer)
-        // 分身行**并进主清单再统一排序** —— 上一版是 `apps + clones`（分身一律吊在末尾），
-        //  于是「微信 1」跑到「支付宝」后面去了；用户要的是按名字混排。
-        //  **按 target 去重**：列表那边是 `items(key = { it.target })`，key 重复会让 Compose
-        //  抛「Key was already used」直接崩掉 `:ui` 进程（二级页在贴吧那一页真崩过一次，
-        //  见 `loadActivities`）。主清单与分身理论上不会撞（分身带 `999@` 前缀），
-        //  但合成两条来源之后补一道，比赌它不撞便宜。
-        val all = (apps + clones).distinctBy { it.target }.sortedWith(appOrder(collator))
-        XLog.w("可启动应用：分身 ${clones.size} 行")
+        val all = (defaultRows + otherRows).distinctBy { it.target }.sortedWith(appOrder(collator))
 
         // 打头几条 + 耗时便于核对（转写器是否生效、这次查了多久）
         XLog.w(
@@ -210,7 +213,7 @@ private fun xposedModules(
  *
  *  这里只拿到「包名 + 名字 + 槽号」，其余与普通应用一样。
  */
-private fun cloneRows(
+internal fun cloneRows(
     context: android.content.Context,
     romanizer: android.icu.text.Transliterator?,
 ): List<LaunchableApp> =
@@ -247,14 +250,14 @@ private fun cloneRows(
  * @param launchable 点不点得开。**整表一次判好**（[AppEntry.launchablePackages]），
  *   不在 `appRow` 里逐包 [`AppEntry.resolve`]：几百行就是几百次 binder 调用
  */
-private class RowFacts(
+internal class RowFacts(
     val xposed: Boolean,
     val byDefault: Boolean,
     val launchable: Boolean,
 )
 
 /** 一条 `ApplicationInfo` → 界面要的那一行。launcher / 模块 / 系统应用三条来源共用。 */
-private fun appRow(
+internal fun appRow(
     pm: android.content.pm.PackageManager,
     ai: android.content.pm.ApplicationInfo,
     facts: RowFacts,
@@ -369,5 +372,5 @@ private fun containsHan(text: String): Boolean =
     }
 
 /** 应用列表的排序：见 [nameOrder]（兜底键是包名）。 */
-private fun appOrder(collator: java.text.Collator?): Comparator<LaunchableApp> =
+internal fun appOrder(collator: java.text.Collator?): Comparator<LaunchableApp> =
     nameOrder({ it.sortKey }, { it.label }, { it.packageName }, collator)
