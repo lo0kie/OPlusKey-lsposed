@@ -3,6 +3,7 @@ package com.lookie.opluskey.inject
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.reflect.Reflect
 import java.lang.reflect.Proxy
@@ -39,7 +40,8 @@ internal object ScreenshotViaHelper {
     /** `ScreenshotHelper.SCREENSHOT_GLOBAL_ACTION` —— 与「电源键菜单里点截图」同一档。 */
     private const val SCREENSHOT_GLOBAL_ACTION = 1
 
-    private const val CLASS_NAME = "com.android.internal.util.ScreenshotHelper"
+    /** 类名只在 `Framework.Calls` 写一次（一、7）：这里只取用，不认名字。 */
+    private const val CLASS_NAME = Framework.Calls.SCREENSHOT_HELPER
 
     /** 见 [completionConsumer]：常量哈希对「只等于自己」的代理是合法值。 */
     private const val CONSUMER_HASH = 0x0f1e2d3
@@ -116,7 +118,7 @@ internal object ScreenshotViaHelper {
         //  优先「首参是 int」的那条，另一条（`ScreenshotRequest`）留给下面那句日志说明。
         val method =
             cls.declaredMethods.firstOrNull {
-                it.name == "takeScreenshot" && it.parameterCount == 3 &&
+                it.name == Framework.Calls.TAKE_SCREENSHOT && it.parameterCount == 3 &&
                     it.parameterTypes[0] == Int::class.javaPrimitiveType
             } ?: run {
                 XLog.w("截图（Helper）：没有 (int, Handler, Consumer) 的 takeScreenshot，这条走不通")
@@ -137,7 +139,7 @@ internal object ScreenshotViaHelper {
         if (signaturesLogged) return
         signaturesLogged = true
         XLog.w("截图（Helper）：构造器 = ${cls.constructors.joinToString(" | ") { it.toGenericString() }}")
-        val methods = cls.declaredMethods.filter { it.name == "takeScreenshot" }
+        val methods = cls.declaredMethods.filter { it.name == Framework.Calls.TAKE_SCREENSHOT }
         XLog.w("截图（Helper）：takeScreenshot = ${methods.joinToString(" | ") { it.toGenericString() }}")
         //  **不去读它的 `SCREENSHOT_*` 常量**：读静态成员会触发这个类的 `<clinit>`，而 system_server
         //  里宿主类初始化失败就被标 erroneous、之后任何访问都是 `NoClassDefFoundError`（AGENTS.md

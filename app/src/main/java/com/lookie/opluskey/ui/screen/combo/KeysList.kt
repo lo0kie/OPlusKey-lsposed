@@ -42,106 +42,116 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 //  这一块只回答「有哪几颗键、怎么再加一颗」。
 
 /**
- * 「按键列表」那一块 —— 一行一颗键（侧键 + 收集来的键）。
+ * 「按键列表」那一块 —— **内置侧键那一行**。
+ *
+ *  收集来的键另起一张卡（[CustomKeysCard]）：两者来路不同（内置 / 用户收集）、额度也只限后者，
+ *  拼在一张卡里只能靠一条加深带勉强分开 —— 用户口径改成**两张卡各带小标题**。
  *
  * ## 点一行做什么
  *
- *  选中这颗键（）再进「按键绑定」页 —— 绑定的动作属于那一页，
+ *  选中这颗键再进「按键绑定」页 —— 绑定的动作属于那一页，
  *  这一页只回答「有哪几颗键、点进去改哪一颗」。进页会把手势 tab 拨回第一档。
  *
  * ## 停用的键怎么画
  *
- *  行首图标换成禁用 + 副标题写「已启用 / 已停用」：停用只靠颜色区分对色弱不友好，
+ *  行首图标换成禁用 + 行尾写「已停用」：停用只靠颜色区分对色弱不友好，
  *  而这一页的灰还可能是整页闸门关着，两件事得能分开看。停用的键照样能点进去（那一页能开回来）。
  *
  * ## 编辑态（见 [KeysEditState]）
  *
- *  顶栏那颗「编辑」按下去之后，**收集来的键**每行末尾换成多选框、点一行是勾选而不是进页；
- *  侧键那行置灰并说明它删不掉（内置键没有删除这回事），「添加按键」那张卡里的一行禁用（不是退场）——
- *  编辑态在改「已有哪几颗」，不是加一颗。勾了任意一颗，页面那一层就从右下角滑进「删除」。
- *
- * ## 「添加按键」与清单同卡
- *
- *  收集一颗新键的入口在这里（用户口径：从首页那张「按键操作」卡搬进来）。
- *  它是清单的**最后一行**（用户口径「添加行和列表拼在一起」）：上面回答「这一列现在有哪几颗」，
- *  这一行是往清单里添一颗，同属「这一列」这件事。
- *
- * @param pageEnabled 整页总闸（模块开着 + 链路齐了 + 配置可写）
- * @param onAddKey 点「添加按键」—— 收集窗挂在页面那一层（[KeysScreen]）
+ *  顶栏那颗「编辑」按下去之后，点一行是**勾选**而不是进页。侧键也能勾（用户口径「快捷键也要可选」），
+ *  只是删不掉 —— 那一侧在 `removePicked` 里过滤，见 [KeysListCard] 的调用点。
  */
 @Composable
-internal fun SettingsPage.KeysListCard(
-    pageEnabled: Boolean,
-    onAddKey: () -> Unit,
-) {
-    val cfg = configState.config.value
+internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
     val editing = KeysEditState.editing
     val picked = KeysEditState.pickedKeys
 
     CardList(
         rows =
-            buildList {
+            listOf(
                 //  内置侧键：**能勾、不能删**（用户口径「快捷键也要可选，删除时过滤掉」）。
                 //  所以编辑态不再置灰 —— 它和别的行一样可选；「删不掉」这件事在 `removePicked`
                 //  那一侧过滤（选它一个时给一句提示），而不是把这一行按死。
-                add(
-                    CardRow.Item(
-                        title = I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键"),
-                        //  行尾只有一格（`trailing` 优先于 `arrow`）：编辑态是勾选框，平时停用那一档
-                        //  用与场景卡共用的「已停用 + 箭头」（`DisabledStateWithArrow`），全启用给
-                        //  `null` 走 `arrow` 那条默认路径。
-                        trailing =
-                            when {
-                                editing -> {
-                                    {
-                                        //  编辑态也照说「已停用」：勾选框是**另一件事**（要删它），
-                                        //  不代表这颗键现在是启用的 —— 少了这半句，编辑态里看不出开合。
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (!keyEnabled(KeyId.PLUS)) DisabledStateText()
-                                            Checkbox(
-                                                state =
-                                                    if (KeyId.PLUS.id in picked) {
-                                                        ToggleableState.On
-                                                    } else {
-                                                        ToggleableState.Off
-                                                    },
-                                                onClick = null,
-                                                enabled = pageEnabled,
-                                            )
-                                        }
+                CardRow.Item(
+                    title = I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键"),
+                    //  行尾只有一格（`trailing` 优先于 `arrow`）：编辑态是勾选框，平时停用那一档
+                    //  用与场景卡共用的「已停用 + 箭头」（`DisabledStateWithArrow`），全启用给
+                    //  `null` 走 `arrow` 那条默认路径。
+                    trailing =
+                        when {
+                            editing -> {
+                                {
+                                    //  编辑态也照说「已停用」：勾选框是**另一件事**（要删它），
+                                    //  不代表这颗键现在是启用的 —— 少了这半句，编辑态里看不出开合。
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (!keyEnabled(KeyId.PLUS)) DisabledStateText()
+                                        Checkbox(
+                                            state =
+                                                if (KeyId.PLUS.id in picked) {
+                                                    ToggleableState.On
+                                                } else {
+                                                    ToggleableState.Off
+                                                },
+                                            onClick = null,
+                                            enabled = pageEnabled,
+                                        )
                                     }
                                 }
+                            }
 
-                                keyEnabled(KeyId.PLUS) -> {
-                                    null
-                                }
+                            keyEnabled(KeyId.PLUS) -> {
+                                null
+                            }
 
-                                else -> {
-                                    { DisabledStateWithArrow() }
-                                }
-                            },
-                        //  停用只把行首换成禁用图标，**不压色**：图标一灰，整行看起来像点不了，
-                        //  而这一行恰恰还能点进去（停用也照样能进那一页开回来）。
-                        icon = keyIcon(DrawnIcons.MenuSideKey, keyEnabled(KeyId.PLUS)),
-                        enabled = pageEnabled,
-                        arrow = !editing,
-                        onClick = {
-                            if (editing) KeysEditState.toggleKey(KeyId.PLUS.id) else openKey(KeyId.PLUS)
+                            else -> {
+                                { DisabledStateWithArrow() }
+                            }
                         },
-                    ),
-                )
+                    //  停用只把行首换成禁用图标，**不压色**：图标一灰，整行看起来像点不了，
+                    //  而这一行恰恰还能点进去（停用也照样能进那一页开回来）。
+                    icon = keyIcon(DrawnIcons.MenuSideKey, keyEnabled(KeyId.PLUS)),
+                    enabled = pageEnabled,
+                    arrow = !editing,
+                    onClick = {
+                        if (editing) KeysEditState.toggleKey(KeyId.PLUS.id) else openKey(KeyId.PLUS)
+                    },
+                ),
+            ),
+    )
+}
+
+/**
+ * 「自定义按键」那一块 —— 收集来的键，**最后一行是「添加按键」**（用户口径：与清单同卡）。
+ *
+ *  上面回答「这一列现在有哪几颗」，最后一行是往清单里添一颗 —— 同属「这一列」这件事，
+ *  而额度的计数在小标题上（`KeysScreen` 那个 `TitleCounter`），也不该跟着「内置侧键」走。
+ *
+ * @param pageEnabled 整页总闸（模块开着 + 链路齐了 + 配置可写）
+ * @param onAddKey 点「添加按键」—— 收集窗挂在页面那一层（[KeysScreen]）
+ */
+@Composable
+internal fun SettingsPage.CustomKeysCard(
+    pageEnabled: Boolean,
+    onAddKey: () -> Unit,
+) {
+    val cfg = configState.config.value
+    val editing = KeysEditState.editing
+
+    CardList(
+        rows =
+            buildList {
                 cfg.customKeys.forEachIndexed { i, key ->
                     val on = cfg.key(key).enabled
                     add(customKeyRow(key, on, keyIcon(PageIcons.menuKeyNumber(i), on), pageEnabled))
                 }
-                //  「添加按键」是清单的**最后一行**（用户口径：与列表拼在一起，不另起卡）。
                 add(addKeyRow(cfg, pageEnabled, onAddKey, editing = editing))
             },
     )
 }
 
 /**
- * 一颗自定义键那一行 —— 抽出来只为让 [KeysListCard] 留在 detekt 的长度上限内。
+ * 一颗自定义键那一行 —— 抽出来只为让 [CustomKeysCard] 留在 detekt 的长度上限内。
  *
  *  行尾只有一格（`CardRow` 里 `trailing` 优先于 `arrow`）：编辑态是勾选框，平时是「已停用」
  *  那半句**加自己画的箭头** —— 填了这一格 `arrow` 那条路就不画了，所以两者共存必须自己画。

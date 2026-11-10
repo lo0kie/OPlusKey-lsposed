@@ -280,6 +280,23 @@ private class PickerListData(
 
     /** 两节都空 —— 空态与「还在查」都靠它判（`loaded == null` 时这个值没有意义）。 */
     val isEmpty: Boolean get() = interfaces.isEmpty() && shortcuts.isEmpty()
+
+    /**
+     * 「自动」那一行画不画 —— **搜索时不列**：它说的是「这个应用本身」，与「界面名」不是一类东西。
+     *
+     *  列着的话，搜一个界面名而界面那一节全空时，页面上会同时出现「没有界面」和这一行可点的
+     *  「自动」—— 看着像筛选没生效。
+     */
+    val showsAuto: Boolean get() = !filterActive
+
+    /**
+     * 「Activity」小节标题画不画 —— **那一节一条都没有时整节不画**，与「快捷方式」同一条规矩。
+     *
+     *  这是「有没有这一节」的唯一判据：铺列表（[activityRows]）与下标账（[rowIndexOf]）都读它。
+     *  两处各写一遍的话，搜索空态就会只剩一条小标题浮在那儿（真机反馈「搜索没结果还显示小标题」），
+     *  或者反过来下标错一行、定位滚偏。
+     */
+    val showsActivitySection: Boolean get() = showsAuto || interfaces.isNotEmpty()
 }
 
 /**
@@ -356,10 +373,9 @@ private fun LazyListScope.activityRows(
 ) {
     val activityEntries =
         buildList {
-            //  **搜索时不列「自动」**：它说的是「这个应用本身」，与「界面名」不是一类东西。
-            //  列着的话，搜一个界面名而界面那一节全空时，页面上会同时出现「没有界面」和
-            //  这一行可点的「自动」—— 看着像筛选没生效。下标账（[rowIndexOf]）跟着同一判据。
-            if (!data.filterActive) {
+            //  **搜索时不列「自动」**（判据 `PickerListData.showsAuto`，与下标账同一处）：
+            //  它说的是「这个应用本身」，与「界面名」不是一类东西。
+            if (data.showsAuto) {
                 add(
                     ActivityEntry(
                         key = "auto",
@@ -423,10 +439,14 @@ private fun LazyListScope.activityRows(
     // —— 第二节：Activity ——
     //  两节都带小标题（`SmallTitle`，与「更多选项」「按键绑定」那几页同一颗）：
     //  快捷方式与界面混在一起时，光看行内容分不出「这是页面还是长按桌面图标那个」。
+    //  **一条都没有时整节不画**（判据 `PickerListData.showsActivitySection`）：搜索空态时
+    //  只剩一条小标题浮在「没有结果」上面，读起来像那一段还有东西没加载出来。
     //  间距**不分档**：与全项目一样用默认那一套。没有快捷方式时「快捷方式」那条标题
     //  本来就不显示，这一条就是列表第一项 —— 默认档正好，不需要为它算一档。
-    item(key = "section-interface") {
-        SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES, "Activity"))
+    if (data.showsActivitySection) {
+        item(key = "section-interface") {
+            SectionTitle(I18n.get(Strings.APP_PICKER_SECTION_ACTIVITIES, "Activity"))
+        }
     }
 
     // 这一节的第一项固定是「自动」：与绑定一个纯包名完全等价，也是用户最常选的那一项
@@ -470,9 +490,10 @@ private fun rowIndexOf(
         if (hit >= 0) return index + hit
         index += data.shortcuts.size
     }
-    index += 1 // 「Activity」小节标题
+    // 「Activity」小节标题 —— 一条都没有时那一节整节不画（与 [activityRows] 同一判据）
+    if (data.showsActivitySection) index += 1
     // 「自动（启动图标）」那一项：它的取值就是应用本身 —— **搜索时不列**（与 [activityRows] 同一判据）
-    if (!data.filterActive) {
+    if (data.showsAuto) {
         if (AppTarget.same(selected, data.target)) return index
         index += 1
     }

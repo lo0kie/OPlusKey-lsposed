@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.lookie.opluskey.core.config.ConfigProfiles
@@ -28,6 +29,10 @@ import com.lookie.opluskey.ui.model.themeTag
 import com.lookie.opluskey.ui.model.themeTitle
 import com.lookie.opluskey.ui.screen.home.openUrl
 import com.lookie.opluskey.ui.setLanguage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // 「更多选项」页上那些**行内菜单**，一个菜单一个函数。
 //
@@ -217,6 +222,9 @@ internal fun SettingsPage.ProfileMenu(ui: AboutUiState) {
     //  `ui.profiles` 是本层菜单打开时刚读的那一份，`remember` 的 key 就是它 —— 每次打开重算一次，
     //  不是每帧读盘。
     val full = remember(ui.profiles) { ConfigProfiles.isFull() }
+    //  管理那几行里「新建配置」要先数一遍现有份数（`ConfigProfiles.list()` 是扫目录），
+    //  那一下放到这个 scope 的 IO 上去（见 [profileManageRows]）。
+    val scope = rememberCoroutineScope()
     PageMenu(
         entries =
             if (!ui.showProfileMenu) {
@@ -231,7 +239,7 @@ internal fun SettingsPage.ProfileMenu(ui: AboutUiState) {
                         },
                     )
                     //  一条加深带隔开「列表」与「对列表动手」—— 上面是选一份，下面三行是改这份清单
-                    addAll(profileManageRows(ui, full))
+                    addAll(profileManageRows(ui, full, scope))
                 }
             },
         preciseClick = ui.profileClick,
@@ -248,10 +256,12 @@ internal fun SettingsPage.ProfileMenu(ui: AboutUiState) {
  *  它们与上面两行是同一类动作（对这份配置动手），隔开反而读成两件事。
  *
  * @param full 除「默认」之外已经三份了 ⇒ 「新建配置」灰掉
+ * @param scope 「新建配置」数现有份数用的 —— 那一下要扫目录，不能占着主线程（见下）
  */
 private fun SettingsPage.profileManageRows(
     ui: AboutUiState,
     full: Boolean,
+    scope: CoroutineScope,
 ): List<MenuEntry> {
     //  「重置配置」原来挂在首页 `⋮` 菜单上（那会儿叫「清空配置」），闸还是同一个：链路没通、
     //  或这次配置读不出来时不放出来点 —— 只读态下点它，正好会把「读不懂的那份」当成用户的意图覆盖掉
@@ -270,10 +280,16 @@ private fun SettingsPage.profileManageRows(
             disabledHint = if (full) I18n.get(Strings.PROFILE_FULL, "最多三份配置") else null,
         ) {
             ui.showProfileMenu = false
-            //  名字的起点在点这一刻算好：只数**自定义**的份数（「默认」不占号，第一份就是「配置 1」）
-            val named = ConfigProfiles.list().count { !it.isDefault }
-            val initial = I18n.format(Strings.PROFILE_NEW_NAME, named + 1)
-            ui.naming = ProfileNaming(ProfileNaming.Kind.NEW, initial)
+            //  名字的起点要在点这一刻算好：只数**自定义**的份数（「默认」不占号，第一份就是「配置 1」）。
+            //  `ConfigProfiles.list()` 是扫目录 + 逐份解码，原来就在这个点击回调里同步跑；挪到 IO 上，
+            //  取回页面状态（`ui.naming`）那一步仍回主线程。
+            scope.launch {
+                val named =
+                    withContext(Dispatchers.IO) {
+                        ConfigProfiles.list().count { !it.isDefault }
+                    }
+                ui.naming = ProfileNaming(ProfileNaming.Kind.NEW, I18n.format(Strings.PROFILE_NEW_NAME, named + 1))
+            }
         },
         MenuEntry.Row(
             title = I18n.get(Strings.PROFILE_RENAME, "重命名"),

@@ -277,13 +277,9 @@ internal fun ProbeChannel.net(
     val uid = android.os.Process.myUid()
     Thread(
         {
-            val cm =
-                runCatching {
-                    com.lookie.opluskey.bridge.inject.SystemContext
-                        .get(loader)
-                        ?.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
-                }.getOrNull()
-            val network = cm?.activeNetwork
+            //  取默认网络走 `NetChannel.activeNetwork` —— 与「检查更新」那条真实路径同一份实现：
+            //  探针要回答的正是「那条路在这台机器上能不能出网」，各写一份就答不到它。
+            val network = NetChannel.activeNetwork(loader)
             XLog.w("probe/net：uid=$uid activeNetwork=$network")
 
             // 1) 裸 TCP：字面 IP，不经 DNS —— 验的是「域允不允许 inet socket」

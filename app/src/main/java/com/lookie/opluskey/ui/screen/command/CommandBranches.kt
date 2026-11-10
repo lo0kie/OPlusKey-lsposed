@@ -49,6 +49,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
+import com.lookie.opluskey.ui.model.gestureLabel
 import com.lookie.opluskey.ui.screen.keyEnabled
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.BranchDraft
@@ -62,14 +63,6 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「条件执行」那一页的编辑区 —— 从 `CommandPage.kt` 拆出来：那边是「一页的骨架」，
 // 这一块是分叉特有的那张卡；四张菜单在 `CommandBranchMenus.kt`。
-
-/**
- * 分叉页在编辑哪一档 —— 由分页器当前那一页同步过来（见 `BranchScreen` 里那个 effect），
- *  页内卡片、顶栏小标题与保存都读它。
- *
- *  组合键那一趟只有两页（短按 / 长按，见 `branchGestures`），所以这里不需要再把双击折成短按。
- */
-internal fun SettingsPage.branchGestureNow(): Gesture = Gesture.entries.getOrElse(branchGesture) { Gesture.SINGLE }
 
 /** 分叉页在编辑哪一颗键。 */
 internal fun SettingsPage.branchKeyNow(): KeyId = KeyWatchState.editing(configState.config.value)
@@ -378,11 +371,11 @@ private fun SettingsPage.BranchRow(
                         },
                         //  这颗键自己停用 / 整页闸门关着 ⇒ 几行都置灰（菜单那颗仍可用，见 `RuleCells.enabled`）
                         enabled = spec.enabled,
-                        //  **每一块**的场景卡末尾都跟一行「添加场景」—— 它加的是**这一块的一条条件**
+                        //  **每一块**的场景卡末尾都跟一行「添加条件」—— 它加的是**这一块的一条条件**
                         //  （不是一整块场景，整块那个入口在顶栏），所以每块各有一份才对。
                         addRow =
                             CardRow.Item(
-                                title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
+                                title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加条件"),
                                 icon = PageIcons.StepAdd,
                                 onClick = { appendCondition(branchDraftNow(), spec.index, menus) },
                             ),
@@ -658,6 +651,9 @@ private fun RuleBlock(
  *  这一块自己关着时，行尾先说一句「已停用」：条件行由 [ConditionTrailing] 说，动作这几行在这里补，
  *  用户扫「未设置 / 无操作 / 打开应用…」时也能看出整块已经关掉了。小标题那一行**不说**
  *  （用户口径：标在列表的每一行上）。
+ *
+ *  **行数与档位名都不写死在这里**：一张卡几行由 `text.actions` 给（源头是 `sceneGesturePages()`），
+ *  名字走 `gestureLabel` —— 那两支就是接自定义手势的地方，这一层不必动。
  */
 @Composable
 private fun RuleActionRows(
@@ -672,7 +668,9 @@ private fun RuleActionRows(
             text.actions.map { line ->
                 CardRow.Item(
                     //  标题前面写档位：「单击 | 手电筒」。三行并排时，光有动作名看不出哪一行是哪一档。
-                    title = "${line.gesture.label} | ${line.text}",
+                    //  **档位名走 `gestureLabel`（字典）**，不读 `Gesture.label` —— 那串是写死的中文，
+                    //  英文界面下这里会冒出「单击」（真机口径）。那一支也是将来自定义手势的接口。
+                    title = "${gestureLabel(line.gesture)} | ${line.text}",
                     //  动作那一行**不限行**：`打开应用: 微信 - LauncherUI` 这种一长串，
                     //  单行省略会把「做什么」裁掉一半 —— 这一行正是用来核对它做什么的。
                     titleMaxLines = Int.MAX_VALUE,

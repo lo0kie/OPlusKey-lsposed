@@ -12,17 +12,8 @@ import com.lookie.opluskey.core.wire.ConfigBroadcast
 /** 注入侧持有的配置：从宿主广播过来，供按键判定使用。 */
 internal object ConfigChannel {
     /**
-     * **模块总闸**（`null` = 还没收到过广播）。没收到过时按「接管」处理 —— 引导条件：
-     * 唤醒宿主的那次转发由注入侧发起，默认「不接管」会永久失效。
-     *
-     *  它是 `GlobalConfig.enabled`（`module_enabled` 那一项），**不是**侧键那一份 `enabled`：
-     *  后者只是「这一颗键接管不接管」，两颗一起看才是最终判据（见 [enabledOf]）。
-     */
-    @Volatile
-    private var switchFromBroadcast: Boolean? = null
-
-    /**
-     * 上一次收到的配置 —— 内容 / 指纹 / 组合成员表**一起换**（见 [Arrived]）；还没收到过就是 null。
+     * 上一次收到的配置 —— 内容 / 指纹 / 组合成员表 / **那一刻的总闸**一起换（见 [Arrived]）；
+     * 还没收到过就是 null。
      *
      *  只信广播 —— 注入侧读宿主私有目录必 `EACCES`。
      */
@@ -30,14 +21,17 @@ internal object ConfigChannel {
     private var arrived: Arrived? = null
 
     /**
-     * 一条配置广播解出来的三样东西，打成一个包一起生效。
+     * 一条配置广播解出来的全部东西，打成一个包一起生效。
      *
-     *  为什么不能分成三个字段逐个赋值：中间那几个纳秒里读者会看到「新配置 + 旧指纹」（链路自检
+     *  为什么不能分成几个字段逐个赋值：中间那几个纳秒里读者会看到「新配置 + 旧指纹」（链路自检
      *  据此回「已生效」，而设置页比完指纹就以为这一版到了）、或者「新配置 + 旧组合成员表」
-     *  （参与组合的那颗键这一下不等窗口，组合按不出来）。一个引用一次替换，三样就是一个整体。
+     *  （参与组合的那颗键这一下不等窗口，组合按不出来），又或者「新配置 + 旧总闸」（配置说接管、
+     *  总闸还停在关）。一个引用一次替换，几样就是一个整体 —— 读侧要么读到旧的一份、要么读到新的。
      *
      *  @param tag 这条广播自己的内容指纹（见 `ConfigBroadcast.tag`），不是按解析后的对象算
      *  @param comboMembers 「参与某一组**可用**组合」的键 id（见 [comboMemberIds]）
+     *  @param master 这一份生效时的**模块总闸**（`GlobalConfig.enabled`）；`null` = 还没收到过
+     *    带 `module_enabled` 的广播 —— 那时按「接管」处理（见 [takeOver]）
      */
     private class Arrived(
         val config: Config,
@@ -45,11 +39,26 @@ internal object ConfigChannel {
         val comboMembers: Set<String>,
         /** 每颗键按下之后要等的时长（它参与的几组里最长的那个窗口），见 [comboHoldWindows]。 */
         val holdWindow: Map<String, Long>,
+        val master: Boolean?,
     )
 
-    /** 主开关当前值；没收到过广播时按 `true`（接管）处理。 */
+    /**
+     * 主开关当前值；没收到过广播时按 `true`（接管）处理。
+     *
+     *  它是 `GlobalConfig.enabled`（`module_enabled` 那一项），**不是**侧键那一份 `enabled`：
+     *  后者只是「这一颗键接管不接管」，两颗一起看才是最终判据（见 [enabledOf]）。
+     */
     val takeOver: Boolean
-        get() = switchFromBroadcast ?: true
+        get() = arrived?.master ?: true
+
+    /**
+     * 「配置还没到、这一下按接管处理」那行 W 是否已经打过。
+     *
+     *  只打一次：这条判据在**每次按键**上都会问一遍（认领闸门 + 组合闸门），逐次打就是刷屏；
+     *  而它要回答的只是「第一次按键时为什么被吞了却没有动作」—— 一行就够。
+     */
+    @Volatile
+    private var announcedMissingConfig = false
 
     /**
      * 某一颗键当前该不该接管 —— **认领闸门的唯一判据**（`SideKeyInterceptor.takesOver`）。
@@ -69,8 +78,24 @@ internal object ConfigChannel {
      *  `module_enabled` 那一项的畸形广播里 `global.enabled` 会被 `ConfigBroadcast.parse`
      *  兜底成 `false`，用 [Config.isLive] 会让整个模块被一条残缺广播静默关掉。
      *  [takeOver] 的取值已经把这两条都吃在里面了。
+     *
+     *  ## 「还没收到过广播」的那一档为什么要留一行判据
+     *
+     *  按接管引导意味着**这一次按键会被吞掉**，而手上是 [Config.DEFAULT]（动作全是「无操作」）——
+     *  用户看到的是「按键没反应」，日志里却一切正常。首次开机 / 宿主还没发过广播时就是这个形状，
+     *  所以第一次走到这里补一行 W 把原因说出来（只一次，见 [announcedMissingConfig]）。
      */
-    fun enabledOf(id: KeyId): Boolean = takeOver && (arrived?.config?.key(id)?.enabled ?: true)
+    fun enabledOf(id: KeyId): Boolean {
+        val cfg = arrived
+        if (cfg == null && !announcedMissingConfig) {
+            announcedMissingConfig = true
+            XLog.w(
+                "配置还没到（还没收到过宿主广播）⇒ ${id.label} 按「接管」处理：" +
+                    "这一下会被认下来，动作是全默认的「无操作」—— 首次按键只报这一次",
+            )
+        }
+        return takeOver && (cfg?.config?.key(id)?.enabled ?: true)
+    }
 
     /**
      * [keys] 这几颗键一起按下时，该由哪一档组合键接管 —— 没有就是 `null`。
@@ -187,6 +212,18 @@ internal object ConfigChannel {
     @Volatile
     var onTakeOverOff: (() -> Unit)? = null
 
+    /**
+     * 执行一次撤销回调，整段兜住 —— 两处触发点都在 AMS 广播 hook 内，漏一个异常出去就是
+     * system_server 崩（五之二、3）。
+     */
+    private fun cancelPending(subject: String) {
+        try {
+            onTakeOverOff?.invoke()
+        } catch (e: Throwable) {
+            XLog.w("$subject：${e.javaClass.simpleName}", e)
+        }
+    }
+
     /** 当前配置；还没收到过广播时用 [Config.DEFAULT] 顶着。 */
     val config: Config
         get() = arrived?.config ?: Config.DEFAULT
@@ -211,13 +248,16 @@ internal object ConfigChannel {
 
     /** 收下一条配置广播。调用点在 AMS 广播入口（热路径），只做解析 / 赋值 / 记日志。 */
     fun read(intent: Intent) {
-        val fresh = ConfigBroadcast.parse(intent)
-        val before = arrived?.config
+        // 解析自己兜住畸形广播（返回 null 并已记 w，见 `ConfigBroadcast.parse`）：这一条作废，
+        //  上一份配置与总闸原样留着 —— 一条坏广播不该把已经好的配置换掉。
+        val fresh = ConfigBroadcast.parse(intent) ?: return
+        val prev = arrived
+        val before = prev?.config
         val key = fresh.key(KeyId.PLUS)
 
         // **任一键**（含侧键）从「接管」翻成「不接管」也要撤掉已排下的手势：那一颗被关掉时，
         //  按住不放的那一下否则会一路派发到连发上限。总闸那一位另有下面那个分支（它还要改
-        //  `switchFromBroadcast` 并打一行 W），两处都要撤，重复撤一次是幂等的。
+        //  总闸并打一行 W），两处都要撤，重复撤一次是幂等的。
         // 比的是**旧配置**那份清单（`prev.allKeys`）：一颗自定义键被**删掉**时，新配置里
         //  已经没有它，遍历 `fresh.allKeys` 就永远看不到这一颗，已排下的手势也就撤不掉
         //  （删键那一刻按住不放会一路派发到连发上限）。`fresh.key(已删的键)` 退回默认值
@@ -229,36 +269,31 @@ internal object ConfigChannel {
 
         // 只有这条广播**带** `module_enabled` 这一项时才用它改总闸：`ConfigBroadcast.parse` 对缺项
         //  兜底成 false，而本对象「没收到过 = 接管」的方向相反 —— 一条缺这一项的畸形广播会把总闸
-        //  静默设成关闭，还会触发下面那段撤销回调。缺项视为「这条不是一份权威配置」，保持现值不动。
-        val master = fresh.global.enabled
-        if (intent.hasExtra(ConfigFields.MODULE_ENABLED_EXTRA) && switchFromBroadcast != master) {
-            switchFromBroadcast = master
+        //  静默设成关闭，还会触发下面那段撤销回调。缺项视为「这条不是一份权威配置」，沿用上一份的值。
+        val master =
+            if (intent.hasExtra(ConfigFields.MODULE_ENABLED_EXTRA)) fresh.global.enabled else prev?.master
+        if (master != null && prev?.master != master) {
             XLog.w("收到总闸广播：模块接管=$master（注入侧立即生效）")
             // 翻到「不接管」这一刻撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。
             //  为什么不能写在拦截点那条 early return 里：那条只在有新按键事件时才走到，
             //  而按住不放期间没有新事件进来 —— 撤销写在那边等于永不执行。
             //  本回调跑在 AMS 广播 hook 内，异常一律吞掉，绝不外抛。
-            if (!master) {
-                try {
-                    onTakeOverOff?.invoke()
-                } catch (e: Throwable) {
-                    XLog.w("总闸关闭时撤销待定手势失败（已忽略）：${e.javaClass.simpleName}", e)
-                }
-            }
+            if (!master) cancelPending("总闸关闭时撤销待定手势失败（已忽略）")
         }
 
-        if (newlyOff) {
-            try {
-                onTakeOverOff?.invoke()
-            } catch (e: Throwable) {
-                XLog.w("自定义键关闭时撤销待定手势失败（已忽略）：${e.javaClass.simpleName}", e)
-            }
-        }
+        if (newlyOff) cancelPending("自定义键关闭时撤销待定手势失败（已忽略）")
 
-        //  三样一起换（见 [Arrived]）：内容、指纹、组合成员表若逐个赋值，中间态会被上面的
-        //  读者看到 —— 「新配置 + 旧指纹」让链路自检误报已生效，「新配置 + 旧成员表」让
-        //  组合那一颗键这一下不等窗口。一次引用替换，没有中间态。
-        arrived = Arrived(fresh, ConfigBroadcast.tag(intent), comboMemberIds(fresh), comboHoldWindows(fresh))
+        //  全部一起换（见 [Arrived]）：内容、指纹、组合成员表、总闸若逐个赋值，中间态会被上面的
+        //  读者看到 —— 「新配置 + 旧总闸」就是「配置说接管、按键却仍不接管」。先构造好整份，
+        //  再一次性替换引用，没有中间态。
+        arrived =
+            Arrived(
+                fresh,
+                ConfigBroadcast.tag(intent),
+                comboMemberIds(fresh),
+                comboHoldWindows(fresh),
+                master,
+            )
         // 这一行（及上面主开关）必须是 W：注入侧 i/d 在 LSPosed 日志页整档看不到（docs/device/lsposed.md 十五），
         // 它们是「配置到没到注入侧」的唯一判据；只在启动 / 解锁 / 写盘时机各来一条，不刷屏。
         //  token 要过 [XLog.redactToken]：`shell:` / `intent:` 后面是整条正文（可能带 token、密码），

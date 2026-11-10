@@ -17,5 +17,5 @@
     <string name="app_name">OPlusKey</string>
     <string name="module_description">Remap the OnePlus / OPPO side key (Plus Key) with single tap,
         double tap and long press. Entry: System Settings - Shortcuts</string>
-    <string name="entry_open_failed">Could not open it. Use Settings &gt; Shortcuts.</string>
+    <string name="entry_open_failed">Could not open it. Open Settings &gt; Shortcuts once first, then use this entry.</string>
 </resources>

@@ -71,7 +71,16 @@ internal object BrightnessAction {
                     onFailure(CommandFailure.UNKNOWN)
                     return
                 }
-            val auto = Settings.System.getInt(cr, KEY_MODE, MODE_MANUAL) == MODE_AUTO
+            //  自动亮度那一格读不到就**别猜**：猜成「手动」会直接写 `screen_brightness`（自动亮度下
+            //  显示不动），猜成「自动」则会去要 root。两档都不是用户按下去的意思 ⇒ 报失败。
+            val modeText = runCatching { Settings.System.getString(cr, KEY_MODE) }.getOrNull()
+            val mode = modeText?.trim()?.toIntOrNull()
+            if (mode == null) {
+                XLog.w("亮度：读不到 $KEY_MODE（值=$modeText），无法判断自动亮度，这次不动")
+                onFailure(CommandFailure.UNKNOWN)
+                return
+            }
+            val auto = mode == MODE_AUTO
             XLog.w(
                 "亮度：${action.token} → raw=$target" +
                     "（量程 ${range.first}..${range.last}，当前 ${current ?: "读不到"}" +
@@ -151,6 +160,10 @@ internal object BrightnessAction {
      *
      *  用 `shell:` 同一个执行器（[ShellRunner]）：并发槽位、超时、失败分档与失败提示都是现成的。
      *  这里不写 `tip:` —— 亮度变化本身在屏幕上看得到。
+     *
+     *  两句之间用 `&&` 而不是 `;`：`;` 的退出码只取**最后一句** —— 第一条 `put adj` 被拒时
+     *  第二条照样写 `screen_brightness`，整条命令还报成功（用户看到「亮度没变，也没报错」）。
+     *  `&&` 让第一条失败当场停下、退出码非 0，整条按失败返回。
      */
     private fun writeViaRoot(
         target: Int,
@@ -158,7 +171,7 @@ internal object BrightnessAction {
         onDone: () -> Unit,
     ) {
         ShellRunner.exec(
-            "$SETTINGS put system $KEY_ADJ $target.0; $SETTINGS put system $KEY_BRIGHTNESS $target",
+            "$SETTINGS put system $KEY_ADJ $target.0 && $SETTINGS put system $KEY_BRIGHTNESS $target",
             onFailure = onFailure,
             onDone = onDone,
         )
@@ -267,8 +280,6 @@ private const val MODE_DEFAULT = "7"
 private const val SETTINGS = "settings"
 
 private const val MODE_AUTO = 1
-
-private const val MODE_MANUAL = 0
 
 /** 读不到量程时的退路：AOSP 默认的 1..255（本机是 2..4095）。 */
 private const val DEFAULT_MIN = 1

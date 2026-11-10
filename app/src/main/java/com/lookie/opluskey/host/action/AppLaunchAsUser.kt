@@ -140,22 +140,8 @@ internal object AppLaunchAsUser {
             val method =
                 Reflect.methodByNameAndArity(atm.javaClass, "startActivityAsUser", arity) ?: continue
             val thrown = runCatching { method.invoke(atm, *args) }
-            //  `invoke` 不抛 **不等于** 起得来：这个方法返回 `ActivityStarter` 的 `START_*`，
-            //  被后台启动策略拦下时同样是正常返回（`START_CANCELED` / 负的 error code）。
-            //  只看「没抛」会把拒绝报成「已下发启动」，用户侧则是一片静默。
-            val code = thrown.getOrNull() as? Int
             if (thrown.isSuccess) {
-                // 成功码只有 0..3（`START_SUCCESS` / `START_RESTART` / `START_DELAY_RESUME` /
-                //  `START_DELIVERED_TO_TOP`）。`code >= 0` 会把 **101/102**
-                //  （`START_RETURN_LOCK_TASK_MODE_VIOLATION` / `START_ABORTED`，后台启动被拦时正是它）
-                //  也当成成功 —— 失败提示与回退逻辑整条都不触发。
-                if (code != null && code in 0..START_DELIVERED_TO_TOP) {
-                    //  只打落点：整个 Intent 会带上 data / extras，那是用户写进命令里的东西
-                    val at = intent.component?.flattenToShortString() ?: intent.action.orEmpty()
-                    XLog.w("已下发启动：$at（user=$userId，arity=$arity，START_*=$code）")
-                    return true
-                }
-                XLog.w("startActivityAsUser(user=$userId, arity=$arity) 被系统拒（START_*=$code），没有起界面")
+                if (reportStart(intent, thrown.getOrNull(), userId, arity)) return true
             } else {
                 val cause = thrown.exceptionOrNull()?.let { Reflect.deepestCause(it) }
                 XLog.w(
@@ -165,6 +151,46 @@ internal object AppLaunchAsUser {
             }
         }
         XLog.w("startActivityAsUser 没有可用签名（user=$userId）")
+        return false
+    }
+
+    /**
+     * 一次 `invoke` 的落点判定 —— `START_*` 只有 0..3 算成功，其余如实说不成。
+     *
+     *  `invoke` 不抛 **不等于** 起得来：这个方法返回 `ActivityStarter` 的 `START_*`，
+     *  被后台启动策略拦下时同样是正常返回（`START_CANCELED` / 负的 error code）。
+     *  只看「没抛」会把拒绝报成「已下发启动」，用户侧则是一片静默。
+     *
+     * @param raw `invoke` 的返回值
+     * @return 真的发出去了
+     */
+    private fun reportStart(
+        intent: Intent,
+        raw: Any?,
+        userId: Int,
+        arity: Int,
+    ): Boolean {
+        val code = raw as? Int
+        if (code == null) {
+            //  **返回类型不符 ≠ 被系统拒**：返回 void / 返回了别的对象时，我们手里没有
+            //  任何判据，只能说「无法判断」。把它说成「被拒」会把排查带去后台启动策略。
+            XLog.w(
+                "startActivityAsUser(user=$userId, arity=$arity) 返回类型不符" +
+                    "（${raw?.javaClass?.name ?: "null"}），无法判断有没有起界面",
+            )
+            return false
+        }
+        if (code in 0..START_DELIVERED_TO_TOP) {
+            //  成功码只有 0..3（`START_SUCCESS` / `START_RESTART` / `START_DELAY_RESUME` /
+            //  `START_DELIVERED_TO_TOP`）。`code >= 0` 会把 **101/102**
+            //  （`START_RETURN_LOCK_TASK_MODE_VIOLATION` / `START_ABORTED`，后台启动被拦时正是它）
+            //  也当成成功 —— 失败提示与回退逻辑整条都不触发。
+            //  只打落点：整个 Intent 会带上 data / extras，那是用户写进命令里的东西
+            val at = intent.component?.flattenToShortString() ?: intent.action.orEmpty()
+            XLog.w("已下发启动：$at（user=$userId，arity=$arity，START_*=$code）")
+            return true
+        }
+        XLog.w("startActivityAsUser(user=$userId, arity=$arity) 被系统拒（START_*=$code），没有起界面")
         return false
     }
 

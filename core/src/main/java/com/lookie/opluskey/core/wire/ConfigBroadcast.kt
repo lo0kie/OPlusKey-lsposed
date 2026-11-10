@@ -2,6 +2,7 @@ package com.lookie.opluskey.core.wire
 
 import android.content.Intent
 import android.os.Bundle
+import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.GlobalConfig
@@ -29,6 +30,8 @@ object ConfigBroadcast {
      *
      *  注意：**只做同源比对，不做安全判据**（`hashCode` 有碰撞可能）：用途是让「设置生效」
      *  那一段说实话，不是访问控制。
+     *
+     *  每一项的取值都经 `describeExtra` 归一成跨进程稳定的字符串（对象身份哈希不能进指纹）。
      */
     fun tag(intent: Intent): String {
         val extras = intent.extras
@@ -38,7 +41,7 @@ object ConfigBroadcast {
             sb
                 .append(k)
                 .append('=')
-                .append(extras?.let { rawExtra(it, k) })
+                .append(describeExtra(extras?.let { rawExtra(it, k) }))
                 .append(';')
         }
         return sb
@@ -181,33 +184,42 @@ object ConfigBroadcast {
     /**
      * 把一条配置广播解回 [Config]。
      * 调用点在 AMS 广播入口的 hooker（热路径）：只取 extra 拼对象，不做查找与 IO。
-     * 拼装不得抛异常，否则 system_server 崩溃；缺项取安全默认（不接管、单击保留原生）。
+     *
+     *  **畸形广播返回 `null`**（整段兜 `Throwable` 并记一行 `w`）：拼装一旦抛出去就是
+     *  system_server 崩溃，所以这道防线放在这里、不再依赖调用点。`null` 的含义是「这条广播作废」，
+     *  调用方（`ConfigChannel.read`）据此保持上一份配置不动 —— 缺项仍然按字段表取默认值，
+     *  那是「这条广播本来就不带它」，与「解不出来」是两件事。
      *
      *  取值仍按 `ConfigFields` 的字段表来（类型与默认值都在那张表里，本层不再逐项抄）；
      *  顶层那两位「已确认」标记不进广播（它们只落盘，见 `ConfigFields.F_DISCLAIMER`）⇒ 取默认。
      */
-    fun parse(intent: Intent): Config {
-        val declared =
-            intent
-                .getStringExtra(ConfigFields.KEY_IDS_EXTRA)
-                ?.split(',')
-                ?.map { it.trim() }
-                ?.filter { it.isNotEmpty() }
-                .orEmpty()
-        // 缺清单（没有 `key_ids` 那一项）就只认内置键 —— 与这一版之前的广播等价。
-        val ids = if (declared.isEmpty()) KeyId.builtins.map { it.id } else declared.distinct()
-        val pairs = ids.mapNotNull { keyAt(intent, it) }
-        val keys = pairs.toMap()
-        return Config.ofFields(
-            keys,
-            GlobalConfig.ofFields(readFields(intent, ConfigFields.GLOBAL_FIELDS)),
-            ConfigFields.Values(emptyMap()),
-            pairs.map { it.first }.filter { it.isCustom },
-            // 组合键（`ComboWire`）：注入侧判「这两颗键有没有绑定」全靠这一条 ——
-            //  它读不到配置文件，缺了这一项就等于「一颗组合键都没配」。
-            combos = ComboWire.decode(intent.getStringExtra(ComboWire.EXTRA)),
-        )
-    }
+    fun parse(intent: Intent): Config? =
+        try {
+            val declared =
+                intent
+                    .getStringExtra(ConfigFields.KEY_IDS_EXTRA)
+                    ?.split(',')
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotEmpty() }
+                    .orEmpty()
+            // 缺清单（没有 `key_ids` 那一项）就只认内置键 —— 与这一版之前的广播等价。
+            val ids = if (declared.isEmpty()) KeyId.builtins.map { it.id } else declared.distinct()
+            val pairs = ids.mapNotNull { keyAt(intent, it) }
+            val keys = pairs.toMap()
+            Config.ofFields(
+                keys,
+                GlobalConfig.ofFields(readFields(intent, ConfigFields.GLOBAL_FIELDS)),
+                ConfigFields.Values(emptyMap()),
+                pairs.map { it.first }.filter { it.isCustom },
+                // 组合键（`ComboWire`）：注入侧判「这两颗键有没有绑定」全靠这一条 ——
+                //  它读不到配置文件，缺了这一项就等于「一颗组合键都没配」。
+                combos = ComboWire.decode(intent.getStringExtra(ComboWire.EXTRA)),
+            )
+        } catch (e: Throwable) {
+            // 判据级：这条广播作废时日志里必须有这一行，否则表现是「发了配置、注入侧还是旧的那份」
+            XLog.w("配置广播解析失败（这条作废，沿用上一份配置）：${e.javaClass.simpleName}: ${e.message}", e)
+            null
+        }
 
     /**
      * 从广播里拼一颗键 —— 键身份 + 它那一组字段。
@@ -224,7 +236,11 @@ object ConfigBroadcast {
                 KeyId.PLUS
             } else {
                 val code = intent.getIntExtra(extraName(id, ConfigFields.KEY_CODE_EXTRA), 0)
-                if (code <= 0) return null
+                if (code <= 0) {
+                    //  静默 return 会让「这颗键连同它的绑定整批消失」查不到原因：留一行账。
+                    XLog.w("配置广播：自定义键 $id 没有正键码（$code），这一颗与它的绑定一起丢弃")
+                    return null
+                }
                 val name = intent.getStringExtra(extraName(id, ConfigFields.KEY_NAME_EXTRA)) ?: id
                 KeyId.custom(id, name, code)
             }
@@ -262,5 +278,41 @@ object ConfigBroadcast {
             }
         }
         return ConfigFields.Values(values)
+    }
+}
+
+/**
+ * 一个 extra 的**跨进程稳定**表示（只给 `ConfigBroadcast.tag` 用）。
+ *
+ *  `Bundle.get()` 拿到的是对象本身，直接拼进指纹用的是它的 `toString()` —— 对 `Bundle` /
+ *  `ArrayList` 这类对象那是**身份哈希**，收发两端各建一份必然不相等，指纹于是恒不等、
+ * 「设置生效」永远报不出来。所以：标量用值；其余用类型名 + 长度 / 有序键这类与身份无关的
+ * 信息（两边从同一条广播解出来的副本，这些量是一致的）。
+ *
+ *  写成文件级私有函数而不是 [ConfigBroadcast] 的成员：那个对象的函数条数贴着 detekt
+ *  `TooManyFunctions` 那一档。
+ */
+private fun describeExtra(value: Any?): String {
+    if (value == null) return "null"
+    return when (value) {
+        is CharSequence -> value.toString()
+
+        is Number -> value.toString()
+
+        is Boolean -> value.toString()
+
+        is Char -> value.toString()
+
+        is Array<*> -> value.javaClass.name + "/" + value.size
+
+        is Collection<*> -> value.javaClass.name + "/" + value.size
+
+        is Map<*, *> -> value.javaClass.name + "/" + value.keys.map { it.toString() }.sorted()
+
+        is Bundle -> value.javaClass.name + "/" + value.size()
+
+        //  其余（Parcelable 等）：没有任何跨进程稳定的值表示，只留类型名 —— 至少不会把
+        //  对象身份混进指纹。
+        else -> value.javaClass.name
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.media.AudioManager
 import android.provider.Settings
+import com.lookie.opluskey.core.log.XLog
 
 // 「条件执行」里那些**带取值的判据** —— 一组条件一条，`ConditionProbe` 只负责派发。
 //
@@ -70,15 +71,27 @@ internal fun chargingMatches(
     }
 }
 
-/** Wi-Fi **开关状态**：`on` / `off`（`WIFI_ON` 1 = 开）。取不到或认不出的取值 ⇒ 不成立。 */
+/**
+ * Wi-Fi **开关状态**：`on` / `off`（`WIFI_ON` 1 = 开）。取不到或认不出的取值 ⇒ 不成立。
+ *
+ *  读不到（键不在 / 值不是 0/1）**不能按「关」算**：那会让 `off` 在取不到时凭空成立，去执行一条
+ *  用户没预期的命令。`-1` 是哨位 —— `WIFI_ON` 的合法取值是 0（关）/ 1（开）/ 2（正在开）/ 3（正在关）。
+ */
 internal fun wifiMatches(
     ctx: Context,
     value: String,
 ): Boolean {
-    val on = Settings.Global.getInt(ctx.contentResolver, Settings.Global.WIFI_ON, 0) == 1
+    val state =
+        runCatching { Settings.Global.getInt(ctx.contentResolver, Settings.Global.WIFI_ON, -1) }
+            .getOrDefault(-1)
+    if (state != 0 && state != 1) {
+        //  2 / 3 是「正在开 / 正在关」，与读不到同一档：此刻既不算开也不算关。
+        XLog.d("Wi-Fi 状态读不到确定的开/关（WIFI_ON=$state）⇒ 这条条件按不成立")
+        return false
+    }
     return when (value) {
-        "off" -> !on
-        "on" -> on
+        "off" -> state == 0
+        "on" -> state == 1
         else -> false
     }
 }

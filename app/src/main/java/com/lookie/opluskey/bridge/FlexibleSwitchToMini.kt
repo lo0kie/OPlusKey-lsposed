@@ -35,8 +35,10 @@ internal fun FlexibleWindowBridge.switchToMiniLocal(
             XLog.w("找不到 $SERVICE，小窗指令跳过")
             return
         }
+    //  取单例走 [instanceOf] 的两档（`getInstance(null)` → 无参 `getInstance()`）：
+    //  有的版本带一个用不上的参数，有的完全不收参，只试一支会在另一种上静默落空。
     val service =
-        Reflect.callStatic(serviceCls, "getInstance", null) ?: run {
+        instanceOf(serviceCls) ?: run {
             XLog.w("$SERVICE.getInstance() 拿不到实例，小窗指令跳过")
             return
         }

@@ -1,19 +1,22 @@
 package com.lookie.opluskey.ui
 
-// 文本按**格**算长度的两件小事 —— 弹窗正文与菜单标题共用同一套口径，不各写一份。
+// 文本按**格**算长度、按**码点**截断的几件小事 —— 弹窗正文与菜单标题共用同一套口径，不各写一份。
 //
 //  「格」是等宽视角下的半角单位：一个汉字（或全角标点）两格，一个拉丁字母 / 数字一格。
 //  界面上的两处判据（正文算不算「短到能居中」、菜单标题要不要截断）都按格数说规格，
 //  而不是按 `String.length` —— 后者把「中文」算两个字符宽得多、"English" 反而算七个。
 
 /**
- * 这个字符占两格（全角）。
+ * 这个**码点**占两格（全角）。
  *
- *  只取 Unicode 里中日韩与全角标点那几段：这两处要的只是「汉字 / 全角标点 vs 其余」这个粗判，
- *  不追求覆盖所有宽字符（真漏了，结果也只是把那一格算窄，不影响可用性）。
+ *  只取 Unicode 里中日韩与全角标点那几段，外加**补充平面**（emoji 等）：「汉字 / 全角标点
+ *  vs 其余」这个粗判不追求覆盖所有宽字符（真漏了，结果也只是把那一格算窄，不影响可用性）。
+ *
+ *  **按码点判、不按 `Char`**：emoji 是代理对（两个 `Char`），按 `Char` 数会把一个 emoji
+ *  算成一格 —— 与「全角占两格」的直觉相反，截断时也会算出比实际更宽的结果。
  */
-internal fun isFullWidth(c: Char): Boolean =
-    when (c.code) {
+internal fun isFullWidth(codePoint: Int): Boolean =
+    when (codePoint) {
         // 谚文字母
         in 0x1100..0x115F -> true
 
@@ -35,13 +38,19 @@ internal fun isFullWidth(c: Char): Boolean =
         // 全角符号
         in 0xFFE0..0xFFE6 -> true
 
-        else -> false
+        // 补充平面（emoji 与各类符号）—— 表宽两格
+        else -> codePoint > 0xFFFF
     }
 
 /** 把一串文本折成**格数**（全角两格、其余一格）。 */
 internal fun displayWidth(text: String): Int {
     var width = 0
-    for (c in text) width += if (isFullWidth(c)) 2 else 1
+    var i = 0
+    while (i < text.length) {
+        val cp = text.codePointAt(i)
+        width += if (isFullWidth(cp)) 2 else 1
+        i += Character.charCount(cp)
+    }
     return width
 }
 
@@ -63,7 +72,7 @@ internal fun ellipsizeToColumns(
     while (i < text.length) {
         val cp = text.codePointAt(i)
         val step = Character.charCount(cp)
-        val next = width + if (isFullWidth(text[i])) 2 else 1
+        val next = width + if (isFullWidth(cp)) 2 else 1
         if (next > maxColumns) break
         width = next
         i += step
@@ -71,3 +80,15 @@ internal fun ellipsizeToColumns(
     }
     return text.take(cut) + "…"
 }
+
+/**
+ * 按**码点**截断到 [max] 个码点以内 —— `take()` 数的是 UTF-16 单元，会切开代理对、留下半个字符。
+ *
+ *  切点落在码点边界上：解析器与渲染拿到的都是完整字符。
+ */
+internal fun String.truncateToCodePoints(max: Int): String =
+    if (max <= 0) {
+        ""
+    } else {
+        substring(0, offsetByCodePoints(0, minOf(max, codePointCount(0, length))))
+    }

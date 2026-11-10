@@ -490,7 +490,18 @@ internal object Framework {
         /** `android.os.ServiceManager`。 */
         const val SERVICE_MANAGER = "android.os.ServiceManager"
 
-        /** `ServiceManager.getService(String)`。 */
+        /**
+         * `android.app.ActivityManager` —— 只为它那个静态 `getService()`（拿 IActivityManager）。
+         *
+         *  与 [SERVICE_MANAGER] 分开：那是按服务名换 binder 的通用入口，这是 AMS 自己的门面类。
+         */
+        const val ACTIVITY_MANAGER = "android.app.ActivityManager"
+
+        /**
+         * `getService()` —— 两处同名：`ServiceManager.getService(String)` 与 `ActivityManager.getService()`。
+         *
+         *  取值相同，所以只登记一条；调用点各自按名字取，不在这里分叉。
+         */
         const val GET_SERVICE = "getService"
 
         /** 状态栏服务在 `ServiceManager` 里登记的名字。 */
@@ -536,7 +547,11 @@ internal object Framework {
         /** `android.hardware.display.DisplayManagerGlobal`（`DisplayManager` 的实现类）。 */
         const val DISPLAY_MANAGER_GLOBAL = "android.hardware.display.DisplayManagerGlobal"
 
-        /** `DisplayManagerGlobal.getInstance()`。 */
+        /**
+         * 按名字取单例的静态入口 —— `DisplayManagerGlobal` 与 `InputManager*` 都叫这个名。
+         *
+         *  取值相同，所以只登记一条；调用点各自按名字取，不在这里分叉。
+         */
         const val GET_INSTANCE = "getInstance"
 
         /** `setTemporaryBrightness(int displayId, float brightness)`。 */
@@ -584,6 +599,25 @@ internal object Framework {
 
         // ── 输入注入（AOSP 公开） ──
 
+        /**
+         * `android.hardware.input.InputManagerGlobal` —— Android 14 起 `injectInputEvent` 的正主。
+         *
+         *  与 [INPUT_MANAGER] 两条并列：13 上没有这个类，14 之后 `InputManager.getInstance()` 可能
+         *  返回 null，只写一条就会在另一半版本区间里静默失效。
+         */
+        const val INPUT_MANAGER_GLOBAL = "android.hardware.input.InputManagerGlobal"
+
+        /** `android.hardware.input.InputManager` —— Android 13 及更早的 `injectInputEvent` 入口。 */
+        const val INPUT_MANAGER = "android.hardware.input.InputManager"
+
+        // ── 系统内部截图 ──
+
+        /** `com.android.internal.util.ScreenshotHelper` —— `system_server` 自己截图用的那条。 */
+        const val SCREENSHOT_HELPER = "com.android.internal.util.ScreenshotHelper"
+
+        /** `ScreenshotHelper.takeScreenshot(int, Handler, Consumer)`。 */
+        const val TAKE_SCREENSHOT = "takeScreenshot"
+
         /** `android.view.KeyEvent` —— 只为 `injectInputEvent` 拿它的 `ACTION_*` 常量。 */
         const val KEY_EVENT = "android.view.KeyEvent"
 
@@ -593,13 +627,10 @@ internal object Framework {
         /** `InputManager.injectInputEvent(InputEvent, int)`。 */
         const val INJECT_INPUT_EVENT = "injectInputEvent"
 
-        /** `android.hardware.input.IInputManager$Stub`（`$` 是内部类分隔符）。 */
-        const val I_INPUT_MANAGER_STUB = "android.hardware.input.IInputManager\$Stub"
-
         /** `IInputManager` 的**接口全名** —— `ServiceCalls.service` 按它找 `$Stub` 做 `asInterface`。 */
         const val INPUT_MANAGER_IFACE = "android.hardware.input.IInputManager"
 
-        /** Binder stub 的 `asInterface`。 */
+        /** Binder stub 的 `asInterface` —— `ServiceCalls` 那一处兜底也用它，不再手写一遍字面量。 */
         const val AS_INTERFACE = "asInterface"
     }
 

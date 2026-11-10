@@ -64,10 +64,13 @@ object Reflect {
     private fun missKey(
         loader: ClassLoader?,
         name: String,
-    ): String {
-        val token = synchronized(loaderTokens) { loaderTokens.getOrPut(loader) { nextLoaderToken++ } }
-        return "$token#$name"
-    }
+    ): String = "${loaderToken(loader)}#$name"
+
+    /** loader 的稳定序号（按 `===` 分配，见 [loaderTokens]）。 */
+    private fun loaderToken(loader: ClassLoader?): Int = synchronized(loaderTokens) { loaderTokens.getOrPut(loader) { nextLoaderToken++ } }
+
+    /** 日志里的 loader 标识：类型名 + 序号 —— 两个同名 loader 也能分得开。 */
+    private fun loaderLabel(loader: ClassLoader?): String = "${loader?.javaClass?.name ?: "bootstrap"}#${loaderToken(loader)}"
 
     /** 负命中的重试窗口（毫秒）。 */
     private const val MISS_RETRY_MS = 30_000L
@@ -89,8 +92,20 @@ object Reflect {
     /** 字段名 → Field。 */
     private val fieldCache: ConcurrentHashMap<Class<*>, ConcurrentHashMap<Any, Any>> = ConcurrentHashMap()
 
-    /** [methodsOf] 的结果（沿类链的 declared 全集）—— 结果不会是 null，直接存列表。 */
+    /**
+     * [methodsOf] 的结果（沿类链的 declared 全集）。
+     *
+     *  只存**完整**的那几份：扫描中途失败时列表是残缺的，拿它进缓存等于把「这台机器没有这些方法」
+     *  当成定论 —— 之后的每次查找（含已经排好的重试）都落到残缺表上，一直失效到进程重启。
+     *  失败那一趟直接不写缓存，下一次调用重新扫一遍（见 [scanMethods]）。
+     */
     private val methodsCache: ConcurrentHashMap<Class<*>, List<Method>> = ConcurrentHashMap()
+
+    /** [methodsOf] 失败那几行日志的去重键（`类名`）—— 按键热路径上不刷屏。 */
+    private val reportedScanFailure: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /** [findClass] 落空那几行日志的去重键（`loader 身份#类名`）—— 同一个名字只报一次。 */
+    private val reportedClassMiss: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     /**
      * 「方法没找到」那几行日志的去重键（`类#方法/参数个数`）。
@@ -108,6 +123,8 @@ object Reflect {
      * `Class.forName(name, false, null)` 即「只查 bootstrap」，查不到一样返回 null。
      *
      * 结果（含「查不到」）按 loader 身份缓存：同名类在不同 loader 下是不同的 Class，不能混用。
+     * 真正解析且落空时补一行 `d`（loader 标识 + 类名，同一个名字去重一次）—— 这一句是「类是不是
+     * 根本没找到」与「找到了但方法对不上」之间唯一的分界。
      */
     fun findClass(
         loader: ClassLoader?,
@@ -133,27 +150,53 @@ object Reflect {
         }
         val cls = runCatching { Class.forName(name, false, loader) }.getOrNull()
         bucket[name] = (cls ?: NOT_FOUND)
+        val key = missKey(loader, name)
         if (cls == null) {
-            missAt[missKey(loader, name)] = System.nanoTime() / 1_000_000
+            missAt[key] = System.nanoTime() / 1_000_000
+            //  落空本身是常态（候选类按机型挨个试），但**落空之后一行线索都没有**是最难查的一种：
+            //  按「loader 身份 + 类名」去重，同一个名字在这一个 loader 里只报一次（d 级，release 里不剩）。
+            if (reportedClassMiss.add(key)) {
+                XLog.d("反射：${loaderLabel(loader)} 里没有 $name（按「本机没有这个类」处理）")
+            }
         } else {
-            // 键是「loader + 类名」，删也得删同一个键：传裸类名的话这一条永远删不掉，
-            //  静态表只涨不落（而且下次同名查找会被一条早已过期的负命中挡住）。
-            missAt.remove(missKey(loader, name))
+            //  写与删必须是同一个键（都是 `loader + 类名`）：只传裸类名的话这一条永远删不掉，
+            //  静态表只涨不落，而且下次同名查找会被一条早已过期的负命中挡住。
+            missAt.remove(key)
+            //  找到了就把去重键放开：将来这个名字再落空（换了 ROM / 换了 loader）时还值得再记一条
+            reportedClassMiss.remove(key)
         }
         return cls
     }
 
     /** 沿类链收集所有声明的方法（含父类）；用在「不知道方法叫什么」时先探一遍再按名字挑。 */
-    fun methodsOf(cls: Class<*>): List<Method> =
-        methodsCache.getOrPut(cls) {
-            val out = ArrayList<Method>()
-            var cur: Class<*>? = cls
-            while (cur != null && cur != Any::class.java) {
-                runCatching { out.addAll(cur.declaredMethods) }
-                cur = cur.superclass
+    fun methodsOf(cls: Class<*>): List<Method> = methodsCache[cls] ?: scanMethods(cls)?.also { methodsCache[cls] = it } ?: emptyList()
+
+    /**
+     * 真的去扫一遍类链 —— **失败时不返回半份结果**，而是 `null`（= 这一趟不算数）。
+     *
+     *  `getDeclaredMethods` 会因为参数 / 返回类型解析不了（`NoClassDefFoundError`）或安全限制而抛，
+     *  而它是**逐层**调的：某一层抛了，收集到的那半份表看着像「这个类只有这些方法」。那份表一旦
+     *  进缓存就是永久的 —— 按名字挑方法的调用点从此一律落空，日志上还像「ROM 没这个方法」。
+     *
+     *  所以任何一层失败都整趟作废、不进缓存（下次调用重扫），并记一行 W 说清是哪一层。
+     */
+    private fun scanMethods(cls: Class<*>): List<Method>? {
+        val out = ArrayList<Method>()
+        var cur: Class<*>? = cls
+        while (cur != null && cur != Any::class.java) {
+            val declared = runCatching { cur.declaredMethods }.getOrNull()
+            if (declared == null) {
+                if (reportedScanFailure.add(cls.name)) {
+                    XLog.w("反射：${cls.name} 的方法表没读出来（在 ${cur.name} 这一层失败）⇒ 这一次不缓存，下次重试")
+                }
+                return null
             }
-            out
+            out.addAll(declared)
+            cur = cur.superclass
         }
+        reportedScanFailure.remove(cls.name)
+        return out
+    }
 
     fun method(
         cls: Class<*>,
@@ -365,7 +408,7 @@ object Reflect {
         when (type) {
             java.lang.Boolean.TYPE -> false
             java.lang.Byte.TYPE -> 0.toByte()
-            java.lang.Character.TYPE -> ' '
+            java.lang.Character.TYPE -> '\u0000'
             java.lang.Short.TYPE -> 0.toShort()
             java.lang.Integer.TYPE -> 0
             java.lang.Long.TYPE -> 0L
@@ -400,7 +443,17 @@ object Reflect {
             //  —— 没有这一行就查不出来。按 `类#方法/参数个数` 去重：`method()` 会把 null 也缓存，
             //  否则每次按键都要刷一行。
             if (reportedMissing.add("${receiver.javaClass.name}#$name/${args.size}")) {
-                XLog.w("找不到实例方法：${receiver.javaClass.name}#$name（${args.size} 参数）")
+                //  **null 实参推不出类型**：上面的 `Any::class.java` 只是个占位，同名多实参方法
+                //  会因此一个都匹配不上 —— 那不是「方法不存在」，日志要让人分得清这两种。
+                val nullCount = args.count { it == null }
+                if (nullCount > 0) {
+                    XLog.w(
+                        "找不到实例方法：${receiver.javaClass.name}#$name（${args.size} 参数，" +
+                            "其中 $nullCount 个实参为 null、类型推不出）",
+                    )
+                } else {
+                    XLog.w("找不到实例方法：${receiver.javaClass.name}#$name（${args.size} 参数）")
+                }
             }
             return null
         }

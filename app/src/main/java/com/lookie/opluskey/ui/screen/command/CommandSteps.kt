@@ -101,7 +101,7 @@ internal fun SettingsPage.SerialSteps() {
     //  挂整张卡而不是每一行 —— 卡里的行都在这条手势范围里，且它比行的 `clickable` 更早拿到事件。
     val probe = rememberGestureProbe("步骤卡")
 
-    // 行级动画的展示层：`draft.steps` 的镜像，每行一个稳定 id（差分规则见 [StepRowDisplay]）。
+    // 行级动画的展示层：`serialForm.steps` 的镜像，每行一个稳定 id（差分规则见 [StepRowDisplay]）。
     //  它住在页面级状态（`commandDraft.stepRows`）而不是这里的 `remember`：切 tab 时这一页的
     //  组合会被注销，展示层跟着没了 —— 切回来重新建一遍就是**整张表重播进场动画**。
     val display = commandDraft.stepRows.rows
@@ -405,7 +405,7 @@ private fun SettingsPage.stepAddRow(
 /**
  * 排序态下步骤行行尾那三颗行内按钮 —— 上移 / 下移 / 删除。
  *
- *  只在排序态出现（见 `CommandDraftState.stepEditing`）：只读态的行尾是空的，换命令靠轻点整行。
+ *  只在排序态出现（见 `CommandDraftState.stepEditing`）：只读态的行尾是一颗选择器指示，换命令靠轻点整行。
  *  首行 / 末行那一颗按 `enabled` 置灰，被点一下时说清为什么 —— 每颗各带一句：外层
  *  「添加命令」那层说的是「最多几步」，套在这里会答错问题。
  *
@@ -439,6 +439,10 @@ private fun SettingsPage.StepRowButtons(
     tick: () -> Unit,
 ) {
     var slotWidth by remember { mutableStateOf(0.dp) }
+    //  画这一行时 `index` 上那一步（删除的防连点判据，见删除那颗按钮）
+    val shownStep =
+        commandDraft.draft.serialForm.steps
+            .getOrNull(index)
     val density = LocalDensity.current
     Row(
         modifier =
@@ -493,11 +497,15 @@ private fun SettingsPage.StepRowButtons(
                 //  `index` 是**这一次组合**算出来的下标：越界就当场忽略并说清是哪一步 ——
                 //  抛在点击回调里就是宿主页面崩掉。
                 //  动的是**多条那一份**表单（与 `SerialSteps` 同一个口径，不跟 `draft.kind` 走）
+                //
+                //  **连点两下不能删两步**：删掉一步之后列表变短，同一格上的第二下仍落在
+                //  `steps.indices` 里，删的就是**后面那一步**了。判据用身份不用下标 ——
+                //  「这一格还是我画这一行时的那一步吗」，比时间窗可靠，也不用额外状态。
                 val steps = commandDraft.draft.serialForm.steps
-                if (index in steps.indices) {
-                    steps.removeAt(index)
+                if (shownStep == null || steps.getOrNull(index) !== shownStep) {
+                    XLog.w("多条命令：第 ${index + 1} 格已经换过内容（现在是另一条），这次点击忽略")
                 } else {
-                    XLog.w("多条命令：要删的第 ${index + 1} 步已经不在（现在共 ${steps.size} 步），这次点击忽略")
+                    steps.removeAt(index)
                 }
             }
         }

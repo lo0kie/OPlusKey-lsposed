@@ -2,9 +2,11 @@ package com.lookie.opluskey.core.wire
 
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.KeyConfig
+import com.lookie.opluskey.core.model.SceneRule
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -97,7 +99,60 @@ object ComboWire {
         val useOwnSettings: Boolean = false,
         /** 这一组自己的「无操作时执行按键命令」；`null` = 没写过（跟随公共）。 */
         val passthrough: Boolean? = null,
+        /**
+         * **系统场景**（`ComboKey.scenes`）—— 注入侧要它才判得出「这一组到底绑没绑动作」。
+         *
+         *  `ChordGuard` 决定吞不吞 ROM 的组合判定时，把「场景表非空」也算作有动作可做；
+         *  少了这一项，只配了场景的组合在那边看起来一个动作都没绑 ⇒ 透传开着时不吞、
+         *  宿主又照常执行场景，于是原生动作与模块动作各来一次。
+         */
+        val scenes: List<WireScene> = emptyList(),
     )
+
+    /**
+     * 一个场景块在广播里的形态 —— 字面量与落盘那份 `SceneRuleDto` 一致：条件是
+     * `BranchCondition.token`，三档动作是 `Action.token`（`follow` = 这一档不参与）。
+     *
+     *  为什么在这里再写一份、不复用落盘那个 DTO：`wire` 不许依赖 `core/config`
+     *  （注入侧只准依赖 model / log / reflect / wire，见 `docs/architecture/structure.md`），
+     *  而这条 extra 正是注入侧在读。
+     */
+    @Serializable
+    private data class WireScene(
+        val conditions: List<String> = emptyList(),
+        val single: String = Action.FOLLOW,
+        val double: String = Action.FOLLOW,
+        val long: String = Action.FOLLOW,
+        val enabled: Boolean = true,
+    ) {
+        /** 认不出（空表 / 有一条条件读不懂）就整块丢掉 —— 与落盘那条同一口径。 */
+        fun toScene(): SceneRule? {
+            val parsed = conditions.map { BranchCondition.parse(it) }
+            val bad = parsed.indexOfFirst { it == null }
+            if (parsed.isEmpty() || bad >= 0) {
+                XLog.w("组合键广播：场景块的条件认不出（整块丢掉）：${conditions.getOrNull(bad) ?: "空"}")
+                return null
+            }
+            return SceneRule(
+                conditions = parsed.filterNotNull(),
+                single = Action.parse(single),
+                double = Action.parse(double),
+                long = Action.parse(long),
+                enabled = enabled,
+            )
+        }
+
+        companion object {
+            fun of(scene: SceneRule): WireScene =
+                WireScene(
+                    conditions = scene.conditions.map { it.token },
+                    single = scene.single.token,
+                    double = scene.double.token,
+                    long = scene.long.token,
+                    enabled = scene.enabled,
+                )
+        }
+    }
 
     /** 组合键列表 → 广播里那个字符串。空表也给空串（接收侧按「没有组合键」处理）。 */
     fun encode(combos: List<ComboKey>): String =
@@ -155,6 +210,7 @@ object ComboWire {
             windowMs = combo.windowMs,
             useOwnSettings = combo.useOwnSettings,
             passthrough = combo.passthrough,
+            scenes = combo.scenes.map { WireScene.of(it) },
         )
 
     /**
@@ -187,6 +243,8 @@ object ComboWire {
             //  少了这两位，上面那个窗口在判定侧永远算不出来（见 `WireCombo` 里那段说明）
             useOwnSettings = useOwnSettings,
             passthrough = passthrough,
+            //  场景表：注入侧只读「非空与否」，但整块带过来才能让两边看到的是同一张表
+            scenes = scenes.mapNotNull { it.toScene() },
         )
     }
 

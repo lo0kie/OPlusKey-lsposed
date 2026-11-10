@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
+import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.AnimatedFade
 import com.lookie.opluskey.ui.DrawablePainter
@@ -102,7 +103,7 @@ internal fun SettingsPage.AppIconByPkg(
             resolved = true
             return@LaunchedEffect
         }
-        val loaded = loadIconOnce(packageName)
+        val loaded = loadIconOnce(packageName, userId)
         // 取不到也要记「问过了」：下面据此决定画通用字形还是留白
         if (loaded != null) {
             // 写进缓存是为了「滚回去不再跨进程问第二轮」，写进自己这一份是为了当场画出来
@@ -139,13 +140,26 @@ internal fun SettingsPage.AppIconByPkg(
  *
  *  从 [AppIcon] 里抽出来：那段 try/catch 加上后面几行会把那个组合函数顶过 detekt 的长度上限，
  *  而它本身与「画什么」无关，只是把 `Drawable` 拿回来。
+ *
+ *  **按那一份所属的用户取**：分身行与主用户同包名，但两个用户里可能装着不同版本（图标也就不同），
+ *  只问主用户的 `PackageManager` 会拿到另一份的图。分身那一档取不到用户视角的 PM 时退回主用户的
+ *  —— 两个人装的是同一个版本时那张图本来就一样，总比整行空着好。
  */
-private suspend fun SettingsPage.loadIconOnce(packageName: String): android.graphics.drawable.Drawable? =
+private suspend fun SettingsPage.loadIconOnce(
+    packageName: String,
+    userId: Int,
+): android.graphics.drawable.Drawable? =
     withContext(Dispatchers.IO) {
+        val pm =
+            if (userId == 0) {
+                context.packageManager
+            } else {
+                AppCloneCatalog.packageManagerFor(context, userId) ?: context.packageManager
+            }
         try {
-            context.packageManager.getApplicationIcon(packageName)
+            pm.getApplicationIcon(packageName)
         } catch (e: Throwable) {
-            XLog.d("取应用图标失败：$packageName（${e.javaClass.simpleName}）")
+            XLog.d("取应用图标失败：$packageName（user=$userId，${e.javaClass.simpleName}）")
             null
         }
     }

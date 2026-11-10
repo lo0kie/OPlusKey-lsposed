@@ -52,6 +52,9 @@ internal object ShellRunner {
             //  空命令不该走到这里（`shell:` 那一支解析时已经掉空值）；真走到就是配置里有条空的，
             //  留一行而不是无声无息地什么都不做
             XLog.w("shell：命令为空，跳过")
+            //  **空命令也算「这一条结束了」**：`onDone` 的约定是「跑完之后」（成功失败都算），
+            //  漏掉它，等多步命令的回执时那条链会停在半路（见 [exec] 的 `onDone` 说明）。
+            onDone?.invoke()
             return
         }
         //  整条命令都挪进池子：`acquireSlot` 是文件锁 + 目录 IO，`startProcess` 是 fork/exec
@@ -207,10 +210,11 @@ internal object ShellRunner {
             runCatching { reader.get(SHELL_DRAIN_JOIN_MS, TimeUnit.MILLISECONDS) }
             // 合并成一条 `a; b` 的步骤取的是最后一条的退出码（`sh` 的规矩）。
             val code = proc.exitValue()
-            // 退出码 0 也可能是**假成功**：最后那句 `echo …` 成功就把前面那句的失败盖掉了
-            //  （见 [FAILURE_HINTS]）。那一档同样算失败，并且**不弹提示**。
-            val silentFail = if (code == 0) denied.get() else null
-            if (code != 0 || silentFail != null) {
+            //  **只在退出码非 0 时才看 [FAILURE_HINTS]**：退出码 0 是这条命令自己给出的结论，
+            //  输出里出现 "Permission denied" 也可能只是它在打印别人的日志 / 自己已经处理掉了。
+            //  原先这一档连退出码 0 也判失败 —— `cmd; echo 'tip: …'` 这种脚本的结尾 `echo`
+            //  会让整条的退出码恒为 0，那条规则实际是把「成功」的判据交给了输出里的字面匹配。
+            if (code != 0) {
                 XLog.w("shell 没成功（退出码 $code，走的是 $via）：${XLog.redactCommand(command)}")
                 logOutputTail(tail)
                 sinks.onFailure(classifyFailure(code, via, denied.get()))
@@ -517,8 +521,7 @@ internal object ShellRunner {
      *  命令（`cmd notification` 发的是通知，不会浮起来），所以约定由命令自己写进输出、模块负责弹。
      *
      *  口径：前缀**精确** `tip:`（前导空白先去掉），一条命令只取**最后一条**，且**只在这一次算成功
-     *  时**弹（失败那边已经有失败提示）。「算成功」不只是退出码 0 —— 输出里认出失败签名
-     *  （[FAILURE_HINTS]）也算失败，见 [awaitProcess] 那一支。
+     *  时**弹（失败那边已经有失败提示）。「算成功」就是**退出码 0**（见 [awaitProcess]）。
      *
      *  **只认显式写的 `tip:`**：命令没写就一条都不弹，不拿它的输出去猜（`am start` 那句
      *  `Starting: Intent {…}` 就是单行输出，猜了只会弹一串没人要的东西）。写法上引号可以省 ——
@@ -534,16 +537,16 @@ internal object ShellRunner {
     internal const val TIP_PREFIX = "tip:"
 
     /**
-     * 输出里出现这几句 = 这条命令**失败了**，与退出码无关。
+     * 输出里出现这几句 = 这条命令**大概率是权限那一档失败**，用来给失败**分档**。
      *
      *  · `Permission Denial` / `SecurityException` / `Permission denied` / `Operation not permitted`
      *    是权限那一档（`am` 在 App uid 下就是第一句）；
      *  · `Exception occurred while executing` 是 `settings` / `cmd` 自己的错误横幅（真机：`settings get`
      *    在 AppOps 里抛 NPE 时打的就是它，后面跟一串栈帧）。
      *
-     *  为什么**退出码 0 也要看这里**：shell 脚本常写成 `cmd; echo 'tip: …'`，最后那句 `echo` 成功
-     *  就把前面那句的失败盖掉了 —— 只看退出码会把它当成功，还弹一句「成了」的提示（用户报过：
-     *  「不使用 su 执行时是失败的，但没有提示失败，看起来 tip 的优先级比错误的高」）。
+     *  **只在退出码非 0 时参考**（见 [awaitProcess] 与 [classifyFailure]）：退出码 0 是命令自己的
+     *  结论，此时输出里出现这些话也可能只是它在打印别人的日志。原先连退出码 0 也拿它判失败，
+     *  于是 `cmd; echo 'tip: …'` 这类脚本永远走不进成功分支。
      */
     private val FAILURE_HINTS =
         listOf(

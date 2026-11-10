@@ -84,6 +84,13 @@ internal fun deadIndexesOf(rules: List<SceneRule>): Set<Int> {
  *  就有人接了 —— 让它记账会把后面的行误判成死的。反过来，多条件的行**被判死**没这个问题：无论按
  *  上面哪一条，它本来就已经轮不到了。
  *
+ * ## 只认**真的会执行**的块
+ *
+ *  两条判据都只拿「这一块命中时会做点什么」的块做前提：三档全是「跟随默认」的块
+ *  （[SceneRule.isEmpty]）命中也不改变任何东西，判定侧会继续往下找 —— 它既不替任何一档接住
+ *  取值，也盖不住后面那一块。少了这一道，前面摆一块三档全跟随的 `[亮屏]`，后面可达的
+ *  `[亮屏 + 微信]` 就会被判成 `SUBSUMED`，保存那道闸跟着拒绝一张本来合法的表。
+ *
  *  空条件 / 取值没配完的行、没有候选的档（前台应用）不进账：它们本来就不参与「恒成立」。
  */
 private fun deadEndOf(rules: List<SceneRule>): Pair<Int, BranchDeadCause>? {
@@ -98,16 +105,19 @@ private fun deadEndOf(rules: List<SceneRule>): Pair<Int, BranchDeadCause>? {
         if (!rule.enabled) continue
         //  先判死、再记账：反过来的话「把这一档凑齐的那一行」会把自己标死（它还要接最后一个取值）
         if (saturated.isNotEmpty()) return index to BranchDeadCause.SATURATED
-        val signature = signatureOf(rule)
-        if (signature != null && earlier.any { it.isNotEmpty() && signature.containsAll(it) }) {
+        //  这一块命中时会不会做点什么 —— 三档全跟随（[SceneRule.isEmpty]）的块对判定毫无影响，
+        //  下面两条判据都不许拿它当前提（见类注释「只认真的会执行的块」）。
+        val executes = !rule.isEmpty
+        val premise = premiseOf(rule)
+        if (premise != null && earlier.any { it.isNotEmpty() && premise.containsAll(it) }) {
             return index to BranchDeadCause.SUBSUMED
         }
-        if (signature != null) earlier += signature
+        if (premise != null) earlier += premise
         //  记账：只有「单条件、取值可用」的行才替它那一档凑数；
         //  而且只有取值互斥且穷尽的那几档（`exhaustive`）才记 —— 「凑齐 = 恒成立」只在它们身上成立
         val only = rule.conditions.singleOrNull()?.takeIf { it.isUsable }
         val kind = only?.kind?.takeIf { it.choices.isNotEmpty() && it.exhaustive }
-        if (only != null && kind != null) {
+        if (executes && only != null && kind != null) {
             val mine = seen.getOrPut(kind) { mutableSetOf() }
             mine += only.effectiveValue
             if (kind.choices.all { it in mine }) saturated += kind
@@ -115,6 +125,16 @@ private fun deadEndOf(rules: List<SceneRule>): Pair<Int, BranchDeadCause>? {
     }
     return null
 }
+
+/**
+ * 这一块算不算「前提」—— 只有命中时会做点什么的块才算。
+ *
+ *  三档全跟随（[SceneRule.isEmpty]）的块命中也不改变任何东西：它既不替任何一档接住取值，
+ *  也盖不住后面那一块（见 [deadEndOf] 类注释「只认真的会执行的块」）。
+ *
+ * @return 这一块的条件集合；`null` = 不当前提
+ */
+private fun premiseOf(rule: SceneRule): Set<Pair<String, String>>? = if (rule.isEmpty) null else signatureOf(rule)
 
 /**
  * 这一行的条件集合（`档 id + 取值`）—— 判「谁包含谁」用。

@@ -74,9 +74,11 @@ internal object NfcToggle {
      *  只在**下发成功**时更新（见 [fire]）：被系统拒掉的那一下没生效，不能当成用户「已经要到了」
      *  记进来 —— 否则窗口内再按一下会按一个从未发生过的意图取反。
      */
+    @Volatile
     private var intent: Boolean? = null
 
     /** [intent] 记下的时刻 —— 只在 [INTENT_WINDOW_MS] 之内算数。 */
+    @Volatile
     private var intentAt = 0L
 
     /**
@@ -94,9 +96,17 @@ internal object NfcToggle {
                 XLog.w("nfc：取不到 nfc 服务")
                 return false
             }
-        val state = state(s) ?: return false
-        val want = target ?: desired(state)
-        XLog.w("nfc：getState=$state（${stateLabel(state)}）目标=${label(want)}${if (target == null) "（切换）" else ""}")
+        val want: Boolean
+        if (target != null) {
+            //  明确开 / 关时有目标就够了：`getState` 在关闭那 3 秒里停在旧值（见类注释），
+            //  读了也判不出方向；它读失败时还会把一次本可以下发的指令整条挡掉。
+            want = target
+            XLog.w("nfc：明确档目标=${label(want)}（不读 getState）")
+        } else {
+            val state = state(s) ?: return false
+            want = desired(state)
+            XLog.w("nfc：getState=$state（${stateLabel(state)}）目标=${label(want)}（切换）")
+        }
         return fire(s, want)
     }
 

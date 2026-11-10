@@ -42,8 +42,8 @@ internal object ProcessController {
             return
         }
         if (pkg in FORBIDDEN) {
-            //  宿主自己 / 设置页进程 / system_server：停它们等于把模块自己（或整个系统）弄死，
-            //  而用户配这一条多半是手滑。日志里说清是「拒绝」而不是「失败」，免得去查 shell。
+            //  宿主自己 / 设置页进程：停它们等于把模块自己弄死，而用户配这一条多半是手滑。
+            //  日志里说清是「拒绝」而不是「失败」，免得去查 shell。
             XLog.w("结束应用：$pkg 是本模块/系统自身，拒绝执行")
             onDone(CommandFailure.UNKNOWN)
             return
@@ -52,12 +52,11 @@ internal object ProcessController {
         exec(stopCommand(pkg), onDone)
     }
 
-    /** 允许执行目标之外的那几个包 —— 见 [perform] 里的说明。 */
+    /** **禁止结束**的那几个包 —— 见 [perform] 里的说明。 */
     private val FORBIDDEN =
         setOf(
             com.lookie.opluskey.core.model.HostApp.PACKAGE,
             com.lookie.opluskey.core.model.HostApp.PAGE_PROCESS,
-            "android",
         )
 
     /**
@@ -95,7 +94,11 @@ internal object ProcessController {
      *  与「发了命令但什么都没停」区分开。
      */
     private fun stopCommand(pkg: String): String =
-        "todo=\$(${pidsOf(pkg)}); " +
+        //  **`ps` 与「没有进程」必须分开判**：`ps` 没跑成时输出是空串，与「这个包真的没有进程」
+        //  长得一模一样 —— 直接接 `awk` 的话会把一次「查不到」当成「本来就没有」报成功
+        //  （还弹一句「本来就没有进程」）。所以先单独跑 `ps`、留住它的退出码。
+        "psout=\$(ps -A -o PID,ARGS) || { echo 'ps 没跑成，结束应用无法判断有哪些进程'; exit 1; }; " +
+            "todo=\$(printf '%s\\n' \"\$psout\" | ${pidFilter(pkg)}); " +
             "if [ -z \"\$todo\" ]; then echo '${ShellRunner.TIP_PREFIX} 本来就没有进程'; exit 0; fi; " +
             "am force-stop $pkg; sleep $STOP_SETTLE_S; " +
             "for pid in \$todo; do ${killIfStillOurs(pkg)}; done; sleep $STOP_VERIFY_S; " +
@@ -104,7 +107,7 @@ internal object ProcessController {
     /**
      * 循环体：`pid` 这一行现在还是 [pkg] 的进程才 `kill -9`。
      *
-     *  判据与 [pidsOf] 同一套（名字等于包名，或以 `包名:` 开头），只是把「取清单」换成
+     *  判据与 [pidFilter] 同一套（名字等于包名，或以 `包名:` 开头），只是把「取清单」换成
      *  「核一个 pid」—— 后者慢一点无所谓，它只跑在要杀的那几个 pid 上。
      */
     private fun killIfStillOurs(pkg: String): String =
@@ -113,16 +116,18 @@ internal object ProcessController {
             "*) echo \"skip \$pid (\$cur)\" ;; esac"
 
     /**
-     * 「这个包现在有哪几个 pid」—— 一行一个，拿来当「要结束的清单」。
+     * 「这个包现在有哪几个 pid」—— 从 `ps -A -o PID,ARGS` 的输出里挑，一行一个。
      *
-     *  第 2 列是进程名（`ps -A -o PID,ARGS` 的两列写法）。两个条件缺一不可：
+     *  第 2 列是进程名。两个条件缺一不可：
      *  `$2==p` 命中主进程（`com.tencent.mm`），`index($2,q)==1`（q 是 `包名:`）命中子进程
      *  （`com.tencent.mm:push`）。
      *
      *  **用 `awk` 而不是 `grep`**：`grep -F 包名` 会把 `com.tencent.mm` 也匹配到
      *  `com.tencent.mmxxx` 上，且 `grep` 自己那一行也在 `ps` 里（要么 `-v grep`、要么被误杀）。
+     *
+     *  `ps` 本身由调用方单独跑（见 [stopCommand]）：这里只吃它交出来的那份文本。
      */
-    private fun pidsOf(pkg: String): String = "ps -A -o PID,ARGS | awk -v p=$pkg -v q=$pkg: '\$2==p||index(\$2,q)==1{print \$1}'"
+    private fun pidFilter(pkg: String): String = "awk -v p=$pkg -v q=$pkg: '\$2==p||index(\$2,q)==1{print \$1}'"
 
     /**
      * 跑一条「要成功/失败结论」的命令 —— 用命令自己那行提示当成功凭证（见 [ShellRunner.TIP_PREFIX]）。

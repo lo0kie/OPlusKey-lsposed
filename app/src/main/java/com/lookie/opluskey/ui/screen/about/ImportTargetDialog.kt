@@ -24,6 +24,7 @@ import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.ImportOverwrite
 import com.lookie.opluskey.ui.PendingImport
 import com.lookie.opluskey.ui.PickerRow
+import com.lookie.opluskey.ui.PickerRowTraits
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.canWriteConfig
 import com.lookie.opluskey.ui.escapeEmphasis
@@ -107,7 +108,7 @@ internal fun SettingsPage.ImportTargetDialog() {
             )
         },
     ) {
-        ImportTargetRows(state.profiles, state.full, state.selected) { state.selected = it }
+        ImportTargetRows(state.profiles, state.full, state.selected, interactive = pending != null) { state.selected = it }
     }
 }
 
@@ -182,6 +183,8 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(
     profiles: List<ConfigProfiles.Item>,
     full: Boolean,
     selected: ImportTarget?,
+    /** 这一窗还在不在（退场期间不再派发，见 `PickerRow` 的 `interactive`）。 */
+    interactive: Boolean,
     onSelect: (ImportTarget) -> Unit,
 ) {
     //  「最多三份」这句**写在行上**，不能挂在点击回调里：`PickerRow` 的可点性跟着 `enabled` 走
@@ -200,6 +203,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(
             PickerRow(
                 label = item.displayName,
                 selected = selected == ImportTarget.Into(item.slot),
+                traits = PickerRowTraits(interactive = interactive),
                 onClick = { onSelect(ImportTarget.Into(item.slot)) },
             )
         }
@@ -213,6 +217,7 @@ private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(
             label = if (full) fullText else I18n.get(Strings.PROFILE_IMPORT_NEW, "新增配置"),
             selected = selected == ImportTarget.New,
             enabled = !full,
+            traits = PickerRowTraits(interactive = interactive),
             onClick = { onSelect(ImportTarget.New) },
         )
     }
@@ -277,9 +282,10 @@ internal fun SettingsPage.overwriteProfile(overwrite: ImportOverwrite) {
         return
     }
     //  覆盖的是当前生效那份：文件已经换成新的，但页面状态、命令库、注入侧还都是旧的 ——
-    //  走通用写入通道（`write`）刷新并广播（与「切换配置」同一条收尾，见 applySwitchedConfig）
+    //  走通用写入通道（`write`）刷新并广播（与「切换配置」同一条收尾，见 applySwitchedConfig）。
+    //  广播没发出去（`BroadcastFailed`）时不补「已覆盖」：注入侧手上仍是旧配置。
     if (overwrite.slot == ConfigProfiles.CURRENT_SLOT) {
-        if (applySwitchedConfig(ordered, "导入覆盖当前配置") == CommandsSave.Failed) return
+        if (applySwitchedConfig(ordered, "导入覆盖当前配置") != CommandsSave.Ok) return
     }
     hint(
         I18n.format(

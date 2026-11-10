@@ -66,6 +66,10 @@ object I18n {
         get() =
             when (currentLanguage) {
                 AppLanguage.AUTO -> {
+                    //  繁体（zh-Hant / zh-TW / zh-HK / zh-MO）本该单独一档，但
+                    //  `app/src/main/assets/locales/` 里只有 `zh-CN.json` 与 `en.json` ——
+                    //  **没有繁体字典，暂按简体**。真加了 `zh-TW.json` 时再在这里按
+                    //  `Locale.getDefault().script` / `country` 分档。
                     val loc = Locale.getDefault()
                     if (loc.language.equals("zh", ignoreCase = true)) AppLanguage.ZH_CN else AppLanguage.EN
                 }
@@ -119,6 +123,15 @@ object I18n {
     /** 一个进程里最多试这么多次；见 [dict]。 */
     private const val MAX_LOAD_ATTEMPTS = 3
 
+    /**
+     * [loadAttempts] 记的是**哪一份文件**的失败次数。
+     *
+     *  换目标文件（用户切语言）时计数清零：那是一次性的用户动作，不该被上一份文件耗掉的
+     *  配额永久挡住（读不到也只是这一次失败）。同一份文件上仍然封顶。
+     */
+    @Volatile
+    private var attemptsFile: String? = null
+
     init {
         reload()
     }
@@ -161,6 +174,10 @@ object I18n {
      *
      *  同一份文件不重读：语言是**跟着配置**走的（每次配置落盘都会重设一遍，见
      *  `ui/state/ConfigWrite.write`），不设这道闸，拨任何一个开关都要把 JSON 再解一遍。
+     *
+     *  **失败也受 [MAX_LOAD_ATTEMPTS] 封顶**：这条同样会被每一次 `currentLanguage` 赋值调到，
+     *  字典读不到时（类加载器与 APK 两条路都空）不封顶就是每次按键都重开一遍 APK 的 zip、
+     *  再打一条 W。[loadJson] 成功时把计数清零，所以「读得到之后就不再受限」。
      */
     fun reload() {
         val targetLang = effectiveLanguage
@@ -171,8 +188,13 @@ object I18n {
                 AppLanguage.AUTO -> "zh-CN.json"
             }
         if (fileName == loadedFile) return
-        // 读失败（`null`）**不记账**：记了的话，同语言下再调 [reload] 会被上面那行直接短路，
-        //  字典就一直是空/旧的那份，直到用户换一次语言才重试。
+        if (fileName != attemptsFile) {
+            attemptsFile = fileName
+            loadAttempts.set(0)
+        }
+        if (loadAttempts.get() >= MAX_LOAD_ATTEMPTS) return
+        // 读失败（`null`）**不更新 [loadedFile]**：更新了的话同语言下再调 [reload] 会被上面那行
+        //  直接短路，字典就一直是空/旧的那份。重试次数由 [loadAttempts] 封顶（见上面的说明）。
         val map = loadJson(fileName) ?: return
         loadedFile = fileName
         strings = map
@@ -244,7 +266,9 @@ object I18n {
         key: String,
         vararg args: Any,
     ): String {
-        val pattern = dict()[key] ?: key
+        //  空串与缺失同义：字典里写成 `""`（或 JSON null 被读成空）时，裸返回空串会让界面留一个
+        //  空格子，而同一个 key 走 `get` 却会回退到兜底文案。
+        val pattern = dict()[key]?.takeIf { it.isNotEmpty() } ?: key
         return try {
             if (args.isEmpty()) pattern else String.format(Locale.ROOT, pattern, *args)
         } catch (e: Throwable) {

@@ -1,14 +1,10 @@
 package com.lookie.opluskey.ui.screen.command
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
@@ -28,7 +24,6 @@ import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.LocalSheetBringIntoView
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.ModeMenuPopups
@@ -40,17 +35,12 @@ import com.lookie.opluskey.ui.SHEET_TITLE_MARGIN
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.boundAppName
-import com.lookie.opluskey.ui.couiInputColors
-import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.actionRowView
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.selectedRowRing
 import com.lookie.opluskey.ui.sheetCardColors
 import com.lookie.opluskey.ui.state.CommandUiState
-import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -221,9 +211,13 @@ internal class StepSheetFilter(
     /**
      * 候选表里**要不要列「无操作」**。
      *
-     *  只有「系统场景」传 `true`：那里的动作是「这条场景命中后干什么」，「无操作」是一档真取值
-     *  （命中也不做事，用来盖住后面的兜底场景）。多条命令的步骤不传 —— 步骤不是按键，
-     *  那一档在那里等于白占一格（见 [ActionCatalog.BRANCH_GROUPS] / `STEP_GROUPS`）。
+     *  只有长按卡的「松手执行额外动作」传 `true`：那一步本来就是可选的，「配了但这次不做事」是一档
+     *  真取值。多条命令的步骤不传 —— 步骤不是按键，那一档在那里等于白占一格（见 `STEP_GROUPS`）。
+     *  （场景块的三档动作在**网格**里挑，不走这张抽屉，见 `ActionCatalog.BRANCH_GROUPS`。）
+     *
+     *  **它只决定「列不列无操作」，不换表**：以前这一位顺手把整张表换成 [ActionCatalog.BRANCH_GROUPS]，
+     *  于是「跟随默认」跟着漏进了长按那一行 —— 而它只属于场景块的三档（真机反馈「松手那一行能挑到
+     *  跟随默认」）。
      */
     val includeNone: Boolean = false,
     /**
@@ -313,14 +307,11 @@ internal fun SettingsPage.StepPickerSheet(
     val tick = rememberTick()
     // 开着二级菜单的那一格（入口格那些：系统开关 / 系统导航 / 媒体控制…）。`null` = 没开。
     var subTile by remember { mutableStateOf<ActionCatalog.Spec?>(null) }
-    //  抽屉顶上那个过滤框 —— 内置动作 + 已保存命令一共四十多行，翻三屏才找到一条；
-    //  边输边筛，清空即回到分组列表。关抽屉时一并清掉：下一次打开还挂着上一个词的话，
-    //  用户会以为「列表少了东西」。
-    var query by remember { mutableStateOf("") }
-    //  这一次列哪张候选表：系统场景那一支要把「无操作」列出来，多条命令的步骤不列
-    //  （见 [StepSheetFilter.includeNone]）。
+    //  这一次列哪张候选表：要不要「无操作」只差这一行，**不换表** ——
+    //  `BRANCH_GROUPS` 是场景块那张（还带「跟随默认」），只该给场景块的三档动作用（见
+    //  [StepSheetFilter.includeNone]）。
     val groups =
-        (if (sheet.filter.includeNone) ActionCatalog.BRANCH_GROUPS else ActionCatalog.STEP_GROUPS)
+        (if (sheet.filter.includeNone) ActionCatalog.GROUPS else ActionCatalog.STEP_GROUPS)
             .let { base ->
                 if (!sheet.filter.excludeTiles) {
                     base
@@ -371,12 +362,11 @@ internal fun SettingsPage.StepPickerSheet(
     var subAnchor by remember { mutableStateOf<PreciseClickState?>(null) }
     val coldAnchor = remember { PreciseClickState() }
 
-    //  关抽屉时**三样一起复位**：搜索词、开着二级菜单的那一格、它的锚点。
-    //  只清 `query` 的话，系统返回 / 下拉把抽屉收掉之后 `subTile` 还挂着 —— 而 `show` 是行参、
+    //  关抽屉时**两样一起复位**：开着二级菜单的那一格、它的锚点。
+    //  只清一样的话，系统返回 / 下拉把抽屉收掉之后 `subTile` 还挂着 —— 而 `show` 是行参、
     //  这个组合并不随之销毁，于是那一层菜单仍开在半空：随手选一档就把一步**静默加进草稿末尾**。
     LaunchedEffect(show) {
         if (!show) {
-            query = ""
             subTile = null
             subAnchor = null
         }
@@ -443,84 +433,20 @@ internal fun SettingsPage.StepPickerSheet(
             boundApp = boundApp,
             groups = groups,
         )
-    //  搜索态：分组标题全部让位，命中的行拍成**一张卡**（找东西时按组切反而要多扫几行标题）。
-    //  两组候选的锚点不在同一张表里，这里按「先查命令、再查动作」挑一份；
-    //  两个都没有（理论上不会）就落到 `coldAnchor`，至少不抛。
-    val searchCtx =
-        StepSheetCtx(
-            anchorOf = { savedAnchors[it] ?: anchors[it] ?: coldAnchor },
-            isCurrent = { isCurrent(it) },
-            onLand = { spec, anchor -> land(spec, anchor) },
-            current = sheet.current,
-            boundApp = boundApp,
-            groups = groups,
-        )
-    val term = query.trim()
-    val hits =
-        if (term.isEmpty()) {
-            emptyList()
-        } else {
-            //  内置那几组按候选表自己的顺序，后面接已保存命令 —— 与不搜时的相对顺序一致
-            (groups.flatMap { it.second } + savedSpecs)
-                .filter { it.label.contains(term, ignoreCase = true) }
-        }
 
+    //  **没有搜索框**（用户口径）：抽屉里就那几组候选 + 自己写的命令，按组扫一遍比先想关键词快；
+    //  顶上再挂一个过滤框反而把「一眼看全」这件事挡住了。
     PageSheet(
         show = show,
         title = sheet.title,
         onDismiss = sheet.onDismiss,
-        //  过滤框用库自己的 `InputField`（「选择应用」页那个搜索框就是它）——
-        //  放大镜、清除键、占位文案都是它自带的，不另拼一层。
-        //  走 `header`：它在滚动区**外面**，列表翻几屏时不该跟着滚走（否则想换关键词得先滚回顶部）。
-        header = {
-            InputField(
-                query = query,
-                onQueryChange = { query = it },
-                //  键盘上点「搜索」不做额外动作：过滤是边输边做的
-                onSearch = { },
-                expanded = false,
-                onExpandedChange = { },
-                modifier = Modifier.fillMaxWidth().padding(bottom = STEP_SHEET_SEARCH_GAP),
-                label = I18n.get(Strings.COMMAND_SEARCH, "搜索命令"),
-                //  Monet 下把底色调淡（三处 `InputField` 共用那一份，见 `couiInputColors`）
-                colors = couiInputColors(),
-            )
-        },
     ) {
-        //  **三种内容之间交叉淡入淡出**（列表 与 搜索结果 与 没找到）：高度变化交给壳里那个
-        //  `animateContentSize`，这里只做淡入淡出 —— 两层各管一件事，
-        //  两个都动高度会变成一段动画套一段。
-        Crossfade(
-            targetState =
-                when {
-                    term.isEmpty() -> SheetBody.Groups
-                    hits.isEmpty() -> SheetBody.Empty
-                    else -> SheetBody.Hits
-                },
-            animationSpec = tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL),
-            label = "step-sheet-body",
-        ) { body ->
-            Column(Modifier.fillMaxWidth()) {
-                when (body) {
-                    SheetBody.Groups -> {
-                        StepSheetGroups(ctx)
-                        //  **已保存的命令排在最后**：这是用户自己写的东西，挑的时候上面几组
-                        //  通常已经扫过一遍。一条都没存过时整组不出现 —— 这是「挑一条来用」
-                        //  的抽屉，没得挑就别摆一栏空的。
-                        if (savedSpecs.isNotEmpty()) {
-                            SavedCommandsGroup(savedSpecs, savedCtx)
-                        }
-                    }
-
-                    //  搜不到时给一句话，不摆一张空卡：这里没有「这里还能放东西」的暗示
-                    SheetBody.Empty -> {
-                        StepSheetEmptyHint(term)
-                    }
-
-                    SheetBody.Hits -> {
-                        StepSheetCard(hits, searchCtx)
-                    }
-                }
+        Column(Modifier.fillMaxWidth()) {
+            StepSheetGroups(ctx)
+            //  **自定义命令排在最后**：这是用户自己写的东西，挑的时候上面几组通常已经扫过一遍。
+            //  一条都没存过时整组不出现 —— 这是「挑一条来用」的抽屉，没得挑就别摆一栏空的。
+            if (savedSpecs.isNotEmpty()) {
+                SavedCommandsGroup(savedSpecs, savedCtx)
             }
         }
     }
@@ -563,9 +489,6 @@ internal fun SettingsPage.StepPickerSheet(
         },
     )
 }
-
-/** 抽屉正文的三种形态 —— 只为 [Crossfade] 有一个稳定的目标值（见 `StepPickerSheet`）。 */
-private enum class SheetBody { Groups, Hits, Empty }
 
 /**
  * 抽屉里那三支（内置组 / 已保存组 / 一张卡）共用的「长什么样、点了怎么算」——
@@ -611,7 +534,7 @@ private fun SettingsPage.SavedCommandsGroup(
     ctx: StepSheetCtx,
 ) {
     //  与上面那几组同一份内边距
-    SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"), insideMargin = SHEET_TITLE_MARGIN)
+    SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"), insideMargin = SHEET_TITLE_MARGIN)
     StepSheetCard(specs, ctx)
 }
 
@@ -691,40 +614,3 @@ private fun stepSheetRow(
         onClick = { ctx.onLand(spec, anchor) },
     )
 }
-
-/** 搜索框与下面那串候选之间的距离 —— 比小标题自带的那档（12dp）再紧一点：它俩是一块儿。 */
-private val STEP_SHEET_SEARCH_GAP = 8.dp
-
-/**
- * 搜不到东西时那一行字。
- *
- *  **不摆空卡**：卡片在别处都表示「这里有东西、只是现在空着」（已保存命令那条空态就是这样），
- *  而搜索没命中完全是另一回事 —— 一行字说明就够了，也别给出「还能往里放东西」的错觉。
- *
- *  用普通 `Text` 而不是 `EmphasisText`：用户输的词要原样显示（搜 `*` 就得看见 `*`），
- *  正文记号那一套在这里没有用武之地。
- */
-@Composable
-private fun SettingsPage.StepSheetEmptyHint(term: String) {
-    //  走全项目唯一那份空态排版（[Feedback]：32dp 字形框 + 居中文案），字形用**那张脸**
-    //  （`PageIcons.NoMatch`）—— 与「选择应用」搜不到时同一颗，同一个现象在两处长一个样。
-    //  不摆空卡：卡片在别处都表示「这里有东西、只是现在空着」，搜索没命中是另一回事。
-    Feedback(
-        glyph = { tint ->
-            Icon(
-                imageVector = PageIcons.NoMatch,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                tint = tint,
-            )
-        },
-        text = I18n.format(Strings.COMMAND_SEARCH_EMPTY, term),
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(vertical = STEP_SHEET_EMPTY_PADDING),
-    )
-}
-
-/** 搜不到时那行字的上下留白 —— 与各页空态同一档（24dp）。 */
-private val STEP_SHEET_EMPTY_PADDING = 24.dp

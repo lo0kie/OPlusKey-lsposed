@@ -61,6 +61,19 @@ abstract class SealReleaseAssets : DefaultTask() {
     @get:PathSensitive(PathSensitivity.NONE)
     abstract val keystoreFiles: ConfigurableFileCollection
 
+    /**
+     * `keystore.properties` 指向的那个 `.jks` 本体 —— **也必须是输入**。
+     *
+     *  只把 properties 当输入时，换掉 keystore（沿用同一份 properties、同一个路径）任务仍是
+     *  UP-TO-DATE：生成出来的 `SealPin.kt` 里还是**上一把**证书的指纹，而这个指纹既决定封存密钥、
+     *  又是运行期的判据 —— 那一次出的包在真机上会被自己判成「被改过」。
+     *  路径由注册处从 properties 里解出来（见下面的 `storeFile`），内容摘要靠 `PathSensitivity.NONE`
+     *  按字节算。文件不存在时这里不报错，缺签名那一档由 [seal] 自己把话说全。
+     */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val keystoreStoreFile: ConfigurableFileCollection
+
     /** 生成的那份容器资产（`assets/sealed.bin`）。 */
     @get:OutputDirectory
     abstract val assetsOut: DirectoryProperty
@@ -226,11 +239,24 @@ androidComponents {
         //  否则装上去「捐赠打赏」那一页的图就没有了（明文资产只接给 debug）。
         if (variant.buildType != "release" && variant.buildType != "releaseLog") return@onVariants
         val taskName = "seal" + variant.name.replaceFirstChar(Char::uppercase) + "Assets"
+        // `.jks` 的路径只能在**配置期**从 `keystore.properties` 里解出来（任务自己的 `@InputFiles`
+        //  必须在这一刻拿到文件集合）。properties 读不出来时给空集合：缺签名那一档由任务自己报。
+        val keystoreProps =
+            rootProject.layout.projectDirectory
+                .file("keystore.properties")
+                .asFile
+        val storeFile =
+            runCatching {
+                val props = Properties()
+                keystoreProps.inputStream().use { input -> props.load(input) }
+                props.getProperty("storeFile")?.let { File(keystoreProps.parentFile, it) }
+            }.getOrNull()
         val seal =
             tasks.register<SealReleaseAssets>(taskName) {
                 description = "把 core/seal 下的明文资产封成 assets/sealed.bin，并生成签名指纹常量（${variant.name}）"
                 sourceRoot.set(layout.projectDirectory.dir("seal"))
                 keystoreFiles.from(rootProject.layout.projectDirectory.file("keystore.properties"))
+                if (storeFile != null) keystoreStoreFile.from(storeFile)
                 assetsOut.set(layout.buildDirectory.dir("generated/seal/${variant.name}/assets"))
                 sourcesOut.set(layout.buildDirectory.dir("generated/seal/${variant.name}/java"))
             }

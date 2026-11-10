@@ -553,7 +553,8 @@ data class GlobalConfig(
      *  只在组合的**那一格**是 [Action.None] 时生效：绑了动作就以组合为准，
      *  否则「配了组合还要两颗键各跑一遍」会变成一次按压执行三个动作。
      *
-     *  读它的是宿主里的执行器（`host/GestureExec.handleCombo`），所以**只走落盘**、不进广播。
+     *  读它的是宿主里的执行器（`host/GestureExec.handleCombo`），注入侧的 `ChordGuard` 判
+     *  「吞不吞 ROM 的组合判定」时也读它 —— 所以走广播（`ConfigFields.F_COMBO_PASSTHROUGH`）。
      */
     val comboPassthrough: Boolean = DEFAULT_COMBO_PASSTHROUGH,
     /**

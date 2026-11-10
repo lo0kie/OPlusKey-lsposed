@@ -75,7 +75,9 @@ internal object StatusBarBridge {
                     .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
                     .putExtra(EXTRA_CMD, cmd),
             )
-            XLog.w("statusbar:$cmd 已转给 system_server 执行")
+            //  只陈述「请求发出去了」：注入侧没装 Hook、方法签名对不上时这一下不会发生，
+            //  这里看不到执行结果（不伪造能力，见 AGENTS 五、4）。
+            XLog.w("statusbar:$cmd 请求已发出（执行结果由注入侧决定）")
         } catch (e: Throwable) {
             XLog.w("发 statusbar 广播失败：$cmd", e)
         }

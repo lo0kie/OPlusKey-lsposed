@@ -16,6 +16,7 @@ import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.gestureOrNull
@@ -61,7 +62,7 @@ internal object KeyHooks {
 
     /**
      * 注入侧自己的**单线程**执行器 —— 「替宿主干活」那一类动作（状态栏 / 小窗 / 按键注入 /
-     * 导出日志 / 弹提示）都在这儿跑，**不占 `system_server` 主线程**。
+     * 导出日志 / 弹提示 / 链路自检回包）都在这儿跑，**不占 `system_server` 主线程**。
      *
      *  为什么必须离开主线程：这几条里全是 binder 往返（`StatusBarBridge` / `FlexibleWindowBridge` /
      *  按键注入），对端卡住时调用线程会一直挂着 —— 而 `system_server` 主线程被挂住就是 watchdog
@@ -104,7 +105,15 @@ internal object KeyHooks {
         //  那段时间按侧键什么都不发生。system_server 里发 startService 不受导出 / 权限限制。
         XLog.guard("排程开机拉起宿主") { HostWarmup.schedule() }
 
-        val layers = Framework.findSideKeyLayers(loader)
+        //  这一段是安装路径上唯一可能抛的一步（其余各步都包了 guard）：它一旦抛出去，
+        //  后面的组合键 Hook、hookCount、安装判据日志会全部跳过。按「本机不支持」降级。
+        val layers =
+            try {
+                Framework.findSideKeyLayers(loader)
+            } catch (e: Throwable) {
+                XLog.w("查找侧键接管点失败（按「本机不支持」处理，不影响系统）", e)
+                emptyList()
+            }
         val total = layers.sumOf { it.points.size }
         if (layers.isEmpty()) {
             XLog.w(
@@ -138,17 +147,7 @@ internal object KeyHooks {
                 //  `ComboKey` 上（短按 / 长按两格），判定侧只负责认档与转发，与单键手势同一分工。
                 onCombo = { combo, trigger, repeat ->
                     noteGesture()
-                    //  日志里那一档动作：松手这一档是**另一个槽位**（`ComboKey.longRelease`），
-                    //  与单键 `actionOf(Release)` 同一条口径。
-                    val shown =
-                        trigger.gestureOrNull()?.let { combo.actionOf(it) }
-                            ?: if (trigger == GestureTrigger.Release) combo.longRelease else Action.None
-                    //  连续触发的重复压到 d（release 裁掉）：一次按住会来几十条，W 会把日志淹掉
-                    val log =
-                        "组合键：${combo.id}（${combo.keys.joinToString(" + ")}）${trigger.label}" +
-                            "${if (repeat) "（连续触发）" else ""}" +
-                            " → ${XLog.redactToken(shown.token)}"
-                    if (repeat) XLog.d(log) else XLog.w(log)
+                    logComboDispatch(combo, trigger, repeat)
                     forwarder.forwardCombo(combo.id, trigger, repeat)
                 },
             )
@@ -162,14 +161,10 @@ internal object KeyHooks {
         // 输入层的组合键（电源 + 音量）：与侧键那条**分开装** —— 它不参与手势判定，只把 ROM 已经
         //  判好的组合吞掉。装不上时侧键照常工作，各记一行 w。
         XLog.guard("挂组合键接管点") { installChordHooks(module, loader) }
-        installed = ok > 0
-        // 必须 W 而非 i：注入侧 i 会被 LSPosed 进程级日志级别整档丢掉、release 里更被编译期消除
-        // —— 这一行是「装没装上」的唯一分水岭，用 i 打就等于彻底静默。
-        if (ok == 0) {
-            XLog.w("侧键 Hook 一个都没装上：0/$total 个接管点 —— 侧键完全不被接管")
-        } else {
-            XLog.w("侧键 Hook 安装完成：$ok/$total 个接管点")
-        }
+        //  **只要有接管点就算装过**，不能用 `ok > 0`：接管点 0 个时安装照样已经把广播入口、
+        //  组合键 Hook、KeyWatch 挂上了，再进来一次会各挂第二份（同一条广播处理两遍）。
+        installed = true
+        reportHookInstall(ok, total)
     }
 
     /**
@@ -239,11 +234,14 @@ internal object KeyHooks {
      * 回一条「注入侧链路状态」给设置页（应答 [ModuleWire.ACTION_INJECT_QUERY]）。
      *
      * 注意：**绝不能在 hooker 体内直接 `sendBroadcast`**：那是从 AMS 的广播入口内部再调一次 AMS，
-     * 等于在广播路径里重入广播路径。整条投递 post 到主线程去发，hooker 里只留这一次 post。
+     * 等于在广播路径里重入广播路径。整条投递 post 出去，hooker 里只留这一次 post。
+     * **投到 [worker]，不投主线程**：`sendBroadcast` 是同步 binder 往返，挂在 `system_server`
+     * 主线程上会被 watchdog 算进卡死（见 [worker] 的注释）；这一条只是答「你那套装好没有」，
+     * 晚几毫秒没有代价。
      */
     private fun reportStatus() {
         val loader = systemLoader ?: return
-        handler.post {
+        worker.post {
             try {
                 val ctx =
                     SystemContext.get(loader) ?: run {
@@ -472,8 +470,10 @@ internal object KeyHooks {
      * 一个接管点的处理。不可能抛异常 —— 它是 Hook 回调本体，抛出去就是 system_server 崩。
      *
      * 返回 `chain.proceed()` 的原值 = 不接管，系统照常处理（主开关关着时走这条）；
-     * 返回 `null` = 接管，系统原本的侧键功能不执行；**原方法自己抛了**时按它的声明返回类型
-     * 给一个零值（`boolean` ⇒ `false`），那是「我们没接管、系统自己也没成」的那一档。
+     * **接管**时按原方法的声明返回类型回填（见 [swallowValueOf]）：`void` ⇒ `null`，`boolean` ⇒
+     * `true`，其余原始类型 ⇒ 零值。不能一律返回 `null` —— 喂给原始类型返回点会在框架侧拆箱时
+     * NPE，把「这一下不生效」升级成 system_server 崩溃。**原方法自己抛了**时同样按声明返回类型
+     * 给零值，那是「我们没接管、系统自己也没成」的那一档。
      */
     private fun onIntercept(
         interceptor: SideKeyInterceptor,
@@ -488,7 +488,7 @@ internal object KeyHooks {
                 false
             }
 
-        if (handled) return null // 接管：吞掉原方法
+        if (handled) return swallowValueOf(chain, "侧键接管 $point") // 接管：吞掉原方法
 
         return try {
             chain.proceed()
@@ -501,6 +501,53 @@ internal object KeyHooks {
             XLog.w("原方法执行失败（按「不接管」返回零值）：$point", e)
             Reflect.zeroOf((chain.executable as? java.lang.reflect.Method)?.returnType)
         }
+    }
+}
+
+/**
+ * 组合键那一条的判定日志（判出哪一档、走了哪个槽位）。
+ *
+ *  连续触发的重复压到 d（release 裁掉）：一次按住会来几十条，W 会把日志淹掉。
+ *
+ *  放在文件级而不是 `KeyHooks` 里：那个对象的函数条数贴着 detekt `TooManyFunctions` 的阈值。
+ */
+private fun logComboDispatch(
+    combo: ComboKey,
+    trigger: GestureTrigger,
+    repeat: Boolean,
+) {
+    //  日志里那一档动作：松手这一档是**另一个槽位**（`ComboKey.longRelease`），
+    //  与单键 `actionOf(Release)` 同一条口径。
+    val shown =
+        trigger.gestureOrNull()?.let { combo.actionOf(it) }
+            ?: if (trigger == GestureTrigger.Release) combo.longRelease else Action.None
+    val log =
+        "组合键：${combo.id}（${combo.keys.joinToString(" + ")}）${trigger.label}" +
+            "${if (repeat) "（连续触发）" else ""}" +
+            " → ${XLog.redactToken(shown.token)}"
+    if (repeat) XLog.d(log) else XLog.w(log)
+}
+
+/**
+ * 安装结果的最后两行（「装没装上」的唯一分水岭）。
+ *
+ *  **必须 W 而非 i**：注入侧 i 会被 LSPosed 进程级日志级别整档丢掉、release 里更被编译期消除，
+ *  用 i 打就等于彻底静默。
+ *
+ *  放在文件级而不是 `KeyHooks` 里：那个对象的函数条数贴着 detekt `TooManyFunctions` 的阈值，
+ *  而这一支只读两个数。
+ *
+ * @param ok 装上的 Hook 数
+ * @param total 找到的接管点总数
+ */
+private fun reportHookInstall(
+    ok: Int,
+    total: Int,
+) {
+    if (ok == 0) {
+        XLog.w("侧键 Hook 一个都没装上：0/$total 个接管点 —— 侧键完全不被接管")
+    } else {
+        XLog.w("侧键 Hook 安装完成：$ok/$total 个接管点")
     }
 }
 

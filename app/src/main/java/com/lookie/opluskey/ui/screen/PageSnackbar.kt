@@ -149,7 +149,6 @@ internal fun SettingsPage.PageNoticeHint() {
         // 同一条整趟只弹一次（`lastNoticeShown` 是进程级的那一位）。**比身份不比文案** ——
         //  比文案的话切一次语言就不认得了（见 [LinkNotice]）。
         if (link.lastNoticeShown == notice) return@LaunchedEffect
-        link.lastNoticeShown = notice
         val text = notice.text()
         XLog.w("页面提醒：$text")
         //  先让「正在检查模块…」那条退场，再上结论：同一帧顶上来时两条会叠在一起，
@@ -157,6 +156,9 @@ internal fun SettingsPage.PageNoticeHint() {
         //  错开一档退场时长，读起来才是「检查完了 → 结论」。
         retireHint(HINT_SLOT_CHECKING)
         delay(HINT_HANDOFF_MS)
+        //  **标记放在真提示之前、延时之后**：以前在最前面就写死，这一档 effect 被取消
+        //  （退页、自检重跑）时提示一次都没弹，而本进程从此认为「说过了」—— 那条提醒永远消失。
+        link.lastNoticeShown = notice
         hint(text, holdMs = NOTICE_HOLD_MS)
     }
 }

@@ -130,6 +130,15 @@ internal object ConfigTransfer {
     private var pendingExport: String? = null
 
     /**
+     * 导出是否正等着「保存到」的结果。
+     *
+     *  没有这道闸时，收集窗口里连点两次会拉起两个选择器：[pendingExport] 被后者覆盖，
+     *  先返回的那一次把**另一份**内容写进那个 uri；而结果永远不来时，整份文本（含命令正文）
+     *  会一直留在内存里。收尾与失败都要清。
+     */
+    private var exportInFlight = false
+
+    /**
      * “导出日志”：弹系统的“保存到”选择器（SAF），用户挑完位置再把文本写进那个 uri。
      *
      *  结果只能从宿主的 `Activity#onActivityResult` 收（宿主 Activity 不是我们的），
@@ -171,6 +180,10 @@ internal object ConfigTransfer {
             HostSession.page?.hint(I18n.get(Strings.TOAST_LOG_EMPTY, "暂无日志"))
             return
         }
+        if (exportInFlight) {
+            XLog.w("导出日志：上一次导出还没收尾（保存位置选择器还开着？），这次点击忽略")
+            return
+        }
         val now = java.time.LocalDateTime.now()
         // 文件头带版本 + 当前时间：日志发出来时不用再问「哪个版本、什么时候的」
         val text =
@@ -183,6 +196,7 @@ internal object ConfigTransfer {
         // —— 写 `.log` 也会被对话框换成 `.txt`（同 [EXPORT_MIME] 注释里那条实测）。
         val name = "OPlusKey-" + now.format(FILE_STAMP) + ".txt"
         pendingExport = text
+        exportInFlight = true
         val intent =
             android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(android.content.Intent.CATEGORY_OPENABLE)
@@ -195,6 +209,7 @@ internal object ConfigTransfer {
             XLog.w("导出日志：已弹出保存位置选择器（${body.length} 字符）")
         } catch (e: Throwable) {
             pendingExport = null
+            exportInFlight = false
             XLog.w("导出日志：拉不起选择器：${e.message}")
             HostSession.page?.hint(
                 I18n.get(ExportKind.LOG.failKey, ExportKind.LOG.failDefault),
@@ -261,6 +276,10 @@ internal object ConfigTransfer {
         commands: List<Command>,
     ) {
         val page = HostSession.page ?: return
+        if (exportInFlight) {
+            XLog.w("导出配置：上一次导出还没收尾（保存位置选择器还开着？），这次点击忽略")
+            return
+        }
         val text = ConfigBundle.export(config, commands)
         if (text.isEmpty()) {
             page.hint(I18n.get(Strings.TOAST_CONFIG_EXPORT_FAILED, "导出配置失败"))
@@ -268,6 +287,7 @@ internal object ConfigTransfer {
         }
         val now = java.time.LocalDateTime.now()
         pendingExport = text
+        exportInFlight = true
         val intent =
             android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(android.content.Intent.CATEGORY_OPENABLE)
@@ -283,6 +303,7 @@ internal object ConfigTransfer {
             XLog.w("导出配置：已弹出保存位置选择器（${text.length} 字符）")
         } catch (e: Throwable) {
             pendingExport = null
+            exportInFlight = false
             XLog.w("导出配置：拉不起选择器：${e.message}")
             page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
         }
@@ -321,15 +342,16 @@ internal object ConfigTransfer {
     }
 
     /**
-     * 把用户挑中的文件读进来、**存成新的一份配置**（插在最末）。
+     * 把用户挑中的文件读进来，**暂存**到页面状态，等用户挑「覆盖哪一份 / 新建一份」。
      *
      * 注意：**全量校验通过才落盘**：整份文件在 [ConfigBundle] 里过一遍，
      * 认不出 / 有任一段读不懂就**一个字节都不写**，只报一句 [UNKNOWN_CONFIG_FORMAT]。
      * 用户界面上不解释「哪一段坏了」——那是日志的事（见 [XLog]）。
      *
-     * 注意：**不覆盖当前生效的配置**（用户口径「导入时插到最末」）：导入完当前这份还是原来那份，
-     * 新导入的那一份排在最末，从菜单里切过去才会生效。所以这条路上没有「把当前配置写坏」的可能，
-     * 也不再需要在两个只读位之间做回滚。
+     * 注意：**目标由用户挑**（见 `ImportTargetDialog.confirmImportTarget`）：可以覆盖任意一份，
+     * **包括当前生效的那份**（覆盖结果与「切换配置」同一条收尾：写盘 + 刷新页面 + 广播）。
+     * 所以这条路上「把当前配置写坏」是**可能**的 —— 靠的是全量校验、只读态闸与写盘失败回滚
+     * 这三道，而不是「反正不会碰当前那份」。
      *
      * 读 + 解析在 [fileScope] 上（那一整份文件多大由用户挑，见 [fileScope]），
      * 落盘那一步回到主线程做（与别处每一次写盘同一条路：要弹提示、要动页面状态）。
@@ -339,67 +361,56 @@ internal object ConfigTransfer {
         // resolver 在主线程上取好再进协程（[HostSession] 那两个引用本就只在主线程上换）
         val resolver = page.context.contentResolver
         fileScope.launch {
-            // 体积上限：读之前先按 provider 报的字节数挡一道（拿不到大小就照读，见 [blockedByImportSize]）
-            if (blockedByImportSize(resolver, uri)) return@launch
-            val text =
-                try {
-                    resolver.openInputStream(uri)?.use {
-                        it.readBytes().toString(Charsets.UTF_8)
+            //  整段包住：协程里未捕获的异常会交给默认处理器，**直接崩 :ui**（导出那条同理）。
+            try {
+                // 体积上限：读之前先按 provider 报的字节数挡一道（拿不到大小就照读，见 [blockedByImportSize]）
+                if (blockedByImportSize(resolver, uri)) return@launch
+                val text =
+                    try {
+                        resolver.openInputStream(uri)?.use {
+                            it.readBytes().toString(Charsets.UTF_8)
+                        }
+                    } catch (e: Throwable) {
+                        XLog.w("导入配置：读文件失败：${e.message}")
+                        null
                     }
-                } catch (e: Throwable) {
-                    XLog.w("导入配置：读文件失败：${e.message}")
-                    null
+                val parsed = text?.let { ConfigBundle.parse(it) }
+                mainHandler.post {
+                    //  读盘期间宿主可能已经换页：结果写进旧页等于静默丢失，只留一行账。
+                    if (HostSession.page !== page) {
+                        XLog.w("导入配置：读完时页面已换，放弃这次导入")
+                        return@post
+                    }
+                    try {
+                        if (parsed == null) {
+                            XLog.w("导入配置：校验没过，未改动任何配置（${text?.length ?: 0} 字符）")
+                            page.hint(UNKNOWN_CONFIG_FORMAT)
+                            return@post
+                        }
+                        //  文件里那套开关**不替这台机器做决定**，本机此刻的值要留住 —— 这一步与以前一样。
+                        val previousConfig = page.configState.config.value
+                        //  合并与组合归一都交给这一处（判据见 `mergeImportedConfig`）。
+                        val normalized = mergeImportedConfig(parsed.config, previousConfig)
+                        //  **导入分两段**：读进来的内容先按本机状态合并好，暂存到页面级状态，弹出选择器
+                        //  让用户挑「盖到哪一份 / 新建一份」—— 不再像以前那样直接「插在最末」。
+                        //  真正写盘在用户点了选择器里的目标之后（见 `ImportTargetDialog.confirmImportTarget`）。
+                        val name =
+                            parsed.config.profileName
+                                .trim()
+                                .ifEmpty { I18n.get(Strings.MORE_IMPORT_CONFIG, "导入配置") }
+                        //  命令名去重这条闸原本在 `saveCommands` 里，导入不经过它，所以自己过一遍
+                        //  （同理：`cmd:<名字>` 只命中第一条）
+                        val commands = dedupeByName(parsed.commands)
+                        page.pendingImport = PendingImport(normalized, commands, name)
+                        XLog.w("导入配置：校验通过，等用户挑目标（${commands.size} 条命令）")
+                    } catch (e: Throwable) {
+                        //  主线程上的收尾：漏出去就是顺主 looper 崩 :ui
+                        XLog.w("导入配置：收尾失败（已忽略）：${e.javaClass.simpleName}", e)
+                    }
                 }
-            val parsed = text?.let { ConfigBundle.parse(it) }
-            mainHandler.post {
-                if (parsed == null) {
-                    XLog.w("导入配置：校验没过，未改动任何配置（${text?.length ?: 0} 字符）")
-                    page.hint(UNKNOWN_CONFIG_FORMAT)
-                    return@post
-                }
-                //  文件里那套开关**不替这台机器做决定**，本机此刻的值要留住 —— 这一步与以前一样。
-                val previousConfig = page.configState.config.value
-                //  **开关与「已确认免责协议」都跟着本机走，不跟着文件走**：文件里那几位一律是
-                //  「关 / 未确认」（见 `ConfigBundle`：不该让别人的文件替这台机器做决定）。
-                //  但**本机此刻的状态**没有必要因为一次导入被抹掉 —— 用户早就在这台机器上开过、
-                //  确认过了（用户口径「导入配置还是把主开关给关了」「已经是确认免责协议就不需要
-                //  再清除这个状态了」）。所以写入前把这几样换回本机此刻的值。
-                //  「开关」现在是两位：**模块总闸**（`global.enabled`）与**每颗键**（`key.enabled`）。
-                //  本地认得的那颗键就用本机的值；文件里新带来的键（本机配置里没有）才用文件里那份
-                //  —— `ConfigBundle` 已经把它们统一置开。
-                val merged =
-                    parsed.config.copy(
-                        global = parsed.config.global.copy(enabled = previousConfig.global.enabled),
-                        keys =
-                            parsed.config.keys.mapValues { (id, key) ->
-                                val local = previousConfig.keys[id] ?: return@mapValues key
-                                key.copy(enabled = local.enabled)
-                            },
-                        disclaimerAccepted = previousConfig.disclaimerAccepted,
-                        commandDisclaimerAccepted = previousConfig.commandDisclaimerAccepted,
-                    )
-                //  **组合的「启用」还得与成员键的实际状态对齐**：上面那段只合并了键的开关，
-                //  文件里带着的「这一组启用、成员键在本机是关的」于是原样进来了。不归一的话
-                //  这一组会显示成停用，却在别的键被开回来时自己活过来（判定侧 `comboOff` 要求两者同时成立）。
-                val normalized =
-                    merged.copy(
-                        combos =
-                            merged.combos.map { combo ->
-                                if (combo.enabled && merged.comboOff(combo)) combo.copy(enabled = false) else combo
-                            },
-                    )
-                //  **导入分两段**：读进来的内容先按本机状态合并好，暂存到页面级状态，弹出选择器
-                //  让用户挑「盖到哪一份 / 新建一份」—— 不再像以前那样直接「插在最末」。
-                //  真正写盘在用户点了选择器里的目标之后（见 `ImportTargetDialog.confirmImportTarget`）。
-                val name =
-                    parsed.config.profileName
-                        .trim()
-                        .ifEmpty { I18n.get(Strings.MORE_IMPORT_CONFIG, "导入配置") }
-                //  命令名去重这条闸原本在 `saveCommands` 里，导入不经过它，所以自己过一遍
-                //  （同理：`cmd:<名字>` 只命中第一条）
-                val commands = dedupeByName(parsed.commands)
-                page.pendingImport = PendingImport(normalized, commands, name)
-                XLog.w("导入配置：校验通过，等用户挑目标（${commands.size} 条命令）")
+            } catch (e: Throwable) {
+                XLog.w("导入配置：读盘/解析失败（已忽略）：${e.javaClass.simpleName}", e)
+                mainHandler.post { page.hint(UNKNOWN_CONFIG_FORMAT) }
             }
         }
     }
@@ -497,6 +508,7 @@ internal object ConfigTransfer {
     ) {
         val text = pendingExport
         pendingExport = null
+        exportInFlight = false
         if (!ok || uri == null || text == null) {
             XLog.w("${kind.what}：用户取消")
             return
@@ -548,6 +560,46 @@ internal object ConfigTransfer {
             }
         }
     }
+}
+
+/**
+ * 导入时把「跟着本机走」的那几样换回来，再把组合的启用与成员键的实际状态对齐。
+ *
+ *  **开关与「已确认免责协议」都跟着本机走，不跟着文件走**：文件里那几位一律是「关 / 未确认」
+ *  （见 `ConfigBundle`：不该让别人的文件替这台机器做决定）。但**本机此刻的状态**没有必要因为
+ *  一次导入被抹掉 —— 用户早就在这台机器上开过、确认过了（用户口径「导入配置还是把主开关给关了」
+ *  「已经是确认免责协议就不需要再清除这个状态了」）。所以写入前把这几样换回本机此刻的值。
+ *  「开关」现在是两位：**模块总闸**（`global.enabled`）与**每颗键**（`key.enabled`）。本地认得的
+ *  那颗键就用本机的值；文件里新带来的键（本机配置里没有）才用文件里那份 —— `ConfigBundle` 已经把它们统一置开。
+ *
+ *  **组合的「启用」还得与成员键的实际状态对齐**：上面那段只合并了键的开关，文件里带着的
+ *  「这一组启用、成员键在本机是关的」于是原样进来了。不归一的话这一组会显示成停用，却在别的键
+ *  被开回来时自己活过来（判定侧 `comboOff` 要求两者同时成立）。
+ *
+ *  放在**文件顶部**而不是 `ConfigTransfer` 里：它只吃两份配置、与那个对象的状态无关，
+ *  而那个对象的函数条数已经贴着 detekt 的 `TooManyFunctions` 那一档。
+ */
+private fun mergeImportedConfig(
+    imported: Config,
+    local: Config,
+): Config {
+    val merged =
+        imported.copy(
+            global = imported.global.copy(enabled = local.global.enabled),
+            keys =
+                imported.keys.mapValues { (id, key) ->
+                    val localKey = local.keys[id] ?: return@mapValues key
+                    key.copy(enabled = localKey.enabled)
+                },
+            disclaimerAccepted = local.disclaimerAccepted,
+            commandDisclaimerAccepted = local.commandDisclaimerAccepted,
+        )
+    return merged.copy(
+        combos =
+            merged.combos.map { combo ->
+                if (combo.enabled && merged.comboOff(combo)) combo.copy(enabled = false) else combo
+            },
+    )
 }
 
 /**

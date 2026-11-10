@@ -86,14 +86,19 @@ internal class AppLauncher(
             }
         val userId = AppTarget.userId(target)
         val pkg = AppTarget.pkg(target)
-        val pm = AppCloneCatalog.packageManagerFor(ctx, userId) ?: ctx.packageManager
+        //  **解析**可以用主用户 PM 兜底（`AppEntry.intentOf` 只问公开入口，分身的入口另有 binder 那条）；
+        //  但「包还在不在」不能用它判分身 —— 主用户 PM 答的是主用户那一份的事。
+        //  所以两份分开：`pm` 给解析，`installedPm` 给 [appInstalled]（分身拿不到自己那份就是 null）。
+        val userPm = AppCloneCatalog.packageManagerFor(ctx, userId)
+        val pm = userPm ?: ctx.packageManager
+        val installedPm = if (userId == 0) pm else userPm
         val intent = entryIntent(pm, target, pkg, userId)
         if (intent == null) {
             // 区分「包还在但没有可启动界面」与「包已不在」，前者提示「已卸载」会误导
             //  分身目标：主用户的 PM 问不出那个包在不在（`getApplicationInfo` 必抛），
             //  这一支**不报「可能已卸载」**—— 上面 `resolveAsUser` 已经按 userId 问过 binder，
             //  拿不到就是「没有可用入口」。误报「已卸载」正是「列表点得动、按下报找不到」的成因之一。
-            val installed = appInstalled(pm, pkg, userId)
+            val installed = appInstalled(installedPm, pkg, userId)
             XLog.w("解析不到界面：$target（这个包还在=$installed，user=$userId）")
             onFailure(entryFailure(installed))
             return
@@ -125,7 +130,7 @@ internal class AppLauncher(
                 //  ⇒ 就是这个组件用不了（[CommandFailure.APP_NO_ENTRY]）；其余（后台启动被拦、
                 //  ATMS 两个签名都不通）⇒ 泛泛的 [CommandFailure.UNKNOWN]，别把系统拒绝说成应用的问题。
                 val explicit = intent.component != null
-                val installed = appInstalled(pm, pkg, userId)
+                val installed = appInstalled(installedPm, pkg, userId)
                 XLog.w("启动被拒：$target（user=$userId，显式组件=$explicit，这个包还在=$installed）")
                 onFailure(if (explicit && installed) entryFailure(true) else CommandFailure.UNKNOWN)
                 return

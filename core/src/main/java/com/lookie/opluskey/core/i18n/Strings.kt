@@ -88,6 +88,9 @@ object Strings {
 
     /** 同一处的另一半：这颗键**开着**（与上面那条一起用，两档都有副标题）。 */
     const val BINDING_KEY_ENABLED_STATE = "binding.key_enabled_state"
+
+    /** 「场景动作」页里那一块**停用了**时，点格子的那一句（与单键 / 组合那两句同一个位置）。 */
+    const val BINDING_SCENE_OFF = "binding.scene_off"
     const val BINDING_CUSTOM_KEY_NAME = "binding.custom_key_name"
     const val BINDING_KEY_NAME = "binding.key_name"
     const val BINDING_RENAME_KEY = "binding.rename_key"
@@ -258,6 +261,9 @@ object Strings {
 
     /** 同一行在「一组组合都还没配」时的副标题：这一页里有什么。 */
     const val KEYS_ENTRY_DESC = "keys.entry_desc"
+
+    /** 「按键功能」页第一块的小标题 —— 装内置那颗侧键（与「自定义按键」那一块相对）。 */
+    const val KEYS_SECTION_DEFAULT = "keys.section_default"
 
     /**
      * 列表页的标题 —— 「组合按键列表」。
@@ -509,6 +515,7 @@ object Strings {
     const val COMMAND_TYPE_SERIAL = "command.type_serial"
     const val COMMAND_TYPE_BRANCH = "command.type_branch"
 
+    /** 「新增一整块场景」的入口文案（顶栏那颗添加）。 */
     const val COMMAND_BRANCH_ADD = "command.branch_add"
 
     /** 绑定页横幅：这一档有几个启用中的系统场景。 */
@@ -581,7 +588,7 @@ object Strings {
      * 停用 / 启用一条场景 —— 行尾那颗「更多」菜单里的那一行，以及停用点下去那道确认窗。
      *
      *  与按键那一对（`BINDING_DISABLE_KEY` / `BINDING_ENABLE_KEY`）同一个语义：写的是这一条自己的
-     *  `StateRule.enabled`。**启用没有确认窗**（与按键、组合键同一条规矩）。
+     *  `SceneRule.enabled`。**启用没有确认窗**（与按键、组合键同一条规矩）。
      */
     const val COMMAND_BRANCH_DISABLE = "command.branch_disable"
     const val COMMAND_BRANCH_ENABLE = "command.branch_enable"
@@ -662,10 +669,6 @@ object Strings {
     const val COMMAND_BRANCH_CONDITION_PENDING = "command.branch_condition_pending"
     const val COMMAND_BRANCH_TOP_REACHED = "command.branch_top_reached"
     const val COMMAND_BRANCH_BOTTOM_REACHED = "command.branch_bottom_reached"
-
-    /** 抽屉里那个过滤框的占位文案与空结果 —— 内置动作 + 已保存命令一起搜。 */
-    const val COMMAND_SEARCH = "command.search"
-    const val COMMAND_SEARCH_EMPTY = "command.search_empty"
 
     /** 时间区间那个选择弹窗：标题与两列的小标题（开始 / 结束）。 */
     const val COMMAND_COND_TIME_START = "command.cond_time_start"
@@ -928,9 +931,11 @@ object Strings {
     const val DIALOG_CLEAR_CONFIG_MESSAGE = "dialog.clear_config_message"
     const val DIALOG_CLEAR_CONFIG_TITLE = "dialog.clear_config_title"
 
-    /** 删掉「条件执行」里的一条（那条条件与它的动作一起没了，顺序会往前顶）。 */
+    /** 删掉一个**场景块**（整块的条件与三档动作一起没了，后面的块往上顶）。 */
     const val DIALOG_DELETE_CONDITION_MESSAGE = "dialog.delete_condition_message"
     const val DIALOG_DELETE_CONDITION_TITLE = "dialog.delete_condition_title"
+
+    /** 只删掉一块里的**一条条件**（同块里其余条件与三档动作都留着）。 */
     const val DIALOG_DELETE_ONE_CONDITION_MESSAGE = "dialog.delete_one_condition_message"
     const val DIALOG_DELETE_ONE_CONDITION_TITLE = "dialog.delete_one_condition_title"
     const val DIALOG_DELETE_COMMAND_SERIAL_MESSAGE = "dialog.delete_command_serial_message"
@@ -993,13 +998,10 @@ object Strings {
     const val HOME_MORE_OPTIONS_SUMMARY = "home.more_options_summary"
     const val HOME_OTHER_SECTION = "home.other_section"
 
-    /** 首页「按键列表」那一节的小标题（只有键清单 —— 收集来的那几颗）。 */
-    const val HOME_KEYS_SECTION = "home.keys_section"
-
     /**
      * 首页「按键操作」那一节的小标题 —— 组合按键与「添加按键」两行。
      *
-     *  这两行原先并进 [HOME_KEYS_SECTION] 那张卡里，于是那张卡同时装着「已经有哪些键」与
+     *  这两行原先并进首页那张「按键列表」卡里，于是那张卡同时装着「已经有哪些键」与
      *  「还能做什么」两件事，读起来像同一类东西排在一起（用户口径：分开）。
      */
     const val HOME_KEY_OPS_SECTION = "home.key_ops_section"
@@ -1032,6 +1034,9 @@ object Strings {
     const val HOME_COLOROS_DESC_OFF = "home.coloros_desc_off"
     const val HOME_COLOROS_DESC_ON = "home.coloros_desc_on"
     const val HOME_TITLE = "home.title"
+
+    /** 首页大标题下面那一行 —— 一句话说这个模块是干什么的（不是版本号，用户口径）。 */
+    const val HOME_SUBTITLE = "home.subtitle"
     const val HOME_MINI_ANIM_DESC_OFF = "home.mini_anim_desc_off"
     const val HOME_MINI_ANIM_DESC_ON = "home.mini_anim_desc_on"
     const val HOME_MINI_ANIM_TITLE = "home.mini_anim_title"

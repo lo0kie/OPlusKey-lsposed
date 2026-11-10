@@ -95,8 +95,23 @@ internal class PageViewTree {
     fun release() {
         val own = fallbackOwners ?: return
         fallbackOwners = null
+        //  **先摘挂在宿主那棵树上的三件套，再 dispose**：页面关掉时那棵宿主 View 树还活着
+        //  （我们只 add 不 remove），不摘的话祖先链上留着一套已经放过 `ViewModelStore` 的 owner ——
+        //  下一次进页 Compose 沿 parent 链先捡到的就是它，页面会拿到一个空的 store。
+        //  只摘**我们写过**的那几格（判据与 [attachOne] 同一套），宿主自己给的那几格一律不碰。
+        val attached = attachedTo.entries.filter { it.value === own }
+        for ((view, _) in attached) {
+            try {
+                if (view.findViewTreeLifecycleOwner() === own) view.setViewTreeLifecycleOwner(null)
+                if (view.findViewTreeViewModelStoreOwner() === own) view.setViewTreeViewModelStoreOwner(null)
+                if (view.findViewTreeSavedStateRegistryOwner() === own) view.setViewTreeSavedStateRegistryOwner(null)
+            } catch (e: Throwable) {
+                XLog.w("摘 ViewTree owner 失败（${view.javaClass.simpleName}）", e)
+            }
+            attachedTo.remove(view)
+        }
         own.dispose()
-        XLog.w("ViewTree owner：页面关闭，兜底 owner 已释放")
+        XLog.w("ViewTree owner：页面关闭，兜底 owner 已释放（摘掉 ${attached.size} 个 View）")
     }
 
     /**

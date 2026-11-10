@@ -177,7 +177,7 @@ internal const val SHOW_HOME_MINI_ANIM = false
 // 数错了会让卡片首尾圆角错位的那一类账，整类消失了。
 
 /**
- * 「已保存的命令」卡片里图标行到名字的间距 —— 卡片高度至少等于宽度、步骤多时会跟着长高，
+ * 「自定义命令」卡片里图标行到名字的间距 —— 卡片高度至少等于宽度、步骤多时会跟着长高，
  * 所以这里只是排版间距，不承担纵向预算。
  *
  *  取 4dp（比行标题那一档紧）：名字是这张卡的主键，上面那截白一大，整张卡看着就空。
@@ -186,7 +186,7 @@ internal const val SHOW_HOME_MINI_ANIM = false
 internal val TILE_TITLE_GAP = 4.dp
 
 /**
- * 「已保存的命令」卡片里，摘要行**每一步**行首小图标的边长 —— 比步骤行的
+ * 「自定义命令」卡片里，摘要行**每一步**行首小图标的边长 —— 比步骤行的
  * [ROW_ICON_SIZE]（22dp）小一档，它跟着的是摘要那行小字（`footnote1`）。
  */
 internal val SUMMARY_REF_ICON = 14.dp

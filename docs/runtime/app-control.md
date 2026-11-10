@@ -5,9 +5,9 @@
 页面、搜索、定位、确认键、空态全部是「选择应用」那一份实现，没有第二套。
 
 - **入口那一格**（`ActionCatalog.APP_CONTROL_TILE` = `appctl:`）**永不写进配置**：它是关卡标记，
-  那一层菜单的两行（`appctl:open` / `appctl:stop`）也都不是取值。所以 `STEP_GROUPS` /
-  `BRANCH_GROUPS` 都把它换成「打开应用」那一步（[APP_STEP]）—— 一步只能是一个取值，
-  「结束应用」不进步骤链，只能绑在键上。
+  那一层菜单的两行（`appctl:open` / `appctl:stop`）也都不是取值。`STEP_GROUPS` /
+  `BRANCH_GROUPS` 都**原样保留这一格**：点开菜单后，打开 / 结束两行各自可以成为一步，
+  分别落成 `app:<包名>` 与 `proc:stop:<包名>`。
 - **菜单里的勾**由 `ActionCatalog.isBound` 判：打开那行认 `app:` / `window:` / 快捷方式，
   结束那行认 `proc:stop:`（两行都是标记 token，比的是「绑的是哪一族」）。
 - **唯一的动作是 `proc:stop:<包名>`**（`Action.Process`，只存包名）。原来那一档 `proc:start:`

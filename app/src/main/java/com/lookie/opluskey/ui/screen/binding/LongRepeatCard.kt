@@ -55,7 +55,9 @@ internal fun SettingsPage.LongPressCard(
     //  「额外动作」这一行的取值**不滤 `Action.None`**：无操作就是这一档的默认值，不是「还没配」。
     //  滤掉它会让界面多出一个「未设置」状态 —— 那与「无操作」是同一个意思，却要另配文案与图标
     //  （原先那颗还借了网格里「系统按键」的，撞了）。
-    val releaseAction = owner.longRelease
+    //  「跟随默认」只属于场景块的三档：历史配置里可能已经存进来过（那一版抽屉把它列在了这一行），
+    //  而它在这一档没有语义 —— 行上按「无操作」念，与执行侧同一个口径（见到它什么都不做）。
+    val releaseAction = owner.longRelease.takeUnless { it is Action.Follow } ?: Action.None
     var pickingRelease by remember { mutableStateOf(false) }
     LongPressSettingsCard(
         LongPressSpec(

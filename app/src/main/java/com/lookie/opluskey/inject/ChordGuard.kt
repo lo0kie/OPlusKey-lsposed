@@ -21,7 +21,7 @@ import io.github.libxposed.api.XposedInterface
  *     音量都收成了单键、根本没配这一组，那时吞掉 ROM 的判定等于**把系统截图弄没了**，
  *     而模块这边只会各执行一次单键动作。
  *
- *  返回值按原方法的**声明返回类型**回填（[swallowValue]）：`void` 用 `null`（框架里 `null`
+ *  返回值按原方法的**声明返回类型**回填（[swallowValueOf]）：`void` 用 `null`（框架里 `null`
  *  就是「吞掉」），`boolean` 按「已消费」给 `true`，其余原始类型给零值 —— 给原始类型返回点
  *  返回 `null` 会在框架侧拆箱时 NPE，把「这一下不生效」升级成 system_server 崩溃。
  */
@@ -36,7 +36,7 @@ internal object ChordGuard {
     /**
      * 一次 `handleKeyGesture` 调用。
      *
-     * @return 吞掉时按 [swallowValue] 回填；不吞时原样放行
+     * @return 吞掉时按 [swallowValueOf] 回填；不吞时原样放行
      */
     fun handle(chain: XposedInterface.Chain): Any? {
         //  键码表是这一层的唯一入口判据：拿不到就当不是组合键，原样放行。
@@ -52,7 +52,7 @@ internal object ChordGuard {
             } ?: return chain.proceed()
         //  判据行：这一行出现就说明「组合键确实走到输入层」且被拦下了 —— 排查时先看它。
         XLog.w("组合键（${pair.joinToString("+")}）：两颗键都归模块管且已配这一组 ⇒ 吞掉 ROM 的这次判定")
-        return swallowValue(chain, keys)
+        return swallowValueOf(chain, keys.joinToString("+") { it.id.id })
     }
 
     /**
@@ -99,29 +99,34 @@ internal object ChordGuard {
         val hasAction = combo.single.isBound || combo.long.isBound || combo.releaseBound || combo.scenes.isNotEmpty()
         return hasAction || !config.comboPassthroughFor(combo)
     }
+}
 
-    /**
-     * 吞掉时的返回值 —— **按原方法的声明返回类型**给，不能一律 `null`。
-     *
-     *  见 `Reflect.zeroOf` 的注释：`null` 喂给原始类型返回点就是拆箱 NPE。`void` 那一档
-     *  `zeroOf` 本来就返回 `null`，正是框架里「吞掉」的含义；`boolean` 单独给 `true`：
-     *  我们对这一下的意图就是「已消费」，给 `false` 会让上游把它当成「没处理」继续派发，
-     *  等于白吞一次并丢掉这次判定。
-     */
-    private fun swallowValue(
-        chain: XposedInterface.Chain,
-        keys: List<KeyConfig>,
-    ): Any? {
-        val type = (chain.executable as? java.lang.reflect.Method)?.returnType
-        val value =
-            when (type) {
-                java.lang.Boolean.TYPE -> true
-                else -> Reflect.zeroOf(type)
-            }
-        //  一次按压一条：这一行同时是「回填成什么」的唯一凭据（返回类型对不上时先看这里）。
-        XLog.d("组合键（${keys.joinToString("+") { it.id.id }}）：按返回类型 $type 回填 $value")
-        return value
-    }
+/**
+ * 「吞掉这一次调用」时该返回什么 —— **按原方法的声明返回类型**给，不能一律 `null`。
+ *
+ *  见 `Reflect.zeroOf` 的注释：`null` 喂给原始类型返回点就是拆箱 NPE。`void` 那一档
+ *  `zeroOf` 本来就返回 `null`，正是框架里「吞掉」的含义；`boolean` 单独给 `true`：
+ *  我们对这一下的意图就是「已消费」，给 `false` 会让上游把它当成「没处理」继续派发，
+ *  等于白吞一次并丢掉这次判定。
+ *
+ *  这一处是**唯一**口径：`ChordGuard` 与 `KeyHooks.onIntercept` 都走它，两处各写一份时
+ *  曾出现「一处返回 null、一处回填零值」，其中一处必然是错的。
+ *
+ *  @param label 只进日志：这一次吞掉的是哪条路径（组合键 / 侧键接管点）
+ */
+internal fun swallowValueOf(
+    chain: XposedInterface.Chain,
+    label: String,
+): Any? {
+    val type = (chain.executable as? java.lang.reflect.Method)?.returnType
+    val value =
+        when (type) {
+            java.lang.Boolean.TYPE -> true
+            else -> Reflect.zeroOf(type)
+        }
+    //  一次按压一条：这一行同时是「回填成什么」的唯一凭据（返回类型对不上时先看这里）。
+    XLog.d("$label：按返回类型 $type 回填 $value")
+    return value
 }
 
 /** 从实参里挑出第一个 `IntArray`（键码表）—— 热路径，不要 `filterIsInstance`。 */

@@ -327,6 +327,11 @@ internal class AppPickerState {
         branchTarget = NOT_FOR_BRANCH
         branchConditionIndex = -1
         stopAppState.value = false
+        //  这两位的清场纪律与 `openForStep` / `openForRelease` 一样，以前只有这一支漏了：
+        //  上一趟「松手执行额外动作」留下的 `forRelease` 会让 `takePickTarget` 优先返回
+        //  `Release`，于是网格里挑中的应用被写进 `longRelease`，而这一档的绑定没变。
+        forRelease = false
+        releaseComboId = null
     }
 
     /**
@@ -453,6 +458,9 @@ internal class AppPickerState {
         filter.value = ""
         activityFilter.value = ""
         smallWindow.value = false
+        //  `stockAnim` 与 `smallWindow` 同性质（都是「这一趟以什么方式打开」的临时开关）：
+        //  只收前者会让上一趟的 `app:a:` 残留到下一次挑应用。
+        stockAnim.value = false
     }
 
     /**

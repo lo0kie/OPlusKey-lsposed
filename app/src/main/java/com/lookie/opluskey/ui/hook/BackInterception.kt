@@ -19,8 +19,13 @@ internal object BackInterception {
     /** 平台类 `Activity#onBackPressed` 那个 hook 装没装（**进程内只装一次**）。 */
     private var legacyBackHooked = false
 
-    /** 宿主**自己**声明的那层 `onBackPressed` 装没装（见 [installBackInterception] 的 (3)'）。 */
-    private var hostBackHooked = false
+    /**
+     * 宿主**自己**声明的那层 `onBackPressed` 装没装 —— **按类名记**（见 [installBackInterception] 的 (3)'）。
+     *
+     *  以前是一个布尔：宿主出现第二种设置页 Activity（或换了一版 ROM 换了类）时，
+     *  那层永远不再挂，返键可能完全无响应，而日志仍写着「已装」。
+     */
+    private val hostBackHooked = mutableSetOf<String>()
 
     /**
      * 已经注册过 `OnBackInvokedCallback` 的那个 **Activity 实例**（没注册时是 null）。
@@ -53,8 +58,9 @@ internal object BackInterception {
 
         // (3)' 宿主自己那层。 不会重复消费：(3)' 一旦判定「消费」，宿主方法体就不执行
         //     ⇒ 它那句 `super.onBackPressed()` 也不会发生 ⇒ (3) 收不到。
-        if (!hostBackHooked) {
-            hostBackHooked = hookOnBackPressed(module, hostOnBackPressed(activity))
+        val hostKey = activity.javaClass.name
+        if (hostKey !in hostBackHooked && hookOnBackPressed(module, hostOnBackPressed(activity))) {
+            hostBackHooked += hostKey
         }
 
         // (2) 官方入口：**按需挂着**（见 [syncBackCallback]）。进页这一档是首页、也还没有浮层，
@@ -65,10 +71,10 @@ internal object BackInterception {
 
         XLog.w(
             "返回拦截：平台 onBackPressed=$legacyBackHooked，" +
-                "宿主 onBackPressed=$hostBackHooked，" +
+                "宿主 onBackPressed=${hostKey in hostBackHooked}（$hostKey），" +
                 "宿主有返回回调=$optIn，此刻挂着=${backCallbackActivity === activity}",
         )
-        if (!legacyBackHooked && !hostBackHooked && !optIn) {
+        if (!legacyBackHooked && hostKey !in hostBackHooked && !optIn) {
             XLog.w("返回拦截一条都没装上 —— 子页返回请用顶栏那个返回箭头")
         }
     }
@@ -288,14 +294,12 @@ internal object BackInterception {
                     // 先摘掉自己（[SettingsPageHooks.clearPageRefs] 里也会摘一次，重复调用无害）：挂着回调时
                     // 系统不会再自己关页面。
                     unregisterBackCallback()
-                    //  **先关页面、再松引用**：`clearPageRefs` 会在页面还活着的时候取消提示作用域、
+                    //  **先关页面、松引用交给 onDestroy**：`clearPageRefs` 会取消提示作用域、
                     //  `clear()` ViewModelStore、注销手电筒回调 —— 那是拆运行期状态的动作，
-                    //  必须在页面进入销毁之后做，否则退场动画期间页面拿到的是「被清空的」那一套。
+                    //  必须等页面真的进入销毁。`installDestroyHook` 已经挂在 `onDestroy` 上做这件事
+                    //  （见 `SettingsPageHooks.installDestroyHook`），这里只负责让页面进入销毁。
+                    //  在这里就地清会把退场动画期间的状态掏空：页面还在画，ViewModelStore 已经空了。
                     activity.finish()
-                    // 页面关掉了 = 这一份换页用的引用用完了，一起松掉：
-                    // 不松的话当前 Activity / SettingsPage / 两个 View / 容器会一直挂到**下次进页**
-                    // 才被覆盖（表现为「钉住一个已销毁的 Activity」，只影响这个 :ui 进程）。
-                    SettingsPageHooks.clearPageRefs(activity)
                 }
             }
         } catch (e: Throwable) {

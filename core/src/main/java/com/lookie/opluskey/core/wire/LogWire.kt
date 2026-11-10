@@ -19,7 +19,8 @@ import com.lookie.opluskey.core.log.XLog
  *
  *  缓冲上限 2000 行、几百 KB 量级，一次广播全塞进去会撞 binder 事务上限（发送直接失败，
  *  而且失败是静默的）。所以按**行**切成 [CHUNK_CHARS] 字符左右的片，带上序号与总数，
- *  收方按序号拼回去。单行超过一片时硬切 —— 正常日志不会有这种行，真有时也不能整片丢。
+ *  收方按序号拼回去。单行超过一片时**它独占一片**、不切在行中间 —— 收方是按行重新拼的，
+ *  切在行中间会平白多出一个换行，把一条日志劈成两条。
  */
 object LogWire {
     /** 一片大概多大 —— 十来 KB，远低于事务上限，也不会切出几百次广播。 */
@@ -52,7 +53,7 @@ object LogWire {
         XLog.w("导出日志：已回 $proc 的缓冲 ${chunks.size} 片")
     }
 
-    /** 按行累积到 [CHUNK_CHARS] 就切一片；单行本身就超长时硬切成多片。 */
+    /** 按行累积到 [CHUNK_CHARS] 就切一片；单行本身就超长时让它独占一片，绝不切在行中间。 */
     private fun chunk(lines: List<String>): List<String> {
         //  **空缓冲也要回一片空的**：一片都不发的话，收方只能按「收到几片」判，
         //  分不出「这个进程在跑但没日志」与「这个进程根本没起来」（排查时会误判某一段缺失）。
@@ -60,23 +61,24 @@ object LogWire {
         val out = ArrayList<String>()
         val sb = StringBuilder()
         for (line in lines) {
-            var rest = line
-            while (rest.length > CHUNK_CHARS) {
+            //  单行超上限：把它单独成片。收方拿到的每一片都从行首开始、到行尾结束，
+            //  拼回去时不会凭空多出一个换行。
+            if (line.length > CHUNK_CHARS) {
                 if (sb.isNotEmpty()) {
                     out.add(sb.toString())
                     sb.setLength(0)
                 }
-                out.add(rest.take(CHUNK_CHARS))
-                rest = rest.substring(CHUNK_CHARS)
+                out.add(line)
+                continue
             }
-            //  空缓冲不切：`0 + rest + 1` 也可能超上限（单行正好 CHUNK_CHARS 时），
+            //  空缓冲不切：`0 + line + 1` 也可能超上限（单行正好 CHUNK_CHARS 时），
             //  那时会先发一条空分片出去。切之前必须确认这一段真有内容。
-            if (sb.isNotEmpty() && sb.length + rest.length + 1 > CHUNK_CHARS) {
+            if (sb.isNotEmpty() && sb.length + line.length + 1 > CHUNK_CHARS) {
                 out.add(sb.toString())
                 sb.setLength(0)
             }
             if (sb.isNotEmpty()) sb.append('\n')
-            sb.append(rest)
+            sb.append(line)
         }
         if (sb.isNotEmpty()) out.add(sb.toString())
         return out

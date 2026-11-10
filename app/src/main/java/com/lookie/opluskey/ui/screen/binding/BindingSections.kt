@@ -27,7 +27,7 @@ import com.lookie.opluskey.ui.SettingsPage
 internal fun SettingsPage.SavedCommandsTitle() {
     val hasCommands = configState.commands.value.isNotEmpty()
     SectionTitle(
-        text = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"),
+        text = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"),
         click =
             if (hasCommands) {
                 SectionTitleClick.Jump {

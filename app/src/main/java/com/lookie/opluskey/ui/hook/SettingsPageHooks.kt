@@ -89,17 +89,8 @@ internal object SettingsPageHooks {
     /** 模块页根 View 上的标记 —— 重进同一个容器时靠它认出「这一份是我们自己铺的」。 */
     private const val TAG_MODULE_PAGE = "opluskey_module_page"
 
-    /**
-     * 宿主原版页面的底色。
-     *
-     * 原版页是宿主写死的**深色**（清单主题 `ActionButtonThemeAppNoTitle` 的 parent 是
-     * `Theme.COUI.Main.Dark`，见 [HostChrome.applyHostTheme]）—— 所以露出它时状态栏也得是黑的，
-     * 不能留我们页面的浅色底（真机反馈「打开自带的界面后状态栏是白的、页面是黑的」）。
-     */
-    private const val STOCK_BACKDROP = 0xFF000000.toInt()
-
-    //  刻意**不**引用色板里那个页面底色：这一档说的是「宿主原版页面本来就写死深色」，
-    //  与模块自己的深浅主题无关 —— 将来色板换了，这里也不该跟着变。
+    //  「露出宿主原版页」时那条状态栏底色不在这里：判据是**系统深浅**（浅色系统下宿主主题
+    //  已被换成浅色变体），所以那一份留在 [HostChrome.stockStatusBackdrop]，与 `applyHostTheme` 同源。
 
     /** 现在露的是不是宿主原版页面（true 时系统返回 = 切回模块界面）。 */
     @Volatile
@@ -251,8 +242,11 @@ internal object SettingsPageHooks {
             XLog.w("$BASE_ACTIVITY 上没找到 onDestroy，关页后页面引用不会松")
         }
 
+        //  **只要生命周期那一对装过就记「装过」**：以前 `installed` 只在换页 hook 成功时才置位，
+        //  于是「换页装不上、onNewIntent / onDestroy 装上了」这一档每次进页都会再装一份
+        //  —— 双份 onHostReentered / clearPageRefs。
+        installed = true
         if (handle != null) {
-            installed = true
             XLog.w(
                 "设置页换页 Hook 安装完成：换页 1/1 + 生命周期 ${lifecycleHooks[0]}/2" +
                     "（$BASE_ACTIVITY）",
@@ -551,7 +545,11 @@ internal object SettingsPageHooks {
         } catch (e: Throwable) {
             //  只摘自己刚加的那个 View（宿主原有的子 View 一个都不碰，见换页第一纪律）。
             runCatching { container.removeView(view) }
-            XLog.w("模块页面接线失败（已摘掉，保留系统原版页面）", e)
+            //  顶栏在这一轮里已经置 GONE：不恢复的话「保留系统原版页面」等于留下一个没有标题栏、
+            //  没有返回键的页面（宿主那些 View 都在，只是被我们藏了其中一个）。
+            runCatching { hostAppbar?.visibility = android.view.View.VISIBLE }
+            hostAppbar = null
+            XLog.w("模块页面接线失败（已摘掉，恢复宿主顶栏、保留系统原版页面）", e)
         }
     }
 
@@ -566,16 +564,18 @@ internal object SettingsPageHooks {
             pageView?.visibility = android.view.View.GONE
             hostAppbar?.visibility = android.view.View.VISIBLE
             stockRevealed = true
-            // 状态栏跟着原版页面走（原版是深色底，见 STOCK_BACKDROP）。
+            // 状态栏跟着原版页面走 —— 底色由 [HostChrome.stockStatusBackdrop] 按系统深浅给：
+            //  浅色系统下宿主主题已被换成浅色变体，再刷纯黑就成了「浅色页面 + 黑状态栏」。
             //  这一档是 [HostChrome.coverStatusBar] **唯一**还在用的地方：模块页面已经 GONE，
             // 那一条没人画，而宿主原版页顶栏的配色我们碰不了 ⇒ 直接盖一块实心遮罩最稳。
+            val backdrop = HostChrome.stockStatusBackdrop(activity)
             hostContainer?.let {
-                HostChrome.paintStatusBarChrome(activity, it, STOCK_BACKDROP)
-                HostChrome.coverStatusBar(activity, STOCK_BACKDROP)
+                HostChrome.paintStatusBarChrome(activity, it, backdrop)
+                HostChrome.coverStatusBar(activity, backdrop)
             }
             // 原版页露着时这一退是「切回模块界面」⇒ 该由模块接，回调得挂上（见 [BackInterception.needsBackCallback]）
             BackInterception.syncBackCallback(activity)
-            XLog.w("已露出宿主原版快捷键界面（状态栏切深色底；系统返回切回模块界面）")
+            XLog.w("已露出宿主原版快捷键界面（状态栏按系统深浅取底色；系统返回切回模块界面）")
         } catch (e: Throwable) {
             XLog.w("露出宿主原版页面失败（忽略）：${e.message}")
         }

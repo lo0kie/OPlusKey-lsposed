@@ -48,16 +48,3 @@ internal fun SettingsPage.setInstantSingle(on: Boolean) =
         I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"),
         on,
     ) { it.copy(instantSingle = on) }
-
-/**
- * 切「长按连续触发」—— 行点击与开关共用这一个入口。
- *
- *  写的是**当前在编辑的那颗键**：这一行属于「按键设置」卡，卡里三档（长按阈值 / 连续触发 /
- *  忽视无操作双击）都是那颗键自己的参数。
- */
-internal fun SettingsPage.setLongRepeat(on: Boolean) =
-    toggleKeyParam(
-        "long_repeat=${if (on) 1 else 0}",
-        I18n.get(Strings.BINDING_LONG_PRESS_REPEAT_TITLE, "长按连续触发"),
-        on,
-    ) { it.copy(longRepeat = on) }

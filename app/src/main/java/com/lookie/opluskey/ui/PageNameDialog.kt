@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,8 +30,8 @@ internal const val MAX_NAME_LENGTH = 24
  *  名字是**存下来的字面量**（按键名、配置名都是用户自己起的），不是字典文案：
  *  改完就落进配置，切界面语言不会再变。
  *
- *  弹窗每次打开都以 [initial] 为起点（`remember(show, initial)`）：上一次改到一半关掉，
- *  再打开不该还挂着那半截没提交的字。
+ *  弹窗每次打开都以 [initial] 为起点（`LaunchedEffect(show)` 那一下）：上一次改到一半关掉，
+ *  再打开不该还挂着那半截没提交的字；而**退场那一段**不重置（否则输入框会跳回初值再消失）。
  *
  * @param title 标题（「添加按键」/「重命名」…；滑杆那一档取**原行**的标题）
  * @param label 输入框左边的标签（填的是什么名字 / 这一段的值域）
@@ -73,8 +74,14 @@ internal fun SettingsPage.NameDialog(
     onConfirm: (String) -> Unit,
 ) {
     //  **只按开合重置**：把 `initial` 也当键的话，弹窗开着时外面刷新一次配置（滑杆值写回、
-    //  改名同步）就会把用户正在输入的内容整段重置回初值、光标也跳走。`initial` 只在打开那一刻取值。
-    var text by remember(show) { mutableStateOf(initial) }
+    //  改名同步）就会把用户正在输入的内容整段重置回初值、光标也跳走。
+    //  **关闭动画期间同样不能重置** —— 键写成 `remember(show)` 时，`show` 一翻 false 就重算成
+    //  初值，输入框在退场那一段会「跳回去再消失」（`PercentDialog` 那边踩过同一条）。
+    //  所以值只**打开时**取一次初值：`remember` 不带键，重置交给下面那个 effect。
+    var text by remember { mutableStateOf(initial) }
+    LaunchedEffect(show) {
+        if (show) text = initial
+    }
     // 打开即聚焦（省掉「还得再点一下输入框」那一步）
     val focus = remember { FocusRequester() }
     FocusOnShow(show, focus)

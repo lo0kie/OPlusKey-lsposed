@@ -221,6 +221,13 @@ internal class CustomCommandRunner(
         }
 
         val shell = shellStepText(steps[index])
+        //  空步骤（`shell:` 后面没写内容 / 手改出来的空行）就地跳过：它没有任何要跑的东西，
+        //  而放进下面任何一条分支都会多一次起进程（或被并成以 ` && ` 开头的一条串）。
+        if (shell != null && shell.isBlank()) {
+            XLog.w("  第 ${index + 1} 步是空命令，跳过")
+            scheduleNext(steps, index + 1, depth, gapMs, name)
+            return
+        }
         // 注意：小布识屏那条别名会被翻译成**原生调用**、不是真的 shell，必须**单独派发**。
         //  并进 `;` 拼接串的话，`runShell` 的前缀认领会把**整串**认成别名，
         //  后面那些真正要跑的 shell 步骤随整串一起被吞掉。
@@ -380,7 +387,9 @@ internal class CustomCommandRunner(
         while (cursor < steps.size) {
             val text = shellStepText(steps[cursor]) ?: break
             if (KsuCompat.isSidebarAlias(text)) break
-            merged.add(text)
+            //  **空步不能进拼接串**：`shell:` 后面没写内容时命令是空串，`joinToString` 会在开头
+            //  留下一个 ` && `（`sh -c " && echo x"` 直接是语法错误），整条链跟着失败。
+            if (text.isNotBlank()) merged.add(text)
             cursor++
         }
         //  用 `&&` 而不是 `;`：`sh -c "a; b"` 的退出码只取**最后一条**，前一步失败既不报错、

@@ -59,9 +59,13 @@ internal fun SettingsPage.PageTabBand(
     val tick = rememberTick()
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    //  页码必须夹在标签表里：场景那一档的页数会随「组合键 / 单键」变（三档与两档），
+    //  页数缩小时 `currentPage` 会先停在旧值上 —— 不夹就会画出轨道外的滑块，库按下标取
+    //  tab 时还会越界。`BindingPagerScreen` 对同一现象已经夹过一道。
+    val lastIndex = (labels.size - 1).coerceAtLeast(0)
     TabBandSurface(
         look = BandLook(labels, enabled, band),
-        selectedIndex = pagerState.currentPage,
+        selectedIndex = pagerState.currentPage.coerceIn(0, lastIndex),
         //  滑块位置按**浮点页码**实时算，滑动时 1:1 跟着页面走。
         //
         //  `currentPage + currentPageOffsetFraction` 是连续量：拖到一半时前者已翻到下一页、

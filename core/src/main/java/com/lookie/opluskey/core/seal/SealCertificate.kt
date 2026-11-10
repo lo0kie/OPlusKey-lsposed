@@ -2,6 +2,7 @@ package com.lookie.opluskey.core.seal
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.log.XLog
 import java.security.MessageDigest
@@ -23,7 +24,12 @@ internal object SealCertificate {
     private var cached: ByteArray? = null
 
     /**
-     * 上一次取失败的时刻（`0` = 没失败过）—— 与「还没取过」必须分开，否则每次判都要重问一遍 PMS。
+     * 上一次取失败的**单调时刻**（`SystemClock.elapsedRealtime()`；`0` = 没失败过）——
+     * 与「还没取过」必须分开，否则每次判都要重问一遍 PMS。
+     *
+     *  **只能用单调时钟**：过期判据是「`now - failedAt < RETRY_MS`」，用 wall clock 时一次校时回拨
+     *  （NTP / 用户改时间）会让 `failedAt` 跑到未来，这个窗口就一直命中 —— 签名闸长期不重试，
+     *  注入侧整条不接管，而且看起来像「那台机器永远拿不到签名」。
      *
      *  **但不许永久粘住**：`PackageManager` 一时拿不到（开机早期、包刚更新完）与「这台机器永远
      *  拿不到」是两件事。永久记住前者会让签名闸一直判不出口令、注入侧整条不接管，直到进程重启。
@@ -38,7 +44,7 @@ internal object SealCertificate {
     /** 本包签名证书的 SHA-256 原始摘要；取不到返回 `null`。 */
     fun sha256(context: Context): ByteArray? {
         cached?.let { return it }
-        val now = System.currentTimeMillis()
+        val now = SystemClock.elapsedRealtime()
         if (failedAt != 0L && now - failedAt < RETRY_MS) return null
         val bytes = read(context)
         if (bytes == null) {

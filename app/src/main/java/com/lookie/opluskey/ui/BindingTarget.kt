@@ -106,6 +106,18 @@ internal sealed interface BindingTarget {
      */
     fun scenarioBlockedReason(cfg: Config): String?
 
+    /**
+     * 这一页的**格子点不动**时该说的那句话。
+     *
+     *  与 [scenarioBlockedReason] 是同一件事的两种用法：那个管「能不能进场景表」，这个管
+     *  「这一页能不能改」。单键 / 组合两档的说法**本来就一样**（都是「那一份停用了」），
+     *  所以默认直接借它 —— 再写一份措辞就是第三个说法。
+     *
+     *  只有场景块要另说：它没有入口行（[scenarioBlockedReason] 恒 `null`），停用的是
+     *  **那一块**，不是那颗键。
+     */
+    fun pageBlockedReason(cfg: Config): String? = scenarioBlockedReason(cfg)
+
     /** 一颗键的一档。 */
     data class Key(
         val id: KeyId,
@@ -253,6 +265,15 @@ internal sealed interface BindingTarget {
         }
 
         override fun scenarioBlockedReason(cfg: Config): String? = null
+
+        /**
+         * 这一块**停用了**（草稿里那一块的 `enabled`）：格子里写的是「那一块」，不是哪颗键 ——
+         * 原先这里回落到 `KeyWatchState` 里那颗键，真机表现是「点格子弹出 `[电源] 已停用`」。
+         *
+         *  `null` = 那一块已经不在草稿里了（页面正在退），别再补一句。
+         */
+        override fun pageBlockedReason(cfg: Config): String? =
+            if (block?.enabled != false) null else I18n.get(Strings.BINDING_SCENE_OFF, "这一块场景已停用，回「系统场景」页启用它")
 
         /**
          * 把 [action] 写进这一块的这一档 —— **只改草稿**，一个字节都不落盘。

@@ -7,8 +7,11 @@ import com.lookie.opluskey.core.i18n.applyLanguage
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.ui.state.CommandsSave
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-// 配置落盘这一族：唯一的写入口 [write]，与落盘之后的收尾 [finishWrite]。
+// 配置落盘这一族：写入口 [write]（落盘也在调用线程上）与 [writeOnIo]（落盘在 IO 上），
+// 以及落盘之后的收尾 [finishWrite]。
 //
 // 本文件只管**机制**（只读态 / 落盘 / 广播 / 重问注入侧），不含任何具体开关：
 //   · 「改哪颗全局开关」在 `ui/GlobalWrite.kt`；
@@ -36,6 +39,30 @@ internal fun SettingsPage.write(
     //  此时 [SettingsPage.configState] 里那份是**默认值**、不是用户的真相 —— 写回等于把它固化，
     // 会把用户配的绑定 / 开关整份抹掉。一律拒，并明确告诉用户「没保存」。
     if (!canWriteConfig(what)) return CommandsSave.Failed
+    return applyWritten(next, persistConfig(next, what))
+}
+
+/**
+ * 与 [write] 同一套闸、同一份收尾，只把**落盘那一步**放到 IO 上。
+ *
+ *  给「点一下就要整份重写」的入口用（重置配置 / 重置模块：主配置 + 命令库两份文件一起换）。
+ *  `ConfigStore.write` 里有 `.prev` 快照复制与原子写，整份文件的大小由用户配置决定，不能占主线程。
+ *  页面状态与提示仍在主线程做 —— 调用方的 scope 跑在主线程上，`withContext` 返回后自然回来。
+ */
+internal suspend fun SettingsPage.writeOnIo(
+    next: Config,
+    what: String,
+): CommandsSave {
+    if (!canWriteConfig(what)) return CommandsSave.Failed
+    val saved = withContext(Dispatchers.IO) { persistConfig(next, what) }
+    return applyWritten(next, saved)
+}
+
+/** 落盘这一步本身（序列化 / `.prev` 快照 / 原子写）—— 纯文件 IO，不碰页面状态。 */
+private fun persistConfig(
+    next: Config,
+    what: String,
+): Boolean {
     var saved = false
     try {
         saved = ConfigStore.write(next)
@@ -47,6 +74,18 @@ internal fun SettingsPage.write(
     } catch (e: Throwable) {
         XLog.w("设置页写配置失败：$what", e)
     }
+    return saved
+}
+
+/**
+ * 落盘之后提交页面状态 —— [write] 与 [writeOnIo] 共用这一份。
+ *
+ *  写入失败时文件与页面状态都还是旧值（[ConfigStore.write] 不提交任何东西），所以只有一条提示。
+ */
+private fun SettingsPage.applyWritten(
+    next: Config,
+    saved: Boolean,
+): CommandsSave {
     if (!saved) {
         hint(I18n.get(Strings.TOAST_CONFIG_SAVE_FAILED, "保存失败"))
         return CommandsSave.Failed

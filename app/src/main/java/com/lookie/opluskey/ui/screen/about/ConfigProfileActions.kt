@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.screen.about
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.config.ProfileCommands
@@ -21,6 +22,7 @@ import com.lookie.opluskey.ui.resetCurrentProfile
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.VarListSignal
 import com.lookie.opluskey.ui.write
+import kotlinx.coroutines.launch
 
 // 「配置」那几个**动作**（切换 / 新建 / 重命名 / 重置 / 删除）与命名窗。
 //
@@ -70,8 +72,10 @@ internal fun SettingsPage.switchToProfile(item: ConfigProfiles.Item) {
                 hint(I18n.get(Strings.PROFILE_SWITCH_FAILED, "切换失败：这一份读不出来"))
                 return
             }
-    //  落盘那一步失败时 `write` 已经说过一句（「保存失败」/「只读态」），这里不再盖掉它
-    if (applySwitchedConfig(next, "切换配置 → ${item.displayName}") == CommandsSave.Failed) return
+    //  落盘那一步失败时 `write` 已经说过一句（「保存失败」/「只读态」），这里不再盖掉它。
+    //  `BroadcastFailed` 同样不补成功提示：配置只在本地生效、注入侧仍是旧的，那条「没收到」
+    //  的提示刚由 `finishWrite` 弹出，补一句「已切换」会把它顶掉（与 `BindingActions` 同口径）。
+    if (applySwitchedConfig(next, "切换配置 → ${item.displayName}") != CommandsSave.Ok) return
     hint(I18n.format(Strings.PROFILE_SWITCHED, item.displayName))
 }
 
@@ -87,6 +91,10 @@ internal fun SettingsPage.switchToProfile(item: ConfigProfiles.Item) {
  *  第二步失败只报「已新建」——新配置确实已经在盘上了，只是没能换上来。
  */
 internal fun SettingsPage.createProfile(name: String) {
+    //  **只读态必须先拦**，与 [switchToProfile] 同一条闸：`ConfigProfiles.createAs` 一进去就动盘
+    //  （建新槽、把当前那份写进去），等下面 `write` 去拒已经晚了 —— 那时盘上多出一份、当前槽也
+    //  可能已经换了人，而用户看到的只是一句「未保存」，重进页面或重启后配置自己变了。
+    if (!canWriteConfig("新建配置 → $name")) return
     val slot =
         ConfigProfiles.createAs(name)
             ?: run {
@@ -108,8 +116,8 @@ internal fun SettingsPage.createProfile(name: String) {
                 hint(I18n.format(Strings.PROFILE_CREATED, name))
                 return
             }
-    //  写失败时 `write` 已经提示过 —— 再报一句「已新建」会把它盖掉，用户以为切过去了
-    if (applySwitchedConfig(next, "新建配置并切换 → $name") == CommandsSave.Failed) return
+    //  写失败 / 广播没发出去时 `write` 已经提示过 —— 再报一句「已新建」会把它盖掉，用户以为切过去了
+    if (applySwitchedConfig(next, "新建配置并切换 → $name") != CommandsSave.Ok) return
     hint(I18n.format(Strings.PROFILE_CREATED, name))
 }
 
@@ -137,7 +145,8 @@ internal fun SettingsPage.renameProfile(name: String) {
             }
     //  名字没变就什么都不做：不落盘、也不报「已重命名」
     if (next == current) return
-    if (write(next, "重命名配置 → ${next.profileName}") == CommandsSave.Failed) return
+    //  同样只在完全成功时才补一句：广播没发出去时注入侧还是旧名字
+    if (write(next, "重命名配置 → ${next.profileName}") != CommandsSave.Ok) return
     hint(I18n.format(Strings.PROFILE_RENAMED, next.profileName))
 }
 
@@ -247,6 +256,9 @@ internal fun SettingsPage.ProfileDeleteConfirmDialog(ui: AboutUiState) {
  */
 @Composable
 internal fun SettingsPage.ProfileResetConfirmDialog() {
+    //  重置要重写主配置与命令库两份文件（`.prev` 快照 + 原子写），落盘走 `resetCurrentProfile`
+    //  里那趟 IO；这里只负责在确认之后把它发出去，窗当场收。
+    val scope = rememberCoroutineScope()
     ConfirmDialog(
         show = overlays.confirmReset,
         title = I18n.get(Strings.DIALOG_CLEAR_CONFIG_TITLE, "重置配置"),
@@ -261,7 +273,7 @@ internal fun SettingsPage.ProfileResetConfirmDialog() {
         onDismiss = { overlays.confirmReset = false },
         onConfirm = {
             overlays.confirmReset = false
-            resetCurrentProfile()
+            scope.launch { resetCurrentProfile() }
         },
     )
 }

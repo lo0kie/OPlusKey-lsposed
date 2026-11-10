@@ -234,7 +234,7 @@ internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
     val target = menus.deletingCond
     ConfirmDialog(
         show = target != null,
-        title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条场景"),
+        title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条条件"),
         summary = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_MESSAGE, "只删这一条。"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { menus.deletingCond = null },
@@ -252,19 +252,18 @@ internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
  *
  *  与命令库那套不同：场景不占绑定，所以这里既不新增命令、也不碰别的键。
  *
- *  ## 只落在编的那一块
+ *  ## 写的是整张草稿
  *
  *  同一份草稿有两个入口在改：本页（整表）与「场景动作」页（从某一块点进去改那几档）。
- *  后者按这颗 `sceneBindingAt` 逐块写回 —— 配置里**别人那几块**照原样带过去，只把在编的那一块
- *  换成草稿里现在这一份。整表覆盖等于替上一页按了「确认」，它上面还没确认的改动会跟着落盘。
+ *  两边都按 `draft.scenes` 整表写回 —— 块与块之间没有稳定身份，无法安全地只替换其中一块
+ *  （判据见 [scenesToWrite]）。别的键 / 别的组合键一个字节都不动，那一段仍按原样带过去。
  *
- *  ## 两份「确认」各收各的账
+ *  ## 写成之后怎么收尾
  *
- *  写成之后怎么收尾，看**是谁点的**（判据见 [scenesToWrite]）：
- *   · 本页那颗「确认」＝整张表都写下去了 ⇒ [BranchDraft.load]，草稿与快照一起换成新的；
- *   · 「场景动作」页那颗 ⇒ 只写了一块 ⇒ [BranchDraft.noteSaved]，**只挪快照**、草稿原样留着：
- *     上一页上别的块还有没确认的改动，它们一个字节都没落盘，那颗「确认」得继续亮着等用户按
- *     （用户口径：保存这一档手势不该连带把整张场景表也收掉）。
+ *  写成之后怎么收尾，看**是谁点的**：
+ *   · 本页那颗「确认」＝草稿与配置刚对齐 ⇒ [BranchDraft.load]，草稿与快照一起换成新的；
+ *   · 「场景动作」页那颗 ⇒ 草稿本身已经就是刚写下去的那一份 ⇒ [BranchDraft.noteSaved]，
+ *     只挪快照、不重发行身份，退回去时那几行不重播入场。
  */
 internal fun SettingsPage.saveScenes(): Boolean {
     val draft = branchDraftNow()
@@ -287,7 +286,8 @@ internal fun SettingsPage.saveScenes(): Boolean {
 
             else -> {
                 XLog.w("系统场景已保存：$label ${scenes.size} 块")
-                //  只写了一块 ⇒ 只挪快照（别的块还有没确认的改动），整表写才整份 `load`
+                //  「场景动作」页那颗：草稿已经等于写下去的这份 ⇒ 只挪快照、保住行身份；
+                //  本页那颗：草稿与配置刚对齐 ⇒ 整份重灌（见上面那两段说明）
                 if (screen == Screen.SCENE_BINDING) {
                     draft.noteSaved(scenes)
                 } else {
@@ -312,7 +312,7 @@ internal fun SettingsPage.saveScenes(): Boolean {
 
         else -> {
             XLog.w("系统场景已保存：${key.label} ${scenes.size} 块")
-            //  只写了一块 ⇒ 只挪快照（别的块还有没确认的改动），整表写才整份 `load`
+            //  与上面那一支同一条判据：在「场景动作」页只挪快照，在本页整份重灌
             if (screen == Screen.SCENE_BINDING) {
                 draft.noteSaved(scenes)
             } else {
@@ -324,34 +324,20 @@ internal fun SettingsPage.saveScenes(): Boolean {
 }
 
 /**
- * 这一次要写下去的那张表 —— **在编哪一块由 `screen` 说**。
+ * 这一次要写下去的那张表 —— **整张草稿**。
  *
- *  不在「场景动作」页（即本页那颗「确认」）= 整张草稿都写。
- *  在「场景动作」页 = 只把草稿里那一块换进配置原表的那一格，别的块照配置里的原样
- *  （理由见 [saveScenes]）。
+ *  ## 为什么不能按下标逐格合
  *
- *  **判据是栈顶页、不是 `sceneBindingAt`**：那一位由离栈收尾延迟 `PAGE_TRANSITION_MS` 才清，
- *  退场那几百毫秒里它还是旧值 —— 拿它判会让「刚退回本页、立刻点确认」走成「只写一块」。
+ *  配置里那一份（原表）与草稿之间**没有稳定的块身份**：`SceneRule` 只是一个条件集合 + 三档
+ *  动作，`BranchDraft.ids` 只活在这一趟界面里、不落盘。所以草稿里删过 / 挪过块之后，
+ *  「在编哪一块」那个下标在原表里指的可能已经是另一块 —— 替换它会把别的一块写没（丢块），
+ *  或者把刚写的那块留在原位再补一份（复制块）。
+ *
+ *  整表写回不会丢块也不会复制块：写下去的就是屏幕上那张表本身，顺序与内容一一对应，
+ *  根本不存在「按下标去找对应关系」这一步。代价是别的块若还有没确认的改动也会一起落盘 ——
+ *  在拿不到块身份之前，那比写错一块安全。
  */
-private fun SettingsPage.scenesToWrite(draft: BranchDraft): List<SceneRule> {
-    if (screen != Screen.SCENE_BINDING) return draft.scenes.toList()
-    val at = sceneBindingAt
-    val editing = draft.scenes.getOrNull(at) ?: return draft.scenes.toList()
-    val cfg = configState.config.value
-    val comboId = branchDraft.comboId
-    val base =
-        if (comboId != null) {
-            cfg.combos.firstOrNull { it.id == comboId }?.scenes
-        } else {
-            cfg.key(branchKeyNow()).scenes
-        }
-    //  那一块已经在表外（这一趟里上一页加过）⇒ 草稿就是全貌，整表写回
-    return if (base == null || at !in base.indices) {
-        draft.scenes.toList()
-    } else {
-        base.mapIndexed { i, rule -> if (i == at) editing else rule }
-    }
-}
+private fun SettingsPage.scenesToWrite(draft: BranchDraft): List<SceneRule> = draft.scenes.toList()
 
 /**
  * 「一块都还没有」那块空态 —— **在滚动内容里**，跟着内容一起拖、一起弹。

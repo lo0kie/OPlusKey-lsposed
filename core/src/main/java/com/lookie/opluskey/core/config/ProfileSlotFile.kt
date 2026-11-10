@@ -15,7 +15,8 @@ import com.lookie.opluskey.core.log.XLog
  *  两边各写一份的后果不是「代码重复」，而是**判据会漂**。这里有三条踩过坑才定下来的规矩：
  *   · **读不懂 ≠ 没有**：任一槽读不懂就整趟不动（按「没有」处理会把可能还能救的文件盖掉）；
  *   · **第二步失败要把目标槽还原**（否则目标那份永久没了）；
- *   · **老配置（目标槽空着）只把当前这份存过去、当前配置不动**。
+ *   · **老配置（目标槽空着）只把当前这份存过去、当前配置不动**；反方向（当前槽空着）则把目标
+ *     这份换进来、并把「空」写回目标槽 —— **两侧对称**，因为「空」本身也是一种内容。
  *  一处改了另一处没改时，坏法只在「刚好有一份文件读不懂」时出现 —— 最难复现的那种。
  */
 internal class ProfileSlotFile(
@@ -66,30 +67,57 @@ internal class ProfileSlotFile(
         }
         val liveText = live.textOrNull()
         val mineText = mine.textOrNull()
+        //  **「空」也是内容**：对调要搬两侧的状态 —— 一侧有内容、另一侧空着时，空的这一侧也得
+        //  跟着搬过去。只搬有内容的那一侧的话，切过去之后两个槽里是同一份内容，切回来看到的
+        //  还是它（另一份已经没了）。
+        if (liveText == null) return swapLiveEmpty(target, mineText, what)
         if (mineText == null) {
             //  老配置：目标槽空着 ⇒ 把当前这份存过去，当前配置的不动
-            //  （`liveText` 也空时根本没东西要搬，直接算成功）
-            val ok = liveText == null || writeRaw(target, liveText)
+            val ok = writeRaw(target, liveText)
             if (!ok) XLog.w("配置切换：$what 没跟过去（槽 $target）")
             return ok
         }
         return swapBoth(target, liveText, mineText, what)
     }
 
+    /**
+     * 当前槽空着、目标槽有内容时的对调：把目标这份换进来，再把**空**这个状态写回目标槽。
+     *
+     * @param mineText 目标槽的内容（`null` = 两侧都空着，什么都不用做）
+     */
+    private fun swapLiveEmpty(
+        target: String,
+        mineText: String?,
+        what: String,
+    ): Boolean {
+        if (mineText == null) return true
+        //  当前槽空着 ⇒ 把目标这份换进来，再把**空**这个状态写回目标槽（删掉那一槽的文件：
+        //  这一层不解析内容，磁盘上没有文件就是它唯一能表达的「空」）。
+        if (!writeRaw(prefix, mineText)) {
+            XLog.w("配置切换：$what 没换进来（当前槽 $prefix 写盘失败，槽 $target 原样）")
+            return false
+        }
+        if (ConfigStore.files().delete(target)) return true
+        //  清不掉目标槽时两份就是同一份内容 —— 撤回刚写进去的那一份，回到调用前的状态
+        ConfigStore.files().delete(prefix)
+        XLog.w("配置切换：$what 没对调成（目标槽 $target 清不掉），当前槽已退回空")
+        return false
+    }
+
     /** 两份都在时的对调：先存当前、再换进目标；**第二步失败要把目标槽还原**。 */
     private fun swapBoth(
         target: String,
-        liveText: String?,
+        liveText: String,
         mineText: String,
         what: String,
     ): Boolean {
-        if (liveText != null && !writeRaw(target, liveText)) {
+        if (!writeRaw(target, liveText)) {
             XLog.w("配置切换：$what 没跟过去（第一步写盘失败，槽 $target）")
             return false
         }
         if (writeRaw(prefix, mineText)) return true
         //  第二步失败：目标槽里此刻是当前这份，原来那份只在内存里 —— 必须还原，否则它没了
-        val restored = liveText == null || writeRaw(target, mineText)
+        val restored = writeRaw(target, mineText)
         XLog.w(
             "配置切换：$what 没换进来（第二步写盘失败，槽 $target）—— " +
                 if (restored) "已还原目标槽" else "还原也失败，目标槽里现在是当前这份",

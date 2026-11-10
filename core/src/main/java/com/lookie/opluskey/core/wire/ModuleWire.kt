@@ -173,8 +173,9 @@ object ModuleWire {
      *  为什么不让宿主 `su` 跑 `service call color_screenshot`：内置动作不该为了截一张图去要 root
      *  （弹授权、慢半拍、没 root 的机器上直接不可用）。这条通道既不走 shell、也不要授权。
      *
-     *  收方是 `inject/KeyHooks` 那个 AMS 广播入口（注入侧不给它单独挂接收器），
-     *  所以宿主那边**直接 `sendBroadcast`** 就行，不必 `setPackage`。
+     *  收方是 `inject/KeyHooks` 那个 AMS 广播入口（注入侧不给它单独挂接收器）——
+     *  它看得见全系统每一条广播，`setPackage` 不影响它收；但发送侧（`ActionRunner.requestSystemInject`）
+     *  仍然 `setPackage(宿主包名)` 定向：裸发就是一条谁都能注册接收的隐式广播。
      */
     const val ACTION_INJECT_KEY = "com.lookie.opluskey.INJECT_KEY"
 
@@ -189,7 +190,8 @@ object ModuleWire {
      *  `system_server`，用 `ActivityThread.getSystemContext()`（包名 `android`）弹，那个包持有
      *  `UNLIMITED_TOASTS` ⇒ 免限流。同一句话、同一个模块，只是换了发话人。
      *
-     *  收方同样是 `inject/KeyHooks` 那个 AMS 广播入口，宿主直接 `sendBroadcast` 即可。
+     *  收方同样是 `inject/KeyHooks` 那个 AMS 广播入口；发送侧（`host/action/CommandFailure`）
+     *  照旧 `setPackage(宿主包名)` 定向（理由同上一条）。
      */
     const val ACTION_TOAST = "com.lookie.opluskey.TOAST"
 

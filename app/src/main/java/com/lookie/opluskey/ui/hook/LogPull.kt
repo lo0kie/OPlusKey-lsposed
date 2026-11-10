@@ -65,8 +65,16 @@ internal object LogPull {
         val registered =
             context.registerLocalReceiver("导出日志（这次只能导本进程的）", receiver, ModuleWire.ACTION_LOG_CHUNK)
         PageWire.send(context, pkg, Intent(ModuleWire.ACTION_LOG_PULL))
-        Thread.sleep(WAIT_MS)
-        if (registered) runCatching { context.unregisterReceiver(receiver) }
+        //  收集窗口用 try/finally 兜住：`Thread.sleep` 被中断时抛的是 InterruptedException，
+        //  以前那条路会跳过注销 —— 接收器与 `chunks` 就永久留在进程里。
+        try {
+            Thread.sleep(WAIT_MS)
+        } catch (e: InterruptedException) {
+            XLog.w("导出日志：收集被中断，提前收尾")
+            Thread.currentThread().interrupt()
+        } finally {
+            if (registered) runCatching { context.unregisterReceiver(receiver) }
+        }
 
         val out = LinkedHashMap<String, String>()
         for ((proc, parts) in chunks) {
@@ -92,7 +100,8 @@ internal object LogPull {
      *
      *  为什么不分成几个小节各自列出：排查时看的是**时序**（按下 → 判定 → 转交 → 执行），
      *  分节之后要在几段之间来回跳，最容易漏掉的正是「另一头压根没动」这种。
-     *  每行的时间戳是 `MM-dd HH:mm:ss.SSS`，首尾相接正好 18 个字符，按它排序即可。
+     *  每行的时间戳是 `yyyy-MM-dd HH:mm:ss.SSS`，首尾相接正好 23 个字符，按它排序即可。
+     *  带年份：导出的几份日志可能跨年，只取 `MM-dd` 会把次年 1 月的行排到最前面。
      *
      * @param local 本进程的 [XLog.snapshot]
      * @param remote [collect] 的结果
@@ -116,6 +125,6 @@ internal object LogPull {
     /** 设置页自己那一份的进程标识。 */
     private const val LOCAL_PROC = "ui"
 
-    /** 取排序键：`W 10-18 22:22:41.955 msg` → `10-18 22:22:41.955`。 */
-    private fun timeKey(line: String): String = line.substringAfter(' ', "").take(18)
+    /** 取排序键：`W 2026-10-18 22:22:41.955 msg` → `2026-10-18 22:22:41.955`。 */
+    private fun timeKey(line: String): String = line.substringAfter(' ', "").take(23)
 }

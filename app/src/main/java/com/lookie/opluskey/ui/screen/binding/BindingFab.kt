@@ -30,7 +30,7 @@ internal fun BoxScope.BindingFab(
         PageFabButton(onClick = onClick) {
             Icon(
                 PageIcons.CommandAdd,
-                contentDescription = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "已保存的命令"),
+                contentDescription = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"),
                 tint = COUITheme.colorScheme.onPrimary,
             )
         }

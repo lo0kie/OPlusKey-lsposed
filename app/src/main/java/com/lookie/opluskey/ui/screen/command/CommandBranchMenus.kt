@@ -189,7 +189,7 @@ private fun SettingsPage.addConditionRow(
     menus: BranchMenuState,
 ): MenuEntry.Row =
     MenuEntry.Row(
-        title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
+        title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加条件"),
         icon = TablerIcons.Outline.Plus,
         onPick = { appendCondition(draft, at, menus) },
     )

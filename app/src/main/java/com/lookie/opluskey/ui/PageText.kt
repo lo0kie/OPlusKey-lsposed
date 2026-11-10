@@ -99,7 +99,7 @@ internal fun SettingsPage.addCommand() {
         hint(tip, slot = HINT_SLOT_COMMAND)
     }
     // 存完**留在本页**（以前新增那条会退回「按键绑定」）：接着编下一条是常事，
-    //  每存一条就被弹回去一次纯属添乱；这条命令已经在那张「已保存的命令」列表里了，
+    //  每存一条就被弹回去一次纯属添乱；这条命令已经在那张「自定义命令」列表里了，
     //  想看结果当场就能看到。
     commandDraft.draft.reset()
 }
@@ -110,7 +110,7 @@ internal fun SettingsPage.addCommand() {
  *
  *  两处用它：导出的日志头（见 `ConfigTransfer.exportLog`）与**「更多选项」页的版本行** ——
  * 排查时要据此认出是哪个包、什么时候出的，而「什么时候」必须带日期才认得出。
- * 首页那条副标题走 [appVersionLabel]（它按构建类型决定要不要带末段）。
+ * 首页「激活状态」那张卡里那行版本走 [appVersionLabel]（它按构建类型决定要不要带末段）。
  */
 internal fun SettingsPage.appVersionText(): String {
     val build = moduleBuildStamp()
@@ -168,10 +168,12 @@ private fun compactBuildStamp(raw: String): String =
     }.getOrNull() ?: raw.filter { it.isDigit() }.take(STAMP_LABEL_DIGITS)
 
 /**
- * 首页大标题那条副标题用的版本。
+ * 首页「激活状态」那张卡里那行版本。
  *
- *  前面带一截 `version-`：这串东西摆在大标题底下、没有标签，光一个 `1.1.0-release`
+ *  前面带一截 `version-`：这串东西摆在卡里、旁边没有标签，光一个 `1.1.0-release`
  *  看不出它是什么（页面上别处也没有「版本」两个字给它托底）。
+ *
+ *  **不是顶栏副标题**（用户口径：首页不要副标题）—— 首页那一行恒为空，版本只在这张卡里。
  *
  *  两档口径（判据是 [SHOW_BUILD_TIME]，它只在 release 关着）：
  *   · 非 release（debug / log）→ 与「更多选项」页那一行**同一个形态**（[appVersionBadge]，
@@ -272,7 +274,7 @@ private fun SettingsPage.moduleBuildStamp(): String =
         null
     } ?: ModuleInfo.BUILD_ID
 
-/** 首页副标题那串版本前面的前缀（见 [appVersionLabel]）。 */
+/** 首页那张卡里版本串的前缀（见 [appVersionLabel]）。 */
 private const val VERSION_LABEL_PREFIX = "version-"
 
 internal fun SettingsPage.actionOf(

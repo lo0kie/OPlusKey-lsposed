@@ -11,7 +11,8 @@ import kotlin.math.roundToInt
  *  合成一个类型是为了让 [SettingsPage.SliderRow] 的参数表停在一只手数得过来的量级 ——
  *  这些本来就是一件事（「这一行是一根什么样的滑杆」），一起给比散在五个形参里更好读。
  *
- * @param step 相邻两档的步长 —— 轨道上有几档由它算（默认是毫秒那几档的步长）
+ * @param step 相邻两档的**目标**步长 —— 轨道上有几档由它算；区间不整除时真实档距是均分出来的
+ *   （见 [ticks] / [tickStep]），提示里报的是真实那一档。
  * @param enabled 这一根滑杆能不能动
  * @param disabledHint 灰着被点一下时**这一行自己的说法**（`null` = 用整页那句，见 [DisabledHint]）。
  *   与 `CardRow.Item.disabledHint` / `CardRow.Switch.disabledHint` 同一个意思、同一套判据：
@@ -40,7 +41,29 @@ internal data class SliderSpec(
 ) {
     /** 把任意值**吸到这一根滑杆的刻度上** —— 手动输入那一档用它（见 [snapToStep]）。 */
     fun snap(raw: Int): Int = snapToStep(raw, min, max, step)
+
+    /**
+     * 轨道上分成几档（含两端）—— 与 `Slider.steps`、[snapToStep] 同一套。
+     *
+     *  **提示与真实档距必须同源**：区间不整除时，真实一档是 `span / ticks` 均分出来的，
+     *  与参数里的 [step] 不是同一个数。各说各的时输入窗写着「步进 50」、轨道上一档却是 51。
+     */
+    val ticks: Int get() = sliderTickCount(min, max, step)
+
+    /** 真实的一档多宽（见 [ticks]）——输入窗那句「步进」用它，不用 [step]。 */
+    val tickStep: Int get() = ((max - min).coerceAtLeast(1)).toDouble().div(ticks).roundToInt()
 }
+
+/**
+ * 两端之间分几档（含两端）—— 全项目唯一一份，`Slider.steps` 与 [snapToStep] 都从这里取。
+ *
+ *  `step` 为 0 时夹到 1（否则除法直接抛 ArithmeticException，崩在组合期）。
+ */
+internal fun sliderTickCount(
+    min: Int,
+    max: Int,
+    step: Int,
+): Int = ((max - min).coerceAtLeast(1) / step.coerceAtLeast(1)).coerceAtLeast(1)
 
 /**
  * 把任意值吸到**刻度**上：两端之间分 `(max-min)/step` 格（与库 `Slider.steps` 同一套，
@@ -57,7 +80,8 @@ internal fun snapToStep(
     step: Int,
 ): Int {
     val span = (max - min).coerceAtLeast(1)
-    val ticks = (span / step).coerceAtLeast(1)
+    //  档数与 `Slider.steps` 同一处（见 [sliderTickCount]）：两边各算一份时会在「区间不整除」时差一档。
+    val ticks = sliderTickCount(min, max, step)
     val idx = ((value.coerceIn(min, max) - min).toFloat() / span * ticks).roundToInt()
     return (min + idx * span.toDouble() / ticks).roundToInt().coerceIn(min, max)
 }

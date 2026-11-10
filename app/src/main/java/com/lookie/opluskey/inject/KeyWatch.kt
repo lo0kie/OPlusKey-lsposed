@@ -3,7 +3,7 @@ package com.lookie.opluskey.inject
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
-import android.os.Looper
+import android.os.HandlerThread
 import android.os.SystemClock
 import android.view.KeyEvent
 import com.lookie.opluskey.core.log.XLog
@@ -60,8 +60,17 @@ internal object KeyWatch {
         context = borrow
     }
 
-    /** 上报用的主线程队列（见 [report]：InputReader 线程上不做同步广播）。 */
-    private val handler = Handler(Looper.getMainLooper())
+    /**
+     * 上报用的队列 —— **自己的单线程**，不是主线程（见 [report]：InputReader 线程与
+     * `system_server` 主线程上都不做同步广播）。
+     *
+     *  用一条独立线程而不是 `KeyHooks.worker`：这条上报只在收集期（最长 [AUTO_OFF_MS]）活着，
+     *  与「替宿主干活」那一串指令互不排队 —— 收集页那几秒不该被一次卡住的状态栏指令堵住。
+     *  懒加载，名字与那条同风格。
+     */
+    private val worker: Handler by lazy {
+        Handler(HandlerThread("opluskey-keywatch").apply { start() }.looper)
+    }
 
     /** 设置页发来的开 / 关。 */
     fun set(on: Boolean) {
@@ -92,14 +101,14 @@ internal object KeyWatch {
                 XLog.w("按键监听：借 Context 失败，丢弃这一条上报：${e.javaClass.simpleName}")
                 return
             } ?: return
-        // **切到主线程再发**：这里跑在 InputReader 线程上，`sendBroadcast` 是一次同步 binder
+        // **切到自己的线程再发**：这里跑在 InputReader 线程上，`sendBroadcast` 是一次同步 binder
         //  调用 —— AMS 那边一次瞬时锁竞争就会卡住全局按键读取（丢帧 / Input ANR），
         //  而这条上报只是「给设置页看按了哪个键」，晚几毫秒没有代价。
         val seen =
             Intent(ModuleWire.ACTION_KEY_SEEN)
                 .setPackage(HostApp.PACKAGE)
                 .putExtra(ModuleWire.EXTRA_SEEN_CODE, event.keyCode)
-        handler.post {
+        worker.post {
             // 这里是 hook 体内：保护用 catch (Throwable) 而不是 runCatching —— 后者只允许出现在
             // 日志出口与反射查找（AGENTS.md 五之二、2），表达的不是同一件事。
             try {

@@ -16,9 +16,13 @@ import com.lookie.opluskey.core.update.isNewer
 import com.lookie.opluskey.core.update.parseLatestRelease
 import com.lookie.opluskey.core.wire.NetReply
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * 「检查更新」的那一格状态 —— 一趟宿主进程只查一次，查到新版本就把窗弹出来。
@@ -102,6 +106,15 @@ internal object UpdateState {
     /** 一遍宿主进程只查一次：重启 / 换包之后才重来（与链路自检同一档）。 */
     private var ranThisProcess = false
 
+    /**
+     * 手动与自动两条入口共用的一把锁 —— **同一时刻只跑一趟**。
+     *
+     *  不加锁时「页面打开那一趟还没回来、用户又点了检查更新」会并发跑两轮：两倍请求，
+     *  而且两轮各自写 [checking] / [offer] / [pending]，后到的那一版会把先到的盖掉
+     *  （手动那一轮取到的版本被自动那一轮的旧数据顶掉，弹窗里的版本号跟着变）。
+     */
+    private val checkLock = Mutex()
+
     /** 这一趟进程还没查过吗。 */
     fun needsCheck(): Boolean = !ranThisProcess
 
@@ -120,23 +133,25 @@ internal object UpdateState {
     )
 
     /** 手动点「检查更新」那一行：**绕过**「每进程一次」的闸，每次都真去查。 */
-    suspend fun checkManually(host: Host): CheckOutcome {
-        ranThisProcess = true
-        checking = true
-        try {
-            return runCheck(host, manual = true)
-        } catch (e: CancellationException) {
-            //  取消是结构化并发的一部分，原样抛（吞掉会让调用方的 join 永远等不到）
-            throw e
-        } catch (e: Throwable) {
-            //  这一条跑在页面级 `LaunchedEffect` 里：异常漏出去会穿进 Recomposer，把整个 `:ui`
-            //  进程的界面拖垮（一次网络/解析的意外不该有这种后果）。
-            XLog.w("手动检查更新失败（已忽略）：${e.javaClass.simpleName}", e)
-            return CheckOutcome.FAILED
-        } finally {
-            checking = false
+    suspend fun checkManually(host: Host): CheckOutcome =
+        //  与自动那一趟互斥（见 [checkLock]）：并发时它排队，不另起一轮。
+        checkLock.withLock {
+            ranThisProcess = true
+            checking = true
+            try {
+                runCheck(host, manual = true)
+            } catch (e: CancellationException) {
+                //  取消是结构化并发的一部分，原样抛（吞掉会让调用方的 join 永远等不到）
+                throw e
+            } catch (e: Throwable) {
+                //  这一条跑在页面级 `LaunchedEffect` 里：异常漏出去会穿进 Recomposer，把整个 `:ui`
+                //  进程的界面拖垮（一次网络/解析的意外不该有这种后果）。
+                XLog.w("手动检查更新失败（已忽略）：${e.javaClass.simpleName}", e)
+                CheckOutcome.FAILED
+            } finally {
+                checking = false
+            }
         }
-    }
 
     /**
      * 跑一趟检查（[SettingsPage.checkUpdateOnce] 的入口，页面级副作用调它）。
@@ -145,17 +160,23 @@ internal object UpdateState {
      *  最坏的结果是「这次没提示新版本」。
      */
     suspend fun checkUpdateOnce(host: Host) {
-        if (ranThisProcess) return
-        ranThisProcess = true
-        checking = true
-        try {
-            runCheck(host, manual = false)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            XLog.w("检查更新失败（已忽略）：${e.javaClass.simpleName}", e)
-        } finally {
-            checking = false
+        checkLock.withLock {
+            //  「每进程一次」的闸在锁内再看一遍：排队等来的那一趟可能正是它刚跑完的那一轮。
+            if (ranThisProcess) return
+            checking = true
+            try {
+                runCheck(host, manual = false)
+                //  **跑完才落闸**：这一位是「本进程已经问过一次」的意思，请求没发出去（无网 / 页面
+                //  进来就退、协程被取消）不算问过 —— 否则本进程再也不查，与「下次进页还会再查」相反。
+                ranThisProcess = true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                XLog.w("检查更新失败（已忽略）：${e.javaClass.simpleName}", e)
+                ranThisProcess = true
+            } finally {
+                checking = false
+            }
         }
     }
 
@@ -169,12 +190,15 @@ internal object UpdateState {
         host: Host,
         manual: Boolean,
     ): CheckOutcome {
+        //  两个读盘 / 查包都要离开主线程：`versionName()` 走 `PackageManager`（一次 binder），
+        //  `readPrefs()` 是整份界面状态文件的读 + 解析 —— 二者原来都跑在调用方那一条线程上，
+        //  而调用方是组合里的 `LaunchedEffect`（主线程）。
         val current =
-            host.versionName() ?: run {
+            withContext(Dispatchers.IO) { host.versionName() } ?: run {
                 XLog.w("检查更新：读不到本机版本号，跳过")
                 return CheckOutcome.FAILED
             }
-        val skip = UiState.readPrefs().skipUpdateVersion
+        val skip = withContext(Dispatchers.IO) { UiState.readPrefs().skipUpdateVersion }
         //  调试包：`Settings.Global` 里塞了假 release 就直接当作「第一路已经取到」，
         //  后面的判新旧 / 判「不再提示」与真取到的那一路完全同一套（见 [debugMockRelease]）
         val mocked = debugMockRelease(host.context)

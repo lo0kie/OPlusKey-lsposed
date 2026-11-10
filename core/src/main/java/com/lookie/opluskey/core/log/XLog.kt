@@ -73,7 +73,7 @@ object XLog {
 
     private val stamp =
         java.time.format.DateTimeFormatter
-            .ofPattern("MM-dd HH:mm:ss.SSS")
+            .ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
 
     /** 导出用：把缓冲拼成文本（**本进程**）。另外两个进程那份由 `wire/LogWire` 一问一答收上来。 */
     fun snapshot(): String = synchronized(buffer) { buffer.joinToString("\n") }
@@ -96,7 +96,10 @@ object XLog {
         msg: String,
         tr: Throwable?,
     ) {
-        val text = "$msg${tr?.let { " | " + it } ?: ""}"
+        //  `Throwable.toString()` 只给类型名 + 自己的 message，而 `InvocationTargetException`
+        //  的 message 恒为 null —— 反射调用失败的根因全在 cause 里，只存 toString 等于把
+        //  「为什么失败」丢掉。这里按 cause 链拼类型 + message（不存完整堆栈，避免爆缓冲）。
+        val text = "$msg${tr?.let { " | " + causeChain(it) } ?: ""}"
         // 三处出口（缓冲 / logcat / 框架日志）都是尽力而为、失败即丢，绝不影响调用方。
         // 用 runCatching 是明确的丢弃语义，不是 AGENTS.md 五之二 2 禁的「以保护代 catch」。
         runCatching {
@@ -197,3 +200,24 @@ object XLog {
             else -> "?"
         }
 }
+
+/**
+ * 异常的「类型名 + message」按 cause 链拼成一行（最多四层）。
+ *
+ *  为什么不直接 `toString()`：`InvocationTargetException` 的 message 恒为 null，反射调用失败的
+ *  根因全在 cause 里 —— 只存 `toString()` 的导出日志会只剩下一个类型名，用户交回来的那份日志
+ *  于是没有任何可用信息。也不存完整堆栈：环形缓冲只有固定条数，堆栈会把判据行挤掉。
+ */
+private fun causeChain(root: Throwable): String =
+    buildString {
+        var current: Throwable? = root
+        var depth = 0
+        while (current != null && depth < 4) {
+            if (depth > 0) append(" <- ")
+            append(current.javaClass.name)
+            append(": ")
+            append(current.message ?: "-")
+            current = current.cause
+            depth++
+        }
+    }

@@ -108,7 +108,7 @@ enum class SwitchKind(
  *
  * ## 加一条要动两处
  *
- *  [SwitchKind] 加一项（种类，也是字形表的键）、[SystemSwitches.ITEMS] 加一行（名字与顺序）。
+ *  [SwitchKind] 加一项（种类，也是字形表的键）、[SystemSwitches.ITEMS] 加一行（字典键与顺序）。
  *  两份字典要加键，真要能执行还要在 `SettingCalls` 里加一支。
  *
  *  **字形不用另加**：界面那张表对 [SwitchKind] 做 `when`，枚举加了而 `when` 没补齐会当场编译失败
@@ -120,12 +120,10 @@ object SystemSwitches {
      *
      * @param kind 哪一种开关 —— 决定字形（界面对这个枚举做 `when`，漏配当场编译失败）
      * @param labelKey 字典键
-     * @param label 兜底中文（字典缺这条时显示它）
      */
     class Item(
         val kind: SwitchKind,
         val labelKey: String,
-        val label: String,
     ) {
         /** 落盘取值 —— 由 [kind] 推，不再各写一遍 `setting:xxx` 字面量。 */
         val token: String = settingToken(kind.id)
@@ -152,23 +150,23 @@ object SystemSwitches {
     /** 页面上的开关清单，顺序即显示顺序。 */
     val ITEMS: List<Item> =
         listOf(
-            Item(SwitchKind.BT, Strings.SYS_SETTING_BT, "蓝牙"),
-            Item(SwitchKind.WIFI, Strings.SYS_SETTING_WIFI, "WIFI"),
-            Item(SwitchKind.CELL, Strings.SYS_SETTING_CELL, "移动数据"),
-            Item(SwitchKind.ROTATION, Strings.SYS_SETTING_ROTATION, "自动旋转"),
-            Item(SwitchKind.NFC, Strings.SYS_SETTING_NFC, "NFC"),
-            Item(SwitchKind.AIRPLANE, Strings.SYS_SETTING_AIRPLANE, "飞行模式"),
+            Item(SwitchKind.BT, Strings.SYS_SETTING_BT),
+            Item(SwitchKind.WIFI, Strings.SYS_SETTING_WIFI),
+            Item(SwitchKind.CELL, Strings.SYS_SETTING_CELL),
+            Item(SwitchKind.ROTATION, Strings.SYS_SETTING_ROTATION),
+            Item(SwitchKind.NFC, Strings.SYS_SETTING_NFC),
+            Item(SwitchKind.AIRPLANE, Strings.SYS_SETTING_AIRPLANE),
             //  定位服务：紧挨着飞行模式（两者都是「无线电开不开」那一类）。宿主能直接写
             //  `Settings.Secure.location_mode`，见 [SwitchKind.LOCATION]。
-            Item(SwitchKind.LOCATION, Strings.SYS_SETTING_LOCATION, "定位服务"),
+            Item(SwitchKind.LOCATION, Strings.SYS_SETTING_LOCATION),
             //  免打扰与手电筒**也收进 `setting:` 这一族** —— 三态（切换 / 打开 / 关闭）要求
             //  「目标状态」能写在 token 里，而 `oplus:no_disturb` / `flashlight` 这两种老写法
             //  只能表达「切一下」。执行侧各自分派（见 `ActionRunner` 与 `SettingCalls`），
             //  老配置里那两种写法仍然按原路跑，不迁移、不丢。
-            Item(SwitchKind.DND, Strings.SYS_SETTING_DND, "免打扰"),
-            Item(SwitchKind.FLASHLIGHT, Strings.SYS_SETTING_FLASHLIGHT, "手电筒"),
-            Item(SwitchKind.DARKMODE, Strings.SYS_SETTING_DARKMODE, "暗色模式"),
-            Item(SwitchKind.POWERSAVE, Strings.SYS_SETTING_POWERSAVE, "省电模式"),
+            Item(SwitchKind.DND, Strings.SYS_SETTING_DND),
+            Item(SwitchKind.FLASHLIGHT, Strings.SYS_SETTING_FLASHLIGHT),
+            Item(SwitchKind.DARKMODE, Strings.SYS_SETTING_DARKMODE),
+            Item(SwitchKind.POWERSAVE, Strings.SYS_SETTING_POWERSAVE),
             //  极暗：真开关在**颜色显示服务**里（AOSP 的 reduce bright colors）——
             //  `dumpsys color_display` 有一节 `Reduce bright colors: Activated: ...`。
             //  它要 `CONTROL_DISPLAY_COLOR_TRANSFORMS`（signature|privileged），宿主拿不到这个权限
@@ -176,10 +174,10 @@ object SystemSwitches {
             //  （`SettingCalls.extraDim` 调 `color_display` 服务）。
             //  注意 **不是** `PowerManager`（这台机器上反射不到），也**不是**
             //  `Settings.*.reduce_brightness`（那两个键没人维护，写了没反应）。
-            Item(SwitchKind.EXTRADIM, Strings.SYS_SETTING_EXTRADIM, "极暗模式"),
+            Item(SwitchKind.EXTRADIM, Strings.SYS_SETTING_EXTRADIM),
             //  自动亮度：`Settings.System.SCREEN_BRIGHTNESS_MODE`（1 = 自动）。宿主有
             //  `WRITE_SETTINGS`，写这个键 DisplayPowerController 自己会跟。
-            Item(SwitchKind.AUTOBRIGHTNESS, Strings.SYS_SETTING_AUTOBRIGHTNESS, "自动亮度"),
+            Item(SwitchKind.AUTOBRIGHTNESS, Strings.SYS_SETTING_AUTOBRIGHTNESS),
         )
 
     /**

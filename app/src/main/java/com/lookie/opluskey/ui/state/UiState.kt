@@ -2,14 +2,18 @@ package com.lookie.opluskey.ui.state
 
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.config.ModuleFiles
+import com.lookie.opluskey.core.config.withCrossProcessLock
 import com.lookie.opluskey.core.log.XLog
 
 /**
  * 「界面状态」的本地持久化 —— 不走用户配置（那份文件是执行侧要读的契约，落在
  * `ConfigStore.uiFile()` 那种「只有本进程看」的文件里）。存的是「这一页怎么显示」的偏好，格式为 `key=value`
- * 若干行（`#` 开头为注释）。读写两端都在本进程（设置页与宿主同 uid），不需要跨域权限；
- * 读在 `readPageLoadSnapshot`（建页那一刻、**IO 线程**上，见 `ui/state/PageLoadSnapshot.kt`）、
- * 写在「选择应用」菜单翻档那一下，读不了 / 解析不了一律退默认（关），与配置同一条降级纪律。
+ * 若干行（`#` 开头为注释）。
+ *
+ *  **写方有两个进程**：设置页写显示偏好，宿主主进程写 [KEY_INJECT_EVER_ALIVE]（它收到注入侧回包那一下）。
+ *  同 uid、同一份文件，所以「读 → 改 → 整份写」必须跨进程串行（见 [writeUpdate]）。
+ *  读在 `readPageLoadSnapshot`（建页那一刻、**IO 线程**上，见 `ui/state/PageLoadSnapshot.kt`）、
+ *  写在「选择应用」菜单翻档那一下，读不了 / 解析不了一律退默认（关），与配置同一条降级纪律。
  */
 internal object UiState {
     /** 「选择应用」页是否列出系统应用。 */
@@ -98,24 +102,49 @@ internal object UiState {
      *
      * @return 是否真的落盘
      */
-    fun writeInjectAlive(bootWall: Long): Boolean {
-        val text = readTextOrNull() ?: return refuseWrite(KEY_INJECT_EVER_ALIVE, true)
-        val map = parsePrefs(text)
-        map[KEY_INJECT_EVER_ALIVE] = true.toString()
-        map[KEY_INJECT_ALIVE_BOOT] = bootWall.toString()
-        return writeText(map)
-    }
+    fun writeInjectAlive(bootWall: Long): Boolean =
+        writeUpdate(
+            change = { map ->
+                map[KEY_INJECT_EVER_ALIVE] = true.toString()
+                map[KEY_INJECT_ALIVE_BOOT] = bootWall.toString()
+            },
+            refuse = { refuseWrite(KEY_INJECT_EVER_ALIVE, true) },
+        )
 
     /** 四个 public 写法的共同尾巴：读不出就 [refuse]，否则改一个键、整份写回。 */
     private fun write(
         key: String,
         value: String,
         refuse: (String) -> Boolean,
+    ): Boolean =
+        writeUpdate(
+            change = { map -> map[key] = value },
+            refuse = { refuse(key) },
+        )
+
+    /**
+     * 「读 → 改 → 整份写」的那一段 —— **两层串行**，与 `VariableStore.update` 同一条口径：
+     *
+     *  · `@Synchronized`：同进程两条线程同时进来会各自读到旧表，后写的那次把先写的那次盖掉；
+     *  · [withCrossProcessLock]：这份文件在**两个进程**里都会被改（`:ui` 进程写偏好、
+     *    宿主主进程写 [KEY_INJECT_EVER_ALIVE]），进程内的锁管不到对方。
+     *
+     *  不加锁时最典型的一种丢失是「切一下『显示系统应用』，『不再提示』那一版却回到默认」。
+     *
+     * @param refuse 读不出原文件时怎么收场 —— 各调用方记的那一条日志不同，所以由它给
+     */
+    @Synchronized
+    private fun writeUpdate(
+        change: (MutableMap<String, String>) -> Unit,
+        refuse: () -> Boolean,
     ): Boolean {
-        val text = readTextOrNull() ?: return refuse(key)
-        val map = parsePrefs(text)
-        map[key] = value
-        return writeText(map)
+        val file = ConfigStore.files().file(ConfigStore.SLOT_UI)
+        return withCrossProcessLock(file, LOCK_LABEL) {
+            val text = readTextOrNull() ?: return@withCrossProcessLock refuse()
+            val map = parsePrefs(text)
+            change(map)
+            writeText(map)
+        }
     }
 
     /** 读失败时不写回，只报一声（判据级，用 `w`：`d` 在 release 被编译期消除）。 */
@@ -167,6 +196,12 @@ internal object UiState {
             openReadable = false,
         )
 }
+
+/**
+ * 跨进程锁的日志主语 —— 与变量文件那一份（`"变量"`）区分开，两边走同一个
+ * [withCrossProcessLock]，日志里要能看出是哪一份文件在串行。
+ */
+private const val LOCK_LABEL = "界面状态"
 
 /**
  * `key=value` 逐行解析；注释 / 空行 / 没有 `=` 的行一律跳过（半截文件也只是少几个键）。

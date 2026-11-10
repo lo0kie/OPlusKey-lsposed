@@ -78,12 +78,15 @@ internal object NetChannel {
     /**
      * 有没有网络可用 —— 没有就直接回一条「没网」，不去等超时。
      *
+     *  **全项目只这一处取默认网络**：`probe/net` 那条自检走的也是它（见 `ProbeOps.net`），
+     *  两条路各写一份时先漂的总是探针 —— 那正是它要回答的那个问题。
+     *
      *  `MissingPermission` 这一条按「谁在执行」判：这段跑在 **system_server**（uid 1000），
      *  `ACCESS_NETWORK_STATE` 它本来就有（`docs/device/lsposed.md` 四十一核过）；模块清单里
      *  **不**声明任何权限 —— 写上它也管不到注入进去的那个身份，只会让人以为模块自己有进程。
      */
     @SuppressLint("MissingPermission")
-    private fun activeNetwork(loader: ClassLoader?): android.net.Network? {
+    internal fun activeNetwork(loader: ClassLoader?): android.net.Network? {
         val l = loader ?: return null
         return runCatching {
             val cm =
@@ -117,7 +120,9 @@ internal object NetChannel {
     /**
      * 处理一条 [ModuleWire.ACTION_NET_REQUEST]（由 [dispatch] 调，外部不要直接调）。
      *
-     *  立刻返回（真正的活在后台线程上），调用方（AMS 广播入口）只留这一次分派。
+     *  立刻返回（真正的活在后台线程上），调用方（AMS 广播入口）只留这一次分派 ——
+     *  所以**取默认网络也在后台线程里做**：`getSystemService` / `activeNetwork` 都是跨进程查询，
+     *  放在分派层上等于在广播线程上做一次同步 IPC。
      */
     private fun handle(
         intent: Intent,
@@ -131,13 +136,13 @@ internal object NetChannel {
             reply(loader, id, 0, "", "只接受 https 地址")
             return
         }
-        val network = activeNetwork(loader)
-        if (network == null) {
-            XLog.w("网络代取：当前没有默认网络（id=$id）")
-            reply(loader, id, 0, "", "当前没有网络")
-            return
-        }
         worker.execute {
+            val network = activeNetwork(loader)
+            if (network == null) {
+                XLog.w("网络代取：当前没有默认网络（id=$id）")
+                reply(loader, id, 0, "", "当前没有网络")
+                return@execute
+            }
             var status = 0
             var body = ""
             var error = ""

@@ -39,8 +39,8 @@ internal class ActionRunner(
      *  「默认值」就有三份副本；而这一次到底走哪条，取决于**按键级**那一格
      *  （`Config.effectiveFor` 的 `.colorOsApi`），只有调用方知道是哪一档 —— 所以由 `run` 传进来存这一格。
      *
-     *  **安全的前提是串行**：执行全在 `GestureReceiver.worker` 那一条线程上排队
-     *  （见那边的说明），不会有两个动作同时覆盖这个字段。
+     *  **这一格是「本次执行」的槽位**：写入与整段 [dispatch] 由 [runState] 串成一段（见 [run]）。
+     *  不串的话，两次执行交叠时后进的那次会改写它，先进的那次在手电筒 / 响铃里读到的是别人的档位。
      */
     @Volatile
     private var runColorOsApi: Boolean = ConfigStore.read().global.colorOsApi
@@ -59,6 +59,13 @@ internal class ActionRunner(
      */
     @Volatile
     private var runVibrate: Boolean = ConfigStore.read().global.vibrate
+
+    /**
+     * [run] 里「写这两格 → 整段派发」那把锁。
+     *
+     *  独立一个对象而不是锁 `this`：本实例被多个执行器持有引用，锁自己等于把它们的等待也串进来。
+     */
+    private val runState = Any()
 
     private val injector = KeyInjector { context }
     private val flashlight = FlashlightController({ context }, handler, isColorOsApi)
@@ -132,7 +139,25 @@ internal class ActionRunner(
     }
 
     /** 失败提示的唯一出口，转成 Toast；只有这里碰 Context 与 UI。 */
-    private fun notifyFailure(failure: CommandFailure) = FailureNotice.show(context, failure)
+    private fun notifyFailure(failure: CommandFailure) {
+        //  失败回执仍然走这一条既有通道；顺带记下「这一次失败了」——
+        //  [GestureExec] 据此决定要不要置 `lastActionAt` / 补发报活：两者都是「真的做成了」的凭证，
+        //  失败时置位等于把成功报成故障的反面（假绿灯）。
+        lastRunFailed = true
+        FailureNotice.show(context, failure)
+    }
+
+    /**
+     * 这一次 [run] 有没有在**同步段**内报过失败 —— 由 [notifyFailure] 置位。
+     *
+     *  为什么要这个标记：动作分支有一整张 `when`（二十来种），逐个改成返回布尔等于把契约铺到
+     *  每个执行器里；而失败的**唯一出口**本来就只有 [notifyFailure] 一处，盯住它即可。
+     *
+     *  **只看同步段**：`shell:` 那类失败在池线程上晚到，`run` 早就返回了 —— 那一笔由它自己的
+     *  失败提示负责，这里不冒充知道。
+     */
+    @Volatile
+    private var lastRunFailed = false
 
     /**
      * `appshortcut:` 那一支 —— 单独一支只为让 [dispatch] 别顶破 detekt 的长度上限
@@ -172,6 +197,9 @@ internal class ActionRunner(
      *  下面这行与 `GestureReceiver` 里那行（带「（宿主进程执行）」后缀）**是刻意的一对，不要合并**：
      *  调用点在那两行之间还夹着报活广播、触觉、执行时提示，所以「前一行有、后一行没有」正好定位到
      *  那一段出的问题。本行才是「动作真的开始派发」的判据，与 [runTest] 的「测试命令 →」相对。
+     *
+     *  @return 这一次在**同步段**里成功了没有（失败 = [notifyFailure] 被调用过）。
+     *   异步失败（`shell:` 超时 / 被拒）不算进来，理由见 [lastRunFailed]。
      */
     fun run(
         action: Action,
@@ -190,15 +218,19 @@ internal class ActionRunner(
          *  缺省值读公共设置：只服务「测试命令」那种没有按键上下文的调用。
          */
         vibrate: Boolean = ConfigStore.read().global.vibrate,
-    ) {
-        //  两个执行器（手电筒 / 响铃）在构造时就绑定了 `isColorOsApi` 这条闭包，它们不知道
-        //  这一次是哪一档按键 —— 所以把值写进这一格再交给它们。**安全的前提是串行**：
-        //  执行全在 `GestureReceiver.worker` 那一条线程上排队（见那边的说明），不会有两个动作
-        //  同时覆盖这个字段。
-        runColorOsApi = colorOsApi
-        runVibrate = vibrate
-        XLog.w("$gestureLabel → ${XLog.redactToken(action.token)}")
-        dispatch(action)
+    ): Boolean {
+        //  「这一次是哪一档」与「派发」必须是一段：两个执行器（手电筒 / 响铃）在构造时就绑定了
+        //  `isColorOsApi` / `runVibrate` 这两条闭包，它们不知道这一次是哪一档按键，只能读这两格。
+        //  写入与 `dispatch` 分处两段时，交叠的第二次执行会改写这两格 ⇒ 先进的那次拿着别人的
+        //  档位去开手电筒 / 切响铃。锁只圈住写入到派发返回这一段（异步回调本来就在其后的线程上）。
+        synchronized(runState) {
+            runColorOsApi = colorOsApi
+            runVibrate = vibrate
+            lastRunFailed = false
+            XLog.w("$gestureLabel → ${XLog.redactToken(action.token)}")
+            dispatch(action)
+            return !lastRunFailed
+        }
     }
 
     /**
@@ -479,7 +511,8 @@ internal class ActionRunner(
                 )
             }.onFailure { XLog.w("注入请求没发出去：keyevent:$keyCode | ${it.javaClass.simpleName}", it) }
                 .isSuccess
-        if (sent) XLog.w("截图：注入请求已发给注入侧")
+        //  只说明「请求发出去了」：注入侧未装 / 未认领时不会真的截图，宿主侧看不到结果。
+        if (sent) XLog.w("截图：注入请求已发出（是否真的截图由注入侧决定）")
     }
 
     /** AOSP 标准免打扰切换（使用 NotificationManager 标准接口）。 */

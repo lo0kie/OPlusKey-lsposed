@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -19,6 +20,7 @@ import com.lookie.opluskey.ui.openStockPage
 import com.lookie.opluskey.ui.resetModule
 import com.lookie.opluskey.ui.restartModule
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
+import kotlinx.coroutines.launch
 
 /**
  * 首页顶栏右侧的菜单按钮 + 浮层菜单 —— 四项：「默认界面」「重启服务」「导出日志」「重置模块」。
@@ -139,6 +141,8 @@ internal fun SettingsPage.HomeHeaderMenu() {
  */
 @Composable
 private fun SettingsPage.HomeHeaderConfirmDialogs() {
+    //  「重置模块」先整盘删再写回出厂配置，都是文件 IO（见 `resetModule`）；这里只负责把那一趟发出去。
+    val scope = rememberCoroutineScope()
     ConfirmDialog(
         show = overlays.confirmRestart,
         title = I18n.get(Strings.DIALOG_RESTART_TITLE, "重启服务"),
@@ -161,7 +165,7 @@ private fun SettingsPage.HomeHeaderConfirmDialogs() {
         onDismiss = { overlays.confirmResetModule = false },
         onConfirm = {
             overlays.confirmResetModule = false
-            resetModule()
+            scope.launch { resetModule() }
         },
     )
 }

@@ -286,8 +286,22 @@ internal object SettingCalls {
         if (unfreeze) {
             return ServiceCalls.call(s, "thawDisplayRotation", listOf(0, REASON)) != null
         }
-        // 冻在「当前方向」上：这版 IWindowManager 没有 `getRotation()`，改版之后就叫这个名
-        val rotation = ServiceCalls.call(s, "getDefaultDisplayRotation")?.value as? Int ?: 0
+        return freezeAtCurrent(s)
+    }
+
+    /**
+     * 冻在「当前方向」上：这版 `IWindowManager` 没有 `getRotation()`，改版之后就叫它
+     * `getDefaultDisplayRotation`。
+     *
+     *  **读不到就不冻**：以前拿 `?: 0` 顶上，横屏下会把方向冻成 0（竖屏）——
+     *  用户看到的是「屏幕被硬掰回竖屏」，而且是静默的。宁可报失败，也不伪造一个方向。
+     */
+    private fun freezeAtCurrent(s: Any): Boolean {
+        val rotation =
+            ServiceCalls.call(s, "getDefaultDisplayRotation")?.value as? Int ?: run {
+                XLog.w("rotation：读不到 getDefaultDisplayRotation（本机没有这个方法）—— 冻结方向无从判断，这次不动")
+                return false
+            }
         // 签名是 `freezeDisplayRotation(int displayId, int rotation, String caller)` ——
         //  第一参是**屏号**、第二参才是方向。反过来传在横屏下等于去冻一个不存在的 displayId，
         //  系统直接抛异常，表现是「横屏时自动旋转锁不住」（竖屏恰好蒙对，所以更容易漏）。

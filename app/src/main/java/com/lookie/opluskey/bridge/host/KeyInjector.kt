@@ -38,39 +38,47 @@ internal class KeyInjector(
         //  **看返回值**：新版 `injectInputEvent` 返回 `InputEventInjectionResult`（0 = 成功），
         //  被拒时**不抛异常** —— 只判「没抛」会把拒绝当成注入成功，表现为
         //  「动作执行了、屏幕没反应」且日志无痕。
-        injectOnce(h, down, keyCode)
-        injectOnce(h, up, keyCode)
-        return true
+        val downOk = injectOnce(h, down, keyCode)
+        val upOk = injectOnce(h, up, keyCode)
+        return downOk && upOk
     }
 
-    /** 下发一次事件，并对「被拒」留一行判据（返回值的语义见 [injectOrThrow] 里那条注释）。 */
+    /**
+     * 下发一次事件，并对「被拒」留一行判据（返回值的语义见 [injectOrThrow] 里那条注释）。
+     *
+     * @return 这一次真的被系统受理了没有（`false` ⇒ 被拒或结果认不出）
+     */
     private fun injectOnce(
         h: Handle,
         event: Any,
         keyCode: Int,
-    ) {
+    ): Boolean {
         val r = Reflect.call(h.manager, h.inject, event, INJECT_MODE_ASYNC)
         //  `injectInputEvent` 返回 `InputEventInjectionResult`：0 = SUCCEEDED，非 0 = 失败
         //  （1 = FAILED、-1 = PERMISSION_DENIED…）。上一版把 0 记成「RESULT_FAILED」，于是
         //  **真正成功的那一次刷一条「被拒」、真失败的那一次反而一行都不打**（见注入侧
         //  `KeyInject.injectOnce` 里同一条教训，两处口径必须一致）。
-        when {
+        return when {
             r == null -> {
                 XLog.w("注入按键：injectInputEvent 没返回（按已下发处理）：keyevent:$keyCode")
+                true
             }
 
             r is Boolean -> {
                 if (!r) XLog.w("注入按键被系统拒（老版 boolean=false）：keyevent:$keyCode")
+                r
             }
 
             r is Int -> {
                 if (r != INPUT_EVENT_INJECTION_SUCCEEDED) {
                     XLog.w("注入按键被系统拒（结果码 $r）：keyevent:$keyCode")
                 }
+                r == INPUT_EVENT_INJECTION_SUCCEEDED
             }
 
             else -> {
                 XLog.w("注入按键：结果类型认不出（${r.javaClass.simpleName}），按已下发处理：keyevent:$keyCode")
+                true
             }
         }
     }

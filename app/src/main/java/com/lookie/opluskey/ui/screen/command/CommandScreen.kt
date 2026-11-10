@@ -41,6 +41,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.rememberTick
+import com.lookie.opluskey.ui.state.CommandForm
 import com.lookie.opluskey.ui.state.CommandListEditState
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -98,7 +99,7 @@ internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
         pagerState = pagerState,
         labels =
             CommandKind.FORM_TABS.map { commandKindLabel(it) } +
-                I18n.get(Strings.COMMAND_TAB_LIST, "命令列表"),
+                I18n.get(Strings.COMMAND_TAB_LIST, "命令步骤"),
         // 排序态下这一条也禁用 —— 与「按键绑定」页主开关为关时同一套（做法在 [PageTabBand] 里）
         enabled = !commandDraft.stepEditing,
         band = commandBandHeight,
@@ -352,15 +353,15 @@ private fun SettingsPage.hideCommandIme() {
 /**
  * 「命令名称」小标题**行尾**的字数统计 —— 上限与那个输入框同一档（[MAX_NAME_LENGTH]）。
  *
- *  单独一个 composable 只为把 `draft.name` 的读取关在这一层：直接写在 `CommandPage` 里，
+ *  单独一个 composable 只为把 `form.name` 的读取关在这一层：直接写在 `CommandPage` 里，
  *  每敲一个字符都会把整页（两个表单页 + 列表网格）打脏一次 —— 与 [CommandNameField] 同一条理由。
  *
  *  右内缩**不用这里给**：`SectionTitle` 自己按 `SECTION_TITLE_TRAILING_END`（22dp）摆行尾那一格 ——
  *  与那颗「更多」的字形落在同一条线上。这一格只管把数字画出来。
  */
 @Composable
-internal fun SettingsPage.CommandNameCounter() {
-    TitleCounter(commandDraft.draft.name.length, MAX_NAME_LENGTH)
+internal fun SettingsPage.CommandNameCounter(form: CommandForm) {
+    TitleCounter(form.name.length, MAX_NAME_LENGTH)
 }
 
 /** 命令名能输入多少字（超出的部分在输入框里直接吃掉）。 */
@@ -369,7 +370,7 @@ private const val MAX_NAME_LENGTH = 24
 /**
  * 「名称」那一张卡片输入（连同重名提示）。
  *
- *  单独抽成一个 composable 是为了**把 `draft.name` 的读取关在这一层里**：composable 的实参是在
+ *  单独抽成一个 composable 是为了**把 `form.name` 的读取关在这一层里**：composable 的实参是在
  *  调用点求值的，而它原来直接写在 `CommandScreen` 的函数体里 —— 于是每敲一个字符就把整页打脏一次
  *  （pager 的两个类型页、整片「已保存的命令」网格、以及网格里每个格子都跟着重组）。
  *  关进来之后，打字只打脏这一个输入框。
@@ -378,13 +379,16 @@ private const val MAX_NAME_LENGTH = 24
  *  且结果只喂给这一个输入框的 `errorMessage`。
  */
 @Composable
-internal fun SettingsPage.CommandNameField(enabled: Boolean = true) {
+internal fun SettingsPage.CommandNameField(
+    form: CommandForm,
+    enabled: Boolean = true,
+) {
     IconInputView(
         spec = InputSpec(PageIcons.LabelImportant, I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"), MAX_NAME_LENGTH),
-        value = commandDraft.draft.name,
+        value = form.name,
         // 边输边清洗：只换掉换行、不 trim —— 带 trim 的版本会让空格打不进去。
         // trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做。
-        onValueChange = { commandDraft.draft.name = CommandLibrary.sanitizeNameInput(it) },
+        onValueChange = { form.name = CommandLibrary.sanitizeNameInput(it) },
         enabled = enabled,
         modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
         // 同名冲突与 `cmd:` 成环提示都交给组件画（都只在打字 / 改步骤时才有意义，结果只喂这一个输入框）。

@@ -388,40 +388,62 @@ internal object AppClonePackages {
         userId: Int,
     ): List<android.content.pm.ResolveInfo>? {
         val binder = ipm() ?: return null
-        // flags 的类型跟着 AIDL 走：**Android 13 起是 `long`**（`ResolveInfoFlags`），之前是 `int`。
-        //  只按 int 找的话，新 ROM 上这里恒为 null —— 分身那一槽整块消失，日志却只说「没有这个方法」。
-        val withLongFlags =
-            Reflect.method(
-                binder.javaClass,
-                "queryIntentActivities",
-                Intent::class.java,
-                String::class.java,
-                java.lang.Long.TYPE,
-                Int::class.javaPrimitiveType!!,
-            )
-        val method =
-            withLongFlags
-                ?: Reflect.method(
+        // flags 的类型跟着 AIDL 走：**Android 13 起是 `long`**（`ResolveInfoFlags`），之前是 `int`；
+        // 另有版本直接收 `ResolveInfoFlags`（Parcelable）。三档按顺序试，**每一档都要求参数类型
+        // 逐个相等** —— 只按「名字 + 个数」找的话会挑中另一个重载，`invoke` 时抛
+        // `IllegalArgumentException`，而日志上看起来像「这条路没有方法」。
+        val intType = Int::class.javaPrimitiveType!!
+        //  flags 的 Parcelable 类型名两处都试：AOSP 把它定义成 `PackageManager` 的内部类，
+        //  个别 ROM / 版本也可能提到 `android.content.pm` 下。
+        val parcelFlagsCls =
+            Reflect.findClass(null, "android.content.pm.PackageManager\$ResolveInfoFlags")
+                ?: Reflect.findClass(null, "android.content.pm.ResolveInfoFlags")
+        val attempts =
+            buildList<Pair<java.lang.reflect.Method, Any>> {
+                methodWithSignature(
                     binder.javaClass,
                     "queryIntentActivities",
                     Intent::class.java,
                     String::class.java,
-                    Int::class.javaPrimitiveType!!,
-                    Int::class.javaPrimitiveType!!,
-                ) ?: run {
-                XLog.w("IPackageManager 上没有 queryIntentActivities(Intent,String,long|int,int)")
-                return null
+                    java.lang.Long.TYPE,
+                    intType,
+                )?.let { add(it to 0L) }
+                methodWithSignature(
+                    binder.javaClass,
+                    "queryIntentActivities",
+                    Intent::class.java,
+                    String::class.java,
+                    intType,
+                    intType,
+                )?.let { add(it to 0) }
+                if (parcelFlagsCls != null) {
+                    val flags = Reflect.callStatic(parcelFlagsCls, "of", 0L)
+                    val method =
+                        methodWithSignature(
+                            binder.javaClass,
+                            "queryIntentActivities",
+                            Intent::class.java,
+                            String::class.java,
+                            parcelFlagsCls,
+                            intType,
+                        )
+                    if (flags != null && method != null) add(method to flags)
+                }
             }
-        // 参数值也得跟着签名给：long 那一档传 `0`（Int）会 `IllegalArgumentException`
-        val flags: Any = if (withLongFlags != null) 0L else 0
-        val thrown = runCatching { method.invoke(binder, intent, null, flags, userId) }
-        val raw = thrown.getOrNull()
-        if (raw == null) {
-            val cause = thrown.exceptionOrNull()?.let { Reflect.deepestCause(it) }
-            XLog.w("queryIntentActivities(user=$userId) 失败：${cause?.javaClass?.name}: ${cause?.message}")
+        if (attempts.isEmpty()) {
+            XLog.w("IPackageManager 上没有 queryIntentActivities(Intent,String,long|int|ResolveInfoFlags,int)")
             return null
         }
-        return unwrapList(raw, userId)
+        var lastCause: Throwable? = null
+        for ((method, flags) in attempts) {
+            val thrown = runCatching { method.invoke(binder, intent, null, flags, userId) }
+            val raw = thrown.getOrNull()
+            if (raw != null) return unwrapList(raw, userId)
+            lastCause = thrown.exceptionOrNull()?.let { Reflect.deepestCause(it) }
+        }
+        //  三档都没成：把**最后一档**的断点说出来（类型已经写在上面那一行的候选里）
+        XLog.w("queryIntentActivities(user=$userId) 三档 flags 都失败：${lastCause?.javaClass?.name}: ${lastCause?.message}")
+        return null
     }
 
     /**
@@ -441,39 +463,82 @@ internal object AppClonePackages {
         userId: Int,
     ): PackageInfo? {
         val binder = ipm() ?: return null
-        val withLongFlags =
-            Reflect.method(
+        //  与 [queryLaunchablesAsUser] 同一套三档：`long`（Android 13 起）→ `int` → `ApplicationInfoFlags`
+        //  （Parcelable）。每一档都要求参数类型逐个相等，理由见那边。
+        val intType = Int::class.javaPrimitiveType!!
+        val attempts =
+            buildList<Pair<java.lang.reflect.Method, Any>> {
+                methodWithSignature(binder.javaClass, "getPackageInfo", String::class.java, java.lang.Long.TYPE, intType)
+                    ?.let { add(it to flags) }
+                methodWithSignature(binder.javaClass, "getPackageInfo", String::class.java, intType, intType)
+                    ?.let { add(it to flags.toInt()) }
+                applicationInfoFlagsAttempt(binder, flags, intType)?.let { add(it) }
+            }
+        if (attempts.isEmpty()) {
+            XLog.w("IPackageManager 上没有 getPackageInfo(String,long|int|ApplicationInfoFlags,int)")
+            return null
+        }
+        var lastCause: Throwable? = null
+        for ((method, flagArg) in attempts) {
+            val res = runCatching { method.invoke(binder, pkg, flagArg, userId) }
+            val raw = res.getOrNull()
+            if (raw == null) {
+                lastCause = res.exceptionOrNull()?.let { Reflect.deepestCause(it) }
+                continue
+            }
+            return raw as? PackageInfo
+                ?: run {
+                    XLog.w("getPackageInfo($pkg, user=$userId) 返回了不认识的形状：${raw.javaClass.name}")
+                    null
+                }
+        }
+        XLog.w("getPackageInfo($pkg, user=$userId) 三档 flags 都失败：${lastCause?.javaClass?.name}: ${lastCause?.message}")
+        return null
+    }
+
+    /**
+     * `ApplicationInfoFlags`（Parcelable）那一档的候选 —— 类、`of(long)` 或方法任一处拿不到就 `null`。
+     *
+     *  顺序与另外两档一致：先取类，再造 flag 实参，最后按参数类型逐个相等找方法。
+     *
+     * @param intType `int` 的 class（末位的 userId 参数用它）
+     */
+    private fun applicationInfoFlagsAttempt(
+        binder: Any,
+        flags: Long,
+        intType: Class<*>,
+    ): Pair<java.lang.reflect.Method, Any>? {
+        //  同 [queryLaunchablesAsUser]：`PackageManager` 内部类优先，再退 `android.content.pm` 那一档。
+        val parcelFlagsCls =
+            Reflect.findClass(null, "android.content.pm.PackageManager\$ApplicationInfoFlags")
+                ?: Reflect.findClass(null, "android.content.pm.ApplicationInfoFlags")
+                ?: return null
+        val flagArg = Reflect.callStatic(parcelFlagsCls, "of", flags) ?: return null
+        val method =
+            methodWithSignature(
                 binder.javaClass,
                 "getPackageInfo",
                 String::class.java,
-                java.lang.Long.TYPE,
-                Int::class.javaPrimitiveType!!,
-            )
-        val method =
-            withLongFlags
-                ?: Reflect.method(
-                    binder.javaClass,
-                    "getPackageInfo",
-                    String::class.java,
-                    Int::class.javaPrimitiveType!!,
-                    Int::class.javaPrimitiveType!!,
-                ) ?: run {
-                XLog.w("IPackageManager 上没有 getPackageInfo(String,long|int,int)")
-                return null
-            }
-        val flagArg: Any = if (withLongFlags != null) flags else flags.toInt()
-        val res = runCatching { method.invoke(binder, pkg, flagArg, userId) }
-        val raw = res.getOrNull()
-        if (raw == null) {
-            val cause = res.exceptionOrNull()?.let { Reflect.deepestCause(it) }
-            XLog.w("getPackageInfo($pkg, user=$userId) 失败：${cause?.javaClass?.name}: ${cause?.message}")
-            return null
-        }
-        return raw as? PackageInfo
-            ?: run {
-                XLog.w("getPackageInfo($pkg, user=$userId) 返回了不认识的形状：${raw.javaClass.name}")
-                null
-            }
+                parcelFlagsCls,
+                intType,
+            ) ?: return null
+        return method to flagArg
+    }
+
+    /**
+     * 按「名字 + 逐个参数类型」取方法，**不接受 [Reflect.method] 的「名字 + 个数」兜底档**。
+     *
+     *  `Reflect.method` 最后那一档会按参数个数挑一个 —— 对 flags 类型不对的版本会返回另一个重载，
+     *  调用时抛 `IllegalArgumentException`，日志上与「这条 ROM 没有这个方法」混成一件事。
+     *  这里把参数类型再核一遍：对不上就当这一档不存在，调用方继续试下一个 flags 类型。
+     */
+    private fun methodWithSignature(
+        owner: Class<*>,
+        name: String,
+        vararg params: Class<*>,
+    ): java.lang.reflect.Method? {
+        val m = Reflect.method(owner, name, *params) ?: return null
+        return if (m.parameterTypes.contentEquals(params)) m else null
     }
 
     /** `List` 与 `ParceledListSlice` 两种返回形状都摊成 `List<ResolveInfo>`。 */

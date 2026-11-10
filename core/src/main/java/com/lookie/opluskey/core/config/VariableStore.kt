@@ -17,7 +17,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import java.io.File
-import java.io.RandomAccessFile
 
 /**
  * 自定义变量的**持久化** —— 自己一个槽（`opluskey_vars.conf`），与主配置 / 命令库同一层外皮。
@@ -123,6 +122,11 @@ object VariableStore {
                 }
 
                 is ModuleFiles.Load.Ok -> {
+                    //  **读不懂也按指纹缓存**：外皮解不开 / 结构或版本不对都是由**文件内容**推出来的
+                    //  结论 —— 内容不变，结论就不会变。不缓存的话按键路径每按一次都要整份重读并刷
+                    //  一条 W（与 `ConfigStore.load` 同一口径）。上面两条不缓存：`Absent` 没有内容可
+                    //  言，`ModuleFiles.Load.Unreadable` 是权限 / IO 这类**瞬时**故障，按指纹记住它
+                    //  会让一次抖动一直粘着。
                     val text = FileObfuscation.unwrap(FileObfuscation.MAGIC_RUNTIME, r.text)
                     text?.let(::decode)?.let { Load.Ok(it) } ?: Load.Unreadable
                 }
@@ -222,34 +226,40 @@ object VariableStore {
      *
      *  同一次开机里反复调用是幂等的（第一次就把标记更新了）。
      *
+     *  **走与 [apply] / [add] / [remove] 同一套串行**（`@Synchronized` + [withCrossProcessLock]）：
+     *  这里也是一次「读出来 → 改 → 写回去」，只是改由开机标记触发。开机那一下正好是另一个写方
+     *  （`:ui` 进程）也在动的时刻，不串行就会拿旧表整份写回、把对方刚改的那一次抹掉。
+     *
      * @return 标记成功落到盘上了吗
      */
-    fun applyBootResets(): Boolean {
-        val loaded = load()
-        if (loaded !is Load.Ok) {
-            //  没写过 ⇒ 还没有变量；读不懂 ⇒ 不许写回（见类注释）
-            return false
-        }
-        //  **先看 boot_id，再看 wall clock**：对时 / 改系统时间会平移 wall clock，拿它当唯一判据
-        //  就会「对一次时重置一次计数器」；boot_id 只在内核重启时变（见 [bootIdOf]）。
-        //  老文件没有 boot_id 时退回 wall clock 判这一次 —— 写盘之后这份文件就带上了。
-        val now = bootIdOf()
-        val sameBoot =
-            if (now.isNotEmpty() && loaded.snapshot.bootId.isNotEmpty()) {
-                loaded.snapshot.bootId == now
-            } else {
-                loaded.snapshot.boot == ProcClock.bootWall()
+    @Synchronized
+    fun applyBootResets(): Boolean =
+        withCrossProcessLock(ConfigStore.files().file(ConfigStore.SLOT_VARS), LOCK_LABEL) {
+            val loaded = load()
+            if (loaded !is Load.Ok) {
+                //  没写过 ⇒ 还没有变量；读不懂 ⇒ 不许写回（见类注释）
+                return@withCrossProcessLock false
             }
-        if (sameBoot) return true
-        val before = loaded.snapshot.vars
-        val after = before.map { if (it.resetOnBoot) it.reset() else it }
-        //  **这一次要盖章**：它就是「这一轮开机已重置」的凭据（见 markerForWrite）
-        val ok = save(after, stampBoot = true)
-        if (ok) {
-            XLog.w("变量：开机重置完成（${after.count { it.resetOnBoot }} 颗回到初始值，开机指纹 ${now.ifEmpty { "（无，按时刻判）" }}）")
+            //  **先看 boot_id，再看 wall clock**：对时 / 改系统时间会平移 wall clock，拿它当唯一判据
+            //  就会「对一次时重置一次计数器」；boot_id 只在内核重启时变（见 [bootIdOf]）。
+            //  老文件没有 boot_id 时退回 wall clock 判这一次 —— 写盘之后这份文件就带上了。
+            val now = bootIdOf()
+            val sameBoot =
+                if (now.isNotEmpty() && loaded.snapshot.bootId.isNotEmpty()) {
+                    loaded.snapshot.bootId == now
+                } else {
+                    loaded.snapshot.boot == ProcClock.bootWall()
+                }
+            if (sameBoot) return@withCrossProcessLock true
+            val before = loaded.snapshot.vars
+            val after = before.map { if (it.resetOnBoot) it.reset() else it }
+            //  **这一次要盖章**：它就是「这一轮开机已重置」的凭据（见 markerForWrite）
+            val ok = save(after, stampBoot = true)
+            if (ok) {
+                XLog.w("变量：开机重置完成（${after.count { it.resetOnBoot }} 颗回到初始值，开机指纹 ${now.ifEmpty { "（无，按时刻判）" }}）")
+            }
+            ok
         }
-        return ok
-    }
 
     /**
      * 「读出来 → 改 → 写回去」的一段 —— [apply] / [add] / [remove] 都走它。
@@ -267,7 +277,7 @@ object VariableStore {
      */
     @Synchronized
     private fun update(change: (List<Variable>) -> List<Variable>?): Boolean =
-        withCrossProcessLock {
+        withCrossProcessLock(ConfigStore.files().file(ConfigStore.SLOT_VARS), LOCK_LABEL) {
             val vars =
                 when (val l = load()) {
                     is Load.Ok -> {
@@ -431,45 +441,5 @@ private fun bootIdOf(): String =
         ""
     }
 
-/** 跨进程锁文件的后缀（见 [withCrossProcessLock]）—— 不以 `.conf` 结尾，不会被当成一个槽。 */
-private const val VAR_LOCK_SUFFIX = ".lock"
-
-/**
- * 读改写的**跨进程**互斥 —— 锁文件是变量文件旁边那个 `.lock`。
- *
- *  拿不到锁时**不阻塞功能**：记一行日志、照常做这一次（宁可极小概率丢一次改动，
- *  也不要在按键路径上卡住）。锁文件不以 `.conf` 结尾，不会被 [ModuleFiles.slots] 当成一个槽。
- */
-private fun <T> withCrossProcessLock(block: () -> T): T {
-    val lockFile = File(ConfigStore.files().file(ConfigStore.SLOT_VARS).path + VAR_LOCK_SUFFIX)
-    val channel =
-        try {
-            RandomAccessFile(lockFile, "rw").channel
-        } catch (e: Throwable) {
-            XLog.w("变量：跨进程锁打不开（${e.javaClass.simpleName}），这一次不串行")
-            return block()
-        }
-    return channel.use { ch ->
-        //  **必须 `tryLock`**：`lock()` 会一直等下去 —— 另一个进程（`:ui` 或宿主主进程）
-        //  正拿着锁、而它刚好被冻结时，按键线程就卡在这儿了，与上面那条「宁可丢一次也不卡住」
-        //  正相反。拿不到（null）或同进程重入（`OverlappingFileLockException`）都当「不串行」。
-        val lock =
-            try {
-                ch.tryLock()
-            } catch (e: Throwable) {
-                //  `tryLock` 抛异常（通常是同进程重入的 `OverlappingFileLockException`）与
-                //  返回 null 是同一档：都当「拿不到锁、这次不串行」，不把异常往上带。
-                XLog.w("变量：拿跨进程锁失败（${e.javaClass.simpleName}），这一次不串行")
-                null
-            }
-        if (lock == null) {
-            XLog.w("变量：拿不到跨进程锁（另一进程正在写），这一次不串行")
-            return@use block()
-        }
-        try {
-            block()
-        } finally {
-            runCatching { lock.release() }
-        }
-    }
-}
+/** 锁日志的主语 —— 变量文件是这份，界面状态是另一份（见 `UiState`），两边都走 [withCrossProcessLock]。 */
+private const val LOCK_LABEL = "变量"

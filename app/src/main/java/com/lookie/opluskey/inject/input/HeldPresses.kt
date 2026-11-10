@@ -1,6 +1,7 @@
 package com.lookie.opluskey.inject.input
 
 import android.os.Handler
+import android.os.SystemClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
@@ -25,6 +26,12 @@ import java.util.concurrent.ConcurrentHashMap
  *  现在抬手只记一笔，到点那一枪按「先 DOWN 后 UP」把整按补进去（时长仍是真实按下的时长）；
  *  这期间组合要是成立了，`drop` 会把这一枪摘掉 —— 于是只有组合，没有单击。
  *
+ * ## 为什么要把按下时刻一起带过去
+ *
+ *  补发晚了一个窗口。判定器如果拿**补发这一刻**当按下时刻，`pressAt` / `longPressAt` 就整体
+ *  后移一个窗口（窗口 80ms ⇒ 长按 400ms 变成 480ms；窗口 1000ms ⇒ 1400ms），长按阈值跟着漂。
+ *  所以 [Press] 记下真实按下时刻，补发时原样交给判定器 —— 等的是窗口，判的还是那一下。
+ *
  * ## 为什么单独一个类
  *
  *  它只是一个「到点补发」的小簿记，与拦截器那套「认领 / 派发」没有关系；挤在拦截器里会把那个类
@@ -35,12 +42,13 @@ import java.util.concurrent.ConcurrentHashMap
  *  写在输入线程（DOWN / UP），读在 main looper 的定时任务里 —— 与 `ComboDetector.down` 同一条
  *  理由：volatile 只管引用，集合必须用并发容器。
  *
- * @param feed 到点把压着的按下补交给单键判定器（通常是 `GestureDetector::onKeyDown`）
+ * @param feed 到点把压着的按下补交给单键判定器（`GestureDetector::onKeyDown`）；
+ *   第三个参数是**原始按下时刻**，判定器据此算长按截止，而不是按补发时刻算
  * @param feedUp 松手早于窗口时，到点连着把抬起一起补交（`GestureDetector::onKeyUp`）
  */
 internal class HeldPresses(
     private val handler: Handler,
-    private val feed: (KeyId, KeyConfig) -> Unit,
+    private val feed: (KeyId, KeyConfig, Long) -> Unit,
     private val feedUp: (KeyId, KeyConfig) -> Unit,
 ) {
     /** 压着的那几颗键 —— key → 那一枪 + 按下那一刻的判定参数。 */
@@ -61,17 +69,21 @@ internal class HeldPresses(
             handler.removeCallbacks(prev.shot)
             deliver(id, prev)
         }
+        //  按下这一刻就记下来（本方法由 DOWN 那条路同步调进来）：补发要晚一个窗口，
+        //  这一份时刻是「这一按到底什么时候按的」的唯一凭据（见类注释）。
+        val downAt = SystemClock.elapsedRealtime()
         lateinit var press: Press
         press =
             Press(
                 keyConfig,
+                downAt,
                 Runnable {
                     //  与 [release] 抢同一把锁：摘 `held` 与「读 released」必须是一段临界区。
                     //  否则松手恰好落在两者中间时，调用方吞掉了那条 UP，而这里已经读过
                     //  `released = false` 不补 UP —— 单键判定器认为键一直按着，一次单击被判成长按。
                     synchronized(press) {
-                        //  被后一次按压顶掉 / 已被组合收走 ⇒ 这一枪作废
-                        if (!held.remove(id, press)) return@synchronized
+                        //  被后一次按压顶掉 / 已被组合收走 / 已被 [drop] 撤销 ⇒ 这一枪作废
+                        if (press.revoked || !held.remove(id, press)) return@synchronized
                         press.dispatching = true
                         deliver(id, press)
                     }
@@ -103,11 +115,23 @@ internal class HeldPresses(
 
     /** 丢掉压着的那一颗（`null` = 全部丢掉）—— 组合接管了它，或配置变了不该再补旧的那一下。 */
     fun drop(id: KeyId?) {
-        if (id != null) {
-            held.remove(id)?.let { handler.removeCallbacks(it.shot) }
+        if (id == null) {
+            held.keys.toList().forEach { drop(it) }
             return
         }
-        held.keys.toList().forEach { drop(it) }
+        val press = held[id] ?: return
+        //  与到点补发那一枪**同一把锁**：两边都在摘 `held`，不在锁里会和「已经起跑的那一枪」
+        //  交错 —— 同一按既被组合收走、又被补进单键判定器。
+        synchronized(press) {
+            //  **先记「已撤销」再摘表**：那一枪可能已经被 looper 取走、正等这把锁 —— 只摘 `held`
+            //  的话它靠「表里没有这一份了」也会退出，但那条判据只在本类的写法不变时成立；
+            //  `revoked` 是补发那一侧亲口看的凭据，两处判据一起用。
+            press.revoked = true
+            //  `dispatching` = 补发已经开跑（DOWN 已经交出去了，见 [hold] 的 Runnable）：
+            //  这一下停不掉 —— 半路掐断会留下「只补了 DOWN、没补 UP」的单键状态，代价比多一下单击更大。
+            //  按实例移除：`held` 里可能已经换成了后一次按压的那一份。
+            if (!press.dispatching && held.remove(id, press)) handler.removeCallbacks(press.shot)
+        }
     }
 
     /** 把压着的一按按原顺序补交给单键判定器（先 DOWN；松过手再补 UP）。 */
@@ -116,7 +140,9 @@ internal class HeldPresses(
         press: Press,
     ) {
         try {
-            feed(id, press.keyConfig)
+            //  带上原始按下时刻：判定器的长按截止 = 按下时刻 + `longPressMs`，不是补发时刻 +
+            //  `longPressMs`，否则参与组合的键长按阈值会整体后移一个窗口。
+            feed(id, press.keyConfig, press.downAt)
             //  松手早于窗口：这一按在窗口里没等到第二颗键，按「一次完整按压」补进去
             if (press.released) feedUp(id, press.keyConfig)
         } catch (e: Throwable) {
@@ -127,11 +153,21 @@ internal class HeldPresses(
     /** 压着等窗口的一次按压。 */
     private class Press(
         val keyConfig: KeyConfig,
+        /** 手指按下那一刻（`elapsedRealtime`）—— 补发晚一个窗口，判定仍要用它当按下时刻。 */
+        val downAt: Long,
         val shot: Runnable,
     ) {
         /** 手指已经松了（抬手早于窗口）—— 到点补发时要连着 UP 一起补。 */
         @Volatile
         var released: Boolean = false
+
+        /**
+         * 这一按**已经不算数**了（[drop]：组合接管了它 / 配置变了不该再补旧的那一下）。
+         *
+         *  锁内读写，与 [release] / [drop] / 补发那一枪用同一把锁 —— `held` 里查不到这一份
+         *  只是「表里没有了」，这个标志表达的是「补发侧看见了、主动放弃」。
+         */
+        var revoked: Boolean = false
 
         /** 补发已经开始（锁内读写，见 [hold] 那一枪与 [release]）。 */
         var dispatching: Boolean = false

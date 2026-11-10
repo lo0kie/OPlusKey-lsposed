@@ -85,6 +85,13 @@ internal data class ConfigDto(
         if (orphans.isNotEmpty()) {
             XLog.w("配置：${orphans.size} 个按键条目认不出（已丢弃）：${orphans.joinToString()}")
         }
+        //  **额外档位的丢弃也在这里记账**（真正的丢弃在 [KeyDto.toKeyConfig] 的 `mapNotNull` 里）：
+        //  连击次数不是「≥ 3 的整数」的条目会整条消失，而用户只会看到「第 3 击那一档没了」。
+        //  按**整份文件**聚合一次计数，不逐条刷。
+        val droppedClicks = keys.values.sumOf { key -> key.extraClicks.keys.count { extraClickCount(it) == null } }
+        if (droppedClicks > 0) {
+            XLog.w("配置：$droppedClicks 条额外档位认不出（已丢弃）")
+        }
         // 老文件把「单击延迟 / 忽视双击」放在 `global` 里：逐键字段缺失时拿它兜底（迁移用）
         val legacyDouble = global.doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS
         val legacyInstant = global.instantSingle ?: KeyConfig.DEFAULT_INSTANT_SINGLE
@@ -279,11 +286,11 @@ internal data class KeyDto(
             .ofFields(id, toValues(legacyDoubleClickMs, legacyInstantSingle), mergeScenes(scenes, rules))
             .copy(
                 //  认不出的次数 / 动作整条丢掉（与 `rules`、`custom_keys` 同一条纪律：丢东西要留账，
-                //  账在 `ConfigDto.toConfig` 那一层打）
+                //  账在 `ConfigDto.toConfig` 那一层按整份文件打一次）
                 extraClicks =
                     extraClicks
                         .mapNotNull { (clicks, token) ->
-                            clicks.toIntOrNull()?.takeIf { it >= 3 }?.let { it to Action.parse(token) }
+                            extraClickCount(clicks)?.let { it to Action.parse(token) }
                         }.toMap(),
             )
 
@@ -696,3 +703,11 @@ private fun clamp(
     val kind = field.kind as? ConfigFields.Kind.Number ?: return value
     return value.coerceIn(kind.min, kind.max)
 }
+
+/**
+ * `extra_clicks` 里那一位连击次数认不认得出来 —— 必须是 **≥ 3 的整数**（第 3 击起才是额外档）。
+ *
+ *  收在一个函数里：读的时候（[KeyDto.toKeyConfig]）与记账的时候（[ConfigDto.toConfig]）
+ *  必须用同一套判据，两处各写一遍会演进成「日志说丢了一条、实际丢的是另一条」。
+ */
+private fun extraClickCount(raw: String): Int? = raw.toIntOrNull()?.takeIf { it >= 3 }

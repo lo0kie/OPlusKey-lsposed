@@ -1,8 +1,5 @@
 package com.lookie.opluskey.ui
 
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
-
 /**
  * hook 侧（`ui/hook/`）在**建页之前 / 建页之后**塞给页面的那几件东西 —— 一条宿主标题 + 六个回调。
  *
@@ -13,8 +10,14 @@ import com.lookie.opluskey.core.i18n.Strings
  *  注意：全部可空 / 有默认值 —— 页面在没有 hook 侧的情况下（单测、调试通道直接建页）也要能跑。
  */
 internal class PageHooks {
-    /** 首页标题 —— 宿主 Activity 的原文，hook 侧在建页之前赋值。 */
-    var homeTitle: String = I18n.get(Strings.HOME_TITLE, "快捷键")
+    /**
+     * 首页标题的**兜底** —— 宿主 Activity 的原文，hook 侧在建页之前赋值。
+     *
+     *  页面读的是字典里 `home.title`（现在是模块自己的名字 `OPlusKey`），这一位只在字典缺那一档
+     *  （打包漏了语言档）时才轮得到。默认值给同一个品牌名、不再念 `I18n`：没有 hook 侧的场合
+     *  （单测 / 调试通道直接建页）标题也得是对的。
+     */
+    var homeTitle: String = "OPlusKey"
 
     /** 系统深浅变化回调（给 hook 重刷状态栏配色）。 */
     var onSystemThemeChanged: (() -> Unit)? = null

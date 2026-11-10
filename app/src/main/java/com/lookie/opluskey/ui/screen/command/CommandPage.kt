@@ -48,6 +48,7 @@ import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.moveCaretToEnd
+import com.lookie.opluskey.ui.state.CommandForm
 import com.lookie.opluskey.ui.state.CommandUiState
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
@@ -76,6 +77,10 @@ internal fun SettingsPage.CommandPage(
 ) {
     // 排序态（只可能出现在「多条命令」这一页）：表单与列表一律禁用，底部工具条滑出隐藏。
     val sorting = commandDraft.stepEditing
+    //  这一页绑的是**它自己**那份表单（`formOf(kind)`），不是 `draft.*` 那条按 `draft.kind` 走的捷径：
+    //  `draft.kind` 是 pager 停在哪一页的镜像，翻页过渡期镜像已经指向新页、旧页还在画 ——
+    //  按镜像绑的话，过渡期敲进旧页输入框的字会写进**另一份**表单（新页那一条命令里凭空多出几个字）。
+    val form = commandDraft.draft.formOf(kind)
     //  这一页那三层浮层的开合位（见 [CommandPageOverlays]）：全屏编辑 / 详情菜单 / 步骤菜单。
     val overlays = remember { CommandPageOverlays() }
     //  两颗「更多」的锚点：浮层弹在**按下的那一点**（与条件执行页的场景块同一套）。
@@ -110,13 +115,13 @@ internal fun SettingsPage.CommandPage(
                 text = I18n.get(Strings.COMMAND_NAME_TITLE, "命令名称"),
                 //  行尾是**字数统计**：输入框本身不画计数（`InputSpec.maxLength` 只截断），
                 //  上限写在这一行才读得到 —— 与弹窗标题行那一格同一套画法（`TitleCounter`）。
-                trailing = { CommandNameCounter() },
+                trailing = { CommandNameCounter(form) },
             )
 
             // 输入项用 COUI 的「卡片输入」形态（[IconInputView]）：一个输入项一张卡、无边框，
             // 行首图标会把标题与输入框一起挤开 —— 库的 `InputView` 做不到，所以自己拼。
-            // 抽成独立的 composable 是为了把 `draft.name` 的读取关在里面（见它的注释）。
-            CommandNameField(enabled = !sorting)
+            // 抽成独立的 composable 是为了把 `form.name` 的读取关在里面（见它的注释）。
+            CommandNameField(form, enabled = !sorting)
 
             // 单条命令的那几栏 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
             if (kind == CommandKind.SINGLE) {
@@ -126,12 +131,12 @@ internal fun SettingsPage.CommandPage(
                     onFullscreen = openFullscreen,
                     onMenu = { overlays.detailMenu = true },
                 )
-                SingleCommandField(ui, scroll, enabled = !sorting)
+                SingleCommandField(ui, scroll, form, enabled = !sorting)
                 //  「命令设置」对单条只有一件事：这条命令要不要以 root 执行。
                 //  它是**每条命令自己的**开关（存在命令上、随命令一起落盘），所以摆在这里、
                 //  只在单条页出现；多条命令的步骤没有各自的开关。
                 SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
-                RootSwitchCard(enabled = !sorting)
+                RootSwitchCard(form, enabled = !sorting)
             }
 
             // `keyevent:` 注入同毫秒生效，而「最近任务 / 通知中心 / 控制中心」要跨四个进程、`shell:` 更
@@ -207,7 +212,7 @@ private fun SettingsPage.CommandStepListSection(
     onMenu: () -> Unit,
 ) {
     SectionTitle(
-        text = I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"),
+        text = I18n.get(Strings.COMMAND_LIST_TITLE, "命令步骤"),
         trailing = {
             MoreButton(
                 onClick = onMenu,
@@ -300,7 +305,7 @@ internal fun SettingsPage.StepListMenu(
             if (open) {
                 listOf(
                     MenuEntry.Section(
-                        title = I18n.get(Strings.COMMAND_LIST_TITLE, "命令列表"),
+                        title = I18n.get(Strings.COMMAND_LIST_TITLE, "命令步骤"),
                         rows =
                             listOf(
                                 //  文案固定「编辑列表」，排序态里这一行**禁用** ——
@@ -459,7 +464,10 @@ private fun SettingsPage.CommandSettingsSection(
  *  （失败提示会报「要 root」），所以副标题把两种走法都写清楚，不替用户做判断。
  */
 @Composable
-private fun SettingsPage.RootSwitchCard(enabled: Boolean) {
+private fun SettingsPage.RootSwitchCard(
+    form: CommandForm,
+    enabled: Boolean,
+) {
     CardList(
         rows =
             listOf(
@@ -468,13 +476,13 @@ private fun SettingsPage.RootSwitchCard(enabled: Boolean) {
                     summaryOn = I18n.get(Strings.COMMAND_ROOT_DESC_ON, "只用 su，不再退回 sh"),
                     summaryOff = I18n.get(Strings.COMMAND_ROOT_DESC_OFF, "只用 sh，不申请 root"),
                     icon = PageIcons.CommandRoot,
-                    checked = commandDraft.draft.root,
+                    checked = form.root,
                     // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
                     enabled = enabled,
                     //  打开这一档就顺手申请一次授权（没有 root 时那句提示会顶上来）；
                     //  关掉那一档只用 `sh`，没有东西可申请。
                     onCheckedChange = { on ->
-                        commandDraft.draft.root = on
+                        form.root = on
                         if (on) requestRootGrant()
                     },
                 ),
@@ -512,9 +520,10 @@ private fun SettingsPage.RootSwitchCard(enabled: Boolean) {
 private fun SettingsPage.SingleCommandField(
     ui: CommandUiState,
     scroll: CommandPageScroll,
+    form: CommandForm,
     enabled: Boolean,
 ) {
-    val raw = commandDraft.draft.single
+    val raw = form.single
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     val view = LocalView.current
@@ -560,7 +569,7 @@ private fun SettingsPage.SingleCommandField(
             value = raw,
             onValueChange = { value ->
                 // 粘贴来的多半是 CRLF：只归一，不动内容
-                commandDraft.draft.single = value.replace("\r\n", "\n").replace('\r', '\n')
+                form.single = value.replace("\r\n", "\n").replace('\r', '\n')
             },
             errorMessage = formatError,
             // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）

@@ -110,8 +110,17 @@ internal class ShortcutThenMinimize(
                 }
 
                 else -> {
-                    XLog.w("先起后收：$pkg 一直没起来（放弃）：$pkg/$shortcutId")
-                    onFailure(CommandFailure.APP_NO_ENTRY)
+                    //  **服务端复用已有任务**也是一条成功路径：目标本来就有任务时，那一发不会造出
+                    //  新任务（表里还是原来那份），只把它带到前台。判据用「这个包的任务此刻在最
+                    //  前面」（`foregroundTaskFor` 只看表里第 0 项），不用「表里有它」：后台还挂着
+                    //  一份时，后者会把一次没生效的按下报成成功，而用户看到的是一点反应都没有。
+                    val front = mini.foregroundTaskFor(pkg)
+                    if (front > 0) {
+                        XLog.w("先起后收：$pkg 没出现新任务，但它已在最前面（#$front，服务端复用了它），按成功处理")
+                    } else {
+                        XLog.w("先起后收：$pkg 一直没起来（放弃）：$pkg/$shortcutId")
+                        onFailure(CommandFailure.APP_NO_ENTRY)
+                    }
                 }
             }
         }

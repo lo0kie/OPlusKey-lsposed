@@ -180,6 +180,11 @@ private fun semanticVersion(version: String): List<Int> =
         .removePrefix("v")
         .removePrefix("V")
         .split('-', '+', ' ', '_')
-        .mapNotNull { token -> token.split('.').mapNotNull { it.toIntOrNull() }.takeIf { it.size >= 2 } }
-        .firstOrNull()
+        .mapNotNull { token ->
+            //  **任一段不是纯数字就整段作废**：以前是 `mapNotNull { toIntOrNull() }`，于是
+            //  `"1.3.4beta"` 被截成 `[1, 3]`，与 `1.3.x` 比较时得出相反的结论（把带后缀的当成旧的）。
+            val parts = token.split('.')
+            if (parts.size < 2) return@mapNotNull null
+            parts.map { it.toIntOrNull() ?: return@mapNotNull null }
+        }.firstOrNull()
         .orEmpty()

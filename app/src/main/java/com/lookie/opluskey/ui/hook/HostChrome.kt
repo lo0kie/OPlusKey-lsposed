@@ -96,6 +96,19 @@ internal object HostChrome {
         }
     }
 
+    /**
+     * 「露出宿主原版页」时那一条状态栏的底色 —— **跟着系统深浅走**。
+     *
+     *  [applyHostTheme] 在浅色系统下已经把宿主主题换成浅色变体，此时再把状态栏刷成纯黑，
+     *  用户看到的是「浅色页面 + 黑色状态栏」；重色那一档仍按宿主原版页的深色底走。
+     *  两条判据共用 [isNight]，不各写一份。
+     */
+    internal fun stockStatusBackdrop(context: android.content.Context): Int =
+        if (isNight(context)) STOCK_DARK_BACKDROP else LIGHT_SCHEME.surface.toArgb()
+
+    /** 深色系统下「露出宿主原版页」时的状态栏底色（原版页写死的深色底）。 */
+    private const val STOCK_DARK_BACKDROP = 0xFF000000.toInt()
+
     /** 在 `setContentView` 之前把 window 背景刷成页面底色 —— 防「splash 撤掉到首帧之间露底跳色」。 */
     private fun paintWindowBeforeContent(
         activity: android.app.Activity,

@@ -80,7 +80,7 @@ object ConfigStore {
         data object Unreadable : Load
 
         /**
-         * 主文件读不懂，但**上一次成功写入**留下的 `.bak` 读得懂 —— 用的就是备份那份。
+         * 主文件读不懂，但**上一次成功写入**留下的 `.prev` 读得懂 —— 用的就是备份那份。
          *
          *  与 [Ok] 一样**可以写回**（手上这份是用户的东西，不是默认值），只是比用户最新的那次
          *  改动旧一个版本：坏掉那一版里的改动没了。所以页面要提一句 —— 否则用户只会发现
@@ -243,7 +243,7 @@ object ConfigStore {
         when (val l = load()) {
             is Load.Ok -> l.config
 
-            //  从 `.bak` 恢复来的那份是用户的东西 —— 只读方照用，与 Ok 同义
+            //  从 `.prev` 恢复来的那份是用户的东西 —— 只读方照用，与 Ok 同义
             is Load.Recovered -> l.config
 
             Load.Absent, Load.Unreadable -> Config.DEFAULT
@@ -255,25 +255,38 @@ object ConfigStore {
      * 先包一层外皮（[FileObfuscation]），再交给 [ModuleFiles.write]（`android.util.AtomicFile`），
      * 避免执行侧读到半截内容。
      *
-     * 写成功后**主动丢掉读缓存**（[load] 那一份）：本进程自己的写盘最清楚「刚换过内容」，
-     * 主动失效省掉一次多余的 `stat` 比对，不依赖指纹去发现。
-     * 跨进程的写方（设置页 `:ui`）清不到这里的缓存，那种情况由指纹里的 inode 兜住（见 [Cached]）。
+     * 写成功后**按新文件的指纹把读缓存直接填成刚写下的那一份**（与 [CommandLibrary.save] 同一口径）：
+     * 刚写下去的这份就是盘上的全部内容，丢掉缓存的话，下一次写盘开头那句 [load]（要判断能不能留
+     * `.prev`）会在**调用线程**——设置页是主线程——把整份文件重读、剥两层外皮、再解析一遍。
+     * 跨进程的写方（宿主主进程）改的是别的缓存，那种情况由指纹里的 inode 兜住（见 [Cached]）。
      */
     fun write(config: Config): Boolean {
         //  **写之前先把现有那份留成 `.prev`**：它是「上一次成功写入」的完整一份，下一次主文件
         //  读不懂时 [recoverFromBackup] 就靠它。不能指望 `AtomicFile` —— 它写成功时直接删旧
         //  base，`.bak` 只在 legacy 命名下才有（真机上一次都没出现过，见 `snapshotModuleFile`）。
         //
-        //  **主文件读不懂时不复制**：那时的 `.prev` 往往正是唯一还能救的副本，把它换成一份坏
-        //  内容等于当场把退路毁掉 —— 而这一次写盘之后，用户就再也回不去了。
-        if (load() !is Load.Unreadable) snapshotModuleFile(files().file(SLOT_CONFIG))
+        //  **只有主文件现在读得懂（[Load.Ok]）时才复制**：`Absent` 没有可复制的东西；
+        //  `Recovered` 与 `Unreadable` 都意味着主文件本身是坏的 —— 那时 `.prev` 往往正是唯一
+        //  还能救的副本，把它换成一份坏内容等于当场把退路毁掉（这一次写盘之后再失败，就再也
+        //  回不去了）。判据因此只能是 `Ok`，不能是「不是 Unreadable」。
+        if (load() is Load.Ok) snapshotModuleFile(files().file(SLOT_CONFIG))
         val ok =
             files().write(
                 SLOT_CONFIG,
                 FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, ConfigCodec.serialize(config)),
                 openReadable = true,
             )
-        if (ok) cached = null
+        if (ok) {
+            val f = sharedFile()
+            val inode = inodeOf(f)
+            //  指纹取不到（inode 0）时不记：那与「读不到」同值，下一次读照旧走盘，方向是安全的那一侧。
+            cached =
+                if (inode != 0L) {
+                    Cached(f.lastModified(), f.length(), inode, Load.Ok(config))
+                } else {
+                    null
+                }
+        }
         return ok
     }
 }

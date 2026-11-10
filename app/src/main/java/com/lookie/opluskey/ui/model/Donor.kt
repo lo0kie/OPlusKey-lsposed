@@ -34,7 +34,7 @@ internal data class Donor(
     /** 上屏用的名字 —— **一定非空**：匿名在 [readDonors] 那一层就已经换成了 [DONOR_ANONYMOUS]。 */
     val name: String,
     /** 金额，单位**分**（`520` = ¥5.20）。 */
-    val amountCents: Int,
+    val amountCents: Long,
     /** 到账时间 —— 文件里那串原样保留（`2026-10-17 19:36`），只记录、不上屏。 */
     val at: String = "",
 ) {
@@ -43,7 +43,7 @@ internal data class Donor(
      */
     val amountText: String
         get() {
-            val cents = amountCents.coerceAtLeast(0)
+            val cents = amountCents.coerceAtLeast(0L)
             return "¥${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
         }
 }
@@ -118,12 +118,12 @@ private fun readDonors(context: Context): List<Donor>? {
                 name = name,
                 // 文件里写的是**元**（可以带两位小数），这里换算成**分**存。
                 //  `round` 是为了吃掉二进制浮点那点误差：`5.20 * 100 = 519.9999…`。
-                //  负数在这里就夹掉：文件里写错一个负号，界面上会画成「¥-5.-20」
+                //  结果按 `Long` 收：金额超出 `Int` 范围时不能绕回负数再夹成 0（那会把一笔大额
+                //  显示成「¥0.00」）。负数在这里就夹掉：文件里写错一个负号，界面上会画成「¥-5.-20」
                 amountCents =
                     Math
                         .round((o["amount"].text().toDoubleOrNull() ?: 0.0) * 100)
-                        .toInt()
-                        .coerceAtLeast(0),
+                        .coerceAtLeast(0L),
                 // 只记录、不上屏（见 [Donor.at]）；缺了就是空串，不报错
                 at = o["at"].text().trim(),
             )

@@ -28,8 +28,8 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 // 右下角那颗 FAB 那一族：按钮本体、页面角落定位、按滚动方向显隐。
 
 /**
- * 页面右下角那颗 FAB 的**本体** —— 形状 / 底色 / 阴影收在这里，[PageCornerFab] 的两个调用点共用
- *（各自写一份迟早走形：这几样必须两处一致）。
+ * 页面右下角那颗 FAB 的**本体** —— 形状 / 底色 / 阴影收在这里，各页共用
+ *（各自写一份迟早走形：这几样必须一致）。
  *
  *  **不挂磨砂** —— 这颗按钮上它两头都不成立：
  *
@@ -45,7 +45,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  阴影画得出来，不必自己另补一层。
  *
  * @param onClick 点击回调
- * @param modifier 调用点自己那点修饰（「按键绑定」页拿它套 `alpha` 做禁用观感）
+ * @param modifier 调用点自己那点修饰（尺寸 / 位置这一类；底色与阴影不靠它改）
  * @param content FAB 上的内容（图标）—— 内容色由调用点给（`onPrimary`）
  * @param containerColor 底色，默认主题原色。**禁用态要换底色，不要在外面套 `alpha`**：
  *   `Modifier.alpha` 会单独合成一层，层的边界就是这颗按钮的方框 —— 库内部那层
@@ -67,7 +67,7 @@ internal fun PageFabButton(
 }
 
 /**
- * 页面**右下角那颗 FAB** —— 位置与显隐动画**走同一份**，两个调用点共用。
+ * 页面**右下角那颗 FAB** —— 位置与显隐动画**走同一份**，各页共用。
  *
  *  · 「按键绑定」的「新增命令」：往下滚就藏、往上滚就露（[rememberFabVisibleOnScroll]）；
  *  · 「选择应用」的「滚到顶部」：搜索中、或已经在顶部时不出现。
@@ -85,9 +85,8 @@ internal fun PageFabButton(
  *  「cannot be called with an implicit receiver」。
  *
  * @param visible 显不显示（判据在调用点）
- * @param animate 显隐要不要过渡（`false` = 直接出现 / 消失）
- *   「自定义命令」页传 `false`：那一页的显隐跟着**当前这一页的表单内容**走，翻 tab 会让它
- *   进 / 出一次，而那颗按钮在那一页本来就守着不同的表单 —— 每切一次就滑一遍只是噪音。
+ * @param animate 显隐要不要过渡（`false` = 直接出现 / 消失；当前没有调用点传 `false`）
+ *   留这一档是给「显隐跟着当前表单内容变」的页面：翻 tab 就会进 / 出一次，每切一次滑一遍只是噪音。
  * @param content FAB 本体（各页自己那颗）
  */
 @Composable

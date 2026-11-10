@@ -76,6 +76,10 @@ internal fun SettingsPage.openSceneBinding(
  * 一个场景块要编**哪几档** —— 组合键的场景块只有短按 / 长按（`ComboKey` 上没有双击）。
  *
  *  判据与 `blockGestures()` 同一条：两处各写一遍迟早出现「带子上有三档、翻到第三页是空的」。
+ *
+ *  **这一位是「一块有几档」的唯一来源**：场景页的动作行（`RuleActionRows`）与「场景动作」页的
+ *  手势带都按它排。将来接**自定义手势**要改的就是这里 —— 连同返回类型一起从 [Gesture] 放开
+ *  （现在这三档是枚举，装不下运行时才有的手势）；档位名那时走 `gestureLabel(id, 名字)` 那个口子。
  */
 internal fun SettingsPage.sceneGesturePages(): List<Gesture> =
     if (branchDraft.comboId != null) listOf(Gesture.SINGLE, Gesture.LONG) else Gesture.entries

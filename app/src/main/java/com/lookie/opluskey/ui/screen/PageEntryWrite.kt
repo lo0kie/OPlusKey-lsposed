@@ -53,8 +53,11 @@ internal fun SettingsPage.writeToken(
                     .ifEmpty { listOf(AppTarget.pkg(Action.parse(token).appTarget.orEmpty())) }
             // `takePickTarget()` 是**一次性消费**：写失败了得把「为谁挑」放回去，否则这一页
             //  立刻退化成「普通挑应用」—— 点一行会去挑界面、按确定还会写到手势绑定上。
+            //  **连条件槽位一起放回**：从「条件 2」那一行进来的这一趟，重挑时必须还写那一条；
+            //  只传 index 会让 branchConditionIndex 退回 -1，落到 `old.appConditionIndex`
+            //  或追加，把同一块里另一条条件覆盖掉。
             if (!writeBranchCondition(pkgs, target.index)) {
-                picker.openForBranch(target.index)
+                picker.openForBranch(target.index, picker.branchConditionIndex)
                 false
             } else {
                 true

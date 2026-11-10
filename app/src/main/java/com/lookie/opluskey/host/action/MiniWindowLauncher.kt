@@ -184,7 +184,9 @@ internal class MiniWindowLauncher(
         if (userId != 0) {
             XLog.w("window:$target 是分身（user=$userId）⇒ 跳过「原地收成小窗」那一档，直接起")
         }
-        if (foregroundTask > 0 && startFlexibleFromRecents(foregroundTask, ZOOM_LAUNCH_FLAG_USER_POSITION)) {
+        if (foregroundTask > 0 &&
+            startFlexibleFromRecents(foregroundTask, ZOOM_LAUNCH_FLAG_USER_POSITION) == RecentsStart.ACCEPTED
+        ) {
             XLog.w("window:$target 已在前台，原地收成小窗（不新起实例）")
             postDelayedGuarded("window:$target 的小窗验收", MINI_VERIFY_MS, fresh = true) {
                 // 只有**确认没成小窗**才回桌面重起。读不到窗口信息时重起，会把刚刚收好的
@@ -526,12 +528,23 @@ internal class MiniWindowLauncher(
      * @return 服务端有没有受理 —— 动画档据此决定要不要接着播；失败已经在这里报过，调用方不必再报一次
      */
     internal fun retryViaRecents(taskId: Int): Boolean {
-        if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_USER_POSITION)) {
-            postDelayedGuarded("recents 正门收小窗的验收", MINI_VERIFY_MS, fresh = true) { verifyMiniOrFallback(taskId) }
-            return true
+        when (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_USER_POSITION)) {
+            RecentsStart.ACCEPTED -> {
+                postDelayedGuarded("recents 正门收小窗的验收", MINI_VERIFY_MS, fresh = true) { verifyMiniOrFallback(taskId) }
+                return true
+            }
+
+            RecentsStart.REJECTED -> {
+                XLog.w("zoom:mini → recents 正门没受理（服务端拒了），什么都不做")
+                onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+            }
+
+            RecentsStart.UNREACHABLE -> {
+                //  反射链没走通 ≠ 应用不支持小窗：这一档只能报「没执行成功」
+                XLog.w("zoom:mini → recents 正门的反射链没走通，判断不了（不是应用不支持小窗）")
+                onFailure(CommandFailure.UNKNOWN)
+            }
         }
-        XLog.w("zoom:mini → recents 正门没受理（服务端拒了），什么都不做")
-        onFailure(CommandFailure.APP_NO_MINI_WINDOW)
         return false
     }
 
@@ -543,28 +556,38 @@ internal class MiniWindowLauncher(
      * 收不起就报失败 —— **不退回「按包名另起一份实例」**（那会多出一份全屏实例，见 [startFlexibleFromRecents]）。
      */
     internal fun putInCollapsedMini(taskId: Int) {
-        if (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_FULL_TO_MINI)) {
-            postDelayedGuarded("zoom:mini:collapse 的验收", MINI_VERIFY_MS, fresh = true) {
-                when (zoomStateOf(taskId)) {
-                    true -> {
-                        XLog.w("zoom:mini:collapse → 任务 #$taskId 已进入小窗态（收起/展开以截图为准）")
-                    }
+        when (startFlexibleFromRecents(taskId, ZOOM_LAUNCH_FLAG_FULL_TO_MINI)) {
+            RecentsStart.ACCEPTED -> {
+                postDelayedGuarded("zoom:mini:collapse 的验收", MINI_VERIFY_MS, fresh = true) {
+                    when (zoomStateOf(taskId)) {
+                        true -> {
+                            XLog.w("zoom:mini:collapse → 任务 #$taskId 已进入小窗态（收起/展开以截图为准）")
+                        }
 
-                    // 读不到 ≠ 没收起来：报「不支持小窗」就是拿一个读不到的事实怪应用
-                    null -> {
-                        XLog.w("zoom:mini:collapse → 读不到任务 #$taskId 的窗口信息，无法验收")
-                    }
+                        // 读不到 ≠ 没收起来：报「不支持小窗」就是拿一个读不到的事实怪应用
+                        null -> {
+                            XLog.w("zoom:mini:collapse → 读不到任务 #$taskId 的窗口信息，无法验收")
+                        }
 
-                    false -> {
-                        XLog.w("zoom:mini:collapse → 任务 #$taskId 没变成小窗，什么都不做")
-                        onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+                        false -> {
+                            XLog.w("zoom:mini:collapse → 任务 #$taskId 没变成小窗，什么都不做")
+                            onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+                        }
                     }
                 }
+                return
             }
-            return
+
+            RecentsStart.REJECTED -> {
+                XLog.w("zoom:mini:collapse → recents 正门没受理，什么都不做")
+                onFailure(CommandFailure.APP_NO_MINI_WINDOW)
+            }
+
+            RecentsStart.UNREACHABLE -> {
+                XLog.w("zoom:mini:collapse → recents 正门的反射链没走通，判断不了（不是应用不支持小窗）")
+                onFailure(CommandFailure.UNKNOWN)
+            }
         }
-        XLog.w("zoom:mini:collapse → recents 正门没受理，什么都不做")
-        onFailure(CommandFailure.APP_NO_MINI_WINDOW)
     }
 
     /** 前台那份任务的 taskId —— `getAllTopAppInfos()` 按「最前面」排序，取第 0 项。 */
@@ -729,7 +752,24 @@ internal class MiniWindowLauncher(
         MiniWindowFacts.topAppInfos(javaClass.classLoader) { XLog.w(it) }
 
     /**
-     * recents 正门：把已有任务原地收成小窗。返回 false = 这条路没走通，调用方降级。
+     * recents 正门的结果 —— `Boolean` 分不出「服务端拒了」与「反射链根本没走通」。
+     *
+     * 前者该报「前台应用不支持小窗」，后者只能说「判断不了」（报前者等于拿一个读不到的
+     * 事实去怪应用，五、4）。
+     */
+    internal enum class RecentsStart {
+        /** 服务端受理（返回码 0 / 2）。 */
+        ACCEPTED,
+
+        /** 反射链走通了、但返回码不是 0 / 2（1 / 3 / 负数）—— 按未受理处理。 */
+        REJECTED,
+
+        /** 反射链没走通（类 / 实例 / 方法任一为空）—— 判断不了，不能算「应用不支持小窗」。 */
+        UNREACHABLE,
+    }
+
+    /**
+     * recents 正门：把已有任务原地收成小窗。**只认返回码 0 / 2**，其余一律按未受理。
      *
      * [zoomLaunchFlags] 是尺寸档（见 `docs/features/zoom-window/api.md` §17.6.3 的对照表）——
      * `2` = 展开的普通小窗（`setUserPositionInfo`）、`32` = 收起的最小化窗（`fullToMini`）。
@@ -738,14 +778,28 @@ internal class MiniWindowLauncher(
     internal fun startFlexibleFromRecents(
         taskId: Int,
         zoomLaunchFlags: Int,
-    ): Boolean {
+    ): RecentsStart {
         val code = startFlexibleFromRecentsCode(taskId, zoomLaunchFlags)
-        if (code == null || code < 0) {
-            XLog.w("$RECENTS_FLEXIBLE_METHOD($taskId, flags=$zoomLaunchFlags) 被拒（返回 $code），退下一层")
-            return false
+        return when {
+            code == null -> {
+                //  判据级（`d` 在 release 被编译期消除）：这一档要能与「服务端拒了」分开看
+                XLog.w(
+                    "$RECENTS_FLEXIBLE_METHOD($taskId, flags=$zoomLaunchFlags) 的反射链没走通 —— " +
+                        "判断不了，不是「前台应用不支持小窗」",
+                )
+                RecentsStart.UNREACHABLE
+            }
+
+            code != START_SUCCESS && code != START_RESTART -> {
+                XLog.w("$RECENTS_FLEXIBLE_METHOD($taskId, flags=$zoomLaunchFlags) 返回 $code，按未受理处理（只认 0/2）")
+                RecentsStart.REJECTED
+            }
+
+            else -> {
+                XLog.w("zoom:mini → 从 recents 把任务 #$taskId 原地收成小窗（flags=$zoomLaunchFlags，返回 $code）")
+                RecentsStart.ACCEPTED
+            }
         }
-        XLog.w("zoom:mini → 从 recents 把任务 #$taskId 原地收成小窗（flags=$zoomLaunchFlags，返回 $code）")
-        return true
     }
 
     /**

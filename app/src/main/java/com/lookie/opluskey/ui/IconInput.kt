@@ -68,6 +68,19 @@ private const val IME_GUARD_WINDOW_MS = 800L
 private const val IME_GUARD_TICK_FRAMES = 6
 
 /**
+ * 按**码点**取前 [max] 个字符 —— 长度上限不能按 UTF-16 单元切。
+ *
+ *  Kotlin 的 `String.take(n)` 数的是 `Char`，而一个 emoji / 扩展区汉字占两个 `Char`；正好切在
+ *  代理对中间时，留下的是半个码点（界面上是一颗替换符，写进配置也还原不回来）。
+ */
+private fun String.takeCodePoints(max: Int): String =
+    if (max <= 0) {
+        ""
+    } else {
+        substring(0, offsetByCodePoints(0, minOf(max, codePointCount(0, length))))
+    }
+
+/**
  * 输入框那一套配色 —— **Monet 下把底色调淡**，其余主题档沿用库的原色。
  *
  *  库的 `searchBarColors()` 把容器色取成 `secondaryContainer`。静态色板下那一档是 COUI 调好的
@@ -204,7 +217,8 @@ internal fun SettingsPage.IconInputView(
             query = value,
             // **长度上限在这一层兜**（不靠各调用点自己截）：超出的部分直接吃掉，
             //  于是右下的计数永远与真正存下去的值一致。
-            onQueryChange = { raw -> onValueChange(raw.take(spec.maxLength)) },
+            //  按**码点**截：`take()` 数的是 UTF-16 单元，正好切在代理对中间会留下半个字符。
+            onQueryChange = { raw -> onValueChange(raw.takeCodePoints(spec.maxLength)) },
             // 键盘上的「搜索」键不做额外动作：这一栏不是搜索，输入即生效
             onSearch = { },
             // 展开态那套是「点搜索框撑开一页结果」用的，这里不展开

@@ -94,14 +94,18 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             //  **不再另加 [PAGE_TOP_PADDING]**：这一页首行就是小标题，它自己带 16 + 8 的上间距
             //  （与首页、更多选项两页同一笔账）；再加一档就比别的页多出 8dp。
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
-            //  第一块：按键列表（从首页搬来）—— 一颗键一行，点一行进那颗键的绑定页。
-            //  行尾是**已用 / 上限**（与「命令名称」那行同一个 `TitleCounter`）：数的是收集来的
-            //  那几颗（上限只管它们），侧键是内置的、不占额度。
+            //  第一块：内置侧键那一颗（从首页搬来）—— 点一行进那颗键的绑定页。
+            //  **与下面那块拆成两张卡**（用户口径）：内置侧键和收集来的键来路不同，
+            //  额度也只限后者 —— 计数跟着「自定义按键」那块的小标题走，不再挂在「按键列表」上。
+            SectionTitle(text = I18n.get(Strings.KEYS_SECTION_DEFAULT, "默认按键"))
+            KeysListCard(writable)
+            //  第二块：收集来的键 + 「添加按键」那一行。行尾是**已用 / 上限**（与「命令名称」那行
+            //  同一个 `TitleCounter`）：上限只管收集来的这几颗，侧键是内置的、不占额度。
             SectionTitle(
-                text = I18n.get(Strings.HOME_KEYS_SECTION, "按键列表"),
+                text = I18n.get(Strings.KEY_WATCH_TITLE, "自定义按键"),
                 trailing = { TitleCounter(cfg.customKeys.size, KeyId.MAX_CUSTOM_KEYS) },
             )
-            KeysListCard(writable) { collectPending = true }
+            CustomKeysCard(writable) { collectPending = true }
             //  第二块：组合按键那一列（标题本身就是筛选入口，见 [ComboListSection]）
             ComboListSection(cfg, writable, atLimit)
         }

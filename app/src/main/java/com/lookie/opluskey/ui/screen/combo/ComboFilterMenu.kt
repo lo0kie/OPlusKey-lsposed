@@ -33,7 +33,7 @@ internal fun SettingsPage.comboListTitle(
     cfg: Config,
     filter: String?,
 ): String {
-    val base = I18n.get(Strings.COMBO_LIST_TITLE, "组合按键列表")
+    val base = I18n.get(Strings.COMBO_LIST_TITLE, "组合按键")
     val key = filter?.let { cfg.keyIdOf(it) } ?: return base
     return "$base - ${keyName(key)}"
 }

@@ -199,19 +199,22 @@ internal object ProbeChannel {
     // ── 接收侧：system_server（经 KeyHooks 的 AMS 广播入口） ────────────────────
 
     /**
-     * 广播入口那一层的**分派**：丢到主线程跑、整段兜住（`KeyHooks.dispatchAction` 只留一行调用）。
+     * 广播入口那一层的**分派**：丢到后台线程跑、整段兜住（`KeyHooks.dispatchAction` 只留一行调用）。
      *
      *  为什么兜底与 `post` 都收在这里：调用点那个 `when` 贴着 detekt 的
      *  `CyclomaticComplexMethod` 上限，多一个 `try / catch` 就超一格；而「注入侧任何一环
      * 抛出去就是 system_server 崩」这条纪律本来就该跟着这条通道走（五之二、2）。
      *
-     *  不能就地执行：`handle` 里是反射与探针，放在 AMS 的广播入口上跑等于把广播分发停住。
+     *  **不能就地执行、也不投主线程**：`handle` 里是反射与宿主类实例化（`state` / `corner` /
+     *  `dress` / `zoom` 都要问宿主服务），放在 AMS 的广播入口上跑等于把广播分发停住几秒，
+     *  挂到 `system_server` 主线程上则会被 watchdog 算进卡死。探针是手发的低频指令，一条
+     *  单线程池就够（[probeWorker]）。
      */
     fun dispatch(
         intent: Intent,
         loader: ClassLoader?,
     ) {
-        handler.post {
+        probeWorker.execute {
             try {
                 handle(intent, loader)
             } catch (e: Throwable) {
@@ -219,6 +222,18 @@ internal object ProbeChannel {
             }
         }
     }
+
+    /**
+     * 探针的执行器 —— **一条线程、只给 debug 包**（[DEBUG_PROBE] 为 false 时整条通道连同这里
+     * 一起被编译期折掉）。
+     *
+     *  用它而不是常驻 `HandlerThread`：探针一辈子只有几十条指令，线程随取随跑、不占 looper
+     *  队列；单线程也顺带保证两条探针不会同时去实例化同一个宿主类。
+     */
+    private val probeWorker: java.util.concurrent.ExecutorService =
+        java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread(r, "opluskey-probe").apply { isDaemon = true }
+        }
 
     /**
      * @param loader system_server / 桌面进程的 ClassLoader

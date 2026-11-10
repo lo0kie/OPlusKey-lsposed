@@ -65,14 +65,48 @@ internal object PageRelaunch {
                 return@postDelayed
             }
             handler.postDelayed({
-                val pid = android.os.Process.myPid()
-                XLog.w("页面重启：宿主主进程自杀重来 pid=$pid")
-                android.os.Process.killProcess(pid)
+                //  `startActivity` 没抛只说明请求进了系统，**不说明页面真的起来了**。
+                //  本进程一死就没人再把它叫回来，所以自杀之前再确认一次页面进程在跑；
+                //  判不出来（拿不到进程表）就跳过自杀 —— 与「拉起失败」同一档处理。
+                when (pageProcessAlive(ctx)) {
+                    true -> {
+                        val pid = android.os.Process.myPid()
+                        XLog.w("页面重启：宿主主进程自杀重来 pid=$pid")
+                        android.os.Process.killProcess(pid)
+                    }
+
+                    false -> {
+                        XLog.w("页面重启：页面进程没起来 —— 本进程不自杀（留着服务下一次请求）")
+                        scheduled = false
+                    }
+
+                    null -> {
+                        XLog.w("页面重启：拿不到页面进程的判据 —— 跳过自杀（避免页面没了又没人叫回来）")
+                        scheduled = false
+                    }
+                }
             }, EXIT_DELAY_MS)
         }, START_DELAY_MS)
     }
 
-    /** @return 拉起请求有没有发出去（见 [schedule] 里那条「失败就不自杀」的纪律）。 */
+    /**
+     * 设置页进程还在不在 —— `null` = 判断不了（拿不到 `ActivityManager` 或进程表）。
+     *
+     *  `runningAppProcesses` 要 `REAL_GET_TASKS`；宿主持有它（权限清单见 `AppCloneCatalog` 类注释）。
+     *  读不到时**不猜**：这一枪决定本进程要不要自杀，猜错就是「页面没了、也没人再把它叫回来」。
+     */
+    private fun pageProcessAlive(ctx: Context): Boolean? {
+        return try {
+            val am = ctx.getSystemService(android.app.ActivityManager::class.java) ?: return null
+            val procs = am.runningAppProcesses ?: return null
+            procs.any { it.processName == HostApp.PAGE_PROCESS }
+        } catch (e: Throwable) {
+            XLog.w("页面重启：读进程表失败（按「判断不了」处理）：${e.javaClass.simpleName}: ${e.message}")
+            null
+        }
+    }
+
+    /** @return 拉起请求有没有被系统受理（**不代表页面已经起来**，见 [schedule] 里的二次确认）。 */
     private fun startPage(ctx: Context): Boolean =
         try {
             ctx.startActivity(
@@ -81,7 +115,7 @@ internal object PageRelaunch {
                         ComponentName(HostApp.PACKAGE, Framework.HOST_SETTINGS_ACTIVITY),
                     ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
-            XLog.w("页面重启：已发出拉起请求（${Framework.HOST_SETTINGS_ACTIVITY}）")
+            XLog.w("页面重启：已请求拉起设置页（${Framework.HOST_SETTINGS_ACTIVITY}）")
             true
         } catch (e: Throwable) {
             XLog.w("页面重启：拉起设置页失败（${e.javaClass.simpleName}: ${e.message}）")

@@ -144,6 +144,9 @@ internal object SeedlingClient {
             }
             if (!isConnecting) {
                 isConnecting = true
+                //  重绑之前先解掉上一条：连接还挂着时再 bindService 会直接复用那条死连接
+                //  （`onServiceConnected` 不再来），表现是流体云从此一条都收不到。
+                unbindQuietly()
                 try {
                     val intent =
                         Intent(ACTION_SEEDLING_SERVICE).apply {

@@ -225,7 +225,8 @@ core/wire/ConfigBroadcast.kt:5 → core.config.CommandLibrary
   `FlashlightController` / `SystemActionButtonConfig`）与 `bridge/inject/`（只有注入侧引用：`SystemContext`），
   中间那个 `bridge/` 留两侧共用的 `Framework` / `Hooks` / `StatusBarBridge` / `FlexibleWindowBridge` 一族。
   理由：**包名要等于进程归属** —— 按包名判「这段会不会在 system_server 里跑」原来会判错，
-  CI 的注入侧扫描范围也跟着失准；现在那条扫描要 `--exclude-dir=host`。）
+  CI 的注入侧扫描范围也跟着失准；现在那条扫描按**精确路径**排除 `bridge/host/`（不能用
+  `--exclude-dir=host`：那是按目录名匹配，会连带漏掉将来任何同名目录）。
 - **怎么判定谁该走**：一句话判据 —— **调用点在宿主侧（`host/`、`ui/`）的，一律不是注入侧**。（`Framework` 的候选表要留在 `inject/`，它是注入侧的降级表；但 `host` 读它做手势劫持这件事本身要重新审视：`SideKeyGestureHooks` 在宿主里用的是同一张候选表 ⇒ 更干净的做法是把「宿主与注入共用的候选常量」下沉 `core/model`，让两边各自读表。）
 - **收益**：包名重新等于进程归属；`host → inject` 6 条边清零；`SystemActionButtonConfig` 的「只能在宿主进程调」变成结构上显然。
 - **风险**：`host` 与 `inject` 之间的历史注释很多，迁移时**只改 `package`/`import`**，注释原样带走（沿用 `structure.md` 六 的纪律）。系统侧代码换包不影响 CI 的 `(5)` 那条黑名单（它按 `inject/` 路径扫），但**要同步更新 CI 的 `injection_dirs` 与新增 `bridge/` 的允许依赖**。

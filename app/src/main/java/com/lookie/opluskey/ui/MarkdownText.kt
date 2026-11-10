@@ -78,7 +78,8 @@ internal fun markdownToAnnotated(
     //  **先按长度截断**：这段正文来自网络（更新说明），解析与渲染都在主线程的组合期、且都是
     //  按 AST 深度递归。一条几 MB 的正文足以把主线程占满（ANR），而说明是给人看的 ——
     //  超出的部分截掉就够了，比让弹窗卡死好。
-    val body = if (markdown.length <= MAX_MARKDOWN_CHARS) markdown else markdown.take(MAX_MARKDOWN_CHARS)
+    //  按**码点**截：切在代理对中间会留下半个字符，解析器与渲染拿到的都是坏输入。
+    val body = if (markdown.length <= MAX_MARKDOWN_CHARS) markdown else markdown.truncateToCodePoints(MAX_MARKDOWN_CHARS)
     val root =
         runCatching { MD_PARSER.buildMarkdownTreeFromString(body as CharSequence) }.getOrNull()
             // 解析器抛异常时**退回原文**：更新说明再花哨，也不该让弹窗画不出来

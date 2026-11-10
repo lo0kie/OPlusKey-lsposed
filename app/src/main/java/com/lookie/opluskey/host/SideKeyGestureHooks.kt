@@ -51,6 +51,28 @@ internal object SideKeyGestureHooks {
     private const val HOLD_MS = 150L
 
     /**
+     * 认领窗口的**上限** —— 就是扣留时长（[HOLD_MS]）。
+     *
+     *  两个窗口的大小关系是硬判据：**认领窗口不得大于扣留时长**。扣留期满会补投原生动作，而认领
+     *  窗口如果更长，一条在补投**之后**才到的认领仍然算「这一下是模块的」—— 原生动作已经补投、
+     *  模块动作又执行一次，一次按压出两个动作。只有扣留时长盖住整个认领窗口，那条迟到的认领才
+     *  轮不到（到那时它已经超出窗口、按「不是这一下」处理）。
+     *
+     *  越界时 [install] 记一行 W（见 [checkWindowOrder]）：这两个数是各自按经验定的，改一个忘了
+     *  另一个时，日志里至少留一句，别让它在真机上只表现成「偶尔两个动作」。
+     */
+    private const val CLAIM_WINDOW_MAX_MS = HOLD_MS
+
+    /**
+     * 两个窗口满足上面那条关系吗 —— 判据本体收在这里，[install] 读它（见 [checkWindowOrder]）。
+     *
+     *  不在判据里直接比两个 `const val`：那是一段编译期常量比较，编译器会报「条件恒为真」，
+     *  而本工程开着 `allWarningsAsErrors`。写成属性之后值仍由那两个常量算出、运行期不会变，
+     *  只是不再被当成字面量条件。
+     */
+    private val windowOrderOk: Boolean = CLAIM_WINDOW_MS <= CLAIM_WINDOW_MAX_MS
+
+    /**
      * 已经补投出去、还没被自己再看到的那几条派发（按**实例身份**记）。
      *
      *  补投回来的那一条会再过一次本 Hook，不认出来就会「再扣一次、再补投一次」，永远转圈。
@@ -81,6 +103,9 @@ internal object SideKeyGestureHooks {
             return
         }
 
+        // 两个窗口的大小关系（认领窗口 <= 扣留时长）—— 越界只记一行，不阻断安装
+        checkWindowOrder()
+
         // 先在宿主进程读一遍设置页写的那份配置（同 uid，理应读得到）—— 判「配置通道通不通」。
         logConfig()
 
@@ -99,6 +124,20 @@ internal object SideKeyGestureHooks {
         } else {
             XLog.w("侧键手势接管点一个都没找到 —— 宿主改了服务名？本机退化为「不劫持手势」")
         }
+    }
+
+    /**
+     * 判一次两个窗口的大小关系（见 [CLAIM_WINDOW_MAX_MS]）—— 越界记 W，不阻断安装。
+     *
+     *  只在安装时问一次：两个数都是常量，运行期不会变；而这条判据本身是「改代码时忘了对齐」的提示，
+     *  放在按键路径上只会每按一次刷一行。
+     */
+    private fun checkWindowOrder() {
+        if (windowOrderOk) return
+        XLog.w(
+            "侧键窗口越界：认领窗口 ${CLAIM_WINDOW_MS}ms > 扣留 ${HOLD_MS}ms —— " +
+                "补投之后才到的认领仍会被判成「模块的」，同一次按压可能出原生 + 模块两个动作",
+        )
     }
 
     /**

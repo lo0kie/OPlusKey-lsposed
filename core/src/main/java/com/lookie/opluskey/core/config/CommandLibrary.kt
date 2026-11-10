@@ -120,21 +120,40 @@ object CommandLibrary {
     }
 
     /** 解析命令库文本，读不懂的条目跳过，绝不抛异常。 */
-    fun parse(text: String): List<Command> =
+    fun parse(
+        text: String,
+        slot: String = ConfigStore.SLOT_COMMANDS,
+    ): List<Command> =
         try {
             val arr = commandElements(text) ?: return emptyList()
             // 名字是主键：同一名字出现多次时**后写的覆盖先写的**
             //  —— 必须显式这么写：`distinctBy { it.name }` 留的是**第一个**，与上面这句话相反。
             val byName = LinkedHashMap<String, Command>()
-            for (e in arr) {
-                val cmd = decodeCommand(e) ?: continue
+            //  丢掉的条目要留一笔账（名字为空 / 结构解不开都由 [decodeCommand] 判成 `null`）：
+            //  它们会连同绑定一起消失，而用户只会看到「那条命令不见了」。聚合计数、只带序号 ——
+            //  一条坏文件里可能有几十条，逐条打会把判据行冲掉。
+            val dropped = ArrayList<Int>()
+            for ((index, e) in arr.withIndex()) {
+                val cmd = decodeCommand(e)
+                if (cmd == null) {
+                    dropped += index
+                    continue
+                }
                 byName[cmd.name] = cmd
+            }
+            if (dropped.isNotEmpty()) {
+                val listed = dropped.take(MAX_LISTED_DROPS).joinToString()
+                val more = if (dropped.size > MAX_LISTED_DROPS) " 等" else ""
+                XLog.w("命令库（$slot）：${dropped.size} 条认不出（序号 $listed$more，从 0 起），已跳过")
             }
             byName.values.toList()
         } catch (e: Throwable) {
             XLog.w("命令库解析失败（按空表处理）：${e.message}")
             emptyList()
         }
+
+    /** 一行聚合日志里最多列几个序号（其余只报总数，见 [parse]）。 */
+    private const val MAX_LISTED_DROPS = 10
 
     /**
      * [parse] 的「分得清读不懂」版：**结构认不出**就返回 `null`，认得出就返回列表
@@ -148,14 +167,17 @@ object CommandLibrary {
      * 注意：不要拿它替换 [parse]：文件加载那一路要的是「坏一条只丢一条」，
      * 一条手改坏的条目不该让整个命令库消失。
      */
-    fun parseOrNull(text: String): List<Command>? {
+    fun parseOrNull(
+        text: String,
+        slot: String = ConfigStore.SLOT_COMMANDS,
+    ): List<Command>? {
         val arr = commandElements(text) ?: return null
         //  「类型认不出」是**已知形态**（老文件里的 `branch`、或比我们新的版本写进来的类型），
         //  跳过那一条、其余照常导入；真坏（名字空 / 结构不对）才整份判坏 ——
         //  否则用户拿着旧备份升级后就再也导不进来（报「未知的配置格式」）。
         val broken = arr.any { e -> decodeCommand(e) == null && !isUnknownKind(e) }
         if (broken) return null
-        val parsed = parse(text)
+        val parsed = parse(text, slot)
         //  **有元素、却一条都没剩下 ⇒ 读不懂**：全是「未知 kind」时 `broken` 上面那道判不出来，
         //  交出去就是一张空表 —— 导入那一路会把它当成功落盘，用户的命令库被清空。
         //  与 [parseState] 里那条护栏同一条判据（那一处是「读盘时按 Unreadable」）。
@@ -280,6 +302,11 @@ object CommandLibrary {
      * 按键的所有 `cmd:` 都报「命令库里没有」；写盘中途抛异常更会把命令库永久留在坏文件上。
      */
     fun save(commands: List<Command>): Boolean {
+        //  **现在这份读得懂才留 `.prev`** —— 与 `ConfigStore.write` 同一口径：读不懂（外皮 / 截断 /
+        //  解析失败）时那份快照往往是唯一还能救的副本，把它换成坏内容等于当场把退路毁掉。
+        //  判据用 [loadState] 的三态（不是 `read()`）：外皮坏了、正文不是合法 JSON 时，
+        //  文件层照样给 `Ok`，只有走完整解码链才判得出「读不懂」。
+        if (loadState() is Load.Ok) snapshotModuleFile(ConfigStore.commandFile())
         val ok =
             ConfigStore.files().write(
                 ConfigStore.SLOT_COMMANDS,
@@ -288,7 +315,14 @@ object CommandLibrary {
                 openReadable = ConfigStore.OPEN_READABLE_COMMANDS,
             )
         cache = null
-        return ok
+        if (!ok) return false
+        //  刚写下去的这一份就是盘上的全部内容 ⇒ 按新文件的指纹直接记进缓存。写完立刻要读它两位
+        //  （广播 payload 的 `longIsSerial`、页面那份本地指纹）否则会在调用线程上把整份文件
+        //  重读并重解析一遍 —— 那两条路都在主线程上。指纹取不到（inode 0）时不记，下一次读照旧走盘。
+        val f = ConfigStore.commandFile()
+        val inode = inodeOf(f)
+        if (inode != 0L) cache = Cached(f.lastModified(), f.length(), inode, commands)
+        return true
     }
 
     /**

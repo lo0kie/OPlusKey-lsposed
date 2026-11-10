@@ -20,6 +20,7 @@ import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasurePolicy
 import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
@@ -43,11 +44,12 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  同一页里确认窗是糊的、起名窗是不透明的，看着像两个应用的控件（用户口径「添加按键/重命名的
  *  dialog 用项目通用那个，不然没有模糊」）。
  *
- * ## 为什么参数到 5 个（`@Suppress("LongParameterList")` —— 已不需要，留着这条只解释分工）
+ * ## 为什么参数多到 9 个（`@Suppress("LongParameterList")`）
  *
- *  `show` / `title` / `onDismiss` 之外，`hideImeOnShow`、`onDismissFinished` 都是**这一个外壳
- *  自己的开关**（键盘怎么处理、退场播完要不要回报），`content` 是正文槽。这些拆成 options
- *  对象只会让二十多个调用点各多一层壳；Compose 的惯例就是平铺行参。
+ *  `show` / `title` / `onDismiss` 之外，`hideImeOnShow`、`onDismissFinished`、`centered`、
+ *  `titleTrailing` 都是**这一个外壳自己的开关**（键盘怎么处理、退场播完要不要回报、摆在哪、
+ *  标题行尾画什么），`footer` 与 `content` 是底部 / 正文两个槽 —— 全是行参。
+ *  这些拆成 options 对象只会让二十多个调用点各多一层壳；Compose 的惯例就是平铺行参。
  *  `onDismissFinished` 是「收集按键 → 添加按键」两个弹窗交替时才需要的那一格（前一个窗收场后
  *  才让后一个窗去抢焦点），按这一个理由它也不能挪进正文槽。
  *
@@ -265,15 +267,14 @@ private object DialogPanelMeasure : MeasurePolicy {
         val loose = Constraints(minWidth = 0, maxWidth = width, minHeight = 0, maxHeight = heightLimit)
 
         val titleRow = measurables[TITLE_ROW].measure(loose)
-        val bodyRow = measurables[BODY_ROW]
         val footerRow = measurables.getOrNull(FOOTER_ROW)?.measure(loose)?.takeIf { it.height > 0 }
-        // 先按「标题 + 上下一档 + 底部那一区」算出正文能占多少，再决定要不要压它
-        val reserved = gap * PANEL_EDGE_GAPS + titleRow.height + (footerRow?.let { gap + it.height } ?: 0)
-        val bodySpace = (heightLimit - reserved).coerceAtLeast(0)
         val body =
-            bodyRow.measure(loose).takeIf { it.height > 0 }?.let { natural ->
-                if (natural.height > bodySpace) bodyRow.measure(loose.copy(maxHeight = bodySpace)) else natural
-            }
+            measureBody(
+                bodyRow = measurables[BODY_ROW],
+                footerRow = footerRow,
+                metrics = PanelMetrics(loose = loose, gap = gap, heightLimit = heightLimit),
+                titleHeight = titleRow.height,
+            )
         val bodyHeight = body?.height ?: 0
         val footerHeight = footerRow?.height ?: 0
         // 上下一档固定，另外每有一个真实存在的相邻区就多一档
@@ -292,6 +293,43 @@ private object DialogPanelMeasure : MeasurePolicy {
                 y += gap
                 footerRow.place(0, y)
             }
+        }
+    }
+
+    /** [measureBody] 用到的三个排版量 —— 一次布局里算好就不再变（参数挤在一起只为过 detekt 阈值）。 */
+    private class PanelMetrics(
+        val loose: Constraints,
+        val gap: Int,
+        val heightLimit: Int,
+    )
+
+    /**
+     * 量正文那一区：先按自然高度量一次，放不下就压到剩余高度。
+     *
+     *  空正文（lambda 什么都没发射）不参与排版，也不能把「标题→正文」那一档 gap 留给它 ——
+     *  否则没有正文的窗会比同高度的那几张少一档空白，标题到按钮看着比别处近。
+     *
+     *  `reserved` 的四档必须与 [measure] 里 `gaps` 的算法一一对应：少算一档时正文能占的空间
+     *  比实际多一档，内容刚好卡在边界上的窗会被判成「装得下」、然后整块超出可视区。
+     */
+    private fun MeasureScope.measureBody(
+        bodyRow: Measurable,
+        footerRow: Placeable?,
+        metrics: PanelMetrics,
+        titleHeight: Int,
+    ): Placeable? {
+        val loose = metrics.loose
+        val gap = metrics.gap
+        val heightLimit = metrics.heightLimit
+        val bodyNatural = bodyRow.measure(loose).takeIf { it.height > 0 }
+        val reserved =
+            gap * PANEL_EDGE_GAPS +
+                titleHeight +
+                (if (bodyNatural != null) gap else 0) +
+                (footerRow?.let { gap + it.height } ?: 0)
+        val bodySpace = (heightLimit - reserved).coerceAtLeast(0)
+        return bodyNatural?.let { natural ->
+            if (natural.height > bodySpace) bodyRow.measure(loose.copy(maxHeight = bodySpace)) else natural
         }
     }
 
@@ -334,6 +372,10 @@ private const val TITLE_ROW = 0
 private const val BODY_ROW = 1
 private const val FOOTER_ROW = 2
 
+/** [CenteredTitleMeasure] 里两个子项的下标（尾随那一格可能不存在）。 */
+private const val CENTERED_TITLE = 0
+private const val CENTERED_TRAILING = 1
+
 /** [DialogPanelMeasure] 里那两档**固定**的间距：面板上沿→标题、最后一个区→面板下沿。 */
 private const val PANEL_EDGE_GAPS = 2
 
@@ -366,13 +408,30 @@ private fun CenteredTitle(
             title()
             trailing?.invoke()
         },
-    ) { measurables, constraints ->
+        measurePolicy = CenteredTitleMeasure,
+    )
+}
+
+/**
+ * [CenteredTitle] 的测量策略 —— 单独成一个对象，只为**同时**给出四口 intrinsic。
+ *
+ *  lambda 版 `Layout { }` 只有 `measure`，父级一旦请求固有尺寸就直接抛
+ *  `IllegalStateException`（与 [DialogPanelMeasure] 同一个理由：这张标题外面还套着库的
+ *  `DialogContentLayout`，它会不会问不由我们决定）。
+ *
+ *  子项下标固定：0 = 标题、1 = 尾随那一格（没有时只有 0）。
+ */
+private object CenteredTitleMeasure : MeasurePolicy {
+    override fun MeasureScope.measure(
+        measurables: List<Measurable>,
+        constraints: Constraints,
+    ): MeasureResult {
         val gap = DIALOG_TITLE_TRAILING_GAP.roundToPx()
-        val trailingPlaceable =
-            measurables.getOrNull(1)?.measure(Constraints(maxWidth = constraints.maxWidth))
-        val reserve = trailingPlaceable?.let { it.width + gap } ?: 0
+        val trailingMeasured =
+            measurables.getOrNull(CENTERED_TRAILING)?.measure(Constraints(maxWidth = constraints.maxWidth))
+        val reserve = trailingMeasured?.let { it.width + gap } ?: 0
         val titlePlaceable =
-            measurables[0].measure(
+            measurables[CENTERED_TITLE].measure(
                 constraints.copy(
                     minWidth = 0,
                     maxWidth = (constraints.maxWidth - reserve * 2).coerceAtLeast(0),
@@ -384,17 +443,74 @@ private fun CenteredTitle(
             } else {
                 titlePlaceable.width + reserve
             }
-        val height = maxOf(titlePlaceable.height, trailingPlaceable?.height ?: 0)
-        layout(width, height) {
+        val height = maxOf(titlePlaceable.height, trailingMeasured?.height ?: 0)
+        return layout(width, height) {
             //  标题落在整行正中（让位左右相等 ⇒ 中心不变）
             val titleX = (width - titlePlaceable.width) / 2
             titlePlaceable.place(titleX, (height - titlePlaceable.height) / 2)
             //  尾随那一格紧随标题，垂直与标题同一中线
-            trailingPlaceable?.place(
+            trailingMeasured?.place(
                 titleX + titlePlaceable.width + gap,
-                (height - trailingPlaceable.height) / 2,
+                (height - trailingMeasured.height) / 2,
             )
         }
+    }
+
+    override fun IntrinsicMeasureScope.minIntrinsicWidth(
+        measurables: List<IntrinsicMeasurable>,
+        height: Int,
+    ): Int = intrinsicWidth(measurables, height, DIALOG_TITLE_TRAILING_GAP.roundToPx()) { it.minIntrinsicWidth(height) }
+
+    override fun IntrinsicMeasureScope.maxIntrinsicWidth(
+        measurables: List<IntrinsicMeasurable>,
+        height: Int,
+    ): Int = intrinsicWidth(measurables, height, DIALOG_TITLE_TRAILING_GAP.roundToPx()) { it.maxIntrinsicWidth(height) }
+
+    override fun IntrinsicMeasureScope.minIntrinsicHeight(
+        measurables: List<IntrinsicMeasurable>,
+        width: Int,
+    ): Int =
+        intrinsicHeight(measurables, width, DIALOG_TITLE_TRAILING_GAP.roundToPx()) { measurable, available ->
+            measurable.minIntrinsicHeight(available)
+        }
+
+    override fun IntrinsicMeasureScope.maxIntrinsicHeight(
+        measurables: List<IntrinsicMeasurable>,
+        width: Int,
+    ): Int =
+        intrinsicHeight(measurables, width, DIALOG_TITLE_TRAILING_GAP.roundToPx()) { measurable, available ->
+            measurable.maxIntrinsicHeight(available)
+        }
+
+    /**
+     * 无界宽时的那一份：标题固有宽 + 尾随那一格让出来的两倍。
+     *
+     * @param gap 那一档间距的**像素值** —— 由调用方（`IntrinsicMeasureScope`，它才是 `Density`）
+     *   换算好传进来。这两个私有帮手没有 `Density` 接收者，自己算 `roundToPx()` 编不过。
+     */
+    private fun intrinsicWidth(
+        measurables: List<IntrinsicMeasurable>,
+        height: Int,
+        gap: Int,
+        titleWidth: (IntrinsicMeasurable) -> Int,
+    ): Int {
+        val trailing = measurables.getOrNull(CENTERED_TRAILING)?.maxIntrinsicWidth(height) ?: 0
+        val reserve = if (trailing > 0) trailing + gap else 0
+        return titleWidth(measurables[CENTERED_TITLE]) + reserve
+    }
+
+    /** 给一个宽、算高 —— 标题自己那格要让出两倍尾随宽（与 [measure] 同一套）。 */
+    private fun intrinsicHeight(
+        measurables: List<IntrinsicMeasurable>,
+        width: Int,
+        gap: Int,
+        titleHeight: (IntrinsicMeasurable, Int) -> Int,
+    ): Int {
+        val trailingWidth = measurables.getOrNull(CENTERED_TRAILING)?.maxIntrinsicWidth(width) ?: 0
+        val reserve = if (trailingWidth > 0) trailingWidth + gap else 0
+        val title = titleHeight(measurables[CENTERED_TITLE], (width - reserve * 2).coerceAtLeast(0))
+        val trailing = measurables.getOrNull(CENTERED_TRAILING)?.minIntrinsicHeight(width) ?: 0
+        return maxOf(title, trailing)
     }
 }
 

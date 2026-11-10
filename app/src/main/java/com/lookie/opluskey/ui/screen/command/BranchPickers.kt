@@ -91,9 +91,13 @@ internal fun SettingsPage.branchTimeOverlaps(
     //  `return` 会顶到 detekt 的 `LoopWithTooManyJumpStatements`
     val others =
         branchDraftNow().scenes.withIndex().flatMap { (at, rule) ->
+            //  **只与同一块里的其它时间条件比**：块与块之间是「哪个应用在前台」这类互斥的替代关系，
+            //  `[18-22 微信]` 与 `[18-22 相机]` 本来就该并存 —— 跨块比会把合法配置拦成「时间重叠」。
+            //  停用的行也不参与：它的区间不该挡住新配置。
+            if (at != exceptAt || !rule.enabled) return@flatMap emptyList()
             rule.conditions.withIndex().mapNotNull { (condAt, cond) ->
                 //  跳过正在改的那一条，只留时间区间
-                val skip = at == exceptAt && condAt == exceptCond
+                val skip = condAt == exceptCond
                 cond.takeIf { !skip && it.kind == ConditionKind.TIME }
             }
         }

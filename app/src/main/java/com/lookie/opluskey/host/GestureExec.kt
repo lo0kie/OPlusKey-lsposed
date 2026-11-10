@@ -183,10 +183,8 @@ internal object GestureExec {
 
         if (staleOrDuplicate(key.id, phaseId, sentAt, keepLate = trigger is GestureTrigger.Release)) return
 
-        //  过完「过期 / 重复」那道闸才算**这一下归模块**（`PressTrace`）：转发侧对同一次手势会发
-        //  两条（立刻 + 300ms 补发），补发那条若也记一笔，宿主的吞键窗口就被推迟到约 600ms，
-        //  期间别的键的原生派发会被一起吞掉。
-        PressTrace.noteClaim()
+        //  「这一下归模块」那一笔（`PressTrace`）不在这里记：它要等开关闸也过完 ——
+        //  停用的键不该把宿主的吞键窗口往后推（见 [dispatch]）。
         dispatch(key, trigger, repeat)
     }
 
@@ -350,9 +348,13 @@ internal object GestureExec {
         val colorOsApi = own.colorOsApi
         if (comboShouldVibrate(action, colorOsApi) && (!repeat || combo.longRepeatVibrate)) haptic(config, combo)
         if (!repeat) noticeIfNeeded(config, action, keyLabel, gestureLabel, combo)
-        r.run(action, subject, colorOsApi, own.vibrate)
-        if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
-        if (!repeat) onExecutedHook?.invoke(config)
+        //  执行结果只有成功才算数：失败回执已经由执行器那边弹过（`notifyFailure`），
+        //  这里不再补报；而 `lastActionAt` / 报活是「真的做成了」的凭证，失败时置位就是假绿灯。
+        val ok = r.run(action, subject, colorOsApi, own.vibrate)
+        if (ok) {
+            if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
+            if (!repeat) onExecutedHook?.invoke(config)
+        }
     }
 
     /**
@@ -377,6 +379,9 @@ internal object GestureExec {
         //  同一次按压里，同一个条件只判一次（与单键那条同一个理由）
         val judged = HashMap<BranchCondition, Boolean>()
         syncLanguage(config)
+        //  同一颗一次：一颗失败不影响另一颗继续执行（它们本来就是两条独立绑定），
+        //  但报活只在这一组全部成功时补发 —— 「有一个没做成」不能报成整组生效。
+        var allOk = true
         combo.keys.forEach { id ->
             val key = config.keyIdOf(id) ?: return@forEach
             if (!config.isLive(key)) {
@@ -399,10 +404,13 @@ internal object GestureExec {
             val own = config.effectiveFor(keyConfig)
             if (own.vibrate && action.isBound) haptic(config, keyConfig)
             noticeIfNeeded(config, action, keyLabel, gestureLabel, keyConfig)
-            r.run(action, subject, own.colorOsApi, own.vibrate)
-            if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
+            if (r.run(action, subject, own.colorOsApi, own.vibrate)) {
+                if (action.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
+            } else {
+                allOk = false
+            }
         }
-        onExecutedHook?.invoke(config)
+        if (allOk) onExecutedHook?.invoke(config)
     }
 
     /**
@@ -465,6 +473,11 @@ internal object GestureExec {
             XLog.w("${key.label}：$why，忽略这次 ${trigger.label}（模块不生效）")
             return
         }
+        //  两块闸都过完才算**这一下归模块**（`PressTrace`）：转发侧对同一次手势会发两条
+        //  （立刻 + 300ms 补发），补发那条若也记一笔，宿主的吞键窗口就被推迟到约 600ms，
+        //  期间别的键的原生派发会被一起吞掉。**必须放在开关闸之后** —— 停用 / 总闸关的键
+        //  会被上面那一支挡掉，那种情况下不该占住宿主的吞键窗口。
+        PressTrace.noteClaim()
         runAction(key, trigger, keyConfig, repeat, config)
     }
 
@@ -527,13 +540,17 @@ internal object GestureExec {
         if (shouldVibrate(repeat, keyConfig, fired, colorOsApi)) haptic(config, keyConfig)
         // 提示只在第一次派发时说：连续触发的重复是同一次按压（按住不放），弹几十条没有意义
         if (!repeat) announceOnce(config, keyConfig, id, trigger, fired)
-        r.run(fired, "${id.label} - ${trigger.label}", colorOsApi, own.vibrate)
-        if (fired.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
-        //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
-        //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。
-        //  所以每执行一次动作补发一条（连续触发的重复不发：那是同一次按压，一条就够）。
-        //  这一笔**不按动作类型过滤**：它同时是「模块活着」的凭证，绑了「无操作」也该回。
-        if (!repeat) onExecutedHook?.invoke(config)
+        val ok = r.run(fired, "${id.label} - ${trigger.label}", colorOsApi, own.vibrate)
+        //  只有**成功**才置两笔凭证：失败回执由执行器那边弹（`notifyFailure`），这里不再补；
+        //  `lastActionAt` 与报活都是「真的做成了」的凭证，失败时置位会让「关于模块」显示假绿灯。
+        if (ok) {
+            if (fired.isBound) lastActionAt = android.os.SystemClock.elapsedRealtime()
+            //  报活广播是**一次性**的（装在启动那一刻发一条），单靠它，「设置生效之后真的按过」这一笔
+            //  永远送不到设置页 —— 用户按完侧键去看「关于模块」，那行仍写着「未生效」，把成功报成了故障。
+            //  所以每成功执行一次动作补发一条（连续触发的重复不发：那是同一次按压，一条就够）。
+            //  这一笔**不按动作类型过滤**：它同时是「模块活着」的凭证，绑了「无操作」也该回。
+            if (!repeat) onExecutedHook?.invoke(config)
+        }
     }
 
     /**

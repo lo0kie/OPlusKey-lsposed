@@ -82,9 +82,8 @@ object ActionCatalog {
          */
         Record,
 
-        // ── 下面这一批原先**不在**枚举里：它们的字形由 `actionIcon(token)` 那张 33 支的表给。
-        //    `Spec.glyph` 改成必填之后，清单条目必须自己声明，于是把那张表里「固定 token → 字形」
-        //    的部分搬到这里。`actionIcon` 保留原样，只服务「不在清单里的 token」（步骤行、手写配置）。
+        // ── 下面是**固定字形**的那一批：清单条目直接声明 [Glyph]。`actionIcon(token)` 保留原样，
+        //    只服务「不在清单里的 token」（步骤行、手写配置）。
 
         /** 「无操作」（`none`）。 */
         NoOp,
@@ -213,7 +212,7 @@ object ActionCatalog {
      *  「必填」就又退化成「随便填一个能编译的值」，约束白设。
      *
      *  **[Glyph] 本身就是这个接口的一种实现**：枚举的每个取值就是「一支固定字形」，
-     *  所以清单里那 25 处 `glyph = Glyph.X` 不用套一层包装（`Fixed(Glyph.X)` 那种写法
+     *  所以清单里每一处 `glyph = Glyph.X` 都不用套一层包装（`Fixed(Glyph.X)` 那种写法
      *  除了啰嗦没有别的作用）。
      */
     sealed interface GlyphSource {
@@ -231,7 +230,7 @@ object ActionCatalog {
         /**
          * 由开关**种类**决定（`bt` / `wifi` / `nfc`…）—— 同一个开关的三档共用同一颗种类字形。
          *
-         *  @param id 与 `SystemSwitches.Item.id` 同一个口径
+         *  @param id 与 `SwitchKind.id` 同一个口径
          */
         data class BySwitchKind(
             val id: String,
@@ -272,7 +271,7 @@ object ActionCatalog {
          * ## 为什么改成必填
          *
          *  原先这里是 `Glyph? = null`，`null` 的意思是「界面按 token 自己去猜」。于是同一个问题
-         *  有两张表：清单里 25 处 [Glyph]，界面 `ui/model/ActionIcons.actionIcon` 里 33 支 token
+         *  有两张表：清单里的 [Glyph]，界面 `ui/model/ActionIcons.actionIcon` 里按 token 的兜底
          *  分支。两张表必须手工同步 —— 加一条动作漏了图标**不报错**，只是掉到 `Dots`，
          *  看着像「这条本来就没配图标」。
          *
@@ -314,8 +313,8 @@ object ActionCatalog {
     /**
      * 「打开应用」这一步的取值 —— 永不写进配置，只是「点它去挑应用」的关卡标记。
      *
-     *  它**不再是网格里的一格**：网格那一格是 [APP_CONTROL_TILE]（应用控制，打开 / 结束两个状态）。
-     *  这一位现在只服务「添加命令」抽屉里那一行（[APP_STEP]），跳的是同一张挑应用页。
+     *  它**不在任何清单里**：网格与「添加命令」抽屉那一格都是 [APP_CONTROL_TILE]（应用控制，
+     *  打开 / 结束两个状态）。这个常量只剩 `app:` 前缀本身在用（解析与「打开应用」那一族的判定）。
      */
     const val APP_TILE = Action.APP_PREFIX
 
@@ -540,8 +539,8 @@ object ActionCatalog {
      * 菜单首行是「一个具体取值」（开关键）。认领只能靠 `spec ===`，见 `ui/model/ActionIcons.kt`
      * 的 [specIcon] —— 别顺手并成同一个。
      *
-     * 声明在 [GROUPS] **之前**：`GROUPS` 的初始化会读它，而放在 companion 里会让先初始化
-     * companion、那里的 `STEP_GROUPS` 又要回头读还没初始化完的 `GROUPS`。
+     * 声明在 [GROUPS] **之前**：`GROUPS` 的初始化会读它；放到后面会在 object 初始化期读到
+     * 还没赋值的引用。
      */
     val MEDIA_TILE_SPEC: Spec =
         Spec(name = Strings.CATEGORY_MEDIA, token = MEDIA_TILE, glyph = Glyph.MediaTile)
@@ -633,8 +632,9 @@ object ActionCatalog {
      *  打开那一档落成 `app:<包名>`，结束那一档落成 `proc:stop:<包名>`。两档的页面是同一份，
      *  差别只在写出去的 token（见 `AppPickerState.stopApp`）。
      *
-     *  它不是一步动作：打开 / 结束哪个应用都要**当场挑一个**，格子本身代表不了任何一个包名。
-     *  所以 [STEP_GROUPS] / [BRANCH_GROUPS] 把它换成 [APP_STEP]（多步里的那一步只能是一个取值）。
+     *  它不是一点就落盘的动作：打开 / 结束哪个应用都要**当场挑一个**，格子本身代表不了任何一个包名。
+     *  两张候选表（[STEP_GROUPS] / [BRANCH_GROUPS]）都原样保留它；点开那一层菜单后，打开 / 结束
+     *  两行各自可以成为一步（分别落成 `app:` 与 `proc:stop:`）。
      */
     const val APP_CONTROL_TILE = "appctl:"
 
@@ -671,8 +671,8 @@ object ActionCatalog {
                     // 「通知栏」一档拆成两条）。两条各是一个真取值，格子代表不了其中任何一条
                     // ⇒ 与 [NAV_TILE] / [MINI_TILE] 同类，是个**标记**格，永不写进配置。
                     Spec(name = Strings.CATEGORY_PANEL, token = PANEL_TILE, glyph = Glyph.Panels),
-                    // 这一格与「响铃状态」同属**入口格**（点它弹 [MEDIA_MODES] 菜单，不直接写配置），
-                    // 与「打开应用」一起归 [isEntryTile]；但它俩是真取值，能作为多条命令的一步。
+                    // 这一格与「响铃状态」同属**入口格**（点它弹 [MEDIA_MODES] 菜单，不直接写配置）；
+                    // 菜单首行才是真取值，能作为多条命令的一步。
                     // 「播放 / 暂停」收进这里 —— 同一个取值不给两个入口。
                     MEDIA_TILE_SPEC,
                     Spec(name = Strings.CATEGORY_RINGER, token = RINGER_TILE, glyph = Glyph.RingerTile),
@@ -835,7 +835,7 @@ object ActionCatalog {
      * 「通知与控制中心」那一格的标记，理由同 [NAV_TILE]。
      *
      *  与 [APP_TILE] 一样是**前缀本身**（`panel:`）——菜单里那两条真取值是 `keyevent:83` 与
-     *  `panel:control_center`，判定走的是整串相等（见 [isEntryTile] / [isSelected]），不会撞。
+     *  `panel:control_center`，判定走的是整串相等（见 [hasDeeperLevel] / [isSelected]），不会撞。
      */
     const val PANEL_TILE = Action.PANEL_PREFIX
 
@@ -983,15 +983,6 @@ object ActionCatalog {
         )
 
     /**
-     * 「添加命令」浮层里那一行入口 —— 挑一个本机应用作为多条命令的一步。
-     *
-     * 取值也是 [APP_TILE]（`app:`，永不写进配置），图标自动是 `LayoutGrid`。
-     * 点它要进「打开应用」页，不能交给 `addStep(spec.token)`：空 `app:` 会被当一步写进去。
-     */
-    val APP_STEP: Spec =
-        Spec(name = Strings.APP_PICKER_TITLE, token = APP_TILE, glyph = Glyph.Apps)
-
-    /**
      * 分组标题的**译文** —— 网格那张表与「添加命令」浮层共用这一处。
      *
      *  组名是 [GROUPS] / [STEP_GROUPS] 里的中文原文（静态表），译文在界面层过。两处各写一遍
@@ -1041,11 +1032,8 @@ object ActionCatalog {
      * 「添加命令」浮层用的**分组** —— 与网格**同一张表**（[GROUPS]），只剔掉一样：
      * 「无操作」（它代表「吞掉按键」、不是一步动作）。
      *
-     *  **不再有第二处适配**。原来这里把「应用控制」就地换成 [APP_STEP]（`app:`「选择应用」）——
-     * 那条替换是「一步只能是一个取值」的老解释，代价是同一个入口在网格里叫「应用控制」、在抽屉里
-     * 叫「选择应用」，点开的层级也不一样（网格有 打开 / 结束 那一层，抽屉直接进挑应用页），
-     * 于是「结束应用」根本做不成一步。现在两边同源：那一行在抽屉里也叫「应用控制」，
-     * 点开同样是 打开 / 结束 两层，结束那一档落成 `proc:stop:包名`。
+     *  抽屉里那一行也叫「应用控制」，点开同样是 打开 / 结束 两档，
+     *  结束那一档落成 `proc:stop:包名` —— 不再有「把它换成一条 `app:` 选择应用」的适配。
      *
      * 「自定义变量」那一格**留在表里**：它在抽屉里同样是个关卡 —— 点它弹「变量操作」窗挑一步
      * （见 `ui/screen/variables/VarOpsDialog`），抽屉自己**不**把它落成 token。所以它既不能剔掉，
@@ -1355,7 +1343,7 @@ object ActionCatalog {
      * 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。
      *
      *  三档手势与命令链**拿到的是同一份**：清单里没有任何一行再按手势或按来处剔
-     *  （灵感语音拆成开始 / 结束两个平级动作之后，两行都是真取值）。
+     *  （灵感语音那一行是小布 AI 菜单里的入口，点开还有开始 / 结束两层）。
      */
     fun modeMenu(token: String): List<Spec>? = MODE_MENUS[token]
 
@@ -1521,8 +1509,8 @@ object ActionCatalog {
      *
      * ## 为什么要有这个枚举
      *
-     *  原先界面各处自己判：`BindingTile` 判 [popsSelector] 画选择器、`ModeMenuPopups` 判
-     *  `token == APP_CONTROL_OPEN/STOP` 画箭头、`actionRowView` 又判一次 `popsSelector` 与
+     *  原先界面各处自己判：`BindingTile` 判「有没有菜单」画选择器、`ModeMenuPopups` 判
+     *  `token == APP_CONTROL_OPEN/STOP` 画箭头、`actionRowView` 又判一次「有没有菜单」与
      *  `APP_TILE`。同一格因此能长出两种指示 —— 而且真的长出来了：「应用控制」那一格在网格里
      *  画选择器（它弹原地菜单，对的），在抽屉里画右箭头（说它跳页，错的）。
      *  「前台转小窗」那次改动也是这个形状：菜单形态一变，行尾记号得跟着改三处。
@@ -1545,7 +1533,7 @@ object ActionCatalog {
         /** 原地弹**开关三态**弹窗（系统开关的「切换 / 打开 / 关闭」那几行）。 */
         SWITCH,
 
-        /** 换**另一张页面**：挑应用（「应用控制」的打开 / 结束两行，以及那一格自己）。 */
+        /** 换**另一张页面**：挑应用（「应用控制」菜单里的打开 / 结束两行）。 */
         PAGE_APP,
 
         /** 换**另一张页面**：变量操作（「自定义变量」那一格）。 */
@@ -1556,8 +1544,8 @@ object ActionCatalog {
      * 这一格 / 这一行的点击行为 —— **唯一判据**，见 [ClickKind]。
      *
      *  顺序即优先级，四条「更具体的先说」：
-     *   · 换页的两族最具体（`appctl:` / `vars:` 各有自己的页面，**去向还不一样** ——
-     *     合成一个 `PAGE` 的话，界面还得回去判 token 才知道跳哪一页）；
+     *   · 换页的两族最具体（`appctl:open` / `appctl:stop` 与 `vars:` 各有自己的页面，
+     *     **去向还不一样** —— 合成一个 `PAGE` 的话，界面还得回去判 token 才知道跳哪一页）；
      *   · 再是「这一格就是那个动作」的状态弹窗 —— 它**也有** [modeMenu]（三行档位），
      *     所以要排在 [modeMenu] 之前，否则会被当成「还有一层菜单」；
      *   · 百分比 / 开关三态都是**菜单行**的后续，判据在各自那张表上；
@@ -1579,15 +1567,6 @@ object ActionCatalog {
             stateMenu(spec.token) != null -> ClickKind.SWITCH
             else -> ClickKind.DIRECT
         }
-
-    /**
-     * 这一格点了会进下一层（跳「打开应用」页 / 跳「控制中心磁贴」页 / 弹一格菜单）。
-     *
-     *  由 [clickKind] 派生，不再是独立判据 —— 以前这里问「有没有菜单」、`popsSelector` 又问一遍
-     *  「有没有菜单且不是状态弹窗」，两句话必须同时成立，改一处漏一处就出现「行尾是箭头、
-     *  点下去弹菜单」。
-     */
-    fun isEntryTile(spec: Spec): Boolean = clickKind(spec) != ClickKind.DIRECT
 
     /**
      * 这几格**点开直接弹一行一档的单选弹窗**（录屏 / 录音：开始 / 结束 / 切换）。
@@ -1630,7 +1609,7 @@ object ActionCatalog {
      *  选择器」）。响铃状态的首行（「循环」）同理。
      *
      *  判据：那张表里**没有一行与它同 token** ⇒ 它是标记行（永不写进配置），表里那几行才是它的
-     *  子档。取值格那两行的 `modeMenu` 由 [isEntryTile] 用（那里问的是「这一格点开有没有菜单」，
+     *  子档。取值格那两行的下一层由 [hasDeeperLevel] 判（那里问的是「这一行点开还有没有自己那一层」，
      *  正该是真的）。
      */
     fun hasDeeperLevel(spec: Spec): Boolean = modeMenu(spec.token)?.let { leaves -> leaves.none { it.token == spec.token } } ?: false

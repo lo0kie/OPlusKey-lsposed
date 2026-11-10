@@ -141,8 +141,15 @@ class ModuleFiles internal constructor(
             return false
         }
 
-        // **进程内串行**：`AtomicFile` 固定用同一个 `.new` 临时文件，两条线程同时写会互相掺字节。
-        //  跨进程那两个写方本来就只能「后写覆盖先写」，这里只护同进程这一层。
+        // **进程内串行**：`AtomicFile` 固定用同一个 `<文件>.new` 临时文件，两条线程同时写会互相掺字节。
+        //
+        // **跨进程这一层没有任何互斥，而「后写覆盖先写」这个假设不成立**：同一个槽有两个写方
+        //  （`:ui` 进程与宿主主进程，同 uid），两边都按 `<槽>.conf.new` 这个名字写临时文件 ——
+        //  同时写时它们往**同一个字节流**里各写一份，`finishWrite` 再把混出来的那份改名成目标。
+        //  结果不是「后写的那份赢」，而是一份半 A 半 B / 长度对不上的内容：读侧按
+        //  [Load.Unreadable] 处理（不覆盖、不动），最坏时那一份配置要等下一次完整写盘才恢复。
+        //  变量表那边靠 `VariableStore` 的 `.lock` 文件串行，配置 / 命令库**没有**那把锁。
+        //  这里仍然只护进程内：换临时文件名或跨进程锁都会改到写盘机制本身，不在这一层做。
         synchronized(writeLock) {
             val atomic = android.util.AtomicFile(target)
             // 只用于失败分支：`finishWrite` 之后置 null，免得对已交接的流再 `failWrite` 一次
@@ -424,3 +431,56 @@ internal fun readModuleFileBackup(f: java.io.File): String? {
 
 /** [ModuleFiles.write] 的进程内互斥（理由见那里）。 */
 private val writeLock = Any()
+
+/** 跨进程锁文件的后缀（见 [withCrossProcessLock]）—— 不以 `.conf` 结尾，不会被当成一个槽。 */
+private const val LOCK_SUFFIX = ".lock"
+
+/**
+ * 「读出来 → 改 → 写回去」那一段的**跨进程**互斥 —— 锁文件是目标文件旁边那个 `.lock`。
+ *
+ *  同一个槽有两个写方（`:ui` 进程与宿主主进程，同 uid）：进程内的锁管不到对方，两边各读一份
+ *  旧表再写回，后写的那一份就把先写的那一次改动盖掉了。锁文件由内核持有，进程死了自动释放。
+ *
+ *  拿不到锁时**不阻塞功能**：记一行日志、照常做这一次（宁可极小概率丢一次改动，
+ *  也不要在按键路径上卡住）。所以是 [java.nio.channels.FileLock.tryLock] 而不是 `lock()`：
+ *  另一个进程正拿着锁、而它刚好被冻结时，`lock()` 会把调用线程卡死。
+ *
+ * @param lockFile 目标文件（锁就是它 + [LOCK_SUFFIX]）
+ * @param label 日志主语（`变量` / `界面状态`）—— 故障时日志要能看出是哪一份在串行
+ *
+ *  公开（不是 `internal`）：界面层（`:app`）的 `UiState` 也要用同一把尺子，而 `internal`
+ *  在 Gradle 模块之间不可见 —— 另写一份就又是「同一件事两套实现」。
+ */
+fun <T> withCrossProcessLock(
+    lockFile: java.io.File,
+    label: String,
+    block: () -> T,
+): T {
+    val channel =
+        try {
+            java.io.RandomAccessFile(java.io.File(lockFile.path + LOCK_SUFFIX), "rw").channel
+        } catch (e: Throwable) {
+            XLog.w("$label：跨进程锁打不开（${e.javaClass.simpleName}），这一次不串行")
+            return block()
+        }
+    return channel.use { ch ->
+        //  `tryLock` 抛异常（通常是同进程重入的 `OverlappingFileLockException`）与返回 null
+        //  是同一档：都当「拿不到锁、这次不串行」，不把异常往上带。
+        val lock =
+            try {
+                ch.tryLock()
+            } catch (e: Throwable) {
+                XLog.w("$label：拿跨进程锁失败（${e.javaClass.simpleName}），这一次不串行")
+                null
+            }
+        if (lock == null) {
+            XLog.w("$label：拿不到跨进程锁（另一进程正在写），这一次不串行")
+            return@use block()
+        }
+        try {
+            block()
+        } finally {
+            runCatching { lock.release() }
+        }
+    }
+}

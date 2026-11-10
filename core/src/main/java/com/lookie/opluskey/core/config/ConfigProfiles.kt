@@ -265,9 +265,9 @@ object ConfigProfiles {
      *  调用方随后要把返回的配置写进界面状态（[ConfigStore.load] 会按指纹自己发现文件换了，
      *  但当前进程手上这份 `Config` 要显式刷）。
      *
-     * @return 切换后当前生效的配置；槽不存在 / 读不懂 / 写盘失败都返回 `null`（什么都不改）
+     * @return 切换后当前生效的配置；槽不存在 / 读不懂 / 主配置或附加层（命令库、变量表）写盘失败
+     *   都返回 `null`，且盘上退回切换前的那一份 —— 不会出现「配置换了、命令库没换」的半切状态
      */
-    @Suppress("CyclomaticComplexMethod")
     fun switchTo(slot: String): Config? {
         if (slot == CURRENT_SLOT) return readOf(CURRENT_SLOT)
         val target =
@@ -275,6 +275,19 @@ object ConfigProfiles {
                 XLog.w("配置切换：$slot 读不出来，不动")
                 return null
             }
+        return swapWith(slot, target)
+    }
+
+    /**
+     * [switchTo] 的主体：把当前那份与已经读出来的 [target] 对调（含两侧写盘与失败还原）。
+     *
+     * @return 切换后当前生效的配置；写盘失败 / 附加层没跟过去时 `null`（盘上退回切换前）
+     */
+    @Suppress("CyclomaticComplexMethod")
+    private fun swapWith(
+        slot: String,
+        target: Config,
+    ): Config? {
         //  **顺序是有意的**：先把旧当前存进目标槽，再拿目标内容覆盖当前 —— 反过来写的话，
         //  中断时当前配置是「目标内容」而旧当前已经没了，那是最坏的一种。
         //  但只靠顺序不够：第二步失败时目标槽里已经是旧当前、原来那份只在这一次调用的 `target`
@@ -328,14 +341,50 @@ object ConfigProfiles {
             return null
         }
         //  命令库跟着走（见 [ProfileCommands] 的类注释）：配置里绑定的是 `cmd:<名字>` 这种引用，
-        //  只换配置不换库，切过去看到的是一堆指向旧命令的绑定。这一步失败不回退配置 ——
-        //  两份配置都完整、只是命令库对不上，回退反而会把刚写好的配置弄丢（日志由那边打）。
-        ProfileCommands.swap(slot)
-        //  变量表同样跟着走（见 [ProfileVars]）：绑定里写着「计数 += 1」，值却留在上一份，
-        //  切过去那套绑定就会接着改别人的计数。失败理由同上，不回退配置。
-        ProfileVars.swap(slot)
-        XLog.w("配置切换：已切到 ${target.profileName.ifBlank { "默认" }}（槽 $slot）")
-        return target
+        //  只换配置不换库，切过去看到的是一堆指向旧命令的绑定。
+        //  变量表同理（见 [ProfileVars]）：绑定里写着「计数 += 1」，值却留在上一份，
+        //  切过去那套绑定就会接着改别人的计数。
+        //
+        //  **三层是一份东西：要么都过去、要么都留在这儿**。主配置上面已经写完了，附加层失败时
+        //  不退回去，盘上就是「新配置 + 旧命令库 / 旧变量表」—— 而那种状态在界面上看不出来
+        //  （按钮都在，按下去不执行 / 改的不是自己那套计数），用户只会觉得「切了但没切干净」。
+        //  所以这一支失败要**整趟退回**，并如实返回 `null`（调用方据此报「切换失败」）。
+        //  [ProfileSlotFile.swap] 返回 `false` 时自己已经退回原样：命令库没跟过去时库本身没动，
+        //  变量表失败时命令库已经换过去了 —— 得再换回来。
+        val commandsSwapped = ProfileCommands.swap(slot)
+        if (commandsSwapped && ProfileVars.swap(slot)) {
+            XLog.w("配置切换：已切到 ${target.profileName.ifBlank { "默认" }}（槽 $slot）")
+            return target
+        }
+        if (commandsSwapped && !ProfileCommands.swap(slot)) {
+            XLog.w("配置切换：命令库换回来也失败（槽 $slot）—— 盘上的命令库与配置可能对不上")
+        }
+        val back =
+            if (revertSwitch(slot, target, current)) {
+                "主配置已退回切换前的那一份"
+            } else {
+                "退回也失败，盘上现在可能是半切的状态"
+            }
+        XLog.w("配置切换：$slot 没换成（命令库 / 变量表没跟过去）—— $back")
+        return null
+    }
+
+    /**
+     * 把主配置退回切换前的那一份（此刻 [slot] 里是 [current]，当前槽里是 [target]）。
+     *
+     *  先把目标那份写回它自己的槽、再把旧当前写回当前槽 —— 与切过去的顺序正好相反，中断时
+     *  留下的是「两份相似内容」而不是「旧当前被永久覆盖」。切换前当前槽**原来就空着**
+     *  （[current] 为 `null`）时，退回原样意味着删掉刚写进去的那一份。
+     *
+     * @return 退回去了吗；写盘失败时盘上可能停在中途，由调用方如实报失败
+     */
+    private fun revertSwitch(
+        slot: String,
+        target: Config,
+        current: Config?,
+    ): Boolean {
+        if (current == null) return ConfigStore.files().delete(CURRENT_SLOT)
+        return writeProfileConfig(slot, target) && writeProfileConfig(CURRENT_SLOT, current)
     }
 
     /**
@@ -447,6 +496,9 @@ object ConfigProfiles {
                 profileName = trimmed,
                 profileOrder = order,
                 global = current?.global ?: Config.DEFAULT.global,
+                //  **收集来的自定义键跟着走**：它们只存在配置里（不进 KeyId），不带过去的话
+                //  切到新配置后那几颗键整批消失、注入侧不再认领，用户得重新收集一遍。
+                customKeys = current?.customKeys ?: Config.DEFAULT.customKeys,
                 disclaimerAccepted = current?.disclaimerAccepted ?: false,
                 commandDisclaimerAccepted = current?.commandDisclaimerAccepted ?: false,
             )
@@ -583,6 +635,10 @@ object ConfigProfiles {
             //  只还原命令库的话，用户看到「导入失败」，而主配置其实已经变成导入的内容 ——
             //  那份旧配置从此没有任何副本。
             if (previous is ProfileCommands.Load.Ok) ProfileCommands.save(slot, previous.commands)
+            //  **原来就没有命令库时要把刚建出来的那份删掉**：`ProfileCommands.save` 已经在上面
+            //  落过盘，只把「有内容」那一档还原的话，盘上会多出一份原本不存在的 `commands-N` ——
+            //  报的是失败，盘上却回不到原样。
+            if (previous is ProfileCommands.Load.Absent) ProfileCommands.delete(slot)
             writeProfileConfig(slot, target)
             XLog.w("配置导入覆盖：$slot 没写成，已还原命令库与主配置")
             return null
@@ -641,6 +697,9 @@ object ConfigProfiles {
                 .filter { it.startsWith(SLOT_PREFIX) }
                 .mapNotNull { it.removePrefix(SLOT_PREFIX).toIntOrNull() }
                 .maxOrNull() ?: (FIRST_INDEX - 1)
+        //  **位次只从读得出来的配置里取**：坏份的 `profileOrder` 不可知，给它一个 `Int.MAX_VALUE`
+        //  之类的占位就会把后面每一次新建都顶到最大值上去。槽号那一半仍按槽位数算（见 [isFull]），
+        //  所以「有一份坏了」不会让新配置复用它的槽号。
         val maxOrder = configs.maxOfOrNull { it.second.profileOrder } ?: 0
         return "$SLOT_PREFIX${maxOf(maxIndex + 1, FIRST_INDEX)}" to (maxOrder + 1)
     }
@@ -655,12 +714,18 @@ object ConfigProfiles {
 private fun writeProfileConfig(
     slot: String,
     config: Config,
-): Boolean =
-    ConfigStore.files().write(
+): Boolean {
+    //  **该槽现在读得懂才留 `.prev`** —— 与 [ConfigStore.write] 同一口径：读不懂（截断 / 手改坏）
+    //  时那份快照往往正是唯一还能救的副本，把它换成一份坏内容等于当场把退路毁掉。
+    //  「能不能解析」用 [ConfigProfiles.readOf] 判：文件层的 `read` 在外皮坏了时照样给 `Ok`，
+    //  只有走完整解码链才判得出「读不懂」。
+    if (ConfigProfiles.readOf(slot) != null) snapshotModuleFile(ConfigStore.files().file(slot))
+    return ConfigStore.files().write(
         slot,
         FileObfuscation.wrap(FileObfuscation.MAGIC_RUNTIME, ConfigCodec.serialize(config)),
         openReadable = true,
     )
+}
 
 /**
  * 给每一份配置分配一个**唯一** id（[ConfigProfiles.Item.id]）。

@@ -214,30 +214,16 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
             .filterNot { it.name == cmd.name }
             .map { it.dropReference(cmd.token) }
 
-    // 删的若是**另一条**命令（草稿正在编 B、删的是 A），草稿里对 A 的引用也要一起摘 ——
-    //  与命令库同一条纪律（见上面 [Command.dropReference]）。留着的话用户随手一保存就把它写回库：
-    //  库里重新出现指向不存在命令的条目，而**重名与成环两道闸都不认它**（重名只看名字；
-    //  成环遇到不存在的目标直接判「没有环」）。
-    //  口径与库里那两处一致：单条正文里那条引用改成「无操作」，多条命令里那一步整条摘掉。
-    fun cleanDraftRefs() {
-        if (Action.parse(commandDraft.draft.single).token == cmd.token) commandDraft.draft.single = Action.None.token
-        val left = commandDraft.draft.steps.filterNot { it == cmd.token }
-        if (left.size != commandDraft.draft.steps.size) {
-            commandDraft.draft.steps.clear()
-            commandDraft.draft.steps.addAll(left)
-        }
-    }
-
     when (saveCommands(next, "删除命令：${cmd.name}")) {
         CommandsSave.Ok -> {
-            if (commandDraft.draft.editingName == cmd.name) commandDraft.draft.reset() else cleanDraftRefs()
+            clearDeletedCommandFromDrafts(cmd)
             hint(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除「%s」").format(cmd.name), slot = HINT_SLOT_COMMAND)
         }
 
         // 库已经删掉了（只是没通知到注入侧，提示由 saveCommands 给）——草稿该清还是清，
         //  但不再报「已删除」：那句与失败提示叠在一起，读起来像发生了两件事。
         CommandsSave.BroadcastFailed -> {
-            if (commandDraft.draft.editingName == cmd.name) commandDraft.draft.reset() else cleanDraftRefs()
+            clearDeletedCommandFromDrafts(cmd)
         }
 
         CommandsSave.Failed -> {
@@ -248,6 +234,34 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
                 val rolled = write(cfg, "删除命令失败，回滚绑定：${cmd.name}") != CommandsSave.Failed
                 XLog.w("删除命令：命令库写入失败，已把绑定回滚（回滚成功=$rolled）：${cmd.name}")
             }
+        }
+    }
+}
+
+/**
+ * 删掉 [cmd] 之后两份表单（单条 / 多条）怎么收尾 —— **判据只有一条：这一份是不是在编它**。
+ *
+ *  · 在编 ⇒ 整份清掉（连 `editingName` 一起）：留着的话那一页的「修改」还挂着，点一下就把
+ *    刚删掉的命令原样写回库；
+ *  · 不在编 ⇒ 只摘掉对它的引用（单条正文里那一条改成「无操作」、多条命令里那一步整条去掉），
+ *    口径与库里那两处一致。留着的话用户随手一保存就把它写回库：库里重新出现指向不存在命令的
+ *    条目，而**重名与成环两道闸都不认它**（重名只看名字；成环遇到不存在的目标直接判「没有环」）。
+ *
+ *  **两页都要走**：删命令发生在列表那一页，只清当前 tab 的话，另一页仍留着同名的编辑态 ——
+ *  切回去点「修改」还是会把刚删掉的命令写回库。判据写在这里一份就够，不按 tab 各写一遍。
+ */
+private fun SettingsPage.clearDeletedCommandFromDrafts(cmd: Command) {
+    val draft = commandDraft.draft
+    for (form in listOf(draft.singleForm, draft.serialForm)) {
+        if (form.editingName == cmd.name) {
+            form.reset()
+            continue
+        }
+        if (Action.parse(form.single).token == cmd.token) form.single = Action.None.token
+        val left = form.steps.filterNot { it == cmd.token }
+        if (left.size != form.steps.size) {
+            form.steps.clear()
+            form.steps.addAll(left)
         }
     }
 }

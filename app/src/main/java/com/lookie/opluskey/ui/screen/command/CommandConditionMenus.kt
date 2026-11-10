@@ -124,7 +124,7 @@ internal fun SettingsPage.BranchConditionMenu(
                         MenuEntry.Section(
                             title =
                                 if (condIndex < 0) {
-                                    I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景")
+                                    I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加条件")
                                 } else {
                                     I18n.format(Strings.COMMAND_BRANCH_CONDITION_INDEX, condIndex + 1)
                                 },

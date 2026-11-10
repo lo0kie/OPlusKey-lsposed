@@ -76,15 +76,14 @@ internal object SystemActionButtonConfig {
                         try {
                             cursor.getString(i)
                         } catch (e: Throwable) {
-                            // 非字符串列（BLOB / NULL）取不到就当空，不影响其它列
+                            // 非字符串列（BLOB / NULL）取不到就当空，不影响其它列。
+                            // 「场景名」那一列也走这里读（[Row.sceneName] 直接取已读好的值）——
+                            // 单独再 getString 一次会在该列是坏值时把整行读崩。
                             null
                         }
                 }
-                out +=
-                    Row(
-                        sceneName = cursor.getString(sceneIdx).orEmpty(),
-                        values = row,
-                    )
+                //  场景名从刚读好的那一份里取，**不再单独调一次** getString(sceneIdx)。
+                out += Row(sceneName = row[names[sceneIdx]].orEmpty(), values = row)
             }
             XLog.w("读系统侧键配置成功：${out.size} 行")
             out

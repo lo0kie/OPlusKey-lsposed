@@ -2,6 +2,7 @@ package com.lookie.opluskey.inject
 
 import android.os.SystemClock
 import android.view.KeyEvent
+import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.KeyId
@@ -97,7 +98,7 @@ private fun injectOnce(
     event: KeyEvent,
     keyCode: Int,
 ) {
-    val r = Reflect.call(manager, "injectInputEvent", event, INJECT_MODE_WAIT_FOR_FINISH)
+    val r = Reflect.call(manager, Framework.Calls.INJECT_INPUT_EVENT, event, INJECT_MODE_WAIT_FOR_FINISH)
     when {
         r == null -> {
             XLog.w("注入侧注入：injectInputEvent 没返回（方法没匹配上）：keyevent:$keyCode")
@@ -147,11 +148,11 @@ private fun inputManager(loader: ClassLoader?): Any? {
     return inst
 }
 
-/** 依次试的那两个静态入口（类名 → 静态方法名），按实测命中率排序。 */
+/** 依次试的那两个静态入口（类名 → 静态方法名），按实测命中率排序；名字来自 `Framework.Calls`（一、7）。 */
 private val ENTRIES: List<Pair<String, String>> =
     listOf(
-        "android.hardware.input.InputManagerGlobal" to "getInstance",
-        "android.hardware.input.InputManager" to "getInstance",
+        Framework.Calls.INPUT_MANAGER_GLOBAL to Framework.Calls.GET_INSTANCE,
+        Framework.Calls.INPUT_MANAGER to Framework.Calls.GET_INSTANCE,
     )
 
 private fun pickInputManager(loader: ClassLoader?): Any? =

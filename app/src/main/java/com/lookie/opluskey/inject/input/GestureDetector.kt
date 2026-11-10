@@ -262,6 +262,9 @@ internal class GestureDetector(
         if (p.sawFirstRelease && now <= p.doubleWindowAt) {
             val maxClicks = maxOf(2, config.clicksForJudge)
             p.clicks += 1
+            //  每一击都要刷新按下时刻：`onKeyUp` 那条「按住 Xms」判据（与「立即触发单击」的
+            //  同一次按压认领）都读它，只记第一击会把累计时长报成单次按住时长。
+            p.pressAt = now
             if (p.clicks < maxClicks) {
                 //  还没到最高档：继续等下一击。**不 reset、也不再排长按枪**（连击中不会变长按），
                 //  抬手上会照常再排一次窗口（见 onKeyUp）。
@@ -468,7 +471,13 @@ internal class GestureDetector(
         // 这一枪属于哪一次按下：`pressAt` 就是那一次按下的时刻（`onKeyDown` 写、`reset` 清）。
         // 到点时它变了（中途又按过一次）或清零了（抬手 / 重置过）⇒ 这一枪作废；
         // 否则第 1 次排下的枪会在第 N 次按住期间醒来，凭空判出一次长按。
-        val downAt = pending(id).pressAt
+        val p0 = pending(id)
+        val downAt = p0.pressAt
+        //  按**截止时刻**排枪，不是按「现在 + 阈值」：参与组合的那一按由 `HeldPresses` 带着
+        //  真实按下时刻补发进来（`onKeyDown` 的 `now` 早于现在），这一刻距截止可能已经不足一个
+        //  阈值 —— 按现在排会把长按整体推后一个窗口。截止已经过去（窗口比阈值长）就取 0：
+        //  窗口一到就判，那是这一按最早能被判出来的一刻。
+        val delay = (p0.longPressAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
         val shot =
             Runnable {
                 try {
@@ -531,7 +540,7 @@ internal class GestureDetector(
                 }
             }
         pending(id).longPressRunnable = shot
-        handler.postDelayed(shot, config.longPressMs.toLong())
+        handler.postDelayed(shot, delay)
     }
 
     /**
@@ -667,35 +676,51 @@ internal class GestureDetector(
                 try {
                     val p = pending(id)
                     p.doubleWindowRunnable = null
-                    if (p.pressAt != pressAt) {
+                    //  状态位在锁里读改（与长按枪 / 抬手 / 兜底那几枪**同一把 `p` 锁**）；
+                    //  日志与派发留在锁外：dispatch 会发广播，不该占着这把状态锁。
+                    //  `fire` 的取值：-1 = 这一按已直判过单击、不再补；0 = 窗口已被别处收走、
+                    //  什么都不做；其余 = 要补的击数。
+                    var stale = false
+                    var fire = 0
+                    synchronized(p) {
+                        if (p.pressAt != pressAt) {
+                            stale = true
+                        } else if (p.sawFirstRelease && p.doubleWindowAt != 0L) {
+                            // 这一次按压到此为止 —— 把长按那一枪**作废**（清 `longPressAt` 与 `pressAt`）。
+                            //  不作废的后果：按住时长 < `longPressMs − doubleClickMs`
+                            // （当前默认 400 − 300 = 100ms）时，长按枪排在**本回调之后**到点，而本回调
+                            //  只清 `sawFirstRelease` 的话，长按枪的三条栅栏（`longPressAt != 0` /
+                            //  `!sawFirstRelease` / `!directJustFired`）**全部通过** ⇒ 一次短按既判单击、
+                            //  又判长按。默认配置走 `onKeyUp` 的「立即判单击」分支（那条会 `reset`），
+                            //  所以从未暴露；只有「双击绑了动作」或关了 `instantSingle` 时才走这条窗口路径。
+                            //  下面两条分支都要作废，所以在进分支时先清。
+                            p.longPressAt = 0L
+                            p.pressAt = 0L
+                            // 这次按压已经当场判过单击（同一次按压被转发两遍）
+                            // ⇒ 不再补一次单击，否则一次按压会执行两个单击动作。
+                            // 这里的窗口同样用定格值 —— 与排窗一致。
+                            fire =
+                                if (SystemClock.elapsedRealtime() - p.lastDirectSingleAt < p.doubleWindowMs) {
+                                    -1
+                                } else {
+                                    p.clicks.coerceAtLeast(1)
+                                }
+                            p.sawFirstRelease = false
+                            p.doubleWindowAt = 0L
+                        }
+                    }
+                    if (stale) {
                         XLog.w("${id.label}：双击窗口属于上一次按压（已作废），不补单击")
                         return@Runnable
                     }
-                    // 窗口到了、期间没有第二次按下 → 单击
-                    if (p.sawFirstRelease && p.doubleWindowAt != 0L) {
-                        // 这一次按压到此为止 —— 把长按那一枪**作废**（清 `longPressAt` 与 `pressAt`）。
-                        //  不作废的后果：按住时长 < `longPressMs − doubleClickMs`
-                        // （当前默认 400 − 300 = 100ms）时，长按枪排在**本回调之后**到点，而本回调
-                        //  只清 `sawFirstRelease` 的话，长按枪的三条栅栏（`longPressAt != 0` /
-                        //  `!sawFirstRelease` / `!directJustFired`）**全部通过** ⇒ 一次短按既判单击、
-                        //  又判长按。默认配置走 `onKeyUp` 的「立即判单击」分支（那条会 `reset`），
-                        //  所以从未暴露；只有「双击绑了动作」或关了 `instantSingle` 时才走这条窗口路径。
-                        //  下面两条分支都要作废，所以在进分支时先清。
-                        p.longPressAt = 0L
-                        p.pressAt = 0L
-                        // 这次按压已经当场判过单击（同一次按压被转发两遍）
-                        // ⇒ 不再补一次单击，否则一次按压会执行两个单击动作。
-                        // 这里的窗口同样用定格值 —— 与排窗一致。
-                        if (SystemClock.elapsedRealtime() - p.lastDirectSingleAt < p.doubleWindowMs) {
+                    when {
+                        fire < 0 -> {
                             XLog.w("${id.label}：这次按压已直判过单击，跳过补判")
-                            p.sawFirstRelease = false
-                            p.doubleWindowAt = 0L
-                        } else {
-                            val firedClicks = p.clicks.coerceAtLeast(1)
-                            XLog.w(if (firedClicks == 1) "${id.label}：单击" else "${id.label}：$firedClicks 击")
-                            p.sawFirstRelease = false
-                            p.doubleWindowAt = 0L
-                            dispatch(id, GestureTrigger.Click(firedClicks), config, repeat = false)
+                        }
+
+                        fire > 0 -> {
+                            XLog.w(if (fire == 1) "${id.label}：单击" else "${id.label}：$fire 击")
+                            dispatch(id, GestureTrigger.Click(fire), config, repeat = false)
                         }
                     }
                 } catch (e: Throwable) {

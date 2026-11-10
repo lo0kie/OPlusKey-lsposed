@@ -81,11 +81,12 @@ internal object HostWarmup {
         //  `ActivityManager.getService()` 拿的是 IActivityManager（隐藏 API）：system_server 里
         //  调隐藏 API 不受限，且这条自 API 26 起就在，签名随版本多一个 `callingFeatureId` ——
         //  所以不锁参数个数，按「第 2 个参数是 Intent」挑重载，其余按类型填缺省。
+        //  类名与方法名来自 `Framework.Calls`（一、7），这里只负责调。
         val am =
             runCatching {
                 Class
-                    .forName("android.app.ActivityManager")
-                    .getDeclaredMethod("getService")
+                    .forName(Framework.Calls.ACTIVITY_MANAGER)
+                    .getDeclaredMethod(Framework.Calls.GET_SERVICE)
                     .invoke(null)
             }.getOrNull() ?: return "拿不到 IActivityManager（AMS 还没就绪）"
 

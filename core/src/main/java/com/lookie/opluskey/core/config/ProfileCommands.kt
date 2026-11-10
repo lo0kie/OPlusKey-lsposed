@@ -84,7 +84,8 @@ object ProfileCommands {
             is ModuleFiles.Load.Ok -> {
                 FileObfuscation
                     .unwrap(FileObfuscation.MAGIC_RUNTIME, r.text)
-                    ?.let { CommandLibrary.parseOrNull(it) }
+                    //  槽位带进去：坏条目那行聚合日志要说清是 `commands` 还是 `commands-2`
+                    ?.let { CommandLibrary.parseOrNull(it, slotOf(configSlot)) }
                     ?.let { Load.Ok(it) }
                     ?: Load.Unreadable
             }

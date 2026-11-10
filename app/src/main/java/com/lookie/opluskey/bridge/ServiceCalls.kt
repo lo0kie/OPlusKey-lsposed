@@ -43,13 +43,45 @@ internal object ServiceCalls {
             XLog.w("取不到服务 $name")
             return null
         }
-        if (!binder.javaClass.name.contains("BinderProxy")) return binder
+        if (!binder.javaClass.name.contains("BinderProxy")) return localService(loader, name, iface, binder)
+        return proxyService(loader, name, iface, binder)
+    }
+
+    /**
+     * 本进程里拿到的就是实现类本身（不是 `BinderProxy`）。
+     *
+     *  主判据：直接返回即可 —— 但个别 ROM 会再包一层（反射看不到业务方法），所以返回之前先试一次
+     *  `asInterface`：命中的通常还是它自己，包了壳的会换成接口对象；两种都没坏处，失败就原样返回。
+     */
+    private fun localService(
+        loader: ClassLoader,
+        name: String,
+        iface: String,
+        binder: Any,
+    ): Any {
+        val localStub = Reflect.findClass(loader, "$iface\$Stub")
+        val viaStub = localStub?.let { Reflect.callStatic(it, Framework.Calls.AS_INTERFACE, binder) }
+        if (viaStub != null) {
+            XLog.d("$name 是本地服务对象，asInterface 兜底命中")
+            return viaStub
+        }
+        XLog.d("$name 是本地服务对象，asInterface 兜底未命中，原样返回")
+        return binder
+    }
+
+    /** 别的进程里的服务（拿到的是 `BinderProxy`）：过一遍 `Stub.asInterface`，取不到就原样返回。 */
+    private fun proxyService(
+        loader: ClassLoader,
+        name: String,
+        iface: String,
+        binder: Any,
+    ): Any {
         val stub = Reflect.findClass(loader, "$iface\$Stub")
         if (stub == null) {
             XLog.w("$name 是 BinderProxy，但找不到 $iface\$Stub")
             return binder
         }
-        return Reflect.callStatic(stub, "asInterface", binder) ?: binder
+        return Reflect.callStatic(stub, Framework.Calls.AS_INTERFACE, binder) ?: binder
     }
 
     /**

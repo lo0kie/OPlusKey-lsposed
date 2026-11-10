@@ -15,7 +15,6 @@ import com.lookie.opluskey.ui.PageHeader
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.appVersionLabel
 import com.lookie.opluskey.ui.model.ABOUT_TITLE
 import com.lookie.opluskey.ui.model.ACTIVITY_PICKER_TITLE
 import com.lookie.opluskey.ui.model.BINDING_TITLE
@@ -125,8 +124,9 @@ internal fun SettingsPage.PageTopBar(
 @Suppress("CyclomaticComplexMethod")
 private fun SettingsPage.pageTitle(s: Screen): String =
     when (s) {
-        // 首页标题平时是**宿主 Activity 自己的标题**（hook 侧读来的，见 SettingsPageHooks）；
-        // 字典里有这一档时按语言来，没有才用宿主那串。
+        // 首页标题 = **模块自己的名字**（`OPlusKey`，与 `app_name` 同一串）。
+        //  不再显示宿主 Activity 那句「快捷键」：这一页是模块的门面，标题该说「这是谁」，
+        //  而不是复述宿主给这一格起的名 —— 宿主那串只在字典缺这一档时兜底（`hooks.homeTitle`）。
         Screen.SHORTCUTS -> {
             I18n.get(Strings.HOME_TITLE, hooks.homeTitle)
         }
@@ -196,8 +196,12 @@ private fun SettingsPage.pageTitle(s: Screen): String =
     }
 
 /**
- * 顶栏大标题下面那行小标题按页分派 —— **每一页都有，一句空都没有**（用户口径：
- * 副标题缺一页时顶栏矮一截，翻页 / 返回时整页跟着跳）。
+ * 顶栏大标题下面那行小标题按页分派 —— **每一页都有**（用户口径：副标题缺一页时
+ * 顶栏矮一截，翻页 / 返回时整页跟着跳）。
+ *
+ * 首页那一行是**这个模块是干什么的**（`home.subtitle`），不是版本号：大标题已经是模块名，
+ * 下面再跟一串 `version-1.4.0-debug-…` 对用户没有意义 —— 要看版本的去「更多选项」页，
+ * 首页那张「激活状态」卡里也有一行。
  *
  * 「按键绑定」= **现在这一组**叫什么（「快捷键」或收集来的那颗键的名字）；
  * 「自定义命令」= 已保存的命令条数（[ConfigState.commands] 变了跟着重组）；
@@ -211,10 +215,10 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 @Suppress("CyclomaticComplexMethod")
 private fun SettingsPage.pageSubtitle(s: Screen): String =
     when (s) {
-        // 首页：大标题是宿主自己那句「快捷键」，这一行报模块版本
-        //  （`version-1.4.0-debug-2611091611`；release 不带时刻，见 [appVersionLabel]）。
+        // 首页这一行**不写版本号**（用户口径）：一句模块是干什么的，短，且不随构建变。
+        //  版本只在下面「激活状态」那张卡里（见 `appVersionLabel`）。
         Screen.SHORTCUTS -> {
-            appVersionLabel()
+            I18n.get(Strings.HOME_SUBTITLE, "把任意动作绑到侧键与自定义按键")
         }
 
         // 停在哪一颗就写哪一颗：侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。

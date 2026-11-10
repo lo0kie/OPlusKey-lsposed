@@ -101,8 +101,17 @@ object Seal {
         context: Context,
         name: String,
     ): ByteArray? {
-        if (verdict(context) != Verdict.OFFICIAL) {
-            XLog.e("封存资产被拒（签名不是本包，见「关于 → 签名」）：$name")
+        val verdict = verdict(context)
+        if (verdict != Verdict.OFFICIAL) {
+            //  `UNKNOWN` 与 `UNOFFICIAL` 是两件事：前者是**读不到签名**（可能是官方包遇到一次
+            //  读取失败），后者才是真被改过。混成一句「签名不是本包」会把排查带偏。
+            val why =
+                if (verdict == Verdict.UNKNOWN) {
+                    "读不到本包签名，无法确认是不是官方包"
+                } else {
+                    "签名不是本包"
+                }
+            XLog.e("封存资产被拒（$why，见「关于 → 签名」）：$name")
             return null
         }
         val key = SealCertificate.sha256(context) ?: return deny(name)

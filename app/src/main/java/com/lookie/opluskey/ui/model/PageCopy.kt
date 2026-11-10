@@ -40,14 +40,14 @@ internal val GENERAL_TITLE: String
  *
  *  两页看顶栏会觉得同名，但认得出在哪一层：编辑页顶栏底下一行副标题写着「在编哪一组」
  *  （`「侧键」+「电量 +」`），列表页没有；再往下还有一个短按 / 长按的分段控件。
- *  列表页卡上方那句小标题仍是「组合按键列表」（见 `KeysScreen`），说的是**那一列是什么**，
- *  与顶栏的「这一页叫什么」不是同一件事。
+ *  列表页卡上方那句小标题现在**也是「组合按键」**（`combo.list_title`，用户口径：列表两个字去掉）
+ *  —— 与顶栏同一个词，但说的是**那一列是什么**，不是「这一页叫什么」。
  */
 internal val COMBO_TITLE: String
     get() = I18n.get(Strings.COMBO_TITLE, "组合按键")
 
 /**
- * 「按键功能」页的标题 —— 那页两张清单：按键列表 + 组合按键列表。
+ * 「按键功能」页的标题 —— 那页三块清单：默认按键（内置侧键）/ 自定义按键 / 组合按键。
  *
  *  与首页那一行同名（[Strings.KEYS_ENTRY] 那一行）：点进来看到的标题与点的那一行一致。
  */
@@ -366,16 +366,34 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
         )
 
 /**
- * 「单击 / 双击 / 长按」三个分段标题 —— 分段控件（`TabRowWithContour`）只收字符串。
+ * 一档手势在界面上叫什么 —— **所有露出手势名的地方都走这里**（分段带、场景块的动作行、
+ * 顶栏副标题…），别在调用点读 [Gesture.label]：那串是枚举里写死的中文，注入侧与宿主侧也读它
+ * （那些地方不引界面层），译文只能在界面这一层过。
  *
- *  [Gesture.label] 是枚举里的中文原文，注入侧与宿主侧也读它（那些地方不引界面层），
- *  所以译文在界面这一层过 —— 别去改枚举。
+ *  三档（单击 / 双击 / 长按）走字典。
+ *
+ * ## 自定义手势的接口
+ *
+ *  下面那个按 **id** 取的[重载][gestureLabel]才是这一支的真身：认得的 id 走字典，**认不得的
+ *  原样用传进来的名字**。将来自定义手势（用户自己起名的那种）接进来时，只需要把它的 id 与名字
+ *  喂给这一个口子 —— 界面侧一行都不用改，也不会冒出中文常量。
  */
-internal fun gestureLabel(gesture: Gesture): String =
-    when (gesture) {
-        Gesture.SINGLE -> I18n.get(Strings.GESTURE_SINGLE, "单击")
-        Gesture.DOUBLE -> I18n.get(Strings.GESTURE_DOUBLE, "双击")
-        Gesture.LONG -> I18n.get(Strings.GESTURE_LONG, "长按")
+internal fun gestureLabel(gesture: Gesture): String = gestureLabel(gesture.id, gesture.label)
+
+/** 按 id 取手势名 —— 见上面那段（`fallback` = 认不得时原样用的那串）。 */
+internal fun gestureLabel(
+    id: String,
+    fallback: String,
+): String =
+    when (id) {
+        Gesture.SINGLE.id -> I18n.get(Strings.GESTURE_SINGLE, "单击")
+
+        Gesture.DOUBLE.id -> I18n.get(Strings.GESTURE_DOUBLE, "双击")
+
+        Gesture.LONG.id -> I18n.get(Strings.GESTURE_LONG, "长按")
+
+        //  认不得的 id：那是（将来的）自定义手势，名字是用户起的，不翻译
+        else -> fallback
     }
 
 /** 两个分段标题（单条 / 多条），理由同上。 */

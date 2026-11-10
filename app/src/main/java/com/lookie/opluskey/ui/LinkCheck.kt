@@ -8,6 +8,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.ui.model.API_MISMATCH_HINT
 import com.lookie.opluskey.ui.model.CHECKING_HINT
@@ -21,6 +22,7 @@ import com.lookie.opluskey.ui.model.PENDING_OR_SCOPE_HINT
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.SERVICE_NOT_RUNNING_HINT
 import com.lookie.opluskey.ui.model.SYSTEM_STALE_HINT
+import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.state.InjectPendingKind
 import com.lookie.opluskey.ui.state.InjectStatus
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -573,12 +575,28 @@ internal fun SettingsPage.disabledClickReason(): String {
     val f = linkFacts
     val cfg = configState.config.value
     val key = KeyWatchState.editing(cfg)
+    //  **这一页在编的那一份先说话**：组合键 / 场景动作那两页的「开没开」看的是**那一组组合 /
+    //  那一块场景**，而下一支读的是 `KeyWatchState` 里那颗键 —— 那只是「上一次在按键绑定页看过的
+    //  那一颗」，与这两页没关系。先不看它就会出现两种说法：入口条上写着 `[音量+]×[音量-] 已停用`、
+    //  格子里写着 `[电源] 已停用`（真机口径「点格子回落到上一个文案」）。
+    //  说法本身不再另写：`pageBlockedReason` 与入口行那一份是同一个出口。
+    val targetBlocked =
+        when (screen) {
+            // 手势这一位与判据无关：那两个实现只看「这一份开没开」
+            Screen.COMBO_EDIT -> ComboEditState.editingId?.let { BindingTarget.Combo(it, Gesture.SINGLE) }
+
+            Screen.SCENE_BINDING -> BindingTarget.Scene(branchDraft.now(), sceneBindingAt, sceneBindingGesture)
+
+            else -> null
+        }?.pageBlockedReason(cfg)
     return when {
         //  配置都没读成功：什么都改不了，说别的都是空话
         f.readOnly -> CONFIG_READ_FAILED_HINT
 
         //  总闸关着：用户自己关的，能就地开回来
         f.masterOff -> KEY_DISABLED_HINT
+
+        targetBlocked != null -> targetBlocked
 
         !cfg.key(key).enabled -> I18n.format(Strings.KEY_DISABLED_ITEM, key.label)
 
@@ -719,10 +737,14 @@ internal fun SettingsPage.linkChecks(): List<LinkCheck> {
             //  其余（配置读不懂 / 没送到注入侧 / 两边指纹对不上）都真会让设置不生效 —— 照旧 block。
             //  一律 block（`blocking` 走默认值）的话，用户主动关掉主开关，
             //  整体状态就报「设置生效异常」—— 那是用户的意图，不是故障。
+            //  [LinkFacts.hostSwitchMissing]（执行侧读到的是关、而用户没关）**必须** block：
+            //  它落在「配置侧没问题、只是 hostEnabled 是关的」这一格里，与「用户自己关的」
+            //  在 `hostEnabled` 上同形 —— 少了这一位，它会被当成用户的意图静默掉，
+            //  于是卡片说「已激活」、整页可编辑，而一个动作都不执行。
             //  **读不懂必须单独排在最前**：那时 `hostEnabled` 也是 false，落到下面那条会被
             //  判成「用户关的」，于是不 block、detail 还说「主开关已关闭」—— 把人指去拨一个
             //  本来就开着的开关（本次故障的现场）。
-            blocking = f.hostConfigBroken || !(configSide && !link.hostEnabled),
+            blocking = f.hostConfigBroken || f.hostSwitchMissing || !(configSide && !link.hostEnabled),
             //  换包没重启时它必然红，而那句话就是「需要重启」—— 首页据此把它排到最后
             //  （别的故障先说，只剩这条影子时才说重启）
             staleOnly = restartNeeded || (f.hostStale && f.hostConfigBroken),

@@ -44,7 +44,11 @@ private fun sliderCommit(
     onCommit: (Int) -> Boolean,
 ): (Int) -> Unit =
     { raw ->
-        val v = raw.coerceIn(spec.min, spec.max)
+        //  `coerceIn` 在 min > max 时抛 IllegalArgumentException（整页崩在组合期）：
+        //  参数写反只该得到「夹到那一个值」，不该崩。
+        val lo = minOf(spec.min, spec.max)
+        val hi = maxOf(spec.min, spec.max)
+        val v = raw.coerceIn(lo, hi)
         // 判据级：滑杆是「拖了没反应 / 值自己跳」这类问题的唯一锚点 ——
         //  它一次交互只有一条（抬手或点轨道各一条），不会刷屏。
         XLog.w("滑杆提交：${spec.title} → $v")
@@ -97,7 +101,9 @@ private fun SettingsPage.SliderRowBody(
     //  点标题 / 摘要（或行尾那个当前值）弹「手动输入」小窗 —— 滑杆在这些档上**像素不够分**
     //  （长按延迟 200–2000 一档 50ms，36 档挤在一根轨道上），想落在「恰好 1250」几乎不可能。
     //  小窗就是全项目那一个（`NameDialog` 多收一个 `range`），标题与图标**取原行**。
-    var typing by remember { mutableStateOf(false) }
+    //  按**行身份**复位：`SliderSpec` 没有固定 id，行标题就是这一行在表里的身份 ——
+    //  换了一颗键 / 换了一档参数时同一格会被复用，`typing` 留着就会把上一行的输入窗挂到新行上。
+    var typing by remember(spec.title) { mutableStateOf(false) }
     //  注意：「点轨道跳值」那条手势的回调必须走 `rememberUpdatedState`：
     //  `tapSliderToSeek` 的 `pointerInput` 键里只有 `min/max/enabled`，闭包**停留在首次组合**
     //  那一刻 —— 直接捕获 `commit` 就等于一直用旧的那份（写盘失败时「拨回」拨到的是旧的 `value`，
@@ -222,8 +228,9 @@ private fun SettingsPage.SliderValueInput(
         icon = spec.icon,
         initial = spec.value.toString(),
         range = spec.min..spec.max,
-        //  值域与步进放在框下面**常驻**：占位在填着字时就看不见了，而这两件事正是打字时要看的。
-        hint = I18n.format(Strings.SLIDER_INPUT_RANGE, spec.min, spec.max, spec.step),
+        //  值域与**真实档距**放在框下面常驻：占位在填着字时就看不见了，而这两件事正是打字时要看的。
+        //  档距取 `spec.tickStep`（区间不整除时是均分出来的那一档），与轨道 / 吸附同一套。
+        hint = I18n.format(Strings.SLIDER_INPUT_RANGE, spec.min, spec.max, spec.tickStep),
         onDismiss = onDismiss,
         onConfirm = { raw ->
             onDismiss()
@@ -360,8 +367,9 @@ internal fun TrackSlider(
                 keyPointForegroundColor = if (enabled) scheme.sliderKeyPointForeground else trackTickDim,
             ),
         valueRange = min.toFloat()..max.toFloat(),
-        // 离散刻度：两端之间分 (max-min)/step 档（`steps` 不含两个端点）
-        steps = ((max - min) / step - 1).coerceAtLeast(0),
+        // 离散刻度：两端之间分 `sliderTickCount` 档（`steps` 不含两个端点）——
+        //  与 `snapToStep` / 输入窗那句「步进」同一个来源（见 `SliderSpec.ticks` / `tickStep`）
+        steps = (sliderTickCount(min, max, step) - 1).coerceAtLeast(0),
         // 调用方给了刻度点就画（库的 `keyPoints` + `showKeyPoints` 要一起给）。
         //  只标**不吸附**：`steps > 0` 时库的磁性吸附分支本来就走不到（它只在 `steps == 0`
         //  且 keyPoints 非空时吸附），这里再把 `magnetThreshold` 显式写 0f 兜一道 ——

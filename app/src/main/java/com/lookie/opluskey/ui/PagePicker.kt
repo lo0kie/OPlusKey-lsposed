@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -58,6 +59,17 @@ internal class PickerOption(
 )
 
 /**
+ * [PickerRow] 上那两样零碎 —— 行首带不带字形、这一层窗还在不在（退场期间不派发）。
+ *
+ *  `enabled` 不并进来：它决定这一行长什么样（灰字），`interactive` 只决定派不派发点击 ——
+ *  两件事，混成一个布尔会让「置灰」与「退场」互相顶掉。
+ */
+internal class PickerRowTraits(
+    val icon: ImageVector? = null,
+    val interactive: Boolean = true,
+)
+
+/**
  * 画 [PickerOption] 那一行 —— **整行通栏可点**，标题左起、选中的行行尾一个对勾。
  *
  *  不挂行首图标以外的装饰：这一列说的是同一类东西的不同取值，多挂图标会让取值看着像不同类型。
@@ -69,6 +81,7 @@ internal class PickerOption(
  * @param selected 这一行是不是当前那个（多选时 = 已勾上）
  * @param enabled 这一行能不能点（`false` = 置灰，**并且收不到点击** —— 可点性挂在 `clickable` 上）。
  *   所以「为什么点不动」这类回执不能写在 `onClick` 里，要写在行上的字里（见「新增配置」已满那一档）。
+ * @param traits 行首字形与「这一层窗还在不在」（退场期间不派发但**不置灰**）—— 见 [PickerRowTraits]。
  */
 @Composable
 internal fun PickerRow(
@@ -76,7 +89,7 @@ internal fun PickerRow(
     selected: Boolean,
     onClick: () -> Unit,
     enabled: Boolean = true,
-    icon: ImageVector? = null,
+    traits: PickerRowTraits = PickerRowTraits(),
 ) {
     val colors = COUITheme.colorScheme
     //  弹窗里这一列也算「能点的行」：默认振一下（见 `LocalTick`）
@@ -112,7 +125,8 @@ internal fun PickerRow(
                 .heightIn(min = PICKER_ROW_MIN_HEIGHT)
                 .background(selectedFill)
                 .clickable(
-                    enabled = enabled,
+                    //  **颜色仍按 `enabled`**：退场期间只是不派发，不把整列刷成灰
+                    enabled = enabled && traits.interactive,
                     onClick = {
                         tick()
                         onClick()
@@ -123,32 +137,50 @@ internal fun PickerRow(
                 ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        //  行首那颗可选：取值那一列（亮屏 / 锁屏）靠它分档，纯文字那几列不给
-        icon?.let { glyph ->
-            Icon(
-                glyph,
-                contentDescription = null,
-                modifier = Modifier.size(PICKER_ROW_ICON_SIZE),
-                tint = labelColor,
-            )
-            Spacer(Modifier.width(PICKER_ROW_ICON_GAP))
-        }
-        Text(
-            text = label,
-            style = COUITheme.textStyles.body1,
-            color = labelColor,
-            //  行高由 [PICKER_ROW_MIN_HEIGHT] 定住、字在里面竖居中 —— 行盒居中不等于墨迹居中，
-            //  汉字会看着偏高那一点点。与网格格 / 胶囊 / 表格单元格同一档光学修正（见 `opticalCenter`）。
-            modifier = Modifier.weight(1f).opticalCenter(COUITheme.textStyles.body1),
+        PickerRowContent(
+            label = label,
+            icon = traits.icon,
+            labelColor = labelColor,
+            checkAlpha = checkAlpha,
+            checkTint = colors.primary,
         )
-        Box(Modifier.size(ROW_END_ICON_SIZE), contentAlignment = Alignment.Center) {
-            Icon(
-                PageIcons.MenuCheck,
-                contentDescription = null,
-                modifier = Modifier.size(ROW_END_ICON_SIZE).alpha(checkAlpha),
-                tint = colors.primary,
-            )
-        }
+    }
+}
+
+/** [PickerRow] 那一行的内容（行首可选字形 + 文案 + 行尾对勾）—— 行壳与可点性留在 [PickerRow]。 */
+@Composable
+private fun RowScope.PickerRowContent(
+    label: String,
+    icon: ImageVector?,
+    labelColor: Color,
+    checkAlpha: Float,
+    checkTint: Color,
+) {
+    //  行首那颗可选：取值那一列（亮屏 / 锁屏）靠它分档，纯文字那几列不给
+    icon?.let { glyph ->
+        Icon(
+            glyph,
+            contentDescription = null,
+            modifier = Modifier.size(PICKER_ROW_ICON_SIZE),
+            tint = labelColor,
+        )
+        Spacer(Modifier.width(PICKER_ROW_ICON_GAP))
+    }
+    Text(
+        text = label,
+        style = COUITheme.textStyles.body1,
+        color = labelColor,
+        //  行高由 [PICKER_ROW_MIN_HEIGHT] 定住、字在里面竖居中 —— 行盒居中不等于墨迹居中，
+        //  汉字会看着偏高那一点点。与网格格 / 胶囊 / 表格单元格同一档光学修正（见 `opticalCenter`）。
+        modifier = Modifier.weight(1f).opticalCenter(COUITheme.textStyles.body1),
+    )
+    Box(Modifier.size(ROW_END_ICON_SIZE), contentAlignment = Alignment.Center) {
+        Icon(
+            PageIcons.MenuCheck,
+            contentDescription = null,
+            modifier = Modifier.size(ROW_END_ICON_SIZE).alpha(checkAlpha),
+            tint = checkTint,
+        )
     }
 }
 
@@ -180,14 +212,16 @@ private val PICKER_ROW_ICON_GAP = 12.dp
  *  @param labels 每一行的文案（顺序就是显示顺序）
  *  @param isSelected 第几行是不是选中的那个（多选时 = 已勾上）
  *  @param onClick 点了第几行 —— 单选那边由调用方关窗，多选那边是切换
+ *  @param interactive 这一层窗还在不在（退场时不派发，见 [PickerRow]）
  */
 @Composable
 internal fun ColumnScope.PickerRows(
     labels: List<String>,
     isSelected: (Int) -> Boolean,
     onClick: (Int) -> Unit,
+    interactive: Boolean = true,
 ) {
-    PickerRows(labels.map { PickerOption(it) }, isSelected, onClick)
+    PickerRows(labels.map { PickerOption(it) }, isSelected, onClick, interactive)
 }
 
 /** 带图标 / 置灰的那一版（见 [PickerOption]）—— 行怎么画仍然只有 [PickerRow] 一处。 */
@@ -197,6 +231,7 @@ internal fun ColumnScope.PickerRows(
     options: List<PickerOption>,
     isSelected: (Int) -> Boolean,
     onClick: (Int) -> Unit,
+    interactive: Boolean = true,
 ) {
     Column(
         Modifier
@@ -219,7 +254,7 @@ internal fun ColumnScope.PickerRows(
                 selected = isSelected(index),
                 onClick = { onClick(index) },
                 enabled = option.enabled,
-                icon = option.icon,
+                traits = PickerRowTraits(icon = option.icon, interactive = interactive),
             )
         }
     }
@@ -260,6 +295,8 @@ internal fun SettingsPage.PickerActionDialog(
             labels = labels,
             //  动作没有「当前是哪一个」—— 一行都不打勾
             isSelected = { false },
+            //  退场那一段不再派发（见 `PickerRow` 的 `interactive`）
+            interactive = show,
             onClick = { index ->
                 onDismiss()
                 onPick(index)
@@ -323,6 +360,8 @@ internal fun SettingsPage.SinglePickerDialog(
         PickerRows(
             options = options,
             isSelected = { it == selectedIndex },
+            //  退场那一段不再派发（见 `PickerRow` 的 `interactive`）
+            interactive = show,
             onClick = { index ->
                 onDismiss()
                 onPick(index)
@@ -401,6 +440,8 @@ internal fun SettingsPage.MultiPickerDialog(
             labels = labels,
             isSelected = { it in selected },
             onClick = onToggle,
+            //  退场那一段不再派发（见 `PickerRow` 的 `interactive`）
+            interactive = show,
         )
     }
 }

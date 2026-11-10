@@ -51,8 +51,9 @@ internal fun FlexibleWindowBridge.miniAnimLocal(
             XLog.w("$CMD_MINI_ANIM：找不到 $SERVICE，跳过")
             return
         }
+    //  同 `FlexibleSwitchToMini`：单例按两档取（`getInstance(null)` → 无参），别只试一支。
     val service =
-        Reflect.callStatic(serviceCls, "getInstance", null) ?: run {
+        instanceOf(serviceCls) ?: run {
             XLog.w("$CMD_MINI_ANIM：$SERVICE.getInstance() 拿不到，跳过")
             return
         }

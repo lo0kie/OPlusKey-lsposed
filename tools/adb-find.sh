@@ -98,11 +98,14 @@ succeed() {
   local target=$1
   mkdir -p "$CACHE_DIR" 2>/dev/null || true
   printf '%s\n' "$target" >"$CACHE_FILE" 2>/dev/null || true
-  if [ "${1:-}" = "--export" ] || [ "${EXPORT:-0}" = "1" ]; then
-    printf 'export ANDROID_SERIAL=%s\n' "$target"
-  fi
   say "已连上：$target"
-  printf '%s\n' "$target"
+  #  `--export` 的 stdout **只留一行**：调用方是 `eval "$(…)"`，多打一行裸地址就会被当成
+  #  一条命令去执行（`192.168.1.5:5555: command not found`）。
+  if [ "${EXPORT:-0}" = "1" ]; then
+    printf 'export ANDROID_SERIAL=%s\n' "$target"
+  else
+    printf '%s\n' "$target"
+  fi
   exit 0
 }
 

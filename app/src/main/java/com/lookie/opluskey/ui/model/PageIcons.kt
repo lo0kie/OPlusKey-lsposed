@@ -552,7 +552,7 @@ internal object PageIcons {
     /** 「步骤」卡片里「添加步骤」那一行的行首图标。 */
     val StepAdd: ImageVector get() = TablerIcons.Outline.Plus
 
-    /** 「已保存的命令」卡片右上角 action 按钮 —— `Flask2`（锥形瓶），读作「把这条试跑一遍」。 */
+    /** 「自定义命令」卡片右上角 action 按钮 —— `Flask2`（锥形瓶），读作「把这条试跑一遍」。 */
     val TestCommand: ImageVector get() = TablerIcons.Outline.Flask2
 
     /** 步骤行尾的「上移」/「下移」—— 竖人字。 */

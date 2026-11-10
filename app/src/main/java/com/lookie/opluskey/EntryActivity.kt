@@ -28,7 +28,15 @@ import com.lookie.opluskey.core.wire.ModuleWire
  * ## 为什么用有序广播
  *
  * 要一句准话：宿主的模块没注入（没启用 / 换包后没重启）时没有任何接收器，`resultCode` 会停在
- * [RESULT_CANCELED]，这一页据此提示「去 系统设置 › 快捷键」，而不是静悄悄什么都不发生。
+ * [RESULT_CANCELED]，这一页据此提示一句能自救的话。
+ *
+ * ## 接收器是**动态注册**的 ⇒ 宿主进程没跑时就收不到
+ *
+ *  宿主那个接收器只在它自己的进程活着时存在，`sendOrderedBroadcast` 不会把进程拉起来 ——
+ *  所以「结果不是 OK」有两种来路：模块没注入，或者宿主**压根还没启动过**。
+ *  两者的修法一样且都很轻：先去 系统设置 › 快捷键 打开一次宿主的设置页（那一下会把进程拉起来），
+ *  再从模块入口进来。提示语就把这一步说出来，不能只说「无法打开」——
+ *  用户照着「去设置里找」找过去，看到的是宿主的正常页面，只会以为模块坏了。
  */
 class EntryActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {

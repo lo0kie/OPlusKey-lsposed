@@ -416,7 +416,13 @@ private fun SettingsPage.comboTitleWidths(cfg: Config): ComboTitleWidths {
     //  **`density` 必须进 key**：页面缩放（「页面缩放」/「跟随系统显示大小」）换的就是
     //  `LocalDensity` —— 不进 key 的话量出来的是上一档密度下的像素，换算成 dp 就偏了，
     //  缩小时正好偏窄 ⇒ 键名被截成「侧…」（真机口径「缩小界面后键名显示不全」）。
-    return remember(cfg.combos, cellStyle, separatorStyle, measurer, density) {
+    //  `customKeys` 也必须进 key：自定义键改名后键名宽度变了，不重算就仍是旧名字量出来的列宽
+    //  （表现是新名字被截断、框与框之间多出空档）。
+    //  **`language` 同样必须进 key**：键名是本地化文案（内置键的中文「音量 +」与英文 `Volume +`
+    //  宽度差一大截），只按配置对象缓存的话，切到英文后仍按中文量出的列宽去分配 ——
+    //  英文那一列被截成 `Volu…`。
+    val language = I18n.effectiveLanguage
+    return remember(cfg.combos, cfg.customKeys, cellStyle, separatorStyle, measurer, density, language) {
         //  一格键名的宽度（框里只写名字，**不套方括号** —— 框本身已经说明这是键名）；
         //  这一颗键已经不在配置里时按 0 算
         fun cellWidth(

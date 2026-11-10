@@ -70,14 +70,10 @@ internal fun currentHeaderBand(): BandHeight =
 internal fun SettingsPage.headerStatusBarPadding(): Dp = WindowInsets.systemBars.asPaddingValues().calculateTopPadding()
 
 /**
- * 顶栏当前高度：折叠高 + 折叠位移 + 系统栏顶边。
+ * 顶栏的**展开高度**（含系统栏顶边）—— 内容从哪儿开始就是按它算的。
  *
- * 展开高不硬编码 107dp：库在测量期才把它写进 `heightOffsetLimit`，所以这里按「折叠高 − limit + offset」推。
- *
- * 注意：`heightOffsetLimit` 是**普通 var** —— 布局期改它**不触发重组**，而库默认值是
- * `-Float.MAX_VALUE`。拿它直接做减法会得到天文数字，`Modifier.height(...).roundToPx()`
- * 再整型溢出成 **0**：顶部让位的 Spacer 变 0、内容整段钻到顶栏底下（真机实证，
- * 「按键设置」卡被顶栏盖住）。所以先认这个哨兵，量到之前一律按「展开高」算。
+ *  展开高不硬编码 107dp：`PageHeader` 在布局期把自己量到的高度上报给 [BandHeight]，这里直接用
+ *  那份实测值；还没量到（首帧 / 隐藏页）时退回库的 `ExpandedHeight` 加系统栏顶边。
  */
 @Composable
 internal fun SettingsPage.currentHeaderHeight(
@@ -96,9 +92,9 @@ internal fun SettingsPage.currentHeaderHeight(
 /**
  * 把顶栏一次性折到底 —— 程序性跳转（`scrollToItem`）不走嵌套滚动，顶栏不会自己折。
  *
- *  **量到之前不许写**：`heightOffsetLimit` 在库测量之前是 `-Float.MAX_VALUE`（见
- * [currentHeaderHeight] 那段），把那个哨兵写进 `heightOffset` 会让整页的「当前顶栏高度」
- * 失真 —— 表现出来就是「定位跳完，目标行被压在展开的顶栏底下」。
+ *  只在 `heightOffsetLimit` 是有限负值时写。库在测量前给的是 `-Float.MAX_VALUE`（也满足这个
+ *  条件），所以调用点必须在测量完成之后再调；把那个哨兵写进 `heightOffset` 会让整页的
+ *  「当前顶栏高度」失真 —— 表现出来就是「定位跳完，目标行被压在展开的顶栏底下」。
  */
 internal fun SettingsPage.collapseHeader(scrollBehavior: ScrollBehavior) {
     val limit = scrollBehavior.state.heightOffsetLimit
@@ -116,8 +112,8 @@ internal fun SettingsPage.collapseHeader(scrollBehavior: ScrollBehavior) {
 @Composable
 internal fun SettingsPage.collapsedHeaderHeight(scrollBehavior: ScrollBehavior): Dp {
     // 与 `currentHeaderHeight` 同一把尺子：展开高是**量**出来的，折叠量取库给的 `heightOffsetLimit`
-    //  （负值，绝对值就是折叠掉多少）。以前这里用库的 `CollapsedHeight` 常量，与实测的展开高
-    //  差十几 dp —— 定位时目标行就跟着偏那么多。
+    //  （负值，绝对值就是折叠掉多少）。不拿库的 `CollapsedHeight` 常量对账 —— 它与实测的展开高
+    //  差十几 dp，定位时目标行会跟着偏那么多。
     val expanded = currentHeaderBand().dp()
     val limit = scrollBehavior.state.heightOffsetLimit
     val folded =

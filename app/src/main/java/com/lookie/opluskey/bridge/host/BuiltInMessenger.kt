@@ -35,6 +35,15 @@ internal object BuiltInMessenger {
     const val TIMEOUT_MS = 3000L
 
     /**
+     * 超时与「成功之后撤掉超时」共用的一条 main 队列 —— **整个对象只建一个 Handler**。
+     *
+     *  原先每次 `send` 都 `Handler(Looper.getMainLooper())` 新建一个：它本身很便宜，但那条超时
+     *  任务成功之后没有任何人撤，3 秒内连按几下就是几条一次性的待执行消息挂在同一队列上。
+     *  复用同一个 Handler 之后，成功分支能用 [Handler.removeCallbacks] 精确撤掉自己那一条。
+     */
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    /**
      * 发一条 `Message` 过去。
      *
      * @param tag 日志前缀（`oplus:flash_memory` / `手电筒（ColorOS 接口）` 这类）—— 两条调用方
@@ -84,16 +93,21 @@ internal object BuiltInMessenger {
         // 服务一直连不上就自己收尾，别把连接挂着。
         //  注意：还要**说出来**：只 `unbindService` 的话既不记日志也不报失败 ——
         //  用户看到的是「按下去什么都没发生」，而日志里一个字都没有。
-        Handler(Looper.getMainLooper()).postDelayed(
-            {
+        val lateTimeout =
+            Runnable {
                 if (!connection.handled) {
                     XLog.w("$tag 的 Messenger 服务 ${TIMEOUT_MS}ms 没连上，解绑放弃")
+                    //  先记下「这一趟已经收尾了」再解绑：绑定是异步的，解绑之后回调仍可能来。
+                    //  不记这一笔的话，晚到的 `onServiceConnected` 会把消息再发一遍，前面刚走过的
+                    //  兜底（比如手电筒那一拨）就被这次迟到的执行又翻一次。
+                    connection.expired = true
                     connection.abandon()
                     onFail?.invoke()
                 }
-            },
-            TIMEOUT_MS,
-        )
+            }
+        //  连上（并把消息发出去）之后撤掉这条超时：它已经没事可做了，留着只是 3 秒后空跑一次。
+        connection.cancelTimeout = { mainHandler.removeCallbacks(lateTimeout) }
+        mainHandler.postDelayed(lateTimeout, TIMEOUT_MS)
         return true
     }
 
@@ -111,10 +125,34 @@ internal object BuiltInMessenger {
         @Volatile
         var handled = false
 
+        /**
+         * 这一趟是不是已经被超时那条路收掉了（解绑 + 兜底都做过了）。
+         *
+         *  只由 [send] 里那条超时任务置 true；[onServiceConnected] 看到它就**只丢弃、不发送** ——
+         *  结果已经在超时那条路上给过调用方了，再来一次就是同一件事执行两遍。
+         */
+        @Volatile
+        var expired = false
+
+        /**
+         * 撤掉那条超时任务的出口 —— [send] 在 `bindService` 之后填进来。
+         *
+         *  由 [send] 持有 `Runnable`（它要在超时那一刻还能读 `handled`），这里只存「怎么撤」。
+         */
+        @Volatile
+        var cancelTimeout: (() -> Unit)? = null
+
         override fun onServiceConnected(
             name: ComponentName,
             binder: IBinder,
         ) {
+            if (expired) {
+                //  超时那条路已经解绑并走过兜底了；这里再来就是把同一条消息发第二遍。
+                //  记 d：这一行只对排查「结果为什么只到一次」有用，不是判据。
+                XLog.d("$tag：超时收尾之后才连上 $short，丢弃这次结果")
+                abandon()
+                return
+            }
             handled = true
             try {
                 // 服务端会向 replyTo 回执，不设会在它那边空指针
@@ -122,6 +160,8 @@ internal object BuiltInMessenger {
                 message.replyTo = Messenger(Handler(Looper.getMainLooper()))
                 Messenger(binder).send(message)
                 XLog.w("$tag → Messenger.send(what=$what)($short)")
+                //  发成功了就把 3 秒后那条超时撤掉（它只会空跑一次，还会把这条日志搅乱）
+                cancelTimeout?.invoke()
             } catch (e: Throwable) {
                 XLog.w("$tag 的 Messenger 消息发不出去：${e.javaClass.simpleName}: ${e.message}")
                 onFail?.invoke()

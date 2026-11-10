@@ -190,7 +190,12 @@ object ConfigCodec {
      */
     private fun canonical(dto: ConfigDto): ConfigDto =
         dto.copy(
-            keys = dto.keys.toSortedMap(),
+            keys =
+                dto.keys
+                    .toSortedMap()
+                    //  键内还有一层 `extra_clicks`：那一层同样只按书写顺序排，漏了它等于
+                    //  「只把两行次数换个位置」也会让 md5 失配（正是这里要消灭的那种）。
+                    .mapValues { (_, key) -> key.copy(extraClicks = key.extraClicks.toSortedMap()) },
             appNames = dto.appNames.toSortedMap(),
         )
 

@@ -118,6 +118,14 @@ object ConfigFields {
     const val COMBO_WINDOW_MS_EXTRA = "combo_window_ms"
 
     /**
+     * 组合键的**无操作透传**（`GlobalConfig.comboPassthrough`）—— 走广播。
+     *
+     *  读它的不只是宿主执行器：注入侧的 `ChordGuard` 判「这一对键的 ROM 判定吞不吞」时也要它
+     *  （`Config.comboPassthroughFor` 跑在那一边）—— 不带这一项，那边永远按默认值判。
+     */
+    const val COMBO_PASSTHROUGH_EXTRA = "combo_passthrough"
+
+    /**
      * **模块总闸**（首页「启用按键绑定」那一行）—— 与 [ENABLED_EXTRA] 是两件事，别混：
      *
      *  · 本项：整个模块接管不接管（关掉 ⇒ 一颗键都不接管，页面整片灰）；
@@ -392,11 +400,12 @@ object ConfigFields {
     val F_MINI_WINDOW_ANIM = Field(null, Kind.Bool(GlobalConfig.DEFAULT_MINI_WINDOW_ANIM))
 
     /**
-     * 组合键的**无操作透传** —— **只有落盘那一列**（同上）：执行在宿主，注入侧只判手势。
+     * 组合键的**无操作透传**（见 [COMBO_PASSTHROUGH_EXTRA]）。
      *
      *  开 = 组合那一格没绑动作时，两颗键各按自己这一档照常执行；关 = 什么都不做。
+     *  默认值与 [GlobalConfig.DEFAULT_COMBO_PASSTHROUGH] 同源：缺项时行为与这一位出现之前一致。
      */
-    val F_COMBO_PASSTHROUGH = Field(null, Kind.Bool(GlobalConfig.DEFAULT_COMBO_PASSTHROUGH))
+    val F_COMBO_PASSTHROUGH = Field(COMBO_PASSTHROUGH_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_PASSTHROUGH))
 
     /**
      * 组合键：**两颗键按下之间最多隔多久**（毫秒）。

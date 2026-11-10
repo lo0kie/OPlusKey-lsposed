@@ -13,11 +13,11 @@ import com.lookie.opluskey.ui.model.SliderTapTrack
 import kotlin.math.roundToInt
 
 /**
- * 「点轨道跳值」手势（滑杆行那条路）：值域整份取自 [SliderSpec]，几何取 [SLIDER_ROW_TAP_TRACK]。
+ * 「点轨道跳值」手势（滑杆行那条路）：值域整份取自 [SliderSpec]，几何由调用方给的 [SliderTapTrack] 决定
+ *（行里传 `SLIDER_ROW_TAP_TRACK`，弹窗自己算那一份）。
  *
- *  这个重载只负责「别把 [spec] 拆开抄」：以前这里是逐个形参，滑杆支持自定义步长时漏抄了
- *  `step` —— 触点折算用的是写死的毫秒步长，三档滑杆上 `(max-min)/step` 算成 0、夹到 1，
- *  点中间只能落到端点上。
+ *  这个重载只负责「别把 [spec] 拆开抄」：值域与步长必须一起传；只传 min / max 会让触点折算用错
+ *  `step` —— 三档滑杆上 `(max-min)/step` 算成 0、夹到 1，点中间只能落到端点上。
  */
 internal fun Modifier.tapSliderToSeek(
     spec: SliderSpec,

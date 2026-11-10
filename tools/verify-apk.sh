@@ -54,6 +54,9 @@ for apk in "$DIR"/*.apk; do
   #      · 裸 `activity` 元素 ×1
   #      · `activity-alias` ×0、`CATEGORY_LAUNCHER` / `CATEGORY_INFO` ×0
   #      · 跳板类名 ×1 —— 防止「换个 Activity 名字」蒙混过去
+  #      · 那个 activity 的 `exported=true` ×1、`noHistory=true` ×1
+  #      · 主题是透明那一档（`@android:style/Theme.Translucent.NoTitleBar` = `@0x01030010`）×1
+  #        —— 少了这三项，跳板就会变成一块有历史的界面 / 不可启动的入口，而清单项数照样合规。
   #
   #    **必须数元素、不能数字符串**：早先这一项是 `unzip … | strings -e l | grep -cx 'activity'`，
   #    而 AXML 的字符串池里同一个字符串只存一份 —— 计数天生封顶为 1。再加一个 `<activity>`
@@ -77,10 +80,17 @@ for apk in "$DIR"/*.apk; do
     aliases=$(printf '%s\n' "$xmltree" | grep -cE '^ *E: activity-alias \(' || true)
     launchers=$(printf '%s\n' "$xmltree" | grep -cE 'category\.(LAUNCHER|INFO)' || true)
     jumper=$(printf '%s\n' "$xmltree" | grep -c 'opluskey\.EntryActivity' || true)
-    if [ "$entry" = "1" ] && [ "$activities" = "1" ] && [ "$aliases" = "0" ] && [ "$launchers" = "0" ] && [ "$jumper" = "1" ]; then
-      echo "  ok  清单入口只有 EntryActivity 这一个跳板（MODULE_SETTINGS×1 / activity×1 / alias×0 / LAUNCHER·INFO×0）"
+    #  跳板自己那几条属性：只在 EntryActivity 这个节点附近取，避免别处同名属性凑数。
+    #  `-B3` 是为了带上前面的 `theme`（aapt2 按属性名排序输出，theme 排在 name 之前）。
+    entry_block=$(printf '%s\n' "$xmltree" | grep -B3 -A8 'opluskey\.EntryActivity' || true)
+    jumper_exported=$(printf '%s\n' "$entry_block" | grep -cE ':exported\(0x01010010\)=true' || true)
+    jumper_nohistory=$(printf '%s\n' "$entry_block" | grep -cE ':noHistory\(0x0101022d\)=true' || true)
+    jumper_theme=$(printf '%s\n' "$entry_block" | grep -cE ':theme\(0x01010000\)=@0x01030010' || true)
+    if [ "$entry" = "1" ] && [ "$activities" = "1" ] && [ "$aliases" = "0" ] && [ "$launchers" = "0" ] && [ "$jumper" = "1" ] &&
+      [ "$jumper_exported" = "1" ] && [ "$jumper_nohistory" = "1" ] && [ "$jumper_theme" = "1" ]; then
+      echo "  ok  清单入口只有 EntryActivity 这一个跳板（MODULE_SETTINGS×1 / activity×1 / alias×0 / LAUNCHER·INFO×0 / exported×1 / noHistory×1 / 透明主题×1）"
     else
-      bad "$apk 的清单入口不合规：MODULE_SETTINGS=${entry} activity=${activities} alias=${aliases} LAUNCHER/INFO=${launchers} EntryActivity=${jumper}（允许 1/1/0/0/1）"
+      bad "$apk 的清单入口不合规：MODULE_SETTINGS=${entry} activity=${activities} alias=${aliases} LAUNCHER/INFO=${launchers} EntryActivity=${jumper} exported=${jumper_exported} noHistory=${jumper_nohistory} theme=${jumper_theme}（允许 1/1/0/0/1/1/1/1）"
     fi
   else
     # 查不了必须报错而非静默放过 —— 这道闸存在的意义就是「多一个 <activity> 会被拦」
@@ -179,7 +189,7 @@ for p in \
   fi
 done
 if [ ! -d app/src/main/java/com/lookie/opluskey/bridge/host ]; then
-  bad "找不到 bridge/host/（进程归属分过档？这条 --exclude-dir=host 的排除会失效）"
+  bad "找不到 bridge/host/（进程归属分过档？那条精确排除会失效）"
 fi
 # 正则必须**括号配对**，而且不能拿 `|| true` 把 grep 的「出错」也吞掉：
 #   grep 退出码 2 = 正则写坏 / 路径不存在，与「0 命中」（1）是两件事。这条闸原先
@@ -191,8 +201,18 @@ fi
 #   根本不跑，日志上只剩一句 `exit code 1`、连 ::error:: 都没有。所以用
 #   `cmd || status=$?` 这种写法：`||` 列表不受 -e 约束，赋值照样生效，状态也留得下来。
 injection_pattern="^import \(androidx\|io\.github\.suqi8\|io\.github\.lyxnx\|com\.composables\|com\.lookie\.opluskey\.ui\b\|com\.lookie\.opluskey\.ui\.\)"
+#  **只排除 `bridge/host/` 这一条路径**：`grep --exclude-dir=host` 按目录名匹配，会把
+#  将来任何同名目录（例如 `core/.../host/`）一起静默漏掉 —— 那些目录仍在注入侧执行。
+scan_files=()
+while IFS= read -r f; do
+  scan_files+=("$f")
+done < <(find $injection_dirs -type f \( -name '*.kt' -o -name '*.java' \) ! -path 'app/src/main/java/com/lookie/opluskey/bridge/host/*')
 scan_status=0
-hits=$(grep -rn --exclude-dir=host "$injection_pattern" $injection_dirs) || scan_status=$?
+if [ ${#scan_files[@]} -eq 0 ]; then
+  hits=""
+else
+  hits=$(grep -n "$injection_pattern" "${scan_files[@]}") || scan_status=$?
+fi
 if [ "$scan_status" -gt 1 ]; then
   bad "注入侧 import 扫描出错（grep 退出码 $scan_status）—— 这条闸不能空转"
 elif [ -n "$hits" ]; then
