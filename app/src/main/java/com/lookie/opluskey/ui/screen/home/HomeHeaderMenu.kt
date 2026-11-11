@@ -56,7 +56,7 @@ import kotlinx.coroutines.launch
  *  注意：中途试过「整颗 ⋮ 一起禁用」，被用户否掉 —— 那会把上面那两条命脉一起锁掉。
  *  也别把 `enabled` 加到那颗 `IconButton` 上：库里 `startAction` / `actions` 槽位是**原样渲染**的，
  *  它只给它自己画的东西按 `enabled` 上色，图标不会跟着灰（真机量过：`enabled = false` 时
- *  ⋮ 与返回箭头同为 `(24,24,24)`）—— 真要禁用它，得像 `IconAction` 那样自己算 tint。
+ *  ⋮ 与返回箭头同为 `(24,24,24)`）—— 真要禁用它，得像 `SheetAction` 那样自己算 tint。
  */
 @Composable
 internal fun SettingsPage.HomeHeaderMenu() {

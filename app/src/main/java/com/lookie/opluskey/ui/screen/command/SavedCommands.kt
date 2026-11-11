@@ -43,6 +43,7 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.appCardColors
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.GRID_ROW_GAP
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
@@ -65,8 +66,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.CardColors
-import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -216,7 +215,7 @@ private fun SettingsPage.CommandTile(
                     // 行高由 [CommandTileRow] 统一定，这里填满行高即可。
                     .fillMaxHeight()
                     .preciseClickAnchor(tilePreciseClick),
-            colors = commandTileColors(),
+            colors = appCardColors(),
             pressFeedbackType = PressFeedbackType.None,
             showIndication = true,
             //  轻点这一张 = **看预览**（从这一片长出来的那一层）。改内容走顶行那颗铅笔 ——
@@ -263,18 +262,6 @@ private fun SettingsPage.CommandTile(
         )
     }
 }
-
-/**
- * 命令卡的三档底色 —— **所有卡一样**，抽成一份：卡里原先每次重组都重搭一个 `CardColors`，
- * 而这三档只跟主题走。
- */
-@Composable
-private fun commandTileColors(): CardColors =
-    CardDefaults.defaultColors(
-        color = COUITheme.colorScheme.surfaceContainer,
-        contentColor = COUITheme.colorScheme.onSurfaceContainer,
-        pressedColor = COUITheme.colorScheme.surfaceContainerHigh,
-    )
 
 /** 卡片内容：顶行（图标 + 两颗动作）、另起一行的名字、以及摘要。 */
 @Composable
@@ -416,7 +403,7 @@ private val TILE_ACTION_CORNER = 8.dp
  * 卡片顶行左段那颗**类型图标**（名字在下一行，见 [CommandTileName]）。
  *
  *  「随机图标配色」开着时，类型图标用**它自己那一色**；关着时退回卡片的内容色
- *  （`commandTileColors()` 里的 `onSurfaceContainer`，与摘要那一档同源）。
+ *  （[appCardColors] 里的 `onSurfaceContainer`，与摘要那一档同源）。
  *  单条命令按**自己的 root 档**取字形（su / 非 su 两颗字，见 `commandIcon`）：
  *  列表里要能一眼看出哪几条会提权。
  */
@@ -424,7 +411,7 @@ private val TILE_ACTION_CORNER = 8.dp
 private fun CommandTileIcon(cmd: Command) {
     val tileIcon = commandIcon(cmd.kind, cmd.steps.size, cmd.root)
     //  「随机图标配色」那一档同样要过渡：一次拨开关，整屏卡片的类型图标一起换色 ——
-    //  硬切在这里是一整片跳，比单颗图标明显得多。关着时退回卡片的内容色（见 `commandTileColors`）。
+    //  硬切在这里是一整片跳，比单颗图标明显得多。关着时退回卡片的内容色（见 `appCardColors`）。
     val iconTint by animateColorAsState(
         targetValue = tileIcon.tinted() ?: COUITheme.colorScheme.onSurfaceContainer,
         animationSpec = COLOR_TRANSITION_SPEC,

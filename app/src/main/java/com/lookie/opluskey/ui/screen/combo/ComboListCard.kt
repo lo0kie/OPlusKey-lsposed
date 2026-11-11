@@ -2,16 +2,13 @@ package com.lookie.opluskey.ui.screen.combo
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -28,8 +25,8 @@ import com.lookie.opluskey.ui.CHIP_H_PAD
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.ChipFlow
-import com.lookie.opluskey.ui.DisabledStateText
 import com.lookie.opluskey.ui.DisabledStateWithArrow
+import com.lookie.opluskey.ui.DisabledStateWithPick
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
@@ -43,7 +40,6 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberMenuState
 import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.state.KeysEditState
-import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -173,14 +169,11 @@ private fun SettingsPage.comboRow(
             when {
                 editing -> {
                     {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (off) DisabledStateText()
-                            Checkbox(
-                                state = if (combo.id in picked) ToggleableState.On else ToggleableState.Off,
-                                onClick = null,
-                                enabled = writable,
-                            )
-                        }
+                        DisabledStateWithPick(
+                            picked = combo.id in picked,
+                            enabled = writable,
+                            off = off,
+                        )
                     }
                 }
 

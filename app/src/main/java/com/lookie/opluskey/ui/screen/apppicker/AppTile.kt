@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.AnimatedFade
+import com.lookie.opluskey.ui.CenteredInInsets
 import com.lookie.opluskey.ui.DrawablePainter
 import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.SettingsPage
@@ -184,13 +185,11 @@ internal fun BoxScope.PageStatePlaceholder(
     text: String,
     glyph: @Composable (Color) -> Unit,
 ) {
-    Box(
-        modifier =
-            Modifier
-                .align(Alignment.TopStart)
-                .fillMaxSize()
-                .padding(top = topInset),
-        contentAlignment = Alignment.Center,
+    //  摆位走全项目那一层（[CenteredInInsets]）：浮层这一档的高度是「整屏」，
+    //  与列表项（`fillParentMaxHeight`）、滚动内容（量好的一块）只在高度从哪来上不同。
+    CenteredInInsets(
+        modifier = Modifier.align(Alignment.TopStart).fillMaxSize(),
+        topInset = topInset,
     ) {
         AnimatedFade(visible = visible) {
             //  排版（字形 32dp 定框 + 说明 + 居中）全在 [Feedback] 里 —— 与「条件执行」「已保存的

@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
-import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -28,6 +27,7 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.IconInputView
 import com.lookie.opluskey.ui.InputSpec
+import com.lookie.opluskey.ui.MAX_NAME_LENGTH
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.PageTabBand
@@ -361,11 +361,9 @@ private fun SettingsPage.hideCommandIme() {
  */
 @Composable
 internal fun SettingsPage.CommandNameCounter(form: CommandForm) {
+    //  上限与「填一个值」那类弹窗同一份（见 `MAX_NAME_LENGTH`），不在这里另写一个数
     TitleCounter(form.name.length, MAX_NAME_LENGTH)
 }
-
-/** 命令名能输入多少字（超出的部分在输入框里直接吃掉）。 */
-private const val MAX_NAME_LENGTH = 24
 
 /**
  * 「名称」那一张卡片输入（连同重名提示）。
@@ -386,9 +384,10 @@ internal fun SettingsPage.CommandNameField(
     IconInputView(
         spec = InputSpec(PageIcons.LabelImportant, I18n.get(Strings.COMMAND_NAME_HINT, "请输入名称"), MAX_NAME_LENGTH),
         value = form.name,
-        // 边输边清洗：只换掉换行、不 trim —— 带 trim 的版本会让空格打不进去。
-        // trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做。
-        onValueChange = { form.name = CommandLibrary.sanitizeNameInput(it) },
+        //  换行由输入框那一层折掉（`AppInputField` 的 `foldLineBreaks`）—— 这里不再清第二道。
+        //  trim 在保存（[addCommand]）与解析（`CommandLibrary.commandOf`）时做：带 trim 的版本
+        //  会让空格打不进去。
+        onValueChange = { form.name = it },
         enabled = enabled,
         modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
         // 同名冲突与 `cmd:` 成环提示都交给组件画（都只在打字 / 改步骤时才有意义，结果只喂这一个输入框）。

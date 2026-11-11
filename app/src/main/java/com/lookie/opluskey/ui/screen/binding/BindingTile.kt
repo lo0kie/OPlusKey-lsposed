@@ -33,6 +33,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TILE_HEIGHT
 import com.lookie.opluskey.ui.TILE_SIDE_PADDING
 import com.lookie.opluskey.ui.TileFocusRing
+import com.lookie.opluskey.ui.appCardColors
 import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
@@ -41,10 +42,9 @@ import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.model.opticalCenter
-import com.lookie.opluskey.ui.tinted
+import com.lookie.opluskey.ui.rememberRowIconColor
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
-import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -168,16 +168,16 @@ internal fun SettingsPage.ActionTile(
     //  **随机配色必须也走这里**：它换的是整屏格子的图标色（用户一拨开关，几十颗一起变），
     //  直接拿 `tinted()` 的结果去画就是整片硬切 —— 硬切在这页最扎眼，比任何一档状态色都明显。
     //  三档语义色仍优先：灰 / 主色是这一格「能不能点、选没选中」的说法，随机色只管剩下的常规态。
-    val iconTint by animateColorAsState(
-        targetValue =
-            when {
-                !enabled -> scheme.disabledOnSecondaryVariant
-                selected -> scheme.primary
-                else -> icon?.tinted() ?: scheme.onSurfaceContainer
-            },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "TileIcon",
-    )
+    //
+    //  三档顺序（禁用 > 选中 > 随机色）与卡片行那一处是同一套，所以直接用
+    //  [rememberRowIconColor] —— 两处各写一遍时，改一档就漏一档。
+    val iconTint by
+        rememberRowIconColor(
+            enabled = enabled,
+            icon = icon,
+            selected = selected,
+            label = "TileIcon",
+        )
 
     // 外层 `Box` **只为焦点圈**留一个浮层位置（见 [TileFocusRing]）。
     //
@@ -203,12 +203,8 @@ internal fun SettingsPage.ActionTile(
                     // ⇒ [BindingList] 那个 `onPreviewKeyEvent` 一次都不会被调用。
                     // 顺序不能反：`focusRequester` 必须在这个焦点目标**之前**（链上更靠外）。
                     .focusTarget(),
-            colors =
-                CardDefaults.defaultColors(
-                    color = scheme.surfaceContainer,
-                    contentColor = contentColor,
-                    pressedColor = scheme.surfaceContainerHigh,
-                ),
+            //  三档底色与命令卡、卡片列表同一份（见 [appCardColors]）；这一格的内容色是动画值
+            colors = appCardColors(contentColor = contentColor),
             // 按压反馈**只要涟漪**：`showIndication` 让 `clickable` 用
             // `LocalIndication`，与 `BasicComponent` 那个 `clickable` 同一份，
             // 视觉与换之前逐像素一致。`Tint`（底色渐变到 `pressedColor`）显式关掉 ——

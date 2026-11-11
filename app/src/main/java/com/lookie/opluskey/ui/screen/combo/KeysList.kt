@@ -1,12 +1,7 @@
 package com.lookie.opluskey.ui.screen.combo
 
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.state.ToggleableState
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -14,10 +9,11 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.DialogBody
 import com.lookie.opluskey.ui.DialogButtonRow
 import com.lookie.opluskey.ui.DialogPositiveStyle
-import com.lookie.opluskey.ui.DisabledStateText
 import com.lookie.opluskey.ui.DisabledStateWithArrow
+import com.lookie.opluskey.ui.DisabledStateWithPick
 import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -31,10 +27,6 @@ import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.KeysAsk
 import com.lookie.opluskey.ui.state.KeysEditState
 import com.lookie.opluskey.ui.write
-import io.github.suqi8.coui.kmp.basic.Checkbox
-import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.layout.DialogDefaults
-import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「按键功能」页上半块 —— 按键列表（侧键 + 收集来的键）那张卡，与它下面单起一张的「添加按键」。
 //
@@ -82,21 +74,11 @@ internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
                         when {
                             editing -> {
                                 {
-                                    //  编辑态也照说「已停用」：勾选框是**另一件事**（要删它），
-                                    //  不代表这颗键现在是启用的 —— 少了这半句，编辑态里看不出开合。
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (!keyEnabled(KeyId.PLUS)) DisabledStateText()
-                                        Checkbox(
-                                            state =
-                                                if (KeyId.PLUS.id in picked) {
-                                                    ToggleableState.On
-                                                } else {
-                                                    ToggleableState.Off
-                                                },
-                                            onClick = null,
-                                            enabled = pageEnabled,
-                                        )
-                                    }
+                                    DisabledStateWithPick(
+                                        picked = KeyId.PLUS.id in picked,
+                                        enabled = pageEnabled,
+                                        off = !keyEnabled(KeyId.PLUS),
+                                    )
                                 }
                             }
 
@@ -176,14 +158,11 @@ private fun SettingsPage.customKeyRow(
             when {
                 editing -> {
                     {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (!on) DisabledStateText()
-                            Checkbox(
-                                state = if (key.id in picked) ToggleableState.On else ToggleableState.Off,
-                                onClick = null,
-                                enabled = pageEnabled,
-                            )
-                        }
+                        DisabledStateWithPick(
+                            picked = key.id in picked,
+                            enabled = pageEnabled,
+                            off = !on,
+                        )
                     }
                 }
 
@@ -525,13 +504,8 @@ internal fun SettingsPage.KeysAskDialog() {
             )
         },
     ) {
-        Text(
-            body,
-            //  **左右内缩与别的窗同一档**：`FrostedDialog` 的正文槽不给内缩，自己不留就会顶到
-            //  面板边上（真机反馈「正文左右边距没了」）。与 `DialogBody` 用同一个常量。
-            modifier = Modifier.padding(horizontal = DialogDefaults.insideMargin.width),
-            style = COUITheme.textStyles.body2,
-            color = COUITheme.colorScheme.onSurfaceVariantSummary,
-        )
+        //  正文走全项目那一份（[DialogBody]）：短句居中、长句左对齐，超出可滚 ——
+        //  手写一个裸 `Text` 时正文一长就把两颗按钮顶出可见区，且内缩得自己补一遍。
+        DialogBody(body)
     }
 }

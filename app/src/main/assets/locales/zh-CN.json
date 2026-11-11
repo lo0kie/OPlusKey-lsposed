@@ -280,6 +280,7 @@
   "command.format_cmd_desc": "调用另一条单条命令",
   "command.add": "添加命令",
   "app_picker.title": "选择应用",
+  "app_picker.multi_title": "多选应用",
   "app_picker.search_app": "搜索应用",
   "app_picker.tab_xposed": "模块",
   "app_picker.tab_system": "系统",

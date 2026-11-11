@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -26,7 +25,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -54,7 +52,6 @@ import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.cardListPositionOf
 import io.github.suqi8.coui.kmp.squircle.addSquircleRect
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -101,6 +98,21 @@ internal sealed interface CardRow {
          */
         val dividerBefore: Boolean = false,
         val summary: String? = null,
+        /**
+         * 标题最多几行（默认 [ROW_TEXT_MAX_LINES]，超出省略）。
+         *
+         *  与 [summaryMaxLines] 配套：行高定死的那几页（挑应用）标题也只能占一行 ——
+         *  长应用名折到第二行时，整行会被父级高度裁掉，那是靠高度偶然裁出来的版式。
+         */
+        val titleMaxLines: Int = ROW_TEXT_MAX_LINES,
+        /**
+         * 副标题最多几行（默认 [ROW_TEXT_MAX_LINES]）。
+         *
+         *  给「这一行的行高是定死的」那种页用：行高只按「一行副标题」算的（图标要整高），
+         *  这时副标题**必须写明一行** —— 写 3 行再指望父级高度把它裁掉，等于把版式押在
+         *  「容器刚好不够高」这件偶然上：系统字号一调大，裁的位置就换了。
+         */
+        val summaryMaxLines: Int = ROW_TEXT_MAX_LINES,
         val icon: ImageVector? = null,
         /** 行首那一格自己画（见 KDoc）；非空时优先于 [icon]。 */
         val startIcon: (@Composable () -> Unit)? = null,
@@ -449,29 +461,6 @@ private fun ColumnScope.RowContent(
 }
 
 /**
- * 卡片行行首图标的颜色 —— 行自己指定的 → 随机配色（**仅启用的行**）→ 常规 / 禁用两档，带过渡。
- *
- *  行自己指定了 `iconTint` 的（强调色色块那几行）以它为准：那块色就是这一行的身份。
- *  禁用行不上随机色 —— 给一颗灰着的行上彩色，读起来像「这一行能用」。
- *
- *  抽成一支只为让 [ItemRow] 留在 detekt 的 `LongMethod` 长度线内。
- */
-@Composable
-private fun rememberCardRowIconColor(row: CardRow.Item): State<Color> =
-    animateColorAsState(
-        targetValue =
-            row.iconTint
-                ?: row.icon?.takeIf { row.enabled }?.tinted()
-                ?: if (row.enabled) {
-                    COUITheme.colorScheme.onSurfaceContainer
-                } else {
-                    COUITheme.colorScheme.disabledOnSecondaryVariant
-                },
-        animationSpec = COLOR_TRANSITION_SPEC,
-        label = "CardRowIcon",
-    )
-
-/**
  * 行尾那一格现在是哪一种形态 —— 只用来给 [Crossfade] 一个稳定的目标值（见 [ItemRow] 的 `endActions`）。
  *
  *  `trailing` 那个 lambda 每次重组都是新的，拿它当 `targetState` 会让交叉淡入每帧重启一遍；
@@ -491,7 +480,14 @@ private fun ItemRow(
 ) {
     // 两档色自己管（与整页其余行同一套）：库的箭头图标集与本项目的 Tabler 图标不是一支笔，
     //  而 `startAction` 槽位库不会按 `enabled` 上色 —— 不给就成了「字灰了、图标还亮着」。
-    val iconTint by rememberCardRowIconColor(row)
+    val iconTint by
+        rememberRowIconColor(
+            enabled = row.enabled,
+            icon = row.icon,
+            //  行自己指定了颜色（强调色色块那几行）以它为准：那块色就是这一行的身份
+            override = row.iconTint,
+            label = "CardRowIcon",
+        )
     val arrowTint by animateColorAsState(
         targetValue =
             if (row.enabled) {
@@ -590,7 +586,7 @@ private fun ItemText(
             else -> Modifier.opticalBlockCenter(titleStyle, summaryStyle)
         }
     //  标题 / 副标题两档色同样带过渡：整页闸门一拨、或这一行自己从「待补条件」变成「填好了」时，
-    //  行首图标与行尾箭头本来就在渐变（见 [rememberCardRowIconColor] 与 `arrowTint`）——
+    //  行首图标与行尾箭头本来就在渐变（见 [rememberRowIconColor] 与 `arrowTint`）——
     //  文字硬切就成了「图标在淡、字在跳」。
     val titleColor by animateColorAsState(
         targetValue = if (row.enabled) titleColors.color else titleColors.disabledColor,
@@ -620,12 +616,10 @@ private fun ItemText(
                     animationSpec = COLOR_FADE_SPEC,
                     label = "CardRowTitleText",
                 ) { shown ->
-                    Text(
+                    RowTitleLine(
                         text = shown,
-                        style = titleStyle,
-                        fontWeight = FontWeight.Medium,
                         color = titleColor,
-                        maxLines = ROW_TEXT_MAX_LINES,
+                        maxLines = row.titleMaxLines,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }

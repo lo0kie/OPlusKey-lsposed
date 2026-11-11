@@ -16,9 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.PageIcons
@@ -27,7 +24,6 @@ import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 /**
@@ -124,22 +120,18 @@ internal fun SettingsPage.ExpandableRow(
             Modifier.animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)),
         ) {
             // 标题与值自己画：库那个 `BasicComponent(title, summary)` 版本不给 `maxLines`，
-            //  而「收起成一行」正是这里唯一要做的事。样式逐项照抄库那一版。
-            Text(
+            //  而「收起成一行」正是这里唯一要做的事。字号与字重走全项目那一份（[RowTitleLine]）。
+            RowTitleLine(
                 text = spec.title,
-                style = COUITheme.textStyles.headline1,
-                fontWeight = FontWeight.Medium,
                 // 与滑杆那一档同一套：标题取 `onBackground`（库的 `titleColor()` 是 internal，取不到）
                 color = COUITheme.colorScheme.onBackground,
             )
-            Text(
+            RowSummaryLine(
                 text = spec.text,
-                modifier = Modifier.padding(top = TITLE_SUMMARY_GAP),
-                style = COUITheme.textStyles.body2,
                 color = COUITheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(top = ROW_LINE_GAP),
                 // 收起压成一行、展开原样折行 —— 这是这一档唯一的行为差别
                 maxLines = if (expanded) Int.MAX_VALUE else 1,
-                overflow = TextOverflow.Ellipsis,
                 onTextLayout = { result ->
                     // 只在收起态量：展开态本来就全部显示，溢出恒为 false
                     if (!expanded) overflowed = result.hasVisualOverflow
@@ -148,6 +140,3 @@ internal fun SettingsPage.ExpandableRow(
         }
     }
 }
-
-/** 标题与值之间那一档行距 —— 与库 `BasicComponent` 里 `MarginBetweenLine` 同值（2dp）。 */
-private val TITLE_SUMMARY_GAP = 2.dp

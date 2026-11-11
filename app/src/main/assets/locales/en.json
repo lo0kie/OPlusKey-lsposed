@@ -280,6 +280,7 @@
   "command.format_cmd_desc": "Call another single command",
   "command.add": "Add command",
   "app_picker.title": "Pick an app",
+  "app_picker.multi_title": "Select apps",
   "app_picker.search_app": "Search apps",
   "app_picker.tab_xposed": "Modules",
   "app_picker.tab_system": "System",

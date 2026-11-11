@@ -102,7 +102,10 @@ internal fun PopupSectionTitle(
     //  它本来就是同一句话的一部分（用户口径「改成和标题一样的，直接拼在标题里」）。
     //  拼成一串而不是并排两个控件，还顺带解决两件事：位置天然紧随，不必靠间距去凑；
     //  标题长到要省略时括号跟着一起省略，不会出现「标题被截了、计数孤零零贴在右边」。
-    val shown = if (count == null) text else "$text ($count)"
+    //
+    //  拼接本身走 [titleWithCount]：分组标题那一族（动作网格、抽屉）用的是同一句，
+    //  两处各拼一遍的话，括号前后的空格迟早有一边写成全角。
+    val shown = if (count == null) text else titleWithCount(text, count)
     Box(
         modifier =
             Modifier

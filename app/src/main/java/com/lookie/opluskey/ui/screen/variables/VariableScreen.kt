@@ -1,11 +1,9 @@
 package com.lookie.opluskey.ui.screen.variables
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,7 +14,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -31,11 +28,13 @@ import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.VisibleAreaCentered
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.state.VarListSignal
+import com.lookie.opluskey.ui.visibleAreaHeight
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
 import io.github.lyxnx.compose.ui.tablericons.outline.Number
@@ -119,9 +118,9 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
     //  页里只有一列变量，那颗 FAB 会一直压着最后一行的右侧。
     BoxWithConstraints(Modifier.fillMaxSize()) {
         //  空态要「占满一屏再居中」：普通滚动列里没有 `fillParentMaxHeight`（那是 `LazyItemScope`
-        //  才有的），只能自己按视口算 —— 见下面那个 `Box` 的高度。
-        val viewport = maxHeight
+        //  才有的），只能自己按视口算 —— 账走全项目那一支（[visibleAreaHeight]）。
         val topInset = currentHeaderHeight(scrollBehavior)
+        val emptyHeight = visibleAreaHeight(maxHeight, topInset)
         //  `loaded` 之前不判空：读盘那几毫秒里闪一下整屏空态，比什么都不显示更像出错
         val fullscreen = loaded && (vars.isEmpty() || unreadable)
         Column(
@@ -138,10 +137,7 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
                 //  高度取「视口 − 顶栏」：与上面那个 `Spacer` 加在一起**正好一屏**，
                 //  于是这块的中心就是可见区的中心（不多不少），同时内容高度不小于视口 ——
                 //  手一拖照样能越界回弹（这正是空态不做成浮层的原因）。
-                Box(
-                    Modifier.fillMaxWidth().height(viewport - topInset),
-                    contentAlignment = Alignment.Center,
-                ) {
+                VisibleAreaCentered(emptyHeight) {
                     //  排版走 [Feedback]（「选择应用」「条件执行」「已保存的命令」那几块同一份），
                     //  字形也取同一张脸：说的都是「这里什么都没有」。
                     Feedback(

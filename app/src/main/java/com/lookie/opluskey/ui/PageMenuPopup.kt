@@ -36,6 +36,7 @@ import com.lookie.opluskey.ui.model.MENU_ICON_SIZE
 import com.lookie.opluskey.ui.model.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.model.POPUP_PANEL_RADIUS
 import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.SCROLLBAR_WIDTH
 import com.lookie.opluskey.ui.model.STEP_PICKER_MAX_HEIGHT
 import com.lookie.opluskey.ui.model.isDarkScheme
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
@@ -328,7 +329,7 @@ internal fun SettingsPage.MenuPopup(
  * 浮层右侧那条滚动条所在的**一层** —— 与面板同框，里层只占右边一条窄带。
  *
  *  外层 `matchParentSize` 只吃父级量出来的尺寸（不参与测量，换成 `fillMaxHeight` 会把面板顶到
- *  `maxHeight`，菜单会变成永远满高）；里层那条窄带见 [MENU_SCROLLBAR_WIDTH]。
+ *  `maxHeight`，菜单会变成永远满高）；里层那条窄带见 [SCROLLBAR_WIDTH]。
  *
  * @param modifier 由调用点给（`matchParentSize` 只能在 `BoxScope` 里取到）
  */
@@ -338,7 +339,7 @@ private fun SettingsPage.MenuScrollBarLayer(
     modifier: Modifier,
 ) {
     Box(modifier, contentAlignment = Alignment.CenterEnd) {
-        MenuScrollBar(scrollState, Modifier.fillMaxHeight().width(MENU_SCROLLBAR_WIDTH))
+        MenuScrollBar(scrollState, Modifier.fillMaxHeight().width(SCROLLBAR_WIDTH))
     }
 }
 
@@ -370,15 +371,6 @@ private fun SettingsPage.MenuScrollBar(
         alwaysVisible = true,
     )
 }
-
-/**
- * 滚动条那条窄带的宽度 —— 12dp。
- *
- *  不能按库的触摸目标（48dp）给：这一层压在菜单行上面，它有多宽就吃掉多宽的行点击。
- *  12dp 只盖住面板右内边距（库的 `InsideHorizontalPadding` = 16dp）里的一小条，行文字碰不到；
- *  拇指本身 3dp + 右端 5.5dp 留白，量起来仍够点中。
- */
-private val MENU_SCROLLBAR_WIDTH = 12.dp
 
 /**
  * 滚动条轨道上下让出去的留白 —— 8dp（`trackPadding`，库自带的那一档）。

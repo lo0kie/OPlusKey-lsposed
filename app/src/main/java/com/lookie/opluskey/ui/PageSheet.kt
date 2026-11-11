@@ -255,7 +255,7 @@ internal fun SettingsPage.PageSheet(
 /**
  * 抽屉标题行右端那颗**圆键里的图标**边长。
  *
- *  取 20dp 与行尾那几颗图标键（`ICON_ACTION_ICON`）同一档 —— 两个位置都是「一颗小图标按钮」，
+ *  取 20dp 与行尾那几颗图标键同一档（见 `CommandSteps` 的 `STEP_BUTTON_GLYPH_RATIO`）—— 两个位置都是「一颗小图标按钮」，
  *  在真机上不该有两种大小。满格字形（`trash` 这种）也是靠这一档收住的，不靠调用点各写一个数。
  */
 private val SHEET_ACTION_ICON = 20.dp

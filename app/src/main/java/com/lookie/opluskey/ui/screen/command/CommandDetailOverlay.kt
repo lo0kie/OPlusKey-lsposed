@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -25,6 +24,7 @@ import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.appNameOf
+import com.lookie.opluskey.ui.dialogSideMargin
 import com.lookie.opluskey.ui.model.SUMMARY_REF_GAP
 import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.model.opticalCenter
@@ -40,9 +40,6 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 //  外壳走项目通用那一个（[FrostedDialog] → 库的 `OverlayDialog`，强制居中），与「捐赠打赏」那张
 //  收款码窗口**同一个窗、同一段进出场动画**（真机口径「动画改成和捐赠二维码的一样」）：
 //  居中、缩放淡入、点遮罩或返回收起，都在库那一层，这里不再自己写一层 Popup 与透明度动画。
-
-/** 正文的左右内边距 —— 与 `DialogPanel` 三区那一档同一个量级。 */
-private val DETAIL_SIDE_PADDING = 24.dp
 
 /** 「以 root 执行」与正文之间那一档 —— 与标题行到正文那一档同一个量级。 */
 private val DETAIL_HEAD_GAP = 10.dp
@@ -109,8 +106,9 @@ private fun SettingsPage.CommandDetailBody(cmd: Command) {
         Modifier
             .fillMaxWidth()
             //  `FrostedDialog` 的正文槽**不给左右内边距**（库的原话：那一槽留白是给按钮条横贯用的），
-            //  不自己给的话正文会贴着面板左右边线。
-            .padding(horizontal = DETAIL_SIDE_PADDING)
+            //  不自己给的话正文会贴着面板左右边线。用全项目那一支（[dialogSideMargin]），
+            //  正文左缘才与标题严格对齐。
+            .dialogSideMargin()
             .heightIn(max = DETAIL_MAX_HEIGHT)
             .verticalScroll(rememberScrollState()),
     ) {

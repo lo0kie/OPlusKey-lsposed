@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
@@ -19,7 +21,58 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 //  「行里长什么样」的事，与列表/动画/状态不是同一件事。
 
 /**
- * 副标题那一行（有的话）—— 一整句话，按 [ROW_TEXT_MAX_LINES] 折行、超出省略。
+ * 行内「标题 + 副标题」那两行字 —— 字号 / 字重 / 行距全项目一处。
+ *
+ *  三处在用：卡片行（[ItemText]）、可展开行（`ExpandableRow`）、滑杆行（`SliderRowTexts`）。
+ *  三处原先各自手抄「`headline1` + Medium / `body2` / 2dp」，抄漏一处就是「这一页的标题比
+ *  那一页细一点」——那种差 1dp / 少一个字重的走形，对着一页看是看不出来的。
+ *
+ *  各处的**行为**仍归各处：行数上限、是否跟随内容动画、量不量溢出、要不要 `weight`，
+ *  都留给调用点（它们是这一行自己的排版，不是「这一行长什么样」）。
+ */
+@Composable
+internal fun RowTitleLine(
+    text: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+) {
+    Text(
+        text = text,
+        modifier = modifier,
+        style = COUITheme.textStyles.headline1,
+        fontWeight = FontWeight.Medium,
+        color = color,
+        maxLines = maxLines,
+        overflow = overflow,
+    )
+}
+
+@Composable
+internal fun RowSummaryLine(
+    text: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    onTextLayout: ((TextLayoutResult) -> Unit)? = null,
+) {
+    Text(
+        text = text,
+        modifier = modifier,
+        style = COUITheme.textStyles.body2,
+        color = color,
+        maxLines = maxLines,
+        //  行数不设上限时不需要省略号；设了就是「最多这几行、多的省略」——
+        //  这两档在三个调用点上永远成对出现，所以不另开一个参数（多一个就顶破 detekt 的线）。
+        overflow = if (maxLines == Int.MAX_VALUE) TextOverflow.Clip else TextOverflow.Ellipsis,
+        onTextLayout = { result -> onTextLayout?.invoke(result) },
+    )
+}
+
+/**
+ * 副标题那一行（有的话）—— 一整句话，按这一行自己的上限（[CardRow.Item.summaryMaxLines]）折行、
+ * 超出省略。
  *
  *  拆出来只为让 [ItemText] 留在 `LongMethod` 的长度线内。
  */
@@ -29,13 +82,11 @@ internal fun ItemSummary(
     summaryColor: Color,
 ) {
     val summary = row.summary ?: return
-    Text(
+    RowSummaryLine(
         text = summary,
-        modifier = Modifier.padding(top = ROW_LINE_GAP),
-        style = COUITheme.textStyles.body2,
         color = summaryColor,
-        maxLines = ROW_TEXT_MAX_LINES,
-        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.padding(top = ROW_LINE_GAP),
+        maxLines = row.summaryMaxLines,
     )
 }
 

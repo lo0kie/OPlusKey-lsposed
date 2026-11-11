@@ -58,6 +58,14 @@ internal val FROSTED_BLUR_RADIUS = 24.dp
 internal val POPUP_PANEL_RADIUS = 12.dp
 
 /**
+ * 细滚动条那条窄带的宽度 —— 浮层菜单与「更新说明」弹窗共用这一份。
+ *
+ *  不能按库的触摸目标（48dp）给：这一层压在可点内容上面，它有多宽就吃掉多宽。
+ *  12dp 只占右内边带里的一小条，菜单行与正文都碰不到；拇指本身 3dp + 右端留白，量起来仍够点中。
+ */
+internal val SCROLLBAR_WIDTH = 12.dp
+
+/**
  * [SliderRow] 那一行的几何契约 ——「点轨道跳值」（[tapSliderToSeek]）按这几笔账圈出滑杆占的那条带子：
  * [SLIDER_SIDE_INSET] / [SLIDER_BOTTOM_INSET] 是行内容的内边距（`insideMargin`），
  * [SLIDER_ICON_INSET] 是行首图标额外挤开的那一段。

@@ -157,10 +157,18 @@ private fun SettingsPage.pageTitle(s: Screen): String =
         }
 
         Screen.APP_PICKER -> {
-            //  这一页两个状态共用，主标题直接说这一趟做什么（「打开应用」/「结束应用」），
-            //  挑的是谁交给标题下面那行小标题（「已选择: 微信」）—— 原来两件事挤在标题一个「选择应用」里，
-            //  下面那行再拼一遍「打开应用 · 微信」，重复。
-            if (picker.stopApp) I18n.get(Strings.TOOL_STOP_APP, "结束应用") else I18n.get(Strings.TOOL_OPEN_APP, "打开应用")
+            //  这一页两个状态共用，主标题直接说这一趟做什么，挑的是谁交给标题下面那行小标题
+            //  （「已选择: 微信」）—— 原来两件事挤在标题一个「选择应用」里，下面那行再拼一遍
+            //  「打开应用 · 微信」，重复。
+            //
+            //  **多选那一趟（给条件挑前台应用）说的是「多选应用」**：那一趟点一行是勾选、右下角
+            //  才落盘，写「打开应用」会被读成「点一下就打开它」。三档的判据与行尾图标、
+            //  点行行为同一个 `appOnly` 家族，不另立一套。
+            when {
+                picker.forBranch -> I18n.get(Strings.APP_PICKER_MULTI_TITLE, "多选应用")
+                picker.stopApp -> I18n.get(Strings.TOOL_STOP_APP, "结束应用")
+                else -> I18n.get(Strings.TOOL_OPEN_APP, "打开应用")
+            }
         }
 
         Screen.ACTIVITY_PICKER -> {

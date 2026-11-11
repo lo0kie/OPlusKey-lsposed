@@ -68,6 +68,9 @@ object Strings {
     /** 应用名旁边那枚「分身」标签（多开槽里的那一份）。 */
     const val APP_PICKER_CLONE_TAG = "app_picker.clone_tag"
     const val APP_PICKER_TITLE = "app_picker.title"
+
+    /** 「选择应用」页在**多选**那一趟（给条件挑前台应用）的大标题 —— 那一趟点一行是勾选，不是「打开」。 */
+    const val APP_PICKER_MULTI_TITLE = "app_picker.multi_title"
     const val BINDING_CREATE_CUSTOM_COMMAND = "binding.create_custom_command"
 
     const val BINDING_CREATE_CUSTOM_COMMAND_DESC = "binding.create_custom_command_desc"

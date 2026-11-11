@@ -32,6 +32,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
+import com.lookie.opluskey.ui.CenteredInInsets
 import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SettingsPage
@@ -215,15 +216,13 @@ private fun LazyItemScope.PickerEmptyItem(
     text: String,
     topInset: Dp,
 ) {
-    Box(
-        modifier =
-            Modifier
-                .fillParentMaxHeight()
-                .fillMaxWidth()
-                //  上下各让出该让的：上面是顶栏 + 搜索带，下面是列表自己的底部留白（`contentPadding`
-                //  那一档不参与这一项的测量，不让掉就会把中线抬高半档）。
-                .padding(top = topInset, bottom = PAGE_BOTTOM_PADDING),
-        contentAlignment = Alignment.Center,
+    //  摆位走全项目那一层（[CenteredInInsets]）：
+    //  上下各让出该让的 —— 上面是顶栏 + 搜索带，下面是列表自己的底部留白（`contentPadding`
+    //  那一档不参与这一项的测量，不让掉就会把中线抬高半档）。
+    CenteredInInsets(
+        modifier = Modifier.fillParentMaxHeight().fillMaxWidth(),
+        topInset = topInset,
+        bottomInset = PAGE_BOTTOM_PADDING,
     ) {
         Feedback(
             glyph = { tint ->
@@ -409,12 +408,22 @@ private fun SettingsPage.AppRow(
     val withSystem = picker.showSystemApps.value
     // 这一行是不是当前选中的那个应用 —— 行尾那支箭头的颜色据此走（选中那行给主题色）
     val picked = row.pickedBy(app.target)
+    //  「只认应用本身」的那几趟（结束应用、场景 / 条件里的多选）**不画行尾箭头**：
+    //  它们点一行就是选中 / 切换，**没有下级页**，而箭头读作「点进去挑界面」——
+    //  画上去等于告诉用户一个不存在的去处。判据与 `pickRow` 用的是同一个 `appOnly`。
+    val noRowArrow = picker.appOnly
     CardList(
         rows =
             listOf(
                 CardRow.Item(
                     title = app.label,
+                    //  标题与包名各**只给一行**、超出省略：这一行定高 [APP_ROW_HEIGHT]，
+                    //  行高是按「一行标题 + 一行副标题」算的自然高度（图标要整高）。
+                    //  不写明的话，长的折到第二行再被父级高度裁掉 —— 那是靠高度偶然裁出来的版式，
+                    //  系统字号一调大，裁的位置就变（见 `CardRow.Item.titleMaxLines`）。
+                    titleMaxLines = 1,
                     summary = app.packageName,
+                    summaryMaxLines = 1,
                     startIcon = { AppIcon(app) },
                     titleExtra = { AppRowTags(app, withSystem) },
                     //  行高定死 ⇒ 行首那枚图标才能整高（见 [APP_ROW_HEIGHT]）。
@@ -426,16 +435,28 @@ private fun SettingsPage.AppRow(
                     //  三百行里一眼扫下去，先落到的应该是字，不是那圈线。
                     titleTint = if (picked) COUITheme.colorScheme.primary else null,
                     trailing = {
-                        //  行尾那一格**恒占位**，只换字形：
-                        //  · 选中那一行 → **实心圆勾**（`TileChecked`，与按键列表的选中态同一颗）：
-                        //    这一页的行是「挑一个」，勾比箭头更直接地说「就是它」；
+                        //  行尾那一格**恒占位**，只换内容：
+                        //  · 选中那一行 → **实心圆勾**（`TileChecked`，与按键列表的选中态同一颗）；
+                        //  · 没有下级页的那几趟 → **空心圆圈**（`TileUnchecked`）：这一页的行是
+                        //    「挑一个」，空圈与实心勾才是同一套单选说法 —— 见 [noRowArrow]；
                         //  · 其余行 → 右箭头（点下去还进下一级：挑这个应用里的具体界面 / 快捷方式）。
-                        //  两档都是同一格 24dp，宽度不动 —— 否则库按行尾实际宽度算中间那列，
+                        //  三档都是同一格 24dp，宽度不动 —— 否则库按行尾实际宽度算中间那列，
                         //  长包名会折行（真机表现是「勾一出现，两个标题一起上移」）。
-                        if (picked) {
-                            RowEndIcon(PageIcons.TileChecked, tint = COUITheme.colorScheme.primary)
-                        } else {
-                            RowEndIcon(tint = COUITheme.colorScheme.onSurfaceVariantActions)
+                        when {
+                            picked -> {
+                                RowEndIcon(PageIcons.TileChecked, tint = COUITheme.colorScheme.primary)
+                            }
+
+                            noRowArrow -> {
+                                RowEndIcon(
+                                    PageIcons.TileUnchecked,
+                                    tint = COUITheme.colorScheme.onSurfaceVariantActions,
+                                )
+                            }
+
+                            else -> {
+                                RowEndIcon(tint = COUITheme.colorScheme.onSurfaceVariantActions)
+                            }
                         }
                     },
                     onClick = onClick,
@@ -540,7 +561,7 @@ internal fun LazyListState.rowFullyVisible(
 }
 
 /**
- * 行标题右边那几枚小标签： 「分身」+「模块 / 系统 / 用户」+「不可打开」。
+ * 行标题右边那几枚小标签： 「分身」+「模块 / 系统」+「不可打开」。
  *
  *  名字本身走 `CardRow.Item.title`（通用行的那一档字体），这一块只补名字后面那串标记 ——
  *  排在同一个 `Row` 里，名字长了先缩名字（见 `CardRow` 的 `titleExtra`）。
@@ -549,6 +570,9 @@ internal fun LazyListState.rowFullyVisible(
  *  这里只管**标签之间**的间隙：只有第二枚起才在前面补 [APP_KIND_TAG_GAP]。
  *  每个标签前都加的话，名字到第一枚之间会是两档叠加（6 + 6 = 12dp），读着「标签离名字远了」
  *  （真机口径）。
+ *
+ *  **用户级不标**：没有标签就是用户应用，再挂一枚「用户」只是给默认情况加噪音。
+ *  「系统」那一枚的显示条件不看「显示系统应用」开关（见下面那一支）。
  *
  *  「不可打开」只在**打开应用**那一趟出现（见下面那一支）：结束那一趟标它没有意义。
  */
@@ -559,7 +583,7 @@ private fun SettingsPage.AppRowTags(
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         // 分身：一枚固定色的「分身」标签，**紧贴名字** —— 它回答的是「这一行是不是多开的那一份」，
-        //  比「模块 / 系统 / 用户」更该靠近名字（那几枚排在它后面）。
+        //  比「模块 / 系统」更该靠近名字（那两枚排在它后面）。
         //  第几个不看标签：名字里已经写着（`微信 1`），标签再用五种颜色区分只会让整屏更花。
         if (app.clone) {
             AppKindTag(
@@ -567,30 +591,40 @@ private fun SettingsPage.AppRowTags(
                 tint = cloneTagTint(),
             )
         }
-        // 这一行是「盒子居中」而非 `alignByBaseline`：基线对齐会把胶囊整体
-        // 压低小半档（大标题字面比标签高一截），居中 + 两边各沉 0.1em 之后两个字面的中线重合。
-        // 「模块 / 系统 / 用户」只在「显示系统应用」开着时画；「模块」不看那个开关
-        // —— 模块默认就在列表里，开关关着也得分得出来。
-        if (withSystem || app.xposed) {
+        // 「模块 / 系统」两枚，**用户级不标**（用户口径：默认就是用户级，不需要特别指出）——
+        //  没有标签 = 用户应用。
+        //
+        //  「系统」这一枚**不能只看那个开关**：「结束应用」那一趟会把系统应用一并列出来
+        //  （`includesIconless` 里 `stopApp` 强制为真），此时开关关着也得标 ——
+        //  否则那一趟里看不出哪些是系统的，而这正是它要停的东西。
+        //
+        //  这一行是「盒子居中」而非 `alignByBaseline`：基线对齐会把胶囊整体
+        //  压低小半档（大标题字面比标签高一截），居中 + 两边各沉 0.1em 之后两个字面的中线重合。
+        val kindTag =
+            when {
+                app.xposed -> {
+                    I18n.get(Strings.APP_PICKER_TAB_XPOSED, "模块") to appKindTagTint(true, app.system)
+                }
+
+                app.system && (withSystem || picker.stopApp) -> {
+                    I18n.get(Strings.APP_PICKER_TAB_SYSTEM, "系统") to appKindTagTint(false, true)
+                }
+
+                else -> {
+                    null
+                }
+            }
+        if (kindTag != null) {
             //  前面已经画过一枚（分身）才补间隙；它是第一枚时由 `CardRow` 的 titleExtra 那档负责
             if (app.clone) Spacer(Modifier.width(APP_KIND_TAG_GAP))
-            // 三选一：「模块」压过「系统」压过「用户」
-            AppKindTag(
-                text =
-                    when {
-                        app.xposed -> I18n.get(Strings.APP_PICKER_TAB_XPOSED, "模块")
-                        app.system -> I18n.get(Strings.APP_PICKER_TAB_SYSTEM, "系统")
-                        else -> I18n.get(Strings.APP_PICKER_TAB_USER, "用户")
-                    },
-                tint = appKindTagTint(app.xposed, app.system),
-            )
+            AppKindTag(text = kindTag.first, tint = kindTag.second)
         }
         // 「不可打开」：**只在「打开应用」那一趟标**（那一趟可能把这类应用藏起来，看得见的时候得
         //  知道点下去会失败）。「结束应用」那一趟不标 —— 停掉一个没有启动图标的应用正是它的用处，
         //  挂个红标签反而像在劝退。
         if (!picker.stopApp && !app.launchable) {
-            //  前面画过任意一枚（分身 / 模块·系统·用户）才补间隙
-            if (app.clone || withSystem || app.xposed) Spacer(Modifier.width(APP_KIND_TAG_GAP))
+            //  前面画过任意一枚（分身 / 模块·系统）才补间隙
+            if (app.clone || kindTag != null) Spacer(Modifier.width(APP_KIND_TAG_GAP))
             AppKindTag(
                 text = I18n.get(Strings.APP_PICKER_TAG_UNOPENABLE, "不可打开"),
                 tint = COUITheme.colorScheme.error,

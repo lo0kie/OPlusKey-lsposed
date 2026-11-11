@@ -9,9 +9,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -21,7 +23,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 /**
  * 弹一条操作提示 —— 由页面在根上提供（实现是 `hints.hint`，见 `ui/PageFeedback.kt`）。
  *
- *  控件层（`IconAction` 这种不带 `SettingsPage` 接收者的）也拿不到页面实例，所以「提示怎么弹」
+ *  控件层（`SheetAction` 这种不带 `SettingsPage` 接收者的）也拿不到页面实例，所以「提示怎么弹」
  *  从上面传下来。**没提供时是空实现**：控件在别的上下文里照样能用，只是不出声。
  *
  *  「禁用态被点了一下」要说的话不走这一条，走 [LocalDisabledHint]。
@@ -119,5 +121,31 @@ internal fun DisabledStateWithArrow() {
     Row(verticalAlignment = Alignment.CenterVertically) {
         DisabledStateText()
         RowEndIcon()
+    }
+}
+
+/**
+ * 行尾那一格：**「已停用」+ 勾选框** —— 按键列表（内置侧键 / 自定义键）与组合按键三处共用。
+ *
+ *  与 [DisabledStateWithArrow] 是同一个位置的两种形态：编辑态里勾选框代替箭头。三处各写一遍
+ *  的结果与那条箭头的老毛病一样 —— 迟早有一处忘了先写「已停用」，编辑态里就看不出这一项是停的。
+ *
+ *  @param picked 这一行是否被勾中（编辑态）
+ *  @param enabled 勾选框本身是否可按 —— 整页闸门关着时按下无意义
+ *  @param off 这一项当前是否是停用状态（决定要不要先写那半句）
+ */
+@Composable
+internal fun DisabledStateWithPick(
+    picked: Boolean,
+    enabled: Boolean,
+    off: Boolean,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (off) DisabledStateText()
+        Checkbox(
+            state = if (picked) ToggleableState.On else ToggleableState.Off,
+            onClick = null,
+            enabled = enabled,
+        )
     }
 }

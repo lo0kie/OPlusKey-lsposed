@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,12 +27,13 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.seal.Seal
+import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.dialogSideMargin
 import com.lookie.opluskey.ui.model.DONATE_CODE_SIZE
 import com.lookie.opluskey.ui.model.DonateTarget
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.overlay.OverlayDialog
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -41,10 +41,11 @@ import kotlinx.coroutines.withContext
 // 「捐赠打赏」：菜单里的三个去处 + 点开之后那个居中的收款码窗口。
 
 /**
- * 「捐赠打赏」的收款码窗口 —— **居中**的对话框。
+ * 「捐赠打赏」的收款码窗口 —— **居中**的对话框，与全项目其他窗同一套皮。
  *
- *  居中靠 `largeScreen = true`：库在窗口宽度不到 840dp 时默认是**底部滑入**（见 COUI 文档
- *  「OverlayDialog → 居中呈现（大屏）」），手机上不指定就得不到「页面正中的窗口」。
+ *  走 [FrostedDialog] 而不是自己搭一层 `OverlayDialog`：那是全项目唯一的面板（磨砂 + 三区排版）。
+ *  自己搭的那一版面板不磨砂、区距自定，同一页里它和确认窗一眼看上去像两个应用的控件。
+ *  居中由 [FrostedDialog] 的 `centered` 传下去（库在窗口宽度不到 840dp 时默认是**底部滑入**）。
  *
  *  **窗口只有标题，正文全在内容槽里**：那两句话（[Strings.DONATE_HINT] 与
  *  [Strings.DONATE_NAME_NOTE]）要在**图下面**，而 `summary` 槽在库里固定排在内容**之上**
@@ -66,12 +67,14 @@ internal fun SettingsPage.DonateDialog(
     //  它只是「上一次那一份」这个事实。
     val last = remember { LastDonate() }
     if (target != null) last.value = target
-    OverlayDialog(
+    FrostedDialog(
         show = show,
-        title = last.value?.label,
-        // 强制居中：见上面那段说明（库默认按窗口尺寸自动判，手机上一律是底部滑入）
-        largeScreen = true,
-        onDismissRequest = onDismiss,
+        //  标题是必填的（[FrostedDialog] 那一栏不是可空槽）：没选中时窗口本来就不露出，
+        //  空串只是占位，退场那一帧仍有 `last` 里的上一个去处。
+        title = last.value?.label.orEmpty(),
+        onDismiss = onDismiss,
+        // 强制居中：库默认按窗口尺寸自动判，手机上一律是底部滑入
+        centered = true,
     ) {
         DonateBody(last.value)
     }
@@ -82,35 +85,26 @@ private class LastDonate {
     var value: DonateTarget? = null
 }
 
-/**
- * 内容槽上下留的空 —— 面板**不分内边距**，各槽自己带（见 [DonateBody]）。
- *
- *  取库那档文本内边距（`DialogDefaults.insideMargin` = 24dp）：标题上边就是这一档，
- *  内容上下跟着它，面板四周才是同一种呼吸。
- */
-private val DONATE_CONTENT_MARGIN = 24.dp
-
 /** 图与它下面那几行字之间的空 —— 18dp（库里摘要在图上方时，自己带的就是上下 18dp）。 */
 private val DONATE_CODE_TEXT_GAP = 18.dp
 
 /** 图下面那两行字之间的空 —— 比行距略大一点，读得出「这是两句」，又不至于散成两块。 */
 private val DONATE_NOTE_GAP = 6.dp
 
-/** 正文左右留的空 —— 库给标题与摘要的就是这一档（`DialogDefaults.insideMargin` 的宽）。 */
-private val DONATE_SIDE_MARGIN = 24.dp
-
 /**
  * 内容槽里那一叠：**图在上、话在下**。
  *
- *  话从 `summary` 槽搬到这里之后，上下两条内边距也一并归这里管 —— `OverlayDialog` 的面板
- *  **不分内边距**（库的原话：内容槽留白是为了让按钮条能横贯整块面板），
- *  不自己给的话图会顶到面板下沿、贴在标题底下。
+ *  正文那两句话（[Strings.DONATE_HINT] 与 [Strings.DONATE_NAME_NOTE]）要在**图下面**，
+ *  而库的 `summary` 槽固定排在内容之上，所以不喂 `summary`，两句话归这里摆。
+ *
+ *  **上下留白不在这里补**：那归 `FrostedDialog` 的三区排版（头 / 正文 / 底之间统一一档），
+ *  各补一份正是「gap 一叠加、上下对不齐」的来源。
  */
 @Composable
 private fun DonateBody(target: DonateTarget?) {
     if (target == null) return
     Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = DONATE_CONTENT_MARGIN),
+        modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         DonateCode(target)
@@ -142,8 +136,8 @@ private fun DonateCode(target: DonateTarget) {
     var bitmap by remember(target) { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(target) { bitmap = withContext(Dispatchers.IO) { loadDonateCode(context, target) } }
     val code = bitmap
-    //  水平居中必须自己做：`OverlayDialog` 的 content 槽是库自己那个 `Column`（默认
-    //  `horizontalAlignment = Start`，文档也写明「content 插槽不加内边距」），比面板窄的图会**贴左**。
+    //  水平居中必须自己做：`FrostedDialog` 的 content 槽是个 `ColumnScope`（默认
+    //  `horizontalAlignment = Start`），比面板窄的图会**贴左**。
     //  撑满一行再让内容居中，是这一槽里唯一稳的写法 —— 只给图加 `wrapContentWidth` 没用：
     //  面板宽度由内容自己撑时那个节点就只有图的宽度，居中是空操作。
     Box(
@@ -164,7 +158,7 @@ private fun DonateCode(target: DonateTarget) {
 }
 
 /**
- * 图下面那一行说明 —— 待遇与库里那个 `summary` 槽一致：左右留 24dp、整行居中。
+ * 图下面那一行说明 —— 待遇与库里那个 `summary` 槽一致：左右按 [dialogSideMargin]、整行居中。
  *
  *  颜色也照 `summary` 走（`DialogDefaults.summaryColor` = `onBackground`）：这两句是窗口的正文，
  *  不是次级备注，压成灰的会读成「可以不看」。
@@ -176,7 +170,7 @@ private fun DonateNote(text: String) {
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = DONATE_SIDE_MARGIN),
+                .dialogSideMargin(),
         style = COUITheme.textStyles.body2.copy(color = COUITheme.colorScheme.onBackground),
         textAlign = TextAlign.Center,
     )

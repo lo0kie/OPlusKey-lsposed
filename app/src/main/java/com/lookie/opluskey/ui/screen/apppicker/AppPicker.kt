@@ -329,7 +329,8 @@ private fun SettingsPage.AppPickerPlaceholders(
  *
  *  现在清单**一次取全**，两个开关纯过滤（见 [AppPickerUiState.shown]）。这一段只剩两件事：
  *  查一遍 → 覆盖（**不再先铺缓存**：拿全才显示，之前一律加载态 —— 见下面的注释）。
- *  查的那一遍分两档交回来：默认档（有启动图标的 + 模块 + 分身）先上屏，其余在后台接着算。
+ *  查的那一遍分两档交回来：默认档（有启动图标的 + 模块 + 分身）与其余应用。
+ *  **前一档要不要先上屏，取决于这一页用不用得上后一档**（见 `AppListLoader` 里的 `waitForAll`）。
  *
  *  代价原本在「全量取法要几百个 label + 逐包问入口」，现在入口那半已经换成一次问全机
  *  （见 `AppEntry.launchablePackages`），整段仍在 IO 上跑，主线程一行都没有。
@@ -350,14 +351,17 @@ private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
         // （转场、各页动画）。
         //  图标不在这一轮：它是按行按需取的（见 [AppIcon]）。
         XLog.w("选择应用页：取列表（缓存 ${cached?.size ?: 0} 条，只作失败兜底）")
-        // **默认档先到就先上屏**：关着「显示系统应用」时，有启动图标的那批 + 模块 + 分身
-        // 就是页面上要显示的全部，剩下几百个没有图标的应用（各自要 `loadLabel` + 罗马化）
-        // 在后台接着算。回调里切回主线程再写状态，**顺序确定**：先上屏、再算其余，
-        // 不会被后到的全量盖回加载态。
+        //  这一趟要不要**等全量再上屏**：勾着「显示系统应用 / 显示失效应用」（以及「结束应用」
+        //  那一趟，它两位都为真）时，其余那几百个应用就是页面上要看的内容之一 ——
+        //  先铺默认档会让列表先短后长地闪一下（用户口径：那两档开着时不要先显示已经拿到的那部分）。
+        //  两档都关着时，默认档就是这一页要显示的全部，先上屏反而是收益。
+        val waitForAll = picker.includesIconless || picker.includesUnopenable
         val fresh =
             withContext(Dispatchers.IO) {
                 loadLaunchableApps(context) { tier ->
-                    withContext(Dispatchers.Main) { ui.loaded = tier }
+                    // **默认档先到就先上屏**（仅当用不到其余那批时）：回调里切回主线程再写状态，
+                    //  顺序确定 —— 先上屏、再算其余，不会被后到的全量盖回加载态。
+                    if (!waitForAll) withContext(Dispatchers.Main) { ui.loaded = tier }
                 }
             }
         // 查失败（null）不覆盖缓存，也不把当前列表打回空态：那是「这次没查到」，

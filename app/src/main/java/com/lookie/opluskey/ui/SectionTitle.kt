@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -250,6 +251,40 @@ internal fun MoreButton(
                 modifier = Modifier.size(MORE_BUTTON_HEIGHT),
             )
         }
+    }
+}
+
+/**
+ * 小标题行尾那一格：**[「更多」+ 计数]** —— 命令详情、命令步骤、场景块三处共用。
+ *
+ *  三处原先各拼一个 `Row { MoreButton; Spacer(10dp); TitleCounter }`，差别只有「前面有没有
+ *  一句状态」。那种「谁多一行」的复制最后必然走形：菜单与计数之间的距离、菜单能不能点、
+ *  计数的上限，改一处就漏两处。
+ *
+ *  要在菜单**前面**再放一格（场景块的「已停用」那半句），由调用点在 `Row` 里先画它、再调这一个 ——
+ *  那一格是那一页自己的话，不属于「菜单 + 计数」这套几何。
+ *
+ *  @param length 计数里的当前值
+ *  @param max 上限；`null` = 只报个数（见 [TitleCounter]）
+ *  @param enabled 这颗「更多」能不能点（排序态整片关掉）
+ */
+@Composable
+internal fun SectionTitleTrailingMore(
+    anchor: PreciseClickState,
+    onMenu: () -> Unit,
+    length: Int,
+    max: Int? = null,
+    enabled: Boolean = true,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        //  顺序是**菜单在前、计数在最后**（用户口径「counter 和菜单换个位置」）。
+        //  菜单右边还有一格文字，所以**不给 `flushEnd`**：那一下整格右移是为了让字形贴住
+        //  内容右边线，而这条线现在归计数那格。
+        MoreButton(onClick = onMenu, anchor = anchor, enabled = enabled)
+        //  菜单与计数之间那一档 —— 菜单格左边 / 右边自带 10dp，再补这一档，字形到计数都是 20dp
+        //  （见 [SECTION_TITLE_COUNTER_GAP]）。
+        Spacer(Modifier.width(SECTION_TITLE_COUNTER_GAP))
+        TitleCounter(length, max)
     }
 }
 

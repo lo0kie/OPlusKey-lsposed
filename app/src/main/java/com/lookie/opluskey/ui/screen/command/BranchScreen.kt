@@ -10,7 +10,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -30,6 +29,7 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.visibleAreaHeight
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -80,9 +80,13 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         //  减掉滚动内容底部那档留白（[PAGE_BOTTOM_PADDING]，与首页同一档）：不减的话空态那块
         //  比可见区高出一截，居中的位置会偏下、还多出一段能拖的空白。
+        //  账走全项目那一支（[visibleAreaHeight]），三处滚动页不各写一遍。
         val emptyHeight =
-            (maxHeight - currentHeaderHeight(scrollBehavior) - PAGE_BOTTOM_PADDING)
-                .coerceAtLeast(0.dp)
+            visibleAreaHeight(
+                maxHeight = maxHeight,
+                topInset = currentHeaderHeight(scrollBehavior),
+                bottomInset = PAGE_BOTTOM_PADDING,
+            )
         PageScrollColumn(scrollBehavior = scrollBehavior, state = scroll) {
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
             //  行的可点性（整页那一道闸）由 `BranchRuleColumn` 就地判。

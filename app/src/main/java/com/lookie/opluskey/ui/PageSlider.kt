@@ -16,7 +16,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -259,15 +258,14 @@ private fun SliderRowTexts(
     colors: SliderTextColors,
     value: Int,
 ) {
-    // 标题与摘要之间那 2dp 是库的私有常量 `MarginBetweenLine`（值取自 `Component.kt`）。
+    // 标题与摘要的字号 / 字重 / 行距走全项目那一份（[RowTitleLine] / [RowSummaryLine]）；
+    // 这一层只管这一行怎么排：值贴右、标题占剩下的宽度。
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
+            RowTitleLine(
                 text = spec.title,
                 // 占满剩下的宽度：值贴右、标题超长时先折行，而不是把值顶出行外
                 modifier = Modifier.weight(1f),
-                style = COUITheme.textStyles.headline1,
-                fontWeight = FontWeight.Medium,
                 color = colors.title,
             )
             // 值只占它自己要的那点宽度，与标题之间留一条缝（贴着标题读成一串）
@@ -280,11 +278,10 @@ private fun SliderRowTexts(
                 )
             }
         }
-        Text(
+        RowSummaryLine(
             text = spec.summary,
             // 全宽：不设 `weight` / 不套行，摘要自己按整行宽度折行
-            modifier = Modifier.padding(top = 2.dp),
-            style = COUITheme.textStyles.body2,
+            modifier = Modifier.padding(top = ROW_LINE_GAP),
             color = colors.summary,
         )
     }

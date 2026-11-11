@@ -9,21 +9,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -36,16 +33,15 @@ import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.IconInputView
 import com.lookie.opluskey.ui.InputSpec
 import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.PageScrollColumn
-import com.lookie.opluskey.ui.SECTION_TITLE_COUNTER_GAP
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SectionTitleClick
+import com.lookie.opluskey.ui.SectionTitleTrailingMore
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
-import com.lookie.opluskey.ui.TitleCounter
+import com.lookie.opluskey.ui.VisibleAreaCentered
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
@@ -56,6 +52,7 @@ import com.lookie.opluskey.ui.state.CommandForm
 import com.lookie.opluskey.ui.state.CommandUiState
 import com.lookie.opluskey.ui.state.singleLine
 import com.lookie.opluskey.ui.titleWithCount
+import com.lookie.opluskey.ui.visibleAreaHeight
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
@@ -199,21 +196,17 @@ private fun SettingsPage.CommandDetailTitle(
         //  行尾那颗「更多」：与「命令列表」同一套（`MoreButton` + 一层菜单）。
         //  标题自己可点（开全屏编辑），菜单里再给一次同样的入口 + 测试命令 ——
         //  「测试」这一档只有菜单里放得下。
+        //
+        //  计数是「正文写了几个字 / 最多几个字」：与全屏编辑那条标题同一个 `TitleCounter`
+        //  （`CommandFullscreen`）—— 输入框只截断、不画计数，上限得在这一行读到。
         trailing = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                //  顺序是**菜单在前、计数在最后**（用户口径「counter 和菜单换个位置」）。
-                //  菜单右边还有一格文字，所以不再 `flushEnd`：那一下整格右移是为了让字形贴住
-                //  内容右边线，而这条线现在归计数那格。
-                MoreButton(
-                    onClick = onMenu,
-                    anchor = anchor,
-                    enabled = !sorting,
-                )
-                Spacer(Modifier.width(SECTION_TITLE_COUNTER_GAP))
-                //  正文写了几个字 / 最多几个字 —— 与全屏编辑那条标题同一个 `TitleCounter`
-                //  （`CommandFullscreen`）：输入框只截断、不画计数，上限得在这一行读到。
-                TitleCounter(length, MAX_SINGLE_LENGTH)
-            }
+            SectionTitleTrailingMore(
+                anchor = anchor,
+                onMenu = onMenu,
+                length = length,
+                max = MAX_SINGLE_LENGTH,
+                enabled = !sorting,
+            )
         },
     )
 }
@@ -230,18 +223,15 @@ private fun SettingsPage.CommandStepListSection(
 ) {
     SectionTitle(
         text = I18n.get(Strings.COMMAND_LIST_TITLE, "命令步骤"),
+        //  计数是「几步 / 最多几步」—— 上限是 `Command.MAX_STEPS`，加到最后一步时「添加命令」
+        //  那行会自己置灰；计数摆在这里，不用点进去数一遍。
         trailing = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                //  同上：菜单在前、计数在最后，所以不给 `flushEnd`。
-                MoreButton(
-                    onClick = onMenu,
-                    anchor = anchor,
-                )
-                Spacer(Modifier.width(SECTION_TITLE_COUNTER_GAP))
-                //  几步 / 最多几步 —— 上限是 `Command.MAX_STEPS`，加到最后一步时「添加命令」
-                //  那行会自己置灰；计数摆在这里，不用点进去数一遍。
-                TitleCounter(commandDraft.draft.serialForm.steps.size, Command.MAX_STEPS)
-            }
+            SectionTitleTrailingMore(
+                anchor = anchor,
+                onMenu = onMenu,
+                length = commandDraft.draft.serialForm.steps.size,
+                max = Command.MAX_STEPS,
+            )
         },
     )
     //  **不要再套一层 `Card`**：`SerialSteps` 自己就是两张 `CardList`（步骤卡 + 「添加命令」那张，
@@ -276,21 +266,22 @@ internal fun SettingsPage.CommandListPage(
 ) {
     val commands = configState.commands.value
     //  量一次视口高度：空态要**在可见区里居中**，而滚动容器的子项拿到的是无限高度约束
-    //  （`fillMaxHeight()` 在那儿没有意义）—— 与「条件执行」页同一个做法。
+    //  （`fillMaxHeight()` 在那儿没有意义）—— 账走全项目那一支（[visibleAreaHeight]）。
     //  空态**仍然留在滚动内容里**：它得跟着内容一起拖、一起弹，挪出滚动容器就再也越界不动了。
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val emptyHeight =
-            (maxHeight - currentHeaderHeight(scroll.behavior) - scroll.tabBlockDp - PAGE_BOTTOM_PADDING)
-                .coerceAtLeast(0.dp)
+            visibleAreaHeight(
+                maxHeight = maxHeight,
+                topInset = currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp,
+                bottomInset = PAGE_BOTTOM_PADDING,
+            )
         PageScrollColumn(scrollBehavior = scroll.behavior, state = scroll.state) {
             // 顶栏叠在内容上，顶部这块要自己让出来；再把类型选择器固定带一起让出。
             Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlockDp))
             if (commands.isEmpty()) {
                 //  一条都没有：撑满可见区并正中（高度已减掉顶栏、分页带与页底留白，
                 //  所以居中落在**看得见的那块**正中间，不多出一段能拖的空白）。
-                Box(Modifier.fillMaxWidth().height(emptyHeight), contentAlignment = Alignment.Center) {
-                    SavedCommandEmptyState()
-                }
+                VisibleAreaCentered(emptyHeight) { SavedCommandEmptyState() }
             } else {
                 //  两段各一条小标题；**空的那一段整段不画**（一条命令都没有的那类，留一条光标题
                 //  + 空网格只是占地方）。

@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,13 +40,12 @@ import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
-import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.RowEndIcon
-import com.lookie.opluskey.ui.SECTION_TITLE_COUNTER_GAP
 import com.lookie.opluskey.ui.SECTION_TITLE_TRAILING_GLYPH_INSET
 import com.lookie.opluskey.ui.SectionTitle
+import com.lookie.opluskey.ui.SectionTitleTrailingMore
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.TitleCounter
+import com.lookie.opluskey.ui.VisibleAreaCentered
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
@@ -146,13 +144,8 @@ internal fun SettingsPage.BranchCards(
     ) { empty ->
         if (empty) {
             //  一屏高（`emptyHeight`）：这样它才在**可见区**里居中，而且整块在滚动内容里，
-            //  拖动时跟着弹。
-            Box(
-                Modifier.fillMaxWidth().height(emptyHeight),
-                contentAlignment = Alignment.Center,
-            ) {
-                BranchEmptyHint()
-            }
+            //  拖动时跟着弹。居中盒走全项目那一份（[VisibleAreaCentered]）。
+            VisibleAreaCentered(emptyHeight) { BranchEmptyHint() }
         } else {
             Column(Modifier.fillMaxWidth()) {
                 BranchRuleColumn(
@@ -448,26 +441,19 @@ private fun RuleTitleRow(
         trailingEndPadding = SECTION_TITLE_TRAILING_GLYPH_INSET,
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                //  前置那一格是「已停用」那半句 —— 它是这一页自己的话，不属于「菜单 + 计数」那套几何
                 RuleStateHint(state)
-                //  **与「多条命令」那颗「命令列表」小标题的「更多」落在同一位置**（同一套几何）。
+                //  菜单与计数的几何由 [SectionTitleTrailingMore] 定 —— 与「命令详情 / 命令步骤」
+                //  两行同一份，三处不该各算一遍。
+                //
                 //  这一行的内缩由上面那 10dp 给到，点击格贴住内容右边缘、字形居中。
-                //
-                //  菜单右边现在还有一格计数，所以**不给 `flushEnd`**：那一下整格右移是为了让
-                //  字形右边缘落在内容右边线上，而这条右边线现在归计数那格。给了会挤掉它们之间
-                //  那 10dp（字形贴到数字上）。
-                //
                 //  别按「与字头对称」去调 —— 这一页字头在 32dp，两者本来就不对称，跟多条命令一致才是口径。
-                MoreButton(
-                    onClick = cells.onMenu,
+                SectionTitleTrailingMore(
                     anchor = cells.anchors.menu,
+                    onMenu = cells.onMenu,
+                    length = conditions,
+                    max = SceneRule.MAX_CONDITIONS,
                 )
-                //  菜单与计数之间那一档 —— 与「命令详情 / 命令步骤」两行同一个数
-                //  （见 [SECTION_TITLE_COUNTER_GAP]）：那两处是「菜单格左边自带 10dp + 补 10dp」，
-                //  这里是「菜单格右边自带 10dp + 补 10dp」，字形到计数都是 20dp。
-                Spacer(Modifier.width(SECTION_TITLE_COUNTER_GAP))
-                //  **这一块配了几条 / 最多几条**。上限 [SceneRule.MAX_CONDITIONS] 就在这一行读到，
-                //  不用等点「添加场景」被置灰了才知道到顶。与「命令步骤」「命令详情」同一个 `TitleCounter`。
-                TitleCounter(conditions, SceneRule.MAX_CONDITIONS)
             }
         },
     )

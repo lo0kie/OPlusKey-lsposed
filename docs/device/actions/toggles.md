@@ -231,9 +231,11 @@ stopSoftAp() : boolean
 - **权限**：uid 1000 的 `android` 包在 `dumpsys package android` 里
   `NETWORK_SETTINGS` 与 `TETHER_PRIVILEGED` 都是 `granted=true` ⇒ system_server 侧调得动；
   宿主（`com.oplus.gesture`，`platform_app`）没有这两条，所以这一条整条在注入侧执行
-  （`SettingCalls.hotspot`），宿主只把 id 转过去。
-- **还没验的**：端到端（按下之后热点真的起来）。上面四个方法是 dump 出来的、权限是 `granted=true`
-  查出来的，但「调用真的成功、状态真的翻」要等换包重启后在真机上按一次才算验过。
+  （`bridge/HotspotCall.kt` 的 `HotspotCall.run`），宿主只把 id 转过去。
+- **端到端已验**（2026-11-11 用户真机按下）：热点真的起来，再按一次关掉 —— 读 / 开 / 关三个方法
+  都走通，且开的是用户原配的热点名 / 密码（配置取自 `getSoftApConfiguration()`，没有重写配置）。
+- **前置条件**：注入侧只在 **system_server 启动时**加载，换包后必须整机重启才会换成新代码；
+  没重启时按下去的表现是「宿主转过去了、注入侧回『没有接执行』」，与「方法调不通」在日志里分得开。
 
 ### 45.2 护眼模式：`Settings.System.oplus_customize_eye_protect_enable`
 

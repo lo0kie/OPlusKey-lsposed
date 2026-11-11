@@ -37,6 +37,7 @@ import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.dialogSideMargin
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.markdownToAnnotated
+import com.lookie.opluskey.ui.model.SCROLLBAR_WIDTH
 import com.lookie.opluskey.ui.screen.home.openUrl
 import com.lookie.opluskey.ui.scrollBarTick
 import com.lookie.opluskey.ui.state.UpdateState
@@ -62,14 +63,11 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 private val UPDATE_NOTES_MAX_HEIGHT = 240.dp
 
 /**
- * 滚动条那条窄带的宽度 —— 与浮层菜单那条同档（`MENU_SCROLLBAR_WIDTH`）。
+ * 滚动条离弹窗右边那一档 —— 贴着内边而不是被正文内缩推着走。
  *
- *  12dp 只占弹窗右侧内缩带（库的 `DialogDefaults.insideMargin` = 24dp）里的一小条，
- *  正文那边不用再额外让位：文字仍在 24dp 处收尾，滚动条收在 16dp 处，中间空 8dp。
+ *  宽带本身走全项目那一份（[SCROLLBAR_WIDTH]）：这一条与浮层菜单那条是同一根滚动条，
+ *  两处各写一个 12dp 的话，改一处就漏一处。
  */
-private val NOTES_SCROLLBAR_WIDTH = 12.dp
-
-/** 滚动条离弹窗右边那一档 —— 贴着内边而不是被正文内缩推着走。 */
 private val NOTES_SCROLLBAR_INSET = 4.dp
 
 /**
@@ -181,7 +179,7 @@ private fun NotesBlock(
                         //  先让出贴边那一档、再定宽：顺序反了会先按 12dp 定死、再往里挤，
                         //  拇指被压细一半
                         .padding(end = NOTES_SCROLLBAR_INSET)
-                        .width(NOTES_SCROLLBAR_WIDTH),
+                        .width(SCROLLBAR_WIDTH),
                 alwaysVisible = true,
             )
         }
