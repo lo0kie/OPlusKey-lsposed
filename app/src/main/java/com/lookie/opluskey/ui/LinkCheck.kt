@@ -575,17 +575,16 @@ internal fun SettingsPage.disabledClickReason(): String {
     val f = linkFacts
     val cfg = configState.config.value
     val key = KeyWatchState.editing(cfg)
-    //  **这一页在编的那一份先说话**：组合键 / 场景动作那两页的「开没开」看的是**那一组组合 /
-    //  那一块场景**，而下一支读的是 `KeyWatchState` 里那颗键 —— 那只是「上一次在按键绑定页看过的
-    //  那一颗」，与这两页没关系。先不看它就会出现两种说法：入口条上写着 `[音量+]×[音量-] 已停用`、
-    //  格子里写着 `[电源] 已停用`（真机口径「点格子回落到上一个文案」）。
-    //  说法本身不再另写：`pageBlockedReason` 与入口行那一份是同一个出口。
+    //  **这一页在编的那一份先说话**：组合键那一页的「开没开」看的是**那一组组合**，而下一支读的
+    //  是 `KeyWatchState` 里那颗键 —— 那只是「上一次在按键绑定页看过的那一颗」，与这一页没关系。
+    //  先不看它就会出现两种说法：入口条上写着 `[音量+]×[音量-] 已停用`、格子里写着 `[电源] 已停用`
+    //  （真机口径「点格子回落到上一个文案」）。
+    //  场景动作那一页不在此列：它的闸门只有整页那一道（停用的那一块照样能改），没有「这一份停用」
+    //  这一类说法。说法本身不再另写：`pageBlockedReason` 与入口行那一份是同一个出口。
     val targetBlocked =
         when (screen) {
-            // 手势这一位与判据无关：那两个实现只看「这一份开没开」
+            // 手势这一位与判据无关：那一支只看「这一份开没开」
             Screen.COMBO_EDIT -> ComboEditState.editingId?.let { BindingTarget.Combo(it, Gesture.SINGLE) }
-
-            Screen.SCENE_BINDING -> BindingTarget.Scene(branchDraft.now(), sceneBindingAt, sceneBindingGesture)
 
             else -> null
         }?.pageBlockedReason(cfg)

@@ -11,7 +11,7 @@ import com.lookie.opluskey.bridge.host.RecorderStateBridge
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.rom.RomProfile
 
 /** 拉界面 / 发广播 / 触发外部能力这一族动作的执行器（小窗那一族见 [MiniWindowLauncher]）。 */
 internal class AppLauncher(
@@ -252,6 +252,8 @@ internal class AppLauncher(
         //  必须排在下面「只停」那一支前面 —— 录音的「只结束」正是 service 为空、只有 AIDL 的落点。
         if (target.aidl != null && runAidlFeature(ctx, feature, target, onFailure) { startOplusFeature(feature) }) return
 
+        // 「只停」那一档（翻译的「关闭」）：落点**有** service（要按它去停），所以排在广播那一支前面。
+        if (target.stop) return stopFeatureService(ctx, feature, target)
         // 「只停」那一档（录屏的「结束」）：没有启动落点，只发那条停止广播。
         //  记账一起清掉 —— 之后按「切换」那一档要按「现在是关」算。
         if (target.service.isEmpty()) {
@@ -585,23 +587,6 @@ private fun Intent.putExtrasOf(
                 else -> XLog.w("oplus:$feature 的 extra $k 类型 ${v.javaClass.simpleName} 搬不过去")
             }
         }
-    }
-
-/**
- * 造出「第一次」要发的那个 Intent（起采集与结束两条路共用）。
- *
- *  有 action 的按系统自己的写法发 —— `action + setPackage`，由清单 intent-filter 解析；
- *  场景表里 `scene_owner` + action 本来就是系统发给该服务的原样。只有组件名（无 action）
- *  的才用显式组件。失败之后的退路不在这里，在 [AppLauncher.startOplusFeature]
- *  （试 [tryComponentFallback] 的显式组件）。
- *
- *  提成顶层函数只为让 [AppLauncher] 的函数数别顶破 detekt；本函数不吃对象状态。
- */
-private fun buildFeatureIntent(target: RomProfile.BuiltIn): Intent =
-    if (target.action != null) {
-        Intent(target.action).setPackage(target.owner)
-    } else {
-        Intent().setComponent(ComponentName(target.owner, target.service))
     }
 
 /**

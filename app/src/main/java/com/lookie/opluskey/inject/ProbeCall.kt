@@ -5,8 +5,8 @@ import android.os.Handler
 import com.lookie.opluskey.bridge.extOf
 import com.lookie.opluskey.bridge.instanceOf
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.core.rom.RomProfile
 
 // 探针的 `call` 那一族（含它用的反射引擎：定位 / 强制转换 / 收包 / 取字段）——
 // 从 ProbeChannel 分出来；object 不能用两个文件装，走扩展函数。

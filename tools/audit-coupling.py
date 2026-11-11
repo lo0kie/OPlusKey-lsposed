@@ -183,6 +183,88 @@ def rel_of(path: Path) -> str:
     raise AssertionError(path)
 
 
+# ── 进程归属：从注入侧出发的**类级**可达性 ─────────────────────────────────────
+#
+# 包级禁止边只回答「谁 import 了谁」，回答不了整个项目最要紧的那个问题：
+# **这段代码会不会在 system_server 里被加载**。而 `bridge/` 的档位（根 = 两侧都会加载 /
+# `bridge/host/` = 只有宿主 / `bridge/inject/` = 只有注入侧）正是按这个问题分的 ——
+# 档位对了，黑名单才有意义；档位漂了，最严的那条规则就套在了根本不会进系统进程的文件上，
+# 真正会进的那些反倒没人看。
+#
+# 所以这里不看目录名，改从**事实**推：对每个文件取它声明了什么、import 了什么，
+# 从注入侧那几个入口做一次 BFS，落在集合里的就是「会被 system_server 加载」。
+#
+# 这是**近似值**，两处刻意偏保守（宁可多算可达，不可漏算）：
+#   - 同名声明（`object Foo` 在两处）按全部计入；
+#   - `import a.b.*` 按整包计入。
+# 所以结论只能用于「哪些文件肯定不进系统进程」（可达 0 的那一档），不能反过来当「一定安全」。
+
+DECL_TYPE = re.compile(
+    r"^\s*(?:@[\w.]+(?:\([^)]*\))?\s*)*"
+    r"(?:(?:public|internal|private|protected|abstract|open|sealed|data|value|inline|enum|annotation)\s+)*"
+    r"(?:class|interface|object)\s+(\w+)",
+    re.M,
+)
+DECL_VALUE = re.compile(
+    r"^(?:(?:public|internal|private)\s+)?"
+    r"(?:inline\s+|suspend\s+|operator\s+|infix\s+|tailrec\s+|const\s+)*"
+    r"(?:fun|val|var)\s+(?:<[^>]+>\s*)?(\w+)",
+    re.M,
+)
+IMPORT_FQN = re.compile(r"^import\s+([\w.]+(?:\.\*)?)\s*$", re.M)
+
+
+def declarations(src: str) -> set[str]:
+    """文件里**顶层可见**的名字（类型 + 函数 + 属性）。嵌套声明也收，偏保守。"""
+    return set(DECL_TYPE.findall(src)) | set(DECL_VALUE.findall(src))
+
+
+def class_graph(files: list[Path]) -> tuple[dict[Path, set[Path]], dict[Path, str]]:
+    """文件级导入图：``import`` 的目标 FQN → 声明它的那个文件。"""
+    package_of: dict[Path, str] = {}
+    names_of: dict[Path, set[str]] = {}
+    imports_of: dict[Path, list[str]] = {}
+    for path in files:
+        src = path.read_text(encoding="utf-8", errors="replace")
+        head = re.search(r"^package\s+([\w.]+)", src, re.M)
+        package_of[path] = head.group(1) if head else ""
+        names_of[path] = declarations(src)
+        imports_of[path] = IMPORT_FQN.findall(src)
+
+    # FQN → 文件。同名声明落成多个候选（见上面「近似值」那两句）
+    index: dict[str, set[Path]] = {}
+    for path, names in names_of.items():
+        for name in names:
+            index.setdefault(package_of[path] + "." + name, set()).add(path)
+
+    graph: dict[Path, set[Path]] = {}
+    for path, targets in imports_of.items():
+        out: set[Path] = set()
+        for target in targets:
+            if target.endswith(".*"):
+                prefix = target[:-1]
+                for fqn, hits in index.items():
+                    if fqn.startswith(prefix):
+                        out |= hits
+            else:
+                out |= index.get(target, set())
+        out.discard(path)
+        graph[path] = out
+    return graph, package_of
+
+
+def reachable(graph: dict[Path, set[Path]], roots: list[Path]) -> set[Path]:
+    seen: set[Path] = set()
+    stack = list(roots)
+    while stack:
+        cur = stack.pop()
+        if cur in seen:
+            continue
+        seen.add(cur)
+        stack.extend(graph.get(cur, ()))
+    return seen
+
+
 def find_cycle(graph: dict[str, set[str]]) -> list[str] | None:
     """DFS 找一条包级环；返回 ``[a, b, …, a]``，无环返回 None。"""
     state: dict[str, int] = {n: 0 for n in graph}  # 0 未访 1 在栈上 2 已定
@@ -297,7 +379,71 @@ def main() -> int:
         for rel, target in sorted(WHITELIST):
             print(f"  {rel} → {target}")
 
+    report_reach(files)
     return 1 if violations else 0
+
+
+def report_reach(files: list[Path]) -> None:
+    """打印「这段代码会不会在 system_server 里加载」的**实测量**，并与目录声明对照。
+
+    只报警、不判红：档位搬文件属于包边界变更（AGENTS.md 一、1 的 B 档）。
+    但它把「看目录名猜进程归属」这件事换成了「跑一遍就知道」—— 猜错的成本是一次
+    `NoClassDefFoundError`，那时崩的是系统进程（五之二）。
+    """
+    graph, package_of = class_graph(files)
+    rel = {path: rel_of(path) for path in files}
+
+    def in_dir(path: Path, prefix: str) -> bool:
+        return rel[path].startswith(prefix)
+
+    def bridge_root(path: Path) -> bool:
+        """`bridge/` 根下的文件（不含 `bridge/host` 与 `bridge/inject` 两个子档）。"""
+        return rel[path].startswith("bridge/") and rel[path].count("/") == 1
+
+    # 严格：只有「一定会进系统进程」的入口 —— `inject/` 与 `bridge/inject/`。
+    #  **`bridge/` 根不在这里**：它自己的档位正是待验证的东西，拿它当根等于自证。
+    #  也不含 KeyModule —— 它靠进程分支才走到界面层，另算一列。
+    strict_roots = [p for p in files if in_dir(p, "inject/") or in_dir(p, "bridge/inject/")]
+    strict = reachable(graph, strict_roots)
+    # 含入口：KeyModule 也会在 system_server 里被加载，它 import 的东西在**分支之后**才可用
+    with_entry = reachable(graph, strict_roots + [p for p in files if rel[p] == "KeyModule.kt"])
+
+    groups = {
+        "inject/": [p for p in files if in_dir(p, "inject/")],
+        "bridge/（根，声明为两侧）": [p for p in files if in_dir(p, "bridge/") and "/" not in rel[p][len("bridge/") :]],
+        "bridge/host/": [p for p in files if in_dir(p, "bridge/host/")],
+        "bridge/inject/": [p for p in files if in_dir(p, "bridge/inject/")],
+        "host/": [p for p in files if in_dir(p, "host/")],
+        "ui/": [p for p in files if in_dir(p, "ui/")],
+    }
+
+    print("\n进程归属（类级可达性，近似值：同名声明按全部计入、`import a.*` 按整包计入）：")
+    wide = max(len(name) for name in groups)
+    print(f"  {'档位'.ljust(wide)}  文件   会被 system_server 加载   经 KeyModule 可达")
+    for name, group in groups.items():
+        if not group:
+            continue
+        strict_n = sum(1 for p in group if p in strict)
+        entry_n = sum(1 for p in group if p in with_entry)
+        print(f"  {name.ljust(wide)}  {len(group):>4}   {strict_n:>8}              {entry_n:>8}")
+
+    # 声明是「两侧都会加载」却只被宿主 / 界面层用到的 —— 这一档的黑名单其实套错了对象。
+    #  判据：从宿主 / 界面层的入口**正着**走能走到它，而从注入侧走不到。
+    app_roots = [p for p in files if in_dir(p, "host/") or in_dir(p, "ui/") or in_dir(p, "bridge/host/")]
+    from_app = reachable(graph, app_roots)
+    idle = [
+        rel[p] for p in files if bridge_root(p) and p in from_app and p not in strict
+    ]
+    if idle:
+        print(
+            f"\n注意 {len(idle)} 个 `bridge/` 根文件只被宿主 / 界面层用到"
+            "（声明是「两侧都会加载」，实际不会被 system_server 加载）："
+        )
+        for name in sorted(idle):
+            print(f"  - {name}")
+        print("  意义：它们属于 `bridge/host/` 那一档（或本来就该跟调用方走）。搬动属包边界变更，")
+        print("  要单独立项；在那之前，`bridge/` 根的黑名单对它们是**偏严**的，不是偏松 —— 不会掩盖风险。")
+
 
 
 if __name__ == "__main__":

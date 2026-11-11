@@ -4,10 +4,10 @@ import android.content.Context
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.core.model.appTargetLabel
-import com.lookie.opluskey.core.model.commandTitleOf
 import com.lookie.opluskey.core.model.resolveAppName
 import com.lookie.opluskey.core.model.resolveTargetName
+import com.lookie.opluskey.core.present.appTargetLabel
+import com.lookie.opluskey.core.present.commandTitleOf
 
 /**
  * 「执行时提示」（`GlobalConfig.toastOnRun`）里那行字：**这次执行的是哪个动作**。

@@ -1,7 +1,7 @@
 # 适配清单：机型 + 系统版本
 
 
-清单只回答「这一组验过没有」，**不拦任何东西**。清单本体是 `core/model/DeviceSupport` 的 `ADAPTED`，
+清单只回答「这一组验过没有」，**不拦任何东西**。清单本体是 `core/rom/DeviceSupport` 的 `ADAPTED`，
 判定是一个**纯函数**：只吃 `model` / `android` / `rom` 三个字符串，`Build` 那三个值由各调用点自己传。
 
 - **ROM 版本从 `Build.DISPLAY` 取**，不读 `ro.build.version.oplusrom` —— 后者是 hidden 接口，
@@ -27,7 +27,7 @@ ROM 私有的东西分三类，**各自按 ROM 系列（`17.0.0` 这种）分档
 | 那一类                                                                        | 表在哪                                    | 加一档加什么   |
 | ----------------------------------------------------------------------------- | ----------------------------------------- | -------------- |
 | 接管点候选（Hook 面类名 / 方法名 / 宿主侧服务与 Activity）                    | `bridge/Framework.kt` 的 `HookSet`        | 一个 `HookSet` |
-| 执行落点 + 反射面（内置命令落到哪个组件、ColorOS 私有类名 / 方法名 / 字段名） | `core/model/RomProfile` 的 `Profile`      | 一个 `Profile` |
+| 执行落点 + 反射面（内置命令落到哪个组件、ColorOS 私有类名 / 方法名 / 字段名） | `core/rom/RomProfile` 的 `Profile`      | 一个 `Profile` |
 | 小窗几何（展开档的落点矩形与缩放）                                            | `core/model/MiniWindowGeometry` 的 `Slot` | 一个 `Slot`    |
 
 **前两张表的键是 ROM 系列、第三张的键是机型**，别并成一张：落点由 ROM 决定（同一版 ROM 在不同机型上相同），而几何由**屏幕尺寸与 dpi** 决定（换一块屏就得重新量）。

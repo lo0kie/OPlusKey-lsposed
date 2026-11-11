@@ -3,7 +3,7 @@ package com.lookie.opluskey.ui.state
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.lookie.opluskey.core.model.DeviceSupport
+import com.lookie.opluskey.core.rom.DeviceSupport
 
 // 「适配清单」那一档：本机「机型 + 系统版本」在不在清单里（只用于提示，不拦任何东西）。
 //

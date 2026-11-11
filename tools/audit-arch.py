@@ -106,7 +106,7 @@ def main() -> int:
         inline_failure == 0,
     )
 
-    # 3) 「一个动作怎么念」：唯一实现在 `core/model/CommandTitle`。
+    # 3) 「一个动作怎么念」：唯一实现在 `core/present/CommandTitle`。
     #
     #    这里**不数函数名** —— 上一版数的是 `actionTitle(` / `actionFinalTitle(`，那两个名字随着
     #    重构一起消失了，判据于是变成「0 / = 4」这种红在空气上的样子：它会红，但红的原因不是
@@ -121,7 +121,7 @@ def main() -> int:
     #    只有真的又写一套才会红。`Strings.kt` 除外：格式键的定义在那儿，那是字典的本职。
     fmt_keys = count_excluding(
         r'COMMON_(?:NAME_STATE|PREFIX_NAME)_FORMAT',
-        ('i18n/Strings.kt', 'model/CommandTitle.kt'),
+        ('i18n/Strings.kt', 'present/CommandTitle.kt'),
         CORE,
         APP,
     )

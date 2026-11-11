@@ -89,8 +89,8 @@ internal object SettingsPageHooks {
     /** 模块页根 View 上的标记 —— 重进同一个容器时靠它认出「这一份是我们自己铺的」。 */
     private const val TAG_MODULE_PAGE = "opluskey_module_page"
 
-    //  「露出宿主原版页」时那条状态栏底色不在这里：判据是**系统深浅**（浅色系统下宿主主题
-    //  已被换成浅色变体），所以那一份留在 [HostChrome.stockStatusBackdrop]，与 `applyHostTheme` 同源。
+    //  「露出宿主原版页」时那条状态栏不刷任何颜色：判据是「那一条归原版页自己画」，
+    //  见 [HostChrome.paintStockChrome]。
 
     /** 现在露的是不是宿主原版页面（true 时系统返回 = 切回模块界面）。 */
     @Volatile
@@ -525,10 +525,8 @@ internal object SettingsPageHooks {
                 HostChrome.paintChrome(activity, container, page.pageBackgroundColor)
             }
 
-            // 状态栏的配色统一走 HostChrome.paintChrome（见上面那条回调）。
-            //  先拆掉可能残留在窗上的状态栏遮罩（上一档「露出宿主原版页面」盖的）：
-            // 这一步之后那一条就完全归模块页面自己画，见 [HostChrome.coverStatusBar] 的注释。
-            HostChrome.removeStatusFiller()
+            // 状态栏的配色统一走 HostChrome.paintChrome（见上面那条回调）：
+            //  这一步之后那一条就完全归模块页面自己画。
             HostChrome.paintChrome(activity, container, pageBg)
 
             //  深浅切换只靠页面里那条轮询（读系统全局配置，间隔 [NIGHT_POLL_MS]）。
@@ -564,18 +562,13 @@ internal object SettingsPageHooks {
             pageView?.visibility = android.view.View.GONE
             hostAppbar?.visibility = android.view.View.VISIBLE
             stockRevealed = true
-            // 状态栏跟着原版页面走 —— 底色由 [HostChrome.stockStatusBackdrop] 按系统深浅给：
-            //  浅色系统下宿主主题已被换成浅色变体，再刷纯黑就成了「浅色页面 + 黑状态栏」。
-            //  这一档是 [HostChrome.coverStatusBar] **唯一**还在用的地方：模块页面已经 GONE，
-            // 那一条没人画，而宿主原版页顶栏的配色我们碰不了 ⇒ 直接盖一块实心遮罩最稳。
-            val backdrop = HostChrome.stockStatusBackdrop(activity)
-            hostContainer?.let {
-                HostChrome.paintStatusBarChrome(activity, it, backdrop)
-                HostChrome.coverStatusBar(activity, backdrop)
-            }
+            // 状态栏跟着原版页面走 —— 但**不刷颜色**：那一条由原版页自己画（顶栏的背景是宿主
+            //  自己那张九宫格，我们猜不到它的真色，前两版猜「黑」与「白」都撞上了白带）。
+            //  这里只关掉系统的对比度薄纱、并按系统深浅定图标的明暗。
+            HostChrome.paintStockChrome(activity)
             // 原版页露着时这一退是「切回模块界面」⇒ 该由模块接，回调得挂上（见 [BackInterception.needsBackCallback]）
             BackInterception.syncBackCallback(activity)
-            XLog.w("已露出宿主原版快捷键界面（状态栏按系统深浅取底色；系统返回切回模块界面）")
+            XLog.w("已露出宿主原版快捷键界面（状态栏交回原版页自己画；系统返回切回模块界面）")
         } catch (e: Throwable) {
             XLog.w("露出宿主原版页面失败（忽略）：${e.message}")
         }
@@ -593,9 +586,6 @@ internal object SettingsPageHooks {
             pageView?.visibility = android.view.View.VISIBLE
             stockRevealed = false
             // 状态栏跟着模块页面走（按当前深浅取页面底色）。
-            //  必须把 [HostChrome.coverStatusBar] 盖的那层**拿掉**：它在 decorView 最上面，
-            // 留着的话状态栏那一条就又脱离模块控制了（顶栏的模糊 / 浮层的 dim 都到不了）。
-            HostChrome.removeStatusFiller()
             val activity = HostSession.activity
             val bg = HostSession.page?.pageBackgroundColor
             if (activity != null && bg != null) {
@@ -621,10 +611,6 @@ internal object SettingsPageHooks {
      */
     internal fun clearPageRefs(activity: android.app.Activity) {
         if (HostSession.activity !== activity) return
-        //  状态栏遮罩也要一起撤：它挂在 **decorView** 上（不是宿主那棵树），
-        //  `pageView` 那个引用一松就再没人认得出它 —— 留在窗上会盖住下一轮进来的页面
-        //  （表现为「重进设置页后状态栏那一条是死的、不吃点击也不跟着换色」）。
-        HostChrome.removeStatusFiller()
         //  返回回调也一起摘：页面已经关了，钩子里那几档判定全落到「首页 / 没有浮层」上。
         //  平时是 [BackInterception.syncBackCallback] 先摘掉的，这里只是「关页」这个时点的兜底（重复调用无害）。
         BackInterception.unregisterBackCallback()

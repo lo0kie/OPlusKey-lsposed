@@ -11,8 +11,8 @@ import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.RomKeyFamilies
 import com.lookie.opluskey.core.model.trigger
+import com.lookie.opluskey.core.rom.RomKeyFamilies
 import com.lookie.opluskey.inject.input.ComboDetector
 import com.lookie.opluskey.inject.input.ComboWindows
 import com.lookie.opluskey.inject.input.GestureDetector

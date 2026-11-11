@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.actionDetail
+import com.lookie.opluskey.core.present.actionDetail
 import com.lookie.opluskey.ui.model.SliderTapTrack
 import io.github.suqi8.coui.kmp.basic.SliderDefaults
 import io.github.suqi8.coui.kmp.basic.Text

@@ -39,6 +39,17 @@ internal class BranchDraft {
      */
     val ids = mutableStateListOf<Int>()
 
+    /**
+     * 与 [scenes] 一一对应的**配置槽位** —— 这一块在配置那份表里的下标（`null` = 这一趟新加的块，
+     * 配置里还没有它的位置）。
+     *
+     *  为什么要有它：「场景动作」页那颗「确认」只该写**这一块**（那一页与「系统场景」页是两件
+     *  独立的事，整表写回会把上一页还没确认的改动一起落盘）。而块与块之间本来没有身份 ——
+     *  这个下标是**载入那一刻**按位置对上的（[load] 的 `source` 就是配置里那张表），之后
+     *  删块 / 挪块都跟着行自己走（[remove] / [move] 与 [ids] 同步），所以它仍然指得准。
+     */
+    val slots = mutableStateListOf<Int?>()
+
     /** 下一个要发的行身份 —— 只增不减（重载 / 重置时归零）。 */
     private var nextId = 0
 
@@ -79,10 +90,13 @@ internal class BranchDraft {
         this.owner = owner
         scenes.clear()
         ids.clear()
+        slots.clear()
         nextId = 0
-        source.forEach {
-            scenes.add(it)
+        source.forEachIndexed { index, scene ->
+            scenes.add(scene)
             ids.add(nextId++)
+            //  载入这一刻草稿与配置一一对应：第 i 块就在配置的第 i 格
+            slots.add(index)
         }
         loaded = source
     }
@@ -90,30 +104,57 @@ internal class BranchDraft {
     fun reset() {
         scenes.clear()
         ids.clear()
+        slots.clear()
         nextId = 0
         loaded = emptyList()
         owner = null
     }
 
     /**
-     * **在「场景动作」页保存之后**的收尾：只换「已保存的那份快照」，[scenes] 与行身份原样不动。
+     * 整表落盘之后的收尾：草稿与配置刚对齐 ⇒ 行身份与槽位一起重发（[load] 那一套）。
      *
-     *  与 [load] 的差别只有这一条：那边会重建草稿（连同 [ids] 一起重发）。而这一趟写下去的就是
-     *  草稿本身，重建只会让退回上一页时那几行重播一遍入场。所以这里只把快照挪到刚写下去的那一份
-     *  —— [dirty] 照常按新快照算，整表都落盘之后上一页那颗「确认」自己滑出去。
+     *  不用 `load` 的地方是「只写了一块」那一趟（见 [noteBlockSaved]）：那时草稿仍是屏幕上的
+     *  那份，重建只会让退回上一页时那几行重播一遍入场。
      */
-    fun noteSaved(snapshot: List<SceneRule>) {
-        loaded = snapshot.toList()
+    fun rebase(scenes: List<SceneRule>) {
+        load(owner ?: return, scenes)
     }
+
+    /**
+     * 只写了**一块**之后的收尾：把快照里那一格换成**刚写下去的那一块**，[scenes] 与行身份原样不动。
+     *
+     *  [scene] 取的是落盘那一块，不一定等于草稿里那一块：「场景动作」页只写三档手势，条件改动
+     *  仍留在草稿里（见 `saveSceneBlock`）—— 拿草稿那一块当快照，会把没落盘的条件改动一起算成
+     *  「已保存」。
+     *
+     *  [dirty] 照常按快照算 —— 别的块若还有没确认的改动、或这一块的条件还没确认，上一页那颗
+     *  「确认」自己还亮着；都对上了的话，这一步之后整份就是干净的。
+     */
+    fun noteBlockSaved(
+        index: Int,
+        scene: SceneRule,
+    ) {
+        val slot = slots.getOrNull(index) ?: return
+        if (slot !in loaded.indices) return
+        loaded = loaded.toMutableList().also { it[slot] = scene }
+    }
+
+    /** 第 [index] 块在配置那份表里的下标；`null` = 这一趟新加的块（配置里还没有它）。 */
+    fun slotOf(index: Int): Int? = slots.getOrNull(index)
+
+    /** 载入时配置里 [slot] 位置那一块 —— 判「配置在别处变过没有」；[slot] 为 `null` 时答 `null`。 */
+    fun loadedAt(slot: Int?): SceneRule? = slot?.let { loaded.getOrNull(it) }
 
     /**
      * 追加一块，返回它的行身份。
      *
      *  界面拿这个 id 认出「刚加的是哪一行」，只给它播入场 —— 其余行是载入时就有的，不该再展开一次。
+     *  槽位给 `null`：这一块还没进配置，只有整表落盘才写得下去。
      */
     fun add(scene: SceneRule): Int {
         scenes.add(scene)
         ids.add(nextId)
+        slots.add(null)
         return nextId++
     }
 
@@ -129,6 +170,7 @@ internal class BranchDraft {
         if (index !in scenes.indices) return
         scenes.removeAt(index)
         if (index in ids.indices) ids.removeAt(index)
+        if (index in slots.indices) slots.removeAt(index)
     }
 
     /** 把第 [from] 块挪到 [to] —— 顺序就是判定顺序，所以这就是「上移 / 下移」。 */
@@ -141,6 +183,11 @@ internal class BranchDraft {
         if (from in ids.indices) {
             val id = ids.removeAt(from)
             if (to <= ids.size) ids.add(to, id)
+        }
+        //  槽位跟着行走：挪块改的是顺序，不是「这一块在配置里换了位置」
+        if (from in slots.indices) {
+            val slot = slots.removeAt(from)
+            if (to <= slots.size) slots.add(to, slot)
         }
     }
 

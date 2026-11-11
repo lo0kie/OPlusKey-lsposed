@@ -14,15 +14,6 @@ import com.lookie.opluskey.ui.model.LIGHT_SCHEME
  * 宿主可能持有引用，`remove` 等于埋雷。
  */
 internal object HostChrome {
-    /**
-     * 状态栏那块实心遮罩（见 [coverStatusBar]）。
-     *
-     *  ** 起只在「露出宿主原版页面」那一档存在**（见 [SettingsPageHooks.revealStock] /
-     * [removeStatusFiller]）：模块页面自己就是 edge-to-edge、那条早就是它画的，
-     * 盖遮罩反而把它挡在模块控制之外。
-     */
-    private var statusFiller: android.view.View? = null
-
     /** 系统是浅色时，把宿主主题从写死的深色换成同族的浅色变体。 */
     internal fun applyHostTheme(activity: android.app.Activity) {
         //  `isNight` 已改用**系统全局配置**（见其注释）：宿主声明了 `configChanges=uiMode`，
@@ -97,17 +88,28 @@ internal object HostChrome {
     }
 
     /**
-     * 「露出宿主原版页」时那一条状态栏的底色 —— **跟着系统深浅走**。
+     * 「露出宿主原版页」时那条状态栏 —— 颜色**不刷**（交回原版页自己画），图标**一律刷成浅色**。
      *
-     *  [applyHostTheme] 在浅色系统下已经把宿主主题换成浅色变体，此时再把状态栏刷成纯黑，
-     *  用户看到的是「浅色页面 + 黑色状态栏」；重色那一档仍按宿主原版页的深色底走。
-     *  两条判据共用 [isNight]，不各写一份。
+     * ## 为什么颜色不刷
+     *
+     *  原版页自己会画那一条，而且画得比我们准：真机截图上 `y=0..140` 是它自己的近黑底
+     *  （`(8,8,8)`→`(14,14,14)` 的渐变），而我们能猜到的只有「纯黑」或「主题 `windowBackground`
+     *  的纯白」—— 前两版各猜一个，真机两次都反馈「顶上多出一条白带」。
+     *  不刷之后那一条与紧邻其下的页面同色，正好是 `docs/device/coui.md` §8.17 那条判据。
+     *
+     * ## 为什么图标恒为浅色、不按系统深浅判
+     *
+     *  原版页**恒为深色**：清单主题的 parent 写死 `Theme.COUI.Main.Dark`，页面自己又铺了一层近黑的底
+     *  —— 系统开着浅色时它照样是黑的（真机截图像素为证）。早先这一档按系统深浅判，浅色系统下
+     *  给它配了**深色**图标，压在黑底上几乎看不见（真机反馈「状态栏没有反色」：截图里时钟与信号
+     *  只剩一层 `(10,10,10)` 的灰影，只有那颗绿色电量胶囊还认得出）。
+     *
+     *  仍保留关掉系统那层**对比度薄纱**（§8.17：它画在内容之上，不关那一条会比页面亮一点点）。
      */
-    internal fun stockStatusBackdrop(context: android.content.Context): Int =
-        if (isNight(context)) STOCK_DARK_BACKDROP else LIGHT_SCHEME.surface.toArgb()
-
-    /** 深色系统下「露出宿主原版页」时的状态栏底色（原版页写死的深色底）。 */
-    private const val STOCK_DARK_BACKDROP = 0xFF000000.toInt()
+    internal fun paintStockChrome(activity: android.app.Activity) {
+        disableStatusBarScrim(activity)
+        setStatusBarIconAppearance(activity, light = false)
+    }
 
     /** 在 `setContentView` 之前把 window 背景刷成页面底色 —— 防「splash 撤掉到首帧之间露底跳色」。 */
     private fun paintWindowBeforeContent(
@@ -123,7 +125,7 @@ internal object HostChrome {
         }
     }
 
-    /** 只刷状态栏那一条 —— 换页时 / 露出原版页面 / 切回模块界面 三处共用。 */
+    /** 只刷状态栏那一条 —— 模块页面在显示时用它（换页 / 切回模块界面 / 系统切深浅）。 */
     internal fun paintStatusBarChrome(
         activity: android.app.Activity,
         container: ViewGroup,
@@ -222,113 +224,9 @@ internal object HostChrome {
     }
 
     /**
-     * 在状态栏那块盖一层**实心 View** —— 现在**只给「露出宿主原版页面」那一档用**
-     *（见 [SettingsPageHooks.revealStock]，配套 [removeStatusFiller] 在切回模块界面时拿掉）。
-     */
-    internal fun coverStatusBar(
-        activity: android.app.Activity,
-        color: Int,
-    ) {
-        val decor = activity.window?.decorView as? ViewGroup
-
-        //  已经盖过、而且还挂在**当前这个** decorView 上 → 只改颜色，并且**重新放到最上层**。
-        //
-        // decorView 上塞自己的「状态栏保护」View —— 我们的遮罩会被压到它下面，
-        // 于是「改颜色」改了个看不见的东西：切到深色后状态栏那条还是浅的
-        // （真机反馈「状态栏区域没有切换颜色」）。`removeView` + `addView` 让它回到最后一层。
-        //
-        //  判定用 `parent === decor`：宿主重建 Activity 时 decorView 会换一个，
-        // 旧遮罩留在死掉的窗口上，只改它的颜色同样看不见 —— 那种情况要**重新盖一个**。
-        val existing = statusFiller
-        if (existing != null && decor != null && existing.parent === decor) {
-            try {
-                existing.setBackgroundColor(color)
-                val lp = existing.layoutParams
-                decor.removeView(existing)
-                decor.addView(existing, lp)
-                XLog.d("状态栏遮罩颜色已更新为 #${Integer.toHexString(color)} 并重新置顶")
-            } catch (e: Throwable) {
-                XLog.d("更新状态栏遮罩失败（忽略）：${e.message}")
-            }
-            return
-        }
-
-        if (decor == null) {
-            //  判据级：遮罩没画出来（顶部露底 / 发白）时，这两行说明跳过了哪一步
-            XLog.w("拿不到 decorView，跳过状态栏遮罩")
-            return
-        }
-
-        val height = statusBarHeight(activity)
-        if (height <= 0) {
-            XLog.w("量不到状态栏高度，跳过状态栏遮罩")
-            return
-        }
-
-        val filler = android.view.View(activity)
-        filler.setBackgroundColor(color)
-        try {
-            decor.addView(
-                filler,
-                android.widget.FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    height,
-                    android.view.Gravity.TOP,
-                ),
-            )
-        } catch (e: Throwable) {
-            XLog.w("状态栏遮罩加不上（忽略，状态栏可能仍有一条色带）", e)
-            return
-        }
-        statusFiller = filler
-
-        filler.setOnApplyWindowInsetsListener { v, insets ->
-            try {
-                val h =
-                    insets
-                        .getInsets(
-                            android.view.WindowInsets.Type
-                                .statusBars(),
-                        ).top
-                val lp = v.layoutParams
-                if (h > 0 && lp != null && lp.height != h) {
-                    lp.height = h
-                    v.layoutParams = lp
-                    XLog.d("状态栏遮罩高度跟随 inset 调整为 ${h}px")
-                }
-            } catch (e: Throwable) {
-                XLog.d("调整状态栏遮罩高度失败（忽略）：${e.message}")
-            }
-            insets
-        }
-
-        XLog.w("状态栏区域已盖上页面底色实心遮罩（高 ${height}px，decorView 最后一层）")
-    }
-
-    /**
-     * 拆掉 [coverStatusBar] 那一层（切回模块界面时调）。
-     *
-     *  只 `removeView` **我们自己加的**那个 View（`statusFiller` 自己记着引用），
-     * 从不碰宿主的东西 —— 与「只加不删」的第一纪律不冲突：那条纪律说的是**宿主的** View。
-     * 留着它会让状态栏那一条重新脱离模块控制（顶栏的模糊 / 浮层的 dim 都会被它挡掉）。
-     *
-     * 静默失败即可：拆不掉最多是那一条继续盖着实心色，不影响功能。
-     */
-    internal fun removeStatusFiller() {
-        val filler = statusFiller ?: return
-        statusFiller = null
-        try {
-            (filler.parent as? ViewGroup)?.removeView(filler)
-            XLog.w("状态栏遮罩已拆掉 —— 那一条交回模块页面自己画")
-        } catch (e: Throwable) {
-            XLog.w("拆状态栏遮罩失败（忽略）：${e.message}")
-        }
-    }
-
-    /**
      * 设置状态栏图标的明暗外观。
      *
-     * 页面 / [coverStatusBar] 垫在状态栏底下的是什么颜色，系统在上面的那层图标
+     * 状态栏底下垫的是什么颜色（页面底色 / 原版页自己那一层），系统在上面的那层图标
      *（时钟、电量…）就得反着来 —— 颜色由 `APPEARANCE_LIGHT_STATUS_BARS` 控制：
      * - **light=true**（浅色页面）→ 图标变深色（黑）；
      * - **light=false**（深色页面）→ 图标变浅色（白）。
@@ -382,8 +280,8 @@ internal object HostChrome {
         pageBg: Int,
     ) {
         // 状态栏那一条：关掉系统薄纱 + 把「本来就露底」的那几层刷成页面色。
-        //  **不在这里盖实心遮罩** —— 模块页面在显示时那一条就是它自己画的，
-        // 盖上去等于把它挡在模块控制之外（见 [coverStatusBar] 的注释）。
+        //  **不盖任何东西** —— 模块页面在显示时那一条就是它自己画的，盖上去等于把它挡在
+        //  模块控制之外；「露出原版页」那一档见 [paintStockChrome]（同样什么都不盖）。
         paintStatusBarChrome(activity, container, pageBg)
     }
 }

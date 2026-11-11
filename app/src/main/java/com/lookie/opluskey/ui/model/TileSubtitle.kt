@@ -1,8 +1,8 @@
 package com.lookie.opluskey.ui.model
 
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
-import com.lookie.opluskey.core.model.commandTitleOf
+import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.commandTitleOf
 
 /**
  * 「这个动作绑的是什么」—— **网格格子的小字**与**抽屉候选行的子标题**共用这一份。

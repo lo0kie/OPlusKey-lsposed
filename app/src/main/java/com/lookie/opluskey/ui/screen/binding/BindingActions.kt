@@ -4,13 +4,13 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.commandTitleOf
 import com.lookie.opluskey.core.model.isSerialCommand
+import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.commandTitleOf
 import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
@@ -140,8 +140,9 @@ private fun SettingsPage.commitBinding(
     appName: String?,
 ): CommandsSave {
     if (target is BindingTarget.Scene) {
-        //  场景块属于**草稿**：这一下只改内存里的那张表，等「系统场景」页那颗确认才写配置
-        //  （见 `BranchScreen.saveScenes`）。落在这里的改动退回上一页时也还在（草稿是页面级的）。
+        //  场景块属于**草稿**：这一下只改内存里的那张表，等「场景动作」页那颗确认才把**这一块的
+        //  三档手势**写回配置（见 `SceneBlockSave.saveSceneBlock`）。落在这里的改动退回上一页时也还在
+        //  （草稿是页面级的），最终由「系统场景」页那颗确认整表写下去。
         val ok = target.bind(action)
         XLog.w("场景动作：第 ${target.at + 1} 块 ${target.gesture.id} → ${action.token}（草稿，未落盘）")
         return if (ok) CommandsSave.Ok else CommandsSave.Failed

@@ -9,9 +9,9 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.LongPressEdit
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.core.model.withLongPress
+import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.LongPressSettingsCard
 import com.lookie.opluskey.ui.LongPressSpec

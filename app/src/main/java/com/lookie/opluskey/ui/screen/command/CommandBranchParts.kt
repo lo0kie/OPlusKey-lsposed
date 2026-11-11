@@ -37,7 +37,7 @@ import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
 
-// 条件执行行里的那几件小件 —— 条件行写什么、行尾那颗「不会执行」的注脚、以及「点开还有一层」
+// 条件执行行里的那几件小件 —— 条件行写什么、行尾那句「已停用」的注脚、以及「点开还有一层」
 // 那枚选择器。从 `CommandBranches.kt` 拆出来：那边是整块卡片怎么排，这边是行内文案与行尾记号，
 // 两件事各自涨，合在一处迟早顶到 detekt 的函数数上限。
 
@@ -65,23 +65,28 @@ internal fun SettingsPage.ruleConditionLines(rule: SceneRule): List<ConditionLin
         //  那一下才不会「先把高度塌掉、再把新行滑进来」，而是原地淡换内容。
         //  第二条起才是真的往表里插一行，用条件自己当身份（见 `CardRow.Item.rowKey`）。
         val single = rule.conditions.size == 1
-        rule.conditions.map {
+        //  同一个取值可能出现两遍（界面里二级会置灰，但手改 / 导入来的配置不管这一道）：
+        //  行身份带上「第几次出现」，否则两行的 `rowKey` 相同，`CardList` 会把它们当成同一行。
+        val seen = HashMap<BranchCondition, Int>()
+        rule.conditions.map { condition ->
+            val nth = seen[condition] ?: 0
+            seen[condition] = nth + 1
             ConditionLine(
                 //  插进来的空条件 / 只选了种类没选取值：这一行写「未选择条件」并压禁用色
                 text =
-                    if (it.isUsable) {
-                        conditionRowTitle(it, ::appNameOf)
+                    if (condition.isUsable) {
+                        conditionRowTitle(condition, ::appNameOf)
                     } else {
                         I18n.get(Strings.COMMAND_BRANCH_PICK_CONDITION, "未选择场景")
                     },
-                icon = conditionLineIcon(it),
-                empty = !it.isUsable,
-                //  「前台应用」能挑好几个，名字顿号连起来可能很长 —— 这一行正是用来核对挑了哪几个的，
-                //  单行省略等于把答案裁掉。其余条件一行字，照旧单行。
-                multiLine = it.kind == ConditionKind.APP,
+                icon = conditionLineIcon(condition),
+                empty = !condition.isUsable,
+                //  「前台应用」能挑好几个，名字按**框**排（与组合键成员同一种标签，见 [ConditionRowTitle]）——
+                //  给 `null` 的那几档仍是一行字。
+                apps = if (condition.kind == ConditionKind.APP && condition.isUsable) condition.appPackages.map(::appNameOf) else null,
                 //  这一行在列表里的身份：行进出场按它认「是不是同一行」，不按位次
                 //  （见 `CardRow.Item.rowKey`）。
-                rowKey = if (single) CONDITION_PLACEHOLDER_KEY else it,
+                rowKey = if (single) CONDITION_PLACEHOLDER_KEY else (condition to nth),
             )
         }
     }
@@ -110,13 +115,20 @@ internal class ConditionLine(
     val icon: ImageVector,
     /** 这一条还没配完（刚插进来的空条件 / 只选了种类没选取值）⇒ 图标与文字压禁用色。 */
     val empty: Boolean,
-    /** 标题放不限制行数（目前只有「前台应用」：那一行可能列好几个应用名）。 */
-    val multiLine: Boolean = false,
     /**
-     * 这一行在卡片里的身份 —— 就是那条条件自己（占位行 / 「未选择条件」那一行给 `null`）。
+     * 「前台应用」那一档的应用名 —— 有值时这一行的标题**按框画**（与组合键成员同一种标签），
+     * `null` = 走普通的整行文字（[text]）。
+     *
+     *  为什么单独给一份而不是让界面去拆 [text]：拆字符串要认「种类 - 取值」那个分隔符，
+     *  而应用名里完全可能带 ` - `（`微信 - LauncherUI` 那种写法就在别处出现过）。
+     */
+    val apps: List<String>? = null,
+    /**
+     * 这一行在卡片里的身份 —— 那条条件 + 它是同一取值的第几次出现（占位行 / 「未选择条件」那一行给 `null`）。
      *
      *  行进场动画要靠它认「这是新插进来的一行，还是刚才就在这里的那一行」：
      *  `CardList` 的进出场状态按位次记，新插一行会落到原来那一行的槽上（见 `CardRow.Item.rowKey`）。
+     *  带上出现次序是因为同一个取值能写两遍（同一种类可以加好几条，见 `blockKindsOf`）。
      */
     val rowKey: Any? = null,
 )
@@ -124,32 +136,21 @@ internal class ConditionLine(
 /**
  * 条件那一行的行尾：先标一句状态，再接那枚选择器。
  *
- *  两句各说一件事，同一时刻只会有一句：
- *   · [dead]「不会执行」（红）—— 顺序上轮不到它（某档取值前面已经凑齐 / 被更宽的一条盖住）；
- *   · [off]「已停用」（弱色）—— 它自己关着（行尾「更多」菜单里的停用，`SceneRule.enabled`）。
- *  两条同时成立时按「已停用」说：那是用户刚做过的动作，也是更直接的原因。
+ *  [off]「已停用」（弱色）—— 它自己关着（行尾「更多」菜单里的停用，`SceneRule.enabled`）。
  *
  *  为什么标在**这一行**而不是小标题：小标题是库组件 `SmallTitle`，只能给一整串字，染不了一半；
  *  而这一行本来就是「这一条什么时候执行」，写在这儿读起来最顺。
  */
 @Composable
-internal fun ConditionTrailing(
-    dead: Boolean,
-    off: Boolean = false,
-) {
+internal fun ConditionTrailing(off: Boolean = false) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        //  「已停用」优先于「不会执行」：停用的那条不参与顺序扫描，说「不会执行」会指错原因
-        if (off) {
-            RuleStateHint(RuleState.OFF)
-        } else if (dead) {
-            RuleStateHint(RuleState.DEAD)
-        }
+        if (off) RuleStateHint(RuleState.OFF)
         RowEndIcon(PageIcons.Selector)
     }
 }
 
 /**
- * 行尾那半句话 —— 「已停用」（弱色）/「不会执行」（红字）/ 什么都不画。
+ * 行尾那半句话 —— 「已停用」（弱色）/「与上面重复」（红字）/ 什么都不画。
  *
  *  **只有这一份**：条件行与场景小标题行都显示同一种状态（用户口径「场景停用时行尾也要说」），
  *  两处各写一遍的话，字号 / 颜色 / 与右侧图标的间距迟早会各走各的。
@@ -166,9 +167,11 @@ internal fun RuleStateHint(state: RuleState) {
             DisabledStateText()
         }
 
-        RuleState.DEAD -> {
+        RuleState.DUPLICATE -> {
+            //  红色：这不是「暂时不生效」，是**配错了** —— 后一块一个字都不会执行，
+            //  点「确认」时也会被拦下来（见 `branchRulesBlockedReason`）
             Text(
-                I18n.get(Strings.COMMAND_BRANCH_DEAD, "不会执行"),
+                I18n.get(Strings.COMMAND_BRANCH_SAME_SCENE, "与上面重复"),
                 style = COUITheme.textStyles.footnote1,
                 color = COUITheme.colorScheme.error,
                 modifier = Modifier.padding(end = 6.dp),

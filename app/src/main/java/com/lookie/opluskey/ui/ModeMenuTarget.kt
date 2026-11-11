@@ -1,6 +1,6 @@
 package com.lookie.opluskey.ui
 
-import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.present.ActionCatalog
 
 /**
  * 「哪一格开着」—— 打成一个包，只为让 [ModeMenuPopups] 的参数个数留在 detekt 的

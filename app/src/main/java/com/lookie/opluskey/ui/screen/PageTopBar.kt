@@ -9,8 +9,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.model.comboLabel
-import com.lookie.opluskey.core.model.keyName
+import com.lookie.opluskey.core.present.comboLabel
+import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.PageHeader
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -304,7 +304,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
 
         // 变量：一句「它是干什么用的」—— 这一页没有「在编谁」可言（清单是整份）。
         Screen.VARIABLES -> {
-            I18n.get(Strings.VARIABLES_SUBTITLE, "命令与条件里可以引用")
+            I18n.get(Strings.VARIABLES_SUBTITLE, "命令与场景里可以引用")
         }
     }
 

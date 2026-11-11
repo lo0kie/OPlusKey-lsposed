@@ -1,0 +1,29 @@
+# 棘轮判据的上限表 —— **只许降**（见 tools/audit-ratchet.py）。
+#
+# 每一项都是「今天实测到的值」，含义是「不许比现在更差」。改好之后跑
+#   python3 tools/audit-ratchet.py --tighten
+# 把上限收紧到新值；**没有变好就不要改这个文件**。
+#
+# 真要放宽某一条（例如一次合理的重构让某个文件暂时变长），把那一行连同理由
+# 一起改，并在提交信息里说明 —— 放宽是例外，不是维护动作。
+
+# 千行文件：文件数上限，外加每个文件的**行数上限**（逐个记住，防止此消彼长）
+count.files_over_1000 = 4
+lines.app/src/main/java/com/lookie/opluskey/ui/SettingsPage.kt = 1062
+lines.core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt = 1513
+# `core/model` 拆成 `model` / `rom` / `present` 之后，这份清单跟着搬了位置；
+# 1660 → 1667 是补 7 行 import（原来同包，不用写）—— 拆分的一次性代价，不是新增内容。
+# 1667 → 1713：屏幕翻译从「父子动作」改成单动作多状态（格子标记 token + 打开 / 关闭两档取值 +
+# 为什么关闭走 `stopService` 而不是那条广播）—— 46 行是这一档的内容本身，注释密度与本文件其它
+# 档一致，没有可删的余量。放宽这一条是例外，不是维护动作。
+lines.core/src/main/java/com/lookie/opluskey/core/present/ActionCatalog.kt = 1713
+# 1145 → 1147：同上，补 `RomProfile` 的 import（它搬到了 `core/rom`）。
+lines.core/src/main/java/com/lookie/opluskey/core/model/Config.kt = 1147
+
+# 页面对象：`SettingsPage` 自己的状态字段数（它就是「新功能再挂一个字段」的入口）
+count.settings_page_fields = 38
+# 页面扩展成员 `fun/val/var SettingsPage.*` 的总数（`audit-arch.py` 的同一口径）
+count.settings_page_ext = 516
+
+# detekt 基线：新代码不许再往基线里加条目（AGENTS.md 二、1.2）
+count.detekt_baseline = 130

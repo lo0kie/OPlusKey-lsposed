@@ -1,7 +1,10 @@
-package com.lookie.opluskey.core.model
+package com.lookie.opluskey.core.present
 
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.ComboKey
+import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.KeyId
 
 // 键名在界面上怎么写的**唯一出口**。
 //

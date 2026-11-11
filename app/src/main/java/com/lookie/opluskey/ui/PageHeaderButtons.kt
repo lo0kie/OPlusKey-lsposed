@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -28,6 +29,7 @@ import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
+import io.github.suqi8.coui.kmp.theme.LocalContentColor
 import io.github.suqi8.coui.kmp.utils.TiltFeedback
 import io.github.suqi8.coui.kmp.utils.pressable
 
@@ -92,7 +94,20 @@ internal val HEADER_ACTION_GAP = 8.dp
  *  禁用时退到 `disabledSecondaryVariant`（被冲淡的那一档容器色）：灰着的键不该还亮着
  *  （顶栏的「重置」有这一档，见 `CommandHeaderReset`）。
  *
- * @param enabled 与按钮自己的可用性同一判据 —— 只影响这两层配色，点不点得动由 `onClick` 那边定
+ *  ## 禁用样式是**这一层的能力**（圆底 + 描边 + 字形三件）
+ *
+ *  这个圆是本项目自己画的（库的 `IconButton` 那层底色置透明），所以「灰」也得自己画全：
+ *  只灰底与描边、字形还亮着，看着像「这颗还能按，只是底色淡了」。
+ *  而字形是调用点传进来的（`content` 里那颗 `Icon`），默认 tint 取库的 `LocalContentColor`
+ *  —— 于是这里把内容色按 `enabled` 两档递下去，**调用点仍然只写 `Icon(图标)`**，
+ *  不必逐个记着判启用状态、也不必各自挑一个灰。
+ *
+ *  能用那一档取**环境里当前那一刻的值**（不是写死某个色）：顶栏上这几颗原本是什么色就是什么色，
+ *  这一层只负责在停用时把它换成 [COUITheme.colorScheme] 的 `disabledOnSecondaryVariant`
+ *  —— 与行首图标禁用时同一档（见 `rememberRowIconColor`），全项目一处口径。
+ *
+ * @param enabled 与按钮自己的可用性同一判据 —— 圆底 / 描边 / 字形三样都跟着它走；
+ *   点不点得动由 `onClick` 那边定
  * @param content 图标本体（`Icon` 自带 `contentDescription`，不在这一层传）
  */
 @Composable
@@ -129,6 +144,14 @@ internal fun HeaderIconButton(
     //  点击仍旧交给里面那颗库按钮（含它那条「禁用时给提示」的路）。
     //  `delay = null` 与卡片一致：按下即倾，不等那一档长按判定。
     val tiltSource = remember { MutableInteractionSource() }
+    //  字形颜色（第三件禁用样式）—— 见上面那段「禁用样式是这一层的能力」。
+    //  能用的那一档读**环境值**：这几颗圆键原本吃的是页面给的内容色，写死会改变现有观感。
+    val ambientIcon = LocalContentColor.current
+    val iconColor by animateColorAsState(
+        targetValue = if (enabled) ambientIcon else scheme.disabledOnSecondaryVariant,
+        animationSpec = COLOR_TRANSITION_SPEC,
+        label = "HeaderButtonIcon",
+    )
     //  **圆底与描边必须用 `CircleShape` 自己画**：库的 `IconButton` 走的是 squircle（超椭圆），
     //  圆角取边长一半时也只是「很圆的方」，四角仍比正圆鼓一点（用户口径「感觉这个按钮不是圆的」）。
     //  所以库那层底色置透明，圆底 / 描边 / 裁剪全在这里做。
@@ -149,7 +172,8 @@ internal fun HeaderIconButton(
             minHeight = HEADER_ICON_SIZE,
             cornerRadius = HEADER_ICON_SIZE / 2,
         ) {
-            content()
+            //  字形跟着圆底一起灰（见上面那段说明）：`Icon` 的默认 tint 就是这一位。
+            CompositionLocalProvider(LocalContentColor provides iconColor) { content() }
         }
     }
 }

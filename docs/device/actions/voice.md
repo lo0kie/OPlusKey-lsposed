@@ -150,7 +150,7 @@ adb shell su -c 'am start-foreground-service -a oplus.intent.action.GLOBAL_TRANS
 # dumpsys window windows | grep ScreenTranslation  ⇒ ScreenTranslationToolCapsule / ScreenTranslationFullImageHolder
 ```
 
-实现见 `core/model/RomProfile` 的 `NAME_SCREEN_TRANSLATE` / `SCREEN_TRANSLATE`。
+实现见 `core/rom/RomProfile` 的 `NAME_SCREEN_TRANSLATE` / `SCREEN_TRANSLATE`。
 
 ## 四十六、灵感语音（AI 记忆）的采集服务：**只有「开始 / 结束」两个事件**，重入的开始会被忽略（反编译 `com.oplus.aimemory` + 真机，2026-11-06，PLK110 / ColorOS 17.0.0）
 

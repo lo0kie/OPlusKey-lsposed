@@ -15,8 +15,8 @@ import com.lookie.opluskey.core.config.isDefaultProfile
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.rom.DeviceSupport
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.RowEndIcon

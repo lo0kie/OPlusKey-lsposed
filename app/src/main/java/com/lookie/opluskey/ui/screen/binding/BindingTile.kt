@@ -27,7 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.ui.LocalAppTheme
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.TILE_HEIGHT

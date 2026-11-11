@@ -19,8 +19,8 @@ import kotlin.math.roundToInt
  *   整页那条答的是「这一页为什么改不了」（主开关 / 链路 / 只读），有些滑杆是**因为它自己
  *   这一行的条件不够**才灰的（「使用独立设置」没开、长按动作不支持连发、排序中整页锁住），
  *   拿整页那句回答它，等于答了另一个问题。只在 `enabled = false` 时生效。
- * @param valueText 行尾那个「当前值」怎么写（毫秒那几档默认走 [durationText]）；
- *   `null` = **不画行尾**（档位那种一眼看得出当前值的滑杆，再写一遍是重复）
+ * @param valueText 主标题**右侧**那个「当前值」怎么写（毫秒那几档默认走 [durationText]）；
+ *   `null` = **不画**（档位那种一眼看得出当前值的滑杆，再写一遍是重复）
  * @param keyPoints 要在轨道上**画出来的**刻度点；`null` = 只画出厂默认值那一个圆点。
  *   库那边 `showKeyPoints` 单独打开不画东西 —— 它读的是 `keyPoints`，两者要一起给
  *   （见 COUI Slider 文档：`showKeyPoints` 仅当 `keyPoints` 不为 null 时有效）。

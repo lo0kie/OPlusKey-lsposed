@@ -224,7 +224,40 @@ android {
         getByName("debug") { assets.directories.add("seal") }
     }
 
+    testOptions {
+        // 单测跑在**本机 JVM** 上：`android.jar` 里的方法是空壳，默认一调就抛
+        // `RuntimeException("Stub!")`。`returnDefaultValues = true` 让它们返回默认值 ——
+        // 这是 `core/log/XLog` 这类「顺手打一行日志」的纯函数能被测的前提。
+        // 注意它**不改变**判据：真正需要 Android 行为的东西（`ContentResolver`、
+        // `PackageManager`）仍然测不了，也不该在这里测。
+        unitTests.isReturnDefaultValues = true
+    }
+
     // lint 的策略与 `:app` 同一份，收在根 `build.gradle.kts` 里。
+}
+
+// 单测进程必须跑在 **JDK 21 或更高**上 —— 这一条不是偏好，是硬约束：
+//
+//  `jvmTarget = JVM_21` 编出来的 class 是 65，而测试进程用的是 Gradle 守护进程那个 JVM。
+//  `JAVA_HOME` 指着 17 时，Kotlin 照样能编出 65（它不校验宿主 JDK），测试进程却在加载第一
+//  个类时就抛 `UnsupportedClassVersionError` —— 六行栈里没有一句提到「换个 JDK」，看起来
+//  像测试代码本身坏了。这里在开跑前先说清楚该改哪个环境变量。
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    // 在配置期取一次（`map` 是惰性的），动作里只捕获这个 Provider —— 别让 `doFirst` 去抓
+    //  脚本作用域里的东西，那会让 configuration cache 失效。
+    val testJvmMajor = javaLauncher.map { it.metadata.languageVersion.asInt() }
+    doFirst {
+        val major = testJvmMajor.get()
+        if (major < 21) {
+            throw GradleException(
+                "单测要跑在 JDK 21+ 上，当前是 JDK $major。\n" +
+                    "  原因：本模块按 `jvmTarget = JVM_21` 编译（class 版本 65），JDK $major 的 JVM 读不了。\n" +
+                    "  改法：把 `JAVA_HOME` 指到 21+（Android Studio 自带的那份 `jbr` 也可以），\n" +
+                    "       或给 Gradle 传 `-Dorg.gradle.java.home=<JDK 21 的目录>`。\n" +
+                    "  这与「编译要 JDK 21」是同一条要求的另一面，见 AGENTS.md 二、1.2。",
+            )
+        }
+    }
 }
 
 // 封存接进构建：容器进本模块的 assets（AGP 合并库资产时进 APK），指纹常量进本模块的变体源码。
@@ -279,4 +312,15 @@ dependencies {
     // Xposed API：只在 `core/reflect` 那几处用到，运行时由 LSPosed 提供
     compileOnly("io.github.libxposed:api:102.0.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+
+    // JVM 单测：**只测本层里的纯函数**（动作字符串解析 / 配置编解码），不跑 Android、不跑真机。
+    //
+    //  为什么要它：本层有一条编译期保证（不许引界面层），但「同一条规则在几个地方各写了一遍」
+    //  只有脚本能看出来，而「改了之后行为还对不对」以前只能真机按一次。动作 token 与配置
+    //  编解码这两处恰好是全项目**纯函数 + 高复用**的地方：一条 token 写错，注入侧判出来的
+    //  手势与设置页显示的动作就会不一致，而两边都不报错。
+    //
+    //  选 JUnit 4 而不是 JUnit 5：AGP 的 `testDebugUnitTest` 默认就按 JUnit 4 组织，
+    //  少一个 runner 依赖就少一处要跟着抬版本的地方。
+    testImplementation("junit:junit:4.13.2")
 }

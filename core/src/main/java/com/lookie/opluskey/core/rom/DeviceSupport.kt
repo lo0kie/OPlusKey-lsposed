@@ -1,4 +1,4 @@
-package com.lookie.opluskey.core.model
+package com.lookie.opluskey.core.rom
 
 import java.util.Locale
 

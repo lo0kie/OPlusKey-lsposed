@@ -5,7 +5,7 @@ import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.MiniWindowGeometry
-import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.rom.RomProfile
 
 /**
  * 小窗指令的跨进程桥：把前台任务收成小窗这件事，除了应用侧那条路，还有一条要在 `system_server` 里做 ——

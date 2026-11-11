@@ -96,30 +96,11 @@ internal sealed interface CardRow {
     class Item(
         val title: String,
         /**
-         * 标题最多几行 —— 默认 1（单行省略，整页的常态）。
-         *
-         *  给 [Int.MAX_VALUE] 就是「不限制」：条件表里「前台应用」那一行会把挑中的几个应用名
-         *  顿号连起来，名字一多单行必然被省略号吃掉，而这一行正是用来核对自己挑了哪几个的。
-         *  放开之后行高由内容撑（库那条行本来就按内容高）。
-         */
-        val titleMaxLines: Int = 1,
-        /**
          * 这一行前面画**加深带**而不是默认那条细线 —— 「这一组 / 下一组」之间断开时用
          * （与浮层菜单里组间那条同一档）。默认 `false` = 细线。
          */
         val dividerBefore: Boolean = false,
         val summary: String? = null,
-        /**
-         * 副标题行**行尾**那一块 —— 与 [summary] 同一行，`summary` 先给它让位。
-         *
-         *  给「这一行的信息里有一段**必须始终看得见**」那种用（例如进程页的「已运行 12 分钟」/
-         *  「128 MB」）：拼成一整串交给 [summary] 的话，名字一长，`Text` 的省略就把它从**尾部**
-         *  裁掉了 —— 那一段恰恰是用户按这个维度排序时想看的东西。拆成两块之后，被裁的是名字。
-         *
-         *  给了这一块时 `summary` 收成**单行省略**（原来是可折行的）：两块挤在一行里，折行会把
-         *  行高撑起来、也说不清谁是谁。没给时行为一切照旧。
-         */
-        val summaryExtra: (@Composable () -> Unit)? = null,
         val icon: ImageVector? = null,
         /** 行首那一格自己画（见 KDoc）；非空时优先于 [icon]。 */
         val startIcon: (@Composable () -> Unit)? = null,
@@ -644,7 +625,7 @@ private fun ItemText(
                         style = titleStyle,
                         fontWeight = FontWeight.Medium,
                         color = titleColor,
-                        maxLines = row.titleMaxLines,
+                        maxLines = ROW_TEXT_MAX_LINES,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -660,6 +641,15 @@ private fun ItemText(
 
 /** 标题与副标题之间那一档 —— 与库的 `MarginBetweenLine` 同一值（2dp）。 */
 internal val ROW_LINE_GAP = 2.dp
+
+/**
+ * 行内文字的**行数上限** —— 标题与副标题同一个口径：最多 3 行，超出省略号。
+ *
+ *  不按内容无限撑高：一条命令 / 一串条件说明可以任意长，放开之后一整行会被几行字吃掉半屏，
+ *  同一张卡里行高也不再是一个量级。这一档由**行**定，不由调用点定 —— 于是 [CardRow.Item]
+ *  没有「标题几行」这种参数。
+ */
+internal const val ROW_TEXT_MAX_LINES = 3
 
 /** 标题与紧跟其后那一块（小标签）之间那一档 —— 与标签之间的间距同一值（6dp）。 */
 private val ROW_TITLE_EXTRA_GAP = 6.dp

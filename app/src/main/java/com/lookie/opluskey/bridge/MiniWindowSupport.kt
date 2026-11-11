@@ -2,9 +2,9 @@ package com.lookie.opluskey.bridge
 
 import android.os.Bundle
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.ZoomWindowWire
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.core.rom.RomProfile
 
 /**
  * 「这个应用能不能**以小窗打开**」—— 与执行侧同源的一把尺子（判据是框架自己的

@@ -2,13 +2,13 @@ package com.lookie.opluskey.ui.model
 
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.SystemSwitches
+import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.rom.RomProfile
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
@@ -43,6 +43,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
 import io.github.lyxnx.compose.ui.tablericons.outline.Language
+import io.github.lyxnx.compose.ui.tablericons.outline.LanguageOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.MessageAi
 import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
@@ -167,6 +168,12 @@ internal fun actionIcon(token: String): ImageVector =
         //  而这一格是「把屏上的字翻掉」这个动作，不是「选语言」。
         Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_TRANSLATE -> {
             TablerIcons.Outline.Language
+        }
+
+        // 屏幕翻译 · 关闭 —— 同一个字形划掉（`language-off`）。清单里这两档收在一格后面
+        //  （各自带 `Glyph`），这一支只服务不在清单里的 token：步骤行、手改过的配置。
+        Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_TRANSLATE_STOP -> {
+            TablerIcons.Outline.LanguageOff
         }
 
         // 相机 / 计算器 —— 就是那两件东西自己的字形，别与「打开应用」那颗四宫格混起来：
@@ -560,6 +567,8 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         ActionCatalog.Glyph.ScreenRecognition -> TablerIcons.Outline.TextScanAi
 
         ActionCatalog.Glyph.ScreenTranslate -> TablerIcons.Outline.Language
+
+        ActionCatalog.Glyph.ScreenTranslateStop -> TablerIcons.Outline.LanguageOff
 
         ActionCatalog.Glyph.Camera -> TablerIcons.Outline.Camera
 

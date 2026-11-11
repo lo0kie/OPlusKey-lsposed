@@ -1,5 +1,7 @@
 package com.lookie.opluskey.core.model
 
+import com.lookie.opluskey.core.rom.RomProfile
+
 // 配置的数据结构：三种手势、单键配置、全局配置、整份配置。
 
 /** 三种手势。 */
@@ -234,8 +236,8 @@ data class KeyConfig(
      *  执行侧不要自己写这套 `firstOrNull`：条件维度以后会长，判据散在
      *  多处时「某个路径上条件分支不生效」这种 bug 只会在真机上被看见。
      *
-     *  一个块可以带**好几条**条件，判定时逐条都要成立（且）—— 那是 [StateRule.appliesTo] 的账，
-     *  这里只负责顺序与「第一条赢」。
+     *  一个块可以带**好几条**条件，同种类之间「或」、不同种类之间「且」—— 那是
+     *  [SceneRule.appliesTo] 的账，这里只负责顺序与「第一条赢」。
      *
      *  [matches] 是调用方给的判据（读系统开关的那一层，见 `ConditionProbe`）—— 这一层不认识
      *  任何系统接口。

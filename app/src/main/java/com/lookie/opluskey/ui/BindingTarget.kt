@@ -10,8 +10,8 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.LongPressParams
 import com.lookie.opluskey.core.model.SceneRule
-import com.lookie.opluskey.core.model.comboLabel
 import com.lookie.opluskey.core.model.withLongPress
+import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 import com.lookie.opluskey.ui.state.BranchDraft
 
@@ -97,26 +97,16 @@ internal sealed interface BindingTarget {
     ): Config
 
     /**
-     * 这一档现在**能不能进场景表** —— 停用的那一份不行。
-     *
-     *  判据放在这里而不是各页面自己拼：两个页面（单键 / 组合）读的必须是同一句，
-     *  否则「单键灰了、组合还亮着」这种事迟早出现。
-     *
-     *  @return `null` = 能进；否则是点它时该说的那句话
-     */
-    fun scenarioBlockedReason(cfg: Config): String?
-
-    /**
      * 这一页的**格子点不动**时该说的那句话。
      *
-     *  与 [scenarioBlockedReason] 是同一件事的两种用法：那个管「能不能进场景表」，这个管
-     *  「这一页能不能改」。单键 / 组合两档的说法**本来就一样**（都是「那一份停用了」），
-     *  所以默认直接借它 —— 再写一份措辞就是第三个说法。
+     *  只有**组合键**那一页有话说（那一组停用了）—— 它的闸门里带着 `ComboKey.enabled`
+     *  （见 `bindingTargetEnabled`）。单键那一页由 `LinkCheck.disabledClickReason` 里
+     *  「这一颗键停用」那一支说，场景动作那一页的闸门只看整页（见下）。
      *
-     *  只有场景块要另说：它没有入口行（[scenarioBlockedReason] 恒 `null`），停用的是
-     *  **那一块**，不是那颗键。
+     *  **系统场景整条路（入口行 / ⋮ 那一行 / 场景表 / 场景动作页）都不吃「这一份停用」**：
+     *  停用的键照样要能先把场景配好、再回去启用 —— 拿停用去灰掉入口，等于先把这条顺序堵死。
      */
-    fun pageBlockedReason(cfg: Config): String? = scenarioBlockedReason(cfg)
+    fun pageBlockedReason(cfg: Config): String?
 
     /** 一颗键的一档。 */
     data class Key(
@@ -139,14 +129,9 @@ internal sealed interface BindingTarget {
             edit: LongPressEdit,
         ): Config = cfg.copy(keys = cfg.keys + (id to cfg.key(id).withLongPress(edit)))
 
-        override fun scenarioBlockedReason(cfg: Config): String? {
-            val key = cfg.key(id)
-            return if (key.enabled) {
-                null
-            } else {
-                I18n.format(Strings.KEY_DISABLED_ITEM, id.label)
-            }
-        }
+        //  单键这一页没有「这一份停用」这一类说法：格子的闸门是 `keyEnabled`，点不动时由
+        //  `LinkCheck.disabledClickReason` 统一说「按键已停用」那一句。
+        override fun pageBlockedReason(cfg: Config): String? = null
     }
 
     /** 一档组合键的一档。 */
@@ -181,7 +166,7 @@ internal sealed interface BindingTarget {
                     },
             )
 
-        override fun scenarioBlockedReason(cfg: Config): String? {
+        override fun pageBlockedReason(cfg: Config): String? {
             val combo = cfg.combos.firstOrNull { it.id == id } ?: return null
             return if (combo.enabled) {
                 null
@@ -264,16 +249,12 @@ internal sealed interface BindingTarget {
             return cfg.copy(keys = cfg.keys + (keyId to cfg.key(keyId).withLongPress(edit)))
         }
 
-        override fun scenarioBlockedReason(cfg: Config): String? = null
-
         /**
-         * 这一块**停用了**（草稿里那一块的 `enabled`）：格子里写的是「那一块」，不是哪颗键 ——
-         * 原先这里回落到 `KeyWatchState` 里那颗键，真机表现是「点格子弹出 `[电源] 已停用`」。
-         *
-         *  `null` = 那一块已经不在草稿里了（页面正在退），别再补一句。
+         * `null` 恒成立：这一块停用了照样能改它的三档 —— 闸门只有整页那一道
+         * （主开关 + 链路 + 只读），「这一块停用」只影响命中，不影响编辑。
+         * `null` 也是「那一块已经不在草稿里了（页面正在退）」那一帧的答案。
          */
-        override fun pageBlockedReason(cfg: Config): String? =
-            if (block?.enabled != false) null else I18n.get(Strings.BINDING_SCENE_OFF, "这一块场景已停用，回「系统场景」页启用它")
+        override fun pageBlockedReason(cfg: Config): String? = null
 
         /**
          * 把 [action] 写进这一块的这一档 —— **只改草稿**，一个字节都不落盘。

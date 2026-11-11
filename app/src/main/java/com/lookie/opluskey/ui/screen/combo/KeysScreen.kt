@@ -24,7 +24,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.keyName
+import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.MultiPickerDialog

@@ -10,9 +10,9 @@ import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.core.model.appTargetLabel
 import com.lookie.opluskey.core.model.resolveAppName
 import com.lookie.opluskey.core.model.resolveTargetName
+import com.lookie.opluskey.core.present.appTargetLabel
 import com.lookie.opluskey.ui.model.cloneLabel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

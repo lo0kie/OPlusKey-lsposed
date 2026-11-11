@@ -5,7 +5,6 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.conditionChoiceIcon
 import com.lookie.opluskey.ui.model.conditionChoiceLabel
 import com.lookie.opluskey.ui.model.conditionIcon
 import com.lookie.opluskey.ui.model.conditionKindLabel
@@ -15,7 +14,7 @@ import com.lookie.opluskey.ui.model.conditionKindLabel
 // 这边只是「一行怎么画」，两件事各自涨。
 
 /**
- * 一级菜单那几行 —— 一种条件一行，`used` 里的置灰、`current` 那一档打勾。
+ * 一级菜单那几行 —— 一种条件一行，`disabled` 里的置灰、`current` 那一档打勾。
  *
  *  抽成一支只为把 [BranchConditionMenu] 压回 `LongMethod` 的阈值：这里只有「行怎么画」，
  *  与「菜单开没开、二级挂在哪儿」无关。
@@ -24,7 +23,7 @@ import com.lookie.opluskey.ui.model.conditionKindLabel
  * @param currentSummary 选中那一行的**子标题**（已拼好：`打开` / `已选择 3 个应用` / `22:00-07:00`）——
  *   一级菜单里那一行只写种类名，选中了之后看不出选的是哪一档（「开 / 关」这种字本身不带主语）。
  *   `null` = 不出小字（还没选、或那一档不该列取值）。拼法见 `conditionMenuSummary`。
- * @param disabled 表里**取值已经全用掉**的档（点一下只说「这个条件已经加过了」）
+ * @param disabled **这一块里**已经加满的档（点一下只说「这一档已经加满了」）
  * @param onPick 种类定下来之后的落盘（挑应用页 / 时间窗 / 直接写，见 [BranchConditionMenu] 的 `commit`）
  * @param onSub 要开二级取值的那一档
  */
@@ -41,9 +40,9 @@ internal fun conditionKindRows(
             // 子标题只给**当前选中的那一档**：其余行写了「取值」会被读成「也选了」。
             summary = if (kind == current) currentSummary else null,
             icon = conditionIcon(kind),
-            // 取值全用掉了才置灰（本条自己原来那档不计入 —— 它算「还是它」）
+            // 这一块里同一种类加到了上限才置灰（别的行用过哪一档与本块无关）
             enabled = kind !in disabled,
-            disabledHint = I18n.get(Strings.COMMAND_BRANCH_DUPLICATE, "这个场景已经加过了"),
+            disabledHint = I18n.get(Strings.COMMAND_BRANCH_KIND_FULL, "这一类场景已经加满了"),
             // 这一条现在是这一档 ⇒ 画成选中（行首对勾 + 文字主题色）
             selected = kind == current,
             //  行尾**不画选择器**：点下去弹的是选择器弹窗（不是另一层菜单），行尾那枚
@@ -62,26 +61,39 @@ internal fun conditionKindRows(
 /**
  * 取值那一层的行 —— [ConditionKind.choices] 非空的那几档用（WIFI / 媒体状态 / 响铃状态 / 屏幕方向…）。
  *
- *  **用过的取值**在这一层挡，而不是把整档在一级灰掉（理由见 [BranchConditionMenu] 里那段注释）：
- *  同一张表里「屏幕状态 = 亮屏」可以出现一次，「锁屏」是另一条，两条都该能加。
+ *  **只置灰本块里这一档已经用过的取值**：同一种类能加好几条（见 [blockKindsOf]），再加一个
+ *  同样的状态就是白占一格 —— `[锁屏, 锁屏]` 与 `[锁屏]` 说的是一件事。
+ *  跨块不管：同一个取值可以出现在不同的块里（`[亮屏 + 微信]` 与 `[亮屏 + 相机]` 是两条不同的
+ *  场景），拿整张表去比会把第二块那条合法条件堵掉。
  *
  * @param currentValue 这一档**现在**的取值（用来画选中）；空值由调用方按默认档给
- * @param used 表里已经用掉的「条件 + 取值」（不含正在改的这一条）
+ * @param usedValues 本块里**别的**几条已经用掉的取值（正在改的这一条自己不算，否则它自己会灰）
  */
 internal fun conditionChoiceRows(
     kind: ConditionKind,
     currentValue: String,
-    used: Set<UsedCondition>,
+    usedValues: Set<String>,
     onPick: (String) -> Unit,
-): List<MenuEntry.Row> =
+): List<ChoiceRow> =
     kind.choices.map { value ->
-        MenuEntry.Row(
+        ChoiceRow(
             title = conditionChoiceLabel(kind, value),
-            icon = conditionChoiceIcon(kind, value),
-            // 这一档这一个取值已经有一条了 ⇒ 置灰（重复的两条永远轮不到后一条）
-            enabled = UsedCondition(kind, value) !in used,
-            disabledHint = I18n.get(Strings.COMMAND_BRANCH_DUPLICATE_VALUE, "这个取值已经加过了"),
+            //  这一块里已经有一条同取值的条件 ⇒ 点不动（判定侧是「或」，加第二条不改变结果）
+            enabled = value !in usedValues,
             selected = value == currentValue,
             onPick = { onPick(value) },
         )
     }
+
+/**
+ * 取值那一层的一行 —— **不是菜单行**（它是选择器弹窗里的一项，用户口径：二级不用菜单）。
+ *
+ *  所以它没有图标：选择器那一列现在一律不带行首字形（见 `PickerOption`）。
+ *  原先复用 `MenuEntry.Row` 是为了少一个类型，代价是「菜单才能用的图标」被带进了弹窗。
+ */
+internal class ChoiceRow(
+    val title: String,
+    val enabled: Boolean,
+    val selected: Boolean,
+    val onPick: () -> Unit,
+)

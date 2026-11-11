@@ -1,7 +1,9 @@
-package com.lookie.opluskey.core.model
+package com.lookie.opluskey.core.rom
 
 import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.HostApp
+import com.lookie.opluskey.core.model.KsuCompat
 
 /**
  * **一档 ROM 的适配事实** —— 内置命令的落点 + 反射面（ColorOS 私有类名 / 方法名 / 字段名）。
@@ -78,6 +80,19 @@ object RomProfile {
          *  再按一下才重新开始。
          */
         val stopAction: String? = null,
+        /**
+         * 「只停」那一档：这一条 feature 唯一要做的事，是把 [service] 那条**已经起着的**服务停掉。
+         *
+         *  与 [stopAction] 不是一回事：广播是对方自己留的出口，停不停由它决定（翻译那条广播真机
+         *  发出去 `result=0`、胶囊照旧）；这一档走 `Context.stopService`，服务直接销毁 ——
+         *  真机验过：停完之后 `ScreenTranslationToolCapsule` / `ScreenTranslationFullImageHolder`
+         *  两扇窗一起消失。
+         *
+         *  能不能停看**目标服务声明的权限调用方有没有**：翻译那条要求
+         *  `com.oplus.permission.safe.AI_APP`，宿主持有；`shell`（uid 2000）没有，`am stop-service`
+         *  会直接报 `Permission Denial`（真机日志）。
+         */
+        val stop: Boolean = false,
         /**
          * 「只在锁屏上带」的 extra —— 起这一档时若停在安全锁屏上才并进 Intent（见 [NAME_CAMERA]）。
          *
@@ -341,6 +356,18 @@ object RomProfile {
     const val NAME_SCREEN_TRANSLATE = "screen_translate"
 
     /**
+     * 屏幕翻译 —— **关闭**（`oplus:screen_translate_stop`）。
+     *
+     *  与 [NAME_SCREEN_TRANSLATE] 是**两个动作**：一个起服务、一个停服务。它俩合起来才是
+     *  「开关」，但各自是一个能单独绑的取值（界面上收在「屏幕翻译」那一格后面，
+     *  见 `ActionCatalog.SCREEN_TRANSLATE_MODES`），所以不在这里替谁补另一半。
+     *
+     *  停的是**同一条服务**（同一个 action、同一个包），只是走 `stopService` 而不是
+     *  `startForegroundService`（见 [BuiltIn.stop]）。
+     */
+    const val NAME_SCREEN_TRANSLATE_STOP = "screen_translate_stop"
+
+    /**
      * 相机 —— **不是侧键场景表里的条目**，抄的是锁屏左下 / 右下角那颗「相机」快捷功能的入口
      * （见下面 [CAMERA]）。
      */
@@ -575,10 +602,10 @@ object RomProfile {
      *  `com.coloros.smartsidebar` → `source=sidebar` 之类的来源标记），不参与任何放行判断 ——
      *  所以这里报真实调用方（宿主），不冒充侧边栏。
      *
-     *  ## 它不是开关
+     *  ## 它是「起一次」，不是开关
      *
-     *  退出是**它自己胶囊上那颗关闭**（或者系统那边停服务）。宿主不代它停：这条服务的会话状态
-     *  （悬浮窗、识别进度）在它自己手里，从外面硬停会把界面留在半截。
+     *  重入的启动会被服务自己忽略（胶囊已经在了就不再开一份）。关掉要走
+     *  [SCREEN_TRANSLATE_STOP] 那一档 —— 两条是**平级的两个动作**，谁也不替谁补另一半。
      */
     private val SCREEN_TRANSLATE =
         BuiltIn(
@@ -588,6 +615,27 @@ object RomProfile {
             action = "oplus.intent.action.GLOBAL_TRANSLATION",
             extras = mapOf("extra_from_package" to HostApp.PACKAGE),
             foreground = true,
+        )
+
+    /**
+     * 屏幕翻译 —— **关闭**那一档：停掉 [SCREEN_TRANSLATE] 起的那条前台服务。
+     *
+     *  两条出口都试过（真机 2026-11-11，PLK110 / ColorOS 17）：
+     *   · 广播 `oplus.intent.action.GLOBAL_TRANSLATION_EXIT`（清单里那个接收者就是它）
+     *     **发出去没反应**：`am broadcast` 报 `result=0`，胶囊与全屏层两扇窗都还在；
+     *   · `stopService` **真的收掉**：`dumpsys activity services` 里那条 `ScreenTranslationService`
+     *     消失，`ScreenTranslationToolCapsule` / `ScreenTranslationFullImageHolder` 一起没了。
+     *
+     *  所以这一档登记 [BuiltIn.stop]，执行侧走 `Context.stopService`（不是发广播、也不是 root）。
+     *  服务带 `com.oplus.permission.safe.AI_APP`，**停也要这个权限**：`shell`（uid 2000）去停会被
+     *  拒（`Permission Denial`），宿主持有它，所以从宿主进程停得掉。
+     */
+    private val SCREEN_TRANSLATE_STOP =
+        BuiltIn(
+            owner = "com.coloros.translate",
+            service = "oplus.intent.action.GLOBAL_TRANSLATION",
+            action = "oplus.intent.action.GLOBAL_TRANSLATION",
+            stop = true,
         )
 
     /**
@@ -686,6 +734,7 @@ object RomProfile {
                         NAME_SCREEN_RECORD_START to SCREEN_RECORD_START,
                         NAME_SCREEN_RECORD_STOP to SCREEN_RECORD_STOP,
                         NAME_SCREEN_TRANSLATE to SCREEN_TRANSLATE,
+                        NAME_SCREEN_TRANSLATE_STOP to SCREEN_TRANSLATE_STOP,
                         NAME_CAMERA to CAMERA,
                         NAME_CALCULATOR to CALCULATOR,
                     ),

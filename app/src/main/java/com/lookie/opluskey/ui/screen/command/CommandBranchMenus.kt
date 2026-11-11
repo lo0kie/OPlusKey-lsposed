@@ -55,7 +55,7 @@ internal fun SettingsPage.BranchMenus(
  *  所以要能挪；删也放在这里，不与换值混在一起。
  *
  *  「再加一条条件」也归这一颗而不是条件菜单：它说的是**这一行里多一条条件**（一块可以带好几条，
- *  逐条都要成立），而条件菜单只管「当前那一条是什么」。
+ *  同种类之间「或」、不同种类之间「且」），而条件菜单只管「当前那一条是什么」。
  */
 @Composable
 private fun SettingsPage.BranchRowMenu(
@@ -67,7 +67,7 @@ private fun SettingsPage.BranchRowMenu(
     PageMenu(
         entries =
             buildList {
-                //  「添加条件」—— 一块可以带**好几条**条件（逐条都要成立），所以「再加一条」
+                //  「添加条件」—— 一块可以带**好几条**条件（同种类之间「或」），所以「再加一条」
                 //  是这一行的操作，和上移 / 下移 / 删除一起放在这里。
                 //  它单占第一段（下面用加深带断开）：那三件是「这一行本身怎么摆」，这一件是
                 //  「这一行里的条件再多一条」，两类不同。
@@ -189,7 +189,7 @@ private fun SettingsPage.addConditionRow(
     menus: BranchMenuState,
 ): MenuEntry.Row =
     MenuEntry.Row(
-        title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加条件"),
+        title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
         icon = TablerIcons.Outline.Plus,
         onPick = { appendCondition(draft, at, menus) },
     )
@@ -265,7 +265,7 @@ internal fun SettingsPage.conditionDeleteRow(
  * 把一条条件写到第 [index] 条规则上（[AppPickerState.NEW_BRANCH] = 新加一条）。
  *
  *  @param condIndex 写进**这块里的第几条条件**：`>= 0` = 换那一条，越界 / `-1` = 追加一条。
- *    一块可以带好几条条件（逐条都要成立），所以「写到哪一条」必须由调用方明确指出来 ——
+ *    一块可以带好几条条件（同种类之间「或」），所以「写到哪一条」必须由调用方明确指出来 ——
  *    这里不替它猜（`replacingCondition` 对越界会退回改第 0 条，那会把用户已有的第一条换掉）。
  *
  *  新加的那一条三档动作都是「跟随默认命令」（`SceneRule` 的默认值）：条件与动作是同一个场景的

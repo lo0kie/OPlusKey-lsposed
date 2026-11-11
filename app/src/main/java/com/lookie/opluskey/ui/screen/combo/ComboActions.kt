@@ -7,7 +7,7 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.comboLabel
+import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.hint

@@ -2,8 +2,8 @@ package com.lookie.opluskey.bridge
 
 import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.core.rom.RomProfile
 
 // 原生动画器直调（`CMD_MINI_ANIM`）：建动画参数、算起止矩形、调框架那两支动画入口。
 // 同样是扩展 —— 它只服务小窗那一下动画，与指令通道无关。

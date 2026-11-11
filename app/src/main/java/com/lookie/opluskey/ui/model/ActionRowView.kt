@@ -2,7 +2,7 @@ package com.lookie.opluskey.ui.model
 
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.present.ActionCatalog
 
 /**
  * 「这一行长什么样」—— 网格那一格与抽屉那一行**共用这一份**。

@@ -9,12 +9,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -23,14 +21,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.opticalCenter
-import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -45,27 +41,25 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 // 「样式参考系统开关」而不是「再用一套」的原因。所以抽到这里，两边都用它。
 
 /**
- * 选择器里的一行 —— 文案 + （可选）行首字形 + 能不能点。
+ * 选择器里的一行 —— 文案 + 能不能点。
  *
- *  为什么要这一个对象：取值那一列的行自带一颗字形（「亮屏」「锁屏」各是那块屏的两种状态），
- *  而纯文字那一列（系统开关三档、语言）没有。两种都是「从一列同族取值里挑一个」，
- *  所以**壳只有一份**（[SinglePickerDialog]），差别只在每一行带不带图标、点不点得动。
+ *  **不带行首字形**（用户口径）：这一列本来就是「同一件事的不同取值」（亮屏 / 锁屏、开 / 关），
+ *  每行再挂一颗图标会把「一列同族取值」读成「几种不同的东西」；那一列的字形在**列表那一行**
+ *  上已经有了（见 `conditionLineIcon`），弹窗里重复一遍只是噪声。
  */
 internal class PickerOption(
     val label: String,
-    val icon: ImageVector? = null,
     /** `false` = 置灰（点了不响应）：这一档在这一趟里不可选（例如取值已经用过了）。 */
     val enabled: Boolean = true,
 )
 
 /**
- * [PickerRow] 上那两样零碎 —— 行首带不带字形、这一层窗还在不在（退场期间不派发）。
+ * [PickerRow] 上那一样零碎 —— 这一层窗还在不在（退场期间不派发）。
  *
  *  `enabled` 不并进来：它决定这一行长什么样（灰字），`interactive` 只决定派不派发点击 ——
  *  两件事，混成一个布尔会让「置灰」与「退场」互相顶掉。
  */
 internal class PickerRowTraits(
-    val icon: ImageVector? = null,
     val interactive: Boolean = true,
 )
 
@@ -139,7 +133,6 @@ internal fun PickerRow(
     ) {
         PickerRowContent(
             label = label,
-            icon = traits.icon,
             labelColor = labelColor,
             checkAlpha = checkAlpha,
             checkTint = colors.primary,
@@ -147,25 +140,19 @@ internal fun PickerRow(
     }
 }
 
-/** [PickerRow] 那一行的内容（行首可选字形 + 文案 + 行尾对勾）—— 行壳与可点性留在 [PickerRow]。 */
+/**
+ * [PickerRow] 那一行的内容（文案 + 行尾对勾）—— 行壳与可点性留在 [PickerRow]。
+ *
+ *  行首**不留图标列**（用户口径）：文案从行内边距直接起，标题左缘就是 [PickerRows] 那条
+ *  分隔线的起点（两者同一个数，见那边的注释）。
+ */
 @Composable
 private fun RowScope.PickerRowContent(
     label: String,
-    icon: ImageVector?,
     labelColor: Color,
     checkAlpha: Float,
     checkTint: Color,
 ) {
-    //  行首那颗可选：取值那一列（亮屏 / 锁屏）靠它分档，纯文字那几列不给
-    icon?.let { glyph ->
-        Icon(
-            glyph,
-            contentDescription = null,
-            modifier = Modifier.size(PICKER_ROW_ICON_SIZE),
-            tint = labelColor,
-        )
-        Spacer(Modifier.width(PICKER_ROW_ICON_GAP))
-    }
     Text(
         text = label,
         style = COUITheme.textStyles.body1,
@@ -183,10 +170,6 @@ private fun RowScope.PickerRowContent(
         )
     }
 }
-
-/** 行首那颗可选字形的尺寸与它到文字的间距（只有带图标的列会用到）。 */
-private val PICKER_ROW_ICON_SIZE = 22.dp
-private val PICKER_ROW_ICON_GAP = 12.dp
 
 /**
  * 一列选项 —— 行 + 行间细线 + 底部那一点面板本色。
@@ -244,17 +227,20 @@ internal fun ColumnScope.PickerRows(
             .verticalScroll(rememberScrollState()),
     ) {
         options.forEachIndexed { index, option ->
-            //  行之间那条细线：与各页卡片里同一档（`CardList` 那条 `HorizontalDivider` +
-            //  同一份两端内缩），不自己另调一道色。第一行之上不画。
+            //  行之间那条细线：左端从**标题最左处**起、右端与左端同一个数（用户口径）。
+            //  这个数就是行自己的左右内边距（[DialogDefaults.insideMargin]）——行首不再有图标列，
+            //  文案正好从这一条起，于是线与字头对齐、右边也收进来一样多。
+            //  不照抄 `CardList` 那条：卡片里的行首有图标列，它那份左内缩是 56dp，套到这儿会
+            //  让线从半个行宽处才开始。第一行之上不画。
             if (index > 0) {
-                HorizontalDivider(Modifier.padding(horizontal = DividerDefaults.CardInset))
+                HorizontalDivider(Modifier.padding(horizontal = DialogDefaults.insideMargin.width))
             }
             PickerRow(
                 label = option.label,
                 selected = isSelected(index),
                 onClick = { onClick(index) },
                 enabled = option.enabled,
-                traits = PickerRowTraits(icon = option.icon, interactive = interactive),
+                traits = PickerRowTraits(interactive = interactive),
             )
         }
     }

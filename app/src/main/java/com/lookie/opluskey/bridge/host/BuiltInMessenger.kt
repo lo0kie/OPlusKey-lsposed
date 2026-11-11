@@ -10,7 +10,7 @@ import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.rom.RomProfile
 
 /**
  * `RomProfile.BuiltIn.message` 那条落点的执行器 —— **bind 后发一条 `Message`**。

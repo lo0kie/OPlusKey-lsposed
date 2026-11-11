@@ -24,8 +24,8 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.DisabledHint
@@ -152,10 +152,8 @@ internal fun SettingsPage.SerialSteps() {
                 val rowPreciseClick = remember(item.id) { PreciseClickState() }
                 CardRow.Item(
                     title = stepTitle(item.token, ::appNameOf),
-                    //  **不限行**（用户口径「命令列表的命令列主标题多行显示」）：这一行写的是
-                    //  `打开应用: 微信 - LauncherUI` 这种整句，单行会把「做什么」裁掉一半 ——
-                    //  而这一步做的正是核对它做什么。行高由内容撑开，与条件 / 动作那两行同一口径。
-                    titleMaxLines = Int.MAX_VALUE,
+                    //  标题按行内统一的行数上限折行（[ROW_TEXT_MAX_LINES]，3 行 + 省略）：
+                    //  这一行写的是 `打开应用: 微信 - LauncherUI` 这种整句，与其余行同一口径。
                     //  **没有副标题**（用户口径：去掉那个「第 N 步」）：这一步做什么已经在标题里了，
                     //  行次由行的位置自己说；排序态下真正要看的行尾那三颗（上移 / 下移 / 删除）。
                     icon = stepIcon(item.token, configState.commands.value),

@@ -7,7 +7,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.Parcel
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.rom.RomProfile
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 

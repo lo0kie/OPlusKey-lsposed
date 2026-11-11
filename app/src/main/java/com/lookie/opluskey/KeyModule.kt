@@ -2,11 +2,11 @@ package com.lookie.opluskey
 
 import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.MiniWindowGeometry
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
+import com.lookie.opluskey.core.rom.DeviceSupport
+import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.core.seal.Verdict
 import com.lookie.opluskey.host.GestureReceiver

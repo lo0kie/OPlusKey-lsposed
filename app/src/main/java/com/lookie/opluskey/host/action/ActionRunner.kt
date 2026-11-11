@@ -15,9 +15,9 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.KsuCompat
-import com.lookie.opluskey.core.model.RomKeyFamilies
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.expandedWith
+import com.lookie.opluskey.core.rom.RomKeyFamilies
+import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.core.wire.ModuleWire
 
 /**

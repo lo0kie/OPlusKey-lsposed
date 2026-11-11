@@ -179,11 +179,11 @@
 
 **1.2 提交前（要入库 = 必须绿灯，与 1.1 的档位无关）**
 
-- `./gradlew gate` 全过（= `spotlessCheck detekt lintDebug`，两个模块一起算）—— 三道闸各自管一件事：**格式**、**静态检查**、**Android
-  Lint**。代码写完先跑 `./gradlew spotlessApply` 把格式交给工具，别手工对齐空格。规则文件位置与历史存量的抑制方式见
+- `./gradlew gate` 全过（= `spotlessCheck detekt lintDebug testDebugUnitTest`，两个模块一起算）—— 四道闸各管一件事：**格式**、**静态检查**、**Android
+  Lint**、**纯函数的行为判据**（单测只在 `:core`）。代码写完先跑 `./gradlew spotlessApply` 把格式交给工具，别手工对齐空格。规则文件位置与历史存量的抑制方式见
   `docs/process/pre-commit.md` 的「提交前检查」。
     - **`gate` 与打包是两条口令，别拼在一起**：`assemble*` 会带 R8（release 那一遍），
-      在内存吃紧的机器上那是三道闸本身的好几倍时间。改代码时只跑 `gate`，真要出包时才 `assemble<X>`。
+      在内存吃紧的机器上那是这几道闸本身的好几倍时间。改代码时只跑 `gate`，真要出包时才 `assemble<X>`。
     - **新代码不许再往基线里加条目** —— 加了要在提交信息里说明为什么。反过来，拆得动的存量要顺手**减**条目，别只挪签名。
 - **改了 `dependencies { }` 必须重锁**：`./gradlew :app:dependencies :core:dependencies --write-locks`，把
   两份锁文件的 diff 一起提交。忘了锁的那次**本地照样编得过**（Gradle 对没进锁文件的配置是宽松的），

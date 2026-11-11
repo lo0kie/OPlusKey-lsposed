@@ -5,7 +5,7 @@ import android.hardware.camera2.CameraManager
 import android.os.Handler
 import android.provider.Settings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.rom.RomProfile
 
 /** 手电筒开关（`flashlight:`）：语义是切换（开着的关掉、关着的打开）。 */
 internal class FlashlightController(

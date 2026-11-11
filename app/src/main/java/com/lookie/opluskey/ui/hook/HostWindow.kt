@@ -6,7 +6,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
 
-// 宿主窗口的读取与包装：从宿主 Activity 取换页用的容器、状态栏高度、深浅与页面 Context。
+// 宿主窗口的读取与包装：从宿主 Activity 取换页用的容器、深浅与页面 Context。
 //
 // 用到的两个 `R.id.*` 数值属于宿主 APK 的资源表（跨包资源 id 不成立），只能写死 + 按名字反查兜底；
 // 同一 ROM 内稳定，ROM 升级重建资源表时可能变。
@@ -99,32 +99,6 @@ internal fun isLightColor(color: Int): Boolean {
     val b = color and 0xFF
     // ITU-R BT.601 亮度，阈值取 0.5
     return (0.299 * r + 0.587 * g + 0.114 * b) > 127.5
-}
-
-/**
- * 状态栏高度：先读窗口 inset（最准，含挖孔 / 状态栏显隐），
- * 拿不到（`onCreate` 阶段还没下发 inset）就用系统 dimen 兜底。
- */
-internal fun statusBarHeight(activity: android.app.Activity): Int {
-    try {
-        val insets = activity.window?.decorView?.rootWindowInsets
-        val top =
-            insets
-                ?.getInsets(
-                    android.view.WindowInsets.Type
-                        .statusBars(),
-                )?.top ?: 0
-        if (top > 0) return top
-    } catch (e: Throwable) {
-        XLog.d("读状态栏 inset 失败：${e.message}")
-    }
-    return try {
-        val id = activity.resources.getIdentifier("status_bar_height", "dimen", "android")
-        if (id != 0) activity.resources.getDimensionPixelSize(id) else 0
-    } catch (e: Throwable) {
-        XLog.d("读 status_bar_height 失败：${e.message}")
-        0
-    }
 }
 
 /**

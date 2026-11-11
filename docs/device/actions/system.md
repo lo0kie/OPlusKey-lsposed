@@ -47,7 +47,7 @@ ServiceManager.getService("window")  →  WindowManagerService 实例（不是�
 
 （`long_press_action_info` / `second_menu_*` 另有值，多数与 click 指向同一个服务；完整行见真机。）
 
-- **`type=service` 就是「起一个服务」**：模块的 `core/model/RomProfile` 只抄其中四行，不多猜。
+- **`type=service` 就是「起一个服务」**：模块的 `core/rom/RomProfile` 只抄其中四行，不多猜。
 - **三个目标服务都带签名级权限**（`DataCollectService` → `com.oplus.permission.safe.SECURITY`； `InvokeEntranceService`
   → `oppo.permission.OPPO_COMPONENT_SAFE`），而**宿主 `com.oplus.gesture` 本人就持有** 这些权限（另有
   `WRITE_SECURE_SETTINGS` / `ACCESS_NOTIFICATION_POLICY`(granted) /
@@ -117,7 +117,7 @@ ServiceManager.getService("window")  →  WindowManagerService 实例（不是�
   落到 UNKNOWN 分支，记 `trigger type error`
   后什么都不做。另有前置：AI 内存（闪记）已装、`USER_SETUP_COMPLETE`、开关未关，否则 `stopSelf`。
 
-模块侧结论：`core/model/RomProfile.BuiltIn` 增加 `message`（ Messenger 型发什么码）， `host/action/AppLauncher`
+模块侧结论：`core/rom/RomProfile.BuiltIn` 增加 `message`（ Messenger 型发什么码）， `host/action/AppLauncher`
 里 bind → `Messenger.send` → 立刻解绑；带 extras 的照常 start。
 
 ## 17.5 三个 `oplus:` 动作的真实入口（2026-10-14 复核，PLK110）

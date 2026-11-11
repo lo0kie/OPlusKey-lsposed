@@ -1,5 +1,7 @@
 package com.lookie.opluskey.core.model
 
+import com.lookie.opluskey.core.rom.RomKeyFamilies
+
 /**
  * 一个可重映射的按键 —— **身份由 [id] 决定**（配置的键名、广播的 extra 前缀、日志、去重都用它）。
  *

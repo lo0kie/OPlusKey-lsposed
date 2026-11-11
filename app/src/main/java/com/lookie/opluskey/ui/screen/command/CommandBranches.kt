@@ -50,7 +50,6 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_ROW_ENTER
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
 import com.lookie.opluskey.ui.model.gestureLabel
-import com.lookie.opluskey.ui.screen.keyEnabled
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -245,12 +244,13 @@ private fun SettingsPage.BranchRuleColumn(
     menus: BranchMenuState,
     anchors: List<RuleAnchors>,
 ) {
-    //  哪几行是死分支（永远轮不到）—— 小标题上直接标出来，不必等点「确认」才被告知
-    val dead = deadIndexesOf(rules)
-    //  这一页的行能不能点：**整页闸门 × 这颗键自己开没开**。键停用时场景命中也不会执行
-    //  （判定侧只认启用的键），再让它看起来可编辑就是骗人。判据在这里就地算 ——
-    //  它与 `BranchCards` 的入参是同一个式子，不值得为它多加一层参数。
-    val rowsEnabled = pageWritable() && keyEnabled(branchKeyNow())
+    //  这一页的行能不能点：**只看整页那一道闸**（主开关 × 链路 × 只读）。这一颗键 / 这一档组合
+    //  自己的 `enabled` **不参与**：停用的那一份照样要能把场景配好、再回去启用，拿它去灰掉整张表
+    //  等于先把这条顺序堵死（与「独立设置」页同一条口径）。
+    val rowsEnabled = pageWritable()
+    //  **整块重复**（条件与手势都被上面某一块盖住）先算出来：行尾要标一句「与上面重复」，
+    //  点「确认」时也要拦（见 `branchRulesBlockedReason`）—— 两处读同一份判据。
+    val duplicated = duplicateBlockIndexes(rules)
     Column(Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN)) {
         // 只剩一条时它**不自己收缩**：那一条的消失由外层空态那一套接管（见 `BranchCards` 里
         //  那个 effect）。不然数据被移除之前先闪一帧收缩，就成了「行先缩、空态再长」两段。
@@ -266,11 +266,11 @@ private fun SettingsPage.BranchRuleColumn(
                             fresh = ids[index] == freshId,
                             exiting = shrinkable && menus.deletingAt == index,
                             enabled = rowsEnabled,
-                            //  「停用」优先于「不会执行」：那是用户刚做过的动作，也是更直接的原因
+                            //  停用优先于重复：停用的块根本不参与判定，说「重复」会指错原因
                             state =
                                 when {
                                     !rule.enabled -> RuleState.OFF
-                                    index in dead -> RuleState.DEAD
+                                    index in duplicated -> RuleState.DUPLICATE
                                     else -> RuleState.NORMAL
                                 },
                         ),
@@ -369,13 +369,13 @@ private fun SettingsPage.BranchRow(
                             menus.menuAnchor = spec.anchors.menu
                             menus.menuAt = spec.index
                         },
-                        //  这颗键自己停用 / 整页闸门关着 ⇒ 几行都置灰（菜单那颗仍可用，见 `RuleCells.enabled`）
+                        //  整页闸门关着 ⇒ 几行都置灰（菜单那颗仍可用，见 `RuleCells.enabled`）
                         enabled = spec.enabled,
                         //  **每一块**的场景卡末尾都跟一行「添加条件」—— 它加的是**这一块的一条条件**
                         //  （不是一整块场景，整块那个入口在顶栏），所以每块各有一份才对。
                         addRow =
                             CardRow.Item(
-                                title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加条件"),
+                                title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
                                 icon = PageIcons.StepAdd,
                                 onClick = { appendCondition(branchDraftNow(), spec.index, menus) },
                             ),
@@ -389,6 +389,10 @@ private fun SettingsPage.BranchRow(
 /**
  * 小标题那一行 —— 「条件 N」+ 右端那颗「更多」。
  *
+ *  「与上面重复」标在**这一行**（不是每一条条件行）：它说的是整块白写，不是某一条条件的问题，
+ *  一块只说一次就够。与「已停用」标在每一行上不同 —— 那一条说的是「这一块不参与判定」，
+ *  用户扫条件时每一行都想看见。
+ *
  *  抽成一支只为让 [RuleBlock] 留在 detekt 的长度上限内。与各页的小标题**同一个组件**
  *  （同一档字号、颜色、行高）：「条件 N」是这一块的小标题，不是正文。横向只把库里那 32dp
  *  改成 20dp —— 默认值里含 12dp 页面边距，而这一页的外层已经有 `PAGE_MARGIN`，照抄会多缩进一格
@@ -397,6 +401,8 @@ private fun SettingsPage.BranchRow(
 @Composable
 private fun RuleTitleRow(
     index: Int,
+    /** 这一块整体处在哪一档（见 [RuleState]）。 */
+    state: RuleState,
     cells: RuleCells,
 ) {
     SectionTitle(
@@ -410,34 +416,37 @@ private fun RuleTitleRow(
         //  小标题默认那 22dp 是按「整幅宽的一行」算的，再补一次就成了页边 − 34。
         trailingEndPadding = 0.dp,
         trailing = {
-            MoreButton(
-                onClick = cells.onMenu,
-                anchor = cells.anchors.menu,
-                //  **与「多条命令」那颗「命令列表」小标题的「更多」落在同一位置**（同一套几何）：
-                //  那一颗的内缩由 `SectionTitle` 给到 22dp，`flushEnd` 再把点击格右移 10dp
-                //  ⇒ 字形右边缘在**页边 − 22dp**。
-                //  这一行不给内缩、也不给 `flushEnd`：点击区贴住行右边缘（页边 − 12）、字形居中
-                //  ⇒ 同样是页边 − 22dp。补 `flushEnd` 会把它往左推 10dp（「右缩进太多」）。
-                //  别按「与字头对称」去调 —— 这一页字头在 32dp，两者本来就不对称，跟多条命令一致才是口径。
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RuleStateHint(state)
+                MoreButton(
+                    onClick = cells.onMenu,
+                    anchor = cells.anchors.menu,
+                    //  **与「多条命令」那颗「命令列表」小标题的「更多」落在同一位置**（同一套几何）：
+                    //  那一颗的内缩由 `SectionTitle` 给到 22dp，`flushEnd` 再把点击格右移 10dp
+                    //  ⇒ 字形右边缘在**页边 − 22dp**。
+                    //  这一行不给内缩、也不给 `flushEnd`：点击区贴住行右边缘（页边 − 12）、字形居中
+                    //  ⇒ 同样是页边 − 22dp。补 `flushEnd` 会把它往左推 10dp（「右缩进太多」）。
+                    //  别按「与字头对称」去调 —— 这一页字头在 32dp，两者本来就不对称，跟多条命令一致才是口径。
+                )
+            }
         },
     )
 }
 
 /**
- * 这一行现在处在哪一档 —— 行尾那半句话显示哪一句（两句话只会出一句）。
+ * 这一行现在处在哪一档 —— 行尾那半句话显示哪一句。
  *
- *  合成一个枚举而不是两个布尔：两种状态互斥，各自一个位的话调用点要先想「两个都真时显示哪个」，
- *  而那个优先级（先说「已停用」）只该有一处口径。
+ *  「顺序上轮不到谁」这一页不替用户算（表里怎么排就怎么执行，判定侧本来就是「从上往下第一条
+ *  成立的赢」）；唯一还算的是**整块重复**：两块完全一样时后一块必输，那是配错了、不是排序问题。
  */
 internal enum class RuleState {
     NORMAL,
 
-    /** 顺序上轮不到（某档取值前面已经凑齐 / 被更宽的一条盖住）—— 红字「不会执行」。 */
-    DEAD,
-
     /** 这一条自己关着（行尾菜单里的停用）—— 弱色「已停用」。 */
     OFF,
+
+    /** 这一块与上面某一块完全一样（见 [duplicateBlockIndexes]）—— 红字「与上面重复」。 */
+    DUPLICATE,
 }
 
 /** 一行「是第几条、跟哪两格、要不要播进出场」—— 合成一个对象把参数个数压回 detekt 的上限。 */
@@ -448,7 +457,7 @@ private class RuleRowSpec(
     val exiting: Boolean,
     /** 行尾那半句话说什么（见 [RuleState]）。 */
     val state: RuleState,
-    /** 这一块两行能不能点（整页闸门 × 这颗键自己开没开，见 `RuleCells.enabled`）。 */
+    /** 这一块两行能不能点（整页闸门，见 `RuleCells.enabled`）。 */
     val enabled: Boolean = true,
 )
 
@@ -493,10 +502,11 @@ private class RuleCells(
     val onAction: (Gesture) -> Unit,
     val onMenu: () -> Unit,
     /**
-     * 这一块的两行**能不能点** —— 整页闸门 × 这颗键自己开没开。
+     * 这一块的两行**能不能点** —— 只看整页那道闸（主开关 × 链路 × 只读）。
      *
-     *  键停用时场景命中也不会执行（判定侧只认启用的键），所以两行都置灰；菜单那一颗仍可用，
-     *  否则连「删掉这条场景」都做不了。
+     *  这一颗键 / 这一档组合自己的 `enabled` 不参与：停用的那一份照样要能先把场景配好、
+     *  再回去启用（与「独立设置」页同一条口径）。菜单那一颗始终可用，否则连「删掉这条场景」
+     *  都做不了。
      */
     val enabled: Boolean = true,
     /**
@@ -560,7 +570,7 @@ internal class ActionLine(
 @Composable
 private fun RuleBlock(
     index: Int,
-    /** 行尾那半句话说什么（见 [RuleState]）—— 「不会执行」/「已停用」/ 什么都不说。 */
+    /** 这一块整体处在哪一档（见 [RuleState]）—— 「与上面重复」/「已停用」/ 什么都不说。 */
     state: RuleState,
     text: RuleText,
     cells: RuleCells,
@@ -569,7 +579,7 @@ private fun RuleBlock(
 ) {
     val fresh = rememberFreshRow(menus, index)
     Column(Modifier.fillMaxWidth()) {
-        RuleTitleRow(index, cells)
+        RuleTitleRow(index, state, cells)
         //  场景与动作**各一张卡**（用户口径「场景和动作分隔开，用两个卡片」）：
         //  上面回答「什么情况下」，下面回答「做什么」。原先合成一张、靠一条加深带断开，
         //  读起来仍是同一件事的两段；拆成两张之后「这条场景命中会做什么」一眼分成两问。
@@ -578,7 +588,7 @@ private fun RuleBlock(
             margin = 0.dp,
             rows =
                 buildList {
-                    //  **一条条件一个 `CardItem`**：一块可以带好几条条件（逐条都要成立），
+                    //  **一条条件一个 `CardItem`**：一块可以带好几条条件（同种类之间「或」、不同种类之间「且」），
                     //  每条各占卡片里的一行 —— 点哪一行就在**那一行**旁边弹条件菜单。
                     //  不是一个 Item 里画多行字：那样每行没有自己的触点，点哪儿都只能改第一条。
                     text.conditionLines.forEachIndexed { condIndex, line ->
@@ -589,22 +599,27 @@ private fun RuleBlock(
                                 //  这一行的进出场状态按**这条条件**认，不按位次 —— 中间插一行时
                                 //  它才不会接手上一行那份「一直在场」的状态（见 `CardRow.Item.rowKey`）。
                                 rowKey = line.rowKey,
-                                //  「前台应用」那一行不限制行数（可能列好几个应用名），其余照旧单行
-                                titleMaxLines = if (line.multiLine) Int.MAX_VALUE else 1,
+                                //  「前台应用」那几行**按框画**应用名（与组合键成员同一个标签，见
+                                //  `ConditionRowTitle`）；其余条件仍是一行字。给这一块时行不再画
+                                //  `title`，但 `title` 仍留着当无障碍与兜底。
+                                titleContent =
+                                    if (line.apps.isNullOrEmpty()) {
+                                        null
+                                    } else {
+                                        { ConditionRowTitle(line, cells.enabled) }
+                                    },
                                 icon = line.icon,
-                                //  键停用 / 只读时这一行点不动（联动见 `RuleCells.enabled`）
+                                //  整页只读 / 闸门关着时这一行点不动（联动见 `RuleCells.enabled`）
                                 enabled = cells.enabled,
                                 //  没配完的那一条：图标与文字**都压到禁用色**（同一档），不加别的记号 ——
                                 //  这一行本身仍可点，靠文案「未选择条件」说清缺什么就够了。
                                 iconTint = if (line.empty) disabledTint else null,
                                 titleTint = if (line.empty) disabledTint else null,
                                 //  行尾一律画那枚「点开还有一层」的选择器（每行都可点、都还有下一层）；
-                                //  「不会执行」/「已停用」那半句只挂在**最后一条**条件行 ——
+                                //  「已停用」那半句只挂在**最后一条**条件行 ——
                                 //  那说的是「这一行整体」不生效，不是某一条条件的问题。
                                 trailing = {
-                                    val last = condIndex == text.conditionLines.lastIndex
                                     ConditionTrailing(
-                                        dead = state == RuleState.DEAD && last,
                                         //  「已停用」**每一行都说**（用户口径：停用要标在列表的每一行上）：
                                         //  一块有几条条件就几行都带，不只是最后一行。与动作那一行同一档。
                                         off = state == RuleState.OFF,
@@ -671,10 +686,9 @@ private fun RuleActionRows(
                     //  **档位名走 `gestureLabel`（字典）**，不读 `Gesture.label` —— 那串是写死的中文，
                     //  英文界面下这里会冒出「单击」（真机口径）。那一支也是将来自定义手势的接口。
                     title = "${gestureLabel(line.gesture)} | ${line.text}",
-                    //  动作那一行**不限行**：`打开应用: 微信 - LauncherUI` 这种一长串，
-                    //  单行省略会把「做什么」裁掉一半 —— 这一行正是用来核对它做什么的。
-                    titleMaxLines = Int.MAX_VALUE,
-                    //  键停用 / 只读时点不动（与条件行同一道闸，见 `RuleCells.enabled`）
+                    //  动作那一行按行内统一的行数上限折行（[ROW_TEXT_MAX_LINES]，3 行 + 省略），
+                    //  与整页其余行同一个口径。
+                    //  整页只读 / 闸门关着时点不动（与条件行同一道闸，见 `RuleCells.enabled`）
                     enabled = cells.enabled,
                     icon = line.icon,
                     iconTint = if (line.empty) disabled else null,

@@ -2,7 +2,7 @@ package com.lookie.opluskey.ui.screen.command
 
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Gesture
-import com.lookie.opluskey.core.model.comboLabel
+import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.screen.editingKeyName

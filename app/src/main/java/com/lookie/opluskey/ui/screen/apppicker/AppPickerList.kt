@@ -39,7 +39,6 @@ import com.lookie.opluskey.ui.collapseHeader
 import com.lookie.opluskey.ui.collapsedHeaderHeight
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.headerStatusBarPadding
-import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.APP_KIND_TAG_GAP
 import com.lookie.opluskey.ui.model.APP_LIST_HEADER_ITEMS
 import com.lookie.opluskey.ui.model.APP_ROW_HEIGHT
@@ -49,7 +48,6 @@ import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.screen.command.branchConditionUsed
 import com.lookie.opluskey.ui.selectedRowRing
 import com.lookie.opluskey.ui.spacedItems
 import com.lookie.opluskey.ui.state.AppPickerState
@@ -269,13 +267,10 @@ private fun SettingsPage.pickRow(
     //  取值里 —— `包1||包2`，任一在前台即通过）。其余入口（给动作挑、给手势挑）仍是单选。
     if (conditionAt != AppPickerState.NOT_FOR_BRANCH) {
         val pkg = AppTarget.pkg(app.target)
-        // 去重只对「还没选过的」做：这个应用已经用在**别的行**上就拦下。
+        //  点一下切换选中：**不在别的块上做去重** —— `[微信 + 充电]` 与 `[微信 + 耳机]` 是两条
+        //  不同的场景，跨块拦会把第二块那条合法条件堵掉（见 `blockKindsOf` 的「跨块不禁」）。
         //  已经在本条条件里的那颗必须能点掉，否则多选之后没法取消其中一个。
         val now = picker.pickedApps.value
-        if (pkg !in now && branchConditionUsed(pkg, conditionAt)) {
-            hint(I18n.get(Strings.COMMAND_BRANCH_DUPLICATE_APP, "这个应用已经加过了"))
-            return
-        }
         val next = if (pkg in now) now - pkg else now + pkg
         picker.pickedApps.value = next
         // `pending` 跟着集合走：它是「FAB 显不显示 / 滚到哪一行」的判据，空集时不该留一个旧目标。

@@ -9,15 +9,20 @@ import com.lookie.opluskey.core.model.ConditionKind
 // 这一份是「条件怎么显示」。两者只是都在界面上出现，没有共用的状态。
 
 /**
- * 「前台应用」条件里那一组包名 → 应用名，多个用顿号连起来。
+ * 「前台应用」条件里那一组包名 → 应用名，多个用 `×` 连起来（`微信 × QQ`）。
  *
  *  一条应用条件可以多选（`包1||包2`，任一在前台即通过），所以标题与取值那一行都不能只取
  *  第一个 —— 那会让用户以为只绑了一个。两处共用这一份，免得一处改了另一处没跟上。
+ *
+ *  **分隔符是 `×` 不是顿号**（用户口径）：顿号在一行里太轻，几个应用连起来读成一句话；
+ *  `×` 把每个名字隔成一个独立的格子，与组合键那边的成员写法同一个字形。
+ *  注意语义差别：组合键那里 `×` 是「两颗一起按」，这一档是「任一在前台」——后者靠条件行
+ *  左半边的「前台应用」说清，不在分隔符上再表达。
  */
 private fun appNamesText(
     condition: BranchCondition,
     appName: (String) -> String,
-): String = condition.appPackages.joinToString("、") { appName(it) }
+): String = condition.appPackages.joinToString(" × ") { appName(it) }
 
 /**
  * **卡片里那一行「条件」** 的说法 —— 两级都用「 - 」连起来。

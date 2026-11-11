@@ -17,7 +17,7 @@
 
 **规则：凡是注入侧的实验，先想这条通道。**
 
-## 二、安全边界（三条，缺一条都不能上）
+## 二、安全边界（四条，缺一条都不能上）
 
 1. **只在 debug 包存在** —— `DEBUG_PROBE`
    是编译期常量，release 里这些代码连同调用点一起被 R8 折掉（不是运行时判断，是根本不存在）。
@@ -25,6 +25,22 @@
    —— 发送方不是宿主（调试从 adb 发），所以它单有一套来源校验（`BroadcastSender.isFromRootOrSystem`，定义在 `inject/BroadcastSender.kt`)；宿主那几条通道的校验（`isFromHost`）不受影响。普通 App（uid
    ≥ 10000）发同名广播进不来。
 3. **每个 op 整体包 catch** —— 调用点在 AMS 广播入口，漏一个异常出去就是系统崩 / 开机循环。
+4. **要实例化宿主类的 op 另有一道准入闸** —— `call` 会对广播点名的类直接 `invoke`，
+   `state` / `corner` / `dress` / `zoom` 则经 `FlexibleWindowManagerService.getInstance()`；两者都会触发
+   宿主类的 `<clinit>`，而 system_server 的类初始化顺序极早（AGENTS.md 五之二、1）。所以只有
+   类名命中 `UNSAFE_CLASS_PREFIXES` **且**广播带 `unsafe=true` 才放行，否则打 W 判据行拒绝
+   （`ProbeCall.allowUnsafe`）。
+
+**信任模型（写清楚，免得下次有人拿它当漏洞改）**：上面四条合起来的结论是「**本机 root 级发送方
+可以驱动这条通道**」，其中包括 `com.android.server.wm.` 那族方法的直接调用。这个边界是有意选的：
+本模块只能装在 root 设备上，用户本来就有这个能力；真正的边界是第 1 条的编译期裁剪 ——
+正式包里这条通道**不存在**，不是「校验很严」。所以：
+
+- 不要为「看起来能拒绝 root」再加一层 token / 证书。那只会让调试多一步，安全性没变
+  （能读你日志的人本来就能执行 `su`）。
+- 要守的是第 1 条：`DEBUG_PROBE` 不许在 main 源集里被写成 `true`，也不许出现「运行时开关」。
+  判据：`core/src/main/kotlin` 里 `DEBUG_PROBE` 只在 debug 变体的 `BuildFlags` 为 true，
+  `tools/check_variants.py` 会从产物里反查「调试通道只在该出现的那一档出现」。
 
 ⚠️ 另外：**shell 身份（uid 2000）过不了 `RECEIVER_NOT_EXPORTED` 那类接收器**，所以发广播一律用
 `su -c`。这条是实测出来的（见 `../features/zoom-window/notes.md` §11.1）。

@@ -3,8 +3,10 @@ package com.lookie.opluskey.inject.input
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.IBinder
 import android.os.SystemClock
 import com.lookie.opluskey.bridge.Framework
 import com.lookie.opluskey.core.log.XLog
@@ -52,6 +54,14 @@ internal class GestureForwarder(
     private var wakeWarned = false
 
     /**
+     * [bindHost] 那一次绑定还没解 —— 只在这条发送线程（[sender]）上读写，不跨线程。
+     *
+     *  它的作用是「同一次唤醒不要绑两遍」：两次 `bindService` 同一个 connection 会得到两条
+     *  `onServiceConnected`，而 `unbindService` 只能配对解一次，多出来的那次直接抛。
+     */
+    private var binding = false
+
+    /**
      * 转交一次手势。
      *
      * @param repeat 是否「长按连续触发」的重复派发（宿主据此跳过振动反馈）
@@ -83,12 +93,18 @@ internal class GestureForwarder(
 
                 wakeHost(ctx)
 
-                // 立刻发一条（宿主已在跑时即最终送达），再补发一条兜底（宿主刚被拉起、动态接收器
-                // 还没注册时）—— 两条带同一个 sent_at，宿主据此去重，都到了也只执行一次。
+                // 立刻发一条（宿主已在跑时即最终送达），再补发两条兜底（宿主刚被拉起、动态接收器
+                // 还没注册时）—— 三条带同一个 sent_at，宿主据此去重，都到了也只执行一次。
                 //  补发只对「一次按压」有意义：长按连发（repeat）期间宿主早就在跑，每 100ms 再排一条
-                //  300ms 后到期的补发，松手后队列里会积一串废消息（且每条都要过一遍接收侧的去重）。
+                //  「唤醒 + 补发」只会让松手后的队列积一串废消息（且每条都要过一遍接收侧的去重）。
                 send(ctx, intent, delayMs = 0L, retry = false)
-                if (!repeat) send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+                if (!repeat) {
+                    send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+                    //  第二条补发（#5）：宿主**进程不在**时，300ms 只够「已经在缓存里的进程」被抬起来；
+                    //  冷启动（ART + 注入 + Application 起来）实测要一秒多，那 300ms 那条会打在
+                    //  接收器还没注册的空档上。1.5s 这一条是给冷启动留的，仍在宿主 2s 的保质期之内。
+                    send(ctx, intent, delayMs = COLD_START_RETRY_MS, retry = true)
+                }
             } catch (e: Throwable) {
                 XLog.w("转交手势失败（已忽略）：${id.label} ${gesture.id}", e)
             }
@@ -122,9 +138,12 @@ internal class GestureForwarder(
 
                 wakeHost(ctx)
                 send(ctx, intent, delayMs = 0L, retry = false)
-                //  连续触发的重复不补发：那期间宿主早就在跑，每 100ms 再排一条 300ms 后到期的
-                //  补发只会在松手后积一串废消息（与单键那条同一条规矩）。
-                if (!repeat) send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+                //  连续触发的重复不补发：那期间宿主早就在跑，每 100ms 再排一条「唤醒 + 补发」只会在
+                //  松手后积一串废消息（与单键那条同一条规矩）。两条补发与 [forward] 同一口径。
+                if (!repeat) {
+                    send(ctx, intent, delayMs = FORWARD_DELAY_MS, retry = true)
+                    send(ctx, intent, delayMs = COLD_START_RETRY_MS, retry = true)
+                }
             } catch (e: Throwable) {
                 XLog.w("转交组合键失败（已忽略）：$comboId ${trigger.id}", e)
             }
@@ -138,12 +157,89 @@ internal class GestureForwarder(
         } catch (e: Throwable) {
             // 唤醒失败 ⇒ 宿主进程可能没起来、这次手势可能被丢：首次用 w 报出来（`d` 在 release 里
             //  被编译期消除，只留 `d` 会让「一直失败、手势静默丢失」完全无痕），之后压回 `d` 免刷屏。
-            if (!wakeWarned) {
-                wakeWarned = true
-                XLog.w("唤醒宿主进程失败，手势可能被丢：${e.message}")
-            } else {
-                XLog.d("唤醒宿主进程失败（若它已在跑就无所谓）：${e.message}")
+            warnOnce("唤醒宿主进程失败，手势可能被丢：${e.message}")
+        }
+        bindHost(ctx)
+    }
+
+    /**
+     * 兜底唤醒：**绑定**一次（`BIND_AUTO_CREATE` 会创建进程）。
+     *
+     * ## 为什么光有 `startService` 不够
+     *
+     *  宿主进程被系统回收之后（设置页退到后台几分钟，`com.oplus.gesture` 就没了 —— 真机实测
+     *  它的 pid 会换），这条转交只剩两条路：`startService` 把进程抬起来，或绑定把进程创建出来。
+     *  而 `startService` 在后台**可能被拒**（Android 12 起那条「后台不许起服务」的限制，
+     *  system 身份是否豁免随 ROM 而变），表现就是「设置页里按得动、回到桌面按了没反应」：
+     *  广播是 `RECEIVER_REGISTERED_ONLY` 的，进程不在就没人收，两条都掉。
+     *
+     *  绑定不受那条限制（`bindService` 从来不是受限动作），成功之后进程就起来了，
+     *  动态接收器随之注册 —— 后面那条（或补发那条）广播才有着落。
+     *
+     *  **绑完就解**（[WAKE_BIND_MS] 之后）：这里要的只是「把进程叫起来」，不是长期保活。
+     *  长期绑定会让宿主常驻，与 `keepProcessAwake` 那条「不预热、不自己弹页」的取舍冲突。
+     */
+    private fun bindHost(ctx: Context) {
+        if (binding) return
+        binding = true
+        try {
+            val ok =
+                ctx.bindService(
+                    Intent().setComponent(hostService),
+                    wakeConnection,
+                    Context.BIND_AUTO_CREATE,
+                )
+            if (!ok) {
+                // 返回 false = 系统连试都没试（服务不存在 / 权限不够），这时 unbind 会抛
+                binding = false
+                warnOnce("绑定宿主服务被拒（唤醒兜底也没生效）：$HOST_SERVICE")
+                return
             }
+            sender.postDelayed({ releaseBind(ctx) }, WAKE_BIND_MS)
+        } catch (e: Throwable) {
+            binding = false
+            warnOnce("绑定宿主服务失败，手势可能被丢：${e.message}")
+        }
+    }
+
+    /** 解掉 [bindHost] 那一次绑定（只解自己绑的那次，且只解一次）。 */
+    private fun releaseBind(ctx: Context) {
+        if (!binding) return
+        binding = false
+        try {
+            ctx.unbindService(wakeConnection)
+        } catch (e: Throwable) {
+            // 已经自己断了（进程被杀 / 服务被停）⇒ 这次 unbound 必然抛，忽略
+            XLog.d("解绑宿主服务失败（若它已断开就无所谓）：${e.message}")
+        }
+    }
+
+    /**
+     * 绑定回调 —— 只打日志：这一条是「唤醒到底成没成」的唯一判据行。
+     *
+     *  回调在主线程（`Context.bindService` 的约定），这里只写日志、不碰任何状态。
+     */
+    private val wakeConnection =
+        object : ServiceConnection {
+            override fun onServiceConnected(
+                name: ComponentName?,
+                service: IBinder?,
+            ) {
+                XLog.w("唤醒宿主：已绑上 ${name?.className}（进程已起，补发那条能送到了）")
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                XLog.d("唤醒宿主：绑定断开 ${name?.className}")
+            }
+        }
+
+    /** 同一条失败只报一次（`w`），之后压回 `d` —— 这条路每个手势都走，常报会刷屏。 */
+    private fun warnOnce(message: String) {
+        if (!wakeWarned) {
+            wakeWarned = true
+            XLog.w(message)
+        } else {
+            XLog.d(message)
         }
     }
 
@@ -223,11 +319,23 @@ internal class GestureForwarder(
 
     private companion object {
         /**
-         * 补发那条的延迟（毫秒）—— 冷进程（开机后第一次按侧键）时它才是有效那条。
+         * 第一条补发的延迟（毫秒）—— 冷进程（开机后第一次按侧键）时它才是有效那条。
          *
-         * 300ms 为实测值：够 `startService` 把宿主从缓存进程抬起来。
+         *  300ms 那条：够 `startService` 把宿主从**缓存进程**抬起来；冷启动（进程已被回收）
+         *  要一秒多，那条会打在接收器注册之前 —— 所以还有下面那条。
          */
         const val FORWARD_DELAY_MS = 300L
+
+        /**
+         * 第二条补发（冷启动兜底）的延迟。
+         *
+         *  1500ms 是实测口径：日志里「判出手势 → 宿主收到」那一段在进程刚起来时约 1.1~2.1 秒。
+         *  上限由宿主那边的 `STALE_MS`（2s）卡着 —— 再往后排也没用，只会被当成过期消息丢掉。
+         */
+        const val COLD_START_RETRY_MS = 1500L
+
+        /** 唤醒用的那次绑定保留多久（只把进程叫起来，不长期保活）。 */
+        const val WAKE_BIND_MS = 5000L
 
         /** 宿主的侧键服务（`onBind` 型，启动它只为抬高进程级别）；名字只在 `Framework` 里写一次。 */
         val HOST_SERVICE = Framework.HOST_KEY_SERVICE

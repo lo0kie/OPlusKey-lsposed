@@ -53,33 +53,23 @@ enum class ConditionKind(
     val choices: List<String> = emptyList(),
     /** 空取值时按哪一档解释（空 = 没有默认档，空取值即「用不了」）。 */
     val defaultChoice: String = "",
-    /**
-     * 这几档的取值是不是**互斥且穷尽** —— 也就是「每个取值都有人接」就等于「这条恒成立」。
-     *
-     *  只有读 `Settings.Global` 的那几个开关键算：取不到时按 `0` 解释（见 `switchMatches`），
-     *  所以任何时刻都恰好落在其中一档上。
-     *
-     *  其余档都**不是**：
-     *   · 屏幕：亮着没锁时 `off` / `locked` 不成立、灭屏时 `on` 不成立（锁屏那一格还会同时命中 `off`）；
-     *   · 充电 / 耳机 / 媒体 / 响铃：系统服务取不到时两边都不成立（判不出就不成立，见 `ConditionProbe`）；
-     *   · 方向：`ORIENTATION_UNDEFINED` 时两档都不成立。
-     *
-     *  这一位只给「死分支」判据用（见 `BranchDeadCause`）：拿它当闸，才不会把一条本来合法的
-     *  兜底规则判成死的。
-     */
-    val exhaustive: Boolean = false,
 ) {
     /** 某个应用在前台；取值为包名。 */
     APP("app"),
 
     /**
-     * **屏幕状态**：`on`（亮屏）/ `off`（熄屏）/ `locked`（锁屏）。原来是「亮屏」「锁屏」两档，
-     * 合成一档带取值。
+     * **屏幕状态**：`on`（亮屏且没锁）/ `off`（灭着）/ `locked`（亮着且锁着）。原来是「亮屏」
+     * 「锁屏」两个**独立类型**，合成一档带取值。
      *
-     *  这三档**不是互斥**的：`off` 说的是「屏幕不可用」，而**锁屏算熄屏的一种** —— `locked` 成立时
-     *  `off` 一定成立（锁屏上亮着的那一屏也算「现在用不了」）。于是三种状态分别落成：
-     *  亮着没锁 ⇒ 只有 `on`；亮着但锁着 ⇒ `on` + `off` + `locked`；灭屏 ⇒ `off`（锁着的话再加 `locked`）。
-     *  `isInteractive` 读不到时按「判不出」处理，`on` 不成立。
+     *  这三档**互斥**，合起来覆盖所有情况 —— 判据见 `ConditionChecks.screenMatches`：
+     *  两个探针（`isInteractive` / `isKeyguardLocked`）一起才切得开，`off` 只看前者，
+     *  `locked` 要求后者为真、`on` 要求后者为假。
+     *
+     *  互斥是**界面判据的前提**：一块里这一档最多加两条（`choices.size - 1`，见 `blockKindsOf`），
+     *  两条之间是**「或」**（`[亮屏, 熄屏]` = 没停在锁屏界面）；三条全加就是恒成立、等于没写。
+     *  而 `[熄屏]` 与 `[锁屏]` 是两块**不同**的场景，不能当成同一块
+     *  （见 `BlockRules.duplicateBlockIndexes`）—— 别把它们按「同一档条件」合并。
+     *  探针读不到时按「判不出」处理，三档都不成立。
      */
     SCREEN("screen", choices = listOf("on", "off", "locked"), defaultChoice = "on"),
 
@@ -99,7 +89,7 @@ enum class ConditionKind(
     MEDIA("media", choices = listOf("playing", "paused"), defaultChoice = "playing"),
 
     /** Wi-Fi **开关状态**：`on` / `off`（老配置没有取值 ⇒ 按 `on` 解释）。 */
-    WIFI("wifi", choices = listOf("on", "off"), defaultChoice = "on", exhaustive = true),
+    WIFI("wifi", choices = listOf("on", "off"), defaultChoice = "on"),
 
     /** 响铃状态等于取值（`normal` / `vibrate` / `silent`）。 */
     RINGER("ringer", choices = listOf("normal", "vibrate", "silent")),
@@ -119,7 +109,7 @@ enum class ConditionKind(
     TIME("time"),
 
     /** 蓝牙**开关状态**：`on` / `off`。读 `Settings.Global.bluetooth_on`，与 WIFI 同一条路。 */
-    BLUETOOTH("bluetooth", choices = listOf("on", "off"), exhaustive = true),
+    BLUETOOTH("bluetooth", choices = listOf("on", "off")),
 
     /**
      * 移动数据**开关状态**：`on` / `off`。读 `Settings.Global.mobile_data`。
@@ -127,10 +117,10 @@ enum class ConditionKind(
      *  注意它和「飞行模式」不是互补：飞行模式开着时移动数据也可能是 1（只是没网）。
      *  要表达「现在没网」应当两条都判，别拿其中一条取反。
      */
-    CELLULAR("cell", choices = listOf("on", "off"), exhaustive = true),
+    CELLULAR("cell", choices = listOf("on", "off")),
 
     /** 飞行模式**开关状态**：`on` / `off`。读 `Settings.Global.airplane_mode_on`。 */
-    AIRPLANE("airplane", choices = listOf("on", "off"), exhaustive = true),
+    AIRPLANE("airplane", choices = listOf("on", "off")),
 
     /**
      * **手电筒状态**：`on`（开着）/ `off`（关着）。
@@ -139,8 +129,8 @@ enum class ConditionKind(
      *  （`1` 开 / `0` 关，实测见 `docs/device/actions/toggles.md` 23.1）。宿主直接读得到，
      *  不用开相机、也不用 root。
      *
-     *  **不标 `exhaustive`**：这个键在第一次开灯之前可能根本不存在，那时读不到 ⇒ 按「判不出」
-     *  处理，两档都不成立（见 `ConditionProbe` 头部那条契约）。
+     *  这个键在第一次开灯之前可能根本不存在，那时读不到 ⇒ 按「判不出」处理，两档都不成立
+     *  （见 `ConditionProbe` 头部那条契约）。
      */
     FLASHLIGHT("flashlight", choices = listOf("on", "off")),
     ;

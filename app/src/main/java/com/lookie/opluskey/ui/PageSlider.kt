@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -12,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -98,7 +100,7 @@ private fun SettingsPage.SliderRowBody(
     val dragging = remember(spec.value) { mutableFloatStateOf(spec.value.toFloat()) }
     val commit = sliderCommit(dragging, spec, onCommit)
     val tick = rememberTick()
-    //  点标题 / 摘要（或行尾那个当前值）弹「手动输入」小窗 —— 滑杆在这些档上**像素不够分**
+    //  点标题 / 摘要（或标题行右侧那个当前值）弹「手动输入」小窗 —— 滑杆在这些档上**像素不够分**
     //  （长按延迟 200–2000 一档 50ms，36 档挤在一根轨道上），想落在「恰好 1250」几乎不可能。
     //  小窗就是全项目那一个（`NameDialog` 多收一个 `range`），标题与图标**取原行**。
     //  按**行身份**复位：`SliderSpec` 没有固定 id，行标题就是这一行在表里的身份 ——
@@ -133,12 +135,12 @@ private fun SettingsPage.SliderRowBody(
     // 滑杆走 [SLIDER_ICON_INSET] 左内缩，与标题文字同一个左边界。
     // 代价是标题 / 摘要 / 当前值这三处要自己画 —— 样式逐项照抄库那一版
     // （`BasicComponent` 的 headline1 + Medium、body2、2dp 行距；`SliderPreference` 的
-    // `valueText` 走 body2 字号 + `onSurfaceSecondary` + 行尾 4dp）。
+    // `valueText` 走 body2 字号 + `onSurfaceSecondary`；位置从「行尾」挪到了标题行右侧，见 [SliderRowTexts]）。
     BasicComponent(
         insideMargin = SLIDER_INSIDE_MARGIN,
         cardListPosition = position,
         enabled = spec.enabled,
-        //  **整行可点**：点行的任何一处（含行首图标那一格、行内边距、行尾那个当前值）都弹
+        //  **整行可点**：点行的任何一处（含行首图标那一格、行内边距、标题行右侧那个当前值）都弹
         //  「手动输入」小窗，按下反馈与波纹由库这一层给 —— 与页面其余行同一条口径。
         //  点轨道那一下不算：那条手势会把抬手消费掉（见 `tapSliderToSeek`），
         //  否则点轨道会同时「跳到那个值」与「弹窗」。
@@ -158,20 +160,14 @@ private fun SettingsPage.SliderRowBody(
                 modifier = Modifier.padding(end = ROW_START_ICON_GAP),
             )
         },
-        // 行尾当前值。文案走 `spec.valueText`（毫秒那几档是 `durationText`：1000ms 以上写成秒；
+        // 行尾**不再站一列**：当前值挪到主标题那一行的右侧（见 [SliderRowTexts]）。
+        //  这不是纯排版偏好 —— 行尾那一列会把「摘要」挤窄，而摘要是这一行唯一的长句
+        //  （「按住超过这么久才算长按」那种），挤窄之后它比标题还早折行。
+        //  值放到标题行之后，`endActions` 空着，`BasicComponent` 的中间那一格就拿到整行宽度，
+        //  摘要跟着全宽。文案走 `spec.valueText`（毫秒那几档是 `durationText`：1000ms 以上写成秒；
         //  振动强度那档写「弱 / 中 / 强」）；给 `null` 的一档不画。
-        //  这里的入参是**拖动中的那个值**（`dragging`），所以行尾的档位说法跟着滑杆实时变，
-        //  不用等抬手写盘回来 —— 那条回来时 `dragging` 会被重组归位到同一个值，不跳。
-        endActions = {
-            spec.valueText?.let { format ->
-                Text(
-                    text = format(dragging.floatValue.roundToInt()),
-                    modifier = Modifier.padding(end = 4.dp),
-                    fontSize = COUITheme.textStyles.body2.fontSize,
-                    color = colors.value,
-                )
-            }
-        },
+        //  读的是**拖动中的那个值**（`dragging`），所以它跟着滑杆实时变，不用等抬手写盘回来 ——
+        //  那条回来时 `dragging` 会被重组归位到同一个值，不跳。
         bottomAction = {
             SliderTrack(
                 spec = spec,
@@ -193,7 +189,7 @@ private fun SettingsPage.SliderRowBody(
                 seekLatest(v)
             },
     ) {
-        SliderRowTexts(spec = spec, colors = colors)
+        SliderRowTexts(spec = spec, colors = colors, value = dragging.floatValue.roundToInt())
     }
 
     //  手动输入：小窗、落盘、触觉都在那一支里（见 [SliderValueInput]）
@@ -243,7 +239,16 @@ private fun SettingsPage.SliderValueInput(
 }
 
 /**
- * 标题 + 摘要那两行 —— 从 [SettingsPage.SliderRow] 里分出来，让那一支只留接线。
+ * 标题行（标题 + 右侧当前值）与摘要 —— 从 [SettingsPage.SliderRow] 里分出来，让那一支只留接线。
+ *
+ * ## 当前值为什么在标题行、不在行尾
+ *
+ *  行尾那一列（`BasicComponent` 的 `endActions`）会从中间那一格里**切走一条宽度**，而中间那格
+ *  装的是标题与摘要：摘要是这一行唯一的长句，被切窄之后比标题更早折行，整行看着像两段没对齐的
+ *  文字。值挪进标题行之后，行尾空着，中间那格拿到整行宽度，摘要跟着**全宽**。
+ *
+ *  值跟着标题走还有一处好处：标题行是「这一项是什么」+「它现在是几」，读一行就够，不必在两处之间
+ *  来回找；而它本来就读 `dragging`，拖动时与滑块同步跳动。
  *
  *  **本身不接点击**：整行的点击在 `BasicComponent` 那一层（`onClick`），波纹与按下反馈都归它 ——
  *  在这里再挂一个 `clickable` 只会得到「只有文字那一小块有反馈」的半吊子效果。
@@ -252,17 +257,32 @@ private fun SettingsPage.SliderValueInput(
 private fun SliderRowTexts(
     spec: SliderSpec,
     colors: SliderTextColors,
+    value: Int,
 ) {
     // 标题与摘要之间那 2dp 是库的私有常量 `MarginBetweenLine`（值取自 `Component.kt`）。
     Column {
-        Text(
-            text = spec.title,
-            style = COUITheme.textStyles.headline1,
-            fontWeight = FontWeight.Medium,
-            color = colors.title,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = spec.title,
+                // 占满剩下的宽度：值贴右、标题超长时先折行，而不是把值顶出行外
+                modifier = Modifier.weight(1f),
+                style = COUITheme.textStyles.headline1,
+                fontWeight = FontWeight.Medium,
+                color = colors.title,
+            )
+            // 值只占它自己要的那点宽度，与标题之间留一条缝（贴着标题读成一串）
+            spec.valueText?.let { format ->
+                Text(
+                    text = format(value),
+                    modifier = Modifier.padding(start = 8.dp),
+                    fontSize = COUITheme.textStyles.body2.fontSize,
+                    color = colors.value,
+                )
+            }
+        }
         Text(
             text = spec.summary,
+            // 全宽：不设 `weight` / 不套行，摘要自己按整行宽度折行
             modifier = Modifier.padding(top = 2.dp),
             style = COUITheme.textStyles.body2,
             color = colors.summary,

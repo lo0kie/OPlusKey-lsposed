@@ -66,14 +66,14 @@ fun com.android.build.api.dsl.Lint.applyProjectPolicy() {
 }
 
 /**
- * 三道闸的聚合入口 —— `./gradlew gate`。
+ * 四道闸的聚合入口 —— `./gradlew gate`。
  *
  * ## 为什么要有它
  *
- *  提交前要跑的是「格式 / 静态检查 / lint」这三样，**与打包无关**。而过去的口令是
+ *  提交前要跑的是「格式 / 静态检查 / lint / 单测」这四样，**与打包无关**。而过去的口令是
  *  `./gradlew spotlessCheck detekt lintDebug assembleDebug assembleRelease` 一把梭：
  *  那会顺带把 R8（release 那一遍，见 `app/build.gradle.kts` 的 buildTypes）也跑掉，
- *  在某些机器上是三道闸本身的好几倍时间。
+ *  在某些机器上是这几道闸本身的好几倍时间。
  *
  *  分成两条口令之后：改代码时反复跑 `gate`（几十秒量级），真要出包时才 `assemble<X>`。
  *
@@ -85,7 +85,7 @@ fun com.android.build.api.dsl.Lint.applyProjectPolicy() {
  */
 tasks.register("gate") {
     group = "verification"
-    description = "三道闸（格式 / 静态检查 / lint），不打包"
+    description = "四道闸（格式 / 静态检查 / lint / 单测），不打包"
     dependsOn(
         // 根脚本自己那一份（`spotlessKotlinGradle*`）—— 见文件末尾那段 configure
         "spotlessCheck",
@@ -95,6 +95,9 @@ tasks.register("gate") {
         ":core:spotlessCheck",
         ":core:detekt",
         ":core:lintDebug",
+        // 单测（只有 `:core` 有：那一层是纯函数最集中的地方）。放进 `gate` 而不是单列一条口令，
+        // 是因为「提交前必过」这套判据只有一份 —— 另起一条口令，它迟早没人在跑。
+        ":core:testDebugUnitTest",
     )
 }
 

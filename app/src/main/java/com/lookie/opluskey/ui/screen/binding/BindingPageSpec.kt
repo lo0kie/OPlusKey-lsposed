@@ -82,11 +82,13 @@ internal fun SettingsPage.bindingTargetsOf(s: Screen): List<BindingTarget>? =
 /** 这一页现在**能不能改** —— 整页那几道闸 × 在编的那一份自己开没开。 */
 internal fun SettingsPage.bindingTargetEnabled(s: Screen): Boolean =
     when (s) {
-        // 组合键与场景块**不叠加**「这颗键开没开」：它们各有自己的开关（那一组 / 那一块），
-        //  所以这两支吃的是整页闸门（主开关 + 链路 + 只读）+ 自己那一位。
+        // 组合键**不叠加**「这颗键开没开」：它有自己的开关（那一组），所以吃的是整页闸门
+        //  （主开关 + 链路 + 只读）+ 自己那一位。
         Screen.COMBO_EDIT -> pageWritable() && editingComboOrNull()?.let { it.enabled } != false
 
-        Screen.SCENE_BINDING -> pageWritable() && sceneBlockEnabled(sceneBindingAt)
+        // **场景整条路只看整页闸门**（主开关 + 链路 + 只读）：这一块 / 这一颗键自己停用了
+        //  照样要能先把动作配好、再回去启用 —— 与「独立设置」页同一条口径。
+        Screen.SCENE_BINDING -> pageWritable()
 
         // 一颗键那一页只吃它自己的 `enabled`：模块总闸另有一层（关着时整页走 `blockedReason`）。
         else -> keyEnabled(KeyWatchState.editing(configState.config.value))

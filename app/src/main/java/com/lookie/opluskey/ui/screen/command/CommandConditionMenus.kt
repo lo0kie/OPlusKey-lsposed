@@ -32,12 +32,12 @@ import com.lookie.opluskey.ui.state.BranchDraft
 /**
  * 条件菜单 —— 一张菜单里三组：**这一块已有的条件** / **种类** / 「再加一条」与「删除」。
  *
- * ## 一块可以有**好几条**条件（逐条都要成立）
+ * ## 一块可以有**好几条**条件（同种类之间「或」，不同种类之间「且」）
  *
- *  数据层与判定层一直是支持的（`SceneRule.conditions` 是列表、`appliesTo` 是 `all`），
- *  缺的只是界面能指到「第几条」。所以菜单最上面多了那一组：每条一行，点哪条就在下面改哪条
- *  （`menus.condIndexAt`）。之前这里写死「一次只编辑第一条」，第二条往后既改不了也删不掉，
- *  配错了只能删整行重来。
+ *  数据层与判定层一直是支持的（`SceneRule.conditions` 是列表、`SceneRule.appliesTo` 按种类分组
+ *  之后「组内或、组间且」），缺的只是界面能指到「第几条」。所以菜单最上面多了那一组：每条一行，
+ *  点哪条就在下面改哪条（`menus.condIndexAt`）。之前这里写死「一次只编辑第一条」，第二条往后
+ *  既改不了也删不掉，配错了只能删整行重来。
  *
  * ## 只有一条时不出那一组
  *
@@ -88,18 +88,20 @@ internal fun SettingsPage.BranchConditionMenu(
     //  下标收敛：删掉一条之后 `condIndexAt` 可能越界，这里夹一次比在删除那边算更少出错
     val condIndex = menus.condIndexAt.coerceIn(-1, conditions.lastIndex.coerceAtLeast(-1))
     val editing = conditions.getOrNull(condIndex)
-    val avail = conditionAvailability(rules, at, conditions, condIndex)
+    //  **只看这一块**：别的行用过哪一档与这一块无关（见 [blockKindsOf] 的「跨块不禁」）
+    val disabledKinds = blockKindsOf(conditions, condIndex)
     //  **这一趟写哪一块、第几条，在点种类那一刻快照**：两档取值走的是「先关一级菜单、再弹取值窗」，
     //  关菜单那一下会把 `condAt` / `condIndexAt` 清成哨兵值；等取值回来再读 `menus` 就只能读到
     //  「关着」，于是改条件变成追加一条。快照值随 `ConditionPick` 一路带下去。
     var pickAt by remember { mutableIntStateOf(AppPickerState.NOT_FOR_BRANCH) }
     var pickSlot by remember { mutableIntStateOf(-1) }
-    //  二级弹窗要的「当前取值」与「已被别的条件占掉的档」也在这里**一起快照**：
-    //  紧接着 `closeConditionMenu()` 会把 `condAt` 清成哨兵值，上面那三个派生值
-    //  （`conditions` / `editing` / `avail`）就全部按「关着」重算了 —— 弹窗里「当前取值」
-    //  不再打勾，而且它自己被算进 `used` 而置灰：改回原值改不回去，别的档占满时整列全灰。
+    //  二级弹窗要的「当前取值」也在这里**一起快照**：紧接着 `closeConditionMenu()` 会把 `condAt`
+    //  清成哨兵值，上面那两个派生值（`conditions` / `editing`）就全部按「关着」重算了 ——
+    //  弹窗里「当前取值」不再打勾。
     var pickedCurrent by remember { mutableStateOf("") }
-    var pickedUsed by remember { mutableStateOf<Set<UsedCondition>>(emptySet()) }
+    //  「本块里这一档已经用掉的取值」同一趟快照：理由同上，而且它必须**不含正在改的这一条**
+    //  （否则自己那一档在弹窗里是灰的）。同一种类能加好几条，重复的那一档要在二级里点不动。
+    var pickedUsed by remember { mutableStateOf(emptySet<String>()) }
     //  选中种类之后怎么落盘 —— 三个去处都在 [commitCondition] 里（挑应用页 / 时间窗 / 直接写）。
     //  顺带把二级收掉：一级点「前台应用 / 时间区间」时二级本来就还没开。
     val commit: (ConditionKind, String) -> Unit = { kind, value ->
@@ -124,7 +126,7 @@ internal fun SettingsPage.BranchConditionMenu(
                         MenuEntry.Section(
                             title =
                                 if (condIndex < 0) {
-                                    I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加条件")
+                                    I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景")
                                 } else {
                                     I18n.format(Strings.COMMAND_BRANCH_CONDITION_INDEX, condIndex + 1)
                                 },
@@ -135,7 +137,7 @@ internal fun SettingsPage.BranchConditionMenu(
                                     //  「前台应用」换成个数（「已选择 3 个应用」）—— 名字全列出来比标题还长。
                                     //  取值没选（刚加的空条件）就是 null，那一行不出小字。
                                     currentSummary = conditionSummaryOf(editing),
-                                    disabled = avail.disabled,
+                                    disabled = disabledKinds,
                                     //  直接落盘那一档（「前台应用 / 时间区间」）：点下去时菜单还开着，
                                     //  先把落点快照下来再交给 `commitCondition`。
                                     onPick = { kind, value ->
@@ -149,7 +151,7 @@ internal fun SettingsPage.BranchConditionMenu(
                                     pickAt = at
                                     pickSlot = condIndex
                                     pickedCurrent = editing?.takeIf { it.kind == kind }?.effectiveValue.orEmpty()
-                                    pickedUsed = avail.used
+                                    pickedUsed = usedValuesOf(conditions, condIndex, kind)
                                     subKind = kind
                                     menus.closeConditionMenu()
                                 },
@@ -171,7 +173,8 @@ internal fun SettingsPage.BranchConditionMenu(
     subKind?.let { lastKind = it }
     val shownKind = subKind ?: lastKind
     shownKind?.let { kind ->
-        //  取值与「已占用」用点种类那一刻的快照，不用此刻重算的 `editing` / `avail`（见 [pickedCurrent]）
+        //  当前取值与「本块已用掉的取值」都用点种类那一刻的快照，不用此刻重算的 `editing`
+        //  （见 [pickedCurrent] / [pickedUsed]）
         BranchValuePicker(
             show = subKind != null,
             ctx = BranchValueCtx(kind, pickedCurrent, pickedUsed, { v -> commit(kind, v) }, { subKind = null }),
@@ -192,8 +195,8 @@ private fun SettingsPage.conditionSummaryOf(editing: BranchCondition?): String? 
 /**
  * 二级：这一档的取值 —— **选择器弹窗**（用户口径：不用第二层菜单来选）。
  *
- *  壳用 [SinglePickerDialog] 那一份（与系统开关三档、语言、组合键同一套）：取值这一列每行
- *  自带一颗字形、用过的档置灰 —— 这两样是 [PickerOption] 带来的，壳本身只有一份。
+ *  壳用 [SinglePickerDialog] 那一份（与系统开关三档、语言、组合键同一套）：用过的档置灰、
+ *  行首**不带字形**（用户口径：这一列是同一件事的不同取值，字形已经在列表那一行上）。
  *
  * @param ctx 这一层要的那五样（见 [BranchValueCtx]）
  */
@@ -202,11 +205,11 @@ private fun SettingsPage.BranchValuePicker(
     show: Boolean,
     ctx: BranchValueCtx,
 ) {
-    val rows = conditionChoiceRows(ctx.kind, ctx.currentValue, ctx.used, ctx.onPick)
+    val rows = conditionChoiceRows(ctx.kind, ctx.currentValue, ctx.usedValues, ctx.onPick)
     SinglePickerDialog(
         show = show,
         title = conditionKindLabel(ctx.kind),
-        options = rows.map { row -> PickerOption(label = row.title, icon = row.icon, enabled = row.enabled) },
+        options = rows.map { row -> PickerOption(label = row.title, enabled = row.enabled) },
         selectedIndex = rows.indexOfFirst { it.selected },
         onDismiss = ctx.onDismiss,
         onPick = { index -> rows.getOrNull(index)?.onPick?.invoke() },
@@ -214,59 +217,43 @@ private fun SettingsPage.BranchValuePicker(
 }
 
 /**
- * [BranchValueMenu] 要的那五样 —— 打成一个对象是因为 detekt 的参数上限只有 5 个，
- * 而这五样本来就是「这一层要说的一件事」（口径与 `StepSheetCtx` 那一套相同）。
+ * 二级那一层要的那几样 —— 打成一个对象是因为 detekt 的参数上限只有 5 个，
+ * 而这几样本就是「这一层要说的一件事」（口径与 `StepSheetCtx` 那一套相同）。
  *
  * @param kind 一级里刚点的那一档
  * @param currentValue 这一条**现在**的取值（老配置里可能没有 ⇒ 空串，二级按默认档高亮）
- * @param used 表里已经用掉的「条件 + 取值」（不含正在改的这一条，见 [usedConditionsOf]）
+ * @param usedValues 本块里**别的**几条已经用掉的取值（那几行点不动）
  * @param onPick 选中某一档取值之后怎么落盘
  * @param onDismiss 收掉二级（一级那一层不动）
  */
 private class BranchValueCtx(
     val kind: ConditionKind,
     val currentValue: String,
-    val used: Set<UsedCondition>,
+    val usedValues: Set<String>,
     val onPick: (String) -> Unit,
     val onDismiss: () -> Unit,
 )
 
 /**
- * 一级里头**哪几档该灰掉** + 二级那一层要用的「表里已经用掉的取值」。
+ * 这一块里**别的**几条条件占掉的取值 —— 二级取值弹窗据此置灰。
  *
- *  两条规矩各管一头，但都要先看「这一块现有的条件」，所以一起算：
+ *  只数同一种类、且跳过正在改的那一条（[skipIndex] 为 `-1` = 这一趟是「再加一条」，全都要算）。
+ *  只比本块：拿「整张表里用过没有」去比会把别的块堵掉，那是这一页犯过的错
+ *  （见 `blockKindsOf` 的「跨块不禁」）。
  *
- *  · **同一块里同一个「父级条件」只许有一条** —— 只有「时间区间」除外（不同时段各一条，
- *    各自是不同的情况）。其余档一条就够，想换就改那一条，加第二条只会让用户多一行要看的、
- *    结果却不变。「前台应用」现在也在这条规矩里：它**本身就能多选**（`包1||包2`，任一在前台
- *    即通过），再开第二行应用条件等于把「且」和「或」两种关系混在同一块里，读不出到底怎么判。
- *    跨块不禁：不同规则行各要一条「亮屏」是合理的，那由下面 `exhausted` 那套去管。
- *  · **这一档的每一种取值都用过了**（跨整张表）：屏幕状态有亮屏 / 锁屏两档，别的行加过
- *    「亮屏」之后还想加「锁屏」，那仍是两条不同的条件，不该在一级就灰掉整档 —— 真正不能重复的
- *    「同一条」在二级里挡（见 [conditionChoiceRows]）。**同一块里的其余几条也算「用过」**
- *    （只跳过正在改的这一条）。
+ *  取值取 [BranchCondition.effectiveValue]：老配置里 `wifi` / `media` 没有取值，按默认档算，
+ *  与判定侧同一个口径 —— 否则弹窗会把「实际已经在用的那一档」留成可点的。
  */
-private fun conditionAvailability(
-    rules: List<SceneRule>,
-    at: Int,
+private fun usedValuesOf(
     conditions: List<BranchCondition>,
-    condIndex: Int,
-): ConditionAvailability {
-    val blockKinds = blockKindsOf(conditions, condIndex)
-    val used = usedConditionsOf(rules, skipAt = at, skipCondition = condIndex)
-    val disabled = ConditionKind.entries.filter { it in blockKinds || it.exhausted(used) }.toSet()
-    return ConditionAvailability(used, disabled)
-}
-
-/**
- * [conditionAvailability] 的两个答案：表里已用掉的取值、一级里该灰掉的档。
- *
- *  两个值一起返回而不是各算一次：它们出自同一笔「这一块现有的条件」，分两处算会有一天只改一边。
- */
-private class ConditionAvailability(
-    val used: Set<UsedCondition>,
-    val disabled: Set<ConditionKind>,
-)
+    skipIndex: Int,
+    kind: ConditionKind,
+): Set<String> =
+    conditions
+        .filterIndexed { index, _ -> index != skipIndex }
+        .filter { it.kind == kind }
+        .map { it.effectiveValue }
+        .toSet()
 
 /**
  * 条件定下来之后**往哪儿走** —— 三个去处：挑应用页 / 时间窗 / 直接写进这一块。

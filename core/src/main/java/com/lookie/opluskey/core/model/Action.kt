@@ -2,6 +2,7 @@ package com.lookie.opluskey.core.model
 
 import com.lookie.opluskey.core.TokenSyntax
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.rom.RomKeyFamilies
 
 /** 一个动作类型。 */
 sealed interface Action {

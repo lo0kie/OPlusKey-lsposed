@@ -92,8 +92,6 @@ object Strings {
     /** 同一处的另一半：这颗键**开着**（与上面那条一起用，两档都有副标题）。 */
     const val BINDING_KEY_ENABLED_STATE = "binding.key_enabled_state"
 
-    /** 「场景动作」页里那一块**停用了**时，点格子的那一句（与单键 / 组合那两句同一个位置）。 */
-    const val BINDING_SCENE_OFF = "binding.scene_off"
     const val BINDING_CUSTOM_KEY_NAME = "binding.custom_key_name"
     const val BINDING_KEY_NAME = "binding.key_name"
     const val BINDING_RENAME_KEY = "binding.rename_key"
@@ -550,41 +548,16 @@ object Strings {
     const val COMMAND_BRANCH_APP_COUNT = "command.branch_app_count"
     const val COMMAND_BRANCH_ANY = "command.branch_any"
 
-    /** 一条条件的小标题（「条件 1」）。 */
+    /** 一条场景的小标题（「场景 1」）。 */
     const val COMMAND_BRANCH_ITEM = "command.branch_item"
-    const val COMMAND_BRANCH_NO_COMMAND = "command.branch_no_command"
-    const val COMMAND_BRANCH_DUPLICATE = "command.branch_duplicate"
 
     /**
-     * **某一个取值**已经用掉了（二级那层）—— 与上面那条「整档都加满了」不是一回事：
-     * 屏幕状态加过「亮屏」之后，「锁屏」照样能加。
-     */
-    const val COMMAND_BRANCH_DUPLICATE_VALUE = "command.branch_duplicate_value"
-
-    /**
-     * 「再加一条也没有意义了」—— 表里某一档条件的取值全在，无论什么状态前面都有成立的一条。
-     * 点「添加」时说的就是这句。
-     */
-    const val COMMAND_BRANCH_SATURATED = "command.branch_saturated"
-
-    /**
-     * 死分支那一行的小标题后缀（「条件 3 · 不会执行」）—— 它前面某一档条件已经凑齐，
-     * 这一条永远轮不到。与 [COMMAND_BRANCH_SATURATED] 是同一件事的两种说法：
-     * 那条是点「确认」时的整句，这条是行上的标签。
-     */
-    const val COMMAND_BRANCH_DEAD = "command.branch_dead"
-
-    /**
-     * 「这一条被前面那条更宽的条件盖住了」—— 点「确认」时说的另一句话。
+     * 一级菜单里某一档**已经加满**（这一块里同一种类加到了上限，点不动）时那句原因。
      *
-     *  与 [COMMAND_BRANCH_SATURATED] 分开：那条说的是「某一档取值凑齐、整张表恒成立」，
-     *  这条说的是「前面某一行的条件更宽且被这一行包含」—— 组合条件（一块好几条）之后才出现的情形，
-     *  拿「恒成立」那句去说它是不对的（前面那条并不恒成立）。
+     *  上限是 `choices.size - 1`（见 `blockKindsOf`）：屏幕状态能加两条，两档的那几种只能加一条。
      */
-    const val COMMAND_BRANCH_SUBSUMED = "command.branch_subsumed"
+    const val COMMAND_BRANCH_KIND_FULL = "command.branch_kind_full"
 
-    /** 「前台应用」可以多条，但**同一个应用**只能当一次条件。 */
-    const val COMMAND_BRANCH_DUPLICATE_APP = "command.branch_duplicate_app"
     const val COMMAND_BRANCH_EMPTY = "command.branch_empty"
 
     /**
@@ -599,15 +572,26 @@ object Strings {
     /** 确认窗的正文 —— 一句话说清「停用之后会怎样」。 */
     const val COMMAND_BRANCH_DISABLE_MESSAGE = "command.branch_disable_message"
 
-    /** 停用那一条行上的标签（「条件 3」行尾那半句，与 [COMMAND_BRANCH_DEAD] 同一个位置）。 */
+    /** 停用那一条行上的标签（「场景 3」行尾那半句）。 */
     const val COMMAND_BRANCH_DISABLED = "command.branch_disabled"
+
+    /**
+     * 两块场景的条件一样 —— 一块标在行尾（「与上面重复」），一块是点「确认」时那句拦截。
+     *
+     *  同一组条件在表里只该有一块（一块本来就管三档手势），所以后者那句是「请并成一块」，
+     *  不是「不会生效」：两块各管一半手势时确实都还在跑，但那已经是这个块模型要消掉的写法。
+     *
+     *  与 `COMMAND_BRANCH_KIND_FULL`（「这一档已经加满了」，说的是**块内**同一种类加到了上限）
+     *  不是一件事：那一条换个取值 / 删一条就能过，这一条只能改条件、停用或删掉其中一块。
+     */
+    const val COMMAND_BRANCH_SAME_SCENE = "command.branch_same_scene"
+    const val COMMAND_BRANCH_SAME_SCENE_SAVE = "command.branch_same_scene_save"
 
     /** 条件页空态的**标题**（上面那行）—— 下面那行说的是「现在会发生什么」。 */
     const val COMMAND_BRANCH_EMPTY_TITLE = "command.branch_empty_title"
 
-    /** 规则行里「条件那一格还没选」—— 与「未选择命令」成对，行首图标同时置红。 */
+    /** 规则行里「这一格还没选」—— 文案是「未选择场景」，行首图标同时置灰。 */
     const val COMMAND_BRANCH_PICK_CONDITION = "command.branch_pick_condition"
-    const val COMMAND_BRANCH_NEED_COMMAND = "command.branch_need_command"
     const val COMMAND_BRANCH_NEED_CONDITION = "command.branch_need_condition"
 
     /**
@@ -626,6 +610,12 @@ object Strings {
 
     /** 点「确认」把这档条件表写回去之后的那句回执（写完留在这一页）。 */
     const val COMMAND_BRANCH_SAVED = "command.branch_saved"
+
+    /**
+     * 「场景动作」页那颗「确认」的回执 —— 它只写**这一块**（不整表写回），所以话也不能是
+     * 「已保存系统场景」：那张表这一趟一个字节都没动。
+     */
+    const val COMMAND_BRANCH_ACTION_SAVED = "command.branch_action_saved"
     const val COMMAND_BRANCH_DEFAULT = "command.branch_default"
 
     /** 条件执行里每一种条件的叫法（分支行、条件菜单、摘要共用）。 */

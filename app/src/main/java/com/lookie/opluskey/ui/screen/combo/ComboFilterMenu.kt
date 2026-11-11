@@ -5,7 +5,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.keyName
+import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.DrawnIcons

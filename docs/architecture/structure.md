@@ -63,8 +63,10 @@
 四条硬规矩：
 
 - **`core/` 不依赖任何上层**（它不认识进程、不认识界面）；
-- **`inject/` 只准依赖 `core/model`、`core/log`、`core/reflect`、`core/wire`**， \*\*不准碰
-  `core/config`**（落盘那包）—— 这样「注入侧读不到配置文件」在**编译期\*\*就成立；
+- **`inject/` 只准依赖 `core/model`、`core/rom`、`core/present`、`core/log`、`core/reflect`、`core/wire`**，
+  \*\*不准碰 `core/config`**（落盘那包）—— 这样「注入侧读不到配置文件」在**编译期\*\*就成立。
+  `core/present` 只装「id / 字典键 / 字形名」这类展示层数据，**不碰界面库**（红线 1 的判据是
+  「会不会在 system_server 里被执行」，而注入侧确实要认那些 token 与名字，所以它在允许之列）；
 - **`inject/` 也不准依赖 `ui/` 与 `host/`**：它跑在 `system_server`，与宿主那份 APK 不是同一个类加载器，引用上面两类必然
   `NoClassDefFoundError`（把系统进程拖死）；
 - \*\*`ui/` 与 `host/`
@@ -77,35 +79,46 @@
 
 ```
 com.lookie.opluskey
-├── KeyModule.kt              ← 入口，必须留在根包（见「七、风险」）
-├── core/
-│   ├── log/                  XLog
-│   ├── reflect/              Reflect
-│   ├── model/                纯数据与适配表：Action / Command / Config / KeyId / Gesture / KeyConfig /
-│   │                         RomProfile（各版本档位表） / ConfigFields / HostApp / ModuleInfo /
-│   │                         KsuCompat
+├── KeyModule.kt              ← 入口，必须留在根包（见「七、风险」）；进程分支就在它这里
+├── EntryActivity.kt          唯一的界面组件：无界面跳板（一、6）
+├── core/                     ← 两个进程共用；**不许认识界面，也不许认识进程**
+│   ├── model/                纯领域数据：Action / Command / Config / KeyId / Gesture / KeyConfig /
+│   │                         ConfigFields / ComboKey / SceneRule / HostApp / ModuleInfo / KsuCompat
+│   ├── rom/                  适配矩阵：RomProfile（各版本档位表）/ DeviceSupport（清单）/
+│   │                         RomKeyFamilies                                   ← 注入侧也读
+│   ├── present/              展示层数据（**不是**界面）：ActionCatalog / ActionLabels / KeyNames /
+│   │                         CommandTitle —— 只有 id / 字典键 / 字形名，不碰界面库     ← 注入侧也读
 │   ├── config/               落盘：ModuleFiles（多模块的文件层）/ ConfigStore / ConfigCodec /
-│   │                         CommandLibrary                                        ← 只给 host / ui
-│   └── wire/                 跨进程线格式：ConfigBroadcast                        ← 给 inject / host / ui
+│   │                         CommandLibrary / VariableStore                              ← 只给 host / ui
+│   ├── i18n/                 字典：Strings（键名）/ I18n / DictionaryLoader
+│   ├── wire/                 跨进程线格式：ConfigBroadcast / ModuleWire / PageWire / ComboWire ← 三侧都用
+│   ├── log/ reflect/         XLog / Reflect（日志出口、反射面）
+│   └── seal/ update/         签名派生密钥与容器解密 / 检查更新
+├── bridge/                   ← **平台桥**：按“会不会在 system_server 里跑”分三档
+│   ├── （根）                Framework（挂点候选表）/ Hooks / StatusBarBridge / FlexibleWindowBridge /
+│   │                         ServiceCalls / SettingCalls / SystemContext 那一类「系统服务桥」
+│   ├── inject/               SystemContext（借 Context 的降级品）—— 只有注入侧用
+│   └── host/                 KeyInjector / RingerController / FlashlightController /
+│                             SystemActionButtonConfig / AppEntry / AppCloneCatalog —— 只有宿主用
 ├── inject/                   ← 注入侧（system_server）：拦按键、判手势、注入按键、调系统服务
-│   ├── KeyHooks / Hooks / Framework          挂点与降级候选表
-│   ├── SideKeyInterceptor / ConfigChannel    按键拦截与配置接收
-│   ├── input/                KeyInjector / GestureForwarder / GestureDetector
-│   └── system/               SystemContext / StatusBarBridge / RingerController /
-│                             FlashlightController / SystemActionButtonConfig
+│   ├── KeyHooks / SideKeyInterceptor / ConfigChannel / KeyWatch / BroadcastSender
+│   ├── input/                GestureDetector / ComboDetector / GestureForwarder / TouchJudge …
+│   └── ProbeChannel / ProbeCall / ProbeOps（debug 包专有，见 `docs/runtime/debug-channel.md`）
 ├── host/                     ← 宿主主进程：接手势、跑动作
-│   ├── GestureReceiver / SideKeyGestureHooks
-│   └── action/               ActionRunner / AppLauncher / AppEntry /
-│                             ShellRunner / CustomCommandRunner / CommandFailure / KsuCompat
+│   ├── GestureReceiver / GestureExec / SideKeyGestureHooks / PageRelaunch / PressTrace
+│   └── action/               ActionRunner / AppLauncher / MiniWindowLauncher / ShellRunner /
+│                             CustomCommandRunner / ConditionProbe / CommandFailure
 └── ui/                       ← 宿主设置页进程（com.oplus.gesture.ui）
-    ├── SettingsPage / SettingsPageHooks / HostWindow / Screen   页面骨架与挂载
-    │   SettingsPageHooks 只留换页编排；伙伴：HostSession（当前 Activity / 页面）、
-    │   HostChrome（窗口与状态栏）、BackInterception（系统返回）、ConfigTransfer（导入导出）
-    ├── screen/               HomeScreen / BindingScreen / CommandScreen / AppPicker / AboutScreen
-    ├── 共用件（在 `ui/` 根，原 `component/` 已并入）MenuPopup / ConfirmDialog / SliderRow / SwitchRow / IconInput /
-    │                         SectionTitle / CardRow / Haptics / TextMetrics …
-    ├── model/                ActionCatalog / CommandText / ActionIcons / PageIcons / DrawnIcons / PageCopy
-    ├── state/                PageState / UiState / ConfigActions / PageFeedback
+    ├── SettingsPage / PageRoot / PageContent / Screen     页面骨架与挂载
+    ├── hook/                 宿主页注入：SettingsPageHooks（换页编排）/ HostWindow /
+    │                         BackInterception / ConfigTransfer / FileResultHook
+    ├── screen/               按功能分目录：home / binding / combo / command / apppicker /
+    │                         general / variables / about / donate / update
+    ├── 共用件（在 `ui/` 根）  MenuPopup / ConfirmDialog / SliderRow / CardRow / IconInput /
+    │                         Haptics / TextMetrics / Frosted …
+    ├── model/                展示层映射：ActionIcons / PageIcons / DrawnIcons / CommandText / PageCopy
+    ├── state/                页面状态持有者：ConfigState / AppPickerState / PageOverlays /
+    │                         *DraftState / HostLinkState / HintCenter（**新状态放这里，不挂页面**）
     └── theme/                PageTheme
 ```
 
@@ -158,7 +171,7 @@ com.lookie.opluskey
 | `hook/ActionRunner.kt`           | `host/action/ActionRunner.kt`        |
 | `hook/AppLauncher.kt`            | `host/action/AppLauncher.kt`         |
 | `hook/AppEntry.kt`               | `host/action/AppEntry.kt`            |
-| `hook/OplusFeature.kt`           | `core/model/RomProfile.kt`           |
+| `hook/OplusFeature.kt`           | `core/rom/RomProfile.kt`           |
 | `hook/ShellRunner.kt`            | `host/action/ShellRunner.kt`         |
 | `hook/CustomCommandRunner.kt`    | `host/action/CustomCommandRunner.kt` |
 | `hook/CommandFailure.kt`         | `host/action/CommandFailure.kt`      |

@@ -20,8 +20,9 @@ import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.rememberFabVisibleOnScroll
 import com.lookie.opluskey.ui.screen.PagePagers
 import com.lookie.opluskey.ui.screen.command.LeaveDiscardDialog
+import com.lookie.opluskey.ui.screen.command.SceneBlockSave
 import com.lookie.opluskey.ui.screen.command.branchDraftNow
-import com.lookie.opluskey.ui.screen.command.saveScenes
+import com.lookie.opluskey.ui.screen.command.saveSceneBlock
 import com.lookie.opluskey.ui.screen.openAppPickerForControl
 import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.tickNow
@@ -45,32 +46,35 @@ import io.github.suqi8.coui.kmp.utils.overScrollHorizontal
 //  同一个值出现两次会互相覆盖。
 
 /**
- * 「场景动作」页那颗「确认」按下之后 —— **这时才写配置**，写成之后**退回上一页**。
+ * 「场景动作」页那颗「确认」按下之后 —— 写成之后**退回上一页**。
  *
- *  ## 它只管这一件事
+ * ## 它只写**这一块**
  *
- *  这一颗的全部职责是「把这一块的那几档动作写回去」（落盘时整张草稿一起写，见下一节）——
- *  **不查条件配完没**（用户口径：两件事不该耦合，各自负责自己的）。条件那一侧归「系统场景」页：
- *  那一页那颗「确认」才判「条件没选完 / 有死分支」，这里再判一遍等于把上一页的账挪到这一页来收，
- *  而这两页改的根本不是同一件事（这一页改「这一档做什么」，上一页改「这块在什么时候生效」）。
+ *  这一页改的是「这一档做什么」，上一页改的是「这一块在什么时候生效」—— 两件事，两颗「确认」
+ *  各管自己的账。所以这里只把草稿里**这一块的三档手势**写回配置（`saveSceneBlock`），不整表写回：
+ *  整表写回会把上一页还没确认的条件改动一起落盘，等于替用户按了那颗「确认」。
+ *  写下去的那一块是「配置里的条件 + 草稿里的三档手势」—— 条件那半仍归上一页。
  *
- *  ## 落盘写的是整张草稿
+ *  也**不查条件配完没**（用户口径：两件事不该耦合，各自负责自己的）。条件那一侧归「系统场景」页。
  *
- *  这一页改的是整表草稿里**第 [SettingsPage.sceneBindingAt] 块**的那几档（见 `BindingTarget.Scene`），
- *  落盘走「系统场景」页那一条（[saveScenes]）：整张草稿写回。
- *  块与块之间没有稳定身份（`SceneRule` 不是可寻址的记录，草稿那套行号也不落盘），按下标去换配置
- *  原表里的那一格，在草稿删过 / 挪过块之后就会写错一块；整表写回时写下去的就是屏幕上那张表本身。
- *  别的键 / 别的组合键一个字节都不动，那一段仍按原样带过去。
+ * ## 写不了的时候
  *
- *  @return `true` = 已落盘（调用方随即退回上一页）；`false` = 写盘失败，人留在原地
+ *  这一块还没进配置（新加的块，没有配置槽位）或配置在别处变过时，这一趟**不写** ——
+ *  改动留在草稿里，退回上一页后那张表仍是「未保存」，上一页那颗「确认」会把它整表写下去。
+ *  只有写盘真失败才留在原地（`SceneBlockSave.Failed`）。
+ *
+ * @return `true` = 可以退页；`false` = 写盘失败，人留在原地
  */
 private fun SettingsPage.saveSceneBinding(): Boolean {
-    val draft = branchDraftNow()
-    if (!saveScenes()) return false
-    //  落盘之后**这一块已经是新的了**：baseline 跟着挪过去。虽然紧跟着就退页，但只要还没退成
-    //  （转场被取消 / 用户手快又按了一下），这一位就是「这一页改没改」的唯一判据。
-    sceneBindingBaseline = draft.scenes.getOrNull(sceneBindingAt)
-    hint(I18n.get(Strings.COMMAND_BRANCH_SAVED, "已保存系统场景"), slot = HINT_SLOT_PAGE)
+    val at = sceneBindingAt
+    val result = saveSceneBlock(at)
+    if (result == SceneBlockSave.Failed) return false
+    //  「这一页改没改」的基准跟着挪到刚确认的那一块：还没退成（转场被取消 / 用户手快又按了一下）
+    //  时，这一位就是唯一判据。
+    sceneBindingBaseline = branchDraftNow().scenes.getOrNull(at)
+    if (result == SceneBlockSave.Saved) {
+        hint(I18n.get(Strings.COMMAND_BRANCH_ACTION_SAVED, "已保存这一档动作"), slot = HINT_SLOT_PAGE)
+    }
     return true
 }
 
@@ -185,7 +189,7 @@ internal fun SettingsPage.BindingPagerScreen(
             onConfirm = {
                 tickNow()
                 //  写完才退：写盘失败时人留在页里（提示已说明原因）
-                if (saveSceneBinding()) goBack()
+                if (saveSceneBinding()) popBackStack()
             },
         )
     }

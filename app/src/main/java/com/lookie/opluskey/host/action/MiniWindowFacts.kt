@@ -1,9 +1,9 @@
 package com.lookie.opluskey.host.action
 
 import com.lookie.opluskey.core.model.MiniWindowGeometry
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.ZoomWindowWire
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.core.rom.RomProfile
 
 /**
  * 小窗拉起要用的反射面与常量 —— 从 [MiniWindowLauncher] 的 companion 拆出来。

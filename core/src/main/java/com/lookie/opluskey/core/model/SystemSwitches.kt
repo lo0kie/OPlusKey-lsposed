@@ -1,6 +1,7 @@
 package com.lookie.opluskey.core.model
 
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.rom.RomProfile
 
 /**
  * 系统开关的**种类** —— 每一种就是清单里的一行，也是「这一类开关长什么样」的键。

@@ -5,10 +5,10 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.core.model.DeviceSupport
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.core.model.RomProfile
+import com.lookie.opluskey.core.rom.DeviceSupport
+import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.ui.state.deviceModel
 import com.lookie.opluskey.ui.state.deviceSupport
 import com.lookie.opluskey.ui.state.fakeModel

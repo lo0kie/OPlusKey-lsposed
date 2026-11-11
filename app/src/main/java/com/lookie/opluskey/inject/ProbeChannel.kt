@@ -9,10 +9,10 @@ import com.lookie.opluskey.bridge.anyTask
 import com.lookie.opluskey.bridge.instanceOf
 import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.model.ZoomWindowWire
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.core.rom.RomProfile
 
 /**
  * # 模块的 debug 通道（debug 包固定能力）

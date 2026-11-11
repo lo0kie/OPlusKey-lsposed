@@ -79,9 +79,10 @@ jobs:
           } > keystore.properties
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      # 静态检查放在出包**之前**：格式 / 静态检查 / Android Lint 三道闸不过就别往下走，
+      # 静态检查放在出包**之前**：格式 / 静态检查 / Android Lint / 单测 四道闸不过就别往下走，
       # 不必等到打完两个包才发现少一个空格。`gate` 是根脚本注册的聚合任务
-      # （= `spotlessCheck detekt lintDebug`，两个模块一起算），与本地同一条命令（AGENTS.md 二、1.2）。
+      # （= `spotlessCheck detekt lintDebug testDebugUnitTest`，两个模块一起算），与本地同一条命令
+      #  （AGENTS.md 二、1.2）。单测只有 `:core` 有 —— 那一层是纯函数最集中的地方，跑在本机 JVM 上。
       #
       #  构建期那条 Gradle 弃用警告来自 **detekt 自己的 Gradle 插件**：`DetektPlugin.apply`
       #  一进来就调 `ReportingExtension.file(...)`（Gradle 9 起弃用，Gradle 10 删除）。
@@ -144,6 +145,13 @@ jobs:
       - name: 架构判据（规则副本数 / 规模趋势）
         run: python3 tools/audit-arch.py --strict
 
+      # 棘轮判据（规模）：上面两道只管「越界」与「规则副本数」，规模本身只有警告 / 趋势线，
+      #   于是「全仓无 > 1000 行」这类已经达到过的状态会**慢慢地退回去** —— 单次都只是加一行，
+      #   两周就能从 0 个千行文件变成 4 个。这里把实测值记成上限（tools/ratchet.txt），
+      #   **只许降**；改好之后 `--tighten` 自动收紧，放宽要手改并写理由。
+      - name: 棘轮判据（规模只许降）
+        run: python3 tools/audit-ratchet.py
+
       # i18n 缓存审计：`remember { … }` 里缓存了字典文案、键里却没有语言档 ⇒ 切语言后那几行
       #   还是旧语言（真机上「关于」页那两行这么踩过）。detekt / lint 管不了这种跨语句的判据。
       #   与耦合审计同一条纪律：脚本存在的意义就是被跑，挂在 CI 上而不是靠人记得。
@@ -155,6 +163,12 @@ jobs:
       #   「需重启 / 需要重启」「确定 / 确认」这种两种口径都活着的情况）。377 处兜底，靠人看不住。
       - name: i18n 兜底一致性
         run: python3 tools/check-i18n-fallbacks.py
+
+      # i18n 键集合：常量 / zh-CN / en 三份列表一一对应。上面那道只管「兜底串 = 中文正文」，
+      #   管不到集合 —— 常量写了个字典里没有的键，编译过、界面显示兜底、切语言才露馅；
+      #   两份字典少一条同样静默（那一句在英文界面里掉回中文）。
+      - name: i18n 键集合（三份一一对应）
+        run: python3 tools/check-i18n-keys.py
 
       # 性能审计：主线程阻塞（界面层里的 IO / 跨进程查询）与注入侧热路径的每次分配，
       #   这两类问题 detekt / lint 都看不见 —— 一个只看单文件、一个不看调用频率。

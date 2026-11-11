@@ -1,7 +1,14 @@
-package com.lookie.opluskey.core.model
+package com.lookie.opluskey.core.present
 
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.KsuCompat
+import com.lookie.opluskey.core.model.SystemSwitches
+import com.lookie.opluskey.core.rom.RomProfile
 
 /** 设置页上可选的「动作清单」（界面用的展示层数据）。 */
 object ActionCatalog {
@@ -120,6 +127,9 @@ object ActionCatalog {
 
         /** 屏幕翻译 —— `language` 就是「翻译」的通用读法。 */
         ScreenTranslate,
+
+        /** 关闭翻译 —— 同一个字形划掉（`language-off`），与上面那条一眼分得开。 */
+        ScreenTranslateStop,
 
         /** 锁屏快捷里的相机 —— 相机自己的字形，不与应用四宫格混。 */
         Camera,
@@ -412,6 +422,39 @@ object ActionCatalog {
 
     /** 屏幕翻译（侧边栏那一项）：起 ColorOS 翻译的前台服务，屏上出翻译胶囊。 */
     private val SCREEN_TRANSLATE = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_TRANSLATE
+
+    /** 屏幕翻译 —— **关闭**：停掉上面那条前台服务（同一个落点，执行侧走 `stopService`）。 */
+    private val SCREEN_TRANSLATE_STOP = Action.OPLUS_PREFIX + RomProfile.NAME_SCREEN_TRANSLATE_STOP
+
+    /**
+     * 「屏幕翻译」那一格的标记（`ai:screen_translate`）—— 与 [SCREEN_RECORD_TILE] 同类：
+     * **永不写进配置**，只是「点它挑打开还是关闭」的关卡标记。
+     *
+     *  它走 [STATE_ONLY_TILES] 那一档（用户口径 2026-11-11「翻译改成单动作多状态」）：
+     *  格子名就是动作名，点它**直接弹一行一档的单选弹窗**（打开 / 关闭），文案念
+     *  `屏幕翻译 - 打开`。
+     */
+    const val SCREEN_TRANSLATE_TILE = "ai:screen_translate"
+
+    /**
+     * 「屏幕翻译」那两档：打开 / 关闭，顺序即行序。
+     *
+     *  这两档是**同一个动作的两个状态**（对着同一个落点，一个起服务、一个停服务），所以文案按
+     *  `名字 - 状态` 念：`屏幕翻译 - 打开`（见 `CommandTitle` 与 [STATE_ONLY_TILES]）——
+     *  与录屏那三档（`录屏 - 切换`）同一套读法，不是父子动作的冒号。
+     *
+     *  行名只写动词（`打开` / `关闭`）：弹窗标题写着「屏幕翻译」，行里再写一遍就是同一句话说两次
+     *  （与录屏那三档同一条规矩）。
+     */
+    val SCREEN_TRANSLATE_MODES: List<Spec> =
+        listOf(
+            Spec(name = Strings.CATALOG_MODE_TURN_ON, token = SCREEN_TRANSLATE, glyph = Glyph.ScreenTranslate),
+            Spec(
+                name = Strings.CATALOG_MODE_TURN_OFF,
+                token = SCREEN_TRANSLATE_STOP,
+                glyph = Glyph.ScreenTranslateStop,
+            ),
+        )
 
     /** 录音 —— **切换**（老配置里绑的就是这一串，取值不能改）。 */
     private val RECORDING = Action.OPLUS_PREFIX + RomProfile.NAME_RECORDING
@@ -713,8 +756,14 @@ object ActionCatalog {
                         token = SCREEN_RECORD_TILE,
                         glyph = Glyph.ScreenRecord,
                     ),
-                    // 屏幕翻译：系统侧边栏那一项，起翻译包的前台服务（配方与判据见 RomProfile）
-                    Spec(name = Strings.CATALOG_SCREEN_TRANSLATE, token = SCREEN_TRANSLATE, glyph = Glyph.ScreenTranslate),
+                    // 屏幕翻译：系统侧边栏那一项，起翻译包的前台服务（配方与判据见 RomProfile）。
+                    //  「格子即动作」：打开 / 关闭是它的两个状态，点它直接弹单选弹窗
+                    //  （见 [STATE_ONLY_TILES]），文案念 `屏幕翻译 - 打开`。
+                    Spec(
+                        name = Strings.CATALOG_SCREEN_TRANSLATE,
+                        token = SCREEN_TRANSLATE_TILE,
+                        glyph = Glyph.ScreenTranslate,
+                    ),
                     // 与 `window:` 同一族小窗接口，只是目标不同：那条按包名解析入口，这条取当前前台活动。
                     // 两档尺寸（展开 / 收起）各不相同，格子代表不了其中任何一个 ⇒ 按 [MINI_TILE] 当入口格、弹菜单
                     Spec(name = Strings.TOOL_MINI_WINDOW, token = MINI_TILE, glyph = Glyph.MiniWindow),
@@ -978,6 +1027,7 @@ object ActionCatalog {
             VOICE_TILE to VOICE_MODES,
             SCREEN_RECORD_TILE to SCREEN_RECORD_MODES,
             RECORD_TILE to RECORDING_MODES,
+            SCREEN_TRANSLATE_TILE to SCREEN_TRANSLATE_MODES,
             KEYGUARD_TILE to KEYGUARD_MODES,
             APP_CONTROL_TILE to APP_CONTROL_MODES,
         )
@@ -1584,12 +1634,15 @@ object ActionCatalog {
     fun stateChoices(token: String): List<Spec>? = MODE_MENUS[token]?.takeIf { token in STATE_ONLY_TILES }
 
     /**
-     * 这几格**本身就是那个动作**，菜单里那几行只是它的三种状态（录屏 / 录音）。
+     * 这几格**本身就是那个动作**，菜单里那几行只是它的状态（录屏 / 录音 / 屏幕翻译）。
      *
      *  三件事都由它决定，所以只能有一份名单：
      *   · 点开弹的是弹窗不是菜单（[stateChoices]，即 [clickKind] 的 `STATE` 档）；
      *   · 文案没有「父动作」可写 —— `录屏 - 切换`，而不是 `录屏: 切换`（`commandTitleOf`）；
      *   · 格子行尾不挂选择器字形（`clickKind` 不是 `MENU` ⇒ 界面画勾选框）。
+     *
+     *  **屏幕翻译在这份名单里**（用户口径 2026-11-11「翻译改成单动作多状态，打开和关闭状态」）：
+     *  打开 / 关闭念作 `屏幕翻译 - 打开` —— 横杠那一套读法，不是父子动作的冒号。
      *
      *  **前台转小窗不在这份名单里**（它曾经在）：那两档（展开 / 收起）单念就说得清，不需要
      *  再补一个格子名，于是它按普通入口格走 —— 点它弹 [MINI_MODES] 菜单、文案是父子动作
@@ -1597,7 +1650,7 @@ object ActionCatalog {
      *  换句话说：要不要「格子即动作」这一形态，判据是**文案需不需要补格子名**，
      *  不是「这一格有没有好几档」。
      */
-    private val STATE_ONLY_TILES: Set<String> = setOf(SCREEN_RECORD_TILE, RECORD_TILE)
+    private val STATE_ONLY_TILES: Set<String> = setOf(SCREEN_RECORD_TILE, RECORD_TILE, SCREEN_TRANSLATE_TILE)
 
     /**
      * 这一行点下去**还有它自己那一层**的下一问 —— 此刻只有灵感语音（开始 / 结束）。

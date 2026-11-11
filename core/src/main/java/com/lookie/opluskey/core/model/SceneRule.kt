@@ -21,16 +21,19 @@ package com.lookie.opluskey.core.model
  *
  *  合并成一个的话，「只给长按配了动作的场景」会把单击 / 双击一起变成无操作 —— 那不是用户写的。
  *
- * ## 顺序与「且」
+ * ## 同种类之间「或」，不同种类之间「且」
  *
- *  [conditions] 是**且**：一块可以带 0..n 条条件，判定时逐条都要成立。
+ *  [conditions] 里**同一个种类**可以有好几条（上限是 `choices.size - 1`，见 `blockKindsOf`）：
+ *  它们说的是「这几种状态里任一种」—— `[亮屏, 熄屏]` 就是「没停在锁屏界面」，三条全加等于没有
+ *  条件，所以上限卡在少一档。不同种类之间仍是**且**：`[亮屏, 熄屏]` 与 `[微信]` 要同时成立。
+ *
  *  一张表从上往下找，**第一条「条件成立且这一档有值」的块赢**（见 `pickAction`）。
  *  一块条件都没配 = 还没配完：它在判定侧**永不成立**（[isReady] 为假，界面上拦着不许保存）。
  *
  * ## 判据不在这里
  *
  *  条件成不成立要读系统开关（前台应用 / 亮屏 / 响铃状态…），那是宿主侧的事
- *  （`ConditionProbe`）。所以匹配由调用方传进来，这一层只管顺序、「且」与「第一条赢」。
+ *  （`ConditionProbe`）。所以匹配由调用方传进来，这一层只管顺序、「或 / 且」与「第一条赢」。
  *
  * ## 组合键只用得到两档
  *
@@ -38,7 +41,7 @@ package com.lookie.opluskey.core.model
  *  只是为了让单键与组合键共用同一个块类型。
  */
 data class SceneRule(
-    /** 这一块的**全部**条件（顺序即书写顺序，判定时逐条都要成立）。空 = 还没选。 */
+    /** 这一块的**全部**条件（顺序即书写顺序，同种类之间「或」、不同种类之间「且」）。空 = 还没选。 */
     val conditions: List<BranchCondition> = emptyList(),
     /** 单击那一档；默认 [Action.Follow] = **不参与**（见类注释）。 */
     val single: Action = Action.Follow,
@@ -76,18 +79,10 @@ data class SceneRule(
     /**
      * 配完了没有 —— 至少一条条件、且每一条都**认得出并且取值填了**（`isUsable`）。
      *
-     *  「配完」不等于「可能成立」：同一档条件给了两个互斥取值（亮屏 + 锁屏）也是配完的，
-     *  只是永远不成立 —— 那种情况由 [isContradictory] 单独说，两者不要混成一个布尔。
+     *  「配完」只说明每一条都填了取值，不代表这块会命中：成不成立要看当时的系统状态
+     *  （[appliesTo]），这一层不认识系统接口。
      */
     val isReady: Boolean get() = conditions.isNotEmpty() && conditions.all { it.isUsable }
-
-    /**
-     * 这一块**三档都是跟随默认** —— 它命中也不会改变任何东西（界面上三行都写「跟随默认」）。
-     *
-     *  留着这种块不算错（用户可能先把场景写下来、动作慢慢填），但它对判定毫无影响，
-     *  所以「添加场景」时不必拦，保存时也不必拦。
-     */
-    val isEmpty: Boolean get() = single is Action.Follow && double is Action.Follow && long is Action.Follow
 
     /** 这块里**「前台应用」那一条**的下标（`-1` = 没有）。 */
     val appConditionIndex: Int get() = conditions.indexOfFirst { it.kind == ConditionKind.APP }
@@ -95,38 +90,36 @@ data class SceneRule(
     /**
      * 这块里「前台应用」那一条（`null` = 没有）。
      *
-     *  一块里**只该有一条**：两个不同应用是「既在 A 又在 B」，永远不成立（见 [isContradictory]）；
-     *  同一个应用写两遍是冗余。写回去时按 [appConditionIndex] 换槽位，不会多加一条。
+     *  一块里**只该有一条**：那一条自己就能多选（`包1||包2`，任一在前台即通过），再开一行只是
+     *  把同一件事写成两处（判定侧按「或」算，两行同样成立，但没有第二种必要）。
+     *  写回去时按 [appConditionIndex] 换槽位，不会多加一条。
      */
     val appCondition: BranchCondition? get() = conditions.getOrNull(appConditionIndex)
 
     /**
-     * 这块**自己跟自己打架**吗 —— 同一档条件出现了两个不同的取值（「亮屏 + 锁屏」）。
+     * 条件成不成立 —— **同种类之间「或」，不同种类之间「且」**。
      *
-     *  判据取 `effectiveValue`（老配置没有取值的按默认档理解），只比认得出的档。
-     *  「前台应用」也算：一条要求微信在前台、另一条要求相机在前台，同样是永远不成立。
-     *  同一个应用写两遍不算（`distinct()` 之后只剩一个）。
+     *  按种类分组之后逐组问「这一组里有没有一条成立」：屏幕那两行 `亮屏` / `熄屏` 任一条成立即可
+     *  （合起来就是「没停在锁屏界面」），而「屏幕」这一组与「前台应用」那一组之间仍要同时成立。
+     *
+     *  为什么必须只有这一份：块内几条条件的组合方式（且 / 或）一旦在界面、判定、提示里各写一遍，
+     *  差一处就是「界面上配得出来、按下去不走那一支」，而且只在某个开关打开那天现形、不报任何错。
      */
-    val isContradictory: Boolean
-        get() =
-            conditions
-                .mapNotNull { c -> c.kind?.let { it to c.effectiveValue } }
-                .groupBy({ it.first }, { it.second })
-                .any { (_, values) -> values.distinct().size > 1 }
+    fun appliesTo(matches: (BranchCondition) -> Boolean): Boolean =
+        conditions.groupBy { it.kind }.values.all { sameKind -> sameKind.any(matches) }
 
     /**
-     * 这一块在 [gesture] 这一档下成立吗 —— [matches] 是单条条件的判据。
+     * 这一块在 [gesture] 这一档下成立吗 —— [appliesTo] 是条件那一半的判据。
      *
-     *  **逐条都要成立**（且）；一条条件都没有的块**不成立**：宁可落到下一块 / 落到按键绑定
-     * 那一档，也不执行一条用户还没想清楚的条件（那是「填了一半的规则」）。
-     * 停用的块（[enabled] 为假）一律不成立。
+     *  一条条件都没有的块**不成立**：宁可落到下一块 / 落到按键绑定那一档，也不执行一条用户
+     *  还没想清楚的条件（那是「填了一半的规则」）。停用的块（[enabled] 为假）一律不成立。
      *
      *  **动作有没有配也在这一步判**（[Action.Follow] = 这一档不接管），[pickAction] 直接取赢家。
      */
     fun matches(
         gesture: Gesture,
         matches: (BranchCondition) -> Boolean,
-    ): Boolean = enabled && conditions.isNotEmpty() && conditions.all(matches) && actionOf(gesture) !is Action.Follow
+    ): Boolean = enabled && conditions.isNotEmpty() && appliesTo(matches) && actionOf(gesture) !is Action.Follow
 
     /**
      * 换掉第 [at] 条条件 —— **其余的留着**。
@@ -144,7 +137,7 @@ data class SceneRule(
             else -> copy(conditions = conditions.toMutableList().also { it[at] = condition })
         }
 
-    /** 在这块**末尾再添一条**条件（同一档重复取值由 [isContradictory] / 界面的置灰去管）。 */
+    /** 在这块**末尾再添一条**条件（同一种类能加几条由 `blockKindsOf` 管，判定侧按「或」算）。 */
     fun addingCondition(condition: BranchCondition): SceneRule = copy(conditions = conditions + condition)
 
     /** 去掉第 [at] 条条件（越界时原样返回）。 */

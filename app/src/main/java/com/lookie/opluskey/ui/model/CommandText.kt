@@ -4,10 +4,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Command
-import com.lookie.opluskey.core.model.appTargetLabel
-import com.lookie.opluskey.core.model.commandTitleOf
+import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.appTargetLabel
+import com.lookie.opluskey.core.present.commandTitleOf
 
 // 命令文本的显示层：把一条命令 / 一个步骤压成界面上要显示的那几行字。
 // 与 Compose、与页面状态无关 —— 输入是 `Command` / 字符串，输出是字符串 / 图标。

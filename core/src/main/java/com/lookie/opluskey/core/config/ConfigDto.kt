@@ -338,7 +338,7 @@ internal data class StateRuleDto(
     val gesture: String = "",
     /** 老写法：单条条件（`app:包名` / `ringer:vibrate` / `screen_on`），见 `BranchCondition.token`。 */
     val condition: String = "",
-    /** 这一条的**全部**条件，按书写顺序（判定时逐条都要成立）。 */
+    /** 这一条的**全部**条件，按书写顺序（同种类之间「或」、不同种类之间「且」）。 */
     val conditions: List<String> = emptyList(),
     val action: String = Action.NONE,
     /** 这一条参不参与判定（老文件没有这一格 ⇒ 启用）。 */
@@ -374,7 +374,7 @@ internal data class StateRuleDto(
  */
 @Serializable
 internal data class SceneRuleDto(
-    /** 这一块的全部条件（`BranchCondition.token`），逐条都要成立。空 = 还没配完。 */
+    /** 这一块的全部条件（`BranchCondition.token`），同种类之间「或」、不同种类之间「且」。空 = 还没配完。 */
     val conditions: List<String> = emptyList(),
     /** 单击那一档；`follow` = 跟随默认（不参与），也是默认值。 */
     val single: String = Action.FOLLOW,

@@ -1,6 +1,7 @@
 package com.lookie.opluskey.core.model
 
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.rom.DeviceSupport
 
 /**
  * **按机型标定的小窗几何** —— 展开档小窗的落点与缩放，**一台机器一档**。

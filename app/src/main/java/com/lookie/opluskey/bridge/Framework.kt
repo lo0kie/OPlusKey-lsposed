@@ -1,9 +1,9 @@
 package com.lookie.opluskey.bridge
 
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.DeviceSupport
-import com.lookie.opluskey.core.model.RomProfile
 import com.lookie.opluskey.core.reflect.Reflect
+import com.lookie.opluskey.core.rom.DeviceSupport
+import com.lookie.opluskey.core.rom.RomProfile
 import java.lang.reflect.Method
 
 /** ColorOS 侧键的接管点。 */

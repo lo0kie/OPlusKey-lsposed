@@ -14,8 +14,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.ActionCatalog
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.linkReady

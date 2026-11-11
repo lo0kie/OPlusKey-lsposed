@@ -11,7 +11,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
-import com.lookie.opluskey.core.model.comboLabel
+import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.HeaderMenuButton
 import com.lookie.opluskey.ui.MenuEntry
@@ -222,7 +222,9 @@ private class ComboMenuActions(
  *  四行的分工与「按键绑定」页那份菜单一致：最上面两行是**进下一页**（独立设置 / 条件执行），
  *  一条加深带隔开，下面两行才是对这一档动手（停用 / 启用、删除），删除压最下面。
  *
- *  「独立设置」**不看这一档的启停**：停用的组合照样能进来改（与顶栏那颗设置键同一口径）。
+ *  「独立设置」**跟着这一档的启停走**：停用的组合不接管按键，这一页改的全是它的覆盖项，
+ *  进去改也没有去处（与「按键绑定」页那一行、两页顶栏那颗设置键同一份判据）。
+ *  上面「系统场景」不跟 —— 停用期间先把场景表配好、再回去启用，是常见顺序。
  *
  * @param id 正在编辑的那一档（`null` = 刚删完、退场那一帧）
  */
@@ -239,13 +241,18 @@ private fun SettingsPage.comboMenuEntries(
     } else {
         val combo = cfg.combos.firstOrNull { it.id == id }
         val enabled = combo?.enabled ?: true
-        val label = combo?.let { comboLabel(cfg, it) }.orEmpty()
+        //  「独立设置」跟着这一档的启停走：停用的组合不接管按键，这一页改的全是它的覆盖项，
+        //  进去改也没有去处（用户口径：按键 / 组合键禁用时，设置入口也禁用）。判据与那句提示
+        //  都出自 `SettingsTarget.disabledReason`，与「按键绑定」页那一行、两页顶栏那颗设置键
+        //  同一份实现。上面「系统场景」不跟：停用期间先把场景表配好，是常见顺序。
+        val settingsBlocked = SettingsTarget.Combo(id).disabledReason(cfg)
         listOf(
             //  「系统场景」与下一行同属「进下一页」，与下面那两行不是一类事，用加深带隔开。
             //  顺序（用户口径）：**场景在前、独立设置其次** —— 场景说的是这一档「怎么分流」，
             //  优先级高于「这一档的显示 / 触发怎么调」。
-            //  这一档停用了 ⇒ 也按不动：条件表说的是「这一档怎么分流」，这一档都不成立了，
-            //  进去改那份表没有任何去处（与按键那边同一条口径，提示语同一句形状）。
+            //  这一行**不看这一档的启停**：停用的组合照样能进去把场景配好、再回去启用
+            //  （与下一行、与按键那边同一条口径）。按启停置灰过一版，停用的组合连场景页
+            //  都进不去 —— 只剩「先启用、再配、再停用」这一条别扭的路。
             MenuEntry.Row(
                 title = BRANCHES_TITLE,
                 //  子标题报这一档手势的条数（只数启用中的），与编辑页里那条横幅同一份判据
@@ -253,8 +260,6 @@ private fun SettingsPage.comboMenuEntries(
                 icon = PageIcons.Scene,
                 submenu = true,
                 trailingIcon = PageIcons.EnterArrow,
-                enabled = enabled,
-                disabledHint = if (enabled) null else I18n.format(Strings.COMBO_DISABLED_ITEM, label),
                 onPick = actions.onOpenBranches,
             ),
             MenuEntry.Row(
@@ -262,6 +267,8 @@ private fun SettingsPage.comboMenuEntries(
                 icon = PageIcons.SettingsCog,
                 submenu = true,
                 trailingIcon = PageIcons.EnterArrow,
+                enabled = settingsBlocked == null,
+                disabledHint = settingsBlocked,
                 onPick = actions.onOpenSettings,
             ),
             MenuEntry.Row(

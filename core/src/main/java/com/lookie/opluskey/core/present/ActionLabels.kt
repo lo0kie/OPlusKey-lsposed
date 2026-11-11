@@ -1,7 +1,9 @@
-package com.lookie.opluskey.core.model
+package com.lookie.opluskey.core.present
 
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.VarOp
 
 // 「一个动作怎么念」在 [com.lookie.opluskey.core.model.CommandTitle] 那一个文件里。
 //

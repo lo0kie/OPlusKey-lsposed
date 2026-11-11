@@ -15,7 +15,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.SceneRule
-import com.lookie.opluskey.core.model.comboLabel
 import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
@@ -23,7 +22,6 @@ import com.lookie.opluskey.ui.HINT_SLOT_PAGE
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.PageScrollColumn
-import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.hint
@@ -32,7 +30,6 @@ import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.state.BranchDraft
 import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.write
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -88,7 +85,7 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
                 .coerceAtLeast(0.dp)
         PageScrollColumn(scrollBehavior = scrollBehavior, state = scroll) {
             Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
-            //  行的可点性（含「这颗键自己停用」那一道闸）由 `BranchRuleColumn` 就地判。
+            //  行的可点性（整页那一道闸）由 `BranchRuleColumn` 就地判。
             BranchCards(draft = draft, tick = tick, emptyHeight = emptyHeight)
         }
         // 位置走全项目那一份（[PageCornerFab]），不在这里另算 —— 有改动才出现，进出带过渡
@@ -108,9 +105,10 @@ internal fun SettingsPage.BranchScreen(scrollBehavior: ScrollBehavior) {
  *
  * ## 检查放在点击里，不放在按钮外观上
  *
- *  两种「按了也不该落盘」各有各的说法，点一下由提示通道逐条说出来（同一语义位，不叠条）：
- *   1. 半成品（[branchRulesBlockedReason]）：空条件的块写下去就是一块永不成立的场景；
- *   2. **死分支**（[branchDeadReason]）：某一档条件的取值全在表里 ⇒ 它后面那几块永远轮不到。
+ *  「按了也不该落盘」的几种说法都收在 [branchRulesBlockedReason]：条件没配完、时间区间重叠、
+ *  整块重复。前两种是「配不下去」，最后一种是「配了也白配」。至于**顺序**上轮不到谁
+ *  （「某档取值前面已经凑齐」那一类）**不在这里拦** —— 表怎么排就怎么执行，判定侧本来就是
+ *  「从上往下第一条成立的赢」；整块重复不是顺序问题（那两块交换位置还是后一块输）。
  *
  *  按钮本身**不做禁用态**（也不换配色、更不用 `Modifier.alpha` —— alpha 会单独合成一层，
  *  把阴影裁进按钮方框里）。一个忽明忽暗的按钮，比「按下去被告知差什么」更难理解。
@@ -121,7 +119,7 @@ private fun SettingsPage.BranchSaveFab() {
     PageFabButton(
         onClick = {
             tick()
-            val blocked = branchRulesBlockedReason() ?: branchDeadReason()
+            val blocked = branchRulesBlockedReason()
             if (blocked != null) {
                 hint(blocked, slot = HINT_SLOT_DISABLED)
             } else if (saveScenes()) {
@@ -234,7 +232,7 @@ internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
     val target = menus.deletingCond
     ConfirmDialog(
         show = target != null,
-        title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条条件"),
+        title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条场景"),
         summary = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_MESSAGE, "只删这一条。"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { menus.deletingCond = null },
@@ -252,75 +250,22 @@ internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
  *
  *  与命令库那套不同：场景不占绑定，所以这里既不新增命令、也不碰别的键。
  *
- *  ## 写的是整张草稿
+ *  ## 只有本页那颗「确认」走这里
  *
- *  同一份草稿有两个入口在改：本页（整表）与「场景动作」页（从某一块点进去改那几档）。
- *  两边都按 `draft.scenes` 整表写回 —— 块与块之间没有稳定身份，无法安全地只替换其中一块
- *  （判据见 [scenesToWrite]）。别的键 / 别的组合键一个字节都不动，那一段仍按原样带过去。
+ *  「场景动作」页那颗不整表写回 —— 那会把本页还没确认的条件改动一起落盘，等于替用户按了
+ *  这颗「确认」。它只写自己那一块（[saveSceneBlock]），两页各管自己的账。
  *
  *  ## 写成之后怎么收尾
  *
- *  写成之后怎么收尾，看**是谁点的**：
- *   · 本页那颗「确认」＝草稿与配置刚对齐 ⇒ [BranchDraft.load]，草稿与快照一起换成新的；
- *   · 「场景动作」页那颗 ⇒ 草稿本身已经就是刚写下去的那一份 ⇒ [BranchDraft.noteSaved]，
- *     只挪快照、不重发行身份，退回去时那几行不重播入场。
+ *  写成之后草稿与配置刚对齐 ⇒ [BranchDraft.rebase]：行身份与配置槽位一起重发，
+ *  屏幕上的内容一个字不变。
  */
 internal fun SettingsPage.saveScenes(): Boolean {
     val draft = branchDraftNow()
     val scenes = scenesToWrite(draft)
-    val cfg = configState.config.value
-    val comboId = branchDraft.comboId
-    if (comboId != null) {
-        val combo = cfg.combos.firstOrNull { it.id == comboId }
-        if (combo == null) {
-            //  在别处把这一组删了：不能再往一个不存在的 id 上写（那等于凭空造一档组合键）
-            XLog.w("系统场景：组合键 $comboId 已经不在了，本次不保存")
-            return false
-        }
-        val next = cfg.copy(combos = cfg.combos.map { if (it.id != comboId) it else it.copy(scenes = scenes) })
-        val label = comboLabel(cfg, combo)
-        return when (write(next, "系统场景：$label（${scenes.size} 块）")) {
-            CommandsSave.Failed -> {
-                false
-            }
-
-            else -> {
-                XLog.w("系统场景已保存：$label ${scenes.size} 块")
-                //  「场景动作」页那颗：草稿已经等于写下去的这份 ⇒ 只挪快照、保住行身份；
-                //  本页那颗：草稿与配置刚对齐 ⇒ 整份重灌（见上面那两段说明）
-                if (screen == Screen.SCENE_BINDING) {
-                    draft.noteSaved(scenes)
-                } else {
-                    draft.load(BranchDraft.comboOwnerOf(comboId), scenes)
-                }
-                true
-            }
-        }
-    }
-    val key = branchKeyNow()
-    val next =
-        cfg.copy(
-            keys =
-                cfg.keys.mapValues { (id, keyConfig) ->
-                    if (id != key) keyConfig else keyConfig.copy(scenes = scenes)
-                },
-        )
-    return when (write(next, "系统场景：${key.label}（${scenes.size} 块）")) {
-        CommandsSave.Failed -> {
-            false
-        }
-
-        else -> {
-            XLog.w("系统场景已保存：${key.label} ${scenes.size} 块")
-            //  与上面那一支同一条判据：在「场景动作」页只挪快照，在本页整份重灌
-            if (screen == Screen.SCENE_BINDING) {
-                draft.noteSaved(scenes)
-            } else {
-                draft.load(BranchDraft.ownerOf(key), scenes)
-            }
-            true
-        }
-    }
+    if (writeScenes(scenes) == CommandsSave.Failed) return false
+    draft.rebase(scenes)
+    return true
 }
 
 /**
@@ -335,7 +280,10 @@ internal fun SettingsPage.saveScenes(): Boolean {
  *
  *  整表写回不会丢块也不会复制块：写下去的就是屏幕上那张表本身，顺序与内容一一对应，
  *  根本不存在「按下标去找对应关系」这一步。代价是别的块若还有没确认的改动也会一起落盘 ——
- *  在拿不到块身份之前，那比写错一块安全。
+ *  本页那颗「确认」正是这个语义（整张表就是这一页在编的东西）。
+ *
+ *  「场景动作」页那颗**不走这里**：它只改一块、也只该写一块，靠的是草稿记着的**配置槽位**
+ *  （载入时按位置对齐，见 `BranchDraft.slots` 与 [saveSceneBlock]），不是按内容去猜。
  */
 private fun SettingsPage.scenesToWrite(draft: BranchDraft): List<SceneRule> = draft.scenes.toList()
 
@@ -375,6 +323,10 @@ internal fun SettingsPage.BranchEmptyHint() {
  *  「条件没配完」这一支同时管两件事：**整块还没选条件**（[SceneRule.conditions] 为空）与
  *  **选了要取值的档但取值还空着**（响铃状态 / 屏幕方向）。两种情况都落不下去 ——
  *  判据是 `SceneRule.isReady`，一块带几条条件都算同一个问题（少一条就是没配完）。
+ *
+ *  「整块重复」是另一种配错（见 [duplicateBlockIndexes]）：同一组条件在表里出现了两次。
+ *  界面上后一块的行尾已经标着「与上面重复」，这里再拦一道 —— 提示条上那句说得更直白
+ *  （「请并成一块」），而保存是个不可撤销的收口动作。
  */
 internal fun SettingsPage.branchRulesBlockedReason(): String? {
     val scenes = branchDraftNow().scenes
@@ -387,6 +339,10 @@ internal fun SettingsPage.branchRulesBlockedReason(): String? {
         //  那种表里两条重叠的区间，后一条永远轮不到，界面上却看不出来。
         branchTimesOverlap() -> {
             I18n.get(Strings.COMMAND_COND_TIME_OVERLAP, "时间区间不允许重叠")
+        }
+
+        duplicateBlockIndexes(scenes).isNotEmpty() -> {
+            I18n.get(Strings.COMMAND_BRANCH_SAME_SCENE_SAVE, "有两块的场景完全一样，请并成一块")
         }
 
         else -> {

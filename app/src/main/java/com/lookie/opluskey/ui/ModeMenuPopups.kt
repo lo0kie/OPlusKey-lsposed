@@ -9,7 +9,7 @@ import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.ActionCatalog
+import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.ui.model.tileIcon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 

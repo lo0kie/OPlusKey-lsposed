@@ -17,9 +17,9 @@ import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.core.model.ToastNotice
-import com.lookie.opluskey.core.model.comboLabel
 import com.lookie.opluskey.core.model.gestureOrNull
-import com.lookie.opluskey.core.model.keyName
+import com.lookie.opluskey.core.present.comboLabel
+import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.ConditionProbe
 import com.lookie.opluskey.host.action.FailureNotice

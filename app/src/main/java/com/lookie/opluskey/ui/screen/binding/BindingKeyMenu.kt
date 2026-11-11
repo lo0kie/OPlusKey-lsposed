@@ -14,6 +14,7 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.withKeyName
 import com.lookie.opluskey.core.model.withoutKey
 import com.lookie.opluskey.ui.ConfirmDialog
+import com.lookie.opluskey.ui.DisabledHint
 import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.HeaderMenuButton
@@ -42,9 +43,14 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *
  *  0. 「系统场景」—— 进那一页（`Screen.BRANCHES`）。它不是对这颗键的操作，所以与下一行
  *     同属「进下一页」那一组，下面用一条**加深分隔**（三行里第一行的 `dividerBefore`）分开；
+ *     这一行**不看这颗键的启停**：停用的键照样能进去把场景配好、再回去启用 ——
+ *     整行灰掉等于先把「先配好再开」这条顺序堵死；
  *  1. 「独立设置」—— 进那一页（`Screen.KEY_SETTINGS`）。与顶栏那颗设置键
  *     （[HeaderSettingsButton]）是**同一个入口的两种摆法**，都走 [openKeySettings]；
- *     与上一行同一组（都是进下一页）；
+ *     与上一行同一组（都是进下一页），但**这一行跟着启停走**：这一颗键停用了它就灰掉
+ *     （判据见 [SettingsTarget.disabledReason]）—— 上一行留、这一行不留，是有意的不对称：
+ *     场景表是「这一档怎么分流」的配置，停用期间先配好是常态；而这一页改的是它自己的覆盖项，
+ *     键都不接管了，改它没有去处；
  *  2. 「停用 / 启用这颗键」「重命名」「删除按键」—— 都是对**当前选中的那一颗**动手，
  *     删除最狠、压在最下面（越靠下越不容易误点），停用与改名在它上面。
  *
@@ -61,7 +67,6 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *
  * ## 哪几行是灰的
  *
- *  · **条件执行**：这一颗键停用时不进得去（见 `keyMenuEntries` 里那一支）；
  *  · **重命名 / 删除**：只在选中一颗自定义按键时可点 —— 侧键的名字与去留是模块自己说了算的；
  *  · **停用 / 启用**：每一颗键都有，**侧键也有**（「快捷键也允许被禁用」）—— 它写的是
  *    **这一颗键**的 `enabled`，与首页那个模块总闸是两件事：停用侧键只停这颗键，
@@ -145,12 +150,21 @@ internal fun SettingsPage.BindingKeyMenu() {
  *  左边这颗改的是它对公共项的覆盖 —— 一左一右正好是「它自己」与「它怎么工作」。
  *  ⋮ 菜单里**另留了一份同样的入口**（用户口径：菜单里也要能进），两处走同一条。
  *
- *  **不跟这一档的启停走**：停用的键 / 组合照样能进来改（改完再启用是常见顺序）。
+ *  **跟着这一档的启停走**：这一档停用了，这颗也灰掉，点一下给出与页面里其它按不动的控件
+ *  同一句话（用户口径：按键 / 组合键禁用时，设置入口也禁用）。判据与那句提示都取自
+ *  [SettingsTarget.disabledReason]，与 ⋮ 菜单里那一行是同一份实现 —— 不许在这里再判一次。
  */
 @Composable
 internal fun SettingsPage.HeaderSettingsButton(target: SettingsTarget) {
-    HeaderIconButton(onClick = { openKeySettings(target) }) {
-        Icon(PageIcons.SettingsCog, contentDescription = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"))
+    //  配置每次重组都是最新那份（热加载、改完立刻生效），所以这里读到的一定是当下这一次。
+    val blocked = target.disabledReason(configState.config.value)
+    DisabledHint(blocked) {
+        HeaderIconButton(
+            onClick = { openKeySettings(target) },
+            enabled = blocked == null,
+        ) {
+            Icon(PageIcons.SettingsCog, contentDescription = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"))
+        }
     }
 }
 
@@ -229,17 +243,18 @@ private fun keyMenuEntries(
     actions: KeyMenuActions,
 ): List<MenuEntry> =
     buildList {
+        //  「这一档停用了没有」只算一次：下面「独立设置」那一行读它（判据与提示语都出自
+        //  `SettingsTarget.disabledReason`，顶栏那颗设置键读同一份）。
+        val blocked = SettingsTarget.Key(selected).disabledReason(cfg)
         // 「系统场景」与「独立设置」都是**进下一页**，所以同在一组、都压在顶上；
         //  下面那三行才是「对这颗键动手」，由它们第一行那条加深带隔开。
         //  顺序（用户口径）：**系统场景在前、独立设置其次** —— 场景是这一档「怎么分流」，
         //  优先级高于「这一档的显示 / 触发怎么调」。
         //  这一行受 [SHOW_BRANCHES_ENTRY] 控制（收起来时不删这一支，随时能开回来）。
         if (SHOW_BRANCHES_ENTRY) {
-            //  这一颗键停用了 ⇒ 这一行也按不动：条件表说的是「这颗键这一档怎么分流」，
-            //  键本身都不接管了，进去改那份表没有任何去处（用户口径：「停用按键时，菜单的
-            //  条件执行也禁用」）。提示语与页面里其它按不动的控件**同一句**（`KEY_DISABLED_ITEM`），
-            //  不另编一套说法。
-            val keyEnabled = cfg.key(selected).enabled
+            //  这一行**不看这颗键的启停**：条件表说的是「这一档怎么分流」，而停用的键照样要能
+            //  先把表配好、再回去启用（与「独立设置」同一条口径）。按启停置灰过一版，真机上
+            //  停用的键连场景页都进不去 —— 只剩「先启用、再配、再停用」这一条别扭的路。
             add(
                 MenuEntry.Row(
                     title = BRANCHES_TITLE,
@@ -248,23 +263,20 @@ private fun keyMenuEntries(
                     summary = scenarioMenuSummary(cfg.key(selected).scenes),
                     icon = PageIcons.Scene,
                     submenu = true,
-                    enabled = keyEnabled,
-                    disabledHint =
-                        if (keyEnabled) {
-                            null
-                        } else {
-                            I18n.format(Strings.KEY_DISABLED_ITEM, selected.label)
-                        },
                     onPick = actions.onOpenBranches,
                 ),
             )
         }
-        //  这一行**不看这颗键的启停**：停用的键照样能进来改（与顶栏那颗设置键同一口径）。
+        //  「独立设置」**跟着这一颗键的启停走**：停用的键不接管任何按键，而这一页改的全是
+        //  它的覆盖项，进去改也没有去处（用户口径：按键 / 组合键禁用时，设置入口也禁用）。
+        //  上一行「系统场景」不跟：停用期间先把场景表配好、再回去启用，是常见顺序。
         add(
             MenuEntry.Row(
                 title = I18n.get(Strings.KEY_SETTINGS_TITLE, "独立设置"),
                 icon = PageIcons.SettingsCog,
                 submenu = true,
+                enabled = blocked == null,
+                disabledHint = blocked,
                 onPick = actions.onOpenSettings,
             ),
         )

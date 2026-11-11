@@ -1,4 +1,6 @@
-package com.lookie.opluskey.core.model
+package com.lookie.opluskey.core.rom
+
+import com.lookie.opluskey.core.model.Gesture
 
 /**
  * **ROM 键码族表** —— ColorOS 把「一颗物理键」拆成好几个码，这张表说明哪些码属于同一颗键、

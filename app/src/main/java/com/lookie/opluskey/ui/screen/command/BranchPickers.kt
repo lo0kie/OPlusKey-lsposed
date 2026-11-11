@@ -52,25 +52,6 @@ internal fun SettingsPage.openAppPickerForBranch(
 }
 
 /**
- * 这个包名是不是已经被**别的行**当成条件了 —— 同一个应用只能当一次条件。
- *
- *  判据只在这里：选择应用页「点一行」先拦一次（点下去就该知道），写回时再拦一次兜底
- *  （列表里点得快、两次之间状态又变了的情况）。
- *
- * @param exceptIndex 这一趟在改第几条（它自己那条不算重复）
- */
-internal fun SettingsPage.branchConditionUsed(
-    pkg: String,
-    exceptIndex: Int,
-): Boolean =
-    branchDraftNow()
-        .scenes
-        .filterIndexed { at, _ -> at != exceptIndex }
-        // 一条条件可以带好几个包名（多选，`包1||包2`）：判「用过了没有」要看**整组**，
-        //  只比 `value == pkg` 在多选之后永远不成立。
-        .any { rule -> rule.appCondition?.appPackages?.contains(pkg) == true }
-
-/**
  * [range] 这一段与表里**别的**时间区间有没有重叠。
  *
  *  为什么拦：同一档手势下两条区间一重叠，先命中的那条永远赢、后一条永远轮不到，
@@ -139,25 +120,18 @@ internal fun SettingsPage.writeBranchCondition(
         XLog.w("分叉场景：这一趟没有挑中任何应用，不改这一条")
         return false
     }
-    // **同一个应用只能当一次条件**：顺序表里两条相同条件时，后一条永远轮不到（第一条就赢了），
-    //  留着它只会让人以为「这条也在起作用」。不同应用可以有多条 —— 那正是这一档存在的意义。
-    //  这里拦下并留在选择应用页，用户换个应用或直接返回都不会写脏数据。
-    val dup = pkgs.firstOrNull { branchConditionUsed(it, index) }
-    if (dup != null) {
-        XLog.w("分叉场景：$dup 已经用在别的行上了，不改这一条")
-        hint(I18n.get(Strings.COMMAND_BRANCH_DUPLICATE_APP, "这个应用已经加过了"))
-        return false
-    }
+    //  同一个应用可以当**不同块**的条件：`[微信 + 充电]` 与 `[微信 + 耳机]` 是两条不同的场景，
+    //  拿「整张表里用过没有」去拦，第二块就配不出来了（跨块不禁，见 `blockKindsOf`）。
+    //  一条条件内部仍去重（上面那句 `distinct()`）。
     val condition = BranchCondition.apps(pkgs)
     val old = branchDraftNow().scenes.getOrNull(index)
     if (old == null) {
         branchDraftNow().add(SceneRule(conditions = listOf(condition)))
     } else {
-        //  **写进哪一条**（一块可以带好几条条件，逐条都要成立）：
+        //  **写进哪一条**（一块可以带好几条条件，同种类之间「或」、不同种类之间「且」）：
         //   · 这一趟明确指了槽位（从「条件 2」那一行进来的）⇒ 换那一条；
         //   · 没指（「再加一条条件」进来的）⇒ 这块**已经有「前台应用」那一条**就换它
-        //     （一块里两个前台应用必然矛盾，`isContradictory` 会判成永远不成立），
-        //     **否则追加**一条。
+        //     （那一条自己就能多选 `包1||包2`，两行只是把同一件事写成两处），**否则追加**一条。
         //  旧写法是 `appConditionIndex.coerceAtLeast(0)`，那块没有前台应用时会把**第 0 条**
         //  （可能是「屏幕状态」）替换掉 —— 用户点「再加一条条件」却丢了一条老条件。
         val explicit = picker.branchConditionIndex

@@ -30,6 +30,10 @@
 | 屏文件 import 页面                       | 68 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线  | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
 | 零引用 import                            | 0，且由 detekt 拦下                                                    | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
+**规模那两行（千行文件 / 单文件最大行数）自 2026-11-11 起由 `tools/audit-ratchet.py` 接管**：
+它把实测值记成上限（`tools/ratchet.txt`），**只许降**，超限即红。本表不再手工维护这两个数
+—— 要看现状就跑那条命令，别在这里抄一份会过期的。
+
 **边数 27 → 31 → 30 → 32 → 31 有两个来源，都不是新增耦合**：`ui/hook` 从 `ui` 档里拆出来时量具变细，
 原先记在别档的五条外连与 `root` 那一条各归各位，同时腾出位置新增三条「不许反向依赖 `ui.hook`」的禁止边（见五）；
 `30 → 32` 是这两天新增的 `combo/` 与 `general/` 两个屏目录，`32 → 31` 是把 `IconInput` 从
@@ -364,7 +368,7 @@ ui/model/PageLabels.kt    3 个标签函数（gestureLabel / commandKindLabel / 
 | -------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------- |
 | 「这颗键现在生效吗」（总闸 且 这颗键） | 4 份手写：`ConfigChannel.enabledOf` / `GestureReceiver` 两处 / `SideKeyGestureHooks` 一处 | 1                   | `core/model/Config.isLive`                                 |
 | 「包还在吗 → 报哪一档失败」            | 3 份（`AppLauncher` 同文件两遍 + `MiniWindowLauncher`）                                   | 1                   | `host/action/CommandFailure.appInstalled` / `entryFailure` |
-| 「一个动作怎么念」                     | 2 份同构 `when`（`ActionNotice` / `CommandText.stepTitle`），靠注释对齐                   | 1                   | `core/model/ActionLabels.actionTitle`                      |
+| 「一个动作怎么念」                     | 2 份同构 `when`（`ActionNotice` / `CommandText.stepTitle`），靠注释对齐                   | 1                   | `core/present/ActionLabels.actionTitle`                      |
 | 「链路就绪没有 / 先报哪句话」          | 2 套并列 `when`（`blockedReason` / `linkChecks`）                                         | 1 份事实 + 2 处渲染 | `ui/LinkCheck.LinkFacts`                                   |
 
 `ConfigChannel.enabledOf` 是**故意不并**的那一条：它的一级是 `takeOver`（「收到过权威配置没有」），
@@ -626,3 +630,25 @@ popupHost = { COUIPopupHost(); Box(...) { PageSnackbars() } }
 **这条边只许保持这个形态**：往 `IconInputView` 里加 `dialogId` / `onDismissFinished` /
 `isCollecting` 这类参数，就是 `command/` 开始认识 `binding/` 的业务了，那才是真的反向耦合。
 同样的道理适用于 `KeyNameBody` 上那个 `show`（它本身就是 `binding/` 内部的共用件）。
+
+## 十一、目录名与进程归属：以实测可达性为准（2026-11-11）
+
+`bridge/` 的三个档位是按**进程归属**分的（根 = 两侧都会加载 / `bridge/host/` = 只有宿主 /
+`bridge/inject/` = 只有注入侧），而「这段代码会不会在 system_server 里执行」是整个项目最贵的
+一条判据（AGENTS.md 红线 1、五之二）：判错一次就是 `NoClassDefFoundError`。问题在于它一直
+**由目录名断言**——文件放进哪个目录，就算它属于哪一侧。
+
+`tools/audit-coupling.py` 现在多打一段「进程归属（类级可达性）」：从 `inject/` 与
+`bridge/inject/` 出发，按 `import` 在**文件级**图上前向走一遍，走到哪些文件就是「会被系统进程
+加载」；再从 `host/` / `ui/` 出发走一遍，两次结果相减就能看出**声明与事实不符**的文件。
+
+- 结论只用于「哪些文件肯定不进系统进程」（可达 0 的那一档），不能反过来当「一定安全」
+  —— 同名声明与 `import a.*` 都按「全部计入」处理，是偏保守的近似。
+- 它只报警、不判红：把文件挪到别的档位属于包边界变更（AGENTS.md 一、1 的 B 档），要单独立项。
+- 反过来，**偏严不会掩盖风险**：`bridge/` 根的黑名单比 `bridge/host/` 严，放错方向只会多拦，
+  不会漏拦。真正要防的是「本该在 `bridge/host/` 的东西被放进 `bridge/` 根」之外的那一半 ——
+  即「只有注入侧用、却放在 `bridge/host/` 里」，那会让一个宿主侧文件反过来无法被注入侧使用
+  （编译不过，反而是好消息）。
+
+判据命令：`python3 tools/audit-coupling.py`，看「进程归属」那一节与末尾的「只被宿主 / 界面层
+用到」清单。清单变长即说明档位在继续漂。

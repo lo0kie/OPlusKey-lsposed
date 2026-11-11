@@ -133,12 +133,11 @@ MD3 的 `RadioButton` 选中色默认是 `primary`。而我们的 `primary` 被�
   `mStatusBarContrastWhenTransparent`，对 targetSdk ≥ Q 默认开）。旁证：宿主自己的 `BaseActionActivity#onCreate`
   只对**导航栏**关了这个（`setNavigationBarContrastEnforced(false)`），漏了状态栏。
 
-**修法（两条一起上，`ui/HostChrome.kt`）**：
+**修法（`ui/HostChrome.kt`）**：
 
 1. `Window.setStatusBarContrastEnforced(false)` —— 关掉系统那层薄纱；调用点必须在 `setContentView`
    **之后**（默认值来自主题属性 `android:enforceStatusBarContrast`，首次建 `DecorView` 时会按主题重算一遍）；
-2. `coverStatusBar`：在 `decorView` 上**最后 addView**
-   一块页面底色的实心 View（高度 = 状态栏 inset，跟随 inset 变化）—— 盖住「那一块还有别的 View 在画」的情况。
+2. 原先还有一条「在 `decorView` 最上层 addView 一块实心 View」的兜底，**已撤**（见下面「原版页那一条不归我们画」）。
 
 **一般规律**：状态栏/顶栏这一带的「颜色不对」先按**逐行取色**量一遍再动手 —— `(8,8,8)`
 这种「比页面亮一点点」的值就是有半透明覆盖层的特征， `(0,0,0)` 才是真的没人盖。
@@ -149,9 +148,24 @@ MD3 的 `RadioButton` 选中色默认是 `primary`。而我们的 `primary` 被�
   ——顶栏的模糊在那条上断掉、浮层的全屏 dim 也够不到（于是另开了一条 `SettingsPage.onStatusBarDim`
   回调手动推颜色，本次一并删掉）；是它 / 它子树里的叶子 View 在那条上作画；2026-10-11 顶栏改自绘后宿主顶栏整条
   `GONE`，那一条就只剩模块页面在画；
-- 所以现在：模块页面在显示时**不盖**（那一条完全归页面，模糊 / dim
-  / 深浅切换全是它自己的事），只有「打开自带的快捷键界面」露出宿主原版页时才盖一块深色遮罩（那时模块页面是 `GONE`
-  的），切回来立刻 `removeStatusFiller()` 拆掉。
+- 所以现在**两档都不盖**：模块页面在显示时那一条完全归页面（模糊 / dim / 深浅切换全是它自己的事），
+  「打开自带的快捷键界面」露出宿主原版页时也**不刷任何颜色**（见下一条）。
+
+### 原版页那一条不归我们画（宿主 8.6.0，`aapt2 dump xmltree` + 截图像素实测）
+
+- 宿主顶栏 `R.id.appbar_layout` = `include` 的 `appbar_with_divider_layout`：外层 `AppBarLayout` 的
+  `android:background` 是 **`@android:color/transparent`**（`0x0106000d`），里面那层 `COUIToolbar`
+  的背景是 `drawable/coui_with_card_toolbar_bg` —— 一张 17×17 的**纯色**九宫格（无 marker 边框），
+  `nodpi` 那张每个像素都是 `(240,241,242)` = `#F0F1F2`，`night-nodpi` 那张是纯白（运行时按主题着色）。
+- 但**状态栏那一截不是它画的**：`getLocationOnScreen` 实测 `appbar top=141`（正好是状态栏 inset）、
+  `container top=0` —— 条子在 appbar 之上，由原版页自己的内容铺（截图 `y=0..140` 是
+  `(8,8,8)`→`(14,14,14)` 的渐变）。
+- 结论：露原版页时任何写死的底色都是在猜（黑 / 白各试过一次，都表现为「顶上一条白带」）。
+  现在 `HostChrome.paintStockChrome` 不刷颜色，只关薄纱 + 把图标刷成**浅色**。
+- **图标恒为浅色**：这一页恒为深色（清单主题 parent 写死 `Theme.COUI.Main.Dark`，页面自己又铺近黑的底），
+  系统是浅色时也一样。按系统深浅判会得到「黑底 + 深色图标」—— 截图里时钟与信号只剩 `(10,10,10)` 的灰影。
+
+
 
 （§8.17 里两条是一起上的，「光关薄纱」那次没单独验过）。判据是一行取色 ——状态栏那一条应当与紧邻其下的顶栏**完全同色**；若仍比顶栏**亮一点点**（半透明覆盖层的特征），说明薄纱还在，得在「薄纱」与「受控」之间取舍（见
 `coverStatusBar` 的注释）。

@@ -2,17 +2,11 @@ package com.lookie.opluskey.ui
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -25,10 +19,9 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 //  「行里长什么样」的事，与列表/动画/状态不是同一件事。
 
 /**
- * 副标题那一行（有的话）。
+ * 副标题那一行（有的话）—— 一整句话，按 [ROW_TEXT_MAX_LINES] 折行、超出省略。
  *
- *  没挂 `summaryExtra` 时是一整句话；挂了就是「左句 + 右块」两块同行 —— 拆出来只为让
- *  [ItemText] 留在 `LongMethod` 的长度线内。
+ *  拆出来只为让 [ItemText] 留在 `LongMethod` 的长度线内。
  */
 @Composable
 internal fun ItemSummary(
@@ -36,38 +29,15 @@ internal fun ItemSummary(
     summaryColor: Color,
 ) {
     val summary = row.summary ?: return
-    val extra = row.summaryExtra
-    if (extra == null) {
-        Text(
-            text = summary,
-            modifier = Modifier.padding(top = ROW_LINE_GAP),
-            style = COUITheme.textStyles.body2,
-            color = summaryColor,
-        )
-        return
-    }
-    //  两块同行：**左边占满、右边贴着行尾**（`weight(1f)` 默认 `fill = true`）。
-    //  这里要的正是「顶到边再裁」—— 早先照标题行那套写成 `fill = false`，副标题会按**自己的
-    //  自然宽度**收住，于是名字还没到行尾就出现省略号、右边空一截（真机口径「还没到顶就裁了」）。
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = ROW_LINE_GAP),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = summary,
-            style = COUITheme.textStyles.body2,
-            color = summaryColor,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(SUMMARY_EXTRA_GAP))
-        extra()
-    }
+    Text(
+        text = summary,
+        modifier = Modifier.padding(top = ROW_LINE_GAP),
+        style = COUITheme.textStyles.body2,
+        color = summaryColor,
+        maxLines = ROW_TEXT_MAX_LINES,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
-
-/** 副标题那两块之间的间距 —— 名字的省略号与右边那一段之间留一点，读起来才是两段。 */
-private val SUMMARY_EXTRA_GAP = 6.dp
 
 /**
  * 行首那一格 —— 自己画的（`startIcon`，应用图标那种）优先，否则是 `ImageVector` 那颗。
