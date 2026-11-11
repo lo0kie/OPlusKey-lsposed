@@ -39,6 +39,7 @@ import com.lookie.opluskey.ui.model.durationText
 import com.lookie.opluskey.ui.model.gridColumnCount
 import com.lookie.opluskey.ui.model.tileIcon
 import com.lookie.opluskey.ui.tickNow
+import com.lookie.opluskey.ui.titleWithCount
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
@@ -83,7 +84,9 @@ internal fun SettingsPage.BuiltInGrid(
     //  每一组 = 标题 + 网格，包成一块；组与组之间的间距由小标题自带，不做首尾特判。
     Column {
         groups.forEachIndexed { groupIndex, (groupTitle, group) ->
-            SectionTitle(ActionCatalog.groupTitleLabel(groupTitle))
+            //  这一组**有几格** —— 数的是**这一趟真正拿到的那张表**（`group.size`），不写死；
+            //  条数直接拼进标题（`系统操作 (12)`），不在行尾另起一格。
+            SectionTitle(titleWithCount(ActionCatalog.groupTitleLabel(groupTitle), group.size))
 
             // 这一段用一个**内层 Column** 单独带 `PAGE_MARGIN` 横向 padding，
             // 标题在外层不受影响。

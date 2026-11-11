@@ -3,11 +3,13 @@ package com.lookie.opluskey.ui.screen.command
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,11 +39,13 @@ import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.PageScrollColumn
+import com.lookie.opluskey.ui.SECTION_TITLE_COUNTER_GAP
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
 import com.lookie.opluskey.ui.SliderSpec
+import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
@@ -50,6 +54,7 @@ import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.moveCaretToEnd
 import com.lookie.opluskey.ui.state.CommandForm
 import com.lookie.opluskey.ui.state.CommandUiState
+import com.lookie.opluskey.ui.titleWithCount
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
@@ -126,6 +131,7 @@ internal fun SettingsPage.CommandPage(
             // 单条命令的那几栏 —— 与「名称」同一套卡片输入；多条命令走下面那张「步骤」卡。
             if (kind == CommandKind.SINGLE) {
                 CommandDetailTitle(
+                    length = form.single.length,
                     sorting = sorting,
                     anchor = detailAnchor,
                     onFullscreen = openFullscreen,
@@ -176,6 +182,8 @@ internal fun SettingsPage.CommandPage(
  */
 @Composable
 private fun SettingsPage.CommandDetailTitle(
+    /** 这一条命令现在写了多少字（上限 [MAX_SINGLE_LENGTH]）。 */
+    length: Int,
     sorting: Boolean,
     anchor: PreciseClickState,
     onFullscreen: () -> Unit,
@@ -191,12 +199,20 @@ private fun SettingsPage.CommandDetailTitle(
         //  标题自己可点（开全屏编辑），菜单里再给一次同样的入口 + 测试命令 ——
         //  「测试」这一档只有菜单里放得下。
         trailing = {
-            MoreButton(
-                onClick = onMenu,
-                anchor = anchor,
-                flushEnd = true,
-                enabled = !sorting,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                //  顺序是**菜单在前、计数在最后**（用户口径「counter 和菜单换个位置」）。
+                //  菜单右边还有一格文字，所以不再 `flushEnd`：那一下整格右移是为了让字形贴住
+                //  内容右边线，而这条线现在归计数那格。
+                MoreButton(
+                    onClick = onMenu,
+                    anchor = anchor,
+                    enabled = !sorting,
+                )
+                Spacer(Modifier.width(SECTION_TITLE_COUNTER_GAP))
+                //  正文写了几个字 / 最多几个字 —— 与全屏编辑那条标题同一个 `TitleCounter`
+                //  （`CommandFullscreen`）：输入框只截断、不画计数，上限得在这一行读到。
+                TitleCounter(length, MAX_SINGLE_LENGTH)
+            }
         },
     )
 }
@@ -214,11 +230,17 @@ private fun SettingsPage.CommandStepListSection(
     SectionTitle(
         text = I18n.get(Strings.COMMAND_LIST_TITLE, "命令步骤"),
         trailing = {
-            MoreButton(
-                onClick = onMenu,
-                anchor = anchor,
-                flushEnd = true,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                //  同上：菜单在前、计数在最后，所以不给 `flushEnd`。
+                MoreButton(
+                    onClick = onMenu,
+                    anchor = anchor,
+                )
+                Spacer(Modifier.width(SECTION_TITLE_COUNTER_GAP))
+                //  几步 / 最多几步 —— 上限是 `Command.MAX_STEPS`，加到最后一步时「添加命令」
+                //  那行会自己置灰；计数摆在这里，不用点进去数一遍。
+                TitleCounter(commandDraft.draft.serialForm.steps.size, Command.MAX_STEPS)
+            }
         },
     )
     //  **不要再套一层 `Card`**：`SerialSteps` 自己就是两张 `CardList`（步骤卡 + 「添加命令」那张，
@@ -274,9 +296,10 @@ internal fun SettingsPage.CommandListPage(
                 CommandKind.FORM_TABS.forEach { kind ->
                     val group = commands.filter { it.kind == kind }
                     if (group.isEmpty()) return@forEach
-                    //  小标题只有名字，不带条数：网格自己就把「有几条」摆在那儿了，标题再报一遍
-                    //  等于同一个数写两处；`TitleCounter` 留给有上限的地方（名称 / 命令正文的字数）。
-                    SectionTitle(text = commandKindLabel(kind))
+                    //  条数**拼进标题**（`单条命令 (3)`）—— 与动作网格那几组、「自定义命令」那一段
+                    //  同一个写法（`titleWithCount`）：半角括号、括号前一个空格、与标题同一份样式。
+                    //  两段各自数各自那几条，空的那段整段不画，所以这里写出来的都是真数。
+                    SectionTitle(text = titleWithCount(commandKindLabel(kind), group.size))
                     //  这一页没有表单要禁用：排序态只属于「多条」那张表单，进这一页时已经收掉了。
                     SavedCommandsSection(saved = group, ui = ui, tick = tick, onOpen = onOpen)
                 }

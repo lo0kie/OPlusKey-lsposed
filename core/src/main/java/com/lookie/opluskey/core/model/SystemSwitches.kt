@@ -75,11 +75,32 @@ enum class SwitchKind(
      */
     EXTRADIM("extradim"),
 
-    /**
-     * 自动亮度 —— `Settings.System.SCREEN_BRIGHTNESS_MODE`（1 = 自动）。宿主有 `WRITE_SETTINGS`，
+    /** 自动亮度 —— `Settings.System.SCREEN_BRIGHTNESS_MODE`（1 = 自动）。宿主有 `WRITE_SETTINGS`，
      * 写这个键 DisplayPowerController 自己会跟。
      */
     AUTOBRIGHTNESS("autobrightness"),
+
+    /**
+     * 个人热点（WiFi 共享）—— 没有可读可写的 `Settings` 键，整条由 system_server 走 `wifi` 服务：
+     * `getWifiApEnabledState()` 读、`startTetheredHotspot(SoftApConfiguration, String)` 开
+     * （配置取 `getSoftApConfiguration()` 现存那一份，**不改用户的热点名 / 密码**）、`stopSoftAp()`
+     * 关。uid 1000 持有 `NETWORK_SETTINGS` 与 `TETHER_PRIVILEGED`（实测 `granted=true`）。
+     */
+    HOTSPOT("hotspot"),
+
+    /**
+     * 护眼模式 —— 真开关是 `Settings.System.oplus_customize_eye_protect_enable`（0 / 1）。
+     * 写完颜色显示服务当场跟上（`dumpsys color_display` 的 `eyeProtectEnabled` 立刻翻），
+     * 不需要再转 `color_display` 服务（那条要 `CONTROL_DISPLAY_COLOR_TRANSFORMS`，宿主没有）。
+     */
+    EYEPROTECT("eyeprotect"),
+
+    /**
+     * 旁路充电 —— 真开关是 `Settings.System.bypass_charge_state`（0 / 1）。
+     * 写完之后 `com.oplus.battery` 的 `BypassChargeController` 自己把目标值下发到充电 IC
+     * （日志 `setBypassToAidl:value=…+switch=…`），宿主写一个键就够了。
+     */
+    BYPASSCHARGE("bypasscharge"),
     ;
 
     companion object {
@@ -101,11 +122,12 @@ enum class SwitchKind(
  *
  * ## 执行不用 root
  *
- *  宿主（`com.oplus.gesture`，签名权限）负责**读**当前状态并算出目标值；写状态分两条路：
+ *  宿主（`com.oplus.gesture`，签名权限）负责**读**当前状态并算出目标值；写状态分三条路：
  *  · `cell` / `powersave` 直接写 `Settings.Global`（Phone 与 PowerManagerService 各自有
  *    ContentObserver 盯着）；
+ *  · `eyeprotect` / `bypasscharge` 写 `Settings.System`（颜色显示服务与电池应用各自盯着，见那两项）；
  *  · 其余走广播交给 system_server（uid 1000）按名字反射调服务（`bridge/SettingCalls`）。
- *  自动旋转与 NFC 由服务自己读状态取反，宿主不参与。
+ *  自动旋转与 NFC 由服务自己读状态取反，宿主不参与；热点没有 Settings 键，也归 system_server。
  *
  * ## 加一条要动两处
  *
@@ -153,6 +175,9 @@ object SystemSwitches {
         listOf(
             Item(SwitchKind.BT, Strings.SYS_SETTING_BT),
             Item(SwitchKind.WIFI, Strings.SYS_SETTING_WIFI),
+            //  热点紧挨着 WIFI：两者都是「这台机器怎么对外联网」，一个收一个放。
+            //  它没有 Settings 键，整条走 system_server 的 `wifi` 服务（见 [SwitchKind.HOTSPOT]）。
+            Item(SwitchKind.HOTSPOT, Strings.SYS_SETTING_HOTSPOT),
             Item(SwitchKind.CELL, Strings.SYS_SETTING_CELL),
             Item(SwitchKind.ROTATION, Strings.SYS_SETTING_ROTATION),
             Item(SwitchKind.NFC, Strings.SYS_SETTING_NFC),
@@ -167,7 +192,11 @@ object SystemSwitches {
             Item(SwitchKind.DND, Strings.SYS_SETTING_DND),
             Item(SwitchKind.FLASHLIGHT, Strings.SYS_SETTING_FLASHLIGHT),
             Item(SwitchKind.DARKMODE, Strings.SYS_SETTING_DARKMODE),
+            //  护眼模式：挂在显示那一簇里（暗色模式之后、亮度那两条之前）。
+            Item(SwitchKind.EYEPROTECT, Strings.SYS_SETTING_EYEPROTECT),
             Item(SwitchKind.POWERSAVE, Strings.SYS_SETTING_POWERSAVE),
+            //  旁路充电：与省电模式同一簇（都是「电怎么用」）。
+            Item(SwitchKind.BYPASSCHARGE, Strings.SYS_SETTING_BYPASSCHARGE),
             //  极暗：真开关在**颜色显示服务**里（AOSP 的 reduce bright colors）——
             //  `dumpsys color_display` 有一节 `Reduce bright colors: Activated: ...`。
             //  它要 `CONTROL_DISPLAY_COLOR_TRANSFORMS`（signature|privileged），宿主拿不到这个权限

@@ -41,6 +41,7 @@ import com.lookie.opluskey.ui.rememberTick
 import com.lookie.opluskey.ui.selectedRowRing
 import com.lookie.opluskey.ui.sheetCardColors
 import com.lookie.opluskey.ui.state.CommandUiState
+import com.lookie.opluskey.ui.titleWithCount
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -522,8 +523,13 @@ private fun SettingsPage.StepSheetGroups(ctx: StepSheetCtx) {
     Column {
         ctx.groups.forEach { (groupTitle, group) ->
             //  小标题收一档（左右各一档 `PAGE_MARGIN`）：抽屉自己已经给过一档，再叠库默认那
-            //  32dp 就比卡片行文字右移一档（见 `SHEET_TITLE_MARGIN`）
-            SectionTitle(ActionCatalog.groupTitleLabel(groupTitle), insideMargin = SHEET_TITLE_MARGIN)
+            //  32dp 就比卡片行文字右移一档（见 `SHEET_TITLE_MARGIN`）。
+            //  条数拼进标题（`系统操作 (12)`）—— 与动作网格那几组同一个写法，数的是**这一趟
+            //  真正拿到的那张表**（`excludeTiles` 会剔掉两格、`includeNone` 会多「无操作」）。
+            SectionTitle(
+                text = titleWithCount(ActionCatalog.groupTitleLabel(groupTitle), group.size),
+                insideMargin = SHEET_TITLE_MARGIN,
+            )
             StepSheetCard(group, ctx)
         }
     }
@@ -535,8 +541,11 @@ private fun SettingsPage.SavedCommandsGroup(
     specs: List<ActionCatalog.Spec>,
     ctx: StepSheetCtx,
 ) {
-    //  与上面那几组同一份内边距
-    SectionTitle(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"), insideMargin = SHEET_TITLE_MARGIN)
+    //  与上面那几组同一份内边距、同一个写法（条数拼进标题）
+    SectionTitle(
+        text = titleWithCount(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"), specs.size),
+        insideMargin = SHEET_TITLE_MARGIN,
+    )
     StepSheetCard(specs, ctx)
 }
 

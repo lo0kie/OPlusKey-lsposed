@@ -400,6 +400,10 @@ private fun modeEntries(
     listOf(
         MenuEntry.Section(
             title = parentTitle,
+            //  行尾那格计数 = 这一格底下有几档（用户口径：这一层的小标题右侧要有计数）。
+            //  数的是**这一层画出来的行**，不是清单里那一格的全部取值 —— 两者本来相等，
+            //  将来若有哪一档在这一层被筛掉，计数也跟着它走。
+            count = modes.size,
             rows =
                 modes.map { spec ->
                     //  必须用 [ActionCatalog.isBound]（一行一行比），不能用 `isSelected` ——

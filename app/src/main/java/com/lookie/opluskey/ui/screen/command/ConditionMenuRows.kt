@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.screen.command
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ConditionKind
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.MenuEntry
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.conditionChoiceLabel
@@ -14,7 +15,22 @@ import com.lookie.opluskey.ui.model.conditionKindLabel
 // 这边只是「一行怎么画」，两件事各自涨。
 
 /**
- * 一级菜单那几行 —— 一种条件一行，`disabled` 里的置灰、`current` 那一档打勾。
+ * 一级菜单里每一档**点不点得动** —— 两个层级的原因合成一个对象。
+ *
+ *  分开当两个参数会顶到 detekt 的 `LongParameterList`：这一支本来就是「行怎么画」，
+ *  参数该只有三样 —— 现在选的是谁、哪几档点不动、点下去做什么。
+ *
+ * @param used **这一块里**已经加满的那几档（同一种类写重了）
+ * @param blockFull 这一块**整体**到顶了（[SceneRule.MAX_CONDITIONS] 条）—— 每一档都点不动，
+ *   说的那句话也换成整块那一句。只在「再加一条」那一趟成立：改现有的一条不涨条数。
+ */
+internal class ConditionKindLimits(
+    val used: Set<ConditionKind>,
+    val blockFull: Boolean,
+)
+
+/**
+ * 一级菜单那几行 —— 一种条件一行，[ConditionKindLimits.used] 里的置灰、`current` 那一档打勾。
  *
  *  抽成一支只为把 [BranchConditionMenu] 压回 `LongMethod` 的阈值：这里只有「行怎么画」，
  *  与「菜单开没开、二级挂在哪儿」无关。
@@ -23,14 +39,14 @@ import com.lookie.opluskey.ui.model.conditionKindLabel
  * @param currentSummary 选中那一行的**子标题**（已拼好：`打开` / `已选择 3 个应用` / `22:00-07:00`）——
  *   一级菜单里那一行只写种类名，选中了之后看不出选的是哪一档（「开 / 关」这种字本身不带主语）。
  *   `null` = 不出小字（还没选、或那一档不该列取值）。拼法见 `conditionMenuSummary`。
- * @param disabled **这一块里**已经加满的档（点一下只说「这一档已经加满了」）
+ * @param limits 哪几档点不动、为什么（见 [ConditionKindLimits]）
  * @param onPick 种类定下来之后的落盘（挑应用页 / 时间窗 / 直接写，见 [BranchConditionMenu] 的 `commit`）
  * @param onSub 要开二级取值的那一档
  */
 internal fun conditionKindRows(
     current: ConditionKind?,
     currentSummary: String?,
-    disabled: Set<ConditionKind>,
+    limits: ConditionKindLimits,
     onPick: (ConditionKind, String) -> Unit,
     onSub: (ConditionKind) -> Unit,
 ): List<MenuEntry.Row> =
@@ -40,9 +56,15 @@ internal fun conditionKindRows(
             // 子标题只给**当前选中的那一档**：其余行写了「取值」会被读成「也选了」。
             summary = if (kind == current) currentSummary else null,
             icon = conditionIcon(kind),
-            // 这一块里同一种类加到了上限才置灰（别的行用过哪一档与本块无关）
-            enabled = kind !in disabled,
-            disabledHint = I18n.get(Strings.COMMAND_BRANCH_KIND_FULL, "这一类场景已经加满了"),
+            // 这一块里同一种类加到了上限才置灰（别的行用过哪一档与本块无关）；
+            //  整块到顶时每一档都灰，理由换成「这一块最多 N 条」
+            enabled = !limits.blockFull && kind !in limits.used,
+            disabledHint =
+                if (limits.blockFull) {
+                    I18n.format(Strings.COMMAND_BRANCH_CONDITION_LIMIT, SceneRule.MAX_CONDITIONS)
+                } else {
+                    I18n.get(Strings.COMMAND_BRANCH_KIND_FULL, "这一类场景已经加满了")
+                },
             // 这一条现在是这一档 ⇒ 画成选中（行首对勾 + 文字主题色）
             selected = kind == current,
             //  行尾**不画选择器**：点下去弹的是选择器弹窗（不是另一层菜单），行尾那枚

@@ -137,9 +137,12 @@ android.flash.torchStrengthDefaultLevel (4000a)   → 5
    （这条通道已随 `tile:` 动作一起删掉，现在系统开关是 `setting:<id>`。）
 3. **`svc nfc` 会被系统杀掉**（`exit=137`）—— 上一版用 shell 时只能走 `cmd nfc enable-nfc`；
    现在 NFC 也按同一张表走 binder（`nfc` 服务的 `enable` / `disable`，与 `cmd nfc` 同一对方法）。
-4. **热点没有可用的开关入口**：`cmd wifi start-softap` 存在但必须现给 SSID 与安全类型 / 密码
-   （照它开等于把用户配好的热点名改掉）；`TetheringManager.startTethering` 要 `TETHER_PRIVILEGED`
-   （宿主是 `platform_app`，只有 `WRITE_SECURE_SETTINGS`）。界面因此不列热点。
+4. **热点没有 Settings 键，但 `wifi` 服务上有入口**（2026-11-11 补测，见四十五之 1）：
+   `cmd wifi start-softap` 存在但必须现给 SSID 与安全类型 / 密码（照它开等于把用户配好的热点名改掉），
+   `TetheringManager.startTethering` 要 `TETHER_PRIVILEGED`（宿主是 `platform_app`，只有 `WRITE_SECURE_SETTINGS`）——
+   **但 system_server（uid 1000）两样权限都有**，而 `IWifiManager` 上有
+   `getWifiApEnabledState` / `startTetheredHotspot(SoftApConfiguration, String)` / `stopSoftAp`
+   三个方法，配置传 `getSoftApConfiguration()` 拿回来的那一份即可。
 5. **`setAirplaneMode` 不在 framework.jar 里**（Android 14+ 把 connectivity 挪进了大模块），
    所以「framework 里 grep 不到」不等于运行时没有 —— 按名字反射仍然打得到，验证要在真机上做。
 6. **极暗在颜色显示服务里，而且宿主调不动**（2026-10-29 实测，PLK110 / ColorOS 17.0.0）：
@@ -201,3 +204,54 @@ adb shell "su -c 'kill -9 \$(pidof com.android.nfc)'"
 —— 与真重启的差别只在「别的服务还活着」。上表那两组 A/B 就是这么做的。
 
 同一招对 `com.android.bluetooth` / `com.android.phone` 这类常驻进程都成立。
+
+## 四十五、热点 / 护眼模式 / 旁路充电：三个新开关的入口（实测，2026-11-11，PLK110 / ColorOS 17.0.0）
+
+> 三条都不需要 root：两条写 `Settings.System`、一条走 `wifi` 服务的 binder。
+> 换机型 / 换 ROM 版本要重验的是「键名还在不在」与「方法名还在不在」这两件事。
+
+### 45.1 个人热点：`wifi` 服务的三个方法，不必现给 SSID
+
+`IWifiManager` 上真机 dump 出来的签名（`PROBE --es op dump`）：
+
+```
+getWifiApEnabledState() : int
+getSoftApConfiguration() : SoftApConfiguration
+startTetheredHotspot(SoftApConfiguration, String) : boolean
+stopSoftAp() : boolean
+```
+
+- **读**：`getWifiApEnabledState()`，值是 `WifiManager.WIFI_AP_STATE_*` —— 10 `DISABLING`、
+  11 `DISABLED`、12 `ENABLING`、13 `ENABLED`、14 `FAILED`。判据：「12 / 13 算开」，
+  「10 / 11 算关」（10 时再点一下应当是开回来，与 NFC 那条同一把尺子），14 报「读不到」。
+- **开**：`startTetheredHotspot(配置, "android")`，配置取 `getSoftApConfiguration()` 的返回值 ——
+  开的就是用户自己那套热点名 / 密码。这一条与 `cmd wifi start-softap <ssid> <pass>` 的区别就在这里：
+  后者会把现给的 SSID / 密码写回配置（所以那条不能用）。
+- **关**：`stopSoftAp()`。
+- **权限**：uid 1000 的 `android` 包在 `dumpsys package android` 里
+  `NETWORK_SETTINGS` 与 `TETHER_PRIVILEGED` 都是 `granted=true` ⇒ system_server 侧调得动；
+  宿主（`com.oplus.gesture`，`platform_app`）没有这两条，所以这一条整条在注入侧执行
+  （`SettingCalls.hotspot`），宿主只把 id 转过去。
+- **还没验的**：端到端（按下之后热点真的起来）。上面四个方法是 dump 出来的、权限是 `granted=true`
+  查出来的，但「调用真的成功、状态真的翻」要等换包重启后在真机上按一次才算验过。
+
+### 45.2 护眼模式：`Settings.System.oplus_customize_eye_protect_enable`
+
+- 0 = 关、1 = 开。**写完颜色显示服务当场跟上**：`dumpsys color_display` 里
+  `eyeProtectEnabled` 与 `isEyeProtectEnable` 由 false → true，改回 0 又变回 false（来回都验过）。
+- 同一段 dump 里还有几项，别混：`isAiIntelligentEyeProtectEnable`（智能护眼，
+  键 `oplus_customize_smart_eye_protect_enable`）、`currentEyeProtectCCT`（色温，
+  键 `oplus_customize_custom_eye_protect_enable`）。本模块只收**总开关**那一个键。
+- **不要走 `IColorDisplayManager`**：那一族只有 AOSP 的 night display / reduce bright colors /
+  saturation（真机 dump 过方法表），护眼不在里面；它也**不是**夜灯（`Night display: Activated` 恒为
+  单独一项）。
+- 宿主有 `WRITE_SECURE_SETTINGS`，写 `Settings.System` 就够，不必借 system_server。
+
+### 45.3 旁路充电：`Settings.System.bypass_charge_state`
+
+- 0 = 关、1 = 开。**写完立刻生效**：`com.oplus.battery` 的 `BypassChargeController` 收到设置变更后
+  打 `setBypassToAidl:value=1+switch=1,reason=switch on`，`ChargerInfo` 的 `bypassChgStatus` 随之变化；
+  改回 0 打 `reason=switch off`（断电时同样下发，只是没有东西可切）。
+- `Settings.System.bypass_charge_value`（实测 80）是**启动阈值**（电量到多少开始旁路），不是开关，
+  不要拿它当状态读。
+- 前提是插着电：本次实测是 USB 供电、电量 87%。

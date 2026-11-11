@@ -90,6 +90,9 @@ internal fun SettingsPage.BranchConditionMenu(
     val editing = conditions.getOrNull(condIndex)
     //  **只看这一块**：别的行用过哪一档与这一块无关（见 [blockKindsOf] 的「跨块不禁」）
     val disabledKinds = blockKindsOf(conditions, condIndex)
+    //  这一块**整体**到顶了没有 —— 只在「再加一条」那一趟算（`condIndex < 0`）：改现有的一条
+    //  不涨条数，到顶了也该让人把已有那条改成别的一档。
+    val blockFull = condIndex < 0 && conditions.size >= SceneRule.MAX_CONDITIONS
     //  **这一趟写哪一块、第几条，在点种类那一刻快照**：两档取值走的是「先关一级菜单、再弹取值窗」，
     //  关菜单那一下会把 `condAt` / `condIndexAt` 清成哨兵值；等取值回来再读 `menus` 就只能读到
     //  「关着」，于是改条件变成追加一条。快照值随 `ConditionPick` 一路带下去。
@@ -137,7 +140,7 @@ internal fun SettingsPage.BranchConditionMenu(
                                     //  「前台应用」换成个数（「已选择 3 个应用」）—— 名字全列出来比标题还长。
                                     //  取值没选（刚加的空条件）就是 null，那一行不出小字。
                                     currentSummary = conditionSummaryOf(editing),
-                                    disabled = disabledKinds,
+                                    limits = ConditionKindLimits(disabledKinds, blockFull),
                                     //  直接落盘那一档（「前台应用 / 时间区间」）：点下去时菜单还开着，
                                     //  先把落点快照下来再交给 `commitCondition`。
                                     onPick = { kind, value ->

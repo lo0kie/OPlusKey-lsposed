@@ -1,5 +1,6 @@
 package com.lookie.opluskey.host.action
 
+import android.content.ContentResolver
 import android.content.Context
 import android.provider.Settings
 import com.lookie.opluskey.bridge.SettingBridge
@@ -40,11 +41,46 @@ internal object SettingSwitch {
             "powersave" to "low_power",
         )
 
+    /**
+     * 另外几条也是 `Settings.System` 里的 0 / 1 键 —— 与 [SETTINGS_KEYS] 分开，那张表是
+     * `Settings.Global` 的键名。
+     *
+     *  它们各自的服务盯着这个键：写完颜色显示服务当场翻 `eyeProtectEnabled`（护眼），
+     *  电池应用立刻把旁路目标下发到充电 IC（旁路充电）。
+     */
+    private val SYSTEM_BOOL_KEYS =
+        mapOf(
+            SwitchKind.EYEPROTECT.id to KEY_EYE_PROTECT,
+            SwitchKind.BYPASSCHARGE.id to KEY_BYPASS_CHARGE,
+        )
+
+    /**
+     * 这几条的「现在开着没有」只有 system_server 那边读得到，宿主把 id 整个转过去、由那边读状态取反：
+     * 旋转锁不在 Settings 里、`nfc_on` 读不到、极暗的状态只在颜色显示服务里、
+     * 热点更是连 Settings 键都没有（只有 `wifi` 服务的 `getWifiApEnabledState()` 知道）。
+     */
+    private val SYSTEM_SIDE_READS: Set<String> =
+        setOf(
+            SwitchKind.ROTATION.id,
+            SwitchKind.NFC.id,
+            SwitchKind.EXTRADIM.id,
+            SwitchKind.HOTSPOT.id,
+        )
+
     /** 自动亮度那个键（`Settings.System`）—— 1 = 自动、0 = 手动。 */
     private const val KEY_BRIGHTNESS_MODE = "screen_brightness_mode"
 
     /** 定位那个键（`Settings.Secure`）—— 由 `LocationManagerService` 维护，见 [SwitchKind.LOCATION]。 */
     private const val KEY_LOCATION_MODE = "location_mode"
+
+    /** 暗色模式那个键（`Settings.Secure`）—— `ui_night_mode`：1 = 亮、2 = 暗。 */
+    private const val KEY_NIGHT_MODE = "ui_night_mode"
+
+    /** 护眼模式那个键（`Settings.System`）—— 颜色显示服务盯着它，见 [SwitchKind.EYEPROTECT]。 */
+    private const val KEY_EYE_PROTECT = "oplus_customize_eye_protect_enable"
+
+    /** 旁路充电那个键（`Settings.System`）—— 电池应用的 `BypassChargeController` 盯着它。 */
+    private const val KEY_BYPASS_CHARGE = "bypass_charge_state"
 
     /** `location_mode` 的两档：0 = 关；3 = 高精度（1 仅设备 / 2 省电也算开着）。 */
     private const val LOCATION_MODE_OFF = 0
@@ -97,10 +133,9 @@ internal object SettingSwitch {
             write(context, id, on, onFailure)
             return
         }
-        // 这三条没有宿主读得到的当前状态（旋转锁不在 Settings 里、`nfc_on` 读不到、
-        // 极暗的状态只有颜色显示服务自己知道），状态由 system_server 那边的服务自己报，
-        // 这里只把 id 转过去。
-        if (id == SwitchKind.ROTATION.id || id == SwitchKind.NFC.id || id == SwitchKind.EXTRADIM.id) {
+        // 这几条没有宿主读得到的当前状态（见 [SYSTEM_SIDE_READS]），状态由 system_server
+        // 那边的服务自己报，这里只把 id 转过去。
+        if (id in SYSTEM_SIDE_READS) {
             XLog.w("系统开关：$id 交给 system_server 自己读状态取反")
             SettingBridge.send(context, id, null)
             return
@@ -148,6 +183,12 @@ internal object SettingSwitch {
                 value = if (target) LOCATION_MODE_HIGH_ACCURACY else LOCATION_MODE_OFF,
                 onFailure = onFailure,
             )
+            return
+        }
+        //  护眼模式与旁路充电都是 `Settings.System` 里的 0/1 键（见 [SYSTEM_BOOL_KEYS]）。
+        val systemKey = SYSTEM_BOOL_KEYS[id]
+        if (systemKey != null) {
+            writeInt(context, secure = false, key = systemKey, value = if (target) 1 else 0, onFailure = onFailure)
             return
         }
         val key = SETTINGS_KEYS[id]
@@ -204,6 +245,8 @@ internal object SettingSwitch {
     /**
      * 读当前状态；读不到（键不存在 / 值不是 0/1）返回 `null`。
      *
+     *  分两张表走：[READ_GLOBAL_KEYS] 那几条是 `Settings.Global` 的 0 / 1 键；
+     *  其余几条交给 [readLocalBool]（表不同，或者值不是 0 / 1 —— 定位的模式是 0..3）。
      *  这几个键都由对应服务自己维护（`svc` / `cmd` 切过之后会跟着翻，真机验过其中四个），
      *  所以「宿主读、系统写」不会两头打架。
      */
@@ -212,65 +255,66 @@ internal object SettingSwitch {
         id: String,
     ): Boolean? {
         val cr = context.contentResolver
+        val globalKey = READ_GLOBAL_KEYS[id]
+        return if (globalKey != null) onOff(Settings.Global.getInt(cr, globalKey, -1)) else readLocalBool(cr, id)
+    }
 
-        // 读不到时这两个 getInt 都返回 -1（键不存在 / 类型不对）—— 那就是「不知道」，不能当「关着」
-        fun value(
-            key: String,
-            secure: Boolean = false,
-        ): Int = if (secure) Settings.Secure.getInt(cr, key, -1) else Settings.Global.getInt(cr, key, -1)
-        return when (id) {
-            "wifi" -> {
-                onOff(value("wifi_on"))
-            }
+    /**
+     * `Settings.Global` 里那几条 0 / 1 的键。
+     *
+     *  读不到时 `getInt` 给 -1（键不存在 / 类型不对）—— 那就是「不知道」，不能当「关着」。
+     */
+    private val READ_GLOBAL_KEYS =
+        mapOf(
+            "wifi" to "wifi_on",
+            "bt" to "bluetooth_on",
+            "cell" to "mobile_data",
+            "airplane" to "airplane_mode_on",
+            "powersave" to "low_power",
+            // 免打扰：由 NotificationManagerService 自己维护（ZEN_MODE_OFF = 0，其余三档都算「开着」）。
+            // 写不走 Settings，得由 system_server 调 `setZenMode` —— 见 `SettingCalls.dnd`。
+            SwitchKind.DND.id to "zen_mode",
+        )
 
-            "bt" -> {
-                onOff(value("bluetooth_on"))
-            }
-
-            "cell" -> {
-                onOff(value("mobile_data"))
-            }
-
-            "airplane" -> {
-                onOff(value("airplane_mode_on"))
-            }
-
-            "powersave" -> {
-                onOff(value("low_power"))
-            }
-
+    /**
+     * 其余几条的读法 —— 表不同（`Settings.System` / `Settings.Secure`），或者值不是 0 / 1。
+     */
+    private fun readLocalBool(
+        cr: ContentResolver,
+        id: String,
+    ): Boolean? =
+        when (id) {
             // ui_night_mode：MODE_NIGHT_NO = 1、MODE_NIGHT_YES = 2（0 / auto 都算没开）
-            "darkmode" -> {
-                nightMode(value("ui_night_mode", secure = true))
-            }
-
-            // 免打扰：`Settings.Global.zen_mode` 由 NotificationManagerService 自己维护
-            //  （ZEN_MODE_OFF=0，其余三档都算「开着」）。
-            //  写不走 Settings，得由 system_server 调 `setZenMode` —— 见 `SettingCalls.dnd`。
-            SwitchKind.DND.id -> {
-                onOff(value("zen_mode"))
+            SwitchKind.DARKMODE.id -> {
+                nightMode(Settings.Secure.getInt(cr, KEY_NIGHT_MODE, -1))
             }
 
             // 自动亮度：`Settings.System.screen_brightness_mode`（1 = 自动、0 = 手动）
             SwitchKind.AUTOBRIGHTNESS.id -> {
-                val mode = Settings.System.getInt(cr, KEY_BRIGHTNESS_MODE, -1)
-                if (mode < 0) null else mode == 1
+                onOff(Settings.System.getInt(cr, KEY_BRIGHTNESS_MODE, -1))
             }
 
             // 定位：`Settings.Secure.location_mode`（0 = 关，1 / 2 / 3 都是开着）
             SwitchKind.LOCATION.id -> {
-                onOff(value(KEY_LOCATION_MODE, secure = true))
+                onOff(Settings.Secure.getInt(cr, KEY_LOCATION_MODE, -1))
+            }
+
+            // 护眼模式 / 旁路充电：`Settings.System` 里的 0 / 1
+            SwitchKind.EYEPROTECT.id -> {
+                onOff(Settings.System.getInt(cr, KEY_EYE_PROTECT, -1))
+            }
+
+            SwitchKind.BYPASSCHARGE.id -> {
+                onOff(Settings.System.getInt(cr, KEY_BYPASS_CHARGE, -1))
             }
 
             // 极暗**不在这里读**：状态只有颜色显示服务知道，宿主没有那个权限（见 `toggle` 里
-            //  把它整条转给 system_server 的那一支）。`Settings.*.reduce_brightness` 这两个键
-            //  在这台机器上没人维护，读它只会得到假的「关着」。
-
+            // 把它整条转给 system_server 的那一支）。`Settings.*.reduce_brightness` 这两个键
+            // 在这台机器上没人维护，读它只会得到假的「关着」。
             else -> {
                 null
             }
         }
-    }
 
     /** `0/1` 那种开关的判读。 */
     private fun onOff(value: Int): Boolean? = if (value < 0) null else value > 0

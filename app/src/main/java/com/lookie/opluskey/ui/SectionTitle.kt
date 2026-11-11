@@ -162,6 +162,19 @@ private val MORE_BUTTON_END_SHIFT = (MORE_BUTTON_WIDTH - MORE_BUTTON_HEIGHT) / 2
 internal val SECTION_TITLE_TRAILING_GLYPH_INSET = (MORE_BUTTON_WIDTH - MORE_BUTTON_HEIGHT) / 2
 
 /**
+ * 行尾「计数」与那颗菜单之间那一档 —— **10dp**（= [MORE_BUTTON_END_SHIFT]）。
+ *
+ *  这一档不是随便定的：菜单的点击格 40dp、字形 20dp 居中，格子左边**自带** 10dp 空档。
+ *  · 带 `flushEnd` 的那颗（「命令详情」「命令步骤」）整格再右移半格，计数到字形是 **20dp**；
+ *  · 不带的那颗（场景块「场景 N」）格子贴住行右边缘，只有 **10dp**。
+ *
+ *  同一页里两行并排看就成了「一边松一边紧」（真机口径「系统场景块的 counter 到菜单的距离
+ *  比命令详情的少」）。补这一档把两处拉平 —— 补的只有**不带 `flushEnd`** 的那一行：
+ *  带的那几处本来就有这 10dp，再补会变成 30dp。
+ */
+internal val SECTION_TITLE_COUNTER_GAP = MORE_BUTTON_END_SHIFT
+
+/**
  * 小标题**行尾那一格**的右内缩 —— 与 [MORE_BUTTON_WIDTH] 那套几何同源：
  * 页面缩进 [PAGE_MARGIN]（12）再加字形在格内的那一档（10）= **22**。
  *

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,8 +43,11 @@ import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.MoreButton
 import com.lookie.opluskey.ui.RowEndIcon
+import com.lookie.opluskey.ui.SECTION_TITLE_COUNTER_GAP
+import com.lookie.opluskey.ui.SECTION_TITLE_TRAILING_GLYPH_INSET
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.TitleCounter
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PageIcons
@@ -327,29 +331,18 @@ private fun SettingsPage.BranchRow(
             //  一条都没配时也给一行「未选择条件」（`empty = true`），让用户知道这一格要配什么。
             //  以前是用 ` + ` 拼在同一行里 —— 两条以上时读起来像一句话，看不出是「且」的关系。
             val conditionLines = ruleConditionLines(rule)
-            //  三档动作各占一行：**这一块完整地管三档**（翻转的核心）。没配的那一档写「跟随默认」
-            //  并压禁用色 —— 它与「无操作」是两件事：前者这一档不被这块接管（继续往下找 / 回落
-            //  按键绑定），后者是命中后这一档什么都不做、属于配好了的一档（见 `SceneRule` 的类注释）。
-            val actionLines =
-                blockGestures().map { gesture ->
-                    val action = rule.actionOf(gesture)
-                    ActionLine(
-                        gesture = gesture,
-                        text = actionTextOf(action),
-                        //  **只有「跟随默认」压一档色**：那一档是「这一块不接管」，等于没配。
-                        //  「无操作」是用户明确挑的一档（命中后什么都不做），它与真的绑了动作的行
-                        //  同级显示 —— 压灰会被读成「这一档还没设」。
-                        empty = action is Action.Follow,
-                        //  行首一律是**这一档的手势字形**（不是动作自己的字形）：三行并排时
-                        //  「哪一行是哪一档」得先看得出来，之后才是它右边写的那个动作（见 `gestureIcon`）。
-                        icon = PageIcons.gestureIcon(gesture),
-                    )
-                }
+            //  三档动作各占一行：**这一块完整地管三档**（翻转的核心）。
+            val actionLines = ruleActionLines(rule)
             RuleBlock(
                 // 「场景 1」「场景 2」—— 一份表里第几块，标题上直接写出来
                 index = spec.index,
                 state = spec.state,
-                text = RuleText(conditionLines = conditionLines, actions = actionLines),
+                text =
+                    RuleText(
+                        conditionLines = conditionLines,
+                        conditions = rule.conditions.size,
+                        actions = actionLines,
+                    ),
                 cells =
                     RuleCells(
                         anchors = spec.anchors,
@@ -377,6 +370,14 @@ private fun SettingsPage.BranchRow(
                             CardRow.Item(
                                 title = I18n.get(Strings.COMMAND_BRANCH_ADD_CONDITION, "添加场景"),
                                 icon = PageIcons.StepAdd,
+                                //  **到顶了（九条）就点不动**：与 `appendCondition` 里那道闸同一句原因
+                                //  （`CardRow` 只在置灰时才画 `disabledHint`，所以这里照给就行）。
+                                enabled = rule.conditions.size < SceneRule.MAX_CONDITIONS,
+                                disabledHint =
+                                    I18n.format(
+                                        Strings.COMMAND_BRANCH_CONDITION_LIMIT,
+                                        SceneRule.MAX_CONDITIONS,
+                                    ),
                                 onClick = { appendCondition(branchDraftNow(), spec.index, menus) },
                             ),
                     ),
@@ -385,6 +386,29 @@ private fun SettingsPage.BranchRow(
         }
     }
 }
+
+/**
+ * 这一块三档动作各自那一行 —— 没配的那一档写「跟随默认」并压禁用色。
+ *
+ *  「跟随默认」与「无操作」是两件事：前者这一档不被这块接管（继续往下找 / 回落按键绑定），
+ *  后者是命中后这一档什么都不做、属于配好了的一档（见 `SceneRule` 的类注释）。
+ *  **只有「跟随默认」压一档色** —— 压灰会被读成「这一档还没设」。
+ *
+ *  行首一律是**这一档的手势字形**（不是动作自己的字形）：三行并排时「哪一行是哪一档」得先
+ *  看得出来，之后才是它右边写的那个动作（见 `gestureIcon`）。
+ *
+ *  抽出来只为让 [BranchRow] 留在 detekt 的 `LongMethod` 长度线内。
+ */
+private fun SettingsPage.ruleActionLines(rule: SceneRule): List<ActionLine> =
+    blockGestures().map { gesture ->
+        val action = rule.actionOf(gesture)
+        ActionLine(
+            gesture = gesture,
+            text = actionTextOf(action),
+            empty = action is Action.Follow,
+            icon = PageIcons.gestureIcon(gesture),
+        )
+    }
 
 /**
  * 小标题那一行 —— 「条件 N」+ 右端那颗「更多」。
@@ -403,6 +427,8 @@ private fun RuleTitleRow(
     index: Int,
     /** 这一块整体处在哪一档（见 [RuleState]）。 */
     state: RuleState,
+    /** 这一块配了几条条件 —— 行尾那个 `3/9` 读它。 */
+    conditions: Int,
     cells: RuleCells,
 ) {
     SectionTitle(
@@ -410,24 +436,38 @@ private fun RuleTitleRow(
         modifier = Modifier.heightIn(min = RULE_TITLE_HEIGHT),
         //  左右缩进比页面小一档（外层已有 `PAGE_MARGIN`）
         insideMargin = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-        //  行尾那颗「更多」—— 通用小标题的 `trailing` 槽位（这一行菜单就挂在小标题右侧，
-        //  不再自己套一层 `Row` + 一份 `weight`）；样式在 `MoreButton` 里（场景 / 命令列表共用一份）。
-        //  行尾的内缩**要归零**：这一行本身已经在外层 `PAGE_MARGIN` 里面（行右边缘 = 页边 − 12），
-        //  小标题默认那 22dp 是按「整幅宽的一行」算的，再补一次就成了页边 − 34。
-        trailingEndPadding = 0.dp,
+        //  行尾两格：那颗「更多」与一格计数 —— 顺序是**菜单在前、计数在最后**（用户口径
+        //  「counter 和菜单换个位置」）；样式在 `MoreButton` / `TitleCounter` 里（场景与命令列表共用一份）。
+        //
+        //  内缩给的是 [SECTION_TITLE_TRAILING_GLYPH_INSET]（10dp），不是默认那 22dp：这一行本身
+        //  已经在外层 `PAGE_MARGIN` 里面（行右边缘 = 页边 − 12），默认那 22dp 是按「整幅宽的一行」
+        //  算的，再补一次就成了页边 − 34。
+        //
+        //  这 10dp 现在补的是**计数那格**：行尾最后一个元素是文字，文字没有菜单格那 10dp 的内缩，
+        //  补上之后它的右边缘 = 页边 − 22，与「命令名称」「命令详情」那几行的计数落在同一条线上。
+        trailingEndPadding = SECTION_TITLE_TRAILING_GLYPH_INSET,
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 RuleStateHint(state)
+                //  **与「多条命令」那颗「命令列表」小标题的「更多」落在同一位置**（同一套几何）。
+                //  这一行的内缩由上面那 10dp 给到，点击格贴住内容右边缘、字形居中。
+                //
+                //  菜单右边现在还有一格计数，所以**不给 `flushEnd`**：那一下整格右移是为了让
+                //  字形右边缘落在内容右边线上，而这条右边线现在归计数那格。给了会挤掉它们之间
+                //  那 10dp（字形贴到数字上）。
+                //
+                //  别按「与字头对称」去调 —— 这一页字头在 32dp，两者本来就不对称，跟多条命令一致才是口径。
                 MoreButton(
                     onClick = cells.onMenu,
                     anchor = cells.anchors.menu,
-                    //  **与「多条命令」那颗「命令列表」小标题的「更多」落在同一位置**（同一套几何）：
-                    //  那一颗的内缩由 `SectionTitle` 给到 22dp，`flushEnd` 再把点击格右移 10dp
-                    //  ⇒ 字形右边缘在**页边 − 22dp**。
-                    //  这一行不给内缩、也不给 `flushEnd`：点击区贴住行右边缘（页边 − 12）、字形居中
-                    //  ⇒ 同样是页边 − 22dp。补 `flushEnd` 会把它往左推 10dp（「右缩进太多」）。
-                    //  别按「与字头对称」去调 —— 这一页字头在 32dp，两者本来就不对称，跟多条命令一致才是口径。
                 )
+                //  菜单与计数之间那一档 —— 与「命令详情 / 命令步骤」两行同一个数
+                //  （见 [SECTION_TITLE_COUNTER_GAP]）：那两处是「菜单格左边自带 10dp + 补 10dp」，
+                //  这里是「菜单格右边自带 10dp + 补 10dp」，字形到计数都是 20dp。
+                Spacer(Modifier.width(SECTION_TITLE_COUNTER_GAP))
+                //  **这一块配了几条 / 最多几条**。上限 [SceneRule.MAX_CONDITIONS] 就在这一行读到，
+                //  不用等点「添加场景」被置灰了才知道到顶。与「命令步骤」「命令详情」同一个 `TitleCounter`。
+                TitleCounter(conditions, SceneRule.MAX_CONDITIONS)
             }
         },
     )
@@ -529,6 +569,13 @@ private class RuleText(
      *  空表（新加的那一块还没条件）时给一条「未选择条件」，让用户知道这一格要配什么。
      */
     val conditionLines: List<ConditionLine>,
+    /**
+     * 这一块**真的**配了几条条件 —— 小标题行尾那个 `3/9` 读它（[SceneRule.MAX_CONDITIONS] 是上限）。
+     *
+     *  不能拿 [conditionLines] 的条数顶：一条都没配时那张表里也有一行「未选择条件」占位，
+     *  按行数会读成「已经配了一条」。
+     */
+    val conditions: Int,
     /** 动作那几行 —— **一档一个**（单击 / 双击 / 长按，组合键只有两档）。 */
     val actions: List<ActionLine>,
 )
@@ -579,7 +626,7 @@ private fun RuleBlock(
 ) {
     val fresh = rememberFreshRow(menus, index)
     Column(Modifier.fillMaxWidth()) {
-        RuleTitleRow(index, state, cells)
+        RuleTitleRow(index, state, text.conditions, cells)
         //  场景与动作**各一张卡**（用户口径「场景和动作分隔开，用两个卡片」）：
         //  上面回答「什么情况下」，下面回答「做什么」。原先合成一张、靠一条加深带断开，
         //  读起来仍是同一件事的两段；拆成两张之后「这条场景命中会做什么」一眼分成两问。

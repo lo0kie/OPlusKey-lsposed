@@ -214,6 +214,15 @@ internal fun SettingsPage.appendCondition(
 ) {
     menus.menuAt = -1
     val old = draft.scenes.getOrNull(at) ?: return
+    //  **一块到顶了**：九条之后不再加（`SceneRule.MAX_CONDITIONS`）。卡片末尾那一行到这一档
+    //  自己就置灰了，这里再拦一道 —— 菜单里那一行与手改配置都不该越过它。
+    if (old.conditions.size >= SceneRule.MAX_CONDITIONS) {
+        hint(
+            I18n.format(Strings.COMMAND_BRANCH_CONDITION_LIMIT, SceneRule.MAX_CONDITIONS),
+            slot = HINT_SLOT_DISABLED,
+        )
+        return
+    }
     val pending = old.conditions.isEmpty() || old.conditions.lastOrNull()?.isUsable == false
     if (pending) {
         //  与其它「为什么这一步做不了」共用同一个位

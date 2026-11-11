@@ -84,13 +84,25 @@ internal fun PopupSectionDivider() {
  *  上沿 —— 加上光学修正把墨迹往下压的那一档，首条看着「上多下少」。这里不分首条，
  *  上下都按 [POPUP_SECTION_TITLE_GAP]；那一档按用户口径**再加宽**：小标题是分组的分界，
  *  上下松一点，组与组之间才看得出「这是另一段」。
+ *
+ * @param count 标题后面那个括号计数（`null` = 不画）。只有「点开一格之后列出它的子动作」那张
+ *   菜单给 —— 一眼看出这一格底下有几档，不必先数一遍。别的菜单（顶栏 ⋮、长按命令、条件取值）
+ *   各自的条数由它们自己那一层说，不在这里重复。
  */
 @Composable
-internal fun PopupSectionTitle(text: String) {
+internal fun PopupSectionTitle(
+    text: String,
+    count: Int? = null,
+) {
     // 与库那一版**同一份样式**：只取 `footnote2` 的字号（11sp）+ Medium —— 库那版也是只传
     // `fontSize`，**不带** `footnote2` 的 `lineHeight`（1.143em，比中文字体的自然行高还小，
     // 套上去字形会溢出那一行盒）。光学修正必须按**实际渲染的这份样式**量，量错了修正量就偏。
     val style = TextStyle(fontSize = COUITheme.textStyles.footnote2.fontSize, fontWeight = FontWeight.Medium)
+    //  计数**直接拼进标题**（`响铃状态 (4)`），与标题同一份样式、不做任何差异处理：
+    //  它本来就是同一句话的一部分（用户口径「改成和标题一样的，直接拼在标题里」）。
+    //  拼成一串而不是并排两个控件，还顺带解决两件事：位置天然紧随，不必靠间距去凑；
+    //  标题长到要省略时括号跟着一起省略，不会出现「标题被截了、计数孤零零贴在右边」。
+    val shown = if (count == null) text else "$text ($count)"
     Box(
         modifier =
             Modifier
@@ -100,7 +112,7 @@ internal fun PopupSectionTitle(text: String) {
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(
-            text = text,
+            text = shown,
             style = style,
             color = DropdownDefaults.dropdownColors().headerColor,
             maxLines = 1,
@@ -249,6 +261,14 @@ internal sealed interface MenuEntry {
     data class Section(
         val title: String,
         val rows: List<Row>,
+        /**
+         * 标题后面那个括号计数（`null` = 不画），画成 `响铃状态(4)`。
+         *
+         *  只有「点开一格之后列出它的子动作」那张菜单给（[ModeMenuPopups]）：那一层就是
+         *  「这一格底下有几档」，标题右侧直接写出档数比让用户自己数省事。默认不画 ——
+         *  别的菜单（顶栏 ⋮、长按命令、条件取值）的条数各有各的说法，不在这里顺手加。
+         */
+        val count: Int? = null,
     ) : MenuEntry
 }
 

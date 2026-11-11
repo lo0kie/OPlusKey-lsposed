@@ -53,3 +53,22 @@ internal fun TitleSmallText(text: String) {
         color = COUITheme.colorScheme.onSurfaceContainerHigh,
     )
 }
+
+/**
+ * 「标题 (条数)」—— 把条数**拼进标题那一段字**里，而不是行尾另起一格。
+ *
+ *  与浮层菜单的小标题同一条口径（`响铃状态 (4)`，见 `PopupSectionTitle`）：半角括号、
+ *  括号前留一个半角空格、**与标题同一份样式** —— 不降字重、不压透明度。它读作标题的一部分，
+ *  不是「旁边还有一条信息」，所以不做差异处理。
+ *
+ *  用在**分组标题**上（动作网格那几组、抽屉里那几组、「自定义命令」那一段）：那一行没有
+ *  行尾槽位可占，也不该为它多摆一个控件。
+ *
+ *  条数**由调用点从自己那张表里数**（`group.size` / `specs.size`）—— 同一个组名在
+ *  `ActionCatalog` 的三张表里条数不一样（场景动作多一个「跟随默认」、命令步骤少「无操作」），
+ *  写死一个数，换个页面就少一个 / 多一个。
+ */
+internal fun titleWithCount(
+    title: String,
+    count: Int,
+): String = "$title ($count)"

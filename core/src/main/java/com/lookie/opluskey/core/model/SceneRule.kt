@@ -156,6 +156,19 @@ data class SceneRule(
          */
         const val MAX_SCENES = 20
 
+        /**
+         * 一块里最多几条条件 —— 九条（用户口径）。
+         *
+         *  比「同一种类最多几条」（`blockKindsOf`，按各档取值数封顶）高一层：那一条管的是
+         *  「同一种类别写重了」，这一条管的是**一块整体**的规模 —— 判定侧每块都要逐条过一遍，
+         *  九条以上的一块已经读不动了（界面上也一屏放不下），而真需要那么多条件时，
+         *  本来该拆成两块。
+         *
+         *  到这一档时：块尾那行「添加场景」置灰并说明原因，一级菜单里每一档也一并点不动
+         *  （见 `appendCondition` 与 `conditionKindRows` 的 `blockFull`）。
+         */
+        const val MAX_CONDITIONS = 9
+
         /** 空块（三档都没配）—— 「添加场景」插的就是它。 */
         val EMPTY = SceneRule()
     }

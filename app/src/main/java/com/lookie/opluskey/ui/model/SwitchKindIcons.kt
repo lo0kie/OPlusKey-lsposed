@@ -3,16 +3,19 @@ package com.lookie.opluskey.ui.model
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.model.SwitchKind
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
+import io.github.lyxnx.compose.ui.tablericons.outline.AccessPoint
 import io.github.lyxnx.compose.ui.tablericons.outline.BatteryEco
 import io.github.lyxnx.compose.ui.tablericons.outline.Bluetooth
 import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessAuto
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
+import io.github.lyxnx.compose.ui.tablericons.outline.Eye
 import io.github.lyxnx.compose.ui.tablericons.outline.Location
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
 import io.github.lyxnx.compose.ui.tablericons.outline.MoonStars
 import io.github.lyxnx.compose.ui.tablericons.outline.Nfc
 import io.github.lyxnx.compose.ui.tablericons.outline.Plane
+import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.RotateRectangle
 import io.github.lyxnx.compose.ui.tablericons.outline.SunLow
 import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
@@ -72,6 +75,16 @@ private fun switchKindIcon(kind: SwitchKind): ImageVector =
 
         // 自动亮度：太阳 + 一个 A（与「跟随系统」那行同一颗），与上下两档「亮度本身」分开
         SwitchKind.AUTOBRIGHTNESS -> TablerIcons.Outline.BrightnessAuto
+
+        // 热点：WIFI 加一个发射点（与 WIFI 那颗同族，但说「往外发」而不是「连上去」）
+        SwitchKind.HOTSPOT -> TablerIcons.Outline.AccessPoint
+
+        // 护眼模式：一只眼。这一族里没有别的「看」类的开关，不会与谁混
+        SwitchKind.EYEPROTECT -> TablerIcons.Outline.Eye
+
+        // 旁路充电：插头（电直供设备、不经过电池）。不借 `BatteryCharging`——那是「在充电」，
+        //  与「绕开电池」正好相反
+        SwitchKind.BYPASSCHARGE -> TablerIcons.Outline.PlugConnected
     }
 
 /**

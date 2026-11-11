@@ -58,6 +58,8 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 private sealed interface MenuPart {
     data class Title(
         val text: String,
+        /** 行尾那格计数（`null` = 不画），由 `MenuEntry.Section.count` 递下来。 */
+        val count: Int? = null,
     ) : MenuPart
 
     data class Item(
@@ -101,7 +103,7 @@ private fun expandMenu(entries: List<MenuEntry>): List<MenuPart> =
                     //  调用方按条件现算行表时（这一档暂时没有可选项）很容易给到空表。
                     if (entry.rows.isEmpty()) return@forEach
                     if (isNotEmpty()) add(MenuPart.HeavyLine)
-                    add(MenuPart.Title(entry.title))
+                    add(MenuPart.Title(entry.title, entry.count))
                     // 小标题下**默认**一条细线：标题与第一行贴在一起时读成「这一行是标题的一部分」。
                     //  这条线是**通栏**的（`TitleLine`）：标题顶在面板左缘，线只划到行标题那条竖线
                     //  就止住，看着像半截。
@@ -424,7 +426,7 @@ private fun SettingsPage.MenuEntries(
             }
 
             is MenuPart.Title -> {
-                PopupSectionTitle(part.text)
+                PopupSectionTitle(part.text, part.count)
             }
 
             MenuPart.Line -> {

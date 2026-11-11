@@ -558,6 +558,12 @@ object Strings {
      */
     const val COMMAND_BRANCH_KIND_FULL = "command.branch_kind_full"
 
+    /**
+     * 一块**整体**加满（[SceneRule.MAX_CONDITIONS] 条）时那句原因 —— 与上面那一句是两个层级：
+     * 那一句说「这一种类别写重了」，这一句说「这一块到顶了」。
+     */
+    const val COMMAND_BRANCH_CONDITION_LIMIT = "command.branch_condition_limit"
+
     const val COMMAND_BRANCH_EMPTY = "command.branch_empty"
 
     /**
@@ -1342,6 +1348,9 @@ object Strings {
     const val SYS_SETTING_EXTRADIM = "system_setting.extradim"
     const val SYS_SETTING_AUTOBRIGHTNESS = "system_setting.autobrightness"
     const val SYS_SETTING_LOCATION = "system_setting.location"
+    const val SYS_SETTING_HOTSPOT = "system_setting.hotspot"
+    const val SYS_SETTING_EYEPROTECT = "system_setting.eyeprotect"
+    const val SYS_SETTING_BYPASSCHARGE = "system_setting.bypasscharge"
 
     // —— 自定义变量（`ui/screen/variables/`）——
 

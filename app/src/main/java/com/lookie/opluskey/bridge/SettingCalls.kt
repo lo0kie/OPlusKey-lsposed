@@ -20,6 +20,9 @@ import com.lookie.opluskey.core.log.XLog
  *   · 移动数据 / 省电模式 —— 系统自己盯着 `Settings.Global.mobile_data` / `low_power` 这两个键
  *     （Phone 的 `DataEnabledSettings`、`PowerManagerService` 各有一个 ContentObserver），
  *     而宿主有 `WRITE_SECURE_SETTINGS`，写一下就够了，不必再借 system_server。
+ *
+ *  热点虽然也从这里分派，但实现单独立在 [HotspotCall]（与 [NfcToggle] 同一条理由：这个 object
+ *  的函数数贴着 detekt 的上限，热点那一支又有自己的状态机）。
  */
 internal object SettingCalls {
     /** 调系统方法时写进 `reason` 的那一串（便于在系统日志里认出是谁改的）。 */
@@ -69,6 +72,11 @@ internal object SettingCalls {
             // （宿主侧调过一次：`SecurityException: Access denied, requires: ...CONTROL_DISPLAY_COLOR_TRANSFORMS`）。
             "extradim" -> {
                 extraDim(loader, on)
+            }
+
+            // 热点：没有 Settings 键可读可写，整条由 `wifi` 服务管（见 `HotspotCall`）。
+            "hotspot" -> {
+                HotspotCall.run(loader, on)
             }
 
             else -> {

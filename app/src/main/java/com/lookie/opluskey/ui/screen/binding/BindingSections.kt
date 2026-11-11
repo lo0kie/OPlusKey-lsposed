@@ -11,6 +11,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.titleWithCount
 
 /**
  * 「已保存的命令」那一块的小标题 —— **两页共用**（按键绑定 / 组合键编辑）。
@@ -25,9 +26,12 @@ import com.lookie.opluskey.ui.SettingsPage
  */
 @Composable
 internal fun SettingsPage.SavedCommandsTitle() {
-    val hasCommands = configState.commands.value.isNotEmpty()
+    val commands = configState.commands.value
+    val hasCommands = commands.isNotEmpty()
     SectionTitle(
-        text = I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"),
+        //  条数拼进标题（`自定义命令 (3)`）—— 与上面那几组同一个写法；0 条时也写出来，
+        //  那一格里摆的是「去创建自定义命令」，标题上写 0 正好对得上。
+        text = titleWithCount(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"), commands.size),
         click =
             if (hasCommands) {
                 SectionTitleClick.Jump {
