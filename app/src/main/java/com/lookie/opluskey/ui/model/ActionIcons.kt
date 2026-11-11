@@ -10,7 +10,6 @@ import com.lookie.opluskey.core.model.SystemSwitches
 import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.core.rom.RomProfile
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
-import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
@@ -105,8 +104,9 @@ internal fun actionIcon(token: String): ImageVector =
 
         // 电源菜单（弹出关机 / 重启那一层）—— 必须与「电源键」不同字形：同样一颗电源图标摆在一起，
         //  分不出按下的那个是按键还是菜单，所以用「滑杆 + 齿轮」（可调的那一层菜单）。
+        // 电源菜单：`menu-2` 三条横线 + 右下角电源符号（「这一格进的是那个菜单」+「菜单里是电源」）
         Action.POWER_MENU -> {
-            TablerIcons.Outline.AdjustmentsCog
+            DrawnIcons.PowerMenu
         }
 
         // —— 系统侧键场景表里的四条 ——
@@ -604,7 +604,7 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
 
         ActionCatalog.Glyph.PowerKey -> TablerIcons.Outline.Power
 
-        ActionCatalog.Glyph.PowerMenu -> TablerIcons.Outline.AdjustmentsCog
+        ActionCatalog.Glyph.PowerMenu -> DrawnIcons.PowerMenu
 
         ActionCatalog.Glyph.FlashNote -> TablerIcons.Outline.PencilAi
 

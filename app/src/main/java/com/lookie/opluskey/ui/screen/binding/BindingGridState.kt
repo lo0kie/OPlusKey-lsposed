@@ -14,7 +14,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.SettingsPage
@@ -53,7 +53,7 @@ internal class BindingGridState(
     initialFocus: Int,
 ) {
     /** 这一张网格是哪一档手势 —— 折叠清单 / 入口格菜单都按它判（见 [BindingTarget.gesture]）。 */
-    val g: Gesture get() = target.gesture
+    val g: GestureTrigger get() = target.gesture
 
     /** 焦点格总数 —— 与 [specs] 下标一一对应（见 `BindingList` 里「扁平焦点索引的账」）。 */
     val totalCount: Int get() = specs.size

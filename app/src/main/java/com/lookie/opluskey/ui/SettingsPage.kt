@@ -16,7 +16,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.model.PAGE_TRANSITION_MS
 import com.lookie.opluskey.ui.state.AppPickerState
@@ -440,7 +440,7 @@ internal class SettingsPage(
      * [Page] 里一个 `LaunchedEffect` 看着这个值 —— 有请求就滚过去、然后清掉。
      * release 包里没人写它（那条注册是死分支），恒为 `null`。
      */
-    internal val debugGesture = mutableStateOf<Gesture?>(null)
+    internal val debugGesture = mutableStateOf<GestureTrigger?>(null)
 
     /**
      * 「自定义命令」页的草稿与「重置」那套行级退场标记 —— 见 [CommandDraftState]。
@@ -499,10 +499,10 @@ internal class SettingsPage(
      * 「场景动作」页进来时停在哪一档手势 —— 点单击那一行进来就停单击。
      *
      *  顶栏那条分段控件的分页器（`PagePagers.scenes`）在 push 那一刻按它归位
-     *  （见 `PushResetsPagers`）。组合键的场景块只有短按 / 长按两档，所以这里存的是**手势本身**
-     *  而不是页号 —— 页号由 `sceneGesturePage()` 按当前那张表换算。
+     *  （见 `PushResetsPagers`）。存的是**档位本身**（`GestureTrigger`）而不是页号 ——
+     *  页号由 `sceneGesturePage()` 按当前那张表换算，而档位不随表变（组合只有两档）。
      */
-    internal var sceneBindingGesture by mutableStateOf(Gesture.SINGLE)
+    internal var sceneBindingGesture by mutableStateOf<GestureTrigger>(GestureTrigger.Click(1))
 
     /**
      * 「场景动作」页**进来时那一块长什么样** —— 这一页的「改动」与「放弃」都按它判。
@@ -711,7 +711,7 @@ internal class SettingsPage(
                 //  **草稿不动**（它属于「系统场景」那一页，那一页还在栈里）—— 放弃那一趟的
                 //  改动由窗自己按 `sceneBindingBaseline` 还原（见 `BindingPagerScreen`）。
                 sceneBindingAt = -1
-                sceneBindingGesture = Gesture.SINGLE
+                sceneBindingGesture = GestureTrigger.Click(1)
                 sceneBindingBaseline = null
                 bindingScrolls.remove(Screen.SCENE_BINDING)
                 picker.cancelResume()

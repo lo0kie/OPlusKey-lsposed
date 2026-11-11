@@ -1,6 +1,11 @@
 package com.lookie.opluskey.ui.model
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.github.suqi8.coui.kmp.basic.SliderDefaults
@@ -352,3 +357,30 @@ internal val ROW_START_ICON_GAP = 8.dp
  *  不会伸进图标那一格里。
  */
 internal val ROW_TITLE_INSET = 56.dp
+
+/**
+ * 双行整块要往下挪多少 —— 与 [Modifier.opticalBlockCenter] **同一把尺子**（同一个缓存、同一个
+ * 偏差常量），给「行本身不能挪」的那一处用。
+ *
+ *  开关行的标题 / 副标题由库（`BasicComponent`）内部画，插不进修饰符，原先只能把**整行**挪；
+ *  而整行一挪，可点区域与按住时的波纹跟着挪，波纹的上沿于是与上一行让出一道缝（真机口径）。
+ *  那一处改成「上下内边距互相让」：上边 +这个值、下边 −这个值 —— 内容照样下移同样多，
+ *  行高与可点区域一动不动。
+ *
+ *  为什么挪在几何这一族（`PageMetrics`）而不是 `TextMetrics`：那边是按行盒量的几张表，
+ *  文件级函数已经顶到 detekt 的线；这里只多一个「同一把尺子的出口」。
+ */
+@Composable
+internal fun opticalBlockBias(
+    first: TextStyle,
+    last: TextStyle = first,
+): Dp {
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer(cacheSize = 1)
+    val dy = remember(first, last, density) { blockDy(first, last, density, measurer) }
+    val bias =
+        remember(first, last, density) {
+            if (first == last) 0 else with(density) { BLOCK_CENTER_BIAS.roundToPx() }
+        }
+    return with(density) { (dy + bias).toDp() }
+}

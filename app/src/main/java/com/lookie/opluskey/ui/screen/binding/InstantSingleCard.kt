@@ -1,9 +1,7 @@
 package com.lookie.opluskey.ui.screen.binding
 
-import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.PageIcons
@@ -11,13 +9,13 @@ import com.lookie.opluskey.ui.setInstantSingle
 import com.lookie.opluskey.ui.state.KeyWatchState
 
 /**
- * 「按键设置」页里的**双击**那张卡 —— 只有一个开关：忽视无操作双击手势。
+ * 「忽视无操作双击手势」那一行 —— 挂在**单击**那张卡里（`BindingSettingsCard`）。
  *
- * ## 为什么它单独一张
+ * ## 为什么在单击那一页
  *
- *  这个开关改的是**双击怎么判**（双击没绑动作时，不承认那是一次双击，按两下单击算），
- *  而不是单击怎么判。它原先和「单击延迟」挤在同一张卡里，理由是两者都落在同一次判定的
- *  两个阶段上；但用户找它们时带着的前提是「我在调哪一档」，按档分才对得上。
+ *  它决定的是「第二下抬手之后怎么办」：双击没绑动作时，是承认那是一次双击（第二下白按）
+ *  还是当场把它算成两下单击。用户改这一位时想要的正是**单击更快**，
+ *  所以它与「单击延迟」同一张卡 —— 两者是同一次判定链上的两个参数。
  *
  * ## 与「单击延迟」的关系
  *
@@ -31,31 +29,41 @@ import com.lookie.opluskey.ui.state.KeyWatchState
  *  不需要注入侧回话）。理由写全在 `BindingSettingsCard` 的类注释里。
  *  「适配清单」不参与任何闸，这里当然也不判它（AGENTS 一、13）。
  */
-@Composable
-internal fun SettingsPage.InstantSingleCard(
+internal fun SettingsPage.instantSingleRow(
     enabled: Boolean,
     disabledHint: String? = null,
-) {
+): CardRow {
     val cfg = configState.config.value
-    // 与「单击延迟」同一条：这一位也是**每颗键自己的**（`KeyConfig.instantSingle`）
+    // 这一位也是**每颗键自己的**（`KeyConfig.instantSingle`）
     val id = KeyWatchState.editing(cfg)
-    val checked = cfg.key(id).instantSingle
-    CardList(
-        rows =
-            listOf(
-                CardRow.Switch(
-                    title = I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"),
-                    // 说明写**结果**而不是机制：用户要判断的是「开 / 关之后双击会变成什么样」，
-                    //  所以两句各说一边的结果 —— 「按两下算单击」与「第二下不生效」。
-                    summaryOn = I18n.get(Strings.BINDING_INSTANT_SINGLE_ON, "双击无动作时，两下各立即算单击"),
-                    summaryOff = I18n.get(Strings.BINDING_INSTANT_SINGLE_OFF, "双击无动作时，第二下不生效"),
-                    icon = PageIcons.IgnoreDouble,
-                    checked = checked,
-                    enabled = enabled,
-                    disabledHint = disabledHint,
-                ) {
-                    setInstantSingle(it)
-                },
-            ),
-    )
+    val key = cfg.key(id)
+    //  配了三击 / 四击时，正常那句（「两下各算一次单击」）不成立：判定侧要数到最高档才收线，
+    //  第二下不会当场算单击。说法换成一句实情，开关本身**不动**（值留着 —— 把那几档解绑之后
+    //  它立刻就生效，与「运行期的组合不替用户锁死」同一条口径，见上面的类注释）。
+    //  「后面还有档位」有两种来路：多击（数到第 3 击起）与「单击后长按」（第二击按住）。
+    //  两种情况下「两下各算一次单击」都不成立 —— 第二下的去向由后面那一档决定。
+    val higherBound = key.clicksForJudge > 2 || key.clickThenLongOn
+    //  说明只写**结论**（开 / 关之后双击变成什么样），不复述「双击无动作时」那个前提 ——
+    //  标题里的「无操作」已经说了这件事。
+    return CardRow.Switch(
+        title = I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"),
+        summaryOn =
+            if (higherBound) {
+                I18n.get(Strings.BINDING_HIGHER_CLICKS_NOTE, "配了后续手势时，单击最后执行")
+            } else {
+                I18n.get(Strings.BINDING_INSTANT_SINGLE_ON, "两下各算一次单击")
+            },
+        summaryOff =
+            if (higherBound) {
+                I18n.get(Strings.BINDING_HIGHER_CLICKS_NOTE, "配了后续手势时，单击最后执行")
+            } else {
+                I18n.get(Strings.BINDING_INSTANT_SINGLE_OFF, "第二下不生效")
+            },
+        icon = PageIcons.IgnoreDouble,
+        checked = key.instantSingle,
+        enabled = enabled,
+        disabledHint = disabledHint,
+    ) {
+        setInstantSingle(it)
+    }
 }

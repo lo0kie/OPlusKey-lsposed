@@ -1,16 +1,38 @@
 package com.lookie.opluskey.core.model
 
 /**
+ * 第 3 击起那一档的**人话**（`三击` / `四击` …）—— 界面那条手势带上只有两个字的位置，
+ *  写「3 击」读起来像编号，写「三击」才是与「单击 / 双击」同一套叫法。
+ *
+ *  九击之外退回阿拉伯数字：`MAX_JUDGE_CLICKS` 封到 9，再往上只可能是手改的配置，
+ *  那已经不是给界面看的档位了。
+ */
+private fun clickLabelOf(count: Int): String {
+    val numeral =
+        when (count) {
+            3 -> "三"
+            4 -> "四"
+            5 -> "五"
+            6 -> "六"
+            7 -> "七"
+            8 -> "八"
+            9 -> "九"
+            else -> return "$count 击"
+        }
+    return numeral + "击"
+}
+
+/**
  * 一档手势的**触发条件** —— 自定义手势要落地，档位就得能当数据描述。
  *
  *  现在的档位是 [Gesture] 那个三值枚举（`single` / `double` / `long`），而它在界面、字段表、广播、
  *  判定器、执行器里一共被穷举了七十多处：再往枚举里加一档，这七十处要挨个补齐，下一档再来一遍。
  *  这里把「档」拆成**触发条件**：连击次数是数据，长按是另一条轴；[Gesture] 则退化成它的三个已有取值。
  *
- *  **本阶段只定义数据，不产生任何新行为**：判定器仍按 [Gesture] 判、执行器仍按 [Gesture] 派发，
- *  没有第四档可配、也没有任何一处界面读这里。接进判定器要补的只有一件事 —— 让判定侧在按下之前
- *  拿到 [KeyGesturePlan]（窗口与最高击数），否则「这颗键配到三击」判定器根本不知道，
- *  单击也就不知道该多等一窗。
+ *  **判定与执行两侧早就在按它走**：判定器读 `clicksForJudge`（= 这里 `maxClicks` 的投影）决定
+ *  连击链数到第几下，执行器读 `KeyConfig.actionOf(trigger)` 取动作。界面这一半曾经只有三格 ——
+ *  「按键绑定」页现在按 [GestureTrigger] 排页，三击 / 四击是**同一个入口里的另两档**，
+ *  与前三档同一张网格、同一条写盘路径。
  */
 sealed interface GestureTrigger {
     /** 连击 [count] 下（1 = 单击）。 */
@@ -30,6 +52,24 @@ sealed interface GestureTrigger {
      */
     data object Release : GestureTrigger
 
+    /**
+     * **单击之后再按住不放**（`KeyConfig.clickThenLong`）—— 两段式：第 1 击抬手之后，
+     *  第 2 击在连击窗口内按下并按住超过长按阈值。
+     *
+     *  与 [Click] / [LongPress] 的区别在**第二击的形态**：第 2 击快速抬起 ⇒ 双击（[Click] 2），
+     *  按住不放 ⇒ 这一档。所以它与双击互斥，同一颗键不可能两档同时命中。
+     *
+     *  它是「要自己要才有」的档位（[KeyConfig.clickThenLongOn]），关着时判定侧根本不在
+     *  第 2 击上排长按那一枪 —— 单击的等待窗口与这一位出现之前完全一样。
+     */
+    data object ClickThenLong : GestureTrigger
+
+    /**
+     * **「单击后长按」那一档的松手**（`KeyConfig.clickThenLongRelease`）—— 与 [Release] 同一个意思，
+     *  但属于另一条路：那一档有自己的「松手执行额外动作」，不能与长按的松手格共用。
+     */
+    data object ClickThenLongRelease : GestureTrigger
+
     /** 配置 / 广播里用的档位 id —— 与 `Gesture.id` 同一套字面量（多击是 `clickN`）。 */
     val id: String get() = idOf(this)
 
@@ -45,11 +85,19 @@ sealed interface GestureTrigger {
                     "长按松手"
                 }
 
+                GestureTrigger.ClickThenLong -> {
+                    "单击后长按"
+                }
+
+                GestureTrigger.ClickThenLongRelease -> {
+                    "单击后长按松手"
+                }
+
                 is Click -> {
                     when (count) {
                         1 -> Gesture.SINGLE.label
                         2 -> Gesture.DOUBLE.label
-                        else -> "$count 击"
+                        else -> clickLabelOf(count)
                     }
                 }
             }
@@ -59,11 +107,75 @@ sealed interface GestureTrigger {
         const val CLICK_ID_PREFIX = "click"
 
         /**
+         * 多击档位的**上限**（第 9 击）—— 与 `ConfigFields.MAX_JUDGE_CLICKS` 是**同一个数**
+         * （这里直接引用它，不另写一份 9）。
+         *
+         *  超过它的档位一律当成认不出：判定侧数不了那么多次，写着只会让单击白等。
+         */
+        const val MAX_CLICKS = ConfigFields.MAX_JUDGE_CLICKS
+
+        /**
+         * 一颗键**默认就有**的几档 —— 不依赖 `KeyConfig.extraClicksOn`，永远在界面上。
+         *
+         *  顺序即页序的前三页；[HIGHER_CLICKS] 里开着的接在它后面。
+         */
+        val BASE_SLOTS: List<GestureTrigger> = listOf(Click(1), Click(2), LongPress)
+
+        /**
+         * **多击档位**（第 3 击起）—— **逐档**看 `KeyConfig.extraClicksOn`：开着的才出现在界面上，
+         *  也只有在那种时候判定与执行才认它。
+         *
+         *  为什么单独一份：这几处（分页器页数、按键绑定页的目标、场景块的动作行）都要按**同一颗键
+         *  的那几档**拼清单。原先是「一个 KEY_SLOTS 到处读」，开关一进来就得在每个读者那里再判一次
+         *  —— 判错一处就是「界面少一页但场景里还能配」这种对不上的状态。
+         */
+        val HIGHER_CLICKS: List<GestureTrigger> = KeyConfig.DEFAULT_EXTRA_CLICKS.map { Click(it) }
+
+        /**
+         * 一颗键能配的**全部**几档 —— 顺序即界面页序，也是「这一块能接管哪几档」的清单。
+         *
+         *  **它是一个静态的全集**，不代表「现在能看到几档」：界面请走
+         *  [slotsOn]（按这颗键开着的那几档拼），别直接拿它去排页。
+         *
+         *  为什么只到第 4 击：档数越多单击越迟钝（配了四击，单击最坏要等三个窗）。
+         *  九击是判定侧的硬上限，不是界面该摊开的量。
+         */
+        val KEY_SLOTS: List<GestureTrigger> = BASE_SLOTS + HIGHER_CLICKS
+
+        /**
+         * 按「这颗键开着哪几档多击 / 两段式」拼出**现在能用的那几档** —— 界面与场景块排行的唯一入口。
+         *
+         *  只开四击、不开三击是合法配置：那时清单是「单击 / 双击 / 长按 / 四击」——
+         *  第 3 下按了不算数（`actionOf` 回「无操作」），第 4 下照样能派发。
+         *
+         *  「单击后长按」排在最后：它是另一个维度（第二击的形态），与击数不是一个轴。
+         *
+         * @param on 这个目标开着的多击档位（`KeyConfig.extraClicksOn`）；组合键没有这一档，传 `emptySet()`
+         * @param clickThenLong 这个目标开没开「单击后长按」；组合键同样没有，传 `false`
+         */
+        fun slotsOn(
+            on: Set<Int>,
+            clickThenLong: Boolean = false,
+        ): List<GestureTrigger> =
+            BASE_SLOTS +
+                HIGHER_CLICKS.filter { (it as Click).count in on } +
+                (if (clickThenLong) listOf(ClickThenLong) else emptyList())
+
+        /**
+         * 组合键能配的几档 —— 组合没有双击、没有多击（见 `ComboKey` 的类注释）。
+         */
+        val COMBO_SLOTS: List<GestureTrigger> = listOf(Click(1), LongPress)
+
+        /**
          * 「长按松手」那一档的 id（广播 / 配置里那一档）。
          *
          *  与三档手势的 id **不冲突**：`Gesture.ofId` 只认 `single` / `double` / `long`。
          */
         const val RELEASE_ID = "release"
+
+        /** 「单击后长按」两档的 id —— 同理与 `single` / `double` / `long` / `clickN` 都不冲突。 */
+        const val CLICK_THEN_LONG_ID = "click_then_long"
+        const val CLICK_THEN_LONG_RELEASE_ID = "click_then_long_release"
 
         /**
          * 档位 id → 触发条件。
@@ -74,18 +186,26 @@ sealed interface GestureTrigger {
          *  认不出返回 `null`：配置 / 广播里出现不认识的档位时，调用方按「没有这一档」处理 ——
          *  猜成单击的代价是「按一下执行了别的动作」，比不认更糟。
          */
-        fun ofId(id: String?): GestureTrigger? {
-            Gesture.ofId(id)?.let { return it.trigger() }
-            if (id == RELEASE_ID) return GestureTrigger.Release
-            return clickOf(id)
-        }
+        fun ofId(id: String?): GestureTrigger? =
+            Gesture.ofId(id)?.trigger()
+                ?: when (id) {
+                    RELEASE_ID -> GestureTrigger.Release
+
+                    CLICK_THEN_LONG_ID -> GestureTrigger.ClickThenLong
+
+                    CLICK_THEN_LONG_RELEASE_ID -> GestureTrigger.ClickThenLongRelease
+
+                    //  `clickN`（n ≥ 3）—— 除三档与那几个具名档之外唯一认的写法
+                    else -> clickOf(id)
+                }
 
         /** `clickN`（n ≥ 3）—— 除三档与 `release` 之外唯一认的写法。 */
         private fun clickOf(id: String?): GestureTrigger? {
             val digits = id?.takeIf { it.startsWith(CLICK_ID_PREFIX) }?.removePrefix(CLICK_ID_PREFIX) ?: return null
             val count = digits.toIntOrNull() ?: return null
-            //  `click03` / `click+3` 这类不认：档位 id 是要落盘、要广播的字面量，只留一种写法
-            return if (count >= 3 && digits == count.toString()) Click(count) else null
+            //  `click03` / `click+3` 这类不认：档位 id 是要落盘、要广播的字面量，只留一种写法。
+            //  上限按 [MAX_CLICKS] 收：判定侧只数得到那么多下，再高的档位写了也永远不会命中。
+            return if (count in 3..MAX_CLICKS && digits == count.toString()) Click(count) else null
         }
 
         /** 触发条件 → 档位 id（配置字段后缀、广播里那一档）。 */
@@ -99,6 +219,14 @@ sealed interface GestureTrigger {
                     RELEASE_ID
                 }
 
+                GestureTrigger.ClickThenLong -> {
+                    CLICK_THEN_LONG_ID
+                }
+
+                GestureTrigger.ClickThenLongRelease -> {
+                    CLICK_THEN_LONG_RELEASE_ID
+                }
+
                 is GestureTrigger.Click -> {
                     when (trigger.count) {
                         1 -> Gesture.SINGLE.id
@@ -109,6 +237,16 @@ sealed interface GestureTrigger {
             }
     }
 }
+
+/**
+ * 这一档是不是**某一次按压的收尾**（松手那一刻才发）—— `Release` 与 `ClickThenLongRelease`。
+ *
+ *  两者都不是「新的一次按压」，而是已经判过的那一按结束时的另一件事：
+ *  执行侧据此免掉「过期丢弃」（见 `GestureExec.staleOrDuplicate` 的 `keepLate`）——
+ *  积压的按下可以丢，丢一条松手却是「这一按什么都没发生」。
+ */
+val GestureTrigger.isReleasePhase: Boolean
+    get() = this == GestureTrigger.Release || this == GestureTrigger.ClickThenLongRelease
 
 /**
  * 触发条件 → 现有三档；多击（`Click(n≥3)`）没有对应的 [Gesture]，返回 `null`。
@@ -125,6 +263,11 @@ fun GestureTrigger.gestureOrNull(): Gesture? =
         //  松手这一档是**另一个槽位**（`KeyConfig.longRelease`），不是三档里任何一档：
         //  条件分支（`StateRule`）按三档判定，把它算成「长按」会取到长按那一档的动作。
         GestureTrigger.Release -> {
+            null
+        }
+
+        //  同理：「单击后长按」是两段式，不是三档里任何一档（算成长按会取到长按的动作）
+        GestureTrigger.ClickThenLong, GestureTrigger.ClickThenLongRelease -> {
             null
         }
 
@@ -209,8 +352,17 @@ fun KeyConfig.gesturePlan(): KeyGesturePlan {
             if (single.isBound) add(GestureTrigger.Click(1))
             if (double.isBound) add(GestureTrigger.Click(2))
             if (long.isBound) add(GestureTrigger.LongPress)
-            //  第 3 击起的额外档位（手改 / 导入配置才可能有，界面没有入口）
-            extraClicks.filterValues { it.isBound }.keys.forEach { add(GestureTrigger.Click(it)) }
+            //  「单击后长按」与双击互斥（第二击按住 vs 快速抬起），但它**不延长**连击链：
+            //  判定仍然只数到第 2 击，这一档是在第 2 击按住时另判的。
+            if (clickThenLongOn && clickThenLong.isBound) add(GestureTrigger.ClickThenLong)
+            //  第 3 击起的额外档位（`click3` / `click4` …，见 `KeyConfig.extraClicks`）——
+            //  **那一档自己没开时不算**：执行侧对它回「无操作」，排进计划只会让单击白等
+            //  （见 `KeyConfig.extraClicksOn`）。
+            extraClicks
+                .filterKeys { it in extraClicksOn }
+                .filterValues { it.isBound }
+                .keys
+                .forEach { add(GestureTrigger.Click(it)) }
         }
     //  判定要等几个窗以 [clicksForJudge] 为准：它可能高于「绑了动作的最高击数」
     //  （手改配置只写 click3、没写单击时，判定仍要按 3 击的链走）。

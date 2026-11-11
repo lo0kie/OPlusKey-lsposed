@@ -106,6 +106,12 @@ object Strings {
     const val BINDING_INSTANT_SINGLE_OFF = "binding.instant_single_off"
     const val BINDING_INSTANT_SINGLE_ON = "binding.instant_single_on"
 
+    /**
+     * 这颗键还配了更高的击数（三击 / 四击）时，上面那两句的替代 —— 那时第二下既不算单击、
+     * 也不是「不生效」。
+     */
+    const val BINDING_HIGHER_CLICKS_NOTE = "binding.higher_clicks_note"
+
     const val BINDING_LONG_PRESS_DELAY_DESC = "binding.long_press_delay_desc"
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
 
@@ -160,6 +166,9 @@ object Strings {
 
     /** 反过来：配了松手额外动作时，「松手才触发」那一行为什么点不了。 */
     const val BINDING_RELEASE_UNSUPPORTED_FIRE = "binding.release_unsupported_fire"
+
+    /** 这一档本身是「无操作」时，「松手执行额外动作」那一族灰着被点一下说的话。 */
+    const val BINDING_RELEASE_NEEDS_ACTION = "binding.release_needs_action"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
 
     /**
@@ -1134,6 +1143,25 @@ object Strings {
     const val SETTING_USE_OWN = "key_settings.use_own"
     const val SETTING_USE_OWN_ON = "key_settings.use_own_on"
     const val SETTING_USE_OWN_OFF = "key_settings.use_own_off"
+
+    /**
+     * 「多击手势」那两行 —— 三击 / 四击各自一颗开关。
+     *
+     *  它们**不在**上面那五项里：那五项是「覆盖公共设置」，这两颗是「这一档存不存在」。
+     *  所以也不吃上面那颗总开关（见 `KeyConfig.extraClicksOn`）。
+     *
+     *  为什么分成两颗而不是收成一个：两者的代价不一样 —— 开三击让单击多等一个窗，
+     *  开四击还要让三击也等。只要三击的人不该被迫接受四击那一份延迟。
+     */
+    const val SETTING_CLICK3 = "key_settings.click3"
+    const val SETTING_CLICK3_ON = "key_settings.click3_on"
+    const val SETTING_CLICK3_OFF = "key_settings.click3_off"
+    const val SETTING_CLICK4 = "key_settings.click4"
+    const val SETTING_CLICK4_ON = "key_settings.click4_on"
+    const val SETTING_CLICK4_OFF = "key_settings.click4_off"
+    const val SETTING_CLICK_THEN_LONG = "key_settings.click_then_long"
+    const val SETTING_CLICK_THEN_LONG_ON = "key_settings.click_then_long_on"
+    const val SETTING_CLICK_THEN_LONG_OFF = "key_settings.click_then_long_off"
 
     /** 首页「按键设置」那一行的摘要。 */
     const val HOME_GENERAL_DESC = "home.general_desc"

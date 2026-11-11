@@ -7,14 +7,18 @@ import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.SceneRule
+import com.lookie.opluskey.core.model.trigger
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 /**
  * 配置文件的**线格式模型**（`@Serializable`）—— 与 `Config` 那套数据类分开。
@@ -235,6 +239,46 @@ internal data class KeyDto(
      *  行为与这一项出现之前完全一致。
      */
     @SerialName("extra_clicks") val extraClicks: Map<String, String> = emptyMap(),
+    /**
+     * **哪几档多击开着**（`KeyConfig.extraClicksOn`）—— 只管 [extraClicks] 那张表里哪几档算数。
+     *
+     *  写出来是**击数数组**（`[3]` / `[3,4]`）。读的时候认三种历史形态：
+     *  · 数组（本版）；
+     *  · 布尔（上一版只收成一个开关：`true` = 表里那几档全算）；
+     *  · 缺这一格（老文件）⇒ 按「表里有什么」倒推（见 [clicksOn]）。
+     *
+     *  为什么老文件要倒推：这一格出现之前**手改 `extra_clicks` 是能用的**（判定侧那时直接
+     *  按表算最高击数，没有开关这一道）。缺格就判「没有」，升级上来的人会发现三击突然不灵了，
+     *  而配置里那几个动作还好端端躺着 —— 最难查的一种。
+     *
+     *  反过来，**新写出来的文件一定带这一格**（[of] 同步写出）：用户在界面上把它关掉时表还在、
+     *  但这一格已经是明确的空数组，不会再被倒推回去。
+     */
+    @SerialName("extra_clicks_on") val extraClicksOn: JsonElement? = null,
+    /**
+     * **「单击后长按」这一档启用没有**（`KeyConfig.clickThenLongOn`、[KeyConfig.clickThenLong]）。
+     *
+     *  动作与开关分两格（与「松手执行额外动作」同一条口径）：开关打开、动作还没挑时是
+     *  「开着但没设置」，此时这一档什么都不做；若把「有没有动作」直接当开关，用户打开那一刻
+     *  就会执行一个他没挑过的动作。
+     *
+     *  老文件没有这两格 ⇒ 默认关 + `none`，行为与这一位出现之前完全一致。
+     */
+    @SerialName("click_then_long_on") val clickThenLongOn: Boolean? = null,
+    @SerialName("click_then_long") val clickThenLong: String = Action.NONE,
+    /**
+     * 「单击后长按」那一档自己的参数 —— 与长按那几格（`long_press_ms` / `long_repeat` …）
+     *  **同名不同槽**：调这一档不会动普通长按。
+     *
+     *  老文件没有这几格 ⇒ 走默认值（与长按那一档的默认相同），行为只会出现在用户
+     *  主动打开这一档之后。
+     */
+    @SerialName("click_then_long_press_ms") val clickThenLongPressMs: Int? = null,
+    @SerialName("click_then_long_repeat") val clickThenLongRepeat: Boolean? = null,
+    @SerialName("click_then_long_repeat_interval_ms") val clickThenLongRepeatIntervalMs: Int? = null,
+    @SerialName("click_then_long_repeat_vibrate") val clickThenLongRepeatVibrate: Boolean? = null,
+    @SerialName("click_then_long_release_on") val clickThenLongReleaseOn: Boolean? = null,
+    @SerialName("click_then_long_release") val clickThenLongRelease: String = Action.NONE,
 ) {
     /**
      * [longRelease] 那一格的**动作 token** —— 布尔（上一版把这一档当开关写过）一律当「未设置」。
@@ -243,6 +287,41 @@ internal data class KeyDto(
      */
     private val releaseToken: String
         get() = (longRelease as? JsonPrimitive)?.takeIf { it.isString }?.content ?: Action.NONE
+
+    /**
+     * [extraClicksOn] 真正读成什么 —— 三种历史形态收成同一份集合。
+     *
+     *  「缺这一格」与「上一版的布尔 `true`」都落到**表里配着的那几档**（[tableClicks]）：
+     *  那正是这两种配置写下时的语义（表里的东西会执行）。
+     */
+    private val clicksOn: Set<Int>
+        get() =
+            when (val raw = extraClicksOn) {
+                null -> {
+                    tableClicks
+                }
+
+                //  上一版写的是布尔：`true` = 表里那几档全算；`false` 或别的状态值一律当没有
+                is JsonPrimitive -> {
+                    if (raw.booleanOrNull == true) {
+                        tableClicks
+                    } else {
+                        KeyConfig.clicksOnOf(raw.content)
+                    }
+                }
+
+                is JsonArray -> {
+                    KeyConfig.clicksOnOf(raw.mapNotNull { (it as? JsonPrimitive)?.content?.toIntOrNull() })
+                }
+
+                else -> {
+                    emptySet()
+                }
+            }
+
+    /** [extraClicks] 那张表里认得出的档位（`click3` / `click4` …）—— 老配置倒推用。 */
+    private val tableClicks: Set<Int>
+        get() = KeyConfig.clicksOnOf(extraClicks.keys.mapNotNull { extraClickCount(it) })
 
     /** 按 [ConfigFields] 那张表把取值钳进各自的上下限 —— 上下限只定义在表里。 */
     fun toValues(
@@ -273,7 +352,32 @@ internal data class KeyDto(
                 ConfigFields.F_KEY_TOAST_ON_RUN to (toastOnRun ?: GlobalConfig.DEFAULT_TOAST_ON_RUN),
                 ConfigFields.F_KEY_TOAST_TEMPLATE to (toastTemplate ?: GlobalConfig.DEFAULT_TOAST_TEMPLATE),
                 ConfigFields.F_OWN_SETTINGS_SEEDED to (ownSettingsSeeded ?: false),
-            ),
+                //  「哪几档多击开着」也要走这张表：`toValues` 是两条通道共用的入口，
+                //  这里给文本（`Kind` 只有 Bool / Number / Text），与 `fieldValues()` 同一个编码
+                ConfigFields.F_EXTRA_CLICKS to clicksOn.sorted().joinToString(","),
+                ConfigFields.F_CLICK_THEN_LONG_ON to (clickThenLongOn ?: false),
+            ) + ctlValuesMap(),
+        )
+
+    /**
+     * 「单击后长按」那一族字段（长按延迟 / 连发 / 间隔 / 每次振动 / 松手开关与动作）。
+     *
+     *  单独一支只为让 [toValues] 的圈复杂度留在 detekt 的线内 —— 这一族有六个 `?:`，
+     *  摊在主线上等于给那个函数再加六条分支。
+     */
+    private fun ctlValuesMap(): Map<ConfigFields.Field, Any> =
+        mapOf(
+            ConfigFields.F_CTL_PRESS_MS to
+                clamp(ConfigFields.F_CTL_PRESS_MS, clickThenLongPressMs ?: KeyConfig.DEFAULT_LONG_PRESS_MS),
+            ConfigFields.F_CTL_REPEAT to (clickThenLongRepeat ?: false),
+            ConfigFields.F_CTL_REPEAT_INTERVAL_MS to
+                clamp(
+                    ConfigFields.F_CTL_REPEAT_INTERVAL_MS,
+                    clickThenLongRepeatIntervalMs ?: KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+                ),
+            ConfigFields.F_CTL_REPEAT_VIBRATE to (clickThenLongRepeatVibrate ?: false),
+            ConfigFields.F_CTL_RELEASE_ON to (clickThenLongReleaseOn ?: false),
+            ConfigFields.F_CTL_RELEASE to clickThenLongRelease,
         )
 
     /** 线格式 → 一颗键的配置（含状态分支）。几个 `legacy*` 是迁移兜底，见 [ConfigDto.toConfig]。 */
@@ -292,6 +396,10 @@ internal data class KeyDto(
                         .mapNotNull { (clicks, token) ->
                             extraClickCount(clicks)?.let { it to Action.parse(token) }
                         }.toMap(),
+                //  「单击后长按」的动作**不进 `ConfigFields`**（注入侧不执行动作，只要开关那一位）：
+                //  与 `extraClicks` 那张表同一条，只走落盘这一列
+                clickThenLong = Action.parse(clickThenLong),
+                clickThenLongRelease = Action.parse(clickThenLongRelease),
             )
 
     companion object {
@@ -319,6 +427,16 @@ internal data class KeyDto(
                 ownSettingsSeeded = key.ownSettingsSeeded,
                 scenes = key.scenes.map { SceneRuleDto.of(it) },
                 extraClicks = key.extraClicks.mapKeys { it.key.toString() }.mapValues { it.value.token },
+                //  写侧一律给具体值：给 `null` 的话下次读回来会走「按表倒推」那条老路
+                extraClicksOn = JsonArray(key.extraClicksOn.sorted().map { JsonPrimitive(it) }),
+                clickThenLongOn = key.clickThenLongOn,
+                clickThenLong = key.clickThenLong.token,
+                clickThenLongPressMs = key.clickThenLongPressMs,
+                clickThenLongRepeat = key.clickThenLongRepeat,
+                clickThenLongRepeatIntervalMs = key.clickThenLongRepeatIntervalMs,
+                clickThenLongRepeatVibrate = key.clickThenLongRepeatVibrate,
+                clickThenLongReleaseOn = key.clickThenLongReleaseOn,
+                clickThenLongRelease = key.clickThenLongRelease.token,
             )
     }
 }
@@ -367,31 +485,47 @@ internal data class StateRuleDto(
 }
 
 /**
- * `scenes` 的一项 —— **一个场景块**：一组条件 + 完整的三档动作（见 `SceneRule`）。
+ * `scenes` 的一项 —— **一个场景块**：一组条件 + 它接管的那几档动作（见 `SceneRule`）。
  *
- *  三格动作**缺省 null**（= 这一档不参与），与 `"none"`（显式「无操作」）不是同一件事：
- *  前者让这一档继续往下找 / 回落默认绑定，后者是「命中后这一档什么都不做」。
+ *  动作表 [actions] 的键是**档位 id**（`single` / `double` / `long` / `click3` …，与
+ *  `GestureTrigger.idOf` 同一套字面量）。**表里没有的档位 = 这一档不参与**，
+ *  与显式写 `follow` 同义；`"none"` 则是「命中后这一档什么都不做」。
+ *
+ *  老的 [single] / [double] / [long] 三格**只读不写**：留着它们是为了把已经存在的配置读上来
+ *  （[toScene] 在 [actions] 空着时读那三格）。写下去的一律只有 [actions]。
  */
 @Serializable
 internal data class SceneRuleDto(
     /** 这一块的全部条件（`BranchCondition.token`），同种类之间「或」、不同种类之间「且」。空 = 还没配完。 */
     val conditions: List<String> = emptyList(),
-    /** 单击那一档；`follow` = 跟随默认（不参与），也是默认值。 */
+    /** 档位 id → 动作 token；缺项 = 这一档不参与（见类注释）。 */
+    val actions: Map<String, String> = emptyMap(),
+    /**
+     * **老的**三格 —— 只读（读到就并进 [actions]，见 [toScene]）。
+     *
+     *  写侧仍然会把它们写出来（`encodeDefaults = true`，值是 `follow`）：降级回上一版时，
+     *  那一版只认这三格 —— 写 `follow` 等于「这一档不接管」，与表里没有那一项同义，
+     *  比写 `null` 稳（`null` 落进非空字段要靠 `coerceInputValues` 兜）。
+     */
     val single: String = Action.FOLLOW,
-    /** 双击那一档；默认跟随。组合键不看这一档。 */
     val double: String = Action.FOLLOW,
-    /** 长按那一档；默认跟随。 */
     val long: String = Action.FOLLOW,
     /** 「松手执行额外动作」的开关（`SceneRule.releaseOn`）。 */
     val releaseOn: Boolean = false,
     /** 松手那一档的动作 token；默认 `none` = 这一块命中时松手什么都不做。 */
     val release: String = Action.NONE,
+    /** 「单击后长按」的松手 —— 与 [releaseOn] / [release] 同一对，挂在另一档上。 */
+    val chainReleaseOn: Boolean = false,
+    val chainRelease: String = Action.NONE,
     val enabled: Boolean = true,
 ) {
     /**
      * 线格式 → 一块场景；**认不出就整块丢掉**（返回 `null`）。
      *
      *  条件空着的块也算认不出：它在判定侧永不成立，留着只会让「这张表里有什么」对不上。
+     *
+     *  档位 id 认不出的那一条**单独丢掉并留账**（不连坐整块）：那是手改 / 降级留下的，
+     *  丢掉它只影响那一档；整块丢掉会把用户其余几档一起抹了。
      */
     fun toScene(): SceneRule? {
         val parsed = conditions.map { BranchCondition.parse(it) }
@@ -402,13 +536,38 @@ internal data class SceneRuleDto(
         }
         return SceneRule(
             conditions = parsed.filterNotNull(),
-            single = Action.parse(single),
-            double = Action.parse(double),
-            long = Action.parse(long),
+            actions = slotActions(),
             releaseOn = releaseOn,
             release = Action.parse(release),
+            chainReleaseOn = chainReleaseOn,
+            chainRelease = Action.parse(chainRelease),
             enabled = enabled,
         )
+    }
+
+    /**
+     * 档位 → 动作 —— **新格优先，老格只在对应档位没写过时补**。
+     *
+     *  两个来源同时存在只可能是「新版写过一次、某个旧版又存过一次」那种混杂文件：
+     *  那时新格里的是上次的完整结果，老格最多是其中三档的一份旧副本。
+     */
+    private fun slotActions(): Map<GestureTrigger, Action> {
+        val out = LinkedHashMap<GestureTrigger, Action>()
+        actions.forEach { (id, token) ->
+            val trigger = GestureTrigger.ofId(id)
+            if (trigger == null) {
+                XLog.w("配置：场景块里有认不出的档位（丢掉这一档）：$id")
+            } else {
+                out[trigger] = Action.parse(token)
+            }
+        }
+        //  老的三格：只补新格没写到的档位，且 `follow` 不算「写了」（它就是「不参与」）
+        listOf("single" to single, "double" to double, "long" to long).forEach { (id, token) ->
+            val trigger = Gesture.ofId(id)?.trigger() ?: return@forEach
+            val action = Action.parse(token)
+            if (action !is Action.Follow) out.putIfAbsent(trigger, action)
+        }
+        return out
     }
 
     companion object {
@@ -417,15 +576,21 @@ internal data class SceneRuleDto(
          *
          *  条件空着的块**不写**（调用方已经滤过）；这里再兜一次是防手滑 ——
          *  写下去读回来会被 [toScene] 整块丢掉，等于白写。
+         *
+         *  只写 [actions]：老的三格留空，读侧会把「没写到」当成「这一档不参与」。
          */
         fun of(scene: SceneRule): SceneRuleDto =
             SceneRuleDto(
                 conditions = scene.conditions.map { it.token },
-                single = scene.single.token,
-                double = scene.double.token,
-                long = scene.long.token,
+                actions =
+                    scene.actions
+                        .filterValues { it !is Action.Follow }
+                        .mapKeys { GestureTrigger.idOf(it.key) }
+                        .mapValues { it.value.token },
                 releaseOn = scene.releaseOn,
                 release = scene.release.token,
+                chainReleaseOn = scene.chainReleaseOn,
+                chainRelease = scene.chainRelease.token,
                 enabled = scene.enabled,
             )
     }
@@ -445,23 +610,26 @@ private fun mergeScenes(
 /**
  * 老列 → 场景表：**条件完全相同的那几条并成一块**，各填自己那一档。
  *
- *  这就是这次翻转的迁移口径 —— 老配置的每一条规则本来只认一个手势，并起来正好是一块三档：
+ *  这就是翻转的迁移口径 —— 老配置的每一条规则本来只认一个手势，并起来正好是一块多档：
  *  · 顺序按**第一次出现**的那一块，与老的「从上往下找」一致；
  *  · 同一块同一档出现多次时**取最靠前的那条**（老判定就是「第一条赢」）；
  *  · **停用的老规则直接跳过**：它的那一档留「跟随默认」⇒ 回落默认绑定，与停用前的行为逐字一致。
+ *
+ *  老列里的手势 id 只有 `single` / `double` / `long` 三种（`Gesture.ofId` 认的那三个）——
+ *  多击是后来才有的档位，老列里写不出来。
  */
 private fun mergeLegacy(rules: List<StateRuleDto>): List<SceneRule> {
     val merged = LinkedHashMap<List<String>, SceneRule>()
     for (rule in rules) {
-        //  三样都可能让这一条进不了表：停用、手势认不出、条件认不出。合成一条判据，
+        //  三样都可能让这一条进不了表：停用、档位认不出、条件认不出。合成一条判据，
         //  一处 `continue` —— 分开写会顶到 detekt 的「循环里跳转太多」。
-        val gesture = Gesture.ofId(rule.gesture)
+        val trigger = Gesture.ofId(rule.gesture)?.trigger()
         val conditions = rule.conditionsOrNull()
-        if (!rule.enabled || gesture == null || conditions == null) continue
+        if (!rule.enabled || trigger == null || conditions == null) continue
         val key = conditions.map { it.token }
         val block = merged[key] ?: SceneRule(conditions = conditions)
-        if (block.actionOf(gesture) is Action.Follow) {
-            merged[key] = block.withAction(gesture, Action.parse(rule.action))
+        if (block.actionOf(trigger) is Action.Follow) {
+            merged[key] = block.withAction(trigger, Action.parse(rule.action))
         }
     }
     return merged.values.toList()

@@ -18,6 +18,7 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.model.gestureOrNull
+import com.lookie.opluskey.core.model.isReleasePhase
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.host.action.ActionRunner
@@ -181,7 +182,9 @@ internal object GestureExec {
                 return
             }
 
-        if (staleOrDuplicate(key.id, phaseId, sentAt, keepLate = trigger is GestureTrigger.Release)) return
+        //  「松手」两档都免检过期：它们都不是一次新的按压，而是一次按压的**收尾**。
+        //  `ClickThenLongRelease` 与 `Release` 同一个道理 —— 它也是抬手那一刻才发的那一条。
+        if (staleOrDuplicate(key.id, phaseId, sentAt, keepLate = trigger.isReleasePhase)) return
 
         //  「这一下归模块」那一笔（`PressTrace`）不在这里记：它要等开关闸也过完 ——
         //  停用的键不该把宿主的吞键窗口往后推（见 [dispatch]）。
@@ -219,7 +222,6 @@ internal object GestureExec {
                 } ?: return
         //  与单键那条同一笔账：过完闸才记「这一下归模块」（理由见 [handle] 里那段）
         PressTrace.noteClaim()
-        val gesture = trigger.gestureOrNull()
         //  条件执行：与单键那一支同一套 —— 先在这档的顺序表里找，第一条成立的就执行它，
         //  一条都不中才落到 `actionOf` 那一档绑定。判据现判（按下的那一刻），且**一次按下的
         //  一次判定里同一个条件只判一次**（一块可以带好几条，几条规则之间又常重复）。
@@ -227,18 +229,18 @@ internal object GestureExec {
 
         fun matchesCondition(condition: BranchCondition): Boolean =
             judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
-        if (gesture == null) {
-            //  「松手执行额外动作」这一档：与上面那几档互斥，单独一支（见 [runComboRelease]）。
+        if (trigger == GestureTrigger.Release) {
+            //  「松手执行额外动作」这一档：与其它几档互斥，单独一支（见 [runComboRelease]）。
             runComboRelease(combo, trigger, config, repeat, ::matchesCondition)
             return
         }
-        val action = combo.resolve(gesture, ::matchesCondition)
+        val action = combo.resolve(trigger, ::matchesCondition)
         //  这一格是「无操作」且开关打开 ⇒ **不吞键**：两颗键各按自己这一档照常执行
         //  （见 `Config.comboPassthroughFor`：这一组写过就用自己的，否则看公共设置）。
         //   这就是「配了组合、但只给长按绑了动作」时短按那颗依旧能用的那条路 ——
         //   为假时什么都不做，与这一位出现之前一致。
         if (!action.isBound && config.comboPassthroughFor(combo)) {
-            runComboMembers(combo, gesture, config)
+            runComboMembers(combo, trigger, config)
             return
         }
         executeCombo(combo, trigger, action, config, repeat)
@@ -368,7 +370,7 @@ internal object GestureExec {
      */
     private fun runComboMembers(
         combo: ComboKey,
-        gesture: Gesture,
+        trigger: GestureTrigger,
         config: Config,
     ) {
         val r =
@@ -390,13 +392,13 @@ internal object GestureExec {
             }
             val keyConfig = config.key(key)
             val action =
-                keyConfig.actionFor(gesture) { condition ->
+                keyConfig.actionFor(trigger) { condition ->
                     judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
                 }
             //  「（组合透传）」挂在**手势**那一段上：模板里 `$gesture` 换成「单击（组合透传）」，
             //  默认模板那句话于是与拆分之前逐字一致。
             val keyLabel = keyName(key)
-            val gestureLabel = "${gestureName(gesture)}（组合透传）"
+            val gestureLabel = "${gestureLabel(trigger)}（组合透传）"
             val subject = "$keyLabel - $gestureLabel"
             XLog.w("$subject → ${XLog.redactToken(action.token)}（宿主进程执行）")
             //  「振动反馈」同样按**这一颗键**的生效值给（不是公共那一档）：
@@ -537,7 +539,7 @@ internal object GestureExec {
         // 链路自检那一笔必须在 `run` **之后**，且「无操作」不算执行过：
         //  `run` 内部吞掉执行异常，绑了个解析不出来的 token 也走同一条路 —— 提前置位会让
         //  「关于模块」的「使用验证」在什么都没发生时显示已生效（假绿灯）。
-        if (shouldVibrate(repeat, keyConfig, fired, colorOsApi)) haptic(config, keyConfig)
+        if (shouldVibrate(repeat, keyConfig, trigger, fired, colorOsApi)) haptic(config, keyConfig)
         // 提示只在第一次派发时说：连续触发的重复是同一次按压（按住不放），弹几十条没有意义
         if (!repeat) announceOnce(config, keyConfig, id, trigger, fired)
         val ok = r.run(fired, "${id.label} - ${trigger.label}", colorOsApi, own.vibrate)
@@ -573,6 +575,14 @@ internal object GestureExec {
         //  一块都不中 ⇒ 才补按键自己的 `longRelease`。判据与长按那一档同一份，且共用同一次按压里
         //  的 `judged` 缓存（不多判一轮）。
         if (trigger == GestureTrigger.Release) {
+            //  长按这一档**本身没有动作**时，松手这一刀整条不成立（见 `KeyConfig.releaseBound` /
+            //  `longActionExists`）：松手动作是「这一档执行完之后」的收尾，主语没有就不该有谓语。
+            //  这一道与判定侧那一份判据**故意重复**：判定侧是注入在 system_server 里的旧代码时
+            //  （改了判定、没重启），它照样会发这一条 —— 在这里拦住，用户不必为了一个开关重启整机。
+            if (!keyConfig.releaseBound) {
+                XLog.w("${id.label} - 松手：长按这一档是无操作（或松手已让位），不派发")
+                return null
+            }
             val fired = keyConfig.resolveRelease(matchesCondition)
             if (!fired.isBound) {
                 XLog.w("${id.label} - 松手：这一下没有可执行的动作（长按命中场景 / 按键没配松手），不派发")
@@ -580,12 +590,9 @@ internal object GestureExec {
             }
             return fired
         }
-        val gesture = trigger.gestureOrNull()
-        return if (gesture == null) {
-            keyConfig.actionOf(trigger)
-        } else {
-            keyConfig.actionFor(gesture, matchesCondition)
-        }
+        //  其余档位统一走**触发条件**：场景块能接管哪几档由它自己的 `actions` 说，
+        //  所以「只给三击配了场景、直接绑定那一格空着」也照样命中（`pickAction` 一处收口）。
+        return keyConfig.actionFor(trigger, matchesCondition)
     }
 
     /**
@@ -621,11 +628,20 @@ internal object GestureExec {
     private fun shouldVibrate(
         repeat: Boolean,
         keyConfig: KeyConfig,
+        trigger: GestureTrigger,
         action: Action,
         colorOsApi: Boolean,
     ): Boolean {
         if (!action.isBound) return false
-        if (!repeat || keyConfig.longRepeatVibrate) return !colorOsRinger(action, colorOsApi)
+        //  连发时振不振，两档各问各的：「单击后长按」自己有「每次都振动」
+        //  （`clickThenLongRepeatVibrate`），不能拿长按那一档的值顶。
+        val repeatVibrate =
+            if (trigger == GestureTrigger.ClickThenLong) {
+                keyConfig.clickThenLongRepeatVibrate
+            } else {
+                keyConfig.longRepeatVibrate
+            }
+        if (!repeat || repeatVibrate) return !colorOsRinger(action, colorOsApi)
         return false
     }
 

@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.model
 
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
@@ -55,6 +56,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.GridDots
 import io.github.lyxnx.compose.ui.tablericons.outline.HandClick
 import io.github.lyxnx.compose.ui.tablericons.outline.HandFinger
 import io.github.lyxnx.compose.ui.tablericons.outline.HandGrab
+import io.github.lyxnx.compose.ui.tablericons.outline.HandMove
+import io.github.lyxnx.compose.ui.tablericons.outline.HandRingFinger
+import io.github.lyxnx.compose.ui.tablericons.outline.HandThreeFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.HandTwoFingers
 import io.github.lyxnx.compose.ui.tablericons.outline.Hash
 import io.github.lyxnx.compose.ui.tablericons.outline.History
@@ -315,6 +319,50 @@ internal object PageIcons {
             Gesture.SINGLE -> TablerIcons.Outline.HandFinger
             Gesture.DOUBLE -> TablerIcons.Outline.HandTwoFingers
             Gesture.LONG -> TablerIcons.Outline.HandClick
+        }
+
+    /**
+     * 一档**触发条件**的行首字形 —— 场景块的动作行与「场景动作」页的手势带都按它画。
+     *
+     *  三档沿用原来那三颗（一根手指 / 两根手指 / 按下那一下）；第 3 击起那几档与双击**共用**
+     *  「两根手指」—— 连击本来就是「多按几下」，波形上没有新东西可画。哪一档由标题里那两个字
+     *  （「三击 | 手电筒」）说，与其它行「左边图标管去处、右边文字管具体」的分工一致。
+     */
+    fun gestureIcon(trigger: GestureTrigger): ImageVector =
+        when (trigger) {
+            GestureTrigger.LongPress -> {
+                TablerIcons.Outline.HandClick
+            }
+
+            //  松手那一档不单独占一行（它是长按的收尾，见 `GestureTrigger.Release`）
+            GestureTrigger.Release -> {
+                TablerIcons.Outline.HandClick
+            }
+
+            //  「单击后长按」用「移动的手」（`hand-move`，用户指定）：它说的是「两段之间换了形态」，
+            //  与前几档的「几根手指」不是一个轴，换一颗字形才区分得开。
+            GestureTrigger.ClickThenLong -> {
+                TablerIcons.Outline.HandMove
+            }
+
+            //  这一档的松手不单独占一行（与 `Release` 同一个道理：它是那一档的收尾）
+            GestureTrigger.ClickThenLongRelease -> {
+                TablerIcons.Outline.HandMove
+            }
+
+            is GestureTrigger.Click -> {
+                when (trigger.count) {
+                    1 -> TablerIcons.Outline.HandFinger
+
+                    2 -> TablerIcons.Outline.HandTwoFingers
+
+                    3 -> TablerIcons.Outline.HandThreeFingers
+
+                    //  四击起用「无名指」（`hand-ring-finger`，用户指定）——
+                    //  Tabler 没有四根手指的字形，这一颗是那套里最接近「又一个具体手指」的
+                    else -> TablerIcons.Outline.HandRingFinger
+                }
+            }
         }
 
     /**

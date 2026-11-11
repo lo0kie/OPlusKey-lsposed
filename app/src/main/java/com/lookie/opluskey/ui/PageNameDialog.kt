@@ -138,7 +138,8 @@ internal fun SettingsPage.NameDialog(
  *
  *  状态（[text]）留给调用方：初值与「关掉再打开要不要重置」是各自弹窗的事。
  *
- * @param icon 行首那颗图标 —— 名字那三处都用标签（`label-important`）；滑杆那一档取**原行**的
+ * @param icon 行首那颗图标 —— **取触发这一格的那一行**（滑杆、提示文案、变量值、按键改名、配置改名
+ *   都是这么取的）：弹窗与它来处那一行同一个记号，不必替它另挑一颗
  * @param show 弹窗开着没有 —— 往下透给输入框，供它的键盘守卫判断该不该动手
  * @param maxLength 能输多少字 —— 名字是 [MAX_NAME_LENGTH]，数值那一档按上限的位数算
  * @param digitsOnly 只收半角数字（滑杆的手动输入这一档：中文输入法、全角数字、粘贴进来的

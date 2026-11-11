@@ -3,16 +3,19 @@ package com.lookie.opluskey.ui.screen
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,24 +26,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.dropShadow
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Outline
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.Density
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.lookie.opluskey.core.log.XLog
@@ -64,7 +67,6 @@ import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.SnackbarDefaults
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.squircle.addSquircleRect
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -112,6 +114,8 @@ internal fun SettingsPage.PageSnackbars(statusBarTop: Dp) {
                 HintSlot(
                     item = item,
                     backdrop = backdrop,
+                    //  滚动的这段不能到点收：把这一条的到期往后推（见 `HintQueue.extend`）
+                    onScrollMs = { ms -> hints.queue.extend(item.id, ms) },
                     //  **后来的压在上面**（`Column` 的绘制顺序是「后面的盖前面的」，正好反着）。
                     //  位置在最上面不代表层级最高：入场那一下新旧会短暂重叠，新的必须盖住旧的。
                     modifier = Modifier.zIndex((items.size - index).toFloat()),
@@ -233,6 +237,7 @@ private fun HintSlot(
     item: HintItem,
     backdrop: HazeState?,
     modifier: Modifier = Modifier,
+    onScrollMs: (Long) -> Unit,
 ) {
     val progress = remember { Animatable(0f) }
     LaunchedEffect(item.exiting) {
@@ -292,7 +297,7 @@ private fun HintSlot(
                 bottom = HINT_SHADOW_CAP,
             ),
         ) {
-            HintCapsule(item.text, item.icon, backdrop)
+            HintCapsule(item.text, item.icon, backdrop, onScrollMs)
         }
     }
 }
@@ -334,8 +339,13 @@ private fun HintCapsule(
     message: String,
     icon: ImageVector?,
     backdrop: HazeState?,
+    /** 文字比胶囊宽、要滚多久（毫秒）—— 调用方据此把这一条的到期时间往后推。 */
+    onScrollMs: (Long) -> Unit,
 ) {
-    val shape = remember { SquircleShape(HINT_CAPSULE_RADIUS) }
+    //  形状是**正圆弧的胶囊**（半径 = 高度一半），不是超椭圆：用户口径「圆角加大、高度不变」——
+    //  超椭圆的半径顶到 `min(宽, 高) / 2` 之后就没法再大（`addSquircleRect` 自己会钳到那一档），
+    //  而同样半径下超椭圆的两端比圆弧「方」一档，所以再圆只能换成圆弧。
+    val shape = remember { RoundedCornerShape(percent = 50) }
     val colors = SnackbarDefaults.snackbarColors()
     // 取样层没就绪（建页期那几帧）就不糊，底色退回不透明的那一档
     val container = if (backdrop == null) colors.containerColor else frostedContainer(colors.containerColor)
@@ -378,9 +388,8 @@ private fun HintCapsule(
                     animationSpec = tween(HINT_RESIZE_MS, easing = DecelerateEasing()),
                     alignment = Alignment.Center,
                 ).padding(SnackbarDefaults.InsideMargin)
-                // 加高这一档：squircle 的半径上限是 `min(宽, 高) / 2`，提示条只有一行字时
-                //  那一半把半径钳死了，角看上去发方（用户反馈「圆角变小了」）。上下各加 2dp
-                //  让上限抬 2dp —— 换来的圆角，代价是胶囊胖一点。
+                // 加高这一档：现在只决定高度 —— 形状换成正圆弧之后半径自动取高度的一半，
+                //  它不再参与圆角（见 [HINT_TALLER_BY]）。留着是因为胶囊的高度要保持不变。
                 .padding(vertical = HINT_TALLER_BY)
                 //  这一层**没有任何手势**：胶囊压在内容上，点在它身上要**穿透**到底下那一行
                 //  （用户口径「snackbar 改成点击穿透，点它时它下面的东西响应」）。
@@ -388,7 +397,9 @@ private fun HintCapsule(
                 //  但那正好反了：提示只是回执，用户真要点的往往就是它盖住的那一行。
                 .semantics { liveRegion = LiveRegionMode.Polite },
         // 文字**垂直居中**：`Box` 默认 `TopStart`，胶囊比一行字高时文字会顶在上沿
-        //  （用户反馈「文字没有垂直居中」）。水平方向本来就贴着文字宽度，居中与否看不出。
+        //  （用户反馈「文字没有垂直居中」）。水平这一档给的是**每行之内**的对齐（`textAlign`）：
+        //  单行时胶囊贴着文字宽度，看不出差别；换行 / 手写换行时第二行起才归位
+        //  （用户口径「通用消息条文字改成水平居中」）。
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -410,76 +421,99 @@ private fun HintCapsule(
                 //  与文字同色：图标是这句话的性质记号，不该比正文更抢眼
                 tint = colors.contentColor,
             )
-            Text(
+            //  **只占一行**：溢出不再换行 / 不再省略，改成横向跑马灯（见 [MarqueeLine]）。
+            MarqueeLine(
                 text = shownText,
                 color = colors.contentColor,
-                // 库 `couiTextAppearanceButton`：14sp Medium —— 与真机上的提示同一档字号
                 style = SnackbarDefaults.textStyle(),
-                // 胶囊高度是设计值，字在里头竖居中 —— 补一档光学修正（见 `opticalCenter`）
-                modifier = Modifier.opticalCenter(SnackbarDefaults.textStyle()),
+                onScrollMs = onScrollMs,
             )
         }
     }
 }
 
 /**
- * 超椭圆（squircle）形状 —— 提示胶囊那一圈圆角用它画。
+ * 提示条里那一行字 —— **只占一行**：超出就横向跑马灯，不换行、不省略。
  *
- * ## 为什么不用 `RoundedCornerShape`
+ * ## 为什么自己写而不用 `Modifier.basicMarquee`
  *
- *  COUI 的圆角全是 squircle（卡片 / 按钮 / 弹窗 / 顶栏都用它），一个正圆角的胶囊混进去，
- *  四角会显得「比周围更尖」—— 提示条正好压在卡片与工具栏上，对比最明显。
+ *  库那支是**无限循环**的（`iterations` 默认 `Int.MAX_VALUE`），滚完一轮还会跳回开头；
+ *  而这里要的是「滚到末尾停住，停住之后这一条才开始计时关闭」—— 它既没有完成回调，
+ *  也没有「停在末尾」这一档。
  *
- * ## 为什么自己实现 `Shape` 而不是直接用 `Modifier.squircle*`
+ *  自己排还顺带解决了「什么时候算溢出」：文字按**不限宽**量一次，容器宽度由
+ *  [BoxWithConstraints] 给，两者一比就知道要不要滚、滚多远、滚多久 —— 不必去猜胶囊的
+ *  最大宽度（那还要减图标、间距、内外边距，少减一项就误判）。
  *
- *  库给的是三支 `Modifier`（`squircleBackground` / `squircleClip` / `squircleBorder`），
- *  而这个胶囊需要**同一个形状**贯穿五处：阴影（`dropShadow`）、磨砂离屏（[frosted]）、
- *  底色、描边、裁内容 —— 前两者只收 `Shape`。所以这里把库的 `addSquircleRect` 包一层，
- *  形状定义仍然只有库那一份，不自己写贝塞尔。
+ * ## 时序
  *
- * @param cornerRadius 圆角半径（与库 `SnackbarDefaults.SingleLineCornerRadius` 同一档）
+ *  量出要滚 `ms` 之后先调 [onScrollMs]（把这一条的到期推后 `ms`），再开始滚 —— 于是
+ *  「滚动到顶」那一刻，剩下的正好是完整的一档停留时间（用户口径「滚动到顶后开始计时关闭」）。
+ *
+ * ## 为什么是 `Layout` + `place(-offset)`
+ *
+ *  `Text` 必须按**不限宽**测量：否则它自己就把字裁在容器边上，位移再多也看不到后面那段。
+ *  而节点宽度仍要受容器约束（胶囊不能跟着文字无限变宽）。所以「量用 `Constraints()`、
+ *  节点宽取 `min(文字宽, 上限)`、内容往左挪」—— 与 `basicMarquee` 内部同一个做法，
+ *  区别只在滚到末尾就停。
  */
-private class SquircleShape(
-    private val cornerRadius: Dp,
-) : Shape {
-    //  上一次算出来的轮廓。同一个形状在一帧里要被问**四五次**（阴影 / 磨砂裁剪 / 底色 /
-    //  描边 / 裁内容），每次都是一模一样的尺寸 —— 不缓存就是同一帧里重画四五遍同样的
-    //  8 段超椭圆曲线、再建四五个 `Path`；进出场那几帧本来就没有余量，这一档省得最省事。
-    private var cached: Outline? = null
-    private var cachedSize: Size = Size.Unspecified
-    private var cachedDensity = 0f
-    private var cachedDirection: LayoutDirection? = null
-
-    override fun createOutline(
-        size: Size,
-        layoutDirection: LayoutDirection,
-        density: Density,
-    ): Outline {
-        val hit = cached
-        //  尺寸、密度、书写方向三者任一变了才重算（换句时宽度会变，那是唯一会命中的场合）
-        if (hit != null && sameAsCached(size, density, layoutDirection)) return hit
-        val path =
-            Path().apply {
-                addSquircleRect(
-                    width = size.width,
-                    height = size.height,
-                    cornerRadius = with(density) { cornerRadius.toPx() },
-                )
+@Composable
+private fun MarqueeLine(
+    text: String,
+    color: Color,
+    style: TextStyle,
+    onScrollMs: (Long) -> Unit,
+) {
+    BoxWithConstraints {
+        val density = LocalDensity.current
+        val measurer = rememberTextMeasurer()
+        //  不限宽量一次：文字的真实宽度（也决定滚多远）
+        val full =
+            remember(text, style) {
+                measurer
+                    .measure(text, style, maxLines = 1, softWrap = false)
+                    .size.width
+                    .toFloat()
             }
-        val outline = Outline.Generic(path)
-        cached = outline
-        cachedSize = size
-        cachedDensity = density.density
-        cachedDirection = layoutDirection
-        return outline
+        val room = if (maxWidth == Dp.Infinity) Float.MAX_VALUE else with(density) { maxWidth.toPx() }
+        val distance = (full - room).coerceAtLeast(0f)
+        val overflow = distance > with(density) { HINT_MARQUEE_SLACK.toPx() }
+        val ms = with(density) { (distance / HINT_MARQUEE_SPEED.toPx() * 1000f).toInt() }
+        val offset = remember { Animatable(0f) }
+        LaunchedEffect(text, overflow, ms) {
+            offset.snapTo(0f)
+            if (!overflow || ms <= 0) return@LaunchedEffect
+            //  先把到期推后（起步前那一拍 + 滚动的这段），再滚：这两段里都不能到点收
+            //  （见 `HintQueue.extend`）
+            onScrollMs(HINT_MARQUEE_START_DELAY_MS + ms)
+            //  先停一拍再动：一出现就滚会读成「这条在闪」，也来不及看清开头几个字
+            delay(HINT_MARQUEE_START_DELAY_MS)
+            //  位移量是**正的**，摆放时取负（`place(-offset)`）—— 于是文字往**左**走、
+            //  右边那截没看到的字从胶囊右沿露出来（跑马灯的方向）。反过来的话是先看到空白。
+            offset.animateTo(distance, tween(ms, easing = LinearEasing))
+        }
+        Layout(
+            content = {
+                Text(
+                    text = text,
+                    color = color,
+                    style = style,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    // 胶囊高度是设计值，字在里头竖居中 —— 补一档光学修正（见 `opticalCenter`）
+                    modifier = Modifier.opticalCenter(style),
+                )
+            },
+            modifier = Modifier.clipToBounds(),
+        ) { measurables, constraints ->
+            val placeable = measurables.first().measure(Constraints())
+            val width = minOf(placeable.width, constraints.maxWidth)
+            layout(width, placeable.height) {
+                placeable.place(-offset.value.roundToInt(), 0)
+            }
+        }
     }
-
-    /** 上一次算的那份轮廓还能不能复用 —— 尺寸 / 密度 / 书写方向三样都对上才算命中。 */
-    private fun sameAsCached(
-        size: Size,
-        density: Density,
-        layoutDirection: LayoutDirection,
-    ): Boolean = size == cachedSize && density.density == cachedDensity && layoutDirection == cachedDirection
 }
 
 /**
@@ -505,11 +539,11 @@ private val HINT_BORDER_WIDTH = 1.dp
 private const val HINT_BORDER_ALPHA = 0.12f
 
 /**
- * 胶囊上下各多留的一档 —— 为的是把 squircle 的半径上限抬起来。
+ * 胶囊上下各多留的一档 —— 现在只决定**高度**，不再影响圆角。
  *
- *  `addSquircleRect` 会把半径钳到 `min(宽, 高) / 2`，而 `SnackbarDefaults.SingleLineCornerRadius`
- *  换算出来的半径比单行胶囊高度的一半还大，角看上去就比同半径的圆弧「更方」（用户反馈
- *  「圆角变小了」）。上下各 2dp 把这个上限抬起来，角能撑大一点；代价是胶囊略胖。
+ *  它是为超椭圆那套加的（那时半径会被钳到 `min(宽, 高) / 2`，把上限抬 2dp 角才撑得开）。
+ *  形状换成正圆弧之后半径自动取高度的一半，这一档与圆角无关了；**留着是因为高度要保持不变**
+ *  （用户口径「圆角加大、高度不变」），去掉的话胶囊会矮 4dp。
  *
  *  图标**不参与**这一档的高度：它按 [HINT_ICON_SIZE] 画、比那行字还矮，胶囊的高度仍然只由
  *  文字决定（见 `HintCapsule` 里那条「图标不套容器」的注释）。
@@ -540,14 +574,6 @@ private val HINT_SIDE_MARGIN = 16.dp
 
 /** 胶囊上下两侧的外边距（库 `Snackbar` 内联的那 4dp）—— 与 [HINT_SHADOW_CAP] 的上下各 4dp 相加，才是两条之间的 8dp。 */
 private val HINT_ITEM_MARGIN = 4.dp
-
-/**
- * 胶囊圆角 —— 取库的**单行**那一档（24dp，`couiRoundCornerXXL`）。
- *
- *  库会按行数在 16dp / 24dp 之间切；这里两行都当胶囊看：提示基本都是一行，
- *  真换行时保持同一颗圆角的观感也比中途变一次圆角稳。
- */
-private val HINT_CAPSULE_RADIUS = SnackbarDefaults.SingleLineCornerRadius
 
 /**
  * 图标本体尺寸 —— 18dp，比 14sp 那行字（行高约 20dp）矮一点点。
@@ -624,6 +650,28 @@ private const val HINT_SCALE = 0.92f
  *  加上前后两段文字淡入淡出也要 300ms 出头，再长就显得慢半拍。
  */
 private const val HINT_RESIZE_MS = 120
+
+/**
+ * 跑马灯的速度 —— 每秒多少 dp。
+ *
+ *  32dp/s 与系统通知栏那条滚动一个量级：一句十几二十个字的长提示滚完两三秒，念得下来又不拖；
+ *  再快就成了「刷过去」，再慢则这一条要在屏幕上挂太久。
+ */
+private val HINT_MARQUEE_SPEED = 32.dp
+
+/**
+ * 出现之后先停多久再开始滚（毫秒）—— 用户口径「消息出现后 0.5 秒再开始滚动」。
+ *
+ *  这一拍也是这条提示真正「静止可读」的窗口：一出现就动，开头几个字根本来不及看，
+ *  读起来像「这条在闪」。它计入 [HintQueue.extend] 推后的那一笔，所以不会挤掉末尾的停留。
+ */
+private const val HINT_MARQUEE_START_DELAY_MS = 500L
+
+/**
+ * 判定「溢出」的容差 —— 浮点取整会让刚好铺满的一条被判成要滚，白滚一次再停住。
+ * 1dp 足够吃掉那点误差，又不会把真溢出半格的长句漏掉。
+ */
+private val HINT_MARQUEE_SLACK = 1.dp
 
 /** 换句时文字淡出 / 淡入各自的时长 —— 只是「别硬切」，不需要看出渐变，所以给得很短。 */
 private const val HINT_TEXT_FADE_MS = 35

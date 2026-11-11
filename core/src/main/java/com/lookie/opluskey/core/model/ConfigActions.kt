@@ -87,17 +87,17 @@ fun Config.actionTokens(): List<String> =
 fun Config.bindsToken(token: String): Boolean = actionTokens().any { it == token }
 
 /**
- * 一块场景里的**四格**动作 —— 「换动作」与「列出动作」两条路共用，免得一处改了四格、另一处只改了三格。
+ * 一块场景里的**全部动作位** —— 「换动作」与「列出动作」两条路共用，免得一处改了这里、另一处漏了那里。
  *
- *  松手那一格（`release`）与前三档一样是「一个能放动作的位置」，删命令 / 改名的反查必须数得到它。
+ *  档位是个**表**（`SceneRule.actions`）而不是三个固定字段：表里有什么就改什么，
+ *  多一档 / 少一档都不用来改这段。松手那一格（`release`）与各档一样是「一个能放动作的位置」，
+ *  删命令 / 改名的反查必须数得到它。
  */
 private fun SceneRule.mapActions(transform: (Action) -> Action): SceneRule =
     copy(
-        single = transform(single),
-        double = transform(double),
-        long = transform(long),
+        actions = actions.mapValues { transform(it.value) },
         release = transform(release),
     )
 
 /** 一块场景里**写过**的那几格动作的 token（没配的档不算）。 */
-private fun SceneRule.actionTokens(): List<String> = listOf(single, double, long, release).filter { it.isBound }.map { it.token }
+private fun SceneRule.actionTokens(): List<String> = (actions.values + release).filter { it.isBound }.map { it.token }

@@ -1,25 +1,33 @@
 package com.lookie.opluskey.core.model
 
 /**
- * 一个**场景块** —— 一组条件 + **完整的三档手势**。
+ * 一个**场景块** —— 一组条件 + **这颗键认得的每一档手势**（`GestureTrigger` → 动作）。
  *
- * ## 为什么是「块里装三档」，而不是「档里列场景」
+ * ## 为什么是「块里装全部档位」，而不是「档里列场景」
  *
- *  一条规则只认一个手势时，用户要写三次「在微信里」才能把三档都配出来；而三档之间本来是
- *  同一个场景的三件事 —— 切到微信之后单击做什么、双击做什么、按住做什么。
+ *  一条规则只认一个手势时，用户要写好几遍「在微信里」才能把各档都配出来；而这些档位本来是
+ *  同一个场景的几件事 —— 切到微信之后单击做什么、双击做什么、按住做什么。
  *
- *  现在一块就是那个场景：`conditions` 成立 ⇒ 这一块的 [single] / [double] / [long] 接管这三档。
- *  于是「加一个场景」是一次动作，不是三次。
+ *  现在一块就是那个场景：`conditions` 成立 ⇒ 这一块在**它配过的每一档**上都接管
+ *  （单击 / 双击 / 长按 / 三击 / 四击…）。于是「加一个场景」是一次动作，不是三次。
  *
- * ## 三档默认都是「跟随默认」（= 这一档不参与）
+ * ## 档位是数据，不是那个三值枚举
  *
- *  [Action.Follow] 与 [Action.None] 是**两件事**：
- *  · [Action.Follow]（界面上「跟随默认」，也是**默认值**）⇒ 这一档**不被这一块接管**，
+ *  [actions] 的键是 [GestureTrigger] —— 与「按键绑定」页排页、判定器数击数、执行器取动作
+ *  用的是同一套触发条件。所以「多加一档」（比如第 5 击）在这里**不用再改一个格子**：
+ *  它本来就是「连击次数 = 5」这一个取值。
+ *
+ *  **键缺项与 `Action.Follow` 同义**：都表示「这一档不由这一块接管」。
+ *  写入侧（[withAction]）看到 `Follow` 就把那一项**删掉**，于是配置里只留真的配过的档位。
+ *
+ * ## `Follow` 与 `None` 是两件事
+ *
+ *  · `Follow`（界面上「跟随默认」，也是**没配过**那一档的答案）⇒ 这一档**不被这一块接管**，
  *    继续往下找条件成立的块，最后回落到按键绑定里这一档绑的动作 —— 老配置迁移过来就是这个状态
  *    （见 `ConfigDto`），所以升级前后行为逐字一致；
- *  · [Action.None]（界面上选的「无操作」）⇒ 这一块命中时**这一档什么都不做**（吞掉）。
+ *  · `None`（界面上选的「无操作」）⇒ 这一块命中时**这一档什么都不做**（吞掉）。
  *
- *  合并成一个的话，「只给长按配了动作的场景」会把单击 / 双击一起变成无操作 —— 那不是用户写的。
+ *  合并成一个的话，「只给长按配了动作的场景」会把其它档一起变成无操作 —— 那不是用户写的。
  *
  * ## 同种类之间「或」，不同种类之间「且」
  *
@@ -35,20 +43,16 @@ package com.lookie.opluskey.core.model
  *  条件成不成立要读系统开关（前台应用 / 亮屏 / 响铃状态…），那是宿主侧的事
  *  （`ConditionProbe`）。所以匹配由调用方传进来，这一层只管顺序、「或 / 且」与「第一条赢」。
  *
- * ## 组合键只用得到两档
+ * ## 组合键只有两档
  *
- *  组合键没有双击（`ComboKey` 的类注释），[double] 在那条路上永远是 [Action.Follow]；数据层留着这一格
- *  只是为了让单键与组合键共用同一个块类型。
+ *  组合键没有双击、也没有多击（`ComboKey` 的类注释），所以**组合的场景块里只会出现**
+ *  单击 / 长按两个键 —— 数据层不拦（同一个类型两处共用），是界面与判定只给这两档。
  */
 data class SceneRule(
     /** 这一块的**全部**条件（顺序即书写顺序，同种类之间「或」、不同种类之间「且」）。空 = 还没选。 */
     val conditions: List<BranchCondition> = emptyList(),
-    /** 单击那一档；默认 [Action.Follow] = **不参与**（见类注释）。 */
-    val single: Action = Action.Follow,
-    /** 双击那一档；默认跟随。组合键不看这一档。 */
-    val double: Action = Action.Follow,
-    /** 长按那一档；默认跟随。 */
-    val long: Action = Action.Follow,
+    /** 档位 → 动作；**缺项 = 这一档不参与**（与 [Action.Follow] 同义，见类注释）。 */
+    val actions: Map<GestureTrigger, Action> = emptyMap(),
     /**
      * 「松手执行额外动作」的开关 —— 这一块命中长按时，抬手那一刻再执行 [release] 那一格。
      *
@@ -58,38 +62,52 @@ data class SceneRule(
     /**
      * **松手那一档**（`GestureTrigger.Release`）的动作；默认 [Action.None]。
      *
-     *  为什么它不像前三档那样有「跟随默认」：长按一旦被这一块接管，**按键自己那个松手动作就不会
+     *  为什么它不像别的档那样有「跟随默认」：长按一旦被这一块接管，**按键自己那个松手动作就不会
      *  再执行**（`GestureExec.resolveAction` 的「一次按压一个结果」）。所以这一格
      *  [Action.None] 就是「这一块命中时松手什么都不做」—— 也正是这一格出现之前的行为，
      *  老配置读进来逐字不变。
      */
     val release: Action = Action.None,
     /**
-     * 这一块**参不参与判定**（界面上的「停用场景」）—— 停用的块整块跳过，条件与三档动作都还留着。
+     * **「单击后长按」的松手**（`GestureTrigger.ClickThenLongRelease`）—— 与 [releaseOn] / [release]
+     * 同一对，只是挂在另一档上。
+     *
+     *  为什么这一档也要进场景块：两块式手势的收尾同样是「这一块做什么」的一半 ——
+     *  同一按在不同条件下（前台应用不同）想要的收尾动作本来就可能不一样。
+     *
+     *  [chainReleaseOn] 关着 = 这一块**不接管**这一档的松手（`actionOf` 回 [Action.Follow]），
+     *  与其它档的「缺项」同义：于是 `pickAction` 会跳过这一块，看下一块或回落按键自己那一格。
+     */
+    val chainReleaseOn: Boolean = false,
+    val chainRelease: Action = Action.None,
+    /**
+     * 这一块**参不参与判定**（界面上的「停用场景」）—— 停用的块整块跳过，条件与各档动作都还留着。
      *
      *  与「删掉」是两件事：删了就没了，停用只是让它这一趟不生效。
      *  判定侧只在 [matches] 一处读它，所以「停用」对按键与组合键两条路同时生效。
      */
     val enabled: Boolean = true,
 ) {
-    /** [gesture] 这一档在这一块里写的动作（[Action.Follow] = 这一档没配）。 */
-    fun actionOf(gesture: Gesture): Action =
-        when (gesture) {
-            Gesture.SINGLE -> single
-            Gesture.DOUBLE -> double
-            Gesture.LONG -> long
+    /** [trigger] 这一档在这一块里写的动作（[Action.Follow] = 这一块没接管这一档）。 */
+    fun actionOf(trigger: GestureTrigger): Action =
+        when (trigger) {
+            //  「单击后长按」的松手**不在 `actions` 表里**（它是这一块的收尾，与长按的松手同一类）：
+            //  开关关着回 `Follow`，于是 `matches` 为假、`pickAction` 会看下一块 —— 与「缺项」同义。
+            GestureTrigger.ClickThenLongRelease -> if (chainReleaseOn) chainRelease else Action.Follow
+
+            else -> actions[trigger] ?: Action.Follow
         }
 
-    /** 把 [gesture] 这一档换成 [action]（[Action.Follow] = 退回「跟随默认」）。 */
+    /**
+     * 把 [trigger] 这一档换成 [action]（[Action.Follow] = 退回「跟随默认」，那一项**从表里删掉**）。
+     *
+     *  删而不是存一个 `follow`：读取侧 `actions[trigger] ?: Follow` 给的是同一个答案，
+     *  而表里少一项就意味着配置里少一行 —— 「这一块到底配了哪几档」看一眼就知道。
+     */
     fun withAction(
-        gesture: Gesture,
+        trigger: GestureTrigger,
         action: Action,
-    ): SceneRule =
-        when (gesture) {
-            Gesture.SINGLE -> copy(single = action)
-            Gesture.DOUBLE -> copy(double = action)
-            Gesture.LONG -> copy(long = action)
-        }
+    ): SceneRule = copy(actions = if (action is Action.Follow) actions - trigger else actions + (trigger to action))
 
     /**
      * 这一块**有没有自己的松手动作** —— 开关开着且挑过动作。
@@ -98,6 +116,14 @@ data class SceneRule(
      *  停用的块不算：它命中不了，抬手那一刻也不该为它发 `Release`。
      */
     val hasRelease: Boolean get() = enabled && releaseOn && release.isBound
+
+    /**
+     * 这一块**有没有自己的「单击后长按」松手动作** —— 与 [hasRelease] 同一条判据。
+     *
+     *  读者也是两个：判定侧（`finishLong` 要不要发 `ClickThenLongRelease`）与广播
+     *  （宿主算给注入侧那一位 —— 注入侧看不到场景表）。
+     */
+    val hasChainRelease: Boolean get() = enabled && chainReleaseOn && chainRelease.isBound
 
     /**
      * 配完了没有 —— 至少一条条件、且每一条都**认得出并且取值填了**（`isUsable`）。
@@ -132,7 +158,7 @@ data class SceneRule(
         conditions.groupBy { it.kind }.values.all { sameKind -> sameKind.any(matches) }
 
     /**
-     * 这一块在 [gesture] 这一档下成立吗 —— [appliesTo] 是条件那一半的判据。
+     * 这一块在 [trigger] 这一档下成立吗 —— [appliesTo] 是条件那一半的判据。
      *
      *  一条条件都没有的块**不成立**：宁可落到下一块 / 落到按键绑定那一档，也不执行一条用户
      *  还没想清楚的条件（那是「填了一半的规则」）。停用的块（[enabled] 为假）一律不成立。
@@ -140,9 +166,9 @@ data class SceneRule(
      *  **动作有没有配也在这一步判**（[Action.Follow] = 这一档不接管），[pickAction] 直接取赢家。
      */
     fun matches(
-        gesture: Gesture,
+        trigger: GestureTrigger,
         matches: (BranchCondition) -> Boolean,
-    ): Boolean = enabled && conditions.isNotEmpty() && appliesTo(matches) && actionOf(gesture) !is Action.Follow
+    ): Boolean = enabled && conditions.isNotEmpty() && appliesTo(matches) && actionOf(trigger) !is Action.Follow
 
     /**
      * 换掉第 [at] 条条件 —— **其余的留着**。
@@ -192,7 +218,7 @@ data class SceneRule(
          */
         const val MAX_CONDITIONS = 9
 
-        /** 空块（三档都没配）—— 「添加场景」插的就是它。 */
+        /** 空块（一档都没配）—— 「添加场景」插的就是它。 */
         val EMPTY = SceneRule()
     }
 }
@@ -205,21 +231,24 @@ data class SceneRule(
  *  2. 一块都不中 ⇒ 落到 [fallback]（这一档直接绑的那个动作）。表是空的 ⇒ 直接给 [fallback]。
  *
  *  「这一档有值」是 [Action.Follow] 与 [Action.None] 的区别（见 [SceneRule] 类注释）：没配的档不算接管，
- *  所以「只给长按配了动作的场景」不会把单击 / 双击一起吞掉。
+ *  所以「只给长按配了动作的场景」不会把别的档一起吞掉。
  *
  *  为什么这句必须只有一份：条件分支的错**只在真机上看得见** —— 某个系统开关打开时本该走
  *  另一块，结果走了默认那条；两份实现里只要有一份判据差一点，就只会在那个开关打开那天现形，
  *  且不报任何错。
+ *
+ *  [trigger] 是**触发条件**（单击 / 双击 / 长按 / 三击 / 四击…）：一块能接管哪几档完全由它自己的
+ *  [SceneRule.actions] 说，这里不假设档数。
  *
  * @param matches 条件是否成立 —— 由调用方给（读系统开关的那一层是 `ConditionProbe`）：
  *   这一层不认识系统接口。
  */
 internal fun pickAction(
     scenes: List<SceneRule>,
-    gesture: Gesture,
+    trigger: GestureTrigger,
     fallback: Action,
     matches: (BranchCondition) -> Boolean,
-): Action = scenes.firstOrNull { it.matches(gesture, matches) }?.actionOf(gesture) ?: fallback
+): Action = scenes.firstOrNull { it.matches(trigger, matches) }?.actionOf(trigger) ?: fallback
 
 /**
  * 这一档**有没有被某个场景块接管** —— 松手那一档要判「长按那一档命中系统场景就让位」。
@@ -228,9 +257,9 @@ internal fun pickAction(
  */
 internal fun sceneTakes(
     scenes: List<SceneRule>,
-    gesture: Gesture,
+    trigger: GestureTrigger,
     matches: (BranchCondition) -> Boolean,
-): Boolean = scenes.any { it.matches(gesture, matches) }
+): Boolean = scenes.any { it.matches(trigger, matches) }
 
 /**
  * 「松手」那一档该执行什么 —— 全项目唯一实现（[pickAction] 的松手版）。
@@ -251,6 +280,6 @@ internal fun pickReleaseAction(
     fallback: Action,
     matches: (BranchCondition) -> Boolean,
 ): Action {
-    val owner = scenes.firstOrNull { it.matches(Gesture.LONG, matches) } ?: return fallback
+    val owner = scenes.firstOrNull { it.matches(GestureTrigger.LongPress, matches) } ?: return fallback
     return if (owner.hasRelease) owner.release else Action.None
 }

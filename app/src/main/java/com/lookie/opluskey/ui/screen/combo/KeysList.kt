@@ -219,6 +219,23 @@ private fun keyIcon(
 ): ImageVector = if (enabled) normal else PageIcons.Cancel
 
 /**
+ * 这颗键在列表里那一行的行首图标 —— 「重命名按键」那个输入窗取的就是它。
+ *
+ *  **弹窗的图标跟着触发它的那一行走**：滑杆、提示文案、变量值那几支已经是这个口径，
+ *  改名这一支原先却写死一颗标签图 —— 同一个弹窗在两处长得不一样。
+ */
+internal fun SettingsPage.keyRowIcon(key: KeyId): ImageVector {
+    val cfg = configState.config.value
+    val normal =
+        if (key == KeyId.PLUS) {
+            DrawnIcons.MenuSideKey
+        } else {
+            PageIcons.menuKeyNumber(cfg.customKeys.indexOf(key).coerceAtLeast(0))
+        }
+    return keyIcon(normal, cfg.key(key).enabled)
+}
+
+/**
  * 选中 [key] 再进「按键绑定」页。
  *
  *  点的就是当前那颗也照进 —— 这里不是「切换」动作，用户点了一颗键，期望的是进那颗键的页面。

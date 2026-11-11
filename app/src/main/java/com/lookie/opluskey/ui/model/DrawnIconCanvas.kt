@@ -74,7 +74,7 @@ internal fun badgedIcon(
 ): ImageVector {
     val builder = vectorBuilder(name)
     builder.addStroked(base(notch(badge)))
-    builder.addStroked(badgePath(badge))
+    builder.addStroked(badgePath(badge), width = BADGE_STROKE)
     return builder.build()
 }
 

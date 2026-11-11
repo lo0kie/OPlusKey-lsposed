@@ -159,12 +159,10 @@ private fun blockWrite(
     if (slot !in base.indices) return null
     val old = base[slot]
     if (old != loaded) return null
-    //  这一页的东西：三档手势 + 松手那一族；`conditions` / `enabled` 归上一页，原样留着
+    //  这一页的东西：各档动作 + 松手那一族；`conditions` / `enabled` 归上一页，原样留着
     val written =
         old.copy(
-            single = block.single,
-            double = block.double,
-            long = block.long,
+            actions = block.actions,
             releaseOn = block.releaseOn,
             release = block.release,
         )

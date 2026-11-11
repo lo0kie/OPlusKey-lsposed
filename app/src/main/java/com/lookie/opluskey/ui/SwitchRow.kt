@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -14,7 +15,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.ROW_START_ICON_GAP
+import io.github.suqi8.coui.kmp.basic.BasicComponentDefaults
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
@@ -94,14 +99,14 @@ internal fun SwitchRow(
     /** 拨这一下振不振 —— 默认振（与 `CardRow.Item.vibrate` 同一条口径）。 */
     vibrate: Boolean = true,
     /**
-     * 挂在这一行**根**上的修饰符 —— 现在只有一处用途：整块文字的**光学居中**
-     * （`Modifier.opticalBlockCenter`，见 `CardRow.RowContent`）。
+     * 行内那一块（标题 + 副标题）**整块往下挪多少** —— 光学居中用（`opticalBlockBias`）。
      *
-     *  为什么必须由外面给：`SwitchPreference` 的标题 / 副标题是库内部画的，插不进修饰符；
-     *  而「双行看着比单行偏上」这件事（副标题行盒底那截 descent 空白）对所有形态都一样，
-     *  只能整行挪。
+     *  挪法不是「把行挪一点」，而是**上下内边距互相让**：上边 +这个值、下边 −这个值。
+     *  内容下移同样多，行高与**可点区域一动不动** —— 波纹画的是可点区域，行一挪，它跟着挪，
+     *  按住时波纹的上沿就与上一行让出一道缝（真机口径）。库不给标题插修饰符的口子，
+     *  只有内边距这一个能调。
      */
-    modifier: Modifier = Modifier,
+    contentBias: Dp = 0.dp,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     //  振动走页面那条通道（`LocalTick`）：这一层不带 `SettingsPage` 接收者。
@@ -134,7 +139,9 @@ internal fun SwitchRow(
     //  只吃点击的透明层，命中最上层，这一下就稳定落到提示上。
     //  `indication = null`：置灰行不该再冒涟漪（它会看着像「其实能点」）。
     val disabledClick = LocalDisabledClick.current
-    Box(modifier.fillMaxWidth()) {
+    //  「整块往下挪」落到内边距上：上边多、下边少，行高与可点区域都不变（理由见 [contentBias]）
+    val margin = contentMargin(contentBias)
+    Box(Modifier.fillMaxWidth()) {
         NoSwitchHaptic {
             SwitchPreference(
                 title = title,
@@ -145,6 +152,7 @@ internal fun SwitchRow(
                     onCheckedChange(on)
                 },
                 cardListPosition = position,
+                insideMargin = margin,
                 startAction = {
                     Icon(
                         icon,
@@ -170,4 +178,23 @@ internal fun SwitchRow(
             )
         }
     }
+}
+
+/**
+ * 把「整块下移 [bias]」折成上下内边距 —— 行高与**可点区域**都不动（理由见 [SwitchRow] 的 `contentBias`）。
+ *
+ *  上边加多少、下边就减多少：内容下移同样多，总高不变，波纹画的那块区域一个像素都不挪。
+ *  下边减到 0 就不再减（内边距不能为负；库的默认下边距 10dp 远大于这里要挪的量）。
+ */
+@Composable
+private fun contentMargin(bias: Dp): PaddingValues {
+    if (bias == 0.dp) return BasicComponentDefaults.InsideMargin
+    val base = BasicComponentDefaults.InsideMargin
+    val dir = LocalLayoutDirection.current
+    return PaddingValues(
+        start = base.calculateLeftPadding(dir),
+        top = base.calculateTopPadding() + bias,
+        end = base.calculateRightPadding(dir),
+        bottom = (base.calculateBottomPadding() - bias).coerceAtLeast(0.dp),
+    )
 }

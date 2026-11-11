@@ -9,9 +9,18 @@
 
 # 千行文件：文件数上限，外加每个文件的**行数上限**（逐个记住，防止此消彼长）
 count.files_over_1000 = 4
+# 1062 → 1070：`editingAction` 里「场景块」「组合」两支各自多一层 `gestureOrNull()` 收窄
+# （自定义档位在那两张表里没有槽位），以及随行的判据注释。
 lines.app/src/main/java/com/lookie/opluskey/ui/SettingsPage.kt = 1062
 # 1513 → 1514：场景动作页那句「这颗键已设为 [松手时触发]，去按键绑定里关掉」多出一条键。
-lines.core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt = 1514
+# 1514 → 1520：双击那张卡的副标题在「配了三击 / 四击」时要说另一句话（原来那两句在那时都不成立），
+# 多一条键 + 它的判据注释。
+# 1520 → 1530：「多击手势」那颗开关的三条键（标题 / 开 / 关），以及把它与「独立设置」那五项
+# 区分开的注释 —— 它不吃 `useOwnSettings`，理由必须写在库里而不只是界面上。
+# 1530 → 1536：那颗开关拆成「启用三击」「启用四击」两颗（各一组标题 / 开 / 关，共六条）。
+# 1536 → 1539：「单击后长按」那颗开关的三条键。
+# 1539 → 1542：「这一档是无操作，先给它配一个动作」那一句（松手那一族灰着时说的）。
+lines.core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt = 1542
 # `core/model` 拆成 `model` / `rom` / `present` 之后，这份清单跟着搬了位置；
 # 1660 → 1667 是补 7 行 import（原来同包，不用写）—— 拆分的一次性代价，不是新增内容。
 # 1667 → 1713：屏幕翻译从「父子动作」改成单动作多状态（格子标记 token + 打开 / 关闭两档取值 +
@@ -23,7 +32,28 @@ lines.core/src/main/java/com/lookie/opluskey/core/present/ActionCatalog.kt = 181
 # 1145 → 1147：同上，补 `RomProfile` 的 import（它搬到了 `core/rom`）。
 # 1147 → 1179：场景块收下自己那一格松手动作（`sceneRelease` / `resolveRelease` 带上开关），
 # 以及「谁接管这一按谁说了算」那条判据的注释。32 行是这一档的内容本身。
-lines.core/src/main/java/com/lookie/opluskey/core/model/Config.kt = 1179
+# 1179 → 1219：连击档位有了界面入口，写侧补上 `withAction(trigger, …)` —— 它是 `actionOf(trigger)`
+# 的另一半（一个读一个写），40 行里一半是那份「为什么写侧只能有一处」的判据。
+# 1219 → 1226：场景块改成「档位 → 动作」表之后，`sceneClicks` 要按表算最高击数（原来只判两格）。
+# 1226 → 1261：「多击手势」那位开关（`extraClicksOn`）。35 行里正文只有三处判据
+# （`actionOf` / `withAction` / `boundClicks`），其余是它「管的是档位存不存在、不是覆盖公共设置」
+# 那段说明 —— 这一位被误当成 `OwnSettings` 的一项，整套收口就白做了。
+# 1261 → 1290：一位收成「逐档一个」（`Set<Int>`）：`actionOf` / `withAction` / `boundClicks` /
+# `sceneClicks` 各多一次 `in` 判断，外加 `clicksOnOf` 两个重载（落盘数组与广播文本共用的过滤）。
+# 1290 → 1301：逐档那几处的判据注释要把「为什么不是一位统领」写清（三击与四击的代价不同），
+# 加上 `extraClicksOn` 那一项的说明扩了一截。
+# 1301 → 1318：「单击后长按」两位（开关 + 动作）与 `actionOf` / `withAction` 各一支。
+# 1318 → 1365：这一档自己那六项参数（长按延迟 / 连发 / 间隔 / 每次振动 / 松手开关与动作）——
+# 与长按那一族同名不同槽，声明 + 两个映射各一遍。
+# 1365 → 1388：`longActionExists`（松手那一档要看「这一档本身有没有动作」）与
+# `sceneLong`（注入侧看不到场景表，长按有没有被场景接管要广播过去）。
+# 1388 → 1405：`clickThenLongActionExists` —— 同一件事给「单击后长按」再来一份。
+# 1405 → 1426：`clickThenLongIsSerial`（广播位）与 `clickThenLongRepeats`
+# （连发闸门：多条命令 / 灵感语音不重复，与长按那一档同一套判据）。
+# 1426 → 1433：`sceneChainRelease`（场景块配了「单击后长按」的松手，注入侧要这一位）。
+# 1433 → 1459：过 gate 时把两处内联判据收成属性（`instantSingleNow` / `clickThenLongReleaseAction`）——
+# detekt 的条件复杂度与圈复杂度都顶线了，行为一字未改，多出来的全是这两位的说明。
+lines.core/src/main/java/com/lookie/opluskey/core/model/Config.kt = 1459
 
 # 页面对象：`SettingsPage` 自己的状态字段数（它就是「新功能再挂一个字段」的入口）
 count.settings_page_fields = 38
@@ -33,7 +63,16 @@ count.settings_page_fields = 38
 # 同一笔里拆掉的那些（`BranchRow` 里的分支）没有回收这一条的余地。放宽是例外，不是维护动作。
 # 517 → 520：音量那一族多出「铃声音量」三条 —— 弹窗那一支的 `VolumeDialog` 与它的调用点
 # （按族分流的那两个映射）都是页面扩展成员，与媒体音量那一支同形，没有别的挂法。
-count.settings_page_ext = 520
+# 520 → 521：按键列表的行首图标那一支（`keyRowIcon`）读 `SettingsPage` 上那几份状态，
+# 只能写成页面扩展成员。
+# 521 → 523：「独立设置」页那颗「多击手势」开关（`ExtraClicksRow`）与它那一格写回
+# （`extraClicksRow` 的现读 + 落盘）—— 与 `ComboOwnCard` 同形，都读页面级 `configState`。
+# 523 → 524：那颗开关拆成两行之后多出 `extraClickRow`（两行只有击数不同，收成一支）。
+# 524 → 525：「单击后长按」那颗开关（`clickThenLongRow`）。
+# 525 → 528：「单击后长按」那张参数卡（`ClickThenLongCard` 的三个页面扩展成员）。
+# 528 → 529：场景块里的「单击后长按」松手卡（`SceneChainReleaseCard`）。
+# 529 → 530：同一张卡挑动作的那一支（`onOpenPicker` / `onPick`）走页内一次写回。
+count.settings_page_ext = 530
 
 # detekt 基线：新代码不许再往基线里加条目（AGENTS.md 二、1.2）
 count.detekt_baseline = 130

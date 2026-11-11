@@ -89,9 +89,10 @@ internal fun SettingsPage.openAppPickerForRelease(
     stop: Boolean = false,
     combo: String? = null,
     sceneAt: Int = AppPickerState.NOT_FOR_SCENE,
+    chain: Boolean = false,
 ) {
-    XLog.w("额外动作：进「打开应用」页挑一条（结束=$stop，组合=$combo，场景块=$sceneAt）")
-    picker.openForRelease(stop, combo, sceneAt)
+    XLog.w("额外动作：进「打开应用」页挑一条（结束=$stop，组合=$combo，场景块=$sceneAt，单击后长按=$chain）")
+    picker.openForRelease(stop, combo, sceneAt, chain)
     picker.filter.value = ""
     resetSmallWindowForPicker()
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())

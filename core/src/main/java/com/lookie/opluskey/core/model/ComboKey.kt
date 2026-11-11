@@ -126,23 +126,39 @@ data class ComboKey(
     val isUsable: Boolean
         get() = enabled && keys.size >= MIN_KEYS
 
-    /** [gesture] 这一档的动作；双击恒为 `None`（见类注释）。 */
-    fun actionOf(gesture: Gesture): Action =
-        when (gesture) {
-            Gesture.SINGLE -> single
-            Gesture.LONG -> long
-            Gesture.DOUBLE -> Action.None
+    /**
+     * [trigger] 这一档的动作。
+     *
+     *  组合只认单击 / 长按两档（[COMBO_SLOTS]）：双击与第 3 击起那些档位在这一层没有槽位，
+     *  问到它们就是「这一档没定义」—— **不退回单击**，否则按两下会执行一下。
+     *  松手那一档回 [longRelease]（与单键 `KeyConfig.actionOf` 同一口径）。
+     */
+    fun actionOf(trigger: GestureTrigger): Action =
+        when (trigger) {
+            is GestureTrigger.Click -> if (trigger.count == 1) single else Action.None
+
+            GestureTrigger.LongPress -> long
+
+            GestureTrigger.Release -> longRelease
+
+            //  组合没有「单击后长按」：它的两段都建立在单键连击上（见 [COMBO_SLOTS]）
+            GestureTrigger.ClickThenLong, GestureTrigger.ClickThenLongRelease -> Action.None
         }
 
     /**
      * 松手那一下**真的有事可做** —— 开关开着、挑过动作、且不是「松手才触发」那条。
      *
-     *  与单键 `KeyConfig.releaseBound` 同一份判据（那一边的解释更细）：三位缺一位都不算。
+     *  与单键 `KeyConfig.releaseBound` 同一份判据（那一边的解释更细）：四位缺一位都不算，
+     *  其中第一位是「**长按这一档本身**有没有动作」—— 长按是无操作时，松手再补一个动作
+     *  没有主语（界面那一侧同样把那一族压灰，见 `LongPressSpec.releaseAvailable`）。
      *  场景块里配的松手动作也算一位 —— 组合的场景表**本来就随广播带过来**（`ComboWire`），
      *  所以这一位在注入侧能就地算出来，不必像单键那样另开一个广播字段。
      */
     override val releaseBound: Boolean
-        get() = !longFireOnRelease && ((longReleaseOn && longRelease.isBound) || scenes.any { it.hasRelease })
+        get() =
+            (long.isBound || scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }) &&
+                !longFireOnRelease &&
+                ((longReleaseOn && longRelease.isBound) || scenes.any { it.hasRelease })
 
     /**
      * **带场景表**的取动作：先看 [scenes]（顺序、「条件成立且这一档有值」的第一块赢），
@@ -153,9 +169,9 @@ data class ComboKey(
      *  `matches` 由调用方给（读系统开关的那一层，见 `ConditionProbe`）：这一层不认识系统接口。
      */
     fun resolve(
-        gesture: Gesture,
+        trigger: GestureTrigger,
         matches: (BranchCondition) -> Boolean,
-    ): Action = pickAction(scenes, gesture, actionOf(gesture), matches)
+    ): Action = pickAction(scenes, trigger, actionOf(trigger), matches)
 
     /**
      * 这一档**有没有被某个场景块接管** —— 「松手执行额外动作」要靠它让位。
@@ -164,9 +180,9 @@ data class ComboKey(
      *  长按那一档被场景接管了，松手那一刻就不该再补一刀。
      */
     fun sceneTakes(
-        gesture: Gesture,
+        trigger: GestureTrigger,
         matches: (BranchCondition) -> Boolean,
-    ): Boolean = sceneTakes(scenes, gesture, matches)
+    ): Boolean = sceneTakes(scenes, trigger, matches)
 
     /**
      * **松手那一刻执行什么** —— 长按被某一块接管时用那一块的松手格，否则用 [longRelease]。

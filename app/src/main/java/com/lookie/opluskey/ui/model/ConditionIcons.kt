@@ -6,8 +6,8 @@ import com.lookie.opluskey.core.model.ConditionKind
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsVertical
-import io.github.lyxnx.compose.ui.tablericons.outline.Battery
 import io.github.lyxnx.compose.ui.tablericons.outline.BatteryCharging
+import io.github.lyxnx.compose.ui.tablericons.outline.BatteryOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Bell
 import io.github.lyxnx.compose.ui.tablericons.outline.BellOff
 import io.github.lyxnx.compose.ui.tablericons.outline.BellRinging
@@ -15,12 +15,12 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Bluetooth
 import io.github.lyxnx.compose.ui.tablericons.outline.BluetoothConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.BluetoothOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Brightness
+import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessOff
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal5
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignalOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Clock
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobile
-import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileOff
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Headphones
 import io.github.lyxnx.compose.ui.tablericons.outline.HeadphonesOff
@@ -67,8 +67,10 @@ internal fun conditionIcon(kind: ConditionKind): ImageVector =
     when (kind) {
         ConditionKind.APP -> PageIcons.AppFront
 
-        // 屏幕状态：一颗「亮度」当类别，亮屏 / 熄屏 / 锁屏那三颗在取值那边
-        ConditionKind.SCREEN -> TablerIcons.Outline.Brightness
+        // 屏幕状态：一台手机当类别；亮屏 / 熄屏那一对在取值那边（见 `screenChoiceIcon`）。
+        //  **别把 `brightness` 那颗留在这里**：它是「亮 / 不亮」的字形，正是这一档**取值**要说的，
+        //  类别占着它，取值就只能退回「一台手机」，而「亮屏」与「熄屏」于是只差一道斜杠。
+        ConditionKind.SCREEN -> TablerIcons.Outline.DeviceMobile
 
         // 充电：一颗插头（类别）；电池 / 充电中那是**状态**
         ConditionKind.CHARGING -> TablerIcons.Outline.Plug
@@ -138,16 +140,22 @@ internal fun conditionChoiceIcon(
     }
 
 /**
- * 屏幕状态三档：亮屏（手机本体）、熄屏（本体打叉）、锁屏（带锁的方块）。
+ * 屏幕状态三档：亮屏（`brightness`）、熄屏（同一颗带斜杠）、锁屏（带锁的方块）。
+ *
+ *  「亮屏 / 熄屏」用**同一颗底图的正反两面**（`brightness` / `brightness-off`），与
+ *  WiFi、蓝牙、移动数据、飞行模式那几对同一套语法：一眼先认出「说的是哪件事」，再看有没有
+ *  那道斜杠。原先亮屏是一台手机、熄屏是同一台带斜杠 —— 两颗都很像「一台手机被禁用」，
+ *  扫一列时「亮着」这件事根本没画出来。
  *
  *  锁屏**不能**用那颗普通的 `lock`：那颗是「这颗键被停用」的字形（`PageIcons.KeyLocked`），
- *  两处撞在一起会读成「这一档被禁用了」（真机口径「锁屏和停用的图标重叠了」）。
+ *  两处撞在一起会读成「这一档被禁用了」（真机口径「锁屏和停用的图标重叠了」）。`lock-square`
+ *  是第三种形状，与上面那对合成「亮 / 灭 / 锁」三件事，扫得开。
  */
 private fun screenChoiceIcon(value: String): ImageVector =
     when (value) {
-        "off" -> TablerIcons.Outline.DeviceMobileOff
+        "off" -> TablerIcons.Outline.BrightnessOff
         "locked" -> TablerIcons.Outline.LockSquare
-        else -> TablerIcons.Outline.DeviceMobile
+        else -> TablerIcons.Outline.Brightness
     }
 
 /** 两档条件的一对字形：取 [firstValue] 时用 [onFirst]，其余用 [onSecond]。 */
@@ -172,8 +180,10 @@ private val CHOICE_ICONS: Map<ConditionKind, ChoiceIcons> =
         ConditionKind.MEDIA to ChoiceIcons("paused", TablerIcons.Outline.PlayerPause, TablerIcons.Outline.PlayerPlay),
         ConditionKind.HEADSET to
             ChoiceIcons("disconnected", TablerIcons.Outline.HeadphonesOff, TablerIcons.Outline.Headphones),
+        //  没在充电用同一颗电池带斜杠（`battery-off`），不是一颗**空电池**：空电池在列表里
+        //  读成「电量低」，而这一档说的是「没插着电」—— 斜杠和上面那几对「关」同一个记号。
         ConditionKind.CHARGING to
-            ChoiceIcons("idle", TablerIcons.Outline.Battery, TablerIcons.Outline.BatteryCharging),
+            ChoiceIcons("idle", TablerIcons.Outline.BatteryOff, TablerIcons.Outline.BatteryCharging),
         //  蓝牙「开」用带连接记号的 `bluetooth-connected`：类别那一档已经占着 `bluetooth`
         ConditionKind.BLUETOOTH to
             ChoiceIcons("off", TablerIcons.Outline.BluetoothOff, TablerIcons.Outline.BluetoothConnected),

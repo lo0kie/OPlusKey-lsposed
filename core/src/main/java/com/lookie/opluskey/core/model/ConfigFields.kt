@@ -85,6 +85,12 @@ object ConfigFields {
      */
     const val SCENE_RELEASE_EXTRA = "scene_release"
 
+    /** 某个场景块给**长按**配了动作 —— 同样只有广播这一列（见 `KeyConfig.sceneLong`）。 */
+    const val SCENE_LONG_EXTRA = "scene_long"
+
+    /** 某个场景块给**「单击后长按」的松手**配了动作 —— 同样只有广播这一列。 */
+    const val SCENE_CHAIN_RELEASE_EXTRA = "scene_chain_release"
+
     /**
      * 判定侧要认到**第几击**（`KeyConfig.judgeClicks`）—— **只有广播这一列**。
      *
@@ -93,6 +99,47 @@ object ConfigFields {
      *  0 = 老版本发来的（不认识这一项）⇒ 注入侧退回「只认三档」。
      */
     const val JUDGE_CLICKS_EXTRA = "judge_clicks"
+
+    /**
+     * **哪几档多击开着**（`KeyConfig.extraClicksOn`，元素是击数）—— 走广播。
+     *
+     *  注入侧要知道它：注入侧看不到 `extra_clicks` 那张表（它只随落盘走），而它必须回答
+     *  「这颗键要不要数到第 3 / 4 击」——[JUDGE_CLICKS_EXTRA] 那个数由宿主算好，可**界面**也要
+     *  按这一位决定那几页出不出现；两处读同一个来源才不会有「判定认三击、界面说没有」。
+     *
+     *  取值是**逗号分隔的击数**（`"3"` / `"3,4"` / 空串）：[Kind] 只有 Bool / Number / Text，
+     *  集合走文本最省事，解析在 `KeyConfig.clicksOnOf`（写侧排序，指纹才稳定）。
+     *
+     *  默认空 = 老版本发来的广播里没有这一项 ⇒ 读成「没有多击」⇒ 与这一位出现之前一致
+     *  （那时手改出来的 `extra_clicks` 只是存着）。
+     */
+    const val EXTRA_CLICKS_ON_EXTRA = "extra_clicks_on"
+
+    /**
+     * **「单击后长按」这一档启用没有**（`KeyConfig.clickThenLongOn`）—— 走广播。
+     *
+     *  注入侧必须读它：要不要在连击链的第 2 击上**排长按那一枪**由这一位决定。
+     *  不带它的话，注入侧只能按「没开」处理 —— 用户在界面上打开这一档也不会生效。
+     *
+     *  与 [EXTRA_CLICKS_ON_EXTRA] 分两位：那一位管「数到第几下」，这一位管「第 2 击按住」，
+     *  两者都不延长对方的窗口。
+     */
+    const val CLICK_THEN_LONG_ON_EXTRA = "click_then_long_on"
+
+    // 「单击后长按」那一档自己的参数 —— 与长按那一族**同名不同槽**
+    // （`long_press_ms` / `long_repeat` … 是长按的，下面这几条只属于两段式那一档）。
+    const val CTL_PRESS_MS_EXTRA = "click_then_long_press_ms"
+    const val CTL_REPEAT_EXTRA = "click_then_long_repeat"
+    const val CTL_REPEAT_INTERVAL_MS_EXTRA = "click_then_long_repeat_interval_ms"
+    const val CTL_REPEAT_VIBRATE_EXTRA = "click_then_long_repeat_vibrate"
+    const val CTL_RELEASE_ON_EXTRA = "click_then_long_release_on"
+    const val CTL_RELEASE_EXTRA = "click_then_long_release"
+
+    /**
+     * 「单击后长按」绑的是不是**多条命令** —— **只有广播这一列**（与 [LONG_SERIAL_EXTRA] 同一条）：
+     * 注入侧要读命令库才知道，而那个文件它看不到，由宿主现算带过来。
+     */
+    const val CTL_SERIAL_EXTRA = "click_then_long_is_serial"
 
     // `GlobalConfig`。
     const val DOUBLE_CLICK_MS_EXTRA = "double_click_ms"
@@ -324,6 +371,12 @@ object ConfigFields {
     /** 某个场景块配了松手动作 —— **只有广播那一列**，见 [SCENE_RELEASE_EXTRA] 的说明。 */
     val F_SCENE_RELEASE = Field(SCENE_RELEASE_EXTRA, Kind.Bool(false))
 
+    /** 某个场景块给长按配了动作 —— **只有广播那一列**，见 [SCENE_LONG_EXTRA] 的说明。 */
+    val F_SCENE_LONG = Field(SCENE_LONG_EXTRA, Kind.Bool(false))
+
+    /** 某个场景块配了「单击后长按」的松手动作 —— **只有广播那一列**，见 [SCENE_CHAIN_RELEASE_EXTRA]。 */
+    val F_SCENE_CHAIN_RELEASE = Field(SCENE_CHAIN_RELEASE_EXTRA, Kind.Bool(false))
+
     /**
      * 判定要认到第几击（见 [JUDGE_CLICKS_EXTRA]）。上限与「一屏步骤数」那档同宽：
      * 再多击的判定链已经没有实际意义（人的连击上限就三五下），手改出来的值在这里就钳掉。
@@ -335,6 +388,56 @@ object ConfigFields {
     const val MAX_JUDGE_CLICKS = 9
 
     val F_JUDGE_CLICKS = Field(JUDGE_CLICKS_EXTRA, Kind.Number(0, 0, MAX_JUDGE_CLICKS))
+
+    /**
+     * 「哪几档多击开着」（见 [EXTRA_CLICKS_ON_EXTRA]）—— 默认空串 = 一档都没有。
+     *
+     *  它**不跟随**「使用独立设置」那颗总闸（`KeyConfig.useOwnSettings`）：那是「用公共那份
+     *  还是自己那份」，而这一位是这颗键自己的形态，两者正交。
+     */
+    val F_EXTRA_CLICKS = Field(EXTRA_CLICKS_ON_EXTRA, Kind.Text(""))
+
+    /**
+     * 「单击后长按」启用没有（见 [CLICK_THEN_LONG_ON_EXTRA]）—— 默认关，与「新装上没有这一档」一致。
+     *
+     *  它同样**不跟随**「使用独立设置」那颗总闸（理由见 `KeyConfig.clickThenLongOn`）。
+     */
+    val F_CLICK_THEN_LONG_ON = Field(CLICK_THEN_LONG_ON_EXTRA, Kind.Bool(false))
+
+    /** 「单击后长按」的长按延迟（第二段按住多久算数）—— 上下限与长按那一档同一套。 */
+    val F_CTL_PRESS_MS =
+        Field(
+            CTL_PRESS_MS_EXTRA,
+            Kind.Number(
+                KeyConfig.DEFAULT_LONG_PRESS_MS,
+                KeyConfig.MIN_LONG_PRESS_MS,
+                KeyConfig.MAX_LONG_PRESS_MS,
+            ),
+        )
+
+    /** 「单击后长按」按住期间连续触发。 */
+    val F_CTL_REPEAT = Field(CTL_REPEAT_EXTRA, Kind.Bool(false))
+
+    /** 连续触发的间隔 —— 上下限与长按那一档同一套。 */
+    val F_CTL_REPEAT_INTERVAL_MS =
+        Field(
+            CTL_REPEAT_INTERVAL_MS_EXTRA,
+            Kind.Number(
+                KeyConfig.DEFAULT_REPEAT_INTERVAL_MS,
+                KeyConfig.MIN_REPEAT_INTERVAL_MS,
+                KeyConfig.MAX_REPEAT_INTERVAL_MS,
+            ),
+        )
+
+    /** 连续触发时每次都振动。 */
+    val F_CTL_REPEAT_VIBRATE = Field(CTL_REPEAT_VIBRATE_EXTRA, Kind.Bool(false))
+
+    /** 「单击后长按」松手时再执行一个动作 —— 开关与动作两位（与 [F_LONG_RELEASE_ON] 同一条口径）。 */
+    val F_CTL_RELEASE_ON = Field(CTL_RELEASE_ON_EXTRA, Kind.Bool(false))
+    val F_CTL_RELEASE = Field(CTL_RELEASE_EXTRA, Kind.Text(Action.NONE))
+
+    /** 「单击后长按」绑的是不是多条命令 —— **只有广播那一列**，见 [CTL_SERIAL_EXTRA]。 */
+    val F_CTL_SERIAL = Field(CTL_SERIAL_EXTRA, Kind.Bool(false))
 
     /** `KeyConfig` 的全部广播字段。 */
     val KEY_FIELDS: List<Field> =
@@ -360,7 +463,18 @@ object ConfigFields {
             F_KEY_TOAST_TEMPLATE,
             F_LONG_SERIAL,
             F_SCENE_RELEASE,
+            F_SCENE_LONG,
+            F_SCENE_CHAIN_RELEASE,
             F_JUDGE_CLICKS,
+            F_EXTRA_CLICKS,
+            F_CLICK_THEN_LONG_ON,
+            F_CTL_PRESS_MS,
+            F_CTL_REPEAT,
+            F_CTL_REPEAT_INTERVAL_MS,
+            F_CTL_REPEAT_VIBRATE,
+            F_CTL_RELEASE_ON,
+            F_CTL_RELEASE,
+            F_CTL_SERIAL,
         )
 
     // ── `GlobalConfig` 的字段

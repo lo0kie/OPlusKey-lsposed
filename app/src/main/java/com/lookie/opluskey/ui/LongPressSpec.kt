@@ -31,6 +31,15 @@ internal enum class LongPressSections {
      *  这一族就得灰着（见 [LongPressGates.releaseEnabled]）。
      */
     ReleaseOnly,
+
+    /**
+     * 「单击后长按」那一页 —— 摆**松手额外动作 / 连发 / 长按延迟**三族，**不摆「松手才触发」**。
+     *
+     *  为什么少了那一行：那一档本来就是「按住之后松手才结束」，再叠一个「等松手才执行」
+     *  只会把它的执行点推到一个说不清的位置。其余三族的语义与长按那几项一一对应，
+     *  参数却是这一档自己的（`KeyConfig.clickThenLong*`）。
+     */
+    NoTiming,
 }
 
 /**
@@ -73,6 +82,13 @@ internal class LongPressSpec(
     val releaseLabel: String,
     val releaseIcon: ImageVector,
     val releaseBound: Boolean,
+    /**
+     * 这一档**本身**有没有动作（长按 / 单击后长按）。
+     *
+     *  为 `false` 时「松手执行额外动作」那一族整族焊死：那一条是「这一档执行完之后」的收尾，
+     *  这一档本身什么都不做时，松手再补一个动作就没有主语（用户口径「设为无操作时禁用」）。
+     */
+    val releaseAvailable: Boolean = true,
     val enabled: Boolean,
     val delayEnabled: Boolean,
     /** 摆哪几族行 —— 见 [LongPressSections]。 */
@@ -117,8 +133,16 @@ private class LongPressGates(
     /** 「松手才触发」能不能拨 —— 松手那一档占着时它得让位（先关掉那个）。 */
     val fireEnabled: Boolean = live && !releaseBound
 
-    /** 「松手执行额外动作」能不能拨 —— 「松手才触发」开着时它没有意义。 */
-    val releaseEnabled: Boolean = live && !spec.fireOnRelease
+    /** 「松手执行额外动作」能不能拨 —— 「松手才触发」开着时它没有意义；这一档本身无操作时也没有。 */
+    val releaseEnabled: Boolean = live && !spec.fireOnRelease && spec.releaseAvailable
+
+    /** 「松手执行额外动作」灰着被点一下时说的话（`null` = 用整页那句）。 */
+    val releaseNeedsActionHint: String? =
+        if (spec.enabled && !spec.releaseAvailable) {
+            I18n.get(Strings.BINDING_RELEASE_NEEDS_ACTION, "这一档是 [无操作]，先给它配一个动作")
+        } else {
+            null
+        }
 
     /** 连续触发那一族能不能点 —— 三种情形：整张卡被闸住 / 「松手才触发」占着时序 / 动作本身不支持连发。 */
     val repeatEnabled: Boolean =
@@ -151,6 +175,11 @@ private class LongPressGates(
         when {
             !spec.enabled -> {
                 if (spec.sections == LongPressSections.ReleaseOnly) spec.blockedReason else null
+            }
+
+            //  这一档本身无操作：说「先给它配一个动作」，比说页面闸门有用
+            !spec.releaseAvailable -> {
+                releaseNeedsActionHint
             }
 
             !spec.fireOnRelease -> {
@@ -211,6 +240,7 @@ internal fun SettingsPage.LongPressSettingsCard(spec: LongPressSpec) {
         rows =
             when (spec.sections) {
                 LongPressSections.All -> allRows(spec, gates)
+                LongPressSections.NoTiming -> lowerRows(spec, gates)
                 LongPressSections.ReleaseOnly -> releaseRows(spec, gates)
             },
     )
@@ -223,6 +253,20 @@ private fun SettingsPage.allRows(
 ): List<CardRow> =
     buildList {
         addAll(timingRows(spec, gates))
+        addAll(lowerRows(spec, gates))
+    }
+
+/**
+ * 「松手执行额外动作 + 连发 + 长按延迟」那三族 —— 全摆那一形态与「单击后长按」共用这一份。
+ *
+ *  收成一支是为了让「摆哪几族」只有一处行序：两个调用点各写一遍的话，
+ *  「先振动后间隔」这种细节迟早只在其中一边生效。
+ */
+private fun SettingsPage.lowerRows(
+    spec: LongPressSpec,
+    gates: LongPressGates,
+): List<CardRow> =
+    buildList {
         addAll(releaseRows(spec, gates))
         addAll(repeatRows(spec, gates))
         add(

@@ -113,12 +113,12 @@ internal fun Modifier.opticalBlockCenter(
  *  **一次标定、按密度换算**。它不随字号变（两端都是同一种字体的取整误差），
  *  换字体族时才需要重标（那时 [glyphBounds] 也要跟着改）。
  */
-private val BLOCK_CENTER_BIAS = 0.6.dp
+internal val BLOCK_CENTER_BIAS = 0.6.dp
 
 /** 整块修正量的缓存 —— 与 [opticalDyCache] 同一套理由；键多带一个「最后一行」的样式。 */
 private val blockDyCache = ConcurrentHashMap<Triple<TextStyle, TextStyle, Density>, Int>()
 
-private fun blockDy(
+internal fun blockDy(
     first: TextStyle,
     last: TextStyle,
     density: Density,

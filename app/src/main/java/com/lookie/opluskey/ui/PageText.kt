@@ -13,7 +13,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.mapActions
 import com.lookie.opluskey.ui.state.CommandForm
 import com.lookie.opluskey.ui.state.CommandsSave
@@ -291,14 +291,12 @@ private const val VERSION_LABEL_PREFIX = "version-"
 
 internal fun SettingsPage.actionOf(
     cfg: Config,
-    g: Gesture,
+    g: GestureTrigger,
 ): Action {
     // 取**当前在编辑的那一颗**（`KeyWatchState`）：写死侧键的话，切到自定义键之后
     //  网格高亮、打勾项、小标题、长按串行判定全都还按侧键的配置算（真机反馈「改了看不出来」）。
-    val key = cfg.key(KeyWatchState.editing(cfg))
-    return when (g) {
-        Gesture.SINGLE -> key.single
-        Gesture.DOUBLE -> key.double
-        Gesture.LONG -> key.long
-    }
+    //
+    //  按**触发条件**取（`KeyConfig.actionOf(trigger)`）：三击 / 四击那两页挑完应用回来也要能
+    //  亮出当前那一格，退回成三档枚举会让它们一律显示「没绑」。
+    return cfg.key(KeyWatchState.editing(cfg)).actionOf(g)
 }

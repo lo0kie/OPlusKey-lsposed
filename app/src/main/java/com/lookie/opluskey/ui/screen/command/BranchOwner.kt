@@ -1,7 +1,7 @@
 package com.lookie.opluskey.ui.screen.command
 
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -63,26 +63,32 @@ internal fun SettingsPage.branchOwnerLabel(): String {
  */
 internal fun SettingsPage.openSceneBinding(
     at: Int,
-    gesture: Gesture,
+    trigger: GestureTrigger,
 ) {
     sceneBindingAt = at
-    sceneBindingGesture = gesture
+    sceneBindingGesture = trigger
     sceneBindingBaseline = branchDraftNow().scenes.getOrNull(at)
-    XLog.w("进「场景动作」页：第 ${at + 1} 块 · ${gesture.id}")
+    XLog.w("进「场景动作」页：第 ${at + 1} 块 · ${trigger.id}")
     navTo(Screen.SCENE_BINDING)
 }
 
 /**
- * 一个场景块要编**哪几档** —— 组合键的场景块只有短按 / 长按（`ComboKey` 上没有双击）。
+ * 一个场景块要编**哪几档** —— 组合键只有短按 / 长按（`ComboKey` 上没有双击、也没有多击）；
+ *  一颗键则是 `slotsOn`：那几档自己要了才有（`KeyConfig.extraClicksOn`），没要的就不列。
  *
- *  判据与 `blockGestures()` 同一条：两处各写一遍迟早出现「带子上有三档、翻到第三页是空的」。
+ *  判据与 `blockGestures()` 同一条：两处各写一遍迟早出现「带子上有五档、翻到第五页是空的」。
  *
  *  **这一位是「一块有几档」的唯一来源**：场景页的动作行（`RuleActionRows`）与「场景动作」页的
- *  手势带都按它排。将来接**自定义手势**要改的就是这里 —— 连同返回类型一起从 [Gesture] 放开
- *  （现在这三档是枚举，装不下运行时才有的手势）；档位名那时走 `gestureLabel(id, 名字)` 那个口子。
+ *  手势带都按它排。清单本身在 core（`GestureTrigger.slotsOn` / `COMBO_SLOTS`），
+ *  于是「再加一档」只改那一个列表 —— 界面这一层不再有第二份档位清单。
  */
-internal fun SettingsPage.sceneGesturePages(): List<Gesture> =
-    if (branchDraft.comboId != null) listOf(Gesture.SINGLE, Gesture.LONG) else Gesture.entries
+internal fun SettingsPage.sceneGesturePages(): List<GestureTrigger> {
+    val comboId = branchDraft.comboId
+    if (comboId != null) return GestureTrigger.COMBO_SLOTS
+    //  键那一支读**在编那颗键**的开关：与「按键绑定」页同一个判据，两页的档数才不会一页三一页六
+    val key = configState.config.value.key(branchKeyNow())
+    return GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn)
+}
 
 /**
  * 进来时该停在第几页 —— [SettingsPage.sceneBindingGesture] 按当前那张表换算成页号。

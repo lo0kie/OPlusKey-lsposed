@@ -6,7 +6,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.LongPressEdit
@@ -15,6 +15,7 @@ import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
+import com.lookie.opluskey.ui.screen.command.branchKeyNow
 import com.lookie.opluskey.ui.state.BranchDraft
 
 /**
@@ -33,7 +34,7 @@ import com.lookie.opluskey.ui.state.BranchDraft
  *
  * ## 三处实现，两种落点
  *
- *  · [Key] —— 一颗键的一档（三档手势都走它）；
+ *  · [Key] —— 一颗键的一档（三档手势 + 第 3 击起的自定义档位都走它）；
  *  · [Combo] —— 一档组合键的一档（组合只有短按 / 长按，双击在 `ComboKey` 上就没有定义）；
  *  · [Scene] —— 某个**场景块**的一档。
  *
@@ -42,10 +43,14 @@ import com.lookie.opluskey.ui.state.BranchDraft
  *  写死在配置里。三种目标的读写都从这一层走，网格与各页面因此不必知道「这次是不是在写草稿」。
  *
  *  `gesture` 仍然对外暴露：网格按它读这一档现在绑的是什么、写哪一格（清单本身不按手势分化）。
+ *  它是**触发条件**（`GestureTrigger`）而不是那个三值枚举 —— 「按键绑定」页的另外两页是
+ *  三击 / 四击，它们在三值枚举里没有名字（见 `GesturePlan`）。场景块的档位表跟着
+ *  `GestureTrigger` 走（`SceneRule.actions`），所以这两档在场景里也编得；组合键只有短按 / 长按，
+ *  它那一头拿到别的档位就当「没有定义」（`ComboKey.actionOf`）。
  */
 internal sealed interface BindingTarget {
     /** 这一档是哪一档手势 —— 网格按它读写这一档的绑定。 */
-    val gesture: Gesture
+    val gesture: GestureTrigger
 
     /**
      * 这一档**现在绑的是什么** —— 网格的打勾项、入口格小字、行首图标都由它算。
@@ -122,7 +127,7 @@ internal sealed interface BindingTarget {
     /** 一颗键的一档。 */
     data class Key(
         val id: KeyId,
-        override val gesture: Gesture,
+        override val gesture: GestureTrigger,
     ) : BindingTarget {
         override fun actionIn(cfg: Config): Action = cfg.key(id).actionOf(gesture)
 
@@ -150,8 +155,9 @@ internal sealed interface BindingTarget {
     /** 一档组合键的一档。 */
     data class Combo(
         val id: String,
-        override val gesture: Gesture,
+        override val gesture: GestureTrigger,
     ) : BindingTarget {
+        //  组合只有短按 / 长按两档：别的档位在 `ComboKey` 上没有槽位（界面也排不出那一页）
         override fun actionIn(cfg: Config): Action = cfg.combos.firstOrNull { it.id == id }?.actionOf(gesture) ?: Action.None
 
         override val what: String get() = "combo:$id:${gesture.id}"
@@ -219,7 +225,7 @@ internal sealed interface BindingTarget {
         val draft: BranchDraft,
         /** 第几块（`0` 起）。 */
         val at: Int,
-        override val gesture: Gesture,
+        override val gesture: GestureTrigger,
         /**
          * 这一档所属的**组合键 id**（`null` = 这一趟在编的是单键的场景表）。
          *
@@ -308,6 +314,27 @@ internal sealed interface BindingTarget {
             )
             return true
         }
+
+        /**
+         * 「单击后长按」的松手那两格（`chainReleaseOn` / `chainRelease`）—— 与 [bindRelease] 同形。
+         *
+         *  分成两支而不是加参数：两者是**同一块里两个不同的档**，揉进一个函数会让
+         *  「这次改的是哪一档」只能靠调用方记住。
+         */
+        fun bindChainRelease(
+            on: Boolean? = null,
+            action: Action? = null,
+        ): Boolean {
+            val old = block ?: return false
+            draft.update(
+                at,
+                old.copy(
+                    chainReleaseOn = on ?: old.chainReleaseOn,
+                    chainRelease = action ?: old.chainRelease,
+                ),
+            )
+            return true
+        }
     }
 }
 
@@ -344,7 +371,17 @@ internal class ReleaseSlot(
  */
 internal fun SettingsPage.openBranchesFor(target: BindingTarget) {
     branchDraft.comboId = target.comboId
-    branchGesture = target.gesture.ordinal
+    //  `branchGesture` 是「按键绑定」页的**页号**（调试通道与「这一页停在哪一档」共用那一位）：
+    //  按**这一份的当前清单**换算（`GestureTrigger.slotsOn`，三击 / 四击关着时就只有三页），
+    //  与分页器的页序同一份清单。组合键那两档在全集里也找得到（短按 0 / 长按 2）。
+    val slots =
+        if (target.comboId != null) {
+            GestureTrigger.KEY_SLOTS
+        } else {
+            val key = configState.config.value.key(branchKeyNow())
+            GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn)
+        }
+    branchGesture = slots.indexOf(target.gesture).coerceAtLeast(0)
     XLog.w("进「$BRANCHES_TITLE」页：${target.what}")
     navTo(Screen.BRANCHES)
 }

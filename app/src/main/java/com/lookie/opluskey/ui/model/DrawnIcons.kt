@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.vector.PathData
 import androidx.compose.ui.graphics.vector.PathNode
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
@@ -410,6 +411,36 @@ internal object DrawnIcons {
                     cut.first - 17.9f,
                     cut.second - 5f,
                 )
+            }
+        }
+
+    /**
+     * 「电源菜单」那一格：`menu-2` 的三条横线 + 右下角电源符号。
+     *
+     *  三条横线照图标库的原坐标（y = 6 / 12 / 18，x 从 4 起）；带角标时**右端在缺口圆上收笔** ——
+     *  越靠下的线收得越早，三条自然错开，不会有一条横穿角标。
+     */
+    val PowerMenu: ImageVector by lazy { badgedIcon("PowerMenu", Badge.Power, ::menuBase) }
+
+    /** `menu-2` 那三条横线的高度 —— 坐标照图标库那颗。 */
+    private val MENU_LINES = listOf(6f, 12f, 18f)
+
+    /**
+     * 菜单底图：三条横线，右端按缺口收笔。
+     *
+     *  @param notch 带角标时传这一档的缺口；格子那颗传 `null`，三条都画到 x=20
+     */
+    private fun menuBase(notch: Notch?): List<PathNode> =
+        PathData {
+            MENU_LINES.forEach { y ->
+                val end =
+                    notch?.let { n ->
+                        val dy = y - n.y
+                        //  这条线落在缺口圆上那一点；离得太远（|dy| 超过半径）就画到 20
+                        if (abs(dy) < n.radius) n.x - sqrt(n.radius * n.radius - dy * dy) else 20f
+                    } ?: 20f
+                moveTo(4f, y)
+                lineTo(end, y)
             }
         }
 

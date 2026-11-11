@@ -7,6 +7,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 
 // 页面文案与标签函数。 —— 从 PageConst.kt 拆出（同包搬迁，调用点不变）。
 
@@ -379,6 +380,15 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
  *  喂给这一个口子 —— 界面侧一行都不用改，也不会冒出中文常量。
  */
 internal fun gestureLabel(gesture: Gesture): String = gestureLabel(gesture.id, gesture.label)
+
+/**
+ * 一档**触发条件**在界面上叫什么 —— 界面这一层按 [GestureTrigger] 排页之后，
+ *  所有露手势名的地方（分段带、日志、场景块的动作行）都走这一支。
+ *
+ *  三档与原三格逐字相同（同名 id 走字典）；第 3 击起那两档（`click3` / `click4`）字典里没有，
+ *  于是原样用 [GestureTrigger.label] 给的「三击 / 四击」—— 正是上面那段说的「自定义手势接口」。
+ */
+internal fun gestureLabel(trigger: GestureTrigger): String = gestureLabel(trigger.id, trigger.label)
 
 /** 按 id 取手势名 —— 见上面那段（`fallback` = 认不得时原样用的那串）。 */
 internal fun gestureLabel(

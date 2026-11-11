@@ -55,6 +55,7 @@ import com.lookie.opluskey.ui.model.PagePalette
 import com.lookie.opluskey.ui.model.colorsOf
 import com.lookie.opluskey.ui.onDebugCommand
 import com.lookie.opluskey.ui.registerLocalReceiver
+import com.lookie.opluskey.ui.screen.binding.bindingTargetsOf
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
 import com.lookie.opluskey.ui.screen.command.sceneGesturePage
 import com.lookie.opluskey.ui.screen.home.HomeLinkSelfCheck
@@ -437,7 +438,10 @@ private fun rememberIconTint(
 private fun SettingsPage.DebugGestureSwitch(pagerState: PagerState) {
     LaunchedEffect(debugGesture.value) {
         debugGesture.value?.let {
-            pagerState.scrollToPage(it.ordinal)
+            //  档位 → 页号按**这一页当前的清单**换算（`bindingTargetsOf` 那一份，随开关三页或五页）：
+            //  `it.ordinal` 只在三值枚举时代与页号一致，三击 / 四击加进来之后不再一致。
+            val slots = bindingTargetsOf(Screen.BINDING).orEmpty().map { t -> t.gesture }
+            pagerState.scrollToPage(slots.indexOf(it).coerceAtLeast(0))
             debugGesture.value = null
         }
     }

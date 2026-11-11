@@ -385,4 +385,14 @@ object CommandLibrary {
         config: Config,
         key: KeyId,
     ): Boolean = isSerialCommand(loadCached(), config.key(key).long.token)
+
+    /**
+     * 与 [longIsSerial] 同一条，问的是**「单击后长按」那一档**绑的动作。
+     *
+     *  分开两支而不是加个参数：两个动作在配置里是两个槽位，读的人一眼能看出问的是哪一档。
+     */
+    fun clickThenLongIsSerial(
+        config: Config,
+        key: KeyId,
+    ): Boolean = isSerialCommand(loadCached(), config.key(key).clickThenLong.token)
 }

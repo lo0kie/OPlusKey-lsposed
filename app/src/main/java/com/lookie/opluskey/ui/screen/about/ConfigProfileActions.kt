@@ -317,8 +317,9 @@ internal fun SettingsPage.ProfileNamingDialog(ui: AboutUiState) {
                 else -> I18n.get(Strings.PROFILE_RENAME, "重命名")
             },
         label = I18n.get(Strings.PROFILE_NAME, "配置名称"),
-        //  与「添加按键 / 重命名按键」同一颗标签：这一格填的都是**一个名字**
-        icon = PageIcons.LabelImportant,
+        //  行首取**配置那一块**的图标（与「更多选项」里那一行同一个记号）：
+        //  改名 / 新建都是这一块的事，不用一颗「名字」的标签替它说话
+        icon = PageIcons.Profiles,
         initial = naming?.initial.orEmpty(),
         onDismiss = { ui.naming = null },
         onConfirm = { name ->

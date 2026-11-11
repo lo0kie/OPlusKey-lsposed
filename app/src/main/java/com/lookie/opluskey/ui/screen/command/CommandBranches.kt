@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.CardList
@@ -324,7 +324,7 @@ private fun SettingsPage.BranchRow(
             //  一条都没配时也给一行「未选择条件」（`empty = true`），让用户知道这一格要配什么。
             //  以前是用 ` + ` 拼在同一行里 —— 两条以上时读起来像一句话，看不出是「且」的关系。
             val conditionLines = ruleConditionLines(rule)
-            //  三档动作各占一行：**这一块完整地管三档**（翻转的核心）。
+            //  每一档动作各占一行：**这一块完整地管它能配的每一档**（翻转的核心）。
             val actionLines = ruleActionLines(rule)
             RuleBlock(
                 // 「场景 1」「场景 2」—— 一份表里第几块，标题上直接写出来
@@ -346,10 +346,10 @@ private fun SettingsPage.BranchRow(
                             menus.condAt = spec.index
                         },
                         //  点的是**哪一档**动作那一行 → 进「场景动作」页编那一档（不再弹抽屉：
-                        //  那一页与「按键绑定」页同一张网格 + 同一条三档手势带，
+                        //  那一页与「按键绑定」页同一张网格 + 同一条手势带，
                         //  场景块的一档本来就该像一颗键的一档那样挑动作）。
-                        onAction = { gesture ->
-                            openSceneBinding(spec.index, gesture)
+                        onAction = { trigger ->
+                            openSceneBinding(spec.index, trigger)
                         },
                         onMenu = {
                             menus.menuAnchor = spec.anchors.menu
@@ -381,7 +381,7 @@ private fun SettingsPage.BranchRow(
 }
 
 /**
- * 这一块三档动作各自那一行 —— 没配的那一档写「跟随默认」并压禁用色。
+ * 这一块每一档动作各自那一行 —— 没配的那一档写「跟随默认」并压禁用色。
  *
  *  「跟随默认」与「无操作」是两件事：前者这一档不被这块接管（继续往下找 / 回落按键绑定），
  *  后者是命中后这一档什么都不做、属于配好了的一档（见 `SceneRule` 的类注释）。
@@ -393,13 +393,13 @@ private fun SettingsPage.BranchRow(
  *  抽出来只为让 [BranchRow] 留在 detekt 的 `LongMethod` 长度线内。
  */
 private fun SettingsPage.ruleActionLines(rule: SceneRule): List<ActionLine> =
-    blockGestures().map { gesture ->
-        val action = rule.actionOf(gesture)
+    blockGestures().map { trigger ->
+        val action = rule.actionOf(trigger)
         ActionLine(
-            gesture = gesture,
+            trigger = trigger,
             text = actionTextOf(action),
             empty = action is Action.Follow,
-            icon = PageIcons.gestureIcon(gesture),
+            icon = PageIcons.gestureIcon(trigger),
         )
     }
 
@@ -524,8 +524,8 @@ private class RuleCells(
     val anchors: RuleAnchors,
     /** 点了**第几条**条件那一行（一块可以带好几条，各占一行）。 */
     val onCondition: (Int) -> Unit,
-    /** 点了**哪一档**动作那一行（三档各占一行）。 */
-    val onAction: (Gesture) -> Unit,
+    /** 点了**哪一档**动作那一行（每档各占一行）。 */
+    val onAction: (GestureTrigger) -> Unit,
     val onMenu: () -> Unit,
     /**
      * 这一块的两行**能不能点** —— 只看整页那道闸（主开关 × 链路 × 只读）。
@@ -573,7 +573,7 @@ private class RuleText(
  *  （见 `SceneRule` 的类注释）。两档的文字与配色因此也不同（[empty] 压禁用色）。
  */
 internal class ActionLine(
-    val gesture: Gesture,
+    val trigger: GestureTrigger,
     val text: String,
     val empty: Boolean,
     val icon: ImageVector,
@@ -693,7 +693,7 @@ private fun RuleBlock(
 /**
  * 动作那几行（**单独一张卡**）—— 一档一行：单击 / 双击 / 长按，组合键只有两档。
  *
- *  翻转之后「一块 = 完整的三档手势」就落在这里：一块场景命中时，这三行各自决定那一档做什么。
+ *  翻转之后「一块 = 它能配的每一档」就落在这里：一块场景命中时，这几行各自决定那一档做什么。
  *  没配的那一档写「跟随默认」并压禁用色 —— 它与「无操作」是两件事（见 [ActionLine]）。
  *
  *  这一块自己关着时，行尾先说一句「已停用」：条件行由 [ConditionTrailing] 说，动作这几行在这里补，
@@ -718,7 +718,7 @@ private fun RuleActionRows(
                     //  标题前面写档位：「单击 | 手电筒」。三行并排时，光有动作名看不出哪一行是哪一档。
                     //  **档位名走 `gestureLabel`（字典）**，不读 `Gesture.label` —— 那串是写死的中文，
                     //  英文界面下这里会冒出「单击」（真机口径）。那一支也是将来自定义手势的接口。
-                    title = "${gestureLabel(line.gesture)} | ${line.text}",
+                    title = "${gestureLabel(line.trigger)} | ${line.text}",
                     //  动作那一行按行内统一的行数上限折行（[ROW_TEXT_MAX_LINES]，3 行 + 省略），
                     //  与整页其余行同一个口径。
                     //  整页只读 / 闸门关着时点不动（与条件行同一道闸，见 `RuleCells.enabled`）
@@ -736,7 +736,7 @@ private fun RuleActionRows(
                     },
                     //  这一行是**换页**（进「场景动作」编那一档），不是弹浮层 ——
                     //  所以不挂触点锚点：锚点只服务「菜单弹在被点的那一格旁边」。
-                    onClick = { cells.onAction(line.gesture) },
+                    onClick = { cells.onAction(line.trigger) },
                 )
             },
     )

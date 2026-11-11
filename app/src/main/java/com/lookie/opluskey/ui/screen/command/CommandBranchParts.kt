@@ -17,7 +17,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.DisabledStateText
 import com.lookie.opluskey.ui.MenuEntry
@@ -301,12 +301,13 @@ internal fun SettingsPage.BranchDefaultTip() {
 }
 
 /**
- * 这一块里要画哪几档动作 —— 组合键只有单击 / 长按（双击在组合上没有定义，见 `ComboKey`）。
+ * 这一块里要画哪几档动作 —— **与「场景动作」页的档位清单同一份**（`sceneGesturePages()`）。
  *
+ *  组合键只有单击 / 长按（双击与多击在组合上没有定义，见 `ComboKey`）；一颗键则是
+ *  `GestureTrigger.slotsOn(...)`（单击 / 双击 / 长按，这颗键打开了多击才多出三击 / 四击）。
  *  判据与判定侧同一条：摆一行写进去也永远不会命中的动作，比少一行更糟。
  */
-internal fun SettingsPage.blockGestures(): List<Gesture> =
-    if (branchDraft.comboId != null) listOf(Gesture.SINGLE, Gesture.LONG) else Gesture.entries
+internal fun SettingsPage.blockGestures(): List<GestureTrigger> = sceneGesturePages()
 
 /**
  * 一档动作那一行写什么 —— 应用那一族要带上「具体是哪一个」（`微信(小窗 扫一扫)`）。

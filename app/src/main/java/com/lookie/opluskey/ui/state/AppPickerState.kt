@@ -8,7 +8,7 @@ import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.model.LaunchableApp
 
@@ -202,8 +202,11 @@ internal class AppPickerState {
      *  用途：挑中应用时知道该写哪个手势。不能靠 pager 的当前页 —— 那一页不属于 pager。
      *  从「添加命令」浮层的「选择应用」进来时它是 `null`（挑中的应用是**一步**、不绑手势）——
      *  给多条命令加一步却没挑，本来就该什么都不发生。与 [replaceStep] 同生共死。
+     *
+     *  类型是**触发条件**而不是那个三值枚举：网格排到第 4、5 页时（三击 / 四击）这一趟也要
+     *  原样记下来，退回枚举会把那两个档位的挑应用写成「没绑手势」。
      */
-    var gesture: Gesture? = null
+    var gesture: GestureTrigger? = null
         private set
 
     /**
@@ -231,6 +234,10 @@ internal class AppPickerState {
 
     /** 松手那一趟是给哪一档组合键挑（`null` = 给当前这一颗键，见 [forRelease]）。 */
     var releaseComboId: String? = null
+        private set
+
+    /** 松手那一趟写的是**「单击后长按」那一档**的松手格（见 `PickTarget.Release.chain`）。 */
+    var releaseChain: Boolean = false
         private set
 
     /**
@@ -315,7 +322,7 @@ internal class AppPickerState {
      *   与 [comboId] 互斥：一块要么属于某颗键、要么属于某档组合键，由草稿自己记着。
      */
     fun openForGesture(
-        g: Gesture,
+        g: GestureTrigger,
         comboId: String? = null,
         sceneAt: Int = NOT_FOR_SCENE,
     ) {
@@ -332,6 +339,7 @@ internal class AppPickerState {
         //  `Release`，于是网格里挑中的应用被写进 `longRelease`，而这一档的绑定没变。
         forRelease = false
         releaseComboId = null
+        releaseChain = false
     }
 
     /**
@@ -342,7 +350,7 @@ internal class AppPickerState {
      *  不如共用 [openForGesture] 再来一支。
      */
     fun openForStopApp(
-        g: Gesture,
+        g: GestureTrigger,
         comboId: String? = null,
         sceneAt: Int = NOT_FOR_SCENE,
     ) {
@@ -363,11 +371,13 @@ internal class AppPickerState {
         stop: Boolean = false,
         combo: String? = null,
         sceneAt: Int = NOT_FOR_SCENE,
+        chain: Boolean = false,
     ) {
         gesture = null
         comboId = null
         this.sceneAt = sceneAt
         releaseComboId = combo
+        releaseChain = chain
         forStep = false
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
@@ -497,7 +507,9 @@ internal class AppPickerState {
                 //  动作写进一块用户根本没在编的场景块
                 val at = sceneAt
                 sceneAt = NOT_FOR_SCENE
-                PickTarget.Release(combo, at)
+                val chain = releaseChain
+                releaseChain = false
+                PickTarget.Release(combo, at, chain)
             }
 
             else -> {
@@ -784,6 +796,12 @@ internal sealed interface PickTarget {
     data class Release(
         val comboId: String? = null,
         val sceneAt: Int = -1,
+        /**
+         * 写的是**「单击后长按」那一档**的松手格（`KeyConfig.clickThenLongRelease`）而不是长按的。
+         *
+         *  两者的挑法、清单、回填全是同一套，只有落点不同 —— 所以只加一位，不另开一条 PickTarget。
+         */
+        val chain: Boolean = false,
     ) : PickTarget
 }
 

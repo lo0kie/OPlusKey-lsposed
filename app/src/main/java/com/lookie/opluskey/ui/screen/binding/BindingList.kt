@@ -106,6 +106,9 @@ internal fun SettingsPage.BindingList(
         Spacer(Modifier.height(currentHeaderHeight(scroll.behavior) + scroll.tabBlock))
         //  **场景那一页没有这一行**：它本身就是「系统场景」里的一行进来编的，
         //  再摆一个「进系统场景」的入口就成了自己指向自己（用户口径「没有额外设置」）。
+        //
+        //  其余每一档都摆 —— 包括三击 / 四击：一块场景能接管哪几档由它自己的 `actions` 说
+        //  （见 `SceneRule`），所以这几档与前三档在这一行上没有区别。
         if (target !is BindingTarget.Scene) {
             CardList(
                 //  上边距取小标题那一档（这一张上面没有小标题，不让位就会贴着分段带）

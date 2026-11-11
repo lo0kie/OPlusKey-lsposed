@@ -15,11 +15,9 @@ import com.lookie.opluskey.core.DEBUG_PROBE
 import com.lookie.opluskey.core.ModuleInfo
 import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.HostApp
-import com.lookie.opluskey.core.model.gestureOrNull
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.core.wire.LogWire
@@ -523,9 +521,7 @@ private fun logComboDispatch(
 ) {
     //  日志里那一档动作：松手这一档是**另一个槽位**（`ComboKey.longRelease`），
     //  与单键 `actionOf(Release)` 同一条口径。
-    val shown =
-        trigger.gestureOrNull()?.let { combo.actionOf(it) }
-            ?: if (trigger == GestureTrigger.Release) combo.longRelease else Action.None
+    val shown = combo.actionOf(trigger)
     val log =
         "组合键：${combo.id}（${combo.keys.joinToString(" + ")}）${trigger.label}" +
             "${if (repeat) "（连续触发）" else ""}" +

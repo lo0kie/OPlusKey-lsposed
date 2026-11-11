@@ -9,6 +9,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.wire.ConfigBroadcast
 import com.lookie.opluskey.ui.model.API_MISMATCH_HINT
 import com.lookie.opluskey.ui.model.CHECKING_HINT
@@ -48,7 +49,7 @@ internal val SettingsPage.localConfigTag: String
         //  用 `===` 比引用即可：`saveCommands` 每次都换一个新的 list 实例。
         val cmds = configState.commands.value
         localTagCache?.let { if (it.first === cur && it.second === cmds) return it.third }
-        val tag = ConfigBroadcast.tag(cur) { CommandLibrary.longIsSerial(cur, it) }
+        val tag = ConfigBroadcast.tag(cur, { CommandLibrary.longIsSerial(cur, it) }, { CommandLibrary.clickThenLongIsSerial(cur, it) })
         localTagCache = Triple(cur, cmds, tag)
         return tag
     }
@@ -64,7 +65,12 @@ internal fun primeLocalTag(
     config: Config,
     commands: List<Command>,
 ) {
-    val tag = ConfigBroadcast.tag(config) { CommandLibrary.longIsSerial(config, it) }
+    val tag =
+        ConfigBroadcast.tag(
+            config,
+            { CommandLibrary.longIsSerial(config, it) },
+            { CommandLibrary.clickThenLongIsSerial(config, it) },
+        )
     localTagCache = Triple(config, commands, tag)
 }
 
@@ -584,7 +590,7 @@ internal fun SettingsPage.disabledClickReason(): String {
     val targetBlocked =
         when (screen) {
             // 手势这一位与判据无关：那一支只看「这一份开没开」
-            Screen.COMBO_EDIT -> ComboEditState.editingId?.let { BindingTarget.Combo(it, Gesture.SINGLE) }
+            Screen.COMBO_EDIT -> ComboEditState.editingId?.let { BindingTarget.Combo(it, Gesture.SINGLE.trigger()) }
 
             else -> null
         }?.pageBlockedReason(cfg)

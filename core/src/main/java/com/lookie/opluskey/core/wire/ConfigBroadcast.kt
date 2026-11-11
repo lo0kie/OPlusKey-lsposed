@@ -3,8 +3,10 @@ package com.lookie.opluskey.core.wire
 import android.content.Intent
 import android.os.Bundle
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
@@ -101,7 +103,8 @@ object ConfigBroadcast {
     fun tag(
         config: Config,
         longSerialOf: (KeyId) -> Boolean,
-    ): String = tag(intent(config, longSerialOf))
+        chainSerialOf: (KeyId) -> Boolean = { false },
+    ): String = tag(intent(config, longSerialOf, chainSerialOf))
 
     /**
      * 把一份配置编成广播；宿主与设置页共用此构造器，格式只在这里写一次。
@@ -125,6 +128,13 @@ object ConfigBroadcast {
     fun intent(
         config: Config,
         longSerialOf: (KeyId) -> Boolean,
+        /**
+         * 「单击后长按」那一档绑的是不是多条命令 —— 与 [longSerialOf] 同一条来路（命令库在宿主私有目录）。
+         *
+         *  单独一个参数而不是让调用方在 `longSerialOf` 里混着算：两处是**两个不同的动作**，
+         *  一个 lambda 里揉在一起，读的人没法知道它答的是哪一档。
+         */
+        chainSerialOf: (KeyId) -> Boolean = { false },
     ): Intent {
         val intent = Intent(ACTION_CONFIG).addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
         val keys = config.allKeys
@@ -144,7 +154,15 @@ object ConfigBroadcast {
                 ConfigFields.Values(
                     stored.raw() +
                         (ConfigFields.F_LONG_SERIAL to longSerialOf(k)) +
-                        (ConfigFields.F_SCENE_RELEASE to config.key(k).scenes.any { it.hasRelease }),
+                        (ConfigFields.F_CTL_SERIAL to chainSerialOf(k)) +
+                        (ConfigFields.F_SCENE_RELEASE to config.key(k).scenes.any { it.hasRelease }) +
+                        (ConfigFields.F_SCENE_CHAIN_RELEASE to config.key(k).scenes.any { it.hasChainRelease }) +
+                        //  「长按这一档有没有人要」：注入侧看不到场景表，而 `instantSingle`
+                        //  要靠它决定「长按无操作时还等不等那一下」（见 `KeyConfig.longActionExists`）
+                        (
+                            ConfigFields.F_SCENE_LONG to
+                                config.key(k).scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }
+                        ),
                 )
             putFields(intent, v, ConfigFields.KEY_FIELDS, keyPrefix(k.id))
         }

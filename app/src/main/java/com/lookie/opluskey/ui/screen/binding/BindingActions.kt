@@ -6,7 +6,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.core.present.ActionCatalog
@@ -185,33 +185,24 @@ private fun SettingsPage.withTargetBound(
 
         is BindingTarget.Key -> {
             val key = cfg.key(target.id)
-            val updated =
-                when (target.gesture) {
-                    Gesture.SINGLE -> {
-                        key.copy(single = action)
-                    }
-
-                    Gesture.DOUBLE -> {
-                        key.copy(double = action)
-                    }
-
-                    //  长按换成「多条命令」时必须把「连续触发」一起关掉（纯界面操作就能落进这个洞）：
-                    // 先给一条单条命令开连续触发、再把长按换成多条命令 —— 换动作只写 `long`、
-                    // 从不碰 `longRepeat`，界面只是把那一行置灰，而按住不放会一条条重放整个命令链。
-                    //  只在这一种组合下清：换成别的动作时把用户的开关也一起抹掉没有道理，
-                    // 而「动作是多条命令 + 连续触发=开」这个不一致由这里和判定侧的
-                    // `KeyConfig.longIsSerial` 双重保证（判定侧那道闸门见 `GestureDetector`）。
-                    Gesture.LONG -> {
-                        key.copy(
-                            long = action,
-                            longRepeat = key.longRepeat && !isSerialCommand(configState.commands.value, action.token),
-                        )
-                    }
-                }.copy(
-                    //  选动作 == 启用（真机发现）：设置页读不到旧配置时会回落到
-                    // `Config.DEFAULT`，而默认是 `plus_enabled=0`（"装上模块不改变行为" 是有意的默认值）。
-                    enabled = true,
-                )
+            //  写哪一格由**触发条件**说（`KeyConfig.withAction` —— 第 3 击起落进 `extraClicks`）：
+            //  界面这一层不再按档位穷举，多一档不用回到这里再补一份 `when`。
+            var updated = key.withAction(target.gesture, action)
+            //  长按换成「多条命令」时必须把「连续触发」一起关掉（纯界面操作就能落进这个洞）：
+            // 先给一条单条命令开连续触发、再把长按换成多条命令 —— 换动作只写 `long`、
+            // 从不碰 `longRepeat`，界面只是把那一行置灰，而按住不放会一条条重放整个命令链。
+            //  只在这一种组合下清：换成别的动作时把用户的开关也一起抹掉没有道理，
+            //  而「动作是多条命令 + 连续触发=开」这个不一致由这里和判定侧的
+            //  `KeyConfig.longIsSerial` 双重保证（判定侧那道闸门见 `GestureDetector`）。
+            if (target.gesture == GestureTrigger.LongPress) {
+                updated =
+                    updated.copy(
+                        longRepeat = key.longRepeat && !isSerialCommand(configState.commands.value, action.token),
+                    )
+            }
+            //  选动作 == 启用（真机发现）：设置页读不到旧配置时会回落到 `Config.DEFAULT`，
+            //  而默认是 `plus_enabled=0`（「装上模块不改变行为」是有意的默认值）。
+            updated = updated.copy(enabled = true)
             cfg.copy(keys = cfg.keys + (target.id to updated))
         }
 
@@ -222,18 +213,18 @@ private fun SettingsPage.withTargetBound(
                         if (c.id != target.id) {
                             c
                         } else {
-                            when (target.gesture) {
-                                Gesture.SINGLE -> {
+                            when {
+                                target.gesture.isSingle -> {
                                     c.copy(single = action)
                                 }
 
-                                Gesture.LONG -> {
+                                target.gesture == GestureTrigger.LongPress -> {
                                     c.copy(long = action)
                                 }
 
-                                //  组合上没有双击（`ComboKey.actionOf` 恒返回「无操作」）——
-                                //  界面上走不到这一支；真走到了就原样不动，不写一个用不上的位。
-                                Gesture.DOUBLE -> {
+                                //  组合上没有双击、也没有第 3 击起的档位（`ComboKey.actionOf` 恒返回
+                                //  「无操作」）—— 界面上走不到这两支；真走到了就原样不动，不写用不上的位。
+                                else -> {
                                     c
                                 }
                             }

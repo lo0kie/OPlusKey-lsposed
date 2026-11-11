@@ -20,7 +20,7 @@ import kotlin.math.sqrt
  *  [Cycle] 是唯一一个「不是动词」的角标：它标的是响铃状态里的「循环」那一档（按一下轮换三档），
  *  底图是铃铛，角标是一圈箭头。
  */
-internal enum class Badge { Plus, Minus, Gear, Cycle, Pause }
+internal enum class Badge { Plus, Minus, Gear, Cycle, Pause, Power }
 
 /**
  * 角标在 24 格里占的那块地 —— 圆心是角标中心，半径见 [notch]。
@@ -70,6 +70,7 @@ private val Badge.inkRadius: Float
                 Badge.Gear -> GEAR_TOOTH
                 Badge.Cycle -> CYCLE_INK
                 Badge.Pause -> PAUSE_INK
+                Badge.Power -> POWER_INK
             }
 
 /** 这一档角标占的缺口。 */
@@ -151,6 +152,22 @@ internal fun badgePath(badge: Badge): List<PathNode> =
                 moveTo(c + PAUSE_GAP, c - PAUSE_HALF)
                 lineTo(c + PAUSE_GAP, c + PAUSE_HALF)
             }
+
+            Badge.Power -> {
+                //  电源符号：一圈（缺口留在正上方）+ 顶上那一竖 —— 照图标库 `power` 的比例缩到角标大小
+                moveTo(c + POWER_RING * 0.707f, c - POWER_RING * 0.707f)
+                arcToRelative(
+                    POWER_RING,
+                    POWER_RING,
+                    0f,
+                    isMoreThanHalf = true,
+                    isPositiveArc = true,
+                    -POWER_RING * 1.414f,
+                    0f,
+                )
+                moveTo(c, c - POWER_BAR)
+                lineTo(c, c)
+            }
         }
     }
 
@@ -224,6 +241,14 @@ private fun circleCut(
 /** 这批字形的笔画 —— 与图标库那支笔同宽（都是 2.0 / 24 视口），摆在一起不会一粗一细。 */
 internal const val ICON_STROKE = 2f
 
+/**
+ * 右下角那颗角标的笔画 —— 比底图**细一档**（2 → 1.7）。
+ *
+ *  角标只有 7 格大，用底图那支 2.0 的笔画时，加号、齿轮、那圈箭头挤在一起会糊成一坨；
+ *  细一档就分得开，又不至于细到像另一套图标（真机口径「不要细太多」）。
+ */
+internal const val BADGE_STROKE = 1.7f
+
 /** 角标中心（右下角那一块的中心）—— 与图标库那几颗 `bell-*` 的角标同一个位置。 */
 private const val BADGE_CENTER = 19f
 
@@ -250,6 +275,15 @@ private const val PAUSE_GAP = 1.6f
 
 /** 暂停角标的墨迹半径（不含描边）：竖笔的端点到圆心 2.72 格。 */
 private const val PAUSE_INK = 2.72f
+
+/** 电源符号那圈的半径。 */
+private const val POWER_RING = 3.3f
+
+/** 电源符号顶上那一竖的长度（从圆心往上量）。 */
+private const val POWER_BAR = 3.5f
+
+/** 电源角标的墨迹半径（不含描边）：那一竖的顶端到圆心 3.5 格。 */
+private const val POWER_INK = 3.5f
 
 /**
  * 齿轮六颗齿的方向（单位向量，从正上起每 60° 一颗）。

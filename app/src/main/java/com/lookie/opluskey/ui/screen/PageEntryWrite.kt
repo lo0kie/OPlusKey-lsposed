@@ -4,7 +4,9 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.LongPressEdit
+import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.Screen
@@ -194,8 +196,29 @@ private fun SettingsPage.writeReleaseTo(
     pick: PickTarget.Release,
     action: Action,
 ): Boolean {
+    //  「单击后长按」那一档的松手格自成一路（`clickThenLongRelease`）：挑法、清单、回填
+    //  与长按的松手共用，只有落点不同 —— 所以只在落点这里分一次
+    if (pick.chain) {
+        //  场景块走草稿（与 `writeReleaseTo` 的长按那一支同一条纪律：这一页只改草稿）
+        if (pick.sceneAt >= 0) {
+            val block = BindingTarget.Scene(branchDraftNow(), pick.sceneAt, GestureTrigger.ClickThenLong, pick.comboId)
+            val ok = block.bindChainRelease(action = action)
+            XLog.w("额外动作：${block.what} ← ${action.token}（草稿）${if (ok) "" else "（那一块已不在草稿里）"}")
+            return ok
+        }
+        val cfg = configState.config.value
+        val id = KeyWatchState.editing(cfg)
+        val key = cfg.key(id)
+        val ok =
+            write(
+                cfg.copy(keys = cfg.keys + (id to key.copy(clickThenLongRelease = action))),
+                "click_then_long_release key=${id.id}",
+            ) != CommandsSave.Failed
+        XLog.w("额外动作：单击后长按松手 ← ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
+        return ok
+    }
     if (pick.sceneAt >= 0) {
-        val block = BindingTarget.Scene(branchDraftNow(), pick.sceneAt, Gesture.LONG, pick.comboId)
+        val block = BindingTarget.Scene(branchDraftNow(), pick.sceneAt, Gesture.LONG.trigger(), pick.comboId)
         val ok = block.bindRelease(action = action)
         XLog.w("额外动作：${block.what} ← ${action.token}（草稿）${if (ok) "" else "（那一块已不在草稿里）"}")
         return ok
@@ -219,9 +242,9 @@ private fun SettingsPage.writeLongReleaseTo(
     val cfg = configState.config.value
     val target =
         if (comboId != null) {
-            BindingTarget.Combo(comboId, Gesture.LONG)
+            BindingTarget.Combo(comboId, Gesture.LONG.trigger())
         } else {
-            BindingTarget.Key(KeyWatchState.editing(cfg), Gesture.LONG)
+            BindingTarget.Key(KeyWatchState.editing(cfg), Gesture.LONG.trigger())
         }
     val ok =
         write(target.withLongPress(cfg, LongPressEdit(release = action)), "${target.what}:long_release") !=

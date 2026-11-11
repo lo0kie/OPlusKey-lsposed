@@ -349,7 +349,14 @@ internal object GestureReceiver {
     private fun publishConfigState(ctx: Context) {
         XLog.guard("广播配置给注入侧") {
             val config = ConfigStore.read()
-            if (PageWire.send(ctx, HostApp.PACKAGE, ConfigBroadcast.intent(config) { CommandLibrary.longIsSerial(config, it) })) {
+            if (PageWire.send(
+                    ctx,
+                    HostApp.PACKAGE,
+                    ConfigBroadcast.intent(config, {
+                        CommandLibrary.longIsSerial(config, it)
+                    }, { CommandLibrary.clickThenLongIsSerial(config, it) }),
+                )
+            ) {
                 XLog.w("已广播配置给注入侧（用户已解锁=${isUserUnlocked(ctx)}）")
             }
         }

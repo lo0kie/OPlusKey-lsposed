@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.state
 
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -83,6 +84,14 @@ internal class HintQueue(
     /** 每条的到期计时（按 [HintItem.id]）。 */
     private val timers = mutableMapOf<Long, Job>()
 
+    /**
+     * 每条的**到期时刻**（`elapsedRealtime`）—— 与 [timers] 一一对应。
+     *
+     *  为什么要单独记：跑马灯（文字比胶囊宽）滚动的那几秒里不能到点收，[extend] 要把到期
+     *  往后推。只拿 `timers` 是推不出来的 —— 协程里那个 `delay` 的剩余量读不到。
+     */
+    private val deadlines = mutableMapOf<Long, Long>()
+
     private var nextId = 0L
 
     /**
@@ -140,6 +149,7 @@ internal class HintQueue(
     fun clear() {
         timers.values.forEach { it.cancel() }
         timers.clear()
+        deadlines.clear()
         items = emptyList()
     }
 
@@ -157,9 +167,40 @@ internal class HintQueue(
         val hold = holdMs ?: this.holdMs
         if (hold <= 0) return
         timers.remove(id)?.cancel()
+        deadlines[id] = SystemClock.elapsedRealtime() + hold
         timers[id] =
             scope.launch {
                 delay(hold)
+                retire(id)
+            }
+    }
+
+    /**
+     * 把某一条的到期时刻**往后推** [extraMs] —— 跑马灯滚动期间不能到点收。
+     *
+     *  时序就是用户口径那句「滚动到顶后开始计时关闭」：这一条本来在 `push` 时已经起了一份
+     *  `holdMs` 的计时，界面量出「文字比胶囊宽、要滚 `d` 毫秒」之后调这里把到期推后 `d`，
+     *  于是滚动结束的那一刻，剩下的正好是完整的一档停留时间。
+     *
+     *  推的是**原本那一刻**再往后（不是从此刻重新数）：同一条上换句、或滚动中又被推一次，
+     *  停留时长都不会被重复算进去。
+     *
+     *  已经开始退场 / 已经不在队列里的 id 直接忽略。
+     */
+    fun extend(
+        id: Long,
+        extraMs: Long,
+    ) {
+        if (extraMs <= 0) return
+        if (items.none { it.id == id && !it.exiting }) return
+        val until = deadlines[id] ?: return
+        val left = until - SystemClock.elapsedRealtime() + extraMs
+        if (left <= 0) return
+        timers.remove(id)?.cancel()
+        deadlines[id] = SystemClock.elapsedRealtime() + left
+        timers[id] =
+            scope.launch {
+                delay(left)
                 retire(id)
             }
     }
@@ -201,6 +242,7 @@ internal class HintQueue(
     private fun retire(id: Long) {
         if (items.none { it.id == id && !it.exiting }) return
         timers.remove(id)?.cancel()
+        deadlines.remove(id)
         items = items.map { if (it.id == id) it.copy(exiting = true) else it }
         scheduleRemoval(id)
     }
@@ -226,7 +268,11 @@ internal class HintQueue(
     private fun pruneTimers() {
         val alive = items.mapTo(HashSet()) { it.id }
         val dead = timers.keys.filterNot { it in alive }
-        dead.forEach { timers.remove(it)?.cancel() }
+        dead.forEach {
+            timers.remove(it)?.cancel()
+            deadlines.remove(it)
+        }
+        deadlines.keys.retainAll(alive)
     }
 }
 

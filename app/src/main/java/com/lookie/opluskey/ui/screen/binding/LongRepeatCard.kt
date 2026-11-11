@@ -84,6 +84,10 @@ internal fun SettingsPage.LongPressCard(
             releaseIcon = actionIcon(releaseAction.token),
             //  时序的互斥只在数据层有一份：这里把算好的结论递进去，界面不重算
             releaseBound = owner.releaseBound,
+            //  长按这一档**本身**没有动作（无操作）时，松手额外动作整族焊死（见 `LongPressSpec.releaseAvailable`）。
+            //  取 `actionIn` 而不是 `owner.long`：后者在场景接管时仍是空，而这一行要问的是
+            //  「这一按到底做不做事」——`actionIn` 已经把场景那一层算进去了。
+            releaseAvailable = target.actionIn(cfg).isBound,
             enabled = !blocked,
             delayEnabled = !blocked,
             sections = sectionsFor(target),
@@ -178,7 +182,7 @@ private fun sectionsFor(target: BindingTarget): LongPressSections =
  *  多条命令反复重放整条链没有意义；灵感语音那一族按一下就完事。
  *  只该管「连续触发」那一族，不连坐时序与长按延迟。
  */
-private fun SettingsPage.repeatBlockedReason(current: Action): String? {
+internal fun SettingsPage.repeatBlockedReason(current: Action): String? {
     if (isSerialCommand(configState.commands.value, current.token)) {
         return I18n.get(Strings.BINDING_SERIAL_UNSUPPORTED_REPEAT, "多条命令不支持连续触发")
     }

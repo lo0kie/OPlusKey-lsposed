@@ -6,9 +6,12 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyId
+import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.rom.DeviceSupport
 import com.lookie.opluskey.core.rom.RomProfile
+import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.deviceModel
 import com.lookie.opluskey.ui.state.deviceSupport
 import com.lookie.opluskey.ui.state.fakeModel
@@ -36,7 +39,11 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
             //  直接跳「选择应用」时补上「为谁挑」：正常路径由格子点击 `openAppPickerForGesture`
             //  设置，少了它这一页的 FAB 会静默无效（`writeToken` 拿不到手势）。
             if (target == Screen.APP_PICKER) {
-                picker.openForGesture(Gesture.entries.getOrElse(branchGesture) { Gesture.SINGLE })
+                //  `branchGesture` 就是「按键绑定」页停在第几页，按**当前那一份清单**换成档位
+                //  （三击 / 四击 / 单击后长按没开时少那几页）—— 不管开关开没开都取不越界的那一份。
+                val key = configState.config.value.key(KeyWatchState.editing(configState.config.value))
+                val slots = GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn)
+                picker.openForGesture(slots.getOrElse(branchGesture) { GestureTrigger.Click(1) })
             }
             // 走 [navTo]（不是「压一层」）：目标已经在栈里就直接回到它，否则压上去。
             // 于是 `--es screen COMMANDS` 从首页一步落到「自定义命令」页，
@@ -50,7 +57,7 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
         val target = Gesture.entries.firstOrNull { it.name.equals(raw, ignoreCase = true) }
         if (target != null) {
             XLog.w("调试：手势 tab → $target")
-            debugGesture.value = target
+            debugGesture.value = target.trigger()
         } else {
             XLog.w("调试：认不出的 gesture=$raw（可用：${Gesture.entries.joinToString()}）")
         }

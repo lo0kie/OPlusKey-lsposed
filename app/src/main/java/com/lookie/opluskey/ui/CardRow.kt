@@ -39,6 +39,7 @@ import com.lookie.opluskey.ui.model.ROW_TITLE_INSET
 import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
 import com.lookie.opluskey.ui.model.isDarkScheme
+import com.lookie.opluskey.ui.model.opticalBlockBias
 import com.lookie.opluskey.ui.model.opticalBlockCenter
 import com.lookie.opluskey.ui.model.opticalCenter
 import io.github.suqi8.coui.kmp.basic.BasicComponent
@@ -443,9 +444,11 @@ private fun ColumnScope.RowContent(
                     enabled = row.enabled,
                     vibrate = row.vibrate,
                     //  与 [CardRow.Item] 同一条尺子（见 [ItemText] 里那段）：开关行的标题 / 副标题
-                    //  是库内部画的、插不进修饰符，所以整行挪。副标题必有，末行固定是 `body2`。
-                    modifier =
-                        Modifier.opticalBlockCenter(
+                    //  是库内部画的、插不进修饰符，所以只能把「整块」下移同样多 —— 但下移走的是
+                    //  行内上下内边距（`contentBias`），**不是整行 offset**：行一挪，可点区域与
+                    //  按住时的波纹跟着挪，顶部就与上一行让出一道缝（真机口径）。
+                    contentBias =
+                        opticalBlockBias(
                             COUITheme.textStyles.headline1,
                             COUITheme.textStyles.body2,
                         ),

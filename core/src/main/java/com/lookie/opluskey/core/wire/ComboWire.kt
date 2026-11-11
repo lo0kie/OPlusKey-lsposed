@@ -5,8 +5,11 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.ConfigFields
+import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.SceneRule
+import com.lookie.opluskey.core.model.trigger
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -110,8 +113,8 @@ object ComboWire {
     )
 
     /**
-     * 一个场景块在广播里的形态 —— 字面量与落盘那份 `SceneRuleDto` 一致：条件是
-     * `BranchCondition.token`，三档动作是 `Action.token`（`follow` = 这一档不参与）。
+     * 一个场景块在广播里的形态 —— 条件是 `BranchCondition.token`，各档动作是 `Action.token`
+     * （表里没有的档位 = 这一档不参与）。
      *
      *  为什么在这里再写一份、不复用落盘那个 DTO：`wire` 不许依赖 `core/config`
      *  （注入侧只准依赖 model / log / reflect / wire，见 `docs/architecture/structure.md`），
@@ -120,6 +123,14 @@ object ComboWire {
     @Serializable
     private data class WireScene(
         val conditions: List<String> = emptyList(),
+        /** 档位 id → 动作 token（`single` / `double` / `long` / `click3` …）。 */
+        val actions: Map<String, String> = emptyMap(),
+        /**
+         * **老的三格** —— 只为「装着新宿主、注入侧还是上一版」那一段过渡期留着。
+         *
+         *  新写法只认 [actions]；这三位与它同源、由 [of] 一起写出，读侧见到 [actions] 就忽略它们。
+         *  注入侧下一次重启换上新代码之后可以整段删掉。
+         */
         val single: String = Action.FOLLOW,
         val double: String = Action.FOLLOW,
         val long: String = Action.FOLLOW,
@@ -142,22 +153,45 @@ object ComboWire {
             }
             return SceneRule(
                 conditions = parsed.filterNotNull(),
-                single = Action.parse(single),
-                double = Action.parse(double),
-                long = Action.parse(long),
+                actions = slotActions(),
                 releaseOn = releaseOn,
                 release = Action.parse(release),
                 enabled = enabled,
             )
         }
 
+        /** 档位 → 动作：**新格优先**，老格只补它没写到的档位（见 [single] 那段）。 */
+        private fun slotActions(): Map<GestureTrigger, Action> {
+            val out = LinkedHashMap<GestureTrigger, Action>()
+            actions.forEach { (id, token) ->
+                val trigger = GestureTrigger.ofId(id)
+                if (trigger == null) {
+                    XLog.w("组合键广播：场景块里有认不出的档位（丢掉这一档）：$id")
+                } else {
+                    out[trigger] = Action.parse(token)
+                }
+            }
+            listOf("single" to single, "double" to double, "long" to long).forEach { (id, token) ->
+                val trigger = Gesture.ofId(id)?.trigger() ?: return@forEach
+                val action = Action.parse(token)
+                if (action !is Action.Follow) out.putIfAbsent(trigger, action)
+            }
+            return out
+        }
+
         companion object {
             fun of(scene: SceneRule): WireScene =
                 WireScene(
                     conditions = scene.conditions.map { it.token },
-                    single = scene.single.token,
-                    double = scene.double.token,
-                    long = scene.long.token,
+                    actions =
+                        scene.actions
+                            .filterValues { it !is Action.Follow }
+                            .mapKeys { GestureTrigger.idOf(it.key) }
+                            .mapValues { it.value.token },
+                    //  与 `actions` 同源，只为老读侧那一段过渡期（见字段说明）
+                    single = scene.actionOf(Gesture.SINGLE.trigger()).token,
+                    double = scene.actionOf(Gesture.DOUBLE.trigger()).token,
+                    long = scene.actionOf(Gesture.LONG.trigger()).token,
                     releaseOn = scene.releaseOn,
                     release = scene.release.token,
                     enabled = scene.enabled,

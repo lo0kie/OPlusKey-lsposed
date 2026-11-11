@@ -168,8 +168,8 @@ internal fun SettingsPage.CollectKeyDialog(
         show = show && pendingCode != null && collectClosed,
         title = I18n.get(Strings.BINDING_ADD_KEY, "添加按键"),
         label = I18n.get(Strings.BINDING_KEY_NAME, "按键名称"),
-        //  行首用标签（`label-important`）：这一格填的是**一个名字**
-        icon = PageIcons.LabelImportant,
+        //  行首取**触发这一格的那一行**（按键列表最后的「添加按键」）
+        icon = PageIcons.MenuKeyAdd,
         initial = draftName,
         onDismiss = onDismiss,
         onConfirm = { name ->

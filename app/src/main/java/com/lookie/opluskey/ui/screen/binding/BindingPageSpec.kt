@@ -6,6 +6,8 @@ import androidx.compose.runtime.remember
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
+import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -74,8 +76,13 @@ internal fun SettingsPage.bindingTargetsOf(s: Screen): List<BindingTarget>? =
         }
 
         else -> {
-            val id = KeyWatchState.editing(configState.config.value)
-            Gesture.entries.map { BindingTarget.Key(id, it) }
+            val cfg = configState.config.value
+            val id = KeyWatchState.editing(cfg)
+            val key = cfg.key(id)
+            //  三击 / 四击 / 单击后长按那几页**跟着这颗键自己那几颗开关走**
+            //  （`KeyConfig.extraClicksOn` / `clickThenLongOn`）：没开的档根本不存在，
+            //  不是「存在但灰着」—— 页都少一页，带子上也不列。
+            GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn).map { BindingTarget.Key(id, it) }
         }
     }
 
@@ -120,7 +127,7 @@ internal fun SettingsPage.bindingBandOf(s: Screen): BandHeight =
     }
 
 /**
- * 手势带上那几档的**文案** —— 组合键那两档叫「短按 / 长按」，其余叫「单击 / 双击 / 长按」。
+ * 手势带上那几档的**文案** —— 组合键那两档叫「短按 / 长按」，其余叫「单击 / 双击 / 长按 / 三击 / 四击」。
  *
  *  这套叫法与「组合键」页其余文案一致（`ComboKey` 只有短按 / 长按），不能统一成一套：
  *  组合没有双击，把短按写成「单击」会让人去找那颗并不存在的单击。
@@ -136,7 +143,7 @@ internal fun bindingBandLabels(targets: List<BindingTarget>): List<String> =
     }
 
 /** 组合键那一页只有两档（`ComboKey` 上没有双击）—— 顺序即分页器页序。 */
-private val COMBO_GESTURES = listOf(Gesture.SINGLE, Gesture.LONG)
+private val COMBO_GESTURES: List<GestureTrigger> = listOf(Gesture.SINGLE, Gesture.LONG).map { it.trigger() }
 
 /** 在编的那一档组合（`null` = 没在编 / 刚被删）—— 三处判据都从这一支取。 */
 private fun SettingsPage.editingComboOrNull() =

@@ -27,6 +27,7 @@ import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.screen.combo.KeysAskDialog
+import com.lookie.opluskey.ui.screen.combo.keyRowIcon
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.state.KeyWatchState
@@ -364,7 +365,8 @@ private fun SettingsPage.KeyMenuDialogHost(
         show = dialog == KeyMenuDialog.RENAME,
         title = I18n.get(Strings.BINDING_RENAME_KEY, "重命名"),
         label = I18n.get(Strings.BINDING_KEY_NAME, "按键名称"),
-        icon = PageIcons.LabelImportant,
+        //  行首取**触发这一行的键**在列表里那颗（见 `keyRowIcon`）：弹窗与它来处的那一行同一个记号
+        icon = keyRowIcon(selected),
         initial = selected.label,
         onDismiss = onDismiss,
         onConfirm = { name ->

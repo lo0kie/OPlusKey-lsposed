@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui.screen.binding
 
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
@@ -9,7 +10,9 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.GlobalConfig
+import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.OwnSettings
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
@@ -20,6 +23,7 @@ import com.lookie.opluskey.ui.OwnField
 import com.lookie.opluskey.ui.OwnSettingsCard
 import com.lookie.opluskey.ui.OwnSettingsValues
 import com.lookie.opluskey.ui.PageScrollColumn
+import com.lookie.opluskey.ui.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
@@ -74,8 +78,25 @@ internal fun SettingsPage.KeySettingsScreen(
         return
     }
     PageScrollColumn(scrollBehavior = scrollBehavior) {
-        // 顶栏叠在内容上，顶部要自己让出（动态值）
+        // 顶栏叠在内容上，顶部要自己让出（动态值）—— 这一页顶上那张卡自己带一档上边距
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
+
+        //  —— 多击那两颗开关（只有单键有）——
+        //  **放在最顶部**：它们决定这一页下面那个「总开关」能管到几档 —— 多击是这一档存不存在，
+        //  不是「怎么工作」。先看见「有几档」，再看见「这几档怎么工作」才顺。
+        //  它们**不是** `OwnSettings` 那一族里的一项：下面那张卡管「接口 / 振动 / 提示」，
+        //  这里管「有没有这一档」，所以也**不吃**那颗总开关（见 `KeyConfig.extraClicksOn`）。
+        //
+        //  上边距取 `SECTION_TITLE_PAD_TOP`：这张卡上面没有小标题，不让位就贴着顶栏 ——
+        //  与「按键绑定」页那条「系统场景」同一档（见 `BindingList`）。
+        if (target is SettingsTarget.Key) {
+            ExtraClicksCard(
+                target = target,
+                cfg = cfg,
+                enabled = pageEnabled,
+                modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
+            )
+        }
 
         //  一个小标题带一张卡（与「按键设置」页同构）—— 页面顶部不再另放一个与顶栏同名的
         //  「独立设置」，那三个小标题由卡片自己画（见 `OwnSettingsCard`）。
@@ -86,65 +107,11 @@ internal fun SettingsPage.KeySettingsScreen(
             effective = cfg.effectiveFor(owner),
             enabled = pageEnabled,
             titles = ownCardTitles(),
-        ) { values, field ->
-            //  **只把这一项搬过去，其余五项以配置现值为准**。
-            //
-            //  卡片交回来的是**渲染那一帧时**读到的整份值：写盘 → 重组之间只要错开一步，
-            //  那份就是上一帧的。原先整份写回，于是「打开使用独立设置」之后紧接着点
-            //  「执行时提示」，会把总开关一起写回旧值（false）—— 真机上就是「刚打开的那颗
-            //  自己又关回去了」，日志里能同时看到 `values.useOwn=false` 与 `现存.useOwn=true`。
-            //  按字段合并之后，别的项有多旧都不影响，只有手指真点到的那一格会变。
-            val cfgNow = configState.config.value
-            val ownerNow = target.ownerIn(cfgNow) ?: return@OwnSettingsCard
-            val base = ownerNow.values()
-            val patched = base.withField(field, values)
-            //  **第一次打开总开关时，用公共设置把这一档播一次种**；之后开关怎么拨都不再读公共值。
-            //
-            //  为什么要播：这一页从来没配过时，各项自己的默认值与公共那份往往不同（振动关着、
-            //  强度中档、提示关着、模板是默认那句）—— 打开开关却看到一片与公共不一样的旧默认值，
-            //  读起来就是「开了没生效」。
-            //
-            //  为什么**只播一次**（判据是 `ownSettingsSeeded`，不是「当前开关关着」）：用户把这
-            //  五项调成自己想要的样子、关掉总开关、过一阵又打开 —— 那时他要的是**上次那套**，
-            //  不是公共设置。原先每次「关→开」都重抄一遍，等于把他调过的值悄悄扔掉。
-            //  播种后置位写到盘上，所以跨进程、跨重启都只播一次。
-            //
-            //  **播种之后必须把这一次的改动再叠回去**（`withField` 那一下）：顺序反过来的话，
-            //  用户刚拨的那一项会被公共值盖掉。什么时候会撞上：`useOwnSettings` 早就开着、
-            //  而 `ownSettingsSeeded` 还是 false —— 老配置里没有这一位（它是后加的），
-            //  升级上来的用户第一次拨任何一项都会「拨了没反应」（那一格被公共值顶回去）。
-            val next =
-                if (patched.useOwnSettings && !ownerNow.ownSettingsSeeded) {
-                    patched
-                        .copy(
-                            colorOsApi = cfgNow.global.colorOsApi,
-                            vibrate = cfgNow.global.vibrate,
-                            vibrateStrength = cfgNow.global.vibrateStrength,
-                            toastOnRun = cfgNow.global.toastOnRun,
-                            toastTemplate = cfgNow.global.toastTemplate,
-                            ownSettingsSeeded = true,
-                        ).withField(field, values)
-                } else {
-                    patched
-                }
-            XLog.w(
-                "own_settings 提交：field=$field 提交值=${values.useOwnSettings} " +
-                    "现存=${base.useOwnSettings} 已播种=${ownerNow.ownSettingsSeeded} " +
-                    "写入=${next.useOwnSettings}",
-            )
-            //  「改谁」只在写回这一处落成具体表（`keys` 还是 `combos`）；组合那两项也在这里
-            //  跟着一起播种（理由见 [withSeededComboFields]）。
-            val cfgNext = withSeededComboFields(cfgNow, target, next, ownerNow)
-            val what = "own_settings target=${settingsTargetLabel(target)} field=$field"
-            //  **开关有回执，滑杆与文案窗没有** —— 与公共页同一口径：那边滑杆也只靠行尾数值、
-            //  文案窗按下即关。滑杆松手会连发一次 commit，弹回执只会把提示条刷成跑马灯。
-            val notice = ownSwitchNotice(field, next)
-            if (notice == null) {
-                write(cfgNext, what)
-            } else {
-                writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) { notice }
-            }
-        }
+        ) { values, field -> commitOwnField(target, values, field) }
+
+        //  —— 多击手势那两颗开关 ——
+        //  **挪到页顶去了**（见 `KeySettingsScreen` 开头）：它们决定下面那张卡能管到几档 ——
+        //  多击是「有没有这一档」，不是「这一档怎么工作」。留这一句只为说明它们为什么不在这张卡里。
 
         //  —— 组合专属的两项 ——
         //  它们**不在**上面那张卡里：那张卡装的是「五项公共项的覆盖」，单键组合都有；
@@ -156,6 +123,133 @@ internal fun SettingsPage.KeySettingsScreen(
         }
     }
 }
+
+/**
+ * 「启用三击 / 启用四击」那两行 —— 只在改的是**一颗键**时出现（组合没有第三击起的那几档）。
+ *
+ *  它与下面那张卡的差别只有一处：**不吃 `useOwnSettings`**。那一族是「公共设置这一项可以另设
+ *  一份」，公共设置里根本没有「多击」这一项，跟随无从谈起 —— 这一位只属于这一颗键。
+ *  `enabled` 拿到的是整页闸门，不是 `rowsEnabled`。
+ *
+ *  **逐档一个开关**而不是一位统领：三击与四击的代价不一样（开三击让单击多等一个窗，
+ *  开四击还要让三击也等）。只要三击的人不该被迫接受四击那一份延迟。
+ *  两档互不依赖：只开四击是合法配置（第 3 下不算数、第 4 下照样派发）。
+ *
+ *  写回走 `writeAndNotice`（与其它开关同一套回执，位用 [HINT_SLOT_OWN_SETTINGS]：
+ *  它就在这一页上，与下面那颗是同一片区域的两行）。
+ */
+@Composable
+private fun SettingsPage.ExtraClicksCard(
+    target: SettingsTarget.Key,
+    cfg: Config,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val key = cfg.key(target.id)
+    CardList(
+        modifier = modifier,
+        rows =
+            listOf(
+                extraClickRow(target, key, COUNT3, enabled),
+                extraClickRow(target, key, COUNT4, enabled),
+                clickThenLongRow(target, key, enabled),
+            ),
+    )
+}
+
+/**
+ * 「单击后长按」那颗开关 —— 与三击 / 四击并列，但它是**另一位**而不是击数集合里的一员：
+ *  它描述的是「第 2 击按住不放」这另一种形态，与双击互斥。
+ *
+ *  **它不延长连击链**：开三击要单击多等一个窗，开这一档不多等 —— 判定侧只在第 2 击
+ *  按下时顺手排一枪长按，抬手照样立刻派发双击（见 `GestureDetector`）。
+ */
+@Composable
+private fun SettingsPage.clickThenLongRow(
+    target: SettingsTarget.Key,
+    key: KeyConfig,
+    enabled: Boolean,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.SETTING_CLICK_THEN_LONG, "启用单击后长按"),
+        summaryOn = I18n.get(Strings.SETTING_CLICK_THEN_LONG_ON, "第二击按住不放时触发"),
+        summaryOff = I18n.get(Strings.SETTING_CLICK_THEN_LONG_OFF, "不识别单击后长按"),
+        icon = PageIcons.gestureIcon(GestureTrigger.ClickThenLong),
+        checked = key.clickThenLongOn,
+        enabled = enabled,
+    ) { on ->
+        //  与上面两行同一条：现读一次再改这一格，只动这一位
+        val cfgNow = configState.config.value
+        val keyNow = cfgNow.key(target.id)
+        val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(clickThenLongOn = on)))
+        val what = "own_settings target=${settingsTargetLabel(target)} click_then_long=${if (on) 1 else 0}"
+        writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
+            switchNotice(I18n.get(Strings.SETTING_CLICK_THEN_LONG, "启用单击后长按"), on)
+        }
+    }
+
+/**
+ * 三击 / 四击那颗开关 —— 两行只有「击数」不同，收成一支免得两处各写一遍写回逻辑。
+ *
+ * @param count 第几击（3 / 4，见 [KeyConfig.DEFAULT_EXTRA_CLICKS]）
+ */
+@Composable
+private fun SettingsPage.extraClickRow(
+    target: SettingsTarget.Key,
+    key: KeyConfig,
+    count: Int,
+    enabled: Boolean,
+): CardRow {
+    val on = count in key.extraClicksOn
+    return CardRow.Switch(
+        title =
+            when (count) {
+                COUNT3 -> I18n.get(Strings.SETTING_CLICK3, "启用三击")
+                else -> I18n.get(Strings.SETTING_CLICK4, "启用四击")
+            },
+        summaryOn =
+            when (count) {
+                COUNT3 -> I18n.get(Strings.SETTING_CLICK3_ON, "三击可绑定动作")
+                else -> I18n.get(Strings.SETTING_CLICK4_ON, "四击可绑定动作")
+            },
+        summaryOff =
+            when (count) {
+                COUNT3 -> I18n.get(Strings.SETTING_CLICK3_OFF, "不识别三击")
+                else -> I18n.get(Strings.SETTING_CLICK4_OFF, "不识别四击")
+            },
+        //  字形直接用那一档自己的（`gestureIcon` 里第 3 击起与双击共用两根手指）：
+        //  这两行说的就是「要不要多出这一档」，不必新起只此一处的图标。
+        icon = PageIcons.gestureIcon(GestureTrigger.Click(count)),
+        checked = on,
+        enabled = enabled,
+    ) { checked ->
+        //  **现读一次配置**再改这一格（与「组合」那两行同一条口径）：这颗开关下面
+        //  就是那张卡，先拨开关再点卡里的项，用渲染那一帧的 `cfg` 会把卡片刚写进去的值顶回去。
+        val cfgNow = configState.config.value
+        val keyNow = cfgNow.key(target.id)
+        //  只动这一档，另一档原样留着（两行各管各的）。
+        val clicksOn = if (checked) keyNow.extraClicksOn + count else keyNow.extraClicksOn - count
+        //  表（`extraClicks`）不动：关掉只是「不显示、不判定、不执行」，再打开原样回来 ——
+        //  清表等于把用户配过的动作悄悄扔掉。
+        val cfgNext =
+            cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(extraClicksOn = clicksOn)))
+        val what =
+            "own_settings target=${settingsTargetLabel(target)} " +
+                "click$count=${if (checked) 1 else 0} 全档=${clicksOn.sorted()}"
+        val title =
+            if (count == COUNT3) {
+                I18n.get(Strings.SETTING_CLICK3, "启用三击")
+            } else {
+                I18n.get(Strings.SETTING_CLICK4, "启用四击")
+            }
+        writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) { switchNotice(title, checked) }
+    }
+}
+
+/** 这两颗开关各管哪一档 —— 与 [KeyConfig.DEFAULT_EXTRA_CLICKS] 同一份清单（3 击 / 4 击）。 */
+private val COUNT3: Int = KeyConfig.DEFAULT_EXTRA_CLICKS.first()
+
+private val COUNT4: Int = KeyConfig.DEFAULT_EXTRA_CLICKS.last()
 
 /**
  * 「组合按键设置」那两行 —— 只在改的是**一组组合**时出现。
@@ -319,6 +413,74 @@ private fun ownSwitchNotice(
         OwnField.TOAST -> switchNotice(I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), values.toastOnRun)
         OwnField.STRENGTH, OwnField.TEMPLATE -> null
     }
+
+/**
+ * 「独立设置」那张卡的一次提交 —— **只把这一项搬过去，其余五项以配置现值为准**。
+ *
+ *  卡片交回来的是**渲染那一帧时**读到的整份值：写盘 → 重组之间只要错开一步，那份就是上一帧的。
+ *  原先整份写回，于是「打开使用独立设置」之后紧接着点「执行时提示」，会把总开关一起写回旧值
+ *  （false）—— 真机上就是「刚打开的那颗自己又关回去了」。按字段合并之后，别的项有多旧都不影响，
+ *  只有手指真点到的那一格会变。
+ *
+ *  抽成一支是为了让 [KeySettingsScreen] 留在 detekt 的 `LongMethod` 线内 —— 那一页加了两颗
+ *  多击开关之后顶破了线，而这段写回逻辑本来与页面骨架无关。
+ */
+private fun SettingsPage.commitOwnField(
+    target: SettingsTarget,
+    values: OwnSettingsValues,
+    field: OwnField,
+) {
+    val cfgNow = configState.config.value
+    val ownerNow = target.ownerIn(cfgNow) ?: return
+    val base = ownerNow.values()
+    val patched = base.withField(field, values)
+    //  **第一次打开总开关时，用公共设置把这一档播一次种**；之后开关怎么拨都不再读公共值。
+    //
+    //  为什么要播：这一页从来没配过时，各项自己的默认值与公共那份往往不同（振动关着、
+    //  强度中档、提示关着、模板是默认那句）—— 打开开关却看到一片与公共不一样的旧默认值，
+    //  读起来就是「开了没生效」。
+    //
+    //  为什么**只播一次**（判据是 `ownSettingsSeeded`，不是「当前开关关着」）：用户把这
+    //  五项调成自己想要的样子、关掉总开关、过一阵又打开 —— 那时他要的是**上次那套**，
+    //  不是公共设置。原先每次「关→开」都重抄一遍，等于把他调过的值悄悄扔掉。
+    //  播种后置位写到盘上，所以跨进程、跨重启都只播一次。
+    //
+    //  **播种之后必须把这一次的改动再叠回去**（`withField` 那一下）：顺序反过来的话，
+    //  用户刚拨的那一项会被公共值盖掉。什么时候会撞上：`useOwnSettings` 早就开着、
+    //  而 `ownSettingsSeeded` 还是 false —— 老配置里没有这一位（它是后加的），
+    //  升级上来的用户第一次拨任何一项都会「拨了没反应」（那一格被公共值顶回去）。
+    val next =
+        if (patched.useOwnSettings && !ownerNow.ownSettingsSeeded) {
+            patched
+                .copy(
+                    colorOsApi = cfgNow.global.colorOsApi,
+                    vibrate = cfgNow.global.vibrate,
+                    vibrateStrength = cfgNow.global.vibrateStrength,
+                    toastOnRun = cfgNow.global.toastOnRun,
+                    toastTemplate = cfgNow.global.toastTemplate,
+                    ownSettingsSeeded = true,
+                ).withField(field, values)
+        } else {
+            patched
+        }
+    XLog.w(
+        "own_settings 提交：field=$field 提交值=${values.useOwnSettings} " +
+            "现存=${base.useOwnSettings} 已播种=${ownerNow.ownSettingsSeeded} " +
+            "写入=${next.useOwnSettings}",
+    )
+    //  「改谁」只在写回这一处落成具体表（`keys` 还是 `combos`）；组合那两项也在这里
+    //  跟着一起播种（理由见 [withSeededComboFields]）。
+    val cfgNext = withSeededComboFields(cfgNow, target, next, ownerNow)
+    val what = "own_settings target=${settingsTargetLabel(target)} field=$field"
+    //  **开关有回执，滑杆与文案窗没有** —— 与公共页同一口径：那边滑杆也只靠行尾数值、
+    //  文案窗按下即关。滑杆松手会连发一次 commit，弹回执只会把提示条刷成跑马灯。
+    val notice = ownSwitchNotice(field, next)
+    if (notice == null) {
+        write(cfgNext, what)
+    } else {
+        writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) { notice }
+    }
+}
 
 /**
  * 三张小标题 —— **后两个与「按键设置」页用同一个字典键**（`GENERAL_SECTION_INTERFACE` /

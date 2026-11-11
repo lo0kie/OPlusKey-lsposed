@@ -5,7 +5,7 @@ import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
@@ -104,22 +104,40 @@ internal fun SettingsPage.BindingGroups(
                 null
             }
 
-        if (keyScoped && g == Gesture.SINGLE) {
+        if (keyScoped && g.isSingle) {
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
             BindingSettingsCard(settingsEnabled, followHint)
         }
 
-        if (keyScoped && g == Gesture.DOUBLE) {
-            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
-            InstantSingleCard(settingsEnabled, followHint)
-        }
+        //  双击那一页**不再摆卡**：「忽视无操作双击手势」挪进单击那张卡了（用户口径
+        //  「移到单击里」）—— 它是「第二下抬手之后怎么办」，改它的动机是让单击更快，
+        //  与「单击延迟」同属一次判定链（见 `BindingSettingsCard` 的类注释）。
+        //  `GestureTrigger.isDouble` 留着：那是档位本身的判据，别再往这一页塞卡片。
 
         //  长按那张卡对**三种目标**都成立：单键与组合各读自己那几项（`LongPressParams`），
         //  场景块读的是这颗键的（见 `BindingTarget.Scene.longPress`，组合的场景表回 `null`）。
         //  场景块那一页只摆松手那一族 —— 由 `LongPressCard` 按目标给 `sections`，这一层不管。
-        if (g == Gesture.LONG && target.longPress(configState.config.value) != null) {
+        //
+        //  三击 / 四击那两页一张卡都不摆：它们没有自己的判据可调（什么时候算数由「单击延迟」与
+        //  最高档决定，那一位归这一颗键，摆在单击那一页）。
+        //  「单击后长按」这一页摆它**自己那套**参数（长按延迟 / 连发 / 松手额外动作）——
+        //  与长按那一页同一张卡的行、不同的字段（见 `ClickThenLongCard`）。
+        //  只有单键有这一档：组合的两段建立在单键连击上。
+        if (keyScoped && g == GestureTrigger.ClickThenLong) {
+            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
+            ClickThenLongCard(settingsEnabled, followHint)
+        }
+
+        if (g == GestureTrigger.LongPress && target.longPress(configState.config.value) != null) {
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
             LongPressCard(target, enabled, followHint)
+        }
+
+        //  场景块里**「单击后长按」的松手** —— 与长按那一族并排摆，用小标题分清是哪一档。
+        //  它只在场景页出现：单键 / 组合那一页的松手格在 `ClickThenLongCard` 里。
+        if (target is BindingTarget.Scene) {
+            SectionTitle(GestureTrigger.ClickThenLong.label)
+            SceneChainReleaseCard(target, settingsEnabled, followHint)
         }
 
         BuiltInGrid(st, enabled)
@@ -139,3 +157,9 @@ internal fun SettingsPage.BindingGroups(
 
     // 「自定义变量」那一格点开的两层抽屉（挑变量 → 挑对它做什么），同样不占布局。
 }
+
+/** 这一档是不是「单击」「双击」—— 两张设置卡按它分（`Click(n≥3)` 两样都不是，那两页不摆卡）。 */
+internal val GestureTrigger.isSingle: Boolean get() = this == GestureTrigger.Click(1)
+
+/** 见 [isSingle]。 */
+internal val GestureTrigger.isDouble: Boolean get() = this == GestureTrigger.Click(2)

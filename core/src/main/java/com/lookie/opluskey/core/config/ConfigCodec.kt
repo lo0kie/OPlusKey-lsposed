@@ -90,6 +90,25 @@ object ConfigCodec {
      *  37 = `SceneRuleDto` 多了 `release_on` / `release`（场景块自己的「松手执行额外动作」）。
      *       松手那一格原先只能挂在按键身上，而块一命中长按它就整条失效（判定侧不发 `Release`）——
      *       收进块里之后它归草稿管、也真的会执行。默认关 + `none`，老文件读进来行为逐字不变。
+     *  38 = **场景块的动作从三格改成一张表**：`SceneRuleDto` 多了 `actions`（档位 id → 动作 token），
+     *       老的 `single` / `double` / `long` 降级为**只读迁移列**（新写的文件不再写它们）。
+     *       读到老文件时那三格被并进表里，行为逐字不变；改成表是为了让第 3 击起的档位
+     *       （三击 / 四击）也能被场景接管，而不是每加一档就动一次 DTO。
+     *  39 = `KeyDto` 多了 `extra_clicks_on`（**多击档位启用没有**）——多击从此是「自己要才有」的
+     *       档位：关着时那几页不出现、判定侧也不数到那儿。老文件没有这一格 ⇒ 按「表里有没有东西」
+     *       倒推（见 `KeyDto.clicksOn`），否则手改过 `extra_clicks` 的人在升级那一刻
+     *       会发现三击悄悄不灵了。
+     *  40 = 同一格**从布尔收成击数数组**（`[3]` / `[3,4]`）：三击与四击的代价不一样，不能再用一位
+     *       统领（只要三击的人不该被迫接受四击那个窗）。读侧同时认 39 的布尔（`true` = 表里那几档
+     *       全算）与「缺格」（同上倒推），所以 39 的文件读进来行为逐字不变。
+     *  41 = `KeyDto` 多了 `click_then_long_on` / `click_then_long`（**单击后长按**这一档）——
+     *       它不延长连击链，只决定「第 2 击按住」要不要另判，所以与多击分两位。老文件缺这两格 ⇒
+     *       默认关 + `none`，行为逐字不变。
+     *  43 = `SceneRuleDto` 多了 `chain_release_on` / `chain_release`（**场景块里「单击后长按」的松手**）——
+     *       与长按的 `release_on` / `release` 同一对，只挂在另一档上。老文件缺这两格 ⇒ 默认关 + `none`。
+     *  42 = 同一档多了它**自己那几项参数**（`click_then_long_press_ms` / `_repeat` /
+     *       `_repeat_interval_ms` / `_repeat_vibrate` / `_release_on` / `_release`）——
+     *       与长按那一族同名不同槽，调这一档不会动普通长按。老文件缺这几格 ⇒ 走默认值。
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -97,7 +116,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 37
+    const val VERSION = 43
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

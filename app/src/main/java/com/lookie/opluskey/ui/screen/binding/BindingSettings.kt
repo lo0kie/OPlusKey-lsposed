@@ -15,17 +15,17 @@ import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.write
 
 /**
- * 「按键设置」页里的**单击**那张卡 —— 只有「单击延迟」一行。
+ * 「按键设置」页里的**单击**那张卡 —— 「单击延迟」+「忽视无操作双击手势」两行。
  *
- *  它挂在那颗键的设置页里（`KeySettingsScreen`），与下面两张卡（忽视双击 / 长按那几项）
- *  一起回答「这颗键怎么判」；「这一档绑什么」在「按键绑定」页的网格那一头。
+ *  它挂在那颗键的设置页里（`KeySettingsScreen`），与长按那张卡一起回答「这颗键怎么判」；
+ *  「这一档绑什么」在「按键绑定」页的网格那一头。
  *
- *  注意：**「忽视无操作双击手势」那个开关不在这里** —— 它讲的是双击怎么判，挂在双击那张卡
- *  （见 `InstantSingleCard`）。两者都定义在 `doubleClickMs` 附近，但用户找它们时是带着
- *  「我在调哪一档」这个前提来的，所以按档分。
+ *  「忽视无操作双击手势」也在这张卡里（见 `instantSingleRow`）：它决定的是**第二下抬手之后**
+ *  怎么办，改它的动机是让单击更快 —— 与「单击延迟」是同一次判定链上的两个参数，
+ *  按「用户此刻在调单击」分，比按「它名字里带双击」分更贴实际。
  *
  *  注意：这张卡的**写路径**与网格**故意少判一道 `linkReady`**（格子那边是 `enabled && linkReady`，
- *  与 `pick` 同一判据）：这张卡写的是**参数**（延迟），写了就落盘，注入侧恢复后照样生效，
+ *  与 `pick` 同一判据）：这张卡写的是**参数**（延迟 / 判定开关），写了就落盘，注入侧恢复后照样生效，
  *  不需要注入侧回话；格子点了要写动作、拿去执行，未就绪时写了也是白写。
  *  这是有意的不一致，不要再把两边「统一」。
  *
@@ -53,7 +53,14 @@ internal fun SettingsPage.BindingSettingsCard(
                                 SliderSpec(
                                     title = I18n.get(Strings.SETTING_DOUBLE_CLICK_DELAY, "单击延迟"),
                                     icon = PageIcons.DelayTap,
-                                    summary = I18n.get(Strings.BINDING_DOUBLE_CLICK_WAIT, "单击后等待双击的时长"),
+                                    //  说明写的是**这一位管什么**：它不只是「双击的等待」，而是连击链上
+                                    //  每一击到下一击的间隔（配了三击 / 四击，这条间隔一样管用）。
+                                    //  只写「等待双击」的话，配了高档位的人会以为它跟那几档无关。
+                                    summary =
+                                        I18n.get(
+                                            Strings.BINDING_DOUBLE_CLICK_WAIT,
+                                            "两击之间最多隔多久，超过就重新从头数",
+                                        ),
                                     min = KeyConfig.MIN_DOUBLE_CLICK_MS,
                                     max = KeyConfig.MAX_DOUBLE_CLICK_MS,
                                     value = key.doubleClickMs,
@@ -71,6 +78,8 @@ internal fun SettingsPage.BindingSettingsCard(
                         }
                     },
                 )
+                //  第二行：同一张卡、同一片「这一档怎么判」的语义（见类注释）
+                add(instantSingleRow(rowsEnabled, disabledHint))
             },
     )
 }
