@@ -172,7 +172,7 @@ internal fun SettingsPage.BranchDeleteDialog(menus: BranchMenuState) {
     ConfirmDialog(
         show = at >= 0,
         title = I18n.get(Strings.DIALOG_DELETE_CONDITION_TITLE, "删除场景"),
-        summary = I18n.get(Strings.DIALOG_DELETE_CONDITION_MESSAGE, "这条场景和它的动作一起删掉。"),
+        summary = I18n.get(Strings.DIALOG_DELETE_CONDITION_MESSAGE, "这条场景与其动作将一并删除。"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { menus.deleteAt = -1 },
         onConfirm = {
@@ -188,7 +188,8 @@ internal fun SettingsPage.BranchDeleteDialog(menus: BranchMenuState) {
  * 「停用这一块场景」的确认窗（触发点在行尾那颗「更多」菜单里）。
  *
  *  为什么也要一道确认：这一块停用之后**按下去不会再命中它**（三档一起）。与删除不是一回事
- *  （删除是它不见了），而两行在菜单里挨着 —— 一句确认把「暂时不生效」与「没了」分开。
+ *  （删除是它不见了），而两行在菜单里挨着 —— 标题（停用 / 删除）与动作项两处把它分开。
+ *  **不另写正文**：「将不再生效」只是把标题又说了一遍。
  *
  *  **启用不走这里**（那是把它开回来，没有可失去的东西）：菜单里直接改草稿，
  *  与「按键绑定」「组合键编辑」那两处同一条规矩。
@@ -207,7 +208,6 @@ internal fun SettingsPage.BranchToggleDialog(
     ConfirmDialog(
         show = scene != null,
         title = I18n.get(Strings.COMMAND_BRANCH_DISABLE, "停用场景"),
-        summary = I18n.get(Strings.COMMAND_BRANCH_DISABLE_MESSAGE, "这条场景将不再生效。"),
         action = I18n.get(Strings.COMMON_DISABLE, "停用"),
         onDismiss = { menus.toggleAt = -1 },
         onConfirm = {
@@ -225,7 +225,9 @@ internal fun SettingsPage.BranchToggleDialog(
  * 「删掉一块里的**一条**条件」的确认窗（触发点在条件菜单的「删除」那一行）。
  *
  *  与 [BranchDeleteDialog] 分开：那个删的是**整块场景**（连它的三档动作一起消失、下面一行往上顶），
- *  这个只摘掉一块里的一条 —— 后果差得远，标题与正文都不能共用一套说法。
+ *  这个只摘掉一块里的一条 —— 后果差得远，标题不能共用一套说法。
+ *  这一支**不另写正文**：摘掉一条之后没有第二种后果可说，「只删这一条」只是把标题重复一遍
+ *  （整块那个要写，因为「动作也一起删」是标题说不出来的）。
  */
 @Composable
 internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
@@ -233,7 +235,6 @@ internal fun SettingsPage.BranchConditionDeleteDialog(menus: BranchMenuState) {
     ConfirmDialog(
         show = target != null,
         title = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_TITLE, "删除这条场景"),
-        summary = I18n.get(Strings.DIALOG_DELETE_ONE_CONDITION_MESSAGE, "只删这一条。"),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = { menus.deletingCond = null },
         onConfirm = {
@@ -304,7 +305,7 @@ internal fun SettingsPage.BranchEmptyHint() {
         },
         //  上面一句说**状态**，下面一句说**现在会发生什么** —— 只有下面那句时，
         //  用户得先读完整句才知道这块是空的。
-        title = I18n.get(Strings.COMMAND_BRANCH_EMPTY_TITLE, "还没有添加场景"),
+        title = I18n.get(Strings.COMMAND_BRANCH_EMPTY_TITLE, "尚未添加场景"),
         text = branchEmptyText(),
         modifier = Modifier.fillMaxWidth(),
     )

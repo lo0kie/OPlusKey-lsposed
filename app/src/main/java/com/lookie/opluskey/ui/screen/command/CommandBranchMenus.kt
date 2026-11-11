@@ -227,7 +227,7 @@ internal fun SettingsPage.appendCondition(
     if (pending) {
         //  与其它「为什么这一步做不了」共用同一个位
         hint(
-            I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING, "有场景还没选"),
+            I18n.get(Strings.COMMAND_BRANCH_CONDITION_PENDING, "有场景尚未选择"),
             slot = HINT_SLOT_DISABLED,
         )
         return

@@ -70,7 +70,7 @@ internal fun SettingsPage.ComboWindowRow(
         spec =
             SliderSpec(
                 title = I18n.get(Strings.COMBO_WINDOW_TITLE, "按键之间的等待"),
-                summary = I18n.get(Strings.COMBO_WINDOW_DESC, "调大会让参与组合的按键多等这么久"),
+                summary = I18n.get(Strings.COMBO_WINDOW_DESC, "调大后，参与组合的按键等待更久"),
                 //  「等一段时间再继续」那一颗钟（与「命令间隔时长」同一个字形）
                 icon = PageIcons.DelayStep,
                 min = GlobalConfig.COMBO_WINDOW_MIN_MS,

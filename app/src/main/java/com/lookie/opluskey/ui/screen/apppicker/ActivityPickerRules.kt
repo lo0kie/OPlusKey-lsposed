@@ -3,7 +3,6 @@ package com.lookie.opluskey.ui.screen.apppicker
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.model.LaunchableActivity
 import com.lookie.opluskey.ui.state.PickedDetail
 
@@ -127,17 +126,19 @@ internal fun shownActivities(
     }
 }
 
-/** 空态那句话 —— 真因优先：**没查出来**不是「一个都没有」。 */
+/**
+ * 空态那句话 —— 真因优先：**没查出来**不是「一个都没有」。
+ *
+ *  最后一档**不复述搜索词**：那串字就写在上面的搜索框里，再说一遍只是把同一件事说两次。
+ *  所以这里不再收 `term` —— 走到这一档时搜索框必然非空（空着的话 [shownActivities] 原样返回
+ *  全部，轮不到空态），有没有词这件事已经不必再问。
+ */
 internal fun emptyText(
     failed: Boolean,
     all: List<LaunchableActivity>?,
-    term: String,
 ): String =
     when {
         failed -> I18n.get(Strings.APP_PICKER_ACTIVITY_LOAD_FAILED, "列表没读出来，退回再进一次")
-
         all.isNullOrEmpty() -> I18n.get(Strings.APP_PICKER_ACTIVITY_EMPTY, "这个应用没有可从外部打开的 Activity")
-
-        // 用户输入会整体过一遍正文记号：先转义
-        else -> I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT_ACTIVITY, escapeEmphasis(term))
+        else -> I18n.get(Strings.APP_PICKER_NO_SEARCH_RESULT_ACTIVITY, "没有匹配的 Activity")
     }

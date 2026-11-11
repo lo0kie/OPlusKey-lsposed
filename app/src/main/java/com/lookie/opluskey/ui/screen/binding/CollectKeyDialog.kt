@@ -132,7 +132,7 @@ internal fun SettingsPage.CollectKeyDialog(
             //  这一颗没有「下一步」可走，可前面那些键的关系还得看，直接收掉弹窗等于把人赶走。
             is CollectCheck.Duplicate -> {
                 hint(
-                    I18n.get(Strings.KEY_WATCH_DUPLICATE, "「%s」已经在清单里了").format(check.name),
+                    I18n.get(Strings.KEY_WATCH_DUPLICATE, "[%s] 已经在清单里了").format(check.name),
                     slot = HINT_SLOT_BINDING,
                 )
             }
@@ -268,7 +268,7 @@ private fun SettingsPage.checkKey(code: Int): CollectCheck {
         //  与「这颗键不能收」长得一样，用户只会以为功能坏了。留一行账，界面上也说一句。
         code <= 0 -> {
             XLog.w("收集按键：收到 keyCode=$code（广播没带按键码？），拒绝")
-            CollectCheck.Rejected(I18n.get(Strings.KEY_WATCH_NO_CODE, "没收到按键码，再按一次试试"))
+            CollectCheck.Rejected(I18n.get(Strings.KEY_WATCH_NO_CODE, "未收到按键码，请再按一次"))
         }
 
         notCollectable -> {
@@ -325,7 +325,7 @@ private fun SettingsPage.addKey(
     // 回执照发即可：提示条现在挂在**浮层槽、弹窗宿主之后**（见 `PageContent`），
     //  自己就压在弹窗之上；`onDismiss()` 紧跟其后把弹窗收走，两句谁先谁后都看得见
     hint(
-        I18n.get(Strings.KEY_WATCH_ADDED, "已添加「%s」").format(name),
+        I18n.get(Strings.KEY_WATCH_ADDED, "已添加 [%s]").format(name),
         slot = HINT_SLOT_BINDING,
     )
     return true

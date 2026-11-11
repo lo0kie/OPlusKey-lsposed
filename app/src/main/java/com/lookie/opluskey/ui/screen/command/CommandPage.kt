@@ -54,6 +54,7 @@ import com.lookie.opluskey.ui.model.commandKindLabel
 import com.lookie.opluskey.ui.moveCaretToEnd
 import com.lookie.opluskey.ui.state.CommandForm
 import com.lookie.opluskey.ui.state.CommandUiState
+import com.lookie.opluskey.ui.state.singleLine
 import com.lookie.opluskey.ui.titleWithCount
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
@@ -343,7 +344,7 @@ internal fun SettingsPage.StepListMenu(
                                         if (sorting) {
                                             I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
                                         } else {
-                                            I18n.get(Strings.COMMAND_NEED_STEP, "还没添加步骤")
+                                            I18n.get(Strings.COMMAND_NEED_STEP, "尚未添加步骤")
                                         },
                                 ) {
                                     onClose()
@@ -395,7 +396,7 @@ private val SettingsPage.commandTestHint: String
         if (commandDraft.stepEditing) {
             I18n.get(Strings.COMMAND_STEP_SORTING_LOCKED, "编辑中，先点右下角完成")
         } else if (commandDraft.draft.kind == CommandKind.SERIAL) {
-            I18n.get(Strings.COMMAND_NEED_STEP, "还没添加步骤")
+            I18n.get(Strings.COMMAND_NEED_STEP, "尚未添加步骤")
         } else {
             I18n.get(Strings.COMMAND_PAYLOAD_INCOMPLETE, "命令内容还不完整")
         }
@@ -593,8 +594,7 @@ private fun SettingsPage.SingleCommandField(
                 ),
             value = raw,
             onValueChange = { value ->
-                //  换行/CRLF 由 `CommandForm.single` 的写入口折成一行（`singleLine`）—— 这一层
-                //  只管把值交上去：多一道处理就有了第二份判据，两边迟早走样。
+                //  值进来时已经折过换行（见下面的 `sanitize`），这里只管往上交。
                 form.single = value
             },
             errorMessage = formatError,
@@ -605,6 +605,9 @@ private fun SettingsPage.SingleCommandField(
             //  而这里要的是「每点一次格式行都挪」。
             focusRequester = focusRequester,
             modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
+            // **这一栏换 `singleLine`**：多行脚本粘进来是「依次执行」，要折成 `; `；
+            //  `AppInputField` 默认那道折成空格，折成空格就成了一条语法错误的命令。
+            sanitize = ::singleLine,
         )
     }
 }

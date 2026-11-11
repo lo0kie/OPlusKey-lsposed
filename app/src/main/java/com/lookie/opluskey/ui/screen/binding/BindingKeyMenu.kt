@@ -379,12 +379,6 @@ private fun SettingsPage.KeyMenuDialogHost(
     ConfirmDialog(
         show = dialog == KeyMenuDialog.DELETE,
         title = I18n.get(Strings.BINDING_DELETE_KEY, "删除按键"),
-        summary =
-            I18n
-                .get(
-                    Strings.BINDING_DELETE_KEY_CONFIRM,
-                    "[%s] 会从清单里删掉。",
-                ).format(selected.label),
         action = I18n.get(Strings.COMMON_DELETE, "删除"),
         onDismiss = onDismiss,
         onConfirm = {
@@ -438,7 +432,7 @@ private fun SettingsPage.confirmRenameKey(
     // 只在完全成功时报（见下一条同一笔账）
     if (write(now.withKeyName(selected.id, name), "custom_key_rename=${selected.id}") != CommandsSave.Ok) return
     hint(
-        I18n.get(Strings.TOAST_KEY_RENAMED, "已重命名为「%s」").format(name),
+        I18n.get(Strings.TOAST_KEY_RENAMED, "已重命名为 [%s]").format(name),
         slot = HINT_SLOT_BINDING,
     )
 }

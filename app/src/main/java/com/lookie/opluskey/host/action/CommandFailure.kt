@@ -36,7 +36,7 @@ internal enum class CommandFailure(
     SHELL_MISSING(Strings.COMMAND_FAILURE_SHELL_MISSING, "系统里找不到这条命令（检查拼写或路径）"),
 
     /** shell 退出码 126 —— 找到了但没有执行权限。 */
-    SHELL_NO_PERMISSION(Strings.COMMAND_FAILURE_SHELL_NO_PERMISSION, "这条命令要更高权限：检查文件执行位，或给「手势体感」授权"),
+    SHELL_NO_PERMISSION(Strings.COMMAND_FAILURE_SHELL_NO_PERMISSION, "这条命令要更高权限：检查文件执行位，或给 [手势体感] 授权"),
 
     /**
      * 起不了**选定的**那个 shell 解释器 —— 最常见的原因是**没有 root 授权**。
@@ -47,7 +47,7 @@ internal enum class CommandFailure(
      *  提示里只说**宿主**「手势体感」：命令跑在宿主进程里，授权要授给那个包，不是模块自己的包
      *  （真机实测两条授权互不影响，见 `docs/runtime/key-to-gesture.md`）。
      */
-    SHELL_NO_ROOT(Strings.COMMAND_FAILURE_SHELL_NO_ROOT, "「手势体感」没有 root 权限"),
+    SHELL_NO_ROOT(Strings.COMMAND_FAILURE_SHELL_NO_ROOT, "[手势体感] 没有 root 权限"),
 
     /**
      * 命令自己**没勾**「以 root 执行」，而它要 root 才跑得起来。
@@ -87,7 +87,7 @@ internal enum class CommandFailure(
      *  · `shell:` 并发超上限（`ShellRunner` 那一侧的闸）；
      *  · 命令链还在跑时又触发了一条（`CustomCommandRunner` 的「一次只跑一条」闸）。
      */
-    OVERLOADED(Strings.COMMAND_FAILURE_OVERLOADED, "上一条命令还没跑完，稍后再试"),
+    OVERLOADED(Strings.COMMAND_FAILURE_OVERLOADED, "上一条命令尚未执行完毕，请稍后再试"),
 
     /**
      * 免打扰（AOSP 接口那一档）：宿主没有「勿扰访问」授权。
@@ -97,7 +97,7 @@ internal enum class CommandFailure(
      *  没授时 `setZenMode` 抛 `SecurityException`，并进 [UNKNOWN] 只会说「这次没执行成功」，
      *  用户不知道要去哪儿开。这一档专门说清「缺的是哪一项授权」。
      */
-    DND_NOT_GRANTED(Strings.COMMAND_FAILURE_DND_NOT_GRANTED, "免打扰缺「勿扰权限」：设置 → 通知与状态栏 → 勿扰，允许「手势体感」"),
+    DND_NOT_GRANTED(Strings.COMMAND_FAILURE_DND_NOT_GRANTED, "免打扰缺 [勿扰权限]：设置 → 通知与状态栏 → 勿扰，允许 [手势体感]"),
     ;
 
     open val hint: String

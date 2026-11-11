@@ -145,7 +145,7 @@ internal fun switchNotice(
     I18n
         .get(
             if (on) Strings.TOAST_SWITCH_ON else Strings.TOAST_SWITCH_OFF,
-            if (on) "已开启「%s」" else "已关闭「%s」",
+            if (on) "已开启 [%s]" else "已关闭 [%s]",
         ).format(title)
 
 /**
@@ -162,7 +162,7 @@ internal fun switchToNotice(
     value: String,
 ): String =
     I18n
-        .get(Strings.TOAST_SWITCHED_TO, "%s 已切换到「%s」")
+        .get(Strings.TOAST_SWITCHED_TO, "%s 已切换到 [%s]")
         .format(subject, value)
 
 /**

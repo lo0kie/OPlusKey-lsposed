@@ -102,7 +102,7 @@ private class LongPressGates(
     /** 「松手才触发」灰着被点一下时的说法（`null` = 用整页那句）。 */
     val fireHint: String? =
         if (spec.enabled && releaseBound) {
-            I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE, "先关掉「松手执行额外动作」")
+            I18n.get(Strings.BINDING_RELEASE_UNSUPPORTED_FIRE, "先关掉 [松手执行额外动作]")
         } else {
             null
         }
@@ -110,7 +110,7 @@ private class LongPressGates(
     /** 「松手执行额外动作」灰着被点一下时的说法。 */
     val releaseHint: String? =
         if (spec.enabled && spec.fireOnRelease) {
-            I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE, "长按已经改成松手才触发")
+            I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE, "长按已改为松手时触发")
         } else {
             null
         }
@@ -124,7 +124,7 @@ private class LongPressGates(
         spec.blockedReason
             ?: when {
                 spec.fireOnRelease -> {
-                    I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_REPEAT, "松手才触发，连续触发不生效")
+                    I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_REPEAT, "松手时触发，连续触发不生效")
                 }
 
                 else -> {
@@ -178,9 +178,9 @@ private fun timingRows(
     } else {
         listOf(
             CardRow.Switch(
-                title = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE, "松手才触发"),
+                title = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_TITLE, "松手时触发"),
                 summaryOn = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_ON, "按满时长先不执行，抬手时执行"),
-                summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_OFF, "按到长按时长就立刻执行"),
+                summaryOff = I18n.get(Strings.BINDING_LONG_PRESS_FIRE_ON_RELEASE_DESC_OFF, "达到长按时长即立刻执行"),
                 icon = PageIcons.LongFireOnRelease,
                 checked = spec.fireOnRelease,
                 enabled = gates.fireEnabled,

@@ -86,7 +86,7 @@ internal fun SettingsPage.OwnSettingsCard(
     //  整页没事、只是这颗总开关没开 ⇒ 说清该先打开哪一项。两张卡共用这一句。
     val ownHint =
         if (enabled && !owner.useOwnSettings) {
-            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开「使用独立设置」")
+            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 [使用独立设置]")
         } else {
             null
         }

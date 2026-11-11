@@ -11,7 +11,6 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.escapeEmphasis
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.LaunchableApp
 import com.lookie.opluskey.ui.model.PageIcons
@@ -136,24 +135,25 @@ internal fun SettingsPage.emptyHint(ui: AppPickerUiState): String {
             I18n.get(Strings.APP_PICKER_EMPTY_OPENABLE, "没有找到应用")
         }
 
-        // 用户输入会整体过一遍正文记号：先转义
+        // 搜不到就只说「没匹配上」—— **不复述搜索词**：那一串字就写在上面的搜索框里，
+        //  空态再念一遍只是把同一件事说两次，长词还会在窄屏上折成两行。
         picker.filter.value.isNotBlank() -> {
-            I18n.format(Strings.APP_PICKER_NO_SEARCH_RESULT, escapeEmphasis(picker.filter.value.trim()))
+            I18n.get(Strings.APP_PICKER_NO_SEARCH_RESULT, "没有匹配的应用")
         }
 
         // 被「显示失效应用」挡着：确实有打不开的行，而且它们本来够得着显示
         !includesUnopenable && apps.any { !it.launchable && (includesIconless || it.byDefault) } -> {
-            I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN, "没有能打开的；开「显示失效应用」看看")
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_BROKEN, "没有能打开的；开 [显示失效应用] 看看")
         }
 
         // 剩下的空只可能是「没有启动图标」那一维挡着（另一维已放行）
         !includesIconless -> {
-            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开「显示系统应用」看看")
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开 [显示系统应用] 看看")
         }
 
         // 两维都放行了却一条不剩：手里那些行**既没图标又打不开**，少开哪一个都出不来
         else -> {
-            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开「显示系统应用」看看")
+            I18n.get(Strings.APP_PICKER_EMPTY_HINT_ICONLESS, "一条都没有；开 [显示系统应用] 看看")
         }
     }
 }
@@ -182,6 +182,13 @@ internal fun SettingsPage.AppConfirmFab(
     PageFabButton(
         onClick = {
             tick()
+            //  **给条件挑前台应用那一趟**（多选）：FAB 常驻（清空勾选也不收，见调用点的
+            //  `PageCornerFab`），但一条都没勾时不能确认 —— 一条条件至少要有一个应用，
+            //  写下去就是个永远不成立的条件。说一句、什么都不写。
+            if (picker.forBranch && picker.pickedApps.value.none { it.isNotBlank() }) {
+                hint(I18n.get(Strings.APP_PICKER_BRANCH_AT_LEAST_ONE, "至少选择一个应用"))
+                return@PageFabButton
+            }
             // 交出去的是**整个 pending**，不是一个 target 字符串：快捷方式的身份是
             // `shortcutId` 而不是 `包名/id`，只传 target 会让落盘那边退回 `app:包名/id`
             // （那是一条跑不通的 token）。

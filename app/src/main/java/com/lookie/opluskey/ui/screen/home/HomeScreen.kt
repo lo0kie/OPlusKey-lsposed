@@ -178,7 +178,7 @@ private suspend fun SettingsPage.queryLinkOnce() {
     link.silentRetryAt = SystemClock.elapsedRealtime() + LINK_SILENT_RETRY_MS
     XLog.w(
         "链路自检问了 $QUERY_ROUNDS 轮都没问齐，" +
-            "改在 ${LINK_SILENT_RETRY_MS / 1000} 秒后回首页时再问（详见「更多选项 → 运行状态」）",
+            "改在 ${LINK_SILENT_RETRY_MS / 1000} 秒后回首页时再问（详见 [更多选项 → 运行状态]）",
     )
 }
 

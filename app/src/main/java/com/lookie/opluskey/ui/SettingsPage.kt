@@ -618,7 +618,7 @@ internal class SettingsPage(
      *  按确认才落盘），拨了却没挑就退出去，用户以为改过了，实际一个字节都没写。判据收在
      *  `AppPickerState.windowTogglesChanged`（与进页那一刻的基线比）。
      */
-    private fun hasUnconfirmedPick(s: Screen): Boolean = s == Screen.APP_PICKER && (picker.draft != null || picker.windowTogglesChanged)
+    private fun hasUnconfirmedPick(s: Screen): Boolean = s == Screen.APP_PICKER && picker.unconfirmedChanges
 
     /**
      * 「按键功能」页的编辑态里按返回：一项都没勾就直接退出，勾了就先把那一问支起来。

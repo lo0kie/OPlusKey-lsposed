@@ -24,7 +24,7 @@ private fun SettingsPage.payloadBlockedReason(): String? =
         }
 
         CommandKind.SERIAL -> {
-            if (commandDraft.draft.steps.isEmpty()) I18n.get(Strings.COMMAND_NEED_STEP, "还没添加步骤") else null
+            if (commandDraft.draft.steps.isEmpty()) I18n.get(Strings.COMMAND_NEED_STEP, "尚未添加步骤") else null
         }
     }
 

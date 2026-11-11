@@ -17,9 +17,10 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.ui.AppInputField
+import com.lookie.opluskey.ui.AppInputOptions
 import com.lookie.opluskey.ui.PageCornerFab
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.couiInputColors
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
@@ -27,7 +28,6 @@ import com.lookie.opluskey.ui.rememberAppPickerUiState
 import com.lookie.opluskey.ui.state.AppPickerUiState
 import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.PickedDetail
-import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -74,6 +74,18 @@ internal const val XPOSED_MODULE_SETTINGS_CATEGORY = "de.robv.android.xposed.cat
  *  名字与 `io.github.libxposed.service` 那个包的实现类一一对应，不随模块变。
  */
 internal const val LIBXPOSED_PROVIDER = "io.github.libxposed.service.XposedProvider"
+
+/**
+ * 两条搜索带最多收多少个字符。
+ *
+ *  这是**筛选用的一行字**，不是内容：100 个字早就够把任何一个应用名 / 组件名写完，再多的部分
+ *  只会在框里挤成一条看不懂的长串（而且过滤照样什么都匹配不上）。超出的部分由 [AppInputField]
+ *  按码点直接吃掉 —— 与别的输入框同一条账，不靠调用点自己截。
+ *
+ *  两页共用这一档：那两条带子是同一个组件（见 [PickerSearchBand]），限一个不限另一个，
+ *  表现上就是「同一副长相、一个能打一百多字一个不能」。
+ */
+internal const val PICKER_QUERY_MAX_LENGTH = 100
 
 /**
  * 「选择应用」页那条搜索带（固定搜索框）—— 挂在顶栏的 `bottomContent` 里。
@@ -123,7 +135,7 @@ internal fun SettingsPage.ActivitySearchBand() {
  * 两条搜索带共用的那一份 —— 位置、边距、高度上报只有这一处。
  *
  *  两页的搜索框长得必须一样（用户在这两页之间来回跳），所以参数只留「搜什么」「量到哪」
- *  与「现在有多少条」，尺寸与边距都写死在这里。
+ *  与「现在有多少条」，尺寸、边距与字数上限（[PICKER_QUERY_MAX_LENGTH]）都写死在这里。
  *
  * @param count 把当前列出来的条数写进占位文案（`搜索应用 (42)`）。
  *   只在**搜索框空着**时才加：一旦有输入，占位本来就该说的是「你在搜什么」，再挂个数字
@@ -142,17 +154,15 @@ internal fun SettingsPage.PickerSearchBand(
             .fillMaxWidth()
             .onSizeChanged { height.report(it.height) },
     ) {
-        // 库自己的搜索输入框（`InputField`）。`expanded` 必须给 false：那一套「展开态」是给
-        // 「点搜索框撑开一页结果」用的，本页本身就是结果列表；而且 `expanded = true` 会让
-        // `label` 一直不显示，占位文案就没了。
-        // 上下两档与别处同一套，且两档同值（都是 [PAGE_TOP_PADDING]）。
-        InputField(
+        //  **走项目那层**（[AppInputField]）而不是直接用库的 `InputField`：换行折在那一层 ——
+        //  搜索词是页面级的，粘一段带换行的字进来在框里同样一个字都看不见。
+        //  `expanded` / `onExpandedChange` / `onSearch` 由那一层定死（不展开、搜索键不做事）：
+        //  库那套展开态是「点搜索框撑开一页结果」用的，本页本身就是结果列表；而且
+        //  `expanded = true` 会让 `label` 一直不显示，占位文案就没了。
+        //  上下两档与别处同一套，且两档同值（都是 [PAGE_TOP_PADDING]）。
+        AppInputField(
             query = query,
             onQueryChange = onQueryChange,
-            // 键盘上点「搜索」不做额外动作：过滤是边输边做的
-            onSearch = { },
-            expanded = false,
-            onExpandedChange = { },
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -166,8 +176,8 @@ internal fun SettingsPage.PickerSearchBand(
                         bottom = PAGE_TOP_PADDING,
                     ),
             label = labeledCount(label, count, query),
-            //  Monet 下把底色调淡（三处 `InputField` 共用那一份，见 `couiInputColors`）
-            colors = couiInputColors(),
+            // 搜索词只是一行筛选用字，不给人往框里塞一篇 —— 见 [PICKER_QUERY_MAX_LENGTH]
+            options = AppInputOptions(maxLength = PICKER_QUERY_MAX_LENGTH),
         )
     }
 }
@@ -254,7 +264,12 @@ internal fun SettingsPage.AppPickerScreen(
             // 显隐跟**选中项**走（用户口径「有选中才显示，编辑 / 新增都一样」）：没有选中时
             // 它没有可确认的东西，摆在那儿只会让人按一下、再读一句「先从列表里选一个应用」。
             // 滑入滑出交给 [PageCornerFab] 自己那套 `AnimatedVisibility`。
-            PageCornerFab(visible = ui.loaded != null && ui.pending != null) {
+            //  **给条件挑前台应用那一趟常驻**（`picker.forBranch`）：那一趟是多选，把勾全点掉之后
+            //  `pending` 会变回 `null`（见 `pickRow` 里 `next.firstOrNull()`）—— 只按 `pending`
+            //  判的话 FAB 会当场消失，用户就被困在「想清空重选，却连确认都按不了」里
+            //  （真机口径）。这一趟按下它时若一条都没勾，会由 `AppConfirmFab` 说一句
+            //  「至少选择一个应用」，不写任何东西。
+            PageCornerFab(visible = ui.loaded != null && (ui.pending != null || picker.forBranch)) {
                 AppConfirmFab(ui, onPick)
             }
 

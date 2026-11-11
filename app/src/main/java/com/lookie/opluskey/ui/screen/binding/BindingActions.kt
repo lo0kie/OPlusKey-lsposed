@@ -304,7 +304,7 @@ private fun SettingsPage.boundNotice(
         } else {
             commandTitleOf(action).forSentence(action, { appName ?: appLabelOf(pkg) }, action.token)
         }
-    return I18n.get(Strings.TOAST_BOUND, "已绑定「%s」").format(shown)
+    return I18n.get(Strings.TOAST_BOUND, "已绑定 [%s]").format(shown)
 }
 
 /**

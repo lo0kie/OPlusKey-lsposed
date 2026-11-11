@@ -25,6 +25,9 @@ object Strings {
     const val APP_PICKER_ACTIVITY_LOAD_FAILED = "app_picker.activity_load_failed"
     const val APP_PICKER_ACTIVITY_TITLE = "app_picker.activity_title"
     const val APP_PICKER_BRANCH_MULTI_HINT = "app_picker.branch_multi_hint"
+
+    /** 给条件挑前台应用那一趟：一条都没勾就按确认时的那句（FAB 常驻，见 `AppConfirmFab`）。 */
+    const val APP_PICKER_BRANCH_AT_LEAST_ONE = "app_picker.branch_at_least_one"
     const val APP_PICKER_CONFIRM_SELECTION = "app_picker.confirm_selection"
     const val APP_PICKER_EMPTY_HINT_BROKEN = "app_picker.empty_hint_broken"
     const val APP_PICKER_EMPTY_HINT_ICONLESS = "app_picker.empty_hint_iconless"
@@ -76,14 +79,6 @@ object Strings {
     /** 同一行的另一半：重新启用。 */
     const val BINDING_ENABLE_KEY = "binding.enable_key"
 
-    /**
-     * 停用那颗键之前问一句（`%s` = 键名）。
-     *
-     *  与 [BINDING_DELETE_KEY_CONFIRM] 正好把两种后果说开：一个是「不再接管但都还在」，
-     *  一个是「从清单里删掉」。这两行在菜单里只差一个字，不确认的话很容易点错。
-     */
-    const val BINDING_DISABLE_KEY_CONFIRM = "binding.disable_key_confirm"
-    const val BINDING_DELETE_KEY_CONFIRM = "binding.delete_key_confirm"
     const val BINDING_ADD_KEY = "binding.add_key"
 
     /** 首页按键清单里，一颗**停用的**键后面那句状态（不是动作，别与 `binding.disable_key` 混）。 */
@@ -308,9 +303,6 @@ object Strings {
     const val COMBO_ENABLE = "combo.enable"
     const val COMBO_DISABLED = "combo.disabled"
     const val COMBO_ENABLED = "combo.enabled"
-
-    /** 停用那一档之前的确认正文（`%s` = 成员名，已带各自的括号）—— 一句就够，别写成说明书。 */
-    const val COMBO_DISABLE_MESSAGE = "combo.disable_message"
 
     /** 组合键满员时「添加组合键」那一行的副标题（格式：上限组数）。 */
     const val COMBO_LIMIT = "combo.limit"
@@ -574,9 +566,6 @@ object Strings {
      */
     const val COMMAND_BRANCH_DISABLE = "command.branch_disable"
     const val COMMAND_BRANCH_ENABLE = "command.branch_enable"
-
-    /** 确认窗的正文 —— 一句话说清「停用之后会怎样」。 */
-    const val COMMAND_BRANCH_DISABLE_MESSAGE = "command.branch_disable_message"
 
     /** 停用那一条行上的标签（「场景 3」行尾那半句）。 */
     const val COMMAND_BRANCH_DISABLED = "command.branch_disabled"
@@ -934,8 +923,6 @@ object Strings {
     const val DIALOG_DELETE_CONDITION_MESSAGE = "dialog.delete_condition_message"
     const val DIALOG_DELETE_CONDITION_TITLE = "dialog.delete_condition_title"
 
-    /** 只删掉一块里的**一条条件**（同块里其余条件与三档动作都留着）。 */
-    const val DIALOG_DELETE_ONE_CONDITION_MESSAGE = "dialog.delete_one_condition_message"
     const val DIALOG_DELETE_ONE_CONDITION_TITLE = "dialog.delete_one_condition_title"
     const val DIALOG_DELETE_COMMAND_SERIAL_MESSAGE = "dialog.delete_command_serial_message"
     const val DIALOG_DELETE_COMMAND_SINGLE_MESSAGE = "dialog.delete_command_single_message"

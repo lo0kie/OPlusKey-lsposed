@@ -582,6 +582,44 @@ internal class AppPickerState {
      */
     val pickedApps = mutableStateOf<Set<String>>(emptySet())
 
+    /**
+     * 这一趟进来时那条条件**已经选着**的包名 —— [pickedAppsChanged] 的基线。
+     *
+     *  跟着 [pickedApps] 一起在 `AppPickerUiState.beginVisit` 里定：那一处是这一页唯一一处
+     *  「按这一趟重置」的地方，基线跟它同一刻写，判据才不会跨趟串味。
+     */
+    private var visitPicked: Set<String> = emptySet()
+
+    /** 记下多选基线（`beginVisit` 写完 [pickedApps] 之后立刻调）。 */
+    fun markPickedBaseline() {
+        visitPicked = pickedApps.value
+    }
+
+    /**
+     * 这一趟**改过**多选集合吗 —— 与 [windowTogglesChanged] 同一条账：改过、还没提交就退页，
+     * 要把「放弃这次选择」那一问支起来。
+     *
+     *  多选那一趟（[forBranch]）点一行就是切换勾选：既不写草稿、也不动那两个开关。
+     *  只按 `draft` / 开关判的话，这一退**什么都不会问** —— 勾掉的那几个包名连同整趟挑的
+     *  静悄悄丢掉（真机口径「返回时的拦截在上面这个场景不生效」）。
+     */
+    val pickedAppsChanged: Boolean
+        get() = pickedApps.value != visitPicked
+
+    /**
+     * 这一趟有没有**挑过、还没落盘**的东西 —— 退页前要不要问一句的**唯一**判据。
+     *
+     *  三样各自可能改过：草稿（二级页点了确认，提交在右下角那颗 FAB 上）、两个窗口开关、
+     *  多选集合。前两样的出处见 [windowTogglesChanged]，第三样见 [pickedAppsChanged] ——
+     *  多选那一趟点一行只切勾选，前两样都不动，缺了这一项整趟挑的就静悄悄丢了
+     *  （真机口径「返回时的拦截在上面这个场景不生效」）。
+     *
+     *  收在这里而不是写在调用点：这三个判据的基线都归本域管（`beginVisit` 那一刻定），
+     *  组合口径也该在同一处，免得下次再加一样时又漏一处。
+     */
+    val unconfirmedChanges: Boolean
+        get() = draft != null || windowTogglesChanged || pickedAppsChanged
+
     // ── 屏级缓存：清单 + 图标 ──
     //
     //  这几样原来挂在 `ui/screen/apppicker/AppList.kt` 的**包级 internal 可变全局**上 —— 没有所有者，

@@ -217,7 +217,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
     when (saveCommands(next, "删除命令：${cmd.name}")) {
         CommandsSave.Ok -> {
             clearDeletedCommandFromDrafts(cmd)
-            hint(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除「%s」").format(cmd.name), slot = HINT_SLOT_COMMAND)
+            hint(I18n.get(Strings.TOAST_COMMAND_DELETED, "已删除 [%s]").format(cmd.name), slot = HINT_SLOT_COMMAND)
         }
 
         // 库已经删掉了（只是没通知到注入侧，提示由 saveCommands 给）——草稿该清还是清，

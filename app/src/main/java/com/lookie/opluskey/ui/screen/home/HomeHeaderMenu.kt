@@ -146,7 +146,7 @@ private fun SettingsPage.HomeHeaderConfirmDialogs() {
     ConfirmDialog(
         show = overlays.confirmRestart,
         title = I18n.get(Strings.DIALOG_RESTART_TITLE, "重启服务"),
-        summary = I18n.get(Strings.DIALOG_RESTART_MESSAGE, "未保存的内容会丢。"),
+        summary = I18n.get(Strings.DIALOG_RESTART_MESSAGE, "未保存的改动将丢失。"),
         action = I18n.get(Strings.DIALOG_RESTART_CONFIRM, "重启"),
         onDismiss = { overlays.confirmRestart = false },
         onConfirm = {

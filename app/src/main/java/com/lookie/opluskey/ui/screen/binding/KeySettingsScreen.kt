@@ -185,7 +185,7 @@ private fun SettingsPage.ComboOwnCard(
     //  各行共用这一句 —— 同一个原因不该在几个地方各算一遍。
     val needOwnHint =
         if (enabled && !ownOn) {
-            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开「使用独立设置」")
+            I18n.get(Strings.KEY_SETTINGS_NEED_OWN, "先打开 [使用独立设置]")
         } else {
             null
         }
@@ -226,7 +226,7 @@ private fun SettingsPage.ComboOwnCard(
                                 SliderSpec(
                                     //  文案与公共页那一行**逐字相同**：同一个参数，两处只是改的对象不同
                                     title = I18n.get(Strings.COMBO_WINDOW_TITLE, "按键之间的等待"),
-                                    summary = I18n.get(Strings.COMBO_WINDOW_DESC, "调大会让参与组合的按键多等这么久"),
+                                    summary = I18n.get(Strings.COMBO_WINDOW_DESC, "调大后，参与组合的按键等待更久"),
                                     icon = PageIcons.DelayStep,
                                     min = GlobalConfig.COMBO_WINDOW_MIN_MS,
                                     max = GlobalConfig.COMBO_WINDOW_MAX_MS,

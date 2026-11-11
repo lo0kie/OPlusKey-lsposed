@@ -128,7 +128,6 @@ private fun SettingsPage.ComboMenuDialogHost(
     KeysAskDialog()
     ComboDisableDialog(
         show = dialogs.toggle,
-        label = label,
         onDismiss = { dialogs.toggle = false },
         onConfirm = {
             dialogs.toggle = false
@@ -186,14 +185,12 @@ private fun SettingsPage.ComboDeleteDialog(
 @Composable
 private fun SettingsPage.ComboDisableDialog(
     show: Boolean,
-    label: String,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
     ConfirmDialog(
         show = show,
         title = I18n.get(Strings.COMBO_DISABLE, "停用组合按键"),
-        summary = I18n.format(Strings.COMBO_DISABLE_MESSAGE, label),
         action = I18n.get(Strings.COMMON_DISABLE, "停用"),
         onDismiss = onDismiss,
         onConfirm = onConfirm,

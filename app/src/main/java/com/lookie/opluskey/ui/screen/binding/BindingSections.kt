@@ -96,7 +96,7 @@ internal fun SettingsPage.BindingGroups(
         val settingsEnabled = enabled && !followsDefault
         val followHint =
             if (followsDefault) {
-                I18n.get(Strings.BINDING_FOLLOW_NO_SETTINGS, "「跟随默认」没有可设的项，先换成一个动作")
+                I18n.get(Strings.BINDING_FOLLOW_NO_SETTINGS, "[跟随默认] 没有可设的项，先换成一个动作")
             } else {
                 null
             }

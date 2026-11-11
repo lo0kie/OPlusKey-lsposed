@@ -152,7 +152,7 @@ private fun SettingsPage.DiscardPickDialog() {
     val picked = picker.draft
     ConfirmDialog(
         show = overlays.confirmLeavePick,
-        title = I18n.get(Strings.DIALOG_DISCARD_PICK_TITLE, "放弃这次选择"),
+        title = I18n.get(Strings.DIALOG_DISCARD_PICK_TITLE, "放弃本次选择"),
         summary =
             picked?.let {
                 I18n.format(

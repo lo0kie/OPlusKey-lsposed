@@ -80,6 +80,9 @@ internal class AppPickerUiState(
     ) {
         pending = selection?.let { PickedDetail(it, shortcutId) }
         picker.pickedApps.value = picked
+        //  多选的基线**紧跟**着它记：退页那一问按「与进来时比变了没有」判（见
+        //  `AppPickerState.pickedAppsChanged`），两处必须同一刻写。
+        picker.markPickedBaseline()
         // 上一趟的草稿不带到这一趟来（它是「等着被提交」的东西，跨趟存在只会误提交）
         picker.draft = null
         located = false

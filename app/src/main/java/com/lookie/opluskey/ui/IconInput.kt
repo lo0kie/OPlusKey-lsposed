@@ -39,14 +39,14 @@ import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.isDarkScheme
 import io.github.suqi8.coui.kmp.anim.SinOutEasing
 import io.github.suqi8.coui.kmp.basic.Icon
-import io.github.suqi8.coui.kmp.basic.InputField
 import io.github.suqi8.coui.kmp.basic.InputViewDefaults
 import io.github.suqi8.coui.kmp.basic.SearchBarColors
 import io.github.suqi8.coui.kmp.basic.SearchBarDefaults
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-// 卡片里那种「行首图标 + 输入」的行 —— 底子是库的搜索输入框（`InputField`）。
+// 卡片里那种「行首图标 + 输入」的行 —— 底子是项目那层单行输入框（`AppInputField`，
+// 里面包着库的 `InputField`）。
 
 /** 错误提示淡入 / 淡出的时长（毫秒）与缓动 —— 与库的 `InputView` 同一组值（其文档给出）。 */
 private const val ERROR_FADE_IN_MS = 217
@@ -68,19 +68,6 @@ private const val IME_GUARD_WINDOW_MS = 800L
 private const val IME_GUARD_TICK_FRAMES = 6
 
 /**
- * 按**码点**取前 [max] 个字符 —— 长度上限不能按 UTF-16 单元切。
- *
- *  Kotlin 的 `String.take(n)` 数的是 `Char`，而一个 emoji / 扩展区汉字占两个 `Char`；正好切在
- *  代理对中间时，留下的是半个码点（界面上是一颗替换符，写进配置也还原不回来）。
- */
-private fun String.takeCodePoints(max: Int): String =
-    if (max <= 0) {
-        ""
-    } else {
-        substring(0, offsetByCodePoints(0, minOf(max, codePointCount(0, length))))
-    }
-
-/**
  * 输入框那一套配色 —— **Monet 下把底色调淡**，其余主题档沿用库的原色。
  *
  *  库的 `searchBarColors()` 把容器色取成 `secondaryContainer`。静态色板下那一档是 COUI 调好的
@@ -95,7 +82,7 @@ private fun String.takeCodePoints(max: Int): String =
  *    平着选会让输入框与页面糊成一片（「框没了」比「太深」更糟）。
  *
  *  文字 / 图标 / 清除键三档**不动**：它们的对比度是相对容器算的，容器变淡只会更清楚。
- *  三处 `InputField`（输入行、应用搜索带、命令搜索框）共用这一份，免得各自漂移。
+ *  各处的输入框（输入行、两页搜索带）共用这一份，免得各自漂移。
  */
 @Composable
 internal fun couiInputColors(): SearchBarColors {
@@ -131,18 +118,18 @@ internal class InputSpec(
 )
 
 /**
- * **带行首图标的输入项** —— 底子换成库的 `InputField`（搜索框那一副长相）。
+ * **带行首图标的输入项** —— 底子是 [AppInputField]（库 `InputField` 那一副搜索框长相）。
  *
  * ## 为什么不再自己拼卡片
  *
  *  先前这一层是「`Card` + `title` + `TextField`」手拼的：`InputView` 的 `leadingIcon` 是直接
  *  透传给内部 `TextField` 的，卡片里那行 `title` 不跟着让位，只好自己拼一份同款。现在这里
- *  不再有独立的标题行 —— 字段名走 [label]（占位文案），于是 `InputField` 一个组件就够了，
+ *  不再有独立的标题行 —— 字段名走 `label`（占位文案），于是 `AppInputField` 一个组件就够了，
  *  与「选择应用 / 选择界面」那两页的搜索框也是同一副长相。
  *
  * ## 行首图标是**原来那颗**
  *
- *  `InputField` 不给 `leadingIcon` 时画的是放大镜 —— 这里是「命令 / 名称」这些具体字段，
+ *  `AppInputField` 不给 `leadingIcon` 时画的是放大镜 —— 这里是「命令 / 名称」这些具体字段，
  *  所以把原来卡片行首那颗图标原样递进去（[ROW_ICON_SIZE] + 与其他行首同一档的颜色）。
  *
  * ## 只有单行
@@ -192,6 +179,13 @@ internal fun SettingsPage.IconInputView(
     caretToEndOnFirstFocus: Boolean = false,
     /** 这一栏能不能输入 —— `false` 时不吃焦点、不进键盘（排序态下整页禁用）。 */
     enabled: Boolean = true,
+    /**
+     * 值进来时怎么折换行 —— 默认折成一个空格（见 [AppInputField]）。
+     *
+     *  **命令正文那一栏传 `singleLine`**：它要把换行折成 `; `（多行脚本粘进来 = 依次执行），
+     *  折成空格会得到一条语法错误的命令。
+     */
+    sanitize: (String) -> String = ::foldLineBreaks,
 ) {
     val isError = errorMessage.isNotEmpty()
     // 淡出期间要**留着最后那条非空消息**，否则红字先消失、再走淡出（库同此做法）
@@ -213,26 +207,25 @@ internal fun SettingsPage.IconInputView(
         label = "InputRowDim",
     )
     Column(modifier = modifier.alpha(dim)) {
-        InputField(
+        //  **走项目那层**（[AppInputField]）而不是直接用库的 `InputField`：换行折在那一层，
+        //  粘一段带换行的字进来不会变成「框里一个字都没有」（见那个组件的注释）。
+        AppInputField(
             query = value,
-            // **长度上限在这一层兜**（不靠各调用点自己截）：超出的部分直接吃掉，
-            //  于是右下的计数永远与真正存下去的值一致。
-            //  按**码点**截：`take()` 数的是 UTF-16 单元，正好切在代理对中间会留下半个字符。
-            onQueryChange = { raw -> onValueChange(raw.takeCodePoints(spec.maxLength)) },
-            // 键盘上的「搜索」键不做额外动作：这一栏不是搜索，输入即生效
-            onSearch = { },
-            // 展开态那套是「点搜索框撑开一页结果」用的，这里不展开
-            expanded = false,
-            onExpandedChange = { },
-            enabled = enabled,
+            // **长度上限在这一层传下去**（不靠各调用点自己截）：[AppInputField] 按**码点**截，
+            //  超出的部分直接吃掉 —— 于是框里显示的、右下的计数、真正存下去的值永远一致。
+            onQueryChange = onValueChange,
+            label = spec.label,
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .inputFocusBehavior(focusRequester, caretToEndOnFirstFocus) { focused = it },
-            label = spec.label,
-            leadingIcon = { InputLeadingIcon(spec.icon) },
-            //  Monet 下把底色调淡（见 [couiInputColors]）；其它主题档就是库的原色
-            colors = couiInputColors(),
+            options =
+                AppInputOptions(
+                    enabled = enabled,
+                    leadingIcon = { InputLeadingIcon(spec.icon) },
+                    sanitize = sanitize,
+                    maxLength = spec.maxLength,
+                ),
         )
         AnimatedVisibility(
             visible = isError,

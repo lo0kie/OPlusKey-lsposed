@@ -171,7 +171,7 @@ internal fun SettingsPage.ActivityPickerScreen(
             //  快捷方式回包 —— 之前一律整页转圈；`loaded` 为 null 时清单是空的，铺出去只会先列一半。
             loading = loaded == null && !failed,
             // 空态那三样依次是：查完了吗且一条都列不出来 / 是不是「清单本身就空」（选字形）/ 那句话
-            empty = EmptySpec(loaded != null && data.isEmpty, loaded.isNullOrEmpty(), emptyText(failed, loaded, term)),
+            empty = EmptySpec(loaded != null && data.isEmpty, loaded.isNullOrEmpty(), emptyText(failed, loaded)),
             scrollBehavior = scrollBehavior,
             searchBandDp = searchBandDp,
         )

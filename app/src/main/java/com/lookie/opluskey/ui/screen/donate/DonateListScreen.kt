@@ -132,7 +132,7 @@ private fun EmptyDonorCard() {
         rows =
             listOf(
                 CardRow.Item(
-                    title = I18n.get(Strings.DONATE_LIST_EMPTY_TITLE, "还没有捐赠记录"),
+                    title = I18n.get(Strings.DONATE_LIST_EMPTY_TITLE, "暂无捐赠记录"),
                     summary = I18n.get(Strings.DONATE_LIST_EMPTY_SUMMARY, "收到的每一份支持都会记在这里"),
                     icon = PageIcons.Donate,
                 ),

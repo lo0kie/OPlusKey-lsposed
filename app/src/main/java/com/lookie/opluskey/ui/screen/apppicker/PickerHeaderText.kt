@@ -49,6 +49,23 @@ internal fun SettingsPage.appPickerChosenTarget(): String? = appPickerUi.pending
  *  翻页 / 返回时整页跟着跳），而写「已选择: 无」会被读成有个叫「无」的应用。
  */
 internal fun SettingsPage.pickerSubtitle(): String {
+    //  **给条件挑「前台应用」那一趟是多选**（`picker.forBranch`，见 `AppPickerState.openForBranch`）：
+    //  这一行只报个数（`已选择 3 个应用`）。
+    //
+    //  不写名字的理由：多选之后「当前那一个」不是唯一的事实，而 `appPickerChosenTarget()` 取的是
+    //  第一个（`appPickerSelectedTarget` 只给得出一个）—— 真机上就成了「勾了三个，顶栏还写着第一个」。
+    //  名字本来也已经写在条件表那一行里（那里不限行），这里报个数正好与一级菜单那行子标题同一句
+    //  （`conditionMenuSummary` 用的是同一个 `command.branch_app_count`）。
+    //
+    //  数的是 `pickedApps`（勾选集合）而不是草稿：勾一下就变，顶栏跟着变。
+    if (picker.forBranch) {
+        val count = picker.pickedApps.value.count { it.isNotBlank() }
+        return if (count == 0) {
+            I18n.get(Strings.APP_PICKER_NONE_SELECTED, "没有选择应用")
+        } else {
+            I18n.format(Strings.COMMAND_BRANCH_APP_COUNT, count)
+        }
+    }
     val target =
         appPickerChosenTarget()
             ?: return I18n.get(Strings.APP_PICKER_NONE_SELECTED, "没有选择应用")
