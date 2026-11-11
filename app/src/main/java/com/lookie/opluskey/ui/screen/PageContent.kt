@@ -44,6 +44,7 @@ import com.lookie.opluskey.ui.PageDebugChannel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SyncToHost
+import com.lookie.opluskey.ui.appTextStyles
 import com.lookie.opluskey.ui.disabledClickReason
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.AppTheme
@@ -139,7 +140,15 @@ internal fun SettingsPage.PageContent() {
     //  系统状态栏的时间与电量。所以在这一层（页面级、Scaffold 之外）读好，按 Dp 传下去。
     val statusBarTop = with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() }
     val iconTint = rememberIconTint(global.iconTintSeed, night)
-    COUITheme(colors = colorsOf(night, palette, theme, LocalContext.current)) {
+    COUITheme(
+        colors = colorsOf(night, palette, theme, LocalContext.current),
+        //  **折行规则一处声明、全页生效**（见 `appTextStyles`）：这一份 `TextStyles` 就是
+        //  COUI 的「默认文本样式」—— 不传 `style` 的 `Text` 拿它的 `main`，显式传
+        //  `COUITheme.textStyles.xxx` 的也拿它的另一格，库里二十多个组件同源。
+        //  Material 那套 `LocalTextStyle` 在这里没有对应物：COUI 的 `Text` 默认参数读的是
+        //  `COUITheme.textStyles.main`，而那条 `LocalTextStyles` 是 `internal`，外面 provide 不了。
+        textStyles = appTextStyles(),
+    ) {
         CompositionLocalProvider(
             LocalDensity provides pageDensity,
             //  浮层（菜单 / 确认弹窗）自己定底色，不吃 `COUITheme.surface`：它们要知道这一页

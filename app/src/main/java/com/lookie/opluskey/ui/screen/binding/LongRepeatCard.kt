@@ -13,6 +13,7 @@ import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.ui.BindingTarget
+import com.lookie.opluskey.ui.LongPressSections
 import com.lookie.opluskey.ui.LongPressSettingsCard
 import com.lookie.opluskey.ui.LongPressSpec
 import com.lookie.opluskey.ui.SettingsPage
@@ -57,7 +58,11 @@ internal fun SettingsPage.LongPressCard(
     //  （原先那颗还借了网格里「系统按键」的，撞了）。
     //  「跟随默认」只属于场景块的三档：历史配置里可能已经存进来过（那一版抽屉把它列在了这一行），
     //  而它在这一档没有语义 —— 行上按「无操作」念，与执行侧同一个口径（见到它什么都不做）。
-    val releaseAction = owner.longRelease.takeUnless { it is Action.Follow } ?: Action.None
+    //
+    //  **读的是 `releaseSlot`，不是 `owner`**：这一族在场景块上归**草稿里那一块**（见
+    //  `BindingTarget.releaseSlot`），而 `owner` 是那颗键 —— 拿它读会读成整颗键的那一份。
+    val slot = target.releaseSlot(cfg)
+    val releaseAction = slot.action.takeUnless { it is Action.Follow } ?: Action.None
     var pickingRelease by remember { mutableStateOf(false) }
     LongPressSettingsCard(
         LongPressSpec(
@@ -68,7 +73,7 @@ internal fun SettingsPage.LongPressCard(
             fireOnRelease = owner.longFireOnRelease,
             //  「松手」两档单键与组合都有（判定侧两边都会补发 `GestureTrigger.Release`）
             releaseSupported = true,
-            releaseOn = owner.longReleaseOn,
+            releaseOn = slot.on,
             //  行上写的是**动作名**：用户挑的可能是某条命令，只写 token 等于让他自己读 `cmd:喝水`
             //  回调拿到的是**目标写法**（`999@包名/类名`），不是包名 ⇒ 必须走 `appNameOf`
             //  （`appLabelOf` 只认包名，查不到时**把传进去的整串原样吐回来**，那一行就成了
@@ -81,6 +86,7 @@ internal fun SettingsPage.LongPressCard(
             releaseBound = owner.releaseBound,
             enabled = !blocked,
             delayEnabled = !blocked,
+            sections = sectionsFor(target),
             blockedReason = blockedReason,
             repeatBlockedReason = repeatBlockedReason(target.actionIn(cfg)),
             onRepeat = { on -> edit(target, LongPressEdit(repeat = on)) { "long_repeat=${if (on) 1 else 0}" } },
@@ -90,7 +96,7 @@ internal fun SettingsPage.LongPressCard(
             onInterval = { v -> edit(target, LongPressEdit(repeatIntervalMs = v)) { "long_repeat_interval_ms=$v" } },
             onPressMs = { v -> edit(target, LongPressEdit(pressMs = v)) { "long_press_ms=$v" } },
             onFireOnReleaseToggle = { on -> edit(target, LongPressEdit(fireOnRelease = on)) { "long_fire_on_release=$on" } },
-            onReleaseToggle = { on -> edit(target, LongPressEdit(releaseOn = on)) { "long_release_on=$on" } },
+            onReleaseToggle = { on -> editRelease(target, on = on) },
             onReleasePick = { pickingRelease = true },
         ),
     )
@@ -104,16 +110,16 @@ internal fun SettingsPage.LongPressCard(
                 onOpenPicker = { page ->
                     pickingRelease = false
                     when (page) {
-                        //  目标还是这一档：挑完回来写的就是它的 `longRelease`
-                        StepPickerPage.App -> openAppPickerForRelease(combo = target.comboId)
+                        //  目标还是这一档：挑完回来写的就是它的松手格（场景块由 sceneAt 带过去）
+                        StepPickerPage.App -> openAppPickerForRelease(combo = target.comboId, sceneAt = target.sceneAt)
 
-                        StepPickerPage.AppStop -> openAppPickerForRelease(stop = true, combo = target.comboId)
+                        StepPickerPage.AppStop -> openAppPickerForRelease(stop = true, combo = target.comboId, sceneAt = target.sceneAt)
 
                         //  变量那一格这一趟不列（见 `StepSheetFilter.excludeTiles`），走不到这里
                         StepPickerPage.Vars -> Unit
                     }
                 },
-                onPick = { token -> edit(target, LongPressEdit(release = Action.parse(token))) { "long_release=$token" } },
+                onPick = { token -> editRelease(target, action = Action.parse(token)) },
                 onDismiss = { pickingRelease = false },
                 //  「无操作」也要列：松手那一下本来就是可选的一步，「配了但这次不做事」是一档真取值
                 filter = StepSheetFilter(excludeTiles = true, includeNone = true),
@@ -129,6 +135,41 @@ private fun SettingsPage.edit(
 ): Boolean =
     write(target.withLongPress(configState.config.value, change), "${target.what}:${what()}") !=
         com.lookie.opluskey.ui.state.CommandsSave.Failed
+
+/**
+ * 「松手执行额外动作」那一族的写路径 —— **场景块只改草稿**，点那一页的「确认」才落盘。
+ *
+ *  这一族与另外三族落点不同（见 `BindingTarget.releaseSlot`）：时序 / 连发 / 长按延迟归这颗键，
+ *  松手归**这一块** —— 所以它走 `bindRelease`（改草稿），不走 `withLongPress`（写那颗键）。
+ *  与三档动作同一个规矩：这一页编的是草稿，提前落盘等于替用户按了那颗「确认」。
+ */
+private fun SettingsPage.editRelease(
+    target: BindingTarget,
+    on: Boolean? = null,
+    action: Action? = null,
+): Boolean =
+    when (target) {
+        is BindingTarget.Scene -> {
+            target.bindRelease(on, action)
+        }
+
+        else -> {
+            edit(target, LongPressEdit(releaseOn = on, release = action)) {
+                "long_release_on=$on long_release=${action?.token}"
+            }
+        }
+    }
+
+/**
+ * 这一页的卡摆**哪几族**行 —— 「场景动作」页只摆松手那一族（见 [LongPressSections]）。
+ *
+ *  另外三族（时序 / 连发 / 长按延迟）的参数归**这颗键**，而且注入侧在**按下那一刻**就按它们
+ *  排枪（`GestureDetector` 的 `longPressAt`），场景条件改不动它们 —— 摆在那块的动作页上，
+ *  改的是整颗键，读起来却像「这一块单独配过」（用户报的）。
+ *  长按那一族本身不受影响：三种目标都还走同一张卡，只是摆出来的行数不同。
+ */
+private fun sectionsFor(target: BindingTarget): LongPressSections =
+    if (target is BindingTarget.Scene) LongPressSections.ReleaseOnly else LongPressSections.All
 
 /**
  * 这一档的长按动作**自己**不支持「连续触发」的原因；`null` = 支持。

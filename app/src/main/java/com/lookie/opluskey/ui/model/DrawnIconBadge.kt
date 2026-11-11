@@ -4,20 +4,23 @@ import androidx.compose.ui.graphics.vector.PathData
 import androidx.compose.ui.graphics.vector.PathNode
 import kotlin.math.sqrt
 
-// **角标与缺口** —— 音量 / 亮度那两族共用的一套几何：右下角那颗小符号怎么画、它占多大一块地、
+// **角标与缺口** —— 音量 / 亮度 / 铃声音量那几族共用的一套几何：右下角那颗小符号怎么画、它占多大一块地、
 // 底图该在哪儿让位。
 //
 //  单独一处是因为这三件事互相咬合：角标尺寸决定缺口半径，缺口半径又决定声波 / 圆环截在哪里。
 //  画在图里的时候这些数字一旦分散，改一个就得回去找另外两处。
 
 /**
- * 右下角那个角标：加一档 / 减一档 / 拨到某个数值。
+ * 右下角那个角标：加一档 / 减一档 / 拨到某个数值 / 循环。
  *
- *  **只给音量与亮度那两族**。「应用控制」那三颗用图标库的 `category` / `category-plus` /
- *  `category-minus`（不拼：一叠方块少一块就读不出「应用」了），录屏那三态也不拼
+ *  **只给音量、亮度、铃声音量、响铃状态那几族**。「应用控制」那三颗用图标库的 `category` /
+ *  `category-plus` / `category-minus`（不拼：一叠方块少一块就读不出「应用」了），录屏那三态也不拼
  *  （它们是同一个动作的三种状态，由单选弹窗说）—— 所以这里没有播放 / 停止 / 切换。
+ *
+ *  [Cycle] 是唯一一个「不是动词」的角标：它标的是响铃状态里的「循环」那一档（按一下轮换三档），
+ *  底图是铃铛，角标是一圈箭头。
  */
-internal enum class Badge { Plus, Minus, Gear }
+internal enum class Badge { Plus, Minus, Gear, Cycle, Pause }
 
 /**
  * 角标在 24 格里占的那块地 —— 圆心是角标中心，半径见 [notch]。
@@ -65,6 +68,8 @@ private val Badge.inkRadius: Float
                 Badge.Plus -> BADGE_ARM
                 Badge.Minus -> MINUS_ARM
                 Badge.Gear -> GEAR_TOOTH
+                Badge.Cycle -> CYCLE_INK
+                Badge.Pause -> PAUSE_INK
             }
 
 /** 这一档角标占的缺口。 */
@@ -75,6 +80,18 @@ internal fun notch(badge: Badge): Notch =
         radius = badge.inkRadius + NOTCH_GAP,
         clearance = badge.inkRadius + RAY_GAP,
     )
+
+/**
+ * 切底图用的缺口半径 —— 角标墨迹 + 这一圈留白，由调用方自己定。
+ *
+ *  [notch] 里那个留白（3.3 格）是按声波、圆环那类**细弧**调的：弧在缺口圆上收笔，留多一圈看不出来。
+ *  而铃铛的唇、播放三角的底边这类**整条边**要让位时，留白得自己量 —— 太大整条边被吃掉，
+ *  太小缺口根本看不出来（真机口径「缺口太少了」）。
+ */
+internal fun cutRadius(
+    badge: Badge,
+    gap: Float,
+): Float = badge.inkRadius + gap
 
 /**
  * 角标那一笔 —— 照图标库 `bell-plus` / `bell-cog` 的那套画，中心 (19, 19)：
@@ -113,11 +130,32 @@ internal fun badgePath(badge: Badge): List<PathNode> =
                     lineTo(c + ux * GEAR_TOOTH, c + uy * GEAR_TOOTH)
                 }
             }
+
+            Badge.Cycle -> {
+                //  照图标库 `calendar-repeat` 右下角那一笔 —— 那套图标里现成的「角标版 repeat」：
+                //  一段 3/4 的弧（r=3）加两笔箭头，整体平移到角标中心 (19,19)。
+                //  坐标一个没改，只是平移了 (0, +1)：原图标里那一笔的包围盒中心是 (19,18)。
+                moveTo(20f, 15f)
+                lineTo(22f, 17f)
+                lineTo(19f, 17f)
+                moveTo(20f, 19f)
+                lineTo(22f, 17f)
+                moveTo(21f, 17f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = false, 0f, 5.236f)
+            }
+
+            Badge.Pause -> {
+                //  两道竖笔（暂停那两竖）：比加号窄一档 —— 两条并排摆宽了会读成一个方块
+                moveTo(c - PAUSE_GAP, c - PAUSE_HALF)
+                lineTo(c - PAUSE_GAP, c + PAUSE_HALF)
+                moveTo(c + PAUSE_GAP, c - PAUSE_HALF)
+                lineTo(c + PAUSE_GAP, c + PAUSE_HALF)
+            }
         }
     }
 
 /**
- * 一段圆弧（圆心 y 恒为 12）与缺口圆的交点，取靠上那个 —— 弧就在这一点收笔。
+ * 一段圆弧（圆心 y 恒为 12）与缺口圆的交点，取**靠上**那个 —— 弧就在这一点收笔。
  *
  *  音量那两道声波是同心圆上的一段，都用这一支求交：从顶上往下走，先碰到的是上面那个交点。
  *
@@ -128,33 +166,58 @@ internal fun arcCut(
     centerX: Float,
     radius: Float,
     notch: Notch,
-): Pair<Float, Float> {
+): Pair<Float, Float> = circleCut(centerX, ARC_CENTER_Y, radius, notch).first
+
+/**
+ * 同一段圆弧与缺口圆的交点，取**靠下**那个 —— 铃舌是唇下垂着的小半圆，在右下角那一侧收笔。
+ *
+ *  与 [arcCut] 是同一个式子的两个根：声波从顶上往下走要上交点，铃舌从唇上往下绕要下交点。
+ *
+ * @param centerX 圆弧圆心的 x
+ * @param centerY 圆弧圆心的 y（铃舌的圆心在 (12, 18)，不在这批声波那条 y=12 上）
+ */
+internal fun arcCutLower(
+    centerX: Float,
+    centerY: Float,
+    radius: Float,
+    notch: Notch,
+): Pair<Float, Float> = circleCut(centerX, centerY, radius, notch).second
+
+/**
+ * 一圈（任意圆心、半径）与缺口圆的交点，取**上沿、下沿**两点 —— 圈在这两点之间让位。
+ *
+ *  与 [arcCut] 一样是两圆求交，只是这次要两个解：那一圈得从上沿绕过去接下下沿。
+ */
+internal fun ringCut(
+    centerX: Float,
+    centerY: Float,
+    radius: Float,
+    notch: Notch,
+): Pair<Pair<Float, Float>, Pair<Float, Float>> = circleCut(centerX, centerY, radius, notch)
+
+/**
+ * 两圆求交 —— 缺口这套几何里**唯一**的算式，三处收笔点都由它算：声波（上交点）、
+ * 太阳那一圈（两个交点）、铃舌（下交点）。
+ *
+ *  返回 `(靠上那个) to (靠下那个)`。写一处而不是各抄一份：缺口的半径一变，
+ *  这几个收笔点必须**同时**跟着动，抄成三份就会漏改其中两处。
+ */
+private fun circleCut(
+    centerX: Float,
+    centerY: Float,
+    radius: Float,
+    notch: Notch,
+): Pair<Pair<Float, Float>, Pair<Float, Float>> {
     val dx = notch.x - centerX
-    val dy = notch.y - ARC_CENTER_Y
+    val dy = notch.y - centerY
     val distance = sqrt(dx * dx + dy * dy)
-    //  沿两圆心连线走 along，再朝上垂直偏 offset 就是上面那个交点
+    //  沿两圆心连线走 along，再垂直偏 offset 就是那两个交点
     val along = (distance * distance + radius * radius - notch.radius * notch.radius) / (2f * distance)
     val offset = sqrt(radius * radius - along * along)
     val ux = dx / distance
     val uy = dy / distance
-    return (centerX + along * ux + offset * uy) to (ARC_CENTER_Y + along * uy - offset * ux)
-}
-
-/**
- * 太阳那一圈与缺口圆的交点（上沿、下沿两点）—— 圈在这两点之间让位。
- *
- *  与 [arcCut] 一样是两圆求交，只是这次要两个解：那一圈得从上沿绕过去接下沿。
- */
-internal fun ringCut(notch: Notch): Pair<Pair<Float, Float>, Pair<Float, Float>> {
-    val dx = notch.x - SUN_CENTER
-    val dy = notch.y - SUN_CENTER
-    val distance = sqrt(dx * dx + dy * dy)
-    val along = (distance * distance + SUN_RADIUS * SUN_RADIUS - notch.radius * notch.radius) / (2f * distance)
-    val offset = sqrt(SUN_RADIUS * SUN_RADIUS - along * along)
-    val ux = dx / distance
-    val uy = dy / distance
-    val midX = SUN_CENTER + along * ux
-    val midY = SUN_CENTER + along * uy
+    val midX = centerX + along * ux
+    val midY = centerY + along * uy
     return ((midX + offset * uy) to (midY - offset * ux)) to ((midX - offset * uy) to (midY + offset * ux))
 }
 
@@ -176,6 +239,18 @@ private const val GEAR_RING = 2f
 /** 齿轮的齿尖到圆心的距离（环外 1.5 格，与 `bell-cog` 那颗一致）。 */
 private const val GEAR_TOOTH = 3.5f
 
+/** 循环角标的墨迹半径（不含描边）：那一笔最远的一点离圆心 4.1 格。 */
+private const val CYCLE_INK = 4.1f
+
+/** 暂停那两道竖笔的半高。 */
+private const val PAUSE_HALF = 2.2f
+
+/** 暂停那两道竖笔离中心的横向距离 —— 两条墨迹之间留 1.2 格。 */
+private const val PAUSE_GAP = 1.6f
+
+/** 暂停角标的墨迹半径（不含描边）：竖笔的端点到圆心 2.72 格。 */
+private const val PAUSE_INK = 2.72f
+
 /**
  * 齿轮六颗齿的方向（单位向量，从正上起每 60° 一颗）。
  *
@@ -191,12 +266,6 @@ private val GEAR_DIRECTIONS =
         -0.866f to 0.5f,
         -0.866f to -0.5f,
     )
-
-/** 太阳圆心（两个方向都是 12）。 */
-private const val SUN_CENTER = 12f
-
-/** 太阳那圈圆的半径。 */
-internal const val SUN_RADIUS = 4f
 
 /** 声波那两道弧的圆心 y —— 两道都是同心圆，圆心都落在这一行上。 */
 internal const val ARC_CENTER_Y = 12f

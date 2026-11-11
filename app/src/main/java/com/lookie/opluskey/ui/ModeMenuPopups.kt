@@ -97,7 +97,11 @@ internal fun SettingsPage.ModeMenuPopups(
                                 if (ActionCatalog.brightnessModeOf(picked.token) != null) {
                                     brightEntry = picked
                                     onDismiss()
-                                } else if (ActionCatalog.volumeModeOf(picked.token) != null) {
+                                } else if (ActionCatalog.volumeModeOf(picked.token) != null ||
+                                    ActionCatalog.ringerVolumeModeOf(picked.token) != null
+                                ) {
+                                    //  媒体音量与铃声音量**共用一个槽**：两条命令的三档长得一样，
+                                    //  后面那层百分比弹窗按 token 前缀自己认出是哪一族（见 `VolumePopup`）。
                                     volumeEntry = picked
                                     onDismiss()
                                 } else if (ActionCatalog.stateMenu(picked.token) != null) {
@@ -300,7 +304,12 @@ private fun SettingsPage.BrightnessPopup(
 }
 
 /**
- * 音量的「还要问一个百分比」—— 与 [BrightnessPopup] 同一个形状，只是换成 [SettingsPage.VolumeDialog]。
+ * 音量那一族的「还要问一个百分比」—— 与 [BrightnessPopup] 同一个形状，只是换成 [SettingsPage.VolumeDialog]。
+ *
+ *  **媒体音量与铃声音量共用这一支**：两条命令的三档是同一组动词，菜单行也长得一样（只是 token
+ *  前缀不同），所以只留一个槽；进来之后按 [ActionCatalog.ringerVolumeModeOf] 认出是哪一族，
+ *  标题、初值、落盘那一侧跟着换。再抄一份的话，「百分比弹窗退场要照最后画过的那一份画」这条
+ *  规矩就要在两个地方各写一遍。
  *
  *  两块的退场处理各自独立（照最后画过的那一份画），理由见 [SwitchStatePopup]。
  */
@@ -314,22 +323,37 @@ private fun SettingsPage.VolumePopup(
     val lastShown = remember { LastPick() }
     entry?.let { lastShown.entry = it }
     val shown = entry ?: lastShown.entry
-    val mode = ActionCatalog.volumeModeOf(shown?.token.orEmpty())
-    //  同一档已经绑过就接着用它自己的数值，没绑过才用各档的默认值
+    val token = shown?.token.orEmpty()
+    val ringer = ActionCatalog.ringerVolumeModeOf(token) != null
+    val mode = if (ringer) ActionCatalog.ringerVolumeModeOf(token) else ActionCatalog.volumeModeOf(token)
+    //  同一档已经绑过就接着用它自己的数值，没绑过才用各档的默认值 —— 两条命令各读各的那一格
     val initial =
         mode?.let { m ->
-            (current as? Action.Volume)?.takeIf { it.mode == m }?.percent
-                ?: if (m == Action.Volume.Mode.FIX) DEFAULT_SET_PERCENT else DEFAULT_STEP_PERCENT
+            val bound =
+                if (ringer) {
+                    (current as? Action.RingerVolume)?.takeIf { it.mode == m }?.percent
+                } else {
+                    (current as? Action.Volume)?.takeIf { it.mode == m }?.percent
+                }
+            bound ?: if (m == Action.Volume.Mode.FIX) DEFAULT_SET_PERCENT else DEFAULT_STEP_PERCENT
         } ?: DEFAULT_STEP_PERCENT
     VolumeDialog(
         show = entry != null,
-        mode = mode ?: Action.Volume.Mode.ADD,
+        target = VolumeTarget(mode ?: Action.Volume.Mode.ADD, ringer),
         initial = initial,
         onDismiss = onDismiss,
         onConfirm = { percent ->
             onDismiss()
             //  mode 为空只可能是「退场途中又点了一次确定」，那种情况下什么都不落
-            if (mode != null) onPick(ActionCatalog.volumeSpecOf(mode, percent))
+            if (mode != null) {
+                onPick(
+                    if (ringer) {
+                        ActionCatalog.ringerVolumeSpecOf(mode, percent)
+                    } else {
+                        ActionCatalog.volumeSpecOf(mode, percent)
+                    },
+                )
+            }
         },
     )
 }

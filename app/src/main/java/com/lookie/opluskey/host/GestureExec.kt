@@ -247,9 +247,8 @@ internal object GestureExec {
     /**
      * 松手那一档（[GestureTrigger.Release]）—— 长按之后抬手才到，与单击 / 长按那一支互斥。
      *
-     *  两条判据与单键同一条口径：
-     *  · 长按那一档**命中系统场景**时让位（那时这一按已经交给了系统，松手不该再补一刀）；
-     *  · 否则执行 `combo.longRelease` 那个槽位。
+     *  取动作与单键同一条口径（[pickReleaseAction]）：长按被哪一块接管，就用那一块自己的松手格；
+     *  一块都不中才落到这一组的 `longRelease`。块命中时**不**再补一刀 —— 一次按压一个结果。
      *
      *  单独抽一支只为让 [handleCombo] 的 `return` 数留在 detekt 的额度里，而这一档本来就
      *  只在 `trigger.gestureOrNull() == null` 时进来。
@@ -261,11 +260,12 @@ internal object GestureExec {
         repeat: Boolean,
         matches: (BranchCondition) -> Boolean,
     ) {
-        if (combo.sceneTakes(Gesture.LONG, matches)) {
-            XLog.w("组合键 ${combo.id} - 松手：长按那一档命中了系统场景，这一下不执行")
+        val fired = combo.resolveRelease(matches)
+        if (!fired.isBound) {
+            XLog.w("组合键 ${combo.id} - 松手：这一下没有可执行的动作（长按命中场景 / 这一组没配松手），不执行")
             return
         }
-        executeCombo(combo, trigger, combo.longRelease, config, repeat)
+        executeCombo(combo, trigger, fired, config, repeat)
     }
 
     /**
@@ -568,14 +568,17 @@ internal object GestureExec {
         keyConfig: KeyConfig,
         matchesCondition: (BranchCondition) -> Boolean,
     ): Action? {
-        //  长按已经按场景分过流了，松手再补一个动作等于一次按压两个结果；
-        //  场景一条都不中时松手照常执行 —— 它只做「没配场景 / 场景没命中」时的补充。
-        //  判据与长按那一档完全同一份，且共用同一次按压里的 `judged` 缓存（不多判一轮）。
-        if (trigger == GestureTrigger.Release &&
-            keyConfig.sceneTakes(Gesture.LONG, matchesCondition)
-        ) {
-            XLog.w("${id.label} - 松手：长按那一档命中了系统场景，这一下不执行 ${keyConfig.longRelease.token}")
-            return null
+        //  松手是**这一按的收尾**，动作由「长按被谁接管」决定（`pickReleaseAction` 那一处）：
+        //  块接管了长按 ⇒ 用那一块自己的松手格（`None` = 这一下什么都不做），**不再**补按键那一格；
+        //  一块都不中 ⇒ 才补按键自己的 `longRelease`。判据与长按那一档同一份，且共用同一次按压里
+        //  的 `judged` 缓存（不多判一轮）。
+        if (trigger == GestureTrigger.Release) {
+            val fired = keyConfig.resolveRelease(matchesCondition)
+            if (!fired.isBound) {
+                XLog.w("${id.label} - 松手：这一下没有可执行的动作（长按命中场景 / 按键没配松手），不派发")
+                return null
+            }
+            return fired
         }
         val gesture = trigger.gestureOrNull()
         return if (gesture == null) {

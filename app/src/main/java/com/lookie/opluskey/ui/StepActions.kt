@@ -4,6 +4,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.ui.state.AppPickerState
 
 // 「多条命令」那几步的增删改 —— 只动页面状态（草稿里的步骤、导航、「选应用」那一档），一行像素都不画。
 //  放在 `ui` 根而不是 `ui/state`：`ui/state` 只装**状态对象**（谁的字段、谁能写），
@@ -76,18 +77,21 @@ internal fun SettingsPage.openAppPickerForStep(
 }
 
 /**
- * 长按卡「松手执行额外动作」那一行进「打开应用」页 —— 挑中的应用 / 组件 / 快捷方式写进这颗键的
- * `longRelease`（落点见 `PickTarget.Release`）。
+ * 长按卡「松手执行额外动作」那一行进「打开应用」页 —— 挑中的应用 / 组件 / 快捷方式写进这一档的
+ * 松手格（落点见 `PickTarget.Release`：单键 / 组合是自己的 `longRelease`，场景块是草稿里那一块）。
  *
  *  与 [openAppPickerForStep] 同一套进页复位：搜索词清空、小窗开关按当前那一条重算。
  *  「以小窗口打开」在这一趟是**真生效**的（`window:` 是合法的额外动作）。
+ *
+ *  @param sceneAt 非负 = 这一趟是给**场景表里第几块**挑（「场景动作」页那一趟，见 `BindingTarget.Scene`）
  */
 internal fun SettingsPage.openAppPickerForRelease(
     stop: Boolean = false,
     combo: String? = null,
+    sceneAt: Int = AppPickerState.NOT_FOR_SCENE,
 ) {
-    XLog.w("额外动作：进「打开应用」页挑一条（结束=$stop，组合=$combo）")
-    picker.openForRelease(stop, combo)
+    XLog.w("额外动作：进「打开应用」页挑一条（结束=$stop，组合=$combo，场景块=$sceneAt）")
+    picker.openForRelease(stop, combo, sceneAt)
     picker.filter.value = ""
     resetSmallWindowForPicker()
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId())

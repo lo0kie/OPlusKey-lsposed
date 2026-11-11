@@ -149,6 +149,15 @@ object Strings {
     /** 同一时刻「松手才触发」开着 —— 「松手执行额外动作」那一行为什么点不了。 */
     const val BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE = "binding.fire_on_release_unsupported_release"
 
+    /**
+     * 上面那一条在**场景动作页**的说法。
+     *
+     *  那一页只摆「松手执行额外动作」这一族，「松手时触发」那一行归「按键绑定」页 ——
+     *  所以灰着点一下必须**指路**：只说「已改为松手时触发」而这一页根本没有那个开关，
+     *  等于告诉用户一件他在这里改不了的事。
+     */
+    const val BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE_KEY = "binding.fire_on_release_unsupported_release_key"
+
     /** 反过来：配了松手额外动作时，「松手才触发」那一行为什么点不了。 */
     const val BINDING_RELEASE_UNSUPPORTED_FIRE = "binding.release_unsupported_fire"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
@@ -351,6 +360,9 @@ object Strings {
 
     /** 「音量」那一格与它菜单的三档 —— 与亮度同一套（点格子弹菜单，每一档再问一个百分比）。 */
     const val CATALOG_VOLUME = "catalog.volume"
+
+    /** 「铃声音量」那一格 —— 与「音量」并列的第二条命令（写铃声流）。 */
+    const val CATALOG_RINGER_VOLUME = "catalog.ringer_volume"
     const val CATALOG_VOLUME_ADD = "catalog.volume_add"
     const val CATALOG_VOLUME_SUB = "catalog.volume_sub"
     const val CATALOG_VOLUME_SET = "catalog.volume_set"

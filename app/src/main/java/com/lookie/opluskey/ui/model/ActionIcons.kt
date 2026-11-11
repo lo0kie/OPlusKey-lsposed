@@ -12,14 +12,12 @@ import com.lookie.opluskey.core.rom.RomProfile
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsCog
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
-import io.github.lyxnx.compose.ui.tablericons.outline.AppWindowBottom
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
 import io.github.lyxnx.compose.ui.tablericons.outline.BellCog
 import io.github.lyxnx.compose.ui.tablericons.outline.BellOff
 import io.github.lyxnx.compose.ui.tablericons.outline.BellRinging
-import io.github.lyxnx.compose.ui.tablericons.outline.Bolt
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple1
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple2
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple3
@@ -29,6 +27,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple6
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple7
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple8
 import io.github.lyxnx.compose.ui.tablericons.outline.BoxMultiple9
+import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Calculator
 import io.github.lyxnx.compose.ui.tablericons.outline.Camera
 import io.github.lyxnx.compose.ui.tablericons.outline.Cards
@@ -39,6 +38,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.Command
 import io.github.lyxnx.compose.ui.tablericons.outline.CornerDownLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.Cpu
+import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileBolt
 import io.github.lyxnx.compose.ui.tablericons.outline.DeviceMobileVibration
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
@@ -52,7 +52,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.NavigationCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Notification
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilAi
 import io.github.lyxnx.compose.ui.tablericons.outline.PhotoVideo
-import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureTop
+import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerStop
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerTrackNext
@@ -223,12 +223,17 @@ internal fun actionIcon(token: String): ImageVector =
         }
 
         // 播放 / 暂停 / 上一首 / 下一首（前两条交给系统按当前状态翻面）
+        //  「播放/暂停」那一档（`keyevent:85`，切换语义）：播放三角 + 右下角暂停两笔
+        Action.keyToken(KeyId.KEYCODE_MEDIA_PLAY_PAUSE) -> {
+            DrawnIcons.MediaPlayPause
+        }
+
         Action.keyToken(KeyId.KEYCODE_MEDIA_PLAY) -> {
             TablerIcons.Outline.PlayerPlay
         }
 
         Action.keyToken(KeyId.KEYCODE_MEDIA_PAUSE) -> {
-            TablerIcons.Outline.PlayerStop
+            TablerIcons.Outline.PlayerPause
         }
 
         Action.keyToken(KeyId.KEYCODE_MEDIA_PREVIOUS) -> {
@@ -250,18 +255,19 @@ internal fun actionIcon(token: String): ImageVector =
             DrawnIcons.VolumeSub
         }
 
-        // 把前台应用收成小窗 —— 展开档用「窗口 + 底部块」（`app-window-bottom`）
+        // 把前台应用收成小窗 —— 展开档：竖窗口 + 正中一块小窗（`app-window-center` 逆时针转 90°）
         Action.ZOOM_MINI -> {
-            TablerIcons.Outline.AppWindowBottom
+            DrawnIcons.MiniWindowExpand
         }
 
-        // 收起档（右上角一条）—— 用画中画那颗（画面挂在**顶部**），与展开档一眼分得开
+        // 收起档：竖窗口 + 右上角一块小窗（`app-window-bottom-right` 逆时针转 90°），
+        //  与展开档只差那块小窗的位置（正中 vs 角上），一眼分得开
         Action.ZOOM_MINI_COLLAPSE -> {
-            TablerIcons.Outline.PictureInPictureTop
+            DrawnIcons.MiniWindowCollapse
         }
 
         // 响铃档位（`ringer:normal|vibrate|silent`）；「循环」那一档不在这里 ——
-        // 它写的是 `keyevent:164`，由 [specIcon] 按 spec 认领 [PageIcons.RingerCycle]（铃铛 + 一圈箭头）。
+        // 它写的是 `keyevent:164`，由 [specIcon] 按 spec 认领 [DrawnIcons.RingerCycle]（铃铛 + 一圈箭头）。
         Action.RINGER_PREFIX + Action.Ringer.NORMAL -> {
             TablerIcons.Outline.BellRinging
         }
@@ -355,7 +361,13 @@ internal fun actionIcon(token: String): ImageVector =
                 }
 
                 token.startsWith(Action.VOLUME_PREFIX) -> {
-                    volumeGlyph(token)
+                    volumeGlyph((ActionCatalog.actionOf(token) as? Action.Volume)?.mode)
+                }
+
+                // 铃声音量（`ringervolume:+10`）—— 与上面那族同一套角标、底图换成铃铛，
+                //  只在步骤行里出现（格子那颗是 `bell-ringing`，见 [glyphIcon]）
+                token.startsWith(Action.RINGER_VOLUME_PREFIX) -> {
+                    ringerVolumeGlyph((ActionCatalog.actionOf(token) as? Action.RingerVolume)?.mode)
                 }
 
                 else -> {
@@ -379,16 +391,36 @@ private fun brightnessGlyph(token: String): ImageVector =
     }
 
 /**
- * 音量那一档同上：同一颗喇叭底图，右下角换角标（加 / 减 / 齿轮），格子那颗不带角标。
+ * 媒体音量那一档：同一颗喇叭底图，右下角换角标（加 / 减 / 齿轮），格子那颗不带角标。
+ *
+ *  铃声音量走 [ringerVolumeGlyph]：动词一样、对象不同，底图换成铃铛 —— 两族各画一套，
+ *  扫一眼先认出「喇叭还是铃铛」，再认出「加、减还是设」。
+ *
+ * @param mode 这一条写的是哪一档；`null`（手改坏了 / 不是这一族）按「设置为」收口
  */
-private fun volumeGlyph(token: String): ImageVector =
-    when ((ActionCatalog.actionOf(token) as? Action.Volume)?.mode) {
+private fun volumeGlyph(mode: Action.Volume.Mode?): ImageVector =
+    when (mode) {
         Action.Volume.Mode.ADD -> DrawnIcons.VolumeAdd
 
         Action.Volume.Mode.SUB -> DrawnIcons.VolumeSub
 
         //  认不出（手改坏了）时给「设置为」那颗：这一族里最中性的一档
         else -> DrawnIcons.VolumeSet
+    }
+
+/**
+ * 铃声音量那一档：铃铛底图 + 同一套角标（与 [volumeGlyph] 同尺，只换底图）。
+ *
+ * @param mode 这一条写的是哪一档；`null`（手改坏了 / 不是这一族）按「设置为」收口
+ */
+private fun ringerVolumeGlyph(mode: Action.Volume.Mode?): ImageVector =
+    when (mode) {
+        Action.Volume.Mode.ADD -> DrawnIcons.RingerVolumeAdd
+
+        Action.Volume.Mode.SUB -> DrawnIcons.RingerVolumeSub
+
+        //  认不出（手改坏了）时给「设置为」那颗：这一族里最中性的一档
+        else -> DrawnIcons.RingerVolumeSet
     }
 
 /**
@@ -457,18 +489,21 @@ internal fun specIcon(spec: ActionCatalog.Spec): ImageVector =
  * 这几种「一个 token 两支字形」和「标记格」原来散在 [specIcon] 里用 `spec ===` / `token ==` 认领，
  * 那等于把注册信息漏在渲染层；现在字形随条目一起注册、这里只翻译。
  *
- * ## 为什么压掉 `CyclomaticComplexMethod`
+ * ## 为什么压掉 `CyclomaticComplexMethod` 与 `LongMethod`
  *
  *  这是一张**纯映射**：分支数恒等于 [ActionCatalog.Glyph] 的项数，加一档动作就多一支 ——
- *  拆成几个小函数只是把计数挪走，既不降复杂度也不增可读性。保留 `when` 而不是改成查表，
- *  是为了「加了枚举值忘了配图标」在**编译期**就报错（查表会退化成运行时的兜底图标）。
+ *  拆成几个小函数只是把计数挪走，既不降复杂度也不增可读性；长度同理，它是「枚举项数 × 两行」，
+ *  不是「这件事本身太长」。保留 `when` 而不是改成查表，是为了「加了枚举值忘了配图标」在
+ *  **编译期**就报错（查表会退化成运行时的兜底图标）—— 而那也正是不能拆成「先查一小族、
+ *  查不到再往下走」的原因：那种拆法要么丢掉穷尽性，要么得补一个 `else`，等于把这条判据也丢掉。
  */
-@Suppress("CyclomaticComplexMethod")
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
     when (glyph) {
         ActionCatalog.Glyph.RingerTile -> TablerIcons.Outline.BellCog
 
-        ActionCatalog.Glyph.Repeat -> PageIcons.RingerCycle
+        // 响铃状态的「循环」那一档：与铃声音量那三颗同一颗铃铛，角标换成一圈箭头
+        ActionCatalog.Glyph.Repeat -> DrawnIcons.RingerCycle
 
         ActionCatalog.Glyph.MediaTile -> TablerIcons.Outline.PhotoVideo
 
@@ -483,8 +518,8 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         // 「系统开关」入口格：带齿的齿轮（`settings-cog`，这一格进的是清单，不是某个取值）
         ActionCatalog.Glyph.SystemSwitch -> TablerIcons.Outline.SettingsCog
 
-        // 「屏幕亮度」那一格：一颗太阳（亮度本身）
-        ActionCatalog.Glyph.Brightness -> DrawnIcons.BrightnessTile
+        // 「屏幕亮度」那一格：`brightness-up`（内圈 + 八道短光）—— 与菜单那三行同一颗底图
+        ActionCatalog.Glyph.Brightness -> TablerIcons.Outline.BrightnessUp
 
         // 菜单的「增加 / 减少 / 设置为」：太阳缩一档，右下角换角标（加 / 减 / 齿轮）——
         //  与「音量」那张菜单同一套角标，两族只有底图不同。
@@ -497,12 +532,23 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         // 「音量」那一格：喇叭 + 两道声波（这一格说的就是音量本身）
         ActionCatalog.Glyph.Volume -> DrawnIcons.VolumeTile
 
+        // 「铃声音量」那一格：**带声波的铃铛**（`bell-ringing`）—— 与旁边那颗喇叭一眼分得开，
+        //  也不会与「响铃状态」那颗 `bell-cog` 混：那一颗是「进设置挑模式」，这一格是「调它的音量」。
+        ActionCatalog.Glyph.RingerVolume -> TablerIcons.Outline.BellRinging
+
         // 菜单的「增加 / 减少 / 设置为」：同一颗喇叭缩一档 + 右下角角标，与亮度那张菜单同尺
         ActionCatalog.Glyph.VolumeUp -> DrawnIcons.VolumeAdd
 
         ActionCatalog.Glyph.VolumeDown -> DrawnIcons.VolumeSub
 
         ActionCatalog.Glyph.VolumeSet -> DrawnIcons.VolumeSet
+
+        // 铃声音量那三行：铃铛底图 + 同一套角标（与上面那三行只换底图）
+        ActionCatalog.Glyph.RingerVolumeUp -> DrawnIcons.RingerVolumeAdd
+
+        ActionCatalog.Glyph.RingerVolumeDown -> DrawnIcons.RingerVolumeSub
+
+        ActionCatalog.Glyph.RingerVolumeSet -> DrawnIcons.RingerVolumeSet
 
         // 「小布 AI」入口格：`sparkle-highlight`（闪光带高亮框）—— 与「灵感语音」那颗普通闪光
         //  分得开：这一格是**一类东西**（四件小布能力），不是「灵感语音」那个取值本身。
@@ -511,10 +557,12 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
         // 「自定义变量」入口格：`variable`（那个 `x` 里带 y 的符号本身）—— 这一格进的是变量清单
         ActionCatalog.Glyph.Variables -> TablerIcons.Outline.Variable
 
-        // 「锁屏快捷」入口格：一道闪电 —— 说的是「按一下就开」这件事本身（相机 / 计算器在菜单里）。
+        // 「锁屏快捷」入口格：**手机 + 闪电**（`device-mobile-bolt`）—— 「在锁屏上按一下就开」这件事
+        //  本身（相机 / 计算器在菜单里）。手机外框把它按在「锁屏」这个场景上，闪电说的是「一下就开」。
         //  不用锁：锁是「锁屏」这个**状态**的读法，而这一格的动作是「打开」，摆一把锁会被读成
-        //  「锁定 / 锁屏」那一档动作（也与「手电筒」那颗灯泡太近）。
-        ActionCatalog.Glyph.Keyguard -> TablerIcons.Outline.Bolt
+        //  「锁定 / 锁屏」那一档动作（也与「手电筒」那颗灯泡太近）。只画闪电又太抽象 ——
+        //  一道光可以指「快」「电」「一键」，落到哪件事上全靠猜。
+        ActionCatalog.Glyph.Keyguard -> TablerIcons.Outline.DeviceMobileBolt
 
         // 「应用控制」入口格：`category`（一个框 + 里面两小格）—— 管的是「哪一个应用」。
         ActionCatalog.Glyph.AppControl -> TablerIcons.Outline.Category
@@ -586,11 +634,11 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
 
         ActionCatalog.Glyph.ControlCenter -> TablerIcons.Outline.Command
 
-        ActionCatalog.Glyph.MediaSwitch -> TablerIcons.Outline.Switch3
+        ActionCatalog.Glyph.MediaSwitch -> DrawnIcons.MediaPlayPause
 
         ActionCatalog.Glyph.MediaPlay -> TablerIcons.Outline.PlayerPlay
 
-        ActionCatalog.Glyph.MediaPause -> TablerIcons.Outline.PlayerStop
+        ActionCatalog.Glyph.MediaPause -> TablerIcons.Outline.PlayerPause
 
         ActionCatalog.Glyph.MediaPrev -> TablerIcons.Outline.PlayerTrackPrev
 
@@ -600,9 +648,9 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
 
         ActionCatalog.Glyph.VolumeKeyDown -> DrawnIcons.VolumeSub
 
-        ActionCatalog.Glyph.MiniExpand -> TablerIcons.Outline.AppWindowBottom
+        ActionCatalog.Glyph.MiniExpand -> DrawnIcons.MiniWindowExpand
 
-        ActionCatalog.Glyph.MiniCollapse -> TablerIcons.Outline.PictureInPictureTop
+        ActionCatalog.Glyph.MiniCollapse -> DrawnIcons.MiniWindowCollapse
 
         ActionCatalog.Glyph.RingerNormal -> TablerIcons.Outline.BellRinging
 

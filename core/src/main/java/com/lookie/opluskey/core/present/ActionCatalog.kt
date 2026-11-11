@@ -62,6 +62,9 @@ object ActionCatalog {
         /** 「音量」标记格 —— 三档各不相同，格子代表不了任何一个，只能按 glyph 分。 */
         Volume,
 
+        /** 「铃声音量」标记格 —— 与上面那颗并列的第二条命令（写铃声流，不是媒体流）。 */
+        RingerVolume,
+
         /** 音量菜单的「增加」那一行（喇叭带向上箭头）。 */
         VolumeUp,
 
@@ -70,6 +73,15 @@ object ActionCatalog {
 
         /** 音量菜单的「设置为」那一行（喇叭带滑轨游标）—— 与格子那颗不是同一颗。 */
         VolumeSet,
+
+        /** 铃声音量菜单的「增加」那一行（铃铛带加号角标）—— 底图与上面那三行不同，见 [RingerVolume]。 */
+        RingerVolumeUp,
+
+        /** 铃声音量菜单的「减少」那一行（铃铛带减号角标）。 */
+        RingerVolumeDown,
+
+        /** 铃声音量菜单的「设置为」那一行（铃铛带齿轮角标）。 */
+        RingerVolumeSet,
 
         /** 「小布 AI」入口格（`sparkle-highlight`）：四件小布能力收在这一格后面。 */
         XiaobuAi,
@@ -656,6 +668,32 @@ object ActionCatalog {
         )
 
     /**
+     * 「铃声音量」那一格的标记 —— 与 [VOLUME_TILE] 并列的**第二条独立命令**：它写 `STREAM_RING`，
+     * 媒体音量写 `STREAM_MUSIC`，两者互不影响。
+     *
+     *  为什么不并进同一个菜单：来电话响不响，跟播放器的音量是两件事；ColorOS 自己的小布指令
+     *  也把这两档拆成两个任务（`MediaVolumeTask` / `AudioRingProxy`）。
+     */
+    const val RINGER_VOLUME_TILE = Action.RINGER_VOLUME_PREFIX
+
+    /** 铃声音量菜单三行的占位写法（`ringervolume:+` / `-` / `=`）—— 这三行不落盘。 */
+    private const val RINGER_VOLUME_ADD_ROW = Action.RINGER_VOLUME_PREFIX + "+"
+    private const val RINGER_VOLUME_SUB_ROW = Action.RINGER_VOLUME_PREFIX + "-"
+    private const val RINGER_VOLUME_SET_ROW = Action.RINGER_VOLUME_PREFIX + "="
+
+    /**
+     * 「铃声音量」菜单的三行 —— 行名与「音量」那三行**共用同一批文案**（「增加 / 减少 / 设置为」
+     * 说的是动作，不是对象），靠组标题区分对象；字形不共用：这三行是**铃铛**底图 + 角标
+     * （见 [Glyph.RingerVolumeUp]），媒体音量那三行是喇叭。
+     */
+    val RINGER_VOLUME_MODES: List<Spec> =
+        listOf(
+            Spec(name = Strings.CATALOG_VOLUME_ADD, token = RINGER_VOLUME_ADD_ROW, glyph = Glyph.RingerVolumeUp),
+            Spec(name = Strings.CATALOG_VOLUME_SUB, token = RINGER_VOLUME_SUB_ROW, glyph = Glyph.RingerVolumeDown),
+            Spec(name = Strings.CATALOG_VOLUME_SET, token = RINGER_VOLUME_SET_ROW, glyph = Glyph.RingerVolumeSet),
+        )
+
+    /**
      * 「自定义变量」的入口露不露出来 —— 现行 `false`（这个功能还没发布，入口先收起来）。
      *
      *  **一处开关管三道入口**：按键行为网格里那一格（[VARS_TILE]）、「添加命令」菜单里那一样
@@ -731,6 +769,12 @@ object ActionCatalog {
                     // 音量：与屏幕亮度同一个形状 —— 点它弹 [VOLUME_MODES]（增加 / 减少 / 设置为），
                     //   每一档再问一个百分比，落盘成 `volume:+10` 这种带数值的写法。
                     Spec(name = Strings.CATALOG_VOLUME, token = VOLUME_TILE, glyph = Glyph.Volume),
+                    // 铃声音量：与音量并列的第二条命令（写 STREAM_RING）
+                    Spec(
+                        name = Strings.CATALOG_RINGER_VOLUME,
+                        token = RINGER_VOLUME_TILE,
+                        glyph = Glyph.RingerVolume,
+                    ),
                     // KSU 没有这项；执行侧在 system_server 里反射调 PWM，不走按键长按
                     Spec(name = Strings.PANEL_POWER_MENU, token = POWER_MENU, glyph = Glyph.PowerMenu),
                 ),
@@ -1023,6 +1067,7 @@ object ActionCatalog {
             SWITCH_TILE to SWITCH_MODES,
             BRIGHT_TILE to BRIGHT_MODES,
             VOLUME_TILE to VOLUME_MODES,
+            RINGER_VOLUME_TILE to RINGER_VOLUME_MODES,
             AI_TILE to AI_MODES,
             VOICE_TILE to VOICE_MODES,
             SCREEN_RECORD_TILE to SCREEN_RECORD_MODES,
@@ -1225,7 +1270,7 @@ object ActionCatalog {
     }
 
     /**
-     * 「屏幕亮度」「音量」这两组的判定 —— 三行是**占位写法**（`bright:+` / `-` / `=`，不带数值），
+     * 「屏幕亮度」「音量」「铃声音量」这几组的判定 —— 三行是**占位写法**（`bright:+` / `-` / `=`，不带数值），
      * 真正落盘的是 `bright:+15` 这种带数值的串。按整串比的话，绑过之后菜单一行都不打勾、
      * 格子里也没有小字，所以这两族**只比符号、不比数值**。
      *
@@ -1245,6 +1290,11 @@ object ActionCatalog {
 
             token.startsWith(Action.VOLUME_PREFIX) -> {
                 (action as? Action.Volume)?.let { token == rowOf(it.mode) } ?: false
+            }
+
+            //  铃声音量那一族同理（两个前缀互不为前缀，先后无所谓）
+            token.startsWith(Action.RINGER_VOLUME_PREFIX) -> {
+                (action as? Action.RingerVolume)?.let { token == ringerRowOf(it.mode) } ?: false
             }
 
             else -> {
@@ -1291,6 +1341,23 @@ object ActionCatalog {
             Action.Volume.Mode.FIX -> VOLUME_SET_ROW
         }
 
+    /** 这一行是不是「铃声音量」那三档之一；是的话给出它对应的档位。与 [volumeModeOf] 同一形状。 */
+    fun ringerVolumeModeOf(token: String): Action.Volume.Mode? =
+        when (token) {
+            RINGER_VOLUME_ADD_ROW -> Action.Volume.Mode.ADD
+            RINGER_VOLUME_SUB_ROW -> Action.Volume.Mode.SUB
+            RINGER_VOLUME_SET_ROW -> Action.Volume.Mode.FIX
+            else -> null
+        }
+
+    /** [ringerVolumeModeOf] 的逆：某一档在菜单里占哪一行。 */
+    private fun ringerRowOf(mode: Action.Volume.Mode): String =
+        when (mode) {
+            Action.Volume.Mode.ADD -> RINGER_VOLUME_ADD_ROW
+            Action.Volume.Mode.SUB -> RINGER_VOLUME_SUB_ROW
+            Action.Volume.Mode.FIX -> RINGER_VOLUME_SET_ROW
+        }
+
     /**
      * 音量**选定数值之后**的那一条（`volume:+10`）—— 与 [brightnessSpecOf] 同一支：
      * 菜单那三行不带数值，落盘的必须是拼好的那一条。
@@ -1304,6 +1371,24 @@ object ActionCatalog {
             name = actionDetail(action) ?: action.token,
             token = action.token,
             //  与菜单里那三行同一颗：这几条就是那三行选定数值之后的落盘形态
+            glyph =
+                when (mode) {
+                    Action.Volume.Mode.ADD -> Glyph.VolumeUp
+                    Action.Volume.Mode.SUB -> Glyph.VolumeDown
+                    Action.Volume.Mode.FIX -> Glyph.VolumeSet
+                },
+        )
+    }
+
+    /** 铃声音量**选定数值之后**的那一条（`ringervolume:+10`）—— 与 [volumeSpecOf] 同构。 */
+    fun ringerVolumeSpecOf(
+        mode: Action.Volume.Mode,
+        percent: Int,
+    ): Spec {
+        val action = Action.RingerVolume(mode, percent)
+        return Spec(
+            name = actionDetail(action) ?: action.token,
+            token = action.token,
             glyph =
                 when (mode) {
                     Action.Volume.Mode.ADD -> Glyph.VolumeUp
@@ -1374,20 +1459,27 @@ object ActionCatalog {
     }
 
     /**
-     * 「亮度 / 音量」这两族当前落在**哪个数值**上（`(10%)`）；别的动作返回 `null`。
+     * 「亮度 / 音量 / 铃声音量」这几族当前落在**哪个数值**上（`(10%)`）；别的动作返回 `null`。
      *
-     *  与 [switchStateLabel] 是同一件事的两半：那两族的父格是「屏幕亮度 / 音量」、子动作是
-     *  「增加 / 减少 / 设置为」，剩下的那个数就是**状态** —— 所以它与开关的「打开 / 关闭」
-     *  占同一个位置（`音量: 增加 - (10%)`），不编进子动作里。
+     *  与 [switchStateLabel] 是同一件事的两半：那几族的父格是「屏幕亮度 / 媒体音量 / 铃声音量」、
+     *  子动作是「增加 / 减少 / 设置为」，剩下的那个数就是**状态** —— 所以它与开关的
+     *  「打开 / 关闭」占同一个位置（`铃声音量: 增加 - (10%)`），不编进子动作里。
+     *
+     *  **每加一条「带百分比」的命令都要在这里补一支**：漏了不会报错，只是那个数消失 ——
+     *  弹窗里那行字只剩「增加」、格子小字也只剩「增加」（铃声音量第一版就是这么漏的）。
      *
      *  **那个数带半角括号**：横杠后面直接跟数字会被读成负号（`设置为 - 90%`）。
      */
-    fun percentStateLabel(action: Action): String? =
-        when (action) {
-            is Action.Brightness -> I18n.format(Strings.COMMON_PERCENT_PAREN_FORMAT, action.percent)
-            is Action.Volume -> I18n.format(Strings.COMMON_PERCENT_PAREN_FORMAT, action.percent)
-            else -> null
-        }
+    fun percentStateLabel(action: Action): String? {
+        val percent =
+            when (action) {
+                is Action.Brightness -> action.percent
+                is Action.Volume -> action.percent
+                is Action.RingerVolume -> action.percent
+                else -> return null
+            }
+        return I18n.format(Strings.COMMON_PERCENT_PAREN_FORMAT, percent)
+    }
 
     /**
      * 这个 token 是不是**入口格**；是的话返回它那一层菜单的行，否则 `null`。
@@ -1612,11 +1704,21 @@ object ActionCatalog {
             spec.token == VARS_TILE -> ClickKind.PAGE_VARS
             spec.token == APP_CONTROL_OPEN || spec.token == APP_CONTROL_STOP -> ClickKind.PAGE_APP
             stateChoices(spec.token) != null -> ClickKind.STATE
-            brightnessModeOf(spec.token) != null || volumeModeOf(spec.token) != null -> ClickKind.PERCENT
+            isPercentRow(spec.token) -> ClickKind.PERCENT
             modeMenu(spec.token) != null -> ClickKind.MENU
             stateMenu(spec.token) != null -> ClickKind.SWITCH
             else -> ClickKind.DIRECT
         }
+
+    /**
+     * 这一行是不是「还要再问一个百分比」的那三档之一（亮度 / 媒体音量 / 铃声音量）。
+     *
+     *  三族的判据各自成表（[brightnessModeOf] / [volumeModeOf] / [ringerVolumeModeOf]），
+     *  这里只是把「有没有落在其中任何一张表上」合成一个布尔 —— [clickKind] 那一支原先写的是
+     *  两条 `!= null` 并联，再加一族就顶破行长，收在这里读起来也更像一句话。
+     */
+    private fun isPercentRow(token: String): Boolean =
+        brightnessModeOf(token) != null || volumeModeOf(token) != null || ringerVolumeModeOf(token) != null
 
     /**
      * 这几格**点开直接弹一行一档的单选弹窗**（录屏 / 录音：开始 / 结束 / 切换）。

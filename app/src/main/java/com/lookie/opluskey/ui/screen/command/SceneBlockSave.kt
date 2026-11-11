@@ -13,7 +13,7 @@ import com.lookie.opluskey.ui.write
 //
 //  两条路共用同一段落盘（[writeScenes]）：找「在编的那一份」、换掉它的 `scenes`、写盘、打日志。
 //  差别在两处**写哪张表、写表里的哪些字段**：整表写的是屏幕上那份草稿（条件 + 三档）；
-//  单块写的是配置那份表里的一格，且只换那**三档手势**（[saveSceneBlock]）——
+//  单块写的是配置那份表里的一格，且只换那**动作那几格**（[saveSceneBlock]）——
 //  条件与停用位归「系统场景」页，那一页没按「确认」就不该落盘。
 
 /** 单块落盘的三种结果（见 [saveSceneBlock]）。 */
@@ -83,7 +83,9 @@ private fun scenesNowOf(
     }
 
 /**
- * 只把草稿里第 [at] 块的**三档手势**写回配置 —— 「场景动作」页那颗「确认」的唯一落盘口。
+ * 只把草稿里第 [at] 块的**动作那几格**写回配置 —— 「场景动作」页那颗「确认」的唯一落盘口。
+ *
+ * 「动作那几格」= 三档手势 + 松手那一族（`releaseOn` / `release`）：它们回答的都是「这一档做什么」。
  *
  * ## 为什么不整表写回
  *
@@ -97,7 +99,7 @@ private fun scenesNowOf(
  *  `enabled` 就挂在它身上。整块写下去等于把「这一块在什么时候生效」也一并确认了 —— 连
  *  「条件还没选完」那种半成品都会被写进配置（上一页那颗「确认」本来会拦住它）。
  *
- *  所以写下去的那一块是「**配置里的条件 + 草稿里的三档手势**」：这一页只认手势，另外两个字段
+ *  所以写下去的那一块是「**配置里的条件 + 草稿里的动作那几格**」：这一页只认动作，另外两个字段
  *  原样取配置那份。条件改动仍留在草稿里，退回上一页那颗「确认」还亮着，由它自己决定什么时候写。
  *
  * ## 凭什么能只写一块
@@ -130,7 +132,7 @@ internal fun SettingsPage.saveSceneBlock(at: Int): SceneBlockSave {
         else -> {
             //  快照换成**写下去的那一块**（不是草稿那一块）：条件改动没跟着走，这一块就还是脏的
             draft.noteBlockSaved(at, write.block)
-            XLog.w("场景动作：第 ${at + 1} 块的三档手势已写回配置")
+            XLog.w("场景动作：第 ${at + 1} 块的动作已写回配置")
             SceneBlockSave.Saved
         }
     }
@@ -143,7 +145,7 @@ private class BlockWrite(
 )
 
 /**
- * 算出「配置里那一格 + 草稿里那一块的三档手势」—— [saveSceneBlock] 说的两道闸过不去就答 `null`。
+ * 算出「配置里那一格 + 草稿里那一块的动作那几格」—— [saveSceneBlock] 说的两道闸过不去就答 `null`。
  *
  * @param loaded 载入时那一格的样子，用来判断配置有没有在别处变过
  */
@@ -157,7 +159,14 @@ private fun blockWrite(
     if (slot !in base.indices) return null
     val old = base[slot]
     if (old != loaded) return null
-    //  只有三档手势是这一页的东西；`conditions` / `enabled` 归上一页，原样留着
-    val written = old.copy(single = block.single, double = block.double, long = block.long)
+    //  这一页的东西：三档手势 + 松手那一族；`conditions` / `enabled` 归上一页，原样留着
+    val written =
+        old.copy(
+            single = block.single,
+            double = block.double,
+            long = block.long,
+            releaseOn = block.releaseOn,
+            release = block.release,
+        )
     return BlockWrite(written, base.toMutableList().also { it[slot] = written })
 }

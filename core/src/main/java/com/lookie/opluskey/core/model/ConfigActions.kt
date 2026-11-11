@@ -10,9 +10,9 @@ package com.lookie.opluskey.core.model
  *
  *  · 每颗键的四格手势（`single` / `double` / `long` / `longRelease`）；
  *  · 每颗键的额外连击（`extraClicks`，第 3 击起，见 [KeyConfig.actionOf]）；
- *  · 每颗键的系统场景（`scenes[]` 的三档动作）；
+ *  · 每颗键的系统场景（`scenes[]` 的三档动作 + 松手那一格）；
  *  · 每个组合键的三档（`single` / `long` / `longRelease`，组合没有双击）；
- *  · 每个组合键的系统场景（`scenes[]` 的两档动作）。
+ *  · 每个组合键的系统场景（`scenes[]` 的两档动作 + 松手那一格）。
  *
  *  这几处**先后被漏过四次**（删命令只清三格 → 补上场景 → 组合键那两档又漏 → 额外连击与
  *  组合场景又漏），因为每个调用点都自己写一遍 `copy(single = …, double = …, long = …, scenes = …)`。
@@ -87,14 +87,17 @@ fun Config.actionTokens(): List<String> =
 fun Config.bindsToken(token: String): Boolean = actionTokens().any { it == token }
 
 /**
- * 一块场景里的三档动作 —— 「换动作」与「列出动作」两条路共用，免得一处改了三档、另一处只改了一档。
+ * 一块场景里的**四格**动作 —— 「换动作」与「列出动作」两条路共用，免得一处改了四格、另一处只改了三格。
+ *
+ *  松手那一格（`release`）与前三档一样是「一个能放动作的位置」，删命令 / 改名的反查必须数得到它。
  */
 private fun SceneRule.mapActions(transform: (Action) -> Action): SceneRule =
     copy(
         single = transform(single),
         double = transform(double),
         long = transform(long),
+        release = transform(release),
     )
 
-/** 一块场景里**写过**的那几档动作的 token（没配的档不算）。 */
-private fun SceneRule.actionTokens(): List<String> = listOf(single, double, long).filter { it.isBound }.map { it.token }
+/** 一块场景里**写过**的那几格动作的 token（没配的档不算）。 */
+private fun SceneRule.actionTokens(): List<String> = listOf(single, double, long, release).filter { it.isBound }.map { it.token }

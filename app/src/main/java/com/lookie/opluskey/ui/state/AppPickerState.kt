@@ -351,17 +351,22 @@ internal class AppPickerState {
     }
 
     /**
-     * 「松手执行额外动作」那一趟：挑中的应用 / 组件 / 快捷方式写进这颗键的 `longRelease`。
+     * 「松手执行额外动作」那一趟：挑中的应用 / 组件 / 快捷方式写进这一档的**松手格** ——
+     * 单键 / 组合写自己的 `longRelease`，场景块写**草稿里那一块**（见 `PickTarget.Release`）。
      *
      *  清场纪律与 [openForStep] 完全一样（那几位互斥，留着上一次的值会让写回落到别人头上）。
+     *
+     *  @param combo 非空 = 这一趟是给那一档组合键挑
+     *  @param sceneAt 非负 = 这一趟是给**场景表里第几块**挑 —— 与 `combo` 互斥，由草稿自己记着
      */
     fun openForRelease(
         stop: Boolean = false,
         combo: String? = null,
+        sceneAt: Int = NOT_FOR_SCENE,
     ) {
         gesture = null
         comboId = null
-        sceneAt = NOT_FOR_SCENE
+        this.sceneAt = sceneAt
         releaseComboId = combo
         forStep = false
         replaceStep = -1
@@ -488,7 +493,11 @@ internal class AppPickerState {
                 forRelease = false
                 val combo = releaseComboId
                 releaseComboId = null
-                PickTarget.Release(combo)
+                //  「哪一块」与「哪一档组合」同生共死：留着上一次的值，下一趟「打开应用」会把
+                //  动作写进一块用户根本没在编的场景块
+                val at = sceneAt
+                sceneAt = NOT_FOR_SCENE
+                PickTarget.Release(combo, at)
             }
 
             else -> {
@@ -765,11 +774,16 @@ internal sealed interface PickTarget {
     ) : PickTarget
 
     /**
-     * 长按卡的「松手执行额外动作」：写的是**这一颗键**（`comboId = null`）或**那一档组合键**
-     * （`comboId` 非空）的 `longRelease` —— 同一个字段名，挂在两个不同的对象上。
+     * 长按卡的「松手执行额外动作」：写的是这一档的**松手格** ——
+     *  · [comboId] 为空且 [sceneAt] 非负 ⇒ 场景表里那一块（草稿里那一格，不落盘）；
+     *  · [comboId] 非空 ⇒ 那一档组合键的 `longRelease`；
+     *  · 两个都空 ⇒ 当前这一颗键的 `longRelease`。
+     *
+     *  [sceneAt] 与 [comboId] 互斥：一块要么属于某颗键、要么属于某档组合键。
      */
     data class Release(
         val comboId: String? = null,
+        val sceneAt: Int = -1,
     ) : PickTarget
 }
 

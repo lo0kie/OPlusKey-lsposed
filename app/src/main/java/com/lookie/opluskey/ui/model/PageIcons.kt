@@ -5,7 +5,7 @@ import com.lookie.opluskey.core.model.Gesture
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.filled.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Abc
-import io.github.lyxnx.compose.ui.tablericons.outline.Adjustments
+import io.github.lyxnx.compose.ui.tablericons.outline.AdjustmentsAlt
 import io.github.lyxnx.compose.ui.tablericons.outline.AlertCircle
 import io.github.lyxnx.compose.ui.tablericons.outline.AlertSquare
 import io.github.lyxnx.compose.ui.tablericons.outline.AlignBoxCenterMiddle
@@ -14,7 +14,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AlphabetChinese
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
-import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsSplit
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandAlipay
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
@@ -29,15 +28,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ChevronRight
 import io.github.lyxnx.compose.ui.tablericons.outline.ChevronUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleCheck
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber1
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber2
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber3
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber4
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber5
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber6
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber7
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber8
-import io.github.lyxnx.compose.ui.tablericons.outline.CircleNumber9
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
@@ -57,6 +47,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.FileDownload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.FileUpload
+import io.github.lyxnx.compose.ui.tablericons.outline.Filter2X
 import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flag
 import io.github.lyxnx.compose.ui.tablericons.outline.Flask2
@@ -70,7 +61,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.History
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.HomeCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
-import io.github.lyxnx.compose.ui.tablericons.outline.InputX
 import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
@@ -96,7 +86,15 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Refresh
 import io.github.lyxnx.compose.ui.tablericons.outline.Reload
-import io.github.lyxnx.compose.ui.tablericons.outline.Repeat
+import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber1
+import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber2
+import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber3
+import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber4
+import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber5
+import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber6
+import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber7
+import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber8
+import io.github.lyxnx.compose.ui.tablericons.outline.RosetteNumber9
 import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 import io.github.lyxnx.compose.ui.tablericons.outline.Selector
 import io.github.lyxnx.compose.ui.tablericons.outline.Server
@@ -254,7 +252,7 @@ internal object PageIcons {
     val MenuExport: ImageVector get() = TablerIcons.Outline.Logs
 
     /**
-     * 清单里「第几条」—— 按它在这一列里的位置取**圈里数字**：`circle-number-1` … `circle-number-9`
+     * 清单里「第几条」—— 按它在这一列里的位置取**花结数字**：`rosette-number-1` … `rosette-number-9`
      * （[index] 从 0 起）。
      *
      *  两个调用点共用这一支笔：首页「按键」卡里**收集到的键**（上限五颗，
@@ -262,24 +260,24 @@ internal object PageIcons {
      *  `MAX_COMBOS`）。数字跟着**列表位置**走，删掉中间那条之后后面的各自前移一位 ——
      *  与清单里看到的顺序一致。
      *
-     *  用**圈里**数字而不是裸数字（`number-N`）：裸数字在 22dp 上只剩几根细笔画、外面没有任何
+     *  用**带轮廓**的数字而不是裸数字（`number-N`）：裸数字在 22dp 上只剩几根细笔画、外面没有任何
      *  轮廓，与旁边那些有外框的字形（手机 + 侧键、加号）不是一个体量，一行里看着像掉了个字。
-     *  圈给它一个与别的图标同样的外轮廓，这一排才读得成同一组条目。
+     *  花结那圈花瓣给它一个与别的图标同样的外轮廓，这一排才读得成同一组条目。
      *
-     *  只到 9：图标库的圈数字正好到这里，而两个上限都没越过它（五颗键 / 九组组合）——
+     *  只到 9：图标库的花结数字正好到这里，而两个上限都没越过它（五颗键 / 九组组合）——
      *  越界兜到 9 就说明上限判据与这排数字又各说了一个数，**不要在这里手绘第 10 档**。
      */
     fun menuKeyNumber(index: Int): ImageVector =
         when (index) {
-            0 -> TablerIcons.Outline.CircleNumber1
-            1 -> TablerIcons.Outline.CircleNumber2
-            2 -> TablerIcons.Outline.CircleNumber3
-            3 -> TablerIcons.Outline.CircleNumber4
-            4 -> TablerIcons.Outline.CircleNumber5
-            5 -> TablerIcons.Outline.CircleNumber6
-            6 -> TablerIcons.Outline.CircleNumber7
-            7 -> TablerIcons.Outline.CircleNumber8
-            else -> TablerIcons.Outline.CircleNumber9
+            0 -> TablerIcons.Outline.RosetteNumber1
+            1 -> TablerIcons.Outline.RosetteNumber2
+            2 -> TablerIcons.Outline.RosetteNumber3
+            3 -> TablerIcons.Outline.RosetteNumber4
+            4 -> TablerIcons.Outline.RosetteNumber5
+            5 -> TablerIcons.Outline.RosetteNumber6
+            6 -> TablerIcons.Outline.RosetteNumber7
+            7 -> TablerIcons.Outline.RosetteNumber8
+            else -> TablerIcons.Outline.RosetteNumber9
         }
 
     /**
@@ -434,11 +432,12 @@ internal object PageIcons {
     val SystemApps: ImageVector get() = TablerIcons.Outline.GridDots
 
     /**
-     * 「选择应用」页顶栏菜单的「显示失效应用」—— `input-x`（框里一个叉）。
+     * 「选择应用」页顶栏菜单的「显示失效应用」—— `filter-2-x`（漏斗 + 一个叉）。
      *
-     *  这一档是**纯显示过滤**（默认关，只在「打开应用」那一趟出现）：读作「这些条目点下去也进不去」。
+     *  这一档是**纯显示过滤**（默认关，只在「打开应用」那一趟出现）：漏斗说的是「这是个筛子」，
+     *  叉说的是「筛出来的是点不开的那批」—— 比原先框里一个叉更贴「过滤」这件事。
      */
-    val ShowUnopenable: ImageVector get() = TablerIcons.Outline.InputX
+    val ShowUnopenable: ImageVector get() = TablerIcons.Outline.Filter2X
 
     /**
      * 「应用控制」那一格绑成**打开**那一档时格子里的字形 —— `category-plus`。
@@ -499,22 +498,22 @@ internal object PageIcons {
     val CommandRoot: ImageVector get() = TablerIcons.Outline.Hash
 
     /**
-     * 「条件执行」那条命令的类型图标 —— `arrows-split`（一路分两岔）。
+     * 「系统场景」（条件执行）那条命令的类型图标 —— `adjustments-alt`（三根竖着的滑杆）。
      *
-     *  与「多条命令」那族 `box-multiple-N` 区分开：那是一串盒子（按顺序走完），这是岔路
-     *  （按条件只走其中一条），形状本身就是两种语义。
+     *  与「多条命令」那族 `box-multiple-N` 区分开：那是一串盒子（按顺序走完），这是「按情境调」——
+     *  竖滑杆读作「几个可调的量」，与 [Scene] 的 `adjustments`（横滑杆）同一族、换了个轴：
+     *  同一张页里这两颗一上一下（分岔这件事 / 具体某个场景），同族不同轴，既分得开又看得出是一家。
      */
-    val CommandBranch: ImageVector get() = TablerIcons.Outline.ArrowsSplit
+    val CommandBranch: ImageVector get() = TablerIcons.Outline.AdjustmentsAlt
 
     /**
-     * **场景**（界面上原来叫「条件」）—— `adjustments`（一组可调的设定）。
+     * **场景**（界面上原来叫「条件」）—— `adjustments-alt`（三根竖着的滑杆），与 [CommandBranch] 同一颗。
      *
-     *  与 [CommandBranch]（`arrows-split`）分工：那颗说的是「按它**走哪一支**」（规则表的空态、
-     *  表尾注脚），这颗说的是「**在什么情境下**」——卡片里「未选择场景」那一行、以及菜单里
-     *  指到场景本身的那几处都用它（含按键 `⋮` 菜单里那一行）。两者混用会让「场景」与「分岔」
-     *  读成一件事。
+     *  两处说的本来就是一件事：分岔是「按情境走哪一支」这个**类型**的记号（规则表空态、表尾注脚），
+     *  场景是它**具体那一格**（卡片里「未选择场景」那一行、菜单里指到场景本身的几处、
+     *  按键 `⋮` 菜单里那一行）。同族同轴，摆在同一张页里不会串味。
      */
-    val Scene: ImageVector get() = TablerIcons.Outline.Adjustments
+    val Scene: ImageVector get() = TablerIcons.Outline.AdjustmentsAlt
 
     /** **多配置** —— `stack-2`（一叠纸）：切换就是抽哪一张。 */
     val Profiles: ImageVector get() = TablerIcons.Outline.Stack2
@@ -528,7 +527,7 @@ internal object PageIcons {
     /**
      * 分叉条件「某个应用在前台」—— `apps`（九宫格）。
      *
-     *  与 [CommandBranch] 分开：「选择条件」那张菜单里每种条件一行一颗，`arrows-split` 是
+     *  与 [CommandBranch] 分开：「选择条件」那张菜单里每种条件一行一颗，`adjustments-alt` 是
      *  「这一支怎么走」这件事的记号，不是「哪个应用」；同一张菜单里既当行首又当条件名会读混。
      */
     val AppFront: ImageVector get() = TablerIcons.Outline.Apps
@@ -671,9 +670,6 @@ internal object PageIcons {
      *  底下既有反馈也有交流，所以用**对话气泡**而不是 `bug`。
      */
     val Feedback: ImageVector get() = TablerIcons.Outline.Message2
-
-    /** 「响铃状态」菜单第一档「循环」—— `Repeat`（两箭头成圈，靠 [specIcon] 按 spec 认领）。 */
-    val RingerCycle: ImageVector get() = TablerIcons.Outline.Repeat
 
     /**
      * 进下一层的行尾右箭头（「按键绑定」格子、浮层菜单里进二级的行）。

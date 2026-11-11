@@ -137,7 +137,15 @@ object ConfigBroadcast {
             // `longIsSerial` 是发送侧**现算**的一位，**每颗键都要算**：自定义键同样能绑
             //  `cmd:名字`，只算侧键那一份的话，注入侧会把它的串行命令当成单条动作，
             //  连发闸门（`longIsSerial`）对自定义键恒不生效。
-            val v = ConfigFields.Values(stored.raw() + (ConfigFields.F_LONG_SERIAL to longSerialOf(k)))
+            //
+            //  `sceneRelease` 同理：场景表**不走广播**（见 `KeyConfig.scenes`），而注入侧要靠这一位
+            //  决定抬手发不发 `Release` —— 所以在这里扫一遍这颗键的场景表，把结论带过去。
+            val v =
+                ConfigFields.Values(
+                    stored.raw() +
+                        (ConfigFields.F_LONG_SERIAL to longSerialOf(k)) +
+                        (ConfigFields.F_SCENE_RELEASE to config.key(k).scenes.any { it.hasRelease }),
+                )
             putFields(intent, v, ConfigFields.KEY_FIELDS, keyPrefix(k.id))
         }
         putFields(intent, config.global.fieldValues(), ConfigFields.GLOBAL_FIELDS)

@@ -5,11 +5,11 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.PathData
 import androidx.compose.ui.graphics.vector.PathNode
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
+import kotlin.math.sqrt
 
 /**
  * **自己落 path 的那批图标** —— 图标库里没有的形状全在这里，一支笔、一套规则。
@@ -37,7 +37,7 @@ internal object DrawnIcons {
      *  `res/drawable/ic_module_foreground.xml`）；24 视口上只留最能读懂的两件：外框与那颗凸起，
      *  面板与箭头在这种尺寸下会糊成一团。
      *
-     *  与相邻的圈里数字（`PageIcons.menuKeyNumber`）必须不同字形：清单里第一行是侧键、往下是
+     *  与相邻的花结数字（`PageIcons.menuKeyNumber`）必须不同字形：清单里第一行是侧键、往下是
      *  收集来的键，只靠行首这一颗分谁是谁。
      */
     val MenuSideKey: ImageVector by lazy {
@@ -94,8 +94,8 @@ internal object DrawnIcons {
     //  格子里放底图本身，菜单三行放「同一颗底图 + 右下角角标」：加、减、齿轮。**底图不缩**，
     //  只是它右下角那一笔在画的时候就断开/让位（与图标库 `bell-plus` / `bell-cog` 一个路子），
     //  角标落进让出来的空里 —— 一个字形两笔，不是两块拼起来。
-    //  两族共用同一套角标与同一个位置，于是「增加 / 减少 / 设置为」在音量与亮度里长得一模一样，
-    //  只有底图不同 —— 扫一眼先认出「是加还是设」，再认出「加的是什么」。
+    //  这几族共用同一套角标与同一个位置，于是「增加 / 减少 / 设置为」在音量、亮度、铃声音量里
+    //  长得一模一样，只有底图不同 —— 扫一眼先认出「是加还是设」，再认出「加的是什么」。
 
     /**
      * 音量格：**喇叭 + 两道声波**，说的是「音量」这件事本身。
@@ -114,8 +114,127 @@ internal object DrawnIcons {
     /** 「设置为」—— 底图 + 右下角齿轮（拨到某个数值）。 */
     val VolumeSet: ImageVector by lazy { badgedIcon("VolumeSet", Badge.Gear, ::volumeBase) }
 
-    /** 亮度格：**太阳**（圆 + 八道短光），坐标与图标库那颗 `sun` 一致。 */
-    val BrightnessTile: ImageVector by lazy { flatIcon("BrightnessTile", sunBase(notch = null)) }
+    // —— 铃声音量：**格子那颗铃铛** + 同一套右下角角标 ——
+    //
+    //  底图就是格子上那颗 `bell-ringing` 本身（钟身 + 铃舌 + 两条响铃弧线），不换形状、不缩尺寸；
+    //  三行只是在这颗底图的右下角截一刀、把角标放进去 —— 于是「格子」与「三行」是同一颗图标，
+    //  差别只有那个角标。
+    //  画法与音量 / 亮度**同一套**：底图满格，右下角那几笔按缺口截掉，角标落进缺口里。
+
+    /**
+     * 铃声音量三行共用的底图：格子上那颗 `bell-ringing` —— 钟身 + 顶钮 + 铃舌 + 两条响铃弧线。
+     *
+     *  坐标一个没动（唇 4~20 / y=17，腰 x=6 与 18，穹顶 r=7、顶钮 r=2、铃舌 r=3，
+     *  两条弧线 11.05 半径），所以它与格子那颗**逐点重合**，只有右下角按角标让了位。
+     *
+     *  让位的三笔与图标库 `bell-plus` / `bell-cog` 同一个做法：**唇、右腰、铃舌**各自在缺口圆上
+     *  收笔（不是整颗缩小，也不是把角标叠上去）—— 缺口随角标大小变，齿轮那档收得最早。
+     *  两条响铃弧线在穹顶两侧、离缺口很远，三档都画满。
+     *
+     *  **穹顶必须宽**：穹顶一窄、两侧就变成几乎竖直的斜边，整颗读成「尖头锥子」而不是铃铛；
+     *  顶钮同理，要画成**圆头凸起**（半个小圆），一根带圆帽的短竖在 20dp 下就是一根尖刺。
+     *
+     *  @param notch 这一档角标占的缺口；`null` 画满（这一族现在三档都带角标，
+     *    留着与 [volumeBase] / [sunBase] 同形，也给「以后要不要一颗不带角标的铃铛」留了口子）
+     *  @param ringing 要不要画那两条响铃弧线（就是格子那颗 `bell-ringing` 与 `bell` 的差别）：
+     *    铃声音量那三行要（说的就是「响铃」），响铃状态的「循环」不要 —— 那颗角标本身就是一圈箭头，
+     *    再套两条响铃弧线，一格里三处弧线，角标反而更看不清
+     */
+    private fun bellBase(
+        notch: Notch?,
+        ringing: Boolean = true,
+    ): List<PathNode> =
+        PathData {
+            //  唇（y=17）与右腰（x=18）各自在缺口圆上收笔：圆心 (19,19)，两个方向上的间距是 2 与 1
+            val lipEnd = notch?.let { 19f - sqrt(it.radius * it.radius - 4f) } ?: 20f
+            val sideEnd = notch?.let { 19f - sqrt(it.radius * it.radius - 1f) } ?: 14f
+            //  钟身：从唇的右端（缺口上）起笔，逆着绕一圈回到右腰的收笔点
+            moveTo(lipEnd, 17f)
+            lineTo(4f, 17f)
+            arcToRelative(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = false, 2f, -3f)
+            lineTo(6f, 11f)
+            arcToRelative(7f, 7f, 0f, isMoreThanHalf = false, isPositiveArc = true, 4f, -6f)
+            arcToRelative(2f, 2f, 0f, isMoreThanHalf = true, isPositiveArc = true, 4f, 0f)
+            arcToRelative(7f, 7f, 0f, isMoreThanHalf = false, isPositiveArc = true, 4f, 6f)
+            lineTo(18f, sideEnd)
+            //  不带角标：右外扩与整条唇补齐（与图标库那颗 `bell-ringing` 一致）
+            if (notch == null) {
+                arcToRelative(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = false, 2f, 3f)
+                lineTo(lipEnd, 17f)
+            }
+            //  铃舌：唇上垂下来的一条短竖 + 半个小圆，右端同样收在缺口圆上
+            val clapperEnd = notch?.let { arcCutLower(12f, 18f, 3f, it) } ?: (15f to 18f)
+            moveTo(9f, 17f)
+            lineTo(9f, 18f)
+            arcToRelative(
+                3f,
+                3f,
+                0f,
+                isMoreThanHalf = false,
+                isPositiveArc = false,
+                clapperEnd.first - 9f,
+                clapperEnd.second - 18f,
+            )
+            if (notch == null) {
+                lineTo(15f, 17f)
+            }
+            //  两条响铃弧线：与格子那颗同一对，位置在穹顶两侧、离缺口很远，带角标的三档都画满
+            if (ringing) {
+                moveTo(21f, 6.727f)
+                arcToRelative(11.05f, 11.05f, 0f, isMoreThanHalf = false, isPositiveArc = false, -2.794f, -3.727f)
+                moveTo(3f, 6.727f)
+                arcToRelative(11.05f, 11.05f, 0f, isMoreThanHalf = false, isPositiveArc = true, 2.792f, -3.727f)
+            }
+        }
+
+    /** 「增加铃声音量」—— 满格铃铛（右下角让位）+ 右下角加号。 */
+    val RingerVolumeAdd: ImageVector by lazy { badgedIcon("RingerVolumeAdd", Badge.Plus, ::bellBase) }
+
+    /** 「减少铃声音量」—— 满格铃铛 + 右下角减号。 */
+    val RingerVolumeSub: ImageVector by lazy { badgedIcon("RingerVolumeSub", Badge.Minus, ::bellBase) }
+
+    /** 铃声「设置为」—— 满格铃铛 + 右下角齿轮（拨到某个数值）。 */
+    val RingerVolumeSet: ImageVector by lazy { badgedIcon("RingerVolumeSet", Badge.Gear, ::bellBase) }
+
+    /**
+     * 响铃状态的「循环」那一档：**同一颗满格铃铛** + 右下角一圈箭头。
+     *
+     *  与上面三颗同一套：底图不缩、右下角按缺口让位，只有角标不同 —— 于是「循环」与
+     *  「增加 / 减少 / 设置为」摆在同一个菜单里，第一眼都是铃铛，第二眼才看角标。
+     *
+     *  底图**不画那两条响铃弧线**：这一格的角标本身就是一圈箭头，再套两条弧线，7 格的角标
+     *  挤在四道弧线里更看不清。
+     */
+    val RingerCycle: ImageVector by lazy { badgedIcon("RingerCycle", Badge.Cycle) { bellBase(it, ringing = false) } }
+
+    /**
+     * 媒体控制的「播放/暂停」（`keyevent:85`）：**播放三角** + 右下角暂停两笔。
+     *
+     *  三角用的是图标库那颗 `player-play` 的原坐标（7,4 / 7,20 / 20,12），一点没缩 —— 与单独那一档
+     *  「播放」一样大。暂停那两笔落在三角底边的右下方，底边在那里**断成两截**让出缺口
+     *  （与铃铛的唇、右腰同一个做法）：不断的话，那两笔会贴着底边，看着像画糊了。
+     */
+    val MediaPlayPause: ImageVector by lazy {
+        badgedIcon("MediaPlayPause", Badge.Pause) { _ ->
+            //  底边（7,20 → 20,12）与缺口圆的交点：解一次这条线与圆的方程。半径用 [cutRadius] 自己定 ——
+            //  `notch` 那个留白（3.3）是给细弧用的，整条边按它切会把底边吃掉大半
+            val r = cutRadius(Badge.Pause, 2.7f)
+            val len = sqrt(233f) // 底边长：13² + 8²
+            val b = -328f / len // 2·(P0−C)·d，P0 = (7,20)、C = (19,19)
+            val half = sqrt(b * b - 4f * (145f - r * r)) / 2f
+            val t1 = -b / 2f - half
+            val t2 = -b / 2f + half
+            PathData {
+                moveTo(7f, 4f)
+                lineTo(7f, 20f)
+                lineTo(7f + 13f * t1 / len, 20f - 8f * t1 / len)
+                //  缺口之后接着画：底边的剩余一段 + 斜边
+                moveTo(7f + 13f * t2 / len, 20f - 8f * t2 / len)
+                lineTo(20f, 12f)
+                lineTo(7f, 4f)
+            }
+        }
+    }
 
     /** 「增加亮度」—— 底图（右下角的光让位）+ 加号。 */
     val BrightnessAdd: ImageVector by lazy { badgedIcon("BrightnessAdd", Badge.Plus, ::sunBase) }
@@ -176,33 +295,59 @@ internal object DrawnIcons {
         )
     }
 
-    /** 一格铺满的字形（不带角标）—— 两族的底图与格子都用它，笔画同一档。 */
-    private fun flatIcon(
-        name: String,
-        vararg paths: List<PathNode>,
-    ): ImageVector {
-        val builder = vectorBuilder(name)
-        paths.forEach { builder.addStroked(it) }
-        return builder.build()
-    }
+    // —— 小窗那两档：**竖着的窗口** ——
+    //
+    //  图标库 `app-window-*` 那一族只有横版（18 宽 × 14 高），整颗逆时针转 90° 得到竖版：
+    //  外框从 3~21 × 5~19 变成 5~19 × 3~21，那块小窗跟着转 —— 右下角那颗转到**右上角**，
+    //  正中那颗转完还在正中（它的中心就是旋转中心）。
+    //  坐标在这里转好而不是运行时转：`ImageVector` 交给 `Icon` 之后没有旋转的入口，
+    //  转在字形的坐标里，任何调用点拿到的都是同一颗竖版。
+
+    /** 「把前台应用收成小窗」那一档：竖窗口 + **正中**一块小窗（`app-window-center` 转 90°）。 */
+    val MiniWindowExpand: ImageVector by lazy { miniWindow("MiniWindowExpand", blockLeft = 11f, blockTop = 11f) }
+
+    /** 「收起小窗」那一档：竖窗口 + **右上角**一块小窗（`app-window-bottom-right` 转 90°）。 */
+    val MiniWindowCollapse: ImageVector by lazy { miniWindow("MiniWindowCollapse", blockLeft = 14f, blockTop = 6f) }
 
     /**
-     * 底图 + 右下角角标。
+     * 竖窗口：圆角外框（5,3 ~ 19,21，四角 r=2）+ 一块小窗。
      *
-     *  **底图不缩、角标不叠**：底图仍是满格那一颗（笔画同宽、坐标不动），只是右下角那一笔在画的时候
-     *  就**让开**了（见 [volumeWaves] / [sunRays]）—— 角标正好落在让出来的那块空里，
-     *  与图标库里 `bell-plus` / `bell-cog` 的画法一致：一个字形、两笔，不是两块拼起来。
+     *  小窗那块的边长是 **2 格、笔画 2** —— 笔画正好盖满内部，落下来是 4×4 的实心方块（外沿带圆角），
+     *  也就是图标库那颗 `fill + stroke` 的观感：**比 2 格宽的边框粗一圈**。
+     *  只填不描边会小一圈（2×2 的点看着比框细），正中与角上就更难认了。
      *
-     *  @param base 底图的画法，按这一档角标占的缺口截（缺口见 `DrawnIconBadge.notch`）
+     *  @param blockLeft 那块小窗（2×2 的路径，墨迹 4×4）的左上角
+     *  @param blockTop 同上，纵向
      */
-    private fun badgedIcon(
+    private fun miniWindow(
         name: String,
-        badge: Badge,
-        base: (Notch?) -> List<PathNode>,
+        blockLeft: Float,
+        blockTop: Float,
     ): ImageVector {
         val builder = vectorBuilder(name)
-        builder.addStroked(base(notch(badge)))
-        builder.addStroked(badgePath(badge))
+        builder.addStroked(
+            PathData {
+                moveTo(7f, 3f)
+                lineTo(17f, 3f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, 2f, 2f)
+                lineTo(19f, 19f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, -2f, 2f)
+                lineTo(7f, 21f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, -2f, -2f)
+                lineTo(5f, 5f)
+                arcToRelative(2f, 2f, 0f, isMoreThanHalf = false, isPositiveArc = true, 2f, -2f)
+                close()
+            },
+        )
+        builder.addStroked(
+            PathData {
+                moveTo(blockLeft, blockTop)
+                lineTo(blockLeft + 2f, blockTop)
+                lineTo(blockLeft + 2f, blockTop + 2f)
+                lineTo(blockLeft, blockTop + 2f)
+                close()
+            },
+        )
         return builder.build()
     }
 
@@ -269,31 +414,25 @@ internal object DrawnIcons {
         }
 
     /**
-     * 亮度底图：太阳 = 一圈 + 八道短光。
+     * 亮度底图：图标库那颗 `brightness-up` —— 内圈 r=3 + 八道短光（半径 7~9）。
      *
-     *  @param notch 带角标的那三颗传这一档的缺口：落进缺口里的光不画；格子那颗传 `null`，八道全画。
+     *  @param notch 带角标的那三档传这一档的缺口：圆环在缺口圆上收笔、碰着缺口的光线整条不画；
+     *    格子那颗传 `null`，整颗画满。
      */
-    private fun sunBase(notch: Notch?): List<PathNode> = sunRing(notch) + sunRays(notch)
-
-    /**
-     * 太阳那一圈：圆心 (12, 12)、半径 4。
-     *
-     *  带角标时这一圈也要**缺一角**：在缺口圆里的那一段不画，从缺口的上沿绕过左边接到下沿 ——
-     *  只让光线让位、圈还画满，角标就会压在这道弧上，看着像贴上去的。
-     */
-    private fun sunRing(notch: Notch?): List<PathNode> =
+    private fun sunBase(notch: Notch?): List<PathNode> =
         PathData {
+            //  内圈：圆心 (12,12)、半径 3
             if (notch == null) {
-                moveTo(8f, 12f)
-                arcToRelative(SUN_RADIUS, SUN_RADIUS, 0f, isMoreThanHalf = false, isPositiveArc = true, 8f, 0f)
-                arcToRelative(SUN_RADIUS, SUN_RADIUS, 0f, isMoreThanHalf = false, isPositiveArc = true, -8f, 0f)
+                moveTo(15f, 12f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, -6f, 0f)
+                arcToRelative(3f, 3f, 0f, isMoreThanHalf = false, isPositiveArc = true, 6f, 0f)
             } else {
-                val (upper, lower) = ringCut(notch)
+                //  带角标：这一圈在缺口圆里那一段不画，从缺口上沿绕过左边接到下沿
+                val (upper, lower) = ringCut(12f, 12f, 3f, notch)
                 moveTo(upper.first, upper.second)
-                //  从缺口上沿逆时针绕一大圈（跨过 3/4 个圆）到缺口下沿
                 arcToRelative(
-                    SUN_RADIUS,
-                    SUN_RADIUS,
+                    3f,
+                    3f,
                     0f,
                     isMoreThanHalf = true,
                     isPositiveArc = false,
@@ -301,33 +440,30 @@ internal object DrawnIcons {
                     lower.second - upper.second,
                 )
             }
+            //  八道短光：四条正方向、四条 45° 斜向，半径 7 到 9 —— 碰着缺口的那条整条不画
+            //  （一格长的光被截掉半截没有意义，整条让位更干净）
+            SUN_RAYS.forEach { (from, to) ->
+                if (notch?.touches(from.first, from.second, to.first, to.second) != true) {
+                    moveTo(from.first, from.second)
+                    lineTo(to.first, to.second)
+                }
+            }
         }
 
-    /** 太阳那八道短光：四条正方向、四条 45° 斜向，长度 1。 */
-    private fun sunRays(notch: Notch?): List<PathNode> =
-        PathData {
-            ray(3f, 12f, 4f, 12f, notch)
-            ray(12f, 3f, 12f, 4f, notch)
-            ray(20f, 12f, 21f, 12f, notch)
-            ray(12f, 20f, 12f, 21f, notch)
-            ray(5.6f, 4.6f, 6.3f, 5.3f, notch)
-            ray(18.4f, 4.6f, 17.7f, 5.3f, notch)
-            ray(6.3f, 16.7f, 5.6f, 17.4f, notch)
-            ray(17.7f, 16.7f, 18.4f, 17.4f, notch)
-        }
-
-    /** 一道短光：碰着缺口圆就不画 —— 一格长的光被截掉半截没有意义，整条让位更干净。 */
-    private fun PathBuilder.ray(
-        x1: Float,
-        y1: Float,
-        x2: Float,
-        y2: Float,
-        notch: Notch?,
-    ) {
-        if (notch != null && notch.touches(x1, y1, x2, y2)) return
-        moveTo(x1, y1)
-        lineTo(x2, y2)
-    }
+    /**
+     * `brightness-up` 那八道短光的两端（半径 7 → 9）—— 坐标照图标库那颗，一个没改。
+     */
+    private val SUN_RAYS =
+        listOf(
+            (12f to 5f) to (12f to 3f),
+            (17f to 7f) to (18.4f to 5.6f),
+            (19f to 12f) to (21f to 12f),
+            (17f to 17f) to (18.4f to 18.4f),
+            (12f to 19f) to (12f to 21f),
+            (7f to 17f) to (5.6f to 18.4f),
+            (6f to 12f) to (4f to 12f),
+            (7f to 7f) to (5.6f to 5.6f),
+        )
 
     /** 内弧（右数第二根线）的圆心 x 与半径 —— 起点 (14.8, 8.6)、走 (0, 6.8)。 */
     private const val INNER_WAVE_CENTER_X = 11.14f
@@ -338,9 +474,6 @@ internal object DrawnIcons {
     private const val OUTER_WAVE_CENTER_X = 10.76f
 
     private const val OUTER_WAVE_RADIUS = 10f
-
-    /** 太阳那圈圆的半径。 */
-    private const val SUN_RADIUS = 4f
 
     /**
      * 手电筒 —— **手绘**：宽口的灯罩 + 直筒身 + 一个开关记号。

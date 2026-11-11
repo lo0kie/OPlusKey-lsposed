@@ -223,26 +223,53 @@ internal fun SettingsPage.BrightnessDialog(
 }
 
 /**
- * 「音量」三档的百分比弹窗 —— 与 [SettingsPage.BrightnessDialog] 同一个形状。
+ * 音量弹窗要写的那一条 —— **哪一档 + 哪一路流**。
  *
- *  两者的百分比都落在**各自那条量程**上（音量是 `档 / 最大档`，见 `host/action/VolumeAction`），
- *  所以同一句「增加 - 10%」在两边是同一件事。
+ *  收成一个值只为让弹窗的参数表留在 detekt 的那条线内（六参即超）；这两个字段是一件事的两半：
+ *  它们一起决定标题（媒体音量 / 铃声音量）与落盘那一句（`volume:` / `ringervolume:`）。
+ */
+internal data class VolumeTarget(
+    val mode: Action.Volume.Mode,
+    /** `true` = 写 `ringervolume:`（铃声流）；`false` = 写 `volume:`（媒体流）。 */
+    val ringer: Boolean,
+)
+
+/**
+ * 音量那一族三档的百分比弹窗 —— 与 [SettingsPage.BrightnessDialog] 同一个形状。
+ *
+ *  三档都落在**各自那条量程**上（音量是 `档 / 量程`，见 `host/action/VolumeAction`），
+ *  所以同一句「增加 - 10%」在媒体与铃声两边是同一件事。
+ *
+ * @param target 写哪一条命令 + 哪一档（两者一起决定标题与落盘那一句，见 [VolumeTarget]）
  */
 @Composable
 internal fun SettingsPage.VolumeDialog(
     show: Boolean,
-    mode: Action.Volume.Mode,
+    target: VolumeTarget,
     initial: Int,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
+    val mode = target.mode
+    val ringer = target.ringer
     PercentDialog(
         show = show,
         prompt =
             PercentPrompt(
-                title = I18n.get(Strings.CATALOG_VOLUME, "音量"),
+                title =
+                    if (ringer) {
+                        I18n.get(Strings.CATALOG_RINGER_VOLUME, "铃声音量")
+                    } else {
+                        I18n.get(Strings.CATALOG_VOLUME, "媒体音量")
+                    },
                 min = if (mode == Action.Volume.Mode.FIX) 0 else PERCENT_STEP,
-                labelOf = { actionDetail(Action.Volume(mode, it)).orEmpty() },
+                labelOf = { percent ->
+                    if (ringer) {
+                        actionDetail(Action.RingerVolume(mode, percent)).orEmpty()
+                    } else {
+                        actionDetail(Action.Volume(mode, percent)).orEmpty()
+                    }
+                },
             ),
         initial = initial,
         onDismiss = onDismiss,

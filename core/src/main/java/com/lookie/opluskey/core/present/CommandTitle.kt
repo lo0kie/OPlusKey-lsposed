@@ -297,6 +297,7 @@ fun commandTitleOf(action: Action): CommandTitle =
         is Action.Ringer,
         is Action.Brightness,
         is Action.Volume,
+        is Action.RingerVolume,
         is Action.PowerMenu,
         is Action.Oplus,
         is Action.Panel,

@@ -123,6 +123,13 @@ object ComboWire {
         val single: String = Action.FOLLOW,
         val double: String = Action.FOLLOW,
         val long: String = Action.FOLLOW,
+        /**
+         * 松手那一格（`SceneRule.releaseOn` / `release`）—— 组合的场景表是**注入侧唯一**
+         * 读得到的那一份（它同时给 `ChordGuard` 判「有没有动作可做」），所以松手动作也靠它过去：
+         * 少了这两项，块里配的松手动作在判定侧连 `Release` 都发不出来。
+         */
+        val releaseOn: Boolean = false,
+        val release: String = Action.NONE,
         val enabled: Boolean = true,
     ) {
         /** 认不出（空表 / 有一条条件读不懂）就整块丢掉 —— 与落盘那条同一口径。 */
@@ -138,6 +145,8 @@ object ComboWire {
                 single = Action.parse(single),
                 double = Action.parse(double),
                 long = Action.parse(long),
+                releaseOn = releaseOn,
+                release = Action.parse(release),
                 enabled = enabled,
             )
         }
@@ -149,6 +158,8 @@ object ComboWire {
                     single = scene.single.token,
                     double = scene.double.token,
                     long = scene.long.token,
+                    releaseOn = scene.releaseOn,
+                    release = scene.release.token,
                     enabled = scene.enabled,
                 )
         }

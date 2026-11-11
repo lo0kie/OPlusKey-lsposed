@@ -11,6 +11,29 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
 // 「长按」那一档的设置卡 —— 单键页与组合键页**共用这一张**。
 
 /**
+ * 这张卡摆**哪几族**行 —— 四族（时序 / 松手额外动作 / 连发 / 长按延迟）不是每种页面都该摆。
+ *
+ *  另外三族的参数**全部归这颗键**，而且是在**按下那一刻**就被注入侧读走、用来排长按枪与连发
+ *  的（见 `GestureDetector` 的 `longPressAt` / `scheduleRepeat`）—— 它们不认识场景条件，
+ *  场景块也就改不动它们。摆在场景块的动作页上，改的是整颗键：换一个条件进去看到的还是同一个值，
+ *  读起来像「这一块单独配过」（用户报的）。
+ */
+internal enum class LongPressSections {
+    /** 四族全摆 —— 「按键绑定」页与「组合键」页要的那一套（行序见 [LongPressSettingsCard]）。 */
+    All,
+
+    /**
+     * 只摆「松手执行额外动作」那一族 —— 「场景动作」页。
+     *
+     *  它为什么留得住：这一族虽然也写在**这颗键**身上（`KeyConfig.longRelease`），但它是
+     *  「这一次按压的收尾」，与这一块挑的动作是同一件事的两半；另外三族是纯粹的判定阈值，
+     *  与「这一块做什么」无关。**「松手时触发」那一行不摆但照读** —— 它开在这颗键上时，
+     *  这一族就得灰着（见 [LongPressGates.releaseEnabled]）。
+     */
+    ReleaseOnly,
+}
+
+/**
  * 一次组合要的现行值、三档时序的互斥结论所需的那几位，以及四条写回去的路。
  *
  * 为什么要有这一份：这张卡在「按键绑定」的长按档与「组合键」的某一条上各画一次，**行序、文案、
@@ -20,6 +43,7 @@ import io.github.suqi8.coui.kmp.basic.CardListPosition
  *
  * @param enabled 上面那几行能不能点（各自还要看与别人是否互斥）
  * @param delayEnabled 「长按延迟」那一行能不能点 —— 它比上面几行多一道闸：单键页还看首页那个主开关
+ * @param sections 摆哪几族行（[LongPressSections]）—— 「场景动作」页只摆松手那一族
  * @param blockedReason 非 null ⇒ **整张卡**置灰（主开关关 / 链路没通 / 配置只读）—— 只放整页级的原因
  * @param repeatBlockedReason 非 null ⇒ 只有「连续触发」那一族置灰：这一档的长按动作**自己**不支持
  *   连发（多条命令 / 灵感语音）。它**不连坐**时序两行与长按延迟 —— 那三项跟连不连发无关
@@ -51,6 +75,8 @@ internal class LongPressSpec(
     val releaseBound: Boolean,
     val enabled: Boolean,
     val delayEnabled: Boolean,
+    /** 摆哪几族行 —— 见 [LongPressSections]。 */
+    val sections: LongPressSections,
     val blockedReason: String? = null,
     val repeatBlockedReason: String? = null,
     val onRepeat: (Boolean) -> Unit,
@@ -68,8 +94,10 @@ internal class LongPressSpec(
  * 为什么单开一个类而不是写在卡片里：两个时序开关互相牵制（松手才触发 ⇄ 松手执行额外动作），
  * 写在一处才看得出这件事，卡片自己只管把它们摆成行。连续触发那一族除了整页闸门与「动作本身
  * 不支持连发」，只被「松手才触发」挡着 —— 与「松手执行额外动作」是同一按的两个阶段，可以同时开着。
- * `enabled = false` 的行不给 `disabledHint` —— 那时该说的是**整页**为什么改不了（链路 / 只读），
- * 不是这一行自己的事。
+ * `enabled = false` 的行**一般**不给 `disabledHint` —— 那时该说的是**整页**为什么改不了
+ * （链路 / 只读），不是这一行自己的事。唯一的例外是 [LongPressSections.ReleaseOnly] 那一形态：
+ * 整页那条回退读的是「上一次看过的那颗键」，在这一页上会答错，所以它改说 [LongPressSpec.blockedReason]
+ * （见 [releaseHint]）。
  *
  * 判据与数据侧同一口径（见 `KeyConfig.releaseBound`）：**那条规则不在
  * 这里重算** —— `releaseBound` 由调用点从配置里取来递进 `LongPressSpec`，这一层只负责把它翻译成
@@ -107,12 +135,40 @@ private class LongPressGates(
             null
         }
 
-    /** 「松手执行额外动作」灰着被点一下时的说法。 */
+    /**
+     * 「松手执行额外动作」灰着被点一下时的说法。
+     *
+     *  三种来源，按「越靠前越该先看到」排：整张卡被闸住 → 说**这一页**为什么改不了；
+     *  「松手才触发」占着这一族 → 两种说法，按这张卡摆没摆那一行分（见下）。
+     *
+     *  第一种**只在 [LongPressSections.ReleaseOnly] 取**：那一形态里没有别的行会读到
+     *  [LongPressSpec.blockedReason]（`All` 那一形态由连发那一族说，见 [LongPressGates.repeatBlocked]），
+     *  而整页那条回退（`disabledClickReason`）读的是 `KeyWatchState.editing` —— 在场景动作页上
+     *  它指的是**上一次在按键绑定页看过的那一颗**，于是点这一行会冒出「『音量+』已停用」这种
+     *  与眼前无关的话（真机口径「点它回落到上一条文案」）。
+     */
     val releaseHint: String? =
-        if (spec.enabled && spec.fireOnRelease) {
-            I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE, "长按已改为松手时触发")
-        } else {
-            null
+        when {
+            !spec.enabled -> {
+                if (spec.sections == LongPressSections.ReleaseOnly) spec.blockedReason else null
+            }
+
+            !spec.fireOnRelease -> {
+                null
+            }
+
+            //  这一页不摆「松手时触发」那一行（见 `LongPressSections`），所以得指路；
+            //  摆了的（按键 / 组合那一页）只说结论 —— 那一行就在上面，抬头就看得见。
+            spec.sections == LongPressSections.ReleaseOnly -> {
+                I18n.get(
+                    Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE_KEY,
+                    "这颗键已设为 [松手时触发]，去按键绑定里关掉",
+                )
+            }
+
+            else -> {
+                I18n.get(Strings.BINDING_FIRE_ON_RELEASE_UNSUPPORTED_RELEASE, "长按已改为松手时触发")
+            }
         }
 
     /**
@@ -144,24 +200,37 @@ private class LongPressGates(
  *  「松手才触发」与另外两族互斥：开着它，连发与「松手执行额外动作」都**置灰但保留**
  *  （用户口径：不要藏起来）—— 藏掉等于让人以为自己没配过它，而它只是这一刻不生效；值也原样留着。
  *  「松手执行额外动作」与「长按连续触发」**不互斥**：按住期间照常连发，松手再补一条。
+ *
+ *  摆哪几族由 [LongPressSpec.sections] 定：「场景动作」页只摆松手那一族（理由见
+ *  [LongPressSections]），行本身的文案与判据仍是下面那两支 —— 这一处只回答「摆哪几族」。
  */
 @Composable
 internal fun SettingsPage.LongPressSettingsCard(spec: LongPressSpec) {
     val gates = LongPressGates(spec)
     CardList(
         rows =
-            buildList {
-                addAll(timingRows(spec, gates))
-                addAll(releaseRows(spec, gates))
-                addAll(repeatRows(spec, gates))
-                add(
-                    CardRow.Custom { position ->
-                        LongPressDelayRow(position, spec.pressMs, gates.delayLive, null, spec.onPressMs)
-                    },
-                )
+            when (spec.sections) {
+                LongPressSections.All -> allRows(spec, gates)
+                LongPressSections.ReleaseOnly -> releaseRows(spec, gates)
             },
     )
 }
+
+/** 四族全摆 —— 「按键绑定」与「组合键」两页要的那一套，行序见 [LongPressSettingsCard]。 */
+private fun SettingsPage.allRows(
+    spec: LongPressSpec,
+    gates: LongPressGates,
+): List<CardRow> =
+    buildList {
+        addAll(timingRows(spec, gates))
+        addAll(releaseRows(spec, gates))
+        addAll(repeatRows(spec, gates))
+        add(
+            CardRow.Custom { position ->
+                LongPressDelayRow(position, spec.pressMs, gates.delayLive, null, spec.onPressMs)
+            },
+        )
+    }
 
 /**
  * 「松手才触发」那一行 —— 长按的**时序**本身：到点就执行，还是等抬手那一刻才执行。

@@ -64,16 +64,15 @@ internal fun SettingsPage.writeToken(
             }
         }
 
-        // 「松手执行额外动作」：写这颗键（或那一档组合键）的 `longRelease`，然后自己退页
-        //  （与分支那两条同一条纪律 —— 调用方拿到 true 就不要再补一次 `goBack()`）。
-        //  写哪一位由 [writeLongReleaseTo] 分（组合键与单键是两个不同的槽位）。
+        // 「松手执行额外动作」：写这一档的松手格，然后自己退页（与分支那两条同一条纪律 ——
+        //  调用方拿到 true 就不要再补一次 `goBack()`）。写哪儿见 [writeReleaseTo]。
         is PickTarget.Release -> {
-            if (writeLongReleaseTo(target.comboId, Action.parse(token))) {
+            if (writeReleaseTo(target, Action.parse(token))) {
                 popBackStack()
                 true
             } else {
                 //  写失败：把「为谁挑」放回去，留在这一页（否则这一页会退化成普通挑应用）
-                picker.openForRelease(combo = target.comboId)
+                picker.openForRelease(combo = target.comboId, sceneAt = target.sceneAt)
                 false
             }
         }
@@ -181,7 +180,31 @@ internal fun SettingsPage.onAppPicked(
 }
 
 /**
- * 「松手执行额外动作」写到这一档 —— 单键与组合**只差写到哪张表**，判据在 `BindingTarget` 里。
+ * 「松手执行额外动作」写到这一档 —— 三种落点只差「写给谁」，判据在 [pick] 里。
+ *
+ *  · 场景块（`sceneAt >= 0`）：写**草稿里那一块**，与这一页的三档动作同一个规矩（点「确认」才落盘）；
+ *  · 其他：写那颗键 / 那一档组合键的 `longRelease`，当场落盘。
+ *
+ *  之前这里只有后面那一支（`writeLongReleaseTo`），于是从「场景动作」页进来挑的应用被写进了
+ *  **整颗键**的松手格，草稿里那一格还是空的 —— 返回后那一行照样显示「无操作」。
+ *
+ *  @return 写下去没有（场景块那一支返回「那一块还在不在」；另一支返回「链路未就绪 / 写盘失败」）
+ */
+private fun SettingsPage.writeReleaseTo(
+    pick: PickTarget.Release,
+    action: Action,
+): Boolean {
+    if (pick.sceneAt >= 0) {
+        val block = BindingTarget.Scene(branchDraftNow(), pick.sceneAt, Gesture.LONG, pick.comboId)
+        val ok = block.bindRelease(action = action)
+        XLog.w("额外动作：${block.what} ← ${action.token}（草稿）${if (ok) "" else "（那一块已不在草稿里）"}")
+        return ok
+    }
+    return writeLongReleaseTo(pick.comboId, action)
+}
+
+/**
+ * 「松手执行额外动作」写到这一颗键 / 这一档组合 —— 两档**只差写到哪张表**，判据在 `BindingTarget` 里。
  *
  *  之前这里是 `if (comboId != null) writeComboLongRelease(…) else writeLongRelease(…)`：
  *  两个函数、两张表各写一遍同一件事。现在两条路合成一条，都走 `withLongPress`。
@@ -200,8 +223,11 @@ private fun SettingsPage.writeLongReleaseTo(
         } else {
             BindingTarget.Key(KeyWatchState.editing(cfg), Gesture.LONG)
         }
-    return write(target.withLongPress(cfg, LongPressEdit(release = action)), "${target.what}:long_release") !=
-        CommandsSave.Failed
+    val ok =
+        write(target.withLongPress(cfg, LongPressEdit(release = action)), "${target.what}:long_release") !=
+            CommandsSave.Failed
+    XLog.w("额外动作：${target.what} ← ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
+    return ok
 }
 
 /**

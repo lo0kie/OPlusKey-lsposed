@@ -59,10 +59,14 @@ internal fun SettingsPage.BindingGroups(
     onCreateCommand: () -> Unit,
 ) {
     val g = target.gesture
-    //  「按键设置」那一段 —— **「场景动作」页也摆**（用户口径）：那几张卡调的是「这一档怎么判」
-    //  （单击延迟 / 忽视双击 / 长按那几项），参数是**每颗键自己的**（`KeyConfig`），
-    //  场景块只是这颗键某一档在某种条件下的取值 —— 换一个条件进去编，手感不该跟着变，
-    //  也不该换个地方才找得到。
+    //  「按键设置」那一段 —— 只摆**这一档确实就是某颗键**的页面。
+    //
+    //  **「场景动作」页一张都不摆**（用户口径）：那几张卡调的是**整颗键**的判据
+    //  （单击延迟 / 忽视双击 / 长按那几项），而注入侧在**按下那一刻**就按它们排枪 ——
+    //  场景条件改不动它们。摆在这一页上，改的是整颗键：换一个条件进去编，看到的还是同一个值，
+    //  读起来像「这一块单独配过」。长按那一档例外：它在这一页只剩「松手执行额外动作」那一族
+    //  （见 `LongPressSections.ReleaseOnly`）—— 那一族是「这次按压的收尾」，与这一块挑的动作
+    //  是同一件事的两半。
     //
     //  **组合键那一页不摆前两张**：组合没有单击 / 双击那两档（`ComboKey` 上就没有这两个位），
     //  摆出来是两张改不动的卡。长按那一档两边都有，走同一张卡（`LongPressCard`）。
@@ -74,13 +78,12 @@ internal fun SettingsPage.BindingGroups(
     //  （`LongPressCard`，参数走 `LongPressParams`）；单击 / 双击只有单键有（组合没有这两档）。
     Column {
         //  单击 / 双击那两张卡读的是 **`KeyWatchState.editing`**（`KeyConfig` 自己那几个位），
-        //  所以只有「这一档确实对着某颗键」时才摆：
-        //   · 单键那一页（就是它自己）；
-        //   · 单键的场景块（那颗键）。
-        //  **组合键那条路一张都不摆** —— 组合页摆出来改的是**另一颗键**的参数；组合的场景块
-        //  同理（那一档属于一组组合，参数该在那一组的独立设置里）。长按那张卡不在这条判据里：
-        //  它按 `target.longPress` 自己取（组合读 `ComboKey`），三种目标都成立。
-        val keyScoped = target is BindingTarget.Key || (target is BindingTarget.Scene && target.comboId == null)
+        //  所以只有「这一档就是它自己」的那一页摆 —— 单键页。
+        //  **组合键那条路一张都不摆**：组合页摆出来改的是**另一颗键**的参数；组合的场景块同理
+        //  （那一档属于一组组合，参数该在那一组的独立设置里）。**单键的场景块也不摆**：理由
+        //  见上（那一块改不动这些参数）。长按那张卡不在这条判据里：它按 `target.longPress`
+        //  自己取（组合读 `ComboKey`），三种目标都成立。
+        val keyScoped = target is BindingTarget.Key
 
         //  **选了「跟随默认」就把这三张卡一起压灰**（用户口径）：那一档不归这一块管
         //  （继续往下找、最后回落到「按键绑定」里这一档），没有可调的项 ——
@@ -113,6 +116,7 @@ internal fun SettingsPage.BindingGroups(
 
         //  长按那张卡对**三种目标**都成立：单键与组合各读自己那几项（`LongPressParams`），
         //  场景块读的是这颗键的（见 `BindingTarget.Scene.longPress`，组合的场景表回 `null`）。
+        //  场景块那一页只摆松手那一族 —— 由 `LongPressCard` 按目标给 `sections`，这一层不管。
         if (g == Gesture.LONG && target.longPress(configState.config.value) != null) {
             SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
             LongPressCard(target, enabled, followHint)

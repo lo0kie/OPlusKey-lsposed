@@ -138,9 +138,11 @@ data class ComboKey(
      * 松手那一下**真的有事可做** —— 开关开着、挑过动作、且不是「松手才触发」那条。
      *
      *  与单键 `KeyConfig.releaseBound` 同一份判据（那一边的解释更细）：三位缺一位都不算。
+     *  场景块里配的松手动作也算一位 —— 组合的场景表**本来就随广播带过来**（`ComboWire`），
+     *  所以这一位在注入侧能就地算出来，不必像单键那样另开一个广播字段。
      */
     override val releaseBound: Boolean
-        get() = longReleaseOn && longRelease.isBound && !longFireOnRelease
+        get() = !longFireOnRelease && ((longReleaseOn && longRelease.isBound) || scenes.any { it.hasRelease })
 
     /**
      * **带场景表**的取动作：先看 [scenes]（顺序、「条件成立且这一档有值」的第一块赢），
@@ -165,6 +167,16 @@ data class ComboKey(
         gesture: Gesture,
         matches: (BranchCondition) -> Boolean,
     ): Boolean = sceneTakes(scenes, gesture, matches)
+
+    /**
+     * **松手那一刻执行什么** —— 长按被某一块接管时用那一块的松手格，否则用 [longRelease]。
+     *
+     *  实现在 [pickReleaseAction] 一处 —— 与单键 `KeyConfig` 那一支是**同一个函数**
+     *  （「一次按压一个结果」：块接管了长按，就不再补这一组自己的松手动作）。
+     *  [longReleaseOn] 关着同样传 `None`：开关与动作是两位，关掉之后动作还留着。
+     */
+    fun resolveRelease(matches: (BranchCondition) -> Boolean): Action =
+        pickReleaseAction(scenes, if (longReleaseOn) longRelease else Action.None, matches)
 
     /** [down] 里包含这一档的全部成员吗（不看顺序、允许同时按着别的键）。 */
     fun matches(down: Set<String>): Boolean = keys.all { it in down }

@@ -198,6 +198,26 @@ object ModuleWire {
     /** [ACTION_TOAST] 里带「要弹的那句话」。 */
     const val EXTRA_TOAST_TEXT = "toast_text"
 
+    /**
+     * 宿主 → 注入侧：**替我把音量设到某一档**（[EXTRA_VOLUME_STREAM] / [EXTRA_VOLUME_INDEX]）。
+     *
+     *  为什么挪到注入侧做：宿主进程里的 `setStreamVolume` 会被 ColorOS 静默丢掉
+     *  （`docs/device/actions/audio.md` 三十四 的实测），只剩「注入音量键」这一条退路 ——
+     *  而一颗键就是一整格（量程的 1/16），`±1%` 这种细步进根本走不出来。注入侧跑在
+     *  `system_server`，身份是系统本身，那条策略不挡它，于是又能拿到**精确档位**。
+     *
+     *  与 [ACTION_INJECT_KEY] 同一条通道、同一条纪律：收方是 `inject/KeyHooks` 的 AMS 广播入口，
+     *  发送侧 `setPackage(宿主包名)` 定向。带 `FLAG_SHOW_UI` —— 与宿主自己写时同一个口径
+     *  （改完看得见那条面板）。
+     */
+    const val ACTION_SET_VOLUME = "com.lookie.opluskey.SET_VOLUME"
+
+    /** [ACTION_SET_VOLUME] 里带「哪一路流」（`AudioManager.STREAM_*` 的编号）。 */
+    const val EXTRA_VOLUME_STREAM = "volume_stream"
+
+    /** [ACTION_SET_VOLUME] 里带「目标档位」（该流的原始下标，不是百分比）。 */
+    const val EXTRA_VOLUME_INDEX = "volume_index"
+
     /** [ACTION_HOST_SERVICE_UP] 里带「宿主进程的启动时刻」（同上）。宿主是普通应用进程，重开即可，不必重启手机。 */
     const val EXTRA_HOST_PROC_START = "host_proc_start"
 

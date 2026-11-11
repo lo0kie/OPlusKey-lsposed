@@ -382,6 +382,10 @@ internal data class SceneRuleDto(
     val double: String = Action.FOLLOW,
     /** 长按那一档；默认跟随。 */
     val long: String = Action.FOLLOW,
+    /** 「松手执行额外动作」的开关（`SceneRule.releaseOn`）。 */
+    val releaseOn: Boolean = false,
+    /** 松手那一档的动作 token；默认 `none` = 这一块命中时松手什么都不做。 */
+    val release: String = Action.NONE,
     val enabled: Boolean = true,
 ) {
     /**
@@ -401,6 +405,8 @@ internal data class SceneRuleDto(
             single = Action.parse(single),
             double = Action.parse(double),
             long = Action.parse(long),
+            releaseOn = releaseOn,
+            release = Action.parse(release),
             enabled = enabled,
         )
     }
@@ -418,6 +424,8 @@ internal data class SceneRuleDto(
                 single = scene.single.token,
                 double = scene.double.token,
                 long = scene.long.token,
+                releaseOn = scene.releaseOn,
+                release = scene.release.token,
                 enabled = scene.enabled,
             )
     }

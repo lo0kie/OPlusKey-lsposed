@@ -75,6 +75,17 @@ object ConfigFields {
     const val LONG_SERIAL_EXTRA = "long_is_serial"
 
     /**
+     * **某个场景块配了松手动作**（`KeyConfig.sceneRelease`）—— **只有广播这一列**。
+     *
+     *  注入侧要它才决定抬手那一刻**发不发** `GestureTrigger.Release`：场景表不走广播
+     *  （见 `KeyConfig.scenes`），注入侧手上只有这一位是非。少了它，块里配的松手动作
+     *  连事件都收不到 —— 界面配得出来、按下去什么都不发生。
+     *
+     *  同样由宿主**现算**（扫一遍这颗键的场景表），不落盘。
+     */
+    const val SCENE_RELEASE_EXTRA = "scene_release"
+
+    /**
      * 判定侧要认到**第几击**（`KeyConfig.judgeClicks`）—— **只有广播这一列**。
      *
      *  与 [LONG_SERIAL_EXTRA] 同一条道理：注入侧读不到配置文件，而它必须知道「这颗键最多
@@ -310,6 +321,9 @@ object ConfigFields {
     /** 长按绑的是不是串行命令 —— **只有广播那一列**，见 [LONG_SERIAL_EXTRA] 的说明。 */
     val F_LONG_SERIAL = Field(LONG_SERIAL_EXTRA, Kind.Bool(false))
 
+    /** 某个场景块配了松手动作 —— **只有广播那一列**，见 [SCENE_RELEASE_EXTRA] 的说明。 */
+    val F_SCENE_RELEASE = Field(SCENE_RELEASE_EXTRA, Kind.Bool(false))
+
     /**
      * 判定要认到第几击（见 [JUDGE_CLICKS_EXTRA]）。上限与「一屏步骤数」那档同宽：
      * 再多击的判定链已经没有实际意义（人的连击上限就三五下），手改出来的值在这里就钳掉。
@@ -345,6 +359,7 @@ object ConfigFields {
             F_KEY_TOAST_ON_RUN,
             F_KEY_TOAST_TEMPLATE,
             F_LONG_SERIAL,
+            F_SCENE_RELEASE,
             F_JUDGE_CLICKS,
         )
 

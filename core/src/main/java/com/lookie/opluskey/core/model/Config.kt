@@ -117,6 +117,16 @@ data class KeyConfig(
      */
     val longIsSerial: Boolean = false,
     /**
+     * **某个场景块配了松手动作** —— 只由宿主算好、随配置广播带过来（见 `ConfigFields.SCENE_RELEASE_EXTRA`）。
+     *
+     *  注入侧读不到场景表（[scenes] 只走落盘），而它必须在抬手那一刻决定**发不发**
+     *  `GestureTrigger.Release`（`GestureDetector.finishLong`）—— 这一位就是那个答案。
+     *  由它参与 [releaseBound]，所以「块里配了松手动作」与「按键自己配了」在判定侧是同一件事。
+     *
+     *  默认 `false` = 与早先行为一致（没有这一位的配置读进来逐字不变）。
+     */
+    val sceneRelease: Boolean = false,
+    /**
      * **系统场景** —— 一张顺序表，一块 = 一组条件 + 完整的三档手势（[SceneRule]）。
      *
      *  按顺序找「条件成立、且这一档有值」的第一块，用它那一档的动作（[actionFor]）；
@@ -259,6 +269,18 @@ data class KeyConfig(
     ): Boolean = sceneTakes(scenes, gesture, matches)
 
     /**
+     * **松手那一刻执行什么** —— 长按被某一块接管时用那一块的松手格，否则用 [longRelease]。
+     *
+     *  实现在 [pickReleaseAction] 一处（组合键 `ComboKey.resolveRelease` 调的是同一个函数）。
+     *  块命中时**不**再补 [longRelease]：一次按压一个结果 —— 那一块已经决定这一按做什么了。
+     *
+     *  **[longReleaseOn] 关着就传 `None` 进去**：开关关掉之后动作还留着（开关与动作是两位），
+     *  不在这里收口的话，一块都不中时照样会执行一个用户以为已经关掉的动作。
+     */
+    fun resolveRelease(matches: (BranchCondition) -> Boolean): Action =
+        pickReleaseAction(scenes, if (longReleaseOn) longRelease else Action.None, matches)
+
+    /**
      * 长按绑的是不是**灵感语音那一族**（`oplus:voice_memory` / `oplus:voice_memory_stop`）。
      *
      *  两处判据必须是同一个口径（判定侧不排「长按连续触发」、界面写同一句原因）：
@@ -285,10 +307,18 @@ data class KeyConfig(
      *  与 [longRepeat] **不冲突**：按住期间照常连续触发，松手那一刻再执行这一档 —— 两者是
      *  同一按的两个阶段（按住 / 抬手），不是互相占位的时序。
      *
+     *  第四位是场景块里配的松手动作，两个来源取或：**[sceneRelease]**（注入侧那一份的替身 ——
+     *  它手上没有场景表）与 `scenes.any { it.hasRelease }`（宿主 / 设置页这一份手上有表，就地算）。
+     *  两处都在这里收口，是因为它同时服务两个判据：判定侧「发不发 `Release`」与界面
+     *  「『松手时触发』那一行能不能拨」—— 只算一个来源的话，块里配了松手动作时界面还让人
+     *  打开「松手时触发」，而那一开，块里的松手动作就再也不会执行了。
+     *
      *  判定侧（`GestureDetector` 发不发那条广播）与界面都只读这一位。
      */
     override val releaseBound: Boolean
-        get() = longReleaseOn && longRelease.isBound && !longFireOnRelease
+        get() =
+            !longFireOnRelease &&
+                ((longReleaseOn && longRelease.isBound) || sceneRelease || scenes.any { it.hasRelease })
 
     /**
      * 这一档要不要排「长按连续触发」—— 判定侧的**唯一判据**。
@@ -336,6 +366,7 @@ data class KeyConfig(
                 ConfigFields.F_KEY_TOAST_TEMPLATE to toastTemplate,
                 ConfigFields.F_OWN_SETTINGS_SEEDED to ownSettingsSeeded,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
+                ConfigFields.F_SCENE_RELEASE to sceneRelease,
                 ConfigFields.F_JUDGE_CLICKS to clicksForJudge,
             ),
         )
@@ -448,6 +479,7 @@ data class KeyConfig(
                 toastTemplate = v.text(ConfigFields.F_KEY_TOAST_TEMPLATE),
                 ownSettingsSeeded = v.bool(ConfigFields.F_OWN_SETTINGS_SEEDED),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
+                sceneRelease = v.bool(ConfigFields.F_SCENE_RELEASE),
                 scenes = scenes,
                 judgeClicks = v.number(ConfigFields.F_JUDGE_CLICKS),
             )

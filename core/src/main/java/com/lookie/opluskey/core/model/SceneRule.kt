@@ -50,6 +50,21 @@ data class SceneRule(
     /** 长按那一档；默认跟随。 */
     val long: Action = Action.Follow,
     /**
+     * 「松手执行额外动作」的开关 —— 这一块命中长按时，抬手那一刻再执行 [release] 那一格。
+     *
+     *  与 `KeyConfig.longReleaseOn` 同义、同一个理由分开存：开着但还没挑动作是合法状态（松手什么都不做）。
+     */
+    val releaseOn: Boolean = false,
+    /**
+     * **松手那一档**（`GestureTrigger.Release`）的动作；默认 [Action.None]。
+     *
+     *  为什么它不像前三档那样有「跟随默认」：长按一旦被这一块接管，**按键自己那个松手动作就不会
+     *  再执行**（`GestureExec.resolveAction` 的「一次按压一个结果」）。所以这一格
+     *  [Action.None] 就是「这一块命中时松手什么都不做」—— 也正是这一格出现之前的行为，
+     *  老配置读进来逐字不变。
+     */
+    val release: Action = Action.None,
+    /**
      * 这一块**参不参与判定**（界面上的「停用场景」）—— 停用的块整块跳过，条件与三档动作都还留着。
      *
      *  与「删掉」是两件事：删了就没了，停用只是让它这一趟不生效。
@@ -75,6 +90,14 @@ data class SceneRule(
             Gesture.DOUBLE -> copy(double = action)
             Gesture.LONG -> copy(long = action)
         }
+
+    /**
+     * 这一块**有没有自己的松手动作** —— 开关开着且挑过动作。
+     *
+     *  两个读者：判定侧（`releaseBound` 要不要为真）与广播（宿主算给注入侧那一位）。
+     *  停用的块不算：它命中不了，抬手那一刻也不该为它发 `Release`。
+     */
+    val hasRelease: Boolean get() = enabled && releaseOn && release.isBound
 
     /**
      * 配完了没有 —— 至少一条条件、且每一条都**认得出并且取值填了**（`isUsable`）。
@@ -208,3 +231,26 @@ internal fun sceneTakes(
     gesture: Gesture,
     matches: (BranchCondition) -> Boolean,
 ): Boolean = scenes.any { it.matches(gesture, matches) }
+
+/**
+ * 「松手」那一档该执行什么 —— 全项目唯一实现（[pickAction] 的松手版）。
+ *
+ *  长按被某一块接管时，这一次按压归**那一块**：它自己那一格说了算 —— **[SceneRule.hasRelease]**
+ *  （开关开着 + 挑过动作）为真才执行那个动作，为假就是 `None`：这一下什么都不做，
+ *  **不回落**按键自己那个松手动作。一块都不中才落到 [fallback]。
+ *
+ *  为什么这一格必须归块：松手动作是「这一档做什么」的另一半。留在按键身上时，场景一命中
+ *  它就整条失效（真机口径「配了额外动作，按下去什么也没发生」）。
+ *
+ *  **开关与动作必须一起看**（[SceneRule.hasRelease] / 调用方传进来的 [fallback] 已经带过开关）：
+ *  只看「存下来的动作」，块里挑过动作之后再把开关关掉照样会执行 —— 表现就是
+ *  「这一档明明没开额外动作，按下去却冒出来一个」，也就是用户口中的「穿透」。
+ */
+internal fun pickReleaseAction(
+    scenes: List<SceneRule>,
+    fallback: Action,
+    matches: (BranchCondition) -> Boolean,
+): Action {
+    val owner = scenes.firstOrNull { it.matches(Gesture.LONG, matches) } ?: return fallback
+    return if (owner.hasRelease) owner.release else Action.None
+}

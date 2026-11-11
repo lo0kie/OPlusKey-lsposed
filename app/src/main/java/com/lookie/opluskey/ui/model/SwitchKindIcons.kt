@@ -8,11 +8,11 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BatteryEco
 import io.github.lyxnx.compose.ui.tablericons.outline.Bluetooth
 import io.github.lyxnx.compose.ui.tablericons.outline.BrightnessAuto
 import io.github.lyxnx.compose.ui.tablericons.outline.CellSignal4
+import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
 import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.Eye
 import io.github.lyxnx.compose.ui.tablericons.outline.Location
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
-import io.github.lyxnx.compose.ui.tablericons.outline.MoonStars
 import io.github.lyxnx.compose.ui.tablericons.outline.Nfc
 import io.github.lyxnx.compose.ui.tablericons.outline.Plane
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
@@ -66,11 +66,13 @@ private fun switchKindIcon(kind: SwitchKind): ImageVector =
         // 手电筒：与网格里那一格（`Action.FLASHLIGHT`）同一颗，同一个意思不该有两个长相
         SwitchKind.FLASHLIGHT -> DrawnIcons.Flashlight
 
-        SwitchKind.DARKMODE -> TablerIcons.Outline.MoonStars
+        // 暗色模式：与「外观」里那档「跟随系统」**同一颗**（`contrast`，黑白各半的圆）——
+        //  两处说的都是「亮 / 暗」这件事，长得一样才读得出是同一个概念
+        SwitchKind.DARKMODE -> TablerIcons.Outline.Contrast
 
         SwitchKind.POWERSAVE -> TablerIcons.Outline.BatteryEco
 
-        // 半个太阳（「再压一档亮度」），与 darkmode 的月亮分开：那条改配色，这条改屏幕暗到什么程度
+        // 半个太阳（「再压一档亮度」），与 darkmode 那颗黑白圆分开：那条改配色，这条改屏幕暗到什么程度
         SwitchKind.EXTRADIM -> TablerIcons.Outline.SunLow
 
         // 自动亮度：太阳 + 一个 A（与「跟随系统」那行同一颗），与上下两档「亮度本身」分开

@@ -64,6 +64,8 @@ sealed interface Action {
 
                 is Volume -> false
 
+                is RingerVolume -> false
+
                 is Oplus -> feature.isBlank()
 
                 is Panel -> mode.isBlank()
@@ -331,6 +333,29 @@ sealed interface Action {
     }
 
     /**
+     * 铃声音量（`ringervolume:50` / `ringervolume:+10` / `ringervolume:-10`）—— 与 [Volume]
+     * **两条独立命令**：写的是 `STREAM_RING`，不是媒体流。
+     *
+     *  为什么分开：通话、来电、闹钟走的都不是媒体流，媒体音量拉满与「手机响不响」是两件事。
+     *  ColorOS 自己的小布指令也把这两档做成两个任务（`MediaVolumeTask` / `AudioRingProxy`），
+     *  这里跟着拆开。
+     *
+     *  与 [Ringer]（响铃 / 振动 / 静音**模式**）不是一回事：那个换的是模式，这个调的是铃声那一格的音量。
+     */
+    data class RingerVolume(
+        /** 与 [Volume] 共用同一组档位 —— 两个动作的三档是同一件事，只是写的流不同。 */
+        val mode: Volume.Mode,
+        val percent: Int,
+    ) : Action {
+        override val token: String =
+            when (mode) {
+                Volume.Mode.FIX -> "$RINGER_VOLUME_PREFIX${percent.coerceIn(0, 100)}"
+                Volume.Mode.ADD -> "$RINGER_VOLUME_PREFIX+${percent.coerceIn(0, 100)}"
+                Volume.Mode.SUB -> "$RINGER_VOLUME_PREFIX-${percent.coerceIn(0, 100)}"
+            }
+    }
+
+    /**
      * 弹系统电源菜单（关机 / 重启 / 紧急呼叫）：执行侧在 system_server 里直接调
      * `PhoneWindowManager.showGlobalActions()`，不注入电源键、没有长按等待。
      */
@@ -490,6 +515,14 @@ sealed interface Action {
         /** 切响铃档位，后接档位名。 */
         const val RINGER_PREFIX = "ringer:"
 
+        /**
+         * 铃声音量（`ringervolume:50` / `+10` / `-10`）—— 与 [RINGER_PREFIX] 是两件事：
+         * 那个换「响铃 / 振动 / 静音」模式，这个调铃声那一格的**音量**。
+         *
+         *  前缀**不能**写成 `ringer:volume`：那会落进 [RINGER_PREFIX] 的分支被当成一个认不出的模式。
+         */
+        const val RINGER_VOLUME_PREFIX = "ringervolume:"
+
         /** 弹系统电源菜单。 */
         const val POWER_MENU = "power:menu"
 
@@ -606,6 +639,9 @@ sealed interface Action {
                 // 媒体音量（`volume:50` / `volume:+10`）：与亮度同一套百分比写法
                 text.startsWith(VOLUME_PREFIX) -> parseVolume(text)
 
+                // 铃声音量（`ringervolume:50` / `+10`）：与媒体音量同一套写法，写的是 STREAM_RING
+                text.startsWith(RINGER_VOLUME_PREFIX) -> parseRingerVolume(text)
+
                 // 自定义变量（`setvar:计数+=1`）：认不出就按不支持处理，不落 shell
                 text.startsWith(SETVAR_PREFIX) -> parseVarSet(text)
 
@@ -684,6 +720,7 @@ sealed interface Action {
                 SETTING_PREFIX,
                 BRIGHT_PREFIX,
                 VOLUME_PREFIX,
+                RINGER_VOLUME_PREFIX,
                 SETVAR_PREFIX,
                 PROCESS_PREFIX,
             )
@@ -874,6 +911,22 @@ private fun parseVolume(text: String): Action {
         '+' -> Action.Volume(Action.Volume.Mode.ADD, percent)
         '-' -> Action.Volume(Action.Volume.Mode.SUB, percent)
         else -> Action.Volume(Action.Volume.Mode.FIX, percent)
+    }
+}
+
+/**
+ * `ringervolume:<百分比>` / `+` / `-` 那一支 —— 与 [parseVolume] 同构，只是写的是铃声流。
+ */
+private fun parseRingerVolume(text: String): Action {
+    val (sign, percent) =
+        splitPercent(text, Action.RINGER_VOLUME_PREFIX) ?: run {
+            XLog.w("动作 ringervolume: 的百分比认不出（按 none 处理）：$text")
+            return Action.None
+        }
+    return when (sign) {
+        '+' -> Action.RingerVolume(Action.Volume.Mode.ADD, percent)
+        '-' -> Action.RingerVolume(Action.Volume.Mode.SUB, percent)
+        else -> Action.RingerVolume(Action.Volume.Mode.FIX, percent)
     }
 }
 

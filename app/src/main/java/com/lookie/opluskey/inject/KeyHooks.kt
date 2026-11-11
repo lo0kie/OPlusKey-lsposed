@@ -351,6 +351,7 @@ internal object KeyHooks {
                         action == ModuleWire.ACTION_LOG_PULL ||
                         action == ModuleWire.ACTION_SHORTCUT_QUERY ||
                         action == ModuleWire.ACTION_INJECT_KEY ||
+                        action == ModuleWire.ACTION_SET_VOLUME ||
                         action == ModuleWire.ACTION_NET_REQUEST ||
                         action == ModuleWire.ACTION_TOAST
                 if (!isProbe && !isOurs) {
@@ -442,6 +443,18 @@ internal object KeyHooks {
             ModuleWire.ACTION_INJECT_KEY -> {
                 postGuarded("注入侧注入") {
                     injectKeyFromSystem(systemLoader, intent.getIntExtra(ModuleWire.EXTRA_INJECT_CODE, -1))
+                }
+            }
+
+            // 宿主请我们把音量设到某一档（宿主自己写会被 ColorOS 丢掉，见 ModuleWire）
+            ModuleWire.ACTION_SET_VOLUME -> {
+                postGuarded("注入侧设音量") {
+                    val loader = systemLoader ?: return@postGuarded
+                    SystemVolume.set(
+                        loader,
+                        intent.getIntExtra(ModuleWire.EXTRA_VOLUME_STREAM, -1),
+                        intent.getIntExtra(ModuleWire.EXTRA_VOLUME_INDEX, -1),
+                    )
                 }
             }
 

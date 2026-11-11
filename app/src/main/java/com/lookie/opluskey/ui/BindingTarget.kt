@@ -4,8 +4,10 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
+import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.LongPressParams
@@ -90,6 +92,15 @@ internal sealed interface BindingTarget {
     /** 这一档的长按参数 —— 单键与组合都实现 `LongPressParams`，卡片只认那个接口。 */
     fun longPress(cfg: Config): LongPressParams?
 
+    /**
+     * 「松手执行额外动作」那一族的现行值 —— **落点与另外三族不同**。
+     *
+     *  时序 / 连发 / 长按延迟调的是「这一档怎么判」，归**这颗键**；松手这一族是「这一档还做什么」，
+     *  归**这一块**（[Scene] 读草稿里那一块，单键 / 组合读自己那份）。执行侧同一个口径：
+     *  长按被哪一块接管，抬手就执行**那一块**的松手格（见 `pickReleaseAction`）。
+     */
+    fun releaseSlot(cfg: Config): ReleaseSlot
+
     /** 把一次长按改动写回这一档所在的配置。 */
     fun withLongPress(
         cfg: Config,
@@ -124,6 +135,8 @@ internal sealed interface BindingTarget {
 
         override fun longPress(cfg: Config): LongPressParams = cfg.key(id)
 
+        override fun releaseSlot(cfg: Config): ReleaseSlot = ReleaseSlot.of(cfg.key(id))
+
         override fun withLongPress(
             cfg: Config,
             edit: LongPressEdit,
@@ -154,6 +167,9 @@ internal sealed interface BindingTarget {
         override val comboId: String get() = id
 
         override fun longPress(cfg: Config): LongPressParams? = cfg.combos.firstOrNull { it.id == id }
+
+        override fun releaseSlot(cfg: Config): ReleaseSlot =
+            cfg.combos.firstOrNull { it.id == id }?.let(ReleaseSlot::of) ?: ReleaseSlot.EMPTY
 
         override fun withLongPress(
             cfg: Config,
@@ -234,6 +250,9 @@ internal sealed interface BindingTarget {
             return draft.owner?.let { cfg.keyForId(it) }
         }
 
+        //  松手那一族**不跟那颗键走**：它是「这一块还做什么」，读草稿里这一块（见 [releaseSlot]）
+        override fun releaseSlot(cfg: Config): ReleaseSlot = block?.let(ReleaseSlot::of) ?: ReleaseSlot.EMPTY
+
         //  长按参数写回**那一位**（不是草稿）：那几张卡改的是「这一档怎么判」，与场景表无关
         override fun withLongPress(
             cfg: Config,
@@ -266,6 +285,54 @@ internal sealed interface BindingTarget {
             draft.update(at, old.withAction(gesture, action))
             return true
         }
+
+        /**
+         * 把「松手执行额外动作」那一族写进这一块 —— **只改草稿**，点那一页的「确认」才落盘。
+         *
+         *  与 [bind] 同一个规矩（见 `BranchDraft` 的说明）：这一页编的是草稿，提前落盘等于
+         *  把用户还没确认的改动写死进配置。
+         *
+         *  @return `false` = 那一块已经不在了（草稿在别处被重置过）
+         */
+        fun bindRelease(
+            on: Boolean? = null,
+            action: Action? = null,
+        ): Boolean {
+            val old = block ?: return false
+            draft.update(
+                at,
+                old.copy(
+                    releaseOn = on ?: old.releaseOn,
+                    release = action ?: old.release,
+                ),
+            )
+            return true
+        }
+    }
+}
+
+/**
+ * 「松手执行额外动作」那一族的现行值 —— 开关 + 那一格的动作。
+ *
+ *  为什么要这一层：同一张卡在三种目标上画，但这一族**读的地方不一样**（键 / 组合 / 草稿里那一块），
+ *  而卡片不该知道「这次是在编场景」。三个工厂函数各认一种来源。
+ *
+ *  [action] 可能是 [Action.Follow]（老配置里存进来过）：卡片按「无操作」念，与执行侧同一个口径
+ *  （见 `LongPressCard` 那一行）。
+ */
+internal class ReleaseSlot(
+    val on: Boolean,
+    val action: Action,
+) {
+    companion object {
+        /** 这一份已经不在了（键被删 / 组合被删 / 草稿那一块没了）—— 按「没配」念。 */
+        val EMPTY = ReleaseSlot(false, Action.None)
+
+        fun of(key: KeyConfig): ReleaseSlot = ReleaseSlot(key.longReleaseOn, key.longRelease)
+
+        fun of(combo: ComboKey): ReleaseSlot = ReleaseSlot(combo.longReleaseOn, combo.longRelease)
+
+        fun of(block: SceneRule): ReleaseSlot = ReleaseSlot(block.releaseOn, block.release)
     }
 }
 

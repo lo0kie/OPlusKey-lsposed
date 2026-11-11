@@ -87,6 +87,9 @@ object ConfigCodec {
      *  36 = **系统场景翻转**：`KeyDto` / `ComboDto` 各多了 `scenes`（一块 = 一组条件 + 三档动作），
      *       老的 `rules` 降级为**只读迁移列**（新写的文件不再写它）。读到老文件时
      *       `ConfigDto.mergeLegacy` 把「条件完全相同的那几条」并成一块，行为逐字不变。
+     *  37 = `SceneRuleDto` 多了 `release_on` / `release`（场景块自己的「松手执行额外动作」）。
+     *       松手那一格原先只能挂在按键身上，而块一命中长按它就整条失效（判定侧不发 `Release`）——
+     *       收进块里之后它归草稿管、也真的会执行。默认关 + `none`，老文件读进来行为逐字不变。
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -94,7 +97,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 36
+    const val VERSION = 37
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

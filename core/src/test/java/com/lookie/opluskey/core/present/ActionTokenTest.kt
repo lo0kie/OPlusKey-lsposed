@@ -36,8 +36,13 @@ class ActionTokenTest {
             "ai:screen_translate",
         )
 
-    /** 能解析、但 `token` 会被归一成别的一档（组的表头那一行：`bright:` 进「亮度」菜单）。 */
-    private val notRoundTrip = menuOnly + setOf("bright:", "volume:")
+    /**
+     * 能解析、但 `token` 会被归一成别的一档（组的表头那一行：`bright:` 进「亮度」菜单）。
+     *
+     *  `volume:` / `ringervolume:` 是音量那两族的**标记格**：它们只用来弹「增加 / 减少 / 设置为」
+     *  三行，本身不落盘，解析出来是 `none` —— 与 `bright:` 同一档。
+     */
+    private val notRoundTrip = menuOnly + setOf("bright:", "volume:", "ringervolume:")
 
     private val tokens = ActionCatalog.ALL.map { it.token }.distinct()
 

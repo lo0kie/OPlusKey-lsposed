@@ -42,6 +42,42 @@ internal fun ImageVector.Builder.addStroked(
     )
 }
 
+/**
+ * 一格铺满的字形（不带角标）—— 各族的底图与格子都用它，笔画同一档。
+ *
+ *  放在这一处而不是 `DrawnIcons` 里：它是「怎么落笔」那一半，与具体画哪颗图标无关；
+ *  而且 `DrawnIcons` 那个 object 已经顶到 detekt 的 `TooManyFunctions`（每加一族就多一个
+ *  `xxxBase`），把这两支通用的搬出来，才留得下新族的画法。
+ */
+internal fun flatIcon(
+    name: String,
+    vararg paths: List<PathNode>,
+): ImageVector {
+    val builder = vectorBuilder(name)
+    paths.forEach { builder.addStroked(it) }
+    return builder.build()
+}
+
+/**
+ * 底图 + 右下角角标。
+ *
+ *  **底图不缩、角标不叠**：底图仍是满格那一颗（笔画同宽、坐标不动），只是右下角那几笔在画的时候
+ *  就**让开**了（见 `volumeWaves` / `sunRays` / `DrawnIcons.bellBase`）—— 角标正好落在让出来的
+ *  那块空里，与图标库里 `bell-plus` / `bell-cog` 的画法一致：一个字形、两笔，不是两块拼起来。
+ *
+ *  @param base 底图的画法，按这一档角标占的缺口截（缺口见 [notch]）
+ */
+internal fun badgedIcon(
+    name: String,
+    badge: Badge,
+    base: (Notch?) -> List<PathNode>,
+): ImageVector {
+    val builder = vectorBuilder(name)
+    builder.addStroked(base(notch(badge)))
+    builder.addStroked(badgePath(badge))
+    return builder.build()
+}
+
 /** 「系统配色」菜单里那两块色块 —— 形状固定，颜色由调用方逐行给。 */
 internal object PaletteIcons {
     /**

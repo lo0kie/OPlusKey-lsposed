@@ -291,7 +291,9 @@ internal class ActionRunner(
 
                 is Action.Brightness -> BrightnessAction.run(context, act, ::notifyFailure)
 
-                is Action.Volume -> VolumeAction.run(context, act, ::notifyFailure)
+                is Action.Volume -> runMediaVolume(act)
+
+                is Action.RingerVolume -> runRingerVolume(act)
 
                 is Action.PowerMenu -> sendStatusbar(StatusBarBridge.CMD_POWER_MENU)
 
@@ -485,6 +487,48 @@ internal class ActionRunner(
             //  跑完（含起进程失败 / 被拒 / 超时）回执一次 —— 有间隔的多条命令靠它推进下一步
             onDone = settle,
         )
+    }
+
+    /**
+     * 媒体音量 / 铃声音量 —— 两条命令的「注入按键」「请注入侧设档位」两条兜底每次都一样，收成两支。
+     *
+     *  写成单独两支**只为一件事**：`dispatch` 里那两行因此还是单行表达式 —— 只要有一个分支写成
+     *  多行块，ktlint 就会给整张 `when` 的每个分支套上花括号，那个函数当场撞上 `LongMethod`（60 行）。
+     */
+    private fun runMediaVolume(act: Action.Volume) =
+        VolumeAction.run(context, act, ::notifyFailure, injector::inject, ::requestSystemSetVolume)
+
+    private fun runRingerVolume(act: Action.RingerVolume) =
+        VolumeAction.runRinger(context, act, ::notifyFailure, injector::inject, ::requestSystemSetVolume)
+
+    /**
+     * 请注入侧（`system_server`）把某一路流设到某一档 —— 宿主自己的 `setStreamVolume` 会被
+     * ColorOS 静默丢掉，注入侧的身份是系统本身，那条策略不挡它（见 `ModuleWire.ACTION_SET_VOLUME`）。
+     *
+     *  **只回「请求发出去了没有」**：真正落没落地由调用方（`VolumeAction`）读回判断 —— 注入侧
+     *  未装 / 是老版本不认识这条广播时，不会有人处理它。
+     *
+     * @return 广播发出去了没有（`false` = 没有 Context / 发广播抛异常）
+     */
+    private fun requestSystemSetVolume(
+        stream: Int,
+        index: Int,
+    ): Boolean {
+        val ctx =
+            context ?: run {
+                XLog.w("没有 Context，设音量请求跳过：路 $stream → $index")
+                return false
+            }
+        return runCatching {
+            ctx.sendBroadcast(
+                android.content
+                    .Intent(ModuleWire.ACTION_SET_VOLUME)
+                    .setPackage(HostApp.PACKAGE)
+                    .putExtra(ModuleWire.EXTRA_VOLUME_STREAM, stream)
+                    .putExtra(ModuleWire.EXTRA_VOLUME_INDEX, index),
+            )
+        }.onFailure { XLog.w("设音量请求没发出去：路 $stream → $index | ${it.javaClass.simpleName}", it) }
+            .isSuccess
     }
 
     /**
