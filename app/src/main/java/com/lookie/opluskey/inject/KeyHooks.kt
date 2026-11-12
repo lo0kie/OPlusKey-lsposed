@@ -99,6 +99,10 @@ internal object KeyHooks {
 
         XLog.guard("挂广播入口") { installBroadcastHook(module, loader) }
 
+        //  游戏里那条音量条的旁路：系统把按键派发给观察者（`OplusKeyEventUtil`）那一步。
+        //  与侧键那条**分开装** —— 挂不上只是「游戏里照旧弹条」，音量键本身不受影响。
+        XLog.guard("挂按键观察者派发") { KeyObserverHooks.install(module, loader) }
+
         //  这一段是安装路径上唯一可能抛的一步（其余各步都包了 guard）：它一旦抛出去，
         //  后面的组合键 Hook、hookCount、安装判据日志会全部跳过。按「本机不支持」降级。
         val layers =

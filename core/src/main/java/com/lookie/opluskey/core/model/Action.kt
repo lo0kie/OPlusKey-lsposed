@@ -50,6 +50,9 @@ sealed interface Action {
 
                 is Intent -> action.isBlank()
 
+                //  正文空着也发得出去（只有标题那条通知），那是正当写法，不算「只有前缀」
+                is Notify -> false
+
                 is App -> target.isBlank()
 
                 is AppWindow -> target.isBlank()
@@ -149,6 +152,23 @@ sealed interface Action {
         val action: String,
     ) : Action {
         override val token: String = Action.INTENT_PREFIX + action
+    }
+
+    /**
+     * 以**宿主应用的身份**发一条通知（`notify:正文`）—— 通知中心里那一条，不是屏幕上闪一下的提示。
+     *
+     *  为什么挂在宿主名下：动作在宿主进程里执行（AGENTS 五之二、6），`NotificationManager` 用哪个
+     *  Context 发，通知就挂在哪个包名下 —— 这里拿到的就是宿主（`com.oplus.gesture`）那一份。
+     *  模块自己那个包在宿主进程里既没有通知渠道也没有界面，所以标题用宿主应用名，正文就是
+     *  [message]。「以宿主的身份」说的正是这件事。
+     *
+     *  正文只有一段：标题留给宿主应用名（系统把它显示在通知头部与分组上），再往 token 里塞一个
+     *  自定义标题，配置里就多出一段几乎没人会改的字段。
+     */
+    data class Notify(
+        val message: String,
+    ) : Action {
+        override val token: String = Action.NOTIFY_PREFIX + message
     }
 
     /**
@@ -460,6 +480,14 @@ sealed interface Action {
         /** 发出广播。 */
         const val INTENT_PREFIX = TokenSyntax.INTENT_PREFIX
 
+        /**
+         * 发一条通知（`notify:正文`）—— 走宿主应用自己的通知渠道，见 [Notify]。
+         *
+         *  与「提示」不是一回事：那条是屏幕上闪一下的 toast（`ModuleWire.ACTION_TOAST`），
+         *  这条是通知中心里能留着的通知。
+         */
+        const val NOTIFY_PREFIX = "notify:"
+
         /** 拉起一个界面。 */
         const val APP_PREFIX = "app:"
 
@@ -596,6 +624,9 @@ sealed interface Action {
 
                 text.startsWith(INTENT_PREFIX) -> Intent(text.removePrefix(INTENT_PREFIX).trim())
 
+                // 发通知（`notify:正文`）：同样必须排在兜底之前，否则会被当成 shell 命令
+                text.startsWith(NOTIFY_PREFIX) -> Notify(text.removePrefix(NOTIFY_PREFIX).trim())
+
                 text.startsWith(APP_PREFIX) -> parseAppToken(text)
 
                 // 必须排在兜底之前，否则 `window:` 会被当成 shell 命令执行
@@ -710,6 +741,7 @@ sealed interface Action {
                 SHELL_PREFIX,
                 Command.PREFIX,
                 INTENT_PREFIX,
+                NOTIFY_PREFIX,
                 APP_PREFIX,
                 WINDOW_PREFIX,
                 APP_SHORTCUT_PREFIX,

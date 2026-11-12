@@ -354,6 +354,13 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 desc = I18n.get(Strings.COMMAND_FORMAT_INTENT_DESC, "发送 Intent"),
                 prefix = Action.INTENT_PREFIX,
             ),
+            //  发通知（`notify:`）放这里：它是**通知中心里那条**通知，与「执行时提示」那个 toast
+            //  不是一回事 —— 后者是模块自己的反馈，这一条是用户主动要的、能留着的通知。
+            CommandFormatLine(
+                label = I18n.get(Strings.COMMAND_FORMAT_NOTIFY, "notify:<正文>"),
+                desc = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_DESC, "以宿主身份发一条通知"),
+                prefix = Action.NOTIFY_PREFIX,
+            ),
             CommandFormatLine(
                 label = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_DESC, "触发快捷方式"),

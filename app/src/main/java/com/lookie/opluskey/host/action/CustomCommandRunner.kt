@@ -8,6 +8,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.KsuCompat
+import com.lookie.opluskey.core.present.CommonCommands
 
 internal class CustomCommandRunner(
     /**
@@ -75,7 +76,14 @@ internal class CustomCommandRunner(
             return
         }
 
-        val cmd = CommandLibrary.loadCached().firstOrNull { it.name == name }
+        //  先在**用户那份命令库**里找，找不到才退到模块内置的那几条（`CommonCommands`：
+        //  常用命令那一段绑出来的 `cmd:common.wechat_scan` 就只存在代码里，不进命令库文件）。
+        //  顺序不能反：用户自己建的同名命令是他写的，模块带的那几条不许盖掉它。
+        val cmd =
+            CommandLibrary.loadCached().firstOrNull { it.name == name }
+                ?: CommonCommands.commandOf(name)?.also {
+                    XLog.d("「$name」不在命令库里，按内置常用命令执行（${XLog.redactCommand(it.single)}）")
+                }
         if (cmd == null) {
             XLog.w("命令库里没有「$name」（可能已被删除 / 改名），跳过")
             onFailure(CommandFailure.NOT_FOUND)

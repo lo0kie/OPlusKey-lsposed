@@ -186,7 +186,12 @@ private fun builtInSegments(
     //  自定义命令：名字是**用户起的那个**（`action.name`），不是清单里的名字。
     //  它不在清单里（命令库是运行时收集的），查 `label` 只会拿到 null 再退到原始 token
     //  （`cmd:喝水`）—— 那是手改配置才该看到的样子。
-    if (action is Action.Custom) return TitleSegments(parent = null, name = action.name, state = null)
+    //
+    //  例外是模块内置的那几条（`CommonCommands`：`cmd:common.wechat_scan`）—— 它们的 `name`
+    //  是**稳定 id**、不是给人看的名字，念的时候要按当前语言过一遍字典。
+    if (action is Action.Custom) {
+        return TitleSegments(parent = null, name = CommonCommands.labelOf(action.name) ?: action.name, state = null)
+    }
     //  两个「没有」意思不同：没有那一档 = 它不属于任何入口格；清单标题也没有才是「谁也认不出」。
     //  只有后者可以退到 fallback，所以不能写成 `?: ...` 串下去。
     val hit =
@@ -291,6 +296,7 @@ fun commandTitleOf(action: Action): CommandTitle =
         is Action.Shell,
         is Action.Custom,
         is Action.Intent,
+        is Action.Notify,
         is Action.MiniWindow,
         is Action.Shortcut,
         is Action.Flashlight,

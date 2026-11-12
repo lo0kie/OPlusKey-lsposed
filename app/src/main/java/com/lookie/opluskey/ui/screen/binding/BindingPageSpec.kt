@@ -20,6 +20,7 @@ import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.BandHeight
 import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.state.KeyWatchState
+import com.lookie.opluskey.ui.state.SettingsTarget
 
 // 「这一页**是什么**」的那几个纯函数 —— 从 `BindingPagerScreen` 拆出来。
 //
@@ -100,6 +101,29 @@ internal fun SettingsPage.bindingTargetEnabled(s: Screen): Boolean =
         // 一颗键那一页只吃它自己的 `enabled`：模块总闸另有一层（关着时整页走 `blockedReason`）。
         else -> keyEnabled(KeyWatchState.editing(configState.config.value))
     }
+
+/**
+ * 这一份**自己被停用**了吗 —— 是就回那句原因，开着回 `null`。
+ *
+ *  四个读者都在这一页族里，判据必须同一份：页面顶部那条「系统场景」入口、⋮ 菜单里那一行、
+ *  「自定义命令」小标题要不要接跳转、右下角那颗「进自定义命令」的 FAB 显不显示。
+ *  （用户口径：按键 / 组合键禁用时，这几处一并不给用。）
+ *
+ *  说法**不在这里另写**：与「独立设置」入口、两页顶栏那颗设置键同一个出口
+ *  （[SettingsTarget.disabledReason]，`按键「X」已停用` / `组合键「X」已停用`）。
+ *
+ *  **只认「这一份」**：整页闸门（主开关 / 链路 / 只读）不在这里 —— 那是另一件事，
+ *  页面另有整片压灰与自己那句原因（见 [bindingTargetEnabled] / `disabledClickReason`）。
+ *  场景块（[BindingTarget.Scene]）永远回 `null`：那一页的闸门只看整页（见 [bindingTargetEnabled]）。
+ */
+internal fun SettingsPage.bindingTargetStopped(target: BindingTarget): String? {
+    val cfg = configState.config.value
+    return when (target) {
+        is BindingTarget.Key -> SettingsTarget.Key(target.id).disabledReason(cfg)
+        is BindingTarget.Combo -> SettingsTarget.Combo(target.id).disabledReason(cfg)
+        is BindingTarget.Scene -> null
+    }
+}
 
 /**
  * 在编的那一份**自己被停用**了吗 —— 只服务顶栏那行小标题的压暗。

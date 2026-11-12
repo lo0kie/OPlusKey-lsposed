@@ -119,8 +119,10 @@ internal sealed interface BindingTarget {
      *  （见 `bindingTargetEnabled`）。单键那一页由 `LinkCheck.disabledClickReason` 里
      *  「这一颗键停用」那一支说，场景动作那一页的闸门只看整页（见下）。
      *
-     *  **系统场景整条路（入口行 / ⋮ 那一行 / 场景表 / 场景动作页）都不吃「这一份停用」**：
-     *  停用的键照样要能先把场景配好、再回去启用 —— 拿停用去灰掉入口，等于先把这条顺序堵死。
+     *  **系统场景那条路也跟着「这一份停用」走**（用户口径：按键 / 组合键禁用时，页面顶部那条
+     *  入口、⋮ 菜单那一行、右下角那颗「进自定义命令」的 FAB、以及「自定义命令」小标题的跳转
+     *  一并不给用）—— 判据只有一份（`ui/screen/binding/BindingPageSpec.bindingTargetStopped`）。
+     *  **场景块自己不在其中**：那一页的闸门只看整页，停用的块照样能改（见 `bindingTargetEnabled`）。
      */
     fun pageBlockedReason(cfg: Config): String?
 

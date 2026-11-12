@@ -180,7 +180,10 @@ internal fun SettingsPage.BindingPagerScreen(
             //  「场景动作」页只看**这一块**改没改（见 `sceneBindingDirty`），不跟滚动、也不跟
             //  整份草稿的 `dirty`：那一份里还有上一页别的块的改动，与这一颗无关
             sceneDirty = sceneBindingDirty(),
-            scrollVisible = rememberFabVisibleOnScroll(scrolls[page]),
+            //  这一份自己被停用（键 / 组合）时**整颗不出现**（用户口径）：停用的绑定不接管按键，
+            //  「进自定义命令新增一条」这一趟没有去处。整页闸门（主开关 / 链路 / 只读）**不**据此
+            //  隐藏 —— 那是另一件事，命令库与某颗键开没开无关（见 `BindingFab` 的说明）。
+            scrollVisible = rememberFabVisibleOnScroll(scrolls[page]) && bindingTargetStopped(targets[page]) == null,
             //  FAB 不经过 `CardRow`，那层默认振动管不到它 —— 自己叫一声
             onCommands = {
                 tickNow()

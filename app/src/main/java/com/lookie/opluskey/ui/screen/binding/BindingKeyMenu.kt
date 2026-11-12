@@ -44,14 +44,12 @@ import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
  *
  *  0. 「系统场景」—— 进那一页（`Screen.BRANCHES`）。它不是对这颗键的操作，所以与下一行
  *     同属「进下一页」那一组，下面用一条**加深分隔**（三行里第一行的 `dividerBefore`）分开；
- *     这一行**不看这颗键的启停**：停用的键照样能进去把场景配好、再回去启用 ——
- *     整行灰掉等于先把「先配好再开」这条顺序堵死；
+ *     这一行**跟着这颗键的启停走**：停用了就灰掉（用户口径：按键 / 组合键禁用时，场景入口
+ *     也禁用），灰着点一下说同一句停用原因；
  *  1. 「独立设置」—— 进那一页（`Screen.KEY_SETTINGS`）。与顶栏那颗设置键
  *     （[HeaderSettingsButton]）是**同一个入口的两种摆法**，都走 [openKeySettings]；
- *     与上一行同一组（都是进下一页），但**这一行跟着启停走**：这一颗键停用了它就灰掉
- *     （判据见 [SettingsTarget.disabledReason]）—— 上一行留、这一行不留，是有意的不对称：
- *     场景表是「这一档怎么分流」的配置，停用期间先配好是常态；而这一页改的是它自己的覆盖项，
- *     键都不接管了，改它没有去处；
+ *     与上一行同一组（都是进下一页），**这一行同样跟着启停走** —— 两行的判据与提示语
+ *     都出自 [SettingsTarget.disabledReason]，与页面顶部那条入口、顶栏那颗设置键同一份；
  *  2. 「停用 / 启用这颗键」「重命名」「删除按键」—— 都是对**当前选中的那一颗**动手，
  *     删除最狠、压在最下面（越靠下越不容易误点），停用与改名在它上面。
  *
@@ -253,9 +251,9 @@ private fun keyMenuEntries(
         //  优先级高于「这一档的显示 / 触发怎么调」。
         //  这一行受 [SHOW_BRANCHES_ENTRY] 控制（收起来时不删这一支，随时能开回来）。
         if (SHOW_BRANCHES_ENTRY) {
-            //  这一行**不看这颗键的启停**：条件表说的是「这一档怎么分流」，而停用的键照样要能
-            //  先把表配好、再回去启用（与「独立设置」同一条口径）。按启停置灰过一版，真机上
-            //  停用的键连场景页都进不去 —— 只剩「先启用、再配、再停用」这一条别扭的路。
+            //  这一行**跟着这颗键的启停走**（用户口径：按键 / 组合键禁用时，场景入口也禁用）——
+            //  与下一行「独立设置」同一份判据、同一句提示。停用的键不接管按键，那一张表进去
+            //  也改不出效果；要改就先启用（这一页顶上那颗停用 / 启用就在同一个菜单里）。
             add(
                 MenuEntry.Row(
                     title = BRANCHES_TITLE,
@@ -264,6 +262,8 @@ private fun keyMenuEntries(
                     summary = scenarioMenuSummary(cfg.key(selected).scenes),
                     icon = PageIcons.Scene,
                     submenu = true,
+                    enabled = blocked == null,
+                    disabledHint = blocked,
                     onPick = actions.onOpenBranches,
                 ),
             )

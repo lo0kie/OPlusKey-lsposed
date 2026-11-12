@@ -6,12 +6,13 @@ import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.ui.state.CommandsSave
 import kotlin.random.Random
 
-// 「页面大小」这一族的两颗写入口：**跟随系统显示大小** + **页面缩放**。
+// 「页面怎么显示」这一族的写入口：**跟随系统显示大小** + **页面缩放** + **显示常用命令**。
 //
-// 单独一个文件的理由：这两项改的是同一件事（`global.followDisplaySize` / `global.pageScale`
-// 在「外观」卡里成对出现，缩放那一行还跟着开关一起进出场），与 `ConfigWrite.kt` 里那批
-// 互不相干的全局开关不是一类；挤回去还会把那个文件顶到 `TooManyFunctions` 的线上
-// （那里已经 9 颗，阈值 11）。两族各自的边界见 `ConfigWrite.kt` 头部那段。
+// 单独一个文件的理由：这几项改的是页面自己的呈现（`global.followDisplaySize` / `global.pageScale`
+// 在「外观」卡里成对出现，缩放那一行还跟着开关一起进出场；`global.showCommonCommands` 决定
+// 绑定页那一段露不露），与 `GlobalWrite.kt` 里那批「按键怎么执行」的全局开关不是一类；
+// 挤回去还会把那个文件顶到 `TooManyFunctions` 的线上（阈值 11）。
+// 两族各自的边界见 `GlobalWrite.kt` 头部那段。
 
 /**
  * 写**页面缩放**（百分比）。
@@ -54,4 +55,19 @@ internal fun SettingsPage.setFollowDisplaySize(on: Boolean) {
         cfg.copy(global = cfg.global.copy(followDisplaySize = on)),
         "follow_display_size=${if (on) 1 else 0}",
     ) { switchNotice(I18n.get(Strings.MORE_FOLLOW_DISPLAY_SIZE, "跟随系统显示大小"), on) }
+}
+
+/**
+ * 切「显示常用命令」（按键设置页那一行）。
+ *
+ *  只影响**按键绑定页**那一段露不露：已经绑上去的动作照旧执行、命令库里那些命令一条不动。
+ *  纯界面项，注入侧不认识界面，所以它不进广播（见 `ConfigFields.F_SHOW_COMMON_COMMANDS`）。
+ */
+internal fun SettingsPage.setShowCommonCommands(on: Boolean) {
+    val cfg = configState.config.value
+    if (cfg.global.showCommonCommands == on) return
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(showCommonCommands = on)),
+        "show_common_commands=${if (on) 1 else 0}",
+    ) { switchNotice(I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS, "显示常用命令"), on) }
 }

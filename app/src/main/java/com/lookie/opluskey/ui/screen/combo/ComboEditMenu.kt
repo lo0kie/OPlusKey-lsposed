@@ -247,9 +247,8 @@ private fun SettingsPage.comboMenuEntries(
             //  「系统场景」与下一行同属「进下一页」，与下面那两行不是一类事，用加深带隔开。
             //  顺序（用户口径）：**场景在前、独立设置其次** —— 场景说的是这一档「怎么分流」，
             //  优先级高于「这一档的显示 / 触发怎么调」。
-            //  这一行**不看这一档的启停**：停用的组合照样能进去把场景配好、再回去启用
-            //  （与下一行、与按键那边同一条口径）。按启停置灰过一版，停用的组合连场景页
-            //  都进不去 —— 只剩「先启用、再配、再停用」这一条别扭的路。
+            //  这一行**跟着这一档的启停走**（用户口径：按键 / 组合键禁用时，场景入口也禁用）——
+            //  与下一行同一份判据、同一句提示。停用的组合不接管按键，表进去也改不出效果。
             MenuEntry.Row(
                 title = BRANCHES_TITLE,
                 //  子标题报这一档手势的条数（只数启用中的），与编辑页里那条横幅同一份判据
@@ -257,6 +256,8 @@ private fun SettingsPage.comboMenuEntries(
                 icon = PageIcons.Scene,
                 submenu = true,
                 trailingIcon = PageIcons.EnterArrow,
+                enabled = settingsBlocked == null,
+                disabledHint = settingsBlocked,
                 onPick = actions.onOpenBranches,
             ),
             MenuEntry.Row(

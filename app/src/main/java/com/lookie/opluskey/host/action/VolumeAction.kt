@@ -35,12 +35,16 @@ import kotlin.math.roundToInt
  *  写入那一档带 `FLAG_SHOW_UI` —— 与按物理音量键同一种反馈，而且弹的就是**这一路流**的面板
  *  （调铃声弹铃声条）。不弹的话，按一下侧键屏幕上什么都没有，分不清「改了」还是「没生效」。
  *
- * ## 落到哪条路
+ * ## 落到哪条路：**写这一半一律交给注入侧**
  *
  *  宿主自己的 `setStreamVolume` 会被 ColorOS 静默丢掉（`docs/device/actions/audio.md` 三十四），
- *  所以这里按「谁还能把这个档位落下去」排了四档：宿主直写 → 宿主静默重写 → 请注入侧
- *  （`system_server`）设 → 注入音量键。**只有前三条能给精确档位**，最后那条的粒度是一颗键
- *  （量程的 1/16），细步进只能靠前三条。
+ *  「写完读回」在宿主这边只是自欺 —— 值真的变了那一档能靠读回认出来，**值没变的那一档连认都认不出**
+ *  （读回本来就等于目标）。所以宿主只做三件事：算目标档位、请注入侧（`system_server`）去写、
+ *  写不进去时兜底（宿主自己再写几档 → 注入音量键）。
+ *
+ *  注入侧那条是系统身份，写得进去、也发得出面板（§三十五）；**值不变**时它改用
+ *  `adjustStreamVolume` 把面板叫出来（`setStreamVolume` 同值不发面板，见 §三十七）。
+ *  只有最后那条兜底的粒度是一颗键（量程的 1/16），细步进只能靠注入侧那一条精确路。
  */
 internal object VolumeAction {
     /** 调哪一路流 —— 媒体（`volume:`）。 */
@@ -150,49 +154,90 @@ internal object VolumeAction {
         val perKey: Int = ((max - min) / PANEL_LEVELS).coerceAtLeast(1)
 
         /**
-         * 把 [target] 落下去 —— **逐级降级**，每一级都读回校验。
+         * 把 [target] 落下去 —— **写这一半交给注入侧**，宿主只在它没接上时兜底。
          *
-         *  @return 需要带到下一次的误差格数（只有注入那条路上会有）；不需要带时返回 null
+         *  宿主自己那几档写挂在最后只为「模块没注入时还能凑合」：ColorOS 会把它们整条丢掉
+         *  （`docs/device/actions/audio.md` 三十四），而读回判据又分不清「写成功」与「被丢掉」
+         *  —— 值真变了才判得出来，值没变时恒真。
+         *
+         *  @return 需要带到下一次的误差格数（只有注入音量键那条路上会有）；不需要带时返回 null
          */
         fun write(
             target: Int,
             current: Int,
         ): Int? {
-            //  第一档：**带 FLAG_SHOW_UI 的写** —— 一次调用同时做到「改」与「看得见的反馈」，
-            //  而且面板就是**这一路流**的面板（系统弹面板用的就是这个 streamType）。
-            //  别改成先静默写、再另调一次 `ADJUST_SAME` 把面板叫出来：那个写法在这台 ROM 上
-            //  弹的是「当前活跃流」的面板 —— 调铃声时弹出来的是媒体音量条（真机反馈）。
-            //  第二档：静默写（抄小布指令那两条的 `setStreamVolume(stream, v, 0)`）—— 只在带 UI
-            //  那一档被吞时试：面板已经在场时，带 UI 的写更容易被系统丢掉（实测过），静默写不受影响。
-            //  第三档：静默写**再隔一下重试两次** —— 丢掉不是每次都一样，隔一帧再写就可能落地；
-            //  能落地就还是精确档位，比退到整格的注入好得多。
+            //  **档位本来就等于目标**：没有值要改，只剩「把音量条叫出来」一件事，而这一档恰恰是
+            //  读回判据唯一失效的地方（读回本来就等于目标）。注入侧那边对同一档走的是
+            //  `adjustStreamVolume`（`setStreamVolume` 同值不发面板），见 [showOnly]。
+            if (target == current) {
+                showOnly(target)
+                return null
+            }
+
+            //  第一档（正常路径）：**请注入侧（`system_server`）设**。它的身份是系统本身，
+            //  那条丢掉宿主写的策略不挡它（§三十五），精确下标也只有这条给得出来
+            //  （一颗键的粒度是量程的 1/16）。发出去之后靠读回认结果 ——
+            //  注入侧没装 / 是老版本不认识这条广播时，读回自然不变，往下走兜底那几档。
+            if (call.setVolume(stream, target) && await(target)) {
+                XLog.w("$label：注入侧已把音量设到 $target")
+                return null
+            }
+
+            //  第二档：宿主自己写（带 UI 的写 → 静默写 → 静默重试两次）。多半也会被丢，
+            //  留着只为「注入侧不在」那一档；落在精确档位上仍然比退到整格的注入好。
             val landed =
                 applyAndRead(target, AudioManager.FLAG_SHOW_UI) ||
                     applyAndRead(target, 0) ||
                     silentRetries(target)
             if (landed) return null
 
-            //  第四档：**请注入侧（`system_server`）替我们设**。宿主自己的写被 ColorOS 的策略丢掉，
-            //  而注入侧的身份就是系统本身 —— 那一档还能拿到精确下标（一颗键的粒度是量程的 1/16，
-            //  `±1%` 那种细步进只有这一条路走得出来）。发出去之后靠读回认结果：
-            //  注入侧没装 / 是老版本不认识这条广播时，不会有人处理，读回自然不变。
-            if (call.setVolume(stream, target) && await(target)) {
-                XLog.w("$label：宿主直写没落下去 ⇒ 注入侧已经设到 $target")
-                return null
-            }
+            //  第三档：注入音量键（铃声流不做，理由收在 [injectFallback] 里）。
+            return injectFallback(target, current)
+        }
 
-            //  铃声流**不做注入兜底**：注入的音量键调的是「当前活跃的那一路」（多半是媒体流），
-            //  按下去改的是播放器的音量而不是铃声 —— 用户要的是铃声响一点，结果音乐炸了，
-            //  比明确报失败更糟。这一路上只留日志，失败提示交给 `apply`。
+        /**
+         * 最后两档：铃声**直接放弃**注入兜底，媒体才一颗一颗按。
+         *
+         *  注入的音量键调的是「当前活跃的那一路」（多半是媒体流），按下去改的是播放器的音量而不是
+         *  铃声 —— 用户要的是铃声响一点，结果音乐炸了，比明确报失败更糟。这一路上只留日志，
+         *  失败提示交给 `apply`。
+         *
+         *  注入的是**虚拟键盘**事件（`deviceId = -1`），拦截路径会按「合成事件」放行给系统 ——
+         *  不会自己认领回来形成循环（见 `SideKeyInterceptor.isSynthetic`）。
+         *  [current] 是写之前那次读数：不能拿 0 兜底 —— 那会把「该往回调 16 格」算成空循环。
+         */
+        private fun injectFallback(
+            target: Int,
+            current: Int,
+        ): Int? {
             if (stream == STREAM_RINGER) {
                 XLog.w("$label：几条路都没落下去 ⇒ 不做注入兜底（注入音量键调的是当前活跃流，不是铃声流）")
                 return null
             }
-
-            //  最后一档：注入音量键。注入的是**虚拟键盘**事件（`deviceId = -1`），拦截路径会按
-            //  「合成事件」放行给系统 —— 不会自己认领回来形成循环（见 `SideKeyInterceptor.isSynthetic`）。
-            //  [current] 是写之前那次读数：不能拿 0 兜底 —— 那会把「该往回调 16 格」算成空循环。
             return injectUntilReached(this, target, current)
+        }
+
+        /**
+         * 值没变、只求「把音量条叫出来」—— 例如音量已经是 0 时的「设为 0」与「再减一下」。
+         *
+         *  这一档只发注入侧：值没有要改的，宿主那次写既判不出结果（读回本来就等于目标），
+         *  在同值上也不发面板（`setStreamVolume` 同值不发 —— 真机实测，宿主与注入侧两边都一样）。
+         *  注入侧对同一档走的是 `adjustStreamVolume(ADJUST_SAME, FLAG_SHOW_UI)`：物理音量键按到底时
+         *  值也没变、面板照样弹，走的就是那一条。
+         *
+         *  注入侧没接上（模块没启用 / 老版本不认识这条广播）时才退回宿主自己那次带 UI 的写 ——
+         *  前台能弹、后台会被丢，所以**不判结果**，只把这件事记一行。
+         *
+         *  @return 恒 `null` —— 这一档没有「没走完的零头」可带
+         */
+        private fun showOnly(target: Int): Int? {
+            if (call.setVolume(stream, target)) {
+                XLog.w("$label：档位没变（$target）⇒ 已请注入侧把音量条叫出来")
+                return null
+            }
+            runCatching { am.setStreamVolume(stream, target, AudioManager.FLAG_SHOW_UI) }
+            XLog.w("$label：档位没变（$target）⇒ 注入侧那条没发出去，只剩宿主自己的带 UI 写（后台不弹）")
+            return null
         }
 
         /**

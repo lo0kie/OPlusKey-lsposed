@@ -110,6 +110,9 @@ internal fun SettingsPage.BindingList(
         //  其余每一档都摆 —— 包括三击 / 四击：一块场景能接管哪几档由它自己的 `actions` 说
         //  （见 `SceneRule`），所以这几档与前三档在这一行上没有区别。
         if (target !is BindingTarget.Scene) {
+            //  这一份自己被停用（键 / 组合）时，这一条跟着「独立设置」一起灰 —— 用户口径：
+            //  绑定禁用时系统场景入口也禁用。灰着点一下说的是同一句停用原因。
+            val stopped = bindingTargetStopped(target)
             CardList(
                 //  上边距取小标题那一档（这一张上面没有小标题，不让位就会贴着分段带）
                 modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
@@ -117,7 +120,11 @@ internal fun SettingsPage.BindingList(
                     listOf(
                         //  点这一行进「系统场景」的**这一档**（档位与「为谁编」都由 target 给 ——
                         //  单键清掉组合目标、组合带上它自己的 id，写成一处就不必两页各记一遍）。
-                        scenarioEntry(target) {
+                        scenarioEntry(
+                            target = target,
+                            enabled = stopped == null,
+                            disabledReason = stopped,
+                        ) {
                             openBranchesFor(target)
                         },
                     ),

@@ -26,7 +26,9 @@ lines.app/src/main/java/com/lookie/opluskey/ui/SettingsPage.kt = 1062
 # 四击之后松手也要说清「按哪一块算」，两档松手共用同一条键。
 # 1548 → 1554：条件多了「前台应用以外」那一档（`command.cond_app_not`），挑应用页那一句
 # 多选提示也要分正反两档（`app_picker.branch_multi_hint_not`）—— 六行 = 两条键 + 各自的说明。
-lines.core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt = 1554
+# 1554 → 1587：常用命令那一段的六条键（段标题、微信扫一扫的名字与说明、「显示常用命令」的标题与
+# 开 / 关两句副标题）连同各自的判据注释；其余几行是同一工作区里「以宿主身份发一条通知」的文案键。
+lines.core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt = 1587
 # `core/model` 拆成 `model` / `rom` / `present` 之后，这份清单跟着搬了位置；
 # 1660 → 1667 是补 7 行 import（原来同包，不用写）—— 拆分的一次性代价，不是新增内容。
 # 1667 → 1713：屏幕翻译从「父子动作」改成单动作多状态（格子标记 token + 打开 / 关闭两档取值 +
@@ -62,7 +64,9 @@ lines.core/src/main/java/com/lookie/opluskey/core/present/ActionCatalog.kt = 181
 # 1459 → 1503：`clickThenLongCounts`（「开着且真有动作」才算这一档，`instantSingleNow` /
 # `clicksForJudge` / 判定侧三处都改读它）与 `sceneChain`（注入侧看不到场景表，这一档有没有人配
 # 要广播过去）；加上 `fieldValues` 那一对映射与随行的判据注释。
-lines.core/src/main/java/com/lookie/opluskey/core/model/Config.kt = 1503
+# 1503 → 1565：`showCommonCommands` 一位与它的说明；其余是同一工作区里「双击无操作时那两下各算
+# 一次单击」那一族（`judgeLimit` / `doubleFallsBackToSingles`，以及它们为什么不能用 `clicksForJudge`）。
+lines.core/src/main/java/com/lookie/opluskey/core/model/Config.kt = 1565
 
 # 页面对象：`SettingsPage` 自己的状态字段数（它就是「新功能再挂一个字段」的入口）
 count.settings_page_fields = 38
@@ -81,7 +85,10 @@ count.settings_page_fields = 38
 # 525 → 528：「单击后长按」那张参数卡（`ClickThenLongCard` 的三个页面扩展成员）。
 # 528 → 529：场景块里的「单击后长按」松手卡（`SceneChainReleaseCard`）。
 # 529 → 530：同一张卡挑动作的那一支（`onOpenPicker` / `onPick`）走页内一次写回。
-count.settings_page_ext = 530
+# 530 → 534：常用命令那一段的三支（`CommonCommandsGroup` / 那颗开关的 `commonCommandsRow` 与它的
+# 写入口）—— 都读页面级 `configState`，没有别的挂法；余下一处是同一工作区里「停用的键不再留
+# 场景入口」那一支（`bindingTargetStopped`）。
+count.settings_page_ext = 534
 
 # detekt 基线：新代码不许再往基线里加条目（AGENTS.md 二、1.2）
 count.detekt_baseline = 130

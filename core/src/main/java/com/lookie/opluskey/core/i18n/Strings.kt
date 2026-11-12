@@ -180,6 +180,25 @@ object Strings {
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
 
     /**
+     * 按键绑定页那一段「常用命令」的小标题 —— 现成命令的快捷入口（表见 `CommonCommands`）。
+     *
+     *  条数拼进标题（与内置动作那几组同一个写法）：这一段是「有几条」由表决定的列，
+     *  不写条数时用户看不出是不是漏了几条。
+     */
+    const val BINDING_COMMON_COMMANDS = "binding.common_commands"
+
+    /**
+     * 常用命令**自己那条命令的名字**（[COMMON_COMMAND_WECHAT_SCAN] 等）。
+     *
+     *  与界面文案不同：它会作为**命令名**落进用户的配置（`cmd:<名字>`），所以落盘时按当时的
+     *  语言取一次字面量，之后跟着配置走 —— 中途换语言不会把已有的那条命令改掉。
+     */
+    const val COMMON_COMMAND_WECHAT_SCAN = "common_command.wechat_scan"
+
+    /** 同一行下面那行小字：这一条到底做什么。 */
+    const val COMMON_COMMAND_WECHAT_SCAN_DESC = "common_command.wechat_scan_desc"
+
+    /**
      * 「场景动作」页里，某一档选的是「跟随默认」时那几张设置卡为什么点不了。
      *
      *  文案要说**下一步该做什么**（先换成一个动作）：那一档不归这一块管，没有可调的项。
@@ -471,6 +490,10 @@ object Strings {
     const val COMMAND_FORMAT_CMD_DESC = "command.format_cmd_desc"
     const val COMMAND_FORMAT_INTENT = "command.format_intent"
     const val COMMAND_FORMAT_INTENT_DESC = "command.format_intent_desc"
+
+    /** `notify:正文` —— 以宿主身份发一条通知（见 `Action.Notify`）。 */
+    const val COMMAND_FORMAT_NOTIFY = "command.format_notify"
+    const val COMMAND_FORMAT_NOTIFY_DESC = "command.format_notify_desc"
     const val COMMAND_FORMAT_KEYEVENT = "command.format_keyevent"
     const val COMMAND_FORMAT_KEYEVENT_DESC = "command.format_keyevent_desc"
 
@@ -1246,6 +1269,16 @@ object Strings {
     const val SETTING_IGNORE_DOUBLE_CHAIN = "setting.ignore_double_chain"
     const val SETTING_IGNORE_DOUBLE = "setting.ignore_double"
     const val SETTING_KEY_BINDING = "setting.key_binding"
+
+    /**
+     * 「按键设置」页那一行：按键绑定页要不要露出「常用命令」那一段。
+     *
+     *  纯显示项 —— 关掉只是那几行不画，已经绑上去的动作照旧执行。副标题真假各一句，
+     *  两句都要说清「只是不显示」（写成「停用」会让人以为那些命令不跑了）。
+     */
+    const val SETTING_SHOW_COMMON_COMMANDS = "setting.show_common_commands"
+    const val SETTING_SHOW_COMMON_COMMANDS_ON = "setting.show_common_commands_on"
+    const val SETTING_SHOW_COMMON_COMMANDS_OFF = "setting.show_common_commands_off"
 
     /**
      * 滑杆行「手动输入」小窗的输入框占位（不带值域 —— 那一句在框下面常驻，见 [SLIDER_INPUT_RANGE]）。

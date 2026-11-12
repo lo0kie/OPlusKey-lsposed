@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.core.present.appTargetLabel
 import com.lookie.opluskey.core.present.commandTitleOf
 
@@ -42,6 +43,18 @@ internal fun serialSummarySteps(
 internal fun isCommandRef(token: String): Boolean = token.startsWith(Command.PREFIX)
 
 /**
+ * `cmd:` 后面那一段在界面上叫什么 —— 被引用那条命令的**名字**。
+ *
+ *  用户命令库里的（含手改出来的）原样显示；模块内置的那几条（`CommonCommands`：
+ *  `cmd:common.wechat_scan`）存的是稳定 id，要按当前语言过一遍字典，否则界面上会冒出
+ *  `common.wechat_scan` 这种没人读得懂的东西。
+ *
+ *  与 `core/present/CommandTitle` 的 `Action.Custom` 那一支同一个口径：那一边管提示 / 摘要句，
+ *  这一边管步骤行与格子标题，两处都得认。
+ */
+private fun commandRefName(token: String): String = token.removePrefix(Command.PREFIX).let { raw -> CommonCommands.labelOf(raw) ?: raw }
+
+/**
  * 一个步骤在界面上叫什么。
  *
  *  **除「打开应用」外一律拍平**：菜单里的分组标题（`系统操作` / `快捷功能` /
@@ -61,7 +74,7 @@ internal fun stepTitle(
     token: String,
     appName: (String) -> String,
 ): String {
-    if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
+    if (isCommandRef(token)) return commandRefName(token)
     //  走 `ActionCatalog` 那份按 token 记忆的解析结果，不在这里现 `Action.parse` ——
     //  步骤行的每一次重组、每一条已保存命令卡都会走到这一句（见 `ActionCatalog.actionOf`）。
     val action = ActionCatalog.actionOf(token)
@@ -87,7 +100,7 @@ internal fun stepTitleWithTarget(
     token: String,
     target: (Action) -> String,
 ): String {
-    if (isCommandRef(token)) return token.removePrefix(Command.PREFIX)
+    if (isCommandRef(token)) return commandRefName(token)
     val action = ActionCatalog.actionOf(token)
     return commandTitleOf(action).forSentence(
         action = action,

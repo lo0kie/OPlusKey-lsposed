@@ -396,10 +396,7 @@ internal class GestureDetector(
         // 双击已经判过 —— 这次抬手是双击的第二下：**到这里才派发**（理由见 onKeyDown 里那段）。
         // 也不能再开一个单击窗口，否则 `doubleClickMs` 之后会补一次单击，双击变成「双击 + 单击」两下
         if (p.doubleFired) {
-            val firedClicks = p.clicks
-            p.doubleFired = false
-            reset(id)
-            dispatch(id, GestureTrigger.Click(firedClicks), config, repeat = false)
+            fireChainResult(id, config)
             return
         }
 
@@ -457,6 +454,33 @@ internal class GestureDetector(
             }
         }
         scheduleDoubleWindow(id, config)
+    }
+
+    /**
+     * 连击链收尾（`doubleFired` 那一支）：抬手这一刻才派发 —— 双击就是这条链的 n=2，
+     * 判在按下那一刻、派发在抬手（理由见 `onKeyDownLocked` 里 `doubleFired` 那一段）。
+     *
+     *  **双击是无操作、而「忽视无操作多击手势」开着时，这两下各算一次单击**
+     *  （判据 `Config.doubleFallsBackToSingles`）：第一下在上面那条窗口路径里**没有**派发过
+     *  —— 开着「单击后长按」时 `instantSingleNow` 不让它收线 —— 所以这里要连发两条。
+     *  两条是**同类**手势：`sent_at` 由转发侧保证严格递增（`GestureForwarder.nextSentAt`），
+     *  否则宿主会按「补发」把第二条吞掉，用户看到的是「只执行了一下」。
+     */
+    private fun fireChainResult(
+        id: KeyId,
+        config: KeyConfig,
+    ) {
+        val p = pending(id)
+        val firedClicks = p.clicks
+        p.doubleFired = false
+        reset(id)
+        if (firedClicks == 2 && config.doubleFallsBackToSingles) {
+            XLog.w("${id.label}：双击（双击为无操作 ⇒ 这两下各算一次单击）")
+            dispatch(id, GestureTrigger.Click(1), config, repeat = false)
+            dispatch(id, GestureTrigger.Click(1), config, repeat = false)
+            return
+        }
+        dispatch(id, GestureTrigger.Click(firedClicks), config, repeat = false)
     }
 
     /**

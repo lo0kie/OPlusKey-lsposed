@@ -823,6 +823,9 @@ internal data class GlobalDto(
     /** 随机图标配色的种子（`0` = 关）—— 老文件没有这一项，退回默认（关）。 */
     @SerialName("icon_tint_seed")
     val iconTintSeed: Int = GlobalConfig.DEFAULT_ICON_TINT_SEED,
+    /** 按键绑定页显不显示「常用命令」那一段 —— 老文件没有这一项，退回默认（显示）。 */
+    @SerialName("show_common_commands")
+    val showCommonCommands: Boolean = GlobalConfig.DEFAULT_SHOW_COMMON_COMMANDS,
 ) {
     fun toValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -844,6 +847,7 @@ internal data class GlobalDto(
                 ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
+                ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
             ),
         )
 
@@ -865,6 +869,7 @@ internal data class GlobalDto(
                 comboPassthrough = g.comboPassthrough,
                 comboWindowMs = g.comboWindowMs,
                 iconTintSeed = g.iconTintSeed,
+                showCommonCommands = g.showCommonCommands,
             )
     }
 }

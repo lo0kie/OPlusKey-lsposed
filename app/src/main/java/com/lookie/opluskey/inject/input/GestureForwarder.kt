@@ -61,6 +61,10 @@ internal class GestureForwarder(
      */
     private var binding = false
 
+    /** [nextSentAt] 的锁与上一笔 —— 判定线程与 main looper（`HeldPresses` 补发）都会来取号。 */
+    private val sentAtLock = Any()
+    private var lastSentAt = 0L
+
     /**
      * 转交一次手势。
      *
@@ -256,7 +260,7 @@ internal class GestureForwarder(
             .putExtra(ModuleWire.EXTRA_COMBO, comboId)
             .putExtra(ModuleWire.EXTRA_PHASE, phase)
             .putExtra(ModuleWire.EXTRA_REPEAT, repeat)
-            .putExtra(ModuleWire.EXTRA_SENT_AT, SystemClock.elapsedRealtime())
+            .putExtra(ModuleWire.EXTRA_SENT_AT, nextSentAt())
 
     /** 造一条手势广播（载荷见 `ModuleWire` 的 `EXTRA_*`）。 */
     private fun gestureIntent(
@@ -271,7 +275,26 @@ internal class GestureForwarder(
             .putExtra(ModuleWire.EXTRA_KEY, id.id)
             .putExtra(ModuleWire.EXTRA_PHASE, phase)
             .putExtra(ModuleWire.EXTRA_REPEAT, repeat)
-            .putExtra(ModuleWire.EXTRA_SENT_AT, SystemClock.elapsedRealtime())
+            .putExtra(ModuleWire.EXTRA_SENT_AT, nextSentAt())
+
+    /**
+     * 这一次派发的 `sent_at` —— 取「现在」，但**必须大于上一条**。
+     *
+     *  宿主按 `(键, 手势)` 记 `sent_at`，`sent_at <= 上次` 一律当补发丢掉（见 `host/GestureExec`
+     *  的 `staleOrDuplicate`）。而同一种手势在同一毫秒里派发两条是**真会发生**的：
+     *  「双击为无操作 ⇒ 这两下各算一次单击」那一档就在抬手那一刻连发两条 `Click(1)`
+     *  （见 `GestureDetector.onKeyUpLocked`）。两条同毫秒 ⇒ 第二条被当成补发，用户看到的是
+     *  「只执行了一下」。
+     *
+     *  补发那两条仍复用**同一个** Intent（`sent_at` 只在这里打一次），所以去重照旧成立。
+     */
+    private fun nextSentAt(): Long =
+        synchronized(sentAtLock) {
+            val now = SystemClock.elapsedRealtime()
+            val next = if (now > lastSentAt) now else lastSentAt + 1
+            lastSentAt = next
+            next
+        }
 
     /**
      * 投一条手势广播（发送抛异常只记日志 —— 这条在按键热路径上）。

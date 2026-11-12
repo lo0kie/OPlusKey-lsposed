@@ -299,6 +299,8 @@ internal class ActionRunner(
 
                 is Action.Intent -> launcher.openIntent(act.action)
 
+                is Action.Notify -> NotifyAction.run(context, act, ::notifyFailure)
+
                 is Action.App -> launcher.launchApp(act)
 
                 is Action.AppWindow -> launcher.launchAppInWindow(act.target)

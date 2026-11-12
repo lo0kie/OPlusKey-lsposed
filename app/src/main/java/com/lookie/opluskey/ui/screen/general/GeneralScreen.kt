@@ -12,6 +12,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.ToastNotice
+import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.NameDialog
@@ -26,6 +27,7 @@ import com.lookie.opluskey.ui.model.SHOW_HOME_MINI_ANIM
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.setColorOsApi
 import com.lookie.opluskey.ui.setMiniWindowAnim
+import com.lookie.opluskey.ui.setShowCommonCommands
 import com.lookie.opluskey.ui.setToastOnRun
 import com.lookie.opluskey.ui.setToastTemplate
 import com.lookie.opluskey.ui.setVibrate
@@ -142,6 +144,11 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                 )
                 add(toastRow(cfg.global.toastOnRun, pageEnabled))
                 add(toastTemplateRow(cfg.global, pageEnabled) { editingToastTemplate = true })
+                //  「显示常用命令」—— 那一档功能还没发布（`CommonCommands.SHOW` = false），
+                //  开关跟着入口一起收起来。配置位与写入口都留着，改回 true 这一行就回来。
+                if (CommonCommands.SHOW) {
+                    add(commonCommandsRow(cfg.global.showCommonCommands, pageEnabled))
+                }
                 // 「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。
                 //  关（默认）= 原地收、无动画；开 = 原地收成小窗后紧接着让框架自己的动画器播那一段
                 //  （插值 / 矩阵 / spring 全是框架在跑，模块只交起止参数，配方见 `docs/features/zoom-window/notes.md` §十二）。
@@ -192,6 +199,29 @@ private fun SettingsPage.toastTemplateRow(
         visible = global.toastOnRun,
         onClick = onEdit,
     )
+
+/**
+ * 「显示常用命令」那一行 —— 按键绑定页顶部那一段（微信扫一扫这类现成命令）露不露。
+ *
+ *  它是这一页里**唯一一条只管页面显示**的项：关掉只是那几行不画，已经绑上去的动作照旧执行、
+ *  命令库里那些命令也一条不动 —— 两句副标题要说的正是这件事（别读成「停用常用命令」）。
+ *
+ *  单独一支只为让 [ActionsCard] 留在 detekt 的长度上限之内（与 [toastRow] 同一个理由）。
+ */
+private fun SettingsPage.commonCommandsRow(
+    checked: Boolean,
+    enabled: Boolean,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS, "显示常用命令"),
+        summaryOn = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS_ON, "按键绑定页列出这类现成命令"),
+        summaryOff = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS_OFF, "按键绑定页不再列出"),
+        icon = PageIcons.CommandCode,
+        checked = checked,
+        enabled = enabled,
+    ) {
+        setShowCommonCommands(it)
+    }
 
 /**
  * 「提示文案」的编辑窗 —— 填一个值那一套（与按键重命名 / 每条滑杆同一个形状）。

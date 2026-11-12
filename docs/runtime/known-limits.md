@@ -19,6 +19,12 @@
   **起**这一条仍走 `ShortcutStarter`（按 pkg + id 走 `getShortcutIntent` / `startShortcut`）：
   这些快捷方式当初不是本进程钉的，能不能起还没有真机结论，失败时按既有的失败回执提示。
 - **开机后约 15 秒内侧键动作不会执行**：模块的执行侧在宿主进程里，它要等 ROM 自己绑上来（实测开机后
-  ~15s）。1.4.0 曾在注入侧开机就 `startService` 预热宿主（`HostWarmup`），代价是宿主冷启动会把
-  `ActionButtonSettingsActivity`——也就是被模块替换成模块页的那一页——带到前台，**每次开机都自己弹一次**，
-  已撤掉；要拿回那 15 秒就得接受这一弹。
+  ~15s）。1.4.0 曾在注入侧开机就 `startService` 预热宿主（`HostWarmup`），已撤掉 —— 这 15 秒换不回来。
+  这一段里按侧键**不会再弹模块页**：弹页面的根因是宿主服务 `onStartCommand` 在锁屏 / 熄屏 / 游戏等条件下
+  会打开侧键设置页，而唤醒那一次 `startService` 正好把它带出来；现在宿主侧掐掉了那段正文
+  （反编译与判据见 `docs/device/side-key.md` §40）。
+- **「常用命令」里那几条要 root**（**现行隐藏**：入口收在 `CommonCommands.SHOW` 后面，手改配置引用
+  `cmd:common.wechat_scan` 仍可用）：它们由模块维护（不在你的命令库里），正文是 `shell:`（微信扫一扫走
+  `am start -a android.intent.action.VIEW -d weixin://dl/scan`）—— 宿主在 `platform_app` 域，
+  直接起别人的界面会被后台启动限制拦掉，只有 `su` 这一条路（`docs/device/actions/launch.md` 二十九）。
+  宿主拿不到 root 时按下去会报「这条命令要 root」；要换写法只能自己在命令库里建一条同名的（同名时以你的那条为准）。

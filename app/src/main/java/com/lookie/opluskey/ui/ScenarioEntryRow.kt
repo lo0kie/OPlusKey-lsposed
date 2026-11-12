@@ -11,13 +11,18 @@ import com.lookie.opluskey.ui.model.PageIcons
  *  两页这一行说的是同一件事（场景先判、命中就轮不到下面那些绑定），摆的位置也一样；
  *  各写一遍的话，「停用了还点不点得进去」「提示说的是哪一句」迟早分叉 —— 而它们本来就该同步。
  *
- *  **这一行不看这一档的启停**：停用的键 / 组合照样能进去把场景配好、再回去启用。
- *  灰掉这一行等于先把「先配好再开」这条顺序堵死 —— 与「独立设置」那条入口同一条口径。
+ *  **这一行跟着这一档的启停走**（用户口径）：这一份停用了，它与「独立设置」一起灰掉 ——
+ *  停用的键 / 组合不接管按键，表进去也改不出效果；灰着点一下说的是同一句停用原因。
+ *  这一条与 [BindingTarget.pageBlockedReason] 的说明同步改过（那一段原先写的是反过来的规矩）。
  *
+ * @param enabled 这一份自己**还开着**吗（判据由调用点给，见 `bindingTargetStopped`）
+ * @param disabledReason 灰着那一句（同上）
  * @param onOpen 点这一行进「系统场景」—— 调用方负责把档位摆到眼前这一页再导航
  */
 internal fun SettingsPage.scenarioEntry(
     target: BindingTarget,
+    enabled: Boolean = true,
+    disabledReason: String? = null,
     onOpen: () -> Unit,
 ): CardRow.Item =
     CardRow.Item(
@@ -26,6 +31,8 @@ internal fun SettingsPage.scenarioEntry(
                 ?: I18n.get(Strings.COMMAND_BRANCH_SCENARIO_NONE, "没有添加系统场景"),
         icon = PageIcons.CommandBranch,
         arrow = true,
+        enabled = enabled,
+        disabledHint = disabledReason,
         onClick = onOpen,
     )
 

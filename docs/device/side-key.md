@@ -193,7 +193,12 @@ KeyStartCamera init, mDoubleClickCount= …      ← 宿主自己维护双击计
 
 ### 9.3 框架 → 宿主的通道：bind 服务 + `Messenger`
 
-宿主两个相关服务**都只实现 `onBind`、没有 `onStartCommand`**（dex 实测）：
+宿主两个相关服务**都实现 `onBind`（手势消息走这条）**（dex 实测）：
+
+> ⚠️ 这一节原写「两个服务都**没有** `onStartCommand`」——**错的**：两个都有。
+> `StartAppService.onStartCommand` 只打一行日志就返回；`ActionButtonKeyService.onStartCommand`
+> 有副作用（会打开侧键设置页，见 §40）。所以「唤醒 / 保活」用 `startService` 打这个服务时会把
+> 模块页一起拉出来。
 
 ```
 com.oplus.gesture.actionbuttonkey.quicklaunch.StartAppService   ← 「打开应用」场景
@@ -497,3 +502,47 @@ InputReader/InputDispatcher
   `PowerManager.newWakeLock(PARTIAL_WAKE_LOCK)` + `acquire(窗口 + 500ms)`：CPU 在窗口里继续走，
   窗口那一枪才到点。代价是熄屏单击晚一个双击窗口才执行；取不到 `PowerManager` 时静默降级回
   「熄屏判不出双击」。
+
+## 四十、宿主服务的 `onStartCommand` 会打开侧键设置页（反编译 `reference/gesture.apk`，2026-11-12）
+
+用户机反馈：「重启后在服务还没起来的那段时间里，按被接管的按键会把模块页拉起来」。根因不在框架那条
+派发上，而在**模块自己调的那一次 `startService`**：
+
+```
+com.oplus.gesture.server.ActionButtonKeyService.onStartCommand(Intent, int, int)   // dex 有这个方法
+    if (!GestureUtil.isSupportActionButtonKey()) return 2
+    if (lb.d.a().d()) d()            // ← 条件成立才开页面
+    return 2
+
+ActionButtonKeyService.d()V
+    c.obtainMessage(1).sendToTarget()          // what = 1
+
+ActionButtonKeyService$a.handleMessage(Message)
+    what == 1 → ActionButtonKeyService.a(服务实例) → e()
+    what == 2 → c(arg1)                        // arg1 == 0 时同样落到 d()
+
+ActionButtonKeyService.e()V
+    Intent → setClass(ActionButtonSettingsActivity) → remote.transition.d.m(ctx, intent, 2, false)
+    ⇒ 起的就是**被模块替换成模块页的那一页**
+```
+
+`lb.d.d()` 是「当前有任一拦截条件成立」，六项任一为真即可（逐项反编译，读的都是系统设置）：
+`user_setup_complete` 未完成 / 免打扰（`op_breath_mode_status`）/ `isKeyguardLocked()` /
+游戏模式（`debug_gamemode_value`）/ `isScreenOff()` / 超级省电（`super_powersave_mode_state`）。
+
+⇒ **锁屏、熄屏、游戏里 `startService(ActionButtonKeyService)` 就会把设置页带到前台。**
+模块有两条路打这个服务、都是为了「唤醒 / 保活」（`inject/input/GestureForwarder.wakeHost` 与
+`host/GestureReceiver.keepProcessAwake`），于是：
+
+- 开机后那一段设备正锁屏 —— 按一下被接管的侧键 ⇒ 注入侧转发手势 ⇒ 唤醒宿主 ⇒ 设置页弹出来；
+- 宿主自己冷启动时 `keepProcessAwake` 那一次 `startService` 同样会弹（`1.4.0` 撤掉的
+  `HostWarmup` 其实也是从这条路弹的，与「预热」本身无关）。
+
+**修法**：宿主侧掐掉 `ActionButtonKeyService.onStartCommand` 的正文（`host/SideKeyGestureHooks.hookKeyServiceStart`）。
+唤醒有 `bindService`（`BIND_AUTO_CREATE` 就会创建进程）兜着，保活要的是「持有一个已启动的服务」
+这件事本身，正文对进程级别没有贡献；框架找宿主走的是 bind + `Messenger`，与 `onStartCommand` 无关。
+判据行：`宿主服务 onStartCommand：启动它只为唤醒 / 保活，不再顺带把设置页带到前台`（`w`）。
+
+**不要**把这条当成「`what=1` 是框架的场景派发」：框架那份 `oplus-services.jar` 里**没有**
+`Messenger->send` 的调用点，`what=1` 只有本服务的 `onStartCommand`（以及 `what=2 → c(0)`）会产生。
+`host/PressTrace` 那套「认领了才吞」照旧留着 —— 它管的是另一件事（停用的键那次原生派发该不该放行）。

@@ -329,6 +329,9 @@
    Application Context（`bridge/inject/SystemContext`），且那个降级 Context 只可用于 `getSystemService`，
    借的时机同样要推迟。为什么见 `docs/device/lsposed.md` 六之五。
 6. **执行逻辑只在宿主进程里跑**：Shell 之类在系统进程下大概率不可用，别把执行器往回挪。
+   **例外只有「宿主自己做不到的那一件事」**，且必须在 `docs/` 里登记 —— 现在两处：
+   截图代注入、音量写入（`docs/device/actions/audio.md` 三十五 / 三十七）。登记的是**具体那一件事**，
+   不构成「整条动作链可以挪过去」的放行。
 7. **失败要可自救**：交付物必须写明「模块导致开机循环时」的补救步骤（安全模式 / `adb` 卸载 / 停用框架），
    并在动手前把这个风险告知用户。
 8. **界面层（`ui/`）绝不允许删除宿主页面的 View 树**：宿主那些 `findViewById` 结果常被缓存进实例字段、

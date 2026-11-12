@@ -114,13 +114,17 @@ object ConfigCodec {
      *       松手是一条独立手势，原先宿主在松手时重新判条件，长按动作换了前台就会落到别处。
      *  43 见下方历史。
      *
+     *  45 = `GlobalDto` 多了 `show_common_commands`（按键绑定页要不要露出「常用命令」那一段）——
+     *       纯显示项，老文件缺这一格 ⇒ 默认显示。
+     *
+     *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
      *  不抬版本的话，`version == VERSION` 那一支会拿新 DTO 去校旧文件，**每一份已有配置都当场
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 44
+    const val VERSION = 45
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

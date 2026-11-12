@@ -8,12 +8,18 @@
 | `app/build.gradle.kts` 的 `versionCode` / `versionName` | 用户看到的版本 + 单调递增的整数 | 每次发版                               |
 | `core/ModuleInfo.kt` 的 `BUILD_ID`                      | `yyyy-MM-dd-NNNN`               | 每次出包（它是「换了包没重启」的尺子） |
 
-**tag 必须是 `<versionCode>-<versionName>`（如 `3-1.0.0`）。** 不是为了好看，是因为管理器要拿它算更新：
+**tag 是 `<versionCode>-<versionName>`，第一段补齐到五位（如 `00016-1.4.2`）。** 两个都不是为了好看：
 
-`RepoLoader.updateLatestVersion()` 对模块仓库里那条 Release 的 tag 做 `split("-", 2)`，
-第一段 `Long.parseLong` 当 **versionCode**、第二段当 **versionName**，再和手机上已装的比
-（`upgradable()` 要求**严格大于**）。切不出两段或第一段不是数字时，那一行直接 `continue` ——
-**模块能装，但管理器永远不会提示有新版本**。所以 `v1.0.0` / `1.0.0` 这种写法不要用。
+- 管理器要拿它算更新：`RepoLoader.updateLatestVersion()` 对模块仓库里那条 Release 的 tag 做
+  `split("-", 2)`，第一段 `Long.parseLong` 当 **versionCode**、第二段当 **versionName**，再和手机上
+  已装的比（`upgradable()` 要求**严格大于**）。切不出两段或第一段不是数字时，那一行直接 `continue`
+  —— **模块能装，但管理器永远不会提示有新版本**。所以 `v1.0.0` / `1.0.0` 这种写法不要用。
+- 补齐五位是为了**按名字排序时与版本顺序一致**：第一段当字符串比，`15-…` 会排到 `3-…` 后面
+  （`15` < `3`），补齐之后 `00015` 排在 `00003` 后面、`00016` 在最前。前导零不影响上面的
+  `Long.parseLong`（`00016` → 16），管理器那条判据照旧成立。
+
+历史：`3-1.0.0` ~ `15-1.4.1` 那批是补齐之前的名字，**保留不动**（各自挂着已发布的 Release，
+改名等于让那条 Release 失去指向）。从 `1.4.2`（tag `00016-1.4.2`）起一律五位。
 
 - **更新公告是手写的一份文件**：`docs/release-notes/<versionName>.md`（如 `docs/release-notes/1.3.4.md`）。
   钉版（`release.yml`）与上架（`publish.yml`）都只读它，再各自接一段版本行与包清单 ——
@@ -41,13 +47,13 @@
   （属 `publish.yml`，缺则「检查模块仓库的前置条件」跳过，只发存档）；
   `GITEE_TOKEN`（Gitee 私人令牌，勾 `projects` 权限，属 `release.yml` 最后一步，缺则
   「同步到 Gitee Release」整步跳过、只留一条 notice）。
-- **推的 tag 必须与源码里的版本号对上**（`<versionCode>-<versionName>` 或 `v<versionName>`），
+- **推的 tag 必须与源码里的版本号对上**（`<补齐五位的 versionCode>-<versionName>` 或 `v<versionName>`），
   对不上时 `校验 tag 与版本号一致` 这一步直接红。放宽的后果是「Release 挂在另一个名字上 ⇒
   发了新版而管理器不提示更新」，且流水线全绿、看日志看不出来。
 - **`versionCode` 只增不减**，预发布也占号（不涨号测试通道收不到更新提示）；`versionName` 带 `-`
   （如 `1.1.0-beta.1`）会被自动标成 prerelease、不抢 latest。
 - **tag 推上去就不再移动**：`git tag -f` + 强推会让历史版本指向漂移。打错了删远端 tag 重打
   （`git push origin :refs/tags/<tag>`），并把那两条 Release 一并处理。
-- 当前基线（2026-11-02）：`versionName = 1.3.3`、`versionCode = 11`（见 `app/build.gradle.kts`）。
+- 当前基线（2026-11-12）：`versionName = 1.4.2`、`versionCode = 16`（见 `app/build.gradle.kts`）。
   历史：第一个进仓库的版本是 `1.0.0`（tag `3-1.0.0`），`versionCode` 取 3 —— 1 / 2 已被历史包
   （手动发的 `0.1.0`、本地出的 `0.2.0`）占用。此后每涨一次版本，两边各多一条 Release、一一对应。

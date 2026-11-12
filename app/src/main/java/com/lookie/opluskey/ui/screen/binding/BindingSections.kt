@@ -21,11 +21,14 @@ import com.lookie.opluskey.ui.titleWithCount
  *  **一条命令都没有时不接点击**：那一格里已经是「去创建自定义命令」（它会先 `reset()`，
  *  是「新增」那条路），同一趟去处摆两个入口，点哪个都行反而让人以为标题是另一件事。
  *
+ *  **这一份自己被停用时也不接点击**（用户口径）：停用的键 / 组合不进「自定义命令」页 ——
+ *  那一趟是「给这一档配命令」，而这一档根本不接管按键。标题仍照画（条数是事实），只是不再可点。
+ *
  *  抽成一支有两个理由：两页的判据必须同一份（组合键那一页原先压根没接点击）；以及
  *  两边各写一遍的话，detekt 的长度上限会先替我们报警。
  */
 @Composable
-internal fun SettingsPage.SavedCommandsTitle() {
+internal fun SettingsPage.SavedCommandsTitle(clickable: Boolean = true) {
     val commands = configState.commands.value
     val hasCommands = commands.isNotEmpty()
     SectionTitle(
@@ -33,7 +36,7 @@ internal fun SettingsPage.SavedCommandsTitle() {
         //  那一格里摆的是「去创建自定义命令」，标题上写 0 正好对得上。
         text = titleWithCount(I18n.get(Strings.COMMAND_SAVED_COMMANDS, "自定义命令"), commands.size),
         click =
-            if (hasCommands) {
+            if (hasCommands && clickable) {
                 SectionTitleClick.Jump {
                     commandDraft.openListPage = true
                     navTo(Screen.COMMANDS)
@@ -45,7 +48,7 @@ internal fun SettingsPage.SavedCommandsTitle() {
 }
 
 /**
- * 「按键绑定」页的**纵向顺序** —— 按键设置 → 内置动作网格 → 已保存的命令 → 底部留白 → 入口浮层。
+ * 「按键绑定」页的**纵向顺序** —— 按键设置 → 常用命令 → 内置动作网格 → 已保存的命令 → 底部留白 → 入口浮层。
  *
  *  拆出来只是为了让 `BindingList` 只剩「参数 + 三条 effect」：这一页的纵向顺序里有一堆
  *  「哪一段之间该给间距」的细节（标题紧贴内容、内容之间才给档），和焦点账本混在一起时
@@ -145,10 +148,17 @@ internal fun SettingsPage.BindingGroups(
             SceneChainReleaseCard(target, settingsEnabled, followHint)
         }
 
+        //  —— 常用命令：**在按键设置下面、网格上面** ——
+        //  先摆「这一档怎么判」那张卡，再摆模块带的几条现成命令，最后才是整张动作网格。
+        //  三种目标共用（这一页就是三种共用的一份实现）；关掉显示时整段不画
+        //  （开关在「按键设置」页，见 `GeneralScreen`）。
+        CommonCommandsGroup(target, enabled)
+
         BuiltInGrid(st, enabled)
 
         // 「自定义命令」这一段**始终在**：没有命令时给一行「去创建自定义命令」。
-        SavedCommandsTitle()
+        //  小标题的跳转跟着这一份的启停走（停用了就不接点击，见 `SavedCommandsTitle`）。
+        SavedCommandsTitle(clickable = bindingTargetStopped(target) == null)
         CustomCommandsGrid(st, enabled, onCreateCommand)
     }
 

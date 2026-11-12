@@ -46,6 +46,9 @@ internal object Framework {
      *   广播也拦一遍
      * @param hostKeyService 其余场景的宿主服务 —— 也是「启动它把宿主抬出可冻结范围」用的那个服务
      * @param hostStartAppService 「打开应用」场景的宿主服务（框架按场景表里的 `click_action_info` 绑它）
+     * @param hostOnStartCommand 宿主服务上的启动入口方法名（框架的 `Service` 覆写名，不混淆）。
+     *   模块要掐掉它的正文 —— 那一支在锁屏 / 熄屏 / 游戏等条件下会把侧键设置页带到前台
+     *   （反编译依据见 `docs/device/side-key.md` 的「宿主服务的 onStartCommand 会打开设置页」）
      * @param hostHandlerSuffixes 宿主服务内部 Handler 的类名后缀**候选**（`XxxService$a` 里的 `a`）。
      *   它是**混淆名**：同一 ROM 内稳定、跨 ROM 不可预期。所以按候选写、运行时逐个试（与
      *   [strategyCandidates] 同一套口径），命中的那一个由 `findHostHandlerClass` 打进日志 ——
@@ -77,6 +80,7 @@ internal object Framework {
         val amsBroadcastEntries: Set<String>,
         val hostKeyService: String,
         val hostStartAppService: String,
+        val hostOnStartCommand: String,
         val hostHandlerSuffixes: List<String>,
         val hostHandleMessage: String,
         val hostSceneDispatchWhat: Int,
@@ -122,6 +126,7 @@ internal object Framework {
                 amsBroadcastEntries = setOf("broadcastIntentWithFeature", "broadcastIntent"),
                 hostKeyService = "com.oplus.gesture.server.ActionButtonKeyService",
                 hostStartAppService = "com.oplus.gesture.actionbuttonkey.quicklaunch.StartAppService",
+                hostOnStartCommand = "onStartCommand",
                 // 混淆名，本机实测是 `a`。换 ROM 时这里加一个候选即可（别的文件一个字不用改）
                 hostHandlerSuffixes = listOf("a"),
                 hostHandleMessage = "handleMessage",
@@ -164,6 +169,12 @@ internal object Framework {
 
     /** 「打开应用」场景的宿主服务（框架按场景表里的 `click_action_info` 绑它）。 */
     val HOST_START_APP_SERVICE: String get() = hooks.hostStartAppService
+
+    /**
+     * 宿主服务的启动入口方法名（`Service` 的覆写名）—— 模块要掐掉它的正文，见
+     * `host/SideKeyGestureHooks` 的「启动宿主服务只为唤醒 / 保活」那一节。
+     */
+    val HOST_ON_START_COMMAND: String get() = hooks.hostOnStartCommand
 
     /** 宿主服务内部 Handler 的类名后缀候选（`XxxService$a` 里的 `a`；见 [HookSet] 的说明）。 */
     val HOST_HANDLER_SUFFIXES: List<String> get() = hooks.hostHandlerSuffixes

@@ -230,7 +230,12 @@ data class KeyConfig(
     val clickThenLongReleaseOn: Boolean = false,
     val clickThenLongRelease: Action = Action.None,
     /**
-     * 判定侧要认到第几击 —— **只由宿主算好、随配置广播带过来**（同 [longIsSerial] 那一套）。
+     * 宿主算好的**最高绑定击数**（含场景里绑的那几档）—— **只由宿主算好、随配置广播带过来**
+     * （同 [longIsSerial] 那一套）。
+     *
+     *  它**不含**「单击后长按 ⇒ 数到第 2 击」那个下限：那一抬在两边各加一次（见 [judgeLimit] 与
+     *  [clicksForJudge]）。留着的正是「后面到底有没有人要」这个事实 —— 判定侧靠它决定单击要不要
+     *  等着看后面的连击，也靠它判「双击这一档是不是空的」（[doubleFallsBackToSingles]）。
      *
      *  0 = 这一位没给（老版本发的广播 / 从没写过这一项的配置）⇒ 判定侧退回 [boundClicks]
      *  的兜底，也就是「只看三档」。
@@ -387,7 +392,8 @@ data class KeyConfig(
             } ?: 0
 
     /**
-     * 判定侧实际要用的那一档：广播给了就用它，没给就按动作表算（老版本兼容）。
+     * 判定侧实际要用的那一档：广播那一列（[judgeLimit]）优先，没给就按动作表算（老版本兼容），
+     * 再抬上「单击后长按」那个下限。
      *
      *  **按广播那一列的上限钳一次**：`boundClicks` 来自 `extraClicks` 的键，手改配置可以写成 20，
      *  而注入侧收到的 `judgeClicks` 在 [ConfigFields.F_JUDGE_CLICKS] 那里被钳到 9 ——
@@ -403,9 +409,23 @@ data class KeyConfig(
     val clicksForJudge: Int
         get() =
             maxOf(
-                if (judgeClicks > 0) judgeClicks else boundClicks,
+                judgeLimit,
                 if (clickThenLongCounts) 2 else 0,
             ).coerceIn(0, ConfigFields.MAX_JUDGE_CLICKS)
+
+    /**
+     * 判定侧**只按动作表**该数到第几击 —— 广播那一列（[judgeClicks]）优先，老版本没给时按
+     * [boundClicks] 算。
+     *
+     *  与 [clicksForJudge] 的差别只有「单击后长按那个下限」：[clicksForJudge] 在它之上再抬到 2，
+     *  而「双击这一档其实是空的」（[doubleFallsBackToSingles]）要问的正是**这个数** —— 抬过下限
+     *  的那个数分不出「双击绑了动作」与「只是单击后长按要数到第 2 击」。
+     *
+     *  场景里绑的双击也在这个数里（`judgeClicks` 是宿主按场景表算好广播过来的），所以调用方
+     *  不必再单独问「场景有没有给双击配动作」。
+     */
+    private val judgeLimit: Int
+        get() = if (judgeClicks > 0) judgeClicks else boundClicks
 
     /**
      * 这次手势该执行哪个动作 —— **条件分支的唯一入口**。
@@ -544,6 +564,30 @@ data class KeyConfig(
                 !actionOf(GestureTrigger.Click(2)).isBound
 
     /**
+     * 双击这一档**绑的是无操作**、而「忽视无操作多击手势」开着 ⇒ 那两下**各算一次单击**。
+     *
+     *  只有「单击后长按」开着且真有动作时这一位才用得上：那种配置下判定侧不能在第一击抬手就收线
+     *  （要在第 2 击上等长按，见 [instantSingleNow]），于是两下快速轻点会被判成 `Click(2)` ——
+     *  而双击是无操作，用户看到的是「按两下什么都没发生」。开着这一位的意思就是不承认那几档
+     *  无操作手势，两下轻点该各执行一次单击（判定侧在第二击抬手那一刻连发两条 `Click(1)`，
+     *  见 `inject/input/GestureDetector` 的 `doubleFired` 那一支）。
+     *
+     *  三条同时成立才算：
+     *  · [instantSingle] 开着 —— 关着时「双击无操作 ⇒ 什么都不做」是既有行为，不是漏判；
+     *  · 后面**没有连击要等**（[judgeLimit] <= 1）。配了三击 / 四击、或场景里绑了双击时，
+     *    第 2 击是连击链上的一格，拆成两下单击会把那条链废掉；
+     *  · 双击没有绑动作（直接绑定那一半 —— 场景那一半已经在 [judgeLimit] 里了）。
+     *
+     *  为什么不用 [clicksForJudge]：它带着「单击后长按 ⇒ 下限 2」那一位，分不出
+     *  「双击绑了动作」与「只是这一档要数到第 2 击」—— 而本判据恰恰要在后一种情况成立。
+     */
+    val doubleFallsBackToSingles: Boolean
+        get() =
+            instantSingle &&
+                judgeLimit <= 1 &&
+                !actionOf(GestureTrigger.Click(2)).isBound
+
+    /**
      * 「单击后长按」松手那一刻该执行什么（按键自己那一格，不含场景）。
      *
      *  三位缺一位都是 `None`：这一档开着、松手开关开着、且**主档本身有事可做**
@@ -625,7 +669,12 @@ data class KeyConfig(
                 //  「这一档有没有人配」（= 场景里的 [sceneChain]）由宿主现算、随广播带过来，
                 //  与 [F_LONG_SERIAL] / [F_SCENE_RELEASE] 同一条路（见 `ConfigBroadcast.intent`）。
                 ConfigFields.F_SCENE_CHAIN to sceneChain,
-                ConfigFields.F_JUDGE_CLICKS to clicksForJudge,
+                //  发的是 [judgeLimit]（宿主按动作表算出的**最高绑定击数**，含场景），不是抬过下限的
+                //  [clicksForJudge]：「单击后长按 ⇒ 下限 2」那一抬两边各加一次（注入侧的 `clicksForJudge`
+                //  做的是同一件事，结果逐字相同），而注入侧要靠这个数回答「双击这一档到底有没有人要」
+                //  （[doubleFallsBackToSingles]）—— 收到抬过的数就分不出「双击绑了动作」与
+                //  「只是要数到第 2 击」。
+                ConfigFields.F_JUDGE_CLICKS to judgeLimit,
                 //  哪几档多击开着要广播：判定侧据此决定数不数到第 3 / 4 击
                 //  （它手上没有 `extra_clicks` 那张表，见 `ConfigFields.EXTRA_CLICKS_ON_EXTRA`）。
                 //  编成 `"3,4"`：`Kind` 只有 Bool / Number / Text 三档，集合走文本最省事；
@@ -885,6 +934,14 @@ data class GlobalConfig(
      *  只在界面层用（注入侧没有图标），所以**只有落盘那一列**。
      */
     val iconTintSeed: Int = DEFAULT_ICON_TINT_SEED,
+    /**
+     * **按键绑定页要不要露出「常用命令」那一段**（微信扫一扫这类现成命令的快捷入口）。
+     *
+     *  它是纯显示项：关掉只是那些行不画，已经绑上去的绑定一个字都不动。
+     *  只在界面层读 —— 注入侧不认识界面，所以**只有落盘那一列**、不进广播。
+     *  默认开：装上就看得见，嫌占地方再关（关的入口在「按键设置」页）。
+     */
+    val showCommonCommands: Boolean = DEFAULT_SHOW_COMMON_COMMANDS,
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     override val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
     /**
@@ -942,6 +999,7 @@ data class GlobalConfig(
                 ConfigFields.F_FOLLOW_DISPLAY_SIZE to followDisplaySize,
                 ConfigFields.F_PAGE_SCALE to pageScale,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
+                ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
                 ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
             ),
@@ -1003,6 +1061,9 @@ data class GlobalConfig(
 
         /** 随机图标配色：`0` = 关（默认），其余值当种子用。 */
         const val DEFAULT_ICON_TINT_SEED = 0
+
+        /** [GlobalConfig.showCommonCommands] 的默认值 —— 默认露出（装上就看得到）。 */
+        const val DEFAULT_SHOW_COMMON_COMMANDS = true
         const val DEFAULT_PAGE_SCALE = 100
         const val PAGE_SCALE_MAX = 150
 
@@ -1058,6 +1119,7 @@ data class GlobalConfig(
                 pageScale = v.number(ConfigFields.F_PAGE_SCALE).coerceIn(PAGE_SCALE_MIN, PAGE_SCALE_MAX),
                 // 与 pageScale 同一档：手改文件写进负数在这一层钳回「关」
                 iconTintSeed = v.number(ConfigFields.F_ICON_TINT_SEED).coerceAtLeast(0),
+                showCommonCommands = v.bool(ConfigFields.F_SHOW_COMMON_COMMANDS),
                 comboPassthrough = v.bool(ConfigFields.F_COMBO_PASSTHROUGH),
                 //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
                 comboWindowMs = v.number(ConfigFields.F_COMBO_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),

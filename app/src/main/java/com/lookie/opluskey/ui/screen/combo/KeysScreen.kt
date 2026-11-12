@@ -18,7 +18,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
@@ -110,11 +109,24 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
             ComboListSection(cfg, writable, atLimit)
         }
         //  **勾了任意一项就滑进这两颗**（用户口径）：编辑态、选中非空才出现，剩 0 项时自己滑出去。
+        //
+        //  「删除」有一档做不到：勾的**只有内置快捷键**时它删不掉（`removePicked` 会把它滤掉）。
+        //  以前那颗照样能按、先弹确认窗再回一句「不能删除」—— 两步空转，窗口里还写着「将删除 0 项」；
+        //  现在**不弹窗**，点一下直接说原因（判据与 `removePicked` 里那道过滤同一条）。
+        //  这一颗的外观不跟着变（用户口径「不要灰色」）：灰掉之后既不像能用也不像不能用。
+        val deletablePicked =
+            (KeysEditState.pickedKeys - KeyId.PLUS.id).isNotEmpty() || KeysEditState.pickedCombos.isNotEmpty()
         KeysEditFabs(
             visible = KeysEditState.editing && pickedCount > 0,
             turningOn = !pickedAnyEnabled(cfg),
             onToggle = { togglePickedEnabled() },
-            onDelete = { confirmDelete = true },
+            onDelete = {
+                if (deletablePicked) {
+                    confirmDelete = true
+                } else {
+                    hint(I18n.get(Strings.KEYS_BUILTIN_KEEP, "内置快捷键不能删除"), slot = "keys_del")
+                }
+            },
         )
     }
 
@@ -164,6 +176,10 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
  * 编辑态右下角那颗「删除」—— 位置与滑入滑出交给 [PageCornerFab]（与其它页的 FAB 同一份规格）。
  *
  *  显隐判据在调用点（编辑态 + 选中不为空）；它自己是颗实心圆，图标走 `onPrimary`。
+ *
+ *  「只勾了内置快捷键」时删除做不到（它被 `removePicked` 滤掉），但这一颗**外观一律不变**：
+ *  不做置灰 —— 灰掉之后它既不像能按、也不像真的禁用，还比旁边那颗（停用 / 启用）暗一档，
+ *  反倒像坏了；做不到的原因交给点下去那一句（用户口径「不要灰色」）。判据在调用点，它只负责画。
  */
 @Composable
 private fun BoxScope.KeysEditFabs(
@@ -182,11 +198,10 @@ private fun BoxScope.KeysEditFabs(
         ) {
             PageFabButton(
                 onClick = onToggle,
-                //  **必须 `compositeOver` 合一次**：COUI 暗色的层级色是半透明白（`secondaryContainer`
-                //  一带），直接交给 FAB 就是真透明 —— 底下的卡片会透上来，看着像颗幽灵按钮。
-                containerColor =
-                    COUITheme.colorScheme.secondaryContainer
-                        .compositeOver(COUITheme.colorScheme.surface),
+                //  **主题色**（用户口径：这一颗原来是灰底，读不出「可以按」）：`primary` 与
+                //  「确认」那一族同一个色号；不再走 `secondaryContainer` —— 那一档在暗色下是
+                //  半透明白，合过 `surface` 之后就是一片灰。
+                containerColor = COUITheme.colorScheme.primary,
             ) {
                 //  **图标跟着这一下要做什么，而不是「现在是什么状态」**（之前正好接反了：
                 //  该停用时画对勾、该启用时画叉）。启用用 `ToggleRight`（开关语义），
@@ -199,14 +214,21 @@ private fun BoxScope.KeysEditFabs(
                         } else {
                             I18n.get(Strings.KEYS_DISABLE, "停用")
                         },
-                    tint = COUITheme.colorScheme.onSecondaryContainer,
+                    tint = COUITheme.colorScheme.onPrimary,
                 )
             }
-            PageFabButton(onClick = onDelete) {
+            PageFabButton(
+                onClick = onDelete,
+                //  **危险色**（用户口径）：删除是不可撤销的，用 `error` 与上面那颗主题色分开 ——
+                //  两颗都是实心圆时只靠字形区分，拇指扫过来先看到的颜色才是那道保险。
+                containerColor = COUITheme.colorScheme.error,
+            ) {
                 Icon(
                     PageIcons.CommandDelete,
                     contentDescription = I18n.get(Strings.COMMON_DELETE, "删除"),
-                    tint = COUITheme.colorScheme.onPrimary,
+                    //  `onError` 而不是写死白色：Monet 深色档的 `error` 是一档浅红，配白字会糊
+                    //  （与确认窗那颗红色按钮同一对取色）。
+                    tint = COUITheme.colorScheme.onError,
                 )
             }
         }

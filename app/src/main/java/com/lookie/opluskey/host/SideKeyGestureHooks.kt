@@ -1,5 +1,7 @@
 package com.lookie.opluskey.host
 
+import android.app.Service
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -24,6 +26,9 @@ internal object SideKeyGestureHooks {
 
     /** 其余场景的宿主服务。 */
     private val KEY_SERVICE = Framework.HOST_KEY_SERVICE
+
+    /** 宿主服务的启动入口方法名（`Service` 的覆写名）—— 见 [hookKeyServiceStart]。 */
+    private val ON_START_COMMAND = Framework.HOST_ON_START_COMMAND
 
     /**
      * 收到它时宿主要按系统当前场景去开页面 / 起服务；模块接管侧键后必须把它吞掉，
@@ -89,6 +94,13 @@ internal object SideKeyGestureHooks {
     @Volatile
     private var installed = false
 
+    /**
+     * 「`onStartCommand` 正文已掐掉」那行判据报过没有 —— 那段正文每次唤醒都走，只报第一次
+     * （见 [hookKeyServiceStart]）。
+     */
+    @Volatile
+    private var startSwallowedLogged = false
+
     /** 主线程队列 —— 把诊断探测挪出安装回调用（见 [install]）。 */
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -121,6 +133,7 @@ internal object SideKeyGestureHooks {
         var n = 0
         n += hookService(module, loader, START_APP_SERVICE)
         n += hookService(module, loader, KEY_SERVICE)
+        n += hookKeyServiceStart(module, loader)
 
         installed = n > 0
         if (n > 0) {
@@ -188,6 +201,71 @@ internal object SideKeyGestureHooks {
                 if (what == SCENE_DISPATCH_WHAT) return@hookGuarded onSceneDispatch(chain, msg)
 
                 chain.proceed()
+            } != null
+        ) {
+            1
+        } else {
+            0
+        }
+    }
+
+    /**
+     * 掐掉宿主服务 `onStartCommand` 的正文 —— 模块启动它只为**唤醒 / 保活**，不是要它开页面。
+     *
+     * ## 正文里有什么（`ActionButtonKeyService.onStartCommand`，反编译核对）
+     *
+     * ```
+     * if (GestureUtil.isSupportActionButtonKey() && lb.d.a().d()) d()
+     *   → Handler.obtainMessage(1)  ⇒  handleMessage(what=1) → ActionButtonKeyService.a() → e()
+     *   → e() 就是「起 ActionButtonSettingsActivity」，也就是**被模块替换掉的模块页**
+     * ```
+     *
+     * `lb.d.d()` 是「当前有任一拦截条件成立」：锁屏 / 熄屏 / 游戏模式 / 免打扰 / 超级省电 /
+     * 用户还没设置完。**开机后那一段正是锁屏**，而模块的唤醒（`inject/input/GestureForwarder` 与
+     * `host/GestureReceiver` 的 keepProcessAwake）都走 `startService` ⇒ 用户看到的是
+     * 「刚开机按一下侧键，模块页自己弹出来」。
+     *
+     * ## 为什么整段掐掉是安全的
+     *
+     * - 唤醒：绑定那条路（`BIND_AUTO_CREATE`）本来就能把进程创建出来，不依赖这个正文；
+     * - 保活：要的是「本进程持有一个已启动的服务」这件事本身，正文对进程级别没有贡献；
+     * - 原生动作：框架找宿主走的是 **bind + `Messenger`**（`StartAppService` / 本服务的 `onBind`），
+     *   与 `onStartCommand` 无关 —— 掐掉它不影响任何一路手势派发。
+     *
+     * 失败的降级就是「锁屏时按侧键偶尔弹一下模块页」，不影响按键接管本身。
+     *
+     * @return 这一次装上算一个接管点（0 = 没装上，已记日志）
+     */
+    private fun hookKeyServiceStart(
+        module: XposedModule,
+        loader: ClassLoader,
+    ): Int {
+        val cls =
+            Reflect.findClass(loader, KEY_SERVICE) ?: run {
+                XLog.w("没找到宿主服务：$KEY_SERVICE（它的 $ON_START_COMMAND 不去碰）")
+                return 0
+            }
+        val m =
+            Reflect.method(
+                cls,
+                ON_START_COMMAND,
+                Intent::class.java,
+                Int::class.javaPrimitiveType!!,
+                Int::class.javaPrimitiveType!!,
+            ) ?: run {
+                XLog.w("${cls.name} 上没有 $ON_START_COMMAND(Intent, I, I) —— 这个方法名也随 ROM 变")
+                return 0
+            }
+        return if (module.hookGuarded(m) {
+                //  判据级：这一行是「模块页为什么不再自己弹出来」的唯一凭据，只能用 w；
+                //  而这条正文每次唤醒都会走（每个手势一条），只报第一次，之后压回 d 免刷屏。
+                if (!startSwallowedLogged) {
+                    startSwallowedLogged = true
+                    XLog.w("宿主服务 $ON_START_COMMAND：启动它只为唤醒 / 保活，不再顺带把设置页带到前台")
+                } else {
+                    XLog.d("宿主服务 $ON_START_COMMAND：正文已掐掉（这一下只为唤醒 / 保活）")
+                }
+                Service.START_NOT_STICKY
             } != null
         ) {
             1

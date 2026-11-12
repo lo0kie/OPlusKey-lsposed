@@ -90,3 +90,38 @@ W NotificationService: Package com.oplus.gesture is above allowed toast quota, t
 - 这条通道只在**注入侧是新包**时存在：换了包没重启，注入侧还是旧代码，提示会没有（重启即恢复）。
 - 失败提示（`FailureNotice`）仍由宿主自己弹：它不受「连按」影响，而换成注入侧弹的话，
   注入侧没起来时连失败都看不见。
+
+## 四十一、`notify:` —— 以**宿主应用的身份**往通知中心发一条通知（2026-11-12）
+
+与上面那两节不是一回事：`ACTION_TOAST` 那条是**模块自己的反馈**（执行时提示、失败提示），
+屏幕上闪一下就没了；`notify:正文` 是**用户主动要的通知**，落在通知中心里能留着。
+
+```
+notify:<正文>
+```
+
+- **发话人是宿主**（`com.oplus.gesture`）：动作在宿主进程里执行，`NotificationManager` 用哪个
+  Context 发，通知就挂在哪个包名下 —— 这里拿到的正是宿主那一份，所以通知的标题是**宿主应用名**
+  （`PackageManager` 取，已由宿主本地化），正文是 token 里那一段。模块自己那个包在宿主进程里
+  既没有通知渠道也没有界面。
+- **渠道** `opluskey_notice`（`IMPORTANCE_DEFAULT`，有提示音、不弹浮窗），名字同样用宿主应用名：
+  它只在系统设置里露一次，自造一句文案就得跟着翻译。
+- **小图标**用宿主的 `applicationInfo.icon`。**不能**用模块自己的 `R.drawable.*`：那串 id 是按
+  宿主的资源表解析的，落在那里是另一个资源 —— 通知栏会拿到一张错的图。
+- **同一段正文 = 同一个通知 id**（`hashCode`）：再按一次是替换那一条，不会堆一串一样的。
+  正文空着也发得出去（只有标题），不算「只有前缀」的坏配置（`Action.isBarePrefix`）。
+- **两道闸，都在宿主身上**（模块管不了）：Android 13 起的 `POST_NOTIFICATIONS`，以及「用户在系统
+  设置里把它的通知关掉了」（`areNotificationsEnabled`）—— 两道分开判，日志才答得出是谁关的。
+  真机实测（PLK110 / ColorOS 17.0.0.105）：`com.oplus.gesture` 的 `POST_NOTIFICATIONS` 是
+  `granted=true, flags=[SYSTEM_FIXED|GRANTED_BY_DEFAULT]`（`dumpsys package com.oplus.gesture`）。
+  任一道不过时这一档只记日志 + 报一句失败：用户至少知道「键生效了、只是系统不让发通知」。
+  判据行（`w`）：`已按宿主身份发通知：<包名>｜<标题>｜<正文>`；发不出去那条是
+  `发通知跳过：宿主（<包名>）不持有 POST_NOTIFICATIONS，或它的通知被关掉了`。
+- **Android Lint 的 `NotificationPermission`** 只看本模块清单里有没有声明这个权限，认不出「发通知的
+  是宿主」；实测在调用点先跑 `checkSelfPermission` 再返回，它照样红（不认运行时判据）。所以那一处
+  是带理由的 `@SuppressLint`（见 `NotifyAction.post` 的注释）；模块清单里声明这个它自己永不放的
+  权限只是把红灯糊过去。
+
+实现：`host/action/NotifyAction`（执行器）、`core/model/Action.Notify`（取值与解析）、
+`ui/model/PageCopy` 的「支持的命令格式」卡里那一行（`notify:<正文>`，只作说明 —— 这一档没有网格入口，
+和 `shell:` / `intent:` 一样靠命令输入框手写）。

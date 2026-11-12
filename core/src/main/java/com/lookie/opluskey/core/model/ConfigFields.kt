@@ -101,10 +101,15 @@ object ConfigFields {
     const val SCENE_CHAIN_EXTRA = "scene_chain"
 
     /**
-     * 判定侧要认到**第几击**（`KeyConfig.judgeClicks`）—— **只有广播这一列**。
+     * 宿主算出的**最高绑定击数**（`KeyConfig.judgeClicks`）—— **只有广播这一列**。
      *
      *  与 [LONG_SERIAL_EXTRA] 同一条道理：注入侧读不到配置文件，而它必须知道「这颗键最多
      *  配到第几击」才能决定单击 / 双击要不要等着看后面的连击 —— 这个数由宿主从动作表算好带过来。
+     *
+     *  发的是**没有加过下限**的那个数：「单击后长按 ⇒ 数到第 2 击」那一抬由两侧各自加一次
+     *  （宿主 `Config.clicksForJudge`、注入侧同一属性），所以两边算出来的结果逐字相同；
+     *  而注入侧还要拿它判「双击这一档有没有人要」（`KeyConfig.doubleFallsBackToSingles`），
+     *  收到抬过的数就分不出那两种情形。
      *  0 = 老版本发来的（不认识这一项）⇒ 注入侧退回「只认三档」。
      */
     const val JUDGE_CLICKS_EXTRA = "judge_clicks"
@@ -612,6 +617,12 @@ object ConfigFields {
     val F_ICON_TINT_SEED =
         Field(null, Kind.Number(GlobalConfig.DEFAULT_ICON_TINT_SEED, 0, Int.MAX_VALUE))
 
+    /**
+     * 按键绑定页露不露出「常用命令」那一段 —— **只有落盘那一列**：那是页面自己的显示项，
+     * 注入侧不读它（它也不认识界面）。
+     */
+    val F_SHOW_COMMON_COMMANDS = Field(null, Kind.Bool(GlobalConfig.DEFAULT_SHOW_COMMON_COMMANDS))
+
     /** `GlobalConfig` 的全部广播字段。 */
     val GLOBAL_FIELDS: List<Field> =
         listOf(
@@ -629,6 +640,7 @@ object ConfigFields {
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
             F_ICON_TINT_SEED,
+            F_SHOW_COMMON_COMMANDS,
         )
 
     // ── `Config` 自己那两位（正文顶层、都只落盘，不进广播）

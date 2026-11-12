@@ -26,17 +26,23 @@ missing=""
 [ -n "$VERSION_NAME" ] || missing="${missing}${missing:+、}versionName（app/build.gradle.kts）"
 [ -n "$VERSION_CODE" ] || missing="${missing}${missing:+、}versionCode（app/build.gradle.kts）"
 if [ -n "$missing" ]; then
-  echo "::error::抓不到 ${missing}；不要把空的版本值发出去（会建成 0-0.0.0 的 tag）"
+  echo "::error::抓不到 ${missing}；不要把空的版本值发出去（会建成 00000-0.0.0 的 tag）"
   exit 1
 fi
+
+# tag 的第一段**补齐到五位**（`00016`）：它按名字排序时要与版本顺序一致 —— 不补的话
+#   `15-1.4.1` 会排到 `3-1.0.0` 后面（第一段是字符串，`1` < `3`）。管理器拿它算更新时是
+#   `split("-", 2)` + `Long.parseLong`，前导零不影响解析（`00016` → 16）。
+#   从 1.4.2 起生效；`3-1.0.0` ~ `15-1.4.1` 那批旧名字保留不动（各自挂着已发布的 Release）。
+TAG_CODE=$(printf '%05d' "$VERSION_CODE")
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   {
     echo "build_id=${BUILD_ID}"
     echo "version_name=${VERSION_NAME}"
     echo "version_code=${VERSION_CODE}"
-    echo "tag=${VERSION_CODE}-${VERSION_NAME}"
+    echo "tag=${TAG_CODE}-${VERSION_NAME}"
   } >> "$GITHUB_OUTPUT"
 fi
 
-echo "版本 ${VERSION_NAME}（${VERSION_CODE}），构建 ${BUILD_ID}"
+echo "版本 ${VERSION_NAME}（${VERSION_CODE}），tag ${TAG_CODE}-${VERSION_NAME}，构建 ${BUILD_ID}"
