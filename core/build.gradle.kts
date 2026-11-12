@@ -317,7 +317,7 @@ kotlin {
 dependencies {
     // Xposed API：只在 `core/reflect` 那几处用到，运行时由 LSPosed 提供
     compileOnly("io.github.libxposed:api:102.0.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
 
     // JVM 单测：**只测本层里的纯函数**（动作字符串解析 / 配置编解码），不跑 Android、不跑真机。
     //
