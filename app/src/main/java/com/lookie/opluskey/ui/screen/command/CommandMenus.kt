@@ -21,6 +21,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
@@ -38,7 +39,6 @@ import com.lookie.opluskey.ui.boundAppName
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.actionRowView
 import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.selectedRowRing
 import com.lookie.opluskey.ui.sheetCardColors
 import com.lookie.opluskey.ui.state.CommandUiState
 import com.lookie.opluskey.ui.titleWithCount
@@ -193,24 +193,11 @@ internal fun SettingsPage.CommandTileMenu(
 // --------------------------------------------------------------- 添加命令（底部抽屉）
 
 /**
- * 抽屉候选表的两个开关 —— 与 [StepSheetSpec] 分开，只为把那个类的参数个数留在 detekt 的上限之下。
+ * 抽屉候选表的几个开关 —— 与 [StepSheetSpec] 分开，只为把那个类的参数个数留在 detekt 的上限之下。
  *
- *  两样都是「这次列什么」：排除哪几条已保存命令、要不要列「无操作」。
+ *  每一样都是「这次列什么」：要不要列「无操作」、剔掉哪几格关卡、排除哪一条已保存的命令。
  */
 internal class StepSheetFilter(
-    /**
-     * 这一次**不要列出来**的那几条命令（`cmd:<名字>`），空集 = 不排除。
-     *
-     *  编辑「命令 A」时，它自己也会出现在「已保存的命令」那一组里 —— 选中它就是把 A 塞进 A 的
-     *  某一步。执行侧虽然有一道环闸（`CommandFailure.TOO_DEEP`）会拦住，但那是**事后**报错：
-     *  用户点完才收到「套太深」。界面上直接不给这一行，比让他撞一次墙更省事。
-     *
-     *  **为什么是集合而不是一个名字**：编辑态下草稿名与库里那条的名字可以不同 —— 用户把 A 改成
-     *  B、还没保存时，草稿叫 B、库里那条叫 A。只按草稿名排除的话，A 仍留在候选里：选中它会把
-     *  A 塞进 B 的步骤，保存时 A 被摘掉、B 里留下一条悬空的 `cmd:A`，而成环检查按名字也查不出来
-     *  （目标已经不存在）。两个名字都要排除。
-     */
-    val excludeTokens: Set<String> = emptySet(),
     /**
      * 候选表里**要不要列「无操作」**。
      *
@@ -234,6 +221,17 @@ internal class StepSheetFilter(
      *  （写进 `longRelease`，见 `openAppPickerForRelease`）。
      */
     val excludeTiles: Boolean = false,
+    /**
+     * 「已保存的命令」那一组里**只列单条命令**（`true` = 只列单条）。
+     *
+     *  只给「多条命令的某一步」传：规则是**多条可以引用单条、但不能引用另一条多条**，于是
+     *  引用图只有「多条 → 单条」这一个方向，单条没有出边 —— 不可能成环，也就不需要任何环检测。
+     *  （用户口径：「单条命令无法引用任何命令，多条命令只能引用单条命令」。）
+     *
+     *  条件执行那几档传默认的 `false`：它们绑的是**绑定位**（`cmd:<名字>` 就是取值），
+     *  单条多条都合法。
+     */
+    val singleCommandsOnly: Boolean = false,
 )
 
 /**
@@ -349,15 +347,12 @@ internal fun SettingsPage.StepPickerSheet(
         }
     //  「已保存的命令」那一组是**动态**的（来自命令库），静态表里没有它的条目 —— 锚点按当前命令库
     //  现建一份。这一组都是 `cmd:<名字>`，点下去不再开下一层，锚点只用来撑住行组件那个参数。
+    //
+    //  多条命令的步骤那一趟只列**单条**（[StepSheetFilter.singleCommandsOnly]）：多条引用单条、
+    //  单条不引用任何东西，引用图里没有回边，环就不可能存在。
     val savedSpecs =
         configState.commands.value
-            //  单条与多条**都列**：条件执行那一支的动作就是 `cmd:<名字>`，多条命令完全合法；
-            //  多条命令的「某一步」引用另一条多条命令，执行侧也认（深度与环都有闸）。
-            //  以前这里只留单条，抽屉里于是看不到自己写的命令链。
-            //
-            //  **正在编辑的那条自己除外**（见 [StepSheetFilter.excludeTokens]）：引用自己就是环，
-            //  执行侧会报「套太深」，不如别让它出现在候选里。
-            .filter { it.token !in sheet.filter.excludeTokens }
+            .filter { !sheet.filter.singleCommandsOnly || it.kind == CommandKind.SINGLE }
             .map { ActionCatalog.commandSpec(it) }
     val savedAnchors = remember(savedSpecs) { savedSpecs.associateWith { PreciseClickState() } }
     // 开着二级菜单那一行的锚点（开的时候记下来，`ModeMenuPopups` 用）；
@@ -599,13 +594,13 @@ private fun stepSheetRow(
         //  未选中时给 `null`，让行组件按启用态走默认那档灰
         iconTint = if (view.selected) colors.primary else null,
         titleTint = if (view.selected) colors.primary else null,
+        //  选中那一行加一圈**内边框** —— 与「选择应用 / 选择界面」两页同一份
+        //  （见 `CardRow.Item.selected`）。抽屉里原来只有「行首 + 标题上主题色」这一档，
+        //  而这一列的每一行都带字形，扫下来很难定位当前是哪一档。
+        selected = view.selected,
         modifier =
             Modifier
                 .preciseClickAnchor(anchor)
-                //  选中那一行加一圈**内边框** —— 与「选择应用 / 选择界面」两页同一份
-                //  （见 `selectedRowRing`）。抽屉里原来只有「行首 + 标题上主题色」这一档，
-                //  而这一列的每一行都带字形，扫下来很难定位当前是哪一档。
-                .selectedRowRing(view.selected)
                 //  抽屉打开时**自动滚到这一行**（用户口径「抽屉自动定位到已选」）：requester
                 //  由 `PageSheet` 递下来，只有「当前这一档」那一行挂它 —— 挂两处的话壳不知道
                 //  该滚哪个。没挂上的抽屉什么都不发生（`LocalSheetBringIntoView` 为 null）。

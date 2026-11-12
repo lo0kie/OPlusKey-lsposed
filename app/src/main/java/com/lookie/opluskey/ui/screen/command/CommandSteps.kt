@@ -248,17 +248,11 @@ internal fun SettingsPage.SerialSteps() {
                     if (sheetAt != null && sheetAt >= 0) replaceStep(sheetAt, token) else addStep(token)
                 },
                 onDismiss = { stepSheet = null },
-                //  正在编辑的就是这条命令：候选里不再列它（引用自己＝环，执行侧只会报「套太深」）。
-                //  **两个名字都排除**：草稿名是用户刚改的、库里那条还叫 `editingName` —— 只排除草稿名
-                //  的话，旧名字那一行仍在候选里，选中它会把旧命令塞进新命令的步骤（见 `excludeTokens`）。
-                filter =
-                    StepSheetFilter(
-                        excludeTokens =
-                            setOfNotNull(
-                                Command(commandDraft.draft.name, commandDraft.draft.kind).token,
-                                commandDraft.draft.editingName?.let { Command(it, commandDraft.draft.kind).token },
-                            ),
-                    ),
+                //  多条命令的步骤**可以引用已保存的命令，但只限单条**（用户口径：「单条命令无法引用
+                //  任何命令，多条命令只能引用单条命令」）。于是引用图只有「多条 → 单条」一个方向、
+                //  单条没有出边 —— 不可能成环，执行侧也就不需要任何环检测。
+                //  单条那一栏本身仍由 `Action.hasSupportedFormat` 拦着，写不进 `cmd:`。
+                filter = StepSheetFilter(singleCommandsOnly = true),
             ),
     )
 }

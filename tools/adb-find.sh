@@ -8,6 +8,8 @@
 #
 # 四条路，从便宜到贵：
 #   0. **已经连着**：`adb devices` 里已有状态为 device 的，直接用，一次网络请求都不发；
+#      进脚本先 `drop_offline` —— 只摘上一次扫描留下的 `offline` 死传输，**不碰** device 状态的。
+#      （**不要用 `adb kill-server` 去清那堆垃圾**：连着的无线调试会一起断。）
 #   1. **缓存**：上一次连成的 `host:port` 在 `build/.adb-last`，先试它（同一台机器换 IP 时必然落空，
 #      但最常见的情况是「IP 没变」，这一条一击即中）；
 #   2. **mDNS**：`adb mdns services` 里 `_adb-tls-connect._tcp` 那几条 —— 手机的「无线调试」
@@ -38,6 +40,24 @@ say() { printf '%s\n' "$*" >&2; }
 live_targets() { adb devices | awk 'NR > 1 && $2 == "device" { print $1 }'; }
 
 is_live() { live_targets | grep -qx "$1"; }
+
+# 清掉 `offline` 那类死传输 —— **只清 offline，绝不碰 state=device 的**。
+#
+#  为什么要它：第 3 路扫描会对 /24 上每个开了 5555 的地址 `adb connect`，失败的那些会在
+#  adb 的传输表里留下一条 `offline`；攒几百条之后，**任何** `adb` 命令都会变成
+#  `error: more than one device/emulator`（真的连着的设备被这堆垃圾挡住）。
+#  曾经用 `adb kill-server` 去清 —— 那一下会把**正在用的**（无线调试 / `adb connect` 那条）
+#  一起断掉，比垃圾本身更疼。所以一律用 `adb disconnect <host:port>` 逐条摘，且只摘 offline。
+#
+#  只处理 `host:port` 形状：USB 的 `offline` 摘不掉（那是线的问题），留着也不会太多。
+drop_offline() {
+  local target
+  for target in $(adb devices | awk 'NR > 1 && $2 == "offline" { print $1 }' | tr -d '\r'); do
+    case "$target" in
+      *:*) adb disconnect "$target" >/dev/null 2>&1 || true ;;
+    esac
+  done
+}
 
 # 试一个 `host:port`：连上了返回 0。已经连着的不重复连（省一次 3 秒）。
 try_target() {
@@ -121,6 +141,11 @@ if [ -z "$ports" ]; then ports="$PORT_DEFAULT"; fi
 #  与 /24 扫描纯属浪费（最坏三分钟）。这一支放在**参数解析之后**：`succeed` 要读 `EXPORT`，
 #  而它是在上面刚赋值的（`set -u` 下提前读会直接报未定义）。
 #
+#  **先摘掉上一次扫描留下的 offline 垃圾**，再判「有没有连着」：那堆垃圾会让下面的
+#  `live_targets` 也照常工作，但任何**手工** `adb install` 都会被 "more than one device" 挡住 ——
+#  所以不等别人来清，进脚本第一件事就是把自己的烂摊子收掉。
+drop_offline
+#
 #  多条连接时取第一条 —— 与 `adb` 自己的默认选法一致；但要把「还有别的」说出来，
 #  否则「明明插着另一台，却装到了这一台」很难查。
 live=$(live_targets | tr -d '\r')
@@ -178,9 +203,15 @@ try_ip() {
   #  先探端口，再 connect：反过来会把整段扫描拖成分钟级（见 [port_open]）
   port_open "$host" "$port" || return 0
   adb connect "$target" >/dev/null 2>&1
-  live_targets | grep -qx "$target" && printf '%s\n' "$target"
+  if live_targets | grep -qx "$target"; then
+    printf '%s\n' "$target"
+  else
+    #  **连不上就当场摘掉**：留着就是一条 `offline`，扫完 /24 能留几百条，
+    #  之后任何单条 adb 命令都会 "more than one device"（见 [drop_offline]）。
+    adb disconnect "$target" >/dev/null 2>&1 || true
+  fi
 }
-export -f try_ip port_open live_targets
+export -f try_ip port_open live_targets drop_offline
 
 for port in $ports; do
   #  命中就把 `host:port` 打到一个临时文件

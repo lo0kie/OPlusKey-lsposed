@@ -2,6 +2,7 @@ package com.lookie.opluskey.ui
 
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
+import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.ui.state.CommandsSave
 import kotlin.random.Random
@@ -70,4 +71,22 @@ internal fun SettingsPage.setShowCommonCommands(on: Boolean) {
         cfg.copy(global = cfg.global.copy(showCommonCommands = on)),
         "show_common_commands=${if (on) 1 else 0}",
     ) { switchNotice(I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS, "显示常用命令"), on) }
+}
+
+/**
+ * 「常用命令」**整张清单**落盘 —— 钉一条 / 移除 / 改名 / 改「在按键绑定页显示」都走这里。
+ *
+ *  写整份而不是按 token 打补丁：这张表本来就小，而按 token 改要额外处理「用户刚把它删了」
+ *  这类中间态；整份替换是一次原子写，与配置其它段同一套。
+ *
+ *  第一次写就把 `null`（= 用模块自带那几条）换成真列表 —— 从那以后这份清单只认配置，
+ *  用户在页面上删掉自带的那几条就不会再冒回来。
+ */
+internal fun SettingsPage.setCommonCommands(list: List<CommonCommand>) {
+    val cfg = configState.config.value
+    if (cfg.global.commonCommands == list) return
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(commonCommands = list)),
+        "common_commands=${list.size}",
+    ) { I18n.get(Strings.COMMON_COMMANDS_SAVED, "常用命令已保存") }
 }

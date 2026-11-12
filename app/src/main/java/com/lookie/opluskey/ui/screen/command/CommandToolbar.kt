@@ -33,7 +33,7 @@ private fun SettingsPage.singlePayloadBlockedReason(): String? {
     val raw = commandDraft.draft.single
     if (raw.isBlank()) return I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令")
     if (!Action.hasSupportedFormat(raw)) {
-        return I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "开头要写 shell: / cmd: 前缀")
+        return I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "必须以支持的格式开头")
     }
     // 写法合法之后，再看这段字**解析出来到底做不做事**：`shell:` / `cmd:` 这种只有前缀的
     //  （[Action.isBarePrefix]），以及 `keyevent:` 空正文 / 认不出的键码 / `none`（解析成
@@ -50,17 +50,13 @@ private fun SettingsPage.singlePayloadBlockedReason(): String? {
 /**
  * 名字那一格的红字 —— 与「保存被禁用时那句话」共用这一支（同一件事只说一处）。
  *
- *  两条判据本身在 `CommandLibrary`（重名扫一遍命令库、`cmd:` 成环走引用图），这里只负责措辞。
+ *  判据本身在 `CommandLibrary`（重名扫一遍命令库），这里只负责措辞。
  */
 internal fun SettingsPage.commandNameProblem(): String? =
-    when {
-        commandNameDuplicated(commandDraft.draft.name, commandDraft.draft.editingName) -> {
-            I18n.get(Strings.COMMAND_NAME_DUPLICATE, "与已有命令重名，请换个名字")
-        }
-
-        else -> {
-            commandReferenceCycle()?.let { I18n.format(Strings.COMMAND_CYCLE_ERROR, it.joinToString(" → ")) }
-        }
+    if (commandNameDuplicated(commandDraft.draft.name, commandDraft.draft.editingName)) {
+        I18n.get(Strings.COMMAND_NAME_DUPLICATE, "与已有命令重名，请换个名字")
+    } else {
+        null
     }
 
 /**

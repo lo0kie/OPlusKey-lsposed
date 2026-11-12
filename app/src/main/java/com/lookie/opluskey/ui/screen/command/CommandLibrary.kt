@@ -18,7 +18,6 @@ import com.lookie.opluskey.core.model.mapActions
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.draftToLibrary
 import com.lookie.opluskey.ui.hint
 import com.lookie.opluskey.ui.model.GRID_GAP
 import com.lookie.opluskey.ui.saveCommands
@@ -38,6 +37,15 @@ internal fun SettingsPage.testCommand(cmd: Command) {
     if (!cmd.hasContent) {
         XLog.w("测试命令：这条命令是空的，不派发")
         hint(I18n.get(Strings.COMMAND_FAILURE_EMPTY, "这条命令是空的，补上内容再试"), slot = HINT_SLOT_COMMAND)
+        return
+    }
+    //  **格式不支持的同样拦在派发之前**（用户口径：不支持的命令也不允许测试）：那种正文解析出来
+    //  是 `none`，执行侧什么都不做 —— 与「空命令」同一个道理，先派发再报错只会读成「试过了、没反应」。
+    //  判据与保存那一栏共用 `hasSupportedFormat`（只针对单条：多条的每一步都是从列表里挑的，
+    //  天然是支持的格式）。两条入口（命令列表的菜单、表单页的菜单）都走这一支，闸只加在这里。
+    if (cmd.kind == CommandKind.SINGLE && !Action.hasSupportedFormat(cmd.single)) {
+        XLog.w("测试命令：正文格式不支持，不派发（${cmd.single.take(32)}）")
+        hint(I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "必须以支持的格式开头"), slot = HINT_SLOT_COMMAND)
         return
     }
     // 页面动作失败绝不外抛（本文件里其它入口都是这条纪律）：测试命令直接跑在点击回调上，
@@ -111,21 +119,6 @@ internal fun SettingsPage.commandNameDuplicated(
 }
 
 /**
- * 「这次保存会不会让 `cmd:` 引用成环」的判定（单一来源）：把**当前草稿**当成库里那条命令的新定义
- * 放进去（[draftToLibrary]），再从它出发走一遍引用图（[Command.cyclePath]）。
- *
- *  必须带草稿判、不能只看文件里那份：环常常是「编辑这一步」才产生的（把某一步改成 `cmd:` 引到
- *  自己上游那条）。成环本身不会卡死（执行侧有 `MAX_COMMAND_DEPTH` 兜底），但会**重复副作用** ——
- *  整条链跑到深度上限才停，写 shell 的那种动作会真跑 4~5 遍，所以保存这一步直接拦掉。
- *
- * @return 环上的名字（首尾同一个，如 `[A, B, A]`），没有环返回 `null`
- */
-internal fun SettingsPage.commandReferenceCycle(): List<String>? {
-    val (candidate, next) = draftToLibrary() ?: return null
-    return Command.cyclePath(candidate, next)
-}
-
-/**
  * 一行命令卡的**布局参数** —— 从签名里挪出来的一格。
  *
  *  一半是 detekt 的 `LongParameterList`（再加一颗格子 lambda 就是七个，`Modifier` 与它挤在一起
@@ -196,11 +189,13 @@ internal fun CommandTileRow(
 }
 
 /**
- * 删一条命令 —— 三处引用都要清，否则留下的是指向空处的东西：
- *  1. 绑到手势上的 `cmd:<名字>` → 改成「无操作」（不然按下去永远解析不到）；
- *  2. 别的多条命令里对它的引用 → 摘掉那一步；
- *  3. 别的**单条**命令正文里写的 `cmd:<被删名字>` → 改成 `none`（同理；早先只扫 SERIAL 的步骤，
- *    单条正文里那条引用会被留下来）。
+ * 删一条命令 —— 绑定上那一处要清，否则留下的是指向空处的东西：
+ *  绑到手势上的 `cmd:<名字>` → 改成「无操作」（不然按下去永远解析不到）。
+ *
+ *  **别的命令里那一步引用不在这里清**：多条命令的步骤可以引用单条（见
+ *  `StepSheetFilter.singleCommandsOnly`），删掉被引用的那条之后，那一步会在展开时找不到目标、
+ * 跳过并报 `NOT_FOUND`（`CustomCommandRunner.resolveStep`）。清它得再扫一遍整个命令库并整份重写，
+ * 而结果只是把「跳过 + 一句提示」换成「这一步凭空少掉」—— 后者更难看出发生过什么。
  */
 internal fun SettingsPage.removeCommand(cmd: Command) {
     val cfg = configState.config.value
@@ -209,10 +204,7 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
     // 删的就是正在编辑的那条 ⇒ 草稿一并清掉：留着的话「修改」按钮还挂着，
     // 点一下会把刚删的命令原样写回去。注意：这一步挪到**命令库真删掉之后**（见下）：
     // 库没删成时草稿要留着，否则用户正在编的那条被清空、而库里那条还在。
-    val next =
-        configState.commands.value
-            .filterNot { it.name == cmd.name }
-            .map { it.dropReference(cmd.token) }
+    val next = configState.commands.value.filterNot { it.name == cmd.name }
 
     when (saveCommands(next, "删除命令：${cmd.name}")) {
         CommandsSave.Ok -> {
@@ -243,9 +235,8 @@ internal fun SettingsPage.removeCommand(cmd: Command) {
  *
  *  · 在编 ⇒ 整份清掉（连 `editingName` 一起）：留着的话那一页的「修改」还挂着，点一下就把
  *    刚删掉的命令原样写回库；
- *  · 不在编 ⇒ 只摘掉对它的引用（单条正文里那一条改成「无操作」、多条命令里那一步整条去掉），
- *    口径与库里那两处一致。留着的话用户随手一保存就把它写回库：库里重新出现指向不存在命令的
- *    条目，而**重名与成环两道闸都不认它**（重名只看名字；成环遇到不存在的目标直接判「没有环」）。
+ *  · 不在编 ⇒ 什么都不用动：草稿里没有指向别的命令的东西（多条步骤里的引用按 token 存着、
+ *    由执行侧展开，不在这份草稿的编辑态里）。
  *
  *  **两页都要走**：删命令发生在列表那一页，只清当前 tab 的话，另一页仍留着同名的编辑态 ——
  *  切回去点「修改」还是会把刚删掉的命令写回库。判据写在这里一份就够，不按 tab 各写一遍。

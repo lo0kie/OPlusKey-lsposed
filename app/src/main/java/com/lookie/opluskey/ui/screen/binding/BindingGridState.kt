@@ -49,7 +49,10 @@ internal class BindingGridState(
     val specs: List<ActionCatalog.Spec>,
     /** 「应用控制」格那一层菜单选完之后进「选择应用」页（为**这一档**挑，写回也落在 [target] 上）。 */
     val onAppControl: (BindingTarget, Boolean) -> Unit,
-    /** 入口格被点开时进「控制中心磁贴」页（为**这一档手势**挑）。 */
+    /**
+     * 建出来的那一刻圈落在哪一格 —— [specs] 里当前选中项的下标；
+     * **`-1` = 这一档绑的东西不在网格里**（判据与 [focusedIndex] 那条同一份）。
+     */
     initialFocus: Int,
 ) {
     /** 这一张网格是哪一档手势 —— 折叠清单 / 入口格菜单都按它判（见 [BindingTarget.gesture]）。 */
@@ -108,13 +111,17 @@ internal class BindingGridState(
     val focusers: List<FocusRequester> = List(specs.size) { FocusRequester() }
 
     /**
-     * 当前高亮的格子（方向键据此算下一个）。
+     * 当前高亮的格子（方向键据此算下一个）；**`-1` = 这一档绑的东西不在网格里，一格都不亮**。
      *
      *  `onFocusChanged` 报的是**子树里**那个焦点目标的状态，而焦点目标是 `ActionTile` 里自己加的
      *  `focusTarget()` —— 与 `onFocusChanged` 挂在同一层，它看不见 ⇒ `requestFocus()` 明明返回
      *  true，回调却永远是 `focused=false`。与其去跟修饰符顺序较劲，不如「**谁请求焦点谁记账**」：
      *  焦点只由两处移动（进场重定位 / 方向键）。**点击不挪** —— 焦点圈只跟随选中态，
      *  否则「打开应用」这种入口格会把圈骗过去、退回来又跳回选中项。
+     *
+     *  `-1` 不是异常态：绑定可能是清单外的写法（「常用命令」那一段的 `cmd:common.*`、命令库里
+     *  删掉的 `cmd:`、手改配置写进来的任意串）。这时网格里没有任何一格代表它，圈必须收起来
+     *  —— 落到第 0 格就是「选中的是常用命令，框却套在『无操作』上」。
      */
     var focusedIndex by mutableIntStateOf(initialFocus)
 
@@ -178,7 +185,9 @@ internal fun SettingsPage.rememberBindingGridState(
             groups = groups,
             specs = specs,
             onAppControl = onAppControl,
-            initialFocus = if (selectedIndex in specs.indices) selectedIndex else 0,
+            //  直接取 `selectedIndex`（`-1` 也照收）：绑的是清单外的写法时网格里没有对应格，
+            //  一格都不该亮（见 [focusedIndex]）。
+            initialFocus = selectedIndex,
         )
     }
 }
@@ -199,6 +208,8 @@ internal fun SettingsPage.rememberBindingGridState(
  *    圈自然落回选中项。
  *  · 先请求**页面 View** 的 Android 焦点，再请求 Compose 内部焦点：按键事件按 Android 焦点派发，
  *    只请求 Compose 焦点的话，在「页面 View 从未拿过焦点」时按键仍然进不来。
+ *  · **绑的东西不在网格里时不亮任何一格**（`selectedIndex` 为 `-1`，见 [BindingGridState.focusedIndex]）
+ *    —— 那是「常用命令」那一段这类清单外写法的正常态，不是找不到选中项。
  *
  * @param active 这一页是不是 pager 的当前页（非当前页不抢焦点）
  * @param subject 日志主语（`按键绑定` / `组合按键`），排查时能看出是哪一页在抢
@@ -210,13 +221,16 @@ internal fun SettingsPage.BindingGridFocus(
     subject: String,
 ) {
     val current = st.target.actionIn(configState.config.value)
-    // 当前选中的那一项（配置里是清单外的写法时为 -1 ⇒ 焦点退回第一项）
+    // 当前选中的那一项。**`-1` 原样保留**：绑的是清单外的写法（「常用命令」的 `cmd:common.*`、
+    //  命令库里删掉的 `cmd:`）时网格里没有一格代表它 —— 归到第 0 格就是把框套在「无操作」上
+    //  （真机反馈「选中常用命令，高亮边框却在无操作处」）。
     val selectedIndex = st.specs.indexOfFirst { ActionCatalog.isSelected(it, current) }
     val overlayOpen = overlays.hasOpen()
     LaunchedEffect(st.specs, selectedIndex, active, overlayOpen) {
         if (!active || overlayOpen) return@LaunchedEffect
-        val seat = selectedIndex.coerceAtLeast(0)
-        if (seat != st.focusedIndex) st.focusedIndex = seat
+        if (selectedIndex != st.focusedIndex) st.focusedIndex = selectedIndex
+        //  页面 View 的焦点照旧请求（方向键按 Android 焦点派发，没这一下按键进不来）；
+        //  格子那一份只在真的有一格该亮时请求 —— `getOrNull(-1)` 本来也是 null，这里写明意图。
         val viewFocus = viewTree.rootView?.requestFocus() ?: false
         val tileFocus = st.focusers.getOrNull(st.focusedIndex)?.requestFocus() ?: false
         XLog.w("$subject：焦点落在 index=${st.focusedIndex} viewFocus=$viewFocus tileFocus=$tileFocus")
@@ -376,7 +390,9 @@ private fun BindingGridState.moveFocus(
     intent: KeyIntent,
 ): Int {
     val row = rows.indexOfFirst { from in it }
-    if (row < 0) return from
+    //  **圈还没落下来**（`from` 是 -1：这一档绑的是清单外的写法，见 [focusedIndex]）时，
+    //  按一下任意方向键就把圈放到第一格 —— 不这么收，`indexOfFirst` 回 -1，圈永远动不了。
+    if (row < 0) return rows.firstOrNull()?.firstOrNull() ?: from
     val col = rows[row].indexOf(from)
     val line = rows[(row + intent.rowStep).coerceIn(0, rows.lastIndex)]
     return line[(col + intent.colStep).coerceIn(0, line.lastIndex)]

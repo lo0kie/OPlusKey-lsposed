@@ -256,7 +256,6 @@ object CommandLibrary {
             XLog.w("读命令库：${elements.size} 条一条都认不出 ⇒ 按读不懂处理（不拿空表覆盖）")
             return Load.Unreadable
         }
-        reportDanglingRefs(commands)
         return Load.Ok(commands)
     }
 
@@ -323,31 +322,6 @@ object CommandLibrary {
         val inode = inodeOf(f)
         if (inode != 0L) cache = Cached(f.lastModified(), f.length(), inode, commands)
         return true
-    }
-
-    /**
-     * 报一次**悬空引用** —— 某条命令引用了库里根本不存在的 `cmd:<名字>`。
-     *
-     *  这种条目执行时必然是 `NOT_FOUND`（按下去只弹一句「命令不存在」），可它在界面上好好列着。
-     *  来路是手改文件，或删命令时别处被漏清（正常删除路径会顺手摘掉引用，见
-     *  `ui/screen/command/CommandLibrary.removeCommand`）。
-     *
-     *  **只报不改**：替用户清掉那一步、或者改成「无操作」，都是在动他的配置；而这一行日志能让
-     *  「按下去没反应」当场有答案。判据与改名 / 删引用同源（[Command.referencedNames]）。
-     */
-    private fun reportDanglingRefs(commands: List<Command>) {
-        if (commands.isEmpty()) return
-        val names = commands.mapTo(HashSet(commands.size)) { it.name }
-        val missing = LinkedHashSet<String>()
-        for (c in commands) {
-            for (ref in c.referencedNames()) if (ref !in names) missing += ref
-        }
-        if (missing.isNotEmpty()) {
-            XLog.w(
-                "命令库有悬空引用（cmd:<名字> 指向不存在的命令）：${missing.joinToString()} —— " +
-                    "执行到那一步会是 NOT_FOUND，界面上仍会列着",
-            )
-        }
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.model
 
+import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.PathData
 import androidx.compose.ui.graphics.vector.PathNode
 import kotlin.math.sqrt
@@ -20,7 +21,7 @@ import kotlin.math.sqrt
  *  [Cycle] 是唯一一个「不是动词」的角标：它标的是响铃状态里的「循环」那一档（按一下轮换三档），
  *  底图是铃铛，角标是一圈箭头。
  */
-internal enum class Badge { Plus, Minus, Gear, Cycle, Pause, Power, TriangleUp, TriangleDown }
+internal enum class Badge { Plus, Minus, Gear, Cycle, Pause, Power, TriangleUp, TriangleDown, Hash }
 
 /**
  * 角标在 24 格里占的那块地 —— 圆心是角标中心，半径见 [notch]。
@@ -81,6 +82,9 @@ private val Badge.inkRadius: Float
                 Badge.TriangleUp -> TRI_INK
 
                 Badge.TriangleDown -> TRI_INK
+
+                //  井号看四条笔的端点
+                Badge.Hash -> HASH_ARM
             }
 
 /** 这一档角标占的缺口。 */
@@ -91,6 +95,27 @@ internal fun notch(badge: Badge): Notch =
         radius = badge.inkRadius + NOTCH_GAP,
         clearance = badge.inkRadius + RAY_GAP,
     )
+
+/**
+ * **方缺角**的起算点：从这一点到右下角那一块要被切掉（x / y 各取这个值）。
+ *
+ *  只给「底图是图标库整颗字形」的那一路用（见 `DrawnIconCanvas.badgedIcon`）：那种底图是**闭合轮廓**，
+ *  拿 [notch] 的圆去咬会在轮廓上留一段月牙弧，读起来像图标破了 —— 手绘那几族才是圆缺口，
+ *  因为它们的底图是细笔画，圆只削到笔画末端。
+ *
+ *  边长 = 角标墨迹 + 一圈**很窄**的留白（[CORNER_GAP]），这是两个错处夹出来的一个值：
+ *  · 留太宽（试过 2 格）：边界被推到离角标挺远的地方，底图那些被切断的笔画就在**半空里留下两截
+ *    断头** —— 终端框的下边、气泡的右边各剩一小段，看着像图标坏了（真机口径「残留一点点线条」
+ *    「线条从中间被切开」）；
+ *  · 留太窄（试过 0.8 格）：缺口几乎贴着角标，看不出「缺了一块」。
+ *
+ *  所以取 1.2：边界刚好罩住角标墨迹，切出来的断头就落在角标自己的笔画边上，不再悬空。
+ *  [NOTCH_GAP] 那 3.3 格是按细弧调的，套在方形上会把半个图标切掉，不能直接借。
+ */
+internal fun cornerNotchStart(badge: Badge): Float = BADGE_CENTER - badge.inkRadius - CORNER_GAP
+
+/** 方缺角那一圈留白 —— 为什么是 1.2，见 [cornerNotchStart]。 */
+private const val CORNER_GAP = 1.2f
 
 /**
  * 切底图用的缺口半径 —— 角标墨迹 + 这一圈留白，由调用方自己定。
@@ -131,28 +156,11 @@ internal fun badgePath(badge: Badge): List<PathNode> =
             }
 
             Badge.Gear -> {
-                //  一圈（半径 [GEAR_RING]）
-                moveTo(c + GEAR_RING, c)
-                arcToRelative(GEAR_RING, GEAR_RING, 0f, isMoreThanHalf = false, isPositiveArc = true, -GEAR_RING * 2, 0f)
-                arcToRelative(GEAR_RING, GEAR_RING, 0f, isMoreThanHalf = false, isPositiveArc = true, GEAR_RING * 2, 0f)
-                //  六颗齿：正上起、每 60° 一颗，从环上伸到 [GEAR_TOOTH]
-                GEAR_DIRECTIONS.forEach { (ux, uy) ->
-                    moveTo(c + ux * GEAR_RING, c + uy * GEAR_RING)
-                    lineTo(c + ux * GEAR_TOOTH, c + uy * GEAR_TOOTH)
-                }
+                drawGear()
             }
 
             Badge.Cycle -> {
-                //  照图标库 `calendar-repeat` 右下角那一笔 —— 那套图标里现成的「角标版 repeat」：
-                //  一段 3/4 的弧（r=3）加两笔箭头，整体平移到角标中心 (19,19)。
-                //  坐标一个没改，只是平移了 (0, +1)：原图标里那一笔的包围盒中心是 (19,18)。
-                moveTo(20f, 15f)
-                lineTo(22f, 17f)
-                lineTo(19f, 17f)
-                moveTo(20f, 19f)
-                lineTo(22f, 17f)
-                moveTo(21f, 17f)
-                arcToRelative(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = false, 0f, 5.236f)
+                drawCycle()
             }
 
             Badge.Pause -> {
@@ -186,8 +194,58 @@ internal fun badgePath(badge: Badge): List<PathNode> =
                 moveTo(c, c - POWER_BAR)
                 lineTo(c, c)
             }
+
+            Badge.Hash -> {
+                //  井号（root 的提示符）：两竖 + 两横，四条各 [HASH_ARM] 半长，不画斜 ——
+                //  7 格见方里再斜一下就糊成一团，方方正正反而更像提示符本身
+                moveTo(c - HASH_GAP, c - HASH_ARM)
+                lineTo(c - HASH_GAP, c + HASH_ARM)
+                moveTo(c + HASH_GAP, c - HASH_ARM)
+                lineTo(c + HASH_GAP, c + HASH_ARM)
+                moveTo(c - HASH_ARM, c - HASH_GAP)
+                lineTo(c + HASH_ARM, c - HASH_GAP)
+                moveTo(c - HASH_ARM, c + HASH_GAP)
+                lineTo(c + HASH_ARM, c + HASH_GAP)
+            }
         }
     }
+
+/**
+ * 齿轮角标 —— 一圈环加六颗齿。
+ *
+ *  单独一支只因为它比别的角标长得多（环 + 逐个算齿的坐标），跟着 `when` 摆在里面会把那一支
+ *  顶过 detekt 的长度上限。画法与数值没有变，仍然是「照图标库 `bell-cog` 那一颗」。
+ */
+private fun PathBuilder.drawGear() {
+    val c = BADGE_CENTER
+    //  一圈（半径 [GEAR_RING]）
+    moveTo(c + GEAR_RING, c)
+    arcToRelative(GEAR_RING, GEAR_RING, 0f, isMoreThanHalf = false, isPositiveArc = true, -GEAR_RING * 2, 0f)
+    arcToRelative(GEAR_RING, GEAR_RING, 0f, isMoreThanHalf = false, isPositiveArc = true, GEAR_RING * 2, 0f)
+    //  六颗齿：正上起、每 60° 一颗，从环上伸到 [GEAR_TOOTH]
+    GEAR_DIRECTIONS.forEach { (ux, uy) ->
+        moveTo(c + ux * GEAR_RING, c + uy * GEAR_RING)
+        lineTo(c + ux * GEAR_TOOTH, c + uy * GEAR_TOOTH)
+    }
+}
+
+/**
+ * 循环角标 —— 一段 3/4 的弧加两笔箭头。
+ *
+ *  照图标库 `calendar-repeat` 右下角那一笔（那套图标里现成的「角标版 repeat」），整体平移到角标
+ *  中心 (19, 19)。坐标一个没改，只是平移了 `(0, +1)`：原图标里那一笔的包围盒中心是 (19, 18)。
+ *
+ *  单独一支的理由与 [drawGear] 相同（长度）。
+ */
+private fun PathBuilder.drawCycle() {
+    moveTo(20f, 15f)
+    lineTo(22f, 17f)
+    lineTo(19f, 17f)
+    moveTo(20f, 19f)
+    lineTo(22f, 17f)
+    moveTo(21f, 17f)
+    arcToRelative(3f, 3f, 0f, isMoreThanHalf = true, isPositiveArc = false, 0f, 5.236f)
+}
 
 /**
  * 一段圆弧（圆心 y 恒为 12）与缺口圆的交点，取**靠上**那个 —— 弧就在这一点收笔。
@@ -272,6 +330,17 @@ private const val BADGE_CENTER = 19f
 
 /** 加号 / 减号的半臂长（横竖各 6 格，与 `bell-plus` 那颗同宽）。 */
 private const val BADGE_ARM = 3f
+
+/**
+ * 井号角标（「以 root 执行」）的半臂长 —— 四条笔的端点离角标中心 3.2 格。
+ *
+ *  比 [BADGE_ARM] 略长：井号是四条**互相平行**的短线拼出来的，端点那一截在视觉上会「缩」进去一点，
+ *  与加号同长时整颗看着小一圈。
+ */
+private const val HASH_ARM = 3.2f
+
+/** 井号那两横 / 两竖之间的距离（半间距）—— 间距再大中间就空了，四条笔读成四段。 */
+private const val HASH_GAP = 1.5f
 
 /** 减号的半臂长 —— 比 [BADGE_ARM] 短 0.4：光是一条横线时看上去更长，得收一点才与加号同档。 */
 private const val MINUS_ARM = 2.6f

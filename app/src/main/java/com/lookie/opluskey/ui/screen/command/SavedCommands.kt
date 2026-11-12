@@ -404,12 +404,12 @@ private val TILE_ACTION_CORNER = 8.dp
  *
  *  「随机图标配色」开着时，类型图标用**它自己那一色**；关着时退回卡片的内容色
  *  （[appCardColors] 里的 `onSurfaceContainer`，与摘要那一档同源）。
- *  单条命令按**自己的 root 档**取字形（su / 非 su 两颗字，见 `commandIcon`）：
+ *  单条命令按**自己那种写法**取底图、以 root 执行时右下角加一颗井号角标（见 `commandIcon`）：
  *  列表里要能一眼看出哪几条会提权。
  */
 @Composable
 private fun CommandTileIcon(cmd: Command) {
-    val tileIcon = commandIcon(cmd.kind, cmd.steps.size, cmd.root)
+    val tileIcon = commandIcon(cmd.kind, cmd.steps.size, cmd.root, cmd.single)
     //  「随机图标配色」那一档同样要过渡：一次拨开关，整屏卡片的类型图标一起换色 ——
     //  硬切在这里是一整片跳，比单颗图标明显得多。关着时退回卡片的内容色（见 `appCardColors`）。
     val iconTint by animateColorAsState(

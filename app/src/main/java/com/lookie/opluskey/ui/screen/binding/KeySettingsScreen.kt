@@ -2,7 +2,6 @@ package com.lookie.opluskey.ui.screen.binding
 
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
@@ -23,7 +22,6 @@ import com.lookie.opluskey.ui.OwnField
 import com.lookie.opluskey.ui.OwnSettingsCard
 import com.lookie.opluskey.ui.OwnSettingsValues
 import com.lookie.opluskey.ui.PageScrollColumn
-import com.lookie.opluskey.ui.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
@@ -87,14 +85,15 @@ internal fun SettingsPage.KeySettingsScreen(
         //  它们**不是** `OwnSettings` 那一族里的一项：下面那张卡管「接口 / 振动 / 提示」，
         //  这里管「有没有这一档」，所以也**不吃**那颗总开关（见 `KeyConfig.extraClicksOn`）。
         //
-        //  上边距取 `SECTION_TITLE_PAD_TOP`：这张卡上面没有小标题，不让位就贴着顶栏 ——
-        //  与「按键绑定」页那条「系统场景」同一档（见 `BindingList`）。
+        //  小标题与 `OwnSettingsCard` 里那三个同构（那一支也是「一个标题带一张卡」）。
+        //  **卡片不再自己让顶边距**：那个 `SECTION_TITLE_PAD_TOP` 是「上面没有标题」时的替代品，
+        //  加了标题之后它自带同一档上间距，两处都给就是双份空隙。
         if (target is SettingsTarget.Key) {
+            SectionTitle(I18n.get(Strings.KEY_SETTINGS_MULTI_CLICK, "多击手势"))
             ExtraClicksCard(
                 target = target,
                 cfg = cfg,
                 enabled = pageEnabled,
-                modifier = Modifier.padding(top = SECTION_TITLE_PAD_TOP),
             )
         }
 
@@ -143,11 +142,9 @@ private fun SettingsPage.ExtraClicksCard(
     target: SettingsTarget.Key,
     cfg: Config,
     enabled: Boolean,
-    modifier: Modifier = Modifier,
 ) {
     val key = cfg.key(target.id)
     CardList(
-        modifier = modifier,
         rows =
             listOf(
                 extraClickRow(target, key, COUNT3, enabled),
@@ -493,6 +490,6 @@ private fun SettingsPage.commitOwnField(
 private fun ownCardTitles(): OwnCardTitles =
     OwnCardTitles(
         master = I18n.get(Strings.KEY_SETTINGS_SECTION, "总开关"),
-        interfaceTitle = I18n.get(Strings.GENERAL_SECTION_INTERFACE, "接口选择"),
+        interfaceTitle = I18n.get(Strings.GENERAL_SECTION_INTERFACE, "接口与显示"),
         behavior = I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"),
     )

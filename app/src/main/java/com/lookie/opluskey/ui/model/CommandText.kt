@@ -172,8 +172,8 @@ internal fun stepIcon(
     if (!isCommandRef(token)) return actionIcon(ActionCatalog.canonicalToken(token))
     val name = token.removePrefix(Command.PREFIX)
     val ref = commands.firstOrNull { it.name == name } ?: return PageIcons.CommandSingle
-    //  单条命令按它**自己的** root 档取字形（su / 非 su 是两颗字），与命令列表里那张卡同一条判据
-    return commandIcon(ref.kind, ref.steps.size, ref.root)
+    //  单条命令按它**自己那种写法**取底图、root 那档加井号角标，与命令列表里那张卡同一条判据
+    return commandIcon(ref.kind, ref.steps.size, ref.root, ref.single)
 }
 
 /**

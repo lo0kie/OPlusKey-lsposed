@@ -3,6 +3,7 @@ package com.lookie.opluskey.ui.screen
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.LongPressEdit
@@ -89,6 +90,12 @@ internal fun SettingsPage.writeToken(
             if (target.index >= 0) replaceStep(target.index, token) else addStep(token)
         }
 
+        // 「常用命令」那张清单：挑中的应用 / 结束应用追加成新的一条，然后自己退页（同 [PickTarget.Release]
+        //  的纪律 —— 调用方拿到 true 就不要再补一次 `goBack()`）。
+        PickTarget.CommonCommand -> {
+            writeCommonCommand(Action.parse(token))
+        }
+
         // 写的是**进这一页时那个手势**（见 picker.gesture），不是 pager 的当前页
         // —— 这一页不属于 pager。
         null -> {
@@ -100,21 +107,44 @@ internal fun SettingsPage.writeToken(
                     XLog.w("选择应用：这一趟没有目标手势（gesture=null），确认无效 —— 请从「按键绑定」页那一格进来")
                     return false
                 }
+            // 写回**进这一页时那一格**：场景动作页（`picker.sceneAt` 非负）写那一块的这一档，
+            //  组合键那一页（`picker.comboId` 非空）写它那一档，否则写当前在编辑的那颗键。
+            //  判据只有这两处 —— 不按「当前在哪一页」判：退场动画期间栈顶可能已经变了，
+            //  按页面判会把动作写到上一页那颗键上。三选一那一支见 [pickTargetOf]。
             pickToken(
                 token,
-                // 写回**进这一页时那一格**：组合键那一页（`picker.comboId` 非空）写它那一档，
-                //  场景动作页（`picker.sceneAt` 非负）写那一块的这一档，
-                //  否则写当前在编辑的那颗键。判据只有这两处 —— 不按「当前在哪一页」判：
-                //  退场动画期间栈顶可能已经变了，按页面判会把动作写到上一页那颗键上。
-                picker.sceneAt
-                    .takeIf { it >= 0 }
-                    ?.let { BindingTarget.Scene(branchDraftNow(), it, g, branchDraft.comboId) }
-                    ?: picker.comboId
-                        ?.let { BindingTarget.Combo(it, g) }
-                    ?: BindingTarget.Key(KeyWatchState.editing(configState.config.value), g),
+                pickTargetOf(
+                    gesture = g,
+                    sceneAt = picker.sceneAt,
+                    comboId = picker.comboId,
+                    scene = { BindingTarget.Scene(branchDraftNow(), picker.sceneAt, g, branchDraft.comboId) },
+                    key = BindingTarget.Key(KeyWatchState.editing(configState.config.value), g),
+                ),
                 appName,
             )
         }
+    }
+}
+
+/**
+ * 「写回哪一格」的三选一 —— 判据只有 [sceneAt] / [comboId] 两处（见 `writeToken` 里那段说明）。
+ *
+ *  单独一支是为了让 [writeToken] 留在 detekt 的 `CyclomaticComplexMethod` 之内：那一位是**落点表
+ *  的分派器**，每多一个落点必然多一个分支，把三选一的判定也摊在里面就顶线了。这里不碰页面状态
+ *  （[scene] / [key] 由调用点现算，用 lambda 只为在走不到时不算 [key]）。
+ */
+private fun pickTargetOf(
+    gesture: GestureTrigger,
+    sceneAt: Int,
+    comboId: String?,
+    scene: () -> BindingTarget,
+    key: BindingTarget,
+): BindingTarget {
+    val combo = comboId?.let { BindingTarget.Combo(it, gesture) }
+    return when {
+        sceneAt >= 0 -> scene()
+        combo != null -> combo
+        else -> key
     }
 }
 
@@ -142,6 +172,8 @@ internal fun SettingsPage.onAppPicked(
     // 「松手执行额外动作」那一趟同样自己退页（`PickTarget.Release` 分支里 `popBackStack()`），
     //  这里再补一次 `goBack()` 会一次退两层、直接回到首页。
     val forRelease = picker.forRelease
+    // 「常用命令」那一趟同理（见 `PickTarget.CommonCommand`）。
+    val forCommonCommand = picker.forCommonCommand
     // 「应用控制」→ 结束那一趟：写的是 `proc:stop:包名`（不挑界面、也没有小窗）
     val stopApp = picker.stopApp
     // 刚在「选择界面」页确认过就照那一条写（`app:包名/类名` / `appshortcut:`）；
@@ -173,7 +205,10 @@ internal fun SettingsPage.onAppPicked(
         XLog.w("选择应用：${picked.target} 没写进绑定，留在本页（不 goBack）")
         return
     }
-    if (forStep || forBranch || forRelease) return
+    //  「这几趟自己会退页」合成一位：`if` 里串四个 || 就撞上 detekt 的 `ComplexCondition`，
+    //  而它们本来就是同一件事（这个 `writeToken` 自己 `popBackStack` 了，调用方别再补 `goBack()`）。
+    val popsItself = forBranch || forRelease || forCommonCommand
+    if (forStep || popsItself) return
     picker.clearTarget()
     //  「以小窗口打开」/「使用原版动画」也**已经随这一条写下去了**，所以把进页那一刻的基线挪到当下：
     //  不挪的话，`goBack()` 的 `hasUnconfirmedPick` 仍在拿这两个开关与进页基线比（草稿刚被
@@ -253,6 +288,49 @@ private fun SettingsPage.writeLongReleaseTo(
             CommandsSave.Failed
     XLog.w("额外动作：${target.what} ← ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
     return ok
+}
+
+/**
+ * 往「常用命令」那张清单里**追加一条**（见 [PickTarget.CommonCommand]）。
+ *
+ *  与抽屉里那一支同一个口径：已经在清单里就**不重复收录**，但这一趟仍然算成功 —— 用户点的是
+ *  「把它加进来」，它本来就在里面，结果与期待一致（再报一句「已经有了」只会让人以为没生效）。
+ *
+ *  整份写回（`setCommonCommands` 同一套）：这张表本来就小，按 token 打补丁要额外处理中间态。
+ *
+ * @return 写下去没有（`false` = 这条动作根本不能执行 / 链路未就绪 / 写盘失败）
+ */
+private fun SettingsPage.addCommonCommand(action: Action): Boolean {
+    //  入口格那种「标记」写法（`appctl:open`）不是能执行的动作，读盘那一道也会把它丢掉
+    if (action is Action.None) return false
+    val cfg = configState.config.value
+    val list = cfg.global.commonCommands
+    if (list.any { it.token == action.token }) return true
+    val ok =
+        write(
+            cfg.copy(global = cfg.global.copy(commonCommands = list + CommonCommand(token = action.token))),
+            "common_commands=add",
+        ) != CommandsSave.Failed
+    XLog.w("常用命令：← ${action.token}（${if (ok) "已落盘" else "没写进去"}）")
+    return ok
+}
+
+/**
+ * 「常用命令」那一趟：追加进清单，成功就自己退页（见 [PickTarget.CommonCommand]）。
+ *
+ *  为什么单独一支：`writeToken` 那个 `when` 的圈复杂度已经贴着 detekt 的线，把「写 + 退页 + 写失败
+ *  放回目标」摊在那里会把它顶过去；而这三种结局本来就该在一处读。
+ *
+ * @return 写下去了没有（`false` = 没地方写 / 这条动作不能执行 / 写盘失败，调用方留在原地）
+ */
+private fun SettingsPage.writeCommonCommand(action: Action): Boolean {
+    if (addCommonCommand(action)) {
+        popBackStack()
+        return true
+    }
+    //  写失败：把「为谁挑」放回去，否则这一页会退化成普通挑应用（点一行就绑到手势上）
+    picker.openForCommonCommand(stop = picker.stopApp)
+    return false
 }
 
 /**

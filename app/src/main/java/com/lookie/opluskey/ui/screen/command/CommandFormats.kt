@@ -3,14 +3,18 @@ package com.lookie.opluskey.ui.screen.command
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -27,8 +31,10 @@ import com.lookie.opluskey.ui.model.CommandFormatLine
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.opticalCenter
 import com.lookie.opluskey.ui.state.CommandUiState
+import com.lookie.opluskey.ui.tinted
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -61,58 +67,109 @@ internal fun SettingsPage.CommandFormatsCard(
         Column(
             // 上下只给 8dp：每行固定 [FORMAT_ROW_TOUCH]（32dp）高，小字本身约 17dp，
             // 字与行上下边天然各留约 7.5dp —— 加上 8dp ≈ 左右那 16dp 一档。
-            Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
+            //
+            // 左右给的是 `FORMAT_ROW_PADDING - FORMAT_ROW_INSET`：**文字**仍落在 16dp 那条竖线上，
+            // 而每行自己的圆角底色 / 涟漪比文字往外伸了 [FORMAT_ROW_INSET]，两段加起来还是 16。
+            Modifier.padding(
+                start = FORMAT_ROW_PADDING - FORMAT_ROW_INSET,
+                top = 8.dp,
+                end = FORMAT_ROW_PADDING - FORMAT_ROW_INSET,
+                bottom = 8.dp,
+            ),
         ) {
             lines.forEachIndexed { index, line ->
-                if (index > 0) HorizontalDivider()
-                val prefix = line.prefix
-                Row(
-                    // 每行都撑到 [FORMAT_ROW_TOUCH]，行高一致，也是整行触达高度
-                    Modifier
-                        .fillMaxWidth()
-                        .height(FORMAT_ROW_TOUCH)
-                        .then(
-                            if (prefix == null) {
-                                Modifier
-                            } else {
-                                // 涟漪走 `LocalIndication`（与库可点组件同一份）
-                                Modifier.clickable(
-                                    onClickLabel = I18n.format(Strings.COMMAND_PREFIX_FILL, prefix),
-                                ) {
-                                    tick()
-                                    fillPrefix(prefix, ui)
-                                }
-                            },
-                        ),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = line.label,
-                        // 行高固定 32dp、字在里面居中 —— 行盒居中不等于墨迹居中，
-                        //  所以再补一档光学修正（见 `opticalCenter`）。两列都要补：
-                        //  只补一列等于把另一列从基线上挪开。
-                        modifier = Modifier.width(labelColumn).opticalCenter(style),
-                        style = style,
-                        // 左列是「要照抄的东西」，比右边的说明亮一档
-                        color = COUITheme.colorScheme.onBackground,
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = line.desc,
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .padding(start = FORMAT_COLUMN_GAP)
-                                .opticalCenter(style),
-                        style = style,
-                        // 右列靠行尾右对齐：左右两条边界都是直的，从上往下扫不会觉得在飘
-                        textAlign = TextAlign.End,
-                        color = COUITheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = 1,
-                    )
-                }
+                //  分隔线跟**文字**那一档对齐（不跟着行的外扩走）：行按下时那一块比线更宽，
+                //  正是「一整行是一块」的样子；线跟着外扩会顶到卡片边上，与卡片自己的边线打架。
+                if (index > 0) HorizontalDivider(Modifier.padding(horizontal = FORMAT_ROW_INSET))
+                FormatRow(
+                    line = line,
+                    labelColumn = labelColumn,
+                    style = style,
+                    onFill = { prefix ->
+                        tick()
+                        fillPrefix(prefix, ui)
+                    },
+                )
             }
         }
+    }
+}
+
+/**
+ * 「支持的命令格式」卡里的**一行** —— 行首图标 + 左列写法 + 右列说明。
+ *
+ *  从 [CommandFormatsCard] 拆出来只为把那一支留在 detekt 的长度上限之内；一行里的三块本来就
+ *  自成一体（图标是图例记号、左列是要照抄的东西、右列是解释），拆开读也更顺。
+ *
+ * @param onFill 这一行被点中：把它的前缀填进输入框（`prefix == null` 的行不可点）
+ */
+@Composable
+private fun FormatRow(
+    line: CommandFormatLine,
+    labelColumn: Dp,
+    style: TextStyle,
+    onFill: (String) -> Unit,
+) {
+    val prefix = line.prefix
+    Row(
+        // 每行都撑到 [FORMAT_ROW_TOUCH]，行高一致，也是整行触达高度
+        Modifier
+            .fillMaxWidth()
+            .height(FORMAT_ROW_TOUCH)
+            //  正圆角就够了：这一块四周离卡片边还有 `FORMAT_ROW_INSET`，裁不到
+            //  （「必须超椭圆」那条说的是贴着卡片轮廓画描边的情形，见 `FORMAT_ROW_CORNER`）。
+            .clip(RoundedCornerShape(FORMAT_ROW_CORNER))
+            .then(
+                if (prefix == null) {
+                    Modifier
+                } else {
+                    // 涟漪走 `LocalIndication`（与库可点组件同一份）
+                    Modifier.clickable(
+                        onClickLabel = I18n.format(Strings.COMMAND_PREFIX_FILL, prefix),
+                    ) {
+                        onFill(prefix)
+                    }
+                },
+            )
+            //  内容再让回来：行的圆角底色比文字宽 [FORMAT_ROW_INSET]，文字得缩进同一档
+            //  才仍在卡片那条 16dp 的竖线上（父容器减掉的正是这一档）。
+            .padding(horizontal = FORMAT_ROW_INSET),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        //  行首那颗图标 —— 六行六颗，扫一眼就能分出「这行是哪一种」。
+        //  颜色：**跟着「随机图标配色」走**（`tinted()`，按图标名取色 —— 六颗名字不同，
+        //  于是各是一色）；那一档关着时退回说明那一档的中性色（它是记号，不是要照抄的内容）。
+        Icon(
+            line.icon,
+            contentDescription = null,
+            modifier = Modifier.size(FORMAT_ROW_ICON),
+            tint = line.icon.tinted() ?: COUITheme.colorScheme.onSurfaceVariantSummary,
+        )
+        Spacer(Modifier.width(FORMAT_ICON_GAP))
+        Text(
+            text = line.label,
+            // 行高固定 32dp、字在里面居中 —— 行盒居中不等于墨迹居中，
+            //  所以再补一档光学修正（见 `opticalCenter`）。两列都要补：
+            //  只补一列等于把另一列从基线上挪开。
+            modifier = Modifier.width(labelColumn).opticalCenter(style),
+            style = style,
+            // 左列是「要照抄的东西」，比右边的说明亮一档
+            color = COUITheme.colorScheme.onBackground,
+            maxLines = 1,
+        )
+        Text(
+            text = line.desc,
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .padding(start = FORMAT_COLUMN_GAP)
+                    .opticalCenter(style),
+            style = style,
+            // 右列靠行尾右对齐：左右两条边界都是直的，从上往下扫不会觉得在飘
+            textAlign = TextAlign.End,
+            color = COUITheme.colorScheme.onSurfaceVariantSummary,
+            maxLines = 1,
+        )
     }
 }
 

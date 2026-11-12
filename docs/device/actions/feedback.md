@@ -125,3 +125,110 @@ notify:<正文>
 实现：`host/action/NotifyAction`（执行器）、`core/model/Action.Notify`（取值与解析）、
 `ui/model/PageCopy` 的「支持的命令格式」卡里那一行（`notify:<正文>`，只作说明 —— 这一档没有网格入口，
 和 `shell:` / `intent:` 一样靠命令输入框手写）。
+
+## 四十二、`fluid:` —— 流体云只能借宿主的 Seedling SDK 发（反编译 + 实测，2026-11-12）
+
+需求是「弹一条自定义文字的流体云」。先把两条通道都验了一遍，结论：**SystemUI 那条发不了自定义文字，
+只剩宿主自己那只 SDK**。
+
+### 42.1 SystemUI 的 `SEEDLING_SERVICE`：只认四类内置胶囊
+
+我们现成的 `SeedlingClient` 走的就是这条（`ringModeEvent` 弹响铃胶囊）。服务端在
+`SystemUI.apk`（`/system_ext/priv-app/SystemUI`，9 个 dex，代码在 `classes4.dex`）：
+
+```
+BaseService$ServiceHandler.handleMessage
+  what=1 → EventReceiver.onReceive(bundle) → EventParse.parseBundle   ← 只读一个 key：seedling_event
+          → EventDispatch.dispatch(event) → 该事件码上注册的 EventListener
+  what=3 → 键盘锁变化（isKeyguardShowing / isKeyguardOccluded）
+  what=4 → StateManager
+```
+
+监听者只有四类 `NormalTip` 子类：`RingModeTip`（响铃）、`DndTip`（免打扰）、`FlashlightTip`（手电筒）、
+`MediaControlTip`（媒体）。`RingModeTip.onEvent` 只读 `ringModeType`，随后用 **SystemUI 自己的**
+`R$string`（`volume_footer_slient` 等）与 `assets/images/op_silence.json` **覆盖** `description` /
+`imagePath` —— 调用方塞的文案被丢掉。**没有「任意文字胶囊」这一档。**
+
+顺带否掉两个看着像口子的字符串：`fluid_cloud_text` / `only_show_fluid` 在 SystemUI 里只出现在
+`KeyDndController` / `KeyFlashlightController` 的 `handleActionButtonClick`，那是**往框架回话**
+（把文案交回 framework）用的，不是收文案的。
+
+### 42.2 可行的那条：宿主自己的 Pantanal Seedling SDK
+
+宿主（`com.oplus.gesture` 8.6.0）自己弹响铃 / 截屏胶囊走的就是它：
+
+```
+i9.e0.k(context)                                  ← 取实例（宿主自己的那一个）
+  i9.e0.q(String logoPath, String text, boolean showA)   ← 纯发送，无闸门（屏幕 / 锁屏 / AOD 的判据在外层 v）
+      SeedlingCardOptions: grade=4, milestone=true,
+        showHostMap / lockScreenShowHostMap = { StatusBar: true },
+        extensibleActionMap = { "service_from": 1 }, remindType=11
+      businessData = {"initData": {"logo": <宿主 assets 里的 lottie>, "title": <文字>, "showA": <bool>}}
+      SeedlingIntent(now, "pantanal.intent.business.app.system.ACTION_KEY",
+                     SeedlingIntentFlagEnum.START, data=null, businessData, options)
+      SeedlingTool.sendSeedling(ctx, intent, IIntentResultCallBack) : int
+```
+
+- **文字能换、模板换不了**：卡片的业务 action 固定，外观由系统侧那份模板决定。
+- `logo` 是**卡片资源包里的**素材名（见 42.3），可选的只有五个；我们取 `precise_notification_icon.png`。
+- 卡片几秒后自己收起，**通知中心里不留记录** —— 与 `notify:`（§41）是两件事。
+- 系统侧有个总闸（SDK 的 `isSupportFluidCloud` 读 `is_fluid_cloud_support`），关着就不显示。
+- 发送结果**在宿主的日志里**：`ActionKeyFluidCloudManager: showSendling onIntentResultCodeCallBack--:…
+  i:<码>`（`i` 非 0 = 卡服务拒绝）。我们这侧只能记「已经请宿主发了」。
+
+实现：`host/action/FluidAction`（候选表 `i9.e0` + `q`，缺哪一环记一行 W 并报失败 —— 这几个都是
+混淆名，换 ROM 会整体改名）。判据行：`已请宿主弹流体云：<正文>`；失败是
+`弹流体云失败：宿主里没找到 …` 或 `… 换 ROM 之后这一档改名了`。
+
+### 42.3 图标是哪来的：卡片模板里的 `{{logo}}`
+
+「流体云」的外观不是系统写死的，是**卡片资源包**里的一份模板（宿主 APK 的
+`assets/ActionKeyTip.upk`，一个 zip）：
+
+```
+config.json            identifier.url = com.oplus.gesture.precise，intent.action = pantanal.intent.business.app.system.ACTION_KEY
+assets/card-config.json card.support = notification_sm，host = com.oplus.gesture/ActionkeyCardWidgetProvider
+pages/index.json       ← 版式在这里
+```
+
+`pages/index.json` 里左边那颗图标**两个槽互斥，取的都同一个变量**：
+
+```json
+{ "type": "lottie", "attr": { "src": "{{logo}}" }, "shown": "{{showA}}" }        ← showA=true 走这条（只认 .json）
+{ "type": "image",  "attr": { "src": "{{logo}}" }, "shown": "{{!(showA)}}" }     ← showA=false 走这条（png / svg）
+{ "type": "text",   "attr": { "value": "{{title}}" } }                            ← 右边那段字
+```
+
+模板的默认 data 就是 `logo = "precise_notification_icon.png"`、`showA = false`、`title = ""`；
+包里一共五个素材：
+
+```
+op_ring.json / op_silence.json / op_vibrate.json   三条 lottie（响铃 / 静音 / 振动）
+op_ic_silence.svg                                  静音那道斜杠
+precise_notification_icon.png                      通用的「通知」小图（模板自带的默认）
+```
+
+⇒ **图标完全由调用方那个 `logo` 决定**，路径相对资源包的 `assets/images/`（写文件名即可）。
+我们第一版抄了响铃那条（`op_ring.json` + `showA=true`），所以胶囊左边是一颗铃声图标 ——
+那不是模板默认，是我们自己选的。现在换成 `precise_notification_icon.png` + `showA=false`：
+通用小图 + 静态槽。**别再传 `.json` 配 `showA=false`**（image 槽读不了 lottie，会空），
+反之 png 配 `showA=true` 也一样。
+
+### 42.4 为什么展不开：这份卡片只有折叠态
+
+「展开」不是调用方的开关，是**卡片版式里有节点**才有的行为。三份资源包一比就清楚：
+
+| 包 | 版式节点 | 能不能展开 |
+| --- | --- | --- |
+| SystemUI `assets/RingModeTip.upk` | `card-template` / `compact` / `leading` / `trailing` / `lottie` / `image` / `text` | 不能（响铃胶囊本来就只有折叠态） |
+| SystemUI `assets/Flashlight.upk` | 上面那些 + **`expanded`** + `button` + `voice` + `center` | 能 |
+| 宿主 `assets/ActionKeyTip.upk`（我们这条） | `card-template` / `compact` / `leading` / `trailing` / `lottie` / `image` / `text` | **不能** |
+
+我们这份还多两条证据：`pages/index.json` 的 `actions` 是**空对象**（点它没有任何绑定），
+`config.json` 的 `runtime.seedling-type = "immediate"`（即时型：亮一下就走，本来就没有面板语义）。
+
+⇒ 走「宿主的 `system.ACTION_KEY` 业务」这条路**做不到展开**：要展开需要一份带 `expanded`
+（+ `button` / `actions`）的资源包并与业务 action 绑定，而这两类包分别在 SystemUI 与宿主 APK 的
+只读资产里 —— 模块既改不了系统应用的资产，也不具备卡片宿主身份（`card-config.json` 的
+`host.componentName` 必须是宿主自己的 `ActionkeyCardWidgetProvider`）。
+

@@ -49,7 +49,18 @@ class ActionTokenTest {
 
     @Test
     fun catalogTokensArePartitionedTheWayTheParserSeesThem() {
-        assertEquals("这两个 token 过不了「命令详情」的格式闸（选得中、存不下）", menuOnly, tokens.filterNot { Action.hasSupportedFormat(it) }.toSet())
+        //  「命令详情」那一栏**只放行列表里那六种前缀**（用户口径：只允许填列表里的）。
+        //  其余 token 都是格子 / 菜单选出来的内置动作：解析器照样认（绑定与已存配置要能跑），
+        //  但手写不进这一栏。这条判据两头都管 —— 清单里冒出一个能手写的动作、或者列表里
+        //  列了一个过不了闸的前缀，都在这里红。
+        val writable = listOf("shell:", "keyevent:", "intent:", "notify:", "fluid:", "shortcut:")
+        //  `none`（无操作）也算过闸：它是「这一格有值、但什么都不做」，不是「还没写」。
+        val expected = tokens.filter { t -> t == Action.NONE || writable.any { t.startsWith(it) } }.toSet()
+        assertEquals(
+            "「命令详情」只该放行列表里那六种前缀",
+            expected,
+            tokens.filter { Action.hasSupportedFormat(it) }.toSet(),
+        )
         assertEquals("解析器与清单漂移了（界面显示的动作 ≠ 实际执行的动作）", notRoundTrip, tokens.filter { Action.parse(it).token != it }.toSet())
     }
 

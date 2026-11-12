@@ -1,10 +1,10 @@
 package com.lookie.opluskey.ui.model
 
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
@@ -80,9 +80,11 @@ internal val ABOUT_TITLE: String
     get() = I18n.get(Strings.MORE_OPTIONS_TITLE, "更多选项")
 
 /**
- * 「捐赠列表」页的标题（首页「其他 → 捐赠打赏」那层菜单的最后一项进入；这是**唯一入口**）。
+ * 「捐赠列表」页的标题（首页「其他 → 捐赠打赏」那层菜单里最后那一项进入；这是**唯一入口**）。
  *
  *  与那一行菜单项**共用同一个键**：菜单里写什么、进去之后顶上就写什么，两处串了没有意义。
+ *  首页那一行入口**不跟着变**（它仍叫「捐赠打赏」、仍是那颗爱心）：那一行管的是「怎么给」，
+ *  从这个键开始往下才是「一份带金额的名单」。
  */
 internal val DONATE_LIST_TITLE: String
     get() = I18n.get(Strings.DONATE_LIST_TITLE, "捐赠列表")
@@ -322,16 +324,27 @@ internal val COMMAND_DISCLAIMER_TEXT: String
         )
 
 /**
- * 「支持的命令格式」卡上的几行 —— 讲**命令输入框里能写什么**。
+ * 「支持的命令格式」卡上的几行 —— 讲**命令输入框里能写什么**，也是那一栏**全部**可写的格式。
+ *
+ *  与 `Action.PREFIXES` 是**同一个集合**：那边是闸（`hasSupportedFormat` 决定存不存得下），
+ *  这里是它的说法（一行一个前缀 + 一句说明）。两处必须一起改 —— 只改这里，点一下填进去的前缀
+ *  自己过不了闸；只改那边，用户手写得了、卡片上却查不到。
  *
  *  注意：**收录规则：只列「没有内置入口」的格式**。内置命令已经给了入口的那些
  *  不在这里重复教手写：`app:` / `window:` 有「打开应用」那一格（小窗是它菜单里的开关）、
- *  `zoom:mini[:collapse]` 有「前台转小窗」那两档 —— 同一个能力摆两个入口，手写那条还更容易写错。
- *  剩下的这几行是**没有图形入口**的：shell / keyevent / intent / shortcut / cmd。
+ *  `oplus:` / `setting:` / `proc:` / `volume:` 那些都是格子或菜单里选出来的 —— 同一个能力摆两个
+ *  入口，手写那条还更容易写错（载荷是内部 id，记不住）。剩下的这几行是**没有图形入口**的：
+ *  shell / keyevent / intent / notify / fluid / shortcut。
  *
  *  点带 `prefix` 的那一行 = 把前缀填进命令输入框；输入框里已经带了格式时只换前缀、正文留着
  *  （不是追加，见 `CommandFormats.fillPrefix`）。
  */
+internal fun formatIconOf(text: String?): ImageVector? {
+    val raw = text?.trim().orEmpty()
+    if (raw.isEmpty()) return null
+    return COMMAND_FORMAT_LINES.firstOrNull { line -> line.prefix?.let(raw::startsWith) == true }?.icon
+}
+
 internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
     get() =
         listOf(
@@ -340,16 +353,19 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
             //  这一列就是「能写什么」，每行都可点、把前缀整段填进输入框。
             //  左列写法 / 右列说明分成两条键取 —— 卡片排的是两列，各自要能单独对齐。
             CommandFormatLine(
+                icon = PageIcons.FormatShell,
                 label = I18n.get(Strings.COMMAND_FORMAT_SHELL, "shell:<命令>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_SHELL_DESC, "执行 shell 命令"),
                 prefix = Action.SHELL_PREFIX,
             ),
             CommandFormatLine(
+                icon = PageIcons.FormatKeyEvent,
                 label = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT, "keyevent:<按键>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_KEYEVENT_DESC, "模拟按键"),
                 prefix = Action.KEYEVENT_PREFIX,
             ),
             CommandFormatLine(
+                icon = PageIcons.FormatIntent,
                 label = I18n.get(Strings.COMMAND_FORMAT_INTENT, "intent:<Action>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_INTENT_DESC, "发送 Intent"),
                 prefix = Action.INTENT_PREFIX,
@@ -357,19 +373,24 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
             //  发通知（`notify:`）放这里：它是**通知中心里那条**通知，与「执行时提示」那个 toast
             //  不是一回事 —— 后者是模块自己的反馈，这一条是用户主动要的、能留着的通知。
             CommandFormatLine(
+                icon = PageIcons.FormatNotify,
                 label = I18n.get(Strings.COMMAND_FORMAT_NOTIFY, "notify:<正文>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_NOTIFY_DESC, "以宿主身份发一条通知"),
                 prefix = Action.NOTIFY_PREFIX,
             ),
+            //  流体云（`fluid:`）紧跟其后：同样是「让用户看见一句话」，但它是状态栏 / AOD 上
+            //  那颗几秒就收起的胶囊，通知中心里不留记录 —— 两行的说明各自说清这一点。
             CommandFormatLine(
+                icon = PageIcons.FormatFluid,
+                label = I18n.get(Strings.COMMAND_FORMAT_FLUID, "fluid:<正文>"),
+                desc = I18n.get(Strings.COMMAND_FORMAT_FLUID_DESC, "弹一条流体云胶囊"),
+                prefix = Action.FLUID_PREFIX,
+            ),
+            CommandFormatLine(
+                icon = PageIcons.FormatShortcut,
                 label = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT, "shortcut:<ID>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_SHORTCUT_DESC, "触发快捷方式"),
                 prefix = Action.SHORTCUT_PREFIX,
-            ),
-            CommandFormatLine(
-                label = I18n.get(Strings.COMMAND_FORMAT_CMD, "cmd:<名字>"),
-                desc = I18n.get(Strings.COMMAND_FORMAT_CMD_DESC, "调用另一条单条命令"),
-                prefix = Command.PREFIX,
             ),
         )
 

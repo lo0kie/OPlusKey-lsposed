@@ -30,6 +30,7 @@ import com.lookie.opluskey.ui.screen.binding.KeySettingsScreen
 import com.lookie.opluskey.ui.screen.combo.KeysScreen
 import com.lookie.opluskey.ui.screen.command.BranchScreen
 import com.lookie.opluskey.ui.screen.command.CommandScreen
+import com.lookie.opluskey.ui.screen.common.CommonCommandsScreen
 import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import com.lookie.opluskey.ui.screen.general.GeneralScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
@@ -215,6 +216,11 @@ private fun SettingsPage.PageBody(
 
         Screen.COMMANDS -> {
             CommandScreen(scrollBehavior, pagers.commands)
+        }
+
+        // 「常用命令」：那一张清单（钉哪几条 / 每条叫什么 / 哪些出现在按键绑定页）。
+        Screen.COMMON_COMMANDS -> {
+            CommonCommandsScreen(scrollBehavior)
         }
 
         // 「按键设置」：**这一档**对公共项的覆盖（接口 / 振动 / 提示，组合另有无操作与等待）。

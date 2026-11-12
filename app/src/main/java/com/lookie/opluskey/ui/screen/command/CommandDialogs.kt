@@ -54,9 +54,8 @@ internal fun SettingsPage.CommandDialogs(
  * 「命令列表」编辑态里删掉勾中的那几条 —— 删了不可撤销，而且**绑到按键上的会改成「无操作」**
  * （见 [removeCommand]），所以先问一句。
  *
- *  一条一条调 [removeCommand]：它自带「三处引用一起清」的账（绑定、别的命令里的引用、单条正文里
- *  的 `cmd:`），逐条走同一条路比自己在这里再写一份批量清理稳。代价是 N 次落盘，命令库本来就只有
- *  个位数条，不值当为它再造一条批量通道。
+ *  一条一条调 [removeCommand]：它自带「绑定跟着清」的账，逐条走同一条路比自己在这里再写一份
+ *  批量清理稳。代价是 N 次落盘，命令库本来就只有个位数条，不值当为它再造一条批量通道。
  */
 @Composable
 private fun SettingsPage.DeletePickedDialog() {

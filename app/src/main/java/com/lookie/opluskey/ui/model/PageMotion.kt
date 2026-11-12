@@ -11,6 +11,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.nav.runtime.NavProgrammaticEasing
@@ -156,12 +157,15 @@ internal val STEP_ROW_EXIT: ExitTransition =
  *  右边说明一列从同一个 x 起。拼成一串再加分隔符的话，各行的说明会随前缀长短各自缩进，
  *  看着就是一路斜下去。
  *
+ * @param icon 行首那颗图标 —— 六行六颗、互不相同（见 `PageIcons.Format*` 那一组）：
+ *   这一列是「能写什么」的图例，光靠一列等宽的字扫下来分不出哪行是哪行
  * @param label 左列：能写的写法本身（`shell:<命令>` / `keyevent:<按键>` …）
  * @param desc 右列：这一句说明它干什么（`执行 shell 命令` …）
  * @param prefix 点这一行时往「命令」输入框里填的前缀（`shell:` / `keyevent:` …）；
  *   `null` = 这一行没有可填的前缀，整行不可点。
  */
 internal data class CommandFormatLine(
+    val icon: ImageVector,
     val label: String,
     val desc: String,
     val prefix: String? = null,

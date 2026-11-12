@@ -7,7 +7,7 @@
     <ID>ComplexCondition:FlexibleWindowBridge.kt$FlexibleWindowBridge$intent.hasExtra(EXTRA_LEFT) &amp;&amp; intent.hasExtra(EXTRA_TOP) &amp;&amp; intent.hasExtra(EXTRA_RIGHT) &amp;&amp; intent.hasExtra(EXTRA_BOTTOM)</ID>
     <ID>CyclomaticComplexMethod:Action.kt$Action.Companion$fun parse(raw: String?): Action</ID>
     <ID>CyclomaticComplexMethod:ActionIcons.kt$internal fun actionIcon(token: String): ImageVector</ID>
-    <ID>CyclomaticComplexMethod:ActionRunner.kt$ActionRunner$private fun dispatch( action: Action, depth: Int = 0, )</ID>
+    <ID>CyclomaticComplexMethod:ActionRunner.kt$ActionRunner$private fun dispatch(action: Action)</ID>
     <ID>CyclomaticComplexMethod:AppLauncher.kt$AppLauncher$fun startOplusFeature(feature: String)</ID>
     <ID>CyclomaticComplexMethod:BindingTile.kt$@Composable internal fun SettingsPage.ActionTile( spec: ActionCatalog.Spec, icon: ImageVector?, selected: Boolean, focused: Boolean, focusRequester: FocusRequester, modifier: Modifier = Modifier, enabled: Boolean = true, /** * 标题下面那行**小字**（空则不画）：内置的「打开应用」格放绑定的应用名、 * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。 */ subtitle: String? = null, onClick: () -&gt; Unit, )</ID>
     <ID>CyclomaticComplexMethod:CommandMenus.kt$@Composable internal fun SettingsPage.StepPickerPopup( show: Boolean, preciseClick: PreciseClickState, /** `-1` = 挑中的追加为一步；`&gt;= 0` = 挑中的替换这一行（点已添加的步骤时传行号）。 */ replaceIndex: Int = -1, onDismiss: () -&gt; Unit, )</ID>

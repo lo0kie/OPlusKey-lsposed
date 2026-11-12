@@ -23,8 +23,19 @@ internal enum class CommandFailure(
     /** 命令是空的（单条没填内容，或多条一步都没有）。 */
     EMPTY(Strings.COMMAND_FAILURE_EMPTY, "这条命令是空的，补上内容再试"),
 
-    /** `cmd:` 嵌套超过 [CustomCommandRunner] 的上限（手改出来的环）。 */
-    TOO_DEEP(Strings.COMMAND_FAILURE_TOO_DEEP, "命令互相引用太深"),
+    /**
+     * **单条**命令的正文里写了 `cmd:<另一条>` —— 单条不引用任何命令（老配置 / 手改文件才会出现）。
+     */
+    REF_NOT_ALLOWED(Strings.COMMAND_FAILURE_REF_NOT_ALLOWED, "单条命令的正文不能引用另一条命令"),
+
+    /**
+     * 多条命令的某一步引用了**另一条多条命令** —— 那里只能引用单条。
+     *
+     *  规则是「单条不引用任何命令、多条只能引用单条」，于是引用图里没有回边、不可能成环 ——
+     *  这也是这里不需要环检测的原因。正常操作在抽屉里就挑不到多条（`StepSheetFilter.singleCommandsOnly`），
+     *  这一档只对手改文件与老配置生效。
+     */
+    REF_ONLY_SINGLE(Strings.COMMAND_FAILURE_REF_ONLY_SINGLE, "多条命令的步骤只能引用单条命令"),
 
     /** `ProcessBuilder` 直接起不来（SELinux / 进程数上限 …）。 */
     SHELL_REJECTED(Strings.COMMAND_FAILURE_SHELL_REJECTED, "系统不让执行这条命令"),

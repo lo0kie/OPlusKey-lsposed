@@ -478,6 +478,14 @@ object ConfigProfiles {
      *  「这台机器怎么用」，不是「这一套绑定怎么配」。新配置一上来就把模块关掉、界面换成英文，
      *  不是任何人想要的结果；「已确认免责协议」同理，不该被一次新建抹掉。
      *
+     *  **「常用命令」那张清单不带**：它记的是一条条 `cmd:` / `app:` 之类的**动作引用**，属于
+     *  「这一套绑定」（与 `keys` 同一档）。带过来的后果不是「多几行」而是**指向空** ——
+     *  新配置的命令库是空的，清单里那几条 `cmd:common.*` 全成了没有正文的名字，点下去也不执行
+     *  （用户口径「常用命令也要跟着切换配置走」）。
+     *
+     *  **收集来的自定义键不带**：那几颗键属于「这一套绑定」，换一份配置就该从头收集
+     *  （用户口径：新配置里不该还留着上一份的键）。
+     *
      * @return 新配置的槽名；名字为空 / 已到上限 / 写盘失败返回 `null`
      */
     fun createAs(name: String): String? {
@@ -495,10 +503,8 @@ object ConfigProfiles {
                 profileId = newProfileId(),
                 profileName = trimmed,
                 profileOrder = order,
-                global = current?.global ?: Config.DEFAULT.global,
-                //  **收集来的自定义键跟着走**：它们只存在配置里（不进 KeyId），不带过去的话
-                //  切到新配置后那几颗键整批消失、注入侧不再认领，用户得重新收集一遍。
-                customKeys = current?.customKeys ?: Config.DEFAULT.customKeys,
+                //  整份全局设置照搬，**只把清单那一位清空**（见上面 KDoc：它跟着绑定走，不跟着机器走）
+                global = (current?.global ?: Config.DEFAULT.global).copy(commonCommands = emptyList()),
                 disclaimerAccepted = current?.disclaimerAccepted ?: false,
                 commandDisclaimerAccepted = current?.commandDisclaimerAccepted ?: false,
             )

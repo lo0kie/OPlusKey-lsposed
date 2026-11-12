@@ -4,6 +4,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ComboKey
+import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.ConfigFields
 import com.lookie.opluskey.core.model.Gesture
@@ -112,7 +113,10 @@ internal data class ConfigDto(
                 val key = (keys[id.id] ?: KeyDto()).toKeyConfig(id, legacyDouble, legacyInstant)
                 if (legacyMaster && id.id == KeyId.PLUS.id) key.copy(enabled = true) else key
             }
-        val globalConfig = GlobalConfig.ofFields(global.toValues())
+        //  「常用命令」清单不进字段表（它不参与广播，注入侧不认识它）——
+        //  与 `appNames` / `combos` 同一条，只走落盘这一列。
+        val globalConfig =
+            GlobalConfig.ofFields(global.toValues()).copy(commonCommands = global.commonCommands.parsed())
         val parsedCombos = combos.mapNotNull { it.toCombo() }
         if (parsedCombos.size != combos.size) {
             //  与自定义键同一条：坏条目不能无声消失（组合键丢了 = 那一组按键整组失效）
@@ -826,6 +830,14 @@ internal data class GlobalDto(
     /** 按键绑定页显不显示「常用命令」那一段 —— 老文件没有这一项，退回默认（显示）。 */
     @SerialName("show_common_commands")
     val showCommonCommands: Boolean = GlobalConfig.DEFAULT_SHOW_COMMON_COMMANDS,
+    /**
+     * 「常用命令」那张用户自己的清单 —— **老文件没有这一项**（`null`）。
+     *
+     *  `null` 与空表的区别要留住：前者是「从没动过，用模块自带那几条」，后者是「进过那一页、
+     * 把它们全删了」。所以这里不写成 `emptyList()`。
+     */
+    @SerialName("common_commands")
+    val commonCommands: List<CommonCommandDto> = emptyList(),
 ) {
     fun toValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -870,8 +882,51 @@ internal data class GlobalDto(
                 comboWindowMs = g.comboWindowMs,
                 iconTintSeed = g.iconTintSeed,
                 showCommonCommands = g.showCommonCommands,
+                //  `null` 原样留着（= 用默认那几条），不要在这里换成空表 —— 见这个字段的说明
+                commonCommands = g.commonCommands.map { CommonCommandDto.of(it) },
             )
     }
+}
+
+/** 「常用命令」清单的一项（`global.common_commands`）。 */
+@Serializable
+internal data class CommonCommandDto(
+    val token: String = "",
+    val name: String = "",
+    @SerialName("show_in_binding")
+    val showInBinding: Boolean = true,
+) {
+    /**
+     * 读成模型；**解析不出来的写法直接丢**（与命令页同一条尺子：`Action.parse` 认不出的东西
+     * 存进去也只会在执行时变成 `none`）。
+     *
+     *  不能用 `Action.hasSupportedFormat` 当判据：那一条**故意**不含 `cmd:`（命令正文不引用别的
+     *  命令），而这张表的默认内容恰恰全是 `cmd:common.*`。
+     */
+    fun toCommonCommand(): CommonCommand? {
+        val text = token.trim()
+        if (text.isEmpty() || Action.parse(text) is Action.None) return null
+        return CommonCommand(token = text, name = name.trim(), showInBinding = showInBinding)
+    }
+
+    companion object {
+        fun of(cmd: CommonCommand): CommonCommandDto =
+            CommonCommandDto(token = cmd.token, name = cmd.name, showInBinding = cmd.showInBinding)
+    }
+}
+
+/**
+ * 一整张清单读成模型。
+ *
+ *  坏条目丢掉并报一行 —— 不声不响消失的清单项最难查（用户在页面上看不到某一条，
+ *  却没有任何线索）。
+ */
+private fun List<CommonCommandDto>.parsed(): List<CommonCommand> {
+    val parsed = mapNotNull { it.toCommonCommand() }
+    if (parsed.size != size) {
+        XLog.w("配置：${size - parsed.size} 条常用命令认不出（已丢弃）")
+    }
+    return parsed
 }
 
 /** `custom_keys` 的一项。 */

@@ -242,6 +242,16 @@ internal class AppPickerState {
         private set
 
     /**
+     * 这一趟是给**「常用命令」那张清单**挑一条动作（挑中的应用 / 结束应用落成清单里新的一条）。
+     *
+     *  与 [forRelease] 同一档性质 —— 都是「把挑中的这一条追加到某个地方」，只是那边的落点是某个键
+     *  的一个字段，这边是一张清单。挑完**自己退页**，清单由 `PageEntryWrite.writeToken` 写
+     *  （见 `PickTarget.CommonCommand`）。
+     */
+    var forCommonCommand = false
+        private set
+
+    /**
      * 这次是给「条件执行」的某一支挑**条件应用**：`>= 0` = 改第几支，[NEW_BRANCH] = 新加一支。
      * [NOT_FOR_BRANCH] = 不是在给分叉挑。与 [forStep] 一样同生共死。
      *
@@ -353,6 +363,7 @@ internal class AppPickerState {
         forRelease = false
         releaseComboId = null
         releaseChain = false
+        forCommonCommand = false
     }
 
     /**
@@ -398,6 +409,33 @@ internal class AppPickerState {
         branchKind = ConditionKind.APP
         stopAppState.value = stop
         forRelease = true
+        forCommonCommand = false
+    }
+
+    /**
+     * 「常用命令」那条入口：给那张清单挑一条动作 —— 挑中的应用 / 结束应用落成清单里**新的一条**。
+     *
+     *  与 [openForRelease] 同一个形状（挑法、清单、二级页、小窗全都一样），差别只有落点：
+     *  那边写某个键的一个字段，这边往 `global.commonCommands` 追加一行（见
+     *  `PageEntryWrite.writeToken`）。清场纪律照抄那一支 —— 这几位的账互斥，留着上一次的值
+     *  会让写回落到别人头上。
+     *
+     *  @param stop `true` = 这一趟是「结束应用」（写 `proc:stop:包名`）
+     */
+    fun openForCommonCommand(stop: Boolean = false) {
+        gesture = null
+        comboId = null
+        sceneAt = NOT_FOR_SCENE
+        forStep = false
+        replaceStep = -1
+        branchTarget = NOT_FOR_BRANCH
+        branchConditionIndex = -1
+        branchKind = ConditionKind.APP
+        stopAppState.value = stop
+        forRelease = false
+        releaseComboId = null
+        releaseChain = false
+        forCommonCommand = true
     }
 
     /**
@@ -419,6 +457,7 @@ internal class AppPickerState {
         branchKind = ConditionKind.APP
         stopAppState.value = stop
         forRelease = false
+        forCommonCommand = false
     }
 
     /**
@@ -447,6 +486,7 @@ internal class AppPickerState {
         //  条件只认包名：既没有「结束应用」那一档，也没有「松手额外动作」
         stopAppState.value = false
         forRelease = false
+        forCommonCommand = false
     }
 
     /** 这趟「为谁挑」整个作废 —— 挑完了、写失败留在原地、或干脆没挑就退出来。 */
@@ -462,6 +502,7 @@ internal class AppPickerState {
         stopAppState.value = false
         forRelease = false
         releaseComboId = null
+        forCommonCommand = false
         // 本地选中与草稿一并作废：这一趟挑应用的账到此为止
         pending.value = null
         pickedApps.value = emptySet()
@@ -531,6 +572,11 @@ internal class AppPickerState {
                 val chain = releaseChain
                 releaseChain = false
                 PickTarget.Release(combo, at, chain)
+            }
+
+            forCommonCommand -> {
+                forCommonCommand = false
+                PickTarget.CommonCommand
             }
 
             else -> {
@@ -824,6 +870,14 @@ internal sealed interface PickTarget {
          */
         val chain: Boolean = false,
     ) : PickTarget
+
+    /**
+     * 「常用命令」那张清单：挑中的动作**追加成清单里新的一条**（`global.commonCommands`）。
+     *
+     *  没有参数 —— 落点只有那一张表，挑的是「打开应用」还是「结束应用」已经写在 token 里了
+     *  （`app:` / `proc:stop:`）。写成功之后自己退页，与 [Release] 同一条纪律。
+     */
+    data object CommonCommand : PickTarget
 }
 
 /**

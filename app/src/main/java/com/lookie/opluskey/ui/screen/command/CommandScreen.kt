@@ -70,11 +70,56 @@ internal const val SINGLE_CARD_MIN_HEIGHT_RATIO = 0.5f
 internal val FORMAT_ROW_TOUCH = 32.dp
 
 /**
+ * 「支持的命令格式」卡里**文字**离卡片左右边线的距离 —— 16dp，与卡片其它内容同一条竖线。
+ *
+ *  行自己的底色 / 涟漪要比这一档**往外伸**（见 [FORMAT_ROW_INSET]），所以父容器那边给的是
+ *  「这一档减去它」，伸出来的那一段由行自己补。
+ */
+internal val FORMAT_ROW_PADDING = 16.dp
+
+/**
+ * 每一行比文字**往外多伸**多少 —— 8dp（左右各一档）。
+ *
+ *  于是：文字仍在 16dp 上，而行的圆角底色 / 涟漪从 8dp 铺到离卡片边 8dp 处。父容器那 16dp
+ *  减去这一档，两边的和仍是 16 —— 文字不会跟着挪。
+ *
+ *  不取更大的一档：这一行只有 32dp 高，外扩太多时圆角块在卡片里显得又宽又扁，压过文字本身。
+ */
+internal val FORMAT_ROW_INSET = 8.dp
+
+/**
+ * 行那一块圆角的半径 —— 8dp。
+ *
+ *  比卡片那一档（`CardDefaults.CornerRadius`，12dp）小：行只有 32dp 高，12dp 已经快成胶囊了。
+ *
+ *  这里用**正圆角**（`RoundedCornerShape`）而不是超椭圆：`CardRow.selectedRowRing` 那条
+ *  「必须超椭圆」说的是**贴着卡片轮廓画描边**的情形（正圆角会伸到卡片外面被裁掉）。这一块
+ *  四周都离卡片边还有 [FORMAT_ROW_INSET]，裁不到，形状不必跟卡片同族。
+ */
+internal val FORMAT_ROW_CORNER = 8.dp
+
+/**
  * 「支持的命令格式」卡里两列之间的间距（左列写法与右列说明之间）。
  *
  *  跟着 `footnote1` 的字号走：比一个全角字的宽度略窄，够把两列分开又不像两栏表格。
  */
 internal val FORMAT_COLUMN_GAP = 12.dp
+
+/**
+ * 「支持的命令格式」卡里行首那颗图标的边长 —— 18dp，与那一行的 `footnote1` 字配。
+ *
+ *  比行高（[FORMAT_ROW_TOUCH]，32dp）小一档：图标是图例记号，不是主体，撑满行高会让六行
+ *  变成六块色块。
+ */
+internal val FORMAT_ROW_ICON = 18.dp
+
+/**
+ * 行首图标与左列写法之间的间距 —— 8dp。
+ *
+ *  比 [FORMAT_COLUMN_GAP]（12dp）窄一档：图标与它后面那串写法是**同一段**（都是「这一行是什么」），
+ *  两列之间的 12dp 才是真分隔；两处一样宽会读成三列。
+ */
+internal val FORMAT_ICON_GAP = 8.dp
 
 /**
  * 「命令列表」那个页签的页号 —— 排在单条 / 多条两个**表单页**之后。
@@ -390,7 +435,7 @@ internal fun SettingsPage.CommandNameField(
         onValueChange = { form.name = it },
         enabled = enabled,
         modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
-        // 同名冲突与 `cmd:` 成环提示都交给组件画（都只在打字 / 改步骤时才有意义，结果只喂这一个输入框）。
+        // 同名冲突提示交给组件画（只在打字时才有意义，结果只喂这一个输入框）。
         //  措辞与「保存按钮灰着时那句话」共用 `commandNameProblem` —— 同一件事只说一处。
         errorMessage = commandNameProblem().orEmpty(),
     )

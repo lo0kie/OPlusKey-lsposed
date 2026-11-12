@@ -44,7 +44,6 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Dots
 import io.github.lyxnx.compose.ui.tablericons.outline.Home
 import io.github.lyxnx.compose.ui.tablericons.outline.Language
 import io.github.lyxnx.compose.ui.tablericons.outline.LanguageOff
-import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.MessageAi
 import io.github.lyxnx.compose.ui.tablericons.outline.Microphone
 import io.github.lyxnx.compose.ui.tablericons.outline.Moon
@@ -319,8 +318,10 @@ internal fun actionIcon(token: String): ImageVector =
 
                 // 快捷方式 id（`shortcut:<id>`）—— 与上面那族同义，但写的是 id 不是包名，
                 //  给它一颗自己的字形，别落 `Dots`（清单里这两档都教用户手写，图标必须是可辨的）。
+                //  取「支持的命令格式」那一行同一颗（`FormatShortcut`）：同一条写法在网格与图例里
+                //  不该长两张脸；也**不要**用 `PageIcons.Link` —— 那颗在本项目里是「跳外部链接」。
                 token.startsWith(Action.SHORTCUT_PREFIX) -> {
-                    PageIcons.Link
+                    PageIcons.FormatShortcut
                 }
 
                 // `intent:ACTION` —— 按 action 起界面
@@ -481,7 +482,7 @@ internal fun tileIcon(spec: ActionCatalog.Spec): ImageVector = iconCache.getOrPu
 internal fun specIcon(spec: ActionCatalog.Spec): ImageVector =
     when (val glyph = spec.glyph) {
         is ActionCatalog.Glyph -> glyphIcon(glyph)
-        is ActionCatalog.GlyphSource.ByCommand -> commandIcon(glyph.kind, glyph.steps, glyph.root)
+        is ActionCatalog.GlyphSource.ByCommand -> commandIcon(glyph.kind, glyph.steps, glyph.root, glyph.body)
         is ActionCatalog.GlyphSource.BySwitchKind -> systemSwitchKindIcon(glyph.id)
     }
 
@@ -663,26 +664,46 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
     }
 
 /**
- * 一条自定义命令的类型图标：单条 → [PageIcons.CommandSingle] / [PageIcons.CommandRoot]，
+ * 一条自定义命令的类型图标：单条 → **它自己那种写法**的格式图标（[formatIconOf]），
  * 多条 → 按步骤数的 [commandSerialIcon]。
  *
- *  **单条分两档**：以 root 执行（只走 `su`）与不申请 root（只走 `sh`）是两颗字 —— 命令列表里
- *  一眼要能看出哪几条会提权。多条命令没有这一档（它的 `root` 只管正文里那些 `shell:` 步骤，
- *  不是这条命令的身份），仍按步骤数取方框。
+ * ## 单条那颗是「写法 + 身份」两层
+ *
+ * · **底图**说明这条命令**怎么写**：`shell:` → 终端、`notify:` → 消息、`fluid:` → 横胶囊 …
+ *   与「支持的命令格式」那张卡同一份表（[formatIconOf] 直接查它）。认不出的写法退回
+ *   [PageIcons.CommandSingle] 那颗通用终端。
+ * · **右下角那颗井号**说明它**以谁的身份跑**：`root` 为真时把 [PageIcons.CommandRoot] 那颗字形
+ *   拼上去（走 `badgedIcon`，与音量 / 亮度 / 铃声那几族同一支：底图右下角裁掉缺口、井号落进去）。
+ *   原先这两件事挤在一颗字上（root 就整颗换成井号），
+ *   于是「一条提权的 notify 命令」在列表里只看得见「提权」、看不出它干什么。
+ *
+ * 多条命令没有 root 这一档（它的 `root` 只管正文里那些 `shell:` 步骤，不是这条命令的身份），
+ * 仍按步骤数取方框。
  *
  * 三个地方共用这一份：网格格子与「自定义命令」卡片、步骤行里引用另一条命令的那枚小图标
  * （[stepIcon] 从命令库查出被引用的那条之后转给它）。
  *
  * @param root 单条命令是否以 root 执行（`Command.root`）；多条忽略
+ * @param body 单条命令的正文 —— 按它开头的前缀取底图；多条忽略
  */
 internal fun commandIcon(
     kind: CommandKind,
     steps: Int,
     root: Boolean = false,
+    body: String = "",
 ): ImageVector =
     when (kind) {
-        CommandKind.SERIAL -> commandSerialIcon(steps)
-        CommandKind.SINGLE -> if (root) PageIcons.CommandRoot else PageIcons.CommandSingle
+        CommandKind.SERIAL -> {
+            commandSerialIcon(steps)
+        }
+
+        CommandKind.SINGLE -> {
+            val base = formatIconOf(body) ?: PageIcons.CommandSingle
+            //  拼接走音量 / 亮度 / 铃声那几族同一支：底图右下角**裁掉缺口**，井号落进那块空里。
+            //  名字必须带上底图那一段 —— 「随机图标配色」按 `ImageVector.name` 取色，写死一个名字的话
+            //  所有提权命令（不管 shell 还是 notify）都会染成同一个色。
+            if (root) badgedIcon("${base.name}+Hash", Badge.Hash, base) else base
+        }
     }
 
 /**

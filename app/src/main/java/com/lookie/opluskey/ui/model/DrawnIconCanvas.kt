@@ -7,6 +7,8 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathData
 import androidx.compose.ui.graphics.vector.PathNode
+import androidx.compose.ui.graphics.vector.VectorGroup
+import androidx.compose.ui.graphics.vector.VectorPath
 import androidx.compose.ui.unit.dp
 
 // 手绘图标共用的**画布与笔法** —— 建字形用的 builder、描边那一笔，外加「系统配色」那两块色块。
@@ -76,6 +78,93 @@ internal fun badgedIcon(
     builder.addStroked(base(notch(badge)))
     builder.addStroked(badgePath(badge), width = BADGE_STROKE)
     return builder.build()
+}
+
+/**
+ * 同一套拼接，但底图是**图标库现成的那颗字形**。
+ *
+ *  与上面那一支只差「底图怎么让位」：手绘那几族是**画的时候收笔**（笔画在缺口圆上停住），
+ *  而图标库的字形改不了 path，只能**裁** —— 把底图整组套进一条「右下角切掉一块」的裁剪路径里
+ *  （缺角是**方形**，理由见 [cornerClip]）。角标、笔画宽度仍走 [badgePath] / [BADGE_STROKE]，
+ *  缺角大小按 [cornerNotchStart] 跟角标墨迹走 —— 与手绘那几族同一份账。
+ *
+ *  @param base 底图字形（图标库那一颗，24 视口）
+ */
+internal fun badgedIcon(
+    name: String,
+    badge: Badge,
+    base: ImageVector,
+): ImageVector {
+    val builder = vectorBuilder(name)
+    builder.addGroup(clipPathData = cornerClip(cornerNotchStart(badge)))
+    builder.copyPaths(base.root)
+    builder.clearGroup()
+    builder.addStroked(badgePath(badge), width = BADGE_STROKE)
+    return builder.build()
+}
+
+/**
+ * 「右下角切掉一块」的裁剪路径 —— 缺角是**方形**，不是圆。
+ *
+ *  圆形缺口只适合手绘那几族：它们的底图是**细笔画**（声波弧、光线、铃舌），圆只削到笔画末端，
+ *  看着就是「这一笔在缺口边上收笔」。而这里裁的是图标库的**整颗闭合字形**（终端框、气泡轮廓）：
+ *  拿圆去咬会在轮廓上留一段月牙形的弧，读起来像图标破了。方形缺角读作「右下角那一块被切掉」，
+ *  与角标那块方方正正的地也正好对上。
+ *
+ *  @param cut 缺角方块的左上角（x / y 各取这个值）—— 由 [cornerNotchStart] 按角标墨迹算
+ */
+private fun cornerClip(cut: Float): List<PathNode> =
+    PathData {
+        moveTo(0f, 0f)
+        lineTo(24f, 0f)
+        lineTo(24f, cut)
+        lineTo(cut, cut)
+        lineTo(cut, 24f)
+        lineTo(0f, 24f)
+        close()
+    }
+
+/** 把一个 [VectorGroup]（含子组）的路径原样搬进当前 builder —— 裁剪 / 拼接现成字形时用。 */
+private fun ImageVector.Builder.copyPaths(group: VectorGroup) {
+    group.forEach { node ->
+        when (node) {
+            is VectorPath -> {
+                addPath(
+                    pathData = node.pathData,
+                    pathFillType = node.pathFillType,
+                    name = node.name,
+                    fill = node.fill,
+                    fillAlpha = node.fillAlpha,
+                    stroke = node.stroke,
+                    strokeAlpha = node.strokeAlpha,
+                    strokeLineWidth = node.strokeLineWidth,
+                    strokeLineCap = node.strokeLineCap,
+                    strokeLineJoin = node.strokeLineJoin,
+                    strokeLineMiter = node.strokeLineMiter,
+                    trimPathStart = node.trimPathStart,
+                    trimPathEnd = node.trimPathEnd,
+                    trimPathOffset = node.trimPathOffset,
+                )
+            }
+
+            is VectorGroup -> {
+                //  `addGroup` 没有块形式：它返回 builder，组由 `clearGroup()` 收尾。
+                addGroup(
+                    name = node.name,
+                    rotate = node.rotation,
+                    pivotX = node.pivotX,
+                    pivotY = node.pivotY,
+                    translationX = node.translationX,
+                    translationY = node.translationY,
+                    scaleX = node.scaleX,
+                    scaleY = node.scaleY,
+                    clipPathData = node.clipPathData,
+                )
+                copyPaths(node)
+                clearGroup()
+            }
+        }
+    }
 }
 
 /** 「系统配色」菜单里那两块色块 —— 形状固定，颜色由调用方逐行给。 */

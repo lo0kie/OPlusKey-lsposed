@@ -21,8 +21,8 @@ internal class CustomCommandRunner(
      *  给：那时下一步要**等这一步真的结束**才排（见 [runSteps]）。`null` = 不用回执。
      */
     private val execShell: (String, Boolean, (() -> Unit)?) -> Unit,
-    /** 派发一个非 shell 的内置动作（第二参是当前自定义命令的嵌套深度，`cmd:` 引用时继续加深）。 */
-    private val dispatch: (Action, Int) -> Unit,
+    /** 派发一个非 shell 的内置动作。 */
+    private val dispatch: (Action) -> Unit,
     /** 展开失败时的通知出口。 */
     private val onFailure: (CommandFailure) -> Unit,
 ) {
@@ -43,9 +43,9 @@ internal class CustomCommandRunner(
     }
 
     /**
-     * 正在跑的多条命令（按命令名）—— 顶上两道闸都看它（见 [run]）：
-     *  · 顶层（`depth == 0`）**非空即挡**：一次只跑一条命令链；
-     *  · 任何深度都按名字再挡一道：同一条的重入（含手改出来的自引 / 互引）不许叠着跑。
+     * 正在跑的多条命令（按命令名）—— 顶上两道闸都看它（见 [enterChain]）：
+     *  · **非空即挡**：一次只跑一条命令链；
+     *  · 再按名字挡一道：同一条的重入不许叠着跑。
      *
      * 用并发集合：占位与摘除不保证在同一个线程上（`postDelayed` 的续步在另一条路上）。
      */
@@ -55,24 +55,14 @@ internal class CustomCommandRunner(
 
     /**
      * 按**名字**执行一条自定义命令（从库里查那一条）。
-     *
-     * @param depth 递归深度（界面只允许「多条引用单条」，手改文件可能成环，故须有上限）
      */
-    fun run(
-        name: String,
-        depth: Int,
-    ) {
+    fun run(name: String) {
         if (name.isBlank()) {
             // 空名不是「库里没有」：配置里写了空的 `cmd:`（后面没写名字，手改坏了 / 老版本残留）
             //  按下去要有反馈，而那句话说的是**这条引用是空的**，不是「命令已经不在了」
             //  —— 后者会让人去命令库里找一条根本没被写进名字的东西。
             XLog.w("自定义命令名为空（配置里写了空的 ${Command.PREFIX}，后面没写名字），跳过")
             onFailure(CommandFailure.EMPTY)
-            return
-        }
-        if (depth > MAX_COMMAND_DEPTH) {
-            XLog.w("自定义命令嵌套过深（>$MAX_COMMAND_DEPTH），停止展开：$name")
-            onFailure(CommandFailure.TOO_DEEP)
             return
         }
 
@@ -89,7 +79,7 @@ internal class CustomCommandRunner(
             onFailure(CommandFailure.NOT_FOUND)
             return
         }
-        run(cmd, depth)
+        run(cmd)
     }
 
     /**
@@ -98,21 +88,16 @@ internal class CustomCommandRunner(
      *  设置页「测试命令」走这里：草稿态下这条命令还没保存，库里要么没有它、要么存的是**改之前**
      *  那一版，按名字跑测的就不是眼前这份（最容易骗人的一种「看起来测过了」）。
      *  列表菜单那条传进来的也是当前配置里那一条，与按名字查等价。
-     *
-     *  深度闸在上一条 [run] 里查过；这里的入口深度都是已知的（测试是 0，`cmd:` 引用是 `depth + 1`）。
      */
-    fun run(
-        cmd: Command,
-        depth: Int,
-    ) {
+    fun run(cmd: Command) {
         //  **先挪到自己的线程**（理由见 [worker]）：设置页「测试命令」是从 Compose 的点击回调里
         //  直接进来的 —— 那一次调用在主线程上，而它接下来要读命令库之外还要起进程、发 binder。
-        //  已经在执行线程上（`cmd:` 嵌套、续步）就地跑，避免把自己排到自己后面。
+        //  已经在执行线程上（续步）就地跑，避免把自己排到自己后面。
         if (Looper.myLooper() != worker.looper) {
             val posted =
                 worker.post {
                     try {
-                        run(cmd, depth)
+                        run(cmd)
                     } catch (e: Throwable) {
                         XLog.w("自定义命令排到执行线程后失败：${cmd.name.ifBlank { UNNAMED }}", e)
                     }
@@ -136,15 +121,19 @@ internal class CustomCommandRunner(
         }
 
         if (cmd.kind == CommandKind.SINGLE) {
-            runSingle(cmd, name, depth)
+            runSingle(cmd, name)
             return
         }
 
-        // 「同时只跑一条命令链」的两道闸 —— 与分叉共用同一个入口（[enterChain]）。
-        if (!enterChain(name, depth)) return
-        XLog.w("自定义命令「$name」（多条）共 ${cmd.steps.size} 步")
+        // 「同时只跑一条命令链」的两道闸 —— 见 [enterChain]。
+        if (!enterChain(name)) return
         try {
-            runSteps(cmd.steps, 0, depth, cmd.stepDelayMs, name)
+            //  步骤里的 `cmd:<另一条>` 先展开成扁平表（多层、带环检测）：`runSteps` 只认「一步一步的
+            //  动作文本」，引用在进它之前就化成真实步骤，续步 / 间隔 / 合并那套逻辑一行都不用动。
+            //  **放在 try 里**：展开要读命令库，抛出去的话占位就还不回来了（所有命令链会一起锁死）。
+            val steps = expandStepRefs(cmd, onFailure)
+            XLog.w("自定义命令「$name」（多条）共 ${cmd.steps.size} 步，展开后 ${steps.size} 步")
+            runSteps(steps, 0, cmd.stepDelayMs, name)
         } catch (e: Throwable) {
             // 同步段抛了：把占位还回去，否则这条命令从此再也跑不起来（永久被自己挡住）
             runningSerial.remove(name)
@@ -160,19 +149,13 @@ internal class CustomCommandRunner(
     private fun runSingle(
         cmd: Command,
         name: String,
-        depth: Int,
     ) {
         // 空命令已在上一步（`run` 的 `hasContent`）判过，这里只剩真正要跑的正文
         XLog.w("自定义命令「$name」（单条）→ ${XLog.redactCommand(cmd.single)}")
         // 与多条步骤同一套语义（Action.parse）：keyevent: / intent: / app: / shortcut: /
-        // cmd: / shell: 六种前缀写法在单条里同样成立。**没有前缀的写法不再兜底成 shell**
+        // shell: 这些前缀写法在单条里同样成立。**没有前缀的写法不再兜底成 shell**
         // （解析成 `none`、不执行）—— 界面在「命令详情」那一栏就拦住了（`Action.hasSupportedFormat`），
         // 这里能收到说明是老配置 / 手改文件，执行侧只留日志。
-        // 注意：这里必须 `depth + 1`（与 `runSteps` 里那条 `cmd:` 步骤同口径）：单条正文里的
-        // `cmd:` 引用会在派发侧再进 `run()`，**是一次同步重入**；把 `depth` 原样传下去等于
-        // 「每层都还是 0」，上面那道 `depth > MAX_COMMAND_DEPTH` 永远不成立 ——
-        // 单条自引（A 的正文写 `cmd:A`）或互引（A→B→A）会一路同步递归到 StackOverflowError，
-        // 每层还各读一次配置文件。传别的动作时这个数没人用，多 `+1` 不产生副作用。
         val parsed = Action.parse(cmd.single)
         if (parsed is Action.Shell) {
             //  单条自己的「以 root 执行」只在这一支生效：它是**整条命令**的开关，不跟着正文的
@@ -180,26 +163,15 @@ internal class CustomCommandRunner(
             execShell(parsed.command, cmd.root, null)
             return
         }
+        //  正文里写 `cmd:<另一条>` 是**老版本 / 手改文件**才有的写法：命令正文不再支持引用另一条
+        //  命令（界面那一栏也存不进去）。这里不展开、不递归，报一句就停 —— 否则一条自引的命令
+        //  会一路展开到自己。
         if (parsed is Action.Custom) {
-            //  正文引用另一条命令 ⇒ 这一下也是一次「起一条链」，必须走同一道链闸：
-            //  `enterChain` 里「已有链在跑」那条只在 depth == 0 时生效，而这里是 depth+1，
-            //  不占位就会绕过它 —— 两条链（一条由单条拉起、一条直接按下）交错执行。
-            //
-            //  **这里必须传 `depth + 1`，不能传 0**：传 0 会让这道闸把「本层是一次嵌套」
-            //  误判成「本层是最外层」—— 上一条链还占着 `runningSerial`（多条命令的步骤
-            //  之间要等 gapMs，占位一直持续到整条链跑完），于是这一层永远判 OVERLOADED、
-            //  永远不执行：`A(多条) → cmd:B(单条, 正文又是 cmd:C)` 里的 C 一次也不会跑。
-            //  传 `depth + 1` 时只做 `runningSerial.add(name)` 那半（防同名重入），正是本意。
-            if (!enterChain(name, depth + 1)) return
-            try {
-                dispatch(parsed, depth + 1)
-            } finally {
-                //  同步段结束就还回去（与多条那条 catch 同一口径），否则这条单条从此永久被自己挡住
-                runningSerial.remove(name)
-            }
+            XLog.w("自定义命令「$name」的正文引用了另一条命令（不再支持），跳过：${parsed.name}")
+            onFailure(CommandFailure.REF_NOT_ALLOWED)
             return
         }
-        dispatch(parsed, depth + 1)
+        dispatch(parsed)
     }
 
     /**
@@ -212,14 +184,12 @@ internal class CustomCommandRunner(
      * 续步一律经 [scheduleNext] 回到 [worker] 上排队，所以整条链始终在同一条线程、同一顺序上。
      *
      * @param index 下一个要派发的步骤下标
-     * @param depth 递归深度（`cmd:` 步骤引用另一条命令时加深）
      * @param gapMs 步骤间等待时长（毫秒，0 = 不等待）
      * @param name 正在跑的这条命令名 —— 跑完（含异常中止）时把它从 [runningSerial] 里摘掉
      */
     private fun runSteps(
         steps: List<String>,
         index: Int,
-        depth: Int,
         gapMs: Int,
         name: String,
     ) {
@@ -233,7 +203,7 @@ internal class CustomCommandRunner(
         //  而放进下面任何一条分支都会多一次起进程（或被并成以 ` && ` 开头的一条串）。
         if (shell != null && shell.isBlank()) {
             XLog.w("  第 ${index + 1} 步是空命令，跳过")
-            scheduleNext(steps, index + 1, depth, gapMs, name)
+            scheduleNext(steps, index + 1, gapMs, name)
             return
         }
         // 注意：小布识屏那条别名会被翻译成**原生调用**、不是真的 shell，必须**单独派发**。
@@ -245,13 +215,13 @@ internal class CustomCommandRunner(
             XLog.w("  第 ${index + 1} 步（KSU 别名）→ $shell")
             //  多条命令的步骤没有各自的开关 ⇒ 一律按默认（`su`，起不来不退回 `sh`）
             execShell(shell, true, null)
-            scheduleNext(steps, index + 1, depth, gapMs, name)
+            scheduleNext(steps, index + 1, gapMs, name)
             return
         }
 
         if (shell != null && gapMs > 0) {
             XLog.w("  第 ${index + 1} 步（shell，等它跑完再等 ${gapMs}ms）→ ${XLog.redactCommand(shell)}")
-            execShell(shell, true) { scheduleNext(steps, index + 1, depth, gapMs, name) }
+            execShell(shell, true) { scheduleNext(steps, index + 1, gapMs, name) }
             return
         }
 
@@ -265,17 +235,17 @@ internal class CustomCommandRunner(
             } else {
                 val action = Action.parse(steps[index])
                 XLog.w("  第 ${index + 1} 步 → ${XLog.redactToken(action.token)}")
+                //  正文里写 `cmd:<另一条>` 是老版本 / 手改文件才有的写法：命令正文不再支持引用
+                //  另一条命令。这一步跳过并报一句 —— 不展开、不递归，链照常往下走。
                 if (action is Action.Custom) {
-                    // 引用的若是**多条命令**，它那条链靠自己续步 ⇒ 这一步不等它跑完
-                    //  就往下走（已知行为，不是漏写 await）。步骤菜单只给内置动作、写不出这种一步，
-                    //  只有手改命令库才会出现。
-                    run(action.name, depth + 1)
+                    XLog.w("  第 ${index + 1} 步引用了另一条命令（不再支持），跳过：${action.name}")
+                    onFailure(CommandFailure.REF_NOT_ALLOWED)
                 } else {
-                    dispatch(action, depth)
+                    dispatch(action)
                 }
                 index + 1
             }
-        scheduleNext(steps, next, depth, gapMs, name)
+        scheduleNext(steps, next, gapMs, name)
     }
 
     /**
@@ -290,7 +260,6 @@ internal class CustomCommandRunner(
     private fun scheduleNext(
         steps: List<String>,
         next: Int,
-        depth: Int,
         gapMs: Int,
         name: String,
     ) {
@@ -298,16 +267,16 @@ internal class CustomCommandRunner(
         val posted =
             when {
                 !delayed && Looper.myLooper() == worker.looper -> {
-                    runStepsGuarded(steps, next, depth, gapMs, name)
+                    runStepsGuarded(steps, next, gapMs, name)
                     true
                 }
 
                 !delayed -> {
-                    worker.post { runStepsGuarded(steps, next, depth, gapMs, name) }
+                    worker.post { runStepsGuarded(steps, next, gapMs, name) }
                 }
 
                 else -> {
-                    worker.postDelayed({ runStepsGuarded(steps, next, depth, gapMs, name) }, gapMs.toLong())
+                    worker.postDelayed({ runStepsGuarded(steps, next, gapMs, name) }, gapMs.toLong())
                 }
             }
         if (!posted) {
@@ -323,12 +292,11 @@ internal class CustomCommandRunner(
     private fun runStepsGuarded(
         steps: List<String>,
         index: Int,
-        depth: Int,
         gapMs: Int,
         name: String,
     ) {
         try {
-            runSteps(steps, index, depth, gapMs, name)
+            runSteps(steps, index, gapMs, name)
         } catch (e: Throwable) {
             // 这一条链到这里断了：把占位还回去（否则这条命令从此永久被自己挡住）
             XLog.w("自定义命令续步失败（已中止这条链）：$name", e)
@@ -343,24 +311,19 @@ internal class CustomCommandRunner(
     }
 
     /**
-     * 「同时只跑一条命令链」的两道闸 —— 多条命令与条件执行共用（两者都会展开**另一条**命令）。
+     * 「同时只跑一条命令链」的两道闸。
      *
      *  第一道按「有没有链在跑」挡，不是按名字：连着按两下（单击 / 双击都算）会让两条命令链
      *  **交错** —— 第 2 条的第 1 步插在第 1 条的第 2 步前面（间隔越长的链越明显）。
      *  只按名字挡的话，两条**不同的**命令照样同时跑（名字不同，谁都挡不住谁），闸就没达到那句话。
-     *  只看顶层（`depth == 0`）：一步写 `cmd:<另一条>` 是同一条链的嵌套，不是新的一次触发。
      *  闸设在这里而不是判定侧：判定侧分不出「上一次跑完没有」，只有展开器自己知道。
      *
-     *  第二道按名字挡：同一条命令的重入 —— 顶层那一种已经被上面那道挡掉了，这里主要盖住
-     *  `cmd:` 自引 / 互引（手改命令库才写得出来的环）。
+     *  第二道按名字挡：同一条命令的重入（连着触发同一条）。
      *
      * @return false = 这一下被挡掉了（已经报过 [CommandFailure.OVERLOADED]），调用方直接返回
      */
-    private fun enterChain(
-        name: String,
-        depth: Int,
-    ): Boolean {
-        if (depth == 0 && runningSerial.isNotEmpty()) {
+    private fun enterChain(name: String): Boolean {
+        if (runningSerial.isNotEmpty()) {
             XLog.w("已有命令链在跑（${runningSerial.joinToString()}），「$name」这一下跳过（避免两条链交错）")
             onFailure(CommandFailure.OVERLOADED)
             return false
@@ -407,10 +370,87 @@ internal class CustomCommandRunner(
     }
 
     private companion object {
-        /** 自定义命令展开最大深度 —— 界面不成环，但命令库是纯文本、可能被手改出环。 */
-        const val MAX_COMMAND_DEPTH = 4
-
         /** 草稿还没起名时在日志 / 「正在跑」表里用的占位 —— 只给人看，不落盘。 */
         const val UNNAMED = "（未命名）"
     }
+}
+
+/**
+ * 把多条命令步骤里的 `cmd:<另一条>` 换成被引用那条命令的正文。
+ *
+ * ## 规则
+ *
+ *  · **单条**命令的正文不引用任何命令（`Action.hasSupportedFormat` 与执行期
+ *    [CommandFailure.REF_NOT_ALLOWED] 两道拦着，正常操作写不进去）；
+ *  · **多条**命令的每一步**只能引用单条命令**（用户口径：「单条命令无法引用任何命令，
+ *    多条命令只能引用单条命令」）。
+ *
+ *  于是引用图只有「多条 → 单条」一个方向、单条没有出边 —— **不可能成环**，所以这里既不递归、
+ *  也不需要环检测：一层替换完就结束。抽屉那一侧同样只列单条
+ *  （`StepSheetFilter.singleCommandsOnly`），用户根本挑不到会被拒绝的目标；能走到下面那两条
+ *  报错分支的，只有手改文件与老配置。
+ *
+ * ## 换法
+ *
+ *  · 引用单条：它那一整条正文就是这一步（`cmd.single` 直接落到这个位置）；
+ *  · 找不到这条命令（被删 / 改名）：跳过这一步并报 [CommandFailure.NOT_FOUND]；
+ *  · 引用的是一条**多条**命令：跳过并报 [CommandFailure.REF_ONLY_SINGLE]。
+ *
+ *  **步骤间隔只认外层那一条命令自己设的**（`Command.stepDelayMs`）：换过来的一步就是一步，
+ *  被引用命令自己的间隔不参与 —— 否则相邻两步之间等多久会变得没法解释。
+ *
+ * @param cmd 正在跑的这条（外层）命令
+ * @param onFailure 展开期的问题出口 —— 只报**第一条**：一条命令里好几处引用坏掉时，
+ *   连弹五条同样的提示没有意义（日志里逐条都有）
+ * @return 步骤表（原样的非引用步骤 + 换出来的正文）
+ */
+private fun expandStepRefs(
+    cmd: Command,
+    onFailure: (CommandFailure) -> Unit,
+): List<String> {
+    //  没有任何引用时原样返回（最常见的一档：省掉一次命令库解码）
+    if (cmd.steps.none { it.startsWith(Command.PREFIX) }) return cmd.steps
+
+    //  命令库整趟只解一次：每步调一次 `loadCached` 会反复解析同一份 JSON
+    val library = CommandLibrary.loadCached()
+    var reported = false
+    val report: (CommandFailure, String, String) -> Unit = { failure, ref, why ->
+        XLog.w("多条命令展开：「$ref」$why —— 这一步跳过")
+        if (!reported) {
+            reported = true
+            onFailure(failure)
+        }
+    }
+    val out = ArrayList<String>(cmd.steps.size)
+    for (step in cmd.steps) {
+        val resolved = resolveStep(step, library, report) ?: continue
+        out.add(resolved)
+    }
+    return out
+}
+
+/**
+ * 一步该变成什么 —— `null` = 这一步作废（引用坏了，已通过 [report] 报过）。
+ *
+ *  拆出来只为把 [expandStepRefs] 的圈复杂度留在阈值内，也让「哪几步会作废」一眼看得全。
+ */
+private fun resolveStep(
+    step: String,
+    library: List<Command>,
+    report: (CommandFailure, String, String) -> Unit,
+): String? {
+    if (!step.startsWith(Command.PREFIX)) return step
+    val ref = step.removePrefix(Command.PREFIX).trim()
+    //  用户那份库优先，找不到才退到模块内置的那几条（与 `run(name)` 同一个顺序）
+    val target = library.firstOrNull { it.name == ref } ?: CommonCommands.commandOf(ref)
+    if (target == null) {
+        report(CommandFailure.NOT_FOUND, ref, "在命令库里找不到")
+        return null
+    }
+    if (target.kind != CommandKind.SINGLE) {
+        report(CommandFailure.REF_ONLY_SINGLE, ref, "是多条命令，这里只能引用单条")
+        return null
+    }
+    //  空正文没什么可加的（与「空步骤跳过」同一条：它没有任何要跑的东西）
+    return target.single.takeIf { it.isNotBlank() }
 }

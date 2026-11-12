@@ -942,6 +942,17 @@ data class GlobalConfig(
      *  默认开：装上就看得见，嫌占地方再关（关的入口在「按键设置」页）。
      */
     val showCommonCommands: Boolean = DEFAULT_SHOW_COMMON_COMMANDS,
+    /**
+     * 「常用命令」那张清单 —— **只由用户自己收录**，模块不预置任何条目。
+     *
+     *  默认空表：开关打开后是一张空清单，用户在「常用命令」页自己挑动作加进来。
+     *  原先预置的那四条（微信 / 支付宝的扫一扫与收付款）已经去掉 —— 要不要放、放哪几条，
+     *  交给用户；模块只保留 [com.lookie.opluskey.core.present.CommonCommands] 那张表给
+     *  **老配置里已绑过的 `cmd:common.*`** 兜底（执行侧与显示名还认得它们）。
+     *  只在界面层读 ⇒ 只有落盘那一列、不进广播。但它跟着配置走：条目都是动作引用，目标在这一份
+     *  自己的绑定与命令库里 —— 新建空白配置时清空（`ConfigProfiles.createAs`）。
+     */
+    val commonCommands: List<CommonCommand> = emptyList(),
     /** 使用 ColorOS 专属系统接口（手电筒 / 免打扰 / 响铃模式等）。关闭时走 AOSP 标准接口。 */
     override val colorOsApi: Boolean = DEFAULT_COLOR_OS_API,
     /**
@@ -1563,3 +1574,21 @@ data class Config(
             )
     }
 }
+
+/**
+ * 「常用命令」清单里的一条 —— 用户钉进那一段的一个动作。
+ *
+ *  与命令库是**两套东西**：这里存的是一条**动作写法**（`cmd:` / `app:` / `keyevent:` / `shell:` …），
+ *  不是命令库里那条记录；于是它既能指回模块自带的几条（`cmd:common.wechat_scan`），
+ *  也能直接指任意一个动作。写入绑定时原样落 [token]，执行侧不需要认识这张表。
+ *
+ * @param token 动作写法（`Action.parse` 认的那种）
+ * @param name 用户起的名字；**空串 = 按动作自己念**（`cmd:` 走 `CommonCommands.labelOf`，
+ *   其余走 `commandTitleOf`）—— 默认那几条因此能跟着界面语言变
+ * @param showInBinding 要不要出现在「按键绑定页」那一段（关掉只是那一段不画，绑定本身不动）
+ */
+data class CommonCommand(
+    val token: String,
+    val name: String = "",
+    val showInBinding: Boolean = true,
+)

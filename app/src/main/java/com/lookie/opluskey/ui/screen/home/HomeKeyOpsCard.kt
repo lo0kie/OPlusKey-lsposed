@@ -68,7 +68,7 @@ private fun SettingsPage.keysEntryRow(pageEnabled: Boolean): CardRow.Item =
 private fun SettingsPage.settingsEntryRow(pageEnabled: Boolean): CardRow.Item =
     CardRow.Item(
         title = I18n.get(Strings.GENERAL_TITLE, "按键设置"),
-        summary = I18n.get(Strings.HOME_GENERAL_DESC, "接口选择、振动与组合按键"),
+        summary = I18n.get(Strings.HOME_GENERAL_DESC, "接口、振动与组合按键"),
         icon = PageIcons.SettingsCog,
         enabled = pageEnabled,
         arrow = true,

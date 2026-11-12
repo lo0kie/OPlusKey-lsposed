@@ -571,7 +571,7 @@ private fun SettingsPage.SingleCommandField(
     //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。
     val formatError =
         if (raw.isNotBlank() && !Action.hasSupportedFormat(raw)) {
-            I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "开头要写 shell: / cmd: 前缀")
+            I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "必须以支持的格式开头")
         } else {
             ""
         }

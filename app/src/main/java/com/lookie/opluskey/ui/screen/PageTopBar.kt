@@ -48,6 +48,7 @@ import com.lookie.opluskey.ui.state.ComboEditState
 import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.SettingsTarget
 import com.lookie.opluskey.ui.state.SettingsTargetState
+import com.lookie.opluskey.ui.titleWithCount
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -144,6 +145,11 @@ private fun SettingsPage.pageTitle(s: Screen): String =
 
         Screen.COMMANDS -> {
             COMMANDS_TITLE
+        }
+
+        // 「常用命令」：与绑定页那一段同名 —— 同一个东西在两处叫两个名字只是多一处要记。
+        Screen.COMMON_COMMANDS -> {
+            I18n.get(Strings.BINDING_COMMON_COMMANDS, "常用命令")
         }
 
         Screen.BRANCHES -> {
@@ -250,6 +256,15 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
             } else {
                 I18n.format(Strings.COMMAND_SAVED_COUNT, configState.commands.value.size)
             }
+        }
+
+        // 这一行说**这张清单有几条**（与绑定页那一段标题同一个数）：页内那一段自己带条数，
+        // 顶栏这一行说的则是「钉住的有几条」，两者是同一件事的两种呈现。
+        Screen.COMMON_COMMANDS -> {
+            titleWithCount(
+                I18n.get(Strings.COMMON_COMMANDS_SUBTITLE, "已添加的动作"),
+                configState.config.value.global.commonCommands.size,
+            )
         }
 
         Screen.APP_PICKER -> {
@@ -406,6 +421,10 @@ private fun SettingsPage.PageBottomBand(
 
         Screen.COMMANDS -> {
             CommandKindBand(pagers.commands)
+        }
+
+        // 「常用命令」页没有带子：它不是「某一档手势」，也没有分页器 —— 一张清单到底。
+        Screen.COMMON_COMMANDS -> {
         }
 
         // 「系统场景」页**没有带子**：翻转之后一张表里每块自带三档，页面不再按手势分页，

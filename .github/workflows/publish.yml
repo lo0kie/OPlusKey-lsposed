@@ -115,29 +115,28 @@ jobs:
       - name: 校验验收底线（AGENTS.md 二、1.2）
         run: bash tools/verify-apk.sh dist
 
-      # 模块仓库还没批下来 / 令牌还没配时不发版，只提示
+      # 前置条件不满足必须红：这条流水线是「点了一下、要求把这一版推上去」才跑的，
+      #   静默跳过会让整条 run 显示成功、模块仓库却一条都没多 —— 看起来上过架，实际没有。
       - name: 检查模块仓库的前置条件
-        id: token
         env:
           MODULES_REPO_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
           GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
         run: |
           if [ -z "${MODULES_REPO_TOKEN:-}" ]; then
-            echo "::notice title=未配置发布令牌::跳过模块仓库；需在 Secrets 里加 MODULES_REPO_TOKEN（对 ${MODULE_REPO} 有 contents:write）"
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error title=缺发布令牌::Secrets 里没有 MODULES_REPO_TOKEN（需对 ${MODULE_REPO} 有 contents:write）"
+            exit 1
           fi
-          if ! gh repo view "$MODULE_REPO" >/dev/null 2>&1; then
-            echo "::notice title=模块仓库尚不存在::跳过模块仓库；${MODULE_REPO} 还没创建（提交 issue 通过后由机器人建）"
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          # 失败原因原样打出来：401 是令牌失效（过期 / 被撤销），404 是令牌看不到这个仓库
+          #   （fine-grained 没勾这个仓库，或组织没批准），改名同样落到 404。只写一句
+          #   「读不到」等于让人再猜一轮。
+          if ! err=$(gh api "repos/$MODULE_REPO" --jq .full_name 2>&1 >/dev/null); then
+            echo "::error title=令牌不可用::MODULES_REPO_TOKEN 读不到 ${MODULE_REPO}：${err}"
+            exit 1
           fi
-          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       # 资产名按版本号，同一版重传会撞同名 —— 先清掉这一版已有资产再传，
       # 免得 `gh` 报「文件已存在」，也免得同一条 release 下攒出两个同名包。
       - name: 清掉这一版里的旧资产
-        if: steps.token.outputs.ready == 'true'
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
           GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
@@ -172,13 +171,37 @@ jobs:
           echo "--- 正文 ---"
           cat dist/release-body.md
 
+      # 让这一版的 tag 指向一个**新提交**。
+      #
+      #   Release 的 `created_at` 取的是 tag 所指 commit 的提交时间，而模块仓库的默认分支从初始化
+      #   之后就没再动过：不先建提交，新 tag 会落在那个老提交上，`created_at` 与历史十几条 release
+      #   并列，管理器退化成按 tag 名字倒序取「最新」，最新又会停在 `9-1.3.1`（`'9'` 在字典序里最大）。
+      #
+      #   只建悬空提交（不进默认分支历史，与机器人给新版本建提交的做法一致），tag 先建好，
+      #   下一步的 action 看到 tag 已存在就直接用它。
+      - name: 让这一版的 tag 指向新提交
+        env:
+          GH_TOKEN: ${{ secrets.MODULES_REPO_TOKEN }}
+          TAG: ${{ steps.dist.outputs.tag }}
+        run: |
+          if gh api "repos/$MODULE_REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "tag $TAG 已存在，不动"
+            exit 0
+          fi
+          branch=$(gh api "repos/$MODULE_REPO" --jq '.default_branch')
+          head=$(gh api "repos/$MODULE_REPO/git/ref/heads/$branch" --jq '.object.sha')
+          tree=$(gh api "repos/$MODULE_REPO/git/commits/$head" --jq '.tree.sha')
+          payload=$(python3 -c 'import json,sys;print(json.dumps({"message":sys.argv[1],"tree":sys.argv[2],"parents":[sys.argv[3]]}))' "$TAG" "$tree" "$head")
+          sha=$(printf '%s' "$payload" | gh api -X POST "repos/$MODULE_REPO/git/commits" --input - --jq '.sha')
+          gh api -X POST "repos/$MODULE_REPO/git/refs" -f "ref=refs/tags/$TAG" -f "sha=$sha" >/dev/null
+          echo "tag $TAG → $sha"
+
       # 只传 release 包：机器人按单个 apk URL 处理，挂两个抓不准；debug 包在存档里有。
       #
       # 预发布版本靠「预发布」这一个标记区分，没有第二套构建：
       #   versionName 里带 `-`（如 1.1.0-beta.1）⇒ 发为预发布 ⇒ 只进管理器的「测试版」通道。
       #   注意：版本号仍须单调递增：预发布也占一个 `versionCode`，不涨的话测试通道收不到更新提示。
       - name: 建 / 更新 Release（模块仓库）
-        if: steps.token.outputs.ready == 'true'
         uses: softprops/action-gh-release@5113cdc90fd4d541c801c55356214017bf5ae34b # v3
         with:
           repository: ${{ env.MODULE_REPO }}

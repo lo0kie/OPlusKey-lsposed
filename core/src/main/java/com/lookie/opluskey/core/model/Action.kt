@@ -53,6 +53,9 @@ sealed interface Action {
                 //  正文空着也发得出去（只有标题那条通知），那是正当写法，不算「只有前缀」
                 is Notify -> false
 
+                //  流体云没有正文就没什么可弹的（那颗胶囊本体就是那段字）⇒ 算「只有前缀」
+                is Fluid -> message.isBlank()
+
                 is App -> target.isBlank()
 
                 is AppWindow -> target.isBlank()
@@ -169,6 +172,22 @@ sealed interface Action {
         val message: String,
     ) : Action {
         override val token: String = Action.NOTIFY_PREFIX + message
+    }
+
+    /**
+     * 弹一条**流体云**（`fluid:正文`）—— 状态栏 / AOD 上那颗胶囊，通知中心里不留记录。
+     *
+     *  流体云只有「Seedling 卡片」一条实现，载荷只有三段（`initData{title, logo, showA}`），
+     *  业务 action 固定 `pantanal.intent.business.app.system.ACTION_KEY`；宿主自己弹响铃 / 截屏
+     *  胶囊走的就是这套。模块在宿主进程里借它的 SDK 发（`host/action/FluidAction`），
+     *  所以**文字能换、模板换不了**（反编译见 `docs/device/actions/feedback.md` 四十二）。
+     *
+     *  与 [Notify] 是两件事：这条几秒后自己收起来，不会在通知中心留一条。
+     */
+    data class Fluid(
+        val message: String,
+    ) : Action {
+        override val token: String = Action.FLUID_PREFIX + message
     }
 
     /**
@@ -488,6 +507,13 @@ sealed interface Action {
          */
         const val NOTIFY_PREFIX = "notify:"
 
+        /**
+         * 弹一条流体云（`fluid:正文`）—— 状态栏 / AOD 上那颗胶囊，见 [Fluid]。
+         *
+         *  与 [NOTIFY_PREFIX] 是两件事：那条进通知中心、能留着；这条几秒就收起来。
+         */
+        const val FLUID_PREFIX = "fluid:"
+
         /** 拉起一个界面。 */
         const val APP_PREFIX = "app:"
 
@@ -627,6 +653,9 @@ sealed interface Action {
                 // 发通知（`notify:正文`）：同样必须排在兜底之前，否则会被当成 shell 命令
                 text.startsWith(NOTIFY_PREFIX) -> Notify(text.removePrefix(NOTIFY_PREFIX).trim())
 
+                // 流体云（`fluid:正文`）：同上
+                text.startsWith(FLUID_PREFIX) -> Fluid(text.removePrefix(FLUID_PREFIX).trim())
+
                 text.startsWith(APP_PREFIX) -> parseAppToken(text)
 
                 // 必须排在兜底之前，否则 `window:` 会被当成 shell 命令执行
@@ -712,16 +741,13 @@ sealed interface Action {
         fun hasSupportedFormat(raw: String?): Boolean {
             val text = raw?.trim().orEmpty()
             if (text.isEmpty()) return false
-            return text == NONE ||
-                text == FLASHLIGHT ||
-                text == POWER_MENU ||
-                text == ZOOM_MINI ||
-                text == ZOOM_MINI_COLLAPSE ||
-                PREFIXES.any { text.startsWith(it) }
+            //  `none` 也过闸：它是「这一格有值、但什么都不做」，与「还没写」不是一回事
+            //  （能不能存另有一道 `isBound` 的判据，见 `singlePayloadBlockedReason`）。
+            return text == NONE || PREFIXES.any { text.startsWith(it) }
         }
 
         /**
-         * 这段文本开头那个**支持的前缀**（`shell:` / `cmd:` …）；没有前缀、认不出时返回 `null`。
+         * 这段文本开头那个**支持的前缀**（`shell:` / `keyevent:` …）；没有前缀、认不出时返回 `null`。
          *
          *  与 [hasSupportedFormat] 同一份 [PREFIXES]：格式列表点一下要「只换前缀、正文留着」时，
          *  靠它找到该被换掉的那一段 —— 自己再列一遍前缀就会与 [parse] 漂移。
@@ -732,29 +758,29 @@ sealed interface Action {
         }
 
         /**
-         * [parse] 认的所有前缀 —— 与那串 `startsWith` 分支一一对应（顺序无关，只用来判断
-         * 「这段字有没有带格式」）。[Command.PREFIX]（`cmd:`）也在这一列里。
+         * 「命令详情」那一栏**只认这几种前缀** —— 就是界面上「支持的命令格式」卡列的那六行。
+         *
+         *  判据与那张卡是同一个集合（用户口径：只允许填列表里的）：能写的手写命令只有这六种，
+         *  卡片里每一行也正好对应其中一个。两边要改就一起改 —— 多一个这里不认的前缀，用户在
+         *  输入框里敲得进去、却存不下来；少一个，列表点一下填进来的东西自己过不了闸。
+         *
+         *  ## 为什么不是 [parse] 认的全部
+         *
+         *  [parse] 还认 `app:` / `window:` / `appshortcut:` / `ringer:` / `oplus:` / `panel:` /
+         *  `setting:` / `bright:` / `volume:` / `ringervolume:` / `setvar:` / `proc:`，以及
+         *  `cmd:` —— 那些是**格子 / 菜单选出来的**动作，载荷是内部 id（`oplus:flash_memory`、
+         *  `setting:wifi`、`proc:stop:<包名>`），手写既记不住也不该记；写错了不会报错，只会
+         *  静默不执行。[parse] 必须继续认它们（绑定那几格与已存配置都要能解析出来），
+         *  只是「命令详情」这一栏不再接受手写。
          */
         private val PREFIXES: List<String> =
             listOf(
                 KEYEVENT_PREFIX,
                 SHELL_PREFIX,
-                Command.PREFIX,
                 INTENT_PREFIX,
                 NOTIFY_PREFIX,
-                APP_PREFIX,
-                WINDOW_PREFIX,
-                APP_SHORTCUT_PREFIX,
+                FLUID_PREFIX,
                 SHORTCUT_PREFIX,
-                RINGER_PREFIX,
-                OPLUS_PREFIX,
-                PANEL_PREFIX,
-                SETTING_PREFIX,
-                BRIGHT_PREFIX,
-                VOLUME_PREFIX,
-                RINGER_VOLUME_PREFIX,
-                SETVAR_PREFIX,
-                PROCESS_PREFIX,
             )
 
         /**

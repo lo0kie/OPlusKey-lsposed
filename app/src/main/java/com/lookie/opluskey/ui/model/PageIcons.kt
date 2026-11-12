@@ -21,6 +21,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandTelegram
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandWechat
 import io.github.lyxnx.compose.ui.tablericons.outline.Cancel
+import io.github.lyxnx.compose.ui.tablericons.outline.CapsuleHorizontal
 import io.github.lyxnx.compose.ui.tablericons.outline.CategoryMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.CategoryPlus
 import io.github.lyxnx.compose.ui.tablericons.outline.Check
@@ -44,7 +45,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.DotsVertical
 import io.github.lyxnx.compose.ui.tablericons.outline.Download
 import io.github.lyxnx.compose.ui.tablericons.outline.Edit
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
+import io.github.lyxnx.compose.ui.tablericons.outline.ExternalLink
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
+import io.github.lyxnx.compose.ui.tablericons.outline.EyeCog
 import io.github.lyxnx.compose.ui.tablericons.outline.FileDownload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePencil
@@ -74,6 +77,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Link
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
 import io.github.lyxnx.compose.ui.tablericons.outline.LockOpen
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
+import io.github.lyxnx.compose.ui.tablericons.outline.Message
 import io.github.lyxnx.compose.ui.tablericons.outline.Message2
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodEmpty
 import io.github.lyxnx.compose.ui.tablericons.outline.MoodHeart
@@ -89,6 +93,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
+import io.github.lyxnx.compose.ui.tablericons.outline.Pointer2
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PointerUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Refresh
@@ -115,6 +120,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.SquareNumber3
 import io.github.lyxnx.compose.ui.tablericons.outline.Stack2
 import io.github.lyxnx.compose.ui.tablericons.outline.Sun
 import io.github.lyxnx.compose.ui.tablericons.outline.SunMoon
+import io.github.lyxnx.compose.ui.tablericons.outline.Table
 import io.github.lyxnx.compose.ui.tablericons.outline.Terminal2
 import io.github.lyxnx.compose.ui.tablericons.outline.TextSize
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
@@ -392,16 +398,18 @@ internal object PageIcons {
      * 「捐赠打赏」那一行的行首 —— `mood-heart`（笑脸 + 爱心）。
      *
      *  与 [Language] 那一族分开：同卡相邻几行各是各的语义，共用字形会分不出哪行是哪行。
+     *  菜单里那一项（[DonateList]，名单页）是另一颗字形 —— 那一行说的是「谢谢谁」，不是「怎么给」。
      */
     val Donate: ImageVector get() = TablerIcons.Outline.MoodHeart
 
     /**
-     * 「捐赠列表」那一行的行首 —— `notes`（一页写满字的纸）。
+     * 菜单最后那一行（进打赏名单，叫「捐赠列表」）的行首，也是名单页空态那一行的行首 ——
+     * `table`（一张带行列线的表格，用户指定）。
      *
-     *  与 [Donate] 那颗心分开：那一行是「怎么给」、这一行是「谢谢谁」—— 名单与金额排成一张表，
-     *  `notes` 就是「一张记着事的单子」的记号。
+     *  那一页就是**一张两列的表**（昵称、金额），表格比一页纸更贴「点进去会看到什么」。
+     *  与 [Donate] 那颗心分开：那颗管「怎么给」，这一颗管「谢谢谁」。
      */
-    val DonateList: ImageVector get() = TablerIcons.Outline.Notes
+    val DonateList: ImageVector get() = TablerIcons.Outline.Table
 
     /**
      * 捐赠菜单三行的品牌字形 —— 菜单里三行都是「一个去处」，只有品牌图能一眼分清。
@@ -529,18 +537,19 @@ internal object PageIcons {
     val CommandDelete: ImageVector get() = TablerIcons.Outline.Trash
 
     /**
-     * 命令类型「单条命令」，**不申请 root**（只走 `sh`）—— `Terminal2`（带框的终端）。
+     * 命令类型「单条命令」的**兜底底图** —— `Terminal2`（带框的终端）。
      *
-     *  列表行首、网格里自定义命令格子、步骤行里引到单条命令的那一行都取它（见 `commandIcon`
-     *  与 `stepIcon`）。以 root 执行的那一档换成 [CommandRoot]，两种身份必须是两颗字。
+     *  命令卡 / 网格格子 / 步骤行那几处的底图现在按**命令自己那种写法**取（`shell:` → [FormatShell]、
+     *  `notify:` → [FormatNotify] …，见 `commandIcon`），这一颗只在写法认不出时兜底。
+     *  以 root 执行不再换整颗字 —— 改成右下角一颗井号角标（[CommandRoot] 那颗字形拼上去）。
      */
     val CommandSingle: ImageVector get() = TablerIcons.Outline.Terminal2
 
     /**
      * 「以 root 执行」—— `Hash`（井号 = root 的提示符）。
      *
-     *  两处说的是同一件事「这条命令换个身份跑」：命令设置里那张开关行的行首，以及命令列表里
-     *  **以 root 执行**的单条命令卡的行首（见 `commandIcon` 的 `root`）。
+     *  两处说的是同一件事「这条命令换个身份跑」：命令设置里那张开关行的行首（这一处仍是整颗），
+     *  以及命令卡右下角那颗**角标**（字形取自这里，拼接见 `commandIcon` → `badgedIcon`）。
      *
      *  为什么是井号：shell 里普通用户是 `$`、root 是 `#`，这颗字形就是那个提示符本身
      *  （superuser 的经典图腾也是它），比任何「提权 / 权限」的转喻都直接。
@@ -610,8 +619,77 @@ internal object PageIcons {
      */
     val CommandCode: ImageVector get() = TablerIcons.Outline.CodePlus
 
+    /**
+     * 「显示常用命令」那一行 —— `eye-cog`（一只眼睛 + 齿轮，用户指定）。
+     *
+     *  说的是「这一段**露不露**」：眼睛管「看得见」，齿轮点出「露出来之后长什么样 / 能配什么」。
+     *  与下面「管理常用命令」那一行（[CommonCommandsManage]，`notes`）分开 ——
+     *  同一张卡相邻两行，一个开关一个去处，字形不重。
+     */
+    val CommonCommands: ImageVector get() = TablerIcons.Outline.EyeCog
+
+    /**
+     * 「管理常用命令」那一行 —— `notes`（一页写满字的纸，用户指定，原名单页那一行用的字形）。
+     *
+     *  说的是「清单里有哪几条、哪些勾着要出现」：这一行点开就是一整页清单，一页纸正好是它。
+     *  与 [CommonCommands]（`eye-cog`，管露不露）分工清楚 —— 一个开关一个去处，字形不重。
+     */
+    val CommonCommandsManage: ImageVector get() = TablerIcons.Outline.Notes
+
     /** 「步骤」卡片里「添加步骤」那一行的行首图标。 */
     val StepAdd: ImageVector get() = TablerIcons.Outline.Plus
+
+    // ── 「支持的命令格式」卡里那六行的行首 —— 一行一颗，六颗互不相同 ──
+    //
+    //  这一列是「能写什么」的图例，所以每颗都要能一眼对上它那一行的说明：终端 / 键盘 / 发出去 /
+    //  通知 / 胶囊 / 快捷方式。**不与 [CommandSingle] 抢**：那颗是「命令」这个整体（输入框行首），
+    //  这里是它的六种写法 —— 同一个字形摆在六行里的第一行，读起来像「只有 shell 是命令」。
+
+    /** `shell:<命令>` —— `terminal-2`（终端窗口），与网格里 shell 那一格同源（见 `actionIcon`）。 */
+    val FormatShell: ImageVector get() = TablerIcons.Outline.Terminal2
+
+    /**
+     * `keyevent:<按键>` —— `pointer-2`（一只点下去的手指），「模拟按键」就是按一下。
+     *
+     *  不用 `keyboard` 那张键盘：那一条讲的是「敲一个键码」，键盘整块的形状在这一列里与
+     *  `shell:` 的终端框、`notify:` 的气泡挤在一起时读不出区别；一只手指点下去更直接。
+     */
+    val FormatKeyEvent: ImageVector get() = TablerIcons.Outline.Pointer2
+
+    /**
+     * `intent:<Action>` —— `app-window`（一块界面）。
+     *
+     *  与网格里 intent 那一格同源（`ActionIcons` 那一支用的是同一颗）：intent 的结果就是「打开
+     *  另一个界面」，比一只纸飞机更贴这行说明。
+     */
+    val FormatIntent: ImageVector get() = TablerIcons.Outline.AppWindow
+
+    /** `notify:<正文>` —— `message`（一条消息）：「通知中心里会留下一条」的那件事。 */
+    val FormatNotify: ImageVector get() = TablerIcons.Outline.Message
+
+    /** `fluid:<正文>` —— `capsule-horizontal`（横放的胶囊）：流体云在状态栏上就是那么一颗。 */
+    val FormatFluid: ImageVector get() = TablerIcons.Outline.CapsuleHorizontal
+
+    /**
+     * `shortcut:<ID>` —— `external-link`（一个方框 + 外跳箭头），网格里快捷方式那一格也用这颗。
+     *
+     * ## 为什么不是链条（[Link]）
+     *
+     *  `link` 在本项目里已经是**「跳外部链接」**那颗（关于页那几行菜单的行尾，见 `CardRow` /
+     *  `MenuPopup` 的约定）。拿它表示快捷方式，等于把「一个网址」和「桌面上钉好的那个入口」
+     *  画成同一张脸 —— 而这一列里 `intent:` 已经是「跳出去」的意思了，再来一个链环只会更糊。
+     *
+     * ## 为什么不是图钉
+     *
+     *  `pin` 在图标语言里主要是**「置顶 / 固定住」**（把东西钉在当前位置），而这一格要表达的是
+     *  **「触发别处那个入口」** —— 主语是「那个入口」，不是「固定」这个动作。
+     *  而且这个模块里「固定」已经有自己的位置（场景页那颗「松手沿用按下时的场景」，见 `ReleasePin`），
+     *  同一屏出现两种「钉」的读法不划算。
+     *
+     *  `external-link` 的形状（方框 + 外跳箭头）正好是**「从这里出去，到另一个入口」**，
+     *  与 [FormatIntent] 的「一块界面」也分得开：那个是**界面本身**，这个是**跳过去的那个动作**。
+     */
+    val FormatShortcut: ImageVector get() = TablerIcons.Outline.ExternalLink
 
     /** 「自定义命令」卡片右上角 action 按钮 —— `Flask2`（锥形瓶），读作「把这条试跑一遍」。 */
     val TestCommand: ImageVector get() = TablerIcons.Outline.Flask2

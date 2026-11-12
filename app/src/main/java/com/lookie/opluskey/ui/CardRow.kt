@@ -138,6 +138,14 @@ internal sealed interface CardRow {
          *  文字压到禁用色，行本身仍可点。真要整行不可用请用 [enabled] = false。
          */
         val titleTint: Color? = null,
+        /**
+         * 这一行是**当前选中的那一个**（`false` = 不是）。选中就地画一圈内边框（见 [selectedRowRing]）。
+         *
+         *  为什么放在这里、而不是让调用点自己拼 `Modifier`：这一圈只有一份画法（超椭圆描边 +
+         *  向内让 2dp），由 [CardList] 在画行的那一层挂上 —— 调用点碰不到尺寸、颜色、描边宽度，
+         *  几个列表的「选中」于是必然长得一样。
+         */
+        val selected: Boolean = false,
         val enabled: Boolean = true,
         /**
          * 这一行灰着被点一下时**这一行自己的说法**（`null` = 用整页那句，见 [DisabledHint]）。
@@ -509,7 +517,10 @@ private fun ItemRow(
             ?: BasicComponentDefaults.titleColor()
     val summaryColors = BasicComponentDefaults.summaryColor()
     BasicComponent(
-        modifier = row.modifier,
+        //  选中那一圈内边框**由这一层挂**：调用点只给 [CardRow.Item.selected]，
+        //  画法与尺寸全在这一处（见 [selectedRowRing]）—— 几个列表的选中必须长得一样。
+        //  挂在行自己那个 modifier **之后**（内层）：行的定高先量出来，这一圈才量到那个高度。
+        modifier = row.modifier.selectedRowRing(row.selected),
         startAction = cardRowStartAction(row, iconTint),
         endActions = {
             //  行尾那一格在「箭头 / 自有控件 / 空」三档之间是**就地换控件**（编辑态把箭头换成多选框、
@@ -652,7 +663,13 @@ internal const val ROW_TEXT_MAX_LINES = 3
 private val ROW_TITLE_EXTRA_GAP = 6.dp
 
 /**
- * 选中那一行外面那一圈**内边框** —— 「选择应用」与「选择界面」两页共用。
+ * 选中那一行外面那一圈**内边框** —— 「选择应用」「选择界面」「命令抽屉」与「常用命令」那一段共用。
+ *
+ * ## 上层能力，下层直调
+ *
+ *  行内容的各个调用点**不自己拼**这一圈：给 [CardRow.Item.selected] 传 `true` 即可，
+ *  [CardList] 在画行的那一层挂上它（见 [ItemRow]）。这样几个调用点的「选中」只有行尾字形与
+ *  标题色不同，这一圈必然一模一样 —— 同一种状态在两处长得不一样，用户会以为选中的东西不同。
  *
  * ## 四角必须是**超椭圆**，不能用 `RoundedCornerShape`
  *
@@ -667,10 +684,10 @@ private val ROW_TITLE_EXTRA_GAP = 6.dp
  *  让出 [SELECTED_RING_AIR] 之后整圈描边都落在卡片轮廓**里面**，四个角是完整的弧。
  *  半径同时减去这一档，内外两条曲线才同心 —— 不减的话四角又会被顶到轮廓外。
  *
- *  为什么整块收在这里：一级页的行尾是勾、二级页的行尾是圈，两页的「选中」只有颜色与字形不同，
- *  这一圈必须一模一样（同一种状态在两页长得不一样，用户会以为选中的东西不同）。
+ *  整圈**一律四角全弧**（就是命令抽屉里原来那一份的画法）：行在卡里是首 / 中 / 末行都不分档。
+ *  一组卡片里只有两端是圆的，于是中间行的框角比卡片边角内收一点 —— 描边仍在卡片内，不会缺角。
  *
- *  @param selected 没选中时**一个修饰符都不挂** —— 这一页几百行，绝大多数都没选中，
+ *  @param selected 没选中时**一个修饰符都不挂** —— 这些列表动辄几百行，绝大多数都没选中，
  *   不必为它们各加一层绘制节点。
  */
 @Composable

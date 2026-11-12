@@ -4,10 +4,12 @@ import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,9 +37,10 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.model.AppTheme
 import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.DISABLED_ALPHA
+import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
+import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.isDarkScheme
-import io.github.suqi8.coui.kmp.anim.SinOutEasing
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.InputViewDefaults
 import io.github.suqi8.coui.kmp.basic.SearchBarColors
@@ -47,11 +50,6 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 卡片里那种「行首图标 + 输入」的行 —— 底子是项目那层单行输入框（`AppInputField`，
 // 里面包着库的 `InputField`）。
-
-/** 错误提示淡入 / 淡出的时长（毫秒）与缓动 —— 与库的 `InputView` 同一组值（其文档给出）。 */
-private const val ERROR_FADE_IN_MS = 217
-
-private const val ERROR_FADE_OUT_MS = 283
 
 /**
  * [ImeGuard] 的观察窗口（毫秒）—— 从弹窗打开算起，这段时间内每 [IME_GUARD_TICK_FRAMES] 帧看一眼。
@@ -92,16 +90,6 @@ internal fun couiInputColors(): SearchBarColors {
     val background = if (scheme.isDarkScheme) scheme.surfaceContainer else scheme.surfaceContainerHighest
     return base.copy(backgroundColor = background)
 }
-
-/**
- * 错误提示淡入 / 淡出用的缓动 —— 取 COUI 的 [SinOutEasing]（`sin(t·π/2)`）。
- *
- *  原先这里是手写的 `CubicBezierEasing(0.33f, 0f, 0.67f, 1f)`（= CSS `ease-in-out`）：库自己的
- *  `InputView` 里确实有同一个值（`CouiEase`），但那是 `private`，import 不到。拿不到同一个常量
- *  就统一用 `anim` 包里公开的这条 —— 一次淡入淡出这种幅度，两条肉眼分不出，而「全仓缓动都来自
- *  COUI」这条规矩比留一份手抄的贝塞尔更值钱。
- */
-private val INPUT_ERROR_EASE = SinOutEasing
 
 /**
  * 一条输入项的**静态那几样**：行首图标、占位文案、长度上限。
@@ -227,26 +215,53 @@ internal fun SettingsPage.IconInputView(
                     maxLength = spec.maxLength,
                 ),
         )
-        AnimatedVisibility(
-            visible = isError,
-            enter = fadeIn(tween(ERROR_FADE_IN_MS, easing = INPUT_ERROR_EASE)),
-            exit = fadeOut(tween(ERROR_FADE_OUT_MS, easing = INPUT_ERROR_EASE)),
-        ) {
-            Text(
-                text = shownError,
-                fontSize = InputViewDefaults.ErrorFontSize,
-                color = InputViewDefaults.inputViewColors().errorColor,
-                modifier =
-                    Modifier.padding(
-                        top = InputViewDefaults.ErrorPaddingTop,
-                        start = InputViewDefaults.ContentPadding,
-                        end = InputViewDefaults.ContentPadding,
-                    ),
-            )
-        }
+        InputErrorText(shownError, isError)
     }
     // 焦点 / 键盘守卫 —— 只有弹窗里的输入框（`show != null`）才启用（见 [ImeGuard]）
     ImeGuard(show, focusRequester, focused)
+}
+
+/**
+ * 输入框下面那一行红字 —— 出现 / 消失是**纵向滑动**，不是只淡入淡出。
+ *
+ * ## 高度为什么不用 `expandVertically`
+ *
+ *  那一支的尺寸变换首帧是从 `(0, 0)` 拉起来的：**宽度也跟着从 0 拉到文本宽**，看起来是
+ *  「从左往右擦出来」，而且只有**第一次**是这样（之后尺寸被记住了，就只剩纵向）。
+ *  `animateContentSize` 的起点是**当前尺寸**，外层填满宽度、宽度从头到尾不变，于是只有高度在动
+ *  —— 与 `ExpandableRow` / `CommandFullscreen` 那两处同一条做法，时长与缓动也取同一档。
+ *
+ *  里面那层只管淡入淡出：高度已经由外面补成过渡，再叠一次尺寸动画就成了两段。
+ *
+ *  单独一支而不就地写：就地写在 `Column` 里时，`AnimatedVisibility` 会被解析成
+ *  `ColumnScope` 那个扩展（隐式接收者比顶层函数优先），而它在这里拿不到那个接收者。
+ */
+@Composable
+private fun InputErrorText(
+    text: String,
+    visible: Boolean,
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL)),
+    ) {
+        AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
+            Text(
+                text = text,
+                fontSize = InputViewDefaults.ErrorFontSize,
+                color = InputViewDefaults.inputViewColors().errorColor,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            top = InputViewDefaults.ErrorPaddingTop,
+                            start = InputViewDefaults.ContentPadding,
+                            end = InputViewDefaults.ContentPadding,
+                        ),
+            )
+        }
+    }
 }
 
 /**

@@ -50,7 +50,6 @@ import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.selectedRowRing
 import com.lookie.opluskey.ui.spacedItems
 import com.lookie.opluskey.ui.state.AppPickerState
 import com.lookie.opluskey.ui.state.AppPickerUiState
@@ -432,9 +431,10 @@ private fun SettingsPage.AppRow(
                     titleExtra = { AppRowTags(app, withSystem) },
                     //  行高定死 ⇒ 行首那枚图标才能整高（见 [APP_ROW_HEIGHT]）。
                     //  行自己不带外边距：行距由 [spacedItems] 给（首行不加、末行不加）。
-                    //  选中那一行加一圈**内边框**（见 [selectedRowRing]）：行尾那格已经不再
-                    //  顺带说「选中了」（见下），这一圈就是「我挑的是这一个」的主要凭据。
-                    modifier = Modifier.height(APP_ROW_HEIGHT).selectedRowRing(picked),
+                    //  选中的话行自己画那一圈**内边框**（见 [CardRow.Item.selected]）：行尾那格
+                    //  已经不再顺带说「选中了」（见下），这一圈就是「我挑的是这一个」的主要凭据。
+                    modifier = Modifier.height(APP_ROW_HEIGHT),
+                    selected = picked,
                     //  标题也跟着上色：内框管「这一行是当前这个」，标题管「读哪个名字」——
                     //  三百行里一眼扫下去，先落到的应该是字，不是那圈线。
                     titleTint = if (picked) COUITheme.colorScheme.primary else null,

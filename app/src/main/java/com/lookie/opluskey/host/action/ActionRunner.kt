@@ -266,19 +266,13 @@ internal class ActionRunner(
      */
     fun runTest(cmd: Command) {
         XLog.w("测试命令 → ${cmd.name.ifBlank { "（未命名）" }}")
-        custom.run(cmd, 0)
+        custom.run(cmd)
     }
 
     /**
      * 真正干活的那一层；自定义命令的步骤也走同一套派发（无手势标签）。
-     *
-     * @param depth 当前自定义命令的嵌套深度，只为 `cmd:` 自引 / 互引兜底 ——
-     *   单条命令正文里再写 `cmd:` 就是一次同步重入，必须把深度带下去（见 `CustomCommandRunner`）。
      */
-    private fun dispatch(
-        action: Action,
-        depth: Int = 0,
-    ) {
+    private fun dispatch(action: Action) {
         try {
             //  `${变量}` 在这里展开一次（解析发生在存配置时，值要到这一刻才知道，见 `expandedWith`）。
             //  放在 `when` 之前而不是每个分支里：漏一个分支就是「那一种动作里写变量不生效」，
@@ -295,11 +289,13 @@ internal class ActionRunner(
 
                 is Action.Shell -> runShell(act.command)
 
-                is Action.Custom -> custom.run(act.name, depth)
+                is Action.Custom -> custom.run(act.name)
 
                 is Action.Intent -> launcher.openIntent(act.action)
 
                 is Action.Notify -> NotifyAction.run(context, act, ::notifyFailure)
+
+                is Action.Fluid -> FluidAction.run(context, act, ::notifyFailure)
 
                 is Action.App -> launcher.launchApp(act)
 

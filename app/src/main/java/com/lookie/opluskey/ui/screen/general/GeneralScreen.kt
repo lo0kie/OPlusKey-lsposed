@@ -17,6 +17,7 @@ import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.NameDialog
 import com.lookie.opluskey.ui.PageScrollColumn
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.SliderRow
@@ -43,7 +44,7 @@ import io.github.suqi8.coui.kmp.basic.ScrollBehavior
  *  那一页改「这一颗键 / 这一组组合自己的覆盖」，本页改**所有档共用的默认值**。
  *  （「按键功能」页顶栏原先也有一颗进这里的齿轮，现在那一页顶栏只有「编辑 / 完成」。）
  *
- *  三节：**接口选择**（走 ColorOS 专属接口还是 AOSP 标准接口）、**按键行为**（振动 / 执行提示）
+ *  三节：**接口与显示**（走 ColorOS 专属接口还是 AOSP 标准接口、绑定页摆不摆常用命令）、**按键行为**（振动 / 执行提示）
  *  与**组合按键设置**（无操作时怎么走 / 两颗键之间等多久）。三节吃同一道闸 ——
  *  与首页那几行完全一致（模块总闸 + 链路齐 + 配置可写）。
  *
@@ -62,7 +63,7 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
         //  块与块之间的间距由小标题自带（与首页同一套），页面不再写 `Spacer`。
-        SectionTitle(I18n.get(Strings.GENERAL_SECTION_INTERFACE, "接口选择"))
+        SectionTitle(I18n.get(Strings.GENERAL_SECTION_INTERFACE, "接口与显示"))
         InterfaceCard(pageEnabled)
         SectionTitle(I18n.get(Strings.HOME_BINDING_CARD_TITLE, "按键行为"))
         ActionsCard(pageEnabled)
@@ -74,30 +75,45 @@ internal fun SettingsPage.GeneralScreen(scrollBehavior: ScrollBehavior) {
 }
 
 /**
- * 「接口选择」那张卡 —— 走 ColorOS 专属系统接口，还是 AOSP 标准接口。
+ * 「接口与显示」那张卡 —— 走 ColorOS 专属系统接口，还是 AOSP 标准接口；外加「显示常用命令」
+ * 这一条只管页面显示的开关。
  *
- *  单独一张卡而不是塞进「按键行为」：它决定的是**命令怎么落地**（走哪套系统接口），
- *  与「执行时振不振动、弹不弹提示」不是一件事。
+ *  单独一张卡而不是塞进「按键行为」：接口那一条决定的是**命令怎么落地**（走哪套系统接口），
+ *  「显示常用命令」决定的是**绑定页上摆不摆那一段** —— 两条都不碰「执行时振不振动、弹不弹提示」，
+ *  与那张卡不是一件事。
  */
 @Composable
 private fun SettingsPage.InterfaceCard(pageEnabled: Boolean) {
-    val colorOs = configState.config.value.global.colorOsApi
+    val cfg = configState.config.value
+    val colorOs = cfg.global.colorOsApi
     CardList(
         rows =
-            listOf(
-                CardRow.Switch(
-                    title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
-                    // 开 = 走专属接口，关 = 走 AOSP —— 两句都只说「现在走哪条路」
-                    summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
-                    summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
-                    icon = PageIcons.ColorOsLink,
-                    checked = colorOs,
-                    // 吃整页总闸（含主开关自己）：主开关一关，这一行跟着灰
-                    enabled = pageEnabled,
-                ) {
-                    setColorOsApi(it)
-                },
-            ),
+            buildList {
+                add(
+                    CardRow.Switch(
+                        title = I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"),
+                        // 开 = 走专属接口，关 = 走 AOSP —— 两句都只说「现在走哪条路」
+                        summaryOn = I18n.get(Strings.HOME_COLOROS_DESC_ON, "部分命令走 ColorOS 专属接口"),
+                        summaryOff = I18n.get(Strings.HOME_COLOROS_DESC_OFF, "部分命令改用 AOSP 标准接口"),
+                        icon = PageIcons.ColorOsLink,
+                        checked = colorOs,
+                        // 吃整页总闸（含主开关自己）：主开关一关，这一行跟着灰
+                        enabled = pageEnabled,
+                    ) {
+                        setColorOsApi(it)
+                    },
+                )
+                //  「显示常用命令」—— 总开关（`CommonCommands.SHOW`）关着时，这一行跟着入口
+                //  一起收起来。配置位与写入口都留着，开回来这一行就回来。
+                if (CommonCommands.SHOW) {
+                    add(commonCommandsRow(cfg.global.showCommonCommands, pageEnabled))
+                    //  开关管「露不露」，这一行管「有哪几条」—— 两件事，两行。
+                    //  **开关关着时这一行也收起来**：那一段不画了，进那一页打理清单没有意义
+                    //  （要打理先把上面那颗打开，它就在头顶一行）。显隐交给 `CardList` 的进出场
+                    //  （`CardRow.Item.visible`），与页里其它随开关显隐的行同一套规格。
+                    add(manageCommonCommandsRow(visible = cfg.global.showCommonCommands, enabled = pageEnabled))
+                }
+            },
     )
 }
 
@@ -144,11 +160,6 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                 )
                 add(toastRow(cfg.global.toastOnRun, pageEnabled))
                 add(toastTemplateRow(cfg.global, pageEnabled) { editingToastTemplate = true })
-                //  「显示常用命令」—— 那一档功能还没发布（`CommonCommands.SHOW` = false），
-                //  开关跟着入口一起收起来。配置位与写入口都留着，改回 true 这一行就回来。
-                if (CommonCommands.SHOW) {
-                    add(commonCommandsRow(cfg.global.showCommonCommands, pageEnabled))
-                }
                 // 「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。
                 //  关（默认）= 原地收、无动画；开 = 原地收成小窗后紧接着让框架自己的动画器播那一段
                 //  （插值 / 矩阵 / spring 全是框架在跑，模块只交起止参数，配方见 `docs/features/zoom-window/notes.md` §十二）。
@@ -179,7 +190,7 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
  *
  *  行尾副标题写的就是**当前模板**：清空时退回默认那句，所以这一行同时也是「改回去」的入口。
  *
- *  单独一支只为让 [ActionsCard] 留在 detekt 的长度上限之内（与 [toastRow] 同一个理由）。
+ *  单独一支只为让 [InterfaceCard] 留在 detekt 的长度上限之内（与 [toastRow] 同一个理由）。
  */
 @Composable
 private fun SettingsPage.toastTemplateRow(
@@ -214,14 +225,36 @@ private fun SettingsPage.commonCommandsRow(
 ): CardRow =
     CardRow.Switch(
         title = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS, "显示常用命令"),
-        summaryOn = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS_ON, "按键绑定页列出这类现成命令"),
+        summaryOn = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS_ON, "按键绑定页列出常用命令"),
         summaryOff = I18n.get(Strings.SETTING_SHOW_COMMON_COMMANDS_OFF, "按键绑定页不再列出"),
-        icon = PageIcons.CommandCode,
+        icon = PageIcons.CommonCommands,
         checked = checked,
         enabled = enabled,
     ) {
         setShowCommonCommands(it)
     }
+
+/**
+ * 「管理常用命令」那一行 —— 进清单页（收录哪几条、每条叫什么、哪些出现在绑定页）。
+ *
+ *  与上面那颗开关配成一对：那颗管「这一段露不露」，这一行管「这一段有哪几条」。
+ *  行尾箭头：点开是一整页。**显隐跟着那颗开关**（`visible`，由 `CardList` 做进出场）。
+ *
+ *  单独一支只为让 [InterfaceCard] 留在 detekt 的长度上限之内（`commonCommandsRow` 同一个理由）。
+ */
+private fun SettingsPage.manageCommonCommandsRow(
+    visible: Boolean,
+    enabled: Boolean,
+): CardRow =
+    CardRow.Item(
+        visible = visible,
+        title = I18n.get(Strings.COMMON_COMMANDS_MANAGE, "管理常用命令"),
+        summary = I18n.get(Strings.COMMON_COMMANDS_MANAGE_DESC, "添加与显示"),
+        icon = PageIcons.CommonCommandsManage,
+        arrow = true,
+        enabled = enabled,
+        onClick = { navTo(Screen.COMMON_COMMANDS) },
+    )
 
 /**
  * 「提示文案」的编辑窗 —— 填一个值那一套（与按键重命名 / 每条滑杆同一个形状）。

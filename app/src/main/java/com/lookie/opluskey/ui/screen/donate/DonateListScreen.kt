@@ -32,11 +32,11 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.PageScrollColumn
+import com.lookie.opluskey.ui.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.currentHeaderHeight
 import com.lookie.opluskey.ui.model.Donor
 import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.donors
 import com.lookie.opluskey.ui.model.opticalCenter
@@ -51,7 +51,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 「捐赠列表」页 —— 从首页「其他 → 捐赠打赏」那层菜单的最后一项进来（见 [Screen.DONATE_LIST]）。
+ * 打赏名单那一页 —— 从首页「其他 → 捐赠打赏」那层菜单里「捐赠列表」那一项进来（见 [Screen.DONATE_LIST]）。
  *
  *  **数据与呈现分家**：谁给了多少在 `assets/donors.json`（读法见 `ui/model/Donor`），
  *  排成什么样全在这一页 —— 就是一张**两列的表**（名字、金额），格子居中、行列之间有线、
@@ -81,8 +81,11 @@ internal fun SettingsPage.DonateListScreen(scrollBehavior: ScrollBehavior) {
     }
     PageScrollColumn(scrollBehavior = scrollBehavior) {
         // 顶栏叠在内容上，顶部要自己让出（动态值）。这一页**没有小标题**、首行就是内容本身，
-        //  所以按「选择应用」那一页的账另加一档 [PAGE_TOP_PADDING]（见 `AppPicker`）。
-        Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + PAGE_TOP_PADDING))
+        //  所以让位只有顶栏那一档 + 「首块上面没有小标题」那一档（[SECTION_TITLE_PAD_TOP]）——
+        //  **不另加** `PAGE_TOP_PADDING`：那一档是「带子与内容之间」的间距，有带子的页由带子
+        //  自己带（见 `PageTabBand`）；没有带子、首块又是卡片的那几页（`BranchScreen`）也只让
+        //  顶栏 + 小标题那一档，卡片自己再补同一个数。这里照那条账走，两页首块才落在同一个高度。
+        Spacer(Modifier.height(currentHeaderHeight(scrollBehavior) + SECTION_TITLE_PAD_TOP))
 
         if (rows.isEmpty()) {
             EmptyDonorCard()
@@ -134,7 +137,7 @@ private fun EmptyDonorCard() {
                 CardRow.Item(
                     title = I18n.get(Strings.DONATE_LIST_EMPTY_TITLE, "暂无捐赠记录"),
                     summary = I18n.get(Strings.DONATE_LIST_EMPTY_SUMMARY, "收到的每一份支持都会记在这里"),
-                    icon = PageIcons.Donate,
+                    icon = PageIcons.DonateList,
                 ),
             ),
     )

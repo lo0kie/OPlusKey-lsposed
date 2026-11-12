@@ -247,6 +247,8 @@ object ActionCatalog {
             val kind: CommandKind,
             val steps: Int,
             val root: Boolean,
+            /** 单条命令的正文 —— 按开头的前缀挑格式图标（`shell:` → 终端…）；多条命令不看它。 */
+            val body: String = "",
         ) : GlyphSource
 
         /**
@@ -1120,7 +1122,7 @@ object ActionCatalog {
             //  单条命令的两档字形靠它分（su / 非 su），抽屉与网格摆的就是这张候选表
             commandRoot = command.root,
             //  字形由命令自己决定：单条 / 多条、几步、是否提权 —— 三者都是 `commandIcon` 的入参
-            glyph = GlyphSource.ByCommand(command.kind, command.steps.size, command.root),
+            glyph = GlyphSource.ByCommand(command.kind, command.steps.size, command.root, command.single),
         )
 
     /**

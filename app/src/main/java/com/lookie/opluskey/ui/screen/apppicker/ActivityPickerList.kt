@@ -42,7 +42,6 @@ import com.lookie.opluskey.ui.model.LaunchableActivity
 import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.selectedRowRing
 import com.lookie.opluskey.ui.spacedItems
 import com.lookie.opluskey.ui.state.PickedDetail
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -637,8 +636,8 @@ private fun ActivityRow(
                     summary = summary,
                     //  **行自己不带任何外边距** —— 行距由 [spacedItems] 给（首行不加、末行不加）。
                     //  这一行**没有行首图标**，高度交给内容（定死行高只会把两行字顶到上沿、底部空一截）。
-                    //  选中那一行加一圈内边框（与一级页同一份，见 `selectedRowRing`）
-                    modifier = Modifier.selectedRowRing(picked),
+                    //  选中那一行加一圈内边框（与一级页同一份，见 `CardRow.Item.selected`）
+                    selected = picked,
                     //  标题跟着上色（与一级页同一条口径）
                     titleTint = if (picked) COUITheme.colorScheme.primary else null,
                     trailing = {

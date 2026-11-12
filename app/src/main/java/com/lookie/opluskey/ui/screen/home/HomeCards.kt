@@ -82,7 +82,9 @@ internal fun SettingsPage.HomeOtherCard(
                     arrow = true,
                     onClick = { navTo(Screen.ABOUT) },
                 ),
-                // 「捐赠打赏」：点开一层菜单（三个去处），选中一个再弹**居中**的收款码窗口。
+                // 「捐赠打赏」：点开一层菜单（三个去处），选中一个再弹**居中**的收款码窗口；
+                //  菜单最后那一项（「捐赠列表」）才是名单页本身，表格字形在那一项上
+                //  （[PageIcons.DonateList]），这一行仍是原来那颗心（[PageIcons.Donate]）。
                 //  与「更多选项」并排在这一张卡里 —— 两行都是「偶尔才点一次」的去处。
                 //  行尾给选择器字形（读作「点了要选点什么」），不是进下一页的箭头，与「语言」那一行同一套。
                 CardRow.Item(

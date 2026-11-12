@@ -24,9 +24,9 @@ import java.util.Locale
 /**
  * 把草稿里的那条命令存进命令库（不是立刻绑到某个手势上）。
  *
- * 重名时表单保存按钮已被 [commandNameDuplicated] 禁掉、成环时被 [commandReferenceCycle] 禁掉；
- * 本函数保留「按名字写入」的语义，是给编辑态（名字没变 = 它自己）兜底的。多条命令按名字引用单条命令
- * （步骤里存 `cmd:<名字>`），所以改名 / 删命令只能走编辑页，别在库层面直接动名字。
+ * 重名时表单保存按钮已被 [commandNameDuplicated] 禁掉；
+ * 本函数保留「按名字写入」的语义，是给编辑态（名字没变 = 它自己）兜底的。
+ * 改名 / 删命令只能走编辑页，别在库层面直接动名字（绑定上的 `cmd:<旧名>` 要跟着挪）。
  */
 internal fun SettingsPage.addCommand() {
     //  这一下只跟**当前这一页**的表单打交道：读值、判「在编哪条」、存完清空，全都用这一个引用。
@@ -199,8 +199,7 @@ internal fun SettingsPage.appVersionLabel(): String {
 /**
  * 草稿 → 「存下去之后的那条命令」与「存下去之后的那份命令库」。
  *
- * **单一来源**：[addCommand] 存的就是它、[commandReferenceCycle] 判的也是它 —— 两处各写一遍的话，
- * 判的与存的就不是同一件事（改了名字、挪了引用之后，环也可能跟着变）。
+ * **单一来源**：[addCommand] 存的就是它 —— 另写一份的话，判的与存的就不是同一件事。
  *
  * @param form 要存的**那一页**表单（默认取当前这一页）。[addCommand] 把开头取定的那一份显式递进来：
  *   一次保存里所有读写必须落在同一页上（两页是两个独立会话，各解析一次就可能拼出跨页的命令）。
@@ -234,13 +233,10 @@ internal fun SettingsPage.draftToLibrary(form: CommandForm = commandDraft.draft.
     // (1) 改名保存必须把**原名那条一起摘掉**：只 `filterNot { it.name == name }` 的话旧名与新名
     //   两条并存在命令库里（列表凭空 +1 条），而手势上绑的仍是旧那条 `cmd:旧名` —— 用户以为改了，
     //   侧键行为一点没变。编辑态下 `editingFrom == name` 时两个条件指同一条，去重天然成立。
-    // (2) 其余命令里对旧名字的引用（多条命令的步骤 / 单条正文里的 `cmd:旧名`）也要跟着挪，
-    //   否则它们指向一条已经不在库里的命令，按下去永远 NOT_FOUND。
     val editingFrom = form.editingName
     val next =
         configState.commands.value
-            .filterNot { it.name == name || it.name == editingFrom }
-            .map { it.renamedReference(editingFrom, name) } + cmd
+            .filterNot { it.name == name || it.name == editingFrom } + cmd
     return cmd to next
 }
 

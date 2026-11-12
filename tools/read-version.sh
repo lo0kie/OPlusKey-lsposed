@@ -30,11 +30,11 @@ if [ -n "$missing" ]; then
   exit 1
 fi
 
-# tag 的第一段**补齐到五位**（`00016`）：它按名字排序时要与版本顺序一致 —— 不补的话
-#   `15-1.4.1` 会排到 `3-1.0.0` 后面（第一段是字符串，`1` < `3`）。管理器拿它算更新时是
-#   `split("-", 2)` + `Long.parseLong`，前导零不影响解析（`00016` → 16）。
-#   从 1.4.2 起生效；`3-1.0.0` ~ `15-1.4.1` 那批旧名字保留不动（各自挂着已发布的 Release）。
-TAG_CODE=$(printf '%05d' "$VERSION_CODE")
+# tag 直接用 `<versionCode>-<versionName>`，**不补前导零**：模块仓库的机器人会按 APK 二进制
+#   清单里的 versionCode 重算 tag 名，补零写的 `00016-1.4.2` 会被它改成 `16-1.4.2`、Release
+#   一并挪过去，旧名字留成孤儿 tag。与它写法一致，才不会每次上架都多一个垃圾 tag。
+#   管理器拿它算更新时是 `split("-", 2)` + `Long.parseLong`，两种写法都认。
+TAG_CODE="$VERSION_CODE"
 
 if [ -n "${GITHUB_OUTPUT:-}" ]; then
   {
