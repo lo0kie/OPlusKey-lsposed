@@ -105,9 +105,15 @@ internal object SystemContext {
     /**
      * [cached] 那份 Context 的进程还在不在 —— 在 `mAllApplicationThreads` 里找同一个对象。
      *
-     * 只做一次身份比较（`===`）：容器里的元素要么直接是 Context，要么是持有它的 record。
-     * 探不出容器（反射失败 / 字段改名）时**按「还在」算** —— 那说明我们连事实都拿不到，
-     * 这时每次丢弃重取只会得到同一份 Context，白白多跑一次反射，不会更安全。
+     * 容器里存的通常是 `ActivityThread$ActivityClientRecord`（要再取一层 `mAppContext`），
+     * 也见过直接放 `Application` / `Context` 的版本，所以两种形状都认。
+     *
+     * ## 三态：在 / 不在 / 判不了
+     *
+     *  「一个都解不出 Context」= **判不了**（容器形状不认识 / 字段改名），按**「还在」**算。
+     *  早先这一档直接算「不在」：于是每次取 Context 都报一行假的「进程已经不在了」，
+     *  并**按个手势全量重扫一遍**那个容器 —— 而重扫拿回来的还是同一份。
+     *  真正「不在」的判据只有一条：**解得出别的 Context、但没有一个是它**。
      */
     private fun stillHeldByItsProcess(
         loader: ClassLoader,
@@ -129,19 +135,19 @@ internal object SystemContext {
                 }
             // 注意：迭代与 `appContextOf` 的反射调用**也在 try 里** —— 这一段
             //  在 try 之外，`appContextOf` 一抛就从 [get] 的缓存分支直接漏进 system_server。
-            var hit = false
+            var seen = 0
             for (v in values) {
                 if (v == null) continue
-                if (v === held) {
-                    hit = true
-                    break
-                }
-                if (appContextOf(v) === held) {
-                    hit = true
-                    break
-                }
+                if (v === held) return true
+                val ctx = appContextOf(v) ?: continue
+                seen++
+                if (ctx === held) return true
             }
-            hit
+            if (seen == 0) {
+                //  一个都解不出来 ⇒ 形状不认识，不能拿它当「已经没了」
+                return true
+            }
+            false
         } catch (e: Throwable) {
             XLog.w("验缓存的 Context 还在不在失败（按「还在」处理）：${e.message}")
             true
@@ -167,7 +173,13 @@ internal object SystemContext {
         return null
     }
 
-    /** 从一个容器（ArrayMap / List）里找出第一个能取到 Context 的元素。 */
+    /**
+     * 从一个容器（ArrayMap / List）里找出第一个能取到 Context 的元素。
+     *
+     *  **优先主用户（user 0）**：容器里谁先谁后由系统决定，分身 / 次要用户那些进程往往活得更短，
+     *  借到它们之后那份 Context 会先失效（表现是「一开始能用，过一会儿广播全失败」）。
+     *  主用户一个都没有时才退回第一个能用的 —— 不因为筛用户而拿不到 Context。
+     */
     private fun contextsFromContainer(container: Any): Context? {
         val values: Collection<*> =
             when (container) {
@@ -177,14 +189,23 @@ internal object SystemContext {
             }
 
         // 容器里存的可能是 ActivityClientRecord（有 mAppContext），也可能直接是 Context
+        var fallback: Context? = null
         for (v in values) {
             if (v == null) continue
-            if (v is Context) return v
-            val c = appContextOf(v)
-            if (c != null) return c
+            val c = if (v is Context) v else appContextOf(v) ?: continue
+            if (userIdOf(c) == 0) return c
+            if (fallback == null) fallback = c
         }
-        return null
+        return fallback
     }
+
+    /**
+     * 这份 Context 属于哪个用户；问不出来按主用户算。
+     *
+     *  走反射而不是直接调：`Context#getUserId()` 不在公开 SDK 里（`ContextWrapper` 上有同名实现）。
+     *  问不出来只是「不筛用户」，不影响取 Context 本身。
+     */
+    private fun userIdOf(context: Context): Int = (Reflect.call(context, "getUserId") as? Int) ?: 0
 
     /** 从一个 `ActivityClientRecord` 之类的东西上读 `mAppContext`。 */
     private fun appContextOf(record: Any): Context? {

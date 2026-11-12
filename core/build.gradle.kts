@@ -139,6 +139,10 @@ abstract class SealReleaseAssets : DefaultTask() {
                     SecretKeySpec(fingerprint, "AES"),
                     GCMParameterSpec(TAG_BITS, iv),
                 )
+                // 条目名进 AAD：GCM 只认密钥与 IV，两条密文的 IV / tag 都合法时可以被**互换位置**
+                //  （拿同一份容器里的另一条密文顶上去，解出来是合法字节）。把名字绑进 AAD 之后，
+                //  换位会让 tag 校验不过 —— 读侧 `Seal.decipher` 必须同样 updateAAD。
+                cipher.updateAAD(name.toByteArray(Charsets.UTF_8))
                 val sealed = cipher.doFinal(plain)
                 out.writeUTF(name)
                 out.writeInt(iv.size)
@@ -175,7 +179,9 @@ abstract class SealReleaseAssets : DefaultTask() {
 
     private companion object {
         val MAGIC = byteArrayOf('O'.code.toByte(), 'P'.code.toByte(), 'K'.code.toByte(), 'S'.code.toByte())
-        const val FORMAT_VERSION = 1
+
+        /** 2 = 条目名进 GCM 的 AAD（1 那版没有，换位篡改是合法的）。读侧同名常量必须一起改。 */
+        const val FORMAT_VERSION = 2
         const val IV_LENGTH = 12
         const val TAG_BITS = 128
         const val CONTAINER_NAME = "sealed.bin"

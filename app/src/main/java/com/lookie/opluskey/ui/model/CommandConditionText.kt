@@ -9,15 +9,15 @@ import com.lookie.opluskey.core.model.ConditionKind
 // 这一份是「条件怎么显示」。两者只是都在界面上出现，没有共用的状态。
 
 /**
- * 「前台应用」条件里那一组包名 → 应用名，多个用 `×` 连起来（`微信 × QQ`）。
+ * 应用那一族条件（「前台应用」/「前台应用以外」）里那一组包名 → 应用名，多个用 `×` 连起来（`微信 × QQ`）。
  *
- *  一条应用条件可以多选（`包1||包2`，任一在前台即通过），所以标题与取值那一行都不能只取
+ *  一条应用条件可以多选（`包1||包2`），所以标题与取值那一行都不能只取
  *  第一个 —— 那会让用户以为只绑了一个。两处共用这一份，免得一处改了另一处没跟上。
  *
  *  **分隔符是 `×` 不是顿号**（用户口径）：顿号在一行里太轻，几个应用连起来读成一句话；
  *  `×` 把每个名字隔成一个独立的格子，与组合键那边的成员写法同一个字形。
- *  注意语义差别：组合键那里 `×` 是「两颗一起按」，这一档是「任一在前台」——后者靠条件行
- *  左半边的「前台应用」说清，不在分隔符上再表达。
+ *  注意语义差别：组合键那里 `×` 是「两颗一起按」，这两档是「组内任一」/「组内都不是」——
+ *  靠条件行左半边的种类名说清，不在分隔符上再表达。
  */
 private fun appNamesText(
     condition: BranchCondition,
@@ -56,8 +56,9 @@ internal fun conditionValueText(
     appName: (String) -> String,
 ): String =
     when (kind) {
-        // 前台应用取的是包名，显示成应用名；空着就是「未选择」（调用方那一支会退回去）
-        ConditionKind.APP -> {
+        // 应用那一族取的是包名，显示成应用名；空着就是「未选择」（调用方那一支会退回去）。
+        //  两档的取值写法完全一样（只有判定反向），所以取值这一行不必分两支。
+        ConditionKind.APP, ConditionKind.APP_NOT -> {
             if (condition.value.isBlank()) "" else appNamesText(condition, appName)
         }
 
@@ -105,8 +106,8 @@ internal fun conditionValueText(
     }
 
 /**
- * 一级菜单里**选中那一行**的子标题 —— 与 [conditionValueText] 同源，只有「前台应用」不同：
- * 那一档能选好几个应用，名字顿号连起来比标题还长，于是只报个数（`已选择 3 个应用`）；
+ * 一级菜单里**选中那一行**的子标题 —— 与 [conditionValueText] 同源，只有应用那一族不同：
+ * 那两档能选好几个应用，名字顿号连起来比标题还长，于是只报个数（`已选择 3 个应用`）；
  * 具体是哪几个在条件表那一行里（那里不限行）。空 = 这一行不出小字。
  */
 internal fun conditionMenuSummary(
@@ -114,7 +115,7 @@ internal fun conditionMenuSummary(
     condition: BranchCondition,
     appName: (String) -> String,
 ): String? =
-    if (kind == ConditionKind.APP) {
+    if (kind.isAppFamily) {
         val count = condition.appPackages.count { it.isNotBlank() }
         if (count == 0) null else I18n.format(Strings.COMMAND_BRANCH_APP_COUNT, count)
     } else {
@@ -127,11 +128,18 @@ internal fun conditionMenuSummary(
  *  「前台应用」这一档不能直接用 [conditionRowTitle]：那要一个包名，而这一层还没挑应用。
  *
  *  这支 `when` 是**穷尽**的（没有兜底支）：加一种 [ConditionKind] 时编译器会当场要求补一行文案，
- *  不会悄悄拿某一句顶替。
+ *  加一种 [ConditionKind] 时编译器会当场要求补一行文案，不会悄悄拿某一句顶替。
+ *
+ *  复杂度那一条随枚举项数长（一项一支，没有别的判断），所以在这一支上压掉 ——
+ *  收窄到本函数，比在 `detekt.yml` 里把规则放松一档更准。
  */
+@Suppress("CyclomaticComplexMethod")
 internal fun conditionKindLabel(kind: ConditionKind): String =
     when (kind) {
         ConditionKind.APP -> I18n.get(Strings.COMMAND_COND_APP, "前台应用")
+
+        //  与上一档同一族的反面：读作「前台应用以外 - 微信」，即「前台不是微信」。
+        ConditionKind.APP_NOT -> I18n.get(Strings.COMMAND_COND_APP_NOT, "前台应用以外")
 
         ConditionKind.RINGER -> I18n.get(Strings.COMMAND_COND_RINGER_NAME, "响铃状态")
 

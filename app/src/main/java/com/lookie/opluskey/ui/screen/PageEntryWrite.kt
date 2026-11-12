@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.LongPressEdit
+import com.lookie.opluskey.core.model.appKeyOf
 import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.ui.BindingTarget
@@ -52,14 +53,15 @@ internal fun SettingsPage.writeToken(
             val pkgs =
                 picker.pickedApps.value
                     .toList()
-                    .ifEmpty { listOf(AppTarget.pkg(Action.parse(token).appTarget.orEmpty())) }
+                    .ifEmpty { listOf(appKeyOf(Action.parse(token).appTarget.orEmpty())) }
             // `takePickTarget()` 是**一次性消费**：写失败了得把「为谁挑」放回去，否则这一页
             //  立刻退化成「普通挑应用」—— 点一行会去挑界面、按确定还会写到手势绑定上。
             //  **连条件槽位一起放回**：从「条件 2」那一行进来的这一趟，重挑时必须还写那一条；
-            //  只传 index 会让 branchConditionIndex 退回 -1，落到 `old.appConditionIndex`
-            //  或追加，把同一块里另一条条件覆盖掉。
+            //  只传 index 会让 branchConditionIndex 退回 -1，落到 `old.appConditionIndex(kind)`
+            //  或追加，把同一块里另一条条件覆盖掉。**档位（正 / 反）也一起放回** —— 少了它，
+            //  写失败重挑一次就悄悄变成「前台应用」。
             if (!writeBranchCondition(pkgs, target.index)) {
-                picker.openForBranch(target.index, picker.branchConditionIndex)
+                picker.openForBranch(target.index, picker.branchConditionIndex, picker.branchKind)
                 false
             } else {
                 true

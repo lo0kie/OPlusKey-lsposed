@@ -23,7 +23,7 @@ sealed interface Action {
             when (this) {
                 is App -> target
                 is AppWindow -> target
-                is AppShortcut -> AppTarget.format("$pkg/$shortcutId", userId)
+                is AppShortcut -> shortcutTarget(pkg, shortcutId, userId)
                 else -> null
             }
 
@@ -202,7 +202,7 @@ sealed interface Action {
          *  拼两套的话，改了一处另一处就对不上，那一行会永远不点亮。
          */
         val plainTarget: String =
-            AppTarget.format("$pkg/$shortcutId", userId)
+            shortcutTarget(pkg, shortcutId, userId)
 
         override val token: String =
             Action.APP_SHORTCUT_PREFIX +
@@ -824,7 +824,9 @@ sealed interface Action {
             val body = if (window) raw.removePrefix(WINDOW_MARK) else raw
             val plain = AppTarget.withoutUser(body)
             val pkg = plain.substringBefore('/')
-            val id = plain.substringAfter('/', "")
+            //  id 那一段是转义过的（见 `shortcutIdEscape`）：`/` 与 `|` 由 `%2F` / `%7C` 表示，
+            //  不转义时 id 里带这两种字符的快捷方式绑上一次就再也读不回来。
+            val id = shortcutIdUnescape(plain.substringAfter('/', ""))
             if (pkg.isEmpty() || id.isEmpty()) {
                 if (plain.isNotEmpty()) {
                     XLog.w("动作 appshortcut: 缺包名或快捷方式 id（按 none 处理）：$text")

@@ -17,6 +17,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.appKeyOf
 import com.lookie.opluskey.ui.AppInputField
 import com.lookie.opluskey.ui.AppInputOptions
 import com.lookie.opluskey.ui.PageCornerFab
@@ -425,7 +426,8 @@ private fun SettingsPage.SelectionPrune(ui: AppPickerUiState) {
             //  给**条件**挑的那一趟按集合记选中（可多选）：只清 `pending` 会让集合里留着
             //  一个「看不见却还算选着」的包名 —— FAB 消失、确认时却仍把它写进去。
             //  摘掉这一个，剩下的继续亮着。
-            val rest = picker.pickedApps.value - AppTarget.pkg(pending)
+            //  与 `pickRow` 同一个键（含用户维度，见 `appKeyOf`）—— 只减裸包名会摘不掉分身那一格
+            val rest = picker.pickedApps.value - appKeyOf(pending)
             picker.pickedApps.value = rest
             ui.pending = rest.firstOrNull()?.let { PickedDetail(it, shortcutId = null) }
         }

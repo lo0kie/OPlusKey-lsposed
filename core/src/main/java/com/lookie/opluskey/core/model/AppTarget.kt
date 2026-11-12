@@ -149,3 +149,66 @@ object AppTarget {
  *  放在文件级而不是 object 里：`AppTarget` 的函数数已经顶到 detekt 的阈值。
  */
 private fun isAsciiDigits(s: String): Boolean = s.isNotEmpty() && s.all { it in '0'..'9' }
+
+/**
+ * 「同一个应用」在**多选集合 / 去重**里的键 —— `包名`（主用户）或 `999@包名`（分身）。
+ *
+ *  为什么不能直接用 [AppTarget.pkg]：那一位把用户维度抹掉了，于是主用户与分身共用一格 ——
+ *  多选列表里「选一个亮两个」、集合里也分不出是哪一个（真机反馈）。这一位保留用户前缀，
+ *  主用户那档与以前逐字相同（`format` 对 `userId == 0` 不加前缀）。
+ *
+ *  @param target 任何形状的目标写法（`pkg` / `pkg/类名` / `999@pkg/类名`）都行
+ */
+fun appKeyOf(target: String): String = AppTarget.format(AppTarget.pkg(target), AppTarget.userId(target))
+
+/**
+ * 快捷方式目标的写法：`包名/<转义后的 id>`（外加用户前缀）。
+ *
+ *  为什么要转义：`<pkg>/<id>` 用 `/` 与 `@` 分隔一段段，而**快捷方式的 id 是应用自己起的**，
+ *  里面完全可能有 `/`（`share/wechat`）或 `|`（老写法里「目标 | 显示名」的分隔符）；那个 id
+ *  一旦原样拼进去，绑定再也读不回来（`substringAfter('/')` 只取到第一段）。
+ */
+fun shortcutTarget(
+    pkg: String,
+    id: String,
+    userId: Int,
+): String = AppTarget.format("$pkg/${shortcutIdEscape(id)}", userId)
+
+/**
+ * 快捷方式 id → 目标里的那一段（见 [shortcutTarget]）。
+ *
+ *  只转义三个字符（`%` / `/` / `|`），其余原样：**不含这三个字符的 id 与以前逐字相同**，
+ *  已经绑好的 `appshortcut:` 一个都不用迁移。
+ */
+fun shortcutIdEscape(id: String): String =
+    buildString(id.length) {
+        for (ch in id) {
+            when (ch) {
+                '%' -> append("%25")
+                '/' -> append("%2F")
+                '|' -> append("%7C")
+                else -> append(ch)
+            }
+        }
+    }
+
+/** [shortcutIdEscape] 的逆 —— 认不出的 `%xx` 原样留着（手改坏的值不该在这里吞掉）。 */
+fun shortcutIdUnescape(segment: String): String {
+    if ('%' !in segment) return segment
+    val out = StringBuilder(segment.length)
+    var i = 0
+    while (i < segment.length) {
+        val ch = segment[i]
+        if (ch == '%' && i + 2 < segment.length) {
+            val code = segment.substring(i + 1, i + 3).toIntOrNull(16)
+            if (code != null) {
+                out.append(code.toChar())
+                i += 3
+                continue
+            }
+        }
+        out.append(ch)
+        i++
+    }
+    return out.toString()
+}

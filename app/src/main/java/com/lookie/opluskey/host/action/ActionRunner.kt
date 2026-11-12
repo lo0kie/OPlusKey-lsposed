@@ -138,26 +138,42 @@ internal class ActionRunner(
         }
     }
 
-    /** 失败提示的唯一出口，转成 Toast；只有这里碰 Context 与 UI。 */
+    /**
+     * 失败提示的唯一出口，转成 Toast；只有这里碰 Context 与 UI。
+     *
+     *  顺带把「这一次失败了」记到**正在跑的那一趟**上（[openScope]）。没有正在跑的那一趟就是
+     *  异步失败（`shell:` / `su` / 亮度 root 档都在 `run` 返回之后才回话）—— 那时**不记到任何人头上**：
+     *  记到实例级的那一格，会把下一趟的执行判成失败。
+     */
     private fun notifyFailure(failure: CommandFailure) {
         //  失败回执仍然走这一条既有通道；顺带记下「这一次失败了」——
         //  [GestureExec] 据此决定要不要置 `lastActionAt` / 补发报活：两者都是「真的做成了」的凭证，
         //  失败时置位等于把成功报成故障的反面（假绿灯）。
-        lastRunFailed = true
+        openScope?.failed = true
         FailureNotice.show(context, failure)
     }
 
     /**
-     * 这一次 [run] 有没有在**同步段**内报过失败 —— 由 [notifyFailure] 置位。
+     * 一趟执行的成败 —— **[run] 的局部量**，只在那一趟的同步段里存在。
      *
-     *  为什么要这个标记：动作分支有一整张 `when`（二十来种），逐个改成返回布尔等于把契约铺到
-     *  每个执行器里；而失败的**唯一出口**本来就只有 [notifyFailure] 一处，盯住它即可。
+     *  为什么不做成实例级的一个布尔：动作分支有一整张 `when`（二十来种），逐个改成返回布尔等于
+     *  把契约铺到每个执行器里；而失败的**唯一出口**本来就只有 [notifyFailure] 一处，盯住它即可。
+     *  但「盯住它」必须带上**归属** —— 实例级一格会被晚到的异步失败改写，下一趟成功却报失败。
      *
-     *  **只看同步段**：`shell:` 那类失败在池线程上晚到，`run` 早就返回了 —— 那一笔由它自己的
-     *  失败提示负责，这里不冒充知道。
+     *  **只看同步段**：`shell:` 那类失败在池线程上晚到，`run` 早就返回了；那时 [openScope] 已经摘掉，
+     *  这一笔由它自己的失败提示负责，本层不冒充知道（异步失败无法与某一趟配对，硬配只会制造假红灯）。
+     */
+    private class RunScope {
+        @Volatile
+        var failed: Boolean = false
+    }
+
+    /**
+     * 当前**正在同步派发**的那一趟（`null` = 没有）。只在 [run] 的 `synchronized` 段里写入与摘除，
+     * 于是同一时刻最多一趟 —— [notifyFailure] 从别的线程读它也不会配错。
      */
     @Volatile
-    private var lastRunFailed = false
+    private var openScope: RunScope? = null
 
     /**
      * `appshortcut:` 那一支 —— 单独一支只为让 [dispatch] 别顶破 detekt 的长度上限
@@ -198,8 +214,8 @@ internal class ActionRunner(
      *  调用点在那两行之间还夹着报活广播、触觉、执行时提示，所以「前一行有、后一行没有」正好定位到
      *  那一段出的问题。本行才是「动作真的开始派发」的判据，与 [runTest] 的「测试命令 →」相对。
      *
-     *  @return 这一次在**同步段**里成功了没有（失败 = [notifyFailure] 被调用过）。
-     *   异步失败（`shell:` 超时 / 被拒）不算进来，理由见 [lastRunFailed]。
+     *  @return 这一次在**同步段**里成功了没有（失败 = 本次执行里 [notifyFailure] 被调用过）。
+     *   异步失败（`shell:` 超时 / 被拒）不算进来，理由见 [RunScope]。
      */
     fun run(
         action: Action,
@@ -223,13 +239,21 @@ internal class ActionRunner(
         //  `isColorOsApi` / `runVibrate` 这两条闭包，它们不知道这一次是哪一档按键，只能读这两格。
         //  写入与 `dispatch` 分处两段时，交叠的第二次执行会改写这两格 ⇒ 先进的那次拿着别人的
         //  档位去开手电筒 / 切响铃。锁只圈住写入到派发返回这一段（异步回调本来就在其后的线程上）。
+        //
+        //  成败同在这一段里：`RunScope` 随这一趟建、随这一趟摘（`finally`）—— 派发一返回，
+        //  之后晚到的异步失败就找不到主人，不会再被记到**下一趟**头上。
         synchronized(runState) {
             runColorOsApi = colorOsApi
             runVibrate = vibrate
-            lastRunFailed = false
-            XLog.w("$gestureLabel → ${XLog.redactToken(action.token)}")
-            dispatch(action)
-            return !lastRunFailed
+            val scope = RunScope()
+            openScope = scope
+            try {
+                XLog.w("$gestureLabel → ${XLog.redactToken(action.token)}")
+                dispatch(action)
+            } finally {
+                openScope = null
+            }
+            return !scope.failed
         }
     }
 

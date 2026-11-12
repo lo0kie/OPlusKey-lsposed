@@ -30,6 +30,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.appKeyOf
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.CenteredInInsets
@@ -265,7 +266,9 @@ private fun SettingsPage.pickRow(
     // 给**条件**挑：**多选**，点一下切换选中（同一块里「前台应用」只有一条条件，多选装在它自己的
     //  取值里 —— `包1||包2`，任一在前台即通过）。其余入口（给动作挑、给手势挑）仍是单选。
     if (conditionAt != AppPickerState.NOT_FOR_BRANCH) {
-        val pkg = AppTarget.pkg(app.target)
+        //  键要**带上用户维度**（`999@包名`）：直接用包名会让主用户与分身共用一格 ——
+        //  界面上「选一个亮两个」，而条件里存下来的也分不出是哪一个（分身那一档永远不命中）。
+        val pkg = appKeyOf(app.target)
         //  点一下切换选中：**不在别的块上做去重** —— `[微信 + 充电]` 与 `[微信 + 耳机]` 是两条
         //  不同的场景，跨块拦会把第二块那条合法条件堵掉（见 `blockKindsOf` 的「跨块不禁」）。
         //  已经在本条条件里的那颗必须能点掉，否则多选之后没法取消其中一个。
@@ -367,7 +370,8 @@ private class RowState(
      */
     fun pickedBy(target: String): Boolean =
         if (multi) {
-            AppTarget.pkg(target) in pickedPkgs
+            //  与 [pickRow] 用同一个键（含用户维度）—— 否则分身与主用户会同时亮
+            appKeyOf(target) in pickedPkgs
         } else {
             pending != null && AppTarget.sameApp(target, pending.target)
         }

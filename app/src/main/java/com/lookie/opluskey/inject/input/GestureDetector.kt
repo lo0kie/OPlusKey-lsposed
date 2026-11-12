@@ -270,7 +270,9 @@ internal class GestureDetector(
             //  这一档与双击**互斥**：第 2 击快速抬起 ⇒ 双击（下面那两条分支照常收尾），
             //  按住超过长按阈值 ⇒ 派发 `ClickThenLong`（见 scheduleLongPress 里那一支）。
             //  所以两条路都要保留：既排长按枪，又按原样让抬手能派发双击。
-            if (p.clicks == 2 && config.clickThenLongOn) {
+            //  判据用 `clickThenLongCounts`（开着**且**真有动作）：动作是无操作时这一档等于不存在，
+            //  第 2 击该照常走双击那条路（双击也无操作时由 `instantSingleNow` 收成两下单击）。
+            if (p.clicks == 2 && config.clickThenLongCounts) {
                 if (p.clicks < maxClicks) {
                     //  后面还有第 3 击要等（三击 / 四击）：照原样继续等，只是顺手把长按枪排上。
                     //  到点时若仍停在第 2 击 ⇒ 判单击后长按；已经数到第 3 击 ⇒ 那一枪自己作废
@@ -562,7 +564,7 @@ internal class GestureDetector(
                 //  两半分开写：一半是「这一枪还该响吗」（状态），另一半是「刚才有没有直判过单击」
                 val stillWaiting = p.longPressAt != 0L && !p.sawFirstRelease && p.clicks <= 2
                 if (stillWaiting && !directJustFired) {
-                    val isChained = config.clickThenLongOn && p.clicks >= 2
+                    val isChained = config.clickThenLongCounts && p.clicks >= 2
                     //  「忽视无操作」把**长按无操作**这一档也一起忽视：
                     //  长按根本没人要，按住不放就是白等一个阈值，抬手还得补一次单击。
                     //  判据用 `longActionExists`（直接绑定 + 场景里配过）——
@@ -866,7 +868,7 @@ internal class GestureDetector(
         //  「单击后长按」：它的松手**不是**长按那一档的收尾 —— 长按的「松手执行额外动作」/
         //  「松手才触发」都只属于「第 1 击按住」那条路。这一档有**自己那一格**松手动作
         //  （`clickThenLongRelease`），开着且配了才补一枪，然后清状态。
-        if (config.clickThenLongOn && p.clicks >= 2) {
+        if (config.clickThenLongCounts && p.clicks >= 2) {
             //  那一档本身是「无操作」时松手也不补：松手动作是「这一档执行之后」的收尾，
             //  主语没有就不该有谓语（用户口径「设为无操作时禁用松手后额外触发」）
             //  两个来源取或：按键自己那一格，与**场景块**里给这一档配的松手

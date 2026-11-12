@@ -103,7 +103,9 @@ private suspend fun SettingsPage.loadActivitiesUnguarded(
     //
     //  这一趟里还夹着一次跨进程往返（桌面钉住的那几条只有注入侧读得到，见 `ShortcutPull`），
     //  所以整段比「只查界面」慢几十到几百毫秒 —— 页面那边在 `loaded == null` 期间铺整页转圈。
-    val shortcuts = shortcutsOf(pkg, userId, query.romanizer)
+    //  `notes` 要一路传进去：注入侧那趟快捷方式**没回包**时它也会把 `shortcutsFailed` 置上
+    //  （那一趟的清单不全，已绑的 `appshortcut:` 不能被当成「已经没了」）。
+    val shortcuts = shortcutsOf(pkg, userId, query.romanizer, notes)
     if (shortcuts == null) notes?.shortcutsFailed = true
     XLog.w(
         "界面清单：$pkg（user=$userId）声明 ${all.size} 个 → 导出 ${candidates.size} 个 → " +

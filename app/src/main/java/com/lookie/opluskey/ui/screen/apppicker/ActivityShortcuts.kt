@@ -5,7 +5,8 @@ import android.content.pm.ShortcutInfo
 import android.icu.text.Transliterator
 import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.shortcutIdEscape
+import com.lookie.opluskey.core.model.shortcutTarget
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.model.LaunchableActivity
 
@@ -56,6 +57,8 @@ internal suspend fun SettingsPage.shortcutsOf(
     pkg: String,
     userId: Int,
     romanizer: Transliterator?,
+    /** 这一趟的附注：注入侧那趟**没回包**时也要算「这一节没查全」（见 [mergePinned]）。 */
+    notes: LoadNotes? = null,
 ): List<LaunchableActivity>? {
     val launcherApps =
         try {
@@ -114,7 +117,13 @@ internal suspend fun SettingsPage.shortcutsOf(
     //  桌面上钉的那些：本进程 `LauncherApps` 那一路对非桌面宿主一条也不给（换系统身份走同一个 API
     //  也一样），只有注入侧（`system_server`）读快捷方式服务手上的活数据才拿得到 —— 见 `ShortcutPull`。
     //  与本进程读到的那批按 id 去重：同一条快捷方式两处都会出现，重复的以本进程那份为准。
-    return mergePinned(local, ShortcutPull.pull(context, pkg, userId), pkg, userId, romanizer)
+    //
+    //  **那趟没回包（没 root / 超时）不等于「桌面没钉」**：这时本进程那份清单是**不全**的，
+    //  已绑的 `appshortcut:` 很可能就在缺的那几条里 —— 必须让上层知道，否则它会把这个绑定
+    //  降级成 `app:`（下次写回就真的丢了）。
+    val pinned = ShortcutPull.pull(context, pkg, userId)
+    if (pinned == null) notes?.shortcutsFailed = true
+    return mergePinned(local, pinned, pkg, userId, romanizer)
 }
 
 /**
@@ -131,8 +140,8 @@ private fun shortcutRow(
     romanizer: Transliterator?,
 ): LaunchableActivity =
     LaunchableActivity(
-        target = AppTarget.format("$pkg/$id", userId),
-        name = "$pkg/$id",
+        target = shortcutTarget(pkg, id, userId),
+        name = "$pkg/${shortcutIdEscape(id)}",
         label = label,
         summary = id,
         sortKey = sortKeyOf(label, romanizer),

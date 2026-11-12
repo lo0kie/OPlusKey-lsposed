@@ -34,7 +34,9 @@ internal object BroadcastSender {
             return false
         }
         if (calling != host) {
-            XLog.w("丢弃来源不明的广播：callingUid=$calling（宿主 uid=$host）")
+            //  高频路径（别的 App 的每一条广播都会走到这里）⇒ d：它不影响模块自身的判据，
+            //  留在 w 上会把真正的判据行冲干净（见 AGENTS 二、1.2）。
+            XLog.d { "丢弃来源不明的广播：callingUid=$calling（宿主 uid=$host）" }
             return false
         }
         return true

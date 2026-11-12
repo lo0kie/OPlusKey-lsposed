@@ -26,6 +26,9 @@ object Strings {
     const val APP_PICKER_ACTIVITY_TITLE = "app_picker.activity_title"
     const val APP_PICKER_BRANCH_MULTI_HINT = "app_picker.branch_multi_hint"
 
+    /** 同一句提示的**反面那一档**（「前台应用以外」挑的那一趟：都不在前台才通过）。 */
+    const val APP_PICKER_BRANCH_MULTI_HINT_NOT = "app_picker.branch_multi_hint_not"
+
     /** 给条件挑前台应用那一趟：一条都没勾就按确认时的那句（FAB 常驻，见 `AppConfirmFab`）。 */
     const val APP_PICKER_BRANCH_AT_LEAST_ONE = "app_picker.branch_at_least_one"
     const val APP_PICKER_CONFIRM_SELECTION = "app_picker.confirm_selection"
@@ -169,6 +172,11 @@ object Strings {
 
     /** 这一档本身是「无操作」时，「松手执行额外动作」那一族灰着被点一下说的话。 */
     const val BINDING_RELEASE_NEEDS_ACTION = "binding.release_needs_action"
+
+    /** 「松手沿用按下时的场景」那一行（标题 / 开 / 关）—— 只给场景块的松手那一族摆。 */
+    const val BINDING_RELEASE_PIN_TITLE = "binding.release_pin_title"
+    const val BINDING_RELEASE_PIN_ON = "binding.release_pin_on"
+    const val BINDING_RELEASE_PIN_OFF = "binding.release_pin_off"
     const val BINDING_SETTINGS_SECTION = "binding.settings_section"
 
     /**
@@ -639,6 +647,9 @@ object Strings {
 
     /** 条件执行里每一种条件的叫法（分支行、条件菜单、摘要共用）。 */
     const val COMMAND_COND_APP = "command.cond_app"
+
+    /** 与 [COMMAND_COND_APP] 同一族的反面：「前台应用以外」= 前台不是这几个应用。 */
+    const val COMMAND_COND_APP_NOT = "command.cond_app_not"
     const val COMMAND_COND_RINGER_NAME = "command.cond_ringer_name"
     const val COMMAND_COND_ORIENTATION_NAME = "command.cond_orientation_name"
     const val COMMAND_COND_SCREEN_ON = "command.cond_screen_on"
@@ -1232,6 +1243,7 @@ object Strings {
     const val PANEL_POWER_MENU = "panel.power_menu"
     const val SETTING_DOUBLE_CLICK_DELAY = "setting.double_click_delay"
     const val SETTING_ENABLE_BINDING = "setting.enable_binding"
+    const val SETTING_IGNORE_DOUBLE_CHAIN = "setting.ignore_double_chain"
     const val SETTING_IGNORE_DOUBLE = "setting.ignore_double"
     const val SETTING_KEY_BINDING = "setting.key_binding"
 

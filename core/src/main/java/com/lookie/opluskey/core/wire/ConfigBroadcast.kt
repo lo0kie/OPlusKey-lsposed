@@ -157,6 +157,14 @@ object ConfigBroadcast {
                         (ConfigFields.F_CTL_SERIAL to chainSerialOf(k)) +
                         (ConfigFields.F_SCENE_RELEASE to config.key(k).scenes.any { it.hasRelease }) +
                         (ConfigFields.F_SCENE_CHAIN_RELEASE to config.key(k).scenes.any { it.hasChainRelease }) +
+                        //  「单击后长按这一档有没有人配」：同上，注入侧看不到场景表，而它要靠这一位
+                        //  回答「这一档是不是无操作」（见 `KeyConfig.clickThenLongCounts`）。
+                        (
+                            ConfigFields.F_SCENE_CHAIN to
+                                config.key(k).scenes.any {
+                                    (it.actions[GestureTrigger.ClickThenLong] ?: Action.None).isBound
+                                }
+                        ) +
                         //  「长按这一档有没有人要」：注入侧看不到场景表，而 `instantSingle`
                         //  要靠它决定「长按无操作时还等不等那一下」（见 `KeyConfig.longActionExists`）
                         (

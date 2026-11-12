@@ -332,7 +332,10 @@ internal object StatusBarBridge {
                     XLog.w("${svc.javaClass.name} 上没有 toggleRecentApps()，最近任务跳过")
                     return
                 }
-            asSystem { Reflect.call(svc, m) }
+            //  **不能走 `Reflect.call`**：它把 invoke 的异常吞掉、返回 null，于是这一行「已调」
+            //  在调用失败时照样打出来（最近任务没反应，日志却说调过了）。直接 invoke，
+            //  成功才记账、失败落进下面的 catch。
+            asSystem { m.invoke(svc) }
             XLog.w("已在本机调 StatusBarManagerInternal.toggleRecentApps（recents）")
         } catch (e: Throwable) {
             XLog.w("切换最近任务失败：${e.javaClass.simpleName}: ${e.message}")

@@ -15,8 +15,8 @@ import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.model.BRANCHES_TITLE
-import com.lookie.opluskey.ui.screen.command.branchKeyNow
 import com.lookie.opluskey.ui.state.BranchDraft
+import com.lookie.opluskey.ui.state.KeyWatchState
 
 /**
  * 一张动作网格**正在往哪儿写**。
@@ -362,6 +362,17 @@ internal class ReleaseSlot(
         fun of(block: SceneRule): ReleaseSlot = ReleaseSlot(block.releaseOn, block.release)
     }
 }
+
+/**
+ * 这一趟在编**哪一颗键** —— 场景表那四页（系统场景 / 场景动作 / 条件菜单 / 退出判据）共用一个答案。
+ *
+ *  为什么落在这一层（`ui/` 而不是 `ui/screen/command/`）：问它的第一个人不是某一屏，而是
+ *  **页面模型** —— [openBranchesFor] 要按这颗键的档位清单换算页号。
+ *  它原先住在 `ui/screen/command/CommandBranches.kt`，于是 `ui/BindingTarget.kt` 反向 import 了
+ *  具体屏，分层审计（`ui → ui.screen` 那条）会拦下：共用件 / 页面模型不许认识屏。
+ *  搬到这里之后两个方向都是顺的 —— 屏认识页面模型，页面模型只认识状态（`KeyWatchState`）。
+ */
+internal fun SettingsPage.branchKeyNow(): KeyId = KeyWatchState.editing(configState.config.value)
 
 /**
  * 进「系统场景」编**这一档** —— 两页共用这一支。

@@ -280,9 +280,10 @@ private fun SettingsPage.commitCondition(
     menus.condIndexAt = -1
     pick.resetSub()
     when (pick.kind) {
-        // 「前台应用」先去挑是哪个应用（进另一页），槽位一起带过去：挑完要写回这一条
-        ConditionKind.APP -> {
-            openAppPickerForBranch(ruleAt, conditionIndex = slot)
+        // 应用那一族两档都先去挑是哪个应用（进另一页），槽位与**档位**一起带过去：
+        //  挑完要写回这一条，而且「前台应用」与「前台应用以外」写的是不同的 `kind`。
+        ConditionKind.APP, ConditionKind.APP_NOT -> {
+            openAppPickerForBranch(ruleAt, conditionIndex = slot, kind = pick.kind)
         }
 
         // 「时间区间」没有候选可以列（一天里任选一段），交给时间选择窗

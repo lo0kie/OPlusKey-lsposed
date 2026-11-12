@@ -293,7 +293,7 @@ private fun SettingsPage.profileManageRows(
         },
         MenuEntry.Row(
             title = I18n.get(Strings.PROFILE_RENAME, "重命名"),
-            icon = PageIcons.MenuRename,
+            icon = PageIcons.ProfileRename,
             //  默认配置的名字空着就是它的身份（见 `Config.isDefaultProfile`）：改了名之后
             //  「升级时落下的退路」在列表里就认不出来了 —— 所以这一行在默认配置上直接灰掉。
             //  置灰行必须带自己的说法：不给的话点了会弹**整页那条**（「这一页现在为什么改不了」），
@@ -310,7 +310,7 @@ private fun SettingsPage.profileManageRows(
         //  所以 `danger` 照给 —— 名字叫「重置」，代价由确认窗那句话交代（`ProfileClearConfirmDialog`）。
         MenuEntry.Row(
             title = I18n.get(Strings.MENU_RESET_CONFIG, "重置配置"),
-            icon = PageIcons.MenuReset,
+            icon = PageIcons.ProfileReset,
             danger = true,
             enabled = canReset,
             disabledHint = if (canReset) null else I18n.get(Strings.MENU_RESET_CONFIG_OFF, "模块未就绪"),
@@ -341,12 +341,15 @@ private fun SettingsPage.profileManageRows(
  *  切换那层要标出「现在生效的是哪份」，导出与「当前」无关（点哪份导哪份），所以一行勾都不打，
  *  单纯列出来（[markCurrent] 传 `false`）。
  *  只有一份配置时这层菜单里也只有一行，仍然照常弹 —— 配置列表永远是同一形状。
+ *
+ *  行尾给**箭头**（[profileRows] 的 `enter = true`）：这一层每行点下去是进系统的「保存到」，
+ *  与切换那层「就地选一份」不是同一种交互 —— 用箭头把「还会再开一层」说出来。
  */
 @Composable
 internal fun SettingsPage.ProfileExportMenu(ui: AboutUiState) {
     PageMenu(
         entries =
-            profileRows(ui, markCurrent = false, brokenDeletable = false) { item ->
+            profileRows(ui, markCurrent = false, brokenDeletable = false, enter = true) { item ->
                 ui.showExportMenu = false
                 hooks.onExportConfig?.invoke(item.slot)
             }.takeIf { ui.showExportMenu }
@@ -369,11 +372,15 @@ internal fun SettingsPage.ProfileExportMenu(ui: AboutUiState) {
  * @param markCurrent 要不要标出当前生效的那份（[MenuEntry.Row.selected]：行首换成对勾、
  *   文字走主色，并**滚进视窗**）。切换那层要；导出那层不要 —— 那一层与「当前」无关。
  * @param brokenDeletable 读不出来的那几份要不要列出来（切换那层 `true`，导出那层 `false`）
+ * @param enter 行尾要不要给箭头 —— 导出那一层要，切换那一层不要。判据是「点下去之后去了哪」：
+ *   导出那一层每行都**进下一层**（系统的「保存到」），切换那一层是就地选一份（[MenuEntry.Row.selected]
+ *   打勾）、点完菜单就关，没有下一层可进。
  */
 private fun SettingsPage.profileRows(
     ui: AboutUiState,
     markCurrent: Boolean,
     brokenDeletable: Boolean = true,
+    enter: Boolean = false,
     onPick: (ConfigProfiles.Item) -> Unit,
 ): List<MenuEntry> {
     //  只给自定义的那几份编号（默认那份排在首行，跳过后序号从 1 开始）
@@ -402,6 +409,9 @@ private fun SettingsPage.profileRows(
                     PageIcons.menuKeyNumber(numbered.indexOf(item))
                 },
             selected = markCurrent && item.isCurrent,
+            //  `submenu` 是行尾那一格的**唯一开关**（不置的话给不给字形都不画），
+            //  不传 `trailingIcon` ⇒ 用默认的右箭头
+            submenu = enter,
         ) {
             onPick(item)
         }

@@ -81,6 +81,24 @@ data class SceneRule(
     val chainReleaseOn: Boolean = false,
     val chainRelease: Action = Action.None,
     /**
+     * **松手沿用按下那一刻命中的这一块** —— 默认开。
+     *
+     *  松手是一条**独立的手势**（判定侧单独发一条），宿主收到时若重新判条件，就会落进两个坑：
+     *  长按动作本身把前台应用换掉之后，松手落到别的块（或回落到按键自己那一格）；反过来，
+     *  按下时没块命中、松手前恰好命中了，就会执行一个用户没有预期的块的松手动作。
+     *  开着这一位，按下那一刻命中的块被记住，松手只用它自己的那一格 —— 条件变了也不重判。
+     *
+     *  关掉 = 回到「松手时按当时的状态重新判一次」。两档松手（[release] 与 [chainRelease]）
+     *  共用这一位：它们说的是同一件事（这一按归谁），只是分别挂在两个档上。
+     *
+     *  只对场景块有意义（`KeyConfig` / `ComboKey` 上没有这一层：它们本来只有一块）。
+     *
+     *  **界面上一张表只给一个开关**（「系统场景」列表**最上面**那一行，表非空时才有）：它说的是
+     *  整张表的口径，不是某一块的动作，所以不进「场景动作」页。拨一次写的是每一块的同一位
+     *  （见 `ui/screen/command/SceneReleasePinCard`）—— 判定侧仍然按块读，两处不冲突。
+     */
+    val releasePin: Boolean = true,
+    /**
      * 这一块**参不参与判定**（界面上的「停用场景」）—— 停用的块整块跳过，条件与各档动作都还留着。
      *
      *  与「删掉」是两件事：删了就没了，停用只是让它这一趟不生效。
@@ -133,17 +151,22 @@ data class SceneRule(
      */
     val isReady: Boolean get() = conditions.isNotEmpty() && conditions.all { it.isUsable }
 
-    /** 这块里**「前台应用」那一条**的下标（`-1` = 没有）。 */
-    val appConditionIndex: Int get() = conditions.indexOfFirst { it.kind == ConditionKind.APP }
+    /**
+     * 这块里**应用那一族某一档**（[ConditionKind.APP] / [ConditionKind.APP_NOT]）的下标（`-1` = 没有）。
+     *
+     *  按种类问而不是「所有应用条件」：两档在同一块里可以同时存在（`前台是 A` 且 `前台不是 B`），
+     *  挑应用页写回时必须知道这一趟换的是哪一档，拿「第一条应用条件」去换会把另一档覆盖掉。
+     */
+    fun appConditionIndex(kind: ConditionKind): Int = conditions.indexOfFirst { it.kind == kind }
 
     /**
-     * 这块里「前台应用」那一条（`null` = 没有）。
+     * 这块里应用那一族**某一档**的那一条（`null` = 没有）。
      *
-     *  一块里**只该有一条**：那一条自己就能多选（`包1||包2`，任一在前台即通过），再开一行只是
-     *  把同一件事写成两处（判定侧按「或」算，两行同样成立，但没有第二种必要）。
+     *  同一档在一块里**只该有一条**：那一条自己就能多选（`包1||包2`），再开一行只是把同一件事
+     *  写成两处（判定侧按「或」算，两行同样成立，但没有第二种必要）。
      *  写回去时按 [appConditionIndex] 换槽位，不会多加一条。
      */
-    val appCondition: BranchCondition? get() = conditions.getOrNull(appConditionIndex)
+    fun appCondition(kind: ConditionKind): BranchCondition? = conditions.getOrNull(appConditionIndex(kind))
 
     /**
      * 条件成不成立 —— **同种类之间「或」，不同种类之间「且」**。
@@ -249,6 +272,22 @@ internal fun pickAction(
     fallback: Action,
     matches: (BranchCondition) -> Boolean,
 ): Action = scenes.firstOrNull { it.matches(trigger, matches) }?.actionOf(trigger) ?: fallback
+
+/**
+ * 这一档**命中的是第几块**（`null` = 没有块接管，落到 [fallback] 那一档去了）。
+ *
+ *  与 [pickAction] **同一套判据**（条件成立 + 这一档有值 + 启用），只是不要动作、要身份：
+ *  按下那一刻记住它，松手时按 [SceneRule.releasePin] 决定要不要沿用（见那一项的说明）。
+ *  两处各写一遍 `firstOrNull { it.matches(...) }` 的话，「哪一块赢了」迟早两边各答一套。
+ *
+ *  公开（不是 `internal`）：按下那一刻记归属的那一半在 `:app`（`host/GestureExec`），
+ *  跨模块看不到 `:core` 的 internal。
+ */
+fun sceneIndexOf(
+    scenes: List<SceneRule>,
+    trigger: GestureTrigger,
+    matches: (BranchCondition) -> Boolean,
+): Int? = scenes.indexOfFirst { it.matches(trigger, matches) }.takeIf { it >= 0 }
 
 /**
  * 这一档**有没有被某个场景块接管** —— 松手那一档要判「长按那一档命中系统场景就让位」。

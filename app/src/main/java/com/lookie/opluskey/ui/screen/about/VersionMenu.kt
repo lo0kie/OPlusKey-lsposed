@@ -32,7 +32,7 @@ internal fun SettingsPage.VersionMenu(ui: AboutUiState) {
                         } else {
                             I18n.get(Strings.UPDATE_CHECK_ROW, "检查更新")
                         },
-                    icon = if (found) PageIcons.Download else PageIcons.ModuleRestart,
+                    icon = if (found) PageIcons.Download else PageIcons.CheckUpdate,
                     //  行尾不挂红点：有新版这件事首页顶上那块「模块状态」已经说了（见 `HomeActivationCard`），
                     //  这条只负责改口与换图标 —— 点进去照样会弹窗
                 ) {

@@ -27,27 +27,41 @@ import com.lookie.opluskey.ui.state.AppPickerState
  *  **只挑条件**：条件只认包名（`AppPickerState.appOnly`），不挑界面、也不挑小窗。
  *  场景里「某一档要执行什么应用」不走这条路 —— 那一档在「场景动作」页的网格里挑
  *  （`BindingTarget.Scene`），与网格同一套。
+ *
+ *  @param kind 这一趟写回去的是**哪一档**（[ConditionKind.APP] / [ConditionKind.APP_NOT]）。
+ *    应用那一族两档**共用这一整页**：同一个列表、同一套多选、同一份预填 —— 只有写回时的
+ *    `kind` 与两三条文案不同（见 [ConditionKind.isAppFamily]）。
  */
 internal fun SettingsPage.openAppPickerForBranch(
     index: Int,
     conditionIndex: Int = -1,
+    kind: ConditionKind = ConditionKind.APP,
 ) {
-    picker.openForBranch(index, conditionIndex = conditionIndex)
+    picker.openForBranch(index, conditionIndex = conditionIndex, kind = kind)
     // 搜索词清空（页面级状态，不再随页面出栈注销）
     picker.filter.value = ""
     resetSmallWindowForPicker()
-    //  给**条件**挑的那一趟支持多选：把这块里已有的包名预填进去（编辑时那几个勾要亮着）。
+    //  给**条件**挑的那一趟支持多选：把这块里**这一档**已有的包名预填进去（编辑时那几个勾要亮着）。
+    //  按 `kind` 取那一条：一块里 `前台是微信` 与 `前台不是钉钉` 可以同时存在，
+    //  拿「第一条应用条件」去预填会把另一档的选择搬到这一档上来。
     val picked =
         branchDraftNow()
             .scenes
             .getOrNull(index)
-            ?.appCondition
+            ?.appCondition(kind)
             ?.appPackages
             ?.toSet()
             .orEmpty()
     appPickerUi.beginVisit(appPickerSelectedTarget(), bindingShortcutId(), picked = picked)
     //  说一句「可以多选」：这一页以前是单选（点一行只亮一行），不提示的话没人会去点第二下。
-    hint(I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT, "可以多选：任一应用在前台即通过"))
+    //  两档那半句的结论相反（「任一在前台即通过」/「都不在前台才通过」），所以各有各的一句。
+    hint(
+        if (kind == ConditionKind.APP_NOT) {
+            I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT_NOT, "可以多选：选中的应用都不在前台才通过")
+        } else {
+            I18n.get(Strings.APP_PICKER_BRANCH_MULTI_HINT, "可以多选：任一应用在前台即通过")
+        },
+    )
     navTo(Screen.APP_PICKER)
 }
 
@@ -97,11 +111,12 @@ internal fun SettingsPage.branchTimesOverlap(): Boolean =
     }
 
 /**
- * 把挑中的应用写成第 [index] 条规则的**条件**（前台应用；[AppPickerState.NEW_BRANCH] = 新加一条）。
+ * 把挑中的应用写成第 [index] 条规则的**条件**（应用那一族；[AppPickerState.NEW_BRANCH] = 新加一条）。
  *
  *  只改草稿、不落盘 —— 规则随右下角那颗「确定」一起入库。
  *
- *  条件只认包名：判的是「哪个应用在前台」，与怎么打开它无关。
+ *  条件只认包名：判的是「哪个应用在前台」（或**不在**前台，见 `picker.branchKind`），
+ *  与怎么打开它无关。
  *
  *  ## 它自己退页（调用方**不要再退一次**）
  *
@@ -123,7 +138,7 @@ internal fun SettingsPage.writeBranchCondition(
     //  同一个应用可以当**不同块**的条件：`[微信 + 充电]` 与 `[微信 + 耳机]` 是两条不同的场景，
     //  拿「整张表里用过没有」去拦，第二块就配不出来了（跨块不禁，见 `blockKindsOf`）。
     //  一条条件内部仍去重（上面那句 `distinct()`）。
-    val condition = BranchCondition.apps(pkgs)
+    val condition = BranchCondition.apps(picker.branchKind, pkgs)
     val old = branchDraftNow().scenes.getOrNull(index)
     if (old == null) {
         branchDraftNow().add(SceneRule(conditions = listOf(condition)))
@@ -138,7 +153,7 @@ internal fun SettingsPage.writeBranchCondition(
         val slot =
             when {
                 explicit in old.conditions.indices -> explicit
-                old.appConditionIndex >= 0 -> old.appConditionIndex
+                old.appConditionIndex(picker.branchKind) >= 0 -> old.appConditionIndex(picker.branchKind)
                 else -> -1
             }
         branchDraftNow().update(

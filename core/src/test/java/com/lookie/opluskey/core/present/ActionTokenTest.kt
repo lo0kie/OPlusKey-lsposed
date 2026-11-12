@@ -1,5 +1,6 @@
 package com.lookie.opluskey.core.present
 
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -57,6 +58,20 @@ class ActionTokenTest {
         val actions = tokens.filterNot { it in notRoundTrip }
         val broken = actions.filter { Action.parse(it).token != it }
         assertEquals("这些动作 token 往返之后变了形", emptyList<String>(), broken)
+    }
+
+    @Test
+    fun followIsNamedInsteadOfItsRawToken() {
+        //  「跟随默认」只在 `BRANCH_GROUPS` 里（不在 `ALL`），而「这个动作叫什么」走的是那张扁平表 ——
+        //  漏了它，回执就退回原始 token（「已绑定「follow」」，真机反馈）。
+        //  单测里没有字典，`label` 给的是**键本身**；所以这里判「查到了哪条键」，
+        //  而不是判中文那四个字。
+        assertEquals(
+            "「跟随默认」必须念得出名字，不能退回 token",
+            Strings.COMMAND_BRANCH_ACTION_FOLLOW,
+            ActionCatalog.label(Action.Follow),
+        )
+        assertNotEquals("follow", ActionCatalog.label(Action.Follow))
     }
 
     @Test

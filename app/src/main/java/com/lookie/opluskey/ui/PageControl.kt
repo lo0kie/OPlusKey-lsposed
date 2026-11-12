@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
+import com.lookie.opluskey.host.action.requestSystemToast
 
 // 动**宿主页面与进程**的那几件：就地露出宿主原版页、重启服务（连本页那个 `:ui` 进程一起重来）。
 //
@@ -70,6 +71,32 @@ private fun SettingsPage.finishRestart(
     }
     // 把「把页面拉回来 + 自己重来一遍」整个交给宿主主进程（见 host/PageRelaunch）。
     //  请求发不出去时**不能**杀自己：那样页面没了、也没人再把它叫回来。
+    //
+    //  **发出去了也不等于有人接**：`sendBroadcast` 不抛只说明系统受理了这条广播。宿主主进程那份
+    //  代码是旧的（接收器里还没有这一支）、或者签名闸把接收器拦下了时，本条广播就是发给了空气 ——
+    //  那时杀自己同样等于把页面弄丢。所以先等宿主那条回执（[ModuleWire.ACTION_PAGE_RELAUNCH_ACK]）：
+    //  收到才杀，等不到就报失败、留在原地。
+    val acked =
+        java.util.concurrent.atomic
+            .AtomicBoolean(false)
+    val receiver =
+        object : android.content.BroadcastReceiver() {
+            override fun onReceive(
+                ctx: android.content.Context?,
+                intent: android.content.Intent?,
+            ) {
+                if (!acked.compareAndSet(false, true)) return
+                XLog.w("重启：宿主主进程回了回执（已接下这一轮），${PAGE_KILL_DELAY_MS}ms 后杀本进程")
+                // 回执用**注入侧**那条通道弹：本进程马上要死，页面里的提示条留不住；
+                // 注入侧（system_server）那个 toast 不随这两个进程消失。
+                requestSystemToast(context, I18n.get(Strings.TOAST_SERVICE_RESTARTED, "已重启服务"))
+                killPageProcess()
+            }
+        }
+    if (!context.registerLocalReceiver("重启服务：等宿主回执", receiver, ModuleWire.ACTION_PAGE_RELAUNCH_ACK)) {
+        hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
+        return
+    }
     val asked =
         PageWire.send(
             context,
@@ -80,18 +107,30 @@ private fun SettingsPage.finishRestart(
         hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
         return
     }
-    XLog.w("重启：已请宿主主进程稍后拉起页面")
-    // 这一条是「菜单那个重启」的反馈：不带它的话，用户只能靠「过一会儿动作生效了没有」猜。
-    hint(I18n.get(Strings.TOAST_SERVICE_RESTARTED, "已重启服务"))
-    killPageProcess()
+    XLog.w("重启：已请宿主主进程稍后拉起页面（等回执，最多 ${ACK_WAIT_MS}ms）")
+    // 等不到回执 ⇒ 没人接这一轮：不杀自己，把「没成」说出来（以前这一档是静默自杀）。
+    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+        if (acked.compareAndSet(false, true)) {
+            XLog.w("重启：${ACK_WAIT_MS}ms 内没收到宿主回执 ⇒ 放弃（不杀本进程，页面留着）")
+            runCatching { context.unregisterReceiver(receiver) }
+            hint(I18n.get(Strings.TOAST_SERVICE_RESTART_FAILED, "重启失败：请手动重开一次设置页"))
+        }
+    }, ACK_WAIT_MS)
 }
 
-/** 本包此刻的进程表（`包名:pid` 拼成一行）—— 只进日志。 */
+/** 等宿主回执的上限：同 uid 进程间一条广播的往返是毫秒级，1 秒已经够宽裕（等不到就是不接）。 */
+private const val ACK_WAIT_MS = 1_000L
+
+/** 本包此刻的进程表（`包名:pid` 拼成一行）—— 只进日志。
+ *
+ *  过滤条件是「主进程**或它的子进程**」（`:ui` 才是本页所在的进程）：只比 `== HostApp.PACKAGE`
+ *  的话这一行永远只列出主进程，而它存在的意义正是「重启时本包都有哪些进程」。
+ */
 private fun SettingsPage.mineProcesses(): String =
     context
         .getSystemService(android.app.ActivityManager::class.java)
         ?.runningAppProcesses
-        ?.filter { it.processName == HostApp.PACKAGE }
+        ?.filter { it.processName == HostApp.PACKAGE || it.processName.startsWith(HostApp.PACKAGE + ":") }
         ?.joinToString(prefix = "[", postfix = "]") { "${it.processName}:${it.pid}" }
         ?: "null"
 

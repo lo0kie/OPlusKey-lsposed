@@ -240,7 +240,8 @@ internal class SideKeyInterceptor(
         val keyEvent =
             firstKeyEvent(chain.args) ?: run {
                 // 认领不到 keyCode 就吞键会连带吃掉别的键，放行给系统
-                XLog.w("按键（$point）：参数里没有 KeyEvent，无法确认是哪颗键 → 放行给系统")
+                //  每次按压都会走到（这一层收所有按键）⇒ d，不占判据行的额度
+                XLog.d { "按键（$point）：参数里没有 KeyEvent，无法确认是哪颗键 → 放行给系统" }
                 return false
             }
         // 合成事件（我们自己重注入的）不认领：认领就是自持循环（见 [isSynthetic]）
@@ -271,7 +272,8 @@ internal class SideKeyInterceptor(
     ): Boolean {
         val keyEvent =
             firstKeyEvent(chain.args) ?: run {
-                XLog.w("按键（$point）：参数里没有 KeyEvent，这一层不做转发（放行给系统）")
+                //  同上：高频路径，判据看的是「认领 / 判成什么手势」那几行
+                XLog.d { "按键（$point）：参数里没有 KeyEvent，这一层不做转发（放行给系统）" }
                 return false
             }
         // 同上：合成事件不认领
@@ -407,7 +409,7 @@ internal class SideKeyInterceptor(
         //  那一条判在宿主侧（`SideKeyGestureHooks`：按「这一下是不是模块认领的」判）。
         // 只在按下那一下打：闸门关着时每一按都会走到这里
         if (keyEvent.action == KeyEvent.ACTION_DOWN) {
-            XLog.w("${keyConfig.id.label}（$point）：这颗键没开接管，放行给系统（走原生行为）")
+            XLog.d { "${keyConfig.id.label}（$point）：这颗键没开接管，放行给系统（走原生行为）" }
         }
         return Decision.Pass
     }

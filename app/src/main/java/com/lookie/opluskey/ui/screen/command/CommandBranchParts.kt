@@ -28,7 +28,6 @@ import com.lookie.opluskey.ui.appTargetLabelOf
 import com.lookie.opluskey.ui.model.PageIcons
 import com.lookie.opluskey.ui.model.STEP_ROW_EXIT_MS
 import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
-import com.lookie.opluskey.ui.model.conditionChoiceIcon
 import com.lookie.opluskey.ui.model.conditionIcon
 import com.lookie.opluskey.ui.model.conditionRowTitle
 import com.lookie.opluskey.ui.model.stepTitleWithTarget
@@ -81,9 +80,16 @@ internal fun SettingsPage.ruleConditionLines(rule: SceneRule): List<ConditionLin
                     },
                 icon = conditionLineIcon(condition),
                 empty = !condition.isUsable,
-                //  「前台应用」能挑好几个，名字按**框**排（与组合键成员同一种标签，见 [ConditionRowTitle]）——
-                //  给 `null` 的那几档仍是一行字。
-                apps = if (condition.kind == ConditionKind.APP && condition.isUsable) condition.appPackages.map(::appNameOf) else null,
+                //  应用那一族（前台 / 前台以外）都能挑好几个，名字按**框**排（与组合键成员同一种标签，
+                //  见 [ConditionRowTitle]）—— 给 `null` 的那几档仍是一行字。
+                apps =
+                    if (condition.kind?.isAppFamily == true && condition.isUsable) {
+                        condition.appPackages.map(::appNameOf)
+                    } else {
+                        null
+                    },
+                //  框前面那个种类名要念对档：`前台应用 - [微信]` / `前台应用以外 - [微信]`
+                kind = condition.kind,
                 //  这一行在列表里的身份：行进出场按它认「是不是同一行」，不按位次
                 //  （见 `CardRow.Item.rowKey`）。
                 rowKey = if (single) CONDITION_PLACEHOLDER_KEY else (condition to nth),
@@ -95,19 +101,15 @@ internal fun SettingsPage.ruleConditionLines(rule: SceneRule): List<ConditionLin
 private val CONDITION_PLACEHOLDER_KEY = Any()
 
 /**
- * 条件那一行的行首字形 —— **跟着取值给**（[conditionChoiceIcon]），不是只跟着种类。
+ * 条件那一行的行首字形 —— 取**父图标**：这一条属于哪一类条件就给哪一类的字形
+ * （[conditionIcon]：插头 / 路由器 / 耳机 / 一台手机…），不再按**取值**换（子图标已去掉）。
  *
- *  只按种类给的话，同一类的不同状态长得一模一样：亮屏与锁屏都是那块屏、WiFi 开与关都是那个
- *  WiFi、飞行模式开与关都是那架飞机 —— 一列条件扫下来「很多状态图标都一样」（真机口径），
- *  只剩文字能分。取值那颗才是这一行真正在说什么。
+ *  以前是「跟着取值给」：亮屏与锁屏、WiFi 开与关各一颗，一列条件扫下来全是只差一道斜杠的图，
+ *  读起来比文字还费劲。现在一列里每行一眼分得出「是充电还是 WiFi」，具体哪个取值由文字说。
  *
- *  未配完的那一条（只选了种类 / 刚插进来的空条件）按种类给：那时候还没有取值可看，
- *  `conditionChoiceIcon` 本来也会掉回种类那颗。
+ *  还没选种类的那一条（刚插进来的空条件）给父级那颗 [PageIcons.Scene]。
  */
-private fun conditionLineIcon(condition: BranchCondition): ImageVector {
-    val kind = condition.kind ?: return PageIcons.Scene
-    return if (condition.isUsable) conditionChoiceIcon(kind, condition.effectiveValue) else conditionIcon(kind)
-}
+private fun conditionLineIcon(condition: BranchCondition): ImageVector = condition.kind?.let(::conditionIcon) ?: PageIcons.Scene
 
 /** 条件那**一行**写什么、配哪颗字形、是不是还没配完 —— 一条条件一个，卡片里各占一行。 */
 internal class ConditionLine(
@@ -123,6 +125,13 @@ internal class ConditionLine(
      *  而应用名里完全可能带 ` - `（`微信 - LauncherUI` 那种写法就在别处出现过）。
      */
     val apps: List<String>? = null,
+    /**
+     * 这一条条件的**种类** —— 只有应用那一族读它（[ConditionRowTitle] 里框前面那个种类名：
+     *  `前台应用 - [微信]` 与 `前台应用以外 - [微信]` 不能念成同一句）。
+     *
+     *  占位行（「未选择场景」）给 `null`：它没有种类。
+     */
+    val kind: ConditionKind? = null,
     /**
      * 这一行在卡片里的身份 —— 那条条件 + 它是同一取值的第几次出现（占位行 / 「未选择条件」那一行给 `null`）。
      *

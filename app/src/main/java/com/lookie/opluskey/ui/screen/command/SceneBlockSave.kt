@@ -6,6 +6,7 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.branchKeyNow
 import com.lookie.opluskey.ui.state.CommandsSave
 import com.lookie.opluskey.ui.write
 
@@ -159,12 +160,19 @@ private fun blockWrite(
     if (slot !in base.indices) return null
     val old = base[slot]
     if (old != loaded) return null
-    //  这一页的东西：各档动作 + 松手那一族；`conditions` / `enabled` 归上一页，原样留着
+    //  这一页的东西：各档动作 + **两族松手**（长按的 `release*` 与「单击后长按」的 `chainRelease*`）
+    //  + 它们共用的「沿用按下时的场景」；`conditions` / `enabled` 归上一页，原样留着。
+    //
+    //  `chainRelease*` 原先漏在这里：那一页能编它、草稿里也改了，写回时却没带上 ——
+    //  点「确认」之后那一档悄悄回到旧值。松手沿用那一格同理，一并写。
     val written =
         old.copy(
             actions = block.actions,
             releaseOn = block.releaseOn,
             release = block.release,
+            chainReleaseOn = block.chainReleaseOn,
+            chainRelease = block.chainRelease,
+            releasePin = block.releasePin,
         )
     return BlockWrite(written, base.toMutableList().also { it[slot] = written })
 }

@@ -857,12 +857,12 @@ internal class SettingsPage(
         val branchAt = picker.branchTarget
         if (branchAt != AppPickerState.NOT_FOR_BRANCH) {
             val scene = branchDraft.now().scenes.getOrNull(branchAt) ?: return null
-            // 条件那一头直接就是包名 —— 一块可能带好几条条件，要取的是**「前台应用」那一条**
-            //  （只取第一条的话，手改的配置里应用条件排在第二位时这一页一行都不亮）。
+            // 条件那一头直接就是包名 —— 要取的是**这一趟那一档**（按档取，不按「第一条应用条件」：
+            //  不认档的话，「前台应用以外」那一趟会去点亮「前台应用」那条选中的应用）。
             //  槽位口径只有一处（`SceneRule.appCondition`）。
-            // 条件可以**多选**（`包1||包2`，任一在前台即通过）：这一位只回答
-            //  「滚到哪一行、行尾亮哪个」，所以取第一个；完整集合在 `picker.pickedApps`。
-            return scene.appCondition?.appPackages?.firstOrNull()
+            // 条件可以**多选**（`包1||包2`）：这一位只回答「滚到哪一行、行尾亮哪个」，
+            //  所以取第一个；完整集合在 `picker.pickedApps`。
+            return scene.appCondition(picker.branchKind)?.appPackages?.firstOrNull()
         }
         // 两种动作都要认：`app:`（普通打开）与 `window:`（小窗，[Action.AppWindow]）——
         // 与「按键绑定」页那一格取应用名同口径。少认一种时，开着「以小窗口打开」挑完应用回来

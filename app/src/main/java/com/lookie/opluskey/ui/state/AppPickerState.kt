@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.model.LaunchableApp
@@ -260,6 +261,17 @@ internal class AppPickerState {
         private set
 
     /**
+     * 这一趟挑的包名要写成**哪一档**条件（[ConditionKind.APP] / [ConditionKind.APP_NOT]）。
+     *
+     *  应用那一族两档的取值写法、多选、这一页怎么用**完全一样**（见 [ConditionKind.isAppFamily]），
+     *  只有写回去的那个 `kind` 不同 —— 所以「为谁挑」这笔账里必须记着它：不记的话，从
+     *  「前台应用以外」那一行进来的这一趟会照 [ConditionKind.APP] 写，用户点的负面条件被悄悄
+     *  改成正面那一档，而页面上一个字都不会变。
+     */
+    var branchKind: ConditionKind = ConditionKind.APP
+        private set
+
+    /**
      * 这一趟挑的应用要写进**场景表里第几块**的那一档（`-1` = 不是给场景挑）。
      *
      *  与 [comboId] 同一条性质：这是从**场景动作**页的网格进来的那一趟（那几格里有
@@ -333,6 +345,7 @@ internal class AppPickerState {
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
         branchConditionIndex = -1
+        branchKind = ConditionKind.APP
         stopAppState.value = false
         //  这两位的清场纪律与 `openForStep` / `openForRelease` 一样，以前只有这一支漏了：
         //  上一趟「松手执行额外动作」留下的 `forRelease` 会让 `takePickTarget` 优先返回
@@ -382,6 +395,7 @@ internal class AppPickerState {
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
         branchConditionIndex = -1
+        branchKind = ConditionKind.APP
         stopAppState.value = stop
         forRelease = true
     }
@@ -402,6 +416,7 @@ internal class AppPickerState {
         replaceStep = replaceIndex
         branchTarget = NOT_FOR_BRANCH
         branchConditionIndex = -1
+        branchKind = ConditionKind.APP
         stopAppState.value = stop
         forRelease = false
     }
@@ -411,10 +426,14 @@ internal class AppPickerState {
      *
      *  条件与动作的落点不同（条件存包名、动作存 token），所以**不需要**再记「这一趟写哪半个」：
      *  动作那一侧走「场景动作」页的网格（`BindingTarget.Scene`），与这张页面无关。
+     *
+     *  @param kind 写回**哪一档**（[ConditionKind.APP] / [ConditionKind.APP_NOT]）—— 两档的流程
+     *    一模一样，只有写回去的那一位不同（见 [branchKind]）
      */
     fun openForBranch(
         index: Int,
         conditionIndex: Int = -1,
+        kind: ConditionKind = ConditionKind.APP,
     ) {
         gesture = null
         comboId = null
@@ -424,6 +443,7 @@ internal class AppPickerState {
         branchTarget = index
         //  挑条件那一趟不写条件槽位以外的标记，留着上一趟的值只会在下一次挑选时误导
         branchConditionIndex = conditionIndex
+        branchKind = kind
         //  条件只认包名：既没有「结束应用」那一档，也没有「松手额外动作」
         stopAppState.value = false
         forRelease = false
@@ -438,6 +458,7 @@ internal class AppPickerState {
         replaceStep = -1
         branchTarget = NOT_FOR_BRANCH
         branchConditionIndex = -1
+        branchKind = ConditionKind.APP
         stopAppState.value = false
         forRelease = false
         releaseComboId = null

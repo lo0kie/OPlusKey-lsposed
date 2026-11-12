@@ -52,7 +52,8 @@ private fun sliderCommit(
         val v = raw.coerceIn(lo, hi)
         // 判据级：滑杆是「拖了没反应 / 值自己跳」这类问题的唯一锚点 ——
         //  它一次交互只有一条（抬手或点轨道各一条），不会刷屏。
-        XLog.w("滑杆提交：${spec.title} → $v")
+        //  拨一次滑杆就是一次提交（高频）⇒ d；失败那条仍留 w
+        XLog.d { "滑杆提交：${spec.title} → $v" }
         dragging.floatValue = v.toFloat()
         if (!onCommit(v)) {
             dragging.floatValue = spec.value.toFloat()
@@ -113,7 +114,7 @@ private fun SettingsPage.SliderRowBody(
     val seekLatest by rememberUpdatedState<(Int) -> Unit> { v ->
         // 与 `commit` 那条分开记：点轨道与拖动是两条不同的来路，
         //  出问题时靠这两条就能分出「手势没进来」还是「进来了但没提交」。
-        XLog.w("滑杆点轨道跳值：${spec.title} → $v")
+        XLog.d { "滑杆点轨道跳值：${spec.title} → $v" }
         tick()
         commit(v)
     }

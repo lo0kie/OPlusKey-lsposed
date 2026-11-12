@@ -20,7 +20,13 @@ lines.app/src/main/java/com/lookie/opluskey/ui/SettingsPage.kt = 1062
 # 1530 → 1536：那颗开关拆成「启用三击」「启用四击」两颗（各一组标题 / 开 / 关，共六条）。
 # 1536 → 1539：「单击后长按」那颗开关的三条键。
 # 1539 → 1542：「这一档是无操作，先给它配一个动作」那一句（松手那一族灰着时说的）。
-lines.core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt = 1542
+# 1542 → 1543：「忽视无操作双击手势」那一行在「单击后长按」开着时要换一个标题（它同时管两档
+# 无操作手势），多一条键。
+# 1543 → 1548：场景块松手那一族的三条键（「松手沿用按下时的场景」标题 / 开 / 关）—— 三击 /
+# 四击之后松手也要说清「按哪一块算」，两档松手共用同一条键。
+# 1548 → 1554：条件多了「前台应用以外」那一档（`command.cond_app_not`），挑应用页那一句
+# 多选提示也要分正反两档（`app_picker.branch_multi_hint_not`）—— 六行 = 两条键 + 各自的说明。
+lines.core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt = 1554
 # `core/model` 拆成 `model` / `rom` / `present` 之后，这份清单跟着搬了位置；
 # 1660 → 1667 是补 7 行 import（原来同包，不用写）—— 拆分的一次性代价，不是新增内容。
 # 1667 → 1713：屏幕翻译从「父子动作」改成单动作多状态（格子标记 token + 打开 / 关闭两档取值 +
@@ -53,7 +59,10 @@ lines.core/src/main/java/com/lookie/opluskey/core/present/ActionCatalog.kt = 181
 # 1426 → 1433：`sceneChainRelease`（场景块配了「单击后长按」的松手，注入侧要这一位）。
 # 1433 → 1459：过 gate 时把两处内联判据收成属性（`instantSingleNow` / `clickThenLongReleaseAction`）——
 # detekt 的条件复杂度与圈复杂度都顶线了，行为一字未改，多出来的全是这两位的说明。
-lines.core/src/main/java/com/lookie/opluskey/core/model/Config.kt = 1459
+# 1459 → 1503：`clickThenLongCounts`（「开着且真有动作」才算这一档，`instantSingleNow` /
+# `clicksForJudge` / 判定侧三处都改读它）与 `sceneChain`（注入侧看不到场景表，这一档有没有人配
+# 要广播过去）；加上 `fieldValues` 那一对映射与随行的判据注释。
+lines.core/src/main/java/com/lookie/opluskey/core/model/Config.kt = 1503
 
 # 页面对象：`SettingsPage` 自己的状态字段数（它就是「新功能再挂一个字段」的入口）
 count.settings_page_fields = 38

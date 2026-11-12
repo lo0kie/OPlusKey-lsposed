@@ -69,14 +69,15 @@ internal fun conditionKindRows(
             selected = kind == current,
             //  行尾**不画选择器**：点下去弹的是选择器弹窗（不是另一层菜单），行尾那枚
             //  「还有一层」的字形会读成「这里会再弹一张菜单」。
-            //  「前台应用」仍是进另一页挑应用，那一枚右箭头留着。
-            submenu = kind == ConditionKind.APP,
-            trailingIcon = if (kind == ConditionKind.APP) PageIcons.EnterArrow else null,
+            //  「前台应用」仍是进另一页挑应用，那一枚右箭头留着。应用那一族两档一样（见
+            //  `ConditionKind.isAppFamily`）：同一个列表、同一套多选，只是写回去的 `kind` 不同。
+            submenu = kind.isAppFamily,
+            trailingIcon = if (kind.isAppFamily) PageIcons.EnterArrow else null,
         ) {
-            // 「前台应用」先去挑是哪个应用（进另一页）、「时间区间」弹时间窗 —— 这两档都没有
+            // 应用那一族先去挑是哪个应用（进另一页）、「时间区间」弹时间窗 —— 这几档都没有
             //  可列的候选；其余每一档都开二级选值。
             //  关一级菜单由调用点做：它得先读 `condAt` 才知道落哪一条。
-            if (kind == ConditionKind.APP || kind == ConditionKind.TIME) onPick(kind, "") else onSub(kind)
+            if (kind.isAppFamily || kind == ConditionKind.TIME) onPick(kind, "") else onSub(kind)
         }
     }
 

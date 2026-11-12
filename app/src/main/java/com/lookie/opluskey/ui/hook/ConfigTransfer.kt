@@ -139,6 +139,33 @@ internal object ConfigTransfer {
     private var exportInFlight = false
 
     /**
+     * 「保存到」的结果最多等这么久（毫秒）；到点还没回来就**解除占用**。
+     *
+     *  原先只有「拉不起选择器」那一支会清 [exportInFlight]：用户点完「保存到」直接返回、
+     *  或宿主那个 `onActivityResult` 没走到我们这一支时，这一位会一直是 `true` —— 之后每一次
+     *  「导出」都只打一行「上一次还没收尾」然后什么都不做，只有重进页面才能恢复。
+     */
+    private const val EXPORT_TIMEOUT_MS = 120_000L
+
+    /**
+     * 给这一轮导出挂一个超时兜底（[EXPORT_TIMEOUT_MS] 后无条件解除占用）。
+     *
+     *  不是精确的配对（新一轮导出会重新挂一个），只求「卡住之后能自己恢复」。
+     */
+    private val armExportWatchdog: () -> Unit = {
+        mainHandler.postDelayed(
+            {
+                if (exportInFlight) {
+                    XLog.w("导出：${EXPORT_TIMEOUT_MS}ms 内没等到「保存到」的结果 ⇒ 解除占用（下次可以再点）")
+                    exportInFlight = false
+                    pendingExport = null
+                }
+            },
+            EXPORT_TIMEOUT_MS,
+        )
+    }
+
+    /**
      * “导出日志”：弹系统的“保存到”选择器（SAF），用户挑完位置再把文本写进那个 uri。
      *
      *  结果只能从宿主的 `Activity#onActivityResult` 收（宿主 Activity 不是我们的），
@@ -197,6 +224,7 @@ internal object ConfigTransfer {
         val name = "OPlusKey-" + now.format(FILE_STAMP) + ".txt"
         pendingExport = text
         exportInFlight = true
+        armExportWatchdog.invoke()
         val intent =
             android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(android.content.Intent.CATEGORY_OPENABLE)
@@ -233,6 +261,14 @@ internal object ConfigTransfer {
         val page = HostSession.page
         if (page == null) {
             XLog.w("导出配置：页面没了，放弃")
+            return
+        }
+        //  **命令库读不懂时不许导**：那时页面手上那张表是空的（见 `ConfigState.commandsReadOnly`），
+        //  导出来的备份里一条命令都没有，而提示照样是「已导出配置」—— 用户拿它恢复时才发现
+        //  命令全没了，而且已经不知道原先是哪些。宁可明确失败，让他先去看那条「库读不懂」的提示。
+        if (page.configState.commandsReadOnly) {
+            XLog.w("导出配置：命令库读不懂（只读态），导出的备份会缺全部命令 ⇒ 放弃")
+            page.hint(I18n.get(ExportKind.CONFIG.failKey, ExportKind.CONFIG.failDefault))
             return
         }
         // 导出**当前这份**就用页面手上这份（= 用户看到的），不是重读一遍文件：两边正常时等价。
@@ -288,6 +324,7 @@ internal object ConfigTransfer {
         val now = java.time.LocalDateTime.now()
         pendingExport = text
         exportInFlight = true
+        armExportWatchdog.invoke()
         val intent =
             android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
                 addCategory(android.content.Intent.CATEGORY_OPENABLE)

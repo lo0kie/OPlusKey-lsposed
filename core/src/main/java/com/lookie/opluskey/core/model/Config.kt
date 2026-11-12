@@ -134,6 +134,14 @@ data class KeyConfig(
      */
     val sceneLong: Boolean = false,
     /**
+     * **某个场景块给「单击后长按」这一档本身配了动作** —— 与 [sceneLong] 同一套（只由宿主算好带过来）。
+     *
+     *  判定侧靠它回答「这一档到底有没有人要」（[clickThenLongActionExists]）。少了这一半，
+     *  只在场景里配了这一档的键会被当成「开着但无操作」：判定侧不排第 2 击的长按枪，
+     *  那个只存在于场景里的动作也就永远轮不到执行。
+     */
+    val sceneChain: Boolean = false,
+    /**
      * **某个场景块配了「单击后长按」的松手动作** —— 与 [sceneRelease] 同一套（只由宿主算好带过来）。
      *
      *  判定侧要靠它决定抬手那一刻发不发 `ClickThenLongRelease`：场景表不广播，它自己算不出来。
@@ -255,8 +263,10 @@ data class KeyConfig(
 
             //  「单击后长按」是**另一个槽位**（[clickThenLong]）—— 不是长按那一档：
             //  它由第二击的形态决定，与长按的「按住第一击」不是同一件事。
+            //  判据用 [clickThenLongCounts]（开着**且**有动作）：开着但动作是无操作时，
+            //  这一档按「不存在」处理 —— 判定侧那一侧根本不会派发它（见那边的三处读点）。
             GestureTrigger.ClickThenLong -> {
-                if (clickThenLongOn) clickThenLong else Action.None
+                if (clickThenLongCounts) clickThenLong else Action.None
             }
 
             //  这一档的松手也**自成一路**：用它自己那一格，不借长按的 [longRelease]。
@@ -383,7 +393,7 @@ data class KeyConfig(
      *  而注入侧收到的 `judgeClicks` 在 [ConfigFields.F_JUDGE_CLICKS] 那里被钳到 9 ——
      *  不钳的话宿主等 20 击、注入侧只派发到 9，第 10 击以后永远出不来。
      *
-     *  **开了 [clickThenLongOn] 时下限是 2**：这一档要数到第 2 击才判得出来。不这么写的话，
+     *  **[clickThenLongCounts] 时下限是 2**：这一档要数到第 2 击才判得出来。不这么写的话，
      *  只绑了「单击后长按」的键 `boundClicks` 是 0，注入侧会认为「最多一击」，
      *  于是 `instantSingle` 那条「双击为无操作 ⇒ 抬手即判单击」的快捷路会在第 1 击抬手时
      *  就把单击派发掉，第二击永远等不到 —— 表现就是这个手势怎么按都不生效。
@@ -394,7 +404,7 @@ data class KeyConfig(
         get() =
             maxOf(
                 if (judgeClicks > 0) judgeClicks else boundClicks,
-                if (clickThenLongOn) 2 else 0,
+                if (clickThenLongCounts) 2 else 0,
             ).coerceIn(0, ConfigFields.MAX_JUDGE_CLICKS)
 
     /**
@@ -503,7 +513,18 @@ data class KeyConfig(
     val clickThenLongActionExists: Boolean
         get() =
             clickThenLong.isBound ||
+                sceneChain ||
                 scenes.any { (it.actions[GestureTrigger.ClickThenLong] ?: Action.None).isBound }
+
+    /**
+     * 「单击后长按」这一档**此刻算不算数** —— 开着，**且**这一档真有动作（直接绑定 / 场景里配过）。
+     *
+     *  「开着但动作是无操作」等同于「这一档不存在」：这一档的代价全在判定链上（第 2 击按住变长按、
+     *  `judge_clicks` 下限抬到 2、`instantSingleNow` 不能收线），没有动作时这些代价只表现为
+     *  「按住什么都不发生、两下也各算不了单击」。与 [longActionExists] 同一条口径。
+     */
+    val clickThenLongCounts: Boolean
+        get() = clickThenLongOn && clickThenLongActionExists
 
     /**
      * 「忽视无操作双击手势」此刻**真的能省掉那个窗口**吗 —— 判定侧的唯一判据。
@@ -516,7 +537,10 @@ data class KeyConfig(
         get() =
             instantSingle &&
                 clicksForJudge <= 1 &&
-                !clickThenLongOn &&
+                //  「单击后长按」**开着且真有动作**时不算：那一档要在第 2 击上等长按，
+                //  抢跑等于把它废掉。动作是无操作时它本来就没有东西可等，照常收线
+                //  （于是那两下各算一次单击）。
+                !clickThenLongCounts &&
                 !actionOf(GestureTrigger.Click(2)).isBound
 
     /**
@@ -563,10 +587,15 @@ data class KeyConfig(
                 !((clickThenLong as? Action.Oplus)?.feature?.let(RomProfile::isVoiceMemory) == true)
 
     /**
-     * 本对象在每个配置字段上的取值 —— **「字段 → 属性」的映射只有这一处**。
+     * 本对象在每个配置字段上的取值 —— 「字段 → 属性」映射的**广播那一半**。
      *
-     *  落盘（`ConfigCodec`）与广播（`ConfigBroadcast`）两条通道都按它取值，配合 `ConfigFields`
-     *  那张字段表生成读写 —— 于是加一个字段不必再去那两条通道里各写一遍（判据见 `docs/architecture/decoupling.md`）。
+     *  广播（`ConfigBroadcast.intent`）按它取值，读回来是 [ofFields]；**落盘另一条通道**
+     *  （`ConfigDto.toValues` → 同样落到 [ofFields]）也从同一张 `ConfigFields` 表出发，但它的**取值**
+     *  在 DTO 上另写了一遍 —— 两张表必须同时改：只在这边加一行，广播里有、文件里没有（`click_then_long`
+     *  就这么丢过一次，注入侧那一档的动作恒为「无操作」）。
+     *
+     *  **成对纪律**：这里加一个键，[ofFields] 必须同时读回来；改字段集合时先看 `ConfigFields` 那张表的
+     *  「加一个配置字段要改几处」。
      */
     fun fieldValues(): ConfigFields.Values =
         ConfigFields.Values(
@@ -593,15 +622,20 @@ data class KeyConfig(
                 ConfigFields.F_OWN_SETTINGS_SEEDED to ownSettingsSeeded,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
                 ConfigFields.F_SCENE_RELEASE to sceneRelease,
+                //  「这一档有没有人配」（= 场景里的 [sceneChain]）由宿主现算、随广播带过来，
+                //  与 [F_LONG_SERIAL] / [F_SCENE_RELEASE] 同一条路（见 `ConfigBroadcast.intent`）。
+                ConfigFields.F_SCENE_CHAIN to sceneChain,
                 ConfigFields.F_JUDGE_CLICKS to clicksForJudge,
                 //  哪几档多击开着要广播：判定侧据此决定数不数到第 3 / 4 击
                 //  （它手上没有 `extra_clicks` 那张表，见 `ConfigFields.EXTRA_CLICKS_ON_EXTRA`）。
                 //  编成 `"3,4"`：`Kind` 只有 Bool / Number / Text 三档，集合走文本最省事；
                 //  排序一次让广播指纹稳定（集合本身无序，直接 join 会随实现变）。
                 ConfigFields.F_EXTRA_CLICKS to extraClicksOn.sorted().joinToString(","),
-                //  「单击后长按」那两位：注入侧要知道排不排第 2 击的长按枪（动作不广播，
-                //  与 `extraClicks` 那张表同一条口径 —— 注入侧只判手势、不挑动作）。
+                //  「单击后长按」那两位：注入侧要知道排不排第 2 击的长按枪，以及**这一档绑了没有**
+                //  （`GestureTrigger.ClickThenLongRelease` 派发前要问 `clickThenLongActionExists`）。
+                //  动作给 token 而不是 `Action` 对象 —— 理由与下面 `F_CTL_RELEASE` 那一行相同。
                 ConfigFields.F_CLICK_THEN_LONG_ON to clickThenLongOn,
+                ConfigFields.F_CTL to clickThenLong.token,
                 //  「单击后长按」那几项参数：注入侧要它们排第二段的长按枪与连发，
                 //  所以整族都广播（动作那两格仍只落盘 —— 注入侧不挑动作）
                 ConfigFields.F_CTL_PRESS_MS to clickThenLongPressMs,
@@ -753,6 +787,7 @@ data class KeyConfig(
                 //  界面上开了多击、注入侧却仍按「没有」判 —— 三击按到底也不执行。
                 extraClicksOn = clicksOnOf(v.text(ConfigFields.F_EXTRA_CLICKS)),
                 clickThenLongOn = v.bool(ConfigFields.F_CLICK_THEN_LONG_ON),
+                clickThenLong = Action.parse(v.text(ConfigFields.F_CTL)),
                 clickThenLongPressMs = v.number(ConfigFields.F_CTL_PRESS_MS),
                 clickThenLongRepeat = v.bool(ConfigFields.F_CTL_REPEAT),
                 clickThenLongRepeatIntervalMs = v.number(ConfigFields.F_CTL_REPEAT_INTERVAL_MS),
@@ -761,6 +796,7 @@ data class KeyConfig(
                 clickThenLongReleaseOn = v.bool(ConfigFields.F_CTL_RELEASE_ON),
                 clickThenLongRelease = Action.parse(v.text(ConfigFields.F_CTL_RELEASE)),
                 sceneLong = v.bool(ConfigFields.F_SCENE_LONG),
+                sceneChain = v.bool(ConfigFields.F_SCENE_CHAIN),
                 sceneChainRelease = v.bool(ConfigFields.F_SCENE_CHAIN_RELEASE),
             )
     }
@@ -1352,6 +1388,14 @@ data class Config(
      *  成员里可能有**已经删掉的键**（自定义键删了、组合键还指着它）：那一档这辈子凑不齐，等于
      *  停用。不在读取时清理，是因为「删键」与「改组合」是两条独立的路，清理要跨两处同步 ——
      *  少一个成员反而会把用户写的「三键组合」悄悄降成两键。
+     *
+     *  ## 判据与 [comboOff] 的差别（**不是同一份**，别照那句话改）
+     *
+     *  这一处只问 [ComboKey.isUsable]（自己没关、成员够数）。**「成员键还都接管着」那一半不在
+     *  这里判**：它由调用方按手上的真值补 —— 判定侧是 `inject/ConfigChannel.comboFor`
+     *  （`ownedKeyIds`：任一颗不归模块管就整组不成立），界面 / 计划那一侧走 [liveCombos]
+     *  （= [comboOff] 为假）。两处合起来才等于 [liveCombos]，这里单独用会把「成员被停用」的
+     *  一档也选出来。
      *
      *  这里是「底层接口」那一半：判定侧（`inject/input`）判出「这几颗键一起按着」之后调它取档位，
      *  再按短按 / 长按取 [ComboKey.actionOf]。接线不在此刻。

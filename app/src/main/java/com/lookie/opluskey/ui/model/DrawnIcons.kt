@@ -101,8 +101,9 @@ internal object DrawnIcons {
     /**
      * 音量格：**喇叭 + 两道声波**，说的是「音量」这件事本身。
      *
-     *  「音量 + / 音量 −」那两颗**按键**动作也取 [VolumeAdd] / [VolumeSub] —— 同样是「让声音大 / 小一点」，
-     *  不必再按声波数另画一套；只有格子那颗（不带角标）是这一族自己的底图。
+     *  「增加 / 减少」那两行（[VolumeAdd] / [VolumeSub]）是同一颗底图 + 加减号；
+     *  「音量加 / 音量减」那两颗**按键**动作另有三角角标（[VolumeKeyUp] / [VolumeKeyDown]）——
+     *  一个调的是音量数值，一个模拟按一下音量键，形状分开才不会在网格里认错。
      */
     val VolumeTile: ImageVector by lazy { flatIcon("VolumeTile", volumeBase(notch = null)) }
 
@@ -114,6 +115,12 @@ internal object DrawnIcons {
 
     /** 「设置为」—— 底图 + 右下角齿轮（拨到某个数值）。 */
     val VolumeSet: ImageVector by lazy { badgedIcon("VolumeSet", Badge.Gear, ::volumeBase) }
+
+    /** 音量键「+」—— 同一颗喇叭 + 右下角**正三角**（上 = 加）。 */
+    val VolumeKeyUp: ImageVector by lazy { badgedIcon("VolumeKeyUp", Badge.TriangleUp, ::volumeBase) }
+
+    /** 音量键「−」—— 同一颗喇叭 + 右下角**倒三角**（下 = 减）。 */
+    val VolumeKeyDown: ImageVector by lazy { badgedIcon("VolumeKeyDown", Badge.TriangleDown, ::volumeBase) }
 
     // —— 铃声音量：**格子那颗铃铛** + 同一套右下角角标 ——
     //

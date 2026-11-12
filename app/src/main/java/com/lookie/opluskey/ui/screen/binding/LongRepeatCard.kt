@@ -54,13 +54,11 @@ internal fun SettingsPage.LongPressCard(
     val blockedReason = longPressBlockedReason(pageEnabled, disabledReason)
     val blocked = blockedReason != null
     //  「额外动作」这一行的取值**不滤 `Action.None`**：无操作就是这一档的默认值，不是「还没配」。
-    //  滤掉它会让界面多出一个「未设置」状态 —— 那与「无操作」是同一个意思，却要另配文案与图标
-    //  （原先那颗还借了网格里「系统按键」的，撞了）。
+    //  滤掉它会让界面多出一个「未设置」状态 —— 那与「无操作」是同一个意思，却要另配文案与图标（原先那颗还借了网格里「系统按键」的，撞了）。
     //  「跟随默认」只属于场景块的三档：历史配置里可能已经存进来过（那一版抽屉把它列在了这一行），
     //  而它在这一档没有语义 —— 行上按「无操作」念，与执行侧同一个口径（见到它什么都不做）。
     //
-    //  **读的是 `releaseSlot`，不是 `owner`**：这一族在场景块上归**草稿里那一块**（见
-    //  `BindingTarget.releaseSlot`），而 `owner` 是那颗键 —— 拿它读会读成整颗键的那一份。
+    //  **读的是 `releaseSlot`，不是 `owner`**：这一族在场景块上归**草稿里那一块**（`BindingTarget.releaseSlot`），拿 `owner` 读会读成整颗键那份。
     val slot = target.releaseSlot(cfg)
     val releaseAction = slot.action.takeUnless { it is Action.Follow } ?: Action.None
     var pickingRelease by remember { mutableStateOf(false) }
@@ -94,9 +92,7 @@ internal fun SettingsPage.LongPressCard(
             blockedReason = blockedReason,
             repeatBlockedReason = repeatBlockedReason(target.actionIn(cfg)),
             onRepeat = { on -> edit(target, LongPressEdit(repeat = on)) { "long_repeat=${if (on) 1 else 0}" } },
-            onVibrate = { on ->
-                edit(target, LongPressEdit(repeatVibrate = on)) { "long_repeat_vibrate=${if (on) 1 else 0}" }
-            },
+            onVibrate = { on -> edit(target, LongPressEdit(repeatVibrate = on)) { "long_repeat_vibrate=${if (on) 1 else 0}" } },
             onInterval = { v -> edit(target, LongPressEdit(repeatIntervalMs = v)) { "long_repeat_interval_ms=$v" } },
             onPressMs = { v -> edit(target, LongPressEdit(pressMs = v)) { "long_press_ms=$v" } },
             onFireOnReleaseToggle = { on -> edit(target, LongPressEdit(fireOnRelease = on)) { "long_fire_on_release=$on" } },

@@ -92,6 +92,15 @@ object ModuleWire {
     const val ACTION_PAGE_RELAUNCH = "com.lookie.opluskey.PAGE_RELAUNCH"
 
     /**
+     * 宿主主进程 → 设置页：**上面那条请求收到了，我会把页面拉回来**（回执）。
+     *
+     *  必须要有这一条：`sendBroadcast` 不抛异常只说明「系统受理了这条广播」，**不说明有人接**。
+     *  宿主主进程活着但接收器没装上（签名闸拦下 / 换了包 / 那个进程是旧的）时，设置页照旧杀自己，
+     *  于是页面没了、也没人再把它叫回来 —— 只能靠用户手动重进。收到回执再杀，那条路才不存在。
+     */
+    const val ACTION_PAGE_RELAUNCH_ACK = "com.lookie.opluskey.PAGE_RELAUNCH_ACK"
+
+    /**
      * 模块入口（管理器那颗 FAB 背后的 `EntryActivity`）→ 宿主主进程：**把侧键设置页拉到前台**。
      *
      *  为什么绕这一趟：那个 Activity 在宿主清单里带

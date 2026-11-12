@@ -146,7 +146,7 @@ internal class PageOverlays {
         val snapshot = closers.toList()
         val closed = snapshot.count { runCatching { it() }.getOrDefault(false) }
         // 一层都没开着时不写日志：页面离开是高频动作，每次都留一行「收掉 0 个」只会淹掉别的
-        if (closed > 0) XLog.w("页面离开（$reason）：已收起 $closed 个浮窗")
+        if (closed > 0) XLog.d { "页面离开（$reason）：已收起 $closed 个浮窗" }
     }
 
     /**
@@ -165,7 +165,7 @@ internal class PageOverlays {
         val snapshot = closers.toList()
         for (closer in snapshot.asReversed()) {
             if (runCatching { closer() }.getOrDefault(false)) {
-                XLog.w("浮层（$reason）：收掉最上面一层")
+                XLog.d { "浮层（$reason）：收掉最上面一层" }
                 return true
             }
         }

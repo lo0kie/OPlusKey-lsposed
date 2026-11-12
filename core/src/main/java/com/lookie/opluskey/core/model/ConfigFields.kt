@@ -92,6 +92,15 @@ object ConfigFields {
     const val SCENE_CHAIN_RELEASE_EXTRA = "scene_chain_release"
 
     /**
+     * **某个场景块给「单击后长按」这一档本身配了动作** —— 同样只有广播这一列。
+     *
+     *  与 [SCENE_LONG_EXTRA] 同一个用途：注入侧看不到场景表，而它要回答「这一档到底有没有人要」
+     *  （`KeyConfig.clickThenLongActionExists` → `clickThenLongCounts`）。少了这一位，只在场景里
+     *  配了这一档的键会被当成「开着但无操作」—— 判定侧连第 2 击的长按枪都不排，那个动作永远轮不到。
+     */
+    const val SCENE_CHAIN_EXTRA = "scene_chain"
+
+    /**
      * 判定侧要认到**第几击**（`KeyConfig.judgeClicks`）—— **只有广播这一列**。
      *
      *  与 [LONG_SERIAL_EXTRA] 同一条道理：注入侧读不到配置文件，而它必须知道「这颗键最多
@@ -125,6 +134,19 @@ object ConfigFields {
      *  两者都不延长对方的窗口。
      */
     const val CLICK_THEN_LONG_ON_EXTRA = "click_then_long_on"
+
+    /**
+     * 「单击后长按」这一档**绑的动作**（`KeyConfig.clickThenLong`）—— 走广播。
+     *
+     *  注入侧必须读它：`finishLong` 派发这一档的松手之前要先问 `clickThenLongActionExists`
+     *  （松手动作是「这一档执行完之后」的收尾，主语没有就不该有谓语），而那一问的第一位就是
+     *  这一格有没有绑定。不给它，注入侧手上永远是 `Action.None` ⇒ 那一关恒假 ⇒ 用户在卡片里
+     *  配的动作只剩「场景块里的松手」走通，卡片自己那一档的松手全链路静默不派发。
+     *
+     *  它确实进了广播 —— 与本表里 [LONG_RELEASE_EXTRA] / [CTL_RELEASE_EXTRA] 同一条：
+     *  「注入侧不挑动作」只对**执行**成立，对**判据**不成立。
+     */
+    const val CTL_EXTRA = "click_then_long"
 
     // 「单击后长按」那一档自己的参数 —— 与长按那一族**同名不同槽**
     // （`long_press_ms` / `long_repeat` … 是长按的，下面这几条只属于两段式那一档）。
@@ -377,6 +399,9 @@ object ConfigFields {
     /** 某个场景块配了「单击后长按」的松手动作 —— **只有广播那一列**，见 [SCENE_CHAIN_RELEASE_EXTRA]。 */
     val F_SCENE_CHAIN_RELEASE = Field(SCENE_CHAIN_RELEASE_EXTRA, Kind.Bool(false))
 
+    /** 某个场景块给「单击后长按」这一档本身配了动作 —— **只有广播那一列**，见 [SCENE_CHAIN_EXTRA]。 */
+    val F_SCENE_CHAIN = Field(SCENE_CHAIN_EXTRA, Kind.Bool(false))
+
     /**
      * 判定要认到第几击（见 [JUDGE_CLICKS_EXTRA]）。上限与「一屏步骤数」那档同宽：
      * 再多击的判定链已经没有实际意义（人的连击上限就三五下），手改出来的值在这里就钳掉。
@@ -403,6 +428,14 @@ object ConfigFields {
      *  它同样**不跟随**「使用独立设置」那颗总闸（理由见 `KeyConfig.clickThenLongOn`）。
      */
     val F_CLICK_THEN_LONG_ON = Field(CLICK_THEN_LONG_ON_EXTRA, Kind.Bool(false))
+
+    /**
+     * 「单击后长按」绑的动作（见 [CTL_EXTRA]）—— 默认 `none` = 与这一位出现之前一致。
+     *
+     *  与 [F_CLICK_THEN_LONG_ON] 分两位（开关 / 动作）：开关打开而动作还没挑时是「开着但没设置」，
+     *  这一档不成立、松手也不补 —— 与「松手执行额外动作」那一族同一条口径。
+     */
+    val F_CTL = Field(CTL_EXTRA, Kind.Text(Action.NONE))
 
     /** 「单击后长按」的长按延迟（第二段按住多久算数）—— 上下限与长按那一档同一套。 */
     val F_CTL_PRESS_MS =
@@ -465,9 +498,11 @@ object ConfigFields {
             F_SCENE_RELEASE,
             F_SCENE_LONG,
             F_SCENE_CHAIN_RELEASE,
+            F_SCENE_CHAIN,
             F_JUDGE_CLICKS,
             F_EXTRA_CLICKS,
             F_CLICK_THEN_LONG_ON,
+            F_CTL,
             F_CTL_PRESS_MS,
             F_CTL_REPEAT,
             F_CTL_REPEAT_INTERVAL_MS,

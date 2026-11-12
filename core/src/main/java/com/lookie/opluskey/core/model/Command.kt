@@ -58,6 +58,19 @@ enum class ConditionKind(
     APP("app"),
 
     /**
+     * **选中的应用都不在前台**；取值同样是包名（`包1||包2`），判定与 [APP] **相反**。
+     *
+     *  与 [APP] 是同一族的两面（[isAppFamily]）：取值写法、挑应用页、多选、行内文案全部共用
+     *  一份，差别只在判定那一步 —— [APP] 要求「前台是其中之一」，这一档要求「前台哪一个都不是」。
+     *  所以界面上凡是「这一档要不要挑应用」的地方都问 [isAppFamily]，不要再各写一遍
+     *  `kind == APP || kind == APP_NOT`。
+     *
+     *  读不到前台应用时**不成立**：判不出不能当成「不是」，否则探针失败时一条本该沉默的规则
+     *  会在所有界面上乱接管（与 `ConditionProbe` 头部那条契约同一句）。
+     */
+    APP_NOT("app_not"),
+
+    /**
      * **屏幕状态**：`on`（亮屏且没锁）/ `off`（灭着）/ `locked`（亮着且锁着）。原来是「亮屏」
      * 「锁屏」两个**独立类型**，合成一档带取值。
      *
@@ -135,6 +148,15 @@ enum class ConditionKind(
     FLASHLIGHT("flashlight", choices = listOf("on", "off")),
     ;
 
+    /**
+     * **应用那一族** —— [APP] / [APP_NOT] 两档。
+     *
+     *  这两档的取值是一组包名（`包1||包2`）、挑应用页是同一张、行内按框排应用名也是同一套，
+     *  只有判定那一步相反。界面上一律问这一句，别在两处各写一遍 `== APP || == APP_NOT` ——
+     *  漏掉一处时的表现是「新那一档点进去弹出一张空的取值弹窗」，不报任何错。
+     */
+    val isAppFamily: Boolean get() = this == APP || this == APP_NOT
+
     companion object {
         fun fromId(id: String): ConditionKind? = entries.firstOrNull { it.id == id.trim() }
 
@@ -198,14 +220,15 @@ data class BranchCondition(
     val token: String get() = if (value.isBlank()) type else "$type:$value"
 
     /**
-     * 「前台应用」那一条里的**全部包名**（非 APP 档 / 空取值返回空表）。
+     * 应用那一族（[ConditionKind.isAppFamily]）那一条里的**全部包名**（其余档 / 空取值返回空表）。
      *
-     *  一条应用条件可以**多选**：`app:包1||包2`，判定时**满足其一**即通过（「或」）。
+     *  一条应用条件可以**多选**：`app:包1||包2`，判定时**满足其一**即通过（「或」）；
+     *  「前台应用以外」那一档是同一组包名的反面（都不在前台才成立）。
      *  分隔符见 [APP_SEPARATOR] —— 包名只含字母数字下划线与点，不会撞上 `|`，不必转义。
      */
     val appPackages: List<String>
         get() =
-            if (kind == ConditionKind.APP) {
+            if (kind?.isAppFamily == true) {
                 value.split(APP_SEPARATOR).map { it.trim() }.filter { it.isNotEmpty() }
             } else {
                 emptyList()
@@ -226,8 +249,16 @@ data class BranchCondition(
         fun app(pkg: String): BranchCondition = BranchCondition(ConditionKind.APP.id, pkg)
 
         /** 多选版：几个包名装进同一条条件（判定为「或」）。 */
-        fun apps(packages: List<String>): BranchCondition =
-            BranchCondition(ConditionKind.APP.id, packages.filter { it.isNotBlank() }.joinToString(APP_SEPARATOR))
+        fun apps(packages: List<String>): BranchCondition = apps(ConditionKind.APP, packages)
+
+        /**
+         * 同上，种类由调用点给 —— 挑应用页那一趟写回时要知道自己是在配「前台应用」还是
+         * 「前台应用以外」（见 `AppPickerState.branchKind`）。
+         */
+        fun apps(
+            kind: ConditionKind,
+            packages: List<String>,
+        ): BranchCondition = BranchCondition(kind.id, packages.filter { it.isNotBlank() }.joinToString(APP_SEPARATOR))
 
         /**
          * 线格式 → 一个条件；认不出（类型不在枚举里 / 该带取值却没带）的返回 `null`。

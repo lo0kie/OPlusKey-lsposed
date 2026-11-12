@@ -1145,6 +1145,10 @@ object ActionCatalog {
             title to group.filterNot { it.token == NONE_TOKEN }
         }
 
+    //  「跟随默认」那一格 —— `BRANCH_GROUPS` 比 `GROUPS` 只多这一个。收成一份常量是为了让
+    //  `specOf` 也查得到它：查不到时 `label` 退回原始 token（回执成了「已绑定 [follow]」）。
+    private val FOLLOW_SPEC = Spec(name = Strings.COMMAND_BRANCH_ACTION_FOLLOW, token = FOLLOW_TOKEN, glyph = Glyph.Follow)
+
     /**
      * 「系统场景」那一档的候选表 —— 与 [STEP_GROUPS] 同一张表，只把**「无操作」加回来**。
      *
@@ -1163,16 +1167,7 @@ object ActionCatalog {
         GROUPS.mapIndexed { index, (title, group) ->
             if (index == 0) {
                 //  排在「无操作」**前面**：它是三档的默认值，比「无操作」更常被找
-                title to
-                    (
-                        listOf(
-                            Spec(
-                                name = Strings.COMMAND_BRANCH_ACTION_FOLLOW,
-                                token = FOLLOW_TOKEN,
-                                glyph = Glyph.Follow,
-                            ),
-                        ) + group
-                    )
+                title to (listOf(FOLLOW_SPEC) + group)
             } else {
                 title to group
             }
@@ -1770,7 +1765,7 @@ object ActionCatalog {
     fun hasDeeperLevel(spec: Spec): Boolean = modeMenu(spec.token)?.let { leaves -> leaves.none { it.token == spec.token } } ?: false
 
     /** 按动作找展示信息；清单外一律返回 null（清单是照搬的封闭集合，不为自定义写法现造条目）。 */
-    fun specOf(action: Action): Spec? = ALL.firstOrNull { isSelected(it, action) }
+    fun specOf(action: Action): Spec? = (ALL + FOLLOW_SPEC).firstOrNull { isSelected(it, action) }
 
     /**
      * 这个动作落在入口格的**哪一档**上（`循环` / `静音` / `Wi-Fi 打开` …）；入口格之外返回 `null`。

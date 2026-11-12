@@ -37,7 +37,13 @@ object Seal {
 
     /** 容器头：魔数 + 版本，用来把「这不是我们那份文件」和「解不开」分开。 */
     private const val MAGIC = "OPKS"
-    private const val FORMAT_VERSION = 1
+
+    /**
+     * 容器格式版本 —— **必须与 `core/build.gradle.kts` 里那个同名常量逐字一致**。
+     *
+     *  2 = 条目名进 GCM 的 AAD（1 那版没有：同一份容器里两条密文可以互换位置）。
+     */
+    private const val FORMAT_VERSION = 2
 
     /** GCM 参数 —— 与构建期那份必须一致（`core/build.gradle.kts` 里同名常量）。 */
     private const val GCM_IV_LENGTH = 12
@@ -164,17 +170,27 @@ object Seal {
             repeat(count) {
                 val name = input.readUTF()
                 val ivLen = input.readInt()
-                check(ivLen in 0..MAX_ENTRY_BYTES) { "IV 长度 $ivLen 不合理" }
+                //  **先判等再分配**：IV 长度只可能是 [GCM_IV_LENGTH]，原先允许到 8MB 才交给
+                //  `decipher` 去 check —— 一个坏容器就能让这条路径先按 8MB 分配一次。
+                check(ivLen == GCM_IV_LENGTH) { "IV 长度不对：$ivLen" }
                 val iv = ByteArray(ivLen).also { input.readFully(it) }
                 val sealedLen = input.readInt()
                 check(sealedLen in 0..MAX_ENTRY_BYTES) { "密文长度 $sealedLen 不合理" }
                 val sealed = ByteArray(sealedLen).also { input.readFully(it) }
-                put(name, decipher(iv, sealed, key))
+                put(name, decipher(name, iv, sealed, key))
             }
         }
     }
 
+    /**
+     * 解一条。
+     *
+     *  **条目名当 AAD**（与构建期那一段逐字对应）：GCM 只认密钥与 IV，所以同一份容器里
+     *  两条密文的 IV / tag 都是合法的、可以被互换位置 —— 换上去解出来是另一条资产的合法字节。
+     *  把名字绑进 AAD 之后，换位会让这一条的 tag 校验不过。
+     */
     private fun decipher(
+        name: String,
         iv: ByteArray,
         sealed: ByteArray,
         key: ByteArray,
@@ -182,6 +198,7 @@ object Seal {
         check(iv.size == GCM_IV_LENGTH) { "IV 长度不对：${iv.size}" }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
+        cipher.updateAAD(name.toByteArray(Charsets.UTF_8))
         return cipher.doFinal(sealed)
     }
 

@@ -31,6 +31,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Circle
 import io.github.lyxnx.compose.ui.tablericons.outline.CircleCheck
 import io.github.lyxnx.compose.ui.tablericons.outline.Click
 import io.github.lyxnx.compose.ui.tablericons.outline.ClockHour4
+import io.github.lyxnx.compose.ui.tablericons.outline.CloudSearch
 import io.github.lyxnx.compose.ui.tablericons.outline.CodePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.ColorSwatch
 import io.github.lyxnx.compose.ui.tablericons.outline.Contrast
@@ -46,8 +47,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.FileDownload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
+import io.github.lyxnx.compose.ui.tablericons.outline.FilePencil
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.FileUpload
+import io.github.lyxnx.compose.ui.tablericons.outline.FileX
 import io.github.lyxnx.compose.ui.tablericons.outline.Filter2X
 import io.github.lyxnx.compose.ui.tablericons.outline.Fingerprint
 import io.github.lyxnx.compose.ui.tablericons.outline.Flag
@@ -569,8 +572,19 @@ internal object PageIcons {
     /** **新建配置** —— `file-plus`：加一份。 */
     val ProfileAdd: ImageVector get() = TablerIcons.Outline.FilePlus
 
-    /** **删除配置** —— `file-minus`：减一份（与「新建」同一套形状，只换中间那一笔）。 */
-    val ProfileDelete: ImageVector get() = TablerIcons.Outline.FileMinus
+    //  配置菜单里**对某一份动手**的那三行 —— 重命名 / 重置 / 删除，与 [ProfileAdd] 同一套形状
+    //  （一张纸 + 中间那一笔）：四行摆在一起读得出「这一组改的都是同一份配置」，只差中间那一笔。
+    //  与浮层菜单里那两颗通用的 [MenuRename]（`edit`）/ [MenuReset]（`eraser`）分开：那两颗服务的是
+    //  「按键改名」「命令 / 首页重置」，对象不是一份配置，混用会把两件事画成一个记号。
+
+    /** **重命名配置** —— `file-pencil`：改这一份的名字。 */
+    val ProfileRename: ImageVector get() = TablerIcons.Outline.FilePencil
+
+    /** **重置配置** —— `file-minus`：把这一份的内容清空（纸还在，内容没了）。 */
+    val ProfileReset: ImageVector get() = TablerIcons.Outline.FileMinus
+
+    /** **删除配置** —— `file-x`：整份删掉。 */
+    val ProfileDelete: ImageVector get() = TablerIcons.Outline.FileX
 
     /**
      * 分叉条件「某个应用在前台」—— `apps`（九宫格）。
@@ -640,10 +654,18 @@ internal object PageIcons {
     val Versions: ImageVector get() = TablerIcons.Outline.Versions
 
     /**
+     * 「版本」菜单里**检查更新**那一行 —— `cloud-search`（云 + 放大镜）：去远端问一句有没有新版。
+     *
+     *  不能借用 [ModuleRestart]（`reload`，回转箭头 + 竖线）：那一颗是首页顶栏的「重启模块」，
+     *  两颗同形会被读成同一个动作。这一颗说的是「去远端查一下」，与「重启」分得开。
+     */
+    val CheckUpdate: ImageVector get() = TablerIcons.Outline.CloudSearch
+
+    /**
      * 「版本」菜单里**已经查到新版**时那一行 —— `download`（向下的箭头落进托盘）。
      *
-     *  替掉平时那颗 `reload`（[ModuleRestart]）：那时这一行的意思已经变成「有新东西，
-     *  下一步是去拿」，再挂一个「重新查一遍」的图标就与它自己那句话对不上。
+     *  替掉平时那颗 [CheckUpdate]：那时这一行的意思已经变成「有新东西，
+     *  下一步是去拿」，再挂一个「查一遍」的图标就与它自己那句话对不上。
      */
     val Download: ImageVector get() = TablerIcons.Outline.Download
 
@@ -809,6 +831,14 @@ internal object PageIcons {
      *  那一行管「按住多久算长按」，这一行管「松手才执行」。
      */
     val LongRelease: ImageVector get() = TablerIcons.Outline.PointerUp
+
+    /**
+     * 「松手沿用按下时的场景」那一行 —— 一把锁：把这一按**锁在**按下那一刻命中的那一块上。
+     *
+     *  与 [LongRelease]（抬手）分工：那颗说的是「松手再执行一个动作」，这颗说的是「归哪一块」。
+     *  图标库里没有图钉，锁与它有同一层意思（锁住 / 不再重判），也能一眼与那一族里其它三颗分开。
+     */
+    val ReleasePin: ImageVector get() = TablerIcons.Outline.Lock
 
     /**
      * 「松手才触发」行的行首 —— `pointer-pause`（光标 + 暂停记号）。

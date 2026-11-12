@@ -77,6 +77,15 @@ internal object GestureReceiver {
     private const val CTX_RETRY = 10
     private const val CTX_RETRY_DELAY_MS = 500L
 
+    /**
+     * 签名判不出来（[Verdict.UNKNOWN]）时的重试次数与间隔。
+     *
+     *  读签名本身可能瞬时失败（PackageManager 还没就绪），所以给它几次机会；用完仍判不出来就按
+     *  「不是官方包」处理 —— 这一道闸是**fail-closed** 的（见 [tryGetContext] 里那段）。
+     */
+    private const val SEAL_RETRY = 3
+    private const val SEAL_RETRY_DELAY_MS = 1_000L
+
     /** 宿主自己的侧键服务 —— keepProcessAwake 启动它以抬高进程级别（名字只在 `Framework` 里写一次）。 */
     private val KEY_SERVICE = Framework.HOST_KEY_SERVICE
 
@@ -92,9 +101,55 @@ internal object GestureReceiver {
         XLog.guard("取 Application Context") { tryGetContext(loader, attempt = 0) }
     }
 
+    /**
+     * 签名闸：**只有 [Verdict.OFFICIAL] 才放行**。
+     *
+     *  判据与核心防线同一处（`core/seal/Seal`）；判在这里是因为**此刻才拿得到 Context**
+     *  （`KeyModule.onPackageReady` 那一刻 `currentApplication()` 往往还是 null，见那边的说明）。
+     *
+     *  三档一起判，**判不出来也算不放行**：`UNKNOWN`（读不到本包签名）原先从这条 gate 溜过去
+     *  （只拦 `UNOFFICIAL`），一个被改过、又把签名读崩的包于是照常执行动作。读签名可能是瞬时失败，
+     *  所以先给 [SEAL_RETRY] 次重试；用完仍判不出来就按「不是本包」处理。
+     *
+     *  @return `true` = 放行；`false` = 不装（已记账，重试那一档已排好下一次）
+     */
+    private fun sealPasses(
+        ctx: Context,
+        loader: ClassLoader,
+        attempt: Int,
+        sealAttempt: Int,
+    ): Boolean =
+        when (Seal.verdict(ctx)) {
+            Verdict.OFFICIAL -> {
+                true
+            }
+
+            Verdict.UNOFFICIAL -> {
+                XLog.e("本包签名与出厂指纹不符 ⇒ 不装手势接收器（见「关于 → 签名」；换回官方包即恢复）")
+                false
+            }
+
+            Verdict.UNKNOWN -> {
+                if (sealAttempt >= SEAL_RETRY) {
+                    XLog.e(
+                        "读不到本包签名（已重试 $sealAttempt 次）⇒ 按「不是官方包」处理，不装手势接收器" +
+                            "（见「关于 → 签名」）",
+                    )
+                    false
+                } else {
+                    XLog.w("读不到本包签名，${SEAL_RETRY_DELAY_MS}ms 后重判（第 ${sealAttempt + 1}/$SEAL_RETRY 次）")
+                    handler.postDelayed({
+                        XLog.guard("重试签名判定") { tryGetContext(loader, attempt, sealAttempt + 1) }
+                    }, SEAL_RETRY_DELAY_MS)
+                    false
+                }
+            }
+        }
+
     private fun tryGetContext(
         loader: ClassLoader,
         attempt: Int,
+        sealAttempt: Int = 0,
     ) {
         val ctx = ActivityThreadCompat.currentApplication(loader)
         if (ctx == null) {
@@ -106,18 +161,13 @@ internal object GestureReceiver {
                 return
             }
             handler.postDelayed({
-                XLog.guard("重试取 Application Context") { tryGetContext(loader, attempt + 1) }
+                XLog.guard("重试取 Application Context") { tryGetContext(loader, attempt + 1, sealAttempt) }
             }, CTX_RETRY_DELAY_MS)
             return
         }
 
-        // 签名闸：包被改过并重签时**不装接收器** —— 侧键从此「拦下来但什么都不做」。
-        //  判据与核心防线同一处（`core/seal/Seal`）；判在这里是因为**此刻才拿得到 Context**
-        //  （`KeyModule.onPackageReady` 那一刻 `currentApplication()` 往往还是 null，见那边的说明）。
-        if (Seal.verdict(ctx) == Verdict.UNOFFICIAL) {
-            XLog.e("本包签名与出厂指纹不符 ⇒ 不装手势接收器（见「关于 → 签名」；换回官方包即恢复）")
-            return
-        }
+        // 签名闸：**只有判成官方包才装接收器**（判不出也算不放行），见 [sealPasses]。
+        if (!sealPasses(ctx, loader, attempt, sealAttempt)) return
 
         // 执行那一段交给 [GestureExec]：它拿到执行器与 Context，执行完再回来叫我们补发一条报活。
         GestureExec.attach(ActionRunner(context = ctx, handler = handler), ctx) { config ->

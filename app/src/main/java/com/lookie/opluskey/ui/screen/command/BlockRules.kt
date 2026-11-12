@@ -104,7 +104,7 @@ private fun answerOf(
     kind: ConditionKind,
     condition: BranchCondition,
 ): String =
-    if (kind == ConditionKind.APP) {
+    if (kind.isAppFamily) {
         condition.appPackages
             .distinct()
             .sorted()

@@ -5,6 +5,7 @@ import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.branchKeyNow
 import com.lookie.opluskey.ui.screen.editingKeyName
 import com.lookie.opluskey.ui.state.BranchDraft
 

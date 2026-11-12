@@ -16,9 +16,11 @@ import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.OwnSettings
+import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.model.gestureOrNull
 import com.lookie.opluskey.core.model.isReleasePhase
+import com.lookie.opluskey.core.model.sceneIndexOf
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.host.action.ActionRunner
@@ -65,6 +67,64 @@ internal object GestureExec {
      * 它是进程内的：宿主进程若在这 300ms 里被杀又重启，补发那条会被当成新的。
      */
     private val lastHandledAt = HashMap<String, Long>()
+
+    /**
+     * 上一次按下**命中哪一块**（`SceneRule.releasePin` 开着才记）—— 键用 `KeyId.id`、
+     * 组合用 `combo:<id>` 当键，与 [lastHandledAt] 同一套写法。
+     *
+     *  松手是一条**独立的手势**：判定侧只发「键 + 档位」，宿主收到时若重新判条件，就会落进
+     *  「长按动作换了前台，松手落到别的块」那个坑。这一格就是那一按的归属，松手取动作时用掉即清。
+     */
+    private val pressPins = HashMap<String, Int>()
+
+    /** 按下那一档命中的块 → 记下（只有该块开着 `releasePin` 才记；否则清掉，松手时照旧重判）。 */
+    private fun rememberPressPin(
+        subject: String,
+        trigger: GestureTrigger,
+        scenes: List<SceneRule>,
+        matches: (BranchCondition) -> Boolean,
+    ) {
+        //  只有「按下那一刻」的两档有归属可言：松手与双击是收尾 / 连击链的结论，不记。
+        if (trigger != GestureTrigger.LongPress && trigger != GestureTrigger.ClickThenLong) return
+        val index = sceneIndexOf(scenes, trigger, matches)
+        if (index != null && scenes[index].releasePin) {
+            pressPins[subject] = index
+        } else {
+            pressPins.remove(subject)
+        }
+    }
+
+    /**
+     * 松手那一档 —— 这一按**钉住的那一块**该给什么。
+     *
+     *  @return `null` = 没有钉住（调用方走原来那条「按当时状态重判」的路）；
+     *   否则那个块该给的松手动作（`null` 的动作 = 这一下什么都不做）
+     */
+    private fun consumePressPin(
+        subject: String,
+        trigger: GestureTrigger,
+        scenes: List<SceneRule>,
+    ): PinnedRelease? {
+        val index = pressPins.remove(subject) ?: return null
+        val block = scenes.getOrNull(index)
+        if (block == null || !block.enabled) {
+            XLog.w("松手：按下时命中的那一块已经不在了或被停用 ⇒ 这一下不执行（不再去重判别的块）")
+            return PinnedRelease(null)
+        }
+        val action =
+            if (trigger == GestureTrigger.Release) {
+                //  「松手执行额外动作」那一格：开关 + 动作一起看（`hasRelease`）
+                if (block.hasRelease) block.release else Action.None
+            } else {
+                if (block.hasChainRelease) block.chainRelease else Action.None
+            }
+        if (!action.isBound) {
+            XLog.w("松手：这一块没有可执行的松手动作（沿用按下时命中的那一块，不回落按键自己那格）")
+            return PinnedRelease(null)
+        }
+        XLog.w("松手：沿用按下时命中的第 ${index + 1} 块（不再重判条件）")
+        return PinnedRelease(action)
+    }
 
     /**
      * 手势的「保质期」（毫秒）：超过它视为冻结期间积压的过期手势，丢弃不执行。
@@ -235,6 +295,8 @@ internal object GestureExec {
             return
         }
         val action = combo.resolve(trigger, ::matchesCondition)
+        //  记下这一按命中的是哪一块 —— 松手那一档按它给动作（见 `SceneRule.releasePin`）。
+        rememberPressPin("combo:${combo.id}", trigger, combo.scenes, ::matchesCondition)
         //  这一格是「无操作」且开关打开 ⇒ **不吞键**：两颗键各按自己这一档照常执行
         //  （见 `Config.comboPassthroughFor`：这一组写过就用自己的，否则看公共设置）。
         //   这就是「配了组合、但只给长按绑了动作」时短按那颗依旧能用的那条路 ——
@@ -262,6 +324,16 @@ internal object GestureExec {
         repeat: Boolean,
         matches: (BranchCondition) -> Boolean,
     ) {
+        //  钉住的那一块优先：按下那一刻归谁，松手就归谁（不再按松手时的状态重判）。
+        consumePressPin("combo:${combo.id}", trigger, combo.scenes)?.let { pinned ->
+            val action = pinned.action
+            if (action == null) {
+                XLog.w("组合键 ${combo.id} - 松手：这一块没有可执行的松手动作，这一下不执行")
+                return
+            }
+            executeCombo(combo, trigger, action, config, repeat)
+            return
+        }
         val fired = combo.resolveRelease(matches)
         if (!fired.isBound) {
             XLog.w("组合键 ${combo.id} - 松手：这一下没有可执行的动作（长按命中场景 / 这一组没配松手），不执行")
@@ -522,6 +594,9 @@ internal object GestureExec {
         //  这一整段只回答一件事：**这一次到底执行哪个动作**。抽出去与「派发」分开，
         //  `runAction` 那条主线上就只剩顺序，不再一串嵌套判断。
         val fired = resolveAction(id, trigger, keyConfig, ::matchesCondition) ?: return
+        //  这一次是「按下」的话，记下命中的是哪一块 —— 松手那一刻按它给动作（见 `SceneRule.releasePin`）。
+        //  重复派发（连发）也照记：那几条本来就是同一次按下的后半段，最后一次的归属与松手最近。
+        rememberPressPin(id.id, trigger, keyConfig.scenes, ::matchesCondition)
         val r =
             runner ?: run {
                 XLog.w("ActionRunner 还没建好，忽略 ${id.label} 的 ${trigger.id}")
@@ -574,25 +649,43 @@ internal object GestureExec {
         //  块接管了长按 ⇒ 用那一块自己的松手格（`None` = 这一下什么都不做），**不再**补按键那一格；
         //  一块都不中 ⇒ 才补按键自己的 `longRelease`。判据与长按那一档同一份，且共用同一次按压里
         //  的 `judged` 缓存（不多判一轮）。
-        if (trigger == GestureTrigger.Release) {
-            //  长按这一档**本身没有动作**时，松手这一刀整条不成立（见 `KeyConfig.releaseBound` /
-            //  `longActionExists`）：松手动作是「这一档执行完之后」的收尾，主语没有就不该有谓语。
-            //  这一道与判定侧那一份判据**故意重复**：判定侧是注入在 system_server 里的旧代码时
-            //  （改了判定、没重启），它照样会发这一条 —— 在这里拦住，用户不必为了一个开关重启整机。
-            if (!keyConfig.releaseBound) {
-                XLog.w("${id.label} - 松手：长按这一档是无操作（或松手已让位），不派发")
-                return null
-            }
-            val fired = keyConfig.resolveRelease(matchesCondition)
-            if (!fired.isBound) {
-                XLog.w("${id.label} - 松手：这一下没有可执行的动作（长按命中场景 / 按键没配松手），不派发")
-                return null
-            }
-            return fired
+        //  **钉住的那一块优先**（见 `SceneRule.releasePin`）：按下那一刻归谁，松手就归谁 ——
+        //  不再按松手时的状态重判，也不回落到按键自己那一格。
+        //  返回非 `null` 就是「这一下有个结论」（动作可能是 `Action.None` = 什么都不做）。
+        //  只有**松手那两档**才结算钉位：单击 / 双击 / 连发那几条不是「按下那一刻的收尾」，
+        //  顺手消费掉会让下一次松手落到「没有钉位」上（而这一下也不该被钉位改写）。
+        if (trigger.isReleasePhase) {
+            consumePressPin(id.id, trigger, keyConfig.scenes)?.let { return it.action }
         }
+        if (trigger == GestureTrigger.Release) return releaseAction(id, keyConfig, matchesCondition)
         //  其余档位统一走**触发条件**：场景块能接管哪几档由它自己的 `actions` 说，
         //  所以「只给三击配了场景、直接绑定那一格空着」也照样命中（`pickAction` 一处收口）。
         return keyConfig.actionFor(trigger, matchesCondition)
+    }
+
+    /**
+     * 松手那一档该执行什么（没有钉住时走的那条路）—— 从 [resolveAction] 抽出来，
+     * 只为让那条主线的出口数留在 detekt 的额度里；判据一字未改。
+     */
+    private fun releaseAction(
+        id: KeyId,
+        keyConfig: KeyConfig,
+        matchesCondition: (BranchCondition) -> Boolean,
+    ): Action? {
+        //  长按这一档**本身没有动作**时，松手这一刀整条不成立（见 `KeyConfig.releaseBound` /
+        //  `longActionExists`）：松手动作是「这一档执行完之后」的收尾，主语没有就不该有谓语。
+        //  这一道与判定侧那一份判据**故意重复**：判定侧是注入在 system_server 里的旧代码时
+        //  （改了判定、没重启），它照样会发这一条 —— 在这里拦住，用户不必为了一个开关重启整机。
+        if (!keyConfig.releaseBound) {
+            XLog.w("${id.label} - 松手：长按这一档是无操作（或松手已让位），不派发")
+            return null
+        }
+        val fired = keyConfig.resolveRelease(matchesCondition)
+        if (!fired.isBound) {
+            XLog.w("${id.label} - 松手：这一下没有可执行的动作（长按命中场景 / 按键没配松手），不派发")
+            return null
+        }
+        return fired
     }
 
     /**
@@ -774,6 +867,16 @@ internal object GestureExec {
         }
     }
 }
+
+/**
+ * 松手那一刻的结论 —— **按按下时命中的那一块**给出的（见 `SceneRule.releasePin`）。
+ *
+ *  [action] 为 `null` = 这一下不派发（那一块已经不在了 / 没有可执行的松手动作）；
+ *  与「没有钉住」（`null` 的 `PinnedRelease`）必须分得开 —— 后者要回落去重判。
+ */
+private class PinnedRelease(
+    val action: Action?,
+)
 
 /**
  * 这一次「切响铃」是不是走 ColorOS 接口（振动的去处不同，见 [GestureExec] 里的 `shouldVibrate`）。

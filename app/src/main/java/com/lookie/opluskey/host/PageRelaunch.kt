@@ -54,6 +54,9 @@ internal object PageRelaunch {
             return
         }
         scheduled = true
+        //  **先回执再排**：设置页要收到这一条才杀自己（见 `ui/PageControl`）—— 只凭
+        //  「广播发出去了」就杀，宿主这一侧的接收器没装上时页面就再也不会回来。
+        ack(ctx)
         XLog.w("页面重启：${START_DELAY_MS}ms 后拉起设置页，再过 ${EXIT_DELAY_MS}ms 本进程重来一遍")
         handler.postDelayed({
             // 注意：**拉起失败就不自杀**：本进程死了、页面又没被拉起来，
@@ -104,6 +107,20 @@ internal object PageRelaunch {
             XLog.w("页面重启：读进程表失败（按「判断不了」处理）：${e.javaClass.simpleName}: ${e.message}")
             null
         }
+    }
+
+    /**
+     * 回一条「请求收到了」给设置页进程（[ModuleWire.ACTION_PAGE_RELAUNCH_ACK]）。
+     *
+     *  不导出（`RECEIVER_NOT_EXPORTED` 的接收器只收同包广播），定向到本包即可 ——
+     *  注册它的是 `:ui` 那一侧，同一次广播别的进程没有接收器，收不到也无副作用。
+     */
+    private fun ack(ctx: Context) {
+        runCatching {
+            ctx.sendBroadcast(
+                Intent(ModuleWire.ACTION_PAGE_RELAUNCH_ACK).setPackage(HostApp.PACKAGE),
+            )
+        }.onFailure { XLog.w("页面重启：回执没发出去（设置页会按「没人接」处理）：${it.javaClass.simpleName}", it) }
     }
 
     /** @return 拉起请求有没有被系统受理（**不代表页面已经起来**，见 [schedule] 里的二次确认）。 */

@@ -29,15 +29,56 @@ import java.util.concurrent.TimeUnit
  *  1. **等连接**：`bindService` 是异步的，服务侧起不来时 `onServiceConnected` 永远不来。
  *  2. **等事务**：对端 `SoundRecordBinder.stopRecord` 里是 `mCondition.await()` —— **没有超时**。
  *     录音机内部那次「绑定录音服务」卡住时，这条跨进程调用会一直不返回，而 binder 调用本身
- *     没有超时参数。所以事务放到一条独立线程上发，这里只等它 [TIMEOUT_MS]：卡住的那条线程
- *     随它挂着（daemon，只在真出故障时发生一次），调用方（宿主执行线程 / 设置页）照常收尾。
+ *     没有超时参数。所以事务放到一条独立线程上发，这里只等剩下的预算：卡住的那条线程
+ *     随它挂着（daemon，且**全进程只有一条**，见 [worker]），调用方（宿主执行线程 / 设置页）照常收尾。
+ *
+ *  两道合起来只花 [BUDGET_MS] 那一份预算：这条链跑在 `ActionRunner` 的锁里与设置页线程上，
+ *  一次动作最多等这么久。
  */
 internal object RecorderStateBridge {
-    /** 等连接 / 等事务各自的上限（毫秒）。 */
+    /** 单步（等连接 / 等事务）的上限（毫秒）。 */
     const val TIMEOUT_MS = 1500L
+
+    /**
+     * **一次调用**的总预算（毫秒）—— 等连接与等事务共用这一份。
+     *
+     *  原先两段各等 [TIMEOUT_MS]，于是一次 `state()` 最坏 3 秒、`state()` + `stop()` 最坏 6 秒；
+     *  而这条链跑在 `ActionRunner` 的锁里（另一颗键的执行要等它）与设置页的「测试」线程上。
+     *  收成一个总预算之后，一次动作最坏 2 秒，且「对端卡住」这件事的状态不变（照样报失败）。
+     */
+    private const val BUDGET_MS = 2_000L
 
     /** 事务号 `0` 那一档：不要 oneway、不要异步（AIDL 的常规同步调用）。 */
     private const val TRANSACT_SYNC = 0
+
+    /**
+     * 发事务的那一条后台线程 —— **全进程共一条**，不随调用次数增长。
+     *
+     *  对端一旦卡在 `mCondition.await()` 上，那条线程就再也回不来（binder 调用没有超时参数）。
+     *  原先每次调用新建一条线程：每失败一次就多泄一条 daemon 线程与它手上的两个 `Parcel`。
+     *  换成单线程池之后最坏只挂一条；后续调用排队后照样按预算超时失败，不会再新增线程 / Parcel。
+     */
+    private val worker: java.util.concurrent.ExecutorService by lazy {
+        java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+            Thread(r, "opluskey-recorder-aidl").apply { isDaemon = true }
+        }
+    }
+
+    /**
+     * 一次调用的**不变部分**：服务、事务号、日志主语。
+     *
+     *  收成一个对象是为了让 [withService] / [transact] 的参数留在 detekt 的上限内 ——
+     *  四个实参传三处同样的东西时，改一处漏一处只会让日志主语串到别的事务上。
+     */
+    private class Call(
+        val owner: String,
+        val aidl: RomProfile.AidlControl,
+        val code: Int,
+        val tag: String,
+    )
+
+    /** 这一次调用还剩多少预算（毫秒），`<= 0` = 已经用完。 */
+    private fun remaining(deadline: Long): Long = deadline - android.os.SystemClock.uptimeMillis()
 
     /** 录音机的真实状态。[UNKNOWN] = 这一趟没问到（原因已记日志）。 */
     enum class State {
@@ -65,9 +106,11 @@ internal object RecorderStateBridge {
         aidl: RomProfile.AidlControl,
         tag: String,
     ): State {
+        val deadline = android.os.SystemClock.uptimeMillis() + BUDGET_MS
+        val call = Call(owner, aidl, aidl.queryTransact, tag)
         val raw =
-            withService(ctx, owner, aidl, tag) { binder ->
-                transact(binder, aidl.descriptor, aidl.queryTransact, tag) { reply ->
+            withService(ctx, call, deadline) { binder ->
+                transact(binder, call, deadline) { reply ->
                     if (reply.readInt() != 0) reply.readInt() else -1
                 }
             } ?: return State.UNKNOWN
@@ -85,29 +128,32 @@ internal object RecorderStateBridge {
         owner: String,
         aidl: RomProfile.AidlControl,
         tag: String,
-    ): Boolean =
-        withService(ctx, owner, aidl, tag) { binder ->
-            transact(binder, aidl.descriptor, aidl.stopTransact, tag, null)
-        } != null
+    ): Boolean {
+        val deadline = android.os.SystemClock.uptimeMillis() + BUDGET_MS
+        val call = Call(owner, aidl, aidl.stopTransact, tag)
+        return withService(ctx, call, deadline) { binder -> transact(binder, call, deadline, null) } != null
+    }
 
     /**
      * 绑定 → [block] → 解绑。返回 block 的结果（`null` = 没走通，断在哪一环已记日志）。
      *
+     * @param deadline 这一次调用的总预算终点（`uptimeMillis`）—— 等连接只花还剩的那部分，
+     *   剩下的留给事务（见 [BUDGET_MS]）
      * @param block 拿到 binder 之后要发的那条事务（`null` 也算没走通）
      */
     private fun withService(
         ctx: Context,
-        owner: String,
-        aidl: RomProfile.AidlControl,
-        tag: String,
+        call: Call,
+        deadline: Long,
         block: (IBinder) -> Int?,
     ): Int? {
-        val short = "$owner/${aidl.service.substringAfterLast('.')}"
+        val tag = call.tag
+        val short = "${call.owner}/${call.aidl.service.substringAfterLast('.')}"
         val connection = Connection()
         val bound =
             try {
                 ctx.bindService(
-                    Intent().setComponent(ComponentName(owner, aidl.service)),
+                    Intent().setComponent(ComponentName(call.owner, call.aidl.service)),
                     connection,
                     Context.BIND_AUTO_CREATE,
                 )
@@ -117,13 +163,14 @@ internal object RecorderStateBridge {
             }
         if (!bound) {
             //  同步返回 false = 组件不存在 / 权限不够，`onServiceConnected` 永远不会来，
-            //  不能还等 TIMEOUT_MS：那会把原因说成「没连上」，掩盖真正的错。
+            //  不能还等预算：那会把原因说成「没连上」，掩盖真正的错。
             XLog.w("$tag：绑不上 $short（bindService 返回 false：组件不存在或权限不够）")
             return null
         }
+        val wait = remaining(deadline).coerceAtMost(TIMEOUT_MS)
         return try {
-            if (!connection.latch.await(TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                XLog.w("$tag：$short 在 ${TIMEOUT_MS}ms 内没连上，放弃这一次")
+            if (wait <= 0 || !connection.latch.await(wait, TimeUnit.MILLISECONDS)) {
+                XLog.w("$tag：$short 在 ${wait}ms 内没连上，放弃这一次")
                 null
             } else {
                 val binder = connection.binder
@@ -150,58 +197,57 @@ internal object RecorderStateBridge {
     }
 
     /**
-     * 真发那条事务 —— **在独立线程上发，这里只等 [TIMEOUT_MS]**（理由见类注释第 2 条）。
+     * 真发那条事务 —— **在共用那一条后台线程上发，这里只等剩下的预算**（理由见类注释第 2 条）。
      *
+     * @param deadline 这一次调用的总预算终点（`uptimeMillis`）
      * @return 事务的读值；超时与抛异常都是 `null`（两种情形各有一条 `w`，断在哪一环能看出来）
      */
     private fun transact(
         binder: IBinder,
-        descriptor: String,
-        code: Int,
-        tag: String,
+        call: Call,
+        deadline: Long,
         read: ((Parcel) -> Int)?,
     ): Int? {
-        var result: Int? = null
-        var error: Throwable? = null
-        val worker =
-            Thread(
-                {
-                    val data = Parcel.obtain()
-                    val reply = Parcel.obtain()
-                    try {
-                        data.writeInterfaceToken(descriptor)
-                        binder.transact(code, data, reply, TRANSACT_SYNC)
-                        //  服务端的 `enforceCallingPermission` 失败会从这里抛出来（SecurityException）
-                        reply.readException()
-                        result = read?.invoke(reply) ?: 0
-                    } catch (e: Throwable) {
-                        error = e
-                    } finally {
-                        reply.recycle()
-                        data.recycle()
-                    }
-                },
-                "opluskey-recorder-aidl",
+        val task =
+            worker.submit<Int?> {
+                val data = Parcel.obtain()
+                val reply = Parcel.obtain()
+                try {
+                    data.writeInterfaceToken(call.aidl.descriptor)
+                    binder.transact(call.code, data, reply, TRANSACT_SYNC)
+                    //  服务端的 `enforceCallingPermission` 失败会从这里抛出来（SecurityException）
+                    reply.readException()
+                    read?.invoke(reply) ?: 0
+                } finally {
+                    reply.recycle()
+                    data.recycle()
+                }
+            }
+        val wait = remaining(deadline).coerceAtMost(TIMEOUT_MS)
+        if (wait <= 0) {
+            XLog.w("${call.tag}：预算已经用完，事务 ${call.code} 没发就放弃")
+            return null
+        }
+        return try {
+            task.get(wait, TimeUnit.MILLISECONDS)
+        } catch (e: java.util.concurrent.TimeoutException) {
+            //  对端卡在 `mCondition.await()` 上：这条线程会一直挂着（binder 调用没有超时参数），
+            //  但**只挂这一条**（单线程池），不会再为下一次调用新建线程、也不再泄一份 Parcel。
+            XLog.w(
+                "${call.tag}：事务 ${call.code} 在 ${wait}ms 内没返回（对端绑定时会无限等），这一次算失败" +
+                    "（那条线程继续挂着，本进程不再为它新建线程）",
+                e,
             )
-        worker.isDaemon = true
-        worker.start()
-        try {
-            worker.join(TIMEOUT_MS)
+            null
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
-            XLog.w("$tag：等事务 $code 返回时被打断")
-            return null
+            XLog.w("${call.tag}：等事务 ${call.code} 返回时被打断", e)
+            null
+        } catch (e: java.util.concurrent.ExecutionException) {
+            val failure = e.cause ?: e
+            XLog.w("${call.tag}：事务 ${call.code} 失败：${failure.javaClass.simpleName}: ${failure.message}", failure)
+            null
         }
-        if (worker.isAlive) {
-            XLog.w("$tag：事务 $code 在 ${TIMEOUT_MS}ms 内没返回（对端绑定时会无限等），这一次算失败")
-            return null
-        }
-        val failure = error
-        if (failure != null) {
-            XLog.w("$tag：事务 $code 失败：${failure.javaClass.simpleName}: ${failure.message}")
-            return null
-        }
-        return result
     }
 
     /** 一次绑定的连接对象 —— `latch` 就是「`onServiceConnected` 来过没有」。 */

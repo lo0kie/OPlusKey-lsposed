@@ -133,10 +133,15 @@ internal fun SettingsPage.BindingGroups(
             LongPressCard(target, enabled, followHint)
         }
 
-        //  场景块里**「单击后长按」的松手** —— 与长按那一族并排摆，用小标题分清是哪一档。
-        //  它只在场景页出现：单键 / 组合那一页的松手格在 `ClickThenLongCard` 里。
-        if (target is BindingTarget.Scene) {
-            SectionTitle(GestureTrigger.ClickThenLong.label)
+        //  场景块里**「单击后长按」的松手** —— 只摆在这一档**自己那一页**（`ClickThenLong`）。
+        //
+        //  原先它按「只要是场景块就摆」写：于是**每一页**（单击 / 双击 / 三击 / 长按）底下都跟着
+        //  一对「松手执行额外动作 + 额外动作」，与长按那一族逐字相同 —— 在长按那页上就是两行一模一样
+        //  的东西（用户报「长按下面有两个一样的」）。它属于哪一档，就摆在哪一档的页面上。
+        //  组合的场景页没有这一档（`sceneGesturePages` 只给单击 / 长按），于是那一侧也不该出现。
+        //  单键 / 组合那一页的松手格在 `ClickThenLongCard` 里，不在这里。
+        if (target is BindingTarget.Scene && g == GestureTrigger.ClickThenLong) {
+            SectionTitle(I18n.get(Strings.BINDING_SETTINGS_SECTION, "按键设置"))
             SceneChainReleaseCard(target, settingsEnabled, followHint)
         }
 

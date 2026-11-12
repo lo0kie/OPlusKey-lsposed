@@ -4,6 +4,7 @@ import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
 
@@ -54,12 +55,13 @@ internal object ConditionProbe {
         ctx: Context,
     ): Boolean =
         when (kind) {
-            // 「前台应用」可以多选：同一条条件里用 `||` 连着几个包名，**任一**在前台即通过。
-            //  与块内多条条件之间的「且」不同 —— 那是同时成立，这里只要其中之一。
+            // 应用那一族两档：差别只在「要不要取反」，判据共用 [appMatches] 一份。
             ConditionKind.APP -> {
-                val foreground = ForegroundApp.packageName()
-                foreground != null &&
-                    value.split(BranchCondition.APP_SEPARATOR).any { it.trim() == foreground }
+                appMatches(value, anyInForeground = true)
+            }
+
+            ConditionKind.APP_NOT -> {
+                appMatches(value, anyInForeground = false)
             }
 
             ConditionKind.SCREEN -> {
@@ -103,6 +105,29 @@ internal object ConditionProbe {
                 switchByKind(kind, ctx, value)
             }
         }
+
+    /**
+     * 应用那一族的两档共用这一支：[anyInForeground] 为真 = 「选中的**任一**在前台」，
+     * 为假 = 「选中的**都不**在前台」（[ConditionKind.APP_NOT]，就是取反）。
+     *
+     *  一条条件里可以多选（`包1||包2`），所以两边都是对**整组**下结论 —— 与块内多条条件之间的
+     *  「且」不是一回事：那是几条同时成立，这里一条内部自己就是「或」。
+     *
+     *  取值可能带用户前缀（`999@包名`，分身那一档，见 `appKeyOf`）：判据只比包名
+     *  —— `ForegroundApp` 拿到的只有包名，本机没有可靠的「前台属于哪个用户」判据，
+     *  所以分身与主用户在这一条上等价（不这么做的话，选了分身的那条条件永远不命中）。
+     *
+     *  **读不到前台应用时返回 `false`**（两档都是）：判不出不能当成「不是」，否则探针失败时
+     *  「前台应用以外」那一条会在所有界面上凭空成立。
+     */
+    private fun appMatches(
+        value: String,
+        anyInForeground: Boolean,
+    ): Boolean {
+        val foreground = ForegroundApp.packageName() ?: return false
+        val hit = value.split(BranchCondition.APP_SEPARATOR).any { AppTarget.pkg(it.trim()) == foreground }
+        return hit == anyInForeground
+    }
 
     /**
      * 四个「开 / 关」型系统开关各读哪个键 —— **键名只在 `ConditionSwitchChecks` 里写一次**，

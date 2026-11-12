@@ -28,6 +28,17 @@ object Reflect {
     private val NOT_FOUND: Any = Any()
 
     /**
+     * 缓存里代表「**这一趟没解析成**」的哨兵（与 [NOT_FOUND] 是两件事）。
+     *
+     *  `getDeclaredMethod` / `getDeclaredFields` 抛的可能是 `NoSuchMethodException`（真的没有），
+     *  也可能是 `NoClassDefFoundError` / `SecurityException`（参数类型这一趟解析不了、或 loader
+     *  还没就绪）。后者**不是结论**：把它当成「查过了，没有」写进缓存，那一处反射 / Hook 就会
+     *  一直失效到进程结束 —— 正是 [scanMethods] 注释里说的那种「自愈不了的静默失效」。
+     *  所以解析抛了非「没有」那一类错时返回本哨兵：不写缓存，下次调用重试。
+     */
+    private val ABORT: Any = Any()
+
+    /**
      * 类名 → Class。外层键是 **ClassLoader 的身份**（`IdentityHashMap` 的 `===` 语义）。
      *
      *  为什么必须带 loader：同一个类名被两个 ClassLoader 各加载一次会得到**两个不同的 Class**
@@ -169,7 +180,15 @@ object Reflect {
     }
 
     /** 沿类链收集所有声明的方法（含父类）；用在「不知道方法叫什么」时先探一遍再按名字挑。 */
-    fun methodsOf(cls: Class<*>): List<Method> = methodsCache[cls] ?: scanMethods(cls)?.also { methodsCache[cls] = it } ?: emptyList()
+    fun methodsOf(cls: Class<*>): List<Method> = methodsOrNull(cls).orEmpty()
+
+    /**
+     * 同 [methodsOf]，但**扫不成就返回 `null`**（不是空表）。
+     *
+     *  空表会被调用方当成「这个类一个方法都没有」并据此缓存负命中；`null` 让上层有机会
+     *  按「这一趟不算数」处理（见 [ABORT] 与 [scanMethods]）。
+     */
+    private fun methodsOrNull(cls: Class<*>): List<Method>? = methodsCache[cls] ?: scanMethods(cls)?.also { methodsCache[cls] = it }
 
     /**
      * 真的去扫一遍类链 —— **失败时不返回半份结果**，而是 `null`（= 这一趟不算数）。
@@ -203,26 +222,62 @@ object Reflect {
         name: String,
         vararg params: Class<*>,
     ): Method? =
-        cachedValue(exactMethodCache, cls, MethodKey(name, params)) {
-            var cur: Class<*>? = cls
-            var found: Method? = null
-            while (cur != null && cur != Any::class.java) {
-                val hit = runCatching { cur.getDeclaredMethod(name, *params) }.getOrNull()
-                if (hit != null) {
-                    runCatching { hit.isAccessible = true }
-                    found = hit
-                    break
+        cachedValue<Method>(exactMethodCache, cls, MethodKey(name, params)) {
+            val declared = declaredMethodAlongChain(cls, name, params)
+            if (declared === ABORT) {
+                ABORT
+            } else if (declared != null) {
+                declared
+            } else {
+                // 第一段（逐级 `getDeclaredMethod`）要求类型**逐个精确相等**：拿 `Integer::class.java`
+                //  去查 `f(int)` 是查不到的 —— 这正是下面两级兜底要兜的坑。
+                val bySignature = methodBySignature(cls, name, params)
+                when {
+                    bySignature === ABORT -> ABORT
+
+                    bySignature != null -> bySignature
+
+                    // 最后退一步按名字 + 参数个数匹配，兼容参数类型被擦除 / 泛型化的签名。
+                    //  注意：用 [methodsOf]（沿类链的 declared 全集，含 hidden）而**不是** `cls.methods`
+                    //  —— 后者只含 public，framework 里大量 hidden 方法在那里匹配不上。
+                    else -> pickByArity(cls, name, params.size)
                 }
-                cur = cur.superclass
             }
-            // 第一段（逐级 `getDeclaredMethod`）要求类型**逐个精确相等**：拿 `Integer::class.java`
-            //  去查 `f(int)` 是查不到的 —— 这正是下面这段要兜的坑。
-            found ?: methodBySignature(cls, name, params)
-                // 最后退一步按名字 + 参数个数匹配，兼容参数类型被擦除 / 泛型化的签名。
-                //  注意：用 [methodsOf]（沿类链的 declared 全集，含 hidden）而**不是** `cls.methods`
-                //  —— 后者只含 public，framework 里大量 hidden 方法在那里匹配不上。
-                ?: pickByArity(cls, name, params.size)
         }
+
+    /**
+     * 沿类链逐层 `getDeclaredMethod` —— 三态：方法 / `null`（真的没有）/ [ABORT]（这一趟解析不了）。
+     *
+     *  `NoSuchMethodException` 是唯一能当「没有」读的错；`NoClassDefFoundError`（形参类型这一趟
+     *  解析不了）、`SecurityException` 之类都不是结论，不能变成缓存的负命中。
+     *
+     *  下面三处 catch 都是**判定**而不是「吞掉问题」：所以显式抑制两条通用告警 ——
+     *  它们要防的是「catch 了当没发生」，而这里每一种都有后果（折算成 `null` 或 [ABORT]）。
+     */
+    @Suppress("SwallowedException", "SpreadOperator")
+    private fun declaredMethodAlongChain(
+        cls: Class<*>,
+        name: String,
+        params: Array<out Class<*>>,
+    ): Any? {
+        var cur: Class<*>? = cls
+        while (cur != null && cur != Any::class.java) {
+            val hit =
+                try {
+                    cur.getDeclaredMethod(name, *params)
+                } catch (e: NoSuchMethodException) {
+                    null
+                } catch (e: Throwable) {
+                    return ABORT
+                }
+            if (hit != null) {
+                runCatching { hit.isAccessible = true }
+                return hit
+            }
+            cur = cur.superclass
+        }
+        return null
+    }
 
     /**
      * 「名字 + 参数个数」唯一命中时的兜底 —— 类型逐个都对不上时才走到这里（泛型擦除 / 桥接方法）。
@@ -235,8 +290,10 @@ object Reflect {
         cls: Class<*>,
         name: String,
         arity: Int,
-    ): Method? {
-        val candidates = methodsOf(cls).filter { it.name == name && it.parameterTypes.size == arity }
+    ): Any? {
+        // 方法表扫不出来 ⇒ 这一趟不算数（见 [ABORT]）：当成「没有」会把整个类的方法查找永久判死
+        val all = methodsOrNull(cls) ?: return ABORT
+        val candidates = all.filter { it.name == name && it.parameterTypes.size == arity }
         if (candidates.size != 1) {
             if (candidates.isNotEmpty()) {
                 XLog.w("反射 $name/$arity：${candidates.size} 个候选且类型都对不上 ⇒ 不猜（按没有处理）")
@@ -263,9 +320,11 @@ object Reflect {
         cls: Class<*>,
         name: String,
         params: Array<out Class<*>>,
-    ): Method? {
+    ): Any? {
+        // 与 [pickByArity] 同一条：扫不出来就整趟作废，别把它记成「没有」
+        val all = methodsOrNull(cls) ?: return ABORT
         val scored =
-            methodsOf(cls)
+            all
                 .filter { it.name == name && it.parameterTypes.size == params.size }
                 .map { it to signatureScore(it.parameterTypes, params) }
                 .filter { it.second > SIGNATURE_INCOMPATIBLE }
@@ -347,15 +406,25 @@ object Reflect {
             else -> null
         }
 
+    @Suppress("SwallowedException")
     fun field(
         cls: Class<*>,
         name: String,
     ): Field? =
-        cachedValue(fieldCache, cls, name) {
+        cachedValue<Field>(fieldCache, cls, name) {
             var cur: Class<*>? = cls
             var found: Field? = null
             while (cur != null && cur != Any::class.java) {
-                val hit = runCatching { cur.getDeclaredField(name) }.getOrNull()
+                val hit =
+                    try {
+                        cur.getDeclaredField(name)
+                    } catch (e: NoSuchFieldException) {
+                        // 这一层真的没有：继续往上找
+                        null
+                    } catch (e: Throwable) {
+                        // 这一趟解析不了（类型解析失败 / 安全限制）—— **不是结论**，整趟作废
+                        return@cachedValue ABORT
+                    }
                 if (hit != null) {
                     runCatching { hit.isAccessible = true }
                     found = hit
@@ -371,19 +440,24 @@ object Reflect {
      *
      * 用在参数类型拿不到、或者 ROM 把形参类型改名（framework 里参数常是内部类）的场景。
      */
+    @Suppress("SwallowedException")
     fun methodByNameAndArity(
         cls: Class<*>,
         name: String,
         arity: Int,
     ): Method? =
-        cachedValue(arityMethodCache, cls, ArityKey(name, arity)) {
+        cachedValue<Method>(arityMethodCache, cls, ArityKey(name, arity)) {
             var cur: Class<*>? = cls
             var found: Method? = null
             while (cur != null && cur != Any::class.java) {
-                val candidates =
-                    runCatching {
-                        cur.declaredMethods.filter { it.name == name && it.parameterTypes.size == arity }
-                    }.getOrNull().orEmpty()
+                val declared =
+                    try {
+                        cur.declaredMethods
+                    } catch (e: Throwable) {
+                        // 这一层的方法表读不出来 ⇒ 不能把「残缺」当成「没有」（见 [ABORT]）
+                        return@cachedValue ABORT
+                    }
+                val candidates = declared.filter { it.name == name && it.parameterTypes.size == arity }
                 val hit = pickOverload(cur, name, arity, candidates)
                 if (hit != null) {
                     runCatching { hit.isAccessible = true }
@@ -477,9 +551,10 @@ object Reflect {
         vararg args: Any?,
     ): Any? {
         val m =
-            cachedValue(staticMethodCache, cls, ArityKey(name, args.size)) {
+            cachedValue<Method>(staticMethodCache, cls, ArityKey(name, args.size)) {
+                val all = methodsOrNull(cls) ?: return@cachedValue ABORT
                 val candidates =
-                    methodsOf(cls).filter {
+                    all.filter {
                         it.name == name && it.parameterTypes.size == args.size &&
                             java.lang.reflect.Modifier
                                 .isStatic(it.modifiers)
@@ -487,6 +562,8 @@ object Reflect {
                 pickOverload(cls, name, args.size, candidates)?.also { runCatching { it.isAccessible = true } }
             }
         if (m == null) {
+            //  `m == null` 有两种来路：真的没有（已缓存），或这一趟方法表扫不出来（没缓存，下次重试）。
+            //  两种都记一行，但措辞不替对方下结论。
             if (reportedMissing.add("${cls.name}#$name/${args.size}")) {
                 XLog.w("找不到静态方法：${cls.name}#$name（${args.size} 参数）")
             }
@@ -556,19 +633,24 @@ object Reflect {
      *  `ConcurrentHashMap` 的写是原子的，后写的覆盖先写的，结果一致。
      *  要避免的是另一件事：把「还没查」(null) 与「查过、没有」([NOT_FOUND]) 混为一谈 —— 那会
      *  让一次未命中的竞态被当成「永久没有」，之后再也不去解析。
+     *
+     *  `resolve` 返回 [ABORT] 表示**这一趟没解析成**（见那一项）：不写缓存、直接返回 `null`，
+     *  下次调用重新解析。这与「落空也缓存」不冲突：`null` 才是落空。
      */
     private fun <T : Any> cachedValue(
         cache: ConcurrentHashMap<Class<*>, ConcurrentHashMap<Any, Any>>,
         cls: Class<*>,
         key: Any,
-        resolve: () -> T?,
+        resolve: () -> Any?,
     ): T? {
         val bucket = cache.getOrPut(cls) { ConcurrentHashMap() }
         val hit =
             bucket[key] ?: run {
                 val found = resolve()
+                if (found === ABORT) return null
                 bucket[key] = found ?: NOT_FOUND
-                return found
+                @Suppress("UNCHECKED_CAST")
+                return found as T?
             }
         if (hit === NOT_FOUND) return null
         @Suppress("UNCHECKED_CAST")

@@ -1,8 +1,7 @@
 package com.lookie.opluskey.ui
 
-import com.lookie.opluskey.core.i18n.I18n
-import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.KeyConfig
+import com.lookie.opluskey.ui.model.instantSingleTitle
 import com.lookie.opluskey.ui.state.KeyWatchState
 
 // 「**这一颗键**的参数」这一族 —— 与 `ui/ConfigWrite.kt`（全局开关 + 唯一的写入口 [write]）
@@ -42,9 +41,13 @@ internal fun SettingsPage.toggleKeyParam(
  *  这一位是**每颗键各一份**（`KeyConfig.instantSingle`）：写在当前编辑的那颗键上，
  *  语义与判定侧见 `inject/input/GestureDetector.onKeyUp`。
  */
-internal fun SettingsPage.setInstantSingle(on: Boolean) =
-    toggleKeyParam(
+internal fun SettingsPage.setInstantSingle(on: Boolean) {
+    //  回执的主语与那一行**同一个口径**（见 `instantSingleTitle`）：开了「单击后长按」时它管两档手势，
+    //  两处各拼一次会让「已关闭…」与页面上那行标题对不上。
+    val key = configState.config.value.key(KeyWatchState.editing(configState.config.value))
+    return toggleKeyParam(
         "instant_single=${if (on) 1 else 0}",
-        I18n.get(Strings.SETTING_IGNORE_DOUBLE, "忽视无操作双击手势"),
+        instantSingleTitle(key),
         on,
     ) { it.copy(instantSingle = on) }
+}

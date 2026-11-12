@@ -35,7 +35,6 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.GestureTrigger
-import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.CardList
 import com.lookie.opluskey.ui.CardRow
@@ -54,7 +53,6 @@ import com.lookie.opluskey.ui.model.STEP_ROW_EXIT
 import com.lookie.opluskey.ui.model.gestureLabel
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.BranchDraft
-import com.lookie.opluskey.ui.state.KeyWatchState
 import com.lookie.opluskey.ui.state.NO_FRESH_ROW
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
@@ -64,9 +62,6 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「条件执行」那一页的编辑区 —— 从 `CommandPage.kt` 拆出来：那边是「一页的骨架」，
 // 这一块是分叉特有的那张卡；四张菜单在 `CommandBranchMenus.kt`。
-
-/** 分叉页在编辑哪一颗键。 */
-internal fun SettingsPage.branchKeyNow(): KeyId = KeyWatchState.editing(configState.config.value)
 
 /**
  * 条件卡 —— 一条规则一行，末尾是「添加条件」与固定的默认那一行。
@@ -148,6 +143,19 @@ internal fun SettingsPage.BranchCards(
             VisibleAreaCentered(emptyHeight) { BranchEmptyHint() }
         } else {
             Column(Modifier.fillMaxWidth()) {
+                //  「松手沿用按下时的场景」—— **整张表**一格开关，摆在列表**最上面**：
+                //  它修饰的是「按下与松手怎么接」，不是某一块的动作，所以不进任何一块的卡，
+                //  也不跟在列表后面（那要滚到底才看得见，读起来还像「第 N+1 块」）。
+                //  只在表非空时出现（空态那一支压根不画这一层）。
+                //
+                //  与顶栏的间距由这张卡自己让（`SECTION_TITLE_PAD_TOP`，与「按键绑定」页那张
+                //  「系统场景」条同一个数）；下面第一块的小标题自带 16dp 上间距，这一行与它
+                //  之间不再补距离 —— 与块与块之间那一档正好一致，这一行读成「这张表的一行表头」。
+                SceneReleasePinCard(
+                    rules = shownRules,
+                    enabled = pageWritable(),
+                    onToggle = { on -> setSceneReleasePin(draft, on) },
+                )
                 BranchRuleColumn(
                     rules = shownRules,
                     ids = shownIds,
@@ -222,7 +230,10 @@ internal fun SettingsPage.addScene() {
         return
     }
     val first = rules.isEmpty()
-    val id = branchDraftNow().add(SceneRule.EMPTY)
+    //  新块**沿用这张表此刻的取值**：`SceneRule.EMPTY` 自带「沿用」（那一项的默认值就是开），
+    //  而表被拨成关之后再加一块，就会冒出一块开着的 —— 列表那一行读「有任一块开着就算开」，
+    //  于是它当场自己跳回开，看着像「加一块就把设置改了」。
+    val id = branchDraftNow().add(SceneRule.EMPTY.copy(releasePin = sceneReleasePinOn(rules)))
     onAdded(if (first) NO_FRESH_ROW else id)
 }
 

@@ -56,7 +56,10 @@ internal fun ConditionRowTitle(
         modifier = Modifier.fillMaxWidth(),
         leading = {
             Text(
-                text = "${conditionKindLabel(ConditionKind.APP)} - ",
+                //  种类名**按这一条自己的档念**：应用那一族两档都走这里，
+                //  写死 `APP` 的话「前台应用以外」那一条会念成「前台应用」——
+                //  读起来正好是相反的意思。
+                text = "${conditionKindLabel(line.kind ?: ConditionKind.APP)} - ",
                 style = COUITheme.textStyles.headline1,
                 fontWeight = FontWeight.Medium,
                 color = color,

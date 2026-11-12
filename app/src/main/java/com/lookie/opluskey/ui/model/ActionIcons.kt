@@ -14,6 +14,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
+import io.github.lyxnx.compose.ui.tablericons.outline.Bell
 import io.github.lyxnx.compose.ui.tablericons.outline.BellCog
 import io.github.lyxnx.compose.ui.tablericons.outline.BellOff
 import io.github.lyxnx.compose.ui.tablericons.outline.BellRinging
@@ -244,15 +245,15 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.PlayerTrackNext
         }
 
-        // 音量 + / −（注入一次音量键）—— 与「增加 / 减少音量」那两档**同一颗**：
-        //  菜单里那两行说的是「加一档 / 减一档」，这两条说的是「按一下音量键」，落到用户眼里都是
-        //  「让声音大一点 / 小一点」，给两套字形反而要多认一次；分开画的只有格子那颗（不带角标）。
+        // 音量 + / −（注入一次音量键）—— 同一颗喇叭，角标换成**三角**（上 / 下）：
+        //  「增加 / 减少音量」那两行调的是音量数值、用加减号；这两条是模拟按一下音量键 ——
+        //  两件事语义不同，形状分开才不会在网格里认错。
         Action.keyToken(KeyId.KEYCODE_VOLUME_UP) -> {
-            DrawnIcons.VolumeAdd
+            DrawnIcons.VolumeKeyUp
         }
 
         Action.keyToken(KeyId.KEYCODE_VOLUME_DOWN) -> {
-            DrawnIcons.VolumeSub
+            DrawnIcons.VolumeKeyDown
         }
 
         // 把前台应用收成小窗 —— 展开档：竖窗口 + 正中一块小窗（`app-window-center` 逆时针转 90°）
@@ -269,7 +270,7 @@ internal fun actionIcon(token: String): ImageVector =
         // 响铃档位（`ringer:normal|vibrate|silent`）；「循环」那一档不在这里 ——
         // 它写的是 `keyevent:164`，由 [specIcon] 按 spec 认领 [DrawnIcons.RingerCycle]（铃铛 + 一圈箭头）。
         Action.RINGER_PREFIX + Action.Ringer.NORMAL -> {
-            TablerIcons.Outline.BellRinging
+            TablerIcons.Outline.Bell
         }
 
         Action.RINGER_PREFIX + Action.Ringer.VIBRATE -> {
@@ -644,15 +645,15 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
 
         ActionCatalog.Glyph.MediaNext -> TablerIcons.Outline.PlayerTrackNext
 
-        ActionCatalog.Glyph.VolumeKeyUp -> DrawnIcons.VolumeAdd
+        ActionCatalog.Glyph.VolumeKeyUp -> DrawnIcons.VolumeKeyUp
 
-        ActionCatalog.Glyph.VolumeKeyDown -> DrawnIcons.VolumeSub
+        ActionCatalog.Glyph.VolumeKeyDown -> DrawnIcons.VolumeKeyDown
 
         ActionCatalog.Glyph.MiniExpand -> DrawnIcons.MiniWindowExpand
 
         ActionCatalog.Glyph.MiniCollapse -> DrawnIcons.MiniWindowCollapse
 
-        ActionCatalog.Glyph.RingerNormal -> TablerIcons.Outline.BellRinging
+        ActionCatalog.Glyph.RingerNormal -> TablerIcons.Outline.Bell
 
         ActionCatalog.Glyph.RingerVibrate -> TablerIcons.Outline.DeviceMobileVibration
 

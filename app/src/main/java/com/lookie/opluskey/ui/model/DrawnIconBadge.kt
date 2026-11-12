@@ -20,7 +20,7 @@ import kotlin.math.sqrt
  *  [Cycle] 是唯一一个「不是动词」的角标：它标的是响铃状态里的「循环」那一档（按一下轮换三档），
  *  底图是铃铛，角标是一圈箭头。
  */
-internal enum class Badge { Plus, Minus, Gear, Cycle, Pause, Power }
+internal enum class Badge { Plus, Minus, Gear, Cycle, Pause, Power, TriangleUp, TriangleDown }
 
 /**
  * 角标在 24 格里占的那块地 —— 圆心是角标中心，半径见 [notch]。
@@ -66,11 +66,21 @@ private val Badge.inkRadius: Float
         ICON_STROKE / 2 +
             when (this) {
                 Badge.Plus -> BADGE_ARM
+
                 Badge.Minus -> MINUS_ARM
+
                 Badge.Gear -> GEAR_TOOTH
+
                 Badge.Cycle -> CYCLE_INK
+
                 Badge.Pause -> PAUSE_INK
+
                 Badge.Power -> POWER_INK
+
+                //  三角看底角：顶点离圆心 [TRI_HEIGHT]/2，底角还要再横着挪 [TRI_HALF]
+                Badge.TriangleUp -> TRI_INK
+
+                Badge.TriangleDown -> TRI_INK
             }
 
 /** 这一档角标占的缺口。 */
@@ -153,18 +163,26 @@ internal fun badgePath(badge: Badge): List<PathNode> =
                 lineTo(c + PAUSE_GAP, c + PAUSE_HALF)
             }
 
+            Badge.TriangleUp -> {
+                //  正三角（音量键「+」）：与图标库 `triangle` 同形，缩到角标大小、重心落在角标中心
+                moveTo(c, c - TRI_HEIGHT / 2)
+                lineTo(c + TRI_HALF, c + TRI_HEIGHT / 2)
+                lineTo(c - TRI_HALF, c + TRI_HEIGHT / 2)
+                close()
+            }
+
+            Badge.TriangleDown -> {
+                //  倒三角（音量键「-」）：同一颗翻过来
+                moveTo(c, c + TRI_HEIGHT / 2)
+                lineTo(c + TRI_HALF, c - TRI_HEIGHT / 2)
+                lineTo(c - TRI_HALF, c - TRI_HEIGHT / 2)
+                close()
+            }
+
             Badge.Power -> {
                 //  电源符号：一圈（缺口留在正上方）+ 顶上那一竖 —— 照图标库 `power` 的比例缩到角标大小
                 moveTo(c + POWER_RING * 0.707f, c - POWER_RING * 0.707f)
-                arcToRelative(
-                    POWER_RING,
-                    POWER_RING,
-                    0f,
-                    isMoreThanHalf = true,
-                    isPositiveArc = true,
-                    -POWER_RING * 1.414f,
-                    0f,
-                )
+                arcToRelative(POWER_RING, POWER_RING, 0f, isMoreThanHalf = true, isPositiveArc = true, -POWER_RING * 1.414f, 0f)
                 moveTo(c, c - POWER_BAR)
                 lineTo(c, c)
             }
@@ -300,6 +318,26 @@ private val GEAR_DIRECTIONS =
         -0.866f to 0.5f,
         -0.866f to -0.5f,
     )
+
+/**
+ * 三角角标的半底宽（正 / 倒两档共用）。
+ *
+ *  2.5 / 4.4 是「与加号那颗一般大」的量：加号墨迹到 3.85 格，三角底角落在 3.33 + 描边 ≈ 4.2 格。
+ *  再小一档（1.9 / 3）在 20dp 上只剩一个点，读不出是三角（真机口径「角标太小了看不清」）。
+ */
+private const val TRI_HALF = 3f
+
+/** 三角角标的高 —— 顶点到底边。 */
+private const val TRI_HEIGHT = 5.2f
+
+/**
+ * 三角角标**参与缺口计算**的墨迹半径 —— 先钉在放大前那一档（用户口径「缺口先不动」）。
+ *
+ *  三角画得比这更大时，底图（喇叭那两道声波）的让位仍按这个数走，于是三角会压到声波上；
+ *  这是先把形状定下来、再回头对齐缺口的两步走。等尺寸定了，这里改成
+ *  `sqrt(TRI_HALF² + TRI_HEIGHT²/4)` 就重新跟上了。
+ */
+private const val TRI_INK = 3.33f
 
 /** 声波那两道弧的圆心 y —— 两道都是同心圆，圆心都落在这一行上。 */
 internal const val ARC_CENTER_Y = 12f

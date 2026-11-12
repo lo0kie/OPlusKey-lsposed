@@ -360,13 +360,16 @@ internal data class KeyDto(
         )
 
     /**
-     * 「单击后长按」那一族字段（长按延迟 / 连发 / 间隔 / 每次振动 / 松手开关与动作）。
+     * 「单击后长按」那一族字段（这一档的动作 / 长按延迟 / 连发 / 间隔 / 每次振动 / 松手开关与动作）。
      *
-     *  单独一支只为让 [toValues] 的圈复杂度留在 detekt 的线内 —— 这一族有六个 `?:`，
-     *  摊在主线上等于给那个函数再加六条分支。
+     *  单独一支只为让 [toValues] 的圈复杂度留在 detekt 的线内 —— 这一族有七个 `?:`，
+     *  摊在主线上等于给那个函数再加七条分支。
      */
     private fun ctlValuesMap(): Map<ConfigFields.Field, Any> =
         mapOf(
+            //  动作那一格也在表里：**落盘与广播读同一个字段**，两处各写一套时
+            //  「广播里带、文件里不带」这种半通的状态必然出现（`click_then_long` 就是那样丢过）。
+            ConfigFields.F_CTL to clickThenLong,
             ConfigFields.F_CTL_PRESS_MS to
                 clamp(ConfigFields.F_CTL_PRESS_MS, clickThenLongPressMs ?: KeyConfig.DEFAULT_LONG_PRESS_MS),
             ConfigFields.F_CTL_REPEAT to (clickThenLongRepeat ?: false),
@@ -396,10 +399,9 @@ internal data class KeyDto(
                         .mapNotNull { (clicks, token) ->
                             extraClickCount(clicks)?.let { it to Action.parse(token) }
                         }.toMap(),
-                //  「单击后长按」的动作**不进 `ConfigFields`**（注入侧不执行动作，只要开关那一位）：
-                //  与 `extraClicks` 那张表同一条，只走落盘这一列
-                clickThenLong = Action.parse(clickThenLong),
-                clickThenLongRelease = Action.parse(clickThenLongRelease),
+                //  只补**那张表**：它是一个字段表装不下的结构（`extraClicks`），别的扁平字段
+                //  （含「单击后长按」的动作与它的松手）一律走 `toValues` / `ofFields` 那一对 ——
+                //  在这里再抄一遍动作等于给同一条规则第二份实现，漏抄就是「广播里有、文件里没有」。
             )
 
     companion object {
@@ -517,6 +519,14 @@ internal data class SceneRuleDto(
     /** 「单击后长按」的松手 —— 与 [releaseOn] / [release] 同一对，挂在另一档上。 */
     val chainReleaseOn: Boolean = false,
     val chainRelease: String = Action.NONE,
+    /**
+     * **松手沿用按下那一刻命中的这一块**（`SceneRule.releasePin`）—— 默认开。
+     *
+     *  老文件没有这一格 ⇒ 走默认（开）：松手不再重判条件。要回到「按当时状态重判」，
+     *  在「系统场景」列表下面那一行关掉（见 `ui/screen/command/SceneReleasePinCard`）——
+     *  那一行拨的是**整张表**，写下来的仍然是每块各自这一位。
+     */
+    val releasePin: Boolean = true,
     val enabled: Boolean = true,
 ) {
     /**
@@ -541,6 +551,7 @@ internal data class SceneRuleDto(
             release = Action.parse(release),
             chainReleaseOn = chainReleaseOn,
             chainRelease = Action.parse(chainRelease),
+            releasePin = releasePin,
             enabled = enabled,
         )
     }
@@ -591,6 +602,7 @@ internal data class SceneRuleDto(
                 release = scene.release.token,
                 chainReleaseOn = scene.chainReleaseOn,
                 chainRelease = scene.chainRelease.token,
+                releasePin = scene.releasePin,
                 enabled = scene.enabled,
             )
     }
