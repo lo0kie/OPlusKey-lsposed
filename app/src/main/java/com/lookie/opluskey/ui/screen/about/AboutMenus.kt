@@ -13,22 +13,22 @@ import com.lookie.opluskey.core.config.isDefaultProfile
 import com.lookie.opluskey.core.i18n.AppLanguage
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.linkReady
-import com.lookie.opluskey.ui.model.AppTheme
-import com.lookie.opluskey.ui.model.AuthorTarget
-import com.lookie.opluskey.ui.model.FeedbackTarget
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.PagePalette
-import com.lookie.opluskey.ui.model.languageLabel
-import com.lookie.opluskey.ui.model.paletteLabel
-import com.lookie.opluskey.ui.model.themeTag
-import com.lookie.opluskey.ui.model.themeTitle
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.target.AuthorTarget
+import com.lookie.opluskey.ui.model.target.FeedbackTarget
+import com.lookie.opluskey.ui.model.text.languageLabel
+import com.lookie.opluskey.ui.model.text.paletteLabel
+import com.lookie.opluskey.ui.model.text.themeTag
+import com.lookie.opluskey.ui.model.text.themeTitle
+import com.lookie.opluskey.ui.model.theme.AppTheme
+import com.lookie.opluskey.ui.model.theme.PagePalette
 import com.lookie.opluskey.ui.screen.home.openUrl
-import com.lookie.opluskey.ui.setLanguage
+import com.lookie.opluskey.ui.wire.linkReady
+import com.lookie.opluskey.ui.write.setLanguage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -248,8 +248,7 @@ internal fun SettingsPage.ProfileMenu(ui: AboutUiState) {
 }
 
 /**
- * 菜单底部那几行**管理动作**（新建 / 重命名 / 重置配置 / 删除配置）—— 从 [ProfileMenu] 里分出来：
- * 连着写几个 `MenuEntry.Row` 会把那个函数顶过 detekt 的 `LongMethod`。
+ * 菜单底部那几行**管理动作**（新建 / 重命名 / 重置配置 / 删除配置）—— 从 [ProfileMenu] 里分出来。
  *
  *  四行都作用于**当前这份配置**，顺序按代价从小到大排：新建（复制当前、切过去）→ 改名 →
  *  重置（内容清空、按默认重建）→ 删除（整份消失）。重置与删除都吃危险色，但**不另起分隔带** ——

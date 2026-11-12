@@ -18,14 +18,14 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.DialogButtonRow
-import com.lookie.opluskey.ui.FocusOnShow
-import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.TitleCounter
-import com.lookie.opluskey.ui.dialogSideMargin
-import com.lookie.opluskey.ui.model.EASING_EMPHASIZED_DECEL
-import com.lookie.opluskey.ui.model.VISIBILITY_ENTER_MS
+import com.lookie.opluskey.ui.dialog.DialogButtonRow
+import com.lookie.opluskey.ui.dialog.FocusOnShow
+import com.lookie.opluskey.ui.dialog.FrostedDialog
+import com.lookie.opluskey.ui.dialog.dialogSideMargin
+import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_DECEL
+import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER_MS
+import com.lookie.opluskey.ui.row.TitleCounter
 import io.github.suqi8.coui.kmp.basic.TextField
 import io.github.suqi8.coui.kmp.basic.TextFieldDefaults
 import io.github.suqi8.coui.kmp.basic.TextFieldMode
@@ -132,7 +132,7 @@ internal fun SettingsPage.CommandFullscreenDialog(
 }
 
 /**
- * 编辑区本体 —— 一行 `TextField` 的配置太多，单独摆出来才让弹窗那一支留在 detekt 的长度线内。
+ * 编辑区本体 —— 一行 `TextField` 的配置太多，单独摆出来读着顺。
  *
  *  长度上限在**这一层**兜（库的 `maxCount` 撤了：计数器挪去标题行）：超出的部分直接吃掉，
  *  计数器与真正写回的值才不会对不上；截断时把光标一起夹回末尾，否则选区会落到字数之外。

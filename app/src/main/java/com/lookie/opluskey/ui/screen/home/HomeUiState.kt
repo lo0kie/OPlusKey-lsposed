@@ -3,7 +3,7 @@ package com.lookie.opluskey.ui.screen.home
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.lookie.opluskey.ui.model.DonateTarget
+import com.lookie.opluskey.ui.model.target.DonateTarget
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
 /**

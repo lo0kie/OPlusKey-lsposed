@@ -10,23 +10,23 @@ import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.appKeyOf
 import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.model.withLongPress
-import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.addStep
-import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.replaceStep
+import com.lookie.opluskey.ui.feedback.tickNow
 import com.lookie.opluskey.ui.screen.binding.pickToken
 import com.lookie.opluskey.ui.screen.command.branchDraftNow
 import com.lookie.opluskey.ui.screen.command.writeBranchCondition
 import com.lookie.opluskey.ui.screen.variables.VarManageState
-import com.lookie.opluskey.ui.state.AppPickerState
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.state.PickTarget
-import com.lookie.opluskey.ui.state.PickedDetail
-import com.lookie.opluskey.ui.tickNow
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.state.picker.AppPickerState
+import com.lookie.opluskey.ui.state.picker.PickTarget
+import com.lookie.opluskey.ui.state.picker.PickedDetail
+import com.lookie.opluskey.ui.wire.appNameOf
+import com.lookie.opluskey.ui.write.BindingTarget
+import com.lookie.opluskey.ui.write.addStep
+import com.lookie.opluskey.ui.write.replaceStep
+import com.lookie.opluskey.ui.write.write
 
 // 「挑中的东西怎么落到配置里」—— 与 `PageEntry.kt` 分开：那边是**铺页面**（每页一份滚动行为、
 // 顶栏与浮层），这里是「写回」三颗（拼好的 token 写哪儿去 / 应用页那颗 FAB / 界面页确认）。
@@ -129,8 +129,8 @@ internal fun SettingsPage.writeToken(
 /**
  * 「写回哪一格」的三选一 —— 判据只有 [sceneAt] / [comboId] 两处（见 `writeToken` 里那段说明）。
  *
- *  单独一支是为了让 [writeToken] 留在 detekt 的 `CyclomaticComplexMethod` 之内：那一位是**落点表
- *  的分派器**，每多一个落点必然多一个分支，把三选一的判定也摊在里面就顶线了。这里不碰页面状态
+ *  单独一支：那一位是**落点表的分派器**，每多一个落点必然多一个分支，把三选一的判定
+ *  也摊在里面会搅成一团。这里不碰页面状态
  *  （[scene] / [key] 由调用点现算，用 lambda 只为在走不到时不算 [key]）。
  */
 private fun pickTargetOf(
@@ -205,8 +205,8 @@ internal fun SettingsPage.onAppPicked(
         XLog.w("选择应用：${picked.target} 没写进绑定，留在本页（不 goBack）")
         return
     }
-    //  「这几趟自己会退页」合成一位：`if` 里串四个 || 就撞上 detekt 的 `ComplexCondition`，
-    //  而它们本来就是同一件事（这个 `writeToken` 自己 `popBackStack` 了，调用方别再补 `goBack()`）。
+    //  「这几趟自己会退页」合成一位：它们本来就是同一件事（这个 `writeToken` 自己
+    //  `popBackStack` 了，调用方别再补 `goBack()`）。
     val popsItself = forBranch || forRelease || forCommonCommand
     if (forStep || popsItself) return
     picker.clearTarget()
@@ -318,8 +318,8 @@ private fun SettingsPage.addCommonCommand(action: Action): Boolean {
 /**
  * 「常用命令」那一趟：追加进清单，成功就自己退页（见 [PickTarget.CommonCommand]）。
  *
- *  为什么单独一支：`writeToken` 那个 `when` 的圈复杂度已经贴着 detekt 的线，把「写 + 退页 + 写失败
- *  放回目标」摊在那里会把它顶过去；而这三种结局本来就该在一处读。
+ *  为什么单独一支：`writeToken` 那个 `when` 已经把落点分派摊开了，把「写 + 退页 + 写失败
+ *  放回目标」再摊在那里会搅成一团；而这三种结局本来就该在一处读。
  *
  * @return 写下去了没有（`false` = 没地方写 / 这条动作不能执行 / 写盘失败，调用方留在原地）
  */

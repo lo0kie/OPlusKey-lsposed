@@ -5,18 +5,18 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.present.CommonCommands
-import com.lookie.opluskey.ui.BindingTarget
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.Screen
-import com.lookie.opluskey.ui.SectionTitle
-import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.linkReady
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.commonCommandIcon
-import com.lookie.opluskey.ui.titleWithCount
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.icon.commonCommandIcon
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.RowEndIcon
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.SectionTitleClick
+import com.lookie.opluskey.ui.row.titleWithCount
+import com.lookie.opluskey.ui.wire.linkReady
+import com.lookie.opluskey.ui.write.BindingTarget
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「常用命令」那一段 —— 模块维护的那几条命令（微信扫一扫这类）的一键绑定入口，只出现在绑定页上。

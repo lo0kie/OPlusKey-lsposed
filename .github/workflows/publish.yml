@@ -78,7 +78,7 @@ jobs:
 
       - name: 抓版本号
         id: dist
-        run: bash tools/read-version.sh
+        run: python3 tools/read-version.py
 
       - name: 校验 tag 与版本号一致
         env:
@@ -113,7 +113,7 @@ jobs:
           echo "ok  dist/$want"
 
       - name: 校验验收底线（AGENTS.md 二、1.2）
-        run: bash tools/verify-apk.sh dist
+        run: python3 tools/verify-apk.py dist
 
       # 前置条件不满足必须红：这条流水线是「点了一下、要求把这一版推上去」才跑的，
       #   静默跳过会让整条 run 显示成功、模块仓库却一条都没多 —— 看起来上过架，实际没有。

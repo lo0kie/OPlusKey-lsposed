@@ -11,21 +11,21 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.ui.LongPressSections
-import com.lookie.opluskey.ui.LongPressSettingsCard
-import com.lookie.opluskey.ui.LongPressSpec
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.model.actionIcon
-import com.lookie.opluskey.ui.model.releaseActionTitle
-import com.lookie.opluskey.ui.openAppPickerForRelease
+import com.lookie.opluskey.ui.model.icon.actionIcon
+import com.lookie.opluskey.ui.model.text.releaseActionTitle
+import com.lookie.opluskey.ui.row.LongPressSections
+import com.lookie.opluskey.ui.row.LongPressSettingsCard
+import com.lookie.opluskey.ui.row.LongPressSpec
 import com.lookie.opluskey.ui.screen.command.StepPickerPage
 import com.lookie.opluskey.ui.screen.command.StepPickerSheet
 import com.lookie.opluskey.ui.screen.command.StepSheetFilter
 import com.lookie.opluskey.ui.screen.command.StepSheetSpec
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.wire.appNameOf
+import com.lookie.opluskey.ui.write.openAppPickerForRelease
+import com.lookie.opluskey.ui.write.write
 
 // 「单击后长按」那一页的设置卡 —— 复用长按那张卡的行，参数换成这一档自己的。
 //

@@ -5,9 +5,9 @@ import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.present.ActionCatalog
-import com.lookie.opluskey.ui.PageCornerFab
-import com.lookie.opluskey.ui.PageFabButton
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.chrome.PageCornerFab
+import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.model.icon.PageIcons
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.theme.COUITheme

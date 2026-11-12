@@ -16,12 +16,10 @@ import androidx.compose.ui.platform.LocalDensity
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.ui.BindingTarget
-import com.lookie.opluskey.ui.LocalHeaderBoxHeight
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.headerReady
-import com.lookie.opluskey.ui.linkReady
+import com.lookie.opluskey.ui.chrome.LocalHeaderBoxHeight
+import com.lookie.opluskey.ui.chrome.headerReady
 import com.lookie.opluskey.ui.screen.about.AboutScreen
 import com.lookie.opluskey.ui.screen.apppicker.ActivityPickerScreen
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerScreen
@@ -35,7 +33,9 @@ import com.lookie.opluskey.ui.screen.donate.DonateListScreen
 import com.lookie.opluskey.ui.screen.general.GeneralScreen
 import com.lookie.opluskey.ui.screen.home.HomeScreen
 import com.lookie.opluskey.ui.screen.variables.VariableScreen
-import com.lookie.opluskey.ui.state.BandHeight
+import com.lookie.opluskey.ui.state.signal.BandHeight
+import com.lookie.opluskey.ui.wire.linkReady
+import com.lookie.opluskey.ui.write.BindingTarget
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import io.github.suqi8.coui.kmp.basic.COUIScrollBehavior
@@ -192,7 +192,6 @@ private fun SettingsPage.pageScrollBehavior(s: Screen) =
  *  （它的「复杂度」等于页数，加一页就报一次）—— 与 `PageTopBar.pageTitle` 同一个口径显式压掉，
  *  **不是因为改不动**。真出现需要判断的分支时，再拆。
  */
-@Suppress("CyclomaticComplexMethod")
 @Composable
 private fun SettingsPage.PageBody(
     s: Screen,
@@ -258,7 +257,7 @@ private fun SettingsPage.PageBody(
             AboutScreen(scrollBehavior)
         }
 
-        // 「捐赠列表」：名单是手写常量（见 `ui/model/Donors.kt`）
+        // 「捐赠列表」：名单是手写常量（见 `ui/model/target/Donor.kt`）
         Screen.DONATE_LIST -> {
             DonateListScreen(scrollBehavior)
         }

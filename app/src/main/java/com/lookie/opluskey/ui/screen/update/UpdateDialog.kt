@@ -28,20 +28,20 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.update.ReleaseInfo
-import com.lookie.opluskey.ui.DialogBody
-import com.lookie.opluskey.ui.DialogButtonRow
-import com.lookie.opluskey.ui.DialogPositiveStyle
-import com.lookie.opluskey.ui.FrostedDialog
-import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialogSideMargin
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.markdownToAnnotated
-import com.lookie.opluskey.ui.model.SCROLLBAR_WIDTH
+import com.lookie.opluskey.ui.chrome.updateHost
+import com.lookie.opluskey.ui.dialog.DialogBody
+import com.lookie.opluskey.ui.dialog.DialogButtonRow
+import com.lookie.opluskey.ui.dialog.DialogPositiveStyle
+import com.lookie.opluskey.ui.dialog.FrostedDialog
+import com.lookie.opluskey.ui.dialog.dialogSideMargin
+import com.lookie.opluskey.ui.feedback.LocalTick
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.scrollBarTick
+import com.lookie.opluskey.ui.input.markdownToAnnotated
+import com.lookie.opluskey.ui.model.page.SCROLLBAR_WIDTH
 import com.lookie.opluskey.ui.screen.home.openUrl
-import com.lookie.opluskey.ui.scrollBarTick
-import com.lookie.opluskey.ui.state.UpdateState
-import com.lookie.opluskey.ui.updateHost
+import com.lookie.opluskey.ui.state.host.UpdateState
 import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
@@ -49,7 +49,7 @@ import io.github.suqi8.coui.kmp.basic.rememberScrollBarAdapter
 import io.github.suqi8.coui.kmp.interfaces.ExperimentalScrollBarApi
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
-// 「发现新版本」那个窗 —— 启动自检查到有新版才弹（见 `ui/state/UpdateState.kt`）。
+// 「发现新版本」那个窗 —— 启动自检查到有新版才弹（见 `ui/state/host/UpdateState.kt`）。
 //
 //  为什么不放进「运行状态」那张卡：那是**诊断**（现在这一版跑得对不对），这是**招呼一声**
 //  （有新东西了）。诊断看与不看由用户决定，招呼只能主动说一次 —— 说完就不再纠缠。

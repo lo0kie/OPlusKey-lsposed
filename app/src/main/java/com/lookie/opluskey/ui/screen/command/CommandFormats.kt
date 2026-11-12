@@ -26,12 +26,13 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.COMMAND_FORMAT_LINES
-import com.lookie.opluskey.ui.model.CommandFormatLine
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.opticalCenter
-import com.lookie.opluskey.ui.state.CommandUiState
-import com.lookie.opluskey.ui.tinted
+import com.lookie.opluskey.ui.model.icon.icon
+import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.page.opticalCenter
+import com.lookie.opluskey.ui.model.text.COMMAND_FORMAT_LINES
+import com.lookie.opluskey.ui.model.theme.CommandFormatLine
+import com.lookie.opluskey.ui.state.command.CommandUiState
+import com.lookie.opluskey.ui.style.tinted
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -98,8 +99,8 @@ internal fun SettingsPage.CommandFormatsCard(
 /**
  * 「支持的命令格式」卡里的**一行** —— 行首图标 + 左列写法 + 右列说明。
  *
- *  从 [CommandFormatsCard] 拆出来只为把那一支留在 detekt 的长度上限之内；一行里的三块本来就
- *  自成一体（图标是图例记号、左列是要照抄的东西、右列是解释），拆开读也更顺。
+ *  一行里的三块本来就自成一体（图标是图例记号、左列是要照抄的东西、右列是解释），
+ *  拆开读也更顺。
  *
  * @param onFill 这一行被点中：把它的前缀填进输入框（`prefix == null` 的行不可点）
  */

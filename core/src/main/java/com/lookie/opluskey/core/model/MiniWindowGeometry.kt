@@ -43,7 +43,6 @@ object MiniWindowGeometry {
      *   （`1272 × 2261 × 0.8017 = 1020 × 1812`，与真机一致）
      * @param scale 显示缩放
      */
-    @Suppress("LongParameterList")
     class Slot(
         val model: String,
         val label: String,

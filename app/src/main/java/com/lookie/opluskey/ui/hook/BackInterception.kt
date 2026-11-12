@@ -4,8 +4,8 @@ import androidx.annotation.RequiresApi
 import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.hideIme
-import com.lookie.opluskey.ui.isImeVisible
+import com.lookie.opluskey.ui.input.hideIme
+import com.lookie.opluskey.ui.input.isImeVisible
 import io.github.libxposed.api.XposedModule
 
 /**

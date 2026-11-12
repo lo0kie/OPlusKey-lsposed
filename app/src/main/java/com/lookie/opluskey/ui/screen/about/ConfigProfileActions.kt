@@ -11,17 +11,17 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
-import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.NameDialog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.canWriteConfig
-import com.lookie.opluskey.ui.escapeEmphasis
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.resetCurrentProfile
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.VarListSignal
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.dialog.NameDialog
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.state.signal.VarListSignal
+import com.lookie.opluskey.ui.style.escapeEmphasis
+import com.lookie.opluskey.ui.write.canWriteConfig
+import com.lookie.opluskey.ui.write.resetCurrentProfile
+import com.lookie.opluskey.ui.write.write
 import kotlinx.coroutines.launch
 
 // 「配置」那几个**动作**（切换 / 新建 / 重命名 / 重置 / 删除）与命名窗。

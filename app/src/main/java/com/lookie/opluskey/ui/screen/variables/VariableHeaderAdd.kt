@@ -3,9 +3,9 @@ package com.lookie.opluskey.ui.screen.variables
 import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.chrome.HeaderIconButton
+import com.lookie.opluskey.ui.model.icon.PageIcons
 import io.github.suqi8.coui.kmp.basic.Icon
 
 // 「自定义变量」页顶栏右上角那颗「新建」—— 与 `PageTopBar` 的 `PageActions` 那几颗同一位置、同一尺寸。

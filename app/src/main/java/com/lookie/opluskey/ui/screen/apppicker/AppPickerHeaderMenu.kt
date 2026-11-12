@@ -13,15 +13,15 @@ import androidx.compose.ui.Modifier
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.ui.HEADER_ACTION_GAP
-import com.lookie.opluskey.ui.HeaderIconButton
-import com.lookie.opluskey.ui.HeaderMenuButton
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.state.UiState
+import com.lookie.opluskey.ui.chrome.HEADER_ACTION_GAP
+import com.lookie.opluskey.ui.chrome.HeaderIconButton
+import com.lookie.opluskey.ui.chrome.HeaderMenuButton
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.state.page.UiState
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -192,8 +192,7 @@ private fun SettingsPage.pickerMenuEntries(close: () -> Unit): List<MenuEntry> =
 /**
  * 菜单里「列表怎么显示」那两项 —— 系统应用 / 失效应用。
  *
- *  单独一支只为让 [pickerMenuEntries] 留在 detekt 的 `LongMethod` 之内；两项成对出现、
- *  同一套「写盘失败就拨回去」的处理，本来就是一件事。
+ *  单独一支：两项成对出现、同一套「写盘失败就拨回去」的处理，本来就是一件事。
  *
  * @param close 收掉菜单（调用项给的是 `open = false`）
  */

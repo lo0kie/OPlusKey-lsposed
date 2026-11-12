@@ -15,15 +15,15 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
-import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.Screen
-import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.HOST_ALIVE_TIMEOUT_MS
-import com.lookie.opluskey.ui.model.QUERY_ROUNDS
+import com.lookie.opluskey.ui.chrome.PageScrollColumn
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.model.theme.HOST_ALIVE_TIMEOUT_MS
+import com.lookie.opluskey.ui.model.theme.QUERY_ROUNDS
+import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.screen.pageWritable
-import com.lookie.opluskey.ui.state.LINK_SILENT_RETRY_MS
+import com.lookie.opluskey.ui.state.page.LINK_SILENT_RETRY_MS
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import kotlinx.coroutines.delay
 
@@ -94,7 +94,7 @@ internal fun SettingsPage.HomeScreen(scrollBehavior: ScrollBehavior) {
 /**
  * 链路自检 —— 进页问一次（最多 [QUERY_ROUNDS] 轮）。
  *
- *  「链路上每一段在不在」⇒ 缺哪一段就报哪一段（见 `ui/LinkCheck.kt` 的 `linkChecks`）。
+ *  「链路上每一段在不在」⇒ 缺哪一段就报哪一段（见 `ui/wire/LinkCheck.kt` 的 `linkChecks`）。
  *  判据只能是**模块自己报活**：查宿主那支侧键服务不管用 —— 它是宿主自己的常驻服务，
  *  系统会自己把它拉起，服务在跑 ≠ 模块在跑（真机实测：重启后没注入它照样在跑）。
  *  每轮对**两端各记一次代次**、各发一句「在不在」（报活广播是一次性的，我们可能已经错过了），

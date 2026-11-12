@@ -60,7 +60,6 @@ object CommonCommands {
      * @param summaryFallback 同上兜底
      * @param step 这一条命令要跑的动作写法（`Action.parse` 认得的那种）
      */
-    @Suppress("LongParameterList")
     class Entry(
         val id: String,
         val brand: Brand,

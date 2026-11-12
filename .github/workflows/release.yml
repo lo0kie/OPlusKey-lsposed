@@ -58,7 +58,7 @@ jobs:
           fetch-tags: true
       - name: 抓版本号
         id: dist
-        run: bash tools/read-version.sh
+        run: python3 tools/read-version.py
 
       - name: 校验 tag 与版本号一致
         env:
@@ -145,9 +145,9 @@ jobs:
           fi
 
       # 发出去的那两个包要在**本条 run 里**解一遍：它们是从别的 run 取来的，中间没经过这里的手。
-      #   判据与 `ci.yml` 同一份（`tools/verify-apk.sh`），不是两套。
+      #   判据与 `ci.yml` 同一份（`tools/verify-apk.py`），不是两套。
       - name: 校验验收底线（AGENTS.md 二、1.2）
-        run: bash tools/verify-apk.sh dist
+        run: python3 tools/verify-apk.py dist
 
       # 这一版的更新说明 —— **手写维护的那一份**：`docs/release-notes/<versionName>.md`。
       #   管理器弹「有新版本」时显示的正文就是它（模块仓库那条 release 的 body，由 `publish.yml` 发），

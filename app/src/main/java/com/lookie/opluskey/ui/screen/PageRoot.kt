@@ -20,10 +20,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.loadPageState
-import com.lookie.opluskey.ui.pageBackgroundColor
-import com.lookie.opluskey.ui.state.installI18nBridge
-import com.lookie.opluskey.ui.systemNight
+import com.lookie.opluskey.ui.chrome.loadPageState
+import com.lookie.opluskey.ui.state.host.installI18nBridge
+import com.lookie.opluskey.ui.style.pageBackgroundColor
+import com.lookie.opluskey.ui.style.systemNight
 import kotlinx.coroutines.delay
 
 // 建页 → 首帧，以及把页面 View 交出去。
@@ -102,10 +102,10 @@ private fun SettingsPage.PageSplash() {
  */
 internal fun SettingsPage.createView(): View? {
     // 先把字典订阅装上：配置里的语言档不在这一步读（现在是异步的），
-    //  读回来之后由 `applyPageLoad` 换 `I18n.currentLanguage`（见 `ui/PageLoad.kt`）。
+    //  读回来之后由 `applyPageLoad` 换 `I18n.currentLanguage`（见 `ui/chrome/PageLoad.kt`）。
     //  订阅必须早于那次换档 —— 晚装的话，换档发生在界面层那份状态接上之前，
     //  首帧就会停在上一个语言的文案上。字典本体在 core（普通 Map），订阅这一半必须在界面层
-    //  —— 见 `ui/state/I18nBridge.kt`。
+    //  —— 见 `ui/state/host/I18nBridge.kt`。
     installI18nBridge()
     // 深浅是 binder 读一次系统全局配置（不是读盘），首帧底色与 [PageSplash] 都要它，留在同步路径上。
     chrome.dark = systemNight()

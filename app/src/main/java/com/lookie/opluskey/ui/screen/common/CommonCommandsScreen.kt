@@ -27,37 +27,37 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.withoutAction
 import com.lookie.opluskey.core.present.CommonCommands
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.Feedback
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.NameDialog
-import com.lookie.opluskey.ui.PageCornerFab
-import com.lookie.opluskey.ui.PageFabButton
-import com.lookie.opluskey.ui.PageMenu
-import com.lookie.opluskey.ui.PageScrollColumn
-import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.VisibleAreaCentered
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.TAB_PAGE_SWITCH_MS
-import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
-import com.lookie.opluskey.ui.model.commonCommandIcon
-import com.lookie.opluskey.ui.openAppPickerForCommonCommand
+import com.lookie.opluskey.ui.chrome.PageCornerFab
+import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageScrollColumn
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.NameDialog
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.feedback.Feedback
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.icon.commonCommandIcon
+import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
+import com.lookie.opluskey.ui.model.theme.TAB_PAGE_SWITCH_MS
+import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.screen.command.StepPickerPage
 import com.lookie.opluskey.ui.screen.command.StepPickerSheet
 import com.lookie.opluskey.ui.screen.command.StepSheetFilter
 import com.lookie.opluskey.ui.screen.command.StepSheetSpec
 import com.lookie.opluskey.ui.screen.pageWritable
-import com.lookie.opluskey.ui.setCommonCommands
-import com.lookie.opluskey.ui.tickNow
-import com.lookie.opluskey.ui.titleWithCount
-import com.lookie.opluskey.ui.visibleAreaHeight
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.style.VisibleAreaCentered
+import com.lookie.opluskey.ui.style.visibleAreaHeight
+import com.lookie.opluskey.ui.write.openAppPickerForCommonCommand
+import com.lookie.opluskey.ui.write.setCommonCommands
+import com.lookie.opluskey.ui.write.write
 import io.github.suqi8.coui.kmp.anim.AccelerateEasing
 import io.github.suqi8.coui.kmp.anim.DecelerateEasing
 import io.github.suqi8.coui.kmp.basic.Icon
@@ -546,7 +546,6 @@ private fun commonCommandRow(
  *  `showInBinding` 那一行的对勾照当前这一条画；关着的时候画不到（行表为空）所以不影响退场。
  */
 @Composable
-@Suppress("LongParameterList")
 private fun SettingsPage.rowMenu(
     cmd: CommonCommand?,
     list: List<CommonCommand>,

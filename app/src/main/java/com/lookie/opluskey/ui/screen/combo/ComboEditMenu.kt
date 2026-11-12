@@ -12,18 +12,18 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.present.comboLabel
-import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.HeaderMenuButton
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.BRANCHES_TITLE
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.chrome.HeaderMenuButton
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
 import com.lookie.opluskey.ui.screen.binding.openKeySettings
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
-import com.lookie.opluskey.ui.state.ComboEditState
-import com.lookie.opluskey.ui.state.SettingsTarget
+import com.lookie.opluskey.ui.state.binding.ComboEditState
+import com.lookie.opluskey.ui.state.page.SettingsTarget
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
@@ -104,8 +104,7 @@ internal fun SettingsPage.ComboEditMenu() {
 /**
  * 这一页两个确认窗的开合位 —— 与按键菜单那份 enum 同一个意思（同一时刻只有一个窗）。
  *
- *  单独一个对象：`ComboEditMenu` 已经把菜单本身、两处动作说明都扛着了，再挂两个
- *  `remember { mutableStateOf(false) }` 就过 detekt 的长度上限。
+ *  单独一个对象：`ComboEditMenu` 已经把菜单本身、两处动作说明都扛着了。
  */
 private class ComboMenuDialogs {
     var delete by mutableStateOf(false)
@@ -156,8 +155,7 @@ private fun SettingsPage.ComboMenuDialogHost(
 }
 
 /**
- * 删掉这一档之前的确认窗 —— 抽成一支只为让 [ComboEditMenu] 留在 detekt 的长度上限内
- * （它与停用那道窗并排挂，两支都留在母函数里就超了）。
+ * 删掉这一档之前的确认窗 —— 抽成一支（它与停用那道窗并排挂）。
  */
 @Composable
 private fun SettingsPage.ComboDeleteDialog(
@@ -180,7 +178,6 @@ private fun SettingsPage.ComboDeleteDialog(
  * 停用只是让它不成立，两档动作都还在；而它下面那一行就是「删除组合按键」，
  * 两者只差两个字，不确认很容易点错。
  *
- *  抽成一支只为让 [ComboEditMenu] 留在 detekt 的长度上限内。
  */
 @Composable
 private fun SettingsPage.ComboDisableDialog(
@@ -198,8 +195,7 @@ private fun SettingsPage.ComboDisableDialog(
 }
 
 /**
- * 这一页 ⋮ 上那四行要干的事 —— 合成一个对象，条目那支才留在 detekt 的参数上限内
- * （与 `BindingKeyMenu` 的 `KeyMenuActions` 同一个写法）。
+ * 这一页 ⋮ 上那四行要干的事 —— 合成一个对象（与 `BindingKeyMenu` 的 `KeyMenuActions` 同一个写法）。
  *
  * @param onOpenSettings 「独立设置」那一行（进另一页；与顶栏那颗设置键同一个落点）
  * @param onOpenBranches 「条件执行」那一行（进另一页）
@@ -214,7 +210,7 @@ private class ComboMenuActions(
 )
 
 /**
- * 这一页 ⋮ 的条目 —— 全抽出来只为让 [ComboEditMenu] 留在 detekt 的长度上限内。
+ * 这一页 ⋮ 的条目。
  *
  *  四行的分工与「按键绑定」页那份菜单一致：最上面两行是**进下一页**（独立设置 / 条件执行），
  *  一条加深带隔开，下面两行才是对这一档动手（停用 / 启用、删除），删除压最下面。

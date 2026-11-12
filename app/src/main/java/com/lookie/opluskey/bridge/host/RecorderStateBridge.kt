@@ -67,8 +67,8 @@ internal object RecorderStateBridge {
     /**
      * 一次调用的**不变部分**：服务、事务号、日志主语。
      *
-     *  收成一个对象是为了让 [withService] / [transact] 的参数留在 detekt 的上限内 ——
-     *  四个实参传三处同样的东西时，改一处漏一处只会让日志主语串到别的事务上。
+     *  这四样要原样穿过 [withService] / [transact] 两层；摊成行参时四个实参传三处同样的东西，
+     *  改一处漏一处就会让日志主语串到别的事务上。
      */
     private class Call(
         val owner: String,

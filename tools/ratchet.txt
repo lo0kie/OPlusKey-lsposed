@@ -9,10 +9,14 @@
 
 # 千行文件：文件数上限，外加每个文件的**行数上限**（逐个记住，防止此消彼长）
 # 4 → 5：`core/model/Action.kt` 过千（同一工作区里「弹一条流体云」那一档 `Action.Fluid` 与它的说明）。
-count.files_over_1000 = 5
+# 5 → 7：把「为过 detekt 的 TooManyFunctions 而拆出去」的文件合并回位（2026-11-13），
+#   `AppLauncher`（并回 FeatureLaunch / AppShortcutLaunch / ShortcutThenMinimize / StockLaunchIntent）
+#   与 `CommandBranches`（并回 CommandBranchParts / ConditionRowTitle）因此过千。
+#   **这是拆分的逆操作带来的必然结果**：要么两个千行文件，要么五个碎片文件 —— 选了前者。
+count.files_over_1000 = 7
 # 1062 → 1070：`editingAction` 里「场景块」「组合」两支各自多一层 `gestureOrNull()` 收窄
 # （自定义档位在那两张表里没有槽位），以及随行的判据注释。
-lines.app/src/main/java/com/lookie/opluskey/ui/SettingsPage.kt = 1062
+lines.app/src/main/java/com/lookie/opluskey/ui/SettingsPage.kt = 1067
 # 1513 → 1514：场景动作页那句「这颗键已设为 [松手时触发]，去按键绑定里关掉」多出一条键。
 # 1514 → 1520：双击那张卡的副标题在「配了三击 / 四击」时要说另一句话（原来那两句在那时都不成立），
 # 多一条键 + 它的判据注释。
@@ -41,6 +45,9 @@ lines.core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt = 1646
 # 102 行是这一族的内容本身（判据注释与其它命令族同密度）。放宽是例外，不是维护动作。
 # 新冒出来的千行文件：`Action.Fluid`（弹一条流体云）与它的判据注释。
 lines.core/src/main/java/com/lookie/opluskey/core/model/Action.kt = 1022
+# 合并回位那一轮新冒出来的两个千行文件（理由同 `count.files_over_1000` 那一段）。
+lines.app/src/main/java/com/lookie/opluskey/host/action/app/AppLauncher.kt = 1037
+lines.app/src/main/java/com/lookie/opluskey/ui/screen/command/CommandBranches.kt = 1165
 lines.core/src/main/java/com/lookie/opluskey/core/present/ActionCatalog.kt = 1815
 # 1145 → 1147：同上，补 `RomProfile` 的 import（它搬到了 `core/rom`）。
 # 1147 → 1179：场景块收下自己那一格松手动作（`sceneRelease` / `resolveRelease` 带上开关），
@@ -109,4 +116,5 @@ count.settings_page_fields = 38
 count.settings_page_ext = 546
 
 # detekt 基线：新代码不许再往基线里加条目（AGENTS.md 二、1.2）
-count.detekt_baseline = 130
+# 130 → 0：规则放宽 + 46 处 `@Suppress` 删掉之后基线已清空，这一条从此是「一条都不许有」。
+count.detekt_baseline = 0

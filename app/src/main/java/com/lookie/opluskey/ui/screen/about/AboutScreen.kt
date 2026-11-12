@@ -15,18 +15,18 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.seal.SEAL_ENABLED
 import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.core.seal.Verdict
-import com.lookie.opluskey.ui.HINT_SLOT_PAGE
-import com.lookie.opluskey.ui.PageScrollColumn
-import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appVersionBadge
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.AppTheme
-import com.lookie.opluskey.ui.model.PagePalette
-import com.lookie.opluskey.ui.retireHint
-import com.lookie.opluskey.ui.state.UpdateState
-import com.lookie.opluskey.ui.updateHost
+import com.lookie.opluskey.ui.chrome.PageScrollColumn
+import com.lookie.opluskey.ui.chrome.appVersionBadge
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.chrome.updateHost
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_PAGE
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.retireHint
+import com.lookie.opluskey.ui.model.theme.AppTheme
+import com.lookie.opluskey.ui.model.theme.PagePalette
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.state.host.UpdateState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
 /** 「正在检查更新…」那条提示的兜底时长 —— 检查最多 10 秒（见 `UpdateState`），再加 1 秒余量。 */
@@ -153,8 +153,7 @@ internal fun SettingsPage.AboutScreen(scrollBehavior: ScrollBehavior) {
 /**
  * 「关于」卡里「签名」那一行要显示的四样 —— 标题 / 一句结论 / 指纹 / 是不是官方。
  *
- *  打成一个类只是为了让 `MachineCard` / `SignatureRow` 的入参不至于摊成五六个
- *  （detekt 的 `LongParameterList`），顺带把「这四样是同一行的事」写明。
+ *  打成一个类，顺带把「这四样是同一行的事」写明。
  *
  * @param title 平时是「签名」，不符时改口成结论（见 [signatureTitle]）
  * @param note 收起时那一行（官方版是空串）

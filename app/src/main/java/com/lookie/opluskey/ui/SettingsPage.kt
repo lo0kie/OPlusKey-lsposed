@@ -18,18 +18,26 @@ import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.SceneRule
-import com.lookie.opluskey.ui.model.PAGE_TRANSITION_MS
-import com.lookie.opluskey.ui.state.AppPickerState
-import com.lookie.opluskey.ui.state.AppPickerUiState
-import com.lookie.opluskey.ui.state.BandHeight
-import com.lookie.opluskey.ui.state.BranchDraftState
-import com.lookie.opluskey.ui.state.CommandDraftState
-import com.lookie.opluskey.ui.state.CommandListEditState
-import com.lookie.opluskey.ui.state.ConfigState
-import com.lookie.opluskey.ui.state.HintCenter
-import com.lookie.opluskey.ui.state.HostLinkState
-import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.state.KeysEditState
+import com.lookie.opluskey.ui.chrome.PageChrome
+import com.lookie.opluskey.ui.chrome.PageHooks
+import com.lookie.opluskey.ui.chrome.PageOverlays
+import com.lookie.opluskey.ui.chrome.PageViewTree
+import com.lookie.opluskey.ui.chrome.actionOf
+import com.lookie.opluskey.ui.feedback.PageHaptics
+import com.lookie.opluskey.ui.input.hideIme
+import com.lookie.opluskey.ui.model.theme.PAGE_TRANSITION_MS
+import com.lookie.opluskey.ui.state.binding.BranchDraftState
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.binding.KeysEditState
+import com.lookie.opluskey.ui.state.command.CommandDraftState
+import com.lookie.opluskey.ui.state.command.CommandListEditState
+import com.lookie.opluskey.ui.state.page.ConfigState
+import com.lookie.opluskey.ui.state.page.HostLinkState
+import com.lookie.opluskey.ui.state.picker.AppPickerState
+import com.lookie.opluskey.ui.state.picker.AppPickerUiState
+import com.lookie.opluskey.ui.state.signal.BandHeight
+import com.lookie.opluskey.ui.state.signal.HintCenter
+import com.lookie.opluskey.ui.wire.clearAppLabelCache
 import io.github.suqi8.coui.kmp.nav.core.NavBackStack
 import io.github.suqi8.coui.kmp.nav.core.navBackStackOf
 
@@ -575,8 +583,7 @@ internal class SettingsPage(
         //  判据见 [hasUnsavedDraft] —— 「在编辑」而不是「改过」（用户口径：有编辑就拦）。
         //  「选择应用」页那一趟已经挑过、还没按右下角那颗提交 ⇒ 同一套账：这一退会把草稿连同
         //  这一趟挑的整个丢掉。判据见 [hasUnconfirmedPick]（进页看一眼就回来的那一趟拦不住）。
-        //  两支并成一处判：`goBack` 的 `return` 额度已经被上面那两个编辑态占去两条，再各写一支
-        //  就过 detekt 的 `ReturnCount`；而这两张窗本来就只差「哪一张」。
+        //  两支并成一处判：这两张窗本来就只差「哪一张」。
         return when {
             hasUnsavedDraft(current) -> blockForDraftConfirm(current)
             hasUnconfirmedPick(current) -> blockForPickConfirm()
@@ -587,8 +594,7 @@ internal class SettingsPage(
     /**
      * 「命令表单页草稿改过」那一支：把「放弃未保存的命令」支起来并**拦住这一退**。
      *
-     *  抽成一支只为让 [goBack] 里每张窗各占一行 —— 那里每多一个 `return` 就离 detekt 的
-     *  `ReturnCount` 上限近一步，而两支的骨架本来就一模一样（判据不同而已）。
+     *  抽成一支：两支的骨架本来就一模一样（判据不同而已）。
      */
     private fun blockForDraftConfirm(s: Screen): Boolean {
         if (!overlays.confirmLeaveCommands) {
@@ -623,8 +629,7 @@ internal class SettingsPage(
     /**
      * 「按键功能」页的编辑态里按返回：一项都没勾就直接退出，勾了就先把那一问支起来。
      *
-     *  两条路都**返回 true**（这次返回已被消费，人留在这一页）—— 从 [goBack] 里抠出来，
-     *  只为把那个函数的 return 条数留在 detekt 的上限内。
+     *  两条路都**返回 true**（这次返回已被消费，人留在这一页）—— 从 [goBack] 里抠出来。
      */
     private fun consumeKeysEditBack(): Boolean {
         if (KeysEditState.count == 0) {
@@ -985,7 +990,7 @@ internal class SettingsPage(
     // 那条路已删：**回调只能当信号，值一律自己重新读系统全局配置**。
 
     // FallbackOwners（宿主不提供 ViewTree owner 时的兜底三件套）与 CommandDraft
-    // （「自定义命令」页的表单草稿）已搬到 `ui/state/PageState.kt` —— 两者都不引用本类的任何东西。
+    // （「自定义命令」页的表单草稿）已搬到 `ui/state/page/PageState.kt` —— 两者都不引用本类的任何东西。
 }
 
 /**

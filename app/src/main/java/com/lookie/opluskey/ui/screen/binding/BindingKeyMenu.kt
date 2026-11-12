@@ -13,27 +13,27 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.withKeyName
 import com.lookie.opluskey.core.model.withoutKey
-import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.DisabledHint
-import com.lookie.opluskey.ui.HINT_SLOT_BINDING
-import com.lookie.opluskey.ui.HeaderIconButton
-import com.lookie.opluskey.ui.HeaderMenuButton
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.NameDialog
-import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.BRANCHES_TITLE
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.chrome.HeaderIconButton
+import com.lookie.opluskey.ui.chrome.HeaderMenuButton
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.NameDialog
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.feedback.DisabledHint
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
 import com.lookie.opluskey.ui.screen.combo.KeysAskDialog
 import com.lookie.opluskey.ui.screen.combo.keyRowIcon
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.state.SettingsTarget
-import com.lookie.opluskey.ui.state.SettingsTargetState
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.state.page.SettingsTarget
+import com.lookie.opluskey.ui.state.page.SettingsTargetState
+import com.lookie.opluskey.ui.write.write
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
@@ -206,8 +206,7 @@ private enum class KeyMenuDialog {
 }
 
 /**
- * 菜单各项的回调 —— 打成一个包只为让 `keyMenuEntries` 的参数个数留在 detekt 的
- * `LongParameterList` 之下（那几条本来就同属「菜单点了什么」）。
+ * 菜单各项的回调 —— 打成一个包（那几条本来就同属「菜单点了什么」）。
  */
 private class KeyMenuActions(
     /** 「独立设置」那一行（进另一页；与顶栏那颗设置键同一个落点）。 */
@@ -346,8 +345,7 @@ private fun keyActionEntries(
 /**
  * 两个弹窗的落点。
  *
- *  分开一支的原因有二：`BindingKeyMenu` 那支会顶到 detekt 的 `LongMethod`；以及这几个弹窗
- *  各有各的开合条件，混在菜单主体里读不出「点哪一项会弹什么」。
+ *  分开一支：这几个弹窗各有各的开合条件，混在菜单主体里读不出「点哪一项会弹什么」。
  */
 @Composable
 private fun SettingsPage.KeyMenuDialogHost(

@@ -11,22 +11,22 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.keyName
-import com.lookie.opluskey.ui.PageHeader
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.model.ABOUT_TITLE
-import com.lookie.opluskey.ui.model.ACTIVITY_PICKER_TITLE
-import com.lookie.opluskey.ui.model.BINDING_TITLE
-import com.lookie.opluskey.ui.model.BRANCHES_TITLE
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.COMBO_TITLE
-import com.lookie.opluskey.ui.model.COMMANDS_TITLE
-import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
-import com.lookie.opluskey.ui.model.GENERAL_TITLE
-import com.lookie.opluskey.ui.model.HEADER_ICON_GAP
-import com.lookie.opluskey.ui.model.KEYS_TITLE
-import com.lookie.opluskey.ui.model.SUBTITLE_DIM_FACTOR
+import com.lookie.opluskey.ui.chrome.PageHeader
+import com.lookie.opluskey.ui.model.page.HEADER_ICON_GAP
+import com.lookie.opluskey.ui.model.text.ABOUT_TITLE
+import com.lookie.opluskey.ui.model.text.ACTIVITY_PICKER_TITLE
+import com.lookie.opluskey.ui.model.text.BINDING_TITLE
+import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
+import com.lookie.opluskey.ui.model.text.COMBO_TITLE
+import com.lookie.opluskey.ui.model.text.COMMANDS_TITLE
+import com.lookie.opluskey.ui.model.text.DONATE_LIST_TITLE
+import com.lookie.opluskey.ui.model.text.GENERAL_TITLE
+import com.lookie.opluskey.ui.model.text.KEYS_TITLE
+import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.theme.SUBTITLE_DIM_FACTOR
+import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
@@ -44,11 +44,11 @@ import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.command.branchOwnerLabel
 import com.lookie.opluskey.ui.screen.home.HomeHeaderMenu
 import com.lookie.opluskey.ui.screen.variables.VariableHeaderAdd
-import com.lookie.opluskey.ui.state.ComboEditState
-import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.state.SettingsTarget
-import com.lookie.opluskey.ui.state.SettingsTargetState
-import com.lookie.opluskey.ui.titleWithCount
+import com.lookie.opluskey.ui.state.binding.ComboEditState
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.page.SettingsTarget
+import com.lookie.opluskey.ui.state.page.SettingsTargetState
+import com.lookie.opluskey.ui.wire.appNameOf
 import dev.chrisbanes.haze.HazeState
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -122,7 +122,6 @@ internal fun SettingsPage.PageTopBar(
  *  （它的「复杂度」等于页数），拆成几张表反而要多维护几处；所以这里显式压掉，
  *  **不是因为改不动**。真出现需要判断的分支时，再拆。
  */
-@Suppress("CyclomaticComplexMethod")
 private fun SettingsPage.pageTitle(s: Screen): String =
     when (s) {
         // 首页标题 = **模块自己的名字**（`OPlusKey`，与 `app_name` 同一串）。
@@ -226,7 +225,6 @@ private fun SettingsPage.pageTitle(s: Screen): String =
  * `CyclomaticComplexMethod` 与 [pageTitle] 同一个口径显式压掉：这是一个「一页一行」的映射表，
  * 复杂度等于页数，没有可拆的分支。
  */
-@Suppress("CyclomaticComplexMethod")
 private fun SettingsPage.pageSubtitle(s: Screen): String =
     when (s) {
         // 首页这一行**不写版本号**（用户口径）：一句模块是干什么的，短，且不随构建变。

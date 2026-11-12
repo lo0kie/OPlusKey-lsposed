@@ -9,16 +9,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.DisabledHint
-import com.lookie.opluskey.ui.HEADER_ACTION_GAP
-import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.disabledClickReason
-import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.chrome.HEADER_ACTION_GAP
+import com.lookie.opluskey.ui.chrome.HeaderIconButton
+import com.lookie.opluskey.ui.feedback.DisabledHint
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
+import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.screen.pageWritable
-import com.lookie.opluskey.ui.state.KeysEditState
+import com.lookie.opluskey.ui.state.binding.KeysEditState
+import com.lookie.opluskey.ui.wire.disabledClickReason
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.theme.COUITheme
 

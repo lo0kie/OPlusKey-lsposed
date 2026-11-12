@@ -9,14 +9,14 @@ import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.model.TimeRange
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.state.AppPickerState
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.state.picker.AppPickerState
 
 // 「条件执行」页与「选择应用」页之间的往返 —— 进去挑应用、挑完写回哪一处。
 //
 // 从 `CommandBranches.kt` 搬出来：那一边管的是**表怎么画**（行、空态、注脚、按钮），
 // 这一边是**两个页面之间的接口**（进页前的复位、写回哪条规则的哪一半）。两件事各有一个
-// 稳定的改动理由，而且搬走之后两边都离 detekt 的函数 / 长度上限更远。
+// 稳定的改动理由。
 
 /**
  * 进「选择应用」页给第 [index] 块挑**条件应用**（[AppPickerState.NEW_BRANCH] = 新加一块）。
@@ -82,8 +82,7 @@ internal fun SettingsPage.branchTimeOverlaps(
     exceptCond: Int,
 ): Boolean {
     val mine = TimeRange.parse(range) ?: return false
-    //  改成「先滤出别的那些时间区间、再看有没有重叠」：循环里两个 `continue` + 一个
-    //  `return` 会顶到 detekt 的 `LoopWithTooManyJumpStatements`
+    //  改成「先滤出别的那些时间区间、再看有没有重叠」。
     val others =
         branchDraftNow().scenes.withIndex().flatMap { (at, rule) ->
             //  **只与同一块里的其它时间条件比**：块与块之间是「哪个应用在前台」这类互斥的替代关系，

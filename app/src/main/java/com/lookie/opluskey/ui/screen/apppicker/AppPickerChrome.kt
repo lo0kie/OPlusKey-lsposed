@@ -9,16 +9,16 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.ui.PageFabButton
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.LaunchableApp
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.state.AppPickerUiState
-import com.lookie.opluskey.ui.state.PickedDetail
-import com.lookie.opluskey.ui.state.PickerToggle
-import com.lookie.opluskey.ui.state.ToggleBlock
+import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.target.LaunchableApp
+import com.lookie.opluskey.ui.state.picker.AppPickerUiState
+import com.lookie.opluskey.ui.state.picker.PickedDetail
+import com.lookie.opluskey.ui.state.picker.PickerToggle
+import com.lookie.opluskey.ui.state.picker.ToggleBlock
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.theme.COUITheme
 

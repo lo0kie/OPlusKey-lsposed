@@ -135,7 +135,6 @@ internal object ServiceCalls {
      *
      * @return 命中且调用成功 = [Called]（里带着返回值，void 方法里是 null）；没命中 / 抛异常 = null
      */
-    @Suppress("SpreadOperator")
     fun call(
         target: Any,
         name: String,

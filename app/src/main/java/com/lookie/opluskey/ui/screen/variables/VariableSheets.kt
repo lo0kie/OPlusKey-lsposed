@@ -16,21 +16,21 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.VarType
 import com.lookie.opluskey.core.model.VariableName
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.IconInputView
-import com.lookie.opluskey.ui.InputSpec
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.PageMenu
-import com.lookie.opluskey.ui.PageSheet
-import com.lookie.opluskey.ui.RowEndIcon
-import com.lookie.opluskey.ui.SHEET_TITLE_MARGIN
-import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SheetAction
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberMenuState
-import com.lookie.opluskey.ui.sheetCardColors
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.dialog.PageSheet
+import com.lookie.opluskey.ui.dialog.SHEET_TITLE_MARGIN
+import com.lookie.opluskey.ui.dialog.SheetAction
+import com.lookie.opluskey.ui.dialog.rememberMenuState
+import com.lookie.opluskey.ui.dialog.sheetCardColors
+import com.lookie.opluskey.ui.input.IconInputView
+import com.lookie.opluskey.ui.input.InputSpec
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.RowEndIcon
+import com.lookie.opluskey.ui.row.SectionTitle
 import io.github.lyxnx.compose.ui.tablericons.TablerIcons
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ToggleRight
@@ -41,8 +41,7 @@ private const val VAR_VALUE_MAX = 64
 
 // 「新建变量」那个抽屉与它的表单 —— 页面骨架在 `VariableScreen.kt`。
 //
-// 拆成两个文件只为让两边各自留在 detekt 的「单文件函数数」上限内（11）：那一页里
-//   **布局**与**浮层**本来也是两件事，各自的开关状态互不共享。
+// 拆成两个文件：那一页里**布局**与**浮层**本来也是两件事，各自的开关状态互不共享。
 
 /**
  * 新建变量的草稿 —— **提在 [CreateSheet] 这一层**，因为右上角那颗提交键与下面的表单是同一份数据

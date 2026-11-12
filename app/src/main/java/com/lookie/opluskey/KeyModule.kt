@@ -11,8 +11,8 @@ import com.lookie.opluskey.core.seal.Seal
 import com.lookie.opluskey.core.seal.Verdict
 import com.lookie.opluskey.host.GestureReceiver
 import com.lookie.opluskey.host.SideKeyGestureHooks
-import com.lookie.opluskey.inject.KeyHooks
-import com.lookie.opluskey.inject.ProbeChannel
+import com.lookie.opluskey.inject.key.KeyHooks
+import com.lookie.opluskey.inject.wire.ProbeChannel
 import com.lookie.opluskey.ui.hook.SettingsPageHooks
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface

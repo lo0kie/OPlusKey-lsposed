@@ -12,22 +12,21 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.SceneRule
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.PageMenu
-import com.lookie.opluskey.ui.PickerOption
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SinglePickerDialog
-import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.model.conditionKindLabel
-import com.lookie.opluskey.ui.model.conditionMenuSummary
-import com.lookie.opluskey.ui.state.AppPickerState
-import com.lookie.opluskey.ui.state.BranchDraft
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.dialog.PickerOption
+import com.lookie.opluskey.ui.dialog.SinglePickerDialog
+import com.lookie.opluskey.ui.model.text.conditionKindLabel
+import com.lookie.opluskey.ui.model.text.conditionMenuSummary
+import com.lookie.opluskey.ui.state.binding.BranchDraft
+import com.lookie.opluskey.ui.state.picker.AppPickerState
+import com.lookie.opluskey.ui.wire.appNameOf
 
 // 条件那两张菜单 —— 一级选「种类」、二级选「那一档取值」，外加它们选完之后往哪儿落。
 //
 //  从 `CommandBranchMenus` 里分出来：那一张文件装的是「一块规则那行」的菜单（换条件 / 换命令 /
-//  删除），而这两层是**点进来之后**的事，各自要维护「二级开着哪一档」「哪几档该灰掉」——
-//  混在一起时那一个 composable 顶破 detekt 的长度与圈复杂度两条线。
+//  删除），而这两层是**点进来之后**的事，各自要维护「二级开着哪一档」「哪几档该灰掉」。
 
 /**
  * 条件菜单 —— 一张菜单里三组：**这一块已有的条件** / **种类** / 「再加一条」与「删除」。
@@ -189,8 +188,7 @@ internal fun SettingsPage.BranchConditionMenu(
  * 一级里选中那一行的**子标题** —— 这一条现在的取值（`打开` / `22:00-07:00` /
  * `已选择 3 个应用`）；还没选就是 `null`（那一行不出小字）。
  *
- *  抽成一支只为让 [BranchConditionMenu] 收在 detekt 的 `LongMethod` 长度线内 —— 那一格是
- *  三层嵌套的 `let`，写在里面会把整段的节奏打断。
+ *  抽成一支：那一格是三层嵌套的 `let`，写在里面会把整段的节奏打断。
  */
 private fun SettingsPage.conditionSummaryOf(editing: BranchCondition?): String? =
     editing?.let { condition -> condition.kind?.let { kind -> conditionMenuSummary(kind, condition) { appNameOf(it) } } }
@@ -220,8 +218,8 @@ private fun SettingsPage.BranchValuePicker(
 }
 
 /**
- * 二级那一层要的那几样 —— 打成一个对象是因为 detekt 的参数上限只有 5 个，
- * 而这几样本就是「这一层要说的一件事」（口径与 `StepSheetCtx` 那一套相同）。
+ * 二级那一层要的那几样 —— 打成一个对象：这几样本就是「这一层要说的一件事」
+ * （口径与 `StepSheetCtx` 那一套相同）。
  *
  * @param kind 一级里刚点的那一档
  * @param currentValue 这一条**现在**的取值（老配置里可能没有 ⇒ 空串，二级按默认档高亮）
@@ -300,8 +298,7 @@ private fun SettingsPage.commitCondition(
 }
 
 /**
- * [commitCondition] 那一件事要的五样 —— 打成一个对象只为让参数个数留在 detekt 之下
- * （口径与 `StepSheetCtx` 那一套相同）。
+ * [commitCondition] 那一件事要的五样 —— 打成一个对象（口径与 `StepSheetCtx` 那一套相同）。
  *
  * @param at 落在**哪一块**（`AppPickerState.NEW_BRANCH` = 新加一行）；点种类那一刻的快照
  * @param slot 落在那一块里的**第几条条件**（`-1` = 再添一条）；同上

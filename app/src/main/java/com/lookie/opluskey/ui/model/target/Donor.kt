@@ -1,0 +1,135 @@
+package com.lookie.opluskey.ui.model.target
+
+import android.content.Context
+import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.seal.Seal
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+
+/**
+ * 匿名那一档在表格里显示成什么 —— 数据里**不写这个串**（`name` 写 `null` 或省略），
+ * 显示时才替换成它。
+ *
+ *  为什么不把「匿名」两个字写进数据：那是**呈现**，跟着界面语言该不该变是另一回事，
+ *  而写进 JSON 就等于把它固化成了一个人的名字 —— 与 `amount` 存**分**同一条理由
+ *  （数据只描述事实，怎么画由界面定）。三个星号也不含任何语言信息。
+ */
+internal const val DONOR_ANONYMOUS = "***"
+
+/**
+ * 「捐赠列表」的那个**人**：一个名字 + 一笔金额（+ 一笔到账时间）。
+ *
+ *  [amountCents] 收的是**分**：金额是数才排得了序、加得了总，写成「¥30」那种显示串就等于把一次
+ *  格式化固化进了数据里；而用**分**做整数存，浮点那点误差也进不来（文件里写的仍是**元**，
+ *  可以带两位小数，换算在 [readDonors] 里做）。
+ *
+ *  [at] 是**只记录、不上屏**的那一位：给维护者看「这笔是什么时候到的」。页面不显示它，
+ *  也**不**拿它排序 —— 顺序仍以文件里数组的先后为准。
+ */
+internal data class Donor(
+    /** 上屏用的名字 —— **一定非空**：匿名在 [readDonors] 那一层就已经换成了 [DONOR_ANONYMOUS]。 */
+    val name: String,
+    /** 金额，单位**分**（`520` = ¥5.20）。 */
+    val amountCents: Long,
+    /** 到账时间 —— 文件里那串原样保留（`2026-10-17 19:36`），只记录、不上屏。 */
+    val at: String = "",
+) {
+    /**
+     * 界面上显示的那一格 —— `¥` 是人民币记号（中英两档都一样），**始终两位小数**（显示到分）。
+     */
+    val amountText: String
+        get() {
+            val cents = amountCents.coerceAtLeast(0L)
+            return "¥${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
+        }
+}
+
+/**
+ * 「捐赠列表」页的**原始数据** —— 源文件是 `core/seal/donors.json`，
+ * 一行一个名字 + 一笔金额（+ 一笔到账时间），**顺序即显示顺序**。
+ *
+ *  数据与呈现分家：这里只负责「有哪些人给了多少」，**排成什么样**（两列、格子居中、分隔线、
+ *  表头那些）在页面里，见 `ui/screen/DonateListScreen`。
+ *
+ *  要加人就往那份文件里加行 —— 一行一个 `{ "name": …, "amount": …, "at": … }`，顺序即显示顺序。
+ *  `amount` 写**元**（可带两位小数，如 `5.20`），`at` 只作记录、不上屏；
+ *  匿名的行 `name` 写 `null`（省略也行），表格里显示成 [DONOR_ANONYMOUS]。
+ *  写成什么样由旁边那份 `donors.schema.json` 定（编辑器照它给提示与报错），加行前先看它。
+ *  空数组 `[]` 是合法状态 —— 页面走「还没有捐赠记录」那一档。
+ *
+ *  读法走 `core/seal` 的 [Seal]：**release 包里这份文件是封着的**（构建期由 `:core` 的封存任务
+ *  打进 `assets/sealed.bin`，明文不落地），debug 才直接读明文。不管哪一侧，都**不能用
+ *  `context.assets`** —— 那是**宿主** APK 的资源，本模块的资源要按包名问 `PackageManager` 要
+ *  （[SealAssets] 两条路都试）。
+ *
+ *  读不到 / 解析不了时同样返回**空表**（如资源缺失、JSON 写坏）：页面据此走空态那一档；
+ *  同时留一句 `w` 当判据 —— 空态本身也是合法状态，两者的区别就在这句日志上
+ *  （「读不到资产」那句在 [Seal]，这一层只管「解析不了」）。
+ *
+ *  文件名跟着里面的类走（`Donor`）—— 读取那几行与它同属一件事，一并放在这里。
+ */
+private const val DONORS_ASSET = "donors.json"
+
+/**
+ * 进程内缓存的那一份 —— 名单是静态数据，不值得每次进这一页都把模块 APK 再当 zip 开一遍。
+ *
+ *  `null` = 还没读过（与「读到了空表」是两件事，后者是合法结果）。
+ */
+@Volatile
+private var cache: List<Donor>? = null
+
+/**
+ * 读出名单（进程内只读一次）。读不到时是空表，不抛。
+ *
+ *  **只有真读到才缓存**：`Seal.open` 返回 `null` 是「这一次没读到」（资产不在包里 / 签名那一关
+ *  没过，后者可能是瞬时状态），把它当成「名单是空的」缓存下来的话，这一次进入页面之后
+ *  就再也不会重读了 —— 表现是「某次之后捐赠名单一直是空的」。
+ */
+internal fun donors(context: Context): List<Donor> = cache ?: (readDonors(context)?.also { cache = it } ?: emptyList())
+
+/**
+ * 取出一个字段的文本；缺项 / 不是标量 / 是 JSON `null` 都算空串。
+ *
+ *  `JsonNull` 也是 `JsonPrimitive`，它的 `content` 是字符串 `"null"` —— 不排掉它，
+ *  一条 `{"name": null}` 的记录会变成一颗叫「null」的捐赠者。
+ */
+private fun JsonElement?.text(): String = (this as? JsonPrimitive)?.takeIf { it !is JsonNull }?.content.orEmpty()
+
+/**
+ * 真读一次：`assets/donors.json` → 对象数组 → 每个人的名字与金额。
+ *
+ *  `name` 写成 `null` / 空串 / 干脆不写 = **匿名**，上屏统一是 [DONOR_ANONYMOUS]
+ *  （见那个常量的注释：`***` 不写进数据）。所以这里**不再丢行** —— 早先「没名字就丢掉」
+ *  是为了不让表格第一格空着，现在匿名有明确的显示值，那一格不会空。
+ */
+private fun readDonors(context: Context): List<Donor>? {
+    val bytes = Seal.open(context, DONORS_ASSET) ?: return null
+    return try {
+        val rows = Json.parseToJsonElement(String(bytes, Charsets.UTF_8)).jsonArray
+        rows.mapNotNull { row ->
+            val o = row as? JsonObject ?: return@mapNotNull null
+            //  名字去两端空白；空 ⇒ 匿名。**不丢行**：一笔到账总是要记的，匿不匿名是两说
+            val name = o["name"].text().trim().ifEmpty { DONOR_ANONYMOUS }
+            Donor(
+                name = name,
+                // 文件里写的是**元**（可以带两位小数），这里换算成**分**存。
+                //  `round` 是为了吃掉二进制浮点那点误差：`5.20 * 100 = 519.9999…`。
+                //  结果按 `Long` 收：金额超出 `Int` 范围时不能绕回负数再夹成 0（那会把一笔大额
+                //  显示成「¥0.00」）。负数在这里就夹掉：文件里写错一个负号，界面上会画成「¥-5.-20」
+                amountCents =
+                    Math
+                        .round((o["amount"].text().toDoubleOrNull() ?: 0.0) * 100)
+                        .coerceAtLeast(0L),
+                // 只记录、不上屏（见 [Donor.at]）；缺了就是空串，不报错
+                at = o["at"].text().trim(),
+            )
+        }
+    } catch (e: Throwable) {
+        XLog.w("捐赠列表：$DONORS_ASSET 解不成名单（退成空态，下次进页重试）：${e.javaClass.simpleName}: ${e.message}")
+        null
+    }
+}

@@ -107,7 +107,7 @@ ui.state 纯状态类（不扩展页面）      ui.model 纯展示数据
 
 **合格项**（继续保持，别在收敛时碰坏）：
 
-1. **注入侧零界面依赖**：`inject/` 下 grep `androidx` / `io.github.suqi8` / `io.github.lyxnx` / `ui.` 全空 —— 而且 CI 已经把这条钉死了（`tools/verify-apk.sh` 里「(5) 注入侧不得引用 …」那一段，含 `KeyModule.kt` 单列一档；`ci.yml` 与 `release.yml` 都调这个脚本）。
+1. **注入侧零界面依赖**：`inject/` 下 grep `androidx` / `io.github.suqi8` / `io.github.lyxnx` / `ui.` 全空 —— 而且 CI 已经把这条钉死了（`tools/verify-apk.py` 里「(5) 注入侧不得引用 …」那一段，含 `KeyModule.kt` 单列一档；`ci.yml` 与 `release.yml` 都调这个脚本）。
 2. **`core/` 不认识进程、不认识界面**：`core/*` 全部导入都落在 `core/` 内 + 标准库（`core/wire → core/config` 那一条是唯一的例外，见三、C）。
 3. **`core/seal`、`ui/*` 的单职责已经很干净**：`Seal` / `SealAssets` / `SealCertificate` 一包三件、各管一件事；共用件（原 `component/`，已并入 `ui/` 根）也从早先的「PageWidgets 一个文件装所有控件」拆开了（`MenuPopup` / `ConfirmDialog` / `PageFab` / `SliderRow` / `SwitchRow` / `TileWidgets` / `Haptics` / `Visibility` / `TextMetrics` / `IconInput` …）。
 

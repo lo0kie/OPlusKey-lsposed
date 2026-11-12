@@ -24,26 +24,26 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
-import com.lookie.opluskey.ui.IconInputView
-import com.lookie.opluskey.ui.InputSpec
-import com.lookie.opluskey.ui.MAX_NAME_LENGTH
-import com.lookie.opluskey.ui.PageCornerFab
-import com.lookie.opluskey.ui.PageFabButton
-import com.lookie.opluskey.ui.PageTabBand
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.TitleCounter
-import com.lookie.opluskey.ui.addCommand
-import com.lookie.opluskey.ui.hideIme
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.isImeVisible
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.commandKindLabel
-import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.state.CommandForm
-import com.lookie.opluskey.ui.state.CommandListEditState
-import com.lookie.opluskey.ui.state.CommandUiState
+import com.lookie.opluskey.ui.chrome.PageCornerFab
+import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageTabBand
+import com.lookie.opluskey.ui.chrome.addCommand
+import com.lookie.opluskey.ui.dialog.MAX_NAME_LENGTH
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.input.IconInputView
+import com.lookie.opluskey.ui.input.InputSpec
+import com.lookie.opluskey.ui.input.hideIme
+import com.lookie.opluskey.ui.input.isImeVisible
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.text.commandKindLabel
+import com.lookie.opluskey.ui.row.TitleCounter
+import com.lookie.opluskey.ui.state.command.CommandListEditState
+import com.lookie.opluskey.ui.state.command.CommandUiState
+import com.lookie.opluskey.ui.state.page.CommandForm
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -255,7 +255,6 @@ internal fun SettingsPage.CommandScreen(
  *  空表单时**不显示**这颗（那会儿没有可保存的东西）；编辑列表时也要在（文案变「完成」）。
  *  停在「命令列表」那一页时也不显示：那一页没有表单，一颗「保存」摆在那儿没有宾语
  *  （[onListPage] 由调用点按页号给）。
- *  单独抽一支只为让 [CommandScreen] 留在 detekt 的长度上限之内。
  */
 @Composable
 private fun SettingsPage.CommandFloatingButton(
@@ -290,8 +289,7 @@ private fun SettingsPage.CommandFloatingButton(
 }
 
 /**
- * 这颗 FAB 按下去的三档去向 —— 抠成一支独立函数只为把 [CommandFloatingButton] 的圈复杂度
- * 留在 detekt 的上限内（原先是同一个函数里套三层判断）。
+ * 这颗 FAB 按下去的三档去向 —— 抠成一支独立函数（原先是同一个函数里套三层判断）。
  *
  *  列表编辑态 ⇒ 弹「删除选中」的确认（删了不可撤销，那几条的绑定一起改）；
  *  步骤排序态 ⇒ 只退出排序（别的控件这时都禁用，这颗是唯一出路）；

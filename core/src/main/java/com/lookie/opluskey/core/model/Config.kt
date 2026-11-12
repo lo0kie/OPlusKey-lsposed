@@ -1146,7 +1146,6 @@ data class GlobalConfig(
  *  「这一档开了独立设置就看自己那份，否则看公共设置」，拆到别处等于让每个调用方自己拼，
  *  而拼错一处的表现是「这台机器上这颗键不听话」。
  */
-@Suppress("TooManyFunctions")
 data class Config(
     val keys: Map<KeyId, KeyConfig>,
     /**
@@ -1551,7 +1550,6 @@ data class Config(
          *  配置里那几张表的个数（扁平取值表 + 三张进不了字段表的段）。拆成一个 `Sections` 壳只是
          *  把它们挪个地方，读取处还得一层层解引用，而每加一张表就多一个要同步的落点。
          */
-        @Suppress("LongParameterList")
         fun ofFields(
             keys: Map<KeyId, KeyConfig>,
             global: GlobalConfig,

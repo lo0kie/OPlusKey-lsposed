@@ -13,34 +13,34 @@ import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.core.model.OwnSettings
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.HINT_SLOT_COMBO
-import com.lookie.opluskey.ui.HINT_SLOT_OWN_SETTINGS
-import com.lookie.opluskey.ui.OwnCardTitles
-import com.lookie.opluskey.ui.OwnField
-import com.lookie.opluskey.ui.OwnSettingsCard
-import com.lookie.opluskey.ui.OwnSettingsValues
-import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.Screen
-import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SliderRow
-import com.lookie.opluskey.ui.SliderSpec
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.chrome.PageScrollColumn
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_OWN_SETTINGS
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.switchNotice
+import com.lookie.opluskey.ui.feedback.writeAndNotice
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.OwnCardTitles
+import com.lookie.opluskey.ui.row.OwnField
+import com.lookie.opluskey.ui.row.OwnSettingsCard
+import com.lookie.opluskey.ui.row.OwnSettingsValues
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.SliderRow
+import com.lookie.opluskey.ui.row.SliderSpec
+import com.lookie.opluskey.ui.row.values
+import com.lookie.opluskey.ui.row.withField
+import com.lookie.opluskey.ui.row.withOwn
 import com.lookie.opluskey.ui.screen.combo.setComboOwnWindow
 import com.lookie.opluskey.ui.screen.combo.updateCombo
 import com.lookie.opluskey.ui.screen.settingsTargetLabel
-import com.lookie.opluskey.ui.state.SettingsTarget
-import com.lookie.opluskey.ui.state.SettingsTargetState
-import com.lookie.opluskey.ui.switchNotice
-import com.lookie.opluskey.ui.values
-import com.lookie.opluskey.ui.withField
-import com.lookie.opluskey.ui.withOwn
-import com.lookie.opluskey.ui.write
-import com.lookie.opluskey.ui.writeAndNotice
+import com.lookie.opluskey.ui.state.page.SettingsTarget
+import com.lookie.opluskey.ui.state.page.SettingsTargetState
+import com.lookie.opluskey.ui.write.write
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
 // 「独立设置」页 —— 一颗键 / 一组组合对公共项的覆盖，从它们各自页面顶栏那颗设置键进来。
@@ -419,8 +419,7 @@ private fun ownSwitchNotice(
  *  （false）—— 真机上就是「刚打开的那颗自己又关回去了」。按字段合并之后，别的项有多旧都不影响，
  *  只有手指真点到的那一格会变。
  *
- *  抽成一支是为了让 [KeySettingsScreen] 留在 detekt 的 `LongMethod` 线内 —— 那一页加了两颗
- *  多击开关之后顶破了线，而这段写回逻辑本来与页面骨架无关。
+ *  抽成一支：这段写回逻辑本来与页面骨架无关。
  */
 private fun SettingsPage.commitOwnField(
     target: SettingsTarget,
@@ -484,8 +483,7 @@ private fun SettingsPage.commitOwnField(
  * `HOME_BINDING_CARD_TITLE`）：两页读到的是同一套分类名，用户不会觉得「同一件事换了个说法」。
  * 「总开关」是这一页独有的（公共页没有「这一档算不算数」这件事）。
  *
- *  收成一支只为让 [KeySettingsScreen] 留在 detekt 的 `LongMethod` 线内 —— 那一支每加一行
- *  都要从别处挪一行出来，把「这一页有哪几张卡」摊在主线上不值当。
+ *  收成一支 —— 把「这一页有哪几张卡」摊在主线上不值当。
  */
 private fun ownCardTitles(): OwnCardTitles =
     OwnCardTitles(

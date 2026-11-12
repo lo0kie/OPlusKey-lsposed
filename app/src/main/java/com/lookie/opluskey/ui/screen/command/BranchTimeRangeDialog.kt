@@ -16,10 +16,10 @@ import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.TimeRange
-import com.lookie.opluskey.ui.DialogButtonRow
-import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialogSideMargin
+import com.lookie.opluskey.ui.dialog.DialogButtonRow
+import com.lookie.opluskey.ui.dialog.FrostedDialog
+import com.lookie.opluskey.ui.dialog.dialogSideMargin
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TimePicker
 import io.github.suqi8.coui.kmp.basic.TimeValue
@@ -121,8 +121,7 @@ internal fun SettingsPage.BranchTimeRangeDialog(
 /**
  * 一列时间要说的全部东西。
  *
- *  打成一个包而不是六个形参：detekt 的 `LongParameterList` 阈值是 6，而这两列本来就同属
- *  「这一列画什么、转了之后告诉谁」。
+ *  打成一个包而不是六个形参：这两列本来就同属「这一列画什么、转了之后告诉谁」。
  */
 private class TimeWheelSpec(
     val label: String,

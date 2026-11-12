@@ -24,9 +24,9 @@ import com.lookie.opluskey.core.model.sceneIndexOf
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.host.action.ActionRunner
-import com.lookie.opluskey.host.action.ConditionProbe
 import com.lookie.opluskey.host.action.FailureNotice
-import com.lookie.opluskey.host.action.actionNoticeText
+import com.lookie.opluskey.host.action.condition.ConditionProbe
+import com.lookie.opluskey.host.action.notice.actionNoticeText
 
 /**
  * **一次手势的执行**：过期丢弃 → 去重 → 读配置 → 判两级开关 → 振动 → 提示 → 交给执行器。
@@ -42,7 +42,6 @@ import com.lookie.opluskey.host.action.actionNoticeText
  *  成员数贴着 `TooManyFunctions` 的阈值：这是一颗执行器的**完整方法集**（判定重复、派发、
  *  收尾、振动、提示各一支），拆到别的文件里每个调用点都要跨文件跳一次，换不来可读性。
  */
-@Suppress("TooManyFunctions")
 internal object GestureExec {
     private var runner: ActionRunner? = null
 
@@ -290,8 +289,26 @@ internal object GestureExec {
         fun matchesCondition(condition: BranchCondition): Boolean =
             judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
         if (trigger == GestureTrigger.Release) {
-            //  「松手执行额外动作」这一档：与其它几档互斥，单独一支（见 [runComboRelease]）。
-            runComboRelease(combo, trigger, config, repeat, ::matchesCondition)
+            //  「松手执行额外动作」这一档：与其它几档互斥。
+            //  取动作与单键同一条口径（[pickReleaseAction]）：长按被哪一块接管，就用那一块自己的松手格；
+            //  一块都不中才落到这一组的 `longRelease`。块命中时**不**再补一刀 —— 一次按压一个结果。
+            //
+            //  钉住的那一块优先：按下那一刻归谁，松手就归谁（不再按松手时的状态重判）。
+            consumePressPin("combo:${combo.id}", trigger, combo.scenes)?.let { pinned ->
+                val action = pinned.action
+                if (action == null) {
+                    XLog.w("组合键 ${combo.id} - 松手：这一块没有可执行的松手动作，这一下不执行")
+                    return
+                }
+                executeCombo(combo, trigger, action, config, repeat)
+                return
+            }
+            val fired = combo.resolveRelease(::matchesCondition)
+            if (!fired.isBound) {
+                XLog.w("组合键 ${combo.id} - 松手：这一下没有可执行的动作（长按命中场景 / 这一组没配松手），不执行")
+                return
+            }
+            executeCombo(combo, trigger, fired, config, repeat)
             return
         }
         val action = combo.resolve(trigger, ::matchesCondition)
@@ -306,40 +323,6 @@ internal object GestureExec {
             return
         }
         executeCombo(combo, trigger, action, config, repeat)
-    }
-
-    /**
-     * 松手那一档（[GestureTrigger.Release]）—— 长按之后抬手才到，与单击 / 长按那一支互斥。
-     *
-     *  取动作与单键同一条口径（[pickReleaseAction]）：长按被哪一块接管，就用那一块自己的松手格；
-     *  一块都不中才落到这一组的 `longRelease`。块命中时**不**再补一刀 —— 一次按压一个结果。
-     *
-     *  单独抽一支只为让 [handleCombo] 的 `return` 数留在 detekt 的额度里，而这一档本来就
-     *  只在 `trigger.gestureOrNull() == null` 时进来。
-     */
-    private fun runComboRelease(
-        combo: ComboKey,
-        trigger: GestureTrigger,
-        config: Config,
-        repeat: Boolean,
-        matches: (BranchCondition) -> Boolean,
-    ) {
-        //  钉住的那一块优先：按下那一刻归谁，松手就归谁（不再按松手时的状态重判）。
-        consumePressPin("combo:${combo.id}", trigger, combo.scenes)?.let { pinned ->
-            val action = pinned.action
-            if (action == null) {
-                XLog.w("组合键 ${combo.id} - 松手：这一块没有可执行的松手动作，这一下不执行")
-                return
-            }
-            executeCombo(combo, trigger, action, config, repeat)
-            return
-        }
-        val fired = combo.resolveRelease(matches)
-        if (!fired.isBound) {
-            XLog.w("组合键 ${combo.id} - 松手：这一下没有可执行的动作（长按命中场景 / 这一组没配松手），不执行")
-            return
-        }
-        executeCombo(combo, trigger, fired, config, repeat)
     }
 
     /**
@@ -388,8 +371,8 @@ internal object GestureExec {
     /**
      * 组合键那一下的收尾 —— 日志、振动、提示、执行、报活。
      *
-     *  拆出来只为让 [handleCombo] 留在 detekt 的复杂度 / 出口数之内：那一个函数现在
-     *  要先过五道闸（认档 / 闸门 / 去重 / 手势 / 透传），再进这一段。
+     *  单独一支是因为它有三个调用点（长按那一档、松手那一档、透传那一档）：三处收尾一模一样，
+     *  内联就是把同一段抄三遍。
      */
     private fun executeCombo(
         combo: ComboKey,
@@ -657,35 +640,25 @@ internal object GestureExec {
         if (trigger.isReleasePhase) {
             consumePressPin(id.id, trigger, keyConfig.scenes)?.let { return it.action }
         }
-        if (trigger == GestureTrigger.Release) return releaseAction(id, keyConfig, matchesCondition)
+        if (trigger == GestureTrigger.Release) {
+            //  长按这一档**本身没有动作**时，松手这一刀整条不成立（见 `KeyConfig.releaseBound` /
+            //  `longActionExists`）：松手动作是「这一档执行完之后」的收尾，主语没有就不该有谓语。
+            //  这一道与判定侧那一份判据**故意重复**：判定侧是注入在 system_server 里的旧代码时
+            //  （改了判定、没重启），它照样会发这一条 —— 在这里拦住，用户不必为了一个开关重启整机。
+            if (!keyConfig.releaseBound) {
+                XLog.w("${id.label} - 松手：长按这一档是无操作（或松手已让位），不派发")
+                return null
+            }
+            val fired = keyConfig.resolveRelease(matchesCondition)
+            if (!fired.isBound) {
+                XLog.w("${id.label} - 松手：这一下没有可执行的动作（长按命中场景 / 按键没配松手），不派发")
+                return null
+            }
+            return fired
+        }
         //  其余档位统一走**触发条件**：场景块能接管哪几档由它自己的 `actions` 说，
         //  所以「只给三击配了场景、直接绑定那一格空着」也照样命中（`pickAction` 一处收口）。
         return keyConfig.actionFor(trigger, matchesCondition)
-    }
-
-    /**
-     * 松手那一档该执行什么（没有钉住时走的那条路）—— 从 [resolveAction] 抽出来，
-     * 只为让那条主线的出口数留在 detekt 的额度里；判据一字未改。
-     */
-    private fun releaseAction(
-        id: KeyId,
-        keyConfig: KeyConfig,
-        matchesCondition: (BranchCondition) -> Boolean,
-    ): Action? {
-        //  长按这一档**本身没有动作**时，松手这一刀整条不成立（见 `KeyConfig.releaseBound` /
-        //  `longActionExists`）：松手动作是「这一档执行完之后」的收尾，主语没有就不该有谓语。
-        //  这一道与判定侧那一份判据**故意重复**：判定侧是注入在 system_server 里的旧代码时
-        //  （改了判定、没重启），它照样会发这一条 —— 在这里拦住，用户不必为了一个开关重启整机。
-        if (!keyConfig.releaseBound) {
-            XLog.w("${id.label} - 松手：长按这一档是无操作（或松手已让位），不派发")
-            return null
-        }
-        val fired = keyConfig.resolveRelease(matchesCondition)
-        if (!fired.isBound) {
-            XLog.w("${id.label} - 松手：这一下没有可执行的动作（长按命中场景 / 按键没配松手），不派发")
-            return null
-        }
-        return fired
     }
 
     /**

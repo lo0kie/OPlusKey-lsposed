@@ -248,7 +248,7 @@ def main() -> int:
     print(f'  页面扩展成员（SettingsPage.xxx）  {page_ext:>5}')
     print(f'  host/GestureReceiver.kt 行数      {file_lines(f"{APP}/host/GestureReceiver.kt"):>5}')
     print(f'  host/GestureExec.kt 行数          {file_lines(f"{APP}/host/GestureExec.kt"):>5}')
-    print(f'  ui/state/HintCenter.kt 行数       {file_lines(f"{APP}/ui/state/HintCenter.kt"):>5}')
+    print(f'  ui/state/signal/HintCenter.kt 行数 {file_lines(f"{APP}/ui/state/signal/HintCenter.kt"):>5}')
 
     print()
     if failed:

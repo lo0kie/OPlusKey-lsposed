@@ -3,17 +3,16 @@ package com.lookie.opluskey.ui.screen.about
 import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.REPO_URL
-import com.lookie.opluskey.ui.state.UpdateState
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.REPO_URL
+import com.lookie.opluskey.ui.state.host.UpdateState
 
-// 「版本」那一行的菜单 —— 从 `AboutMenus.kt` 拆出来。
+// 「版本」那一行的菜单 —— 与 `AboutMenus.kt` 里那几层（语言 / 主题 / 配色 / 配置）分开。
 //
-// 那一份里已经挤了语言 / 主题 / 配色 / 配置那几层菜单，再加一层就撞 detekt 的
-// `TooManyFunctions`（一个文件 11 个函数）。这一层与「检查更新」同属版本那一行的事，单独成文件。
+// 这一层与「检查更新」同属版本那一行的事，单独成文件读起来才不夹在别层菜单中间。
 
 /** 「版本」那一行的菜单 —— 「检查更新」+「项目仓库」两处。 */
 @Composable

@@ -11,20 +11,20 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.core.present.ActionCatalog
 import com.lookie.opluskey.core.present.commandTitleOf
-import com.lookie.opluskey.ui.BindingTarget
-import com.lookie.opluskey.ui.HINT_SLOT_BINDING
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appLabelOf
-import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.blockedReason
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.linkReady
-import com.lookie.opluskey.ui.model.MODULE_UNAVAILABLE_HINT
-import com.lookie.opluskey.ui.model.stepTitle
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeysAsk
-import com.lookie.opluskey.ui.write
-import com.lookie.opluskey.ui.writeAndNotice
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.writeAndNotice
+import com.lookie.opluskey.ui.model.text.MODULE_UNAVAILABLE_HINT
+import com.lookie.opluskey.ui.model.text.stepTitle
+import com.lookie.opluskey.ui.state.binding.KeysAsk
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.wire.appLabelOf
+import com.lookie.opluskey.ui.wire.appNameOf
+import com.lookie.opluskey.ui.wire.blockedReason
+import com.lookie.opluskey.ui.wire.linkReady
+import com.lookie.opluskey.ui.write.BindingTarget
+import com.lookie.opluskey.ui.write.write
 
 /**
  * 把一个清单里的动作绑到 [target] 那一格上。

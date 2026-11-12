@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -27,17 +28,17 @@ import com.lookie.opluskey.core.model.nextCustomKeyId
 import com.lookie.opluskey.core.model.withCustomKey
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
-import com.lookie.opluskey.ui.FrostedDialog
-import com.lookie.opluskey.ui.HINT_SLOT_BINDING
-import com.lookie.opluskey.ui.NameDialog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.dialogSideMargin
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.registerLocalReceiver
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.dialog.FrostedDialog
+import com.lookie.opluskey.ui.dialog.NameDialog
+import com.lookie.opluskey.ui.dialog.dialogSideMargin
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.wire.registerLocalReceiver
+import com.lookie.opluskey.ui.write.write
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import kotlinx.coroutines.delay
@@ -190,8 +191,6 @@ internal fun SettingsPage.CollectKeyDialog(
  *   · **已经关着** ⇒ 回调确实来过（它已把那个位置位），什么都不做。
  *     这一步是关键：否则「用户自己点遮罩关掉弹窗 → 回调照常置位」之后，这条 effect 会在
  *     600ms 时再跑一次，把一颗**迟到的键**当成「上一个窗收场了」。
- *
- *  单独成函数是为了让 [CollectKeyDialog] 留在 detekt 的圈复杂度阈值之内。
  *
  * @param closing 这个窗**此刻该不该关**（听到一颗能收的键之后）
  * @param onTimedOut 确认回调丢了，放行
@@ -475,4 +474,38 @@ private fun watch(
         Intent(ModuleWire.ACTION_KEY_WATCH)
             .putExtra(ModuleWire.EXTRA_WATCH_ON, on),
     )
+}
+
+// 「等按键」的倒计时 —— 它有自己的计时循环，与弹窗正文的排版无关。
+
+/**
+ * 从 [ModuleWire.KEY_WATCH_WINDOW_MS] 起每秒减一，到 0 时调 [onTimeout]；返回还剩几秒。
+ *
+ *  窗口长度与注入侧**共用同一个常量**：那边到点停发键码（`KeyWatch` 的兜底），这边到点关窗 ——
+ *  两处各写一个 60 秒的话，界面上的倒计时会与真实窗口对不上。
+ *
+ * @param show 弹窗在不在
+ * @param waiting 还在等按键（听到键 / 撞上重复就停表）
+ * @param onTimeout 到期做什么（收场）
+ */
+@Composable
+internal fun rememberWatchCountdown(
+    show: Boolean,
+    waiting: Boolean,
+    onTimeout: () -> Unit,
+): Int {
+    val total = (ModuleWire.KEY_WATCH_WINDOW_MS / 1000L).toInt()
+    val active = show && waiting
+    var secondsLeft by remember(active) { mutableIntStateOf(total) }
+    val timeout by rememberUpdatedState(onTimeout)
+    LaunchedEffect(active) {
+        if (!active) return@LaunchedEffect
+        secondsLeft = total
+        while (secondsLeft > 0) {
+            delay(1_000)
+            secondsLeft--
+        }
+        timeout()
+    }
+    return secondsLeft
 }

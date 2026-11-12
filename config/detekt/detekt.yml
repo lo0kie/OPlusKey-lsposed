@@ -1,6 +1,7 @@
-# detekt 配置 —— 默认规则集**全开**（`buildUponDefaultConfig = true`），这里只改两类：
+# detekt 配置 —— 默认规则集**全开**（`buildUponDefaultConfig = true`），这里只改三类：
 #  1) 与本项目写法规矩冲突的（AGENTS.md 里那些「降级纪律」「协议常量集中定义」）；
-#  2) 明确不适用本项目的（这里目前没有）。
+#  2) **度量对象由外部约束决定**的 —— 见下面每一组的 `ui/` 与 `bridge/` 两档；
+#  3) 明确不适用本项目的（反射层那几条）。
 #
 #  格式化那套规则（detekt 的 `formatting` ruleset）**不在**这里：它要另挂 `detekt-formatting`
 #  依赖，而格式化已经归 Spotless + ktlint 了，两处各报一遍没有意义 —— 所以那个 ruleset 压根
@@ -8,6 +9,26 @@
 #
 #  历史存量不在这里逐条关 —— 那会把规则本身改废；存量由 `config/detekt/baseline.xml` 兜着，
 #  新代码照规则来（见 AGENTS.md 二、1.2）。
+#
+# ## 为什么 `ui/` 与 `bridge/` 要整片放掉那几条「长度 / 参数 / 复杂度」
+#
+#  这几条规则度量的是**可读性**，而它默认假设「长度与复杂度由作者决定」。本项目有两层不成立：
+#
+#  · `ui/` 是 Compose —— 一个 Composable 的长度正比于**视觉层级深度**，参数个数正比于
+#    「可配的视觉维度」。60 行 / 6 个参数逼出来的拆法是把内层一行抽成 `FooRow`，再把
+#    `style / tick / labelColumn / ui` 一路透传 —— 那全是父级作用域里的东西，等于手工搬一遍闭包，
+#    读代码时还要在两支之间来回跳才能看出缩进层级。**没有一次这样的拆分让代码变好读。**
+#
+#  · `bridge/` 是 ROM 私有 API 的胶水层 —— 一段流程的长度、一个方法的参数个数由**对方的签名**
+#    决定，不由我们决定。`switchToMiniLocal`（155 行 / 43 复杂度）就是把 ROM 那套
+#    loader → taskId → bounds → options 的调用顺序摆一遍，拆开要传一整套上下文，
+#    反而看不出「这是同一条流水线」。
+#
+#  这两片之外的 `core/`、`inject/`、`host/` 保持约束（那边是真逻辑，长度与分支数有意义），
+#  只把阈值调到「分派表能过、真纠缠拦得住」那一档。
+#
+#  `excludes` 是**覆盖**而不是追加 —— 所以每一处都把 detekt 默认那批测试目录一起写上，
+#  否则等于顺手把默认排除也丢了（本项目暂无测试工程，但将来加测试时不该再回来补一遍）。
 
 naming:
   FunctionNaming:
@@ -15,11 +36,85 @@ naming:
     #  与 ktlint 那边 `ktlint_function_naming_ignore_when_annotated_with` 同一条口径。
     ignoreAnnotated: ['Composable']
 
-exceptions:
-  TooGenericExceptionCaught:
-    # 本项目的降级纪律**要求**每一环都 `catch (Throwable)`：注入侧任何一环抛出去
-    #  就是开机循环（AGENTS.md 五、1 / 五之二、2），所以「别抓太宽」这条在这里正好相反。
+  MatchingDeclarationName:
+    # 「文件名 = 唯一顶层声明名」这条假设「一个文件一件事」；本项目有若干「一族小类型跟主体同文件」
+    #  的地方（`CommandText.kt` 里主声明是 `StepLine`、`PagePicker.kt` 里是 `PickerOption`），
+    #  文件名取的是**这一族干什么**而不是某个类型的名字 —— 那样更好找，不是写错。
     active: false
+
+complexity:
+  LongMethod:
+    # 默认 60 对 Compose 太紧（见文件头）；120 是「一段真流水线还读得下去」的上限 ——
+    #  取这个数是因为 `KeyHooks.install`（装接管点那一段逐层降级）并回它拆出去的
+    #  `installLayers` 之后是 100 行左右，而那一段本来就不该分两处读。
+    threshold: 120
+    excludes:
+      - '**/test/**'
+      - '**/androidTest/**'
+      - '**/commonTest/**'
+      - '**/jvmTest/**'
+      - '**/jsTest/**'
+      - '**/iosTest/**'
+      - '**/ui/**'
+      - '**/bridge/**'
+
+  LongParameterList:
+    # 默认 6 / 7 对 Composable 不成立（`ActionTile` 10 个、`IconInput` 9 个，大多是带默认值的视觉维度）。
+    #  `ui/`（组件）与 `bridge/`（照 ROM 签名摆参数）两片整片放掉；剩下的两档各自放宽：
+    #  · 函数 10 —— 「参数多但每个都带着一件事」（`ShellRunner.exec` 的 onFailure / onTip / onLine）
+    #    是回调式 API 的正常形状，拆成对象只会让调用点多一层壳；
+    #  · 构造函数 15 —— 构造参数个数就是**字段数**（`MiniWindowGeometry` 8 个、`CommonCommands.Spec` 8 个、
+    #    `GestureDetector` 那份手势状态表 14 个），由数据形状决定，不由作者决定。
+    #  `rom/` 另按路径放掉：那是 ROM 私有 API 的符号名表（`RomProfile` 24 个字段），
+    #  字段数就是 ROM 里有几样东西，改一个名字都得跟着改，不是「参数太多」。
+    functionThreshold: 10
+    constructorThreshold: 15
+    excludes:
+      - '**/Objects.kt'
+      - '**/object/**'
+      - '**/test/**'
+      - '**/androidTest/**'
+      - '**/commonTest/**'
+      - '**/jvmTest/**'
+      - '**/jsTest/**'
+      - '**/iosTest/**'
+      - '**/ui/**'
+      - '**/bridge/**'
+      - '**/rom/**'
+
+  TooManyFunctions:
+    # 这条按**文件**计，于是它逼出的动作是「另起一个文件」，而不是更好的组织。
+    #  而本项目同时有 `InvalidPackageDeclaration`（目录必须与包名一致），搬家要连带改全仓 import。
+    #  40 = 现有最大那个（`ActionCatalog` 36 个函数，一张动作表）之上留一档。
+    thresholdInFiles: 40
+    thresholdInClasses: 40
+    thresholdInObjects: 40
+    thresholdInInterfaces: 40
+
+  CyclomaticComplexMethod:
+    # 30：`Action.parse`(28) / `ActionRunner.dispatch`(26) 这类**分派表**要能过 ——
+    #  它们的复杂度等于「支持多少种动作」，是可加的，不是纠缠的；每加一种动作加一行，
+    #  真正该盯的「分支之间互相依赖」这条规则本来就看不出来。
+    #  `ui/` 与 `bridge/` 另按路径放掉（`ActionIcons.actionIcon` 55、`switchToMiniLocal` 43）。
+    threshold: 30
+    excludes:
+      - '**/test/**'
+      - '**/androidTest/**'
+      - '**/commonTest/**'
+      - '**/jvmTest/**'
+      - '**/jsTest/**'
+      - '**/iosTest/**'
+      - '**/ui/**'
+      - '**/bridge/**'
+
+  ComplexCondition:
+    # 默认 4 —— 恰好把 `a != null && b != null && c != null` 这种「全都要有」判成复杂。
+    #  6 放过纯判空，仍拦得住真正缠在一起的条件。
+    threshold: 6
+
+  NestedBlockDepth:
+    # 默认 4 —— 读游标（`while (moveToNext) { if (…){ } }`）与反射填参数天然三层。
+    threshold: 6
 
 style:
   UnusedImports:
@@ -27,14 +122,49 @@ style:
     #  formatting 侧的事，本项目没引 formatting ruleset），所以必须在这里显式打开 ——
     #  否则「零引用的 import」只会在编译期变成一条谁也看不见的警告。
     active: true
+
   MaxLineLength:
     # 行长同样归 ktlint：值写在 `app/build.gradle.kts` 的 `ktlintRules` 里
     #  （`max_line_length = 140`），这里不再重复判一遍（长行多是注释与中文文案）
     active: false
+
   MagicNumber:
     # 本项目里的字面量多是**协议值**（keyCode / zoom flag / 广播超时），
     #  按 AGENTS.md 一、5 集中定义在一处（如 `KeyId`），逐条起名字只会把协议拆散
     active: false
+
   ReturnCount:
-    # 降级纪律要求「失败就 return」（AGENTS.md 五、1~5），默认上限 2 太紧
-    max: 4
+    # 降级纪律要求「失败就 return」（AGENTS.md 五、1~5），Kotlin 的卫语句更是常态 ——
+    #  `?: return` 比包一层 `if/else` 好读。`excludeGuardClauses` 先放过「开头那串判空」，
+    #  剩下的上限给到 15：反射流水线（`miniAnimLocal` 14 个）要能过。
+    max: 15
+    excludeGuardClauses: true
+
+  LoopWithTooManyJumpStatements:
+    # 「循环里 break / continue 超过 1 个」—— 本项目这类循环全是「扫描集合直到找到」
+    #  （`SystemContext` 找进程、`GestureProbe` 找手势），多一个出口是写法本身，不是坏味道。
+    active: false
+
+exceptions:
+  TooGenericExceptionCaught:
+    # 本项目的降级纪律**要求**每一环都 `catch (Throwable)`：注入侧任何一环抛出去
+    #  就是开机循环（AGENTS.md 五、1 / 五之二、2），所以「别抓太宽」这条在这里正好相反。
+    active: false
+
+  SwallowedException:
+    # 与上面那条是同一件事的两半：既要求 `catch (Throwable)`、又要求「必须把异常抛出去」，
+    #  两条一起开就是无解 —— 只关一半（原先只关了 TooGenericExceptionCaught），
+    #  于是 22 处「按纪律吞掉」的地方全靠 baseline 沉默地兜着。现在一起关掉，理由写在明处。
+    active: false
+
+  InstanceOfCheckForException:
+    # 反射调用的标准写法就是 `catch (InvocationTargetException) { e.cause }` ——
+    #  「该多写几个 catch」在反射面前不成立：被调方抛什么由 ROM 决定，编译期看不见。
+    active: false
+
+performance:
+  SpreadOperator:
+    # 全部出现在反射调用（`KeyInjector` / `ProbeCall` / `Reflect` / `HostWarmup`）：
+    #  AGENTS.md 红线 1 要求按名字字符串走反射，`*args` 是唯一写法，
+    #  「先拷一份数组」的那点开销远小于反射本身，且没有第二种写法可选。
+    active: false

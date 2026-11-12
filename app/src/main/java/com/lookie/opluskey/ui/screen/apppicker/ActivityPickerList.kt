@@ -27,23 +27,23 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.PageCornerFab
-import com.lookie.opluskey.ui.PageFabButton
-import com.lookie.opluskey.ui.RowEndIcon
-import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.collapseHeader
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.headerStatusBarPadding
-import com.lookie.opluskey.ui.model.GRID_GAP
-import com.lookie.opluskey.ui.model.LaunchableActivity
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.spacedItems
-import com.lookie.opluskey.ui.state.PickedDetail
+import com.lookie.opluskey.ui.chrome.PageCornerFab
+import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.collapseHeader
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.chrome.headerStatusBarPadding
+import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.GRID_GAP
+import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
+import com.lookie.opluskey.ui.model.target.LaunchableActivity
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.RowEndIcon
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.spacedItems
+import com.lookie.opluskey.ui.state.picker.PickedDetail
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
@@ -240,8 +240,7 @@ private fun SettingsPage.ActivityPlaceholders(
 }
 
 /**
- * 空态那三样 —— 单拎一支只为把 [ActivityPlaceholders] 的参数数收在 detekt 的上限内
- * （它是 `SettingsPage` 扩展，接收者也算一格）。
+ * 空态那三样。
  *
  *  三样都是「怎么说这一页」，与「怎么摆」无关；摆法全在 [ActivityPlaceholders] 里。
  */
@@ -335,8 +334,6 @@ private class PickerListData(
 /**
  * 列表本体 —— 两节：界面（含「自动」）与快捷方式，右边贴一条滚动条。
  *
- *  单独一支是因为 [ActivityPickerScreen] 那个组合函数已经贴着 detekt 的长度上限。
- *
  *  滚动条起在「折叠后的顶栏 + 搜索带」下面：那两截是叠在列表之上的固定浮层，从窗口顶边画起
  *  会被它们盖住一截（与「选择应用」页同一笔，见 `AppPickerList`）。
  */
@@ -385,8 +382,8 @@ private fun SettingsPage.ActivityRows(
 /**
  * 列表里铺的东西 —— 顶栏让位那一项、快捷方式那一节、界面（含「自动」）那一节。
  *
- *  单独成函数有两个原因：[ActivityRows] 还要放 `Box` 与滚动条，留着这一整段会顶到 detekt 的
- *  `LongMethod` 上限；以及这几项的铺法要跟 [rowIndexOf] 那套下标账逐项对应，放一起好对。
+ *  单独成函数有两个原因：[ActivityRows] 还要放 `Box` 与滚动条；以及这几项的铺法要跟
+ *  [rowIndexOf] 那套下标账逐项对应，放一起好对。
  *
  *  `currentHeaderHeight` 是在 `item` 的 content 里读的 —— 订阅只落在那一项里，不会让整页
  *  跟着顶栏折叠逐帧重组。
@@ -656,3 +653,137 @@ private fun ActivityRow(
             ),
     )
 }
+
+// 「选择界面」这一页的**判据**（纯函数）：只吃清单与几个值、只吐结果，不碰 Compose。
+//
+// 这几条判据多被**两个**地方读（默认选中 / 定位 / 空态文案），所以单摆一处，
+// 免得下一个想加一行判断的人先得读一遍组合代码。
+//
+// 这里每一条都要拿**完整清单**算：搜索词只决定「显示什么」，不决定「绑的是什么」。
+
+/**
+ * 把「当前绑定」规范成**清单里确实存在的某一行** —— 找不到就退回「自动」。
+ *
+ *  默认选中「自动」是这一页的起点：用户从应用那一级点进来，多半就是要绑整个应用；
+ *  绑定里若记着某个具体界面 / 快捷方式，且这次清单里还有它，才点亮那一行。
+ *
+ *  为什么要判「在不在清单里」：卸载重装、应用改版删掉某个活动、或者换成另一个应用进来 ——
+ *  那时绑定里的那条在这份清单里根本不存在。不兜这一下，整页一行都不亮，看起来像从没绑过；
+ *  兜成「自动」则始终有一行亮着，用户一眼知道当前是什么档。
+ *
+ *  ## `all` 必须是**完整清单**，不是搜索过滤之后的那份
+ *
+ *  过滤只决定「屏幕上显示哪几行」。拿过滤后的清单当判据的话，用户随手打一个字、把当前绑定的
+ *  那一行筛掉了，这一页就会判成「那一项已经不在清单里」⇒ 选中态退回「自动」⇒ 他一按 FAB，
+ *  `包名/类名` 就被写成了 `包名` —— 他只是搜了一下，绑定被降级了。
+ */
+internal fun resolveSelection(
+    selected: String?,
+    target: String,
+    all: List<LaunchableActivity>,
+    shortcutsFailed: Boolean = false,
+): String? =
+    when {
+        // 没绑过 / 绑的就是这个应用 ⇒ 「自动」
+        selected == null || AppTarget.same(selected, target) -> target
+
+        // 清单还没到（或查完了确实一条都没有）⇒ **不知道**，不等于「不在」：
+        //  这时保持原值。判成「自动」的话，进页那一瞬（列表还在查）按 FAB 就会把它降级。
+        all.isEmpty() -> selected
+
+        // 快捷方式那一节这次没查出来（宿主持有 ACCESS_SHORTCUTS 失败 / binder 抖动）：
+        //  清单里缺的可能正是它，分不清「删了」与「没查到」—— 保持原值，不降级。
+        //  代价是「真的被删掉的快捷方式」会多留一轮，下次查询成功时自然收敛。
+        shortcutsFailed -> selected
+
+        // 绑的是具体某一项，且它还在清单里 ⇒ 用它
+        all.any { AppTarget.same(it.target, selected) } -> selected
+
+        // 那一项已经不在清单里（界面被删 / 换了应用）⇒ 退回「自动」
+        else -> target
+    }
+
+/**
+ * 进页默认选中的那一条 —— 在**完整清单**里找 `selected` 对应的行。
+ *
+ *  按完整清单找（而不是按过滤后的两节）：搜索词筛掉了那一行时，选中态仍要停在它上面，
+ *  FAB 才会把「原来绑的东西」原样写回去。快捷方式要连 `shortcutId` 一起带上 ——
+ *  少了它，写回会走 `app:`（而不是 `appshortcut:`），`包名/快捷方式id` 这种写法就废了。
+ *
+ *  @param selected 已经过 [resolveSelection] 规范化 —— 一定在清单里，或就是 [target]（「自动」）
+ *  @param selectedShortcutId 当前绑定是快捷方式时的 id（清单没到时唯一的身份来源，见下）
+ */
+internal fun defaultPickOf(
+    all: List<LaunchableActivity>,
+    selected: String?,
+    target: String,
+    selectedShortcutId: String? = null,
+): PickedDetail {
+    //  **先按快捷方式 id 找，再按 target 找**：同一个 target 底下可能既有「应用本身」那一行、
+    //  又有快捷方式那几行（`app:pkg/活动` 与它的快捷方式用同一个 target）。只按 target 取第一行的话，
+    //  用户选的那个快捷方式会被当成应用本身 —— id 丢了、名字退回应用名，写回去成了 `app:`。
+    val hit =
+        selectedShortcutId
+            ?.let { id -> all.firstOrNull { it.shortcutId == id } }
+            ?: all.firstOrNull { AppTarget.same(it.target, selected) }
+    return when {
+        // 快捷方式那一行要把它**自己的名字**（「扫一扫」）带上：不点行直接按 FAB 时，
+        //  名字不能丢 —— 丢了就退回应用名，用户会看到「扫一扫」变成「微信」。
+        hit != null && hit.shortcutId != null -> PickedDetail(hit.target, hit.shortcutId, hit.label)
+
+        hit != null -> PickedDetail(hit.target, null)
+
+        // 清单里找不到这一行（还在查 / 查失败 / 这一项真没了）⇒ 原样交回去。
+        //  快捷方式的身份必须**跟着原值走**：清单没到时按 `hit == null` 直接给
+        //  `PickedDetail(selected, null)`，写回就成了 `app:<包名>` —— 一行字都没改，
+        //  绑定却被换成了一条永远解析不了的 token（图标与名字同时变）。
+        //  清单已经查到「这一项真不在了」时调用点不会给 [selectedShortcutId]（见那里的注释），
+        //  所以这里不会替一个不存在的 id 拼 token。
+        //  **名字这一档拿不到**（清单里没有这一行，`hit` 必然是 null）：退回应用名。
+        //  以前这里写 `hit?.label`，读起来像「带了名字」，其实恒为 null —— 是同一个结果的另一种写法。
+        selectedShortcutId != null -> PickedDetail(selected ?: target, selectedShortcutId, null)
+
+        else -> PickedDetail(selected ?: target, null)
+    }
+}
+
+/**
+ * 搜索命中 —— 名字、类名、拼音三者任一包含即算。
+ *
+ *  · 名字：活动自己声明了 label 的那些（「扫一扫」这类）；
+ *  · 类名：绝大多数活动没有 label，只能靠类名认（`ui.LauncherUI`）；
+ *  · 拼音：名字是汉字时，用户会打 `saoyisao` 而不是 `扫一扫`（键见 [LaunchableActivity.sortKey]）。
+ *
+ *  单独一支：命中判据并在这里，而不是再拆一个 `hit()`。
+ */
+internal fun shownActivities(
+    all: List<LaunchableActivity>?,
+    term: String,
+): List<LaunchableActivity> {
+    val list = all ?: return emptyList()
+    if (term.isEmpty()) return list
+    val needle = term.lowercase(java.util.Locale.ROOT)
+    return list.filter {
+        it.label.contains(term, ignoreCase = true) ||
+            it.summary.contains(term, ignoreCase = true) ||
+            it.name.contains(term, ignoreCase = true) ||
+            it.sortKey.contains(needle)
+    }
+}
+
+/**
+ * 空态那句话 —— 真因优先：**没查出来**不是「一个都没有」。
+ *
+ *  最后一档**不复述搜索词**：那串字就写在上面的搜索框里，再说一遍只是把同一件事说两次。
+ *  所以这里不再收 `term` —— 走到这一档时搜索框必然非空（空着的话 [shownActivities] 原样返回
+ *  全部，轮不到空态），有没有词这件事已经不必再问。
+ */
+internal fun emptyText(
+    failed: Boolean,
+    all: List<LaunchableActivity>?,
+): String =
+    when {
+        failed -> I18n.get(Strings.APP_PICKER_ACTIVITY_LOAD_FAILED, "列表没读出来，退回再进一次")
+        all.isNullOrEmpty() -> I18n.get(Strings.APP_PICKER_ACTIVITY_EMPTY, "这个应用没有可从外部打开的 Activity")
+        else -> I18n.get(Strings.APP_PICKER_NO_SEARCH_RESULT_ACTIVITY, "没有匹配的 Activity")
+    }

@@ -4,15 +4,15 @@ import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.KeyConfig
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SliderRow
-import com.lookie.opluskey.ui.SliderSpec
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.SliderRow
+import com.lookie.opluskey.ui.row.SliderSpec
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.write.write
 
 /**
  * 「按键设置」页里的**单击**那张卡 —— 「单击延迟」+「忽视无操作双击手势」两行。

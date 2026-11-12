@@ -8,12 +8,12 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.present.comboLabel
-import com.lookie.opluskey.ui.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeysAsk
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.state.binding.KeysAsk
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.write.write
 
 // 「组合键」那两页共用的读写 —— 列表页（加 / 删 / 摘要）与编辑页（标题上那行成员名）都走这里。
 
@@ -29,7 +29,7 @@ import com.lookie.opluskey.ui.write
 internal const val MAX_COMBOS = 9
 
 //  `COMBO_PAIR_SEPARATOR` / `comboLabel` / `keyName` 已挪到 `core/model/KeyNames.kt`：
-//  除了 UI（`ui/BindingTarget.kt` 的停用提示、顶栏副标题、列表行），**执行时提示**
+//  除了 UI（`ui/write/BindingTarget.kt` 的停用提示、顶栏副标题、列表行），**执行时提示**
 //  （`host/GestureExec.kt`）也要念键名，而 `host` 不许认识 `ui`（那条边由
 //  `tools/audit-coupling.py` 核）—— 一份实现要给两侧共用，只能落在两边都许引的 `core`。
 

@@ -6,9 +6,9 @@ import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.branchKeyNow
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.write.branchKeyNow
+import com.lookie.opluskey.ui.write.write
 
 // 「这张场景表往哪儿写」的两条路 —— 整表（「系统场景」页那颗「确认」）与单块（「场景动作」页那颗）。
 //

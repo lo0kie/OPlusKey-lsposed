@@ -8,14 +8,13 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.shortcutIdEscape
 import com.lookie.opluskey.core.model.shortcutTarget
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.LaunchableActivity
+import com.lookie.opluskey.ui.model.target.LaunchableActivity
 
 // 「选择界面」里**快捷方式那一节**的取数、判据与合并 —— 从 `ActivityList.kt` 分出来。
 //
 // 两个方向：那边回答「这个应用能打开哪些界面」（`PackageManager` + `ActivityInfo`），这边回答
 // 「这个应用注册了哪些快捷方式」（`LauncherApps` + `ShortcutInfo`，再加一趟系统身份）。
-// 取数来源、失败形态（`null` = 读不到）与排查路径都不同；挤在一个文件里也把函数数顶到了
-// detekt 的 `TooManyFunctions`。
+// 取数来源、失败形态（`null` = 读不到）与排查路径都不同。
 
 /** 明细里最多列几条（超过就只报条数）—— 一次十几行的清单是排查料，不该无上限地铺。 */
 private const val SHORTCUT_LOG_MAX = 12

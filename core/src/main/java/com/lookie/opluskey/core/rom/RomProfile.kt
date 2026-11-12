@@ -53,7 +53,6 @@ object RomProfile {
      *  参数多正是「一个落点要说清的那些事」：拆成几个小类只会让「加一档」从「填一个条目」
      *  变成「改好几处」，正是本文件要消灭的东西（`LongParameterList` 因此就地抑制）。
      */
-    @Suppress("LongParameterList")
     class BuiltIn(
         val owner: String,
         val service: String,
@@ -143,7 +142,6 @@ object RomProfile {
      * @param busyStates `queryStatus` 回包里哪几个取值算「正在录」（含暂停档）
      * @param mode 这一档按下去该怎么动 —— 三档只在这一点上不同
      */
-    @Suppress("LongParameterList")
     class AidlControl(
         val service: String,
         val descriptor: String,
@@ -172,7 +170,6 @@ object RomProfile {
      * 默认值一律为空串 —— 漏填的那一项查找必然落空、记 `w` 后跳过，**不会**悄悄用上一档的名字
      * （那是「本机用着别版的类名」，比明确失败更难查）。
      */
-    @Suppress("LongParameterList")
     class Reflection(
         /**
          * `OplusActivityManager` —— `startZoomWindow` 等接口挂它。

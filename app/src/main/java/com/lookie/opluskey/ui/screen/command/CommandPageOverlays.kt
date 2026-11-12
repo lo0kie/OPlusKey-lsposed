@@ -32,8 +32,7 @@ internal class CommandPageOverlays {
 }
 
 /**
- * 把这三层摆进页面那一层 `Box` —— 抽出来只为把 [CommandPage] 的行数压在 detekt 的
- * `LongMethod` 之下：那边只留「哪一栏画什么」，开关与回调在这里对齐。
+ * 把这三层摆进页面那一层 `Box` —— 那边只留「哪一栏画什么」，开关与回调在这里对齐。
  *
  * @param overlays 三层浮层的开合位（本页 `remember` 的那一份）
  * @param sorting 排序态：两个菜单都跟着禁用（排序时进不去另一层菜单）

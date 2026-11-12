@@ -4,11 +4,11 @@ import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
 
 // 首页的「按键操作」卡 —— 两行：进「按键功能」页 / 进「公共设置」页。
 //
@@ -38,7 +38,6 @@ internal fun SettingsPage.HomeKeyOpsCard(pageEnabled: Boolean) {
  *  副标题只有一句「这一页里有什么」：原来还分一档「已添加 N 组」，那是**统计**而不是入口的
  *  说明（用户口径：去掉那个小标题）—— 配了几组进去就看得见，不必在首页报数。
  *
- *  抽成函数只为让 [HomeKeyOpsCard] 留在 detekt 的 `LongMethod` 阈值内。
  */
 private fun SettingsPage.keysEntryRow(pageEnabled: Boolean): CardRow.Item =
     CardRow.Item(

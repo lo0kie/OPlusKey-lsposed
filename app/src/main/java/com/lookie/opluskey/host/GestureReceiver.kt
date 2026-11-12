@@ -355,7 +355,7 @@ internal object GestureReceiver {
      *
      * 顺带带上三个诊断字段，让首页能判「读到的配置是不是真值」「这份文件到底读不读得懂」与
      * 「这个键执行过没有」—— 光说一句「我在」判不出那三种（配置没到 / 读不懂 / 从来没按过）
-     * 的真实故障，见 `ui/LinkCheck.kt`。
+     * 的真实故障，见 `ui/wire/LinkCheck.kt`。
      */
     private fun reportAlive(ctx: Context) = sendAlive(ctx, ConfigStore.read().global.enabled)
 

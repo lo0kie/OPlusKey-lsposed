@@ -114,7 +114,7 @@ object ModuleWire {
     const val ACTION_OPEN_SETTINGS = "com.lookie.opluskey.OPEN_SETTINGS"
 
     // ── 链路自检：设置页 与 注入侧（system_server） ──
-    //  这一对是**问 / 答**，只为「首页能不能说清是哪一段断了」而存在（见 `ui/LinkCheck.kt`）。
+    //  这一对是**问 / 答**，只为「首页能不能说清是哪一段断了」而存在（见 `ui/wire/LinkCheck.kt`）。
     //  注入侧不必为它额外挂 Hook：它已经挂在 AMS 的广播入口上，全系统每条广播都过那里；
     //  来源校验比的是 uid，而设置页与宿主**同 uid**（`docs/device/lsposed.md` 六之七）。
 

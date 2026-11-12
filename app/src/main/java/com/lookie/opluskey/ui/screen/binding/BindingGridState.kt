@@ -16,12 +16,12 @@ import androidx.compose.ui.input.key.type
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.present.ActionCatalog
-import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.linkReady
-import com.lookie.opluskey.ui.model.COLUMNS
+import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.model.page.COLUMNS
 import com.lookie.opluskey.ui.screen.openVarOpsForTarget
-import com.lookie.opluskey.ui.tickNow
+import com.lookie.opluskey.ui.wire.linkReady
+import com.lookie.opluskey.ui.write.BindingTarget
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
 /**

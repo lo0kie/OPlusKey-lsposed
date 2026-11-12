@@ -4,7 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.lookie.opluskey.ui.state.AppPickerState
+import com.lookie.opluskey.ui.state.picker.AppPickerState
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 
 /**

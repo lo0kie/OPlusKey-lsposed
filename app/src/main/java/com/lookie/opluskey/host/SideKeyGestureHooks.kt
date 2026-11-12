@@ -197,7 +197,7 @@ internal object SideKeyGestureHooks {
                 XLog.d { "侧键手势消息：$handlerSimple#handleMessage | ${describeMessage(msg)}" }
 
                 //  场景派发（`what=1`）的处置单独一支：它要吞、要放、还要「先扣住再看一眼」，
-                //  全都摊在这里会把这条 lambda 撑过 detekt 的长度线。判据与理由见 [onSceneDispatch]。
+                //  而这条 lambda 只该读成「取消息 → 分流 → 放行」三步。判据与理由见 [onSceneDispatch]。
                 if (what == SCENE_DISPATCH_WHAT) return@hookGuarded onSceneDispatch(chain, msg)
 
                 chain.proceed()

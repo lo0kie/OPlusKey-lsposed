@@ -7,26 +7,26 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.KeyId
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.DialogBody
-import com.lookie.opluskey.ui.DialogButtonRow
-import com.lookie.opluskey.ui.DialogPositiveStyle
-import com.lookie.opluskey.ui.DisabledStateWithArrow
-import com.lookie.opluskey.ui.DisabledStateWithPick
-import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.DrawnIcons
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.dialog.DialogBody
+import com.lookie.opluskey.ui.dialog.DialogButtonRow
+import com.lookie.opluskey.ui.dialog.DialogPositiveStyle
+import com.lookie.opluskey.ui.dialog.FrostedDialog
+import com.lookie.opluskey.ui.feedback.DisabledStateWithArrow
+import com.lookie.opluskey.ui.feedback.DisabledStateWithPick
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.model.icon.DrawnIcons
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.screen.keyEnabled
-import com.lookie.opluskey.ui.state.ComboEditState
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.state.KeysAsk
-import com.lookie.opluskey.ui.state.KeysEditState
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.state.binding.ComboEditState
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.binding.KeysAsk
+import com.lookie.opluskey.ui.state.binding.KeysEditState
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.write.write
 
 // 「按键功能」页上半块 —— 按键列表（侧键 + 收集来的键）那张卡，与它下面单起一张的「添加按键」。
 //
@@ -133,7 +133,7 @@ internal fun SettingsPage.CustomKeysCard(
 }
 
 /**
- * 一颗自定义键那一行 —— 抽出来只为让 [CustomKeysCard] 留在 detekt 的长度上限内。
+ * 一颗自定义键那一行。
  *
  *  行尾只有一格（`CardRow` 里 `trailing` 优先于 `arrow`）：编辑态是勾选框，平时是「已停用」
  *  那半句**加自己画的箭头** —— 填了这一格 `arrow` 那条路就不画了，所以两者共存必须自己画。

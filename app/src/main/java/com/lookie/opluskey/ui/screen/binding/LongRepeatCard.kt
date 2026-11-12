@@ -12,24 +12,25 @@ import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.isSerialCommand
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.core.rom.RomProfile
-import com.lookie.opluskey.ui.BindingTarget
-import com.lookie.opluskey.ui.LongPressSections
-import com.lookie.opluskey.ui.LongPressSettingsCard
-import com.lookie.opluskey.ui.LongPressSpec
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.model.actionIcon
-import com.lookie.opluskey.ui.model.releaseActionTitle
-import com.lookie.opluskey.ui.openAppPickerForRelease
+import com.lookie.opluskey.ui.model.icon.actionIcon
+import com.lookie.opluskey.ui.model.text.releaseActionTitle
+import com.lookie.opluskey.ui.row.LongPressSections
+import com.lookie.opluskey.ui.row.LongPressSettingsCard
+import com.lookie.opluskey.ui.row.LongPressSpec
 import com.lookie.opluskey.ui.screen.command.StepPickerPage
 import com.lookie.opluskey.ui.screen.command.StepPickerSheet
 import com.lookie.opluskey.ui.screen.command.StepSheetFilter
 import com.lookie.opluskey.ui.screen.command.StepSheetSpec
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.wire.appNameOf
+import com.lookie.opluskey.ui.write.BindingTarget
+import com.lookie.opluskey.ui.write.openAppPickerForRelease
+import com.lookie.opluskey.ui.write.write
 
 // 「长按」那一档的设置卡 —— **单键与组合键共用这一支**。
 //
-// 卡片本体（行序 / 文案 / 可见性）在 `ui/LongPressSettingsCard.kt`；这里只做两件事：
+// 卡片本体（行序 / 文案 / 可见性）在 `ui/row/LongPressSpec.kt`；这里只做两件事：
 // 把 `target` 那份参数递进去、把改动落回 `target` 指的那一条配置。
 // 参数读取走 `LongPressParams`（两者共用的接口），写回走 `LongPressEdit`（变更包）——
 // 所以这一支里**没有「是单键还是组合」的分支**。
@@ -134,7 +135,7 @@ private fun SettingsPage.edit(
     what: () -> String,
 ): Boolean =
     write(target.withLongPress(configState.config.value, change), "${target.what}:${what()}") !=
-        com.lookie.opluskey.ui.state.CommandsSave.Failed
+        com.lookie.opluskey.ui.state.command.CommandsSave.Failed
 
 /**
  * 「松手执行额外动作」那一族的写路径 —— **场景块只改草稿**，点那一页的「确认」才落盘。

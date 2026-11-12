@@ -4,11 +4,11 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.ConditionKind
 import com.lookie.opluskey.core.model.SceneRule
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.conditionChoiceLabel
-import com.lookie.opluskey.ui.model.conditionIcon
-import com.lookie.opluskey.ui.model.conditionKindLabel
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.icon.conditionIcon
+import com.lookie.opluskey.ui.model.text.conditionChoiceLabel
+import com.lookie.opluskey.ui.model.text.conditionKindLabel
 
 // 条件菜单那两层各自的行 —— 一级「选种类」、二级「选取值」。
 // 从 `CommandBranchMenus.kt` 拆出来：那边是「菜单什么时候开、二级挂在哪儿」，
@@ -17,8 +17,7 @@ import com.lookie.opluskey.ui.model.conditionKindLabel
 /**
  * 一级菜单里每一档**点不点得动** —— 两个层级的原因合成一个对象。
  *
- *  分开当两个参数会顶到 detekt 的 `LongParameterList`：这一支本来就是「行怎么画」，
- *  参数该只有三样 —— 现在选的是谁、哪几档点不动、点下去做什么。
+ *  这一支本来就是「行怎么画」，参数该只有三样 —— 现在选的是谁、哪几档点不动、点下去做什么。
  *
  * @param used **这一块里**已经加满的那几档（同一种类写重了）
  * @param blockFull 这一块**整体**到顶了（[SceneRule.MAX_CONDITIONS] 条）—— 每一档都点不动，

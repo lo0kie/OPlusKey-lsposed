@@ -27,32 +27,32 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.DisabledHint
-import com.lookie.opluskey.ui.IconInputView
-import com.lookie.opluskey.ui.InputSpec
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.PageMenu
-import com.lookie.opluskey.ui.PageScrollColumn
-import com.lookie.opluskey.ui.SectionTitle
-import com.lookie.opluskey.ui.SectionTitleClick
-import com.lookie.opluskey.ui.SectionTitleTrailingMore
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SliderRow
-import com.lookie.opluskey.ui.SliderSpec
-import com.lookie.opluskey.ui.VisibleAreaCentered
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.commandKindLabel
-import com.lookie.opluskey.ui.moveCaretToEnd
-import com.lookie.opluskey.ui.state.CommandForm
-import com.lookie.opluskey.ui.state.CommandUiState
-import com.lookie.opluskey.ui.state.singleLine
-import com.lookie.opluskey.ui.titleWithCount
-import com.lookie.opluskey.ui.visibleAreaHeight
+import com.lookie.opluskey.ui.chrome.PageScrollColumn
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.feedback.DisabledHint
+import com.lookie.opluskey.ui.input.IconInputView
+import com.lookie.opluskey.ui.input.InputSpec
+import com.lookie.opluskey.ui.input.moveCaretToEnd
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
+import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.text.commandKindLabel
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.SectionTitleClick
+import com.lookie.opluskey.ui.row.SectionTitleTrailingMore
+import com.lookie.opluskey.ui.row.SliderRow
+import com.lookie.opluskey.ui.row.SliderSpec
+import com.lookie.opluskey.ui.row.titleWithCount
+import com.lookie.opluskey.ui.state.command.CommandUiState
+import com.lookie.opluskey.ui.state.page.CommandForm
+import com.lookie.opluskey.ui.state.page.singleLine
+import com.lookie.opluskey.ui.style.VisibleAreaCentered
+import com.lookie.opluskey.ui.style.visibleAreaHeight
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 
@@ -175,8 +175,7 @@ internal fun SettingsPage.CommandPage(
 /**
  * 「命令详情」那条小标题（单条命令页）—— 标题自己可点（开全屏编辑），行尾一颗「更多」。
  *
- *  抽出来只为把 [CommandPage] 的行数压在 detekt 的 `LongMethod` 之下：这一块的条件与文案
- *  都在这里，页面那一支只剩「单条这一栏要不要画」。
+ *  抽出来：这一块的条件与文案都在这里，页面那一支只剩「单条这一栏要不要画」。
  */
 @Composable
 private fun SettingsPage.CommandDetailTitle(
@@ -305,7 +304,6 @@ internal fun SettingsPage.CommandListPage(
  *
  *  与「条件执行」页的场景菜单同一种形态：一层菜单 + 一段带标题的候选
  *  （`MenuEntry.Section` 负责标题与行距，样式来源只有那一处）。
- *  单独抽一支只为让 [CommandPage] 留在 detekt 的长度上限之内。
  */
 @Composable
 internal fun SettingsPage.StepListMenu(
@@ -453,7 +451,6 @@ internal fun SettingsPage.DetailMenu(
  *  （`disabledClickReason`）讲的是宿主 / 旧版（给「模块没生效」用的），
  *  与「正在编辑列表」完全不是一回事。
  *
- *  单独抽一支只为让 [CommandPage] 留在 detekt 的长度上限之内。
  */
 @Composable
 private fun SettingsPage.CommandSettingsSection(

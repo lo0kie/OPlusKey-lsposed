@@ -14,23 +14,23 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.SceneRule
-import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.Feedback
-import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
-import com.lookie.opluskey.ui.HINT_SLOT_PAGE
-import com.lookie.opluskey.ui.PageCornerFab
-import com.lookie.opluskey.ui.PageFabButton
-import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.branchKeyNow
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.state.BranchDraft
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.visibleAreaHeight
+import com.lookie.opluskey.ui.chrome.PageCornerFab
+import com.lookie.opluskey.ui.chrome.PageFabButton
+import com.lookie.opluskey.ui.chrome.PageScrollColumn
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.feedback.Feedback
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_PAGE
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
+import com.lookie.opluskey.ui.state.binding.BranchDraft
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.style.visibleAreaHeight
+import com.lookie.opluskey.ui.write.branchKeyNow
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -355,4 +355,18 @@ internal fun SettingsPage.branchRulesBlockedReason(): String? {
             null
         }
     }
+}
+
+/**
+ * 空态那句「现在会发生什么」—— 模板里的 `%s`（原来填「键名 - 手势」）**不填**，去掉它之后
+ * 压掉多余空格，其余照模板拼成一整句。
+ *
+ *  三档都在同一页里，一句话点名其中一档反而误导；这句只说明「没有场景时会回落到按键绑定」。
+ */
+internal fun SettingsPage.branchEmptyText(): String {
+    val template = I18n.get(Strings.COMMAND_BRANCH_EMPTY, "将执行按键绑定里的 %s")
+    //  这句不拼「键名 - 手势」：三档都在同一页里，一句话点名其中一档反而误导。
+    //  模板里的 `%s` 没有可填的键名：去掉它时连同旁边那一个空格一起收掉，再压掉连续空格，
+    //  否则中文会拖着行尾空格、英文会留下「Will run  from …」这种双空格。
+    return template.replace("%s", "").replace(Regex(" +"), " ").trim()
 }

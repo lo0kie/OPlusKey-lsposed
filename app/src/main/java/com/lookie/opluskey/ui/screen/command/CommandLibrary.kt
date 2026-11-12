@@ -16,15 +16,15 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.bindsToken
 import com.lookie.opluskey.core.model.mapActions
 import com.lookie.opluskey.host.action.ActionRunner
-import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.GRID_GAP
-import com.lookie.opluskey.ui.saveCommands
-import com.lookie.opluskey.ui.state.CommandsSave
-import com.lookie.opluskey.ui.state.TestRunnerCache
-import com.lookie.opluskey.ui.tickNow
-import com.lookie.opluskey.ui.write
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMMAND
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.model.page.GRID_GAP
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.state.command.TestRunnerCache
+import com.lookie.opluskey.ui.write.saveCommands
+import com.lookie.opluskey.ui.write.write
 import kotlin.math.roundToInt
 
 internal fun SettingsPage.testCommand(cmd: Command) {
@@ -78,8 +78,7 @@ private fun testRunner(context: android.content.Context): ActionRunner = TestRun
  *  （要名字、要处理改名后的引用图），这个只回答「眼前这份内容能不能跑」，
  *  所以名字可以空着 —— 新命令写到一半就想试是常事。
  *
- *  住在这一份文件里而不是跟着 `draftToLibrary`：它是「测试」这条路的入口，
- *  与 [testCommand] 是一对；`PageText.kt` 那边函数数已经顶到 detekt 的上限。
+ *  住在这一份文件里而不是跟着 `draftToLibrary`：它是「测试」这条路的入口，与 [testCommand] 是一对。
  */
 internal fun SettingsPage.draftCommand(): Command {
     val draft = commandDraft.draft
@@ -121,8 +120,7 @@ internal fun SettingsPage.commandNameDuplicated(
 /**
  * 一行命令卡的**布局参数** —— 从签名里挪出来的一格。
  *
- *  一半是 detekt 的 `LongParameterList`（再加一颗格子 lambda 就是七个，`Modifier` 与它挤在一起
- *  按顺序排错一位编译照样过），另一半是这几个值本来就是**一起**定的：卡数与列数由同一个
+ *  这几个值本来就是**一起**定的：卡数与列数由同一个
  *  `chunked(columns)` 与分宽共用，两个上下限由「这一行里有没有多条命令」一起算
  *  （见 `SavedCommands`）。散成四个参数时，调用点读起来像四件互不相干的事。
  *

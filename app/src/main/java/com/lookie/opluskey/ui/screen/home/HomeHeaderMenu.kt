@@ -9,16 +9,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.HeaderMenuButton
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.linkReady
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.openStockPage
-import com.lookie.opluskey.ui.resetModule
-import com.lookie.opluskey.ui.restartModule
+import com.lookie.opluskey.ui.chrome.HeaderMenuButton
+import com.lookie.opluskey.ui.chrome.openStockPage
+import com.lookie.opluskey.ui.chrome.restartModule
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.wire.linkReady
+import com.lookie.opluskey.ui.write.resetModule
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
 import kotlinx.coroutines.launch
 
@@ -136,8 +136,7 @@ internal fun SettingsPage.HomeHeaderMenu() {
  * 首页 ⋮ 底下那两颗确认窗（「重启服务」/「重置模块」）—— 与菜单同一层 `Box`，各自由
  * `overlays` 里那一位开关控制。
  *
- *  抽出来只为把 [HomeHeaderMenu] 的行数压在 detekt 的 `LongMethod` 之下：菜单只负责「摆哪几行」，
- *  两句「点确定之后会发生什么」在这里。
+ *  菜单只负责「摆哪几行」，两句「点确定之后会发生什么」在这里。
  */
 @Composable
 private fun SettingsPage.HomeHeaderConfirmDialogs() {

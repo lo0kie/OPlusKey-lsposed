@@ -1,0 +1,121 @@
+package com.lookie.opluskey.ui.model.text
+
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.lookie.opluskey.core.model.Action
+import com.lookie.opluskey.core.present.ActionCatalog
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.icon.tileIcon
+
+/**
+ * 「这一行长什么样」—— 网格那一格与抽屉那一行**共用这一份**。
+ *
+ * ## 为什么要有它
+ *
+ *  两处摆的是同一张清单（`ActionCatalog.GROUPS`），但渲染是两套代码：网格走 `BuiltInTile`、
+ *  抽屉走 `stepSheetRow`。清单同源不等于展示同源 —— 每加一条「怎么显示」的规则（行首随绑定
+ *  那一档换、小字写什么、行尾要不要箭头），都得在两边各写一遍，漏一遍就成「同一个系统开关
+ *  在两处长不一样」。这个坑踩过三次：行首字形（抽屉早期直接 `tileIcon(spec)`）、行尾箭头
+ *  （早先只在抽屉有）、小字（抽屉压根没有）。
+ *
+ *  现在规则只在这里；两侧各自塞自己的槽（网格 `ActionTile`、抽屉 `CardRow.Item`），
+ *  以后加规则只改这一处，从结构上不会再走形。清单本身的差异（抽屉把 `appctl:` 换成
+ *  `app:`「选择应用」）仍由 `ActionCatalog.STEP_GROUPS` 负责，那是**内容**不是**展示**。
+ *
+ * @property trailing 行尾箭头。**网格的格子没有行尾**，只有抽屉那个槽用它。
+ */
+internal data class ActionRowView(
+    val title: String,
+    val icon: ImageVector,
+    val subtitle: String?,
+    val selected: Boolean,
+    val trailing: ImageVector?,
+)
+
+/**
+ * @param spec 这一格 / 这一行
+ * @param current 当前绑的动作（`null` = 没绑定过 / 不知道，整行按「未选中的清单条目」画）
+ * @param appLabel 「应用控制 / 选择应用」那几行的应用名（要走 `PackageManager`，由调用方查好递进来）
+ */
+internal fun actionRowView(
+    spec: ActionCatalog.Spec,
+    current: Action?,
+    appLabel: String? = null,
+): ActionRowView {
+    //  这一格 / 这一行绑的是哪一档 —— 判据只在 `ActionCatalog` 一处
+    val boundMode = current?.let { ActionCatalog.boundModeOf(spec, it) }
+    val selected = current?.let { ActionCatalog.isSelected(spec, it) } ?: false
+    return ActionRowView(
+        title = spec.label,
+        //  行首那颗：绑在「应用 / 选择应用」这一族时按绑定细分 → 命中那一档的档位字形 →
+        //  这一格自己的大类字形。顺序即优先级，两侧不再各拼一遍。
+        icon =
+            (if (selected) boundAppIcon(spec, current) else null)
+                ?: boundMode?.let { tileIcon(it) }
+                ?: tileIcon(spec),
+        subtitle = current?.let { tileSubtitle(spec, it, boundMode, appLabel) },
+        selected = selected,
+        trailing = rowTrailingIcon(spec),
+    )
+}
+
+/**
+ * 「应用控制」（网格那一格）与「选择应用」（抽屉那一行）绑成什么样，就画什么样 ——
+ * 分**两族**：打开族一颗、结束一颗。
+ *
+ *  「打开」这一族含整个应用、应用里的某个界面、以及应用注册的快捷方式（`appshortcut:`）——
+ *  三者都是「把某个东西叫起来」，不按它再换字形（用户口径：快捷方式不再单独一颗 `pin`，
+ *  那个独立的快捷方式页撤掉之后它也就没有对应的菜单行了）。
+ *
+ *  必须判**是不是这一族**：`current` 对整片网格是同一个动作，不判格子就会让导航 / 响铃 /
+ *  媒体那几格全画成应用那一族的字形。
+ *  也必须判 `selected`（调用点已判）：抽屉里的「选择应用」是**一步**，当前绑的是「结束应用」
+ *  时它不是这一步 —— 那时画一颗「结束」等于说反了。
+ */
+private fun boundAppIcon(
+    spec: ActionCatalog.Spec,
+    current: Action?,
+): ImageVector? {
+    if (current == null) return null
+    if (spec.token != ActionCatalog.APP_CONTROL_TILE && spec.token != ActionCatalog.APP_TILE) return null
+    return when (current) {
+        //  结束那一档：「停掉」的方块 —— 与菜单「结束应用」那一行同一颗
+        is Action.Process -> {
+            PageIcons.AppStop
+        }
+
+        //  打开那一族（整个应用 / 某个界面 / 快捷方式）：与菜单「打开应用」那一行同一颗
+        is Action.App, is Action.AppWindow, is Action.AppShortcut -> {
+            PageIcons.AppOpen
+        }
+
+        else -> {
+            null
+        }
+    }
+}
+
+/**
+ * 行尾那颗箭头（只有抽屉用）：点了去**另一张页面**的给右箭头，点开还有**一层菜单**的给选择器，
+ * 点一下就落成一步的不给。
+ *
+ *  判据只有 `ActionCatalog.clickKind` —— 那是「这一行点下去会发生什么」的唯一答案。
+ *  以前这里自己判 `APP_TILE` 与 `popsSelector`，与网格 `BindingTile` 那份判出了两个结果：
+ *  「应用控制」在网格里是选择器（它弹原地菜单，对的），在抽屉里是右箭头（说它跳页，错的）。
+ *  同一个格子两种指示，用户只能猜哪个是真的。
+ */
+private fun rowTrailingIcon(spec: ActionCatalog.Spec): ImageVector? =
+    when (ActionCatalog.clickKind(spec)) {
+        ActionCatalog.ClickKind.PAGE_APP,
+        ActionCatalog.ClickKind.PAGE_VARS,
+        -> {
+            PageIcons.EnterArrow
+        }
+
+        ActionCatalog.ClickKind.MENU -> {
+            PageIcons.Selector
+        }
+
+        else -> {
+            null
+        }
+    }

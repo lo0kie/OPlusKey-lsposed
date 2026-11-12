@@ -1,0 +1,250 @@
+package com.lookie.opluskey.ui.style
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.lookie.opluskey.ui.dialog.DIALOG_LINE_HEIGHT_STYLE
+import com.lookie.opluskey.ui.dialog.DIALOG_PLATFORM_STYLE
+import io.github.suqi8.coui.kmp.basic.Text
+import io.github.suqi8.coui.kmp.theme.COUITheme
+
+// 弹窗正文：只认 `**加粗**` 与行首 `- ` 两种记号。
+
+/** 加粗那一段用的样式 —— 只改字体粗细，颜色与字号跟着正文。 */
+private val BOLD = SpanStyle(fontWeight = FontWeight.Bold)
+
+/** 行首的项目符号记号。 */
+private const val BULLET_MARK = "- "
+
+/** 转义符：自己不显示，后面那一个字符照字面摆。 */
+private const val BACKSLASH = '\\'
+
+/** 加粗记号由它两两成对构成。 */
+private const val ASTERISK = '*'
+
+/** 项目符号那个字形，后跟两个空格 —— 与文字之间留出间隔。 */
+private const val BULLET_GLYPH = "\u2022  "
+
+/** 段与段之间留的间隔。 */
+private val PARAGRAPH_GAP = 6.dp
+
+/**
+ * 把**用户写的东西**（命令名、应用名）里会被当成记号的字符转义掉。
+ *
+ *  正文整体按上面那套记号解析，所以不转义的话，一个叫 `2*3` 的命令会让后半句变成加粗，
+ *  名字里带行首 `- ` 会被当成项目符号。转法就是记号前面加一个反斜杠（CommonMark 的写法），
+ *  由 [emphasis] 反向吃掉 —— 两边是同一份字符集 [EMPHASIS_SPECIALS]，不会走散。
+ */
+internal fun escapeEmphasis(text: String): String =
+    buildString(text.length) {
+        for (c in text) {
+            if (c in EMPHASIS_SPECIALS) append('\\')
+            append(c)
+        }
+    }
+
+/** 会被本渲染器当记号处理的字符 —— 要转义的就是这些。 */
+private const val EMPHASIS_SPECIALS = "\\*-"
+
+/**
+ * 弹窗正文 —— 只认两种记号：`**加粗**`，以及行首的 `- `（项目符号）。
+ *
+ * ## 为什么不再挂 markdown 渲染器
+ *
+ *  这一处原来用的是 `com.mikepenz:multiplatform-markdown-renderer-android`，它只为
+ *  「一句话里加粗两个词」这件事，拖进来一整套 CommonMark 解析器
+ *  （`org.jetbrains:markdown`：词法 / AST / 内联语义那一套）。
+ *  而**实际用到的语法就两样** —— 逐份字典核过：
+ *
+ *   - `**…**` 加粗：九处（免责声明、命令风险提示、免费提醒、清空配置、放弃编辑、
+ *     填充前缀、删除命令 ×2、取消小窗口）；
+ *   - 行首 `- `：仅「免责声明」一处，两行。
+ *
+ *  链接（`[文字](地址)`）、标题、表格、代码块 —— **一处都没有**。
+ *  于是整套换成 [AnnotatedString]：解析是下面那份手写扫描（二十来行），
+ *  渲染直接走 COUI 的 `Text`，色板与字体与弹窗其余部分同源。
+ *
+ * ## 记号的边界
+ *
+ *  只认**成对**的 `**`：落单的按字面留在文字里 —— 宁可多显示两个星号，
+ *  也不让半句被误判成加粗（正文里会塞命令名、应用名，星号不稀奇）。
+ *  `\` 是转义符：自己不显示，后面那一个字符照字面摆，与 [escapeEmphasis] 互为逆操作。
+ *
+ * @param textAlign 短正文居中、长正文左对齐，由调用方按正文自己判（见 `isShortDialogBody`）。
+ */
+@Composable
+internal fun EmphasisText(
+    text: String,
+    textAlign: TextAlign,
+    modifier: Modifier = Modifier,
+) {
+    val centered = textAlign == TextAlign.Center
+    // 正文比标题**降一档**：弹窗标题走 `onBackground`，这里走 `onBackgroundVariant`。
+    //  同色的话正文读起来像标题的续行，层级分不出来；压到更次级那一档又会读成「可以不看」。
+    //  这一档是照原来那套 markdown 映射搬过来的（旧 `DefaultMarkdownColors.text` 就是它），
+    //  换手写渲染时**别顺手把 color 丢了** —— 丢了正文就会比标题还亮。
+    val style =
+        COUITheme.textStyles.body2.copy(
+            color = COUITheme.colorScheme.onBackgroundVariant,
+            textAlign = textAlign,
+        )
+    Column(
+        modifier = modifier,
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+    ) {
+        // 段 = 两条（及以上）换行切开。段内一行一行画：「- xxx」那一行的圆点由 [EmphasisLine] 补。
+        //  **分段与对齐方式无关**：只按居中档分段的话，同一段文案在左对齐时会被压成一整块
+        //  （免责声明那种长正文正是左对齐的）—— 同一句话两处排版，读起来不像一份文件。
+        //  空行不进排版（画出来也只是一行空白），段间那道 [PARAGRAPH_GAP] 照旧。
+        //  分段只在**文案变了**才重算：这一层每次重组（弹窗按钮态、焦点、进出场动画）都会跑，
+        //  不记的话每次都要把整段正文再切一遍、再逐行 trim。对齐方式不参与分段（见下），
+        //  所以 `remember` 的键只给 `text`。
+        val paragraphs =
+            remember(text) {
+                text.split("\n\n").map { para -> para.lines().map { it.trim() }.filter { it.isNotEmpty() } }
+            }
+        val total = remember(paragraphs) { paragraphs.sumOf { it.size } }
+        var drawn = 0
+        paragraphs.forEachIndexed { index, lines ->
+            if (index > 0) Spacer(Modifier.height(PARAGRAPH_GAP))
+            lines.forEach { line ->
+                drawn++
+                EmphasisLine(line, style, lineHeightStyle(drawn, total))
+            }
+        }
+    }
+}
+
+/**
+ * 正文第 [index] 行（共 [total] 行）的行盒裁剪。
+ *
+ *  行盒比字形高，多出来的白会算进「区与区之间」：整段正文只有首行上沿、末行下沿贴着弹窗的
+ *  间距（见 `DIALOG_LINE_HEIGHT_STYLE`），中间那些行的行距由行高自己撑，一点都不能裁。
+ */
+private fun lineHeightStyle(
+    index: Int,
+    total: Int,
+): LineHeightStyle =
+    when {
+        total <= 1 -> DIALOG_LINE_HEIGHT_STYLE
+        index == 1 -> LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.FirstLineTop)
+        index == total -> LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.LastLineBottom)
+        else -> LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)
+    }
+
+/**
+ * 正文里的一行 —— [text] 已去过首尾空白，空行不画。
+ *
+ *  行首 `- ` 走 [Bullet] 那条路：圆点占自己的宽、文字顶剩下的宽，于是**折行对齐的是文字左缘**
+ *  而不是缩到圆点底下（直接把「• 」拼进同一个 `Text` 里就没这个效果）。
+ */
+@Composable
+private fun EmphasisLine(
+    text: String,
+    style: TextStyle,
+    lineHeightStyle: LineHeightStyle,
+) {
+    if (text.isEmpty()) return
+    val lineStyle = style.copy(lineHeightStyle = lineHeightStyle, platformStyle = DIALOG_PLATFORM_STYLE)
+    //  加粗解析同理：只有这一行的文字变了才需要重扫
+    val rendered = remember(text) { emphasis(text) }
+    if (text.startsWith(BULLET_MARK)) {
+        Row(Modifier.fillMaxWidth()) {
+            Text(text = BULLET_GLYPH, style = lineStyle)
+            Text(
+                text = remember(text) { emphasis(text.removePrefix(BULLET_MARK)) },
+                style = lineStyle,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    } else {
+        Text(
+            text = rendered,
+            style = lineStyle,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * 把一段正文里的 `**加粗**` 翻成 [AnnotatedString]。
+ *
+ *  逐字符扫一遍：遇到**成对**的 `**` 就在这儿切一段 —— `**` 本身不显示，只翻转
+ *  「后面这段要不要加粗」；遇到 `\` 就把它后头那一个字符照字面摆（转义）。其余字符原样。
+ *
+ *  **落单的 `**` 按字面显示**（注释里那句约定原来只有文字、没有实现）：改成「成对」判之后，
+ *  先扫一遍取出所有**未被转义**的 `**` 起始下标，两两配对（1↔2、3↔4…），最后落单的那一个
+ *  **不入表** ⇒ 它就按字面跟在正文里。原先的实现是无条件翻转，一个落单的 `**` 会让**后半句
+ *  整段变粗**、星号还消失 —— 用户写的命令名里出现两个星号就会撞上。
+ *
+ *  为什么**不**用正则：正文里可能出现真的以 `-` / `*` 开头的名字，正则替换容易把
+ *  「转义过的记号」和「真记号」一起改掉；一次线性扫描里判这两件事，它们不会互相打架。
+ */
+private fun emphasis(text: String): AnnotatedString {
+    //  成对判据先算一遍（O(n)）：正文都是弹窗里那几句，长度有界
+    val marks = pairedMarks(text)
+    return buildAnnotatedString {
+        var bold = false
+        var i = 0
+        var next = 0
+        while (i < text.length) {
+            val c = text[i]
+            if (c == BACKSLASH && i + 1 < text.length) {
+                append(text[i + 1])
+                i += 2
+            } else if (next < marks.size && i == marks[next]) {
+                if (bold) pop() else pushStyle(BOLD)
+                bold = !bold
+                next++
+                i += 2
+            } else {
+                append(c)
+                i += 1
+            }
+        }
+    }
+}
+
+/**
+ * 一段正文里**成对**的 `**` 起始下标（升序）；落单的那一个不在表里。
+ *
+ *  转义跳过：`\*` 后面那个字符照字面摆，所以它不可能是记号的一半（与 [emphasis] 同一口径）。
+ */
+private fun pairedMarks(text: String): IntArray {
+    val found = ArrayList<Int>()
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        when {
+            c == BACKSLASH && i + 1 < text.length -> {
+                i += 2
+            }
+
+            c == ASTERISK && i + 1 < text.length && text[i + 1] == ASTERISK -> {
+                found.add(i)
+                i += 2
+            }
+
+            else -> {
+                i += 1
+            }
+        }
+    }
+    //  两两成对：`1↔2`、`3↔4`…，末尾落单的那个丢掉（它按字面显示）
+    val paired = found.size - found.size % 2
+    return IntArray(paired) { found[it] }
+}

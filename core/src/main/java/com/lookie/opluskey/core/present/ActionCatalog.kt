@@ -16,7 +16,7 @@ object ActionCatalog {
      * 界面字形名 —— **纯名字的封闭枚举**，一个条目一支字形。
      *
      *  为什么不是直接放图标对象：`core` 是注入侧也会加载的包，一、1 不许它认识界面库。
-     *  这里只登记「用哪支字形」，`ui/model/ActionIcons.kt` 把名字翻成图标（唯一一处映射）。
+     *  这里只登记「用哪支字形」，`ui/model/icon/ActionIcons.kt` 把名字翻成图标（唯一一处映射）。
      *  加一档动作时：**要新字形才动那张映射表**，复用已有字形的条目一个字都不用改。
      */
     enum class Glyph : GlyphSource {
@@ -593,7 +593,7 @@ object ActionCatalog {
     /**
      * 「媒体控制」那一格**本身**（[GROUPS] 里那一行）—— 与菜单首行（[MEDIA_MODES] 的第一条）
      * 共用同一串 token（[MEDIA_TILE]），但两者**字形不同**：这一格是「一类东西」（音符，入口），
-     * 菜单首行是「一个具体取值」（开关键）。认领只能靠 `spec ===`，见 `ui/model/ActionIcons.kt`
+     * 菜单首行是「一个具体取值」（开关键）。认领只能靠 `spec ===`，见 `ui/model/icon/ActionIcons.kt`
      * 的 [specIcon] —— 别顺手并成同一个。
      *
      * 声明在 [GROUPS] **之前**：`GROUPS` 的初始化会读它；放到后面会在 object 初始化期读到
@@ -1569,7 +1569,7 @@ object ActionCatalog {
      *
      *  **只给档位名，不带状态**：要「档位 - 状态」那半句（`增加 - 10%` / `WIFI - 打开`）走
      *  `actionDetail`，两者不是一回事。档位名与格子怎么配对只在这一处决定（与
-     *  `ui/model/CommandText.kt` 的 `stepTitle` 同源）。
+     *  `ui/model/text/CommandText.kt` 的 `stepTitle` 同源）。
      */
     fun modeName(action: Action): String? = modeHitOf(action)?.mode?.label
 

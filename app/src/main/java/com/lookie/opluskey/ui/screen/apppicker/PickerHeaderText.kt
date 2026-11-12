@@ -5,7 +5,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appTargetLabelOf
+import com.lookie.opluskey.ui.wire.appTargetLabelOf
 
 // 「选择应用」页顶栏那一行小字 —— 从 `ui/screen/PageTopBar.kt` 搬出来：
 //  那一支已经贴着 `TooManyFunctions` 的上限，而这一行本来就只属于这一页。

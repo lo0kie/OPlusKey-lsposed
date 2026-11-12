@@ -3,7 +3,7 @@ package com.lookie.opluskey.host
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.host.action.CommandFailure
-import com.lookie.opluskey.host.action.ShellRunner
+import com.lookie.opluskey.host.action.shell.ShellRunner
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**

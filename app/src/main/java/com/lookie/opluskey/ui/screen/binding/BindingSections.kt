@@ -6,12 +6,12 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.GestureTrigger
-import com.lookie.opluskey.ui.BindingTarget
 import com.lookie.opluskey.ui.Screen
-import com.lookie.opluskey.ui.SectionTitle
-import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.titleWithCount
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.SectionTitleClick
+import com.lookie.opluskey.ui.row.titleWithCount
+import com.lookie.opluskey.ui.write.BindingTarget
 
 /**
  * 「已保存的命令」那一块的小标题 —— **两页共用**（按键绑定 / 组合键编辑）。
@@ -24,8 +24,8 @@ import com.lookie.opluskey.ui.titleWithCount
  *  **这一份自己被停用时也不接点击**（用户口径）：停用的键 / 组合不进「自定义命令」页 ——
  *  那一趟是「给这一档配命令」，而这一档根本不接管按键。标题仍照画（条数是事实），只是不再可点。
  *
- *  抽成一支有两个理由：两页的判据必须同一份（组合键那一页原先压根没接点击）；以及
- *  两边各写一遍的话，detekt 的长度上限会先替我们报警。
+ *  抽成一支有两个理由：两页的判据必须同一份（组合键那一页原先压根没接点击）；以及两边
+ *  各写一遍迟早会漂。
  */
 @Composable
 internal fun SettingsPage.SavedCommandsTitle(clickable: Boolean = true) {

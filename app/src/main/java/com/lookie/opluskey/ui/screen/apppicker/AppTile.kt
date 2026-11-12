@@ -22,23 +22,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.ui.AnimatedFade
-import com.lookie.opluskey.ui.CenteredInInsets
-import com.lookie.opluskey.ui.DrawablePainter
-import com.lookie.opluskey.ui.Feedback
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.APP_KIND_MODULE_DARK
-import com.lookie.opluskey.ui.model.APP_KIND_MODULE_LIGHT
-import com.lookie.opluskey.ui.model.APP_KIND_TAG_BG_ALPHA
-import com.lookie.opluskey.ui.model.APP_KIND_TAG_INSIDE
-import com.lookie.opluskey.ui.model.APP_KIND_TAG_RADIUS
-import com.lookie.opluskey.ui.model.APP_STATE_ICON_SIZE
-import com.lookie.opluskey.ui.model.CLONE_TAG_DARK
-import com.lookie.opluskey.ui.model.CLONE_TAG_LIGHT
-import com.lookie.opluskey.ui.model.LaunchableApp
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.isDarkScheme
-import com.lookie.opluskey.ui.model.opticalCenter
+import com.lookie.opluskey.ui.feedback.Feedback
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.APP_KIND_TAG_INSIDE
+import com.lookie.opluskey.ui.model.page.APP_KIND_TAG_RADIUS
+import com.lookie.opluskey.ui.model.page.APP_STATE_ICON_SIZE
+import com.lookie.opluskey.ui.model.page.opticalCenter
+import com.lookie.opluskey.ui.model.target.LaunchableApp
+import com.lookie.opluskey.ui.model.theme.APP_KIND_MODULE_DARK
+import com.lookie.opluskey.ui.model.theme.APP_KIND_MODULE_LIGHT
+import com.lookie.opluskey.ui.model.theme.APP_KIND_TAG_BG_ALPHA
+import com.lookie.opluskey.ui.model.theme.CLONE_TAG_DARK
+import com.lookie.opluskey.ui.model.theme.CLONE_TAG_LIGHT
+import com.lookie.opluskey.ui.model.theme.isDarkScheme
+import com.lookie.opluskey.ui.style.AnimatedFade
+import com.lookie.opluskey.ui.style.CenteredInInsets
+import com.lookie.opluskey.ui.style.DrawablePainter
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ProgressIndicatorDefaults
 import io.github.suqi8.coui.kmp.basic.RotatingProgressIndicator
@@ -139,8 +139,7 @@ internal fun SettingsPage.AppIconByPkg(
 /**
  * 取一次应用图标 —— **跨进程**，只能在 IO 上跑；取不到返回 `null` 并记一行 `d`。
  *
- *  从 [AppIcon] 里抽出来：那段 try/catch 加上后面几行会把那个组合函数顶过 detekt 的长度上限，
- *  而它本身与「画什么」无关，只是把 `Drawable` 拿回来。
+ *  从 [AppIcon] 里抽出来：它本身与「画什么」无关，只是把 `Drawable` 拿回来。
  *
  *  **按那一份所属的用户取**：分身行与主用户同包名，但两个用户里可能装着不同版本（图标也就不同），
  *  只问主用户的 `PackageManager` 会拿到另一份的图。分身那一档取不到用户视角的 PM 时退回主用户的

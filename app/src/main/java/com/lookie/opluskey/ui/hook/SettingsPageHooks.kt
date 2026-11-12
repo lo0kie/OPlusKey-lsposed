@@ -6,10 +6,10 @@ import com.lookie.opluskey.bridge.hookGuarded
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.pageBackgroundColor
 import com.lookie.opluskey.ui.screen.createView
-import com.lookie.opluskey.ui.state.KeyWatchState
-import com.lookie.opluskey.ui.state.TestRunnerCache
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.state.command.TestRunnerCache
+import com.lookie.opluskey.ui.style.pageBackgroundColor
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 
@@ -42,10 +42,10 @@ internal object SettingsPageHooks {
 
     /**
      * `R.id.container` / `R.id.appbar_layout` 的数值、宿主包名、浅色主题名 ——
-     * 全部搬到了 `ui/HostWindow.kt`（连同 [findContainer] / [pageContext] / [isNight]
+     * 全部搬到了 `ui/hook/HostWindow.kt`（连同 [findContainer] / [pageContext] / [isNight]
      * 那几个纯读取的辅助函数）。
      *
-     * 换页期间那两个「当前」引用（Activity / 页面）在 `ui/HostSession.kt` —— 它们跨
+     * 换页期间那两个「当前」引用（Activity / 页面）在 `ui/hook/HostSession.kt` —— 它们跨
      * 换页编排 / 窗口与状态栏 / 返回拦截 / 导入导出四簇，所以单拎出去。本对象只留换页与 Hook 编排。
      */
 
@@ -633,6 +633,6 @@ internal object SettingsPageHooks {
         TestRunnerCache.release()
     }
 
-    // `isLightColor` / `pageContext` / `findContainer` 已搬到 `ui/HostWindow.kt`
+    // `isLightColor` / `pageContext` / `findContainer` 已搬到 `ui/hook/HostWindow.kt`
     // （纯读取与包装，与换页编排无关）。
 }

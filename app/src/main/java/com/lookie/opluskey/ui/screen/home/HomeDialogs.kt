@@ -4,19 +4,19 @@ import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.acceptDisclaimerAndEnable
-import com.lookie.opluskey.ui.model.DISCLAIMER_TEXT
-import com.lookie.opluskey.ui.model.DISCLAIMER_TITLE
-import com.lookie.opluskey.ui.model.DONATE_LIST_TITLE
-import com.lookie.opluskey.ui.model.DonateTarget
-import com.lookie.opluskey.ui.model.FREE_NOTICE_TEXT
-import com.lookie.opluskey.ui.model.FREE_NOTICE_TITLE
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.target.DonateTarget
+import com.lookie.opluskey.ui.model.text.DISCLAIMER_TEXT
+import com.lookie.opluskey.ui.model.text.DISCLAIMER_TITLE
+import com.lookie.opluskey.ui.model.text.DONATE_LIST_TITLE
+import com.lookie.opluskey.ui.model.text.FREE_NOTICE_TEXT
+import com.lookie.opluskey.ui.model.text.FREE_NOTICE_TITLE
+import com.lookie.opluskey.ui.write.acceptDisclaimerAndEnable
 
 // 首页那两处「弹出来」的东西 —— 两次确认，和捐赠那个菜单 + 收款码窗口。
 

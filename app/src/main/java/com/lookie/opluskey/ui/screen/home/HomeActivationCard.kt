@@ -32,25 +32,25 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.update.ReleaseInfo
-import com.lookie.opluskey.ui.LocalAppTheme
-import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appVersionLabel
-import com.lookie.opluskey.ui.blockedReason
-import com.lookie.opluskey.ui.linkFacts
-import com.lookie.opluskey.ui.linkReady
-import com.lookie.opluskey.ui.model.AppTheme
-import com.lookie.opluskey.ui.model.CHECKING_HINT
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.PAGE_MARGIN
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
-import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
-import com.lookie.opluskey.ui.model.isDarkScheme
-import com.lookie.opluskey.ui.model.opticalCenter
-import com.lookie.opluskey.ui.setModuleEnabled
-import com.lookie.opluskey.ui.state.UpdateState
-import com.lookie.opluskey.ui.statusTipText
+import com.lookie.opluskey.ui.chrome.appVersionLabel
+import com.lookie.opluskey.ui.feedback.LocalTick
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
+import com.lookie.opluskey.ui.model.page.opticalCenter
+import com.lookie.opluskey.ui.model.text.CHECKING_HINT
+import com.lookie.opluskey.ui.model.theme.AppTheme
+import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER
+import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT
+import com.lookie.opluskey.ui.model.theme.isDarkScheme
+import com.lookie.opluskey.ui.state.host.UpdateState
+import com.lookie.opluskey.ui.style.LocalAppTheme
+import com.lookie.opluskey.ui.wire.blockedReason
+import com.lookie.opluskey.ui.wire.linkFacts
+import com.lookie.opluskey.ui.wire.linkReady
+import com.lookie.opluskey.ui.wire.statusTipText
+import com.lookie.opluskey.ui.write.setModuleEnabled
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -517,8 +517,7 @@ private class ActivationExtras(
 /**
  * 卡的里子：水印 + 上半段 + 下半段。
  *
- *  抽出来只为让 [SettingsPage.HomeActivationCard] 留在 detekt 的 `LongMethod` 长度线内
- *  （那一支里已经塞了状态判定、两个颜色过渡和库那串卡片参数）。
+ *  抽出来（那一支里已经塞了状态判定、两个颜色过渡和库那串卡片参数）。
  */
 @Composable
 private fun SettingsPage.ActivationBody(
@@ -578,7 +577,6 @@ private fun SettingsPage.toggleMaster(ui: HomeUiState) {
  *   有提示段时它是「分隔线上面那一段」，收到 [ACTIVATION_HEAD_BOTTOM]；
  *   没有的话它就是整张卡的底，上下对称）。
  *
- *  抽出来只为让 [SettingsPage.HomeActivationCard] 留在 detekt 的 `LongMethod` 长度线内。
  */
 @Composable
 private fun SettingsPage.ActivationHead(

@@ -17,22 +17,22 @@ import com.lookie.opluskey.core.config.ConfigProfiles
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.ui.ConfirmDialog
-import com.lookie.opluskey.ui.DialogButtonRow
-import com.lookie.opluskey.ui.DialogPositiveStyle
-import com.lookie.opluskey.ui.FrostedDialog
 import com.lookie.opluskey.ui.ImportOverwrite
 import com.lookie.opluskey.ui.PendingImport
-import com.lookie.opluskey.ui.PickerRow
-import com.lookie.opluskey.ui.PickerRowTraits
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.canWriteConfig
-import com.lookie.opluskey.ui.escapeEmphasis
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_DARK_ALPHA
-import com.lookie.opluskey.ui.model.MENU_GROUP_LINE_LIGHT_ALPHA
-import com.lookie.opluskey.ui.model.isDarkScheme
-import com.lookie.opluskey.ui.state.CommandsSave
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.dialog.DialogButtonRow
+import com.lookie.opluskey.ui.dialog.DialogPositiveStyle
+import com.lookie.opluskey.ui.dialog.FrostedDialog
+import com.lookie.opluskey.ui.dialog.PickerRow
+import com.lookie.opluskey.ui.dialog.PickerRowTraits
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_DARK_ALPHA
+import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_LIGHT_ALPHA
+import com.lookie.opluskey.ui.model.theme.isDarkScheme
+import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.style.escapeEmphasis
+import com.lookie.opluskey.ui.write.canWriteConfig
 import io.github.suqi8.coui.kmp.basic.DividerDefaults
 import io.github.suqi8.coui.kmp.basic.DropdownDefaults
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
@@ -175,8 +175,7 @@ private fun rememberImportTargetState(pending: PendingImport?): ImportTargetStat
 }
 
 /**
- * 选择器正文那一列 —— 已有配置 + 最末一行「新增配置」。拆出来是为了让 [ImportTargetDialog]
- * 留在 detekt 的 `LongMethod` 线内。
+ * 选择器正文那一列 —— 已有配置 + 最末一行「新增配置」。
  */
 @Composable
 private fun androidx.compose.foundation.layout.ColumnScope.ImportTargetRows(

@@ -13,26 +13,26 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.ToastNotice
 import com.lookie.opluskey.core.present.CommonCommands
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.NameDialog
-import com.lookie.opluskey.ui.PageScrollColumn
 import com.lookie.opluskey.ui.Screen
-import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SliderRow
-import com.lookie.opluskey.ui.SliderSpec
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.SHOW_HOME_MINI_ANIM
+import com.lookie.opluskey.ui.chrome.PageScrollColumn
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.dialog.NameDialog
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.SHOW_HOME_MINI_ANIM
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.SliderRow
+import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.screen.pageWritable
-import com.lookie.opluskey.ui.setColorOsApi
-import com.lookie.opluskey.ui.setMiniWindowAnim
-import com.lookie.opluskey.ui.setShowCommonCommands
-import com.lookie.opluskey.ui.setToastOnRun
-import com.lookie.opluskey.ui.setToastTemplate
-import com.lookie.opluskey.ui.setVibrate
-import com.lookie.opluskey.ui.setVibrateStrength
+import com.lookie.opluskey.ui.write.setColorOsApi
+import com.lookie.opluskey.ui.write.setMiniWindowAnim
+import com.lookie.opluskey.ui.write.setShowCommonCommands
+import com.lookie.opluskey.ui.write.setToastOnRun
+import com.lookie.opluskey.ui.write.setToastTemplate
+import com.lookie.opluskey.ui.write.setVibrate
+import com.lookie.opluskey.ui.write.setVibrateStrength
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 
@@ -190,7 +190,6 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
  *
  *  行尾副标题写的就是**当前模板**：清空时退回默认那句，所以这一行同时也是「改回去」的入口。
  *
- *  单独一支只为让 [InterfaceCard] 留在 detekt 的长度上限之内（与 [toastRow] 同一个理由）。
  */
 @Composable
 private fun SettingsPage.toastTemplateRow(
@@ -217,7 +216,6 @@ private fun SettingsPage.toastTemplateRow(
  *  它是这一页里**唯一一条只管页面显示**的项：关掉只是那几行不画，已经绑上去的动作照旧执行、
  *  命令库里那些命令也一条不动 —— 两句副标题要说的正是这件事（别读成「停用常用命令」）。
  *
- *  单独一支只为让 [ActionsCard] 留在 detekt 的长度上限之内（与 [toastRow] 同一个理由）。
  */
 private fun SettingsPage.commonCommandsRow(
     checked: Boolean,
@@ -240,7 +238,6 @@ private fun SettingsPage.commonCommandsRow(
  *  与上面那颗开关配成一对：那颗管「这一段露不露」，这一行管「这一段有哪几条」。
  *  行尾箭头：点开是一整页。**显隐跟着那颗开关**（`visible`，由 `CardList` 做进出场）。
  *
- *  单独一支只为让 [InterfaceCard] 留在 detekt 的长度上限之内（`commonCommandsRow` 同一个理由）。
  */
 private fun SettingsPage.manageCommonCommandsRow(
     visible: Boolean,
@@ -314,7 +311,6 @@ private const val MAX_TOAST_TEMPLATE_LENGTH = 60
  *  那边每按一次**现读**配置，所以拨完开关立刻生效，不必重启。
  *  每颗键 / 每组组合可以在「独立设置」里另设一份（`Config.effectiveFor` 判，本页是默认值）。
  *
- *  单独一支只为让 [ActionsCard] 留在 detekt 的长度上限之内。
  */
 private fun SettingsPage.toastRow(
     checked: Boolean,

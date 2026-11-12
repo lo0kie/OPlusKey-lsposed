@@ -185,7 +185,7 @@ jobs:
       # 补丁产物完整性：`patches/repo` 里那个 aar 是打完补丁重新发布的，不在任何上游仓库里，
       #   也没有上游签名可对 —— 仓库里那份就是唯一来源。校验和缺了 / 对不上，说明它被换过或传坏了。
       - name: 校验补丁产物
-        run: bash tools/verify-patches.sh
+        run: python3 tools/verify-patches.py
 
       # 每一轮都打整包（debug + release + releaseLog）：这三个包既是验证对象，也是 `release.yml`
       #   发版时要取的那一份，还是出问题时能直接下来复现的那一份。
@@ -201,12 +201,12 @@ jobs:
             ./gradlew assembleDebug
           fi
 
-      # 三个版本值由 `tools/read-version.sh` 读（`release.yml` 调的是同一个脚本 —— 一处实现，
+      # 三个版本值由 `tools/read-version.py` 读（`release.yml` 调的是同一个脚本 —— 一处实现，
       #   不会两边漂）。抓不到就 fail，绝不兜底：兜底会发出一个 tag 叫 `0-0.0.0` 的 release，
       #   而模块仓库的机器人是从 APK 的二进制清单读真值算 tag 的，两边不一致时它会再改一次 tag。
       - name: 抓版本号
         id: dist
-        run: bash tools/read-version.sh
+        run: python3 tools/read-version.py
 
       - name: 收产物到 dist
         run: |
@@ -232,9 +232,9 @@ jobs:
       - name: 校验两档差异（debug / release）
         run: python3 tools/check_variants.py
 
-      # 验收底线：脚本在 `tools/verify-apk.sh`，`release.yml` 发版前也调它 —— 一套判据一处实现。
+      # 验收底线：脚本在 `tools/verify-apk.py`，`release.yml` 发版前也调它 —— 一套判据一处实现。
       - name: 校验验收底线（AGENTS.md 二、1.2）
-        run: bash tools/verify-apk.sh dist
+        run: python3 tools/verify-apk.py dist
 
       - name: 上传 debug 产物
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

@@ -3,8 +3,8 @@ package com.lookie.opluskey.ui.hook
 import android.view.ViewGroup
 import androidx.compose.ui.graphics.toArgb
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.ui.model.DARK_SCHEME
-import com.lookie.opluskey.ui.model.LIGHT_SCHEME
+import com.lookie.opluskey.ui.model.theme.DARK_SCHEME
+import com.lookie.opluskey.ui.model.theme.LIGHT_SCHEME
 
 /**
  * 宿主窗口 / 状态栏的绘制 —— 换页时把宿主的主题、窗口底色与状态栏那一条刷成我们需要的样式。

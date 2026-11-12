@@ -6,7 +6,7 @@ import android.content.Intent
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
-import com.lookie.opluskey.ui.registerLocalReceiver
+import com.lookie.opluskey.ui.wire.registerLocalReceiver
 import kotlinx.coroutines.delay
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference

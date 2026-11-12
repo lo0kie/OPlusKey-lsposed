@@ -19,6 +19,15 @@ import com.lookie.opluskey.core.model.expandedWith
 import com.lookie.opluskey.core.rom.RomKeyFamilies
 import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.core.wire.ModuleWire
+import com.lookie.opluskey.host.action.app.AppLauncher
+import com.lookie.opluskey.host.action.app.AppShortcutLaunch
+import com.lookie.opluskey.host.action.notice.FluidAction
+import com.lookie.opluskey.host.action.notice.NotifyAction
+import com.lookie.opluskey.host.action.setting.BrightnessAction
+import com.lookie.opluskey.host.action.setting.SettingSwitch
+import com.lookie.opluskey.host.action.setting.VolumeAction
+import com.lookie.opluskey.host.action.shell.ProcessAction
+import com.lookie.opluskey.host.action.shell.ShellRunner
 
 /**
  * 动作派发器，只服务侧键。
@@ -26,7 +35,6 @@ import com.lookie.opluskey.core.wire.ModuleWire
  *  成员数贴着 `TooManyFunctions` 的阈值：一种动作一个 `runXxx`，这一层就是那张分派表本身 ——
  *  拆开之后「支持哪些动作」反而要翻好几个文件才数得清。
  */
-@Suppress("TooManyFunctions")
 internal class ActionRunner(
     /** 借来的宿主 Context（`host/GestureReceiver` 从 `ActivityThread` 反射取）。 */
     @Volatile var context: Context?,
@@ -109,10 +117,8 @@ internal class ActionRunner(
 
     /**
      * 起一条 ColorOS 落点 —— 灵感语音「开始」单独有「连按窗口」，其余照旧。
-     *
-     *  写成 lambda 字段而不是方法：这个类的函数数已经贴着 detekt 的上限。
      */
-    private val startOplusOrVoice: (String) -> Unit = { feature ->
+    private fun startOplusOrVoice(feature: String) {
         val now = android.os.SystemClock.uptimeMillis()
         val gap = now - lastVoiceMemoryAt
         if (feature == RomProfile.NAME_VOICE_MEMORY && gap in 0 until VOICE_MEMORY_GAP_MS) {
@@ -124,7 +130,7 @@ internal class ActionRunner(
     }
 
     /** 执行 oplus 动作：免打扰走 AOSP 或 ColorOS，其余走落点。 */
-    private val runOplus: (String) -> Unit = { feature ->
+    private fun runOplus(feature: String) {
         if (feature == RomProfile.NAME_VOICE_ASSIST) {
             //  唤醒小布**没有宿主落点**：ROM 是用 system_server 自己的身份去起语音服务
             //  （见 `RomProfile.NAME_VOICE_ASSIST`），宿主未必有那个签名级权限 ⇒ 转给注入侧。
@@ -174,12 +180,6 @@ internal class ActionRunner(
      */
     @Volatile
     private var openScope: RunScope? = null
-
-    /**
-     * `appshortcut:` 那一支 —— 单独一支只为让 [dispatch] 别顶破 detekt 的长度上限
-     * （那五个实参一行放不下，折行要占三行）。
-     */
-    private fun runAppShortcut(action: Action.AppShortcut) = shortcut.launch(action.pkg, action.shortcutId, action.userId, action.window)
 
     /** 系统面板那一档：目前只有控制中心一条通道，认不出的档位只记日志、不猜目标。 */
     private fun runPanel(mode: String) {
@@ -301,7 +301,7 @@ internal class ActionRunner(
 
                 is Action.AppWindow -> launcher.launchAppInWindow(act.target)
 
-                is Action.AppShortcut -> runAppShortcut(act)
+                is Action.AppShortcut -> shortcut.launch(act.pkg, act.shortcutId, act.userId, act.window)
 
                 is Action.MiniWindow -> launcher.putForegroundInMiniWindow(act.collapsed)
 

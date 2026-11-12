@@ -1,0 +1,141 @@
+package com.lookie.opluskey.ui.state.command
+
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
+/**
+ * 步骤列表**展示层**的一行 —— `draft.steps` 里某个 token 的镜像，带一个稳定 id。
+ *
+ *  动画只活在展示层：数据（`draft.steps`）是立即改的，行是「播完退场再摘」。
+ */
+internal class StepRowItem(
+    val id: Int,
+    token: String,
+) {
+    /**
+     * 这一步的动作 token。
+     *
+     *  **可写**：换一步（同长度、只有一个位置对不上）时那一行**就地换字**，不播退场 / 入场
+     *  （见 [StepRowDisplay.sync]）。是 state 因为组合期要读它取标题与图标。
+     */
+    var token by mutableStateOf(token)
+
+    val state = MutableTransitionState(false).apply { targetState = true }
+
+    /**
+     * 退场中：target 已切 false，播完 shrink+fade 就从展示层摘除。
+     *
+     *  组合期会读它（`count { !it.exiting }`、几处 `enabled = !item.exiting`），所以必须是 state：
+     *  普通 `var` 只在「每个写点都恰好与 `state.targetState` 同帧写」时看着能工作（靠那一次重组
+     *  顺带把读点重读一遍），那是巧合、不是保证。
+     */
+    var exiting by mutableStateOf(false)
+
+    /**
+     * 退场行的插回锚。**只在 [StepRowDisplay.sync] 里读写**，
+     * 组合期不读 ⇒ 普通 `var` 就够，不必是 state。
+     */
+    var anchorId = -1
+}
+
+/**
+ * 步骤行的展示层镜像 —— 增 / 删 / 换 / 移都在这里做**差分**。
+ *
+ * ## 为什么住在页面级状态，而不是 `SerialSteps()` 里的 `remember`
+ *
+ *  「自定义命令」页是两个 tab 共用一个分页器，切 tab 时**那一页的组合会被注销**：
+ *  展示层跟着没了，切回来重新建一遍 ⇒ 整张表重播一次进场动画（真机反馈
+ *  「切换 tab，步骤的列表动画又跑一遍」就是这个）。放到页面级之后，切回来时
+ *  行还是原来那些、`AnimatedVisibility` 的 currentState 仍是 true，不会再播。
+ *
+ * ## 差分怎么算
+ *
+ *  未退场的展示行按展示顺序与 `steps` 做**多重集匹配**（同 token 按先后配对）：
+ *  配上的保留、配不上的播退场（记下前面最近的保留行当锚，收缩期间插回它下面）、
+ *  缺的建新条目播入场。
+ */
+internal class StepRowDisplay {
+    val rows = mutableStateListOf<StepRowItem>()
+
+    /**
+     * 「换一步」在下标几 —— 判据是**同长度、恰好一个位置对不上、其余按 token 完全对上**。
+     *
+     *  只认这一个形态：多出 / 少掉一行、或顺序变了（上移下移）都仍然走差分那条路，
+     *  那些要的是进 / 出场与位移动画，不是就地换字。
+     *
+     *  @return 那个下标；不是「换一步」时 `null`
+     */
+    private fun replaceIndex(
+        kept: List<StepRowItem>,
+        steps: List<String>,
+    ): Int? {
+        if (kept.size != steps.size) return null
+        val diff = kept.indices.filter { kept[it].token != steps[it] }
+        if (diff.size != 1) return null
+        val at = diff[0]
+        val rest = kept.indices.filter { it != at }
+        return if (rest.all { kept[it].token == steps[it] }) at else null
+    }
+
+    /** 下一个新行的 id。只在 [sync] 里读写（组合期不读）⇒ 普通 `var` 就够。 */
+    private var nextId = 0
+
+    /** 与 [steps] 对齐（见类注释里那段差分规则）。 */
+    fun sync(steps: List<String>) {
+        val kept = rows.filter { !it.exiting }
+        //  **换一步**：同长度、只有一个位置对不上 ⇒ 那一行就地换字。
+        //  走差分的话旧行收缩、新行展开，用户看到的是「这一行先变矮又长回来」。
+        replaceIndex(kept, steps)?.let { at ->
+            kept[at].token = steps[at]
+            return
+        }
+        val matched = arrayOfNulls<StepRowItem>(steps.size)
+        val pool = kept.toMutableList()
+        steps.forEachIndexed { si, token ->
+            val i = pool.indexOfFirst { it.token == token }
+            if (i >= 0) matched[si] = pool.removeAt(i)
+        }
+        // 没匹配上的 → 退场；锚 = 前面最近的保留行（收缩期间插回它下面）
+        var prevId = -1
+        kept.forEach { row ->
+            if (matched.contains(row)) {
+                prevId = row.id
+            } else if (!row.exiting) {
+                row.exiting = true
+                row.anchorId = prevId
+                row.state.targetState = false
+            }
+        }
+        // 重建展示顺序：steps 顺序放匹配行（缺的建新行），其间插入挂锚的退场行
+        val exitingByAnchor = rows.filter { it.exiting }.groupBy { it.anchorId }
+        val newOrder = mutableListOf<StepRowItem>()
+        newOrder += exitingByAnchor[-1].orEmpty().sortedBy { it.id }
+        steps.forEachIndexed { si, token ->
+            val m = matched[si]
+            if (m == null) {
+                newOrder += StepRowItem(nextId++, token).also(rows::add)
+            } else {
+                newOrder += m
+            }
+            newOrder += exitingByAnchor[m?.id].orEmpty().sortedBy { it.id }
+        }
+        //  次序没变就**一点不动这张表**：`clear()` + `addAll()` 会让组合层看到一次「空表」——
+        //  那一帧里所有 `key(item.id)` 的组都会被注销，下一帧再重建时 `AnimatedVisibility`
+        //  是一份新组合，整张表于是重新展开一遍（切 tab 回来会跑这一趟 `sync`，
+        //  用户的「每次都重新展开了」就是这么来的）。同样的次序、同样的对象 ⇒ 不写就不脏。
+        val sameOrder = rows.size == newOrder.size && rows.indices.all { rows[it] === newOrder[it] }
+        if (!sameOrder) {
+            rows.clear()
+            rows.addAll(newOrder)
+        }
+    }
+
+    /** 页面出栈：清空 —— 下一趟进来从干净的一份开始（id 也从头数）。 */
+    fun clear() {
+        rows.clear()
+        nextId = 0
+    }
+}

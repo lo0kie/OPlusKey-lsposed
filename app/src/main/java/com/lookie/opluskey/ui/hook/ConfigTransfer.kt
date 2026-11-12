@@ -12,10 +12,10 @@ import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
 import com.lookie.opluskey.ui.PendingImport
-import com.lookie.opluskey.ui.appVersionText
-import com.lookie.opluskey.ui.dedupeByName
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.UNKNOWN_CONFIG_FORMAT
+import com.lookie.opluskey.ui.chrome.appVersionText
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.model.text.UNKNOWN_CONFIG_FORMAT
+import com.lookie.opluskey.ui.write.dedupeByName
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import kotlinx.coroutines.CoroutineScope
@@ -613,8 +613,7 @@ internal object ConfigTransfer {
  *  「这一组启用、成员键在本机是关的」于是原样进来了。不归一的话这一组会显示成停用，却在别的键
  *  被开回来时自己活过来（判定侧 `comboOff` 要求两者同时成立）。
  *
- *  放在**文件顶部**而不是 `ConfigTransfer` 里：它只吃两份配置、与那个对象的状态无关，
- *  而那个对象的函数条数已经贴着 detekt 的 `TooManyFunctions` 那一档。
+ *  放在**文件顶部**而不是 `ConfigTransfer` 里：它只吃两份配置、与那个对象的状态无关。
  */
 private fun mergeImportedConfig(
     imported: Config,
@@ -645,8 +644,7 @@ private fun mergeImportedConfig(
  *  拿不到大小**不**为了判上限先全量读一遍：那是为了省一次读反而多做一次读，且 provider 两次打开
  *  还可能读到不同内容。
  *
- *  放在**文件顶部**而不是 `ConfigTransfer` 里：它与那个对象的状态无关（只吃 resolver + uri），
- *  而那个对象的函数条数已经贴着 detekt 的 `TooManyFunctions` 那一档。
+ *  放在**文件顶部**而不是 `ConfigTransfer` 里：它与那个对象的状态无关（只吃 resolver + uri）。
  */
 private fun readOpenableInfo(
     resolver: android.content.ContentResolver,

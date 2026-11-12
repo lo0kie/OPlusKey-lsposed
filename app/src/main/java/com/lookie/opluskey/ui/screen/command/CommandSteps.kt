@@ -26,29 +26,29 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.present.ActionCatalog
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.DisabledHint
-import com.lookie.opluskey.ui.GestureProbe
-import com.lookie.opluskey.ui.ICON_ACTION_SIZE
-import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.addStep
-import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.gestureProbe
-import com.lookie.opluskey.ui.model.CARD_GAP
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.VISIBILITY_EXIT_MS
-import com.lookie.opluskey.ui.model.stepIcon
-import com.lookie.opluskey.ui.model.stepTitle
-import com.lookie.opluskey.ui.openAppPickerForStep
-import com.lookie.opluskey.ui.rememberGestureProbe
-import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.replaceStep
+import com.lookie.opluskey.ui.feedback.DisabledHint
+import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.CARD_GAP
+import com.lookie.opluskey.ui.model.text.stepIcon
+import com.lookie.opluskey.ui.model.text.stepTitle
+import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.ICON_ACTION_SIZE
+import com.lookie.opluskey.ui.row.RowEndIcon
 import com.lookie.opluskey.ui.screen.openVarOpsForStep
-import com.lookie.opluskey.ui.state.ResumeSheet
+import com.lookie.opluskey.ui.state.picker.ResumeSheet
+import com.lookie.opluskey.ui.wire.GestureProbe
+import com.lookie.opluskey.ui.wire.appNameOf
+import com.lookie.opluskey.ui.wire.gestureProbe
+import com.lookie.opluskey.ui.wire.rememberGestureProbe
+import com.lookie.opluskey.ui.write.addStep
+import com.lookie.opluskey.ui.write.openAppPickerForStep
+import com.lookie.opluskey.ui.write.replaceStep
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.IconButton
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -296,8 +296,8 @@ private fun stepButtonSize(available: Dp): Dp {
  * 一颗行尾图标键现在是什么档 —— 只决定**禁用与否**与**用哪一档颜色**（边长由调用方另给）。
  *
  *  三档互斥：一颗按钮不会同时又是禁用又是危险项（禁用的删除键不存在，删除恒可用）。
- *  合成一个枚举而不是两个布尔参数：那个函数的参数一多就过 detekt 的 `LongParameterList`，
- *  而 `enabled = true, error = false` 这种调用点本来也读不出「这颗是普通键」。
+ *  合成一个枚举而不是两个布尔参数：`enabled = true, error = false` 这种调用点读不出
+ *  「这颗是普通键」。
  */
 private enum class StepButtonTone {
     /** 普通可用（上移 / 下移在能点的位置上）。 */

@@ -1,10 +1,13 @@
 package com.lookie.opluskey.bridge
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import com.lookie.opluskey.bridge.inject.SystemContext
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.Reflect
+import java.lang.reflect.InvocationTargetException
 
 /** 状态栏指令的跨进程桥：「通知中心 / 控制中心」与「最近任务」这几个动作的专用通道。 */
 internal object StatusBarBridge {
@@ -383,4 +386,196 @@ internal object StatusBarBridge {
             XLog.w("弹电源菜单失败：${e.javaClass.simpleName}: ${e.message}")
         }
     }
+}
+
+/**
+ * 「把这块屏的背光推到某个值」那一条 —— [StatusBarBridge.CMD_BRIGHTNESS] 的注入侧实现。
+ *
+ * ## 为什么要走 system_server
+ *
+ *  `IDisplayManager.setTemporaryBrightness` 在服务那层要
+ *  `android.permission.CONTROL_DISPLAY_BRIGHTNESS`（signature|privileged）。宿主
+ *  `com.oplus.gesture` 只有 `WRITE_SETTINGS` + `DEVICE_POWER`，调不动；system_server 是 uid 1000，
+ *  天然放行（依据见 `docs/device/actions/brightness.md` 38.3）。
+ *
+ * ## 为什么要调它
+ *
+ *  控制中心的亮度条只在 `DisplayPowerController.saveBrightnessInfo()` 判成「这块屏的背光变了」时
+ *  才刷新（它随后 `sendDisplayEventsIfEnabledLocked(display, 128)` → `onDisplayChanged` →
+ *  SystemUI 重读 `screen_brightness`）。自动亮度下 `screen_brightness` 只是「关掉自动后回到的值」，
+ *  写它不会让背光按那个值走，条也就不动 —— 小布 `j40.j.r()` 在写库前先调这两个方法，正是为了
+ *  这一下（38.2 / 38.3）。
+ *
+ * ## 独立成一个对象
+ *
+ *  `StatusBarBridge` 已经贴着 detekt 的「对象内函数数」上限（[StatusBarBridge] 那几条指令各一支
+ *  private 实现），再往里塞四个函数就顶破了；这一支与状态栏也本来没关系 —— 它只是借了那条广播。
+ */
+internal object BrightnessBridge {
+    /**
+     * 把主屏背光推到 [raw]（raw 尺度，本机 `2..4095`）。
+     *
+     *  与系统自己拖动亮度条同一条路（`SystemUI/BrightnessController.setBrightness` 调的也是它）。
+     *  **不写库**：写库仍归宿主（自动亮度下要写的 `screen_auto_brightness_adj` 是 PRIVATE_SETTINGS，
+     *  注入侧也没有 `ContentResolver`）。
+     */
+    fun apply(
+        loader: ClassLoader?,
+        raw: Int,
+    ) {
+        if (raw < 0) {
+            XLog.w("亮度指令没带值，跳过")
+            return
+        }
+        val global = displayManager(loader) ?: return
+        val value = raw.toFloat()
+        try {
+            if (!pushTemporaryBrightness(global, value)) return
+            XLog.w("已把背光推到 $raw（DisplayManager 临时亮度）")
+            pushAutoAdjustment(global, value)
+        } catch (e: InvocationTargetException) {
+            // 服务端抛的异常包在 InvocationTargetException 里 —— 只打外层等于没打
+            XLog.w("setTemporaryBrightness 被拒：${e.cause?.javaClass?.name}: ${e.cause?.message}")
+        } catch (e: Throwable) {
+            XLog.w("推背光失败（忽略）：${e.javaClass.simpleName}: ${e.message}")
+        }
+    }
+
+    /** 取 `DisplayManagerGlobal` 实例（`setTemporaryBrightness` 的载体）；取不到就记一行、返回 `null`。 */
+    private fun displayManager(loader: ClassLoader?): Any? {
+        if (loader == null) {
+            XLog.w("还没有 system_server 的 ClassLoader，亮度刷新跳过")
+            return null
+        }
+        val cls =
+            Reflect.findClass(loader, Framework.Calls.DISPLAY_MANAGER_GLOBAL) ?: run {
+                XLog.w("找不到 ${Framework.Calls.DISPLAY_MANAGER_GLOBAL}，亮度刷新跳过")
+                return null
+            }
+        return Reflect.callStatic(cls, Framework.Calls.GET_INSTANCE) ?: run {
+            XLog.w("DisplayManagerGlobal.getInstance() 返回 null，亮度刷新跳过")
+            return null
+        }
+    }
+
+    /** 推临时亮度；方法不存在时记一行并返回 `false`（调用方据此不再往下走）。 */
+    private fun pushTemporaryBrightness(
+        global: Any,
+        value: Float,
+    ): Boolean {
+        val m =
+            Reflect.methodByNameAndArity(
+                global.javaClass,
+                Framework.Calls.SET_TEMPORARY_BRIGHTNESS,
+                2,
+            ) ?: run {
+                XLog.w("${global.javaClass.name} 上没有 setTemporaryBrightness(int, float)，亮度刷新跳过")
+                return false
+            }
+        m.isAccessible = true
+        asSystem { m.invoke(global, 0, value) }
+        return true
+    }
+
+    /** 第二下：把自动亮度的用户偏移也设成同值；方法不存在时只记一行（不影响上面那一下）。 */
+    private fun pushAutoAdjustment(
+        global: Any,
+        value: Float,
+    ) {
+        val m =
+            Reflect.methodByNameAndArity(
+                global.javaClass,
+                Framework.Calls.SET_TEMPORARY_AUTO_ADJUSTMENT,
+                1,
+            )
+        if (m == null) {
+            XLog.w("${global.javaClass.name} 上没有 setTemporaryAutoBrightnessAdjustment(float)，只推了背光")
+            return
+        }
+        m.isAccessible = true
+        asSystem { m.invoke(global, value) }
+    }
+}
+
+/**
+ * 「唤醒小布」（`oplus:voice_assist`）的执行侧 —— **只在 system_server 里跑**。
+ *
+ *  独立成一个对象而不是并进 [StatusBarBridge]：那一族「一种指令一个函数」，再加一支就顶破
+ *  detekt 的函数数上限；而这一支本来就比别的指令多一段（挑包名、组 intent），放在一起
+ *  会把那张分派表挤得看不清。通道还是同一条（`CMD_VOICE_ASSIST`），入口在那边。
+ *
+ *  ## 为什么必须由 system_server 起
+ *
+ *  ROM 里这条配方（`PhoneWindowManagerExtImpl.startSpeech`）是拿**框架自己的身份**去
+ *  `startForegroundServiceAsUser`，而 `checkComponentPermission` 对 `SYSTEM_UID` 直接放行 ——
+ *  也就是说「起得来」靠的是调用方是谁，不是目标服务对第三方开放。宿主 `com.oplus.gesture`
+ *  没有这份旁路，所以这一档不放给宿主（与通知中心 / 电源菜单同一条纪律）。
+ *  配方与取证见 `docs/device/actions/voice.md` 第三十节。
+ */
+internal object VoiceAssistBridge {
+    /**
+     * 起一次小布助手（Breeno）。
+     *
+     *  @param loader system_server 的 ClassLoader —— 取 Context 要用它；null 时只记日志
+     *    （注入侧还没初始化完，这一下不执行）
+     */
+    fun start(loader: ClassLoader?) {
+        if (loader == null) {
+            XLog.w("还没有 system_server 的 ClassLoader，唤醒小布跳过")
+            return
+        }
+        val ctx = contextOf(loader) ?: return
+        val pkg =
+            installedSpeechPackage(ctx) ?: run {
+                XLog.w("本机没装小布助手（找过 ${Framework.Calls.SPEECH_PACKAGES}），唤醒小布跳过")
+                return
+            }
+        // FLAG_ACTIVITY_NEW_TASK 对服务没有作用 —— ROM 那边也加了（同一份配方），照抄便于对账
+        val intent =
+            Intent(Framework.Calls.SPEECH_ACTION_ACTIVATE)
+                .setComponent(ComponentName(pkg, Framework.Calls.SPEECH_SERVICE))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(Framework.Calls.SPEECH_EXTRA_CALLER, Framework.Calls.SPEECH_CALLER_VALUE)
+                .putExtra(Framework.Calls.SPEECH_EXTRA_START_TYPE, Framework.Calls.SPEECH_START_TYPE_POWER)
+        try {
+            //  **看返回值**：组件不存在 / 未导出时 AMS 返回 `null` 而**不抛** ——
+            //  只判「没抛异常」就会把「什么也没起」记成「已下发」，用户侧一片静默。
+            val started = asSystem { ctx.startForegroundService(intent) }
+            if (started == null) {
+                XLog.w("唤醒小布：系统没接受这个组件（$pkg/${Framework.Calls.SPEECH_SERVICE}），没有起服务")
+                return
+            }
+            XLog.w(
+                "已在本机 startForegroundService($pkg/${Framework.Calls.SPEECH_SERVICE}，" +
+                    "start_type=${Framework.Calls.SPEECH_START_TYPE_POWER})（唤醒小布）",
+            )
+        } catch (e: Throwable) {
+            // 起不来的两种常见来路：目标服务没导出 / 按调用方判签名 —— 只记日志，不抛
+            XLog.w("唤醒小布失败：${e.javaClass.simpleName}: ${e.message}")
+        }
+    }
+
+    /** 取一个能起服务的 Context；取不到记一行就返回 null（这一下不执行）。 */
+    private fun contextOf(loader: ClassLoader): Context? {
+        val ctx =
+            try {
+                SystemContext.get(loader)
+            } catch (e: Throwable) {
+                XLog.w("取 Context 失败，唤醒小布跳过：${e.javaClass.simpleName}")
+                null
+            }
+        if (ctx == null) XLog.w("没有 Context，唤醒小布跳过")
+        return ctx
+    }
+
+    /**
+     * 装着的那个语音助手包名 —— 新包优先，老包兜底（[Framework.Calls.SPEECH_PACKAGES]）。
+     *
+     *  为什么要在运行期挑：ROM 自己也是按 `mBreenoPkg` 走的（新机型 `heytap`、早期 `oppo`），
+     *  写死一个的话换一代机器这一格就安静地失效。
+     */
+    private fun installedSpeechPackage(ctx: Context): String? =
+        Framework.Calls.SPEECH_PACKAGES.firstOrNull { pkg ->
+            runCatching { ctx.packageManager.getApplicationInfo(pkg, 0) }.isSuccess
+        }
 }

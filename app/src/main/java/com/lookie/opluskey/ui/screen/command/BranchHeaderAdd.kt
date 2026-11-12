@@ -4,10 +4,10 @@ import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.SceneRule
-import com.lookie.opluskey.ui.DisabledHint
-import com.lookie.opluskey.ui.HeaderIconButton
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.chrome.HeaderIconButton
+import com.lookie.opluskey.ui.feedback.DisabledHint
+import com.lookie.opluskey.ui.model.icon.PageIcons
 import io.github.suqi8.coui.kmp.basic.Icon
 
 // 「条件执行」页顶栏右上角那颗「添加」—— 与 `PageTopBar` 的 `PageActions` 那几颗同一位置、同一尺寸。

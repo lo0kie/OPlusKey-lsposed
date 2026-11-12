@@ -28,21 +28,21 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lookie.opluskey.core.present.ActionCatalog
-import com.lookie.opluskey.ui.LocalAppTheme
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.TILE_HEIGHT
-import com.lookie.opluskey.ui.TILE_SIDE_PADDING
-import com.lookie.opluskey.ui.TileFocusRing
-import com.lookie.opluskey.ui.appCardColors
-import com.lookie.opluskey.ui.model.AppTheme
-import com.lookie.opluskey.ui.model.COLOR_FADE_SPEC
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.ROW_ICON_SIZE
-import com.lookie.opluskey.ui.model.VISIBILITY_ENTER
-import com.lookie.opluskey.ui.model.VISIBILITY_EXIT
-import com.lookie.opluskey.ui.model.opticalCenter
-import com.lookie.opluskey.ui.rememberRowIconColor
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.ROW_ICON_SIZE
+import com.lookie.opluskey.ui.model.page.opticalCenter
+import com.lookie.opluskey.ui.model.theme.AppTheme
+import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
+import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER
+import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT
+import com.lookie.opluskey.ui.row.TILE_HEIGHT
+import com.lookie.opluskey.ui.row.TILE_SIDE_PADDING
+import com.lookie.opluskey.ui.row.TileFocusRing
+import com.lookie.opluskey.ui.row.rememberRowIconColor
+import com.lookie.opluskey.ui.style.LocalAppTheme
+import com.lookie.opluskey.ui.style.appCardColors
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardListPosition
@@ -362,4 +362,4 @@ internal fun SettingsPage.ActionTile(
     }
 }
 
-// TileFocusRing 已搬到 ui/TileWidgets.kt（与 ActionTile 共用 TILE_HEIGHT / TILE_SIDE_PADDING / 焦点圈逻辑）。
+// TileFocusRing 已搬到 ui/row/TileWidgets.kt（与 ActionTile 共用 TILE_HEIGHT / TILE_SIDE_PADDING / 焦点圈逻辑）。

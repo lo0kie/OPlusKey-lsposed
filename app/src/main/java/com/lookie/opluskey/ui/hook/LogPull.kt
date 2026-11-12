@@ -6,7 +6,7 @@ import android.content.Intent
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.core.wire.PageWire
-import com.lookie.opluskey.ui.registerLocalReceiver
+import com.lookie.opluskey.ui.wire.registerLocalReceiver
 import java.util.concurrent.ConcurrentHashMap
 
 /**

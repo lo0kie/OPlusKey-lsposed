@@ -4,14 +4,14 @@ import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.GlobalConfig
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SliderRow
-import com.lookie.opluskey.ui.SliderSpec
-import com.lookie.opluskey.ui.model.PageIcons
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.SliderRow
+import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.screen.combo.setComboWindow
-import com.lookie.opluskey.ui.setComboPassthrough
+import com.lookie.opluskey.ui.write.setComboPassthrough
 import io.github.suqi8.coui.kmp.basic.CardListPosition
 
 // 「组合按键设置」那张卡 —— 从「按键功能」页搬来（用户口径）：这两项都是**全局**的，

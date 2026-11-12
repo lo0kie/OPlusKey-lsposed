@@ -142,7 +142,7 @@ internal class CustomCommandRunner(
     }
 
     /**
-     * 单条命令那一支（从 [run] 拆出来的，只为让它的 `return` 条数留在 detekt 的 `ReturnCount` 之下）。
+     * 单条命令那一支 —— [run] 只管「多条命令链」那半，单条正文怎么解析、怎么执行在这里。
      *
      * @param name 日志与「正在跑」那张表用的名字（草稿没名字时是 `UNNAMED`）
      */
@@ -423,34 +423,24 @@ private fun expandStepRefs(
     }
     val out = ArrayList<String>(cmd.steps.size)
     for (step in cmd.steps) {
-        val resolved = resolveStep(step, library, report) ?: continue
-        out.add(resolved)
+        //  引用解析：用户那份库优先，找不到才退到模块内置的那几条（与 `run(name)` 同一个顺序）。
+        //  `null` = 这一步作废（引用坏了，已通过 `report` 报过），跳过。
+        if (!step.startsWith(Command.PREFIX)) {
+            out.add(step)
+            continue
+        }
+        val ref = step.removePrefix(Command.PREFIX).trim()
+        val target = library.firstOrNull { it.name == ref } ?: CommonCommands.commandOf(ref)
+        if (target == null) {
+            report(CommandFailure.NOT_FOUND, ref, "在命令库里找不到")
+            continue
+        }
+        if (target.kind != CommandKind.SINGLE) {
+            report(CommandFailure.REF_ONLY_SINGLE, ref, "是多条命令，这里只能引用单条")
+            continue
+        }
+        //  空正文没什么可加的（与「空步骤跳过」同一条：它没有任何要跑的东西）
+        target.single.takeIf { it.isNotBlank() }?.let { out.add(it) }
     }
     return out
-}
-
-/**
- * 一步该变成什么 —— `null` = 这一步作废（引用坏了，已通过 [report] 报过）。
- *
- *  拆出来只为把 [expandStepRefs] 的圈复杂度留在阈值内，也让「哪几步会作废」一眼看得全。
- */
-private fun resolveStep(
-    step: String,
-    library: List<Command>,
-    report: (CommandFailure, String, String) -> Unit,
-): String? {
-    if (!step.startsWith(Command.PREFIX)) return step
-    val ref = step.removePrefix(Command.PREFIX).trim()
-    //  用户那份库优先，找不到才退到模块内置的那几条（与 `run(name)` 同一个顺序）
-    val target = library.firstOrNull { it.name == ref } ?: CommonCommands.commandOf(ref)
-    if (target == null) {
-        report(CommandFailure.NOT_FOUND, ref, "在命令库里找不到")
-        return null
-    }
-    if (target.kind != CommandKind.SINGLE) {
-        report(CommandFailure.REF_ONLY_SINGLE, ref, "是多条命令，这里只能引用单条")
-        return null
-    }
-    //  空正文没什么可加的（与「空步骤跳过」同一条：它没有任何要跑的东西）
-    return target.single.takeIf { it.isNotBlank() }
 }

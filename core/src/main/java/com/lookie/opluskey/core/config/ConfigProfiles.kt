@@ -102,7 +102,6 @@ private const val SLOT_ID_PREFIX = "slot:"
  *  [Config.profileName] 存在配置自己里头，不绑槽号 —— 交换之后名字仍跟着内容走，不会错位。
  *  空串 = 「默认」配置（升级时自动落下的退路），它**不许改名、不许删除**：删掉就没地方回去了。
  */
-@Suppress("TooManyFunctions")
 object ConfigProfiles {
     /** 当前生效那一份的槽名 —— 与 [ConfigStore.SLOT_CONFIG] 同一个，别各写一份字面量。 */
     const val CURRENT_SLOT: String = ConfigStore.SLOT_CONFIG
@@ -283,7 +282,6 @@ object ConfigProfiles {
      *
      * @return 切换后当前生效的配置；写盘失败 / 附加层没跟过去时 `null`（盘上退回切换前）
      */
-    @Suppress("CyclomaticComplexMethod")
     private fun swapWith(
         slot: String,
         target: Config,

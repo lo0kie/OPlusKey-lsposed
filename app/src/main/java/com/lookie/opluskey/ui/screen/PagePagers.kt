@@ -9,7 +9,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.screen.command.COMMAND_PAGE_COUNT
 import com.lookie.opluskey.ui.screen.command.sceneGesturePages
-import com.lookie.opluskey.ui.state.KeyWatchState
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
 
 /**
  * 页面级的三个横向分页器 —— 一路传下去的那个包。

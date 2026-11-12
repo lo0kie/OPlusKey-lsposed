@@ -4,13 +4,13 @@ import androidx.compose.runtime.Composable
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.ui.ConfirmDialog
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appTargetLabelOf
-import com.lookie.opluskey.ui.escapeEmphasis
-import com.lookie.opluskey.ui.state.AppPickerUiState
-import com.lookie.opluskey.ui.state.PickedDetail
-import com.lookie.opluskey.ui.state.PickerToggle
+import com.lookie.opluskey.ui.dialog.ConfirmDialog
+import com.lookie.opluskey.ui.state.picker.AppPickerUiState
+import com.lookie.opluskey.ui.state.picker.PickedDetail
+import com.lookie.opluskey.ui.state.picker.PickerToggle
+import com.lookie.opluskey.ui.style.escapeEmphasis
+import com.lookie.opluskey.ui.wire.appTargetLabelOf
 
 // 「选择应用」页那三张**拦人的脸** —— 都是「留在这一页」，什么都不写。
 //

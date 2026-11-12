@@ -5,10 +5,10 @@ import android.os.Looper
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.host.action.RootGrant
-import com.lookie.opluskey.ui.HINT_SLOT_COMMAND
+import com.lookie.opluskey.host.action.shell.RootGrant
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.hint
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMMAND
+import com.lookie.opluskey.ui.feedback.hint
 
 /**
  * 打开「以 root 执行」时**当场申请一次 root 授权**（「命令设置」那一行）。

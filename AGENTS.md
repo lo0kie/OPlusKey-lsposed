@@ -93,7 +93,7 @@
 6. **模块没有自己的界面；清单里只许有那一个无界面跳板**：
     - **唯一的界面组件是那颗跳板 Activity**：透明、`noHistory`、不渲染任何东西，只接住 LSPosed 管理器
       那颗「打开模块」的入口，把用户送到宿主的侧键设置页再退场。除此之外**不许加任何** activity /
-      alias / LAUNCHER / INFO 入口 —— 清单项的允许值由 `tools/verify-apk.sh` 逐项核（本文件不抄那份计数）。
+      alias / LAUNCHER / INFO 入口 —— 清单项的允许值由 `tools/verify-apk.py` 逐项核（本文件不抄那份计数）。
     - **跳板不许长成界面**：不加按钮、不加文案页、不加列表。要往上加任何可见内容，先改这一条。
     - **跳板不许自己起 Activity、不许走 root**：宿主设置页带 privapp 级权限，普通 app 直接起必被拦；
       正确做法与实测见 `docs/device/lsposed.md` 六之二。
@@ -190,7 +190,7 @@
   CI 的「校验依赖锁定」那一步会重写一遍再比对，红灯在那里。
     - **校验元数据是同一件事的另一半**：`gradle/verification-metadata.xml` 逐文件记 sha256，新版本一进来
       就缺条目，CI 在**第一条**就红在「Dependency verification failed」上 —— 那时报错长在插件解析处，
-      看着像别的问题。一条命令把两半做完：**`bash tools/relock.sh`**（要求 JDK 21）。
+      看着像别的问题。一条命令把两半做完：**`python3 tools/relock.py`**（要求 JDK 21）。
       **不许把它放宽成 `lenient` / `off`**：这份白名单是唯一拦得住「依赖被换掉」的东西。
     - **补齐只覆盖「这一趟真正解析到的」配置**：只跑 `help` 会漏掉 lint / aapt2 那一批，于是补完还红、
       表现成「一轮又一轮」。所以脚本带的是 `gate :app:assembleDebug` 那一整条，别自己简化成最小目标。
@@ -202,7 +202,7 @@
   **清单以 `.github/workflows/ci.yml` 为准**（脚本会加，别在这里抄死）；
   三道 Gradle 闸管不了跨文件 / 包与产物的判据，别把它们当全部 —— 本地要复核某一条就跑 `tools/` 下
   对应的那个脚本（名字见 ci.yml 里那一行）。
-- **凡属于 1.1 的第二档**（4 个文件及以上 / 涉及公共语义 / Hook 点 / 要求出包）：`./gradlew :app:assembleDebug` 通过；产物按 `tools/verify-apk.sh`
+- **凡属于 1.1 的第二档**（4 个文件及以上 / 涉及公共语义 / Hook 点 / 要求出包）：`./gradlew :app:assembleDebug` 通过；产物按 `tools/verify-apk.py`
   逐项核（清单那一项的允许值见 一、6，作用域内容见 一、9）；**注入侧不得引用界面层依赖**
   （复核方式：对注入侧那几个包 grep `import`，应无输出 —— 界面层依赖**出现在包里是预期的**，
   要守的是「注入侧不引用」）。

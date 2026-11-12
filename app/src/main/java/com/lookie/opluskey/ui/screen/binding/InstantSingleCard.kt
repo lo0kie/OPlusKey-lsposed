@@ -2,12 +2,12 @@ package com.lookie.opluskey.ui.screen.binding
 
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.instantSingleTitle
-import com.lookie.opluskey.ui.setInstantSingle
-import com.lookie.opluskey.ui.state.KeyWatchState
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.text.instantSingleTitle
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.state.binding.KeyWatchState
+import com.lookie.opluskey.ui.write.setInstantSingle
 
 /**
  * 「忽视无操作多击手势」那一行 —— 挂在**单击**那张卡里（`BindingSettingsCard`）。

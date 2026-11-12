@@ -65,7 +65,6 @@ internal object Framework {
      *  与 `core/model/RomProfile` 的表同理：参数多正是「一档要登记的那些名字」的样子，
      *  拆开会让「加一档」变成改好几处（`LongParameterList` 因此就地抑制）。
      */
-    @Suppress("LongParameterList")
     private class HookSet(
         val romSeries: String,
         val strategyCandidates: List<String>,

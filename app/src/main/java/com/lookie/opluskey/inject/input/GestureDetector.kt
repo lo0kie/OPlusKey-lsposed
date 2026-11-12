@@ -80,7 +80,6 @@ private const val AWAKE_MARGIN_MS = 500L
  *  成员数贴着 `TooManyFunctions` 的阈值：单击 / 双击 / 长按 / 连续触发各有一套计时与取消，
  *  拆文件就得把 `Pending` 与那三个 `Runnable` 一起搬出去 —— 状态机被切成两半更难跟。
  */
-@Suppress("TooManyFunctions")
 internal class GestureDetector(
     private val handler: Handler,
     /**
@@ -115,7 +114,6 @@ internal class GestureDetector(
      *  ——每一格都是独立的一个状态位 / 一个待摘的定时器句柄，拆成子对象只是把它们挪个地方，
      *  判定处还得一层层解引用。参数个数就是状态位数。
      */
-    @Suppress("LongParameterList")
     private class Pending(
         @Volatile var longPressAt: Long = 0L,
         @Volatile var doubleWindowAt: Long = 0L,
@@ -569,7 +567,8 @@ internal class GestureDetector(
      * 长按那一枪到点时**到底判不判** —— [SHOT_NONE] / [SHOT_CHAINED] / [SHOT_LONG]。
      *
      *  从 `scheduleLongPress` 的 Runnable 里抽出来的：那一支原本把「读状态 → 判 → 派发」
-     *  全写在一个 lambda 里，加了「单击后长按」这一档之后顶破了 detekt 的 `LongMethod` 线。
+     *  全写在一个 lambda 里。现在这一半只回答「判不判」，派发留在调用点 —— 三态返回值正是
+     *  「既不判、判连击、判长按」那三档，塞回 lambda 会让它既当状态机又当派发器。
      *
      *  状态位在锁里读改（与抬手那一段互斥），**日志留在锁外**：日志出口要走 logd，
      *  与 `dispatch` 同理，不该占着这把状态锁。
@@ -932,7 +931,7 @@ internal class GestureDetector(
     ) {
         // 链路自检的**端到端实证**：真判出一个手势就记一笔。
         //  接管点装上只说明反射找对了类与方法，说明不了这版 ROM 的侧键事件真的走到这里 ——
-        //  只有这一笔能证明整条链通了（页面见 `ui/LinkCheck.kt`）。
+        //  只有这一笔能证明整条链通了（页面见 `ui/wire/LinkCheck.kt`）。
         onGestureNoted()
         // 触觉反馈**不在这里**：它已经挪回宿主侧、动作即将执行那一刻
         // （`host/GestureReceiver.runAction`）。理由见那边的 KDoc —— 一句话：

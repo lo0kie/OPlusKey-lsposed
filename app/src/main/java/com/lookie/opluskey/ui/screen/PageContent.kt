@@ -33,38 +33,38 @@ import com.lookie.opluskey.core.ProcClock
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.wire.ModuleWire
-import com.lookie.opluskey.ui.HINT_SLOT_DISABLED
-import com.lookie.opluskey.ui.LocalAppTheme
-import com.lookie.opluskey.ui.LocalDisabledHint
-import com.lookie.opluskey.ui.LocalHint
-import com.lookie.opluskey.ui.LocalIconTint
-import com.lookie.opluskey.ui.LocalSwitchPositions
-import com.lookie.opluskey.ui.LocalTick
 import com.lookie.opluskey.ui.PageDebugChannel
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.SyncToHost
-import com.lookie.opluskey.ui.appTextStyles
-import com.lookie.opluskey.ui.disabledClickReason
-import com.lookie.opluskey.ui.hint
-import com.lookie.opluskey.ui.model.AppTheme
-import com.lookie.opluskey.ui.model.IconTint
-import com.lookie.opluskey.ui.model.PAGE_COVER_DIM
-import com.lookie.opluskey.ui.model.PAGE_TRANSITION
-import com.lookie.opluskey.ui.model.PagePalette
-import com.lookie.opluskey.ui.model.colorsOf
-import com.lookie.opluskey.ui.onDebugCommand
-import com.lookie.opluskey.ui.registerLocalReceiver
+import com.lookie.opluskey.ui.chrome.onDebugCommand
+import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
+import com.lookie.opluskey.ui.feedback.LocalDisabledHint
+import com.lookie.opluskey.ui.feedback.LocalHint
+import com.lookie.opluskey.ui.feedback.LocalTick
+import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.model.icon.IconTint
+import com.lookie.opluskey.ui.model.theme.AppTheme
+import com.lookie.opluskey.ui.model.theme.PAGE_COVER_DIM
+import com.lookie.opluskey.ui.model.theme.PAGE_TRANSITION
+import com.lookie.opluskey.ui.model.theme.PagePalette
+import com.lookie.opluskey.ui.model.theme.colorsOf
+import com.lookie.opluskey.ui.row.LocalSwitchPositions
 import com.lookie.opluskey.ui.screen.binding.bindingTargetsOf
 import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
 import com.lookie.opluskey.ui.screen.command.sceneGesturePage
 import com.lookie.opluskey.ui.screen.home.HomeLinkSelfCheck
 import com.lookie.opluskey.ui.screen.update.UpdateDialog
 import com.lookie.opluskey.ui.screen.update.UpdateSelfCheck
-import com.lookie.opluskey.ui.state.CONFIG_IN_FLIGHT_GRACE_MS
-import com.lookie.opluskey.ui.state.InjectStatus
-import com.lookie.opluskey.ui.state.UiState
-import com.lookie.opluskey.ui.tickNow
+import com.lookie.opluskey.ui.state.host.InjectStatus
+import com.lookie.opluskey.ui.state.page.CONFIG_IN_FLIGHT_GRACE_MS
+import com.lookie.opluskey.ui.state.page.UiState
+import com.lookie.opluskey.ui.style.LocalAppTheme
+import com.lookie.opluskey.ui.style.LocalIconTint
+import com.lookie.opluskey.ui.style.SyncToHost
+import com.lookie.opluskey.ui.style.appTextStyles
+import com.lookie.opluskey.ui.wire.disabledClickReason
+import com.lookie.opluskey.ui.wire.registerLocalReceiver
 import io.github.suqi8.coui.kmp.basic.LocalDisabledClick
 import io.github.suqi8.coui.kmp.basic.Scaffold
 import io.github.suqi8.coui.kmp.nav.core.NavDisplay
@@ -88,7 +88,7 @@ import kotlinx.coroutines.delay
  * 整页 —— 主题、根 Scaffold、以及那条按 `Screen` 分派的页面栈。
  *
  * 两个分页状态（[PagerState]）建在这一层而不是各页里：顶栏那条**固定带**与页内内容分处两棵树，
- * 只能共用同一份；而三页的手势绑定页共用一个 pager。详见 `ui/state/PageState.kt` 里那几条注释。
+ * 只能共用同一份；而三页的手势绑定页共用一个 pager。详见 `ui/state/page/PageState.kt` 里那几条注释。
  */
 @Composable
 internal fun SettingsPage.PageContent() {
@@ -156,7 +156,7 @@ internal fun SettingsPage.PageContent() {
             //  处在哪一档，Monet 那一档才跟着系统取色（见 `LocalAppTheme` 与 `popupSurfaceColor`）
             LocalAppTheme provides theme,
             LocalNavigationEventDispatcherOwner provides navOwner,
-            //  禁用态那几格点一下要说明原因（见 `ui/DisabledHint.kt`）：
+            //  禁用态那几格点一下要说明原因（见 `ui/feedback/DisabledHint.kt`）：
             //  提示怎么弹、以及「整页现在为什么改不了」，都从页面这一层传下去 ——
             //  控件层不带 `SettingsPage` 接收者，拿不到这两样。
             //  原因取**点击那一刻**的结论，不是组合期快照：禁用期间链路可能刚好恢复。
@@ -415,7 +415,6 @@ private fun SettingsPage.onInjectReady(intent: Intent) {
  * 「外观 → 随机图标配色」的那一支 —— 种子 `0` = 关（返回恒 `null` 的 lambda，控件照旧跟主题走）。
  *
  *  `remember` 住：每次重组换一个新 lambda，所有读 [LocalIconTint] 的图标都会白白重组一遍。
- *  单独抽出来只为让 `PageContent` 留在 detekt 的 `LongMethod` 长度线内。
  */
 @Composable
 private fun rememberIconTint(

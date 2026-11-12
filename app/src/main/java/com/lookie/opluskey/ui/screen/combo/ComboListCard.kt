@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -19,27 +20,32 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.KeyId
 import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.core.present.keyName
-import com.lookie.opluskey.ui.CHIP_H_PAD
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.ChipFlow
-import com.lookie.opluskey.ui.DisabledStateWithArrow
-import com.lookie.opluskey.ui.DisabledStateWithPick
-import com.lookie.opluskey.ui.PageMenu
 import com.lookie.opluskey.ui.Screen
-import com.lookie.opluskey.ui.SectionTitle
-import com.lookie.opluskey.ui.SectionTitleClick
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.TitleCounter
-import com.lookie.opluskey.ui.chipLook
-import com.lookie.opluskey.ui.chipStyle
-import com.lookie.opluskey.ui.model.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberMenuState
-import com.lookie.opluskey.ui.state.ComboEditState
-import com.lookie.opluskey.ui.state.KeysEditState
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.dialog.rememberMenuState
+import com.lookie.opluskey.ui.feedback.DisabledStateWithArrow
+import com.lookie.opluskey.ui.feedback.DisabledStateWithPick
+import com.lookie.opluskey.ui.model.icon.DrawnIcons
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.row.CHIP_H_PAD
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.ChipFlow
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.SectionTitleClick
+import com.lookie.opluskey.ui.row.TitleCounter
+import com.lookie.opluskey.ui.row.chipLook
+import com.lookie.opluskey.ui.row.chipStyle
+import com.lookie.opluskey.ui.state.binding.ComboEditState
+import com.lookie.opluskey.ui.state.binding.KeysEditState
+import io.github.lyxnx.compose.ui.tablericons.TablerIcons
+import io.github.lyxnx.compose.ui.tablericons.outline.SelectAll
 import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -52,7 +58,7 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
  *  真机口径「文字变小了但省略号还在」就是这一档：缩小字号只改了字，没改这个「刚好卡在边界」。
  *
  *  只有**组合这一列**用得上（[comboTitleWidths] 量列宽时补）：框本身、左右内边距、圆角与那 0.85
- *  的缩放都搬进了 `ui/ChipLabel.kt`（场景条件那一行调的是同一份），这里不再各存一套。
+ *  的缩放都搬进了 `ui/row/ChipLabel.kt`（场景条件那一行调的是同一份），这里不再各存一套。
  */
 private val COMBO_CHIP_SLACK = 2.dp
 
@@ -234,7 +240,7 @@ private fun logPairOnce(line: String) {
  *  （逐行按自己的名字收紧，一列下来就是一排参差不齐的框 —— 那正是这个列表最早就有的毛病。）
  *  名字再长也只在自己那个框里省略号，不会把旁边的挤走。
  *
- *  装不下时**换行**（见 `ui/ChipLabel.kt` 的 `ChipFlow`）：每枚框始终是整列统一那个宽度，
+ *  装不下时**换行**（见 `ui/row/ChipLabel.kt` 的 `ChipFlow`）：每枚框始终是整列统一那个宽度，
  *  放不下的排到下一行 —— 早先按可用宽等比压缩，三颗那一档在窄屏上会被压成三个空壳。
  *
  *  `×` 摆在两枚框之间，左右各一档间距（`CHIP_SEPARATOR_GAP`）：框边缘对齐了，这个间距自然就是对称的。
@@ -252,7 +258,7 @@ private fun SettingsPage.ComboTitle(
 ) {
     //  框里的字用 `chipStyle`（比行标题小一档、字重 Medium），`×` 仍用行标题那一档 ——
     //  框是「键名标签」，比正文小一点本来就对；量宽度用的也是这一份（见 `comboTitleWidths`）。
-    //  框本身在 `ui/ChipLabel.kt`，场景条件里的应用名调的是同一份（用户口径：复用）。
+    //  框本身在 `ui/row/ChipLabel.kt`，场景条件里的应用名调的是同一份（用户口径：复用）。
     val style = COUITheme.textStyles.headline1
     //  两档标题色带过渡：整页闸门一拨，这一列与同一页其它行一起变灰 / 恢复，别只有这里硬切。
     val color by animateColorAsState(
@@ -329,7 +335,7 @@ private fun SettingsPage.comboTitleWidths(cfg: Config): ComboTitleWidths {
     }
 }
 
-// 组合标题里那一枚键名框现在就是 `ui/ChipLabel.kt` 的 `NameChip`：
+// 组合标题里那一枚键名框现在就是 `ui/row/ChipLabel.kt` 的 `NameChip`：
 //  原先它是这里的私有 `ComboKeyChip`，场景条件的「前台应用」那一行要同一种长相
 //  （用户口径：应用名改成和组合按键一样的标签样式、复用它），于是框搬去了公共文件，
 //  这一列调的是同一份 —— 圆角 / 内边距 / 底色那几档从此只有一处。
@@ -365,3 +371,95 @@ private fun SettingsPage.addComboRow(
         },
     )
 }
+
+// 「组合按键列表」那块小标题与它的筛选菜单。
+//
+// 卡片里那一列回答的是「有哪几组、每行写什么」；这一份回答的是「这一列叫什么、按哪颗键筛」。
+// 两件事共用同一张卡的位置，但一个是行、一个是菜单。
+
+/**
+ * 列表标题 —— 筛着的时候把「在看哪颗键」接在后面（`组合按键列表 - 侧键`）。
+ *
+ *  不写的话，从别处回到这一页只会看到一张短了的表：不知道那是筛出来的，第一反应是「组合丢了」。
+ *  连接符用半角连字符（用户口径），与页内别处的「键 - 手势」同一套写法。
+ *
+ *  **键名不套方框**（用户口径：只有一个键名时不要框起来）：这一行后面只跟一个名字，
+ *  前面那个 ` - ` 已经把它与标题分开了，再套一对 `[ ]` 只是多一层噪声。
+ *  两颗以上连起来那一档（`[ 侧键 ]×[ 电量 + ]`）仍然要框 —— 那里框是为了把两个名字分开。
+ */
+internal fun SettingsPage.comboListTitle(
+    cfg: Config,
+    filter: String?,
+): String {
+    val base = I18n.get(Strings.COMBO_LIST_TITLE, "组合按键")
+    val key = filter?.let { cfg.keyIdOf(it) } ?: return base
+    return "$base - ${keyName(key)}"
+}
+
+/**
+ * 筛选菜单 —— 「全部」+ **出现在组合里**的每一颗键（单选，打勾的是当前那一档）。
+ *
+ *  只列被某组用到的键：一颗谁都还没用上的键，选了只会得到一张空表。
+ *  行首图标与首页「按键列表」同一套（侧键那颗 / 第几颗自定义键），两处读起来是同一种东西；
+ *  **顺序也按那套**（侧键在前、自定义键按收集顺序）—— 不排序的话是「组合里第一次出现的次序」。
+ *
+ * @param onPick `null` = 不筛（「全部」那一行）
+ */
+internal fun SettingsPage.comboFilterEntries(
+    cfg: Config,
+    filter: String?,
+    onPick: (String?) -> Unit,
+): List<MenuEntry> =
+    buildList {
+        //  小标题**在最顶上**：这一张菜单整体就是「按按键筛这一列」，先给它一个名字，
+        //  下面才是「全部」与那几颗键。不留标题的话，一列裸选项看不出它们是一件事。
+        //
+        //  顺序仍按**首页「按键列表」那一套**：侧键在前，自定义键按收集顺序（即「第几颗」的号）。
+        //  直接拿 `combos.flatMap { it.keys }.distinct()` 的次序是「在组合表里第一次出现的顺序」，
+        //  真机上就成了「侧键 / 1 / 3 / 2」这种看不懂的序 —— 那不是任何一处列表的顺序。
+        add(
+            MenuEntry.Section(
+                title = I18n.get(Strings.COMBO_FILTER_SECTION, "筛选按键"),
+                rows =
+                    buildList {
+                        //  「不筛」那一行也在这一组里（它同样是「按按键筛」的一个档位）；
+                        //  与下面真正的键之间用一条**加深带**断开 —— 见下一行那个 `dividerBefore`。
+                        add(
+                            MenuEntry.Row(
+                                title = I18n.get(Strings.COMBO_FILTER_ALL, "全部"),
+                                //  这一行的意思是「不筛」（与「已保存的命令」那张菜单同一颗 `select-all`）
+                                icon = TablerIcons.Outline.SelectAll,
+                                selected = filter == null,
+                            ) { onPick(null) },
+                        )
+                        cfg.combos
+                            .flatMap { it.keys }
+                            .distinct()
+                            .mapNotNull { cfg.keyIdOf(it) }
+                            .sortedBy { key -> cfg.customKeys.indexOfFirst { it.id == key.id } }
+                            .forEachIndexed { index, key ->
+                                add(
+                                    MenuEntry.Row(
+                                        title = keyName(key),
+                                        icon = keyFilterIcon(cfg, key),
+                                        selected = filter == key.id,
+                                        //  第一颗键与上面那行「全部」之间来一条加深带
+                                        dividerBefore = index == 0,
+                                    ) { onPick(key.id) },
+                                )
+                            }
+                    },
+            ),
+        )
+    }
+
+/** 筛选菜单里那颗键的行首图标 —— 与首页「按键列表」同一套（侧键那颗 / 第几颗自定义键）。 */
+internal fun keyFilterIcon(
+    cfg: Config,
+    key: KeyId,
+): ImageVector =
+    if (key.isCustom) {
+        PageIcons.menuKeyNumber(cfg.customKeys.indexOfFirst { it.id == key.id }.coerceAtLeast(0))
+    } else {
+        DrawnIcons.MenuSideKey
+    }

@@ -10,7 +10,7 @@ import com.lookie.opluskey.bridge.AppCloneCatalog
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.model.LaunchableActivity
+import com.lookie.opluskey.ui.model.target.LaunchableActivity
 
 // 「选择应用」页第二级：一个应用**能打开哪些界面**。
 //
@@ -163,8 +163,8 @@ private fun dropShadowed(list: List<ActivityInfo>): List<ActivityInfo> {
 /**
  * 一次查询的固定上下文 —— 交给 [entryOf] 的那几样「整份清单共用」的东西。
  *
- *  单独拎出来是因为它会让 `entryOf` 变成七个参数的函数（detekt 的 `LongParameterList`
- *  默认上限是 6）：参数一多，调用点按顺序排错一位编译照样过。
+ *  单独拎出来是因为它会让 `entryOf` 变成七个参数的函数：参数一多，调用点按顺序排错一位
+ *  编译照样过。
  */
 private class ActivityQuery(
     /** 主用户那份 `PackageManager`；分身是 `null`（那一路只能走 binder，见 `AppClonePackages`）。 */

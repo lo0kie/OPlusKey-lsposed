@@ -31,29 +31,29 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.appKeyOf
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.CenteredInInsets
-import com.lookie.opluskey.ui.Feedback
-import com.lookie.opluskey.ui.RowEndIcon
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.collapseHeader
-import com.lookie.opluskey.ui.collapsedHeaderHeight
-import com.lookie.opluskey.ui.currentHeaderHeight
-import com.lookie.opluskey.ui.headerStatusBarPadding
-import com.lookie.opluskey.ui.model.APP_KIND_TAG_GAP
-import com.lookie.opluskey.ui.model.APP_LIST_HEADER_ITEMS
-import com.lookie.opluskey.ui.model.APP_ROW_HEIGHT
-import com.lookie.opluskey.ui.model.GRID_GAP
-import com.lookie.opluskey.ui.model.LaunchableApp
-import com.lookie.opluskey.ui.model.PAGE_BOTTOM_PADDING
-import com.lookie.opluskey.ui.model.PAGE_TOP_PADDING
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.spacedItems
-import com.lookie.opluskey.ui.state.AppPickerState
-import com.lookie.opluskey.ui.state.AppPickerUiState
-import com.lookie.opluskey.ui.state.PickedDetail
+import com.lookie.opluskey.ui.chrome.collapseHeader
+import com.lookie.opluskey.ui.chrome.collapsedHeaderHeight
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
+import com.lookie.opluskey.ui.chrome.headerStatusBarPadding
+import com.lookie.opluskey.ui.feedback.Feedback
+import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.APP_KIND_TAG_GAP
+import com.lookie.opluskey.ui.model.page.APP_LIST_HEADER_ITEMS
+import com.lookie.opluskey.ui.model.page.APP_ROW_HEIGHT
+import com.lookie.opluskey.ui.model.page.GRID_GAP
+import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
+import com.lookie.opluskey.ui.model.page.PAGE_TOP_PADDING
+import com.lookie.opluskey.ui.model.target.LaunchableApp
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.RowEndIcon
+import com.lookie.opluskey.ui.row.spacedItems
+import com.lookie.opluskey.ui.state.picker.AppPickerState
+import com.lookie.opluskey.ui.state.picker.AppPickerUiState
+import com.lookie.opluskey.ui.state.picker.PickedDetail
+import com.lookie.opluskey.ui.style.CenteredInInsets
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PullToRefresh
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
@@ -296,8 +296,8 @@ private fun SettingsPage.pickRow(
  *  读的就是列表的滚动位移），重组的是**一个 thumb**，不是列表；把与滚动无关的页面留在外面
  *  才是要紧的那条（见 `ActivityPickerScreen` 里对 `ActivityEmptyState` 的处理）。
  *
- *  单独成函数还有两个原因：两页同一份几何不必各写一遍；以及两个调用点的组合函数都已经贴着
- *  detekt 的 `LongMethod` 上限。
+ *  单独成函数还有两个原因：两页同一份几何不必各写一遍；以及两个调用点的组合函数都已经
+ *  够长了。
  *
  *  按住**滑块**这一下也走通用振动通道（[rememberTick]，与行、开关同一条）：抓住滑块时才振，
  *  按在轨道空白处不振（那里按下去什么都不会发生，振一下等于骗人）。
@@ -349,7 +349,7 @@ private fun SettingsPage.rememberRowState(pending: PickedDetail?): RowState {
 }
 
 /**
- * 一行要用的那一个值 —— 打包递进去，省得 [AppRow] 多一个参数（detekt 上限是 6）。
+ * 一行要用的那一个值 —— 打包递进去，省得 [AppRow] 多一个参数。
  */
 private class RowState(
     /** **当前选中**的那一条（进页时等于已绑定的那一档；二级页确认后是刚挑的那一条）。 */

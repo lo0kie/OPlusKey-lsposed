@@ -23,25 +23,25 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.core.present.ActionCatalog
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
-import com.lookie.opluskey.ui.LocalSheetBringIntoView
-import com.lookie.opluskey.ui.MenuEntry
-import com.lookie.opluskey.ui.ModeMenuPopups
-import com.lookie.opluskey.ui.ModeMenuTarget
-import com.lookie.opluskey.ui.PageMenu
-import com.lookie.opluskey.ui.PageSheet
-import com.lookie.opluskey.ui.RowEndIcon
-import com.lookie.opluskey.ui.SHEET_TITLE_MARGIN
-import com.lookie.opluskey.ui.SectionTitle
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.boundAppName
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.actionRowView
-import com.lookie.opluskey.ui.rememberTick
-import com.lookie.opluskey.ui.sheetCardColors
-import com.lookie.opluskey.ui.state.CommandUiState
-import com.lookie.opluskey.ui.titleWithCount
+import com.lookie.opluskey.ui.dialog.LocalSheetBringIntoView
+import com.lookie.opluskey.ui.dialog.MenuEntry
+import com.lookie.opluskey.ui.dialog.ModeMenuPopups
+import com.lookie.opluskey.ui.dialog.ModeMenuTarget
+import com.lookie.opluskey.ui.dialog.PageMenu
+import com.lookie.opluskey.ui.dialog.PageSheet
+import com.lookie.opluskey.ui.dialog.SHEET_TITLE_MARGIN
+import com.lookie.opluskey.ui.dialog.sheetCardColors
+import com.lookie.opluskey.ui.feedback.rememberTick
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.text.actionRowView
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
+import com.lookie.opluskey.ui.row.RowEndIcon
+import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.titleWithCount
+import com.lookie.opluskey.ui.state.command.CommandUiState
+import com.lookie.opluskey.ui.wire.boundAppName
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -50,12 +50,10 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 //
 // `CommandMenuPopup` 是**命令卡的唯一菜单**：从卡片右上角那颗「更多」进，
 // 四行固定是「预览 / 测试 / 编辑 / 删除」—— 菜单本身不关心从哪儿来（落点由调用点给的锚点决定）。
-// 三项动作走 `CommandMenuActions` 一个对象：这一支连同 `onDismiss` 原来是七格，而 detekt 的
-// 参数上限是六（本仓不许往基线里添条目，就只能把参数收进一个对象）。
+// 三项动作走 `CommandMenuActions` 一个对象：这一支连同 `onDismiss` 原来是七格。
 
 /**
- * 命令卡菜单里三行各自「点了往哪儿去」—— 合成一个对象只为把 [CommandMenuPopup] 的参数个数
- * 压回 detekt 的上限，也为了让调用点一处看清这几行都通到哪里。
+ * 命令卡菜单里三行各自「点了往哪儿去」—— 合成一个对象，也让调用点一处看清这几行都通到哪里。
  *
  *  三项都**不给默认值**：唯一调用点三样全给，默认值只会让「漏传」静默通过。
  *
@@ -144,9 +142,7 @@ internal fun SettingsPage.CommandMenuPopup(
 /**
  * 「已保存的命令」那张卡右上角的浮层菜单 —— [CommandMenuPopup] 的宿主。
  *
- *  单独一支、并且落在本文件的两个理由：`CommandTile` 与 `SavedCommands.kt` 都贴着 detekt 的
- *  「单函数长度」「单文件函数数」上限；而这几行说的正是「菜单里点哪一行往哪儿去」，本来就属于
- *  命令卡菜单这一支。
+ *  这几行说的正是「菜单里点哪一行往哪儿去」，本来就属于命令卡菜单这一支。
  *
  *  @param scope 卡外层那个 `Box` 的作用域 —— 浮层要贴右上角（`align`），落点仍由触点决定。
  *  @param tileAnchor 整张卡那一份锚点：菜单自己那次没记到落点时兜一下。
@@ -193,7 +189,7 @@ internal fun SettingsPage.CommandTileMenu(
 // --------------------------------------------------------------- 添加命令（底部抽屉）
 
 /**
- * 抽屉候选表的几个开关 —— 与 [StepSheetSpec] 分开，只为把那个类的参数个数留在 detekt 的上限之下。
+ * 抽屉候选表的几个开关 —— 与 [StepSheetSpec] 分开。
  *
  *  每一样都是「这次列什么」：要不要列「无操作」、剔掉哪几格关卡、排除哪一条已保存的命令。
  */
@@ -235,8 +231,8 @@ internal class StepSheetFilter(
 )
 
 /**
- * 「添加命令 / 选择命令」那张抽屉的入参 —— 合成一个对象只为把参数个数压回 detekt 的上限，
- * 也为了让两个调用点一眼看出「这几样是这一趟的来处」。
+ * 「添加命令 / 选择命令」那张抽屉的入参 —— 合成一个对象，让两个调用点一眼看出
+ * 「这几样是这一趟的来处」。
  *
  *  @param title 抽屉标题（「添加命令」/「选择命令」—— 由调用点按来处给）
  *  @param current 当前选中的动作：命中那一行行首换对勾、整行主题色；`null` = 谁都不打勾。
@@ -296,7 +292,6 @@ internal enum class StepPickerPage {
  *
  *  @param sheet 这一趟的标题、当前选中与三条回调（见 [StepSheetSpec]）
  */
-@Suppress("LongMethod", "CyclomaticComplexMethod")
 @Composable
 internal fun SettingsPage.StepPickerSheet(
     show: Boolean,
@@ -489,8 +484,8 @@ internal fun SettingsPage.StepPickerSheet(
 }
 
 /**
- * 抽屉里那三支（内置组 / 已保存组 / 一张卡）共用的「长什么样、点了怎么算」——
- * 合成一个对象，是因为 detekt 的参数上限只有 5 个，而这几样是同一批上下文，不该拆散。
+ * 抽屉里那三支（内置组 / 已保存组 / 一张卡）共用的「长什么样、点了怎么算」—— 合成一个对象，
+ * 因为这几样是同一批上下文，不该拆散。
  */
 private class StepSheetCtx(
     val anchorOf: (ActionCatalog.Spec) -> PreciseClickState,

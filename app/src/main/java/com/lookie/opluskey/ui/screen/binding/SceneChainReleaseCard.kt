@@ -8,20 +8,20 @@ import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
-import com.lookie.opluskey.ui.BindingTarget
-import com.lookie.opluskey.ui.CardList
-import com.lookie.opluskey.ui.CardRow
 import com.lookie.opluskey.ui.SettingsPage
-import com.lookie.opluskey.ui.appNameOf
-import com.lookie.opluskey.ui.model.PageIcons
-import com.lookie.opluskey.ui.model.actionIcon
-import com.lookie.opluskey.ui.model.releaseActionTitle
-import com.lookie.opluskey.ui.openAppPickerForRelease
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.icon.actionIcon
+import com.lookie.opluskey.ui.model.text.releaseActionTitle
+import com.lookie.opluskey.ui.row.CardList
+import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.screen.command.StepPickerPage
 import com.lookie.opluskey.ui.screen.command.StepPickerSheet
 import com.lookie.opluskey.ui.screen.command.StepSheetFilter
 import com.lookie.opluskey.ui.screen.command.StepSheetSpec
 import com.lookie.opluskey.ui.screen.command.branchDraftNow
+import com.lookie.opluskey.ui.wire.appNameOf
+import com.lookie.opluskey.ui.write.BindingTarget
+import com.lookie.opluskey.ui.write.openAppPickerForRelease
 
 // 「场景动作」页里**「单击后长按」的松手**那一族 —— 与长按那张卡的松手族同形，行也逐字相同。
 //

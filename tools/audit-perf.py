@@ -38,7 +38,7 @@ BACKGROUND = re.compile(r'withContext\s*\(\s*Dispatchers\.(IO|Default)|coroutine
 # ── 判据 2：注入侧热路径零分配 ───────────────────────────────────────────────
 # 这几个文件是「每次按键都会走」的判定链：里面出现这些构造 = 每次按压都分配一次。
 HOT_FILES = [
-    'inject/SideKeyInterceptor.kt',
+    'inject/key/SideKeyInterceptor.kt',
     'inject/input/GestureDetector.kt',
     'inject/input/ComboDetector.kt',
     'inject/input/HeldPresses.kt',
@@ -58,15 +58,15 @@ LOG_LINE = re.compile(r'\bXLog\.(d|w|e|i)\s*[({\[]')
 #  **已复核的主线程命中**：路径 → 理由。加一条之前先确认「确实不在主线程」或「一次动作只跑一遍」，
 #  理由写在这儿（而不是悄悄改判据）—— 下一次有人看这份报告，能一眼看出为什么它是白的。
 MT_ALLOW = {
-    'ui/AppNaming.kt': '应用名有进程内缓存（appLabelCache），只有首次未命中才问 PM',
-    'ui/PageControl.kt': '重启页进程那条路：睡眠在独立线程上，/proc 扫描只在重启时跑一次（页面随后就没了）',
+    'ui/wire/AppNaming.kt': '应用名有进程内缓存（appLabelCache），只有首次未命中才问 PM',
+    'ui/chrome/PageControl.kt': '重启页进程那条路：睡眠在独立线程上，/proc 扫描只在重启时跑一次（页面随后就没了）',
     'ui/hook/LogPull.kt': '导出日志是一次性动作，等待在导出线程上',
     'ui/hook/ConfigTransfer.kt': '导入配置是一次性动作，文件在选中之后那一段读',
     'ui/hook/SettingsPageHooks.kt': '一次 File.exists 的 stat，页面首帧判断资产在不在',
     'ui/screen/apppicker/AppList.kt': '整段只在 AppListLoader 的 Dispatchers.IO 里被调用',
-    'ui/state/PageLoadSnapshot.kt': '页面首帧一次性读三份小文件；异步化会让页面先白一帧，收益不抵',
-    'ui/state/UiState.kt': '整份界面偏好只有几十字节，拨开关时一次整份写回（低频）',
-    'ui/state/UpdateState.kt': '每次「检查更新」一次 getApplicationInfo（低频）',
+    'ui/state/page/PageLoadSnapshot.kt': '页面首帧一次性读三份小文件；异步化会让页面先白一帧，收益不抵',
+    'ui/state/page/UiState.kt': '整份界面偏好只有几十字节，拨开关时一次整份写回（低频）',
+    'ui/state/host/UpdateState.kt': '每次「检查更新」一次 getApplicationInfo（低频）',
 }
 
 #  **已复核的热路径分配**：(文件, 类别) → 理由。只放「确实低频」或「必须拷一份」的那几处。

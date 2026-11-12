@@ -25,7 +25,7 @@ internal class AboutUiState {
     val feedbackClick = PreciseClickState()
     var showFeedbackMenu by mutableStateOf(false)
 
-    /** 「作者」那一行（GitHub / 酷安两个去处，见 [com.lookie.opluskey.ui.model.AuthorTarget]）。 */
+    /** 「作者」那一行（GitHub / 酷安两个去处，见 [com.lookie.opluskey.ui.model.target.AuthorTarget]）。 */
     val authorClick = PreciseClickState()
     var showAuthorMenu by mutableStateOf(false)
 
@@ -44,7 +44,7 @@ internal class AboutUiState {
     val themeClick = PreciseClickState()
     var showThemeMenu by mutableStateOf(false)
 
-    /** 「系统配色」那一行（五套强调色，见 [com.lookie.opluskey.ui.model.PagePalette]）。 */
+    /** 「系统配色」那一行（五套强调色，见 [com.lookie.opluskey.ui.model.theme.PagePalette]）。 */
     val paletteClick = PreciseClickState()
     var showPaletteMenu by mutableStateOf(false)
 
