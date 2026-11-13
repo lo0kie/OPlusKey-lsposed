@@ -159,10 +159,12 @@ data class KeyConfig(
     override val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
     /** 这颗键自己的「执行时提示」—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
+    /** 这颗键自己的「提示走流体云」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val toastFluid: Boolean = GlobalConfig.DEFAULT_TOAST_FLUID,
     /** 这颗键自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
     /**
-     * 上面那五项**被公共设置播过种没有** —— 见 [OwnSettings.ownSettingsSeeded]。
+     * 上面那几项**被公共设置播过种没有** —— 见 [OwnSettings.ownSettingsSeeded]。
      *
      *  只影响界面「第一次打开总开关时要不要抄一份公共值」，执行侧不读它。
      */
@@ -752,6 +754,7 @@ data class KeyConfig(
                 ConfigFields.F_KEY_VIBRATE to vibrate,
                 ConfigFields.F_KEY_VIBRATE_STRENGTH to vibrateStrength,
                 ConfigFields.F_KEY_TOAST_ON_RUN to toastOnRun,
+                ConfigFields.F_KEY_TOAST_FLUID to toastFluid,
                 ConfigFields.F_KEY_TOAST_TEMPLATE to toastTemplate,
                 ConfigFields.F_OWN_SETTINGS_SEEDED to ownSettingsSeeded,
                 ConfigFields.F_LONG_SERIAL to longIsSerial,
@@ -931,6 +934,7 @@ data class KeyConfig(
                 vibrate = v.bool(ConfigFields.F_KEY_VIBRATE),
                 vibrateStrength = v.number(ConfigFields.F_KEY_VIBRATE_STRENGTH),
                 toastOnRun = v.bool(ConfigFields.F_KEY_TOAST_ON_RUN),
+                toastFluid = v.bool(ConfigFields.F_KEY_TOAST_FLUID),
                 toastTemplate = v.text(ConfigFields.F_KEY_TOAST_TEMPLATE),
                 ownSettingsSeeded = v.bool(ConfigFields.F_OWN_SETTINGS_SEEDED),
                 longIsSerial = v.bool(ConfigFields.F_LONG_SERIAL),
@@ -976,8 +980,18 @@ data class GlobalConfig(
      *  执行器（`host/GestureExec.haptic`），所以**只走落盘那一列**、不进广播 —— 注入侧不振。
      */
     override val vibrateStrength: Int = DEFAULT_VIBRATE_STRENGTH,
-    /** 执行**任意动作**时弹一条 Toast（内容是动作名；自定义命令取命令名）。 */
+    /** 执行**任意动作**时弹一条提示（内容是动作名；自定义命令取命令名）。 */
     override val toastOnRun: Boolean = DEFAULT_TOAST_ON_RUN,
+    /**
+     * 「执行时提示」走**流体云**（状态栏 / AOD 上那颗胶囊）而不是 Toast，默认关。
+     *
+     *  它只换落点，不换说法：文案仍由 [toastTemplate] 拼，图标取**被执行的那个动作**自己的
+     *  字形（`FluidCard.actionNameOf`，界面层预渲染、宿主执行时按同一名字找）。
+     *
+     *  与 [toastOnRun] 同一档：只在 [toastOnRun] 为真时有意义，读它的是宿主执行器，
+     *  所以**只走落盘那一列**、不进广播（注入侧不弹提示）。
+     */
+    override val toastFluid: Boolean = DEFAULT_TOAST_FLUID,
     /**
      * 「执行时提示」那一句的**文案模板** —— `$key` / `$gesture` / `$action` 三段可自由摆放与增删
      *  （见 `ToastNotice`）。默认就是拆分之前那句 `侧键 - 单击 → 手电筒`。
@@ -1089,6 +1103,40 @@ data class GlobalConfig(
      *  不参与任何组合的键不受影响 —— 那条路上没有可等的东西。
      */
     val comboWindowMs: Int = DEFAULT_COMBO_WINDOW_MS,
+    /**
+     * **认不认「窗口内等齐成员」这一种按法** —— 组合的两条触发方式之一（另一条是
+     * [comboHoldOn]），默认开：这一位出现之前窗口那条一直生效，老配置读回来行为逐字一致。
+     *
+     *  关掉之后「两颗键在一个窗口内先后按下」不再算这一档组合 —— 判定侧那条判据整条不生效
+     *  （`ComboDetector.pairFor` 的 `windowed`），**「参与组合的键要先等一个窗口」那条代价
+     *  也一起消失**：等的是「同伴会不会来」，这一档不认窗口之后那个问题就不存在（用户口径：
+     *  不开等待手势时，成员键各自不再等这个窗口）。想「一起按」就只能把这一位打开。
+     *
+     *  每组可以另设一份（`ComboKey.windowOn`，受那一组的「使用独立设置」管）——
+     *  这一位是公共默认，取值一律走 `Config.comboWindowOnFor`。
+     *
+     *  判定在注入侧，所以**走广播**（`ConfigFields.F_COMBO_WINDOW_ON`）。
+     */
+    val comboWindowOn: Boolean = DEFAULT_COMBO_WINDOW_ON,
+    /**
+     * **认不认「按住一个成员、再按剩下的成员」** —— 组合的另一条触发方式，默认关
+     * （这一位出现之前没有这种按法）。
+     *
+     *  每组可以另设一份（`ComboKey.holdOn`，受那一组的「使用独立设置」管）；
+     *  取值一律走 `Config.comboHoldFor`。判定在注入侧 ⇒ **走广播**（`F_COMBO_HOLD_ON`）。
+     */
+    val comboHoldOn: Boolean = DEFAULT_COMBO_HOLD_ON,
+    /**
+     * 组合键：**按住手势里首键要先按住多久**（毫秒）—— 用户口径「首键必须按住超过这个时间」。
+     *
+     *  判定在注入侧（`ComboDetector.pairFor` 的 `held`），所以这一位**走广播**
+     *  （`ConfigFields.F_COMBO_HOLD_MIN_MS`）。每组可以另设一份（`ComboKey.holdMinMs`，
+     *  受那一组的「使用独立设置」管）—— 这一位是公共默认，取值一律走 `Config.comboHoldMinFor`。
+     *
+     *  它把「一起按」与「按住了一颗再按另一颗」分开：没有下限时两颗键相差几毫秒也算按住，
+     *  而哪一颗算「先按住」全看硬件先报谁 —— 同一个物理动作于是有时命中、有时整条落空。
+     */
+    val comboHoldMinMs: Int = DEFAULT_COMBO_HOLD_MIN_MS,
 ) : OwnSettings {
     /**
      * 公共那份**永远是「用自己的」**：它自己就是那个「公共设置」。
@@ -1106,6 +1154,7 @@ data class GlobalConfig(
                 ConfigFields.F_VIBRATE to vibrate,
                 ConfigFields.F_VIBRATE_STRENGTH to vibrateStrength,
                 ConfigFields.F_TOAST_ON_RUN to toastOnRun,
+                ConfigFields.F_TOAST_FLUID to toastFluid,
                 ConfigFields.F_TOAST_TEMPLATE to toastTemplate,
                 ConfigFields.F_LANGUAGE to language,
                 ConfigFields.F_PALETTE to palette,
@@ -1118,6 +1167,9 @@ data class GlobalConfig(
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
                 ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
+                ConfigFields.F_COMBO_WINDOW_ON to comboWindowOn,
+                ConfigFields.F_COMBO_HOLD_ON to comboHoldOn,
+                ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
             ),
         )
 
@@ -1127,6 +1179,9 @@ data class GlobalConfig(
 
         /** [GlobalConfig.toastOnRun] 的默认值：默认不弹。 */
         const val DEFAULT_TOAST_ON_RUN = false
+
+        /** [GlobalConfig.toastFluid] 的默认值：默认走 Toast（与这一档出现之前一致）。 */
+        const val DEFAULT_TOAST_FLUID = false
 
         /**
          * [GlobalConfig.toastTemplate] 的默认值 —— 与拆分之前那句话**逐字一致**，
@@ -1208,6 +1263,43 @@ data class GlobalConfig(
         const val DEFAULT_COMBO_WINDOW_MS = 80
         const val COMBO_WINDOW_MAX_MS = 1000
 
+        /**
+         * [GlobalConfig.comboWindowOn] 的默认值：**开**。
+         *
+         *  「窗口内先后按下」是组合键从第一天起就有的按法，老配置里没有这一位 ⇒ 必须还是它，
+         *  否则升级之后所有组合键一起失灵。
+         */
+        const val DEFAULT_COMBO_WINDOW_ON = true
+
+        /**
+         * [GlobalConfig.comboHoldOn] 的默认值：**关**。
+         *
+         *  「按住一颗再按另一颗」是后加的一条路，默认不开 —— 装上之后手感与这一位出现之前一致。
+         */
+        const val DEFAULT_COMBO_HOLD_ON = false
+
+        /**
+         * [GlobalConfig.comboHoldMinMs] 的三档 —— 下限 / 出厂值 / 上限（毫秒）。
+         *
+         *  出厂 100：实测「一起按」两颗键相差 0~40ms（谁先上报看硬件），而真要按住一颗再补
+         *  另一颗，人手一般在 150ms 以上 —— 100 落在中间，两边都不误伤。
+         *
+         *  下限 40：再短就已经盖不住「一起按」的抖动（那正是这一位要分开的那一半）。
+         *  上限 500 与组合长按阈值同量级：调得比那颗键自己的长按还宽时，它早就先判出长按、
+         *  按住那条本来就作废了 —— 留这么宽只是不拦手改的配置。
+         */
+        const val COMBO_HOLD_MIN_MIN_MS = 40
+        const val DEFAULT_COMBO_HOLD_MIN_MS = 100
+        const val COMBO_HOLD_MIN_MAX_MS = 500
+
+        /**
+         * 「常用命令」最多几条 —— 20。
+         *
+         *  这一张表只放「一眼就想点的那几条」：它在绑定页占一整个网格，条目再多就变成
+         *  第二份命令库，与「在这个格子里直接拿到一条能用的命令」这个初衷偏离。
+         */
+        const val MAX_COMMON_COMMANDS = 20
+
         val DEFAULT =
             GlobalConfig(
                 enabled = DEFAULT_ENABLED,
@@ -1224,6 +1316,7 @@ data class GlobalConfig(
                 //  所以在这一层就钳住（滑杆两端与这里同一个区间）。
                 vibrateStrength = v.number(ConfigFields.F_VIBRATE_STRENGTH).coerceIn(VIBRATE_STRENGTH_RANGE),
                 toastOnRun = v.bool(ConfigFields.F_TOAST_ON_RUN),
+                toastFluid = v.bool(ConfigFields.F_TOAST_FLUID),
                 toastTemplate = v.text(ConfigFields.F_TOAST_TEMPLATE),
                 language = v.text(ConfigFields.F_LANGUAGE),
                 palette = v.text(ConfigFields.F_PALETTE),
@@ -1239,6 +1332,13 @@ data class GlobalConfig(
                 comboPassthrough = v.bool(ConfigFields.F_COMBO_PASSTHROUGH),
                 //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
                 comboWindowMs = v.number(ConfigFields.F_COMBO_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
+                comboWindowOn = v.bool(ConfigFields.F_COMBO_WINDOW_ON),
+                comboHoldOn = v.bool(ConfigFields.F_COMBO_HOLD_ON),
+                //  与 comboWindowMs 同一档：越界值在这一层钳回滑杆两端
+                comboHoldMinMs =
+                    v
+                        .number(ConfigFields.F_COMBO_HOLD_MIN_MS)
+                        .coerceIn(COMBO_HOLD_MIN_MIN_MS, COMBO_HOLD_MIN_MAX_MS),
             )
     }
 }
@@ -1391,13 +1491,37 @@ data class Config(
      *  开着时看 [ComboKey.passthrough] —— 注意 `null` 现在**只有老配置会读到**：打开独立设置的
      *  那一刻会把公共值一并播进这一位（`KeySettingsScreen.withSeededComboFields`），
      *  所以「开着独立设置、这一项却还在跟随公共」只出现在还没被拨过的旧配置上（拨一下任何一项就补上）。
+     *
+     *  **只在「使用等待手势」开着时算数**（[comboWindowOnFor]）：透传的语义是「窗口那条按出来、
+     *  可这一格没绑动作」，只认按住的那一档不经过这个形状（按住按出来的每一套都有自己明确的槽）。
+     *  窗口关掉时这里恒为假 —— 界面那边同一份判据决定这一行显不显示，两处不会各说各的。
      */
     fun comboPassthroughFor(combo: ComboKey): Boolean =
-        if (!combo.useOwnSettings) {
-            global.comboPassthrough
-        } else {
-            combo.passthrough ?: global.comboPassthrough
-        }
+        comboWindowOnFor(combo) && comboField(combo, combo.passthrough, global.comboPassthrough)
+
+    /**
+     * 这一组**认不认「窗口内等齐成员」** —— 规则与 [comboPassthroughFor] 同一条：
+     * 独立设置关着就跟随公共（`GlobalConfig.comboWindowOn`），开着看这一组自己写没写过。
+     *
+     *  两位（窗口 / 按住）都走这一个口径 —— 它们说的是同一件事的两种按法，
+     *  「跟随公共」这一层不该出现两套判据。
+     */
+    fun comboWindowOnFor(combo: ComboKey): Boolean = comboField(combo, combo.windowOn, global.comboWindowOn)
+
+    /** 这一组**认不认「按住一个成员、再按剩下的成员」**（见 [comboWindowOnFor]）。 */
+    fun comboHoldFor(combo: ComboKey): Boolean = comboField(combo, combo.holdOn, global.comboHoldOn)
+
+    /**
+     * 组合键上那几位「这一组自己写过没有」的公共项 —— 唯一一处判据。
+     *
+     *  `null` 是「没写过 ⇒ 跟公共」，但**总开关一关就整份看公共**（哪怕写过）——
+     *  否则界面灰着、执行侧却照旧用自己那份，是「关了没关掉」。
+     */
+    private fun comboField(
+        combo: ComboKey,
+        own: Boolean?,
+        public: Boolean,
+    ): Boolean = if (!combo.useOwnSettings) public else own ?: public
 
     /**
      * 这一组**自己存着**的按键间隔（毫秒）—— 没写过（`WINDOW_FOLLOW_GLOBAL` / 老配置）就退回公共那份。
@@ -1425,6 +1549,25 @@ data class Config(
             global.comboWindowMs
         } else {
             comboStoredWindowFor(combo)
+        }
+
+    /**
+     * 这一组**自己存着**的「首键要先按住多久」（毫秒）—— 与 [comboStoredWindowFor] 同一条：
+     * 不看总开关，滑杆要的就是这一份。
+     */
+    fun comboStoredHoldMinFor(combo: ComboKey): Int = combo.holdMinMs.takeIf { it > 0 } ?: global.comboHoldMinMs
+
+    /**
+     * 这一组**实际生效**的「首键要先按住多久」（毫秒）—— 规则与 [comboWindowFor] 同一条：
+     * 独立设置关着就跟随公共，开着就是这一组自己那份。
+     *
+     *  判定侧（`ComboDetector` 的 `holdMinFor`）与界面都只走这一处。
+     */
+    fun comboHoldMinFor(combo: ComboKey): Int =
+        if (!combo.useOwnSettings) {
+            global.comboHoldMinMs
+        } else {
+            comboStoredHoldMinFor(combo)
         }
 
     /**
@@ -1595,7 +1738,9 @@ data class Config(
      */
     fun widerComboOf(base: List<KeyId>): ComboKey? =
         liveCombos()
-            .filter { c -> c.keys.size > base.size && base.all { k -> k.id in c.keys } }
+            //  「更宽的那一档」只可能是多成员那一档，而多成员只走窗口那条判据 —— 窗口关着的
+            //  一档永远凑不齐，为它等一个窗口只是让更小那一档白慢一拍。
+            .filter { c -> c.keys.size > base.size && base.all { k -> k.id in c.keys } && comboWindowOnFor(c) }
             .maxByOrNull { it.keys.size }
 
     /**

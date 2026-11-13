@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.GlobalConfig
@@ -35,6 +37,7 @@ import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.row.values
 import com.lookie.opluskey.ui.row.withField
 import com.lookie.opluskey.ui.row.withOwn
+import com.lookie.opluskey.ui.screen.combo.setComboOwnHoldMin
 import com.lookie.opluskey.ui.screen.combo.setComboOwnWindow
 import com.lookie.opluskey.ui.screen.combo.updateCombo
 import com.lookie.opluskey.ui.screen.settingsTargetLabel
@@ -119,7 +122,7 @@ internal fun SettingsPage.KeySettingsScreen(
         //  「独立设置」，那三个小标题由卡片自己画（见 `OwnSettingsCard`）。
         OwnSettingsCard(
             owner = owner,
-            //  **显示用生效值、写入仍落到这一档**：总开关关着时那五项不参与取值，直接读
+            //  **显示用生效值、写入仍落到这一档**：总开关关着时那几项不参与取值，直接读
             //  `owner` 会让这一页显示「振动反馈：关」而按下去明明会振（口径见 `OwnSettingsCard`）。
             effective = cfg.effectiveFor(owner),
             //  「只参与组合按键」时整张卡灰掉：接口 / 振动 / 提示都是**单键按下去那一下**的行为，
@@ -134,7 +137,7 @@ internal fun SettingsPage.KeySettingsScreen(
         //  多击是「有没有这一档」，不是「这一档怎么工作」。留这一句只为说明它们为什么不在这张卡里。
 
         //  —— 组合专属的两项 ——
-        //  它们**不在**上面那张卡里：那张卡装的是「五项公共项的覆盖」，单键组合都有；
+        //  它们**不在**上面那张卡里：那张卡装的是「那几项公共项的覆盖」，单键组合都有；
         //  这两项只对组合成立（「两颗键各干各的」「两颗键等多久」单键没有对应物）。
         //  条件只有一个：这一趟改的是一组组合 —— 这是数据差异，不是流程分叉。
         if (target is SettingsTarget.Combo) {
@@ -348,16 +351,23 @@ private val COUNT3: Int = KeyConfig.DEFAULT_EXTRA_CLICKS.first()
 private val COUNT4: Int = KeyConfig.DEFAULT_EXTRA_CLICKS.last()
 
 /**
- * 「组合按键设置」那两行 —— 只在改的是**一组组合**时出现。
+ * 「组合按键设置」那一族 —— 只在改的是**一组组合**时出现。行序与公共页那张卡一致：
  *
- *  1. **无操作时执行按键命令**：这一组自己说了算（写过就用自己的，没写过跟随公共设置）。
- *  2. **按键之间的等待**：这一组自己的一份数。它与公共页那一行是**同一个参数、两个落点** ——
+ *  1. **使用等待手势**：两条触发方式之一，紧跟它下面两行都是它的下挂（2 是收尾语义、3 是窗口参数）。
+ *     每组可另设一份，与公共页那一颗是**同一个参数、两个落点** —— 公共那里管默认，这里管这一组自己。
+ *  2. **无操作时执行按键命令**：紧跟「使用等待手势」，这一组自己说了算（写过就用自己的，
+ *     没写过跟随公共设置）。**只在窗口那条开着时出现**：它说的是「窗口按出来了、可这一格没绑动作」，
+ *     只认按住的一档不经过这个形状（`Config.comboPassthroughFor` 同一份判据）。
+ *  3. **按键之间的等待**：这一组自己的一份数。它与公共页那一行是**同一个参数、两个落点** ——
  *     那个数同时管「算不算同时按下」与「第一颗键要等多久才回落单击」，三颗的组合与两颗的
  *     组合对它的要求本来就不一样，共用一个数只能互相将就。
  *     文案两处逐字相同（用户口径：不需要特判），滑杆打开就是这一组自己的值；没拖过就还等于
  *     公共那一档（`Config.comboWindowFor`：独立设置关着看公共，开着看这一组写过没有）。
+ *     **也只在窗口那条开着时出现**：窗口关掉后这个数不再有任何作用（成员键不再按它等）。
+ *  4. **使用按住手势**：另一条触发方式。**只在两颗的组合上出现** —— 三颗及以上没有「哪一颗先按住」
+ *     这个唯一起点；「使用等待手势」不跟着藏（三颗只走它那一条判据）。
  *
- *  两行都吃上面那颗总开关：关着时它们是**公共设置**那一份，改也改不动 —— 不用再给其中某一行
+ *  这一族都吃上面那颗总开关：关着时它们是**公共设置**那一份，改也改不动 —— 不用再给其中某一行
  *  单独加一个「要不要自己设」的开关，那个总开关就是唯一那道闸。
  */
 @Composable
@@ -379,9 +389,36 @@ private fun SettingsPage.ComboOwnCard(
         } else {
             null
         }
+    //  两行触发方式灰着时说明是哪一道闸：这一组停用了就报停用那句（全项目只有一个出口），
+    //  否则才是「先打开使用独立设置」。总开关关着时仍报停用那句是**有意**的 —— 两件事同时成立时，
+    //  「这一组停用了」是更前置的那条。
+    val modeHint = target.disabledReason(cfg) ?: needOwnHint
+    //  只有**按住**那条要按成员数收：「哪一颗先按住」在三颗及以上没有唯一起点，那一档把这一行
+    //  整行藏掉 —— 留着只是一个改不出任何差别的开关。
+    //
+    //  **「使用等待手势」不跟着藏**：三颗及以上只走它这一条判据，把它藏起来的那一版反而没处可改
+    //  （窗口关掉时那一档就永远按不出来）；下面「无操作时执行按键命令」也靠它决定显不显示。
+    val twoKeys = combo.keys.size == 2
     CardList(
         rows =
             buildList {
+                //  —— 两条触发方式（两组开关）——
+                //  「窗口内等齐」与「按住一颗再按另一颗」是**并存的两种按法**，各有各的一位；
+                //  两位都吃上面那颗总开关（关着时整份跟公共，改也改不动），这一组停用时也跟着灰 ——
+                //  它们判的是「这一档怎么认」，停用了就不该还能改（与原来那颗同一口径）。
+                add(
+                    comboModeRow(
+                        spec = comboWindowOnSpec(cfg, combo),
+                        enabled = rowsEnabled && combo.enabled,
+                        disabledHint = modeHint,
+                    ),
+                )
+                //  「无操作时执行按键命令」紧跟「使用等待手势」：它是那一条按法的收尾语义
+                //  （与公共页那一行同一份判据）。只在**这一组认窗口那条**时才有意义 ——
+                //  它说的是「窗口按出来了、可这一格没绑动作」，只认按住的那一档不经过这个形状。
+                //  窗口关着时它既不显示、也不参与取值（`Config.comboPassthroughFor`）。
+                //  **不在这里 `if (…) add(…)`**：行本身一直在，靠 `visible` 做滑动进出场 ——
+                //  直接增删会让下面两行跳一格。
                 add(
                     CardRow.Switch(
                         title = I18n.get(Strings.COMBO_PASSTHROUGH_TITLE, "无操作时执行按键命令"),
@@ -390,6 +427,7 @@ private fun SettingsPage.ComboOwnCard(
                         icon = PageIcons.NoMatch,
                         checked = cfg.comboPassthroughFor(combo),
                         enabled = rowsEnabled,
+                        visible = cfg.comboWindowOnFor(combo),
                         //  灰着时说明是哪一道闸（与下面两行同一句，见 `needOwnHint`）
                         disabledHint = needOwnHint,
                     ) { on ->
@@ -408,8 +446,11 @@ private fun SettingsPage.ComboOwnCard(
                         }
                     },
                 )
+                //  **按键之间的等待摆在「使用按住手势」上面**：它是窗口那条的参数（相邻两颗最多隔
+                //  多久），摆到另一条触发方式底下就成了那一颗的附属项。窗口关掉时跟着滑动收起 ——
+                //  那时这个数不再有任何作用（成员键不再按它等，见 `ConfigChannel.comboMemberIds`）。
                 add(
-                    CardRow.Custom { position ->
+                    CardRow.Custom(visible = cfg.comboWindowOnFor(combo)) { position ->
                         SliderRow(
                             position = position,
                             spec =
@@ -434,9 +475,140 @@ private fun SettingsPage.ComboOwnCard(
                         ) { v -> setComboOwnWindow(combo.id, v) }
                     },
                 )
+                add(
+                    comboModeRow(
+                        spec = comboHoldOnSpec(cfg, combo),
+                        enabled = rowsEnabled && combo.enabled,
+                        disabledHint = modeHint,
+                        visible = twoKeys,
+                    ),
+                )
+                //  按住手势的**下限**：首键要按满这么久、还没抬手，第二颗落下才算这一档组合。
+                //  只在两颗的组合上、且「使用按住手势」这条生效时出现（三颗没有「哪一颗先按住」，
+                //  按住那条整个不成立；关着时这个数也不起作用）。
+                add(
+                    CardRow.Custom(visible = twoKeys && cfg.comboHoldFor(combo)) { position ->
+                        SliderRow(
+                            position = position,
+                            spec =
+                                SliderSpec(
+                                    //  文案与公共页那一行**逐字相同**：同一个参数，两处只是改的对象不同
+                                    title = I18n.get(Strings.COMBO_HOLD_MIN_TITLE, "首键按住时长"),
+                                    summary =
+                                        I18n.get(
+                                            Strings.COMBO_HOLD_MIN_DESC,
+                                            "先按住的那颗按满这么久、还没抬手，再按另一颗才算组合",
+                                        ),
+                                    icon = PageIcons.DelayHold,
+                                    min = GlobalConfig.COMBO_HOLD_MIN_MIN_MS,
+                                    max = GlobalConfig.COMBO_HOLD_MIN_MAX_MS,
+                                    //  显示这一组自己存着的数（没写过才退回公共）—— 口径与上面那根
+                                    //  「按键之间的等待」一致：不跟着总开关跳值。
+                                    value = cfg.comboStoredHoldMinFor(combo),
+                                    default = cfg.global.comboHoldMinMs,
+                                    step = 10,
+                                    enabled = rowsEnabled,
+                                    disabledHint = needOwnHint,
+                                    valueText = { "$it ms" },
+                                ),
+                        ) { v -> setComboOwnHoldMin(combo.id, v) }
+                    },
+                )
             },
     )
 }
+
+/**
+ * 一行「这一组认不认某种按法」的全部内容 —— 两行只差这几个值，写成一份免得两边各自演进。
+ *
+ * @param checked **生效值**（关着独立设置时就是公共那份，见 `Config.comboWindowOnFor`）——
+ *   行上看到的就是「这一档现在按不按这种按法来」，不是「这一组自己写过什么」
+ * @param what 写盘说明里那一段（`window_on=1` 这种）
+ * @param change 这一位改完之后的那一份 —— 总开关关着时这一行点不动，所以写下去的
+ *   `true` / `false` 一定是「这一组自己的决定」，不会把公共值抄成覆盖
+ * @param noticeOn 打开时的回执（`null` = 用通用的「已开启 X」）—— 「使用按住手势」要额外说一句
+ *   「顺序还得去按法里加」，否则打开之后那一页看起来什么变化都没有
+ */
+private class ComboModeSpec(
+    val id: String,
+    val title: String,
+    val descOn: String,
+    val descOff: String,
+    val icon: ImageVector,
+    val checked: Boolean,
+    val what: String,
+    val change: (ComboKey, Boolean) -> ComboKey,
+    val noticeOn: String? = null,
+)
+
+/** 「使用等待手势」那一行（`ComboKey.windowOn`）—— 文案与公共页那颗**逐字相同**：同一个参数。 */
+private fun comboWindowOnSpec(
+    cfg: Config,
+    combo: ComboKey,
+): ComboModeSpec =
+    ComboModeSpec(
+        id = combo.id,
+        title = I18n.get(Strings.COMBO_WINDOW_ON_TITLE, "使用等待手势"),
+        descOn = I18n.get(Strings.COMBO_WINDOW_ON_DESC_ON, "两颗键在等待窗口内先后按下也算组合"),
+        descOff = I18n.get(Strings.COMBO_WINDOW_ON_DESC_OFF, "不认窗口内先后按下"),
+        icon = PageIcons.HoldWindow,
+        checked = cfg.comboWindowOnFor(combo),
+        what = "window_on",
+        change = { c, on -> c.copy(windowOn = on) },
+    )
+
+/** 「使用按住手势」那一行（`ComboKey.holdOn`）—— 同上，同一个参数的另一处落点。 */
+private fun SettingsPage.comboHoldOnSpec(
+    cfg: Config,
+    combo: ComboKey,
+): ComboModeSpec =
+    ComboModeSpec(
+        id = combo.id,
+        title = I18n.get(Strings.COMBO_HOLD_ON_TITLE, "使用按住手势"),
+        descOn = I18n.get(Strings.COMBO_HOLD_ON_DESC_ON, "按住其中一颗按键，再按另一颗触发"),
+        descOff = I18n.get(Strings.COMBO_HOLD_ON_DESC_OFF, "不认按住一颗再按另一颗"),
+        //  字形与「松手才触发」同一颗（`PageIcons.LongFireOnRelease`）：这一档要的正是
+        //  「按下之后停一会儿」—— 两颗键并排的那两颗手形（`HoldFirst` / `HoldSecond`）留给按法菜单。
+        icon = PageIcons.LongFireOnRelease,
+        checked = cfg.comboHoldFor(combo),
+        what = "hold_on",
+        change = { c, on -> c.copy(holdOn = on) },
+        //  打开之后还得去「按法」里加一种顺序（加的时候才动那颗键的长按时机，见 `HoldGestureAsk`）
+        noticeOn = I18n.get(Strings.COMBO_HOLD_ORDER_HINT, "已开启，去 [按法] 里添加按住顺序"),
+    )
+
+/**
+ * 触发方式那一行的开关 —— 两行共用一个写回：现读一次配置（`updateCombo`），只动这一位。
+ *
+ *  回执与公共页那一颗**同一个语义位**（[HINT_SLOT_COMBO]）：两处是同一个参数的两个落点，
+ *  连着拨时应当是同一条在改字。
+ *
+ * @param visible 这一行在不在（`null` = 一直在）。**只有「使用按住手势」那一行按成员数收**：
+ *   三颗及以上没有「哪一颗先按住」这个唯一起点，那一档整行藏掉；「使用等待手势」一直在 ——
+ *   三颗及以上只走它这条判据，藏起来反而没处可改（见 `ComboOwnCard` 里那两行）。
+ */
+@Composable
+private fun SettingsPage.comboModeRow(
+    spec: ComboModeSpec,
+    enabled: Boolean,
+    disabledHint: String?,
+    visible: Boolean? = null,
+): CardRow =
+    CardRow.Switch(
+        title = spec.title,
+        summaryOn = spec.descOn,
+        summaryOff = spec.descOff,
+        icon = spec.icon,
+        checked = spec.checked,
+        enabled = enabled,
+        visible = visible,
+        disabledHint = disabledHint,
+    ) { on ->
+        val ok = updateCombo(spec.id, "${spec.what}=${if (on) 1 else 0}") { spec.change(it, on) }
+        //  打开这一位的回执可能比通用那句多说一句（见 [ComboModeSpec.noticeOn]）
+        val notice = if (on) spec.noticeOn else null
+        if (ok) hint(notice ?: switchNotice(spec.title, on), slot = HINT_SLOT_COMBO)
+    }
 
 /**
  * 把一份独立设置写回它属于的那条记录 —— 单键 `keys[id]`、组合 `combos[id]`。
@@ -460,17 +632,18 @@ private fun applyOwnSettings(
     }
 
 /**
- * 组合那两项**跟着总开关一起播种**。
+ * 组合那几位「这一组独有的参数」**跟着总开关一起播种**。
  *
- *  `OwnSettings` 契约里只有那五项，`passthrough` / `windowMs` 是 `ComboKey` 独有的，所以它们
- *  **不在** [OwnSettingsValues] 里 —— 但「打开独立设置」对用户来说是一件事：这一档从此自己说了算。
- *  只播五项的话，透传与窗口仍停在「没设过 ⇒ 跟公共」，同一颗开关下就有了两套语义（五项已经是
- *  自己的值、两项还在跟随）——「既然都开了独立设置，还跟随公共」正是这个别扭。
+ *  `OwnSettings` 契约里只有那几项，`passthrough` / `windowMs` / `windowOn` / `holdOn` /
+ *  `holdMinMs` 是 `ComboKey` 独有的，所以它们**不在** [OwnSettingsValues] 里 —— 但「打开独立设置」
+ *  对用户来说是一件事：
+ *  这一档从此自己说了算。只播那几项的话，其余几位仍停在「没设过 ⇒ 跟公共」，同一颗开关下就有了
+ *  两套语义（那几项已经是自己的值、另几位还在跟随）——「既然都开了独立设置，还跟随公共」正是这个别扭。
  *
  *  播一次之后不再重播（判据 `ownSettingsSeeded`）：关掉总开关仍回到公共
  *  （`Config.comboWindowFor` / `comboPassthroughFor` 的第一支），重新打开用的是上次这一套。
  *  读取侧那几个 `?: global` 兜底留给**老配置**（这一位出现之前写下的 `windowMs = 0` /
- *  `passthrough = null`），新配置不会再落到那一支。
+ *  `passthrough = null` / `windowOn` / `holdOn`），新配置不会再落到那一支。
  *
  * @param values 上面算好的那份独立设置（用它判断「这一次是不是刚打开总开关」）
  * @param before 写之前的这一档 —— 只为看 `ownSettingsSeeded`
@@ -483,11 +656,30 @@ private fun withSeededComboFields(
 ): Config {
     val base = applyOwnSettings(cfg, target, values)
     if (target !is SettingsTarget.Combo || !values.useOwnSettings || before.ownSettingsSeeded) return base
-    //  播的是**这一刻**的公共值：与上面那五项同一个时刻、同一份来源，两边不会错开
+    //  播的是**这一刻**的公共值：与上面那几项同一个时刻、同一份来源，两边不会错开
     val passthrough = cfg.global.comboPassthrough
     val windowMs = cfg.global.comboWindowMs
+    //  两条触发方式也一起播种：它们与上面那三位是同一句话「这一档从此自己说了算」，
+    //  只播一半的话，同一颗开关下就有两套语义（有的项已经是自己的值、有的还在跟随）。
+    val windowOn = cfg.global.comboWindowOn
+    val holdOn = cfg.global.comboHoldOn
+    //  按住手势的下限也一起播：它属于「这一档从此自己说了算」那一族，不播就还在跟随公共
+    val holdMinMs = cfg.global.comboHoldMinMs
     return base.copy(
-        combos = base.combos.map { c -> if (c.id == target.id) c.copy(passthrough = passthrough, windowMs = windowMs) else c },
+        combos =
+            base.combos.map { c ->
+                if (c.id == target.id) {
+                    c.copy(
+                        passthrough = passthrough,
+                        windowMs = windowMs,
+                        windowOn = windowOn,
+                        holdOn = holdOn,
+                        holdMinMs = holdMinMs,
+                    )
+                } else {
+                    c
+                }
+            },
     )
 }
 
@@ -507,11 +699,12 @@ private fun ownSwitchNotice(
         OwnField.COLOR_OS -> switchNotice(I18n.get(Strings.HOME_COLOROS_TITLE, "使用 ColorOS 接口"), values.colorOsApi)
         OwnField.VIBRATE -> switchNotice(I18n.get(Strings.HOME_VIBRATE_TITLE, "振动反馈"), values.vibrate)
         OwnField.TOAST -> switchNotice(I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), values.toastOnRun)
+        OwnField.FLUID -> switchNotice(I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"), values.toastFluid)
         OwnField.STRENGTH, OwnField.TEMPLATE -> null
     }
 
 /**
- * 「独立设置」那张卡的一次提交 —— **只把这一项搬过去，其余五项以配置现值为准**。
+ * 「独立设置」那张卡的一次提交 —— **只把这一项搬过去，其余几项以配置现值为准**。
  *
  *  卡片交回来的是**渲染那一帧时**读到的整份值：写盘 → 重组之间只要错开一步，那份就是上一帧的。
  *  原先整份写回，于是「打开使用独立设置」之后紧接着点「执行时提示」，会把总开关一起写回旧值
@@ -536,7 +729,7 @@ private fun SettingsPage.commitOwnField(
     //  读起来就是「开了没生效」。
     //
     //  为什么**只播一次**（判据是 `ownSettingsSeeded`，不是「当前开关关着」）：用户把这
-    //  五项调成自己想要的样子、关掉总开关、过一阵又打开 —— 那时他要的是**上次那套**，
+    //  几项调成自己想要的样子、关掉总开关、过一阵又打开 —— 那时他要的是**上次那套**，
     //  不是公共设置。原先每次「关→开」都重抄一遍，等于把他调过的值悄悄扔掉。
     //  播种后置位写到盘上，所以跨进程、跨重启都只播一次。
     //
@@ -552,6 +745,7 @@ private fun SettingsPage.commitOwnField(
                     vibrate = cfgNow.global.vibrate,
                     vibrateStrength = cfgNow.global.vibrateStrength,
                     toastOnRun = cfgNow.global.toastOnRun,
+                    toastFluid = cfgNow.global.toastFluid,
                     toastTemplate = cfgNow.global.toastTemplate,
                     ownSettingsSeeded = true,
                 ).withField(field, values)

@@ -1,17 +1,21 @@
 package com.lookie.opluskey.ui.screen
 
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.CommonCommand
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
+import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.LongPressEdit
 import com.lookie.opluskey.core.model.appKeyOf
 import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.core.model.withLongPress
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
 import com.lookie.opluskey.ui.screen.binding.pickToken
 import com.lookie.opluskey.ui.screen.command.branchDraftNow
@@ -306,6 +310,12 @@ private fun SettingsPage.addCommonCommand(action: Action): Boolean {
     val cfg = configState.config.value
     val list = cfg.global.commonCommands
     if (list.any { it.token == action.token }) return true
+    //  已经有这条就先进了上面那一支（「本来就在里面」不算新增）：上限只拦**真的多一条**。
+    if (list.size >= GlobalConfig.MAX_COMMON_COMMANDS) {
+        XLog.w("常用命令：已到上限（${GlobalConfig.MAX_COMMON_COMMANDS} 个），拒绝添加 ${action.token}")
+        hint(I18n.format(Strings.COMMON_COMMANDS_LIMIT, GlobalConfig.MAX_COMMON_COMMANDS))
+        return false
+    }
     val ok =
         write(
             cfg.copy(global = cfg.global.copy(commonCommands = list + CommonCommand(token = action.token))),

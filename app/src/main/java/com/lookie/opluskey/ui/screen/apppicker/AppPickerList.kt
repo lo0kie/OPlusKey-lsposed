@@ -1,5 +1,6 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,24 +10,29 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.appKeyOf
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.collapseHeader
@@ -34,6 +40,7 @@ import com.lookie.opluskey.ui.chrome.collapsedHeaderHeight
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.chrome.headerStatusBarPadding
 import com.lookie.opluskey.ui.feedback.Feedback
+import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.APP_KIND_TAG_GAP
 import com.lookie.opluskey.ui.model.page.APP_LIST_HEADER_ITEMS
@@ -41,6 +48,7 @@ import com.lookie.opluskey.ui.model.page.APP_ROW_HEIGHT
 import com.lookie.opluskey.ui.model.page.GRID_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.page.PAGE_TOP_PADDING
+import com.lookie.opluskey.ui.model.page.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.target.LaunchableApp
 import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.CardList
@@ -54,6 +62,7 @@ import com.lookie.opluskey.ui.style.CenteredInInsets
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PullToRefresh
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
+import io.github.suqi8.coui.kmp.basic.Text
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
 import io.github.suqi8.coui.kmp.basic.rememberPullToRefreshState
 import io.github.suqi8.coui.kmp.theme.COUITheme
@@ -90,8 +99,11 @@ internal fun SettingsPage.AppPickerList(
     // 选中那条的判据（[AppPickerUiState.pending]）：进页时它是已绑定的那一档，
     // 在二级页点了确认之后换成刚挑的那一档。它只管一圈内框 + 标题上色，行尾恒是箭头。
     val pending = ui.pending
-    val row = rememberRowState(pending)
-    LocateSelected(ui, scrollBehavior, listState, searchBandDp)
+    val row = rememberRowState(pending, ui.visitOrder)
+    //  **进页时**把已选中的排到最前（顺序 = 上次保存的先后）；页里点选不重排 ——
+    //  排序读的是 `visitOrder` 那份快照，不是实时的选中集合。
+    val shown = remember(ui.shown, row) { row.ordered(ui.shown) }
+    LocateSelected(ui, shown, scrollBehavior, listState, searchBandDp)
 
     Box(Modifier.fillMaxSize()) {
         PullToRefresh(
@@ -153,7 +165,7 @@ internal fun SettingsPage.AppPickerList(
                         // 「查得到但没有匹配项」那句提示不在这里：它一进来就会占掉一个下标，
                         // 而按下标滚到当前绑定应用的偏移 [APP_LIST_HEADER_ITEMS] 只算了顶上那个占位项
                         // —— 多一项就错一行。
-                        spacedItems(ui.shown, gap = GRID_GAP, key = { it.target }) { app ->
+                        spacedItems(shown, gap = GRID_GAP, key = { it.target }) { app ->
                             // **不给 `Modifier.animateItem()`** —— 理由写在 [AppRow] 的 KDoc 里：
                             // 它把「过滤之后下标变了」当成「这一行换位了」。
                             AppRow(
@@ -266,10 +278,22 @@ private fun SettingsPage.pickRow(
         //  不同的场景，跨块拦会把第二块那条合法条件堵掉（见 `blockKindsOf` 的「跨块不禁」）。
         //  已经在本条条件里的那颗必须能点掉，否则多选之后没法取消其中一个。
         val now = picker.pickedApps.value
-        val next = if (pkg in now) now - pkg else now + pkg
-        picker.pickedApps.value = next
+        if (pkg in now) {
+            picker.pickedApps.value = now - pkg
+        } else {
+            //  一条条件最多 [BranchCondition.MAX_APP_PACKAGES] 个包名 —— 到顶了只提示、不选中，
+            //  `pending` 也一动不动（那颗 FAB 仍指向上一次选中的那个）。
+            if (now.size >= BranchCondition.MAX_APP_PACKAGES) {
+                hint(I18n.format(Strings.APP_PICKER_BRANCH_PICK_LIMIT, BranchCondition.MAX_APP_PACKAGES))
+                return
+            }
+            picker.pickedApps.value = now + pkg
+        }
         // `pending` 跟着集合走：它是「FAB 显不显示 / 滚到哪一行」的判据，空集时不该留一个旧目标。
-        ui.pending = next.firstOrNull()?.let { PickedDetail(it, shortcutId = null) }
+        ui.pending =
+            picker.pickedApps.value
+                .firstOrNull()
+                ?.let { PickedDetail(it, shortcutId = null) }
         return
     }
     ui.pending = PickedDetail(app.target, shortcutId = null)
@@ -324,11 +348,17 @@ internal fun SettingsPage.PickerScrollBar(
  *  给**条件**挑的那一趟按集合算选中（可多选），其余入口按单个 `pending`。
  */
 @Composable
-private fun SettingsPage.rememberRowState(pending: PickedDetail?): RowState {
+private fun SettingsPage.rememberRowState(
+    pending: PickedDetail?,
+    /** 进页那一刻的选中顺序（`AppPickerUiState.visitOrder`）—— 排序只认它，见 [RowState.ordered]。 */
+    visitOrder: List<String>,
+): RowState {
     val multi = picker.branchTarget != AppPickerState.NOT_FOR_BRANCH
     val pickedPkgs = picker.pickedApps.value
-    return remember(pending, multi, pickedPkgs) {
-        RowState(pending, multi, pickedPkgs)
+    return remember(pending, multi, pickedPkgs, visitOrder) {
+        //  `toList()` 必须放在 remember **里面**：它每帧都会给一个新实例，摆在外面等于让这道
+        //  remember 永远失效，几百行跟着每帧重组。
+        RowState(pending, multi, pickedPkgs, pickedPkgs.toList(), visitOrder)
     }
 }
 
@@ -341,14 +371,23 @@ private class RowState(
     /** 这一趟是在给**条件**挑（而不是给那一支要执行的应用挑）—— 只有它支持多选。 */
     val multi: Boolean,
     /** 给条件挑时**已选的全部包名**；其余入口恒为空集（那时看 [pending]）。 */
-    val pickedPkgs: Set<String>,
+    private val pickedPkgs: Set<String>,
+    /**
+     * 同一个集合，但**按选择顺序**排好 —— 行尾那枚序号读它。
+     *
+     *  为什么不能直接用 [pickedPkgs]：`Set` 的类型签名不承诺顺序，`.first()` / `.indexOf()`
+     *  在上面读出来的次序是实现的偶然，而行尾那枚「1、2、3」必须与用户点下去的顺序一致。
+     */
+    private val pickedOrder: List<String>,
+    /** 进页那一刻的选中顺序 —— 只用于 [ordered] 的排序，页里点选不会改它。 */
+    private val visitOrder: List<String>,
 ) {
     /**
      * 这一行（[target] 是应用那一级的 `包名` / `999@包名`）是不是当前选中的那个应用。
      *
      *  给**条件**挑的那一趟看集合（可以选中好几个）；其余入口看 [pending] 那一个目标。
      *
-     *  这一位管三样：内框（[selectedRowRing]）、标题上色、以及行尾那一格换成实心圆勾
+     *  这一位管三样：内框（[selectedRowRing]）、标题上色、以及行尾那一格换成序号 / 实心圆勾
      *  （见 [AppRow] 里那一段说明）。
      */
     fun pickedBy(target: String): Boolean =
@@ -358,6 +397,34 @@ private class RowState(
         } else {
             pending != null && AppTarget.sameApp(target, pending.target)
         }
+
+    /**
+     * 多选时这一行是**第几个**被选中的（1 起）；没选中就是 `null`。
+     *
+     *  行尾那枚序号读它。用 `indexOf` 而不是另存一张表：集合最大也就十几条，
+     *  而多存一张表就要在每条增删路径上同步一次。
+     */
+    fun orderOf(target: String): Int? =
+        if (!multi) {
+            null
+        } else {
+            pickedOrder.indexOf(appKeyOf(target)).takeIf { it >= 0 }?.plus(1)
+        }
+
+    /**
+     * 列表该按什么顺序铺 —— **进页时已选中的排在最前**，各自按上次保存的先后；其余保持原顺序。
+     *
+     *  判据是 [visitOrder] 而不是 [pickedOrder]：这一趟里点选的、取消的都不该让行跳位置
+     *  （点一下那一行就从手指底下挪走，比「看不见选了几个」更难用）。重新进页时它被重新取一次，
+     *  排序于是跟上一次的最终结果一致。
+     *
+     *  `sortedBy` 是稳定排序 ⇒ 没选中的那几百行不会因为这一下被打乱。
+     */
+    fun ordered(apps: List<LaunchableApp>): List<LaunchableApp> {
+        if (!multi || visitOrder.isEmpty()) return apps
+        val rank = visitOrder.withIndex().associate { (index, key) -> key to index }
+        return apps.sortedBy { rank[appKeyOf(it.target)] ?: Int.MAX_VALUE }
+    }
 }
 
 /**
@@ -424,22 +491,27 @@ private fun SettingsPage.AppRow(
                     titleTint = if (picked) COUITheme.colorScheme.primary else null,
                     trailing = {
                         //  行尾那一格**恒占位**，只换内容：
-                        //  · 选中那一行 → **实心圆勾**（`TileChecked`，与按键列表的选中态同一颗）；
-                        //  · 没有下级页的那几趟 → **空心圆圈**（`TileUnchecked`）：这一页的行是
-                        //    「挑一个」，空圈与实心勾才是同一套单选说法 —— 见 [noRowArrow]；
+                        //  · 多选里选中的那些 → **序号**（第几个选的）：既能看出「选了几个」，
+                        //    也能对上下一条条件里 `包1||包2` 的先后；
+                        //  · 多选里没选中的、以及单选里没选中的 → **什么都不画**：这一页的行
+                        //    点一下就是选中，每行挂一个空心圈等于把整页变成待办清单；
+                        //  · 选中那一行（单选）→ **实心圆勾**（`TileChecked`，与按键列表的选中态同一颗）；
                         //  · 其余行 → 右箭头（点下去还进下一级：挑这个应用里的具体界面 / 快捷方式）。
-                        //  三档都是同一格 24dp，宽度不动 —— 否则库按行尾实际宽度算中间那列，
+                        //  几档都是同一格 24dp，宽度不动 —— 否则库按行尾实际宽度算中间那列，
                         //  长包名会折行（真机表现是「勾一出现，两个标题一起上移」）。
+                        val order = if (picked) row.orderOf(app.target) else null
                         when {
+                            order != null -> {
+                                PickOrderBadge(order)
+                            }
+
                             picked -> {
                                 RowEndIcon(PageIcons.TileChecked, tint = COUITheme.colorScheme.primary)
                             }
 
-                            noRowArrow -> {
-                                RowEndIcon(
-                                    PageIcons.TileUnchecked,
-                                    tint = COUITheme.colorScheme.onSurfaceVariantActions,
-                                )
+                            //  多选里没选中的、以及单选里没选中的（`noRowArrow`）都空着。
+                            row.multi || noRowArrow -> {
+                                Spacer(Modifier.size(ROW_END_ICON_SIZE))
                             }
 
                             else -> {
@@ -452,6 +524,53 @@ private fun SettingsPage.AppRow(
             ),
     )
 }
+
+/**
+ * 多选行尾那枚**序号** —— 主题色实心圆 + 亮色数字。
+ *
+ *  **外面仍占满 [ROW_END_ICON_SIZE] 那一格，圆只画 [PICK_ORDER_BADGE_SIZE]**：槽位宽度必须与
+ *  别的行尾字形一致，否则库会按新的宽度重算中间那列（长包名折行 / 标题上移）；而实心圆铺满
+ *  那一格会比旁边的线性字形重出一截。一格一圆，两件事各归各的。
+ *
+ * @param number 第几个被选中的（1 起）
+ */
+@Composable
+private fun PickOrderBadge(number: Int) {
+    val scheme = COUITheme.colorScheme
+    Box(
+        modifier = Modifier.size(ROW_END_ICON_SIZE),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(PICK_ORDER_BADGE_SIZE)
+                    .clip(CircleShape)
+                    .background(scheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = number.toString(),
+                style = COUITheme.textStyles.footnote2,
+                fontWeight = FontWeight.Medium,
+                color = scheme.onPrimary,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * 行尾那枚序号的直径 —— 20dp。
+ *
+ *  量的就是行尾那颗**空心圆**（`TileUnchecked`，Tabler 的 `circle`）的外沿：24dp 画布里
+ *  `cx=cy=12, r=9`、`stroke-width=2` ⇒ 直径 `2×9 + 2 = 20dp`。实心圆取 20 才与它同大；
+ *  取 18（等于半径那一档、漏掉了描边的外扩）会明显小一圈（真机口径「比图标小了」）。
+ *
+ *  **仍不并进 [ROW_END_ICON_SIZE]**：那一档是槽位宽度（24dp），几个字形共用它才不会让
+ *  中间那列左右跳；这一档只决定圆本身多大。
+ */
+private val PICK_ORDER_BADGE_SIZE = 20.dp
 
 /**
  * 进场把列表滚到「当前绑定的那个应用」（**只做一次**）。
@@ -470,13 +589,14 @@ private fun SettingsPage.AppRow(
 @Composable
 private fun SettingsPage.LocateSelected(
     ui: AppPickerUiState,
+    /** **排好序**的那一份（进页时已选中的在最前）—— 下标必须按它算，否则滚到的是别人。 */
+    shown: List<LaunchableApp>,
     scrollBehavior: ScrollBehavior,
     listState: LazyListState,
     searchBandDp: Dp,
 ) {
     // 「已选中的那个」= 本次选中；进页那一刻它被复位成当前绑定（见 `beginVisit`）
     val selected = ui.pending?.target
-    val shown = ui.shown
     // 与 `ui.shown` 的过滤同口径：这里只用来判「有没有搜索词」，不去空格会把 `" "` 当成有词
     val filter = picker.filter.value.trim()
     // 顶上挡着的那两段 —— **都取库的常量，不读实测高度**：

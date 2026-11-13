@@ -106,12 +106,22 @@ internal object ChordGuard {
      *  · 一个都没绑、「无操作时执行按键命令」开着 ⇒ **不吞**（让 ROM 那一下照常发生，
      *    这正是那一项对单键的语义，组合也该一致）；
      *  · 一个都没绑、那一项关着 ⇒ 吞（用户明确要这两颗键什么都不做）。
+     *
+     *  那一项本身**只在窗口那条开着时算数**（`Config.comboPassthroughFor`）：只认按住的一档
+     *  没有「按出来了但没绑动作」这个形状，所以窗口关掉时按「没有透传」处理 —— 照样吞。
      */
     private fun actsOrBlocks(
         config: Config,
         combo: ComboKey,
     ): Boolean {
-        val hasAction = combo.single.isBound || combo.long.isBound || combo.releaseBound || combo.scenes.isNotEmpty()
+        //  按住那几套也算「有动作可做」：只给按住手势配了动作的组合，注入侧过去看不见它
+        //  （`ComboWire` 没带那四个槽时恒为「无操作」）⇒ 被当空档放行，按了没反应。
+        val hasAction =
+            combo.single.isBound ||
+                combo.long.isBound ||
+                combo.releaseBound ||
+                combo.scenes.isNotEmpty() ||
+                combo.anyHoldBound
         return hasAction || !config.comboPassthroughFor(combo)
     }
 }

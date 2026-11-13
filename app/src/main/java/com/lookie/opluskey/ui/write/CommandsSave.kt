@@ -5,6 +5,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
+import com.lookie.opluskey.core.model.CommandKind
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.state.command.CommandsSave
@@ -67,6 +68,18 @@ private fun SettingsPage.commandsToSave(
     val unique = dedupeByName(next)
     if (unique.size != next.size) {
         XLog.w("命令库有重名（同名只留最后一条）：${next.size - unique.size} 条被丢 —— $what")
+    }
+    //  条数上限（`Command.MAX_COMMANDS`，单条与多条**各算各的**）：判的是**这一类现在有几条**，
+    //  所以「改一条已有命令」不会被拦（条数没变）。放在这一处而不是只拦界面那颗「新建」——
+    //  导入配置 / 手改文件也走这条唯一出口。
+    val over =
+        CommandKind.entries.firstOrNull { kind ->
+            unique.count { it.kind == kind } > Command.MAX_COMMANDS
+        }
+    if (over != null) {
+        XLog.w("命令库到上限（每类 ${Command.MAX_COMMANDS} 条），拒绝写回：$what")
+        hint(I18n.format(Strings.COMMAND_LIMIT, Command.MAX_COMMANDS))
+        return null
     }
     return unique
 }

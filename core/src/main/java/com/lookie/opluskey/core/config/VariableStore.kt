@@ -202,6 +202,12 @@ object VariableStore {
                 XLog.w("变量：新建被拒（已有同名）—— ${variable.name}")
                 return@update null
             }
+            //  条数上限（`Variable.MAX_COUNT`）：闸放在这条读 → 追加 → 写的唯一出口上，
+            //  界面那颗「新建」只是提前拦一次 —— 别处往这里塞（导入 / 未来的批量）照样挡住。
+            if (vars.size >= Variable.MAX_COUNT) {
+                XLog.w("变量：新建被拒（已到上限 ${Variable.MAX_COUNT} 个）—— ${variable.name}")
+                return@update null
+            }
             vars + variable
         }
 

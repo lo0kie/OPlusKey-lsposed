@@ -106,6 +106,67 @@ internal fun SettingsPage.setComboPassthrough(on: Boolean) {
 }
 
 /**
+ * 切「使用等待手势」—— 组合的两条触发方式之一（另一条是 [setComboHoldOn]）。
+ *
+ *  判定在注入侧（`ComboDetector` 的 `windowOnFor`），所以走通用写入通道：落盘 + 广播 + 重问注入侧。
+ *  与「无操作时执行按键命令」同一个回执位（[HINT_SLOT_COMBO]）：同一张卡上的同一族开关。
+ */
+internal fun SettingsPage.setComboWindowOn(on: Boolean) =
+    writeComboMode(
+        what = "combo_window_on=${if (on) 1 else 0}",
+        title = I18n.get(Strings.COMBO_WINDOW_ON_TITLE, "使用等待手势"),
+        on = on,
+    ) { it.copy(comboWindowOn = on) }
+
+/** 切「使用按住手势」—— 见 [setComboWindowOn]。打开时多说一句「顺序还得去按法里加」。 */
+internal fun SettingsPage.setComboHoldOn(on: Boolean) {
+    val cfg = configState.config.value
+    writeAndNotice(
+        cfg.copy(global = cfg.global.copy(comboHoldOn = on)),
+        "combo_hold_on=${if (on) 1 else 0}",
+        slot = HINT_SLOT_COMBO,
+    ) {
+        if (on) {
+            I18n.get(Strings.COMBO_HOLD_ORDER_HINT, "已开启，去 [按法] 里添加按住顺序")
+        } else {
+            switchNotice(I18n.get(Strings.COMBO_HOLD_ON_TITLE, "使用按住手势"), false)
+        }
+    }
+}
+
+/**
+ * 写「首键要先按住多久」（毫秒）**公共那一档** —— 按住手势的下限。
+ *
+ *  判定在注入侧（`ComboDetector` 的 `holdMinFor`），所以走通用写入通道：落盘 + 广播 + 重问注入侧。
+ *  返回「写盘成没成」：滑杆失败时要拨回原值（与「按键之间的等待」那一行同一条）。
+ */
+internal fun SettingsPage.setComboHoldMin(ms: Int): Boolean {
+    val cfg = configState.config.value
+    val value = ms.coerceIn(GlobalConfig.COMBO_HOLD_MIN_MIN_MS, GlobalConfig.COMBO_HOLD_MIN_MAX_MS)
+    if (cfg.global.comboHoldMinMs == value) return true
+    return write(cfg.copy(global = cfg.global.copy(comboHoldMinMs = value)), "combo_hold_min_ms=$value") !=
+        CommandsSave.Failed
+}
+
+/**
+ * 组合那张卡上「一个开关 + 一句回执」的写回 —— 那两颗触发方式共用这一支。
+ *
+ *  与 [toggleGlobal] 的差别只有一处：回执落在 [HINT_SLOT_COMBO]（与「无操作时执行按键命令」、
+ *  以及组合列表那一侧的同一个参数同一位）—— 同一张卡上的同一族开关连着拨时应当是同一条在改字。
+ */
+private fun SettingsPage.writeComboMode(
+    what: String,
+    title: String,
+    on: Boolean,
+    transform: (GlobalConfig) -> GlobalConfig,
+) {
+    val cfg = configState.config.value
+    writeAndNotice(cfg.copy(global = transform(cfg.global)), what, slot = HINT_SLOT_COMBO) {
+        switchNotice(title, on)
+    }
+}
+
+/**
  * 切「前台转小窗时使用动画」—— 行点击与开关共用这一个入口。
  *
  *  判定侧在 `host/action/MiniWindowLauncher`（宿主进程里执行时现读配置，拨完立刻生效）。
@@ -182,6 +243,18 @@ private const val MODULE_ENABLED_SLOT = "module_enabled"
 internal fun SettingsPage.setToastOnRun(on: Boolean) =
     toggleGlobal("toast_on_run=${if (on) 1 else 0}", I18n.get(Strings.HOME_TOAST_TITLE, "执行时提示"), on) {
         it.copy(toastOnRun = on)
+    }
+
+/**
+ * 切「执行时提示」的**落点**（Toast / 流体云）—— 与 [setToastOnRun] 同一张卡、同一档语义：
+ * 只换提示长在哪儿，文案仍是 [setToastTemplate] 那一句。
+ *
+ * 判定侧在 `host/GestureExec.noticeIfNeeded`，宿主进程每次执行现读配置，拨完立刻生效。
+ * 图标来自**被执行的那个动作**，由界面层预热（`ui/model/icon/ActionCardArt`）。
+ */
+internal fun SettingsPage.setToastFluid(on: Boolean) =
+    toggleGlobal("toast_fluid=${if (on) 1 else 0}", I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"), on) {
+        it.copy(toastFluid = on)
     }
 
 /**

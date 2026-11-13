@@ -29,6 +29,7 @@ import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.write.setColorOsApi
 import com.lookie.opluskey.ui.write.setMiniWindowAnim
 import com.lookie.opluskey.ui.write.setShowCommonCommands
+import com.lookie.opluskey.ui.write.setToastFluid
 import com.lookie.opluskey.ui.write.setToastOnRun
 import com.lookie.opluskey.ui.write.setToastTemplate
 import com.lookie.opluskey.ui.write.setVibrate
@@ -159,6 +160,7 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
                     },
                 )
                 add(toastRow(cfg.global.toastOnRun, pageEnabled))
+                add(toastFluidRow(cfg.global.toastFluid, pageEnabled, visible = cfg.global.toastOnRun))
                 add(toastTemplateRow(cfg.global, pageEnabled) { editingToastTemplate = true })
                 // 「前台转小窗时使用动画」：`zoom:mini` 那一下要不要播缩小动画。
                 //  关（默认）= 原地收、无动画；开 = 原地收成小窗后紧接着让框架自己的动画器播那一段
@@ -183,6 +185,30 @@ private fun SettingsPage.ActionsCard(pageEnabled: Boolean) {
     )
     toastTemplateDialog(cfg.global.toastTemplate, editingToastTemplate) { editingToastTemplate = it }
 }
+
+/**
+ * 「用流体云提示」那一行 —— 只在「执行时提示」开着时出现（与提示文案同一档）。
+ *
+ *  它只换**落点**：关着走注入侧那颗系统身份的 Toast，开着走宿主自己的流体云胶囊。
+ *  文案不跟着变 —— 同一句 `$key - $gesture → $action` 两个地方都念得对。
+ *  图标来自被执行的那个动作（界面层预热成 png，宿主按 token 找回来）。
+ */
+private fun SettingsPage.toastFluidRow(
+    checked: Boolean,
+    enabled: Boolean,
+    visible: Boolean,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"),
+        summaryOn = I18n.get(Strings.HOME_TOAST_FLUID_DESC_ON, "提示显示在状态栏的流体云里"),
+        summaryOff = I18n.get(Strings.HOME_TOAST_FLUID_DESC_OFF, "提示以 Toast 弹出"),
+        icon = PageIcons.FormatFluid,
+        checked = checked,
+        enabled = enabled,
+        visible = visible,
+    ) {
+        setToastFluid(it)
+    }
 
 /**
  * 「提示文案」那一行 —— 只在「执行时提示」开着时出现（关着提示还摆一行改文案，

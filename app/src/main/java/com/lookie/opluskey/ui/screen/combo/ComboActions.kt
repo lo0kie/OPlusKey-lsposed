@@ -272,3 +272,24 @@ internal fun SettingsPage.setComboOwnWindow(
             }
         combo.copy(windowMs = value)
     }
+
+/**
+ * 写**这一组自己**的「首键要先按住多久」（毫秒）—— 按住手势的下限。
+ *
+ *  与 [setComboOwnWindow] 同一个形状：那个写这一组的按键间隔，这个写这一组的按住下限，
+ *  判定侧都只读 `Config` 那两处（`comboHoldMinFor` / `comboWindowFor`）。
+ *  `0` 同样只服务**老配置**与手改文件（界面滑杆的下限是 40ms）。
+ */
+internal fun SettingsPage.setComboOwnHoldMin(
+    id: String,
+    ms: Int,
+): Boolean =
+    updateCombo(id, "hold_min_ms=$ms") { combo ->
+        val value =
+            if (ms <= 0) {
+                ComboKey.HOLD_MIN_FOLLOW_GLOBAL
+            } else {
+                ms.coerceIn(GlobalConfig.COMBO_HOLD_MIN_MIN_MS, GlobalConfig.COMBO_HOLD_MIN_MAX_MS)
+            }
+        combo.copy(holdMinMs = value)
+    }

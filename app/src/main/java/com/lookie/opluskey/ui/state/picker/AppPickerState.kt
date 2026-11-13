@@ -149,15 +149,44 @@ internal class AppPickerState {
     private var visitSmallWindow = false
     private var visitStockAnim = false
 
-    /** 记下这一趟的基线（进页重算完之后调，见 [visitSmallWindow]）。 */
+    /** 「结束应用」那一趟进页时选中的那条 —— [stopAppPickedChanged] 的基线，见 [markStopBaseline]。 */
+    private var visitStopTarget: String? = null
+
+    /** 记下两个窗口开关的基线（进页重算完之后调，见 [visitSmallWindow]）。 */
     fun markWindowTogglesBaseline() {
         visitSmallWindow = smallWindow.value
         visitStockAnim = stockAnim.value
     }
 
+    /**
+     * 记「结束应用」那一趟的基线 —— 进页那一刻**复位之后**的值（`AppPickerUiState.beginVisit`
+     * 里 `pending` 赋值完立刻调）。
+     *
+     *  为什么不能跟着 [markWindowTogglesBaseline] 记：那两处调用点都在 `beginVisit` **之前**
+     *  （`resetSmallWindowForPicker` / `openAppPickerForStopApp`），那时 `pending` 还是**上一趟
+     *  留下的**（正常收尾后是 `null`）。拿它当基线，进页后点一下「本来就是它」的那一行也会
+     *  判成「挑过新的」，退页时凭空弹一句「放弃选择」。
+     */
+    fun markStopBaseline(target: String?) {
+        visitStopTarget = target
+    }
+
     /** 这一趟拨过「以小窗口打开」或「使用原版动画」吗 —— 退出页面要按草稿问一句。 */
     val windowTogglesChanged: Boolean
         get() = smallWindow.value != visitSmallWindow || stockAnim.value != visitStockAnim
+
+    /**
+     * 这一趟在「结束应用」里**挑中了一条却还没点 FAB** —— 与 [windowTogglesChanged] 同一条账。
+     *
+     *  那一趟没有二级页（点一行就是选中它），所以「草稿」只可能是「选中的那一行」：
+     *  与进页那一刻记下的 [visitStopTarget] 一比就出来了。缺了这一条，挑了 A 直接返回
+     *  会被当成「什么都没做」—— 用户以为已经改成结束了，其实一个字节都没写。
+     */
+    val stopAppPickedChanged: Boolean
+        get() {
+            val target = pending.value?.target ?: return false
+            return stopApp && target != visitStopTarget
+        }
 
     /**
      * 这一趟挑的应用要写成 **`proc:stop:包名`**（「结束应用」那一格），而不是 `app:`。
@@ -697,16 +726,15 @@ internal class AppPickerState {
     /**
      * 这一趟有没有**挑过、还没落盘**的东西 —— 退页前要不要问一句的**唯一**判据。
      *
-     *  三样各自可能改过：草稿（二级页点了确认，提交在右下角那颗 FAB 上）、两个窗口开关、
-     *  多选集合。前两样的出处见 [windowTogglesChanged]，第三样见 [pickedAppsChanged] ——
-     *  多选那一趟点一行只切勾选，前两样都不动，缺了这一项整趟挑的就静悄悄丢了
-     *  （真机口径「返回时的拦截在上面这个场景不生效」）。
+     *  四样各自可能改过：草稿（二级页点了确认，提交在右下角那颗 FAB 上）、两个窗口开关、
+     *  多选集合、「结束应用」那一趟挑中的那一行。前三样的出处见 [windowTogglesChanged] 与
+     *  [pickedAppsChanged]，最后一样见 [stopAppPickedChanged]。
      *
-     *  收在这里而不是写在调用点：这三个判据的基线都归本域管（`beginVisit` 那一刻定），
+     *  收在这里而不是写在调用点：这几个判据的基线都归本域管（进页那一刻定），
      *  组合口径也该在同一处，免得下次再加一样时又漏一处。
      */
     val unconfirmedChanges: Boolean
-        get() = draft != null || windowTogglesChanged || pickedAppsChanged
+        get() = draft != null || windowTogglesChanged || pickedAppsChanged || stopAppPickedChanged
 
     // ── 屏级缓存：清单 + 图标 ──
     //

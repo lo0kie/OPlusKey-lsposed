@@ -24,6 +24,12 @@ internal data class HintItem(
     val id: Long,
     val text: String,
     /**
+     * 文案里那几个 `%s` 位置换成**名字框**（键名一律画成标签）—— 空表 = 整句纯文字。
+     *
+     *  与 [text] 是同一条提示的内容，所以同一个位改字时它一起换（见 [HintQueue.push]）。
+     */
+    val chips: List<String> = emptyList(),
+    /**
      * 前置图标（`null` = 这一条没指定，界面画默认的那一颗 alert-circle）。
      *
      *  与 [text] 是**同一条提示的内容**：同一个位上改字时它一起改（见 [HintQueue.push]），
@@ -108,6 +114,7 @@ internal class HintQueue(
         slot: String? = null,
         holdMs: Long? = null,
         icon: ImageVector? = null,
+        chips: List<String> = emptyList(),
     ) {
         if (text.isBlank()) {
             //  空文案**不是一条提示**，但也**不能什么都不做**：直接 `return` 的话，屏幕上那一条
@@ -123,8 +130,8 @@ internal class HintQueue(
         //  同一个位上已经有一条（还没开始退场）⇒ 改那条的字，不新开一条
         val same = if (slot == null) null else items.firstOrNull { it.slot == slot && !it.exiting }
         if (same != null) {
-            if (same.text != text || same.icon != icon) {
-                items = items.map { if (it.id == same.id) it.copy(text = text, icon = icon) else it }
+            if (same.text != text || same.icon != icon || same.chips != chips) {
+                items = items.map { if (it.id == same.id) it.copy(text = text, icon = icon, chips = chips) else it }
             }
             schedule(same.id, holdMs)
             return
@@ -137,7 +144,7 @@ internal class HintQueue(
         val rest = items.filterNot { it.text == text }
         items =
             enqueue(
-                listOf(HintItem(id, text, icon = icon, slot = slot)) + rest +
+                listOf(HintItem(id, text, chips = chips, icon = icon, slot = slot)) + rest +
                     duplicates.map { it.copy(exiting = true) },
             )
         //  被顶掉的旧条目要先摘掉它的计时，否则那个协程到点还会去改一个不存在的 id（无害但白跑）

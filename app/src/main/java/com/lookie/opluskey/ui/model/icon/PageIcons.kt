@@ -602,6 +602,38 @@ internal object PageIcons {
      */
     val ComboOnly: ImageVector get() = TablerIcons.Outline.ArrowsDoubleNeSw
 
+    //  「按法」那三档（`ComboKey.windowOn` / `holdOn` 那一族）：同一档手势下这三种按法各有一套动作，
+    //  选择器里每行一颗。字形取「这三种按法各自要害在哪」——
+    //
+    //   · 等窗口 → `clock-hour-4`：这条判据量的是**时间**（两颗键之间最多隔多久）；
+    //   · 先按住第一颗 → `hand-grab`：**抓着不放**，另一颗是后补的；
+    //   · 先按住第二颗 → `hand-click`：同一个动作换个起点，字形与上一颗同一族（都是手），
+    //     只差「抓」与「点」—— 两行并排看得出是同一件事的两种顺序，而不是两件不相干的事。
+    //
+    //  不复用下面的 [DelayHold] / [DelayStep]：那两颗是「延时」那一族（长按延迟、连发间隔），
+    //  与按法分属两处设置，共用字会让两个概念在界面上长得一样。
+
+    /**
+     * **等窗口** —— 两颗键在等待窗口内先后按下（见 `ComboKey.windowOn`）。
+     *
+     *  同一个字形也作公共设置那颗「使用等待手势」开关的图标：那一位管的正是这种按法认不认。
+     */
+    val HoldWindow: ImageVector get() = TablerIcons.Outline.ClockHour4
+
+    /** **先按住第一颗**，再按剩下的 —— 按住手势的第一种顺序。 */
+    val HoldFirst: ImageVector get() = TablerIcons.Outline.HandGrab
+
+    /** **先按住第二颗**，再按剩下的 —— 按住手势的第二种顺序。 */
+    val HoldSecond: ImageVector get() = TablerIcons.Outline.HandClick
+
+    /**
+     * **按法**（组合动作页右下角那颗 FAB）—— hand-click：点在「先按住哪一颗」这件事上。
+     *
+     *  与 [HoldSecond] 同一颗字形，但**意图不同**：那个是「先按住第二颗」这一种顺序，
+     *  这个是「换一种按法」这个动作 —— 将来任一颗要换字形时不必连带另一颗。
+     */
+    val PressMode: ImageVector get() = TablerIcons.Outline.HandClick
+
     /** **新建配置** —— `file-plus`：加一份。 */
     val ProfileAdd: ImageVector get() = TablerIcons.Outline.FilePlus
 
@@ -972,6 +1004,10 @@ internal object PageIcons {
      *  这一行管的是**长按到点之后先停一下**：按到长按时长不立刻执行，等抬手那一刻才走。
      *  「暂停」正是那个停顿（与 [LongRelease] 那颗「抬手」分工：那颗说的是**松手再执行一个**，
      *  这颗说的是**到点先别动**）。
+     *
+     *  同一颗也用于组合键那颗「使用按住手势」开关：那一位要的同样是「按下之后停一会儿」
+     *  （按住一颗、再按另一颗）。两处同字形是**有意**的 —— 说的是同一种「停住」；
+     *  按法菜单里那两颗手形（[HoldFirst] / [HoldSecond]）留给「先按哪一颗」那一层。
      */
     val LongFireOnRelease: ImageVector get() = TablerIcons.Outline.PointerPause
 

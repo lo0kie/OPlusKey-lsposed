@@ -4,7 +4,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.ui.model.page.FAB_SCROLL_DIRECTION_THRESHOLD
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
@@ -95,6 +99,24 @@ internal fun BoxScope.PageCornerFab(
     animate: Boolean = true,
     content: @Composable () -> Unit,
 ) {
+    PageCornerFabStack(visible = visible, animate = animate) { content() }
+}
+
+/**
+ * 同 [PageCornerFab]，但那一角可以摆**一摞**（主 FAB + 它上面那颗次要的）。
+ *
+ *  「按键绑定」的组合页要用两颗：右下角仍是「新增命令」，它上面那颗是这一页的「按法」
+ *  （见 `ComboPressModeFab`）。两颗各自定位会让下面那颗把上面那颗压住 —— 位置只有一个，
+ *  所以这一层直接给一个 `Column`，间距由 [FAB_STACK_GAP] 定。
+ *
+ *  **整摞共用一次进出场**：两颗同进同出，不会一颗先到、一颗后到。
+ */
+@Composable
+internal fun BoxScope.PageCornerFabStack(
+    visible: Boolean,
+    animate: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val slidePx = with(LocalDensity.current) { (PAGE_BOTTOM_PADDING * 2).roundToPx() }
     AnimatedVisibility(
         visible = visible,
@@ -105,8 +127,18 @@ internal fun BoxScope.PageCornerFab(
         // 与底部工具栏同一份规格（见 [edgeSlideIn]）：差别只在多滑的距离
         enter = if (animate) edgeSlideIn(slidePx) else EnterTransition.None,
         exit = if (animate) edgeSlideOut(slidePx) else ExitTransition.None,
-    ) { content() }
+    ) {
+        //  靠右对齐 + 自下而上排列（调用点先给下面那颗）：两颗的圆心在同一条竖线上
+        Column(
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(FAB_STACK_GAP),
+            content = content,
+        )
+    }
 }
+
+/** 摞在一起的两颗 FAB 之间的间距 —— 与 `PAGE_MARGIN` 同一档（视觉上刚好断开又不散）。 */
+private val FAB_STACK_GAP = 12.dp
 
 /**
  * 「**往下滚就藏、往上滚就露**」—— 页面右下角那颗 FAB 的显隐判据（配 [PageCornerFab]）。

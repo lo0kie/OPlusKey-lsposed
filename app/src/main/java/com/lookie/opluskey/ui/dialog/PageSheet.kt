@@ -38,10 +38,10 @@ import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
 import com.lookie.opluskey.ui.model.page.SCROLLBAR_WIDTH
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
-import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
+import com.lookie.opluskey.ui.row.AppScrollBar
 import dev.chrisbanes.haze.hazeSource
 import io.github.suqi8.coui.kmp.basic.CardColors
 import io.github.suqi8.coui.kmp.basic.CardDefaults

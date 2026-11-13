@@ -123,12 +123,17 @@ internal fun SettingsPage.hint(
     holdMs: Long? = null,
     /** 前置图标（`null` = 界面画默认的 alert-circle）。见 `HintItem.icon`。 */
     icon: ImageVector? = null,
+    /**
+     * 文案里那几个 `%s` 位置换成**名字框**（键名一律画成标签，见 `ChipText`）。
+     * 空表 = 整句纯文字；[text] 里带着 `%s` 却给了空表时原样显示（那是调用点写漏了）。
+     */
+    chips: List<String> = emptyList(),
 ) {
     //  **`d` 而不是 `w`**：提示条本身就是用户看得见的回执，它不在「判据级」那张清单里
     //  （装没装上 / 这次按键是不是侧键 / 判成什么手势 / 配置到没到），而它是全页最高频的一条 ——
     //  挂在 `w` 上会把真正的告警挤掉。调试包照样留着一行。
-    XLog.d("提示：$text${if (slot != null) "（位：$slot）" else ""}")
-    hints.hint(text, slot, holdMs, icon)
+    XLog.d("提示：$text${if (chips.isEmpty()) "" else "（标签：${chips.joinToString()}）"}${if (slot != null) "（位：$slot）" else ""}")
+    hints.hint(text, slot, holdMs, icon, chips)
 }
 
 /** 把某个语义位上的提示**提前收掉**（播完退场再摘，不硬切）—— 见 [HintQueue.retire]。 */
@@ -185,10 +190,15 @@ internal fun SettingsPage.writeAndNotice(
     //  「同态的提示拿引用修改而不是弹一条新的」）。
     //  极少数「写的是 A、回的却是 B」的场合（首次启用把免责声明与总闸一起写）用 [slot] 覆盖。
     slot: String? = what.substringBefore('='),
+    /**
+     * 回执里那几个名字框（键名一律画成标签，见 [hint] 的 `chips`）——
+     * lambda 与 [notice] 同一个理由：写盘之后才取，切语言那一条才不会取到旧名字。
+     */
+    chips: () -> List<String> = { emptyList() },
     notice: () -> String,
 ) {
     if (write(next, what) != CommandsSave.Ok) return
-    hint(notice(), slot = slot)
+    hint(notice(), slot = slot, chips = chips())
 }
 
 // UI 触觉反馈的唯一判据是 `PageHaptics.allowed`：只看系统状态（静音不振），模块的「振动反馈」

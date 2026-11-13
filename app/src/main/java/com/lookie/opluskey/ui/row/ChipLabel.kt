@@ -62,6 +62,72 @@ internal val CHIP_SEPARATOR_GAP = 6.dp
 /** 换行之后行与行之间的距离 —— 框高本身很小，2dp 叠上去刚好读成两排而不散架。 */
 private val CHIP_FLOW_GAP = 4.dp
 
+/** 文案里「这里塞一枚名字框」的占位符 —— 与 `I18n.format` 的 `%s` 同一个写法。 */
+internal const val CHIP_SLOT = "%s"
+
+/** 文字段与名字框之间、框与框之间的空隙 —— 4dp 读起来是「两段话」而不是「一个词」。 */
+internal val CHIP_TEXT_GAP = 4.dp
+
+/**
+ * **一句话里夹着几枚名字框** —— 模板里的 `%s` 按顺序换成 [chips]，装不下就换行。
+ *
+ *  用在「文案是模板、名字要画成标签」的地方（选择器那一列、操作提示那条胶囊）：
+ *  两边各写一遍切分逻辑的话，「按 `%s` 切、去掉段首尾空格、模板与名字个数对不上怎么办」
+ *  这三件事会各自漂移。文字段用 [textStyle] / [textColor]；框比它小半号（[chipStyleOf] 那一档）。
+ *
+ *  **模板与名字个数对不上**（改文案漏了一个 `%s`）时退回整句原文：宁可看见一个裸 `%s`，
+ *  也不要把名字按错位置塞进句子里。
+ */
+@Composable
+internal fun ChipText(
+    template: String,
+    chips: List<String>,
+    textStyle: TextStyle,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val parts = template.split(CHIP_SLOT)
+    if (chips.isEmpty() || parts.size != chips.size + 1) {
+        Text(
+            text = template,
+            style = textStyle,
+            color = textColor,
+            //  与别处同一档光学修正：行盒居中不等于墨迹居中（见 `opticalCenter`）
+            modifier = modifier.opticalCenter(textStyle),
+        )
+        return
+    }
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(CHIP_TEXT_GAP),
+        verticalArrangement = Arrangement.spacedBy(CHIP_TEXT_GAP),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        parts.forEachIndexed { at, part ->
+            val text = part.trim()
+            if (text.isNotEmpty()) {
+                Text(
+                    text = text,
+                    style = textStyle,
+                    color = textColor,
+                    //  **文字段也要光学修正**（`NameChip` 里那枚字是修过的）：一行里一半修、
+                    //  一半不修时，文字段会比框里的字看着高一小截 —— 差值就是各自那 `dy`。
+                    //  两边各按自己的样式算（框里那档小半号），所以不是「同一个偏移」。
+                    modifier = Modifier.opticalCenter(textStyle),
+                )
+            }
+            chips.getOrNull(at)?.let { name ->
+                NameChip(
+                    text = name,
+                    look = ChipLook(chipStyleOf(textStyle), textColor, enabled),
+                    modifier = Modifier,
+                )
+            }
+        }
+    }
+}
+
 /**
  * 框里那档样式 —— 行标题的**字号 × 0.85**、字重 Medium。
  *
@@ -69,10 +135,16 @@ private val CHIP_FLOW_GAP = 4.dp
  *  写在参数上会让量出来的是常规体、画出来是 Medium，差的那一点正好落在上下留白上。
  */
 @Composable
-internal fun chipStyle(): TextStyle {
-    val base = COUITheme.textStyles.headline1
-    return base.copy(fontWeight = FontWeight.Medium, fontSize = base.fontSize * CHIP_FONT_SCALE)
-}
+internal fun chipStyle(): TextStyle = chipStyleOf(COUITheme.textStyles.headline1)
+
+/**
+ * 从**某一档行文字**算出名字框那档样式 —— 字号 × [CHIP_FONT_SCALE]、字重 Medium。
+ *
+ *  抽出来给「框要和旁边那行字一起排」的地方用（选择器里那一列：框比正文小半号才看得像一枚标签，
+ *  同号时框与字一样重，整行读成三个等权的词）。比例仍是 [CHIP_FONT_SCALE] 那一份：
+ *  同一个界面里的框不该有两种大小。
+ */
+internal fun chipStyleOf(base: TextStyle): TextStyle = base.copy(fontWeight = FontWeight.Medium, fontSize = base.fontSize * CHIP_FONT_SCALE)
 
 /**
  * 一排框的**长相** —— 框里那档样式、字色、以及整页那道闸（关着时框与字一起压灰）。

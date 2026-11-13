@@ -3,27 +3,41 @@ package com.lookie.opluskey.ui.screen.binding
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.trigger
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
+import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.PageTabBand
+import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.chrome.rememberFabVisibleOnScroll
+import com.lookie.opluskey.ui.feedback.Feedback
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_PAGE
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
+import com.lookie.opluskey.ui.model.icon.PageIcons
+import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.text.gestureLabel
 import com.lookie.opluskey.ui.screen.PagePagers
 import com.lookie.opluskey.ui.screen.command.LeaveDiscardDialog
@@ -39,7 +53,10 @@ import com.lookie.opluskey.ui.state.binding.ComboEditState
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
 import com.lookie.opluskey.ui.state.page.SettingsTarget
 import com.lookie.opluskey.ui.state.signal.BandHeight
+import com.lookie.opluskey.ui.style.VisibleAreaCentered
+import com.lookie.opluskey.ui.style.visibleAreaHeight
 import com.lookie.opluskey.ui.write.BindingTarget
+import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollHorizontal
@@ -138,6 +155,13 @@ internal fun SettingsPage.BindingPagerScreen(
     val enabled = bindingTargetEnabled(s)
     //  带子高度由顶栏那条手势带量出来，内容顶上照它让位
     val bandBlock = bindingBandOf(s).dp()
+    //  **这一档一档手势都没开**（两条触发方式都关着）⇒ 摆空态、页签带一起灰掉：
+    //  那时判定侧永远不会认这一档（`ComboDetector` 两条判据都不成立），下面那张网格配出来的
+    //  东西没有任何执行机会 —— 摆一堆格子只会让人以为还能用。
+    if (s == Screen.COMBO_EDIT && editingComboOrNull()?.let { !comboModesOn(it) } == true) {
+        ComboModesOffBlock(scrollBehavior, bandBlock)
+        return
+    }
     //  每档一份滚动位置 —— 寄在页面级而不是就地 `remember`，理由见 `bindingScrollsFor`
     val scrolls = bindingScrollsFor(s, targets.size)
     //  页数会变（三档 / 两档），而分页器是页面级的、上一次可能停在第三页 —— 夹一道再取
@@ -161,6 +185,20 @@ internal fun SettingsPage.BindingPagerScreen(
 
     //  「这一页停在哪一档」要落到页面级（见 [PersistGesturePage]）
     PersistGesturePage(s, page)
+
+    //  「按法」那颗 FAB 与本页那份选择窗 —— 只有组合页、且这一档有两档以上可选时才出现
+    //  （`comboPressModes`：等窗口 / 两种按住顺序，判据与判定侧同一份）；这一份被停用或整页
+    //  不可写时与「新增命令」那颗一样让位。
+    val cfgNow = configState.config.value
+    val pressModeTarget = targets[page] as? BindingTarget.Combo
+    val pressModeCombo = pressModeTarget?.let { t -> cfgNow.combos.firstOrNull { it.id == t.id } }
+    val pressModeAvailable =
+        pressModeTarget != null &&
+            pressModeCombo != null &&
+            enabled &&
+            bindingTargetStopped(pressModeTarget) == null &&
+            cfgNow.comboPressModes(pressModeCombo).size >= 2
+    var pressModeDialog by remember { mutableStateOf(false) }
 
     Box(
         Modifier
@@ -208,6 +246,26 @@ internal fun SettingsPage.BindingPagerScreen(
                 //  写完才退：写盘失败时人留在页里（提示已说明原因）
                 if (saveSceneBinding()) popBackStack()
             },
+            //  组合页那颗「按法」（叠在它上面）：`null` = 这一页 / 这一档没有它
+            pressModeOnClick =
+                if (pressModeAvailable) {
+                    {
+                        tickNow()
+                        pressModeDialog = true
+                    }
+                } else {
+                    null
+                },
+        )
+    }
+
+    //  「按法」选择窗 —— 只在组合页挂（`pressModeTarget` 非空就已经说明是组合）
+    if (pressModeTarget != null && pressModeCombo != null) {
+        ComboPressModeDialog(
+            show = pressModeDialog && pressModeAvailable,
+            cfg = cfgNow,
+            target = pressModeTarget,
+            onDismiss = { pressModeDialog = false },
         )
     }
 
@@ -272,6 +330,69 @@ private fun SettingsPage.PersistGesturePage(
 //  那几档叫什么。页面骨架那边只负责把它们接进顶栏与网格。
 
 /**
+ * 「这一档一档手势都没开」那一页 —— 一颗空态字形 + 一句去哪儿打开。
+ *
+ *  与「选择应用」/「条件执行」/「自定义命令」那三处**同一份排版**（`Feedback`、同一颗 `NoMatch`），
+ *  说的是同一件事：这里现在什么都没有。
+ *
+ *  **它也在滚动内容里**（走同一条 `PageScrollColumn` 链）：空态不是一块钉死的浮层 ——
+ *  内容不满一屏时照样拖得出回弹（`overScrollVertical`），大标题也照常随滚动折叠
+ *  （`nestedScroll` 要把位移喂给顶栏）。原先这里是个 `Box(fillMaxSize)`，两条都做不到。
+ *
+ *  这一页**不摆 FAB**：它进的是「自定义命令」新增一条，而这一档连手势都没开、配了也执行不到 ——
+ *  真要写命令，命令页与首页那条入口照旧在。
+ *
+ * @param bandBlock 分段控件那条固定带的高度（空态要落在它下面，不能压在灰掉的页签上）
+ */
+@Composable
+private fun SettingsPage.ComboModesOffBlock(
+    scrollBehavior: ScrollBehavior,
+    bandBlock: Dp,
+) {
+    //  量一次视口：空态要**在可见区里居中**，而滚动容器的子项拿到的是无限高度约束，
+    //  `fillMaxHeight()` 在那儿没有意义（与 `BranchScreen` 同一支账）。
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            //  这一层自带不透明底：push 转场交叠时不透出下层残影（与 pager 那一层同一条）
+            .background(COUITheme.colorScheme.surface),
+    ) {
+        val topInset = currentHeaderHeight(scrollBehavior) + bandBlock
+        //  减掉页底那档留白：不减的话空态那块比可见区高出一截，居中位置会偏下、还多一段能拖的空白
+        val emptyHeight =
+            visibleAreaHeight(
+                maxHeight = maxHeight,
+                topInset = topInset,
+                bottomInset = PAGE_BOTTOM_PADDING,
+            )
+        PageScrollColumn(scrollBehavior = scrollBehavior) {
+            Spacer(Modifier.height(topInset))
+            VisibleAreaCentered(emptyHeight) {
+                Feedback(
+                    glyph = { tint ->
+                        Icon(PageIcons.NoMatch, contentDescription = null, modifier = Modifier.fillMaxSize(), tint = tint)
+                    },
+                    title = I18n.get(Strings.COMBO_MODES_OFF_TITLE, "两种手势均未启用"),
+                    text = I18n.get(Strings.COMBO_MODES_OFF_DESC, "在设置中启用等待手势或按住手势"),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 这一档**还开着哪一档手势** —— 两条触发方式（使用等待手势 / 使用按住手势）里任意一条开着就算。
+ *
+ *  都关着时这一档永远不会成立（`ComboDetector` 的 `windowed` / `held` 两条判据都不成立），
+ *  界面据此走空态、把页签带灰掉。判据只有这一处：页签带、整页闸门、空态三处读的是同一个答案。
+ */
+internal fun SettingsPage.comboModesOn(combo: ComboKey): Boolean {
+    val cfg = configState.config.value
+    return cfg.comboWindowOnFor(combo) || cfg.comboHoldFor(combo)
+}
+
+/**
  * 这一页**每档一份**的滚动位置。
  *
  *  `ScrollState` 内部只有一个 `scrollableState`，几档共用一个会互相打架（滑一档另一档跟着动），
@@ -305,7 +426,18 @@ internal fun SettingsPage.bindingTargetsOf(s: Screen): List<BindingTarget>? =
     when (s) {
         Screen.COMBO_EDIT -> {
             val combo = editingComboOrNull() ?: return null
-            COMBO_GESTURES.map { BindingTarget.Combo(combo.id, it) }
+            val cfg = configState.config.value
+            //  **只有两页**（短按 / 长按）—— 「这一档是怎么按出来的」不占页签，它是右下角那颗
+            //  「按法」FAB 加一个单选窗（见 `ComboPressMode`），三张动作表在同一页上换着编。
+            //
+            //  这样做是因为三者在结构上是**同一条手势的三种按法**，不是三条并列的手势：
+            //  排成四页会读成「短按 / 长按 / 先按 A 短按 / 先按 A 长按」四个平级的东西，
+            //  而页签越往后越难和「我到底在编哪一档」对上。窗口那一套是默认档，另两套要
+            //  「使用按住手势」开着才列得出来（`Config.comboPressModes` 只给能选的那几档）。
+            val windowable = cfg.comboWindowOnFor(combo)
+            COMBO_GESTURES.mapIndexed { i, g ->
+                BindingTarget.Combo(combo.id, g, holdOf(windowable, combo.holdOrders, ComboEditState.holdOf(i)))
+            }
         }
 
         Screen.SCENE_BINDING -> {
@@ -332,9 +464,14 @@ internal fun SettingsPage.bindingTargetsOf(s: Screen): List<BindingTarget>? =
 internal fun SettingsPage.bindingTargetEnabled(s: Screen): Boolean =
     when (s) {
         // 组合键**不叠加**「这颗键开没开」：它有自己的开关（那一组），所以吃的是整页闸门
-        //  （主开关 + 链路 + 只读）+ 自己那一位。
+        // （主开关 + 链路 + 只读）+ 自己那一位。
+        //
+        // **再加一条「还开着哪一档手势」**：两条触发方式都关着时这一档永远不会成立
+        // （`comboModesOn`），配出来的动作没有执行机会 —— 页签带与内容跟着灰掉，
+        // 页面自己会摆一页空态（见 `ComboModesOffBlock`）。
         Screen.COMBO_EDIT -> {
-            pageWritable() && editingComboOrNull()?.let { it.enabled } != false
+            val combo = editingComboOrNull()
+            pageWritable() && combo?.let { it.enabled && comboModesOn(it) } != false
         }
 
         // **场景整条路只看整页闸门**（主开关 + 链路 + 只读）：这一块 / 这一颗键自己停用了
@@ -433,16 +570,58 @@ internal fun SettingsPage.bindingBandOf(s: Screen): BandHeight =
  */
 internal fun bindingBandLabels(targets: List<BindingTarget>): List<String> =
     if (targets.firstOrNull() is BindingTarget.Combo) {
-        listOf(
-            I18n.get(Strings.COMBO_SHORT, "短按"),
-            I18n.get(Strings.COMBO_LONG, "长按"),
-        )
+        //  组合那一页**只有手势这两档**：「按法」（等窗口 / 先按住 A / 先按住 B）不占页签，
+        //  它是右下角那颗 FAB + 一个单选窗（见 `ComboPressMode`）—— 所以这条带子上不会再出现
+        //  重名的两组。
+        targets.map { target ->
+            if (target.gesture == GestureTrigger.LongPress) {
+                I18n.get(Strings.COMBO_LONG, "长按")
+            } else {
+                I18n.get(Strings.COMBO_SHORT, "短按")
+            }
+        }
     } else {
         targets.map { gestureLabel(it.gesture) }
     }
 
 /** 组合键那一页只有两档（`ComboKey` 上没有双击）—— 顺序即分页器页序。 */
-private val COMBO_GESTURES: List<GestureTrigger> = listOf(Gesture.SINGLE, Gesture.LONG).map { it.trigger() }
+internal val COMBO_GESTURES: List<GestureTrigger> = listOf(Gesture.SINGLE, Gesture.LONG).map { it.trigger() }
+
+/**
+ * 第 [page] 档现在编的是**哪一种按法** —— 已按「那一种顺序加过没有」夹过一道。
+ *
+ *  夹这一道是必须的：**没加过的按住顺序判定侧根本不认**（`ComboDetector.pairFor` 里那道闸），
+ *  这一页要是还停在那一张表上，用户就会在「永远不会被执行的动作」上改东西。
+ *  夹回去之后，选择窗里就落在第一个能选的行上，而不是一行都不打勾（见 `ComboPressMode`）。
+ *
+ *  于是「按法」这件事只有这一处出口：选中态、写回、页面上显示的值全从它来 ——
+ *  三处各算一遍的话，「没加过的顺序那张表还亮着」这种错迟早出现一次。
+ *
+ *  一种都没有（按住关着 / 一条顺序都没加）时**停在原地**：
+ *  悄悄换成另一张表会让用户以为自己的选择丢了。
+ *
+ * @param windowable 这一档认不认「窗口内等齐」
+ * @param added 这一档手动加过的按住顺序
+ * @param selected 用户上一次在这一页选的那一种
+ */
+private fun holdOf(
+    windowable: Boolean,
+    added: List<Int>,
+    selected: Int,
+): Int {
+    val selectable =
+        when (selected) {
+            ComboKey.HOLD_FIRST, ComboKey.HOLD_SECOND -> selected in added
+            else -> windowable
+        }
+    if (selectable) return selected
+    return when {
+        windowable -> ComboKey.HOLD_WINDOW
+        ComboKey.HOLD_FIRST in added -> ComboKey.HOLD_FIRST
+        ComboKey.HOLD_SECOND in added -> ComboKey.HOLD_SECOND
+        else -> selected
+    }
+}
 
 /** 在编的那一档组合（`null` = 没在编 / 刚被删）—— 三处判据都从这一支取。 */
 private fun SettingsPage.editingComboOrNull() =

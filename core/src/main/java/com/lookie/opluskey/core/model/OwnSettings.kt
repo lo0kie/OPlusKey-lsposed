@@ -18,8 +18,8 @@ package com.lookie.opluskey.core.model
  *
  * ## 总开关怎么管
  *
- *  [useOwnSettings] 关着（默认）⇒ 这六项一律看公共设置，本对象上那几个值不参与取值；
- *  开着 ⇒ 六项**全部**用本对象这份。不做「逐项开关」：一个总开关 + 一整份值，
+ *  [useOwnSettings] 关着（默认）⇒ 下面那几项一律看公共设置，本对象上那几个值不参与取值；
+ *  开着 ⇒ **全部**用本对象这份。不做「逐项开关」：一个总开关 + 一整份值，
  *  用户不用为每一项先想「这一项我要不要单独设」。
  */
 interface OwnSettings {
@@ -48,6 +48,15 @@ interface OwnSettings {
 
     /** 这一档自己的「执行时提示」—— 只在 [useOwnSettings] 开着时算数。 */
     val toastOnRun: Boolean
+
+    /**
+     * 这一档自己的「提示走流体云」—— 只在 [useOwnSettings] 开着时算数。
+     *
+     *  它只决定「提示长在哪儿」：关着走 Toast（注入侧那颗系统身份气泡），开着走流体云胶囊
+     *  （宿主自己的 Seedling SDK，见 `host/action/notice/FluidAction`）。文案仍是
+     *  [toastTemplate] 那一句 —— 换个落点不该换一套说法。
+     */
+    val toastFluid: Boolean
 
     /** 这一档自己的提示文案模板（空串 = 用默认那句，口径同 `GlobalConfig.toastTemplate`）。 */
     val toastTemplate: String

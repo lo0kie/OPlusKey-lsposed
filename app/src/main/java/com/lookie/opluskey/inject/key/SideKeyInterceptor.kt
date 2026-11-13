@@ -41,14 +41,6 @@ private val QUIET_KEY_CODES =
 private const val COLLECT_SWALLOW_TAIL_MS = 5_000L
 
 /**
- * 「补发出去的原生事件」这份账能活多久（毫秒）—— 见 `SideKeyInterceptor.nativeEcho`。
- *
- *  异步投递通常几毫秒就回来，取 2 秒是留余量。**必须有上限**：投失败留下的残账会让
- *  「用户下一次真的按这颗键」被当成回声放行，那颗键就静默失效一次。
- */
-private const val ECHO_TTL_MS = 2_000L
-
-/**
  * 一次按键的判定：这个键是不是侧键、该判成什么手势。
  */
 internal class SideKeyInterceptor(
@@ -59,11 +51,13 @@ internal class SideKeyInterceptor(
     /** 每判出一个手势记一笔（`KeyHooks.noteGesture`）—— 链路自检用，由装配方注入。 */
     private val onGestureNoted: () -> Unit,
     /**
-     * 判出一次「两颗键一起按」：哪一档组合 + 是短按还是长按。
+     * 判出一次「两颗键一起按」：哪一档组合 + 短按还是长按 + **这一下是怎么按出来的**。
      *
      *  组合没有单颗键的 `KeyConfig`（动作在 `ComboKey` 上、执行在宿主），所以走这条独立回调。
+     *  第三位是 `ComboKey.HOLD_WINDOW` / `HOLD_FIRST` / `HOLD_SECOND`（窗口内等齐 / 先按住第一颗 /
+     *  先按住第二颗）—— 执行侧按它取对应那一套动作。
      */
-    private val onCombo: (ComboKey, GestureTrigger, Boolean) -> Unit,
+    private val onCombo: (ComboKey, GestureTrigger, Int, Boolean) -> Unit,
     /**
      * 「屏幕黑着的话，这段时间里别让 CPU 睡」（熄屏排双击窗口时用，见 `KeyHooks.holdAwake`）。
      *
@@ -118,6 +112,13 @@ internal class SideKeyInterceptor(
             //  扫的时候按最宽的那一档扫，命中后由「那一组自己的窗口」复核（见 `ComboDetector`）
             windowMs = { ConfigChannel.scanWindowMs() },
             windowFor = { combo -> ConfigChannel.windowFor(combo) },
+            //  两条**触发方式**各一位（公共设置里那两颗开关，每组可另设一份）——
+            //  关掉哪一位就少认哪一种按法，判定侧只问 `Config` 那两个函数，不自己看全局
+            windowOnFor = { combo -> ConfigChannel.windowOnFor(combo) },
+            holdFor = { combo -> ConfigChannel.holdFor(combo) },
+            //  按住那条的下限：首键必须按满这么久、且还没抬手，第二颗落下才算这一档组合
+            //  （「一起按」归窗口那条，窗口关着时它就不是组合）
+            holdMinFor = { combo -> ConfigChannel.holdMinFor(combo) },
             //  多成员那一档的**整串跨度**（相邻两颗的窗口 × (成员数-1)）—— 三颗按一个
             //  窗口复核等于要求三根手指同时落，真机上永远凑不齐
             spanFor = { combo -> ConfigChannel.spanFor(combo) },
@@ -127,6 +128,18 @@ internal class SideKeyInterceptor(
             widerFor = { keys -> ConfigChannel.config.widerComboOf(keys) },
             //  只有参与某组已启用组合的键才先等一个窗口，其余键一点不受影响
             joinsCombo = { id -> ConfigChannel.joinsCombo(id) },
+            //  「先按住这颗、再按另一颗」的上界：这颗键的长按判出来之后，它已经执行过自己的
+            //  长按动作了，再认组合就是一次按压两个动作。判定层读不到 `KeyConfig`，所以由这里
+            //  按那颗键自己的阈值算。「只参与组合」的键恒为 false —— 它压根不判单键。
+            //
+            //  **「松手时触发」的键也不算判过**：那一档到点并不执行（动作押在抬手，见
+            //  `KeyConfig.longFireOnRelease`），所以「已经执行过自己的动作」不成立 —— 而按住手势
+            //  要的正是「按住久一点再补一颗」。组合一旦凑成，这颗键的状态机会被摘掉（`resetKey`），
+            //  押着的那一次长按跟着没，抬手只出组合那一套。
+            longPressPassed = { id, at, now ->
+                val key = ConfigChannel.config.key(id)
+                !key.comboOnly && !key.longFireOnRelease && now - at >= key.longPressMs
+            },
         )
 
     /**
@@ -185,109 +198,18 @@ internal class SideKeyInterceptor(
     private val swallowedDownAt = java.util.concurrent.ConcurrentHashMap<Int, Long>()
 
     /**
-     * 「只参与组合」的键里，**这一下已经吞过了**的那几颗 —— 抬手要跟着吞。
-     *
-     *  这类键按下**一律先吞**（见 `KeyConfig.comboOnly` 与 `feedComboOnly`）：组合可能还没凑齐，
-     *  但系统的原生动作一旦发生就撤不回来。凑成了就永久吞；没凑成由 [comboOnlyPending] 收尾。
-     *  抬手必须与它自己那一次一致：按下放行而抬手被吞，系统那边只收到半截，
-     *  一颗键会卡在按住的状态里。
+     * 「只参与组合」那颗键的收尾账本 —— 压住的按下怎么还给系统，全由它一处说了算
+     * （先吞的理由、长按为什么要补 DOWN 而不是一对，见 `ComboOnlyNative` 的类注释）。
      */
-    private val comboOnlySwallowed =
-        java.util.concurrent.ConcurrentHashMap
-            .newKeySet<String>()
-
-    /**
-     * 压住了、**还没决定要不要补发原生事件**的那几下 —— 键 id → 按下时刻（兼作版本号）。
-     *
-     *  收尾只有一个出口（[scheduleComboOnlyFallback]）：窗口走完再看 `ComboDetector` 认没认领它 ——
-     *  认了就当这一下归组合（不补发），没认就把系统本来该收到的那一次短按还回去。
-     */
-    private val comboOnlyPending = java.util.concurrent.ConcurrentHashMap<String, Long>()
-
-    /**
-     * 刚补发出去的原生事件 —— keyCode → 还没被拦截链认领的条数与过期时刻。
-     *
-     *  补发的事件会**重新走一遍输入分发**，也就是再进一次 [decide]：认不出来就是死循环
-     *  （吞掉 → 补发 → 又被吞 → 又补发）。[decide] 见到就放行一次、销一次账。
-     *
-     *  记账与销账必须同处一个对象：分在两边时，「补发了但没记」与「记了但没补」长得一模一样，
-     *  排查时都只能看到「那颗键单按没反应」。
-     */
-    private val nativeEcho = java.util.concurrent.ConcurrentHashMap<Int, Echo>()
-
-    /** 一份回声账 —— 剩余条数与过期时刻。 */
-    private class Echo(
-        val left: Int,
-        val until: Long,
-    )
-
-    /**
-     * 这一下是不是**我们自己补发出去的回声** —— 是就销一次账并返回 true（调用方放行）。
-     *
-     *  **必须有寿命**（[ECHO_TTL_MS]）：投失败留下的残账会让「用户下一次真的按这颗键」
-     *  被当成回声放行 —— 那颗键静默失效一次，比补发不出来更难查。
-     */
-    private fun consumeNativeEcho(keyCode: Int): Boolean {
-        val now = SystemClock.uptimeMillis()
-        var seen = false
-        //  `compute` 是原子的：记账写在延迟任务那条线程上，先读再写会丢掉一条账
-        nativeEcho.compute(keyCode) { _, cur ->
-            when {
-                cur == null || now > cur.until -> {
-                    null
-                }
-
-                else -> {
-                    seen = true
-                    if (cur.left <= 1) null else Echo(cur.left - 1, cur.until)
-                }
-            }
-        }
-        return seen
-    }
-
-    /**
-     * 压住的那一下没凑成组合 ⇒ 把原生短按还回去（见 [injectNativeShortPress]）。
-     *
-     * ## 为什么必须等满窗口
-     *
-     *  抬手早于窗口时组合**还可能凑成**（先后按下也算组合，见 `ComboDetector` 类注释）——
-     *  那时提前补发就是双重触发：系统先收到一次原生按下，组合又执行一次。
-     *
-     * ## 窗口按最宽那一档取
-     *
-     *  [ConfigChannel.scanWindowMs] 是三颗以上那条路径用的整串跨度，比两颗那一档宽 ——
-     *  补发用一个更保守的值只会让原生行为晚一点到，而用小了会抢在组合判定之前把事件放出去。
-     */
-    private fun scheduleComboOnlyFallback(
-        id: KeyId,
-        keyCode: Int,
-        downAt: Long,
-    ) {
-        val wait = (downAt + ConfigChannel.scanWindowMs() - SystemClock.uptimeMillis()).coerceAtLeast(0L)
-        handler.postDelayed(
-            {
-                //  账还在 = 到这一刻还没被任何一组组合认领（新的一次按下会改写成新的时刻，
-                //  那时这里对不上，就不会替那一下做主）
-                if (comboOnlyPending.remove(id.id) == downAt) {
-                    if (combo.comboCovers(id)) {
-                        XLog.w("${id.label}：这一下被组合认领（晚到），不再补发原生事件")
-                    } else {
-                        //  先记账再投：投出去之后事件可能**立刻**在另一条线程上被拦到，
-                        //  后记就来不及（漏掉的那一次会被当成新的按下再压一个窗口）
-                        nativeEcho[keyCode] = Echo(2, SystemClock.uptimeMillis() + ECHO_TTL_MS)
-                        if (injectNativeShortPress(keyCode)) {
-                            XLog.w("${id.label}：没凑成组合（只参与组合），已把原生短按补发回去")
-                        } else {
-                            nativeEcho.remove(keyCode)
-                            XLog.w("${id.label}：没凑成组合，但原生事件也没补出去（这一次按了没反应）")
-                        }
-                    }
-                }
-            },
-            wait,
+    private val comboOnlyNative =
+        ComboOnlyNative(
+            handler = handler,
+            combo = combo,
+            windowMs = { id -> ConfigChannel.holdWindowMsFor(id) },
+            //  按住那条的成员：**压到抬手**再还回去 —— 那一档没有窗口到点这回事，窗口一漏就是
+            //  「一次按压两个动作」（见 `ComboOnlyNative` 的类注释）
+            holdMember = { id -> ConfigChannel.holdMember(id) },
         )
-    }
 
     /**
      * 撤掉已经排下的手势 —— 长按枪、双击窗、连发任务（`GestureDetector.reset` 三者都会摘）。
@@ -306,6 +228,9 @@ internal class SideKeyInterceptor(
             held.drop(null)
             //  组合也一起清：两颗键按住不放时关掉其中一颗，组合的长按枪不能继续响
             combo.reset()
+            //  「只参与组合」那本账：压着的不再补发；已经补发过原生的补一条抬起（否则系统那边
+            //  那颗键一直按着，音量会一路涨到底）
+            comboOnlyNative.reset()
         } catch (e: Throwable) {
             XLog.w("撤销待定手势失败（已忽略）：${e.javaClass.simpleName}", e)
         }
@@ -484,7 +409,7 @@ internal class SideKeyInterceptor(
         //  **我们自己补发出去的事件**：认出来就放行、销一次账。
         //  不认就是死循环 —— 吞掉 → 补发 → 又被吞 → 又补发。摆在这一层的最前面：
         //  这不是用户按的，收集期那一道也不该拦它（那一档问的是「用户按了哪些键」）。
-        if (consumeNativeEcho(keyEvent.keyCode)) {
+        if (comboOnlyNative.consumeEcho(keyEvent.keyCode)) {
             return Decision.Pass
         }
         //  收集期那一段（旁路上报 + 记账 + 判这次该不该整条吞）收在 [swallowWhileCollecting]，
@@ -511,8 +436,8 @@ internal class SideKeyInterceptor(
             val gesture = RomKeyFamilies.gestureOf(keyEvent.keyCode)
             return when {
                 //  **「只参与组合」先判**：ROM 判好的那几颗码本身就是单键手势（双击 / 轻按 / 重按），
-                //  认下来就等于「单键仍归模块」—— 这一位要的正好相反。交给 `feedComboOnly` 记一笔再放行，
-                //  组合照旧能凑（它只是不判单键）。
+                //  认下来就等于「单键仍归模块」—— 这一位要的正好相反。交给 `ComboOnlyNative`
+                //  压住这一下再按窗口还回去，组合照旧能凑（它只是不判单键）。
                 keyConfig.comboOnly -> Decision.Claimed(keyConfig)
 
                 gesture != null -> Decision.RomGesture(keyConfig, gesture)
@@ -591,17 +516,10 @@ internal class SideKeyInterceptor(
         keyConfig: KeyConfig,
     ): Boolean =
         try {
-            //  「只参与组合」的键走另一条更短的路：不判单键手势，也就不需要（也不能）先吞 DOWN
+            //  「只参与组合」的键走另一条更短的路：不判单键手势，收发都交给那本账
+            //  （压住 / 什么时候还回去，见 `ComboOnlyNative`）。
             if (keyConfig.comboOnly) {
-                return feedComboOnly(
-                    id = id,
-                    point = point,
-                    keyEvent = keyEvent,
-                    combo = combo,
-                    swallowed = comboOnlySwallowed,
-                    pending = comboOnlyPending,
-                    fallback = ::scheduleComboOnlyFallback,
-                )
+                return comboOnlyNative.onKey(id, point, keyEvent)
             }
             // 判定参数**不在这里刷**：判定器直接读传进去的 `keyConfig`（每颗键各一份）。
             //  原先判定器上是两个全局槽，每事件前刷一次 —— B 键的 DOWN/UP 夹在 A 键的
@@ -691,71 +609,6 @@ internal class SideKeyInterceptor(
             XLog.w("手势判定失败（这一次按键放行给系统）：$point", e)
             false
         }
-}
-
-/**
- * 「只参与组合」那颗键的一条短路径 —— 只把按下 / 抬手的时刻记进组合表，其余一律放行给系统。
- *
- *  与普通键的差别只有一句：**不吞**。普通键必须先吞 DOWN 才数得出单击 / 双击 / 长按
- *  （见 `docs/runtime/key-to-gesture.md` 三），而这颗键不判任何单键手势 —— 于是它能把按下原样
- *  交给系统（系统执行它的原生动作），模块只记一笔「这一刻它被按过」，另一颗键在窗口内按下时
- *  照样凑得出组合。
- *
- *  ## 为什么还要记账
- *
- *  这颗键平时放行，但**凑成组合的那一下**要吞（组合只该出一个结果）；而抬手吞不吞必须与它自己
- *  那一次按下一致 —— 按下给系统、抬手被吞，系统那边只收到半截，一颗键会卡在按住的状态里。
- *
- *  ## 为什么不做「先压一个窗口」（普通键的 `HOLD`）
- *
- *  那一档是为了「等第二颗键、没等到就**补发**那一次按压」；这颗键的按下已经给系统了，补发就是
- *  重复执行一次。所以 `HOLD` 与 `PASS` 在这一支里是同一件事：放行。
- */
-private fun feedComboOnly(
-    id: KeyId,
-    point: Framework.InterceptionPoint,
-    keyEvent: KeyEvent,
-    combo: ComboDetector,
-    swallowed: MutableSet<String>,
-    pending: MutableMap<String, Long>,
-    fallback: (KeyId, Int, Long) -> Unit,
-): Boolean {
-    when (keyEvent.action) {
-        KeyEvent.ACTION_DOWN -> {
-            //  按住不放的重复：**已经吞了按下就得连着吞** —— 放行的话系统收到一个没有 DOWN 的
-            //  repeat，那颗键在系统眼里从来没被按过。
-            if (keyEvent.repeatCount > 0) return true
-            val downAt = SystemClock.uptimeMillis()
-            val taken = combo.onDown(id) == ComboDetector.Down.TAKEN
-            //  **一律先吞**（用户口径：组合判定不该触发原生事件）。组合可能还没凑齐，而系统的
-            //  原生动作（音量 ± / 电源）一旦发生就撤不回来 —— 所以只能先压住、回头再还。
-            //  凑成了就永久吞掉；没凑成由 [fallback] 在窗口走完之后把原生短按补发回去。
-            swallowed.add(id.id)
-            if (taken) {
-                pending.remove(id.id)
-                XLog.w("${id.label}（$point）：这一下归组合（只参与组合），连原生事件一起吞掉")
-            } else {
-                //  时间戳当这一下的**版本号**：同一颗键在窗口内又被按到时，旧任务到点会发现
-                //  账已经被新的一次改写了，不会替新的那一下做主（补发错次数比不补发更难查）。
-                pending[id.id] = downAt
-                fallback(id, keyEvent.keyCode, downAt)
-                XLog.w("${id.label}（$point）：按下先压住（只参与组合），窗口内没凑成就补发原生事件")
-            }
-            return true
-        }
-
-        KeyEvent.ACTION_UP -> {
-            //  组合那笔账要结（`down` / `consumed` / 待发的短按都在 `onUp` 里），
-            //  但**补不补发不由这里定**：抬手早于窗口时组合还可能凑成（先后按下也算组合），
-            //  那一刻补发就是双重触发。收尾统一交给窗口到点那次判断。
-            combo.onUp(id, short = !keyEvent.isCanceled)
-            return swallowed.remove(id.id)
-        }
-
-        else -> {
-            return false
-        }
-    }
 }
 
 /** 从实参里挑出第一个 `KeyEvent`（按键热路径，不要 `filterIsInstance`）。 */

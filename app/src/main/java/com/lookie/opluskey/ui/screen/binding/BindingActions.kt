@@ -5,6 +5,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyId
@@ -213,13 +214,23 @@ private fun SettingsPage.withTargetBound(
                         if (c.id != target.id) {
                             c
                         } else {
+                            //  按住那条（先按住某颗）落在 `singleA` / `longA` / `singleB` / `longB`：
+                            //  三种按法各有各的槽，互不覆盖；窗口那条仍写 `single` / `long`。
                             when {
                                 target.gesture.isSingle -> {
-                                    c.copy(single = action)
+                                    when (target.hold) {
+                                        ComboKey.HOLD_FIRST -> c.copy(singleA = action)
+                                        ComboKey.HOLD_SECOND -> c.copy(singleB = action)
+                                        else -> c.copy(single = action)
+                                    }
                                 }
 
                                 target.gesture == GestureTrigger.LongPress -> {
-                                    c.copy(long = action)
+                                    when (target.hold) {
+                                        ComboKey.HOLD_FIRST -> c.copy(longA = action)
+                                        ComboKey.HOLD_SECOND -> c.copy(longB = action)
+                                        else -> c.copy(long = action)
+                                    }
                                 }
 
                                 //  组合上没有双击、也没有第 3 击起的档位（`ComboKey.actionOf` 恒返回
@@ -371,11 +382,12 @@ internal fun SettingsPage.setKeyEnabledFromMenu(
         //  整页一个位（[HINT_SLOT_BINDING]）：不按 `what` 的前缀分（那会得到 `key_enabled`，
         //  与这一页别的回执各占一格、又叠起来）。
         slot = HINT_SLOT_BINDING,
+        //  键名画成**名字框**：这一句的主语就是那颗键，与列表行、选择器同一套长相
+        chips = { listOf(id.label) },
     ) {
-        I18n
-            .get(
-                if (on) Strings.TOAST_KEY_ENABLED else Strings.TOAST_KEY_DISABLED,
-                if (on) "已启用 [%s]" else "已停用 [%s]",
-            ).format(id.label)
+        I18n.get(
+            if (on) Strings.TOAST_KEY_ENABLED else Strings.TOAST_KEY_DISABLED,
+            if (on) "已启用 %s" else "已停用 %s",
+        )
     }
 }

@@ -210,12 +210,13 @@ object ConfigFields {
     const val KEY_VIBRATE_EXTRA = "key_vibrate"
     const val KEY_VIBRATE_STRENGTH_EXTRA = "key_vibrate_strength"
     const val KEY_TOAST_ON_RUN_EXTRA = "key_toast_on_run"
+    const val KEY_TOAST_FLUID_EXTRA = "key_toast_fluid"
     const val KEY_TOAST_TEMPLATE_EXTRA = "key_toast_template"
 
     /**
-     * 「独立设置那五项**已经被公共值播过种**」—— 这一档自己的状态，**只落盘、不广播**。
+     * 「独立设置那几项**已经被公共值播过种**」—— 这一档自己的状态，**只落盘、不广播**。
      *
-     *  第一次打开「使用独立设置」时，把公共设置那五项抄成这一档的初值（否则打开开关看到的是一片
+     *  第一次打开「使用独立设置」时，把公共设置那几项抄成这一档的初值（否则打开开关看到的是一片
      *  与公共不一样的旧默认值，读起来就是「开了没生效」）。抄**只做一次**：关掉再打开时，
      *  用户之前调过的值还在 —— 那是他自己的状态，不该被公共设置再覆盖一遍。
      *
@@ -227,6 +228,19 @@ object ConfigFields {
 
     /** 组合键两颗键之间的等待窗口（毫秒）—— 注入侧判定要用，所以走广播。 */
     const val COMBO_WINDOW_MS_EXTRA = "combo_window_ms"
+
+    /**
+     * 组合键的两条触发方式：**窗口内等齐** / **按住一颗再按另一颗**（`GlobalConfig.comboWindowOn`
+     * / `comboHoldOn`）—— 都走广播。
+     *
+     *  判定这两条的是注入侧的 `ComboDetector`（它读不到配置文件），每组还可以各自另设一份
+     *  （`ComboKey.windowOn` / `holdOn`，随另一条 `combos` 广播过去）。
+     */
+    const val COMBO_WINDOW_ON_EXTRA = "combo_window_on"
+    const val COMBO_HOLD_ON_EXTRA = "combo_hold_on"
+
+    /** 按住手势里**首键要先按住多久**（毫秒）—— 同样判定在注入侧，走广播。 */
+    const val COMBO_HOLD_MIN_MS_EXTRA = "combo_hold_min_ms"
 
     /**
      * 组合键的**无操作透传**（`GlobalConfig.comboPassthrough`）—— 走广播。
@@ -431,6 +445,9 @@ object ConfigFields {
     /** 这颗键自己的「执行时提示」—— 只在 [F_OWN_SETTINGS] 开着时算数。 */
     val F_KEY_TOAST_ON_RUN = Field(KEY_TOAST_ON_RUN_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
 
+    /** 这颗键自己的「提示走流体云」—— 只在 [F_OWN_SETTINGS] 开着时算数。 */
+    val F_KEY_TOAST_FLUID = Field(KEY_TOAST_FLUID_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_TOAST_FLUID))
+
     /** 这颗键自己的提示文案模板 —— 只在 [F_OWN_SETTINGS] 开着时算数。 */
     val F_KEY_TOAST_TEMPLATE = Field(KEY_TOAST_TEMPLATE_EXTRA, Kind.Text(GlobalConfig.DEFAULT_TOAST_TEMPLATE))
 
@@ -550,6 +567,7 @@ object ConfigFields {
             F_KEY_VIBRATE,
             F_KEY_VIBRATE_STRENGTH,
             F_KEY_TOAST_ON_RUN,
+            F_KEY_TOAST_FLUID,
             F_KEY_TOAST_TEMPLATE,
             F_LONG_SERIAL,
             F_SCENE_RELEASE,
@@ -586,6 +604,12 @@ object ConfigFields {
 
     /** 执行时提示 —— **只有落盘那一列**：它由宿主侧弹，注入侧不读它。 */
     val F_TOAST_ON_RUN = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_ON_RUN))
+
+    /**
+     * 执行时提示走流体云 —— **只有落盘那一列**（与 [F_TOAST_ON_RUN] 同理）：
+     * 换的是宿主执行器把提示交给谁（Toast / 流体云），注入侧两条都不参与。
+     */
+    val F_TOAST_FLUID = Field(null, Kind.Bool(GlobalConfig.DEFAULT_TOAST_FLUID))
 
     /**
      * 「执行时提示」那一句的**文案模板**（`$key` / `$gesture` / `$action`，见 `ToastNotice`）
@@ -653,6 +677,32 @@ object ConfigFields {
     val F_FOLLOW_DISPLAY_SIZE = Field(null, Kind.Bool(GlobalConfig.DEFAULT_FOLLOW_DISPLAY_SIZE))
 
     /**
+     * 组合键的两条触发方式（见 [COMBO_WINDOW_ON_EXTRA]）—— 走**广播**那一列：判定在注入侧。
+     *
+     *  默认值与 [GlobalConfig.DEFAULT_COMBO_WINDOW_ON] / [GlobalConfig.DEFAULT_COMBO_HOLD_ON] 同源：
+     *  缺项时行为与这一位出现之前一致（窗口照旧认、按住不认）。
+     */
+    val F_COMBO_WINDOW_ON = Field(COMBO_WINDOW_ON_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_WINDOW_ON))
+
+    val F_COMBO_HOLD_ON = Field(COMBO_HOLD_ON_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_HOLD_ON))
+
+    /**
+     * 组合键：**按住手势里首键要先按住多久**（毫秒）。
+     *
+     *  与 [F_COMBO_WINDOW_MS] 同一条：判定在注入侧，所以走广播。它管的是「一起按」与
+     *  「按住了一颗再按另一颗」的分界 —— 两颗键相差不到这个数就不算按住。
+     */
+    val F_COMBO_HOLD_MIN_MS =
+        Field(
+            COMBO_HOLD_MIN_MS_EXTRA,
+            Kind.Number(
+                GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS,
+                GlobalConfig.COMBO_HOLD_MIN_MIN_MS,
+                GlobalConfig.COMBO_HOLD_MIN_MAX_MS,
+            ),
+        )
+
+    /**
      * 页面缩放（百分比）—— 同样只有落盘那一列。上下限就是滑杆两端（[GlobalConfig.PAGE_SCALE_MIN]
      * ~ [GlobalConfig.PAGE_SCALE_MAX]）：手改文件写进 10 或 900 会被这一层钳回来。
      */
@@ -689,6 +739,9 @@ object ConfigFields {
             F_MINI_WINDOW_ANIM,
             F_COMBO_PASSTHROUGH,
             F_COMBO_WINDOW_MS,
+            F_COMBO_WINDOW_ON,
+            F_COMBO_HOLD_ON,
+            F_COMBO_HOLD_MIN_MS,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,
             F_ICON_TINT_SEED,

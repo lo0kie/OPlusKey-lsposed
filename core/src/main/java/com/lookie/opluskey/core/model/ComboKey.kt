@@ -86,9 +86,11 @@ data class ComboKey(
     override val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
     /** 这一档自己的「执行时提示」—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
+    /** 这一档自己的「提示走流体云」—— 只在 [useOwnSettings] 开着时算数。 */
+    override val toastFluid: Boolean = GlobalConfig.DEFAULT_TOAST_FLUID,
     /** 这一档自己的提示文案模板（空串 = 默认那句）—— 只在 [useOwnSettings] 开着时算数。 */
     override val toastTemplate: String = GlobalConfig.DEFAULT_TOAST_TEMPLATE,
-    /** 上面那五项被公共设置播过种没有 —— 见 [OwnSettings.ownSettingsSeeded]。 */
+    /** 上面那几项被公共设置播过种没有 —— 见 [OwnSettings.ownSettingsSeeded]。 */
     override val ownSettingsSeeded: Boolean = false,
     /**
      * **这一组自己的**「无操作时执行按键命令」—— `null` = 跟随公共设置。
@@ -97,9 +99,12 @@ data class ComboKey(
      *  「配了 A+B，但只给长按绑了动作」时，短按到底要不要让两颗键各干各的，
      *  不同组往往不一样（临时组合希望透传、专用组合希望吞掉）。
      *
-     *  **受 `useOwnSettings` 管**，与那五项同一条规则：关着就整份跟公共，开着才用这一位。
+     *  **受 `useOwnSettings` 管**，与那几项同一条规则：关着就整份跟公共，开着才用这一位。
      *  打开独立设置那一刻这一位会被**播成当时的公共值**（`KeySettingsScreen.withSeededComboFields`），
      *  所以「开着独立设置却还在跟随公共」只会出现在还没被拨过的老配置上（`null` 就是那一档）。
+     *
+     *  **只在 [windowOn] 那位开着时算数**：窗口关掉（这一组只认按住）时这一位不参与取值 ——
+     *  那两条按法各有自己明确的槽，不存在「按出来了但没绑动作」这个形状。
      *  取值只走 `Config.comboPassthroughFor`，执行侧不自己看全局。
      */
     val passthrough: Boolean? = null,
@@ -120,6 +125,76 @@ data class ComboKey(
      *  取值一律走 `Config.comboWindowFor`（判定侧与界面都只走这一处，谁也不自己看全局）。
      */
     val windowMs: Int = WINDOW_FOLLOW_GLOBAL,
+    /**
+     * **认不认「窗口内等齐成员」这一种按法** —— `null` = 跟随公共设置（`GlobalConfig.comboWindowOn`）。
+     *
+     *  与 [holdOn] 是**两条独立的触发方式**，各有各的开关，谁也不取代谁：这一位关掉只是不再
+     *  按时间配这一档，按住那条照旧可用。两位都关 ⇒ 这一档组合永远不会成立（配置允许写出来，
+     *  判定侧只是永远配不上）。
+     *
+     *  受 `useOwnSettings` 管，与 [windowMs] 同一条：关着整份看公共；打开独立设置那一刻这一位
+     *  会被**播成当时的公共值**（`KeySettingsScreen.withSeededComboFields`）。
+     *
+     *  取值一律走 `Config.comboWindowOnFor` —— 判定侧与界面都只走这一处。
+     */
+    val windowOn: Boolean? = null,
+    /**
+     * **除了「窗口内等齐成员」，还接受「按住一个成员、再按剩下的成员」** —— 两种触发方式并存，
+     *  **互不取代**：窗口那条判据（[windowMs]）照旧，这里只是多开一条路。
+     *
+     *  `null` = 跟随公共设置（`GlobalConfig.comboHoldOn`），与 [windowOn] 同一套覆盖规则。
+     *
+     *  按住这一条只对**两个成员**成立（三颗及以上没有「哪一颗先按住」这个唯一的起点）。
+     *  三种触发方式各有自己的动作槽：
+     *
+     *  · 窗口内等齐 ⇒ [single] / [long]；
+     *  · 先按住第一颗、再按第二颗 ⇒ [singleA] / [longA]；
+     *  · 先按住第二颗、再按第一颗 ⇒ [singleB] / [longB]。
+     *
+     *  为什么三套分开而不是共用：窗口那条判的是「同时按」，按住判的是「一前一后」——
+     *  同一组手势在两种按法下要做的事往往不一样（同时按是快捷开关，按住是「先按这颗再按那颗」的
+     *  组合拳）。共用一套的话，用户改了一种按法，另一种也跟着变。
+     *
+     *  上界是第一颗自己的长按：判出来之后它已经执行过自己的动作了，再认组合就是一次按压
+     *  两个动作（判据在 `ComboDetector` 的 `longPressPassed`）。
+     *
+     *  老文件没有这一项 ⇒ `null`（跟随公共，公共默认关）⇒ 判定与这一位出现之前逐字一致。
+     */
+    val holdOn: Boolean? = null,
+    /**
+     * **手动加过的那几种按住顺序** —— 取值是 [HOLD_FIRST] / [HOLD_SECOND]。
+     *
+     *  按住那两种顺序不再「开一位就自动都有」：用户得自己往这一档里加（界面在「按法」菜单里
+     *  提供「添加顺序」）。理由是每加一条顺序就要把那颗键改成一个特殊的长按时机
+     *  （「松手时触发」，见 `HoldGestureAsk`）—— 这是要用户点头的事，不能替他默默改。
+     *
+     *  空表 = 一条都没加 ⇒ 判定侧不认按住那条（哪怕 [holdOn] 开着）；老文件同样读成空表
+     *  —— 这一位出现之前根本没有「按住顺序」这个概念，而按住手势本身也还没发布。
+     */
+    val holdOrders: List<Int> = emptyList(),
+    /**
+     * 这一组自己的「**首键要先按住多久**」（毫秒）—— 按住手势的下限。
+     *
+     *  含义：先按住的那颗必须**按满这么久、且还没抬手**，第二颗在这之后落下才算这一档组合。
+     *  它把「一起按」（两颗键相差 0~40ms，谁先上报看硬件）与「先按住一颗再按另一颗」分开：
+     *  没有这条下限时，一起按会按物理先后落进某一种顺序里 —— 而那个顺序用户未必加过，
+     *  于是同一物理动作有时命中、有时整条落空。
+     *
+     *  **受 `useOwnSettings` 管**，与 [windowMs] 同一条：关着整份看公共
+     *  （`GlobalConfig.comboHoldMinMs`）；打开那一刻被播成当时的公共值。
+     *  [HOLD_MIN_FOLLOW_GLOBAL]（0）只剩老配置会读到。
+     *
+     *  取值一律走 `Config.comboHoldMinFor`（判定侧与界面都只走这一处）。
+     */
+    val holdMinMs: Int = HOLD_MIN_FOLLOW_GLOBAL,
+    /** 按住手势「先按住 **第一颗**」那一套（见 [holdOn]）。 */
+    val singleA: Action = Action.None,
+    /** 见 [singleA]。 */
+    val longA: Action = Action.None,
+    /** 按住手势「先按住 **第二颗**」那一套（见 [holdOn]）。 */
+    val singleB: Action = Action.None,
+    /** 见 [singleB]。 */
+    val longB: Action = Action.None,
 ) : OwnSettings,
     LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
@@ -143,6 +218,61 @@ data class ComboKey(
 
             //  组合没有「单击后长按」：它的两段都建立在单键连击上（见 [COMBO_SLOTS]）
             GestureTrigger.ClickThenLong, GestureTrigger.ClickThenLongRelease -> Action.None
+        }
+
+    /**
+     * 这一种按住顺序**加过没有** —— 判定侧用它当闸（见 [holdOrders]），界面用它决定那一行是
+     * 「选择」还是「添加」。
+     */
+    fun hasHoldOrder(hold: Int): Boolean = hold in holdOrders
+
+    /**
+     * 按住那几套里**有没有绑过动作** —— `ChordGuard` 判「这一对该不该吞掉 ROM 的判定」时用。
+     *
+     *  少了这一位，只给按住手势配了动作的组合在注入侧看起来就是「一个动作都没绑」，
+     *  于是按「透传开着」放行 ⇒ 系统那一下照常发生、模块这一下也不执行（真机上就是「按了没反应」）。
+     */
+    val anyHoldBound: Boolean
+        get() = singleA.isBound || longA.isBound || singleB.isBound || longB.isBound
+
+    /**
+     * **按「这一下是怎么按出来的」取动作** —— `hold = 0` 是窗口那条，`1` 是先按住第一颗，
+     * `2` 是先按住第二颗（见 [holdOn]）。
+     *
+     *  为什么不并进 [actionOf]：那个方法的语义是「这一档手势执行什么」，而这里多一个维度
+     *  （同一档手势有三种按法）。并进去的话，所有只关心手势的调用点都要多传一个它用不上的参数。
+     */
+    fun actionOfHold(
+        trigger: GestureTrigger,
+        hold: Int,
+    ): Action =
+        when (hold) {
+            HOLD_FIRST -> slotAction(trigger, singleA, longA)
+
+            HOLD_SECOND -> slotAction(trigger, singleB, longB)
+
+            //  窗口那条（以及任何认不出的取值）落到原来那两个槽
+            else -> actionOf(trigger)
+        }
+
+    /**
+     * 一档手势在**某一对动作槽**（短按一颗 + 长按一颗）上取什么 —— 按住那两种按法共用这一支。
+     *
+     *  判据与 [actionOf] 逐条对齐（双击及第 3 击起仍然「没有定义」，不退回单击），只是把
+     *  「落到哪两个槽」交给调用方：三种按法的差别全在槽位上，不在判据上。
+     *
+     *  松手那两档回 [Action.None]：松手执行额外动作**不按按法分化**（`longRelease` 只有一个槽，
+     *  按住那两种按法按出来的一次按压，松手仍走这一组自己的那一格）。
+     */
+    private fun slotAction(
+        trigger: GestureTrigger,
+        singleAction: Action,
+        longAction: Action,
+    ): Action =
+        when (trigger) {
+            is GestureTrigger.Click -> if (trigger.count == 1) singleAction else Action.None
+            GestureTrigger.LongPress -> longAction
+            else -> Action.None
         }
 
     /**
@@ -206,6 +336,20 @@ data class ComboKey(
 
         /** [windowMs] 取这个值表示「跟随公共设置」—— 它不是「等 0 毫秒」。 */
         const val WINDOW_FOLLOW_GLOBAL = 0
+
+        /** [holdMinMs] 取这个值表示「跟随公共设置」（同上：不是「按住 0 毫秒」）。 */
+        const val HOLD_MIN_FOLLOW_GLOBAL = 0
+
+        /**
+         * 「这一下是怎么按出来的」—— 窗口内等齐 / 先按住第一颗 / 先按住第二颗。
+         *
+         *  三个取值同时是**配置列名之外的运行时编号**：判定侧把它随广播带下去，执行侧按它取
+         *  `single`·`singleA`·`singleB` 那一族槽（见 [actionOfHold]）。数字进线格式，
+         *  所以只有「加在末尾」这一种改法。
+         */
+        const val HOLD_WINDOW = 0
+        const val HOLD_FIRST = 1
+        const val HOLD_SECOND = 2
 
         /**
          * 成员上限：**三颗**（用户口径）。两颗仍是最常见的那一档，三颗是给「三键齐按」留的口子。

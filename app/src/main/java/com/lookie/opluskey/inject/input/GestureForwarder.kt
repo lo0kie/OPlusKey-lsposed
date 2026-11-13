@@ -129,9 +129,11 @@ internal class GestureForwarder(
     fun forwardCombo(
         comboId: String,
         trigger: GestureTrigger,
+        /** 按住手势的反向那一套（先按住第二颗）；窗口与正向都是 `false`。 */
+        hold: Int,
         repeat: Boolean,
     ) {
-        val intent = comboIntent(comboId, trigger.id, repeat)
+        val intent = comboIntent(comboId, trigger.id, repeat, hold)
         sender.post {
             try {
                 val ctx =
@@ -252,6 +254,7 @@ internal class GestureForwarder(
         comboId: String,
         phase: String,
         repeat: Boolean,
+        hold: Int,
     ): Intent =
         Intent(ModuleWire.ACTION_GESTURE)
             .setPackage(HostApp.PACKAGE)
@@ -260,6 +263,8 @@ internal class GestureForwarder(
             .putExtra(ModuleWire.EXTRA_COMBO, comboId)
             .putExtra(ModuleWire.EXTRA_PHASE, phase)
             .putExtra(ModuleWire.EXTRA_REPEAT, repeat)
+            //  「按住手势的反向」—— 只有组合用得上这一格（单键的 `gestureIntent` 不带它）
+            .putExtra(ModuleWire.EXTRA_HOLD, hold)
             .putExtra(ModuleWire.EXTRA_SENT_AT, nextSentAt())
 
     /** 造一条手势广播（载荷见 `ModuleWire` 的 `EXTRA_*`）。 */

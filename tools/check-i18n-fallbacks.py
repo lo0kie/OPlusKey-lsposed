@@ -11,6 +11,25 @@ ROOTS = ['app/src/main/java', 'core/src/main/java']
 OPTIONAL_ROOTS = ['app/src/debug/java', 'app/src/release/java']
 STRINGS = 'core/src/main/java/com/lookie/opluskey/core/i18n/Strings.kt'
 
+# 源码里那句兜底是 **Kotlin 字面量**（`\n` / `\"` / `\\` 都还是转义写法），字典里那一条是
+# **已经解析好的正文**。两边直接比，正文里带换行的条目会假红（`dialog.reset_module_message`
+# 就分了两行）。所以先按字面量规则解回来再比 —— 只认这几种转义，其余原样。
+ESCAPES = {'n': '\n', 't': '\t', 'r': '\r', '"': '"', "'": "'", '\\': '\\', '$': '$'}
+
+
+def unescape(raw):
+    out = []
+    i = 0
+    while i < len(raw):
+        c = raw[i]
+        if c == '\\' and i + 1 < len(raw):
+            out.append(ESCAPES.get(raw[i + 1], raw[i + 1]))
+            i += 2
+        else:
+            out.append(c)
+            i += 1
+    return ''.join(out)
+
 
 def run():
     src = io.open(STRINGS, encoding='utf-8').read()
@@ -39,7 +58,7 @@ def run():
                 text = io.open(p, encoding='utf-8').read()
                 for m in pat.finditer(text):
                     total += 1
-                    name, fallback = m.group(1), m.group(2)
+                    name, fallback = m.group(1), unescape(m.group(2))
                     line = text[: m.start()].count('\n') + 1
                     key = consts.get(name)
                     if key is None:

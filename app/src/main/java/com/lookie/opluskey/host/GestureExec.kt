@@ -11,6 +11,7 @@ import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.model.FluidCard
 import com.lookie.opluskey.core.model.Gesture
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyConfig
@@ -26,6 +27,7 @@ import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.host.action.ActionRunner
 import com.lookie.opluskey.host.action.FailureNotice
 import com.lookie.opluskey.host.action.condition.ConditionProbe
+import com.lookie.opluskey.host.action.notice.FluidAction
 import com.lookie.opluskey.host.action.notice.actionNoticeText
 
 /**
@@ -266,6 +268,8 @@ internal object GestureExec {
         phaseId: String?,
         sentAt: Long,
         repeat: Boolean,
+        /** 这一下是怎么按出来的 —— 取 `single`·`singleA`·`singleB` 那一族槽。 */
+        hold: Int = ComboKey.HOLD_WINDOW,
     ) {
         val config = ConfigStore.read()
         // 双击在组合上没有定义（`ComboKey.actionOf` 恒返回「无操作」）；认不出的 phase
@@ -289,6 +293,14 @@ internal object GestureExec {
         fun matchesCondition(condition: BranchCondition): Boolean =
             judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
         if (trigger == GestureTrigger.Release) {
+            //  **按住那两种按法没有「松手」这一档**：它们各有一套明确的槽（`singleA`/`longA`、
+            //  `singleB`/`longB`），抬手只是收尾 —— 再执行一次松手动作就是「按住手势 + 松手命令」
+            //  两个结果。判定侧已经不再为它们发这一条（`ComboDetector.onUp`），这里再挡一道，
+            //  是给「装着新宿主、注入侧还是上一版」那一段过渡期。
+            if (hold != ComboKey.HOLD_WINDOW) {
+                XLog.w("组合键 ${combo.id} - 松手：按住手势那一套不出松手动作，忽略")
+                return
+            }
             //  「松手执行额外动作」这一档：与其它几档互斥。
             //  取动作与单键同一条口径（[pickReleaseAction]）：长按被哪一块接管，就用那一块自己的松手格；
             //  一块都不中才落到这一组的 `longRelease`。块命中时**不**再补一刀 —— 一次按压一个结果。
@@ -311,14 +323,24 @@ internal object GestureExec {
             executeCombo(combo, trigger, fired, config, repeat)
             return
         }
-        val action = combo.resolve(trigger, ::matchesCondition)
+        //  按住那条（先按住某颗）：直接取它自己那一套动作，**不走场景表** ——
+        //  场景块只有短按 / 长按两档、没有「怎么按出来的」这一维（见 `ComboKey.actionOfHold`）。
+        val action =
+            if (hold == ComboKey.HOLD_WINDOW) {
+                combo.resolve(trigger, ::matchesCondition)
+            } else {
+                combo.actionOfHold(trigger, hold)
+            }
         //  记下这一按命中的是哪一块 —— 松手那一档按它给动作（见 `SceneRule.releasePin`）。
         rememberPressPin("combo:${combo.id}", trigger, combo.scenes, ::matchesCondition)
         //  这一格是「无操作」且开关打开 ⇒ **不吞键**：两颗键各按自己这一档照常执行
         //  （见 `Config.comboPassthroughFor`：这一组写过就用自己的，否则看公共设置）。
         //   这就是「配了组合、但只给长按绑了动作」时短按那颗依旧能用的那条路 ——
         //   为假时什么都不做，与这一位出现之前一致。
-        if (!action.isBound && config.comboPassthroughFor(combo)) {
+        //
+        //  **只对窗口那条生效**：按住那几种顺序即使是「无操作」也照样吞掉判定（用户口径）——
+        //  它们本来就是「把这一按交给组合」的明确表态，落回两颗键各跑一遍只会多出两个动作。
+        if (hold == ComboKey.HOLD_WINDOW && !action.isBound && config.comboPassthroughFor(combo)) {
             runComboMembers(combo, trigger, config)
             return
         }
@@ -777,7 +799,14 @@ internal object GestureExec {
         if (what.isEmpty()) return
         val notice = ToastNotice.render(own.toastTemplate, keyLabel, gestureLabel, what)
         XLog.w("执行时提示：$notice")
-        FailureNotice.toast(appContext, notice)
+        if (own.toastFluid) {
+            //  换落点不换说法：同一句 `$key - $gesture → $action`，交给宿主自己的 Seedling SDK。
+            //  图标取**这一次执行的动作**（界面层已按 `FluidCard.actionNameOf` 预渲染成 png）；
+            //  失败不再回头弹一条 Toast —— 那是「提示失败的提示」，用户要的那一句照样没出现。
+            FluidAction.runText(appContext, notice, FluidCard.actionNameOf(action.token)) {}
+        } else {
+            FailureNotice.toast(appContext, notice)
+        }
     }
 
     /**

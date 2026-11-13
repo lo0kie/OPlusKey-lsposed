@@ -148,11 +148,12 @@ internal object KeyHooks {
                 },
                 onGestureNoted = ::noteGesture,
                 // 组合键（两颗键一起按）：判出来就**直接转给宿主执行** —— 动作在
-                //  `ComboKey` 上（短按 / 长按两格），判定侧只负责认档与转发，与单键手势同一分工。
-                onCombo = { combo, trigger, repeat ->
+                //  `ComboKey` 上（短按 / 长按两格，按住手势还有反向那一套），判定侧只负责
+                //  认档与转发，与单键手势同一分工。
+                onCombo = { combo, trigger, hold, repeat ->
                     noteGesture()
                     logComboDispatch(combo, trigger, repeat)
-                    forwarder.forwardCombo(combo.id, trigger, repeat)
+                    forwarder.forwardCombo(combo.id, trigger, hold, repeat)
                 },
             )
         // 主开关翻到「不接管」时撤销已排下的手势（长按枪 / 双击窗 / 连发任务）。

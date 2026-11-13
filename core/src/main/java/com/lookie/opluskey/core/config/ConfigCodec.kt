@@ -135,6 +135,30 @@ object ConfigCodec {
      *       抬手即判，两件事重合。老文件里那一格按未知键丢掉（`ignoreUnknownKeys`）。
      *       **删字段同样是改 DTO**：重编码少了那一格，md5 与旧文件对不上，所以必须抬这一位。
      *
+     *  51 / 52 = 按住手势开发中途的两版草稿，**都没有发布过**，编号直接跳过去。
+     *       任何 `< VERSION` 的文件都走「不校 md5」那一支（见 [parseOrNull]），跳号没有副作用，
+     *       也不必为它们留迁移。
+     *
+     *  53 = 按住手势定型：`holdOn` + 两套动作（`singleA` / `longA` / `singleB` / `longB`）。
+     *       老文件缺它们 ⇒ 关 / 无动作，判定与这一位出现之前逐字一致。
+     *
+     *  54 = 组合的两条触发方式各自成一位：`GlobalDto` 多了 `combo_window_on` / `combo_hold_on`，
+     *       `ComboDto` 多了同名的**每组覆盖**（`null` = 跟随公共），`holdOn` 也从布尔变成本类型。
+     *       老文件缺它们 ⇒ 窗口照旧认、按住不认，行为逐字不变。
+     *
+     *  55 = `ComboDto` 多了 `hold_orders`（**手动加过的按住顺序**）。老文件读成空表 ⇒ 按住那条
+     *       一条顺序都没有 —— 按住手势本来就是这一轮才做的，老配置里不可能有它。
+     *
+     *  56 = 执行时提示多了「走流体云」这一档：`GlobalDto` 多了 `toast_fluid`，
+     *       `KeyDto` / `ComboDto` 多了同名的**每组覆盖**（`null` = 跟随公共）。老文件缺它们
+     *       ⇒ 默认关（仍走 Toast），行为逐字不变。
+     *
+     *  57 = 按住手势多了「首键要先按住多久」：`GlobalDto` 多了 `combo_hold_min_ms`，
+     *       `ComboDto` 多了 `hold_min_ms`（0 = 跟随公共）。老文件缺它们 ⇒ 跟随公共（100ms），
+     *       而按住手势本来就是这一轮才做的，老配置里不可能有它。
+     *
+     *  **这个数只往上加**：一旦某个编号随一次提交发布出去，它对应的那组字段就定死了。
+     *
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -142,7 +166,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 50
+    const val VERSION = 57
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

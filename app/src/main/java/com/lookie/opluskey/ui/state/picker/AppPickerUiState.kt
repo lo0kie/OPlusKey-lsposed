@@ -79,10 +79,17 @@ internal class AppPickerUiState(
         picked: Set<String> = emptySet(),
     ) {
         pending = selection?.let { PickedDetail(it, shortcutId) }
+        //  「结束应用」那一趟的基线**必须在这里记**（`pending` 刚复位完）：两处进页入口都在
+        //  本函数之前调 `markWindowTogglesBaseline`，那时 `pending` 还是上一趟留下的 —— 拿它
+        //  当基线，点一下「本来就是它」的那一行也会判成「挑过新的」（见 `markStopBaseline`）。
+        picker.markStopBaseline(selection)
         picker.pickedApps.value = picked
         //  多选的基线**紧跟**着它记：退页那一问按「与进来时比变了没有」判（见
         //  `AppPickerState.pickedAppsChanged`），两处必须同一刻写。
         picker.markPickedBaseline()
+        //  这一趟的**初始顺序**（= 上一次保存下来的先后），列表进场按它把已选中的排到最前；
+        //  页里点选不再重排，所以单独存一份快照，而不是每帧读 `pickedApps`。
+        refreshVisitOrder()
         // 上一趟的草稿不带到这一趟来（它是「等着被提交」的东西，跨趟存在只会误提交）
         picker.draft = null
         located = false
@@ -94,6 +101,25 @@ internal class AppPickerUiState(
 
     /** 「进场滚到已选中那一行」做过了没有 —— 一次性闸，之后用户滚到别处不再被拽回来。 */
     var located by mutableStateOf(false)
+
+    /**
+     * 这一趟**进来那一刻**的选中清单顺序（[beginVisit] 里定的快照）。
+     *
+     *  只服务一件事：列表进场时把已选中的那几行排到最前，顺序按上一次保存的先后。
+     *  **页里点选不重排**（否则点一下那一行就跳走），所以它是一份快照、不跟 [AppPickerState.pickedApps]
+     *  一起变；重新进页时由 [beginVisit] 重新取一次，排序也就跟着更新。
+     */
+    var visitOrder by mutableStateOf<List<String>>(emptyList())
+
+    /**
+     * 重取那一份排序快照 —— **进页与下拉刷新**各调一次，页里点选不调。
+     *
+     *  刷新等于「这一页重新铺一遍」，所以它跟进场同一档：那时把当前选中的排到最前；
+     *  而点选 / 取消期间不调，否则点一下那一行就从手指底下挪走。
+     */
+    fun refreshVisitOrder() {
+        visitOrder = picker.pickedApps.value.toList()
+    }
 
     /** 手上的清单（`null` 时按空表用）。 */
     val apps: List<LaunchableApp> get() = loaded.orEmpty()

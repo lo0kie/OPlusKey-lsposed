@@ -25,6 +25,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.CommonCommand
+import com.lookie.opluskey.core.model.GlobalConfig
 import com.lookie.opluskey.core.model.withoutAction
 import com.lookie.opluskey.core.present.CommonCommands
 import com.lookie.opluskey.ui.SettingsPage
@@ -47,7 +48,7 @@ import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT_MS
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SectionTitle
-import com.lookie.opluskey.ui.row.titleWithCount
+import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.screen.command.StepPickerPage
 import com.lookie.opluskey.ui.screen.command.StepPickerSheet
 import com.lookie.opluskey.ui.screen.command.StepSheetFilter
@@ -190,9 +191,12 @@ private fun CommonCommandsSection(
             //  **必须自己套一层 `Column`**：`AnimatedContent` 的内容位是叠放式的，直接往里发
             //  小标题 + 卡片会让两件事叠在同一处。
             Column(Modifier.fillMaxWidth()) {
-                //  条数拼进标题（`常用命令 (3)`）—— 与别处同一写法；空态那一支不画它，
-                //  个数在顶栏副标题里照样看得到。
-                SectionTitle(titleWithCount(I18n.get(Strings.BINDING_COMMON_COMMANDS, "常用命令"), shown.size))
+                //  条数走**行尾的 `n/20`**（`TitleCounter`）：这张表有上限，光写「有几个」
+                //  看不出还剩几格 —— 与命令列表那两段同一个画法。空态那一支不画它。
+                SectionTitle(
+                    text = I18n.get(Strings.BINDING_COMMON_COMMANDS, "常用命令"),
+                    trailing = { TitleCounter(shown.size, GlobalConfig.MAX_COMMON_COMMANDS) },
+                )
                 CardList(
                     rows =
                         shown.map { cmd ->

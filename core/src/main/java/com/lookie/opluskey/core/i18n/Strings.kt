@@ -31,6 +31,12 @@ object Strings {
 
     /** 给条件挑前台应用那一趟：一条都没勾就按确认时的那句（FAB 常驻，见 `AppConfirmFab`）。 */
     const val APP_PICKER_BRANCH_AT_LEAST_ONE = "app_picker.branch_at_least_one"
+
+    /** 多选选到上限（`BranchCondition.MAX_APP_PACKAGES`）之后再点一行的那句提示。 */
+    const val APP_PICKER_BRANCH_PICK_LIMIT = "app_picker.branch_pick_limit"
+
+    /** 多选时顶栏那一行：「已选择 3 / 25 个应用」—— 两个参数分别是已选数与上限。 */
+    const val APP_PICKER_BRANCH_PICK_COUNT = "app_picker.branch_pick_count"
     const val APP_PICKER_CONFIRM_SELECTION = "app_picker.confirm_selection"
     const val APP_PICKER_EMPTY_HINT_BROKEN = "app_picker.empty_hint_broken"
     const val APP_PICKER_EMPTY_HINT_ICONLESS = "app_picker.empty_hint_iconless"
@@ -170,6 +176,18 @@ object Strings {
     const val BINDING_LONG_PRESS_REPEAT_DESC_ON = "binding.long_press_repeat_desc_on"
     const val BINDING_LONG_PRESS_REPEAT_TITLE = "binding.long_press_repeat_title"
 
+    /**
+     * 关掉「松手才触发」之前的那一问（标题 + 正文 + 动作项）—— 这颗键正被某些按住手势
+     * 当成「先按住的那一颗」时弹。
+     *
+     *  正文里的 `%s` 两处：第一处是**这颗键的名字**，第二处是**受影响的组合**（一行一个，
+     *  名字各带一对括号）。关掉之后判定侧那条上界会把那些手势整条截止，所以确认时
+     *  一并把那几种按住顺序移除 —— 留着它们在「按法」窗里只是一个永远不成立的选项。
+     */
+    const val BINDING_FIRE_OFF_TITLE = "binding.fire_off_title"
+    const val BINDING_FIRE_OFF_BODY = "binding.fire_off_body"
+    const val BINDING_FIRE_OFF_ACTION = "binding.fire_off_action"
+
     /** 「按键绑定」页大标题下面那行小标题：当前这一组是「快捷键」。 */
     const val BINDING_SECTION_KEYS = "binding.section_keys"
     const val BINDING_REPEAT_INTERVAL_DESC = "binding.repeat_interval_desc"
@@ -241,6 +259,9 @@ object Strings {
 
     /** 清单页顶部那条提示（写盘成功时用）。 */
     const val COMMON_COMMANDS_SAVED = "common_commands.saved"
+
+    /** 这张清单到上限了（`GlobalConfig.MAX_COMMON_COMMANDS`），参数是那个上限。 */
+    const val COMMON_COMMANDS_LIMIT = "common_commands.limit"
 
     /** 行菜单 / 改名窗共用的「重命名」。 */
     const val COMMON_COMMANDS_RENAME = "common_commands.rename"
@@ -430,6 +451,37 @@ object Strings {
     const val COMBO_SHORT = "combo.short"
     const val COMBO_LONG = "combo.long"
 
+    /**
+     * 「按法」那一窗 —— 同一档手势下三种按法各一套动作，这一窗换的是**在编哪一套**。
+     *
+     *  三种按法分属两条触发方式：「等窗口」归「使用等待手势」，另两档归「使用按住手势」——
+     *  那一位关掉时对应的行**根本不列出来**（判定侧那两条判据不成立，列出来只会「点了没反应」）。
+     *
+     *  `_window` / `_hold` 的格式串里是**成员键名**（第一颗、第二颗；先按住第二颗那一行两个参数
+     *  对调）：光写「先按 A」，人得先记住成员顺序才知道 A 是谁。
+     */
+    const val COMBO_PRESS_MODE_TITLE = "combo.press_mode_title"
+    const val COMBO_PRESS_MODE_WINDOW = "combo.press_mode_window"
+    const val COMBO_PRESS_MODE_HOLD = "combo.press_mode_hold"
+
+    /**
+     * 「已切换按法：」—— 换一档按法之后那条回执的**前缀**，后面接上面两份模板之一。
+     *
+     *  拼而不是另写三条整句：语序只在 `COMBO_PRESS_MODE_WINDOW` / `_HOLD` 里定义一次。
+     */
+    const val COMBO_PRESS_MODE_SWITCHED = "combo.press_mode_switched"
+
+    /**
+     * 组合这一侧菜单里那行**「修补当前按法」**（标题 + 不可点时的说明 + 修完的回执）。
+     *
+     *  它修的是「当前这一档按法」：那种按住顺序里**先按住的那一颗**后来被关掉了「松手时触发」
+     *  （可能是为了连续触发），判定侧那条上界于是把这档手势整条截止 —— 界面上看不出异常，
+     *  按下去就是「什么都没发生」。这一行把那位改回来，不用用户自己去找那颗键、猜是哪一位。
+     */
+    const val COMBO_REPAIR_MODE = "combo.repair_mode"
+    const val COMBO_REPAIR_MODE_HINT = "combo.repair_mode_hint"
+    const val COMBO_REPAIR_DONE = "combo.repair_done"
+
     /** 选键弹窗的标题。 */
     const val COMBO_PICK_KEYS = "combo.pick_keys"
 
@@ -475,6 +527,69 @@ object Strings {
     const val COMBO_PASSTHROUGH_TITLE = "combo.passthrough_title"
     const val COMBO_PASSTHROUGH_DESC_ON = "combo.passthrough_desc_on"
     const val COMBO_PASSTHROUGH_DESC_OFF = "combo.passthrough_desc_off"
+
+    /**
+     * 组合的两条**触发方式**，各一颗开关（标题 + 开关真假各一句）——
+     * 公共页与某一组的「独立设置」页共用这一套文案（同一个参数的两个落点）。
+     *
+     *  「使用等待手势」= 两颗键在等待窗口内先后按下也算组合（默认开，这一位出现之前只有它）；
+     *  「使用按住手势」= 按住一个键、再按另一个键也算组合（默认关）。
+     *  两位互不取代，都关掉时这一档组合永远不会成立。
+     */
+    const val COMBO_WINDOW_ON_TITLE = "combo.window_on_title"
+    const val COMBO_WINDOW_ON_DESC_ON = "combo.window_on_desc_on"
+    const val COMBO_WINDOW_ON_DESC_OFF = "combo.window_on_desc_off"
+
+    const val COMBO_HOLD_ON_TITLE = "combo.hold_on_title"
+    const val COMBO_HOLD_ON_DESC_ON = "combo.hold_on_desc_on"
+    const val COMBO_HOLD_ON_DESC_OFF = "combo.hold_on_desc_off"
+
+    /**
+     * 「首键要先按住多久」那一行（滑杆标题 + 一句说明）—— **按住手势的下限**。
+     *
+     *  两颗键几乎同时落下（相差几十毫秒、谁先上报看硬件）不算「按住」，那种「一起按」归
+     *  「使用等待手势」那条；这一行划出「多短算一起按、多长才算按住」。
+     *  公共页与某一组的「独立设置」页共用这一套文案（同一个参数的两个落点）。
+     */
+    const val COMBO_HOLD_MIN_TITLE = "combo.hold_min_title"
+    const val COMBO_HOLD_MIN_DESC = "combo.hold_min_desc"
+
+    /**
+     * 两条都关着时那一页的**空态**（标题 + 一句去哪儿打开）—— 那时这一档组合永远不会成立，
+     * 绑定的两页动作没有任何执行机会，摆一堆格子只会让人以为还能配。
+     */
+    const val COMBO_MODES_OFF_TITLE = "combo.modes_off_title"
+    const val COMBO_MODES_OFF_DESC = "combo.modes_off_desc"
+
+    /**
+     * 打开「使用按住手势」之前的那一问 —— 受影响的按键还没改成「松手时触发」时弹（标题 + 正文 + 动作项）。
+     *
+     *  为什么必须问：按住手势要「按住一颗、再按另一颗」，第一颗得按住一会儿；它的长按若在按住期间
+     *  就执行了，这一按就出两个动作（判定侧那条上界也会直接截止）。改成「松手时触发」之后长按押到
+     *  抬手，组合凑成时那颗键的状态机被摘掉，抬手只出组合那一套。
+     *
+     *  正文里那一个 `%s` 是**先按住的那颗键的名字**；动作项是「切换并添加」（同一次落盘改这一位、
+     *  并把这一种顺序加进去）。
+     */
+    const val COMBO_HOLD_ASK_TITLE = "combo.hold_ask_title"
+    const val COMBO_HOLD_ASK_BODY = "combo.hold_ask_body"
+    const val COMBO_HOLD_ASK_ACTION = "combo.hold_ask_action"
+
+    /**
+     * 「按法」那一条上那两种**按住顺序**的收尾两句。
+     *
+     *  `_hint` 是打开开关之后的回执（提一句「顺序还得去按法里加」），
+     *  `_added` 是加成功之后的回执（格式串里是那种顺序的名字）。
+     *
+     *  没加过的顺序**照常占一档**（不再有「添加」那一行），点了先弹那一问 ——
+     *  所以这里没有「添加 / 尚未添加」那两句。
+     */
+    const val COMBO_HOLD_ORDER_HINT = "combo.hold_order_hint"
+    const val COMBO_HOLD_ORDER_ADDED = "combo.hold_order_added"
+
+    /** 那两种顺序的名字（不带键名，只用于回执那一句）。 */
+    const val COMBO_HOLD_ORDER_FIRST = "combo.hold_order_first"
+    const val COMBO_HOLD_ORDER_SECOND = "combo.hold_order_second"
 
     /** 组合键：按键之间的等待（两颗键按下最多隔多久才算一起按下）。 */
     const val COMBO_WINDOW_TITLE = "combo.window_title"
@@ -711,6 +826,14 @@ object Strings {
 
     /** 一个手势的系统场景到上限了（「添加场景」置灰 + 点一下说的那句）。 */
     const val COMMAND_BRANCH_LIMIT = "command.branch_limit"
+
+    /**
+     * 命令库里**每一类**（单条 / 多条）到上限了（`Command.MAX_COMMANDS`）。
+     *
+     *  参数是那个上限；单条与多条各算各的，所以文案里不点名是哪一类 —— 写入闸分不出
+     *  「用户想加哪一种」，那时只知道有一类满了。
+     */
+    const val COMMAND_LIMIT = "command.limit"
 
     /** 绑定页横幅的另一档：这一档一条都没配（那一行**始终**在，见 `BindingList`）。 */
     const val COMMAND_BRANCH_SCENARIO_NONE = "command.branch_scenario_none"
@@ -1227,6 +1350,11 @@ object Strings {
     const val HOME_TOAST_DESC_ON = "home.toast_desc_on"
     const val HOME_TOAST_TITLE = "home.toast_title"
 
+    /** 「执行时提示」的**落点**：Toast 还是流体云（只换落点，不换文案）。 */
+    const val HOME_TOAST_FLUID_TITLE = "home.toast_fluid_title"
+    const val HOME_TOAST_FLUID_DESC_ON = "home.toast_fluid_desc_on"
+    const val HOME_TOAST_FLUID_DESC_OFF = "home.toast_fluid_desc_off"
+
     /** 「执行时提示」的**文案模板**：那一行的标题 / 输入框占位 / 弹窗里的占位符说明 / 为空时那句默认。 */
     const val HOME_TOAST_TEMPLATE_TITLE = "home.toast_template_title"
     const val HOME_TOAST_TEMPLATE_HINT = "home.toast_template_hint"
@@ -1650,6 +1778,9 @@ object Strings {
     /** 结果提示。 */
     const val VAR_SAVED = "var.saved"
     const val VAR_FAILED = "var.failed"
+
+    /** 变量到上限了（`Variable.MAX_COUNT`），参数是那个上限。 */
+    const val VAR_LIMIT = "var.limit"
     const val VAR_NAME_INVALID = "var.name_invalid"
     const val VAR_VALUE_INVALID = "var.value_invalid"
 

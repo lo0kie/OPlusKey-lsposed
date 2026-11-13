@@ -103,6 +103,10 @@ internal class RingerController(
             val current = readCurrentMode(am, zen, ctx)
             if (current == target) {
                 XLog.w("响铃模式：已经是${modeName(target)}，不动")
+                //  **档位不动，但那颗胶囊还是要弹**：流体云是 ColorOS 接口弹的（[SeedlingClient]），
+                //  不是我们执行动作时的通用提示 —— 只有这里主动发一条它才出来。已经在目标档时
+                //  系统自身不会弹，用户按下去就只剩「什么都看不见」，所以补发同一条事件。
+                if (isColorOsApi()) SeedlingClient.notifyRingMode(ctx, target)
                 return
             }
             val landed = applyMode(am, current, target, zen, ctx)

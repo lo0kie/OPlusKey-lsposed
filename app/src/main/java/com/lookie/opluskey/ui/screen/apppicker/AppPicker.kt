@@ -339,6 +339,9 @@ private fun SettingsPage.AppPickerPlaceholders(
 @Composable
 private fun SettingsPage.AppListLoader(ui: AppPickerUiState) {
     LaunchedEffect(ui.refreshTick) {
+        //  刷新也算「这一页重新铺一遍」：重取排序快照，当前选中的重新排到最前
+        //  （页里点选期间不重排，见 `AppPickerUiState.refreshVisitOrder`）。
+        ui.refreshVisitOrder()
         //  重查之前先把上一次的失败摘掉：加载态的判据要求 `!failed`（见 `AppPickerChrome`），
         //  不清的话重试时界面还挂着「查询失败」，连转圈都不出现 —— 看起来像按了没反应。
         ui.failed = false

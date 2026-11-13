@@ -406,9 +406,11 @@ private fun SettingsPage.KeyMenuDialogHost(
                     //  只在**完全成功**时报：广播没发出去时 [write] 已经报过那条，别顶掉它
                     if (deleted == CommandsSave.Ok) {
                         // 名字得在 forget 之后取，否则 `selected` 已经指向不存在的键
+                        //  （键名画成名字框：与列表行、选择器同一套长相）
                         hint(
-                            I18n.get(Strings.TOAST_KEY_DELETED, "已删除 [%s]").format(selected.label),
+                            I18n.get(Strings.TOAST_KEY_DELETED, "已删除 %s"),
                             slot = HINT_SLOT_BINDING,
+                            chips = listOf(selected.label),
                         )
                     }
                     // 删掉的正是这一页**正在编辑的那一颗** —— 留在这里已经没有对象了（选中态会

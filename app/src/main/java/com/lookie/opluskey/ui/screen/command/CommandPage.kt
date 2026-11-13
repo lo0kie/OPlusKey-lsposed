@@ -41,7 +41,7 @@ import com.lookie.opluskey.ui.row.SectionTitleClick
 import com.lookie.opluskey.ui.row.SectionTitleTrailingMore
 import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
-import com.lookie.opluskey.ui.row.titleWithCount
+import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.state.page.CommandForm
 import com.lookie.opluskey.ui.state.page.singleLine
@@ -290,10 +290,13 @@ internal fun SettingsPage.CommandListPage(
                 CommandKind.FORM_TABS.forEach { kind ->
                     val group = commands.filter { it.kind == kind }
                     if (group.isEmpty()) return@forEach
-                    //  条数**拼进标题**（`单条命令 (3)`）—— 与动作网格那几组、「自定义命令」那一段
-                    //  同一个写法（`titleWithCount`）：半角括号、括号前一个空格、与标题同一份样式。
+                    //  条数走**行尾的 `n/50`**（`TitleCounter`）：这一页有上限，光写「有几条」
+                    //  看不出还剩几格 —— 与「命令名称 / 命令详情」那两格同一个画法。
                     //  两段各自数各自那几条，空的那段整段不画，所以这里写出来的都是真数。
-                    SectionTitle(text = titleWithCount(commandKindLabel(kind), group.size))
+                    SectionTitle(
+                        text = commandKindLabel(kind),
+                        trailing = { TitleCounter(group.size, Command.MAX_COMMANDS) },
+                    )
                     //  这一页没有表单要禁用：排序态只属于「多条」那张表单，进这一页时已经收掉了。
                     SavedCommandsSection(saved = group, ui = ui, tick = tick, onOpen = onOpen)
                 }

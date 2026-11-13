@@ -52,8 +52,9 @@ internal class HintCenter {
         slot: String? = null,
         holdMs: Long? = null,
         icon: ImageVector? = null,
+        chips: List<String> = emptyList(),
     ) {
-        queue.push(text, slot, holdMs, icon)
+        queue.push(text, slot, holdMs, icon, chips)
     }
 
     /** 把某个语义位上的提示提前收掉（见 [HintQueue.retire]）。 */

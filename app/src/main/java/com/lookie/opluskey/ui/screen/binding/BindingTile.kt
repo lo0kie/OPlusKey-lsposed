@@ -1,7 +1,6 @@
 package com.lookie.opluskey.ui.screen.binding
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.foundation.layout.Box
@@ -33,7 +32,6 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.ROW_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.theme.AppTheme
-import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_EXIT
@@ -375,28 +373,30 @@ internal fun SettingsPage.ActionTile(
                                 )
                             }
 
-                            //  取值格（不是入口格）的选中指示 —— 空心方框 / 带勾方框，见 [PageIcons.TileUnchecked]。
-                            //  形状与另两种字形同尺寸，不给触达区（点击交给整行）。
+                            //  取值格（不是入口格）的选中指示 —— **只有选中时画那一枚带勾方框**，
+                            //  未选中时那一格空着（原先画一个空心框，整片网格里每个没选的格子都挂着
+                            //  一个空圈，看着像「待办清单」）。
+                            //
+                            //  **仍恒占位**：外面这层 `Box` 与字形同尺寸，不占位时选中 / 未选中会让
+                            //  标题那列的可用宽度变、长名字跟着跳一下。
                             //
                             //  「录屏」那一格也走这里：它点开虽然弹弹窗，但**格子本身就是那个动作**
                             //  （三档只是它的状态），挂选择器字形等于告诉用户「下面还有一层清单」——
                             //  而那一层已经没有了（见 `ActionCatalog.clickKind` 的 `STATE` 档）。
-                            //
-                            //  这一档变的是**状态**（选没选），换的是字形、插不了值 ⇒ 交叉淡过去，
-                            //  曲线与旁边那片底色同源（[COLOR_FADE_SPEC]）；两种字形同尺寸，
-                            //  交叉期间盒子宽度不变，标题不会被推一下。
                             else -> {
-                                Crossfade(
-                                    targetState = selected,
-                                    animationSpec = COLOR_FADE_SPEC,
-                                    label = "TileChecked",
-                                ) { on ->
-                                    Icon(
-                                        if (on) PageIcons.TileChecked else PageIcons.TileUnchecked,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                        tint = entryIndicatorColor,
-                                    )
+                                Box(
+                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    //  淡入淡出与旁边那片底色同源（[COLOR_FADE_SPEC]）
+                                    AnimatedFade(visible = selected) {
+                                        Icon(
+                                            PageIcons.TileChecked,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                            tint = entryIndicatorColor,
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -76,8 +76,7 @@ internal fun injectKeyFromSystem(
 }
 
 /**
- * 补发一次**原生短按** —— 只给「只参与组合」那颗键收尾用（见 `SideKeyInterceptor` 的
- * `scheduleComboOnlyFallback`）。
+ * 补发**一条**原生事件 —— 只给「只参与组合」那颗键收尾用（见 `ComboOnlyNative`）。
  *
  * ## 为什么不能复用 [injectKeyFromSystem]
  *
@@ -86,20 +85,36 @@ internal fun injectKeyFromSystem(
  *  键码由按键路径自己带过来、外部给不出 —— 白名单在这里只会挡住正常使用。
  *  安全性来自调用方，不来自这张表；所以它是 `internal` 且没有任何广播入口指向它。
  *
+ * ## 为什么按「一条」而不是「一对」
+ *
+ *  短按那条路一次投 DOWN + UP 就够（系统只该看到一闪）；而**按住不放**那条路必须在窗口到点
+ *  只投 DOWN、等真实抬手再投 UP —— 系统的长按计时从收到 DOWN 那一刻起算，先投 UP 就等于
+ *  把这一按截成一次短按，原生长按（音量连续调 / 电源长按菜单）永远出不来。
+ *
  * ## 为什么是 ASYNC
  *
  *  [injectKeyFromSystem] 用 `WAIT_FOR_FINISH` 是因为截图要读结果码；这里只要「事件交出去」，
  *  而调用点在主 looper 的延迟任务上 —— 等它处理完就是把界面卡住一下。
  *
+ * ## 时间必须是「现在」
+ *
+ *  补出来的这一下就发生在投递这一刻：`downTime` 与 `eventTime` 都取当前时刻，不回溯成用户
+ *  真正按下的时刻。回溯看着能让长按早一点到，实际是把一条「按下已有一阵子」的事件塞进系统，
+ *  与真实事件的时序对不上 —— 而这一下要的只是「系统从现在开始按着」，不是「假装早就按着」。
+ *
+ * @param repeat 长按过程中的第几发重复（0 = 真正的按下）；转发的真实重复原样带过来
  * @return 提交出去了没有（异步投递，不代表系统已经处理）
  */
-internal fun injectNativeShortPress(keyCode: Int): Boolean {
+internal fun injectNativeKey(
+    keyCode: Int,
+    action: Int,
+    repeat: Int = 0,
+): Boolean {
     if (keyCode <= 0) return false
     val manager = inputManager(null) ?: return false
     val now = SystemClock.uptimeMillis()
     // 5 参构造是公开 API（见 `injectKeyFromSystem` 里那段）
-    injectOnce(manager, KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0), keyCode, INJECT_MODE_ASYNC)
-    injectOnce(manager, KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0), keyCode, INJECT_MODE_ASYNC)
+    injectOnce(manager, KeyEvent(now, now, action, keyCode, repeat), keyCode, INJECT_MODE_ASYNC)
     return true
 }
 
@@ -212,7 +227,7 @@ private var cachedManager: Any? = null
  */
 private const val INJECT_MODE_WAIT_FOR_FINISH = 2
 
-/** `INJECT_INPUT_EVENT_MODE_ASYNC` —— 投出去就返回，不等结果（补发原生短按用它）。 */
+/** `INJECT_INPUT_EVENT_MODE_ASYNC` —— 投出去就返回，不等结果（补发原生事件用它）。 */
 private const val INJECT_MODE_ASYNC = 0
 
 /** `InputEventInjectionResult.INPUT_EVENT_INJECTION_SUCCEEDED` —— 只有它算注入成功。 */

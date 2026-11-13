@@ -96,11 +96,24 @@ internal fun SettingsPage.LongPressCard(
             onVibrate = { on -> edit(target, LongPressEdit(repeatVibrate = on)) { "long_repeat_vibrate=${if (on) 1 else 0}" } },
             onInterval = { v -> edit(target, LongPressEdit(repeatIntervalMs = v)) { "long_repeat_interval_ms=$v" } },
             onPressMs = { v -> edit(target, LongPressEdit(pressMs = v)) { "long_press_ms=$v" } },
-            onFireOnReleaseToggle = { on -> edit(target, LongPressEdit(fireOnRelease = on)) { "long_fire_on_release=$on" } },
+            //  关掉「松手时触发」是**有代价**的：这颗键若正被某些按住手势当成「先按住的那一颗」，
+            //  那些手势会当场失效（判定侧那条上界会把组合判据整条截止）。所以关这一位走
+            //  `setFireOnRelease`：它先看有没有受影响的手势，有就先问一句；
+            //  开回来没有可失去的东西，直接写。
+            onFireOnReleaseToggle = { on ->
+                val keyTarget = target as? BindingTarget.Key
+                if (!on && keyTarget != null) {
+                    setFireOnRelease(keyTarget.id, on = false)
+                } else {
+                    edit(target, LongPressEdit(fireOnRelease = on)) { "long_fire_on_release=$on" }
+                }
+            },
             onReleaseToggle = { on -> editRelease(target, on = on) },
             onReleasePick = { pickingRelease = true },
         ),
     )
+    //  「关掉松手时触发会让按住手势失效」那一问 —— 整张卡挂一次（它是这一位的唯一入口）
+    FireReleaseOffDialog()
     //  挑额外动作：与命令页「挑一步」**同一个抽屉**（项目里挑动作只有这一个清单）。
     StepPickerSheet(
         show = pickingRelease,

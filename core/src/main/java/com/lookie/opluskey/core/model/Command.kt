@@ -246,6 +246,14 @@ data class BranchCondition(
          */
         const val APP_SEPARATOR = "||"
 
+        /**
+         * 一条应用条件里**最多**几个包名 —— 25。
+         *
+         *  挑应用页的多选闸门读它（超了只提示、不选中）。取 25 是按「这条条件在条件表那一格里
+         *  还要看得懂」定的：再多，`包1||包2||…` 在界面上只剩一串省略号，判定也是逐条比。
+         */
+        const val MAX_APP_PACKAGES = 25
+
         fun app(pkg: String): BranchCondition = BranchCondition(ConditionKind.APP.id, pkg)
 
         /** 多选版：几个包名装进同一条条件（判定为「或」）。 */
@@ -361,6 +369,14 @@ data class Command(
 
         /** 多条命令的步骤数上限；执行侧按文件里实际步数执行。 */
         const val MAX_STEPS = 9
+
+        /**
+         * 命令库里**每一类**最多几条 —— 50（单条与多条各算各的）。
+         *
+         *  两类分开计：大多数人只写单条，写多条的通常只录几条流程 —— 共用一个池子会让
+         *  一边挤掉另一边。50 是「这一页还翻得动」的量级。
+         */
+        const val MAX_COMMANDS = 50
     }
 }
 

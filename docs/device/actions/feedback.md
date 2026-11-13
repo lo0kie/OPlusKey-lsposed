@@ -276,6 +276,34 @@ sendSeeding logoPath:content://com.oplus.gesture.FileShareProvider/share_images/
 实现的两头：**图由界面层画**（`ui/model/icon/FluidCardArt`），**uri 由宿主侧拼**
 （`host/action/FluidAction#iconUri`）。
 
+## 四十三、执行时提示的两个落点：Toast 与流体云（2026-11-13）
+
+「执行时提示」（§40）原先只有 Toast 一条路。这一版多一档**用流体云提示**：同一句文案改由 §42
+那条宿主 Seedling SDK 发，左边那颗图标取**这一次执行的动作**。
+
+- **通道完全复用 §42**：`FluidAction.runText(text, logoFile)` 走的就是 `q(logo, text, showA)`
+  那一个方法 —— 执行提示不另开接口，也不碰 SystemUI 那条 `SEEDLING_SERVICE`。
+- **文案不换**：仍是 `ToastNotice.render` 拼出来的那一句（`$key` / `$gesture` / `$action`）。
+  换落点不换说法，所以「提示文案」那一行在两种落点下都读得通。
+- **图标为什么必须在界面层画**：动作图标是 Compose 的 `ImageVector`，而执行提示发生在宿主
+  主进程 —— 那边没有 Compose 运行时。界面层把配置里出现过的动作（`Config.actionTokens`，
+  与命令改名 / 删命令共用同一份遍历）画成 36×36 透明底、纯白描边的 png，落进
+  `files/share_images/`；文件名由 token 的 `hashCode` 决定（`FluidCard.actionNameOf`），
+  宿主按 token 用同一个算法找回来。
+- **缓存按文件名判**：文件已在就不重画（预热挂在设置页根上，配置每次写盘补画新出现的动作）。
+  `cmd:` 改了命令类型（单条 ↔ 多条）时 token 不变，图会停在旧形状，直到换绑或清数据 ——
+  不影响提示弹出来。
+- **文件不在时退通用图**：从没进过设置页 / 手工清过共享目录时，`logo` 退回模板自带那张
+  `precise_notification_icon.png`（`FluidAction.LOGO`），而不是空着。与 `fluid:` 那档不同的
+  是：执行提示**总会**给一个文件名（动作一定存在），所以不会出现「左边空着 = 用户没选」。
+- **失败不再回头弹 Toast**：`runText` 的失败回调传空 —— 再弹一条就是「提示失败的提示」，
+  而用户要的那一句照样没出现；日志里仍有一行 W 说清断在哪（AGENTS 五、2）。
+- 判据行两条连着看：`执行时提示：<整句>`（宿主执行器）→ `已请宿主弹流体云：<整句>（图标=…）`
+  （`FluidAction`）。只有前者没有后者 ⇒ 分流没走到流体云（看这一档的 `toastFluid` 生效值：
+  公共那份还是这一颗键自己那份）。
+- 配置位：`GlobalDto.toast_fluid` + `KeyDto` / `ComboDto` 的同名覆盖，`ConfigCodec.VERSION` 57。
+  「独立设置」里那一位与「执行时提示」同一个总开关门控。
+
 - 图源是模块**已经在用**的 Tabler 字形（`ImageVector`），落成 `36×36`、**透明底、纯白描边**
   的 png，文件名 `okey-fluid-<id>.png`（`|` 前面记的就是这个 id）。之所以分给界面层画：宿主
   进程没有 Compose 运行时，在那边引 `ImageVector` 就是 `NoClassDefFoundError`。

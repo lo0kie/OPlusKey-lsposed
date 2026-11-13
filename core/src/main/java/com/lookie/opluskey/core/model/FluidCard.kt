@@ -34,4 +34,25 @@ object FluidCard {
      *  执行时按 id 找回文件 —— 换图标不用重渲染别的，也不会互相覆盖。
      */
     fun nameOf(icon: String): String = if (icon.isEmpty()) ICON_NAME else "okey-fluid-$icon.png"
+
+    /**
+     * 「执行时提示」走流体云时，**被执行的那个动作**的图标文件名。
+     *
+     *  与 `fluid:` 那一档的区别：那边是用户点选的字形（id 就存在命令里），这边的图标由
+     *  **动作本身**决定（`actionCellIcon`），而 token 可能是一整条 shell 命令 —— 直接拼进
+     *  文件名会越界 / 带非法字符，所以按 [String.hashCode] 取一个稳定的短名。
+     *
+     *  两头必须同一份：界面层按这个名字落盘（`ui/model/icon/ActionCardArt`），宿主执行时
+     *  按同一个名字找回来（`host/action/notice/FluidAction`）。
+     */
+    fun actionNameOf(token: String): String = "$ACTION_PREFIX${token.hashCode().toUInt().toString(HEX_RADIX)}.png"
+
+    /**
+     * [actionNameOf] 那一族文件名共用的前缀 —— 清理已经不在配置里的旧图时靠它认出来
+     * （`ui/model/icon/ActionCardArt`），别拿去认 `fluid:` 那一档。
+     */
+    const val ACTION_PREFIX = "okey-action-"
+
+    /** [actionNameOf] 里那个进制的基数 —— 只是为了让那一行不出现裸数字。 */
+    private const val HEX_RADIX = 16
 }

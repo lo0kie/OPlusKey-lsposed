@@ -29,6 +29,7 @@ import com.lookie.opluskey.ui.model.page.ROW_END_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.opticalCenter
 import com.lookie.opluskey.ui.model.theme.COLOR_FADE_SPEC
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.row.ChipText
 import io.github.suqi8.coui.kmp.basic.HorizontalDivider
 import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.Text
@@ -53,6 +54,14 @@ internal class PickerOption(
     val label: String,
     /** `false` = 置灰（点了不响应）：这一档在这一趟里不可选（例如取值已经用过了）。 */
     val enabled: Boolean = true,
+    /**
+     * 文案里那些**名字框**（`label` 里的 `%s` 占位符按顺序换成它们）—— 空表 = 整行就是一句纯文字。
+     *
+     *  为什么不是「把名字拼进文案」：键名在这个界面里一直是**一枚圆角框**（`NameChip`，
+     *  列表行、顶栏副标题、场景条件都用它），拼成一串字之后同一颗键在两处长出两种长相。
+     *  占位符由文案自己留着（`按下 %s 或 %s 后等另一颗`）：语序是翻译的事，框是界面的事。
+     */
+    val chips: List<String> = emptyList(),
 )
 
 /**
@@ -86,6 +95,8 @@ internal fun PickerRow(
     onClick: () -> Unit,
     enabled: Boolean = true,
     traits: PickerRowTraits = PickerRowTraits(),
+    /** 文案里那几个 `%s` 位置换成名字框（见 [PickerOption.chips]）—— 空表 = 纯文字。 */
+    chips: List<String> = emptyList(),
 ) {
     val colors = COUITheme.colorScheme
     //  弹窗里这一列也算「能点的行」：默认振一下（见 `LocalTick`）
@@ -135,7 +146,9 @@ internal fun PickerRow(
     ) {
         PickerRowContent(
             label = label,
+            chips = chips,
             labelColor = labelColor,
+            enabled = enabled,
             checkAlpha = checkAlpha,
             checkTint = colors.primary,
         )
@@ -143,26 +156,49 @@ internal fun PickerRow(
 }
 
 /**
- * [PickerRow] 那一行的内容（文案 + 行尾对勾）—— 行壳与可点性留在 [PickerRow]。
+ * [PickerRow] 那一行的内容（文案 + 名字框 + 行尾对勾）—— 行壳与可点性留在 [PickerRow]。
  *
  *  行首**不留图标列**（用户口径）：文案从行内边距直接起，标题左缘就是 [PickerRows] 那条
  *  分隔线的起点（两者同一个数，见那边的注释）。
+ *
+ *  ## 文案里带名字框的那一档
+ *
+ *  [chips] 非空时按 `label` 里的 `%s` 把这一行**切成若干段文字 + 若干枚框**，交给 [ChipText]
+ *  流式排布（装不下就换行）：名字框与文字同一档字号、同一条基线，框本身走 [NameChip] 那一份长相。
+ *  切出来的段去掉首尾空格 —— 段与段之间的空隙由 `spacedBy` 给，模板里不必留空格
+ *  （留了在窄屏上还会被折成一行只有一个空格）。
  */
 @Composable
 private fun RowScope.PickerRowContent(
     label: String,
+    chips: List<String>,
     labelColor: Color,
+    enabled: Boolean,
     checkAlpha: Float,
     checkTint: Color,
 ) {
-    Text(
-        text = label,
-        style = COUITheme.textStyles.body1,
-        color = labelColor,
-        //  行高由 [PICKER_ROW_MIN_HEIGHT] 定住、字在里面竖居中 —— 行盒居中不等于墨迹居中，
-        //  汉字会看着偏高那一点点。与网格格 / 胶囊 / 表格单元格同一档光学修正（见 `opticalCenter`）。
-        modifier = Modifier.weight(1f).opticalCenter(COUITheme.textStyles.body1),
-    )
+    val style = COUITheme.textStyles.body1
+    //  纯文字那一档（绝大多数行）：一个 `Text` 就够，别为它套一层流式布局
+    if (chips.isEmpty()) {
+        Text(
+            text = label,
+            style = style,
+            color = labelColor,
+            //  行高由 [PICKER_ROW_MIN_HEIGHT] 定住、字在里面竖居中 —— 行盒居中不等于墨迹居中，
+            //  汉字会看着偏高那一点点。与网格格 / 胶囊 / 表格单元格同一档光学修正（见 `opticalCenter`）。
+            modifier = Modifier.weight(1f).opticalCenter(style),
+        )
+    } else {
+        //  文案里带名字框的那一档 —— 切分与框的长相都在 `ChipText` 里（提示条那条用的是同一份）
+        ChipText(
+            template = label,
+            chips = chips,
+            textStyle = style,
+            textColor = labelColor,
+            enabled = enabled,
+            modifier = Modifier.weight(1f),
+        )
+    }
     Box(Modifier.size(ROW_END_ICON_SIZE), contentAlignment = Alignment.Center) {
         Icon(
             PageIcons.MenuCheck,
@@ -243,6 +279,7 @@ internal fun ColumnScope.PickerRows(
                 onClick = { onClick(index) },
                 enabled = option.enabled,
                 traits = PickerRowTraits(interactive = interactive),
+                chips = option.chips,
             )
         }
     }

@@ -44,6 +44,7 @@ import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.tickNow
 import com.lookie.opluskey.ui.model.icon.IconTint
+import com.lookie.opluskey.ui.model.icon.PrewarmActionIcons
 import com.lookie.opluskey.ui.model.theme.AppTheme
 import com.lookie.opluskey.ui.model.theme.PAGE_COVER_DIM
 import com.lookie.opluskey.ui.model.theme.PAGE_TRANSITION
@@ -263,6 +264,9 @@ private fun SettingsPage.PageEffects(
     }
     DebugChannelBridge()
     LinkCheckBridge()
+    //  「执行时提示走流体云」要用动作自己的图标，而图只能在这边画 —— 配置一变就补画新的那几张
+    //  （见 `ui/model/icon/ActionCardArt`）
+    PrewarmActionIcons()
     // 「自己刚写下去的那一份还在路上」的**到期**：回包一到就提前结束（见 `onInjectReady`），
     //  一直等不到就在宽限期满时摘掉这一位 —— 页面随即按真实结论判「未同步」。
     //  少了这条到期，乐观态会一直挂着，注入侧真出问题时页面上看不出来。

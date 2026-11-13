@@ -15,7 +15,8 @@ import com.lookie.opluskey.ui.wire.appTargetLabelOf
 // 「选择应用」页那三张**拦人的脸** —— 都是「留在这一页」，什么都不写。
 //
 // 前两张只在**点 FAB** 那一刻弹：点行只是往下一级走，到不了写入那一步。
-// 第三张是**退页**那一刻弹（触发点在 `SettingsPage.goBack`）。
+// 第三张是**退页**那一刻弹（触发点在 `SettingsPage.goBack`）—— 结束应用那趟没有二级页，
+// 挑中一行就点 FAB，所以「挑了却没确认就退」也只有这一张管得着。
 
 /**
  * 三张确认窗的挂载点。
@@ -152,7 +153,7 @@ private fun SettingsPage.DiscardPickDialog() {
     val picked = picker.draft
     ConfirmDialog(
         show = overlays.confirmLeavePick,
-        title = I18n.get(Strings.DIALOG_DISCARD_PICK_TITLE, "放弃本次选择"),
+        title = I18n.get(Strings.DIALOG_DISCARD_PICK_TITLE, "放弃选择"),
         summary =
             picked?.let {
                 I18n.format(

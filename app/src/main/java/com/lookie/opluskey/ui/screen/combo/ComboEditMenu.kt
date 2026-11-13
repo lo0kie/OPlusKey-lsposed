@@ -20,7 +20,9 @@ import com.lookie.opluskey.ui.dialog.MenuEntry
 import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.text.BRANCHES_TITLE
+import com.lookie.opluskey.ui.screen.binding.needsPressModeRepair
 import com.lookie.opluskey.ui.screen.binding.openKeySettings
+import com.lookie.opluskey.ui.screen.binding.repairPressMode
 import com.lookie.opluskey.ui.screen.command.scenarioMenuSummary
 import com.lookie.opluskey.ui.state.binding.ComboEditState
 import com.lookie.opluskey.ui.state.page.SettingsTarget
@@ -90,6 +92,11 @@ internal fun SettingsPage.ComboEditMenu() {
                             onAskDelete = {
                                 open = false
                                 dialogs.delete = true
+                            },
+                            onRepairPressMode = {
+                                open = false
+                                val current = ComboEditState.holdOf(ComboEditState.page)
+                                combo?.let { repairPressMode(it, current) }
                             },
                         ),
                 ),
@@ -207,6 +214,8 @@ private class ComboMenuActions(
     val onOpenBranches: () -> Unit,
     val onToggleEnabled: () -> Unit,
     val onAskDelete: () -> Unit,
+    /** 「修补当前按法」—— 把当前那一种按住顺序的起点键改回「松手时触发」（见 `repairPressMode`）。 */
+    val onRepairPressMode: () -> Unit,
 )
 
 /**
@@ -239,6 +248,10 @@ private fun SettingsPage.comboMenuEntries(
         //  都出自 `SettingsTarget.disabledReason`，与「按键绑定」页那一行、两页顶栏那颗设置键
         //  同一份实现。上面「系统场景」不跟：停用期间先把场景表配好，是常见顺序。
         val settingsBlocked = SettingsTarget.Combo(id).disabledReason(cfg)
+        //  「修补当前按法」只看**当前正编的那一档按法**（`ComboEditState` 里那一页选中的顺序）：
+        //  它修的是「这一页按下去会照着哪一套动作执行」。等窗口、或那颗键已经是「松手时触发」时
+        //  这一行没有可修的东西 —— 灰着并说明，比整行忽隐忽现好读。
+        val currentHold = combo?.let { cfg.needsPressModeRepair(it, ComboEditState.holdOf(ComboEditState.page)) } == true
         listOf(
             //  「系统场景」与下一行同属「进下一页」，与下面那两行不是一类事，用加深带隔开。
             //  顺序（用户口径）：**场景在前、独立设置其次** —— 场景说的是这一档「怎么分流」，
@@ -266,6 +279,15 @@ private fun SettingsPage.comboMenuEntries(
                 onPick = actions.onOpenSettings,
             ),
             MenuEntry.Row(
+                title = I18n.get(Strings.COMBO_REPAIR_MODE, "修补当前按法"),
+                //  字形取「松手时触发」那一颗：这一行修的正是那一位（起点键的长按被改回了到点执行）
+                icon = PageIcons.LongFireOnRelease,
+                dividerBefore = true,
+                enabled = currentHold,
+                disabledHint = I18n.get(Strings.COMBO_REPAIR_MODE_HINT, "当前按法不需要修补"),
+                onPick = actions.onRepairPressMode,
+            ),
+            MenuEntry.Row(
                 title =
                     if (enabled) {
                         I18n.get(Strings.COMBO_DISABLE, "停用组合按键")
@@ -274,7 +296,6 @@ private fun SettingsPage.comboMenuEntries(
                     },
                 //  停用 / 启用各一颗（锁 / 开锁）：这一行本来就随状态换文案，图标跟着换才一致
                 icon = if (enabled) PageIcons.KeyLocked else PageIcons.KeyUnlocked,
-                dividerBefore = true,
                 onPick = actions.onToggleEnabled,
             ),
             MenuEntry.Row(

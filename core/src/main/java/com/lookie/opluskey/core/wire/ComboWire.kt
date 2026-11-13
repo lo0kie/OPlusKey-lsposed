@@ -103,6 +103,38 @@ object ComboWire {
         /** 这一组自己的「无操作时执行按键命令」；`null` = 没写过（跟随公共）。 */
         val passthrough: Boolean? = null,
         /**
+         * 两条**触发方式**的每组覆盖（`ComboKey.windowOn` / `holdOn`）；`null` = 跟随公共设置。
+         *
+         *  公共那一份跟着 `ConfigFields` 那条广播走，这里只带「这一组自己写过没有」——
+         *  注入侧按 `Config.comboWindowOnFor` / `comboHoldFor` 合起来取，与原来逐字一致。
+         */
+        val windowOn: Boolean? = null,
+        val holdOn: Boolean? = null,
+        /**
+         * 按住那几套动作（`ComboKey.singleA` / `longA` / `singleB` / `longB`）——
+         * **必须带**：注入侧要它们才答得出「这一档到底绑没绑动作」（`ChordGuard` 决定吞不吞
+         * ROM 的组合判定），也才写得对判据日志里的「按法 → 什么」。少了这四项，按住那两种按法
+         * 在注入侧看起来永远是「无操作」，于是配了动作的组合被当成空档放行。
+         */
+        val singleA: String = Action.NONE,
+        val longA: String = Action.NONE,
+        val singleB: String = Action.NONE,
+        val longB: String = Action.NONE,
+        /**
+         * 手动加过的按住顺序（`ComboKey.holdOrders`）—— 判定侧要它才认那两种顺序。
+         *
+         *  少了这一项，注入侧读回来就是「一条都没加」⇒ 按住那条整条不成立（界面上配了动作、
+         *  按了却没反应），正是那类一半接线的老毛病。
+         */
+        val holdOrders: List<Int> = emptyList(),
+        /**
+         * 这一组自己的「首键要先按住多久」（毫秒，`ComboKey.holdMinMs`）；`0` = 跟随公共设置。
+         *
+         *  判定在注入侧（`ComboDetector` 的 `holdMinFor`）—— 不带这一项，每组只能等公共那一档，
+         *  而界面上又能给每组各设一份（一半接线）。
+         */
+        val holdMinMs: Int = ComboKey.HOLD_MIN_FOLLOW_GLOBAL,
+        /**
          * **系统场景**（`ComboKey.scenes`）—— 注入侧要它才判得出「这一组到底绑没绑动作」。
          *
          *  `ChordGuard` 决定吞不吞 ROM 的组合判定时，把「场景表非空」也算作有动作可做；
@@ -255,6 +287,14 @@ object ComboWire {
             windowMs = combo.windowMs,
             useOwnSettings = combo.useOwnSettings,
             passthrough = combo.passthrough,
+            windowOn = combo.windowOn,
+            holdOn = combo.holdOn,
+            holdOrders = combo.holdOrders,
+            holdMinMs = combo.holdMinMs,
+            singleA = combo.singleA.token,
+            longA = combo.longA.token,
+            singleB = combo.singleB.token,
+            longB = combo.longB.token,
             scenes = combo.scenes.map { WireScene.of(it) },
         )
 
@@ -288,6 +328,19 @@ object ComboWire {
             //  少了这两位，上面那个窗口在判定侧永远算不出来（见 `WireCombo` 里那段说明）
             useOwnSettings = useOwnSettings,
             passthrough = passthrough,
+            //  两条触发方式的每组覆盖：`null` = 跟随公共，原样带过去（判定侧按 `Config` 那两个
+            //  函数合起来取，这一层不替它算）
+            windowOn = windowOn,
+            holdOn = holdOn,
+            //  认不出的顺序编号丢掉（判定侧没有对应的槽）
+            holdOrders = holdOrders.filter { it == ComboKey.HOLD_FIRST || it == ComboKey.HOLD_SECOND }.distinct(),
+            //  「首键要先按住多久」：0 = 跟随公共设置，原样留着；设过的钳进那一档区间
+            holdMinMs = if (holdMinMs <= 0) ComboKey.HOLD_MIN_FOLLOW_GLOBAL else clampHoldMin(holdMinMs),
+            //  按住那几套动作：判定侧判「绑没绑」与写日志都要它们
+            singleA = Action.parse(singleA),
+            longA = Action.parse(longA),
+            singleB = Action.parse(singleB),
+            longB = Action.parse(longB),
             //  场景表：注入侧只读「非空与否」，但整块带过来才能让两边看到的是同一张表
             scenes = scenes.mapNotNull { it.toScene() },
         )
@@ -296,6 +349,12 @@ object ComboWire {
     /** 按键间隔钳进字段表那一档（与公共那份同一个区间，上下限只写一次）。 */
     private fun clampWindow(value: Int): Int {
         val kind = ConfigFields.F_COMBO_WINDOW_MS.kind as? ConfigFields.Kind.Number ?: return value
+        return value.coerceIn(kind.min, kind.max)
+    }
+
+    /** 「首键要先按住多久」同上：区间只在字段表写一次。 */
+    private fun clampHoldMin(value: Int): Int {
+        val kind = ConfigFields.F_COMBO_HOLD_MIN_MS.kind as? ConfigFields.Kind.Number ?: return value
         return value.coerceIn(kind.min, kind.max)
     }
 

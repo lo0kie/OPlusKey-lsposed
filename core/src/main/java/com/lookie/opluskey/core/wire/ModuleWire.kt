@@ -59,6 +59,14 @@ object ModuleWire {
     const val EXTRA_REPEAT = "repeat"
 
     /**
+     * 广播里携带的「**这一下是怎么按出来的**」—— `ComboKey.HOLD_WINDOW`（窗口内等齐）/
+     * `HOLD_FIRST`（先按住第一颗）/ `HOLD_SECOND`（先按住第二颗）。
+     *
+     *  只有组合那一条带这一格：单键没有这个维度，缺省按 0 读。
+     */
+    const val EXTRA_HOLD = "hold"
+
+    /**
      * 广播携带的发送时刻（`SystemClock.elapsedRealtime()`，跨进程同源）。
      * 宿主据此丢弃冻结期间积压、解冻才送到的过期手势，判据见 `host/GestureReceiver` 的 `STALE_MS`。
      */

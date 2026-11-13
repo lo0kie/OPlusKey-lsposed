@@ -105,13 +105,37 @@ internal object FluidAction {
         action: Action.Fluid,
         onFailure: (CommandFailure) -> Unit,
     ) {
+        //  没传图标（`fluid:正文`）就**连 logo 都不给**：胶囊左边那一位空着。
+        //  以前这里会退回一张默认图标（界面层画的 `okey-fluid.png`，再退一步是模块 assets 里
+        //  那张），于是「没选图标」看起来与「选了默认那颗」一模一样 —— 用户分不出自己到底
+        //  选没选，也没法让它干脆不带图。模板那一段认空串，渲染端就不画那一格。
+        val logo = if (action.icon.isEmpty()) "" else FluidCard.nameOf(action.icon)
+        runText(context, action.message, logo, onFailure)
+    }
+
+    /**
+     * 弹一条**指定文案与图标文件**的胶囊 —— 「执行时提示」走流体云时用的就是它。
+     *
+     *  与 [run] 的差别只在图标从哪来：`fluid:` 的图标是用户在命令里点选的字形（id 存在命令里），
+     *  而执行时提示的图标取**被执行的那个动作**自己的字形 —— 界面层按
+     *  [FluidCard.actionNameOf] 预渲染成 png，这里按同一个名字找回来。
+     *
+     * @param logoFile `files/share_images/` 下的文件名；空串 = 不要图标。
+     *   传了名字但文件不在（还没渲染过 / 刚导入配置）时退回包里那张通用图 —— 用户**要**图标，
+     *   给一张通用图比空着更接近他的意思。
+     */
+    fun runText(
+        context: Context?,
+        text: String,
+        logoFile: String,
+        onFailure: (CommandFailure) -> Unit,
+    ) {
         val ctx =
             context ?: run {
                 XLog.w("弹流体云跳过：没有 Context")
                 onFailure(CommandFailure.UNKNOWN)
                 return
             }
-        val text = action.message
         if (text.isEmpty()) {
             //  手改配置可能写成空的（界面那边 `isBarePrefix` 已经把「只有前缀」判成坏配置）
             XLog.w("弹流体云跳过：正文是空的")
@@ -125,14 +149,7 @@ internal object FluidAction {
                 onFailure(CommandFailure.UNKNOWN)
                 return
             }
-            //  没传图标（`fluid:正文`）就**连 logo 都不给**：胶囊左边那一位空着。
-            //  以前这里会退回一张默认图标（界面层画的 `okey-fluid.png`，再退一步是模块 assets 里
-            //  那张），于是「没选图标」看起来与「选了默认那颗」一模一样 —— 用户分不出自己到底
-            //  选没选，也没法让它干脆不带图。模板那一段认空串，渲染端就不画那一格。
-            //
-            //  传了图标但文件还没渲染出来（刚导入配置、还没进过设置页）：仍退回包里那张通用图 ——
-            //  用户是**选过**的，给一张通用图比空着更接近他的意思。
-            val logo = if (action.icon.isEmpty()) "" else iconUri(ctx, action.icon) ?: LOGO
+            val logo = if (logoFile.isEmpty()) "" else iconUri(ctx, logoFile) ?: LOGO
             entry.send.invoke(entry.instance, logo, text, SHOW_ANIM)
             //  判据级：胶囊到底弹没弹，下一步看宿主自己那行
             //  `ActionKeyFluidCloudManager: showSendling onIntentResultCodeCallBack--:… i:…`
@@ -157,14 +174,17 @@ internal object FluidAction {
      *  **图只由界面层画**（`ui/model/icon/FluidCardArt`：图标源是模块已引用的 Tabler 字形，
      *  只有带 Compose 的那一侧画得出来），这里只负责「找到那一张、把它的 uri 组出来」。
      *
-     *  文件不在（还没渲染过这一颗）返回 `null`，退路由调用方定 —— 见 [run] 里 `logo` 那一处。
+     *  文件不在（还没渲染过这一颗）返回 `null`，退路由调用方定 —— 见 [runText] 里 `logo` 那一处。
+     *
+     * @param fileName `files/share_images/` 下的文件名（`fluid:` 走 `FluidCard.nameOf`，
+     *   执行时提示走 `FluidCard.actionNameOf`）
      */
     private fun iconUri(
         ctx: Context,
-        icon: String,
+        fileName: String,
     ): String? =
         try {
-            val file = File(File(ctx.filesDir, FluidCard.SHARE_DIR), FluidCard.nameOf(icon))
+            val file = File(File(ctx.filesDir, FluidCard.SHARE_DIR), fileName)
             //  界面层还没渲染过这一颗：交给调用方，这里不自己造图
             if (!file.isFile) return null
             val uri = "content://$ICON_AUTHORITY/${FluidCard.SHARE_DIR}/${file.name}"

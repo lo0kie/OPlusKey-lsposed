@@ -159,7 +159,7 @@ private fun SettingsPage.HomeHeaderConfirmDialogs() {
     ConfirmDialog(
         show = overlays.confirmResetModule,
         title = I18n.get(Strings.DIALOG_RESET_MODULE_TITLE, "重置模块"),
-        summary = I18n.get(Strings.DIALOG_RESET_MODULE_MESSAGE, "配置（含列表）、命令与变量、界面状态回到出厂，**不可恢复**。"),
+        summary = I18n.get(Strings.DIALOG_RESET_MODULE_MESSAGE, "配置（含列表）、命令与变量、界面状态回到出厂。\n**不可恢复**。"),
         action = I18n.get(Strings.DIALOG_RESET_MODULE_CONFIRM, "重置"),
         onDismiss = { overlays.confirmResetModule = false },
         onConfirm = {

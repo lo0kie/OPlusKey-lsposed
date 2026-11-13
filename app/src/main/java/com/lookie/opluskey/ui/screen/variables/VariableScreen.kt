@@ -32,6 +32,7 @@ import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.SectionTitle
+import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.state.signal.VarListSignal
 import com.lookie.opluskey.ui.style.VisibleAreaCentered
 import com.lookie.opluskey.ui.style.visibleAreaHeight
@@ -86,6 +87,13 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
         if (fresh == null) {
             XLog.w("变量：新建被拒（名字或初始值不合法）—— $name / $type")
             hint(I18n.get(Strings.VAR_FAILED, "改不了"))
+            return
+        }
+        //  上限在**界面上先说一句**：`VariableStore.add` 那边被拒时只能回一个 `false`，
+        //  与「写盘失败」同一句话，说不清是哪一个。
+        if (vars.size >= Variable.MAX_COUNT) {
+            XLog.w("变量：新建被拒（已到上限 ${Variable.MAX_COUNT} 个）")
+            hint(I18n.format(Strings.VAR_LIMIT, Variable.MAX_COUNT))
             return
         }
         scope.launch {
@@ -158,7 +166,12 @@ internal fun SettingsPage.VariableScreen(scrollBehavior: ScrollBehavior) {
                     )
                 }
             } else {
-                SectionTitle(I18n.get(Strings.VARIABLES_TITLE, "自定义变量列表"))
+                //  条数走**行尾的 `n/50`**（`TitleCounter`）：变量有上限，光写「有几个」
+                //  看不出还剩几格 —— 与命令列表、常用命令那两处同一个画法。
+                SectionTitle(
+                    text = I18n.get(Strings.VARIABLES_TITLE, "自定义变量列表"),
+                    trailing = { TitleCounter(vars.size, Variable.MAX_COUNT) },
+                )
                 CardList(rows = vars.map { rowOf(it) })
                 //  页底留白 —— 与全项目同一档、同一种写法（挂在滚动内容里）；
                 //  空态那一支自己就是一屏，不吃这一档（吃了会把中线抬上去半档）

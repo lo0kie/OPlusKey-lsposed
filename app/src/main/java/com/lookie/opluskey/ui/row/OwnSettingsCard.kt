@@ -27,7 +27,7 @@ import com.lookie.opluskey.ui.model.icon.PageIcons
  *
  * ## 关着时显示**生效值**，不是这一档自己存的那份
  *
- *  这一点原先写错过：卡片直接读 `owner` 上的五位，而总开关关着时那五位**不参与取值**。
+ *  这一点原先写错过：卡片直接读 `owner` 上的那几个值，而总开关关着时它们**不参与取值**。
  *  于是「公共开了振动、这颗键自己那份还是默认的关」时，这一页显示「振动反馈：关（灰）」——
  *  而按下去明明会振。同一页下半的「组合按键设置」两行一直读的是生效值
  *  （`comboPassthroughFor` / `comboWindowFor`），只有上面这张卡不一样。
@@ -290,6 +290,18 @@ private fun SettingsPage.toastRows(
         ) {
             edit(OwnField.TOAST) { v -> v.copy(toastOnRun = it) }
         },
+        CardRow.Switch(
+            title = I18n.get(Strings.HOME_TOAST_FLUID_TITLE, "用流体云提示"),
+            summaryOn = I18n.get(Strings.HOME_TOAST_FLUID_DESC_ON, "提示显示在状态栏的流体云里"),
+            summaryOff = I18n.get(Strings.HOME_TOAST_FLUID_DESC_OFF, "提示以 Toast 弹出"),
+            icon = PageIcons.FormatFluid,
+            checked = show.toastFluid,
+            enabled = rowsEnabled,
+            disabledHint = ownHint,
+            visible = show.toastOnRun,
+        ) {
+            edit(OwnField.FLUID) { v -> v.copy(toastFluid = it) }
+        },
         CardRow.Item(
             title = I18n.get(Strings.HOME_TOAST_TEMPLATE_TITLE, "提示文案"),
             //  这一句**不给兜底**：里面带 `$`，兜底审计是按源码字面量逐字比的。
@@ -364,6 +376,7 @@ internal fun KeyConfig.withOwn(values: OwnSettingsValues): KeyConfig =
         vibrate = values.vibrate,
         vibrateStrength = values.vibrateStrength,
         toastOnRun = values.toastOnRun,
+        toastFluid = values.toastFluid,
         toastTemplate = values.toastTemplate,
         ownSettingsSeeded = values.ownSettingsSeeded,
     )
@@ -376,6 +389,7 @@ internal fun ComboKey.withOwn(values: OwnSettingsValues): ComboKey =
         vibrate = values.vibrate,
         vibrateStrength = values.vibrateStrength,
         toastOnRun = values.toastOnRun,
+        toastFluid = values.toastFluid,
         toastTemplate = values.toastTemplate,
         ownSettingsSeeded = values.ownSettingsSeeded,
     )
@@ -392,7 +406,7 @@ internal fun ComboKey.withOwn(values: OwnSettingsValues): ComboKey =
  *  那一颗自己又关回去了」）。按字段合并之后，**只有手指真点到的那一项会变**，
  *  别的项有多旧都不影响。
  */
-internal enum class OwnField { USE_OWN, COLOR_OS, VIBRATE, STRENGTH, TOAST, TEMPLATE }
+internal enum class OwnField { USE_OWN, COLOR_OS, VIBRATE, STRENGTH, TOAST, FLUID, TEMPLATE }
 
 /** 用 [src] 里那一项的值替换自己这一项（其余字段不动）。 */
 internal fun OwnSettingsValues.withField(
@@ -405,6 +419,7 @@ internal fun OwnSettingsValues.withField(
         OwnField.VIBRATE -> copy(vibrate = src.vibrate)
         OwnField.STRENGTH -> copy(vibrateStrength = src.vibrateStrength)
         OwnField.TOAST -> copy(toastOnRun = src.toastOnRun)
+        OwnField.FLUID -> copy(toastFluid = src.toastFluid)
         OwnField.TEMPLATE -> copy(toastTemplate = src.toastTemplate)
     }
 
@@ -419,6 +434,7 @@ internal data class OwnSettingsValues(
     override val vibrate: Boolean,
     override val vibrateStrength: Int,
     override val toastOnRun: Boolean,
+    override val toastFluid: Boolean,
     override val toastTemplate: String,
     override val ownSettingsSeeded: Boolean = false,
 ) : OwnSettings {
@@ -433,6 +449,7 @@ internal fun OwnSettings.values(): OwnSettingsValues =
         vibrate = vibrate,
         vibrateStrength = vibrateStrength,
         toastOnRun = toastOnRun,
+        toastFluid = toastFluid,
         toastTemplate = toastTemplate,
         ownSettingsSeeded = ownSettingsSeeded,
     )
