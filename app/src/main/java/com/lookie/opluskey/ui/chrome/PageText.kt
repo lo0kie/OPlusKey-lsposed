@@ -218,11 +218,17 @@ internal fun SettingsPage.draftToLibrary(form: CommandForm = commandDraft.draft.
     val cmd =
         when (form.kind) {
             CommandKind.SINGLE -> {
+                val body = form.single.trim()
+                //  [Command.root] 只对 `shell:` 有意义（判据 `Action.usesRoot`）—— 其余写法上那个
+                //  开关根本不给用户看，所以**也不落盘**：存下去的那条直接走模型默认值，与界面上
+                //  能看见的东西一一对应。照抄 `form.root` 的话，表单里残着上一次的值（`reset()`
+                //  归 false、`load()` 灌的是上一个真实取值），一条 `toast:` 命令的配置文件里就会
+                //  多出一个 `root: true`，读起来像「这条提示要以 root 执行」。
                 Command(
                     name,
                     CommandKind.SINGLE,
-                    single = form.single.trim(),
-                    root = form.root,
+                    single = body,
+                    root = if (Action.parse(body).usesRoot) form.root else Command.DEFAULT_ROOT,
                 )
             }
 

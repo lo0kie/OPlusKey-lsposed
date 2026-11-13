@@ -24,15 +24,20 @@
 | `ui/SettingsPage.kt` 行数                | **681**                                                                | `wc -l ui/SettingsPage.kt`                                                          |
 | `inject/ProbeChannel.kt` 行数            | 338（`call` 那族在 `ProbeCall.kt`，四个 op 在 `ProbeOps.kt`）          | `wc -l inject/Probe*.kt`                                                            |
 | `host/action/MiniWindowLauncher.kt` 行数 | 814（常量与反射面在 `MiniWindowFacts.kt`，验收在 `MiniWindowVerify.kt`） | `wc -l host/action/MiniWindow*.kt`                                                  |
-| 单文件最大行数                           | **945**（`core/i18n/Strings.kt`）；全仓**无 > 1000 行**的文件          | `find . -name '*.kt' \| xargs wc -l \| sort -n \| tail`                             |
 | 宿主入口编排                             | `GestureReceiver` **346** 行 + `GestureExec` **650** 行                | `python3 tools/audit-arch.py`                                                       |
 | 业务规则的副本数                         | 8 条判据全达标（两级闸门 0 处手写、失败分类 0 处手写、动作标题 1 处实现 …） | `python3 tools/audit-arch.py`                                                       |
 | 屏文件 import 页面                       | 68 —— 屏目录按功能切成 3~4 块之后跟着涨，**不是耦合指标**，别做趋势线  | `grep -rl 'import com.lookie.opluskey.ui.SettingsPage' ui/screen/`                  |
 | 零引用 import                            | 0，且由 detekt 拦下                                                    | `./gradlew :app:detekt`（`UnusedImports` 已在 `config/detekt/detekt.yml` 显式打开） |
 
-**规模那两行（千行文件 / 单文件最大行数）自 2026-11-11 起由 `tools/audit-ratchet.py` 接管**：
-它把实测值记成上限（`tools/ratchet.txt`），**只许降**，超限即红。本表不再手工维护这两个数
-—— 要看现状就跑那条命令，别在这里抄一份会过期的。
+**规模那几项现在的口径（2026-11-13 改过）**：`SettingsPage` 状态字段与页面扩展成员由
+`tools/audit-ratchet.py` 按**绝对阈值**看着（当前 45 / 700，阈值在 `tools/ratchet.txt`）——
+给的是「失控线」，正常加功能碰不到，越线才红。表里那两个数（24 / 368）是 2026-10-28 的快照，
+按上一条「数字不回填」留着，看现状跑 `python3 tools/audit-ratchet.py`。
+
+**单文件行数不再有闸**：原先由那个脚本按「只许降」的上限管着，实测是一次都没降过（8 次提交
+改 8 次上限），而且数的是**物理行数含注释**——本仓库注释占比 50–70%，于是「把判据写清楚」
+会被记账。现在只有 `tools/audit-coupling.py` 里 1500 行那条**警告**（那是「去看一眼」，
+不是「改基准」）。
 
 **边数 27 → 31 → 30 → 32 → 31 有两个来源，都不是新增耦合**：`ui/hook` 从 `ui` 档里拆出来时量具变细，
 原先记在别档的五条外连与 `root` 那一条各归各位，同时腾出位置新增三条「不许反向依赖 `ui.hook`」的禁止边（见五）；

@@ -208,11 +208,13 @@ op_ic_silence.svg                                  静音那道斜杠
 precise_notification_icon.png                      通用的「通知」小图（模板自带的默认）
 ```
 
-⇒ **图标完全由调用方那个 `logo` 决定**，路径相对资源包的 `assets/images/`（写文件名即可）。
-我们第一版抄了响铃那条（`op_ring.json` + `showA=true`），所以胶囊左边是一颗铃声图标 ——
-那不是模板默认，是我们自己选的。现在换成 `precise_notification_icon.png` + `showA=false`：
-通用小图 + 静态槽。**别再传 `.json` 配 `showA=false`**（image 槽读不了 lottie，会空），
-反之 png 配 `showA=true` 也一样。
+⇒ **图标完全由调用方那个 `logo` 决定**，值是**包内相对路径** —— 要写全 `assets/images/xxx.png`。
+宿主自己那三条 lottie 传的就是 `assets/images/op_ring.json`。**只写裸文件名（`xxx.png`）查不到资源表，
+胶囊左边会是空的，且不报任何错** —— 2026-11-13 真机上栽过：这一档从上线起就没有图标，谁都没发现，
+因为「空着」和「图标是深色的」在状态栏上不好分辨。我们第一版抄了响铃那条（`op_ring.json` + `showA=true`），
+所以胶囊左边是一颗铃声图标 —— 那不是模板默认，是我们自己选的。现在用
+`assets/images/precise_notification_icon.png` + `showA=false`：通用小图 + 静态槽。
+**别再传 `.json` 配 `showA=false`**（image 槽读不了 lottie，会空），反之 png 配 `showA=true` 也一样。
 
 ### 42.4 为什么展不开：这份卡片只有折叠态
 
@@ -231,4 +233,56 @@ precise_notification_icon.png                      通用的「通知」小图�
 （+ `button` / `actions`）的资源包并与业务 action 绑定，而这两类包分别在 SystemUI 与宿主 APK 的
 只读资产里 —— 模块既改不了系统应用的资产，也不具备卡片宿主身份（`card-config.json` 的
 `host.componentName` 必须是宿主自己的 `ActionkeyCardWidgetProvider`）。
+
+### 42.5 换成我们自己的图标：`logo` 也可以是 `content://`（2026-11-13 真机验证）
+
+**先修的是一个更基础的错**：`logo` 之前传的是裸文件名 `precise_notification_icon.png`，
+而渲染端拿这个值**当包内路径查资源表** —— 裸名查不到，于是这一档从上线起**胶囊左边就一直是空的**，
+且不报错。宿主自己传的是 `assets/images/op_silence.json`，这才是对的写法。改正之后图才第一次显示出来。
+
+**结论**：`logo` 不限于包内文件，**也可以是 `content://`** —— 系统自己就这么用。宿主弹相机胶囊那次打的是：
+
+```
+sendSeeding logoPath:content://com.oplus.gesture.FileShareProvider/share_images/2131232270 text:相机 showA:false
+```
+
+那个 provider 是 `androidx.core.content.FileProvider` 的子类
+（`com.oplus.pantanal.seedling.file.provider.FileShareProvider`），`share_images` 映射到宿主的
+`files/share_images/`，**uri 最后一段就是文件名**（目录里那些 `2131232270` / `magic_key_dnd_on_icon`
+就是导出的 png）。而 `fluid:` 的代码本就跑在宿主进程里，有那个目录的写权限 ——
+把自己的 png 写进去、`logo` 给对应的 uri，图标就是自己的。**不改包、不 hook、不要 root。**
+
+两条必须注意：
+
+- FileProvider **未导出**（跨 uid 直接读是 `Permission Denial … not exported from UID`），
+  必须 `grantUriPermission(pkg, uri, FLAG_GRANT_READ_URI_PERMISSION)` 给 `com.android.systemui`
+  —— 画胶囊的是它的 `PluginSeedling` 插件；
+- 目录里如果被谁（root）塞过**同名但属主不对**的文件，宿主改不动也删不掉（`EACCES`），换个文件名即可。
+
+**三条被排除的路**（都试过，别再走）：
+
+| 走过的路 | 结果 |
+| --- | --- |
+| 改宿主 APK 的 `assets/ActionKeyTip.upk`、改卡服务 `files/store/<hash>_<ts>.upk` | 图不动（前者是源，后者是缓存） |
+| hook `AssetManager#open` / `FileInputStream` / `ZipFile` / `ContentResolver#openInputStream` | 包确实被换掉了（日志 `9303 → 8442`），但 SystemUI 比对包名里的内容指纹后丢弃 |
+| 覆盖 SystemUI 解压目录 `files/upk/<hash>/<ver>/assets/images/…png` | 它每次重新解包就盖回去 |
+
+阅读这段时还要知道两件事：**胶囊是 SystemUI 的 `PluginSeedling` 插件画的**（状态栏那些 `CapsuleCard`
+日志的 pid 就是 `com.android.systemui`，它进程的 fd 里同时开着
+`/system_ext/app/OplusGestureUI/OplusGestureUI.apk` 与 `seedlingsdk_plugin/SeedlingSdk.apk`）；
+包内素材解压后在 `SystemUI/files/upk/<hash>/<versionCode>/`，而卡服务自己也有一份
+`files/store/` 的副本 —— 但它们都不是渲染的入口。
+
+实现的两头：**图由界面层画**（`ui/model/icon/FluidCardArt`），**uri 由宿主侧拼**
+（`host/action/FluidAction#iconUri`）。
+
+- 图源是模块**已经在用**的 Tabler 字形（`ImageVector`），落成 `36×36`、**透明底、纯白描边**
+  的 png，文件名 `okey-fluid-<id>.png`（`|` 前面记的就是这个 id）。之所以分给界面层画：宿主
+  进程没有 Compose 运行时，在那边引 `ImageVector` 就是 `NoClassDefFoundError`。
+- 落点在宿主的 `files/share_images/`（设置页跑在宿主自己的 `:ui` 子进程里，`filesDir`
+  就是宿主那份）；宿主侧只认文件，文件名由 `FluidCard.nameOf(icon)` 一处决定。
+- **没选图标（`fluid:正文`）就不画图标**：`logo` 传空串，模板那一格空着。以前有一条
+  「默认图标 + 宿主兜底」的链路（界面层预渲染 `okey-fluid.png`、宿主缺文件时塞
+  `assets/fluid/card_icon.png`），于是「选过默认那颗」与「压根没选」长得一模一样、
+  也没法让它干脆不带图 —— 2026-11-13 按用户口径整条拆掉，那张 png 已随之下线。
 

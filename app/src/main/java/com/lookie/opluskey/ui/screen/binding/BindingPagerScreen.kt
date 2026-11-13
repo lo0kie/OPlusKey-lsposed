@@ -333,25 +333,46 @@ internal fun SettingsPage.bindingTargetEnabled(s: Screen): Boolean =
     when (s) {
         // 组合键**不叠加**「这颗键开没开」：它有自己的开关（那一组），所以吃的是整页闸门
         //  （主开关 + 链路 + 只读）+ 自己那一位。
-        Screen.COMBO_EDIT -> pageWritable() && editingComboOrNull()?.let { it.enabled } != false
+        Screen.COMBO_EDIT -> {
+            pageWritable() && editingComboOrNull()?.let { it.enabled } != false
+        }
 
         // **场景整条路只看整页闸门**（主开关 + 链路 + 只读）：这一块 / 这一颗键自己停用了
         //  照样要能先把动作配好、再回去启用 —— 与「独立设置」页同一条口径。
-        Screen.SCENE_BINDING -> pageWritable()
+        Screen.SCENE_BINDING -> {
+            pageWritable()
+        }
 
-        // 一颗键那一页只吃它自己的 `enabled`：模块总闸另有一层（关着时整页走 `blockedReason`）。
-        else -> keyEnabled(KeyWatchState.editing(configState.config.value))
+        // 一颗键那一页吃它自己的 `enabled`（模块总闸另有一层，关着时整页走 `blockedReason`），
+        // 外加**「只参与组合按键」**：那颗键不判单键手势，配一档动作也没处执行 —— 整页灰掉。
+        // **只灰绑定页**：独立设置 / 按键设置不走这个函数，用户仍要能把这一位关回来。
+        else -> {
+            val cfg = configState.config.value
+            val id = KeyWatchState.editing(cfg)
+            keyEnabled(id) && !cfg.key(id).comboOnly
+        }
     }
 
 /**
- * 这一份**自己被停用**了吗 —— 是就回那句原因，开着回 `null`。
+ * 这一份**现在不能给它配动作**的原因 —— 能配回 `null`。
  *
  *  四个读者都在这一页族里，判据必须同一份：页面顶部那条「系统场景」入口、⋮ 菜单里那一行、
  *  「自定义命令」小标题要不要接跳转、右下角那颗「进自定义命令」的 FAB 显不显示。
  *  （用户口径：按键 / 组合键禁用时，这几处一并不给用。）
  *
- *  说法**不在这里另写**：与「独立设置」入口、两页顶栏那颗设置键同一个出口
- *  （[SettingsTarget.disabledReason]，`按键「X」已停用` / `组合键「X」已停用`）。
+ * ## 两个来源，同一条结论
+ *
+ *  · **这一份自己被停用**（`enabled = false`）—— 用户把它关了；
+ *  · **「只参与组合按键」**（`KeyConfig.comboOnly`）—— 这颗键不判单键手势，配一档动作没处执行。
+ *
+ *  后者原先只拦住绑定页整页（见 [bindingTargetEnabled]），这一族四处却还亮着：系统场景能点进去、
+ *  FAB 还在、菜单里那行还能选 —— 而那里配出来的东西永远不会被执行。用户口径是「一并不给用」，
+ *  所以两者在这里收成同一个答案：**现在不能往它身上配动作**。
+ *
+ *  说法**不在这里另写**：停用那句与「独立设置」入口、两页顶栏那颗设置键同一个出口
+ *  （[SettingsTarget.disabledReason]，`按键「X」已停用` / `组合键「X」已停用`）；
+ *  「只参与组合按键」那句与绑定页整页灰共用 `BINDING_COMBO_ONLY_BLOCKED` —— 同一件事在页面上
+ *  与这四个入口上说成两句不同的话，用户会以为是两个毛病。
  *
  *  **只认「这一份」**：整页闸门（主开关 / 链路 / 只读）不在这里 —— 那是另一件事，
  *  页面另有整片压灰与自己那句原因（见 [bindingTargetEnabled] / `disabledClickReason`）。
@@ -360,9 +381,22 @@ internal fun SettingsPage.bindingTargetEnabled(s: Screen): Boolean =
 internal fun SettingsPage.bindingTargetStopped(target: BindingTarget): String? {
     val cfg = configState.config.value
     return when (target) {
-        is BindingTarget.Key -> SettingsTarget.Key(target.id).disabledReason(cfg)
-        is BindingTarget.Combo -> SettingsTarget.Combo(target.id).disabledReason(cfg)
-        is BindingTarget.Scene -> null
+        is BindingTarget.Key -> {
+            SettingsTarget.Key(target.id).disabledReason(cfg)
+                ?: if (cfg.key(target.id).comboOnly) {
+                    I18n.format(Strings.BINDING_COMBO_ONLY_BLOCKED, target.id.label)
+                } else {
+                    null
+                }
+        }
+
+        is BindingTarget.Combo -> {
+            SettingsTarget.Combo(target.id).disabledReason(cfg)
+        }
+
+        is BindingTarget.Scene -> {
+            null
+        }
     }
 }
 

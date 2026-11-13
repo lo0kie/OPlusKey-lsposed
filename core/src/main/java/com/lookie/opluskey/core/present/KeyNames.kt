@@ -45,10 +45,24 @@ private const val COMBO_KEY_CLOSE = "]"
 fun keyName(id: KeyId): String = if (id.isCustom) id.label else I18n.get(Strings.KEY_SIDE, id.label)
 
 /**
+ * 一档组合键的**成员键名**（`["侧键", "电量 +"]`）—— 需要**逐个上样式**的地方用它。
+ *
+ *  顶栏副标题把每颗键画成一枚圆角框（与列表行、场景条件同一套 tag），拼成一整串文字就画不出来；
+ *  而「成员有哪些、名字怎么取」只该有一份实现 —— [comboLabel] 也走它，于是同一个组合在顶栏、
+ *  回执、执行提示里不会长出不同叫法。
+ *
+ *  成员全被删掉时（手改的配置）退回 id：至少有一句能认出来的话，不能是空表。
+ */
+fun comboKeyNames(
+    cfg: Config,
+    combo: ComboKey,
+): List<String> = combo.keys.mapNotNull { id -> cfg.keyIdOf(id)?.let(::keyName) }.ifEmpty { listOf(combo.id) }
+
+/**
  * 一档组合键的显示名 —— 成员键名连起来，每颗各套一对框：`[侧键]×[电量 +]`。
  *
- *  给弹窗 / 回执 / 顶栏副标题 / 停用提示那些「只有一句话」的地方用。**列表行不用这一份**：
- *  那一列按颗数排圆角框（见 `ComboTitle`），拼成一整串做不到对齐。
+ *  给弹窗 / 回执 / 停用提示那些「只有一句话」的地方用。**列表行与顶栏副标题不用这一份**：
+ *  那两处把每颗画成圆角框（见 `NameChip`，成员由 [comboKeyNames] 给），拼成一整串做不到对齐。
  *
  *  **只有一颗时不套框**（成员全被删掉、只剩 id 兜底那种畸形配置，以及用户口径那条规则）：
  *  一个名字旁边没有第二个名字需要分开，框只剩噪声。
@@ -56,9 +70,15 @@ fun keyName(id: KeyId): String = if (id.isCustom) id.label else I18n.get(Strings
 fun comboLabel(
     cfg: Config,
     combo: ComboKey,
-): String {
-    // 成员全被删掉时（手改的配置）至少给一句能认出来的话，不能是空串
-    val names = combo.keys.mapNotNull { id -> cfg.keyIdOf(id)?.let(::keyName) }.ifEmpty { listOf(combo.id) }
-    if (names.size == 1) return names.first()
+): String = comboLabelOf(comboKeyNames(cfg, combo))
+
+/**
+ * 一串键名压成一句话 —— 单颗直接写名字，两颗以上各套一对框（`[侧键]×[电量 +]`）。
+ *
+ *  与 [comboKeyNames] 分开一支：需要**逐个上样式**的调用点（顶栏副标题、列表行）拿名单，
+ *  只需要一句话的调用点（回执 / 提示 / 弹窗标题）拿这个 —— 两边共用同一份「单颗不套框」的规则。
+ */
+fun comboLabelOf(names: List<String>): String {
+    if (names.size <= 1) return names.firstOrNull().orEmpty()
     return names.joinToString(" $COMBO_PAIR_SEPARATOR ") { "$COMBO_KEY_OPEN$it$COMBO_KEY_CLOSE" }
 }

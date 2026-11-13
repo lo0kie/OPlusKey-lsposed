@@ -93,20 +93,53 @@ internal fun DisabledHint(
 }
 
 /**
- * 行尾那半句「已停用」——**场景列表与按键列表共用这一份**。
+ * 行尾那半句状态 —— **场景列表与按键列表共用这一份**。
  *
  *  「这一项现在不生效」在两处是同一件事，字号 / 颜色 / 与右侧那颗图标的间距必须一样；
  *  各写一遍的结果是两页的同一句话看起来不是一回事。`RuleStateHint` 里 OFF 那一档也走它。
+ *
+ *  @param text 那一句话本身 —— 默认「已停用」；按键列表会传「只参与组合」
+ *    （见 [keyStateLabel]：两者占同一格、三态互斥）
  */
 @Composable
-internal fun DisabledStateText() {
+internal fun DisabledStateText(text: String = I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用")) {
     Text(
-        I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用"),
+        text,
         style = COUITheme.textStyles.footnote1,
         color = COUITheme.colorScheme.onSurfaceVariantActions,
         modifier = Modifier.padding(end = 6.dp),
     )
 }
+
+/**
+ * 按键列表行尾该写的那半句话 —— `null` = 什么都不写。
+ *
+ * ## 三态互斥（用户口径「和停用 / 启用三选一，启用不用显示」）
+ *
+ *  · 停着没 → 「已停用」；
+ *  · 「只参与组合按键」→ 「只参与组合」；
+ *  · 正常启用 → `null`，这一格整块不占位（行尾回到箭头那条默认路径）。
+ *
+ *  这两件事**不是一回事**：停用是「这颗键不接管任何按键」，只参与组合是「单键手势交还系统、
+ *  模块只用它凑组合」—— 后者照样在干活，只是干的不是单键那一份。所以画在**同一格**里
+ *  而不是叠两条：这一格本来就只放一句状态，两条一起写会把标题挤掉一截。
+ *
+ *  判据放在这里而不是列表那一层：按键列表有两处（内置侧键 / 自定义键）各建一次行，
+ *  各写一遍 `when` 的话，加第三种状态时一定会漏一处 —— 真机上就是一行写「已停用」、
+ *  另一行什么都不写。组合键列表也调它（`comboOnly` 恒传 `false`：那一位只属于单键）。
+ *
+ * @param enabled 这一项自己开着没有
+ * @param comboOnly 是不是「只参与组合按键」（见 `KeyConfig.comboOnly`）
+ */
+internal fun keyStateLabel(
+    enabled: Boolean,
+    comboOnly: Boolean,
+): String? =
+    when {
+        !enabled -> I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用")
+        comboOnly -> I18n.get(Strings.BINDING_COMBO_ONLY_BADGE, "只参与组合")
+        else -> null
+    }
 
 /**
  * 行尾那一格：**「已停用」+ 箭头** —— 场景卡、按键列表、组合按键三处共用。
@@ -115,34 +148,36 @@ internal fun DisabledStateText() {
  *  所以「状态 + 箭头」必须自己拼一个 `Row` 塞进 `trailing`。这条规矩三处各写一遍的话，
  *  迟早有一处忘了画箭头（真机上就是这样：填了 `trailing`，箭头整列消失）。
  *
+ *  @param text 那半句话 —— 默认「已停用」；按键列表会传 [keyStateLabel] 的结论
+ *    （「只参与组合」也走这一格：两者是同一件事的两种状态，不该长得像两个控件）
  *  @see DisabledStateText 只画那半句话（编辑态里它旁边跟的是勾选框，不是箭头）
  */
 @Composable
-internal fun DisabledStateWithArrow() {
+internal fun DisabledStateWithArrow(text: String = I18n.get(Strings.COMMAND_BRANCH_DISABLED, "已停用")) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        DisabledStateText()
+        DisabledStateText(text)
         RowEndIcon()
     }
 }
 
 /**
- * 行尾那一格：**「已停用」+ 勾选框** —— 按键列表（内置侧键 / 自定义键）与组合按键三处共用。
+ * 行尾那一格：**一句状态 + 勾选框** —— 按键列表（内置侧键 / 自定义键）与组合按键三处共用。
  *
  *  与 [DisabledStateWithArrow] 是同一个位置的两种形态：编辑态里勾选框代替箭头。三处各写一遍
- *  的结果与那条箭头的老毛病一样 —— 迟早有一处忘了先写「已停用」，编辑态里就看不出这一项是停的。
+ *  的结果与那条箭头的老毛病一样 —— 迟早有一处忘了先写那句状态，编辑态里就看不出这一项是怎么了。
  *
  *  @param picked 这一行是否被勾中（编辑态）
  *  @param enabled 勾选框本身是否可按 —— 整页闸门关着时按下无意义
- *  @param off 这一项当前是否是停用状态（决定要不要先写那半句）
+ *  @param state 旁边那句状态（见 [keyStateLabel]）；`null` = 只画勾选框
  */
 @Composable
 internal fun DisabledStateWithPick(
     picked: Boolean,
     enabled: Boolean,
-    off: Boolean,
+    state: String?,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (off) DisabledStateText()
+        if (state != null) DisabledStateText(state)
         Checkbox(
             state = if (picked) ToggleableState.On else ToggleableState.Off,
             onClick = null,

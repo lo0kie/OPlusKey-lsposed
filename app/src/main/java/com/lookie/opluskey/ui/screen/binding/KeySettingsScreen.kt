@@ -79,6 +79,13 @@ internal fun SettingsPage.KeySettingsScreen(
         // 顶栏叠在内容上，顶部要自己让出（动态值）—— 这一页顶上那张卡自己带一档上边距
         Spacer(Modifier.height(currentHeaderHeight(scrollBehavior)))
 
+        //  「只参与组合按键」开着时，这一页**只剩那一行能动**。
+        //  这一位说的是「这颗键不判单键手势」—— 那么多击、接口、振动、提示就都没有执行的机会，
+        //  亮着就是在骗人「还能调」。留那一行是因为**关回来**得走它（关不掉就成了死路）。
+        //  判据与绑定页那一族同一份（`bindingTargetStopped`），两处各判一遍迟早漂。
+        //  只有单键有这一位：组合目标（`SettingsTarget.Combo`）不进这一支。
+        val comboOnly = target is SettingsTarget.Key && cfg.key(target.id).comboOnly
+
         //  —— 多击那两颗开关（只有单键有）——
         //  **放在最顶部**：它们决定这一页下面那个「总开关」能管到几档 —— 多击是这一档存不存在，
         //  不是「怎么工作」。先看见「有几档」，再看见「这几档怎么工作」才顺。
@@ -104,7 +111,10 @@ internal fun SettingsPage.KeySettingsScreen(
             //  **显示用生效值、写入仍落到这一档**：总开关关着时那五项不参与取值，直接读
             //  `owner` 会让这一页显示「振动反馈：关」而按下去明明会振（口径见 `OwnSettingsCard`）。
             effective = cfg.effectiveFor(owner),
-            enabled = pageEnabled,
+            //  「只参与组合按键」时整张卡灰掉：接口 / 振动 / 提示都是**单键按下去那一下**的行为，
+            //  这颗键不判单键手势，它们一次也用不上。灰着点一下落到页面那句原因上
+            //  （`disabledClickReason` 的 comboOnly 那一支），卡片里不必再写一句。
+            enabled = pageEnabled && !comboOnly,
             titles = ownCardTitles(),
         ) { values, field -> commitOwnField(target, values, field) }
 
@@ -144,15 +154,56 @@ private fun SettingsPage.ExtraClicksCard(
     enabled: Boolean,
 ) {
     val key = cfg.key(target.id)
+    //  「只参与组合按键」开着时，这张卡里**只有那一行自己还能动**：以下几档都是单键手势，
+    //  这颗键不判单键手势 ⇒ 配了也没处执行。留中间这三行亮着，用户会以为「多击还能用」。
+    //  点一下会落到页面那句原因上（`disabledClickReason` 的 comboOnly 那一支），不必在这重写。
+    val restEnabled = enabled && !key.comboOnly
     CardList(
         rows =
             listOf(
-                extraClickRow(target, key, COUNT3, enabled),
-                extraClickRow(target, key, COUNT4, enabled),
-                clickThenLongRow(target, key, enabled),
+                //  「只参与组合按键」排在这一族的最前面：它决定这颗键**还算不算一颗单键** ——
+                //  开着时下面那三档配了也没处执行（绑定页整页灰，见 `bindingTargetEnabled`）。
+                comboOnlyRow(target, key, enabled),
+                extraClickRow(target, key, COUNT3, restEnabled),
+                extraClickRow(target, key, COUNT4, restEnabled),
+                clickThenLongRow(target, key, restEnabled),
             ),
     )
 }
+
+/**
+ * 「只参与组合按键」那一行 —— 这颗键不判单键手势、只等组合成员（见 `KeyConfig.comboOnly`）。
+ *
+ *  与上面那张卡同族：**不吃 `useOwnSettings`**（公共设置里没有这一项，跟随无从谈起），
+ *  只吃整页闸门。
+ *
+ *  开着时**绑定页整页灰掉**（`bindingTargetEnabled`）：这颗键不判单键手势，配一档动作没处执行。
+ *  但**这一页照旧能改** —— 否则用户想关回来都点不动；页面上那句原因由
+ *  `disabledClickReason` 给（「只参与组合按键」那一支）。
+ */
+@Composable
+private fun SettingsPage.comboOnlyRow(
+    target: SettingsTarget.Key,
+    key: KeyConfig,
+    enabled: Boolean,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.BINDING_COMBO_ONLY, "只参与组合按键"),
+        summaryOn = I18n.get(Strings.BINDING_COMBO_ONLY_ON, "单键手势交还系统，模块只用它凑组合"),
+        summaryOff = I18n.get(Strings.BINDING_COMBO_ONLY_OFF, "单键手势由模块接管"),
+        icon = PageIcons.ComboOnly,
+        checked = key.comboOnly,
+        enabled = enabled,
+    ) { on ->
+        //  与上面几行同一条：现读一次再改这一格，只动这一位
+        val cfgNow = configState.config.value
+        val keyNow = cfgNow.key(target.id)
+        val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(comboOnly = on)))
+        val what = "own_settings target=${settingsTargetLabel(target)} combo_only=${if (on) 1 else 0}"
+        writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
+            switchNotice(I18n.get(Strings.BINDING_COMBO_ONLY, "只参与组合按键"), on)
+        }
+    }
 
 /**
  * 「单击后长按」那颗开关 —— 与三击 / 四击并列，但它是**另一位**而不是击数集合里的一员：

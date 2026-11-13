@@ -111,12 +111,12 @@ data class TimeRange(
         }
 
         /**
-         * `H:mm` / `HH:mm` → 当天第几分钟；格式不对或越界返回 `null`。
+         * 当天第几分钟 → `HH:mm`。线格式、界面上的区间文案，以及 `${sys.time}` 的值都走这一处。
          *
-         *  一律两位补零、`Locale.ROOT`：这个串要写进配置文件，不能被设备语言影响
-         *  （与 `CommandKind.fromId` 用 `Locale.ROOT` 同一条纪律）。
+         *  一律两位补零、`Locale.ROOT`：这个串要写进配置文件 / 命令，不能被设备语言影响
+         *  （与 `CommandKind.fromId` 用 `Locale.ROOT` 同一条纪律）。越界值夹到两端。
          */
-        private fun clock(minuteOfDay: Int): String {
+        fun clock(minuteOfDay: Int): String {
             val h = (minuteOfDay / 60).coerceIn(0, 23)
             val m = (minuteOfDay % 60).coerceIn(0, 59)
             return String.format(Locale.ROOT, "%02d:%02d", h, m)

@@ -82,6 +82,38 @@ data class KeyConfig(
     /** 「忽视无操作双击手势」—— **这颗键自己的**判定（同上，原来在全局）。 */
     val instantSingle: Boolean = DEFAULT_INSTANT_SINGLE,
     /**
+     * **这颗键只参与组合** —— 单键手势（单击 / 双击 / 长按）整条不接管，只留「等组合的另一半」。
+     *
+     *  默认 false = 与这一位出现之前完全一致。开着时：
+     *  · 按下 / 抬手**原样放行**给系统（这颗键的原生行为照常发生），模块不吞、不压窗口、不补发；
+     *  · 组合判定照旧：另一颗键在窗口内按下时仍然凑得出组合，而**那一下**（后按的那颗）照常吞掉 ——
+     *    组合只该有一个结果。
+     *
+     *  ## 代价（必须说清，因为看起来像「交还系统」）
+     *
+     *  它与已删除的「交还系统」动作档**不是一回事**：那一档要的是「同一颗键的某一次按压归系统」，
+     *  而判定手势必须先吞 DOWN，两者互斥（见 `docs/runtime/key-to-gesture.md` 三）。这一位要的是
+     *  「这一颗键**从来不判单键手势**」，所以它根本不需要吞 DOWN —— 它只记一笔时刻。
+     *
+     *  于是代价写在这里：组合成立时，**先按的那一颗**（如果是这颗键）的原生动作已经发生了，
+     *  组合只是「再补一次」。想「单键彻底归系统、组合也照常」在原理上做不到，选它就是接受这一条。
+     *
+     *  与 [enabled] 的区别：停用是「这颗键整个不归模块」（组合也一起失效），这一位是
+     *  「单键不归模块、组合仍然算」。
+     */
+    val comboOnly: Boolean = false,
+    /**
+     * **多击窗口内「逐次等满」** —— 数够了要的那一档也继续等窗口走完，再按实际击数判。
+     *
+     *  默认 false = 「按完就判」：数到这颗键配的最高档（双击 / 三击 / 四击）那一刻就定下来，
+     *  抬手即派发 —— 手感快，但用户在窗口内多按的那一下会被当成新的一轮从头数。
+     *  开着时：每一下之后都等满 [doubleClickMs] 窗口，窗口内没有下一次按下才判，
+     *  击数按实际数到的算（超出最高档的部分夹回最高档）。
+     *
+     *  代价就是那个窗口的等待：开的每一击都要等 [doubleClickMs] 才出结果。
+     */
+    val waitMultiWindow: Boolean = false,
+    /**
      * **这颗键要不要用自己那套公共项** —— 默认关（跟随公共设置）。
      *
      *  它管的就是「按键单独设置」这件事：每颗键可以自己决定走不走 ColorOS 专有接口、
@@ -414,6 +446,15 @@ data class KeyConfig(
             ).coerceIn(0, ConfigFields.MAX_JUDGE_CLICKS)
 
     /**
+     * 判定侧真正数到第几击就**封顶**（至少 2 —— 双击是第一档多击）。
+     *
+     *  写成属性只为一件事：判定器里「数到哪一档立刻判」与「逐次等满时把多按的那几下夹回来」
+     *  必须是同一个数。两处各写一遍 `maxOf(2, clicksForJudge)`，改一处漏一处就是
+     *  「配了双击、按三下却判成无操作」。
+     */
+    val judgeCap: Int get() = maxOf(2, clicksForJudge)
+
+    /**
      * 判定侧**只按动作表**该数到第几击 —— 广播那一列（[judgeClicks]）优先，老版本没给时按
      * [boundClicks] 算。
      *
@@ -549,13 +590,17 @@ data class KeyConfig(
     /**
      * 「忽视无操作双击手势」此刻**真的能省掉那个窗口**吗 —— 判定侧的唯一判据。
      *
-     *  四位缺一位都不行：开关开着、最高只数到一击（后面没有连击要等）、没开「单击后长按」
-     *  （那一档要在第二击上等长按）、双击也没有绑动作。写成属性是因为判定侧那个 `if`
-     *  再多一条就顶破 detekt 的条件复杂度上限 —— 而这条口径本来也只该有一份。
+     *  五位缺一位都不行：开关开着、最高只数到一击（后面没有连击要等）、没开「单击后长按」
+     *  （那一档要在第二击上等长按）、双击也没有绑动作，也没有开「逐次等满多击窗口」。
+     *  写成属性是因为判定侧那个 `if` 再多一条就顶破 detekt 的条件复杂度上限 ——
+     *  而这条口径本来也只该有一份。
      */
     val instantSingleNow: Boolean
         get() =
             instantSingle &&
+                //  「逐次等满多击窗口」时不许抢跑：那一位要的就是「等窗口、按实际击数判」，
+                //  在这里抬手即判单击等于把它整条废掉（用户开了却看不出区别）
+                !waitMultiWindow &&
                 clicksForJudge <= 1 &&
                 //  「单击后长按」**开着且真有动作**时不算：那一档要在第 2 击上等长按，
                 //  抢跑等于把它废掉。动作是无操作时它本来就没有东西可等，照常收线
@@ -657,6 +702,8 @@ data class KeyConfig(
                 ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
                 ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
                 ConfigFields.F_INSTANT_SINGLE to instantSingle,
+                ConfigFields.F_COMBO_ONLY to comboOnly,
+                ConfigFields.F_WAIT_MULTI_WINDOW to waitMultiWindow,
                 ConfigFields.F_OWN_SETTINGS to useOwnSettings,
                 ConfigFields.F_KEY_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_KEY_VIBRATE to vibrate,
@@ -818,6 +865,8 @@ data class KeyConfig(
                 longRepeatVibrate = v.bool(ConfigFields.F_REPEAT_VIBRATE),
                 doubleClickMs = v.number(ConfigFields.F_DOUBLE_CLICK_MS),
                 instantSingle = v.bool(ConfigFields.F_INSTANT_SINGLE),
+                comboOnly = v.bool(ConfigFields.F_COMBO_ONLY),
+                waitMultiWindow = v.bool(ConfigFields.F_WAIT_MULTI_WINDOW),
                 //  「三档同一事件」与「独立设置」那一族 —— **读的这一半必须与 `fieldValues()` 成对**：
                 //  只写进 `fieldValues()` 而不在这里读回来，表现就是「界面上改了、也落盘了，
                 //  但判定与执行那边照旧」——配置里有值、内存里是默认值，最难查的一种。

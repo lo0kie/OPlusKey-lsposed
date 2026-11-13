@@ -12,6 +12,7 @@ import com.lookie.opluskey.ui.row.SliderRow
 import com.lookie.opluskey.ui.row.SliderSpec
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
 import com.lookie.opluskey.ui.state.command.CommandsSave
+import com.lookie.opluskey.ui.write.setWaitMultiWindow
 import com.lookie.opluskey.ui.write.write
 
 /**
@@ -80,6 +81,29 @@ internal fun SettingsPage.BindingSettingsCard(
                 )
                 //  第二行：同一张卡、同一片「这一档怎么判」的语义（见类注释）
                 add(instantSingleRow(rowsEnabled, disabledHint))
+                //  第三行：判定**时机**（到档即判 / 逐次等满）。
+                //  「只参与组合按键」不在这张卡里 —— 它决定这颗键**还算不算一颗单键**，
+                //  与「多击之类那一档存不存在」同族，放在独立设置页（见 `KeySettingsScreen`）。
+                add(waitMultiWindowRow(rowsEnabled, disabledHint))
             },
     )
+}
+
+/** 「逐次等满多击窗口」那一行 —— 判定时序（见 `KeyConfig.waitMultiWindow`）。 */
+private fun SettingsPage.waitMultiWindowRow(
+    enabled: Boolean,
+    disabledHint: String?,
+): CardRow {
+    val key = configState.config.value.key(KeyWatchState.editing(configState.config.value))
+    return CardRow.Switch(
+        title = I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW, "逐次等满多击窗口"),
+        summaryOn = I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW_ON, "每一下都等满窗口再判，多按的一下也算数"),
+        summaryOff = I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW_OFF, "数够要的那一档就立刻判，不等窗口"),
+        icon = PageIcons.Click,
+        checked = key.waitMultiWindow,
+        enabled = enabled,
+        disabledHint = disabledHint,
+    ) {
+        setWaitMultiWindow(it)
+    }
 }

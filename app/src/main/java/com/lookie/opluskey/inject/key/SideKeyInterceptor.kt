@@ -177,6 +177,17 @@ internal class SideKeyInterceptor(
     private val swallowedDownAt = java.util.concurrent.ConcurrentHashMap<Int, Long>()
 
     /**
+     * 「只参与组合」的键里，**这一下已经吞过了**的那几颗 —— 抬手要跟着吞。
+     *
+     *  这类键平时**不吞**（按下原样给系统，见 `KeyConfig.comboOnly`），只有「这一下凑成了组合」
+     *  那一次才吞。抬手必须与它自己那一次一致：按下放行而抬手被吞，系统那边只收到半截，
+     *  一颗键会卡在按住的状态里。
+     */
+    private val comboOnlySwallowed =
+        java.util.concurrent.ConcurrentHashMap
+            .newKeySet<String>()
+
+    /**
      * 撤掉已经排下的手势 —— 长按枪、双击窗、连发任务（`GestureDetector.reset` 三者都会摘）。
      *
      *  **全部键一起撤**：配置里任意一颗键从「接管」翻成「不接管」都会走到这里（见 `ConfigChannel.read`
@@ -391,6 +402,11 @@ internal class SideKeyInterceptor(
             //  判成双击时 ROM 只发 769 一个码，等第二次按下永远等不到（见 `RomKeyFamilies`）。
             val gesture = RomKeyFamilies.gestureOf(keyEvent.keyCode)
             return when {
+                //  **「只参与组合」先判**：ROM 判好的那几颗码本身就是单键手势（双击 / 轻按 / 重按），
+                //  认下来就等于「单键仍归模块」—— 这一位要的正好相反。交给 `feedComboOnly` 记一笔再放行，
+                //  组合照旧能凑（它只是不判单键）。
+                keyConfig.comboOnly -> Decision.Claimed(keyConfig)
+
                 gesture != null -> Decision.RomGesture(keyConfig, gesture)
 
                 //  族里的**中间态码**：认下就吞，既不派发、也不放行给 ROM
@@ -467,6 +483,8 @@ internal class SideKeyInterceptor(
         keyConfig: KeyConfig,
     ): Boolean =
         try {
+            //  「只参与组合」的键走另一条更短的路：不判单键手势，也就不需要（也不能）先吞 DOWN
+            if (keyConfig.comboOnly) return feedComboOnly(id, point, keyEvent, combo, comboOnlySwallowed)
             // 判定参数**不在这里刷**：判定器直接读传进去的 `keyConfig`（每颗键各一份）。
             //  原先判定器上是两个全局槽，每事件前刷一次 —— B 键的 DOWN/UP 夹在 A 键的
             //  DOWN/UP 之间时，A 的抬手会用 B 的窗口判（多颗自定义键同时在用时才撞）。
@@ -555,6 +573,54 @@ internal class SideKeyInterceptor(
             XLog.w("手势判定失败（这一次按键放行给系统）：$point", e)
             false
         }
+}
+
+/**
+ * 「只参与组合」那颗键的一条短路径 —— 只把按下 / 抬手的时刻记进组合表，其余一律放行给系统。
+ *
+ *  与普通键的差别只有一句：**不吞**。普通键必须先吞 DOWN 才数得出单击 / 双击 / 长按
+ *  （见 `docs/runtime/key-to-gesture.md` 三），而这颗键不判任何单键手势 —— 于是它能把按下原样
+ *  交给系统（系统执行它的原生动作），模块只记一笔「这一刻它被按过」，另一颗键在窗口内按下时
+ *  照样凑得出组合。
+ *
+ *  ## 为什么还要记账
+ *
+ *  这颗键平时放行，但**凑成组合的那一下**要吞（组合只该出一个结果）；而抬手吞不吞必须与它自己
+ *  那一次按下一致 —— 按下给系统、抬手被吞，系统那边只收到半截，一颗键会卡在按住的状态里。
+ *
+ *  ## 为什么不做「先压一个窗口」（普通键的 `HOLD`）
+ *
+ *  那一档是为了「等第二颗键、没等到就**补发**那一次按压」；这颗键的按下已经给系统了，补发就是
+ *  重复执行一次。所以 `HOLD` 与 `PASS` 在这一支里是同一件事：放行。
+ */
+private fun feedComboOnly(
+    id: KeyId,
+    point: Framework.InterceptionPoint,
+    keyEvent: KeyEvent,
+    combo: ComboDetector,
+    swallowed: MutableSet<String>,
+): Boolean {
+    when (keyEvent.action) {
+        KeyEvent.ACTION_DOWN -> {
+            //  按住不放的重复：既不喂组合（时刻会被刷新成最新），也不吞（这颗键归系统）
+            if (keyEvent.repeatCount > 0) return false
+            XLog.w("${id.label}（$point）：按下不接管（只参与组合）")
+            val taken = combo.onDown(id) == ComboDetector.Down.TAKEN
+            if (taken) swallowed.add(id.id) else swallowed.remove(id.id)
+            return taken
+        }
+
+        KeyEvent.ACTION_UP -> {
+            //  组合那笔账要结（`down` / `consumed` / 待发的短按都在 `onUp` 里），
+            //  但**吞不吞只按自己那一次按下**，不看 `onUp` 的返回值（那是「组合成员」的口径）
+            combo.onUp(id, short = !keyEvent.isCanceled)
+            return swallowed.remove(id.id)
+        }
+
+        else -> {
+            return false
+        }
+    }
 }
 
 /** 从实参里挑出第一个 `KeyEvent`（按键热路径，不要 `filterIsInstance`）。 */

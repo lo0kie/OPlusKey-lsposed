@@ -1,8 +1,10 @@
 package com.lookie.opluskey.ui.screen.command
 
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
-import com.lookie.opluskey.core.present.comboLabel
+import com.lookie.opluskey.core.present.comboKeyNames
+import com.lookie.opluskey.core.present.comboLabelOf
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.screen.editingKeyName
@@ -35,20 +37,34 @@ internal fun SettingsPage.branchDraftNow(): BranchDraft = branchDraft.now()
 /**
  * 「这一趟在编哪一颗键 / 哪一组组合键」—— 顶栏那行小标题与表尾注脚共用这一句。
  *
- *  组合键那一档由 `comboLabel` 给：两颗以上每颗各套一对 `[ ]`（`[ 侧键 ]×[ 电量 + ]`），
- *  那是为了把「两个名字」和「一句话」分开。
+ *  **成员名字由 [branchOwnerNames] 给**，这里只负责压成一串（单键不套框、多颗各套一对 `[ ]`）：
+ *  顶栏副标题要的是**逐个上样式的名单**（每颗画一枚圆角框），拼好的句子只能给纯文字的地方用。
  *
  *  **单键不套**（用户口径：只有一个键名时不要方框）：这一行本来就只装一个名字，
  *  套上 `[ ]` 只是多一层噪声 —— 而 `快捷键` 三个字旁边还有副标题的位置说明它是什么。
  */
-internal fun SettingsPage.branchOwnerLabel(): String {
-    val comboId = branchDraft.comboId
+internal fun SettingsPage.branchOwnerLabel(): String =
+    comboLabelOf(branchOwnerNames(configState.config.value, branchDraft.comboId, editingKeyName()))
+
+/**
+ * 同一个「在编谁」的**成员键名**（一档组合有几颗就是几个名字）—— 顶栏副标题按名单画框。
+ *
+ *  「单键叫什么、组合的成员是谁」只有这一份实现：[branchOwnerLabel] 由它压成一串，
+ *  两个读者（顶栏、表尾注脚）不会长出不同叫法。
+ *
+ *  三样都由调用点给（而不是收成 `SettingsPage` 的扩展）：这一支是纯取名、不碰页面状态，
+ *  于是「页面扩展成员」那本账不会因为多一个读者就涨一格。
+ */
+internal fun branchOwnerNames(
+    cfg: Config,
+    comboId: String?,
+    keyLabel: String,
+): List<String> =
     if (comboId != null) {
-        val cfg = configState.config.value
-        return cfg.combos.firstOrNull { it.id == comboId }?.let { comboLabel(cfg, it) } ?: comboId
+        cfg.combos.firstOrNull { it.id == comboId }?.let { comboKeyNames(cfg, it) } ?: listOf(comboId)
+    } else {
+        listOf(keyLabel)
     }
-    return editingKeyName()
-}
 
 /**
  * 点场景块里**某一档的动作行** → 进「场景动作」页编那一档（用户口径：不再是弹抽屉）。

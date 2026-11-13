@@ -298,6 +298,7 @@ fun commandTitleOf(action: Action): CommandTitle =
         is Action.Intent,
         is Action.Notify,
         is Action.Fluid,
+        is Action.Toast,
         is Action.MiniWindow,
         is Action.Shortcut,
         is Action.Flashlight,

@@ -203,6 +203,14 @@ internal data class KeyDto(
     val doubleClickMs: Int? = null,
     val instantSingle: Boolean? = null,
     /**
+     * 「这颗键只参与组合」—— 单键手势交还系统，模块只用它凑组合（见 `KeyConfig.comboOnly`）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ 关（与这一位出现之前一致，不需要迁移）。
+     */
+    @SerialName("combo_only") val comboOnly: Boolean? = null,
+    /** 「多击窗口内逐次等满」—— 到档也等窗口走完再判（`KeyConfig.waitMultiWindow`）。 */
+    @SerialName("wait_multi_window") val waitMultiWindow: Boolean? = null,
+    /**
      * 「按键单独设置」—— 这一颗键要不要用自己那套公共项（接口 / 振动 / 提示）。
      *
      *  `null` = 老文件没有这一项 ⇒ 跟随公共设置（与新装默认一致，不需要迁移）。
@@ -348,6 +356,8 @@ internal data class KeyDto(
                 ConfigFields.F_DOUBLE_CLICK_MS to
                     clamp(ConfigFields.F_DOUBLE_CLICK_MS, doubleClickMs ?: legacyDoubleClickMs),
                 ConfigFields.F_INSTANT_SINGLE to (instantSingle ?: legacyInstantSingle),
+                ConfigFields.F_COMBO_ONLY to (comboOnly ?: false),
+                ConfigFields.F_WAIT_MULTI_WINDOW to (waitMultiWindow ?: false),
                 ConfigFields.F_OWN_SETTINGS to (useOwnSettings ?: false),
                 ConfigFields.F_KEY_COLOR_OS_API to (colorOsApi ?: GlobalConfig.DEFAULT_COLOR_OS_API),
                 ConfigFields.F_KEY_VIBRATE to (vibrate ?: false),
@@ -424,6 +434,8 @@ internal data class KeyDto(
                 longFireOnRelease = key.longFireOnRelease,
                 doubleClickMs = key.doubleClickMs,
                 instantSingle = key.instantSingle,
+                comboOnly = key.comboOnly,
+                waitMultiWindow = key.waitMultiWindow,
                 useOwnSettings = key.useOwnSettings,
                 colorOsApi = key.colorOsApi,
                 vibrate = key.vibrate,

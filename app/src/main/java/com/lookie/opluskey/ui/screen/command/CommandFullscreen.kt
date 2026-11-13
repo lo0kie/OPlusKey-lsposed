@@ -11,6 +11,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.LineBreak
@@ -23,6 +25,7 @@ import com.lookie.opluskey.ui.dialog.DialogButtonRow
 import com.lookie.opluskey.ui.dialog.FocusOnShow
 import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.dialog.dialogSideMargin
+import com.lookie.opluskey.ui.input.ImeFocusRelease
 import com.lookie.opluskey.ui.model.theme.EASING_EMPHASIZED_DECEL
 import com.lookie.opluskey.ui.model.theme.VISIBILITY_ENTER_MS
 import com.lookie.opluskey.ui.row.TitleCounter
@@ -136,6 +139,9 @@ internal fun SettingsPage.CommandFullscreenDialog(
  *
  *  长度上限在**这一层**兜（库的 `maxCount` 撤了：计数器挪去标题行）：超出的部分直接吃掉，
  *  计数器与真正写回的值才不会对不上；截断时把光标一起夹回末尾，否则选区会落到字数之外。
+ *
+ *  **键盘收走就失焦**（[ImeFocusRelease]）：这一块是全屏编辑区，收起键盘之后框里还留着光标与
+ *  聚焦描边，看着像「还在打字」—— 与页面里那些输入栏同一条口径。
  */
 @Composable
 private fun EditorField(
@@ -143,6 +149,10 @@ private fun EditorField(
     onValueChange: (TextFieldValue) -> Unit,
     focus: FocusRequester,
 ) {
+    //  这一块此刻有没有焦点 —— 「键盘收走就失焦」的判据
+    var focused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    ImeFocusRelease(focused = focused) { focusManager.clearFocus() }
     TextField(
         value = value,
         onValueChange = { next ->
@@ -164,7 +174,8 @@ private fun EditorField(
                 //  「动态显隐」同一档时长与缓动（`VISIBILITY_ENTER_MS` /
                 //  `EASING_EMPHASIZED_DECEL`），敲回车时框不会猛地弹一截。
                 .animateContentSize(tween(VISIBILITY_ENTER_MS, easing = EASING_EMPHASIZED_DECEL))
-                .focusRequester(focus),
+                .focusRequester(focus)
+                .onFocusChanged { focused = it.hasFocus },
         label = I18n.get(Strings.COMMAND_CMD_HINT, "请输入命令"),
         //  描边圆角矩形：这一块是「一整片编辑区」，下划线那副样子撑不起这块高度
         backgroundMode = TextFieldMode.Rectangle,

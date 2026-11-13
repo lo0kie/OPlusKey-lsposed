@@ -213,6 +213,9 @@ internal fun SettingsPage.IconInputView(
                     leadingIcon = { InputLeadingIcon(spec.icon) },
                     sanitize = sanitize,
                     maxLength = spec.maxLength,
+                    //  键盘被收走就失焦；弹窗里那一档要等 [ImeGuard] 的守卫窗口过去 ——
+                    //  窗口内由它补键盘，这边先让位（见 `ImeFocusRelease` 的 KDoc）
+                    imeHoldMs = if (show != null) IME_GUARD_WINDOW_MS else 0L,
                 ),
         )
         InputErrorText(shownError, isError)

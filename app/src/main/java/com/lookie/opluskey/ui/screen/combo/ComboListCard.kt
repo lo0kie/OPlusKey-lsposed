@@ -30,6 +30,7 @@ import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.dialog.rememberMenuState
 import com.lookie.opluskey.ui.feedback.DisabledStateWithArrow
 import com.lookie.opluskey.ui.feedback.DisabledStateWithPick
+import com.lookie.opluskey.ui.feedback.keyStateLabel
 import com.lookie.opluskey.ui.model.icon.DrawnIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
@@ -178,7 +179,9 @@ private fun SettingsPage.comboRow(
                         DisabledStateWithPick(
                             picked = combo.id in picked,
                             enabled = writable,
-                            off = off,
+                            //  组合没有「只参与组合按键」这一位（那一位只属于单键），
+                            //  所以这里只有「停用 / 不写」两种 —— 判据仍走同一份
+                            state = keyStateLabel(enabled = !off, comboOnly = false),
                         )
                     }
                 }

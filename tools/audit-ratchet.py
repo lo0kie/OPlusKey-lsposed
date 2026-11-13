@@ -1,32 +1,53 @@
 #!/usr/bin/env python3
-r"""棘轮判据 —— 把「已经改好的规模指标」变成**只许降**的硬闸。
+r"""规模判据 —— 三条**绝对阈值**，越线即红。
 
-## 它补的是哪一类洞
+## 名字的来历（以及它为什么不再是一套「棘轮」）
 
-`audit-coupling.py` 的「单文件 > 1500 行」只是**警告**，`audit-arch.py` 的规模那几行只当**趋势线**，
-detekt 的存量靠 `baseline.xml` 兜着 —— 三者都不会因为「又长了一点」而失败。
-于是同类问题反复发生：`docs/architecture/decoupling.md` 零节在 2026-10-28 记的是
-「全仓无 > 1000 行、`SettingsPage` 24 个状态字段、368 个页面扩展」，两周后实测变成
-「4 个千行文件、38 个字段、516 个扩展」—— 每一项单次都只是「加一行」，合起来是判据 3 / 4 整体失效。
+这个脚本原先的形态是「把今天实测到的值记成上限、只许降」：上限表里逐个文件记行数，
+`--tighten` 收紧，放宽要手改并写理由。2026-11-13 查历史时发现它并没有真的起那个作用：
 
-所以这里不设「绝对值达标线」（那会把存量一次性判红），而是把**今天**记成上限：
-再长就红，改好之后 `--tighten` 自动收紧。**上限只许降** —— 放宽要手改 `ratchet.txt` 并写理由。
+· **8 次提交改过 8 次上限表，两个指标一次都没有降过**
+  （`Strings.kt` 1513 → 1513 → 1514 → 1542 → 1554 → 1587 → 1646；
+   `settings_page_ext` 516 → 517 → 520 → 530 → 530 → 534 → 546 → 546）。
+  原因是结构性的：`--tighten` 在超限时根本走不到（先 `return 1`），而功能开发期规模只会涨
+  ⇒「自动收紧」这条路径实际上不存在，「只许降」于是只剩「每次都要抬一次上限」这一半。
+· 它数的是**物理行数，含注释**。本仓库注释占比 50–70%（`Action.kt` 1139 行里只有 436 行
+  是代码，`PageIcons.kt` 1027 行里 123 行是单行 `val Xxx: ImageVector`）。于是「把判据写
+  清楚」——本仓库最在意的动作——会被它记账，逼着人解释「为什么多这几行」，而理由无一例外
+  是「因为加了功能」。
 
-## 判据（逐项与 `ratchet.txt` 同名）
+**净效果是一笔过程税**，换来的保护（拦住一次加两百行）在 code review 与
+`audit-coupling.py` 的单文件警告里本来就看得见。所以按用户口径改成下面这三条。
 
-1. `count.files_over_1000` + `lines.<相对路径>`：千行文件个数，以及**每个**千行文件的行数上限。
-   逐个记住行数是为了防「A 拆出去、B 涨回来」这种此消彼长。
-2. `count.settings_page_fields`：`ui/SettingsPage.kt` 里 `internal/private val|var` 的条数。
-   口径与 `decoupling.md` 零节那条 grep 逐字相同，所以历史上那个 24 能直接对比。
-3. `count.settings_page_ext`：`fun/val/var SettingsPage.*` 的总数，口径与 `audit-arch.py` 相同
-   （去掉注释后按多行正则计数）。
-4. `count.detekt_baseline`：`config/detekt/baseline.xml` 里 `<ID>` 的条数 ——
-   AGENTS.md 二、1.2 写着「新代码不许再往基线里加条目」，这句话以前没有闸。
+## 现在管什么
+
+三条，都是**绝对阈值**（不是「今天多少」）：
+
+· `count.detekt_baseline` = 0 —— **一条豁免都不许有**（AGENTS.md 二、1.2）。这不是趋势线：
+  新代码不许往 `config/detekt/baseline.xml` 里加条目，也不许用 `@Suppress` 绕过。
+· `count.settings_page_fields` ≤ 45 —— `ui/SettingsPage.kt` 的状态字段数。它是「新功能再往
+  页面对象上挂一个字段」的入口，涨到某个量级就该把状态挪出去。
+· `count.settings_page_ext` ≤ 700 —— `fun/val/var SettingsPage.*` 的总数：页面对象上挂了多少
+  个带接收者的成员，也就是这一层对外暴露的耦合面。
+
+阈值给的是**失控线，不是现状**：正常加功能碰不到，真要一口气挂几十个才红。实测值仍会打印，
+所以趋势看得见——只是不该用「每次提交抬一次上限」来表达趋势。
+
+## 千行文件不在这里管了
+
+`count.files_over_1000` 与逐文件的 `lines.*` 已删。它分不清「123 行图标声明」与「1600 行
+逻辑」，而且数注释。「单文件多大」这件事仍有 `audit-coupling.py` 的 1500 行那条，那里报的是
+「去看一眼」，不是「改基准」。
+
+## 阈值放在哪
+
+`tools/ratchet.txt`（文件名同样是历史遗留）：`键 = 数值`，一列，改阈值只动那张表、不必碰
+脚本。脚本会校验表里的键与它度量的键**一一对应**——拼错一个键就等于那条判据没在跑，
+那种「全绿」是假的。
 
 用法（仓库根目录）：
 
-    python3 tools/audit-ratchet.py            # 校验，超限 exit 1
-    python3 tools/audit-ratchet.py --tighten  # 只收紧：把上限改成实测值（不会放宽任何一项）
+    python3 tools/audit-ratchet.py     # 校验，越线 exit 1
 """
 
 from __future__ import annotations
@@ -45,136 +66,90 @@ REPO = Path(__file__).resolve().parent.parent
 APP = REPO / "app/src/main/java/com/lookie/opluskey"
 SETTINGS_PAGE = APP / "ui/SettingsPage.kt"
 BASELINE = REPO / "config/detekt/baseline.xml"
-RATCHET = REPO / "tools/ratchet.txt"
+LIMITS_FILE = REPO / "tools/ratchet.txt"
 
-# 千行的「千」—— 与 audit-coupling 的 1500 那条不同：这里是判据 4 的原值（structure.md 四、判据 4）
-BIG_FILE = 1000
-
+# 口径与 `decoupling.md` 零节 / `audit-arch.py` 那条逐字相同，历史数字因此可以直接对比
 FIELD_RE = re.compile(r"^    (?:internal )?(?:private )?(?:val|var) ", re.M)
 EXT_RE = re.compile(r"^(?:internal |private )?(?:fun|val|var) SettingsPage\.", re.M)
 BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 LINE_COMMENT = re.compile(r"//[^\n]*")
-MAX_HINT = 200
 
-
-def rel(path: Path) -> str:
-    return path.relative_to(REPO).as_posix()
-
-
-def sources() -> list[Path]:
-    return sorted(list((REPO / "app/src").rglob("*.kt")) + list((REPO / "core/src").rglob("*.kt")))
+# 这三条就是判据全集。表里多一个 / 少一个都算错（拼错的键等于那条判据没在跑）
+KEYS = (
+    "count.detekt_baseline",
+    "count.settings_page_fields",
+    "count.settings_page_ext",
+)
 
 
 def code_only(path: Path) -> str:
+    """去掉注释再数成员 —— 行结构不变，只是把注释正文抽走。"""
     text = path.read_text(encoding="utf-8", errors="replace")
     return LINE_COMMENT.sub("", BLOCK_COMMENT.sub("", text))
 
 
 def measure() -> dict[str, int]:
-    """实测值 —— 键与 `ratchet.txt` 里的键一一对应。"""
-    out: dict[str, int] = {}
-    big: list[Path] = []
-    for path in sources():
-        n = len(path.read_text(encoding="utf-8", errors="replace").splitlines())
-        if n > BIG_FILE:
-            big.append(path)
-            out[f"lines.{rel(path)}"] = n
-    out["count.files_over_1000"] = len(big)
-
-    out["count.settings_page_fields"] = len(FIELD_RE.findall(code_only(SETTINGS_PAGE)))
-    ext = 0
-    for path in APP.rglob("*.kt"):
-        ext += len(EXT_RE.findall(code_only(path)))
-    out["count.settings_page_ext"] = ext
-
-    out["count.detekt_baseline"] = BASELINE.read_text(encoding="utf-8", errors="replace").count("<ID>")
-    return out
+    """实测值 —— 键与 `tools/ratchet.txt` 一一对应。"""
+    ext = sum(len(EXT_RE.findall(code_only(p))) for p in APP.rglob("*.kt"))
+    return {
+        "count.detekt_baseline": BASELINE.read_text(encoding="utf-8", errors="replace").count("<ID>"),
+        "count.settings_page_fields": len(FIELD_RE.findall(code_only(SETTINGS_PAGE))),
+        "count.settings_page_ext": ext,
+    }
 
 
-def read_ratchet() -> tuple[list[str], dict[str, int]]:
-    """返回（原始行, 上限表）。注释与空行原样留着，`--tighten` 改写时不能丢理由。"""
-    lines = RATCHET.read_text(encoding="utf-8").splitlines()
+def read_limits() -> dict[str, int]:
     limits: dict[str, int] = {}
-    for line in lines:
+    for line in LIMITS_FILE.read_text(encoding="utf-8").splitlines():
         body = line.split("#", 1)[0].strip()
         if not body or "=" not in body:
             continue
         key, _, value = body.partition("=")
-        key = key.strip()
-        value = value.strip()
-        if not value.lstrip("-").isdigit():
-            sys.exit(f"棘轮上限表：{key} 的值不是整数（{value}）")
+        key, value = key.strip(), value.strip()
+        if not value.isdigit():
+            sys.exit(f"规模阈值表：{key} 的值不是非负整数（{value}）")
         limits[key] = int(value)
-    return lines, limits
+    return limits
 
 
-def main(argv: list[str]) -> int:
-    tighten = "--tighten" in argv
-    for path in (SETTINGS_PAGE, BASELINE, RATCHET):
+def main() -> int:
+    # 路径写错 / 文件改名时报错退出，不静默当成 0 —— 那种「全绿」是假绿
+    for path in (SETTINGS_PAGE, BASELINE, LIMITS_FILE):
         if not path.is_file():
-            # 路径写错 / 文件改名时**报错退出**，不静默当成 0 —— 那种「全绿」是假绿
-            sys.exit(f"棘轮判据：文件不存在：{path}")
+            sys.exit(f"规模判据：文件不存在：{path}")
 
-    lines, limits = read_ratchet()
+    limits = read_limits()
     now = measure()
-    if not now:
-        sys.exit("棘轮判据：一个文件都没扫到（目录结构变了？）")
 
-    over: list[str] = []
-    rows: list[tuple[str, int, int | None]] = []
-    for key in sorted(set(limits) | set(now)):
-        seen, limit = now.get(key, 0), limits.get(key)
-        rows.append((key, seen, limit))
-        if limit is None:
-            # 表里没有的新条目：只在它确实是「新冒出来的千行文件」时算超限 ——
-            # 千行文件的集合本身也是判据，不能靠不登记就绕过去
-            if key.startswith("lines."):
-                over.append(f"{key}（新冒出来的千行文件，{seen} 行）")
-            continue
-        if seen > limit:
-            over.append(f"{key}：{seen} > 上限 {limit}")
-        elif key.startswith("lines.") and seen < limit:
-            rows[-1] = (key, seen, limit)
+    missing = [k for k in KEYS if k not in limits]
+    extra = [k for k in limits if k not in KEYS]
+    if missing or extra:
+        sys.exit(
+            "规模阈值表与判据对不上："
+            + (f"表里缺 {missing}；" if missing else "")
+            + (f"表里多 {extra}（拼错？）" if extra else ""),
+        )
 
-    width = max(len(r[0]) for r in rows)
-    print("棘轮判据（实测 / 上限）：")
-    for key, seen, limit in rows:
-        mark = "" if limit is None or seen <= limit else "  <- 超限"
-        show = "未登记" if limit is None else str(limit)
-        print(f"  {key.ljust(width)}  {seen:>6} / {show:>6}{mark}")
+    over = [(k, now[k], limits[k]) for k in KEYS if now[k] > limits[k]]
+
+    width = max(len(k) for k in KEYS)
+    print("规模判据（实测 / 阈值）：")
+    for key in KEYS:
+        mark = "  <- 越线" if now[key] > limits[key] else ""
+        print(f"  {key.ljust(width)}  {now[key]:>5} / {limits[key]:>5}{mark}")
 
     if over:
-        print("\n[超限] 规模指标比上限更差：")
-        for line in over:
-            print(f"  - {line}")
-        print("\n  改回原样，或确实该放宽时手改 tools/ratchet.txt 并在提交信息里说明理由。")
+        print("\n[越线] 这三条是绝对阈值，不是「今天多少」：")
+        for key, seen, limit in over:
+            print(f"  - {key}：{seen} > 阈值 {limit}")
+        if any(k == "count.detekt_baseline" for k, _, _ in over):
+            print("    detekt 基线必须为 0：把豁免改掉，别往基线或 `@Suppress` 里加。")
+        print("    页面对象那两条越线时，先把状态 / 成员挪出去；确实该调阈值，改 tools/ratchet.txt 并在提交信息里说明。")
         return 1
 
-    print("\n[达标] 所有规模指标都没超过上限。")
-
-    if tighten:
-        # **只收紧**：实测比上限小就改成实测值；实测更大时前面已经 exit 1，走不到这里
-        out: list[str] = []
-        for line in lines:
-            body = line.split("#", 1)[0]
-            if "=" in body:
-                key = body.split("=", 1)[0].strip()
-                if key in now and now[key] < limits.get(key, now[key]):
-                    line = f"{key} = {now[key]}"
-            out.append(line)
-        # 已经掉到 1000 行以下的文件：把它的行数上限删掉（留着等于给将来留个口子）
-        out = [
-            line
-            for line in out
-            if not (
-                line.strip().startswith("lines.")
-                and line.split("=", 1)[0].strip() not in now
-            )
-        ]
-        RATCHET.write_text("\n".join(out) + "\n", encoding="utf-8")
-        print("已收紧上限（没有放宽任何一项）。")
+    print("\n[达标] 三条判据都在阈值内。")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    sys.exit(main())

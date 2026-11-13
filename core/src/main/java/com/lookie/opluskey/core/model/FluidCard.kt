@@ -1,0 +1,37 @@
+package com.lookie.opluskey.core.model
+
+/**
+ * 流体云胶囊那颗图标的**落点** —— 界面层与宿主侧各写一半，名字必须同一份。
+ *
+ *  `fluid:` 的 `logo` 可以是 `content://`（系统自己弹相机胶囊时就这么传），它指向宿主
+ *  `FileProvider` 映射的那个目录；文件**只由界面层画**（`ui/model/icon/FluidCardArt`，
+ *  那里有 Compose，能把 Tabler 的 `ImageVector` 画成位图），宿主侧只负责「找到它、组出 uri」。
+ *
+ *  **没选图标就不留文件、也不画默认那颗**：那种命令（`fluid:正文`）执行时 `logo` 传空，
+ *  胶囊左边那一格空着。以前这里有一套「默认图标 + 宿主兜底」的链路，于是一模一样的胶囊分不出
+ *  「选过默认那颗」和「压根没选」，2026-11-13 按用户口径拆掉了。
+ */
+object FluidCard {
+    /** 宿主 `files/` 下的共享目录（`FileProvider` 的 `share_images` 路径段）。 */
+    const val SHARE_DIR = "share_images"
+
+    /**
+     * 「空 id」那一档的文件名。
+     *
+     *  现在**没有任何一条路会写出这个文件**（没选图标时执行侧直接给空 `logo`，不经这里）。
+     *  留着是因为 [nameOf] 收的是一个 String、理论上能被传空 —— 让它落到一个确定的名字上，
+     *  比拼出 `okey-fluid-.png` 这种残名再去查文件好。
+     */
+    const val ICON_NAME = "okey-fluid.png"
+
+    /** 渲染尺寸（模板里那个槽就按这个量级画）。 */
+    const val ICON_SIZE = 36
+
+    /**
+     * 某个图标 id 对应的文件名。
+     *
+     *  一个 id 一个文件：选择器里点一下就把那颗渲染成 png 存下来，命令里只记 id，
+     *  执行时按 id 找回文件 —— 换图标不用重渲染别的，也不会互相覆盖。
+     */
+    fun nameOf(icon: String): String = if (icon.isEmpty()) ICON_NAME else "okey-fluid-$icon.png"
+}

@@ -16,6 +16,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.AlphabetChinese
 import io.github.lyxnx.compose.ui.tablericons.outline.AppWindow
 import io.github.lyxnx.compose.ui.tablericons.outline.Apps
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
+import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsDoubleNeSw
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandAlipay
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandGithub
 import io.github.lyxnx.compose.ui.tablericons.outline.BrandQq
@@ -90,6 +91,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Packages
 import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
+import io.github.lyxnx.compose.ui.tablericons.outline.Photo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
@@ -579,6 +581,18 @@ internal object PageIcons {
     /** **多配置** —— `stack-2`（一叠纸）：切换就是抽哪一张。 */
     val Profiles: ImageVector get() = TablerIcons.Outline.Stack2
 
+    /**
+     * **只参与组合** —— `arrows-double-ne-sw`（一支朝东北、一支朝西南的双向斜箭头）。
+     *
+     *  双向是这一位的要害：单键手势交还系统、模块只用它凑组合 —— 这颗键**两头都有去处**，
+     *  不是「坏了」也不是「只剩一半」。
+     *
+     *  原先与 [Profiles] 共用 `stack-2`（两枚叠一起），理由是「叠在一起 = 要跟另一颗一起按」；
+     *  但用户口径换成了这一颗 —— 同时 `stack-2` 在 [Profiles] 那里本来就指「多份配置叠在一起」，
+     *  两处共用一颗字，早先只是碰巧读得通。
+     */
+    val ComboOnly: ImageVector get() = TablerIcons.Outline.ArrowsDoubleNeSw
+
     /** **新建配置** —— `file-plus`：加一份。 */
     val ProfileAdd: ImageVector get() = TablerIcons.Outline.FilePlus
 
@@ -637,14 +651,22 @@ internal object PageIcons {
      */
     val CommonCommandsManage: ImageVector get() = TablerIcons.Outline.Notes
 
+    /**
+     * 「图标」那一行的行首 —— `photo`（用户指定）。
+     *
+     *  说的是「这条命令的胶囊左边画哪一张图」：点开就是一格一格的图形可选，一颗照片位正好是它。
+     *  与 [Click]（那颗「点一下」的指针，原先借来用）分开：那颗讲的是**手势**，不是**图**。
+     */
+    val FluidIcon: ImageVector get() = TablerIcons.Outline.Photo
+
     /** 「步骤」卡片里「添加步骤」那一行的行首图标。 */
     val StepAdd: ImageVector get() = TablerIcons.Outline.Plus
 
-    // ── 「支持的命令格式」卡里那六行的行首 —— 一行一颗，六颗互不相同 ──
+    // ── 「支持的命令格式」卡里那几行的行首 —— 一行一颗，互不相同 ──
     //
     //  这一列是「能写什么」的图例，所以每颗都要能一眼对上它那一行的说明：终端 / 键盘 / 发出去 /
-    //  通知 / 胶囊 / 快捷方式。**不与 [CommandSingle] 抢**：那颗是「命令」这个整体（输入框行首），
-    //  这里是它的六种写法 —— 同一个字形摆在六行里的第一行，读起来像「只有 shell 是命令」。
+    //  通知 / 胶囊 / 提示 / 快捷方式。**不与 [CommandSingle] 抢**：那颗是「命令」这个整体（输入框行首），
+    //  这里是它的几种写法 —— 同一个字形摆在几行里的第一行，读起来像「只有 shell 是命令」。
 
     /** `shell:<命令>` —— `terminal-2`（终端窗口），与网格里 shell 那一格同源（见 `actionIcon`）。 */
     val FormatShell: ImageVector get() = TablerIcons.Outline.Terminal2
@@ -670,6 +692,14 @@ internal object PageIcons {
 
     /** `fluid:<正文>` —— `capsule-horizontal`（横放的胶囊）：流体云在状态栏上就是那么一颗。 */
     val FormatFluid: ImageVector get() = TablerIcons.Outline.CapsuleHorizontal
+
+    /**
+     * `toast:<正文>` —— `tooltip`（带小尾巴的气泡，浮在内容上方）。
+     *
+     *  与 [FormatNotify] 的 `message`（一条消息）刻意区分：那条是「落到通知中心里的一条」，
+     *  这条是**浮在屏幕上、说完就没**的一句话 —— 一颗没有尾巴的气泡读起来与消息那条太像。
+     */
+    val FormatToast: ImageVector get() = TablerIcons.Outline.Tooltip
 
     /**
      * `shortcut:<ID>` —— `external-link`（一个方框 + 外跳箭头），网格里快捷方式那一格也用这颗。

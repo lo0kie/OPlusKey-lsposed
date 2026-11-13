@@ -32,6 +32,51 @@ sealed interface Action {
         get() = appTarget != null
 
     /**
+     * 这一档**用不用得上「以 root 执行」那个开关** —— 全项目唯一判据。
+     *
+     *  ## 为什么只有 shell
+     *
+     *  「以 root 执行」（[com.lookie.opluskey.core.model.Command.root]）是**执行身份**，只对
+     *  「要另起一个进程跑一段命令」那一档有意义：[Shell]。其余十几档都走模块自己的通道 ——
+     *  注入按键、发广播、写 `Settings`、调 system_server 里的服务、让 SystemUI 弹一条提示 ——
+     *  它们**从来不经过 shell**，那个开关开与关对它们一个字的影响都没有。
+     *
+     *  所以要按它显隐，而不是常驻：`toast:` / `notify:` / `keyevent:` 这类命令底下摆一个
+     *  「以 root 执行」，用户会以为打开它能让那条命令变成另一回事，或者以为不开就跑不了 ——
+     *  两种误解都会让人去动一个不起作用的开关。
+     *
+     *  ## 为什么「只看 Shell」不等于「只有 Shell 会提权」—— 以及为什么这样就够
+     *
+     *  确实另有两条**真会提权**的：`proc:stop:`（`ProcessController` 里 `kill -9` 别人的进程，
+     *  硬编码走 `su`）与 `bright:`（自动亮度开着时写 `screen_auto_brightness_adj` 那个私有键）。
+     *  但它们**不在这条判据要管的范围里**，理由有两层，缺一不可：
+     *
+     *  1. **它们进不了自定义命令**：[PREFIXES] 是「命令详情」那一栏的闸，只有那 7 种前缀写得进去
+     *     （`proc:` / `bright:` / `setting:` / `vol:` 那几族是给绑定格与已存配置用的，见 [PREFIXES]
+     *     那里的说明）。[com.lookie.opluskey.core.model.Command.root] 挂在**自定义命令**上，
+     *     正文里根本写不出这两条 ⇒ 碰不到。
+     *  2. **就算碰得到，那个开关也管不了它们**：两者都直接调 `ShellRunner.exec(...)`、不读
+     *     `Command.root`（默认 `preferRoot = true`）。给它们显示开关就是一块**假开关** ——
+     *     拨到「只用 sh」照样走 `su`，比不显示更糟。
+     *
+     *  所以判据的完备性**依赖 [PREFIXES] 那一份名单**：哪天有新的前缀被放进「命令详情」那一栏、
+     *  并且它内部会起 shell（比如把 `proc:` 放开给手写），就得回来把这一支扩上。
+     *  [PREFIXES] 的注释里有反向指路。
+     *
+     *  ## shell 也只说「用得上」，不说「必须开」
+     *
+     *  `shell:` 里既有非跑 root 不可的（微信扫一扫：`am start -n` 要 `BAL` 那道检查过得去），
+     *  也有不升权就行的（支付宝两条深链，见 `CommonCommands.ALIPAY_SCAN_STEP`）。**哪一条属于哪种
+     *  是命令自己知道的事**，模型层不猜 —— 这里只说「这一档该不该给用户看那个开关」，
+     *  真正的取值由用户自己那一档（`Command.root`）决定。
+     *
+     *  与 `isBound` / `isBarePrefix` 同一个位置：判据收在 [Action] 上，界面显隐、落盘取舍、
+     *  图标拼接三处共用同一份答案 —— 各写一遍 `when` 时，加一档动作就会有地方漏掉。
+     */
+    val usesRoot: Boolean
+        get() = this is Shell
+
+    /**
      * 这份动作**只有前缀、载荷是空的**（`cmd:` / `app:` / `shell:` 后面什么都没写）。
      *
      *  这种写法解析得出一个动作对象，但执行时必然落空：`cmd:` 变成 [Custom] 空名字 ⇒ 永远
@@ -55,6 +100,9 @@ sealed interface Action {
 
                 //  流体云没有正文就没什么可弹的（那颗胶囊本体就是那段字）⇒ 算「只有前缀」
                 is Fluid -> message.isBlank()
+
+                //  提示同样：一句话都没有就没什么可弹的
+                is Toast -> message.isBlank()
 
                 is App -> target.isBlank()
 
@@ -175,19 +223,49 @@ sealed interface Action {
     }
 
     /**
-     * 弹一条**流体云**（`fluid:正文`）—— 状态栏 / AOD 上那颗胶囊，通知中心里不留记录。
+     * 弹一条**流体云**（`fluid:正文`，带图标时 `fluid:<图标 id>|正文`）—— 状态栏 / AOD 上那颗胶囊，
+     * 通知中心里不留记录。
      *
      *  流体云只有「Seedling 卡片」一条实现，载荷只有三段（`initData{title, logo, showA}`），
      *  业务 action 固定 `pantanal.intent.business.app.system.ACTION_KEY`；宿主自己弹响铃 / 截屏
      *  胶囊走的就是这套。模块在宿主进程里借它的 SDK 发（`host/action/FluidAction`），
      *  所以**文字能换、模板换不了**（反编译见 `docs/device/actions/feedback.md` 四十二）。
      *
+     *  [icon] 是**界面层那批 Tabler 字形里的 id**（`ui/model/icon/FluidIcons`），空串 = 不给图标。
+     *  它不进 `logo` 字段本身（那里放的是 `content://`），只是「该渲染哪一张」的键。
+     *
      *  与 [Notify] 是两件事：这条几秒后自己收起来，不会在通知中心留一条。
      */
     data class Fluid(
         val message: String,
+        val icon: String = "",
     ) : Action {
-        override val token: String = Action.FLUID_PREFIX + message
+        override val token: String =
+            Action.FLUID_PREFIX + (if (icon.isEmpty()) "" else icon + Action.FLUID_ICON_SEP) + message
+    }
+
+    /**
+     * 弹一条**提示**（`toast:正文`）—— 屏幕下方闪一下就走，通知中心 / 状态栏都不留东西。
+     *
+     *  这是 [Notify] / [Fluid] 之外的第三个落点，三者按「留不留得下」区分：
+     *  [Notify] 进通知中心能留着、[Fluid] 在状态栏挂几秒、这一档说完就没了。
+     *
+     *  执行走的是模块**唯一那条提示出口**（`host/action/CommandFailure.requestSystemToast`）：
+     *  宿主发一条广播请注入侧弹（`inject/SystemToast`），由注入侧用系统身份（包名 `android`）发话。
+     *  为什么绕这一圈：宿主自己的包受系统按包限流（3 条 / 20 秒，见 `docs/device/actions/feedback.md`
+     *  四十），连按几下之后后面那些会被 `NotificationService` 直接丢掉 —— 真机表现就是「按了没提示」。
+     *
+     *  ## 为什么没有图标
+     *
+     *  与 [Fluid] 不一样：那边能塞 png（`logo` 收 `content://`），这边塞不进任何东西。
+     *  Android 11 起带自定义视图的 toast（`Toast.setView`）会被系统按「后台应用 + targetSdk ≥ 30」
+     *  拦掉（`W/NotificationService: Blocking custom toast from package …`）；文字 toast 由 SystemUI
+     *  自己画，`getView()` 直接返回 null。要在提示里带图标只能用自绘浮层（要悬浮窗权限），那是另一件事。
+     */
+    data class Toast(
+        val message: String,
+    ) : Action {
+        override val token: String = Action.TOAST_PREFIX + message
     }
 
     /**
@@ -514,6 +592,22 @@ sealed interface Action {
          */
         const val FLUID_PREFIX = "fluid:"
 
+        /**
+         * `fluid:` 里图标与正文的分隔符：`fluid:<图标 id>|正文`。
+         *
+         *  选 `|` 而不是 `:`，因为正文自己就常带冒号（`fluid:现在是14:30`），用冒号切会把时间劈开。
+         *  没有这个符号 ⇒ 整段都是正文（旧配置照常读，图标走默认那颗）。
+         */
+        const val FLUID_ICON_SEP = "|"
+
+        /**
+         * 弹一条提示（`toast:正文`）—— 屏幕上闪一下就没了，见 [Toast]。
+         *
+         *  与 [NOTIFY_PREFIX] / [FLUID_PREFIX] 是同一件事（让用户看见一句话）的三个落点：
+         *  通知中心里留一条 / 状态栏挂几秒 / 说完就没。这一档**没有图标**（理由见 [Toast]）。
+         */
+        const val TOAST_PREFIX = "toast:"
+
         /** 拉起一个界面。 */
         const val APP_PREFIX = "app:"
 
@@ -653,8 +747,11 @@ sealed interface Action {
                 // 发通知（`notify:正文`）：同样必须排在兜底之前，否则会被当成 shell 命令
                 text.startsWith(NOTIFY_PREFIX) -> Notify(text.removePrefix(NOTIFY_PREFIX).trim())
 
-                // 流体云（`fluid:正文`）：同上
-                text.startsWith(FLUID_PREFIX) -> Fluid(text.removePrefix(FLUID_PREFIX).trim())
+                // 流体云（`fluid:正文` / `fluid:<图标 id>|正文`）：同上
+                text.startsWith(FLUID_PREFIX) -> parseFluid(text.removePrefix(FLUID_PREFIX))
+
+                // 提示（`toast:正文`）：同上，必须先于兜底
+                text.startsWith(TOAST_PREFIX) -> Toast(text.removePrefix(TOAST_PREFIX).trim())
 
                 text.startsWith(APP_PREFIX) -> parseAppToken(text)
 
@@ -758,9 +855,9 @@ sealed interface Action {
         }
 
         /**
-         * 「命令详情」那一栏**只认这几种前缀** —— 就是界面上「支持的命令格式」卡列的那六行。
+         * 「命令详情」那一栏**只认这几种前缀** —— 就是界面上「支持的命令格式」卡列的那几行。
          *
-         *  判据与那张卡是同一个集合（用户口径：只允许填列表里的）：能写的手写命令只有这六种，
+         *  判据与那张卡是同一个集合（用户口径：只允许填列表里的）：能写的手写命令只有这几种，
          *  卡片里每一行也正好对应其中一个。两边要改就一起改 —— 多一个这里不认的前缀，用户在
          *  输入框里敲得进去、却存不下来；少一个，列表点一下填进来的东西自己过不了闸。
          *
@@ -772,6 +869,13 @@ sealed interface Action {
          *  `setting:wifi`、`proc:stop:<包名>`），手写既记不住也不该记；写错了不会报错，只会
          *  静默不执行。[parse] 必须继续认它们（绑定那几格与已存配置都要能解析出来），
          *  只是「命令详情」这一栏不再接受手写。
+         *
+         *  ## 加新前缀时要一并检查 [Action.usesRoot]
+         *
+         *  那份判据（「以 root 执行」那个开关该不该出现）就建在这张名单上：它的结论是
+         *  「自定义命令只可能是这几种，其中只有 `shell:` 经过 shell」。**往这里加一个内部会起
+         *  shell 的前缀**（`proc:` 那种）时，那一支必须跟着扩 —— 否则新前缀的命令既不会显示那个
+         *  开关、也不会把 `root` 落盘，用户没法控制它到底以谁的身份跑。
          */
         private val PREFIXES: List<String> =
             listOf(
@@ -780,6 +884,7 @@ sealed interface Action {
                 INTENT_PREFIX,
                 NOTIFY_PREFIX,
                 FLUID_PREFIX,
+                TOAST_PREFIX,
                 SHORTCUT_PREFIX,
             )
 
@@ -988,6 +1093,26 @@ private fun parseRingerVolume(text: String): Action {
         '-' -> Action.RingerVolume(Action.Volume.Mode.SUB, percent)
         else -> Action.RingerVolume(Action.Volume.Mode.FIX, percent)
     }
+}
+
+/**
+ * `fluid:<图标 id>|正文` → [Action.Fluid]。
+ *
+ *  分隔符用 [Action.FLUID_ICON_SEP]（`|`）而不是冒号：正文自己常带冒号（`fluid:现在是14:30`），
+ *  用冒号切会把时间劈成两半。没有分隔符 ⇒ 整段都是正文、图标留空（旧配置就长这样）。
+ *
+ *  分隔符前那一段**只认小写字母 / 数字 / 连字符**：认不出（比如正文里本身带一个 `|`）就把整段
+ *  当正文 —— 宁可少切一刀，也不把用户的字吃掉一截。
+ *
+ *  写成**顶层**函数而不是 `Companion` 的成员：那个伴生对象已经顶着 detekt 的函数数阈值。
+ */
+private fun parseFluid(text: String): Action.Fluid {
+    val cut = text.indexOf(Action.FLUID_ICON_SEP)
+    if (cut <= 0) return Action.Fluid(text.trim())
+    val icon = text.substring(0, cut).trim().lowercase()
+    val looksLikeId = icon.isNotEmpty() && icon.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
+    if (!looksLikeId) return Action.Fluid(text.trim())
+    return Action.Fluid(text.substring(cut + Action.FLUID_ICON_SEP.length).trim(), icon)
 }
 
 /**

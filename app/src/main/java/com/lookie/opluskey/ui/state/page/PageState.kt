@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.lookie.opluskey.core.log.XLog
+import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
 
@@ -106,8 +107,18 @@ internal class CommandForm(
         get() {
             val base = loaded ?: return hasContent
             return when (kind) {
-                CommandKind.SINGLE -> name != base.name || single != base.single || root != base.root
-                CommandKind.SERIAL -> name != base.name || stepDelayMs != base.stepDelayMs || steps.toList() != base.steps
+                //  root 那一位只在**存得下去**时参与比较（判据与 `draftToLibrary` 同一个
+                //  `Action.usesRoot`）：非 `shell:` 的正文上它不落盘，拿它比就会把一件
+                //  「存了也一样」的改动报成「有未保存的东西」，退出时白问一句。
+                CommandKind.SINGLE -> {
+                    name != base.name ||
+                        single != base.single ||
+                        (Action.parse(single).usesRoot && root != base.root)
+                }
+
+                CommandKind.SERIAL -> {
+                    name != base.name || stepDelayMs != base.stepDelayMs || steps.toList() != base.steps
+                }
             }
         }
 

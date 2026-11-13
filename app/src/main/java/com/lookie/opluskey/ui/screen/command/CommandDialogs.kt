@@ -237,14 +237,16 @@ private fun SettingsPage.DeleteCommandDialog(ui: CommandUiState) {
  * 点「支持的命令格式」那一行要**整段替换**输入框（输入框里不带格式、却有别的内容）⇒ 先确认
  *（不是插入，没有撤销）。已经带格式的那种走「只换前缀」，不经过这里（见 `CommandFormats.fillPrefix`）。
  *
- * ## 为什么「聚焦」要等窗收场
+ * ## 为什么「滚回顶部」要等窗收场
  *
- *  字在确认那一下就换掉（用户在窗后面看得见），但**举手让输入框抢焦点**必须挪到
- *  [ConfirmDialog] 的 `onDismissFinished`：这个窗是独立窗口，库在退场动画结束时会把键盘
- * 收掉；退场途中叫起来的键盘，窗一销毁就被平台一起带走 —— 真机表现是「键盘弹一下又没了」。
- *  与「收集按键 → 添加按键」那两个窗交替时同一条教训（见 `FrostedDialog` 的注释）。
+ *  字在确认那一下就换掉（用户在窗后面看得见），但**让输入框那一侧把页面滚回顶部**必须挪到
+ *  [ConfirmDialog] 的 `onDismissFinished`：窗还盖在那儿的时候滚，用户看不到那一趟，等窗收起
+ *  时页面已经莫名换了位置。与「收集按键 → 添加按键」那两个窗交替时同一个道理。
  *
- *  只有**真替换过**才举手：点「取消」关掉的窗不该把焦点塞进输入框。
+ *  **不聚焦**（用户口径：点命令格式不再聚焦）：这一窗问的是「要不要换」，抢焦点只会把键盘
+ *  顶上来，而用户下一步未必是要打字。
+ *
+ *  只有**真替换过**才举手：点「取消」关掉的窗不该让页面滚走。
  */
 @Composable
 private fun SettingsPage.FillPrefixDialog(ui: CommandUiState) {
@@ -252,14 +254,14 @@ private fun SettingsPage.FillPrefixDialog(ui: CommandUiState) {
     // 这一下确认里到底换没换 —— 「取消」与「替换」走的是同一个收场回调，得分开
     var replaced by remember { mutableStateOf(false) }
     // 收场回调**不保证来**（`CollectKeyDialog` 那处也为此留了兜底）：到点还没等到就照样举手。
-    //  只是把「聚焦」推迟一档，比「键盘压根不起来」好；正常路径 250ms 左右回调就到，不等这一档。
+    //  只是把「滚动」推迟一档，比「字填了却停在半屏外」好；正常路径 250ms 左右回调就到，不等这一档。
     LaunchedEffect(replaced) {
         if (!replaced) return@LaunchedEffect
         delay(PREFIX_FOCUS_FALLBACK_MS)
         if (replaced) {
             replaced = false
-            XLog.w("命令格式：收场回调没来，按兜底时长举手聚焦")
-            ui.singleFocusRequest++
+            XLog.w("命令格式：收场回调没来，按兜底时长举手滚回顶部")
+            ui.singleScrollRequest++
         }
     }
     ConfirmDialog(
@@ -283,8 +285,8 @@ private fun SettingsPage.FillPrefixDialog(ui: CommandUiState) {
         onDismissFinished = {
             if (replaced) {
                 replaced = false
-                // 窗彻底没了，这时候抢焦点键盘才留得住
-                ui.singleFocusRequest++
+                // 窗彻底没了，这时候滚用户才看得见
+                ui.singleScrollRequest++
             }
         },
     )

@@ -162,6 +162,9 @@ internal fun SettingsPage.collapsedHeaderHeight(scrollBehavior: ScrollBehavior):
  *  各自截一遍 —— 夹多少**按这一页当刻的可用宽度算**，展开 / 折叠两档分开判，账本在
  *  `HeaderSubtitleBar`。
  *
+ *  `subtitleContent` 给**要画圆角框**的那几页（装键名的：按键绑定 / 按键设置 / 场景动作 /
+ *  组合键编辑）：框按名字宽度自己排，那本「按格数截断」的账套不上，所以与 `subtitle` 二选一。
+ *
  *  `subtitleColor` 是标题下面那行的颜色，默认就是库那一档次要色。留成参数是为了
  *  「这一页整体按不动」时把它也压暗一档：内容区整片变灰了，这一行还按满亮度亮着，读起来像
  *  那一区仍然是活的（见 `PageTopBar` 里停用那支）。
@@ -174,6 +177,7 @@ internal fun SettingsPage.PageHeader(
     title: String,
     subtitle: String = "",
     subtitleColor: Color = COUITheme.colorScheme.onSurfaceVariantSummary,
+    subtitleContent: (@Composable () -> Unit)? = null,
     scrollBehavior: ScrollBehavior,
     state: HazeState,
     actions: @Composable RowScope.() -> Unit = {},
@@ -196,7 +200,11 @@ internal fun SettingsPage.PageHeader(
         //  只走库的 `subtitle` 槽位（标题**下面**、自己占一行，见补丁 `0001`）——
         //  同一行那个 `trailingSubtitle` 槽位不再用：它贴在大标题右边，长一点的键名 / 命令
         //  就把大标题压成省略号，而这一行装的全是不受控的名字（口径见本函数的 KDoc）。
-        subtitle = subtitleBar.shown(subtitle),
+        //
+        //  两档二选一：给了 [subtitleContent]（要画圆角框的那几页）就不再画文字 ——
+        //  框自己会按名字宽度排，`subtitleBar` 那套「按格数截断」是给纯文字算的，套不到框上。
+        subtitle = if (subtitleContent == null) subtitleBar.shown(subtitle) else "",
+        subtitleContent = subtitleContent,
         //  副标题这一行紧挨着主标题，可两个行盒各有一截汉字不占的留白（上面那行的 descent、
         //  这一行的 ascent），3.5dp 的设计间隙看着像 11.7dp —— 副标题像被推远了一截。
         //  上提「行盒顶 → 墨迹顶」那一档（量出来的，见 `opticalTightTop`）：真机上量到 5px

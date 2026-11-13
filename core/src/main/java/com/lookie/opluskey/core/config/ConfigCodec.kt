@@ -127,7 +127,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 46
+    const val VERSION = 47
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

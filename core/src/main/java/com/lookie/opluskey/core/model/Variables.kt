@@ -36,8 +36,15 @@ data class Vars(
      *
      *  单趟扫描（不是反复 `replace`）：替换进去的值里若也写着 `${...}`，**不再展开** ——
      *  否则两个变量互相引用时这里会一直展开下去。
+     *
+     * @param fallback 用户表里**查不到**这个名字时再问一句（系统状态变量 `${sys.xxx}` 走这条，
+     *   见 [systemVarRef]）：返回 `null` = 也认不出，按「原样保留」处理。
+     *   **只在查不到时才调** —— 正常命令里一个系统变量都不写，就一次也不会碰到它。
      */
-    fun expand(text: String): String {
+    fun expand(
+        text: String,
+        fallback: (String) -> String? = { null },
+    ): String {
         if (!text.contains(OPEN)) return text
         val out = StringBuilder(text.length + 16)
         var at = 0
@@ -51,12 +58,13 @@ data class Vars(
             }
             out.append(text, at, start)
             val name = text.substring(start + OPEN.length, end).trim()
-            val hit = find(name)
-            if (hit == null) {
+            //  用户表优先（同名时用户那一颗赢，见 `SYSTEM_VAR_PREFIX` 那段说明）
+            val value = find(name)?.value ?: fallback(name)
+            if (value == null) {
                 //  认不出的名字原样保留（见类注释）
                 out.append(text, start, end + CLOSE.length)
             } else {
-                out.append(hit.value)
+                out.append(value)
             }
             at = end + CLOSE.length
         }
@@ -103,15 +111,34 @@ private fun Variable.applied(
  *  为什么不在 `Action.parse` 里展开：解析发生在**存配置时**，而值要到**执行时**才知道。
  *  所以解析照旧留下 `${名字}` 原样（那是用户写的东西，得能被编辑），执行前才在这里换一次。
  *
- *  只碰「会进命令 / 目标 / 名字」的那几种：[Action.VarSet] 自己的值不在这里展开
+ *  只碰「会进命令 / 目标 / 正文 / 名字」的那几种：[Action.VarSet] 自己的值不在这里展开
  *  （它在赋值那一步展开，且要用同一份 [Vars]），键码那种数字载荷也不碰。
+ *
+ *  **`shell:` 不在这里**：那一族有三条进来的路（内置动作、单条命令的正文、多条命令的步骤），
+ *  只有内置那一支会经过这里 —— 放在这儿的话，自定义命令里的 `${…}` 会静默不展开。所以它的展开点
+ *  沉到唯一那个出口（`ActionRunner.runShell`），三条路共用一份。
+ *
+ * @param fallback 见 [Vars.expand]：用户表查不到时再问一句（系统状态变量）。
  */
-fun Action.expandedWith(vars: Vars): Action =
+fun Action.expandedWith(
+    vars: Vars,
+    fallback: (String) -> String? = { null },
+): Action =
     when (this) {
-        is Action.Shell -> copy(command = vars.expand(command))
-        is Action.Intent -> copy(action = vars.expand(action))
-        is Action.App -> copy(target = vars.expand(target))
-        is Action.AppWindow -> copy(target = vars.expand(target))
-        is Action.Custom -> copy(name = vars.expand(name))
+        is Action.Intent -> copy(action = vars.expand(action, fallback))
+
+        is Action.App -> copy(target = vars.expand(target, fallback))
+
+        is Action.AppWindow -> copy(target = vars.expand(target, fallback))
+
+        is Action.Custom -> copy(name = vars.expand(name, fallback))
+
+        //  通知 / 流体云 / 提示的**正文**：最想写变量的就是这三处（「弹一下现在的响铃状态」）
+        is Action.Notify -> copy(message = vars.expand(message, fallback))
+
+        is Action.Fluid -> copy(message = vars.expand(message, fallback))
+
+        is Action.Toast -> copy(message = vars.expand(message, fallback))
+
         else -> this
     }

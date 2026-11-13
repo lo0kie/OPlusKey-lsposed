@@ -109,6 +109,27 @@ object Strings {
     const val BINDING_INSTANT_SINGLE_OFF = "binding.instant_single_off"
     const val BINDING_INSTANT_SINGLE_ON = "binding.instant_single_on"
 
+    /** 「逐次等满多击窗口」那行开关（开 / 关各一句副标题）—— 见 `KeyConfig.waitMultiWindow`。 */
+    const val BINDING_WAIT_MULTI_WINDOW = "binding.wait_multi_window"
+    const val BINDING_WAIT_MULTI_WINDOW_ON = "binding.wait_multi_window_on"
+    const val BINDING_WAIT_MULTI_WINDOW_OFF = "binding.wait_multi_window_off"
+
+    /** 「只参与组合按键」那行开关（开 / 关各一句副标题）—— 见 `KeyConfig.comboOnly`。 */
+    const val BINDING_COMBO_ONLY = "binding.combo_only"
+    const val BINDING_COMBO_ONLY_ON = "binding.combo_only_on"
+    const val BINDING_COMBO_ONLY_OFF = "binding.combo_only_off"
+
+    /** 绑定页整页灰掉时那句原因（「只参与组合按键」）—— 参数是这颗键的名字。 */
+    const val BINDING_COMBO_ONLY_BLOCKED = "binding.combo_only_blocked"
+
+    /**
+     * 按键列表行尾那半句 —— 「只参与组合」（与「已停用」占同一格，三态互斥）。
+     *
+     *  比 [BINDING_COMBO_ONLY] 短：那一行是整句标题（`只参与组合按键`），而这一格与「已停用」
+     *  同宽，太长会把标题挤掉一截。
+     */
+    const val BINDING_COMBO_ONLY_BADGE = "binding.combo_only_badge"
+
     /**
      * 这颗键还配了更高的击数（三击 / 四击）时，上面那两句的替代 —— 那时第二下既不算单击、
      * 也不是「不生效」。
@@ -250,8 +271,11 @@ object Strings {
     /** 同上那一行的副标题。 */
     const val COMMON_COMMANDS_MANAGE_DESC = "common_commands.manage_desc"
 
-    /** 顶栏副标题：这张清单里钉着几条。 */
+    /** 顶栏副标题：这张清单里钉着几条 —— 模板带一个 `%d`（条数嵌进句子，见 `I18n.format`）。 */
     const val COMMON_COMMANDS_SUBTITLE = "common_commands.subtitle"
+
+    /** 同上那一行**一条都没有**时说的是什么（不报数，与「已保存的命令」那一页同一个口径）。 */
+    const val COMMON_COMMANDS_SUBTITLE_EMPTY = "common_commands.subtitle_empty"
 
     /** 抽屉里选到「入口格」那种标记写法时说的是什么（它不是能执行的动作）。 */
     const val COMMON_COMMANDS_NOT_ACTION = "common_commands.not_action"
@@ -551,6 +575,10 @@ object Strings {
     /** `fluid:正文` —— 弹一条流体云胶囊（见 `Action.Fluid`）。 */
     const val COMMAND_FORMAT_FLUID = "command.format_fluid"
     const val COMMAND_FORMAT_FLUID_DESC = "command.format_fluid_desc"
+
+    /** `toast:正文` —— 屏幕上闪一条提示（见 `Action.Toast`）。 */
+    const val COMMAND_FORMAT_TOAST = "command.format_toast"
+    const val COMMAND_FORMAT_TOAST_DESC = "command.format_toast_desc"
     const val COMMAND_FORMAT_KEYEVENT = "command.format_keyevent"
     const val COMMAND_FORMAT_KEYEVENT_DESC = "command.format_keyevent_desc"
 
@@ -614,6 +642,43 @@ object Strings {
 
     /** 表单第二条小标题：命令正文（单条命令那个输入框）。 */
     const val COMMAND_DETAIL_TITLE = "command.detail_title"
+
+    /**
+     * 「可用变量」那一档的小标题（卡里的入口行点开是一层菜单，一行一个系统状态）。
+     *  菜单顶部那一处带条数（`可用变量 (8)`，调用点用 `titleWithCount` 拼），卡里那一处是纯标题。
+     */
+    const val COMMAND_VARS_TITLE = "command.vars_title"
+
+    /** 卡里那行入口的标题：进这一行能挑的东西。 */
+    const val COMMAND_VARS_ENTRY_TITLE = "command.vars_entry_title"
+
+    /**
+     * 「图标」那一档的小标题与行标题（只在正文是 `fluid:` 时出现）。
+     *
+     *  点开是网格选择器：模块在用的那批 Tabler 字形全在里面，选中即渲染成 png 落盘。
+     */
+    const val COMMAND_FLUID_ICON_TITLE = "command.fluid_icon_title"
+
+    /**
+     * 「图标」那一行的副标题 —— 一共有几颗可选（`当前有 %s 个图标`）。
+     *
+     *  这一档原先不写副标题：那时小字讲的是「现在用的是哪一颗」，而把 id 念成 `click` 对谁都没帮助
+     *  （挑的是图，一张图没法用一行字说清）。换成**总数**就不一样了 —— 它是「这一格后面还有多少
+     *  东西」的量，用户据此知道值不值得点进去。
+     */
+    const val COMMAND_FLUID_ICON_COUNT = "command.fluid_icon_count"
+
+    /** 入口行的小字：这一档的取值从哪儿来（不是状态值本身）。 */
+    const val COMMAND_VARS_ENTRY_DESC = "command.vars_entry_desc"
+
+    /** 菜单里那一行 / 选择窗里：这一档**判不出**（读不到系统服务 / 那个开关还没出现过）。 */
+    const val COMMAND_VARS_UNKNOWN = "command.vars_unknown"
+
+    /** 点一行之后那两档：**输出值**（`on` / `silent`，与场景条件同一套词表）—— 参数是此刻的值。 */
+    const val COMMAND_VARS_PICK_RAW = "command.vars_pick_raw"
+
+    /** 同上一档：**文案值**（「开」/「静音」，跟着界面语言）—— 参数是此刻的值。 */
+    const val COMMAND_VARS_PICK_TEXT = "command.vars_pick_text"
 
     /** 「命令详情」菜单里那一行：打开全屏编辑弹窗。 */
     const val COMMAND_FULLSCREEN_EDIT = "command.fullscreen_edit"

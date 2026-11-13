@@ -687,10 +687,20 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
  * · **底图**说明这条命令**怎么写**：`shell:` → 终端、`notify:` → 消息、`fluid:` → 横胶囊 …
  *   与「支持的命令格式」那张卡同一份表（[formatIconOf] 直接查它）。认不出的写法退回
  *   [PageIcons.CommandSingle] 那颗通用终端。
- * · **右下角那颗井号**说明它**以谁的身份跑**：`root` 为真时把 [PageIcons.CommandRoot] 那颗字形
- *   拼上去（走 `badgedIcon`，与音量 / 亮度 / 铃声那几族同一支：底图右下角裁掉缺口、井号落进去）。
- *   原先这两件事挤在一颗字上（root 就整颗换成井号），
- *   于是「一条提权的 notify 命令」在列表里只看得见「提权」、看不出它干什么。
+ * · **右下角那颗井号**说明它**以谁的身份跑**：`shell:` 且 `root` 为真时把 [PageIcons.CommandRoot]
+ *   那颗字形拼上去（走 `badgedIcon`，与音量 / 亮度 / 铃声那几族同一支：底图右下角裁掉缺口、
+ *   井号落进去）。原先这两件事挤在一颗字上（root 就整颗换成井号），
+ *   于是「一条提权的 shell 命令」在列表里只看得见「提权」、看不出它干什么。
+ *
+ * ## 井号只给 `shell:`
+ *
+ *  其余写法（`toast:` / `notify:` / `fluid:` / `keyevent:` …）走模块自己的通道，**不经过 shell**，
+ *  「以 root 执行」那个开关对它们不起作用（判据 `Action.usesRoot`）—— 所以老配置里那些命令即使
+ *  带着 `root: true`，也不该在角上顶一颗井号：那颗记号会被读成「这条命令要提权才跑得起来」，
+ *  而它其实连 `su` 都不碰。
+ *
+ *  与「命令设置」那张卡的显隐是**同一份判据**（`Action.usesRoot`）：界面上看得见开关的那一档，
+ *  列表里才看得见井号 —— 两处各判一遍时，「能看见井号却看不见开关」迟早会出现。
  *
  * 多条命令没有 root 这一档（它的 `root` 只管正文里那些 `shell:` 步骤，不是这条命令的身份），
  * 仍按步骤数取方框。
@@ -698,7 +708,7 @@ private fun glyphIcon(glyph: ActionCatalog.Glyph): ImageVector =
  * 三个地方共用这一份：网格格子与「自定义命令」卡片、步骤行里引用另一条命令的那枚小图标
  * （[stepIcon] 从命令库查出被引用的那条之后转给它）。
  *
- * @param root 单条命令是否以 root 执行（`Command.root`）；多条忽略
+ * @param root 单条命令是否以 root 执行（`Command.root`）；多条与非 `shell:` 的写法忽略
  * @param body 单条命令的正文 —— 按它开头的前缀取底图；多条忽略
  */
 internal fun commandIcon(
@@ -716,8 +726,8 @@ internal fun commandIcon(
             val base = formatIconOf(body) ?: PageIcons.CommandSingle
             //  拼接走音量 / 亮度 / 铃声那几族同一支：底图右下角**裁掉缺口**，井号落进那块空里。
             //  名字必须带上底图那一段 —— 「随机图标配色」按 `ImageVector.name` 取色，写死一个名字的话
-            //  所有提权命令（不管 shell 还是 notify）都会染成同一个色。
-            if (root) badgedIcon("${base.name}+Hash", Badge.Hash, base) else base
+            //  所有提权命令都会染成同一个色。
+            if (root && Action.parse(body).usesRoot) badgedIcon("${base.name}+Hash", Badge.Hash, base) else base
         }
     }
 

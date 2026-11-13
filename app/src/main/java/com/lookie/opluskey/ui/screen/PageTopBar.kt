@@ -7,9 +7,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
-import com.lookie.opluskey.core.present.comboLabel
+import com.lookie.opluskey.core.model.Config
+import com.lookie.opluskey.core.present.comboKeyNames
+import com.lookie.opluskey.core.present.comboLabelOf
 import com.lookie.opluskey.core.present.keyName
 import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
@@ -26,7 +29,8 @@ import com.lookie.opluskey.ui.model.text.GENERAL_TITLE
 import com.lookie.opluskey.ui.model.text.KEYS_TITLE
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
 import com.lookie.opluskey.ui.model.theme.SUBTITLE_DIM_FACTOR
-import com.lookie.opluskey.ui.row.titleWithCount
+import com.lookie.opluskey.ui.row.ChipLook
+import com.lookie.opluskey.ui.row.NameChipRow
 import com.lookie.opluskey.ui.screen.apppicker.ActivitySearchBand
 import com.lookie.opluskey.ui.screen.apppicker.AppPickerMenu
 import com.lookie.opluskey.ui.screen.apppicker.AppSearchBand
@@ -42,6 +46,7 @@ import com.lookie.opluskey.ui.screen.command.COMMAND_LIST_PAGE
 import com.lookie.opluskey.ui.screen.command.CommandHeaderReset
 import com.lookie.opluskey.ui.screen.command.CommandKindBand
 import com.lookie.opluskey.ui.screen.command.branchOwnerLabel
+import com.lookie.opluskey.ui.screen.command.branchOwnerNames
 import com.lookie.opluskey.ui.screen.home.HomeHeaderMenu
 import com.lookie.opluskey.ui.screen.variables.VariableHeaderAdd
 import com.lookie.opluskey.ui.state.binding.ComboEditState
@@ -88,10 +93,41 @@ internal fun SettingsPage.PageTopBar(
         animationSpec = COLOR_TRANSITION_SPEC,
         label = "HeaderSubtitle",
     )
+    //  装**键名**的那几页把名字画成圆角框（tag）—— 与列表行、场景条件同一套长相；
+    //  拼成一整串纯文字就画不出框（`[侧键]×[电量 +]` 那种方括号写法就此退场）。
+    //  其余页仍是纯文字（[pageSubtitle]）：它们装的是句子或应用名，框对它们没有意义。
+    val cfg = configState.config.value
+    val keyChips: (@Composable () -> Unit)? =
+        when (s) {
+            Screen.BINDING -> {
+                keyChipsOf(listOf(editingKeyName()), subtitleTint)
+            }
+
+            Screen.KEY_SETTINGS -> {
+                keyChipsOf(settingsTargetNames(cfg, SettingsTargetState.current), subtitleTint)
+            }
+
+            Screen.BRANCHES -> {
+                keyChipsOf(branchOwnerNames(cfg, branchDraft.comboId, editingKeyName()), subtitleTint)
+            }
+
+            //  组合键编辑页：那一组还在时才有名字；刚被删掉（退场那一帧）时退回纯文字那句兜底
+            Screen.COMBO_EDIT -> {
+                ComboEditState.editingId
+                    ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
+                    ?.let { comboKeyNames(cfg, it) }
+                    ?.let { keyChipsOf(it, subtitleTint) }
+            }
+
+            else -> {
+                null
+            }
+        }
     PageHeader(
         title = pageTitle(s),
         // 大标题**下面**那行小标题（库的 `subtitle` 槽位，折叠后保留），内容见 [pageSubtitle]。
-        subtitle = pageSubtitle(s),
+        subtitle = if (keyChips == null) pageSubtitle(s) else "",
+        subtitleContent = keyChips,
         //  这一颗键 / 这一档组合停用 ⇒ 内容区整片压暗了，这行小标题也跟着**压低一档**：它是这一页上唯一还亮着的字，
         //  满亮度留着会读成「这一区还是活的」。
         //
@@ -258,11 +294,18 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
 
         // 这一行说**这张清单有几条**（与绑定页那一段标题同一个数）：页内那一段自己带条数，
         // 顶栏这一行说的则是「钉住的有几条」，两者是同一件事的两种呈现。
+        //
+        //  条数**嵌进句子**（「已添加 3 个动作」）而不是拼成 `标题 (3)`：这一行是副标题，
+        //  读的是一句说明，不是一个小标题 + 一格计数 —— 与「已保存 3 条命令」同一写法。
+        //  一条都没有时同样不报数（「已添加 0 个动作」读起来像统计，也不成句），
+        //  与上面「已保存的命令」那一页同一个口径。
         Screen.COMMON_COMMANDS -> {
-            titleWithCount(
-                I18n.get(Strings.COMMON_COMMANDS_SUBTITLE, "已添加的动作"),
-                configState.config.value.global.commonCommands.size,
-            )
+            val count = configState.config.value.global.commonCommands.size
+            if (count == 0) {
+                I18n.get(Strings.COMMON_COMMANDS_SUBTITLE_EMPTY, "没有添加的动作")
+            } else {
+                I18n.format(Strings.COMMON_COMMANDS_SUBTITLE, count)
+            }
         }
 
         Screen.APP_PICKER -> {
@@ -274,6 +317,8 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         //  而「改的是哪一颗键」正是这一页最容易搞错的东西。哪一档手势不写在这里：它由顶栏下
         //  那条手势带说，两边各说一半（见 [branchOwnerLabel]）。
         Screen.BRANCHES -> {
+            //  这一页的副标题实际画的是框（见 [PageTopBar] 的 `keyChips`）；这句只在
+            //  「没有框」的极端情形下兜底 —— 与框里的名字同一份来源。
             branchOwnerLabel()
         }
 
@@ -295,11 +340,12 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         // 组合键编辑页：这一行写**在编哪一组**（`侧键 × 电量 +`）—— 标题只写「组合键」，
         //  而这一页改的是其中一档，不写就分不出在看哪一组。
         //  那一组刚被删掉（退场那一帧）时没有名字可写，交给下面那句兜底。
+        //  实际画的是框（见 [pageSubtitleChips]），这一句同样只兜「没有框」的极端情形。
         Screen.COMBO_EDIT -> {
             val cfg = configState.config.value
             ComboEditState.editingId
                 ?.let { id -> cfg.combos.firstOrNull { it.id == id } }
-                ?.let { comboLabel(cfg, it) }
+                ?.let { comboLabelOf(comboKeyNames(cfg, it)) }
                 ?: I18n.get(Strings.COMBO_PICK_KEYS, "选择按键")
         }
 
@@ -451,6 +497,23 @@ private fun SettingsPage.PageBottomBand(
     }
 }
 
+// 副标题要**画成框**的那几页都在 [PageTopBar] 的 `keyChips` 那一支里（就地算，见那里的注释）。
+//
+//  只有「这一行装的是键名」的那几页画框：单键一枚，组合每颗各一枚、中间一个 `×`。
+//  其余页仍是纯文字（[pageSubtitle]）：它们装的是句子或应用名，框对它们没有意义。
+//
+//  框的字号就是副标题那一档（`body2`），颜色跟着 [PageTopBar] 算好的压暗值走 ——
+//  这一页整片变灰时框与里面的字一起暗下去，不会只剩一圈框还亮着。
+
+/** 一串键名 → 顶栏那一行（单行 `body2` 圆角框，超宽由 [NameChipRow] 裁掉）。 */
+private fun keyChipsOf(
+    names: List<String>,
+    color: Color,
+): @Composable () -> Unit =
+    {
+        NameChipRow(names = names, look = ChipLook(COUITheme.textStyles.body2, color, enabled = true))
+    }
+
 /**
  * 当前这颗键在界面上叫什么 —— 侧键那一组仍叫「快捷键」，收集来的键用它自己的名字。
  *
@@ -474,21 +537,34 @@ internal fun SettingsPage.editingKeyName(): String =
  *  放在这一层而不是 `SettingsTarget` 上：取名字要用 `comboLabel` 与配置里的键名表，
  *  那是界面层的东西，`ui/state` 不该反持。
  */
-internal fun SettingsPage.settingsTargetLabel(target: SettingsTarget): String {
-    val cfg = configState.config.value
-    return when (target) {
+internal fun SettingsPage.settingsTargetLabel(target: SettingsTarget): String =
+    comboLabelOf(settingsTargetNames(configState.config.value, target))
+
+/**
+ * 同一个东西的**成员键名**（一档组合有几颗就是几个名字）—— 需要逐个上样式的调用点用它。
+ *
+ *  顶栏副标题把每颗画成一枚圆角框，所以那里要名单而不是拼好的句子；而「单键叫什么、组合的
+ *  成员是谁」只有这一份实现，[settingsTargetLabel] 由它压成一串 —— 两处不会长出不同叫法。
+ *
+ *  `cfg` 由调用点给（而不是收成 `SettingsPage` 的扩展）：这一支是纯取名，不碰页面状态，
+ *  于是「页面扩展成员」这本账不会因为多一个读者就涨一格。
+ */
+internal fun settingsTargetNames(
+    cfg: Config,
+    target: SettingsTarget,
+): List<String> =
+    when (target) {
         is SettingsTarget.Key -> {
             //  单键直接写名字（`keyName`）：内置键的 `label` 只是配置里那一份，字典换成英文时
             //  它不会跟着变 —— 走同一个出口才与「按键功能」页清单、执行提示同一个叫法。
-            keyName(target.id)
+            listOf(keyName(target.id))
         }
 
         is SettingsTarget.Combo -> {
             cfg.combos
                 .firstOrNull { it.id == target.id }
-                ?.let { comboLabel(cfg, it) }
+                ?.let { comboKeyNames(cfg, it) }
                 // 那一组刚被删掉（退场那一帧）：报 id 总比空串强，页面自己会退
-                ?: target.id
+                ?: listOf(target.id)
         }
     }
-}

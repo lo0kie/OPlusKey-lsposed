@@ -244,6 +244,19 @@ private fun keyMenuEntries(
         //  「这一档停用了没有」只算一次：下面「独立设置」那一行读它（判据与提示语都出自
         //  `SettingsTarget.disabledReason`，顶栏那颗设置键读同一份）。
         val blocked = SettingsTarget.Key(selected).disabledReason(cfg)
+        //  「只参与组合按键」**只拦「系统场景」那一行**，与页面顶部那条入口、右下角那颗命令 FAB、
+        //  「自定义命令」小标题共用 `bindingTargetStopped` 那一份判据 —— 那颗键不判单键手势，
+        //  场景表进去也配不出效果。
+        //
+        //  **「独立设置」不拦**：那一页是唯一能把这一位关回来的地方（页里除了「只参与组合按键」
+        //  自己，其余都已灰掉）。菜单里也拦上，用户就再也点不进去了 —— 自己把自己锁死。
+        val sceneBlocked =
+            blocked
+                ?: if (cfg.key(selected).comboOnly) {
+                    I18n.format(Strings.BINDING_COMBO_ONLY_BLOCKED, selected.label)
+                } else {
+                    null
+                }
         // 「系统场景」与「独立设置」都是**进下一页**，所以同在一组、都压在顶上；
         //  下面那三行才是「对这颗键动手」，由它们第一行那条加深带隔开。
         //  顺序（用户口径）：**系统场景在前、独立设置其次** —— 场景是这一档「怎么分流」，
@@ -261,8 +274,8 @@ private fun keyMenuEntries(
                     summary = scenarioMenuSummary(cfg.key(selected).scenes),
                     icon = PageIcons.Scene,
                     submenu = true,
-                    enabled = blocked == null,
-                    disabledHint = blocked,
+                    enabled = sceneBlocked == null,
+                    disabledHint = sceneBlocked,
                     onPick = actions.onOpenBranches,
                 ),
             )

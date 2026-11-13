@@ -16,6 +16,7 @@ import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.feedback.DisabledStateWithArrow
 import com.lookie.opluskey.ui.feedback.DisabledStateWithPick
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.feedback.keyStateLabel
 import com.lookie.opluskey.ui.model.icon.DrawnIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.row.CardList
@@ -58,6 +59,15 @@ import com.lookie.opluskey.ui.write.write
 internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
     val editing = KeysEditState.editing
     val picked = KeysEditState.pickedKeys
+    //  这一行行尾那半句话（停用 / 只参与组合 / 什么都不写）—— 判据在 `keyStateLabel` 里，
+    //  与自定义键那几行共用；两处各判一次的话，加第三种状态时必漏一处。
+    val sideKeyState =
+        keyStateLabel(
+            keyEnabled(KeyId.PLUS),
+            configState.config.value
+                .key(KeyId.PLUS)
+                .comboOnly,
+        )
 
     CardList(
         rows =
@@ -67,9 +77,9 @@ internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
                 //  那一侧过滤（选它一个时给一句提示），而不是把这一行按死。
                 CardRow.Item(
                     title = I18n.get(Strings.BINDING_SECTION_KEYS, "快捷键"),
-                    //  行尾只有一格（`trailing` 优先于 `arrow`）：编辑态是勾选框，平时停用那一档
-                    //  用与场景卡共用的「已停用 + 箭头」（`DisabledStateWithArrow`），全启用给
-                    //  `null` 走 `arrow` 那条默认路径。
+                    //  行尾只有一格（`trailing` 优先于 `arrow`）：编辑态是勾选框，平时那一格
+                    //  写**这一颗键此刻是什么状态**（`keyStateLabel`：停用 / 只参与组合 / 正常启用
+                    //  三选一，最后一种什么都不写，回到 `arrow` 那条默认路径）。
                     trailing =
                         when {
                             editing -> {
@@ -77,17 +87,17 @@ internal fun SettingsPage.KeysListCard(pageEnabled: Boolean) {
                                     DisabledStateWithPick(
                                         picked = KeyId.PLUS.id in picked,
                                         enabled = pageEnabled,
-                                        off = !keyEnabled(KeyId.PLUS),
+                                        state = sideKeyState,
                                     )
                                 }
                             }
 
-                            keyEnabled(KeyId.PLUS) -> {
+                            sideKeyState == null -> {
                                 null
                             }
 
                             else -> {
-                                { DisabledStateWithArrow() }
+                                { DisabledStateWithArrow(sideKeyState) }
                             }
                         },
                     //  停用只把行首换成禁用图标，**不压色**：图标一灰，整行看起来像点不了，
@@ -124,8 +134,16 @@ internal fun SettingsPage.CustomKeysCard(
         rows =
             buildList {
                 cfg.customKeys.forEachIndexed { i, key ->
-                    val on = cfg.key(key).enabled
-                    add(customKeyRow(key, on, keyIcon(PageIcons.menuKeyNumber(i), on), pageEnabled))
+                    val k = cfg.key(key)
+                    //  行尾那半句与内置侧键同一份判据（`keyStateLabel`）
+                    add(
+                        customKeyRow(
+                            key = key,
+                            state = keyStateLabel(k.enabled, k.comboOnly),
+                            rowIcon = keyIcon(PageIcons.menuKeyNumber(i), k.enabled),
+                            pageEnabled = pageEnabled,
+                        ),
+                    )
                 }
                 add(addKeyRow(cfg, pageEnabled, onAddKey, editing = editing))
             },
@@ -135,12 +153,14 @@ internal fun SettingsPage.CustomKeysCard(
 /**
  * 一颗自定义键那一行。
  *
- *  行尾只有一格（`CardRow` 里 `trailing` 优先于 `arrow`）：编辑态是勾选框，平时是「已停用」
- *  那半句**加自己画的箭头** —— 填了这一格 `arrow` 那条路就不画了，所以两者共存必须自己画。
+ *  行尾只有一格（`CardRow` 里 `trailing` 优先于 `arrow`）：编辑态是勾选框，平时是那句状态
+ *  **加自己画的箭头** —— 填了这一格 `arrow` 那条路就不画了，所以两者共存必须自己画。
+ *
+ *  @param state 行尾那半句话（[keyStateLabel] 算好传进来）；`null` = 正常启用，这一格不占位
  */
 private fun SettingsPage.customKeyRow(
     key: KeyId,
-    on: Boolean,
+    state: String?,
     rowIcon: ImageVector,
     pageEnabled: Boolean,
 ): CardRow.Item {
@@ -152,8 +172,8 @@ private fun SettingsPage.customKeyRow(
         // 停用换禁用图标（第几颗就画哪个数字，由调用点算好传进来）
         icon = rowIcon,
         enabled = pageEnabled,
-        //  行尾那一格：编辑态是勾选框（旁边可能还跟着「已停用」），平时就是与场景卡共用的
-        //  「已停用 + 箭头」—— 全启用时给 `null`，让 `arrow` 那条默认路径画。
+        //  行尾那一格：编辑态是勾选框（旁边可能还跟着那句状态），平时就是状态 + 箭头 ——
+        //  正常启用时给 `null`，让 `arrow` 那条默认路径画。
         trailing =
             when {
                 editing -> {
@@ -161,17 +181,17 @@ private fun SettingsPage.customKeyRow(
                         DisabledStateWithPick(
                             picked = key.id in picked,
                             enabled = pageEnabled,
-                            off = !on,
+                            state = state,
                         )
                     }
                 }
 
-                on -> {
+                state == null -> {
                     null
                 }
 
                 else -> {
-                    { DisabledStateWithArrow() }
+                    { DisabledStateWithArrow(state) }
                 }
             },
         arrow = !editing,

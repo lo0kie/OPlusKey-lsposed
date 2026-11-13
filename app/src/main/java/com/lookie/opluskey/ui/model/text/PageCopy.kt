@@ -339,7 +339,7 @@ internal val COMMAND_DISCLAIMER_TEXT: String
  *  不在这里重复教手写：`app:` / `window:` 有「打开应用」那一格（小窗是它菜单里的开关）、
  *  `oplus:` / `setting:` / `proc:` / `volume:` 那些都是格子或菜单里选出来的 —— 同一个能力摆两个
  *  入口，手写那条还更容易写错（载荷是内部 id，记不住）。剩下的这几行是**没有图形入口**的：
- *  shell / keyevent / intent / notify / fluid / shortcut。
+ *  shell / keyevent / intent / notify / fluid / toast / shortcut。
  *
  *  点带 `prefix` 的那一行 = 把前缀填进命令输入框；输入框里已经带了格式时只换前缀、正文留着
  *  （不是追加，见 `CommandFormats.fillPrefix`）。
@@ -390,6 +390,14 @@ internal val COMMAND_FORMAT_LINES: List<CommandFormatLine>
                 label = I18n.get(Strings.COMMAND_FORMAT_FLUID, "fluid:<正文>"),
                 desc = I18n.get(Strings.COMMAND_FORMAT_FLUID_DESC, "弹一条流体云胶囊"),
                 prefix = Action.FLUID_PREFIX,
+            ),
+            //  提示（`toast:`）与上面两行是同一件事的第三个落点：「说完就没」的那一档 ——
+            //  通知中心不留、状态栏不挂。排在这里是因为三者按「留多久」递减排：留着 / 几秒 / 不挂。
+            CommandFormatLine(
+                icon = PageIcons.FormatToast,
+                label = I18n.get(Strings.COMMAND_FORMAT_TOAST, "toast:<正文>"),
+                desc = I18n.get(Strings.COMMAND_FORMAT_TOAST_DESC, "在屏幕上闪一条提示"),
+                prefix = Action.TOAST_PREFIX,
             ),
             CommandFormatLine(
                 icon = PageIcons.FormatShortcut,

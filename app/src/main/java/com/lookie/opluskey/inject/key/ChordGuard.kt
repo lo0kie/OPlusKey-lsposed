@@ -41,7 +41,21 @@ internal object ChordGuard {
      */
     fun handle(chain: XposedInterface.Chain): Any? {
         //  键码表是这一层的唯一入口判据：拿不到就当不是组合键，原样放行。
-        val codes = firstIntArray(chain.args) ?: return chain.proceed()
+        val codes = firstIntArray(chain.args)
+        //  判据级：走的是**另一个重载**（`handleKeyGesture(AidlKeyGestureEvent, IBinder)`）——
+        //  那一支的参数是事件对象、拿不到键码表，这一层就完全看不见是哪两颗键。
+        //  「某一组组合在这台机器上从来没被拦过」时，要看的就是这一行（有它 ⇒ 问题在参数形态，
+        //  不在键码表内容）。
+        if (codes == null) {
+            val method = (chain.executable as? java.lang.reflect.Method)?.toGenericString()
+            XLog.w("组合键手势：参数里没有键码表（$method）")
+            return chain.proceed()
+        }
+        //  判据级：ROM 这一次交给 `handleKeyGesture` 的键码表原样打出来。
+        //  下面那条 pair 判据要求「两颗键都在表里」；机型不同、ROM 改版时这一层给出的表也
+        //  不一样（有的只报当前按下的那一颗），那时整组都拦不到 —— 这一行是认出那种形态的
+        //  唯一证据，排查「某一组组合不生效、另一组正常」时先看它。
+        XLog.w("组合键手势：keycodes=[${codes.joinToString(",")}]")
         val pair = PAIRS.firstOrNull { p -> p.all { it in codes } } ?: return chain.proceed()
         val keys =
             try {

@@ -259,7 +259,7 @@ internal class GestureDetector(
 
         // 窗口内又来一次按下 → 连击链 +1；数到这颗键配的最高档就地派发（双击就是这一档的 n=2）
         if (p.sawFirstRelease && now <= p.doubleWindowAt) {
-            val maxClicks = maxOf(2, config.clicksForJudge)
+            val maxClicks = config.judgeCap
             p.clicks += 1
             //  每一击都要刷新按下时刻：`onKeyUp` 那条「按住 Xms」判据（与「立即触发单击」的
             //  同一次按压认领）都读它，只记第一击会把累计时长报成单次按住时长。
@@ -293,7 +293,10 @@ internal class GestureDetector(
                 scheduleLongPress(id, config)
                 return
             }
-            if (p.clicks < maxClicks) {
+            //  **「逐次等满多击窗口」时到档也不当场判**：这一位要的就是「每一下之后都等窗口，
+            //  窗口内没有下一次按下再按实际击数判」。抢在到档那一刻判，用户多按的那一下会被
+            //  当成新的一轮从头数 —— 那位开关就等于没开。
+            if (p.clicks < maxClicks || config.waitMultiWindow) {
                 //  还没到最高档：继续等下一击。**不 reset、也不再排长按枪**（连击中不会变长按），
                 //  抬手上会照常再排一次窗口（见 onKeyUp）。
                 XLog.w("${id.label}：第 ${p.clicks} 击（这颗键配到第 $maxClicks 击）")
@@ -838,7 +841,10 @@ internal class GestureDetector(
                                 if (SystemClock.elapsedRealtime() - p.lastDirectSingleAt < p.doubleWindowMs) {
                                     -1
                                 } else {
-                                    p.clicks.coerceAtLeast(1)
+                                    //  **夹回这颗键配到的最高档**：开了「逐次等满」时，用户在窗口内
+                                    //  多按的那几下会让 `clicks` 超过上限 —— 超出上限的击数没有动作，
+                                    //  原样派发等于「按了三下什么都没发生」
+                                    p.clicks.coerceAtLeast(1).coerceAtMost(config.judgeCap)
                                 }
                             p.sawFirstRelease = false
                             p.doubleWindowAt = 0L

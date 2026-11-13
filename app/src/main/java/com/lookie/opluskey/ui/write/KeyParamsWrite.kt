@@ -1,5 +1,7 @@
 package com.lookie.opluskey.ui.write
 
+import com.lookie.opluskey.core.i18n.I18n
+import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.model.KeyConfig
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_BINDING
@@ -54,4 +56,18 @@ internal fun SettingsPage.setInstantSingle(on: Boolean) {
         instantSingleTitle(key),
         on,
     ) { it.copy(instantSingle = on) }
+}
+
+/**
+ * 切「逐次等满多击窗口」—— 判定时序，改的是**当前编辑的那颗键**（`KeyConfig.waitMultiWindow`）。
+ *
+ *  判定侧的行为见 `inject/input/GestureDetector.onKeyDownLocked`：关着时数够要的那一档就判，
+ *  开着时每一下都等满窗口、按实际击数判。
+ */
+internal fun SettingsPage.setWaitMultiWindow(on: Boolean) {
+    toggleKeyParam(
+        "wait_multi_window=${if (on) 1 else 0}",
+        I18n.get(Strings.BINDING_WAIT_MULTI_WINDOW, "逐次等满多击窗口"),
+        on,
+    ) { it.copy(waitMultiWindow = on) }
 }

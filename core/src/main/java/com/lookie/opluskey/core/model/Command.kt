@@ -307,7 +307,7 @@ data class Command(
      *  默认 `true` 是为了让老配置仍落在「以 root 执行」那一档（文件里缺这个键也一样）。
      *  多条命令的步骤不读这一位：步骤没有各自的开关（见 `CustomCommandRunner`）。
      */
-    val root: Boolean = true,
+    val root: Boolean = DEFAULT_ROOT,
 ) {
     /**
      * 写进配置文件 `single` / `double` / `long` 那一档的取值。
@@ -334,6 +334,15 @@ data class Command(
     companion object {
         /** 自定义命令在配置里的前缀；全项目只在这里定义一次，[Action] 一侧统一引用。 */
         const val PREFIX = "cmd:"
+
+        /**
+         * [Command.root] 的默认值 —— 「以 root 执行」。
+         *
+         *  单拎出来不只是为了少写一个 `true`：界面在「这条命令用不上这个开关」时**不写这一位**，
+         *  落盘与比「改过没改过」都拿它当那一档的取值（见 `draftToLibrary`）。与默认值各写一遍的话，
+         *  以后改默认方向时会漏掉界面那一处。
+         */
+        const val DEFAULT_ROOT = true
 
         /** 步骤间隔默认值（毫秒）：400ms 实测够广播类动作跨进程落地，又不至于让多步链太慢。 */
         const val DEFAULT_STEP_DELAY_MS = 400

@@ -9,6 +9,9 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.ConditionKind
+import com.lookie.opluskey.core.model.TimeRange
+import com.lookie.opluskey.core.model.systemVarOf
+import com.lookie.opluskey.core.present.conditionValueLabel
 import com.lookie.opluskey.host.action.app.ForegroundApp
 
 /**
@@ -50,6 +53,59 @@ internal object ConditionProbe {
             XLog.w("分叉场景：判 ${kind.id} 时抛了异常，按不成立处理", e)
             false
         }
+    }
+
+    /**
+     * 这一档**此刻是什么值** —— 系统状态变量（`${sys.xxx}`）的唯一取值出口。
+     *
+     *  不是另写一套读取：拿 [ConditionKind.choices] 逐个问 [judge]（那几档互斥、或正好是正反两面），
+     *  第一个成立的就是当前值；时间区间那一档没有候选，给它此刻的时刻。于是「场景条件命中哪一档」与
+     *  「变量值是什么」永远是同一份判据 —— 两处各写一遍读取的话，改读取方式时必有一处漏掉。
+     *
+     *  契约与 [matches] 同一条：**判不出不是「某一档」** —— 读不到系统服务 / 手电筒那个键还没出现过
+     *  时返回 `null`，变量按原样留在命令里（见 `SYSTEM_VAR_PREFIX` 那段说明）。
+     *
+     * @return 当前取值（`silent` / `on` / `14:30` / …）；判不出、或这一档没有「当前值」（前台应用）时 `null`
+     */
+    fun current(
+        kind: ConditionKind,
+        ctx: Context,
+    ): String? =
+        try {
+            when (kind) {
+                //  时间区间没有候选档，它在界面上的值是**此刻的时刻**（`HH:mm`）——「现在几点」的取法与
+                //  判定同一个（本地时区、当天第几分钟），否则「区间判 `22:00` 命中、文案值念 `22:00`」
+                //  会各走一路。（它的**输出值**是时间戳，见 [varValue]。）
+                ConditionKind.TIME -> TimeRange.clock(minuteOfDayNow())
+
+                else -> kind.choices.firstOrNull { judge(kind, it, ctx) }
+            }
+        } catch (e: Throwable) {
+            XLog.w("系统状态变量：读 ${kind.id} 时抛了异常，按判不出处理", e)
+            null
+        }
+
+    /**
+     * `${sys.xxx}` 里那个名字此刻的值（`null` = 不是系统变量 / 认不出 / 判不出）。
+     *
+     *  两种写法在这里分道（见 `SYSTEM_VAR_TEXT_SUFFIX`）：不带后缀给**输出值**（`silent` / `on`），
+     *  带 `.text` 给**文案值**（「静音」/「开」）。文案那一支走 `core` 的 [conditionValueLabel] ——
+     *  与界面条件行同一份翻译，所以「场景里写 `ringer:vibrate`」在这一处念出来也会是「振动」。
+     *
+     *  **时间区间那一档的输出值是时间戳**（毫秒，`System.currentTimeMillis()`）：场景条件那边比的是
+     *  「几点到几点」这个区间，而命令里要的通常是「这一刻是什么时候」这个能比较、能相减的数；
+     *  它的文案值仍是「14:30」那句给人看的话。
+     *
+     *  执行侧（`ActionRunner`）与界面那一列（命令详情下面那张菜单）共用这一处，别各写一份翻译。
+     */
+    fun varValue(
+        name: String,
+        ctx: Context,
+    ): String? {
+        val ref = systemVarOf(name) ?: return null
+        if (ref.kind == ConditionKind.TIME && !ref.asText) return System.currentTimeMillis().toString()
+        val raw = current(ref.kind, ctx) ?: return null
+        return if (ref.asText) conditionValueLabel(ref.kind, raw) else raw
     }
 
     private fun judge(

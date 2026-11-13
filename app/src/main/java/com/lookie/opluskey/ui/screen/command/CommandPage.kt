@@ -14,13 +14,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.LocalWindowInfo
 import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
@@ -35,7 +30,6 @@ import com.lookie.opluskey.ui.dialog.PageMenu
 import com.lookie.opluskey.ui.feedback.DisabledHint
 import com.lookie.opluskey.ui.input.IconInputView
 import com.lookie.opluskey.ui.input.InputSpec
-import com.lookie.opluskey.ui.input.moveCaretToEnd
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.page.PAGE_MARGIN
@@ -51,6 +45,7 @@ import com.lookie.opluskey.ui.row.titleWithCount
 import com.lookie.opluskey.ui.state.command.CommandUiState
 import com.lookie.opluskey.ui.state.page.CommandForm
 import com.lookie.opluskey.ui.state.page.singleLine
+import com.lookie.opluskey.ui.style.AnimatedColumn
 import com.lookie.opluskey.ui.style.VisibleAreaCentered
 import com.lookie.opluskey.ui.style.visibleAreaHeight
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
@@ -136,10 +131,18 @@ internal fun SettingsPage.CommandPage(
                     onMenu = { overlays.detailMenu = true },
                 )
                 SingleCommandField(ui, scroll, form, enabled = !sorting)
+                //  「可用变量」紧跟在正文后面：这一档说的是「正文里能写什么值」（系统场景那几档状态），
+                //  与下面「支持的命令格式」是一对 —— 那边讲「以什么开头」，这边讲「中间能插什么」。
+                //  页面上只有一行入口、点开是一层菜单（见 `CommandVarsCard`）：十一行常驻会把
+                //  正文到「命令设置」之间撑得很长。
+                CommandVarsCard(form, ui, enabled = !sorting)
+                //  「图标」只在正文是 `fluid:` 时出现（那一档决定胶囊左边画什么）：
+                //  点开是网格选择器，选中即渲染成 png 落盘，命令里只记图标 id。
+                CommandFluidIconCard(form, enabled = !sorting)
                 //  「命令设置」对单条只有一件事：这条命令要不要以 root 执行。
-                //  它是**每条命令自己的**开关（存在命令上、随命令一起落盘），所以摆在这里、
-                //  只在单条页出现；多条命令的步骤没有各自的开关。
-                SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
+                //  它是**每条命令自己的**开关（存在命令上、随命令一起落盘），并且**只在正文是
+                //  `shell:` 时出现** —— 那一行的小标题与卡片一起进退，所以这里不再单独留一条
+                //  （见 `RootSwitchCard`）。
                 RootSwitchCard(form, enabled = !sorting)
             }
 
@@ -474,32 +477,50 @@ private fun SettingsPage.CommandSettingsSection(
  *  两档互不兜底：开 = 只走 `su`（拿不到 root 就是这次失败，**不**退回 `sh`），关 = 只走 `sh`。
  *  这台机器的宿主域没有 `/system/bin/sh` 的执行权，关掉之后多数命令会**起不来**
  *  （失败提示会报「要 root」），所以副标题把两种走法都写清楚，不替用户做判断。
+ *
+ * ## 为什么只在 `shell:` 时出现
+ *
+ *  这个开关管的是**执行身份**，而只有「另起一个进程跑一段命令」那一档有身份可挑 ——
+ *  `toast:` / `notify:` / `fluid:` / `keyevent:` 这些走的是模块自己的通道，从头到尾不经过
+ *  shell，开了也不会有任何差别（判据见 [Action.usesRoot]）。
+ *
+ *  所以正文不是 `shell:` 时整张卡（含上面那条小标题）滑出去 —— 与「图标」那一档同一套
+ *  动效（`AnimatedColumn`）：它夹在正文与「支持的命令格式」之间，硬切会把下面那一大块整体顶一下。
+ *
+ *  显隐**只看前缀、不看 `parse` 的结果**：与 `CommandFluidIconCard` 同一条口径 —— 正文写到
+ *  一半（`shell:` 后面还没写字）时这张卡不该忽隐忽现。
  */
 @Composable
 private fun SettingsPage.RootSwitchCard(
     form: CommandForm,
     enabled: Boolean,
 ) {
-    CardList(
-        rows =
-            listOf(
-                CardRow.Switch(
-                    title = I18n.get(Strings.COMMAND_ROOT_TITLE, "以 root 执行"),
-                    summaryOn = I18n.get(Strings.COMMAND_ROOT_DESC_ON, "只用 su，不再退回 sh"),
-                    summaryOff = I18n.get(Strings.COMMAND_ROOT_DESC_OFF, "只用 sh，不申请 root"),
-                    icon = PageIcons.CommandRoot,
-                    checked = form.root,
-                    // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
-                    enabled = enabled,
-                    //  打开这一档就顺手申请一次授权（没有 root 时那句提示会顶上来）；
-                    //  关掉那一档只用 `sh`，没有东西可申请。
-                    onCheckedChange = { on ->
-                        form.root = on
-                        if (on) requestRootGrant()
-                    },
+    val text = form.single.trim()
+    val show = remember(text) { Action.parse(text).usesRoot }
+    //  小标题与卡片一起进退（`AnimatedColumn` 里面自带 `Column`，两行不会叠在一处）
+    AnimatedColumn(visible = show) {
+        SectionTitle(I18n.get(Strings.COMMAND_SETTINGS_TITLE, "命令设置"))
+        CardList(
+            rows =
+                listOf(
+                    CardRow.Switch(
+                        title = I18n.get(Strings.COMMAND_ROOT_TITLE, "以 root 执行"),
+                        summaryOn = I18n.get(Strings.COMMAND_ROOT_DESC_ON, "只用 su，不再退回 sh"),
+                        summaryOff = I18n.get(Strings.COMMAND_ROOT_DESC_OFF, "只用 sh，不申请 root"),
+                        icon = PageIcons.CommandRoot,
+                        checked = form.root,
+                        // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
+                        enabled = enabled,
+                        //  打开这一档就顺手申请一次授权（没有 root 时那句提示会顶上来）；
+                        //  关掉那一档只用 `sh`，没有东西可申请。
+                        onCheckedChange = { on ->
+                            form.root = on
+                            if (on) requestRootGrant()
+                        },
+                    ),
                 ),
-            ),
-    )
+        )
+    }
 }
 
 /**
@@ -514,21 +535,17 @@ private fun SettingsPage.RootSwitchCard(
  *
  * ## 被「支持的命令格式」点了一下之后
  *
- *  那一栏在页面下方，它够不着这里的 `FocusRequester`，所以只能举一个计数
- *  （[CommandUiState.singleFocusRequest]）。这里按这个计数做三件事，**顺序不能换**：
+ *  那一栏在页面下方，它够不着本页的滚动状态，所以只能举一个计数
+ *  （[CommandUiState.singleScrollRequest]）。这里按这个计数**只做一件事：滚回顶部**
+ *  —— 输入框在那张格式卡上面，点完不滚回去等于「填了个看不见」。
  *
- *   1. **先滚回顶部**。输入框在这张格式卡上面，点完不滚回去等于「填了个看不见」。
- *      滚也放在这一处，是因为焦点一落，Compose 会给文本节点做一次 `bringIntoView` ——
- *      两处同时滚就是在同一根滚动条上打架，看着像卡了一下。
- *   2. **等窗口拿到焦点，再要焦点**（键盘跟着起来）。用户点那一行的下一个动作就是接着打字。
- *      输入框里本来就有值时，这一下前面还隔着「替换」确认窗 —— 那是个独立窗口，
- *      它关掉的那一小段里页面窗口是没焦点的，此时抢到的焦点会被窗口焦点变化一并带走
- *      （「键盘弹一下又没了」）。所以先等 [FOCUS_WAIT_FRAMES]，再抢。
- *   3. **把光标挪到末尾**。`InputField` 只收 `String`，内部那份 `TextFieldValue` 的选区
- *      默认是 0 ⇒ 不挪的话接着打的字会插到 `shell:` 前面去（原因见 `moveCaretToEnd`）。
- *      挪光标走的是按键事件，得等焦点真正落到文本节点上（一两帧）才送得进去。
+ *  滚也放在这一处（而不是格式卡那一侧）：卡片够不着本页的滚动状态，而滚与「让输入框可见」
+ *  混在两处，就是在同一根滚动条上打架，看着像卡了一下。
  *
- * @param scroll 本页的滚动状态 —— 第 1 步要用它滚回顶部
+ *  **不抢焦点、不许键盘、不挪光标**（用户口径：点命令格式不再聚焦）：点一行格式是
+ *  「挑一个前缀」，不是「要在这儿打字」；抢了焦点键盘就顶上来，把刚点的那张格式卡盖掉。
+ *
+ * @param scroll 本页的滚动状态
  */
 @Composable
 private fun SettingsPage.SingleCommandField(
@@ -538,31 +555,13 @@ private fun SettingsPage.SingleCommandField(
     enabled: Boolean,
 ) {
     val raw = form.single
-    val focusRequester = remember { FocusRequester() }
-    val keyboard = LocalSoftwareKeyboardController.current
-    val view = LocalView.current
-    val windowInfo = LocalWindowInfo.current
-    // 初值 0 = 「还没点过」，首次组合不该抢焦点
-    LaunchedEffect(ui.singleFocusRequest) {
-        if (ui.singleFocusRequest == 0) return@LaunchedEffect
+    // 初值 0 = 「还没点过」，首次组合不该滚
+    LaunchedEffect(ui.singleScrollRequest) {
+        if (ui.singleScrollRequest == 0) return@LaunchedEffect
         scroll.state.animateScrollTo(0)
-        // 窗口焦点：确认窗刚关掉那一小段里它还是 false，这时候抢到的焦点会随窗口焦点变化一起丢
-        //  （`FocusOnShow` 上记着同一条）。等它回来再抢，最多等 [FOCUS_WAIT_FRAMES] 帧。
-        var waited = 0
-        while (!windowInfo.isWindowFocused && waited < FOCUS_WAIT_FRAMES) {
-            withFrameNanos { }
-            waited++
-        }
-        runCatching { focusRequester.requestFocus() }
-        keyboard?.show()
-        // 焦点落地要一两帧：早了那一下 `KEYCODE_MOVE_END` 没有节点接
-        withFrameNanos { }
-        withFrameNanos { }
-        moveCaretToEnd(view)
         //  **一次举手只兑现一次**：清回 0。这个组合会随翻页被销毁 / 重建，而计数是页面级的
-        //  —— 不清的话「切走再切回来」会按旧计数再抢一次焦点，键盘刚弹起来就被换 tab 那一下
-        //  收掉（真机看到的就是「键盘闪一下」）。
-        ui.singleFocusRequest = 0
+        //  —— 不清的话「切走再切回来」会按旧计数再滚一次。
+        ui.singleScrollRequest = 0
     }
     // 格式不对时在这一栏下面出红字 —— 保存按钮同时是灰的（见 `commandPayloadReady`），
     //  用户得知道**为什么**存不进去。空白不算错（还没开始写）。
@@ -588,10 +587,8 @@ private fun SettingsPage.SingleCommandField(
             errorMessage = formatError,
             // 排序态下整页控件禁用（见 `CommandDraftState.stepEditing`）
             enabled = enabled,
-            // 只挂 `focusRequester`、不挂 `caretToEndOnFirstFocus`：光标那一下由上面那段
-            //  effect 按「填前缀」的时机做。挂上那个开关的话，只有**第一次**聚焦会挪光标，
-            //  而这里要的是「每点一次格式行都挪」。
-            focusRequester = focusRequester,
+            // **不再挂 `focusRequester`**：这一栏没有「从别处被叫来打字」的场景了（见函数头）。
+            // 也不挂 `caretToEndOnFirstFocus`：用户自己点进来时，光标该落在点的地方。
             modifier = Modifier.fillMaxWidth().padding(horizontal = PAGE_MARGIN),
             // **这一栏换 `singleLine`**：多行脚本粘进来是「依次执行」，要折成 `; `；
             //  `AppInputField` 默认那道折成空格，折成空格就成了一条语法错误的命令。
@@ -602,15 +599,6 @@ private fun SettingsPage.SingleCommandField(
 
 /** 单条命令能输入多少字（超出的部分在输入框里直接吃掉）—— 取 1024，够放下一条带好几个参数的长命令。 */
 internal const val MAX_SINGLE_LENGTH = 1024
-
-/**
- * 「等页面窗口重新拿到焦点」最多等几帧（60fps 下约半秒）。
- *
- *  只给「点了『支持的命令格式』之后」那一档用：如果那个确认窗还开着 / 刚关，页面窗口这一刻
- *  是**没有窗口焦点**的，此时 `requestFocus()` 抢到的焦点会随着窗口焦点变化一起丢掉 ——
- *  用户看到的就是「键盘弹一下又没了」。等不到（比如通知栏被拉下来）就照常往下走，不强求。
- */
-private const val FOCUS_WAIT_FRAMES = 30
 
 /** 多条命令的「命令间隔时长」卡 —— 只有一行：等多久再派发下一条。 */
 @Composable

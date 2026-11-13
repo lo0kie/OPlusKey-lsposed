@@ -21,6 +21,7 @@ import com.lookie.opluskey.core.rom.RomProfile
 import com.lookie.opluskey.core.wire.ModuleWire
 import com.lookie.opluskey.host.action.app.AppLauncher
 import com.lookie.opluskey.host.action.app.AppShortcutLaunch
+import com.lookie.opluskey.host.action.condition.ConditionProbe
 import com.lookie.opluskey.host.action.notice.FluidAction
 import com.lookie.opluskey.host.action.notice.NotifyAction
 import com.lookie.opluskey.host.action.setting.BrightnessAction
@@ -277,7 +278,8 @@ internal class ActionRunner(
             //  `${变量}` 在这里展开一次（解析发生在存配置时，值要到这一刻才知道，见 `expandedWith`）。
             //  放在 `when` 之前而不是每个分支里：漏一个分支就是「那一种动作里写变量不生效」，
             //  而这种事在界面上完全看不出来。
-            when (val act = action.expandedWith(VariableStore.cached())) {
+            //  第二参是**系统状态变量**（`${sys.ringer}` 那几颗）的取值出口 —— 用户表里查不到才会被问到。
+            when (val act = action.expandedWith(VariableStore.cached(), ::systemVar)) {
                 //  「无操作」：什么都不做（保留这一支只为让 `when` 覆盖全部子类）
                 is Action.None -> Unit
 
@@ -296,6 +298,11 @@ internal class ActionRunner(
                 is Action.Notify -> NotifyAction.run(context, act, ::notifyFailure)
 
                 is Action.Fluid -> FluidAction.run(context, act, ::notifyFailure)
+
+                //  「提示」（`toast:正文`）：直接走全模块唯一那条提示出口 —— 宿主发广播、注入侧
+                //  用系统身份弹（免按包限流，见 `requestSystemToast`）。这一档不需要额外的落点、
+                //  也没有失败可报（弹不出来只记一行，不许把「说了句话」算成执行失败）。
+                is Action.Toast -> requestSystemToast(context, act.message)
 
                 is Action.App -> launcher.launchApp(act)
 
@@ -439,17 +446,26 @@ internal class ActionRunner(
     }
 
     /**
+     * `${sys.xxx}` 此刻的值 —— [Action.expandedWith] 与 [runShell] 共用的那一个出口。
+     *
+     *  只在**用户变量里查不到**这个名字时才会被问到（见 `Vars.expand`），所以写不出变量的命令
+     *  一次也不会读系统服务。
+     */
+    private fun systemVar(name: String): String? = context?.let { ConditionProbe.varValue(name, it) }
+
+    /**
      * 执行一条 `shell:` 命令。
      *
      *  「小布识屏」那条别名换成原生调用（`startForegroundService`，不走 shell）。
      *  **「截图」那条别名走真的 shell** —— 见下面 [KsuCompat.isSidebarAlias] 那一支上方的说明。
      *
+     * @param rawCommand 用户写的那一段（还没展开 `${变量}`，见函数体第一行）
      * @param preferRoot 是否以 root 执行（`true` = 只走 `su`，`false` = 只走 `sh`；两者互不兜底）。
      *   单条命令按它**自己**那个开关传进来（`Command.root`，界面在「命令设置 → 以 root 执行」）；
      *   内置 `shell:` 动作与多条命令的步骤没有这个开关，一直按默认 `true` 走。
      */
     private fun runShell(
-        command: String,
+        rawCommand: String,
         preferRoot: Boolean = true,
         /**
          * 「这一条跑完了」的回执 —— **只给多条命令的步骤间隔用**（`CustomCommandRunner` 要等这一步
@@ -461,6 +477,11 @@ internal class ActionRunner(
          */
         onSettled: (() -> Unit)? = null,
     ) {
+        //  `${变量}` 在**这里**展开：`shell:` 有三条进来的路（内置动作、单条命令的正文、多条命令的
+        //  步骤），只有内置那一支会经过 [dispatch] 的 `expandedWith` —— 那条路放在上面的话，
+        //  自定义命令正文里的 `${…}` 会静默不展开（界面完全看不出来）。展开点沉到这个唯一出口，
+        //  三条路共用一份（`expandedWith` 因此不再展开 `shell:`）。
+        val command = VariableStore.cached().expand(rawCommand, ::systemVar)
         //  一次性：`ShellRunner.exec` 的 onDone 与下面那几处提前 return 只会走到其中一条，
         //  但这层保护便宜 —— 重复回执会让「等回执」那一档把同一步跑两遍。
         val once =

@@ -1,7 +1,13 @@
 package com.lookie.opluskey.ui.input
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import io.github.suqi8.coui.kmp.basic.InputField
 
 /**
@@ -27,6 +33,12 @@ import io.github.suqi8.coui.kmp.basic.InputField
  *  `expanded` / `onExpandedChange` / `onSearch` 恒是「不展开、搜索键不做额外动作」：这一层包的
  *  都是**输入栏**，不是「点一下撑开一页结果」的搜索入口（库那套展开态在这里没有去处）。
  *
+ * ## 键盘收走就失焦
+ *
+ *  收起键盘之后框里还留着光标与聚焦描边、看着像「还在编辑」，所以这一层统一挂 [ImeFocusRelease]：
+ *  键盘从露着变成没了 ⇒ 清焦点。弹窗里的那一档要等 `ImeGuard` 的守卫窗口过去（见
+ *  [AppInputOptions.imeHoldMs]），其余输入栏一收即失焦。
+ *
  * @param query 当前值
  * @param onQueryChange 值变了（**已经过 [AppInputOptions.sanitize]**，拿到的串里不会有 `\r` / `\n`）
  * @param label 占位文案
@@ -43,6 +55,10 @@ internal fun AppInputField(
     //  配色只有这一份：各处输入框都要在 Monet 下调淡（见 `couiInputColors`），摊成参数只会让
     //  每处再抄一遍 —— 收在这一层，调用点就不会各写各的。
     val colors = couiInputColors()
+    //  这一栏此刻有没有焦点 —— 「键盘收走就失焦」的判据（见 [ImeFocusRelease]）
+    var focused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    ImeFocusRelease(focused = focused, holdMs = options.imeHoldMs) { focusManager.clearFocus() }
     InputField(
         query = query,
         onQueryChange = { raw ->
@@ -56,7 +72,9 @@ internal fun AppInputField(
         expanded = false,
         onExpandedChange = { },
         enabled = options.enabled,
-        modifier = modifier,
+        //  焦点状态挂在**外层**：真正拿到焦点的是库内部的输入框节点，外层只会看到
+        //  `isFocused = false` / `hasFocus = true`（判据与 `IconInputView` 那条同源）
+        modifier = modifier.onFocusChanged { focused = it.hasFocus },
         label = label,
         leadingIcon = options.leadingIcon,
         colors = colors,
@@ -72,12 +90,15 @@ internal fun AppInputField(
  * @param maxLength 最多收多少个字符（按**码点**数，见 [takeCodePoints]）；`null` = 不设上限。
  *  超出的部分在 [AppInputField] 里直接吃掉，于是框里显示的、右下的计数、真正存下去的值
  *  永远是同一份。
+ * @param imeHoldMs 「键盘收走就失焦」开头的守卫窗口（毫秒，见 [ImeFocusRelease]）：
+ *  弹窗里的输入框传 `ImeGuard` 那一档（开窗那一段由它补键盘，这里先让位），页面里的输入栏传 0。
  */
 internal class AppInputOptions(
     val enabled: Boolean = true,
     val leadingIcon: (@Composable () -> Unit)? = null,
     val sanitize: (String) -> String = ::foldLineBreaks,
     val maxLength: Int? = null,
+    val imeHoldMs: Long = 0L,
 )
 
 /**

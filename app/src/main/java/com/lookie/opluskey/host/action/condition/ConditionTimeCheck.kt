@@ -20,5 +20,13 @@ internal fun timeMatches(
     now: Calendar = Calendar.getInstance(),
 ): Boolean {
     val range = TimeRange.parse(value) ?: return false
-    return range.contains(now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE))
+    return range.contains(minuteOfDayNow(now))
 }
+
+/**
+ * 此刻是**当天第几分钟**（设备本地时区）—— 时间区间判定与 `${sys.time}` 的唯一取法。
+ *
+ *  两处各写一遍 `HOUR_OF_DAY * 60 + MINUTE` 的话，将来换读法（含秒 / 换时区来源）时必有一处漏掉，
+ *  而「区间判 22:00 命中、变量念 22:00」本该永远是同一件事。
+ */
+internal fun minuteOfDayNow(now: Calendar = Calendar.getInstance()): Int = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)

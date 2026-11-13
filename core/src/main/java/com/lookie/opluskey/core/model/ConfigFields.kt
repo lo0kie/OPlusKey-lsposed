@@ -168,6 +168,20 @@ object ConfigFields {
      */
     const val CTL_SERIAL_EXTRA = "click_then_long_is_serial"
 
+    /**
+     * 「这颗键只参与组合」（`KeyConfig.comboOnly`）—— 单键手势整条不接管，只等组合成员。
+     *
+     *  走广播：注入侧判定要用（它决定这一下吞不吞）。
+     */
+    const val COMBO_ONLY_EXTRA = "combo_only"
+
+    /**
+     * 「多击窗口内逐次等满」（`KeyConfig.waitMultiWindow`）—— 到档也等窗口走完再判。
+     *
+     *  走广播：这是判定时序，注入侧说了算。
+     */
+    const val WAIT_MULTI_WINDOW_EXTRA = "wait_multi_window"
+
     // `GlobalConfig`。
     const val DOUBLE_CLICK_MS_EXTRA = "double_click_ms"
     const val VIBRATE_EXTRA = "vibrate"
@@ -358,6 +372,12 @@ object ConfigFields {
     /** 「忽视无操作双击手势」—— **每颗键各一份**。 */
     val F_INSTANT_SINGLE = Field(INSTANT_SINGLE_EXTRA, Kind.Bool(KeyConfig.DEFAULT_INSTANT_SINGLE))
 
+    /** 「这颗键只参与组合」—— 单键手势交还系统，只等组合成员（默认关）。 */
+    val F_COMBO_ONLY = Field(COMBO_ONLY_EXTRA, Kind.Bool(false))
+
+    /** 「多击窗口内逐次等满」—— 到档也等窗口走完再判（默认关 = 按完就判）。 */
+    val F_WAIT_MULTI_WINDOW = Field(WAIT_MULTI_WINDOW_EXTRA, Kind.Bool(false))
+
     /**
      * **这颗键要不要用自己那套公共项**（`KeyConfig.useOwnSettings`）—— 总开关，默认关。
      *
@@ -493,6 +513,8 @@ object ConfigFields {
             F_REPEAT_VIBRATE,
             F_DOUBLE_CLICK_MS,
             F_INSTANT_SINGLE,
+            F_COMBO_ONLY,
+            F_WAIT_MULTI_WINDOW,
             F_OWN_SETTINGS,
             F_KEY_COLOR_OS_API,
             F_KEY_VIBRATE,

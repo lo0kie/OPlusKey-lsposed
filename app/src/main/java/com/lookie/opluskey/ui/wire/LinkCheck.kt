@@ -607,6 +607,10 @@ internal fun SettingsPage.disabledClickReason(): String {
 
         !cfg.key(key).enabled -> I18n.format(Strings.KEY_DISABLED_ITEM, key.label)
 
+        //  「只参与组合按键」：绑定页整页灰着（见 `bindingTargetEnabled`），原因要说在这 ——
+        //  否则用户只看到一片灰，去翻「是不是停用了」（停用是另一回事，旁边那句才是它）
+        cfg.key(key).comboOnly -> I18n.format(Strings.BINDING_COMBO_ONLY_BLOCKED, key.label)
+
         //  这一项自己没有原因 ⇒ 才轮到「整页为什么不对」（重启 / 勾作用域那几句）；
         //  页面是通的、这一项仍然点不动（比如行要求先选一颗键）：说结论，不编一个「没就绪」
         else -> blockedReason() ?: I18n.get(Strings.CONTROL_UNAVAILABLE, "这一项现在不可用")

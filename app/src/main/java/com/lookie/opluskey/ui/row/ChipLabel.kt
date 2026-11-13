@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -154,6 +155,39 @@ internal fun NameChip(
             //  （真机口径「每一个应用 tag 都变成全宽了」）。
             modifier = Modifier.opticalCenter(inner),
         )
+    }
+}
+
+/**
+ * 一排名字框，**只占一行**（超宽裁掉）—— 顶栏副标题那一行用它。
+ *
+ *  与 [ChipFlow] 的唯一差别是「不换行」：顶栏的展开高度是按副标题测出来的，换行会把整条栏顶高，
+ *  而这一行装的是「这一页在编哪一颗键」—— 宁可尾巴被裁，也不该让栏高随名字长短跳一下。
+ *
+ *  @param look 框里那档样式与颜色 —— 顶栏给 `body2`（与纯文字副标题同一档），列表行给 `headline1 × 0.85`
+ */
+@Composable
+internal fun NameChipRow(
+    names: List<String>,
+    look: ChipLook,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.clipToBounds(),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        names.forEachIndexed { at, name ->
+            NameChip(text = name, look = look, modifier = Modifier)
+            if (at < names.lastIndex) {
+                Text(
+                    text = COMBO_PAIR_SEPARATOR,
+                    style = look.style,
+                    color = look.color,
+                    modifier = Modifier.padding(horizontal = CHIP_SEPARATOR_GAP),
+                )
+            }
+        }
     }
 }
 
