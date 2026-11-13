@@ -120,8 +120,7 @@ internal object ChordGuard {
             combo.single.isBound ||
                 combo.long.isBound ||
                 combo.releaseBound ||
-                combo.scenes.isNotEmpty() ||
-                combo.anyHoldBound
+                combo.scenes.isNotEmpty()
         return hasAction || !config.comboPassthroughFor(combo)
     }
 }

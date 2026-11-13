@@ -51,13 +51,12 @@ internal class SideKeyInterceptor(
     /** 每判出一个手势记一笔（`KeyHooks.noteGesture`）—— 链路自检用，由装配方注入。 */
     private val onGestureNoted: () -> Unit,
     /**
-     * 判出一次「两颗键一起按」：哪一档组合 + 短按还是长按 + **这一下是怎么按出来的**。
+     * 判出一次组合：哪一档组合 + 短按还是长按。
      *
      *  组合没有单颗键的 `KeyConfig`（动作在 `ComboKey` 上、执行在宿主），所以走这条独立回调。
-     *  第三位是 `ComboKey.HOLD_WINDOW` / `HOLD_FIRST` / `HOLD_SECOND`（窗口内等齐 / 先按住第一颗 /
-     *  先按住第二颗）—— 执行侧按它取对应那一套动作。
+     *  触发方式不必带 —— 它是这一档的身份（`ComboKey.mode`），执行侧读自己那份配置就有。
      */
-    private val onCombo: (ComboKey, GestureTrigger, Int, Boolean) -> Unit,
+    private val onCombo: (ComboKey, GestureTrigger, Boolean) -> Unit,
     /**
      * 「屏幕黑着的话，这段时间里别让 CPU 睡」（熄屏排双击窗口时用，见 `KeyHooks.holdAwake`）。
      *
@@ -106,18 +105,15 @@ internal class SideKeyInterceptor(
                 held.drop(id)
                 detector.reset(id)
             },
-            // 这一组有没有绑定 —— 注入侧手上只有广播来的那份配置（配置文件它读不到），
-            //  所以判据收在 `ConfigChannel.comboFor` 一处：没有这一档就交回单键判定器。
-            bindingFor = { keys -> ConfigChannel.comboFor(keys) },
+            // 这一组能凑成哪几档 —— 注入侧手上只有广播来的那份配置（配置文件它读不到），
+            //  所以判据收在 `ConfigChannel.combosFor` 一处：空表就交回单键判定器。
+            //  一张列表而不是一档：同一组键可以配几档、各自一种触发方式（`ComboKey.mode`）。
+            bindingsFor = { keys -> ConfigChannel.combosFor(keys) },
             //  扫的时候按最宽的那一档扫，命中后由「那一组自己的窗口」复核（见 `ComboDetector`）
             windowMs = { ConfigChannel.scanWindowMs() },
             windowFor = { combo -> ConfigChannel.windowFor(combo) },
-            //  两条**触发方式**各一位（公共设置里那两颗开关，每组可另设一份）——
-            //  关掉哪一位就少认哪一种按法，判定侧只问 `Config` 那两个函数，不自己看全局
-            windowOnFor = { combo -> ConfigChannel.windowOnFor(combo) },
-            holdFor = { combo -> ConfigChannel.holdFor(combo) },
-            //  按住那条的下限：首键必须按满这么久、且还没抬手，第二颗落下才算这一档组合
-            //  （「一起按」归窗口那条，窗口关着时它就不是组合）
+            //  按住那两档的下限：起点键必须按满这么久、且还没抬手，另一颗落下才算这一档组合
+            //  （「一起按」只归窗口那条）
             holdMinFor = { combo -> ConfigChannel.holdMinFor(combo) },
             //  多成员那一档的**整串跨度**（相邻两颗的窗口 × (成员数-1)）—— 三颗按一个
             //  窗口复核等于要求三根手指同时落，真机上永远凑不齐
@@ -206,9 +202,11 @@ internal class SideKeyInterceptor(
             handler = handler,
             combo = combo,
             windowMs = { id -> ConfigChannel.holdWindowMsFor(id) },
-            //  按住那条的成员：**压到抬手**再还回去 —— 那一档没有窗口到点这回事，窗口一漏就是
-            //  「一次按压两个动作」（见 `ComboOnlyNative` 的类注释）
-            holdMember = { id -> ConfigChannel.holdMember(id) },
+            //  这一颗键会不会被接在后面（它参与的某一组认窗口那条）—— 认就压一个窗口再还回去
+            windowMember = { id -> ConfigChannel.joinsCombo(id) },
+            //  这一颗键可能是按住组合里**先按住的那一颗**：**压到抬手**再还回去 —— 那一档没有
+            //  窗口到点这回事，窗口一漏就是「一次按压两个动作」（见 `ComboOnlyNative` 的类注释）
+            holdStarter = { id -> ConfigChannel.holdStarter(id) },
         )
 
     /**

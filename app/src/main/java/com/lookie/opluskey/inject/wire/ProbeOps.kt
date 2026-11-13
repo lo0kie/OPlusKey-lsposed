@@ -420,8 +420,8 @@ internal fun ProbeChannel.combo() {
             keys = keys.toSet(),
             collectMs = 300,
             longPressMs = 500,
-            //  与 `ComboKey.plan()` 同一条口径：够两颗就判（多成员已接线，上限不再卡在两颗）
-            judgeable = keys.size >= ComboKey.MIN_KEYS,
+            //  探针只模拟「等窗口」那一档：其余两档的判据要读按键的按下状态，不是这一层能造的
+            mode = ComboKey.MODE_WAIT,
         )
 
     val plans = listOf(plan("cmb1", plus, ck1), plan("cmb2", plus, ck1, ck2), plan("cmb3", plus, ck1, ck2, ck3))
@@ -434,7 +434,7 @@ internal fun ProbeChannel.combo() {
         val gather =
             ComboSequence.resolve(
                 downs.map { (key, at) -> ComboDown(key, at) },
-                plans.filter { it.judgeable },
+                plans,
             )
         XLog.w("probe/combo：$name → 期望 $expected，实得 ${ComboSequence.describe(gather)}")
     }

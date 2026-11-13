@@ -229,17 +229,7 @@ object ConfigFields {
     /** 组合键两颗键之间的等待窗口（毫秒）—— 注入侧判定要用，所以走广播。 */
     const val COMBO_WINDOW_MS_EXTRA = "combo_window_ms"
 
-    /**
-     * 组合键的两条触发方式：**窗口内等齐** / **按住一颗再按另一颗**（`GlobalConfig.comboWindowOn`
-     * / `comboHoldOn`）—— 都走广播。
-     *
-     *  判定这两条的是注入侧的 `ComboDetector`（它读不到配置文件），每组还可以各自另设一份
-     *  （`ComboKey.windowOn` / `holdOn`，随另一条 `combos` 广播过去）。
-     */
-    const val COMBO_WINDOW_ON_EXTRA = "combo_window_on"
-    const val COMBO_HOLD_ON_EXTRA = "combo_hold_on"
-
-    /** 按住手势里**首键要先按住多久**（毫秒）—— 同样判定在注入侧，走广播。 */
+    /** 按住那两档里**起点键要先按住多久**（毫秒）—— 同样判定在注入侧，走广播。 */
     const val COMBO_HOLD_MIN_MS_EXTRA = "combo_hold_min_ms"
 
     /**
@@ -677,17 +667,7 @@ object ConfigFields {
     val F_FOLLOW_DISPLAY_SIZE = Field(null, Kind.Bool(GlobalConfig.DEFAULT_FOLLOW_DISPLAY_SIZE))
 
     /**
-     * 组合键的两条触发方式（见 [COMBO_WINDOW_ON_EXTRA]）—— 走**广播**那一列：判定在注入侧。
-     *
-     *  默认值与 [GlobalConfig.DEFAULT_COMBO_WINDOW_ON] / [GlobalConfig.DEFAULT_COMBO_HOLD_ON] 同源：
-     *  缺项时行为与这一位出现之前一致（窗口照旧认、按住不认）。
-     */
-    val F_COMBO_WINDOW_ON = Field(COMBO_WINDOW_ON_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_WINDOW_ON))
-
-    val F_COMBO_HOLD_ON = Field(COMBO_HOLD_ON_EXTRA, Kind.Bool(GlobalConfig.DEFAULT_COMBO_HOLD_ON))
-
-    /**
-     * 组合键：**按住手势里首键要先按住多久**（毫秒）。
+     * 组合键：**按住那两档里起点键要先按住多久**（毫秒）。
      *
      *  与 [F_COMBO_WINDOW_MS] 同一条：判定在注入侧，所以走广播。它管的是「一起按」与
      *  「按住了一颗再按另一颗」的分界 —— 两颗键相差不到这个数就不算按住。
@@ -739,8 +719,6 @@ object ConfigFields {
             F_MINI_WINDOW_ANIM,
             F_COMBO_PASSTHROUGH,
             F_COMBO_WINDOW_MS,
-            F_COMBO_WINDOW_ON,
-            F_COMBO_HOLD_ON,
             F_COMBO_HOLD_MIN_MS,
             F_FOLLOW_DISPLAY_SIZE,
             F_PAGE_SCALE,

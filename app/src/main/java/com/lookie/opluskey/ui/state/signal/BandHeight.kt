@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
+import com.lookie.opluskey.ui.Screen
 
 /**
  * 顶栏那条**固定带**的高度 —— 带子在顶栏 `bottomContent` 那棵树里自己量，页内容那棵树里读。
@@ -40,4 +41,20 @@ internal class BandHeight(
     /** 页内容那一侧：读成 dp —— 组合期读，跟着测量结果重组。 */
     @Composable
     fun dp(): Dp = with(LocalDensity.current) { px.value.toDp() }
+}
+
+/**
+ * 上面那份 [BandHeight] 的**按页分档** —— 一页一份，第一次用到时现建。
+ *
+ *  为什么是一张表而不是每页一个字段：带子是「页面自带的一样东西」，每加一页就得往页面对象上
+ *  挂一个新字段，而那些字段唯一的差别就是名字（曾经有七个，其中一个还没人读）。按 `Screen`
+ *  索引之后，「这一页的带子」只有一种取法（`bands[screen]`），加页面不必再动页面对象。
+ *
+ *  **仍然不共用**：同一个 `Screen` 一个实例，转场期间相邻两页各拿各的，不会互相改占位。
+ */
+internal class BandHeights {
+    private val heights = HashMap<Screen, BandHeight>()
+
+    /** 这一页的带子（第一次问时现建一份）。 */
+    operator fun get(screen: Screen): BandHeight = heights.getOrPut(screen) { BandHeight() }
 }

@@ -268,8 +268,6 @@ internal object GestureExec {
         phaseId: String?,
         sentAt: Long,
         repeat: Boolean,
-        /** 这一下是怎么按出来的 —— 取 `single`·`singleA`·`singleB` 那一族槽。 */
-        hold: Int = ComboKey.HOLD_WINDOW,
     ) {
         val config = ConfigStore.read()
         // 双击在组合上没有定义（`ComboKey.actionOf` 恒返回「无操作」）；认不出的 phase
@@ -293,12 +291,11 @@ internal object GestureExec {
         fun matchesCondition(condition: BranchCondition): Boolean =
             judged.getOrPut(condition) { appContext?.let { ConditionProbe.matches(condition, it) } == true }
         if (trigger == GestureTrigger.Release) {
-            //  **按住那两种按法没有「松手」这一档**：它们各有一套明确的槽（`singleA`/`longA`、
-            //  `singleB`/`longB`），抬手只是收尾 —— 再执行一次松手动作就是「按住手势 + 松手命令」
-            //  两个结果。判定侧已经不再为它们发这一条（`ComboDetector.onUp`），这里再挡一道，
-            //  是给「装着新宿主、注入侧还是上一版」那一段过渡期。
-            if (hold != ComboKey.HOLD_WINDOW) {
-                XLog.w("组合键 ${combo.id} - 松手：按住手势那一套不出松手动作，忽略")
+            //  **按住那两档没有「松手」这一档**：抬手只是收尾 —— 再执行一次松手动作就是
+            //  「组合动作 + 松手命令」两个结果。判定侧已经不为它们发这一条（`ComboDetector.onUp`），
+            //  这里再挡一道：两侧配置若错开一版，这一条能兜住。
+            if (combo.isHold) {
+                XLog.w("组合键 ${combo.id} - 松手：这一档先按住触发，不出松手动作，忽略")
                 return
             }
             //  「松手执行额外动作」这一档：与其它几档互斥。
@@ -323,14 +320,8 @@ internal object GestureExec {
             executeCombo(combo, trigger, fired, config, repeat)
             return
         }
-        //  按住那条（先按住某颗）：直接取它自己那一套动作，**不走场景表** ——
-        //  场景块只有短按 / 长按两档、没有「怎么按出来的」这一维（见 `ComboKey.actionOfHold`）。
-        val action =
-            if (hold == ComboKey.HOLD_WINDOW) {
-                combo.resolve(trigger, ::matchesCondition)
-            } else {
-                combo.actionOfHold(trigger, hold)
-            }
+        //  取动作：三种触发方式共用这一条路（场景块只分短按 / 长按，不构成第二个维度）
+        val action = combo.resolve(trigger, ::matchesCondition)
         //  记下这一按命中的是哪一块 —— 松手那一档按它给动作（见 `SceneRule.releasePin`）。
         rememberPressPin("combo:${combo.id}", trigger, combo.scenes, ::matchesCondition)
         //  这一格是「无操作」且开关打开 ⇒ **不吞键**：两颗键各按自己这一档照常执行
@@ -338,9 +329,10 @@ internal object GestureExec {
         //   这就是「配了组合、但只给长按绑了动作」时短按那颗依旧能用的那条路 ——
         //   为假时什么都不做，与这一位出现之前一致。
         //
-        //  **只对窗口那条生效**：按住那几种顺序即使是「无操作」也照样吞掉判定（用户口径）——
-        //  它们本来就是「把这一按交给组合」的明确表态，落回两颗键各跑一遍只会多出两个动作。
-        if (hold == ComboKey.HOLD_WINDOW && !action.isBound && config.comboPassthroughFor(combo)) {
+        //  **只有等窗口那一档走这条路**（判据在 `comboPassthroughFor` 里，按住那两档恒为假）：
+        //  按住那两档即使这一格是「无操作」也照样吞掉判定 —— 它们本来就是「把这一按交给组合」
+        //  的明确表态，落回两颗键各跑一遍只会多出两个动作。
+        if (!action.isBound && config.comboPassthroughFor(combo)) {
             runComboMembers(combo, trigger, config)
             return
         }

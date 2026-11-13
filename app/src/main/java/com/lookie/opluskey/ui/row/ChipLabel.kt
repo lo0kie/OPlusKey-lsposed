@@ -60,7 +60,7 @@ private const val CHIP_FONT_SCALE = 0.85f
 internal val CHIP_SEPARATOR_GAP = 6.dp
 
 /** 换行之后行与行之间的距离 —— 框高本身很小，2dp 叠上去刚好读成两排而不散架。 */
-private val CHIP_FLOW_GAP = 4.dp
+internal val CHIP_FLOW_GAP = 4.dp
 
 /** 文案里「这里塞一枚名字框」的占位符 —— 与 `I18n.format` 的 `%s` 同一个写法。 */
 internal const val CHIP_SLOT = "%s"

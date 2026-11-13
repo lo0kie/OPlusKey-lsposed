@@ -31,18 +31,14 @@ internal object ConfigChannel {
      *  总闸还停在关）。一个引用一次替换，几样就是一个整体 —— 读侧要么读到旧的一份、要么读到新的。
      *
      *  @param tag 这条广播自己的内容指纹（见 `ConfigBroadcast.tag`），不是按解析后的对象算
-     *  @param comboMembers 「参与某一组**可用**组合」的键 id（见 [comboMemberIds]）
+     *  @param combos 组合那三张派生表（见 [ComboDerived]）—— 同一次遍历算出来，一起生效
      *  @param master 这一份生效时的**模块总闸**（`GlobalConfig.enabled`）；`null` = 还没收到过
      *    带 `module_enabled` 的广播 —— 那时按「接管」处理（见 [takeOver]）
      */
     private class Arrived(
         val config: Config,
         val tag: String?,
-        val comboMembers: Set<String>,
-        /** 每颗键按下之后要等的时长（它参与的几组里最长的那个窗口），见 [comboHoldWindows]。 */
-        val holdWindow: Map<String, Long>,
-        /** 「参与某一组认按住那条的组合」的键 id —— 见 [comboHoldMembers]。 */
-        val holdMembers: Set<String>,
+        val combos: ComboDerived,
         val master: Boolean?,
     )
 
@@ -102,30 +98,31 @@ internal object ConfigChannel {
     }
 
     /**
-     * [keys] 这几颗键一起按下时，该由哪一档组合键接管 —— 没有就是 `null`。
+     * [keys] 这几颗键一起按下时，可能由**哪几档**组合键接管 —— 空表就是没有。
      *
-     *  这是 `ComboDetector` 那道「有没有绑定」的闸（见它的 `bindingFor`）：答否时**组合不成立**，
-     *  那几颗键照旧各走各的单键判定。答是时会摘掉它们的单键状态机 —— 所以这道闸必须准：
+     *  这是 `ComboDetector` 那道「有没有绑定」的闸（见它的 `bindingsFor`）：答空时**组合不成立**，
+     *  那几颗键照旧各走各的单键判定。答非空时会摘掉它们的单键状态机 —— 所以这道闸必须准：
      *  答错了，用户按下去什么反应都没有。
      *
+     *  **返回列表而不是一档**：同一组键可以配几档、各自一种触发方式（[ComboKey.mode]），
+     *  三条判据各不相同，得让判定侧逐档试。成员多的在前（[Config.combosFor] 给的顺序）。
+     *
      *  **成员数不设限**：两颗那一档由 `ComboDetector.pairFor` 一对一地问，三颗以上由
-     *  `multiFor` 把窗口内按下的那一组整体递进来 —— 「成员多的赢」由 [Config.comboFor] 判
-     *  （`maxByOrNull { keys.size }`），这一层不重复判。
+     *  `multiFor` 把窗口内按下的那一组整体递进来。
      *
      *  三条判据：
      *  · 还没收到过配置 ⇒ 没有组合键（**不能**按「没配置 = 默认开着」处理：`enabledOf` 对未知键
      *    返回 true，那样会拿一份空表判出「有绑定」，几颗键一起按就静默失效）；
      *  · 参与的那几颗都得归模块管（[enabledOf] 已含总闸）—— 一颗被停用或删掉，这一档就凑不齐；
      *  · 档位本身要算数（[ComboKey.isUsable]：没关掉、成员够数）。
-     *
-     *  「同数按配置顺序」也在 [Config.comboFor] 里，这一层不重复判。
      */
-    fun comboFor(keys: Collection<KeyId>): ComboKey? {
-        val cfg = arrived?.config ?: return null
-        // 一个组合都没配时直接收工：`Config.comboFor` 里那句 `filter {}` 会在**每次按键**上
-        //  分配一个空列表 —— 绝大多数用户压根没配组合键。
-        if (cfg.combos.isEmpty()) return null
-        return ownedKeyIds(keys)?.let { cfg.comboFor(it) }
+    fun combosFor(keys: Collection<KeyId>): List<ComboKey> {
+        val cfg = arrived?.config ?: return NO_COMBOS
+        // 一个组合都没配时直接收工：`Config.combosFor` 里那个 `ArrayList` 会在**每次按键**上
+        //  分配一次 —— 绝大多数用户压根没配组合键。
+        if (cfg.combos.isEmpty()) return NO_COMBOS
+        val down = ownedKeyIds(keys) ?: return NO_COMBOS
+        return cfg.combosFor(down)
     }
 
     /**
@@ -168,16 +165,8 @@ internal object ConfigChannel {
             ?.takeIf { it > 0 }
             ?.toLong() ?: GlobalConfig.DEFAULT_COMBO_WINDOW_MS.toLong()
 
-    /**
-     * [combo] 认不认「窗口内等齐成员」—— 每组可另设一份，没写过就跟随公共那一颗开关
-     * （`Config.comboWindowOnFor`）。
-     *
-     *  还没收到过广播时按**公共默认**（开）：那是这一位出现之前的行为。
-     */
-    fun windowOnFor(combo: ComboKey): Boolean = arrived?.config?.comboWindowOnFor(combo) ?: GlobalConfig.DEFAULT_COMBO_WINDOW_ON
-
-    /** [combo] 认不认「按住一个成员、再按剩下的成员」（见 [windowOnFor]）。 */
-    fun holdFor(combo: ComboKey): Boolean = arrived?.config?.comboHoldFor(combo) ?: GlobalConfig.DEFAULT_COMBO_HOLD_ON
+    /** [combo] 这一档靠「窗口内先后按下」触发吗 —— 触发方式是这一档自己的身份，不必再问公共。 */
+    fun windowOnFor(combo: ComboKey): Boolean = combo.isWait
 
     /**
      * [combo] 的**首键要先按住多久**（毫秒）—— 按住那条的下限，每组可另设一份
@@ -214,35 +203,38 @@ internal object ConfigChannel {
      *  n 颗的组合要等的是 (n-1) 个窗口 —— 按一个窗口等的话，第一颗在第三颗到来之前就已经
      *  回落成单击了，三颗的组合永远只在「三根手指同时落」时才成立。
      */
-    fun holdWindowMsFor(id: KeyId): Long = arrived?.holdWindow?.get(id.id) ?: scanWindowMs()
+    fun holdWindowMsFor(id: KeyId): Long = arrived?.combos?.holdWindows?.get(id.id) ?: scanWindowMs()
 
     /**
      * 这一颗键**参与某一组已启用、且认窗口那条的组合**吗 —— 只有这种键才值得为组合先等一个窗口。
      *
      *  不参与的键不等：那条路上没有「第二颗键会不会来」这个问题，让它们跟着等只是白慢。
-     *  **窗口关着的那几档也不让等**（`Config.comboWindowOnFor`）：那一档不认「窗口内先后按下」，
-     *  等一个窗口换不来任何东西 —— 成员键按下去就立刻走自己的单键判定。
+     *  **按住那几档的成员也不让等**（`Config.windowOnFor` 只看 `combo.isWait`）：那一档不认
+     *  「窗口内先后按下」，等一个窗口换不来任何东西 —— 成员键按下去就立刻走自己的单键判定。
      *
-     *  集合在收到配置时算好（[comboMemberIds]）：这条判据每次 DOWN 都要问一遍，
+     *  集合在收到配置时算好（[deriveCombos] 的 `windowMembers`）：这条判据每次 DOWN 都要问一遍，
      *  原先的写法是**扫一遍 `combos`、每档再做一次 `in`**。
      */
     fun joinsCombo(id: KeyId): Boolean {
-        val members = arrived?.comboMembers ?: return false
+        val members = arrived?.combos?.windowMembers ?: return false
         return id.id in members
     }
 
     /**
-     * 这一颗键会**在任意时刻**被某一组按住组合认领吗 —— 是就把它按下那一下压到抬手。
+     * 这一颗键**可能是某一组按住组合里先按住的那一颗**吗 —— 是就把它按下那一下压到抬手。
      *
-     *  只服务一件事：「只参与组合」那颗键按下之后要不要**一路压到抬手**（见 `ComboOnlyNative`）。
-     *  窗口那条的等待是有上界的（最多这一组的整串跨度），到点就能确定「不会再来第二颗」；
-     *  按住那条**没有上界** —— 判据只要求那一颗还按着。所以那颗键的原生事件一旦在窗口到点就
-     *  漏出去，之后再凑成的按住组合就只能是「一次按压两个动作」。集合在配置到达时算好
-     *  （[comboHoldMembers]），按键路径上只查表。
+     *  只服务「只参与组合」那条路（见 `ComboOnlyNative`）。判据为什么是「先按住的那一颗」
+     *  而不是「任一成员」：按住那条只在**另一颗还按着**时成立，所以成员在按下那一刻就能定论 ——
+     *  轮到自己当先按住的那颗，之后可能有人来配（要压）；只当后补的那一颗，按下时另一颗若按着
+     *  组合当场就成立（`ComboDetector.onDown` 回 `TAKEN`），没按着则这一下永远配不上。
+     *
+     *  只看这一档的**起点键**（`ComboKey.starterKey`）：按住那条只在「另一颗还按着」时成立，
+     *  而「已经被按住的那一颗」就是起点键 —— 别的成员按下去时要么组合当场成立（另一颗按着），
+     *  要么永远配不上，压住它只是白等。
      */
-    fun holdMember(id: KeyId): Boolean {
-        val members = arrived?.holdMembers ?: return false
-        return id.id in members
+    fun holdStarter(id: KeyId): Boolean {
+        val starters = arrived?.combos?.holdStarters ?: return false
+        return id.id in starters
     }
 
     /**
@@ -334,9 +326,7 @@ internal object ConfigChannel {
             Arrived(
                 fresh,
                 ConfigBroadcast.tag(intent),
-                comboMemberIds(fresh),
-                comboHoldWindows(fresh),
-                comboHoldMembers(fresh),
+                deriveCombos(fresh),
                 master,
             )
         // 这一行（及上面主开关）必须是 W：注入侧 i/d 在 LSPosed 日志页整档看不到（docs/device/lsposed.md 十五），
@@ -359,65 +349,67 @@ internal object ConfigChannel {
 }
 
 /**
- * 「参与某一组**算数**组合」的键 id 集合 —— 收到配置时算一次，供 [joinsCombo] 每次 DOWN 直接查。
+ * 「这一下没有组合键接得住」—— 共享的空表。
  *
- *  只算 [Config.liveCombos]（成员键都还接管着）：凑不齐的组判不出来，让参与它们的键白等一个窗口。
+ *  按键判定链上每次 DOWN 都要问一遍 [ConfigChannel.combosFor]，绝大多数用户压根没配组合键；
+ *  每次建一个空表等于白送一次分配（`tools/audit-perf.py` 判据 2 盯的就是这类）。
+ */
+private val NO_COMBOS: List<ComboKey> = emptyList()
+
+/**
+ * 组合那三张**派生表** —— 配置到达时按 `combos` 算一次，DOWN 路径上只查表。
+ *
+ *  三张表回答三个问题，但都只从**同一次**遍历 [Config.liveCombos] 里出得来，所以合成一趟：
+ *  原先 `comboMemberIds` / `comboHoldWindows` / `comboHoldStarters` 各过滤一遍、各扫一遍，
+ *  一次配置到达就把同一份清单的过滤做了三次。
+ *
+ *  **同一组键可以有几档**（三种触发方式各一档）：某个键可能同时是「等窗口那档的成员」与
+ *  「按住那档的起点」，两张表都会收它 —— 判定侧按「起点键优先（压到抬手）」处理，
+ *  那一档的先后按因此退化成「第二颗在 holdMin 之后落下」（见 `ComboOnlyNative` 的四级判据）。
+ *
+ *  @param windowMembers 「要押住等一个窗口」的键 id —— 见 [ConfigChannel.joinsCombo]
+ *  @param holdWindows 每颗键按下之后要等的时长（它参与的几组里最长的那个窗口）——
+ *    见 [ConfigChannel.holdWindowMsFor]
+ *  @param holdStarters 「能当某一档按住组合的起点键」的键 id —— 见 [ConfigChannel.holdStarter]
+ */
+private class ComboDerived(
+    val windowMembers: Set<String>,
+    val holdWindows: Map<String, Long>,
+    val holdStarters: Set<String>,
+)
+
+/**
+ * 一趟扫出上面那三张表。
+ *
+ *  **只算 [Config.liveCombos]**（成员键都还接管着）：凑不齐的组判不出来，让参与它们的键白等一个窗口。
  *  原先只看 `ComboKey.isUsable`，于是「停用其中一颗成员键」之后另一颗照样等满那个窗口 ——
  *  列表上已经显示「已停用」，按键却还是慢半拍（最长 1000ms）。
  *
- *  **还只算认窗口那条的档**（`Config.comboWindowOnFor`）：等窗口这件事是「会不会有第二颗键
- *  在一个窗口内落下来」这个问题的代价，窗口关掉之后那个问题就不存在了 —— 那一档只认「按住一颗
- *  再按另一颗」，成员键按下去就该立刻走自己的单键判定（用户口径：不开等待手势时，成员键各自
- *  不再等这个窗口）。留下来的键仍是「按住」那条的候选，只是不再被压缩一拍。
+ *  **窗口那两张只算认窗口的档**（`isWait`）：等窗口这件事是「会不会有第二颗键在一个窗口内落下来」
+ *  这个问题的代价，不认窗口的档那个问题就不存在 —— 成员键按下去就该立刻走自己的单键判定
+ *  （用户口径：不认窗口时，成员键各自不再等这个窗口）。窗口取的是**整串跨度**
+ *  （`Config.comboSpanFor`，n 颗 = (n-1) 个窗口），不是单个窗口：三颗那一档的第三颗到来时，
+ *  第一颗已经隔了两个窗口 —— 按一个窗口等，它早就回落成单击了。
+ *
+ *  **起点键只从按住那两档来**（`starterKey`）：后补的那一颗不必压 —— 它按下时组合要么当场成立、
+ *  要么永远成立不了。按住那两档只对两颗成立（三颗已被 `modeFor` 挡住）。
  */
-private fun comboMemberIds(fresh: Config): Set<String> {
+private fun deriveCombos(fresh: Config): ComboDerived {
     val members = HashSet<String>(fresh.combos.size * 4)
+    val windows = HashMap<String, Long>(fresh.combos.size * 4)
+    val starters = HashSet<String>(fresh.combos.size * 2)
     for (c in fresh.liveCombos()) {
-        if (fresh.comboWindowOnFor(c)) members += c.keys
-    }
-    return members
-}
-
-/**
- * 每颗键「按下之后要等多久」—— 它参与的几组里**最长**的那一个窗口。
- *
- *  与 [comboMemberIds] 同一趟口径（只看 [Config.liveCombos]，且只看认窗口那条的档），配置到达时
- *  算一次、每次 DOWN 查表。窗口按组各设之后这个数没法再用「全局那一个」顶替 —— 同一颗键可能既
- *  参与 40ms 的两颗组、又参与 120ms 的三颗组；按短的那个等，宽窗口那组永远凑不齐。
- *
- *  取的是[整串跨度](`Config.comboSpanFor`)（n 颗 = (n-1) 个窗口），不是单个窗口：三颗那一档
- *  的第三颗到来时，第一颗已经隔了两个窗口 —— 按一个窗口等，它早就回落成单击了。
- */
-private fun comboHoldWindows(fresh: Config): Map<String, Long> {
-    val out = HashMap<String, Long>(fresh.combos.size * 4)
-    for (c in fresh.liveCombos()) {
-        if (!fresh.comboWindowOnFor(c)) continue
-        val window = fresh.comboSpanFor(c).toLong()
-        for (k in c.keys) {
-            if (window > (out[k] ?: 0L)) out[k] = window
+        if (c.isWait) {
+            members += c.keys
+            val span = fresh.comboSpanFor(c).toLong()
+            for (k in c.keys) {
+                if (span > (windows[k] ?: 0L)) windows[k] = span
+            }
+        } else {
+            c.starterKey?.let { starters += it }
         }
     }
-    return out
-}
-
-/**
- * 「参与某一组**真的凑得出来**的按住组合」的键 id —— 收到配置时算一次，供 [holdMember] 查表。
- *
- *  与 [comboMemberIds] 分开而不并成一张：两者回答的是两件事（「要不要押住等一个窗口」与
- *  「按下之后会不会在任意时刻被组合认领」），窗口那位关掉时前一张表里根本没有这一档，
- *  而后一张表里照样得有它。
- *
- *  三条都要算上，少一条就会让「本来按不出来」的档白压住那颗键：
- *  **认按住那条**、**成员正好两颗**（三颗没有唯一起点）、**加过至少一种顺序**
- *  （`holdOrders` 空着时判定侧一道闸都过不去，见 `ComboDetector.pairFor`）。
- */
-private fun comboHoldMembers(fresh: Config): Set<String> {
-    val members = HashSet<String>(fresh.combos.size * 4)
-    for (c in fresh.liveCombos()) {
-        if (!fresh.comboHoldFor(c) || c.keys.size != 2 || c.holdOrders.isEmpty()) continue
-        members += c.keys
-    }
-    return members
+    return ComboDerived(members, windows, starters)
 }
 
 // 配置到达时那三行**判据级日志** —— 从 `ConfigChannel` 分出来一支：那边已经贴着 detekt 的
@@ -462,10 +454,9 @@ internal object ConfigArrivalLog {
                     "${c.id}=${c.keys.joinToString("+")}" +
                         " 短按=${XLog.redactToken(c.single.token)}" +
                         " 长按=${XLog.redactToken(c.long.token)}" +
-                        //  两条触发方式**各自的生效值**（每组可另设一份）：都「不认」时这一档
-                        //  永远不会成立 —— 「按了没反应」先看这两位，再看动作绑没绑
-                        " 等窗口=${if (fresh.comboWindowOnFor(c)) "认" else "不认"}" +
-                        " 按住=${if (fresh.comboHoldFor(c)) "认" else "不认"}" +
+                        //  触发方式：这是这一档的身份，判据与槽位都看它 ——
+                        //  「按了没反应」先看这一位对不对（三颗只可能是等窗口）
+                        " 触发=${if (c.isWait) "等窗口" else "先按住第 ${c.mode} 颗"}" +
                         " 阈值=${c.longPressMs}ms${if (c.enabled) "" else "（已停用）"}"
                 },
         )

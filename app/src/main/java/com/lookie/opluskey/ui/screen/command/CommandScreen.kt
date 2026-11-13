@@ -24,6 +24,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.CommandKind
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageFabButton
@@ -136,7 +137,7 @@ internal val COMMAND_PAGE_COUNT = COMMAND_LIST_PAGE + 1
  * 「自定义命令」页那条类型选择器带（单条 / 多条 / 命令列表）—— 挂在顶栏的 `bottomContent` 里。
  *
  * 亮哪一个由 `pagerState.currentPage` 说了算，点它则去翻页；滑块位置另按浮点页码实时插值
- * （横向滑动时跟手）；高度报给 [SettingsPage.commandBandHeight]，内容顶上那个占位 Spacer 读它。
+ * （横向滑动时跟手）；高度报给 [SettingsPage.bands]，内容顶上那个占位 Spacer 读它。
  */
 @Composable
 internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
@@ -147,7 +148,7 @@ internal fun SettingsPage.CommandKindBand(pagerState: PagerState) {
                 I18n.get(Strings.COMMAND_TAB_LIST, "命令步骤"),
         // 排序态下这一条也禁用 —— 与「按键绑定」页主开关为关时同一套（做法在 [PageTabBand] 里）
         enabled = !commandDraft.stepEditing,
-        band = commandBandHeight,
+        band = bands[Screen.COMMANDS],
     )
 }
 
@@ -176,7 +177,7 @@ internal fun SettingsPage.CommandScreen(
     //  「点命令列表里的一张卡要滚回表单顶部」那处也读**目标那一页**这一份。
     val pageScrolls = (0 until COMMAND_PAGE_COUNT).map { rememberScrollState() }
     val scope = rememberCoroutineScope()
-    val tabBlockDp = commandBandHeight.dp()
+    val tabBlockDp = bands[Screen.COMMANDS].dp()
 
     //  点列表里的一张卡（或它菜单里的「编辑」）：草稿已经由卡片那边灌好了（`loadDraft`），
     //  这里负责**跳到它所属那一类的表单页**、再把那一页滚回顶部 ——

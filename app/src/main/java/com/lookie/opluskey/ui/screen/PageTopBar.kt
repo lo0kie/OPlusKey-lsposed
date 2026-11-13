@@ -328,7 +328,7 @@ private fun SettingsPage.pageSubtitle(s: Screen): String =
         Screen.SCENE_BINDING -> {
             //  `+1` 之后再夹一道：这一位在**出栈清回 -1 之后**还会被画上几百毫秒（退场动画），
             //  不夹就会在那一段写着「场景 0」。
-            I18n.format(Strings.COMMAND_BRANCH_ITEM, (sceneBindingAt + 1).coerceAtLeast(1))
+            I18n.format(Strings.COMMAND_BRANCH_ITEM, (sceneBinding.at + 1).coerceAtLeast(1))
         }
 
         // 二级页：这行小字说明**在看哪个应用**（页面标题只写「选择界面」，那一行放不下应用名）
@@ -448,7 +448,7 @@ private fun SettingsPage.PageActions(
  *  不能各页各叠一层浮层（自带取样层 / 模糊 / 半透明底 / 内容里等高占位），统一搬进顶栏这个
  *  `bottomContent` 槽位：位置、底色、模糊、下沿那条细线都由顶栏那一份负责，见 [PageHeader]
  *  与三个带子自己的 KDoc。
- *  带子跨度与内容高度都各自报给页面级状态（[bindingBandHeight] 那三个），页内那个占位
+ *  带子跨度与内容高度都各自报给页面级状态（[SettingsPage.bands]），页内那个占位
  *  Spacer 读 —— 带子与内容分处两棵树，只有这一条路能对齐。
  */
 @Composable

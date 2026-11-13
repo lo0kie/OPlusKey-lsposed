@@ -314,7 +314,12 @@ internal fun CardList(
             val block: @Composable ColumnScope.() -> Unit = {
                 // 首行之上不画线；其余每一行之前一条（左端从**标题最左处**起，右端与卡片内边距对齐）。
                 //  这一行自己要求「加深带」时换成通栏那一档（见 [HeavyDivider]）。
-                if (index > 0) {
+                //
+                //  **「首行」按此刻**还在场的**那几行算**（`shown`），不是按物理位次 `index`：
+                //  上面那些行藏起来之后，这一行就是卡片的第一行，再给它画一条线，卡片顶上会多出
+                //  一根悬空的细线（真机上「按住组合 → 独立设置」里那根「首键按住时长」就是这样 ——
+                //  它前面的「按键之间的等待」只对等窗口那一档出现）。
+                if (index in shown && index != shown.firstOrNull()) {
                     if (row.wantsHeavyDivider) {
                         HeavyDivider()
                     } else {

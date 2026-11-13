@@ -11,6 +11,7 @@ import com.lookie.opluskey.core.present.comboLabel
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
+import com.lookie.opluskey.ui.screen.binding.setComboMode
 import com.lookie.opluskey.ui.state.binding.KeysAsk
 import com.lookie.opluskey.ui.state.command.CommandsSave
 import com.lookie.opluskey.ui.write.write
@@ -34,14 +35,37 @@ internal const val MAX_COMBOS = 9
 //  `tools/audit-coupling.py` 核）—— 一份实现要给两侧共用，只能落在两边都许引的 `core`。
 
 /**
+ * 这组键在**这一类里**还排得下吗 —— 等待组合一档、按住组合两档（两种顺序各一档）。
+ *
+ *  列表页把它拆成两列（等待 / 按住），添加时类别就已经定下，所以「还能不能再加一档」
+ *  只在**同一类内部**问：另一类里的档不算占位。
+ *
+ *  这是「添加」按钮按不按得动的唯一判据（`KeysScreen` 的选键窗与 [addCombo] 共用）。
+ */
+internal fun comboRoomLeft(
+    cfg: Config,
+    ids: List<String>,
+    hold: Boolean,
+): Boolean {
+    val same = cfg.combos.filter { it.keys.sorted() == ids.sorted() && it.isHold == hold }
+    return if (hold) same.size < 2 else same.isEmpty()
+}
+
+/**
  * 加一档组合（选键弹窗点了「添加」）。
  *
- *  **只有一组键只留一档**：同一个成员集合加两次时，判定那边（`Config.comboFor`）取第一档，
- *  第二档永远不会生效 —— 与其让用户配出一档死配置，不如当场说一句。
+ *  **类别在添加那一刻定下来**（用户口径）：等待组合传 [ComboKey.MODE_WAIT]，按住组合传
+ * 「先按住第一颗」或「先按住第二颗」。一档只认一种触发方式，所以以后想两种都有，
+ * 就是两列里各建一档 —— 不再有「在一档上改方式」这条路。
  *
- * @return `true` = 已经落盘
+ *  按住那两档要求**起点键**是「松手时触发」，不是就走同一问（[setComboMode]）。
+ *
+ * @return 新那一档的 id（`null` = 没加：这一类排满了 / 成员数不对 / 超出上限 / 写盘失败）
  */
-internal fun SettingsPage.addCombo(keys: List<KeyId>): Boolean {
+internal fun SettingsPage.addCombo(
+    keys: List<KeyId>,
+    mode: Int,
+): String? {
     val cfg = configState.config.value
     val ids = keys.map { it.id }.distinct()
     if (ids.size !in ComboKey.MIN_KEYS..ComboKey.MAX_KEYS) {
@@ -50,32 +74,39 @@ internal fun SettingsPage.addCombo(keys: List<KeyId>): Boolean {
         //  `MAX_KEYS`（三颗）—— 别让某个新入口绕过这条线。
         XLog.w("组合键：成员 ${ids.size} 颗不在 ${ComboKey.MIN_KEYS}..${ComboKey.MAX_KEYS} 之内，不添加（${ids.joinToString("+")}）")
         hint(I18n.format(Strings.COMBO_MAX_KEYS, ComboKey.MAX_KEYS), slot = HINT_SLOT_COMBO)
-        return false
+        return null
     }
-    if (cfg.combos.size >= MAX_COMBOS) {
+    //  三类各自入列：成员数不对的（三颗走按住）先夹回等窗口，再按那一类自己算上限与判重
+    val resolved = ComboKey.modeFor(mode, ids.size)
+    val hold = resolved != ComboKey.MODE_WAIT
+    //  上限是**每一列各一个**：等待组合 9 档、按住组合 9 档（`MAX_COMBOS` 不跨类合计）
+    if (cfg.combos.count { it.isHold == hold } >= MAX_COMBOS) {
         hint(I18n.format(Strings.COMBO_LIMIT, MAX_COMBOS), slot = HINT_SLOT_COMBO)
-        return false
+        return null
     }
-    if (cfg.combos.any { it.keys.sorted() == ids.sorted() }) {
-        //  同一个成员集合：成员是按下的那一组键，顺序不是身份（见 `ComboKey` 的类注释）。
-        //  界面那边「已存在」时按钮就是灰的，走不到这里；这一句是给手改的配置与将来的入口兜底。
+    //  同一类里这组键还排不排得下 —— 界面那边同一判据判「添加」按不动，
+    //  这一句是给手改的配置与将来的入口兜底。
+    if (!comboRoomLeft(cfg, ids, hold)) {
         hint(I18n.get(Strings.COMBO_DUPLICATE, "这组按键已经添加过了"), slot = HINT_SLOT_COMBO)
-        return false
+        return null
     }
     //  序号只增不减：删掉中间一档之后再加，不会复用那个 id（复用会让「在编哪一档」指到别人身上）
     val seq =
         (cfg.combos.mapNotNull { it.id.removePrefix(ComboKey.ID_PREFIX).toIntOrNull() }.maxOrNull() ?: 0) + 1
-    val combo = ComboKey(id = ComboKey.idOf(seq), keys = ids, enabled = comboEnableByDefault(cfg, ids))
+    val combo = ComboKey(id = ComboKey.idOf(seq), keys = ids, enabled = comboEnableByDefault(cfg, ids), mode = resolved)
     val label = comboLabel(cfg, combo)
-    val result = write(cfg.copy(combos = cfg.combos + combo), "combo_add=${combo.id}")
+    val result = write(cfg.copy(combos = cfg.combos + combo), "combo_add=${combo.id} mode=$resolved")
     // 与 [writeAndNotice] 同一套口径：只在真的落盘并广播出去时报一句；失败时 [write] 自己已经报过。
     //  回执里每个键名各套一对括号（`已添加「侧键」+「电量 +」`）—— 整串再包一层会把两颗键
     //  读成一个名字。
     if (result == CommandsSave.Ok) {
         hint(I18n.format(Strings.COMBO_ADDED, comboLabel(cfg, combo)), slot = HINT_SLOT_COMBO)
     }
-    XLog.w("组合键：加了一档 ${combo.id}=${combo.keys.joinToString("+")}（$label）")
-    return result == CommandsSave.Ok
+    XLog.w("组合键：加了一档 ${combo.id}=${combo.keys.joinToString("+")}（$label / mode $mode）")
+    //  按住那两档要求**起点键**是「松手时触发」：不是就走那一问（与编辑页切方式同一个入口，
+    //  确认后同一次落盘改那颗键的长按时机）。已经合规时它什么都不做。
+    if (result == CommandsSave.Ok && resolved != ComboKey.MODE_WAIT) setComboMode(combo, resolved)
+    return combo.id.takeIf { result == CommandsSave.Ok }
 }
 
 /**

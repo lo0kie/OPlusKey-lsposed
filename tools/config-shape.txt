@@ -3,6 +3,6 @@
 # 记的是「上一次抬版本时，ConfigDto 的字段清单长什么样」。加字段之后：
 #   1) 抬 ConfigCodec.VERSION；2) 跑一次 --update 把这一份刷新 —— 两步缺一不可，
 #   否则下一个人接着加字段时，这道闸看不出来（它只比「相对上一次抬版本」有没有变）。
-version=57
-shape=0eb9a05432941c90
-fields=124
+version=58
+shape=ed534b0dc15a5634
+fields=123

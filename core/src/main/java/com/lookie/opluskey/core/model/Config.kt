@@ -1104,36 +1104,13 @@ data class GlobalConfig(
      */
     val comboWindowMs: Int = DEFAULT_COMBO_WINDOW_MS,
     /**
-     * **认不认「窗口内等齐成员」这一种按法** —— 组合的两条触发方式之一（另一条是
-     * [comboHoldOn]），默认开：这一位出现之前窗口那条一直生效，老配置读回来行为逐字一致。
-     *
-     *  关掉之后「两颗键在一个窗口内先后按下」不再算这一档组合 —— 判定侧那条判据整条不生效
-     *  （`ComboDetector.pairFor` 的 `windowed`），**「参与组合的键要先等一个窗口」那条代价
-     *  也一起消失**：等的是「同伴会不会来」，这一档不认窗口之后那个问题就不存在（用户口径：
-     *  不开等待手势时，成员键各自不再等这个窗口）。想「一起按」就只能把这一位打开。
-     *
-     *  每组可以另设一份（`ComboKey.windowOn`，受那一组的「使用独立设置」管）——
-     *  这一位是公共默认，取值一律走 `Config.comboWindowOnFor`。
-     *
-     *  判定在注入侧，所以**走广播**（`ConfigFields.F_COMBO_WINDOW_ON`）。
-     */
-    val comboWindowOn: Boolean = DEFAULT_COMBO_WINDOW_ON,
-    /**
-     * **认不认「按住一个成员、再按剩下的成员」** —— 组合的另一条触发方式，默认关
-     * （这一位出现之前没有这种按法）。
-     *
-     *  每组可以另设一份（`ComboKey.holdOn`，受那一组的「使用独立设置」管）；
-     *  取值一律走 `Config.comboHoldFor`。判定在注入侧 ⇒ **走广播**（`F_COMBO_HOLD_ON`）。
-     */
-    val comboHoldOn: Boolean = DEFAULT_COMBO_HOLD_ON,
-    /**
-     * 组合键：**按住手势里首键要先按住多久**（毫秒）—— 用户口径「首键必须按住超过这个时间」。
+     * 组合键：**按住那两档里，起点键要先按住多久**（毫秒）。
      *
      *  判定在注入侧（`ComboDetector.pairFor` 的 `held`），所以这一位**走广播**
-     *  （`ConfigFields.F_COMBO_HOLD_MIN_MS`）。每组可以另设一份（`ComboKey.holdMinMs`，
-     *  受那一组的「使用独立设置」管）—— 这一位是公共默认，取值一律走 `Config.comboHoldMinFor`。
+     *  （`ConfigFields.F_COMBO_HOLD_MIN_MS`）。每档可以另设一份（`ComboKey.holdMinMs`，
+     *  受那一档的「使用独立设置」管）—— 这一位是公共默认，取值一律走 `Config.comboHoldMinFor`。
      *
-     *  它把「一起按」与「按住了一颗再按另一颗」分开：没有下限时两颗键相差几毫秒也算按住，
+     *  这一条把「一起按」与「按住了一颗再按另一颗」分开：没有下限时两颗键相差几毫秒也算按住，
      *  而哪一颗算「先按住」全看硬件先报谁 —— 同一个物理动作于是有时命中、有时整条落空。
      */
     val comboHoldMinMs: Int = DEFAULT_COMBO_HOLD_MIN_MS,
@@ -1167,8 +1144,6 @@ data class GlobalConfig(
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
                 ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
-                ConfigFields.F_COMBO_WINDOW_ON to comboWindowOn,
-                ConfigFields.F_COMBO_HOLD_ON to comboHoldOn,
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
             ),
         )
@@ -1264,21 +1239,6 @@ data class GlobalConfig(
         const val COMBO_WINDOW_MAX_MS = 1000
 
         /**
-         * [GlobalConfig.comboWindowOn] 的默认值：**开**。
-         *
-         *  「窗口内先后按下」是组合键从第一天起就有的按法，老配置里没有这一位 ⇒ 必须还是它，
-         *  否则升级之后所有组合键一起失灵。
-         */
-        const val DEFAULT_COMBO_WINDOW_ON = true
-
-        /**
-         * [GlobalConfig.comboHoldOn] 的默认值：**关**。
-         *
-         *  「按住一颗再按另一颗」是后加的一条路，默认不开 —— 装上之后手感与这一位出现之前一致。
-         */
-        const val DEFAULT_COMBO_HOLD_ON = false
-
-        /**
          * [GlobalConfig.comboHoldMinMs] 的三档 —— 下限 / 出厂值 / 上限（毫秒）。
          *
          *  出厂 100：实测「一起按」两颗键相差 0~40ms（谁先上报看硬件），而真要按住一颗再补
@@ -1332,8 +1292,6 @@ data class GlobalConfig(
                 comboPassthrough = v.bool(ConfigFields.F_COMBO_PASSTHROUGH),
                 //  与 pageScale 同一档：手改文件写进越界值，在这一层钳回滑杆两端
                 comboWindowMs = v.number(ConfigFields.F_COMBO_WINDOW_MS).coerceIn(COMBO_WINDOW_MIN_MS, COMBO_WINDOW_MAX_MS),
-                comboWindowOn = v.bool(ConfigFields.F_COMBO_WINDOW_ON),
-                comboHoldOn = v.bool(ConfigFields.F_COMBO_HOLD_ON),
                 //  与 comboWindowMs 同一档：越界值在这一层钳回滑杆两端
                 comboHoldMinMs =
                     v
@@ -1492,36 +1450,49 @@ data class Config(
      *  那一刻会把公共值一并播进这一位（`KeySettingsScreen.withSeededComboFields`），
      *  所以「开着独立设置、这一项却还在跟随公共」只出现在还没被拨过的旧配置上（拨一下任何一项就补上）。
      *
-     *  **只在「使用等待手势」开着时算数**（[comboWindowOnFor]）：透传的语义是「窗口那条按出来、
-     *  可这一格没绑动作」，只认按住的那一档不经过这个形状（按住按出来的每一套都有自己明确的槽）。
-     *  窗口关掉时这里恒为假 —— 界面那边同一份判据决定这一行显不显示，两处不会各说各的。
+     *  **只在 [ComboKey.MODE_WAIT] 上算数**：透传的语义是「窗口那条按出来了、可这一格没绑动作」，
+     *  按住那两档不经过这个形状（它们的判据就是「这一下交给组合」）。于是按住那两档恒为假 ——
+     *  界面那边同一份判据决定这一行显不显示，两处不会各说各的。
      */
-    fun comboPassthroughFor(combo: ComboKey): Boolean =
-        comboWindowOnFor(combo) && comboField(combo, combo.passthrough, global.comboPassthrough)
+    fun comboPassthroughFor(combo: ComboKey): Boolean = combo.isWait && comboField(combo, combo.passthrough, global.comboPassthrough)
 
     /**
-     * 这一组**认不认「窗口内等齐成员」** —— 规则与 [comboPassthroughFor] 同一条：
-     * 独立设置关着就跟随公共（`GlobalConfig.comboWindowOn`），开着看这一组自己写没写过。
-     *
-     *  两位（窗口 / 按住）都走这一个口径 —— 它们说的是同一件事的两种按法，
-     *  「跟随公共」这一层不该出现两套判据。
-     */
-    fun comboWindowOnFor(combo: ComboKey): Boolean = comboField(combo, combo.windowOn, global.comboWindowOn)
-
-    /** 这一组**认不认「按住一个成员、再按剩下的成员」**（见 [comboWindowOnFor]）。 */
-    fun comboHoldFor(combo: ComboKey): Boolean = comboField(combo, combo.holdOn, global.comboHoldOn)
-
-    /**
-     * 组合键上那几位「这一组自己写过没有」的公共项 —— 唯一一处判据。
+     * 组合键上那几位「这一档自己写过没有」的公共项 —— 唯一一处判据。
      *
      *  `null` 是「没写过 ⇒ 跟公共」，但**总开关一关就整份看公共**（哪怕写过）——
      *  否则界面灰着、执行侧却照旧用自己那份，是「关了没关掉」。
+     *
+     *  只剩「无操作时执行按键命令」一位还在用它：`windowOn` / `holdOn` 那一对已经收进
+     *  [ComboKey.mode]（触发方式是这一档的身份），不再有「跟随公共」这回事。
      */
     private fun comboField(
         combo: ComboKey,
         own: Boolean?,
         public: Boolean,
-    ): Boolean = if (!combo.useOwnSettings) public else own ?: public
+    ): Boolean = effective(combo.useOwnSettings, public, stored(own, public))
+
+    /**
+     * 「独立设置开着看自己那份、关着看公共」—— **全项目只有这一处实现**。
+     *
+     *  组合那几位自有字段（`passthrough` / `windowMs` / `holdMinMs`）都按它取值。原先每项各写一遍
+     *  `if (!combo.useOwnSettings) global.X else combo.X`：规则一样、改一处要改五处。
+     */
+    private fun <T> effective(
+        useOwnSettings: Boolean,
+        global: T,
+        own: T,
+    ): T = if (useOwnSettings) own else global
+
+    /**
+     * 这一档自己**存着**的那一份 —— 没写过（`null` / `0`）就退回 [global]。
+     *
+     * 与 [effective] 的分工：这一半只管「写过没有」，不看总开关；界面上那根滑杆要的正是它
+     * （理由见 [comboStoredWindowFor]）。
+     */
+    private fun <T : Any> stored(
+        own: T?,
+        global: T,
+    ): T = own ?: global
 
     /**
      * 这一组**自己存着**的按键间隔（毫秒）—— 没写过（`WINDOW_FOLLOW_GLOBAL` / 老配置）就退回公共那份。
@@ -1532,7 +1503,7 @@ data class Config(
      *
      *  判据只写在这里：`comboWindowFor` 也复用它，「没写过就退回公共」不会在两处各算一遍。
      */
-    fun comboStoredWindowFor(combo: ComboKey): Int = combo.windowMs.takeIf { it > 0 } ?: global.comboWindowMs
+    fun comboStoredWindowFor(combo: ComboKey): Int = stored(combo.windowMs.takeIf { it > 0 }, global.comboWindowMs)
 
     /**
      * 这一组**实际生效**的按键间隔（毫秒）—— 规则与 [comboPassthroughFor] 同一条：
@@ -1544,18 +1515,13 @@ data class Config(
      *  为什么这条规则长在 [Config] 而不是判定侧：判定侧（`inject/`）手上只有这份 Config，
      *  界面手上也只有它 —— 两处各拼一次，「关了独立设置却不生效」这种错只会出现在其中一边。
      */
-    fun comboWindowFor(combo: ComboKey): Int =
-        if (!combo.useOwnSettings) {
-            global.comboWindowMs
-        } else {
-            comboStoredWindowFor(combo)
-        }
+    fun comboWindowFor(combo: ComboKey): Int = effective(combo.useOwnSettings, global.comboWindowMs, comboStoredWindowFor(combo))
 
     /**
      * 这一组**自己存着**的「首键要先按住多久」（毫秒）—— 与 [comboStoredWindowFor] 同一条：
      * 不看总开关，滑杆要的就是这一份。
      */
-    fun comboStoredHoldMinFor(combo: ComboKey): Int = combo.holdMinMs.takeIf { it > 0 } ?: global.comboHoldMinMs
+    fun comboStoredHoldMinFor(combo: ComboKey): Int = stored(combo.holdMinMs.takeIf { it > 0 }, global.comboHoldMinMs)
 
     /**
      * 这一组**实际生效**的「首键要先按住多久」（毫秒）—— 规则与 [comboWindowFor] 同一条：
@@ -1563,12 +1529,7 @@ data class Config(
      *
      *  判定侧（`ComboDetector` 的 `holdMinFor`）与界面都只走这一处。
      */
-    fun comboHoldMinFor(combo: ComboKey): Int =
-        if (!combo.useOwnSettings) {
-            global.comboHoldMinMs
-        } else {
-            comboStoredHoldMinFor(combo)
-        }
+    fun comboHoldMinFor(combo: ComboKey): Int = effective(combo.useOwnSettings, global.comboHoldMinMs, comboStoredHoldMinFor(combo))
 
     /**
      * 这一档**整串**的容忍跨度（毫秒）—— 相邻两颗最多隔 [comboWindowFor]，n 颗就要 (n-1) 个窗口。
@@ -1720,7 +1681,28 @@ data class Config(
      *  这里是「底层接口」那一半：判定侧（`inject/input`）判出「这几颗键一起按着」之后调它取档位，
      *  再按短按 / 长按取 [ComboKey.actionOf]。接线不在此刻。
      */
-    fun comboFor(down: Set<String>): ComboKey? = combos.filter { it.isUsable && it.matches(down) }.maxByOrNull { it.keys.size }
+    fun comboFor(down: Set<String>): ComboKey? = combosFor(down).firstOrNull()
+
+    /**
+     * [down] 这几颗键能凑成的**全部**档位 —— 成员多的在前，成员数相同时保持配置顺序。
+     *
+     *  为什么是列表而不是「最大那一档」：同一组键可以有**几档、各自一种触发方式**
+     *  （等窗口 / 先按住第一颗 / 先按住第二颗，见 [ComboKey.mode]）—— 那是三种不同的判据，
+     *  得逐档问「这一次按压符不符合你」，不能只看成员数就把别的档排除掉。
+     *  判定侧（`ComboDetector.pairFor`）按这个顺序逐档试，按住那几档优先（前提更严）。
+     *
+     *  判据与 [comboFor] 完全一样（只问 [ComboKey.isUsable]；「成员键还都接管着」由调用方补），
+     *  排序也是原来那一份：`maxByOrNull { keys.size }` 等价于「按成员数降序取第一个」。
+     */
+    fun combosFor(down: Set<String>): List<ComboKey> {
+        val matched = ArrayList<ComboKey>(2)
+        for (c in combos) {
+            if (c.isUsable && c.matches(down)) matched.add(c)
+        }
+        //  只有一档时不必排序：`ArrayList` 建出来就是结果，省掉一次复制
+        if (matched.size > 1) matched.sortByDescending { it.keys.size }
+        return matched
+    }
 
     /**
      * 含有 [base] 这几颗键、且**成员更多**的那一档（`null` = 没有更宽的一档）。
@@ -1738,9 +1720,9 @@ data class Config(
      */
     fun widerComboOf(base: List<KeyId>): ComboKey? =
         liveCombos()
-            //  「更宽的那一档」只可能是多成员那一档，而多成员只走窗口那条判据 —— 窗口关着的
-            //  一档永远凑不齐，为它等一个窗口只是让更小那一档白慢一拍。
-            .filter { c -> c.keys.size > base.size && base.all { k -> k.id in c.keys } && comboWindowOnFor(c) }
+            //  「更宽的那一档」只可能是多成员那一档，而多成员只走窗口那条判据 —— 按住那两档
+            //  只对两颗成立，永远不会是「更宽」的候选。
+            .filter { c -> c.keys.size > base.size && base.all { k -> k.id in c.keys } && c.isWait }
             .maxByOrNull { it.keys.size }
 
     /**

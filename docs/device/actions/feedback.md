@@ -276,6 +276,41 @@ sendSeeding logoPath:content://com.oplus.gesture.FileShareProvider/share_images/
 实现的两头：**图由界面层画**（`ui/model/icon/FluidCardArt`），**uri 由宿主侧拼**
 （`host/action/FluidAction#iconUri`）。
 
+### 42.6 文字滚不滚：由模板的文本组件与字号档决定，不是发送参数（2026-11-14 反编译）
+
+真机上「系统自己的胶囊（音乐 / 手电筒）文字会滚，我们这条不动」——原因不在文案长短，
+也不在 `q(...)` 少了某个参数。
+
+渲染端是 SystemUI 从 `/data/user_de/0/com.android.systemui/files/seedlingsdk_plugin/SeedlingSdk.apk`
+加载的插件（`com.oplus.ule.lite.*`），text 节点落在 `com.oplus.ule.lite.customview.SimpleMarqueeView`
+（`AppCompatTextView` 的子类）：
+
+- `ellipsize` 由文本数据的 `m0`（默认 **false**）决定：false → `TruncateAt.MARQUEE`，
+  true → `TruncateAt.END`（`com.oplus.ule.lite.components.b8.a0.d`）。**我们这份默认就是 MARQUEE。**
+- **但 MARQUEE 不等于会动**：`SimpleMarqueeView` 的 `manuallyMarquee` 默认 **true**，
+  `onLayout` 一进门就 `return`（不按「文本是否超宽」自动启动）；`onWindowFocusChanged(Z)`
+  里读 `view.getTag(R.id.… )`，只有值等于 `"B1"` 的实例才走自己那一支，其余直接交还给
+  `super`（焦点变化不会把 selected 置起来）。
+- 真正让它动的是**专用模板组件自己调 `E(true)`**（≈ `setSelected`）：音乐卡的
+  `com.oplus.ule.lite.template.templatemedia.a1` 在 `onWindowFocusChanged` / `setAODStatus`
+  里就是这么做的。
+
+⇒ 会滚的胶囊用的是**另一套模板**：`SystemUI/assets/MediaControl.upk` 的歌名是
+`level: "1-1:B1*"`、`Flashlight.upk` 的说明是 `level: "B1*"`；我们这条（宿主
+`assets/ActionKeyTip.upk`）的 `title` 是 **`level: "B0"`**，落在「普通 text 节点」那一支。
+`*` 与滚动无关（`onWindowFocusChanged` 只比 `B1`，不含星号），它管字号自适应。
+
+结论：**这条通道做不到滚动**。发送侧 `q(logo, text, showA)` 没有字号档这个参数；字号档写死在
+模板的 `pages/index.json` 里，而模板在宿主 APK 的只读资产中、且卡服务按内容指纹校验
+（§42.5 那三条改模板的路全被丢弃）。想让提示文字滚动只能自绘浮层。
+
+复核路径：`adb root` 后拉 `SeedlingSdk.apk`，看 `SimpleMarqueeView.onWindowFocusChanged`、
+`SimpleMarqueeView.onLayout`、`components/b8.a0.d` 三处；模板侧解包两份 `.upk` 比 `level`。
+
+这条是**反编译结论**，没做「同一条胶囊换超长文案」的真机对照（那要改用户配置并重启宿主进程，
+AGENTS 一、7 不许自己重启）。若真机上出现过我们这条胶囊在滚的画面，说明还有一处
+`setSelected(true)` 没找到 —— 先记下来，下次带着截图再查。
+
 ## 四十三、执行时提示的两个落点：Toast 与流体云（2026-11-13）
 
 「执行时提示」（§40）原先只有 Toast 一条路。这一版多一档**用流体云提示**：同一句文案改由 §42
@@ -301,7 +336,7 @@ sendSeeding logoPath:content://com.oplus.gesture.FileShareProvider/share_images/
 - 判据行两条连着看：`执行时提示：<整句>`（宿主执行器）→ `已请宿主弹流体云：<整句>（图标=…）`
   （`FluidAction`）。只有前者没有后者 ⇒ 分流没走到流体云（看这一档的 `toastFluid` 生效值：
   公共那份还是这一颗键自己那份）。
-- 配置位：`GlobalDto.toast_fluid` + `KeyDto` / `ComboDto` 的同名覆盖，`ConfigCodec.VERSION` 57。
+- 配置位：`GlobalDto.toast_fluid` + `KeyDto` / `ComboDto` 的同名覆盖，`ConfigCodec.VERSION` 56。
   「独立设置」里那一位与「执行时提示」同一个总开关门控。
 
 - 图源是模块**已经在用**的 Tabler 字形（`ImageVector`），落成 `36×36`、**透明底、纯白描边**

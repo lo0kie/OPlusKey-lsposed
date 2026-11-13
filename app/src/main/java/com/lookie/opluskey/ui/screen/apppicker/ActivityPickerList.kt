@@ -27,6 +27,7 @@ import com.lookie.opluskey.core.i18n.I18n
 import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.PageFabButton
@@ -144,7 +145,7 @@ internal fun SettingsPage.ActivityPickerScreen(
             )
         }
     // 带子高度由顶栏那一侧量（`ActivitySearchBand`），这里只读 —— 与「选择应用」页同一条通道
-    val searchBandDp = activitySearchBandHeight.dp()
+    val searchBandDp = bands[Screen.ACTIVITY_PICKER].dp()
 
     // 本次点中的那一行 —— **点行只改它，FAB 才写**（与一级页同一套：点行不写任何东西）。
     // 进页时它是 null ⇒ 用 [PickerListData.defaultPick]（「自动」或绑定里记着的具体项）。

@@ -1,7 +1,18 @@
 package com.lookie.opluskey.core.model
 
 /**
- * 组合按键：**几颗键一起按下**（或在一个窗口内先后按下）时执行的动作。
+ * 组合按键：**几颗键一起按下**（或先按住一颗、再按另一颗）时执行的动作。
+ *
+ * ## 触发方式是**身份**的一部分
+ *
+ *  一档组合只认**一种**触发方式（[mode]）：窗口内先后按下、先按住第一颗、先按住第二颗。
+ *  三者互斥、不并存：换一种就是改这一档的 [mode]，不是再叠一条判据。
+ *  同一组键眼下只能有一档（`ComboActions.addCombo` 按成员集合去重），所以「两种都要」现在做不到 ——
+ *  要去重把 [mode] 也算进身份才行。
+ *
+ *  为什么不做成「一档同时认两种」：那样每档要带两条开关 + 一组「加过哪几种顺序」，判定侧
+ *  还得再定义「两条同时成立时谁优先」，而这两种按法在时间轴上本来就会重叠（窗口与按住下限）。
+ *  把它们拆成两档之后，一档只有一条判据、一套动作槽，界面也只剩一条「触发方式」。
  *
  * ## 成员数：界面最多三颗
  *
@@ -9,6 +20,9 @@ package com.lookie.opluskey.core.model
  *  [MAX_JUDGE_KEYS] 才是判定、落盘、广播三处认的上限（宽松挡垃圾用）。
  *  两个上限分开：界面只造得出三颗，而判定侧从三颗起就走「多成员凑齐」那条路
  *  （`ComboDetector.multiFor`），再多也跑得通 —— 手改配置文件写进来的四颗以上照常生效。
+ *
+ *  **按住那两种只对两颗成立**（三颗没有「哪一颗先按住」这个唯一起点）：读回来时由
+ *  [modeFor] 夹回 [MODE_WAIT]，所以这一档不会出现「三颗 + 按住」这种按不出来的形态。
  *
  * ## 只支持短按与长按
  *
@@ -19,7 +33,7 @@ package com.lookie.opluskey.core.model
  * ## 身份是 [keys] 这个集合，不是按下的顺序
  *
  * 两颗键「同时按」时，上报顺序由驱动决定、用户也控制不了。拿顺序当判据等于让配置依赖硬件细节，
- * 所以判等只看集合（[matches]）。
+ * 所以判等只看集合（[matches]）；**「谁先按住」不由顺序推导**，而是 [mode] 明写的那一位。
  *
  * ## 与单键的关系
  *
@@ -32,6 +46,20 @@ data class ComboKey(
     /** 参与的键（`KeyId.id`，去重后 [MIN_KEYS]..[MAX_JUDGE_KEYS] 颗）。 */
     val keys: List<String>,
     val enabled: Boolean = true,
+    /**
+     * 这一档**怎么触发** —— [MODE_WAIT] / [MODE_HOLD_FIRST] / [MODE_HOLD_SECOND]。
+     *
+     *  · [MODE_WAIT]：成员在 [windowMs] 之内先后按下（默认，老配置全是这一档）；
+     *  · [MODE_HOLD_FIRST]：**先按住 [keys] 的第一颗**，再按第二颗；
+     *  · [MODE_HOLD_SECOND]：先按住第二颗，再按第一颗。
+     *
+     *  按住那两档的判据是「那一颗还按着」，不看隔了多久；上界是它自己的长按（判过长按就已经
+     *  执行过自己的动作，再认组合就是一次按压两个动作），下限是 [holdMinMs]（把「一起按」
+     *  与「真的按住一颗再补另一颗」分开）。
+     *
+     *  三颗及以上只有 [MODE_WAIT]：读回来时由 [modeFor] 夹回去。
+     */
+    val mode: Int = MODE_WAIT,
     /** 短按：按下之后在 [longPressMs] 之内松开。 */
     val single: Action = Action.None,
     /** 长按：一起按住超过 [longPressMs]。 */
@@ -52,20 +80,19 @@ data class ComboKey(
      * 「长按**松手才触发**」—— 与单键 `KeyConfig.longFireOnRelease` 同一档语义。
      *
      *  开着时长按那一下不立即执行，抬手时补发一次；与 [longRelease] 互斥（同一刻只能有一个）。
+     *  按住那两档**要求起点键开着这一位**：否则按住它到长按阈值时动作已经出去，组合再也凑不成。
      */
     override val longFireOnRelease: Boolean = false,
     /** 「松手执行额外动作」的开关 —— 与单键 `KeyConfig.longReleaseOn` 同一档语义。 */
     override val longReleaseOn: Boolean = false,
-    /** 松手那一档执行的动作（`Action.None` = 没挑）。 */
+    /** 松手那一档执行的动作（`Action.None` = 没挑）。只在 [MODE_WAIT] 上有意义，见 [releaseBound]。 */
     override val longRelease: Action = Action.None,
     /**
      * **系统场景** —— 与单键 `KeyConfig.scenes` 同一套 [SceneRule]、同一个判定口径。
      *
      *  按顺序找「条件成立、且这一档有值」的第一块；一块都不中才走 [actionOf] 那一档绑定。
-     *  空表（默认）⇒ 行为与没有这一项完全相同 —— 老配置读回来就是这个状态。
-     *
-     *  为什么组合键也值得有：组合键本身就是「我特意按了两颗键」，它比单键更常需要
-     *  「在什么情况下才做」的区分（比如「在公司电脑上才切窗口」）。
+     *  三种触发方式**同一套场景表**：块里分的是短按 / 长按，而「怎么按出来的」已经是这一档的
+     *  身份，不构成场景的第二个维度。
      *
      *  手势只有 [Gesture.SINGLE] / [Gesture.LONG] 两档（见类注释），所以块里的 [SceneRule.double]
      *  在这条路上永远不会被读到；手改配置写进去也只是存着。
@@ -75,7 +102,7 @@ data class ComboKey(
      * 「这一档用自己那套公共项」—— 与单键 `KeyConfig.useOwnSettings` **同一个契约**
      * （[OwnSettings]），执行侧不区分单键还是组合。
      *
-     *  默认关 = 跟随公共设置；开着时下面两位说了算。
+     *  默认关 = 跟随公共设置；开着时下面几位说了算。
      */
     override val useOwnSettings: Boolean = false,
     /** 这一档自己的「使用 ColorOS 接口」—— 只在 [useOwnSettings] 开着时算数。 */
@@ -93,91 +120,44 @@ data class ComboKey(
     /** 上面那几项被公共设置播过种没有 —— 见 [OwnSettings.ownSettingsSeeded]。 */
     override val ownSettingsSeeded: Boolean = false,
     /**
-     * **这一组自己的**「无操作时执行按键命令」—— `null` = 跟随公共设置。
+     * **这一档自己的**「无操作时执行按键命令」—— `null` = 跟随公共设置。
      *
-     *  与 `GlobalConfig.comboPassthrough` 是同一件事，只是这一组可以另设一份：
+     *  与 `GlobalConfig.comboPassthrough` 是同一件事，只是这一档可以另设一份：
      *  「配了 A+B，但只给长按绑了动作」时，短按到底要不要让两颗键各干各的，
-     *  不同组往往不一样（临时组合希望透传、专用组合希望吞掉）。
+     *  不同档往往不一样（临时组合希望透传、专用组合希望吞掉）。
      *
      *  **受 `useOwnSettings` 管**，与那几项同一条规则：关着就整份跟公共，开着才用这一位。
      *  打开独立设置那一刻这一位会被**播成当时的公共值**（`KeySettingsScreen.withSeededComboFields`），
      *  所以「开着独立设置却还在跟随公共」只会出现在还没被拨过的老配置上（`null` 就是那一档）。
      *
-     *  **只在 [windowOn] 那位开着时算数**：窗口关掉（这一组只认按住）时这一位不参与取值 ——
-     *  那两条按法各有自己明确的槽，不存在「按出来了但没绑动作」这个形状。
-     *  取值只走 `Config.comboPassthroughFor`，执行侧不自己看全局。
+     *  **只在 [MODE_WAIT] 上有意义**：按住那两档的判据是「这一下就是把这一按交给组合」，
+     *  不存在「按出来了但没绑动作」这个形状，所以它们恒不透传（取值只走
+     *  `Config.comboPassthroughFor`，执行侧不自己看全局）。
      */
     val passthrough: Boolean? = null,
     /**
-     * 这一组自己的「两颗键按下之间最多隔多久」（毫秒）。
+     * 这一档的「两颗键按下之间最多隔多久」（毫秒）—— 只在 [MODE_WAIT] 上有意义。
      *
      *  这个数同时管两件事：**算不算同时按下**，以及**第一颗键要等多久才回落单击**。
      *  一个数管两件事就必然会打架 —— 三颗的组合需要宽一点，而两颗的调宽了会让那颗键
-     *  整套单击都变钝。所以允许每组各设一份。
+     *  整套单击都变钝。所以允许每档各设一份。
      *
      *  它量的是**相邻两颗**之间：三颗那一档整串的容忍跨度是它 × (成员数-1)（`Config.comboSpanFor`），
      *  所以三颗也不必把它调到「两颗手感」的两倍以上。
      *
      *  **同样受 `useOwnSettings` 管**：关着整份看公共；打开那一刻被播成当时的公共值。
      *  [WINDOW_FOLLOW_GLOBAL]（0）只剩老配置会读到，界面上也没有「拖回跟随」那一档 ——
-     *  要回公共就关掉这一组的总开关（`Config.comboWindowFor` 的第一支）。
+     *  要回公共就关掉这一档的总开关（`Config.comboWindowFor` 的第一支）。
      *
      *  取值一律走 `Config.comboWindowFor`（判定侧与界面都只走这一处，谁也不自己看全局）。
      */
     val windowMs: Int = WINDOW_FOLLOW_GLOBAL,
     /**
-     * **认不认「窗口内等齐成员」这一种按法** —— `null` = 跟随公共设置（`GlobalConfig.comboWindowOn`）。
+     * 这一档的「**起点键要先按住多久**」（毫秒）—— 按住那两档的下限，[MODE_WAIT] 上不参与取值。
      *
-     *  与 [holdOn] 是**两条独立的触发方式**，各有各的开关，谁也不取代谁：这一位关掉只是不再
-     *  按时间配这一档，按住那条照旧可用。两位都关 ⇒ 这一档组合永远不会成立（配置允许写出来，
-     *  判定侧只是永远配不上）。
-     *
-     *  受 `useOwnSettings` 管，与 [windowMs] 同一条：关着整份看公共；打开独立设置那一刻这一位
-     *  会被**播成当时的公共值**（`KeySettingsScreen.withSeededComboFields`）。
-     *
-     *  取值一律走 `Config.comboWindowOnFor` —— 判定侧与界面都只走这一处。
-     */
-    val windowOn: Boolean? = null,
-    /**
-     * **除了「窗口内等齐成员」，还接受「按住一个成员、再按剩下的成员」** —— 两种触发方式并存，
-     *  **互不取代**：窗口那条判据（[windowMs]）照旧，这里只是多开一条路。
-     *
-     *  `null` = 跟随公共设置（`GlobalConfig.comboHoldOn`），与 [windowOn] 同一套覆盖规则。
-     *
-     *  按住这一条只对**两个成员**成立（三颗及以上没有「哪一颗先按住」这个唯一的起点）。
-     *  三种触发方式各有自己的动作槽：
-     *
-     *  · 窗口内等齐 ⇒ [single] / [long]；
-     *  · 先按住第一颗、再按第二颗 ⇒ [singleA] / [longA]；
-     *  · 先按住第二颗、再按第一颗 ⇒ [singleB] / [longB]。
-     *
-     *  为什么三套分开而不是共用：窗口那条判的是「同时按」，按住判的是「一前一后」——
-     *  同一组手势在两种按法下要做的事往往不一样（同时按是快捷开关，按住是「先按这颗再按那颗」的
-     *  组合拳）。共用一套的话，用户改了一种按法，另一种也跟着变。
-     *
-     *  上界是第一颗自己的长按：判出来之后它已经执行过自己的动作了，再认组合就是一次按压
-     *  两个动作（判据在 `ComboDetector` 的 `longPressPassed`）。
-     *
-     *  老文件没有这一项 ⇒ `null`（跟随公共，公共默认关）⇒ 判定与这一位出现之前逐字一致。
-     */
-    val holdOn: Boolean? = null,
-    /**
-     * **手动加过的那几种按住顺序** —— 取值是 [HOLD_FIRST] / [HOLD_SECOND]。
-     *
-     *  按住那两种顺序不再「开一位就自动都有」：用户得自己往这一档里加（界面在「按法」菜单里
-     *  提供「添加顺序」）。理由是每加一条顺序就要把那颗键改成一个特殊的长按时机
-     *  （「松手时触发」，见 `HoldGestureAsk`）—— 这是要用户点头的事，不能替他默默改。
-     *
-     *  空表 = 一条都没加 ⇒ 判定侧不认按住那条（哪怕 [holdOn] 开着）；老文件同样读成空表
-     *  —— 这一位出现之前根本没有「按住顺序」这个概念，而按住手势本身也还没发布。
-     */
-    val holdOrders: List<Int> = emptyList(),
-    /**
-     * 这一组自己的「**首键要先按住多久**」（毫秒）—— 按住手势的下限。
-     *
-     *  含义：先按住的那颗必须**按满这么久、且还没抬手**，第二颗在这之后落下才算这一档组合。
+     *  含义：起点必须**按满这么久、且还没抬手**，另一颗在这之后落下才算这一档组合。
      *  它把「一起按」（两颗键相差 0~40ms，谁先上报看硬件）与「先按住一颗再按另一颗」分开：
-     *  没有这条下限时，一起按会按物理先后落进某一种顺序里 —— 而那个顺序用户未必加过，
+     *  没有这条下限时，一起按会按物理先后落进某一种顺序里 —— 而那个顺序未必是这一档要的，
      *  于是同一物理动作有时命中、有时整条落空。
      *
      *  **受 `useOwnSettings` 管**，与 [windowMs] 同一条：关着整份看公共
@@ -187,19 +167,38 @@ data class ComboKey(
      *  取值一律走 `Config.comboHoldMinFor`（判定侧与界面都只走这一处）。
      */
     val holdMinMs: Int = HOLD_MIN_FOLLOW_GLOBAL,
-    /** 按住手势「先按住 **第一颗**」那一套（见 [holdOn]）。 */
-    val singleA: Action = Action.None,
-    /** 见 [singleA]。 */
-    val longA: Action = Action.None,
-    /** 按住手势「先按住 **第二颗**」那一套（见 [holdOn]）。 */
-    val singleB: Action = Action.None,
-    /** 见 [singleB]。 */
-    val longB: Action = Action.None,
 ) : OwnSettings,
     LongPressParams {
     /** 这一档现在算不算数 —— 关掉了、或成员不足两键（配置文件被手改坏）都不算。 */
     val isUsable: Boolean
         get() = enabled && keys.size >= MIN_KEYS
+
+    /** 这一档靠「窗口内先后按下」触发吗（[MODE_WAIT]）。 */
+    val isWait: Boolean get() = mode == MODE_WAIT
+
+    /** 这一档靠「先按住一颗、再按另一颗」触发吗（[MODE_HOLD_FIRST] / [MODE_HOLD_SECOND]）。 */
+    val isHold: Boolean get() = mode != MODE_WAIT
+
+    /**
+     * 这一档的**起点键**（按住那两档才有）—— `MODE_HOLD_FIRST` 是成员里的第一颗，
+     * `MODE_HOLD_SECOND` 是第二颗。窗口那一档回 `null`。
+     */
+    val starterKey: String?
+        get() =
+            when (mode) {
+                MODE_HOLD_FIRST -> keys.getOrNull(0)
+                MODE_HOLD_SECOND -> keys.getOrNull(1)
+                else -> null
+            }
+
+    /** 这一档的另一颗（按住那两档才有）—— 后补的那一下。窗口那一档回 `null`。 */
+    val partnerKey: String?
+        get() =
+            when (mode) {
+                MODE_HOLD_FIRST -> keys.getOrNull(1)
+                MODE_HOLD_SECOND -> keys.getOrNull(0)
+                else -> null
+            }
 
     /**
      * [trigger] 这一档的动作。
@@ -207,6 +206,9 @@ data class ComboKey(
      *  组合只认单击 / 长按两档（[COMBO_SLOTS]）：双击与第 3 击起那些档位在这一层没有槽位，
      *  问到它们就是「这一档没定义」—— **不退回单击**，否则按两下会执行一下。
      *  松手那一档回 [longRelease]（与单键 `KeyConfig.actionOf` 同一口径）。
+     *
+     *  三种触发方式**共用这一对槽**：槽位跟着手势走，触发方式已经是这一档的身份（[mode]），
+     *  不再需要为它多开几套。
      */
     fun actionOf(trigger: GestureTrigger): Action =
         when (trigger) {
@@ -221,61 +223,6 @@ data class ComboKey(
         }
 
     /**
-     * 这一种按住顺序**加过没有** —— 判定侧用它当闸（见 [holdOrders]），界面用它决定那一行是
-     * 「选择」还是「添加」。
-     */
-    fun hasHoldOrder(hold: Int): Boolean = hold in holdOrders
-
-    /**
-     * 按住那几套里**有没有绑过动作** —— `ChordGuard` 判「这一对该不该吞掉 ROM 的判定」时用。
-     *
-     *  少了这一位，只给按住手势配了动作的组合在注入侧看起来就是「一个动作都没绑」，
-     *  于是按「透传开着」放行 ⇒ 系统那一下照常发生、模块这一下也不执行（真机上就是「按了没反应」）。
-     */
-    val anyHoldBound: Boolean
-        get() = singleA.isBound || longA.isBound || singleB.isBound || longB.isBound
-
-    /**
-     * **按「这一下是怎么按出来的」取动作** —— `hold = 0` 是窗口那条，`1` 是先按住第一颗，
-     * `2` 是先按住第二颗（见 [holdOn]）。
-     *
-     *  为什么不并进 [actionOf]：那个方法的语义是「这一档手势执行什么」，而这里多一个维度
-     *  （同一档手势有三种按法）。并进去的话，所有只关心手势的调用点都要多传一个它用不上的参数。
-     */
-    fun actionOfHold(
-        trigger: GestureTrigger,
-        hold: Int,
-    ): Action =
-        when (hold) {
-            HOLD_FIRST -> slotAction(trigger, singleA, longA)
-
-            HOLD_SECOND -> slotAction(trigger, singleB, longB)
-
-            //  窗口那条（以及任何认不出的取值）落到原来那两个槽
-            else -> actionOf(trigger)
-        }
-
-    /**
-     * 一档手势在**某一对动作槽**（短按一颗 + 长按一颗）上取什么 —— 按住那两种按法共用这一支。
-     *
-     *  判据与 [actionOf] 逐条对齐（双击及第 3 击起仍然「没有定义」，不退回单击），只是把
-     *  「落到哪两个槽」交给调用方：三种按法的差别全在槽位上，不在判据上。
-     *
-     *  松手那两档回 [Action.None]：松手执行额外动作**不按按法分化**（`longRelease` 只有一个槽，
-     *  按住那两种按法按出来的一次按压，松手仍走这一组自己的那一格）。
-     */
-    private fun slotAction(
-        trigger: GestureTrigger,
-        singleAction: Action,
-        longAction: Action,
-    ): Action =
-        when (trigger) {
-            is GestureTrigger.Click -> if (trigger.count == 1) singleAction else Action.None
-            GestureTrigger.LongPress -> longAction
-            else -> Action.None
-        }
-
-    /**
      * 松手那一下**真的有事可做** —— 开关开着、挑过动作、且不是「松手才触发」那条。
      *
      *  与单键 `KeyConfig.releaseBound` 同一份判据（那一边的解释更细）：四位缺一位都不算，
@@ -283,10 +230,13 @@ data class ComboKey(
      *  没有主语（界面那一侧同样把那一族压灰，见 `LongPressSpec.releaseAvailable`）。
      *  场景块里配的松手动作也算一位 —— 组合的场景表**本来就随广播带过来**（`ComboWire`），
      *  所以这一位在注入侧能就地算出来，不必像单键那样另开一个广播字段。
+     *
+     *  **按住那两档不参与**：抬手只收尾，不再补一个松手动作（判据在 `ComboDetector.onUp`）。
      */
     override val releaseBound: Boolean
         get() =
-            (long.isBound || scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }) &&
+            !isHold &&
+                (long.isBound || scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }) &&
                 !longFireOnRelease &&
                 ((longReleaseOn && longRelease.isBound) || scenes.any { it.hasRelease })
 
@@ -295,6 +245,7 @@ data class ComboKey(
      * 都不中才落到 [actionOf]。
      *
      *  实现在 [pickAction] 一处 —— 与单键 `KeyConfig.actionFor` 是**同一个函数**。
+     *  三种触发方式走同一份：场景块只分短按 / 长按，不构成「怎么按出来的」第二个维度。
      *
      *  `matches` 由调用方给（读系统开关的那一层，见 `ConditionProbe`）：这一层不认识系统接口。
      */
@@ -341,15 +292,27 @@ data class ComboKey(
         const val HOLD_MIN_FOLLOW_GLOBAL = 0
 
         /**
-         * 「这一下是怎么按出来的」—— 窗口内等齐 / 先按住第一颗 / 先按住第二颗。
+         * 三种**触发方式**（[mode]）。
          *
-         *  三个取值同时是**配置列名之外的运行时编号**：判定侧把它随广播带下去，执行侧按它取
-         *  `single`·`singleA`·`singleB` 那一族槽（见 [actionOfHold]）。数字进线格式，
-         *  所以只有「加在末尾」这一种改法。
+         *  数字进线格式（`ComboDto` / `ComboWire` 各一格），所以只有「加在末尾」这一种改法；
+         *  0 是窗口那条，与这一位出现之前写下的配置同义。
          */
-        const val HOLD_WINDOW = 0
-        const val HOLD_FIRST = 1
-        const val HOLD_SECOND = 2
+        const val MODE_WAIT = 0
+        const val MODE_HOLD_FIRST = 1
+        const val MODE_HOLD_SECOND = 2
+
+        /**
+         * [raw] 这一档在 [keyCount] 颗成员下**真正能用**的触发方式。
+         *
+         *  三颗及以上只认窗口那条（没有「哪一颗先按住」这个唯一起点），认不出的取值也退回窗口 ——
+         *  夹这一道的地方只有三处：两个解析入口（`ComboDto` / `ComboWire`）与界面改成员那一步。
+         *  于是判定侧不会再遇到「三颗 + 按住」这种按不出来的形态，`ComboPlan.judgeable` 也就
+         *  不必再额外判它。
+         */
+        fun modeFor(
+            raw: Int,
+            keyCount: Int,
+        ): Int = if (keyCount != MIN_KEYS) MODE_WAIT else raw.coerceIn(MODE_WAIT, MODE_HOLD_SECOND)
 
         /**
          * 成员上限：**三颗**（用户口径）。两颗仍是最常见的那一档，三颗是给「三键齐按」留的口子。

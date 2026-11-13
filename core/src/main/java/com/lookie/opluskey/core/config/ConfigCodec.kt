@@ -157,6 +157,12 @@ object ConfigCodec {
      *       `ComboDto` 多了 `hold_min_ms`（0 = 跟随公共）。老文件缺它们 ⇒ 跟随公共（100ms），
      *       而按住手势本来就是这一轮才做的，老配置里不可能有它。
      *
+     *  58 = **触发方式成了组合的身份**：`ComboDto` 多了 `mode`（0 等窗口 / 1 先按住第一颗 /
+     *       2 先按住第二颗），`GlobalDto` 的 `combo_window_on` / `combo_hold_on` 与 `ComboDto`
+     *       的 `windowOn` / `holdOn` / `holdOrders` / 那四套 A·B 动作槽一起退场。
+     *       老文件（没有 `mode`）由 `ComboDto.toCombo` 的 `legacyMode` 推一次：认窗口就当窗口那条，
+     *       只认按住就取加过的那一种（两种都加过 ⇒ 取第一颗那套，另一套丢弃）。
+     *
      *  **这个数只往上加**：一旦某个编号随一次提交发布出去，它对应的那组字段就定死了。
      *
      *
@@ -166,7 +172,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 57
+    const val VERSION = 58
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

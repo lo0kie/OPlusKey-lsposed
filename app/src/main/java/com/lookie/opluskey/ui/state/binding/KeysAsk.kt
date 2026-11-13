@@ -1,8 +1,6 @@
 package com.lookie.opluskey.ui.state.binding
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import com.lookie.opluskey.ui.state.signal.PendingAsk
 
 /**
  * 「停用 / 启用」之前的那一问 —— 键与组合的连带关系。
@@ -19,29 +17,53 @@ import androidx.compose.runtime.setValue
  *  是「连带」的那一批，只有答「是」才跟着动。这样三种问法共用一句语义，否定也不会把用户
  *  点名要改的东西一并取消（那会让人以为没点上）。
  *
- *  状态住在这里而不是某个页面：触发点在两处（按键列表右下角那颗开关、按键绑定页的 ⋯ 菜单），
- *  窗画在各自页面上 —— 两处共用一个待确认对象，逻辑只需要一份。
+ *  状态住在这里而不是某个页面：触发点在三处（按键列表的开关、按键绑定页的 ⋯ 菜单、组合页的
+ *  开关），窗画在各自页面上 —— 几处共用一个待确认对象，逻辑只需要一份。
+ *
+ *  五项读成一个 [Payload]（而不是五个 `mutableStateOf`）：`ask()` 中间那一帧不能让人读到
+ *  「问的是启用、要改的键还是空的」。归零也只有一处（[PendingAsk.clear]）。
  */
 object KeysAsk {
     /** 这一批最终是**停用**还是**启用**。 */
     enum class Kind { DISABLE, ENABLE }
 
-    var kind: Kind? by mutableStateOf(null)
+    /** 一次待确认的载荷 —— 五项一起挂、一起收。 */
+    class Payload(
+        val kind: Kind,
+        /** 用户点名的键（答「否」也照改）。 */
+        val keys: Set<String>,
+        /** 用户点名的组合（答「否」也照改）。 */
+        val combos: Set<String>,
+        /** 连带一起改的键（组合的成员键）—— 只有答「是」才动。 */
+        val extraKeys: Set<String>,
+        /** 连带一起改的组合 —— 只有答「是」才动。 */
+        val extraCombos: Set<String>,
+        /** 这一问从哪来（决定回执落在哪一格提示位）。 */
+        val slot: String,
+    )
+
+    private val pending = PendingAsk<Payload>()
+
+    /** 有没有人在等回答。 */
+    val asking: Boolean get() = pending.asking
+
+    /** 这一批最终是**停用**还是**启用**（`null` = 没有待确认的事）。 */
+    val kind: Kind? get() = pending.pending?.kind
 
     /** 用户点名的键（答「否」也照改）。 */
-    var keys: Set<String> by mutableStateOf(emptySet())
+    val keys: Set<String> get() = pending.pending?.keys.orEmpty()
 
     /** 用户点名的组合（答「否」也照改）。 */
-    var combos: Set<String> by mutableStateOf(emptySet())
+    val combos: Set<String> get() = pending.pending?.combos.orEmpty()
 
     /** 连带一起改的键（组合的成员键）—— 只有答「是」才动。 */
-    var extraKeys: Set<String> by mutableStateOf(emptySet())
+    val extraKeys: Set<String> get() = pending.pending?.extraKeys.orEmpty()
 
     /** 连带一起改的组合 —— 只有答「是」才动。 */
-    var extraCombos: Set<String> by mutableStateOf(emptySet())
+    val extraCombos: Set<String> get() = pending.pending?.extraCombos.orEmpty()
 
     /** 这一问从哪来（决定回执落在哪一格提示位）。 */
-    var slot: String by mutableStateOf("keys_toggle")
+    val slot: String get() = pending.pending?.slot ?: "keys_toggle"
 
     fun ask(
         kind: Kind,
@@ -51,19 +73,8 @@ object KeysAsk {
         extraCombos: Set<String> = emptySet(),
         slot: String = "keys_toggle",
     ) {
-        this.kind = kind
-        this.keys = keys
-        this.combos = combos
-        this.extraKeys = extraKeys
-        this.extraCombos = extraCombos
-        this.slot = slot
+        pending.set(Payload(kind, keys, combos, extraKeys, extraCombos, slot))
     }
 
-    fun clear() {
-        kind = null
-        keys = emptySet()
-        combos = emptySet()
-        extraKeys = emptySet()
-        extraCombos = emptySet()
-    }
+    fun clear() = pending.clear()
 }

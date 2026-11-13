@@ -59,10 +59,15 @@ fun comboKeyNames(
 ): List<String> = combo.keys.mapNotNull { id -> cfg.keyIdOf(id)?.let(::keyName) }.ifEmpty { listOf(combo.id) }
 
 /**
- * 一档组合键的显示名 —— 成员键名连起来，每颗各套一对框：`[侧键]×[电量 +]`。
+ * 一档组合键的显示名。
  *
- *  给弹窗 / 回执 / 停用提示那些「只有一句话」的地方用。**列表行与顶栏副标题不用这一份**：
- *  那两处把每颗画成圆角框（见 `NameChip`，成员由 [comboKeyNames] 给），拼成一整串做不到对齐。
+ *  · **等待组合**：成员连起来、每颗各套一对框 —— `[侧键]×[电量 +]`。成员是「一起按下的一堆」，
+ *    顺序不影响判据，所以按成员顺序写。
+ *  · **按住组合**：写成一句 **`按住 [侧键] 后再按 [电量 +]`** —— 那两档的判据就是「谁先按住」，
+ *    顺序是它的一半身份（`ComboKey.mode`），只念成员名等于把两档写成同一个名字。
+ *
+ *  给弹窗 / 回执 / 停用提示 / **列表行**那些地方用。列表行里等待组合那一种仍会把每颗画成圆角框
+ *  （见 `ComboTitle`），按住组合那一种直接用这一句文本 —— 句子里的框正是为了把名字与措辞分开。
  *
  *  **只有一颗时不套框**（成员全被删掉、只剩 id 兜底那种畸形配置，以及用户口径那条规则）：
  *  一个名字旁边没有第二个名字需要分开，框只剩噪声。
@@ -70,7 +75,18 @@ fun comboKeyNames(
 fun comboLabel(
     cfg: Config,
     combo: ComboKey,
-): String = comboLabelOf(comboKeyNames(cfg, combo))
+): String {
+    val names = comboKeyNames(cfg, combo)
+    //  按住那两档：名字按**按下的顺序**排（「先按住第二颗」= 第二颗在前），再套进那句模板
+    if (combo.isHold) {
+        val ordered = if (combo.mode == ComboKey.MODE_HOLD_SECOND) names.reversed() else names
+        return I18n.format(Strings.COMBO_MODE_HOLD, *ordered.map(::chipOrBare).toTypedArray())
+    }
+    return comboLabelOf(names)
+}
+
+/** 句子里的一个键名 —— 两颗以上时套框（与 [comboLabelOf] 同一条「单颗不套框」的规则）。 */
+private fun chipOrBare(name: String): String = "$COMBO_KEY_OPEN$name$COMBO_KEY_CLOSE"
 
 /**
  * 一串键名压成一句话 —— 单颗直接写名字，两颗以上各套一对框（`[侧键]×[电量 +]`）。

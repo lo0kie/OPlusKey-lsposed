@@ -56,7 +56,7 @@ internal enum class Screen : NavKey {
      *  （组合键的场景块只有短按 / 长按两档），与「按键绑定」页长得一样，**没有按键设置**
      *  （那些卡调的是这颗键怎么判，场景块没有自己的判据可调）。
      *
-     *  在编哪一块由 `sceneBindingAt` 记（界面状态、不落盘）—— 与 [COMBO_EDIT] 同一个做法，
+     *  在编哪一块由 `sceneBinding` 记（界面状态、不落盘）—— 与 [COMBO_EDIT] 同一个做法，
      *  参数走枚举带不进去。写的是**草稿**（`BranchDraft`），落盘仍归 [BRANCHES] 那颗确认。
      */
     SCENE_BINDING,

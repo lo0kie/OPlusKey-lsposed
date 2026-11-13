@@ -26,18 +26,8 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 internal fun BoxScope.BindingFab(
     visible: Boolean,
     onClick: () -> Unit,
-    /**
-     * 「按法」那颗（叠在上面）—— `null` = 这一页没有它（单键 / 场景页，或组合页里只剩一档可选）。
-     *
-     *  它跟着「新增命令」那颗同进同出（同一摞、一次进出场）：两颗都是这一页的动作入口，
-     *  显隐分两套只会在滚动时看到一颗先走、一颗后走。
-     */
-    pressModeOnClick: (() -> Unit)? = null,
 ) {
     PageCornerFabStack(visible = visible) {
-        if (pressModeOnClick != null) {
-            ComboPressModeFab(onClick = pressModeOnClick)
-        }
         PageFabButton(onClick = onClick) {
             Icon(
                 PageIcons.CommandAdd,
@@ -45,27 +35,6 @@ internal fun BoxScope.BindingFab(
                 tint = COUITheme.colorScheme.onPrimary,
             )
         }
-    }
-}
-
-/**
- * 组合页那颗**「按法」FAB** —— 换的是这一页在编哪一套动作（等窗口 / 先按住 A / 先按住 B）。
- *
- *  底色取 `secondaryContainer`（与下面那颗「新增命令」的 `primary` 分开档次）：
- *  它是**换状态**、不是新增东西，两者长得一模一样会让人以为都能「加一条」。
- *  图标是 hand-click：点在「先按住哪一颗」这件事上，与那一档的字面意思直接对上。
- */
-@Composable
-private fun ComboPressModeFab(onClick: () -> Unit) {
-    PageFabButton(
-        onClick = onClick,
-        containerColor = COUITheme.colorScheme.secondaryContainer,
-    ) {
-        Icon(
-            PageIcons.PressMode,
-            contentDescription = I18n.get(Strings.COMBO_PRESS_MODE_TITLE, "按法"),
-            tint = COUITheme.colorScheme.onSecondaryContainer,
-        )
     }
 }
 
@@ -115,13 +84,11 @@ internal fun BoxScope.BindingPageFab(
     scrollVisible: Boolean,
     onCommands: () -> Unit,
     onConfirm: () -> Unit,
-    /** 组合页那颗「按法」—— `null` = 这一页/这一档没有它（见 [BindingFab]）。 */
-    pressModeOnClick: (() -> Unit)? = null,
 ) {
     if (scenePage) {
         BoundConfirmFab(visible = sceneDirty, onClick = onConfirm)
     } else {
-        BindingFab(visible = scrollVisible, onClick = onCommands, pressModeOnClick = pressModeOnClick)
+        BindingFab(visible = scrollVisible, onClick = onCommands)
     }
 }
 

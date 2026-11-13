@@ -1,16 +1,21 @@
 package com.lookie.opluskey.ui.screen.combo
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,10 +39,13 @@ import com.lookie.opluskey.ui.feedback.keyStateLabel
 import com.lookie.opluskey.ui.model.icon.DrawnIcons
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.theme.COLOR_TRANSITION_SPEC
+import com.lookie.opluskey.ui.row.CHIP_FLOW_GAP
 import com.lookie.opluskey.ui.row.CHIP_H_PAD
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.ChipFlow
+import com.lookie.opluskey.ui.row.ChipLook
+import com.lookie.opluskey.ui.row.NameChip
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.SectionTitleClick
 import com.lookie.opluskey.ui.row.TitleCounter
@@ -77,7 +85,7 @@ private val COMBO_CHIP_SLACK = 2.dp
  *  **点小标题弹筛选菜单**（用户口径：按按键筛这一列，单选）—— 小标题是这一列唯一的名字，
  *  把「筛」挂在这儿，比在卡片顶上再占一行更省地方；文字末尾那颗箭头跟着菜单开合转。
  *
- *  菜单的开合、锚点、选中的那颗键（`ComboEditState.filterKey`）全归这一块：
+ *  菜单的开合、锚点、选中的那颗键（`ComboEditState.waitFilter` / `holdFilter`，两列各一份）全归这一块：
  *  它们是同一件事的三面（「按哪颗键筛」），摆在页面那一层只会让它再多三样不相干的变量。
  */
 @Composable
@@ -85,30 +93,32 @@ internal fun SettingsPage.ComboListSection(
     cfg: Config,
     writable: Boolean,
     atLimit: Boolean,
+    /** `true` = 「按住组合」那一列，`false` = 「等待组合」那一列（两列各有自己的筛选与上限）。 */
+    hold: Boolean,
 ) {
-    val filterKey = ComboEditState.filterKey
+    val filterKey = if (hold) ComboEditState.holdFilter else ComboEditState.waitFilter
     val menu = rememberMenuState()
 
     Column(Modifier.preciseClickAnchor(menu.anchor)) {
         SectionTitle(
-            text = comboListTitle(cfg, filterKey),
+            text = comboListTitle(cfg, filterKey, hold),
             click = SectionTitleClick.Menu(expanded = menu.open) { menu.show() },
             //  行尾是**已用 / 上限**（与「命令名称」那行同一个 `TitleCounter`）：
             //  标题本身是筛选入口（筛了某颗键时它显示的是那颗键的名字），计数只报「共配了几档 / 上限」，
             //  与筛选无关 —— 否则筛一下就变成「已用 2 / 上限 9」，读起来像丢了几组。
-            trailing = { TitleCounter(cfg.combos.size, MAX_COMBOS) },
+            trailing = { TitleCounter(cfg.combos.count { it.isHold == hold }, MAX_COMBOS) },
         )
         //  每一列的宽度**整列量一次**（见 [comboTitleWidths]）：每行各量各的就会一行一个宽度。
-        val rows = comboRows(cfg, writable, filterKey, comboTitleWidths(cfg))
+        val rows = comboRows(cfg, writable, filterKey, comboTitleWidths(cfg), hold)
         //  「添加组合按键」是这一列的**最后一行**（用户口径：与列表拼在一起，不另起卡）。
         //  一档都没配 / 全被筛掉时这张卡就只剩它一行 —— 仍然只画**一张**卡：
         //  `CardList` 收到空表仍会画一张零行卡片，边框与圆角还在，看着像坏了一块。
-        CardList(rows = rows + addComboRow(cfg, writable, atLimit))
+        CardList(rows = rows + addComboRow(cfg, writable, atLimit, hold))
     }
     //  行表空着就是「不显示」（与别处 `PageMenu` 的用法一致）
     PageMenu(menu) {
-        comboFilterEntries(cfg, filterKey) { key ->
-            ComboEditState.filterKey = key
+        comboFilterEntries(cfg, filterKey, hold) { key ->
+            if (hold) ComboEditState.holdFilter = key else ComboEditState.waitFilter = key
             menu.dismiss()
         }
     }
@@ -129,11 +139,18 @@ private fun SettingsPage.comboRows(
     filter: String?,
     /** 每列标题与分隔符的宽度 —— 整列同一个数，见 [comboTitleWidths]。 */
     widths: ComboTitleWidths,
+    /** 这一列是「按住组合」还是「等待组合」（另一类的行不画在这一列里）。 */
+    hold: Boolean,
 ): List<CardRow> =
     buildList {
-        cfg.combos.forEachIndexed { index, combo ->
-            if (filter != null && filter !in combo.keys) return@forEachIndexed
-            add(comboRow(cfg, combo, index, writable, widths))
+        //  **段内独立编号**（用户口径）：两列各自的「第几组」从 1 数起 ——
+        //  按 `cfg.combos` 的全局位次给号，按住那一列会从「等待组合的条数 + 1」开始，
+        //  看着像前面缺了好几组（行首那颗数字图标本来就只在告「这是这一列的第几个」）。
+        var seq = 0
+        cfg.combos.forEach { combo ->
+            if (combo.isHold != hold) return@forEach
+            if (filter != null && filter !in combo.keys) return@forEach
+            add(comboRow(cfg, combo, seq++, writable, widths))
         }
     }
 
@@ -275,6 +292,20 @@ private fun SettingsPage.ComboTitle(
         label = "ComboTitle",
     )
     val names = combo.keys.mapNotNull { id -> cfg.keyIdOf(id)?.let(::keyName) }
+    //  **按住组合写成一句话、键名自己仍是框**（用户口径：「按住 A 后再按 B」，名字用 tag 样式）：
+    //  那两档的判据就是「谁先按住」，只摆两枚框读不出顺序，而顺序正是这两档的区分所在；
+    //  但名字也不该退化成纯文字 —— 同一颗键在这一列里要一直是同一枚框。
+    if (combo.isHold) {
+        val ordered = if (combo.mode == ComboKey.MODE_HOLD_SECOND) names.reversed() else names
+        ChipSentence(
+            template = I18n.get(Strings.COMBO_MODE_HOLD, "按住 %s 后再按 %s"),
+            names = ordered,
+            look = chipLook(color = color, enabled = writable),
+            style = style,
+            color = color,
+        )
+        return
+    }
     //  不足两颗（成员被删 / 手改的配置）退回一整串 —— 那时「几枚框对齐」不成立
     if (names.size < ComboKey.MIN_KEYS) {
         Text(
@@ -297,6 +328,39 @@ private fun SettingsPage.ComboTitle(
         modifier = Modifier.fillMaxWidth(),
         chipWidth = widths.chip,
     )
+}
+
+/**
+ * 一句话里夹几枚名字框 —— 把模板按 `%s` 切成几段，段与框交替排。
+ *
+ *  给「按住 A 后再按 B」那一档用：语序是翻译的事（模板里自带 `%s`），框是界面的事
+ *  （`NameChip`）。这里不套统一的框宽 —— 那是一列对齐用的（见 [comboTitleWidths]），
+ *  而这一行是**一句话**，框跟着自己的字宽走才像句子里的名字。
+ *
+ *  装不下时由 `FlowRow` 换行；段与框之间不留额外间距（模板自己的空格已经隔开了）。
+ */
+@Composable
+private fun ChipSentence(
+    template: String,
+    names: List<String>,
+    look: ChipLook,
+    style: TextStyle,
+    color: Color,
+) {
+    val parts = template.split("%s")
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        verticalArrangement = Arrangement.spacedBy(CHIP_FLOW_GAP),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        names.forEachIndexed { at, name ->
+            Text(text = parts.getOrElse(at) { "" }, style = style, color = color)
+            NameChip(text = name, look = look, modifier = Modifier)
+        }
+        //  模板末尾那一段（「%s 后再按 %s」的尾巴，通常是空串）
+        Text(text = parts.getOrElse(names.size) { "" }, style = style, color = color)
+    }
 }
 
 /**
@@ -348,6 +412,7 @@ private fun SettingsPage.addComboRow(
     cfg: Config,
     writable: Boolean,
     atLimit: Boolean,
+    hold: Boolean,
 ): CardRow.Item {
     val editing = KeysEditState.editing
     //  组合要**两颗键**：只有内置侧键、又一组都没配过时这一行按不动 —— 选键弹窗里只有一行，
@@ -357,7 +422,13 @@ private fun SettingsPage.addComboRow(
     val canCombo = cfg.customKeys.isNotEmpty() || cfg.combos.isNotEmpty()
     val needKey = I18n.get(Strings.COMBO_NEED_KEY, "先添加一颗按键")
     return CardRow.Item(
-        title = I18n.get(Strings.COMBO_ADD, "添加组合按键"),
+        //  两列各一颗：这一行加出来的那一档，类别在点下去那一刻就定了（见 `ComboEditState.pendingKind`）
+        title =
+            if (hold) {
+                I18n.get(Strings.COMBO_ADD_HOLD, "添加按住组合")
+            } else {
+                I18n.get(Strings.COMBO_ADD_WAIT, "添加等待组合")
+            },
         icon = PageIcons.MenuKeyAdd,
         enabled = writable && !atLimit && canCombo && !editing,
         //  这一行自己的原因：「只有一颗键」>「满员」>「编辑态」（编辑态在删、不在加，
@@ -370,7 +441,7 @@ private fun SettingsPage.addComboRow(
                 else -> null
             },
         onClick = {
-            ComboEditState.pickKeysPending = true
+            ComboEditState.pendingKind = if (hold) ComboKey.MODE_HOLD_FIRST else ComboKey.MODE_WAIT
         },
     )
 }
@@ -393,8 +464,14 @@ private fun SettingsPage.addComboRow(
 internal fun SettingsPage.comboListTitle(
     cfg: Config,
     filter: String?,
+    hold: Boolean,
 ): String {
-    val base = I18n.get(Strings.COMBO_LIST_TITLE, "组合按键")
+    val base =
+        if (hold) {
+            I18n.get(Strings.COMBO_SECTION_HOLD, "按住组合")
+        } else {
+            I18n.get(Strings.COMBO_SECTION_WAIT, "等待组合")
+        }
     val key = filter?.let { cfg.keyIdOf(it) } ?: return base
     return "$base - ${keyName(key)}"
 }
@@ -411,6 +488,7 @@ internal fun SettingsPage.comboListTitle(
 internal fun SettingsPage.comboFilterEntries(
     cfg: Config,
     filter: String?,
+    hold: Boolean,
     onPick: (String?) -> Unit,
 ): List<MenuEntry> =
     buildList {
@@ -435,7 +513,9 @@ internal fun SettingsPage.comboFilterEntries(
                                 selected = filter == null,
                             ) { onPick(null) },
                         )
+                        //  只列**这一列**用到的键：另一类组合里的键在这一列筛出来只会是空表
                         cfg.combos
+                            .filter { it.isHold == hold }
                             .flatMap { it.keys }
                             .distinct()
                             .mapNotNull { cfg.keyIdOf(it) }

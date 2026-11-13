@@ -726,37 +726,34 @@ internal data class ComboDto(
      */
     val passthrough: Boolean? = null,
     /**
-     * 这一组自己的「按键之间的等待」（毫秒）；`0` = 跟随公共设置。
+     * 这一档自己的「按键之间的等待」（毫秒）；`0` = 跟随公共设置。只在 [ComboKey.MODE_WAIT] 上算数。
      *
      *  老文件没有这一项 ⇒ 0 ⇒ 行为与这一位出现之前完全一致，不需要迁移。
      */
     val windowMs: Int = ComboKey.WINDOW_FOLLOW_GLOBAL,
     /**
-     * 「认不认窗口内等齐成员」（`ComboKey.windowOn`）—— `null` = 跟随公共设置。
+     * **触发方式**（`ComboKey.mode`）—— `0` 窗口内先后按下 / `1` 先按住第一颗 / `2` 先按住第二颗。
      *
-     *  老文件没有这一项 ⇒ `null` ⇒ 跟随公共（公共默认开），所以升级之后行为逐字不变。
+     *  `null` = **老文件**（v57 及以前没有这一位），由 [toCombo] 按下面那几个遗留字段推出来。
      */
-    val windowOn: Boolean? = null,
+    val mode: Int? = null,
     /**
-     * 「按住一个成员、再按剩下的成员」（`ComboKey.holdOn`）—— 与窗口那条判据**并存**，
-     *  `null` = 跟随公共设置。老文件没有这一项 ⇒ `null` ⇒ 公共默认关，行为与这一位出现之前一致。
-     */
-    val holdOn: Boolean? = null,
-    /**
-     * 手动加过的按住顺序（`ComboKey.holdOrders`）—— `1` = 先按住第一颗、`2` = 先按住第二颗。
-     * 老文件没有这一项 ⇒ 空表（一条都没加），判定侧不认按住那条。
-     */
-    val holdOrders: List<Int> = emptyList(),
-    /**
-     * 这一组自己的「首键要先按住多久」（毫秒，`ComboKey.holdMinMs`）；`0` = 跟随公共设置。
+     * 这一档自己的「起点键要先按住多久」（毫秒，`ComboKey.holdMinMs`）；`0` = 跟随公共设置。
      *
-     *  老文件没有这一项 ⇒ 0 ⇒ 跟随公共（默认 100ms），行为与本轮之前一致。
+     *  老文件没有这一项 ⇒ 0 ⇒ 跟随公共（默认 100ms）。
      */
     val holdMinMs: Int = ComboKey.HOLD_MIN_FOLLOW_GLOBAL,
     /**
-     * 按住手势那两套动作（`ComboKey.singleA` / `longA` / `singleB` / `longB`）——
-     * 先按住第一颗、先按住第二颗各一套；窗口那条仍用上面的 `single` / `long`。
+     * **遗留（v58 以前）**：那两条触发方式的开关与手动加过的顺序 —— 现在只剩迁移时读一次
+     * （推演在 `LegacyCombo.kt`），写回永远是 `null` / 空表。
+     *
+     *  留着是因为 `ignoreUnknownKeys` 会把不认识的键直接丢掉：字段一删，老文件里那几位就再也
+     *  读不到，「用户配过按住手势」这件事会静默变成「这一档只是等窗口」。
      */
+    val windowOn: Boolean? = null,
+    val holdOn: Boolean? = null,
+    val holdOrders: List<Int> = emptyList(),
+    /** **遗留（v58 以前）**：按住那两套动作槽 —— 同上，只在迁移时读一次。 */
     val singleA: String = Action.NONE,
     val longA: String = Action.NONE,
     val singleB: String = Action.NONE,
@@ -775,12 +772,19 @@ internal data class ComboDto(
     fun toCombo(): ComboKey? {
         val members = keys.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
         if (id.isEmpty() || members.size < ComboKey.MIN_KEYS) return null
+        //  老文件没有 `mode`：触发方式与它当年用的那对动作槽由 `LegacyCombo` 推一次（`null` = 新文件）
+        val legacy = legacySlot()
+        val resolved = legacy?.mode ?: mode ?: ComboKey.MODE_WAIT
         return ComboKey(
             id = id,
             keys = members.take(ComboKey.MAX_JUDGE_KEYS),
             enabled = enabled,
-            single = Action.parse(single),
-            long = Action.parse(long),
+            //  触发方式：`modeFor` 把三颗及以上的按住挡回窗口那条（那种形态按不出来）
+            mode = ComboKey.modeFor(resolved, members.size),
+            //  老文件把按住那一套动作放在 `singleA`/`longA`（或 B）上，已在 `LegacyCombo` 里搬进
+            //  这一对通用槽；新文件（`mode` 有值）一律读通用的那两位 —— 不看遗留槽，就不会两套同时生效。
+            single = legacy?.single ?: Action.parse(single),
+            long = legacy?.long ?: Action.parse(long),
             // 长按阈值与单键共用同一个区间（`ConfigFields.F_LONG_PRESS_MS`）：它量的是同一件事。
             longPressMs = clamp(ConfigFields.F_LONG_PRESS_MS, longPressMs),
             longRepeat = longRepeat,
@@ -807,14 +811,6 @@ internal data class ComboDto(
             //  「按键之间的等待」：0 表示跟随公共设置，必须原样留着 —— `clamp` 会把它抬到下限 20，
             //  那就成了「这一组显式设了 20ms」，界面上再也回不到跟随。
             windowMs = if (windowMs <= 0) ComboKey.WINDOW_FOLLOW_GLOBAL else clamp(ConfigFields.F_COMBO_WINDOW_MS, windowMs),
-            //  两条触发方式：`null` 原样留着（= 跟随公共），不在这里落默认值
-            windowOn = windowOn,
-            holdOn = holdOn,
-            //  认不出的顺序编号直接丢掉：那一位在判定侧没有对应的槽，留着只会让界面画出空行
-            holdOrders =
-                holdOrders
-                    .filter { it == ComboKey.HOLD_FIRST || it == ComboKey.HOLD_SECOND }
-                    .distinct(),
             //  「首键要先按住多久」：与上面那个窗口同一条 —— 0 是「跟随公共」，不能被 `clamp`
             //  抬到下限 40（那就成了「这一组显式设了 40ms」）。
             holdMinMs =
@@ -823,12 +819,6 @@ internal data class ComboDto(
                 } else {
                     clamp(ConfigFields.F_COMBO_HOLD_MIN_MS, holdMinMs)
                 },
-            //  按住那两套只在 `holdOn` 开着时有意义，但**照样读进来**：
-            //  手改配置先写动作、后开开关时不该把动作丢掉。
-            singleA = Action.parse(singleA),
-            longA = Action.parse(longA),
-            singleB = Action.parse(singleB),
-            longB = Action.parse(longB),
         )
     }
 
@@ -858,14 +848,8 @@ internal data class ComboDto(
                 ownSettingsSeeded = combo.ownSettingsSeeded,
                 passthrough = combo.passthrough,
                 windowMs = combo.windowMs,
-                windowOn = combo.windowOn,
-                holdOn = combo.holdOn,
-                holdOrders = combo.holdOrders,
+                mode = combo.mode,
                 holdMinMs = combo.holdMinMs,
-                singleA = combo.singleA.token,
-                longA = combo.longA.token,
-                singleB = combo.singleB.token,
-                longB = combo.longB.token,
             )
     }
 }
@@ -913,15 +897,7 @@ internal data class GlobalDto(
     /** 组合键两颗键之间的等待窗口（毫秒）—— 老文件没有这一项，退回出厂值 80。 */
     @SerialName("combo_window_ms")
     val comboWindowMs: Int = GlobalConfig.DEFAULT_COMBO_WINDOW_MS,
-    /**
-     * 组合键的两条触发方式（见 `GlobalConfig.comboWindowOn` / `comboHoldOn`）——
-     * 老文件没有这两项 ⇒ 退回各自的默认（窗口认、按住不认），行为与这一位出现之前一致。
-     */
-    @SerialName("combo_window_on")
-    val comboWindowOn: Boolean = GlobalConfig.DEFAULT_COMBO_WINDOW_ON,
-    @SerialName("combo_hold_on")
-    val comboHoldOn: Boolean = GlobalConfig.DEFAULT_COMBO_HOLD_ON,
-    /** 按住手势里首键要先按住多久（毫秒）—— 老文件没有这一项，退回出厂值 100。 */
+    /** 按住那两档里起点键要先按住多久（毫秒）—— 老文件没有这一项，退回出厂值 100。 */
     @SerialName("combo_hold_min_ms")
     val comboHoldMinMs: Int = GlobalConfig.DEFAULT_COMBO_HOLD_MIN_MS,
     /** 随机图标配色的种子（`0` = 关）—— 老文件没有这一项，退回默认（关）。 */
@@ -959,8 +935,6 @@ internal data class GlobalDto(
                 ConfigFields.F_PAGE_SCALE to pageScale,
                 ConfigFields.F_COMBO_PASSTHROUGH to comboPassthrough,
                 ConfigFields.F_COMBO_WINDOW_MS to comboWindowMs,
-                ConfigFields.F_COMBO_WINDOW_ON to comboWindowOn,
-                ConfigFields.F_COMBO_HOLD_ON to comboHoldOn,
                 ConfigFields.F_COMBO_HOLD_MIN_MS to comboHoldMinMs,
                 ConfigFields.F_ICON_TINT_SEED to iconTintSeed,
                 ConfigFields.F_SHOW_COMMON_COMMANDS to showCommonCommands,
@@ -985,8 +959,6 @@ internal data class GlobalDto(
                 pageScale = g.pageScale,
                 comboPassthrough = g.comboPassthrough,
                 comboWindowMs = g.comboWindowMs,
-                comboWindowOn = g.comboWindowOn,
-                comboHoldOn = g.comboHoldOn,
                 comboHoldMinMs = g.comboHoldMinMs,
                 iconTintSeed = g.iconTintSeed,
                 showCommonCommands = g.showCommonCommands,

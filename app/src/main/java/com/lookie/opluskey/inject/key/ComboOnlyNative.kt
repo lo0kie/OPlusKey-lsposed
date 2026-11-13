@@ -32,17 +32,22 @@ private const val HOLD_GUARD_MS = 10_000L
  * ## 为什么按下要压住
  *
  *  组合判定要在窗口内看「第二颗键会不会来」。这颗键的原生动作（音量 ± / 电源）一旦发生就
- *  撤不回来，所以按下**一律先吞**，等判定出结论再决定归谁：凑成组合就永久吞，没凑成就还回去。
+ *  撤不回来，所以**还可能配成组合的那几下**先吞，等判定出结论再决定归谁：凑成组合就永久吞，
+ *  没凑成就还回去。**已经不可能配成的那几下不压**（见下节第三种情形）—— 压了只会白慢一拍。
  *
- * ## 压到什么时候：两条触发方式各有各的上界
+ * ## 压到什么时候：两种要压、一种一下都不压
  *
- *  - **窗口那条**（`windowOn`）压到窗口到点为止：那个数就是「第二颗还来不来得及」的答案，
- *    到点还没凑成就不必再等（用户口径：先吞后补，单按只晚一个窗口）。
- *  - **按住那条**（`holdOn`）**没有上界**：判据只要求那一颗还按着，按住三秒再补第二颗照样成立。
- *    所以它的成员一律**压到抬手**（[deferred]）—— 窗口到点就把原生事件漏出去的话，
- *    之后凑成的按住组合只能是「一次按压两个动作」（原生那一下先发生了，撤不回来）。
+ *  - **等窗口那几档的成员**（`ComboKey.isWait`）压到窗口到点为止：那个数就是「第二颗还来不来得及」
+ *    的答案，到点还没凑成就不必再等（用户口径：先吞后补，单按只晚一个窗口）。
+ *  - **按住那几档的起点键**（`ComboKey.starterKey`，见 `ConfigChannel.holdStarter`）**没有上界**：
+ *    判据只要求那一颗还按着，按住三秒再补第二颗照样成立。它**压到抬手**（[deferred]）——
+ *    窗口到点就把原生事件漏出去的话，之后凑成的按住组合只能是「一次按压两个动作」。
  *    代价写在 `docs/runtime/key-to-gesture.md`：那颗键在这一档里**不再出原生长按**
  *    （音量连续调 / 电源长按菜单），只补一次短按。
+ *  - **两者都不是 ⇒ 一下都不压**：那一组既不认窗口、这颗键又不是先按住的那一颗，按下那一刻
+ *    就已有定论 —— 另一颗若正按着，组合在 `combo.onDown` 里当场认领（这一下照吞）；没按着，
+ *    则这一下**永远配不上**（按住那条要求另一颗先按着，而窗口那条根本不认）。所以原生事件
+ *    原样交给系统，一秒都不压，也不用再补一条注入事件回去。
  *
  * ## 为什么「还回去」不是一次短按就完事
  *
@@ -62,7 +67,7 @@ private const val HOLD_GUARD_MS = 10_000L
  *  - [pending]：压住了、**等着窗口到点补发**，值兼作这一下的版本号；
  *  - [holding]：**已经补发过 DOWN**、等真实抬手来收尾 —— 进这张表就意味着系统那边按着，
  *    所以离开它时必须补一条 UP（真实抬手、配置变更、兜底超时三个出口都走同一个函数）；
- *  - [deferred]：按住那条的成员，**压到抬手**再补一对（没有窗口任务，见上面那段）。
+ *  - [deferred]：按住那条**先按住的那一颗**，**压到抬手**再补一对（没有窗口任务，见上面那段）。
  *
  * ## 线程
  *
@@ -77,8 +82,10 @@ internal class ComboOnlyNative(
     private val combo: ComboDetector,
     /** 这一颗键按下之后要压多久才轮到窗口那条还回去（`ConfigChannel.holdWindowMsFor`）。 */
     private val windowMs: (KeyId) -> Long,
-    /** 这一颗键是不是某一组「认按住那条」的组合的成员（`ConfigChannel.holdMember`）—— 是就压到抬手。 */
-    private val holdMember: (KeyId) -> Boolean,
+    /** 这一颗键会不会被接在后面 —— 即它参与的某一组认窗口那条（`ConfigChannel.joinsCombo`）。 */
+    private val windowMember: (KeyId) -> Boolean,
+    /** 这一颗键可能是某一组按住组合里**先按住的那一颗**（`ConfigChannel.holdStarter`）—— 是就压到抬手。 */
+    private val holdStarter: (KeyId) -> Boolean,
 ) {
     /**
      * 三张表转移的闸 —— 见类注释的「线程」。
@@ -97,7 +104,7 @@ internal class ComboOnlyNative(
     /** 已经补发了原生 DOWN、等真实抬手来收尾 —— 键 id → 那一颗的键码。 */
     private val holding = ConcurrentHashMap<String, Int>()
 
-    /** 压着、等**抬手**再补一对 —— 键 id → 那一颗的键码（按住那条的成员，见类注释）。 */
+    /** 压着、等**抬手**再补一对 —— 键 id → 那一颗的键码（按住那条的第一颗，见类注释）。 */
     private val deferred = ConcurrentHashMap<String, Int>()
 
     /** 补发出去、还没被拦截链认领的事件 —— keyCode → 剩余条数与过期时刻。 */
@@ -170,11 +177,21 @@ internal class ComboOnlyNative(
         }
         val downAt = SystemClock.uptimeMillis()
         val taken = combo.onDown(id) == ComboDetector.Down.TAKEN
+        //  两条「要不要压」的判据各查一次表（按键热路径，别为了一句注释查两遍）
+        val windowMemberHere = windowMember(id)
+        val holdStarterHere = holdStarter(id)
+        //  **这一下没有任何理由压住**（见类注释的第三种情形）：那一组不认窗口、这颗键也不是
+        //  先按住的那一颗 —— 组合要么已经在上面那一句里当场成立，要么永远配不上。原样交给系统，
+        //  一秒都不压，也不必再补一条注入事件回去。
+        if (!taken && !windowMemberHere && !holdStarterHere) {
+            XLog.d { "${id.label}（$point）：不认窗口、也不是先按住的那颗 → 原样交给系统" }
+            return false
+        }
         //  压到哪一步：窗口那条压到窗口到点，按住那条压到抬手（见类注释）。
-        val waitForRelease = !taken && holdMember(id)
+        val waitForRelease = !taken && holdStarterHere
         synchronized(lock) {
-            //  **一律先吞**（用户口径：组合判定不该触发原生事件）。凑成了就永久吞；
-            //  没凑成由 [scheduleFallback]（窗口）或抬手那次补发（按住）还回去。
+            //  走到这里就是「这一下要压」（上面那两级判据已经排除掉不必压的）：先吞，
+            //  凑成了永久吞、没凑成再由窗口到点或抬手还回去（用户口径：组合判定不该触发原生事件）。
             swallowed.add(id.id)
             when {
                 taken -> {
@@ -263,7 +280,7 @@ internal class ComboOnlyNative(
      *  等是白等：别的组合成员更多、窗口更宽，与这一颗毫无关系，而多等的每一毫秒都是
      *  这一颗键原生行为被推迟的量。
      *
-     *  **只服务窗口那条**：按住那条的成员压根不排这一枪（见 [deferred]）。
+     *  **只服务窗口那条**：按住那条的第一颗压根不排这一枪（见 [deferred]）。
      */
     private fun scheduleFallback(
         id: KeyId,

@@ -15,30 +15,31 @@ package com.lookie.opluskey.core.model
  *    n 颗 ⇒ `collectMs × (n-1)`（`Config.comboSpanFor`，判定器与镜像同一口径）——
  *    三颗也按「第一颗到第三颗只隔一个窗口」判的话，手指根本按不出来。
  *  @param longPressMs 凑齐之后一起按住多久算长按（这一档自己的值，不取某个成员键的）
- *  @param judgeable 判定器认不认这个形态。现在是「够两颗就认」（多成员这一轮已接线），
- *    这一位留着是为了**下次放开上限时**还能在日志里说清「配了、但判定器不认」，
- *    而不是让那种状态重新变成「按了没反应、日志里什么也没有」
+ *  @param mode 这一档的触发方式（`ComboKey.MODE_*`）—— 判定侧按它选判据，日志按它说清
+ *    「按住哪一颗才算」；解析时已经由 `ComboKey.modeFor` 夹过（三颗及以上只会是窗口那条），
+ *    所以这里不再有「配了但判不出来」的形态
  */
 data class ComboPlan(
     val id: String,
     val keys: Set<String>,
     val collectMs: Int,
     val longPressMs: Int,
-    val judgeable: Boolean,
+    val mode: Int,
 ) {
     /** 成员数 —— 判定凑齐与否、多档候选时挑哪一档，都按它比。 */
     val size: Int get() = keys.size
 
-    /** 判据行：一眼看出「这一档要几颗、等多久、现在能不能判出来」。 */
+    /** 判据行：一眼看出「这一档要几颗、怎么触发、等多久」。 */
     override fun toString(): String =
-        "$id：${keys.size} 颗（${keys.sorted().joinToString("+")}）/ 窗口 ${collectMs}ms" +
-            " / 长按 ${longPressMs}ms / ${if (judgeable) "可判" else "判定器暂不认这个形态"}"
+        "$id：${keys.size} 颗（${keys.sorted().joinToString("+")}）/ " +
+            "${if (mode == ComboKey.MODE_WAIT) "等窗口" else "先按住第 $mode 颗"} / 窗口 ${collectMs}ms" +
+            " / 长按 ${longPressMs}ms"
 }
 
 /**
  * 一档组合 → 判定计划（**只读投影**，不改配置、不影响当前判定）。
  *
- *  @param collectMs 由调用方给：`Config.comboWindowFor`（这一组自己的，没设就是公共那一档）。
+ *  @param collectMs 由调用方给：`Config.comboWindowFor`（这一档自己的，没设就是公共那一档）。
  */
 fun ComboKey.plan(collectMs: Int): ComboPlan =
     ComboPlan(
@@ -46,9 +47,7 @@ fun ComboKey.plan(collectMs: Int): ComboPlan =
         keys = keys.toSet(),
         collectMs = collectMs,
         longPressMs = longPressMs,
-        //  判定器现在认得任意成员数（两颗走两两配对、3 颗起走成员全集），
-        //  只要求「够两颗」——与 `ComboKey.isUsable` 同一条下限。
-        judgeable = keys.size >= ComboKey.MIN_KEYS,
+        mode = mode,
     )
 
 /**

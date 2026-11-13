@@ -17,7 +17,6 @@ import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.Command
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
-import com.lookie.opluskey.core.model.SceneRule
 import com.lookie.opluskey.ui.chrome.PageChrome
 import com.lookie.opluskey.ui.chrome.PageHooks
 import com.lookie.opluskey.ui.chrome.PageOverlays
@@ -29,6 +28,7 @@ import com.lookie.opluskey.ui.model.theme.PAGE_TRANSITION_MS
 import com.lookie.opluskey.ui.state.binding.BranchDraftState
 import com.lookie.opluskey.ui.state.binding.KeyWatchState
 import com.lookie.opluskey.ui.state.binding.KeysEditState
+import com.lookie.opluskey.ui.state.binding.SceneBinding
 import com.lookie.opluskey.ui.state.command.CommandDraftState
 import com.lookie.opluskey.ui.state.command.CommandListEditState
 import com.lookie.opluskey.ui.state.page.ConfigState
@@ -36,6 +36,7 @@ import com.lookie.opluskey.ui.state.page.HostLinkState
 import com.lookie.opluskey.ui.state.picker.AppPickerState
 import com.lookie.opluskey.ui.state.picker.AppPickerUiState
 import com.lookie.opluskey.ui.state.signal.BandHeight
+import com.lookie.opluskey.ui.state.signal.BandHeights
 import com.lookie.opluskey.ui.state.signal.HintCenter
 import com.lookie.opluskey.ui.wire.clearAppLabelCache
 import io.github.suqi8.coui.kmp.nav.core.NavBackStack
@@ -208,14 +209,14 @@ internal class SettingsPage(
      *
      *  比的不是整份草稿的 `dirty`：同一份草稿在「系统场景」页上可能已经改过别的块，那不算
      *  这一页的改动（拿它判会让这一页一进来就「像改过」）。判据是与进来时那份
-     *  [sceneBindingBaseline] 逐块比。
+     *  [SceneBinding.baseline] 逐块比。
      *
      *  baseline 为空（调试通道直接跳页）时退回整份 `dirty` —— 总比「永远判没改」好：
      *  那种入口下至少还拦得住真改动。
      */
     internal fun sceneBindingDirty(): Boolean =
-        sceneBindingBaseline?.let { base ->
-            branchDraft.now().scenes.getOrNull(sceneBindingAt) != base
+        sceneBinding.baseline?.let { base ->
+            branchDraft.now().scenes.getOrNull(sceneBinding.at) != base
         } ?: branchDraft.now().dirty
 
     /**
@@ -304,32 +305,12 @@ internal class SettingsPage(
     internal val configState = ConfigState()
 
     /**
-     * 三条**固定带**的高度 —— 分段控件带 / 类型选择器带 / 搜索带，各一页一份。
+     * 各页**固定带**的高度（分段控件带 / 类型选择器带 / 搜索带）—— 按页索引，见 [BandHeights]。
      *
      *  量（顶栏那棵树）与读（页内容那棵树）分处两棵树，走 [BandHeight] 这条通道，
      *  它自己带量测上报与 dp 读取两端（口径见那边的类注释）。
      */
-    internal val bindingBandHeight = BandHeight()
-
-    /**
-     * 「组合键」编辑页那条分段控件的高度 —— 与 [bindingBandHeight] 同一套、**不共用**：
-     * 两页的带子可能同时在组合里（转场），共用一个值只会互相改对方的占位。
-     */
-    internal val comboBandHeight = BandHeight()
-    internal val commandBandHeight = BandHeight()
-    internal val appSearchBandHeight = BandHeight()
-
-    /**
-     * 「场景动作」页那条手势带 —— 同上、各页一份：它可能与「按键绑定」页的带子同时在组合里
-     * （转场），共用一个值只会互相改对方的占位。
-     */
-    internal val sceneBandHeight = BandHeight()
-
-    /** 「条件执行」页那条手势带 —— 同上，各页一份。 */
-    internal val branchesBandHeight = BandHeight()
-
-    /** 「选择界面」页那条搜索带 —— 与「选择应用」那条同一套版式，高度各量各的。 */
-    internal val activitySearchBandHeight = BandHeight()
+    internal val bands = BandHeights()
 
     /**
      * 「选择应用」页那一域的状态（搜索词 / 两个落盘的筛选开关 / 小窗开关 / 这趟为谁挑）。
@@ -492,46 +473,16 @@ internal class SettingsPage(
     internal val bindingScrolls = mutableMapOf<Screen, List<ScrollState>>()
 
     /**
-     * 「场景动作」页在编**第几块**场景（`-1` = 不在编任何一块）。
+     * 「场景动作」页这一刻在编**哪一块** —— 三样一起换，见 [SceneBinding]。
      *
      *  与 [ComboEditState.editingId] 同一档性质：栈里这一页只有一个位置，参数走 `Screen` 枚举
-     *  带不进去，只能记在页面级。写入方只有 `openSceneBinding`（点场景块里那一行动作行），
-     *  出栈时由 [discardPageStateOf] 清回 `-1`。
+     *  带不进去，只能记在页面级。写入方只有 [com.lookie.opluskey.ui.openSceneBinding]，
+     *  出栈时由 [discardPageStateOf] 清回 [SceneBinding.NONE]。
      *
      *  **与 [branchDraft] 配对使用**：`branchDraft` 说「在编谁的那张表」，这一位说「表里第几块」。
      *  两个都要，因为这一页是**从那张表里点进来的**，而草稿本身要跨「挑应用」往返存活。
      */
-    internal var sceneBindingAt by mutableIntStateOf(-1)
-
-    /**
-     * 「场景动作」页进来时停在哪一档手势 —— 点单击那一行进来就停单击。
-     *
-     *  顶栏那条分段控件的分页器（`PagePagers.scenes`）在 push 那一刻按它归位
-     *  （见 `PushResetsPagers`）。存的是**档位本身**（`GestureTrigger`）而不是页号 ——
-     *  页号由 `sceneGesturePage()` 按当前那张表换算，而档位不随表变（组合只有两档）。
-     */
-    internal var sceneBindingGesture by mutableStateOf<GestureTrigger>(GestureTrigger.Click(1))
-
-    /**
-     * 「场景动作」页**进来时那一块长什么样** —— 这一页的「改动」与「放弃」都按它判。
-     *
-     * ## 为什么不能只看整份草稿的 `dirty`
-     *
-     *  这一页改的是**共享草稿的其中一块**（`BindingTarget.Scene`），而同一份草稿还有别的块
-     *  在「系统场景」页上可能已经改过。拿 `BranchDraft.dirty` 当这一页的改动判据，会得到：
-     *  在上一页改了点东西（还没确认）→ 进这一页看一眼、「什么都没动」→ 按返回却弹
-     *  「放弃未保存的场景」。用户丢的不是这一页的东西。
-     *
-     * ## 它也是「放弃」要回滚到的值
-     *
-     *  这一页的「放弃」语义是「这一趟改的不要了」—— 但草稿是页面级的，直接 `popBackStack`
-     *  只把人带回去，改动仍躺在草稿里，退回上一页后那颗「确认」照样能把它写下去（真机反馈：
-     *  「点了放弃、命令还是生效了」）。所以放弃时必须把这一块还原成进来时那一份。
-     *
-     *  写入方只有 [com.lookie.opluskey.ui.openSceneBinding]（点场景块里那一行动作行），
-     *  出栈时由 [discardPageStateOf] 清回 `null`。
-     */
-    internal var sceneBindingBaseline by mutableStateOf<SceneRule?>(null)
+    internal var sceneBinding by mutableStateOf(SceneBinding.NONE)
 
     // 「清空配置」确认弹窗的置位在 [overlays] 那一域（[PageOverlays.confirmReset]）。
 
@@ -714,10 +665,8 @@ internal class SettingsPage(
             Screen.SCENE_BINDING -> {
                 //  「在编第几块」只在这一次停留里有效：下一次进来由点的那一行重新给。
                 //  **草稿不动**（它属于「系统场景」那一页，那一页还在栈里）—— 放弃那一趟的
-                //  改动由窗自己按 `sceneBindingBaseline` 还原（见 `BindingPagerScreen`）。
-                sceneBindingAt = -1
-                sceneBindingGesture = GestureTrigger.Click(1)
-                sceneBindingBaseline = null
+                //  改动由窗自己按 `sceneBinding.baseline` 还原（见 `BindingPagerScreen`）。
+                sceneBinding = SceneBinding.NONE
                 bindingScrolls.remove(Screen.SCENE_BINDING)
                 picker.cancelResume()
             }

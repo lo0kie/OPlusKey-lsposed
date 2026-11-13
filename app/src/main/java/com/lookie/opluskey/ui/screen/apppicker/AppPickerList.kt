@@ -34,6 +34,7 @@ import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.BranchCondition
 import com.lookie.opluskey.core.model.appKeyOf
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.collapseHeader
 import com.lookie.opluskey.ui.chrome.collapsedHeaderHeight
@@ -95,7 +96,7 @@ internal fun SettingsPage.AppPickerList(
 ) {
     val listState = rememberLazyListState()
     val pullToRefreshState = rememberPullToRefreshState()
-    val searchBandDp = appSearchBandHeight.dp()
+    val searchBandDp = bands[Screen.APP_PICKER].dp()
     // 选中那条的判据（[AppPickerUiState.pending]）：进页时它是已绑定的那一档，
     // 在二级页点了确认之后换成刚挑的那一档。它只管一圈内框 + 标题上色，行尾恒是箭头。
     val pending = ui.pending

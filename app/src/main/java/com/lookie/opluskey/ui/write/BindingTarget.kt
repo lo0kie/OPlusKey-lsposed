@@ -159,18 +159,17 @@ internal sealed interface BindingTarget {
     /**
      * 一档组合键的一档。
      *
-     * @param hold **这一下是怎么按出来的**（`ComboKey.HOLD_WINDOW` / `HOLD_FIRST` / `HOLD_SECOND`）——
-     *   同一档手势在三种按法下各有一套动作，动作页里靠它切换正在编辑哪一套。
+     *  「这一档怎么按出来的」不在这里：它是 `ComboKey.mode`，即这一档的身份，共用同一对
+     *  `single` / `long` 槽 —— 所以目标只需要「哪一组 + 哪一档手势」两件事。
      */
     data class Combo(
         val id: String,
         override val gesture: GestureTrigger,
-        val hold: Int = ComboKey.HOLD_WINDOW,
     ) : BindingTarget {
         //  组合只有短按 / 长按两档：别的档位在 `ComboKey` 上没有槽位（界面也排不出那一页）
-        override fun actionIn(cfg: Config): Action = cfg.combos.firstOrNull { it.id == id }?.actionOfHold(gesture, hold) ?: Action.None
+        override fun actionIn(cfg: Config): Action = cfg.combos.firstOrNull { it.id == id }?.actionOf(gesture) ?: Action.None
 
-        override val what: String get() = "combo:$id:${gesture.id}:$hold"
+        override val what: String get() = "combo:$id:${gesture.id}"
 
         override fun ownerIn(cfg: Config): Any? = cfg.combos.firstOrNull { it.id == id }
 

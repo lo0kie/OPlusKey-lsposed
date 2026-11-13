@@ -14,7 +14,6 @@ import com.lookie.opluskey.core.config.CommandLibrary
 import com.lookie.opluskey.core.config.ConfigStore
 import com.lookie.opluskey.core.config.VariableStore
 import com.lookie.opluskey.core.log.XLog
-import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.HostApp
 import com.lookie.opluskey.core.reflect.ActivityThreadCompat
 import com.lookie.opluskey.core.seal.Seal
@@ -222,10 +221,6 @@ internal object GestureReceiver {
                         val combo = intent?.getStringExtra(ModuleWire.EXTRA_COMBO)
                         val phase = intent?.getStringExtra(ModuleWire.EXTRA_PHASE)
                         val repeat = intent?.getBooleanExtra(ModuleWire.EXTRA_REPEAT, false) ?: false
-                        //  按住手势的反向那一套（只有组合带这一格，缺省 false）
-                        val hold =
-                            intent?.getIntExtra(ModuleWire.EXTRA_HOLD, ComboKey.HOLD_WINDOW)
-                                ?: ComboKey.HOLD_WINDOW
                         val sentAt = intent?.getLongExtra(ModuleWire.EXTRA_SENT_AT, 0L) ?: 0L
                         //  这一下是**模块认领的**（判据侧刚判出手势）：记一笔，宿主那条场景派发
                         //  据此判「要不要吞」（见 [PressTrace]）。
@@ -235,12 +230,12 @@ internal object GestureReceiver {
                         if (!combo.isNullOrEmpty()) {
                             // 组合键走独立一条：动作在 `ComboKey` 上，没有单键的 `KeyConfig`
                             //  （见 `ModuleWire.EXTRA_COMBO`）。
-                            XLog.w("收到 system_server 转来的组合键：combo=$combo phase=$phase repeat=$repeat hold=$hold")
+                            XLog.w("收到 system_server 转来的组合键：combo=$combo phase=$phase repeat=$repeat")
                             //  **执行丢给 worker**：广播回调留在主线程只做「取 extra + 投递」，
                             //  否则一次读盘 + 多次 binder 全压在宿主 UI 线程上（见 [worker] 的注释）。
                             runOnWorker {
                                 XLog.guard("执行组合键动作") {
-                                    GestureExec.handleCombo(combo, phase, sentAt, repeat, hold)
+                                    GestureExec.handleCombo(combo, phase, sentAt, repeat)
                                 }
                             }
                         } else {

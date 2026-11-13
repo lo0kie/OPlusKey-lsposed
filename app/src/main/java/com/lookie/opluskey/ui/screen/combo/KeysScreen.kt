@@ -31,12 +31,15 @@ import com.lookie.opluskey.ui.chrome.PageScrollColumn
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.dialog.ConfirmDialog
 import com.lookie.opluskey.ui.dialog.MultiPickerDialog
+import com.lookie.opluskey.ui.dialog.PickerOption
+import com.lookie.opluskey.ui.dialog.SinglePickerDialog
 import com.lookie.opluskey.ui.feedback.HINT_SLOT_COMBO
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.row.SectionTitle
 import com.lookie.opluskey.ui.row.TitleCounter
 import com.lookie.opluskey.ui.screen.binding.CollectKeyDialog
+import com.lookie.opluskey.ui.screen.binding.ComboModeAskDialog
 import com.lookie.opluskey.ui.screen.pageWritable
 import com.lookie.opluskey.ui.state.binding.ComboEditState
 import com.lookie.opluskey.ui.state.binding.KeysEditState
@@ -64,16 +67,20 @@ import io.github.suqi8.coui.kmp.theme.COUITheme
 internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
     val cfg = configState.config.value
     val writable = pageWritable()
-    val atLimit = cfg.combos.size >= MAX_COMBOS
     val scroll: ScrollState = rememberScrollState()
     //  「添加按键」那一行弹的收集窗（等按键 → 起名字 → 落盘，见 `CollectKeyDialog`）。
     //  状态就住这一页：它是这一页上的一个浮层，不跨页存活。
     var collectPending by remember { mutableStateOf(false) }
     //  筛的那颗键已经不在任何组合里了（那一组被删 / 那颗键被删）⇒ 退回「全部」，
     //  否则回到这一页只会看到一张空表，还不知道是筛出来的。
-    LaunchedEffect(ComboEditState.filterKey, cfg.combos) {
-        val key = ComboEditState.filterKey
-        if (key != null && cfg.combos.none { key in it.keys }) ComboEditState.filterKey = null
+    //  两段各清各的：那一列里没有它了才退回「全部」，另一列的筛选不受影响
+    LaunchedEffect(ComboEditState.waitFilter, cfg.combos) {
+        val key = ComboEditState.waitFilter
+        if (key != null && cfg.combos.none { !it.isHold && key in it.keys }) ComboEditState.waitFilter = null
+    }
+    LaunchedEffect(ComboEditState.holdFilter, cfg.combos) {
+        val key = ComboEditState.holdFilter
+        if (key != null && cfg.combos.none { it.isHold && key in it.keys }) ComboEditState.holdFilter = null
     }
 
     //  编辑态：勾中的项数 + 删除确认窗开着没有（0 项时右下角那两颗不出现，见下）
@@ -105,8 +112,11 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
                 trailing = { TitleCounter(cfg.customKeys.size, KeyId.MAX_CUSTOM_KEYS) },
             )
             CustomKeysCard(writable) { collectPending = true }
-            //  第二块：组合按键那一列（标题本身就是筛选入口，见 [ComboListSection]）
-            ComboListSection(cfg, writable, atLimit)
+            //  第二块：组合按键 —— **两列**（用户口径）：等待组合 / 按住组合，
+            //  各有自己的筛选与上限（MAX_COMBOS 是每一列各算一次）。
+            //  类别在添加那一刻定下来（ComboEditState.pendingKind），之后不可改。
+            ComboListSection(cfg, writable, cfg.combos.count { !it.isHold } >= MAX_COMBOS, hold = false)
+            ComboListSection(cfg, writable, cfg.combos.count { it.isHold } >= MAX_COMBOS, hold = true)
         }
         //  **勾了任意一项就滑进这两颗**（用户口径）：编辑态、选中非空才出现，剩 0 项时自己滑出去。
         //
@@ -162,14 +172,56 @@ internal fun SettingsPage.KeysScreen(scrollBehavior: ScrollBehavior) {
         onDismiss = { collectPending = false },
     )
 
+    //  按住组合那一类：选完键还要问「先按住第一颗还是第二颗」—— 顺序不同就是两档
+    var holdOrder by remember { mutableStateOf<List<KeyId>?>(null) }
+
     ComboKeysDialog(
-        show = ComboEditState.pickKeysPending,
-        onDismiss = { ComboEditState.pickKeysPending = false },
+        show = ComboEditState.pendingKind != null,
+        hold = ComboEditState.pendingKind?.let { it != ComboKey.MODE_WAIT } == true,
+        onDismiss = { ComboEditState.pendingKind = null },
         onConfirm = { keys ->
-            ComboEditState.pickKeysPending = false
-            comboWriteGuard("添加组合键") { addCombo(keys) }
+            val kind = ComboEditState.pendingKind
+            ComboEditState.pendingKind = null
+            when (kind) {
+                null -> Unit
+                ComboKey.MODE_WAIT -> comboWriteGuard("添加等待组合") { addCombo(keys, ComboKey.MODE_WAIT) != null }
+                else -> holdOrder = keys
+            }
         },
     )
+
+    val order = holdOrder
+    if (order != null) {
+        val names = order.map { keyName(it) }
+        val first = names.getOrNull(0).orEmpty()
+        val second = names.getOrNull(1).orEmpty()
+        val template = I18n.get(Strings.COMBO_MODE_HOLD, "按住 %s 后再按 %s")
+        //  这一组键**已经用过**哪种顺序 —— 用过的那一行置灰：同一类里同一种顺序只能有一档
+        //  （再来一档就是死配置，判定侧只会取配置里靠前的那个）。判据与 `comboRoomLeft` 同源。
+        val used = cfg.combos.filter { it.keys == order.map { k -> k.id } }.mapTo(HashSet()) { it.mode }
+        SinglePickerDialog(
+            show = true,
+            title = I18n.get(Strings.COMBO_MODE_TITLE, "触发方式"),
+            options =
+                listOf(
+                    PickerOption(template, enabled = ComboKey.MODE_HOLD_FIRST !in used, chips = listOf(first, second)),
+                    PickerOption(template, enabled = ComboKey.MODE_HOLD_SECOND !in used, chips = listOf(second, first)),
+                ),
+            //  这一窗是「二选一新加一档」，不是在改某个已经选中的值 —— 哪一行都不打勾
+            selectedIndex = -1,
+            onDismiss = { holdOrder = null },
+            onPick = { index ->
+                holdOrder = null
+                val mode = if (index == 0) ComboKey.MODE_HOLD_FIRST else ComboKey.MODE_HOLD_SECOND
+                comboWriteGuard("添加按住组合") { addCombo(order, mode) != null }
+            },
+        )
+    }
+
+    //  「起点键得先改成松手时触发」那一问 —— 加按住组合时才会弹（`addCombo` → `setComboMode`）。
+    //  **必须挂在这一页**：添加动作发生在这里，而它只把问题记在 `ComboModeAsk` 上，
+    //  没有这一行就没人画那张窗 —— 那一档会静悄悄地不生效。
+    ComboModeAskDialog()
 }
 
 /**
@@ -316,6 +368,8 @@ private fun SettingsPage.KeysLeaveEditConfirm() {
 @Composable
 private fun SettingsPage.ComboKeysDialog(
     show: Boolean,
+    /** true = 这一趟加的是「按住组合」（成员只能两颗，顺序选完键再问）。 */
+    hold: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (List<KeyId>) -> Unit,
 ) {
@@ -323,9 +377,18 @@ private fun SettingsPage.ComboKeysDialog(
     val keys = cfg.allKeys
     //  每次露出都从空选起：上一次点了取消还留着一半勾选，读起来像「上次已经选好了」
     var picked by remember(show) { mutableStateOf(emptySet<String>()) }
-    //  这一组键已经有一档了 ⇒ 「添加」按不动：判定那边取第一档，第二档永远轮不到
-    //  （同一个成员集合在 `Config.comboFor` 里按配置顺序取靠前的那个），加进去等于配一档死配置。
-    val duplicate = picked.size >= ComboKey.MIN_KEYS && cfg.combos.any { it.keys.sorted() == picked.sorted() }
+    //  这一组键在**这一类里**还有没有位置：等待组合一档、按住组合两档（两种顺序），配满就按不动。
+    //  判据与 addCombo 的去重同一条。
+    val maxKeys = if (hold) ComboKey.MIN_KEYS else ComboKey.MAX_KEYS
+    val sameKeys =
+        if (picked.size < ComboKey.MIN_KEYS) {
+            emptyList()
+        } else {
+            cfg.combos.filter { it.keys.sorted() == picked.sorted() }
+        }
+    val duplicate =
+        picked.size >= ComboKey.MIN_KEYS &&
+            if (hold) sameKeys.count { it.isHold } >= 2 else sameKeys.any { it.isWait }
     //  「为什么还不能添加」只有一处判据：`null` = 可以加。点那颗灰按钮时由
     //  `MultiPickerDialog` 的 `onBlockedClick` 把它送进通用消息条 —— 灰着点了没反应最像「坏了」。
     //  颗数超出那一档**不在这里判**：勾满两颗之后第三颗勾不上（见 `onToggle`），走不到这儿。
@@ -352,8 +415,8 @@ private fun SettingsPage.ComboKeysDialog(
             //  勾满上限之后再点下一颗：**勾不上**，顺手弹条说为什么 —— 上限这件事
             //  在勾选那一步就说清，别让用户先勾出一个不成立的组合、再去猜「添加」为什么是灰的。
             //  取消勾选永远放行（那是往回收，不受上限管）。
-            if (!on && picked.size >= ComboKey.MAX_KEYS) {
-                hint(I18n.format(Strings.COMBO_MAX_KEYS, ComboKey.MAX_KEYS), slot = HINT_SLOT_COMBO)
+            if (!on && picked.size >= maxKeys) {
+                hint(I18n.format(Strings.COMBO_MAX_KEYS, maxKeys), slot = HINT_SLOT_COMBO)
             } else {
                 picked = if (on) picked - key.id else picked + key.id
             }

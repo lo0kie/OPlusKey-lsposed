@@ -9,6 +9,7 @@ import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.screen.editingKeyName
 import com.lookie.opluskey.ui.state.binding.BranchDraft
+import com.lookie.opluskey.ui.state.binding.SceneBinding
 import com.lookie.opluskey.ui.write.branchKeyNow
 
 // 「系统场景」页**在编谁** —— 哪颗键 / 哪一组组合键、当前用的是哪一份草稿。
@@ -69,11 +70,11 @@ internal fun branchOwnerNames(
 /**
  * 点场景块里**某一档的动作行** → 进「场景动作」页编那一档（用户口径：不再是弹抽屉）。
  *
- *  「编第几块」与「停在哪一档」都记在页面级（[SettingsPage.sceneBindingAt] /
- *  [SettingsPage.sceneBindingGesture]）：栈里这一页只有一个位置，参数走 `Screen` 枚举带不进去
+ *  「编第几块」与「停在哪一档」都记在页面级（[SettingsPage.sceneBinding]（`at` / `gesture` / `baseline` 三样一个值）
+）：栈里这一页只有一个位置，参数走 `Screen` 枚举带不进去
  *  （与「组合键」编辑页的 `ComboEditState.editingId` 同一个做法）。
  *
- *  **顺手记下这一块进来时长什么样**（[SettingsPage.sceneBindingBaseline]）：那一页的「改没改」
+ *  **顺手记下这一块进来时长什么样**（`SceneBinding.baseline`）：那一页的「改没改」
  *  与「放弃要不要回滚」都按它判 —— 整份草稿的 `dirty` 会把上一页的改动算到这一页头上。
  *
  *  上一页（这一页）**留在栈里**：草稿是页面级的，退回来时改动还在，右下角那颗「确认」随之出现。
@@ -82,9 +83,7 @@ internal fun SettingsPage.openSceneBinding(
     at: Int,
     trigger: GestureTrigger,
 ) {
-    sceneBindingAt = at
-    sceneBindingGesture = trigger
-    sceneBindingBaseline = branchDraftNow().scenes.getOrNull(at)
+    sceneBinding = SceneBinding(at, trigger, branchDraftNow().scenes.getOrNull(at))
     XLog.w("进「场景动作」页：第 ${at + 1} 块 · ${trigger.id}")
     navTo(Screen.SCENE_BINDING)
 }
@@ -108,12 +107,12 @@ internal fun SettingsPage.sceneGesturePages(): List<GestureTrigger> {
 }
 
 /**
- * 进来时该停在第几页 —— [SettingsPage.sceneBindingGesture] 按当前那张表换算成页号。
+ * 进来时该停在第几页 —— `SceneBinding.gesture` 按当前那张表换算成页号。
  *
  *  存的是手势而不是页号：同一份草稿可能先是某颗键的（三档）、再是某组组合的（两档），
  *  页号的含义会变，手势不会。
  */
-internal fun SettingsPage.sceneGesturePage(): Int = sceneGesturePages().indexOf(sceneBindingGesture).coerceAtLeast(0)
+internal fun SettingsPage.sceneGesturePage(): Int = sceneGesturePages().indexOf(sceneBinding.gesture).coerceAtLeast(0)
 
 /**
  * 第 [at] 块自己**开没开** —— 停用的场景块命中也不会执行（判定侧只认启用的块），界面上整片灰。

@@ -1770,6 +1770,26 @@ object ActionCatalog {
     fun specOf(action: Action): Spec? = (ALL + FOLLOW_SPEC).firstOrNull { isSelected(it, action) }
 
     /**
+     * 按 **token** 找清单条目；不在清单里回 `null`。
+     *
+     *  唯一用途是「这一格画什么」：字形只由 `Spec.glyph` 声明一次，界面层按 token 查这一处，
+     *  不再自己维护第二份「token → 图标」表（见 `ActionIcons.actionIcon`）。
+     *
+     *  **网格与二级菜单一起算**：网格那 100 多格之外，`keyevent:26` / 响铃三档 / 媒体那几条
+     *  只出现在二级菜单里，而它们照样会被写进配置、照样要画在步骤行上。
+     */
+    fun specOfToken(token: String): Spec? = BY_TOKEN[token]
+
+    /** [specOfToken] 的索引 —— 条目是静态表，第一次问时建一次。 */
+    private val BY_TOKEN: Map<String, Spec> by lazy {
+        //  同一个 token 可能既是**格子**、又在某张二级菜单里出现（响铃那一档就是这样）：
+        //  先到先得，格子那一份赢 —— 它才是「这一格」的身份，菜单里那行是它的一个取值。
+        val out = HashMap<String, Spec>()
+        for (s in ALL + MODE_MENUS.values.flatten() + FOLLOW_SPEC) out.putIfAbsent(s.token, s)
+        out
+    }
+
+    /**
      * 这个动作落在入口格的**哪一档**上（`循环` / `静音` / `Wi-Fi 打开` …）；入口格之外返回 `null`。
      *
      *  **网格格子与步骤抽屉那一行的行首字形共用它**：两处摆的是同一张清单，行首就得同一个判据。

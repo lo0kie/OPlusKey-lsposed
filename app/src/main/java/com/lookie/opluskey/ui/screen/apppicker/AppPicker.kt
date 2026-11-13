@@ -18,6 +18,7 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.AppTarget
 import com.lookie.opluskey.core.model.appKeyOf
+import com.lookie.opluskey.ui.Screen
 import com.lookie.opluskey.ui.SettingsPage
 import com.lookie.opluskey.ui.chrome.PageCornerFab
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
@@ -92,7 +93,7 @@ internal const val PICKER_QUERY_MAX_LENGTH = 100
  * 「选择应用」页那条搜索带（固定搜索框）—— 挂在顶栏的 `bottomContent` 里。
  *
  * 位置是折叠栏底边（顶栏自己排的），底色 / 模糊 / 下沿细线都由顶栏那层负责。搜索词是页面级
- * 状态 [SettingsPage.picker]；高度报给 [SettingsPage.appSearchBandHeight]，列表顶上那个
+ * 状态 [SettingsPage.picker]；高度报给 [SettingsPage.bands]，列表顶上那个
  * 占位 Spacer 读它。
  */
 @Composable
@@ -106,7 +107,7 @@ internal fun SettingsPage.AppSearchBand() {
             picker.filter.value = if (picker.filter.value.isEmpty()) next.trimStart() else next
         },
         label = I18n.get(Strings.APP_PICKER_SEARCH_APP, "搜索应用"),
-        height = appSearchBandHeight,
+        height = bands[Screen.APP_PICKER],
         //  空着搜索框时把「列出来几行」写上（那两个显示开关算过、搜索词不算 —— 空着时两者一样）
         count = appPickerUi.shown.size,
     )
@@ -125,7 +126,7 @@ internal fun SettingsPage.ActivitySearchBand() {
                 if (picker.activityFilter.value.isEmpty()) next.trimStart() else next
         },
         label = I18n.get(Strings.APP_PICKER_SEARCH_ACTIVITY, "搜索应用组件"),
-        height = activitySearchBandHeight,
+        height = bands[Screen.ACTIVITY_PICKER],
         //  这一页的清单是页面里 `remember` 出来的（见 `ActivityPickerList`），顶栏这条带子读不到 ——
         //  由那一页把条数交到页面对象上（`AppPickerState.activityCount`）
         count = picker.activityCount.value,
@@ -241,7 +242,7 @@ internal fun SettingsPage.AppPickerScreen(
     AppListLoader(ui)
     SelectionPrune(ui)
 
-    val searchBandDp = appSearchBandHeight.dp()
+    val searchBandDp = bands[Screen.APP_PICKER].dp()
     Column(Modifier.fillMaxSize()) {
         // 列表区（含加载提示）—— 两种状态占同一块地方：加载时不留白、加载完不跳一下。
         //

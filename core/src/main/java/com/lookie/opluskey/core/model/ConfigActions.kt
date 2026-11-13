@@ -54,12 +54,6 @@ fun Config.mapActions(transform: (Action) -> Action): Config =
                     single = transform(combo.single),
                     long = transform(combo.long),
                     longRelease = transform(combo.longRelease),
-                    //  按住手势那两套（先按住第一颗 / 第二颗）同样是动作位 —— 少这四行，
-                    //  改名 / 删命令之后那两套里留着指向旧名的 `cmd:`。
-                    singleA = transform(combo.singleA),
-                    longA = transform(combo.longA),
-                    singleB = transform(combo.singleB),
-                    longB = transform(combo.longB),
                     scenes = combo.scenes.map { it.mapActions(transform) },
                 )
             },
@@ -87,10 +81,6 @@ fun Config.actionTokens(): List<String> =
             add(combo.single.token)
             add(combo.long.token)
             add(combo.longRelease.token)
-            add(combo.singleA.token)
-            add(combo.longA.token)
-            add(combo.singleB.token)
-            add(combo.longB.token)
             combo.scenes.forEach { it.actionTokens().forEach(::add) }
         }
     }

@@ -85,21 +85,18 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
 import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
 
 /**
- * **不在清单里的** token → 图标 —— 步骤行、执行提示、手写配置走这里。
+ * **任意 token** → 图标 —— 步骤行、执行提示、网格、手写配置都走这一支。
  *
- * ## 清单条目不再走这条路
+ * ## 清单条目以 `Spec.glyph` 为准
  *
  *  `Spec.glyph` 是必填的（`ActionCatalog.GlyphSource`），所以「这一格画什么」在清单里就定完了，
- *  [specIcon] 直接翻译那个声明，**不问 token**。
+ *  [specIcon] 直接翻译那个声明，**不问 token**。于是这里只写「没有 `Spec` 可查」的那一半：
+ *  手写的 `shell:` / `apps:` / `bright:` 之类**带参数**的写法，以及老配置里的值。
  *
- *  这就消掉了原先那个「两张必须手工同步的表」：清单里 25 处 `Glyph` + 这里的 33 支 token 分支，
- *  说的是同一件事；加一条动作漏了图标**不报错**，只是掉到 `Dots`（看着像「这条本来就没配图标」）。
- *  现在漏了当场编译失败，这里只剩「没有 `Spec` 可言」的那一半。
- *
- *  下面这些精确分支（`oplus:` 各场景 / 各 `keyevent:` 码 / 响铃三档…）仍然必要：
- *  步骤行里存的是 **token 本身**，它可能指向一个从清单里挑不到的动作（手写、导入、老配置），
- *  那种值没有 `Spec` 可查。它们是**兜底**，不是第二份真源 —— 清单里那几档的字形由
- *  `Spec.glyph` 声明，两边取到的是同一颗（图片缓存按 `Spec` 建，按 token 建的是另一条路）。
+ *  **剩下的交给清单**：下面那个 `else` 的最后一支是 `ActionCatalog.specOfToken` ——
+ *  清单里有这一条就按它的字形画。原先这一支直接给 `Dots`，于是「清单里明明有、步骤行却没图标」
+ *  这一类不一致只能在两处各改一遍才能修好。加一条动作**不必再回来加分支**：
+ *  漏了清单就当场编译失败（`glyph` 必填），清单有了这里自动跟上。
  */
 internal fun actionIcon(token: String): ImageVector =
     when (token) {
@@ -111,11 +108,6 @@ internal fun actionIcon(token: String): ImageVector =
         // 手电筒 —— 自绘那颗（见 DrawnIcons.Flashlight）：图标库的 `flashlight` 是斜放的
         Action.FLASHLIGHT -> {
             DrawnIcons.Flashlight
-        }
-
-        // 电源键（`keyevent:` 一律是数字形态）
-        Action.keyToken(KeyId.KEYCODE_POWER) -> {
-            TablerIcons.Outline.Power
         }
 
         // 电源菜单（弹出关机 / 重启那一层）—— 必须与「电源键」不同字形：同样一颗电源图标摆在一起，
@@ -208,25 +200,6 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.BellCog
         }
 
-        // 系统导航三档
-        Action.keyToken(KeyId.KEYCODE_HOME) -> {
-            TablerIcons.Outline.Home
-        }
-
-        Action.keyToken(KeyId.KEYCODE_BACK) -> {
-            TablerIcons.Outline.ArrowBackUp
-        }
-
-        // 最近任务
-        Action.keyToken(KeyId.KEYCODE_APP_SWITCH) -> {
-            TablerIcons.Outline.Cards
-        }
-
-        // 通知中心（改名不改字形）
-        Action.keyToken(KeyId.KEYCODE_NOTIFICATION) -> {
-            TablerIcons.Outline.Notification
-        }
-
         // 控制中心（`panel:control_center`）—— 用 Command 那颗：它是系统里「控制」那一类的通用读法
         ActionCatalog.PANEL_CONTROL -> {
             TablerIcons.Outline.Command
@@ -238,37 +211,9 @@ internal fun actionIcon(token: String): ImageVector =
             TablerIcons.Outline.Switch3
         }
 
-        // 播放 / 暂停 / 上一首 / 下一首（前两条交给系统按当前状态翻面）
         //  「播放/暂停」那一档（`keyevent:85`，切换语义）：播放三角 + 右下角暂停两笔
         Action.keyToken(KeyId.KEYCODE_MEDIA_PLAY_PAUSE) -> {
             DrawnIcons.MediaPlayPause
-        }
-
-        Action.keyToken(KeyId.KEYCODE_MEDIA_PLAY) -> {
-            TablerIcons.Outline.PlayerPlay
-        }
-
-        Action.keyToken(KeyId.KEYCODE_MEDIA_PAUSE) -> {
-            TablerIcons.Outline.PlayerPause
-        }
-
-        Action.keyToken(KeyId.KEYCODE_MEDIA_PREVIOUS) -> {
-            TablerIcons.Outline.PlayerTrackPrev
-        }
-
-        Action.keyToken(KeyId.KEYCODE_MEDIA_NEXT) -> {
-            TablerIcons.Outline.PlayerTrackNext
-        }
-
-        // 音量 + / −（注入一次音量键）—— 同一颗喇叭，角标换成**三角**（上 / 下）：
-        //  「增加 / 减少音量」那两行调的是音量数值、用加减号；这两条是模拟按一下音量键 ——
-        //  两件事语义不同，形状分开才不会在网格里认错。
-        Action.keyToken(KeyId.KEYCODE_VOLUME_UP) -> {
-            DrawnIcons.VolumeKeyUp
-        }
-
-        Action.keyToken(KeyId.KEYCODE_VOLUME_DOWN) -> {
-            DrawnIcons.VolumeKeyDown
         }
 
         // 把前台应用收成小窗 —— 展开档：竖窗口 + 正中一块小窗（`app-window-center` 逆时针转 90°）
@@ -280,20 +225,6 @@ internal fun actionIcon(token: String): ImageVector =
         //  与展开档只差那块小窗的位置（正中 vs 角上），一眼分得开
         Action.ZOOM_MINI_COLLAPSE -> {
             DrawnIcons.MiniWindowCollapse
-        }
-
-        // 响铃档位（`ringer:normal|vibrate|silent`）；「循环」那一档不在这里 ——
-        // 它写的是 `keyevent:164`，由 [specIcon] 按 spec 认领 [DrawnIcons.RingerCycle]（铃铛 + 一圈箭头）。
-        Action.RINGER_PREFIX + Action.Ringer.NORMAL -> {
-            TablerIcons.Outline.Bell
-        }
-
-        Action.RINGER_PREFIX + Action.Ringer.VIBRATE -> {
-            TablerIcons.Outline.DeviceMobileVibration
-        }
-
-        Action.RINGER_PREFIX + Action.Ringer.SILENT -> {
-            TablerIcons.Outline.BellOff
         }
 
         else -> {
@@ -388,8 +319,10 @@ internal fun actionIcon(token: String): ImageVector =
                     ringerVolumeGlyph((ActionCatalog.actionOf(token) as? Action.RingerVolume)?.mode)
                 }
 
+                //  最后一道：**清单里有这一条就按 `Spec.glyph` 画** —— 字形只声明在清单一处，
+                //  这张表不再抄第二遍（这一支原先掉到 `Dots`，于是「清单里明明有、步骤行却没图标」）。
                 else -> {
-                    TablerIcons.Outline.Dots
+                    ActionCatalog.specOfToken(token)?.let(::specIcon) ?: TablerIcons.Outline.Dots
                 }
             }
         }

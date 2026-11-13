@@ -5,7 +5,6 @@ import com.lookie.opluskey.core.i18n.Strings
 import com.lookie.opluskey.core.log.XLog
 import com.lookie.opluskey.core.model.Action
 import com.lookie.opluskey.core.model.AppTarget
-import com.lookie.opluskey.core.model.ComboKey
 import com.lookie.opluskey.core.model.Config
 import com.lookie.opluskey.core.model.GestureTrigger
 import com.lookie.opluskey.core.model.KeyId
@@ -214,23 +213,15 @@ private fun SettingsPage.withTargetBound(
                         if (c.id != target.id) {
                             c
                         } else {
-                            //  按住那条（先按住某颗）落在 `singleA` / `longA` / `singleB` / `longB`：
-                            //  三种按法各有各的槽，互不覆盖；窗口那条仍写 `single` / `long`。
+                            //  三种触发方式**共用**这一对槽（`single` / `long`）：怎么按出来的是
+                            //  这一档的身份（`mode`），动作只跟手势走，不再为它多开几套。
                             when {
                                 target.gesture.isSingle -> {
-                                    when (target.hold) {
-                                        ComboKey.HOLD_FIRST -> c.copy(singleA = action)
-                                        ComboKey.HOLD_SECOND -> c.copy(singleB = action)
-                                        else -> c.copy(single = action)
-                                    }
+                                    c.copy(single = action)
                                 }
 
                                 target.gesture == GestureTrigger.LongPress -> {
-                                    when (target.hold) {
-                                        ComboKey.HOLD_FIRST -> c.copy(longA = action)
-                                        ComboKey.HOLD_SECOND -> c.copy(longB = action)
-                                        else -> c.copy(long = action)
-                                    }
+                                    c.copy(long = action)
                                 }
 
                                 //  组合上没有双击、也没有第 3 击起的档位（`ComboKey.actionOf` 恒返回

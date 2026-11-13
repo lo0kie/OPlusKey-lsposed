@@ -19,16 +19,27 @@ internal object ComboEditState {
     var editingId by mutableStateOf<String?>(null)
         private set
 
-    /** 「选择按键」弹窗开着没有（列表页那一行「添加组合键」点开它）。 */
-    var pickKeysPending by mutableStateOf(false)
+    /**
+     * 「选择按键」弹窗要为**哪一类**组合选键 —— `null` = 没开。
+     *
+     *  值是那一类新建时的触发方式：等待组合是 [ComboKey.MODE_WAIT]，按住组合先按
+     *  [ComboKey.MODE_HOLD_FIRST] 占位（选完键再问「先按住第一颗还是第二颗」）。
+     *  类别在**添加那一刻**就定下来，之后不再改（方式是一档的身份，见 `ComboKey.mode`）。
+     */
+    var pendingKind by mutableStateOf<Int?>(null)
 
     /**
-     * 列表页的**筛选**：只看含这颗键的组合（`null` = 全部）。
+     * 等待组合那一列的**筛选**：只看含这颗键的等待组合（`null` = 全部）。
      *
      *  不落盘 —— 它是「这一趟想找哪一组」，不是配置的一部分。单选（菜单里打勾的那一行）。
-     *  那一组被删掉 / 那颗键不再出现在任何组合里时，列表页会把它退回 `null`（见 `KeysScreen`）。
+     *  那一组被删掉 / 那颗键不再出现在该段任何组合里时，列表页会把它退回 `null`（见 `KeysScreen`）。
+     *
+     *  **两段各一份**：两列各自回答「这一列里有哪些」，共用一个会把另一列一起筛掉。
      */
-    var filterKey by mutableStateOf<String?>(null)
+    var waitFilter by mutableStateOf<String?>(null)
+
+    /** 按住组合那一列的筛选 —— 同上，独立一份。 */
+    var holdFilter by mutableStateOf<String?>(null)
 
     /**
      * 编辑页停在**哪一页**：`0` = 短按、`1` = 长按。
@@ -38,37 +49,8 @@ internal object ComboEditState {
      */
     var page by mutableStateOf(0)
 
-    /**
-     * 这两档手势各自**在编哪一种按法**（[ComboKey.HOLD_WINDOW] / `HOLD_FIRST` / `HOLD_SECOND`）。
-     *
-     *  为什么是「每档一份」而不是一位共用：按法是**手势底下的一层**（同一档短按有三种按法），
-     *  两档各自停在自己那张动作表上；共用一位会让「在短按页选了先按 A」把长按页也一起换掉，
-     *  而人只是想在长按页看窗口那一套。
-     *
-     *  为什么要在页面级：与 [page] 同一条理由 —— 换按法会把整个 `BindingTarget` 换掉
-     *  （网格按它读写那一套动作），而分页器里的两页是**同时在场**的，这一位必须活得比单页久。
-     *
-     *  不落盘：它是「这一趟在看哪一套」，不是配置的一部分（三套动作本身都在 `ComboKey` 上）。
-     */
-    private var holds by mutableStateOf(List(HOLD_PAGES) { ComboKey.HOLD_WINDOW })
-
-    /** 第 [page] 档现在选的是哪一种按法。 */
-    fun holdOf(page: Int): Int = holds.getOrElse(page) { ComboKey.HOLD_WINDOW }
-
-    /** 把第 [page] 档的按法换成 [hold]。 */
-    fun selectHold(
-        page: Int,
-        hold: Int,
-    ) {
-        if (holdOf(page) == hold) return
-        holds = holds.toMutableList().also { it[page] = hold }
-    }
-
     fun open(id: String) {
         editingId = id
-        //  每次从列表页进来都从「等窗口」起步：那是三套里最常用的一套，带着上一次的按法进来
-        //  会让人以为窗口那张表丢了（另两套要开「使用按住手势」才选得了，见 `ComboPressMode`）。
-        holds = List(HOLD_PAGES) { ComboKey.HOLD_WINDOW }
     }
 
     /** 离开编辑页时清掉 —— 下次进来不会先画上一档一帧。 */
@@ -76,10 +58,3 @@ internal object ComboEditState {
         editingId = null
     }
 }
-
-/**
- * 组合键编辑页有几档手势（短按 / 长按）—— 与 `BindingPagerScreen.COMBO_GESTURES` 同一条清单。
- *
- *  只用来给 [ComboEditState.holds] 定长：多一位就是白放着，少一位会让第二页的按法落回默认。
- */
-private const val HOLD_PAGES = 2
