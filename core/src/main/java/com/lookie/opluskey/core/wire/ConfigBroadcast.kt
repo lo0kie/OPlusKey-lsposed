@@ -165,8 +165,8 @@ object ConfigBroadcast {
                                     (it.actions[GestureTrigger.ClickThenLong] ?: Action.None).isBound
                                 }
                         ) +
-                        //  「长按这一档有没有人要」：注入侧看不到场景表，而 `instantSingle`
-                        //  要靠它决定「长按无操作时还等不等那一下」（见 `KeyConfig.longActionExists`）
+                        //  「长按这一档有没有人要」：注入侧看不到场景表，而
+                        //  「长按无操作时松手那一刀没有主语」要靠它判（见 `KeyConfig.longActionExists`）
                         (
                             ConfigFields.F_SCENE_LONG to
                                 config.key(k).scenes.any { (it.actions[GestureTrigger.LongPress] ?: Action.None).isBound }

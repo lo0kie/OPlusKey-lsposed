@@ -143,21 +143,26 @@ sealed interface GestureTrigger {
         val KEY_SLOTS: List<GestureTrigger> = BASE_SLOTS + HIGHER_CLICKS
 
         /**
-         * 按「这颗键开着哪几档多击 / 两段式」拼出**现在能用的那几档** —— 界面与场景块排行的唯一入口。
+         * 按「这颗键开着哪几档多击 / 两段式 / 双击」拼出**现在能用的那几档** —— 界面与场景块排行的唯一入口。
          *
          *  只开四击、不开三击是合法配置：那时清单是「单击 / 双击 / 长按 / 四击」——
          *  第 3 下按了不算数（`actionOf` 回「无操作」），第 4 下照样能派发。
          *
          *  「单击后长按」排在最后：它是另一个维度（第二击的形态），与击数不是一个轴。
          *
+         *  双击关着时**连那一页都不排**（`KeyConfig.doubleClickOn`）：与「没开的多击」同一条口径 ——
+         *  列一页写进去也永远不会命中。
+         *
          * @param on 这个目标开着的多击档位（`KeyConfig.extraClicksOn`）；组合键没有这一档，传 `emptySet()`
          * @param clickThenLong 这个目标开没开「单击后长按」；组合键同样没有，传 `false`
+         * @param doubleClick 这个目标开没开双击（`KeyConfig.doubleClickOn`）；组合键没有双击，传 `false`
          */
         fun slotsOn(
             on: Set<Int>,
             clickThenLong: Boolean = false,
+            doubleClick: Boolean = true,
         ): List<GestureTrigger> =
-            BASE_SLOTS +
+            BASE_SLOTS.filter { (it as? Click)?.count != 2 || doubleClick } +
                 HIGHER_CLICKS.filter { (it as Click).count in on } +
                 (if (clickThenLong) listOf(ClickThenLong) else emptyList())
 
@@ -298,14 +303,12 @@ fun Gesture.trigger(): GestureTrigger =
  *  @param clickWindowMs 这一击到下一击的窗口（`KeyConfig.doubleClickMs`，每颗键自己的）
  *  @param longPressMs 长按阈值（与连击链无关）
  *  @param maxClicks 绑了动作的最高击数（0 = 连单击都没绑）
- *  @param instantSingle 「忽视无操作双击」：没绑双击时不为它排窗
  *  @param slots 真的绑了动作的那几档（没绑的档不该让判定多等一个窗）
  */
 data class KeyGesturePlan(
     val clickWindowMs: Int,
     val longPressMs: Int,
     val maxClicks: Int,
-    val instantSingle: Boolean,
     val slots: Set<GestureTrigger>,
 ) {
     /**
@@ -314,16 +317,13 @@ data class KeyGesturePlan(
      *  口径与判定器现在的实现**逐条对齐**（`inject/input/GestureDetector`）：
      *  1) 最高档到达即派发 —— 双击在第二击那一刻就执行，不等窗；
      *  2) 更低的档要等「连击链闭合」：差几击就多等几个窗；
-     *  3) 只绑了一档（[maxClicks] ≤ 1）时：`instantSingle` 开 ⇒ 不等；关 ⇒ 仍等一窗
-     *     （现状如此 —— 那个开关的意思是「别为没绑的双击等」，不是「单击永远不等」）。
+     *  3) 最高只数到一击时**不等**：判定封顶按动作表算（`judgeCap`），没有第二击要等。
+     *     参与组合的那一份等待不在这里 —— 那是 `ComboDetector` 的窗口，与连击链无关。
      *
      *  判定器以后改成读 [KeyGesturePlan] 时，这段就是权威；在那之前它是投影，
      *  **那边改了这里必须跟着改**，否则两边对「等多久」有两份说法。
      */
-    fun waitFor(clicks: Int): Long {
-        if (maxClicks <= 1) return if (instantSingle) 0L else clickWindowMs.toLong()
-        return if (clicks >= maxClicks) 0L else (maxClicks - clicks).toLong() * clickWindowMs
-    }
+    fun waitFor(clicks: Int): Long = if (clicks >= maxClicks) 0L else (maxClicks - clicks).toLong() * clickWindowMs
 
     /** 单击最坏要等多久（= 连击链走完）—— 界面上「开了双击，单击会迟这么久」那一行读它。 */
     val maxWaitMs: Long get() = waitFor(1)
@@ -343,8 +343,7 @@ data class KeyGesturePlan(
 /**
  * 从一颗键的现有配置推出判定计划 —— 只读投影，不改任何配置、不影响当前判定。
  *
- *  「哪几档算绑了」的判据是**动作不是无操作**：绑了 `none` 的档不该让判定多等一个窗
- *  （这正是 `instantSingle` 想解决的事，这里把它一般化到所有档）。
+ *  「哪几档算绑了」的判据是**动作不是无操作**：绑了 `none` 的档不该让判定多等一个窗。
  */
 fun KeyConfig.gesturePlan(): KeyGesturePlan {
     val slots =
@@ -364,15 +363,14 @@ fun KeyConfig.gesturePlan(): KeyGesturePlan {
                 .keys
                 .forEach { add(GestureTrigger.Click(it)) }
         }
-    //  判定要等几个窗以 [clicksForJudge] 为准：它可能高于「绑了动作的最高击数」
-    //  （手改配置只写 click3、没写单击时，判定仍要按 3 击的链走）。
-    val maxClicks =
-        maxOf(slots.filterIsInstance<GestureTrigger.Click>().maxOfOrNull { it.count } ?: 0, clicksForJudge)
+    //  与判定器**同一个数**（[judgeCap]）：那个数现在按「开了哪几档」算 ——
+    //  开了三击但还没绑动作时判定照样数到第 3 击、照样要等窗口，这里跟着它才对得上。
+    //  计划里另算一遍 `maxOf(slots, clicksForJudge)` 的话，页面上写的「单击最多等 Xms」
+    //  会比实际等待短一截。
     return KeyGesturePlan(
         clickWindowMs = doubleClickMs,
         longPressMs = longPressMs,
-        maxClicks = maxClicks,
-        instantSingle = instantSingle,
+        maxClicks = judgeCap,
         slots = slots,
     )
 }

@@ -58,7 +58,7 @@ internal val COMBO_TITLE: String
  *  与首页那一行同名（[Strings.KEYS_ENTRY] 那一行）：点进来看到的标题与点的那一行一致。
  */
 internal val KEYS_TITLE: String
-    get() = I18n.get(Strings.KEYS_TITLE, "按键功能")
+    get() = I18n.get(Strings.KEYS_TITLE, "按键列表")
 
 /** 「选择应用」页的标题。 */
 internal val APP_PICKER_TITLE: String

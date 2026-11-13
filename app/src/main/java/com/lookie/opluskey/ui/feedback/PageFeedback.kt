@@ -205,7 +205,8 @@ internal fun SettingsPage.rememberTick(): () -> Unit = remember { { tickNow() } 
  *
  *  滚动条把 DOWN 吃掉（点在拇指或轨道上）才会走到这里；页面别处、行与卡片都不 consume，
  *  于是「按到滚动条」与「按到内容」靠这一条就能分开，不必自己算那条 12dp 的窄带。
- *  两处滚动条共用它：浮层菜单（`MenuScrollBar`）与更新弹窗的说明区 —— 同一种手感只写一处。
+ *  **只有 `ui/row/AppScrollBar` 用它**：浮层菜单、选择应用列表、图标网格、更新弹窗那几条
+ *  滚动条都走那一份，别再在调用点各挂一遍。
  */
 @Composable
 internal fun Modifier.scrollBarTick(): Modifier {

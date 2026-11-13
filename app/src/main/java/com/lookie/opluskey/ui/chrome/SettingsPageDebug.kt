@@ -47,7 +47,7 @@ internal fun SettingsPage.onDebugCommand(intent: android.content.Intent) {
                 //  `branchGesture` 就是「按键绑定」页停在第几页，按**当前那一份清单**换成档位
                 //  （三击 / 四击 / 单击后长按没开时少那几页）—— 不管开关开没开都取不越界的那一份。
                 val key = configState.config.value.key(KeyWatchState.editing(configState.config.value))
-                val slots = GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn)
+                val slots = GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn, key.doubleClickOn)
                 picker.openForGesture(slots.getOrElse(branchGesture) { GestureTrigger.Click(1) })
             }
             // 走 [navTo]（不是「压一层」）：目标已经在栈里就直接回到它，否则压上去。

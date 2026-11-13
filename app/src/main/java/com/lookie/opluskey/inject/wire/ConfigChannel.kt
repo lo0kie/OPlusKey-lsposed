@@ -306,7 +306,6 @@ internal object ConfigChannel {
                 //  组合那一档的窗口 —— 「每组的独立等待没作用」时先看这一行：
                 //  它是最宽的扫描窗口（各组里最长的那个），各组自己的值在 `ComboDetector` 复核时用
                 " 组合窗口=${fresh.comboScanWindowMs}ms（${fresh.combos.size}组）" +
-                " 立即单击=${fresh.key(KeyId.PLUS).instantSingle}" +
                 " 单击=${XLog.redactToken(key.single.token)}",
         )
         // 上面那行只打**侧键那份**参数；自定义键各有一份自己的键码与长按阈值（见 `ConfigArrivalLog`）。

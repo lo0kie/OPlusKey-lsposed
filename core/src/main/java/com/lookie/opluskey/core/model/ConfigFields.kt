@@ -108,8 +108,7 @@ object ConfigFields {
      *
      *  发的是**没有加过下限**的那个数：「单击后长按 ⇒ 数到第 2 击」那一抬由两侧各自加一次
      *  （宿主 `Config.clicksForJudge`、注入侧同一属性），所以两边算出来的结果逐字相同；
-     *  而注入侧还要拿它判「双击这一档有没有人要」（`KeyConfig.doubleFallsBackToSingles`），
-     *  收到抬过的数就分不出那两种情形。
+     *  收到抬过的数就分不出「双击这一档真绑了动作」与「只是要数到第 2 击」两种情形。
      *  0 = 老版本发来的（不认识这一项）⇒ 注入侧退回「只认三档」。
      */
     const val JUDGE_CLICKS_EXTRA = "judge_clicks"
@@ -176,16 +175,29 @@ object ConfigFields {
     const val COMBO_ONLY_EXTRA = "combo_only"
 
     /**
+     * 「双击这一档开着没有」（`KeyConfig.doubleClickOn`）—— 关掉时第二下按下就是新的一轮。
+     *
+     *  走广播：判定侧要按它封顶（`judgeCap`），界面的档位表也按它排。
+     */
+    const val DOUBLE_CLICK_ON_EXTRA = "double_click_on"
+
+    /**
      * 「多击窗口内逐次等满」（`KeyConfig.waitMultiWindow`）—— 到档也等窗口走完再判。
      *
      *  走广播：这是判定时序，注入侧说了算。
      */
     const val WAIT_MULTI_WINDOW_EXTRA = "wait_multi_window"
 
+    /**
+     * 「多击窗口」（`KeyConfig.multiWaitMs`）—— 逐次等满那一档自己的窗口，0 = 跟随单击延迟。
+     *
+     *  走广播：与上一项同一条理由（判定时序，注入侧说了算）。
+     */
+    const val MULTI_WAIT_MS_EXTRA = "multi_wait_ms"
+
     // `GlobalConfig`。
     const val DOUBLE_CLICK_MS_EXTRA = "double_click_ms"
     const val VIBRATE_EXTRA = "vibrate"
-    const val INSTANT_SINGLE_EXTRA = "instant_single"
 
     /**
      * 「这颗键用自己那套公共项」的总开关（`KeyConfig.useOwnSettings`），以及它底下那两项。
@@ -369,14 +381,31 @@ object ConfigFields {
             ),
         )
 
-    /** 「忽视无操作双击手势」—— **每颗键各一份**。 */
-    val F_INSTANT_SINGLE = Field(INSTANT_SINGLE_EXTRA, Kind.Bool(KeyConfig.DEFAULT_INSTANT_SINGLE))
-
     /** 「这颗键只参与组合」—— 单键手势交还系统，只等组合成员（默认关）。 */
     val F_COMBO_ONLY = Field(COMBO_ONLY_EXTRA, Kind.Bool(false))
 
+    /** 「双击这一档开着没有」—— 默认开（双击是基础档，与三击 / 四击默认关相反）。 */
+    val F_DOUBLE_CLICK_ON = Field(DOUBLE_CLICK_ON_EXTRA, Kind.Bool(true))
+
     /** 「多击窗口内逐次等满」—— 到档也等窗口走完再判（默认关 = 按完就判）。 */
     val F_WAIT_MULTI_WINDOW = Field(WAIT_MULTI_WINDOW_EXTRA, Kind.Bool(false))
+
+    /**
+     * 「多击窗口」—— 逐次等满那一档的窗口（`KeyConfig.multiWaitMs`）。
+     *
+     *  **下限是 0**：0 = 跟随「单击延迟」（老配置没有这一位，见那一位的 KDoc）。
+     *  钳到 [KeyConfig.MIN_DOUBLE_CLICK_MS] 会把「跟随」这个值当场改写成 100 ——
+     *  那正是升级之后手感突变的那类 bug。
+     */
+    val F_MULTI_WAIT_MS =
+        Field(
+            MULTI_WAIT_MS_EXTRA,
+            Kind.Number(
+                KeyConfig.FOLLOW_DOUBLE_CLICK_MS,
+                0,
+                KeyConfig.MAX_MULTI_WAIT_MS,
+            ),
+        )
 
     /**
      * **这颗键要不要用自己那套公共项**（`KeyConfig.useOwnSettings`）—— 总开关，默认关。
@@ -512,9 +541,10 @@ object ConfigFields {
             F_REPEAT_INTERVAL_MS,
             F_REPEAT_VIBRATE,
             F_DOUBLE_CLICK_MS,
-            F_INSTANT_SINGLE,
             F_COMBO_ONLY,
+            F_DOUBLE_CLICK_ON,
             F_WAIT_MULTI_WINDOW,
+            F_MULTI_WAIT_MS,
             F_OWN_SETTINGS,
             F_KEY_COLOR_OS_API,
             F_KEY_VIBRATE,

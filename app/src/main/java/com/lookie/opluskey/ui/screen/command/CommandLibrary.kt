@@ -48,6 +48,13 @@ internal fun SettingsPage.testCommand(cmd: Command) {
         hint(I18n.get(Strings.COMMAND_FORMAT_REQUIRED, "必须以支持的格式开头"), slot = HINT_SLOT_COMMAND)
         return
     }
+    //  **只写了前缀也不算有内容**（`shell:` 后面空着、或只有空格）：它过了格式闸，
+    //  派下去却是一条空命令 —— 与「空命令」同一个症状（点了测试、什么都没发生）。
+    if (cmd.kind == CommandKind.SINGLE && !Action.hasBody(cmd.single)) {
+        XLog.w("测试命令：只有前缀、没有正文，不派发（${cmd.single.take(32)}）")
+        hint(I18n.get(Strings.COMMAND_FAILURE_EMPTY, "这条命令是空的，补上内容再试"), slot = HINT_SLOT_COMMAND)
+        return
+    }
     // 页面动作失败绝不外抛（本文件里其它入口都是这条纪律）：测试命令直接跑在点击回调上，
     //  从执行器里抛出来会打到 Compose 的点击处理里。
     try {

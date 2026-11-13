@@ -656,6 +656,24 @@ internal object GestureExec {
             }
             return fired
         }
+        //  **多击档没有动作时逐级回退**（用户口径）：窗口结束时判定侧只报「数到了第几击」，
+        //  报上来的那一档未必配了动作 —— 比如只开了四击、按了两下，报上来的是 `Click(2)`，
+        //  而双击那一格空着。这时退到 `Click(1)`，让这一下仍然执行单击，而不是「按了没反应」。
+        //  注入侧看不到动作表（它只认 `judge_clicks`），所以这一层只能在这里做。
+        if (trigger is GestureTrigger.Click && trigger.count > 1) {
+            for (n in trigger.count downTo 1) {
+                val fallback = keyConfig.actionFor(GestureTrigger.Click(n), matchesCondition)
+                if (!fallback.isBound) continue
+                if (n != trigger.count) {
+                    XLog.w(
+                        "${id.label} - ${trigger.label}：这一档没有动作，回退到" +
+                            (if (n == 1) "单击" else "第 $n 击"),
+                    )
+                }
+                return fallback
+            }
+            return Action.None
+        }
         //  其余档位统一走**触发条件**：场景块能接管哪几档由它自己的 `actions` 说，
         //  所以「只给三击配了场景、直接绑定那一格空着」也照样命中（`pickAction` 一处收口）。
         return keyConfig.actionFor(trigger, matchesCondition)

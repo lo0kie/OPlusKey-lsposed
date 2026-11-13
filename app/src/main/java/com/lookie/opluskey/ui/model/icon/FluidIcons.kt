@@ -18,6 +18,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.ArrowBackUp
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowDown
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowLeft
 import io.github.lyxnx.compose.ui.tablericons.outline.ArrowUp
+import io.github.lyxnx.compose.ui.tablericons.outline.ArrowsDoubleNeSw
 import io.github.lyxnx.compose.ui.tablericons.outline.Ban
 import io.github.lyxnx.compose.ui.tablericons.outline.BatteryEco
 import io.github.lyxnx.compose.ui.tablericons.outline.Bell
@@ -112,6 +113,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Language
 import io.github.lyxnx.compose.ui.tablericons.outline.LanguageOff
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
+import io.github.lyxnx.compose.ui.tablericons.outline.ListDetails
 import io.github.lyxnx.compose.ui.tablericons.outline.Location
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
 import io.github.lyxnx.compose.ui.tablericons.outline.LockOpen
@@ -135,8 +137,10 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Palette
 import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilAi
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
+import io.github.lyxnx.compose.ui.tablericons.outline.Photo
 import io.github.lyxnx.compose.ui.tablericons.outline.PhotoVideo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
+import io.github.lyxnx.compose.ui.tablericons.outline.Pin
 import io.github.lyxnx.compose.ui.tablericons.outline.Plane
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPause
 import io.github.lyxnx.compose.ui.tablericons.outline.PlayerPlay
@@ -196,6 +200,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Variable
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
 import io.github.lyxnx.compose.ui.tablericons.outline.Video
 import io.github.lyxnx.compose.ui.tablericons.outline.Wifi
+import io.github.lyxnx.compose.ui.tablericons.outline.Window
 import io.github.lyxnx.compose.ui.tablericons.outline.WindowMinimize
 import io.github.lyxnx.compose.ui.tablericons.outline.World
 import io.github.lyxnx.compose.ui.tablericons.outline.X
@@ -225,6 +230,7 @@ internal object FluidIcons {
             "appwindow" to TablerIcons.Outline.AppWindow,
             "arrowbackup" to TablerIcons.Outline.ArrowBackUp,
             "arrowdown" to TablerIcons.Outline.ArrowDown,
+            "arrowsdoublenesw" to TablerIcons.Outline.ArrowsDoubleNeSw,
             "arrowleft" to TablerIcons.Outline.ArrowLeft,
             "arrowup" to TablerIcons.Outline.ArrowUp,
             "ban" to TablerIcons.Outline.Ban,
@@ -310,6 +316,7 @@ internal object FluidIcons {
             "handmove" to TablerIcons.Outline.HandMove,
             "handringfinger" to TablerIcons.Outline.HandRingFinger,
             "handthreefingers" to TablerIcons.Outline.HandThreeFingers,
+            "listdetails" to TablerIcons.Outline.ListDetails,
             "handtwofingers" to TablerIcons.Outline.HandTwoFingers,
             "hash" to TablerIcons.Outline.Hash,
             "history" to TablerIcons.Outline.History,
@@ -345,8 +352,10 @@ internal object FluidIcons {
             "pencil" to TablerIcons.Outline.Pencil,
             "pencilai" to TablerIcons.Outline.PencilAi,
             "pencilcog" to TablerIcons.Outline.PencilCog,
+            "photo" to TablerIcons.Outline.Photo,
             "photovideo" to TablerIcons.Outline.PhotoVideo,
             "pictureinpictureon" to TablerIcons.Outline.PictureInPictureOn,
+            "pin" to TablerIcons.Outline.Pin,
             "plane" to TablerIcons.Outline.Plane,
             "playerpause" to TablerIcons.Outline.PlayerPause,
             "playerplay" to TablerIcons.Outline.PlayerPlay,
@@ -406,6 +415,7 @@ internal object FluidIcons {
             "versions" to TablerIcons.Outline.Versions,
             "video" to TablerIcons.Outline.Video,
             "wifi" to TablerIcons.Outline.Wifi,
+            "window" to TablerIcons.Outline.Window,
             "windowminimize" to TablerIcons.Outline.WindowMinimize,
             "world" to TablerIcons.Outline.World,
             "x" to TablerIcons.Outline.X,

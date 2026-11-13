@@ -41,8 +41,11 @@ import com.lookie.opluskey.ui.row.TILE_HEIGHT
 import com.lookie.opluskey.ui.row.TILE_SIDE_PADDING
 import com.lookie.opluskey.ui.row.TileFocusRing
 import com.lookie.opluskey.ui.row.rememberRowIconColor
+import com.lookie.opluskey.ui.style.AnimatedFade
 import com.lookie.opluskey.ui.style.LocalAppTheme
 import com.lookie.opluskey.ui.style.appCardColors
+import io.github.suqi8.coui.kmp.basic.Badge
+import io.github.suqi8.coui.kmp.basic.BadgeColors
 import io.github.suqi8.coui.kmp.basic.BasicComponent
 import io.github.suqi8.coui.kmp.basic.Card
 import io.github.suqi8.coui.kmp.basic.CardListPosition
@@ -54,9 +57,9 @@ import io.github.suqi8.coui.kmp.utils.PressFeedbackType
 /**
  * 网格格子行尾那颗指示器的边长 —— 取 20dp：比行首图标（[ROW_ICON_SIZE] 22dp）再小一档。
  *
- *  格子只有一格宽，行尾那颗是**提示**（「点了还有一层」/「选没选」），不是内容：与行首同高时
- *  它会和标题抢横向空间（真机反馈「格子行尾的图标偏大」）。三种指示器在同一位置三选一
- *  （见 [ActionTile] 的 `endActions`），必须同尺寸，否则格子里的内容会跟着挪。
+ *  格子只有一格宽，行尾那颗是**提示**（「点了还有一层」/「选没选」/「是不是它」），不是内容：与行首同高时
+ *  它会和标题抢横向空间（真机反馈「格子行尾的图标偏大」）。行尾那几种指示器（箭头 / 选择器 /
+ *  勾选框 / 选中圆点）在同一位置四选一，必须同尺寸，否则格子里的内容会跟着挪。
  *
  *  **不并进 [com.lookie.opluskey.ui.model.ROW_END_ICON_SIZE]（24dp）**：那一档是行尾箭头 /
  *  选中圈的通用尺寸（首页、选择应用、关于页都用它），而那些行的可用宽度比两列的格子宽得多 ——
@@ -89,7 +92,7 @@ private const val MONET_MUTED_ALPHA = 0.70f
  */
 @Composable
 internal fun SettingsPage.ActionTile(
-    spec: ActionCatalog.Spec,
+    spec: ActionCatalog.Spec?,
     icon: ImageVector?,
     selected: Boolean,
     focused: Boolean,
@@ -97,10 +100,26 @@ internal fun SettingsPage.ActionTile(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     /**
+     * 标题那一行 —— 默认取 [spec] 的名字。
+     *
+     *  有调用方给得出「格子」但给不出 `Spec`（「常用命令」那一段的条目是模块自带清单，
+     *  不在 `ActionCatalog.ALL` 里），于是这一格改成可传名字 / 可传行尾那一档：
+     *  `spec = null` + [title] + [trailingDot] 就能复用同一套卡片，不必再拼第二份。
+     */
+    title: String = spec?.label.orEmpty(),
+    /**
      * 标题下面那行**小字**（空则不画）：内置的「打开应用」格放绑定的应用名、
      * 入口格（系统导航 / 系统按键 / 响铃状态 / 媒体控制）放当前档位，自定义命令那些格子放**命令间隔时长**。
      */
     subtitle: String? = null,
+    /**
+     * 行尾改画一枚**选中圆点**（默认按 [spec] 的 `clickKind` 画那三种字形）。
+     *
+     *  「常用命令」那一段的条目是模块自带清单、**不在 `ActionCatalog.ALL` 里**（查不出
+     *  `clickKind`，给不出 `Spec`），而这一格要说的只是「就是它」—— 圆点的位置、尺寸、
+     *  间距仍由这一格自己排，调用方只给这一位。
+     */
+    trailingDot: Boolean = false,
     onClick: () -> Unit,
 ) {
     val scheme = COUITheme.colorScheme
@@ -251,7 +270,7 @@ internal fun SettingsPage.ActionTile(
                     //  [TRAILING_INDICATOR_GAP]（原先交给 `endActions` 时，那一段由库决定、改不动）。
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = spec.label,
+                            text = title,
                             style = COUITheme.textStyles.body2,
                             fontWeight = FontWeight.Medium,
                             color = contentColor,
@@ -300,57 +319,85 @@ internal fun SettingsPage.ActionTile(
                     //  · 弹一层菜单（系统导航 / 系统按键 / 媒体控制 / 响铃状态 / 应用控制）→ 选择器字形
                     //    （[PageIcons.Selector]：一个框 + 右下角小三角，读作「点了要选点什么」）；
                     //  · 进另一个页面（「自定义变量」→ 变量操作）→ **右箭头**（与菜单、列表那几处同一颗）。
+                    //  · 第三种（`trailingDot`）是一枚实心圆点，只出现在「常用命令」那一段 ——
+                    //    那里要说的是「这一格就是当前绑的」，不是「点了还有一层」。
                     //
                     //  **只问 `clickKind`**：这一格点下去干什么，清单里已经答了。这里再列一遍 token
                     //  的话，`APP_TILE`（弹原地菜单）就会被写成右箭头 —— 抽屉那边原先正是这么错的。
                     //  尺寸与配色逐档对齐（[ENTRY_INDICATOR_SIZE] / [entryIndicatorColor]），
                     // 换掉之后占位与观感不变。
-                    when (ActionCatalog.clickKind(spec)) {
-                        //  换页的入口（「自定义变量」→ 变量操作、「应用控制」→ 挑应用）
-                        //  ⇒ 行尾那颗是右箭头（与菜单、列表那几处同一颗）。
-                        ActionCatalog.ClickKind.PAGE_APP,
-                        ActionCatalog.ClickKind.PAGE_VARS,
-                        -> {
-                            Icon(
-                                PageIcons.EnterArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                tint = entryIndicatorColor,
-                            )
-                        }
-
-                        //  其余档位那一层是**原地弹**（菜单），不跳页 —— 所以是选择器字形而不是箭头。
-                        ActionCatalog.ClickKind.MENU -> {
-                            Icon(
-                                PageIcons.Selector,
-                                contentDescription = null,
-                                modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
-                                tint = entryIndicatorColor,
-                            )
-                        }
-
-                        //  取值格（不是入口格）的选中指示 —— 空心方框 / 带勾方框，见 [PageIcons.TileUnchecked]。
-                        //  形状与另两种字形同尺寸，不给触达区（点击交给整行）。
+                    if (trailingDot) {
+                        //  「这一格就是当前绑的」那一枚圆点（「常用命令」那一段用它：那一段的条目
+                        //  不在清单里，查不出 `clickKind`）。**恒占位**：不占位时选中 / 未选中会让
+                        //  标题那列的可用宽度变、长名字跟着跳一下；圆点只在选中时淡入。
                         //
-                        //  「录屏」那一格也走这里：它点开虽然弹弹窗，但**格子本身就是那个动作**
-                        //  （三档只是它的状态），挂选择器字形等于告诉用户「下面还有一层清单」——
-                        //  而那一层已经没有了（见 `ActionCatalog.clickKind` 的 `STATE` 档）。
-                        //
-                        //  这一档变的是**状态**（选没选），换的是字形、插不了值 ⇒ 交叉淡过去，
-                        //  曲线与旁边那片底色同源（[COLOR_FADE_SPEC]）；两种字形同尺寸，
-                        //  交叉期间盒子宽度不变，标题不会被推一下。
-                        else -> {
-                            Crossfade(
-                                targetState = selected,
-                                animationSpec = COLOR_FADE_SPEC,
-                                label = "TileChecked",
-                            ) { on ->
+                        //  颜色取整格那个动画值 [contentColor]：选中 `primary`、禁用一档灰 ——
+                        //  与标题同源、跟着同一段过渡走，禁用时不会剩下一个还亮着的主题色圆点。
+                        Box(
+                            modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AnimatedFade(visible = selected) {
+                                Badge(
+                                    colors =
+                                        BadgeColors(
+                                            containerColor = contentColor,
+                                            contentColor = scheme.onPrimary,
+                                            strokeColor = scheme.surfaceContainer,
+                                        ),
+                                )
+                            }
+                        }
+                    } else {
+                        //  不走圆点就必须给得出 `Spec`：两个参数是同一个契约的两半
+                        //  （给不出 `Spec` 的调用方，正是那个传 `trailingDot = true` 的）。
+                        when (ActionCatalog.clickKind(requireNotNull(spec))) {
+                            //  换页的入口（「自定义变量」→ 变量操作、「应用控制」→ 挑应用）
+                            //  ⇒ 行尾那颗是右箭头（与菜单、列表那几处同一颗）。
+                            ActionCatalog.ClickKind.PAGE_APP,
+                            ActionCatalog.ClickKind.PAGE_VARS,
+                            -> {
                                 Icon(
-                                    if (on) PageIcons.TileChecked else PageIcons.TileUnchecked,
+                                    PageIcons.EnterArrow,
                                     contentDescription = null,
                                     modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
                                     tint = entryIndicatorColor,
                                 )
+                            }
+
+                            //  其余档位那一层是**原地弹**（菜单），不跳页 —— 所以是选择器字形而不是箭头。
+                            ActionCatalog.ClickKind.MENU -> {
+                                Icon(
+                                    PageIcons.Selector,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                    tint = entryIndicatorColor,
+                                )
+                            }
+
+                            //  取值格（不是入口格）的选中指示 —— 空心方框 / 带勾方框，见 [PageIcons.TileUnchecked]。
+                            //  形状与另两种字形同尺寸，不给触达区（点击交给整行）。
+                            //
+                            //  「录屏」那一格也走这里：它点开虽然弹弹窗，但**格子本身就是那个动作**
+                            //  （三档只是它的状态），挂选择器字形等于告诉用户「下面还有一层清单」——
+                            //  而那一层已经没有了（见 `ActionCatalog.clickKind` 的 `STATE` 档）。
+                            //
+                            //  这一档变的是**状态**（选没选），换的是字形、插不了值 ⇒ 交叉淡过去，
+                            //  曲线与旁边那片底色同源（[COLOR_FADE_SPEC]）；两种字形同尺寸，
+                            //  交叉期间盒子宽度不变，标题不会被推一下。
+                            else -> {
+                                Crossfade(
+                                    targetState = selected,
+                                    animationSpec = COLOR_FADE_SPEC,
+                                    label = "TileChecked",
+                                ) { on ->
+                                    Icon(
+                                        if (on) PageIcons.TileChecked else PageIcons.TileUnchecked,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(ENTRY_INDICATOR_SIZE),
+                                        tint = entryIndicatorColor,
+                                    )
+                                }
                             }
                         }
                     }

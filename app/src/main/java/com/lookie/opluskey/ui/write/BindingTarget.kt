@@ -394,7 +394,7 @@ internal fun SettingsPage.openBranchesFor(target: BindingTarget) {
             GestureTrigger.KEY_SLOTS
         } else {
             val key = configState.config.value.key(branchKeyNow())
-            GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn)
+            GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn, key.doubleClickOn)
         }
     branchGesture = slots.indexOf(target.gesture).coerceAtLeast(0)
     XLog.w("进「$BRANCHES_TITLE」页：${target.what}")

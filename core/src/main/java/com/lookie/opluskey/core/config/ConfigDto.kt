@@ -97,9 +97,8 @@ internal data class ConfigDto(
         if (droppedClicks > 0) {
             XLog.w("配置：$droppedClicks 条额外档位认不出（已丢弃）")
         }
-        // 老文件把「单击延迟 / 忽视双击」放在 `global` 里：逐键字段缺失时拿它兜底（迁移用）
+        // 老文件把「单击延迟」放在 `global` 里：逐键字段缺失时拿它兜底（迁移用）
         val legacyDouble = global.doubleClickMs ?: KeyConfig.DEFAULT_DOUBLE_CLICK_MS
-        val legacyInstant = global.instantSingle ?: KeyConfig.DEFAULT_INSTANT_SINGLE
         //  —— 总闸的迁移 ——
         //  拆开之前没有 `global.enabled`：那时「主开关」就是 `keys.plus.enabled`，侧键那一份
         //  同时当「总闸」与「这一颗键」两个用。老文件里那一位要读成**总闸**（用户当时的意图），
@@ -110,7 +109,7 @@ internal data class ConfigDto(
         val master = masterFromFile ?: keys[KeyId.PLUS.id]?.enabled ?: false
         val keyConfigs =
             allKeys.associateWith { id ->
-                val key = (keys[id.id] ?: KeyDto()).toKeyConfig(id, legacyDouble, legacyInstant)
+                val key = (keys[id.id] ?: KeyDto()).toKeyConfig(id, legacyDouble)
                 if (legacyMaster && id.id == KeyId.PLUS.id) key.copy(enabled = true) else key
             }
         //  「常用命令」清单不进字段表（它不参与广播，注入侧不认识它）——
@@ -195,21 +194,33 @@ internal data class KeyDto(
     /** 「松手才触发」—— 长按动作本身等抬手才执行（与连续触发、松手执行额外动作互斥）。 */
     val longFireOnRelease: Boolean = false,
     /**
-     * 「单击延迟」与「忽视无操作双击手势」—— **每颗键各一份**（以前在 `global` 段里）。
+     * 「单击延迟」—— **每颗键各一份**（以前在 `global` 段里）。
      *
      *  `null` = 这份文件里没写（老文件 / 手写）：读的时候退回 `global` 那份，见 [ConfigDto.toConfig]。
      *  新写出来的文件一定是具体值。
      */
     val doubleClickMs: Int? = null,
-    val instantSingle: Boolean? = null,
     /**
      * 「这颗键只参与组合」—— 单键手势交还系统，模块只用它凑组合（见 `KeyConfig.comboOnly`）。
      *
      *  `null` = 老文件没有这一项 ⇒ 关（与这一位出现之前一致，不需要迁移）。
      */
     @SerialName("combo_only") val comboOnly: Boolean? = null,
+    /**
+     * 「双击这一档开着没有」（`KeyConfig.doubleClickOn`）。
+     *
+     *  `null` = 老文件没有这一项 ⇒ **开**（与这一位出现之前一致，不需要迁移）。
+     */
+    @SerialName("double_click_on") val doubleClickOn: Boolean? = null,
     /** 「多击窗口内逐次等满」—— 到档也等窗口走完再判（`KeyConfig.waitMultiWindow`）。 */
     @SerialName("wait_multi_window") val waitMultiWindow: Boolean? = null,
+    /**
+     * 「逐次等满」那一档的窗口（`KeyConfig.multiWaitMs`）。
+     *
+     *  `null`（老文件没有这一项）与写 `0` **同义**：跟随「单击延迟」——
+     *  见 `KeyConfig.multiWaitMs` 的 KDoc，回落是为了让升级前后手感一字不差。
+     */
+    @SerialName("multi_wait_ms") val multiWaitMs: Int? = null,
     /**
      * 「按键单独设置」—— 这一颗键要不要用自己那套公共项（接口 / 振动 / 提示）。
      *
@@ -336,10 +347,7 @@ internal data class KeyDto(
         get() = KeyConfig.clicksOnOf(extraClicks.keys.mapNotNull { extraClickCount(it) })
 
     /** 按 [ConfigFields] 那张表把取值钳进各自的上下限 —— 上下限只定义在表里。 */
-    fun toValues(
-        legacyDoubleClickMs: Int,
-        legacyInstantSingle: Boolean,
-    ): ConfigFields.Values =
+    fun toValues(legacyDoubleClickMs: Int): ConfigFields.Values =
         ConfigFields.Values(
             mapOf(
                 ConfigFields.F_ENABLED to enabled,
@@ -355,9 +363,10 @@ internal data class KeyDto(
                 ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
                 ConfigFields.F_DOUBLE_CLICK_MS to
                     clamp(ConfigFields.F_DOUBLE_CLICK_MS, doubleClickMs ?: legacyDoubleClickMs),
-                ConfigFields.F_INSTANT_SINGLE to (instantSingle ?: legacyInstantSingle),
                 ConfigFields.F_COMBO_ONLY to (comboOnly ?: false),
+                ConfigFields.F_DOUBLE_CLICK_ON to (doubleClickOn ?: true),
                 ConfigFields.F_WAIT_MULTI_WINDOW to (waitMultiWindow ?: false),
+                ConfigFields.F_MULTI_WAIT_MS to (multiWaitMs ?: KeyConfig.FOLLOW_DOUBLE_CLICK_MS),
                 ConfigFields.F_OWN_SETTINGS to (useOwnSettings ?: false),
                 ConfigFields.F_KEY_COLOR_OS_API to (colorOsApi ?: GlobalConfig.DEFAULT_COLOR_OS_API),
                 ConfigFields.F_KEY_VIBRATE to (vibrate ?: false),
@@ -401,10 +410,9 @@ internal data class KeyDto(
     fun toKeyConfig(
         id: KeyId,
         legacyDoubleClickMs: Int,
-        legacyInstantSingle: Boolean,
     ): KeyConfig =
         KeyConfig
-            .ofFields(id, toValues(legacyDoubleClickMs, legacyInstantSingle), mergeScenes(scenes, rules))
+            .ofFields(id, toValues(legacyDoubleClickMs), mergeScenes(scenes, rules))
             .copy(
                 //  认不出的次数 / 动作整条丢掉（与 `rules`、`custom_keys` 同一条纪律：丢东西要留账，
                 //  账在 `ConfigDto.toConfig` 那一层按整份文件打一次）
@@ -433,9 +441,10 @@ internal data class KeyDto(
                 longReleaseOn = key.longReleaseOn,
                 longFireOnRelease = key.longFireOnRelease,
                 doubleClickMs = key.doubleClickMs,
-                instantSingle = key.instantSingle,
                 comboOnly = key.comboOnly,
+                doubleClickOn = key.doubleClickOn,
                 waitMultiWindow = key.waitMultiWindow,
+                multiWaitMs = key.multiWaitMs,
                 useOwnSettings = key.useOwnSettings,
                 colorOsApi = key.colorOsApi,
                 vibrate = key.vibrate,
@@ -812,7 +821,6 @@ internal data class GlobalDto(
     /** 振动强度（三档）—— 老文件没有这一项，取值会退回字段表的默认值（中档）。 */
     @SerialName("vibrate_strength")
     val vibrateStrength: Int = GlobalConfig.DEFAULT_VIBRATE_STRENGTH,
-    val instantSingle: Boolean? = null,
     val toastOnRun: Boolean = GlobalConfig.DEFAULT_TOAST_ON_RUN,
     /** 「执行时提示」的文案模板（见 `GlobalConfig.toastTemplate`）—— 老文件没有这一项，退回默认那句。 */
     @SerialName("toast_template")

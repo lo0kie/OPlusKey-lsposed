@@ -1,7 +1,5 @@
 package com.lookie.opluskey.ui.screen.apppicker
 
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -37,7 +34,6 @@ import com.lookie.opluskey.ui.chrome.collapsedHeaderHeight
 import com.lookie.opluskey.ui.chrome.currentHeaderHeight
 import com.lookie.opluskey.ui.chrome.headerStatusBarPadding
 import com.lookie.opluskey.ui.feedback.Feedback
-import com.lookie.opluskey.ui.feedback.rememberTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.APP_KIND_TAG_GAP
 import com.lookie.opluskey.ui.model.page.APP_LIST_HEADER_ITEMS
@@ -46,6 +42,7 @@ import com.lookie.opluskey.ui.model.page.GRID_GAP
 import com.lookie.opluskey.ui.model.page.PAGE_BOTTOM_PADDING
 import com.lookie.opluskey.ui.model.page.PAGE_TOP_PADDING
 import com.lookie.opluskey.ui.model.target.LaunchableApp
+import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.row.CardList
 import com.lookie.opluskey.ui.row.CardRow
 import com.lookie.opluskey.ui.row.RowEndIcon
@@ -58,10 +55,7 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.PullToRefresh
 import io.github.suqi8.coui.kmp.basic.ScrollBehavior
 import io.github.suqi8.coui.kmp.basic.TopAppBarDefaults
-import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
 import io.github.suqi8.coui.kmp.basic.rememberPullToRefreshState
-import io.github.suqi8.coui.kmp.basic.rememberScrollBarAdapter
-import io.github.suqi8.coui.kmp.interfaces.ExperimentalScrollBarApi
 import io.github.suqi8.coui.kmp.theme.COUITheme
 import io.github.suqi8.coui.kmp.utils.overScrollVertical
 
@@ -292,23 +286,18 @@ private fun SettingsPage.pickRow(
  *  那一段正好落在顶栏背后（用户口径「滚动条被 header 挡住了」）。搜索带那笔是页面级状态、
  *  首帧后就不再变。
  *
- *  代价：这一层会跟着顶栏折叠逐帧重组。但它本来就随滚动每帧更新（`rememberScrollBarAdapter`
- *  读的就是列表的滚动位移），重组的是**一个 thumb**，不是列表；把与滚动无关的页面留在外面
+ *  代价：这一层会跟着顶栏折叠逐帧重组。但它本来就随滚动每帧更新（滚动条读的就是列表的
+ *  滚动位移），重组的是**一个 thumb**，不是列表；把与滚动无关的页面留在外面
  *  才是要紧的那条（见 `ActivityPickerScreen` 里对 `ActivityEmptyState` 的处理）。
  *
  *  单独成函数还有两个原因：两页同一份几何不必各写一遍；以及两个调用点的组合函数都已经
  *  够长了。
  *
- *  按住**滑块**这一下也走通用振动通道（[rememberTick]，与行、开关同一条）：抓住滑块时才振，
- *  按在轨道空白处不振（那里按下去什么都不会发生，振一下等于骗人）。
- *
- *  判据是那个 DOWN **有没有被 consume**：滚动条自己的指针处理在内层，只有按在滑块上时它才
- *  `consume()` 这个事件（按在轨道上它直接 return）。外层在 Main 阶段拿到的就是那个结果，
- *  于是不必在这里再算一遍滑块的几何 —— 库里改了尺寸，这里跟着对。
+ *  样式与振动全在 `ui/row/AppScrollBar`：按住**滑块**那一下走通用振动通道（判据是那个 DOWN
+ *  有没有被滚动条 consume），按在轨道空白处不振。
  *
  * @param modifier 只用来传 `align`（调用点在 `Box` 里右对齐）
  */
-@OptIn(ExperimentalScrollBarApi::class)
 @Composable
 internal fun SettingsPage.PickerScrollBar(
     listState: LazyListState,
@@ -316,19 +305,14 @@ internal fun SettingsPage.PickerScrollBar(
     searchBandDp: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val tick = rememberTick()
-    VerticalScrollBar(
-        adapter = rememberScrollBarAdapter(listState),
+    //  样式与行为全在 `ui/row/AppScrollBar`（常亮、按住滑块走通用振动、轨道两端留白）；
+    //  这一层只管几何：贴右边、从「顶栏 + 搜索带」下沿开始画。
+    AppScrollBar(
+        listState = listState,
         modifier =
             modifier
                 .fillMaxHeight()
-                .padding(top = currentHeaderHeight(scrollBehavior) + searchBandDp)
-                .pointerInput(tick) {
-                    awaitEachGesture {
-                        //  `requireUnconsumed = false`：要的正是「**已经**被 consume」的那一次按下
-                        if (awaitFirstDown(requireUnconsumed = false).isConsumed) tick()
-                    }
-                },
+                .padding(top = currentHeaderHeight(scrollBehavior) + searchBandDp),
     )
 }
 

@@ -324,7 +324,7 @@ internal fun SettingsPage.bindingTargetsOf(s: Screen): List<BindingTarget>? =
             //  三击 / 四击 / 单击后长按那几页**跟着这颗键自己那几颗开关走**
             //  （`KeyConfig.extraClicksOn` / `clickThenLongOn`）：没开的档根本不存在，
             //  不是「存在但灰着」—— 页都少一页，带子上也不列。
-            GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn).map { BindingTarget.Key(id, it) }
+            GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn, key.doubleClickOn).map { BindingTarget.Key(id, it) }
         }
     }
 

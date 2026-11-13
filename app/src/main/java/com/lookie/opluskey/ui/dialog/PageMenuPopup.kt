@@ -34,7 +34,6 @@ import com.lookie.opluskey.ui.feedback.HINT_SLOT_DISABLED
 import com.lookie.opluskey.ui.feedback.TickHapticScope
 import com.lookie.opluskey.ui.feedback.hint
 import com.lookie.opluskey.ui.feedback.rememberTick
-import com.lookie.opluskey.ui.feedback.scrollBarTick
 import com.lookie.opluskey.ui.model.icon.PageIcons
 import com.lookie.opluskey.ui.model.page.MENU_ICON_SIZE
 import com.lookie.opluskey.ui.model.page.POPUP_PANEL_RADIUS
@@ -45,6 +44,8 @@ import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_DARK_ALPHA
 import com.lookie.opluskey.ui.model.theme.MENU_GROUP_LINE_LIGHT_ALPHA
 import com.lookie.opluskey.ui.model.theme.POPUP_FROSTED_ALPHA
 import com.lookie.opluskey.ui.model.theme.isDarkScheme
+import com.lookie.opluskey.ui.row.AppScrollBar
+import com.lookie.opluskey.ui.row.SECTION_TITLE_PAD_TOP
 import com.lookie.opluskey.ui.style.frosted
 import com.lookie.opluskey.ui.style.tinted
 import com.lookie.opluskey.ui.wire.GestureProbe
@@ -59,11 +60,8 @@ import io.github.suqi8.coui.kmp.basic.Icon
 import io.github.suqi8.coui.kmp.basic.ListPopupColumn
 import io.github.suqi8.coui.kmp.basic.ListPopupDefaults
 import io.github.suqi8.coui.kmp.basic.PreciseClickState
-import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
 import io.github.suqi8.coui.kmp.basic.preciseClickAnchor
 import io.github.suqi8.coui.kmp.basic.rememberPreciseClickState
-import io.github.suqi8.coui.kmp.basic.rememberScrollBarAdapter
-import io.github.suqi8.coui.kmp.interfaces.ExperimentalScrollBarApi
 import io.github.suqi8.coui.kmp.overlay.OverlayListPopup
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
@@ -350,46 +348,23 @@ private fun SettingsPage.MenuScrollBarLayer(
     modifier: Modifier,
 ) {
     Box(modifier, contentAlignment = Alignment.CenterEnd) {
-        MenuScrollBar(scrollState, Modifier.fillMaxHeight().width(SCROLLBAR_WIDTH))
+        //  通用那条（`AppScrollBar`：常亮 + 按住滑块走通用振动），几何由这里给 ——
+        //  面板右侧一条窄带、与面板同高。
+        AppScrollBar(
+            scrollState,
+            Modifier.fillMaxHeight().width(SCROLLBAR_WIDTH),
+            trackPadding = PaddingValues(vertical = MENU_SCROLLBAR_TRACK_PADDING),
+        )
     }
 }
 
 /**
- * 浮层右侧那条滚动条 —— 只在**这一列真的能滚**时出现（调用点按 `maxValue` 判），且**始终显示**：
- * 浮层那种面板里，滚动条不是「你滑动时给你的反馈」，而是「这下面还有内容」的唯一提示 ——
- * 按 COUI 默认那种「不碰它就淡出」等于没有提示（用户口径）。
+ * 菜单那条滚动条**轨道上下让出去的留白** —— 小标题上那一档再收 2dp。
  *
- *  与页面里那条（`PickerScrollBar`）同一套用法，差别只有两处：
- *   · 这里只占面板右侧一条窄带、与面板同高（由调用点给，见上）；
- *   · 按住滑块那一下同样走通用振动通道（[rememberTick]）—— 判据仍是「DOWN 有没有被库里 consume」，
- *     按在轨道空白处不振。
- *
- * @param scrollState 与 `ListPopupColumn` 共用的那一份（见调用点）
- * @param modifier 几何由调用点定（宽窄与高度见调用点那段注释）
+ *  取小标题那一档是为了与同一屏里的小标题对齐（同一套留白）；再收 2dp 是真机口径：
+ *  照抄 16dp 时拇指两端离面板边远了一点，看着像「没到头」（用户口径「多了点」）。
  */
-@OptIn(ExperimentalScrollBarApi::class)
-@Composable
-private fun SettingsPage.MenuScrollBar(
-    scrollState: ScrollState,
-    modifier: Modifier,
-) {
-    VerticalScrollBar(
-        adapter = rememberScrollBarAdapter(scrollState),
-        //  上下各让出一档：轨道与拇指都收在面板圆角之内，滑到顶 / 底时不会顶到那圈弧
-        trackPadding = PaddingValues(vertical = MENU_SCROLLBAR_TRACK_PADDING),
-        //  按住滑块 / 点轨道那一下的振动：判据收在 `Modifier.scrollBarTick`，与更新弹窗共用
-        modifier = modifier.scrollBarTick(),
-        alwaysVisible = true,
-    )
-}
-
-/**
- * 滚动条轨道上下让出去的留白 —— 8dp（`trackPadding`，库自带的那一档）。
- *
- *  面板圆角是 [POPUP_PANEL_RADIUS]：轨道贴着边画时，拇指滑到顶 / 底会压在那圈弧上，
- *  看起来像「滑出面板」。上下各收一档，两端都停在圆角之内。
- */
-private val MENU_SCROLLBAR_TRACK_PADDING = 8.dp
+private val MENU_SCROLLBAR_TRACK_PADDING = SECTION_TITLE_PAD_TOP - 2.dp
 
 /**
  * 一列菜单的**内容** —— 先把调用方那份「只有行与小标题」的列表展开成「内容 + 分隔」的展示序列

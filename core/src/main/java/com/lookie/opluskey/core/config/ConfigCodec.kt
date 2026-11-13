@@ -120,6 +120,21 @@ object ConfigCodec {
      *  46 = `GlobalDto` 多了 `common_commands`（「常用命令」那张**用户自己的清单**）——
      *       老文件缺这一格是 `null`（= 用模块自带那几条），与「进过那一页又全删了」的空表分得开。
      *
+     *  47 = `KeyDto` 多了 `combo_only` / `wait_multi_window`（**只参与组合** / **逐次等满多击窗口**）——
+     *       两位都默认「关」，老文件缺它们与这一位出现之前完全一致。
+     *
+     *  48 = `KeyDto` 多了 `multi_wait_ms`（**逐次等满那一档自己的窗口**）——
+     *       老文件缺这一格是 `null`，按 0 读；0 = 跟随「单击延迟」，
+     *       所以升级之后「开着等满」的键手感一字不差（见 `KeyConfig.multiWaitMs`）。
+     *
+     *  49 = `KeyDto` 多了 `double_click_on`（**双击这一档开着没有**）——
+     *       老文件缺这一格是 `null`，按「开」读（与这一位出现之前一致，不需要迁移）。
+     *
+     *  50 = **删了** `KeyDto.instant_single` / `GlobalDto.instant_single`（**忽视无操作双击手势**）——
+     *       这一位管的是「双击没绑动作时不等窗口」，而「启用双击」关掉之后判定本来就只数到一击、
+     *       抬手即判，两件事重合。老文件里那一格按未知键丢掉（`ignoreUnknownKeys`）。
+     *       **删字段同样是改 DTO**：重编码少了那一格，md5 与旧文件对不上，所以必须抬这一位。
+     *
      *
      *  注意 **往 [ConfigDto] 加字段必须同一次改动里抬这个数**：下面 [digestMatches] 的口径是
      *  「按**当前** DTO 重新编码算 md5」，`encodeDefaults = true` 会把新字段写进重编码结果 ——
@@ -127,7 +142,7 @@ object ConfigCodec {
      *  被判读不懂**（页面只读、注入侧不接管，表现就是「配置读不出来」）。`extra_clicks` 这一轮
      *  就漏抬过一次，症状与 v3 那次一模一样。
      */
-    const val VERSION = 47
+    const val VERSION = 50
 
     /** 拼十六进制用，见 [md5Hex]。 */
     private const val HEX = "0123456789abcdef"

@@ -292,7 +292,8 @@ private fun SettingsPage.profileManageRows(
         },
         MenuEntry.Row(
             title = I18n.get(Strings.PROFILE_RENAME, "重命名"),
-            icon = PageIcons.ProfileRename,
+            //  与「重命名按键」「常用命令改名」同一颗（全项目所有改名共用一个记号）
+            icon = PageIcons.MenuRename,
             //  默认配置的名字空着就是它的身份（见 `Config.isDefaultProfile`）：改了名之后
             //  「升级时落下的退路」在列表里就认不出来了 —— 所以这一行在默认配置上直接灰掉。
             //  置灰行必须带自己的说法：不给的话点了会弹**整页那条**（「这一页现在为什么改不了」），

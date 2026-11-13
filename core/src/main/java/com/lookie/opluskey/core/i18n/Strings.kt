@@ -100,19 +100,32 @@ object Strings {
     /** 侧键不可改名 / 不可删 —— 那两行在菜单里是禁用的，点一下要说清为什么。 */
     const val BINDING_SIDE_KEY_NO_RENAME = "binding.side_key_no_rename"
     const val BINDING_SIDE_KEY_NO_DELETE = "binding.side_key_no_delete"
-    const val BINDING_DOUBLE_CLICK_WAIT = "binding.double_click_wait"
 
     /**
-     * 「忽视无操作双击手势」那行开关的副标题 —— **开 / 关各一句**，两句都说「现在是什么行为」，
-     * 不写「关掉会怎样」（全项目 switch 副标题同一条口径，见 `SwitchRow` 的说明）。
+     * 「固定窗口起点」那行开关（开 / 关各一句副标题）—— 见 `KeyConfig.waitMultiWindow`。
+     *
+     *  **这一颗的界面态与存储位是反的**（开着 = 收集多击 = `waitMultiWindow = false`），
+     *  取反只在 `BindingSettings` 那一行做，别在别处再翻一次。
      */
-    const val BINDING_INSTANT_SINGLE_OFF = "binding.instant_single_off"
-    const val BINDING_INSTANT_SINGLE_ON = "binding.instant_single_on"
-
-    /** 「逐次等满多击窗口」那行开关（开 / 关各一句副标题）—— 见 `KeyConfig.waitMultiWindow`。 */
     const val BINDING_WAIT_MULTI_WINDOW = "binding.wait_multi_window"
     const val BINDING_WAIT_MULTI_WINDOW_ON = "binding.wait_multi_window_on"
     const val BINDING_WAIT_MULTI_WINDOW_OFF = "binding.wait_multi_window_off"
+
+    /**
+     * 「等待窗口」那一根 —— 两根值（单击延迟 / 多击窗口）共用的一根滑杆。
+     *
+     *  副标题只说明「这一根是给上面那颗判定时机用的」，不复述开 / 关各自的语义：那两句在
+     *  上面那颗开关的副标题里已经写着，同一件事在两个地方各说一遍迟早对不上。
+     */
+    const val BINDING_WAIT_WINDOW = "binding.wait_window"
+    const val BINDING_WAIT_WINDOW_DESC = "binding.wait_window_desc"
+
+    /**
+     * 两根窗口滑杆灰着被点一下时说的话 —— 这颗键**一个多击手势都没开**，窗口没有可等的对象。
+     *
+     *  与「先打开使用独立设置」那类提示同一个格式（一句「下一步该做什么」），不解释判定流程。
+     */
+    const val BINDING_NO_MULTI_GESTURE = "binding.no_multi_gesture"
 
     /** 「只参与组合按键」那行开关（开 / 关各一句副标题）—— 见 `KeyConfig.comboOnly`。 */
     const val BINDING_COMBO_ONLY = "binding.combo_only"
@@ -129,12 +142,6 @@ object Strings {
      *  同宽，太长会把标题挤掉一截。
      */
     const val BINDING_COMBO_ONLY_BADGE = "binding.combo_only_badge"
-
-    /**
-     * 这颗键还配了更高的击数（三击 / 四击）时，上面那两句的替代 —— 那时第二下既不算单击、
-     * 也不是「不生效」。
-     */
-    const val BINDING_HIGHER_CLICKS_NOTE = "binding.higher_clicks_note"
 
     const val BINDING_LONG_PRESS_DELAY_DESC = "binding.long_press_delay_desc"
     const val BINDING_LONG_PRESS_DELAY_TITLE = "binding.long_press_delay_title"
@@ -246,6 +253,17 @@ object Strings {
 
     /** 行菜单里那一项：这一条要不要出现在按键绑定页。 */
     const val COMMON_COMMANDS_SHOW_IN_BINDING = "common_commands.show_in_binding"
+
+    /**
+     * 行菜单里那一项（**固定档**）—— 常用命令一律显示在按键绑定页，这一项只是结论、不能切。
+     *
+     *  与 [COMMON_COMMANDS_SHOW_IN_BINDING] 分开两条：那一条是问句（要不要显示），
+     *  这一条是陈述（固定显示）。同一个标题下挂两种语气，用户会去找「怎么点都没反应」的原因。
+     */
+    const val COMMON_COMMANDS_SHOW_IN_BINDING_FIXED = "common_commands.show_in_binding_fixed"
+
+    /** 点那一行（不可切换）时说的那句：为什么点不动。 */
+    const val COMMON_COMMANDS_SHOW_IN_BINDING_LOCKED = "common_commands.show_in_binding_locked"
 
     /** 行菜单里那一项：从清单里拿掉。 */
     const val COMMON_COMMANDS_REMOVE = "common_commands.remove"
@@ -1296,6 +1314,14 @@ object Strings {
     /** 「独立设置」页最上面那组的标题 —— 三击 / 四击 / 单击后长按：这一档有哪几种多击形态。 */
     const val KEY_SETTINGS_MULTI_CLICK = "key_settings.multi_click"
 
+    /**
+     * 「独立设置」页第二组的标题 —— 单击那三行（判定时机 / 单击延迟 / 忽视无操作双击手势）。
+     *
+     *  它们原先在「按键绑定」页的单击档下面，与「多击手势」分属两页；挪过来之后与那一组并列：
+     *  一组说「有几档」，一组说「单击这一档怎么判」。
+     */
+    const val KEY_SETTINGS_CLICK = "key_settings.click"
+
     /** 下面那几行灰着被点一下时说的话 —— 「先打开上面那颗总开关」。 */
     const val KEY_SETTINGS_NEED_OWN = "key_settings.need_own"
     const val SETTING_USE_OWN = "key_settings.use_own"
@@ -1311,6 +1337,9 @@ object Strings {
      *  为什么分成两颗而不是收成一个：两者的代价不一样 —— 开三击让单击多等一个窗，
      *  开四击还要让三击也等。只要三击的人不该被迫接受四击那一份延迟。
      */
+    const val SETTING_CLICK2 = "key_settings.click2"
+    const val SETTING_CLICK2_ON = "key_settings.click2_on"
+    const val SETTING_CLICK2_OFF = "key_settings.click2_off"
     const val SETTING_CLICK3 = "key_settings.click3"
     const val SETTING_CLICK3_ON = "key_settings.click3_on"
     const val SETTING_CLICK3_OFF = "key_settings.click3_off"
@@ -1388,10 +1417,7 @@ object Strings {
     const val MORE_SIGNATURE_UNKNOWN = "more.signature_unknown"
     const val NAV_RECENTS = "nav.recents"
     const val PANEL_POWER_MENU = "panel.power_menu"
-    const val SETTING_DOUBLE_CLICK_DELAY = "setting.double_click_delay"
     const val SETTING_ENABLE_BINDING = "setting.enable_binding"
-    const val SETTING_IGNORE_DOUBLE_CHAIN = "setting.ignore_double_chain"
-    const val SETTING_IGNORE_DOUBLE = "setting.ignore_double"
     const val SETTING_KEY_BINDING = "setting.key_binding"
 
     /**

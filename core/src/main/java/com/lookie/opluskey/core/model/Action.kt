@@ -844,6 +844,22 @@ sealed interface Action {
         }
 
         /**
+         * 前缀后面还有没有正文 —— 「只写了 `shell:`」这种不算内容。
+         *
+         *  与 [hasSupportedFormat] 分工：那个只回答「前缀认不认得」，这个回答「认得之后还有没有
+         *  东西可执行」。**两道一起用**才是「这条命令能不能测」的完整判据：只写前缀的文本
+         *  过了格式闸，派下去却是一条空命令 —— 用户看到的是「点了测试、什么都没发生」。
+         *
+         *  `none` 这类没有前缀的字面量按非空处理：它表达的是「有值但不做」，不是「没写」。
+         */
+        fun hasBody(raw: String?): Boolean {
+            val text = raw?.trim().orEmpty()
+            if (text.isEmpty()) return false
+            val prefix = prefixOf(text) ?: return true
+            return text.removePrefix(prefix).trim().isNotEmpty()
+        }
+
+        /**
          * 这段文本开头那个**支持的前缀**（`shell:` / `keyevent:` …）；没有前缀、认不出时返回 `null`。
          *
          *  与 [hasSupportedFormat] 同一份 [PREFIXES]：格式列表点一下要「只换前缀、正文留着」时，

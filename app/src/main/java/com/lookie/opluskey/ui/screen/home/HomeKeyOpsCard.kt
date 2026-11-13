@@ -33,7 +33,7 @@ internal fun SettingsPage.HomeKeyOpsCard(pageEnabled: Boolean) {
 }
 
 /**
- * 「按键功能」那一行。
+ * 「按键列表」那一行。
  *
  *  副标题只有一句「这一页里有什么」：原来还分一档「已添加 N 组」，那是**统计**而不是入口的
  *  说明（用户口径：去掉那个小标题）—— 配了几组进去就看得见，不必在首页报数。
@@ -41,13 +41,13 @@ internal fun SettingsPage.HomeKeyOpsCard(pageEnabled: Boolean) {
  */
 private fun SettingsPage.keysEntryRow(pageEnabled: Boolean): CardRow.Item =
     CardRow.Item(
-        title = I18n.get(Strings.KEYS_ENTRY, "按键功能"),
+        title = I18n.get(Strings.KEYS_ENTRY, "按键列表"),
         summary = I18n.get(Strings.KEYS_ENTRY_DESC, "按键列表与组合按键"),
-        icon = PageIcons.MenuKeyFinger,
+        icon = PageIcons.MenuKeyList,
         enabled = pageEnabled,
         arrow = true,
         onClick = {
-            XLog.w("首页：进「按键功能」页")
+            XLog.w("首页：进「按键列表」页")
             navTo(Screen.KEYS)
         },
     )

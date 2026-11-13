@@ -48,11 +48,9 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Download
 import io.github.lyxnx.compose.ui.tablericons.outline.Edit
 import io.github.lyxnx.compose.ui.tablericons.outline.Eraser
 import io.github.lyxnx.compose.ui.tablericons.outline.ExternalLink
-import io.github.lyxnx.compose.ui.tablericons.outline.EyeCancel
 import io.github.lyxnx.compose.ui.tablericons.outline.EyeCog
 import io.github.lyxnx.compose.ui.tablericons.outline.FileDownload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileMinus
-import io.github.lyxnx.compose.ui.tablericons.outline.FilePencil
 import io.github.lyxnx.compose.ui.tablericons.outline.FilePlus
 import io.github.lyxnx.compose.ui.tablericons.outline.FileUpload
 import io.github.lyxnx.compose.ui.tablericons.outline.FileX
@@ -76,6 +74,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Infinity2
 import io.github.lyxnx.compose.ui.tablericons.outline.Keyboard
 import io.github.lyxnx.compose.ui.tablericons.outline.LabelImportant
 import io.github.lyxnx.compose.ui.tablericons.outline.Link
+import io.github.lyxnx.compose.ui.tablericons.outline.ListDetails
 import io.github.lyxnx.compose.ui.tablericons.outline.Lock
 import io.github.lyxnx.compose.ui.tablericons.outline.LockOpen
 import io.github.lyxnx.compose.ui.tablericons.outline.Logs
@@ -93,6 +92,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Pencil
 import io.github.lyxnx.compose.ui.tablericons.outline.PencilCog
 import io.github.lyxnx.compose.ui.tablericons.outline.Photo
 import io.github.lyxnx.compose.ui.tablericons.outline.PictureInPictureOn
+import io.github.lyxnx.compose.ui.tablericons.outline.Pin
 import io.github.lyxnx.compose.ui.tablericons.outline.PlugConnected
 import io.github.lyxnx.compose.ui.tablericons.outline.Plus
 import io.github.lyxnx.compose.ui.tablericons.outline.Pointer
@@ -132,6 +132,7 @@ import io.github.lyxnx.compose.ui.tablericons.outline.Trash
 import io.github.lyxnx.compose.ui.tablericons.outline.UserScreen
 import io.github.lyxnx.compose.ui.tablericons.outline.UsersGroup
 import io.github.lyxnx.compose.ui.tablericons.outline.Versions
+import io.github.lyxnx.compose.ui.tablericons.outline.Window
 import io.github.lyxnx.compose.ui.tablericons.outline.World
 import io.github.lyxnx.compose.ui.tablericons.outline.X
 import io.github.lyxnx.compose.ui.tablericons.outline.ZoomIn
@@ -261,6 +262,14 @@ internal object PageIcons {
     /** 浮层菜单「打开默认界面」—— 窗口框，读作「另一个界面」。 */
     val MenuStock: ImageVector get() = TablerIcons.Outline.AppWindow
 
+    /**
+     * 「固定窗口起点」那一行的行首 —— `window`（一个窗口框）。
+     *
+     *  原先用 `Click`（一根手指点）：那一颗说的是「单击」这件事，而这一行管的是**收集窗口**
+     *  —— 窗口内数到的多击算一次触发。字形跟着「窗口」这件事走，标题读起来才对得上。
+     */
+    val CollectWindow: ImageVector get() = TablerIcons.Outline.Window
+
     /** 浮层菜单「重置配置」—— `eraser`（橡皮擦）。 */
     val MenuReset: ImageVector get() = TablerIcons.Outline.Eraser
 
@@ -305,15 +314,15 @@ internal object PageIcons {
     val MenuKeyAdd: ImageVector get() = TablerIcons.Outline.Plus
 
     /**
-     * 首页「按键操作」卡那一行「按键功能」（指向「按键功能」页）—— `hand-finger`（一根手指）。
+     * 首页「按键操作」卡那一行「按键列表」（指向按键列表页）—— `list-details`（一份带条目的清单）。
      *
-     *  用户口径指定这一颗：这一行现在说的是**按键本身**（那一页里有按键列表与组合按键），
-     *  不再是「两颗键一起按」；⌘ 那种桌面组合键符号手机上不出现在任何系统界面里，不用。
+     *  用户口径指定这一颗：那一行说的是「点进去看清单」（按键列表 + 组合按键），
+     *  清单字形比手指更贴 —— 手指说的是「按下」，而这一行是「去哪儿」。
      *
      *  页内那两处（列表的空态行、设置卡的行首）用全项目通用那颗空态字形
      *  （[NoMatch]，`mood-empty`）—— 那里说的是「这一类东西 / 还没配」，不是「按键」。
      */
-    val MenuKeyFinger: ImageVector get() = TablerIcons.Outline.HandFinger
+    val MenuKeyList: ImageVector get() = TablerIcons.Outline.ListDetails
 
     /**
      * 场景块里那三档动作行的行首 —— **一档一颗手势字形**（用户指定）：
@@ -324,7 +333,7 @@ internal object PageIcons {
      *  那两个字能区分。手势是这一行的骨架 —— 换成手势字形之后，一列看下去先认出
      *  「这一行是哪一档」，再看它右边写的是什么。
      *
-     *  与 [MenuKeyFinger] 同形但各留一份名字：那一颗说的是「按键功能」这个去处。
+     *  与 [MenuKeyList] 不同名也不同形：那一颗说的是「按键列表」这个去处。
      */
     fun gestureIcon(gesture: Gesture): ImageVector =
         when (gesture) {
@@ -596,13 +605,12 @@ internal object PageIcons {
     /** **新建配置** —— `file-plus`：加一份。 */
     val ProfileAdd: ImageVector get() = TablerIcons.Outline.FilePlus
 
-    //  配置菜单里**对某一份动手**的那三行 —— 重命名 / 重置 / 删除，与 [ProfileAdd] 同一套形状
-    //  （一张纸 + 中间那一笔）：四行摆在一起读得出「这一组改的都是同一份配置」，只差中间那一笔。
-    //  与浮层菜单里那两颗通用的 [MenuRename]（`edit`）/ [MenuReset]（`eraser`）分开：那两颗服务的是
-    //  「按键改名」「命令 / 首页重置」，对象不是一份配置，混用会把两件事画成一个记号。
-
-    /** **重命名配置** —— `file-pencil`：改这一份的名字。 */
-    val ProfileRename: ImageVector get() = TablerIcons.Outline.FilePencil
+    //  配置菜单里**对某一份动手**的那两行 —— 重置 / 删除，与 [ProfileAdd] 同一套形状
+    //  （一张纸 + 中间那一笔）：摆在一起读得出「这一组改的都是同一份配置」，只差中间那一笔。
+    //
+    //  「重命名」不在这套形状里：全项目所有「改名」都用 [MenuRename]（`edit`）—— 按键改名、
+    //  常用命令改名、配置改名是同一个动作，同一个记号（用户口径「重命名图标统一用重命名按键的那个」）。
+    //  原先这里有一颗 `file-pencil`（[ProfileRename]），与按键菜单那颗并存，同一件事长出两种长相。
 
     /** **重置配置** —— `file-minus`：把这一份的内容清空（纸还在，内容没了）。 */
     val ProfileReset: ImageVector get() = TablerIcons.Outline.FileMinus
@@ -650,6 +658,15 @@ internal object PageIcons {
      *  与 [CommonCommands]（`eye-cog`，管露不露）分工清楚 —— 一个开关一个去处，字形不重。
      */
     val CommonCommandsManage: ImageVector get() = TablerIcons.Outline.Notes
+
+    /**
+     * 「固定显示在按键绑定页」—— `pin`（一枚图钉）。
+     *
+     *  这一项**不再是开关**：常用命令一律出现在按键绑定页那段里（用户口径「改成固定」），
+     *  所以字形要表达的是「钉住了」而不是「可以选择要不要」。原先借的是 [CommonCommands]
+     *  那颗 `eye-cog`，那是「这一段露不露」的开关字形，用在一个不可切换的结论上会让人去点它。
+     */
+    val PinnedInBinding: ImageVector get() = TablerIcons.Outline.Pin
 
     /**
      * 「图标」那一行的行首 —— `photo`（用户指定）。
@@ -960,15 +977,6 @@ internal object PageIcons {
 
     /** 「命令间隔时长」—— `clock-hour-4`（指到四点的钟：等一段时间再走下一步）。 */
     val DelayStep: ImageVector get() = TablerIcons.Outline.ClockHour4
-
-    /**
-     * 「忽视无操作双击手势」行的行首 —— `eye-cancel`（眼睛带叉，读作「不认这次双击」；
-     *  这套 Tabler 里没有 `eye-x`，`eye-cancel` 是同一颗字形）。
-     *
-     *  原来用的是 `Bolt`（闪电），读起来像「立刻触发 / 加速」，而这一行管的是**不承认**那个手势，
-     *  语义正好反了。
-     */
-    val IgnoreDouble: ImageVector get() = TablerIcons.Outline.EyeCancel
 
     /** 模块重启 —— `Reload`（回转箭头 + 竖线），读作「重新来一遍」。 */
     val ModuleRestart: ImageVector get() = TablerIcons.Outline.Reload

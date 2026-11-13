@@ -283,7 +283,6 @@ private fun SettingsPage.CommonCommandsMenu(
     val cmd = list.firstOrNull { it.token == st.menuToken }
     rowMenu(
         cmd = cmd,
-        list = list,
         anchor = cmd?.let { anchors[it.token] } ?: st.coldAnchor,
         onDismiss = { st.menuToken = null },
         onRename = {
@@ -392,7 +391,8 @@ private fun SettingsPage.renameDialog(
         show = cmd != null,
         title = I18n.get(Strings.COMMON_COMMANDS_RENAME, "重命名"),
         label = I18n.get(Strings.COMMON_COMMANDS_RENAME_LABEL, "名称"),
-        icon = PageIcons.CommandEdit,
+        //  与「重命名按键」「重命名配置」同一颗（全项目所有改名共用一个记号）
+        icon = PageIcons.MenuRename,
         initial = cmd?.name.orEmpty(),
         //  空 = 回到动作自带的名字（`CommonCommands.displayName` 那一套），所以允许空
         allowEmpty = true,
@@ -528,27 +528,27 @@ private fun commonCommandRow(
         //  自带那几条有自己的小字；用户自己收录的动作没有（小字里塞 token 只是噪音）
         summary = CommonCommands.entryOf(cmd.token)?.let { I18n.get(it.summaryKey, it.summaryFallback) },
         icon = commonCommandIcon(cmd.token),
-        //  在按键绑定页不显示的那几条压一档色：一眼能看出哪些不会出现在绑定页
+        //  这一行**不再压暗**：常用命令一律显示在按键绑定页（那一项已改成固定），
+        //  清单里于是没有「不会出现」的那一档，压色会让每条都像被停用。
         enabled = enabled,
-        titleTint = if (cmd.showInBinding) null else COUITheme.colorScheme.onSurfaceVariantSummary,
         arrow = true,
         modifier = Modifier.preciseClickAnchor(anchor),
         onClick = onOpenMenu,
     )
 
 /**
- * 那一行点开的三项 —— 改名、切「在按键绑定页显示」、移除。
+ * 那一行点开的三项 —— 改名、「固定显示在按键绑定页」、移除。
  *
  *  `cmd == null` = 关着，此时给**空行表**而不是整支不画：`PageMenu` 的开关就是「行表空不空」，
  *  而退场那两百毫秒里的内容与锚点由 `MenuPopup` 自己保住 —— 在这里 `if (cmd == null) return`
  *  的话菜单是「啪」地消失的（用户口径「菜单消失没有动画」）。
  *
- *  `showInBinding` 那一行的对勾照当前这一条画；关着的时候画不到（行表为空）所以不影响退场。
+ *  中间那一项**已经不可切**（`enabled = false`）：常用命令一律出现在按键绑定页，这条只是把
+ *  结论摆出来 —— 所以关着的时候也不必特判，行表本身为空就画不到。
  */
 @Composable
 private fun SettingsPage.rowMenu(
     cmd: CommonCommand?,
-    list: List<CommonCommand>,
     anchor: PreciseClickState,
     onDismiss: () -> Unit,
     onRename: (CommonCommand) -> Unit,
@@ -562,21 +562,28 @@ private fun SettingsPage.rowMenu(
                 listOf(
                     MenuEntry.Row(
                         title = I18n.get(Strings.COMMON_COMMANDS_RENAME, "重命名"),
-                        icon = PageIcons.CommandEdit,
+                        //  与「重命名按键」「重命名配置」同一颗（全项目所有改名共用一个记号）
+                        icon = PageIcons.MenuRename,
                     ) {
                         onRename(cmd)
                     },
+                    //  **固定项，不是开关**：常用命令一律出现在按键绑定页那一段里（用户口径
+                    //  「改成固定」），所以这一行只是结论 —— 留着是为了让人看得见它会出现在哪，
+                    //  而不是让他二选一。`enabled = false` + 那句 `disabledHint`：点一下就说清
+                    //  为什么切不动，比一个点了没反应的勾选行诚实。
+                    //
+                    //  字形从 `eye-cog` 换成 `pin`（[PageIcons.PinnedInBinding]）：`eye-cog` 是
+                    //  「露不露」的开关字形，挂在一个不可切换的结论上会招手让人去点它。
                     MenuEntry.Row(
-                        title = I18n.get(Strings.COMMON_COMMANDS_SHOW_IN_BINDING, "显示在按键绑定页"),
-                        icon = PageIcons.CommonCommands,
-                        //  行首换成对勾 = 现在**会**出现在那一段（与别处的勾选行同一个读法）
-                        selected = cmd.showInBinding,
-                    ) {
-                        onDismiss()
-                        setCommonCommands(
-                            list.map { row -> if (row.token == cmd.token) row.copy(showInBinding = !row.showInBinding) else row },
-                        )
-                    },
+                        title = I18n.get(Strings.COMMON_COMMANDS_SHOW_IN_BINDING_FIXED, "固定"),
+                        icon = PageIcons.PinnedInBinding,
+                        enabled = false,
+                        disabledHint =
+                            I18n.get(
+                                Strings.COMMON_COMMANDS_SHOW_IN_BINDING_LOCKED,
+                                "常用命令始终显示",
+                            ),
+                    ) {},
                     MenuEntry.Row(
                         title = I18n.get(Strings.COMMON_COMMANDS_REMOVE, "移除"),
                         icon = PageIcons.CommandDelete,

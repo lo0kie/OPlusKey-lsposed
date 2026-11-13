@@ -76,6 +76,34 @@ internal fun injectKeyFromSystem(
 }
 
 /**
+ * 补发一次**原生短按** —— 只给「只参与组合」那颗键收尾用（见 `SideKeyInterceptor` 的
+ * `scheduleComboOnlyFallback`）。
+ *
+ * ## 为什么不能复用 [injectKeyFromSystem]
+ *
+ *  那一条是**外部可达**的入口（一条广播里的整数进来就能让 system_server 代替按键），所以它
+ *  卡着 [KeyId.INJECTABLE_CODES] 白名单。这里正相反：它补的是「用户刚刚真的按过的那一颗」，
+ *  键码由按键路径自己带过来、外部给不出 —— 白名单在这里只会挡住正常使用。
+ *  安全性来自调用方，不来自这张表；所以它是 `internal` 且没有任何广播入口指向它。
+ *
+ * ## 为什么是 ASYNC
+ *
+ *  [injectKeyFromSystem] 用 `WAIT_FOR_FINISH` 是因为截图要读结果码；这里只要「事件交出去」，
+ *  而调用点在主 looper 的延迟任务上 —— 等它处理完就是把界面卡住一下。
+ *
+ * @return 提交出去了没有（异步投递，不代表系统已经处理）
+ */
+internal fun injectNativeShortPress(keyCode: Int): Boolean {
+    if (keyCode <= 0) return false
+    val manager = inputManager(null) ?: return false
+    val now = SystemClock.uptimeMillis()
+    // 5 参构造是公开 API（见 `injectKeyFromSystem` 里那段）
+    injectOnce(manager, KeyEvent(now, now, KeyEvent.ACTION_DOWN, keyCode, 0), keyCode, INJECT_MODE_ASYNC)
+    injectOnce(manager, KeyEvent(now, now, KeyEvent.ACTION_UP, keyCode, 0), keyCode, INJECT_MODE_ASYNC)
+    return true
+}
+
+/**
  * 下发一次事件，并按**真实的结果码**留判据。
  *
  * `InputManager.injectInputEvent` 返回的是 `InputEventInjectionResult`：
@@ -92,13 +120,16 @@ internal fun injectKeyFromSystem(
  *  原实现把 `0` 当「失败」、`1` 当「成功」，注释还写着「0 = RESULT_FAILED」—— 于是
  *  **真正失败的那一次（返回 1）反而一行日志都不打**：用户看到的是「请注入侧注入」之后
  *  什么都没有，像是注入成功、屏幕没反应。判据方向错了，比没有判据更难查。
+ *
+ * @param mode 见 [INJECT_MODE_WAIT_FOR_FINISH] / [INJECT_MODE_ASYNC]
  */
 private fun injectOnce(
     manager: Any,
     event: KeyEvent,
     keyCode: Int,
+    mode: Int = INJECT_MODE_WAIT_FOR_FINISH,
 ) {
-    val r = Reflect.call(manager, Framework.Calls.INJECT_INPUT_EVENT, event, INJECT_MODE_WAIT_FOR_FINISH)
+    val r = Reflect.call(manager, Framework.Calls.INJECT_INPUT_EVENT, event, mode)
     when {
         r == null -> {
             XLog.w("注入侧注入：injectInputEvent 没返回（方法没匹配上）：keyevent:$keyCode")
@@ -180,6 +211,9 @@ private var cachedManager: Any? = null
  *  `INPUT_EVENT_INJECTION_FAILED`，看着像注入失败。
  */
 private const val INJECT_MODE_WAIT_FOR_FINISH = 2
+
+/** `INJECT_INPUT_EVENT_MODE_ASYNC` —— 投出去就返回，不等结果（补发原生短按用它）。 */
+private const val INJECT_MODE_ASYNC = 0
 
 /** `InputEventInjectionResult.INPUT_EVENT_INJECTION_SUCCEEDED` —— 只有它算注入成功。 */
 private const val INPUT_EVENT_INJECTION_SUCCEEDED = 0

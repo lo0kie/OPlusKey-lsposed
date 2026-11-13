@@ -102,6 +102,17 @@ internal fun SettingsPage.KeySettingsScreen(
                 cfg = cfg,
                 enabled = pageEnabled,
             )
+
+            //  —— 单击那三行（判定时机 / 单击延迟 / 忽视无操作双击手势）——
+            //  原先挂在「按键绑定」页单击档下面（`BindingSections`），按用户口径整张挪到这里：
+            //  它们改的都是**这颗键怎么判单击**，与上面那组「有几档」是同一片页面的事。
+            //  一处入口也就顺带消掉了「同一个参数在绑定页和独立设置页各有一个能改的地方」。
+            //  「只参与组合按键」时跟着上面那张卡一起灰（这颗键不判单键手势，这些参数没处用）。
+            SectionTitle(I18n.get(Strings.KEY_SETTINGS_CLICK, "单击"))
+            BindingSettingsCard(
+                keyId = target.id,
+                enabled = pageEnabled && !comboOnly,
+            )
         }
 
         //  一个小标题带一张卡（与「按键设置」页同构）—— 页面顶部不再另放一个与顶栏同名的
@@ -162,8 +173,11 @@ private fun SettingsPage.ExtraClicksCard(
         rows =
             listOf(
                 //  「只参与组合按键」排在这一族的最前面：它决定这颗键**还算不算一颗单键** ——
-                //  开着时下面那三档配了也没处执行（绑定页整页灰，见 `bindingTargetEnabled`）。
+                //  开着时下面那几档配了也没处执行（绑定页整页灰，见 `bindingTargetEnabled`）。
                 comboOnlyRow(target, key, enabled),
+                //  双击排在三击上面：档位由少到多，与绑定页的页序（单击 / 双击 / 长按 / 三击）同一方向。
+                //  它是**基础档**（默认开），与三击 / 四击那种「要自己要」的档位只是同一张卡里的邻居。
+                doubleClickOnRow(target, key, restEnabled),
                 extraClickRow(target, key, COUNT3, restEnabled),
                 extraClickRow(target, key, COUNT4, restEnabled),
                 clickThenLongRow(target, key, restEnabled),
@@ -233,6 +247,40 @@ private fun SettingsPage.clickThenLongRow(
         val what = "own_settings target=${settingsTargetLabel(target)} click_then_long=${if (on) 1 else 0}"
         writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
             switchNotice(I18n.get(Strings.SETTING_CLICK_THEN_LONG, "启用单击后长按"), on)
+        }
+    }
+
+/**
+ * 「启用双击」那一行 —— 双击这一档存不存在（见 `KeyConfig.doubleClickOn`）。
+ *
+ *  与下面三击 / 四击那两颗同一族（**不吃** `useOwnSettings`：公共设置里没有「多击」这一项），
+ *  只是它默认**开着** —— 双击是基础档，不像三击 / 四击那样会让单击白等窗口。
+ *
+ *  关掉之后：绑定页不再排双击那一页（`GestureTrigger.slotsOn` 按这一位过滤），判定侧最高只数到
+ *  一击，第二下按下就是新的一轮。表里配过的动作留着，再打开原样回来。
+ */
+@Composable
+private fun SettingsPage.doubleClickOnRow(
+    target: SettingsTarget.Key,
+    key: KeyConfig,
+    enabled: Boolean,
+): CardRow =
+    CardRow.Switch(
+        title = I18n.get(Strings.SETTING_CLICK2, "启用双击"),
+        summaryOn = I18n.get(Strings.SETTING_CLICK2_ON, "双击可绑定动作"),
+        summaryOff = I18n.get(Strings.SETTING_CLICK2_OFF, "不识别双击"),
+        //  字形与三击 / 四击同一个来源（`gestureIcon`）：这两行说的就是「要不要多出这一档」。
+        icon = PageIcons.gestureIcon(GestureTrigger.Click(2)),
+        checked = key.doubleClickOn,
+        enabled = enabled,
+    ) { on ->
+        //  与上面几行同一条：现读一次再改这一格，只动这一位
+        val cfgNow = configState.config.value
+        val keyNow = cfgNow.key(target.id)
+        val cfgNext = cfgNow.copy(keys = cfgNow.keys + (target.id to keyNow.copy(doubleClickOn = on)))
+        val what = "own_settings target=${settingsTargetLabel(target)} double_click=${if (on) 1 else 0}"
+        writeAndNotice(cfgNext, what, slot = HINT_SLOT_OWN_SETTINGS) {
+            switchNotice(I18n.get(Strings.SETTING_CLICK2, "启用双击"), on)
         }
     }
 

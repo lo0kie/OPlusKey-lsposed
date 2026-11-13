@@ -37,16 +37,13 @@ import com.lookie.opluskey.ui.dialog.FrostedDialog
 import com.lookie.opluskey.ui.dialog.dialogSideMargin
 import com.lookie.opluskey.ui.feedback.LocalTick
 import com.lookie.opluskey.ui.feedback.hint
-import com.lookie.opluskey.ui.feedback.scrollBarTick
 import com.lookie.opluskey.ui.input.markdownToAnnotated
 import com.lookie.opluskey.ui.model.page.SCROLLBAR_WIDTH
+import com.lookie.opluskey.ui.row.AppScrollBar
 import com.lookie.opluskey.ui.screen.home.openUrl
 import com.lookie.opluskey.ui.state.host.UpdateState
 import io.github.suqi8.coui.kmp.basic.Checkbox
 import io.github.suqi8.coui.kmp.basic.Text
-import io.github.suqi8.coui.kmp.basic.VerticalScrollBar
-import io.github.suqi8.coui.kmp.basic.rememberScrollBarAdapter
-import io.github.suqi8.coui.kmp.interfaces.ExperimentalScrollBarApi
 import io.github.suqi8.coui.kmp.theme.COUITheme
 
 // 「发现新版本」那个窗 —— 启动自检查到有新版才弹（见 `ui/state/host/UpdateState.kt`）。
@@ -141,7 +138,6 @@ internal fun SettingsPage.UpdateDialog() {
  *  高度按「约十行」给；滚动条只在真的能滚时出现（`maxValue > 0`），且**常显**：它在这里是
  *  「下面还有」的提示，不是滑动反馈（与浮层菜单那条同一个理由，见 `PageMenuPopup`）。
  */
-@OptIn(ExperimentalScrollBarApi::class)
 @Composable
 private fun NotesBlock(
     notes: AnnotatedString,
@@ -167,20 +163,17 @@ private fun NotesBlock(
                     .verticalScroll(scroll),
         )
         if (scroll.maxValue > 0) {
-            VerticalScrollBar(
-                adapter = rememberScrollBarAdapter(scroll),
+            //  通用那条（`ui/row/AppScrollBar`）：常亮 + 按住滑块走通用振动 + 轨道两端留白
+            AppScrollBar(
+                scrollState = scroll,
                 modifier =
                     Modifier
-                        //  按住滑块 / 点轨道那一下的振动 —— 与浮层菜单那条同一个修饰符
-                        //  （判据见 `Modifier.scrollBarTick`）
-                        .scrollBarTick()
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
                         //  先让出贴边那一档、再定宽：顺序反了会先按 12dp 定死、再往里挤，
                         //  拇指被压细一半
                         .padding(end = NOTES_SCROLLBAR_INSET)
                         .width(SCROLLBAR_WIDTH),
-                alwaysVisible = true,
             )
         }
     }

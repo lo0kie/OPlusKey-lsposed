@@ -86,5 +86,5 @@ internal fun SettingsPage.rememberPagePagers(): PagePagers {
 private fun SettingsPage.bindingSlotCount(): Int {
     val cfg = configState.config.value
     val key = cfg.key(KeyWatchState.editing(cfg))
-    return GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn).size
+    return GestureTrigger.slotsOn(key.extraClicksOn, key.clickThenLongOn, key.doubleClickOn).size
 }

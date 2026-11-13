@@ -217,6 +217,14 @@ internal class ComboDetector(
     @Volatile
     private var combo: Combo? = null
 
+    /**
+     * 这颗键此刻是不是**某一组组合的成员** —— 拦截层据此决定「压着的那一下要不要补发原生事件」。
+     *
+     *  只回答「归不归组合」，不回答「这一下成没成」：`combo` 一建立就覆盖了它的成员，
+     *  所以还在压着的那几颗一旦被吸收，这里立刻为真 —— 补发任务到点时正是要这个结论。
+     */
+    fun comboCovers(id: KeyId): Boolean = combo?.keys?.contains(id) == true
+
     private class Combo(
         /** 这一档是谁 —— 执行什么由它决定（`single` / `long` 两格）。 */
         val key: ComboKey,

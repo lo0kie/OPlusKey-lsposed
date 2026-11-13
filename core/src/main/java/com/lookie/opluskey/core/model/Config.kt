@@ -79,40 +79,67 @@ data class KeyConfig(
      *  「改一颗键的判定、另一颗跟着变」—— 用户口径是每颗键各管各的。
      */
     val doubleClickMs: Int = DEFAULT_DOUBLE_CLICK_MS,
-    /** 「忽视无操作双击手势」—— **这颗键自己的**判定（同上，原来在全局）。 */
-    val instantSingle: Boolean = DEFAULT_INSTANT_SINGLE,
     /**
      * **这颗键只参与组合** —— 单键手势（单击 / 双击 / 长按）整条不接管，只留「等组合的另一半」。
      *
      *  默认 false = 与这一位出现之前完全一致。开着时：
-     *  · 按下 / 抬手**原样放行**给系统（这颗键的原生行为照常发生），模块不吞、不压窗口、不补发；
-     *  · 组合判定照旧：另一颗键在窗口内按下时仍然凑得出组合，而**那一下**（后按的那颗）照常吞掉 ——
-     *    组合只该有一个结果。
+     *  · 按下**先吞掉**（压一个窗口），再问组合：凑成了就永久吞，没凑成由注入侧把原生短按补发回去；
+     *  · 于是**组合成立时原生事件不会发生** —— 这是 2026-11-13 改的。之前是「先放行、成了组合再补
+     *    一次」，那颗键的原生动作（音量 ± / 电源）已经跑过一遍，撤不回来；
+     *  · 代价：**单按会晚一个窗口**才出效果（要等满窗口才敢确定「这不是组合的第一颗」）。
      *
-     *  ## 代价（必须说清，因为看起来像「交还系统」）
+     *  ## 与「交还系统」那一档的区别
      *
-     *  它与已删除的「交还系统」动作档**不是一回事**：那一档要的是「同一颗键的某一次按压归系统」，
+     *  它不是已删除的「交还系统」动作档：那一档要的是「同一颗键的某一次按压归系统」，
      *  而判定手势必须先吞 DOWN，两者互斥（见 `docs/runtime/key-to-gesture.md` 三）。这一位要的是
-     *  「这一颗键**从来不判单键手势**」，所以它根本不需要吞 DOWN —— 它只记一笔时刻。
-     *
-     *  于是代价写在这里：组合成立时，**先按的那一颗**（如果是这颗键）的原生动作已经发生了，
-     *  组合只是「再补一次」。想「单键彻底归系统、组合也照常」在原理上做不到，选它就是接受这一条。
+     *  「这一颗键**从来不判单键手势**」—— 它压住的窗口是给**组合**用的，不是给单键判定用的。
      *
      *  与 [enabled] 的区别：停用是「这颗键整个不归模块」（组合也一起失效），这一位是
      *  「单键不归模块、组合仍然算」。
      */
     val comboOnly: Boolean = false,
     /**
-     * **多击窗口内「逐次等满」** —— 数够了要的那一档也继续等窗口走完，再按实际击数判。
+     * **窗口从什么时候开始算** —— 两种判定时机，页面上那颗「固定窗口起点」开着
+     * 等于这里 `false`（界面态与存储位相反，取反在 `BindingSettings` 那一行）。
      *
-     *  默认 false = 「按完就判」：数到这颗键配的最高档（双击 / 三击 / 四击）那一刻就定下来，
-     *  抬手即派发 —— 手感快，但用户在窗口内多按的那一下会被当成新的一轮从头数。
-     *  开着时：每一下之后都等满 [doubleClickMs] 窗口，窗口内没有下一次按下才判，
-     *  击数按实际数到的算（超出最高档的部分夹回最高档）。
+     *  ## `false` = 固定窗口起点（默认）
      *
-     *  代价就是那个窗口的等待：开的每一击都要等 [doubleClickMs] 才出结果。
+     *  窗口在**第一击抬手**那一刻开始，之后每一击的抬手都不再延长它：一个窗口内数到的几击
+     *  算一次触发。窗口到点、或数到这颗键配的最高档，就开始判。
+     *  按下时按住多久都不吃掉窗口预算（起点是抬手，不是按下）。
+     *
+     *  ## `true` = 每次松手重新起算
+     *
+     *  每次**抬手**都把窗口推到「此刻 + [multiWaitMs]」：只要还在按，判定就一直往后延。
+     *  最后一次按下之后再等满一个窗口没有新的按下，就按实际击数判。
+     *
+     *  ## 两种的共同点
+     *
+     *  数到最高档（[judgeCap]）都**当场判**，不再等窗口 —— 已经收够了，窗口里只可能是
+     *  超出档位的第 N+1 下。
      */
     val waitMultiWindow: Boolean = false,
+    /**
+     * 「逐次等满」那一档的窗口（毫秒）—— **与 [doubleClickMs] 分开**。
+     *
+     *  ## 为什么不复用「单击延迟」
+     *
+     *  关着 [waitMultiWindow] 时，一个窗口同时表达两件事（两击之间最多隔多久 + 单击要等多久），
+     *  所以 [doubleClickMs] 一个值就够。开着时这两件事被拆成了两条时间线：连击的节奏由用户
+     *  按得快不快决定，而「等满」是模块额外压上去的犹豫期 —— 复用同一个值时，想把单击压短
+     *  就得同时把连击窗口压短，两者互相牵着（用户口径：「等满多击窗口和单击延迟是冲突的」）。
+     *
+     *  ## 0 = 跟随 [doubleClickMs]
+     *
+     *  这一位是后加的（version 48），老配置里没有它。**默认 0 而不是某个具体毫秒**：
+     *  用户可能已把 [doubleClickMs] 调成 500 并开着等满，默认写死 300 会让升级后那一下
+     *  突然变快。0 = 「没有自己的意见，跟着单击延迟走」⇒ 升级前后行为一字不差；动过这根
+     *  滑杆之后才固定成具体值。
+     *
+     *  界面上一根滑杆按 [waitMultiWindow] 切换显示：开着显示这一位、关着显示 [doubleClickMs]
+     *  —— 同一时刻只有一根在起作用，不该摆两根让人猜哪根算数。
+     */
+    val multiWaitMs: Int = FOLLOW_DOUBLE_CLICK_MS,
     /**
      * **这颗键要不要用自己那套公共项** —— 默认关（跟随公共设置）。
      *
@@ -162,7 +189,7 @@ data class KeyConfig(
      * **某个场景块给长按配了动作** —— 与 [sceneRelease] 同一套：只由宿主算好、随广播带过来。
      *
      *  判定侧靠它回答「长按这一档到底有没有人要」（[longActionExists]）。少了这一半，
-     *  只在场景里配了长按的键会被当成「长按无操作」，`instantSingle` 一开就再也不判长按了。
+     *  只在场景里配了长按的键会被当成「长按无操作」，那一档的松手动作也就跟着没主语。
      */
     val sceneLong: Boolean = false,
     /**
@@ -206,6 +233,23 @@ data class KeyConfig(
      *  判定侧要知道的只有 [judgeClicks]（广播出去），动作本身**不广播**：注入侧只判手势、不挑动作。
      */
     val extraClicks: Map<Int, Action> = emptyMap(),
+    /**
+     * **双击这一档开着没有** —— 与 [extraClicksOn] 同一族（「要自己要才有」），只是它管的是第 2 击。
+     *
+     *  默认 `true`：双击是基础档，装上就在（与三击 / 四击默认关相反）。
+     *
+     *  关掉时与「关三击」同一条口径：
+     *  · 「按键绑定」页不排双击那一页、场景块的动作行也不列它（列一行写进去也永远不会命中）；
+     *  · [boundClicks] / [sceneClicks] 不算它 ⇒ 判定侧不数第二击，第二下按下就是**新的一轮**；
+     *  · 执行侧 [actionOf] 对双击恒回「无操作」。
+     *
+     *  **开着但没绑动作时同样不等**：判定封顶按动作表算（[judgeCap]），没绑就没有第 2 击要等。
+     *  所以这一位现在只决定「绑定页出不出现这一格」，不再影响单击的手感。
+     *
+     *  表（[double]）本身**不动**：关掉再打开，之前配好的动作原样回来（与 [extraClicksOn] 同一条）。
+     *  **不跟随** [useOwnSettings]：这颗键开着哪几档手势是它自己的形态。
+     */
+    val doubleClickOn: Boolean = true,
     /**
      * **哪几档多击开着**（第 3 击起，元素即击数：`{3}` / `{3,4}` / `{4}`）—— 逐档一个开关。
      *
@@ -267,7 +311,7 @@ data class KeyConfig(
      *
      *  它**不含**「单击后长按 ⇒ 数到第 2 击」那个下限：那一抬在两边各加一次（见 [judgeLimit] 与
      *  [clicksForJudge]）。留着的正是「后面到底有没有人要」这个事实 —— 判定侧靠它决定单击要不要
-     *  等着看后面的连击，也靠它判「双击这一档是不是空的」（[doubleFallsBackToSingles]）。
+     *  等着看后面的连击。
      *
      *  0 = 这一位没给（老版本发的广播 / 从没写过这一项的配置）⇒ 判定侧退回 [boundClicks]
      *  的兜底，也就是「只看三档」。
@@ -316,7 +360,10 @@ data class KeyConfig(
             is GestureTrigger.Click -> {
                 when (trigger.count) {
                     1 -> single
-                    2 -> double
+
+                    //  双击关着时恒回「无操作」：与「没开的那几档多击」同一条口径
+                    2 -> if (doubleClickOn) double else Action.None
+
                     else -> if (trigger.count in extraClicksOn) extraClicks[trigger.count] ?: Action.None else Action.None
                 }
             }
@@ -360,8 +407,13 @@ data class KeyConfig(
             is GestureTrigger.Click -> {
                 when {
                     trigger.count == 1 -> copy(single = action)
-                    trigger.count == 2 -> copy(double = action)
+
+                    //  双击关着时不写：它在界面上根本不可见，写进去只会留下一份
+                    //  「开关一开就冒出来」的隐藏绑定（与下面多击那一支同一条）
+                    trigger.count == 2 -> if (doubleClickOn) copy(double = action) else this
+
                     trigger.count in extraClicksOn -> copy(extraClicks = clickSlot(trigger.count, action))
+
                     else -> this
                 }
             }
@@ -380,14 +432,15 @@ data class KeyConfig(
      *  只看得到广播里的 [judgeClicks]，取不到动作表。
      *
      *  **条件分支也算绑定**：只给「双击」配了一条场景、不给 [double] 绑动作，是配置允许的常态。
-     *  漏掉它的话判定侧认为最高只有一击，`instantSingle` 一开就在第一次抬手直判单击，
+     *  漏掉它的话判定侧认为最高只有一击，第一次抬手就把单击判掉了，
      *  那条双击场景永远等不到第二击 —— 而且日志里看不出任何异常。
      */
     val boundClicks: Int
         get() =
             maxOf(
                 if (single.isBound) 1 else 0,
-                if (double.isBound) 2 else 0,
+                //  双击那一档关着时不算（它在执行侧本来就回「无操作」，见 [doubleClickOn]）
+                if (doubleClickOn && double.isBound) 2 else 0,
                 //  **没开的那几档不算**：留着它们会让单击白等三个窗，
                 //  而它们在执行侧本来就回「无操作」（见 [extraClicksOn]）。
                 extraClicks
@@ -418,10 +471,29 @@ data class KeyConfig(
                     scene.actions.entries
                         .filter { (trigger, action) -> trigger is GestureTrigger.Click && action.isBound }
                         .filter { (trigger, _) ->
-                            (trigger as GestureTrigger.Click).count.let { it <= 2 || it in extraClicksOn }
+                            //  双击那一档没开时不算：与「没开的多击」同一条口径
+                            (trigger as GestureTrigger.Click).count.let { it == 1 || (it == 2 && doubleClickOn) || it in extraClicksOn }
                         }.maxOfOrNull { (trigger, _) -> (trigger as GestureTrigger.Click).count } ?: 0
                 }
             } ?: 0
+
+    /**
+     * 判定侧**这一刻该用多长的窗口** —— 两击间隔与「逐次等满」共用的那一个数。
+     *
+     *  · [waitMultiWindow] 关着：只有 [doubleClickMs] 一件事可表，直接用它；
+     *  · 开着：用 [multiWaitMs]，而它是 0（[FOLLOW_DOUBLE_CLICK_MS]）时仍回落到 [doubleClickMs]
+     *    —— 老配置没带这一位，回落才保证升级前后一字不差。
+     *
+     *  收成一个属性而不是让注入侧自己 `if`：这条判据有两处读者（排窗 `scheduleDoubleWindow`
+     *  与到点判定），各写一遍的话「排窗按 300、到点按 400」这种错位只会表现成偶发的手感异常。
+     */
+    val clickWindowMs: Int
+        get() =
+            if (waitMultiWindow) {
+                multiWaitMs.takeIf { it > FOLLOW_DOUBLE_CLICK_MS } ?: doubleClickMs
+            } else {
+                doubleClickMs
+            }
 
     /**
      * 判定侧实际要用的那一档：广播那一列（[judgeLimit]）优先，没给就按动作表算（老版本兼容），
@@ -432,8 +504,7 @@ data class KeyConfig(
      *  不钳的话宿主等 20 击、注入侧只派发到 9，第 10 击以后永远出不来。
      *
      *  **[clickThenLongCounts] 时下限是 2**：这一档要数到第 2 击才判得出来。不这么写的话，
-     *  只绑了「单击后长按」的键 `boundClicks` 是 0，注入侧会认为「最多一击」，
-     *  于是 `instantSingle` 那条「双击为无操作 ⇒ 抬手即判单击」的快捷路会在第 1 击抬手时
+     *  只绑了「单击后长按」的键 `boundClicks` 是 0，注入侧会认为「最多一击」，第 1 击抬手时
      *  就把单击派发掉，第二击永远等不到 —— 表现就是这个手势怎么按都不生效。
      *  它是**同一个数的下限**而不是另一个开关：注入侧只认 `judge_clicks` 这一位，
      *  多一位就多一处「两边不一致」的可能。
@@ -446,21 +517,37 @@ data class KeyConfig(
             ).coerceIn(0, ConfigFields.MAX_JUDGE_CLICKS)
 
     /**
-     * 判定侧真正数到第几击就**封顶**（至少 2 —— 双击是第一档多击）。
+     * 判定侧真正数到第几击就**封顶**（至少 1）。
      *
-     *  写成属性只为一件事：判定器里「数到哪一档立刻判」与「逐次等满时把多按的那几下夹回来」
-     *  必须是同一个数。两处各写一遍 `maxOf(2, clicksForJudge)`，改一处漏一处就是
-     *  「配了双击、按三下却判成无操作」。
+     *  写成属性只为一件事：判定器里「数到哪一档立刻判」与「逐次等时把多按的那几下
+     *  夹回来」必须是同一个数。两处各写一遍，改一处漏一处就是「配了双击、按三下却判成无操作」。
+     *
+     *  **按「开了哪几档」算**（[doubleClickOn] / [extraClicksOn] / [clickThenLongOn]），
+     *  不看那一档绑没绑动作：只要开着，判定侧就得数到那一档、就得多等窗口。
+     *  用户口径是「只要开了就要等；不想等就把多击手势全关掉」——
+     *  理由很直接：同时开两档、其中一档是无操作时，另一档照样要等那次窗口，
+     *  所以「没绑动作就不等」这条捷径在部分生效的配置上本来就不成立，只会让手感
+     *  跟着「绑没绑」跳。
+     *
+     *  [clicksForJudge] 仍然要取大：三击 / 四击那种「只在场景里绑了动作」的配置，
+     *  档位开关可能没开，但那一档真要执行。
      */
-    val judgeCap: Int get() = maxOf(2, clicksForJudge)
+    val judgeCap: Int
+        get() =
+            maxOf(
+                if (doubleClickOn) 2 else 1,
+                extraClicksOn.maxOrNull() ?: 1,
+                if (clickThenLongOn) 2 else 1,
+                clicksForJudge,
+            ).coerceAtMost(ConfigFields.MAX_JUDGE_CLICKS)
 
     /**
      * 判定侧**只按动作表**该数到第几击 —— 广播那一列（[judgeClicks]）优先，老版本没给时按
      * [boundClicks] 算。
      *
      *  与 [clicksForJudge] 的差别只有「单击后长按那个下限」：[clicksForJudge] 在它之上再抬到 2，
-     *  而「双击这一档其实是空的」（[doubleFallsBackToSingles]）要问的正是**这个数** —— 抬过下限
-     *  的那个数分不出「双击绑了动作」与「只是单击后长按要数到第 2 击」。
+     *  而这里只回答「按动作表该数到几击」—— 抬过下限的那个数分不出「双击绑了动作」
+     *  与「只是单击后长按要数到第 2 击」。
      *
      *  场景里绑的双击也在这个数里（`judgeClicks` 是宿主按场景表算好广播过来的），所以调用方
      *  不必再单独问「场景有没有给双击配动作」。
@@ -581,56 +668,11 @@ data class KeyConfig(
      * 「单击后长按」这一档**此刻算不算数** —— 开着，**且**这一档真有动作（直接绑定 / 场景里配过）。
      *
      *  「开着但动作是无操作」等同于「这一档不存在」：这一档的代价全在判定链上（第 2 击按住变长按、
-     *  `judge_clicks` 下限抬到 2、`instantSingleNow` 不能收线），没有动作时这些代价只表现为
-     *  「按住什么都不发生、两下也各算不了单击」。与 [longActionExists] 同一条口径。
+     *  `judge_clicks` 下限抬到 2），没有动作时这些代价只表现为「按住什么都不发生」。
+     *  与 [longActionExists] 同一条口径。
      */
     val clickThenLongCounts: Boolean
         get() = clickThenLongOn && clickThenLongActionExists
-
-    /**
-     * 「忽视无操作双击手势」此刻**真的能省掉那个窗口**吗 —— 判定侧的唯一判据。
-     *
-     *  五位缺一位都不行：开关开着、最高只数到一击（后面没有连击要等）、没开「单击后长按」
-     *  （那一档要在第二击上等长按）、双击也没有绑动作，也没有开「逐次等满多击窗口」。
-     *  写成属性是因为判定侧那个 `if` 再多一条就顶破 detekt 的条件复杂度上限 ——
-     *  而这条口径本来也只该有一份。
-     */
-    val instantSingleNow: Boolean
-        get() =
-            instantSingle &&
-                //  「逐次等满多击窗口」时不许抢跑：那一位要的就是「等窗口、按实际击数判」，
-                //  在这里抬手即判单击等于把它整条废掉（用户开了却看不出区别）
-                !waitMultiWindow &&
-                clicksForJudge <= 1 &&
-                //  「单击后长按」**开着且真有动作**时不算：那一档要在第 2 击上等长按，
-                //  抢跑等于把它废掉。动作是无操作时它本来就没有东西可等，照常收线
-                //  （于是那两下各算一次单击）。
-                !clickThenLongCounts &&
-                !actionOf(GestureTrigger.Click(2)).isBound
-
-    /**
-     * 双击这一档**绑的是无操作**、而「忽视无操作多击手势」开着 ⇒ 那两下**各算一次单击**。
-     *
-     *  只有「单击后长按」开着且真有动作时这一位才用得上：那种配置下判定侧不能在第一击抬手就收线
-     *  （要在第 2 击上等长按，见 [instantSingleNow]），于是两下快速轻点会被判成 `Click(2)` ——
-     *  而双击是无操作，用户看到的是「按两下什么都没发生」。开着这一位的意思就是不承认那几档
-     *  无操作手势，两下轻点该各执行一次单击（判定侧在第二击抬手那一刻连发两条 `Click(1)`，
-     *  见 `inject/input/GestureDetector` 的 `doubleFired` 那一支）。
-     *
-     *  三条同时成立才算：
-     *  · [instantSingle] 开着 —— 关着时「双击无操作 ⇒ 什么都不做」是既有行为，不是漏判；
-     *  · 后面**没有连击要等**（[judgeLimit] <= 1）。配了三击 / 四击、或场景里绑了双击时，
-     *    第 2 击是连击链上的一格，拆成两下单击会把那条链废掉；
-     *  · 双击没有绑动作（直接绑定那一半 —— 场景那一半已经在 [judgeLimit] 里了）。
-     *
-     *  为什么不用 [clicksForJudge]：它带着「单击后长按 ⇒ 下限 2」那一位，分不出
-     *  「双击绑了动作」与「只是这一档要数到第 2 击」—— 而本判据恰恰要在后一种情况成立。
-     */
-    val doubleFallsBackToSingles: Boolean
-        get() =
-            instantSingle &&
-                judgeLimit <= 1 &&
-                !actionOf(GestureTrigger.Click(2)).isBound
 
     /**
      * 「单击后长按」松手那一刻该执行什么（按键自己那一格，不含场景）。
@@ -701,9 +743,10 @@ data class KeyConfig(
                 ConfigFields.F_REPEAT_INTERVAL_MS to longRepeatIntervalMs,
                 ConfigFields.F_REPEAT_VIBRATE to longRepeatVibrate,
                 ConfigFields.F_DOUBLE_CLICK_MS to doubleClickMs,
-                ConfigFields.F_INSTANT_SINGLE to instantSingle,
                 ConfigFields.F_COMBO_ONLY to comboOnly,
+                ConfigFields.F_DOUBLE_CLICK_ON to doubleClickOn,
                 ConfigFields.F_WAIT_MULTI_WINDOW to waitMultiWindow,
+                ConfigFields.F_MULTI_WAIT_MS to multiWaitMs,
                 ConfigFields.F_OWN_SETTINGS to useOwnSettings,
                 ConfigFields.F_KEY_COLOR_OS_API to colorOsApi,
                 ConfigFields.F_KEY_VIBRATE to vibrate,
@@ -718,8 +761,7 @@ data class KeyConfig(
                 ConfigFields.F_SCENE_CHAIN to sceneChain,
                 //  发的是 [judgeLimit]（宿主按动作表算出的**最高绑定击数**，含场景），不是抬过下限的
                 //  [clicksForJudge]：「单击后长按 ⇒ 下限 2」那一抬两边各加一次（注入侧的 `clicksForJudge`
-                //  做的是同一件事，结果逐字相同），而注入侧要靠这个数回答「双击这一档到底有没有人要」
-                //  （[doubleFallsBackToSingles]）—— 收到抬过的数就分不出「双击绑了动作」与
+                //  做的是同一件事，结果逐字相同），收到抬过的数就分不出「双击绑了动作」与
                 //  「只是要数到第 2 击」。
                 ConfigFields.F_JUDGE_CLICKS to judgeLimit,
                 //  哪几档多击开着要广播：判定侧据此决定数不数到第 3 / 4 击
@@ -776,8 +818,22 @@ data class KeyConfig(
         const val MIN_DOUBLE_CLICK_MS = 100
         const val MAX_DOUBLE_CLICK_MS = 1000
 
-        /** 「忽视无操作双击手势」的默认值（不等窗口）。 */
-        const val DEFAULT_INSTANT_SINGLE = true
+        /**
+         * [multiWaitMs] 的「跟随 [doubleClickMs]」取值 —— 见那一位的 KDoc。
+         *
+         *  用 0 而不是 `-1`：0 本来就是「没有窗口」这个合法极值之外的空位，而负数会让
+         *  `ConfigFields.Kind.Number` 的下限校验多一条要解释的特例。
+         */
+        const val FOLLOW_DOUBLE_CLICK_MS = 0
+
+        /**
+         * 「多击窗口」的上限 —— **与 [MAX_DOUBLE_CLICK_MS] 是同一个数**。
+         *
+         *  两根值现在共用同一根滑杆（见 `BindingSettings` 的 `waitWindowRow`），上下限必须一致：
+         *  两个上限各写一份时，切换判定时机那一下滑杆的可用范围会跳一截，看着像值被改了。
+         *  保留这个别名只为「多击窗口」那一位自己的文档里能指名道姓。
+         */
+        const val MAX_MULTI_WAIT_MS = MAX_DOUBLE_CLICK_MS
 
         const val DEFAULT_LONG_PRESS_MS = 500
 
@@ -833,7 +889,6 @@ data class KeyConfig(
                 longRepeatIntervalMs = DEFAULT_REPEAT_INTERVAL_MS,
                 longRepeatVibrate = false,
                 doubleClickMs = DEFAULT_DOUBLE_CLICK_MS,
-                instantSingle = DEFAULT_INSTANT_SINGLE,
             )
 
         /**
@@ -864,9 +919,10 @@ data class KeyConfig(
                 longRepeatIntervalMs = v.number(ConfigFields.F_REPEAT_INTERVAL_MS),
                 longRepeatVibrate = v.bool(ConfigFields.F_REPEAT_VIBRATE),
                 doubleClickMs = v.number(ConfigFields.F_DOUBLE_CLICK_MS),
-                instantSingle = v.bool(ConfigFields.F_INSTANT_SINGLE),
                 comboOnly = v.bool(ConfigFields.F_COMBO_ONLY),
+                doubleClickOn = v.bool(ConfigFields.F_DOUBLE_CLICK_ON),
                 waitMultiWindow = v.bool(ConfigFields.F_WAIT_MULTI_WINDOW),
+                multiWaitMs = v.number(ConfigFields.F_MULTI_WAIT_MS),
                 //  「三档同一事件」与「独立设置」那一族 —— **读的这一半必须与 `fieldValues()` 成对**：
                 //  只写进 `fieldValues()` 而不在这里读回来，表现就是「界面上改了、也落盘了，
                 //  但判定与执行那边照旧」——配置里有值、内存里是默认值，最难查的一种。
